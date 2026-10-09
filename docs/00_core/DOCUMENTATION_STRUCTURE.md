@@ -142,7 +142,7 @@
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
-- `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan，以及 4 份 Month 3 Factor Layer 計畫與 1 份設計規格，以及 1 份 Month 4 closure plan 已封存；Scheduler Approval pair 因測試內容依賴仍保留原文。
+- `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 Factor Layer 計畫與 1 份設計規格，以及 1 份 Month 4 closure plan 已封存；Scheduler Approval pair 因測試內容依賴仍保留原文。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
 - `docs/agents/PATCH_MEMO.md` 已移至 `docs/08_technical/MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md`；MCP / openmarkets patch memo 屬技術環境備忘，不屬 Agent 角色規範。
 - `multi_agent_workflow.md` 已移至 `docs/agents/`；Agent 分支、合併與協作協議不屬於系統架構文件。

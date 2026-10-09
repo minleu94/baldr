@@ -21,7 +21,7 @@
 
 ## 主題閱讀入口
 
-先依序看 [目前狀態](../00_core/PROJECT_SNAPSHOT.md)、對應的 scoped authority 與 [QA 主題地圖](../06_qa/README.md)，再按需要回查下表中的歷史 plan／spec。下表只降低找文件的成本，不代表其中計畫仍有效、已完成或獲得目前授權；165 份歷史文件的原路徑、實際位置與雜湊以 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 為準。已封存原文包括 13 份有具名 QA 證據的 Post-V1 plan/spec、1 份已完成的 Month 2 governance plan，以及 4 份 Month 3 implementation plan 和 1 份設計規格。
+先依序看 [目前狀態](../00_core/PROJECT_SNAPSHOT.md)、對應的 scoped authority 與 [QA 主題地圖](../06_qa/README.md)，再按需要回查下表中的歷史 plan／spec。下表只降低找文件的成本，不代表其中計畫仍有效、已完成或獲得目前授權；165 份歷史文件的原路徑、實際位置與雜湊以 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 為準。已封存原文包括 13 份有具名 QA 證據的 Post-V1 plan/spec、1 份已完成的 Month 2 governance plan、4 份 Month 3 implementation plan 和 1 份設計規格，以及 1 份 Month 4 Daily Decision Desk closure plan。
 
 | 主題 | 目前閱讀入口 | 可選的歷史 plan／spec | 判讀提示 |
 |---|---|---|---|
@@ -41,7 +41,7 @@
 
 ## 維護規則
 
-- 不刪除歷史 plan/spec/prompt 原文。13 份具名 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 implementation plan 與 1 份 Month 3 設計規格、1 份 Month 4 Daily Decision Desk closure plan的原文 bytes 保存在 `docs/09_archive/superpowers/{plans,specs}/`，原路徑留短導引；完整 old→new、日期標籤、生命週期、QA evidence 與雜湊逐檔列於 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。其餘歷史文件保留原路徑，唯一目前進行中的 Baldr 計畫維持原入口。
+- 不刪除歷史 plan/spec/prompt 原文。13 份具名 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 implementation plan、1 份 Month 3 設計規格，以及 1 份 Month 4 Daily Decision Desk closure plan 的原文 bytes 保存在 `docs/09_archive/superpowers/{plans,specs}/`，原路徑留短導引；完整 old→new、日期標籤、生命週期、QA evidence 與雜湊逐檔列於 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。其餘歷史文件保留原路徑，唯一目前進行中的 Baldr 計畫維持原入口。
 - 檔名日期是里程碑或計畫日期，不一定等於完成日期；不依檔名推定完成。個別結果以 Snapshot、Roadmap、對應 QA 收據與 Git 記錄為準。
 - 新增仍在推動中的 spec / plan 時，若會被日常引用，應同步加入 [文件索引](../00_core/DOCUMENTATION_INDEX.md)；完成或 superseded 後更新 manifest 的狀態與 evidence 路徑。
 - 原始輸出、暫存報告與本機執行產物不應放入本目錄；需要保存結論時整理為 `../06_qa/` 摘要。

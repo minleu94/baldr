@@ -21,6 +21,8 @@
 - [文件編碼稽核（2026-06-16）](DOCUMENT_ENCODING_AUDIT_2026_06_16.md)：一次性 UTF-8／mojibake 掃描；保留當時結論，不代表目前 repo 的完整編碼檢查。
 - [文件與 Roadmap 重整稽核（2026-07-03）](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)：一次性文件治理稽核；Phase 歷史判讀已納入現行 `DOCUMENTATION_STRUCTURE.md`。
 - [SQLite inspector 關閉探測（2026-09-15）](QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)：保留 bounded probe 收據；當時未重現問題，不代表排除所有競態。
+- [Program Readiness 稽核（2026-08-27／28）](PROGRAM_READINESS_AUDIT_2026_08_27.md)：按 8/27 初版與 8/28 更新保留歷史盤點；容量與 readiness 後續已變更，目前狀態看 Snapshot。
+- [測試資產盤點與結案（2026-09-17）](TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：依結案報告、V2 方法補正、V1 撤回紀錄閱讀；139 組候選／1,107 檔是 bounded union，不是完整測試母體。
 
 ### V1.5–V2.0 QA milestones
 

@@ -59,6 +59,20 @@
 
 對 [V4 data recovery（2026-09-07）](../06_qa/V4_DATA_RECOVERY_2026_09_07.md) 補上當日 scope、唯讀與未 apply 邊界，並連到 Snapshot 與後續 data closeout；對 [V4 automated review（2026-09-07）](../06_qa/V4_AUTOMATED_REVIEW_2026_09_07.md) 明示 machine evidence 不取代 owner acceptance；對 [Full App healthcheck（2026-06-16）](../06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md) 標出舊 8-workspace 基線並連到現行 9-workspace 架構與 Manual。只增加閱讀提示，不重寫原驗收內容或數字。
 
+## 2026-10-08 QA 歷史盤點封存第二批
+
+將已被後續狀態重整取代的 Program Readiness 稽核與已結案的測試資產盤點收至 `docs/09_archive/`；五個舊 `docs/06_qa/` 路徑保留短轉址，歷史索引與目錄不會斷鏈。8/27 稽核新增一行歷史定位；測試資產 V1/V2 只把已搬入 archive 的相互連結改為相對路徑；其餘原文保留。當前狀態以 Snapshot 為準，當前測試路由以 QA README 為準。
+
+| 原路徑 | 歸檔路徑 | 原文 SHA-256 | 處置 |
+|---|---|---|---|
+| `docs/06_qa/PROGRAM_READINESS_AUDIT_2026_08_27.md` | [`PROGRAM_READINESS_AUDIT_2026_08_27.md`](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_27.md) | `F4E94F47DA5E3CB451BC34B6129EEBEA2F5473B044FB176AE79BDBC1B89071F8` | 追加歷史定位；當時 readiness 與目前狀態分開閱讀。 |
+| `docs/06_qa/PROGRAM_READINESS_AUDIT_2026_08_28.md` | [`PROGRAM_READINESS_AUDIT_2026_08_28.md`](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_28.md) | `9C5C36F3A8CE9B5D28BB38BFC29879E3BC7B86ACF1415C6099EDC6D94083F192` | 保留 8/29 supersession 標記與後續處置指引；P0 register 改為直接連到此原文。 |
+| `docs/06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md` | [`TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md`](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md) | `DAA003E73CFB5F5EB0A02AC3A5A194FEEDDAEF82AAFA0557CDA1996EBB199175` | 保留 V1 撤回紀錄；V2 連結改為 archive 相對路徑。 |
+| `docs/06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md` | [`TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md`](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md) | `6A73E630818AB5615963E6A3522C61AC8F8B2316260E6C9B2DA6596958632722` | 保留 V2 方法補正與歷史基準；將 V1／V2 archive 內的絕對 file URI 修為相對連結。 |
+| `docs/06_qa/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md` | [`TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md`](../09_archive/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) | `BE39D28089755B06870DECA85BA7C0519E4BA0E472377E3CD0020389C536D935` | 保留既有導讀卡；139 組／1,107 檔僅是 bounded union，不代表完整測試母體。 |
+
+現行 [V2.3 P0 source register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 對 V2.3 readiness 原文的 12 個 review 連結，以及對 8/28 readiness audit 的完整盤點連結，均已改為直達 archive。舊路徑轉址保留給 10/06 靜態 Catalog、歷史快照與 plan/spec 引用。
+
 ## 2026-10-08 核心入口歷史內容瘦身
 
 | 原路徑 | 封存路徑 | 原文 SHA-256 | 處置 |

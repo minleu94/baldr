@@ -29,8 +29,8 @@
 | 四用途整合、來源／ML/UI 的限界收尾 | [Astra engineering closeout（10/03–05）](ASTRA_ENGINEERING_CLOSEOUT_20261003.md) |
 | Windows、資料、ML 與原生 UI 的三階段整合修復 | [Integration repair acceptance（10/02–03）](INTEGRATION_REPAIR_ACCEPTANCE_20261002.md) |
 | 指定時點的排程修復、失敗與後續補充 | [Scheduled operations repair（9/30）](SCHEDULED_OPERATIONS_REPAIR_20260930.md)；目前看 [10/08 排程修復](BALDR_SCHEDULE_REPAIR_20261008.md) |
-| 舊 ML program readiness 稽核與後續修正 | [Program readiness audit（8/28）](PROGRAM_READINESS_AUDIT_2026_08_28.md)；只作歷史稽核底冊 |
-| 測試資產候選與保留判斷 | [Test asset consolidation closeout（9/17）](TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) |
+| 舊 ML program readiness 稽核與後續修正 | [8/27 稽核](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_27.md) → [8/28 更新](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_28.md)；只作歷史底冊，現況看 Snapshot |
+| 測試資產候選與保留判斷 | [結案報告](../09_archive/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) → [V2 方法補正](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md) → [V1 撤回紀錄](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)；139 組／1,107 檔為 bounded 範圍，不代表完整測試母體 |
 | 四用途 UX 結果、近期工程增量 | [B03 Update／Runtime](BALDR_B03_UPDATE_RUNTIME_20261006.md)、[B04 收藏](BALDR_B04_SELECTION_WATCHLIST_20261006.md)、[B05 圖表](BALDR_B05_CHART_INCREMENT_20261006.md)、[B06 投資組合摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)、[B10 私人覆盤](BALDR_B10_PRIVATE_REVIEW_20261006.md)、[B12 隔離 runtime](BALDR_B12_DAILY_RUNTIME_20261006.md) |
 | 個股研究的其他讀回 | [報告與 ML 分流](H20_REPORT_ML_SEPARATION_COPY_20261008.md)、[目前來源診斷](H20_SAVED_AND_CURRENT_SOURCE_DIAGNOSIS_20261008.md)、[獨立 current research](H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md)、[載入 candidate](BALDR_H20_LOADING_CANDIDATE_421BC973_20261008.md) |
 
@@ -45,7 +45,7 @@
 - **技術分析與圖表**：[BBANDS 上軌入口](BALDR_A01_BBANDS_UPPER_20261006.md)、[每日 BBANDS](BALDR_DAILY_BBANDS_CENTRAL_20261007.md)、[H20 圖表契約](H20_BOUND_CHART_CONTRACT_REVIEW_20261008.md)。
 - **測試路由與人工驗收**：[Feature-to-test routing matrix](FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)、[test inventory healthcheck classification](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[早期 Full App healthcheck](FULL_APP_HEALTHCHECK_2026_06_16.md)、[歷史 V1 release checklist](../09_archive/V1_RELEASE_CHECKLIST_2026_06_30.md)。
 - **早期產品 QA**：[Recommendation Tab issues](QA_RECOMMENDATION_TAB_ISSUES.md)、[Recommendation Tab summary](QA_RECOMMENDATION_TAB_SUMMARY.md)、[Update Tab issues](QA_UPDATE_TAB_ISSUES.md)、[Update Tab summary](QA_UPDATE_TAB_SUMMARY.md)。
-- **歷史工程閉環**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)、[V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)。V1.5–V2.0 milestone QA 與部分 V2.1–V2.5 readiness／closeout 已整理至[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；P0 source register 及 approval 收據仍留在本目錄；歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
+- **歷史工程閉環**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)、[V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)。V1.5–V2.0 milestone QA 見[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；V2.1–V2.5 readiness／closeout 見[第二歷史專區](../09_archive/README.md#v21v25-historical-readiness-and-closeout)；Program Readiness 與測試資產舊稽核亦已歸檔。P0 source register 及 approval 收據仍留在本目錄；歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
 ## 閱讀與歸檔規則
 

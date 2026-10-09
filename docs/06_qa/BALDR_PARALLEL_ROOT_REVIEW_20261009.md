@@ -170,3 +170,10 @@ Root允許owner新增限定已pin guard版本／SHA的counter contract：未提�
 Root 獨立重驗18 passed／0.97秒，實讀JUnit tests18/errors0/failures0；兩檔scoped mypy clean、py_compile exit0。來源SHA `2DA8E37359F85FD7D278330C80C30559DC1AE3E9319AC03CB2D32AD24F00F11A`、測試 `1986E6E68ABA4B429214795D3C6E3C9030306E1854A67EF400D0F545A497F3D7`、契約 `B54EEA93CC2EE3DF6CEDA53117626F6D9D6933160B2FB3E433DC4400327AC05F`皆吻合。直接constructor／replace後自洽重hash的非法語義負例已補。
 
 只接受request/predicate/unqualified sort/page contract，沒有full-N reader發行或UI／收藏。Owner接續F06有界collector骨架與同次MA/KDJ/volatility四群publication方案；full-N共享接線待F02實證，整份原計畫仍未完成。另Root重算c最新補齊文件manifest `26f0fad86dada228a786eadb2c78102e1480ae21652ca14ebcaa3037bba180b4`及plan `d0bf3e4c0fdfb9d519312b260d029db7bfc21ab1640083944407ee5df092352b`吻合owner補記，runtime source不變；準備中不能當live handle。
+
+
+### H20-first 真雙來源純合成正例收據核對
+
+Root實讀004225完整receipt，SHA `ff6405437777675a0e8ebc6bdfb319646009150b09e53391672ff6150d8bd822`。事件依序H20 cleanup begin→session finish begin/complete→permit release→H20 end→market finish begin/complete；H20清理時兩alias仍outer router，市場finish前切runtime guard，結束還原baseguard。3/3 private directories、permit1/1、private root empty、legacy scope passed、keeper close passed；市場/H20來源operation pins起訖相同、市場應用source SQL=0、keeper active pins不變及rollback均經Root逐值核對。
+
+合成H20值1234 bp、三筆合成市場價格，不是原684 bp。main_entered=false，零worker是未建Main，不提供真正Main shutdown資格。接受此正例封套事實；故障／retry／partial abort仍待，不能放行新Main或EXE。

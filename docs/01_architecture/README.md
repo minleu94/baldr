@@ -19,7 +19,7 @@
 - **`system_architecture.md`**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
-  - 原第 16 節逐次更新記錄已移至 [架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；主文保留舊錨點導引
+  - 架構主文為第 1–15 節；日期化增量分布在主文前後。原第 16 節逐次更新記錄已移至 [架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，主文保留舊錨點導引。
 
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
@@ -27,7 +27,7 @@
 
 ## 目前架構速讀
 
-`system_architecture.md` 的第 1–15 節是架構主文；原第 16 節更新記錄已歸檔，後續日期化增量仍保存有用的架構決策。先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再按問題讀主文：
+`system_architecture.md` 開頭先列目前的 Windows composition 與 ML 路線入口，之後有日期化增量，再進入第 1–15 節架構主文；主文後也有日期化增量。若要理解系統定位與模組責任，先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再直接跳到第 1 節，按問題讀主文：
 
 | 要理解的內容 | 主文位置 |
 |---|---|
@@ -37,7 +37,7 @@
 | 保存治理、匯出、文件架構、高風險修改與驗證 | 第 11–15 節 |
 | Watchlist／bookmark 保存與 COW 遷移 | 第 4、8、11 節；操作與批准狀態看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) |
 
-主文後仍有日期化架構增量；它們保存當時的架構變更與限制，不是按時間排序的目前狀態摘要。第 16 節舊更新流水帳已移至 [歸檔](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)。目前完成度看 Snapshot，具體驗收看對應 QA 收據。
+主文前後的日期化架構增量保存當時的局部變更與限制，適合在需要追溯指定切片時查閱；不要從文件前後順序推斷目前狀態。第 16 節舊更新流水帳已移至 [歸檔](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)。目前完成度看 Snapshot，具體驗收看對應 QA 收據。
 
 ## ML 架構閱讀順序
 

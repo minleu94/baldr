@@ -180,6 +180,7 @@
 
 ## 六、更新記錄
 
+- 2026-10-08：將 Daily Investment Journey 與 synthetic-fixture MainWindow bounded acceptance 兩份日期化 QA 原文歸檔，原路徑留轉址；與 Increment B／C 一併補入 Early Journey 歷史入口，明示 open acceptance 範圍及本機 sidecar 未提交的限制。
 - 2026-10-08：將 Decision Continuity Increment B／C 兩份 9/14–15 bounded QA 原文歸檔，原 QA 路徑留短導引；更新 Early Journey 入口與 Coverage Map，明示完整跨頁 acceptance 仍開放、本機 screenshot／raw output sidecar 未隨封存提交。
 - 2026-10-08：將 V1.5 Data Credibility 與 V1.9 Read-only Agent MCP 的 2 組 plan/spec 原文依原層次封存，原路徑留短導引；manifest 記錄原始 bytes／SHA、具名 closeout QA 與未完成邊界，未勾選項目及 V1.9 pre-V2.0 後續驗收不推定完成。
 - 2026-10-08：歸檔 LUNA A／C handoff 與整合 closeout；因 inventory 工具直接讀取原文而保留 LUNA B handoff／Project Consolidation Review，QA 地圖標示兩者界線並直達 Archive 收據。

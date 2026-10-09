@@ -1033,3 +1033,12 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 |---|---|---|---|
 | docs/06_qa/DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md | [Increment B 原文](../09_archive/DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md) | 6,314 / `80EF9560BD55C34456E0D72E724884C0693DA893E315AC272BB59D81C2C594E4` | 6,314 / `80EF9560BD55C34456E0D72E724884C0693DA893E315AC272BB59D81C2C594E4` |
 | docs/06_qa/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md | [Increment C 原文](../09_archive/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md) | 11,559 / `A1242DD2837395B149D9B1DD8E16D4395E82FFC6B720F58D0BD0BA17EC58872E` | 11,559 / `A1242DD2837395B149D9B1DD8E16D4395E82FFC6B720F58D0BD0BA17EC58872E` |
+
+## 2026-10-08 歸檔 Daily Investment snapshot 與 bounded MainWindow acceptance
+
+將 2026-09-14 Daily Investment Journey 唯讀快照與 2026-09-15 synthetic-fixture MainWindow bounded acceptance 原文移至 Archive，QA 原路徑保留短轉址；歷史 Catalog 連結由導引承接。前者的當日資料／learning 數字與未完成項不作目前狀態；後者雖驗證 production MainWindow route 與獨立 child readback，Market／Industry 和 Portfolio fixture 為 synthetic，不等於 natural／Formal qualification，也不關閉仍開放的 cross-page acceptance plan。screenshots、capture manifest、receipt／raw logs 是本機 sidecar，未隨封存提交。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/DAILY_INVESTMENT_JOURNEY_2026_09_14.md | [Daily Investment QA 原文](../09_archive/DAILY_INVESTMENT_JOURNEY_2026_09_14.md) | 3,682 / `AD40A414A9FD33D0CD4F506C4A63AC1CEAF25237C7531DB2137A554A847E8FD8` | 3,682 / `AD40A414A9FD33D0CD4F506C4A63AC1CEAF25237C7531DB2137A554A847E8FD8` |
+| docs/06_qa/CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md | [MainWindow QA 原文](../09_archive/CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md) | 12,977 / `75581E46D3860E754B7C9B18992B7041CD424123DDC9336C03D77D028BCB9BAF` | 12,977 / `75581E46D3860E754B7C9B18992B7041CD424123DDC9336C03D77D028BCB9BAF` |

@@ -300,6 +300,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 2026-07-13 Broker Flow dashboard performance 原始 failed gate（732,020 rows／178 dates／51 branches／2,115 codes）與後續 semantics scoped pass 成對移至 Archive；另將 2026-07-07 readability polish closeout 移入 Archive。原文：[dashboard failed gate](../09_archive/BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md) → [semantics scoped pass](../09_archive/BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md)，以及 [readability polish closeout](../09_archive/UI_UX_READABILITY_POLISH_CLOSEOUT_2026_07_07.md)。三份原文以 SHA-256 核對 byte-preserved，舊 QA 路徑改為短轉址；QA／Archive README、Structure 同步。後續語意優化不改寫前一 dashboard gate，readability closeout 的 formal-data 等候數只代表當時快照；目前狀態看 Snapshot，操作看 Manual，架構看 system architecture。
 
+## 2026-10-08 R001／R006／R020 dated QA 歷史歸檔
+
+將已結束或屬舊時點的三份 large QA 原文移至 Archive：[R001 baseline inventory](../09_archive/REFACTOR_BASELINE_R001_20260922_HISTORY.md)、[R006 ML ABI baseline](../09_archive/REFACTOR_ML_ABI_BASELINE_R006_20260922_HISTORY.md)、[R020 deferred-threshold review](../09_archive/R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925_HISTORY.md)。R001／R006 的 bounded closeout 與 R020 當前 task disposition 由 [R031 task index](../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 導覽；R006 未知 formal artifacts 未載入的限制仍見 [dated addendum](../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。原 bytes 保留、來源 QA 路徑改為短轉址；沒有重裁歷史 evidence 或擴大 acceptance。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

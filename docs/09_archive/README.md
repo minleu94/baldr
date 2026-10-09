@@ -30,6 +30,14 @@
 - **啟動與執行紀錄**：[8/18 clock activation](PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md) → [8/21 restart execution](PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md) → [8/25 weekly update](PROSPECTIVE_FORMAL_RESTART_WEEKLY_UPDATE_2026_08_25.md)。
 - **Staging／calendar 收據**：[8/26 named staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md)、[8/27 V3 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md)、[8/28 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_28_STAGING.md)、[8/28 calendar capture](PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md)。
 
+### 2026-10-08 V2/V3/V4 dated readiness reports
+
+這六份文件保存 2026-07 的 paper baseline、工程 readiness、人工驗證及 7/30 release-freeze 收據。V2.4／V2.5 首份 paper baseline 未達 formal closeout；V3.0 的 `ready_for_manual_validation` 與 `DEFER_ALL_PRUNING_DECISIONS` 僅是當時的工程／資料決議；7/30 V4 report 已明確標為 historical／superseded。它們均不代表目前 maturity、production readiness 或投資有效性，目前狀態回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)。
+
+- **V2.4／V2.5 paper baselines**：[V2.4](V2_4_PAPER_BASELINE_2026_07_12.md)、[V2.5 position health](V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md)。
+- **V3.0 engineering readiness／manual validation**：[automated readiness](V3_0_AUTOMATED_READINESS_2026_07_12.md)、[engineering candidate manual validation](V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md)、[Week 1 manual validation](V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md)。
+- **V4.0 dated release freeze**：[operational production closeout report](V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md)。
+
 ### 2026-10-08 Early QA closeouts
 
 - **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。

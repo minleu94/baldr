@@ -320,6 +320,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 2026-08-18 至 08-28 七份 activation、execution、weekly update、staging、calendar capture 與 failure 收據移至 [Archive 專區](../09_archive/README.md#2026-10-08-prospective-formal-clock-history)，原 QA 路徑保留短轉址。歷史內容保留其 failure／zero-output 邊界，8/26 staging 僅為具名一次性例外；目前 restart direction 與 decision-clock 契約仍由 QA 文件承接，歷史收據不構成重啟或發布授權。
 
+## 2026-10-08 V2/V3/V4 readiness／closeout 收據歸檔
+
+將六份 2026-07 V2.4／V2.5 paper baselines、V3.0 automated readiness／engineering candidate／Week 1 manual validation，以及已明確標為 historical／superseded 的 7/30 V4.0 closeout 移至 [Archive 專區](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports)。原 QA 路徑保留短導引；V3 readiness inspector 的 `Path.exists()` 相容檢查仍成立。版本成熟度正文改保留 Gate 與當日決議摘要，詳細樣本與 dated status 留在 Archive；V4 原文的跨目錄連結已修復，目前狀態仍由 Snapshot／現行 QA 決定。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

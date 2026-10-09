@@ -126,7 +126,7 @@ Closeout Gate：每個 transition 可解釋、可回溯；不自動平倉。
 
 > 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
-**Paper baseline 補充（2026-07-12）**：V2.4 已用 `scheduled_rec_20260712_051002` 建立第一個真實 saved-Recommendation paper baseline，3 筆 allocation 的紙上可執行總額為 NT$159,000、殘餘現金 NT$341,000；V2.5 已由相同 artifact 建立 3 筆 `WATCH` health baseline，並將 thesis / invalidation / horizon / review date 保留為必填人工欄位。兩者均不寫持倉 DB、不下單、不自動 action；尚缺後續交易日 paper evidence、成本後 benchmark、人工 thesis 與 state transition，不能 formal closeout。證據見 `docs/06_qa/V2_4_PAPER_BASELINE_2026_07_12.md`、`docs/06_qa/V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md`。
+**Paper baseline 歷史收據（2026-07-12）**：V2.4／V2.5 首份 saved-Recommendation paper 與 position-health baseline 只證明當時的研究用初始產物，未構成版本 formal closeout。政策、配置、樣本與人工必填欄位見 [V2.4 paper baseline](../09_archive/V2_4_PAPER_BASELINE_2026_07_12.md) 與 [V2.5 position-health baseline](../09_archive/V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md)；目前成熟度看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 
 > 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
@@ -143,9 +143,9 @@ Closeout Gate：每個 transition 可解釋、可回溯；不自動平倉。
 - Fixed threshold robustness、component ablation、regime / liquidity stability。
 - Signal / gate / alert / Profile 的 retain / restrict / downweight / retire 決議。
 
-現況邊界：2026-07 的 score effectiveness / V3 engineering candidate 只代表 read-only scaffold 與 `ready_for_manual_validation`，不是本版本 closeout。
+現況邊界：2026-07 的 score effectiveness / V3 engineering candidate 收據只代表 read-only scaffold 與當時的 `ready_for_manual_validation`，不是本版本 closeout。日期化自動／人工驗證細節見 [Archive 導覽](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports)；目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 
-**Week 1 人工驗證（2026-07-12）**：真實 working-copy 只有 3 筆有 score 的事件，12 個 outcome 全為 missing，另有 1,134 個事件缺 `score_bp`；所有 score bucket 均未達 30 筆成熟樣本門檻。因此本輪正式決議為 `DEFER_ALL_PRUNING_DECISIONS`，不調整 score、threshold、Profile、gate、alert 或 lifecycle。證據見 `docs/06_qa/V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md`。
+**Week 1 人工驗證歷史決議（2026-07-12）**：當時資料不足，決議為 `DEFER_ALL_PRUNING_DECISIONS`，不調整 score、threshold、Profile、gate、alert 或 lifecycle。樣本與缺失值明細保存於 [Archive 原文](../09_archive/V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md)；目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 
 > 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 

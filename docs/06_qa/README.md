@@ -9,7 +9,7 @@
 3. [10/08 排程修復](BALDR_SCHEDULE_REPAIR_20261008.md)：近期排程修復的證據入口；查更早時點再讀 [9/30 排程修復](SCHEDULED_OPERATIONS_REPAIR_20260930.md)。
 4. 按下方主題表選擇主線；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
-## 八個主題地圖
+## 九個主題地圖
 
 | 主題 | 建議閱讀順序 | 範圍提示 |
 |---|---|---|
@@ -20,6 +20,7 @@
 | WP1–WP5 工作包 | [WP5 HEAD 缺口診斷](WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md) → [WP5 checkpoint](WP5_CHECKPOINT_CURRENT_20260928.md) → [WP5 integration checklist](WP5_INTEGRATION_CHECKLIST_20260928.md) | pending 項目與完成項目需按目前 HEAD 的逐筆證據判讀。 |
 | Task Loop 01–08 | [01](TASK_LOOP_01_HANDOFF.md) → [02](TASK_LOOP_02_HANDOFF.md) → [03](TASK_LOOP_03_HANDOFF.md) → [04](TASK_LOOP_04_HANDOFF.md) → [05](TASK_LOOP_05_HANDOFF.md) → [06](TASK_LOOP_06_HANDOFF.md) → [07](TASK_LOOP_07_HANDOFF.md) → [08](TASK_LOOP_08_HANDOFF.md) | 連續交接紀錄；讀取單張時保留其原始前置條件與交接邊界。 |
 | ML Shadow 與前瞻證據 | [Gate 7 工程入口](GATE_7_ML_SHADOW_ENGINEERING.md) → [R026 ML boundary](ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md) → [V4 daily evidence loop](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md) → [Prospective restart direction](PROSPECTIVE_FORMAL_RESTART_DIRECTION_2026_08_19.md) → [8/18–8/28 clock 歷史收據](../09_archive/README.md#2026-10-08-prospective-formal-clock-history) → [被拒絕的 V2 staging 歷史](../09_archive/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md) | Shadow、engineering readiness、成熟度與正式 OOS／投資有效性是不同狀態；歷史 clock 收據只保留當時事件，V2 staging 仍是被拒絕的歷史，不代表目前狀態。 |
+| V2–V4 maturity 歷史收據 | [Archive 專區](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports) | 日期化 baseline、readiness 與 closeout；不代表目前版本成熟度或投資有效性，現況看 Snapshot。 |
 | Data Governance 與來源 | [10/03 data closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md) → [正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md) → [PIT taxonomy daily source](PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) → [產業來源驗收](PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md) | source coverage、publication、PIT eligibility 與正式訓練資格不可混為一談。 |
 
 ## 近期與跨主題收據

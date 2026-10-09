@@ -383,6 +383,8 @@ Month 3 closure audit 與 8 份全部勾選完成且具 implementation commit �
 | `docs/superpowers/plans/2026-06-14-legacy-test-governance.md` | [Legacy Test Governance plan](../09_archive/superpowers/plans/2026-06-14-legacy-test-governance.md) | 3,504 / `45a12062301ce57859bb43a5662a522576f63e0cf0db54e005e3feda171c1099` |
 | `docs/superpowers/specs/2026-06-14-legacy-test-governance-design.md` | [Legacy Test Governance spec](../09_archive/superpowers/specs/2026-06-14-legacy-test-governance-design.md) | 1,722 / `bd116b7a1f05b1321b1ae3c99757403451dc7868470ca5446e13f0dc84763abe` |
 
+Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `docs/superpowers/plans/`：實作 commit `a0e07273c` 已存在，但原始 Full App healthcheck 中 R-002–R-005 與 RECOMMEND-ISSUE-001–004／008 仍記為「已修正待驗證」。由於找不到使用者重測結案證據，本輪不把它當成完全結案的 plan 歸檔；README 已連到目前 Manual、Architecture 與歷史 QA 收據。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

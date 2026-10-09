@@ -6,7 +6,7 @@
 ## 封存規則
 
 - 本清冊於 2026-10-06 建立時，保留下列歷史文件的原路徑與原 bytes。2026-10-08 將 13 份已執行的 Post-V1 plan/spec 原文及 1 份已結案 Month 2 plan 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；來源舊路徑留短導引。表內 bytes／SHA-256 對應封存原文，不對應轉址頁；其餘路徑維持原位。
-- 日期是 filename milestone/date label，不代表建立日或完成日。表內歷史文件的狀態統一記為「歷史追溯；本清冊不推定執行完成／未完成」；進行中計畫依 `docs/superpowers/README.md` 的生命週期入口判讀。
+- 日期是 filename milestone/date label，不代表建立日或完成日。未完成生命週期稽核的歷史文件統一標為「歷史追溯；本清冊不推定執行完成／未完成」；只有最終交付證據與 Git closeout 均核實的項目才標示「已結案」。進行中計畫依 `docs/superpowers/README.md` 的生命週期入口判讀。
 - 「現行替代權威」只替代目前狀態、優先順序與版本方向的判讀；不表示原設計內容本身已被證明過時或已執行。實際結果看具名 QA 收據或 `git log --follow -- <path>`。
 - QA 原始驗收證據仍在 `docs/06_qa/`，本清冊只連結已有的 tracked Markdown 引用，不改寫或重述驗收結果。
 

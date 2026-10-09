@@ -485,3 +485,113 @@ P01 v3 root獨立audit探針pass：已精確傳EXPECTED_PYTHON時audit四欄str/
 - Owner核目前H6 child `e635ceb3be5c5dad9107947bea7edee4bf13c6ee09e6cd97cbba4a8536374e81`、readonly test `1f70b45f2caa76e7d9a3b4381896b612e9e940b1e8c37d37413cda3a79efad56`與Root前輪讀回一致；sibling test `7c22fdcf58d38a77689af004fc15d415cfd7f180951504c92bcc771a26482d49`。Owner將自己產生9個pyc搬至排除的QA留存，不變更來源程式。
 - Root在全新basetemp `C:/t/h20-h6-root-regression-20261009-b`以native permission驗三組：readonly6、sibling6、industry1，共13 passed/8.69秒/exit0。Root session32468已terminal，JUnit `output/qa/h20_h6_root_regression_20261009_b.xml`。這補候選根與新fixed依賴驗證，並非Main/window或原H20接受。
 - 已要求owner保持核心bytes、不重複focused測試，完成finalmanifest/diff/prelaunch。H6 native尚未授，P01有界launcher小probe與F02 providerprelaunch仍由其他owner推進。
+
+### H6 Main 與 J provider-only 一次續驗授權
+- Root直接讀H6 final static receipt（7checks passed/noerrors/noMain/SQLite）與完整diff，重算manifest SHA `9141150c3c0c8726578a0e2599a50921fd3fd986e0c4d97bcc8e6812dc2920ee`、diff `56fef85735105db56bb5b9a35510d1fc8a4e7f7a32dd2d7d4d1b20134b93fba9`。獨立92 pin records/65 unique file SHA/size/plain nlink1全通過，receipt `output/qa/h20_h6_root_frozen_pins_20261009_a.json`；已followup授fixedH6 ONE Main，新C:/t root/原data禁讀寫/Watchlist COW/Job期限維持，尚待terminal。
+- J C prelaunch本體exit0，manifest `278e7ea061131db21e14c0a1c429398202a4272ab57b55cb74be09474d0cd75b`、6root beforeafter一致；原wrapper將SystemExit0誤捕成failure，raw traceback只含自己的退出。Root直接讀raw terminal/plan/mode，不改原件；D只用注入測試修wrapper，不再重跑已有效完整清冊。
+- Root獨立重算C manifest內30 unique filepins/size全匹配、beforeafter objects相等，`output/qa/f02_j_root_prelaunch_pins_20261009_a.json`。授J fixedsupervisor `14537210774f50b0fc15c4fba3600de6035b3dd7153f12ef60d0a0042484301d` ONE provider-only native，expected raw1/scope1/provider1/rawrows19632/market+disposal pointer各1；bundlewriter/producer/query0。期限1200s/cleanup20s/streams各4MiB、精確launcher/base/conhost Job身份與6roots清冊保留。此授權不是fullquery、1000效能或全產品接受。
+
+### H6/J 實際 terminal 接續
+- H6 runner原handle89494/controller46616 terminal exit1。Root直接讀runner/controller/child result：guard已裝、source-map兩reader各1、verifier與scope restore passed，已核ui_qt.main來源import；仍未有MainWindow旅程證據。Primary固定E operation456 `sqlite_connect_alias_identity_mismatch`：fixedguard只替換sqlite3.connect，dbapi2.connect仍raw，router在market open前尚未對齊alias。二級錯誤 `router_cleanup_deferred_without_terminal_owner_proof`原樣保留。ChildJobempty/cleanupcomplete及sourceartifact/snapshotunchanged已見，不能把Jobempty當routercleanup成功。
+- 已要求H20 owner保留完整封套/市場群組/WatchlistCOWpostflight，下一QA候選只用來源驗證過的guard函式綁定dbapi2 alias（非raw），加真guard+operation小整合與scope還原/primary preservation測試；尚不授新Main。
+- J ownerhandle71255 terminal exit1，新outer `C:/t/f02_ma_composite_257_v4_8fbd9d146177`，Jobempty/closed/zero-owned已報，sourcebeforeafter一致。Root讀worker.stderr marker與target `attempt_f923d46953804f9d/acceptance_receipt.json`：outer `continuation_provider_preflight_evidence_invalid`、target仍running/fixture_creation，SQLraw1+scope1已觀察，沒有完整providercounts證據。已要求逐項缺件與原初因/traceback定位，不重跑J、不授fullquery。
+
+### J provider evidence 靜態契約矛盾
+- Root讀固定J source409–440與2430–2492：`_continuation_tree_signature`回傳tuple of四欄file rows，sentinel直接把此值放入`protected_source_signatures_*[].signature`；predicate卻要求signature精確dict，因此真helper→sentinel至少有型別不相容。這是可由source證明的缺陷，不宣稱它是原terminal唯一原因（原封套沒保存sentinel payload）。
+- 已要求新QA候選保存bounded各predicate診斷，加入真正helper→sentinel→validator連通測試，嚴格保留7roots路徑、rowshape/size/hash/metadata與beforeafter比較。不再用手寫dict正例代替真return契約，原J bytes/失敗不改、不重跑。完整257query仍未授權或通過。
+
+### H6 postflight guard 拒絕定位
+- Root直接讀完整postflight v2（SHA `360f7ac6cad34071f8842d12f30cd937ad39389d317c8ceba18a5ade77b36dcf`）及raw result.guard_counters：write_attempts_denied=3 全部是 `platform._syscmd_ver → subprocess.check_output/run → _get_handles → _get_devnull → os.open`，同pathhash `39755672d8eac5f1bc9dfbe37dd7866d0658aa5dc19daa9d2820e175c68699b4`。這證明metadata probe被guard拒絕，不是來源檔已修改，也不能清掉這3筆。
+- loopback bind1依固定guard保留，nonlocal0/sourcewrite0，Watchlist COW前後8c716ad…73db7一致。已要求owner把callerchain明列，alias小整合保持guard，不新增未知DEVNULL allowlist。若要預先核平台metadata須另明示固定probe/pins與beforeguard scope，不把現有denials改成0。
+
+### P01 hello Job-cap2 實測與 F02 protected roots 接續
+- Root 直接讀 `output/qa/venv_launcher_job2_probe_20261009_a/attempt_da1878b9a08b/receipt.json`：唯一 Popen=1、Job readback flags8200/active limit2、assignment 前空後只有launcher48344；resume後 query回報48344/54492/57976，探針拒絕並終態exit1。僅launcher已核身分，另兩PID未知，不能宣稱launcher/base/conhost接受。清理Jobclosed、remaining-owned空、network/SQLite/other-process0，未讀P01 source/store。
+- 原sandbox attempt239d56c27933 在 preflight Path.resolve WinError5、無child；原件保留。已交owner做新QA-only診斷候選：拒絕前保存有界PID身分及query資料，仍cap2，不提高限制、不重跑P01；候選審核前不授新native。
+- Bootstrap從固定readers與pointer manifest核出市場與處置output roots不同，加DB/store/segments/兩parent/prior bundle，protected roots實為8；原validator硬編7與實際來源不符。Root撤回先前固定7指示，要求以pinned receipts/manifest重建精確有序完整序列，8項不得刪減；列為獨立QA契約修正，與tuple/list row schema分開驗證。尚不授新provider native或完整query。
+- 現在仍無通過驗證的新真人啟動版本；全P00–P14／F01–F23與原效能、H20下鑽及收藏驗收範圍維持。
+### F02 簽章候選第一輪 Root source review
+- Root 直接讀 `output/qa/f02_j_provider_signature_contract_20261009_a/supervise_f02_query_continuation_signature_contract.py` 的 root 推導、tuple/list row validator、diagnostic 與 marker 接線及其合成測試。候選按 fixed manifest/parent receipts 推導8項順序並保留完整四欄rows，方向符合來源證據；仍未凍結或接受。
+- Root 發現 relative path 檢查尚未拒絕冒號（drive/ADS）及 NUL/control 字元，已要求負例與修正；另要求按固定根非空性核實空signature不可冒充完整清冊。測試 mock counts/store/SQLite predicates，因此只能證明 signature leaf，不是完整 provider 驗證。
+- 已要求 bounded diagnostic 與 primary preservation 測試；新provider native尚未授權，原J/失敗收據不改。
+### P01 cap2 診斷候選 Root 純測試
+- Root 直接讀新 over-limit PID diagnostic 與 native loop：先取最多8個PID身分，再記 overflow 並拒絕；診斷明示固定helper已 sorted(set)，不能據此證明原始Job PID slots沒有重複。cap仍2，未啟動native或P01。
+- Root 獨立執行現存 `test_launcher_chain_job2_microprobe.py`：18 passed/0.97秒/exit0。涵蓋錯誤image/PPID/argv、Job身分、duplicate/stale/unreadable與sample bounded；候選尚未凍結。
+- Root 發現 loop 在 overflow branch之前仍可能由 PID重用或identity採樣失敗中斷，已要求owner將診斷異常保存為secondary，維持原 over-limit primary並補負例；尚不接受或授權新native。
+### H20 alias binding 第一輪 Root 驗證
+- Root 直接讀 `output/qa/h20_h6_sqlite_alias_binding_20261009_a/attempts/alias_binding_candidate_20261009_a/sqlite_guard_alias_binding_qa.py`。已核原始兩alias同builtin、guard磁碟SHA、wrapper巢狀code identity與state/real_connect closure、重複綁定拒絕、陌生alias還原拒絕。
+- Root 獨立合成單測：sandbox4 failed/2 passed，皆strict Path.resolve WinError5；native全新 `C:/t/h20-alias-root-20261009-a` 6 passed/0.57秒/exit0，JUnit `root_alias_tests_20261009_a.xml`。不以sandbox限制削弱來源驗證。
+- 已要求owner補installer/wrapper globals及module registry exact identity負例，以及caller實際terminal proof位置；函式名稱不是terminal證據。此6測試使用fake guard，只證明leaf，固定guard+E operation接縫仍待。尚未授新Main。
+### P01 超限診斷固定候選續驗
+- Root 重算probe SHA `db242380db66ddf7f013bdf895d0f5fc7a98ce3a845d227acf794fdea34e04ad`、tests `4ff14fe4575e3ba8833e0d45d4e29cefe714ed2a3d99eccec58a12b09cb50819`吻合owner freeze；獨立純pytest 21 passed/1.12秒/exit0。
+- 已讀採樣接線：over-limit先取得bounded identity，lookup/PID-reuse記secondary並維持cap2拒絕。授此固定候選ONE hello-only native/newattempt，owner poll至terminal；不提高cap、不讀P01 source/store或正式資料。此授權不是1,000檔效能接受，也不是新版EXE接受。
+### F02 最新簽章候選中央重驗
+- Root native獨立執行最新 `test_provider_signature_contract.py` exit0：31checks全true；固定8個protected roots實際row counts為1/6/300/20/5/6/5/3，全非空。僅signature predicate leaf；其他provider predicates mocked、SQLite/provider/producer/query/bundle0，並非完整provider接受。
+- Root讀新增Windows相對路徑限制、empty拒絕、先shape有界後equality及diagnostic primary preservation。當下supervisor SHA `be3e4239f46872699fef7477ff70460892f0c45df15e292100520f0ca9d313cc`、test `1b34bebdf998ec668be7d6a2ef0586592c09051393f15ac9879aaa52cfb863e3`；要求ownerfinalfreeze/diff/manifest，尚不授provider native。
+- PROJECT_SNAPSHOT首段已同步H6/J/v4及cap2三角色實測終態，保留下面歷史與其他dirty內容，未提交整份Snapshot。
+### H20 alias 擴充負例 WIP 測試失敗
+- Root 在新 native basetemp `C:/t/h20-alias-root-20261009-b` 執行當時現存12tests：11failed/1passed/exit1，JUnit `root_alias_tests_20261009_b.xml`；解析failure message全同 `TypeError: arg 5 (closure) must be tuple`，發生於synthetic fixture建構installer，尚未到binding斷言。
+- Owner同時報其獨立WIP測試相同起因，已修fixture closure。Root已要求最新檔案凍結SHA後再驗，避免編修與執行交錯。原失敗保留，不能當作helper runtime拒絕或通過。
+- F02契約候選runtime/test bytes不變；owner補manifest列出8root paths/row counts，新manifestSHA `88d2d45909662b16dd5a0dce08de5bbe2be3390fe6e73814ccd0b9821d6fcd82`。既有ONE provider-only授權維持，owner先核pins，不重跑有效inventory、不啟fullquery。
+### F02 簽章修正候選首次 native startup 終態
+- Root直接讀 `native_provider_001/stderr.log` 與 `_run_worker`：exit1/failed_before_receipt，`existing_attempt_requires_manual_review`於QA_ROOT既有target attempt檢查拒絕；未到provider/SQLite/query，無outer receipt，不得將此說成新契約runtime失敗。
+- 原J target保留既有failed attempt，QA候選沿用同root造成碰撞。已要求owner全新QA_ROOT/target資料夾、同SHA fixedtarget複本與最小retarget diff；不刪舊attempt、不放寬existingattempt檢查，不重跑不變signature leaf。新provider尚未授權。
+### H20 fixed guard＋E success 接縫中央讀回
+- Root直接讀 `C:/t/h20dual_h20first_aliasbinding_20261009_e/output/router_cleanup_seam_receipt.json`：success、Main未import/entered，H20 private reader返回2382/1234；H20收尾時兩alias皆outer router、市場finish時皆runtime guard，terminal proof後還原builtin。
+- permit登記/釋放1/1、private dirs3/3、router/reader/connection終態與keeperclosed可核；守衛來源SQL0。Keeper為合成fixture具一寫入連線，close checkpoint使synthetic市場main由471bb4…6181b9變dc6ec0…1e8a70，故不主張source全程unchanged，也非原2382/684或Main接受。
+- 已要求owner完成injected primary failure接縫後直接準備H6→H7精確alias binding Main候選、完整diff/pins/static/回歸；不改fixedguard/E/product，尚不授Main。
+### cap3 程序身分候選中央重驗
+- Root讀create_time positive finite float檢查與manifest四檔pins；sandbox27pass/2fail皆strict resolve Win5。native28pass/1fail：PID重用負例確實由pinned cap2 sampler拒絕，但測試誤捕job3.ProbeError而非cap2.ProbeError，非runtime漏拒絕。
+- 已要求owner修test exception class、更新test pin再凍結；runtime `617db1adf21e59ff4dd9bcccd3102edf2e9449a6655cc8833ae2131dd6c71f5f`，尚不授hello native。保留本輪失敗。
+### cap3 最新固定pins測試
+- Root native重驗29passed/0.55秒/exit0；PID reuse改捕pinned cap2.ProbeError，保留runtime拒絕。當下runtime `c2b4516ac988e7db676e46a3eb933f1d0b5906cc9248f91d52703ac4683dc3b2`、test `cd2243b2c1d3f5a59d530ef90bb0cec14f2e9a4f7e83300eb4af760f63182158`、manifest `bc8dfd5ff1a5ee7eb04cfd389326dd57ddeb29244acf64aad566afa826dc60a6`。
+- runtime較前讀617db1有變，已要求owner列最小delta與final命令再審hello native；不重跑29項有效測試，也不以test通過代替venv protocol實測。
+### cap3 hello 實測終態中央讀回
+- Root直接讀 `attempt_job3_52a78fd2b6da/receipt.json`：flags8200/cap3；0.188秒同時觀察launcher3048/base55388/conhost30848，各imageSHA/argv/PPID匹配，之後0.219秒以 `process_pid_reused_during_probe` 拒絕。stdout/stderr空、child回報不存在，尚未證明venv prefix協定。
+- Jobclosed/remaining-owned空/networkSQLother0/pins前後一致。已要求owner查明observed時間差或NoSuchProcess缺欄位；不放寬reuse、不用epsilon掩蓋，必要時核Windows原生FILETIME整數。新native未授，原件保留。
+### 啟動身分重核 source 診斷與 F02 live handle
+- Root讀fixed identity helper107與cap2 sampler：helper失敗可回unknown/缺create_time，而sampler仍與先前timestamp比較，因此存在把raced-away誤報reuse的source缺陷；尚不能證明它是job3原terminal唯一原因。psutil Windows create_time有proc_times與AccessDenied fallback兩路，已要求owner區分原值及原生FILETIME，不能epsilon放寬。
+- F02 B owner報唯一provider-only實際handle32487 live，native_provider_001封套；owner沿同handle追至terminal，Root不重啟或代poll。
+### F02 B provider-only 實際通過中央讀回
+- Root讀 `native_provider_001/terminal.json` exit0及完整stdout JSON：status passed_continuation_provider_readonly_preflight，workerexit0、SQLraw1/scope1共2RO、provider1/rawrows19632、市場/處置pointer各1、bundlewriter/producer/query0。
+- 八protected根實際row counts1/6/300/20/5/6/5/3，continuation_input_unchanged true；Jobempty-before-close/closed/zero-ownedtrue、worker身分valid。pre-guard平台probe保留hostname1/NUL拒絕3，不宣稱所有階段0事件；此僅provider gate，完整257query尚待。
+- 已要求owner完成postflight後直接準備新fresh targetroot的fullquery continuation候選，列完整AND/OR/排序/未知/PIT/oracle矩陣與SQLraw1scope5、期限/bytes；不重跑有效provider、不授producer、新EXE或真人接受。fullquery native仍待審。
+### racefix v2 sampler 初審
+- Root讀新獨立racefix_v2 source：observed兩次有效create_time必須精確相同、真正差值以ProcessIdentityError記PID與兩原值；只有明確NoSuchProcess/ProcessLookupError可記stale，AccessDenied或未知仍拒絕。固定cap2/job3原檔未改。
+- 已要求stale仍保留prior identity防後續重用、receipt保存衝突diagnostic，僅最後Jobempty＋完整child環境協定可算hello完成，不能以stale集合替代。候選仍WIP，未授native。
+### racefix v2 hello實際父鏈錯誤
+- Root直接讀attempt_job3_7225799f212b raw receipt：三role快照已符合、Jobempty/closed/zero-owned；childstderr明確 `worker_parent_or_script_pin_mismatch`，launcherexit1。child把CLI supervisor PID當作os.getppid比較，但真正父為venv launcher；因此尚未輸出prefix協定。
+- 已授owner新QA-only v3窄修：保留scriptpin並明示supervisor arg語義，核launcher→supervisor父鏈或沿父端既有精確核驗，不單純刪檢查；原v2不改。完成負例/diff/pins後再審native，隨後接回P01，不以hello作補完出口。
+### 完整 MA/F17 continuation target 範圍初審
+- Root讀fixed target1312–1580及1620後：逐頁AND/OR include/exclude/only、外層stock/market/disposal硬限制、serialized query重開、跨session結果拒絕/result-page tamper與postflight完整清冊比較具備source驗收路徑。
+- 已要求C矩陣明示declared259/included258/processed258及MA有效分段256+1、缺件1257，不把不同母體數都簡稱257。此固定MA+volume/F17切片不補MA20上彎或全F01–F23；候選native尚未授。
+### H7 guard loader接線第一輪中央缺陷
+- Root讀H7 synthetic_main_child807–919：新loader wrapper內直接呼叫installer並bind，但固定E child2339–2340原caller在load_guard返回後仍呼叫installer；存在double-install覆蓋guard/closure風險。
+- 已要求owner核實actual call-site並改成loader只載入、固定installer成功返回後立即bind的精確一次wrapper（保留原installer身份與還原，不改fixedguard bytes），加真load→install→marketopen連通測試。H7尚WIP，未授Main，不以helper單測遮蔽整合錯誤。
+### parentchain v3 source 初審缺陷
+- Root讀v3 validate_worker_parent_chain：supervisor OS image/argv0原本要求venv launcher。supervisor透過venv redirector啟動時實際os.getpid可能屬base interpreter，sys.executable不能代表OS image；已要求以啟動前真supervisor_identity_before imageSHA/argv精確核驗並補負例。
+- H20 owner已確認固定E呼叫點load後再install，因此H7 double-install風險成立，正改loader只load、installer一次成功後bind、真terminal後還原。兩候選尚未native，不宣稱完整Main完成。
+### H7 與 parentchain v3 接線修正讀回
+- Root讀H7新wrapper：loader只load/包installer，由fixedcaller實際install成功後還原originalinstaller並立即bind；不再loader內double-install。已要求測真caller一次順序及guard identity不變，還原original後不能宣稱countwrapper攔截任意第二次call。
+- Root讀parentchain v3：supervisor image/argv改為parent啟動前真record exact fields，child回傳再比較，不再以sys.executable猜OSimage。兩候選仍等finaltests/pins，不以WIP source當native通過。
+### parentchain v3 WIP 測試讀回
+- Root執行當時WIP純測試43pass/4fail：2項缺未產出的v3 manifest；正例與creation-order負例另被argv mismatch先拒絕。Root讀test見重複WORKER_TAIL/_worker_chain定義，已要求owner整理覆蓋與finalfreeze後再驗，不能為fixture錯誤放寬runtime。
+- 此輪非固定候選驗收；Root停止交錯執行WIP，等待owner明示凍結，原輸出不抹除。
+### C full query plan中央校正
+- Root讀22case計畫並逐fixedtarget source核 `_execute`：22個callsite，canonical reopen直接產品execute另1；原plan寫13＋1=14與source不符。已要求只校正plan/紀錄為helper boundary22/產品execute23，不改target、不縮矩陣。
+- 既有C條件ONEfullquery授權維持；source/target與freshroot prelaunch必須完成，producer0、SQLraw1scope5、8roots前後核對。此非P01效能、Main/EXE或全條件完成。
+### parentchain v3 fixed中央重驗／續驗授權
+- Root native獨立49passed/0.57秒/exit0，runtime56eefeedb8df105d664c6191f1c860ff62a2c7e2d9531660f6616315f590e08f、manifest32c2ee7a8e52123ff2d0f64f51c9195aba5b7b6f6fd188c7b54bcd2ab1cec345匹配owner freeze。授固定ONEhello-native/newattempt，12s/cleanup3s/cap3各role1、不載產品或P01；成功後直接準備P01v5，不重複hello。
+- C fixedtarget receipt有寫死primary13/total14欄位，source實際22helper_execute＋1reopen。要求原字段保留但postflight標inaccurate_static_counts，以實際boundary22/產品execute23核驗，不以target status宣稱這兩靜態欄準確。
+### 啟動與provider gate最新進展
+- Root直接讀parentchain v3成功receipt：status passed_job3_known_roles/failure null/launcherexit0，各role1、venv sys.executable/prefix與base_prefix正確、worker audit0、Jobclosed/zero-owned。childstderr SystemExit0假failure原樣保留，屬QA診斷噪音，不重跑hello。
+- 已要求owner接回P01v5（保留d12 archive/store與v4失敗、readonly guard），待最小diff/freeze審核後完整1000檔讀取，再三操作30samples效能。最新Snapshot首段已同步，未提交整份dirty文件。
+### C 完整查詢續驗失敗／長路徑候選接續
+
+- Root 直接讀 native_full_001/terminal.json 與 outer supervisor receipt：唯一 session 56200 已 exit 1；continuation_input_unchanged true，Job empty_before_close、job_closed 與 zero_owned_processes_proven 均為 true。原 stdout SHA 為 b5b8b2537e7fa0e1d3f4e31af216f0336557acd476d56d2262e4a4262208c3dc，stderr 為空；不重啟原候選。
+- Owner 定位 fixture_creation 的 manifest 子路徑長 306 UTF-16 units，root 僅 226；測試 helper 對 root 的路徑轉換未涵蓋 os.walk 產出的子路徑。extended path 可讀已發布 manifest，但 worker 未保存 traceback，因此呼叫點定位仍是依固定 source 順序與錯誤路徑推論。尚無 F17 query/page/oracle 案例通過。
+- 已分派新 QA 候選：只暫時替換指定 tree-signature helper，逐 descendant 轉換路徑並保留 reparse/type/size/mtime/SHA/order 核驗；要求短路徑逐欄 parity、長子路徑、junction 拒絕及 finally 身分還原測試。先審 diff/pins，尚未授 native 執行；產品、fixed target 與原 22 case 加 reopen 範圍不變。
+
+### P01 v5 WIP 接線中央初審
+
+- Root 讀 controller 的三角色 snapshot／worker parentchain 接線：使用固定 parentchain v3 helper，收實際 supervisor_identity_before，完整歷史須有真三角色完整 snapshot；不以 stale PID 當完成。尚未凍結或執行 native。
+- 初審發現每 0.05 秒保存一次 snapshot、超過 512 即 fail，可能約 25.6 秒便被診斷容量中止。已要求 owner 對照操作 deadline，必要時採有界首尾或變化紀錄並保存完整計數，不能讓診斷容量縮短完整 1000 檔操作；process identity/history 判斷仍須維持。final manifest 必須更新舊 v4 schema／controller pin，先測試再審。

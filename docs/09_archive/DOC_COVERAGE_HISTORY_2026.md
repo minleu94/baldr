@@ -1477,3 +1477,16 @@ R031 對應狀態維持限定範圍：R002 ACCEPTED（固定輸出與排序不�
 | 原路徑 | Archive 原文 | 工作樹原件／Archive bytes／SHA-256 | Git HEAD canonical LF blob |
 |---|---|---:|---:|
 | [docs/superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md](../superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md) | [2026-06-16-month5-fundamental-main-sequence.md](superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md) | 3,807 / 0a8446ce047b4f4bf6b4c067e11a94cfcf5e6922692e5bdd14b342dca576dbc9 | 3,736 / 439ca77c2bc9313991385513a5382fd24c45fcd170d88ec9023ce262da4d5c5d |
+
+<a id="coverage-entry-149"></a>
+## 2026-10-09 封存 V5 日常操作與可讀性 bounded acceptance QA
+
+將 `docs/06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md` 的凍結 QA 報告逐位元組複製至 Archive，核對大小與 SHA-256 後才把舊路徑改成相容導引。來源在批次開始前為 tracked／clean，Archive 目的地不存在。封存只移動 Markdown 報告；原始 pytest log、效能 JSON、截圖、dirty baseline backup 與其他 sidecar 位於 Git 忽略的 `output/qa/v5_readability_20260921/`，沒有複製或提交。
+
+原文的 R1–R10 bounded 工程驗收與八項 sign-off 均記為完成；整合 route 為 299 passed、1 warning，Mandatory QA、validator、mypy 與 py_compile 結果依原件。這些結果限於該 frozen worktree／fixture，不代表正式 V4／V5 Gate、V6 個人化成熟、自然 learning 效果或 production data readiness。Archive 導覽與新 QA index 入口維持這些界線。
+
+搬移前的全 repo 精確檔名稽核找到八處 Markdown 入鏈，未找到程式、測試、腳本、排程或設定中的固定路徑 consumer。現行 [UI Features](../02_features/UI_FEATURES_DOCUMENTATION.md)、[Project Navigation](../../PROJECT_NAVIGATION.md)、[Product UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md)、[低流動性提示分流 QA](../06_qa/WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21.md) 與本 [Archive README](README.md) 已改連至封存原文。固定歷史 Documentation Catalog、Index、Roadmap snapshot，以及目前有其他未提交工作的 `DOCUMENTATION_INDEX.md` 保留舊路徑；相容導引承接這些連結，本批不修改該 Index、Snapshot、Manual 或 DOC_COVERAGE_MAP。Scoped authority 與 coverage 規則未變。
+
+| 原路徑 | Archive 原文 | 工作樹原件／Archive bytes／SHA-256 |
+|---|---|---:|
+| [docs/06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md) | [V5_READABILITY_ACCEPTANCE_2026_09_21.md](V5_READABILITY_ACCEPTANCE_2026_09_21.md) | 14,082 / `4DBA8DFA78FEE7351707F208AABC4B76429431CFAB233C453CFB0C3FB8DF8A32` |

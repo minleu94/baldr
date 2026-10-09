@@ -38,8 +38,13 @@
 <a id="workbench-liquidity-routing-qa-20260921"></a>
 ## 2026-10-09 Workbench 低流動性提示分流歷史 QA
 
-- [WorkBench 低流動性提示分流 QA（2026-09-21）](WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21_HISTORY.md)：保留 `dds_290832656f329969` 唯讀 snapshot、UI readback，以及 liquidity `1121`／weakness `10` 聚合為兩筆背景 batch 的當日觀測。這是 projection 分流收據，不是資料品質、正式 source admission 或全流程 Gate 驗收；較後續的 [V5 readability acceptance](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md) 以整合 route 重跑 `299 passed`、`1 warning`，不改寫 9/21 原始觀測。現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，來源 bytes／SHA 與依賴判定見 [Coverage History Entry 125](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-125)。
+- [WorkBench 低流動性提示分流 QA（2026-09-21）](WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21_HISTORY.md)：保留 `dds_290832656f329969` 唯讀 snapshot、UI readback，以及 liquidity `1121`／weakness `10` 聚合為兩筆背景 batch 的當日觀測。這是 projection 分流收據，不是資料品質、正式 source admission 或全流程 Gate 驗收；較後續的 [V5 readability acceptance](V5_READABILITY_ACCEPTANCE_2026_09_21.md) 以整合 route 重跑 `299 passed`、`1 warning`，不改寫 9/21 原始觀測。現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，來源 bytes／SHA 與依賴判定見 [Coverage History Entry 125](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-125)。
 - 原 QA 路徑保留相容導引；收據提及的 `output/qa/` 原始測試／更新頁報告是 Git 忽略輸出，本次未移動或提交。
+
+<a id="v5-readability-acceptance-20260921"></a>
+## 2026-10-09 V5 日常操作與可讀性 bounded acceptance QA
+
+- [V5 日常操作與可讀性驗收報告（2026-09-21）](V5_READABILITY_ACCEPTANCE_2026_09_21.md)：保存 frozen worktree 的 R1–R10 工程證據；整合 route 為 299 passed、1 warning，八項 sign-off 均完成。範圍不構成正式 V4／V5 Gate、V6 個人化成熟、自然 learning 效果或 production data readiness。原始測試日誌、效能 JSON、截圖與基線 sidecar 位於 Git 忽略的 `output/qa/v5_readability_20260921/`，未封存且不保證乾淨 checkout 可重現；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。原路徑保留相容導引，原件 bytes／SHA 與引用清點見 [Coverage History Entry 149](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-149)。
 
 ## 2026-10-09 歷史狀態快照
 

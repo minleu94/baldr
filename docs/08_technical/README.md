@@ -22,7 +22,7 @@
 |---|---|---|
 | [Phase 2.5 參數設計改進](../09_archive/PARAMETER_DESIGN_IMPROVEMENTS_HISTORY.md) | [原路徑](PARAMETER_DESIGN_IMPROVEMENTS.md) | 當時的參數建議與實施狀態，不作目前待辦。 |
 | [早期技術分析優化備忘](../09_archive/TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md) | [原路徑](technical_analysis_optimizations.md) | 舊 API、回傳型態與資料路徑範例；現況依系統架構與程式碼。 |
-| [路徑隔離更新 v1.3.0](../09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md) | [原路徑](path_isolation_update.md) | 2024-10-16 版本的命令、預設與測試記錄。 |
+| [路徑隔離更新 v1.3.0](../09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md) | [原路徑](path_isolation_update.md) | 2024-10-16 版本的命令、預設與測試記錄；原件識別見 [Coverage Entry 162](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-162)。 |
 | [MCP Yahoo Finance／openmarkets 本機 patch](../09_archive/MCP_YFINANCE_OPENMARKETS_PATCH_MEMO_HISTORY.md) | [原路徑](MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md) | 環境限定診斷線索；未鎖套件版本或 hash，不直接作新環境安裝步驟。 |
 
 ## 🔗 相關目錄

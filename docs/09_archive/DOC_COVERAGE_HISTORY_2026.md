@@ -344,7 +344,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 `docs/08_technical/PARAMETER_DESIGN_IMPROVEMENTS.md` 的標題與前言標明為 Phase 2.5 歷史建議／當時清單，README 不再將其列為現行改進計畫；原建議與完成狀態全文保留，現況導回 Snapshot、6M Roadmap、Score Explanation 與 QA。Index 正有其他工作修改，本批不移動檔案或修改 Index。
 
-將 2024-10-16 `path_isolation_update.md` 歸檔為 `docs/09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md`，加上歷史標示；原技術路徑保留轉址，技術／Archive README 同步導覽。2026-10-06 文件目錄快照與舊 Index 歷史中的原路徑刻意保留，連到轉址頁仍可追溯；核心 Index 沒有該檔案的個別條目，故本次不修改正由其他工作編輯的 Index。
+將 2024-10-16 `path_isolation_update.md` 歸檔為 `docs/09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md`，加上歷史標示；原技術路徑保留轉址，技術／Archive README 同步導覽。2026-10-06 文件目錄快照與舊 Index 歷史中的原路徑刻意保留，連到轉址頁仍可追溯；核心 Index 沒有該檔案的個別條目，故本次不修改正由其他工作編輯的 Index。逐檔原文 bytes／SHA-256 與 Archive 對照見 [Coverage History Entry 162](#coverage-entry-162)。
 
 <a id="coverage-entry-041"></a>
 ## 2026-10-08 Post-V1 QA 歷史歸檔
@@ -1660,4 +1660,14 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 
 三份原 plan 分別保留 0/31、0/33、0/25 個 Step 核取狀態；這只描述 plan 原文，不推定程式實作、功能缺失、QA 通過或目前待辦。Full App QA 的 D-007、D-008、D-009 仍為「需確認」，分別要求人工確認低流動性／歷史不足提示、候選池真實狀態與 Portfolio 真實狀態。本批沒有修改 QA、Snapshot、Roadmap、Manual 或架構權威。
 
-精確檔名／錨點掃描未找到程式、測試、腳本、排程或設定將這三個 plan 路徑當作 consumer；舊路徑導引承接既有 Superpowers README、Manifest 與歷史 Catalog／Index 引用。現行操作與架構入口見 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)。頂層 [Documentation Index](../00_core/DOCUMENTATION_INDEX.md) 已提供 Superpowers README 與 Archive README 導覽，兩個子目錄入口均已更新；Index 同時有其他對話的未提交排程內容，本批保留原樣。權威邊界未改，不修改 DOC_COVERAGE_MAP；本批未執行程式測試。Archive 原文逐位元組保留，因此 staged diff check 對 Risk Prompt Bridge 的 EOF 空行及 Watchlist Trigger 原文空白行提示均屬來源既有 whitespace；未清理原件。
+
+<a id="coverage-entry-162"></a>
+## 2026-10-09 補齊 Path Isolation 歷史封存逐檔來源追蹤資料
+
+`path_isolation_update.md` 已於 2026-10-08 移至 Archive。以下原件識別取自搬移 commit `c7ed7ff4` 及其前一版本的 Git blob（LF 正規化）；Archive 另加歷史效力標示並更新跨目錄連結，因此原文與 Archive blob 不同。另列 Archive 工作樹原始位元組，供本機檔案核對。原路徑相容導引仍保留；舊 Catalog／Index 歷史連結由導引承接。目前路徑設定以 `TWStockConfig` 為準，操作看 [system architecture](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
+| 原路徑導引 | Archive 原文 | 搬移前原文 Git blob bytes／SHA-256 | Archive Git blob bytes／SHA-256 | Archive 工作樹原始位元組／SHA-256 |
+|---|---|---:|---:|---:|
+| [`docs/08_technical/path_isolation_update.md`](../08_technical/path_isolation_update.md) | [PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md](PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md) | 2,607 / `a51c6749cf758ac60cb3d3f5d2156fba9093caec13d13e5338ffe898a9c98d1c` | 3,022 / `51618a54bf8e298a2a88c07899924c3574b09b7152e10dead57b2acfa4a10f8d` | 3,106 / `a30fe504292978b6d0b4aa57e139d080f94887b71cad6eafbf55e1de13d45e23` |
+
+本筆補上逐檔來源追蹤資料，沒有再次搬移或改寫 Archive 原件；歷史檔不代表目前路徑設定或操作方式。

@@ -1,7 +1,7 @@
 # 歷史 Phase 與研究 SOP 文檔目錄
 
 > **狀態**：Historical / Reference。
-> **最後整理**：2026-10-08（僅校正現行入口與 Roadmap Hub 職責）。
+> **最後整理**：2026-10-09（明確區分歷史 Phase 4 與現行 Gate 4）。
 > **判讀規則**：本目錄保留 Phase 時期的設計、驗收與研究 SOP 脈絡，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。
 
 目前專案已改採 Scoped SSOT：
@@ -47,7 +47,8 @@
 - 未來 6 個月工程路線以 `../00_core/ROADMAP_6M_ENGINEERING.md` 為準。
 - Roadmap 導覽由 `../00_core/DEVELOPMENT_ROADMAP.md` 負責；目前狀態與優先事項看 Snapshot，工程順序看 6M Roadmap。Hub 不保存 Next 或狀態摘要。
 - Phase 3.3b、Phase 3.5 與 Phase 4 相關文件保留為設計與實作脈絡，不再代表目前未完成狀態。
-- Phase 4 Portfolio 主要深化已完成；後續主線已從舊 Phase 敘事轉為 Post-V1 evidence-driven 版本節奏與 6M Roadmap。
+- **名稱區分**：封存的 [Phase 4 Portfolio MVP](../09_archive/PHASE4_PORTFOLIO_DESIGN.md) 是初始唯讀決策支援設計；現行 **Gate 4 Portfolio Coach v1** 由 [6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 定義。兩個編號相同是歷史命名重疊，不代表同一計畫；舊文件不能作為 Gate 4 範圍、驗收或完成狀態依據。
+- 舊 Phase 4 Portfolio MVP 當時的主要深化已完成；後續主線已從舊 Phase 敘事轉為 Post-V1 evidence-driven 版本節奏與 6M Roadmap。
 - V1.1 至 V2.0 的完成狀態與當時下一步已封存在上述歷史路線圖；目前待辦與優先順序只依 `PROJECT_SNAPSHOT.md`、`ROADMAP_6M_ENGINEERING.md` 判讀。
 
 ## 🔗 相關目錄
@@ -62,3 +63,4 @@
 - 2026-07-03：將本目錄重新定位為 Historical / Reference；保留文件但明確標示不作目前 roadmap、完成狀態或下一步依據。
 - 2026-10-08：更新 Scoped SSOT 入口說明，將 Roadmap Hub 標為純導覽，不再描述它維護 Next 摘要。
 - 2026-10-08：將 13 份 Phase／SOP 原文移入 Archive，保留舊路徑轉址與原層次；本頁改連歸檔原文並保留唯一 Active 引用的相容路徑。
+- 2026-10-09：明確區分封存的 Phase 4 Portfolio MVP 初始設計與現行 6M Roadmap Gate 4 Portfolio Coach v1，避免相同編號造成計畫範圍混淆。

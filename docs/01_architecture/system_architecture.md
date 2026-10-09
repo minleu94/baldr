@@ -31,26 +31,12 @@
 
 ## 2026-10-06 final authorized validation / R01 accepted
 
-R01 worker `2381b1abbec87c0015dc8a581816db02e9b54bbb` 採入 `4e51f34a`；測試清冊與中央文件凍結為 **`c5eb5c80884a9b23ad50f40e28c481338a02855d`**。原64四用途精確nodes與整檔Registry／selected Paper／source_id／v2／boundary去重後，一次union收集522項、執行521項；真fit的real_runner明示deselected。
-
-首跑 **512 passed／7 failed／2 skipped，145.83s**。七個失敗因QA basetemp位於repo內，六個trace直接拒絕personal root/package overlap，另一selected CLI因相同配置出口回exit2。保護正確，未改production、guard、assertion或測試。只重驗這七個原node於全新package外Windows Temp，**7 passed／21.13s**；使用QT offscreen及測試所需祖先handle權限，不改ACL或啟前景Native。原紅raw／JUnit保留。
-
-因此當前affected coverage為 **519 passed／2 skipped／1 真fit deselected**，由512原通過＋7同HEAD fixture校正組成，不能寫成單次519全綠。兩skip為WinError1314 synthetic symlink權限不足，未解除保護或隱藏skip。
-
-同凍結HEAD的mandatory：**Workbench85 passed／2.48s；Update validator25 pass／4 skip／0 fail；full-roots mypy841 sources、0 errors**。standalone **ML guard678檔／0違例／exit0**；quant precision/lookahead guard exit0；相對原a42b2cb9基準的 **134 changed Python files compile通過**。所有source pins與HEAD在驗證期間不變。這是指定affected scope與mandatory結果，不是全1284測試檔執行或真資料／正式模型驗收。
-
-新增R01 test已精確登錄research-backtest service oracle：filesystem/inventory **1284/1284**，missing/stale/docdrift0，direct12不變，舊1283分類／support／runner API不改；metadata audit exit0、13 governance tests passed／9.89s。Registry caller原64MiB/artifact、256MiB/round涵蓋equity／trades／portfolio-result／replay-lineage，decode同份bounded verified bytes，取消／來源改變／hash／identity／sidecars負例保留。不改schema／writer／20或200GiB reserve；序列化bytes不代表解碼RAM上限。
-
-QA: docs/06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md
+完整 affected-scope 結果、測試分母與原始失敗／重驗證據見 [Final Authorized Union QA](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)。架構主文不重複保存逐次測試數字；原日期段落全文保存在 [R01 歷史摘錄](../09_archive/SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)。
 
 
 ## 2026-10-06 R01 bounded read / final validation window
 
-R01 `2381b1ab→4e51f34a` 已有界審核採入。Registry／legacy lookup沿原64MiB每artifact、256MiB每輪caller預算；Registry load將equity／trades／portfolio-result／replay-lineage全部計入aggregate，64KiB分塊hash、stat/fstat來源核對、同份已核bytes decode與取消。writer／repository／DTO／schema／公式未改，無budget的原非lookup callers相容；lookup缺budget unavailable。原worker101 focused、73 adjacent／1 Windows symlink skip raw與blobs核對，不累加成完整App數量。
-
-新增tests/test_baldr_r01_registry_read_budget.py精確入冊service-oracle-research-backtest，1284／1284，direct12不變，旧1283分類/support/runner API保留。Notes backup GUI／週月與更多indicator不做，非本輪必修。U1第二家族與U2 H20 gross仍等使用者答覆，未採policy；正式Task／migration／Native／fit維持未准。
-
-本次將在已授提交與中央文件完成後固定HEAD，執行一次四用途／Registry／selected Paper／source_id／v2／boundary affected union，mandatory Workbench→Update validator→full-roots mypy。此段只記準備凍結，結果待raw/JUnit；先不宣稱final union通過。原Stage／UX、七finiteclosed、F1/Journey性能例外、未知資格與自然成熟界線保持。證據：output/qa/baldr_r01_read_budget_20261006/receipt.json，最終差異見BALDR_ENGINEERING_DECISION_DELTA_20261006.md。
+本次 caller-provided serialized-byte read budget 的架構契約已整併至 [第 11 節](#11-保存與研究治理)；R01 實際測試範圍與歷史中間狀態見 [Final Authorized Union QA](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md) 及[原始摘錄](../09_archive/SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)。
 
 
 ## 2026-10-06 ML source custody依賴方向閉合
@@ -951,6 +937,8 @@ Watchlist v3 `watchlist-item-events.v1` 以 immutable item 與 sparse events 保
 - Portfolio trade / journal
 
 Research Run Registry 由 [ResearchRunService](../../app_module/research_run_service.py) 統一負責保存 owner，metadata 寫入 OUTPUT_ROOT 的 research Registry SQLite，equity curve／trades 寫入 Parquet；它與 DATA_ROOT 的市場 twstock.db 是不同儲存邊界。初始 row 原子 INSERT 為 staging／pending，再經 files_ready → committed。建構與 query 不建 schema、不 reconcile；save 顯式初始化相容 schema，reconcile 由 owner 明確呼叫。list 只投影 committed＋valid；load 再驗雙檔 hash 與版本。六階段故障與同 run_id 實際內容衝突已有隔離測試，不能只憑相同宣告 hash 視為冪等成功。
+
+Research History Registry／legacy 查找須由 caller 明示序列化讀取預算；R01 接受的 profile 為每個 artifact 最多 64 MiB、每次呼叫合計最多 256 MiB，涵蓋 equity／trades／portfolio-result／replay-lineage。讀取會分塊核 hash、確認來源未變，並解碼同一份已核驗 bytes；超限、缺預算、取消或來源變更即拒絕。這些上限約束序列化輸入 bytes，不是解碼後 RAM 上限，也不是所有 caller 共用的預設值。具體驗收範圍見 [Final Authorized Union QA](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)。
 
 metadata 保存 frozen `execution_price`／`data_manifest.execution_contract` 與 `execution_assumptions`，不依當前 UI 重建。v2／legacy／unversioned 不互相升級；未知或矛盾版本拒用，跨版本與 cancelled／partial 結果 Incompatible，成本／稅／lot 差異為 Caution。比較只用已保存 benchmark 與資料，損毀不觸發重算或修復。
 

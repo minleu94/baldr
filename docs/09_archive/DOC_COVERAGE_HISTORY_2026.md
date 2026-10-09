@@ -1516,3 +1516,20 @@ R031 對應狀態維持限定範圍：R002 ACCEPTED（固定輸出與排序不�
 | 原路徑 | Archive 原文 | 原件／Archive bytes／SHA-256 |
 |---|---|---:|
 | [`docs/06_qa/UI_LAYOUT_AUDIT_20260929.md`](../06_qa/UI_LAYOUT_AUDIT_20260929.md) | [`UI_LAYOUT_AUDIT_20260929.md`](UI_LAYOUT_AUDIT_20260929.md) | 13,878 / `6B2CE5FD538ED54C5CE7371C9BBAE5B49D1C42C48375ABEA166BF518A7CB5CB1` |
+
+
+<a id="coverage-entry-152"></a>
+## 2026-10-09 封存 Post-V1 Evidence Operations／Source Persistence plan/spec
+
+將 2026-07-02 V1.3 Evidence Operations 與 2026-07-04 Evidence Source Persistence 兩組 plan/spec 原文逐位元組複製至 `docs/09_archive/superpowers/{plans,specs}/`；先核對 bytes／SHA，再將 `docs/superpowers/{plans,specs}/` 原路徑改成短導引。四份來源在批次開始前均為 tracked／clean，Archive 目的地均不存在。Archive 原文保留原有內容、核取狀態與日期，不因搬移改寫完成度。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes／SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-07-02-v1-3-evidence-operations.md`](../superpowers/plans/2026-07-02-v1-3-evidence-operations.md) | [`2026-07-02-v1-3-evidence-operations.md`](superpowers/plans/2026-07-02-v1-3-evidence-operations.md) | 2,424 / `2CEEFCA411A341213CD519F61687D0D0AF15B85EF66B6671CBA75395649B361A` |
+| [`docs/superpowers/specs/2026-07-02-v1-3-evidence-operations-design.md`](../superpowers/specs/2026-07-02-v1-3-evidence-operations-design.md) | [`2026-07-02-v1-3-evidence-operations-design.md`](superpowers/specs/2026-07-02-v1-3-evidence-operations-design.md) | 2,567 / `29EE2AAB57BCCB2264C35FE10B06C26B8CCC841FABE1F02C03E6330945D46EC8` |
+| [`docs/superpowers/plans/2026-07-04-post-v1-evidence-source-persistence.md`](../superpowers/plans/2026-07-04-post-v1-evidence-source-persistence.md) | [`2026-07-04-post-v1-evidence-source-persistence.md`](superpowers/plans/2026-07-04-post-v1-evidence-source-persistence.md) | 2,654 / `46410BD01028816EAB5AA8EA89357F80607294D81EA2DDCCD618ECBE63A291FA` |
+| [`docs/superpowers/specs/2026-07-04-post-v1-evidence-source-persistence-design.md`](../superpowers/specs/2026-07-04-post-v1-evidence-source-persistence-design.md) | [`2026-07-04-post-v1-evidence-source-persistence-design.md`](superpowers/specs/2026-07-04-post-v1-evidence-source-persistence-design.md) | 4,751 / `CBDFB41CA4E581EAE41036B1FA83CFAD87048485900FD627A854B6061FD5B29B` |
+
+V1.3 Evidence Operations plan 原有 11 項 checked、3 項 open（checkpoint commit、focused validation、branch commit/push）；Source Persistence plan 原有 29 項 checked、2 項 open（完整驗證／QA 更新、核心文件更新）。本批只改閱讀入口，不替原始 checkbox 補勾。Source Persistence 的 Why Not／Liquidity payload 為 partial；Forward Performance Dashboard UI、scheduler design、歷史 payload backfill、Live-vs-Research linkage 與 Signal Decay Monitor 等缺口仍依其 [QA 收據](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md) 判讀。V1.3 設計維持人工 review，production scheduler 與自動 lifecycle action 未因此啟用或獲准。
+
+原 QA 報告已在 Archive；`docs/06_qa/` 對應舊路徑是既有相容導引。本批更新四筆 manifest、Archive README 與 Superpowers README；歷史 Catalog／Index 與 plan 內舊路徑由相容導引承接。精確檔名引用盤點沒有程式、測試、腳本、排程或設定的固定路徑 reader／writer。現行狀態、操作與架構仍分別看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)、[system architecture](../01_architecture/system_architecture.md) 與 [Post-V1 QA 導覽](../06_qa/README.md)。DOC_COVERAGE_MAP 的權威邊界未變，因此不修改 Map、Snapshot、Manual 或 dirty 的 DOCUMENTATION_INDEX。

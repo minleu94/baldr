@@ -561,6 +561,11 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 [7/7 plan 原文](superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md) 與[design spec 原文](superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。Plan 內 17/17 個工程項目已勾選；其工作範圍是 working-copy smoke、readiness evaluator 與人工 approval checklist。正式排程仍未核准、未啟用，readiness 仍受 `production_scheduler_allowed=false` 限制；multi-day dry-run 與人工 UI smoke 等 Gate 分開判讀。測試已改為直接讀取 Archive 原件，未改斷言；bytes／SHA 與引用路徑見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 136](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-136)。
 
+<a id="2026-10-09-post-v1-evidence-operations-source-persistence-plan-spec"></a>
+### 2026-10-09 Post-V1 Evidence Operations／Source Persistence plan/spec
+
+[7/2 V1.3 Evidence Operations plan 原文](superpowers/plans/2026-07-02-v1-3-evidence-operations.md) 與[設計 spec](superpowers/specs/2026-07-02-v1-3-evidence-operations-design.md)，以及[7/4 Evidence Source Persistence plan 原文](superpowers/plans/2026-07-04-post-v1-evidence-source-persistence.md) 與[設計 spec](superpowers/specs/2026-07-04-post-v1-evidence-source-persistence-design.md)，已移至 Archive；`docs/superpowers/` 舊路徑保留導引。原始核取狀態為 11/3 與 29/2（已勾／未勾），完整狀態未改寫；封存不宣告未勾項目完成。配套 [V1.3 QA](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md) 與 [Source Persistence QA](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md) 保存原驗收範圍。Dashboard UI、scheduler design、歷史 payload 與其他 coverage gaps 依 QA 原文判讀；production scheduler 未因此核准或啟用。bytes／SHA 與舊路徑引用見 [Coverage History Entry 152](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-152)。
+
 ### 2026-10-08 Month 2 Registry／storage plan
 
 [Month 2 Parameter & Run Storage Governance Plan 原文](superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 已結案並移至本目錄；[舊路徑](../superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 保留導引。原文 C4 驗證證據與 Definition of Done 記錄最終完成狀態；前段「等待核准」文字是過程快照，不能作為目前狀態。原始 bytes／SHA 與生命週期見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

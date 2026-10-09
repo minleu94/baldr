@@ -1,55 +1,10 @@
-# V1.3 Evidence Operations Implementation Plan
+# V1.3 Evidence Operations Implementation Plan（歷史原文入口）
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 本頁承接舊路徑。完整計畫與核取狀態已保存在 Archive；封存不代表計畫全部完成，也不構成目前工作授權。
 
-**Goal:** 建立 V1.3 weekly evidence operations 與 manual lifecycle 審核節奏。
+- [封存計畫原文](../../09_archive/superpowers/plans/2026-07-02-v1-3-evidence-operations.md)
+- [配套設計規格](../../09_archive/superpowers/specs/2026-07-02-v1-3-evidence-operations-design.md)
+- [具名 QA 收據](../../09_archive/POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md)
+- [目前專案狀態](../../00_core/PROJECT_SNAPSHOT.md)；[目前操作方式](../../07_guides/APPLICATION_MANUAL.md)
 
-**Architecture:** 新增唯讀 application service 彙總 scheduler readiness、Decision Quality 與 Signal Decay。所有 lifecycle candidate 都停在人工審核包，不自動套用。
-
-**Tech Stack:** Python dataclasses、SQLite-backed existing repositories、pytest、read-only CLI。
-
----
-
-### Task 1: Weekly Evidence Operations Package
-
-**Files:**
-- Create: `app_module/evidence_operations_dtos.py`
-- Create: `app_module/evidence_operations_service.py`
-- Create: `scripts/build_evidence_operations_weekly_review.py`
-- Test: `tests/test_evidence_operations_service.py`
-- Test: `tests/test_evidence_operations_cli.py`
-
-- [x] Write failing tests for weekly package, coverage-only status, and CLI JSON.
-- [x] Implement DTOs and service.
-- [x] Add CLI with JSON / Markdown output.
-- [x] Verify focused tests pass.
-- [x] Commit checkpoint.
-
-### Task 2: Action Item Loop
-
-**Files:**
-- Modify: `app_module/evidence_operations_service.py`
-- Modify: `app_module/decision_quality_service.py`
-- Test: `tests/test_evidence_operations_service.py`
-
-- [x] Add tests for planning action items from open Decision Quality items without duplicate descriptions.
-- [x] Implement append-only action item planning via `DecisionQualityService`.
-- [x] Verify no lifecycle action is applied and scheduler remains disabled.
-- [ ] Commit checkpoint.
-
-### Task 3: QA And Documentation Closeout
-
-**Files:**
-- Create/Modify: `docs/06_qa/*V1_3*`
-- Modify: `docs/07_guides/APPLICATION_MANUAL.md`
-- Modify: `docs/00_core/PROJECT_SNAPSHOT.md`
-- Modify: `docs/00_core/ROADMAP_6M_ENGINEERING.md`
-- Modify: `docs/00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md`
-- Modify: `docs/01_architecture/system_architecture.md`
-- Modify: `docs/00_core/DOCUMENTATION_INDEX.md`
-
-- [x] Add V1.3 QA checklist and validation evidence.
-- [x] Update Manual with weekly review CLI and safety interpretation.
-- [x] Update scoped authority docs after V1.3 completion only.
-- [ ] Run focused tests, py_compile, and relevant evidence tests.
-- [ ] Commit and push branch.
+原計畫保留 11 項已勾、3 項未勾。未勾項目包括 checkpoint commit、focused validation 與 branch commit/push；請以封存原文與 QA 收據判讀，不推定已完成。

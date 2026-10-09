@@ -96,7 +96,7 @@ UX08 原生圖安全切片：價格圖與 OHLC／量數值表共用 application 
 
 主視窗初始位置依螢幕可用範圍置中限制；長頁面、結果面板與動態內容可透過垂直捲動繼續閱讀。可列資料的表格／清單以至少五筆可見資料列作為初始 viewport 目標；表格的水平捲動、欄寬與儲存格 tooltip 協助查看較寬或較長的欄位。窄版的控制列會改為直向排列，避免長標籤與按鈕被擠成細欄；部分控制列與技術細節面板（例如 SQLite Inspector 篩選、Market Regime layer3）亦可水平捲動。這些調整只改 UI 呈現，維持 workspace 對外 widget identity、資料來源及核心計算行為。
 
-跨頁面主視窗尺寸、巢狀分頁、表格／清單與合成長內容已完成日期化 geometry audit；六格 offscreen MainWindow 矩陣全數通過。測試範圍、合成資料覆蓋及 OS 原生視窗限制見 [UI Layout Audit 2026-09-29](../06_qa/UI_LAYOUT_AUDIT_20260929.md)。
+跨頁面主視窗尺寸、巢狀分頁、表格／清單與合成長內容已完成日期化 geometry audit；六格 offscreen MainWindow 矩陣全數通過。測試範圍、合成資料覆蓋及 OS 原生視窗限制見[歷史 UI Layout Audit 2026-09-29](../09_archive/UI_LAYOUT_AUDIT_20260929.md)。
 
 ### 2026-09-30 讀取期間的介面回應與安全關閉
 

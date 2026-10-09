@@ -1501,3 +1501,18 @@ R031 對應狀態維持限定範圍：R002 ACCEPTED（固定輸出與排序不�
 | 原路徑原件 | Archive 原文 | bytes／SHA-256 |
 |---|---|---:|
 | [docs/06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md) | [UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md) | 原件 7,652 / `C362F6A1023DB88C6D4C21460DD3EC83A1734DB769C0F77DF152C5A26BFD1417`；修正兩個相對連結後 Archive 7,668 / `389698E972B2D311E8D630A3E407C411CB02CAEA38C06F3E193DA8A19648152D` |
+
+<a id="coverage-entry-151"></a>
+## 2026-10-09 封存 UI Layout Audit 有限範圍 QA 收據
+
+將 `docs/06_qa/UI_LAYOUT_AUDIT_20260929.md` 的原始 QA 收據移至 Archive；搬移前來源為 tracked／clean，目的地不存在。封存副本先逐位元組核對，來源與副本均為 13,878 bytes，SHA-256 `6B2CE5FD538ED54C5CE7371C9BBAE5B49D1C42C48375ABEA166BF518A7CB5CB1`。封存原文沒有 repo 內部相對 Markdown 連結，僅含外部 CPython issue URL；舊 QA 路徑改為相容導引。
+
+收據範圍限定於 2026-09-29 六格 offscreen MainWindow viewport 矩陣：54 次 workspace visits、1,488 次 page visits、1,308 次 table/list checks、834 次 scroll checks；當時 Qt suite 為 567 passed／1 opt-in skipped，runner 46 passed，Update 85 passed，validator 25 passed／4 skipped，mypy 739 files clean。這些是原收據記錄的歷史測量，不代表目前版本重跑。
+
+搬移前精確檔名稽核找到四處 Markdown 入鏈，沒有程式、測試、排程或設定 consumer。現行 [UI Features](../02_features/UI_FEATURES_DOCUMENTATION.md)、[Product UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md) 與本 [Archive README](README.md) 已改連 Archive。dirty 的 `APPLICATION_MANUAL.md` 與固定歷史 Documentation Catalog／Index snapshot 保留舊連結，由 QA 舊路徑相容導引承接；本批未修改其他進行中工作的 Manual、DOCUMENTATION_INDEX、PROJECT_SNAPSHOT 或 DOC_COVERAGE_MAP。原始 `output/qa/ui_layout_20260929/` raw logs、screenshots、summaries 是 ignored 本機輸出，未封存。
+
+先前 per-view QObject controller 曾出現 native access violation；後續 app-owned dispatcher focused tests 與六格 offscreen 矩陣未重現，但根因與永久修復尚未證實。Offscreen 測試不能證明 Windows 原生視窗／顯示行為；official data smoke 與 Native input 未執行。不得以本收據宣稱 native crash 已結案或 OS 原生 UI 已驗收。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前功能說明看 [UI Features](../02_features/UI_FEATURES_DOCUMENTATION.md)，QA 導覽看 [Product UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md)。DOC_COVERAGE_MAP 的權威邊界未變，因此不修改 Map。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes／SHA-256 |
+|---|---|---:|
+| [`docs/06_qa/UI_LAYOUT_AUDIT_20260929.md`](../06_qa/UI_LAYOUT_AUDIT_20260929.md) | [`UI_LAYOUT_AUDIT_20260929.md`](UI_LAYOUT_AUDIT_20260929.md) | 13,878 / `6B2CE5FD538ED54C5CE7371C9BBAE5B49D1C42C48375ABEA166BF518A7CB5CB1` |

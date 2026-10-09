@@ -51,6 +51,12 @@
 
 - [UX24 第一版 stage 1–3 有限工程封存](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)：保存 F1–F4 範圍內七項有限工程終點的實測結果。它記錄 9 stages 為 1 done／7 partial／1 pending，24 UX 為 2 done／20 partial／2 pending；不構成整體 UX 結案、正式 apply、Native／真人接受、PIT／自然 maturity、ML OOS 或 benchmark／target policy 通過。`output/qa/ux24_first_version_20261006/` 的 run receipts、logs、XML、baseline／容量 raw evidence 屬本機 ignored output，未封存；原文只保留當時記錄與 hash。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，UX QA 導覽看 [PRODUCT_UX_QA_INDEX](../06_qa/PRODUCT_UX_QA_INDEX.md) 與 [Feature Test Routing Matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。原路徑保留相容導引，逐檔 bytes／SHA 與引用核對見 [Coverage History Entry 150](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-150)。
 
+<a id="ui-layout-audit-20260929"></a>
+## 2026-10-09 UI Layout Audit 歷史收據
+
+- [UI Layout Audit（2026-09-29）](UI_LAYOUT_AUDIT_20260929.md)：保存六格 offscreen MainWindow viewport 矩陣通過的有限結果，以及 54 次 workspace visits、1,488 次 page visits、1,308 次 table/list checks、834 次 scroll checks；當時 Qt suite 為 567 passed／1 opt-in skipped，runner 46 passed，Update 85 passed，validator 25 passed／4 skipped，mypy 739 files clean。這些是當時測量，不代表目前版本已重跑。
+- 先前 per-view QObject controller 曾出現 native access violation；後續 app-owned dispatcher focused tests 與六格 offscreen 矩陣未重現，但根因與永久修復尚未證實。Offscreen 結果不能證明 Windows 原生視窗／顯示行為；official data smoke 與 Native input 未執行。`output/qa/ui_layout_20260929/` 的 raw logs、screenshots、summaries 是 ignored 本機輸出，未封存。原路徑相容導引、依賴與 hash 見 [Coverage History Entry 151](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-151)；目前 UI 說明看 [UI Features](../02_features/UI_FEATURES_DOCUMENTATION.md)，QA 導覽看 [Product UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md)。
+
 ## 2026-10-09 歷史狀態快照
 
 - [BALDR 本機狀態報告（2026-08-14）](project_status_2026_08_14/README.md)：保存當日 JSON／HTML 原件；舊 `next_actions` 與 CPU／MCP／QA 數字不代表目前狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，來源與 SHA 見 [Coverage History Entry 117](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-117)。

@@ -1,0 +1,13 @@
+# H20市場副本的非空WAL方案：合成中央審核
+
+此驗證限定全新隔離合成SQLite；不是原市場DB、H20 Main、候選EXE或真人接受。原凍結bridge／child／supervisor沒有因此修改或取得啟動資格。
+
+helper SHA `169fa40c6c87c68268bfe40caf361f54618732e685adca02fd9de931c373221f`，runner SHA `a46d2eda07ce3f85dc476940827007e8d4bcb64fef87c91b5a501f37c024c713`。中央獨立native重跑exit0，log `output/qa/h20_wal_snapshot_20261008_a/root_wal_selftest_native.log`；receipt `attempt_receipt_20261009T000230Z_db4419c137f2/receipt.json` SHA `60e78b8b5b8b4e96bee719a1c4a2f77af50b818bfc61613870c52982269021e6`。
+
+方案固定原main／WAL位元組與起訖檔案身分，SHM僅核metadata及inode；只把main／WAL複製到自有隔離目錄。SQLite在副本重建私有SHM，再以唯讀交易backup產生合併快照，不以immutable旗標忽略WAL。合成已提交資料進入backup，未提交資料沒有進入；來源未由SQLite連線。
+
+來源漂移、損毀WAL、缺SHM、rollback journal、容量超限、中途取消、未知私有檔案及同位元組換inode負例保留。中央實際junction reparse拒絕也通過。來源漂移與cleanup身分置換同時發生時保留primary `source_file_group_changed_during_snapshot`，secondary另列 `owned_copy_artifact_identity_changed`，不刪除未知replacement或舊inode。
+
+先前沙箱路徑權限、目錄mtime被誤當身分、Windows live SHM無法串流及cleanup遮蔽primary的失敗attempt均保留。此原型的單一fixture表格oracle不能直接授原twstock全庫接受；實際接線還需完整backup／schema／consumer核驗、區分原main與derived snapshot SHA，以及市場與H20兩份獨立來源的總容量與終態清理。
+
+另已確認凍結啟動契約的輸出根矛盾：supervisor要求 `H20_GUARD_OUTPUT_ROOT=OUTPUT_ROOT=attempt/output`，child及legacy probe卻再接一層output。後續採新版本副本明示CASE_ROOT與OUTPUT_ROOT，經真子程序環境解析驗證後才接原來源；不篡改舊凍結封套。

@@ -2,7 +2,7 @@
 
 日期：2026-10-08。此文件記錄 F02 後端整合的局部證據，不代表完整補完計畫、UI 或候選 EXE 已通過。
 
-收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72秒。真MAView保存來源完整操作旅程及Main／Watchlist實際方法的收藏持久保存、專用signal與fresh restore已通過中央獨立複驗。Main方法測試使用最小QMainWindow shell，完整Main startup仍待驗證；原H20、候選EXE、全母體效能與真人驗收仍未完成。以下分段保留各次失敗及其接受範圍。
+收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72秒。真MAView旅程、Main／Watchlist實際方法路由，以及完整MainWindow constructor／收藏／重開／shutdown均已通過中央獨立合成隔離複驗。原H20、候選EXE、全母體效能與真人驗收仍未完成。以下分段保留各次失敗及其接受範圍。
 
 正常 F17 bundle opener 與 query reopen 使用同一份保存的合成封套。四均線投影掛接於既有逐股驗證迴圈，只有來源驗證成功且 P01 session 發布後才建立 MA session；投影例外不得發布部分狀態。金融數值沿用既有證據計算，沒有新增裸 float 計算。原始窗口、特徵日與可用性註記保留；來源缺少 available_at，歷史 PIT 資格仍為 false。
 
@@ -165,4 +165,12 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 此新增證據補足上一節的consumer路由缺口，但Main以最小QMainWindow shell承載實際方法，尚不代表完整constructor、正式資料、候選EXE或真人流程通過。
 
 中央再清除四個MA固定來源環境變數，使用標準既有合成fixture，獨立一般環境複驗exit0：1 passed，159.65秒（含來源產製）。log `root_route_portable.log`，receipt `attempt_1791503503217397500_45548/route_receipt.json`。此驗證補足測試可攜性；固定來源複驗不產製，一般fixture路徑才建立全新合成來源，兩者均不操作原資料或正式排程。
+
+## 完整MainWindow中央獨立複驗
+
+`tests/test_ui_qt_ma_bookmark_full_mainwindow_startup.py` SHA `409742d640dacd0fb3df3dfb7658ff45be7e49072482dbe573bb4f447c59b73b`。owner的真Main及守衛測試2 passed／49.35秒；中央獨立以同4pins、新OS temp應用根重跑exit0：2 passed／38.37秒。log `output/qa/ma_bookmark_main_startup_20261008_a/root_full_startup.log`，receipt `attempt_1791504241000148100_34728/main_startup_receipt.json`。
+
+測試呼叫真正MainWindow constructor，沒有用shell或替換constructor；設定與SQLite均在明示隔離應用根。推薦研究分頁、準備收藏、真Watchlist持久保存及typed重開、相同query/page／1100選取／1000+1100比較籃與正常shutdown均通過。來源七根inventory及manifest前後一致，initial與fresh restore各exact read一次，無generic fallback，網路／DNS嘗試0，原生workers終止。
+
+前三次測試側失敗分別為應用根應在repo外的矛盾、Windows長路徑解析及tree pin遺漏technical database，收據原樣保留。修正後固定已生成的同一bundle進行重驗，沒有每次重產。此接受是同程序完整合成Main旅程；仍不授新程序／新EXE、原H20、F02複合矩陣、效能p95或整個補完計畫完成。
 

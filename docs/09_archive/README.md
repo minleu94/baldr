@@ -96,6 +96,15 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [Decision Continuity write-path audit（9/14）](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md)
 - [Continuity Review Loop pre-R1 gap audit（9/15）](CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md)：保留 R1 前的 gap baseline；後續 R1 acceptance 留在 [QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，完整跨頁旅程仍看留在 QA 的 [acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md)。
 
+### 2026-10-08 Early decision and industry journey receipts
+
+四份 2026-09-14 收據保存當時的 bounded write-path、read-model、UI 與 current-research industry smoke。Decision／Outcome 的後續 reader 證據看 [R1 Workbench QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，完整 MainWindow 跨頁 round-trip 仍由 [open acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md) 追蹤；產業 smoke 的 PIT eligible 為 0，較新 provenance、UI observation 與 source/caller gate 看 [WP2 current provenance](../06_qa/WP2_INDUSTRY_INDEX_CURRENT_PROVENANCE_20260928.md)、[WP2 UI observation](../06_qa/WP2_INDUSTRY_INDEX_UI_OBSERVATION_20260928.md)、[PIT taxonomy](../06_qa/PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) 與 [industry caller acceptance](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。這批歷史收據不代表完整旅程、自然／正式 outcome 或 PIT qualification 已成立。
+
+- [Decision Continuity Write Path Increment A QA（9/14）](DECISION_CONTINUITY_WRITE_PATH_QA_2026_09_14.md)
+- [Decision → Outcome Journey read model QA（9/14）](DECISION_OUTCOME_JOURNEY_2026_09_14.md)
+- [Decision → Outcome Journey UI QA（9/14）](DECISION_OUTCOME_JOURNEY_UI_2026_09_14.md)
+- [產業強弱與產業→個股決策旅程 QA（9/14）](INDUSTRY_DECISION_JOURNEY_2026_09_14.md)
+
 ### 2026-10-08 Early QA closeouts
 
 - **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。
@@ -189,7 +198,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [V2.1–V4.0 版本路線更新歷史（2026-07-11 至 09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_UPDATE_HISTORY_20260711_TO_20260915.md)：保存成熟度文件曾附加的狀態快照與 handoff；版本 Gate 標準仍看核心版本 Roadmap。
 - [V2.1–V4.0 工程交接紀錄（2026-09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)：保存當時工程分流與下一步；版本成熟度標準仍以核心 Roadmap 為準。
 - [V2.1–V4.0 版本狀態快照（2026-07-12 至 2026-08-30）](VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)：保存各成熟度版本曾附加的階段狀態；目前狀態以 Snapshot 為準。
-- [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節的逐次狀態記錄；目前模組邊界與資料流仍以 `system_architecture.md` 主文為準。
+- [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節的逐次狀態記錄與 2026-09-30 排程資料流歷史切片；目前模組邊界及排程 lane 規則以 `system_architecture.md` 主文為準，當期狀態以 Snapshot／QA 為準。
 - [System Architecture R01 validation excerpt（2026-10-06）](SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)：保存從架構主文抽出的逐次 QA 記錄全文（僅去掉段落分隔用的尾端空白）；R01 讀取預算契約已集中於 `system_architecture.md` 第 11 節，驗收現況看對應 QA 與 Snapshot。
 - [舊端到端流程藍圖](SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)：保存舊 feature store、signals／recommendation 路徑、過時模組位置與建議新增元件；現況請看 `docs/01_architecture/system_architecture.md`，目標請看 `target_system_architecture.md`。
 - [文件編碼稽核（2026-06-16）](DOCUMENT_ENCODING_AUDIT_2026_06_16.md)：一次性 UTF-8／mojibake 掃描；保留當時結論，不代表目前 repo 的完整編碼檢查。

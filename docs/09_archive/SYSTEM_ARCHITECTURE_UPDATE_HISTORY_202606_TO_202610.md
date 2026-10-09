@@ -1,6 +1,37 @@
 # 系統架構更新記錄（2026-06 至 2026-10）
 
-> 原 system_architecture 第 16 節的逐次狀態與驗收流水帳；僅作歷史追溯。現行架構請看 system_architecture 主文，目前狀態請看 PROJECT_SNAPSHOT。
+> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。現行架構請看 system_architecture 主文，目前狀態請看 PROJECT_SNAPSHOT。
+
+## 9/30 排程資料流與 lane 邊界（歷史架構切片）
+
+```mermaid
+flowchart LR
+    Q[Quick data and technical publication] --> F[Freshness read-only validation]
+    F --> R[Canonical Recommendation artifact and index]
+    R --> E[Evidence dry-run / Position Health / Exit]
+    R --> P[Paper queue: next official session]
+    C[Same-run 05:45 learning receipt] --> B[05:50 Bank shadow barrier]
+    D[Verified daily denominator] --> S[Sector-membership sidecar]
+    U[Rule parent universe] --> T[PIT taxonomy preopen bundle]
+    T --> W[Combined post-cutoff PIT publication]
+    S --> I[Formal Input consumer]
+    T --> I
+    X[Raw PIT publication] --> O[Direct / OOC maintenance]
+    V[ML forward daily run] --> Z[Release-pinned shadow child]
+```
+
+Quick／Freshness／Recommendation／Evidence 和 Paper 共用明確日期與來源 identity，但各自
+保存 terminal receipt；Evidence 只組合當次 readback，Paper queue 只挑下一個已到期的官方
+session source。Bank shadow 先綁定 05:45 Task 的同一 run、immutable receipt 與 source hash，
+不能以舊 latest projection 取代 upstream barrier。PIT sector sidecar 與 taxonomy preopen 是
+可分離輸出；Formal consumer 讀取相容的 sidecar不代表 combined taxonomy bundle完整，兩條
+路徑仍要分別驗證 universe、clock、coverage 與 readback。Raw／Direct／OOC maintenance 和
+ML forward 使用不同來源／release pins，不因同日 Task 成功互相授權。
+
+2026-09-30 的真實排程 status、receipt hash、Task clock、目前 blocker 與驗收範圍是可變運行
+事實，集中記錄於[排程修復 QA](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)；本架構
+只記錄 producer／consumer 依賴與 lane 邊界，不把某次 no-op、candidate 或 blocked receipt
+寫成固定系統狀態。
 
 ## 16. 更新記錄
 

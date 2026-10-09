@@ -195,34 +195,7 @@ credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成�
 
 ## 9/30 排程資料流與 lane 邊界（歷史架構切片）
 
-```mermaid
-flowchart LR
-    Q[Quick data and technical publication] --> F[Freshness read-only validation]
-    F --> R[Canonical Recommendation artifact and index]
-    R --> E[Evidence dry-run / Position Health / Exit]
-    R --> P[Paper queue: next official session]
-    C[Same-run 05:45 learning receipt] --> B[05:50 Bank shadow barrier]
-    D[Verified daily denominator] --> S[Sector-membership sidecar]
-    U[Rule parent universe] --> T[PIT taxonomy preopen bundle]
-    T --> W[Combined post-cutoff PIT publication]
-    S --> I[Formal Input consumer]
-    T --> I
-    X[Raw PIT publication] --> O[Direct / OOC maintenance]
-    V[ML forward daily run] --> Z[Release-pinned shadow child]
-```
-
-Quick／Freshness／Recommendation／Evidence 和 Paper 共用明確日期與來源 identity，但各自
-保存 terminal receipt；Evidence 只組合當次 readback，Paper queue 只挑下一個已到期的官方
-session source。Bank shadow 先綁定 05:45 Task 的同一 run、immutable receipt 與 source hash，
-不能以舊 latest projection 取代 upstream barrier。PIT sector sidecar 與 taxonomy preopen 是
-可分離輸出；Formal consumer 讀取相容的 sidecar不代表 combined taxonomy bundle完整，兩條
-路徑仍要分別驗證 universe、clock、coverage 與 readback。Raw／Direct／OOC maintenance 和
-ML forward 使用不同來源／release pins，不因同日 Task 成功互相授權。
-
-2026-09-30 的真實排程 status、receipt hash、Task clock、目前 blocker 與驗收範圍是可變運行
-事實，集中記錄於[排程修復 QA](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)；本架構
-只記錄 producer／consumer 依賴與 lane 邊界，不把某次 no-op、candidate 或 blocked receipt
-寫成固定系統狀態。
+本歷史切片已移至 [系統架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；當期狀態與驗收仍以 [排程修復 QA](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md) 為準。現行排程來源 identity 與 lane 隔離規則見本文件「排程來源 identity 與 lane 隔離」。
 
 ## 2026-09-27 邊界／資源 lifecycle 現況
 
@@ -904,6 +877,10 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 - RuntimeView 的內容容器使用 query-only `QScrollArea`；小於 720px 時將治理 Splitter 切為垂直單欄，且所有長路徑／狀態文字允許收縮或換行。這只改 presentation，不改 DTO、事件流或任何寫入邊界。
 - `runtime-state.v2` 保留 task／context read state、raw status 與 diagnostics；缺來源、非 object 或未知狀態不冒充 IDLE。既有 store 無法細分缺檔與被吞掉的讀取錯誤時，保留 `missing_or_unreadable`。
 - 純 Python EventBus 位於 [app_module/runtime_services/event_bus.py](../../app_module/runtime_services/event_bus.py)，訂閱回傳可重複取消句柄，Qt bridge 的 dispose／destroyed 解除訂閱。Controller 只對最近 2,000 個非空 event ID 同內容去重，衝突保留診斷；重啟 attach at tail，不執行或重試 task。byte cursor 沒有 log generation 契約，不是 durable exactly-once queue。
+
+### 排程來源 identity 與 lane 隔離
+
+各排程 lane 的 producer／consumer 必須綁定該 lane 明示的 source／release pins 與同次 terminal receipt。某一 Task 同日成功、latest status 或其他 lane 的 candidate／readback，不能代替指定 run 與來源的核驗，也不授權跨 lane 發布或消費。這是長期架構邊界；當期狀態與作業步驟分別以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 和 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準，歷史驗收見 [2026-09-30 排程修復 QA](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)。
 
 ### 禁止依賴
 

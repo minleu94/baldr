@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import scripts.refresh_current_market_status_observation as capture_module
+import tests.test_selection_market_assignments as market_test_helpers
 
 from app_module.selection_current_source_pair import (
     CurrentSelectionSourcePairError,
@@ -15,6 +17,7 @@ from app_module.selection_current_source_pair import (
 from data_module.selection_official_events import CurrentOfficialDisposalReader
 from data_module.selection_market_assignments import CurrentMarketAssignmentError
 from tests.test_selection_market_assignments import _create_capture
+from tests.test_daily_market_technical_official_disposition_bundle_v1 import _FrozenDateTime
 
 
 def test_same_capture_pair_remains_exact_after_pointer_advances(tmp_path: Path) -> None:
@@ -102,3 +105,15 @@ def test_capture_published_after_decision_is_rejected(tmp_path: Path) -> None:
     pointer = _create_capture(tmp_path)
     with pytest.raises(CurrentMarketAssignmentError, match="pointer_after_cutoff"):
         open_current_selection_source_pair(pointer, cutoff_at=cutoff)
+
+
+def test_zero_microsecond_same_capture_is_not_mistaken_for_mixed_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_FrozenDateTime, "fixed_now", datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=2))
+    monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
+    pointer = _create_capture(tmp_path)
+    pair = open_current_selection_source_pair(pointer, cutoff_at=datetime.now(timezone.utc))
+    assert pair.market.source_pin.pointer_published_at != pair.disposal.source_pin.pointer_published_at
+    assert datetime.fromisoformat(pair.market.source_pin.pointer_published_at) == datetime.fromisoformat(pair.disposal.source_pin.pointer_published_at)

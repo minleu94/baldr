@@ -57,8 +57,8 @@ def open_current_selection_source_pair(
     _check_cancel(cancel_callback)
     disposal = CurrentOfficialDisposalReader.from_pointer(pointer_path, cutoff_at=cutoff)
     shared_fields = (
-        "output_root", "run_id", "pointer_sha256", "pointer_published_at",
-        "snapshot_relative_path", "snapshot_sha256", "snapshot_observed_at",
+        "output_root", "run_id", "pointer_sha256",
+        "snapshot_relative_path", "snapshot_sha256",
         "manifest_relative_path", "manifest_sha256", "snapshot_partial_failure",
     )
     if any(
@@ -66,6 +66,13 @@ def open_current_selection_source_pair(
         for field in shared_fields
     ):
         raise CurrentSelectionSourcePairError("current_source_pair_version_mismatch")
+    # 兩個既有 reader 的微秒輸出格式不同；原 pointer／snapshot bytes 仍須完全相同。
+    for field in ("pointer_published_at", "snapshot_observed_at"):
+        market_time = datetime.fromisoformat(getattr(market.source_pin, field))
+        disposal_time = datetime.fromisoformat(getattr(disposal.source_pin, field))
+        if (market_time.utcoffset() is None or disposal_time.utcoffset() is None
+                or market_time != disposal_time):
+            raise CurrentSelectionSourcePairError("current_source_pair_clock_mismatch")
     _check_cancel(cancel_callback)
     return CurrentSelectionSourcePair(market, disposal, cutoff)
 

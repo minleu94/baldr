@@ -19,3 +19,15 @@ Root 在全新隔離合成目錄實際執行 `scripts.refresh_current_market_sta
 接線已實作，定向測試 terminal exit 0、8 passed／0.51 秒，日誌 `output/qa/f17_normal_capture_pair_20261009_a/adapter_tests_c.log`。真正合成 capture 驗同版讀取／舊版 exact reopen、讀取中 pointer 前進拒絕、決策後發布拒絕、取消與非 bool 回呼拒絕；writer delegation 使用 mock，只證明參數轉交及取消時不呼叫，不能冒稱完整產製接受。Targeted mypy 1 檔通過，兩個新增檔 py_compile 通過。
 
 初輪 4 passed／2 failed 保留：測試錯把 market source pin 視為含 PIT 欄位，以及用未來 cutoff 模擬 race 被既有來源 guard 正確拒絕。修正為觀測 DTO 的 PIT 欄位、兩個已生成 capture 的 mutable pointer 競爭；未改產品 guard。第二輪 6 項通過後再補決策後來源與完成讀回後取消兩項。UI 與正常按鈕 caller 仍未接入。
+
+## UI 接入前的時序限制
+
+Root 已讀回既有 bundle writer `_open_pinned_sources`：市場 pin 的 cutoff 必須與技術 plan 的 `source_clock.decision_cutoff` 是同一 aware 時刻；兩個 exact reader 再以該時刻核原 capture。因此 UI 不能把剛更新的 current capture 任意接到早於該 capture 的舊技術版本，也不能將 cutoff 改為現在來繞過技術 plan。正常入口需選同一決策時刻的來源組；沒有相容保存來源時，顯示缺件並走新的完整來源準備／技術產製流程，不回填舊版。此限制尚須在完整 normal producer／UI 旅程驗證。
+
+## 真正 writer 接線驗證
+
+Root 重用 attempt03 已保存的合成技術母體（257 included＋1 excluded），以原五組已核 raw bytes 在新的 QA capture root 呼叫正常 updater，再經 adapter 呼叫未修改的真 `create_from_pins` 與 `read_exact`。terminal exit 0，258 列精確股票清單與原母體相同；原合成來源整棵樹與新 capture 的逐檔 SHA 起訖一致。收據 `output/qa/f17pairpub_5ktl4ism/receipt.json`，腳本 `output/qa/f17_normal_capture_pair_20261009_a/root_real_writer_probe.py`，日誌 `real_writer_probe_f.log`。此案例使用明示 frozen capture clock，不代表新即時官方更新、UI、不同程序或全市場接受。
+
+真接線抓到零微秒表示的實際相容問題：市場 reader 用 `.000000+00:00`、處置 reader 用 `+00:00`，原 pointer／snapshot SHA 相同卻被 adapter 誤拒絕。現改為原來源與版本 SHA 仍完全相同，兩個時間欄位則核 aware instant；沒有改 cutoff、reader 或 writer 的 gate。新增零微秒真 capture 案例後 9 passed／0.64 秒，日誌 `adapter_tests_d.log`；targeted mypy 與 compile 通過。
+
+前置探針失敗日誌 a–e 保留：完整 QA tree 深層 Windows 路徑、帶 `sha256:` 前綴的 raw pin 比較、上述時間誤拒絕，以及成功產製後 QA 收據錯用不存在的 `reference.to_dict()`。修正最後項為 dataclass `asdict`，在新獨立目錄重跑成功；未把只到產製或只到重開的部分結果冒稱完整 terminal 收據。

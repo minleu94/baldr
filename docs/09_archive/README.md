@@ -25,7 +25,8 @@
 
 ## 2026-10-09 券商分點早期設計與實作記錄
 
-- [券商分點文件封存專區](broker_branch/README.md)：保存早期資料模組設計、實作摘要、錯誤檢測與解析改進原文。現況看[券商分點導覽](../04_broker_branch/README.md)、[系統架構](../01_architecture/system_architecture.md)與[操作手冊](../07_guides/APPLICATION_MANUAL.md)；原件 bytes／SHA 與引用核對見 [Coverage History Entry 126](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-126)。
+- [券商分點文件封存專區](broker_branch/README.md)：保存早期資料模組設計、實作摘要、錯誤檢測、解析改進與手動測試指南原文。現況看[券商分點導覽](../04_broker_branch/README.md)、[系統架構](../01_architecture/system_architecture.md)與[操作手冊](../07_guides/APPLICATION_MANUAL.md)；四份早期設計／實作記錄見 [Coverage History Entry 126](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-126)，手動測試指南見 [Entry 155](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-155)。
+- [舊手動整合測試與故障排除指南](broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md)：保存 2025-12-29 長篇原文。三支 `tests/scripts/` 腳本的停止執行警告仍有效；不要執行它們，直到錯誤 `project_root` 已修正並確認使用隔離 `DATA_ROOT`。原路徑仍有同一警告與目前測試／操作入口。
 
 ## 2026-10-09 目標架構舊草案
 

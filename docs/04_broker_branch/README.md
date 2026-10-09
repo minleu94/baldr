@@ -4,10 +4,10 @@
 
 本目錄包含所有與券商分點資料更新相關的文檔。
 
-## 現行操作與安全指南
+## 目前安全狀態與操作入口
 
-- **[手動整合檢查與故障排除](BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md)**（目前暫停其中三個整合腳本）
-  - 2025 年指南中的腳本路徑與匯入根目錄不正確，且腳本可能連網／寫入 `DATA_ROOT`；勿視為一般 pytest。分類與執行邊界看 [tests_readme](../07_guides/tests_readme.md)。目前架構與操作看 [system_architecture](../01_architecture/system_architecture.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+- **[手動整合檢查指南（停止執行）](BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md)**：本頁是安全導引；2025 年長篇指南已封存。
+  - 三支 `tests/scripts/` 手動整合腳本仍暫停：`project_root` 指向 `tests/`，腳本會連網並可能寫入 `DATA_ROOT`，全分點腳本使用 `force_all=True`。它們不是預設 pytest。修正 root 並確認隔離 `DATA_ROOT` 前請勿執行。分類看 [tests_readme](../07_guides/tests_readme.md)，現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
 ## 歷史設計與實作追溯
 

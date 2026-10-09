@@ -1566,3 +1566,20 @@ Plan 原有 **0/20 項已勾選**；spec 無 checklist。配套 [QA 收據](POST
 | [`docs/superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md`](../superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md) | [`2026-07-01-post-v1-evidence-event-store-design.md`](superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md) | 7,544 / `5C4410599509CF914A288D9994FDF5D8EB6BE74172CC0E36CEF36390CFB8B327` |
 
 Windows 工作樹原件與 Archive 副本均為 CRLF。Git 將換行正規化為 LF 後，來源 HEAD blob 與暫存的 Archive blob 仍逐位元組相同：plan 為 4,701 bytes、SHA-256 `8B74722A0B7ECD1B651005913AC35390F3F303CC9108CA69B2AC9B67C6218C63`；spec 為 7,376 bytes、SHA-256 `81E8BA1F59606E9619D94A321A0AF841A0DEEF22B6FDC7781FA6772DF9204749`。原件結尾空白行也保留以維持雜湊；`git diff --cached --check` 對新增的逐 byte 副本會提示這兩行，沒有其他 whitespace 診斷。
+
+<a id="coverage-entry-155"></a>
+## 2026-10-09 封存券商分點手動整合測試與故障排除指南
+
+將 `docs/04_broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md` 的 2025-12-29 長篇指南保存在 `docs/09_archive/broker_branch/`。原件在本批前 tracked／clean，為 14,277 bytes，SHA-256 `4E32EECBB34AC3D9A99EF5791B10781CF049697F072E9B2BE99E3FBD4C7100B0`。封存副本只調整四個相對 Markdown 連結，讓它從 Archive 位置仍可抵達 Manual、tests README 與同目錄的兩份券商分點歷史文件；其他原文、測試記錄及 2026-10-08 停止警告保留。來源舊路徑改為短安全導引。
+
+**停止警告仍有效：請勿執行原指南中的三支手動整合腳本。** 舊命令路徑不存在；檔案在 `tests/scripts/`，腳本 `project_root` 仍指向 `tests/`。它們會連網並可能寫入 `DATA_ROOT`，全分點腳本使用 `force_all=True`，且這些不是預設 pytest。重新評估執行前，須先修正腳本 root 並確認隔離的 `DATA_ROOT`。封存不表示腳本已修復、隔離、執行或驗收；2025-12-29 的測試結果只代表當時記錄。
+
+原 Coverage History [Entry 126](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-126) 曾因本指南仍含有效安全警告而保留長篇內容在原路徑。本 Entry 僅更新文件位置決策；Entry 126 中四份早期設計／實作文件的歸檔追溯與本指南的停止警告均保留。現行券商分點入口是[目錄 README](../04_broker_branch/README.md)；目前操作與測試分類看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [tests README](../07_guides/tests_readme.md)。
+
+精確檔名搜尋找到目錄 README、券商分點 Archive README、全域 Archive README、固定歷史 Catalog／Index 與舊 Archive 文本引用；未找到程式、測試、腳本、排程或設定把此 Markdown 路徑當成 consumer。舊路徑仍保留警告與 Archive 連結，因此固定歷史引用可抵達原文。未執行 `tests/scripts/` 內的整合腳本，未移動程式、資料或 QA raw output。Scoped authority 沒有改變，故不修改 `DOC_COVERAGE_MAP`；dirty 的 `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 與 `APPLICATION_MANUAL.md` 也未觸碰。
+
+| 原路徑 | Archive 原文（四個相對連結已重設） | 原件 bytes／SHA-256 | Archive bytes／SHA-256 |
+|---|---|---:|---:|
+| [`docs/04_broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md`](../04_broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md) | [`BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md`](broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md) | 14,277 / `4E32EECBB34AC3D9A99EF5791B10781CF049697F072E9B2BE99E3FBD4C7100B0` | 14,226 / `FFAB928E309DB91865575D9DF52794DB7F4E845C4566BADC5395E9F0D7587E05` |
+
+工作樹原件為 CRLF；Git 正規化為 LF 後，來源 HEAD blob 為 13,783 bytes、SHA-256 `52448A767240763D191868B49D875F71F4ED607C8F05FECF2FC96C6A8F05C17B`，Archive 暫存 blob 為 13,733 bytes、SHA-256 `1C303BD1012F9194EB957C6151BC292B717ACF1BD2476FEDA5DCD58C364DB5FD`。Canonical blob 的差異只包含上述四個相對連結改寫；原件中的空白行、Markdown 硬換行尾端空白與 EOF 空白行保留。Scoped `git diff --cached --check` 僅提示這些原文既有 whitespace，不存在其他診斷。

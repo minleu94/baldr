@@ -11,3 +11,12 @@ helper SHA `169fa40c6c87c68268bfe40caf361f54618732e685adca02fd9de931c373221f`，
 先前沙箱路徑權限、目錄mtime被誤當身分、Windows live SHM無法串流及cleanup遮蔽primary的失敗attempt均保留。此原型的單一fixture表格oracle不能直接授原twstock全庫接受；實際接線還需完整backup／schema／consumer核驗、區分原main與derived snapshot SHA，以及市場與H20兩份獨立來源的總容量與終態清理。
 
 另已確認凍結啟動契約的輸出根矛盾：supervisor要求 `H20_GUARD_OUTPUT_ROOT=OUTPUT_ROOT=attempt/output`，child及legacy probe卻再接一層output。後續採新版本副本明示CASE_ROOT與OUTPUT_ROOT，經真子程序環境解析驗證後才接原來源；不篡改舊凍結封套。
+# WAL market bridge 合成契約補記（2026-10-09）
+
+Root 獨立執行 `output/qa/h20_wal_market_bridge_20261009_a/test_wal_merged_market_bridge_qa.py`，terminal exit 0，6 passed／0.76 秒。六份收據位於該目錄 `attempts/*_20261009T002326Z_*/receipt.json`，逐份確認正／負案例通過、來源 SQLite 連線數為 0、操作副本已清理。
+
+範圍包括多表與多執行緒同一 merged snapshot、第三資料庫／連線參數／SQL 寫入拒絕、長查詢 progress-handler 取消、連線 opening reservation 阻擋 finish、來源變動與 merged snapshot 竄改拒絕。原 main/WAL pins 與 merged snapshot SHA 分別保留，不冒充 `PinnedSQLiteReadSession`。
+
+凍結 adapter SHA `0de4a00d94746da5d9027fe0c870d11cd684822b745569a6864d623f609a37f2`；test SHA `219da364967616861b6e6273a60ea1a3c74b39d47346c50399ea92e4ce975b10`。
+
+此 adapter 仍委派原合成 WAL helper，其 `create_merged_snapshot()` 核驗查詢寫死 `market_prices`。所以六項通過不能證明實際 twstock schema 相容。下一個必要候選須移除測試專屬 row oracle，以通用 backup／integrity／schema 核驗與應用 logical-row 核驗分層，並用完全不存在 `market_prices` 的合成市場資料驗證。未啟動 Main／EXE、未連線原始資料庫，也未授予原始 H20 完整旅程接受。

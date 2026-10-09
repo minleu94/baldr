@@ -1199,3 +1199,14 @@ README、Archive README、DOCUMENTATION_INDEX 與仍有效的 troubleshooting �
 將 `docs/superpowers/plans/2026-06-15-daily-decision-desk-spark-execution-plan.md` 原文移至 `docs/09_archive/superpowers/plans/`；原路徑保留短導引。初始計畫要求新增頂層「每日決策」Tab，現行入口已是「市場探索 > 市場總覽」，因此這份 plan 只作歷史追溯；目前操作與模組邊界分別看 Application Manual §8 與 system architecture §4。Month 4 closure plan 的結案摘要明載 service-backed v1 已結案及驗證結果，但 Task 1–7 核取方塊仍未勾選；保留兩種原始記錄，不以初始 plan 推定目前完成狀態。現況仍以 PROJECT_SNAPSHOT 為準。
 
 Archive 工作樹副本與移動前來源逐 byte 相同：20,061 bytes，SHA-256 `F16CE700216E44F46589F6AE31564FCF7D23E9A7D2EF47C3BB558CD29D7B06C9`。來源 Git LF blob 為 19,525 bytes，SHA-256 `8afcf0f7c77f2508f00aaf6924e0de4136ceba236a82717b79f4b789b5c0e205`；manifest 保存此 canonical blob 值。全庫精確檔名搜尋未發現程式、測試、腳本或固定路徑 reader／writer 依賴；歷史 catalog 與 manifest 引用由舊路徑導引承接。Archive README、Superpowers README、manifest 與 DOCUMENTATION_INDEX 已同步；DOC_COVERAGE_MAP 的 Scoped SSOT 規則未變，因此不修改 Coverage Map。
+
+<a id="coverage-entry-129"></a>
+## 2026-10-09 封存 Wave 2 舊 SHA checkpoint
+
+將 `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md` 的歷史原文移至 `docs/09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/`；原路徑改留相容導引，明示該 PASS 僅適用當時 R008 SHA，並連到封存原文及現行 `WAVE2_RESULT_ID_CHECKPOINT.md`。R011 唯讀準備發現 `result_id` 不相容後，R008 已在原 scope 修正並由獨立 review 與 SOL acceptance 重驗；後續 Wave 2 狀態以 result_id checkpoint 為準。此項只整理歷史快照，不代表 C1、Wave 6 或整體重構通過。
+
+全庫固定字串查找只找到報告 README、`WAVE2_BATCH_VALIDATION_PLAN.md`、`WAVE3_DISPATCH_BASELINE.md`、`R008_SOL_RESULT_ID_COMPATIBILITY_REOPEN.md` 及歷史 Catalog 的舊路徑引用；README 已標明替代入口，舊路徑導引承接其餘引用。未發現程式、測試、腳本或固定路徑 reader／writer 依賴。Archive package README、Archive README、原報告 README 與 DOCUMENTATION_INDEX 已同步。Scoped authority 與同步規則未變，因此不修改 DOC_COVERAGE_MAP。
+
+| 原件路徑 | Archive 原文 | 搬移前 bytes / SHA-256 | Archive bytes / SHA-256 |
+|---|---|---:|---:|
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md` | [`WAVE2_CHECKPOINT.md`](target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md) | 1,023 / `37596B081EB91E8AAFF3CB677F76860318426A0186DDDCD650CF4B3A18DF4DE1` | 1,023 / `37596B081EB91E8AAFF3CB677F76860318426A0186DDDCD650CF4B3A18DF4DE1` |

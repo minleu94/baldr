@@ -14,3 +14,8 @@
 | [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) | [FINAL_MIGRATION_SEQUENCE.md](../../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md) |
 
 評估、紅隊審查與必要變更等 FINAL 設計輸入仍保留在[現行架構套件](../../01_architecture/target_architecture_2026_09_22/README.md)。仍開放的工作與驗收狀態以 [PROJECT_SNAPSHOT](../../00_core/PROJECT_SNAPSHOT.md)、FINAL migration sequence 及具名 QA 為準；本次封存不代表遷移 Gate 結案。
+
+<a id="wave2-old-sha-checkpoint"></a>
+## Wave 2 舊 SHA 驗收快照
+
+[舊 R008 SHA checkpoint 原文](REFACTOR_REPORTS/WAVE2_CHECKPOINT.md)保留當時的 bounded PASS 證據；R011 階段發現 `result_id` 不相容後，後續修正結果改以[現行 Wave 2 checkpoint](../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)為準。這份歷史快照不代表 C1、Wave 6 或整體重構通過；原路徑仍有導引，搬移前 bytes／SHA 與引用判定見 [Coverage History Entry 129](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-129)。

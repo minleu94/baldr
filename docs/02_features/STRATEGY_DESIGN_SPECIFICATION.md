@@ -556,7 +556,9 @@
 
 ---
 
-## 附錄 D：Promote 機制使用指南
+## 附錄 D：舊版 Promote 流程紀錄（2026-01-02）
+
+> **歷史流程，不是目前的操作或升級政策。** 以下固定績效門檻、按鈕名稱、自動檢查步驟與升級後行為，僅保留原設計稿記錄，不可據此判定目前是否允許 Promote。現行操作以[完整操作手冊](../07_guides/APPLICATION_MANUAL.md)中的 Registry Gate 為準；產品 lifecycle 流程見[產品路線圖 §6.2](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)。
 
 ### D.1 升級條件檢查
 

@@ -316,6 +316,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將六份日期化的 display refresh、formal data reconciliation、owner readiness、P0 license／MOPS 與 TWSE T86 candidate-pilot receipts 移至 [Archive 專區](../09_archive/README.md#2026-10-08-data-and-source-owner-receipts)，原 QA 路徑保留短轉址。原始授權、provenance、coverage 與 pilot 限制仍完整保留；source capture 或歷史 owner packet 不作目前採納／production approval 證據。目前 P0 handoff 仍看 [P0 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，總狀態看 Snapshot。
 
+## 2026-10-08 Prospective Formal clock 歷史收據歸檔
+
+將 2026-08-18 至 08-28 七份 activation、execution、weekly update、staging、calendar capture 與 failure 收據移至 [Archive 專區](../09_archive/README.md#2026-10-08-prospective-formal-clock-history)，原 QA 路徑保留短轉址。歷史內容保留其 failure／zero-output 邊界，8/26 staging 僅為具名一次性例外；目前 restart direction 與 decision-clock 契約仍由 QA 文件承接，歷史收據不構成重啟或發布授權。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

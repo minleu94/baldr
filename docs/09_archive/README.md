@@ -23,6 +23,13 @@
 - **資料／介面快照**：[Data Update display refresh（8/30）](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Formal data reconciliation（8/06）](FORMAL_DATA_RECONCILIATION_2026_08_06.md)。這些是當日觀察，不是目前資料可得性或正式完成結論。
 - **Source／owner bounded evidence**：[Owner production readiness（8/06）](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license capture（8/28）](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet（8/28）](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[TWSE T86 20-day pilot](TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md)。保留原授權、provenance、coverage 與 pilot 邊界；較新的 P0 handoff 見 [8/30 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
+### 2026-10-08 Prospective Formal clock history
+
+七份收據保存 2026-08-18 至 08-28 的 clock activation、execution、weekly update、calendar capture、staging 及失敗邊界。它們是當時的歷史證據，不代表目前已重啟、已產生 formal output 或取得發布授權；目前方向與時鐘契約仍看 QA 的 [Prospective Formal restart direction](../06_qa/PROSPECTIVE_FORMAL_RESTART_DIRECTION_2026_08_19.md)。8/26 staging 是一次性具名例外，不應泛化成常規流程。
+
+- **啟動與執行紀錄**：[8/18 clock activation](PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md) → [8/21 restart execution](PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md) → [8/25 weekly update](PROSPECTIVE_FORMAL_RESTART_WEEKLY_UPDATE_2026_08_25.md)。
+- **Staging／calendar 收據**：[8/26 named staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md)、[8/27 V3 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md)、[8/28 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_28_STAGING.md)、[8/28 calendar capture](PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md)。
+
 ### 2026-10-08 Early QA closeouts
 
 - **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。

@@ -13,11 +13,11 @@
 
 1. 開啟「數據更新」。
 2. 點擊「檢查數據狀態」。
-3. 點擊「快速更新（僅 SQLite）」。
+3. 點擊「快速更新 (跳過大型合併)」。
 4. 等待底部日誌顯示完成。
 5. 再次檢查狀態，確認每日股價與技術指標日期。
 
-快速更新預設會下載結束日前最近 10 個工作日的缺失資料並直接同步 SQLite，略過大型歷史 CSV 重寫。每日股價現在包含 TWSE `MI_INDEX type=ALL` 與 TPEX official daily close quotes；TWSE CSV 會寫到 `DATA_ROOT/daily_price/YYYYMMDD.csv`，TPEX CSV 會寫到 `DATA_ROOT/daily_price_tpex/YYYYMMDD.csv`，最後一併 upsert 到 SQLite `daily_prices`。
+快速更新預設會下載結束日前最近 10 個工作日的缺失資料；仍會更新必要的每日來源 CSV 並增量同步 SQLite，只略過大型歷史合併檔的重寫，不是「僅 SQLite」。每日股價包含 TWSE `MI_INDEX type=ALL` 與 TPEX official daily close quotes；TWSE CSV 會寫到 `DATA_ROOT/daily_price/YYYYMMDD.csv`，TPEX CSV 會寫到 `DATA_ROOT/daily_price_tpex/YYYYMMDD.csv`，最後一併 upsert 到 SQLite `daily_prices`。
 
 ## 3. 完整備份：安全更新
 

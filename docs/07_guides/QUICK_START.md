@@ -12,7 +12,7 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 ```
 
 1. 開啟數據更新→檢查數據狀態，記錄來源日期、缺庫及缺表。
-2. 依可用官方來源及日期使用快速更新（SQLite），需要CSV備份時選安全更新；來源無資料時不把missing當零。
+2. 依可用官方來源及日期使用「快速更新 (跳過大型合併)」補近期缺漏；它仍會更新必要的每日來源 CSV 並同步 SQLite。需要完整 CSV 合併時使用「安全更新 (完整 CSV + SQLite)」；來源無資料時不把 missing 當零。
 3. 確認股價／技術指標日期及窗口後，再執行選股、回測或圖表研究。
 4. 個人store與模型屬opt-in；首次不初始化他人資料，不自動啟Task、fit或交易。保存名單／自然pending與效果成熟是不同證據。
 

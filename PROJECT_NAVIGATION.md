@@ -565,8 +565,7 @@ python ui_qt/main.py
 - **完整操作手冊**：`docs/07_guides/APPLICATION_MANUAL.md`
 - **專案盤點報告**：`PROJECT_INVENTORY.md`（完整的專案結構盤點，與本文檔同層）
 - **文檔索引**：`docs/00_core/DOCUMENTATION_INDEX.md`（所有文檔的索引）
-- **External Evidence 執行入口**：`docs/superpowers/plans/2026-07-13-oos-exposure-custody-audit-execution-plan.md`
-- **Terra 執行交接**：`docs/superpowers/prompts/2026-07-13-terra-external-evidence-execution-handoff.md`
+- **External Evidence／OOS 歷史工作材料（非目前執行授權）**：[OOS Custody plan](docs/superpowers/plans/2026-07-13-oos-exposure-custody-audit-execution-plan.md) 與 [Terra handoff](docs/superpowers/prompts/2026-07-13-terra-external-evidence-execution-handoff.md) 僅供追溯；目前專案狀態看 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)，近期 Gate 證據導覽看 [QA 主題地圖](docs/06_qa/README.md)。
 - **歷史 Phase 設計追溯**：`docs/05_phases/README.md`（Historical / Reference，不作目前 roadmap）
 
 ---

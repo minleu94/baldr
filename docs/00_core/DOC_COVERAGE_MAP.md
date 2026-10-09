@@ -32,6 +32,7 @@
 1. **`PROJECT_NAVIGATION.md`** - 開發者導航權威
    - 三層架構（UI / Service / Domain）的導航說明
    - 功能導航（我要做 X，要去哪裡看？）
+   - 日期化歷史 plan／prompt 可保留追溯連結，但不得標為目前執行入口或授權；Gate 2–7 現況看 Snapshot，近期證據路由看 QA 主題地圖，日期化 Control Center／Register projection 須依各自日期判讀。
 
 2. **`AGENTS.md` / `docs/agents/`** - Codex 與 Agent 指引權威
    - `AGENTS.md` 是 Codex 自動讀取的 repo 指令入口

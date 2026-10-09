@@ -82,11 +82,12 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 ### 2026-10-08 Decision workbench and continuity audit history
 
-三份 2026-09-14／15 audit 記錄當時的全決策工作台整合證據、下一增量判讀及 continuity write-path 保存鏈缺口。內文列出的剩餘工作與優先序是當時快照，不取代目前的 Snapshot／Roadmap，也不直接授權後續工程；原 QA 路徑保留相容導引。
+三份 2026-09-14／15 audit 記錄當時的全決策工作台整合證據、下一增量判讀及 continuity write-path 保存鏈缺口。另封存一份 pre-R1 continuity loop gap audit；它列出的 Workbench projection 缺口由後續 R1 QA 驗收，不能再當成目前待辦。內文中的日期化優先序不取代 Snapshot／Roadmap，也不直接授權後續工程；原 QA 路徑保留相容導引。
 
 - [終極決策工作台整合缺口矩陣（9/14）](ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
 - [終極目標產品完成度與下一增量稽核（9/15）](ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md)
 - [Decision Continuity write-path audit（9/14）](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md)
+- [Continuity Review Loop pre-R1 gap audit（9/15）](CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md)：保留 R1 前的 gap baseline；後續 R1 acceptance 留在 [QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，完整跨頁旅程仍看留在 QA 的 [acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md)。
 
 ### 2026-10-08 Early QA closeouts
 

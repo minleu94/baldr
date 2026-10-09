@@ -13,7 +13,7 @@
 
 - [分析資料流程](DATA_FLOW_LOGIC.md)：資料流及其與分析流程的關係。
 - [資料重建指南](DATA_REBUILD_GUIDE.md)：需要重建衍生資料時閱讀；執行前依手冊核對備份與作用範圍。
-- [SQLite 儲存指南](SQLITE_STORAGE_GUIDE.md)：SQLite／CSV 相容與遷移技術參考；其中命令和架構描述若與目前架構或手冊不同，以目前架構及手冊為準。
+- [目前 SQLite 與資料保存邊界](../01_architecture/system_architecture.md)：目前模組、資料來源與 read/write 邊界。
 
 ## 來源資格、保留與資產盤點
 
@@ -25,9 +25,10 @@
 
 ## 歷史實作摘要
 
-以下一次性摘要描述舊 CSV／API 實作，不作目前操作步驟。原文已移至封存區，舊路徑保留導引：
+以下一次性摘要與舊版架構指南不作目前操作依據。原文已移至封存區，舊路徑保留導引：
 
 - [產業指數更新摘要（歷史）](../09_archive/INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md)
 - [合併與大盤指數摘要（歷史）](../09_archive/MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)
+- [SQLite 雙軌相容指南（2026-06 歷史版）](../09_archive/SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)
 
 現行使用方式請看 [操作手冊](../07_guides/APPLICATION_MANUAL.md) 與上方每日更新指南；現行模組邊界看 [系統架構](../01_architecture/system_architecture.md)。

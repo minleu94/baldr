@@ -1,5 +1,13 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 舊版 SQLite 雙軌指南歸檔
+
+將 2026-06-02 v1.1 SQLite 雙軌指南移至 `docs/09_archive/`，原路徑留下導引。原文的 CSV 唯一真實來源／SQLite 快取定位、322 倍效能聲稱與全量遷移步驟不再代表目前資料契約；現況依據為 current architecture、每日資料更新指南及 Manual。同步修正 UI feature 文件的維護指向與資料專區入口；歷史索引的舊路徑由導引承接。歸檔原文未改寫，bytes 與 SHA-256 保持不變。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/03_data/SQLITE_STORAGE_GUIDE.md | [SQLITE_STORAGE_GUIDE_HISTORY_20260602.md](../09_archive/SQLITE_STORAGE_GUIDE_HISTORY_20260602.md) | 9,490 / 63639D5EEC98F96FBD75B53BED528521942973C0726A02C6C2ADFE83BE7B20E3 | 9,490 / 63639D5EEC98F96FBD75B53BED528521942973C0726A02C6C2ADFE83BE7B20E3 |
+
 ## 2026-10-08 資料文件導覽與舊實作摘要歸檔
 
 `docs/03_data/README.md` 改按日常更新、流程／儲存、來源／保留盤點及歷史摘要分組，補上原先漏列的備份保留、SQLite、資產登記與 quarantine 文件，並標示各日期化盤點的範圍與限制。兩份描述舊 CSV/API 操作的一次性摘要移入 archive；原路徑留下導引，現行入口指向每日更新指南、Manual 與 current architecture。歸檔原文未改寫，封存前後 bytes 與 SHA-256 相同。歷史目錄與索引中的舊路徑由導引頁承接。

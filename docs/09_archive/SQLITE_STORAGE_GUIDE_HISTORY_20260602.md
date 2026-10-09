@@ -1,0 +1,132 @@
+# SQLite 儲存與雙軌相容架構指南 (SQLite Storage & Dual-Track Guide)
+
+> **版本**：v1.1 (2026-06-02)  
+> **系統定位**：說明本系統如何利用「CSV 冷備份」與「SQLite 高效快取」雙軌架構，在保證 100% 數據安全性的同時，實現 322 倍的效能飛躍。
+
+---
+
+## 1. 雙軌相容架儲構 (Dual-Track Architecture)
+
+為了平衡金融數據的**絕對安全性（耐用度）**與**策略回測的極速效能（查詢速度）**，系統採用了「雙軌相容」設計：
+
+```mermaid
+graph TD
+    A[網路爬蟲 / 數據源更新] -->|單日爬取 / 下載| B(📁 daily_price/ YYYYMMDD.csv)
+    B -->|一鍵合併| C[📁 stock_data_whole.csv 冷備份]
+    C -->|增量 / 全量同步| D[(🗄️ twstock.db SQLite)]
+    E[📊 大盤 / 產業指數 / 分點 CSV] -->|增量 / 全量同步| D
+    
+    D -->|毫秒級讀取| F[🖥️ ui_qt 數據狀態工作台]
+    D -->|322倍速複合索引查詢| G[🧪 Backtest 策略回測引擎]
+```
+
+### 💾 1.1 CSV 冷備份層 (Durability Layer)
+* **角色**：資料的唯一真實來源 (Single Source of Truth, SSOT)。
+* **存放路徑**：`D:\Min\Python\Project\FA_Data\` (含 `daily_price/`、`meta_data/` 等)。
+* **特色**：所有原始爬取的資料依然會先以 CSV 格式保存。CSV 是最直觀、不輕易損壞且隨時可以用 Excel 打開的格式。這確保了系統數據的離線完整性，隨時可以隨意重建資料庫。
+
+### ⚡ 1.2 SQLite 極速快取層 (Performance Layer)
+* **角色**：查詢與回測加速引擎。
+* **存放路徑**：`D:\Min\Python\Project\FA_Data\sqlite\twstock.db`。
+* **特色**：當 UI 打開或回測啟動時，系統會優先透過 SQLite 複合索引進行加載。大盤、個股價格、分點與衍生技術指標不再經歷緩慢的 CSV 遍歷，實現 25 毫秒內（322 倍速）的極致加載。
+* **相容防線**：若 SQLite 尚未建立、資料表為空或單一查詢失敗，DataLoader 與 BacktestService 會降級讀取既有 CSV，避免新環境或部分遷移狀態破壞既有工作流。
+
+---
+
+## 2. 日常更新流程 (Daily Operations)
+
+當您在 UI 中點擊 **「安全更新所有數據」** 時，系統底層會自動編排並依序完成以下流程，無需手動干預：
+
+```
+[1] 狀態檢查 (毫秒秒開) ──> [2] 爬取新 CSV 數據 ──> [3] CSV 後同步 SQLite
+                                      │                          │
+[7] SQLite 指標批量寫入 <── [6] 重算衍生指標 <── [5] 合併 CSV 後再同步 SQLite
+```
+
+1. **極速狀態檢查**：優先對 SQLite 執行 `COUNT(*)` 聚合，幾毫秒內在 UI 呈報現有數據起始與結束日期；SQLite 查詢不可用時才降級為 CSV 狀態檢查。UI 狀態卡只有明確 `ok`／`success`／`current`／`normal` 才顯示最新，缺表／錯誤不會因仍有筆數或文字含「最新」而假綠。
+2. **爬取最新 CSV 資料**：爬蟲去抓取最新日期的個股 CSV、大盤、產業及分點檔案。
+3. **CSV 後同步 SQLite（Phase 1）**：每日股價單日 CSV 成功產生後，會先同步到 `daily_prices`；大盤與產業 CSV 成功更新後，會同步到 `market_indices` 與 `industry_indices`。
+4. **安全合併每日 CSV**：將最新的單日 CSV 資料，追加合併入 `stock_data_whole.csv`。
+5. **合併後再同步 SQLite**：`stock_data_whole.csv` 成功合併後，會以 CSV 內出現的日期範圍更新 `daily_prices`；券商分點 `merged.csv` 成功合併後，會同步到 `broker_flows`。同步是 CSV → SQLite 單向，不會用 SQLite 反向覆蓋 CSV。
+6. **衍生技術指標重新計算**：
+   * 運行 `calculate_technical_indicators.py`，僅花費約 1 分多鐘全量重算 1,157 檔股票的衍生指標（如 KD、MACD、MA、RSI）。
+   * 指標計算完成後，**直接以批量寫入 (bulk insert)** 的方式同步更新 SQLite 的 `technical_indicators` 表中。
+
+### 2.1 Phase 1 同步邊界
+
+目前安全更新採「補同步，不改使用習慣」：CSV 仍是日常更新與人工檢查可見的落地格式，SQLite 則在每個成功步驟後跟進同步，讓 UI 狀態、回測與後續 DB-first 查詢可取得最新資料。這個階段不移除 CSV，也不把 CSV 匯出改成手動；若 SQLite 同步失敗，安全更新會在該同步步驟停止並回報失敗來源。
+
+SQLite Inspector 是獨立的唯讀查詢邊界：使用 SQLite URI `mode=ro` 並啟用 `PRAGMA query_only=ON`，不建立 schema、WAL 或空資料庫。若 DB 不存在、損毀或無權限，Inspector 頁面顯示 `SQLite 不可用`，主 UI 仍可啟動；Windows 無法取得一般 read lock 時可降級為 `immutable_fallback`，頁首會標示快照可能非即時，應停止其他寫入後重查。這不代表資料已完整，應依錯誤訊息確認 `TWStockConfig.db_file` 與資料庫權限。
+
+每日個股 CSV 同步另有最小欄位契約：必須有 `證券代號` 與 `收盤價`。檔案日期在週末時，必須由 TWSE `MI_INDEX` 回傳官方交易資料才可寫入；查詢失敗或無資料時不寫入 SQLite，但保留 raw CSV。此規則不把「週末」本身當作刪除依據，而是防止非個股 CSV 或缺乏官方開市證據的檔案污染 `daily_prices`。單一序列的 `market_index.csv` 會在同步時正規化為 `指數名稱=TAIEX` 與 `收盤指數`，保留原始 OHLC 欄位。
+
+同步入口在欄位契約檢核前會把受治理的日期／股票代號／股票名稱 aliases（例如 `date`、`stock_code`、`stock_name`）映射到上述 canonical 欄位，並統一 `YYYYMMDD` 日期與四碼股票代號；正規化只作用於寫入副本，不修改 raw CSV。
+
+---
+
+## 3. 資料庫一鍵遷移與災後重建 (Migration & Rebuild)
+
+如果因為意外斷電、資料庫損毀或您手動修改了 CSV 需要重新灌入 SQLite，我們為您設計了完整的**一鍵重建與驗證工具箱**：
+
+### 🛠️ 3.1 重新遷移與重建資料庫
+直接在專案根目錄下，開啟 PowerShell 執行：
+```powershell
+# 1. 將所有 CSV 全量重新遷移並導入 SQLite (包含價格、大盤、產業與分點)
+.\.venv\Scripts\python.exe scripts/migrate_csv_to_sqlite.py
+
+# 2. 全量重新計算所有股票的技術指標並同步批量寫入 SQLite
+.\.venv\Scripts\python.exe scripts/calculate_technical_indicators.py
+```
+> 💡 **耗時參考**：269.9 萬筆價格與指標，在全量重建下僅需 **1 分 51 秒** 即可全部算完並完美寫入！
+
+### 🔍 3.2 數據狀態自我審計 (Data Auditing)
+您可以隨時運行審計腳本，在螢幕上列印出資料庫中每個 Table 的完整筆數與日期健康狀態：
+```powershell
+.\.venv\Scripts\python.exe scripts/audit_database_status.py
+```
+
+### 🧪 3.3 等價性雙向隨機對比驗證 (Equivalence Validation)
+為了確保 SQLite 資料庫裡的價格數據與原本的 CSV 備份 **100% 完全一致（無任何小數點或資料丟失）**，可以運行隨機對比腳本：
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_sqlite_equivalence.py
+```
+> 💡 該腳本會隨機抽樣多檔個股（如台積電 2330 等），同時從 CSV 與 SQLite 讀入，雙向進行 Pandas `.equals()` 檢驗。目前的測試結果為 **100% 完美一致**。
+
+---
+
+## 4. 核心程式碼結構與配置
+
+### ⚙️ 4.1 資料庫配置與開關 (`data_module/config.py`)
+在 `TWStockConfig` 類別中，有兩個關鍵參數決定了系統是否走 SQLite 機制：
+```python
+# 數據庫開關與存放位置
+self.use_sqlite = True  # 是否優先使用 SQLite 高速讀取
+self.sqlite_dir = self.data_dir / "sqlite"
+self.db_file = self.sqlite_dir / "twstock.db"
+```
+
+### 📂 4.2 核心管理模組 (`data_module/db_manager.py`)
+* **職責**：動態寬表建表、SQLite Connection 池管理、批量導入、資料庫優化。
+* **特色**：啟用了 `journal_mode = WAL` (寫入 ahead 記錄模式) 與 `PRAGMA synchronous = NORMAL`，使批量寫入效能達到極限。
+
+### 📥 4.3 資料載入相容層 (`data_module/data_loader.py`)
+* 內部自動判斷 `config.use_sqlite` 是否啟用。
+* 啟用時，大盤價格載入與個股載入會自動繞開大 CSV 的硬碟掃描，直接對 SQLite 發送高效率複合索引查詢，並回傳格式與原本 100% 相同的 Pandas DataFrame，**業務代碼與回測引擎完全零侵入、零改動**。
+* 若 SQLite 沒有資料或查詢失敗，會保留原本 CSV 載入路徑作為相容降級，不會因為快取尚未完成遷移而中斷。
+
+---
+
+## 5. 效能對比 (Performance Metrics)
+
+| 評測項目 | 舊大 CSV 遍歷模式 | 新 SQLite 複合索引模式 | 🚀 效能提升倍數 |
+| :--- | :--- | :--- | :--- |
+| **個股載入時間 (台積電 2330)** | 8.37 秒 | **0.025 秒 (25 ms)** | ⚡ **322.9 倍加速** |
+| **數據更新 Tab 加載** | 3.5 ~ 5.0 秒 | **0.015 秒 (15 ms)** | ⚡ **秒級瞬間開屏** |
+| **全量指標計算寫入 (280萬筆)** | 約 12 ~ 15 分鐘 | **1 分 51 秒 (高速批量)** | ⚡ **約 7.5 倍加速** |
+
+---
+
+> [!IMPORTANT]
+> **開發守則**：
+> 1. 修改任何資料庫欄位或追加資料表時，請同步更新 [data_module/db_manager.py](../../data_module/db_manager.py) 的 schema 宣告。
+> 2. 請不要手動編輯 `.db` 二進位檔案，所有數據的源頭變更一律以 CSV 更新為準，再同步寫入資料庫。

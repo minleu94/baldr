@@ -187,7 +187,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 文件同步重點：
 
 - 更新流程改動需同步 `docs/03_data/` 相關指南。
-- SQLite / CSV 雙軌行為改動需同步 `docs/01_architecture/system_architecture.md` 與 `docs/03_data/SQLITE_STORAGE_GUIDE.md`。
+- SQLite、CSV capture／projection 行為改動需同步 [目前系統架構](../01_architecture/system_architecture.md) 與 [每日資料更新指南](../03_data/daily_data_update_guide.md)；若影響使用者操作，再同步[操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 
 ### 2. 市場探索
 

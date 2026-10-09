@@ -142,7 +142,7 @@
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
-- `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec 已封存，Scheduler Approval pair 因測試內容依賴仍保留原文。
+- `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec 與 1 份 Month 2 結案 plan 已封存；Scheduler Approval pair 因測試內容依賴仍保留原文。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
 - `docs/agents/PATCH_MEMO.md` 已移至 `docs/08_technical/MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md`；MCP / openmarkets patch memo 屬技術環境備忘，不屬 Agent 角色規範。
 - `multi_agent_workflow.md` 已移至 `docs/agents/`；Agent 分支、合併與協作協議不屬於系統架構文件。
@@ -184,6 +184,7 @@
 - 2026-10-08：歸檔六份 V2/V3/V4 dated readiness 收據並保留 QA 相容導引；收斂版本成熟度正文中的重複單日數字，V4 跨文件連結改為明確指向仍有效的 QA／core 路徑。
 - 2026-10-08：歸檔三份 2026-09 decision workbench／continuity audit；將 PIT industry discovery 的歷史 audit 引用改為直達封存原文，並以 QA／Archive 導覽保留查找路徑。
 - 2026-10-08：將 13 份已完成 Post-V1 plan/spec 原文依 plans／specs 層次封存；以原路徑短導引、manifest bytes／SHA 與 Q1–Q8 QA links 保留追溯，Scheduler Approval pair 留在來源路徑供內容測試檢查。
+- 2026-10-08：封存已結案 Month 2 parameter／run storage plan，修正既有 manifest bytes／SHA 不符原件的列，保留來源路徑導引並明示最終完成證據已取代早期「等待核准」快照。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。
 - 2026-07-06：完成 push 前 docs 結構稽核後補上 `superpowers/` folder ownership、歸檔舊 UI Qt roadmap audit，並將 MCP patch memo 移至技術文件。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 作為 V2.0 之後長期版本階梯 companion，納入核心入口與文件權威層級。

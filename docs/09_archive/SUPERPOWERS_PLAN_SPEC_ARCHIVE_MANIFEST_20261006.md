@@ -5,7 +5,7 @@
 
 ## 封存規則
 
-- 本清冊於 2026-10-06 建立時，保留下列歷史文件的原路徑與原 bytes。2026-10-08 將 13 份已執行的 Post-V1 plan/spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；來源舊路徑留短導引。表內 bytes／SHA-256 對應封存原文，不對應轉址頁；其餘路徑維持原位。
+- 本清冊於 2026-10-06 建立時，保留下列歷史文件的原路徑與原 bytes。2026-10-08 將 13 份已執行的 Post-V1 plan/spec 原文及 1 份已結案 Month 2 plan 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；來源舊路徑留短導引。表內 bytes／SHA-256 對應封存原文，不對應轉址頁；其餘路徑維持原位。
 - 日期是 filename milestone/date label，不代表建立日或完成日。表內歷史文件的狀態統一記為「歷史追溯；本清冊不推定執行完成／未完成」；進行中計畫依 `docs/superpowers/README.md` 的生命週期入口判讀。
 - 「現行替代權威」只替代目前狀態、優先順序與版本方向的判讀；不表示原設計內容本身已被證明過時或已執行。實際結果看具名 QA 收據或 `git log --follow -- <path>`。
 - QA 原始驗收證據仍在 `docs/06_qa/`，本清冊只連結已有的 tracked Markdown 引用，不改寫或重述驗收結果。
@@ -18,6 +18,10 @@
 - 驗收證據按主題連結 Q1–Q8：read model、dashboard、historical replay、scheduler dry run、live/research gap、signal decay、decision quality。
 - P5／S4 Scheduler Approval pair 保留原路徑，因 `tests/test_production_scheduler_approval_checklist.py` 會檢查原文內容；Q5 checklist 路徑另已修復為直讀 Archive 原件。
 - 本批沒有改變 Gate、approval、scheduler 或目前任務授權；唯一目前進行中的 Baldr 計畫仍留在 `docs/superpowers/plans/`。
+
+## 2026-10-08 Month 2 plan 原文歸檔
+
+Month 2 Parameter & Run Storage Governance Plan 已由最終 C4 驗證證據、Definition of Done 與 Git closeout 證實結案。前段「等待核准」是中途進度快照，已由最終證據取代。該列原先 bytes／SHA 與原件不符，現依封存的原始 CRLF bytes 校正；不改寫原件。
 
 ## 現行權威入口
 
@@ -46,7 +50,7 @@
 | plan | [`docs/superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md`](../superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) → 同原路徑 | 2026-06-13 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 12050 | `370cd6d0fa6e485236284bf17a243c20de6ba941f61e7c6993537ad687daf3b8` |
 | plan | [`docs/superpowers/plans/2026-06-13-strategy-scoring-governance.md`](../superpowers/plans/2026-06-13-strategy-scoring-governance.md) → 同原路徑 | 2026-06-13 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 2691 | `e7e57dcd97fb700bda1a9161b35529e2f57aeac9826b9ed42cfa7e8504bb303b` |
 | plan | [`docs/superpowers/plans/2026-06-14-legacy-test-governance.md`](../superpowers/plans/2026-06-14-legacy-test-governance.md) → 同原路徑 | 2026-06-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 3504 | `45a12062301ce57859bb43a5662a522576f63e0cf0db54e005e3feda171c1099` |
-| plan | [`docs/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md`](../superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) → 同原路徑 | 2026-06-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 41399 | `eee7c69305c35d8a070df5860e73fcba6d25d3daacacd46cd32bf85430ced4eb` |
+| plan | [`docs/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md`](../superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) → [Archive 原文](superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) | 2026-06-14 | 已結案；最終 C4 驗證與 Definition of Done 見封存原文 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 最終證據及 Git closeout 見 Archive 原文 | 41402 | `4b4da66a9fd054fd228a6afad6f000387fd439d64fcc594bd144ad8693a1f626` |
 | plan | [`docs/superpowers/plans/2026-06-14-month-3-factor-layer.md`](../superpowers/plans/2026-06-14-month-3-factor-layer.md) → 同原路徑 | 2026-06-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 37872 | `092ce0f3bfd4316fc88648741f672c84459327e1648e83ed4e6086f95d0a139e` |
 | plan | [`docs/superpowers/plans/2026-06-14-month-3-factor-run-integration.md`](../superpowers/plans/2026-06-14-month-3-factor-run-integration.md) → 同原路徑 | 2026-06-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 2136 | `f13d798e01b46d5b0a48a859b38b0e6120b7901979bfce5252458c79edc4186e` |
 | plan | [`docs/superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md`](../superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md) → 同原路徑 | 2026-06-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 34720 | `391a07ba427e6dd4eb38d8cae62c05895d123a2b7376ab9df1f2dece268eea4e` |

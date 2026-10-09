@@ -344,6 +344,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 P5／S4 Scheduler Approval pair 留在原路徑，因現有 `tests/test_production_scheduler_approval_checklist.py` 會檢查兩份原文內容；該測試原本讀取已歸檔 QA 的來源路徑已改為 Archive 原文，本次不執行測試。這些封存僅整理歷史工程計畫，不更改 Gate、排程授權或目前優先序。
 
+## 2026-10-08 Month 2 parameter／run storage plan 歸檔
+
+已將已結案的 Month 2 Parameter & Run Storage Governance Plan 原文移至 `docs/09_archive/superpowers/plans/`；原 `docs/superpowers/plans/` 路徑保留導引。最終 C4 驗證證據、Definition of Done 與 Git closeout 已交叉核對，早期「等待核准」文字是被最終結案取代的階段快照。同步修正 plan/spec manifest 中預先存在的 bytes／SHA 與原件不符，原文 SHA-256 為 `4b4da66a9fd054fd228a6afad6f000387fd439d64fcc594bd144ad8693a1f626`。歸檔原文不代表其 2026-06 驗證數字是目前 branch 的即時測試狀態。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

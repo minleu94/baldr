@@ -1426,3 +1426,17 @@ Full App healthcheck 與現行 QA coverage mapping 仍將 BACKTEST-ISSUE-013／0
 | 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
 |---|---|---:|
 | [`docs/superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md`](../superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md) | [`2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md`](superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md) | 12,508 / `82a96e5a0756a2de6d18377cf3dca8fbb594fab3ec2278fe9ddef7ba6f8c3e90` |
+
+<a id="coverage-entry-146"></a>
+## 2026-10-09 封存 Daily Decision Desk Portfolio Alert 歷史 plans
+
+將 `docs/superpowers/plans/2026-06-15-decision-desk-portfolio-alert-chip-provider.md` 與 `docs/superpowers/plans/2026-06-15-decision-desk-portfolio-alert-attribution.md` 的原始工作樹 bytes 逐位元組複製到 `docs/09_archive/superpowers/plans/`，驗證大小與 SHA-256 一致後才將舊路徑改為相容導引。來源在此批開始前為 tracked／clean；Chip Provider 舊 manifest 記錄使用 Git 正規化後的 LF hash，這筆以本機原件 bytes／hash 作為原樣封存的校驗值。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-06-15-decision-desk-portfolio-alert-chip-provider.md`](../superpowers/plans/2026-06-15-decision-desk-portfolio-alert-chip-provider.md) | [`2026-06-15-decision-desk-portfolio-alert-chip-provider.md`](superpowers/plans/2026-06-15-decision-desk-portfolio-alert-chip-provider.md) | 16,507 / `f829d9242ca8bd0f19fc58f16c77853bf4d3010065554538ff1f493af7a2760f` |
+| [`docs/superpowers/plans/2026-06-15-decision-desk-portfolio-alert-attribution.md`](../superpowers/plans/2026-06-15-decision-desk-portfolio-alert-attribution.md) | [`2026-06-15-decision-desk-portfolio-alert-attribution.md`](superpowers/plans/2026-06-15-decision-desk-portfolio-alert-attribution.md) | 28,541 / `6d68fcadecc6b1499119369f5183e234f283974f4b7082ac7aab6fc9561d3fae` |
+
+兩份原計畫分別保留 25／37 個未勾選工程／驗證項目，不修改原件，也不把目前功能描述或程式存在推定為原計畫所有項目已完成。現行操作與資料降級行為看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，service 邊界看 [system architecture](../01_architecture/system_architecture.md)。Full App healthcheck 的 `D-009` 仍是「需確認」，並標明真實 Portfolio 狀態仍需人工；本次沒有升級 QA 狀態或建立新的優先序。
+
+精確檔名搜尋找到固定歷史 Documentation Catalog／Index 快照的舊路徑連結，以及 attribution 原文的自我相對連結；相容導引承接舊路徑，attribution 原文與其連結一起保存在同一 Archive 目錄。未找到程式、測試、腳本、設定或排程中的固定路徑 consumer。現行 `DOCUMENTATION_INDEX.md` 工作樹有其他進行中修改，本批未觸碰；歷史 Index 深連結由舊路徑導引承接。`DOC_COVERAGE_MAP.md` 的權威邊界與同步規則未變，因此不修改 Map；本筆 Coverage History、[Archive README](README.md#2026-10-09-decision-desk-portfolio-alert-plans)、[Superpowers README](../superpowers/README.md) 與 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 保留原路徑、封存位置、生命週期、QA 狀態與替代入口。

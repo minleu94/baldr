@@ -354,6 +354,9 @@ P5／S4 Scheduler Approval pair 留在原路徑，因現有 `tests/test_producti
 ## 2026-10-08 Month 4 Daily Decision Desk closure plan 歸檔
 
 將含有歷史結案報告和 execution template 的 Month 4 closure plan 移至 `docs/09_archive/superpowers/plans/`，原路徑保留轉址，並同步 Archive／Superpowers README、manifest 與本 Coverage Map。原文前段明列 closed status 及測試／QA／mypy／py_compile 結果，後段 Task 1–7 核取方塊仍未勾選；保留原始差異並在轉址標出，避免讀者將模板 checkbox 誤當現況。日期化驗證不代表目前 branch 的即時測試狀態。
+## 2026-10-08 Safe Refactor continuation plan 歸檔
+
+將已結案的 Safe Refactor continuation plan 移至 `docs/09_archive/superpowers/plans/`，舊路徑保留導引。實作範圍、Wave 6 核准與 release healthcheck 另由 `docs/06_qa/SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md` 提供證據；Superpowers／Archive README 與 manifest 同步。原件 SHA／bytes 可核對，未將本機 dirty code、QA outputs 或其他工作一起 stage。
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

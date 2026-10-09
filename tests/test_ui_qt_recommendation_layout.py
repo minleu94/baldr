@@ -466,6 +466,41 @@ def test_selected_recommendation_view_shows_full_saved_reasons_and_table_summary
         app.processEvents()
 
 
+def test_screening_row_explains_volume_threshold_and_preserves_original_evidence() -> None:
+    """用使用者回報的未入選值核對真正選列展示，不只測純文字 helper。"""
+    app = _app()
+    view = _new_view()
+    view.current_execution = SimpleNamespace(items=())
+    view.current_config = None
+    view.research_context_label = None
+    view.recommendations_model = PandasTableModel(pd.DataFrame([{
+        "紀錄類型": "篩選紀錄／未入選", "證券代號": "2382", "證券名稱": "廣達",
+        "決策日": "2026-10-08", "階段": "strategy_evaluation",
+        "原篩選狀態": "skipped", "原因代碼": "liquidity_volume_ratio_below_min",
+        "觀測值": "-31.22936518258622391666432545", "要求值": "50",
+        "證據品質": "degraded", "備註": "合成重現，非重新分析原始資料",
+    }]))
+    view.results_table.setModel(view.recommendations_model)
+    try:
+        view.resize(800, 700)
+        view.show()
+        view.results_table.selectRow(0)
+        view._update_detail_text()
+        app.processEvents()
+        detail = view.detail_text.toPlainText()
+        assert "觀測變化為 -31.23%" in detail
+        assert "至少 50.00%" in detail
+        assert "負值表示量縮" in detail
+        assert "本次未產生推薦分數或排名" in detail
+        assert "個人模型選股研究" in detail
+        assert "觀測值／要求值：-31.22936518258622391666432545／50" in detail
+        assert "liquidity_volume_ratio_below_min" in detail
+        assert "證據品質：degraded" in detail
+    finally:
+        view.close()
+        app.processEvents()
+
+
 def test_recommendation_layout_in_default_shell_with_184_pixel_navigation() -> None:
     app = _app()
     shell = QWidget()

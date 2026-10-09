@@ -16,3 +16,9 @@ Root 直接閱讀並執行 `tests/test_ui_qt_recommendation_layout.py` 的理由
 - 結果支持目前 Python 介面的捲動路徑；不能證明舊 `d9a115f67d2b` EXE、新版同版封裝、原 H20 速度或完整推薦分析完成。
 
 新版 EXE 經同版驗證後，真人檢查應是：在非最大化視窗選一筆推薦，點「展開推薦理由」，捲到分數拆解、排名門檻與最後一段排名因素；將焦點放在理由文字內，以 PageDown／End 亦能到末尾；切換個人模式，歷史版本、來源及候選按鈕不重疊且可完整讀取。目前尚未提供新的驗收啟動檔。
+
+## 使用者回報未入選紀錄的選列重現
+
+另新增真正 view 選列案例，使用回報的 2382、`-31.22936518258622391666432545／50`、`liquidity_volume_ratio_below_min` 與 degraded 品質。實際詳情會先說明觀測量縮 -31.23%、策略要求至少 50.00%、本次尚未產生推薦分數或排名，並保留原始完整數值、原因代碼及品質。H20 原保存研究另由個人模型研究入口查看，不將未入選紀錄升格為推薦。
+
+Root 已實讀 evaluator：此原因來自 `latest_volume_change_percent` 與 `volume_change_min_percent` 的比較，百分比呈現符合實際語義。選列案例 1 passed／10 deselected，2.97 秒，日誌 `output/qa/f17_normal_capture_pair_20261009_a/root_screening_row_explanation.log`；沒有重新分析原始股票資料或修改策略門檻。此新增案例之後 test 檔版本已更新；上節 SHA 保留為先前四項及截圖驗證當時的版本。

@@ -1312,3 +1312,13 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 | 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
 |---|---|---:|
 | `docs/02_features/RESEARCH_RUN_REGISTRY_SPEC.md` | [`RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md`](RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md) | 9,006 / `8DE0F2F906822EB164DF483A2BB06310DA371DEA741532DA07E21AF4114A6A29` |
+<a id="coverage-entry-138"></a>
+## 2026-10-09 封存 Daily Update 無資料日恢復歷史 plan/spec
+
+將 `docs/superpowers/plans/2026-07-14-daily-update-non-trading-day-recovery.md` 與 `docs/superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md` 的歷史原文逐位元組複製至 `docs/09_archive/superpowers/{plans,specs}/`；舊路徑改留相容導引。Plan 原有 18 個步驟均未勾選，且本次未找到具名 QA closeout，因此本筆只記錄歷史入口整理，不宣告計畫完成、完整驗收或目前待辦授權。封存原文仍保留所有設計、核取狀態與驗證命令。
+
+- Plan：原文 12,019 bytes，SHA-256 `59a9d389e604752d595ac2446a1c851038d829f42f57a0424398f7d6b65a73b6`。
+- Spec：原文 2,982 bytes，SHA-256 `ac426572101845d39f8437aadcea042d3f3d9818730a9452d5d7fb14858c6319`。
+- 實作歷史可由 commits `68c1c3438` 與 `e1c7d33a9` 追溯；目前行為說明見 [每日資料更新指南](../03_data/daily_data_update_guide.md) 及 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，相關回歸測試入口為 `tests/test_update_daily_output.py`、`tests/test_scheduled_data_update_runner.py`、`tests/test_scheduled_data_freshness_probe.py`、`tests/test_update_all_coordinator.py`。未找到具名 QA closeout，不以程式或文件存在代替正式驗收聲明。
+- 精確檔名入站引用為本清冊更新的 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 與固定歷史快照 [Documentation Catalog](DOCUMENTATION_CATALOG_20261006_HISTORY.md)；Catalog 保持原始歷史路徑，該連結由舊路徑 stub 承接。未找到程式、測試、腳本或設定中的固定路徑 consumer。`docs/superpowers/README.md` 已補上主題與封存狀態導覽。
+- `DOC_COVERAGE_MAP.md` 不變：權威分工與同步規則未改；本批原路徑、Archive 目的地、原件 bytes／SHA、效力限制與目前替代入口由 Coverage History 及 Archive README 追蹤。

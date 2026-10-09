@@ -33,6 +33,10 @@
 - `output/data_completion_20260909/` 的本機 raw、candidate、manifest、backup 與讀回 sidecar 屬 Git 忽略的 output，沒有封存在 repository。`data_module/institutional_credit_flows_service.py` 與 `scripts/capture_tdcc_shareholding_candidate.py` 仍將此目錄作為預設輸出位置；本次只歸檔文件，不移動或改寫 sidecar。
 - 目前狀態與來源治理看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA Data Governance 導覽](../06_qa/README.md#主題地圖)及較新的 [個股研究資料事件調查（9/21）](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。逐檔 bytes／SHA 見 [Coverage History Entry 121](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-121)；總驗收原路徑保留的修正見 [Entry 122](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-122)。
 
+<a id="daily-update-no-data-20260714"></a>
+## 2026-10-09 每日資料更新無資料日恢復 plan/spec
+
+- [歷史 Implementation Plan](superpowers/plans/2026-07-14-daily-update-non-trading-day-recovery.md) 與[設計 spec](superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md)：保存 2026-07-14 的設計與實作計畫。原 plan 18 個步驟均未勾選，且目前未找到具名 QA closeout；本次封存是計畫生命週期整理，不表示已完成或驗收。現行行為依[每日資料更新指南](../03_data/daily_data_update_guide.md)、[操作手冊](../07_guides/APPLICATION_MANUAL.md)、程式與測試判讀；當前專案狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。原路徑保留相容導引，逐檔 bytes／SHA 與引用核對見 [Coverage History Entry 138](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-138)。
 ## 2026-10-08 Coverage Map 歷史清冊
 
 - [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。

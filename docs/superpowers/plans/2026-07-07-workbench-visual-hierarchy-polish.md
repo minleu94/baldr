@@ -1,44 +1,5 @@
-# Workbench Visual Hierarchy Polish Implementation Plan
+# Workbench Visual Hierarchy Polish Implementation Plan：歷史原文導引
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+這是已結案的 Workbench visual hierarchy polish 歷史 plan。原文保存在 [Archive](../../09_archive/superpowers/plans/2026-07-07-workbench-visual-hierarchy-polish.md)，配套文件見 [另一份原件](../../09_archive/superpowers/specs/2026-07-07-workbench-visual-hierarchy-polish-design.md)。原計畫核取項目全部完成，closeout commit `5b4b845c7`。配套 spec 另保留 Phase 0 weekly history 與 multi-day dry-run 未完成等當時門檻；它們不代表此 UI polish 計畫以外的 Gate 已完成。目前 UI 操作以 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 為準，架構以 [system architecture](../../01_architecture/system_architecture.md) 為準。
 
-**Goal:** 將左側主導覽從文字縮寫升級為自製線條 SVG icon，並把 Workbench 總覽改成一眼可讀的指揮台摘要列。
-
-**Architecture:** 保持既有 PySide6 widget / view 邊界。`LeftNavigationWidget` 管理 nav icon rendering；`UnifiedDecisionWorkbenchView` 只改 presentation layout 與 DTO summary text，不改 service 或 composer。
-
-**Tech Stack:** PySide6, pytest, existing Midnight Analyst tokens.
-
-## Global Constraints
-
-- 使用繁體中文回覆與更新文檔。
-- 不改 scheduler / report output schema。
-- 不寫 DB、不啟用 scheduler、不執行 replay、不補 lifecycle gate、不產生買賣建議。
-- UI 修改後跑 focused pytest、`tests/test_ui_qt_update_view_workbench.py`、`scripts/qa_validate_update_tab.py`、changed Python `py_compile` 與 mypy。
-
----
-
-### Task 1: Left Navigation SVG Icons
-
-**Files:** `ui_qt/widgets/left_navigation.py`, `ui_qt/main.py`, `tests/test_ui_qt_left_navigation.py`
-
-- [x] Add tests that nav buttons expose real `QIcon` objects and collapsed text no longer equals the two-letter code.
-- [x] Run `.\.venv\Scripts\python.exe -m pytest tests\test_ui_qt_left_navigation.py -q -o addopts=` and confirm failure.
-- [x] Add a small SVG icon registry and render icons with `QIcon` / `QPixmap`; keep text labels only for expanded mode.
-- [x] Re-run left nav tests and commit.
-
-### Task 2: Workbench Command Summary Layout
-
-**Files:** `ui_qt/views/workbench_view.py`, `tests/test_ui_qt_workbench_view.py`
-
-- [x] Add tests for four summary blocks, title pane gutter, and removal of long single-line summary label.
-- [x] Run `.\.venv\Scripts\python.exe -m pytest tests\test_ui_qt_workbench_view.py -q -o addopts=` and confirm failure.
-- [x] Implement four summary labels / blocks from `WorkbenchDashboardDTO`, and set consistent content margins around the overview content.
-- [x] Re-run Workbench tests and commit.
-
-### Task 3: Docs and QA
-
-**Files:** Manual / Snapshot / UI design system / QA closeout.
-
-- [x] Update docs to describe SVG nav icons, Workbench command summary, and unchanged formal data gates.
-- [x] Run required QA commands.
-- [x] Commit docs.
+原件 bytes／SHA 及生命週期見 [Superpowers plan/spec archive manifest](../../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

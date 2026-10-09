@@ -360,6 +360,9 @@ P5／S4 Scheduler Approval pair 留在原路徑，因現有 `tests/test_producti
 ## 2026-10-08 Month 3 Portfolio Replay 歷史計畫歸檔
 
 Month 3 closure audit 與 8 份全部勾選完成且具 implementation commit 的 Portfolio Replay 計畫原文移至 `docs/09_archive/superpowers/plans/`，來源舊路徑保留導引；QA／Archive／Superpowers README、逐檔 manifest 已同步。weight/exposure 計畫仍有一項未勾，保留原路徑，不推定目前 lifecycle。歸檔計畫內的歷史驗證只供追溯，目前行為回到 Snapshot、Architecture、Manual 與具名 QA。
+## 2026-10-08 V3 ML readiness 與 UI polish plan/spec 歸檔
+
+將一組 V3 Score Effectiveness／ML Readiness plan/spec 及兩組 UI readability／Workbench presentation polish plan/spec 配對移至 `docs/09_archive/superpowers/{plans,specs}/`，舊路徑保留導引；Superpowers、Archive README 和 manifest 已同步。V3 plan 的明確範圍是 read-only audit、shadow research 與 closeout readiness，排除 production ML 訓練／部署；Workbench design spec 中當時未完成的 Phase 0／multi-day gates 仍照原文保留，不等於 polish plan 的 closeout 完成。現況依 Snapshot、Architecture、Manual 與 QA 判讀。
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

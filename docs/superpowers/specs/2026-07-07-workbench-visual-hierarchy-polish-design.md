@@ -1,26 +1,5 @@
-# Workbench Visual Hierarchy Polish Design
+# Workbench Visual Hierarchy Polish Design：歷史原文導引
 
-## Goal
+這是已結案的 Workbench visual hierarchy polish 歷史 spec。原文保存在 [Archive](../../09_archive/superpowers/specs/2026-07-07-workbench-visual-hierarchy-polish-design.md)，配套文件見 [另一份原件](../../09_archive/superpowers/plans/2026-07-07-workbench-visual-hierarchy-polish.md)。原計畫核取項目全部完成，closeout commit `159cdd1c0`。配套 spec 另保留 Phase 0 weekly history 與 multi-day dry-run 未完成等當時門檻；它們不代表此 UI polish 計畫以外的 Gate 已完成。目前 UI 操作以 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 為準，架構以 [system architecture](../../01_architecture/system_architecture.md) 為準。
 
-修正左側主導覽 icon 可辨識性不足、Workbench 總覽第一眼難讀，以及總覽標題 / 摘要區貼齊左上角造成的不平衡。
-
-## Decisions
-
-- 左側主導覽採自製一致線條 SVG icon，不再以兩個大寫英文字母作為主要 icon。
-- 每個 icon 以 20x20 viewBox、2px stroke、round cap / join 呈現，使用現有 Midnight Analyst token 著色，不新增外部 icon 套件。
-- Expanded 狀態顯示 icon + label + badge；collapsed 狀態只顯示 icon，tooltip 保留完整 label。
-- Workbench 總覽採「指揮台摘要列」：今日待判讀、人工待處理、等待真實時間、Warnings 四個 summary block。
-- Workbench title / summary 區與 tab pane 之間保留一致 gutter，左側、上方與摘要 panel 內距一致，避免內容貼齊邊界。
-
-## Non-goals
-
-- 不啟用 scheduler。
-- 不寫 DB。
-- 不執行 replay。
-- 不補 Phase gate。
-- 不產生買賣建議。
-- 不重算 scoring、portfolio、backtest、recommendation 或 evidence domain 邏輯。
-
-## Formal Data Gate
-
-本次只改善 UI 可讀性。Phase 0 weekly history `0/3`、multi-day dry-run `1/3`、manual review note rhythm、action item rhythm 與 Phase 5 scheduler approval 仍需正式資料與真實時間紀錄才能標示完成。
+原件 bytes／SHA 及生命週期見 [Superpowers plan/spec archive manifest](../../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

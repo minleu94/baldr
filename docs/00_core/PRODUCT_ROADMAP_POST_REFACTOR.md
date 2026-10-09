@@ -448,20 +448,11 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 6. 停止只加 signal / alert；每個能力都要有 pruning / retirement 路徑。
 7. 停止用自然語言信心代替統計校準。
 
-## 20. 文件責任矩陣
+## 20. 文件責任與導航
 
-| 文件 | 唯一責任 |
-|---|---|
-| `PROJECT_SNAPSHOT.md` | 現況、本週優先事項、目前 Gate、高風險區。 |
-| 本文件 | Post-Refactor 產品方向、投資問題、能力演進與產品 Gate。 |
-| `ROADMAP_6M_ENGINEERING.md` | 未來六個月工程交付、依賴、測試與 Exit Criteria。 |
-| `system_vision_specification.md` | North Star、Product Principles、Bounded Advice、Evidence Requirement、Success Levels、Non-goals。 |
-| `system_architecture.md` | 目前真實架構。 |
-| `target_system_architecture.md` | Current → Transitional → Target 的目標領域背景與治理邊界導覽；目標實作設計決策見 [`FINAL_TARGET_ARCHITECTURE.md`](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)。 |
-| [`../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md) | V1.1 至 V2.0 已完成歷史版本與形成過程；不作目前工程順序。 |
-| `VERSION_ROADMAP_V2_1_TO_V4_0.md` | 長期產品成熟度與版本階梯。 |
-| `SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md` | 已完成行為不變重構的歷史執行與 rollback companion，位於 `docs/09_archive/`。 |
-| `APPLICATION_MANUAL.md` | 目前已實作使用流程；Target 不得提前寫入。 |
+各文件的權威邊界與同步要求由 [DOC_COVERAGE_MAP](DOC_COVERAGE_MAP.md) 集中維護；閱讀路線由 [DEVELOPMENT_ROADMAP](DEVELOPMENT_ROADMAP.md) 導覽，文件位置以 [DOCUMENTATION_INDEX](DOCUMENTATION_INDEX.md) 查找。本文件只維護 Post-Refactor 產品方向、投資問題、能力演進與產品 Gate；目前進度看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)，工程交付與 Exit Criteria 看 [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)。
+
+已完成行為不變重構的執行與 rollback companion 保存在[歷史報告](../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md)，只供追溯，不作目前工程計畫或狀態依據。
 
 ## 21. Remaining Open Decisions
 

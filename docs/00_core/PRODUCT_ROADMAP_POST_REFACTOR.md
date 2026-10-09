@@ -346,23 +346,23 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 | Scenario & Stress Lab | 快跌、跳空跌停、流動性消失、輪動失敗、相關股同跌、單股事件、集中、source outage | Gate 4 | 情境不是預測 |
 | AI Research Copilot | 摘要建議、解釋 Portfolio、研究問題、Profile 比較、weekly review、evidence gap | Gate 2+ | 只讀受治理資料；不重算核心、不改策略、不下單 |
 
-## 14. 30 / 60 / 90 日行動
+## 14. 歷史 30 / 60 / 90 日草案
 > 此為原始 30／60／90 日執行草案，已由 6M Roadmap 承接；完整歷史文字見[歸檔](../09_archive/PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md)，目前工程順序以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md) 為準.
 
 ## 15. 六個月產品 Gate
 
-每個 Gate 的工程細節見 6M Roadmap；此處維護產品問題與成熟度。
+此表維護產品問題、能力、產品證據與非目標；工程交付與工程 Exit Criteria 只在 [6M Engineering Roadmap](ROADMAP_6M_ENGINEERING.md) 維護。產品 Gate 1 定義 Advice 輸出契約，Gate 4 才實作 Portfolio 配置政策、sizing 與 paper evidence；Gate 7 是否啟動 ML shadow 依 6M Roadmap 的條件決定。
 
-| Gate | Investment Question | Product Capability | Data Dependencies | Engineering Deliverables | Evidence Gate | Risks | Non-goals | Exit Criteria |
+| Gate | Investment Question | Product Capability | Data Dependencies | 工程規格（6M） | Evidence Gate | Risks | Non-goals | Product Exit Criteria |
 |---|---|---|---|---|---|---|---|---|
-| 0 Safe Refactor Closeout | 現有行為是否可被安全延續？ | 可回滾、行為等價的產品底座 | Golden baseline | Recommendation / Backtest / Portfolio / Scheduler / DTO diff 與 rollback point | protected contract 無非預期差異 | 無止盡重構 | 不新增功能 | 完整 closeout 並停止主動擴張重構 |
-| 1 Daily Usable Advice | 今天研究誰、能否新增部位、配置多少？ | Guided / Professional、Recommendation / Portfolio Advice Contract | 現有受治理資料與策略版本 | advice policy、contracts、`NO_NEW_POSITION`、target/current/gap | contract、explainability、paper dry-run | 把分數當建議 | 不下單、不保證結果 | 每筆建議完整、可拒絕、可追溯 |
-| 2 Real Evidence Operating Loop | 建議與警示是否被持續檢查？ | weekly review、Action Item、Evidence write-mode | durable snapshots / outcomes | appendix-only write、backup / rollback / recovery、approval | 真實週期可重複、idempotent | 把 replay 當 forward | 不自動交易／lifecycle | 人工批准的 evidence loop 穩定運行 |
-| 3 P0 Data Integration | 回測與 Advice 是否使用可信 PIT / restriction data？ | Data Source Control Center、shadow diagnostics | P0 sources | adapters、registry、quality / missing / available-date policy | source-by-source acceptance | license / look-ahead / outage | 未接受來源不進正式決策 | 每個 P0 source 有接受或明確拒絕決議 |
-| 4 Portfolio Coach v1 | 資金應如何配置與再平衡？ | risk budget、target allocation、bands、paper portfolio | advice candidates、prices、liquidity、cost | policy builder、equal-weight benchmark、execution feasibility | OOS / forward / paper 成本後比較 | optimizer false precision | 不串 broker | target/current/gap 與 paper evidence 可重複 |
-| 5 Signal Effectiveness & Pruning | 哪些 signal / gate / alert / Profile 真有用？ | score effectiveness、ablation、retirement | forward / paper evidence | metric dashboard、experiment registry、pruning decision | monotonicity、Precision@K、regime stability、cost | p-hacking | 不以新增 feature 代替淘汰 | 每項有保留／限制／降權／退休決議 |
-| 6 Position Health & Exit | 持倉何時加碼、持有、減碼或退出？ | thesis-based health state machine | position source、market、risk、restriction、portfolio exposure | health engine、exit contract、journal / evidence | alert lead time、avoided / opportunity loss、false rate | 過早退出／固定停損依賴 | 不自動平倉 | 每次 state transition 可解釋且可追溯 |
-| 7 ML Shadow Layer | ML 是否在 rule baseline 上提供可驗證增益？ | challenger ranking / calibration / downside risk | governed feature / label / dataset registry | shadow store、registry、drift、champion/challenger | purged OOS、calibration、net utility、rollback | 黑箱與 drift | 不取代正式引擎 | 只在增益穩定且 governance 完整時提出 promotion |
+| 0 Safe Refactor Closeout | 現有行為是否可被安全延續？ | 可回滾、行為等價的產品底座 | Golden baseline | [Gate 0](ROADMAP_6M_ENGINEERING.md#4-gate-0safe-refactor-closeout) | protected contract 無非預期差異 | 無止盡重構 | 不新增功能 | 完整 closeout 並停止主動擴張重構 |
+| 1 Daily Usable Advice | 今天研究誰、能否新增部位、配置多少？ | Guided / Professional、Recommendation / Portfolio Advice Contract | 現有受治理資料與策略版本 | [Gate 1](ROADMAP_6M_ENGINEERING.md#5-gate-1daily-usable-advice-product) | contract、explainability、paper dry-run | 把分數當建議 | 不下單、不保證結果 | 每筆建議完整、可拒絕、可追溯 |
+| 2 Real Evidence Operating Loop | 建議與警示是否被持續檢查？ | weekly review、Action Item、Evidence write-mode | durable snapshots / outcomes | [Gate 2](ROADMAP_6M_ENGINEERING.md#6-gate-2real-evidence-operating-loop) | 真實週期可重複、idempotent | 把 replay 當 forward | 不自動交易／lifecycle | 人工批准的 evidence loop 穩定運行 |
+| 3 P0 Data Integration | 回測與 Advice 是否使用可信 PIT / restriction data？ | Data Source Control Center、shadow diagnostics | P0 sources | [Gate 3](ROADMAP_6M_ENGINEERING.md#7-gate-3p0-data-integration) | source-by-source acceptance | license / look-ahead / outage | 未接受來源不進正式決策 | 每個 P0 source 有接受或明確拒絕決議 |
+| 4 Portfolio Coach v1 | 資金應如何配置與再平衡？ | risk budget、target allocation、bands、paper portfolio | advice candidates、prices、liquidity、cost | [Gate 4](ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1) | OOS / forward / paper 成本後比較 | optimizer false precision | 不串 broker | target/current/gap 與 paper evidence 可重複 |
+| 5 Signal Effectiveness & Pruning | 哪些 signal / gate / alert / Profile 真有用？ | score effectiveness、ablation、retirement | forward / paper evidence | [Gate 5](ROADMAP_6M_ENGINEERING.md#9-gate-5signal-effectiveness-pruning) | monotonicity、Precision@K、regime stability、cost | p-hacking | 不以新增 feature 代替淘汰 | 每項有保留／限制／降權／退休決議 |
+| 6 Position Health & Exit | 持倉何時加碼、持有、減碼或退出？ | thesis-based health state machine | position source、market、risk、restriction、portfolio exposure | [Gate 6](ROADMAP_6M_ENGINEERING.md#10-gate-6position-health-exit-engine-v1) | alert lead time、avoided / opportunity loss、false rate | 過早退出／固定停損依賴 | 不自動平倉 | 每次 state transition 可解釋且可追溯 |
+| 7 ML Shadow Layer | ML 是否在 rule baseline 上提供可驗證增益？ | challenger ranking / calibration / downside risk | governed feature / label / dataset registry | [Gate 7（條件式）](ROADMAP_6M_ENGINEERING.md#11-gate-7ml-shadow-layer條件式) | purged OOS、calibration、net utility、rollback | 黑箱與 drift | 不取代正式引擎 | 只在增益穩定且 governance 完整時提出 promotion |
 
 ## 16. 投資有效性指標與產品決策
 

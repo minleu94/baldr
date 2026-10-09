@@ -260,6 +260,16 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 > **給 Documentation Agent 用來判斷 coverage 的規則文件**
 
+## 2026-10-08 Roadmap 邊界與技術保存母體架構契約
+
+核心文件分工已校正：Snapshot 是目前狀態唯一入口；Product Roadmap 維護產品問題、能力、證據與非目標；6M Roadmap 是唯一工程順序與交付規格，Month 1–6 明示為相對順序；Roadmap Hub 只導覽；Version Roadmap 維護成熟度，不代表工程 Gate 順序；Legacy 月份標籤明示為 2026-06-15 歷史交接語境。External Reference 中 2026-07-11 的 Hub Next 建議也明確降為歷史記錄。Product Gate 表的工程內容改為連到對應 6M Gate，避免兩份文件重複維護工程交付清單。未指定計畫起日，也未改目前狀態或 dirty Index。
+
+`system_architecture.md` 尾端 M2 日期化增量已收斂為契約與 QA 入口：UI／worker 生命週期放在 §3，明示 identity 與 fail-closed 流程放在 §4，immutable source／256 分段及全域排序邊界放在 §8，來源資格限制放在 §11。原逐輪實作、測試範圍、效能觀測與未驗事項仍由 [M2 completion QA](../06_qa/BALDR_COMPLETION_M2_20261007.md) 和 [逐段核驗 QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md) 保留；Snapshot 仍是目前進度權威。這次架構文字整理不改產品成熟度或 Roadmap Gate。
+
+## 2026-10-08 QA 收據直達索引
+
+在 [QA README](../06_qa/README.md) 新增 5 條近期閱讀路徑，為 25 份 2026-10-06 至 10-09 tracked 收據補上直達入口；原始收據不搬移、不重寫，索引只標示主題與來源，不宣稱目前狀態。F02 saved-feature gap 收據暫緩加入此索引，待其未追蹤的同主題 review 工作收束後再一起核對路由。未修改 dirty `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 或 `APPLICATION_MANUAL.md`。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。
@@ -268,11 +278,11 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 |---|---|---|
 | 目前狀態、本週優先事項、高風險區 | `docs/00_core/PROJECT_SNAPSHOT.md` | 開場與日常工作先看 Snapshot。 |
 | 重構完成後產品方向、投資問題、產品能力演進 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` | 定義 bounded advice、Portfolio、Exit、Evidence、Data、ML 與 pruning 產品 Gate；不保存工程 checklist。 |
-| 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` | 里程碑、交付物與驗收標準以 6M Roadmap 為準。 |
+| 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` | 里程碑、交付物與驗收標準以 6M Roadmap 為準；Month 1–6 是相對順序，進度看 Snapshot。 |
 | 外部專案參考、資料源優先序、V1.5-V2.0 版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 作為 6M Roadmap / Version Roadmap companion；不取代 Vision 或目前狀態權威。 |
-| V2.0 之後長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` | 維護 V2.1-V4.0 maturity milestone；不取代 Product / 6M Roadmap、Vision 或目前狀態權威。 |
-| Roadmap 入口與權威導覽 | `docs/00_core/DEVELOPMENT_ROADMAP.md` | Roadmap Hub 只保存入口與短版 Next，不保存完整歷史。 |
-| 舊 Roadmap 未完成事項移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 每個 Legacy 項目必須有唯一處置、月份與驗收定義。 |
+| V2.0 之後長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` | 維護 V2.1-V4.0 maturity milestone；不代表 6M 工程 Gate 順序，也不取代 Product / 6M Roadmap、Vision 或目前狀態權威。 |
+| Roadmap 入口與權威導覽 | `docs/00_core/DEVELOPMENT_ROADMAP.md` | Roadmap Hub 只連結權威文件，不複製 Next、狀態、風險或完整歷史。 |
+| 舊 Roadmap 項目處置與移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 每個 Legacy 項目有唯一處置；移交項目標示新版落點與驗收，舊月份標籤只供歷史追溯。 |
 | 系統架構、模組邊界、資料流 | `docs/01_architecture/system_architecture.md` | 架構描述衝突時，以系統架構文件為準。 |
 | 理想目標架構與 Current → Target 演進 | `docs/01_architecture/target_system_architecture.md` | Target capability 不代表目前已實作；現況仍回到 system architecture。 |
 | North Star、Bounded Advice、Evidence、Success Levels、Non-goals | `docs/01_architecture/system_vision_specification.md` | 不保存詳細 implementation checklist 或完成流水帳。 |
@@ -298,7 +308,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
    - `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` - 策略設計規格
 
 **衝突處理規則：**
-- 若 Snapshot、6M Roadmap、Architecture 之間衝突 → 先判斷主題，依上表權威文件修正。
+- 若 Snapshot、Product Roadmap、6M Roadmap、Architecture 之間衝突 → 先判斷主題，依上表權威文件修正。
 - 若 Index 路徑與實際檔案不符 → 以實際檔案與文件結構規則修正 Index。
 - 若 Active 專項文檔仍引用舊 Phase 或舊 Roadmap current section → 更新為 scoped authority；歷史內容移至 archive 或保留歷史語意。
 - 無法判斷主題歸屬時，標示「需要確認」，不要自行建立第二套權威。
@@ -321,7 +331,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 **應該更新（Should）：**
 - `docs/02_features/USER_GUIDE.md` - 使用者指南（如有操作流程變更）
 - `PROJECT_NAVIGATION.md` - 「功能導航」段落（如新增功能）
-- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響短版 Next、入口或歷史導引）
+- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響權威入口或歷史導引）
 
 **可選更新（Nice-to-have）：**
 - `README.md` - 專案主文檔（如為重大功能變更）
@@ -341,7 +351,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 **應該更新（Should）：**
 - `docs/00_core/PROJECT_SNAPSHOT.md` - 「高風險區」段落（如涉及高風險模組）
-- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響短版 Next、入口或歷史導引）
+- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響權威入口或歷史導引）
 
 **可選更新（Nice-to-have）：**
 - `PROJECT_INVENTORY.md` - 專案盤點（如為重大模組變更）
@@ -366,7 +376,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 **應該更新（Should）：**
 - `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` - 策略設計規格（如策略邏輯變更）
-- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響短版 Next、入口或歷史導引）
+- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響權威入口或歷史導引）
 - `docs/00_core/DOCUMENTATION_INDEX.md` - 若新增文檔，需更新索引
 
 **可選更新（Nice-to-have）：**
@@ -406,7 +416,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 **必須更新（Must）：**
 - `docs/00_core/PROJECT_SNAPSHOT.md` - 目前狀態、工作模式、優先事項、高風險區
 - `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 若影響 6 個月里程碑、交付物或驗收標準
-- `docs/00_core/DEVELOPMENT_ROADMAP.md` - 若新增或調整 Roadmap Hub 入口與短版 Next
+- `docs/00_core/DEVELOPMENT_ROADMAP.md` - 若新增或調整 Roadmap Hub 的權威入口
 - `docs/00_core/DOCUMENTATION_INDEX.md` - 若索引內進度文字過期，需更新
 
 **應該更新（Should）：**
@@ -515,7 +525,8 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 2. **Scoped Authority 一致性檢查通過**
    - `PROJECT_SNAPSHOT.md` 的目前狀態與本週優先事項合理反映當前工作。
-   - `ROADMAP_6M_ENGINEERING.md` 的 6 個月路線與 Roadmap Hub 的 Next 不衝突。
+   - Snapshot 的近期工作能對應 6M Roadmap 中的 Gate 與依賴；未設定計畫起日時，不將相對月份推斷成目前月份。
+   - Roadmap Hub 正確連到 Snapshot、Product Roadmap 與 6M Roadmap，不複製任何一份文件的 Next 或狀態。
    - `system_architecture.md` 的架構描述不落後於 Snapshot 的已完成能力。
    - `DOCUMENTATION_INDEX.md` 包含新增、搬移或歸檔的 Markdown。
    - 若發現不一致，必須依主題權威文件修正，而不是一律回寫 Roadmap。
@@ -567,8 +578,8 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 每次文件更新後，必須檢查以下一致性：
 
 ### Snapshot ↔ Roadmap Hub ↔ 6M Roadmap 一致性
-- [ ] Snapshot 的「本週優先事項」落在 6M Roadmap 的 Month 1 或當前月度目標內。
-- [ ] Roadmap Hub 的 Next 不新增與 6M Roadmap 衝突的平行方向。
+- [ ] Snapshot 的近期優先事項可對應到 6M Roadmap 的 Gate／依賴；沒有明確起日就不宣稱當前 Month N。
+- [ ] Roadmap Hub 連結正確指向 Snapshot、Product Roadmap 與 6M Roadmap，且不複製 Next 或狀態。
 - [ ] Snapshot 的高風險區涵蓋 6M Roadmap 近期任務的高風險模組。
 - [ ] Product Roadmap 定義產品問題與 Gate；6M Roadmap 只轉成工程交付、依賴、測試與 Exit Criteria。
 - [ ] Vision 只保存 North Star / Policy / Evidence / Success / Non-goals，不複製詳細工程 checklist。
@@ -609,7 +620,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
    - 當文件被改為 Historical 時 → 必須確認是否應移入 `09_archive/`
 
 4. **`docs/00_core/DEVELOPMENT_ROADMAP.md`**
-   - 當 Roadmap Hub 入口、Next 摘要或權威文件指向變更時 → 必須更新。
+   - 當 Roadmap Hub 的權威入口或連結目標變更時 → 必須更新。
    - 不再把完整歷史 Done、長期架構細節或所有風險都塞回本文件。
 
 5. **`docs/00_core/ROADMAP_6M_ENGINEERING.md`**
@@ -649,10 +660,11 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 ---
 
-**最後更新**：2026-09-30
+**最後更新**：2026-10-08
 
 ## 更新記錄
 
+- 2026-10-08：校正 Scoped SSOT 的產品、工程、現況、成熟度與歷史移交邊界；將 Hub 定義為純導覽、6M 月份明示為相對順序，並以 6M Gate 連結取代 Product Roadmap 重複維護工程交付清單。未修改當前狀態或 dirty Index。
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
 - 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。

@@ -1,6 +1,6 @@
 # 文檔結構與維護規則
 
-> **最後更新**：2026-07-06
+> **最後更新**：2026-10-08
 > **用途**：定義 `docs/` 內每個資料夾的歸屬、文件生命週期、刪除/歸檔規則。
 
 > **2026-10-06 維護補充**：[全文件目錄歷史快照](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md)涵蓋 tracked root／docs／module 說明；[整理 manifest](../09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)保存全文封存與原 bytes 恢復。ignored 的 plan／QA 不等同 cache；唯一需求先核 byte backup，失敗 raw 不改寫。資料保留看[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，graph 更新看[維護入口](DOCUMENTATION_GRAPH_GUIDE.md)。
@@ -9,47 +9,55 @@
 
 ## 一、權威文件層級
 
-1. **目前狀態入口**
+1. **產品願景與原則**
+   - `docs/01_architecture/system_vision_specification.md`
+   - 定義 North Star、產品原則、Evidence、成功標準與 Non-goals；不保存工程執行狀態。
+
+2. **目前狀態入口**
    - `docs/00_core/PROJECT_SNAPSHOT.md`
    - 定義目前狀態、工作模式、本週優先事項與高風險區。
 
-2. **6 個月工程路線**
+3. **產品方向**
+   - `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`
+   - 定義產品問題、產品能力、成熟度與非目標；不保存目前完成度或工程排程。
+
+4. **6 個月工程路線**
    - `docs/00_core/ROADMAP_6M_ENGINEERING.md`
-   - 定義未來 6 個月的工程主線、月度里程碑、交付物與驗收標準。
+   - 定義相對月份、工程 Gate、依賴、交付物與驗收標準；當前進度以 Snapshot 為準。
 
-3. **Roadmap Hub**
+5. **Roadmap Hub**
    - `docs/00_core/DEVELOPMENT_ROADMAP.md`
-   - 只放系統定位、短版 Next、風險摘要與權威文件入口，不保存完整歷史。
+   - 只提供系統定位與權威文件入口，不複製 Next、進度、風險或完整歷史。
 
-4. **長期版本階梯 companion**
+6. **長期版本成熟度階梯**
    - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`
-   - 將 6M Roadmap Phase 與 Vision 成功標準映射為 V2.1-V4.0 版本階梯；不取代 6M Roadmap 或 Vision。
+   - 定義 V2.1-V4.0 的產品成熟度標準；與 6M 工程 Gate 對照能力，不代表一對一的工程順序。
 
-5. **外部參考與版本形狀 companion**
+7. **外部參考與歷史版本形狀**
    - `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`
-   - 保存外部開源專案參考、資料源補強優先序、V1.8 至 V2.0 歷史版本形狀與 deferred 技術邊界；不定義目前交付順序，也不取代 Vision 或 6M Roadmap。
+   - 保存外部專案參考、資料源候選、歷史版本形狀與 deferred 技術邊界；不定義目前交付順序。
 
-6. **舊 Roadmap 移交權威**
+8. **舊 Roadmap 移交記錄**
    - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
-   - 保存舊 Roadmap 未完成事項的唯一處置、目標月份、交付物與驗收 Gate。
+   - 保存舊項目的唯一處置與移交證據；目前月份與工程順序以 6M Roadmap 為準。
 
-7. **目前操作手冊**
+9. **目前操作手冊**
    - `docs/07_guides/APPLICATION_MANUAL.md`
-   - 保存目前 9 個工作區的完整操作、結果判讀、安全限制與排錯方式。
+   - 保存目前工作區的完整操作、結果判讀、安全限制與排錯方式。
 
-8. **架構權威**
+10. **架構權威**
    - `docs/01_architecture/system_architecture.md`
    - 定義目前架構、模組邊界、資料流與高風險技術邊界。
 
-9. **索引與維護規則**
+11. **索引與維護規則**
    - `docs/00_core/DOCUMENTATION_INDEX.md`
    - `docs/00_core/DOC_COVERAGE_MAP.md`
    - `docs/00_core/DOCUMENTATION_STRUCTURE.md`
 
-10. **專項文件**
+12. **專項文件**
    - 架構、功能、資料、Phase、QA、指南、技術、Agent、策略文件。
 
-11. **Archive**
+13. **Archive**
    - `docs/09_archive/`
    - 僅作歷史追溯，不作目前狀態依據。
 
@@ -59,7 +67,7 @@
 
 | 目錄 | 放什麼 | 不放什麼 |
 |---|---|---|
-| `00_core/` | snapshot、6 個月 roadmap、roadmap hub、索引、文件治理規則 | 完整歷史 Done、單一功能的長篇操作教學 |
+| `00_core/` | Snapshot、產品方向、6 個月工程路線、Roadmap Hub、版本成熟度、外部參考、舊項目移交、索引與文件治理規則 | 完整歷史 Done、單一功能的長篇操作教學 |
 | `01_architecture/` | 架構、資料流、依賴邊界、Runtime 規範 | 一次性 QA 記錄 |
 | `02_features/` | 使用者可見功能、UI、策略、回測、評分說明 | Phase 規劃草案 |
 | `03_data/` | 資料更新、資料流、資料重建、資料故障排除 | 券商分點專屬細節 |
@@ -110,8 +118,10 @@
 
 ## 四、目前已確認的整理決策
 
-- `PROJECT_SNAPSHOT.md`、`ROADMAP_6M_ENGINEERING.md`、`DEVELOPMENT_ROADMAP.md`、`VERSION_ROADMAP_V2_1_TO_V4_0.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`、`DOCUMENTATION_INDEX.md` 保持為核心入口。
-- `DEVELOPMENT_ROADMAP.md` 是 Roadmap Hub，不再是完整歷史或唯一最高權威。
+- `PROJECT_SNAPSHOT.md`、`PRODUCT_ROADMAP_POST_REFACTOR.md`、`ROADMAP_6M_ENGINEERING.md`、`DEVELOPMENT_ROADMAP.md`、`VERSION_ROADMAP_V2_1_TO_V4_0.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`、`LEGACY_ROADMAP_CARRYOVER.md` 與 `DOCUMENTATION_INDEX.md` 保持為核心入口。
+- `system_vision_specification.md` 定義產品願景與原則；`PRODUCT_ROADMAP_POST_REFACTOR.md` 定義產品方向；`ROADMAP_6M_ENGINEERING.md` 定義工程順序與驗收；`PROJECT_SNAPSHOT.md` 定義目前狀態。
+- `DEVELOPMENT_ROADMAP.md` 是純導覽 Hub，只連結權威文件，不複製 Next、進度或風險摘要，也不保存完整歷史。
+- 版本成熟度階梯描述產品能力與證據成熟度，不等同 6M Roadmap 的工程 Gate 順序。
 - 舊完整 Roadmap 已歸檔為 `docs/09_archive/DEVELOPMENT_ROADMAP_LEGACY_2026_06.md`。
 - `PROJECT_NAVIGATION.md`、`PROJECT_INVENTORY.md` 位於 repo 根目錄，仍屬專案級導航文件；索引需用正確相對路徑指向它們。
 - 根目錄 `README.md` 保持使用者導向，說明專案目的、啟動方式與乾淨 `main` 使用方式；Agent / 開發者上下文放在 `AGENT_CONTEXT.md`。
@@ -135,7 +145,7 @@
 1. Markdown 文件數量與目錄分布。
 2. Active 文件是否都有 README 或索引入口。
 3. Broken relative links。
-4. Snapshot / 6M Roadmap / V2.1-V4.0 Roadmap / Roadmap Hub / Architecture / Index 狀態是否一致。
+4. Snapshot、Product Roadmap、6M Roadmap、版本成熟度、Roadmap Hub、Architecture 與 Index 的職責及連結是否一致；Hub 不複製狀態。
 5. 是否有明顯過期的「待開始 / 進行中」描述。
 
 ### 避免重複內容重新累積
@@ -148,6 +158,7 @@
 
 ## 六、更新記錄
 
+- 2026-10-08：補齊 Scoped SSOT 的願景、產品、工程、現況、成熟度與歷史移交分工；將 Roadmap Hub 定義為純導覽，並說明版本成熟度不代表工程 Gate 順序。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。
 - 2026-07-06：完成 push 前 docs 結構稽核後補上 `superpowers/` folder ownership、歸檔舊 UI Qt roadmap audit，並將 MCP patch memo 移至技術文件。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 作為 V2.0 之後長期版本階梯 companion，納入核心入口與文件權威層級。

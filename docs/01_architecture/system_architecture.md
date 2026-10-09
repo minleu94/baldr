@@ -448,6 +448,10 @@ Application Services / DTO / Repository
 - 不在 UI 內複製 application/domain 計算。
 - Runtime UI 不得直接讀寫 Runtime store。
 
+### 技術保存來源的 UI 生命週期
+
+完整母體 v4 的產製與嚴格讀取在 worker 執行；UI 保留明示來源 pins、查詢、頁碼、選取及比較籃。個股、比較與收藏重開原保存來源及 query，不自動改讀最新資料或重產製。關閉／換來源時以 generation 隔離合作取消，晚到結果不得覆蓋新結果或觸發錯誤導覽。
+
 ### 目前 9 個頂層工作區
 
 1. 決策工作台（包含「決策來源」Daily Decision drill-down）
@@ -477,6 +481,10 @@ Application Services / DTO / Repository
 - Repository 與保存流程。
 - 資料來源選擇、fallback 與服務組合。
 - 研究、推薦、回測與 Portfolio 來源追溯。
+
+### 完整母體 v4 的 application contract
+
+呼叫端以明示 generation、plan、receipt 與 source pins 建立或重開保存來源；續跑必須指明原 identity，不能挑 latest。產製在每段寫入前及完成前重新核對來源 main／WAL 與 scope。讀回只驗原保存 bytes 與 manifest，不查目前市場資料庫、不套用目前計算 kernel，也不修改 v2／v3 產物。任何缺段、取消、篡改或來源不一致都不得發布成完整結果；分段讀取先暫存，只有全份驗證成功才交給 consumer。
 
 ### 主要服務群
 
@@ -804,6 +812,10 @@ db_file    -> <DATA_ROOT>/sqlite/twstock.db
 
 不得在新程式中硬編碼正式資料根目錄。
 
+### Immutable technical-universe source
+
+完整母體 v4 保存於獨立來源，immutable manifest／receipt 綁定來源時點、方法、規則、scope 與原始 bytes；strict read 依 generation、plan、receipt pins 驗回原件。每個 parent segment 最多 256 檔股票，這是保存分段限制，不是產品 universe 上限。全域查詢跨所有已完成分段執行條件篩選與排序，再套用分頁；不能先分頁再做全域排序。
+
 ### SQLite-first 與 CSV fallback
 
 目前主要讀取採 SQLite-first，CSV 保留：
@@ -913,6 +925,10 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 詳細規則見 [runtime_observatory_rules.md](runtime_observatory_rules.md)。
 
 ## 11. 保存與研究治理
+
+### Technical-universe provenance boundary
+
+完整母體 v4 是獨立的 immutable research source kind，不與舊每日來源混用。個股、比較與 bookmark 都保留原 query 及來源 pins；strict reopen 不挑 latest、不重算，也不把 partial／tampered／source-mismatched receipt 當完整結果。保存或展示本身不授予 PIT、ScoringEngine、正式推薦或模型訓練資格；這些資格仍須走各自的資料與產品 Gate。
 
 目前保存能力包括：
 
@@ -1135,7 +1151,7 @@ Current Result DTO / Run Metadata
 | 文件導航 | `docs/00_core/DOCUMENTATION_INDEX.md` |
 | 已完成行為不變重構的歷史／rollback companion | `docs/09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md` |
 
-Roadmap Hub 只負責入口與短版 Next，不保存完整歷史或架構細節。
+Roadmap Hub 只連結 Scoped SSOT 入口，不複製 Next、狀態或風險摘要，也不保存完整歷史或架構細節。
 
 ## 14. 高風險修改清單
 
@@ -1474,35 +1490,6 @@ MainWindow在既有推薦source tabs掛PersonalH20ResearchWidget；背景CLI com
 exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID 在建立視窗前設定為 Baldr.TechnicalAnalysis，不修改 registry。既有釘選或 Windows 圖示快取可能仍顯示舊圖，未自動更動使用者釘選。初始化失敗會關閉載入窗，顯示既有錯誤／log 位置；offscreen 測試不顯示阻塞對話框。
 
 
-### 2026-10-07 M2 保存來源瀏覽增量（dev）
+### 技術保存母體 M2（契約與驗收入口）
 
-DailyMarketResearchView 掛載 DailyMarketUniverseView；app_module.daily_market_universe_selection 將 exact generation／manifest pins 與完整 query 傳入既有完整 run reader，沿原 parent／child manifest 解回 VerifiedDailyMarketSnapshot。讀取在 TaskWorker 內建立／關閉 reader，Qt 不跨執行緒保存 SQLite connection；補充核驗結束後重核 query 再發 stockResearchRequested，返回仍指原完整母體。此增量沿既有 UI→Service→保存來源邊界，不查最新市場 DB、不產製快照；v4五規則保存底層與 full-N 正常 UI 尚未整合，不能當目標架構完成。詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_producer 只接唯讀交易 finish 的窗口，封存到獨立 v4 batch；daily_market_technical_snapshot_v4_repository 以 exact manifest 核全部 bytes、clock、method、來源與規則語義；rule_research_technical_parent_capture_v4 以完整 bounded cohort／clock／窗口建 plan，typed verified batch 組成 append-only parent receipts。讀回不開市場 DB、不套目前計算 kernel，也不改舊 v2／v3保存。這仍是最多256納入的 bounded parent 底層，正常 caller／full-N聚合／UI五規則尚未完成，證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-正常 v4 bounded parent caller（2026-10-07 dev）由 app_module.daily_market_technical_parent_v4_producer 組裝唯讀session→finish→immutable plan→真v4批次producer→strict parent writer；每批前／記child前／complete前重驗來源main+WAL與scope，明示receipt續跑不查latest。中央20例通過；full-N aggregate與UI尚未完成，不將child parent上限轉成產品母體上限。證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-2026-10-07 H20原保存來源消費增量：MainWindow由activeContextChanged獨立發TaskWorker公開product reader，以原selection/reference/context pins與generation限定回呼；StockResearchWorkspace首屏卡不受一般report service成功依賴，同context cache可回投一般摘要。重新核驗只重讀原source，pointer漂移返回不換表格；原model inference／fit／Task及公開保存reader不改。中央96項UI回歸通過；candidate、Native、真模型品質仍未驗。細節見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-2026-10-07 v4固定parent查詢接續：`app_module/daily_market_technical_parent_v4_query.py`以明示plan／receipt identity＋bytes SHA重驗parent及原child五規則；canonical query、狀態AND／OR、Decimal全段排序與分頁分開於產製，不開DB／不寫入／不挑latest。覆蓋是單段256納入＋256排除，明示full_n_aggregation=False；full-N aggregate另在施工。缺raw與規則unknown分開計唯一股數，取消在真child批次前後；中央8例通過，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-2026-10-07 v4讀回去重：公開parent reader直接回其strict read已核包；snapshot.from_json語義核驗一次後canonical回轉，repo不再將同份immutable DTO重複轉換核驗。每次重新開啟仍讀真artifact並核bytes／size／identity／source-clock／method／date與layout；writer capture前後變動重驗保留。零child complete parent無repository root、排除清冊仍受核。中央67 passed／1 Windows symlink權限skip，17股同pins剖析13.781→1.969s只為診斷，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-2026-10-07 v4個股保存讀回接點：daily_market_technical_universe_v4_stock 先重核原query當頁，沿固定full receipt／segment parent／child manifest回傳snapshot及origin query，不開來源DB／不選latest。DailyMarketTechnicalStockV4View只展示保存五規則與日期限制，返回signal維持原query；正常工作區接線仍在施工。catalog有界metadata inventory與strict selection分開，cursor綁raw bytes SHA。中央catalog／stock五項及個股Qt真來源一項通過；詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-完整母體 v4 查詢由 daily_market_technical_universe_v4_query 讀固定 store generation／plan／receipt pins，對全部完成分段做三態 AND／OR 與全域排序，再分頁；候選只留輕量排序鍵，不把完整母體列DTO當快取。stock reader固定原頁與原child下鑽；comparison reader保留每欄原query並strict重開。bookmark.v1是獨立technical-universe來源，沿WatchlistService既有JSON／COW儲存及revision；新kind不能轉成舊每日context，typed reopen回原query／個股／比較。UI完整收藏接線及性能仍施工。
-
-2026-10-07 逐段核驗 API：parent read_verified 沿同次 strict read 返回核驗批次；StoreReader.read_exact_with_verified_parent_callback 在 selected receipt prefix 每段核完身份／分母／來源／calculation 後同步交付，再釋放最多256股context。整個API成功前consumer只保留暫存；後段失敗或取消不得採用先前段結果。舊read/read_exact保持相容，沒有全N DTO cache。query採用與性能另驗，詳見 [逐段核驗QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md)。
-### 五規則完整母體的正常UI保存與重開（2026-10-07）
-
-`MainWindow → RecommendationView → DailyMarketResearchView` 掛載 `DailyMarketTechnicalUniverseV4View`，沿設定output root下的 `research_snapshots/technical_universe` 瀏覽完整來源。真TWStockConfig注入deferred production setup factory；設定核驗、產製與精確讀取在worker執行，GUI保留來源pins／query／頁碼／選取與比較籃。既有每日來源與此五規則完整來源各守原版本契約，不合併分母。
-
-完整來源個股及比較DTO分別交只讀詳情widget；比較返回帶原query與股票，背景嚴格還原。收藏payload由worker準備，主頁確認前後重核當前query與選股，再交既有WatchlistService/COW持久化。Watchlist的typed完整母體控制項背景嚴格重開原保存pins，經MainWindow導覽到原研究頁；不以舊每日或最新研究reader讀此kind，亦不自動重產製。原部分／歷史收據及source錯配／缺件保持明確拒絕。
-
-全域關閉凍結Recommendation與Watchlist pending generation，合作取消reader／producer，晚到結果不再導覽；controls忙碌時收到刷新通知合併成一次pending refresh。真257跨段UI及真MainWindow兩股保存／重開／shutdown均有工程驗證，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。Native、新候選同版、完整資料域與效能 Gate 分列，未授金融或historical PIT資格。
+完整母體 v4 的保存、分段驗核、全域查詢、個股／比較下鑽、收藏與正常 UI 讀回之逐次實作與工程證據，見 [M2 completion QA](../06_qa/BALDR_COMPLETION_M2_20261007.md) 與 [逐段核驗 QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md)。架構契約集中於本文件 §3、§4、§8、§11；QA 收據保存當時的測試範圍、效能觀測及未驗事項。它們不替代 Snapshot 的目前進度，也不把保存能力等同 PIT、正式推薦或投資資格。

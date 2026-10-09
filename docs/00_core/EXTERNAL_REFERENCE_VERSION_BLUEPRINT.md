@@ -325,12 +325,13 @@ V2.0 之後的 V2.1-V4.0 只在 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 中維護 matu
 
 ### Roadmap Hub
 
-Roadmap Hub 不應保存完整外部分析。它只需要指向本文件，並在 Next 保持「累積 evidence、用 read-only adapter 補 V2.0 前置驗證、V2.0 主 UI 等 evidence 和使用節奏成熟後再評估」。
+2026-07-11 的審查當時建議 Hub 指向本文件，並用「累積 evidence、用 read-only adapter 補 V2.0 前置驗證、V2.0 主 UI 等 evidence 和使用節奏成熟後再評估」作 Next 摘要。這是歷史建議；目前 Hub 只提供權威文件連結，狀態看 Snapshot，工程順序看 6M Roadmap。
 
 ---
 
 ## 11. 更新記錄
 
+- 2026-10-08：將 2026-07-11 的 Roadmap Hub Next 建議標為歷史，對齊目前 Hub 僅導覽、Snapshot 管狀態、6M Roadmap 管工程順序的分工。
 - 2026-07-11：對齊 Post-Refactor Data Source priority；P0 納入 corporate action、trading restriction、三大法人、信用交易、TDCC 與 PIT fundamentals，P1 / P2 依產品可信度重排；所有來源仍 candidate-first，不直接進 `ScoringEngine`。
 - 2026-07-08：補上今晚目標已轉為 `V3.0 engineering candidate closeout/readiness report`；score/source readiness 只作工程候選與人工驗證輸入，不代表正式資料 ingestion、ScoringEngine 接線、scheduler approval、V4 readiness 或投資有效性。
 - 2026-07-08：補上 supervised ML 採用邊界；sklearn / XGBoost / LightGBM 只可作 V3.3 shadow-only 候選，必須等 V3 score effectiveness audit 可判讀後才進實驗，不取代 rule engine、不直接改推薦。

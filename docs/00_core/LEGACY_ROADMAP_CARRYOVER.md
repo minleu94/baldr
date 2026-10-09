@@ -3,7 +3,7 @@
 > **原始移交日期**：2026-06-15
 > **最後整理**：2026-10-08（僅補歷史 Gate 與現行路線界線）
 > **定位**：本文件是舊 Roadmap 未完成事項的結案與移交證據。它不新增平行 Roadmap，而是確保每個舊項目都有唯一處置。
-> **現行路線**：第 4 節的 Month 1–3 Carryover Gate 是 2026-06-15 的歷史交接條件，不控制目前 Gate 0–7；目前工程順序看 [6M Engineering Roadmap](ROADMAP_6M_ENGINEERING.md)，目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
+> **現行路線**：第 2–4 節出現的 Month 1–3 標籤都指 2026-06-15 當時的新版 Roadmap 移交安排，不對應目前 6M Roadmap 的相對月份或目前進度；目前工程順序看 [6M Engineering Roadmap](ROADMAP_6M_ENGINEERING.md)，目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 
 ## 1. 判讀規則
 

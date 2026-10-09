@@ -36,8 +36,9 @@ Gate 7 ML Shadow Layer 只作條件式後續：若 Gate 5 在第六個月以前�
 
 ## 3. 時間配置
 
-### 2026-09-06 閉環工程增量的 Gate 對應
-> 2026-09-06 的單輪工程分配與交接已封存於 [6M Roadmap 歷史紀錄](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前 Gate 狀態以 Snapshot 為準.
+Month 1–6 是依 Gate 依賴排列的相對月份，目前沒有指定日曆起始日；不要從月份標籤推斷現行進度。當前狀態與優先事項只看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md)，本表用來確認 Gate 的計畫順序與預期交付。
+
+跨月 Gate 可重疊研究與設計，但前一 Gate 的正式 Exit Criteria 未通過時，不得把後一 Gate 能力接進 Guided Mode 或 formal decision layer。
 
 | 月份 | 主要 Gate | 交付結果 |
 |---|---|---|
@@ -47,8 +48,6 @@ Gate 7 ML Shadow Layer 只作條件式後續：若 Gate 5 在第六個月以前�
 | Month 4 | Gate 4 | Portfolio Coach v1、Equal Weight benchmark、paper portfolio、execution feasibility。 |
 | Month 5 | Gate 5 | Score / signal / gate / alert effectiveness、ablation、pruning / retirement 決議。 |
 | Month 6 | Gate 6；Gate 7 conditional | Position Health / Exit v1；只有 Gate 5 可判讀時才開 ML shadow。 |
-
-跨月 Gate 可重疊研究與設計，但前一 Gate 的正式 Exit Criteria 未通過時，不得把後一 Gate 能力接進 Guided Mode 或 formal decision layer。
 
 ## 4. Gate 0：Safe Refactor Closeout
 

@@ -13,6 +13,7 @@
 - **`ROADMAP_6M_ENGINEERING.md`**
   - 未來 6 個月可執行工程路線
   - 把 Post-Refactor Product Roadmap 轉成 Gate、交付物、依賴、測試、禁止事項與 Exit Criteria
+  - 月份是相對工程順序；目前進度以 Snapshot 為準
 
 - **`PRODUCT_ROADMAP_POST_REFACTOR.md`**
   - 安全重構完成後的產品方向權威
@@ -23,22 +24,26 @@
   - V2.x 聚焦 Daily Advice / Evidence / Data / Portfolio foundation；V3.x 聚焦 effectiveness / pruning / ML shadow；V4.0 需長期 evidence 支持
   - 2026-09-07 的 V4 執行計畫已移至 [`09_archive`](../09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)；封存內容截至 2026-09-10 仍標示進行中，舊核心路徑僅作導引
 
+- **`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`**
+  - 外部專案參考、資料源候選與 V1.8 至 V2.0 歷史版本形狀
+  - 作為研究參考，不定義目前產品方向或工程交付順序
+
 - **`DEVELOPMENT_ROADMAP.md`**
-  - Roadmap Hub
-  - 指向 Snapshot、6M Roadmap、長期版本階梯、系統架構與歷史歸檔
-  - 不保存完整歷史 Done，也不作為唯一狀態權威
+  - Roadmap 導覽 Hub
+  - 只連結 Snapshot、產品方向、6M 工程路線、成熟度、外部參考、Legacy、架構、手冊與歷史入口
+  - 不複製 Next、目前進度或風險摘要，也不保存完整歷史 Done
 
 - **`LEGACY_ROADMAP_CARRYOVER.md`**
-  - 舊 Roadmap 未完成事項的完整移交矩陣
-  - 每個項目均指定新 Roadmap 月份、交付物與驗收方式
+  - 舊 Roadmap 項目的處置與移交證據
+  - 已完成或取消項目記錄處置；移交項目連到新版工程路線，舊月份標籤不代表目前排程
 
 - **`DOCUMENTATION_INDEX.md`**
   - 文檔索引（文檔結構的 Single Source of Truth）
   - 完整的文檔導航和分類
 
 - **`DOC_COVERAGE_MAP.md`**
-  - 文檔覆蓋矩陣（Documentation Agent 判斷 coverage 的規則文件）
-  - 定義變更類型 → 必須更新的文件對照表
+  - 文檔覆蓋矩陣與整理記錄
+  - 定義變更類型 → 必須更新的文件，也保留已封存內容、去向與原文證據
 
 - **`DOCUMENTATION_STRUCTURE.md`**
   - 文檔生命週期、歸檔與刪除規則
@@ -56,6 +61,8 @@
 | 未來六個月工程 Gate、deliverables、dependencies、tests、Exit Criteria | `ROADMAP_6M_ENGINEERING.md` |
 | V1.1-V2.0 歷史版本 | [`../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md) |
 | V2.1-V4.0 長期產品成熟度 | `VERSION_ROADMAP_V2_1_TO_V4_0.md` |
+| 外部專案與資料源候選參考 | `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` |
+| 舊 Roadmap 項目處置 | `LEGACY_ROADMAP_CARRYOVER.md`；目前工程順序仍看 6M Roadmap |
 | 現在真實架構 | `../01_architecture/system_architecture.md` |
 | Transitional / Target Architecture | `../01_architecture/target_system_architecture.md` |
 | 已完成的行為不變安全重構 | `../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`（歷史／rollback companion） |
@@ -75,7 +82,7 @@
 2. 若要理解產品為何存在與安全邊界，讀 `../01_architecture/system_vision_specification.md`。
 3. 若要規劃重構完成後的產品方向，讀 `PRODUCT_ROADMAP_POST_REFACTOR.md`。
 4. 若要執行未來六個月工程，讀 `ROADMAP_6M_ENGINEERING.md`。
-5. 若要追溯 V1.1-V2.0 歷史，讀 archive；V2.1-V4.0 的成熟度標準讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
+5. 若要追溯 V1.1-V2.0 歷史，讀 archive；V2.1-V4.0 的成熟度標準讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`；外部參考只作研究候選。
 6. 若要確認目前或目標架構，分別讀 `system_architecture.md` 與 `target_system_architecture.md`。
 7. 若要追溯已完成的安全重構，讀 `../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`；新的重構工作仍以目前架構與當期核准計畫為準。
 8. 若要操作目前系統，先按 `../07_guides/README.md` 的章節地圖讀取 Manual 相關章節。
@@ -84,5 +91,6 @@
 
 ## 更新記錄
 
+- 2026-10-08：補入外部參考與 Legacy 入口，澄清 Hub 僅導覽、Legacy 月份為歷史標籤，並說明 Coverage Map 同時保存規則與封存證據。
 - 2026-07-11：加入 Post-Refactor Product Roadmap 與 Target Architecture 入口，重整 Scoped SSOT 導航與判讀順序，明確分開產品、工程、版本、Current / Target Architecture 與 Safe Refactor 權威。
 

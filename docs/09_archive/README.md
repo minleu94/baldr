@@ -48,6 +48,10 @@
 
 - [ML allocation Formal input readiness（2026-09-20）](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 自然日之前的 candidate runtime wiring、source pins 與當時缺件；沒有執行 validator、writer 或 scheduler，也不是 9/21 的實際驗收。同期 Natural Shadow weekly receipts 屬不同 lane，不能替代這份 Formal candidate snapshot。原 QA 路徑保留相容導引；目前 Gate／狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)，逐檔 bytes／SHA 見 [Coverage History Entry 102](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
 
+## 2026-10-09 V4.2 Daily Recommendation Learning 9/13 歷史 QA
+
+- [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
+
 ## 2026-10-09 9/14 排程與週資料受託審查歷史
 
 - [排程與週資料受託審查（2026-09-14）](SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md)：單次 `reviewed_with_follow_up` 記錄，正式採認未通過；保留 SQLite read-only 檢查與 warning／持倉證據的日期範圍，不代表 CSV／SQLite 全量一致、目前 scheduler 狀態或出場建議。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與近期排程 QA。原 QA 路徑保留相容導引，bytes／SHA 見 [Coverage History Entry 103](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。

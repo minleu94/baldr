@@ -414,6 +414,7 @@
 - 2026-10-09：將 9/20 ML Formal input readiness event-before snapshot 歸檔；舊 Catalog 引用由 QA 相容導引承接，QA／Archive 導覽明確標示它不是 9/21 實際驗收。詳見 [Coverage History Entry 102](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
 - 2026-10-09：將 9/14 排程與週資料受託審查移入 Archive，舊 QA 路徑保留導引；明示 `reviewed_with_follow_up` 未通過正式採認及 SQLite quick check 的範圍限制。詳見 [Coverage History Entry 103](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。
 - 2026-10-09：將 9/30 唯讀服務合作式取消收據歸檔，保留原始 `125 passed／1 failed` 結果、後續 fixture contract 證據與 ignored raw log 限制；歷史連結由 QA 舊路徑承接。詳見 [Coverage History Entry 104](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
+- 2026-10-09：將 V4.2 9/13 每日推薦 learning 部署／bounded run 歷史 QA 移入 Archive；保留 task 尚未執行、shadow-only 與無正式升格資格的界線。詳見 [Coverage History Entry 105](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
 - 2026-10-09：核對 Gemini 提出的 10 份 QA 歸檔候選，只封存 3 份無活躍依賴的歷史紀錄；其餘 7 份因 tracked manifest 固定原 bytes／路徑或仍被現行入口引用而保留。詳見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 - 2026-10-09：精簡 V2.1–V4.0 maturity spec 中重複的 7/12、8/30 status notes；歷史判讀仍由既有 Archive 提供，正文保留版本標準並以 Snapshot 表示現況。
 - 2026-10-09：修正 R029 active report／R031 index 對 gate 草稿與預檢清冊的引用後，將兩份已 superseded 的 dated preflight 成對歸檔；保留 QA 原路徑導引與 WAVE14 凍結 manifest。細節見 [Coverage History Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
@@ -491,3 +492,7 @@
 ## 2026-10-09 歸檔唯讀服務合作式取消 QA
 
 [原始 QA 與封存原文 SHA-256、當次 failed case 與 ignored log 限制](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
+
+## 2026-10-09 歸檔 V4.2 每日推薦學習 9/13 部署 QA
+
+[原始 QA 與封存原文 SHA-256、task 尚未執行與 research／shadow 範圍](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。

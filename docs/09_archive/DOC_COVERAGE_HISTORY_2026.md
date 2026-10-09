@@ -898,3 +898,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md` | [唯讀服務合作式取消 QA 原文](READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md) | 1,839 / `22E6A124C41D61B24C07C6B9467965B58B6B55FB4E1F91B31F1DA53A59A744CD` | 1,839 / `22E6A124C41D61B24C07C6B9467965B58B6B55FB4E1F91B31F1DA53A59A744CD` |
 
 現況回到當前程式與測試契約；ignored raw logs 不在乾淨 checkout 中，不能宣稱本次歸檔後仍可重現原執行輸出。
+
+<a id="coverage-entry-105"></a>
+## 2026-10-09 歸檔 V4.2 每日推薦學習 9/13 部署 QA
+
+此 QA 保存 2026-09-13 的 recommendation calibration research／shadow learning loop 實機註冊與 bounded entrypoint run。它記錄當時的 05:40 forward／05:45 learning local trigger、單一 learning task 精確註冊、read-only formal SQLite 來源與專用 shadow output root；learning task 初始 `LastTaskResult=267011`（尚未執行），CLI bounded run 是獨立入口驗證，不能冒充該 task 已執行。當時範圍明確不含正式推薦權重變更、Formal promotion、broker execution 或 production evidence credit，也不能從日期化部署回讀推定目前 scheduler 或 ML readiness。
+
+現行使用步驟看 Application Manual，工程資格／邊界看 Gate 7 與 Roadmap，目前狀態看 Snapshot。精確檔名 inbound 僅為 2026-10-06 歷史 Catalog；程式、測試、manifest 與 QA README 沒有固定讀者。舊 QA 路徑保留短導引，原件與封存副本逐位元組一致。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md` | [V4.2 每日推薦學習部署原文](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md) | 18,557 / `F9015BD845FD2E1F3F973C31903D9B1A3AC3C034D91772550DA97EBEC5F6C422` | 18,557 / `F9015BD845FD2E1F3F973C31903D9B1A3AC3C034D91772550DA97EBEC5F6C422` |
+
+此 Entry 只記錄文件生命週期、來源 bytes 與現行閱讀入口，不複製原 QA 的部署／測試細節作為目前運行保證。

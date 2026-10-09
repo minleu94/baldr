@@ -363,6 +363,17 @@ Month 3 closure audit 與 8 份全部勾選完成且具 implementation commit �
 ## 2026-10-08 V3 ML readiness 與 UI polish plan/spec 歸檔
 
 將一組 V3 Score Effectiveness／ML Readiness plan/spec 及兩組 UI readability／Workbench presentation polish plan/spec 配對移至 `docs/09_archive/superpowers/{plans,specs}/`，舊路徑保留導引；Superpowers、Archive README 和 manifest 已同步。V3 plan 的明確範圍是 read-only audit、shadow research 與 closeout readiness，排除 production ML 訓練／部署；Workbench design spec 中當時未完成的 Phase 0／multi-day gates 仍照原文保留，不等於 polish plan 的 closeout 完成。現況依 Snapshot、Architecture、Manual 與 QA 判讀。
+## 2026-10-08 TPEX 與治理類 Superpowers 計畫歸檔
+
+將已結案的 TPEX daily-price backfill plan、金融 float boundary plan/spec、文件 Scoped SSOT／Roadmap rebaseline plan 移至 `docs/09_archive/superpowers/`，來源舊路徑保留導引。三份 plan 的核取項目全完成，並以 closeout Git history、後續 TPEX QA 或現行 Scoped SSOT 文件交叉核對；金融數值防線仍是現行政策，早期 TPEX OpenAPI 操作細節已由 Manual／後續 custody QA 擴充。同步 Archive／Superpowers README、manifest 與 DOCUMENTATION_STRUCTURE；`DOCUMENTATION_INDEX.md` 無這些文件的直接列項且目前有其他未提交編輯，因此不在本輪改動。歸檔原文 bytes／SHA 與來源路徑列於 [manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+| 原路徑 | 歸檔原文 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/superpowers/plans/2026-06-16-tpex-daily-price-backfill.md` | [TPEX plan](../09_archive/superpowers/plans/2026-06-16-tpex-daily-price-backfill.md) | 18,279 / `060c078dad61fac2fa05ca689ed40ec5b0aa6d6ef322ee1724d27c14b13c7f9b` |
+| `docs/superpowers/plans/2026-06-11-financial-float-boundary-governance.md` | [Float boundary plan](../09_archive/superpowers/plans/2026-06-11-financial-float-boundary-governance.md) | 26,754 / `8144c2d1857480fc052ade7dcee460c6bdbb5e6535810d30009d037d5d00af0d` |
+| `docs/superpowers/specs/2026-06-11-financial-float-boundary-governance-design.md` | [Float boundary spec](../09_archive/superpowers/specs/2026-06-11-financial-float-boundary-governance-design.md) | 8,554 / `585f256b9b408991dd53f97ecae0a3acf76cbc4986d3a6ee5a22efec3036374d` |
+| `docs/superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md` | [Roadmap rebaseline plan](../09_archive/superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md) | 9,617 / `196822ac8672c2ee184c441e3940e41244e4035724f48517d1bc7fd36557c5cf` |
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

@@ -270,6 +270,19 @@ Month 3 closure audit 與 8 份核取項目全完成、各有 implementation com
 - [Workbench Visual Hierarchy Polish plan](superpowers/plans/2026-07-07-workbench-visual-hierarchy-polish.md) 與 [design spec](superpowers/specs/2026-07-07-workbench-visual-hierarchy-polish-design.md)
 
 兩組計畫均有 closeout commit，原件及各自範圍外的未完成門檻均保留。現況 UI 行為以 Application Manual 為準。
+
+### 2026-10-08 TPEX daily-price backfill plan
+
+[2026-06 TPEX daily-price backfill plan](superpowers/plans/2026-06-16-tpex-daily-price-backfill.md) 已結案並移至 Archive，舊路徑保留導引。原計畫與 `8d02af91e` 文件 closeout 相符；它描述的 OpenAPI 流程早於後來新增的 official raw custody、capture metadata、CSV／DB preflight 與 PIT 限制。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，後續正式驗收看 [2026-09-18 TPEX backfill QA](../06_qa/TPEX_SINGLE_DAY_PRECAPTURED_BACKFILL_2026_09_18.md)。
+
+### 2026-10-08 Financial float boundary governance history
+
+[金融 float 邊界治理 plan](superpowers/plans/2026-06-11-financial-float-boundary-governance.md) 與[配套設計 spec](superpowers/specs/2026-06-11-financial-float-boundary-governance-design.md) 已依類型歸檔，原路徑保留導引。計畫驗收項目全數勾選，Git closeout 為 `2d27d02bd`；此處只結束 2026-06 的實作計畫，不表示金融數值邊界政策失效。現行狀態看 [專案快照](../00_core/PROJECT_SNAPSHOT.md) 與 [系統架構](../01_architecture/system_architecture.md)。
+
+### 2026-10-08 Documentation roadmap rebaseline plan
+
+[Scoped SSOT／Roadmap rebaseline plan](superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md) 已完成並封存，舊路徑保留導引；結案檢查見 `76a30273f`、`d6533557f`，當期稽核見[文件與 Roadmap 重整稽核](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)。現行職責看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)、[DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 與 [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md)。
+
 ## 2026-10-06 治理入口整理原文快照
 
 下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：

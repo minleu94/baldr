@@ -1662,6 +1662,24 @@ class _ParentProjectionObservationV1:
 
 
 @dataclass(frozen=True, slots=True)
+class _MaPreparedPublicationV1:
+    """完整材料核對後的私有候選；不持有或發行 reader seal。"""
+
+    request: DailyMarketTechnicalMaAlignmentSourceRequestV1
+    builder: object = field(repr=False, compare=False)
+    bundle_state: object = field(repr=False, compare=False)
+    p01_session: object = field(repr=False, compare=False)
+    base_query: object = field(repr=False, compare=False)
+    selection: object = field(repr=False, compare=False)
+    index: DailyMarketTechnicalMaAlignmentCompactIndexV1
+    parent_observations: tuple[_ParentProjectionObservationV1, ...]
+
+    @property
+    def reader_issued(self) -> Literal[False]:
+        return False
+
+
+@dataclass(frozen=True, slots=True)
 class _ActiveParentProjectionV1:
     segment_index: int
     parent_read: object = field(repr=False, compare=False)
@@ -1983,6 +2001,85 @@ class DailyMarketTechnicalMaAlignmentVerifiedCollectorV1:
         *,
         cancel_callback: Callable[[], object] | None = None,
     ) -> DailyMarketTechnicalMaAlignmentReadSessionV1:
+        prepared = self._prepare_verified_publication(
+            builder, bundle_state, base_query, selection,
+            registered_projection=self,
+            cancel_callback=cancel_callback,
+        )
+        issued = _issue_ma_alignment_read_session_v1(
+            request=prepared.request,
+            builder=prepared.builder,
+            bundle_state=prepared.bundle_state,
+            p01_session=prepared.p01_session,
+            base_query=prepared.base_query,
+            selection=prepared.selection,
+            index=prepared.index,
+            parent_observations=prepared.parent_observations,
+        )
+        _strict_cancel_check(self.cancel_callback)
+        _strict_cancel_check(cancel_callback)
+        self._finished = True
+        self._issued_session = issued
+        return issued
+
+    def _prepare_for_projection_group(
+        self,
+        group: object,
+        builder: object,
+        bundle_state: object,
+        base_query: object,
+        selection: object,
+        *,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> _MaPreparedPublicationV1:
+        from app_module.daily_market_technical_universe_projection_group_v2 import (
+            DailyMarketTechnicalUniverseProjectionGroupV2,
+        )
+
+        if (
+            type(group) is not DailyMarketTechnicalUniverseProjectionGroupV2
+            or group._ma_collector is not self
+        ):
+            _fail("technical_ma_alignment_collector_group_invalid")
+        try:
+            if (
+                group._bound_builder is not builder
+                or group._source_request is not self.source_request
+                or group.status != "between_parents"
+                or group.completed_parent_count != len(self._observations)
+                or group.processed_snapshot_count != len(self._entries)
+            ):
+                _fail("technical_ma_alignment_collector_group_incomplete")
+            prepared = self._prepare_verified_publication(
+                builder, bundle_state, base_query, selection,
+                registered_projection=group,
+                cancel_callback=cancel_callback,
+            )
+            if (
+                group.status != "between_parents"
+                or self._finished
+                or group._bound_builder is not builder
+                or group._source_request is not prepared.request
+                or group._ma_collector is not self
+                or len(self._entries) != len(prepared.index.entries)
+                or group.processed_snapshot_count != len(prepared.index.entries)
+            ):
+                _fail("technical_ma_alignment_collector_group_changed_during_prepare")
+            return prepared
+        except BaseException:
+            group._poison()
+            raise
+
+    def _prepare_verified_publication(
+        self,
+        builder: object,
+        bundle_state: object,
+        base_query: object,
+        selection: object,
+        *,
+        registered_projection: object,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> _MaPreparedPublicationV1:
         from app_module.daily_market_technical_official_disposition_bundle_v1 import (
             DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
         )
@@ -2003,7 +2100,7 @@ class DailyMarketTechnicalMaAlignmentVerifiedCollectorV1:
             or self._active_parent is not None
             or self._bound_builder is not builder
             or type(builder) is not DailyMarketTechnicalUniverseV4ReadSessionBuilder
-            or builder._verified_projection is not self
+            or builder._verified_projection is not registered_projection
             or type(bundle_state) is not DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1
             or type(base_query) is not DailyMarketTechnicalUniverseV4Query
             or type(selection) is not DailyMarketTechnicalUniverseV4ReadSelection
@@ -2064,7 +2161,7 @@ class DailyMarketTechnicalMaAlignmentVerifiedCollectorV1:
         )
         _strict_cancel_check(self.cancel_callback)
         _strict_cancel_check(cancel_callback)
-        issued = _issue_ma_alignment_read_session_v1(
+        return _MaPreparedPublicationV1(
             request=request,
             builder=builder,
             bundle_state=bundle_state,
@@ -2074,11 +2171,6 @@ class DailyMarketTechnicalMaAlignmentVerifiedCollectorV1:
             index=index,
             parent_observations=finalized_parent_observations,
         )
-        _strict_cancel_check(self.cancel_callback)
-        _strict_cancel_check(cancel_callback)
-        self._finished = True
-        self._issued_session = issued
-        return issued
 
 
 @dataclass(frozen=True, slots=True)

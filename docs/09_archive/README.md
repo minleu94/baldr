@@ -6,6 +6,23 @@
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
 
+## 快速導覽
+
+| 你要找的內容 | 從這裡開始 |
+|---|---|
+| 目前狀態、優先序與工程 Gate | [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) → [6 個月工程路線](../00_core/ROADMAP_6M_ENGINEERING.md)；本 Archive 只供追溯。 |
+| 尋找各主題目前有效的文件入口 | [Documentation Index](../00_core/DOCUMENTATION_INDEX.md)。 |
+| 目前操作方式 | [Application Manual](../07_guides/APPLICATION_MANUAL.md)。 |
+| 封存生命週期與目前文件權責 | [Documentation Structure](../00_core/DOCUMENTATION_STRUCTURE.md) 與 [DOC Coverage Map](../00_core/DOC_COVERAGE_MAP.md)。 |
+| 某份文件搬去哪裡、原件 hash、替代入口 | [Coverage History](DOC_COVERAGE_HISTORY_2026.md)。 |
+| 架構與券商分點歷史原件 | [目標架構封存包](target_architecture_2026_09_22/README.md)、[券商分點封存包](broker_branch/README.md)。 |
+| 歷史 QA／完成收據 | [封存文件清單](#archive-document-catalog)；仍有待驗收或 Gate 的 QA 從[現行 QA 導覽](../06_qa/README.md)進入。 |
+| 舊 plan/spec 與執行脈絡 | [開發計畫與規格追溯](#archive-plans-and-specs)；目前明確進行中的 plan 看 [Superpowers README](../superpowers/README.md)。 |
+| 2026-10-06 文件入口整理前的快照 | [治理入口原文快照](#governance-entry-snapshots)。 |
+| Task Loop 01–07 歷史 handoff | [Task Loop 歷史入口](#task-loop-handoffs)。 |
+
+> 封存計畫中的待辦或日期化狀態不會自動成為目前優先事項或執行授權；判讀目前狀態請回到 Snapshot、對應 QA 與現行 Roadmap。
+
 ## 2026-10-09 券商分點早期設計與實作記錄
 
 - [券商分點文件封存專區](broker_branch/README.md)：保存早期資料模組設計、實作摘要、錯誤檢測與解析改進原文。現況看[券商分點導覽](../04_broker_branch/README.md)、[系統架構](../01_architecture/system_architecture.md)與[操作手冊](../07_guides/APPLICATION_MANUAL.md)；原件 bytes／SHA 與引用核對見 [Coverage History Entry 126](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-126)。
@@ -396,6 +413,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 These are completed, dated engineering/readiness records. Current source acceptance and the V2.2/V2.3 approval packages remain in `docs/06_qa/`; the V2.4 policy/scope approvals are dated history in the Archive section above. Current paper-only execution controls are documented in the Application Manual and system architecture.
 
+<a id="archive-document-catalog"></a>
 ## 📄 文檔列表
 
 ### 2026-10-09 技術歷史參考
@@ -480,6 +498,7 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **[LUNA_B_ENVIRONMENT_2026_09_07.md](LUNA_B_ENVIRONMENT_2026_09_07.md)**
   - 2026-09-07 Luna B 開發環境與依賴基線記錄快照；現行環境指引以 `docs/07_guides/INSTALL_GUIDE.md` 與 requirements 檔為準。
 
+<a id="archive-plans-and-specs"></a>
 ## 開發計畫與規格追溯
 
 `docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
@@ -567,6 +586,7 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 
 [Legacy Test Governance 計畫](superpowers/plans/2026-06-14-legacy-test-governance.md) 與[設計規格](superpowers/specs/2026-06-14-legacy-test-governance-design.md) 已結案並封存，舊路徑保留導引。計畫 23 個工作項目全數勾選，並由 `c617a6104` 記錄 closeout；此資料只記錄 2026-06 的 API 遷移與 pytest collection 整理。現行測試清冊、分類與手動測試界線請看[最新測試清冊](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[QA 主題地圖](../06_qa/README.md) 與 [manual tests README](../../tests/manual/README.md)。
 
+<a id="governance-entry-snapshots"></a>
 ## 2026-10-06 治理入口整理原文快照
 
 下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：
@@ -576,6 +596,7 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - [整理前 docs README 與索引前言](DOCUMENTATION_ENTRY_HISTORY_20261006.md)
 - [文件重新整理 mapping 與處置清冊](DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)
 
+<a id="task-loop-handoffs"></a>
 ## 2026-10-08 Task Loop 01-07 historical handoffs
 
 七份逐卡 handoff 記錄各自的 bounded 工程範圍、驗收與限制。08-B 後續完成中央整合並逐卡覆核；因此 01–07 移至 Archive，中央整合與外部 Gate 殘餘邊界仍由 QA 的 [TASK_LOOP_08_HANDOFF](../06_qa/TASK_LOOP_08_HANDOFF.md) 說明。這批歸檔只整理歷史證據，不把正式來源接受、PIT／自然前瞻、真實 Paper fills、具名 review 或 V4 maturity 標示為完成。舊 QA 路徑保留短轉址；原文 bytes 與 SHA-256 見 [Coverage History Entry 082](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-082)。

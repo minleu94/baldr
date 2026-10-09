@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 封存被拒絕的 prospective clock staging
+
+將 `docs/06_qa/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING.md` 的 6,246-byte 歷史收據移至 [`docs/09_archive/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md`](../09_archive/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md)。封存前 SHA-256：`D3BCEB710AB0CDCF1CEF82B7F0DF28F8378AB6AAA3F5D1C8B4C52378F4F1555F`。只將原文指向同目錄 v3 successor 的絕對本機連結改成相對連結；其餘 staging、clock、calendar 與 PIT hashes 原樣保留。原 QA 路徑改為轉址頁，接住歷史 `DOCUMENTATION_CATALOG_20261006.md` 引用；QA README 與 Archive README 已同步標示「V2 當時被拒絕、v3 當時為 successor」，避免被解讀為目前狀態。沒有更改外部 DATA_ROOT 的任何資料或 staging。
+
 ## 2026-10-08 架構重構證據包索引
 
 為 `docs/01_architecture/target_architecture_2026_09_22/` 的重構證據補上逐檔導航：上層入口直達 `REFACTOR_REPORTS/README.md` 與 `REFACTOR_DISPATCH/README.md`；前者依 R-task、C1 與 Wave 索引 143 份報告／審查／checkpoint，後者依 R-task 與 Wave 索引 18 份分派封包。只增加目錄連結，未移動或改寫任何架構、任務、報告或 dispatch 原文；狀態與接受判讀仍看 Snapshot 及具名 QA closeout。

@@ -392,3 +392,21 @@ Root獨立bytecompare確認d12 archive repository與原frozen差異僅CRLF（新
 
 
 H4 root獨立schema native1passed0.53s（sandboxWin5failed保留），manifest2a7f49／diffef2e7e與八檔actualSHA全match，接派唯一fullMain，未新EXE。Current d12 exactread設計root接受三身份／完整1000counts／actualarchivepins，已接派實作QA controller+有界Job，不以靜態相容或P01opener冒稱F17資格。
+
+## 2026-10-09 H4 實際啟動與根目錄盤點續記
+
+H4 owner 已回報唯一 controller session 56165，argv 指向凍結 run-copy 的 snapshot_and_run.py；prelaunch SHA 為 9df79fbfc732dddcb24a71fff898dbe3c9d4acfb7487074c8ebb203bd36cc9e8。Root 實讀 prelaunch 列出的 manifest／diff 與檔案 pins，並確認 C:/t/h20dual_h4_main_run_20261009_a 已建立隔離 case/output、watchlist COW 暫存。這些檔案只證明流程已開始，不證明 MainWindow、下鑽、收藏重開或完整測試通過；由 owner 輪詢既有 handle，禁止觀察超時就重啟。兩次 launcher 前置誤呼叫未執行 controller，其失敗記錄保留。
+
+使用者詢問根目錄副本。Root 實查六個未追蹤檔案 presenter.py、reason_engine.py、recommendation_service.py、supervise_f02_ma_composite_257.py、test_r019_reason_regime_parity.py、test_recommendation_view_presenter.py，已把逐檔大小、建立／修改時間及 SHA 保存到 output/qa/root_file_inventory_20261009_a/inventory.json。兩個指定服務副本與正式模組 SHA 不同，未查到產品 Python 的直接根目錄 import；來源尚未證實，不據時間推定作者，不移動、不刪除、不覆蓋正式版本。待來源／使用狀況及可回復清單確認後再整理。
+
+F02 I supervisor 已落地但尚未凍結，沒有原生測試授權；P01 d12 controller 仍在實作。P01 不以 case_root 字串代替實際 sealed-store inventory，舊 producer、舊 runtime qualification 與新 d12 runtime 身份須分開保存。
+
+H4 終端覆核：owner session 56165 已 exit 1；root 實讀 controller_receipt.json 並獨立核 SHA 4fae03520d7c062f10e78d57e455f1c51cda581d61f545f3775675a58a535298。preparer exit 0、child exit 1、兩 Job cleanup/tree-empty true，original_data_opened false、固定 E／artifact／snapshot inventory unchanged。Root 實讀 child stderr 及固定 E operation L165–214，確認 operation 本身仍從 E origin 載入，而 H20_SYNTHETIC_ATTEMPT_ROOT 指向 H4 run-copy，觸發 synthetic_market_bridge_origin_mismatch；尚未完成 verifier／guard／keeper／MainWindow，不以隔離 watchlist 暫存推論主視窗已啟動。另 source-map restore RuntimeError 必須保留主錯誤並修復。
+
+已接派 H5 僅候選實作／純 contract 驗證：operation、legacy bridge 及其完整 sibling 依賴以原字節 plain copy 納入新 run-copy，僅精確已 pin loader 路徑映射至同 SHA copy；不更改或放寬固定 guard 的 origin／SHA／hardlink／reparse 檢查。必須一次盤點 dependency/module-cache origins 與 restore branches；尚未授權 H5 完整 Main。
+
+根目錄來源續核：root 用 git show a8c81bf5:<正式模組路徑> 與根目錄 bytes 比較，獨立結果保存 history_comparison.json。reason_engine.py、recommendation_service.py 及兩個指定測試檔與 a8c81bf5 歷史版在 LF 正規化後完全相同；recommendation_service.py 的原字節 Git object 770d5fe6cf7c39e7fefc363810de15a113ee7b5f 亦可在歷史正式 app_module 路徑找到，396c08e8 已修改其正式版。因此可確認這四檔是歷史內容副本，但尚無證據證明由哪個操作落到根目錄。presenter.py 不等於同版本正式 presenter，supervisor QA 用途需另查；不據其檔名自動移入正式模組或覆蓋現行內容。
+
+Root 實讀 F02 pinned complete receipt4：segment_reference 為 null，last_parent_reference 才等於 receipt3 的 parent_reference。已指示 I oracle 對 complete receipt 保持 sequence4／previous ID+SHA／counts／last parent 精確檢核，同時要求 segment_reference is None 並加入非 null 造假負例；不得把 partial receipt 的 segment_reference 形狀套到 complete receipt。
+
+P01 owner 實證 b3 是 recovery/source/store 根，mc6 僅 benchmark attempt；root 接受此角色區分，要求新候選保存獨立 correction receipt，不改 manifest08、不搜尋 fallback 路徑。Root 初讀 WIP controller 仍見 mc6 固定 input paths，已要求修正且所有整數 counts 必須排除 bool；尚未凍結或啟動新 runtime exact read。

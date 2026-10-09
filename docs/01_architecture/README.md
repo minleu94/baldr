@@ -27,7 +27,7 @@
 
 ## 目前架構速讀
 
-`system_architecture.md` 開頭先列 Windows composition 與 ML 路線入口，再進入第 1–15 節架構主文；前後日期段落保存 scoped contracts 或歷史增量，依各段落導引查找，不按日期推斷現況。若要理解系統定位與模組責任，先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再直接跳到第 1 節，按問題讀主文：
+`system_architecture.md` 開頭提供 Windows launcher／ML 路線導覽，穩定的 launcher composition 契約位於第 4 節，再進入第 1–15 節架構主文；前後日期段落保存 scoped contracts 或歷史增量，依各段落導引查找，不按日期推斷現況。若要理解系統定位與模組責任，先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再直接跳到第 1 節，按問題讀主文：
 
 | 要理解的內容 | 主文位置 |
 |---|---|

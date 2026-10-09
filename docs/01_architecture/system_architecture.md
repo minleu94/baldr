@@ -4,9 +4,7 @@
 
 ## Windows 可攜 composition（2026-10-06）
 
-補完首波把Python script／`-m`／frozen入口統一經 `baldr_launcher`：`application_bootstrap`純解析設定，明確apply後注入 `MainWindow`；資源、runtime與ML registry根分開，不再替換全域project_root、registry constructor或視窗類別。`build_identity`從mutable Git讀HEAD／dirty，固定來源快照與frozen讀相同metadata／依賴鎖／資源雜湊。中央以Git archive固定commit、精確依賴鎖建立獨立candidate，現有交付保留；4b40788b同版candidate已通過隔離fixture比較。P05 `stock_research_product_summary`只投影原report/H20，不增加金融或推論owner；P01 run/query合併底層已經6案例及mypy驗收，consumer／全母體UI尚未接線。實際交付範圍與未驗事項見補完計畫和具名QA，不因架構接線宣稱全產品完成。
-
-`baldr_launcher.py` 在重型匯入前分流 frozen multiprocessing，再以原 `ui_qt.main` composition 啟動。原 `sys.executable + scripts/*.py`／`-m`／`-c` 子程序沿包內資源分流；不依 cwd。市場、私人與模型契約不改；外部 config 明示 roots，Runtime 使用 `OUTPUT_ROOT/application_state`，ML registry 獨立使用 LOCALAPPDATA/baldr/research_state，避免 OUTPUT_ROOT 位於市場根內時觸發原 ML 邊界；缺件仍 unknown，安全 guard 不變。PyInstaller onedir 收集 Qt plugins 與 scipy／sklearn／TA-Lib，正式資料、私人模型、QA／experiments 與 `.env` 不打包。操作見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)，建置成功與驗證範圍另看交付收據。
+本標題保留舊連結。穩定的 launcher、設定與資料根契約已整理至[第 4 節 Windows launcher 與 composition](#windows-launcher-and-composition)。2026-10-06 建置與同版驗收快照見[可攜交付 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)及[首波補完 QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)；P01／M2 後續狀態見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
 > **2026-10-06 歷史狀態快照入口**：本頁日期化 caller／工程段落保存各自 fixed-head 的架構證據，不代表目前狀態。現行啟用、收據與排程以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 及各路線最新 QA 判讀；個人 H20 gross consumer 與 canonical 機率 head 仍須分開判讀，不因個人研究 consumer 接線提升全域 Recommendation／Portfolio ML 資格。資料根與冷封存依 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，不得從架構整理取得資料清理或模型 promotion 權限。
 
@@ -383,6 +381,12 @@ Application Services / DTO / Repository
 - Repository 與保存流程。
 - 資料來源選擇、fallback 與服務組合。
 - 研究、推薦、回測與 Portfolio 來源追溯。
+
+### Windows launcher 與 composition
+
+`baldr_launcher.py` 統一 source 與 frozen 入口；在重型 UI 匯入前處理 frozen multiprocessing，再交由既有 `ui_qt.main` 啟動。`python ui_qt/main.py`、`python -m ui_qt.main` 與 frozen 子程序的 script／module 呼叫沿套件資源根解析，不依賴目前工作目錄。`application_bootstrap` 純解析設定，完成明示套用後才注入既有 `MainWindow`；不替換全域 `project_root`、registry constructor 或視窗類別。
+
+市場資料、私人資料、Runtime 與 ML registry 使用分離的根目錄：Runtime 狀態位於 `OUTPUT_ROOT/application_state`，ML registry 預設位於 `%LOCALAPPDATA%/baldr/research_state`。缺件維持 unknown，設定與安全 guard 不因封裝而放寬。PyInstaller onedir 包含 Qt plugins、scipy、sklearn 與 TA-Lib，不內含正式資料、私人模型、QA／experiments 或 `.env`。操作步驟見[可攜指南](../07_guides/PORTABLE_WINDOWS.md)，建置與驗收範圍見[可攜交付 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)及[首波補完 QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)。
 
 ### 完整母體 v4 的 application contract
 

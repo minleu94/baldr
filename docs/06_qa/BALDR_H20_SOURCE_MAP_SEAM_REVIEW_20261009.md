@@ -61,3 +61,11 @@ Root 已直接讀 o 的 child stderr：主錯誤為 `canonical_main_module_sourc
 Root 獨立 native 純合成測試為 7/7、exit 0，Main 未呼叫、SQLite connect 0。正例包含裸／前綴 expected SHA；錯 hash、錯來源與非法雙重前綴仍拒絕；失敗未產出 child result 不掩蓋 primary，成功卻缺結果則拒絕。日誌 `bootstrap_format_candidate_20261009_a/root_format_selftest_a.log` SHA 為 `E95830DFE518BF2036A85ADEC38797B81D40580F58B7A9476971984B97497107`。
 
 此 selftest 暫將 legacy MODULES 限為合成 ui_qt.main，再原值還原；不是完整來源 import closure 或 Main 旅程。Root 已要求補 helper 身分變動拒絕，並沿新 child 重跑完整 4,161 map／22 pins seam 前置驗證，再核下一個正確 triplet。尚未批准新 Main 嘗試、原 2382 或真人 EXE。
+
+## 補測與 p 的實際終態
+
+補測 focused 10/10、full 4,161 map seam 10/10，child SHA 未變；Root 已讀原始 full seam stdout 與 final_receipt_v2。full seam 暫縮 MODULES 的範圍限制保持，沒有 full map 刪／加 key 的直接變異負例。實際 `candidate_source.diff` SHA 為 `A11545CF21B95702C85E8B994EDF6138B0E81D1C796335D4F5ABF6F5FC4E9D07`，先前 39d1 為較早差異版本。
+
+Root 重算 p 三目的 SHA 與 11 項依賴，確認內容匹配；source_recheck_receipt 沒有 expected 欄位值，Root 明示以記錄／實際一致的 `a76de47008375d3033ecab1d7b8adfa521c8ec1efecfe4d47cf1a77e978cecfb` 接收本次前置記錄，不改原封套。批准的 p controller 唯一 handle 53997 已 exit 1，Root 已讀 child stderr／controller receipt：preparer exit 0、child exit 1、child_result 不存在、Job tree 清空。source inventory／archive 起訖不變；尚未進 Main。
+
+錯誤模組名來自固定 dual `guarded_dual_sqlite_h20_child.py:1555` 的 `extra_modules`，再附加至 legacy.MODULES；不是原 legacy 的 MODULES 清單。dual 要求 `app_module.recommendation.stock_research_report_service`，s3 保存的是 `app_module/stock_research_report_service.py`，SHA `86c0a2db60a6d933128bab50e9c6c77bf6e55258a164eacf2b4450a331b41291`。舊封套保留。Root 已要求先核對完整原清單＋extras 與 sealed inventory，再準備 only-verifier 的精確名稱相容版本；不得刪除驗證項、建立假 alias 或略過 source hash。下一 Main 尚未批准。

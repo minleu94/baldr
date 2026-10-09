@@ -268,11 +268,11 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 ### Post-V1 Evidence Pipeline QA
 
-2026-07 的階段性 QA／working-copy smoke／scheduler readiness 收據，保存當時的驗證與限制；不作目前排程操作或產品狀態權威。目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 與本目錄的較新 QA 收據。`docs/06_qa/POST_V1_*.md` 舊路徑保留短轉址。
+2026-07 的階段性 QA／working-copy smoke／scheduler readiness 收據，保存當時的驗證與限制；不作目前排程操作或產品狀態權威。目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 與本目錄的較新 QA 收據。除 multi-day dry-run 登記表外，`docs/06_qa/POST_V1_*.md` 舊路徑保留短轉址；[multi-day dry-run record 的現行可續寫路徑](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md) 因程式讀取固定路徑而保留，以下 Archive 副本是原始凍結快照，不在此追加新資料。修正與逐檔來源核對見 [Coverage History Entry 119](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-119)。
 
 - **Evidence store／source／replay**：[Event Store](POST_V1_EVIDENCE_EVENT_STORE_QA_2026_07_01.md)、[Importers](POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md)、[Source persistence](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md)、[Historical replay](POST_V1_HISTORICAL_EVIDENCE_REPLAY_QA_2026_07_06.md)。
 - **Forward outcome／review**：[Forward read model](POST_V1_FORWARD_PERFORMANCE_READ_MODEL_QA_2026_07_03.md)、[Dashboard](POST_V1_FORWARD_PERFORMANCE_DASHBOARD_QA_2026_07_05.md)、[Decision quality](POST_V1_DECISION_QUALITY_REVIEW_QA_2026_07_10.md)、[Review dashboards](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)、[UI smoke](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md)、[Live vs research gap](POST_V1_LIVE_RESEARCH_GAP_LINKAGE_QA_2026_07_08.md)、[Signal decay](POST_V1_SIGNAL_DECAY_MONITOR_QA_2026_07_09.md)。
-- **Operations／scheduler**：[Weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[multi-day dry run](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)、[working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)、[approval SOP](POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md)、[scheduler dry run](POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md)、[scheduled dry-run history](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)。
+- **Operations／scheduler**：[Weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[multi-day dry-run frozen snapshot](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)、[working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)、[approval SOP](POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md)、[scheduler dry run](POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md)、[scheduled dry-run history](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)。目前可續寫登記表仍在 [`docs/06_qa`](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)。
 - **Versioned evidence operations**：[V1.3 operations](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md) · [V1.4 review history](POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md)。
 
 ### V4 2026-09-07 bounded evidence
@@ -352,19 +352,19 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 - [PROJECT_SNAPSHOT歷史封存](PROJECT_SNAPSHOT_HISTORY_2026_09_08.md)：2026-09-08整理前的完整快照與時間順序；僅作追溯。
 
-- **`DOCUMENTATION_UPDATE_SUMMARY.md`**
+- **[DOCUMENTATION_UPDATE_SUMMARY.md](DOCUMENTATION_UPDATE_SUMMARY.md)**
   - 文檔更新總結（歷史記錄）
 
-- **`DOCUMENTATION_CLEANUP_REPORT.md`**
+- **[DOCUMENTATION_CLEANUP_REPORT.md](DOCUMENTATION_CLEANUP_REPORT.md)**
   - 文檔清理報告（歷史記錄）
 
-- **`DOCUMENTATION_REORGANIZATION_PROPOSAL.md`**
+- **[DOCUMENTATION_REORGANIZATION_PROPOSAL.md](DOCUMENTATION_REORGANIZATION_PROPOSAL.md)**
   - 文檔重新整理建議（已執行）
 
-- **`SOLUTION_SUMMARY.md`**
+- **[SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md)**
   - 解決方案總結（歷史記錄）
 
-- **`API_INVESTIGATION_REPORT.md`**
+- **[API_INVESTIGATION_REPORT.md](API_INVESTIGATION_REPORT.md)**
   - API 調查報告（歷史記錄）
 
 - **[ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md](ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)**
@@ -373,7 +373,7 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **`UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`**
   - 2026-05-19 `ui_qt` 對照舊 roadmap 的歷史審核報表；部分狀態已被後續 UI / Portfolio / Workbench 進度取代。
 
-- **`PHASE_3_3B_IMPLEMENTATION_PLAN.md`**
+- **[PHASE_3_3B_IMPLEMENTATION_PLAN.md](PHASE_3_3B_IMPLEMENTATION_PLAN.md)**
   - Phase 3.3b 實施規劃（已執行，歷史歸檔）
 
 - **[NEXT_ACTION_PLAN.md](NEXT_ACTION_PLAN.md)**
@@ -388,37 +388,37 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **[DEVELOPMENT_ROADMAP_LEGACY_2026_06.md](DEVELOPMENT_ROADMAP_LEGACY_2026_06.md)**
   - 2026-06-13 前的 Roadmap 歷史副本，包含舊線性 Phase、歷史 Done 與舊 Living Section；只作追溯，不作目前狀態依據。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
 
-- **`readme_test.txt`**
+- **[readme_test.txt](readme_test.txt)**
   - 歷史測試文檔（已過時，保留作為參考）
 
-- **`root_readme_legacy_2025_12.txt`**
+- **[root_readme_legacy_2025_12.txt](root_readme_legacy_2025_12.txt)**
   - 原根目錄 `readme.txt`，內容停留在舊 Phase、舊入口與舊路徑說明；2026-06-18 已移入歸檔，只作歷史追溯，不作目前狀態依據。
 
-- **`dev_progress_note_legacy_2026_01.txt`**
+- **[dev_progress_note_legacy_2026_01.txt](dev_progress_note_legacy_2026_01.txt)**
   - 原 `docs/00_core/note.txt` 歷史開發進度筆記；2026-06-30 自核心目錄歸檔，只作追溯，不作目前狀態依據。
 
-- **`ARCH_GOVERNANCE_CHECKLIST.md`**
+- **[ARCH_GOVERNANCE_CHECKLIST.md](ARCH_GOVERNANCE_CHECKLIST.md)**
   - 早期架構治理自檢清單；2026-06-24 自 `docs/00_core/` 歸檔。目前架構權威以 `docs/01_architecture/system_architecture.md` 為準。
 
-- **`ARCH_GOVERNANCE_LIFECYCLE.md`**
+- **[ARCH_GOVERNANCE_LIFECYCLE.md](ARCH_GOVERNANCE_LIFECYCLE.md)**
   - 早期架構治理生命週期備忘；2026-06-24 自 `docs/00_core/` 歸檔。目前文件治理以 `docs/00_core/DOC_COVERAGE_MAP.md` 與 `docs/00_core/DOCUMENTATION_STRUCTURE.md` 為準。
 
-- **`ARCH_VIOLATION_RESPONSE_POLICY.md`**
+- **[ARCH_VIOLATION_RESPONSE_POLICY.md](ARCH_VIOLATION_RESPONSE_POLICY.md)**
   - 早期架構違規處理政策備忘；2026-06-24 自 `docs/00_core/` 歸檔。目前架構邊界與高風險契約以 `docs/01_architecture/system_architecture.md` 為準。
 
-- **`MASTER_GOAL_PLAYBOOK_2026_09_06.md`**
+- **[MASTER_GOAL_PLAYBOOK_2026_09_06.md](MASTER_GOAL_PLAYBOOK_2026_09_06.md)**
   - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；01–07 的逐卡 bounded 工程交接見[歷史封存組](#2026-10-08-task-loop-01-07-historical-handoffs)，08-B 中央整合收據仍在 `docs/06_qa/TASK_LOOP_08_HANDOFF.md`。逐卡與中央工程整合不代表正式來源接受、自然前瞻、真實 Paper fills、具名 Formal review 或 V4 closeout 完成。
 
 - **[LUNA_PARALLEL_PLAN_2026_09_07.md](LUNA_PARALLEL_PLAN_2026_09_07.md)**
   - 2026-09-07 Luna 三線平行規劃，該輪已於 2026-09-08 結案；整合結果見 [Luna Integration Closeout](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
 
-- **`LUNA_PROMPT_A_DATA_ML_2026_09_07.md`**、**`LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md`**、**`LUNA_PROMPT_C_UX_2026_09_07.md`**
+- **[LUNA_PROMPT_A_DATA_ML_2026_09_07.md](LUNA_PROMPT_A_DATA_ML_2026_09_07.md)**、**[LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md](LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md)**、**[LUNA_PROMPT_C_UX_2026_09_07.md](LUNA_PROMPT_C_UX_2026_09_07.md)**
   - 2026-09-07 給 Luna A/B/C 三位子代理的一次性任務 Prompt；任務已結案並整合，歷史提示詞歸檔。
 
-- **`V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md`**
+- **[V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md](V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)**
   - 2026-09-08 給新 Luna A/B/C 三線的接手任務 Prompt；已在 `docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md` 複核並提交入庫，歷史提示詞歸檔。
 
-- **`LUNA_B_ENVIRONMENT_2026_09_07.md`**
+- **[LUNA_B_ENVIRONMENT_2026_09_07.md](LUNA_B_ENVIRONMENT_2026_09_07.md)**
   - 2026-09-07 Luna B 開發環境與依賴基線記錄快照；現行環境指引以 `docs/07_guides/INSTALL_GUIDE.md` 與 requirements 檔為準。
 
 ## 開發計畫與規格追溯

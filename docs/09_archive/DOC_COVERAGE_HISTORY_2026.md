@@ -1086,3 +1086,8 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 歷史狀態與工程順序回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md)、[Product Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)、[6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 與 [V2.1–V4.0 Maturity Roadmap](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)。Luna 計畫的結案證據見 [Project Consolidation Review](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 與 [Luna Integration Closeout](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)。
 
 四份 Archive blob 的 bytes 與 SHA-256 均與來源 blob 不同；來源型態分別為舊版 Roadmap 副本、從現行 6M Roadmap 擷取的歷史段落，以及經歷史整理的行動計畫副本。兩個已停用來源路徑的短導引已建立，並以本 Entry 指回來源與 Archive 證據。此批不改變現行權威邊界，無需更新 DOC_COVERAGE_MAP。
+
+<a id="coverage-entry-119"></a>
+## 2026-10-09 修正 Post-V1 multi-day dry-run 記錄生命週期
+
+Entry 041 將 21 份 Post-V1 收據的 QA 原路徑一律改成短導引；逐檔核對後發現 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md` 仍是 `pre_v2_readiness_service` 的固定輸入，解析其中日期列，morning-check 指南也要求在該路徑續填。短導引使 reader 從原有 3 個日期列讀成 0 列。現已從歸檔前 Git blob 還原原文至 `docs/06_qa/`，保留該固定可續寫路徑；`docs/09_archive/` 同名檔留作歷史凍結快照。還原後來源 blob 為 6,049 bytes、SHA-256 `0E0AB39F01B8FB083D0AC36086D1D586027B565650876E3918C71139B688DAFE`；Archive 副本的 Git blob 與來源 blob 完全一致。原有 2026-07-02、07-07、07-08 三列均恢復。Entry 041 的其餘 20 份收據維持封存及舊路徑導引，其他 21 份 Archive 原文均保留。`docs/06_qa/README.md` 與 Archive README 已標明兩條路徑用途；不改程式或測試，不改 `DOC_COVERAGE_MAP` 權威範圍。

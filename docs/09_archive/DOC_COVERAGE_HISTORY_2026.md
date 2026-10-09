@@ -740,3 +740,12 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 |---|---|---|
 | `docs/06_qa/V2_4_PAPER_POLICY_APPROVAL_2026_07_12.md` | [policy approval 原文](V2_4_PAPER_POLICY_APPROVAL_2026_07_12_HISTORY.md) | 1,178 / `9E3ABD37C60220896C3DCF936A27475523666F3BC1BE816238669BE7B71861D6` |
 | `docs/06_qa/V2_4_SCOPE_APPROVAL_2026_07_12.md` | [scope approval 原文](V2_4_SCOPE_APPROVAL_2026_07_12_HISTORY.md) | 1,211 / `45FD644C344CDD2365899ED3656BC1EA5204398B8A3108B2603C97FD7C59E060` |
+
+<a id="coverage-entry-091"></a>
+## 2026-10-09 歸檔 Portfolio Replay weight/exposure implementation plan
+
+將歷史 plan 原文移入 Superpowers Archive，來源舊路徑保留短導引。Git commit `d8276f5b` 同時包含計畫、實作程式、測試、Snapshot、Roadmap 與 Manual；但計畫最後一項 diff／stage 檢查仍未勾選。歸檔保留原核取狀態，不推論有獨立 QA closeout，也不以計畫或 commit 取代目前狀態／行為權威。Superpowers README、Archive README、manifest 與 DOCUMENTATION_STRUCTURE 已同步。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md` | [原始 plan](superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md) | 14,756 / `77F3D4F33BB7E96F68F785B0DDA5EBCDA6C65DD927C358DC018BABC2A452BF42` | 14,756 / `77F3D4F33BB7E96F68F785B0DDA5EBCDA6C65DD927C358DC018BABC2A452BF42` |

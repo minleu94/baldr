@@ -365,14 +365,18 @@ Factor Layer v1 的 [設計規格](superpowers/specs/2026-06-14-month-3-factor-l
 [Safe Refactor continuation plan 原文](superpowers/plans/2026-07-11-safe-refactor-continuation.md) 已結案並移至 Archive；[舊路徑](../superpowers/plans/2026-07-11-safe-refactor-continuation.md) 保留導引。核准、shim／legacy removal audit、release healthcheck 與測試收據見 [原始 QA audit](../06_qa/SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md) 和 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；目前架構以 system architecture 為準。
 ### 2026-10-08 Month 3 Portfolio Replay history
 
-Month 3 closure audit 與 8 份核取項目全完成、各有 implementation commit 的 Portfolio Replay 計畫原文已歸檔：
+Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation commit 的 Portfolio Replay 計畫原文已歸檔：
 
 - [Month 3 closure audit](superpowers/plans/2026-06-15-month3-closure-audit.md)
 - [Cash-constrained orders](superpowers/plans/2026-06-15-portfolio-replay-cash-constrained-orders.md)、[cash ledger](superpowers/plans/2026-06-15-portfolio-replay-cash-ledger.md)、[credibility manifest](superpowers/plans/2026-06-15-portfolio-replay-credibility-manifest.md)
 - [Execution costs](superpowers/plans/2026-06-15-portfolio-replay-execution-costs.md)、[gap-risk labels](superpowers/plans/2026-06-15-portfolio-replay-gap-risk-labels.md)、[liquidity gate](superpowers/plans/2026-06-15-portfolio-replay-liquidity-gate.md)
 - [Lot sizing](superpowers/plans/2026-06-15-portfolio-replay-lot-sizing.md)、[unfilled orders](superpowers/plans/2026-06-15-portfolio-replay-unfilled-orders.md)
 
-[Portfolio Replay weight/exposure plan](../superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md) 保留在原路徑，因尚有一個未勾選項目；本批不推定它已完成或仍在執行。Archive manifest 逐檔記錄來源路徑、commit、bytes 與 SHA。現況仍看 Snapshot、Architecture、Manual 與具名 QA.
+以上 8 份計畫的實作步驟均已勾選，且各有 implementation commit。Archive manifest 記錄原路徑、commit、bytes 與 SHA。現況仍看 Snapshot、Architecture、Manual 與具名 QA。
+
+### 2026-10-09 Portfolio Replay weight/exposure plan 增補
+
+[weight/exposure plan 原文](superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md) 已於 10/09 封存，來源路徑留下短導引。實作 commit `d8276f5b` 包含計畫、程式、測試、Snapshot、Roadmap 與 Manual；原計畫最後一個 diff／stage 檢查核取項目仍未勾選。保留此狀態差異，不推論為獨立 QA 結案或目前行為證明；bytes／SHA 見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 ### 2026-10-08 V3 score effectiveness／ML readiness history
 
 [V3 Score Effectiveness／ML Readiness design spec](superpowers/specs/2026-07-08-v3-score-effectiveness-ml-readiness-design.md) 與 [implementation plan](superpowers/plans/2026-07-08-v3-score-effectiveness-ml-readiness.md) 已依原類型歸檔，舊路徑保留導引。當時 V3 engineering candidate inputs 標示完成；計畫明確停在 read-only audit、shadow research 與 closeout readiness，不訓練或部署 production ML。此為 2026-07 判斷，目前 ML 狀態以 Snapshot、Architecture 與現行 QA 為準。

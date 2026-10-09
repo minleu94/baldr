@@ -396,11 +396,12 @@
 
 ---
 
-**最後更新**：2026-10-08
+**最後更新**：2026-10-09
 
 ## 更新記錄
 
 - 2026-10-08：校正 Scoped SSOT 的產品、工程、現況、成熟度與歷史移交邊界；將 Hub 定義為純導覽、6M 月份明示為相對順序，並以 6M Gate 連結取代 Product Roadmap 重複維護工程交付清單。未修改當前狀態或 dirty Index。
+- 2026-10-09：將 Portfolio Replay weight/exposure 歷史實作計畫原文歸檔，保留舊路徑導引與未勾選的最後 diff／stage 狀態；細節見 [Coverage History Entry 091](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-091)。
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
 - 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。
@@ -419,3 +420,7 @@
 ## 2026-10-08 封存 Task Loop 01-07 handoff
 
 [完整批次紀錄](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-082)。
+
+## 2026-10-09 歸檔 Portfolio Replay weight/exposure implementation plan
+
+[完整批次紀錄](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-091)。

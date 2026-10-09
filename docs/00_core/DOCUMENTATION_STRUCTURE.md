@@ -155,7 +155,7 @@
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
-- `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 Factor Layer 計畫與 1 份設計規格，以及 1 份 Month 4 closure plan、1 份已結案 Safe Refactor continuation plan、8 份 Month 3 Portfolio Replay implementation plans 與 1 份 Month 3 closure audit、3 份已結案 V3 ML／UI polish plans 與 3 份配套 design specs、1 份 TPEX daily-price backfill plan、1 組金融 float boundary plan/spec、1 份文件 Roadmap rebaseline plan、1 組 Legacy Test Governance plan/spec 已封存；Scheduler Approval pair 因測試內容依賴、Healthcheck Batch 3 plan 因原人工 QA 仍留有待重測項目而保留原文。
+- `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 Factor Layer 計畫與 1 份設計規格，以及 1 份 Month 4 closure plan、1 份已結案 Safe Refactor continuation plan、9 份 Month 3 Portfolio Replay implementation plans 與 1 份 Month 3 closure audit、3 份已結案 V3 ML／UI polish plans 與 3 份配套 design specs、1 份 TPEX daily-price backfill plan、1 組金融 float boundary plan/spec、1 份文件 Roadmap rebaseline plan、1 組 Legacy Test Governance plan/spec 已封存；weight/exposure plan 保留最後 diff／stage 核取項目未勾的原始狀態。Scheduler Approval pair 因測試內容依賴、Healthcheck Batch 3 plan 因原人工 QA 仍留有待重測項目而保留原文。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
 - `docs/agents/PATCH_MEMO.md` 已移至 `docs/08_technical/MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md`；MCP / openmarkets patch memo 屬技術環境備忘，不屬 Agent 角色規範。
 - `multi_agent_workflow.md` 已移至 `docs/agents/`；Agent 分支、合併與協作協議不屬於系統架構文件。
@@ -212,7 +212,7 @@
 - 2026-10-08：封存 Month 3 Factor Layer 的兩份實施計畫與配套設計規格；保留原路徑轉址及 plan/spec bytes／SHA，並明示原計畫中的提交核准核取方塊仍未勾選。
 - 2026-10-08：另封存兩份具提交及驗證證據的 Month 3 Factor Layer 延伸計畫，以及 Month 4 Decision Desk closure 原文；保留 Month 4 結案摘要與未勾選模板核取方塊的差異。
 - 2026-10-08：封存已完成的 Safe Refactor continuation plan；其 Wave 6 核准與 release healthcheck 由專項 QA audit 保留，舊路徑轉址至 Archive。
-- 2026-10-08：將 Month 3 closure audit 及八份核取項目全完成的 Portfolio Replay 計畫成組歸檔；weight/exposure 計畫因留有未勾項目而留在來源路徑，README 與 manifest 明確標示。
+- 2026-10-09：將 Portfolio Replay weight/exposure implementation plan 原文補入 Archive，保留最後 diff／stage 核取項目未勾的差異。舊路徑留導引，README 與 manifest 記錄原始狀態。
 - 2026-10-08：將四份早期 Recommendation／Update Tab QA 問題盤點與摘要移至 Archive，保留 byte-identical 原件、相容導引及現況判讀界線；同步 QA／Archive README 與 coverage map。
 - 2026-10-08：將回測 Lab 過期 checklist／FAQ 歸檔並保留舊路徑導引；快速參考改指操作手冊，功能目錄與 coverage map 同步現行入口。
 - 2026-10-08：將 V3 ML readiness 與兩組 UI readability polish 的已結案 plan/spec 配對歸檔；ML 原件明定僅研究／closeout readiness，不代表 production ML。

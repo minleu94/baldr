@@ -1210,3 +1210,10 @@ Archive 工作樹副本與移動前來源逐 byte 相同：20,061 bytes，SHA-25
 | 原件路徑 | Archive 原文 | 搬移前 bytes / SHA-256 | Archive bytes / SHA-256 |
 |---|---|---:|---:|
 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md` | [`WAVE2_CHECKPOINT.md`](target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md) | 1,023 / `37596B081EB91E8AAFF3CB677F76860318426A0186DDDCD650CF4B3A18DF4DE1` | 1,023 / `37596B081EB91E8AAFF3CB677F76860318426A0186DDDCD650CF4B3A18DF4DE1` |
+
+<a id="coverage-entry-130"></a>
+## 2026-10-09 精簡系統架構中的 P2／M03 重複 QA 摘錄
+
+將 `system_architecture.md` 的 2026-10-06 P2／M03 區段中兩段純治理 inventory 與 Stage／UX／性能狀態改為收據導引；producer、custody、dataflow 及 M03 exception 契約仍留在架構主文。移除的資訊沒有刪除：完整數字與當日限制仍見 [QA integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)、[closeout status](../06_qa/BALDR_CLOSEOUT_STATUS_20261006.md)、[ownership dispatch](../06_qa/BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md) 與 [Snapshot 歷史快照](PROJECT_SNAPSHOT_HISTORY_20261006.md)。架構 README 現在直接連至 QA integration receipt；架構段落也連至 QA 收據及 Snapshot 歷史快照。
+
+本次沒有移動或改名文件，亦未改變目前狀態、架構或 QA 權威分工：現況仍看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，模組與資料流契約看 [system_architecture.md](../01_architecture/system_architecture.md)，當日 QA 證據留在上述收據。[DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 的 Scoped SSOT 規則不變，因此不需修改 Coverage Map；沒有新增或搬移文件，也不需改動 DOCUMENTATION_INDEX 或 Archive README。此筆記錄是內容去重與追溯入口，不是 Gate 結案或能力升級。

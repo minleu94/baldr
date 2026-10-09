@@ -19,7 +19,7 @@
 - **`system_architecture.md`**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
-  - 架構主文為第 1–15 節；首頁導覽與研究 context 契約、personal store 路由，以及 orchestration、SQLite connection、ML initialization、Personal H20 lineage、ML reader custody 與 model-loader 契約已抽回第 3、4、8、11 節。原第 16 節流水帳、9/27 lifecycle 收據、9/29 排程 custody 切片及 10/06 H20／ML／private-store／homepage dated status 已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，舊標題保留導引；其餘未歸檔日期段落仍可能含 scoped contract，不能依日期推斷現況。
+  - 架構主文為第 1–15 節；首頁導覽與研究 context 契約、personal store 路由，以及 orchestration、SQLite connection、ML initialization、Personal H20 lineage、ML reader custody 與 model-loader 契約已抽回第 3、4、8、11 節。原第 16 節流水帳、9/27 lifecycle 收據、9/29 排程 custody 切片及 10/06 H20／ML／private-store／homepage dated status 已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，舊標題保留導引；10/06 P2／M03 的技術契約仍在主文，當日治理與性能收據見 [QA integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。其餘未歸檔日期段落仍可能含 scoped contract，不能依日期推斷現況。
 
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE

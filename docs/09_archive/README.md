@@ -451,6 +451,7 @@ These are completed, dated engineering/readiness records. Current source accepta
 - [操作手冊更新歷史（2026-09-27）](APPLICATION_MANUAL_CHANGELOG_2026_09_27.md)：原手冊的逐次更新記錄；操作步驟保留於主手冊與附冊。
 
 - [Roadmap Hub 整理前歷史（2026-09-27）](DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)：原 Hub 的日期化狀態、Next 與更新紀錄；現行導航已收斂至核心 Hub，不以本頁判斷目前進度。
+- [External Reference Version Blueprint §10–§11 歷史摘錄（2026-07-04 至 2026-10-08）](EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md)：保留 7/11 Roadmap 審查及更新記錄；現況與交付順序看 Snapshot／6M Roadmap，外部參考與資料源候選仍在核心藍圖 §§1–9，未宣告重新查核或完成。
 - [文檔索引整理前歷史（2026-09-27）](DOCUMENTATION_INDEX_HISTORY_2026_09_27.md)：保留舊索引的詳細分類與日期化摘要；目前閱讀入口以核心索引為準。
 - [專案快照整理前歷史（2026-09-27）](PROJECT_SNAPSHOT_HISTORY_2026_09_27.md)：保存 9/8–9/26 的逐輪觀測、驗證數字與限制；最新範圍及未解除邊界留在核心 Snapshot。
 

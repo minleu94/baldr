@@ -1611,3 +1611,16 @@ Windows 工作樹原件與 Archive 副本均為 CRLF。Git 將換行正規化為
 implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md) 獨立記錄 2026-07-05 有 15 項工程測試通過；不替原 plan 補勾，也不把工程測試擴張為 ScoringEngine 接入、推薦權重變更、外部資料 ingestion、production scheduler 或投資有效性。現況與優先序仍以 Snapshot／Roadmap 為準。
 
 精確檔名搜尋在 source plan/spec 以外未找到程式、測試、腳本、排程或設定 consumer；歷史導覽與 manifest 已更新，其他舊路徑引用由相容導引承接。Superpowers README、Archive README、plan/spec manifest 與本 Coverage History 已同步；DOC_COVERAGE_MAP 權威邊界沒有改變，因此未修改 Map。dirty 的 `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 與 `APPLICATION_MANUAL.md` 未觸碰。未執行程式測試；本批僅整理文件位置與導覽。
+
+<a id="coverage-entry-158"></a>
+## 2026-10-09 封存 External Reference Version Blueprint 的 §10–§11 歷史
+
+只將 `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 的歷史 Roadmap 審查 §10 與更新記錄 §11 抽出至 `docs/09_archive/EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md`；藍圖本身仍留在核心目錄，其前言與 §§1–9 外部專案參考、資料源候選及 deferred 邊界未移動。來源保留兩個原標題作相容錨點並指向 Archive；原檔案路徑不變，因此既有檔案級連結繼續有效。
+
+| 來源區塊 | 原文 bytes／SHA-256 | Archive 摘錄 | Archive 檔案 bytes／SHA-256 |
+|---|---:|---|---:|
+| §10 `2026-07-11 對當時 Roadmap 的審查結論（歷史）` | 1,587 / `f11bb8fdf18b684a72d714f7d03187087c4d3b9226df532b047688e647f12928` | [原文摘錄](EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md) | 4,726 / `9d86dbfd8d5f21bf3c79439b0dde82ff462afff891b78e7a3cb0094d4ce963f1` |
+| §11 `更新記錄` | 2,433 / `e49c7804703d35137fb6127e4e7be1b505234cad9ad7a8c82f4e21a09ddc90bc` | [原文摘錄](EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md) | 同上 |
+| §10–§11 合併原文 | 4,020 / `ef512a52e0d762e9a89953d979618796966f35cfadb9d3bd20e5cc5da33fb396` | 同上；摘錄中的兩節原文逐字保留 | 同上 |
+
+來源整份原檔在本批前為 31,848 bytes，SHA-256 `44bf6b943746364636f14750b94bbda86c8cc7e62eed1aeab26358656f29973f`。Entry 033 已將 §10 判為 2026-07-11 歷史切面；目前狀態與交付次序仍看 Snapshot 與 6M Roadmap。此次只確認這項歷史範圍，不代表外部 repo、外部資料源已重新查核或採用。全 repo 檔案級引用仍指向原核心文件，沒有發現 §10／§11 專屬錨點連結；原標題保留，Archive README 與本記錄補上新的歷史閱讀入口。DOC_COVERAGE_MAP 權威邊界未變；核心索引路徑也未變，未修改 dirty 的 `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 或 `APPLICATION_MANUAL.md`。本批未執行程式測試。

@@ -1,10 +1,10 @@
 # C 槽歷史封存第二批清單（2026-10-09）
 
-本文件獨立新增，不改寫另一個 agent 正在整理的既有文件。補完計畫維持暫停。
+本文件記錄 2026-10-09 第二批冷封存範圍、核驗與回滾。建立時的文件整理與產品開發狀態屬當時快照；目前文件入口看 [資料文件導覽](README.md)，產品補完狀態看 [專案快照](../00_core/PROJECT_SNAPSHOT.md) 與 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。
 
 來源根：`C:/Projects/PythonProjects/technical_analysis`。目標根：`E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain`。下列 28 個目錄已按同名相對路徑封存並建立 Junction。完整搬移最初遭自動審查拒絕；其後使用者針對精確清單授權，才執行核驗後移除原副本與建立連結。
 
-原 29-root 嘗試在複製前發現 integration_20261002 內含刻意建立的 Junction 測試案例，因此立即停止，沒有複製或移除來源。該 root 排除並保留原處；其餘 28-root 巢狀連結盤點無發現。原 batch2 目錄只保留失敗前的計畫與回滾文件，不冒充成功封存。
+原 29-root 嘗試在複製前發現 integration_20261002 內含刻意建立的 Junction 測試案例，因此立即停止，沒有複製或移除來源。該 root 在這次初始嘗試中被排除；其餘 28-root 巢狀連結盤點無發現。此段只描述初始嘗試。後續依使用者確認的精確 28-root plan，`integration_20261002` 被納入第二批並完成封存；最終狀態以本文件的 released 收據及 [終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) 為準。初始失敗的 batch2 目錄只保留該次停止前的計畫與回滾文件，不冒充成功封存。
 
 使用者後續針對此精確清單明確答覆：「同意清單中 28 個目錄核驗後移除原副本並建立 Junction」。移除與 Junction 已取得範圍授權；實際完成仍以逐批收據及終態收據為準，不將批准當成搬移結果。
 
@@ -55,8 +55,8 @@
 
 複製及釋放兩個程序均 exit 0；28 個目錄、145,850 個檔案、39,268,782,429 bytes（36.57 logical GiB）完整保存。複製階段逐檔比對 SHA-256；移除來源前再次全檔比對 C／E 內容，並核對樹狀項目數與精確路徑。`released_complete.json` status=complete，全部根均為 archived_verified_junction_installed。
 
-Root 最後另查 28 個 Junction 的精確目標；27 個非空根各抽一檔從原 C 路徑讀回，SHA-256 與 manifest 相同。candidate_20261006 原本空目錄，只核對拓樸與連結。抽樣只證明連結讀回，不替代前兩輪全檔核驗。保留的 baldr、回退版本、d9a115f67d2b 及排除的 integration_20261002 仍是普通目錄。
+Root 最後另查 28 個 Junction 的精確目標；27 個非空根各抽一檔從原 C 路徑讀回，SHA-256 與 manifest 相同。candidate_20261006 原本空目錄，只核對拓樸與連結。抽樣只證明連結讀回，不替代前兩輪全檔核驗。現行 baldr、回退版本與 d9a115f67d2b 仍為普通目錄。`integration_20261002` 雖在初始 29-root 嘗試被排除，後續已列入精確 28-root 清單；目前 C 槽原路徑是指向第二批 E 槽副本的 Junction。
 
 釋放程序期間 C 可用空間由 194,551,021,568 增至 228,999,462,912 bytes，觀測淨增加約 32.08 GiB；這不是 logical bytes，也不假定期間沒有其他程序寫入。postflight C 約剩 213.27 GiB，E 約剩 168.89 GiB。
 
-文檔只新增本檔，並在 STORAGE_ASSET_REGISTER_20261006.md 末尾追加本批索引，沒有重排或覆寫既有內容；未 stage／commit。補完計畫仍暫停。
+本文初版記錄當時只新增本檔並在 `STORAGE_ASSET_REGISTER_20261006.md` 末尾追加索引，未 stage／commit，產品補完亦處於暫停。其後文件同步已提交至本機 `dev`（`6247a177`）；產品恢復狀態以專案快照與恢復開發 QA 為準。這段保留的是初版建立時的歷史，不代表目前 Git 或產品狀態。

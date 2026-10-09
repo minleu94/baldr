@@ -1091,24 +1091,7 @@ Current Result DTO / Run Metadata
 
 ## 13. 文件架構
 
-本專案採 Scoped SSOT：
-
-| 主題 | 權威文件 |
-|---|---|
-| 目前狀態 | `docs/00_core/PROJECT_SNAPSHOT.md` |
-| 未來 6 個月 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` |
-| V2.0 之後長期版本階梯 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` |
-| 外部參考與 V1.5-V2.0 版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` |
-| 舊 Roadmap 移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` |
-| 架構 | 本文件 |
-| 目標架構背景 | `docs/01_architecture/target_system_architecture.md` |
-| 目標實作設計權威 | `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` |
-| Post-Refactor 產品方向 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` |
-| 使用方式 | `docs/07_guides/APPLICATION_MANUAL.md` |
-| 文件導航 | `docs/00_core/DOCUMENTATION_INDEX.md` |
-| 已完成行為不變重構的歷史／rollback companion | `docs/09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md` |
-
-Roadmap Hub 只連結 Scoped SSOT 入口，不複製 Next、狀態或風險摘要，也不保存完整歷史或架構細節。
+本專案採 Scoped SSOT。各主題的唯一權威、衝突判讀方式與文件同步責任由 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 維護；閱讀入口見 [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) 與 [Documentation Index](../00_core/DOCUMENTATION_INDEX.md)。本節保留導覽連結，不另複製權威清單。Roadmap Hub 只負責導覽，不保存狀態、Next 或架構細節。
 
 ## 14. 高風險修改清單
 

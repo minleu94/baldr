@@ -25,17 +25,17 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 ## 必要調度與維運
 
-[2026-10-08 自然排程故障修正與驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)：Bank heartbeat 時間綁定、Paper 凍結來源、Decision 查詢與四個背景 Task action 已修正；G6 lock、Forward 缺價、事件日誌管理員授權及下一自然整鏈仍未通過。
+[2026-10-08 自然排程故障修正與驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)：保存該日排程修正範圍、驗證結果與限制；目前狀態以 Snapshot 為準。
 
-[2026-10-07 排程故障修正與有限驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)：Direct 共用鎖、Paper ledger history、開盤重取、中斷 terminal，以及自然來源／release 尚存阻擋。
+[2026-10-07 排程故障修正與有限驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)：保存該日的故障修正與有限驗證證據；不取代較新的排程狀態。
 
-[Windows／Codex 排程運維與搬機指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) 提供任務用途、入口、依賴、時區、私有清冊與搬機驗收；[2026-10-06 排程稽核](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md) 保留模型替換未完成項與 Windows 唯讀證據。
+[Windows／Codex 排程運維與搬機指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) 提供任務用途、入口、依賴、時區、私有清冊與搬機驗收；[2026-10-06 排程稽核](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md) 保存該次唯讀稽核證據。
 
-[Scheduled CMD／契約](../../scripts/scheduled/README.md)、[日常 morning check](../07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md)、[Evidence rehearsal](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML shadow inference 維運](../07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[模型 shadow runbook](../07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md) 與安裝／設定手冊保留為可完整調度系統的必要文件，不因包含排程或 ML 就當成 internal junk。啟用權限、正式來源與模型品質仍依 Manual／Snapshot／具名 receipt；可攜 exe 已交付，本輪沒有改 Task；操作見可攜指南。
+[Scheduled CMD／契約](../../scripts/scheduled/README.md)、[日常 morning check](../07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md)、[Evidence rehearsal](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML shadow inference 維運](../07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[模型 shadow runbook](../07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md) 與安裝／設定手冊是調度及維運文件入口；實際操作看各指南，目前啟用狀態與驗收資格看 Manual、Snapshot 及具名 QA。
 
 ## 產品補完接續計畫
 
-[Baldr 產品補完接續計畫（2026-10-06）](../superpowers/plans/baldr_product_completion_plan_20261006.md)：此計畫維護完整 P00–P14／M1–M3／F01–F23 範圍與驗收依賴，不是完成證明。2026-10-09 本機 dev checkpoint `a48a86af` 是 WIP；恢復後的分工與初步結果見 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)，原暫停點與驗收界線見 [產品補完交接](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)。目前狀態以 Snapshot 為準，原計畫與 QA 收據保留。
+[Baldr 產品補完接續計畫（2026-10-06）](../superpowers/plans/baldr_product_completion_plan_20261006.md)：維護完整 P00–P14／M1–M3／F01–F23 範圍與驗收依賴，不是完成證明。checkpoint、恢復基線與驗收界線分見 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md) 及 [產品補完交接](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)；目前狀態以 Snapshot 為準。
 
 ## 歷史與原始證據
 

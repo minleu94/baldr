@@ -32,21 +32,21 @@
 - 第一批文件所述 `exit 0` 及抽樣 SHA 讀回，無法只由目前 E 槽逐根收據獨立證明；本次沒有重做該抽樣。逐檔 SHA 完整核驗僅能表述為「第一批原執行收據記錄已核驗」。
 - 第二批根層 `complete.json` 是較早的 `copies_verified_sources_retained` 複製階段收據，不代表最後狀態；最終狀態看後續 `released_complete.json` 及逐根 released 收據。
 
-## 文件入口與待同步事項
+## 文件入口與同步終態
 
 - [資料資產用途與恢復登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)：第一批完成摘要及容量／恢復入口。
 - [第一批冷封存與回滾說明](../03_data/C_DRIVE_QA_COLD_ARCHIVE_20261009.md)：六個根的精確來源、逐批操作與還原方式。
-- [第二批範圍與回滾文件](../03_data/C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)：目前已記錄 28 根完成與終態收據。其 29-root 初次嘗試段落仍應明確標為已被後續精確 28-root plan／終態取代，因初次段落稱排除 `integration_20261002`，而完成清單及終態收據包含該路徑。
+- [第二批範圍與回滾文件](../03_data/C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)：記錄 28 根完成與終態收據；初始 29-root 嘗試的排除決定已明確標為歷史，後續精確 28-root plan 納入 `integration_20261002`。
 - [資料文件導覽](../03_data/README.md)：資料領域入口。
 
-本次資料整理沒有改變正式 FA_DATA、生產排程、模型或產品功能。依 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 的容量／冷封存同步規則，仍須完成以下文件一致性修正：
+本次資料整理沒有改變正式 FA_DATA、生產排程、模型或產品功能。以下列出初版核對時發現的同步工作及目前終態，避免把已解決項目繼續當成待辦：
 
-| 文件 | 待修正內容 |
-|---|---|
-| `docs/03_data/README.md` | 第二批仍標示「待授權／只複製」，應連到本 QA 對照並標示 28/28 終態完成。 |
-| `C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md` | 保留 29-root 初次停止作歷史，但明確說後續 28-root plan 已取代該排除決策；目前「保留」段落不可再把 `integration_20261002` 列為留在 C 槽，因終態收據記錄它已封存。 |
-| `STORAGE_ASSET_REGISTER_20261006.md` | 第二批追加段落也把 `integration_20261002` 寫成保留，需依 28-root 終態修正；第一批段落的「近期候選、dist 未改」需限縮為第一批範圍。 |
-| `PROJECT_SNAPSHOT.md` | 依容量／readiness 規則加入簡短狀態與 QA 入口，避免舊 cleanup 摘要被誤認為涵蓋這次冷封存。 |
-| `DOCUMENTATION_INDEX.md` | 在資料與保留恢復入口加入冷封存 QA 對照連結。 |
+| 文件 | 初版發現／需同步內容 | 終態 |
+|---|---|---|
+| [`docs/03_data/README.md`](../03_data/README.md) | 標示第二批完成並加入終態 QA 對照入口。 | 已同步；標示 28/28 完成及未重算全量 SHA 的限制。 |
+| [`C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md`](../03_data/C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md) | 保留初始 29-root 停止史，同時說清楚後續 28-root plan 納入 `integration_20261002`。 | 已同步；最終 C 槽狀態指向 E 槽副本的 Junction。 |
+| [`STORAGE_ASSET_REGISTER_20261006.md`](../03_data/STORAGE_ASSET_REGISTER_20261006.md) | 將 `integration_20261002` 初次排除與後續納入分清楚，並限制第一批保留描述的範圍。 | 已同步；第一批文字明確限定為第一批範圍，第二批按終態記錄。 |
+| [`PROJECT_SNAPSHOT.md`](../00_core/PROJECT_SNAPSHOT.md) | 加入封存摘要並保留容量快照及核驗邊界。 | 已同步；34 根、158,712 檔案、logical bytes 與終態 QA 入口均列明。 |
+| [`DOCUMENTATION_INDEX.md`](../00_core/DOCUMENTATION_INDEX.md) | 加入資料資產與保留恢復入口。 | 已同步；資產登記連至終態 QA 對照。 |
 
-`PROJECT_SNAPSHOT.md` 與 `DOCUMENTATION_INDEX.md` 目前有其他未提交編輯；其餘列出的資料文件也屬其他 agent 的未提交工作。本頁只記錄待同步點，沒有覆寫那些檔案；待對方文件工作穩定後完成修正。本次沒有改變正式 FA_DATA、生產排程、模型或產品功能。
+上述同步依據逐批終態收據與 Junction metadata；沒有改寫原始 QA 收據、重新計算封存樹全量 SHA，也沒有改變正式 FA_DATA、生產排程、模型或產品功能。

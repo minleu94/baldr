@@ -18,30 +18,14 @@ P01 路徑修正已保存本機 dev `f9ead461`／`30812082`，但最新固定千
 
 2026-10-08 排程工程補記：Bank heartbeat mtime、Paper 決策 freeze archive／blocked fills、Decision watchlist 查詢已修正；G9 CMD 總 timeout 改為 14400 秒。四個既有 Task 已實際套用背景 action，XML／ACL／trigger 保留且未手動 Run。主要回歸 262 passed／4 skipped，另 launcher 16 passed；完整 Decision 診斷 dry-run 約 39 秒完成，無自然資格。G6 skipped_locked、Forward 1538 缺價、舊 Allocation source revision 仍 blocked；Scheduler Operational 的 UAC 已取消，尚未啟用。今天自然整鏈尚未通過，證據與限制見 [10/08 QA](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)。
 
-> 現況更新：2026-10-06。產品補完開工checkpoint `bf9207fb72cd3acebac17f4b7816994efa601226`；main `305635642ecdf5f1331a24a0c81566d07f36cb0d`。原文檔整理基線 dev `07da90c1`／main `a8c81bf5` 屬歷史。僅dev/main、一worktree；當前增量由dev本機commit與具名收據追溯，不將施工狀態寫成完成資格。
+## 歷史快照與驗收入口
 
-補完首波已按使用者授權完成 Luna Max 葉片分工並逐包本機提交。共用設定／版本（43案例）、H20白話投影（12案例）、中央入口／UI（34整合案例）與P01底層（6案例）通過；P01全母體UI仍未接線。固定來源 `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6` 建置候選 `2026.10.06+4b40788bea9e`，Python／exe同設定隔離比較通過，已校正Matplotlib hook造成的快取路徑差異。詳見[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)及[單一計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。現有exe／active_delivery保留；完整選股器、策略績效、Native真人與正式Task自然run均未因此完成。
+2026-10-06 至 10-07 的產品補完開工、首波及 M2 逐輪狀態已由較新的 WIP checkpoint／恢復 QA 取代，不作目前狀態依據。保留詳細歷史與證據入口如下；本 Snapshot 不重複保存舊測試數字或逐輪施工日誌。
 
-## 2026-10-07 產品能力與成熟度基線（歷史快照）
-
-以下功能狀態、自然任務時間與成熟度數字只代表當時快照；目前產品補完與各項通過／失敗／未驗證界線，改由 2026-10-09 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)及其引用的 root review 判讀。
-
-主要 UI 為 PySide6 `ui_qt/main.py`。首頁四用途、原保存研究／收藏／圖表與精確返回、有界結果讀取及私人覆盤等已有有限工程驗證；完整操作與限制以 [Manual](../07_guides/APPLICATION_MANUAL.md) 為準。使用者已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；舊「等待答覆」段落是歷史，不能當目前阻擋。
-
-H20 已實際啟用；原保存 10 股完整 cohort 的 gross 整數排序與 exact 返回已驗。canonical 機率 head、原 ranking 與 gross 報酬 head 分開判讀；機率 head Brier 2730 對 null 2500 仍未勝基準，不能由 gross consumer 驗證推導模型品質。自然證據為 10 pending／0 成熟。
-
-下一原 Task 為 **2026-10-07 12:45 UTC／05:45 PDT**，仍待真正自動 run 與收據驗收，沒有手動 trigger。正式 BB 全母體 v3 日常 run、Native 真人易用性未驗；不能宣稱整體 done。decision、source、feature 日期各自綁定，不以最新來源替代保存版本。
-
-9 Stage 維持 1 done／8 partial；24 UX 維持 2 done／22 partial。七項有限 closed UX03／04／05／06／09／15／17 保留。F1 18.6219658% 對 20% 目標、Journey 8.109s 對 8s 目標的已接受性能例外保留，不改寫 benchmark pass。未知 model／PIT／source／account／clock 資格仍 unknown。
-
-## 驗收與歷史
-
-- 2026-10-07 [排程修正 QA](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)：Direct 改有限 cycle 並將既有任務移至美西 10:00；Paper ledger history、上市／上櫃開盤頻道、過期不可補 capture 佇列、開盤有限重取、中斷 terminal、研究除權 parser 及 Allocation 隔離狀態判讀已修正。隔離回歸 218 passed／1 skipped，後續來源 54 passed／1 skipped、Allocation 28 passed、taxonomy／proof 70 passed／1 skipped。實際 B→snapshot→raw→outcome→fit→Legacy→registry 全鏈 completed，Bank 相同 binding／cohort／十檔向量驗證通過；共用鎖已確認釋放。10/08 Sector 1,988 列完整分母、分類封套與正式 caller 同日重用 exit 0，blockers 空；過期 8183 overlay、HTTP bounds 與 live 設定 proof 已修正。原自然失敗、遺失開盤 manifest 與舊 Allocation／正式 source revision guard 保留，尚未授予新自然 Task 成功或 formal credit。
-
-- [中央 cohort／natural／BBUI 整合](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)：原 affected 首紅與精確重驗分列，不是單次全綠。
-- [Final authorized union](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)：512 passed／7 failed／2 skipped 的原 raw 保留；只重驗原七項 7 passed，不消除歷史失敗。
-- [工程與決策差異](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md)：有限工程、自然資格與真人驗收分域。
-- [完整快照歷史](../09_archive/PROJECT_SNAPSHOT_HISTORY_20261006.md)：原累積紀錄完整封存；早期 pending、舊 branch/worktree 與後來修正皆可回溯。
+- [完整快照歷史](../09_archive/PROJECT_SNAPSHOT_HISTORY_20261006.md)：早期狀態、舊 branch／worktree 與當時修正脈絡。
+- [產品補完首波 QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md) 與 [M2 工程 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)：保留相應日期的局部驗證與限制。
+- [排程修正 QA（2026-10-08）](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md) 與 [排程修正 QA（2026-10-07）](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)：保留各輪範圍及原始結果；目前排程狀態仍以本 Snapshot 的最新狀態為準。
+- [中央 cohort／natural／BBUI 整合](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)、[Final authorized union](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)、[工程與決策差異](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md)：分別保留跨包、授權測試與證據資格界線。
 
 ## 工作區與資料保護
 
@@ -58,20 +42,4 @@ H20 已實際啟用；原保存 10 股完整 cohort 的 gross 整數排序與 ex
 其後已實際交付 Windows onedir `dist/baldr/baldr.exe`，需保留整個資料夾、不需 IDE／全域 Python。外部資料／輸出／私人設定分離，不內附 FA_Data 或個人模型。首次操作、SHA、已驗與未驗項見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)。D01 合法警告成功保留 last success、warning 與 freshness/date 診斷，Runtime 維持 guarded，不把未知／失敗變成功。main 保留既有完整 scheduler／模型／資料功能與必要文件；dev 保存內部 QA、規劃及打包 probe。本輪可逆本機 commit 同步 main，沒有 push；詳細收據見 [可攜 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)。上方文檔整理時的 branch／未同步狀態保留為該輪歷史。
 
 
-產品補完M2工程接續（2026-10-07）：受控研究保存根／唯讀重開／Windows長路徑已完成底層整合，中央capture／parent／scope／長路徑回歸80 passed、2 skipped。H20三日期不同的保存來源offscreen旅程2案例通過，模型contract為明示合成邊界；Native原2382及三策略仍待核開啟版本。完整UI產製／query收藏與比較、新technical保存版本、新candidate及P00–P14其餘包仍未完成；原exe／正式資料／Task不變。局部證據與失敗保留見[M2工程QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)，範圍沿原單一補完計畫。
-
-
-2026-10-07 M2 工程補記：dev 完整保存母體瀏覽已接每日研究頁，257納入／1排除的真保存來源下鑽與返回、取消／query變更保護通過；中央UI88例、Update validator25 passed／4 protected skips、全域mypy868檔通過。v4 repository／batch producer／parent中央92 passed／1 Windows symlink權限skip。現有瀏覽仍是v2／v3三條件；v4五規則full-N、正常UI產製、query收藏／比較與新candidate／Native仍未完成。H20獨立摘要完整旅程正在定位，不把最小handler成功當2382真人通過。細節見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)，完整範圍沿原單一補完計畫。
-
-
-2026-10-07 H20工程修正：dev個股研究新增首屏保存預測獨立摘要，不再依賴一般報告成功；精確來源重讀／retry／切來源stale與返回pointer變動保留原表已驗。中央含workbench／完整母體／H20旅程96 passed、validator25 passed／4 protected skips、mypy870檔通過；原慢測為Qt test pump造成Python worker飢餓，同fixture讓出執行緒後3.78s，未修改product reader守衛。模型contract仍為明示合成邊界，原真人2382、三策略、新candidate／Native未驗，H20收藏與full-N新五規則尚未完成。詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-2026-10-07 新候選補記：固定 `c589bc71e8f1` 的 `2026.10.06+c589bc71e8f1` 已建置並通過同版隔離比較；另以原保留合成source／activation／capture跑名單→2382→一般報告失敗→獨立H20摘要→重新核驗，固定archive Python與exe逐值一致。所有fixture bytes／size不變，唯讀SQLite只更新SHM mtime，source／WAL／immutable mtime不變。新helper供真人明示啟動，未執行；原exe／私人設定／正式資料／Task不變。原真人2382、三策略與窄欄仍待實測，full-N v4 store／producer／query與UI仍在施工；證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
-
-
-2026-10-07 v4讀回補記：中央修零child公開parent與重複語義核驗成本，六套67 passed／1 Windows symlink權限skip、targeted mypy4檔0。相同17股保存pins的cProfile13.781→1.969s為診斷，不授真N產品效能。full-N store／producer／query／catalog及正常UI產製／比較／收藏仍在推進，新候選c589的真人四項待驗；原exe／正式資料／Task／其他聊天變更保留。
-
-## 2026-10-09 補完開發交接 checkpoint
-
-原暫停點、未完成驗收及 checkpoint 界線見 [BALDR_COMPLETION_HANDOFF_20261009](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)；恢復後的基線與初步結果見 [BALDR_COMPLETION_RESUME_20261009](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。兩份文件分別記錄停止與恢復時點，均不是發布或全產品驗收收據。
+2026-10-07 M2、H20 與 v4 候選的逐輪工程摘要、測試數字與未驗限制保留在 [M2 工程 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md) 及相應具名 QA 原件。此處只提供歷史入口；目前通過／失敗／未驗狀態看本頁開頭、[恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md) 與 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)。

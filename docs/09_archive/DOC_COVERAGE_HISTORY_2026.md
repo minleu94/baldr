@@ -1372,3 +1372,16 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 | 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
 |---|---|---:|
 | [`docs/superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md`](../superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md) | [`2026-06-23-healthcheck-batch5-performance-operations.md](superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md) | 14722 / `9a0f02c1b1cb8076f815d0eaeb0cae1992c73e3b22da8257eb45de086f980612` |
+
+<a id="coverage-entry-142"></a>
+## 2026-10-09 封存 Healthcheck Batch 3 Recommendation Profile／Regime 歷史 plan
+
+將 `docs/superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md` 的歷史計畫原文逐位元組保存在 `docs/09_archive/superpowers/plans/`；原路徑改為相容導引。這筆只取代先前因人工 QA 尚待驗證而「留在 plans」的儲存位置判斷；該判斷記於[文件結構歷史決策](DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md)，本 Entry 不取代或升級任何驗收狀態。原計畫的 Docs Update Checklist 已勾選；Full App healthcheck 仍將 R-002–R-005 與 RECOMMEND-ISSUE-001–004／008 記為「已修正待驗證」，沒有使用者重新操作的證據，因此不宣稱人工 QA 通過。
+
+來源工作樹原件與 Archive 原文均為 9,375 bytes，SHA-256 `9c2efb867a9c599b0ab7fd5ae280a4ed9e624611df61c7be945466959a412407`。精確檔名搜尋找到現行 `docs/superpowers/README.md`、固定歷史 `DOCUMENTATION_INDEX_HISTORY_2026_09_27.md`、`DOCUMENTATION_CATALOG_20261006_HISTORY.md` 與 plan/spec manifest；README 已改連 Archive 原文，固定歷史路徑由相容導引承接。未找到程式、測試、腳本、排程或設定中的固定路徑 consumer。先前 Coverage review 因待重測而保留原路徑的判斷仍作為歷史理由保留；本次只調整計畫的存放位置，不重寫 QA 判讀，也不把舊 plan 變成目前工作授權。
+
+目前 Profile／Regime 操作與架構看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)；現況與優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。`DOC_COVERAGE_MAP.md` 的權威分工與同步規則未變，因此本批原路徑、封存位置、效力限制、替代入口與 provenance 由本 History、[Archive README](README.md#2026-10-09-healthcheck-batch-3-recommendation-profile-regime-plan) 及 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 追蹤，沒有改寫 Coverage Map 或目前狀態文件。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md`](../superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md) | [`2026-06-23-healthcheck-batch3-recommendation-profile-regime.md`](superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md) | 9,375 / `9c2efb867a9c599b0ab7fd5ae280a4ed9e624611df61c7be945466959a412407` |

@@ -503,6 +503,11 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 `docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
 
+<a id="2026-10-09-healthcheck-batch-3-recommendation-profile-regime-plan"></a>
+### 2026-10-09 Healthcheck Batch 3 Recommendation Profile／Regime 歷史 plan
+
+[Batch 3 plan 原文](superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md) 已保留於 Archive；舊 `docs/superpowers/plans/` 路徑保留相容導引。這次只整理計畫的歷史位置，不代表人工驗收完成：Full App healthcheck 仍將 R-002–R-005 與 RECOMMEND-ISSUE-001–004／008 標為「已修正待驗證」。目前操作與架構看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)，目前狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)；逐檔來源、雜湊、引用與前次保留決策見 [Coverage History Entry 142](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-142)。
+
 ### 2026-10-09 Healthcheck Batch 5 效能／營運計畫
 
 [Batch 5 歷史計畫原文](superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md)；舊 [`docs/superpowers/plans/` 路徑](../superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md)保留相容導引。原件的 Execution Summary 與文件同步清單標示完成，但 17 個 TDD 步驟仍未勾選；此狀態差異原樣保留。Full App healthcheck 對 BACKTEST-ISSUE-010／011／012 的狀態仍是「已修正待驗證」，MARKET-ISSUE-003 是「已排查待驗證」，UPDATE-ISSUE-013／014 則仍是未平行化的後續設計。這次封存不宣告人工驗收或這些後續設計完成。現行 optimizer contract 看 [系統架構](../01_architecture/system_architecture.md)，使用與限制看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，逐檔 bytes／SHA 與引用範圍見 [Coverage History Entry 141](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-141) 及 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

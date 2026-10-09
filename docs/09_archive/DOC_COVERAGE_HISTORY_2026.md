@@ -1357,3 +1357,18 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 | [`docs/superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md`](../superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md) | [`2026-06-04-research-lab-workbench-v1-design.md](superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md) | 9073 / `ba0d191105ee4bb75b43162b0b0f03fdf76329fa62f0aaa4b4c999b75d0a6d07` |
 | [`docs/superpowers/plans/2026-06-04-research-lab-workflow-redesign.md`](../superpowers/plans/2026-06-04-research-lab-workflow-redesign.md) | [`2026-06-04-research-lab-workflow-redesign.md](superpowers/plans/2026-06-04-research-lab-workflow-redesign.md) | 33973 / `1c85032b63a6a0a9a6887a239e06872878e16c292f4c883ee62332b8bbfacee1` |
 | [`docs/superpowers/specs/2026-06-04-research-lab-workflow-redesign.md`](../superpowers/specs/2026-06-04-research-lab-workflow-redesign.md) | [`2026-06-04-research-lab-workflow-redesign.md](superpowers/specs/2026-06-04-research-lab-workflow-redesign.md) | 10072 / `f661fc7834d77e0ba0d09b59d3f4526dc2c2fa3bff35cb8e0461ca01692ff731` |
+
+<a id="coverage-entry-141"></a>
+## 2026-10-09 封存 Healthcheck Batch 5 效能／營運歷史計畫
+
+將 `docs/superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md` 的已執行歷史計畫逐位元組複製至 `docs/09_archive/superpowers/plans/`；原路徑改為相容導引。這是生命週期與閱讀入口整理，不代表人工驗收或後續設計已完成。
+
+原件與 Archive 副本均為 14,722 bytes，SHA-256 `9a0f02c1b1cb8076f815d0eaeb0cae1992c73e3b22da8257eb45de086f980612`。原件的 Execution Summary 與 Docs Update Checklist 標示完成，但 17 個 TDD 步驟未勾選；封存原文保留此差異，不推定所有列出的人工驗證已完成。
+
+舊 Full App healthcheck 的狀態仍保留為：BACKTEST-ISSUE-010／011／012「已修正待驗證」、MARKET-ISSUE-003「已排查待驗證」、UPDATE-ISSUE-013／014「已排查，未平行化／後續設計」。其證據位於 Archive 的 [Full App healthcheck 原件](FULL_APP_HEALTHCHECK_2026_06_16.md)；目前 optimizer contract 與操作限制分別看 [system architecture](../01_architecture/system_architecture.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。本筆不把舊 QA 狀態升級為目前 Gate 結案，也不把後續設計轉成現行授權。
+
+全 repo 精確檔名檢查找到計畫自身、plan/spec manifest、2026-09-27 歷史 Documentation Index 與固定歷史 Documentation Catalog；歷史快照原樣保留，舊路徑 stub 承接其連結。未找到程式、測試、腳本、排程或設定中的固定路徑 consumer。`docs/superpowers/README.md` 與本 Archive README 已加入新的生命週期入口。權威邊界未變，因此不修改 `DOC_COVERAGE_MAP.md`；逐批搬移與原件雜湊由本清冊追蹤。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md`](../superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md) | [`2026-06-23-healthcheck-batch5-performance-operations.md](superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md) | 14722 / `9a0f02c1b1cb8076f815d0eaeb0cae1992c73e3b22da8257eb45de086f980612` |

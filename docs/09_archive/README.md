@@ -484,6 +484,10 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 `docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
 
+### 2026-10-09 Healthcheck Batch 5 效能／營運計畫
+
+[Batch 5 歷史計畫原文](superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md)；舊 [`docs/superpowers/plans/` 路徑](../superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md)保留相容導引。原件的 Execution Summary 與文件同步清單標示完成，但 17 個 TDD 步驟仍未勾選；此狀態差異原樣保留。Full App healthcheck 對 BACKTEST-ISSUE-010／011／012 的狀態仍是「已修正待驗證」，MARKET-ISSUE-003 是「已排查待驗證」，UPDATE-ISSUE-013／014 則仍是未平行化的後續設計。這次封存不宣告人工驗收或這些後續設計完成。現行 optimizer contract 看 [系統架構](../01_architecture/system_architecture.md)，使用與限制看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，逐檔 bytes／SHA 與引用範圍見 [Coverage History Entry 141](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-141) 及 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
 ### 2026-10-09 Data Update／Research Lab 舊計畫與規格
 
 - Data Update Workbench 的[計畫原文](superpowers/plans/2026-05-20-data-update-workbench.md)與[設計 spec](superpowers/specs/2026-05-20-data-update-workbench-design.md)保留 2026-05 的工作台方向；plan 的 24 項工程核取均未勾。原頂層 Tab 方向已由後續市場探索入口取代；封存不表示完整實作或重新授權工作。

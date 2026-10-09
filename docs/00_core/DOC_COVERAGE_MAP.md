@@ -417,6 +417,7 @@
 - 2026-10-09：將 V4.2 9/13 每日推薦 learning 部署／bounded run 歷史 QA 移入 Archive；保留 task 尚未執行、shadow-only 與無正式升格資格的界線。詳見 [Coverage History Entry 105](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
 - 2026-10-09：將 Weekly Natural Evidence 9/20 日期快照移入 Archive；QA 導覽保留三個不同 evidence lane 與 pending／matured／approval 邊界，舊 Catalog 路徑由 stub 承接。詳見 [Coverage History Entry 106](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
 - 2026-10-09：將 Watchlist analysis／ML visibility 9/6 QA 快照移入 Archive；9/6 的 0/3 與 stale projection 不作目前 ML 狀態，操作／來源／Gate／現況轉向 Manual／Architecture／Gate 7／Snapshot。詳見 [Coverage History Entry 107](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。
+- 2026-10-09：歸檔 9/7 三面向實作交接 QA；原件保留當時的技術／UI 驗收與未完成 Gate，現況回 Snapshot／Gate 7／Manual，不以歷史測試數字代表目前狀態。詳見 [Coverage History Entry 108](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-108)。
 - 2026-10-09：核對 Gemini 提出的 10 份 QA 歸檔候選，只封存 3 份無活躍依賴的歷史紀錄；其餘 7 份因 tracked manifest 固定原 bytes／路徑或仍被現行入口引用而保留。詳見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 - 2026-10-09：精簡 V2.1–V4.0 maturity spec 中重複的 7/12、8/30 status notes；歷史判讀仍由既有 Archive 提供，正文保留版本標準並以 Snapshot 表示現況。
 - 2026-10-09：修正 R029 active report／R031 index 對 gate 草稿與預檢清冊的引用後，將兩份已 superseded 的 dated preflight 成對歸檔；保留 QA 原路徑導引與 WAVE14 凍結 manifest。細節見 [Coverage History Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
@@ -506,3 +507,7 @@
 ## 2026-10-09 歸檔 Watchlist analysis／ML visibility handoff（9/6）
 
 [原始 QA 與封存原文 SHA-256、日期快照及替代入口](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。
+
+## 2026-10-09 歸檔三面向清查建議實作交接（9/7）
+
+[原始 QA 與封存原文 SHA-256、未完成 Gate 與替代入口](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-108)。

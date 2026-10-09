@@ -256,6 +256,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [V4 data recovery record](V4_DATA_RECOVERY_2026_09_07.md)
 - [V4 automated review](V4_AUTOMATED_REVIEW_2026_09_07.md)
 - [V4 ML release bounded QA](V4_ML_RELEASE_2026_09_07.md)
+- [三面向清查建議實作交接（2026-09-07）](THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07_HISTORY.md)：保存分析／交易與持倉證據、ML 容量／release、UI／UX 的當日工程驗收及未完成 Gate；當時的 0/3 Formal inputs 與 UI 人工驗收限制不代表目前狀態。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 108](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-108)。
 
 - [早期 Full App healthcheck（2026-06-16）](FULL_APP_HEALTHCHECK_2026_06_16.md)：保存當時 8 個 UI 工作區的人工 smoke 結果；目前 UI 架構看 [system_architecture](../01_architecture/system_architecture.md)，操作步驟看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留轉址。
 

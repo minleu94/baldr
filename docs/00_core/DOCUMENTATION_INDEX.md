@@ -53,6 +53,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [觀察清單分析與 ML 可見性驗收（2026-09-06，歷史）](../09_archive/WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md)：保留當日 UI／分析與 `0/3` readiness inspection，非目前 ML 狀態或 promotion。現行操作／來源／Gate／狀態看 Manual／Architecture／Gate 7／Snapshot；bytes/hash 見 [Coverage History Entry 107](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。
 
+[三面向清查建議實作交接（2026-09-07，歷史）](../09_archive/THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07_HISTORY.md)：保留當時分析／ML／UI 實作驗收及未完成 Gate，不代表目前狀態。現況看 Snapshot／Gate 7／Manual；bytes/hash 見 [Coverage History Entry 108](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-108)。
+
 `output/plans/` 與 `output/qa/` 是 ignored 本機需求／原始驗收證據，不因 ignored 即可刪。唯一 Danny Quant plan 原路徑 `output/plans/baldr_product_experience_plan_20261004.md` 保留原 bytes，另有本轮可還原快照；raw 失敗、JUnit 與 receipts 不重寫。正式摘要可放 QA，私人內容不能直接公開。
 
 

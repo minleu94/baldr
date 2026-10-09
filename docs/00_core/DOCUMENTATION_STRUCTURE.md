@@ -171,6 +171,7 @@
 - `V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md` 是 9/13 research／shadow 部署與 bounded run 快照，已移入 Archive；舊 QA 路徑保留導引，明示 learning task 當時尚未執行且無正式 promotion／production evidence credit。
 - `WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20.md` 是 9/14–20 加 9/21 唯讀讀回的歷史快照，已移入 Archive；原 QA 路徑保留導引，明示 collection、BankTaiwan capture、ML shadow 的 lane 區隔與目前狀態回 Snapshot／Gate 7。
 - `WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06.md` 是 9/6 個股清單 UI 與 ML visibility 的一次性收據，已移入 Archive；原 QA 路徑保留導引，9/6 `0/3` 與 stale projection 不作目前 ML 狀態。
+- `THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07.md` 是分析／ML／UI 三面向的工程與 QA 交接，已移入 Archive；原路徑保留導引，當時未完成的 Formal inputs、calibration、promotion 與真人 UI 驗收仍依現行 scoped authority 判讀。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
 - `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 Factor Layer 計畫與 1 份設計規格，以及 1 份 Month 4 closure plan、1 份已結案 Safe Refactor continuation plan、9 份 Month 3 Portfolio Replay implementation plans 與 1 份 Month 3 closure audit、3 份已結案 V3 ML／UI polish plans 與 3 份配套 design specs、1 份 TPEX daily-price backfill plan、1 組金融 float boundary plan/spec、1 份文件 Roadmap rebaseline plan、1 組 Legacy Test Governance plan/spec 已封存；weight/exposure plan 保留最後 diff／stage 核取項目未勾的原始狀態。Scheduler Approval pair 因測試內容依賴、Healthcheck Batch 3 plan 因原人工 QA 仍留有待重測項目而保留原文。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
@@ -242,6 +243,7 @@
 - 2026-10-09：將 V4.2 9/13 recommendation learning dated deployment QA 歸檔；QA README、Archive README、Coverage Map／History 與 Index 轉向現行 Manual、Gate 7 和 Snapshot。
 - 2026-10-09：將 Weekly Natural Evidence 9/20 日期快照移至 Archive；QA 地圖明示 collection、BankTaiwan capture 與 ML shadow 的不同 lane，以及 pending／matured／approval 的區別。
 - 2026-10-09：將 Watchlist analysis／ML visibility 9/6 dated receipt 移入 Archive；QA／Archive／Index 同步連至 Manual、Architecture、Gate 7 與 Snapshot，避免歷史 readiness 數字冒充目前狀態。
+- 2026-10-09：將 9/7 三面向工程／QA 交接封存；QA／Archive 導覽保留其分析、ML、UI 邊界，未完成 Gate 不因歸檔而結案。
 - 2026-10-09：補充 QA evidence retention 規則：按 Gate／未解項／固定路徑／替代證據判斷 QA 原件是否保留，不能只按日期或完成標籤歸檔；同步 QA README 與 Coverage Map。
 - 2026-10-09：覆核 QA 生命週期清冊的 10 份歸檔候選：僅移動 3 份無活躍依賴的歷史流程／失效紀錄；對保留原路徑、保留原 bytes 的判定與 coverage 見 Entry 097。
 - 2026-10-09：移除 Version Roadmap 內重複的 7/12、8/30 狀態註記及已封存的單次驗收摘要；保留 maturity criteria，現況／歷史入口改由 Snapshot／Archive 導覽。

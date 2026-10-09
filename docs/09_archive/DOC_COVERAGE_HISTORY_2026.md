@@ -937,3 +937,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06.md` | [Watchlist analysis／ML visibility QA 原文](WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md) | 3,729 / `14EFBB59B8A84DA62D2D11E0C51ADA072827687820EACD8CD238BA6B55B883CB` | 3,729 / `14EFBB59B8A84DA62D2D11E0C51ADA072827687820EACD8CD238BA6B55B883CB` |
 
 只歸檔日期化收據；現行 UI 行為、ML Gate 與成熟度不由此 Entry 裁定。
+
+<a id="coverage-entry-108"></a>
+## 2026-10-09 歸檔三面向清查建議實作交接（9/7）
+
+此 QA 是 2026-09-07 的工程實作／驗收交接，包含分析與 paper evidence、D 槽容量與 ML release、UI／UX 三面向。原文保留當時測試數字及完整技術範圍，但不是目前狀態或長期操作契約。它明確沒有寫正式資料／production pointer、啟動 promotion 或 broker order；當時 `0/3` owner-controlled Formal inputs、`oof_diagnostic_only` calibration、`alpha=0`／broker disabled、owner review 與真人鍵盤／螢幕閱讀器／150–200% UI 驗收限制也不得被歸檔解讀為已通過或仍是目前唯一狀態。
+
+未完成 Formal／ML Gate 看 Gate 7 與 Manual Supplements，操作依 Application Manual，目前優先序／阻礙看 Snapshot。精確檔名 inbound 僅為 2026-10-06 歷史 Catalog；程式、測試、manifest、QA README 與當前 Index 沒有固定讀者，原 QA 路徑短導引保留舊 Catalog 可達性。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07.md` | [三面向實作交接原文](THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07_HISTORY.md) | 6,482 / `253081AFB95C6493EA98211B6F5A0598920022B4BCA2AFAF40EA453B7E2DBA6C` | 6,482 / `253081AFB95C6493EA98211B6F5A0598920022B4BCA2AFAF40EA453B7E2DBA6C` |
+
+此 Entry 只保存來源身分、當時限制與現行入口，不重述測試數字作為目前 repository health 或 Gate 結論。

@@ -51,6 +51,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [Weekly Natural Evidence Review（2026-09-20，歷史）](../09_archive/WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保存 9/14–20 週期與 9/21 唯讀觀測，分清 weekly collection、BankTaiwan capture 與 ML natural shadow，不代表成熟、promotion 或 human approval。現況看 Snapshot／Gate 7；bytes/hash 見 [Coverage History Entry 106](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
 
+[BankTaiwan 研究型學習（2026-09-14，單日 bounded run）](../09_archive/README.md#2026-10-09-banktaiwan-2026-09-14-initial-shadow-run)：成本估算與營運 QA 保留為歷史快照；`retain_current`、自然成熟樣本 0，不代表 lane maturity 或 promotion。現況看 Snapshot／Gate 7，逐檔 bytes／SHA 見 [Coverage History Entry 120](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-120)。
+
 [觀察清單分析與 ML 可見性驗收（2026-09-06，歷史）](../09_archive/WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md)：保留當日 UI／分析與 `0/3` readiness inspection，非目前 ML 狀態或 promotion。現行操作／來源／Gate／狀態看 Manual／Architecture／Gate 7／Snapshot；bytes/hash 見 [Coverage History Entry 107](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。
 
 [三面向清查建議實作交接（2026-09-07，歷史）](../09_archive/THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07_HISTORY.md)：保留當時分析／ML／UI 實作驗收及未完成 Gate，不代表目前狀態。現況看 Snapshot／Gate 7／Manual；bytes/hash 見 [Coverage History Entry 108](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-108)。

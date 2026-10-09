@@ -79,6 +79,14 @@
 
 - [Weekly Natural Evidence Review（2026-09-20）](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保留 9/14–20 週期與 9/21 唯讀觀測；V2.2 collection、BankTaiwan capture、ML natural shadow 是不同 lane，pending 不等於 matured／promotion／Formal／human approval。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)。舊 QA 路徑保留導引，原件 SHA 見 [Coverage History Entry 106](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
 
+<a id="2026-10-09-banktaiwan-2026-09-14-initial-shadow-run"></a>
+## 2026-10-09 BankTaiwan 9/14 初始 shadow run 歷史快照
+
+- [研究型成本估算與 real-source smoke](DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md)：保存當日 versioned fee/tax scenario、160 個 replay samples 與估算結果；`formal_order_allowed=false`，滑價及實際成交成本未被估算，不能據此聲稱實際 after-cost 成效。
+- [研究型學習營運 QA](DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md)：保存獨立 task 註冊與一次受控 run。該次為 `completed_waiting_natural_maturity`／`retain_current`、自然成熟樣本 0；9/15 預定排程因當日 scheduled snapshot 缺件而未啟動 child。這些 bounded 結果不代表 lane maturity、正式來源採納或 promotion。
+
+目前狀態與資格看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 及較新 QA；操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。兩個 `docs/06_qa/` 原路徑保留導引，來源 bytes／SHA 與目前替代入口見 [Coverage History Entry 120](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-120)。
+
 ## 2026-10-09 Watchlist analysis／ML visibility 9/6 歷史 QA
 
 - [觀察清單分析與 ML 可見性驗收（2026-09-06）](WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md)：保留 Watchlist 摘要／導覽與當日 readiness inspection；`0/3` 與 stale projection 不是目前 ML 狀態，也沒有啟用訓練或 promotion。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，來源邊界看 [system architecture](../01_architecture/system_architecture.md)，Gate／現況看 Gate 7／Snapshot。原 QA 路徑保留導引，SHA 見 [Coverage History Entry 107](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。

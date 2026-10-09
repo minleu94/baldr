@@ -1091,3 +1091,15 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 ## 2026-10-09 修正 Post-V1 multi-day dry-run 記錄生命週期
 
 Entry 041 將 21 份 Post-V1 收據的 QA 原路徑一律改成短導引；逐檔核對後發現 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md` 仍是 `pre_v2_readiness_service` 的固定輸入，解析其中日期列，morning-check 指南也要求在該路徑續填。短導引使 reader 從原有 3 個日期列讀成 0 列。現已從歸檔前 Git blob 還原原文至 `docs/06_qa/`，保留該固定可續寫路徑；`docs/09_archive/` 同名檔留作歷史凍結快照。還原後來源 blob 為 6,049 bytes、SHA-256 `0E0AB39F01B8FB083D0AC36086D1D586027B565650876E3918C71139B688DAFE`；Archive 副本的 Git blob 與來源 blob 完全一致。原有 2026-07-02、07-07、07-08 三列均恢復。Entry 041 的其餘 20 份收據維持封存及舊路徑導引，其他 21 份 Archive 原文均保留。`docs/06_qa/README.md` 與 Archive README 已標明兩條路徑用途；不改程式或測試，不改 `DOC_COVERAGE_MAP` 權威範圍。
+
+<a id="coverage-entry-120"></a>
+## 2026-10-09 封存 BankTaiwan 9/14 bounded shadow run QA 快照
+
+這兩份 QA 記錄 2026-09-14 BankTaiwan 研究型成本與營運 run。成本文件保存當日 versioned fee/tax scenario、real-source read-only replay 與 160 samples；slippage、真實成交成本與正式採納仍不可由此推定。營運文件保存獨立 task 註冊與一次受控 run：狀態為 `completed_waiting_natural_maturity`／`retain_current`，自然成熟樣本 0；下一個 9/15 排程因當日 scheduled snapshot 缺件而未啟動 child。這兩份文件是單日 bounded 歷史，不是目前 lane 狀態、maturity 或 promotion 證據。
+
+| 原 QA 路徑 | Archive 原文 | bytes / SHA-256 |
+|---|---|---|
+| `docs/06_qa/DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14.md` | [`DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md`](DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md) | 6,729 / `B3CF1C057CA3ACBEB18C170C49DAB402E30E14498D90A85E6777C7973A474571` |
+| `docs/06_qa/DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14.md` | [`DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md`](DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md) | 10,393 / `0145B5BB48B0C87C3A8E0FC0AF6978D53041C12F8E873D20CDCA99FF79E5AB11` |
+
+Archive 兩份原件與其歸檔前 `docs/06_qa/` bytes／SHA-256 相同，QA 原路徑改為連到 Archive 原文的繁中導引。全庫精確檔名引用只發現根目錄 `GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md` 的成本論據仍需保留，已改連封存原文；未發現 Python、測試、腳本或固定輸出路徑 consumer。QA README、Archive README、DOCUMENTATION_INDEX 與根目錄引用已同步，Coverage Map 權威邊界不變。現況與資格回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 及近期 QA；日常操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。

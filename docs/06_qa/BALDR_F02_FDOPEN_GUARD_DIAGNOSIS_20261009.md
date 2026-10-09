@@ -7,3 +7,9 @@ e 監督器以 c 啟動契約為基底，Root AST 比較確認最小環境、pla
 Root 閱讀 `daily_market_technical_universe_v4_store._write_immutable()`：它以 `os.open` 建立 owned `.partial`，再呼叫 `os.fdopen(descriptor, "wb")`。e audit handler 將事件 mode 原樣傳入只接受 `"wb"` 的 token verifier。Root 在全新隔離目錄以相同公開 API 執行獨立 probe，確認 CPython audit event 實際 mode 為 `"w"`、flags 為 33665，因而觸發 `untracked_or_nonexact_fdopen_rejected`。Probe 收據為 `output/qa/f02_fd_audit_4pxqw_h4/receipt.json`；沒有產品匯入或原始資料操作。
 
 下一候選須在公開 `os.fdopen` 層核對精確 binary mode／options 與本次 issued descriptor，再在一次性 capability 範圍接受對應 normalized audit event。不能直接允許所有 `"w"` 或數字 descriptor。必要拒絕案例包括未授權 descriptor、文字 mode、非精確 options、重複消費、關閉後 descriptor 重用與檔案身分置換。產品產製與金融計算不因防護診斷而修改；完整 257 與效能矩陣仍待。
+
+f 候選已完成精確 fdopen 防護修正，但完整驗收仍失敗。Root 獨立讀取 `C:/t/f02_ma_composite_257_cbb5429f696a/supervisor_receipt.json`：worker exit 1、監督器與 target pins 起訖相同、QA 清冊只有本次 attempt 增加、串流錯誤為空；Job 已空且關閉，零 owned processes 已證明。目標 `output/qa/f02_ma_composite_257_acceptance_20261009_f/attempt_a7e3c829743b463d/acceptance_receipt.json` 記錄 `fixture_creation`、`bundle_create_failed`、244719 ms，沒有進入完整查詢矩陣。
+
+本次停止位置是 bundle shard 原子發布。Root 核對產品 `daily_market_technical_official_disposition_bundle_v1.py` SHA 為 `8251087995636762aa55bbab74923ba2d762aea6bc95b11a286acbc7bc1ee47a`；`_publish_objects()` 先驗 staged shard SHA，再以 `os.link` 將本次 `.attempts/<uuid>/shard-000001.jsonl` 發布至 `objects/<sha256>.jsonl`。該步被 QA 的全面 link 禁止擋下，尚未到 manifest 發布；不能將此封套視為查詢結果或完整 257 接受。
+
+下一個 g QA 候選只可對已釘選的兩個產品發布呼叫端核精確來源／目的、同一隔離 attempt 與同卷、排他目的、內容 SHA／定址名稱、native 檔案身分及合法 link-count 生命週期。未知呼叫端、外部路徑、覆寫及 symlink 仍拒絕；需先完成正反例自測，再執行同一固定 target。f 失敗封套保留，不修改產品發布或金融計算語意。

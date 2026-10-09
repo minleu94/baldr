@@ -1,50 +1,11 @@
-# Optimize UI Qt Charts Implementation Plan
+# 歷史計畫導引：Optimize UI Qt Charts
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+這個舊路徑保留作相容入口。原計畫全文在 [Archive 原文](../../09_archive/superpowers/plans/2026-05-19-optimize-ui-qt-charts.md)。
 
-**Goal:** Add a fast, optional backtest equity chart path while preserving the current Matplotlib charts as a fallback.
+## 狀態與閱讀入口
 
-**Architecture:** Keep chart data normalization outside the widget layer, then render the equity chart through a Qt WebEngine canvas widget when available. The existing Matplotlib `EquityCurveWidget` remains the compatibility fallback.
-
-**Tech Stack:** PySide6, QtWebEngine, pandas, numpy, pytest.
-
----
-
-### Task 1: Chart Payload Normalization
-
-**Files:**
-- Create: `ui_qt/widgets/chart_payloads.py`
-- Test: `tests/test_ui_qt_chart_payloads.py`
-
-- [ ] Write tests for date normalization, benchmark normalization, and trade marker extraction.
-- [ ] Implement pure functions that convert pandas series/dataframes into JSON-serializable chart payloads.
-- [ ] Run `.\.venv\Scripts\python.exe -m pytest -o addopts= tests\test_ui_qt_chart_payloads.py -q`.
-
-### Task 2: Fast Equity Widget
-
-**Files:**
-- Create: `ui_qt/widgets/fast_chart_widget.py`
-- Modify: `ui_qt/widgets/__init__.py`
-- Test: `tests/test_ui_qt_chart_widget_factory.py`
-
-- [ ] Add a factory that returns the fast WebEngine equity widget when QtWebEngine imports cleanly.
-- [ ] Keep the Matplotlib widget as fallback when WebEngine is unavailable or explicitly disabled.
-- [ ] Run focused widget factory tests without starting the full app.
-
-### Task 3: Backtest View Wiring
-
-**Files:**
-- Modify: `ui_qt/views/backtest_view.py`
-
-- [ ] Replace direct `EquityCurveWidget()` construction with the factory.
-- [ ] Leave drawdown, return histogram, and holding histogram on Matplotlib for this first trial.
-- [ ] Run import-level checks for `BacktestView` and focused non-UI tests.
-
-### Task 4: Verification
-
-**Files:**
-- No planned code changes.
-
-- [ ] Run focused tests for new payload/factory behavior.
-- [ ] Run a small existing baseline test with `-o addopts=` because the environment lacks `pytest-cov`.
-- [ ] Summarize remaining manual UI verification needed.
+- 原計畫的 13 個實作與驗證核取項目均未勾；Archive 保留原始清單，不以程式或測試存在推定每項驗證完成。
+- 回測 fast renderer 與 payload 程式／測試目前可在 repo 查得，但 Full App healthcheck 的 B-038 仍是「已修正待驗證」，視覺 pixel QA 尚未完成。
+- [UX07 圖表可行性調查](../../06_qa/UX07_CHART_FEASIBILITY_20261005.md) 是方案調查，沒有宣告回測圖表整合完成；[UX08 個股原生圖表契約](../../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md) 屬不同圖表範圍，不取代 B-038 驗收。
+- 目前操作看 [Application Manual](../../07_guides/APPLICATION_MANUAL.md)，目前優先序看 [Project Snapshot](../../00_core/PROJECT_SNAPSHOT.md)，B-038 狀態看 [QA Coverage Mapping](../../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。
+- 本次生命週期與原件 bytes／SHA 記於 [Coverage History Entry 144](../../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-144)；同題入口見 [Superpowers README](../README.md) 與 [Archive README](../../09_archive/README.md#2026-10-09-backtest-chart-plan)。

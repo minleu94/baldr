@@ -619,6 +619,13 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - [TASK_LOOP_06_HANDOFF.md](TASK_LOOP_06_HANDOFF.md)
 - [TASK_LOOP_07_HANDOFF.md](TASK_LOOP_07_HANDOFF.md)
 
+<a id="2026-10-09-backtest-chart-plan"></a>
+## 2026-10-09 回測 fast renderer 歷史 plan
+
+- [2026-05-19 Optimize UI Qt Charts plan 原文](superpowers/plans/2026-05-19-optimize-ui-qt-charts.md) 已移至 Archive；[原路徑](../superpowers/plans/2026-05-19-optimize-ui-qt-charts.md)保留相容導引。原計畫 13 個實作／驗證核取項目均未勾，不將程式或測試存在解讀為所有步驟、人工操作或視覺驗收已完成。
+- 回測結果圖的 B-038 仍依 [Full App QA Coverage Mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 標示「已修正待驗證」，視覺 pixel QA 尚待完成。[UX07](../06_qa/UX07_CHART_FEASIBILITY_20261005.md) 為可行性調查；[UX08](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md) 是個股原生圖表契約，兩者都不取代 B-038 回測圖表驗收。
+- 目前操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前狀態與優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。原件 bytes／SHA、引用稽核與效力界線見 [Coverage History Entry 144](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-144)；原路徑與封存位置也列於 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
 ## ⚠️ 注意
 
 這些文檔主要用於記錄歷史，日常使用時請參考：

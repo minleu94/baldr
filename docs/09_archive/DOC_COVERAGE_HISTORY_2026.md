@@ -1398,3 +1398,16 @@ Full App healthcheck 與現行 QA coverage mapping 仍將 BACKTEST-ISSUE-013／0
 | 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
 |---|---|---:|
 | [`docs/superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md`](../superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md) | [`2026-06-23-healthcheck-batch4-research-lab-results.md`](superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md) | 18,737 / `9978f6b4793ff750d83a7ce14c44268bdbd50b3c112bf7704ee49b04791c7fa1` |
+
+<a id="coverage-entry-144"></a>
+## 2026-10-09 封存 2026-05-19 回測 fast renderer 歷史計畫
+
+將 `docs/superpowers/plans/2026-05-19-optimize-ui-qt-charts.md` 的歷史實作計畫逐位元組複製至 `docs/09_archive/superpowers/plans/`；原路徑改為相容導引。來源與 Archive 原文均為 2,260 bytes，SHA-256 `63edaf565c22b7583e2ed782b3d0274091901b146daa238131969fd23a251c33`；封存副本已在覆寫原路徑前完成 hash 核對。原計畫 13 個實作／驗證 checkbox 均未勾，原文狀態完整保留。Git 可見回測 fast renderer、payload 與測試實作，但不據此推定原計畫全部步驟、人工操作或視覺驗收完成。
+
+目前 [Full App QA Coverage Mapping 的 B-038](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 仍標示「已修正待驗證」，並明列視覺 pixel QA 尚未完成；本輪未找到較新的 B-038 closeout。較新的 [UX07 圖表可行性調查](../06_qa/UX07_CHART_FEASIBILITY_20261005.md) 明確是方案調查，沒有宣告回測圖表整合完成；[UX08 個股原生圖表契約](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md) 是不同圖表範圍，不能替代 B-038 驗收。這次只整理計畫生命週期與入口，沒有升級 QA 狀態或建立新的產品優先序。
+
+精確檔名引用核對找到 plan/spec manifest 與固定歷史 Documentation Catalog；舊路徑導引承接其路徑。未找到程式、測試、腳本、設定或排程中的固定路徑 consumer；來源計畫本身沒有相對 Markdown 連結。`docs/superpowers/README.md`、Archive README 與 manifest 已更新。現行操作與結果判讀看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，圖表邊界看 [系統架構](../01_architecture/system_architecture.md)，目前狀態與優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。`DOCUMENTATION_INDEX.md` 的工作樹版本有其他進行中修改，本批未觸碰；舊索引快照引用由相容導引承接。`DOC_COVERAGE_MAP.md` 的權威邊界與同步規則沒有改變，因此未修改 Map；逐批生命週期、原路徑／目的地、hash 與替代入口由本 Entry、[Archive README](README.md#2026-10-09-backtest-chart-plan)、[Superpowers README](../superpowers/README.md) 及 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 追蹤。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-05-19-optimize-ui-qt-charts.md`](../superpowers/plans/2026-05-19-optimize-ui-qt-charts.md) | [`2026-05-19-optimize-ui-qt-charts.md`](superpowers/plans/2026-05-19-optimize-ui-qt-charts.md) | 2,260 / `63edaf565c22b7583e2ed782b3d0274091901b146daa238131969fd23a251c33` |

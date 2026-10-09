@@ -239,6 +239,9 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 [Month 2 Parameter & Run Storage Governance Plan 原文](superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 已結案並移至本目錄；[舊路徑](../superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 保留導引。原文 C4 驗證證據與 Definition of Done 記錄最終完成狀態；前段「等待核准」文字是過程快照，不能作為目前狀態。原始 bytes／SHA 與生命週期見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 
+### 2026-10-08 Month 3 Factor Layer 歷史設計與實作材料
+
+Factor Layer v1 的 [設計規格](superpowers/specs/2026-06-14-month-3-factor-layer-design.md)、[實作計畫](superpowers/plans/2026-06-14-month-3-factor-layer.md) 與 [Research Run 整合計畫](superpowers/plans/2026-06-14-month-3-factor-run-integration.md) 已依類型歸檔；原路徑保留導引。實作計畫的 Task 1–10 均勾選完成，但「Commit only after user approval」仍未勾選；Git history 有對應實作提交，歸檔保留該差異而不推定核准流程。設計、架構與目前狀態請回到 [系統架構](../01_architecture/system_architecture.md) 與 [專案快照](../00_core/PROJECT_SNAPSHOT.md)。原件路徑與 SHA 見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 ## 2026-10-06 治理入口整理原文快照
 
 下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：

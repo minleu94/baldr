@@ -348,6 +348,9 @@ P5／S4 Scheduler Approval pair 留在原路徑，因現有 `tests/test_producti
 
 已將已結案的 Month 2 Parameter & Run Storage Governance Plan 原文移至 `docs/09_archive/superpowers/plans/`；原 `docs/superpowers/plans/` 路徑保留導引。最終 C4 驗證證據、Definition of Done 與 Git closeout 已交叉核對，早期「等待核准」文字是被最終結案取代的階段快照。同步修正 plan/spec manifest 中預先存在的 bytes／SHA 與原件不符，原文 SHA-256 為 `4b4da66a9fd054fd228a6afad6f000387fd439d64fcc594bd144ad8693a1f626`。歸檔原文不代表其 2026-06 驗證數字是目前 branch 的即時測試狀態。
 
+## 2026-10-08 Month 3 Factor Layer 設計／實施材料歸檔
+
+將 Month 3 Factor Layer v1 的設計規格、實施計畫與 Research Run 整合計畫成組移至 `docs/09_archive/superpowers/{plans,specs}/`，原 Superpowers 路徑保留導引，Archive README、Superpowers README 與逐檔 manifest 同步。原計畫 Task 1–10 已勾選，最末提交核准項目仍未勾選；Git history 顯示有對應實作提交，本次不據此推定文件未記錄的核准流程。歸檔材料不作目前狀態權威，現況回到 Snapshot 與 system architecture。
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

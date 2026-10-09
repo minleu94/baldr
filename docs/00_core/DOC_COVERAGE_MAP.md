@@ -350,7 +350,10 @@ P5／S4 Scheduler Approval pair 留在原路徑，因現有 `tests/test_producti
 
 ## 2026-10-08 Month 3 Factor Layer 設計／實施材料歸檔
 
-將 Month 3 Factor Layer v1 的設計規格、實施計畫與 Research Run 整合計畫成組移至 `docs/09_archive/superpowers/{plans,specs}/`，原 Superpowers 路徑保留導引，Archive README、Superpowers README 與逐檔 manifest 同步。原計畫 Task 1–10 已勾選，最末提交核准項目仍未勾選；Git history 顯示有對應實作提交，本次不據此推定文件未記錄的核准流程。歸檔材料不作目前狀態權威，現況回到 Snapshot 與 system architecture。
+將 Month 3 Factor Layer v1 的設計規格、兩份基礎實施計畫，以及 Factor Replay coverage 和 Recommendation factor feed 兩份延伸計畫成組移至 `docs/09_archive/superpowers/{plans,specs}/`，原 Superpowers 路徑保留導引，Archive README、Superpowers README 與逐檔 manifest 同步。原計畫 Task 1–10 已勾選，最末提交核准項目仍未勾選；Git history 顯示有對應實作提交，本次不據此推定文件未記錄的核准流程。歸檔材料不作目前狀態權威，現況回到 Snapshot 與 system architecture。
+## 2026-10-08 Month 4 Daily Decision Desk closure plan 歸檔
+
+將含有歷史結案報告和 execution template 的 Month 4 closure plan 移至 `docs/09_archive/superpowers/plans/`，原路徑保留轉址，並同步 Archive／Superpowers README、manifest 與本 Coverage Map。原文前段明列 closed status 及測試／QA／mypy／py_compile 結果，後段 Task 1–7 核取方塊仍未勾選；保留原始差異並在轉址標出，避免讀者將模板 checkbox 誤當現況。日期化驗證不代表目前 branch 的即時測試狀態。
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

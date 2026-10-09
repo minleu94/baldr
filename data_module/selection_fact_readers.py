@@ -21,6 +21,7 @@ from data_module.current_fundamental_snapshots import (
     TABLE as CURRENT_FUNDAMENTAL_TABLE,
 )
 from data_module.fundamental_read_copy_contract import (
+    FundamentalReadArchivedCopyBinding,
     FundamentalReadCopyBinding,
     FundamentalReadCopyBindingCancelled,
     FundamentalReadCopyBindingError,
@@ -245,7 +246,7 @@ class SelectionFundamentalReadSession:
         schema_descriptor: tuple[_SchemaColumn, ...],
         schema_identity_sha256: str,
         database_file_pins_start: tuple[FundamentalFilePin, ...],
-        copy_binding: FundamentalReadCopyBinding,
+        copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding,
         cancel_callback: Callable[[], bool] | None,
     ) -> None:
         self._provider = provider
@@ -288,7 +289,7 @@ class SelectionFundamentalReadSession:
         provider: RecommendationCurrentFundamentalProvider,
         *,
         database_path: Path | str,
-        copy_binding: FundamentalReadCopyBinding,
+        copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding,
         stock_codes: Sequence[str],
         cutoff_at: datetime,
         cancel_callback: Callable[[], bool] | None = None,
@@ -308,20 +309,33 @@ class SelectionFundamentalReadSession:
             raise FundamentalReadSessionError(
                 "explicit database path does not match provider database"
             )
-        if type(copy_binding) is not FundamentalReadCopyBinding:
+        if type(copy_binding) not in {
+            FundamentalReadCopyBinding,
+            FundamentalReadArchivedCopyBinding,
+        }:
             raise FundamentalReadSessionError("typed copy binding is required")
         protected_roots = (
             provider.output_root,
-            provider.monthly_source_root,
             Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
         )
         try:
-            pins_start = copy_binding.verify_before_open(
-                database_path=original_database_path,
-                provider_database_path=provider_database_path,
-                protected_roots=protected_roots,
-                cancel_callback=cancel_callback,
-            )
+            if type(copy_binding) is FundamentalReadCopyBinding:
+                pins_start = copy_binding.verify_before_open(
+                    database_path=original_database_path,
+                    provider_database_path=provider_database_path,
+                    protected_roots=(*protected_roots, provider.monthly_source_root),
+                    cancel_callback=cancel_callback,
+                )
+            elif type(copy_binding) is FundamentalReadArchivedCopyBinding:
+                pins_start = copy_binding.verify_before_open(
+                    database_path=original_database_path,
+                    provider_database_path=provider_database_path,
+                    provider_monthly_source_root=provider.monthly_source_root,
+                    protected_roots=protected_roots,
+                    cancel_callback=cancel_callback,
+                )
+            else:
+                raise FundamentalReadSessionError("typed copy binding is required")
         except FundamentalReadCopyBindingCancelled as exc:
             raise FundamentalReadSessionCancelled(str(exc)) from exc
         except FundamentalReadCopyBindingError as exc:

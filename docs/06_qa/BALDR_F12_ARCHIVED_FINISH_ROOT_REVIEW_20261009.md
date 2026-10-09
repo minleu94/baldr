@@ -6,4 +6,6 @@ Root 實際執行的新歷史路徑陷阱與晚到來源變動五例為 5 passed
 
 此輪來源 SHA：`fundamental_read_snapshot.py` 為 `74BF6146B52D2F548EEBC8A71643299C87047CDF8BA5F7516BEDFFA7B571EFE1`；測試 SHA 為 `AB0F58C65A2CAF16B501EF5B537AA2F242B44F50F778F1BA686562312BACF355`。preimage manifest 與窄修正前原檔保存在同 QA 目錄的 `preimage_manifest.json`／`preimage/`，舊獨立審查結論保持原貌。
 
-尚未接受最終 backend 增量：新 archived route 仍須補入口預取消與載入後 finish 取消，確認不發行完成結果、連線閉合及保存 snapshot/archive 不變。完成這兩例再核最終版本。此處所有證據是隔離合成來源，不代表正式資料、F12 全母體 query、Main/UI、收藏、EXE 或真人接受；原補完範圍保持。
+取消補測已完成。Root 實際執行三個新案例為 3 passed、22 deselected，0.93 秒（`root_cancel_review_a.log`）：入口預取消不建立 operation／SQLite；已完成 snapshot 的 revenue wrapper 在投影後取消不發行 revenue cohort；底層 archived finish 在最後 archive 驗證後取消，不發行 snapshot 或 revenue reference。三例核對 reader 閉合及保存來源 inventory 不變。Owner 的同版完整回歸為 61 passed、1 skipped，12.05 秒，Root 已讀終態日誌。最終測試 SHA 為 `CA2570F58071F4E582E15C35868AED5E13F5433215DF2FAFF29714961BC7C3D2`；四來源 SHA 維持已審查值，Root 五檔 py_compile 通過。
+
+中央接受本次 archived-source backend 增量，原獨立審查 blocker 已以窄修正和明確 instrumentation 補齊。所有證據是隔離合成來源，不代表正式資料、F12 全母體 query、Main/UI、收藏、EXE 或真人接受；後續索引／複合查詢相容性與產品接線另行驗證，原補完範圍保持。

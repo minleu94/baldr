@@ -17,11 +17,13 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 from threading import Event, Lock, get_ident
-from typing import Callable, Literal, Sequence
+from typing import Callable, Literal, Sequence, cast
 
 from data_module.fundamental_read_snapshot import (
     FundamentalReadSnapshotCancelled,
     FundamentalReadSnapshotError,
+    FundamentalReadSnapshotReferenceV1,
+    FundamentalReadSnapshotRawArchiveReferenceV1,
     FundamentalReadSnapshotSession,
     FundamentalSnapshotSourceClock,
     FinishedFundamentalSnapshotReadCohort,
@@ -59,6 +61,8 @@ DAILY_MARKET_MONTHLY_REVENUE_ARCHIVE_SCHEMA_V1 = (
 DAILY_MARKET_MONTHLY_REVENUE_SOURCE_SCOPE_V1 = "current_observed_only"
 DAILY_MARKET_MONTHLY_REVENUE_AVAILABILITY_V1 = "unknown"
 MAX_MONTHLY_REVENUE_JSON_BYTES_V1 = 256 * 1024 * 1024
+MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V1 = 32 * 1024 * 1024
+MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V2 = 64 * 1024 * 1024
 MAX_MONTHLY_REVENUE_JSON_DEPTH_V1 = 32
 _STOCK_CODE_RE = re.compile(r"^[0-9]{4,6}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -606,6 +610,334 @@ class UnverifiedMonthlyRevenueArchiveV1:
         return cls.from_json(_canonical_json(payload))
 
 
+@dataclass(frozen=True, slots=True)
+class DailyMarketMonthlyRevenueSourceReferenceV1:
+    """exact reopen 的傳輸參照；內容雜湊不會自行授予 reader 資格。"""
+
+    snapshot_reference: FundamentalReadSnapshotReferenceV1
+    source_content_identity_sha256: str
+    decision_cutoff: str
+    declared_stock_codes: tuple[str, ...]
+    fact_identity_by_stock: tuple[tuple[str, str], ...]
+    fact_state_counts: tuple[tuple[str, int], ...]
+    schema_version: Literal["daily-market-monthly-revenue-source-reference.v1"] = (
+        "daily-market-monthly-revenue-source-reference.v1"
+    )
+    method_id: Literal["current-monthly-revenue-yoy.v1"] = "current-monthly-revenue-yoy.v1"
+    source_scope: Literal["current_observed_only"] = "current_observed_only"
+    availability_status: Literal["unknown"] = "unknown"
+    historical_pit_eligible: Literal[False] = False
+    formal_pit_eligible: Literal[False] = False
+
+    def __post_init__(self) -> None:
+        if type(self.snapshot_reference) is not FundamentalReadSnapshotReferenceV1:
+            raise TypeError("monthly source reference 必須有 typed snapshot reference")
+        if self.schema_version != "daily-market-monthly-revenue-source-reference.v1":
+            raise ValueError("monthly source reference schema 不支援")
+        if self.method_id != "current-monthly-revenue-yoy.v1":
+            raise ValueError("monthly source reference method 不支援")
+        if self.source_scope != DAILY_MARKET_MONTHLY_REVENUE_SOURCE_SCOPE_V1:
+            raise ValueError("monthly source reference 必須保持 current-only")
+        if self.availability_status != DAILY_MARKET_MONTHLY_REVENUE_AVAILABILITY_V1:
+            raise ValueError("monthly source reference availability 必須保持 unknown")
+        if self.historical_pit_eligible is not False or self.formal_pit_eligible is not False:
+            raise ValueError("monthly source reference 不可宣稱 PIT 資格")
+        if (
+            self.decision_cutoff != self.snapshot_reference.decision_cutoff
+            or type(self.declared_stock_codes) is not tuple
+            or self.declared_stock_codes != self.snapshot_reference.declared_stock_codes
+            or tuple(code for code, _ in self.fact_identity_by_stock) != self.declared_stock_codes
+            or len(self.fact_identity_by_stock) != len(self.declared_stock_codes)
+        ):
+            raise ValueError("monthly source reference cutoff/cohort ledger mismatch")
+        if not _SHA256_RE.fullmatch(self.source_content_identity_sha256):
+            raise ValueError("monthly source content identity 格式錯誤")
+        if any(not _SHA256_RE.fullmatch(identity) for _, identity in self.fact_identity_by_stock):
+            raise ValueError("monthly fact identity ledger 格式錯誤")
+        if self.fact_state_counts != tuple(sorted(self.fact_state_counts)):
+            raise ValueError("monthly fact state counts 必須排序")
+        if any(
+            state not in {"observed", "unknown", "blocked"}
+            or type(count) is not int
+            or count < 0
+            for state, count in self.fact_state_counts
+        ):
+            raise ValueError("monthly fact state counts 型別錯誤")
+        if sum(count for _, count in self.fact_state_counts) != len(self.declared_stock_codes):
+            raise ValueError("monthly fact state counts 未涵蓋 cohort")
+
+    @property
+    def fact_ledger_identity_sha256(self) -> str:
+        return _canonical_sha256(
+            [[code, identity] for code, identity in self.fact_identity_by_stock]
+        )
+
+    @property
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(self._identity_payload())
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "method_id": self.method_id,
+            "snapshot_reference": self.snapshot_reference.to_dict(),
+            "source_content_identity_sha256": self.source_content_identity_sha256,
+            "decision_cutoff": self.decision_cutoff,
+            "declared_stock_codes": list(self.declared_stock_codes),
+            "fact_identity_by_stock": [list(item) for item in self.fact_identity_by_stock],
+            "fact_ledger_identity_sha256": self.fact_ledger_identity_sha256,
+            "fact_state_counts": [list(item) for item in self.fact_state_counts],
+            "source_scope": self.source_scope,
+            "availability_status": self.availability_status,
+            "historical_pit_eligible": False,
+            "formal_pit_eligible": False,
+        }
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self._identity_payload()
+        payload["identity_sha256"] = self.identity_sha256
+        return payload
+
+    def to_json(self) -> str:
+        raw = _canonical_json(self.to_dict())
+        if len(raw.encode("utf-8")) > MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V1:
+            raise ValueError("monthly source reference 超過傳輸上限")
+        return raw
+
+    @classmethod
+    def from_json(
+        cls,
+        raw: str | bytes,
+    ) -> DailyMarketMonthlyRevenueSourceReferenceV1:
+        text = _decode_bounded_source_reference(raw)
+        payload = _parse_strict_json(text)
+        if type(payload) is not dict:
+            raise ValueError("monthly source reference root 必須是 object")
+        expected_keys = {
+            "schema_version", "method_id", "snapshot_reference",
+            "source_content_identity_sha256", "decision_cutoff", "declared_stock_codes",
+            "fact_identity_by_stock", "fact_ledger_identity_sha256", "fact_state_counts",
+            "source_scope", "availability_status", "historical_pit_eligible",
+            "formal_pit_eligible", "identity_sha256",
+        }
+        if set(payload) != expected_keys:
+            raise ValueError("monthly source reference 欄位不符")
+        nested = payload.get("snapshot_reference")
+        if type(nested) is not dict:
+            raise ValueError("monthly source reference snapshot 欄位錯誤")
+        snapshot_reference = FundamentalReadSnapshotReferenceV1.from_json(
+            _canonical_json(nested)
+        )
+        codes_raw = payload.get("declared_stock_codes")
+        facts_raw = payload.get("fact_identity_by_stock")
+        counts_raw = payload.get("fact_state_counts")
+        if type(codes_raw) is not list or any(type(code) is not str for code in codes_raw):
+            raise ValueError("monthly source reference code 清冊型別錯誤")
+        if type(facts_raw) is not list or any(
+            type(pair) is not list or len(pair) != 2
+            or type(pair[0]) is not str or type(pair[1]) is not str
+            for pair in facts_raw
+        ):
+            raise ValueError("monthly source reference fact ledger 型別錯誤")
+        if type(counts_raw) is not list or any(
+            type(pair) is not list or len(pair) != 2
+            or type(pair[0]) is not str or type(pair[1]) is not int
+            for pair in counts_raw
+        ):
+            raise ValueError("monthly source reference state counts 型別錯誤")
+        reference = cls(
+            snapshot_reference=snapshot_reference,
+            source_content_identity_sha256=_require_string(payload, "source_content_identity_sha256"),
+            decision_cutoff=_require_string(payload, "decision_cutoff"),
+            declared_stock_codes=tuple(codes_raw),
+            fact_identity_by_stock=tuple((pair[0], pair[1]) for pair in facts_raw),
+            fact_state_counts=tuple((pair[0], pair[1]) for pair in counts_raw),
+            schema_version=payload["schema_version"],
+            method_id=payload["method_id"],
+            source_scope=payload["source_scope"],
+            availability_status=payload["availability_status"],
+            historical_pit_eligible=payload["historical_pit_eligible"],
+            formal_pit_eligible=payload["formal_pit_eligible"],
+        )
+        if payload.get("fact_ledger_identity_sha256") != reference.fact_ledger_identity_sha256:
+            raise ValueError("monthly source reference fact ledger digest mismatch")
+        if payload.get("identity_sha256") != reference.identity_sha256:
+            raise ValueError("monthly source reference identity mismatch")
+        if text != reference.to_json():
+            raise ValueError("monthly source reference JSON 必須 canonical")
+        return reference
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketMonthlyRevenueSourceReferenceV2:
+    """把 finished facts 與完整 raw archive 綁定；decoder 不自行授予來源資格。"""
+
+    snapshot_reference: FundamentalReadSnapshotReferenceV1
+    raw_archive_reference: FundamentalReadSnapshotRawArchiveReferenceV1
+    source_content_identity_sha256: str
+    decision_cutoff: str
+    declared_stock_codes: tuple[str, ...]
+    fact_identity_by_stock: tuple[tuple[str, str], ...]
+    fact_state_counts: tuple[tuple[str, int], ...]
+    schema_version: Literal["daily-market-monthly-revenue-source-reference.v2"] = (
+        "daily-market-monthly-revenue-source-reference.v2"
+    )
+    method_id: Literal["current-monthly-revenue-yoy.v1"] = "current-monthly-revenue-yoy.v1"
+    source_scope: Literal["current_observed_only"] = "current_observed_only"
+    availability_status: Literal["unknown"] = "unknown"
+    historical_pit_eligible: Literal[False] = False
+    formal_pit_eligible: Literal[False] = False
+
+    def __post_init__(self) -> None:
+        if type(self.snapshot_reference) is not FundamentalReadSnapshotReferenceV1:
+            raise TypeError("月營收 v2 reference 必須包含 typed snapshot reference")
+        if type(self.raw_archive_reference) is not FundamentalReadSnapshotRawArchiveReferenceV1:
+            raise TypeError("月營收 v2 reference 必須包含 typed raw archive reference")
+        if self.schema_version != "daily-market-monthly-revenue-source-reference.v2":
+            raise ValueError("月營收 v2 source reference schema 不支援")
+        if self.method_id != "current-monthly-revenue-yoy.v1":
+            raise ValueError("月營收方法版本不支援")
+        if self.source_scope != DAILY_MARKET_MONTHLY_REVENUE_SOURCE_SCOPE_V1:
+            raise ValueError("月營收 reference 必須保持 current-only")
+        if self.availability_status != DAILY_MARKET_MONTHLY_REVENUE_AVAILABILITY_V1:
+            raise ValueError("月營收 reference availability 必須 unknown")
+        if self.historical_pit_eligible is not False or self.formal_pit_eligible is not False:
+            raise ValueError("月營收 reference 不可授予 PIT 資格")
+        if self.raw_archive_reference.snapshot_reference.identity_sha256 != self.snapshot_reference.identity_sha256:
+            raise ValueError("月營收 v2 snapshot/archive references 不一致")
+        if (
+            self.source_content_identity_sha256
+            != self.snapshot_reference.source_content_identity_sha256
+            or self.source_content_identity_sha256
+            != self.raw_archive_reference.source_content_identity_sha256
+        ):
+            raise ValueError("月營收 v2 source content identity 不一致")
+        if self.decision_cutoff != self.snapshot_reference.decision_cutoff:
+            raise ValueError("月營收 v2 cutoff 與 snapshot 不一致")
+        if (
+            self.declared_stock_codes != self.snapshot_reference.declared_stock_codes
+            or self.declared_stock_codes != self.raw_archive_reference.declared_stock_codes
+            or type(self.declared_stock_codes) is not tuple
+            or self.declared_stock_codes != tuple(sorted(set(self.declared_stock_codes)))
+        ):
+            raise ValueError("月營收 v2 cohort 清冊不一致")
+        if len(self.fact_identity_by_stock) != len(self.declared_stock_codes) or tuple(
+            code for code, _identity in self.fact_identity_by_stock
+        ) != self.declared_stock_codes:
+            raise ValueError("月營收 v2 fact ledger 未完整涵蓋 cohort")
+        if any(not _SHA256_RE.fullmatch(identity) for _, identity in self.fact_identity_by_stock):
+            raise ValueError("月營收 v2 fact ledger digest 格式錯誤")
+        if self.fact_state_counts != tuple(sorted(self.fact_state_counts)) or any(
+            state not in {"observed", "unknown", "blocked"}
+            or type(count) is not int
+            or count < 0
+            for state, count in self.fact_state_counts
+        ):
+            raise ValueError("月營收 v2 fact state counts 格式錯誤")
+        if sum(count for _state, count in self.fact_state_counts) != len(self.declared_stock_codes):
+            raise ValueError("月營收 v2 fact states 未涵蓋 cohort")
+
+    @property
+    def fact_ledger_identity_sha256(self) -> str:
+        return _canonical_sha256([[code, identity] for code, identity in self.fact_identity_by_stock])
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "method_id": self.method_id,
+            "snapshot_reference": self.snapshot_reference.to_dict(),
+            "raw_archive_reference": self.raw_archive_reference.to_dict(),
+            "source_content_identity_sha256": self.source_content_identity_sha256,
+            "decision_cutoff": self.decision_cutoff,
+            "declared_stock_codes": list(self.declared_stock_codes),
+            "fact_identity_by_stock": [list(item) for item in self.fact_identity_by_stock],
+            "fact_ledger_identity_sha256": self.fact_ledger_identity_sha256,
+            "fact_state_counts": [list(item) for item in self.fact_state_counts],
+            "source_scope": self.source_scope,
+            "availability_status": self.availability_status,
+            "historical_pit_eligible": False,
+            "formal_pit_eligible": False,
+        }
+
+    @property
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(self._identity_payload())
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self._identity_payload()
+        payload["identity_sha256"] = self.identity_sha256
+        return payload
+
+    def to_json(self) -> str:
+        raw = _canonical_json(self.to_dict())
+        if len(raw.encode("utf-8")) > MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V2:
+            raise ValueError("月營收 v2 source reference 超過傳輸上限")
+        return raw
+
+    @classmethod
+    def from_json(cls, raw: str | bytes) -> DailyMarketMonthlyRevenueSourceReferenceV2:
+        text = _decode_bounded_json_v2(raw)
+        payload = _parse_strict_json(text)
+        if type(payload) is not dict:
+            raise ValueError("月營收 v2 source reference 必須是 object")
+        expected = {
+            "schema_version", "method_id", "snapshot_reference", "raw_archive_reference",
+            "source_content_identity_sha256", "decision_cutoff", "declared_stock_codes",
+            "fact_identity_by_stock", "fact_ledger_identity_sha256", "fact_state_counts",
+            "source_scope", "availability_status", "historical_pit_eligible",
+            "formal_pit_eligible", "identity_sha256",
+        }
+        if set(payload) != expected:
+            raise ValueError("月營收 v2 source reference 欄位不符")
+        snapshot_raw = payload["snapshot_reference"]
+        archive_raw = payload["raw_archive_reference"]
+        codes_raw = payload["declared_stock_codes"]
+        ledger_raw = payload["fact_identity_by_stock"]
+        counts_raw = payload["fact_state_counts"]
+        if any(type(value) is not dict for value in (snapshot_raw, archive_raw)):
+            raise ValueError("月營收 v2 nested reference 格式錯誤")
+        if type(codes_raw) is not list or any(type(code) is not str for code in codes_raw):
+            raise ValueError("月營收 v2 codes 型別錯誤")
+        if type(ledger_raw) is not list or any(
+            type(item) is not list or len(item) != 2
+            or any(type(part) is not str for part in item)
+            for item in ledger_raw
+        ):
+            raise ValueError("月營收 v2 fact ledger 型別錯誤")
+        if type(counts_raw) is not list or any(
+            type(item) is not list or len(item) != 2
+            or type(item[0]) is not str or type(item[1]) is not int
+            for item in counts_raw
+        ):
+            raise ValueError("月營收 v2 state counts 型別錯誤")
+        reference = cls(
+            snapshot_reference=FundamentalReadSnapshotReferenceV1.from_json(
+                _canonical_json(snapshot_raw)
+            ),
+            raw_archive_reference=FundamentalReadSnapshotRawArchiveReferenceV1.from_json(
+                _canonical_json(archive_raw)
+            ),
+            source_content_identity_sha256=_require_string(payload, "source_content_identity_sha256"),
+            decision_cutoff=_require_string(payload, "decision_cutoff"),
+            declared_stock_codes=tuple(codes_raw),
+            fact_identity_by_stock=tuple((item[0], item[1]) for item in ledger_raw),
+            fact_state_counts=tuple((item[0], item[1]) for item in counts_raw),
+            schema_version=payload["schema_version"],
+            method_id=payload["method_id"],
+            source_scope=payload["source_scope"],
+            availability_status=payload["availability_status"],
+            historical_pit_eligible=payload["historical_pit_eligible"],
+            formal_pit_eligible=payload["formal_pit_eligible"],
+        )
+        if payload["fact_ledger_identity_sha256"] != reference.fact_ledger_identity_sha256:
+            raise ValueError("月營收 v2 fact ledger digest mismatch")
+        if payload["identity_sha256"] != reference.identity_sha256:
+            raise ValueError("月營收 v2 reference identity mismatch")
+        if text != reference.to_json():
+            raise ValueError("月營收 v2 reference JSON 必須 canonical")
+        return reference
+
+
 class DailyMarketMonthlyRevenueReadSessionV1:
     """在既有安全副本與單次 query-only transaction 上讀完整股票清冊。"""
 
@@ -618,6 +950,11 @@ class DailyMarketMonthlyRevenueReadSessionV1:
         cutoff_at: datetime,
         cancel_callback: Callable[[], bool] | None,
         cancel_event: Event,
+        expected_source_reference: (
+            DailyMarketMonthlyRevenueSourceReferenceV1
+            | DailyMarketMonthlyRevenueSourceReferenceV2
+            | None
+        ) = None,
     ) -> None:
         self._provider = provider
         self._snapshot_session = snapshot_session
@@ -641,6 +978,13 @@ class DailyMarketMonthlyRevenueReadSessionV1:
         self._publication_lock = Lock()
         self._state: Literal["open", "finished", "cancelled", "failed"] = "open"
         self._finished: DailyMarketMonthlyRevenueFinishedCohortV1 | None = None
+        self._expected_source_reference = expected_source_reference
+        self._archived_source_reference = (
+            expected_source_reference
+            if type(expected_source_reference) is DailyMarketMonthlyRevenueSourceReferenceV2
+            else None
+        )
+        self._source_archive_reference: DailyMarketMonthlyRevenueSourceReferenceV2 | None = None
 
     @classmethod
     def open(
@@ -704,6 +1048,153 @@ class DailyMarketMonthlyRevenueReadSessionV1:
             cancel_event=cancel_event,
         )
 
+    @classmethod
+    def open_exact(
+        cls,
+        provider: RecommendationCurrentFundamentalProvider,
+        *,
+        snapshot_root: Path | str,
+        source_reference: DailyMarketMonthlyRevenueSourceReferenceV1 | str | bytes,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketMonthlyRevenueReadSessionV1:
+        """從已保存的 exact source snapshot 重建新 operation；不選 latest 或讀 live DB。"""
+
+        if type(provider) is not RecommendationCurrentFundamentalProvider:
+            raise TypeError("provider 必須是 RecommendationCurrentFundamentalProvider")
+        if cancel_callback is not None and not callable(cancel_callback):
+            raise TypeError("cancel_callback 必須可呼叫")
+        if type(source_reference) is DailyMarketMonthlyRevenueSourceReferenceV1:
+            reference = cast(DailyMarketMonthlyRevenueSourceReferenceV1, source_reference)
+        elif type(source_reference) in {str, bytes}:
+            reference = DailyMarketMonthlyRevenueSourceReferenceV1.from_json(
+                cast(str | bytes, source_reference)
+            )
+        else:
+            raise TypeError("source_reference 必須是 typed reference、str 或 bytes")
+        codes = reference.declared_stock_codes
+        cutoff = _require_aware_utc(_parse_datetime(reference.decision_cutoff))
+        if cancel_callback is not None:
+            initial = cancel_callback()
+            if type(initial) is not bool:
+                raise DailyMarketMonthlyRevenueReadCancelled(
+                    "monthly_revenue_cancel_callback_must_return_bool"
+                )
+            if initial:
+                raise DailyMarketMonthlyRevenueReadCancelled(
+                    "monthly_revenue_read_cancelled_before_exact_open"
+                )
+        cancel_event = Event()
+
+        def effective_cancel() -> bool:
+            if cancel_event.is_set():
+                return True
+            if cancel_callback is None:
+                return False
+            value = cancel_callback()
+            if type(value) is not bool:
+                raise DailyMarketMonthlyRevenueReadSessionError(
+                    "monthly_revenue_cancel_callback_must_return_bool"
+                )
+            return value
+
+        try:
+            snapshot_session = FundamentalReadSnapshotSession.open_exact(
+                provider,
+                snapshot_root=snapshot_root,
+                source_reference=reference.snapshot_reference,
+                stock_codes=codes,
+                cutoff_at=cutoff,
+                cancel_callback=effective_cancel,
+            )
+        except (FundamentalReadSessionCancelled, FundamentalReadSnapshotCancelled) as exc:
+            raise DailyMarketMonthlyRevenueReadCancelled(
+                "monthly_revenue_read_cancelled_during_exact_open"
+            ) from exc
+        except (FundamentalReadSessionError, FundamentalReadSnapshotError) as exc:
+            raise DailyMarketMonthlyRevenueReadSessionError(
+                f"monthly_revenue_exact_open_failed:{type(exc).__name__}:{exc}"
+            ) from exc
+        return cls(
+            provider=provider,
+            snapshot_session=snapshot_session,
+            stock_codes=codes,
+            cutoff_at=cutoff,
+            cancel_callback=cancel_callback,
+            cancel_event=cancel_event,
+            expected_source_reference=reference,
+        )
+
+    @classmethod
+    def open_exact_archived(
+        cls,
+        provider: RecommendationCurrentFundamentalProvider,
+        *,
+        snapshot_root: Path | str,
+        source_reference: DailyMarketMonthlyRevenueSourceReferenceV2 | str | bytes,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketMonthlyRevenueReadSessionV1:
+        """只從完整封存 snapshot/raw archive 重開，不讀 live DB 或 latest。"""
+
+        if type(provider) is not RecommendationCurrentFundamentalProvider:
+            raise TypeError("provider 必須是 RecommendationCurrentFundamentalProvider")
+        if cancel_callback is not None and not callable(cancel_callback):
+            raise TypeError("cancel_callback 必須可呼叫")
+        if type(source_reference) is DailyMarketMonthlyRevenueSourceReferenceV2:
+            reference = cast(DailyMarketMonthlyRevenueSourceReferenceV2, source_reference)
+        elif type(source_reference) in {str, bytes}:
+            reference = DailyMarketMonthlyRevenueSourceReferenceV2.from_json(
+                cast(str | bytes, source_reference)
+            )
+        else:
+            raise TypeError("archived source_reference 必須是 V2 typed reference 或 canonical JSON")
+        codes = reference.declared_stock_codes
+        cutoff = _require_aware_utc(_parse_datetime(reference.decision_cutoff))
+        cancel_event = Event()
+
+        def effective_cancel() -> bool:
+            if cancel_event.is_set():
+                return True
+            if cancel_callback is None:
+                return False
+            value = cancel_callback()
+            if type(value) is not bool:
+                raise DailyMarketMonthlyRevenueReadSessionError(
+                    "monthly_revenue_cancel_callback_must_return_bool"
+                )
+            return value
+
+        if effective_cancel():
+            raise DailyMarketMonthlyRevenueReadCancelled(
+                "monthly_revenue_read_cancelled_before_archived_exact_open"
+            )
+        try:
+            snapshot_session = FundamentalReadSnapshotSession.open_exact_archived(
+                provider,
+                snapshot_root=snapshot_root,
+                source_reference=reference.snapshot_reference,
+                raw_archive_reference=reference.raw_archive_reference,
+                stock_codes=codes,
+                cutoff_at=cutoff,
+                cancel_callback=effective_cancel,
+            )
+        except (FundamentalReadSessionCancelled, FundamentalReadSnapshotCancelled) as exc:
+            raise DailyMarketMonthlyRevenueReadCancelled(
+                "monthly_revenue_read_cancelled_during_archived_exact_open"
+            ) from exc
+        except (FundamentalReadSessionError, FundamentalReadSnapshotError) as exc:
+            raise DailyMarketMonthlyRevenueReadSessionError(
+                f"monthly_revenue_archived_exact_open_failed:{type(exc).__name__}:{exc}"
+            ) from exc
+        return cls(
+            provider=provider,
+            snapshot_session=snapshot_session,
+            stock_codes=codes,
+            cutoff_at=cutoff,
+            cancel_callback=cancel_callback,
+            cancel_event=cancel_event,
+            expected_source_reference=reference,
+        )
+
     @property
     def declared_stock_codes(self) -> tuple[str, ...]:
         return self._stock_codes
@@ -729,6 +1220,117 @@ class DailyMarketMonthlyRevenueReadSessionV1:
     @property
     def finished(self) -> bool:
         return self._state == "finished"
+
+    @property
+    def source_reference(
+        self,
+    ) -> DailyMarketMonthlyRevenueSourceReferenceV1 | DailyMarketMonthlyRevenueSourceReferenceV2:
+        self._require_owner_thread()
+        finished = self._finished
+        if finished is None or self._state != "finished":
+            raise DailyMarketMonthlyRevenueReadSessionError(
+                "monthly_revenue_source_reference_requires_finished_session"
+            )
+        finished._require_reader_issued()
+        if self._archived_source_reference is not None:
+            return self._archived_source_reference
+        if self._source_archive_reference is not None:
+            return self._source_archive_reference
+        snapshot_reference = self._snapshot_session.source_reference
+        fact_ledger = tuple(
+            (fact.stock_code, fact.identity_sha256) for fact in finished.facts
+        )
+        return DailyMarketMonthlyRevenueSourceReferenceV1(
+            snapshot_reference=snapshot_reference,
+            source_content_identity_sha256=finished.source_clock.source_content_identity_sha256,
+            decision_cutoff=finished.source_clock.decision_cutoff.isoformat(),
+            declared_stock_codes=finished.processed_stock_codes,
+            fact_identity_by_stock=fact_ledger,
+            fact_state_counts=finished.fact_state_counts,
+        )
+
+    @property
+    def archived_source_reference(
+        self,
+    ) -> DailyMarketMonthlyRevenueSourceReferenceV2 | None:
+        self._require_owner_thread()
+        if self._state != "finished" or self._finished is None:
+            raise DailyMarketMonthlyRevenueReadSessionError(
+                "monthly_revenue_archived_reference_requires_finished_session"
+            )
+        self._finished._require_reader_issued()
+        return self._archived_source_reference or self._source_archive_reference
+
+    def archive_source(
+        self,
+        archive_parent: Path | str,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketMonthlyRevenueSourceReferenceV2:
+        """封存並發行綁定完整 raw capture bytes 的 V2 source reference。"""
+
+        self._require_owner_thread()
+        finished = self._finished
+        if self._state != "finished" or finished is None:
+            raise DailyMarketMonthlyRevenueReadSessionError(
+                "monthly_revenue_archive_requires_finished_session"
+            )
+        finished._require_reader_issued()
+        if self._archived_source_reference is not None:
+            return self._archived_source_reference
+        if self._source_archive_reference is not None:
+            return self._source_archive_reference
+        if cancel_callback is not None and not callable(cancel_callback):
+            raise TypeError("cancel_callback 必須可呼叫")
+
+        def archive_cancel() -> bool:
+            self._poll_cancel()
+            if cancel_callback is None:
+                return False
+            try:
+                value = cancel_callback()
+            except BaseException as exc:
+                raise DailyMarketMonthlyRevenueReadSessionError(
+                    f"monthly_revenue_archive_cancel_callback_failed:{type(exc).__name__}"
+                ) from exc
+            if type(value) is not bool:
+                raise DailyMarketMonthlyRevenueReadSessionError(
+                    "monthly_revenue_archive_cancel_callback_must_return_bool"
+                )
+            return value
+
+        try:
+            raw_archive_reference = self._snapshot_session.archive_monthly_raw_sources(
+                archive_parent,
+                cancel_callback=archive_cancel,
+            )
+            reference = DailyMarketMonthlyRevenueSourceReferenceV2(
+                snapshot_reference=self._snapshot_session.source_reference,
+                raw_archive_reference=raw_archive_reference,
+                source_content_identity_sha256=finished.source_clock.source_content_identity_sha256,
+                decision_cutoff=finished.source_clock.decision_cutoff.isoformat(),
+                declared_stock_codes=finished.processed_stock_codes,
+                fact_identity_by_stock=tuple(
+                    (fact.stock_code, fact.identity_sha256) for fact in finished.facts
+                ),
+                fact_state_counts=finished.fact_state_counts,
+            )
+            self._poll_cancel()
+            self._source_archive_reference = reference
+            return reference
+        except FundamentalReadSnapshotCancelled as exc:
+            cause = exc.__cause__
+            if isinstance(cause, DailyMarketMonthlyRevenueReadSessionError):
+                raise cause
+            raise DailyMarketMonthlyRevenueReadCancelled(
+                "monthly_revenue_raw_archive_cancelled"
+            ) from exc
+        except DailyMarketMonthlyRevenueReadCancelled:
+            raise
+        except FundamentalReadSnapshotError as exc:
+            raise DailyMarketMonthlyRevenueReadSessionError(
+                f"monthly_revenue_raw_archive_failed:{type(exc).__name__}:{exc}"
+            ) from exc
 
     def load_batch(
         self, stock_codes: Sequence[str]
@@ -824,6 +1426,24 @@ class DailyMarketMonthlyRevenueReadSessionV1:
                     raise DailyMarketMonthlyRevenueReadSessionError(
                         "monthly revenue fact counts do not cover declared cohort"
                     )
+                if self._expected_source_reference is not None:
+                    expected_reference = self._expected_source_reference
+                    actual_fact_ledger = tuple(
+                        (fact.stock_code, fact.identity_sha256) for fact in facts
+                    )
+                    if (
+                        reader_finished.source_clock.source_content_identity_sha256
+                        != expected_reference.source_content_identity_sha256
+                        or reader_finished.source_clock.decision_cutoff.isoformat()
+                        != expected_reference.decision_cutoff
+                        or reader_finished.processed_stock_codes
+                        != expected_reference.declared_stock_codes
+                        or actual_fact_ledger != expected_reference.fact_identity_by_stock
+                        or states != expected_reference.fact_state_counts
+                    ):
+                        raise DailyMarketMonthlyRevenueReadSessionError(
+                            "monthly_revenue_exact_reopen_fact_ledger_mismatch"
+                        )
                 self._poll_cancel()
                 issued = DailyMarketMonthlyRevenueFinishedCohortV1(
                     session_identity_sha256=self._session_identity_sha256,
@@ -1008,11 +1628,16 @@ class DailyMarketMonthlyRevenueReadSessionV1:
         comparator_period = _prior_year_period(report_period)
         identity = (current.market, report_period, current.raw_source_sha256)
         rows = cache.get(identity)
-        matched_pin, relative_path = _find_captured_html_reference(
+        historical_pin, relative_path = _find_captured_html_reference(
             source_clock,
             current=current,
             report_period=report_period,
             monthly_source_root=self._provider.monthly_source_root,
+        )
+        matched_pin = (
+            self._snapshot_session.resolve_archived_capture_pin(historical_pin)
+            if self._archived_source_reference is not None
+            else historical_pin
         )
         matched_sha256 = matched_pin.sha256
         if type(matched_sha256) is not str or not _SHA256_RE.fullmatch(matched_sha256):
@@ -1688,6 +2313,49 @@ def _decode_bounded_json(raw: str | bytes) -> str:
     _check_json_size(text)
     _check_json_depth(text)
     return text
+
+
+def _decode_bounded_source_reference(raw: str | bytes) -> str:
+    if type(raw) is bytes:
+        if len(raw) > MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V1:
+            raise ValueError("monthly source reference 超過 bytes 上限")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("monthly source reference 必須是 UTF-8") from exc
+    elif type(raw) is str:
+        text = raw
+        if len(text.encode("utf-8")) > MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V1:
+            raise ValueError("monthly source reference 超過 bytes 上限")
+    else:
+        raise TypeError("monthly source reference 必須是 str 或 bytes")
+    _check_json_depth(text)
+    return text
+
+
+def _decode_bounded_json_v2(raw: str | bytes) -> str:
+    if type(raw) is bytes:
+        if len(raw) > MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V2:
+            raise ValueError("monthly source reference v2 超過 bytes 上限")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("monthly source reference v2 必須是 UTF-8") from exc
+    elif type(raw) is str:
+        text = raw
+        if len(text.encode("utf-8")) > MAX_MONTHLY_REVENUE_SOURCE_REFERENCE_BYTES_V2:
+            raise ValueError("monthly source reference v2 超過 bytes 上限")
+    else:
+        raise TypeError("monthly source reference v2 必須是 str 或 bytes")
+    _check_json_depth(text)
+    return text
+
+
+def _require_string(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if type(value) is not str:
+        raise ValueError(f"monthly source reference {key} 必須是字串")
+    return value
 
 
 def _check_json_size(text: str) -> None:

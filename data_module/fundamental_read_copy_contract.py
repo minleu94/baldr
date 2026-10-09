@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 import json
 import os
@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 from typing import Callable, Literal, Sequence
+import weakref
 
 
 FUNDAMENTAL_READ_SNAPSHOT_SCHEMA: Literal["selection-fundamental-read-snapshot.v1"] = (
@@ -23,12 +24,17 @@ MAX_COPY_MANIFEST_BYTES = 256 * 1024
 COPY_HASH_CHUNK_BYTES = 1024 * 1024
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _WINDOWS_REPARSE_POINT = 0x400
+MAX_ARCHIVED_RAW_MANIFEST_BYTES = 64 * 1024 * 1024
 _FILE_ROLES = (
     "sqlite_main",
     "sqlite_wal",
     "sqlite_shm",
     "sqlite_rollback_journal",
 )
+_ARCHIVED_BINDING_ISSUER = object()
+_ISSUED_ARCHIVED_BINDINGS: dict[
+    int, tuple[weakref.ReferenceType[FundamentalReadArchivedCopyBinding], str]
+] = {}
 
 
 class FundamentalReadCopyBindingError(ValueError):
@@ -337,6 +343,109 @@ class FundamentalReadCopyBinding:
         if source_snapshot_sha != self.source_snapshot_sha256:
             raise FundamentalReadCopyBindingError("source snapshot identity mismatch")
 
+    def verify_archived_operation_copy_before_open(
+        self,
+        *,
+        database_path: Path | str,
+        provider_database_path: Path | str,
+        protected_roots: Sequence[Path | str],
+        archived_source_pins: Sequence[FundamentalReadCopyFilePin],
+        archive_file_pins: Sequence[FundamentalReadCopyFilePin],
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[FundamentalReadCopyFilePin, ...]:
+        """只驗證本次 operation copy，不重驗已更新或已刪除的 live 來源。"""
+
+        if cancel_callback is not None and not callable(cancel_callback):
+            raise TypeError("cancel_callback 必須可呼叫")
+        _poll_cancel(cancel_callback)
+        root = _canonical_absolute(self.snapshot_root, "snapshot_root")
+        source = _canonical_absolute(self.source_database_path, "source_database_path")
+        reader = _canonical_absolute(self.reader_database_path, "reader_database_path")
+        requested = _canonical_absolute(str(database_path), "database_path")
+        provider_path = _canonical_absolute(str(provider_database_path), "provider_database_path")
+        if requested != reader or provider_path != reader:
+            raise FundamentalReadCopyBindingError("archived copy database path mismatch")
+        if _same_path(str(source), str(reader)):
+            raise FundamentalReadCopyBindingError("archived source and operation reader must differ")
+        if root.name.casefold() != self.snapshot_id.casefold():
+            raise FundamentalReadCopyBindingError("archived operation root does not match snapshot id")
+        if not _same_path(str(reader), str(root / "reader" / Path(source).name)):
+            raise FundamentalReadCopyBindingError("archived reader is outside its operation role")
+        if _paths_overlap(root, Path(source).parent):
+            raise FundamentalReadCopyBindingError("archived operation root overlaps historical source root")
+        for protected in protected_roots:
+            protected_path = Path(os.path.abspath(Path(protected).expanduser()))
+            _reject_existing_reparse_components(protected_path)
+            if _paths_overlap(root, protected_path):
+                raise FundamentalReadCopyBindingError("archived operation root overlaps protected root")
+
+        _reject_reparse_components(Path(root))
+        _reject_reparse_components(Path(reader))
+        manifest_path = root / "snapshot_capture.json"
+        if self.capture_manifest_pin.role != "snapshot_capture_manifest" or not _same_path(
+            self.capture_manifest_pin.path, str(manifest_path)
+        ):
+            raise FundamentalReadCopyBindingError("archived operation manifest path mismatch")
+        manifest_pin = _pin_file(
+            "snapshot_capture_manifest",
+            manifest_path,
+            required=True,
+            max_bytes=MAX_COPY_MANIFEST_BYTES,
+            cancel_callback=cancel_callback,
+        )
+        if manifest_pin != self.capture_manifest_pin:
+            raise FundamentalReadCopyBindingError("archived operation manifest pin changed")
+        raw_manifest = _read_file_bounded(
+            manifest_path,
+            max_bytes=MAX_COPY_MANIFEST_BYTES,
+            cancel_callback=cancel_callback,
+        )
+        expected_manifest = self._manifest_payload()
+        if raw_manifest != _canonical_json_bytes(expected_manifest):
+            raise FundamentalReadCopyBindingError("archived operation manifest bytes mismatch")
+        try:
+            parsed_manifest = json.loads(
+                raw_manifest.decode("utf-8"),
+                object_pairs_hook=_unique_object,
+                parse_constant=_reject_constant,
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            raise FundamentalReadCopyBindingError("archived operation manifest invalid") from exc
+        if parsed_manifest != expected_manifest:
+            raise FundamentalReadCopyBindingError("archived operation manifest payload mismatch")
+
+        # 只核歷史 pin 的內部角色、sidecar 與摘要，不對原 DB 執行 stat 或讀取。
+        self._validate_source_pin_set(source)
+        captured_pins = self._validate_references(
+            root, "captured", self.captured_files, cancel_callback
+        )
+        reader_reference_pins = self._validate_references(
+            root, "reader", self.reader_files, cancel_callback
+        )
+        source_pins = tuple(pin for pin in self.source_file_pins if pin.present)
+        additional_pins = tuple(
+            pin for pin in (*archived_source_pins, *archive_file_pins) if pin.present
+        )
+        _require_distinct_copy_files(captured_pins, "archived captured files")
+        _require_distinct_copy_files(reader_reference_pins, "archived reader references")
+        _require_no_shared_file_identity(source_pins, captured_pins, "historical source/captured")
+        _require_no_shared_file_identity(source_pins, reader_reference_pins, "historical source/reader")
+        _require_no_shared_file_identity(additional_pins, captured_pins, "archive/captured")
+        _require_no_shared_file_identity(additional_pins, reader_reference_pins, "archive/reader")
+        _require_no_shared_file_identity(captured_pins, reader_reference_pins, "captured/reader")
+        reader_pins = _pin_database_file_set(reader, cancel_callback=cancel_callback)
+        if reader_pins != self.reader_file_pins_before_open:
+            raise FundamentalReadCopyBindingError("archived reader pins changed before SQLite open")
+        _require_distinct_copy_files(
+            tuple(pin for pin in reader_pins if pin.present), "archived reader database files"
+        )
+        _require_no_shared_file_identity(source_pins, reader_pins, "historical source/reader database")
+        _require_no_shared_file_identity(additional_pins, reader_pins, "archive/reader database")
+        _require_no_shared_file_identity(captured_pins, reader_pins, "captured/reader database")
+        self._validate_reader_roles(reader_pins)
+        _poll_cancel(cancel_callback)
+        return reader_pins
+
     def _validate_references(
         self,
         root: Path,
@@ -415,6 +524,315 @@ class FundamentalReadCopyBinding:
         }
         payload["manifest_sha256"] = _canonical_sha256(payload)
         return payload
+
+
+@dataclass(frozen=True, slots=True)
+class FundamentalReadArchivedFilePinPair:
+    """封存原始來源的歷史 pin 與實際歸檔檔案 pin 配對。"""
+
+    historical_pin: FundamentalReadCopyFilePin
+    archive_pin: FundamentalReadCopyFilePin
+
+    def __post_init__(self) -> None:
+        if type(self.historical_pin) is not FundamentalReadCopyFilePin:
+            raise TypeError("歷史 capture pin 型別錯誤")
+        if type(self.archive_pin) is not FundamentalReadCopyFilePin:
+            raise TypeError("raw archive pin 型別錯誤")
+        if not self.historical_pin.present or not self.archive_pin.present:
+            raise ValueError("歷史與封存 capture pin 都必須存在")
+        if self.historical_pin.role not in {"monthly_html", "monthly_csv"}:
+            raise ValueError("歷史 capture pin role 不支援")
+        if self.archive_pin.role != self.historical_pin.role:
+            raise ValueError("封存 capture pin role 與歷史來源不符")
+        if (
+            self.archive_pin.size_bytes != self.historical_pin.size_bytes
+            or self.archive_pin.sha256 != self.historical_pin.sha256
+        ):
+            raise ValueError("封存 capture bytes 與歷史來源不符")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "historical_pin": self.historical_pin.to_dict(),
+            "archive_pin": self.archive_pin.to_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
+class FundamentalReadArchivedCopyBinding:
+    """由已核封存入口發行、可在 live source 消失後使用的副本資格。"""
+
+    operation_copy_binding: FundamentalReadCopyBinding
+    historical_snapshot_root: str
+    archive_root: str
+    archived_monthly_source_root: str
+    snapshot_reference_identity_sha256: str
+    source_clock_identity_sha256: str
+    source_content_identity_sha256: str
+    cohort_identity_sha256: str
+    raw_archive_identity_sha256: str
+    snapshot_manifest_pin: FundamentalReadCopyFilePin
+    archive_manifest_pin: FundamentalReadCopyFilePin
+    historical_source_pins: tuple[FundamentalReadCopyFilePin, ...]
+    capture_file_pairs: tuple[FundamentalReadArchivedFilePinPair, ...]
+    archive_file_pins: tuple[FundamentalReadCopyFilePin, ...]
+    _issuer_anchor: object = field(repr=False, compare=False)
+    schema_version: Literal["selection-fundamental-read-archived-copy-binding.v1"] = (
+        "selection-fundamental-read-archived-copy-binding.v1"
+    )
+
+    def __post_init__(self) -> None:
+        if type(self.operation_copy_binding) is not FundamentalReadCopyBinding:
+            raise TypeError("archived binding 必須包含 typed operation copy binding")
+        if self.schema_version != "selection-fundamental-read-archived-copy-binding.v1":
+            raise ValueError("archived copy binding schema 不支援")
+        for name in ("historical_snapshot_root", "archive_root", "archived_monthly_source_root"):
+            value = getattr(self, name)
+            if type(value) is not str or not Path(value).is_absolute():
+                raise ValueError(f"{name} 必須是絕對路徑")
+        for name in (
+            "snapshot_reference_identity_sha256",
+            "source_clock_identity_sha256",
+            "source_content_identity_sha256",
+            "cohort_identity_sha256",
+            "raw_archive_identity_sha256",
+        ):
+            value = getattr(self, name)
+            if type(value) is not str or not _SHA256_RE.fullmatch(value):
+                raise ValueError(f"{name} 格式錯誤")
+        if type(self._issuer_anchor) is not object:
+            raise TypeError("archived binding issuer anchor 無效")
+        if type(self.snapshot_manifest_pin) is not FundamentalReadCopyFilePin:
+            raise TypeError("snapshot manifest pin 型別錯誤")
+        if type(self.archive_manifest_pin) is not FundamentalReadCopyFilePin:
+            raise TypeError("raw archive manifest pin 型別錯誤")
+        if self.snapshot_manifest_pin.role != "finished_source_clock_manifest":
+            raise ValueError("snapshot manifest pin role 不符")
+        if self.archive_manifest_pin.role != "monthly_raw_archive_manifest":
+            raise ValueError("raw archive manifest pin role 不符")
+        if type(self.historical_source_pins) is not tuple or tuple(
+            item.role for item in self.historical_source_pins
+        ) != _FILE_ROLES:
+            raise ValueError("歷史 DB pins 必須包含完整有序 SQLite 檔案集合")
+        if any(type(item) is not FundamentalReadCopyFilePin for item in self.historical_source_pins):
+            raise TypeError("歷史 DB pin 型別錯誤")
+        if self.operation_copy_binding.source_file_pins != self.historical_source_pins:
+            raise ValueError("operation copy pins 與封存歷史 DB pins 不一致")
+        if type(self.capture_file_pairs) is not tuple or not self.capture_file_pairs:
+            raise ValueError("archive 必須封存完整 raw capture 清冊")
+        if any(type(item) is not FundamentalReadArchivedFilePinPair for item in self.capture_file_pairs):
+            raise TypeError("archive capture pin 配對型別錯誤")
+        if type(self.archive_file_pins) is not tuple or not self.archive_file_pins:
+            raise ValueError("archive 檔案 pins 不可為空")
+        if any(type(item) is not FundamentalReadCopyFilePin for item in self.archive_file_pins):
+            raise TypeError("archive 檔案 pin 型別錯誤")
+        expected_archive_pins = tuple(item.archive_pin for item in self.capture_file_pairs)
+        if expected_archive_pins != self.archive_file_pins:
+            raise ValueError("archive 檔案 pins 與 capture 配對不一致")
+
+    @property
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(self._identity_payload())
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "operation_copy_binding_identity_sha256": self.operation_copy_binding.identity_sha256,
+            "historical_snapshot_root": self.historical_snapshot_root,
+            "archive_root": self.archive_root,
+            "archived_monthly_source_root": self.archived_monthly_source_root,
+            "snapshot_reference_identity_sha256": self.snapshot_reference_identity_sha256,
+            "source_clock_identity_sha256": self.source_clock_identity_sha256,
+            "source_content_identity_sha256": self.source_content_identity_sha256,
+            "cohort_identity_sha256": self.cohort_identity_sha256,
+            "raw_archive_identity_sha256": self.raw_archive_identity_sha256,
+            "snapshot_manifest_pin": self.snapshot_manifest_pin.to_dict(),
+            "archive_manifest_pin": self.archive_manifest_pin.to_dict(),
+            "historical_source_pins": [item.to_dict() for item in self.historical_source_pins],
+            "capture_file_pairs": [item.to_dict() for item in self.capture_file_pairs],
+            "archive_file_pins": [item.to_dict() for item in self.archive_file_pins],
+        }
+
+    def verify_before_open(
+        self,
+        *,
+        database_path: Path | str,
+        provider_database_path: Path | str,
+        provider_monthly_source_root: Path | str,
+        protected_roots: Sequence[Path | str],
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[FundamentalReadCopyFilePin, ...]:
+        """重驗 saved archive 與本次 operation copy，不存取 live source。"""
+
+        if not _is_issued_archived_binding(self):
+            raise FundamentalReadCopyBindingError("archived copy provenance was not issued")
+        if cancel_callback is not None and not callable(cancel_callback):
+            raise TypeError("cancel_callback 必須可呼叫")
+        _poll_cancel(cancel_callback)
+        historical_root = _canonical_absolute(
+            self.historical_snapshot_root, "historical_snapshot_root"
+        )
+        archive_root = _canonical_absolute(self.archive_root, "archive_root")
+        monthly_root = _canonical_absolute(
+            self.archived_monthly_source_root, "archived_monthly_source_root"
+        )
+        requested_monthly_root = _canonical_absolute(
+            str(provider_monthly_source_root), "provider_monthly_source_root"
+        )
+        if requested_monthly_root != monthly_root:
+            raise FundamentalReadCopyBindingError("archived monthly root does not match provider")
+        if historical_root == archive_root or _paths_overlap(historical_root, archive_root):
+            raise FundamentalReadCopyBindingError("snapshot and raw archive roots overlap")
+        if not _paths_overlap(monthly_root, archive_root) or monthly_root == archive_root:
+            raise FundamentalReadCopyBindingError("archived monthly root is outside archive role")
+        _reject_reparse_components(historical_root)
+        _reject_reparse_components(archive_root)
+        _reject_reparse_components(monthly_root)
+
+        operation = self.operation_copy_binding
+        source_path = Path(operation.source_database_path)
+        if _paths_overlap(archive_root, source_path.parent):
+            raise FundamentalReadCopyBindingError("raw archive overlaps historical database root")
+        if _paths_overlap(historical_root, source_path.parent):
+            raise FundamentalReadCopyBindingError("snapshot overlaps historical database root")
+        for protected in protected_roots:
+            protected_path = Path(os.path.abspath(Path(protected).expanduser()))
+            _reject_existing_reparse_components(protected_path)
+            if _paths_overlap(archive_root, protected_path) or _paths_overlap(
+                historical_root, protected_path
+            ):
+                raise FundamentalReadCopyBindingError("archived root overlaps protected root")
+
+        expected_snapshot_manifest = historical_root / "finished_source_clock.json"
+        if not _same_path(self.snapshot_manifest_pin.path, str(expected_snapshot_manifest)):
+            raise FundamentalReadCopyBindingError("historical snapshot manifest path mismatch")
+        actual_snapshot_manifest = _pin_file(
+            "finished_source_clock_manifest",
+            expected_snapshot_manifest,
+            required=True,
+            max_bytes=32 * 1024 * 1024,
+            cancel_callback=cancel_callback,
+        )
+        if actual_snapshot_manifest != self.snapshot_manifest_pin:
+            raise FundamentalReadCopyBindingError("historical snapshot manifest pin changed")
+
+        expected_archive_manifest = archive_root / "raw_source_archive.json"
+        if not _same_path(self.archive_manifest_pin.path, str(expected_archive_manifest)):
+            raise FundamentalReadCopyBindingError("raw archive manifest path mismatch")
+        actual_archive_manifest = _pin_file(
+            "monthly_raw_archive_manifest",
+            expected_archive_manifest,
+            required=True,
+            max_bytes=MAX_ARCHIVED_RAW_MANIFEST_BYTES,
+            cancel_callback=cancel_callback,
+        )
+        if actual_archive_manifest != self.archive_manifest_pin:
+            raise FundamentalReadCopyBindingError("raw archive manifest pin changed")
+
+        historical_capture_pins: list[FundamentalReadCopyFilePin] = []
+        actual_archive_pins: list[FundamentalReadCopyFilePin] = []
+        seen_archive_paths: set[str] = set()
+        for pair in self.capture_file_pairs:
+            _poll_cancel(cancel_callback)
+            historical = pair.historical_pin
+            archived = pair.archive_pin
+            archive_path = _canonical_absolute(archived.path, "archive_capture_file")
+            if not _paths_overlap(archive_root, archive_path):
+                raise FundamentalReadCopyBindingError("raw capture file is outside archive root")
+            if archive_path == archive_root:
+                raise FundamentalReadCopyBindingError("raw capture path must be below archive root")
+            archive_key = os.path.normcase(str(archive_path))
+            if archive_key in seen_archive_paths:
+                raise FundamentalReadCopyBindingError("raw archive contains duplicate file path")
+            seen_archive_paths.add(archive_key)
+            actual = _pin_file(
+                archived.role,
+                archive_path,
+                required=True,
+                max_bytes=MAX_COPY_FILE_BYTES,
+                cancel_callback=cancel_callback,
+            )
+            if actual != archived:
+                raise FundamentalReadCopyBindingError("raw archive file pin changed")
+            historical_capture_pins.append(historical)
+            actual_archive_pins.append(actual)
+
+        all_archive_pins = (
+            actual_snapshot_manifest,
+            actual_archive_manifest,
+            *actual_archive_pins,
+        )
+        _require_distinct_copy_files(all_archive_pins, "snapshot/raw archive files")
+        operation_historical_pins = (*self.historical_source_pins, *historical_capture_pins)
+        return operation.verify_archived_operation_copy_before_open(
+            database_path=database_path,
+            provider_database_path=provider_database_path,
+            protected_roots=protected_roots,
+            archived_source_pins=operation_historical_pins,
+            archive_file_pins=all_archive_pins,
+            cancel_callback=cancel_callback,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self._identity_payload()
+        payload["identity_sha256"] = self.identity_sha256
+        return payload
+
+
+def _issue_archived_copy_binding(
+    *,
+    issuer_anchor: object,
+    operation_copy_binding: FundamentalReadCopyBinding,
+    historical_snapshot_root: str,
+    archive_root: str,
+    archived_monthly_source_root: str,
+    snapshot_reference_identity_sha256: str,
+    source_clock_identity_sha256: str,
+    source_content_identity_sha256: str,
+    cohort_identity_sha256: str,
+    raw_archive_identity_sha256: str,
+    snapshot_manifest_pin: FundamentalReadCopyFilePin,
+    archive_manifest_pin: FundamentalReadCopyFilePin,
+    historical_source_pins: tuple[FundamentalReadCopyFilePin, ...],
+    capture_file_pairs: tuple[FundamentalReadArchivedFilePinPair, ...],
+    archive_file_pins: tuple[FundamentalReadCopyFilePin, ...],
+) -> FundamentalReadArchivedCopyBinding:
+    """只有 snapshot 模組的 verified archive 路徑可使用此私有 issuer。"""
+
+    if issuer_anchor is not _ARCHIVED_BINDING_ISSUER:
+        raise FundamentalReadCopyBindingError("archived binding issuer rejected")
+    binding = FundamentalReadArchivedCopyBinding(
+        operation_copy_binding=operation_copy_binding,
+        historical_snapshot_root=historical_snapshot_root,
+        archive_root=archive_root,
+        archived_monthly_source_root=archived_monthly_source_root,
+        snapshot_reference_identity_sha256=snapshot_reference_identity_sha256,
+        source_clock_identity_sha256=source_clock_identity_sha256,
+        source_content_identity_sha256=source_content_identity_sha256,
+        cohort_identity_sha256=cohort_identity_sha256,
+        raw_archive_identity_sha256=raw_archive_identity_sha256,
+        snapshot_manifest_pin=snapshot_manifest_pin,
+        archive_manifest_pin=archive_manifest_pin,
+        historical_source_pins=historical_source_pins,
+        capture_file_pairs=capture_file_pairs,
+        archive_file_pins=archive_file_pins,
+        _issuer_anchor=issuer_anchor,
+    )
+    identity = binding.identity_sha256
+    reference = weakref.ref(binding)
+    binding_id = id(binding)
+
+    def remove_reference(removed: weakref.ReferenceType[FundamentalReadArchivedCopyBinding]) -> None:
+        current = _ISSUED_ARCHIVED_BINDINGS.get(binding_id)
+        if current is not None and current[0] is removed:
+            _ISSUED_ARCHIVED_BINDINGS.pop(binding_id, None)
+
+    _ISSUED_ARCHIVED_BINDINGS[binding_id] = (weakref.ref(binding, remove_reference), identity)
+    return binding
+
+
+def _is_issued_archived_binding(binding: FundamentalReadArchivedCopyBinding) -> bool:
+    issued = _ISSUED_ARCHIVED_BINDINGS.get(id(binding))
+    return issued is not None and issued[0]() is binding and issued[1] == binding.identity_sha256
 
 
 def _pin_database_file_set(

@@ -1299,3 +1299,16 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 |---|---|---:|
 | `docs/superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md` | [`2026-07-07-post-v1-production-scheduler-approval.md`](superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md) | 2,722 / `4E0AE1955D4B9886CFB14DEF1B650A54EBF06102D2C2177229432E4894C73018` |
 | `docs/superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md` | [`2026-07-07-post-v1-production-scheduler-approval-design.md`](superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md) | 1,997 / `1CD354791EABC256F924729E3D2912326D20A0810B06F1A4524132CECA005B29` |
+
+<a id="coverage-entry-137"></a>
+## 2026-10-09 封存 Research Run Registry Month 1 設計規格
+
+將 `docs/02_features/RESEARCH_RUN_REGISTRY_SPEC.md` 的 2026-06-14 Month 1 schema／API 提案逐位元複製到 Archive；舊路徑改為相容導引，保留所有舊索引、歷史目錄與封存計畫的連結。原提案包括 `delete_run()` 硬刪除介面及獨立 REAL 績效欄位；現行 `ResearchRunService` 使用受控 `archive_run()`，repository 的績效資料欄位亦已演進，故原文只作設計脈絡，不能作目前 schema／API 契約或 promotion Gate 證據。
+
+全 repo 精確路徑搜尋未找到程式、測試、腳本、Manual 或 DOC_COVERAGE_MAP 對舊檔案路徑的依賴。Markdown 引用位於功能目錄 README、Superpowers README，以及封存的 Month 2 計畫、歷史 Index、歷史 Catalog 與 pre-push audit；兩個現行 README 已改連封存原文並標明 2026-06 歷史提案，其餘舊連結由相容導引承接。現行行為與操作回到 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md)、[Backtest Lab 功能文件](../02_features/BACKTEST_LAB_FEATURES.md) 與 `ResearchRunService`／`ResearchRunRepository` 實作。DOCUMENTATION_INDEX 沒有該檔案的直接路徑；它目前有其他工作修改，本批未觸碰。權威邊界未變，因此不修改 DOC_COVERAGE_MAP 或 PROJECT_SNAPSHOT。
+
+封存前來源與 Archive 副本逐位元相同：9,006 bytes，SHA-256 `8DE0F2F906822EB164DF483A2BB06310DA371DEA741532DA07E21AF4114A6A29`。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| `docs/02_features/RESEARCH_RUN_REGISTRY_SPEC.md` | [`RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md`](RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md) | 9,006 / `8DE0F2F906822EB164DF483A2BB06310DA371DEA741532DA07E21AF4114A6A29` |

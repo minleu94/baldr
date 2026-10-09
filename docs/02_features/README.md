@@ -32,9 +32,9 @@
   - 策略設計規格書
   - Baseline Score Threshold Strategy 的完整設計規格
 
-- **`RESEARCH_RUN_REGISTRY_SPEC.md`**
-  - Research Run Registry 設計規格
-  - 說明 run metadata、資料指紋、SQLite / Parquet 儲存與 Cross-run 比較基礎
+- **Research Run Registry 設計規格（2026-06-14，歷史）**
+  - [封存原文](../09_archive/RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md)：Month 1 schema／API 提案，只保留設計脈絡，不是現行契約。
+  - 目前功能看 [Backtest Lab 功能文件](BACKTEST_LAB_FEATURES.md)、[系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md)、[`ResearchRunService`](../../app_module/research_run_service.py) 與 [`ResearchRunRepository`](../../app_module/research_run_repository.py)。舊檔名路徑保留相容導引。
 
 ## 🔗 相關目錄
 

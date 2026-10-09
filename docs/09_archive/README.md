@@ -478,6 +478,10 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 `docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
 
+### 2026-10-09 Research Run Registry Month 1 schema 設計
+
+- [Research Run Registry 設計規格（2026-06-14）](RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md)：保存 Month 1 提出的欄位、儲存方式與 API 草案。提案中的 `delete_run()` 與獨立績效欄位不等於目前 repository/service 契約；現況以 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與現行程式碼為準。功能目錄的舊路徑留相容導引，來源 bytes／SHA 與引用核對見 [Coverage History Entry 137](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-137)。
+
 ### 2026-10-08 Post-V1 engineering plans and specs
 
 13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。2026-07-07 Scheduler Approval plan/spec 配對於 2026-10-09 封存；測試現讀取 Archive 原件，不代表正式排程已核准或啟用。

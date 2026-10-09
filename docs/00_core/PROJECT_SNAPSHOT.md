@@ -39,7 +39,7 @@ P01 路徑修正已保存本機 dev `f9ead461`／`30812082`，但最新固定千
 
 產品補完已在 2026-10-09 本機 WIP checkpoint 後恢復開發；恢復基線、當輪分工及初步通過／失敗／未驗證界線見 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。原 checkpoint 交接與未完成驗收仍見 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)及各具名 root review。checkpoint、局部測試或文件整理均不關閉 Gate。方向見 [Roadmap Hub](DEVELOPMENT_ROADMAP.md)，邊界見 [目前架構](../01_architecture/system_architecture.md)／[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，完整文件清單與維護流程見 [文檔索引](DOCUMENTATION_INDEX.md)。
 
-其後已實際交付 Windows onedir `dist/baldr/baldr.exe`，需保留整個資料夾、不需 IDE／全域 Python。外部資料／輸出／私人設定分離，不內附 FA_Data 或個人模型。首次操作、SHA、已驗與未驗項見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)。D01 合法警告成功保留 last success、warning 與 freshness/date 診斷，Runtime 維持 guarded，不把未知／失敗變成功。main 保留既有完整 scheduler／模型／資料功能與必要文件；dev 保存內部 QA、規劃及打包 probe。本輪可逆本機 commit 同步 main，沒有 push；詳細收據見 [可攜 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)。上方文檔整理時的 branch／未同步狀態保留為該輪歷史。
+2026-10-06 可攜版交付歷史：當日交付 Windows onedir `dist/baldr/baldr.exe`，需保留整個資料夾、不需 IDE／全域 Python；外部資料、輸出與私人設定分離，未內附 FA_Data 或個人模型。D01 合法警告保留 last success、warning 與 freshness/date 診斷，Runtime 維持 guarded。當日 main 同步及 branch 狀態只代表該次交付，不代表目前分支狀態；首次操作、SHA 與驗收界線見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md) 及 [可攜 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)。
 
 
 2026-10-07 M2、H20 與 v4 候選的逐輪工程摘要、測試數字與未驗限制保留在 [M2 工程 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md) 及相應具名 QA 原件。此處只提供歷史入口；目前通過／失敗／未驗狀態看本頁開頭、[恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md) 與 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)。

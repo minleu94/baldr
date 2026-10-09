@@ -374,6 +374,15 @@ Month 3 closure audit 與 8 份全部勾選完成且具 implementation commit �
 | `docs/superpowers/specs/2026-06-11-financial-float-boundary-governance-design.md` | [Float boundary spec](../09_archive/superpowers/specs/2026-06-11-financial-float-boundary-governance-design.md) | 8,554 / `585f256b9b408991dd53f97ecae0a3acf76cbc4986d3a6ee5a22efec3036374d` |
 | `docs/superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md` | [Roadmap rebaseline plan](../09_archive/superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md) | 9,617 / `196822ac8672c2ee184c441e3940e41244e4035724f48517d1bc7fd36557c5cf` |
 
+## 2026-10-08 Legacy Test Governance plan/spec 歸檔
+
+將已結案的 Legacy Test Governance 計畫與配套設計規格移至 `docs/09_archive/superpowers/`；原路徑保留導引。計畫 23 個工作項目全數完成，對照 closeout `c617a6104`、建立計畫提交 `e1c2fe0c5`；歷史結果只代表當期 pytest API 遷移與 collection 整理，不代表目前測試數量或 coverage。現行分類看 QA 測試清冊與 `tests/manual/README.md`。README、manifest 與 DOCUMENTATION_STRUCTURE 已同步；DOCUMENTATION_INDEX 沒有直接列項且目前另有未提交內容，本輪未修改。
+
+| 原路徑 | 歸檔原文 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/superpowers/plans/2026-06-14-legacy-test-governance.md` | [Legacy Test Governance plan](../09_archive/superpowers/plans/2026-06-14-legacy-test-governance.md) | 3,504 / `45a12062301ce57859bb43a5662a522576f63e0cf0db54e005e3feda171c1099` |
+| `docs/superpowers/specs/2026-06-14-legacy-test-governance-design.md` | [Legacy Test Governance spec](../09_archive/superpowers/specs/2026-06-14-legacy-test-governance-design.md) | 1,722 / `bd116b7a1f05b1321b1ae3c99757403451dc7868470ca5446e13f0dc84763abe` |
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

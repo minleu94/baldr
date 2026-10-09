@@ -283,6 +283,10 @@ Month 3 closure audit 與 8 份核取項目全完成、各有 implementation com
 
 [Scoped SSOT／Roadmap rebaseline plan](superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md) 已完成並封存，舊路徑保留導引；結案檢查見 `76a30273f`、`d6533557f`，當期稽核見[文件與 Roadmap 重整稽核](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)。現行職責看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)、[DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 與 [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md)。
 
+### 2026-10-08 Legacy Test Governance history
+
+[Legacy Test Governance 計畫](superpowers/plans/2026-06-14-legacy-test-governance.md) 與[設計規格](superpowers/specs/2026-06-14-legacy-test-governance-design.md) 已結案並封存，舊路徑保留導引。計畫 23 個工作項目全數勾選，並由 `c617a6104` 記錄 closeout；此資料只記錄 2026-06 的 API 遷移與 pytest collection 整理。現行測試清冊、分類與手動測試界線請看[最新測試清冊](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[QA 主題地圖](../06_qa/README.md) 與 [manual tests README](../../tests/manual/README.md)。
+
 ## 2026-10-06 治理入口整理原文快照
 
 下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：

@@ -1192,3 +1192,10 @@ README、Archive README、DOCUMENTATION_INDEX 與仍有效的 troubleshooting �
 | 原 QA 路徑 | Archive 原文 | 原件 bytes / SHA-256 | Archive bytes / SHA-256 |
 |---|---|---:|---:|
 | `docs/06_qa/V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md` | [`V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md`](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md) | 6,765 / `993153BC7CE6DFE46D50B58B6B16DE6AA126A96B121DB3C63A831BCC021C5336` | 6,765 / `993153BC7CE6DFE46D50B58B6B16DE6AA126A96B121DB3C63A831BCC021C5336` |
+
+<a id="coverage-entry-128"></a>
+## 2026-10-09 封存 Daily Decision Desk 初始 Spark execution plan
+
+將 `docs/superpowers/plans/2026-06-15-daily-decision-desk-spark-execution-plan.md` 原文移至 `docs/09_archive/superpowers/plans/`；原路徑保留短導引。初始計畫要求新增頂層「每日決策」Tab，現行入口已是「市場探索 > 市場總覽」，因此這份 plan 只作歷史追溯；目前操作與模組邊界分別看 Application Manual §8 與 system architecture §4。Month 4 closure plan 的結案摘要明載 service-backed v1 已結案及驗證結果，但 Task 1–7 核取方塊仍未勾選；保留兩種原始記錄，不以初始 plan 推定目前完成狀態。現況仍以 PROJECT_SNAPSHOT 為準。
+
+Archive 工作樹副本與移動前來源逐 byte 相同：20,061 bytes，SHA-256 `F16CE700216E44F46589F6AE31564FCF7D23E9A7D2EF47C3BB558CD29D7B06C9`。來源 Git LF blob 為 19,525 bytes，SHA-256 `8afcf0f7c77f2508f00aaf6924e0de4136ceba236a82717b79f4b789b5c0e205`；manifest 保存此 canonical blob 值。全庫精確檔名搜尋未發現程式、測試、腳本或固定路徑 reader／writer 依賴；歷史 catalog 與 manifest 引用由舊路徑導引承接。Archive README、Superpowers README、manifest 與 DOCUMENTATION_INDEX 已同步；DOC_COVERAGE_MAP 的 Scoped SSOT 規則未變，因此不修改 Coverage Map。

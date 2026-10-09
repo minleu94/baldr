@@ -28,3 +28,9 @@ Root 獨立執行 `output/qa/h20_wal_market_bridge_20261009_a/test_wal_merged_ma
 Owner 8 passed／1.28 秒；Root 獨立 native 執行 `test_wal_merged_market_bridge_neutral_qa.py`，terminal exit 0、8 passed／1.47 秒。八份 Root 收據為 `attempts/*_20261009T002916Z_*/receipt.json` 加 `backup_deadline_20261009T002917Z_b5d78227132b/receipt.json`；逐份確認成功正／負案例、來源 SQLite 連線 0、操作副本已清理。覆蓋沒有 `market_prices` 的五表合成市場 schema、備份途中取消與 deadline，以及 a 的連線、SQL、執行緒與來源變動限制。
 
 凍結 SHA256：helper `0480f1ced50d05481a62d6e19c636d259ee23976289162d40076a96d66783bb4`；bridge `73bf9294f6d74f880bf77ec1bd85b7e746a0b80d7c4b4487313ff7ff875f498c`；test `44fced3cab90727c3b83a99f0965ddc5d7c8bb37dae20cf29bfab09df7fe0230`。collection import 與 schema descriptor 範圍不同的早期失敗均保留。此證據補足測試表依賴與 backup 取消缺口，仍不是實際市場 provider、雙來源 Main 旅程、原始 H20 或 EXE 接受。
+
+## 外層 dispatcher 接線前的 attachment 核驗
+
+Root 獨立 native 執行 c 候選的 `test_wal_market_dispatcher_composition_qa.py`，terminal exit 0，3 passed／0.55 秒（工具輸出 f09de9）。閱讀測試後確認：三例直接使用 market operation 的 owner-issued attachment 與 `open_connection()`，涵蓋精確 URI、錯誤 token／原庫路徑拒絕、跨執行緒連線未關閉時拒絕 detach，以及正常 finish／副本清理。
+
+三例沒有實例化或安裝 `_DualSQLiteRouter`，也沒有同時走 H20 與兩個 runtime DB 路由，因此只能授予 market attachment 契約證據，不能稱為外層雙來源 dispatcher 或 Main 旅程通過。後續須以真 router 經公開 `sqlite3.connect` 與 `sqlite3.dbapi2.connect` 核驗四條資料庫路由及拒絕、hook 還原、連線關閉，再進行真 Main 合成旅程。原始來源仍未啟動。

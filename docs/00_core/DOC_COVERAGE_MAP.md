@@ -1,5 +1,14 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 封存過期 Backtest Lab checklist／FAQ
+
+回測 Lab checklist 仍把已實作的 Excel 報告匯出列為待辦；FAQ 保留早期資料路徑與已過時的操作／策略建議。兩份原文逐位元組移至 Archive，來源路徑保留短導引；功能目錄說明歷史定位，Quick Reference 將 FAQ 入口改為目前 Application Manual。現行功能契約仍由 BACKTEST_LAB_FEATURES 維護，操作與排錯以 Manual 為準。DOCUMENTATION_INDEX 有其他工作未提交的修改，本批不觸碰該檔，舊路徑引用仍可經導引到達原文。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/02_features/BACKTEST_LAB_CHECKLIST.md | [BACKTEST_LAB_CHECKLIST.md](../09_archive/BACKTEST_LAB_CHECKLIST.md) | 15,540 / `B669F5847A53EFD5259F7641851A409EC995DF0800E235ABE97121EBB171DD97` | 15,540 / `B669F5847A53EFD5259F7641851A409EC995DF0800E235ABE97121EBB171DD97` |
+| docs/02_features/BACKTEST_LAB_FAQ.md | [BACKTEST_LAB_FAQ.md](../09_archive/BACKTEST_LAB_FAQ.md) | 11,918 / `08DB5E5FC81D70A1BF888C3ACF31A110250DC4070337555DC9F338322656C20C` | 11,918 / `08DB5E5FC81D70A1BF888C3ACF31A110250DC4070337555DC9F338322656C20C` |
+
 ## 2026-10-08 封存早期 Recommendation／Update Tab QA
 
 將四份早期產品 Tab QA 問題盤點與摘要移至 Archive。內容引用舊 `ui_app` 路徑，含當時的零推薦結果、測試數字及待覆驗事項，不能作為目前實作或驗收結論。原文逐位元組保留；QA 原路徑留下短導引，QA README 改連歷史專區，Archive README 說明現況判讀界線。歷史 troubleshooting 的單一引用改為直達 Archive。現行操作與排錯看 Application Manual，測試範圍看 Feature-to-test routing matrix。DOCUMENTATION_INDEX 目前有其他工作未提交的修改，本批未觸碰該檔；舊路徑仍由相容導引承接。

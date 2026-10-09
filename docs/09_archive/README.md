@@ -16,6 +16,13 @@
 - [推薦分析資料流程（舊版）](RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md)：保留舊 CSV／`ui_app`／`StrategyConfigurator` 流程；目前資料來源與指標重用邊界以 [system_architecture](../01_architecture/system_architecture.md) 為準。
 - [每日更新故障排除指南（舊版）](TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)：保留已過時的 log／資料路徑與早期 API 排錯命令；目前更新操作看 [APPLICATION_MANUAL 第 4 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)，排錯看第 12 節。
 
+### 2026-10-08 Backtest Lab checklist and FAQ snapshots
+
+- [回測頁功能清單與進度快照](BACKTEST_LAB_CHECKLIST.md)：原文保留舊待辦，例如將已提供的報告匯出列為待實作；只供追溯，不代表目前功能缺口。
+- [回測 FAQ](BACKTEST_LAB_FAQ.md)：保留早期路徑、流程與建議，其中一些已不適用目前架構及操作；不要照舊命令或策略建議操作。
+
+目前功能契約以 [BACKTEST_LAB_FEATURES](../02_features/BACKTEST_LAB_FEATURES.md) 為準，操作、安全限制與排錯以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。原 `docs/02_features/` 路徑保留短導引。
+
 ## 2026-10-08 歸檔
 
 ### 2026-10-08 Data and source-owner receipts

@@ -137,6 +137,7 @@
 - 12 份早期一次性 QA／工程 closeout／治理 audit 已移至 Archive；Evidence Rehearsal Runbook、Full App coverage mapping、External Validation Register 等現行契約入口留在原位，舊路徑轉址承接仍存活的歷史引用。
 - 六份 2026-07／08 資料來源、license、owner 與 display refresh receipt 已歸檔；pilot／授權／來源限制照原文保存，現行 P0 handoff 與 Snapshot 留在 QA／core。
 - 四份早期 Recommendation／Update Tab QA 問題盤點與摘要已移至 Archive，保留原始 bytes 與 QA 原路徑導引；舊測試數字及待覆驗狀態不作目前驗收依據。
+- 回測 Lab 舊 checklist／FAQ 已移至 Archive；舊待辦及路徑不作目前功能或操作依據，現況分別回到 feature contract 與 Application Manual。
 - 七份 2026-08-18 至 08-28 的 Prospective Formal clock activation、execution、staging、calendar 與 failure receipts 已歸檔；目前 restart direction 與 decision-clock contract 留在 QA，歷史 staging 不構成重啟／發布授權，8/26 僅為具名一次性例外。
 - `PROGRAM_STATUS_REBASELINE_2026_08_29.md` 已改為 Archive 日期快照；目前狀態以 PROJECT_SNAPSHOT 為準，Manual、Gate 7 與 External Validation Register 已解除對 8/29 snapshot 的 current-state 依賴，舊 QA 路徑保留轉址。
 - 2026-08-29 ML Release v4 Storage Retention Cleanup 是使用者授權的一次性 custody 收據，已移至 Archive 並保留舊 QA 路徑轉址；目前 immutable publication retention 規則以 system_architecture §11.1 為準，操作以 Application Manual Supplements 為準。
@@ -206,6 +207,7 @@
 - 2026-10-08：封存已完成的 Safe Refactor continuation plan；其 Wave 6 核准與 release healthcheck 由專項 QA audit 保留，舊路徑轉址至 Archive。
 - 2026-10-08：將 Month 3 closure audit 及八份核取項目全完成的 Portfolio Replay 計畫成組歸檔；weight/exposure 計畫因留有未勾項目而留在來源路徑，README 與 manifest 明確標示。
 - 2026-10-08：將四份早期 Recommendation／Update Tab QA 問題盤點與摘要移至 Archive，保留 byte-identical 原件、相容導引及現況判讀界線；同步 QA／Archive README 與 coverage map。
+- 2026-10-08：將回測 Lab 過期 checklist／FAQ 歸檔並保留舊路徑導引；快速參考改指操作手冊，功能目錄與 coverage map 同步現行入口。
 - 2026-10-08：將 V3 ML readiness 與兩組 UI readability polish 的已結案 plan/spec 配對歸檔；ML 原件明定僅研究／closeout readiness，不代表 production ML。
 - 2026-10-08：將 TPEX daily-price backfill plan、金融 float boundary plan/spec 與 Scoped SSOT roadmap rebaseline plan 封存；保留舊路徑導引及原始 hash，分別指向後續 TPEX QA、現行數值治理入口與現行文件權威。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。

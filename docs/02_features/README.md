@@ -21,11 +21,8 @@
 - **`BACKTEST_LAB_FEATURES.md`**
   - 策略回測標籤的完整功能說明
 
-- **`BACKTEST_LAB_CHECKLIST.md`**
-  - 策略回測頁面功能清單與開發進度
-
-- **`BACKTEST_LAB_FAQ.md`**
-  - 策略回測常見問題與使用細節
+- **歷史回測 Lab 清單與 FAQ**
+  - 舊功能清單含已過期的待實作狀態，舊 FAQ 保留早期資料路徑與操作建議；兩份原文已移至[歷史封存](../09_archive/README.md#2026-10-08-backtest-lab-checklist-and-faq-snapshots)，不作目前功能或操作依據。
 
 - **`SCORE_EXPLANATION.md`**
   - 評分系統說明

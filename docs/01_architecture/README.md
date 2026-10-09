@@ -66,8 +66,9 @@
 - **`runtime_observatory_rules.md`**
   - Runtime Subsystem、DTO、UI bridge 與依賴方向治理規範
 
-- **`ui_design_system_midnight_analyst.md`**
+- **[ui_design_system_midnight_analyst.md](ui_design_system_midnight_analyst.md)**
   - PySide6 UI theme tokens、共用元件、QSS 與效能限制
+  - 2026-07-02 第一輪低風險遷移完成清單已作[歷史摘錄](../09_archive/UI_DESIGN_SYSTEM_MIDNIGHT_ANALYST_MIGRATION_HISTORY_20260702.md)；目前規格與遷移邊界仍以本文件為準
 
 歷史遷移與已完成安全重構報告已移至 `../09_archive/`；QA closeout 與移除稽核位於 `../06_qa/`。
 

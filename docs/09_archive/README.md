@@ -679,6 +679,10 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - Full App healthcheck 的 `D-009` 仍為「需確認」，真實 Portfolio 狀態仍需人工確認。本次沒有升級 QA 狀態；目前操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，架構責任看 [system architecture](../01_architecture/system_architecture.md)。
 - 原件 bytes／SHA、引用查核與生命週期效力見 [Coverage History Entry 146](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-146)；原路徑／Archive 對照見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 
+## 2026-10-09 Midnight Analyst UI 遷移歷史
+
+- [2026-07-02 第一輪低風險 UI 遷移清單](UI_DESIGN_SYSTEM_MIDNIGHT_ANALYST_MIGRATION_HISTORY_20260702.md)：保存 UI 設計系統文件中的日期化遷移完成描述；它不代表目前全 UI 一致性或 QA 已全面通過。現行 theme 規格與尚保留的遷移邊界見[架構文件](../01_architecture/ui_design_system_midnight_analyst.md)。來源範圍與 bytes／SHA-256 見 [Coverage History Entry 160](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-160)。
+
 ## ⚠️ 注意
 
 這些文檔主要用於記錄歷史，日常使用時請參考：

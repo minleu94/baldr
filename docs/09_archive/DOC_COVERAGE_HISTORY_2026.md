@@ -1635,3 +1635,14 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 | `target_system_architecture.md` 的 `## 更新記錄` 至 EOF | 1,385 / `c260137b41dbfbb473bfc5aee47085e044dd73aaefd7102e21686b8791b8fd02` | [更新記錄原文](TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md) | 2,215 / `7d47dc5108d5a5d533538e8b6d06502add28717132d92a26707d543d220222d0` |
 
 來源整份原檔在本批前為 37,123 bytes，SHA-256 `792d1bd93c5c9d8457eac7cd387f71cd69f87ee476ead5491d33bacf067c28f1`。更新記錄中的 R031 工程 closeout 保留 named blockers 與 compatibility owners，不代表整體 refactor、production 資料、scheduler、ML promotion 或所有目標能力通過；狀態依 [R031 closeout QA](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，目標實作設計依 FINAL_TARGET_ARCHITECTURE。全 repo 未找到 `target_system_architecture.md#更新記錄` 專屬引用；既有 `#1011-ml-shadow-layer` 連結不受影響，原標題保留供相容。`DOC_COVERAGE_MAP` 權威分工未改，因此不修改；文件位置不變，未修改 dirty 的 DOCUMENTATION_INDEX、PROJECT_SNAPSHOT 或 APPLICATION_MANUAL。Archive README、01_architecture README 與本 Coverage History 已補上歷史入口。本批未執行程式測試。
+
+<a id="coverage-entry-160"></a>
+## 2026-10-09 封存 Midnight Analyst UI 第一輪低風險遷移清單
+
+只將 `docs/01_architecture/ui_design_system_midnight_analyst.md` 第 9 節的 2026-07-02 日期化完成清單摘出至 Archive；來源文件仍保留原第 9 節標題、本輪遷移邊界與其他設計規範。來源路徑不變，檔案級連結繼續有效；原標題與邊界留在原處，並以相容導引指向歷史摘錄。
+
+| 來源範圍 | 原文 bytes／SHA-256 | Archive 摘錄 | Archive 檔案 bytes／SHA-256 |
+|---|---:|---|---:|
+| §9 的 2026-07-02 完成引言與項目清單 | 1,480 / `5a61a221f15df997ac6365b4cf38be3bcc320680701c1d3483eca0e3722f0bfc` | [原文摘錄](UI_DESIGN_SYSTEM_MIDNIGHT_ANALYST_MIGRATION_HISTORY_20260702.md) | 2,137 / `8ae9c57817982a75a4c71dd0724884e092340a2de85f1c011f9d1fd496a01aad` |
+
+來源整份原檔在本批前為 18,258 bytes，SHA-256 `b164b5452be857775c5742fc396b0f512f7a74e95f1cdf29cc7de98266a0b025`。此摘錄是日期化完成描述，不能推定目前所有 UI 工作區一致、現行設計規範已全部落實，或 UI QA 已全面通過。全 repo 精確內容與錨點搜尋未發現該清單的獨立 consumer；架構目錄 README 與 Archive README 已提供導覽。來源檔案位置不變，故不修改 DOC_COVERAGE_MAP；DOCUMENTATION_INDEX 有其他未提交工作，本批不觸碰。

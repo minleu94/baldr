@@ -483,8 +483,8 @@ https://5850web.moneydj.com/z/zg/zgb/zgb0.djhtm
 
 ## 十、參考資料
 
-- **設計文檔**：`BROKER_BRANCH_DATA_MODULE_DESIGN_V2.md`（同目錄）
-- **實作總結**：`BROKER_BRANCH_IMPLEMENTATION_SUMMARY.md`（同目錄）
+- **歷史設計文檔**：[資料模組設計 V2](../09_archive/broker_branch/BROKER_BRANCH_DATA_MODULE_DESIGN_V2_HISTORY.md)
+- **歷史實作總結**：[初期實作摘要](../09_archive/broker_branch/BROKER_BRANCH_IMPLEMENTATION_SUMMARY_HISTORY.md)
 - **原始爬蟲**：`Crawler.ipynb`
 - **修復腳本**：`scripts/fix_broker_branch_registry.py`
 - **驗證腳本**：`scripts/verify_registry.py`

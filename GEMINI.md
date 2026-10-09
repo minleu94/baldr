@@ -19,7 +19,7 @@
 7. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 8. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交與 Gate（涉及舊工作承接、Phase 或優先順序時必讀）
 9. `docs/01_architecture/system_architecture.md` - 系統架構（涉及架構、模組邊界或資料流時必讀）
-10. `docs/07_guides/APPLICATION_MANUAL.md` - 完整操作手冊（涉及 UI 流程、參數、結果判讀或安全限制時必讀）
+10. `docs/07_guides/README.md` 的「操作手冊章節地圖」與 `APPLICATION_MANUAL.md` 中和任務相關的章節（涉及 UI 流程、參數、結果判讀或安全限制時必讀）；跨工作區任務讀取涉及的各章，日期化補充只讀相關部分
 11. `docs/agents/skills_registry.md` - Codex / Antigravity 共用的角色選擇與協作入口
 12. `docs/agents/antigravity/README.md` - Antigravity 適配摘要與工作方式
 13. 與任務對應的權威角色文件：

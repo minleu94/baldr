@@ -65,7 +65,7 @@ Testing / QA Agent 負責系統功能的驗證、測試路由的調配與執行�
 2. [shared_context.md](./shared_context.md) - 全 Agent 共用規範
 3. [git_exclusions.md](./git_exclusions.md) - Git 排除與不應提交清單
 4. [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md) - 專案目前狀態
-5. [APPLICATION_MANUAL.md](../07_guides/APPLICATION_MANUAL.md) - 完整操作手冊
+5. [操作手冊章節地圖](../07_guides/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 的相關章節
 6. [TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md) - 全量測試分類
 7. [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) - 測試路由矩陣
 

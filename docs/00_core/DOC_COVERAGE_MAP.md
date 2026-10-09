@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 操作手冊依任務分段閱讀
+
+APPLICATION_MANUAL 有 13 個工作區章節及日期化補充。docs/07_guides/README.md 新增章節標題地圖，Codex、Gemini、Documentation、Testing／QA 與 Antigravity 入口改為依任務讀相關章節；跨工作區流程讀涉及章節，日期化細節讀相關附冊／QA。Manual 本身仍是操作權威，沒有改寫其內容；這項調整只改閱讀路由，避免一般任務載入整份長手冊。
+
 ## 2026-10-08 Month 5 Fundamental inventory 歷史歸檔
 
 將 87,587-byte、510 行的 Month 5 基本面來源盤點移至 `docs/09_archive/`；原文最後更新記錄到 2026-08-12，且包含大量逐日研究／來源採集流水帳。原路徑改為短導引，指向現行 Snapshot、current architecture、來源審查、snapshot config 與 source acceptance QA；QA README 增加基本面／估值來源地圖。原文沒有需重設的本地相對連結，封存 bytes 與原件 SHA-256 相同。

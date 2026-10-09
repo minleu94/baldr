@@ -112,7 +112,7 @@
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣
 - `docs/01_architecture/system_architecture.md` - 系統架構
 - `docs/01_architecture/target_system_architecture.md` - 目標系統架構
-- `docs/07_guides/APPLICATION_MANUAL.md` - 完整操作手冊（涉及 UI、使用流程、參數、結果判讀或安全限制時必讀）
+- `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（依任務讀取；跨工作區任務讀取涉及章節）
 - 本次變更涉及的檔案（由使用者提供，或由 Agent 提出需求）
 
 #### 其他 Agent

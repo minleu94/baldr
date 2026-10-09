@@ -59,7 +59,7 @@
 | 現在真實架構 | `../01_architecture/system_architecture.md` |
 | Transitional / Target Architecture | `../01_architecture/target_system_architecture.md` |
 | 已完成的行為不變安全重構 | `../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`（歷史／rollback companion） |
-| 現在已實作的操作流程 | `../07_guides/APPLICATION_MANUAL.md` |
+| 現在已實作的操作流程 | `../07_guides/README.md` 的手冊章節地圖與 `../07_guides/APPLICATION_MANUAL.md` 相關章節 |
 | 文件位置 | `DOCUMENTATION_INDEX.md` |
 
 ## 🔗 相關目錄
@@ -78,7 +78,7 @@
 5. 若要追溯 V1.1-V2.0 歷史，讀 archive；V2.1-V4.0 的成熟度標準讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
 6. 若要確認目前或目標架構，分別讀 `system_architecture.md` 與 `target_system_architecture.md`。
 7. 若要追溯已完成的安全重構，讀 `../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`；新的重構工作仍以目前架構與當期核准計畫為準。
-8. 若要操作目前系統，讀 `../07_guides/APPLICATION_MANUAL.md`。
+8. 若要操作目前系統，先按 `../07_guides/README.md` 的章節地圖讀取 Manual 相關章節。
 9. 若要找文件位置，讀 `DOCUMENTATION_INDEX.md`。
 10. 若要追溯舊 Phase 或歷史 Done，讀 archive；Historical 文件不作目前狀態依據。
 

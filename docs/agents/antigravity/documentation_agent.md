@@ -19,7 +19,7 @@
 11. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 12. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
 13. `docs/01_architecture/system_architecture.md`
-14. `docs/07_guides/APPLICATION_MANUAL.md`（涉及 UI / 使用流程時必讀）
+14. `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（涉及 UI／使用流程時）
 
 ## 工作流程
 

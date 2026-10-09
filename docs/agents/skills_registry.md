@@ -28,7 +28,7 @@
 10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`（涉及舊工作承接或 Phase Gate 時）
 11. `docs/01_architecture/system_architecture.md`（涉及目前架構、模組邊界或資料流時）
 12. `docs/01_architecture/target_system_architecture.md`（涉及未來架構或領域邊界時）
-13. `docs/07_guides/APPLICATION_MANUAL.md`（涉及 UI、使用流程、參數、結果判讀或安全限制時）
+13. `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（涉及 UI、使用流程、參數、結果判讀或安全限制時）
 14. 與任務對應的 Agent 權威文件：
    - 架構判斷：`docs/agents/tech_lead.md`
    - 受控實作：`docs/agents/execution_agent.md`

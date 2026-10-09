@@ -292,7 +292,7 @@ docs/                # 專案文檔
 - **Roadmap Hub**：`docs/00_core/DEVELOPMENT_ROADMAP.md`
 - **舊 Roadmap 移交**：`docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
 - **系統架構**：`docs/01_architecture/system_architecture.md`
-- **完整操作手冊**：`docs/07_guides/APPLICATION_MANUAL.md`
+- **操作與結果判讀**：先看 `docs/07_guides/README.md` 的操作手冊章節地圖，再讀 `APPLICATION_MANUAL.md` 相關章節；跨工作區流程讀涉及章節，日期化補充只讀相關部分。
 
 ## 🔄 更新記錄
 

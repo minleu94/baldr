@@ -341,7 +341,7 @@
 - **系統架構**：`docs/01_architecture/system_architecture.md`
 - **專案導航**：`PROJECT_NAVIGATION.md`
 - **文檔覆蓋矩陣**：`docs/00_core/DOC_COVERAGE_MAP.md`
-- **完整操作手冊**：`docs/07_guides/APPLICATION_MANUAL.md`
+- **操作手冊 coverage**：依 `docs/07_guides/README.md` 的章節地圖讀取並同步相關段落；跨工作區流程逐章檢查，日期化補充只在內容仍適用時同步。
 
 ## 🔄 更新記錄
 

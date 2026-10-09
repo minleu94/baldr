@@ -19,7 +19,7 @@
 11. `docs/01_architecture/system_architecture.md` - 現有系統架構（涉及架構、模組邊界或資料流時必讀）
 12. `docs/01_architecture/target_system_architecture.md` - 理想目標架構（涉及未來架構、領域邊界或 Current → Target 演進時必讀）
 13. `docs/agents/skills_registry.md` - Codex / Antigravity 共用的角色選擇與協作入口
-14. `docs/07_guides/APPLICATION_MANUAL.md` - 完整操作手冊（涉及 UI、使用流程、參數、結果判讀或安全限制時必讀）
+14. `docs/07_guides/README.md` 的「操作手冊章節地圖」與 `APPLICATION_MANUAL.md` 中和任務相關的章節（涉及 UI、使用流程、參數、結果判讀或安全限制時必讀）；跨工作區任務讀取涉及的各章，日期化補充只讀相關部分
 15. 與任務對應的 Agent 文件：
    - 架構判斷、技術決策：`docs/agents/tech_lead.md`
    - 資料完整性、資料對比：`docs/agents/data_audit_agent.md`

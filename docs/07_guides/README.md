@@ -19,6 +19,25 @@
 - **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)**
   - 系統安裝與環境設置指南（Python 3.11、虛擬環境、依賴與資料路徑）
 
+### 操作手冊章節地圖
+
+APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章節即可。跨工作區流程讀取涉及的章節；日期化工程補充只在與本次功能相關時閱讀，並沿章節連結查看 QA 證據。
+
+| 任務 | 在 APPLICATION_MANUAL 搜尋的章節標題 |
+|---|---|
+| 系統概覽、安裝與啟動 | 1. 系統能做什麼、2. 安裝與啟動 |
+| Advice、每日建議與每日決策 | Gate 1 Advice：決策工作台的唯讀操作、3. 每日建議流程、8. 每日決策（Daily Decision Desk） |
+| 資料更新、資料狀態、來源與 SQLite | 4. 數據更新 |
+| 市場探索 | 5. 市場探索 |
+| 推薦分析與結果判讀 | 6. 推薦分析 |
+| 觀察清單與選股清單 | 7. 觀察清單與選股清單 |
+| Research Lab、策略回測 | 9. Research Lab / 策略回測 |
+| 持倉管理 | 10. 持倉管理 |
+| Runtime 與營運監控 | 11. Runtime Observatory（Owner 營運與治理監控） |
+| 常見問題與覆蓋狀態 | 12. 常見問題、13. Manual 覆蓋狀態 |
+
+日期化細節若未整合到相應章節，再搜尋 APPLICATION_MANUAL_SUPPLEMENTS 的相關標題。不要把單次 QA 收據當成目前操作權威；接受狀態回到對應 QA 或 PROJECT_SNAPSHOT 核對。
+
 ### 2. 目錄與程式庫指南
 - **[scripts_readme.md](scripts_readme.md)**
   - `scripts/` 目錄下的腳本說明、分類、執行順序建議與路徑隔離

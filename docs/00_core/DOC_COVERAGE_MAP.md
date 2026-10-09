@@ -1,5 +1,14 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 全文件目錄快照歸檔
+
+將 2026-10-06 的 1,133 行 tracked-file Catalog 從 00_core 移至 09_archive，舊核心路徑保留轉址。封存副本只調整 16 個同層核心文件連結與 1 個自我連結；原有 1,022 個本地 Markdown 連結已全部解析通過。docs/README、PROJECT_NAVIGATION、DOCUMENTATION_STRUCTURE、DOCUMENTATION_GRAPH_GUIDE、舊次整理 Manifest 與 QA 收據已改指歸檔副本；現行 DOCUMENTATION_INDEX 的既有舊路徑由轉址承接。Catalog 的日期、清點範圍及其餘內容保持不變。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/00_core/DOCUMENTATION_CATALOG_20261006.md | [DOCUMENTATION_CATALOG_20261006_HISTORY.md](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) | 141,321 / 11B478D49DB1CC06DC16F39BFCD44A82E2262635A756BBC48D5151338F4C8813 | 141,505 / E0249E4831E9856EA4DFA5C841E3C373AA0CC2CD507F6F982149ED8D69C6AB98 |
+
+
 ## 2026-10-08 Phase 文件 V1.1–V2.0 歷史路徑校正
 
 13 份 docs/05_phases/ 歷史設計與研究 SOP 原先連到 docs/00_core/ 的舊版本路線導引頁，現改為直接連至 docs/09_archive/ 的 V1.1–V2.0 歷史原件。docs/05_phases/README.md 原本已直連封存原件，保持不變；舊核心路徑繼續保留導引，以承接其他舊引用。沒有改寫 Phase 正文或目前成熟度定義。

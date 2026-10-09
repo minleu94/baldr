@@ -8,6 +8,9 @@
 
 ## 2026-10-08 歸檔
 
+- [全文件目錄快照（2026-10-06）](DOCUMENTATION_CATALOG_20261006_HISTORY.md)：保留當日 tracked 文件清單；它不是即時清冊，目前導航看 DOCUMENTATION_INDEX 與各專區 README。
+
+
 - [Workbench 左側主導覽 IA closeout（2026-07-07）](WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md) 與 [視覺層級 polish closeout（2026-07-07）](WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md)：保留一次性 UI closeout 與當時 QA 證據；目前操作流程見 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，目前狀態見 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
 - [V4 完成計畫（2026-09-07）](V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)：保留截至 2026-09-10 仍標示「進行中」的計畫與執行紀錄；這是當時狀態，不表示目前 V4 完成度。舊核心路徑保留導引頁。

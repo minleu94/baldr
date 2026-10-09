@@ -1,6 +1,6 @@
 # 專案導航文件
 
-文件位置以 [文檔索引](docs/00_core/DOCUMENTATION_INDEX.md)／[全文件目錄](docs/00_core/DOCUMENTATION_CATALOG_20261006.md) 為準。以下日期化功能接線保留為開發參考；當時未啟用／pending 不自動代表現在，現況看 [Snapshot](docs/00_core/PROJECT_SNAPSHOT.md)，操作看 [Manual](docs/07_guides/APPLICATION_MANUAL.md)。歷史整理與恢復見 [manifest](docs/09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)。
+文件位置以 [文檔索引](docs/00_core/DOCUMENTATION_INDEX.md) 與各專區 README 為準；[2026-10-06 全文件目錄歷史快照](docs/09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) 僅供追溯。以下日期化功能接線保留為開發參考；當時未啟用／pending 不自動代表現在，現況看 [Snapshot](docs/00_core/PROJECT_SNAPSHOT.md)，操作看 [Manual](docs/07_guides/APPLICATION_MANUAL.md)。歷史整理與恢復見 [manifest](docs/09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)。
 
 ## 2026-10-06 首頁四用途與個股摘要
 

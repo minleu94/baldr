@@ -25,4 +25,4 @@ Refactor 歷史提及的 `app_module/recommendation_save_coordinator.py` 與 `de
 
 ## 公開與本機分界
 
-[全清單](../00_core/DOCUMENTATION_CATALOG_20261006.md) 列 tracked 文件，不含私人 DB／模型／raw output。本機 ignored 盤點與 raw SHA 保存於本輪 QA；容量與恢復摘要看 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。原 graphify query memory 不移、不清；新圖僅在本輪 ignored 分區。未 push／main merge，文檔 commit 不表示 main 已同步。
+[全清單](DOCUMENTATION_CATALOG_20261006_HISTORY.md) 列 tracked 文件，不含私人 DB／模型／raw output。本機 ignored 盤點與 raw SHA 保存於本輪 QA；容量與恢復摘要看 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。原 graphify query memory 不移、不清；新圖僅在本輪 ignored 分區。未 push／main merge，文檔 commit 不表示 main 已同步。

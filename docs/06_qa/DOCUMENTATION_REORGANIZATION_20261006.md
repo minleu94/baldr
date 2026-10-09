@@ -4,7 +4,7 @@
 
 ## 落地成果
 
-- 原 993 份 tracked 文檔完成路徑／SHA／分類盤點；[全文件目錄](../00_core/DOCUMENTATION_CATALOG_20261006.md) 提供 root、docs 與 module 說明的可達入口。完全相同 bytes 的重複為 0，沒有因主題相似刪除設計或驗收證據。
+- 原 993 份 tracked 文檔完成路徑／SHA／分類盤點；[全文件目錄](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) 提供 root、docs 與 module 說明的可達入口。完全相同 bytes 的重複為 0，沒有因主題相似刪除設計或驗收證據。
 - Snapshot 改為當前 bounded 狀態，Index／docs README 只維護導航；三份原累積全文封存，[old→new manifest](../09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md) 保存日期、superseded-by 與恢復。原 bytes 本機備份另存；Git baseline 可恢復 tracked 原文。
 - 開發 plans／specs 原地歸檔，以 lifecycle manifest 連回現行權威，保留 QA 歷史交叉引用；原 plan 不因日期或未勾選被取消。
 - 唯一 Danny Quant plan 原 bytes 快照核對，原路徑不變。4461 份 ignored plan／QA text 的 metadata 初盤點保存於本輪 audit；最終盤點為 4502 份（排除本輪 audit，其他驗收工作持續產生紀錄）。原 raw／JUnit／receipts／失敗場景不搬不改。

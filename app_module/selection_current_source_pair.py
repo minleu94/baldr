@@ -32,6 +32,11 @@ class CurrentSelectionSourcePair:
     disposal: CurrentOfficialDisposalReader
     cutoff_at: datetime
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.cutoff_at, datetime) or self.cutoff_at.utcoffset() is None:
+            raise CurrentSelectionSourcePairError("current_source_aware_cutoff_required")
+        _validate_pair_readers(self.market, self.disposal)
+
 
 def _check_cancel(callback: Callable[[], bool] | None) -> None:
     if callback is None:
@@ -45,20 +50,12 @@ def _check_cancel(callback: Callable[[], bool] | None) -> None:
         raise CurrentSelectionSourcePairError("current_source_pair_cancelled")
 
 
-def open_current_selection_source_pair(
-    pointer_path: str | Path,
-    *,
-    cutoff_at: datetime,
-    cancel_callback: Callable[[], bool] | None = None,
-) -> CurrentSelectionSourcePair:
-    """成對讀指定 updater 指標；讀取中前進的混版一律拒絕。"""
-    if not isinstance(cutoff_at, datetime) or cutoff_at.utcoffset() is None:
-        raise CurrentSelectionSourcePairError("current_source_aware_cutoff_required")
-    cutoff = cutoff_at.astimezone(timezone.utc)
-    _check_cancel(cancel_callback)
-    market = CurrentMarketAssignmentReader.from_pointer(pointer_path, cutoff_at=cutoff)
-    _check_cancel(cancel_callback)
-    disposal = CurrentOfficialDisposalReader.from_pointer(pointer_path, cutoff_at=cutoff)
+def _validate_pair_readers(
+    market: CurrentMarketAssignmentReader, disposal: CurrentOfficialDisposalReader,
+) -> None:
+    if (type(market) is not CurrentMarketAssignmentReader
+            or type(disposal) is not CurrentOfficialDisposalReader):
+        raise CurrentSelectionSourcePairError("current_source_pair_reader_type_invalid")
     shared_fields = (
         "output_root", "run_id", "pointer_sha256",
         "snapshot_relative_path", "snapshot_sha256",
@@ -76,8 +73,25 @@ def open_current_selection_source_pair(
         if (market_time.utcoffset() is None or disposal_time.utcoffset() is None
                 or market_time != disposal_time):
             raise CurrentSelectionSourcePairError("current_source_pair_clock_mismatch")
+
+
+def open_current_selection_source_pair(
+    pointer_path: str | Path,
+    *,
+    cutoff_at: datetime,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> CurrentSelectionSourcePair:
+    """成對讀指定 updater 指標；讀取中前進的混版一律拒絕。"""
+    if not isinstance(cutoff_at, datetime) or cutoff_at.utcoffset() is None:
+        raise CurrentSelectionSourcePairError("current_source_aware_cutoff_required")
+    cutoff = cutoff_at.astimezone(timezone.utc)
     _check_cancel(cancel_callback)
-    return CurrentSelectionSourcePair(market, disposal, cutoff)
+    market = CurrentMarketAssignmentReader.from_pointer(pointer_path, cutoff_at=cutoff)
+    _check_cancel(cancel_callback)
+    disposal = CurrentOfficialDisposalReader.from_pointer(pointer_path, cutoff_at=cutoff)
+    pair = CurrentSelectionSourcePair(market, disposal, cutoff)
+    _check_cancel(cancel_callback)
+    return pair
 
 
 def publish_current_selection_bundle(
@@ -115,8 +129,9 @@ def publish_completed_technical_selection_bundle(
     writer: DailyMarketTechnicalOfficialDispositionBundleWriterV1,
     *,
     production_result: DailyMarketTechnicalUniverseV4ProductionResult,
-    pointer_path: str | Path,
     store_output_root: str | Path,
+    pointer_path: str | Path | None = None,
+    source_pair: CurrentSelectionSourcePair | None = None,
     cancel_callback: Callable[[], bool] | None = None,
 ) -> DailyMarketTechnicalOfficialDispositionBundleReferenceV1:
     """完整技術產製才交付保存；來源截止時間沿原 plan，不重寫為現在。"""
@@ -132,6 +147,29 @@ def publish_completed_technical_selection_bundle(
     if (production_result.status != "complete" or plan is None or receipt is None
             or receipt.status != "complete"):
         raise CurrentSelectionSourcePairError("current_source_technical_result_incomplete")
+    if (pointer_path is None) == (source_pair is None):
+        raise CurrentSelectionSourcePairError("current_source_exactly_one_source_required")
+    if source_pair is not None:
+        if type(source_pair) is not CurrentSelectionSourcePair:
+            raise CurrentSelectionSourcePairError("current_source_pair_type_invalid")
+        if (not isinstance(source_pair.cutoff_at, datetime)
+                or source_pair.cutoff_at.utcoffset() is None
+                or source_pair.cutoff_at != plan.source_clock.decision_cutoff):
+            raise CurrentSelectionSourcePairError("current_source_pair_technical_cutoff_mismatch")
+        # 產製前選定的原來源 pins 不再從 mutable pointer 重選；writer 仍重核 exact 原件。
+        _check_cancel(cancel_callback)
+        return writer.create_from_pins(
+            store_output_root=store_output_root,
+            generation_identity_sha256=plan.generation_identity_sha256,
+            plan_identity_sha256=plan.identity_sha256,
+            expected_plan_sha256=production_result.plan_sha256 or "",
+            receipt_identity_sha256=receipt.identity_sha256,
+            expected_receipt_sha256=receipt.content_sha256,
+            market_assignment_source_pin=source_pair.market.source_pin,
+            official_disposal_source_pin=source_pair.disposal.source_pin,
+            cancel_callback=cancel_callback,
+        )
+    assert pointer_path is not None
     # 這些 pins 由真正產製結果取出；下游 writer 仍須讀回並核驗 store 原件。
     return publish_current_selection_bundle(
         writer,

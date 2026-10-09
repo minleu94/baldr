@@ -142,8 +142,10 @@ def test_incomplete_production_never_opens_sources_or_publishes(
     writer.create_from_pins.assert_not_called()
 
 
+@pytest.mark.parametrize("use_fixed_pair", [False, True])
 def test_real_complete_producer_preserves_original_cutoff_and_exact_pins(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    use_fixed_pair: bool,
 ) -> None:
     import app_module.selection_current_source_pair as adapter
     from app_module.daily_market_technical_universe_v4_producer import (
@@ -160,6 +162,47 @@ def test_real_complete_producer_preserves_original_cutoff_and_exact_pins(
     )
     assert result.status == "complete"
     assert result.plan is not None and result.receipt is not None
+    if use_fixed_pair:
+        original_cutoff = result.plan.source_clock.decision_cutoff
+        monkeypatch.setattr(_FrozenDateTime, "fixed_now", original_cutoff - timedelta(seconds=2))
+        monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+        monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
+        capture_root = tmp_path / "capture"
+        capture_root.mkdir()
+        pointer = _create_capture(capture_root)
+        pair = open_current_selection_source_pair(pointer, cutoff_at=original_cutoff)
+        # 新版發布日在原 cutoff 後，若重新讀 pointer 會被拒絕；固定來源仍可沿原件轉交。
+        monkeypatch.setattr(_FrozenDateTime, "fixed_now", original_cutoff + timedelta(seconds=2))
+        _create_capture(capture_root)
+        with pytest.raises(CurrentMarketAssignmentError, match="pointer_after_cutoff"):
+            open_current_selection_source_pair(pointer, cutoff_at=original_cutoff)
+        writer = Mock()
+        published = publish_completed_technical_selection_bundle(
+            writer, production_result=result, source_pair=pair, store_output_root=store_root,
+        )
+        assert published is writer.create_from_pins.return_value
+        args = writer.create_from_pins.call_args.kwargs
+        assert args["market_assignment_source_pin"] == pair.market.source_pin
+        assert args["official_disposal_source_pin"] == pair.disposal.source_pin
+        from dataclasses import replace
+        new_disposal = CurrentOfficialDisposalReader.from_pointer(
+            pointer, cutoff_at=original_cutoff + timedelta(seconds=3),
+        )
+        with pytest.raises(CurrentSelectionSourcePairError, match="version_mismatch"):
+            replace(pair, disposal=new_disposal)
+        with pytest.raises(CurrentSelectionSourcePairError, match="cutoff_mismatch"):
+            publish_completed_technical_selection_bundle(
+                writer, production_result=result, store_output_root=store_root,
+                source_pair=replace(pair, cutoff_at=original_cutoff + timedelta(seconds=1)),
+            )
+        assert writer.create_from_pins.call_count == 1
+        with pytest.raises(CurrentSelectionSourcePairError, match="exactly_one"):
+            publish_completed_technical_selection_bundle(
+                writer, production_result=result, store_output_root=store_root,
+                source_pair=pair, pointer_path=pointer,
+            )
+        assert writer.create_from_pins.call_count == 1
+        return
     delegated = Mock()
     monkeypatch.setattr(adapter, "publish_current_selection_bundle", delegated)
     writer = Mock()

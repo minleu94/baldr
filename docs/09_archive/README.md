@@ -20,6 +20,10 @@
 
 - [平行系統執行 master plan](superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md) 與[工作流啟動 prompts](superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md)：保存 2026-07-13 的工作拆分、handoff 與當時 Git 操作流程。這些歷史原文不證明工作已完成，也不構成目前工作或 Git 寫入授權；舊路徑保留導引。bytes／SHA 與依賴範圍見 [Coverage History Entry 110](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-110)。
 
+## 2026-10-09 Coverage Map 舊更新流水帳
+
+- [Coverage Map 整理前更新記錄與快速索引快照](DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)：保存精簡前的全部日期化變更與逐批索引；現行權威、同步矩陣與 DoD 回到 [`DOC_COVERAGE_MAP.md`](../00_core/DOC_COVERAGE_MAP.md)，逐批原路徑／目的地／雜湊回到 Coverage History。來源區塊與快照雜湊見 [Entry 111](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-111)。
+
 <a id="2026-10-09-r029-retirement-preflight"></a>
 ## 2026-10-09 R029 retirement preflight 歷史
 
@@ -479,7 +483,7 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 
 ## 2026-10-08 Task Loop 01-07 historical handoffs
 
-七份逐卡 handoff 記錄各自的 bounded 工程範圍、驗收與限制。08-B 後續完成中央整合並逐卡覆核；因此 01–07 移至 Archive，中央整合與外部 Gate 殘餘邊界仍由 QA 的 [TASK_LOOP_08_HANDOFF](../06_qa/TASK_LOOP_08_HANDOFF.md) 說明。這批歸檔只整理歷史證據，不把正式來源接受、PIT／自然前瞻、真實 Paper fills、具名 review 或 V4 maturity 標示為完成。舊 QA 路徑保留短轉址；原文 bytes 與 SHA-256 見 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md#2026-10-08-封存-task-loop-01-07-handoff)。
+七份逐卡 handoff 記錄各自的 bounded 工程範圍、驗收與限制。08-B 後續完成中央整合並逐卡覆核；因此 01–07 移至 Archive，中央整合與外部 Gate 殘餘邊界仍由 QA 的 [TASK_LOOP_08_HANDOFF](../06_qa/TASK_LOOP_08_HANDOFF.md) 說明。這批歸檔只整理歷史證據，不把正式來源接受、PIT／自然前瞻、真實 Paper fills、具名 review 或 V4 maturity 標示為完成。舊 QA 路徑保留短轉址；原文 bytes 與 SHA-256 見 [Coverage History Entry 082](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-082)。
 
 - [TASK_LOOP_01_HANDOFF.md](TASK_LOOP_01_HANDOFF.md)
 - [TASK_LOOP_02_HANDOFF.md](TASK_LOOP_02_HANDOFF.md)

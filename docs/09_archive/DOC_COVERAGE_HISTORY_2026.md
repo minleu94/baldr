@@ -978,3 +978,10 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 |---|---|---|---|
 | `docs/superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md` | [`平行系統執行 master plan 原文`](superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md) | 24,767 / `C89A8838DC2B8E0C1CD583FFFE0653697B5E03E14A7EFFB94B2ACCCBF3C62523` | 24,767 / `C89A8838DC2B8E0C1CD583FFFE0653697B5E03E14A7EFFB94B2ACCCBF3C62523` |
 | `docs/superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md` | [`平行工作流啟動 prompts 原文`](superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md) | 37,186 / `5867D4DFBADC30BF179EF10D19C89FD589379B1D00EA558A5EDC153FB5C23429` | 37,186 / `5867D4DFBADC30BF179EF10D19C89FD589379B1D00EA558A5EDC153FB5C23429` |
+
+<a id="coverage-entry-111"></a>
+## 2026-10-09 收斂 DOC_COVERAGE_MAP 的歷史尾段
+
+將 `DOC_COVERAGE_MAP.md` 原「更新記錄」與逐批快速索引抽離為[歷史快照](DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)，Map 本文保留現行權威邊界、文件同步矩陣、DoD 與指向完整 History 的入口。來源範圍是原文件自 `## 更新記錄` 至結尾，12,679 bytes，SHA-256 `75994B26F4A208414467B876021AEBC9D4F098C57FF5AC102E720EDDEE6A05DC`。快照保留全部文字與批次標題；為讓 Archive 內可導航，將 42 個 Coverage History 相對連結由舊路徑改為同目錄路徑。快照完整檔案為 12,604 bytes，SHA-256 `366109169DF07C8F84D058C377BB37894D25174E453B06EF7A79BE962B48FA0F`。
+
+原 Coverage Map Task Loop 01–07 quick-index heading 已無保留必要；唯一找到的 inbound link 位於 Archive README，已改指向 [Coverage History Entry 082](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-082)。根目錄結構規範同步釐清：每次歸檔更新 History 與 Archive README；只有現行權威／入口／同步規則變更時才更新 Map。沒有改動任何 Gate、QA 原件或其他任務的 dirty 文件。

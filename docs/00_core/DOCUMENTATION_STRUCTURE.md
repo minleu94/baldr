@@ -98,7 +98,7 @@
 
 仍有追溯價值，但不應作為目前狀態依據。Historical 文件應放入 `09_archive/`，並在 README 中明確標註。
 
-`DOC_COVERAGE_MAP.md` 首屏維護目前的權威分工、必須同步文件與 DoD；完成批次的詳細搬移／覆蓋記錄放在 `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md`。更新歸檔時兩處都要同步，並保留舊路徑、目的地、原始證據與目前替代入口。
+`DOC_COVERAGE_MAP.md` 維護目前的權威分工、文件同步矩陣與 DoD；逐批搬移／覆蓋記錄集中放在 `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md`，Map 不重複保留歷史批次索引。每次歸檔都要更新 Coverage History 與 Archive README；若權威邊界、目前入口或同步規則改變，再同步 Coverage Map 與受影響的 scoped authority。每筆歷史記錄仍須保留原路徑、目的地、來源證據與目前替代入口。
 
 適合歸檔的內容：
 

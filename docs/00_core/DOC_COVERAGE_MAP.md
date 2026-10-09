@@ -324,6 +324,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將六份 2026-07 V2.4／V2.5 paper baselines、V3.0 automated readiness／engineering candidate／Week 1 manual validation，以及已明確標為 historical／superseded 的 7/30 V4.0 closeout 移至 [Archive 專區](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports)。原 QA 路徑保留短導引；V3 readiness inspector 的 `Path.exists()` 相容檢查仍成立。版本成熟度正文改保留 Gate 與當日決議摘要，詳細樣本與 dated status 留在 Archive；V4 原文的跨目錄連結已修復，目前狀態仍由 Snapshot／現行 QA 決定。
 
+## 2026-10-08 Decision workbench／continuity audit 歷史歸檔
+
+將 2026-09-14／15 的三份整合缺口矩陣、產品完成度／下一增量 audit 與 continuity write-path audit 移至 [Archive 專區](../09_archive/README.md#2026-10-08-decision-workbench-and-continuity-audit-history)，原 QA 路徑保留短導引；同層唯一 Markdown 連結已更新為 QA 相對路徑，PIT industry discovery 的交叉引用已改為直達 Archive。這些報告描述當時的 scope／evidence，不再作目前待辦與優先序權威。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

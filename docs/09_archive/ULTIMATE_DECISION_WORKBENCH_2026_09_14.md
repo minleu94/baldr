@@ -1,0 +1,292 @@
+# 終極決策工作台整合缺口矩陣（2026-09-14）
+
+## 1. 目的與判定
+
+本文件是本輪「市場 → 產業 → 個股 → 觀察清單／持倉 → Advice／Evidence」整合的
+requirements-to-code evidence matrix。它把可交付的 V4.1／V4.2 工程工作，與尚未
+成立的 V4 formal maturity、後續 V5 全決策體驗及 V6 證據驅動個人化分開管理；不以
+UI 已能顯示、fixture、historical replay、shadow receipt 或 scheduler Ready 取代自然
+forward evidence、source acceptance、observed fill/cost 或人工 Gate。
+
+> **2026-09-15 current calibration（基線 `0219d709`）**：Position Health
+> (`5a3ed5db`／`ef594007`)、`user_declared` (`a4996cba`)、Continuity Review Workbench R1
+> (`031e11ab`)、PIT reader／caller (`89a264f6`) 與 BankTaiwan root guard／受控 retry
+> (`086ba60c`／`0aaf0dff`) 已各自有 bounded acceptance。C bounded canonical runner／training
+> lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已由 `0219d709`
+> 提交並驗收（75 tests、mypy 9 source files、ML guard 509 inspected／0 violations）；training／
+> inference source／PIT hash 分離、shared schema／transform compatibility、immutable receipt、
+> normal UI UUID→save→exact readback 與 identity conflict fail-closed 可核對，rule selection
+> authority 保留。L 官方 taxonomy source chain 尚待完成；下一順序為
+> L source chain → 整合使用流程 → V6 contract／離線設計，再以 real-user evidence 驗證效果。
+
+本輪結論是：
+
+- **已完成第一個可審查的呈現增量**：`DecisionPresentationDTO` 會把校準機率與
+  rank／score 分開，並可帶出 decision date、data-as-of、status、source、model、dataset、
+  horizon、sample 與 evidence kind；WorkBench Advice row 可展開唯讀完整依據。
+- **已完成安全的 shadow／natural read-only 呈現**：`available` 只表示上游有可用估計，
+  不能推出 natural validation；`shadow` 只顯示「研究中／shadow」，不猜測是 prospective。
+  Workbench／Research Console 現在透過 typed candidate／active／capture verifier 投影
+  natural receipt；未通過 verifier、日期／成本／source identity 不一致或尚待成熟時，仍只
+  顯示 pending／blocked／unknown。
+- **已驗收 bounded engineering slices**：`0d9d72af`／`cad07762` 已交付每日首屏／
+  content-first 唯讀旅程；`25544142` 已交付真實產業指數強弱與官方 TAIEX 5／20 日基準的
+  current-research 讀模型；`421ab844` 已交付 typed learning projection；
+  `53b456a0`／`ffb66c6f` 已交付唯讀 Decision → Outcome journey；`5339230f` 已驗收
+  Increment A 的 append-only／tombstone storage contract；`031e11ab` 已驗收 Continuity
+  Review Workbench R1，`5a3ed5db`／`ef594007` 已驗收 Position Health read model。這些切片
+  不把完整整合使用流程、自然 evidence 或正式決策寫回宣稱完成。
+- **尚未完成真實端到端／外部驗收**：代表股的 current mapping、TPEX／興櫃 coverage 與
+  historical PIT membership 仍有限；R1 的 bounded caller／readback 已驗收，但完整
+  market→industry→stock→watchlist／portfolio round-trip、跨頁一致性及推薦／決策／outcome
+  追溯整合仍待施工；L source chain、natural authority／maturity、source acceptance、
+  observed cost 與 V4 formal Gate 仍待核對。離屏 Qt render、controlled DTO／fixture、
+  historical bootstrap、scheduler registration 或 shadow receipt 都不能取代這些證據。
+- **正式安全邊界維持不變**：UI、scheduler、shadow consumer 都不下 broker order、不
+  寫正式 Portfolio／Recommendation、不授予 Formal evidence credit；正式資料仍以唯讀
+  或既有受控流程為準。
+
+## 2. 本輪可核對的程式與運行證據
+
+### 2.1 程式接線
+
+| 層次 | 可核對位置 | 本輪能證明的事情 | 不能由此推出的事情 |
+|---|---|---|---|
+| 主 UI／導覽 | `ui_qt/main.py`、`ui_qt/views/decision_desk_view.py`、`ui_qt/views/workbench_view.py` | Workbench、Daily Decision Desk 與研究／下鑽入口可由同一主程式組裝；Workbench Advice row 有「查看機率依據」唯讀展開操作。 | 已形成一條沒有缺資料的 production end-to-end journey。 |
+| 市場／產業／個股 | `app_module/decision_desk_*`、`ui_qt/views/decision_desk_view.py`、`ui_qt/views/stock_research_report_view.py` | 既有 DTO／service 可將市場焦點、產業焦點、個股研究與 quality/warning 送至 UI。 | 每日產業 membership、PIT source 或每檔報告內容都已完整可得。 |
+| 觀察清單／持倉 | `ui_qt/views/watchlist_view.py`、`ui_qt/views/portfolio_view.py`、`app_module/watchlist_service.py`、`app_module/portfolio_service.py` | 既有列選取、研究報告與保存結果／持倉摘要的唯讀下鑽存在。 | 選取一次就會產生可追蹤的 decision id，或 outcome 一定會回連到同一 decision。 |
+| 既有日誌／證據／帳本 identity | `app_module/journal_service.py`、`app_module/dtos/portfolio_dtos.py`、`app_module/evidence_event_service.py`、`app_module/evidence_event_repository.py`、`data_module/portfolio_ledger_repository.py` | Journal 已有 `journal_id`、`linked_id`、`source_id`、`source_snapshot_hash`；Evidence 已有 `event_id`／`event_hash`、`source_snapshot_id`、`run_id` 與以 `event_id + window_days + return_basis` 對齊的 outcome；Portfolio ledger 已有不可變 `event_id`、`thesis_id`、`source_snapshot_hash`。 | 這些是各 lane 的既有 identity，不是可直接互換的 user decision id；Journal 仍有 delete／overwrite legacy API，不能不加治理就宣稱 append-only decision journal。 |
+| 呈現契約 | `app_module/decision_presentation.py` | rank／score、校準機率、成本後機率、資料日期、status、source、model、dataset、樣本／期間與 warnings 可在同一 presentation contract 內保留；短摘要會遮蔽長 hash，詳情保留完整 hash。 | presentation contract 本身就是 authority receipt；它不查 DB、不驗證自然 evidence、不重算 score／probability。 |
+| 上游校準 | `app_module/recommendation_calibration_consumer.py`、`app_module/recommendation_service.py` | existing consumer 的 model/dataset/source/calibration projection 可以向 Advice DTO 傳遞。 | `status=available`、source 字串、hash 或宣稱的 evidence kind 已通過 typed natural authority verifier。 |
+| 每日 shadow learning | `scripts/scheduled/run_daily_recommendation_learning.py`、`scripts/scheduled/run_daily_recommendation_learning_pipeline.py` | 05:40 forward outcome 後有 05:45 bounded shadow learning、frozen challenger、active monitor／rollback 與 durable receipt。 | learning 已改正式推薦、Portfolio allocation、正式權重或 broker。 |
+
+### 2.2 已保存的運行證據
+
+實機 Task Scheduler 的**唯讀查詢**（由父任務以提升權限執行）觀察到：
+
+- `baldr-forward-outcomes-daily`：TaskPath `\\`、State `Ready`。
+- `baldr-recommendation-calibration-learning-daily`：TaskPath `\\`、State `Ready`。
+- 最新 shadow receipt：`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\latest_status.json`。
+  receipt schema 為 `daily-recommendation-learning-receipt.v1`，`status=completed`、
+  `decision=retain_current`、`natural_evidence_supplied=false`、
+  `natural_matured_sample_count=0`、`formal_order_allowed=false`、`shadow_only=true`。
+- receipt 的 `decision_reason=natural_forward_evidence_receipt_missing`，因此本次學習
+  只保留目前 champion／rule path，沒有因 replay 或 shadow prediction 取得自然 evidence
+  credit。這是最新 runtime observation，不是 scheduler promotion approval。
+
+若其他 QA／lane 另列 `582` 筆 Evidence events，該數字是單一 result 連結的 Evidence event
+計數，包含篩選／排除及推薦事件；另列的 `7` 筆是正式資料根目錄中符合該 forward 檢查條件
+的事件，不代表 formal maturity 核准。兩者均不得與 shadow natural sample 混算；本輪
+2026-09-14 臺銀正常 scheduled lane 的 natural sample 仍為 `0`，legacy 50bp lane 另行
+判讀，可能是 `blocked`。
+
+### 2.3 機率／排名／信心的端到端來源契約稽核
+
+本輪以正式 `RecommendationService` 的 calibration adapter、既有 typed
+`RecommendationCalibrationProjection`、`AdviceComposer`、`DecisionPresentationService`
+與實際 Workbench row renderer 做隔離鏈路核對。結論是 repository 內的 producer→consumer→UI
+接線已可核對；它仍不授予 natural authority，也不把 candidate／shadow 變成 formal。
+
+| 顯示量 | 正式 producer／來源 | Advice／Presentation 傳遞 | 現有 UI 判讀 | 已核對限制 |
+|---|---|---|---|---|
+| 排名分數／百分位 | `RecommendationService._apply_recommendation_calibration` 只接收 consumer projection 的 `ranking_score_bp`／percentile；沒有 projection 時維持 rule-only／unknown。 | `RecommendationAdviceDTO`／`PortfolioAdviceDTO` 的 ranking 欄位 → `DecisionPresentationDTO.ranking_score`／`ranking_percentile_bp`。 | 明確顯示「僅作排序，不等於機率」。 | 不以 score 推導 80%；只有 score 時 probability 仍是 unknown／unavailable。 |
+| 校準／上漲機率 | `RecommendationCalibrationConsumer.project_many` 的 `calibrated_probability_bp`；有效 output 是 `active_effective`／`shadow_candidate`，並帶 model、dataset、20 trading days、sample、transform／baseline 與 source trace。 | `RecommendationService` 逐欄注入 RecommendationDTO；AdviceComposer 只接受 typed projection 或具完整 producer scope 的 RecommendationDTO；再由 `DecisionPresentationService` 只讀轉送。 | `校準機率：…（研究中／shadow）` 或 `可用估計／自然驗證未證明`；詳情保留完整 lineage。 | raw dict、只帶數字／status、缺 model／dataset／horizon／cost／source 或股票 scope 衝突都 fail-closed；status／hash 不等於 natural verifier。 |
+| 成本後獲利機率 | 同一 consumer projection 的 `after_cost_profit_probability_bp`，與同一 projection 的 cost scenario／cost basis 綁定；RecommendationService 只有在 active candidate metadata 明示獨立 `after_cost_null_benchmark_50pct_v1`／`5000 bp` contract 時才傳入，宣告但沒有數值的 baseline 留 unknown；consumer 會核對 candidate metadata，不相符便 unavailable；估算臺銀成本仍標研究限定，不能冒充 fill。 | 與校準機率使用獨立 Advice／Presentation 欄位，不以校準機率代換。 | 有完整 contract 時獨立顯示「成本後獲利機率」，否則明示 unavailable／unknown，同時列成本基準、期間、樣本與來源。 | candidate／active、成本 lane、horizon、dataset 不在 presenter 混接；observed fill／slippage 仍是後續 execution Gate。 |
+| confidence／證據信心 | `confidence_tier` 與 `evidence_confidence` 由 consumer／producer 明確傳遞；Regime confidence 另屬市場狀態 detector。 | Presentation 保留 `confidence_tier`／`evidence_confidence`，不把它映射成 probability。 | 顯示「證據信心／決策信心」，不顯示成勝率。 | `verified` 等文字本身不能產生 natural authority；沒有 typed evidence 時維持研究／unknown。 |
+| 歷史校準研究值 | `app_module/recommendation_calibration.py` 的 walk-forward／untouched-test output 與 `RecommendationLearningEvidenceProjection` 的 `historical_evaluation_*` 是歷史研究 lane。 | 不併入 formal current Advice；若以既有 presentation source trace 傳入，formatter 明確標「研究中／歷史研究」。 | Research Console 可讀 historical sample／限制；機率仍可作研究比較，不被 natural 缺件默認隱藏。 | historical replay、OOS、backtest 不計 natural sample、不授予 formal credit；learning projection 的 historical count／note 不是現行 80% 的 natural proof。 |
+
+本輪可直接重跑的反例／正常案例：
+
+| 案例 | 測試與結果 |
+|---|---|
+| 正常 producer→consumer→Advice→Workbench UI | `test_isolated_producer_consumer_advice_workbench_ui_path` 是正式 RecommendationService adapter→typed projection seam 的 bounded wiring case，UI 顯示 ranking、校準、成本後、20 日、sample、model／dataset，並標 `研究中／shadow`；`test_real_consumer_independent_after_cost_baseline_reaches_advice_presentation` 以實際 training artifact／authority 呼叫 real consumer→RecommendationService→Advice→Presentation，確認 independent-null after-cost 值與 trace；`test_real_consumer_producer_advice_workbench_ui_path` 則確認 declared-but-unpriced baseline 不會被 5,000 bp 補值，保持 unavailable。 |
+| raw payload | `tests/test_advice_composer.py::test_untyped_calibration_mapping_cannot_inject_probability_or_scope`：raw mapping 即使帶 `8000`／`7500`、`available`、`verified`、sample、cost、horizon 也不進 Advice；畫面不出現 80%／75%。 |
+| typed 但缺 scope／錯股票 | `test_typed_projection_with_missing_scope_or_wrong_stock_fails_closed` 與 `test_recommendation_dto_without_projection_scope_fails_closed`：缺 model／dataset／horizon／cost／source，或 mapping key 與 stock 不一致，均保持 unknown。 |
+| score 冒充 probability | `tests/test_decision_presentation.py::test_recommendation_adapter_does_not_invent_probability`：只有 ranking score 時兩種機率皆無值；既有 formatter 不重做。 |
+| 歷史研究可見但不冒充 natural | `test_historical_probability_remains_visible_as_research_only`：歷史 80%／成本後 65% 可讀，標 `研究中／歷史研究`，不出現自然前瞻驗證；`test_untyped_verified_status_does_not_claim_natural_validation` 則證明 `verified` 字串本身不能升格。 |
+
+因此 matrix 第 4 條的 `upstream payload consistency 未核實` 已縮小為：正式 repository
+path 的欄位／scope consistency 已由上述 typed gate 與隔離 E2E 核實；尚未核實、也不能由本輪
+代替的是自然 authority receipt、同 candidate／成本／horizon 的 matured sample、實機 runtime
+payload 與外部 source acceptance。沒有這些證據時仍是 research／pending／blocked／unknown，
+不是把所有入口 disabled 當完成。
+
+## 3. Requirements → current-code evidence → gap → acceptance matrix
+
+| # | 需求／使用者問題 | 目前程式與證據 | 真正缺口 | 下一個可接受增量／驗收條件 |
+|---:|---|---|---|---|
+| 1 | 一個入口能從今日市場開始，逐步到研究與候選判讀。 | `0d9d72af`／`cad07762` 已交付每日首屏與 content-first 唯讀旅程；MainWindow 可導向 Daily Decision Desk、Workbench、Market Explore、Stock Research，既有 callback 與 drill-down contract 可用。 | R1 已提供 bounded review reminder／next-review caller 與 readback；完整 market→industry→stock→watchlist／portfolio 使用流程仍未接滿，不是重做首屏的缺口。 | P1 以既有 `DecisionIdentity`、Journal／Evidence／Portfolio ledger identity 接通完整 read-only journey；不新增第二套資料庫，無法安全讀取時仍 fail-closed。 |
+| 2 | 市場 → 產業 → 個股研究要先顯示有內容的每日結論，再顯示技術細節。 | content-first 首屏與每日 evidence view 已驗收；`25544142` 的真實產業指數強弱、官方 TAIEX 5／20 日基準、純產業白名單與唯讀代表股下鑽可核對。 | current representative-stock mapping、TPEX／興櫃 coverage、historical PIT membership／available-time 與缺價降級仍限制完整每日產業歸因；不能把 current mapping 回填歷史。 | P0 維持每日結論卡、候選／持倉卡與 technical detail 分層；補齊可接受的 PIT／coverage source 後，缺資料仍轉 `RESEARCH`／`NO_NEW_POSITION`，不產生看似完整的候選。 |
+| 3 | 觀察清單與持倉要延續同一檔股票的研究、Advice 與 evidence。 | `53b456a0`／`ffb66c6f` 已交付唯讀 Decision → Outcome journey；`5339230f` 已驗收 append-only revision／tombstone／idempotency／optimistic concurrency storage contract，`031e11ab` R1 已完成 bounded reminder／controls／readback，原始列不被刪改。 | R1 exact continuity 已驗收；完整 Recommendation → Research → Watchlist／Portfolio → Workbench round-trip、跨頁一致性與推薦／決策／outcome trace 尚未完整接線。 | P1 以 `stock_code + decision_date + advice/result identity + source snapshot + presentation version` 做可驗證 view key，接通完整 read-only journey；舊資料缺 key 時顯示 unknown，不回補猜測。 |
+| 4 | Ranking、score、probability、confidence 必須分開。 | `RecommendationService` → `RecommendationCalibrationProjection` → `AdviceComposer` → `DecisionPresentationDTO` 已以獨立欄位傳遞；`DecisionPresentationService` 的 `_probability_text`／`_after_cost_probability_text` 不以 rank fallback。AdviceComposer 對 raw mapping、缺 scope 的 typed projection／RecommendationDTO fail-closed；隔離 producer→consumer→Workbench UI 已核實 ranking `7200`、校準 `58%`、成本後 `57%`、20 日、sample `120`、model／dataset／source trace 的同 scope 傳遞。`421ab844` 的 learning projection 仍保留 candidate／active／capture verifier 與 historical research lane。 | repository path 的 upstream payload consistency 已有測試證據；仍未由本輪授予的是 natural evidence authority、mature sample、有效 natural window、實機 runtime source acceptance 與 observed fill／slippage。typed projection／status／hash 是工程來源，不等於 formal／natural verification；historical probability 可研究但不得與 natural 混算。 | P0 對每種量保留獨立欄位、label、source/status、cost／horizon／sample scope；缺值保持 unknown／research。持續累積同 candidate／同成本／同 horizon 的 natural verifier receipt，不以 engineering projection、shadow receipt 或 disabled entry 宣稱完成。 |
+| 5 | 機率、日期、資料狀態、缺漏、樣本、來源要同時可判讀。 | Advice summary 顯示 calibrated／after-cost probability 的 evidence label；`RecommendationLearningEvidenceProjectionService` 已將 candidate／active／capture、cost lane、model／dataset、horizon、maturity、receipt hash 與 typed reliability bins 接到 Workbench／Research Console；80% 解讀只從 verifier 通過的 natural comparisons 產生。 | 2026-09-14 臺銀正常 scheduled lane 為 sample `0`／`retain_current`；legacy 50bp 為獨立 lane，可能 `blocked`；跨 capture／cost／日期／source identity 不一致時仍 fail closed。 | 持續累積同一 candidate／同一成本／同一決策日的自然成熟證據；每個 probability 維持 `value + raw_status + evidence_kind + model + dataset + source + decision_date + data_as_of + horizon + sample + receipt` 契約。缺欄即 unknown／研究中，短摘要不得放完整 hash。 |
+| 6 | 證據不足時要轉研究 fallback，而不是硬湊建議。 | `DecisionDesk` quality／warnings、Advice DTO 的 `RESEARCH`／`AVOID`／`NO_NEW_POSITION` 與 Workbench empty/degraded states 已存在；本輪 `ResearchFallbackPacket` 以既有 daily journey／learning projection／source DTO 組合 result／stock、決策日、cost lane、missing reason、source owner、研究問題、唯讀下一步、revisit 判定與限制，接到 `WorkbenchDailyEvidence` 首屏摘要及折疊詳情。 | packet 已補足「缺什麼／下一步／何時再看／不能下什麼」的 bounded read-only slice；`031e11ab` R1 scope 的 exact reminder／head、Journey 與 controls readback 已驗收，超出 R1 scope 的完整 market→industry→stock→watchlist／portfolio 跨頁整合、使用者回饋閉環與 natural evidence maturity 仍待驗證；無唯一同 scope anchor 或官方日曆時 revisit 必須維持 unknown。 | **本輪已交付 bounded P0**：insufficient evidence 時依 `pending_capture`、`pending_natural_evidence`、`missing_data`、`read_failure`、`blocked_identity_or_cost`／`blocked_provenance`／`blocked_scope` 分流；顯示研究／避免新增，不顯示正向機率、score、權重或交易結論。測試須證明 scope 隔離、原決策日不漂移、owner unknown、historical replay 不算 natural evidence、無正向 fallback。 |
+| 7 | 成本基準要區分估計、paper、observed fill；不可用裸數字假裝成交成本。 | `8acf29f0`／`b39fd399` 已提供臺銀研究用 `estimated_research_only`、policy version、Decimal／整數量與 `broker_fill_not_observed`／`slippage_not_modeled` 警告，並已接到 read-only learning／Advice consumer。 | observed fills、partial fills、實際滑價與 broker 對帳仍未形成正式 evidence；固定 50bp／估算成本不能冒充成交，但這個 execution-realism 缺口不是每日 learning 的前置條件。 | 維持 typed `estimated` 狀態與成本 lane 隔離；observed fill、partial-fill 與 broker 驗證獨立列為後續 execution-realism／formal Gate。 |
+| 8 | 決策 → 結果 → 學習 → 下一輪推薦調整要可追蹤。 | 已驗收的 chain 包含每日 content-first／industry 下鑽、`53b456a0`／`ffb66c6f` 唯讀 Decision → Outcome、`421ab844` typed learning projection、05:40 → 05:45 shadow pipeline、`5339230f` A storage contract 與 `031e11ab` R1。2026-09-14 臺銀正常 lane receipt 為 `retain_current`、natural sample `0`，沒有 adjustment；legacy lane 獨立判讀，可能 `blocked`。 | R1 的 exact continuity 已驗收；完整 user decision／override／review trace、Watchlist／Portfolio round-trip、推薦／決策／outcome 跨頁追溯與 natural maturity 仍未成立。 | P1 以既有 identity adapter／idempotent join 完成整合 readback，每輪回答 decision date、model/dataset、candidate／champion、outcome maturity、receipt hash、decision；replay／fixture 不增加 natural sample，也不改正式 recommendation。 |
+| 9 | 模型可受控調整、比較與 rollback。 | `RecommendationCalibrationConsumer`、shadow active pointer、frozen challenger、monitor／rollback metadata 與 durable receipt 已存在；routine shadow adoption／rollback 由既有每日 policy 自動執行，正式 order flag 固定 false。`421ab844` 的 read-only projection 只接受既有 candidate／active／capture verifier 通過的 receipt／lineage，並顯示 failure reason、horizon 與 cost scope。 | 超出既有 shadow policy 的正式 promotion package 尚未完整；2026-09-14 臺銀正常 lane 沒有可授予 formal credit 的 natural matured sample（`0`／`retain_current`），legacy lane 另行判讀且可能 `blocked`。 | 持續以 verifier receipt 累積有效 natural evidence；candidate／champion、rollback target、effective window、failure／drift reason 全部可讀。routine shadow 不要求使用者每日批准；正式決策影響範圍另立 reviewer／promotion Gate。無 verifier 時 status 必須 unknown，不能用 source/hash 字串升格。 |
+| 10 | 安全與正式邊界要明確：不能從研究畫面下單。 | Workbench／presentation 只讀；shadow learning receipt 為 `shadow_only=true`、`formal_order_allowed=false`；架構權限矩陣禁止 UI／scheduler／ML shadow 直接改正式決策或 broker。 | 需要把既有 Journal／Evidence／Ledger adapter 與 routine shadow learning 的 permission／write target 對帳，而不是新增一個平行 command store；並由 runtime receipt 證明沒有跨到正式 DB。 | P0/P1 所有新 adapter／command 都有 explicit mode、target root、write intent、idempotency、backup／rollback；QA 可重放並確認正式 DB／broker 狀態不變。任何不明 write target 都 fail-closed。 |
+| 11 | 每日工作要有可核對的排程、操作與最新 receipt。 | 實機唯讀觀察到 forward outcome 與 calibration learning 任務皆 `Ready`；最新 durable receipt 是 completed／retain_current／natural sample 0。首次 05:50 實際 run 已以 `failed_dependency` 結束，root guard 已由 `086ba60c` 修復，`0aaf0dff` 受控 retry 成功但仍為 `completed_waiting_natural_maturity`；這不等於自然成熟。 | `scripts/inspect_scheduled_task_registration.py` 的 expected task 清單與實機 learning task 的一致性、owner／trigger／action／latest receipt 對帳仍需收斂；registration／Ready 不等於自然 evidence，也不是重新註冊或重啟 scheduler 的授權。 | P1 只做 read-only registration／action／trigger／receipt audit：兩任務各有 task path、state、command hash、last result、latest run path 與 owner；不註冊、不重啟、不改 trigger。 |
+
+## 4. V4.1／V4.2 工程軌與 V4 formal maturity 分流
+
+### V4.1 Engineering：可判讀的 Recommendation／Advice vertical slice
+
+V4.1 工程工作是把既有推薦結果變成可追溯、可降級的呈現與 application contract：
+
+1. 完成 recommendation probability／after-cost probability 的欄位、日期、樣本、模型、
+   dataset、source 與 evidence kind 傳遞；排名與機率不互相代換。
+2. 完成 content-first Workbench：每日結論、候選／持倉、研究 fallback 先呈現，技術
+   lineage 詳情後展開；空表不應占滿首屏。
+3. 完成 bounded current-research 的 market／industry／stock → watchlist／portfolio
+   immutable snapshot identity；`5339230f` 的 A storage、`53b456a0`／`ffb66c6f` 的 exact
+   read-only journey 與 `031e11ab` 的 R1 bounded caller／readback 已驗收，完整跨頁 round-trip
+   與推薦／決策／outcome trace 整合仍施工中。
+4. 先接入臺銀成本 policy 的 `estimated_research_only` typed read model；估計／paper／
+   observed 分離，不把估計寫成交易結果。observed fills／broker 對帳另列後續 execution-
+   realism Gate，不阻擋本輪 content-first 工程。
+
+V4.1 的 Exit Criteria 是「缺資料時不誤導、每個數字有來源／日期／狀態、可從研究回到
+同一份 snapshot」，不是投資有效性或 Formal closeout。
+
+### V4.2 Engineering：自然時間 custody、shadow learning 與 rollback
+
+V4.2 工程工作是把自然 forward capture、成熟 outcome、模型／資料集／receipt lineage、
+active monitor 與 rollback 接成可審查的 shadow loop：
+
+1. 05:40 forward outcome 與 05:45 bounded learning 需以 Asia/Taipei 交易日／可得時間
+   對齊；週末、缺價、來源品質或公司行動缺口時 fail-closed。
+2. 只有 verifier 已核對的 typed authority receipt 才能把 natural evidence 狀態帶入
+   consumer；source `available`、hash、`evidence kind` 或自然語言宣稱都不是 authority。
+3. frozen challenger、champion／rollback pointer、model／dataset version、candidate／run
+   identity 與 latest receipt 必須可讀且可重現；routine shadow adoption／rollback 依既有
+   已授權 policy 自動執行，不要求使用者每日按批准。
+4. 實機排程為 Ready 只代表 job 可被觸發；仍須由最新 receipt、natural matured sample、
+   reviewer 與 promotion policy 判斷是否可繼續 shadow。2026-09-14 臺銀正常 shadow lane
+   的 `natural_matured_sample_count=0` 且 `retain_current`，沒有 adjustment 或 formal
+   credit；首次 05:50 實際 run 已 `failed_dependency`，root guard／受控 retry 已處理，
+   後續正常排程仍觀察；legacy 50bp lane 另行判讀，可能為 `blocked`。截至 `0219d709`，
+   C bounded canonical runner／training lineage／cutoff／ML boundary 與 P1 next-day
+   inference／projection provenance 已驗收；P1 immutable receipt、不同 training／inference
+   source／PIT hash compatibility、normal UI UUID→save→exact readback 與 identity conflict
+   fail-closed 可回查，L 官方 taxonomy source chain 仍待補。
+
+V4.2 的 Exit Criteria 是「shadow loop 可觀察、可回退、能在 evidence 不足時保留現況」，
+不是正式 Recommendation／Portfolio promotion、broker 或 V4.0。
+
+### V4 Formal maturity：獨立的長期 Gate
+
+V4.0 的 maturity 必須由長期 Forward／Paper／Live evidence 支持，並包含正式 source
+acceptance、PIT／available-time custody、observed fills／cost、decision journal、具名
+review、OOS／forward／regime／downside／calibration 與 rollback 等 Gate。以下不能計入
+正式 maturity：historical replay、fixture、controlled DTO screenshot、一次性 dry-run、
+shadow prediction、未經 verifier 的 receipt 宣稱、scheduler Ready 或 `available` 狀態。
+
+截至本紀錄，V4 formal 仍是 evidence accumulation／`action_required`：natural matured
+sample 為 0，正式 order 為 false，正式 Recommendation／Portfolio 不受本輪 UI 增量改寫。
+
+## 5. V5 全決策體驗（規劃，不宣稱已實作）
+
+V5 是把 V4.1／V4.2 的工程能力與既有真實唯讀資料 journey 收斂為真正的 guided decision
+experience。它可以與 V4 formal evidence accumulation **並行**，不以 V4 formal closeout
+作為 content-first UX、read-only daily evidence view 或 decision continuity 的前置條件；
+formal evidence 只決定 Advice／Guided 的可宣稱範圍：
+
+- 首屏只回答今日市場狀態、每日結論、候選／持倉與資料品質；三個大型空表折疊，debug
+  DTO、raw state、完整 hash 收進「機率依據／資料詳情」。
+- 以市場 → 產業 → 個股 → 觀察清單／Portfolio → review 的單一路徑呈現內容；每次查看、
+  人工接受／拒絕、override、下一次 review 都有 append-only decision journal。
+- Advice 同時呈現 Why、Why Not、Risk、evidence tier、機率／排名區分、期限、成本狀態、
+  missing／degraded reason 與明確的研究 fallback；證據不足時以研究問題和補件清單收尾。
+- T+N outcome 會沿同一 decision／advice／source identity 回饋，讓使用者可以看到研究→
+  paper／forward 的落差；既有 daily shadow policy 內的模型候選可自動採用或回退，超出
+  shadow 既有正式影響範圍時才另立人工 promotion／review Gate，任何情況都不能直接變成
+  下單指令。
+
+V5 不等於自動交易，也不把「體驗完整」當成投資有效性。Content-first 與唯讀旅程可先
+交付；若要擴大 Guidance scope 或宣稱投資有效，仍須遵守 V4 formal 的自然時間、source、
+cost 與 review evidence Gate。
+
+## 6. V6 證據驅動個人化（規劃，不宣稱已實作）
+
+V6 是個人層級的 evidence-driven personalization，而不是把使用者偏好直接變成黑箱
+推薦。最小設計邊界為：
+
+- 保存使用者 profile、risk budget、流動性／產業／持有期間限制與明確版本；不以一句自然
+  語言偏好覆寫正式 policy。
+- 以 user-level decision／outcome evidence 評估「對誰、在何種 regime／horizon 有效」，
+  與 population baseline、Equal Weight、champion／challenger 清楚分開。
+- adaptive weighting、personalized candidate ordering、guardrail、drift／fairness／
+  exposure review 均需 sample、calibration、rollback、人工批准；不足時回到共用 champion
+  或 `RESEARCH`／`NO_NEW_POSITION`。
+- 個人化只改可解釋的排序／研究優先序／風險提示，不能保證報酬、不能隱藏 negative
+  evidence、不能自動調倉或下單。
+
+V6 的 contract、population baseline、歷史回放、離線 learning／calibration、negative evidence
+與可回滾的 model／policy registry 可先設計；V5 的 decision journal／outcome continuity、
+真實 user sample、正式 source／cost custody 與既有門檻則決定效果宣稱與 user-level adoption。
+目前仍僅作產品方向規劃，尚未宣稱已實作。
+
+## 7. 分階段 acceptance increments
+
+| 優先級 | 增量 | 依賴／外部 Gate | 必須產出的可核對證據 |
+|---|---|---|---|
+| P0 | Content-first Workbench：每日結論、候選／持倉優先；空表折疊；debug／technical detail 收進詳情。 | **已驗收 bounded slice**（`0d9d72af`／`cad07762`）；既有 DTO 與 read-only smoke，不新增來源。 | 持續驗證窄版／鍵盤／degraded write audit；不把此 slice 當成完整 formal Advice。 |
+| P0 | Daily evidence view：在每日結論旁直接回答本日 evidence 是哪一批、目前成熟到哪裡、為何保留／降級／等待，並連到 candidate／champion／rollback receipt。 | **已驗收 bounded slice**（`421ab844`）：既有 `DecisionDeskSnapshot`、Evidence event／outcome、forward read model 與 shadow receipt 由 decision date 讀回；不新增 pseudo source。 | `natural sample=0`、missing price、pending、retain／blocked reason 仍需同屏維持；natural receipt maturity 不由 UI 推導，不把 replay／fixture 當自然成熟。 |
+| P0 | Decision presentation provenance contract：機率／rank／confidence 分離，model／dataset／source／日期／期間／樣本／status 齊備。 | 既有 Advice／Calibration DTO；typed authority 仍可 unknown。 | focused DTO tests、短摘要／完整詳情 snapshot、no-bare-percent regression。 |
+| P0 | Research fallback packet：不足證據時提供 missing reason、補件來源、下一研究問題與 revisit date。 | **本輪已驗收 bounded slice**：`ResearchFallbackPacket`／`WorkbenchDailyEvidence.research_fallback`、Workbench 首屏摘要與折疊詳情；沿用既有 source／identity／cost／horizon，無新增 DB、scheduler 或 approve。 | 持續驗證真實 natural sample、跨頁回饋／review continuity 與外部 source owner；fallback fixture、空／降級 UI、禁止正向 action／weight、scope／日期正確性測試已補。 |
+| P0 | Immutable decision snapshot identity：市場／產業／個股／watchlist／portfolio 使用同一 key。 | `53b456a0`／`ffb66c6f` 的 exact Decision → Outcome read model、`5339230f` 的 append-only storage contract 與 `031e11ab` R1 bounded caller／readback 已驗收；不新增平行 DB。 | R1 的 exact identity 已核對；完整跨頁同 hash／同 decision date 的 market→industry→stock→watchlist／portfolio round-trip 與 outcome trace 仍需整合驗證。 |
+| P1 | 既有 Journal／Evidence／Portfolio ledger identity adapter 與 T+N outcome join。 | 既有 `JournalService`、Evidence event/outcome、Portfolio ledger 與 A 的 revision／tombstone／原始列保存治理已驗收；`031e11ab` R1 scope 的 exact head／Journey／controls readback 亦已驗收。 | 超出 R1 scope 的完整 market→industry→stock→watchlist／portfolio 跨頁整合、decision／outcome crosswalk 與 review／override continuity 仍待驗證；仍無正式交易寫入，不新增平行 decision DB。 |
+| P1 | Increment B：研究操作 → append-only continuity → 跨頁讀回。 | Increment A 的 `DecisionIdentity`／revision／tombstone／idempotency contract，加上 Decision → Outcome Journey 的 exact identity read model、個股研究唯讀頁與 `031e11ab` R1 bounded caller／readback；本輪 learning projection 也能由 Workbench 明確決策日讀回。 | **R1 bounded slice 已驗收；整合施工中**：超出 R1 scope 的完整 Recommendation → Research → Watchlist／Portfolio → Workbench round-trip、跨頁一致性與推薦／決策／outcome trace 仍待驗證。這條增量不包含 broker／trade／V4 formal。 |
+| P1 | 臺銀估算成本 read model。 | 既有台灣銀行成本 policy、Decimal／整數契約；observed fill／partial fill 另作後續 Gate。 | `estimated_research_only`、cost version、fill source／未觀測警告；估算淨效用可研究，但不標 paper／live。 |
+| P0/P1 | Typed natural authority projection、champion／challenger／rollback package。 | `RecommendationLearningEvidenceProjectionService`、`ResearchConsoleView` 與 Workbench 已以 read-only 方式消費 candidate／active／capture typed verifier；routine shadow adoption／rollback 仍依既有 policy 自動執行，正式影響另需具名 reviewer／promotion decision。 | 真實 natural matured sample、effective window 與正式 promotion package 仍未完整；2026-09-14 臺銀正常 lane 為 sample `0`／`retain_current`，legacy 50bp lane 可能 `blocked`；BankTaiwan／legacy cost lane、candidate／active identity 不可混合，無 verifier 仍 unknown。 |
+| P1 | Read-only scheduler/action/receipt audit。 | 實機 Task Scheduler 讀取權限、owner／trigger／command hash；不註冊、不重啟。 | task path/state/action/last result、latest receipt、natural sample、decision reason 對帳。 |
+| P2 | V5 guided decision experience。 | P0/P1 的 content／identity／evidence view 可用；不必等待 V4 formal closeout；Guided scope 仍受當前 evidence 限制。 | 使用者路徑、每一步 source／status、why-not、research fallback、review／rollback evidence。 |
+| P2 | V6 user-level personalization。 | 可先設計 contract、population baseline、歷史回放、離線 learning／calibration、guardrail／privacy／review policy。 | 真實 user sample／outcome 才能支持效果宣稱與 user-level adoption；仍需 sample／calibration、negative evidence、rollback 與不得自動交易的安全驗收。 |
+
+外部資料 Gate 必須逐項具名：PIT 產業成分與有效期間、官方／授權 source、available-at
+與 publication time、缺漏／停牌／公司行動 policy、真實 forward time、source／model／
+dataset owner、reviewer、promotion／rollback decision。臺銀估算成本可以先供研究淨效用；
+observed fills／broker 對帳是後續 execution-realism／formal Gate，不是本輪 content-first
+UX 的前置。尚未取得時
+只保留 `research_candidate`／`shadow`／`unknown`，不得建立 pseudo source、不得把新資料
+直接塞入 scoring、不得把 historical／fixture 轉成 formal。
+
+## 8. UX 後續觀察（本輪不無限擴張）
+
+本輪的 content-first 每日首屏、產業強弱／TAIEX 5／20 日基準、daily evidence view 與
+read-only learning paths 已有實際 PySide6／離屏 Qt render 及 typed projection 驗收；
+controlled DTO／fixture screenshot 仍只驗證機率來源摘要與詳情可讀。C P1 provenance 已完成，下一個 product
+increment 先完成 L official taxonomy source chain，再把已驗收的 Position Health／`user_declared`／R1／PIT
+bounded slices 接成完整跨頁 read-only journey；V6 的 contract、baseline、歷史回放與離線校準
+可並行設計，效果宣稱／採用仍依 real-user sample。這些 follow-up 仍不能倒推 V4 formal 或完整
+natural market→industry→stock 證據已成立。
+
+## 9. 本輪驗證記錄
+
+- `tests/test_decision_presentation.py`：14 passed。
+- `tests/test_decision_presentation.py tests/test_ui_qt_workbench_view.py tests/test_ui_qt_portfolio_view.py`：69 passed，1 warning（pytest cache 權限警告）。
+- 依根 AGENTS 最新驗證，`tests/test_ui_qt_update_view_workbench.py` 為 `81 passed`；
+  `scripts/qa_validate_update_tab.py` 為 `25 pass、0 fail、4 skip`。先前共享工作區的
+  `portfolio_store`／`journal_service` 缺檔 blocker 已 resolved，不再作為目前缺口；
+  `output/qa/update_tab/VALIDATION_REPORT.md` 保留既有 validator report。
+- Learning evidence／Workbench focused suites：`72 passed, 1 warning`；完整 case map、
+  實際資料 lane readback 與 failure-mode coverage 見
+  `docs/06_qa/LEARNING_EVIDENCE_WORKBENCH_2026_09_14.md`。
+- changed Python files `py_compile`：passed。
+- focused mypy（`decision_presentation.py`、`workbench_view.py`，skip imports）：passed。
+- 全域指定 mypy（本次依根 AGENTS 重跑，指令為
+  `.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`）：
+  `Success: no issues found in 612 source files`；臺銀成本子任務已另外完成其 public API／
+  consumer 的型別修正，本輪只消費其已提交的 research estimate，不修改成本核心。
+- 已產生並目視檢查的 local render：
+  - 離屏實際 Qt learning projection（實際 read-only BankTaiwan／legacy paths；不是 native desktop mouse／screenreader）：
+    `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a278-54ae-72b3-bae7-ada2025777cb\learning_projection_qt_20260914\manifest.json`
+  - MainWindow offscreen keyboard／geometry smoke：
+    `C:\Users\archi\.codex\visualizations\2026\09\15\01a0a278-54ae-72b3-bae7-ada2025777cb\mainwindow_smoke_20260914\summary.json`
+  - 舊有 controlled DTO／fixture render：
+    - `output/qa/ultimate_workbench/decision_workbench_advice_detail_20260914.png`
+    - `output/qa/ultimate_workbench/decision_workbench_lineage_panel_20260914.png`
+
+本文件若與運行狀態衝突，以 `docs/00_core/PROJECT_SNAPSHOT.md` 的最新 durable receipt、
+正式 QA artifact 與本次具時間／hash 的 read-only observation 為準；本文件不授權資料寫入、
+scheduler 變更、promotion 或 broker action。

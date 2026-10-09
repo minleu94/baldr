@@ -38,6 +38,14 @@
 - **V3.0 engineering readiness／manual validation**：[automated readiness](V3_0_AUTOMATED_READINESS_2026_07_12.md)、[engineering candidate manual validation](V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md)、[Week 1 manual validation](V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md)。
 - **V4.0 dated release freeze**：[operational production closeout report](V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md)。
 
+### 2026-10-08 Decision workbench and continuity audit history
+
+三份 2026-09-14／15 audit 記錄當時的全決策工作台整合證據、下一增量判讀及 continuity write-path 保存鏈缺口。內文列出的剩餘工作與優先序是當時快照，不取代目前的 Snapshot／Roadmap，也不直接授權後續工程；原 QA 路徑保留相容導引。
+
+- [終極決策工作台整合缺口矩陣（9/14）](ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
+- [終極目標產品完成度與下一增量稽核（9/15）](ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md)
+- [Decision Continuity write-path audit（9/14）](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md)
+
 ### 2026-10-08 Early QA closeouts
 
 - **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。

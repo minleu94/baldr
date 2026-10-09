@@ -32,7 +32,7 @@
 
 本調查以以下內容交叉比對：
 
-- repository agent SSOT、architecture、roadmap、Manual 與 ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md；
+- repository agent SSOT、architecture、roadmap、Manual 與 [ULTIMATE_NEXT_INCREMENT_AUDIT（2026-09-15 歷史）](../09_archive/ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md)；
 - graphify 對 source producer、machine publisher、formal publisher、Industry Strength 與 Recommendation 的 read-only 關係查詢；
 - data_module/、app_module/、ml_module/ 與 tests 的靜態閱讀；
 - TWSE、TPEx、MOPS、data.gov.tw 官方頁面與格式 / 商品說明；

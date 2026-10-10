@@ -613,5 +613,5 @@
 
 - **[評分系統說明](SCORE_EXPLANATION.md)**：buy_score 和 sell_score 的快速參考指南（用戶使用指南）
 - **[使用者指南](USER_GUIDE.md)**：複雜功能的使用教程，包含參數最佳化、Walk-forward 驗證等
-- **[Phase 2 架構設計](../05_phases/PHASE2_ARCHITECTURE.md)**：策略可插拔規格、執行器介面設計等架構細節
+- **[Phase 2 架構設計（歷史參考）](../09_archive/PHASE2_ARCHITECTURE.md)**：早期策略架構設計追溯；現行模組邊界以[系統架構](../01_architecture/system_architecture.md)為準。
 

@@ -2151,3 +2151,17 @@ CLI 範例原先以「替代方式」呈現，會讓讀者把幾個不同腳本�
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄檔案範圍、證據、修改項目及驗證限制。 |
 
 沒有刪除或搬移文件、修改原始資料或改寫封存原文。未執行測試、未刷新 Graphify、未執行最終 repo-wide link／anchor scan；本批 link 檢查僅驗證路徑存在與指定的相關 Manual 錨點。
+
+<a id="coverage-entry-191"></a>
+## 2026-10-10 將 Phase 2 歷史引用導回現行架構權威
+
+在 `docs/05_phases/` 的唯讀盤點中發現，`docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` 把 `PHASE2_ARCHITECTURE.md` 說成策略可插拔規格及執行器介面的架構細節；該目標其實是明示 Historical / Reference 的 redirect stub，且 README 說明原文已歸檔。已把現行模組邊界改連 `docs/01_architecture/system_architecture.md`，歷史設計另直接連到 `docs/09_archive/PHASE2_ARCHITECTURE.md`。`docs/05_phases/README.md` 同步說明目前引用直接指向 Archive，舊路徑仍作相容轉址；沒有移除 stub 或原文。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` | 將現行架構邊界改連 system architecture，Phase 2 原文標示為歷史參考。 |
+| `docs/05_phases/README.md` | 更新 Active 引用與舊路徑相容轉址狀態。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 記錄權威引用修正及本輪狀態。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄發現、處置及未完成驗證範圍。 |
+
+新引用的 system architecture 與 Phase 2 Archive 目的地存在；未執行全 repo 連結／錨點掃描、測試或 Graphify 刷新。未刪除或搬移文件及原始資料，也未改寫封存原文。

@@ -95,3 +95,13 @@ H20 P3 SHA `640b56483c026eb1dfd9b757bc291665ff8af14da3390ad9ccad9c44a0b2f12a`，
 H20 P4 runner SHA `fdba34621df5c6d309090d946728c3378fb660fc83191e6bd07b9122797a3bef`，最小 diff SHA `e809851b9bb9aaae51214431a7854e0fc5d3aa4e4d81fe7da20029ce3280ae24` 經 root 重算、審查後唯一 attempt01 實跑 exit 1（PID 5616；無 live handle）。原 stdout SHA `d88b4f926be16433317658be0b455ea02ed4b9599f4ee9abc6c174629e58e029`、stderr SHA `699e99c5f7a6738f8f0de988ea40251696835ec5012b7f1c5d6989321e949191`；root 讀原 traceback／ledger：initial 真 delegate 一次，在 frozen capture `read_pinned_json` 的 os.open 被 `cycle_terminal_callsite_or_request_denied` 拒絕，configuration 真讀取／SQLite 均 0。來源、fixture、snapshot JSON 未變；attempt 清理完成、descriptor 0、環境／Python／logger 恢復、cleanup errors 空。負例尚未開始，不能宣稱 P4 reader 或 JSON pin 驗收通過。
 
 root 進一步比對 P4 與原 N：P4 新 `guarded_open → base_open` 多了一個 caller frame；N 只從直接 capture frame 取 `expected`，如今取得的是 P4 wrapper，故 `terminal_pin_argument_matches=false`。不是來源 SHA 已變。P4 fdopen 類似 delegation 亦須完整核對，不能修完第一個 wrapper 再逐次碰第二個。下一步優先取消不必要 os.open wrapper，fdopen 僅為 exact config 角色保留 dispatch；舊 N branches 必須透過具名 exact trampoline 取得原 caller 並原樣執行既有 helper，不能 general ancestor whitelist、不得改 frozen N／source-port 或放寬 pin/cap。P4 首紅不重跑，先審最小接線提案。
+
+### E 獨立來源核對與三路草案審查（追加）
+
+root 已實讀並重算 E anchored 獨立 13-root 收據：`output/qa/f12_main_revenue_new_pid_20261009_e/evidence/e_readonly_13root_reference_20261010_a/receipt.json`，SHA `0b3535a5d7a421059567518fd0d06c1c8310a0e506713dcedbe5be0306b41ce0`。當時 13 roots 與 D、E before 均相同（inventory SHA `2608042da9c70d3e734c5f1dd48902bb12f704c7e77b5dc40071454b6dce856a`）。這是獨立事後核對，沒有新增原 native receipt 的 after。更正前文 D「after=null」的表述：D 與 E 原件實際都缺少 `source_inventory_after` 欄位；欄位缺失與 JSON null 不同，原件保持不動。
+
+F12 F 私有 QA 草案加入真 worker error/status capture 與精確 monthly snapshot reader 角色，目前未跑測試或 Main。root 靜態審查發現草案要求 prime 前後 reader pins 全相同、所有 sidecars 不存在；但原 `fundamental_read_snapshot._prime_reader_copy` 明確允許 SQLite 在隔離 reader 目錄建立 main-only WAL sidecars，正常 `_open_reader_attempt` 會在 prime 後重建 copy binding。已要求沿用原 binding 的來源、reader、容量與完整性政策，不能以錯誤 oracle 阻擋合法私有流程，也不能因此放寬來源資料權限。原 E 首紅及固定 v9 守衛不修改。
+
+F03 私有草案已修正完整母體與單股 selection 混用，核對全部 segment included codes；immutable prepared view 與 live collector 分離，發行後替換 collector 不得改變已封存 view。root 另要求新 group/prepare 模組只在明示 opt-in 分支延遲載入，舊兩個 opener 不因新增入口付出載入成本；正常 opener 的多 segment／257 included、單股 selection 測試仍待執行。正式 F17 source 仍凍結，未提前套用草案。
+
+H20 P5 只獲靜態接線修改授權：取消多餘 os.open wrapper，fdopen 的原分支保留精確單次 caller token，並全面核對 Windows handle fallback；不得改 frozen N 或增加 SQLite cap。尚未實跑 P5。三位 Luna Max 分別處理 H20、F03、F12，由 root 審查；完整補完範圍、未完成真人驗收與效能門檻均不縮減，沒有新 EXE。

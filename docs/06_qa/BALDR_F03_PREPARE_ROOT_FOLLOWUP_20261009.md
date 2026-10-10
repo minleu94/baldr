@@ -1057,4 +1057,12 @@ T29正式H20列表worker精確scope/獨立TLS/ledger／native retirement差異�
 
 T29c root完整審閱增量、核23節點/pins/AST後執行；actual收據 `output/qa/f12t29c_main_1010/root_attempts/20261010T132306Z_28248_23fb2a08/receipt.json`：22 passed、1 failed、39 deselected、1 subtest passed、57.31秒，exit1、未逾時、58來源與候選未變。最後真Qt/COW node第2920行未取得drained；assert格式化含已刪TaskWorker的診斷又觸發 `Internal C++ object (TaskWorker) already deleted`，遮住更早原因。已交owner唯讀查純scalar原始role／H20 ledger，不重跑、不降低2worker／5RO+1RW／300秒守門。完整Main／新PID重開仍未執行。
 
-Q7僅保留primary與secondary cleanup診斷，root審閱程式差異又發現event_receipt在oracle結果賦值前建立會導致未定義變數；Q7未執行。已要求全新Q8只移正該紀錄時序，保持copy/rechain/cleanup／7負例／30配對／300ms及來源、SQL/network、Job guard不變。後续待root審查凍結封套，不宣稱千檔效能通過。所有本輪變更仍為QA-only，正式來源、D資料、排程未修改；真人入口暫未新增。
+Q7僅保留primary與secondary cleanup診斷，root審閱程式差異又發現event_receipt在oracle結果賦值前建立會導致未定義變數；Q7未執行。已要求全新Q8只移正該紀錄時序，保持copy/rechain/cleanup／7負例／30配對／300ms及來源、SQL/network、Job guard不變。後續待root審查凍結封套，不宣稱千檔效能通過。所有本輪變更仍為QA-only，正式來源、D資料、排程未修改；真人入口暫未新增。
+
+### 2026-10-10 Q8 終態與恢復後三路分工
+
+使用者明確恢復推進。root 完整審閱 Q7→Q8 事件收據移位、封套與 pins 後執行一次有界 single-warm；manifest `d0e356d24c9d68615b851e52b688c5ba46e5b33a293c20f0a0bab46789ec9911`。收據 `output/qa/p01_q8_single_warm_root_attempt01/receipt.json`：exit1、51.312秒、未逾時，候選與4666個固定來源前後不變；Job收尾完成。stdout SHA `3bce197cd36510dc8a6c305ecb9e76cc70c5437312db8ace83c3a4d45242802a`。
+
+私人根 `C:/t/p01cur_rd_eece85b21b` 的 child_result 與 supervisor_result 已發布終態。原始 failure context 明確定位 primary：runner `_write_private_file_once` 的 `os.open` 成功後，`os.fdopen(descriptor,"wb")` 觸發 integer FD 的 open audit，遭 controller 原有寫入路徑守門拒絕，包裝為 `private_receipt_write_failed`。程式在 fdopen 拒絕時缺少原 descriptor 的 finally close；secondary 清理同一 receipt 檔遇 WinError32，不能改寫成 ACL 或長路徑問題。失敗 scratch 原件保留，不另刪除。完整負例與30組AB尚未到達，千檔效能資格維持未完成。
+
+三位既有 Luna max 分工：t14_guard_review 獨立核對 Q8 並設計最小 Q9 私有檔案寫入修正；f06_evidence 製作 T30 純 scalar 診斷，避免已刪 Qt wrapper 的 repr 蓋住收藏 worker drain 原因；resume_perf 製作 H20 L class observer 與純資料退出階段紀錄。新候選均先凍結完整差異與 pins，由 root 審查後才執行，不放寬守門或用強制退出掩蓋原生崩潰。正式程式、原始資料、排程、EXE及其他 writer 文件未修改。

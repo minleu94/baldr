@@ -10,7 +10,7 @@
 |---|---|---|
 | F03 完整母體共同發行 | C13nodes與F正常node已有原生通過；root已套入正式reader、新group-session與14節點測試，補精確prepared型態後mypy兩source綠、三檔語法綠。 | 正式17節點首輪原生終態：15 passed、2 failed／499.90s；兩紅均為測試仍依賴QA overlay環境變數，已窄修為正式module路徑及tmp_path子程序參數，修正後b封套只重驗兩節點，原生2 passed／179.68s、exit0；首輪15項加修正2項全部取得通過，未重跑其餘15項。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
 | H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10唯一attempt01原生exit0／5.04s；真fixed2讀2關、config14讀14關、1private SQLite／0source connection；來源與fixture不變、cleanup完整。negative core通過但完整negative scope仍false；原JSON loader pin、private replay等缺口保留。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
-| F12 收益與跨程序收藏 | G 完整修訂已 review；8 candidate／58 source pins獨立匹配。G focused 原生exit0，8 passed／26 deselected／0.88s；前後pins零差。G Main 唯一實跑原生exit1，已到真readonly transaction連線guard；四個已知PID皆gone。 | G candidate receipt未更新終態，仍running且after／cleanup缺失；stdout明示queryfailed但錯誤截斷。已定位私有副本走rollback/not_applicable路徑，而QA只授WAL prime路徑；H僅授新增精確rollback transaction角色與完整失敗診斷的static實作，尚未授runtime；真Main／新PID收藏仍未驗完。原G保存，F17正式整合可續推，未來G修訂須明示重核pin。 |
+| F12 收益與跨程序收藏 | H完整diff已root讀回，8 artifacts／58 source pins起訖匹配。H focused原生11 passed／24 deselected／0.88s；H Main唯一原生exit1，root獨立四層Python chain已觀測且終態gone。 | 真Task仍被unexpected_private_sqlite_uri拒絕；rollback proof未建立、逐條first-false原因未保存。完整primary diagnostic明示operation_parent WindowsPath導致終態JSON寫入失敗。I只授static bounded gate診斷及該明確path欄位轉文字，不放寬資格、不改H/G；Main／新PID收藏未完成。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
@@ -281,3 +281,22 @@ F12 H focused原生終態：11 passed／24 deselected／0.88s，exit0、未timeo
 H Main封套 `evidence/20261010T030833Z_47616_3d643502`，同exec handle27445原生exit1；root獨立CIM抓到38072→42660（venv capture）→47616（real capture）→46788（venv runner）→48812（real runner），終態後四個known Python PID皆gone。launcher只授單次，未重跑。真正TaskWorker錯誤仍為`unexpected_private_sqlite_uri`，monthly_reader=[]，新transaction-only proof未建立；不能宣稱rollback角色已通過。root另核本次私有snapshot_capture確為rollback/not_applicable，不由G舊模式推測。
 
 H新strict JSON fallback首次保存完整primary stack，並明示final writer錯誤`TypeError: Object of type WindowsPath is not JSON serializable`；native candidate receipt仍running，是未能寫終態的舊內容，不是live證據。root靜態定位 `_serializable_task_diagnostic` 原樣回傳context.operation_parent，而context_for保存expected_parent Path。下一個獨立I候選只轉這個明確path欄位為文字、不用default=str；角色未匹配仍須readonly逐條核 exact caller/locals/gates，先明確首紅條件後才授新runtime。H的after/cleanup終態未保存，不宣稱完整清理成功；既有H/G原件保留。
+
+下一I只加原build_proof與十層exact-chain的first-false固定gate/field/frame ordinal、布林值有界ledger（最多64，overflow不授資格）；維持原短路／exception傳播、不dump locals或callback/frame、不eager、不放寬條件。root已審composite counts完整分母、sort unknown/null置尾與stock tie-break／每256取消及as_tuple Decimal正規化保持精度，尚待全部result/page與定向tests凍結；沒有將pure helpers視為reader/UI資格。
+
+### composite結果／分頁發行審查（未授runtime）
+
+root初讀完整_result issuer／Result／Page anchor與page request段。新結果原接受read_session object，只自驗query.f17_query及group，無actual F17 owner資格；已要求局部import精確正式ReadSession型別、owner.query/source binding及同group reference／既有anchor檢查，page callback改精確typed Protocol。正例不得用stub reader取得資格；private underscore/seal不宣稱同程序惡意竄改不可偽造，仍按正常transport／replace拒絕模型。
+
+另page request反覆呼叫Result.__post_init__時原會重建全ordered_keys payload與hash，100k下O(N)多份複本是明確效能風險；已要求沿immutable typed tuples／same subject anchor評估issue-time cache與page-time精確refs查驗，或明示尚未通過的限制。不得為快而跳source revalidation，不先宣稱100k記憶體或300ms門檻。Luna Max正在補兩個正式檔案及實際reader-issued正例，root待凍結再核全檔＋型態＋原生QA。
+
+H20 sibling Main候選沿既有controller/child，把舊C611固定archive比對改為S3 manifest／BUILD_INFO／bundle／22 pins，真正builder launch_inputs綁Main與六組原來源；原D9 10-symbol／684bp與H9 synthetic1234bp分清。候選補實際report projection/chart/table same capture及Decimal/date/rowhash檢查，不改source-only旗標、不假填source hashes。尚未啟動Main。
+### 最新三路審核補充（尚未凍結、未新增 runtime）
+
+使用者再次授權由 root 繼續推進並合理分配 Luna Max；目前三個既有子代理保持 H20、F12、composite 分工，沒有要求真人重驗舊版。
+
+root 另核共同 group-session 的 MA view 直接來自 prepared.ma.index，F17 group 路徑明確不建立 standalone MA ReadSession。已接受 composite source pin schema 移除不存在的 ma_read_session_identity_sha256，改核實際 MA index identity／source request／source clock 與共同 group identity；正式 owner／頁面來源核驗須沿同 schema，不能保留虛構來源標籤。sort key 的各 entry 來源一致性仍須由同一 verified group 與 reader 的 exact join 保證，page 重新核 pinned identities，不准 caller supplied entries 自算 hash 取得資格。
+
+F12 I first-false 診斷候選已初讀：固定 gate／field／frame ordinal、有界64筆、overflow不授資格；path／cancel checks 使用逐項 lazy call 保留短路。原 build_proof 路徑例外的 catch 只記錄型別後 raise；原 exact-chain path helper 原本回 False 的部分維持回 False。完整 H→I diff、凍結 pins 與 focused 終態仍待 root 核驗，不把初讀當 runtime 通過。
+
+H20 sibling controller 初始仍有 C611 舊常數與舊 child 名稱，屬實作中的副本；已要求完成 S3／真 launch_inputs 接線與完整 frozen SHA 才審可執行資格。S3 source-only 旗標不改；builder 產生合法啟動輸入屬已授權 QA 的工程工作，並非新的真人批准事項。

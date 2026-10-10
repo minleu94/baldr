@@ -1802,3 +1802,36 @@ docs/09_archive/README.md 已加入歷史快照入口，ROADMAP_6M_ENGINEERING.m
 盤點時保留另一個 agent 的 Snapshot、Index、Manual、Guides、QA 與排程工作樹變更，並略過其 F03 follow-up 正文及未追蹤 runbook。未修改原始 QA 收據、SHA、PASS／FAIL／未驗證結論；後續逐批修正與 Graphify 更新仍待完成。
 
 完整分目錄數量、逐項審閱限制與修正候選見[文件整理狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。
+
+<a id="coverage-entry-171"></a>
+## 2026-10-09 修正四組文件路徑、歷史計數與工作焦點
+
+依可核實的目前路徑、Archive 清冊與 6M Roadmap 修正四組活文件描述。Phase README 現在區分現行規格引用的舊路徑轉址與本頁直達 Archive 的查閱連結；Superpowers README 與 Archive manifest 區分 167 筆列示記錄和去重後 165 個唯一歷史來源（96 個 Archive 原文、69 個留在原目錄的歷史文件，Scheduler Approval plan/spec 在補充詳表重列）；Look-ahead 角色規範改用檢查器實際掃描的 `decision_module/strategies/`；Antigravity Tech Lead 焦點改為跟隨 Snapshot／6M Roadmap 的 Gate 2+3 與 Gate 4，而不保留已漂移的月度待辦。
+
+| 文件 | 本次修正 |
+|---|---|
+| `docs/05_phases/README.md` | 說明 `STRATEGY_DESIGN_SPECIFICATION.md` 先引用舊 Phase 轉址頁；README 清單的查閱連結直接到 Archive 原文。 |
+| `docs/superpowers/README.md`、`docs/09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md` | 明確區分列示筆數與唯一來源數，避免把重列記錄說成額外文件。 |
+| `docs/agents/skills/quant_defense_guard.md` | 三個策略強檢路徑改為 `decision_module/strategies/`，與檢查器常數一致。 |
+| `docs/agents/antigravity/tech_lead_agent.md` | 移除獨立日期化待辦，焦點改參照 Snapshot 與 6M Roadmap。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 將四組已處理項目標記為完成，保留 P8 與圖表文件待修項。 |
+
+未搬移或刪除歷史文件，未修改 QA 原始收據、SHA 或 PASS／FAIL／未驗證結論；也未改變 Scoped SSOT。
+
+<a id="coverage-entry-172"></a>
+## 2026-10-09 納入排程文件覆核並校正文件盤點與圖表指南
+
+依使用者確認，`e6f79063` 的排程修正文件納入文檔整理範圍，不再當成其他 agent 的排除項。完整閱讀 `BALDR_SCHEDULE_REMEDIATION_20261009.md` 與 `BALDR_SCHEDULED_AUDIT_RUNBOOK.md`，並核對 QA README、`DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md`、`APPLICATION_MANUAL.md`、Guides README 與排程操作指南中的相關段落及目標連結。QA README 現將 10/09 排程報告列為近期入口，並直連共同 Runbook。保留原 QA 對設定回讀、Task 結果、producer 狀態、正式來源缺口及未驗證範圍的分界；未改寫報告、raw 收據、SHA 或原始驗收結論。尚未提交的 F03 follow-up 正文保持不動。
+
+文件狀態矩陣的目錄角色數更新至目前 `dev` HEAD `3079a43a8d00d3e8f403f42310454dc8eecbbec0`：1,476 個已追蹤 `docs/` 路徑。相較 `9b8e0ea4` 初始盤點的 1,473 個路徑，新增矩陣、排程修正 QA 與排程稽核 Runbook 三項；逐篇內容審閱及連結抽取統計仍各自標示其原始基線，不將舊全量抽取誤寫成目前全庫驗證。排程 QA 與 Runbook 均已全文閱讀；Index、Snapshot、Manual、Guides README、排程操作指南的 e6 修改按相關段落檢視。原先將 `BACKTEST_LAB_FEATURES.md:340–360` 稱為 P8 TODO 的候選在目前 HEAD 找不到對應內容，所指段落亦不支持該判斷，故撤回，未修改該功能文件。
+
+`UI_QT_CHART_RENDERING.md` 依 `result_panel.py`、`backtest_view.py`、`chart_payloads.py` 與 `fast_chart_widget.py` 的目前實作翻譯並校正：實際 factory 建立點與延後載入、QtWebEngine 與 Matplotlib 選擇條件、少於 10 筆逐筆顯示／至少 10 筆分箱、95% VaR 的 20 筆門檻、鍵盤導覽及文字替代最多 200 列。移除未經基準測量支持的效能宣稱，保留既有驗證命令並說明本次未執行測試。
+
+| 文件 | 本次處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 角色盤點更新至 1,476 個追蹤路徑；將 e6 排程文件與目前 dirty F03 的範圍區分，補記可具名閱讀深度及連結基線。 |
+| `docs/06_qa/README.md` | 在 QA 主入口加入 10/09 排程報告與共同 Runbook 連結，保留原有 10/08 證據入口。 |
+| `docs/08_technical/UI_QT_CHART_RENDERING.md` | 全文改為繁體中文，依現行程式修正 widget 建立、門檻與無障礙說明。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 記錄使用者確認後的排程文件覆核範圍、盤點數更新及 P8 候選撤回。 |
+
+未移動或刪除文件，未執行測試，未修改排程 QA、原始 QA 收據、SHA、其他 agent 的 F03 follow-up 工作樹變更或 Scoped SSOT。

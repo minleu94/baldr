@@ -26,9 +26,9 @@
 - 若需要看程式碼，先提出要 review 的檔案清單與目的。
 - 不做未被要求的實作。
 
-## 本週預設焦點
+## 工作焦點選擇
 
-- Month 3 Factor Layer 覆蓋補齊：固定組合與更多 Research Lab 路徑的 factor records、Factor Gate 回歸與 no-look-ahead 防線。
-- Month 3 Portfolio Replay 可信度：現金帳、權重、再平衡、未成交、Liquidity / Gap 標記。
-- Month 4 Daily Decision Desk 前置：先定義 snapshot / service 邊界，避免在 UI 層重算市場、推薦或持倉邏輯。
+- 每次開始新任務時，先依 `PROJECT_SNAPSHOT.md` 判斷目前狀態，再依 `ROADMAP_6M_ENGINEERING.md` 選擇工程 Gate；本角色文件不維護獨立的日期化待辦。
+- Roadmap 的相對順序中，Month 3 對應 Gate 2 Real Evidence Operating Loop 與 Gate 3 P0 Data Acceptance；Month 4 對應 Gate 4 Portfolio Coach v1。這些月份是里程碑順序，不代表目前日曆月份或已完成狀態。
+- 若任務涉及其他已列出的 Factor Layer、Portfolio Replay 或 Daily Decision Desk 歷史規劃，先核對其目前實作與具名 QA，不把舊焦點文字當成目前授權。
 - 保持 Snapshot / Roadmap Hub / 6M Roadmap / V2.1-V4.0 Roadmap / Architecture / Index / Agent docs 一致。

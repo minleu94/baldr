@@ -54,9 +54,9 @@
 - `app_module/recommendation_portfolio_dtos.py`
 
 未來函數審查主要針對以下策略檔案進行強檢：
-- `app_module/strategies/baseline_score_executor.py`
-- `app_module/strategies/momentum_aggressive_executor.py`
-- `app_module/strategies/stable_conservative_executor.py`
+- `decision_module/strategies/baseline_score_executor.py`
+- `decision_module/strategies/momentum_aggressive_executor.py`
+- `decision_module/strategies/stable_conservative_executor.py`
 
 ---
 

@@ -12,7 +12,7 @@
 - 架構與模組邊界看 `../01_architecture/system_architecture.md`。
 - 實際操作方式看 `../07_guides/APPLICATION_MANUAL.md`。
 
-本目錄保留導覽 README 與舊路徑轉址；13 份 Phase／SOP 原文已依原目錄層次移入 [`docs/09_archive/`](../09_archive/README.md)。目前可核實的現行產品／功能文件直接引用只有 [`STRATEGY_DESIGN_SPECIFICATION.md`](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 連到 [`PHASE2_ARCHITECTURE.md`](../09_archive/PHASE2_ARCHITECTURE.md)，舊路徑轉址會導向歸檔原文。日期化歷史設計規格如 [strategy-scoring-governance-design](../09_archive/superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) 已直接連到 Archive；其舊 Superpowers 路徑仍保留相容導引。沒有現行功能文件直接連結不等於可以刪除。歸檔內容中的下一步、進行中、Gate 或階段描述若與核心權威文件衝突，以核心權威文件為準。
+本目錄保留導覽 README 與舊路徑轉址；13 份 Phase／SOP 原文已依原目錄層次移入 [`docs/09_archive/`](../09_archive/README.md)。目前可核實的現行產品／功能文件引用只有 [`STRATEGY_DESIGN_SPECIFICATION.md`](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 使用舊路徑 `../05_phases/PHASE2_ARCHITECTURE.md`；該路徑先到本目錄的相容轉址頁，再導向 Archive 原文。下表為方便查閱而直接連到封存原文。日期化歷史設計規格如 [strategy-scoring-governance-design](../09_archive/superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) 已直接連到 Archive；其舊 Superpowers 路徑仍保留相容導引。沒有現行功能文件直接連結不等於可以刪除。歸檔內容中的下一步、進行中、Gate 或階段描述若與核心權威文件衝突，以核心權威文件為準。
 
 ## 文檔列表與目前處置
 

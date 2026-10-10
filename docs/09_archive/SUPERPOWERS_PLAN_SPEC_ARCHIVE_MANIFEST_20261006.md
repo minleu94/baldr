@@ -255,7 +255,7 @@ V3 Score Effectiveness／ML Readiness plan/spec 均指向 read-only／shadow rea
 | spec | [原路徑導引 stub](../superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md) → [Archive 原文](superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md) | 2026-07-14 | 歷史設計；不作現行契約；封存不代表完成／驗收 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [每日更新指南](../03_data/daily_data_update_guide.md) / [操作手冊](../07_guides/APPLICATION_MANUAL.md) | 配套 plan 核取狀態保留；實作提交 `68c1c3438`、`e1c7d33a9`；未找到具名 QA closeout | 2982 | `ac426572101845d39f8437aadcea042d3f3d9818730a9452d5d7fb14858c6319` |
 | spec | [`docs/superpowers/specs/2026-07-14-development-dataset-v0-1-corporate-action-coverage-design.md`](../superpowers/specs/2026-07-14-development-dataset-v0-1-corporate-action-coverage-design.md) → 同原路徑 | 2026-07-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 8290 | `70866774c84a513e95953f95cc57d5529a0cb7ab45a9d0c1601907fa1c3ef47e` |
 
-本表列出 167 份歷史追溯文件：plan 111、spec 54、prompt 2；不含唯一現行進行中的 Baldr 產品補完計畫。文件是否仍在執行，以 [Superpowers README](../superpowers/README.md)、目前 Snapshot 與對應 QA 為準。
+本清冊全文共有 167 筆列示記錄（plan 111、spec 54、prompt 2）；去重後為 165 個唯一歷史來源路徑。Scheduler Approval plan/spec 在補充詳表重列，因此列示筆數不等於唯一來源數。不含唯一現行進行中的 Baldr 產品補完計畫。文件是否仍在執行，以 [Superpowers README](../superpowers/README.md)、目前 Snapshot 與對應 QA 為準。
 
 ## 2026-10-09 Strategy & Scoring Governance 歸檔批次
 

@@ -8,9 +8,9 @@
 
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
-| F03 完整母體共同發行 | 正式 prepare 已保存於 `115600d3`；QA overlay C 真測 **13 passed／1 failed**，九種 callback failure、取消、cap 與 legacy 路徑已有原生結果。唯一正常流程在測試建 query 時 identity mismatch，尚未呼叫 opener。 | D 只獲靜態 QA 修正授權，須用正式 canonical factory，保留完整 257 included／258 declared、單股 outer filter、三路同次 callback 等全部正常斷言。正式 issuer／F17 未整合，composite query／UI／收藏／新程序／EXE 待辦。 |
-| H20 原 source-port 接線 | P7 真 initial terminal receipt 4046 bytes 已讀、原 N helper 身分保留；config reader 名稱作用域 NameError，payload read／SQLite 0。sources 未變且 cleanup 完成。P7 啟動前漏 commit-memory gate，不能當合格驗收。 | P8 只獲最小 static revision，含 nested-class factory 與受審 launcher。public cohort、正常 Main、原 2382 的 684 bp／圖表／速度、真人仍未驗。 |
-| F12 收益與跨程序收藏 | E focused 22 passed／8 subtests；唯一 E Main 真 personal readonly，但被舊 QA guard 拒絕 private archived reader URI。獨立 13-root 核對相同，原 receipt 無 after 欄位。 | F 仍 static-only，正補兩階段 exact prime／typed verification／transaction、十層真呼叫鏈、兩層取消 callback、單次 proof 與錯誤清理。未跑 F focused／Main，未完成新 PID 收藏。 |
+| F03 完整母體共同發行 | 正式 prepare `115600d3`；C 原生13 passed／1 failed。D 正常 opener 已越過完整257母體、兩parent、單次exact read、三路同row與frozen值斷言；唯一failed是QA直接重綁不可變ledger。 | E只授static測試修正：先驗重綁被拒，再清原list內容驗issued anchor保持；後續conditions／duplicate／poison仍未跑。正式issuer／F17整合、composite query／UI／收藏／新程序／EXE待辦。 |
+| H20 原 source-port 接線 | P7真terminal4046 bytes已讀，config nested-class NameError使payload／SQLite 0；來源未變且cleanup完成。P7缺啟動前memory gate，不能當合格驗收。 | P8完整候選與launcher已由root審查、pins重算相符，已授唯一attempt01且fresh PDH記憶體與disk分欄gate；此入口尚無新終態。public cohort、Main、原2382的684bp／圖表／速度與真人待驗。 |
+| F12 收益與跨程序收藏 | E focused22 passed／8subtests，E Main被QA guard拒private reader；13-root獨立核對相同但native無after。F全diff已reviewed且58pins一致，靜態找到Path型別與helper caller方向必拒錯誤。 | G只授static最小修訂：修兩項QA接線、新啟動前pins／memory gate、首紅停後續及失敗source-after收據；F不跑不覆寫。兩階段真SQLite／Main／新PID收藏仍待驗。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
@@ -186,3 +186,22 @@ D 已凍結；root 完整讀最小 revision、正常 case API 盤點及 launcher
 F 營收候選已靜態凍結，source SHA `c75f4a7bf3036fc640c76d530b44a9999d6bbff8a02a9b66456e7a8bf977042f`，完整 E→F diff SHA `09b4937ed4400b4d9cf3be57d9852a4e1830156c9f574124abc4dff8ef0fc754`。root 正在逐段完整審查，尚未授任何 focused／Main 執行。已找到明確靜態 blocker：transaction context helper 使用 `type(database_path) is Path`；Path 工廠返回 WindowsPath（其他平台 PosixPath），此條件會拒絕正式有效路徑。已要求 agent 對照正式 callsite 與 helper probes，保留凍結 F，先交靜態報告，不以測試執行代替審查，也不放寬 URI／custody／source 驗證。
 
 P8 仍是 H20 static-only 修訂與新 launcher 審查；沒有讀取完成、SQLite／Main 或真人驗收資格。完整產品補完範圍保持 P00–P14／M1–M3／F01–F23，三位 Luna Max 分工與 root 整合不變。
+### F 完整靜態差異審查及 P8 launcher 審查（追加）
+
+root 已完整讀 F 的 E→F 全差異、主程式新增 two-stage reader gate／固定十層鏈／proof清理／測試與兩份 launcher；獨立重算 candidate receipt 所列固定檔及 58 source pins，全部相符。F 仍不授 runtime：除 `type(path) is Path` 永遠不接受平台具體 Path 實例外，新增 fixed-chain helper probe 把 reader 排在外層、worker 放內層，再由外層 reader 的 f_back 往 caller 比對 snapshot，呼叫方向相反，正例必拒。兩項由靜態碼證實，未執行 F 確認，凍結原件保留。
+
+F focused driver 只有終態比對 source pins，不在啟動前拒絕 mismatch；candidate 自記 hash 不等於已審查版本約束，且 focused／Main capture 均缺 fresh commit-memory gate。Main capture 外層 process.wait 無上界。原生 `source_inventory_after` 只在成功行程寫入，失敗的 D／E 缺欄位不能藉事後收據轉為 native。已交 agent 靜態盤點及最小新版本修訂提案，尚未授變更或執行；正式查詢／路徑／來源驗證不可放寬。
+
+P8 candidate 全差異及新 launcher 全差異已由 root 實讀，nested reader 沒有剩餘裸 constructor 名稱，工廠使用 pinned class；class與六個方法 code／globals／closure等身分保留。candidate SHA `ca6414cd4226b171cc4409af1536224dedf3169eba01d5b5b39e7db71cf9af99`、launcher SHA `4242f4e549fac4224ee3f7fc5eeb21859f1098bb969a8c7965531b7ac5830ea3` root 重算一致。新 PDH CommittedBytes／CommitLimit 檢查與 disk分開，缺counter／餘裕不足／sample超過5秒都拒Popen；兩次freshness檢查。attempt01目前只有launcher source，沒有runtime收據或logs；等待最後map及D終態，未授P8啟動。
+
+D 已知四程序鏈58044→33888→26884→26716由root CIM独立確認仍存在、建立時間2026-10-10 02:16:46 UTC、全部commands指D，原handle8644不重啟。此追加段落尚沒有D終態，13個C通過案例不重跑。沒有EXE／真人入口／正式排程變更。
+
+### D 正常 opener 終態與 P8 單次實測授權（追加）
+
+D唯一attempt01 exit1，原生 `1 failed in 205.61s`，launcher207.2714872s，無timeout。receipt SHA `096eee8cfa404fba297a194683fe2a37fc84bc6448c678fe7eb9fccac8825d18`、stdout `7e1b9d7ee06e8a85f25f647274c35d8860199243cba0e9fec8ba154bb04b3a9e` root實讀重算；20formal／7draft／manifest前後同，fresh commit headroom6,748,098,560B，rootCIM核4knownPIDs全gone。
+
+正常公開opener成功發行後，258declared／257included+processed／1excluded／0pending、兩parent、單次exactread、三member同snapshot/row、outer單碼不改全母體分母與frozen值斷言均實際越過。唯一failed在test314直接`group._row_provenance=[]`；正式`__setattr__`按設計拒`technical_projection_group_v2_members_immutable`。不得稱整normalnode通過：後續getter穩定／conditions／duplicate／decoder／poison斷言尚未執行。授E static-only：明確驗重綁被拒且原list identity不變，再clear原list內容驗immutablepreparedanchor；不改正式guard，不object.__setattr__繞過，不刪後續斷言。
+
+Root讀P8最後繁中map、完整candidate/launcher diff後授唯一attempt01，D已終態不並行重runtime。fresh frozen source／candidate pins、PDHcommitheadroom至少2GiB與獨立diskgate必須通過；啟動後另以CIM核實native鏈，不能用PopenPID代替。120秒僅觀測期限，同handle等待不重啟。此段尚無P8結果。
+
+F兩個必拒靜態錯誤、失敗原生after缺口與launcher門檻由agent獨立實碼確認；授G static-only最小修訂，保留F、原正式來源與URI/custody條件，完整新diff與launcher受root審查前不跑focused／Qt／Main／producer。全產品範圍保持，無可驗真人新EXE。

@@ -9,8 +9,8 @@
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
 | F03 完整母體共同發行 | C13nodes已有原生通過。F 正常 node 原生 exit 0，1 passed／173.82s；完整257母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持，以及conditions／duplicate／decoder／poison檢查通過。27 pins與manifest起訖相同。 | 開始準備正式 issuer/F17 整合最小候選；目前為 QA overlay，尚未套入正式來源。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
-| H20 原 source-port 接線 | P8原生2terminal／8092bytes、14config／2044bytes、1privateSQLite／0sourceSQLite已越過，source/fixture起訖同且cleanup完成，freshmemorygate通過。唯一首紅為QA從沒有PIT欄位的top-levelbinding取值；原feature rows明確false。 | P9 candidate／launcher完整差異已讀，仍待負例分支對照與最終凍結 pins；沒有授權 runtime。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
-| F12 收益與跨程序收藏 | E focused22 passed／8subtests，E Main被QA guard拒private reader；13-root獨立核對相同但native無after。F全diff已reviewed且58pins一致，靜態找到Path型別與helper caller方向必拒錯誤。 | G只授static最小修訂：修兩項QA接線、新啟動前pins／memory gate、首紅停後續及失敗source-after收據；F不跑不覆寫。兩階段真SQLite／Main／新PID收藏仍待驗。 |
+| H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10僅授static索引修正。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
+| F12 收益與跨程序收藏 | G 完整修訂已 review；8 candidate／58 source pins獨立匹配。G focused 原生exit0，8 passed／26 deselected／0.88s；前後pins零差。G Main 唯一實跑原生exit1，已到真readonly transaction連線guard；四個已知PID皆gone。 | G candidate receipt未更新終態，仍running且after／cleanup缺失；stdout明示queryfailed但錯誤截斷。先診斷真connect kwargs及收據缺口，不重跑；真Main／新PID收藏仍未驗完。原G保存，F17正式整合可續推，未來G修訂須明示重核pin。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
@@ -18,6 +18,8 @@
 ## 審查結果與實作範圍
 
 ### F03 F 正常入口實跑終態（最新追加）
+
+本輪另完成 F12 G 完整修訂、六個 Python 檔相關差異／launchers／preflight／測試審查，獨立核八個 candidate 與 58 個來源 pins 零差。review manifest SHA `14922be3c2945693aa159f72d3e06bee59d19a7cb3ab0c9102cf25c3b9d18514`；diff SHA `699912b6523f3627bf4325d8b01826598e30ac4d5c160db3ae4a8d471a65f222`。focused 封套 `output/qa/f12_main_revenue_new_pid_20261009_g/evidence/20261010T024219Z_56452_2c3c00a9`，receipt SHA `c2fb9c6b65688ac98538871707c70f24d60ac673f2d61220823931419913c4cc`；8 passed／0.88s、stderr空、58 pins起訖相符。只有 helper／finally 定向證據，不授 Main 成功；G 完整 Main 已授單次執行，觀察期限不能冒充終態。
 
 凍結 F launcher 僅跑正常 node 一次，原 pytest **1 passed／173.82s，exit 0**；launcher 收據 elapsed 175.1825018 秒、timeout false、啟動時 commit headroom 9,017,552,896 bytes。root 獨立讀完整 stdout／receipt，核 20 正式 pins、7 候選 pins 與 manifest 起訖相同。獨立 CIM 實測中確認 31764 → 20704 → 50696 → 56960 的四層程序，終態後四 PID 均已不存在。
 

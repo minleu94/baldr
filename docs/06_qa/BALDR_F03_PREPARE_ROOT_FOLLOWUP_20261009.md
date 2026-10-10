@@ -74,3 +74,16 @@ H20 P 的初版 `81f25d62…` 及完整 O→P diff 保留，尚未執行。除 o
 E2 終態另存 `evidence/20261010T004430Z_9296_5dc698bb/receipt.json`：候選 self-test、route 均 exit 0，pytest **1 failed／21 passed／4 subtests passed**。唯一失敗為新增 child-env 測試傳入尚不存在的硬編碼 fixture root，原 pinned helper 正確以 strict resolve 拒絕；沒有放寬 helper。原生 stderr 確認 Config 的 DATA_ROOT／OUTPUT_ROOT 已在該 attempt 私有區。58 pins／候選檔起訖一致，E2 原 test/diff 與 receipt 保存。E3 僅把該測試換成真正建立的 fresh private application／f17 目錄，原 child-validator 正反例保留；待終態，不宣稱 Main 完成。
 
 root 和獨立 reviewer 又核對原 frozen loader，修正先前「每 phase 一次 config read」的錯誤要求：真流程為 get-root 一次、兩個 root resolution 各一次、四個 pinned-path resolution 各一次，合計每 phase 七次、initial/terminal 共十四次。新角色只能依這三類 exact caller/code/globals/locals 與固定順序授權；每次 146-byte／SHA、16KiB 上限與新鮮讀取不變，不能快取設定掩蓋真流程，不增加 SQLite cap。P/P2 不執行，先保留靜態材料並重定最小角色方案。獨立審查另發現 descriptor 碰撞及 stream.close 錯誤的清理缺口；修補須關閉已轉移所有權的 CRT descriptor，保留 primary/secondary 錯誤，不把 CloseHandle 當成 os.close。
+
+### E4 定向回歸與完整 Main 待驗（追加）
+
+E3 原生終態為 1 failed／21 passed／4 subtests passed：child-env 測試把 pinned helper 的 unset 清單錯比為固定常數，漏掉原 helper 另加的四個 MA source override keys。E4 只修測試 oracle，從同次真 helper 回傳的完整清單移除兩個明示 personal opt-in keys；四個來源 override keys 仍必須保留，原 child-validator 正反例沒有移除。E1／E2／E3 首紅均保留。
+
+root 獨立讀取 E4 原生 logs、receipt 並重算雜湊：三命令 exit 0，**22 passed／8 subtests passed／7.07s**；58 source pins 起訖匹配、候選檔案穩定。原生 receipt 位於 `output/qa/f12_main_revenue_new_pid_20261009_e/evidence/20261010T005609Z_57816_2c0c04f3/receipt.json`，SHA `48c4ecf7415641088ce935c64506293b4f0d36aa3151d1f2dc0d69070e679836`；pytest stdout SHA `0e29924387ca2e78b3dabb85bffd48aa1d5bbaae3125d74ea61504bd9207b903`。兩個 MainWindow failure receipt 是測試明示注入的建構／清理錯誤，不能誤判為實際 Main 驗收失敗或成功。
+
+root 已閱讀 capture 啟動器並授權唯一一次 E 完整 Main 隔離測試，維持 300／240／180／20 秒期限、來源守衛、真 native PID chain 與來源前後核對。此段落寫入時仍未取得 Main 終態，不宣稱收藏新程序閉環完成，也沒有新 EXE 或真人驗收入口。共享 F17／MA／P01 sources 暫時保持 pin，不因測試通過提前整合 F03。
+
+本機一般 sandbox launcher 曾回報 `CreateProcessSecurityEnvironment HRESULT 0x800705AA`；低負載核准執行可正常讀取及測試，並非所有 Python 已終止。獨立唯讀資源收據 `output/qa/resume_root_validation_20261009_a/system_resource_observation_20261010_a.json` 保存當時 commit limit／使用量、C 槽空間和未確認所有權的程序數；沒有終止未知程序或改系統設定。H20 P3 和 F03 唯一 issuer 提案仍平行做靜態審查；H20 正例與原 2382 待驗，產品完整補完範圍保持。
+E 唯一完整 Main 已終態 exit 1／19.015 秒：先前的兩個 personal env keys 衝突已解除，真 mode 為 `personal_source_readonly`。現在拒絕原因為 `f12_full_query_failed:('核驗雙來源並執行全母體查詢', False)`；query 的原始錯誤尚待追查，不能據 UI 終止訊號推斷來源缺件。原 native receipt `run_attempt_77ca0959cb674aa0870dd37e29ccfcd9/f12_main_revenue_receipt.json` 沒有 `source_inventory_after` 欄位，保持原件，不回填；獨立事後 13-root 核對另存。真 wrapper/Popen/native PID 分別 54028／41460／25400，pinned helper 驗證為 `venv_redirector_child`、chain error 空。清理 errors 空、environment／guards restored；nested `parent_finally_window_retirement` 確認 wrapper retired、close finalizing、post-drain Qt accesses 0；沒有啟動 child restore（real Popen 0）。首紅與原 stdout/stderr 位於 `evidence/20261010T010005Z_54028_b7f39cca`，不重跑或把 focused pass 算成 Main pass。
+
+F03 QA 設計初稿已完成，root 審查要求分開完整 included 母體與故意只選一股的 query selection；共同 qualified session 必須保留完整三路母體。getter 必須使用 anchor 綁定的 immutable prepared views，不從發行後仍可變的 live collector 讀值；補發行後替換 collector/ledger 不得改變 sealed view 的驗收。尚未修改正式 issuer 或執行新整合測試。

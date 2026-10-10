@@ -2260,3 +2260,20 @@ QA 增量複核發現 `V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 保存 DEV-66 
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄本次證據、導覽更正、未解來源差異與驗證限制。 |
 
 修訂連結目的地已確認存在；`git diff --check` 無 whitespace error。沒有刪除或搬移文件、修改原始資料或測試；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。P0 原始 audit artifact／registry 的對照及 Manual 尾段日期化工程內容的分類仍待完成。
+
+<a id="coverage-entry-197"></a>
+## 2026-10-10 將 Manual 尾段日期化工程快照移入 Archive
+
+`APPLICATION_MANUAL.md` 第 14 節後原有 1,358 行，包含 2026-10-03 至 10-08 的開發版、候選版、有限驗收與當時操作描述；其中多處把未交付／同程序測試狀態留在目前操作手冊末尾，與主手冊第 1–13 章及附冊的分工不一致。已將該段原文保存至 `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md`，在 Archive 檔首明示歷史界線，並為 104 個原標題加穩定 anchor。手冊保留同名標題作短導引，既有內部引用和舊書籤仍留在原 Manual 路徑；Guide README 指向現行主文、Supplement 與 Archive 的不同用途，Archive README 新增直接入口。
+
+搬移前尾段原始 bytes 為 238,727，SHA-256=`55569ac227893106318f8c1dfc2dd72b296eb77532273037fb24a7f08d099e08`。搬移工具驗證：從 Archive body 移除新增的 104 行 anchor 後，bytes 與來源尾段逐位元組相同；Manual 的 104 個標題 stub 與原標題序列相同。這項結構整理沒有逐項重新驗證每段歷史操作陳述，也不宣稱歷史快照內容目前仍適用。`docs/` 路徑總數由 1,478 增至 1,479；`09_archive/` 由 406 增至 407，其他分類範圍未變。另修正角色表總計列：依互斥目錄行重算，QA／證據為 636、歷史／轉址為 608，加總與 1,479 個路徑相符。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/07_guides/APPLICATION_MANUAL.md` | 將 10/03 起日期化開發／候選快照內容移出主文；保留 104 個原標題與 Archive deep-link 導引；第 14 節連至新 Archive。 |
+| `docs/09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` | 保存尾段原文，僅在檔首加歷史說明、在原標題前加穩定 anchor。 |
+| `docs/07_guides/README.md`、`docs/09_archive/README.md` | 更新 Manual／Supplement／Archive 分工與入口。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新追蹤路徑與 Archive 分布計數；修正角色總計列與核讀限制。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄來源尾段 bytes／SHA、搬移範圍與舊連結保留方式。 |
+
+目前確認新 Archive 入口與每個 `manual-tail-001` 至 `manual-tail-104` anchor 均存在；所有原 Manual 標題仍保留於舊路徑。針對本次移動，另核對 48 個 repo 內 Manual 錨點引用、21 個唯一片段，未發現缺失目的地。未刪除歷史原文、未修改原始資料；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。P0 決議 artifact／registry 差異仍待獨立調和。

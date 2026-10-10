@@ -61,3 +61,9 @@ P08 receipt v2 已經 root 審核並整合，正式 import 路徑取得 55 PASS�
 H20 viewport 的純合成 root 探針：正式 RecommendationView 嵌入同 PersonalH20ResearchWidget／panel constraints，960×700、680×500、460×600 都取得 table 高192、viewport 高147，scrollToItem 後第八列可見，native exit0；未重現 D 停點。這不包含 Main 原來源、真 manifest 文字或 worker；E sibling 必須記錄真實初末幾何及 ancestor 裁切，待幾何穩定再以原生捲動操作，不能以此探針宣稱原下鑽成功。
 
 P01 Q13 連結負例的 root 唯讀追線另發現第二個 setup 問題：原 child receipt SHA `bf3bbe2148499d81681b9beb341fb03d57db5ed3332bee748e86d7596e223eb9` 記錄的第一個 private manifest 路徑長 452 字元，link setup 的 replace／link／cleanup 尚未沿 runner `_syscall_path` 使用 extended syscall 邊界。實際 `private_manifest_relative` 前三段是完整 64 位 root 身分、32 位 parent attempt、`segment-000001`；setup 卻要求第一段就是 segment，與原保存 references 矛盾。下一候選需同時修精確路徑形狀與 syscall mapping、完整保留 ID／containment／真實拒絕與還原檢查；不得只修長路徑後重跑到已知下一失敗。本輪沒有修改 runner、建立 link、重跑矩陣或碰 sealed source；效能門檻仍失敗。
+
+恢復後 H20 F 實測：E 的 early return 缺事件計數由 root 靜態審查發現，保留 E 並另建 F；四條回傳契約、11 個封套檔 hash、30＋17 pins 與唯讀預檢通過後，root 執行一次。Main 至原名單就緒 21.250 秒、頁籤操作至就緒 17.063 秒，10 列 available／0 unknown、2382 唯一且列索引為 8。這不是效能改善證明或 p95。表格高192、viewport 高160，未出現零高；外層 viewport 高380，初始表格位於其下方。四次外層向下點擊把值由0移至80後，內層 scrollbar 僅露出頂端，測試把向下點位裁切到 local `[6,9]`，內層值仍為0，因此以 `native_scroll_input_made_no_progress` 停止。尚未下鑽、一般報告或返回；不能推論正式產品無法下鑽。下一候選先用小型 Qt 合成幾何驗證實際向下 subcontrol／完整可見捲軸，再測原來源，不調整正式表格掩蓋問題。
+
+F session `16461`／child PID `32648` 已終止，外層及 native exit1，無逾時或 launcher 終止；Main 自然關閉、worker registry 為0、三個 H20 worker 均停止，operation-local SQLite 清理後為空，來源大型檔 metadata 前後相同。F 11 個封套檔起訖不變；manifest SHA `6a7c8f11f02827bc02c145fe66eae8d9ae3f48767d867fe4cc30f4c34d0fec5c`，內層收據 `E:/t/h20p2382f/output/qa/h20_2382_timing_receipt.json` SHA `c547e801256d71796585c991507813949c51a358951f8c64ca1f17adf07bd8e7`。原資料與正式來源沒有修改。
+
+並行審查另發現兩個待修候選問題：T39 QA 在 resolver 尚未回傳時要求 writer guard 的 `active` 已賦值，已交回修正不可能成立的條件；P08 所用 TWSE publication reader 在多 projection manifest 時以迴圈最後一份 manifest 比對所選列，正準備獨立修正與雙 manifest 回歸、同次 SQLite readback 價格／證據 API。兩者尚未正式套用或驗收。

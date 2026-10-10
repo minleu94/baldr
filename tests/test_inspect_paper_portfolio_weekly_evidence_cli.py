@@ -30,9 +30,15 @@ def test_cli_json_reports_read_only_weekly_evidence(tmp_path: Path, capsys) -> N
     )
 
     payload = json.loads(capsys.readouterr().out)
-    assert code == 0
-    assert payload["status"] == "ready"
-    assert payload["report"]["net_excess_return_bp"] == -11
+    assert code == 2
+    assert payload["schema_version"] == "paper-portfolio-weekly-evidence.v2"
+    assert payload["status"] == "degraded"
+    assert payload["weekly_report_status"] == "not_computable"
+    assert payload["report"] is None
+    assert "paper_weekly_snapshot_cost_basis_unknown" in payload["blockers"]
+    assert "paper_weekly_snapshot_ledger_window_unproven" in payload["blockers"]
+    assert payload["observed_cost_disclosure_total"] == "1.10"
+    assert payload["cost_disclosure_complete"] is False
     assert payload["writes_allowed"] is False
 
 
@@ -58,9 +64,11 @@ def test_cli_markdown_discloses_incomplete_week(tmp_path: Path, capsys) -> None:
     )
 
     output = capsys.readouterr().out
-    assert code == 0
+    assert code == 2
     assert "Paper Portfolio Weekly Evidence" in output
-    assert "incomplete_trading_week" in output or "DEGRADED" in output
+    assert "incomplete_trading_week" in output
+    assert "paper_weekly_snapshot_cost_basis_unknown" in output
+    assert "paper_weekly_snapshot_ledger_window_unproven" in output
 
 
 def test_cli_returns_nonzero_when_inputs_are_missing(tmp_path: Path, capsys) -> None:

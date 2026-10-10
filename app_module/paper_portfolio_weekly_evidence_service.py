@@ -27,9 +27,11 @@ from app_module.paper_portfolio_snapshot_repository import (
 )
 from app_module.paper_portfolio_time import paper_portfolio_today
 from app_module.paper_portfolio_weekly_report import (
+    PAPER_WEEKLY_COST_WINDOW_CONTRACT,
     PaperPortfolioWeeklyReport,
     PaperPortfolioWeeklyReportService,
     PaperTradeCostRecord,
+    _in_preopen_cost_window,
 )
 from app_module.paper_trade_ledger import (
     PAPER_TRADE_LEDGER_SCHEMA_VERSION,
@@ -38,7 +40,7 @@ from app_module.paper_trade_ledger import (
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
 
-PAPER_WEEKLY_EVIDENCE_SCHEMA_VERSION = "paper-portfolio-weekly-evidence.v1"
+PAPER_WEEKLY_EVIDENCE_SCHEMA_VERSION = "paper-portfolio-weekly-evidence.v2"
 DEFAULT_PORTFOLIO_ID = "paper-main"
 DEFAULT_BENCHMARK_ID = "paper-main-equal"
 DEFAULT_BENCHMARK_LEDGER_FILENAME = "paper_equal_weight_benchmark.sqlite"
@@ -62,6 +64,7 @@ class PaperPortfolioWeeklyEvidenceDTO:
     snapshot_count: int = 0
     benchmark_observation_count: int = 0
     cost_record_count: int = 0
+    observed_cost_disclosure_total: Decimal | None = None
     report: PaperPortfolioWeeklyReport | None = None
     blockers: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -124,6 +127,13 @@ class PaperPortfolioWeeklyEvidenceDTO:
             "snapshot_count": self.snapshot_count,
             "benchmark_observation_count": self.benchmark_observation_count,
             "cost_record_count": self.cost_record_count,
+            "cost_window_contract": PAPER_WEEKLY_COST_WINDOW_CONTRACT,
+            "observed_cost_disclosure_total": (
+                str(self.observed_cost_disclosure_total)
+                if self.observed_cost_disclosure_total is not None
+                else None
+            ),
+            "cost_disclosure_complete": False,
             "weekly_report_status": self.weekly_report_status,
             "report": _report_to_dict(self.report),
             "blockers": list(self.blockers),
@@ -262,18 +272,42 @@ class PaperPortfolioWeeklyEvidenceService:
             blockers=blockers,
             diagnostics=diagnostics,
         )
+        cost_reader_blockers: list[str] = []
         costs = self._read_costs(
             start_text,
             end_text,
-            blockers=blockers,
+            blockers=cost_reader_blockers,
             warnings=warnings,
             diagnostics=diagnostics,
         )
+        blockers.extend(cost_reader_blockers)
+
+        if snapshots:
+            blockers.extend(
+                (
+                    "paper_weekly_snapshot_cost_basis_unknown",
+                    "paper_weekly_snapshot_ledger_window_unproven",
+                )
+            )
+            diagnostics.extend(
+                (
+                    "legacy snapshots do not persist a versioned gross/net NAV basis",
+                    "no verified per-snapshot receipt proves complete [S,D) ledger coverage",
+                )
+            )
+
+        observed_cost_disclosure_total = None
+        if costs and not cost_reader_blockers:
+            observed_cost_disclosure_total = sum(
+                (item.total_cost for item in costs), Decimal("0")
+            ).quantize(Decimal("0.01"))
 
         if snapshots and snapshots[0].decision_date != start_text:
             blockers.append("paper_weekly_report_period_start_snapshot_missing")
         if snapshots and snapshots[-1].decision_date != end_text:
             blockers.append("paper_weekly_report_period_end_snapshot_missing")
+        if snapshots and len({item.decision_date for item in snapshots}) < expected_trading_days:
+            warnings.append("incomplete_trading_week")
         if benchmarks and benchmarks[0].decision_date != start_text:
             blockers.append("paper_weekly_report_period_start_benchmark_missing")
         if benchmarks and benchmarks[-1].decision_date != end_text:
@@ -328,6 +362,7 @@ class PaperPortfolioWeeklyEvidenceService:
             snapshot_count=len(snapshots),
             benchmark_observation_count=len(benchmarks),
             cost_record_count=len(costs),
+            observed_cost_disclosure_total=observed_cost_disclosure_total,
             report=report,
             blockers=unique_blockers,
             warnings=unique_warnings,
@@ -658,7 +693,7 @@ class PaperPortfolioWeeklyEvidenceService:
                     f"paper_trade_ledger_row_invalid:{row['fill_id']}:{type(exc).__name__}:{exc}"
                 )
                 continue
-            if not period_start <= event_date <= period_end:
+            if not _in_preopen_cost_window(event_date, period_start, period_end):
                 continue
             period_rows += 1
             if fill.turnover_bp is None:
@@ -801,6 +836,7 @@ def _with_extra_messages(
         snapshot_count=result.snapshot_count,
         benchmark_observation_count=result.benchmark_observation_count,
         cost_record_count=result.cost_record_count,
+        observed_cost_disclosure_total=result.observed_cost_disclosure_total,
         report=result.report,
         blockers=all_blockers,
         warnings=result.warnings,
@@ -820,6 +856,11 @@ def _report_to_dict(report: PaperPortfolioWeeklyReport | None) -> dict[str, Any]
         "benchmark_return_bp": report.benchmark_return_bp,
         "net_excess_return_bp": report.net_excess_return_bp,
         "total_cost": str(report.total_cost),
+        "snapshot_basis_contract": report.snapshot_basis_contract,
+        "snapshot_basis": report.snapshot_basis,
+        "cost_window_contract": report.cost_window_contract,
+        "cost_window_coverage_proven": report.cost_window_coverage_proven,
+        "gross_return_method": report.gross_return_method,
         "turnover_bp": report.turnover_bp,
         "data_quality": report.data_quality,
         "warnings": list(report.warnings),

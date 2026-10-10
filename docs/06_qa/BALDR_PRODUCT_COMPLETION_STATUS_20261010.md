@@ -46,7 +46,7 @@ M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成
 - root：審查正式差異、執行驗證、保存進度；不覆寫其他文件整理工作。
 - F12 葉片：T38 已執行一次，正常轉場與 launcher→native PID 鏈核對通過；收藏前 QA SQLite 拒絕仍未解，下一候選先交 root 審核。
 - 原 2382 葉片：真正 Main／正式 reader 的一次同源計時候選，E 槽副本／私人狀態，D 原來源唯讀；目前尚未執行。見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)。
-- P08 Luna max：明示 binding／帳戶路徑切片已取得 50 PASS／1 skip；root 另證明週報對已含成本 NAV 重扣的缺口，成本 basis／未知歷史窗口候選尚未正式套用。金融 writer 與正常 UI 尚未開放。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)。
+- P08 Luna max：明示 binding／帳戶路徑切片取得 50 PASS／1 skip；成本 reader 修正另取得 38 PASS／1 skip、真 SQLite 成本邊界 1 PASS，歷史 basis／ledger-window 未知時不計算收益。逐 snapshot 證據 writer 與策略 UI 尚未完成。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)。
 
 真人目前可做[合成來源六步驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：窄窗、完整文字、返回、比較、收藏即時重開及關閉後重開。它使用 1000／1256，不替代原 2382／H20、真實推薦或整體四用途接受。
 

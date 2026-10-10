@@ -2786,7 +2786,7 @@ Portfolio-level rebalance evaluator 會依固定順序逐檔套用現金、單�
 
 Equal-weight benchmark 在 baseline 日凍結 constituents 與等額 units，後續不因新推薦或下市存活狀態替換成分，以避免 survivor bias。每日 benchmark ledger 只接受 causal price 並 append-only 保存；任一 frozen constituent 缺價即 fail-closed。
 
-Weekly paper report 同時列出 gross return、成本後 net return、固定成分 benchmark return、net excess、交易成本與 turnover；觀測交易日少於預期時標示 `DEGRADED / incomplete_trading_week`。報告固定 `research_only=true`、`investment_effectiveness_claim=false`。
+Weekly paper report 只有在 snapshot 成本基礎與逐 snapshot ledger 視窗可核對時，才可計算 gross／net／benchmark／net excess。現有歷史 snapshot 未保存上述證據，週報維持 `not_computable`，不猜 gross／net 或零成本。已含成交成本的 net NAV 不可再次扣成本；成本窗口採起始日含、結束日不含的 `[period_start, period_end)`。純 API 的成本加回 gross 僅為明示報告口徑，不是無成本反事實績效。報告固定 `research_only=true`、`investment_effectiveness_claim=false`。
 
 Position thesis contract 要求人工保存 entry thesis、entry/decision/available date、持有期限、下次 review date、source trace 與至少一條結構化 invalidation rule。規則 threshold 使用 Decimal，future-available thesis 會被拒絕；contract 固定 `auto_exit_allowed=false`。
 
@@ -3519,7 +3519,7 @@ Portfolio 首層分開判讀研究建議、待成交／Paper 佇列與已記錄�
 1. 顯示 daily status、最新可採用 snapshot 日期／ID、raw 累積 snapshot 筆數、現金、總值與最新安全持倉列；若 raw 最新列是未來日期，會保留 blocker／diagnostic 並排除於 current projection。
 2. 顯示 Equal Weight benchmark 觀測數、Paper Trade Ledger 狀態、成本合計、full／partial／reject／override 統計與 weekly report 狀態；缺 benchmark、ledger 或 ledger 欄位不完整時會明示 `partial`／`not_computable`，不會以 0 補值。
 3. 顯示 status／snapshot 路徑、blockers、warnings 與固定安全邊界。此分頁不建立資料庫、不寫正式 Portfolio、不調 Advice、不啟用 broker 或自動再平衡。
-4. 「計算最近週報」會以最近 `5` 筆（可調整 `1–31`）snapshot 的實際首尾日期，唯讀重建 Paper weekly evidence，顯示 gross／net／benchmark／net excess（bp）、成本、換手、觀測日數與 `OBSERVED`／`DEGRADED` 品質。觀測不足、期間邊界不一致、缺 turnover／execution gap 或缺 ledger 時，畫面會保留 `partial`／`degraded`／`not_computable` 與具體 blocker，不把缺口當成 0。
+4. 「計算最近週報」會以最近 `5` 筆（可調整 `1–31`）snapshot 的實際首尾日期，唯讀核對 Paper weekly evidence。歷史 snapshot 缺少版本化成本基礎或逐 snapshot ledger 視窗證據時，畫面保留成本列數與 `paper_weekly_snapshot_cost_basis_unknown`／`paper_weekly_snapshot_ledger_window_unproven`，週報為 `not_computable`，不顯示推測的收益。觀測不足、期間邊界不一致、缺 turnover／execution gap 或缺 ledger 時，同樣保留具體 blocker，不把缺口當成 0。新策略帳戶的 binding 也不等於逐筆績效資格。
 5. 「匯入 Paper 成交 CSV」只接受完整的 paper execution 欄位，先顯示檔案 hash、筆數與總成本，二次確認後才 append 至 Paper Trade Ledger；不會修改手動 Portfolio、Paper snapshot 或發送 broker 訂單。取消、欄位缺失、狀態／數量不一致或檔案在確認前變更時，整批拒絕且不建立 ledger。
 6. 「匯出成交範本」會建立空白 `paper_fills_template.csv`；範本只有欄位標題、不包含示例交易，且預設不覆寫既有檔案。請填入真實 execution 後，再按「匯入 Paper 成交 CSV」走預覽與二次確認。
 7. 每日 Paper／Decision Desk 排程預設採用最近一個已到達的台北 08:30 cutoff；若以 `--decision-at` 明確指定尚未到達的時間，Paper runner 會回報 `skipped_future_decision` 並不開啟 state／market DB，避免再產生 look-ahead row。
@@ -3637,6 +3637,8 @@ preview 會驗證 baseline safety flags、首日邊界、snapshot 日期唯一�
 ```
 
 此 CLI 與 Portfolio UI 使用相同的 query-only adapter；只會讀既有 SQLite，缺資料或 schema 時回報原因並以非零狀態結束，不建立資料庫。成本列的 `source_type` 必須保留 `paper_` provenance；手動交易、`broker_csv`、snapshot mark 或 virtual execution trace 不會被當成成交成本。`expected-trading-days` 是完整性標示，不是補值參數；週報的研究邊界固定為 `research_only=true`、`investment_effectiveness_claim=false`、`writes_allowed=false`、`broker_execution=false` 與 `auto_rebalance_allowed=false`。
+
+JSON evidence 使用 `paper-portfolio-weekly-evidence.v2`；`observed_cost_disclosure_total` 只加總目前讀到且通過檢查的成本列，任一成本讀取 blocker 出現就保持未知。`cost_disclosure_complete=false` 表示沒有完整視窗證明，不得把該金額當作完整成本。這兩個欄位目前僅在 JSON 輸出可見；UI 與 Markdown 顯示列數、狀態及阻擋原因。成本區間為 `[period_start, period_end)`，結束日成交留至下一期。遇到 basis／ledger-window blocker，先核對 snapshot 的版本化 basis、逐 snapshot receipt、portfolio/account、prior snapshot、決策時點與 fill/source event 對照；證據未齊前不手改 snapshot、不補零。此狀態 CLI 回傳 exit code 2，原始資料不會被修改。
 
 ### 10.4 持倉與交易歷史
 

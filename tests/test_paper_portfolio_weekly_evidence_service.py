@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from datetime import date
 import json
@@ -128,7 +129,7 @@ def test_future_weekly_period_is_not_computable(monkeypatch, tmp_path: Path) -> 
     assert any("paper_weekly_report_future_period:2026-08-21" in item for item in result.diagnostics)
 
 
-def test_adapter_rebuilds_cost_adjusted_report_from_existing_ledgers(tmp_path: Path) -> None:
+def test_adapter_discloses_costs_but_blocks_unversioned_snapshot_basis(tmp_path: Path) -> None:
     output_root, benchmark_db, cost_db = _build_inputs(tmp_path)
     state_db = output_root / "paper_portfolio" / "paper_portfolio.sqlite"
     before = {path: path.stat().st_size for path in (state_db, benchmark_db, cost_db)}
@@ -144,26 +145,25 @@ def test_adapter_rebuilds_cost_adjusted_report_from_existing_ledgers(tmp_path: P
         expected_trading_days=2,
     )
 
-    assert result.status == "ready"
-    assert result.weekly_report_status == "ready"
+    assert result.status == "degraded"
+    assert result.weekly_report_status == "not_computable"
     assert result.snapshot_count == 2
     assert result.benchmark_observation_count == 2
     assert result.cost_record_count == 1
-    assert result.report is not None
-    assert result.report.gross_return_bp == 1000
-    assert result.report.net_return_bp == 989
-    assert result.report.total_cost == Decimal("1.10")
-    assert result.report.turnover_bp == 100
-    assert result.report.research_only is True
-    assert result.report.investment_effectiveness_claim is False
+    assert result.report is None
+    assert "paper_weekly_snapshot_cost_basis_unknown" in result.blockers
+    assert "paper_weekly_snapshot_ledger_window_unproven" in result.blockers
+    assert result.observed_cost_disclosure_total == Decimal("1.10")
     assert {path: path.stat().st_size for path in (state_db, benchmark_db, cost_db)} == before
 
     payload = result.to_dict()
-    assert payload["schema_version"] == "paper-portfolio-weekly-evidence.v1"
-    assert payload["report"]["total_cost"] == "1.10"
+    assert payload["schema_version"] == "paper-portfolio-weekly-evidence.v2"
+    assert payload["report"] is None
+    assert payload["observed_cost_disclosure_total"] == "1.10"
+    assert payload["cost_disclosure_complete"] is False
 
 
-def test_latest_helper_uses_observed_boundaries_and_discloses_incomplete_week(tmp_path: Path) -> None:
+def test_latest_helper_discloses_boundaries_without_guessing_legacy_basis(tmp_path: Path) -> None:
     output_root, benchmark_db, cost_db = _build_inputs(tmp_path)
     result = PaperPortfolioWeeklyEvidenceService(
         output_root=output_root,
@@ -171,12 +171,13 @@ def test_latest_helper_uses_observed_boundaries_and_discloses_incomplete_week(tm
         cost_ledger_db_path=cost_db,
     ).build_latest(expected_trading_days=5)
 
-    assert result.status == "partial"
+    assert result.status == "degraded"
     assert result.period_start == "2026-08-20"
     assert result.period_end == "2026-08-21"
-    assert result.report is not None
-    assert result.report.observed_trading_days == 2
-    assert "incomplete_trading_week" in result.report.warnings
+    assert result.report is None
+    assert "paper_weekly_snapshot_cost_basis_unknown" in result.blockers
+    assert "paper_weekly_snapshot_ledger_window_unproven" in result.blockers
+    assert "incomplete_trading_week" in result.warnings
 
 
 def test_period_boundaries_must_exist_in_both_ledgers(tmp_path: Path) -> None:
@@ -270,3 +271,29 @@ def test_to_dict_is_json_serializable(tmp_path: Path) -> None:
     )
 
     json.dumps(result.to_dict(), ensure_ascii=False)
+
+
+def test_preopen_weekly_reader_excludes_end_day_fill_and_preserves_ledger(tmp_path: Path) -> None:
+    output_root, benchmark_db, cost_db = _build_inputs(tmp_path)
+    ledger = PaperTradeLedgerRepository(cost_db)
+    first_fill = ledger.list(portfolio_id="paper-main")[0]
+    ledger.append(replace(
+        first_fill,
+        fill_id="fill-end-boundary",
+        order_id="order-end-boundary",
+        source_event_id="event-end-boundary",
+        event_date="2026-08-21",
+        commission=Decimal("9.00"),
+    ))
+    before = cost_db.read_bytes()
+    result = PaperPortfolioWeeklyEvidenceService(
+        output_root=output_root,
+        benchmark_db_path=benchmark_db,
+        cost_ledger_db_path=cost_db,
+    ).build(period_start="2026-08-20", period_end="2026-08-21", expected_trading_days=2)
+
+    assert result.cost_record_count == 1
+    assert result.observed_cost_disclosure_total == Decimal("1.10")
+    assert result.report is None
+    assert "paper_weekly_snapshot_ledger_window_unproven" in result.blockers
+    assert cost_db.read_bytes() == before

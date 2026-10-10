@@ -1,5 +1,7 @@
 # 策略回測頁面功能清單與開發進度
 
+> **歷史功能快照**：本文的勾選狀態與未完成項目只供追溯，不代表目前功能缺口或完成度。功能契約看[Backtest Lab 功能說明](../02_features/BACKTEST_LAB_FEATURES.md)，操作、安全限制與排錯看[Application Manual](../07_guides/APPLICATION_MANUAL.md)（可由[操作手冊章節地圖](../07_guides/README.md)查找），目前狀態看[專案快照](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## 📋 整體架構
 
 **頁面布局**：左右分割（QSplitter）

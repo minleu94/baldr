@@ -2181,3 +2181,59 @@ CLI 範例原先以「替代方式」呈現，會讓讀者把幾個不同腳本�
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄調查證據、改動及尚待全量驗證範圍。 |
 
 沒有刪除或搬移文件、修改原始資料或重寫測試證據。未執行測試、未刷新 Graphify、未執行最終 repo-wide link／anchor scan。
+
+<a id="coverage-entry-193"></a>
+## 2026-10-10 為 Archive 歷史原件補上直開時間與權威提示
+
+直開複核確認 8 份 Archive 原件仍可能被當成現況：`DEVELOPMENT_ROADMAP_LEGACY_2026_06.md`、`SOLUTION_SUMMARY.md`、`API_INVESTIGATION_REPORT.md`、三份 Architecture governance 備忘，以及 `BACKTEST_LAB_CHECKLIST.md`／`BACKTEST_LAB_FAQ.md`。已在各原件檔首新增短警語，標明歷史範圍並連到對應 Snapshot、Roadmap、Architecture、資料管線或 Manual；原文證據、勾選狀態與歷史結論均未改寫。
+
+Archive README 的 API 調查導覽補上現行 `DATA_FETCHING_LOGIC.md`；Architecture Lifecycle 導覽改為區分現行模組邊界、目標遷移順序與文件治理規則，避免把文件生命週期誤當作現行 Architecture Governance 流程。新增引用目的地已逐一確認存在；完整 anchors 與 repo-wide link scan 仍待各目錄審閱完成後執行。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/09_archive/DEVELOPMENT_ROADMAP_LEGACY_2026_06.md`、`SOLUTION_SUMMARY.md`、`API_INVESTIGATION_REPORT.md` | 標示舊版路線圖、舊 UI／完成敘述與 API 觀察的歷史時點及現行查詢入口。 |
+| `docs/09_archive/ARCH_GOVERNANCE_CHECKLIST.md`、`ARCH_GOVERNANCE_LIFECYCLE.md`、`ARCH_VIOLATION_RESPONSE_POLICY.md` | 說明它們是早期備忘，不構成現行 gate、Architecture Lifecycle 或 exception register。 |
+| `docs/09_archive/BACKTEST_LAB_CHECKLIST.md`、`BACKTEST_LAB_FAQ.md` | 將舊 checklist、路徑、命令與策略建議限定為歷史參考，導回功能契約、Manual 與 Snapshot。 |
+| `docs/09_archive/README.md` | 修正 API 管線與 Architecture Lifecycle 的現行權威導向。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 Archive 直開風險判讀與覆核紀錄。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄來源、修訂範圍與待做全量驗證。 |
+
+未刪除或搬移文件、未修改原始資料，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+<a id="coverage-entry-194"></a>
+## 2026-10-10 降低 Superpowers 歷史計畫被當作現行授權的風險
+
+`docs/superpowers/` 共 167 個 tracked paths；既有角色盤點為 README、1 份目前接續中的 Baldr 計畫、96 份舊路徑導引，以及 69 份留在原路徑的歷史原文。README 對 ML／前瞻證據的「現行登記」引用不夠精確，因 External Validation Register 本身聲明是歷史快照；現已改為以 Snapshot／近期 QA 主題地圖判讀目前狀態，Register 僅作歷史追溯。另將 T86 recovery plan 加入主題閱讀入口。
+
+5 份保留 worker 指令、checkbox 或 Wave 授權語句的原件，在檔首標示計畫／handoff 日期及不構成目前執行授權：OOS Exposure audit plan、TWSE T86 recovery plan、V2.1–V2.5 delivery plan、External Evidence master plan 與 Terra handoff。歷史步驟與原授權文字未改寫。先前對全目錄 716 個相對連結的檔案目標檢查無 missing；新增導覽目標逐一確認存在，錨點及目前全 repo 掃描仍待最終階段。69 份歷史原文尚未逐篇全文審閱。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/superpowers/README.md` | 精確標示 External Validation Register 的歷史用途，並把 T86 plan 加入主題導覽。 |
+| 5 份 dated plan／handoff 原件（見上文） | 加入直開時可見的歷史時點與非現行授權警語，不改 checklist、步驟或原授權內容。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新抽查深度、權威路由與未全文閱讀限制。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄核對範圍、來源與後續驗證限制。 |
+
+未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+<a id="coverage-entry-195"></a>
+## 2026-10-10 更正 QA 清冊快照標籤並登錄當前 inventory 差異
+
+QA 唯讀審查確認 `FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md` 與 `TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md` 的 1303 來自 10/06 同日最終 registry 記錄；`FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md` 的 1284 是 P2 的 1283 加 R01 一筆後、同日後續 19 筆 registry 變更前的中間快照。已在三份文件明確標示日期快照，將舊 P2 標題改成歷史時點，並把 10/07 的 1303 描述改為當時記錄值，不再稱為目前工作樹狀態。
+
+2026-10-10 以 `scripts/audit_test_inventory.py --skip-pytest-collection` 做唯讀路徑／registry audit，沒有執行 pytest 或 test collection：`tests/` 下 filesystem 有 1,463 個 `.py` paths（Git index 有 1,461 個，另有 2 個 filesystem-only paths），靜態 registry 有 1,303 筆、160 個路徑未登錄、0 個 stale entries。計數表本身與 registry 一致；稽核器指定的治理文件 Markdown links、重複 Current 標題及 Formal entry 參照檢查均無錯誤。audit 仍因 160 個未登錄路徑回報 failed。這不表示這 160 個測試已通過或功能有問題；尚未逐路徑調查，不能把 registry 宣稱為全量 coverage。`DOCUMENTATION_INDEX.md` 已加入 2026-08-30 Formal readiness 歷史原文入口，修復 audit 所要求的精確索引參照。
+
+QA README 與四個主題索引核對 357 個本機 Markdown 連結目標，missing=0；簡化標題 slug 錨點檢查無缺漏。沿 QA README 的 QA／Archive Markdown links 可達 552/552 個安全範圍 QA Markdown，並走訪到 399 個 Archive Markdown；5 個主要導覽入口直接連至 200/555 個安全範圍根層 QA 證據。總目錄 564 paths 中，一個共享工作樹文件只核對 Git 路徑 metadata，未讀其內容或 links；安全範圍為 552 Markdown、10 JSON、1 HTML。非 Markdown 資產不計入 Markdown 可達率。
+
+將 `GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md` 的 2026-09-05 Forward Clock 標題明確標為 projection snapshot，並提示 2026-10-05 checkpoint 與現行 Snapshot 的權威界線。
+
+| 文件 | 處理 |
+|---|---|
+| 三份 QA test inventory matrices | 為 10/06 快照加時點說明、標出 1284 中間版本與 1303 後續版本，保留原歷史數據。 |
+| `docs/06_qa/GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md` | 將 9/5 projection 標成日期快照，導回 Snapshot／近期 QA。 |
+| `docs/06_qa/README.md` | 增加 repo-wide 文件狀態矩陣入口。 |
+| `docs/00_core/DOCUMENTATION_INDEX.md` | 增加 8/30 Formal readiness 歷史 Archive 原文入口，QA 舊路徑仍作相容導引。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 QA 可達性、安全範圍、inventory audit 結果及未解的 160 筆 registry 差異。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄結果、判讀與未解範圍。 |
+
+未刪除或搬移文件、未改 registry 或 test files；未執行測試收集、Graphify 刷新或最終 repo-wide link／anchor scan。受保護共享 QA 文件保持未讀未動。

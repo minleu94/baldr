@@ -1,5 +1,7 @@
 # TWSE T86 Candidate Recovery Pilot Implementation Plan
 
+> **歷史實作計畫（2026-07-13）**：本頁的 worker 指令、步驟與 checklist 只記錄當時計畫，不代表目前優先序、source acceptance 或執行授權。現行資料管線看[資料擷取邏輯](../../03_data/DATA_FETCHING_LOGIC.md)，目前狀態與 Gate 看[專案快照](../../00_core/PROJECT_SNAPSHOT.md)及[近期 QA 主題地圖](../../06_qa/README.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立固定最近 20 個已完成交易日的 TWSE T86 official raw-envelope candidate recovery pilot。

@@ -4,7 +4,9 @@
 
 > 15 capability、canonical lineage verifier 與 operations handoff 見 [V3.3 Engineering Closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)；本控制中心仍是外部 Gate hub。
 
-## Current Forward Clock projection（2026-09-05）
+## Forward Clock projection snapshot（as of 2026-09-05）
+
+> 下列表格是截至 2026-09-05 14:32（Asia/Taipei）的 projection；文末另記 2026-10-05 checkpoint。兩者都是日期化證據，不是目前專案狀態；現況以[專案快照](../00_core/PROJECT_SNAPSHOT.md)與近期 QA 為準。
 
 | Clock | 今日狀態 | 可引用證據 | 缺失／degraded／failure | 下一步 |
 |---|---|---|---|---|

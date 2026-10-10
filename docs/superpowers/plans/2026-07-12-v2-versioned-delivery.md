@@ -1,5 +1,7 @@
 # V2.1–V2.5 Versioned Delivery Master Plan
 
+> **歷史版本交付計畫（2026-07-12）**：本頁的版本拆分、步驟與核取狀態不代表目前版號優先序或已獲執行授權。長期成熟度階梯看[V2.1–V4.0 Version Roadmap](../../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)，工程順序看[6M 工程 Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)，目前狀態看[專案快照](../../00_core/PROJECT_SNAPSHOT.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 將 V2.1–V2.5 交付拆成獨立工程 readiness 與正式 closeout commit，讓每版可驗證、可回滾並明確保留人工作業。

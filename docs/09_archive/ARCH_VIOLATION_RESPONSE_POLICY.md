@@ -1,5 +1,7 @@
 # Architecture Violation Response Policy
 
+> **早期架構違規處理備忘（2026-06-24 自 core 歸檔）**：本頁不是現行 enforcement policy 或例外登記簿。現行模組邊界看[系統架構](../01_architecture/system_architecture.md)，目標設計不變條件看[Final Architecture Invariants](../01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md)；例外與轉換條件須以具名 owner 和 exit condition 的當前決策為準。
+
 ## A) 可暫時容忍的情況
 - 既有跨層依賴，且無資源立即修正  
 - Legacy 模組仍被舊流程使用，但已明確標示  

@@ -509,7 +509,7 @@ These are completed, dated engineering/readiness records. Current source accepta
   - 早期解決方案快照；原文所列 UI 入口仍指向舊 `ui_app/`，不得據此判讀目前入口或操作。現行 UI／操作看 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
 - **[API_INVESTIGATION_REPORT.md](API_INVESTIGATION_REPORT.md)**
-  - 2025-12-08 的歷史 API 調查；前段「今天／本週」待辦屬當時工作，不能當成目前待辦或現行 API 契約。現行架構與操作分別看 [system_architecture](../01_architecture/system_architecture.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。
+  - 2025-12-08 的歷史 API 調查；前段「今天／本週」待辦屬當時工作，不能當成目前待辦或現行 API 契約。現行資料管線看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md)，架構與操作分別看 [system_architecture](../01_architecture/system_architecture.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。
 
 - **[ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md](ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)**
   - 原 6M Roadmap 中 V1 / Month 1-6 / V1.1-V1.9 的歷史完工紀錄；目前工程順序仍以 [6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 為準。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
@@ -545,10 +545,10 @@ These are completed, dated engineering/readiness records. Current source accepta
   - 早期架構治理自檢清單；2026-06-24 自 `docs/00_core/` 歸檔。目前架構權威以 `docs/01_architecture/system_architecture.md` 為準。
 
 - **[ARCH_GOVERNANCE_LIFECYCLE.md](ARCH_GOVERNANCE_LIFECYCLE.md)**
-  - 早期架構治理生命週期備忘；2026-06-24 自 `docs/00_core/` 歸檔。目前文件治理以 `docs/00_core/DOC_COVERAGE_MAP.md` 與 `docs/00_core/DOCUMENTATION_STRUCTURE.md` 為準。
+  - 早期架構治理生命週期備忘；2026-06-24 自 `docs/00_core/` 歸檔，並非現行架構治理流程。模組邊界看 [system_architecture](../01_architecture/system_architecture.md)，目標遷移順序看 [FINAL_MIGRATION_SEQUENCE](../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md)；DOC_COVERAGE_MAP 與 DOCUMENTATION_STRUCTURE 只規範文件治理。
 
 - **[ARCH_VIOLATION_RESPONSE_POLICY.md](ARCH_VIOLATION_RESPONSE_POLICY.md)**
-  - 早期架構違規處理政策備忘；2026-06-24 自 `docs/00_core/` 歸檔。目前架構邊界與高風險契約以 `docs/01_architecture/system_architecture.md` 為準。
+  - 早期架構違規處理政策備忘；2026-06-24 自 `docs/00_core/` 歸檔，不是現行 enforcement policy 或例外登記簿。目前架構邊界以 [system_architecture](../01_architecture/system_architecture.md) 為準，目標設計不變條件見 [FINAL_ARCHITECTURE_INVARIANTS](../01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md)。
 
 - **[MASTER_GOAL_PLAYBOOK_2026_09_06.md](MASTER_GOAL_PLAYBOOK_2026_09_06.md)**
   - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；01–07 的逐卡 bounded 工程交接見[歷史封存組](#2026-10-08-task-loop-01-07-historical-handoffs)，08-B 中央整合收據仍在 `docs/06_qa/TASK_LOOP_08_HANDOFF.md`。逐卡與中央工程整合不代表正式來源接受、自然前瞻、真實 Paper fills、具名 Formal review 或 V4 closeout 完成。

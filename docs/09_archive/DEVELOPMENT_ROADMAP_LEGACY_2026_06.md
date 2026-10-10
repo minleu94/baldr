@@ -1,5 +1,7 @@
 # DEVELOPMENT_ROADMAP
 
+> **歷史快照（2026-06-13 前封存的舊路線圖）**：本頁的 7-tab 架構、Phase、Done 與 Living Section 只代表舊版記錄，不代表目前產品狀態或工作順序。現況與優先序看[專案快照](../00_core/PROJECT_SNAPSHOT.md)，產品方向看[產品 Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)，工程順序看[6M 工程 Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)。
+
 ## 系統定位（System Vision）
 
 **這不是一個「每天吐股票的工具」；baldr 是一套「可驗證、可回溯、可演化」的台股研究與投資決策工作台。**

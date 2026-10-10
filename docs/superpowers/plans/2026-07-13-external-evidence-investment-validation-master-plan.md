@@ -1,5 +1,7 @@
 # External Evidence and Investment Effectiveness Validation Master Implementation Plan
 
+> **歷史計畫（2026-07-13）**：本頁的 EV/Wave 拆分、核准狀態與 checklist 只記錄當時計畫，不構成目前執行授權。現況看[專案快照](../../00_core/PROJECT_SNAPSHOT.md)，工程順序看[6M 工程 Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)，Gate 判讀看[近期 QA 主題地圖](../../06_qa/README.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在不修改正式 Score、Recommendation、Portfolio、Exit、scheduler 或交易路徑的前提下，建立 EV1～EV5 的因果 evidence、source eligibility、formal OOS、Rule-vs-ML comparison 與 non-applying promotion review 能力。

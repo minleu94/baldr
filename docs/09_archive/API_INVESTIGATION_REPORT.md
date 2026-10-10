@@ -1,5 +1,7 @@
 # 台灣證交所 API 調查報告
 
+> **歷史調查（2025-12-08）**：307 回應、原因推測與當時的「今天／本週」待辦只代表該次觀察，不是現行 endpoint 狀態、API 契約或待辦。現行資料管線看[資料擷取邏輯](../03_data/DATA_FETCHING_LOGIC.md)；更新與排錯看[每日資料更新指南](../03_data/daily_data_update_guide.md)及[Application Manual](../07_guides/APPLICATION_MANUAL.md)，系統資料流看[系統架構](../01_architecture/system_architecture.md)。
+
 ## 🔍 調查結果
 
 ### 1. 官方公告狀態

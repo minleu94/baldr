@@ -1,5 +1,7 @@
 # 策略回測常見問題解答
 
+> **歷史操作快照**：本文的路徑、行號、流程與命令只供追溯，不代表目前可執行操作或策略建議。功能契約看[Backtest Lab 功能說明](../02_features/BACKTEST_LAB_FEATURES.md)，操作與安全限制看[Application Manual](../07_guides/APPLICATION_MANUAL.md)（可由[操作手冊章節地圖](../07_guides/README.md)查找），目前狀態看[專案快照](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## 1. 選股清單存儲位置和格式
 
 ### 存儲位置

@@ -1,4 +1,6 @@
 # Architecture Governance Checklist
+
+> **早期架構治理備忘（2026-06-24 自 core 歸檔）**：本清單不等同現行強制審查 gate、例外清冊或實作狀態。現行模組邊界看[系統架構](../01_architecture/system_architecture.md)，目標設計不變條件看[Final Architecture Invariants](../01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md)。
 > 用途：在新增模組/功能前完成自檢，避免跨層依賴與 Legacy 擴散。
 
 ## A) 新增模組 / 新增檔案

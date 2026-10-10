@@ -1,5 +1,7 @@
 # 2025 OOS Exposure／Custody Audit Execution Plan
 
+> **歷史執行計畫（2026-07-13）**：本頁的工作切片與交接狀態只記錄當時計畫，不授權目前執行或 formal OOS。現況與優先序看[專案快照](../../00_core/PROJECT_SNAPSHOT.md)，工程順序看[6M 工程 Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)，Gate 判讀看[近期 QA 主題地圖](../../06_qa/README.md)。
+
 > 狀態：可交付 Terra 的第一個受控執行切片；不是 audit 結果，也不授權 formal OOS
 >
 > 上位設計：[External Evidence Design](../specs/2026-07-13-external-evidence-investment-validation-design.md)

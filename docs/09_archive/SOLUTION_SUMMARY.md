@@ -1,5 +1,7 @@
 # 解決方案總結
 
+> **歷史方案快照**：本文列出的舊 UI 入口、腳本與「已完成」描述，不作目前程式入口、功能或完成度依據。現況看[專案快照](../00_core/PROJECT_SNAPSHOT.md)，架構看[系統架構](../01_architecture/system_architecture.md)，UI 操作看[Application Manual](../07_guides/APPLICATION_MANUAL.md)，資料文件入口看[資料文件導覽](../03_data/README.md)。
+
 ## ✅ 已完成的工作
 
 ### 1. 數據更新系統

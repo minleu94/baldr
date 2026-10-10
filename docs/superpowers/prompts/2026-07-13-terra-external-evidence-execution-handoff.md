@@ -1,5 +1,7 @@
 # Terra External Evidence Execution Handoff and Prompt Pack
 
+> **歷史 handoff／prompt pack（2026-07-13）**：下列 Wave 授權與可啟動狀態只代表當時的交接記錄，不是目前授權，也不應據此啟動 worker。現況與優先序看[專案快照](../../00_core/PROJECT_SNAPSHOT.md)，Gate 判讀看[近期 QA 主題地圖](../../06_qa/README.md)。
+
 > Handoff 日期：2026-07-13
 >
 > 狀態：ready for explicit execution authorization；本文件本身不啟動 worker

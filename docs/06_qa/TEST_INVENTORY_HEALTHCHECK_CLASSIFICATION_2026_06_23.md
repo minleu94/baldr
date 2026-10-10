@@ -1,6 +1,10 @@
 # 測試清冊與 Healthcheck 執行邊界
 
+> 本文件是日期化清冊快照；各段的「Current／目前」數字只描述該段記錄時點，不代表目前工作樹。2026-10-10 的唯讀路徑／registry 差異見[文檔治理狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。
+
 ## 2026-10-06 machine refresh
+
+> 此節是當日最終記錄的 1303 筆 registry 快照；同日 1284 是 R01 後的中間版本，當前工作樹另有未對帳差異，見上方矩陣。
 
 R01 新增唯一 test 檔登錄為 service-oracle-research-backtest：原 Registry writer 合成保存→lookup/service same-bytes bounded reader→新程序、exact identity/DataFrame/source SHA/mtime oracle；所有 writer僅tmp fixture，無正式資料／Task／Native／fit。超容量／aggregate／取消／替換／消失／marked sidecar與lineage屬讀取服務驗證，不是direct UI bridge；舊1283分類、direct12、support/runner API不改。沿用64/256MiB caller budget，不降低20/200GiB reserve。原worker101 focused與73 adjacent/1skip按各自scope核raw，不累加為全App。中央入冊與 final union收據另存output/qa；歷史I156／P2節保留。
 
@@ -592,4 +596,4 @@ H20C01 兩新測試：cohort 為 service-oracle-recommendation，widget 為 UI c
 前輪 f344c0d7 的 tests/test_baldr_daily_bbands30_upper.py 本輪補精確登錄 portfolio-decision-runtime oracle；來源版號 guard 測試已完成，補分類不宣稱重跑該 gate。總1302，missing／stale／docdrift待本輪audit核。
 
 
-2026-10-07 BBP01 已依直接真人批准採入本機 dev；原全母體 v3 test 登記為 portfolio-decision-runtime oracle。當前1303檔／1303項、direct12不變；前段1302是三包整合歷史時點，最終metadata audit收據另存中央QA。
+2026-10-07 BBP01 已依直接真人批准採入本機 dev；原全母體 v3 test 登記為 portfolio-decision-runtime oracle。該次記錄為 1303 檔／1303 項、direct12 不變；前段 1302 是三包整合歷史時點，最終 metadata audit 收據另存中央 QA。這些數字是當時快照；2026-10-10 工作樹路徑與 registry 的未對帳差異見[狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。

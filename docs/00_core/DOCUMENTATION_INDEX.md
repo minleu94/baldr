@@ -54,6 +54,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [ML allocation Formal input readiness（2026-09-20，事件前快照）](../09_archive/ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 前的 candidate-only 設定與當時缺件，不是 9/21 實際驗收；目前 Gate／狀態看 Snapshot、Gate 7 與 External Validation Register。原 QA 路徑保留導引，bytes/hash 見 [Coverage History Entry 102](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
 
+[Formal Input Readiness Refresh（2026-08-30，歷史快照）](../09_archive/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md)：保存當日 strict `0/3` 與 owner-controlled input 盤點；原 QA 路徑是相容導引，不代表目前 validator 結果，現況以 Snapshot 為準。
+
 [排程與週資料受託審查（2026-09-14，歷史）](../09_archive/SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md)：保存 `reviewed_with_follow_up` 與未通過正式採認的當日結論，不代表目前 scheduler 狀態或 CSV／SQLite 全量一致；現況看 Snapshot／近期排程 QA。原 QA 路徑保留導引，bytes/hash 見 [Coverage History Entry 103](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。
 
 [唯讀服務合作式取消 QA（2026-09-30，歷史）](../09_archive/READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md)：保留當次 125 passed／1 failed 與另一份 V5 acceptance 的分開結果，未改寫原始證據；raw pytest logs 為 ignored sidecar。現行契約看程式／測試，bytes/hash 見 [Coverage History Entry 104](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。

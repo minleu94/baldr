@@ -1,6 +1,6 @@
 # Windows／Codex 排程運維與搬機指南
 
-本指南維護排程用途與搬機契約；實際任務清單、帳戶、絕對路徑、XML、模型與回讀證據保存於本機 ignored 清冊。2026-10-06 查核見 [排程稽核](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md)。本文件不是自動註冊、啟用或切換 exe 的授權。
+本指南維護排程用途與搬機契約；實際任務清單、帳戶、絕對路徑、XML、模型與回讀證據保存於本機 ignored 清冊。最新設定與 producer 回讀見 [2026-10-09 排程修正 QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)；日常唯讀核查規則見[全排程稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。[2026-10-06 排程稽核](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md)保留較早的時點證據。本文件不是自動註冊、啟用或切換 exe 的授權。
 
 ## 排程的三個層次
 
@@ -99,3 +99,4 @@ Windows 可用 `Get-ScheduledTask`／`Get-ScheduledTaskInfo`／`Export-Scheduled
 新機 Task 設定有誤時，由使用者停用新機 writer，保存失敗證據，核對沒有舊機雙 writer後恢復已核舊設定。程序版本回退不等於資料 schema 可回退；保留資料與備份。模型欄位或 prompt 修改前保存原 TOML bytes／SHA、exact diff與readback；回退前先比較目前與本輪 after pin，若他人已更新，不整檔覆蓋，僅撤回本輪欄位。公版文件可逐項撤回新增段落，不回復他人 dirty 檔。
 
 2026-10-06：新增排程層次、21 Task契約、私有清冊與搬機／驗收／回滾檢查表。沒有註冊、啟用、手動 trigger、資料／模型寫入或 Task executable 切換。
+2026-10-09：加入最新 21-task 設定與 producer 回讀 QA、共用唯讀稽核 Runbook 入口；保留 10/06 稽核作為歷史時點證據，沒有更改操作授權。

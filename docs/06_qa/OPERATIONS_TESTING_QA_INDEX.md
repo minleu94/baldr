@@ -6,7 +6,7 @@
 
 | 要查的內容 | 證據入口 |
 |---|---|
-| 指定時點的排程修復、失敗與後續補充 | [9/17 A 線狀態審查歷史](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) → [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史) → [9/29 完整 21-task inventory](SCHEDULED_OPERATIONS_REPAIR_20260929.md) → [9/30 bounded repair](SCHEDULED_OPERATIONS_REPAIR_20260930.md) → [10/08 後續修復](BALDR_SCHEDULE_REPAIR_20261008.md)；日期化收據不代表目前 scheduler readiness。 |
+| 指定時點的排程修復、失敗與後續補充 | [10/09 排程與 Codex automation 修正](BALDR_SCHEDULE_REMEDIATION_20261009.md) → [全排程共用唯讀稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) → [10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [9/30 bounded repair](SCHEDULED_OPERATIONS_REPAIR_20260930.md) → [9/29 完整 21-task inventory](SCHEDULED_OPERATIONS_REPAIR_20260929.md) → [9/17 A 線狀態審查歷史](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) → [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史)；日期化收據不代表目前 scheduler readiness。 |
 | Formal scheduler readiness audit（9/20） | [current-only 唯讀審查](FORMAL_SCHEDULER_READINESS_AUDIT_2026_09_20.md) | 只描述 2026-09-20 的實際觀測與 decision date，不代表下一交易日或目前 scheduler readiness，也沒有執行排程或寫入。 |
 | Gate 2–7 工程交接與外部驗證 | [Engineering Control Center](GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md) → [External Validation Register](GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) → [Gate 7](GATE_7_ML_SHADOW_ENGINEERING.md)；Register 是 append-only 外部驗證登錄，當前狀態看 Snapshot 與對應 Gate。 |
 | 測試資產候選與保留判斷 | [結案報告](../09_archive/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) → [V2 方法補正](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md) → [V1 撤回紀錄](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)；139 組／1,107 檔為 bounded 範圍，不代表完整測試母體 |
@@ -14,7 +14,7 @@
 
 ## 其他常用路徑
 
-- **排程與自動化**：[10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [10/07 修復](BALDR_SCHEDULE_REPAIR_20261007.md) → [10/06 稽核](BALDR_SCHEDULE_AUDIT_20261006.md)；需要歷史初始狀況再讀 [9/30 收據](SCHEDULED_OPERATIONS_REPAIR_20260930.md)，8/27 舊 health snapshot 已移至 [Archive](../09_archive/README.md#2026-10-09-qa-historical-snapshots-scheduler-health-and-ux08-controller)。
+- **排程與自動化**：[10/09 修正與最新回讀](BALDR_SCHEDULE_REMEDIATION_20261009.md) → [10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [10/07 修復](BALDR_SCHEDULE_REPAIR_20261007.md) → [10/06 稽核](BALDR_SCHEDULE_AUDIT_20261006.md)；共用唯讀查核步驟見[排程稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)，需要歷史初始狀況再讀 [9/30 收據](SCHEDULED_OPERATIONS_REPAIR_20260930.md)，8/27 舊 health snapshot 已移至 [Archive](../09_archive/README.md#2026-10-09-qa-historical-snapshots-scheduler-health-and-ux08-controller)。
 - **Data Update 效能基線**：[2026-08-28 量測與平行化邊界](DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)；目前操作見 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。基線明示 production workers／併發尚未由該次 probe 授權，後續使用前須查現行 Snapshot 與排程 QA。
 - **策略／評分 Walk-forward 比較**：[Walk Forward Comparison Report](WALK_FORWARD_COMPARISON_REPORT.md)。報告只有 10 檔、單一策略及指定成本設定的 bounded 樣本；應按報告條件判讀，不代表全市場或所有策略效能。
 - **測試路由與人工驗收**：[Feature-to-test routing matrix](FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)、[Full App healthcheck coverage mapping](FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)、[test inventory healthcheck classification](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[早期 Full App healthcheck（已歸檔）](../09_archive/FULL_APP_HEALTHCHECK_2026_06_16.md)、[歷史 V1 release checklist](../09_archive/V1_RELEASE_CHECKLIST_2026_06_30.md)。Coverage mapping 是目前人工驗收／workbench 範圍索引；16 日報告只是早期 smoke 快照。

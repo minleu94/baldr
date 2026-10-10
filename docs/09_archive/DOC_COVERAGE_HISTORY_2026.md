@@ -1835,3 +1835,43 @@ docs/09_archive/README.md 已加入歷史快照入口，ROADMAP_6M_ENGINEERING.m
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 記錄使用者確認後的排程文件覆核範圍、盤點數更新及 P8 候選撤回。 |
 
 未移動或刪除文件，未執行測試，未修改排程 QA、原始 QA 收據、SHA、其他 agent 的 F03 follow-up 工作樹變更或 Scoped SSOT。
+
+<a id="coverage-entry-173"></a>
+## 2026-10-09 區分 Recommendation ML 與 Portfolio Allocation Gate 7 證據
+
+`docs/01_architecture/README.md` 已明確區分全域 Recommendation ML Shadow、Gate 7 Portfolio Allocation ML 與 Personal H20；`docs/01_architecture/system_architecture.md` 的 ML 路線表仍把 Gate 7 allocation QA 同時列為 Recommendation ML 的狀態依據，容易讓讀者把配置模型研究證據誤認為個股推薦模型的證據。本次將全域 Recommendation ML 一列改為指向 Snapshot（目前狀態）及 Target ML Shadow Layer（設計邊界），Gate 7 QA 僅保留在 Portfolio Allocation ML 一列。另核對 `target_system_architecture.md` §10.11，該節已明確標註 `CANDIDATE` 為非即時狀態摘要，並導向 Snapshot／最新 QA，因此保留不改。
+
+| 文件 | 本次處理 |
+|---|---|
+| `docs/01_architecture/system_architecture.md` | 移除 Recommendation ML Shadow 對 Portfolio Allocation Gate 7 QA 的錯誤狀態引用；目前狀態回到 Snapshot，設計參照留在 Target Architecture。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 將此證據邊界修正列為 Entry 173，並把 §10.11 已有的狀態提示標為已查證、維持現況。 |
+
+未改動產品 Roadmap、模型狀態或 QA 原文；沒有把 Allocation 的工程訓練結果擴張為 Recommendation ML 驗收證據。
+
+<a id="coverage-entry-174"></a>
+## 2026-10-09 校正 V2.2 weekly review 流程的時點與導覽
+
+文件實際位置是 `docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md`，由 Guides README 與 Manual 引用；它仍描述 working-copy weekly review 的受控操作，不因 2026-07-12 日期而搬入 Archive。核對 CLI 原始碼確認 `--plan-action-items`、`--confirm-action-items`、`--save-history`、`--list-history`、`--action-owner` 仍存在；手冊列出的 smoke、review CLI 及週排程註冊／解除註冊入口也存在。
+
+runbook 原安全條款把當日較早的 `0/3` readiness 數字寫成現況；同日較晚的 [Week 1 QA](../09_archive/V2_2_WEEK1_REVIEW_2026_07_12.md) 已保存 `1/3`，另有 [Engineering Readiness](../09_archive/V2_2_ENGINEERING_READINESS_2026_07_12.md) 原件保留早期快照。修正後分清兩份證據時點，並引用 10/09 排程 QA 的 10/04 `pending_human_review` collection 結果；collection 等待人工判讀不等同三週 append-only 人工 history。Manual 將 7/12 的 `1/3` 明確標為歷史時點並連到 Week 1 QA。未從舊文件推定後續週數或目前人工 history 累積值。
+
+| 文件 | 本次處理 |
+|---|---|
+| `docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md` | 移除混入操作條款的舊現況數字，標明 readiness 與 Week 1 QA 的時間差，連到最新 collection QA 並區分兩種狀態。 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 保留 7/12 歷史 `1/3` 結果，新增來源連結與目前 collection 狀態的判讀界線。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 將本候選標為已核對修正，並更正實際文件路徑位於 `07_guides/`。 |
+
+未修改或重算 7/12 原始 QA 證據，未補造 Week 2／Week 3 記錄，未改 scheduler 授權或 Gate 狀態，未執行測試。
+
+<a id="coverage-entry-175"></a>
+## 2026-10-09 封存舊 Evidence Scheduled Morning Check 操作指南
+
+`docs/07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md` 原指南只覆蓋四個較早的 daily task，後續 Codex heartbeat 的 21-task read-only 查核已由 [`BALDR_SCHEDULED_AUDIT_RUNBOOK.md`](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) 統一承接。舊指南作為逐位元組副本移入 Archive，舊路徑改為短導引，避免把四-task 範圍讀成完整現況。來源與封存副本皆為 12,935 bytes，SHA-256 均為 `380351AC0485692C075E9A053D2D68963526288CE1DDD952A8083CB28FB19427`。
+
+全 repo 精確路徑搜尋只找到 Markdown 閱讀入口及歷史 plan／QA 引用，沒有程式、測試或排程 writer／consumer 依賴該指南路徑。中央 Index、Guides README、Application Manual 與 `PROJECT_NAVIGATION.md` 已切換到共同 Runbook；Archive README 新增原文入口，歷史 Catalog、舊 QA 與 plan 的連結由舊路徑轉址承接。EVIDENCE rehearsal 是隔離 working-copy 工程演練指南，與排程監測範圍不同，仍由其 QA closeout 指向，因此保留於指南區。
+
+| 原路徑 | 封存原文 | 原件驗證 | 導覽處理 |
+|---|---|---|---|
+| `docs/07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md` | [EVIDENCE_SCHEDULED_MORNING_CHECK_HISTORY_20261009.md](EVIDENCE_SCHEDULED_MORNING_CHECK_HISTORY_20261009.md) | 12,935 / `380351AC0485692C075E9A053D2D68963526288CE1DDD952A8083CB28FB19427` | 舊路徑短導引；中央索引、Guide README、Manual 與 Project Navigation 改連 21-task Runbook。 |
+
+未刪除原文，未改 QA receipt／SHA，未改 Windows Task 或 Codex automation，未改 Scoped SSOT；只保留新 Archive README 的直接入口及舊路徑相容轉址。

@@ -14,7 +14,7 @@
 
 | 路線 | 用途與目前邊界 | 主要狀態依據 |
 |---|---|---|
-| 全域 Recommendation ML Shadow | 研究 challenger、校準、風險訊號與 shadow 比較。仍受 formal input、自然成熟證據與 promotion gate 約束；不能由此推論 `ScoringEngine` 已使用 ML。 | [Target ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer)、[Gate 7 ML QA](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) |
+| 全域 Recommendation ML Shadow | 研究 challenger、校準、風險訊號與 shadow 比較。仍受 formal input、自然成熟證據與 promotion gate 約束；不能由此推論 `ScoringEngine` 已使用 ML。 | [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)（目前狀態）、[Target ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer)（設計邊界） |
 | Gate 7 Portfolio Allocation ML | 獨立的投組配置模型研究與訓練 artifact；其 OOF／訓練結果屬 research evidence，不等於 Formal OOS、正式 alpha 或生產配置。 | [Gate 7 ML QA](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) |
 | Personal H20 Gross | 個股研究頁的個人模型唯讀投影。gross 排序、報酬 head 與 canonical 機率 head 必須分開判讀；它不授予全域 Recommendation／Portfolio ML 資格。 | [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) |
 | 通用 `MLAnalyzer` | `analysis_module/ml_analysis/` 中的通用模型分析程式屬另一程式入口；其存在不等於以上任一治理路線已採用該模型。 | [MLAnalyzer 原始碼](../../analysis_module/ml_analysis/ml_analyzer.py) |

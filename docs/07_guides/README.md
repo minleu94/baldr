@@ -48,8 +48,6 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
   - `tests/` 目錄結構、測試分類、契約邊界與 healthcheck runner 規範
 
 ### 3. 日常維護與覆盤 Runbook
-- **[EVIDENCE_SCHEDULED_MORNING_CHECK.md](EVIDENCE_SCHEDULED_MORNING_CHECK.md)**
-  - Evidence scheduled dry-run 的每日早晨人工檢查步驟與停用方式
 - **[V2_2_WEEKLY_REVIEW_RUNBOOK.md](V2_2_WEEKLY_REVIEW_RUNBOOK.md)**
   - V2.2 人工 Evidence Review、working-copy DB 安全操作、sidecar 收集與 append-only history 操作邊界
 - **[P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md](P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md)**

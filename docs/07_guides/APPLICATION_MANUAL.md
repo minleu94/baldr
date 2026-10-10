@@ -3229,7 +3229,7 @@ JSON 的 `source_lineage` 保留原 review/decay ID/hash 與來源路徑；`sour
 
 V2.2 的固定三週人工覆盤格式與 working-copy 操作順序見 `docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md`。每週必填週期日期、資料 freshness、dry-run 狀態、warnings、reviewed / dismissed / follow-up、owner、working-copy DB path、`--save-history` 結果與下一步；少任何一項都不能計入三週 Gate。先以既有 copy/guard 建立隔離副本，再產生唯讀週報；取得明確人工核准後，在同一次 working-copy 操作使用 `--confirm-action-items --save-history --action-owner`，最後以 `--list-history` 唯讀核對。不要對正式 DB 保存 history；production-like DB 強制拒絕，沒有 `--allow-production-like-db` 可用。
 
-截至 2026-07-12，Week 1 已完成並保存於隔離 working-copy，weekly history 為 `1/3 waiting_for_time`；multi-day dry-run 為 `3/3 ready`，scheduler 尚未獲核准且 `production_scheduler_allowed=false`。因此不可建立 V2.2 formal closeout；replay、fixture、raw scheduled report、單次 smoke 或手動補表都不能補足 Week 2 / Week 3。三週紀錄完成後，仍需人工完成 backup / rollback / recovery 演練與 scheduler approval package；日後若 scheduler 獲准，也只能保存 evidence，不得自動交易或套用 lifecycle action。
+截至 2026-07-12，Week 1 已完成並保存於隔離 working-copy，weekly history 為 `1/3 waiting_for_time`；multi-day dry-run 為 `3/3 ready`，scheduler 尚未獲核准且 `production_scheduler_allowed=false`。這是當日狀態，不是目前進度；原始週期證據見 [V2.2 Week 1 QA](../09_archive/V2_2_WEEK1_REVIEW_2026_07_12.md)。10/09 最新排程 QA 記錄 10/04 weekly collection 為 `pending_human_review`，這是 sidecar collection 狀態，不能取代三週人工 review history。不可建立 V2.2 formal closeout；replay、fixture、raw scheduled report、單次 smoke 或手動補表都不能補足 Week 2 / Week 3。三週紀錄完成後，仍需人工完成 backup / rollback / recovery 演練與 scheduler approval package；日後若 scheduler 獲准，也只能保存 evidence，不得自動交易或套用 lifecycle action。
 
 ### 9.9.3 Evidence Review Manual Smoke / Multi-day Dry-run
 
@@ -3305,7 +3305,7 @@ Codex app 另外有一個 read-only daily automation：`baldr scheduled evidence
 
 另有已更新的 `paper` heartbeat「晚間學習與 Paper 排程驗收」，每天約 06:20（`America/Los_Angeles`）唯讀檢查 Paper／ML 排程及同次 run receipts。兩個 Codex heartbeat 都採美西本地時間，依時區規則跨夏令／標準時間切換，不應手動換成固定 UTC trigger；TOML readback、task/run identity 與 prompt 內要求的 immutable receipt/hash 綁定需同一 run。通知僅針對有意義變化，例行無變化保持安靜。這兩項 automation 不改 Windows Task Scheduler，不重跑 producer、訓練或 Paper action。
 
-明早檢查步驟見 `docs/07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md`。Scheduler QA 紀錄見 `docs/06_qa/POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md`；舊 PowerShell execution policy block 歷史見 `docs/06_qa/POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md`。
+目前 21 個 Task 與兩個 Codex heartbeat 的唯讀查核步驟見[全排程稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。早期 Evidence dry-run 的 QA 收據見 [2026-07-12 scheduled pipeline QA](../09_archive/POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)；舊 PowerShell execution policy block 歷史見 [2026-07-12 QA](../09_archive/POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)。
 
 這些 wrappers 中只有 `baldr-data-update-quick-daily` 會寫 market data CSV / SQLite；evidence dry-run 與 Codex read-only 摘要不寫 production evidence DB、不跑 UI、不讀 UI state、不做 portfolio / lifecycle action，也不代表任何訊號或事件類型已被證明有效。
 

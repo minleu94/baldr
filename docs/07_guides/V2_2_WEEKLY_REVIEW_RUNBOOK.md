@@ -5,7 +5,8 @@
 
 ## 1. 開始前的安全邊界
 
-- 現況為 weekly `0/3 waiting_for_time`、multi-day `3/3 ready`、`production_scheduler_allowed=false`；不能 formal closeout。
+- 本文件是 2026-07-12 的操作程序，不是目前進度權威。當日較早的[工程 readiness 快照](../09_archive/V2_2_ENGINEERING_READINESS_2026_07_12.md)記錄 weekly `0/3`；較晚的 [Week 1 QA](../09_archive/V2_2_WEEK1_REVIEW_2026_07_12.md) 已保存 `1/3 waiting_for_time`。兩份歷史證據保留各自時點，本指南不沿用舊進度數字。最新 Windows weekly collection 回讀見 [10/09 排程修正 QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)：10/04 core 為 `pending_human_review`；這是待人工判讀的 collection，不等同三週人工 review history 或 formal closeout。
+- 未取得對應週期的 append-only review receipt 前，不推算 Week 2／Week 3 或目前累積數；`production_scheduler_allowed=false` 與 formal closeout 條件仍須依 Snapshot 及具名最新 QA 判讀。
 - 此流程不產生交易建議、不串 broker、不自動交易、不自動套用 lifecycle action。
 - `--save-history` 與 `--confirm-action-items` 只能在明確、可回溯且經人工核准的 working-copy DB 使用。CLI 會 canonicalize 實際 `--db-path`，並同時比對 configured、環境 `DATA_ROOT` 與預設正式 root；因此 `--data-root` 不能使正式 DB 變成可接受路徑。production-like DB 一律拒絕，沒有 `--allow-production-like-db` 繞過旗標；正式 DB、production-like DB 與 scheduler write-mode 均不在本 runbook 的授權範圍。
 - replay、fixture、單次 smoke、raw scheduled report 或手動補表不計入三週 Gate。每列只記錄該週實際取得的證據。

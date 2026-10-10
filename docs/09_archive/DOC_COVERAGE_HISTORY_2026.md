@@ -2075,3 +2075,22 @@ Archive 根層初篩發現 `SOLUTION_SUMMARY.md` 的舊 UI 入口，以及 `API_
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄本批基線、覆核深度、修訂範圍及未完成限制。 |
 
 本批共修訂上述 15 份文件；沒有刪除或移動文件、沒有改寫 Archive 原件或原始資料。未執行測試、未刷新 Graphify，也未執行最終 repo-wide 連結／錨點掃描；這些工作仍等所有目錄正文治理完成後進行。
+
+<a id="coverage-entry-187"></a>
+## 2026-10-10 核對功能文件的回測狀態與歷史界線
+
+以 HEAD `3a7f9dd1` 為 `docs/02_features/` 審閱基線。該目錄 9/9 個 tracked paths 已全文閱讀或逐路徑核對：6 份內容文件全文閱讀，3 份 Archive redirect stub 全文核對導向。回測內容與 `APPLICATION_MANUAL.md`、Snapshot 及具名程式段落對照；程式核對限於報告列出的爭點，不代表啟動 UI 或完整程式路徑審計。
+
+核實 `BACKTEST_LAB_FEATURES.md` 的 sizing 與漲跌停／成交量限制仍列為待實作，與 Manual 和現有 `BrokerSimulator`／service 支援不符；已標記為已實作。成本模型切換沒有單獨確認，保留待查。Phase 3.5 的低於 10 筆交易是 UI SOP 前置檢查；完整 Registry Lifecycle Promote 最低門檻為 20 筆。2026-05-27 的 Portfolio Value benchmark 說明限定於執行時圖表，不延伸到不會重新抓取目前 benchmark 的 Registry readback。
+
+`USER_GUIDE.md` 原回測資料段落把 CSV 寫成主要來源；已改明預設 SQLite 優先、缺資料或讀取失敗才回退 CSV，並將 CSV 路徑標為 fallback 範例。2025-12-22「最新優化」改為日期化歷史記錄。`STRATEGY_DESIGN_SPECIFICATION.md` 加上研究提案／示例不代表現行實作或驗收的界線，並標明前向填充建議與 2023 MVP 門檻只是設計內容。未推定其餘教學過時；`BACKTEST_LAB_FEATURES.md` 的「與推薦分析整合」範圍仍待釐清。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/02_features/BACKTEST_LAB_FEATURES.md` | 將已實作的 sizing／市場限制從待辦中區分；補清 10 筆 UI 前置檢查與 20 筆 Lifecycle Gate 的差異及 benchmark 圖表適用範圍。 |
+| `docs/02_features/USER_GUIDE.md` | 改正 SQLite 優先、CSV fallback 的載入順序；將 2025-12-22 優化段落明示為歷史記錄。 |
+| `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` | 標示提案、歷史 MVP 示例與缺值處理建議的非現行契約性質。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 02_features 逐檔角色、核讀深度、已修正差異及待查項目。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 記錄本批證據基線、核讀範圍與修訂限制。 |
+
+沒有刪除或移動文件及原始資料。未執行測試，未刷新 Graphify，未逐一驗證該目錄所有連結，也未執行最終 repo-wide 連結／錨點掃描；這些工作仍等所有目錄內容治理與修訂完成後執行。

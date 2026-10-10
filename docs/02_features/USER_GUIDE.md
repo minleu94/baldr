@@ -8,6 +8,8 @@
 > 本文件保留推薦、回測與資料治理的深入教學。
 > 需要從安裝開始，依 9 個頂層工作區逐步操作時，請先閱讀 [完整操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 
+> **狀態判讀：**本文是進階專題教學，不是目前操作或即時狀態權威；段落中的「最新／目前」只代表該段寫作時點。實際操作與安全限制以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準，目前狀態以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 為準。文中 2025-12-22 的最佳化記錄是歷史說明，不代表目前版本清單。
+
 ## 2026-09-06 推薦與研究判讀更新
 
 推薦保存時會凍結 Profile／設定、決策日、實際行情日、來源指紋與 Why Not。已啟用技術因子缺值或總分無效時保留未知並排除，不補零或中性分數；有效空結果不是故障。fixed 維持預設、quantile 仍需明確選用；歷史產業篩選若缺 PIT 成分證據，不能用今日分類替代。送推薦回放傳的是獨立設定快照，後續修改畫面不改已送出的設定。
@@ -473,7 +475,7 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 ### 功能說明
 參數最佳化（Grid Search）可以自動掃描參數範圍，找出表現最好的參數組合。
 
-**最新優化（2025-12-22）：**
+**歷史優化記錄（2025-12-22）：**
 - ✅ 數據預載入：所有參數組合共用同一份數據，大幅提升速度
 - ✅ 多線程並行：使用多線程並行執行（最多 8 個線程）
 - ✅ 日期自動調整：自動調整日期範圍到實際可用的數據範圍
@@ -950,12 +952,14 @@ A: 請檢查：
 
 ## 策略回測 - 數據載入說明
 
-### 回測時使用的數據文件
+### 回測資料來源優先序
 
-當您在 UI 中選擇股票（例如：2330）並執行回測或參數最佳化時，系統會讀取以下文件：
+截至 2026-10-10，`use_sqlite=True` 為目前設定預設。UI 回測／最佳化會優先讀取 SQLite 的 `daily_prices` 與 `technical_indicators`；SQLite 缺少所需資料或讀取失敗時才回退 CSV。以下路徑與檔案載入步驟僅描述 CSV fallback，不代表主要資料來源。
+
+### CSV fallback 使用的檔案範例
 
 #### 1. 價格數據
-**文件路徑範例：** `{DATA_ROOT}/meta_data/stock_data_whole.csv`
+**CSV fallback 路徑範例：** `{DATA_ROOT}/meta_data/stock_data_whole.csv`
 
 **載入邏輯：**
 - 讀取整個文件
@@ -964,7 +968,7 @@ A: 請檢查：
 - 包含欄位：開盤、最高、最低、收盤、成交量等
 
 #### 2. 技術指標數據
-**文件路徑範例：** `{DATA_ROOT}/technical_analysis/2330_indicators.csv`
+**CSV fallback 路徑範例：** `{DATA_ROOT}/technical_analysis/2330_indicators.csv`
 
 `DATA_ROOT` 由 `data_module/config.py` 的 `TWStockConfig` 決定；預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。以上是檔案位置範例，不取代目前操作／來源判讀；請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對當前流程。
 

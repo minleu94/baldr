@@ -1,5 +1,7 @@
 # 策略回測實驗室功能說明
 
+> **狀態判讀：**日期化段落保留其記錄時點；本文不是目前操作或即時完成度權威。操作流程與限制以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準，整體目前狀態以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 為準。
+
 ## 概述
 
 「策略回測」標籤已升級為完整的「實驗室/策略工作台」，支援反覆研究、知識累積、快速迭代。
@@ -346,12 +348,12 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 - **原子替換**：在寫入時先建立臨時檔，成功寫入後再以原子替換方式寫入目標路徑，避免目標檔案損壞。
 - **唯讀序列化**：匯出服務僅序列化已提供的 payload 資料，不進行策略、績效或金融指標的二次計算。
 
-## 待實作功能（優先級 8）
+## 原優先級 8 待辦狀態（2026-10-10 核對）
 
-### ⬆️ 8. 回測引擎升級
-- 持倉 sizing 模式（全倉/固定金額/風險百分比）
-- 市場限制（漲跌停、成交量限制）
-- 成本模型可切換
+### 回測引擎升級
+- **已實作：持倉 sizing 模式**：包含全倉、固定金額與風險比例配置；操作說明見 [Application Manual 第 9 節](../07_guides/APPLICATION_MANUAL.md)。
+- **已實作：市場限制**：回測撮合支援漲跌停與成交量限制；操作及結果判讀仍以 Application Manual 為準。
+- **待另行核實：成本模型可切換**：本次未單獨確認目前 UI／服務是否提供可切換成本模型，不以舊 TODO 當作已實作證據。
 
 ---
 
@@ -481,6 +483,8 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 
 推薦組合回測的 equity curve 已改為每日 mark-to-market：每個交易日以持倉股票當日或最近可用收盤價重估未實現損益，並加回已實現損益，形成 portfolio value。Backtest 的「推薦組合」結果頁新增 Portfolio Value 與 Drawdown 圖表；Portfolio Value 會嘗試透過既有 `ChartDataService` 載入大盤基準線，方便比較推薦 Profile/Config 相對大盤是否有效。
 
+> **讀取範圍：**本段是 2026-05-27 的日期化功能記錄，描述執行推薦組合回測時的圖表行為；Registry 儲存結果的讀回不會重新抓取目前 benchmark，因此讀回畫面可能沒有基準線。操作與限制以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 的 Registry 說明為準。
+
 ## 2026-05-27 推薦組合停損停利與失敗診斷
 
 推薦組合回測已接入 Backtest 頁既有的停損 (%) / 停利 (%) 設定。每檔推薦持倉會逐交易日檢查是否先觸發 stop_loss 或 take_profit；若都未觸發，才以 holding_period 出場。結果總覽同步顯示停損、停利、持有到期次數、虧損交易占比與最拖累股票，作為第一版策略失敗診斷。
@@ -509,6 +513,9 @@ Legacy 已保存的推薦組合 research run 可透過 Backtest「推薦組合�
   - 若使用固定金額 Sizing，需將固定金額調高至大於標的股價 * 1000 元（例如 120 萬元以上），或直接切換回「全倉」模式。
 
 ### 2. SOP 驗證機制與 Promote 晉升限制
+
+> **門檻界線：**下列「交易次數低於 10 筆」是 Phase 3.5 UI 的 SOP 前置檢查，不是完整 Registry Promote 資格。截至 2026-10-10，Month 6 Lifecycle Gate 的最低交易數為 20 筆；完整升級資格以 [Application Manual 第 9 節](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 - **樣本數限制 (交易次數 >= 10)**：
   - 為了防止過擬合或偶發的運氣成分，策略回測在完成時會執行 **Phase 3.5 SOP 驗證**。
   - 若總交易次數**低於 10 次**，SOP 驗證狀態會顯示為 **❌ FAIL**，提示「樣本不足，無法可靠判斷策略有效性」。

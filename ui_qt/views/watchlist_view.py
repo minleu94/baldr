@@ -27,7 +27,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Protocol, cast
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.watchlist_service import WatchlistService, WatchlistStorageStatus
@@ -82,6 +82,21 @@ from ui_qt.widgets.personal_h20_bookmark_controls import PersonalH20BookmarkCont
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 
 
+class _WatchlistRowWithGet(Protocol):
+    """描述 DataFrame 列與 mapping row 共用的唯讀 get 介面。"""
+
+    def get(self, key: str, default: object = ...) -> object: ...
+
+
+def _watchlist_row_with_get(value: object) -> _WatchlistRowWithGet | None:
+    """確認列物件提供 get 後才縮窄型別，不改變來源 discriminator。"""
+
+    getter = getattr(value, "get", None)
+    if not callable(getter):
+        return None
+    return cast(_WatchlistRowWithGet, value)
+
+
 class WatchlistView(QWidget):
     """觀察清單視圖"""
     
@@ -97,6 +112,7 @@ class WatchlistView(QWidget):
     technicalOfficialBookmarkReady = Signal(object)
     technicalOfficialMaBookmarkReady = Signal(object)
     technicalOfficialRevenueBookmarkReady = Signal(object)
+    technicalCompositeBookmarkReady = Signal(object)
     
     def __init__(
         self,
@@ -1561,6 +1577,19 @@ class WatchlistView(QWidget):
         self._set_source_choice_state(row)
         self._set_watchlist_focus_summary(row=row)
         research_bookmark = row.get("research_bookmark")
+        if self._row_is_composite_bookmark(row):
+            exact_identity = self._exact_research_bookmark_id_for_row(row)
+            self.stock_analysis_btn.setEnabled(bool(exact_identity))
+            self.latest_research_btn.setEnabled(False)
+            self._set_source_choice_state(row)
+            self.analysis_context_label.setText("狀態：官方市場條件研究收藏｜來源：原查詢與全部固定來源身份")
+            self.analysis_text.setPlainText(
+                "此收藏須經專用研究重開功能核驗；不會轉成一般個股研究，也不會改讀最新來源。"
+            )
+            self._set_watchlist_focus_summary(
+                row=row, status="官方市場條件研究收藏", message="請沿原查詢與保存來源精確重開。"
+            )
+            return
         if self._row_declares_research_bookmark(row):
             context = self._context_from_row_bookmark(row, code)
             self.analysis_context_label.setText(
@@ -1740,6 +1769,27 @@ class WatchlistView(QWidget):
 
     @classmethod
     def _exact_research_bookmark_id_for_row(cls, row: object) -> str:
+        if cls._row_is_composite_bookmark(row):
+            row_values = _watchlist_row_with_get(row)
+            if row_values is None:
+                return ""
+            try:
+                from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
+                    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
+                )
+                envelope = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(
+                    row_values.get("research_bookmark")
+                )
+                code = str(
+                    row_values.get("證券代號", row_values.get("stock_code", "")) or ""
+                ).strip()
+                if (envelope.stock_code == code
+                        and row_values.get("source") == envelope.source
+                        and row_values.get("source_id") == envelope.envelope_identity_sha256):
+                    return envelope.envelope_identity_sha256
+            except (TypeError, ValueError):
+                pass
+            return ""
         if cls._row_is_technical_official_revenue_bookmark(row):
             try:
                 return cls._decode_revenue_bookmark_row(row).bookmark_id
@@ -1815,7 +1865,20 @@ class WatchlistView(QWidget):
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
+            "technical_official_disposition_composite_research_bookmark",
         }
+
+    @staticmethod
+    def _row_is_composite_bookmark(row: object) -> bool:
+        row_values = _watchlist_row_with_get(row)
+        if row_values is None:
+            return False
+        raw = row_values.get("research_bookmark")
+        schema = raw.get("schema_version") if isinstance(raw, Mapping) else None
+        return (
+            row_values.get("source") == "technical_official_disposition_composite_research_bookmark"
+            or schema == "daily-market-technical-official-disposition-composite-view-state.v1"
+        )
 
     @staticmethod
     def _row_is_technical_official_revenue_bookmark(row: object) -> bool:
@@ -1878,6 +1941,9 @@ class WatchlistView(QWidget):
         if not hasattr(row, "get"):
             return "書籤列格式錯誤；來源不可核驗"
         value = row.get("research_bookmark")
+        if (WatchlistView._row_is_composite_bookmark(row)
+                and not WatchlistView._has_research_bookmark(value)):
+            return "官方市場條件研究收藏內容缺失；原來源不可核驗"
         if not cls._has_research_bookmark(value) and cls._row_declares_research_bookmark(row):
             if cls._row_is_technical_universe_bookmark(row):
                 return "完整母體書籤內容缺失；來源不可核驗"
@@ -1891,6 +1957,15 @@ class WatchlistView(QWidget):
         if not isinstance(value, Mapping):
             return "書籤格式錯誤；來源不可核驗"
         schema = str(value.get("schema_version", "") or "").strip()
+        if schema == "daily-market-technical-official-disposition-composite-view-state.v1":
+            try:
+                from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
+                    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
+                )
+                envelope = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(value)
+                return f"已收藏官方市場條件研究｜股票 {envelope.stock_code}｜固定原來源"
+            except (TypeError, ValueError):
+                return "官方市場條件研究收藏無效；來源不可核驗"
         if schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1:
             try:
                 bookmark = DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_dict(value)
@@ -2542,6 +2617,28 @@ class WatchlistView(QWidget):
         frame = self.stocks_model.getDataFrame()
         row = frame.iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
+        if self._row_is_composite_bookmark(row):
+            row_values = _watchlist_row_with_get(row)
+            if row_values is None:
+                self._set_status_label("官方市場條件研究收藏列格式無法核驗。", level="warning")
+                return
+            try:
+                from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
+                    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
+                )
+                envelope = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(
+                    row_values.get("research_bookmark")
+                )
+                if (envelope.stock_code != code
+                        or row_values.get("source") != envelope.source
+                        or row_values.get("source_id") != envelope.envelope_identity_sha256):
+                    raise ValueError("複合收藏 envelope 與 Watchlist 列身份不符")
+            except (TypeError, ValueError) as exc:
+                self._set_status_label(f"官方市場條件研究收藏無法核驗：{exc}", level="warning")
+                return
+            self.technicalCompositeBookmarkReady.emit(envelope)
+            self._set_status_label("正在沿固定來源重開官方市場條件研究；完成前保留目前頁面。", level="info")
+            return
         if self._row_is_technical_official_revenue_bookmark(row):
             try:
                 revenue_bookmark = self._decode_revenue_bookmark_row(row)
@@ -2632,6 +2729,12 @@ class WatchlistView(QWidget):
             return False
         row, code = selected
         if not code:
+            return False
+        if self._row_is_composite_bookmark(row):
+            self._set_status_label(
+                "此收藏固定於原查詢與保存來源，請使用專用路由精確重開；不提供改讀最新來源的替代路徑。",
+                level="warning",
+            )
             return False
         if self._row_is_technical_universe_bookmark(row):
             self._set_status_label(

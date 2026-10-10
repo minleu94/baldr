@@ -751,3 +751,38 @@ F12 T11 未執行完整 Main：root 要求追加正式 handler 寫入錯誤的�
 - 固定258來源G Main旅程已由root實跑：1 passed／86.85秒，exit0。真640窄窗→頁籤可見控制→catalog→257全母體查詢→256+1頁→兩筆比較籃→Main typed saver→Watchlist可見按鈕／雙擊fresh reopen通過；query/result/page/selection/basket/非零scroll精確保留，generic/latest旁路0，關閉後native workers為空。`output/qa/composite_g_fixed_main_root_attempt01/receipt.json` 起訖核對正式／候選與既有fixture完整檔案樹一致。公開exact reader先核identity `3cb1b3f9060abafa08ac9c182b36d9c03fa4b65549bd607d56dc639cbeff0d07`、manifest `c651415b93bb12ae06de6a4d28c62ddb8eb3466e647e219310c9a6d9ac1b4a4d`，逐列258/257/1；current_only、partial coverage、PIT=false保留。沒有producer。
 - Root wrapper初次因Windows長路徑rglob失敗、第二稿長路徑字串SyntaxError，均在pytest／資料操作前停止且原稿保留；第三稿以標準Windowsextended-path讀取完整樹成功，沒有更改source bytes。這不是放寬qualified reader或縮小來源核驗。
 - G仍記憶體候選；正式接線、fresh PID、完整COW及960窗寬未驗。fresh-PID候選接續復用本輪私人收藏，不重產／不覆寫封套。
+
+### 正式六檔接線：執行前回滾清單
+
+| 檔案路徑 | 變更類型 | 變更摘要 | 回滾方式 | 回滾風險 |
+|---|---|---|---|---|
+| ui_qt/main.py | 修改 | 新研究頁與 typed 收藏/重開/worker 關閉 | 保存後续差異後，只反套本輪 patch 或還原本輪 preimage | 回滾後新增頁入口失效，收藏資料保留 |
+| app_module/watchlist_service.py | 修改 | 複合研究 envelope 存取 | 同上，只還原本輪差異 | 回滾後新收藏不能由此入口讀回，不能刪收藏資料 |
+| ui_qt/views/watchlist_view.py | 修改 | 精確研究收藏按鈕/雙擊路由 | 同上，只還原本輪差異 | 新收藏路由回退 |
+| ui_qt/views/recommendation_view.py | 修改 | 窄窗頁籤左右控制与minimum hint | 同上，只還原本輪差異 | 窄窗頁籤可達性修正回退 |
+| ui_qt/views/daily_market_technical_official_disposition_composite_view.py | 新增 | 四群研究條件/比較籃/可捲明細/狀態收藏 | 先回退呼叫端，確認無他人後續依賴，再移除本輪新模組 | 次序不當會導致import失敗 |
+| app_module/daily_market_technical_official_disposition_composite_bookmark_storage_v1.py | 新增 | typed envelope/storage | 先回退呼叫端，確認無他人後續依賴，再移除本輪新模組 | 不得連帶移除私人清單與保存資料 |
+
+回滾順序：先逐檔確認所有後續／他人變更並保存；僅撤回本輪差異，不整體checkout共享工作樹；呼叫端與新模組一併回退；保存原資料、QA及收藏；再執行原UI回歸。preimages、安裝patch與逐檔起訖SHA將保存在 `output/qa/composite_formal_integration_root_20261010`。本輪不新增任何策略／績效計算，不改訊號、交易日期或公式；來源日期／current_only／PIT限制與qualified身份維持原typed契約。
+
+### 正式接線文件 Coverage Pass（本輪）
+
+| 優先級 | 文件 | 對應段落與處理 |
+|---|---|---|
+| Must | docs/07_guides/APPLICATION_MANUAL.md | 推薦分析新增6.7：入口、窄窗頁籤、來源盤點、四群參數、分頁、明細捲動、比較籃、收藏與觀察清單重開；research/PIT/COW限制及排錯 |
+| Must | docs/06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md | 固定來源G與新PID K通過／原失敗／正式套用與必需檢查界線；P01仍未達300ms |
+| Must | docs/00_core/PROJECT_SNAPSHOT.md | F03正式接線與新PID狀態須依本輪具名QA/commit同步；其他文件agent持有現況整理，不能覆寫其未提交工作 |
+| Should | docs/01_architecture/system_architecture.md、PROJECT_NAVIGATION.md | 新View→typed bookmark storage→Watchlist→exact reopen的依賴入口；不改產品方向或領域邊界 |
+| Check | Roadmap Hub／6M／Product／Index | 現有補完範圍與未完成Gate不變，無新增版本/正式收益/PIT資格；由具名QA入口追溯，不能稱全產品完成 |
+
+Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者授權。接著只patch本輪相關段落，保留其他agent內容。README與中央索引沒有新增文件路徑，原具名QA入口仍有效。
+
+### 2026-10-10 恢復後核對：正式整合與尚未關閉的 Gate
+
+- 新程序 K 收藏讀回為 1 passed／85.87 秒；Watchlist 按鈕及雙擊均重新核驗既有 qualified 來源並恢復查詢、頁碼、選取、比較籃及 scroll=1731；私人清單起訖一致。收據：`output/qa/composite_k_fresh_main_root_attempt01/receipt.json`。I/J 的 QA 清理、digest 與 canonical path 斷言錯誤保留於原失敗收據，不作產品通過證據。
+- 六檔正式接線已套用，逐檔 preimage、patch 與起訖 SHA 保存在 `output/qa/composite_formal_integration_root_20261010/apply_receipt.json`；Manual §6.7 已同步。尚未提交，仍等待正式 import 的耐久旅程測試。
+- 正式強制檢查已通過：工作台 85 項、更新頁驗證 exit 0、mypy 941 檔、六檔語法檢查；六檔 pre/post SHA 一致。收據：`output/qa/composite_formal_checks_root_attempt01/receipt.json`。正式耐久測試另記，不把這些檢查當成完整產品驗收。
+- P01 無其他 root 重負載的配對 A/B 終態：`C:/t/p01cur_rd_9404ce945b`，baseline p95=623.9202ms、candidate p95=551.0107ms，median=502.56515／490.8013ms，仍未達原 300ms；source/store 不變、failures 空、無殘留 jobs。僅 helper 改善不足，不套用正式 helper、不關閉 P01。先前與 Main 探針並行的一輪保留為負載混雜診斷。
+- 恢復開發後維持兩個子代理的靜態平行工作：F12 三種 SQLite URI role 候選及 P01 下一步瓶頸設計；runtime 由 root 審閱後統一安排。其他文件 agent 的未提交文件與 `$null` 均不處理。
+
+- 正式 import 耐久旅程終態：7 passed／382.76 秒（wrapper 388.11 秒）、exit 0；Main 動態 257 檔 fixture 旅程與 View 六節點全部通過，八檔正式 source/test pre/post SHA 一致。收據 `output/qa/composite_formal_durable_root_attempt01/receipt.json`。涵蓋窄窗真頁籤控制、全母體分頁、跨頁比較籃、完整明細捲動、收藏與精確重開及 worker 關閉；合成來源 current_only／partial／PIT=false 限制維持。新程序 K 是另份固定封套證據；960px、新 EXE、真人視覺及完整私人 COW 仍未驗，不能宣稱全產品完成。

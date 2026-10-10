@@ -158,6 +158,8 @@ class _CurrentPageSizeTabWidget(QTabWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # 窄視窗仍可透過 QTabBar 自帶的左右控制切換被裁切的來源頁籤。
+        self.setUsesScrollButtons(True)
         self.currentChanged.connect(self._refresh_page_size)
 
     def _refresh_page_size(self, _index: int) -> None:
@@ -176,7 +178,8 @@ class _CurrentPageSizeTabWidget(QTabWidget):
         page_layout = page.layout()
         if page_layout is not None and page_layout.hasHeightForWidth():
             page_size.setHeight(max(page_size.height(), page_layout.totalHeightForWidth(max(1, page.width()))))
-        tab_size = self.tabBar().sizeHint()
+        tab_bar = self.tabBar()
+        tab_size = tab_bar.minimumSizeHint() if minimum else tab_bar.sizeHint()
         margins = self.contentsMargins()
         frame = self.style().pixelMetric(
             QStyle.PixelMetric.PM_DefaultFrameWidth,

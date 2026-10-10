@@ -2507,6 +2507,16 @@ class MainWindow(QMainWindow):
         self.technical_official_revenue_research_view = revenue_view
         recommendation.result_source_tabs.addTab(revenue_view, "均線／月營收／官方對照研究")
         revenue_view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
+        from ui_qt.views.daily_market_technical_official_disposition_composite_view import (
+            DailyMarketTechnicalOfficialDispositionCompositeView,
+        )
+        composite_view = DailyMarketTechnicalOfficialDispositionCompositeView(
+            getattr(self.config, "technical_official_disposition_read_root", None),
+            parent=recommendation,
+        )
+        self.technical_official_composite_research_view = composite_view
+        recommendation.result_source_tabs.addTab(composite_view, "官方市場與技術條件研究")
+        composite_view.bookmarkPrepared.connect(self._save_composite_research_bookmark)
 
     def _show_technical_official_comparison(self, value: object) -> None:
         """並列同來源已核事實，保留原結果頁與各股獨立捲動。"""
@@ -2656,6 +2666,74 @@ class MainWindow(QMainWindow):
         watchlist.technicalOfficialBookmarkReady.connect(self._open_technical_official_bookmark)
         watchlist.technicalOfficialMaBookmarkReady.connect(self._open_technical_official_ma_bookmark)
         watchlist.technicalOfficialRevenueBookmarkReady.connect(self._open_technical_official_revenue_bookmark)
+        # 僅在 Watchlist 完成專屬 typed decode 後接收；不使用舊 decoder。
+        composite_ready = getattr(watchlist, "technicalCompositeBookmarkReady", None)
+        if callable(getattr(composite_ready, "connect", None)):
+            composite_ready.connect(self._open_composite_research_bookmark)
+
+    def _save_composite_research_bookmark(self, value: object) -> None:
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
+        )
+        from ui_qt.workers.task_worker import TaskWorker
+        if type(value) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
+            return
+        service = getattr(self, "watchlist_service", None)
+        watchlist = getattr(self, "watchlist_view", None)
+        writer = getattr(service, "add_composite_research_bookmark", None)
+        reader = getattr(service, "read_composite_research_bookmark", None)
+        signal = getattr(watchlist, "technicalCompositeBookmarkReady", None)
+        view = getattr(self, "technical_official_composite_research_view", None)
+        if (not callable(writer) or not callable(reader)
+                or not callable(getattr(signal, "connect", None))
+                or view is None or getattr(self, "_shutdown_close_requested", False)):
+            if view is not None:
+                view.status_label.setText("複合收藏未保存：Watchlist typed storage／decode 路由未就緒。")
+            return
+        worker = TaskWorker(writer, value)
+        workers = getattr(self, "_technical_official_bookmark_workers", None)
+        if workers is None:
+            workers = set()
+            self._technical_official_bookmark_workers = workers
+        workers.add(worker)
+        view.bookmark_button.setEnabled(False)
+        def completed(result: object) -> None:
+            if getattr(self, "_shutdown_close_requested", False):
+                return
+            view.bookmark_button.setEnabled(True)
+            message = getattr(result, "message", "複合收藏結果未提供")
+            view.status_label.setText(f"複合研究收藏：{message}")
+            refresh = getattr(watchlist, "_load_watchlist", None)
+            if callable(refresh):
+                refresh()
+        def failed(message: str) -> None:
+            if not getattr(self, "_shutdown_close_requested", False):
+                view.status_label.setText(f"複合收藏失敗：{message}")
+        def native_finished() -> None:
+            if not getattr(self, "_shutdown_close_requested", False):
+                view.bookmark_button.setEnabled(True)
+        worker.finished.connect(completed)
+        worker.error.connect(failed)
+        worker.native_thread_finished.connect(native_finished)
+        worker.native_thread_finished.connect(lambda: workers.discard(worker))
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _open_composite_research_bookmark(self, value: object) -> None:
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
+        )
+        if type(value) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
+            return
+        view = getattr(self, "technical_official_composite_research_view", None)
+        if view is None or getattr(self, "_shutdown_close_requested", False):
+            return
+        recommendation = getattr(self, "workspace_widgets", {}).get("recommendation")
+        tabs = getattr(recommendation, "result_source_tabs", None)
+        if tabs is not None:
+            tabs.setCurrentWidget(view)
+        self._select_main_workspace("recommendation")
+        view.restore_bookmark(value)
 
     def _open_technical_official_revenue_bookmark(self, value: object) -> None:
         """沿原月營收收藏核驗，保留來源、篩選與原結果頁。"""
@@ -3374,7 +3452,7 @@ class MainWindow(QMainWindow):
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view", "technical_official_research_view", "technical_official_ma_research_view", "technical_official_revenue_research_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view", "technical_official_research_view", "technical_official_ma_research_view", "technical_official_revenue_research_view", "technical_official_composite_research_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):

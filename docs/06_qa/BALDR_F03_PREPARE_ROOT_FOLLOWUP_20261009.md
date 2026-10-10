@@ -1081,6 +1081,18 @@ T30 manifest `68b277b63487f605609a28b546c416225d9ec3500e0a61190d0cf70788280d75`�
 
 新純量診斷 `C:/t/t30q01/temporary/f12t30_cow_drain_diagnostics/main_drain_timeout.json` 明確顯示兩個 COW workers 各5RO+1RW、BEGIN IMMEDIATE／ROLLBACK、run returned／native finished、控制項閒置與 registry 空均成立，沒有 role rejection。唯一未通過條件為 H20 proof：精確 pass-through 已授權，但 service load 回報 `personal_writer_disabled: sqlite_unavailable`，收到1次 error、沒有 result；thread本身已收尾。這是讀取結果失敗，不能以增加等待時間或把空 registry 當成功處理。交 owner 唯讀追 service activation 與 SQLite role 的具體鏈，尚未放寬任何 guard 或套用正式來源。
 
-Q9 runtime manifest `26a896f30d494276078ceacb261694f7ac8761a5000ed56be8d6782564379167`，review `86f7450c5b2ef1096cfa65a2ce7eff9a91527ad6009ad9a64c0cce9843ec2bc7`，完整差異 `2a2144d32a4f502f1105b70ed62aa72efb5668b1f57cb3d2bf85fac213f9580c`。root核writer、原guard不變、focused原碼与封套後執行：attempt01僅因root啟動器把候選路徑傳給unittest當作名稱而失敗，未跑到5項測試。全新attempt02修正argv，收據 `output/qa/p01_q9_focused_root_attempt02/receipt.json`：**5 tests passed、0.163秒、exit0**，外層0.312秒、未逾時、4666來源與候選不變。短寫、零／負值拒絕、write primary／close secondary、open拒絕無寫無close與原 integer FD audit拒絕皆驗到。wrapper SHA `a7474b13ec0824802aa7897d15cd1a226aa41f66fa98c6b9a22da313ae98c68c`。
+Q9 runtime manifest `26a896f30d494276078ceacb261694f7ac8761a5000ed56be8d6782564379167`，review `86f7450c5b2ef1096cfa65a2ce7eff9a91527ad6009ad9a64c0cce9843ec2bc7`，完整差異 `2a2144d32a4f502f1105b70ed62aa72efb5668b1f57cb3d2bf85fac213f9580c`。root核writer、原guard不變、focused原碼與封套後執行：attempt01僅因root啟動器把候選路徑傳給unittest當作名稱而失敗，未跑到5項測試。全新attempt02修正argv，收據 `output/qa/p01_q9_focused_root_attempt02/receipt.json`：**5 tests passed、0.163秒、exit0**，外層0.312秒、未逾時、4666來源與候選不變。短寫、零／負值拒絕、write primary／close secondary、open拒絕無寫無close與原 integer FD audit拒絕皆驗到。wrapper SHA `a7474b13ec0824802aa7897d15cd1a226aa41f66fa98c6b9a22da313ae98c68c`。
 
 Q9 single-warm actual01 隨後在parent預檢exit1、0.094秒、child_launch_count=0：`controller_script_pin_mismatch`。runtime manifest頂層 `controller_sha256` 遺留Q8，雖artifacts組已更新。root未在靜態審查抓到此重複pin，原守門正確攔截；沒有到達來源捕獲、oracle或效能執行。Q9／兩次focused／single-warm原件凍結，授權最小Q10只修正新controller的所有有效指紋接線與新QA目錄，runner／focused bytes不變，待全文審查。五項focused通過仍不代表千檔效能資格。
+
+### 2026-10-10 Q10 single-warm 終態與後續驗證邊界
+
+root 審閱 Q9→Q10 metadata 差異並核對所有 controller 有效 pins；runner／focused bytes 保持 Q9。manifest `73638ac7568c4d67ac4f092e6356b4fa5c2c534c4858e5cd7c18a00476aadd1b`、review `162e283a8f09037c9515d8fd5b968ff64c4ca2cfc33e50ad3cc3ad7bf465c71a`；root wrapper `output/qa/run_p01_q10_single_warm_root_attempt01.py` SHA `441aebd52a5fecae278fbdc5f173ddc515f391e2fd5fdcb718c18827b4dede84`。收據 `output/qa/p01_q10_single_warm_root_attempt01/receipt.json`：exit1、88.969秒、未逾時；4666來源、候選與 sealed store 前後不變，Job清理完成且無存活PID。
+
+私人根 `C:/t/p01cur_rd_c6f4a2a802` 的終態證據顯示 baseline／candidate／strict clone 完整 typed DTO 正向比對成立；兩棵封閉複製樹共8個 outer檔、1142個segment檔、84,044,495 bytes。四個 parent root、71筆receipt映射及外層六段history重鏈成功；scratch 清理為 `removed_empty_root`。因此 Q9 寫入修正已越過 Q8 的 FD／清理失敗，但不能外推完整 oracle 或效能通過。
+
+新 primary 為 `private_reader_reference_count_invalid`：runner `_validate_private_issued_references` 把 source／clone 的 artifact references 數硬定為4，並按reference順序假設一個reference對應一個segment。固定來源 query 實際按每個 batch artifact 建立 reference；四個segment與reference數不是同一分母。已交 t14_guard_review 唯讀核對可信來源的 segment／batch 契約，再提出有界且完整的一對一映射設計；不得只刪掉數量檢查或換成猜測的常數。七負例與30組配對仍未到達，Q10原件凍結。
+
+P01驗收分開處理：本single-warm僅AND match，不代表完整矩陣。後續需要五個不同cold worker與一個warm、1000 included的完整分頁／跨段selection，及page／sort／五種AND/OR filter各自30筆、嚴格小於300ms的p95；原P01若含單股與16股materializer，這兩類亦須獨立驗證。pending資料正確性另用專屬fixture，不把小樣本或pending=0的千檔fixture混算效能資格。
+
+另兩路維持QA-only：resume_perf製作 H20 M，僅補純量生命週期與退出回呼進入／fsync／close分段證據，不新增Qt關閉操作；f06_evidence製作 T31，對真H20 worker建立獨立且精確的5RO+1RW SQLite ledger與具名拒絕負例，保留原Full N／Price資格。兩者均須凍結後由root審查再執行。正式來源、原始資料、排程與EXE未修改，尚無新增真人驗收版本。

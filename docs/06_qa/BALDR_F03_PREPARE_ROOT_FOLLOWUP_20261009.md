@@ -673,3 +673,13 @@ FullView D最小title／折行修正已真跑無來源檢查：body422等於view
 - Composite G2/G3便宜Qt原件均保留。G2的固定scrollbar上限未跟隨Qt懶layout增加；G3已修並到末行，但外層QRect.contains(QPointF)型別錯誤，仍2 passed／1 failed。G3候選View九項mypy問題以明確Literal、變數及callback型別、exact envelope narrowing修正，候選型別檢查通過；尚無正式接入或full窄窗通過。
 
 - H20 M7完整原S4 Main已終態exit0：controller61.86秒，child33.219秒；原10檔cohort初次21.031秒，2382真double-click→摘要0.422秒，回到原manifest／原2382選取0.297秒；shutdown complete、0 worker。圖表與表格同一原capture核對120筆2026-04-14至2026-10-05 OHLC，原gross684bp及決策2026-10-07／來源2026-10-06／特徵2026-10-05一致。原兩DB/source archive/template groups全量起訖unchanged，D9原協定精確辨識並拒絕單次套件loopback探測，外部事件0。完整receipt `output/qa/h20_main_s3_chart_candidate_20261010_m7_d9_protocol/attempts/20261010T065528Z_beaf74019975/controller_receipt.json`；這是固定source-port Main旅程，不代表新EXE、真人驗收或初次等待已改善，也不是正式收益/PIT資格。
+
+
+### 2026-10-10 窄窗 G7、收藏 T8 與 F06 D 實證
+
+- G6 已修結果頁數標籤折行，帶來源的460px外層幾何及詳情末行通過；稽核長文的有界鍵盤步數不足仍失敗。G7 僅增加內文鍵盤操作上限，完整固定258/257/1來源旅程為1 failed／4 deselected，28.12秒：首股理由、稽核、跨頁與比較對話通過，關閉比較後再次進入第二頁詳情時，真滑鼠點擊未取得editor焦點。完整旅程尚未通過；13候選／正式pins與320來源檔SHA前後一致，原失敗保留。封套 `output/qa/composite_view_g7_narrow_20261010_attempt01/receipt.json`。G7 diff原manifest少一個字元，root獨立核驗後記錄實際SHA `0de95f08c29e04cbcb0c2c8c50c6cce413f8af7583805afafe6fbb792012d9e6`，沒有改寫凍結原件。
+- F12 T8定向11項通過，但完整Main exit1／199.469秒，仍停在明示Watchlist COW啟用；程序鏈核對與cleanup_errors=[]。啟用前按鈕真可見／可點且Main與View共用同一服務；只記錄到問題視窗Yes點擊，未出現成功／失敗modal，啟用後仍personal_source_readonly。不能據此斷言下一modal已開啟或產品儲存已升級。T9另建新私有root，先以真Qt最小雙modal測試核Yes返回值與timer-before-click，再決定是否重跑Main。T8原收據：`output/qa/f12t8_main_1010/run_attempt_5a0c63f724f84f3b97ae9735d1a66db2/f12_main_revenue_receipt.json`。
+- F06 C保存來源測試在正式canonical placeholder page_size檢查被拒（256，契約要求1），未進入formatter；原來源及候選完整起訖一致。D新候選保留正式公式，修QA placeholder為1，composite read_page維持256；root memory-only候選測試兩项皆通過（29.42秒）：已保存observed列與隔離一檔29列OHLC經P02/store/F17公共reader取得的unknown列。BB30明示29／30暖機及warmup_insufficient，ATR14原observed狀態保留；方法、版本、日期窗口與連續性取自reader-issued證據，不補造估計。尚未正式套用presenter或完成使用版驗收。
+
+- F06 D root終態exit0／30.766秒，兩項pytest29.42秒；全部候選與正式程式pins、320個既有來源檔SHA起訖一致。封套 `output/qa/f06_d_formatter_root_20261010_attempt01/receipt.json`。
+- F12 T9 root最小真Qt測試為11 passed／1 failed／38 deselected，1.78秒，八候選與58來源postflight通過。真Yes／Ok按鈕released、精確點擊前modal、question返回Yes及information返回Ok均通過；唯一首紅是QA要求自訂clicked slot執行時question仍為activeModal，實際Qt內建handler已關閉question，觀測None。T10另建新候選對齊事件順序；T9 Main未執行，不能以此focused實證宣告T8產品儲存成功。

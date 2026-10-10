@@ -689,3 +689,20 @@ FullView D最小title／折行修正已真跑無來源檢查：body422等於view
 - F12 T10僅改QA對Qt question已關閉後自訂clicked slot觀測順序，12項定向回歸1.69秒全通過／38 deselected，58來源與8候選pre/postflight通過。9檔exact bytes複本 `output/qa/f12t10_main_1010` 已啟動一次完整Main私有COW／新PID重開旅程；終態待核，不預判通過。
 
 - F12 T10 Main終態exit1／208.531秒，仍`explicit Watchlist COW activation`timeout；cleanup_errors=[]，原生／redirector程序鏈無錯。只記錄問題視窗Yes觀測，未出現第二modal，儲存仍readonly。timer-before-click的短訊息定向成功不能外推成完整長訊息確認成功，下一輪先補長訊息真Qt reproducer及保留原question實際return enum的觀測，不再次盲跑完整Main。receipt `output/qa/f12t10_main_1010/run_attempt_a4ff7598389842d69b342861cc1ef50d/f12_main_revenue_receipt.json`。
+
+
+### F06 顯示層正式整合前回滾與界線
+
+本次先整合已保存證據的呈現函式與可提交回歸測試，沒有正式UI呼叫端使用此presenter；新四群Main入口仍待獨立整合，不能視為使用版已提供新頁。未來函數自查：只讀reader-issued已保存方法／日期／筆數／狀態，不重算指標、改規則、推導未知日期或新增金融float。
+
+| 檔案 | 變更 | 回滾方式 | 風險 |
+|---|---|---|---|
+| ui_qt/technical_official_composite_research_presenter.py | 顯示方法、窗口、暖機與未知原因 | 依整合收據的preimage還原該檔，先核對沒有後續他人修改 | 回復舊呈現；公式及保存資料不受影響 |
+| tests/test_ui_qt_technical_official_composite_research_presenter_volatility.py | 新增真reader-issued observed／29列unknown測試 | 核對新增檔未被後續修改後移出該任務新增測試 | 僅失去此回歸覆蓋；原資料與測試保留 |
+
+F候選正式測試已root隔離memory-only實跑2 passed／205.54秒，exit0；候選／正式pins及320個既有來源SHA起訖一致，封套 `output/qa/f06_f_formal_test_root_20261010_attempt01/receipt.json`。正式套用後執行workbench/update validator/全模組mypy/changed-files compile；未通過前不提交程式，原失敗收據不刪除。
+
+
+- F06呈現函式與正式耐久測試已套用；git apply保留工作樹換行格式，formal SHA與候選不同但逐檔universal-newline text完全相同，收據 `output/qa/f06_formal_apply_root_20261010/receipt.json`。正式presenter SHA727012144e9ed308dacc2daa216a4e62f7296f3c93659b4e2852537095beed39，新測試SHAa94d77a06b67346e9484064be225b099546a4f11fec19920c9c3807dd58f31bd。
+- 強制UI檢查：workbench85 passed／6.20秒、全八模組mypy939檔通過。attempt02 update validator因sandbox路徑WinError5產生3紅、compile因長pycache prefix失敗；原stdout/stderr與Validation Report已保存。只重跑兩紅於新短私有C:/t/f06uicheck1010後，update validator25通過／0失敗及changed-files compile均exit0，正式兩檔pins unchanged。封套 `output/qa/f06_formal_failed_checks_retry_20261010_attempt01/receipt.json`。沒有為通過而改validator、來源、公式或門檻。
+- 新presenter目前沒有正式UI呼叫端，故此提交只整合顯示層與回歸覆蓋；新四群Main／Watchlist完整接線候選正在審查，Manual實際入口將與接線一起更新，不能將本函式提交稱為新頁／收藏新PID已接受。

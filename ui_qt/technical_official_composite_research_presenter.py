@@ -29,6 +29,14 @@ _TRUTH_LABELS = {
     "not_evaluated": "未評估",
     "not_applicable": "不適用",
 }
+_VOLATILITY_METHOD_LABELS = {
+    "daily_market.bollinger_bandwidth_sma30_population_2x": (
+        "BB30 布林帶寬（母體標準差 2σ）"
+    ),
+    "daily_market.atr14_sma_true_range": "ATR14 真實波幅移動平均（SMA）",
+}
+_VOLATILITY_STATE_LABELS = {"observed": "已觀測", "unknown": "未知"}
+_VOLATILITY_UNIT_LABELS = {"percent": "%", "TWD/share": "元／股"}
 _ROW_SCOPE_LABELS = {
     "included_processed": "納入且已處理",
     "included_pending": "納入但待處理",
@@ -62,6 +70,11 @@ def _decimal_text(value: Decimal | None) -> str | None:
     if type(value) is not Decimal or not value.is_finite():
         raise ValueError("composite_presenter_decimal_invalid")
     return format(value, "f")
+
+
+def _stored_integer_text(value: object) -> str:
+    """只呈現已保存的整數計數；缺欄或型別不符時明示未提供。"""
+    return str(value) if type(value) is int else "未提供"
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,24 +250,66 @@ def _group_reasons_and_evidence(
             evidence.append("沒有已處理的波動率投影列。")
         else:
             for measure_name, measure in (
-                ("Bandwidth", entry.evidence.bandwidth),
-                ("ATR14 SMA", entry.evidence.atr14_sma),
+                ("BB30 布林帶寬", entry.evidence.bandwidth),
+                ("ATR14 真實波幅", entry.evidence.atr14_sma),
             ):
                 reasons.extend(measure.reason_codes)
                 value_text = _decimal_text(measure.value) or "未提供"
                 normalized_text = _decimal_text(measure.normalized_value)
+                feature_dates = measure.input_feature_dates
+                window_start = (
+                    feature_dates[0].isoformat()
+                    if feature_dates and feature_dates[0] is not None
+                    else "未提供"
+                )
+                window_end = (
+                    feature_dates[-1].isoformat()
+                    if feature_dates and feature_dates[-1] is not None
+                    else "未提供"
+                )
+                window_date_count = _stored_integer_text(
+                    len(feature_dates) if feature_dates else None
+                )
+                method_label = _VOLATILITY_METHOD_LABELS.get(
+                    measure.method_id, "未辨識的保存方法"
+                )
+                method_version = measure.method_version or "未提供"
+                state_label = _VOLATILITY_STATE_LABELS.get(measure.state, "未提供")
+                unit_label = _VOLATILITY_UNIT_LABELS.get(measure.unit, "未提供")
+                normalized_unit = _VOLATILITY_UNIT_LABELS.get(
+                    measure.normalized_unit or "", "未提供"
+                )
+                continuity_label = (
+                    "是"
+                    if measure.window_observations_contiguous is True
+                    else "否"
+                    if measure.window_observations_contiguous is False
+                    else "未提供"
+                )
+                reason_text = (
+                    "、".join(measure.reason_codes)
+                    if measure.reason_codes
+                    else "未提供"
+                    if measure.state == "unknown"
+                    else ""
+                )
                 evidence.append(
-                    f"{measure_name}：{measure.state} {value_text} {measure.unit}"
+                    f"{measure_name}：{state_label} {value_text} {unit_label}"
                     + (
-                        "；正規化值 " + normalized_text + " percent"
+                        "；正規化值 " + normalized_text + " " + normalized_unit
                         if normalized_text is not None
                         else ""
                     )
-                    + (
-                        "；原因 " + "、".join(measure.reason_codes)
-                        if measure.reason_codes
-                        else ""
-                    )
+                    + f"；方法 {method_label}（版本 {method_version}）"
+                    + f"；計算窗口 {window_start} 至 {window_end}"
+                    + f"（日期列 {window_date_count}；方法需求列 "
+                    + _stored_integer_text(measure.input_rows_required) + "）"
+                    + "；暖機已觀測 "
+                    + _stored_integer_text(measure.warmup_observations_observed)
+                    + "／所需 "
+                    + _stored_integer_text(measure.warmup_observations_required)
+                    + f"；來源列連續：{continuity_label}"
+                    + ("；原因 " + reason_text if reason_text else "")
                 )
     return tuple(dict.fromkeys(reasons)), tuple(evidence)
 

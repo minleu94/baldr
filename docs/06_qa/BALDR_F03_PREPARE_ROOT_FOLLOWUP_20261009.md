@@ -990,3 +990,10 @@ root 已完整閱讀 Q2→Q3 diff（65148 bytes，SHA `32e1417a5739e92f8a66f5d6f
 Q2 的深路徑與 SHA 問題已越過；新 failure 是 actual child read_exact 後 snapshot method parameters tuple 排序與手建物件不同，須查 pinned canonical serializer/parser 契約，不能刪欄位或降低比對。新 error 是 empty child root mismatch；root 已核對固定85bc parent reader 1317–1319：空 batch_artifacts 時 repository_output_root 必須 None。正向 empty fixture、原錯 root 負例，以及 rechain runner 是否支持 None 必須分開審查；不能改 formal reader 的拒絕規則。已交 owner 唯讀設計，Q3 不改寫、不重跑。未執行 single warm、千檔 producer 或效能資格驗證。
 
 H20 F actual01 唯讀摘要另存 `output/qa/h20_f_true_origin_root_attempt01/root_readonly_audit.json`，原receipt SHA `447b8dcb35f68006d95921158c229183e2c67d925da14b3e590bbeef1f965961`；只有 initial_scope 的外層完整末端／末字矩形兩項為 false，clipboard 已還原。已授權全新 G QA sibling 在原生 End 後重呼公開 reveal、再次穩定與核對完整矩形，保留原失敗快照與18守門；不改F/正式overlay。0xC0000005 原因仍未知，另增純資料 cleanup 階段診斷與 faulthandler，待審後再執行。T28b 真 Main wrapper 正平行製作，未執行。
+
+
+### 2026-10-10 Q3 契約覆核與下一候選授權
+
+root 唯讀核 fixed85bc `rule_research_technical_parent_capture_v4.py` 1317–1319，空batch的repository_output_root必須None；同時核Q3 runner2104–2116已明確保留None而不做path map，無runtime修正必要。已授權全新Q4只修正正向empty fixture的None，另保留原非None root作正式reader拒絕負例。fixed feature `_parse_parameters`逐dict.items保留順序，而`_canonical_json`2263使用sort_keys=True；故手建來源物件和canonical JSON讀回的tuple順序可能不同。Q4應以pinned from_json(snapshot_raw)完整typed expected比對讀回，並驗原始to_dict/to_json/全欄位及rawSHA內容一致；不可通用排除identity或參數欄位。Q3與actual01凍結不修改，Q4未執行。
+
+H20 G將只在內層原生End之後再走公開reveal並有界穩定，重新核全末端矩形；原首次post-End快照保留。T28b真Main待精簡外層wrapper固定58pins與54私有環境鍵，沿用candidate既有300秒父COW/新PID子restore契約；外層360秒捕獲所有父子stdout/stderr、timeout與來源核對，未執行。真人入口與EXE驗收仍未新增通過宣稱。

@@ -722,3 +722,21 @@ B 主視窗候選另保存 A 的錯誤 manifest 與修正 metadata，加入真�
 
 - S2 只修 QA PySide enum 回傳值編碼，原物件仍原樣交回正式 handler；root 同一長訊息節點 1 passed／4.08 秒，exit 0。58 source 及 3 candidate 起訖 SHA 一致。收據 `output/qa/f12_t11_s2_root_attempt01/receipt.json`；精確 922 字訊息、穩定幾何、實際 Yes／Ok 命中、升級與重載、原始回傳 Yes 都已驗。完整 Main COW 仍需另外診斷與驗證。
 - P01 C memory-only 固定 85bc oracle 等價測試 11 passed／0.62 秒，固定來源、正式檔與兩個候選 SHA 起訖一致。`output/qa/p01_c_oracle_root_attempt01/receipt.json`。沒有正式套用候選、效能測量或產製器重跑；不關閉 P01 Gate。
+
+### 主視窗與捲動耐久回歸 D（記憶體候選，未正式套用）
+
+B 產品五檔搭配 D 測試候選：View 五項便宜回歸為 5 passed／1 deselected／2.64 秒，17 pins 起訖一致。D 要求真 Ctrl+Home 從頂端捲動、至少一步 PageDown、末行可見，以及合作式關閉後 native worker 全數終止；Main 點擊則核對祖先裁切、viewport 與 widgetAt 實際命中。收據 `output/qa/composite_d_cheap_root_attempt01/receipt.json`。
+
+Main attempt01 在 pytest 前因 memory loader 未處理 UTF-8 BOM 而 SyntaxError，原輸出保留。attempt02 僅改用 Python 標準 utf-8-sig 解碼，formal canonical __file__ 與來源 bytes 不變；使用全新隔離 synthetic 258／257／1 fixture（不是重用 7jz9 frozen fixture），真 Main 測試 1 failed／125.26 秒，總 128.406 秒，17 pins 起訖一致。首紅在來源清單刷新按鈕：所有祖先／viewport／window containment 通過，但 `QApplication.widgetAt` 的全域中心命中為 None。尚未執行收藏儲存或 Watchlist 重開，不能稱 Main 路由通過。`output/qa/composite_d_main_root_attempt02/receipt.json`。下一步先用無來源 Main geometry smoke 查螢幕／視窗及實際命中，不重建同份 fixture 掩蓋問題。
+
+F12 T11 未執行完整 Main：root 要求追加正式 handler 寫入錯誤的一般 status_label，另建 T12，不覆寫 T11。T12 最小 diff 已 review，13 focused passed／38 deselected／3.24 秒，58來源／8候選 postflight 通過；一般錯誤狀態與儲存狀態分開保留。`output/qa/f12_t12_focused_root_attempt01/receipt.json`。一次完整 Main COW／新程序診斷已啟動，尚待終態，不預判成功。
+
+- T12 完整 Main 終態 exit 1／202.25 秒，cleanup_errors=[]，原生／venv redirector 程序鏈核驗正常。一般 status_label 終於顯示 `personal_watchlist_convert_blocked: stage_validation_failed`；原 question 回傳標準 Yes、released／clicked 命中均已確認，沒有第二 modal 是正式 handler 捕捉升級例外後返回的結果。精確收據 `output/qa/f12t12_main_1010/run_attempt_c6a73637173b4c978978706e971eef73/f12_main_revenue_receipt.json`。
+- Root 不安裝 QA guard，僅以 mode=ro／query_only 打開本輪已保留的 failed stage，inventory complete=True、revision_count=1，stage SHA `327e3820d41b68b570054da6bd0811fc8bc7f163994f8c8036e846a3c8505d92` 起訖一致。收據 `output/qa/f12_t12_failed_stage_readonly_inventory_root.json`。沒有再次轉換、啟用或改 stage／來源；這是診斷讀回，不代替整個 COW 驗收。
+- 唯讀追查確認 pinned V9 QA guard 將私人 application_root 內 URI 連線一律拒絕；正式 `_validate_stage` 必需以私人 stage 的 mode=ro URI 核驗，因此被 guard 包裝成上述錯誤。正式 converter／來源與 V9 guard 不改；下一候選只補 exact caller／configured target 的 QA 接線，並先驗真 converter 與拒絕案例。後續啟用的 target writer-lock URI 亦須分開核對，不允許任意私人或原來源 URI。
+
+### 2026-10-10 接續：空來源窄窗診斷與 P01 E 等價驗證
+
+- Composite E 空來源真 Main 在隔離目錄執行：1 failed / 1.88 秒，沒有產製資料。Main frame 已落在 800×800 虛擬螢幕內；第一個失敗是「官方市場與技術條件研究」頁籤中心 x=867 落在寬 548 的 scroll viewport 外。左側推薦工作區按鈕真實命中成功。此為窄窗水平裁切證據，不宣稱 Main 旅程通過；後續驗證真實水平捲動與產品可達性。收據：`output/qa/composite_e_geometry_root_attempt02/receipt.json`，完整幾何記錄：同目錄 `stdout.bin`。初次 sandbox 嘗試未能建立 C:/t 私有測試目錄，未執行測試；經隔離測試執行授權後完成上述第二次收據。
+- P01 E 改從雜湊固定 baseline 函式原始碼套用唯一候選片段，修正手寫 Windows 字串造成的 SyntaxError，候選建構納入受控錯誤收據。root 在記憶體載入固定 baseline、編譯 E 候選並跑既有 11-case 純詞法 oracle：11 passed / 1.20 秒；固定來源、正式來源、C patch/test 與 E runner pre/post SHA-256 未變。收據：`output/qa/p01_e_oracle_root_attempt01/receipt.json`。此為詞法等價與可編譯性，不是效能 p95 過關。
+- 分工續行：T13 精確 SQLite stage-ro / target-ro / activation-lock-rw 測試接線、窄窗可達與既有 qualified fixture 重開、P01 單次 eligible 計數與純詞法配對診斷。正式資料與正式程式未因本段測試改動。

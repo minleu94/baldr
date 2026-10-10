@@ -1006,3 +1006,11 @@ root 已審完整 Q3→Q4 diff（46509 bytes、SHA `500ae9cbbc82c87212a3b1d9f770
 root及owner獨立核固定parent1368–1383與writer流程：新增batch必須寫partial receipt；complete不能同時新增batch。Q4 fixture直接seq1空partial→seq2含batchcomplete非法。已授權全新Q5正例補seq2含batchpartial→seq3同batch/root/writercomplete，保存原跳步作獨立public reader精確拒絕負例；在clone/rechain前先讓固定public parent reader核合法source fixture，之後仍須outer private reader核全文。Q4及原attempt不修改；runtime guard、正式來源、正市場與效能pins不放寬。Q5未執行。
 
 H20 G審查另要求將finally使用的journal path在try前初始化，避免early failure被UnboundLocalError蓋掉；fit分支第二次reveal後重核當時幾何。T28b full Main wrapper審查要求無parent receipt時也掃原始stdout/stderr；不以空掃描當作無callback。兩者均待最終封套及root實際執行，尚未宣稱通過或新增真人驗收版本。
+
+### 2026-10-10 恢復後 Q5 通過與 H20 G 實際結果
+
+root 審閱 Q4→Q5 diff 的 fixture 變更後，以 manifest `dff5d7307ac8691b23d72b7c6543e0434428893a8f9495c6fd30f5bbedf2ffa9` 執行 `output/qa/run_p01_q5_focused_root_attempt01.py`。收據 `output/qa/p01_q5_focused_root_attempt01/receipt.json`：5 tests passed（unittest 0.915 秒），exit 0、未逾時，外層 1.094 秒；固定來源 4666 檔案 inventory 與候選 pins 前後一致。SQLite／網路禁止仍有效。三段合法 parent receipt、原跳步精確拒絕負例、來源 parent public read 及私有重鏈讀回均越過。本結果僅為合成 focused，不代表千檔 single-warm、完整 oracle 或 300 ms 效能資格。後續有界 single-warm 命令交 owner 準備供 root 審查。
+
+H20 G 最終 manifest `9f36a12ab5f71892d994e04e4cfb510e6b07e2d227c4f747533b102091cb5751` 已執行全新私人根 `C:/t/h20g01`。收據 `output/qa/h20_g_true_origin_root_attempt01/receipt.json`：1 failed（4.49 秒），child exit `3221225477`／`0xC0000005`，未逾時，pins 前後一致。第二次公開 reveal 後外層僅移動 6 px，末字完整矩形下緣仍超出 viewport 1 px；初始 scope 的完整末端與末字外層矩形仍未通過，錯誤／取消旅程未到達。native exit 原因未證明，不能因 callback 掃描為空宣稱正常退出。已要求下一個獨立 H 候選修正實際產品 reveal 幾何，保留完整矩形守門與 G 原失敗證據，不新增測試 reveal 迴圈或放寬可讀標準。
+
+T28b full Main 外層 wrapper 尚未執行。恢復稿靜態覆核發現 wrapper 根與候選根混用，已要求獨立固定兩者並核對檔案存在與身份，再凍結封套；不複製候選或修改正式來源。未新增 EXE 或真人驗收版本，產品補完 Gate 維持未完成。

@@ -1,8 +1,9 @@
 # Midnight Analyst UI 設計系統規格
 
-> **狀態**：Month 4 v1 functional closure accepted；2026-07-02 完成第一輪全 UI 低風險視覺 polish
-> **最後更新**：2026-07-07
+> **狀態基線（2026-07-07）**：Month 4 v1 functional closure accepted；2026-07-02 完成第一輪全 UI 低風險視覺 polish
+> **最後更新**：2026-10-10
 > **權威範圍**：本文件定義 PySide6 UI 深色主題、設計 token、共用元件、效能限制與後續修改規則。
+> **狀態日期界線**：第 8 節的「目前實作狀態」與第 11 節的遷移順序，是 2026-07-07 的設計基線描述，不代表目前完成度或下一個實際待辦；目前狀態與優先事項以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。本文件仍是設計規格，不是現況權威。
 
 ---
 
@@ -401,6 +402,7 @@ Midnight Analyst 的原始目標是建立一套深色、專業、效能友善的
 
 ## 13. 更新記錄
 
+- 2026-10-10：標明第 8、11 節狀態敘述屬 2026-07-07 基線，並導回 PROJECT_SNAPSHOT 判讀目前狀態。
 - 2026-07-07：補記左側主導覽自製線條 SVG icon / icon-only 收合、Workbench 四格指揮台摘要列與預留深挖區定位、Runtime compact scope note、以及 `跌幅%` 這類正數但負向語意欄位應使用負向色的規則。
 - 2026-07-02：同步全 UI 低風險 polish 狀態；補記新增 token、button variants、表格 helper、EmptyStatePanel、text sanitizer、全域 QSS 補強、遷移狀態與「只改呈現層、不改 service/domain 運算」邊界。
 - 2026-06-16：建立 Midnight Analyst UI 設計系統規格，記錄目前 theme token、共用元件、效能限制、已知問題與後續 agent 修改流程。

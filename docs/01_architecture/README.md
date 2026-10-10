@@ -19,7 +19,7 @@
 - **[system_architecture.md](system_architecture.md)**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
-  - 架構主文為第 1–15 節；首頁導覽與研究 context 契約、personal store 路由，以及 orchestration、SQLite connection、ML initialization、Personal H20 lineage、ML reader custody 與 model-loader 契約已抽回第 3、4、8、11 節。較早的更新流水帳、9/27 lifecycle 收據、9/29 排程 custody 切片及部分 10/06 H20／ML／private-store／homepage 日期紀錄已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，舊標題保留導引；10/06 P2／M03 的穩定技術契約仍在主文，當日治理與性能收據見 [QA integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。`system_architecture.md` 第 16 節仍保留 10/03–10/07 混合增量，含架構契約、QA 摘要與日期狀態；尚未逐段完成歸檔，不能依日期推斷現況。
+  - 架構主文為第 1–15 節；首頁導覽與研究 context 契約、personal store 路由，以及 orchestration、SQLite connection、ML initialization、Personal H20 lineage、ML reader custody 與 model-loader 契約已抽回第 3、4、8、11 節。較早的更新流水帳、9/27 lifecycle 收據、9/29 排程 custody 切片及部分 10/06 H20／ML／private-store／homepage 日期紀錄已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，舊標題保留導引；10/06 P2／M03 的穩定技術契約仍在主文，當日治理與性能收據見 [QA integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。`system_architecture.md` 第 16 節仍保留 10/03–10/07 混合增量，並有 10/08 補入的 M2 契約與驗收入口；這些內容混有穩定架構契約、QA 摘要與日期狀態，尚未逐段完成歸檔，不能依日期推斷現況。
 
 - **[target_system_architecture.md](target_system_architecture.md)**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
@@ -41,7 +41,7 @@
 | Watchlist／bookmark 保存與 COW 遷移 | 第 4、8、11 節；操作與批准狀態看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) |
 | Personal store 路由、帳戶身份與禁止 fallback | 第 11 節；狀態看 Snapshot／Manual |
 
-主文前後的日期化架構增量保存當時的局部變更與限制，適合在需要追溯指定切片時查閱；不要從文件前後順序推斷目前狀態。R01 的逐次測試數字已集中到 [QA 收據](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)，bounded Registry read contract 保留於主文第 11 節；原重複摘錄見 [Archive](../09_archive/SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)。2026-09-27 邊界／資源 lifecycle 的 dated verdict 與證據已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，穩定契約留在主文第 4、8、11 節。9/30 排程資料流也已歸檔，穩定的 lane 來源 identity 規則留在主文第 10 節。第 16 節舊更新流水帳同樣位於歷史檔；目前完成度看 Snapshot，具體驗收看對應 QA 收據。
+主文前後的日期化架構增量保存當時的局部變更與限制，適合在需要追溯指定切片時查閱；不要從文件前後順序推斷目前狀態。R01 的逐次測試數字已集中到 [QA 收據](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)，bounded Registry read contract 保留於主文第 11 節；原重複摘錄見 [Archive](../09_archive/SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)。2026-09-27 邊界／資源 lifecycle 的 dated verdict 與證據已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，穩定契約留在主文第 4、8、11 節。9/30 排程資料流也已歸檔，穩定的 lane 來源 identity 規則留在主文第 10 節。第 16 節較早的更新流水帳已移至歷史檔，但本節仍保留 10/03–10/07 增量及 10/08 的 M2 入口；目前完成度看 Snapshot，具體驗收看對應 QA 收據。
 
 ## ML 架構閱讀順序
 

@@ -233,6 +233,8 @@ flowchart LR
 
 ## 10. 主要模組契約
 
+> **狀態欄位讀法：**本節各模組的 `Current status` 是目標導覽中的能力定位，沒有一致的快照日期，不用來判定目前完成度。當前狀態與阻礙以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準；目前已存在的 package、service、DTO 與依賴以 [system_architecture.md](system_architecture.md) 為準；目標實作設計以 [FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 為準。
+
 ### 10.1 Decision Workbench / UI
 
 - **Responsibility**：呈現今日任務、Advice、Portfolio、Health、Evidence、quality 與 drill-down。

@@ -33,6 +33,8 @@
 
 ## 5. 治理檢查表
 
+> 以下勾選是此文件的檢查表紀錄；若沒有日期化且可追溯的實作證據，不應單獨視為目前程式已符合的證明。當前模組邊界與狀態請對照 [system_architecture.md](system_architecture.md) 和 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
 - [x] DTO 與 storage format 無關。
 - [x] EventBus 不依賴 `PySide6`，使用 pure Python `Callable` lists。
 - [x] Qt translation layer 隔離在 `ui_qt/bridges/`。

@@ -2094,3 +2094,22 @@ Archive 根層初篩發現 `SOLUTION_SUMMARY.md` 的舊 UI 入口，以及 `API_
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 記錄本批證據基線、核讀範圍與修訂限制。 |
 
 沒有刪除或移動文件及原始資料。未執行測試，未刷新 Graphify，未逐一驗證該目錄所有連結，也未執行最終 repo-wide 連結／錨點掃描；這些工作仍等所有目錄內容治理與修訂完成後執行。
+
+<a id="coverage-entry-188"></a>
+## 2026-10-10 校正 Architecture 根層文件的狀態與日期界線
+
+本輪完成 `docs/01_architecture/` 根層 8 份文件全文核讀；該目錄共 224 個 tracked paths，正文閱讀計數由 44 全文／7 局部／173 未讀更新為 52 全文／7 局部／165 未讀。目標架構 bundle 的 216 份閱讀數不變。此計數只反映可追溯的核讀深度，不代表其餘長篇任務規格、報告、QA／歷史內容已核實。
+
+Architecture README 曾概括第 16 節的 10/03–10/07 混合增量，未提到 10/08 補入的技術保存母體 M2 契約與驗收入口；另一處「第 16 節流水帳已在歷史檔」也容易被讀成整節已封存。本輪已明確區分較早流水帳與仍留在主文的日期增量，並標示 10/06 載入畫面段及 10/08 M2 入口時點，沒有改動 QA 基準或驗收內容。
+
+另核實 `target_system_architecture.md` 第 10 節的 `Current status` 沒有一致的快照日期；已導回 Snapshot、目前系統架構與 FINAL 目標設計。`ui_design_system_midnight_analyst.md` 第 8、11 節的目前／完成／後續敘述仍屬 2026-07-07 基線，已明確標示並將文件最後更新日更新為本次界線補註日期。`runtime_observatory_rules.md` 的勾選清單也新增說明：勾選本身不是當前實作證明，應以具日期與來源的證據核對。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/01_architecture/README.md`、`system_architecture.md` | 澄清 §16 的歸檔範圍及 10/03–10/08 內容時點。 |
+| `docs/01_architecture/target_system_architecture.md` | 說明第 10 節 Current status 的讀法與現況權威入口。 |
+| `docs/01_architecture/ui_design_system_midnight_analyst.md` | 將第 8、11 節標成 7/07 基線，當前狀態導回 Snapshot。 |
+| `docs/01_architecture/runtime_observatory_rules.md` | 區分文件檢查表勾選與有日期證據的現況證明。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 Architecture 根層閱讀計數、判讀結果與增量摘要。 |
+
+沒有刪除或搬移文件、沒有改動原始資料或 QA 收據。未執行測試、未刷新 Graphify，也未逐一驗證本目錄所有連結；全 repo 最終 link／anchor scan 與 Graphify 刷新仍待所有目錄內容治理完成後進行。

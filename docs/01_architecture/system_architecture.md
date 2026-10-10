@@ -1154,7 +1154,7 @@ UI 修改：
 
 ## 16. 更新記錄
 
-> 較早的架構更新流水帳與部分日期化切片已移至 [系統架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；本節仍保留 2026-10-03 至 10-07 的增量。這些段落混有穩定架構契約、QA 收據摘要與當時狀態，尚未整節歸檔。
+> 較早的架構更新流水帳與部分日期化切片已移至 [系統架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；本節仍保留 2026-10-03 至 10-07 的增量，以及 2026-10-08 補入的技術保存母體 M2 契約與驗收入口。這些段落混有穩定架構契約、QA 收據摘要與當時狀態，尚未逐段完成歸檔。
 > 不要依日期或段落順序推斷現況：目前狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，驗收結果看各段落連結的具名 QA。穩定架構契約分布於相關主文段落；第 16 節仍有尚未抽出的契約，因此不可把整節當成純歷史，也不可從其中的日期狀態推斷現況。
 
 ## 2026-10-03 Decision Desk 品質與研究證據邊界
@@ -1399,13 +1399,13 @@ P2資料流：TWStockConfig→既有selector→同帳Paper route＋PersonalDataP
 MainWindow在既有推薦source tabs掛PersonalH20ResearchWidget；背景CLI composition注入原public prediction ports，App只持唯讀typed cohort，不匯入ML。原activation/reference→immutablemanifest→全symbols預測pins→整數gross排序→原ResearchStockContextDTO與記憶selection→重讀exactrestore。canonical result_id不造。日常三分支沿原entry保存後登記manifest/entry pins，原outcome verifier後以captureSHA定址歷史manifest；原20-session projector與create-only joins不改，無新model writer或市場資料庫寫入。BBUI與bookmarkcodec只認已核原v3來源，BBP01 parent尚待直接human批准採入。完整同版scope與限制見[中央整合QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)。
 
 
-## 啟動載入畫面與圖示
+## 啟動載入畫面與圖示（2026-10-06）
 
 雙擊 exe 後，在 Qt 可建立視窗時顯示原 loading_view.png 背景、目前工作與進度條。套件匯入使用不定進度；14 個實際初始化階段完成後推進，主視窗顯示後才完成。進度代表介面初始化，不代表市場資料新鮮度或排程成功。可按 Esc／Alt+F4 關閉載入窗；程式在安全階段邊界取消，等待既有 worker 合作式退出，不會顯示半成品主視窗。單一同步初始化呼叫期間仍須等該呼叫返回；不宣稱能強制中斷。缺圖時保留深色底與可讀進度。
 
 exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID 在建立視窗前設定為 Baldr.TechnicalAnalysis，不修改 registry。既有釘選或 Windows 圖示快取可能仍顯示舊圖，未自動更動使用者釘選。初始化失敗會關閉載入窗，顯示既有錯誤／log 位置；offscreen 測試不顯示阻塞對話框。
 
 
-### 技術保存母體 M2（契約與驗收入口）
+### 技術保存母體 M2（契約與驗收入口；2026-10-08 補記）
 
 完整母體 v4 的保存、分段驗核、全域查詢、個股／比較下鑽、收藏與正常 UI 讀回之逐次實作與工程證據，見 [M2 completion QA](../06_qa/BALDR_COMPLETION_M2_20261007.md) 與 [逐段核驗 QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md)。架構契約集中於本文件 §3、§4、§8、§11；QA 收據保存當時的測試範圍、效能觀測及未驗事項。它們不替代 Snapshot 的目前進度，也不把保存能力等同 PIT、正式推薦或投資資格。

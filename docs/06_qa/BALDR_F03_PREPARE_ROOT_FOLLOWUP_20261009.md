@@ -786,3 +786,11 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 恢復開發後維持兩個子代理的靜態平行工作：F12 三種 SQLite URI role 候選及 P01 下一步瓶頸設計；runtime 由 root 審閱後統一安排。其他文件 agent 的未提交文件與 `$null` 均不處理。
 
 - 正式 import 耐久旅程終態：7 passed／382.76 秒（wrapper 388.11 秒）、exit 0；Main 動態 257 檔 fixture 旅程與 View 六節點全部通過，八檔正式 source/test pre/post SHA 一致。收據 `output/qa/composite_formal_durable_root_attempt01/receipt.json`。涵蓋窄窗真頁籤控制、全母體分頁、跨頁比較籃、完整明細捲動、收藏與精確重開及 worker 關閉；合成來源 current_only／partial／PIT=false 限制維持。新程序 K 是另份固定封套證據；960px、新 EXE、真人視覺及完整私人 COW 仍未驗，不能宣稱全產品完成。
+
+### 月營收候選靜態審查與後續工作（未驗收）
+
+- T14 凍結 manifest SHA `9a378845c7f037447addeb317b0226704c7ac810c30296cbe83235005cd1ac22`，58 source pins 與八候選檔核對；歷史失敗 native stdout/stderr 未保存的缺件維持明示，不能當作通過證據。
+- Root 與獨立 Luna max 審查確認兩個 QA 正路徑阻擋：post-reload 在沒有 upgrade local 的 View._load_watchlist frame 查 service binding；以及 post-activation lock 模式名稱沒有 post_activation_ 前綴而誤用原 owner matcher。這些是候選守門錯置，沒有放寬正式 COW 或原來源寫入權限。
+- Root 保留 T14，建立 T15 靜態 sibling：`output/qa/f12t15_main_1010`，manifest SHA `1a0e9fcb7008bb1c176c048a1e7fff7ae7c0a038937725cb29b436199f90e301`。只修正精確 frame owner、模式名稱與新私人測試根；AST parse 通過，尚未執行 focused／Main，不關閉 F12。
+- P01 下一個 I 候選仍僅 QA shadow：fresh manifest bytes 每次重新檢查路徑／link／stat／bounded read／SHA後，才沿用原 reader-issued immutable manifest；所有 artifact 與 layout 核驗維持。具名負例矩陣已交付，尚無可接受 runtime／效能結果，不套用正式來源。
+- 架構、PROJECT_NAVIGATION 與 UI_FEATURES 文件覆蓋同步已另提交 `3104b79b`；目前狀態同步 `07ff5694`。其他 agent 的文件整理變更未納入本輪提交。

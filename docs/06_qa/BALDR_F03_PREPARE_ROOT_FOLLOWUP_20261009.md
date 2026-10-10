@@ -457,3 +457,23 @@ root完整審MA60原403行與strict sibling diff，獨立核公開MA index屬性
 ### MA60 固定真 alignment match 原生通過
 
 attempt04同handle38762原生exit0，唯一node1passed146.40s、wrapper148.312s。root完整讀stdout，獨立hash stdout112B SHA8b5f26cc3670d6a62daddaff2144c751a7a5b14d7e351cd24f612a95e1d1a930、stderr空、receipt SHAd2ce7aece57b4755c1a4d616cce39e03fb3753c77b01df4aa11aac078ccf46a7；七pinsbeforeafter相同，9552/27180/32556皆gone。真全新257+1producer/exact store/bundle/public group鏈，target1000的固定60close80..139得到ma_alignment_strictly_descending match、warmup60/contiguous；technical no_match由MA match OR救回，AND不入選；總母體與來源時鐘不縮減。這補足具體MA match evidence，但不證官方60交易日、真金融來源、crossover、其他256都match、正常UI、freshPID收藏或100k/300ms資格。
+
+
+### 正常 Composite UI 的來源入口候選（尚未安裝或 runtime）
+
+Root核現有MA view _execute_new_query：bundle_session_v1只綁ma projection，不能先開舊session再重開四群組造成雙次全來源讀取。新增QA-only候選 output/qa/composite_bundle_opener_candidate_20261010，base正式readerd59b不變；候選reader SHAa08d30b084e35dc1eec25c2a9207bdd7a159f8d047d3bb3387e3897bf27e4df9，AST通過。新增explicit open_daily_market_technical_official_disposition_bundle_projection_group_session_v2，與舊bundle opener同kwargs、保留舊函式全文；metadata核pin→單次builder/full bundle exact-read→真bind_projection_group→既有issuer；cutoff從原manifest/source clock，不用latest/現在時鐘，外層hardfilter及P01條件保留，所有post-read失敗與取消均poison群組。尚待獨立review、必要實跑、正式安裝及正常UI接線，不記功能交付。
+
+跨PID identity唯讀追查顯示P01/group/composite canonical identities沒有PID/UUID；新Composite bookmark先採完整source/query/result/page/row strict exact重開，不因月營收ephemeral snapshot案例先略過group/P01 IDs或另造寬鬆stable identity。須真正freshPID資格測試，若不同先拒絕診斷，不自動接納。Luna另交typed presenter候選、H20 E env focused tests、F12 O同attempt source-qualified oracle；正式reader仍d59b，O58pins保持該版本，後續新增需明示rebase不改凍結receipt。
+
+回滾範圍：目前只新增ignored QA候選與本任務QA紀錄，正式reader/UI未改；候選保留原base SHA及完整diff，可停用候選、不動正式來源。其後正式API變更僅由root安裝並另驗，其他agent dirty文件不覆寫。
+
+
+### Composite 顯示投影真整合與強制 UI 檢查
+
+root已安裝typed presenter（SHA288725c3a14a4bd7a26889b98fef6bbe61ac7da89629f32cc7849753d34f097d）與四項測試（SHAc265d61f151b36e1e58257612d44e81ef08d85fe131aee657b56d7195b0c9a4e）。attempt01因紀錄器沿用舊-k選取而4deselected/exit5，保留原封套；修正紀錄器後唯一attempt02真4passed149.20s、exit0、來源pins起訖不變。驗證真257母體及258 audit、全域counts與頁面筆數分離、四群truth/理由/保存數值與精確Decimal；拒絕未具typed資格輸入。仍未接入可操作View，不宣稱正常UI交付。
+
+強制檢查attempt01：更新工作台85passed4.42s；qa_validate_update_tab exit0；完整8根mypy檢查938來源檔無問題。py_compile在QA長路徑輸出遇Windows路徑限制（exit1），保留原失敗紀錄；attempt02改明示QA短檔名cfile，兩檔皆編譯通過、SHA起訖一致。沒有修改產品程式來迴避檢查。
+
+H20 E guard focused原第一attempt3pass1skip、3QA f-string錯誤及1長路徑失敗；只修正QA literal braces及縮短attempt路徑，四個原失敗節點第二attempt全pass0.421s，合計七pass一skip，未宣稱同一次八項全綠。E完整Main的guard已通過，但0.328s因QA helper ambient import缺失結束，SQLite/訓練/預測計數皆0；原來源及封套pins保持。F sibling只以同目錄普通單鏈檔及SHA載入helper；root已實際抽取執行loader並成功取得callable，不改sys.path/guard/S4。F完整Main唯一attempt已啟動，尚待原生終態，不記2382/684bp通過。
+
+回滾僅限新增presenter及其測試、本任務QA紀錄；尚無其他正式模組依賴該presenter。其他agent文件與正式資料不納入回滾。

@@ -333,3 +333,5 @@
 **2026-10-10 第十五增量：** Coverage History Entry 197 將 Manual 第 14 節後 1,358 行日期化開發／候選快照移入 Archive，原文 bytes／SHA 已記錄；Manual 保留 104 個同名標題導引，並更新指南與 Archive 導覽。角色盤點路徑增為 1,479；也修正角色表合計欄，使 QA／證據與歷史／轉址的總數符合逐目錄互斥分類。未逐項重驗歷史內容，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-10 第十六增量：** Coverage History Entry 198 為 10/10 複合研究待真人驗收收據補上 QA README 與 Product/UX 索引入口；並在 Superpowers 主題表補列 Wave 1／2A、Terra V0 與舊自動化提案，原 plan/spec 及其 manifest 雜湊未改。P0 Register 的 DEV-66 limited 決議與 8/28 machine audit limited=0 差異仍待底層 registry 調和。QA／Archive 與 Architecture 大量證據原文仍未逐篇全文閱讀；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+**2026-10-10 第十七增量：** Coverage History Entry 199 將 Manual 的 TWSE no-data 分類條件對齊程式與資料指南，並為舊 system-Python 排錯段、CSV mapping 範本列及回歸基準策略標出界線；Architecture §8 的 2026-06 資料筆數改列歷史快照。小型資料／指南目錄完成逐篇或逐路徑核對，未把文件內記載的冷封存／quarantine 主張視為重新驗證證據。未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。

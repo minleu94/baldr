@@ -196,6 +196,8 @@ python scripts/update_daily_stock_data.py --date 2025-08-29 --merge
 
 ### 問題 4：虛擬環境問題
 
+> **舊排錯說明，已由現行環境指南取代：** 下列 System Python 指令不是標準安裝或環境修復方式。一般情況直接使用 repo 的 `.venv` 解譯器；僅符合[受限 System Python 備援條件](../08_technical/RUN_WITHOUT_VENV.md)的本機環境才採用 system Python。
+
 **解決方案**：
 - 直接使用系統 Python：`python scripts/batch_update_daily_data.py --start-date 2025-08-28`
 - 不需要激活虛擬環境

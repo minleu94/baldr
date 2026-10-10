@@ -10,6 +10,8 @@
 | `momentum_aggressive_v1.md` | 暴衝策略的目的、適用情境與風險說明。 |
 | `stable_conservative_v1.md` | 穩健策略的目的、適用情境與風險說明。 |
 
+本目錄只列使用者面向的策略說明，不是 registry 全量清單。`baseline_score_threshold` 雖列於 registry，但其 executor 明確定位為回歸測試基準，因此不作為使用者策略文件列入此表。
+
 ## 維護規則
 
 - 新增策略說明時更新本 README；只有主要導航入口或權威邊界改變時，才同步更新 `../00_core/DOCUMENTATION_INDEX.md`。

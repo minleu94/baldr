@@ -22,7 +22,7 @@
 - [C 槽歷史封存第二批清單](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)：記錄第二批 28 個來源目錄的精確範圍、收據與還原方式；終態已依授權完成，細節見下方對照。
 - [C 槽歷史 QA 冷封存終態對照（2026-10-09）](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)：兩批共 34 個根、158,712 個檔案；依終態收據與 Junction metadata 對照，未重新計算全量 SHA。容量數字為收據時點快照，不是即時值。
 - [歷史測試資料集中清冊](HISTORICAL_TEST_QUARANTINE_20261006.md)：記錄 2026-10-06 提案及當時未執行狀態；不可據此推定資料已搬移。
-- [月營收公告日 mapping 範本](templates/monthly_revenue_availability.csv)：欄位範本，不是正式公告日資料。正式路徑由資產登記與操作手冊指示。
+- [月營收公告日 mapping 範本](templates/monthly_revenue_availability.csv)：欄位範本，不是正式公告日資料。表內 2330／2026-05 列的日期與來源標籤未由本次盤點重新驗證；不得當成正式 mapping 或已匯入資料。正式路徑由資產登記與操作手冊指示。
 
 ## 歷史實作摘要
 

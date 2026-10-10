@@ -2291,3 +2291,19 @@ QA 增量複核發現 `V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 保存 DEV-66 
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 登錄本輪新增入口與讀取深度；QA／Superpowers 大量原文仍未逐篇全文核讀。 |
 
 本輪全文讀取 QA README 與 P0 Source Acceptance Register；Product/UX 索引及 scoped authority 僅讀相關段落。P0 §7 的 MOPS limited 決議與 §14 的 8/28 machine audit limited=0 差異仍待 raw audit artifact／registry 調和，保留兩份原始紀錄及現有界線。Superpowers plan/spec 原件及其 manifest 雜湊未修改；僅補目錄入口。確認新增連結目標存在，對五個變更檔做範圍限定的 diff whitespace 檢查；未作全 repo link／anchor scan。未刪除／搬移文件、未改原始資料、未跑測試、未刷新 Graphify；受保護 F03 文件未讀、未搜尋、未 diff。
+
+<a id="coverage-entry-199"></a>
+## 2026-10-10 同步資料指南契約並標明舊快照
+
+對照 data_module/data_loader.py 的目前查無資料分類條件後，確認 Manual 要求 ALL 與 ALLBUT0999 都精確回覆官方無資料文案，比程式和資料指南採用的條件更嚴。現已修正 Manual；另補上舊 System Python 指示、月營收 CSV 範本列及回歸基準策略的適用界線，並將架構文件中的 2026-06 資料筆數標成未重新查核的歷史記錄。
+
+| 文件 | 處理 |
+|---|---|
+| docs/07_guides/APPLICATION_MANUAL.md | 將 no-data 條件改為至少一種 request type 回覆精確官方文案，且其他嘗試只可為相同文案或 HTTP 307；仍保留跳過不等於成功下載／完整資料的提醒。 |
+| docs/03_data/daily_data_update_guide.md | 將直接呼叫 system Python 的舊排錯段標為已被 .venv 標準及受限備援指南取代。 |
+| docs/03_data/README.md | 說明 CSV 範本中 2330／2026-05 列的日期與來源標籤未經本輪驗證，不可作正式 mapping 或已匯入資料。 |
+| docs/strategies/README.md | 說明本目錄列的是使用者策略；baseline_score_threshold 是回歸測試基準，因此不列為使用者策略說明。 |
+| docs/01_architecture/system_architecture.md | 為 2026-06-15 至 06-17 的資料庫表格／筆數加上歷史快照界線，移除將其說成目前正式 DB 狀態的措辭。 |
+| docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md | 登錄逐檔核對範圍、確認的描述衝突及未重新查核限制。 |
+
+唯讀核讀 docs/03_data/ 17 paths、04_broker_branch/ 6、05_phases/ 15、08_technical/ 7、strategies/ 3 與根 docs/README.md；相關小目錄文件皆已逐篇閱讀或逐路徑核對。no-data 契約核對程式片段與兩份資料指南；月營收列的實際公告日／來源真實性未驗證；冷封存／quarantine 收據與 junction 未獨立核實。範圍限定的連結與 whitespace 檢查不代表全 repo 最終 link／anchor scan。未刪除／搬移檔案、未改資料、未跑測試或刷新 Graphify。

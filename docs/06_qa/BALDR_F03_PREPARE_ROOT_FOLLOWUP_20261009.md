@@ -8,14 +8,26 @@
 
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
-| F03 完整母體共同發行 | C13nodes已有原生通過。F 正常 node 原生 exit 0，1 passed／173.82s；完整257母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持，以及conditions／duplicate／decoder／poison檢查通過。27 pins與manifest起訖相同。 | 開始準備正式 issuer/F17 整合最小候選；目前為 QA overlay，尚未套入正式來源。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
-| H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10僅授static索引修正。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
-| F12 收益與跨程序收藏 | G 完整修訂已 review；8 candidate／58 source pins獨立匹配。G focused 原生exit0，8 passed／26 deselected／0.88s；前後pins零差。G Main 唯一實跑原生exit1，已到真readonly transaction連線guard；四個已知PID皆gone。 | G candidate receipt未更新終態，仍running且after／cleanup缺失；stdout明示queryfailed但錯誤截斷。先診斷真connect kwargs及收據缺口，不重跑；真Main／新PID收藏仍未驗完。原G保存，F17正式整合可續推，未來G修訂須明示重核pin。 |
+| F03 完整母體共同發行 | C13nodes與F正常node已有原生通過；root已套入正式reader、新group-session與14節點測試，補精確prepared型態後mypy兩source綠、三檔語法綠。 | 正式17節點首輪原生終態：15 passed、2 failed／499.90s；兩紅均為測試仍依賴QA overlay環境變數，已窄修為正式module路徑及tmp_path子程序參數，修正後b封套只重驗兩節點，原生2 passed／179.68s、exit0；首輪15項加修正2項全部取得通過，未重跑其餘15項。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
+| H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10唯一attempt01原生exit0／5.04s；真fixed2讀2關、config14讀14關、1private SQLite／0source connection；來源與fixture不變、cleanup完整。negative core通過但完整negative scope仍false；原JSON loader pin、private replay等缺口保留。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
+| F12 收益與跨程序收藏 | G 完整修訂已 review；8 candidate／58 source pins獨立匹配。G focused 原生exit0，8 passed／26 deselected／0.88s；前後pins零差。G Main 唯一實跑原生exit1，已到真readonly transaction連線guard；四個已知PID皆gone。 | G candidate receipt未更新終態，仍running且after／cleanup缺失；stdout明示queryfailed但錯誤截斷。已定位私有副本走rollback/not_applicable路徑，而QA只授WAL prime路徑；H僅授新增精確rollback transaction角色與完整失敗診斷的static實作，尚未授runtime；真Main／新PID收藏仍未驗完。原G保存，F17正式整合可續推，未來G修訂須明示重核pin。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
 
 ## 審查結果與實作範圍
+
+### 正式 publication 整合（驗證中）
+
+root 已核候選三檔 SHA、reader／test 與已測 F 相同、新 session 的可執行 AST 僅除 docstring 後相同，才套入正式工作區。首輪 targeted mypy 出現八項 prepared union／object 型態錯誤，已以既有驗證結果的精確 `cast` 補正，沒有 `Any`／ignore 或計算、來源 gate 變更；兩個 source module mypy 通過，三檔語法檢查通過。正式 pytest 首輪15通過、2個QA overlay設定失敗；已修測試路徑、未放寬產品gate，兩節點已原生2 passed／exit0，合計17項覆蓋全數通過；不授產品 query／UI／收藏完成。
+
+| 檔案 | 變更 | 回滾方式 | 風險 |
+|---|---|---|---|
+| `app_module/daily_market_technical_official_disposition_query_reader_v1.py` | 修改，新增 opt-in group 發行 | 僅反向套用本次 reader 差異；舊 SHA `fc9c3d089c703f2bc815d0ce02310916de49aa1ce35cdfa8336ca7e630dc8045` | 新 opt-in 入口失效；先核沒有後續依賴 |
+| `app_module/daily_market_technical_universe_projection_group_session_v2.py` | 新增 opaque issued view | 確認無後續 query／UI 依賴後撤本檔 | 不能保留 reader 對本檔的 opt-in 引用 |
+| `tests/test_daily_market_technical_projection_group_publication_v2.py` | 新增14節點回歸 | 隨本次 publication 功能一同撤回 | 不撤既有 prepare／group／reader 測試或原 QA 收據 |
+
+F12 G 原封套保持，正式 F17 SHA 已變；後續 F12 修訂需明示重核來源 pins，不能改寫 G 的歷史 before／after。正式原始資料、排程與其他 agent 文件不變。
 
 ### F03 F 正常入口實跑終態（最新追加）
 
@@ -231,3 +243,13 @@ E唯一attempt01 exit1、`1 failed in 186.88s`，receipt188.6035036s，無timeou
 E真ledger probe已越過：257provenance、重綁被既有immutable錯誤拒且原list/content不變、清list與兩parentset後三getter仍同anchor。接著test338錯誤碼literal首紅，少了reader公開前綴；實際拒絕為`technical_official_query_reader_v1_projection_group_session_conditions_require_exact_reopen`。root對照reader `_fail`147–164確實加此前綴；group/session的 `_fail`來自group_v2，不加reader前綴，後續already_issued／poison原expected合理。conditions確實拒絕，但後續duplicate／decoder／poison仍未跑，不稱整normalnode綠燈。
 
 授F03 F static-only最小QA literal修正，需完整核對normalnode全部.code斷言的constructor與_fail、replace init=False與poison/getter行為；不能只盤API名稱。正式與兩draftmodules凍結、E首紅保留，下一次同normalnode唯一實測待rootreview。P8原71359handle已終態wrapperexit0與內部nativeexit1分開；外wrapper成功收尾不是H20切片通過。H20 P9和營收G皆static-only，尚無新真人／EXE驗收。
+
+### 2026-10-10 UTC：正式測試設定修正與 H20 P10 終態
+
+正式首輪封套 `output/qa/f03_formal_publication_validation_20261010_a` 原生 15 passed／2 failed／499.90s，wrapper exit1／501.969s；receipt SHA `11fdeed73667d1316257291df7c087b8de88bfec7721dc1d838d414adaf0b6ce`。兩紅為測試引用舊 QA overlay 環境變數，尚未進入該正常入口／新程序驗證；其餘15項通過。root 僅改這兩項為正式 module 位置及 tmp_path 子程序參數，保留所有產品 gate。新封套 b 僅重驗這兩項，handle26455、pytest5928→23952已實測 live，尚未終態；不得重啟或以目前空 stdout 判失敗。正式三檔語法及差異格式已核；新session SHA `b9767abbaac2f5133c6e6752634feb5ae52da21f0495af1aef4d0317c0126bca`。
+
+H20 P10唯一attempt01已原生exit0／5.041568s。root讀原JSON確認selftest complete、所有completion checks真、真fixed2讀2關與config14讀14關、1private SQLite、source connection false，來源與fixture／group／JSON均不變，環境與Python狀態恢復、無active descriptors、cleanup errors空。stdout SHA `0210aa12373dd3a083d23a81a2c1d60d2a02ad1b1e4643b7c02c00760dac20e9`；stderr為config INFO。原生完整父子PID鏈未觀測，known launcher50396與Popen58796終態後gone。negative core scope通過但完整scope false：private replay、third-phase端到端、nonconfig Windows caller及原JSON loader pin驗證仍缺；不得擴稱public cohort／Main／原684bp完成。子代理接續既有canonical Main controller/child的窄static驗收整合，須先證合法launch inputs，不得改approved_for_launch false為true。
+
+複合篩選正式module與定向tests由Luna Max實作，root尚未授runtime或修改reader接線。F12 H僅static：新增rollback/not_applicable精確transaction角色，保持WAL路徑與57個其他source pins，完整primary／final writer診斷；G原件保留。
+
+正式b封套終態：2 passed／179.68s，wrapper exit0／181.579s；啟動commit headroom 8,737,202,176 bytes。known5928與23952已gone。首輪15項與本次修正2項合計17項全部取得原生通過。只證明publication／舊入口lazy／取消及exact reopen回歸；composite query／UI／收藏／效能／新EXE仍未完成。

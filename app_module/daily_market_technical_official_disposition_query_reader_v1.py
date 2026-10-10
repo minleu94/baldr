@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
 if TYPE_CHECKING:
+    from app_module.daily_market_technical_universe_projection_group_session_v2 import (
+        DailyMarketTechnicalUniverseProjectionGroupSessionV2,
+    )
+    from app_module.daily_market_technical_universe_projection_group_v2 import (
+        DailyMarketTechnicalUniverseProjectionGroupV2,
+    )
     from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
         DailyMarketMonthlyRevenueYoyIndexSessionV1,
         DailyMarketMonthlyRevenueYoyCompactIndexV1,
@@ -1073,11 +1079,21 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
     _monthly_yoy_index_session: DailyMarketMonthlyRevenueYoyIndexSessionV1 | None = field(
         default=None, repr=False, compare=False,
     )
+    _projection_group_session: DailyMarketTechnicalUniverseProjectionGroupSessionV2 | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     @property
     def ma_alignment_session(self) -> DailyMarketTechnicalMaAlignmentReadSessionV1 | None:
         """同一次完整來源核驗發行的四均線工作階段。"""
         return self._ma_alignment_session
+
+    @property
+    def projection_group_session(
+        self,
+    ) -> DailyMarketTechnicalUniverseProjectionGroupSessionV2 | None:
+        """同一次完整來源核驗共同發行的 MA／KDJ／波動三路 view。"""
+        return self._projection_group_session
 
     def __post_init__(self) -> None:
         if self._seal is not _SESSION_SEAL:
@@ -1105,6 +1121,25 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
             or ma_session.source_request.expected_manifest_sha256 != self.bundle_reference.manifest_sha256
         ):
             _fail("ma_projection_read_session_source_mismatch")
+        group_session = self._projection_group_session
+        if group_session is not None:
+            from app_module.daily_market_technical_universe_projection_group_session_v2 import (
+                DailyMarketTechnicalUniverseProjectionGroupSessionV2,
+            )
+
+            if (
+                ma_session is not None
+                or type(group_session) is not DailyMarketTechnicalUniverseProjectionGroupSessionV2
+            ):
+                _fail("projection_group_session_invalid_or_standalone_ma_present")
+            group_session._validate_f17_binding(
+                bundle_state=self._bundle_state,
+                bundle_reference=self.bundle_reference,
+                technical_session=self._technical_session,
+                base_query=self._base_query,
+                selection=self._selection,
+                query=self.query,
+            )
         monthly_session = self._monthly_yoy_index_session
         if monthly_session is not None:
             from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
@@ -1141,6 +1176,8 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
         cancel_callback: Callable[[], object] | None = None,
     ) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
         """修改研究條件但沿用原完整核驗來源；明確重驗須另開 exact session。"""
+        if self._projection_group_session is not None:
+            _fail("projection_group_session_conditions_require_exact_reopen")
         _validate_cancel_callback(cancel_callback)
         _check_cancel(cancel_callback)
         self.__post_init__()
@@ -3628,6 +3665,34 @@ def _bind_ma_projection(
     return collector
 
 
+def _bind_projection_group(
+    builder: DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+    metadata: DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1,
+    bundle_output_root: str,
+    bundle_identity_sha256: str,
+    expected_manifest_sha256: str,
+    cancel_callback: Callable[[], object] | None,
+) -> DailyMarketTechnicalUniverseProjectionGroupV2:
+    """Bind one three-member observer; it alone occupies Builder's slot."""
+    from app_module.daily_market_technical_universe_projection_group_v2 import (
+        DailyMarketTechnicalUniverseProjectionGroupV2,
+    )
+
+    request = DailyMarketTechnicalMaAlignmentSourceRequestV1.from_unverified_manifest_metadata(
+        metadata,
+        bundle_output_root=bundle_output_root,
+        bundle_identity_sha256=bundle_identity_sha256,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    group = DailyMarketTechnicalUniverseProjectionGroupV2(
+        request,
+        cancel_callback=cancel_callback,
+    )
+    # group.bind_to_builder performs the one and only Builder registration.
+    group.bind_to_builder(builder)
+    return group
+
+
 def open_daily_market_technical_official_disposition_read_session_v1(
     query: DailyMarketTechnicalOfficialDispositionQueryV1 | bytes | str,
     *,
@@ -3680,6 +3745,74 @@ def open_daily_market_technical_official_disposition_read_session_v1(
     )
 
 
+def open_daily_market_technical_official_disposition_projection_group_session_v2(
+    query: DailyMarketTechnicalOfficialDispositionQueryV1 | bytes | str,
+    *,
+    cancel_callback: Callable[[], object] | None = None,
+) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
+    """Explicit opt-in exact open that issues one jointly sealed projection group."""
+    _validate_cancel_callback(cancel_callback)
+    parsed_query = _parse_query(query)
+    _check_cancel(cancel_callback)
+    technical_builder = _technical_session_builder_from_query(
+        parsed_query.technical_query,
+        cancel_callback,
+    )
+    bundle_reader = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
+        parsed_query.bundle_output_root
+    )
+    projection_group: DailyMarketTechnicalUniverseProjectionGroupV2 | None = None
+    try:
+        metadata = bundle_reader.read_manifest_metadata(
+            parsed_query.bundle_identity_sha256,
+            expected_manifest_sha256=parsed_query.expected_manifest_sha256,
+            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+        )
+        projection_group = _bind_projection_group(
+            technical_builder,
+            metadata,
+            parsed_query.bundle_output_root,
+            parsed_query.bundle_identity_sha256,
+            parsed_query.expected_manifest_sha256,
+            cancel_callback,
+        )
+        bundle_state = bundle_reader.read_exact(
+            parsed_query.bundle_identity_sha256,
+            expected_manifest_sha256=parsed_query.expected_manifest_sha256,
+            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+            technical_read_session_builder=technical_builder,
+        )
+    except DailyMarketTechnicalOfficialDispositionBundleError as exc:
+        if projection_group is not None:
+            projection_group._poison()
+        _check_source_error_cancelled(exc)
+        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+            f"technical_official_query_reader_v1_bundle_exact_read_failed:{exc.code}"
+        ) from exc
+    except BaseException:
+        if projection_group is not None:
+            projection_group._poison()
+        raise
+    preloaded_session = technical_builder.verified_session
+    if projection_group is None:
+        _fail("projection_group_not_bound")
+    if preloaded_session is None:
+        projection_group._poison()
+        _fail("p01_verified_session_not_issued")
+    try:
+        return _issue_session_from_verified_bundle(
+            parsed_query,
+            bundle_state,
+            cancel_callback,
+            preloaded_session=preloaded_session,
+            technical_builder=technical_builder,
+            projection_group=projection_group,
+        )
+    except BaseException:
+        projection_group._poison()
+        raise
+
+
 def _issue_session_from_verified_bundle(
     parsed_query: DailyMarketTechnicalOfficialDispositionQueryV1,
     bundle_state: DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
@@ -3688,6 +3821,7 @@ def _issue_session_from_verified_bundle(
     preloaded_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
     ma_collector: DailyMarketTechnicalMaAlignmentVerifiedCollectorV1 | None = None,
     technical_builder: DailyMarketTechnicalUniverseV4ReadSessionBuilder | None = None,
+    projection_group: DailyMarketTechnicalUniverseProjectionGroupV2 | None = None,
 ) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
     """共用發行邊界；factory 沿用同次完整核驗，避免重開來源。"""
     technical, manifest = _validate_bundle_query_relationship(parsed_query, bundle_state)
@@ -3704,30 +3838,68 @@ def _issue_session_from_verified_bundle(
     ):
         _fail("p01_session_identity_invalid")
     _check_cancel(cancel_callback)
-    if (ma_collector is None) != (technical_builder is None):
+    if projection_group is None and (ma_collector is None) != (technical_builder is None):
         _fail("ma_projection_publication_input_invalid")
-    ma_session = None
-    if ma_collector is not None and technical_builder is not None:
-        ma_session = ma_collector.finalize_verified_publication(
-            technical_builder, bundle_state, base_query, selection,
-            cancel_callback=cancel_callback,
+    if projection_group is not None:
+        # Import group runtime dependencies only on the explicit opt-in path.
+        from app_module.daily_market_technical_universe_projection_group_session_v2 import (
+            _prepare_and_issue_projection_group_session_v2,
         )
-    session = DailyMarketTechnicalOfficialDispositionReadSessionV1(
-        query=parsed_query,
-        bundle_reference=bundle_state.reference,
-        p01_read_session_identity_sha256=technical_session.read_session_identity_sha256,
-        p01_selection_identity_sha256=selection.selection_identity_sha256,
-        p01_query_spec_identity_sha256=query_spec_identity,
-        _bundle_state=bundle_state,
-        _technical_session=technical_session,
-        _base_query=base_query,
-        _selection=selection,
-        _technical_store_descriptor=technical,
-        _manifest=manifest,
-        _seal=_SESSION_SEAL,
-        _ma_alignment_session=ma_session,
-    )
-    _check_cancel(cancel_callback)
+        from app_module.daily_market_technical_universe_projection_group_v2 import (
+            DailyMarketTechnicalUniverseProjectionGroupV2,
+        )
+
+    if projection_group is not None and (
+        ma_collector is not None
+        or technical_builder is None
+        or type(projection_group) is not DailyMarketTechnicalUniverseProjectionGroupV2
+        or projection_group._bound_builder is not technical_builder
+        or projection_group._cancel_callback is not cancel_callback
+    ):
+        _fail("projection_group_publication_input_invalid")
+    ma_session = None
+    group_session = None
+    if projection_group is None:
+        if ma_collector is not None and technical_builder is not None:
+            # Preserve the legacy MA-only finalizer and its identity/cost path.
+            ma_session = ma_collector.finalize_verified_publication(
+                technical_builder, bundle_state, base_query, selection,
+                cancel_callback=cancel_callback,
+            )
+    else:
+        assert technical_builder is not None
+        group_session = _prepare_and_issue_projection_group_session_v2(
+            projection_group,
+            technical_builder,
+            bundle_state,
+            base_query,
+            selection,
+            outer_query=parsed_query,
+        )
+    try:
+        session = DailyMarketTechnicalOfficialDispositionReadSessionV1(
+            query=parsed_query,
+            bundle_reference=bundle_state.reference,
+            p01_read_session_identity_sha256=technical_session.read_session_identity_sha256,
+            p01_selection_identity_sha256=selection.selection_identity_sha256,
+            p01_query_spec_identity_sha256=query_spec_identity,
+            _bundle_state=bundle_state,
+            _technical_session=technical_session,
+            _base_query=base_query,
+            _selection=selection,
+            _technical_store_descriptor=technical,
+            _manifest=manifest,
+            _seal=_SESSION_SEAL,
+            _ma_alignment_session=ma_session,
+            _projection_group_session=group_session,
+        )
+    except BaseException:
+        if projection_group is not None:
+            projection_group._poison()
+        raise
+    if projection_group is None:
+        # Existing openers retain their original post-construction cancellation.
+        _check_cancel(cancel_callback)
     return session
 
 

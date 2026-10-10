@@ -6,8 +6,10 @@
 
 PowerShell 執行策略阻止 activate script 時，不必改用全域 Python。直接執行 `.venv` 內的解譯器即可：
 
+以下日期是命令範本，請替換成實際範圍，並明確指定 `--end-date`；省略結束日期會延伸更新到今天。
+
 ```powershell
-.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date 2025-08-28
+.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 ```
 
 這是標準 `.venv` 的直接呼叫方式，不需先啟用環境。更新腳本可能寫入資料；執行前須確認 `DATA_ROOT`、`OUTPUT_ROOT`、`PROFILE` 與目標日期符合預期，並依 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 的資料更新流程操作。
@@ -26,7 +28,7 @@ python -m pip check
 確認後才可用該 system Python 呼叫經核對的腳本，例如：
 
 ```powershell
-python scripts\batch_update_daily_data.py --start-date 2025-08-28
+python scripts\batch_update_daily_data.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 ```
 
 UI 只有在完整 runtime 相依均已按相容版本準備好時才可能啟動：

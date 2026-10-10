@@ -1249,7 +1249,7 @@ receipt 或推薦列 provenance 的 identity 不一致，會拒絕保存並提�
 
 ### 6.6 鍵盤與圖表文字替代
 
-推薦／回測結果中的圖表若使用快速 Canvas renderer，可先聚焦圖表，再用方向鍵、Home、End 移動目前資料點；按「顯示數值」可展開同一份圖表 payload 的日期、數值或 histogram 區間筆數。Smart Money 主表與分點追蹤表可用方向鍵或 Tab 瀏覽，Badges 與近期趨勢圖形欄也提供可朗讀的文字數值替代。
+推薦／回測結果中的淨值與回撤折線圖若使用快速 Canvas renderer，可先聚焦圖表，再用方向鍵、Home、End 移動目前資料點。交易報酬與持有期間 histogram 不支援鍵盤逐點瀏覽；按「顯示數值」可展開同一份 payload 的日期、數值或區間筆數。Smart Money 主表與分點追蹤表可用方向鍵或 Tab 瀏覽，Badges 與近期趨勢圖形欄也提供可朗讀的文字數值替代。
 
 ## 7. 觀察清單與選股清單
 

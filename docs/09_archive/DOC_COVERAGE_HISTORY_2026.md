@@ -2113,3 +2113,22 @@ Architecture README 曾概括第 16 節的 10/03–10/07 混合增量，未提�
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 Architecture 根層閱讀計數、判讀結果與增量摘要。 |
 
 沒有刪除或搬移文件、沒有改動原始資料或 QA 收據。未執行測試、未刷新 Graphify，也未逐一驗證本目錄所有連結；全 repo 最終 link／anchor scan 與 Graphify 刷新仍待所有目錄內容治理完成後進行。
+
+<a id="coverage-entry-189"></a>
+## 2026-10-10 限定回測 Canvas 鍵盤操作範圍
+
+本輪完成 `docs/08_technical/` 7/7 個 tracked paths 及根 `docs/README.md` 全文核讀。技術目錄的 3 份現行文件（README、System Python 備援、Qt 圖表說明）與 4 份歷史 redirect stub 已逐路徑核對；根 README 作為 docs 導覽入口全文閱讀。8 份文件共解析 75 個相對 Markdown 連結目標，缺失 0；不包含外部連結目的地驗證。
+
+核對 `fast_chart_widget.py` 後確認，鍵盤逐點瀏覽只讀取 `payload.equity` 或 `payload.series`，因此僅適用於淨值與回撤折線圖。報酬分布使用 `items`／`bins`，持有期間分布使用 `bins`，Canvas 的方向鍵、Home、End 不會在這兩種 histogram 移動資料點。已收窄圖表說明與 Manual 第 6.6 節，不改 UI 實作或其他圖表能力。
+
+`RUN_WITHOUT_VENV.md` 的舊範例只設定起始日期，腳本省略結束日期時會延伸到今天。範例已改成須替換的 `YYYY-MM-DD` 起訖日期，並提示明確設定結束日期。圖表文件的基準測試聲明也改成「本文未引用」，避免延伸成已盤點全專案文件的主張。`docs/README.md` 的目錄與權威導覽無需修訂。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/08_technical/UI_QT_CHART_RENDERING.md` | 把 Canvas 鍵盤逐點瀏覽限於淨值／回撤折線圖，更新修訂日期並收窄效能基準聲明。 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 將第 6.6 節的鍵盤瀏覽範圍對齊實作。 |
+| `docs/08_technical/RUN_WITHOUT_VENV.md` | 將起始／結束日改為需替換的明確範本，避免省略結束日延伸到今天。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 登錄技術文件核讀、連結抽取結果及小型目錄新的全文／stub 計數。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄核讀範圍、程式依據、修改清單與驗證限制。 |
+
+未刪除或搬移文件及原始資料，未修改封存原件。未執行測試、未刷新 Graphify、未執行最終 repo-wide link／anchor scan；本批 75 個相對連結的檢查只確認本機目標存在，錨點與外部連結未逐一重驗。

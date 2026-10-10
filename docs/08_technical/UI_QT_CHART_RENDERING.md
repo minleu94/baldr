@@ -1,6 +1,6 @@
 # Backtest Qt 圖表渲染
 
-> 更新日期：2026-10-09。本文描述目前回測結果圖表的元件建立、資料呈現與替代閱讀方式；不代表效能基準測試。
+> 更新日期：2026-10-10。本文描述目前回測結果圖表的元件建立、資料呈現與替代閱讀方式；本文未引用效能基準測試。
 
 ## 範圍
 
@@ -11,7 +11,7 @@
 - 交易報酬分布（Trade Return Distribution）
 - 持有期間分布（Holding Period Distribution）
 
-目前有 QtWebEngine + HTML5 Canvas 實作，以及 Matplotlib 元件作為替代實作。類別名稱中的 `Fast` 是程式識別字；目前文件沒有可引用的基準測試，不能據此宣稱渲染速度較快。
+目前有 QtWebEngine + HTML5 Canvas 實作，以及 Matplotlib 元件作為替代實作。類別名稱中的 `Fast` 是程式識別字；本文未引用效能基準測試，不能據此宣稱渲染速度較快。
 
 ## 元件與建立時機
 
@@ -49,7 +49,7 @@ Factory functions：
 
 ## 鍵盤與文字數值替代
 
-QtWebEngine Canvas 設定為可聚焦的 `role="img"`，並提供 ARIA label、資料摘要關聯及 `aria-keyshortcuts`。聚焦後可用 `ArrowLeft`／`ArrowRight` 移動資料點，或用 `Home`／`End` 跳到起點／終點。
+QtWebEngine Canvas 設定為可聚焦的 `role="img"`，並提供 ARIA label、資料摘要關聯及快捷鍵資訊。只有淨值與回撤折線圖的 payload 含 `equity`／`series`，聚焦後才可用 `ArrowLeft`／`ArrowRight` 移動資料點，或用 `Home`／`End` 跳到起點／終點。交易報酬分布與持有期間分布是 histogram payload，沒有鍵盤逐點瀏覽；請使用「顯示數值」讀取區間與筆數。Matplotlib 替代元件的鍵盤行為依各自實作而定。
 
 四種 `Fast*` widget 均有「顯示數值」控制項。展開後的文字內容直接由同一份 payload 產生，提供日期／數值或圖表區間／筆數；每次最多列出 200 列，超出部分會標示省略數量。factory 改用 Matplotlib 實作時，呈現方式依該 Matplotlib widget 本身而定。
 

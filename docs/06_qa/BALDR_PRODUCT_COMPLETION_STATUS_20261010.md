@@ -71,3 +71,7 @@ F session `16461`／child PID `32648` 已終止，外層及 native exit1，無�
 P08 的多 manifest 選列問題已正式修正，並補上來源回執時間一致性與同次唯讀 scalar／列 hash API。Root 的原 reader 合成負例曾證明有效重封的 2000 年 first-observed 可被誤接受；修正後正式 import 取得39 PASS／2.86秒／native exit0，mypy與語法／whitespace檢查通過。舊介面保持相容；真 seed、daily writer、帳本與績效資格尚待。[行情證據切片](BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)
 
 H20 G 小型 Qt 探針已由 root 全讀後執行一次：完全不可見、只露頂端10px與完整可見三例均通過，native exit0。分別用11／9／0次外層點擊，加一次真正 AddLine 內層點擊，使內層 value 由0增至1；每例578／500／47ms，均符合20次外層、31次總點擊、3秒上限。收據位於 `output/qa/h20_scrollbar_direction_probe_root01/`，stdout SHA `bbe4c6e4317e10289aa41011396788239b9776979eb2b6a6ffdcccab5d05d137`。這只驗證方向點位方法，尚未代表 Main 原2382下鑽；下一 sibling 移植同一 helper 後再驗。
+
+P01 的小型隔離 setup 探針已取得 native exit0：458字元、12段的 manifest 路徑可沿原 `_map_segments_path` 反向核對 source／private 映射，兩種錯誤身分被拒絕；extended syscall 建立的真實 hardlink 被正式 bounded reader 以 `technical_snapshot_v4_file_type_rejected` 拒絕。最後還原的 bytes、檔案身分、大小、mtime 與 link count 均相同，合成 source 未改、Q13 runner 未改。收據在 `output/qa/p01_manifest_link_setup_root_20261010/receipt.json`，SHA `1387217a00b9717ed53f628e3bb905fee55425c91124e3ea18616e8af66a56e7`。此探針沒有驗 symlink、完整 issued-manifest 負例矩陣或效能；Q13 原300ms門檻仍失敗，下一 sibling 仍須整合已核映射與完整還原流程。
+
+Manual 現行 §6.4 已補推薦理由展開、結果頁捲動與鍵盤到全文末尾，以及未入選中文解釋的用途；操作說明不再只留在日期化補充。這是既有功能的文件同步，沒有新的 UI 修改或新增真人驗收結果。H20 一般報告、收藏新程序與策略帳戶完整績效仍依上表續辦。

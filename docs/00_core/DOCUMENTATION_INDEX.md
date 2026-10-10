@@ -1,6 +1,6 @@
 # 文檔索引
 
-> 2026-10-09 更新。本頁維護閱讀與文件位置；目前狀態只看 Snapshot，日期化測試數字只看原 QA receipt。
+> 2026-10-10 更新。本頁維護閱讀與文件位置；目前狀態只看 Snapshot，日期化測試數字只看原 QA receipt。
 
 ## 權威入口
 
@@ -80,6 +80,6 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 `output/plans/` 與 `output/qa/` 是 ignored 本機需求／原始驗收證據，不因 ignored 即可刪。唯一 Danny Quant plan 原路徑 `output/plans/baldr_product_experience_plan_20261004.md` 保留原 bytes，另有本轮可還原快照；raw 失敗、JUnit 與 receipts 不重寫。正式摘要可放 QA，私人內容不能直接公開。
 
 
-[M2施工與工程QA（2026-10-07）](../06_qa/BALDR_COMPLETION_M2_20261007.md)：受控研究根、長路徑產製與新程序重開、技術來源／封裝局部驗證及H20三日期保存來源旅程。原失敗與synthetic模型邊界明列；完整UI與新technical版本／candidate仍在施工，不能當完整產品或Native接受收據。
+[M2施工與工程QA（2026-10-07）](../06_qa/BALDR_COMPLETION_M2_20261007.md)：受控研究根、長路徑產製與新程序重開、技術來源／封裝局部驗證及H20三日期保存來源旅程。原失敗與synthetic模型邊界明列；其中「完整UI與新technical版本／candidate仍在施工」是 10/07 快照，不代表目前狀態；目前進度看 Snapshot，也不能把此 QA 當完整產品或 Native 接受收據。
 
 [Wave 2 舊 R008 SHA checkpoint（歷史）](../09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md)：只保留舊 SHA 的驗收快照；現行 Wave 2 結果見 [result_id checkpoint](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)，不代表 C1、Wave 6 或整體重構通過。搬移前 bytes／SHA 與引用核對見 [Coverage History Entry 129](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-129)。

@@ -1,5 +1,7 @@
 # 架構紅隊審查 (ARCHITECTURE RED TEAM REVIEW)
 
+> 歷史審查輸入：本文件記錄 FINAL 架構裁決前的紅隊意見，不是目前實作設計或當前狀態依據。現行目標設計以 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md) 為準，實作進度以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 為準；閱讀以下建議時請一併查閱 FINAL 的裁決。
+
 ## 執行摘要：核心問題
 **六個月後的開發者，能明確知道該在哪裡修改程式碼嗎？**
 **不能。** 提案的架構成功解決了「義大利麵條程式碼 (Spaghetti Code)」的問題，但卻引入了「千層麵程式碼 (Lasagna Code)」（過度分層）。雖然技術上分離了責任，但當開發者要實作單一業務功能（例如新增一個 factor 或 confidence score）時，將被迫在 3 到 4 個不同的根目錄（`app_module`、`decision_module`、`data_module`、`ui_qt`）中尋找與修改檔案。此架構以犧牲「修改的局部性 (locality of change)」為代價來達成關注點分離。開發者雖然不需要全庫搜尋來了解「某個檔案在做什麼」，但他們必須全庫搜尋才能找到「實作一個功能需要修改的所有檔案」。

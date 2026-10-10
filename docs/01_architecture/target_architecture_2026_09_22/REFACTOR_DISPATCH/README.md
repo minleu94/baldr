@@ -2,23 +2,22 @@
 
 本目錄由 SOL orchestrator 維護。每個 wave 只有在 `REFACTOR_EXECUTION_ORDER.md` 的前置 task、review 與 checkpoint gate 全部通過後才能釋出。
 
-> 2026-10-09 生命週期整理：R003／R005／R006 回修 packet 與 Wave 1／Wave 2 唯讀分析輸入已先封存（Entry 135）；本批再封存 R002 review、R003／R005／R006 implementation 與 review packets、R004 review 及 Wave 1 review prompts（[Coverage History Entry 147](../../../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)）。舊路徑保留短導引。封包均為歷史材料，不代表目前待辦、正式驗收或新工作授權；R006 未知正式 binary 仍未 load／predict，RK-19 風險依 R031 列管。R008 review 仍依本索引與 Wave 2 checkpoint。 後續的 [Wave 1／Wave 2 一次性 prompts](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md) 亦已封存（Coverage History Entry 153）；舊路徑只保留導引。
+> 2026-10-09 生命週期整理：R003／R005／R006 回修 packet 與 Wave 1／Wave 2 唯讀分析輸入已先封存（Entry 135）；本批再封存 R002 review、R003／R005／R006 implementation 與 review packets、R004 review 及 Wave 1 review prompts（[Coverage History Entry 147](../../../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)）。舊路徑保留短導引。封包均為歷史材料，不代表目前待辦、正式驗收或新工作授權；R006 未知正式 binary 仍未 load／predict，RK-19 風險依 R031 列管。R008 的現行實作／審查分工看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與最新 checkpoint；既有 Gemini packet／prompt 只作歷史證據。後續的 [Wave 1／Wave 2 一次性 prompts](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md) 亦已封存（Coverage History Entry 153）；舊路徑只保留導引。
 
-每次釋出 wave 的固定順序：
+執行期分工以 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)、DAG 與 Execution Order 為準；此目錄保留歷史封包與索引。仍適用的 gate 順序如下：
 
 1. SOL 重新核對 dependency、HEAD、既有 dirty scope、中央檔案獨占與當次 gate 證據。
-2. 先為該 wave 已解鎖的 Gemini implementation task 建立完整 packet 與可直接貼給 Gemini 的 prompt，並明確通知使用者 `READY_FOR_GEMINI: Rxxx`。若該 wave 只有 Luna implementation、但需要 Gemini review，先建立 review readiness 說明與交接 prompt；正式 review packet 必須等 Luna 的實際 diff、實作報告與測試結果凍結後才能建立。
-3. 隨即平行派出同 wave、檔案範圍互不衝突的 Luna Max worker；每位 worker 只擁有一個 R-task。SOL 同步審查回傳實作與相容性證據，不因 worker 閒置而派遣後續 wave。
-4. Gemini 結果回來後，SOL 讀取實際 repository diff、報告、測試及架構 invariant；需要的獨立 review 未 PASS 前，不把 task 標 PASS。整個 wave 及其 checkpoint 通過後才重新評估下一個 wave。
+2. 只開始 DAG／Execution Order 已解鎖、且 Model Assignments 指定的工作；實作由指定的 LUNA_MAX worker 負責，檔案 owner 不衝突時才可平行。
+3. 高／極高風險 task 先由未參與實作的獨立 LUNA_MAX reviewer 審查凍結 diff；SOL 再核對實際差異、報告、驗證與架構 invariants，作最後 gate 判定。其他風險依分工表由 SOL 審查。
+4. 後續不建立 Gemini implementation／review 派送；既有 Gemini packet、review 與 prompt 僅作歷史證據，不得直接重送，也不構成 task 授權。
+5. 只有整個 wave 及其 checkpoint 通過後，SOL 才重新評估下一個 wave。
 
-- `GEMINI_Rxxx.md`：Gemini implementation packet。
-- `GEMINI_REWORK_Rxxx.md`：SOL 審查為 `CHANGES_REQUIRED` 後，在原 task scope 內回修的完整 packet。
-- `GEMINI_REVIEW_Rxxx.md`：Gemini 對 Luna implementation 的獨立 review packet。
-- `WAVEx_GEMINI_PROMPTS.md`：目前 wave 的可複製交接 prompt；一次性 prompt 結束後，完整原文移至 Archive，舊路徑只保留相容導引。Review readiness 不表示可提前審查尚未凍結的 Luna diff。
+- `GEMINI_Rxxx.md`、`GEMINI_REWORK_Rxxx.md`、`GEMINI_REVIEW_Rxxx.md`：既有 Gemini 實作／回修／審查封包的歷史材料；不代表目前分工或可再次派送。
+- `WAVEx_GEMINI_PROMPTS.md`：歷史交接 prompt；完整原文如已封存，舊路徑只保留相容導引。不得把舊 prompt 當成目前授權。
 - `GEMINI_WAVE1_PARALLEL_ANALYSIS.md`：已封存的一次性唯讀分析輸入；實際分析與正式 review 結果見 `REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md` 與 `WAVE1_R003_R005_GEMINI_REVIEW.md`。
 - 已封存的 Wave 1 review prompts 僅供追溯：[封存原件](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md)。R003／R005／R006 review 已有結果，不需重送；R006 長測限制與 RK-19 依 R031 保留。
 - `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與已封存的 `WAVE2_GEMINI_PROMPTS.md`：R008 唯讀預分析輸入與一次性 prompt 均已結束；prompt 原文見 [Archive](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md)，舊路徑保留導引。結果看 R008 report／Wave 2 checkpoint；這不是正式 review，也不釋出 Wave 3。
-- `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：R008 Luna 的 ML availability 回修與 SOL 重驗後，依最新九檔 SHA 凍結的正式唯讀獨立審查封包／prompt；Gemini 結果仍須由 SOL 核對才能進 Wave 2 checkpoint。
+- `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：較早 Gemini 審查狀態的歷史封包／prompt，內含的暫停與重送文字不代表目前指示；請勿重送。R008 現行判定看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)、[R008 acceptance](../REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md) 與 [Wave 2 checkpoint](../REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)。
 
 未解鎖 task 不預先建立 packet，避免 dependency evidence、HEAD、dirty scope 或測試結果過時。Packet 本身不授權下一 wave。
 

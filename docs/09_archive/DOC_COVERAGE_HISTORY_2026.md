@@ -2237,3 +2237,26 @@ QA README 與四個主題索引核對 357 個本機 Markdown 連結目標，miss
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄結果、判讀與未解範圍。 |
 
 未刪除或搬移文件、未改 registry 或 test files；未執行測試收集、Graphify 刷新或最終 repo-wide link／anchor scan。受保護共享 QA 文件保持未讀未動。
+
+<a id="coverage-entry-196"></a>
+## 2026-10-10 校正現行入口並標示過時派送材料
+
+Core Index 原標示 10/09 更新，且把 `BALDR_COMPLETION_M2_20261007.md` 的「完整 UI／新 technical 版本仍在施工」直接呈現，容易被當成目前狀態。已將 Index 日期更新至 10/10，並明確把該句限定為 10/07 快照，現況導回 Snapshot。
+
+Architecture README 原把 §16 描述到 10/08；`system_architecture.md` 另有 10/10 官方市場與技術條件複合研究入口。README 現已說明此為日期化入口、穩定責任見 §§3／8、使用者流程與資格見 Manual §6.7，並保留 §16 混合契約／QA／日期內容尚未逐段歸檔的限制。架構 Dispatch README 原有建立 Gemini packet、通知 `READY_FOR_GEMINI` 與等待 Gemini review 的流程，與目前 Model Assignments「不再建立 Gemini 派送」衝突；現依分工表改正。R008 的舊 Gemini packet／prompt 保留原文但在檔首標成歷史且不可重送；Architecture Red Team Review 也加上 FINAL／Snapshot 的現行權威入口。
+
+QA 增量複核發現 `V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 保存 DEV-66 的具名 MOPS limited 決議，但 §14 的 2026-08-28 aggregate 標為 13 個來源 `not_supplied`、`limited=0`。§14 沒有記錄所讀 decision-registry 輸入，也未解釋既有決議未反映的原因。已追加範圍調和註記：兩個歷史值並存、暫不把 aggregate 解讀為撤銷或全域目前狀態；待比對原始 audit artifact／registry。沒有改寫舊決議或 machine 結果。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_INDEX.md` | 更新 Index 日期，並將 M2 QA 的施工狀態明確標成 10/07 快照。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更正 Entry 192 的重複增量標籤；記錄 10/10 Architecture 路由與 P0 register 未調和差異。 |
+| `docs/01_architecture/README.md` | 補入 §16 10/10 段落、穩定契約／Manual／Snapshot 路由及尚未逐段歸檔的範圍。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md` | 以現行分工表取代過時 Gemini packet／READY_FOR_GEMINI 派送步驟；標明舊 packets 為歷史材料。 |
+| `.../REFACTOR_DISPATCH/GEMINI_REVIEW_R008.md`、`.../REFACTOR_DISPATCH/WAVE2_GEMINI_REVIEW_PROMPTS.md` | 保留原始 prompt 內容，在檔首標示歷史版本、禁止重送並連至目前 assignment／checkpoint。 |
+| `docs/01_architecture/target_architecture_2026_09_22/ARCHITECTURE_RED_TEAM_REVIEW.md` | 加入 pre-FINAL 歷史審查輸入標示及 FINAL／Snapshot 路由。 |
+| `docs/06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` | 追加 DEV-66 與 §14 aggregate 間的未調和範圍註記；不改既有數值或接受決議。 |
+| `docs/07_guides/INSTALL_GUIDE.md`、`QUICK_START.md`、`QUICK_REFERENCE.md` | 修正簡體字／空格，並收窄 Promote 的資格描述。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄本次證據、導覽更正、未解來源差異與驗證限制。 |
+
+修訂連結目的地已確認存在；`git diff --check` 無 whitespace error。沒有刪除或搬移文件、修改原始資料或測試；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。P0 原始 audit artifact／registry 的對照及 Manual 尾段日期化工程內容的分類仍待完成。

@@ -13,7 +13,7 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 
 一般使用裝 requirements-runtime；開發者另裝 requirements-dev。requirements.txt 仍是相容完整開發入口。PYTHONUTF8需在安裝前設定。constraints不是完整跨平台lock；TA-Lib／fastdtw需相容wheel或compiler，不使用來源不明或個人機器wheel。
 
-DATA_ROOT用於行情／SQLite；OUTPUT_ROOT用於報告／狀態，兩者独立。PROFILE=test會在兩root加_test；第一次使用保留預設prod並使用自己的空目錄。`.env.example`不會自動生效，環境設定必須在啟動的同一shell；供應商token只保留本機。
+DATA_ROOT 用於行情／SQLite；OUTPUT_ROOT 用於報告／狀態，兩者獨立。PROFILE=test 會在兩個 root 加上 _test；第一次使用保留預設 prod 並使用自己的空目錄。`.env.example` 不會自動生效，環境設定必須在啟動的同一 shell；供應商 token 只保留本機。
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import pandas, numpy, PySide6; print('core imports OK')"

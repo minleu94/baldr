@@ -34,7 +34,7 @@ Update
   -> Recommendation
   -> 候選池 / 選股清單
   -> Research Lab
-  -> 保存 / Promote
+  -> 保存結果；只有符合 Lifecycle Gate 並獲准時才申請 Promote
   -> Portfolio / Journal
 ```
 
@@ -56,6 +56,6 @@ Update
 - 推薦沒有最新資料：檢查 `daily_prices` 與 `technical_indicators` 日期。
 - Smart Money 無資料：檢查券商分點下載、合併與 `broker_flows`。
 - 回測 0 交易：檢查整股資金、暖機、門檻與成交量限制。
-- Promote 停用：先保存結果並確認驗證狀態不是 FAIL。
+- Promote 停用：先保存結果，再檢查 Registry／驗證狀態及 Lifecycle Gate；狀態不是 FAIL 不代表已符合 Promote 資格。
 - Watchlist 可直接送 Research Lab 批次回測；若要保存成可重用的 Universe，再另存為選股清單。
 

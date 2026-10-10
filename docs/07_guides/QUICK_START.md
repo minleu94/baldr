@@ -16,4 +16,4 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 3. 確認股價／技術指標日期及窗口後，再執行選股、回測或圖表研究。
 4. 個人store與模型屬opt-in；首次不初始化他人資料，不自動啟Task、fit或交易。保存名單／自然pending與效果成熟是不同證據。
 
-程式及更新會寫入設定roots；`.env`目前不自動讀入。UI空資料時先核設定与来源，不以latest／別人模型／fixture填補。示例僅展示資料形狀，見 [examples](../../examples/README.md)；完整步驟與限制見 [Manual](APPLICATION_MANUAL.md)。
+程式及更新會寫入設定 roots；`.env` 目前不自動讀入。UI 空資料時先核對設定與來源，不以 latest／別人模型／fixture 填補。示例僅展示資料形狀，見 [examples](../../examples/README.md)；完整步驟與限制見 [Manual](APPLICATION_MANUAL.md)。

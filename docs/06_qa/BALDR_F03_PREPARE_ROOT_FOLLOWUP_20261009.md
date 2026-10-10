@@ -2,6 +2,19 @@
 
 狀態：實作／驗證中，不授共同 reader 資格。承接 `ed8b0506`，完整 F03 query、UI、收藏與跨程序閉環仍未完成。
 
+## 最新接續入口（2026-10-10 UTC）
+
+以下為本文件最新工程切片狀態；後文的日期化追加保留原始歷史，不以舊「待測」覆蓋新終態。完整補完仍依原計畫 P00–P14／M1–M3／F01–F23，這三路不代表全部產品範圍。
+
+| 工作 | 已取得的證據 | 接下來與未完成項 |
+|---|---|---|
+| F03 完整母體共同發行 | 正式 prepare 已保存於 `115600d3`；QA overlay C 真測 **13 passed／1 failed**，九種 callback failure、取消、cap 與 legacy 路徑已有原生結果。唯一正常流程在測試建 query 時 identity mismatch，尚未呼叫 opener。 | D 只獲靜態 QA 修正授權，須用正式 canonical factory，保留完整 257 included／258 declared、單股 outer filter、三路同次 callback 等全部正常斷言。正式 issuer／F17 未整合，composite query／UI／收藏／新程序／EXE 待辦。 |
+| H20 原 source-port 接線 | P7 真 initial terminal receipt 4046 bytes 已讀、原 N helper 身分保留；config reader 名稱作用域 NameError，payload read／SQLite 0。sources 未變且 cleanup 完成。P7 啟動前漏 commit-memory gate，不能當合格驗收。 | P8 只獲最小 static revision，含 nested-class factory 與受審 launcher。public cohort、正常 Main、原 2382 的 684 bp／圖表／速度、真人仍未驗。 |
+| F12 收益與跨程序收藏 | E focused 22 passed／8 subtests；唯一 E Main 真 personal readonly，但被舊 QA guard 拒絕 private archived reader URI。獨立 13-root 核對相同，原 receipt 無 after 欄位。 | F 仍 static-only，正補兩階段 exact prime／typed verification／transaction、十層真呼叫鏈、兩層取消 callback、單次 proof 與錯誤清理。未跑 F focused／Main，未完成新 PID 收藏。 |
+| P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
+
+目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
+
 ## 審查結果與實作範圍
 
 獨立 Luna Max 審查發現兩項應在共同 issuer 前補齊的問題：三個 collector 的可變 entries list 沒有保留原 callback entry 參照，跨 lane 相等不足以拒絕三路一起被替換並重算 self hash；group 雜湊前呼叫 MA index `to_dict()` 與 parent `asdict()` 會建立全量複本，不能以後續串流雜湊宣稱整段沒有全量複本。
@@ -159,3 +172,17 @@ root 已讀 C collect01：恰 14 個 publication／lazy-child nodes，overlay re
 F12 靜態推論再校準：UI helper 只產生未建立的 `parent/f12-revenue-<id>`，source `_new_operation_root` 驗證、mkdir 並回傳同一路徑，並沒有第二層隨機 root；原單層 parent binding 保持。真 callback 的 `effective_cancel` 來自 monthly read-session adapter（不是 selection reader），index opener只轉傳；snapshot reader 的 `session_cancelled` 再包此 callback，需核對兩層閉包與各自 event。這些校準未執行 F，也未放寬來源路徑。
 
 C focused 已開始，agent 持有原 live handle 10589；root 獨立 CIM 核對四程序鏈 52048（venv launcher）→22296（real launcher）→57960（venv pytest）→44804（real pytest），建立時間均為 2026-10-10 02:04:52 UTC、commands 均指 C。唯讀觀察收據 `output/qa/resume_root_validation_20261009_a/f03_c_live_process_observation_20261010_a.json`，SHA `a90d21016ff656a6ae7c4d215c3dcbf68738a9b515fb02bcd5af397dbe1ad87e`。本段尚無 native 終態，不重啟、不並行新 runtime；若超時須另核 exact descendants，不能以 launcher timeout 推定已全止。
+
+### C focused 終態與 D 單正常案例修正（追加）
+
+C 唯一 attempt01 已終態 **exit 1，13 passed／1 failed，296.48 秒**；launcher receipt elapsed 297.7983396 秒、沒有 timeout，fresh commit headroom 4,475,867,136 bytes，formal／draft／manifest 起訖相同。root 已讀完整原 stdout、receipt，重算 receipt SHA `9a278d32472b96c5eadf257ca29707c814e4d88908f3090c02a3a9a152a54752`、stdout SHA `1eeae641706e040a3a0d19987e6b07f1cf69cad5d6f3ed623ceb17770a04eec2`；C 四個已知 PID 經 CIM 確認不存在。首紅封套不改、不重跑。
+
+唯一 failed 是正常正例的 `_one_code_outer_query` 使用 `dataclasses.replace` 更改 outer filter 卻沿用舊 canonical query identity；正式 `__post_init__` 正確拒絕 `technical_official_query_v1_identity_mismatch`，此時還沒呼叫新 opener。D 只獲 static QA revision：沿正式 `DailyMarketTechnicalOfficialDispositionQueryV1.create`，逐欄保留原技術 query、cutoff、bundle／source pins、scopes、market／disposal states 與排序，僅改單股 outer filter，讓原 factory 產生新合法 identity。root 已實讀 factory 及正常 case 全部後續斷言；不得手算 hash、放寬驗證或刪掉完整母體／同次 callback／immutable views／duplicate／poison 等要求。下一實跑僅此正常 1 node，不重跑 C 通過的 13 nodes；D 尚未凍結或授 runtime。
+
+### D 單正常案例放行與 F 凍結審查（追加）
+
+D 已凍結；root 完整讀最小 revision、正常 case API 盤點及 launcher，並獨立核對 20 formal + 7 artifact pins 全匹配。diff SHA `425e38608b7e7ab6c2de6bb6da341474dcf6f8315179a9f71ac535591b99a213`；測試 SHA `888f3d60fe70b588574ca94639d1c31d49c342588feecae863b8b1bcdea598d8`。批准 attempt01 僅正常 opener 1 node 一次，原 CommittedBytes／CommitLimit 至少 2 GiB gate、private roots／環境與 source pins 保留。agent 已回 live handle 8644，本段沒有終態，不重啟或重跑 C 的 13 綠燈。
+
+F 營收候選已靜態凍結，source SHA `c75f4a7bf3036fc640c76d530b44a9999d6bbff8a02a9b66456e7a8bf977042f`，完整 E→F diff SHA `09b4937ed4400b4d9cf3be57d9852a4e1830156c9f574124abc4dff8ef0fc754`。root 正在逐段完整審查，尚未授任何 focused／Main 執行。已找到明確靜態 blocker：transaction context helper 使用 `type(database_path) is Path`；Path 工廠返回 WindowsPath（其他平台 PosixPath），此條件會拒絕正式有效路徑。已要求 agent 對照正式 callsite 與 helper probes，保留凍結 F，先交靜態報告，不以測試執行代替審查，也不放寬 URI／custody／source 驗證。
+
+P8 仍是 H20 static-only 修訂與新 launcher 審查；沒有讀取完成、SQLite／Main 或真人驗收資格。完整產品補完範圍保持 P00–P14／M1–M3／F01–F23，三位 Luna Max 分工與 root 整合不變。

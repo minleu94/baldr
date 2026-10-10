@@ -683,3 +683,9 @@ FullView D最小title／折行修正已真跑無來源檢查：body422等於view
 
 - F06 D root終態exit0／30.766秒，兩項pytest29.42秒；全部候選與正式程式pins、320個既有來源檔SHA起訖一致。封套 `output/qa/f06_d_formatter_root_20261010_attempt01/receipt.json`。
 - F12 T9 root最小真Qt測試為11 passed／1 failed／38 deselected，1.78秒，八候選與58來源postflight通過。真Yes／Ok按鈕released、精確點擊前modal、question返回Yes及information返回Ok均通過；唯一首紅是QA要求自訂clicked slot執行時question仍為activeModal，實際Qt內建handler已關閉question，觀測None。T10另建新候選對齊事件順序；T9 Main未執行，不能以此focused實證宣告T8產品儲存成功。
+
+- Composite G8只修QA可見交集點擊與top-level重新啟用，正式View候選不改。便宜5項1.21秒及完整固定來源窄窗1項35.88秒皆exit0；完整258/257/1、首頁256列與末頁1列、理由／稽核末行、比較對話末行、第二頁詳情及原query／頁／選取／scroll／basket返回均通過。13pins及320來源SHA起訖一致。封套 `output/qa/composite_view_g8_narrow_20261010_attempt01/receipt.json`。這是獨立真來源View驗證，正常Main接線及新程序收藏重開仍待，尚未套入正式產品。
+
+- F12 T10僅改QA對Qt question已關閉後自訂clicked slot觀測順序，12項定向回歸1.69秒全通過／38 deselected，58來源與8候選pre/postflight通過。9檔exact bytes複本 `output/qa/f12t10_main_1010` 已啟動一次完整Main私有COW／新PID重開旅程；終態待核，不預判通過。
+
+- F12 T10 Main終態exit1／208.531秒，仍`explicit Watchlist COW activation`timeout；cleanup_errors=[]，原生／redirector程序鏈無錯。只記錄問題視窗Yes觀測，未出現第二modal，儲存仍readonly。timer-before-click的短訊息定向成功不能外推成完整長訊息確認成功，下一輪先補長訊息真Qt reproducer及保留原question實際return enum的觀測，不再次盲跑完整Main。receipt `output/qa/f12t10_main_1010/run_attempt_a4ff7598389842d69b342861cc1ef50d/f12_main_revenue_receipt.json`。

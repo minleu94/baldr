@@ -85,3 +85,9 @@ P08 前向現金開戶已正式整合：root要求並審核 transaction內首次
 ## 正式推薦頁滾輪的追加證據
 
 Root 以正式 `RecommendationView`、原 explain／why-not presenter 與90段合成長文，分別在800×700、460×700視窗送入 QWindow 滾輪事件；59次及60次操作均沿結果外層捲動到「可能影響排名的因素」與文件最後一行可見，內層捲軸maximum=0。程序native exit0／4.56秒，沒有修改UI或執行推薦、市場來源與Main。收據 `output/qa/recommendation_view_wheel_root_20261010/receipt.json` SHA `ceef6528e376bff4b72a6be815c4b4cc32c77aa2cc2148f4cfffcff4d255be7a`；probe SHA `7d404deaacb2a3030aa5f9198f25f8470a2bde01e7bfa5ea08ab389a095788bf`。這補強先前單一文字元件的滾輪證據，不代表原推薦結果、Main、新EXE或真人已驗收。
+
+## 使用者要求暫停的接續位置
+
+使用者因 token 用完要求暫停及 commit；root 已中斷 `resume_perf`、`f06_evidence`、`p08_accounts`，沒有 root runtime 正在執行。正式開戶切片在 `c527f777`、推薦頁滾輪 QA 在 `b28da4ff`；沒有新候選套用正式來源。
+
+接續前須重新檢查三個本機 QA-only 草稿：`output/qa/p01_filter_parallel_experiment_design_20261010_q14`（mapping／長路徑連結與 focused observer，尚未取得 FINAL 或執行新測試）、`output/qa/f12t40_main_1010`（精確 SQLite 角色及真收藏 service 聚焦矩陣，尚未完成／執行）、`output/qa/p08_daily_checkpoint_20261010`（獨立 ledger CAS、有序 fills／operation marker、typed quote sidecar 與研究回放資格，尚未驗證）。草稿不視為不可變驗收封套；須由原 owner 完成、root 審閱及凍結後才執行。原 Q13／T39／H20 G 收據保留，H20 下一步依 `output/qa/h20_report_read_routes_root_20261010/README.md` 處理精確唯讀資料路由及首次名單計時。靜態審查發現另保存在 `output/qa/resume_root_static_review_20261010/README.md`。本機 raw output 不提交；不覆寫既有未追蹤 `$null`。完整補完範圍及真人驗收仍未完成。

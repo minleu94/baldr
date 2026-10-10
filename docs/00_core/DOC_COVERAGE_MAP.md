@@ -17,7 +17,7 @@
 | 目前狀態、本週優先事項、高風險區 | `docs/00_core/PROJECT_SNAPSHOT.md` | 開場與日常工作先看 Snapshot。 |
 | 重構完成後產品方向、投資問題、產品能力演進 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` | 定義 bounded advice、Portfolio、Exit、Evidence、Data、ML 與 pruning 產品 Gate；不保存工程 checklist。 |
 | 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` | 里程碑、交付物與驗收標準以 6M Roadmap 為準；Month 1–6 是相對順序，進度看 Snapshot。 |
-| 外部專案參考、資料源優先序、V1.8–V2.0 歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 作為 6M Roadmap / Version Roadmap companion；不取代 Vision 或目前狀態權威。 |
+| 外部專案參考、候選來源研究細節、V1.8–V2.0 歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 作為 6M Roadmap / Version Roadmap companion；現行資料來源優先序看 Product Roadmap §11、工程順序看 6M Roadmap，不取代 Vision 或目前狀態權威。 |
 | V2.0 之後長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` | 只維護 V2.1–V4.0 maturity milestone；目前進度看 Snapshot，日期化狀態／工程交接看 `docs/09_archive/`；不取代 Product / 6M Roadmap、Vision。 |
 | Roadmap 入口與權威導覽 | `docs/00_core/DEVELOPMENT_ROADMAP.md` | Roadmap Hub 只連結權威文件，不複製 Next、狀態、風險或完整歷史。 |
 | 舊 Roadmap 項目處置與移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 每個 Legacy 項目有唯一處置；移交項目標示新版落點與驗收，舊月份標籤只供歷史追溯。 |
@@ -65,7 +65,7 @@
 - `docs/02_features/UI_FEATURES_DOCUMENTATION.md` - UI 功能說明
 - `docs/07_guides/APPLICATION_MANUAL.md` - 新增或改變使用者可操作功能、參數、結果或限制時
 - `docs/00_core/PROJECT_SNAPSHOT.md` - 「現在的工作模式」段落（如影響使用流程）
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 若新增文檔，需更新索引
+- 新增／刪除文件時更新所屬領域 README／主題索引；只有主要入口或權威邊界改變時，才同步中央 `DOCUMENTATION_INDEX.md`。
 
 **應該更新（Should）：**
 - `docs/02_features/USER_GUIDE.md` - 使用者指南（如有操作流程變更）
@@ -116,7 +116,7 @@
 **應該更新（Should）：**
 - `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` - 策略設計規格（如策略邏輯變更）
 - `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub（如影響權威入口或歷史導引）
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 若新增文檔，需更新索引
+- 新增／刪除文件時更新所屬領域 README／主題索引；只有主要入口或權威邊界改變時，才同步中央 `DOCUMENTATION_INDEX.md`。
 
 **可選更新（Nice-to-have）：**
 - `docs/02_features/UI_FEATURES_DOCUMENTATION.md` - UI 功能說明（如 UI 行為變更）
@@ -133,7 +133,7 @@
 **必須更新（Must）：**
 - `AGENTS.md` - 若 Codex 自動讀取入口或強制必讀順序變更
 - `docs/agents/README.md` - Agent 總覽（如新增 Agent 或職責變更）
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（如新增 Agent 文檔）
+- `docs/agents/README.md` - 新增 Agent 或調整角色入口時更新 Agent 導覽；只有主要入口或權威邊界改變時，才同步中央 `DOCUMENTATION_INDEX.md`。
 
 **應該更新（Should）：**
 - `docs/00_core/PROJECT_SNAPSHOT.md` - 「Tech Lead 的預設任務」段落（如 Tech Lead 變更）
@@ -180,7 +180,7 @@
 - docs/03_data/daily_data_update_guide.md - 使用者更新流程（流程變更時）
 
 **應該更新（Should）：**
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 若新增文檔，需更新索引
+- 新增／刪除文件時更新所屬領域 README／主題索引；只有主要入口或權威邊界改變時，才同步中央 `DOCUMENTATION_INDEX.md`。
 
 **可選更新（Nice-to-have）：**
 - `docs/02_features/USER_GUIDE.md` - 進階使用者指南（如影響使用者操作）
@@ -199,7 +199,7 @@
 - `docs/06_qa/<DATED_CLEANUP_AUDIT>.md` - owner 授權、exact scope、before／after bytes、全部刪除／保留 ID、pointer／hash、依賴、不可逆性、recovery 與 post-check
 - `docs/00_core/PROJECT_SNAPSHOT.md` - current capacity、readiness 影響、stale status supersession
 - `docs/01_architecture/system_architecture.md` - 若改變 retention／pointer／custody／tombstone 邊界
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 新增 durable audit 入口
+- QA／領域索引 - 為新增的 durable audit 提供主題入口；只有主要入口或權威邊界改變時，才同步中央 `DOCUMENTATION_INDEX.md`。
 
 **應該更新（Should）：**
 - `docs/07_guides/APPLICATION_MANUAL.md` - 若使用者日後需判讀、執行或排錯 retention／preflight
@@ -223,7 +223,7 @@
 
 **必須更新（Must）：**
 - `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` - 策略設計規格（如策略規格變更）
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 若新增策略文檔，需更新索引
+- `docs/strategies/README.md` - 新增策略說明時更新策略導覽；只有主要入口或權威邊界改變時，才同步中央 `DOCUMENTATION_INDEX.md`。
 
 **應該更新（Should）：**
 - `docs/02_features/USER_GUIDE.md` - 使用者指南（如影響策略使用）
@@ -241,7 +241,7 @@
 - 文檔索引結構變更
 
 **必須更新（Must）：**
-- `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（必須反映最新結構）
+- `docs/00_core/DOCUMENTATION_INDEX.md` - 主要導航入口或權威邊界變更時同步中央導覽；單份文件新增／搬移時依下方 DoD 更新所屬領域入口，不要求平鋪所有文件。
 - `docs/00_core/DOCUMENTATION_STRUCTURE.md` - 若資料夾歸屬、刪除/歸檔規則、文件生命週期有變更
 
 **應該更新（Should）：**
@@ -406,6 +406,7 @@
 - 2026-10-09：將日期化更新流水帳與逐批快速索引移入 [歷史快照](../09_archive/DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)，逐批來源、目的地與 SHA-256 仍由 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md) 維護；本次收斂依據與原區塊身分見 [Entry 111](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-111)。
 - 2026-10-09：將文件 DoD 改為分層可達性：中央 Index 維護權威與領域入口，領域 README／主題索引分類文件；新增、搬移與歸檔仍須在對應層更新，避免把完整文件集扁平塞進中央索引。
 - 2026-10-09：將 External Reference Blueprint 的歷史版本範圍校正為 V1.8–V2.0，與該文件及核心 README 一致。
+- 2026-10-10：統一新增／刪除文件的索引規則：領域 README／主題索引負責逐份導覽，中央 Index 僅在主要入口或權威邊界變更時更新；並收窄外部藍圖的來源權威範圍。
 
 ## Coverage History
 

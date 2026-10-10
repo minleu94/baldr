@@ -36,6 +36,6 @@
 
 ## 新增 Markdown 的硬規則
 
-新增或刪除 Markdown 文件時，必須同步更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
+新增或刪除 Markdown 文件時，必須更新所屬領域 README／主題索引並確認中央導航路徑可到達；只有主要入口或權威邊界改變時，才同步更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
 
 功能改變若會影響使用者操作、參數、結果判讀或安全限制，必須同步更新 `docs/07_guides/APPLICATION_MANUAL.md`；手冊至少涵蓋入口、步驟與參數、結果判讀、安全限制、常見排錯。

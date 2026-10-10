@@ -64,7 +64,7 @@
 - 目前可見 UI 功能包含：數據更新工作台、市場觀察（大盤/強弱股/強弱產業/主力流向）、策略回測、推薦分析、觀察清單、持倉管理與 Runtime Observatory。
 - 推薦組合回測 MVP 已完成：推薦 Tab 可把 Profile/Config 送到回測 Tab，由回測頁在歷史日期重播推薦邏輯，評估整組推薦組合而不是只回測當下股票清單。
 - 截至 2026-10-09，Strategy & Scoring Governance 增量 A / B 已完成機制回歸；具名 QA 已完成 10 檔、單一策略與固定成本組合的 OOS pilot，但不能外推成完整股票池驗收。quantile 維持 opt-in；目前優先順序以 `PROJECT_SNAPSHOT.md` 為準。[Pilot 證據](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)
-- 文件治理採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，V2.1+ maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部參考看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前架構看 `system_architecture.md`，目標領域背景看 `target_system_architecture.md`，目標實作設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `09_archive/`。
+- 文件治理採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向與現行資料來源優先序看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，V2.1+ maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部專案與候選資料源研究看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前架構看 `system_architecture.md`，目標領域背景看 `target_system_architecture.md`，目標實作設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `09_archive/`。
 - 處理推薦 replay / backtest 日期時，必須留意台股資料 `日期` 欄可能是數字型 `YYYYMMDD`，請使用共用解析工具避免誤判成 1970 epoch。
 - 資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理；正式資料根目錄預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。
 - repo 內沒有固定的正式 `data/` 目錄時，不代表資料不存在；Agent 必須先查設定，不可憑相對路徑推斷。
@@ -90,7 +90,7 @@
 #### Tech Lead Agent 補充必讀
 - `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 重構完成後的產品方向權威。
 - `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線（涉及方向、優先順序或大型規劃時必讀）
-- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考、資料源優先序與歷史版本形狀；不定義目前交付順序（涉及外部參考或資料源擴充時必讀）
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考、候選資料源研究與歷史版本形狀；現行資料來源優先序看 Product Roadmap §11、工程交付順序看 6M Roadmap（涉及外部參考或資料源擴充時必讀）
 - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣（涉及舊工作承接、Phase Gate 或優先順序時必讀）
 - `docs/01_architecture/system_architecture.md` - 系統架構（涉及架構、模組邊界或資料流時必讀）
@@ -218,4 +218,5 @@ Antigravity 的 repo 根目錄入口是 `GEMINI.md`，輔助規則放在 `.agent
 - 2026-07-04：新增外部專案參考與 V1.5-V2.0 版本形狀 companion 的 Agent 讀取規則，涉及外部參考、資料源擴充或未來版本規劃時需讀 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`。
 - 2026-07-06：新增 V2.0 之後長期版本階梯 companion 的 Agent 讀取規則，涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時需讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
 - 2026-10-09：改由 Codex／Antigravity 根目錄指令維護完整條件式必讀順序；本頁保留共同資源與角色路由，避免複製出會過期的縮短清單。
+- 2026-10-10：澄清外部參考藍圖只負責候選資料源研究；現行來源優先序回到 Product Roadmap §11。
 

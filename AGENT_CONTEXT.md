@@ -33,7 +33,7 @@ baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策�
 | 目前狀態 / 高風險區 | `docs/00_core/PROJECT_SNAPSHOT.md` |
 | 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` |
 | V2.0 之後長期版本階梯 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` |
-| 外部專案／資料源參考與歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（不作目前工程順序） |
+| 外部專案／候選資料源研究與歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（不作現行來源優先序或工程順序；來源優先序看 Product Roadmap §11，工程順序看 6M Roadmap） |
 | Roadmap 入口 | `docs/00_core/DEVELOPMENT_ROADMAP.md` |
 | 舊 Roadmap 移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` |
 | 架構 / 模組邊界 | `docs/01_architecture/system_architecture.md` |

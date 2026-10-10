@@ -506,10 +506,10 @@ These are completed, dated engineering/readiness records. Current source accepta
   - 文檔重新整理建議（已執行）
 
 - **[SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md)**
-  - 解決方案總結（歷史記錄）
+  - 早期解決方案快照；原文所列 UI 入口仍指向舊 `ui_app/`，不得據此判讀目前入口或操作。現行 UI／操作看 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
 - **[API_INVESTIGATION_REPORT.md](API_INVESTIGATION_REPORT.md)**
-  - API 調查報告（歷史記錄）
+  - 2025-12-08 的歷史 API 調查；前段「今天／本週」待辦屬當時工作，不能當成目前待辦或現行 API 契約。現行架構與操作分別看 [system_architecture](../01_architecture/system_architecture.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。
 
 - **[ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md](ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)**
   - 原 6M Roadmap 中 V1 / Month 1-6 / V1.1-V1.9 的歷史完工紀錄；目前工程順序仍以 [6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 為準。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)

@@ -2055,3 +2055,23 @@ Agent 全文審核確認 `antigravity/documentation_agent.md` 將 Coverage Pass 
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新補充日期、Architecture／Agent 閱讀深度、QA／Archive 路由結果及未讀限制。 |
 
 QA／Archive 入口修正前，受查 Markdown 的 6,231 個本機 link／anchor 未發現失效；本輪新增的六個 QA 目標路徑已逐一確認存在。沒有刪除或移動文件、沒有改動原始資料或 QA 收據結論。共享工作樹中 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md` 的修改及根目錄 `$null` 未讀寫、未納入提交。未跑測試、未刷新 Graphify；全 repo 最終 link／anchor scan 與 Graphify 仍等所有目錄內容稽核及修訂完成後執行。
+
+<a id="coverage-entry-186"></a>
+## 2026-10-10 校正文件索引責任與外部參考權威
+
+本輪以 HEAD `53b13fa4` 作為文件審閱基線。Core 18/18 份文件已全文核讀；另對 `09_archive/` 根層 266 個非 README 路徑進行詞彙初篩，對其中 38 份文件讀取開頭 8 行，並針對 9 份候選文件核對指定段落。這不是 Archive 全文審閱，也未涵蓋 `superpowers/` 子樹。
+
+`DOC_COVERAGE_MAP.md` 曾同時要求每份新增／移除文件都更新中央 Index，與其 DoD 及 `DOCUMENTATION_STRUCTURE.md` 的分層導覽規則相衝突。本輪改為各領域 README／主題索引逐份導覽；只有主要入口或權威邊界變更才更新中央 Index，並同步 Codex／Antigravity 入口、Documentation Agent 指引及策略 README。外部參考 Blueprint 曾將候選資料源研究與現行來源優先序混在一起，也未區分 2026-07-11 研究基線與 2026-08-14 具名來源審查；現已限定其研究與歷史參考角色，現行來源優先序導回 Product Roadmap §11，工程順序導回 6M Roadmap。外部 repo 與來源接受狀態未重新查核。
+
+Archive 根層初篩發現 `SOLUTION_SUMMARY.md` 的舊 UI 入口，以及 `API_INVESTIGATION_REPORT.md` 的「今天／本週」待辦，需要更清楚的直開時間提醒；本輪只修改 Archive README 的導覽文字，未改寫封存原件。
+
+| 文件 | 處理 |
+|---|---|
+| `AGENTS.md`、`GEMINI.md`、`AGENT_CONTEXT.md`、`.agent/rules/20_documentation_sync.md` | 對齊文件閱讀入口與中央 Index／領域索引更新條件。 |
+| `docs/00_core/DOC_COVERAGE_MAP.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 修正索引責任衝突；明確區分候選來源研究、現行來源優先序與工程順序權威。 |
+| `docs/00_core/DEVELOPMENT_ROADMAP.md`、`DOCUMENTATION_INDEX.md`、`DOCUMENTATION_STATUS_MATRIX_20261009.md` | 同步路由說明、導覽標籤、Core 閱讀深度與 Archive 初篩結果。 |
+| `docs/agents/README.md`、`documentation_agent.md`、`antigravity/documentation_agent.md`、`docs/strategies/README.md` | 同步文件導航規則及 Scoped SSOT 導向。 |
+| `docs/09_archive/README.md` | 為兩份歷史文件補上舊 UI 入口及日期化待辦的直開提醒；封存原文未修改。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄本批基線、覆核深度、修訂範圍及未完成限制。 |
+
+本批共修訂上述 15 份文件；沒有刪除或移動文件、沒有改寫 Archive 原件或原始資料。未執行測試、未刷新 Graphify，也未執行最終 repo-wide 連結／錨點掃描；這些工作仍等所有目錄正文治理完成後進行。

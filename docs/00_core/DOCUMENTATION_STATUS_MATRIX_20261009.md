@@ -5,12 +5,12 @@
 ## 盤點基線與範圍
 
 - 初始審閱基線：`9b8e0ea45294d89cd08c5185478f0b8c51e0f54e`（2026-10-09），當時有 **1,473** 個已追蹤 `docs/` 路徑。
-- 目錄角色分類的原固定基線為 HEAD `47a2e15e`，共有 **1,478** 個已追蹤 `docs/` 路徑；相較初始 `9b8e0ea4` 增加的 5 個路徑見既有基線記錄。本輪以 HEAD `8945df89` 重新核對路徑分母，仍為 1,478；未新增或移除追蹤路徑。原角色表保留為目錄分類基線；本輪新增的正文核讀、QA 路由與狀態更正列於 Coverage History Entry 185。舊 morning-check 路徑保留短導引；其他本機未追蹤檔不計入。
+- 目錄角色分類的原固定基線為 HEAD `47a2e15e`，共有 **1,478** 個已追蹤 `docs/` 路徑；相較初始 `9b8e0ea4` 增加的 5 個路徑見既有基線記錄。HEAD `8945df89` 與本輪審閱基線 `53b13fa4` 均核對為 1,478；本輪無路徑增減。原角色表保留為目錄分類基線；後續正文核讀、QA 路由與狀態更正列於 Coverage History Entry 185–186。舊 morning-check 路徑保留短導引；其他本機未追蹤檔不計入。
 - 此處範圍只含 Git 追蹤的 `docs/` 路徑；由 `git_exclusions.md` 排除的本機／ignored 狀態檔（例如 `docs/agents/shared_state/`）不計入，亦不作為文件完整性或現況證據。
 - 2026-10-10 另盤點 repository 中 `docs/` 外的 26 個 Git 追蹤 Markdown；它們維持獨立附錄計數，不加進 `docs/` 的 1,478 路徑統計。長篇文件的抽查與逐篇全文審查仍分開記錄。
 - 使用者已確認 `e6f79063` 的排程修正可納入本次文檔整理。已完整閱讀 `BALDR_SCHEDULE_REMEDIATION_20261009.md` 與 `BALDR_SCHEDULED_AUDIT_RUNBOOK.md`，並核對 QA README、Index、Snapshot、Manual、Guides README 及排程操作指南中的相關段落與互相連結。Entry 184 當時只依已提交 QA 增量 `577210b1` 同步 F03 摘要；其後 commit `8945df89` 加入 F06 呈現層與回歸測試證據，本輪據此更新 Snapshot／QA index。盤點時 F03 QA 文件在共享工作樹有未提交修改；本輪未讀寫該文件或其差異，也未納入接受狀態或提交。
 - 分類是目錄層級角色盤點，不等於逐檔正文核實。內容審閱深度只計入可由審閱記錄明確證實的路徑或數量；未留下深度記錄者標為「不可還原」，不推定已讀或未讀。
-- QA／Archive 舊有正文核讀數據，是先前 `0c9f84bb` 基線的歷史下限；其他目錄的角色分類仍依固定分類基線。本表另列以 `8945df89` 核對的路徑數、各輪可具名追溯的補充閱讀與目前可重算的 QA／Archive 路由；舊 repo-wide 連結抽取仍是歷史基線，不冒充目前 HEAD 的最終驗證。
+- QA／Archive 舊有正文核讀數據，是先前 `0c9f84bb` 基線的歷史下限；其他目錄的角色分類仍依固定分類基線。本表另列以 `53b13fa4` 核對的路徑數、各輪可具名追溯的補充閱讀與目前可重算的 QA／Archive 路由；舊 repo-wide 連結抽取仍是歷史基線，不冒充目前 HEAD 的最終驗證。
 
 ## 各目錄角色盤點
 
@@ -38,7 +38,7 @@
 
 | 範圍 | 可證實的核讀狀況 | 尚未確認／限制 |
 |---|---|---|
-| `00_core/`（18） | 本輪已逐檔分類 18 份；目前可具名證實 15 份全文閱讀、3 份局部核讀，逐檔深度與判讀見下方表格。 | 局部核讀為 `DOC_COVERAGE_MAP.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 與本矩陣；不把段落抽查算成全文閱讀。 |
+| `00_core/`（18） | 18/18 份已全文閱讀；前三輪標為局部的 `DOC_COVERAGE_MAP.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 與本矩陣已在本輪完成全文複核。 | 全文閱讀只證明已逐篇核讀，不代表文件內引用的外部狀態已重新取得；Blueprint 外部 repo 與來源接受狀態仍未重新查核。 |
 | `01_architecture/` + `07_guides/`（244） | `01_architecture/` 224 份：44 全文、7 局部、173 未讀（根層 8 未讀；target bundle 10 全文／3 局部／8 未讀；REFACTOR_TASKS 32 全文；REPORTS 2 全文／4 局部／138 未讀；DISPATCH 19 未讀）。`07_guides/`：18 份全文、Manual 與 Supplements 2 份局部核讀；另核對 Manual、Guide README 與排程操作指南的相關段落及連結。封存 morning-check 原文只計入 Archive，不重複計入這 244 份。 | 01／07 共 244 份 Markdown 的舊連結掃描為 1,370 個連結、missing=0、bad anchors=0；此為歷史掃描。架構長篇、Manual 全文與歷史報告仍未逐篇覆核。本輪另修正 R029 的歷史提交狀態句、將 R026 的 9/25 checkpoint 明確限定為 snapshot。 |
 | 根 `docs/README.md`、`02_features/`、`03_data/`、`04_broker_branch/`、`05_phases/`、`08_technical/`（55） | 可具名證實 21 份全文核讀：02_features 6、03_data 8、04_broker_branch 2、05_phases 2、08_technical 3；另有 32 個 Archive 相容 stub 依導引核對。`docs/03_data/` 的月營收 CSV 是欄位模板，不是實際公告日期資料。 | `docs/README.md` 僅按入口／目錄導覽核對；stub 核對不計作原文全文閱讀。六份 README 抽出 109 次 Markdown 連結、82 個正規化唯一本機目的地；本輪 01／07 的 244 文件連結掃描另有明確存在性與錨點結果，兩種檢查不可混為一談。 |
 | `agents/`、`strategies/`、`superpowers/`（191） | `agents/` 21/21 全文、`strategies/` 3/3 全文；`superpowers/` 全目錄 167 路徑分類、96 個舊路徑 stub 的 136 個 Archive 連結逐一核對，README 與 8 份代表文件作全文／重點核讀。 | Superpowers 的代表性正文核讀不代表 69 份歷史原文均已全文閱讀。Entry 185 記錄 Antigravity 文件 Agent 的 Coverage Pass 摘要與權威規則不一致，已更正；另限定 execution Agent 的 Git 回滾範例，避免覆蓋他人未提交變更。|
@@ -55,10 +55,10 @@
 | `DOCUMENTATION_CATALOG_20261006.md` | 日期化歷史目錄快照入口，不是即時清冊。 | 全文；日期與歷史定位明確。 |
 | `DOCUMENTATION_GRAPH_GUIDE.md` | 現行 Graphify 導覽與維護指南，不是內容／驗收權威。 | 全文；固定基線、CLI 故障與抽取限制有標示。 |
 | `DOCUMENTATION_INDEX.md` | 現行文件位置與導航權威，不是狀態權威。 | 全文；定位及主要 Core／Guide 導覽已核對。 |
-| `DOCUMENTATION_STATUS_MATRIX_20261009.md` | 日期化整理基線與覆核紀錄，不取代 Scoped SSOT。 | 局部；本輪核對基線、主要分類、審閱分母與近期歷史條目，尚未全文覆讀其餘各目錄段落。 |
+| `DOCUMENTATION_STATUS_MATRIX_20261009.md` | 日期化整理基線與覆核紀錄，不取代 Scoped SSOT。 | 全文；分開標示角色分類、正文閱讀、導覽可達與內容覆核限制。 |
 | `DOCUMENTATION_STRUCTURE.md` | 現行文件生命週期、目錄歸屬及歸檔規則。 | 全文；與 Index／Archive 導覽及生命週期分類相符。 |
-| `DOC_COVERAGE_MAP.md` | 現行跨文件 Scoped SSOT、同步矩陣與 DoD 權威。 | 局部；核對權威表、DoD 與更新記錄；移除兩組重複 Must 條目。 |
-| `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 外部研究／資料源候選 companion，不是現況或交付順序權威。 | 局部；前言明示研究基準為 2026-07-11、未重新查核外部 repo；外部參考待後續刷新。 |
+| `DOC_COVERAGE_MAP.md` | 現行跨文件 Scoped SSOT、同步矩陣與 DoD 權威。 | 全文；修正中央 Index 與領域 README／主題索引要求互相矛盾，並把 Blueprint 限定為候選來源研究細節。 |
+| `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 外部專案與候選資料源研究 companion，不是現況、來源優先序或交付順序權威。 | 全文；區分 2026-07-11 研究基線與 2026-08-14 具名來源審查，現行來源優先序導回 Product Roadmap §11；未重新查核外部 repo／接受狀態。 |
 | `LEGACY_ROADMAP_CARRYOVER.md` | 2026-06-15 歷史移交／結案記錄；目前工程順序回到 6M Roadmap，現況回到 Snapshot。 | 全文；將 fixed／quantile Gate 明確限定為 10 檔 pilot，不推定完整股票池已驗收。 |
 | `NEXT_ACTION_PLAN.md` | 已封存一次性計畫的相容入口。 | 全文；明確導回現行 Snapshot／Roadmap。 |
 | `PRODUCT_ROADMAP_POST_REFACTOR.md` | 現行產品方向與產品 Gate 權威，不負責目前進度。 | 全文；方向、產品 Gate 與 Snapshot／6M 權責相符，基線日期 2026-09-17 有標示。 |
@@ -111,7 +111,7 @@
 | `antigravity/tech_lead_agent.md` | Antigravity 技術總管角色規範。 | 全文；相對月份不冒充日曆／完成狀態。 |
 | `archive/CURSOR_SKILLS_DEFINITIONS.md` | 舊 Cursor skills 歷史原文。 | 全文；僅作歷史紀錄，不取代現行 Codex／Antigravity 入口。 |
 
-`strategies/` 的三份 tracked 文件均已全文核讀：`README.md` 是範圍導覽；`momentum_aggressive_v1.md` 與 `stable_conservative_v1.md` 是非權威策略說明。兩策略文件明示 `risk_level` 不等同實證風險，並未宣稱績效保證；衝突源是 `USER_GUIDE.md` 原有的預期回撤數值，已在該教學移除。另於本輪發現 `antigravity/documentation_agent.md` 的 Coverage Pass 例外摘要不符權威 Agent 的確認流程，已修正文案；execution Agent 的 destructive rollback 範例已加上保護條件。
+`strategies/` 的三份 tracked 文件均已全文核讀：`README.md` 是範圍導覽；`momentum_aggressive_v1.md` 與 `stable_conservative_v1.md` 是非權威策略說明。兩策略文件明示 `risk_level` 不等同實證風險，並未宣稱績效保證；衝突源是 `USER_GUIDE.md` 原有的預期回撤數值，已在該教學移除。本輪對齊 Documentation Agent、Antigravity 規則與策略 README 的新增文件導航要求；中央 Index 改採條件式更新。另於 Entry 185 修正 Coverage Pass 例外摘要及 rollback 保護文字。
 
 ### `06_qa/` 與 `09_archive/` 分層盤點
 
@@ -119,6 +119,12 @@
 |---|---|---|---|
 | `06_qa/`（564） | 6 份導覽：`README.md`、`DATA_ML_GOVERNANCE_QA_INDEX.md`、`INTEGRATION_QA_INDEX.md`、`OPERATIONS_TESTING_QA_INDEX.md`、`PRODUCT_UX_QA_INDEX.md`、`project_status_2026_08_14/README.md`；67 份歷史轉址；491 份其餘 QA／證據（含 11 個非 Markdown）。 | QA README 與四份主題索引目前直達 201/556 根層 QA 證據；沿 QA／Archive 導覽遞迴後 553/553 QA Markdown 可達。本輪新增六份完整收據的索引入口。 | 67 的可重現規則是 Markdown 第 1 行精確為 `# Historical QA path`、文件恰為 3 行並含 `../09_archive/` 連結。另有 82 個短頁符合歷史導引標題樣式、30 個標題標示「已歸檔」；兩組可能重疊且有短摘要，不與 67 相加，也不一概視為純 stub。可達性不等於 553 份正文均已審查。 |
 | `09_archive/`（406） | 6 個子目錄群：根目錄 267、`broker_branch/` 6、`phase3_5_research/` 4、`project_status_2026_08_14/` 3、`superpowers/` 96、`target_architecture_2026_09_22/` 30；其中 399 Markdown、7 份其他資產。 | 8 個現行導覽／清冊角色為 6 份 README 加 `DOC_COVERAGE_HISTORY_2026.md`、`SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md`；各頁目的地重疊，聯集可達 406/406 tracked Archive paths。Archive README 直連 266/266 根層非索引項目，另有 43/43 個非 Superpowers 巢狀項目有 README 導覽。`DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md` 是另外的歷史整理／恢復記錄，不列入 8 個現行導覽角色，但連到其中 4 個 Archive paths。 | QA／Archive 入口修正前，受查 Markdown 的 6,231 個本機 link／anchor 未發現失效；本輪新增的六個 QA 目標路徑已逐一確認存在。可達性不等於逐篇正文審查；全 repo 最終掃描仍待各目錄治理完成。QA／Archive 的兩份同 blob 文件是明文記錄的刻意 mirror：`DATA_COMPLETION_2026_09_09.md`／`_HISTORY.md`，以及 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md` 的 QA 路徑／Archive 凍結副本。 |
+
+### `09_archive/` 根層內容初篩（審閱基線 HEAD `53b13fa4`）
+
+- 根層有 267 個 tracked 路徑（262 Markdown、2 JSON、3 TXT，含 README）；排除 README 後為 266 個。對這 266 個非 README 路徑執行現況詞彙初篩，並對檔名未帶明顯日期／歷史標記的 38 份 Markdown 閱讀開頭 8 行；另對 9 份候選文件抽核相關區段。這是風險分流，不是 267 份原文全文審查，也未遍歷 `superpowers/` 子樹。
+- 可確認的直開風險：`SOLUTION_SUMMARY.md` 把舊 `ui_app/` 寫成 UI 入口；`API_INVESTIGATION_REPORT.md` 的「今天／本週」待辦，日期要到正文較後處才出現。Archive README 已補上其歷史時點與現行入口提醒。`BACKTEST_LAB_CHECKLIST.md`、`BACKTEST_LAB_FAQ.md`、`POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md` 及 Task Loop 01／02／04／05 的 Archive 導覽已明示歷史用途或不要照舊建議操作；原件與 hash 記錄保持不變。
+- 以上候選代表原文直開時的時間標示風險；不等於已證實原內容曾是錯誤或目前程式／操作相反。Archive 原件屬追溯來源，本批只補導覽警語，不改寫原件。
 
 `06_qa/` 11 個非 Markdown 路徑為：10 個 JSON（`BALDR_PAPER_AUTOMATION_UPDATE_REQUEST_20260925.json`、`BALDR_SCHEDULER_RECONCILIATION_20260925.json`、`BOUNDED_TECHNICAL_ROUTING_VERIFICATION_2026_09_21.json`、`C3_C4_RELEVANT_SUITE_DRAFT_MANIFEST_20260925.json`、`C4_FINAL_RELEVANT_SUITE_MANIFEST_20260925.json`、`C4_FINAL_UNION_RECEIPT_20260925.json`、`R027_TECHNICAL_PUBLICATION_ML_IDENTITY_EVIDENCE_20260923.json`、`R030_EXTENSIBILITY_FIXTURE_QA_MANIFEST_20260925.json`、`WAVE14_CANDIDATE_CHANGE_MANIFEST_20260926.json`、`project_status_2026_08_14/artifact.json`）及 1 個 HTML（`project_status_2026_08_14/report.html`）。這些都按 QA／證據資產計入，不作 Markdown 正文核讀統計。
 
@@ -226,6 +232,12 @@
 - `docs/superpowers/` 全目錄 167 路徑的角色數與 README 分類一致：96 個舊路徑 stub、69 份保留原路徑的歷史原文，以及 1 個目前 task plan 和 README；96 個 stub 的 136 個 Archive 連結都有效。Archive manifest 有 167 列、165 個唯一歷史來源，Scheduler Approval plan/spec 各有一列重複登錄。另修正 SQLite pagination、Post-V1 evidence importer、V1.1 Decision Workflow 及 V2.2 simulated-phase 的 7 個 manifest 列，明確標成舊路徑 stub → Archive 原文。未全文審閱 69 份歷史原文。
 - `2026-06-23-testing-qa-agent-super-healthcheck-roadmap.md` 保留原路線內容，檔首新增日期化歷史快照警語，界定舊「目前完成度」、test count 與可複製接手 prompt 不代表現況或執行授權，並導回目前 Snapshot／QA／Agent 文件。
 
+### 2026-10-10 已核實並於 Coverage History Entry 186 修正
+
+- `DOC_COVERAGE_MAP.md` 的新增／刪除文件規則曾要求每份文件都更新中央 Index，與本頁 DoD 和 `DOCUMENTATION_STRUCTURE.md` 的分層導航規則相衝突。現已統一為領域 README／主題索引逐份導覽；只有主要入口或權威邊界變更時才更新中央 Index，並同步 Codex／Antigravity 指引與策略 README。
+- `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 曾同時列出來源優先序權威並註明 Product Roadmap 才是 post-refactor 優先序；其 7/11 研究基線也未區分 8/14 具名來源審查。現已限定為外部／候選來源研究與歷史參考，將現行優先序導回 Product Roadmap §11、工程順序導回 6M Roadmap，並明示兩個日期範圍及未重新查核的限制。
+- Archive 根層初篩發現 `SOLUTION_SUMMARY.md` 的舊 `ui_app/` 入口與 `API_INVESTIGATION_REPORT.md` 的「今天／本週」待辦缺少直開時間提醒；僅補強 Archive README 導覽。其他候選原文已有歷史警語，且有來源 hash 或收據用途，未改寫封存原件。
+
 ## Repository tracked Markdown outside `docs/`
 
 本附錄將 repo 根目錄及其他工作目錄下的 Markdown 納入文件治理範圍，與上方 `docs/` 目錄角色表分開計數。共 26 個 tracked paths；此表是角色盤點與本輪重點段落審核，不宣稱每份長篇文件均已全文核讀。
@@ -262,7 +274,7 @@
 3. QA 與 Archive 從入口可達、正文已讀、狀態與證據仍有效四方面分開統計；不把舊 QA 快照重寫成新結論。
 4. 固定基線的連結／錨點掃描與受控 Graphify 建置只作為歷史導覽基線；它們不代表本次內容治理完成，也不涵蓋後續提交的變更。待所有目錄的文件分類、正文衝突／過時檢查與修訂批次完成後，才執行並驗證最終 repo-wide 連結／錨點掃描及 Graphify 刷新。
 
-**狀態：** Entry 171–184 的既有整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登小型目錄與 QA／Archive 分層盤點，Entry 182–184 登錄 Guides、repo 外 Markdown 及 F03 單項同步。`docs/` 目前有 1,478 個 tracked paths；小型目錄已列全檔路徑，Core、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、QA 葉節點、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
+**狀態：** Entry 171–186 的既有整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登小型目錄與 QA／Archive 分層盤點，Entry 182–186 登錄 Guides、repo 外 Markdown、F03 單項同步、QA／Archive 路由及本輪權威邊界修正。`docs/` 目前有 1,478 個 tracked paths；小型目錄已列全檔路徑，Core、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、QA 葉節點、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
 
 **2026-10-10 增量：** Coverage History Entry 182 已登錄 Guides 20 份逐檔分類（18 全文、2 局部）、四項內容修正，以及 Superpowers 7 筆 Archive manifest 生命週期欄位修正與一份舊計畫的歷史定位標示。這些批次未刪除或移動文件；未跑測試、未刷新 Graphify。F03 follow-up 與根目錄 `$null` 仍保持未納入本批。
 
@@ -271,3 +283,5 @@
 **2026-10-10 第三增量：** Coverage History Entry 184 已登錄截至 commit `577210b1` 的 F03 bounded QA Snapshot／QA Index 同步。首輪 15 passed／2 個測試環境失敗；修正後僅重跑兩個節點並通過，未宣稱修正後全套重跑。另有新的未提交 F03 QA／程式變更未納入、未覆寫；產品 query、UI、收藏與跨程序閉環仍未完成。未跑測試或刷新 Graphify。
 
 **2026-10-10 第四增量：** Coverage History Entry 185 已登錄以 HEAD `8945df89` 核對的六份 QA 收據索引補鏈、架構 R026／R029 日期狀態更正、Agent 流程摘要及 rollback 安全文字修正，以及 QA／Archive 路由複核。QA Markdown 目前由入口遞迴可達 553/553，Archive tracked paths 可達 406/406；這些是導覽結果，不代表正文全部已讀。`01_architecture/` 本輪 224 份中有 44 全文、7 局部、173 未讀；`agents/` 21/21 與 `strategies/` 3/3 全文。未刪除或搬移檔案，未執行測試，未刷新 Graphify；共享 F03 工作樹修改及根目錄 `$null` 保持未讀未動。全 repo 最終 link／anchor scan 與 Graphify 仍待所有目錄內容審查和修訂完成。
+
+**2026-10-10 第五增量：** Coverage History Entry 186 修正中央 Index／領域索引責任衝突，收窄外部 Blueprint 的權威與日期範圍，並補足兩份 Archive 根層原文的直開提醒。Core 18/18 文件已全文核讀；Archive 根層完成 266 路徑詞彙初篩、38 份開頭抽讀及 9 份候選區段覆核，未遍歷 Archive 原文全體或 Superpowers 子樹。未刪除或搬移文件、未改寫封存原件，未執行測試或刷新 Graphify；全 repo 最終 link／anchor scan 仍待所有目錄治理完成。

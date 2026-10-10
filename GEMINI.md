@@ -17,7 +17,7 @@
 5. `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub 與文件權威入口
 6. `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 涉及產品方向、Advice、Portfolio、Exit、Data、ML 或大型規劃時必讀
 7. `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 涉及方向、優先序或大型規劃時必讀
-8. `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 涉及外部參考或資料源擴充時必讀
+8. `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 涉及外部參考或資料源擴充時必讀；本文件保存候選研究，現行來源優先序看 Product Roadmap §11
 9. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - 涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀
 10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 涉及舊工作承接、Phase 或優先順序時必讀
 11. `docs/01_architecture/system_architecture.md` - 涉及架構、模組邊界或資料流時必讀
@@ -38,7 +38,7 @@
 - 一律使用繁體中文回覆與更新文檔。
 - 不得刪除或破壞正式資料根目錄內的原始資料；資料位置以 `data_module/config.py` 的 `TWStockConfig` 為準。
 - 目前主要 UI 是 `ui_qt/`（PySide6），入口為 `ui_qt/main.py`。
-- 修改功能時同步檢查文檔更新需求；新增或刪除 Markdown 時必須更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
+- 修改功能時同步檢查文檔更新需求；新增或刪除 Markdown 時更新所屬領域 README／主題索引並確認中央導航路徑可到達。只有主要入口或權威邊界改變時，才更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
 - 修改使用者可見流程、參數、結果判讀或安全限制時，必須同步更新 `docs/07_guides/APPLICATION_MANUAL.md`。
 - 文件判讀採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，未來 6 個月方向看 `ROADMAP_6M_ENGINEERING.md`，V2.0 之後長期版號階梯看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，架構看 `system_architecture.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `docs/09_archive/`。
 - `AGENT_CONTEXT.md` 是給 Codex、Antigravity 與開發者快速理解專案入口、分支策略與文件權威的輔助導覽；強制規則仍以本檔、`AGENTS.md` 與 `docs/agents/` 為準。

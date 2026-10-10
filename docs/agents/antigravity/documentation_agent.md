@@ -42,7 +42,7 @@ Coverage Pass 不產出 patch。即使使用者要求直接更新，也先列出
 
 ## 特別規則
 
-- 新增或刪除 Markdown 時，必須更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
+- 新增或刪除 Markdown 時，必須更新所屬領域 README／主題索引並確認中央導航路徑可到達；只有主要入口或權威邊界改變時才更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
 - 目前狀態、Next、Risks 以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準。
 - 未來 6 個月工程路線以 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 為準。
 - V2.0 之後長期版號階梯以 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 為準；它不取代 6M Roadmap、Vision 或目前狀態權威。
@@ -51,3 +51,7 @@ Coverage Pass 不產出 patch。即使使用者要求直接更新，也先列出
 - 架構、資料流與模組邊界以 `docs/01_architecture/system_architecture.md` 為準。
 - 目前操作流程、參數、結果判讀與安全限制以 `docs/07_guides/APPLICATION_MANUAL.md` 為準。
 - Snapshot 是短版入口，不能放過多歷史細節。
+
+## 更新記錄
+
+- 2026-10-10：將新增／刪除 Markdown 的導航要求對齊權威 Documentation Agent 與 DOC_COVERAGE_MAP，採領域索引逐份導覽、中央 Index 條件式更新。

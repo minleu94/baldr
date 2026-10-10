@@ -40,7 +40,7 @@
 - **`docs/00_core/PROJECT_SNAPSHOT.md`** - 當變更影響使用流程、目前狀態、優先事項時
 - **`docs/00_core/ROADMAP_6M_ENGINEERING.md`** - 當變更影響 6 個月工程方向、里程碑或驗收標準時
 - **`docs/01_architecture/system_architecture.md`** - 當變更影響架構、模組邊界或資料流時
-- **`docs/00_core/DOCUMENTATION_INDEX.md`** - 當新增/刪除文檔時
+- **`docs/00_core/DOCUMENTATION_INDEX.md`** - 當主要導航入口或權威邊界改變時；單份文件新增／刪除時更新所屬領域 README／主題索引，並確認中央入口可到達。
 - **`PROJECT_NAVIGATION.md`** - 當架構或功能導航變更時
 - **`README.md`** - 當為重大變更時（雖然優先級較低，但容易被忽略）
 
@@ -350,3 +350,4 @@
 - 2026-05-20：修正 DOC_COVERAGE_MAP 路徑為 `docs/00_core/DOC_COVERAGE_MAP.md`
 - 2026-06-13：加入 Legacy Carryover 與 Manual completeness Gate。
 - 2026-07-06：補入 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的條件式必讀規則，供 V2.1+ 長期版號與成熟度規劃任務使用。
+- 2026-10-10：將新增／刪除 Markdown 的導覽要求改為先更新領域入口；中央 Index 僅在主要入口或權威邊界變更時同步。

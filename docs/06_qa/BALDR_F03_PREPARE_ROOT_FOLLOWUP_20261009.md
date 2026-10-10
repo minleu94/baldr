@@ -823,3 +823,18 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 真實成功 modal 之後出現「錯誤」modal，文字與 traceback 為 personal_writer_disabled: sqlite_unavailable；role ledger 的實際拒絕為 activation_lock_callsite_invalid。診斷以標準 OK 關閉意外視窗，使原成功斷言失敗可返回，未把意外 modal 當成功。
 - 實際 stack：View._load_watchlist→WatchlistService.get_stocks→personal_load_gate→PersonalWatchlistService._load_watchlist→contextlib.__enter__→PersonalWatchlistService._writer_guard generator→contextlib.__enter__→watchlist_service_writer_guard generator。獨立靜態收據 `output/qa/f12_postload_static_review_20261010/receipt.md`（SHA `15ffe0d295fd47b5163aa1ec006b23133f72d1e3a3dbb3595f37f379977b15fc`）指出四條 postload patterns 的 generator／__enter__ 相鄰順序列反；T21 重現支援此判斷。T22 只修這四條 QA 精確鏈，聚焦通過前不跑完整 Main。
 - P01 J 可執行 oracle 已交 root 完整逐段審閱，尚未執行。要求 J2 在每組配對計時之外比對兩側完整 DTO；K controller 另行建立精確 scratch mutation／清理邊界及既有 source／store／native Job 守衛。原 300ms Gate、完整 P00–P14／M1–M3／F01–F23 保持未完成。
+
+### 2026-10-10 T22／T23 收藏背景讀取定位（未通過）
+
+- T22 只修四條 generator／contextlib.__enter__ 順序，manifest SHA `3112bed1044958054cc8b20b14181e203c6c6b4eaa575db2b64c87aecdd4c19c`。聚焦 2 passed／6 subtests passed／1 failed／51 deselected，6.35 秒，wrapper 7.125 秒，66 pins 起訖一致。啟用與主要重載沒有再開 critical modal，但 close_errors 仍因 proof_rejections 非空而失敗；不能宣稱整項通過。收據 `output/qa/f12_t22_focused_root_attempt01/receipt.json`。
+- T23 僅增加有限 caller-chain 診斷及原空錯誤清單斷言的 failure payload，沒有修改授權條件。manifest SHA `4f82289dd4fa5541a9e9c70e8a4448582e4b57dbb99e81e8713ca8c95775f7f8`。聚焦 2 passed／6 subtests passed／1 failed／51 deselected，6.58 秒，wrapper 7.5 秒，timed_out=false，66 pins 起訖一致。收據及摘要 `output/qa/f12_t23_focused_root_attempt01/{receipt.json,diagnostic_summary.json}`，原 stdout/stderr 保留。
+- 實際兩條拒絕鏈：WatchlistService.get_stocks:1641 → _list_full_n_bookmarks:125 或 _list_price_bookmarks:110 → _invoke_task_with_optional_cancel:50 → TaskWorker.run:222。成功 UI reload 最後刷新收藏控制項，會啟動這兩個 owned workers；它們不符合主執行緒 UI 升級中的單次 personal_load_gate。負向 URI probes 只記 role rejection events，並非本次 proof_rejections 原因。沒有刪除紀錄或弱化成功斷言。
+- 下一步先審最小 worker inventory 角色：實際控制項／TaskWorker ownership、callback/code/args 與 service 身分、獨立 thread-local proof、精確 target-read／marker-lock scope，以及 worker drain 後才 close。不能跨執行緒覆用原 question proof、禁用實際控制項或泛化所有私人 URI。獨立設計與競態審查進行中，尚未實作。
+- Full Main 另需新 bootstrap 封套：沿既有 G reviewed-set schema、保留精確八候選檔／58 source pins與外部 manifest SHA，綁新的 candidate／fixed_inputs private parent；不改 validator 或回指舊 candidate。T23 已用於診斷，未來 Main sibling 另取新名；聚焦通過前不啟動 full Main。
+- P01 J2 的完整配對 DTO 比對 diff 已由 root 讀過，K 精確 scratch controller 尚在靜態準備。未執行新效能樣本或套用 I 正式 patch，300ms Gate 未關閉。
+
+### 2026-10-10 P01 K 實際 oracle 終態與 T24 隔離候選
+
+- Root 完整審閱 K controller diff，固定 manifest SHA `67fcc4f90c15fca1e4f0707f8bac6c61765194c11bc89c5e52026626b70fa9c9`。靜態 preflight exit 0、6.442 秒；收據 `output/qa/p01_filter_parallel_experiment_design_20261010_k/static_preflight_ec5fd3e22c7a.json`。沒有 producer、SQL、子程序或產品模組載入；此項不是效能驗收。
+- 實際 warm_01 attempt `C:/t/p01cur_rd_c68a787540` 終態 exit 1。`child_result.json` 保留 `p01_i_oracle_unexpected_error`：固定 runtime 的 `DailyMarketTechnicalUniverseV4ReadSelection` 沒有 `to_dict`，oracle 在建立完整結果比較紀錄時失敗；沒有可接受的新配對樣本。`supervisor_result.json` 記 source/store 起訖 unchanged、native Job 已無活動程序；指定 scratch 已清空並移除。原 K/J2 封套保持不變，新 J3/L 只修 typed serialization 與對應 pins，待審待跑；300ms Gate 未關閉。
+- F12 T24 僅在全新 QA sibling 實作。兩位 Luna max 已獨立核對 worker 的精確 ownership、thread-local proof、target RO 與 marker 驗證短 RW lock；主 UI one-shot proof 保持獨立。要求建構與重載 workers 都自然結束並處理 native-finished queued slots，再 shutdown、負向 probes、role close；task-result signal 或非同步 cancel 不算排空。尚未取得 T24 執行結果，完整 Main 仍待。

@@ -10,7 +10,7 @@
 |---|---|---|
 | F03 完整母體共同發行 | C13nodes與F正常node已有原生通過；root已套入正式reader、新group-session與14節點測試，補精確prepared型態後mypy兩source綠、三檔語法綠。 | 正式17節點首輪原生終態：15 passed、2 failed／499.90s；兩紅均為測試仍依賴QA overlay環境變數，已窄修為正式module路徑及tmp_path子程序參數，修正後b封套只重驗兩節點，原生2 passed／179.68s、exit0；首輪15項加修正2項全部取得通過，未重跑其餘15項。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
 | H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10唯一attempt01原生exit0／5.04s；真fixed2讀2關、config14讀14關、1private SQLite／0source connection；來源與fixture不變、cleanup完整。negative core通過但完整negative scope仍false；原JSON loader pin、private replay等缺口保留。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
-| F12 收益與跨程序收藏 | H完整diff已root讀回，8 artifacts／58 source pins起訖匹配。H focused原生11 passed／24 deselected／0.88s；H Main唯一原生exit1，root獨立四層Python chain已觀測且終態gone。 | 真Task仍被unexpected_private_sqlite_uri拒絕；rollback proof未建立、逐條first-false原因未保存。完整primary diagnostic明示operation_parent WindowsPath導致終態JSON寫入失敗。I只授static bounded gate診斷及該明確path欄位轉文字，不放寬資格、不改H/G；Main／新PID收藏未完成。 |
+| F12 收益與跨程序收藏 | J focused 原生13 passed／0.83s。K 全新隔離 Main 已成功 exact 核來源、完成 bundle 查詢與唯讀月營收 transaction；原生 exit1 止於 f12_initial_query_contract_mismatch，尚未保存各條件實值，不能猜測。 | 下一步只補初始 query／count／scope／page／recipe 明示診斷，保留既有驗收條件。完整收藏／新PID重開尚未完成。歷史封套及原來源保持。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
@@ -320,3 +320,27 @@ I focused唯一封套 `evidence/20261010T032637Z_15592_efbcc676` 原生12 passed
 root隨後授凍結I完整Main一次，同handle19474原生exit1且未timeout，沒有重啟。封套 `evidence/20261010T032727Z_17580_b5cd2a12`；root獨立CIM觀測44308→42228→17580→33052→41012，終態後四known Python PID皆gone。launcher receipt SHA `fc5ac9534af5dd1143e37765fce26e43dc9cabd3605a23639962aee21224b019`，native receipt SHA `af5a85df79f4f6ac0b40685cbf9d3057fd298f80fa1a5068dc215e0087d8e603`。本次native終態JSON成功保存failed／17.281s，source_inventory_unchanged=true、after captured matched、cleanup_errors空、環境及runtime guards恢復；不再把舊running收據誤作live。
 
 primary仍unexpected_private_sqlite_uri，但I首次明示唯一proof rejection：frame_chain.local／field f17_query／ordinal4／bundle／token2、overflow false。root對照正式revenue_source_v1.py1112與1120證實route local是f17_query，_open_and_publish直接傳同物件；QA route_specs bundle卻讀舊'f17'而得到None。已授新J sibling static-only最小名稱修正與真source callsite schema回歸，不放寬guard、不改I/H或正式source；待凍結diff／pins／focused後再驗Main。完整收藏／新PID仍未通過。
+
+
+### J 窄修凍結與 focused 原生通過
+
+root完整讀 I→J 三檔差異，核正式bundle與bookmark的_publish首參數真為f17_query。J review manifest `1e4e79419e7538d499f37477b4a0a4b53e88a866de91b81cd72f8af95fa22180`；diff `68f66380462a6469c0dd211d0d09bbbbbc5b6a44d3f2f33a0aefaa7a5b0a354a`。root8artifacts／58source／6compile獨立通過。J focused唯一封套evidence/20261010T033110Z_48760_4cdebedc，原pytest13 passed／24 deselected／0.83s、exit0（wrapper1.219s）；receipt SHA `4a52c6ed8bc0921f5784452ad0303e67e83299eab01146f5309d327f61b674af`。root完整stdout8992B／stderr678B及before／after source pins已核，預期constructor注入保持。
+
+已授同凍結J完整Main一次，fresh memory gate／8＋58pins／隔離唯讀source-copy，尚待原生終態，不重啟或修改來源。H20合法launch inputs須由非source-only builder新snapshot（S4等）同manifest／Main／root發行，不能與舊S3 manifest混綁；missing market/calendar pins由唯讀實際來源補，不假填或索真人工程批准。
+
+
+J 唯一Main已終態exit1（launcher約0.3s），尚未進入Main：_parent_main4073拒絕private_application_parent_must_be_new，因J沿用I的頂層private parent而I已存在。8/58pins及fresh memory啟動gate綠，stdout空、stderr842B SHA `ca2c535b44bbe3e22ef0b9f5ead3c7da640e6c22e28735ba7e29dbca4e610042`；native receipt不存在，不能宣稱新query gate通過或正式source有問題。root完整原stderr／launcher讀回，已知26672／58676與J matching Python皆gone，J原件保持。授K static-only只改全新private parent C:/t/f12-main-revenue-newpid-runs-k；root唯讀確認不存在。不刪I舊目錄、不放寬new-parent gate。J13節點已通過不重跑，K需最小diff／8＋58pins／compile／fresh path preflight後單次Main另授。
+
+### K 全新隔離目錄候選已審、唯一 Main 進行中
+
+root 讀完整 J→K diff（07446567c290332407a6af45d6007c9b25ca5344ee1fc60c49fb51880d0e7c53），僅 private parent runs-i→runs-k 與 candidate hash 更新；J 原件保留，其他七檔完全相同。root 獨立核八個 artifact／六檔 compile／新目錄尚不存在；K review manifest b4db5c25a9153b5fd5e769ddf3c89cf03b45ab68185dd3f2f29058e7f3960b17。未重跑已通過的十三節點；授唯一完整 Main。啟動 fresh commit headroom 8,718,974,976 bytes，八 artifact／五十八 source pins 匹配。root 獨立 CIM 觀測 54432→56232→47524→4472→11996；同 handle65577 尚待原生終態，不能先記通過。
+
+複合查詢新增共用 source-pin helper、實際 public group owner 發行 Result 正例、same-result cache 不重序列化 keys 與 replace 拒絕測試，尚未執行。root 初讀發現測試 MA source-clock key 與真 map 拼名不同，已要求依真 schema 修正。H20 舊 market DB/WAL/SHM pins 已漂移，代理只做原來源唯讀雜湊及前後 metadata，不能套舊 pin 或重設歷史 baseline；S4 真 launch template/controller 仍實作中。
+
+### K 原生終態與精確進展
+
+K 唯一 Main 同 handle65577 已完成 exit1，封套 evidence/20261010T033652Z_47524_183ec67a，elapsed20.671s。native receipt SHA bf4f4fc19aad02cda6b862c866b1da4b81b15e5351bcadb850964c8512941dc9；root 核 stdout1811B SHA1316b2fdab04d09fedd8ea0891e834f89f3b8550ba1c7c21af14a01179e1c24a、stderr9985B SHA5f1a482f9adf0abb9e2bbdfaa6d2cc6943769e3a3d530c0c9b2c6e520e6f56ec，native SHA與launcher一致。root獨立確認56232／47524／4472／11996四PID皆gone。
+
+真正 monthly role 本次 status passed：原 archived verifier 通過，rollback/not_applicable不prime，唯讀transaction單次完成、task token2 settled_success=true、proof_rejections空。來源after已捕獲並matches_before=true、source_inventory_unchanged=true；cleanup_errors／role restore errors／capture restore errors皆空，environment／runtime guards restored=true，Qt wrapper退休且post-drain accesses=0。此證據只授初次 bundle query 與月營收讀取；尚未進比較／收藏／fresh PID。
+
+初始contract仍合併檢查query identity、declared/visible258、scope current_only、availability unknown、PIT false、page0/128、recipe非空；native未保存這些各別實值，不能直接改expected或歸因正式source。已要求下一候選明示scalar first-false且維持原gate，未授修改或runtime。舊K首紅保持。

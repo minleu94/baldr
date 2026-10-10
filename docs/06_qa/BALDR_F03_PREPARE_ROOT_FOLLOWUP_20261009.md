@@ -589,3 +589,22 @@ Composite Watchlist 儲存／Qt route 小切片已凍結，root 審 storage c143
 root 已正式補四行 `_page_index`，RevenueView SHA `a5131b1759ebfa24718c8bef86a149038fa72d3c9011cfde6f353b06aba4d4e4`；Manual 主檔同步來源／頁碼／操作與失敗判讀，歷史附冊未改。強制 checks：工作台85passed／3.47s；update_tab 原生 exit0，25pass／0fail／4skip，使用自身隔離合成資料；mypy939 source files無錯誤；該 View py_compile通過。仍待真按鈕回歸與新版來源 pin 的完整 Main 旅程，尚未 commit 此產品修補。後續 Main 必須明示重建 anchor，不能宣稱與 S 原 c0c50 View 相同；S 所有原失敗收據保留。
 
 root 審 pager sibling 四項單元測試後，以繁中註解新增正式 `test_ui_qt_revenue_page_navigation_buttons.py`；僅按鈕游標 fixture，不冒稱 reader-issued query page。四項實際按鈕回歸原生4passed／0.79s：無頁雙按鈕停用、首頁Next要求1、第二頁Previous要求0、首末頁向外按鈕停用。`navigate_page` 由測試攔截只核訊號接線，沒有來源讀寫；完整來源／新PID旅程仍保留 pending。根另核 S 的 `_detail_selection` 是 MA 私有契約誤套：正式 Revenue 用 typed row／目前 page/query/result/request，bookmark由 `from_issued_result_page` 綁定；後續 QA 須核真 Revenue 契約，不能新增假的 MA 欄位來滿足舊斷言。
+
+產品換頁修補與四測試、Manual／Snapshot／本 QA 已保存本機 commit `963b04ea`，未 push；其他文檔整理 agent 檔案未提交。Composite envelope 去重邊界精確補正：原服務在相同內層 bookmark_id、但 payload 不同時回 `conflict`，不是 `already_present`，所以不會靜默吞掉；仍無法把兩個有效的 UI basket 狀態作為獨立收藏保存。新候選擬以 envelope identity 作 Watchlist source_id／lookup／列核驗，內層 strict bookmark_id 保留原查詢重開，需三種同研究不同籃狀態的真257回歸；此設計尚未正式套用。
+
+#### 四群保存來源 public opener 正式接入的事前回滾清單
+
+| 檔案 | 類型 | 接入範圍 | 回滾方式與風險 |
+| --- | --- | --- | --- |
+| `app_module/daily_market_technical_official_disposition_query_reader_v1.py` | 修改 | 唯一新增明示 bundle 四群 projection group opener；既有 AST 不變 | 先停本次新呼叫，再移除新增函式；現有 opener 不改 |
+| `tests/test_daily_market_technical_official_disposition_bundle_projection_group_entry_v2.py` | 新增 | 真257母體單次 exact-read、完整群組及讀取前取消 | 隨新入口回滾移除本次測試；既有測試保持 |
+
+新增入口候選先前真兩測試143.37s通過，root已審119行完整diff；現準備正式接入並重驗正式版本。來源只允許明示 bundle root／identity／manifest，決策時鐘從原 manifest取得，不讀latest或現在日期；全數原source pins核驗及取消／群組失敗poison仍保留，無新金融計算。不宣稱UI或效能資格。F12下一輪須明示重建新reader anchor（S舊d59b收據保留），不能沿舊58pins執行新來源。
+
+### 正式 bundle 入口通過；H20 K 完整旅程啟動
+
+root 在正式接入前核原reader d59b與候選a08d，AST移除唯一新增函式後完全相同；正式reader現在 `a08d30b084e35dc1eec25c2a9207bdd7a159f8d047d3bb3387e3897bf27e4df9`。單檔 mypy及兩檔py_compile通過。正式封套 `composite_bundle_opener_formal_20261010_attempt01`／handle99842 原生 exit0：2passed／196.38s、wrapper198.438s，六 pins 起訖不變，stdout SHA `290f8852d5ca6c66402e3f02448e850f7caa9f78c05cd9bf8dfbb89436d1fcaa`、stderr空。root 另獨立核當下六 pins及原生輸出／收據，保存 root_acceptance.json。接受真257 included＋1excluded、三indices257、全audit258的256＋2頁、單次exact-read及beforemetadata取消；不授Main、真人或300ms資格。
+
+H20 J 靜態審查退回兩個必紅：summary已雜湊 IDs、return gate卻期待原字串；AST小測試缺hashlib全域。J不執行且原封保存。K只修這兩個 QA 契約並增嚴格 matcher 正反例，child SHA `a0e94a561fcfa99b63fbe747f80b77f6778590beac2b3911019dc8d7c0ddd64d`、test `bc8730443f51203a280927b28ceb3c2935a1fbbaf974e6df2657e3b8d75e6b64`，完整 J→K diff `ba1f160d737fed8dff5136c60e4b87be762092e2211152ca7b92b6f2ec5763e7`。隔離短目錄六focused原生6passed／4.32s，typed容器不冒稱view seal、假chart/假evidence拒絕、返回hash缺欄／錯值／混原ID拒絕；真public reader小fixture仍不取代原684bp。
+
+K唯一完整 Main 封套由root固定K／原33source／S4manifest／launch／D9 guard與runner pins；原來源前後全核及原期限／headroom保持。handle45324啟動，尚待原十股、2382同來源OHLCV及專用return worker終態；正式工作區新API不替換固定S4來源，不混入這次H20資格。

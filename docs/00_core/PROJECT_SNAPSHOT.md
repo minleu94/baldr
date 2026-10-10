@@ -11,7 +11,7 @@
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
 | P01 千檔效能 | 固定矩陣仍未通過原 300 ms 門檻：換頁 p95 239.4695 ms；篩選 1074.3634 ms、排序 344.7445 ms，後兩項失敗。render-prefill bounded 修補的 19 項定向回歸通過，但尚未重跑完整矩陣，不能視為效能門檻通過；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
 | F02 四均線 | 固定合成來源的 V11 父 Main→收藏→關閉→新程序 Watchlist 單擊／雙擊旅程有界通過；不代表原始來源、新 EXE 或真人驗收。 |
-| F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0。新增複合研究收藏契約正式六測試通過，涵蓋原保存來源與新程序精確重開；四群 bundle opener 候選兩測試通過，但正常 View／Watchlist 儲存接線及 UI 閉環仍未完成。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0。複合研究收藏契約正式六測試通過，明示保存 bundle 的四群入口已正式接入並通過兩項完整母體／取消測試。Watchlist 儲存與專用 Qt 路由候選一項真257測試通過；不同籃狀態的收藏身份、正常 View及 Main閉環仍未完成。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 | F06 波動 | 尚無 full-N reader-issued 結果；方法提案不代表已採納產品規則。詳見[產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。 |
 | F12 月營收 | Q Main 的來源資格與 65 欄 query oracle 均通過。S 六項定向測試及真 Main 首頁比較籃通過，下一頁缺少 `_page_index` 導致旅程失敗。正式最小修補已通過四項按鈕回歸及強制 UI 檢查；新來源版本的完整收藏／新程序旅程仍待驗。[F12 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 | H20 source-port | I Main 已真正讀回原 H20：10 檔可用／0 未知、2382 原估計 684 bp 與三日期吻合，名單載入階段 16.547s。實際雙擊已觸發選股投影；舊 QA 誤等重新建立名單，圖表與返回旅程仍待對齊並驗收。G／H timeout 不代表產品 worker 未完成。[H20 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |

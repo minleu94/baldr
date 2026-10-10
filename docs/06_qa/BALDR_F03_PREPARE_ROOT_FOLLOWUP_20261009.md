@@ -8,8 +8,8 @@
 
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
-| F03 完整母體共同發行 | 正式 prepare `115600d3`；C 原生13 passed／1 failed。D 正常 opener 已越過完整257母體、兩parent、單次exact read、三路同row與frozen值斷言；唯一failed是QA直接重綁不可變ledger。 | E只授static測試修正：先驗重綁被拒，再清原list內容驗issued anchor保持；後續conditions／duplicate／poison仍未跑。正式issuer／F17整合、composite query／UI／收藏／新程序／EXE待辦。 |
-| H20 原 source-port 接線 | P7真terminal4046 bytes已讀，config nested-class NameError使payload／SQLite 0；來源未變且cleanup完成。P7缺啟動前memory gate，不能當合格驗收。 | P8完整候選與launcher已由root審查、pins重算相符，已授唯一attempt01且fresh PDH記憶體與disk分欄gate；此入口尚無新終態。public cohort、Main、原2382的684bp／圖表／速度與真人待驗。 |
+| F03 完整母體共同發行 | C13nodes已有原生通過。D/E正常opener已越過257完整母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持。E唯一failed是QA期待錯誤碼少reader公開前綴，實際conditions已正確拒絕。 | F03 F只授static literal修正與完整error-code盤點；後續duplicate／decoder／poison尚未執行。正式issuer/F17整合、composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
+| H20 原 source-port 接線 | P8原生2terminal／8092bytes、14config／2044bytes、1privateSQLite／0sourceSQLite已越過，source/fixture起訖同且cleanup完成，freshmemorygate通過。唯一首紅為QA從沒有PIT欄位的top-levelbinding取值；原feature rows明確false。 | P9只授static最小schema修正：逐row核原PITfalse，日期/rowsha/fingerprint不變，原封套保留。E查詢node正在實測，P9不並行。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
 | F12 收益與跨程序收藏 | E focused22 passed／8subtests，E Main被QA guard拒private reader；13-root獨立核對相同但native無after。F全diff已reviewed且58pins一致，靜態找到Path型別與helper caller方向必拒錯誤。 | G只授static最小修訂：修兩項QA接線、新啟動前pins／memory gate、首紅停後續及失敗source-after收據；F不跑不覆寫。兩階段真SQLite／Main／新PID收藏仍待驗。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
@@ -205,3 +205,21 @@ D唯一attempt01 exit1，原生 `1 failed in 205.61s`，launcher207.2714872s，�
 Root讀P8最後繁中map、完整candidate/launcher diff後授唯一attempt01，D已終態不並行重runtime。fresh frozen source／candidate pins、PDHcommitheadroom至少2GiB與獨立diskgate必須通過；啟動後另以CIM核實native鏈，不能用PopenPID代替。120秒僅觀測期限，同handle等待不重啟。此段尚無P8結果。
 
 F兩個必拒靜態錯誤、失敗原生after缺口與launcher門檻由agent獨立實碼確認；授G static-only最小修訂，保留F、原正式來源與URI/custody條件，完整新diff與launcher受root審查前不跑focused／Qt／Main／producer。全產品範圍保持，無可驗真人新EXE。
+### P8 原生讀取進展、QA schema 首紅與 E 正常案例（追加）
+
+P8唯一attempt01 exit1，Popen elapsed5.4003992s，120s期限未到。root已讀原JSONstdout／stderr／launcher receipt／preflight，重算receipt SHA `7af0b26d111227ddb435af56c0dc4bcb4c9b8b9b2133f0ca6a42729f958bc6fe`、stdout `5bba10f1cee9e55219ee19ef2361d26fd3c38a06b2d3e33cf174c3ec784b46ad`、stderr `f5c079f5c245be0635d29ca25294a1ccd322ff4ead0687cc85f659aa23a49b4b`。fresh PDH headroom6,639,513,600B、sample age0.0154108s，memory/disk分開gate通過。源／fixture／H20 source group／snapshot JSON起訖同，cleanup_complete=true、errors=[]、descriptor0、attempt_removed=true、env/Python恢復。
+
+此回真terminal initial/terminal各讀4046bytes，合8092；config initial/terminal各7次，共14次／2044bytes，SHA全符合固定146-byte config。真privateSQLite連線1，原sourceSQLite attempts0；初始與終端sourcecallback均回傳mapping。首紅2236是QA把`historical_pit_eligible`錯查在source_binding schema。root直接讀H9 source_binding SHA `f570beefbab0ae5341e0637b593c7f1790ec369733bd94775de79e53107b55b6`，matchesmanifest；feature date10/02與decision10/06正確，但該schema沒有historical_pit_eligible欄位，.get不是False。原terminal及原source-context另有明確false。不能因missing默認false、改原fixture或刪PIT斷言；交agent盤點真正已驗payload來源與剩餘assert，目前只有static diagnosis，不授P9runtime。後續負例／public cohort／Main／2382原684bp／速度未驗。
+
+P8外部CIM觀察捕捉57400（venv launcher）→45924（real launcher）→44428（venv runner），未捕捉runner的real Python interpreter child，不能宣稱完整native chain。原wrapper把stub當實際launcher而兩項simplifiedidentity=false，原件保持，需另附解釋；root事後CIM確認已知三PID不在且無P8runner／launcher的Python程序。舊map若說P7已讀兩terminal不精確：P7只有initial4046，P8才讀兩次8092；已要求新診斷澄清。
+
+E最小revision已由root完整讀diff／plan／剩餘正常assertions，20formal＋7artifact獨立pins匹配；manifest SHA `151ce51c54c9786c83929fffc89b075982046718b2b262680d7d30fa949d8355`，diff `b43ccbe143e08f4063de4623adba082a8d944c552b523b8ebcce9462feacd05b`。批准唯一Eattempt01同一normalnode，其他13nodes不重跑；原handle22903。root CIM獨立確認12168→17944→59452→57732四程序chain存在、2026-10-10 02:25:00UTC建立且commands指E。此段沒有E終態，不重啟、不並行新增runtime。
+
+P9 schema修訂另由root實碼定位：frozen `_source_port`40–124先用原typed loader驗context PITfalse，feature builder回傳row asdict；H9 pinned binding的每股feature row有明確`historical_pit_eligible:false`、`formal_training_allowed:false`、`research_only:true`，top-level binding無該欄位。授P9 static-only在原逐row/date/rowsha/fingerprint核對中加入真required-row PIT欄位檢查，摘要由已檢全部rows得出，不改fixture／來源／cap或原P8。完整diff／launcher／剩餘assert盤點待root審查。並非正式PIT資格；歷史研究限定仍false。
+### E 終態與完整 error-code 靜態盤點（追加）
+
+E唯一attempt01 exit1、`1 failed in 186.88s`，receipt188.6035036s，無timeout，freshcommitheadroom6,809,743,360B。root讀原stdout／receipt並重算receipt SHA `a2ec13b560362f241aae037000019d73a58d0e2771c8fbdafbb7af0e06d142c4`、stdout `f9c96f232d30fef3b2d8dddcc4f1a27fc6b12bcad1b57294b76f727a4bd40152`，20formal／7draft／manifest前後同；已知四PIDrootCIM全gone，原handle22903terminal，不重跑E。
+
+E真ledger probe已越過：257provenance、重綁被既有immutable錯誤拒且原list/content不變、清list與兩parentset後三getter仍同anchor。接著test338錯誤碼literal首紅，少了reader公開前綴；實際拒絕為`technical_official_query_reader_v1_projection_group_session_conditions_require_exact_reopen`。root對照reader `_fail`147–164確實加此前綴；group/session的 `_fail`來自group_v2，不加reader前綴，後續already_issued／poison原expected合理。conditions確實拒絕，但後續duplicate／decoder／poison仍未跑，不稱整normalnode綠燈。
+
+授F03 F static-only最小QA literal修正，需完整核對normalnode全部.code斷言的constructor與_fail、replace init=False與poison/getter行為；不能只盤API名稱。正式與兩draftmodules凍結、E首紅保留，下一次同normalnode唯一實測待rootreview。P8原71359handle已終態wrapperexit0與內部nativeexit1分開；外wrapper成功收尾不是H20切片通過。H20 P9和營收G皆static-only，尚無新真人／EXE驗收。

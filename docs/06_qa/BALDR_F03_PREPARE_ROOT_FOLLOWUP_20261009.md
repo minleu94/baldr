@@ -344,3 +344,19 @@ K 唯一 Main 同 handle65577 已完成 exit1，封套 evidence/20261010T033652Z
 真正 monthly role 本次 status passed：原 archived verifier 通過，rollback/not_applicable不prime，唯讀transaction單次完成、task token2 settled_success=true、proof_rejections空。來源after已捕獲並matches_before=true、source_inventory_unchanged=true；cleanup_errors／role restore errors／capture restore errors皆空，environment／runtime guards restored=true，Qt wrapper退休且post-drain accesses=0。此證據只授初次 bundle query 與月營收讀取；尚未進比較／收藏／fresh PID。
 
 初始contract仍合併檢查query identity、declared/visible258、scope current_only、availability unknown、PIT false、page0/128、recipe非空；native未保存這些各別實值，不能直接改expected或歸因正式source。已要求下一候選明示scalar first-false且維持原gate，未授修改或runtime。舊K首紅保持。
+
+### 複合契約凍結與唯一測試進行中；L診斷候選已審
+
+composite source SHA2375f3703e93c2e26ca6477648e9ed0e679495c393ee7d47069f8b7f847e8a4c、tests SHAbb19032e7c44f98a5309e1f9d626902eafb46b13fb838706510cda5f01b68231。root 已讀結果issuer／same-subject cache／來源map／真group Result正例／replace拒絕測試；兩檔compile及targeted mypy無錯誤。唯一pytest於output/qa/composite_query_focused_20261010_attempt01，handle40490；root獨立觀測43992→52056→31832，fresh commit headroom9,478,979,584B，四個凍結pins匹配。raw stdout已顯示失敗節點，仍在等同handle原生終態，不宣稱通過、不改凍結檔、不重跑。capture改用實際PowerShell直取repo cwd，未執行的draft wrapper已移除，沒有第二次pytest。
+
+L只加九欄初始contract明示scalar診斷與typed fallback；原gate與expected不變，fresh parent runs-l。root完整審K→L diff561185b3ff7f4438c74e681b8bb171eda3330eeab44600c8c63d5dcd7a841510，獨立核8artifact／6compile／新parent不存在；review manifest091adfce128691e8ce2c31cb6845c97d127f36d12999630b2d1ea719618ca65b。L未授runtime，等composite唯一終態後只跑新增一節點，其他十三個unchanged節點不重跑。
+
+H20六role資料重新唯讀核查34個現存named-input與兩個缺席journal，共36路徑整组metadata前後穩定，沒有SQLite connect或source寫入。這仍是builder template/controller準備，不是Main／原684／圖表返回通過；template分組唯一性正在修正，須完整freeze後才授建置。
+
+### 複合契約唯一測試原生終態（首紅保持）
+
+handle40490 原生exit1，pytest121.16s，11 failed／3 passed／2 errors（wrapper123.204s）；receipt SHA9c19e10cc91b066592fc37e9d39b59c448d3d978b83b0bdf31d596b919f47273、stdout29567B SHAa15801c78691ff2ee6dee974dc5972e4c66b37ff0e9c4e349912ab99232b63f2、stderr空。root核完整收據、首錯trace及全部失敗分類；四pins起訖相同，commit headroom終態8,223,539,200B，三已知PID皆gone。
+
+十一項均在測試_p01_query初始化被真query schema767拒絕：receipt_status complete卻pending_count1。兩actual-owner setup error是import exact_query未同時載入其依賴exact_p01_session fixture；尚未執行Result正例。已授test-only修正status partial（保留pending／excluded）與真fixture import，正式composite source2375保持。保留attempt01原件，待新test SHA／靜態檢查凍結後另授下一次，不放寬產品schema。
+
+L等待窗口已結束；現只授新增一節點focused，不重跑原十三項，不授Main。H20完整三十四個named-input與兩missing journal重核收據已落盤，六role path唯一性仍須修正後交root靜態審查；沒有Main/build啟動或新EXE。

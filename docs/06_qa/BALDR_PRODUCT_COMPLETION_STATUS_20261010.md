@@ -91,3 +91,5 @@ Root 以正式 `RecommendationView`、原 explain／why-not presenter 與90段�
 使用者因 token 用完要求暫停及 commit；root 已中斷 `resume_perf`、`f06_evidence`、`p08_accounts`，沒有 root runtime 正在執行。正式開戶切片在 `c527f777`、推薦頁滾輪 QA 在 `b28da4ff`；沒有新候選套用正式來源。
 
 接續前須重新檢查三個本機 QA-only 草稿：`output/qa/p01_filter_parallel_experiment_design_20261010_q14`（mapping／長路徑連結與 focused observer，尚未取得 FINAL 或執行新測試）、`output/qa/f12t40_main_1010`（精確 SQLite 角色及真收藏 service 聚焦矩陣，尚未完成／執行）、`output/qa/p08_daily_checkpoint_20261010`（獨立 ledger CAS、有序 fills／operation marker、typed quote sidecar 與研究回放資格，尚未驗證）。草稿不視為不可變驗收封套；須由原 owner 完成、root 審閱及凍結後才執行。原 Q13／T39／H20 G 收據保留，H20 下一步依 `output/qa/h20_report_read_routes_root_20261010/README.md` 處理精確唯讀資料路由及首次名單計時。靜態審查發現另保存在 `output/qa/resume_root_static_review_20261010/README.md`。本機 raw output 不提交；不覆寫既有未追蹤 `$null`。完整補完範圍及真人驗收仍未完成。
+
+使用者後續授權檢查及清理 `$null`：根目錄原檔未追蹤、84 bytes、普通檔案，內容僅 Git fsmonitor IPC 錯誤訊息。已完整複製至本機排除的 `output/qa/null_artifact_cleanup_20261010/git_fsmonitor_error.txt`，原件與備份 SHA-256 相同後移除根目錄原檔。這不是原始市場資料或功能來源；確切產生程序未能確認，輸出重導向誤建是推論。回滾方式為把該備份複製回根目錄檔名 `$null`；沒有必要的功能回滾或測試。產品開發保持暫停。

@@ -911,3 +911,9 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - H20 排版靜態鏈：PersonalH20ResearchWidget 的 scope_label 將完整 manifest path 放入 QLabel，word wrap 仍搭配水平 Preferred；作用中頁的自然尺寸由 `_CurrentPageSizeTabWidget` 回傳至關閉水平捲動的 result QScrollArea。新 B 候選先檢查水平 Ignored／minWidth=0 是否解除整頁寬度傳遞，保留表格局部水平捲動與全部來源文字；另補 selected row 與 managed registry 斷言。僅授權小型合成 widget／tab 幾何診斷，不讀正式 DB；需要核完整文字排版及窄→寬→窄，不能以外框在 viewport 或 text 存在代替可讀證據。正式來源尚未修改，原 H20 失敗仍有效。
 - H20 B 小型 exact-chain 合成幾何量測已保存，Root 實讀 `output/qa/h20_loading_first_list_focused_ui_20261010_b/synthetic_geometry_attempt06.stdout.txt`：舊布局在 676px 寬視窗的 viewport 為 662px，等待 label 寬 784px 而裁切；B 為 640px、來源說明為 622px，窄→960px→窄的實際高度 180／110／180px 與 heightForWidth 相符，原 357 字元合成 path 保留。這仍非真 Main、原來源或真人結果；獨立 QTextLayout 的 WrapAtWordBoundaryOrAnywhere 未必等同 QLabel 實際 paint，已要求補相同文字旗標的 font metrics／完整文字證據，B 尚待最終凍結與真 Main 測試。
 - Q 草稿 Root 提前審閱收據 `output/qa/p01_q_root_draft_review_20261010/notes.md`：精確映射 typed DTO 後仍保留原 payload hashes，會使正確重綁副本必然不等。Owner 已在草稿補原始 hash 完整性核對及映射後重算；Root 實讀更新的 query identity／selection seal／page summary 重算分支。完整封套、focused tests 與 runtime 仍待，不能把草稿修正計為 Q 通過。T27b 已存在未完成基底及 rollback，owner 未確定，故不覆寫；partial constructor 修正版改用全新 T27c，由 T27a 凍結基底另建，尚未執行。
+
+### 2026-10-10 恢復推進：H20 內部裁切與安全退休資格
+
+- 使用者暫停後已明確要求繼續；沿用三名 Luna max 分工與 Root 審核，工作仍限隔離候選，不改原始資料、正式排程或其他文件 agent 的內容。
+- H20 B 的補查推翻「外框縮小即可完整閱讀」假設。Root 實讀 `synthetic_geometry_attempt08.stdout.txt`／stderr：窄窗來源標籤內容區寬 622px，但使用 QLabel 相同 TextWordWrap 旗標的字型量測寬 768px，仍有標籤內部溢出；原 attempt06 的獨立 QTextLayout 不能作實際標籤完整呈現證據。B 保持未驗收，原紅燈保留。新 C sibling 改用原生唯讀文字區，保留完整來源身份與路徑，驗證換行、捲至末尾及複製原文；目前尚無有效 C 幾何或真 Main 通過結果。
+- T27c 草稿審查辨識成功資格與清理安全不能共用條件：`proof_passed` 包含完整 Main 的成功結果與控制項數量要求，不能拿它阻止已安全排空的部分 constructor 退休。候選需獨立證明 observer 已關閉、registry 空、精確 worker／control 身分及 run／native finished；原完整 Main 的成功門檻保持不變。新增單控制項／由 parent drain 取消的真 Qt 案例，以及僅還原自身持有 hook 的 teardown；尚未凍結或執行。

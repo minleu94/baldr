@@ -8,14 +8,20 @@
 
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
-| F03 完整母體共同發行 | C13nodes已有原生通過。D/E正常opener已越過257完整母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持。F 的完整差異、四項公開錯誤碼及 27 pins 已經 root 審查。 | 已授權 F 凍結 launcher 單次正常 node 實測，啟動前須通過新鮮記憶體及來源檢查；尚無終態。正式issuer/F17整合、composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
-| H20 原 source-port 接線 | P8原生2terminal／8092bytes、14config／2044bytes、1privateSQLite／0sourceSQLite已越過，source/fixture起訖同且cleanup完成，freshmemorygate通過。唯一首紅為QA從沒有PIT欄位的top-levelbinding取值；原feature rows明確false。 | P9只授static最小schema修正：逐row核原PITfalse，日期/rowsha/fingerprint不變，原封套保留。P9不與 F 查詢實測並行。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
+| F03 完整母體共同發行 | C13nodes已有原生通過。F 正常 node 原生 exit 0，1 passed／173.82s；完整257母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持，以及conditions／duplicate／decoder／poison檢查通過。27 pins與manifest起訖相同。 | 開始準備正式 issuer/F17 整合最小候選；目前為 QA overlay，尚未套入正式來源。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
+| H20 原 source-port 接線 | P8原生2terminal／8092bytes、14config／2044bytes、1privateSQLite／0sourceSQLite已越過，source/fixture起訖同且cleanup完成，freshmemorygate通過。唯一首紅為QA從沒有PIT欄位的top-levelbinding取值；原feature rows明確false。 | P9 candidate／launcher完整差異已讀，仍待負例分支對照與最終凍結 pins；沒有授權 runtime。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
 | F12 收益與跨程序收藏 | E focused22 passed／8subtests，E Main被QA guard拒private reader；13-root獨立核對相同但native無after。F全diff已reviewed且58pins一致，靜態找到Path型別與helper caller方向必拒錯誤。 | G只授static最小修訂：修兩項QA接線、新啟動前pins／memory gate、首紅停後續及失敗source-after收據；F不跑不覆寫。兩階段真SQLite／Main／新PID收藏仍待驗。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
 
 ## 審查結果與實作範圍
+
+### F03 F 正常入口實跑終態（最新追加）
+
+凍結 F launcher 僅跑正常 node 一次，原 pytest **1 passed／173.82s，exit 0**；launcher 收據 elapsed 175.1825018 秒、timeout false、啟動時 commit headroom 9,017,552,896 bytes。root 獨立讀完整 stdout／receipt，核 20 正式 pins、7 候選 pins 與 manifest 起訖相同。獨立 CIM 實測中確認 31764 → 20704 → 50696 → 56960 的四層程序，終態後四 PID 均已不存在。
+
+封套 `output/qa/baldr_f03_group_publication_proposal_20261009_f/attempt01`：receipt SHA `e3d9dbaec07f0d2dadd48c5d5e6c7ae2cbadd58183c83840b2d2611111a403f0`；stdout SHA `708f874ac2b097083a066d1ae41421f533e441d416f341fb9bd0073b119442d1`；stderr 為空。正式來源尚未改動；下一步準備正式整合候選，暫時保持 F12 正在審查的 58 source pins。此結果不授 canonical composite query、正常 UI、收藏、新程序、效能或 EXE 資格。
 
 獨立 Luna Max 審查發現兩項應在共同 issuer 前補齊的問題：三個 collector 的可變 entries list 沒有保留原 callback entry 參照，跨 lane 相等不足以拒絕三路一起被替換並重算 self hash；group 雜湊前呼叫 MA index `to_dict()` 與 parent `asdict()` 會建立全量複本，不能以後續串流雜湊宣稱整段沒有全量複本。
 

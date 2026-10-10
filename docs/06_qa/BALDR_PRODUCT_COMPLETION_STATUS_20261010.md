@@ -45,9 +45,13 @@ M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成
 
 - root：審查正式差異、執行驗證、保存進度；不覆寫其他文件整理工作。
 - F12 葉片：T38 已執行一次，正常轉場與 launcher→native PID 鏈核對通過；收藏前 QA SQLite 拒絕仍未解，下一候選先交 root 審核。
-- 原 2382 葉片：真正 Main／正式 reader 的一次同源計時候選，E 槽副本／私人狀態，D 原來源唯讀；目前尚未執行。見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)。
+- 原 2382 葉片：C 候選已執行一次，H20 頁籤位於可點擊範圍外而自然收尾，未選到 2382、未取得下鑽速度；來源指紋不變。子程序 exit code 未取得，外層 exit0 不能代表成功。D 候選正在修正真實頁籤箭頭操作與 exit code 讀取，尚待 root 審查及執行。E 槽私人副本／狀態、D 原來源唯讀；見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)及 root follow-up 的 C 終態。
 - P08 Luna max：明示 binding／帳戶路徑切片取得 50 PASS／1 skip；成本 reader 修正另取得 38 PASS／1 skip、真 SQLite 成本邊界 1 PASS，歷史 basis／ledger-window 未知時不計算收益。逐 snapshot 證據 writer 與策略 UI 尚未完成。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)。
 
 真人目前可做[合成來源六步驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：窄窗、完整文字、返回、比較、收藏即時重開及關閉後重開。它使用 1000／1256，不替代原 2382／H20、真實推薦或整體四用途接受。
+
+恢復後 root 已審讀 P08 receipt 候選全部差異：原子寫入、歷史缺件維持 unknown 的設計有合成測試證據，但種子持倉數值一致性仍需補負例，尚未套用正式來源。推薦理由窄窗與鍵盤捲動聚焦測試取得 3 PASS／native exit0；七份人驗入口 UI 指紋再次相符，仍沒有真人結果。T39 月營收精確鎖核驗候選與 H20 D 候選由兩個葉片平行準備，root 審查後才執行。
+
+H20 D 後續實測：root 完整審查 C→D 差異及 launcher，五份核心 hash 與唯讀 preflight 30＋17 pins 相符，執行一次取得 child PID 35724／exit1，未逾時、未由 launcher 終止。真頁籤箭頭點擊三次成功；原名單 10 列可研究、0 列未知、2382 唯一。Main 啟動至列表就緒 35.422 秒，頁籤揭露與點擊至就緒 30.891 秒；這是一次固定來源觀測，不是 p95。隨後因「2382 列未在真實表格 viewport 內」停止，未取得下鑽／報告／返回時間。原來源 metadata 前後相同；內層收據 `E:/t/h20p2382d/output/qa/h20_2382_timing_receipt.json` SHA-256 為 `a3ae7d65fa99e6bbff3730885d4b68f794cf4050bae3a1aff99fb777b8633636`。下一 sibling 補有界真實表格捲動，不覆寫 D 收據，也不以程式直接選取冒稱真實操作。
 
 詳細成功／失敗與 scope 證據保留於[root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。本表沒有宣稱 live Task、原自然結果、正式模型品質或全產品完成。

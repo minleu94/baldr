@@ -801,3 +801,9 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - T16 僅加失敗診斷，T17 修三個 @contextmanager 的 wrapper/generator 精確 code 綁定，T18 補 _history_prefixes 的獨立 schema detection chain；各輪均保存原件與原生 stdout/stderr／receipt。T17/T18 仍 2 passed／6 subtests passed／1 failed，58+8 pins 起訖一致，未改正式程式或資料。
 - 最新具體阻擋為 target_read_callsite_invalid：正式 _preview 經 _base_lineage_snapshot → _history_prefixes，先直接 _detect 再 inventory；候選原 receipt_lineage_inventory 缺 _base_lineage_snapshot，schema 與 inventory 兩條都必須列精確鏈。另 under-lock 的直接 _detect 與 _base_lineage_snapshot 嵌套鏈須一併靜態核對。獨立審查持續，不以泛化祖先搜尋／全部私人 URI 放行解決。
 - 接續應先完成全部精確 target schema／inventory chains 的靜態核對，再跑三 focused；成功後才執行完整 Main。P01 I 仍是未執行的 QA shadow，300ms Gate 保持未完成。本輪產品有效提交為 8c7fd469，Snapshot 07ff5694，架構／導航／UI Features 3104b79b；無 push、新 EXE或全產品完成宣稱。
+
+### 2026-10-10 真人驗收入口（尚未取得人驗結果）
+
+- 詳細步驟見 [複合研究真人驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：非全螢幕可達性、完整明細捲動、返回與跨頁比較、收藏即時重開、關閉後重開。使用合成1000–1256，沒有2382/H20；不把此試用外推成真推薦、收益或完整產品驗收。
+- 本機啟動檔 `output/qa/composite_human_20261010/start_composite_human.cmd` 與 ASCII PS5.1 腳本六正式SHA核對；`-CheckOnly` exit0且不啟動UI。固定private-trial沿用重啟收藏，不讀正式DATA_ROOT；原碼實際視窗待真人確認，不稱新EXE。
+- 三個 Luna max 工作平行：t14_guard_review補完整T19 callchains；f06_evidence補P01 I可執行負例與配對量測候選；resume_perf只讀核真人launcher及控件對照。root負責審閱、runtime及正式整合，真人回覆不阻擋獨立後端工作。

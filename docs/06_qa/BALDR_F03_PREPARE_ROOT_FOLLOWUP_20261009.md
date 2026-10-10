@@ -1043,3 +1043,18 @@ I 為 test-only sibling，完整 H→I diff 僅改上述 expected literal，H UI
 Q6 controller 接線審查完成，runtime manifest SHA `0263fa94ccd6d9dd42c8bd5c40c7d3ebf584a8a36eaef68a95fc7c438e9caad3`、external review SHA `4433412c0c80492e8eb826fc301d8bc577c793449ebf384ea98c20cb89821116`。root unique capture `output/qa/run_p01_q6_single_warm_root_attempt01.py`、actual收據 `output/qa/p01_q6_single_warm_root_attempt01/receipt.json`：51.187秒、exit1、未逾時，候選及4666固定來源 inventory 未變；controller原來源／store前後 unchanged，單次 child launch，Job cleanup completed且無存活 PID。私人 `C:/t/p01cur_rd_1c90830ba3` 保留原始 child_result／supervisor_result。
 
 root 唯讀 child_result 確認正向完整 DTO 比對為 true，但 runner 回報 `negative_clone_cleanup_failed: PermissionError`，scratch 尚有 `p01-i-negative-7pbzmpwy`；controller 因 `i_oracle_scratch_cleanup_not_proven` 正確拒絕，外層回報 child_result_identity_or_status_mismatch。這不是 300ms 通過證據，不能授 single-warm／完整 P01 資格。已交 owner 精確稽核負例及 Windows 清理根因，不移除殘留、不放寬來源／link／cleanup 守門。T29 新 sibling 正在補精確 H20 worker 獨立 ledger／退休與負例，未執行 runtime；正式來源、原始 D 槽資料及排程未修改。
+
+
+### 2026-10-10 H20 K 功能通過但 native exit 未完成；T29c focused 首紅
+
+root 與 owner 分別核對 I 的錯誤傳遞：公開 cohort reader 捕捉注入 verifier 例外並轉為 unknown row；terminal 再核會發現 cohort 前後不同而拒絕。注入 marker 不會成為頂層 TaskWorker.error。另一方面，F Main 的 `detail = str(message)[:300]` 是實際全文截斷缺陷。J 真 Main overlay 僅移除這個上限（Main SHA `9b7401cb364586f58b3baff4cd75b8b4a30f7a0b4c8a06043a33a41a34a2431b`），H Recommendation／F widget 不變；測試增加原 TaskWorker.error 全文字數／SHA與 UI逐字比對，以及公開 reader 的 unknown原因與終態拒絕分列證據。J observer 安裝時序在 root 靜態審查被發現會混入首次正常載入，因此未執行J；獨立K只在初次完整閱讀完成之後、refresh之前安裝，核兩筆後復原，不清空ledger。
+
+K manifest SHA `d84c43a59cd87190a748c4ec429153a3e4902882aee003b6a34f0c3466588a2c`，J→K diff SHA `6508e226454d7d60e46127413f63614dd68f817a6df3e74a95c5b0f934ed9a00`；root完整審閱J/K差異、loader/runner並核pins/AST後，用全新 `C:/t/h20k01` 執行 `output/qa/run_h20_k_true_origin_root_attempt01.py`（SHA `3d4b44ca3492a67f1aa8994778d54cb017193d64ac2eae43d301f39e64cae6c9`）。收據 `output/qa/h20_k_true_origin_root_attempt01/receipt.json`：pytest **1 passed、4.66秒**；來源全文、錯誤明細、原生End／完整矩形、剪貼簿還原、名單／選取保留、合作取消及worker收尾均到達。外層18.344秒，未逾時、pins unchanged、callback markers空，但 child **0xC0000005**，整體仍 failed，不能把 pytest 通過改寫成正常程序退出或真人／EXE驗收。
+
+root唯讀Windows Application1000保存於該actual的 `windows_application_crash_events.json`：K 06:25:02、PID0x2318、fault module python311.dll、offset0xf8bd7、exception0xc0000005；較早H/I/G/F也有同offset紀錄。這只定位崩潰模組，不證明Python／Qt／fixture的根因。已交owner唯讀查程序結束生命週期；禁止os._exit繞過、變更Python環境或以功能PASS授整體通過。K stdout SHA `89e216dfadaddd4c002e1d2bcf45b50e688b39bace7daccf52afd66a72c85718`。
+
+T29正式H20列表worker精確scope/獨立TLS/ledger／native retirement差異已全文審閱，但root AST發現負例兩行縮排非法，T29未執行。T29b只補縮排與新private root，manifest `aeccbe10e22bfdb492b0d77ffa7540efdb2233cd589b3236fe6375196bb3a03b`；root實測首紅舊編排mock缺新增h20_proof_passed（5 passed／1 failed、2.85秒、exit1），守門正確拒絕。獨立T29c只補mock結果shape，標記test_fixture_only，不當真worker資格；manifest `75fd91c9a5a405b0d7b40fd41d47f8c6896309256f2b99cfaa6f6319d02ebf9d`。
+
+T29c root完整審閱增量、核23節點/pins/AST後執行；actual收據 `output/qa/f12t29c_main_1010/root_attempts/20261010T132306Z_28248_23fb2a08/receipt.json`：22 passed、1 failed、39 deselected、1 subtest passed、57.31秒，exit1、未逾時、58來源與候選未變。最後真Qt/COW node第2920行未取得drained；assert格式化含已刪TaskWorker的診斷又觸發 `Internal C++ object (TaskWorker) already deleted`，遮住更早原因。已交owner唯讀查純scalar原始role／H20 ledger，不重跑、不降低2worker／5RO+1RW／300秒守門。完整Main／新PID重開仍未執行。
+
+Q7僅保留primary與secondary cleanup診斷，root審閱程式差異又發現event_receipt在oracle結果賦值前建立會導致未定義變數；Q7未執行。已要求全新Q8只移正該紀錄時序，保持copy/rechain/cleanup／7負例／30配對／300ms及來源、SQL/network、Job guard不變。後续待root審查凍結封套，不宣稱千檔效能通過。所有本輪變更仍為QA-only，正式來源、D資料、排程未修改；真人入口暫未新增。

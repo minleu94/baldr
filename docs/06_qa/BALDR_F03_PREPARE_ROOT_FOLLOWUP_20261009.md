@@ -706,3 +706,19 @@ F候選正式測試已root隔離memory-only實跑2 passed／205.54秒，exit0；
 - F06呈現函式與正式耐久測試已套用；git apply保留工作樹換行格式，formal SHA與候選不同但逐檔universal-newline text完全相同，收據 `output/qa/f06_formal_apply_root_20261010/receipt.json`。正式presenter SHA727012144e9ed308dacc2daa216a4e62f7296f3c93659b4e2852537095beed39，新測試SHAa94d77a06b67346e9484064be225b099546a4f11fec19920c9c3807dd58f31bd。
 - 強制UI檢查：workbench85 passed／6.20秒、全八模組mypy939檔通過。attempt02 update validator因sandbox路徑WinError5產生3紅、compile因長pycache prefix失敗；原stdout/stderr與Validation Report已保存。只重跑兩紅於新短私有C:/t/f06uicheck1010後，update validator25通過／0失敗及changed-files compile均exit0，正式兩檔pins unchanged。封套 `output/qa/f06_formal_failed_checks_retry_20261010_attempt01/receipt.json`。沒有為通過而改validator、來源、公式或門檻。
 - 新presenter目前沒有正式UI呼叫端，故此提交只整合顯示層與回歸覆蓋；新四群Main／Watchlist完整接線候選正在審查，Manual實際入口將與接線一起更新，不能將本函式提交稱為新頁／收藏新PID已接受。
+
+
+### 複合研究 Main 接線審查（尚未正式套用）
+
+A整合候選包含Main、WatchlistService、WatchlistView及新View／storage五檔；root核正式3 preimage、6 dependencies與patch SHA一致。manifest的Main shadow SHA把dbe誤寫bde，root停止原precheck，另在私有shadow從正式preimages重新套用相同patch。重建3修改檔actual SHA逐位元相同，新2模組因gitapply換行不同但universal-newline text完全相同；沒有覆寫A凍結原件。完整proof `output/qa/composite_install_precheck_root_20261010/input_receipt.json`／`rebuild_receipt.json`。Main actualSHA07913979b4ae3f86b2b4a4c99dbe84d6aa183c964b7d1c0cc92195bb2542865f。正常Main與新PID旅程仍未驗，候選型別檢查不替代正式強制檢查；B將另保存metadata修正與耐久測試。為保留F12原58pin問題重現，正式Main／service／Watchlist暫維持preimage，不在尚待的長確認訊息驗證前更換來源。
+
+### 2026-10-10 恢復：完整長收藏確認視窗 S1
+
+Root 在新私人 `C:/t/f12t11s1focus1010` 執行 S1 唯一長訊息真 Qt 節點，pytest 為 1 failed／2.71 秒；58 個正式來源與 3 個候選檔 SHA 起訖一致。精確長訊息的確認 Yes、巢狀成功 Ok、升級一次、清單重載一次、typed repository 模式及原 question 正常返回均已通過。首紅為 QA observer 記錄 `return_name=None`，不符合要求的 `Yes`；這不是本輪產品升級失敗的證據，仍需 S2 正確記錄 PySide enum 後驗證。不能由 S1 外推 T10 完整 Main 已成功或 F12 Gate 完成。
+
+完整收據：`output/qa/f12_t11_s1_root_attempt01/receipt.json`，原 stdout/stderr 同目錄保留。Root wrapper 在收據落盤後，印出含中文的 pytest stdout 時另遇 cp1252 UnicodeEncodeError；pytest 自身 exit_code=1 已先保存，觀測故障與 UI 結果分開記錄。S1 原件凍結，不覆寫；後續只修 QA 回傳值觀測並建新 sibling。
+
+B 主視窗候選另保存 A 的錯誤 manifest 與修正 metadata，加入真正點擊 catalog／Watchlist 列、保存前非零捲動及關閉後 worker registry 檢查；尚未執行這兩份 durable tests。P01 C 純路徑詞法候選已備妥，尚未 runtime；300 ms 門檻與原篩選 523.902 ms 未通過判定維持。
+
+- S2 只修 QA PySide enum 回傳值編碼，原物件仍原樣交回正式 handler；root 同一長訊息節點 1 passed／4.08 秒，exit 0。58 source 及 3 candidate 起訖 SHA 一致。收據 `output/qa/f12_t11_s2_root_attempt01/receipt.json`；精確 922 字訊息、穩定幾何、實際 Yes／Ok 命中、升級與重載、原始回傳 Yes 都已驗。完整 Main COW 仍需另外診斷與驗證。
+- P01 C memory-only 固定 85bc oracle 等價測試 11 passed／0.62 秒，固定來源、正式檔與兩個候選 SHA 起訖一致。`output/qa/p01_c_oracle_root_attempt01/receipt.json`。沒有正式套用候選、效能測量或產製器重跑；不關閉 P01 Gate。

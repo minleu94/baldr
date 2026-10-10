@@ -1,3 +1,5 @@
+> **目前 task 導覽（2026-10-10）**：本文 `TASK_STATUS: PASS` 是 R004 integration review 的原始 verdict；目前 R004 僅以 characterization 收口，R012 writer acceptance 另行判讀。詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R004 SOL 整合審查
 
 Gemini 獨立審查檔 `R004_GEMINI_REVIEW.md` 的最終狀態為 `REVIEW_STATUS: PASS`。SOL 已核對實際 repository 檔案、failure injection、原 bytes/hash oracle 與前次重跑的 persistence suite；未只依賴文字報告。

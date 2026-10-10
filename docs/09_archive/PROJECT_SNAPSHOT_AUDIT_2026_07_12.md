@@ -1,5 +1,7 @@
 # Project Snapshot 稽核（Gate 1 Closeout）
 
+> **日期化狀態稽核（2026-10-10）**：本文的 Gate、dry-run 與 weekly history 數字只表示 2026-07-12 的稽核切面，不能取代 2026-10-10 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，也不能把不同 history 範圍的計數直接相加。
+
 > 日期：2026-07-12
 > 範圍：`PROJECT_SNAPSHOT.md` 的目前狀態、時間型 gate、優先事項與 Scoped SSOT 一致性。
 > 規則：不以文件檔名日期推斷完成時間；每個 current claim 必須有 Git SHA、QA artifact 或 scoped authority。

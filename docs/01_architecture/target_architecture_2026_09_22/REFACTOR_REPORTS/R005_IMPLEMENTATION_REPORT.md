@@ -1,3 +1,5 @@
+> **歷史狀態與待辦導讀（2026-10-10）**：本文的「待 SOL review」／`READY_FOR_REVIEW` 已由 R031 的 `ACCEPTED_WITH_R020_BOUNDED_REPLAY` 取代；R001 source-path mismatch 也已由 R001 後續報告／勘誤收口，不再是待校正項。R017 typed bridge 與 R020 bounded recovery 各自的目前範圍看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)及[R020 report](R020_IMPLEMENTATION_REPORT.md)；不得外推至所有 profiles 或 precision gate。原 R005 mode-specific characterization 保留。
+
 # R005 實作報告
 
 - TASK：R005 replay／portfolio replay characterization

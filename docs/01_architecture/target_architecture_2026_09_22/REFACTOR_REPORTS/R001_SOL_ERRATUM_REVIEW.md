@@ -1,3 +1,5 @@
+> **後續狀態導讀（2026-10-10）**：本文所述「Wave 1 checkpoint 尚未完成」是勘誤審查當時的限制；後續收束已記錄 Wave 1 PASS，R031 將 R001 列為 CLOSED。此後續狀態不改變本次 R001 勘誤 PASS 的原始範圍；gate 與 task current disposition 請由 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 核對。
+
 # R001 replay 清冊勘誤之 SOL 重審
 
 ## 判定

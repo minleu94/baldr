@@ -1,3 +1,5 @@
+> **歷史 review 狀態（2026-10-10）**：本文的 `CHANGES_REQUIRED`／Wave 2 blocked 是後續回修前的初審結論；回修與整合 review 已接續，R031 將 R003 列為有界接受。原 finding 保留為審查軌跡；目前 task disposition 見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R003 SOL 審查
 
 ## 判定

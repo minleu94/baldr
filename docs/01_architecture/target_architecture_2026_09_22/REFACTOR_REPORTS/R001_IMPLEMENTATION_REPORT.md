@@ -1,3 +1,5 @@
+> **歷史狀態導讀（2026-10-10）**：本文末尾 `READY_FOR_REVIEW` 只代表 2026-09-22 實作報告當時狀態；R031 dated current overlay 已將 R001 列為 `CLOSED`。現行 task disposition 看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)與[final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)；Wave 1 gate 的後續入口請由 R031 index 核對。原 inventory evidence 保留，R001 closeout 不等於後續 provider work 全部完成。
+
 # R001 實作報告
 
 Task：R001 — 凍結基線、caller 與 artifact 清冊

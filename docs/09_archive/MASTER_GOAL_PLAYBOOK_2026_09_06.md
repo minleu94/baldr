@@ -1,5 +1,7 @@
 # 模組化長任務藍圖（Master Goal Playbook）
 
+> **歷史任務藍圖警示（2026-10-10）**：本文包含 2026-09-06 的八張長任務卡、檔案白名單、測試命令及可複製 `/goal` 提示；不得直接當成目前派工、工作範圍或執行授權。現行工作只依使用者當前指示與根目錄 `AGENTS.md`；目前狀態及工程優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)與[6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)。
+
 > 2026-09-06；用途是下游長任務分解與驗收契約，並非取代 Scoped SSOT、正式資料寫入授權或 V4 release approval。本次只讀架構、程式與驗收入口，沒有執行 pytest／QA，也沒有修改業務程式。
 > 本文件所稱「新增」檔案目前不存在，必須由指定任務建立後才可執行。其餘檔案已按目前工作樹核對。閱讀範圍包括治理文件、current status，以及大型 Architecture／Manual 中與八個閉環相關章節；沒有逐行閱讀全部程式。
 

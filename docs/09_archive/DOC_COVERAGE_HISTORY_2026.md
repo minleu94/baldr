@@ -2447,3 +2447,24 @@ QA 唯讀複核另確認：四份舊文件治理報告是相容／歷史導引�
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增加本批 8＋13 份具名核讀清單；未用不可去重的舊彙總數量推算完成總數。 |
 
 原始 QA／驗收正文與數據保留，未刪除／搬移文件或原始資料；未執行測試、Graphify 或最終 repo-wide links／anchors scan。受保護文件內容未讀、未搜尋、未 diff；根目錄 `$null` 未納入。
+
+<a id="coverage-entry-209"></a>
+## 2026-10-10 Archive 根層第二批 20 份核讀與歷史操作界線
+
+全文核讀 Archive 根層第二批 20 份原件。逐檔路徑、角色及處理見 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md#named-review-batches-20261010) 與 [Archive README](README.md)。本批為 2026-10-10 目錄治理，不把歷史 QA／命令推論成目前狀態或操作授權。
+
+其中 10 份原件補上直開時點／操作提醒；文件內仍有兩處未解矛盾：清理報告的 15／16 檔與 83 總數沒有重驗，Phase 3.3b 對所有 epics「100%」與同文未完成 checklist 並存。Scheduler register／unregister、資料庫寫入、`--confirm-network`、Git rollback 等命令只保留作當日證據，不重跑。原文保留，沒有刪除／搬移文件或原始資料；不調整不可去重的 Archive aggregate。未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-210"></a>
+## 2026-10-10 REFACTOR_REPORTS R001–R005 共 15 份狀態路由
+
+全文核讀 `target_architecture_2026_09_22/REFACTOR_REPORTS/` 中 R001–R005 的 15 份實作／審查報告，逐檔清單見 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md#named-review-batches-20261010)。依 R031 index 將過時 READY、blocked、等待 review 等字樣加上歷史時點及現況入口；保留原審查結論與 acceptance scope。R004 仍限 `CLOSED_AS_CHARACTERIZATION`，不延伸為 R012 writer acceptance；R005 仍限 R020 bounded replay，保留 TMP-NUM-01、profile 及 precision 缺口。
+
+舊 REFACTOR_REPORTS cumulative total 無可用的逐檔去重 manifest，本批只增具名路徑，不調 aggregate。未改寫驗收證據，未刪除／搬移文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-211"></a>
+## 2026-10-10 QA 葉文件第二批 13 份與 B09／BBANDS 手冊校正
+
+全文核讀 QA 第二批 13 份葉文件，清單見 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md#named-review-batches-20261010)。比較 B09 初始 handoff、後續 custody 補強、MainWindow route／paths injection 及 P2／M03 readback 後，將 Manual §10 與 B06／B09 handoff 的狀態統一為「有限接線已有證據；Paper producer 全鏈、正式啟用、migration、排程與產品資格仍未完成」。`BALDR_BBANDS_RESEARCH_UI_20261007.md` 的中央待辦文字限定在 10/07 handoff 時點；目前 Manual §9.9.1h 補充保存來源選擇、v3 快照明示更新、BBANDS 參數、結果判讀與 unknown 限制。
+
+B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task、模型輸入與 evidence-store 寫入／資格界線。B03、B07、B08 保留原文。舊 QA aggregate 缺少逐路徑去重基線，本批不更動總數。未刪除／搬移文件或原始資料、未執行測試、Graphify 或最終 repo-wide links／anchors scan；受保護 QA 文件未讀、未搜尋、未 diff。

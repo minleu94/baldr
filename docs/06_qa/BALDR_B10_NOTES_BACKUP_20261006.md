@@ -1,5 +1,7 @@
 # BALDR B10 Notes Backup / Restore Adapter QA
 
+> **歷史操作提示（2026-10-10）：** 本收據的 `confirmed=True` 不是 dry-run：backup 會 create-only 建立備份與 receipt，restore 會 create-only 寫入目標 journal。僅供理解當時驗收邊界；勿為文件核讀重跑、不要覆寫既有產物，也不構成正式 caller 啟用授權。
+
 ## 回復清單（實作前）
 
 本任務只會新增下列三個檔案。若本輪需回復，僅移除這三個 B10 新增檔；不得還原、覆寫或清理其他工作目錄中的既有檔案或資料：

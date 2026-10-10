@@ -1,3 +1,5 @@
+> **歷史送審階段（2026-10-10）**：本文記錄送 Gemini 前的 pre-review 證據；當時的「待後續遷移修正」及送審前狀態不代表目前 Wave 1 gate。後續 review 與 R003 有界接受結果及 gate 入口見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R003 SOL 最終送審前核對
 
 R003 的本輪變更僅在 `tests/test_recommendation_execution_state_characterization.py` 與 `R003_IMPLEMENTATION_REPORT.md`。SOL 逐讀新增 pre-start cancellation 與新請求清除 last-good 的測試，並對照 `RecommendationExecutionRequest.execute`、`RecommendationView._execute_recommendation` 實際 source。兩個 oracle 精確固定目前 10%/10% 取消進度及 worker 啟動前清空 table model、detail、current_recommendations、current_result_id；後者列為待後續遷移修正的現況 gap。其餘 terminal、A/B、alias、worker lifecycle 由既有 R003 測試固定。

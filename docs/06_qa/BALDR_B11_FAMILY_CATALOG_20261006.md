@@ -1,5 +1,7 @@
 # B11 原八族唯讀能力字典（2026-10-06）
 
+> **狀態與操作提示（2026-10-10）：** 本字典是唯讀能力目錄與候選來源描述；例如 BBANDS 仍是未採納提案，不代表方法實作、UI／執行器採用、資料授權或交易資格。本文 rollback 命令屬歷史交接，不要直接在目前工作樹執行。
+
 固定 base：`740fd64cd8a29064c7137bf92f0f78b5bfba2e25`。專屬分支 `lane/baldr-b11-family-catalog-20261006`；中央 owner `01a11020-88c2-7506-acc3-d51ecb674032`。依原 `output/plans/baldr_product_experience_plan_20261004.md` §8.6、Astra inventory §4.5／B11 與 Sol review 的有限集合要求；這份是工程收據，不另立 roadmap。
 
 ## 範圍與 API

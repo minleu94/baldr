@@ -1,5 +1,7 @@
 # Prospective Formal Restart — 2026-08-26 same-day pre-open staging record
 
+> **過期的一次性 staging 警示（2026-10-10）**：本文記錄的 owner override、一次性 activation 與特定 commit rollback 都限於 2026-08-26 的時點，授權已過期；不可重建 clock、重用 override 或照抄 `git revert`。目前正式狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)與[現行 QA 導覽](../06_qa/README.md)。
+
 日期：`2026-08-26`（Asia/Taipei）
 
 狀態：`clock_created / owner_activation_scheduled / official_pit_staged / formal_inputs_pending_09_00`

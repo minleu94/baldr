@@ -1,5 +1,7 @@
 # B10 私人覆盤與來源分離（進行中）
 
+> **日期與操作提示（2026-10-10）：** 本文件的 B09 custody 未完成／caller 待接線描述早於後續 B09 補強與 MainWindow bounded wiring，現況請以[B09 QA](BALDR_B09_PERSONAL_PORTFOLIO_20261006.md)、[P2／M03 integration receipt](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)及[架構補記](../01_architecture/system_architecture.md)核對；這不證明本文件列出的全部 B10 caller 或 production writes 已完成。下方 rollback 表與命令屬歷史收據，不要直接照做。
+
 中央排他 ownership：`app_module/decision_quality_service.py`、`app_module/decision_quality_repository.py`、新 selector／backup adapter 與具名 B10 tests；`data_module/config.py`、`ui_qt/main.py` 及文件仍由中央單一 owner 整合。B09 持有 Portfolio service/store，中央不共編。
 
 實作前未來函數自查：本包只消費既有保存交易／notes／Evidence／Gap／Decay，保留原事件日與身份，不追加行情、不重新打分或改財務公式；未知可得性不授 PIT／ML／交易資格。市場衍生來源必須 readonly，私人覆盤 writer 不可經空庫回落到市場 DB。

@@ -1,3 +1,5 @@
+> **歷史狀態導讀（2026-10-10）**：本文日期為 2026-09-22，文末 `READY_FOR_REVIEW` 是當時狀態；R031 後續將 R002 列為 `ACCEPTED` 的有界 characterization。固定輸出與排序不替代 TMP-NUM-01 precision gate；目前 task disposition 看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)與[final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。
+
 # R002 實作報告
 
 - Task：R002 — 推薦語意與數值 characterization

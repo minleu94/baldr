@@ -1,3 +1,5 @@
+> **目前 task 導覽（2026-10-10）**：本文 SOL `PASS` 是該 review slice 的原始 verdict；R031 對 R002 的目前有界接受狀態與 TMP-NUM-01 限制見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R002 SOL 整合審查
 
 Gemini 獨立審查檔 `R002_GEMINI_REVIEW.md` 的最終狀態為 `REVIEW_STATUS: PASS`。SOL 已重新核對實際 repository 檔案與前次通過的 V-REC 驗證；未只依賴文字報告。

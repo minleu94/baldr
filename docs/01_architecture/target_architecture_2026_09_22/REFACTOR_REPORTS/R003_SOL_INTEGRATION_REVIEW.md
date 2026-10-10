@@ -1,3 +1,5 @@
+> **目前 task 導覽（2026-10-10）**：本文 `TASK_STATUS: PASS` 是 R003 integration slice 的原始 verdict；目前接受範圍仍是 R031 所列的 `ACCEPTED_WITH_BOUNDED_SCOPE`，Portfolio P2 限 source-navigation identity。詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R003 SOL 整合驗收
 
 ## 判定與證據

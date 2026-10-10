@@ -442,4 +442,73 @@ QA 既有 205 全文／4 局部／344 未讀與 Entry 203 的 36／6／511 分�
 
 原先 Architecture／REFACTOR_REPORTS 累計也缺少可用於交叉去重的完整路徑基線，本批不重算舊總數。以上只補日期、範圍及權威路由，未改寫驗收證據；本批未刪除／搬移文件、未執行測試、Graphify 或最終 repo-wide links／anchors scan。
 
-**目前進度（Coverage History Entries 207–208）：** 新增具名全文核讀清單 41 份（Archive 根層 20、QA 葉文件 8、REFACTOR_REPORTS 13）；因舊累計缺少可去重的逐檔清單，既有全文／未讀總數維持不變。本批修改 24 份原件的時點、範圍或權威提示，另更新 Archive README、Coverage History 與本矩陣。沒有刪除／搬移文件或資料；測試、最終全 repo links／anchors scan 與 Graphify 刷新尚未執行。
+**目前進度（Coverage History Entries 207–211）：** Entry 207–208 有具名全文核讀 41 份；本次 Entry 209–211 再增加具名全文核讀 48 份（Archive 根層 20、QA 葉文件 13、REFACTOR_REPORTS 15）。加上 B09 時點核對與 Manual §10 狀態修正，以及 BBANDS 操作章節補充。由於更早 QA／Archive／REFACTOR_REPORTS 累計缺少可去重的逐檔 manifest，僅能確認這 89 份具名清單內未重複，不以此推算整體完成率或未讀總數。本次新增歷史／範圍提示與 Manual 修正共涉及 36 份原件，另更新 Archive README、Coverage History 與本矩陣；沒有刪除／搬移文件或資料。測試、最終全 repo links／anchors scan 與 Graphify 刷新尚未執行。
+
+### 第二批具名核讀（Coverage History Entries 209–211）
+
+以下新增清單保留逐路徑核讀證據；不將缺 manifest 的舊累計數字視為可去重總數。
+
+#### `docs/09_archive/` 根層第二批：20 份
+
+| 路徑 | 核對結果／處理 |
+|---|---|
+| `DOCUMENTATION_CLEANUP_REPORT.md` | 保留歷史刪除報告；15／16 與 83 總數未重新驗證，維持待查差異。 |
+| `DOCUMENTATION_ENTRY_HISTORY_20261006.md` | 舊 README 快照，導回現行 Archive README。 |
+| `DOCUMENTATION_INDEX_HISTORY_20261006.md` | 舊 Core Index 快照，導回現行權威入口。 |
+| `DOCUMENTATION_REORGANIZATION_PROPOSAL.md` | 舊提案；保留問題與其歷史狀態。 |
+| `DOCUMENTATION_UPDATE_SUMMARY.md` | 2025-12 歷史摘要，不作現況依據。 |
+| `MASTER_GOAL_PLAYBOOK_2026_09_06.md` | 加過期任務卡／prompt 直開警示；不將 playbook 當現行派工。 |
+| `PHASE_3_3B_IMPLEMENTATION_PLAN.md` | 「全部 epic 100%」與未完成清單並存，保留為未解內部差異。 |
+| `POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md` | 加明確 confirm 會寫 working-copy 的歷史操作提示。 |
+| `POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md` | 加舊 importer 限制及命令的時點界線。 |
+| `POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md` | 加 `--save-history` 會寫指定工作副本 DB 的提示。 |
+| `POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md` | 保留 wrapper policy blocked 歷史狀態，路由至後續 QA。 |
+| `POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md` | 加 Scheduler register／unregister 副作用與舊任務數提示。 |
+| `POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md` | 加 `--confirm-action-items` 寫 DB 的歷史操作提示。 |
+| `POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md` | 日期化 QA 數字保留為歷史快照。 |
+| `PROJECT_SNAPSHOT_AUDIT_2026_07_12.md` | 加 dated gate／weekly audit 界線，不取代現行 Snapshot。 |
+| `PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md` | 加 `--confirm-network` 會呼叫網路並產生候選輸出的提示。 |
+| `PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md` | 保留原有勿重用 clock／勿重建回填提示。 |
+| `PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md` | 加一次性 activation／舊 override 與 rollback 的過期提示。 |
+| `PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md` | 保留原有不可重試 one-shot 提示。 |
+| `PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md` | 保留舊 execution handoff 非現行排程或授權的界線。 |
+
+#### `REFACTOR_REPORTS/` R001–R005：15 份
+
+| 路徑 | 核對結果／處理 |
+|---|---|
+| `R001_IMPLEMENTATION_REPORT.md` | 舊 READY 狀態導回 R031 CLOSED；保留日期範圍。 |
+| `R001_SOL_ERRATUM_REVIEW.md` | 舊 Wave 1 未完成敘述導回後續 checkpoint 與 R031。 |
+| `R001_SOL_REVIEW.md` | 保留 9/22 review PASS，標明現況以 R031 為準。 |
+| `R002_GEMINI_REVIEW.md` | 保留 review-only PASS，補 R031 bounded scope 入口。 |
+| `R002_IMPLEMENTATION_REPORT.md` | 導回 R031 bounded acceptance，保留 TMP-NUM-01 限制。 |
+| `R002_SOL_INTEGRATION_REVIEW.md` | 保留日期化 PASS，補 R031 路由。 |
+| `R003_IMPLEMENTATION_REPORT.md` | 導回 R031 ACCEPTED_WITH_BOUNDED_SCOPE，保留舊缺口。 |
+| `R003_SOL_FINAL_PRE_REVIEW.md` | 將等待 review 限定為 pre-review 時點並導回 R031。 |
+| `R003_SOL_INTEGRATION_REVIEW.md` | 保留 bounded integration PASS，補 R031 路由。 |
+| `R003_SOL_REVIEW.md` | 將舊 CHANGES_REQUIRED／blocked 導回後續重作與 review。 |
+| `R003_SOL_REWORK_REVIEW.md` | 將等待 Gemini 限定為 pre-review 狀態。 |
+| `R004_GEMINI_REVIEW.md` | 保留 PASS；導回 R031 CLOSED_AS_CHARACTERIZATION，未推論 R012 writer acceptance。 |
+| `R004_IMPLEMENTATION_REPORT.md` | 將舊 READY 導回 CLOSED_AS_CHARACTERIZATION。 |
+| `R004_SOL_INTEGRATION_REVIEW.md` | 保留日期化 PASS，補 R031 路由。 |
+| `R005_IMPLEMENTATION_REPORT.md` | 導回 R031 bounded replay；保留 R017／R020 與 profile／precision 限制。 |
+
+#### `docs/06_qa/` B03–B14 第二批：13 份
+
+| 路徑 | 核對結果／處理 |
+|---|---|
+| `BALDR_B03_UPDATE_RUNTIME_20261006.md` | Manual 已涵蓋主要操作；保留 bounded lane 與歷史測試範圍。 |
+| `BALDR_B05_CHART_INCREMENT_20261006.md` | 加舊結論／鍵盤 marker 操作及 rollback 命令的時點與核對提示。 |
+| `BALDR_B06_PORTFOLIO_SUMMARY_20261006.md` | 加中央 caller 後續接線與 B09／P2 範圍路由。 |
+| `BALDR_B07_RULE_HISTORY_20261006.md` | 保留歷史 eligibility／performance flags，不推升為投資資格。 |
+| `BALDR_B08_PERSONAL_ROUTES_20261006.md` | 路由 contract 與未遷移／未啟用限制一致，保留原文。 |
+| `BALDR_B09_PERSONAL_PORTFOLIO_20261006.md` | 將初始待接線文字限定於當時，導回有限中央 wiring；明示 producer／formal 未完成。 |
+| `BALDR_B10_NOTES_BACKUP_20261006.md` | 加 confirmed backup／restore 的 create-only 寫入提示。 |
+| `BALDR_B10_PRIVATE_REVIEW_20261006.md` | 將舊 B09 狀態導回後續證據；不推論所有 B10 caller／production writes 完成。 |
+| `BALDR_B11_FAMILY_CATALOG_20261006.md` | 加 BBANDS 未採納提案、無執行／資格授權及歷史 rollback 提示。 |
+| `BALDR_B12_DAILY_RUNTIME_20261006.md` | 加 synthetic／offline 與執行／task-review 路徑可能寫產物的提示。 |
+| `BALDR_B13_MODEL_INPUT_20261006.md` | 加 synthetic／offline、formal／training false 與歷史 rollback 提示。 |
+| `BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md` | 加 synthetic scope 及 create／append execute 寫入副作用提示。 |
+| `BALDR_BBANDS_RESEARCH_UI_20261007.md` | 將「中央接線待辦」限定於 10/07 handoff，導回目前 Manual；保留 formal daily／parent acceptance、自然成熟限制。 |
+
+QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不調整 QA aggregate；P2／M03 receipt 是交叉核對來源，不列入此葉文件 manifest。Manual §10 將 B09 狀態由「待接線」改為有限 route／paths 注入與 query-only readback 已有證據，並明示 Paper producer 全鏈、正式啟用、migration 及排程授權未完成；§9.9.1h 補入 BBANDS 的保存來源、快照更新、參數、結果與未知狀態說明。所有原始驗收正文與歷史命令仍保留；本批沒有刪除或搬移文件。

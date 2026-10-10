@@ -1,3 +1,5 @@
+> **歷史狀態導讀（2026-10-10）**：本文的 `READY_FOR_REVIEW` 是 R004 初始 characterization 報告狀態；R031 後續將 R004 收口為 `CLOSED_AS_CHARACTERIZATION`。此收口不等於 R012 writer acceptance，也不改本報告的舊 bytes／failure-window 基線；現行 task disposition 見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R004 實作報告
 
 ## 範圍與結果

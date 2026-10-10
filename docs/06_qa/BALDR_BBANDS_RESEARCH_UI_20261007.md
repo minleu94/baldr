@@ -1,5 +1,7 @@
 # BBUI01 有限 BB 上軌第三條件 UI（2026-10-07）
 
+> **日期與狀態提示（2026-10-10）：** 本文記錄 10/07 lane 的交接狀態；末段「中央仍持有 main／Manual 接線」不應再讀成此功能尚未進入目前 dev checkout：現行 `DailyMarketResearchView` 已有 BBANDS 條件與明示 v3 保存快照入口，Manual 的 9.9.1h 亦有此功能導引。這不等於 formal daily owner／parent v3 acceptance、自然成熟或交易資格已通過；實際操作摘要見[目前 Manual](../07_guides/APPLICATION_MANUAL.md)，本收據保留當日工程證據與限制。
+
 ## 範圍與固定身份
 
 唯一 dispatch：`output/plans/baldr_parallel_remaining_dispatch_20261007.md`。固定 base：`d222ba0dbd3e87991ba5404fec29470646af2c68`（已用 `git rev-parse d222ba0d` 核對，不使用 mutable HEAD）。獨立分支 `lane/baldr-bbui01-research-20261007`、worktree `output/worktrees/baldr-bbui01-research`。開始時主 checkout owned files 無 tracked 差異，沒有借用 BBP01 未提交檔。

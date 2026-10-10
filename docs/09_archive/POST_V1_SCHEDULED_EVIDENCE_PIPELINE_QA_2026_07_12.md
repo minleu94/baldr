@@ -1,5 +1,7 @@
 # Post-V1 Scheduled Evidence Pipeline QA（2026-07-12）
 
+> **歷史排程操作警示（2026-10-10）**：本文 `register`／`unregister` 會實際變更 Windows Task Scheduler，且只記錄 2026-07-12 的兩個每日 task 與一個手動腳本。不要照抄或重跑成目前排程；目前排程與操作以 [Application Manual](../07_guides/APPLICATION_MANUAL.md)及[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)為準。
+
 ## Scope
 
 本 QA 覆蓋 CMD wrapper + Windows `schtasks.exe` 註冊：

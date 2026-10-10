@@ -1,3 +1,5 @@
+> **歷史 review 階段（2026-10-10）**：本文是送 Gemini 前的初審，`AWAITING_GEMINI_REVIEW` 只代表當時狀態；後續 integration review 與 R031 有界接受已接續。原回修證據保留；目前 task disposition 與 gate 入口看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R003 Luna 回修之 SOL 初審
 
 ## 判定

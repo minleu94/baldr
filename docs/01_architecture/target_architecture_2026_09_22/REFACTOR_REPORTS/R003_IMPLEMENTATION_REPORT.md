@@ -1,3 +1,5 @@
+> **歷史狀態導讀（2026-10-10）**：本文的 `READY_FOR_REVIEW` 與相鄰依賴狀態只代表 R003 implementation slice 當時狀態；R031 後續將 R003 列為 `ACCEPTED_WITH_BOUNDED_SCOPE`。原 characterization gap 與 Portfolio P2 source-navigation identity 等限制保留；目前 task disposition 看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)與[final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。
+
 # R003 實作報告
 
 - TASK：R003 — terminal outcome、取消與 hidden-state characterization

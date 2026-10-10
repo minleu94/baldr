@@ -1,5 +1,7 @@
 # B06 持倉分帳與估值摘要交接
 
+> **日期與狀態提示（2026-10-10）：** 本文件結尾「待中央」是早期交接狀態；後續 MainWindow route／paths 注入與 P2／M03 有界 readback 見[架構補記](../01_architecture/system_architecture.md)及[BALDR 第二波 integration receipt](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。這只更新 bounded caller wiring 狀態，不代表 Paper producers、正式資料啟用、migration、產品資格或真人／Native 驗收已完成。
+
 日期：2026-10-06。狀態：限定 presenter／注入接口完成，待中央整合；不宣稱 UX14 或私人 Paper 全鏈完成。
 
 ## 範圍與基線

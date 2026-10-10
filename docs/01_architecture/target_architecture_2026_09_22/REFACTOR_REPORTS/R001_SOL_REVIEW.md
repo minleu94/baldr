@@ -1,3 +1,5 @@
+> **目前 task 導覽（2026-10-10）**：本文 `REVIEW_STATUS: PASS` 是 2026-09-22 的窄範圍 reviewer verdict；R001 後續 closeout 與目前 disposition 看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)及[final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。
+
 # R001 SOL Review
 
 Task：R001 — 凍結基線、caller 與 artifact 清冊  

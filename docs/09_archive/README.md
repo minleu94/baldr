@@ -38,6 +38,17 @@
 | 舊裁決／工具鏈／Gate 收據 | [Gemini 文件交叉稽核裁決](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Full App Healthcheck 收束](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[Gate 1 Advice closeout](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md) | 已限定日期及有限工程範圍，並連回現行 Snapshot／Roadmap／QA。 |
 | 其他歷史證據與核准清單 | [資料刷新顯示 QA](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Evidence Rehearsal engineering closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)、[Evidence Rehearsal E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)、[正式資料對帳快照](FORMAL_DATA_RECONCILIATION_2026_08_06.md)、[Gate 2–7 engineering closeout](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)、[ML shadow MVP closeout](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)、[Owner production readiness](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license evidence](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[PIT repair closeout](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[scheduler approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md) | 保留明確日期與範圍，不將舊證據推論為目前狀態或核准。 |
 
+### 第二批：2026-10-10 根層歷史盤點、排程與寫入收據核讀
+
+以下 20 份原件已全文核讀；其中清理報告的 15／16 刪除計數，以及 Phase 3.3b「完成」與未完成清單並存，仍列為未解文件內差異。涉及 Scheduler 註冊、DB 寫入、`--confirm-network` 或 Git rollback 的舊命令只保存當日證據，不能直接重跑。逐檔角色與核讀限制見 [Coverage History Entry 209](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-209)。
+
+| 類別 | 原件 | 入口與處理 |
+|---|---|---|
+| 舊文件治理 | [Documentation cleanup report](DOCUMENTATION_CLEANUP_REPORT.md)、[舊 docs README](DOCUMENTATION_ENTRY_HISTORY_20261006.md)、[舊核心 Index](DOCUMENTATION_INDEX_HISTORY_20261006.md)、[重整提案](DOCUMENTATION_REORGANIZATION_PROPOSAL.md)、[更新摘要](DOCUMENTATION_UPDATE_SUMMARY.md) | 清理計數差異保留待核；其餘由檔首導回目前 README／Index／Structure。 |
+| 舊計畫／任務分解 | [Master Goal Playbook](MASTER_GOAL_PLAYBOOK_2026_09_06.md)、[Phase 3.3b implementation plan](PHASE_3_3B_IMPLEMENTATION_PLAN.md) | 已明示舊提示不可作現行派工；Phase 狀態差異不自行推定完成。 |
+| Post-V1 QA／操作證據 | [working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[importer QA](POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md)、[weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[scheduled dry run](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline QA](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)、[V1.3 evidence operations QA](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md)、[V1.4 review history QA](POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md) | 日期化測試證據保留；會寫 DB、重跑 smoke 或修改 Task Scheduler 的命令已加警示。 |
+| Formal clock／calendar 快照 | [Snapshot audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[calendar capture](PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md)、[clock activation handoff](PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md)、[8/26 restart staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md)、[8/27 V3 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md)、[restart execution handoff](PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md) | 全部是日期化的一次性證據；網路 capture、owner override、clock、publish、rollback 均不是現行授權。 |
+
 ## 2026-10-10 Application Manual 日期化工程快照
 
 [APPLICATION_MANUAL 日期化工程與操作快照](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)保存原手冊第 14 節後、2026-10-03 至 10-08 的開發版、候選版與有限驗收描述。它們不作目前操作或產品狀態依據；現行操作回到 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前進度看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，驗收看各自具名 QA。原手冊保留 104 個同名標題導引以接住舊錨點。

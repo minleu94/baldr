@@ -1,5 +1,7 @@
 # Phase 3.3b 架構層級實施規劃（已歸檔／已完成）
 
+> **文件內狀態差異（2026-10-10）**：檔首稱三個 Epic 已於 2026-01-02 100% 完成，但後文仍保留 Epic 1／2／3 的未完成清單；這兩種說法未由本輪找到的證據完全調和。請將完成度保留為待核，不以檔首總結推定每項已驗收，也不把歷史 plan 當成目前 backlog；現況以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Development Roadmap](../00_core/DEVELOPMENT_ROADMAP.md)與具名 QA 為準。
+
 **版本**：v1.3.0  
 **狀態**：Historical Plan (COMPLETED & ARCHIVED)  
 **最後更新**：2026-06-03

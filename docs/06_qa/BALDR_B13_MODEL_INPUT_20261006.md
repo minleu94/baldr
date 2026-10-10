@@ -1,5 +1,7 @@
 # BALDR B13 模型輸入契約 QA（2026-10-06）
 
+> **日期與資格提示（2026-10-10）：** 本收據限定 synthetic／offline 契約；formal、training、production 與 historical PIT 旗標維持 false。它不構成 production composition 或模型訓練授權；文末 rollback／`Remove-Item` 命令是歷史交接，不要直接執行。
+
 ## 變更範圍與 API
 
 本批只新增三個檔案：

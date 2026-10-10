@@ -1,5 +1,7 @@
 # Prospective Formal Calendar Capture（2026-08-28）
 
+> **歷史網路 capture 警示（2026-10-10）**：本文 `--confirm-network` 會發出網路請求並建立候選 calendar 檔；本報告只記錄 2026-08-28 已完成的 bounded capture，不授權重跑或發布新候選。現況與目前 Gate 看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)及最新[QA 導覽](../06_qa/README.md)。
+
 ## 結果
 
 2026-08-28 以明確 `--confirm-network` 執行一次 bounded official calendar

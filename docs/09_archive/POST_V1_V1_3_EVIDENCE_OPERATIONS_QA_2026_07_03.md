@@ -1,5 +1,7 @@
 # Post-V1 V1.3 Evidence Operations QA（2026-07-03）
 
+> **歷史確認寫入警示（2026-10-10）**：本文 `--confirm-action-items` 只代表當時對指定 DB 的 working-copy 寫入驗證；命令不構成目前資料庫寫入、production 或 scheduler 授權。現行操作前請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md)核對流程、路徑與安全條件；現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## 變更摘要
 
 V1.3 新增 `EvidenceOperationsService` 與 `scripts/build_evidence_operations_weekly_review.py`，把 scheduler readiness、Decision Quality review / action item、Signal Decay candidate 彙總成每週人工覆盤包。

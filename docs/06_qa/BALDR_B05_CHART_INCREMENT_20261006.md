@@ -1,5 +1,7 @@
 # B05 原生圖表增量收據（2026-10-06）
 
+> **日期與操作提示（2026-10-10）：** 本收據描述 2026-10-06 的有限增量；早期「沒有 chart reader」等結論須連同本文件後段及後續中央 caller 記錄閱讀。marker 仍要求 caller 先核對原列與 custody pin，不能由候選自行產生 pin。鍵盤／marker 操作與安全限制以[目前 Manual](../07_guides/APPLICATION_MANUAL.md)為準；下方 rollback 命令是歷史收據，不要直接在其他工作樹執行。
+
 固定 base：`ba4e9e59da7946aa66fd5eac3729e091dfe5cced`。Branch：`lane/baldr-b05-chart-20261006`。Worktree：`C:/Projects/PythonProjects/technical_analysis/output/worktrees/baldr-b05-chart`。唯一 dev 整合 owner：`01a11020-88c2-7506-acc3-d51ecb674032`。
 
 沿唯一原計畫 `output/plans/baldr_product_experience_plan_20261004.md` §7.4–7.6 與 completion inventory/review 的 B05；三份 plan/review 只讀，沒有第二路線或原計畫改寫。base 已含的摘要 change／區塊 sufficiency 修復保留，沒有修改摘要 render。七個 closed 與性能例外不重開。

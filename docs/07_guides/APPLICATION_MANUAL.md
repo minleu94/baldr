@@ -3400,7 +3400,7 @@ Registry 比較只使用已保存的 metadata、equity curve 與 benchmark_resul
 
 在持倉頁「分帳查看」選手動登錄、聲明研究或 Paper。三帳各用自己的資料與總值；手動登錄未核券商成交，聲明成本只供研究，Paper 非實盤績效。切聲明／Paper 時不顯示手動帳金額卡，沿原分頁核對資料。手動帳成本／已實現損益為毛額，已記錄費稅另列；估值日依同列原報價，資料更新時鐘不等於估值日。缺價格、日期未知／異日／未來、或價格與同列來源失配，市值顯示未知；前值、滑價、換手率與集中度缺件不補零。
 
-選持倉後按「個股研究」沿同股原來源，未驗原結果維持未連結，不能借今天結果補舊身份。聲明列可看估值日，明細顯示評估日與聲明成本；過期、缺件或沒有精確健康資料時不能判安全。刷新取消／失敗保留上次資料並明示未確認最新。私人 root／mode 已配置但中央同帳服務尚未注入時，頁面拒絕初始化；檢查主程式 service composition，不回退舊資料，不做自動 migration。B09 最終 custody 接線仍待批准，此呈現接口不代表正式私人帳已可啟用。
+選持倉後按「個股研究」沿同股原來源，未驗原結果維持未連結，不能借今天結果補舊身份。聲明列可看估值日，明細顯示評估日與聲明成本；過期、缺件或沒有精確健康資料時不能判安全。刷新取消／失敗保留上次資料並明示未確認最新。中央 MainWindow 已將選定 store 的 route 與 paths 注入 PortfolioService、Declared store 及 Paper readiness／weekly query-only readers；B09 初始交接中「待中央接線」是較早時點，後續有限接線與 P2／M03 readback 範圍見 [B09 QA](../06_qa/BALDR_B09_PERSONAL_PORTFOLIO_20261006.md)、[P2／M03 integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md) 與[架構補記](../01_architecture/system_architecture.md)。這不表示 Paper trade-ledger／benchmark／daily producers 全鏈完成，也不代表正式私人資料啟用、migration 或排程已獲授權；未接入／失效時仍檢查主程式 service composition，不回退舊資料或自動 migration。
 
 ### 10.0 使用者聲明持倉研究（user_declared）
 
@@ -4501,6 +4501,10 @@ HTTP 錯誤、partial read、超限或 schema 不符時，有限 raw body 與 `c
 ### 9.9.1h H20 gross 每日收據與 BBANDS 上軌保存版別（2026-10-06）
 
 > 歷史原文：[封存筆記](../09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md#manual-tail-058)；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
+每日研究條件可選「收盤價高於布林上軌（30）」。先選已有的保存研究來源；勾選此條件只篩選該保存來源，不會自行更新快照。若要產生包含 BBANDS 的 v3 保存快照，明確勾選條件後按「更新研究快照」；其後篩選、排序、返回或收藏都沿用保存值，不重算模型或補入今日指標。條件採 AND／OR 與現有三態規則；兩 MA 預設 preset 會清除 BBANDS 勾選，手動條件可保留。
+
+BBANDS 參數為 30 根有效 OHLC 觀測、SMA、上下標準差倍數 2.0，且只判斷收盤價嚴格高於上軌；相等不符合。30 根有效觀測不代表官方交易 session 完整。結果表分開呈現比較狀態與保存的上軌值；舊 v2 快照、缺件或暖機不足會顯示未知，來源參數 lineage 未核驗也維持未知。這是保存資料的研究條件，不是買入訊號、預測準確度或交易資格。完整 schema、來源 pin 與收藏 readback 限制見[BBUI01 QA 收據](../06_qa/BALDR_BBANDS_RESEARCH_UI_20261007.md)。
 
 ### 9.9.1i 個人 H20 每日研究預測、配置與回滾
 

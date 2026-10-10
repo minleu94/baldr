@@ -1,5 +1,7 @@
 # Post-V1 Decision Desk Evidence Working-Copy Smoke（2026-07-03）
 
+> **歷史 working-copy 寫入警示（2026-10-10）**：本文 `--confirm` 只是在當時隔離 working copy 做寫入驗證；原 ignored 暫存目錄已刪除，不可照抄舊路徑重跑，也不代表 production write／scheduler 已獲准。現行狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作以 [Application Manual](../07_guides/APPLICATION_MANUAL.md)及最新具名 QA 為準。
+
 ## 目的
 
 本紀錄保存 2026-07-03 針對 Daily Decision Desk durable snapshot 與 Evidence Pipeline working-copy confirm smoke 的 follow-up 結果。這是程式路徑與 working-copy 寫入驗證，不是 production scheduler 啟用紀錄，也不是投資有效性結論。

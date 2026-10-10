@@ -1,5 +1,7 @@
 # B09 Portfolio／Paper 私人路由 backend 交接
 
+> **日期與狀態提示（2026-10-10）：** 開頭「待中央 caller 接線」及較早的待中央段落屬 2026-10-06 初始交接；同文件後段 custody 補強、後續 MainWindow route／paths 注入及 P2／M03 bounded readback 已接續此狀態，見[第二波 integration receipt](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)與[架構補記](../01_architecture/system_architecture.md)。不可把這些有限接線解讀為 Paper trade-ledger／benchmark／daily producers 全鏈完成，也不代表正式資料啟用、migration、排程或產品資格已核准。
+
 日期：2026-10-06。狀態：typed backend／consumer 隔離驗證完成，待中央 caller 接線與整合。不是正式 Paper producer 切換、migration 或產品資格完成。
 
 ## 基準與範圍

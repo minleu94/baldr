@@ -1,5 +1,7 @@
 # Post-V1 Evidence Importers QA（2026-07-02）
 
+> **歷史 QA 範圍（2026-10-10）**：本文的來源限制、測試數字及 pytest／編譯命令只代表 2026-07-02 的 importer slice；命令可供追溯，不代表目前驗收結果或生產來源資格。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[QA 導覽](../06_qa/README.md)及[操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+
 ## Scope
 
 本輪新增 Evidence source importer / capture pipeline v1，承接 Post-V1 Evidence Event Store v1 / Forward Outcome Calculator v1。

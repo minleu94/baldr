@@ -1,5 +1,7 @@
 # BALDR B14：隔離 shadow evidence composition（2026-10-06）
 
+> **日期與操作提示（2026-10-10）：** 本收據只證明 synthetic shadow composition；不代表 production、Task、fit／training 已接線。`ShadowEvidenceStore.create` 與 `append(execute=True)` 會寫入／發布指定 evidence 資料；不要為了重讀收據而重跑這些路徑，狀態以目前 Snapshot 與最新具名 QA 為準。
+
 本包只新增 composition、freeze store、focused tests 與本 QA 四檔。固定 base 為 `909b3409da7bd10b15e80c3349a204524d3289a5`，branch 為 `lane/baldr-b14-shadow-evidence-20261006`。原 B13 adapter、B14 control、ML、shared DTO、UI、main、Task、Manual、B01 allowlist 均只讀；沒有 CLI 或 production wiring。
 
 ## 固定來源與資格

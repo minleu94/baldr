@@ -1,5 +1,7 @@
 # B12 每日研究 runtime 與深路徑 I/O
 
+> **日期與操作提示（2026-10-10）：** 本收據是 synthetic／offline engineering lane，沒有啟用正式來源或排程；`--execute-isolated`、`--task-review` 等執行／review 路徑可能建立或更新其指定產物，不能當成純讀取命令重跑。狀態及人工授權須以目前 Snapshot、Manual 與最新具名 QA 為準。
+
 固定 base：`175d9c502985165e3b591af71f138ce4f3b9de6d`。分支 `lane/baldr-b12-daily-runtime-20261006`，worktree `output/worktrees/baldr-b12-daily-runtime`。沿唯一原 plan、Astra 15 WP 與 Sol review 的 B12；不重新分類原 9 stage／24 UX、七個有限 closed 或性能例外。
 
 ## 契約與操作

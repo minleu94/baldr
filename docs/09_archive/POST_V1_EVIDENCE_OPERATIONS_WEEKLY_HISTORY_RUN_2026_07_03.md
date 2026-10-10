@@ -1,5 +1,7 @@
 # Post-V1 Evidence Operations Weekly History Run（2026-07-03）
 
+> **歷史 DB 寫入警示（2026-10-10）**：本文的 `--save-history` 只記錄指定 working-copy DB 的 2026-07-03 操作；不要沿用舊路徑或把此命令指向目前／production DB。執行任何目前流程須先依 [Application Manual](../07_guides/APPLICATION_MANUAL.md)核對路徑與授權；現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## 目的
 
 本紀錄用於保存 V1.3 / V1.4 weekly evidence operations 實際操作的第一個 working-copy run 結論。這不是 production scheduler 啟用紀錄，也不是投資有效性結論。

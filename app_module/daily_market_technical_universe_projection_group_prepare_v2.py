@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, fields
 import hashlib
 import json
 from typing import Literal, cast
@@ -15,12 +15,20 @@ from app_module.daily_market_technical_universe_kdj_alignment_query_v1 import (
 )
 from app_module.daily_market_technical_universe_ma_alignment_query_v1 import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_MAX_INDEX_BYTES_V1,
+    DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_INDEX_V1_SCHEMA,
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_VERIFICATION_V1,
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1,
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1,
+    DailyMarketTechnicalMaAlignmentCompactEntryV1,
+    DailyMarketTechnicalMaAlignmentCompactIndexV1,
     _MaPreparedPublicationV1,
+    _ParentProjectionObservationV1,
 )
 from app_module.daily_market_technical_universe_projection_group_v2 import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_PROJECTION_GROUP_V2_MAX_STOCKS,
     DAILY_MARKET_TECHNICAL_UNIVERSE_PROJECTION_GROUP_V2_MAX_TOTAL_BYTES,
     DailyMarketTechnicalUniverseProjectionGroupV2,
+    _CallbackRowProvenanceV2,
     _fail,
     _strict_cancel_check,
 )
@@ -44,11 +52,34 @@ _MemberEntry = (
 class _EntryEncoder(json.JSONEncoder):
     def default(self, value: object) -> object:
         if type(value) in (
+            DailyMarketTechnicalMaAlignmentCompactEntryV1,
             DailyMarketTechnicalUniverseKDJCompactEntryV1,
             DailyMarketTechnicalUniverseVolatilityCompactEntryV1,
         ):
-            return cast(_MemberEntry, value).to_dict()
+            return cast(_MemberEntry | DailyMarketTechnicalMaAlignmentCompactEntryV1, value).to_dict()
+        if type(value) is _ParentProjectionObservationV1:
+            return {item.name: getattr(value, item.name) for item in fields(value)}
         return super().default(value)
+
+
+def _ma_index_payload_references(
+    index: DailyMarketTechnicalMaAlignmentCompactIndexV1,
+) -> dict[str, object]:
+    """保留原 transport 欄位，entries 逐列編碼，不先呼叫全量 to_dict。"""
+    payload: dict[str, object] = {item.name: getattr(index, item.name) for item in fields(index)}
+    payload.update({
+        "schema_version": DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_INDEX_V1_SCHEMA,
+        "verification_status": DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_VERIFICATION_V1,
+        "method_id": DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1,
+        "method_version": DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1,
+        "decision_date": index.decision_date.isoformat(),
+        "counts": index.counts.to_dict(),
+        "ma_state_counts": tuple({"state": state, "count": count} for state, count in index.ma_state_counts),
+        "source_available_at": None,
+        "availability_status": "unknown",
+        "historical_pit_eligible": False,
+    })
+    return payload
 
 
 def _digest_payload(
@@ -132,7 +163,38 @@ def _terminal_is_exact(
         and volatility._next_segment_index == group.completed_parent_count
         and len(kdj._entries) == group.processed_snapshot_count
         and len(volatility._entries) == group.processed_snapshot_count
+        and len(group._ma_collector._entries) == group.processed_snapshot_count
+        and len(group._row_provenance) == group.processed_snapshot_count
     )
+
+
+def _validate_callback_provenance(
+    group: DailyMarketTechnicalUniverseProjectionGroupV2,
+    cancel: Callable[[], object] | None,
+) -> None:
+    if not (
+        len(group._row_provenance) == len(group._ma_collector._entries)
+        == len(group._kdj_collector._entries) == len(group._volatility_collector._entries)
+    ):
+        _fail("technical_projection_group_v2_callback_provenance_mismatch")
+    for position, (saved, ma, kdj, volatility) in enumerate(zip(
+        group._row_provenance, group._ma_collector._entries,
+        group._kdj_collector._entries, group._volatility_collector._entries, strict=True,
+    )):
+        if position % 256 == 0:
+            _strict_cancel_check(cancel)
+        if (
+            type(saved) is not _CallbackRowProvenanceV2
+            or saved.ma_entry is not ma
+            or saved.kdj_entry is not kdj
+            or saved.volatility_entry is not volatility
+            or not (saved.snapshot_identity_sha256 == ma.snapshot_identity_sha256 == kdj.snapshot_identity_sha256 == volatility.snapshot_identity_sha256)
+            or not (saved.source_pin_sha256 == kdj.source_pin_sha256 == volatility.source_pin_sha256)
+            or not (saved.raw_source_window_fingerprint_sha256 == ma.raw_source_window_fingerprint_sha256 == kdj.raw_source_window_fingerprint_sha256 == volatility.raw_source_window_fingerprint_sha256)
+            or not (saved.source_clock_sha256 == ma.source_clock_identity_sha256 == kdj.source_clock_sha256 == volatility.source_clock_sha256)
+        ):
+            _fail("technical_projection_group_v2_callback_provenance_mismatch")
+    _strict_cancel_check(cancel)
 
 
 def _prepare_member(
@@ -182,6 +244,7 @@ def _prepare_projection_group_v2(
             _strict_cancel_check(cancel_callback)
             return False
 
+        _validate_callback_provenance(group, check_cancel)
         ma = group._ma_collector._prepare_for_projection_group(
             group, builder, bundle_state, base_query, selection,
             cancel_callback=check_cancel,
@@ -237,11 +300,11 @@ def _prepare_projection_group_v2(
             check_cancel,
         )
         ma_digest, ma_bytes = _digest_payload(
-            ma.index.to_dict(), DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_MAX_INDEX_BYTES_V1,
+            _ma_index_payload_references(ma.index), DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_MAX_INDEX_BYTES_V1,
             check_cancel,
         )
         ledger_digest, ledger_bytes = _digest_payload(
-            tuple(asdict(item) for item in ma.parent_observations), group._max_total_bytes,
+            ma.parent_observations, group._max_total_bytes,
             check_cancel,
         )
         envelope = {
@@ -262,6 +325,7 @@ def _prepare_projection_group_v2(
         if total > group._max_total_bytes:
             _fail("technical_projection_group_v2_prepared_payload_limit")
         check_cancel()
+        _validate_callback_provenance(group, check_cancel)
         if (
             not _terminal_is_exact(group, builder)
             or group._ma_collector._finished

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 import json
 from typing import TYPE_CHECKING, ClassVar, Literal, NoReturn
 
@@ -10,6 +11,7 @@ from app_module.daily_market_technical_universe_ma_alignment_query_v1 import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_MAX_INDEX_BYTES_V1,
     DAILY_MARKET_TECHNICAL_UNIVERSE_MA_ALIGNMENT_MAX_STOCKS_V1,
     DailyMarketTechnicalMaAlignmentSourceRequestV1,
+    DailyMarketTechnicalMaAlignmentCompactEntryV1,
     DailyMarketTechnicalMaAlignmentVerifiedCollectorV1,
 )
 from app_module.daily_market_technical_universe_kdj_alignment_query_v1 import (
@@ -17,6 +19,7 @@ from app_module.daily_market_technical_universe_kdj_alignment_query_v1 import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_KDJ_MAX_INDEX_BYTES_V1,
     DailyMarketTechnicalKDJProjectionCollectorV1,
     DailyMarketTechnicalUniverseKDJSourceRequestV1,
+    DailyMarketTechnicalUniverseKDJCompactEntryV1,
     DailyMarketTechnicalVerifiedProjectionGroupV1,
 )
 from app_module.daily_market_technical_universe_volatility_alignment_query_v1 import (
@@ -25,6 +28,7 @@ from app_module.daily_market_technical_universe_volatility_alignment_query_v1 im
     DAILY_MARKET_TECHNICAL_UNIVERSE_VOLATILITY_MAX_SEGMENT_INDEX_V1,
     DAILY_MARKET_TECHNICAL_UNIVERSE_VOLATILITY_MAX_STOCKS_V1,
     DailyMarketTechnicalUniverseVolatilitySourceRequestV1,
+    DailyMarketTechnicalUniverseVolatilityCompactEntryV1,
     DailyMarketTechnicalVolatilityProjectionCollectorV1,
 )
 
@@ -104,6 +108,19 @@ def _canonical_bytes(value: object) -> bytes:
         ) from exc
 
 
+@dataclass(frozen=True, slots=True)
+class _CallbackRowProvenanceV2:
+    """原 callback 的 compact 參照及 exact pin；不保留 raw snapshot。"""
+
+    ma_entry: DailyMarketTechnicalMaAlignmentCompactEntryV1
+    kdj_entry: DailyMarketTechnicalUniverseKDJCompactEntryV1
+    volatility_entry: DailyMarketTechnicalUniverseVolatilityCompactEntryV1
+    snapshot_identity_sha256: str
+    source_pin_sha256: str
+    raw_source_window_fingerprint_sha256: str
+    source_clock_sha256: str
+
+
 class DailyMarketTechnicalUniverseProjectionGroupV2:
     """綁定同一 MA request 的 MA、KDJ、波動 collector，僅供同次 observer 使用。
 
@@ -133,6 +150,7 @@ class DailyMarketTechnicalUniverseProjectionGroupV2:
     _processed_snapshot_count: int
     _completed_parent_count: int
     _member_bytes: list[int]
+    _row_provenance: list[_CallbackRowProvenanceV2]
     _max_stocks: int
     _max_total_bytes: int
     __slots__ = (
@@ -154,6 +172,7 @@ class DailyMarketTechnicalUniverseProjectionGroupV2:
         "_processed_snapshot_count",
         "_completed_parent_count",
         "_member_bytes",
+        "_row_provenance",
         "_max_stocks",
         "_max_total_bytes",
     )
@@ -164,6 +183,7 @@ class DailyMarketTechnicalUniverseProjectionGroupV2:
         "_kdj_collector",
         "_volatility_collector",
         "_kdj_membership_group",
+        "_row_provenance",
     })
 
     def __init__(
@@ -233,6 +253,7 @@ class DailyMarketTechnicalUniverseProjectionGroupV2:
         object.__setattr__(self, "_processed_snapshot_count", 0)
         object.__setattr__(self, "_completed_parent_count", 0)
         object.__setattr__(self, "_member_bytes", [0, 0, 0])
+        object.__setattr__(self, "_row_provenance", [])
         object.__setattr__(self, "_max_stocks", max_stocks)
         object.__setattr__(self, "_max_total_bytes", max_total_bytes)
         _strict_cancel_check(cancel_callback)
@@ -506,6 +527,15 @@ class DailyMarketTechnicalUniverseProjectionGroupV2:
         ):
             _fail("technical_projection_group_v2_member_byte_accounting_mismatch")
         _strict_cancel_check(self._cancel_callback)
+        self._row_provenance.append(_CallbackRowProvenanceV2(
+            ma_entry=entries[0][-1],
+            kdj_entry=entries[1][-1],
+            volatility_entry=entries[2][-1],
+            snapshot_identity_sha256=snapshot.snapshot_identity_sha256,
+            source_pin_sha256=snapshot.source_pin_sha256,
+            raw_source_window_fingerprint_sha256=snapshot.raw_source_window_fingerprint_sha256,
+            source_clock_sha256=snapshot.source_clock_sha256,
+        ))
         self._member_bytes[:] = next_member_bytes
         self._consumed_in_parent += 1
         self._processed_snapshot_count += 1
@@ -561,6 +591,7 @@ class DailyMarketTechnicalUniverseProjectionGroupV2:
         self._processed_snapshot_count = 0
         self._completed_parent_count = 0
         self._member_bytes[:] = [0, 0, 0]
+        self._row_provenance.clear()
 
         # MA 的公開 finalizer 只能接受尚未完成的 collector；毒化後即使外部
         # 先前保留了 collector 參考，也不能從部分 observations 發行 session。

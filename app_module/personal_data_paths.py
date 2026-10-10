@@ -52,15 +52,21 @@ def _windows_utf16_units(path: str) -> int:
     return len(path.encode("utf-16-le")) // 2
 
 
-def _render_internal_io_path(canonical_path: str | Path) -> str:
-    """把已通過字面檢查的路徑轉成 OS 呼叫使用的形式。"""
-    value = _validate_absolute_syntax(canonical_path)
+def _render_validated_internal_io_path(value: Path) -> str:
+    """把已通過字面檢查的絕對 Path 轉成 OS 呼叫使用的形式。"""
     raw = str(value)
     if os.name != "nt" or _windows_utf16_units(raw) < 248:
         return raw
     if raw.startswith("\\\\"):
         return "\\\\?\\UNC\\" + raw.lstrip("\\")
     return "\\\\?\\" + raw
+
+
+def _render_internal_io_path(canonical_path: str | Path) -> str:
+    """把已通過字面檢查的路徑轉成 OS 呼叫使用的形式。"""
+    return _render_validated_internal_io_path(
+        _validate_absolute_syntax(canonical_path)
+    )
 
 
 _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES = 4096
@@ -136,7 +142,29 @@ class _PageOperationPathRenderMemo:
         if str(canonical_path) != str(path):
             return tuple(reversed((path, *path.parents)))
 
-        # 保留 strict canonical guard；tuple 由 Path 詞法欄位重建，不佔用 render memo 預算。
+        # strict guard 已驗證 leaf；只預填純 rendering，不記錄任何檔案狀態。
+        lexical_path = str(path)
+        key = (type(path), lexical_path)
+        if key not in self._values:
+            try:
+                rendered = _render_validated_internal_io_path(canonical_path)
+            except UnicodeEncodeError:
+                # 預填不得提前移動 strict renderer 原有的輸入錯誤時點。
+                return tuple(reversed((path, *path.parents)))
+            entry_bytes = (
+                self._utf16_byte_size(lexical_path)
+                + self._utf16_byte_size(rendered)
+            )
+            if (
+                len(self._values) + len(self._components)
+                < _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES
+                and self._used_utf16_bytes + entry_bytes
+                <= _PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES
+            ):
+                self._values[key] = rendered
+                self._used_utf16_bytes += entry_bytes
+
+        # tuple 每次仍輸入原 lstat/reparse guard；memo 不存任何檔案狀態。
         return tuple(reversed((path, *path.parents)))
 
     def clear(self) -> None:

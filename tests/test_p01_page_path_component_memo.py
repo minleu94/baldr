@@ -21,6 +21,90 @@ def _render_entry_bytes(path: Path, rendered: str) -> int:
     return _utf16_bytes(str(path)) + _utf16_bytes(rendered)
 
 
+def test_component_validation_prefills_leaf_render_without_second_strict_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "ordinary" / "leaf.bin"
+    original_validate = personal_data_paths._validate_absolute_syntax
+    original_render = personal_data_paths._render_internal_io_path
+    original_validated_render = personal_data_paths._render_validated_internal_io_path
+    validate_calls: list[str] = []
+    render_calls: list[str] = []
+    validated_render_calls: list[str] = []
+
+    def observe_validate(value: str | Path) -> Path:
+        validate_calls.append(str(value))
+        return original_validate(value)
+
+    def observe_render(value: str | Path) -> str:
+        render_calls.append(str(value))
+        return original_render(value)
+
+    def observe_validated_render(value: Path) -> str:
+        validated_render_calls.append(str(value))
+        return original_validated_render(value)
+
+    monkeypatch.setattr(personal_data_paths, "_validate_absolute_syntax", observe_validate)
+    monkeypatch.setattr(personal_data_paths, "_render_internal_io_path", observe_render)
+    monkeypatch.setattr(
+        personal_data_paths,
+        "_render_validated_internal_io_path",
+        observe_validated_render,
+    )
+
+    # 嚴格基線：component leaf guard 與 strict renderer 各自驗證一次。
+    strict_canonical = personal_data_paths._validate_absolute_syntax(path)
+    strict_rendered = personal_data_paths._render_internal_io_path(path)
+    assert strict_canonical == path
+    assert validate_calls == [str(path), str(path)]
+    assert render_calls == [str(path)]
+    assert validated_render_calls == [str(path)]
+
+    validate_calls.clear()
+    render_calls.clear()
+    validated_render_calls.clear()
+    expected_components = tuple(reversed((path, *path.parents)))
+    with personal_data_paths._p01_page_operation_path_render_scope():
+        memo = personal_data_paths._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        assert memo is not None
+        components = personal_data_paths._p01_page_operation_path_components(path)
+        assert components == expected_components
+        assert memo._values == {(type(path), str(path)): strict_rendered}
+        assert memo._used_utf16_bytes == _render_entry_bytes(path, strict_rendered)
+        candidate_rendered = personal_data_paths.to_internal_io_path(path)
+        assert candidate_rendered == strict_rendered
+        assert personal_data_paths.to_internal_io_path(path) == strict_rendered
+        assert validate_calls == [str(path)]
+        assert render_calls == []
+        assert validated_render_calls == [str(path)]
+    assert memo._closed
+    assert memo._values == {}
+    assert memo._used_utf16_bytes == 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows extended-path UTF-16 encoding behavior")
+def test_unpaired_surrogate_keeps_component_tuple_and_defers_strict_renderer_error() -> None:
+    path = Path("C:/p01-probe") / chr(0xD800)
+    expected_components = tuple(reversed((path, *path.parents)))
+
+    assert personal_data_paths._p01_page_operation_path_components(path) == expected_components
+    with pytest.raises(UnicodeEncodeError):
+        personal_data_paths._render_internal_io_path(path)
+
+    memo = None
+    with personal_data_paths._p01_page_operation_path_render_scope():
+        memo = personal_data_paths._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        assert memo is not None
+        assert personal_data_paths._p01_page_operation_path_components(path) == expected_components
+        assert memo._values == {}
+        assert memo._used_utf16_bytes == 0
+        with pytest.raises(UnicodeEncodeError):
+            personal_data_paths.to_internal_io_path(path)
+        assert memo._values == {}
+
+    assert memo is not None and memo._closed and memo._values == {}
+
+
 def test_component_tuple_is_recomputed_with_exact_lexical_spelling_and_render_reuse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -37,14 +121,27 @@ def test_component_tuple_is_recomputed_with_exact_lexical_spelling_and_render_re
 
     original_render = personal_data_paths._render_internal_io_path
     expected_render = original_render(path)
+    other_expected_render = original_render(other_spelling)
     rendered_inputs: list[str] = []
+    validated_render_inputs: list[str] = []
 
     def observe_render(value: str | Path) -> str:
         rendered_inputs.append(str(value))
         return original_render(value)
 
+    original_validated_render = personal_data_paths._render_validated_internal_io_path
+
+    def observe_validated_render(value: Path) -> str:
+        validated_render_inputs.append(str(value))
+        return original_validated_render(value)
+
     monkeypatch.setattr(personal_data_paths, "_validate_absolute_syntax", observe_validate)
     monkeypatch.setattr(personal_data_paths, "_render_internal_io_path", observe_render)
+    monkeypatch.setattr(
+        personal_data_paths,
+        "_render_validated_internal_io_path",
+        observe_validated_render,
+    )
 
     with personal_data_paths._p01_page_operation_path_render_scope():
         memo = personal_data_paths._PAGE_OPERATION_PATH_RENDER_MEMO.get()
@@ -61,15 +158,23 @@ def test_component_tuple_is_recomputed_with_exact_lexical_spelling_and_render_re
         assert tuple(map(str, second_spelling)) != tuple(map(str, first))
         assert validated == [str(path), str(path), str(other_spelling)]
         assert memo._components == {}
-        assert memo._used_utf16_bytes == 0
+        assert memo._values == {
+            (type(path), str(path)): expected_render,
+            (type(other_spelling), str(other_spelling)): other_expected_render,
+        }
+        assert memo._used_utf16_bytes == (
+            _render_entry_bytes(path, expected_render)
+            + _render_entry_bytes(other_spelling, other_expected_render)
+        )
 
         rendered = personal_data_paths.to_internal_io_path(path)
         assert rendered == expected_render
         assert personal_data_paths.to_internal_io_path(path) == expected_render
-        assert len(memo._values) == 1
+        assert len(memo._values) == 2
         assert memo._components == {}
-        assert rendered_inputs == [str(path)]
-        assert memo._used_utf16_bytes == _render_entry_bytes(path, rendered)
+        assert rendered_inputs == []
+        assert validated_render_inputs == [str(path), str(other_spelling)]
+        assert rendered == expected_render
 
 
 def test_deep_component_tuple_does_not_block_render_reuse_at_byte_boundary(
@@ -109,10 +214,11 @@ def test_deep_component_tuple_does_not_block_render_reuse_at_byte_boundary(
                 path
             ) == expected_components
         assert memo._components == {}
-        assert memo._used_utf16_bytes == 0
+        assert memo._values == {(type(path), str(path)): rendered}
+        assert memo._used_utf16_bytes == render_bytes
         assert personal_data_paths.to_internal_io_path(path) == rendered
         assert personal_data_paths.to_internal_io_path(path) == rendered
-        assert rendered_inputs == [str(path)]
+        assert rendered_inputs == []
         assert memo._values == {(type(path), str(path)): rendered}
         assert memo._used_utf16_bytes == render_bytes
 
@@ -145,7 +251,7 @@ def test_render_entries_keep_the_default_4096_entry_cap_without_component_admiss
             second = personal_data_paths.to_internal_io_path(path)
             assert first == second == rendered
             if index < 4096:
-                assert len(rendered_inputs) - before_calls == 1
+                assert len(rendered_inputs) - before_calls == 0
                 inserted_bytes += _render_entry_bytes(path, rendered)
             else:
                 assert len(rendered_inputs) - before_calls == 2
@@ -185,17 +291,21 @@ def test_render_entries_keep_the_default_1_mib_byte_cap_after_deep_components(
             assert memo._components == {}
             rendered = original_render(path)
             entry_bytes = _render_entry_bytes(path, rendered)
+            key = (type(path), str(path))
+            was_prefilled = key in memo._values
             before_calls = len(rendered_inputs)
             assert personal_data_paths.to_internal_io_path(path) == rendered
             assert personal_data_paths.to_internal_io_path(path) == rendered
             calls_for_key = len(rendered_inputs) - before_calls
-            if calls_for_key == 1:
+            if was_prefilled:
+                assert calls_for_key == 0
                 inserted_count += 1
                 expected_used_bytes += entry_bytes
                 assert memo._used_utf16_bytes == expected_used_bytes
                 continue
             assert calls_for_key == 2
             blocked_path = path
+            assert key not in memo._values
             assert expected_used_bytes + entry_bytes > limit
             break
         assert blocked_path is not None
@@ -315,14 +425,14 @@ def test_render_memo_is_isolated_for_suspended_nested_and_foreign_thread_paths(
         assert outer_components == tuple(reversed((path, *path.parents)))
         assert personal_data_paths.to_internal_io_path(path) == original_render(path)
         assert personal_data_paths.to_internal_io_path(path) == original_render(path)
-        assert rendered_inputs == [str(path)]
+        assert rendered_inputs == []
 
         with personal_data_paths._suspend_p01_page_operation_path_render_scope():
             strict_components = personal_data_paths._p01_page_operation_path_components(path)
             assert strict_components == outer_components
             assert strict_components is not outer_components
             assert personal_data_paths.to_internal_io_path(path) == original_render(path)
-            assert rendered_inputs == [str(path), str(path)]
+            assert rendered_inputs == [str(path)]
 
         with personal_data_paths._p01_page_operation_path_render_scope():
             nested = personal_data_paths._PAGE_OPERATION_PATH_RENDER_MEMO.get()
@@ -332,14 +442,14 @@ def test_render_memo_is_isolated_for_suspended_nested_and_foreign_thread_paths(
             assert nested_components is not outer_components
             assert personal_data_paths.to_internal_io_path(path) == original_render(path)
             assert personal_data_paths.to_internal_io_path(path) == original_render(path)
-            assert rendered_inputs == [str(path), str(path), str(path)]
+            assert rendered_inputs == [str(path)]
             assert len(nested._values) == 1
             assert nested._components == {}
 
         assert personal_data_paths._PAGE_OPERATION_PATH_RENDER_MEMO.get() is outer
         assert personal_data_paths._p01_page_operation_path_components(path) == outer_components
         assert personal_data_paths.to_internal_io_path(path) == original_render(path)
-        assert rendered_inputs == [str(path), str(path), str(path)]
+        assert rendered_inputs == [str(path)]
 
         foreign_result: list[tuple[tuple[Path, ...], str]] = []
         copied_context = copy_context()
@@ -360,7 +470,7 @@ def test_render_memo_is_isolated_for_suspended_nested_and_foreign_thread_paths(
         assert not thread.is_alive()
         assert foreign_result == [(outer_components, original_render(path))]
         assert foreign_result[0][0] is not outer_components
-        assert rendered_inputs == [str(path), str(path), str(path), str(path)]
+        assert rendered_inputs == [str(path), str(path)]
         assert len(outer._values) == 1
         assert outer._components == {}
 

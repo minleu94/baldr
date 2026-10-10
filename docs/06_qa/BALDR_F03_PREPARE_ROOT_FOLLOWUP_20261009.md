@@ -648,3 +648,28 @@ FullView D最小title／折行修正已真跑無來源檢查：body422等於view
 - H20 M2 focused 啟動前完成六檔 pins 核對，但建立 C:/t 隔離目錄遭沙箱拒絕，pytest 未啟動。M2 送審後新增 cold-cache fixture 的需求改置 M3；凍結候選不得再覆寫，M/M2 metadata 重建差異如實留痕。
 
 - F12 T5 root 定向回歸結果 7 passed／1 failed／38 deselected，1.75 秒；八候選與 58 來源前後核對通過。真 PageRequest canonical JSON／query identity 比較已通過，但新增 fixture 把 `recipe.sort_clauses` 設為 dict tuple，後續 `.to_dict()` 觸發 AttributeError。此為 QA fixture 型別錯誤，不能外推為產品排序失敗；T6 只改用真 typed sort clauses 並保留所有發行結果 seal 判斷，完整 Main 尚未重跑。
+
+
+### 2026-10-10 已完成的接續驗證
+
+- Composite storage identity C attempt02 通過：1 passed，224.13 秒／exit 0，10 項 root pins 前後一致。真 full257 發行結果的同一 strict bookmark 保存三種比較籃 membership/order，三個 envelope identity 分別讀回；重複保存與衝突不改 bytes。JSON→明示 private COW readback、可見 Watchlist 按鈕三次專用 typed signal、損壞列停用及 generic/latest signals 0 均通過。這不等同正常 Main 或新 PID 旅程，也尚未正式套用候選。receipt：`output/qa/composite_storage_c_route_20261010_attempt02/receipt.json`。
+- F12 T6 eight focused tests 全數通過：8 passed／38 deselected，1.25 秒／exit 0；八候選與58來源 postflight 通過。T5→T6 只修正排序條件 fixture 與私有 run root；PageRequest canonical binding 與原 page/result seals 保留。已建立逐檔 bytes 相同的短路徑 runtime 副本 `output/qa/f12t6_main_1010`，尚未啟動完整 Main。
+- Composite View F2 完整 loader 依賴已補齊。root 兩項便宜 Qt 測試通過：2 passed／1 deselected，1.26 秒，12 pins 前後一致；涵蓋空白構造、busy 恢復及長來源路徑的 460px 幾何/精確提示。View SHA d1b116a23999bb250cb8c0b22f5fec2130ae0e65f080a2211801760c1de74b1e；長來源路徑不再放到主標籤撐寬，仍保留原 Path/完整 tooltip/accessibility。真 bundle 全窄窗流程 attempt01 仍執行中，未判為通過。
+- H20 M3 focused 為 10 passed／1 failed，5.44 秒，六 pins 不變。強制冷快取測試在已載入 PySide 的 pytest 程序碰到 shiboken import hook 讀取 socket.py，被原嚴格 observer 拒絕；不能因此放寬防護。已交由 subagent 建 M4，在未載入 Qt 的新隔離 Python 子程序驗真冷快取，對齊原 probe 的 prewarm→D9 guard→Qt 順序。M3 Main 未執行。
+
+- Composite F2 真來源窄窗測試終態 exit 1：1 failed／2 deselected，205.54 秒，12 pins unchanged。已通過初始 source label geometry、catalog、全母體 258/257/1、真首頁256列、選取與首股詳情；首紅在 readonly editor 的 QA cursor-position 判斷（0 vs2432）。只讀文字 Ctrl+End 捲動與 caret 不必同時變更；改以 scrollbar及末 document block 可見幾何驗收，G sibling另補 loaded/result/detail/comparison外層viewport檢查。來源指定為本次固定完整 `f17-bundle-v1-synthetic-7jz9y_r9`，不再反覆產製同樣合成來源。F2 原件保留，不能把首股前段通過說成返回流程已通過。
+
+- F12 T6 完整 Main 終態：exit 1，205.656 秒，`f12_ui_stage_timeout:explicit Watchlist COW activation`；cleanup_errors=[]，原來源/候選完整收尾證據留在 `output/qa/f12t6_main_1010/run_attempt_09ca316ef0084a0896571c3836d5cfc7/f12_main_revenue_receipt.json`，launcher PID44592、venv redirector22568、native4708鏈核對通過。新的 canonical PageRequest binding 不再是首紅，但目前失敗沒有記錄啟用前按鈕可見性、Main/View服務身份、modal及status label，不能判定是產品 COW 啟用問題或 QA 點擊/等待錯誤。T7僅補真可見點擊與診斷，保留原私有源/58pins/明示確認。
+- 新固定85bc P01六角色矩陣已在無其他 root runtime 的時段啟動，root capture `output/qa/run_p01_85bc_matrix_capture_root_20261010.py`；cold_01 exit0，29.11秒，四個候選pins前後一致，其餘角色尚待。不預判完整矩陣或300ms資格；來源不重建。
+
+### 2026-10-10 六角色終態與後續小範圍驗證
+
+- 固定85bc P01五冷／一暖六角色皆 exit0，四候選 pins 起訖一致，source/store 完整核對 unchanged，所有 Job 子行程完成清理；沿用既有1,000 included／1 excluded保存來源，未重建。root aggregator 報告 `output/qa/p01_1000_e5ba_full_matrix_anchor_20261010_a/root_aggregate_20261010_a.json`：暖啟各30次，nearest-rank p95換頁196.205ms、全域排序191.8186ms，皆低於300ms；篩選523.902ms，仍不達標。冷啟 launch→page0 p95為20.0318602秒，exact-open-start→page0為15.9045568秒。這是完整讀取診斷矩陣，不是正常應用程式1000檔旅程驗收，不能宣告P01完成。
+- H20 M5 focused 終態為10 passed／1 failed，4.92秒，六候選 pins不變。隔離cold-cache子行程回報 `platform_machine_architecture_unavailable`；其環境白名單與原控制器Windows架構環境仍須核對，尚不執行Main，也不放寬observer或D9防護。封套 `output/qa/h20_m5_focused_root_20261010_attempt01`。
+- Composite G便宜Qt檢查為2 passed／1 failed／1 deselected，1.31秒，12 pins不變。構造／長路徑幾何通過；填滿只讀理由後Ctrl+End加一次PageDown僅到scrollbar19／93。下一版須先讓editor位於外層可見範圍，再以有界實際鍵盤捲動核末行；不得用setValue跳過操作驗收，也不重產製257來源。封套 `output/qa/composite_view_g_constructor_20261010_attempt01`。
+
+- H20 M6只在cold-cache測試child_env加入原controller本來已有的PROCESSOR_ARCHITECTURE，11項定向測試全通過，六pins一致。原S4 Main第二次啟動使用絕對路徑（第一次相對路徑在產品啟動前被拒絕），controller64.281秒／child33.313秒；真2382圖表與返回同manifest／選取已完成，return0.172秒，shutdown0 workers。最後仍exit1：QA把D9已驗證並拒絕的urllib3單次loopback能力探測計入一般network failure；非本機事件0、write/mkdir/prediction/training0，三種來源完整核對unchanged。M6原失敗保留，不能宣稱全旅程通過。
+- M7只將最後網路資格判讀呼叫固定D9原有的`network_protocol_v2_passed`，D9檔案SHA、install順序及其拒絕邏輯均不改；不是開放網路。新增定向測試驗精確依賴單次探測、外部事件／多次／錯版本／來源不符拒絕，連同舊11項共12項通過，六pins不變；完整Main重驗待終態。probe SHA cfb3bd6a3a0742e1e6a75614cf43688663b6e51fa8f4306518bdca116a949d17。
+- Composite G2/G3便宜Qt原件均保留。G2的固定scrollbar上限未跟隨Qt懶layout增加；G3已修並到末行，但外層QRect.contains(QPointF)型別錯誤，仍2 passed／1 failed。G3候選View九項mypy問題以明確Literal、變數及callback型別、exact envelope narrowing修正，候選型別檢查通過；尚無正式接入或full窄窗通過。
+
+- H20 M7完整原S4 Main已終態exit0：controller61.86秒，child33.219秒；原10檔cohort初次21.031秒，2382真double-click→摘要0.422秒，回到原manifest／原2382選取0.297秒；shutdown complete、0 worker。圖表與表格同一原capture核對120筆2026-04-14至2026-10-05 OHLC，原gross684bp及決策2026-10-07／來源2026-10-06／特徵2026-10-05一致。原兩DB/source archive/template groups全量起訖unchanged，D9原協定精確辨識並拒絕單次套件loopback探測，外部事件0。完整receipt `output/qa/h20_main_s3_chart_candidate_20261010_m7_d9_protocol/attempts/20261010T065528Z_beaf74019975/controller_receipt.json`；這是固定source-port Main旅程，不代表新EXE、真人驗收或初次等待已改善，也不是正式收益/PIT資格。

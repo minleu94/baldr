@@ -37,13 +37,36 @@
 
 | 範圍 | 可證實的核讀狀況 | 尚未確認／限制 |
 |---|---|---|
-| `00_core/`（18） | 本矩陣、`AI_CONTEXT_PACK.md` 與 `DOCUMENTATION_GRAPH_GUIDE.md` 已全文檢視；另針對 e6 排程修正閱讀 Snapshot 與 Index 的排程段落。 | 原 15 份核心文件的逐檔讀取深度仍不可還原；目錄角色盤點不能代替內容審核。 |
+| `00_core/`（18） | 本輪已逐檔核對 18 份：11 份全文閱讀、7 份局部核讀；每份的角色、生命週期、核讀深度與衝突判讀見下方逐檔表。 | 既有 2026-10-09 審閱的歷史深度只可從舊記錄還原部分路徑；本輪表格另列實際閱讀範圍，不把段落抽查算成全文閱讀。 |
 | `01_architecture/` + `07_guides/`（244） | 初始基線有 24 份具名段落核讀記錄、202 份索引／README／標題層級分類；補充全文閱讀新增排程稽核 Runbook 1 份及已封存 morning-check 原文 1 份。另核對 Manual、Guides README 與排程操作指南的 e6 相關段落及連結。 | 原 243 份文件中 17 份深度不可還原；其餘逐篇內容仍未全面覆核。 |
 | 根 `docs/README.md`、`02_features/`、`03_data/`、`04_broker_branch/`、`05_phases/`、`08_technical/`（55） | 可明確證實 2 份全文核讀：`docs/05_phases/PHASE2_ARCHITECTURE.md`（6 行轉址頁）、`docs/08_technical/UI_QT_CHART_RENDERING.md`（70 行）；2 份局部核讀：`docs/05_phases/README.md` 第 15、21 行，`docs/02_features/BACKTEST_LAB_FEATURES.md` 第 340–360 行。 | 其餘文件未有可逐檔還原的正文核讀深度。六份 README 以 Markdown `](...)` 目標抽出 109 次連結、正規化後 82 個唯一本機目的地；本次重算未驗證目標存在或錨點。先前「55/55」連結數的原始檢查範圍不可還原，不用作全目錄連結覆蓋結論。 |
 | `agents/`、`strategies/`、`superpowers/`（191） | 正文抽讀記錄：agents 20/21（以角色摘要／前段為主）；strategies 3/3；superpowers 9/167（README 與 8 份代表文件）。 | 這些數量是抽讀文件數，不等於全文閱讀數；其餘多依 README、manifest、標題或路徑分類。 |
 | `06_qa/`、`09_archive/`（970） | 舊基線 `0c9f84bb` 有明確記錄下限：全文 10 份（QA 5、Archive 5），局部核讀至少 2 份 QA；本次再全文閱讀排程修正 QA 1 份、封存 morning-check 原文 1 份與 Agent workflow 舊版 1 份，故可具名全文閱讀至少 13 份（QA 6、Archive 7）。 | 舊有 7 份正文主張曾被核對但範圍不明，另有 7 份只檢視導覽／來源。這不是整個 QA／Archive 的最新全面覆核；F03 follow-up 工作樹正文仍略過。 |
 
 全體文件沒有一個可支持「已逐篇讀完」的比例。上述數字只表達可追溯的審閱證據；正文審閱數、入口連結覆蓋及分類完成度是不同指標，不能互相代替。e6 排程 QA 與 Runbook 已納入本次補充閱讀，不再列為排除項目。
+
+### `00_core/` 逐檔分類與本輪核讀
+
+| 文件 | 角色／生命週期 | 本輪核讀深度與判讀 |
+|---|---|---|
+| `AI_CONTEXT_PACK.md` | 歷史相容入口；原文已封存，現況轉看 Snapshot。 | 全文；不作目前狀態權威。 |
+| `DEVELOPMENT_ROADMAP.md` | 現行 Roadmap Hub，負責導覽權威文件，不保存目前進度。 | 全文；與 Snapshot／6M Roadmap 職責相符。 |
+| `DOCUMENTATION_CATALOG_20261006.md` | 日期化歷史目錄快照入口，不是即時清冊。 | 全文；日期與歷史定位明確。 |
+| `DOCUMENTATION_GRAPH_GUIDE.md` | 現行 Graphify 導覽與維護指南，不是內容／驗收權威。 | 全文；固定基線、CLI 故障與抽取限制有標示。 |
+| `DOCUMENTATION_INDEX.md` | 現行文件位置與導航權威，不是狀態權威。 | 局部；已補上本矩陣直接入口。 |
+| `DOCUMENTATION_STATUS_MATRIX_20261009.md` | 日期化整理基線與覆核紀錄，不取代 Scoped SSOT。 | 全文；仍需完成其他目錄的逐檔核對。 |
+| `DOCUMENTATION_STRUCTURE.md` | 現行文件生命週期、目錄歸屬及歸檔規則。 | 局部；核對權威、生命週期與整理檢查段落，未全文審查。 |
+| `DOC_COVERAGE_MAP.md` | 現行跨文件 Scoped SSOT、同步矩陣與 DoD 權威。 | 局部；核對權威表、DoD 與更新記錄；移除兩組重複 Must 條目。 |
+| `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 外部研究／資料源候選 companion，不是現況或交付順序權威。 | 局部；前言明示研究基準為 2026-07-11、未重新查核外部 repo；外部參考待後續刷新。 |
+| `LEGACY_ROADMAP_CARRYOVER.md` | 2026-06-15 歷史移交／結案記錄；目前工程順序回到 6M Roadmap，現況回到 Snapshot。 | 全文；將 fixed／quantile Gate 明確限定為 10 檔 pilot，不推定完整股票池已驗收。 |
+| `NEXT_ACTION_PLAN.md` | 已封存一次性計畫的相容入口。 | 全文；明確導回現行 Snapshot／Roadmap。 |
+| `PRODUCT_ROADMAP_POST_REFACTOR.md` | 現行產品方向與產品 Gate 權威，不負責目前進度。 | 局部；核對前言、基線、Gap 與 Gate；基線日期 2026-09-17 有標示。 |
+| `PROJECT_SNAPSHOT.md` | 現行唯一狀態入口。 | 全文；已把 Index 從「完整文件清單」改為導覽，並分連歷史目錄快照與本矩陣。 |
+| `README.md` | Core 區導航頁，不取代主題權威。 | 全文；Scoped Authority 導覽相符。 |
+| `ROADMAP_6M_ENGINEERING.md` | 現行六個月工程順序、Gate 與驗收權威；進度看 Snapshot。 | 局部；核對前言、相對月份、Gate 5／7 與 Closeout，未見明確狀態衝突。 |
+| `V4_COMPLETION_PLAN_2026_09_07.md` | 已封存完成計畫的歷史入口。 | 全文；日期及目前狀態入口明示。 |
+| `VERSION_ROADMAP_V1_1_TO_V2_0.md` | 已封存版本路線的相容入口。 | 全文；明確排除作為目前工作順序。 |
+| `VERSION_ROADMAP_V2_1_TO_V4_0.md` | 現行長期 maturity 權威；工程順序看 6M、現況看 Snapshot。 | 局部；核對前言與權責，未見與 Snapshot／6M 的直接衝突。 |
 
 ## 入口與本機連結檢查
 
@@ -78,6 +101,7 @@
 - `docs/01_architecture/target_system_architecture.md` §10.11 已標示其 `CANDIDATE` 是非即時狀態摘要，並導向 Snapshot 與最新 QA；此處是設計背景與實作摘要，不替代目前狀態，保留原文。
 - `docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md` 是仍被 Guide README 與 Manual 引用的操作流程，不應因日期較早便搬入 Archive。它曾把 7/12 較早的 `0/3` readiness 快照放在安全條款內；已加上與較晚 Week 1 `1/3` QA 的時間界線，並把 10/04 `pending_human_review` 標成 sidecar collection 狀態，不折算為人工 history。最新人工週數未從舊文件推定。
 - 舊 `EVIDENCE_SCHEDULED_MORNING_CHECK.md` 只檢查四個較早的 scheduled task，與目前 21-task 共用稽核流程重疊且範圍過時；全文保存在 Archive，舊路徑留導引，中央 Index、Manual、Project Navigation 與 Guide README 改連目前 Runbook。`EVIDENCE_REHEARSAL_RUNBOOK.md` 則描述隔離 working-copy 的工程演練，與日常排程稽核職責不同，並有 QA closeout 直接指向，保留為現行專項操作指南。
+- `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` 的 fixed／quantile Gate 與 `docs/06_qa/WALK_FORWARD_COMPARISON_REPORT.md` 已明確限定為 10 檔、單一策略及固定成本組合的 OOS pilot；這與完整股票池仍有後續實證需求並存，不可將 pilot 推廣為全市場驗收。Legacy Carryover 已補上 pilot 範圍界線。
 
 ### 已查證並於 Coverage History Entry 176 完成第二輪修正
 

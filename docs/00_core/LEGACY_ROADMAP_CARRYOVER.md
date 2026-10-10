@@ -32,7 +32,7 @@
 
 | Legacy 後續工作 | 處置 | 新版落點 | 驗收定義 |
 |---|---|---|---|
-| fixed / quantile 真實 walk-forward 比較 | 已完成 | - | 同股票池與成本。2026-06-14 以 fixed 55/45 完成 10 檔、每檔 8 個 OOS fold；fixed 57 筆、quantile 79 筆交易皆通過 20 筆最低樣本 Gate，並完成 100% Regime coverage 的分層歸因。 |
+| fixed / quantile 真實 walk-forward 比較 | 已完成（10 檔 OOS pilot） | - | 同股票池與成本。2026-06-14 以 fixed 55/45 完成 10 檔、單一策略與固定成本組合、每檔 8 個 OOS fold；fixed 57 筆、quantile 79 筆交易皆通過 20 筆最低樣本 Gate，並完成 100% Regime coverage 的分層歸因。此結果只證明該 pilot 範圍，不代表更大真實股票池或全市場 Gate 已通過。 |
 | 推薦組合跨 run 比較 | 已完成 | Month 2 | Research Lab 比較子頁支援 2-5 個 registry run，比較 OOS 指標、參數差異、Regime、benchmark 與正規化 equity；incompatible run 不產生優劣排名。 |
 | Benchmark-relative attribution | 已完成 | Month 2 | Cross-run comparison 只使用 run 已保存的 benchmark results，顯示 benchmark-relative attribution，不於比較時重新抓取目前資料。 |
 | Factor / failure attribution | 移交 | Month 3 與 Month 6 | Month 3 先完成更多 Research Lab 路徑的 factor contribution 與 Portfolio Replay 可信度；Month 6 再完成 Portfolio post-trade attribution，區分訊號、執行、資料與市場落差。 |
@@ -45,7 +45,7 @@
 
 當時交接基線中的新版 Roadmap 可執行 Month 1 與 Month 2，但 **Month 3 Factor Layer 不得在下列項目仍無正式結果時宣告開始**：
 
-1. fixed / quantile 真實 walk-forward Gate 已通過；報告保留 quantile 未優於 fixed 的結果，且 quantile 維持 opt-in。
+1. fixed / quantile 的 10 檔、單一策略與固定成本 walk-forward pilot Gate 已通過；報告保留 quantile 未優於 fixed 的結果，且 quantile 維持 opt-in。此歷史結案不推定更大真實股票池或全市場已驗收。
 2. Phase 5 最小可用輸出已有實作結果，不只是設計稿。
 3. Indicator Parameter Registry 與 Recommendation Weight Contract 已完成。
 4. Research Run Registry 能保存資料、策略、參數、成本與成交假設，並支援比較、hash integrity、archive/promote guard 與 registry-based promote gate。

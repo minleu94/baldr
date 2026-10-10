@@ -1944,3 +1944,15 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `docs/agents/README.md` | 補記 2026-10-09 對齊根目錄平台指引的更新記錄。 |
 
 沒有移除文件或 QA 證據；F03 follow-up、根目錄 `$null` 及其他非本批工作樹變更均未改動。未執行測試、未刷新 Graphify，亦未改寫固定基線歷史產物。
+
+<a id="coverage-entry-180"></a>
+## 2026-10-09 登記 Core 逐檔覆核並限定歷史 pilot 範圍
+
+對 `docs/00_core/` 的 18 個追蹤文件逐檔核對角色、生命週期、現行權威關係與本輪核讀深度；其中 11 份全文、7 份局部核讀，逐檔結果記於狀態矩陣。未把段落抽查推算成全文審查。另以 `WALK_FORWARD_COMPARISON_REPORT.md` 核實 `LEGACY_ROADMAP_CARRYOVER.md` 的 fixed／quantile 結案證據只涵蓋 10 檔、單一策略、固定成本組合的 OOS pilot；該歷史結論不代表更大真實股票池或全市場 Gate 已通過，因此已加上範圍界線。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 新增 Core 18 份逐檔角色、生命週期、閱讀深度及衝突判讀表；更新 Core 審閱計數。 |
+| `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 將 fixed／quantile Gate 明確限定為 10 檔 pilot，不推定完整股票池或全市場已驗收。 |
+
+未修改 pilot 原始 QA 報告或其數據，未重新宣告更大股票池 P0 的現行完成狀態；未執行測試或刷新 Graphify。

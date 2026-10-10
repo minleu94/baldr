@@ -794,3 +794,10 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - Root 保留 T14，建立 T15 靜態 sibling：`output/qa/f12t15_main_1010`，manifest SHA `1a0e9fcb7008bb1c176c048a1e7fff7ae7c0a038937725cb29b436199f90e301`。只修正精確 frame owner、模式名稱與新私人測試根；AST parse 通過，尚未執行 focused／Main，不關閉 F12。
 - P01 下一個 I 候選仍僅 QA shadow：fresh manifest bytes 每次重新檢查路徑／link／stat／bounded read／SHA後，才沿用原 reader-issued immutable manifest；所有 artifact 與 layout 核驗維持。具名負例矩陣已交付，尚無可接受 runtime／效能結果，不套用正式來源。
 - 架構、PROJECT_NAVIGATION 與 UI_FEATURES 文件覆蓋同步已另提交 `3104b79b`；目前狀態同步 `07ff5694`。其他 agent 的文件整理變更未納入本輪提交。
+
+### F12 focused 終態與接續定位（2026-10-10）
+
+- T15 attempt01 在 sandbox 的嚴格 Path.resolve 發生 WinError5；原 stdout/stderr、receipt 已保存，58+8 pins 一致。attempt02 使用相同凍結候選於全新私人 TEMP：2 passed／6 subtests passed／1 failed／51 deselected；原來源未變，不授完整 Main 通過。
+- T16 僅加失敗診斷，T17 修三個 @contextmanager 的 wrapper/generator 精確 code 綁定，T18 補 _history_prefixes 的獨立 schema detection chain；各輪均保存原件與原生 stdout/stderr／receipt。T17/T18 仍 2 passed／6 subtests passed／1 failed，58+8 pins 起訖一致，未改正式程式或資料。
+- 最新具體阻擋為 target_read_callsite_invalid：正式 _preview 經 _base_lineage_snapshot → _history_prefixes，先直接 _detect 再 inventory；候選原 receipt_lineage_inventory 缺 _base_lineage_snapshot，schema 與 inventory 兩條都必須列精確鏈。另 under-lock 的直接 _detect 與 _base_lineage_snapshot 嵌套鏈須一併靜態核對。獨立審查持續，不以泛化祖先搜尋／全部私人 URI 放行解決。
+- 接續應先完成全部精確 target schema／inventory chains 的靜態核對，再跑三 focused；成功後才執行完整 Main。P01 I 仍是未執行的 QA shadow，300ms Gate 保持未完成。本輪產品有效提交為 8c7fd469，Snapshot 07ff5694，架構／導航／UI Features 3104b79b；無 push、新 EXE或全產品完成宣稱。

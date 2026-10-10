@@ -90,9 +90,12 @@
 
 日常使用、開發或決策會引用的文件。Active 文件必須：
 
-- 出現在 `DOCUMENTATION_INDEX.md`
+- 可沿完整導航路徑從 `DOCUMENTATION_INDEX.md` 到達；中央索引透過領域 README、主題索引或集合索引分層導覽，不要求把每份文件逐筆列在中央索引。
+- 新增或搬移 Active 文件時，先加入最貼近該主題的 README／索引，再確認中央索引已連到該入口。只有跨領域權威、主要閱讀入口或需要直接辨識的現行交接，才直接列在中央索引。
 - 相對連結有效
 - 狀態描述不與對應 scoped authority 衝突
+
+`docs/06_qa/` 的收據按主題索引或明確的文件集合入口分類；每份仍保留在 QA 的原件都必須可由 QA README 的導航路徑找到。尚未判定歸屬的文件要明確列在待分類清單，直到完成判讀；不能因缺少連結就直接搬移或刪除。
 
 ### Historical
 
@@ -141,7 +144,7 @@
 ## 五、每次整理後必跑檢查
 
 1. Markdown 文件數量與目錄分布。
-2. Active 文件是否都有 README 或索引入口。
+2. 每份 Active 文件是否都有從中央 Index 經領域 README／主題索引到達的完整路徑；QA 收據與 Archive 原件是否分別可由主題索引及 Archive README 找到。
 3. Broken relative links。
 4. Snapshot、Product Roadmap、6M Roadmap、版本成熟度、Roadmap Hub、Architecture 與 Index 的職責及連結是否一致；Hub 不複製狀態。
 5. 是否有明顯過期的「待開始 / 進行中」描述。
@@ -157,3 +160,4 @@
 ## 六、更新記錄
 
 - 2026-10-09：收斂本文件為現行權威分工、資料夾歸屬、生命週期與整理檢查規則；逐批歸檔敘述移至 Coverage History，原第 4／6 節快照見 [Archive 歷史記錄](../09_archive/DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md)及 [Coverage History Entry 109](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-109)。另明確保留與目標架構任務索引、驗收及回滾直接綁定的 `REFACTOR_REPORTS/`；一般一次性 QA 仍歸 `docs/06_qa/`。
+- 2026-10-09：明訂分層文件導航規則；中央索引連到領域 README／主題索引，每份 Active 文件仍須有完整可達路徑，QA 原件不得因缺少直接連結而逕行歸檔或刪除。

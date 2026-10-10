@@ -15,7 +15,7 @@
 | 目前狀態、本週優先事項、高風險區 | `docs/00_core/PROJECT_SNAPSHOT.md` | 開場與日常工作先看 Snapshot。 |
 | 重構完成後產品方向、投資問題、產品能力演進 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` | 定義 bounded advice、Portfolio、Exit、Evidence、Data、ML 與 pruning 產品 Gate；不保存工程 checklist。 |
 | 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` | 里程碑、交付物與驗收標準以 6M Roadmap 為準；Month 1–6 是相對順序，進度看 Snapshot。 |
-| 外部專案參考、資料源優先序、V1.5-V2.0 版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 作為 6M Roadmap / Version Roadmap companion；不取代 Vision 或目前狀態權威。 |
+| 外部專案參考、資料源優先序、V1.8–V2.0 歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 作為 6M Roadmap / Version Roadmap companion；不取代 Vision 或目前狀態權威。 |
 | V2.0 之後長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` | 只維護 V2.1–V4.0 maturity milestone；目前進度看 Snapshot，日期化狀態／工程交接看 `docs/09_archive/`；不取代 Product / 6M Roadmap、Vision。 |
 | Roadmap 入口與權威導覽 | `docs/00_core/DEVELOPMENT_ROADMAP.md` | Roadmap Hub 只連結權威文件，不複製 Next、狀態、風險或完整歷史。 |
 | 舊 Roadmap 項目處置與移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 每個 Legacy 項目有唯一處置；移交項目標示新版落點與驗收，舊月份標籤只供歷史追溯。 |
@@ -265,11 +265,11 @@
    - Snapshot 的近期工作能對應 6M Roadmap 中的 Gate 與依賴；未設定計畫起日時，不將相對月份推斷成目前月份。
    - Roadmap Hub 正確連到 Snapshot、Product Roadmap 與 6M Roadmap，不複製任何一份文件的 Next 或狀態。
    - `system_architecture.md` 的架構描述不落後於 Snapshot 的已完成能力。
-   - `DOCUMENTATION_INDEX.md` 包含新增、搬移或歸檔的 Markdown。
+   - 每份新增、搬移或歸檔的 Markdown 都有合適的領域入口，且可沿 `DOCUMENTATION_INDEX.md` → 領域 README／主題索引 → 文件的路徑到達；不要求把所有文件扁平列入中央 Index。
    - 若發現不一致，必須依主題權威文件修正，而不是一律回寫 Roadmap。
 
 3. **文件結構已更新**
-   - 新增/刪除/搬移 Markdown 後，`DOCUMENTATION_INDEX.md` 必須同步
+   - 新增/刪除/搬移 Markdown 後，同步受影響的領域 README／主題索引及上游導航路徑；若主要入口或權威邊界變更，再更新 `DOCUMENTATION_INDEX.md`。
    - 若文件分類或刪除規則改變，`DOCUMENTATION_STRUCTURE.md` 必須同步
 
 4. **相關使用指南已更新**
@@ -324,7 +324,8 @@
 
 ### Index ↔ Scoped Authority 一致性
 - [ ] Index 的進度描述不與 Snapshot、6M Roadmap 或 Architecture 衝突。
-- [ ] 文檔索引完整（所有新文檔已加入索引）
+- [ ] 中央 Index 連到各領域入口；每份 Active 文件可由對應 README／主題索引沿路到達，不以扁平列舉取代分類導航。
+- [ ] 新增、搬移及歸檔文件已加入適當的領域索引；QA 收據有主題入口，Archive 原件有 Archive README 與 Coverage History 記錄。
 
 ### 專項文檔 ↔ Scoped Authority 一致性
 - [ ] UI 功能描述與 Snapshot / UI docs 一致。
@@ -347,8 +348,8 @@
    - 當變更涉及高風險區時 → 必須更新
 
 2. **`docs/00_core/DOCUMENTATION_INDEX.md`**
-   - 當新增/刪除文檔時 → 必須更新索引
-   - 當文檔結構變更時 → 必須更新索引
+   - 當領域入口、Scoped Authority 或文件結構變更時 → 必須更新中央導航
+   - 單份領域文件新增／搬移時 → 更新所屬 README／主題索引，並確認中央 Index 至該入口的路徑；不把每份文件都平鋪進中央索引
    - 當進度描述過期時 → 必須依 Scoped Authority 更新
 
 3. **`docs/00_core/DOCUMENTATION_STRUCTURE.md`**
@@ -402,6 +403,8 @@
 ## 更新記錄
 
 - 2026-10-09：將日期化更新流水帳與逐批快速索引移入 [歷史快照](../09_archive/DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)，逐批來源、目的地與 SHA-256 仍由 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md) 維護；本次收斂依據與原區塊身分見 [Entry 111](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-111)。
+- 2026-10-09：將文件 DoD 改為分層可達性：中央 Index 維護權威與領域入口，領域 README／主題索引分類文件；新增、搬移與歸檔仍須在對應層更新，避免把完整文件集扁平塞進中央索引。
+- 2026-10-09：將 External Reference Blueprint 的歷史版本範圍校正為 V1.8–V2.0，與該文件及核心 README 一致。
 
 ## Coverage History
 

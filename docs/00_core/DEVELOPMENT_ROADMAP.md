@@ -7,6 +7,7 @@
 - 目前狀態、本週優先事項與風險：[PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 - 2026-10-09 產品補完 WIP checkpoint 與原暫停界線：[BALDR_COMPLETION_HANDOFF](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)；恢復後基線及初步結果：[BALDR_COMPLETION_RESUME](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。本 Hub 不重述狀態。
 - 產品方向與產品 Gate：[PRODUCT_ROADMAP_POST_REFACTOR](PRODUCT_ROADMAP_POST_REFACTOR.md)。
+- North Star、產品原則、Evidence 與成功標準：[system_vision_specification](../01_architecture/system_vision_specification.md)。
 - 六個月工程順序、里程碑與驗收：[ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)。
 - 長期成熟度：[VERSION_ROADMAP_V2_1_TO_V4_0](VERSION_ROADMAP_V2_1_TO_V4_0.md)。
 - 舊工作承接：[LEGACY_ROADMAP_CARRYOVER](LEGACY_ROADMAP_CARRYOVER.md)。

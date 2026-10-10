@@ -10,6 +10,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 |---|---|
 | 目前狀態與下一步 | [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) |
 | 路線與產品 Gate | [Roadmap Hub](DEVELOPMENT_ROADMAP.md)、[產品方向](PRODUCT_ROADMAP_POST_REFACTOR.md)、[6M 工程](ROADMAP_6M_ENGINEERING.md) |
+| North Star、原則與成功標準 | [System Vision](../01_architecture/system_vision_specification.md) |
 | 長期 maturity／外部參考／舊工作 | [V2.1–V4.0](VERSION_ROADMAP_V2_1_TO_V4_0.md)、[外部藍圖](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)、[Legacy Carryover](LEGACY_ROADMAP_CARRYOVER.md) |
 | 目前與未來架構 | [目前架構](../01_architecture/system_architecture.md)、[目標領域背景](../01_architecture/target_system_architecture.md)、[FINAL 目標實作設計](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
 | 安裝與操作 | [安裝](../07_guides/INSTALL_GUIDE.md)、[快速開始](../07_guides/QUICK_START.md)、[完整 Manual](../07_guides/APPLICATION_MANUAL.md) |

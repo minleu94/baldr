@@ -1024,3 +1024,9 @@ candidate attempt `output/qa/f12t28b_main_1010/run_attempt_95a9d668a7ae4874ae0e9
 最終 receipt 原子替換另遇 WinError 5，已發布 receipt 因而仍停在 running 階段；stderr 保存 primary failure 與 receipt_write_failed。root 曾於執行中讀取該 receipt，可能影響 Windows 分享／替換，未證明因果，且不能拿來解釋先發生的 COW 拒絕。後續避免讀 live receipt，保留本輪所有原件；要求 owner 唯讀查精確 H20 worker／service 角色路由，不放寬通用 guard。新 PID 收藏重開尚未到達，F12 Gate 未完成。
 
 Q5 focused 通過後另發現繼承的 controller 仍指向舊 P runner。直接跑舊 controller 無法驗證 Q5 雙樹重鏈，不能將 focused manifest 套入另一 schema。已授權全新 Q6 QA-only controller／manifest 精確接線供 root 審閱，再執行 single-warm；不修改正式 reader、原 sealed store 或效能門檻。
+
+### 2026-10-10 原生捲動根因與 COW 角色覆核
+
+root 執行純 Qt 診斷 `output/qa/h20_outer_reveal_geometry_probe_20261010.py`（不載入 Baldr／資料庫），exit 0：固定 editor `[18,204,548,193]`、outer viewport 高 378，內層捲軸取得焦點後 `ensureWidgetVisible(editor,0,0)` 不移動外層，editor 下緣 396 仍被裁切；依 content 座標呼叫完整元件下緣的 `ensureVisible` 後，外層移動 19，下緣 377 完整可見。此原生幾何證據支持 H 候選修正公開 reveal 方法，不代表完整 Main、錯誤／取消旅程通過。H 保留 G 全矩形守門及 F 真路徑 overlay，待封套後由 root 執行。
+
+T28b terminal 殘留暫存收據 SHA `dcd65d4562c8b3072449c029ad4f89da4826fbd34c9cfd971e4cf6ff3bafb7b9`；唯讀摘要保存於外層 actual01 的 `root_terminal_residual_audit.json`。root 與 owner 核對原碼：H20 的真 TaskWorker 清單讀取不在既有 Full N／price 的兩個 COW worker scope，因而錯落 UI upgrade call-chain 核驗。Main 全域關閉會等待受管 workers，但目前候選未分列 H20 native-thread 完成與控制項閒置，不能把兩個 COW workers 外推成全部背景工作。已授權獨立 T29 QA sibling 補精確 H20 pass-through／ledger／退休證明與負例，保留 Full N／price 兩者的原 SQLite 資格、58 正式 pins 與失敗原件；未執行、未修改正式來源。

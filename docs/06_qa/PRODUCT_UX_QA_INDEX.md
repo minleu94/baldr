@@ -46,6 +46,10 @@
 - **F03 KDJ 條件**：[full-population 整合計畫](BALDR_F03_FULL_POPULATION_INTEGRATION_PLAN_20261009.md) → [KDJ query contract](BALDR_F03_KDJ_QUERY_CONTRACT_20261009.md) → [MA／KDJ／Volatility group v2](BALDR_F03_MA_KDJ_VOLATILITY_GROUP_V2_20261009.md) → [多 parent 共同發行邊界計畫](BALDR_F03_MULTI_PARENT_GROUP_PUBLICATION_PLAN_20261009.md) → [multi-parent callback review](BALDR_F03_MULTI_PARENT_CALLBACK_REVIEW_20261009.md) → [prepare root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。截至已提交 commit `8945df89`，formal reader／group-session bounded publication slice 有 17 個節點取得通過證據（首輪 15 passed；僅重跑兩個 QA-overlay 修正節點）；固定 258/257/1 來源的窄窗 View G8 與收藏 identity C 亦各有 bounded 通過證據。這些不等於全域 query、正常 Main 或新程序收藏閉環驗收；本索引不納入後續未提交 QA 追加。
 - **F06 波動條件**：[來源證據與方法缺口計畫](BALDR_F06_VOLATILITY_EVIDENCE_PLAN_20261009.md) → [composite query contract](BALDR_F06_COMPOSITE_VOLATILITY_QUERY_CONTRACT_20261009.md) → [Decimal 方法提案](BALDR_F06_DECIMAL_VOLATILITY_METHOD_PROPOSAL_20261009.md) → [collector contract](BALDR_F06_VOLATILITY_COLLECTOR_CONTRACT_20261009.md) → [presenter bounded integration evidence](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。`8945df89` 提交 presenter 與 reader-issued observed／unknown 測試，2 項 focused tests 及記錄的強制檢查通過；目前無正式 UI 呼叫端、無 full-N reader-issued 結果，方法提案仍不是已採納產品規則。
 
+### 2026-10-10 待真人實測
+
+- **複合研究與收藏重開**：[真人驗收步驟](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)。原碼自動化旅程已通過，但真人結果尚未取得；此收據不代表完整 UI、EXE 或投資驗收。
+
 ## 其他常用路徑
 
 - **投資組合與 Paper**：[三帳摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)、[個人 Paper producers](BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md)、[個人 Paper ledgers](BALDR_PERSONAL_PAPER_LEDGERS_20261006.md)。

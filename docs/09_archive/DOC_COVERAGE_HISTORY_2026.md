@@ -2277,3 +2277,17 @@ QA 增量複核發現 `V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 保存 DEV-66 
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄來源尾段 bytes／SHA、搬移範圍與舊連結保留方式。 |
 
 目前確認新 Archive 入口與每個 `manual-tail-001` 至 `manual-tail-104` anchor 均存在；所有原 Manual 標題仍保留於舊路徑。針對本次移動，另核對 48 個 repo 內 Manual 錨點引用、21 個唯一片段，未發現缺失目的地。未刪除歷史原文、未修改原始資料；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。P0 決議 artifact／registry 差異仍待獨立調和。
+
+<a id="coverage-entry-198"></a>
+## 2026-10-10 補入待真人驗收與 Superpowers 歷史提案導覽
+
+唯讀複核發現 10/10 複合研究收據已明確標為待使用者實測，但尚未從 QA 的起始入口與產品／UX 索引直達；另有幾份保存舊授權或排程提案的 Superpowers 原件未列在主題表。已補索引入口，保留現況回到 scoped authority 判讀。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/06_qa/README.md` | 將複合研究真人驗收列為第 6 個近期入口，明示自動化已過但真人結果未取得。 |
+| `docs/06_qa/PRODUCT_UX_QA_INDEX.md` | 新增 10/10 待真人實測小節；限定為該合成來源／收藏重開場景，不推論完整 UI、EXE 或投資驗收。 |
+| `docs/superpowers/README.md` | 增列 Wave 1／2A 授權增補、Terra V0、V3 automation 與 7/11 排程提案，導回 Snapshot、6M Roadmap、近期 QA。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 登錄本輪新增入口與讀取深度；QA／Superpowers 大量原文仍未逐篇全文核讀。 |
+
+本輪全文讀取 QA README 與 P0 Source Acceptance Register；Product/UX 索引及 scoped authority 僅讀相關段落。P0 §7 的 MOPS limited 決議與 §14 的 8/28 machine audit limited=0 差異仍待 raw audit artifact／registry 調和，保留兩份原始紀錄及現有界線。Superpowers plan/spec 原件及其 manifest 雜湊未修改；僅補目錄入口。確認新增連結目標存在，對五個變更檔做範圍限定的 diff whitespace 檢查；未作全 repo link／anchor scan。未刪除／搬移文件、未改原始資料、未跑測試、未刷新 Graphify；受保護 F03 文件未讀、未搜尋、未 diff。

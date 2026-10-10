@@ -331,3 +331,5 @@
 **2026-10-10 第十四增量：** Coverage History Entry 196 更新 Index 的日期與 M2 QA 時點說明；將 system architecture §16 的 10/10 複合研究段導回 §§3、8 與 Snapshot；修正 Dispatch 中已過時的 Gemini 派送流程，並替 R008 歷史 prompt／packet 與紅隊審查加上直開界線。另在 P0 register 保留並標示 DEV-66 與 8/28 machine audit 的未調和數字；quick guides 的 Promote／資料來源文字有窄幅校正。未刪除或搬移文件、未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-10 第十五增量：** Coverage History Entry 197 將 Manual 第 14 節後 1,358 行日期化開發／候選快照移入 Archive，原文 bytes／SHA 已記錄；Manual 保留 104 個同名標題導引，並更新指南與 Archive 導覽。角色盤點路徑增為 1,479；也修正角色表合計欄，使 QA／證據與歷史／轉址的總數符合逐目錄互斥分類。未逐項重驗歷史內容，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+**2026-10-10 第十六增量：** Coverage History Entry 198 為 10/10 複合研究待真人驗收收據補上 QA README 與 Product/UX 索引入口；並在 Superpowers 主題表補列 Wave 1／2A、Terra V0 與舊自動化提案，原 plan/spec 及其 manifest 雜湊未改。P0 Register 的 DEV-66 limited 決議與 8/28 machine audit limited=0 差異仍待底層 registry 調和。QA／Archive 與 Architecture 大量證據原文仍未逐篇全文閱讀；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。

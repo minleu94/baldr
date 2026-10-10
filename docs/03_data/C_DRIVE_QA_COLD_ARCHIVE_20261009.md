@@ -1,8 +1,8 @@
 # C 槽歷史 QA 與研究副本冷封存
 
-使用者於 2026-10-09 授權使用 E 槽封存，並明確同意六批已完整核驗的 C 槽原副本移除後建立 Junction；接受拒絕 reparse point 的嚴格讀取器需要先還原再重跑。補完計畫維持暫停，本輪只處理儲存搬移。
+本文件是 2026-10-09 第一批冷封存的歷史操作摘要，只記錄該批六個指定根目錄。使用者授權使用 E 槽封存，並明確同意逐根核驗後移除 C 槽原副本、建立 Junction；接受拒絕 reparse point 的嚴格讀取器需要先還原再重跑。產品補完計畫「維持暫停」只描述第一批操作當時，不是目前產品狀態；目前進度見[專案快照](../00_core/PROJECT_SNAPSHOT.md)與[恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。
 
-封存根：`E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009`。既有 `cleanup_20260929_selective_v1` 是舊資料唯一恢復來源，保持原樣。正式 D 槽 FA_DATA、私人設定、排程、近期候選與 dist 未搬移。
+封存根：`E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009`。既有 `cleanup_20260929_selective_v1` 是舊資料唯一恢復來源，保持原樣。正式 D 槽 FA_DATA、私人設定與排程未納入第一批；「近期候選與 dist 未搬移」也只描述第一批範圍，不能代表後續封存後的整體位置。第二批範圍與兩批終態見[第二批清單](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)及[終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)。
 
 ## 回滾清單
 
@@ -17,11 +17,11 @@
 
 ## 驗證及執行紀錄
 
-六批共 158,977,761,695 bytes（約 148.06 GiB），12,862 個檔案，已逐檔比對 C／E SHA-256，複製回傳碼均為 1（成功複製），樹狀項目數一致。`complete.json` 的狀態為 `copies_verified_sources_retained`，只證明複製與核驗，不代表已釋放 C 槽。
+本批六個根共 158,977,761,695 bytes（約 148.06 GiB），12,862 個檔案，已逐檔比對 C／E SHA-256，複製回傳碼均為 1（成功複製），樹狀項目數一致。`complete.json` 的狀態為 `copies_verified_sources_retained`，只證明複製與核驗，不代表已釋放 C 槽。
 
-最終釋放步驟再次比對來源／封存 SHA-256、精確路徑、檔案數、樹狀項目與無既存 reparse point，通過後才移除來源並建立 Junction。各批實際釋放結果以 `*.released.json` 為準；全部完成以 `released_complete.json` 為準。未產生最終收據前，不把全數 148.06 GiB 說成已釋放。
+最終釋放步驟再次比對來源／封存 SHA-256、精確路徑、檔案數、樹狀項目與無既存 reparse point，通過後才移除來源並建立 Junction。逐根實際釋放結果以 `*.released.json` 為準；全部完成以 `released_complete.json` 為準。未產生最終收據前，不把全數 148.06 GiB 說成已釋放。
 
-最終執行 exit 0，`released_complete.json` status=complete，六批均為 archived_verified_junction_installed。Root 另核對六個 Junction 的精確目標，並各取 manifest 一個檔案從原 C 路徑讀回，SHA-256 均相符。完整內容已在複製及最後釋放前各做全檔雜湊比對；抽樣只驗連結讀回，不代替全檔核驗。
+最終執行 exit 0，`released_complete.json` status=complete，六個根均為 archived_verified_junction_installed。Root 另核對六個 Junction 的精確目標，並各取 manifest 一個檔案從原 C 路徑讀回，SHA-256 均相符。完整內容已在複製及最後釋放前各做全檔雜湊比對；抽樣只驗連結讀回，不代替全檔核驗。
 
 容量口徑：搬移 logical bytes 為 148.06 GiB，最後釋放程序期間 C 可用空間從 121,755,623,424 增至 219,108,855,808 bytes，淨增加約 90.67 GiB；這是磁碟可用空間觀測差，不把 logical bytes 當 allocated bytes，也不假定期間沒有其他寫入。postflight C 剩約 204.06 GiB，E 剩約 205.86 GiB。先前進度訊息的各批 GiB 指內容量，不能作為實際釋放容量。
 

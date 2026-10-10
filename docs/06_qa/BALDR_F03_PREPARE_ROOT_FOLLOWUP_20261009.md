@@ -1066,3 +1066,21 @@ Q7僅保留primary與secondary cleanup診斷，root審閱程式差異又發現ev
 私人根 `C:/t/p01cur_rd_eece85b21b` 的 child_result 與 supervisor_result 已發布終態。原始 failure context 明確定位 primary：runner `_write_private_file_once` 的 `os.open` 成功後，`os.fdopen(descriptor,"wb")` 觸發 integer FD 的 open audit，遭 controller 原有寫入路徑守門拒絕，包裝為 `private_receipt_write_failed`。程式在 fdopen 拒絕時缺少原 descriptor 的 finally close；secondary 清理同一 receipt 檔遇 WinError32，不能改寫成 ACL 或長路徑問題。失敗 scratch 原件保留，不另刪除。完整負例與30組AB尚未到達，千檔效能資格維持未完成。
 
 三位既有 Luna max 分工：t14_guard_review 獨立核對 Q8 並設計最小 Q9 私有檔案寫入修正；f06_evidence 製作 T30 純 scalar 診斷，避免已刪 Qt wrapper 的 repr 蓋住收藏 worker drain 原因；resume_perf 製作 H20 L class observer 與純資料退出階段紀錄。新候選均先凍結完整差異與 pins，由 root 審查後才執行，不放寬守門或用強制退出掩蓋原生崩潰。正式程式、原始資料、排程、EXE及其他 writer 文件未修改。
+
+### 2026-10-10 H20 L actual01：功能通過，退出問題縮小範圍
+
+root 全文審查 K→L diff（SHA `7fccdbd33489987bb854d1daaae95ef595d05288d4396496b28eba053854e897`），L manifest `c4929d23d724b2796ce96c19027c44957072ce38576f7394656c6cd3a9b72440`。L 只將摘要 observer 改為弱引用身分核對的類別方法，避免 teardown 寫回已刪 QObject instance；其餘 K 真 Main 與四次閱讀／複製、18幾何守門、錯誤原文、名單選取、取消與 native worker 收尾不變。runner 預先開啟私人純量 JSONL、短寫進度檢查與 finally close，不呼叫額外 Qt quit/delete 或強制退出。
+
+root wrapper `output/qa/run_h20_l_true_origin_root_attempt01.py` SHA `9f05306fb377879e0e761bacd43f76785e3ea424ac25c992404cb02f7d94c9ca`，145來源／封套／歷史 pins與AST核驗後，以全新 `C:/t/h20l01` 執行一次。收據 `output/qa/h20_l_true_origin_root_attempt01/receipt.json`：pytest **1 passed、1 warning、5.17秒**，外層12.047秒，PID33540、未逾時、pins unchanged、callback markers空；最終仍 **0xC0000005**，不通過整體退出驗收。
+
+退出標記 SHA `cfd6eb268f92ab02b91dec7b19c7377167443ebd6397e21daccaed2cb1c91247` 保存 runner opened、pytest.main returned(code0)、python_atexit 三事件，證明測試返回且已到達退出回呼；尚不能證明 native crash 的具體根因。class observer 更換未解決崩潰。原 L 候選與 actual01 凍結，交 owner 唯讀比對 Qt／Main fixture、clipboard及 interpreter finalization 持有模式；不以重跑或 os._exit 掩蓋問題，也不新增真人／EXE通過宣稱。
+
+### 2026-10-10 T30 真逾時原因與 Q9 focused 通過
+
+T30 manifest `68b277b63487f605609a28b546c416225d9ec3500e0a61190d0cf70788280d75`，T29c→T30 diff `98e6a4744529775f8a50f3cfdd0cbfa3213a136f28ba6fc93f911c20abfb3e9c` 已全文審閱；成功 predicate 與 T29c 相同，診斷不參與成功 gate。root wrapper SHA `589047a022a08dfa9b5382711d4a1ae2c86ca24cadabedefde160d404610fdca` 以新 `C:/t/t30q01` 執行23節點。收據 `output/qa/f12t30_main_1010/root_attempts/20261010T134013Z_39424_84fd56e7/receipt.json`：22 passed、1 failed、39 deselected、1 subtest、57.39秒、exit1、未逾時，58來源與候選不變。
+
+新純量診斷 `C:/t/t30q01/temporary/f12t30_cow_drain_diagnostics/main_drain_timeout.json` 明確顯示兩個 COW workers 各5RO+1RW、BEGIN IMMEDIATE／ROLLBACK、run returned／native finished、控制項閒置與 registry 空均成立，沒有 role rejection。唯一未通過條件為 H20 proof：精確 pass-through 已授權，但 service load 回報 `personal_writer_disabled: sqlite_unavailable`，收到1次 error、沒有 result；thread本身已收尾。這是讀取結果失敗，不能以增加等待時間或把空 registry 當成功處理。交 owner 唯讀追 service activation 與 SQLite role 的具體鏈，尚未放寬任何 guard 或套用正式來源。
+
+Q9 runtime manifest `26a896f30d494276078ceacb261694f7ac8761a5000ed56be8d6782564379167`，review `86f7450c5b2ef1096cfa65a2ce7eff9a91527ad6009ad9a64c0cce9843ec2bc7`，完整差異 `2a2144d32a4f502f1105b70ed62aa72efb5668b1f57cb3d2bf85fac213f9580c`。root核writer、原guard不變、focused原碼与封套後執行：attempt01僅因root啟動器把候選路徑傳給unittest當作名稱而失敗，未跑到5項測試。全新attempt02修正argv，收據 `output/qa/p01_q9_focused_root_attempt02/receipt.json`：**5 tests passed、0.163秒、exit0**，外層0.312秒、未逾時、4666來源與候選不變。短寫、零／負值拒絕、write primary／close secondary、open拒絕無寫無close與原 integer FD audit拒絕皆驗到。wrapper SHA `a7474b13ec0824802aa7897d15cd1a226aa41f66fa98c6b9a22da313ae98c68c`。
+
+Q9 single-warm actual01 隨後在parent預檢exit1、0.094秒、child_launch_count=0：`controller_script_pin_mismatch`。runtime manifest頂層 `controller_sha256` 遺留Q8，雖artifacts組已更新。root未在靜態審查抓到此重複pin，原守門正確攔截；沒有到達來源捕獲、oracle或效能執行。Q9／兩次focused／single-warm原件凍結，授權最小Q10只修正新controller的所有有效指紋接線與新QA目錄，runner／focused bytes不變，待全文審查。五項focused通過仍不代表千檔效能資格。

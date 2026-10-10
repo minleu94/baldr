@@ -807,3 +807,11 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 詳細步驟見 [複合研究真人驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：非全螢幕可達性、完整明細捲動、返回與跨頁比較、收藏即時重開、關閉後重開。使用合成1000–1256，沒有2382/H20；不把此試用外推成真推薦、收益或完整產品驗收。
 - 本機啟動檔 `output/qa/composite_human_20261010/start_composite_human.cmd` 與 ASCII PS5.1 腳本六正式SHA核對；`-CheckOnly` exit0且不啟動UI。固定private-trial沿用重啟收藏，不讀正式DATA_ROOT；原碼實際視窗待真人確認，不稱新EXE。
 - 三個 Luna max 工作平行：t14_guard_review補完整T19 callchains；f06_evidence補P01 I可執行負例與配對量測候選；resume_perf只讀核真人launcher及控件對照。root負責審閱、runtime及正式整合，真人回覆不阻擋獨立後端工作。
+
+### 2026-10-10 T19／T20 聚焦驗證與真人啟動器覆核
+
+- T19 三項聚焦終態：2 passed／6 subtests passed／1 failed／51 deselected，5.59 秒；58 正式來源及 8 候選檔起訖一致。收據 `output/qa/f12_t19_focused_root_attempt01/receipt.json`。阻擋已定位到 activate_watchlist_sqlite 內再次呼叫 _preview 的精確鏈，不能算完整 COW 通過。
+- T20 只在 QA sibling 加三條 activation 初始 preview 的 target-read 鏈及一條 writer-exclusion 鏈；manifest SHA `30ac1bc4089a0296a596b6c6726a4064fd3aa12caec7022c0d62bc51d2803beb`。三項聚焦超過 90 秒，wrapper exit 1、原 stdout/stderr 為空；沒有可用通過結果。補存 `output/qa/f12_t20_focused_root_attempt01/timeout_receipt.json`，66 pins 核對不變，並確認沒有該次測試殘留程序。
+- 只讀審查發現 focused modal poll 在成功之後不再輪詢；若 postload 開啟「錯誤」modal，可能卡在巢狀事件迴圈。這是待驗假設，尚未確認根因。T21 僅補測試診斷與有限等待，保留成功斷言、精確守門及正式來源；聚焦成功前不執行完整 Main。
+- 真人啟動器已完成獨立靜態覆核：`output/qa/composite_human_20261010/review_receipt_20261010.md`，SHA `e2f1ed56e574cce369238495bc0d6446f34730c4b209ffabb8954d0ad75fe75a`。來源碼入口、六正式 SHA、固定合成 manifest、私人設定及收藏保留範圍均有記錄；CheckOnly 仍會重設私人設定，不能當作完全不寫檔。尚未啟動 UI 或取得真人結果，不能外推成新 EXE 驗收。
+- 其他文件 agent 的 Manual／索引／封存整理變更維持原狀；本輪只補具名 QA 記錄。P01 可執行負例與配對效能候選持續平行準備，300ms Gate 未關閉。

@@ -2764,11 +2764,24 @@ class RecommendationView(QWidget):
                 view.on_first_open()
 
     def ensure_result_widget_visible(self, widget: QWidget) -> bool:
-        """讓結果頁內指定狀態元件進入外層捲動區的可視範圍。"""
+        """顯示結果頁元件；長元件另確保其下緣進入外層可視範圍。"""
 
         if not isinstance(widget, QWidget) or not self.result_source_tabs.isAncestorOf(widget):
             return False
+        scroll_content = self.result_scroll.widget()
+        if scroll_content is None or not scroll_content.isAncestorOf(widget):
+            return False
         self.result_scroll.ensureWidgetVisible(widget, 0, 0)
+        widget_bottom_left = widget.mapTo(
+            scroll_content,
+            widget.rect().bottomLeft(),
+        )
+        self.result_scroll.ensureVisible(
+            widget_bottom_left.x(),
+            widget_bottom_left.y(),
+            0,
+            2,
+        )
         return True
 
     def research_snapshot_stock_codes(self) -> tuple[str, ...]:

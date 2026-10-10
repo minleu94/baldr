@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QMessageBox,
     QLabel,
+    QSizePolicy,
     QWidget,
     QPushButton,
     QVBoxLayout,
@@ -991,6 +992,10 @@ class MainWindow(QMainWindow):
         refresh.setToolTip("依原 manifest 與保存 pins 重新核驗完整名單；讀取期間不會啟動第二次讀取。")
         loading_label = QLabel("尚未開始讀取保存的 H20 名單。", panel)
         loading_label.setWordWrap(True)
+        loading_policy = loading_label.sizePolicy()
+        loading_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        loading_label.setSizePolicy(loading_policy)
+        loading_label.setMinimumWidth(0)
         cancel_read = QPushButton("取消名單讀取", panel)
         cancel_read.setEnabled(False)
         widget = PersonalH20ResearchWidget(panel)
@@ -1198,6 +1203,7 @@ class MainWindow(QMainWindow):
             if callable(reveal_status):
                 reveal_status()
             return
+        widget.clear_error_summary_text()
         self._personal_h20_cohort_generation += 1
         generation = self._personal_h20_cohort_generation
         product_generation = getattr(self, "_personal_h20_generation", 0)
@@ -1371,13 +1377,15 @@ class MainWindow(QMainWindow):
                         "原保存名單核驗失敗，背景工作正在安全收尾；完整原因見下方提示。"
                     )
                 widget.setEnabled(True)
-                detail = str(message)[:300]
-                notify_recheck_failure(detail)
+                detail = str(message)
+                notify_recheck_failure(detail[:300])
                 if selection is None:
-                    widget.summary_label.setText("本次完整核驗失敗；上次名單若存在只代表上次完成時的結果：" + detail)
+                    summary_prefix = "本次完整核驗失敗；上次名單若存在只代表上次完成時的結果："
+                    widget.set_error_summary_text(summary_prefix + detail, summary_prefix)
                     self.statusBar().showMessage("原保存模型名單無法核驗；不以其他日期或QA樣本代替。")
                 else:
-                    widget.summary_label.setText("原保存名單重新核驗失敗；已保留原清單與選取：" + detail)
+                    summary_prefix = "原保存名單重新核驗失敗；已保留原清單與選取："
+                    widget.set_error_summary_text(summary_prefix + detail, summary_prefix)
                     self.statusBar().showMessage("原保存模型名單重新核驗失敗；保留原清單與選取。")
         worker.finished.connect(apply)
         worker.error.connect(failed)

@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QTextOption
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QLabel, QPlainTextEdit, QPushButton,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QSizePolicy, QWidget,
 )
 
 from app_module.recommendation.personal_h20_research_cohort import (
@@ -25,8 +25,31 @@ class PersonalH20ResearchWidget(QWidget):
         self._bookmark_busy = False
         self.summary_label = QLabel("請讀取明確指定的原保存 H20 manifest。")
         self.summary_label.setWordWrap(True)
-        self.scope_label = QLabel("尚無已核保存母體")
-        self.scope_label.setWordWrap(True)
+        self.error_detail_heading = QLabel("本次核驗錯誤明細（完整文字，可選取複製）")
+        self.error_detail_heading.setWordWrap(True)
+        self.error_detail_heading.setVisible(False)
+        self.error_detail = QPlainTextEdit()
+        self.error_detail.setObjectName("personalH20ErrorDetail")
+        self.error_detail.setAccessibleName("H20 保存名單核驗錯誤完整內容，可選取複製")
+        self.error_detail.setReadOnly(True)
+        self.error_detail.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.error_detail.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.error_detail.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.error_detail.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.error_detail.setMinimumHeight(96)
+        self.error_detail.setVisible(False)
+        self.scope_heading = QLabel("來源身份（完整內容，可選取複製）")
+        self.scope_heading.setWordWrap(True)
+        self.scope_text = QPlainTextEdit("尚無已核保存母體")
+        self.scope_text.setObjectName("personalH20ScopeIdentity")
+        self.scope_text.setAccessibleName("來源身份，完整原文，可選取複製")
+        self.scope_heading.setBuddy(self.scope_text)
+        self.scope_text.setReadOnly(True)
+        self.scope_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.scope_text.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.scope_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scope_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scope_text.setMinimumHeight(96)
         self.limit_label = QLabel("H20 gross 是未扣成本的20交易日預測，不是勝率或機率。\n"
             "效果尚未成熟；成本後有效性未證明。高預測不代表值得買，不授自動交易。")
         self.limit_label.setWordWrap(True)
@@ -50,20 +73,73 @@ class PersonalH20ResearchWidget(QWidget):
         self.bookmark_button.setEnabled(False)
         self.bookmark_status_label = QLabel("收藏會保存此版本的來源身份；不保存交易建議或重新計算預測。")
         self.bookmark_status_label.setWordWrap(True)
+        for label in (
+            self.summary_label,
+            self.error_detail_heading,
+            self.scope_heading,
+            self.limit_label,
+            self.bookmark_status_label,
+        ):
+            label_policy = label.sizePolicy()
+            label_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+            label.setSizePolicy(label_policy)
+            label.setMinimumWidth(0)
+        error_detail_policy = self.error_detail.sizePolicy()
+        error_detail_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.error_detail.setSizePolicy(error_detail_policy)
+        self.error_detail.setMinimumWidth(0)
+        scope_policy = self.scope_text.sizePolicy()
+        scope_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.scope_text.setSizePolicy(scope_policy)
+        self.scope_text.setMinimumWidth(0)
+        self.table.setMinimumWidth(0)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        table_policy = self.table.sizePolicy()
+        table_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.table.setSizePolicy(table_policy)
+        self.diagnostic_text.setMinimumWidth(0)
+        diagnostic_policy = self.diagnostic_text.sizePolicy()
+        diagnostic_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.diagnostic_text.setSizePolicy(diagnostic_policy)
         layout = QVBoxLayout(self)
-        for widget in (self.summary_label, self.scope_label, self.limit_label, self.sort_combo,
+        for widget in (self.summary_label, self.error_detail_heading, self.error_detail,
+                       self.scope_heading, self.scope_text, self.limit_label, self.sort_combo,
                        self.table, self.diagnostic_text, self.research_button, self.bookmark_button,
                        self.bookmark_status_label):
             layout.addWidget(widget)
+        widget_policy = self.sizePolicy()
+        widget_policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+        self.setSizePolicy(widget_policy)
+        self.setMinimumWidth(0)
         self.sort_combo.currentIndexChanged.connect(self._render)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.itemDoubleClicked.connect(self._request_item)
         self.research_button.clicked.connect(self._request_current)
         self.bookmark_button.clicked.connect(self._request_bookmark)
 
+    def clear_error_summary_text(self) -> None:
+        """清除舊錯誤並隱藏明細，避免一般狀態留下空白區域。"""
+
+        self.error_detail.clear()
+        self.error_detail_heading.setVisible(False)
+        self.error_detail.setVisible(False)
+
+    def set_error_summary_text(self, full_text: str, short_text: str) -> None:
+        """保留原完整摘要文字，分開呈現短狀態與可複製錯誤明細。"""
+
+        if type(full_text) is not str or type(short_text) is not str or not full_text.startswith(short_text):
+            raise ValueError("personal_h20_error_summary_prefix_invalid")
+        detail = full_text[len(short_text):]
+        self.summary_label.setText(short_text)
+        self.error_detail.setPlainText(detail)
+        visible = bool(detail)
+        self.error_detail_heading.setVisible(visible)
+        self.error_detail.setVisible(visible)
+
     def set_cohort(self, cohort: PersonalH20ResearchCohort) -> None:
         if self._closing:
             return
+        self.clear_error_summary_text()
         # 本 widget 無 background reader；中央須先核其 worker generation，再送此同步 API。
         if (not isinstance(cohort, PersonalH20ResearchCohort)
                 or not 1 <= len(cohort.symbols) <= 50
@@ -75,7 +151,7 @@ class PersonalH20ResearchWidget(QWidget):
         self._cohort = cohort
         self.summary_label.setText(f"已保存 H20 研究母體：{len(cohort.symbols)} 股｜決策日 {cohort.decision_date}\n"
             "排序僅涵蓋此原 manifest 成員；缺件保留未知，不代表全市場。")
-        self.scope_label.setText(f"模型 {cohort.candidate_id}｜cycle {cohort.cycle_id}\n"
+        self.scope_text.setPlainText(f"模型 {cohort.candidate_id}｜cycle {cohort.cycle_id}\n"
             f"contract {cohort.contract_hash}\nmanifest {cohort.manifest_path}\nraw pin {cohort.manifest_sha256}")
         self._render()
 

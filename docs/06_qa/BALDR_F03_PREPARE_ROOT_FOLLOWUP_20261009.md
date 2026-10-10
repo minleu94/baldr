@@ -8,8 +8,8 @@
 
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
-| F03 完整母體共同發行 | C13nodes已有原生通過。D/E正常opener已越過257完整母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持。E唯一failed是QA期待錯誤碼少reader公開前綴，實際conditions已正確拒絕。 | F03 F只授static literal修正與完整error-code盤點；後續duplicate／decoder／poison尚未執行。正式issuer/F17整合、composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
-| H20 原 source-port 接線 | P8原生2terminal／8092bytes、14config／2044bytes、1privateSQLite／0sourceSQLite已越過，source/fixture起訖同且cleanup完成，freshmemorygate通過。唯一首紅為QA從沒有PIT欄位的top-levelbinding取值；原feature rows明確false。 | P9只授static最小schema修正：逐row核原PITfalse，日期/rowsha/fingerprint不變，原封套保留。E查詢node正在實測，P9不並行。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
+| F03 完整母體共同發行 | C13nodes已有原生通過。D/E正常opener已越過257完整母體、兩parent、單次讀取、三路同row、frozen值及清ledger後anchor保持。F 的完整差異、四項公開錯誤碼及 27 pins 已經 root 審查。 | 已授權 F 凍結 launcher 單次正常 node 實測，啟動前須通過新鮮記憶體及來源檢查；尚無終態。正式issuer/F17整合、composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
+| H20 原 source-port 接線 | P8原生2terminal／8092bytes、14config／2044bytes、1privateSQLite／0sourceSQLite已越過，source/fixture起訖同且cleanup完成，freshmemorygate通過。唯一首紅為QA從沒有PIT欄位的top-levelbinding取值；原feature rows明確false。 | P9只授static最小schema修正：逐row核原PITfalse，日期/rowsha/fingerprint不變，原封套保留。P9不與 F 查詢實測並行。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
 | F12 收益與跨程序收藏 | E focused22 passed／8subtests，E Main被QA guard拒private reader；13-root獨立核對相同但native無after。F全diff已reviewed且58pins一致，靜態找到Path型別與helper caller方向必拒錯誤。 | G只授static最小修訂：修兩項QA接線、新啟動前pins／memory gate、首紅停後續及失敗source-after收據；F不跑不覆寫。兩階段真SQLite／Main／新PID收藏仍待驗。 |
 | P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
 

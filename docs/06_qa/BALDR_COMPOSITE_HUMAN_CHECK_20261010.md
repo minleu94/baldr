@@ -1,10 +1,10 @@
 # 複合研究真人驗收（待使用者實測）
 
-本次只驗 `8c7fd469` 已接入的研究畫面與收藏操作。原碼自動化七項旅程已通過，但真人結果尚未取得；不能把本文件視為已驗收。沒有新 EXE。本機啟動檔與私人測試狀態在 ignored output，不提交程式封裝或資料。
+本次以 `9d5e8cd4` 原碼啟動，驗既有 `8c7fd469` 已接入的複合研究畫面與收藏操作；目前程式亦包含 `65d5f515` H20 閱讀修正，但本合成來源不驗 H20。原碼自動化七項旅程已通過，但真人結果尚未取得；不能把本文件視為已驗收。沒有新 EXE。本機啟動檔與私人測試狀態在 ignored output，不提交程式封裝或資料。
 
 ## 啟動
 
-雙擊 `C:\Projects\PythonProjects\technical_analysis\output\qa\composite_human_20261010\start_composite_human.cmd`。Windows PowerShell 5.1 `-CheckOnly` 已 exit 0，未啟動 UI；啟動前核對六份正式接線 SHA，變更時拒絕啟動。原碼啟動的實際視窗仍待真人確認。
+雙擊 `C:\Projects\PythonProjects\technical_analysis\output\qa\composite_human_20261010\start_composite_human.cmd`。啟動前核對七份正式接線 SHA（含目前 Main、RecommendationView 與 H20 widget）；Windows PowerShell 5.1 `-CheckOnly` 已 exit0，未啟動 UI，變更時拒絕啟動。原碼啟動的實際視窗仍待真人確認。
 
 使用既有合成保存來源，測試代碼為 1000–1256，沒有 H20／2382，也不產生推薦或收益資格。私人試用狀態保存於同目錄 `private-trial`；關閉後再點同一啟動檔才能驗重啟收藏。正式 D 槽資料、原私人清單及排程不作本次操作目標。
 
@@ -30,3 +30,5 @@
 月營收私人 COW 全旅程、H20 原來源首次載入、千檔 300ms 門檻、真實推薦理由／排名因素及新 EXE 尚不由本次合成來源驗收。這些項目保持原產品補完範圍，由後續具名測試與可重現版本承接，不因本次人驗而關閉。
 
 程式操作 SSOT 見 [Manual §6.7](../07_guides/APPLICATION_MANUAL.md#67-官方市場與技術條件研究)；工程證據見 [F03 follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。
+
+2026-10-10 更新：舊六檔 apply receipt 保留歷史原件；啟動檔改核具名 `source_pins_9d5e8cd4.json`，不以舊 pin 拒絕已提交的新 UI。仍沿用私人 `private-trial` 與同一合成來源，沒有原 2382／H20、正式資料或新 EXE 資格。

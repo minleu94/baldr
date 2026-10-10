@@ -981,3 +981,12 @@ root 新 wrapper `output/qa/run_h20_f_true_origin_root_attempt01.py` 採私人 `
 root 完整審閱 T28a→T28b diff，固定 review manifest `f04f39137bb48851b2e79efe5d58f0c5e2c77d221cec3697f632f32a04c782fc` 後執行 22 節點，私人根 `C:/t/t28b01`。收據 `output/qa/f12t28b_main_1010/root_attempts/20261010T123208Z_32056_b26873bb/receipt.json`：exit0、未 timeout、22 passed、39 deselected、1 subtest passed、6.31 秒，58 個正式來源 pins unchanged。完整 stdout/stderr 已核對注入 constructor failure 屬預期負例，未見 Traceback、Python override、ignored exception、QThread destroyed 或 isinstance TypeError 標記。
 
 這只證明具名 focused scope；完整 Main、新 PID、COW、營收讀取、來源還原與真人流程仍待驗。已要求 owner 準備可審核的真 Main 隔離 wrapper，禁止自行執行。正式檔與原始資料未修改。
+
+
+### 2026-10-10 Q3 focused actual01 與 H20 下一步補記
+
+root 已完整閱讀 Q2→Q3 diff（65148 bytes，SHA `32e1417a5739e92f8a66f5d6f8efad73c26adf1d7bc23b24713af585b613d8a6`），要求 private bytes 讀取改用 pinned bounded `_read_private_file` 後，使用 manifest `f5f957fdb93eefc1123a66c14d3b1f11fd0bec44a93063de283ec3f30a48bc7c` 執行合成 focused。root wrapper `output/qa/run_p01_q3_focused_root_attempt01.py`、私人根 `C:/t/p01q3f01`；SQLite 與網路連線禁止、120秒期限。收據 `output/qa/p01_q3_focused_root_attempt01/receipt.json`：exit1、未timeout、3 passed/1 failure/1 error，unittest 0.539秒；4666 個固定來源完整 inventory 與候選 pins 前後不變。stderr SHA `e9a529468ffec5c569525f2ad3de2eec681552b0eb5252901e9d4c33a8e64c74`。
+
+Q2 的深路徑與 SHA 問題已越過；新 failure 是 actual child read_exact 後 snapshot method parameters tuple 排序與手建物件不同，須查 pinned canonical serializer/parser 契約，不能刪欄位或降低比對。新 error 是 empty child root mismatch；root 已核對固定85bc parent reader 1317–1319：空 batch_artifacts 時 repository_output_root 必須 None。正向 empty fixture、原錯 root 負例，以及 rechain runner 是否支持 None 必須分開審查；不能改 formal reader 的拒絕規則。已交 owner 唯讀設計，Q3 不改寫、不重跑。未執行 single warm、千檔 producer 或效能資格驗證。
+
+H20 F actual01 唯讀摘要另存 `output/qa/h20_f_true_origin_root_attempt01/root_readonly_audit.json`，原receipt SHA `447b8dcb35f68006d95921158c229183e2c67d925da14b3e590bbeef1f965961`；只有 initial_scope 的外層完整末端／末字矩形兩項為 false，clipboard 已還原。已授權全新 G QA sibling 在原生 End 後重呼公開 reveal、再次穩定與核對完整矩形，保留原失敗快照與18守門；不改F/正式overlay。0xC0000005 原因仍未知，另增純資料 cleanup 階段診斷與 faulthandler，待審後再執行。T28b 真 Main wrapper 正平行製作，未執行。

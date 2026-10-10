@@ -508,3 +508,37 @@ O static freeze bc338d87dbc44560ee9073f3f20f4553c20074af54b9b9ffda99352f2399069d
 handle13432原生exit0：2passed143.37s；root獨立核receipt/stdout/stderr及七pins起訖一致、當下formal reader仍d59b。正例真producer/257 included+1 excluded/exact store，全群一次bundle exact-read，三indices皆257、全inactive audit258之256+2頁，頁面後exact-read仍1次；取消beforemetadata正例無來源讀取。新增function透過已驗AST等價的QA child執行，尚未formal安裝，未取得UI/真人/100k/300ms資格。
 
 root逐段審bookmark53KB來源及6節點tests：保存完整37pins/query/group/P01/result/count/request/page/row原身分，fresh PID經真projection_group opener重發、逐一精確一致才接受；真shard bytes變動拒絕且finally只還原本次合成fixture，before-open與first-page後取消不回partial context。candidate SHA df4d44e52ed4cff8e076701486cbdfff3b2e88cbc14d7fbe0d16ae0ca0005fc6、test SHA68aee77b40165b864ca45afa13b38ba1bd506f16fad87dba0ba6ba6d0872535e已root實核。唯一composite_bookmark_focused_20261010_attempt01、handle88069啟動，尚待原生終態；正式模組未改。新View的原comparison basket membership還需依MA既有契約保存，不能因selected去重而自行增刪原籃選取。
+
+### 收藏候選六節點通過；正式模組接入與營收 P 首紅
+
+候選封套同 handle88069 已 exit0：6passed／177.42s、wrapper178.203s；原生stdout SHA b1ae89f90dc573a9be933e11f9f40b86a23264128bb77a0c3e124315d5f3f8cb，stderr空，七個來源 pins 起訖不變。覆蓋真正新 PID 完整身份還原、來源 shard bytes 改動拒絕及兩階段取消；仍不代表正常 UI 或收藏儲存入口已接通。
+
+root 新增正式 `app_module/daily_market_technical_official_disposition_composite_bookmark_v1.py` 與對應六項測試。來源保留候選契約，兩個 factory 改用明示 typed kwargs，immutable anchor 的 slots 補型別宣告；未變更來源開啟器、條件、時鐘或身份核對。首次 mypy 保留 13 項型別錯誤紀錄，修正後單檔 mypy 通過。正式模組 SHA f9112c0cc5455a769ca66d4666548f805c66bc6c58615959f118c665b701c06a、測試 SHA 1ce30c9d87ce7374a40a9f1eac7b947af521d95066fcfbe2f131d284d974bafa；正式六項 runtime 封套 `composite_bookmark_formal_20261010_attempt01` 已啟動，尚待終態。既有 formal reader 保持 d59b，營收58來源 pins 不改。
+
+營收 P 的凍結五節點封套 `f12_main_revenue_new_pid_20261009_p/evidence/20261010T050805Z_16644_8e0d393f` 原生2failed、3passed、38deselected／0.88s、exit1。首紅 `expected_query_recipe_f17_conditions_not_historical`：投影新增內層 technical JSON，但固定 recipe 的條件對照尚未匹配。尚未啟動 P Main。root 獨立 postflight 再核8候選與58來源檔、原生stdout/stderr hash皆匹配，保存 `root_postflight.json`；這只是來源保持證據，不把首紅改記通過。已交 Luna 建 Q sibling，P 原件與失敗封套保留。
+
+H20 G 僅 QA 精確私有 RO 委派候選，最新凍結 child cd782a03e84a9aa8bc898eb8de3fee138733f1e059c6e0850e4db3a24232b523、九項 helper test 0ee1ce39b3ce3a4b18b942aaf13ddf93c06b9f50d3d4f16a9a929de288bd27f2。前一則 subagent 凍結宣告與後續補負例版本不一致，root要求停止修改並重新明示單一版本；尚未執行 G。root 審閱真 D9 callable 委派及 query_only／檔案身份核對，將先小 fixture 與 guard preflight，不直接重跑4GB Main。
+
+#### 本次新增檔案回滾清單
+
+| 檔案 | 類型 | 回滾方式 | 風險 |
+| --- | --- | --- | --- |
+| `app_module/daily_market_technical_official_disposition_composite_bookmark_v1.py` | 新增 | 先停用其本次新增呼叫，再移除本次新增模組 | 正常 View 尚未接入；後續接線後須一併回滾依賴 |
+| `tests/test_daily_market_technical_official_disposition_composite_bookmark_v1.py` | 新增 | 隨本次模組回滾移除新增測試 | 不影響既有正式來源或其他測試 |
+| 本 QA 紀錄 | 修改 | 僅還原本次附加區塊 | 保留其他 agent 文件與先前失敗證據 |
+
+回滾順序為確認檔案所有權、停用本次接線、回滾新增模組與測試、驗證既有來源不變；ignored QA 封套維持留存。沒有新增金融計算或資料日期推論，還原仍限定保存來源與原決策時鐘；不能以最新資料或收藏本身補給資格。正常 View、typed 儲存入口、真人版本與效能門檻仍未完成。
+
+### 正式收藏六節點通過；H20 G 真守衛預檢及營收 Q 進展
+
+正式收藏同 handle8313 已 exit0：6passed／186.47s、stdout SHA 7d0433a3d709a3d4e49cc86465e59b5a65b2b6a7d279420c8e593a371c6e4581、stderr空、七 pins 起訖不變。root 另逐檔核目前 SHA、原生收據及 stdout/stderr，再保存 root_acceptance.json；單檔 mypy 與兩檔指定短 QA cfile 的 py_compile 通過。接受範圍為正式收藏契約及真新 PID 重開，不含正常 View、Watchlist 儲存入口或真人版本。
+
+P 首紅的精確原因補正：原 pinned bookmark 的 F17 decision_cutoff 為 `2026-10-07T16:00:00+08:00`，固定 recipe 原為 `2026-10-07T01:00:00-07:00`；兩者皆與固定月來源 cutoff `2026-10-07T08:00:00+00:00` 同一時刻，但原有 exact spelling gate 拒絕字串差異。Q 只從原 bookmark 修正固定條件字串，未修改月資料 cutoff、精確 equality 或資格限制。Q diff ebf26a946c0eba08ae448675167de15e4432564e1f23c88ff1423c4663dc67c1，review manifest 042791b22e5932772090e934c508b7c49934950509b92ed6ff41a0c27acc5447。五項 focused 原生5passed、38deselected／0.57s；root postflight 獨立核8候選＋58來源皆匹配。
+
+Q 唯一 Main 封套 evidence/20261010T051334Z_4036_d8335313、native run_attempt_fe527c1bda41416b921e14ac1c941e1f 已 exit1。真 native PID38260、parent9036、wrapper4036，原生 chain=venv_redirector_child／無驗證錯誤。全部65項 source-qualified query oracle 精確 matched，來源核驗保持；下一個首紅為 f12_first_page_basket_invalid，未取得收藏新 PID 旅程資格。root 交 Luna 對照實際 basket 操作與正式 UI，R 必須另建 sibling，不能跳過 basket gate 或覆寫 Q。
+
+H20 G 小檔九測試8passed、1 Windows symlink skip／0.52s；guard preflight 原生 exit0／18.188s，真 D9 私有 RO connect/query_only 增量各1，7個非法 request 在 D9 前拒絕，ATTACH／query_only OFF 由 D9 authorizer 拒絕。私有 fixture 目錄建立／移除1／1、沒有 private open failure；原六角色 source groups 完整核兩輪8,119,601,144B，起訖一致。這是 guard 接線資格，不是原 H20 名單已通過。
+
+G 單次完整 Main 封套 `output/qa/run_h20_s4_g_main_capture_20261010.py` SHA 4cf39cbc9c8889ccf09c6e443b51fe00153084ac46cdae7081962f645eac18d8、handle87905 已啟動；重新核G／S4／D9與fresh commit/disk gate，維持原90s／240s及全來源前後核驗，尚待十股名單及2382下鑽終態。Luna H20 轉接 P01 既有 raw profile／memo budget 的只讀診斷；Composite View／獨立儲存 route 由另一位 Luna 持續，正式 reader 仍 d59b。
+
+提交前 whitespace check 指出新測試檔尾多一空白行，僅移除該空行；最終 test SHA bd2b3400e9ad15dc9541ae2b50599fab54809a67abc8389eb3156e8815c337d3，執行時原 SHA 1ce30 及收據保留。沒有改變 AST 或測試斷言，未為此重跑完整產製；staged diff --check 通過。

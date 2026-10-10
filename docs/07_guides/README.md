@@ -11,7 +11,7 @@
   - 目前 PySide6 UI 的完整操作手冊（SSOT）
   - 涵蓋目前 9 個頂層工作區、跨工作區流程、參數設定、結果判讀、安全限制與排錯
 - **[APPLICATION_MANUAL_SUPPLEMENTS.md](APPLICATION_MANUAL_SUPPLEMENTS.md)**
-  - 操作手冊附冊：保留日期化操作補充、進階研究 CLI、排程與受控維運；與主手冊共同維護，不另作目前狀態權威
+  - 操作手冊附冊：保留較長的日期化操作補充、進階研究 CLI、排程與受控維運，以及從主手冊前置區移入的歷史原文；不另作目前狀態權威
 - **[QUICK_START.md](QUICK_START.md)**
   - 系統快速開始指南（三步啟動）
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)**
@@ -22,6 +22,8 @@
 ### 操作手冊章節地圖
 
 APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章節即可。跨工作區流程讀取涉及的章節；日期化工程補充只在與本次功能相關時閱讀，並沿章節連結查看 QA 證據。
+
+主手冊正文從第 1 章開始；原先堆在章首的日期化補充已移入附冊，主手冊保留同名導引以接住舊書籤。功能是否已交付與驗收，仍以 Snapshot 和具名 QA 為準。
 
 | 任務 | 在 APPLICATION_MANUAL 搜尋的章節標題 |
 |---|---|
@@ -35,6 +37,7 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
 | 持倉管理 | 10. 持倉管理 |
 | Runtime 與營運監控 | 11. Runtime Observatory（Owner 營運與治理監控） |
 | 常見問題與覆蓋狀態 | 12. 常見問題、13. Manual 覆蓋狀態 |
+| 進階研究、日期化維運補充 | [APPLICATION_MANUAL_SUPPLEMENTS](APPLICATION_MANUAL_SUPPLEMENTS.md)；依章節連結核對對應 QA 與目前狀態 |
 
 日期化細節若未整合到相應章節，再搜尋 APPLICATION_MANUAL_SUPPLEMENTS 的相關標題。不要把單次 QA 收據當成目前操作權威；接受狀態回到對應 QA 或 PROJECT_SNAPSHOT 核對。
 

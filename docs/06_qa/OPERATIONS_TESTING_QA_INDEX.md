@@ -9,6 +9,7 @@
 | 指定時點的排程修復、失敗與後續補充 | [9/17 A 線狀態審查歷史](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) → [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史) → [9/29 完整 21-task inventory](SCHEDULED_OPERATIONS_REPAIR_20260929.md) → [9/30 bounded repair](SCHEDULED_OPERATIONS_REPAIR_20260930.md) → [10/08 後續修復](BALDR_SCHEDULE_REPAIR_20261008.md)；日期化收據不代表目前 scheduler readiness。 |
 | Gate 2–7 工程交接與外部驗證 | [Engineering Control Center](GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md) → [External Validation Register](GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) → [Gate 7](GATE_7_ML_SHADOW_ENGINEERING.md)；Register 是 append-only 外部驗證登錄，當前狀態看 Snapshot 與對應 Gate。 |
 | 測試資產候選與保留判斷 | [結案報告](../09_archive/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) → [V2 方法補正](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md) → [V1 撤回紀錄](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)；139 組／1,107 檔為 bounded 範圍，不代表完整測試母體 |
+| 根目錄殘留檔盤點與處置邊界 | [2026-10-09 root review](BALDR_ROOT_RESIDUAL_FILES_REVIEW_20261009.md)；僅盤點與比較需求，未移動或刪除檔案，也不構成後續清理授權 |
 
 ## 其他常用路徑
 

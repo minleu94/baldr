@@ -29,10 +29,17 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 - [快速開始](docs/07_guides/QUICK_START.md)
 - [完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)
 - [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)
-- [文檔索引與全清單](docs/00_core/DOCUMENTATION_INDEX.md)
+- [文件入口索引](docs/00_core/DOCUMENTATION_INDEX.md)
 - [資料資產用途與恢復](docs/03_data/STORAGE_ASSET_REGISTER_20261006.md)
 - [C 槽歷史 QA 冷封存終態對照](docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)：兩批封存狀態、核對範圍與容量快照判讀。
 - [示例資料說明](examples/README.md)
+
+## 開發與架構導覽
+
+- [Roadmap Hub](docs/00_core/DEVELOPMENT_ROADMAP.md)：導向目前狀態、產品方向與工程 Gate。
+- [目前系統架構](docs/01_architecture/system_architecture.md)：描述 repo 現有模組、邊界與資料流。
+- [目標架構背景](docs/01_architecture/target_system_architecture.md)與[最終目標實作設計](docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)：前者供領域導覽，後者是目標設計權威；兩者都不表示目標能力已實作。
+- [開發者導航](PROJECT_NAVIGATION.md)保留程式定位；日期化歷史記錄由[Archive 目錄](docs/09_archive/README.md)導覽。
 
 ## 開發與限制
 

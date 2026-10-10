@@ -1731,3 +1731,43 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 原 plan 的 **38 個核取項目皆未勾**。目前 repo 有 [`RecommendationPortfolioOptimizerService`](../../app_module/recommendation_portfolio_optimizer_service.py) 與[參數排序單元測試](../../tests/test_recommendation_portfolio_optimizer.py)，Git 記錄顯示服務於 commit `4e26f48c1` 加入；這些只證明存在一段 optimizer 實作與有限測試，不代表原 plan 全部項目、UI 整合或真實大型搜尋已驗收。Full App coverage mapping 的 B-027「參數最佳化」仍需確認，真實大型掃描限人工；本次沒有改 QA 判定。Gate 4 的現行產品方向仍依 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1)，舊 spec 中後續穩健指標及新資料因子仍是歷史提案，不作已交付證據。
 
 精確路徑引用位於 Superpowers README 與 plan/spec manifest，兩處已改連 Archive 原文；舊 Catalog 或外部引用仍可由來源導引到達。全域 Index 本來以 Superpowers README、Archive README 作目錄入口，沒有本組檔名的直接索引；未改動目前 dirty 的 Index、Snapshot、Manual 或 QA README。`DOC_COVERAGE_MAP.md` 的權威分工未改，因此只更新本 History、Archive README 與 Superpowers README，沒有改寫 Coverage Map。
+
+<a id="coverage-entry-166"></a>
+## 2026-10-09 補齊 Entry 050／051 封存檔案指紋
+
+補列先前 [Entry 050](#coverage-entry-050) 與 [Entry 051](#coverage-entry-051) 缺少的逐檔 Git blob 身分。來源值取自搬移 commit 的 parent tree 舊 `docs/06_qa/` 路徑；Archive 值取自本次整理前 `HEAD=1cd89fb1f806215f08ed763e9cb601b518fdb001` 的 tracked `docs/09_archive/` blob。先前 QA 路徑保留短導引；本筆只補 Coverage History，不修改 QA 原文、raw receipt、SHA 收據或舊 Entry。
+
+### 對應 Entry 050：V2.4／V2.5／V3.0／V4.0 readiness 歷史
+
+來源 Git blob 由封存 commit `e56a8b81fb466111b9de841cc375eaffa4116258` 的 parent tree 讀取；Archive Git blob 由上述整理基線讀取。
+
+| 原路徑相容入口 | Archive 原文 | 搬移前來源 Git blob bytes／SHA-256 | Archive Git blob bytes／SHA-256 | 差異說明 |
+|---|---|---:|---:|---|
+| [`V3_0_AUTOMATED_READINESS_2026_07_12.md`](../06_qa/V3_0_AUTOMATED_READINESS_2026_07_12.md) | [Archive 原文](V3_0_AUTOMATED_READINESS_2026_07_12.md) | 1,933 / `C6C5042D068FB51B18859044572DAA642113FC9514DB995D8A1DCC912E3D482C` | 1,932 / `3518531B8821A3CCC79AA02CE6466CFCD844F4F458DF8B69D87704E9F88EDB90` | 1 byte 空白差異 |
+| [`V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md`](../06_qa/V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md) | [Archive 原文](V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md) | 11,319 / `9C259CDF51A59786367CA044FC3C3DBB090B87480AA30E4C9275442D6BA4C2FA` | 11,319 / `9C259CDF51A59786367CA044FC3C3DBB090B87480AA30E4C9275442D6BA4C2FA` | Git blob 相同 |
+| [`V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md`](../06_qa/V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md) | [Archive 原文](V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md) | 1,444 / `7A144F5390AC438037B6DC9561C2CEB878248D4A148DD86A2CEDD50006E6210B` | 1,444 / `7A144F5390AC438037B6DC9561C2CEB878248D4A148DD86A2CEDD50006E6210B` | Git blob 相同 |
+| [`V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md`](../06_qa/V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md) | [Archive 原文](V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md) | 34,007 / `998181C9642E944F6BF1C55546D96A46898234E344B0D80E5317AEA8040EF7F7` | 34,034 / `E55F14742AB373BA43F5DDA6A338E406D0C6DED5046E83B89F3DC0F373C57659` | Archive 版調整相對連結 |
+
+### 對應 Entry 051：Decision Workbench／Continuity 歷史審查
+
+來源 Git blob 由封存 commit `64fdedc5a940f62170f592f075c0d4f91fc03fe6` 的 parent tree 讀取；Archive Git blob 由上述整理基線讀取。
+
+| 原路徑相容入口 | Archive 原文 | 搬移前來源 Git blob bytes／SHA-256 | Archive Git blob bytes／SHA-256 | 差異說明 |
+|---|---|---:|---:|---|
+| [`ULTIMATE_DECISION_WORKBENCH_2026_09_14.md`](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md) | [Archive 原文](ULTIMATE_DECISION_WORKBENCH_2026_09_14.md) | 41,152 / `69C6B57F91E78AC5F70567D23E634B2453926A36E560C68CA11B15D9BD2BB8BE` | 41,152 / `69C6B57F91E78AC5F70567D23E634B2453926A36E560C68CA11B15D9BD2BB8BE` | Git blob 相同 |
+| [`ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md`](../06_qa/ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md) | [Archive 原文](ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md) | 29,794 / `B3B423946DA6CCD7C16BC07EC1E7D06F28CBFCDF2802F2FB8ADC1A9C6D48D8D2` | 29,803 / `6794E6BA65B76C11C84E848C34C3CC1B8CBCB32D3B50C4F287D95C44B9A844EF` | Archive 版調整連結 |
+| [`DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md`](../06_qa/DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md) | [Archive 原文](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md) | 28,159 / `03368FF4E92A525EE9D25300469BF99AF0DD2CEAC6999023B9EA7CB852B3AD63` | 28,159 / `03368FF4E92A525EE9D25300469BF99AF0DD2CEAC6999023B9EA7CB852B3AD63` | Git blob 相同 |
+
+本筆只補上述可由 Git 歷史獨立核對的七份檔案。Entry 041–049 仍有其他逐檔來源／指紋缺口；沒有足夠來源證據的值不推算、不補寫，後續需依各自原始 manifest／收據另行核對。
+
+<a id="coverage-entry-167"></a>
+## 2026-10-09 精簡主手冊前置區與 PROJECT_NAVIGATION 日期記錄
+
+依 `DOCUMENTATION_STRUCTURE.md` 將操作正文前移為直接入口，並將根目錄開發導航的日期流水帳抽離；兩個原始檔案路徑均保留。另移除 PROJECT_NAVIGATION 中位於仍有效券商分點導航前方的錯置「文件結束」標記。現況、產品優先序與驗收權威未改，未修改任何 QA 原始收據、raw output 或封存 SHA 清單。
+
+| 來源範圍 | 搬移前 bytes／SHA-256 | 新位置與核對 |
+|---|---:|---|
+| `docs/07_guides/APPLICATION_MANUAL.md` 第 1 章之前的 16 個補充章節，從「均線／月營收／官方對照研究」至「第一版有限研究流程與驗證入口」 | 26,820 / `E1A1D58B297B3504930735154D685F9C3F4D792DD8C8C9A53FE999F7E573B69F` | 原文逐位元組移入 [`APPLICATION_MANUAL_SUPPLEMENTS.md`](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md) 的 2026-10-09 區塊；目的區段同為 26,820 bytes、同 SHA。主手冊保留 16 個原標題作錨點導引，現行操作改由第 1–13 章及[章節地圖](../07_guides/README.md)導向。搬移前整份主手冊為 802,668 bytes，SHA-256 `31011173F0D2BDEA88F3A50A2D1BEBCD2168AB434285AB7C953FD2F2FB054436`。 |
+| 根目錄 `PROJECT_NAVIGATION.md` 的 `## 更新記錄` 至 EOF | 18,814 / `EA31097984A00E20587E59ABFB5740C8B615AB4DA7C93F77B9FC89611E72330A` | [`PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md`](PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md) 保留相同記錄文字；為使 Archive 內連結可用，將 30 個舊 repo-root `docs/...` Markdown 目標改為 Archive 相對 `../...`。調整後摘錄 18,754 bytes、SHA-256 `5EDE0B49B1C3C321E1E2A82C9CD91B68AD4B32EA73F716838D9866E29355B965`；含導讀的整份歷史文件 19,155 bytes、SHA-256 `9409F8BF314E5BC30B6E85252E7B405F67FE05312C6CDF7AB13ED95A090B336A`。根目錄原標題留作相容導引。 |
+
+歷史 Manual 章節仍保留原本的通過、失敗、pending、未知及真人／EXE 未驗收敘述；WIP 研究入口另導向 F12 root review。導覽歷史不再混入目前程式導航。全 repo Markdown 搜尋未找到指向 Manual 前置 16 個標題或 `PROJECT_NAVIGATION.md#...` 的入站錨點，仍保留原 Manual 標題與兩個根入口路徑。`DOCUMENTATION_INDEX`、根 `README`、Guides README 與 Archive README 已同步現行入口；Roadmap Hub、Architecture README、Scoped SSOT 分工未改。冷封存終態與資料文件已逐一對照 reconciliation，既有 03_data README／Asset Register／batch 文件、Snapshot、Index 與根 README 的 34-root 敘述一致，故不重寫。

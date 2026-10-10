@@ -11,9 +11,9 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 | 目前狀態與下一步 | [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) |
 | 路線與產品 Gate | [Roadmap Hub](DEVELOPMENT_ROADMAP.md)、[產品方向](PRODUCT_ROADMAP_POST_REFACTOR.md)、[6M 工程](ROADMAP_6M_ENGINEERING.md) |
 | 長期 maturity／外部參考／舊工作 | [V2.1–V4.0](VERSION_ROADMAP_V2_1_TO_V4_0.md)、[外部藍圖](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)、[Legacy Carryover](LEGACY_ROADMAP_CARRYOVER.md) |
-| 目前與未來架構 | [目前架構](../01_architecture/system_architecture.md)、[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
+| 目前與未來架構 | [目前架構](../01_architecture/system_architecture.md)、[目標領域背景](../01_architecture/target_system_architecture.md)、[FINAL 目標實作設計](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
 | 安裝與操作 | [安裝](../07_guides/INSTALL_GUIDE.md)、[快速開始](../07_guides/QUICK_START.md)、[完整 Manual](../07_guides/APPLICATION_MANUAL.md) |
-| 文件治理與全清單 | [結構規則](DOCUMENTATION_STRUCTURE.md)、[Coverage Map](DOC_COVERAGE_MAP.md)、[全文件目錄](DOCUMENTATION_CATALOG_20261006.md) |
+| 文件治理與歷史目錄快照 | [結構規則](DOCUMENTATION_STRUCTURE.md)、[Coverage Map](DOC_COVERAGE_MAP.md)、[2026-10-06 全文件目錄快照](DOCUMENTATION_CATALOG_20261006.md) |
 | 資料、保留與恢復 | [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)、[C 槽冷封存終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) |
 | 知識圖與更新 | [Graphify 維護入口](DOCUMENTATION_GRAPH_GUIDE.md) |
 
@@ -21,7 +21,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [核心](README.md)／[架構](../01_architecture/README.md)／[功能](../02_features/README.md)／[資料](../03_data/README.md)／[券商分點](../04_broker_branch/README.md)／[歷史 Phase](../05_phases/README.md)／[QA 收據](../06_qa/README.md)／[指南](../07_guides/README.md)／[技術](../08_technical/README.md)／[Agent](../agents/README.md)／[策略](../strategies/README.md)／[開發 plans/specs](../superpowers/README.md)／[Archive](../09_archive/README.md)。
 
-根目錄 [README](../../README.md)、[PROJECT_NAVIGATION](../../PROJECT_NAVIGATION.md)、[PROJECT_INVENTORY](../../PROJECT_INVENTORY.md) 與 [AGENTS](../../AGENTS.md) 保留各自職責。31 份 refactor task specs 與 FINAL 分冊是設計／執行契約，不等於完成證明。
+根目錄 [README](../../README.md)、[PROJECT_NAVIGATION](../../PROJECT_NAVIGATION.md)、[PROJECT_INVENTORY](../../PROJECT_INVENTORY.md) 與 [AGENTS](../../AGENTS.md) 保留各自職責。PROJECT_NAVIGATION 的 2026-10-05 至 10-07 日期化更新記錄已移至[歷史摘錄](../09_archive/PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md)；現況仍看 Snapshot。31 份 refactor task specs 與 FINAL 分冊是設計／執行契約，不等於完成證明。
 
 ## 必要調度與維運
 

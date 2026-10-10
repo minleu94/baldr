@@ -286,6 +286,7 @@
 
 Product-integration baseline 與 Codex automation inventory 的大型 JSON 伴隨物是本機 ignored 檔，依排除規則沒有移動或提交；它們留在 QA 原路徑供當前工作樹中的歸檔報告連結。乾淨 checkout 可能不含這兩個本機 sidecar。
 
+<a id="2026-10-08-v2-3-data-source-decision-receipts"></a>
 ### 2026-10-08 V2.3 data-source decision receipts
 
 - [V2.3 P0 Sources Batch Principle Approval（2026-07-12）](V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) 保存使用者核准 13 個 P0 source 的導入方向；下游 eligibility 當時仍為 `none`，不是來源接受或正式 ingestion 授權。
@@ -618,7 +619,7 @@ Factor Layer v1 的 [設計規格](superpowers/specs/2026-06-14-month-3-factor-l
 
 ### 2026-10-09 Daily Decision Desk Spark plan 與 Month 4 closure
 
-[初始 Spark execution plan 原文](superpowers/plans/2026-06-15-daily-decision-desk-spark-execution-plan.md) 與 [Month 4 closure plan 原文](superpowers/plans/2026-06-16-month4-daily-decision-desk-closure.md) 均已封存，各自舊路徑保留導引。初始 plan 要求新增頂層「每日決策」Tab，已由現行唯一入口「市場探索 > 市場總覽」取代；closure plan 記錄 service-backed v1 結案與驗證數字，但 Task 1–7 核取方塊仍未勾選，兩種狀態原樣保留。現況與操作分別看 [system architecture](../01_architecture/system_architecture.md#4-daily-decision-desk) 與 [Application Manual §8](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk)。來源 bytes／SHA、替代入口與引用核對見 [Coverage History Entry 128](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-128) 及 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+[初始 Spark execution plan 原文](superpowers/plans/2026-06-15-daily-decision-desk-spark-execution-plan.md) 與 [Month 4 closure plan 原文](superpowers/plans/2026-06-16-month4-daily-decision-desk-closure.md) 均已封存，各自舊路徑保留導引。初始 plan 要求新增頂層「每日決策」Tab，已由現行唯一入口「市場探索 > 市場總覽」取代；closure plan 記錄 service-backed v1 結案與驗證數字，但 Task 1–7 核取方塊仍未勾選，兩種狀態原樣保留。現況與操作分別看 [system architecture](../01_architecture/system_architecture.md) 與 [Application Manual §8](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk)。來源 bytes／SHA、替代入口與引用核對見 [Coverage History Entry 128](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-128) 及 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 ### 2026-10-08 Safe Refactor continuation plan
 
 [Safe Refactor continuation plan 原文](superpowers/plans/2026-07-11-safe-refactor-continuation.md) 已結案並移至 Archive；[舊路徑](../superpowers/plans/2026-07-11-safe-refactor-continuation.md) 保留導引。核准、shim／legacy removal audit、release healthcheck 與測試收據見 [原始 QA audit](../06_qa/SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md) 和 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；目前架構以 system architecture 為準。
@@ -724,6 +725,10 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - [舊 plan 路徑導引](../superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md)與[舊 spec 路徑導引](../superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md)保留相容入口；逐位元組原文分別在 [plan](superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md) 與 [spec](superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md)。
 - 原 plan checklist 為 0/38。`RecommendationPortfolioOptimizerService` 與一個參數排序單元測試存在，但這只證明有一段程式與有限測試，不代表原計畫、使用者流程或真實大型搜尋全部驗收；Full App B-027 仍需確認，真實大型搜尋限人工。此歷史提案不構成目前待辦或交易依據。
 - 目前方向與狀態回到 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 及 [6M Gate 4](../00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1)；操作與推薦組合回測能力看 [Backtest Lab 功能文件](../02_features/BACKTEST_LAB_FEATURES.md)，QA 範圍看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。逐檔 bytes／SHA、引用核對與效力見 [Coverage History Entry 165](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-165)。
+
+## 2026-10-09 PROJECT_NAVIGATION 日期化更新記錄
+
+- [2026-10-05 至 10-07 導覽更新歷史](PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md)：保存根目錄開發者導航原有的日期化更新記錄與 QA 導覽文字。它是歷史快照，不作目前狀態或執行順序依據；現況回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[DEVELOPMENT_ROADMAP](../00_core/DEVELOPMENT_ROADMAP.md) 與各具名 QA。來源範圍、bytes／SHA 與替代入口見 [Coverage History Entry 167](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-167)。
 
 ## ⚠️ 注意
 

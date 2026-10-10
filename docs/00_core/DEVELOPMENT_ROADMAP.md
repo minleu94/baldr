@@ -15,7 +15,8 @@
 ## 架構與操作
 
 - 目前模組邊界與資料流：[system_architecture](../01_architecture/system_architecture.md)。
-- 目標架構與任務規格：[FINAL_TARGET_ARCHITECTURE](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)、[31-task specs index](../01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/README.md)。目標設計與任務規格不是完成狀態。
+- 目標領域背景與 Current → Target 導覽：[target_system_architecture](../01_architecture/target_system_architecture.md)。
+- 目標實作設計與任務規格：[FINAL_TARGET_ARCHITECTURE](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)、[31-task specs index](../01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/README.md)。目標設計與任務規格不是完成狀態。
 - 使用者操作：[APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 - 日期化驗收與證據：[QA 導覽](../06_qa/README.md)。
 - 歷史路線圖原文：[DEVELOPMENT_ROADMAP 封存副本](../09_archive/DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)。

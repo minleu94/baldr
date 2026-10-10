@@ -867,3 +867,16 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - M static preflight exit 0、6.280 秒，收據 `output/qa/p01_filter_parallel_experiment_design_20261010_m/static_preflight_41c8f203cbe6.json`；network／SQLite／subprocess attempts 均為零。唯一 warm runtime `C:/t/p01cur_rd_c41961fe2f` terminal exit 1，原 source／sealed store 起訖 unchanged、native Job 無活動程序、指定 scratch removed_empty_root；未執行第二次同候選。
 - 本次 child result 已完整保存 17,957 bytes，沒有再次被 4 MiB 上限遮蔽。Oracle return receipt 同時保留 `io_sequence_output_shape_invalid: bounded_reads` 與原 `p01_i_oracle_unexpected_error / Error`：shutil 建立負例副本時報來源／目的 receipt 路徑 Errno 2。沒有有效的新配對效能樣本，P01 原 300 ms Gate 保持未完成。
 - Root 靜態定位摘要錯誤：壓縮後新增的 `io_sequence_samples` 自身也含 bounded_reads key，遞迴投影又將 sample mapping 誤當原始 trace list。下一候選應只辨識完整原 I/O summary、避免再次處理新樣本，不修改內部完整 oracle。第一個報錯的來源 receipt 路徑長 265 字元，host 唯讀檢查檔案存在、2,207 bytes；長路徑複製是待核假設，不把 Errno 2 解讀成原資料遺失。J4／M 原封套及失敗證據保留。
+
+### 2026-10-10 T24 凍結審查與 constructor 清理的剩餘缺口
+
+- T24 manifest SHA `01c3f3eabfac0faed0bf43d72e2830a090f15061850b4dc4b182a7fb1aa933ee`、完整 T23→T24 diff SHA `c81b1401cab15528a038d40dde94ae2cd740adcabf5fdbadf9932d115bc73206`（79,195 bytes）；Root 完整讀差異與 README，八候選檔大小／SHA 核對通過，獨立審查亦核對相同 pins。尚未執行 T24，不宣稱聚焦通過。
+- 最終審查發現新的具體清理缺口：constructor 拋錯使 view 尚未賦值時，ensure_view_closed 使用空 controls，all 空集合會讓 controls_idle 為 True；constructor worker 帳本已保存 control，卻未確認其 queued cleanup。native finished／registry 空不能替代此條件。新 T24a 只補 captured control 的直接 idle 核對，T24 原封套保持不變；新封套覆核後才執行三項聚焦測試，完整 Main 仍待。
+- P01 唯讀補查兩個訊息中列出的來源 receipt 均存在、265 字元／2,207 bytes，receipt identity 與檔名相符；不推論截斷訊息只代表兩個錯誤。J5／N 僅準備 I/O summary 投影與負例副本複製修正：保留原路徑守門、來源／clone 全樹內容 SHA 與全部負例，不放寬 extended-path 或 scratch 寫入範圍。未取得新 runtime 證據。
+
+### 2026-10-10 T24a 聚焦通過：完整 Main 仍待
+
+- T24a 僅修改 constructor 例外路徑的 captured-control idle 核對；其餘七個 reviewed files 與 T24 逐 byte 相同。Root 完整讀 2,497-byte 差異並核八檔 pins；獨立 Luna max 以相同凍結封套確認可執行 bounded focused。Manifest SHA `cab1f153f9995e6d3aba0a20b2b945d899bb749ae8ec053487ff97ee7a2e20f4`、diff SHA `341c277b5359a8a7a7f31fbef25a62c0129318f96d588b180956017d04100bb4`；T24 原件未改。
+- 唯一實際聚焦 attempt：3 passed／6 subtests passed／51 deselected，7.46 秒；wrapper 8.219 秒、exit 0、timed_out=false，58 正式來源＋8候選檔起訖一致。收據 `output/qa/f12_t24a_focused_root_attempt01/receipt.json`，原 stdout／stderr 保留。
+- 通過範圍是私人合成清單的真確認／stage／activation／UI reload，以及兩個真收藏 helper 各五 RO＋一次 target-only 短 RW、六連線 closed probe、native finished／全域 registry／queued control cleanup、無 TLS 連線拒絕與原錯誤 mode／callsite／target probes。Price helper 為零筆，逐筆價格收藏讀取未觸發；完整 worker-specific 負例及 timeout／exception 矩陣尚未執行，不能外推成完整 COW／F12 Gate。
+- 完整 Main 將另建 T26 bootstrap，依 T24a 基底、原 G reviewed-set schema、58 source pins、精確八檔與外部 manifest SHA，candidate／fixed_inputs 綁同一全新私人 parent。T25 是未執行的舊靜態草稿，不能拿來作通過證據。T26 審閱前不執行 Main；正式程式、原 D 槽資料、新 EXE 與真人狀態不變。

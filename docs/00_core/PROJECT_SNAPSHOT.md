@@ -7,12 +7,12 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
-| P01 千檔效能 | 固定矩陣仍未通過原 300 ms 門檻：換頁 p95 239.4695 ms；篩選 1074.3634 ms、排序 344.7445 ms，後兩項失敗。單次 CPU／instrumented 診斷不取代矩陣。 |
+| P01 千檔效能 | 固定矩陣仍未通過原 300 ms 門檻：換頁 p95 239.4695 ms；篩選 1074.3634 ms、排序 344.7445 ms，後兩項失敗。render-prefill bounded 修補的 19 項定向回歸通過，但尚未重跑完整矩陣，不能視為效能門檻通過；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
 | F02 四均線 | 固定合成來源的 V11 父 Main→收藏→關閉→新程序 Watchlist 單擊／雙擊旅程有界通過；不代表原始來源、新 EXE 或真人驗收。 |
 | F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0；只證明限定 preparation 範圍，仍未取得共同 reader 資格、完整 query 與 UI 閉環。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 | F06 波動 | 尚無 full-N reader-issued 結果；方法提案不代表已採納產品規則。詳見[產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。 |
-| F12 月營收 | D focused tests 為 17 passed／4 subtests passed；唯一 Main attempt exit 1，後續 E 修正尚未驗證。[Main QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
-| H20 source-port | O attempt02 exit 1，失敗於設定讀取前置 guard；initial／terminal 檔案與 SQLite 真讀均未發生，source-port 未通過。[root follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| F12 月營收 | D focused tests 為 17 passed／4 subtests passed；唯一 Main attempt exit 1，後續 E 修正尚未驗證。[F12 D/Main follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| H20 source-port | O attempt02 exit 1，失敗於設定讀取前置 guard；initial／terminal 檔案與 SQLite 真讀均未發生，source-port 未通過。[H20 O attempt02 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 
 P01 詳細結果見 [P01 效能 root review](../06_qa/BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md)；F02 旅程見 [F02 root review](../06_qa/BALDR_MA_V9_CHILD_IDENTITY_ROOT_REVIEW_20261009.md)。產品缺口總表見 [補完缺口 review](../06_qa/BALDR_COMPLETION_GAP_REVIEW_20261008.md)，續接時依 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)、[交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md) 及 [產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)查閱。交接及各 root review 中的通過、失敗、未驗證界線均有效；文件整理不關閉 Gate。
 

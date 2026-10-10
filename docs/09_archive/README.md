@@ -58,6 +58,7 @@
 
 ## 2026-10-09 目標架構舊草案
 
+- [2026-09-06 八卡工程後的差距基線（歷史快照）](TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md)：保留當時 Current／Transitional 判讀；不代表目前狀態或完成度。現況看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[目前系統架構](../01_architecture/system_architecture.md)與最新 QA；目標設計看 [FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)。原架構文件保留相容導引。
 - [2026-09-22 目標架構草案包](target_architecture_2026_09_22/README.md)：六份非 FINAL 草案已由同目錄的 `FINAL_*` 設計取代；Archive 保留決策追溯，原架構路徑留有相容導引。舊提案不代表目前實作或已完成狀態，開放中的遷移 Gate 仍看 FINAL migration sequence、Snapshot 與具名 QA。
 - 同一架構套件另保留[Wave 2 舊 R008 SHA checkpoint](target_architecture_2026_09_22/README.md#wave2-old-sha-checkpoint)：舊快照只適用原 SHA；現行 result_id 驗收與 Gate 狀態看原架構報告索引及 Coverage History Entry 129。
 - [已結束的架構 dispatch／分析封包](target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md)：十六份歷史 dispatch／review／Wave 分析材料；舊路徑保留相容導引，任務狀態以 R031 與原架構 reports 為準。R006 未知正式 binary 仍未 load／predict，RK-19 風險持續；來源 bytes／SHA 見 Coverage History Entries 135、147、153。

@@ -24,7 +24,7 @@
 - **[target_system_architecture.md](target_system_architecture.md)**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
   - 不代表 target-only package 或能力目前已實作
-  - 日期化更新記錄移至[歷史摘錄](../09_archive/TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md)；本文件仍保留背景與治理邊界，當前狀態及實作設計分別看 Snapshot／FINAL_TARGET_ARCHITECTURE。
+  - 日期化更新記錄移至[歷史摘錄](../09_archive/TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md)；2026-09-06 八卡工程差距基線保留原標題導引，全文見[歷史封存](../09_archive/TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md)。當前狀態及實作設計分別看 Snapshot／FINAL_TARGET_ARCHITECTURE。
 
 ## 目前架構速讀
 
@@ -88,4 +88,6 @@
 - 2026-09-22：加入目標架構工程分冊導航。
 
 - 2026-10-09：整理目前架構與 ML 閱讀路徑；以 Snapshot 判讀現況、以 QA 收據判讀驗收，目標架構只表示設計契約。
+
+- 2026-10-09：將目標架構中的 2026-09-06 歷史差距基線移入 Archive，原標題保留相容導引。
 

@@ -1784,3 +1784,12 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 | 精簡後 docs/00_core/PROJECT_SNAPSHOT.md | 5,160 / EDFB43DBD630568A8C5C74A6345B97599C8F404F48F1C607D84E1837B975217F | 目前狀態摘要、證據入口、工作區／資料保護與導覽 |
 
 docs/09_archive/README.md 已加入歷史快照入口，ROADMAP_6M_ENGINEERING.md 的 checkpoint 標籤改為續接參考；system_architecture.md 與其 README 說明第 16 節仍有混合增量與未抽出的契約。Scoped SSOT 分工未變，因此未改 DOC_COVERAGE_MAP.md 或 DOCUMENTATION_INDEX.md。冷封存兩批終態仍以 [reconciliation](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) 為準；本次不重算全量 SHA、不重述即時容量，也不改寫資料資產文件。
+
+<a id="coverage-entry-169"></a>
+## 2026-10-09 封存目標架構的 2026-09-06 差距基線
+
+將 `target_system_architecture.md` 中明標歷史快照的 Current／Transitional 差距表移入 Archive，避免把單日狀態表留在長青目標架構正文。原文件保留同名標題與明確導引，README、Archive README 與本 Coverage History 形成可追溯路徑。此整理不改變目標架構背景、現行系統架構、產品狀態或 QA 結論；本次未修改任何原始 QA 收據或封存資料。
+
+| 來源範圍 | 搬移前來源 | Archive 原文 | 結果 |
+|---|---|---|---|
+| `docs/01_architecture/target_system_architecture.md` 第 3 節前「2026-09-06 八卡工程後的差距基線（歷史快照）」整段 | 節段 2,643 bytes／SHA-256 `d829890117e2617d032e46dbf33682630c95486be69ebb7e86459a9ae75224db`；搬移前整檔 36,444 bytes／SHA-256 `7e699ef05325ac8d979c367d06fd0d8c8fd525ce319c80bc6f28f4214e45e265` | [`TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md`](TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md)：2,681 bytes／SHA-256 `4d8eef5876d8c863b24b38ca114cfba4604e73d17a53673c637c4bfe53919fa2`；保留節段內容，僅將 2 個 Markdown 相對連結改為符合 Archive 位置的路徑 | 原標題留在 `target_system_architecture.md` 作相容導引；現況／目標入口維持 Snapshot、system architecture 與 FINAL。 |

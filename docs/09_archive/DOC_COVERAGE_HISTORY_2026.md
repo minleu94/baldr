@@ -2165,3 +2165,19 @@ CLI 範例原先以「替代方式」呈現，會讓讀者把幾個不同腳本�
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄發現、處置及未完成驗證範圍。 |
 
 新引用的 system architecture 與 Phase 2 Archive 目的地存在；未執行全 repo 連結／錨點掃描、測試或 Graphify 刷新。未刪除或搬移文件及原始資料，也未改寫封存原文。
+
+<a id="coverage-entry-192"></a>
+## 2026-10-10 分清 REFACTOR_REPORTS 索引例外與 C1 時點狀態
+
+原指定的 `docs/01_architecture/REPORTS/` 沒有 tracked paths；Architecture 報告實際位於 `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/`，共 144 paths：README 索引 1、相容／歷史 redirect stub 5、日期化 implementation／review／decision 證據 138。README 原有 142 個相對連結目標均存在；主索引漏列 4 個 Wave 1／2 中間紀錄 stub。已在報告 README 加入明確例外規則與四個 redirect 導覽，新增目標均為此目錄 tracked 檔案。索引連結的 anchors 及全 repo links 尚未全量驗證。
+
+`C1_FULL_GATE_VALIDATION_REPORT.md` 記錄的 2026-09-23 QA 執行時狀態是 C1 NOT PASSED、Wave 6 BLOCKED；後來的 `C1_CHECKPOINT.md` 已記錄 scoped C1 engineering gate PASS 與 Wave 6 RELEASED FOR IMPLEMENTATION。已在 full-gate 報告標題與結論標明其執行時點，並連到後續裁決；沒有變更測試結果、skip 或歷史限制。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/README.md` | 澄清實質報告索引與舊路徑相容轉址的例外，列出 4 個 stub。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/C1_FULL_GATE_VALIDATION_REPORT.md` | 將 not-passed／blocked 文案限定為該次 QA 執行時狀態，連至後續 checkpoint。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 記錄 144 paths 角色分類及報告時點判讀。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄調查證據、改動及尚待全量驗證範圍。 |
+
+沒有刪除或搬移文件、修改原始資料或重寫測試證據。未執行測試、未刷新 Graphify、未執行最終 repo-wide link／anchor scan。

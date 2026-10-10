@@ -16,7 +16,16 @@ Worker 的 `READY_FOR_REVIEW` 只是交給 SOL／指定 reviewer 檢查，不等
 
 ## 逐檔導覽索引
 
-> 索引按檔名中的 task ID／波次分組；同一 task 的 implementation、review、erratum、recheck 和 checkpoint 各有不同範圍，不可互相替代。文件存在不代表 task PASS 或目前仍有效；現況以 Snapshot 與具名 QA closeout 為準。新增文件時請同步補入本索引。
+> 索引按檔名中的 task ID／波次分組；同一 task 的 implementation、review、erratum、recheck 和 checkpoint 各有不同範圍，不可互相替代。文件存在不代表 task PASS 或目前仍有效；現況以 Snapshot 與具名 QA closeout 為準。新增實質報告時請同步補入本索引；只保留舊路徑的 redirect stub 另列於下方，不作實質報告項目。
+
+### 舊路徑相容轉址（不屬於實質報告）
+
+以下頁面只承接舊路徑；封存原文與後續狀態以[Archive 導覽](../../../09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/README.md)為準：
+
+- [WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md](WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md)
+- [WAVE1_PRELIMINARY_CHECKPOINT.md](WAVE1_PRELIMINARY_CHECKPOINT.md)
+- [WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md](WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md)
+- [WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md](WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md)
 
 ### R001
 - [R001_IMPLEMENTATION_REPORT.md](R001_IMPLEMENTATION_REPORT.md)

@@ -6,7 +6,9 @@ QA owner：獨立 Luna Max
 
 ## 狀態與結論
 
-**C1：NOT PASSED。Wave 6：BLOCKED。**
+**本報告執行時（2026-09-23）狀態：C1 NOT PASSED；Wave 6 BLOCKED。**
+
+> 本文記錄該次 QA 執行時的狀態，不代表後續 gate 裁決；後續裁決見 [C1_CHECKPOINT.md](C1_CHECKPOINT.md)。
 
 本輪指定的工程測試、scoped mypy、changed-Python py_compile、fixture hash/readback 與 C1 import DAG 檢查均有新結果，未沿用修補前數字。ML-P/N 現有驗證範圍只涵蓋小型 synthetic ABI／receipt fixtures。R17-N 修補後，正例與負例共用 exact pinned synthetic oracle；六種 mutation 負例要求 oracle 明確拒絕。獨立 reviewer 接受的範圍僅為「R17-N synthetic readiness」，並回報該範圍無剩餘 P1/P2；此接受不涵蓋 production replay bridge，也不代表完整 C1 review 或 SOL 最終 gate 已通過。完整 C1 獨立 review 與 SOL 最終 gate 尚待裁決，故本報告不宣稱 C1 PASS、Wave 6 放行或正式資料／模型 readiness。
 
@@ -165,4 +167,4 @@ AST scan 沒有找到 decision_module → app_module 或 decision_module → ml_
 - 未執行 scheduled wrapper main。C1 R014 只測 synthetic saved execution/query/producer oracle；真 wrapper parity 另留 R014。
 - 未執行 full-market ML rebuild、訓練、inference 或 promotion。ML-P/N 僅是 synthetic readiness。
 
-以上證據支持已完成的 scoped engineering tests 與靜態檢查結果；R17-N synthetic readiness 已由獨立 reviewer 接受，但 symlink host skip、完整 C1 獨立 review 與 SOL 最終裁決仍未收口。C1 維持 NOT PASSED，Wave 6 維持 BLOCKED。
+以上證據支持本次 scoped engineering tests 與靜態檢查結果。**截至本報告執行時**，R17-N synthetic readiness 已由獨立 reviewer 接受，但 symlink host skip、完整 C1 獨立 review 與 SOL 最終裁決尚未收口；因此當時記錄為 C1 NOT PASSED、Wave 6 BLOCKED。後續 gate 裁決見 [C1_CHECKPOINT.md](C1_CHECKPOINT.md)，其 scoped C1 工程 gate 為 PASS，Wave 6 已釋出實作。

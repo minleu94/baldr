@@ -6,7 +6,7 @@
 
 `PaperPortfolioSnapshotRepository.append(snapshot, receipt=None)` 保留原呼叫方式；提供紀錄時，snapshot、positions 與 companion table 的紀錄在同一 transaction 保存，任一步失敗全部回滾。重複 snapshot 不覆寫。`get_receipt(snapshot_id)` 核對 canonical JSON 雜湊、snapshot 身分、帳戶 namespace 及資料列 metadata。舊列或舊 schema 缺紀錄回傳 `None`，意義仍是 unknown；唯讀路徑不建立新表、不回填舊列。
 
-Frozen DTO 使用 `paper-portfolio-snapshot-receipt.v1`，上限 16 KiB，拒絕重複 JSON key 或額外欄位。目前只有 `unknown` 與明示 `synthetic:` 的 `seed_reference`。後者核對 500000 初始資金、最多 8 個持倉、binding hash 導出的 namespace、持倉雜湊與現金／市值總和，並沿既有 daily runner 的分位量化及整數基點截斷核對每列市值／權重。金額欄位拒絕非有限 Decimal 或負數。
+本切片的 frozen DTO 使用 `paper-portfolio-snapshot-receipt.v1`，上限 16 KiB，拒絕重複 JSON key 或額外欄位；當時只有 `unknown` 與明示 `synthetic:` 的 `seed_reference`。後者核對 500000 初始資金、最多 8 個持倉、binding hash 導出的 namespace、持倉雜湊與現金／市值總和，並沿既有 daily runner 的分位量化及整數基點截斷核對每列市值／權重。金額欄位拒絕非有限 Decimal 或負數。後續前向現金開戶另加入相容的 v2 `account_cash_seed`，契約與正式驗證見[開戶切片](BALDR_P08_CASH_SEED_SLICE_20261010.md)；daily／績效資格仍未完成。
 
 `seed_reference` 只是合成來源引用；雜湊不是簽章，也沒有驗證真實 seed artifact、PIT、成本、benchmark 或來源 run 的完整性。沒有 net／績效資格欄位。真實種子、每日 `[S,D)` fills 與 prior snapshot 的來源鏈、受控 writer、weekly consumer 及正常 UI 仍須實作，不能用這項基礎契約替代 P08／M3。
 

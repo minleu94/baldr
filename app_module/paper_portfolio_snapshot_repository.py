@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
@@ -15,13 +15,15 @@ from typing import Iterator, Literal
 from app_module.personal_store_routes import PersonalStoreRoute
 from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
 from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path, to_internal_sqlite_uri
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 
 
 PAPER_SNAPSHOT_RECEIPT_SCHEMA_VERSION = "paper-portfolio-snapshot-receipt.v1"
+PAPER_ACCOUNT_CASH_SEED_RECEIPT_SCHEMA_VERSION = "paper-portfolio-snapshot-receipt.v2"
 PAPER_SNAPSHOT_RECEIPT_MAX_BYTES = 16 * 1024
 _PAPER_ACCOUNT_NAMESPACE = re.compile(r"^acct-[0-9a-f]{64}$")
 _SHA256_TEXT = re.compile(r"^sha256:[0-9a-f]{64}$")
-_RECEIPT_PAYLOAD_FIELDS = (
+_RECEIPT_PAYLOAD_FIELDS_V1 = (
     "schema_version",
     "receipt_kind",
     "snapshot_id",
@@ -37,6 +39,11 @@ _RECEIPT_PAYLOAD_FIELDS = (
     "max_positions",
     "positions_sha256",
 )
+_RECEIPT_PAYLOAD_FIELDS_V2 = (*_RECEIPT_PAYLOAD_FIELDS_V1, "seed_created_at")
+_RECEIPT_FIELDS_BY_SCHEMA = {
+    PAPER_SNAPSHOT_RECEIPT_SCHEMA_VERSION: _RECEIPT_PAYLOAD_FIELDS_V1,
+    PAPER_ACCOUNT_CASH_SEED_RECEIPT_SCHEMA_VERSION: _RECEIPT_PAYLOAD_FIELDS_V2,
+}
 
 
 def _canonical_json(payload: object) -> str:
@@ -71,6 +78,35 @@ def _receipt_hash(name: str, value: object) -> str:
     return value
 
 
+def _canonical_aware_timestamp(value: object) -> str:
+    """要求已保存 seed 時鐘為 canonical UTC aware timestamp。"""
+
+    if not isinstance(value, str) or not value:
+        raise ValueError("account cash seed clock is missing")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("account cash seed clock is invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("account cash seed clock must be timezone-aware")
+    canonical = parsed.astimezone(timezone.utc).isoformat()
+    if value != canonical:
+        raise ValueError("account cash seed clock must use canonical UTC form")
+    return canonical
+
+
+def _canonical_seed_date(seed_created_at: object) -> str:
+    """從 writer 保存的 aware 時鐘映射台北自然日，不用主機 local date。"""
+
+    canonical = _canonical_aware_timestamp(seed_created_at)
+    return datetime.fromisoformat(canonical).astimezone(TAIWAN_MARKET_TIMEZONE).date().isoformat()
+
+
+def _cash_seed_source_result_id(binding_sha256: object) -> str:
+    binding_hash = _receipt_hash("binding_sha256", binding_sha256)
+    return "strategy-account-cash-seed:" + binding_hash.removeprefix("sha256:")
+
+
 def _positions_sha256(snapshot: "PaperPortfolioSnapshot") -> str:
     payload = [
         {
@@ -87,10 +123,10 @@ def _positions_sha256(snapshot: "PaperPortfolioSnapshot") -> str:
 
 @dataclass(frozen=True, slots=True)
 class PaperPortfolioSnapshotReceipt:
-    """有界的來源憑證；僅支援 unknown 與 synthetic seed reference，沒有 net 資格。"""
+    """有界的快照來源憑證；account cash seed 只證明前向空倉開戶，不授予績效資格。"""
 
     schema_version: str
-    receipt_kind: Literal["unknown", "seed_reference"]
+    receipt_kind: Literal["unknown", "seed_reference", "account_cash_seed"]
     snapshot_id: str
     portfolio_id: str
     decision_date: str
@@ -104,13 +140,20 @@ class PaperPortfolioSnapshotReceipt:
     max_positions: int | None
     positions_sha256: str | None
     receipt_sha256: str
+    seed_created_at: str | None = None
 
     def __post_init__(self) -> None:
-        if (
-            self.schema_version != PAPER_SNAPSHOT_RECEIPT_SCHEMA_VERSION
-            or self.receipt_kind not in ("unknown", "seed_reference")
-        ):
+        if not isinstance(self.schema_version, str):
+            raise ValueError("paper snapshot receipt schema version is invalid")
+        if self.schema_version not in _RECEIPT_FIELDS_BY_SCHEMA:
             raise ValueError("paper snapshot receipt contract is unsupported")
+        if self.schema_version == PAPER_SNAPSHOT_RECEIPT_SCHEMA_VERSION:
+            if self.receipt_kind not in ("unknown", "seed_reference"):
+                raise ValueError("paper snapshot receipt contract is unsupported")
+            if self.seed_created_at is not None:
+                raise ValueError("paper snapshot receipt v1 cannot contain a seed clock")
+        elif self.receipt_kind != "account_cash_seed":
+            raise ValueError("paper snapshot receipt v2 kind is unsupported")
         for name in ("snapshot_id", "portfolio_id", "decision_date", "source_result_id"):
             _receipt_text(name, getattr(self, name))
         try:
@@ -140,7 +183,8 @@ class PaperPortfolioSnapshotReceipt:
         self.to_json()
 
     def _payload(self) -> dict[str, object]:
-        return {name: getattr(self, name) for name in _RECEIPT_PAYLOAD_FIELDS}
+        fields = _RECEIPT_FIELDS_BY_SCHEMA[self.schema_version]
+        return {name: getattr(self, name) for name in fields}
 
     def _validate_kind_fields(self) -> None:
         seed_fields = (
@@ -155,6 +199,24 @@ class PaperPortfolioSnapshotReceipt:
             if any(value is not None for value in seed_fields):
                 raise ValueError("unknown receipt cannot contain seed claims")
             return
+        if self.receipt_kind == "account_cash_seed":
+            if self.schema_version != PAPER_ACCOUNT_CASH_SEED_RECEIPT_SCHEMA_VERSION:
+                raise ValueError("account cash seed requires receipt schema v2")
+            if self.unknown_reason is not None:
+                raise ValueError("account cash seed cannot contain an unknown reason")
+            if self.account_namespace is None or self.binding_sha256 is None:
+                raise ValueError("account cash seed requires an explicit binding")
+            if self.seed_source_id != "strategy_paper_account_binding.v1":
+                raise ValueError("account cash seed source must be a verified binding")
+            if self.seed_source_sha256 != self.binding_sha256:
+                raise ValueError("account cash seed source hash must match binding")
+            if self.initial_capital != "500000":
+                raise ValueError("account cash seed capital must remain 500000")
+            if type(self.max_positions) is not int or self.max_positions != 8:
+                raise ValueError("account cash seed max positions must remain 8")
+            _receipt_hash("positions_sha256", self.positions_sha256)
+            _canonical_aware_timestamp(self.seed_created_at)
+            return
         if self.unknown_reason is not None:
             raise ValueError("seed reference cannot contain an unknown reason")
         seed_source_id = _receipt_text("seed_source_id", self.seed_source_id)
@@ -168,6 +230,38 @@ class PaperPortfolioSnapshotReceipt:
         _receipt_hash("positions_sha256", self.positions_sha256)
         if self.account_namespace is None or self.binding_sha256 is None:
             raise ValueError("seed reference requires an explicit bound account")
+
+    @classmethod
+    def account_cash_seed_for(
+        cls,
+        snapshot: "PaperPortfolioSnapshot",
+        *,
+        account_namespace: str,
+        binding_sha256: str,
+        seed_created_at: str,
+    ) -> "PaperPortfolioSnapshotReceipt":
+        """建立僅代表前向空倉開戶的 binding 收據；不含市場價格或績效宣稱。"""
+
+        payload: dict[str, object] = {
+            "schema_version": PAPER_ACCOUNT_CASH_SEED_RECEIPT_SCHEMA_VERSION,
+            "receipt_kind": "account_cash_seed",
+            "snapshot_id": snapshot.snapshot_id,
+            "portfolio_id": snapshot.portfolio_id,
+            "decision_date": snapshot.decision_date,
+            "source_result_id": snapshot.source_result_id,
+            "account_namespace": account_namespace,
+            "binding_sha256": binding_sha256,
+            "unknown_reason": None,
+            "seed_source_id": "strategy_paper_account_binding.v1",
+            "seed_source_sha256": binding_sha256,
+            "initial_capital": "500000",
+            "max_positions": 8,
+            "positions_sha256": _positions_sha256(snapshot),
+            "seed_created_at": seed_created_at,
+        }
+        receipt = cls(**payload, receipt_sha256=_canonical_sha256(payload))  # type: ignore[arg-type]
+        receipt.validate_for_snapshot(snapshot, expected_account_namespace=account_namespace)
+        return receipt
 
     @classmethod
     def unknown_for(
@@ -281,6 +375,18 @@ class PaperPortfolioSnapshotReceipt:
                     )
             if self.positions_sha256 != _positions_sha256(snapshot):
                 raise ValueError("seed reference positions hash mismatch")
+        elif self.receipt_kind == "account_cash_seed":
+            _canonical_aware_timestamp(self.seed_created_at)
+            if snapshot.source_result_id != _cash_seed_source_result_id(self.binding_sha256):
+                raise ValueError("account cash seed source result identity mismatch")
+            if snapshot.decision_date != _canonical_seed_date(self.seed_created_at):
+                raise ValueError("account cash seed date cannot be backdated")
+            if snapshot.cash != Decimal("500000") or snapshot.total_value != Decimal("500000"):
+                raise ValueError("account cash seed must start with 500000 cash NAV")
+            if snapshot.positions:
+                raise ValueError("account cash seed must have empty positions")
+            if self.positions_sha256 != _positions_sha256(snapshot):
+                raise ValueError("account cash seed positions hash mismatch")
 
     def to_json(self) -> str:
         serialized = _canonical_json({**self._payload(), "receipt_sha256": self.receipt_sha256})
@@ -310,7 +416,13 @@ class PaperPortfolioSnapshotReceipt:
             raise ValueError("paper snapshot receipt JSON is invalid") from exc
         if not isinstance(payload, dict):
             raise ValueError("paper snapshot receipt JSON must be an object")
-        expected = set(_RECEIPT_PAYLOAD_FIELDS) | {"receipt_sha256"}
+        schema_version = payload.get("schema_version")
+        if not isinstance(schema_version, str):
+            raise ValueError("paper snapshot receipt schema version is unsupported")
+        fields = _RECEIPT_FIELDS_BY_SCHEMA.get(schema_version)
+        if fields is None:
+            raise ValueError("paper snapshot receipt schema version is unsupported")
+        expected = set(fields) | {"receipt_sha256"}
         if set(payload) != expected:
             raise ValueError("paper snapshot receipt fields are incomplete or unknown")
         return cls(**payload)  # type: ignore[arg-type]
@@ -404,6 +516,9 @@ class PaperPortfolioSnapshotRepository:
         snapshot: PaperPortfolioSnapshot,
         receipt: PaperPortfolioSnapshotReceipt | None = None,
     ) -> None:
+        if receipt is not None and receipt.receipt_kind == "account_cash_seed":
+            self.append_account_cash_seed_once(snapshot, receipt)
+            return
         if self.read_only:
             raise PermissionError("paper snapshot route is read-only")
         self._require_identity(snapshot.portfolio_id)
@@ -459,6 +574,81 @@ class PaperPortfolioSnapshotRepository:
                             receipt.receipt_sha256,
                         ),
                     )
+        except sqlite3.IntegrityError as exc:
+            if "paper_portfolio_snapshots.snapshot_id" in str(exc):
+                raise ValueError(f"snapshot already exists: {snapshot.snapshot_id}") from exc
+            raise ValueError("snapshot append failed") from exc
+
+    def append_account_cash_seed_once(
+        self,
+        snapshot: PaperPortfolioSnapshot,
+        receipt: PaperPortfolioSnapshotReceipt,
+    ) -> None:
+        """在同一 write lock/transaction 核對空帳戶並追加唯一 cash seed。"""
+
+        if self.read_only:
+            raise PermissionError("paper snapshot route is read-only")
+        if self.route is None or self.route.paper_account_namespace is None:
+            raise ValueError("strategy_account_cash_seed_requires_namespaced_route")
+        self._require_identity(snapshot.portfolio_id)
+        if receipt.receipt_kind != "account_cash_seed":
+            raise ValueError("account cash seed receipt is required")
+        receipt.validate_for_snapshot(
+            snapshot,
+            expected_account_namespace=(
+                None if self.route is None else self.route.paper_account_namespace
+            ),
+        )
+        try:
+            with self._connect() as conn:
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute("BEGIN IMMEDIATE")
+                existing = conn.execute(
+                    "SELECT 1 FROM paper_portfolio_snapshots LIMIT 1"
+                ).fetchone()
+                if existing is not None:
+                    raise ValueError("strategy_account_seed_already_exists")
+                conn.execute(
+                    "INSERT INTO paper_portfolio_snapshots VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        snapshot.snapshot_id,
+                        snapshot.portfolio_id,
+                        snapshot.decision_date,
+                        snapshot.source_result_id,
+                        str(snapshot.cash),
+                        str(snapshot.total_value),
+                    ),
+                )
+                conn.executemany(
+                    "INSERT INTO paper_portfolio_positions VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        (
+                            snapshot.snapshot_id,
+                            item.stock_code,
+                            item.quantity,
+                            str(item.mark_price),
+                            str(item.market_value),
+                            item.weight_bp,
+                        )
+                        for item in snapshot.positions
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO paper_portfolio_snapshot_receipts (
+                        snapshot_id, portfolio_id, account_namespace,
+                        binding_sha256, receipt_json, receipt_sha256
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        receipt.snapshot_id,
+                        receipt.portfolio_id,
+                        receipt.account_namespace,
+                        receipt.binding_sha256,
+                        receipt.to_json(),
+                        receipt.receipt_sha256,
+                    ),
+                )
         except sqlite3.IntegrityError as exc:
             if "paper_portfolio_snapshots.snapshot_id" in str(exc):
                 raise ValueError(f"snapshot already exists: {snapshot.snapshot_id}") from exc

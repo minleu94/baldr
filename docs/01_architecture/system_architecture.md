@@ -167,6 +167,8 @@ R031最後完成的264-test attempt5對當時frozen source snapshot自然exit0�
 
 TWSE 日價列證據由 `data_module.twse_daily_price_publication` 核對所選列的 projection manifest、raw／CSV／custody／observation 與來源時鐘。`read_sqlite_daily_price_scalar_evidence()` 使用同一唯讀 SQLite 交易回傳指定欄位及列 hash；舊 evidence reader 介面維持相容。First-observed／observed 必須與各自回執吻合，written-at 不得早於 observed；金融 caller 另用 Decimal 與 decision cutoff 核驗，不把列證據升格為歷史 PIT 或收益資格。[行情證據切片 QA](../06_qa/BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)
 
+`StrategyPaperAccountCashSeedWriter` 位於 application boundary，從 exact strategy binding／pinned policy 建立 namespaced 前向現金空帳戶。Snapshot repository 對 v2 `account_cash_seed` 使用 `BEGIN IMMEDIATE`，首次帳戶檢查與 snapshot／positions／receipt 同交易；public append 同樣套用，拒絕 flat route 與第二次初始化。實際 aware 時鐘固定台北日期，不回填歷史；此收據不解除 daily ledger／價格／成本／benchmark 或 weekly 資格阻擋，正常 UI 尚未接開戶入口。[開戶契約 QA](../06_qa/BALDR_P08_CASH_SEED_SLICE_20261010.md)
+
 受控來源修復涵蓋價格、大盤、補回完整歷史交易日與錯日排除。`daily_price_revision_write_guard.py`、`formal_market_revision.py`、`historical_session_revision.py`、`excluded_daily_price_revision.py` 在正式 writer 刪除／替換前檢查已核驗欄位及必要 key，並拒絕重匯官方已證明無行情的日期／代號。整表替換保留原 schema／索引，與全部批次寫入共用交易，失敗回滾。晚到來源的觀測時間與歷史交易日分開保存，ML／PIT gate 不將修訂後歷史冒充當時已知。
 
 `daily_price_source_revision_overlay.py` 每輪載入一次已核驗的價格／交易日／排除證據，供正常與舊版每日合併入口同步 derived CSV；即使沒有新 raw，也可套用來源修訂。處理使用日期 mask，只將少量修訂列轉成 records，不全量載入 Python row dictionaries。原始日檔仍保留；合併產物的 sidecar 保存修訂版本及移除筆數。`repair_formal_daily_cache.py` 則從已核驗的 immutable 日價 snapshot 串流重建完整 17 欄整合快取，將 CSV 與 source receipt 作為同一可恢復發布單位。

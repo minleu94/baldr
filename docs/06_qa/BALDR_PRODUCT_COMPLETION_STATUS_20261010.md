@@ -14,7 +14,7 @@
 | P05 個股可讀性 | `65d5f515` H20 來源／完整錯誤修正、`9d5e8cd4` 正常 Main 耐久案例；G 原2382 H20下鑽／返回 native0 | 首次名單35.281秒仍待改善、一般報告不完整；跨域時效、摘要與用途真人判讀 |
 | P06 持倉情境 | 原 Portfolio／Health／研究情境基礎 | 同股多帳本、明示配置情境、保存／新程序與原模型關係；不能直接把毛報酬轉權重 |
 | P07 自有策略 | Registry／StrategySpec／限定封存規則卡；`6407d6e8` 有限方法目錄對齊 | 完整策略規則／executor、型態與 VCP 定義、多策略共振、正常 UI 消費者；目錄尚不是策略產品 |
-| P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報、Registry 歷史比較；版本帳戶 binding／分離路徑，50 PASS／1 skip；快照來源紀錄原子保存／讀回，55 PASS；同次唯讀價格／證據及來源時鐘核驗，39 PASS | 真實 seed／daily 逐筆 provenance、受控 writer／ledger／benchmark／績效與正常 UI；新帳戶週報保持不可計算，daily writer 仍限制 paper-main |
+| P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報及版本帳戶 binding；快照紀錄55 PASS、同次行情證據39 PASS、exact binding 前向現金開戶74 PASS／1 skip | daily 逐筆 provenance、ordered fills／零成交 checkpoint、跨 DB 復原、benchmark／績效與正常 UI；新帳戶週報保持不可計算，daily writer 仍限制 paper-main |
 | P09 收藏與追蹤 | 不同來源的 bookmark／restore 切片 | 全域 query/source/origin、各域新程序、錯版／半批／晚到回呼與完整返回 |
 | P10 四用途首頁 | 四用途引導卡、九工作區導覽已存在 | 同源日期、市場／模型／持倉／更新完整往返／重開、跨時區與真人理解 |
 | P11 自然結果 | 既有 daily journey 與 Forward Performance 部分進度 | 每筆 prediction→entry→outcome→readiness／公平比較接線；未成熟保持 waiting，不用 replay 代自然結果 |
@@ -46,7 +46,7 @@ M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成
 - root：審查正式差異、執行驗證、保存進度；不覆寫其他文件整理工作。
 - F12 葉片：T39 一次終態詳見下方；第一個鎖核驗已過，其後精確 QA SQLite 路由仍待，下一 sibling 先盤點完整呼叫流程及合成驗證，再交 root 審核。
 - 原 2382 葉片：F 原名單首次就緒21.250秒、10列可研究、2382唯一，尚未下鑽；G小型Qt方向探針已通過，正在準備完整G旅程。C–F原收據保留，E槽私人副本／狀態、D原來源唯讀；見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)及下方終態。
-- P08 Luna max：binding／帳戶路徑、成本 reader 與快照來源紀錄基礎已分別整合，receipt 正式回歸 55 PASS。下一步是明示真實 seed 與 daily 來源鏈候選；產製、週報資格及策略 UI 尚未完成。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)及[快照紀錄切片](BALDR_P08_SNAPSHOT_RECEIPT_SLICE_20261010.md)。
+- P08 Luna max：binding／帳戶路徑、成本 reader、快照紀錄與前向現金開戶已整合；開戶正式回歸74 PASS／1 skip。下一步是完整一次daily來源鏈／checkpoint候選；產製、週報資格及策略UI尚未完成。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)、[快照紀錄](BALDR_P08_SNAPSHOT_RECEIPT_SLICE_20261010.md)及[現金開戶](BALDR_P08_CASH_SEED_SLICE_20261010.md)。
 
 真人目前可做[合成來源六步驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：窄窗、完整文字、返回、比較、收藏即時重開及關閉後重開。它使用 1000／1256，不替代原 2382／H20、真實推薦或整體四用途接受。
 
@@ -77,3 +77,7 @@ P01 的小型隔離 setup 探針已取得 native exit0：458字元、12段的 ma
 Manual 現行 §6.4 已補推薦理由展開、結果頁捲動與鍵盤到全文末尾，以及未入選中文解釋的用途；操作說明不再只留在日期化補充。這是既有功能的文件同步，沒有新的 UI 修改或新增真人驗收結果。H20 一般報告、收藏新程序與策略帳戶完整績效仍依上表續辦。
 
 H20 G 原保存來源已由 root 審閱完整 F→G 差異、封套及 launcher，逐份核對 artifact SHA，30＋17 pins 與唯讀預檢通過後執行一次。Session `15462`／child PID `32164` 原生 exit0，外層39.237秒、未逾時或終止。Main 至首次原名單35.281秒、頁籤操作至名單31.219秒，10列可研究、0未知、2382唯一；這是一次觀測，不能宣稱 p95 或載入速度改善。方向核驗的原生捲動12次（外層11次）於344ms露出第8列；實際雙擊至 H20 證據與圖表 available 為250ms，返回原H20頁及同一2382選取為203ms。一般報告雖發出 `reportLoaded`，但7次非私人SQLite連線及3次非私人open寫入被守門阻擋，品質為 `partial_or_D_sqlite_blocked`；完整四端點仍為false，不能稱完整個股研究通過。Main自然關閉、registry worker0、三個H20 worker均停止、私人SQLite清理為空，原來源metadata前後相同。G manifest SHA `450d0dbb676fa9374a2b2d29c30fafc5b08d87e3dc2061edda9f721d579d3b53`；內層收據 `E:/t/h20p2382g/output/qa/h20_2382_timing_receipt.json` SHA `ed02f787c5b1335e65911e165dc16ab0ab19e066a84ebdf111247d5fcf66d5fe`。下一步分別處理首次載入耗時與一般報告精確唯讀路由，不放寬原資料寫入限制。
+
+推薦理由滾輪另有正式元件合成探針：460×600、90段長文字，內層 scrollbar maximum0、外層maximum1806；在文字可見區向 QWindow 送31次真實 Qt wheel event，外層從0到1806、全文最後一行可見，native exit0。直接 `sendEvent` 到文字 viewport 的三次事件均被忽略且無捲動，不用它冒充視窗輸入失敗；結論以 QWindow 路徑為準。收據 `output/qa/reason_wheel_root_20261010/receipt.json` SHA `6eab06eae2cc91ab96c8b2f1d2e14dea2d4327c6b859e519d5b0cf36f3dcf8e5`。未修改正式UI；此證據只涵蓋理由元件，不代表完整Main、EXE或真人驗收。
+
+P08 前向現金開戶已正式整合：root要求並審核 transaction內首次檢查、public append委派、namespaced-only路由及非字串schema拒絕，核對候選／依賴／QA artifact hash與正式pre/postimage後套用。正式import取得74 PASS／1 skip／4.59秒／native exit0；mypy兩來源、三檔語法與diff check通過。此能力只保存exact binding的500000 Decimal現金／空持倉與當下aware時鐘，沒有執行真帳戶開戶，也未接daily／週報資格或正常UI。[契約與回滾](BALDR_P08_CASH_SEED_SLICE_20261010.md)

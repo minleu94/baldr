@@ -15,7 +15,7 @@
 | F06 波動 | 尚無 full-N reader-issued 結果，方法提案不代表已採納產品規則。`8945df89` 已提交呈現層與回歸測試，2 項 focused tests 及記錄中的強制 UI／型態／語法檢查通過；`8c7fd469` 的正式 composite View 已接入此呈現層，仍不代表 full-N 方法或產品 Gate 已驗收。詳見[產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。 |
 | F12 月營收 | T24a 私人合成聚焦 3 項及 6 subtests 通過，58 正式來源＋8候選檔起訖一致；涵蓋真確認／啟用／UI 重載及兩個收藏刷新 worker 的精確讀取、短鎖、連線關閉與排空。完整 Main、worker 負例矩陣、逐筆 price 收藏、完整收藏及新程序讀回仍待；T23 原失敗證據保留，原來源維持唯讀，不關閉 F12 Gate。[F12 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 | H20 source-port | M7 原來源 S4 Main bounded 旅程已完成：原 10 檔 cohort、2382 真實圖表下鑽／返回及 120 筆 OHLC 對照一致，原始來源前後不變。接續 G 取得 native0、原2382 H20下鑽250ms／返回203ms，首次名單35.281秒；一般報告仍不完整。這不代表新 EXE、真人驗收、首次載入改善或正式 PIT／收益資格。[H20 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)、[接續收據](../06_qa/BALDR_PRODUCT_COMPLETION_STATUS_20261010.md) |
-| P08 行情證據基礎 | 多 manifest 選列核對與來源時間一致性已修正；新 scalar reader 同次唯讀 SQLite snapshot 取得值與列 hash，舊介面相容。正式回歸 39 PASS、型態／語法檢查通過；真 seed、daily 帳本／benchmark／績效資格仍未完成。[行情證據切片](../06_qa/BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md) |
+| P08 帳戶與行情基礎 | 多 manifest 同次唯讀行情證據39 PASS；exact binding 前向現金開戶74 PASS／1 skip，首次檢查與快照／收據同交易，無歷史回填。型態／語法檢查通過；daily 帳本／benchmark／績效資格與正常 UI 仍未完成。[行情證據](../06_qa/BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)、[開戶契約](../06_qa/BALDR_P08_CASH_SEED_SLICE_20261010.md) |
 
 P01 詳細結果見 [P01 效能 root review](../06_qa/BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md)；F02 旅程見 [F02 root review](../06_qa/BALDR_MA_V9_CHILD_IDENTITY_ROOT_REVIEW_20261009.md)。產品缺口總表見 [補完缺口 review](../06_qa/BALDR_COMPLETION_GAP_REVIEW_20261008.md)，續接時依 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)、[交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md) 及 [產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)查閱。交接及各 root review 中的通過、失敗、未驗證界線均有效；文件整理不關閉 Gate。
 

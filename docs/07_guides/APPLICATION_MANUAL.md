@@ -3644,6 +3644,8 @@ preview 會驗證 baseline safety flags、首日邊界、snapshot 日期唯一�
 
 JSON evidence 使用 `paper-portfolio-weekly-evidence.v2`；`observed_cost_disclosure_total` 只加總目前讀到且通過檢查的成本列，任一成本讀取 blocker 出現就保持未知。`cost_disclosure_complete=false` 表示沒有完整視窗證明，不得把該金額當作完整成本。這兩個欄位目前僅在 JSON 輸出可見；UI 與 Markdown 顯示列數、狀態及阻擋原因。成本區間為 `[period_start, period_end)`，結束日成交留至下一期。遇到 basis／ledger-window blocker，先核對 snapshot 的版本化 basis、逐 snapshot receipt、portfolio/account、prior snapshot、決策時點與 fill/source event 對照；證據未齊前不手改 snapshot、不補零。此狀態 CLI 回傳 exit code 2，原始資料不會被修改。
 
+策略專屬帳戶若只有前向現金開戶紀錄，表示明示版本已保存500000現金、空持倉與實際建立時間；這不代表每日成交、價格可得時點、成本或 benchmark 已完整。週報遇到 `strategy_account_row_provenance_unverified` 時仍不可計算績效，請保留原紀錄，等待來源鏈補齊，不手填歷史持倉或收益。目前正常 UI 尚未提供這項開戶入口。
+
 ### 10.4 持倉與交易歷史
 
 選取持倉後，右側同步顯示：

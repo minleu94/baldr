@@ -119,3 +119,13 @@ root 審查並重算 P6 runner SHA `6f735bbaa36a8119603baf9b70e5fc5cdb13ab3defcb
 本輪原生 diagnostic 的 `terminal_pin_argument_matches=true`，capture frame 直接且 path/flags 吻合，證明前版 os.open wrapper 缺口已解除；不能把同名錯誤當成完全相同原因。root 實讀原 N `_cycle_terminal_phase_with_config_test_fallback`，其開頭核對 `getattr(self, helper).__func__` 必須是原固定函式，P5/P6 新 override 因此必拒，連沒有 fdopen token 的 os.open 也受影響。下一候選須先完整盤點六個 helper 的固定身分／audit 契約，保留 self 上原固定 helper；不得只修改一個檢查逐次撞下一個，也不放寬 terminal pin/cap。P6 首紅保持，不重跑、不算 H20 或個股 UI 通過。
 
 F03 B 已補真 public opener 的 MA/KDJ/volatility 各 begin/consume/end 九個失敗分支、prepare 成功後 issuer envelope 超額拒絕及成功後 poison getter。root 已對照真方法名與清理 API；正式程式未改，隔離 package-path bootstrap 與 before/after source pins 正在完成。下一輪 focused 只跑受影響的 prepare、新 publication 與兩個原 F17 issue/取消 node，不把未修改的完整 BundleReader suite 順手加入。
+
+### F03 B 唯一 focused 執行與 F12 F 靜態審查（追加）
+
+root 已完整審查 B revision diff、package-path bootstrap、launcher 和新增測試，獨立重算 20 個正式 source pins 與 9 個 draft pins，沒有 mismatch。manifest SHA `d8184a26b9f8c634b963c15826322a6393c6616e8427a67fbe965dc417bf0c9f`；revision diff SHA `46bd346e2e0f1d2910cef7512d7bcf13edbfc22b2b1e5d34733eafed3024f3e1`。隔離 bootstrap 在任何 reader import 前掛入僅有兩個候選模組的 overlay，明確核對實際 reader 路徑與 SHA；fresh child lazy-import 檢查亦使用此候選，避免測到正式舊版造成假通過。
+
+授權唯一 B focused attempt，僅跑原 prepare、新 publication 與兩個原 F17 指定 node。此段落寫入時測試仍存活，沒有原生終態或通過宣稱。root 獨立唯讀核對四個 exact PID／建立時間／command chain（31056 → 41796 → 49936 → 35704），觀察收據位於 `output/qa/resume_root_validation_20261009_a/f03_b_live_process_observation_20261010_a.json`。agent 持有原 live handle；root 無法使用該 scoped handle 不代表程序已終止，沒有重啟、重複測試或終止其他 Python。launcher 在原生終態前緩存輸出；正式 F17、MA 與 P01 sources 保持原 pins，尚未整合。
+
+F12 F 仍為未凍結的隔離 QA 草案，未啟動 focused／Main。兩階段角色依原 primer verifier、prime、typed archived binding verifier、selection transaction 順序接線。root 審查要求消除任意 ancestor 搜尋，限定真呼叫鏈並核對 code／globals／thread／task／custody；單次 proof 在所有終態消耗與清理，連線取得後若後置檢查失敗須關閉連線並保留主錯誤與清理錯誤。SQLite 全域 hook 亦須重新核對當下 thread 和 task，不能僅靠函式身分放行。這些是候選審查發現，不能算作已通過負例或產品修復。
+
+三位 Luna Max 維持 H20、F03、F12 分工，root 審查。H20 P7 只獲靜態候選接線授權；原 N helper 身分、來源和 P6 首紅保留。沒有新增 EXE、真人驗收入口或正式排程變更，完整 P00–P14／M1–M3／F01–F23 補完範圍保持。

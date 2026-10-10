@@ -628,3 +628,23 @@ F12 T3 原長路徑封套在產生原子收據前超出 Windows 路徑限制，p
 T4唯一完整Main handle3131已終態exit1，native PID33060，封套 `20261010T060750Z_40708_4834ed5c`；native receipt `run_attempt_a6291967851b4a8e8c4a2ab262fbcb74/f12_main_revenue_receipt.json`。原query qualification通過，但 `revenue_result_clicked_row_not_bound_to_issued_page` 阻止後續收藏／新PID重開；不能以七項focused通過宣稱完整旅程成功。候選SHA保持，收據及原始錯誤保留，下一輪先核真Revenue點選列與已發行頁綁定。
 
 Composite storage identity B 尚未正式接入：靜態shadow mypy為10 errors，八項schema字串不足以收窄union、一項generic context誤容Composite、一項removal matches舊union。修正必須維持typed envelope及嚴格decode，不用Any掩蓋。P01下一輪採固定產品commit85bc225b完整tracked source（4666 blobs、81,023,636 bytes）準備新錨定；目前僅靜態盤點，未建立clone、未重建千檔資料、未重跑300ms完整矩陣。
+
+P01固定來源後續已完成：普通Git archive受Windows換行設定影響，與blob bytes不符，A在第一檔核驗停止，沒有runtime。B用固定Git objects原始bytes建立精確zip及新短根 `C:/t/p01src85bc10b`，原生exit0、4666檔全SHA一致、81,023,636 bytes、117相對目錄、0pyc、最長絕對路徑151。archive SHA `5b82641e66e7f7aa0c48de839a7764f8f12777431d57a3fd4ad11cd2af7f8ed8`，materialization receipt SHA `6b2f3570a1bb263efba4334ffd98f8fbf2cd007ba377c1eb007883a259dbda12`。Git/tree canonical inventory `0a90dfc1a6cfdeb524c3f3139d063c232ebf0247323586c24048ab0471381c3d`與既有controller records hash `85d95f8ebeff46927ff01a4a31236a7c5561127c83ac1f12cb38617c4b6612a0`為不同recipe；controller含root目錄數118另列。此只建立程式副本，原千檔source/store未寫入，完整矩陣仍未跑。
+
+窄窗C無來源幾何診斷已定位：官方條件群組長title的minimumSizeHint386，而其layout最低264，外層filter及body邊距將整頁撐至428。下一版須保留外層條件語意並將補充說明折行，不能降低460px驗收。另storage B的複合列無條件停用「查看選中個股研究報告」，所以私有函式路由測試不能代替真按鈕操作；下一版必須有效列可點、損壞列拒絕，驗真QTest點擊與專用typed signal。
+
+H20 L helper新增Path匯入與真分支正負例已由root隔離執行：7passed／4.34s、exit0、六候選pins起訖相同，封套 `h20_l_focused_root_20261010_attempt01`。typed/sealed synthetic fixture實際越過manifest-path比較，移除Path時重現NameError；仍不是原來源Main接受。L完整Main暫不跑，因原platform三拒絕尚未以精確guard前初始化處理；新M需保持D9 guard不變。
+
+root直接核T4正式PageRequest契約後確認首錯：QA以 `request.query is query` 要求物件相同，但 `DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1.query` 每次從query_json重建typed query，因此真請求必不相同。後續T5應以canonical JSON、query identity及正式request契約驗等價，page/result原seal身份仍保持；focused必用真Query/PageRequest DTO，不再用同一物件的fixture掩蓋。這是QA判讀錯誤，尚無此首錯造成產品點選失效的證據。
+
+FullView D最小title／折行修正已真跑無來源檢查：body422等於viewport422、實際width460、horizontal scroll maximum0均通過；整項仍1failed／1.27s，因QA對未切入的stack頁使用尚未layout的hidden按鈕預設640px寬。新E應逐頁切換真stack並處理layout後核各頁控件，最後恢復原頁，不能省略某一頁或放寬body門檻。尚不啟動真257窄窗；D原封與收據保留。
+
+
+### 2026-10-10 接續：窄窗帶來源、P01 靜態核對與收藏路由
+
+- Composite View E 空白構造通過，但真保存來源窄窗測試仍失敗：內容 906 px、viewport 422 px；1 failed / 1 deselected，177.04 秒，候選與正式來源 pins 前後一致。失敗在 opener 前，尚未驗收到末行、返回及來源保留；不能以便宜構造測試通過代表整段完成。已交由 UI subagent 查長來源路徑標籤幾何，另建 F sibling。
+- P01 固定 85bc 全樹來源的 controller 靜態 preflight 通過，receipt `output/qa/p01_1000_e5ba_full_matrix_anchor_20261010_a/static_preflight_29e0049cff07.json`；controller SHA bb7a1b652c62175fd41c57110175c59e418d93e15f8e4b537a74541c3b13b0f0、manifest SHA 9bd258ef5ee963551c04e1d2a3d7aded7b7df022ef9376709edb689ec92aef26。SQLite、網路、subprocess 嘗試均 0；此為靜態輸入核對，不是效能驗收。
+- 收藏 identity C 已全文審閱服務/View diff 與真 257 Qt 測試。第一輪在合成 DB 的 Windows 沙箱 realpath 檢查遭 PermissionError，4.63 秒 setup error，尚未驗功能；保留 attempt01，於新 attempt02 使用相同候選重新啟動。正式檔案僅在子程序記憶體套候選，原件不改。
+- H20 M2 focused 啟動前完成六檔 pins 核對，但建立 C:/t 隔離目錄遭沙箱拒絕，pytest 未啟動。M2 送審後新增 cold-cache fixture 的需求改置 M3；凍結候選不得再覆寫，M/M2 metadata 重建差異如實留痕。
+
+- F12 T5 root 定向回歸結果 7 passed／1 failed／38 deselected，1.75 秒；八候選與 58 來源前後核對通過。真 PageRequest canonical JSON／query identity 比較已通過，但新增 fixture 把 `recipe.sort_clauses` 設為 dict tuple，後續 `.to_dict()` 觸發 AttributeError。此為 QA fixture 型別錯誤，不能外推為產品排序失敗；T6 只改用真 typed sort clauses 並保留所有發行結果 seal 判斷，完整 Main 尚未重跑。

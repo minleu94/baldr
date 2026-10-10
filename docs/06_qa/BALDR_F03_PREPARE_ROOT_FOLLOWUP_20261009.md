@@ -542,3 +542,21 @@ H20 G 小檔九測試8passed、1 Windows symlink skip／0.52s；guard preflight 
 G 單次完整 Main 封套 `output/qa/run_h20_s4_g_main_capture_20261010.py` SHA 4cf39cbc9c8889ccf09c6e443b51fe00153084ac46cdae7081962f645eac18d8、handle87905 已啟動；重新核G／S4／D9與fresh commit/disk gate，維持原90s／240s及全來源前後核驗，尚待十股名單及2382下鑽終態。Luna H20 轉接 P01 既有 raw profile／memo budget 的只讀診斷；Composite View／獨立儲存 route 由另一位 Luna 持續，正式 reader 仍 d59b。
 
 提交前 whitespace check 指出新測試檔尾多一空白行，僅移除該空行；最終 test SHA bd2b3400e9ad15dc9541ae2b50599fab54809a67abc8389eb3156e8815c337d3，執行時原 SHA 1ce30 及收據保留。沒有改變 AST 或測試斷言，未為此重跑完整產製；staged diff --check 通過。
+
+### H20 名單真正完成：舊 QA 回傳及下鑽契約需要對齊
+
+正式收藏模組與六測試已保存本機 commit 4fb3a3b8，未 push。G 完整 Main 原生 exit1，原來源與 pins 不變，單一 private RO connection、private open failure0、私有目錄建立／移除1／1。root 後續精確讀 trace：cohort worker 在28.125s回傳 `PersonalH20VerifiedCohortView`，worker duration15.453s；QA `_worker_summary` 只解析舊 `(reference,cohort)` tuple，故沒有 row_count，完成 predicate 永遠不成立。G 的90s timeout不能當成正式產品讀取卡住證據。
+
+H sibling 只新增每30s原生執行緒堆疊觀測（child SHA2668157e3296f75c9ba3ca0381da9642f490e6e9491372033cebadaa11d7436c、diff af0479e84a32be24c5718fe4b564b8cc711d7acc3eae14ab156239182c2aa147）。同樣來源、D9與90s／240s不變。唯一attempt 20261010T051901Z_caa69b036f1a 原生exit1，cohort在25.281s完成／duration15.141s；30s stack只剩主執行緒在QA wait_for，沒有仍運行的cohort worker。外部完整來源核兩輪不變。這支持 QA predicate 問題，沒有修改產品或原資料。
+
+I sibling 接真正 `PersonalH20VerifiedCohortView`，先呼叫原 `assert_personal_h20_verified_cohort_view` 核 seal，再從 `value.cohort` 取rows；三處cohort完成gate新增 reader_issued_view_verified 必須為true，沒有接受未核tuple或像型別物件。child f31eb39ef79b55db36aaeed2e29437a6fbf95eb7d69dfc3b376ca32be9a0d398、diff7ef9e2fbd4b86800ece67765241af5bd0b0a492e3a3b4610a14984fd635108ce。小檔測試第一封套1pass1fail：實際public fixture因tests sibling import未定位而未執行；保留該失敗。補明示tests fixture路徑、隔離DATA_ROOT並改fresh短C:/t/h20i2後，原失敗正例1passed4.06s，原negative unchanged；真單股合成public reader seal正例1234bp與tampered seal拒絕皆通過，不能取代原684bp。
+
+I唯一Main 20261010T052245Z_5f5e4b70183c 原生exit1，來源起訖不變。名單真正通過：10 rows／10 available／0 unknown、原manifest a2cad4b3…e76、2382 684bp，三日期10-07／10-06／10-05精確一致，initial_cohort16.547s。真Qt單擊＋雙擊2382已觸發；`PersonalH20SelectedProductProjectionV1` worker在0.156s完成。下一個QA首紅 `double_click_refresh_started` 仍期待新的cohort worker，但S4正常路徑已沿用同次sealed view、只發行selected projection；返回同樣使用專屬 `_personal_h20_return_worker`。需J精確更新 QA 對此真流程的判讀，保留source/reference/selection/chart及684bp/三日期，不再以舊重建cohort作完成條件。完整圖表與返回尚未驗收；不把名單局部通過標成整體H20完成。
+
+### 暫停後續行：營收 R 點擊與 P01 診斷初次實跑
+
+使用者明示繼續；三位 Luna 分別處理營收／H20 QA 契約、複合研究 View 與收藏儲存入口、P01 實際 memo counters。root 保持唯一正式整合及 runtime 執行者。
+
+營收 R review manifest `54db301048287d4bece677c8b78cc2e9d43904ef303ef04cb2d8d7989204a1d9`，完整 Q→R diff `fd9f37ed80732eb4a30fc06b23dcffd8f34e03a6dec3f18870fb6eae862151ef`。root 全讀新可見 viewport QTest mouseClick／精確 typed row／頁碼契約；原 58 pins 不改。第一封套 `20261010T052806Z_30432_e11dd550` 因沙箱 WinError5 阻於 bootstrap，沒有開始測試。受控執行的第二封套 `20261010T052820Z_16756_e9be296b` 原生 exit1：5passed、1failed、38deselected／1.38s，stdout SHA `44a1ce0f8dcea32524491ee0af500575a2988806cb72cdf25120c0ceb6406a79`，stderr 空。新測試真點擊精確選列已通過，但加入比較籃仍為空；需核對產品 handler 與 fixture 的啟用條件，不能跳過籃選驗證或直接跑 Main。R 原封套凍結保留，要求另建 S。
+
+P01 counter probe A script SHA `0778362f07fd5f8637329dc3a90fe6fa18b0b94a5e9b846dcb05d325d747d8b9`，root 已審其 observer 委派、quota-zero 對照、來源及 published page/query/selection pins、操作後清理。首次執行 exit1，失敗在 `_read_candidate_manifest`：controller 仍讀原 manifest `e17582…`，但 probe 期待明示 runtime overlay v3 `f0e639…`；尚未開 verified session、沒有 DB 操作或 page invocation。失敗收據及原始 stdout/stderr 保存在 `output/qa/p01_memo_counter_probe_20261010_a/`，要求 B sibling 精確修正明示 overlay 路由並恢復 controller 狀態；不修改原 runtime、資料或效能門檻。這次沒有任何 300ms 驗收結論。

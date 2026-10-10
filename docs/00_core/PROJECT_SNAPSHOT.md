@@ -11,10 +11,10 @@
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
 | P01 千檔效能 | 固定矩陣仍未通過原 300 ms 門檻：換頁 p95 239.4695 ms；篩選 1074.3634 ms、排序 344.7445 ms，後兩項失敗。render-prefill bounded 修補的 19 項定向回歸通過，但尚未重跑完整矩陣，不能視為效能門檻通過；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
 | F02 四均線 | 固定合成來源的 V11 父 Main→收藏→關閉→新程序 Watchlist 單擊／雙擊旅程有界通過；不代表原始來源、新 EXE 或真人驗收。 |
-| F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0；只證明限定 preparation 範圍，仍未取得共同 reader 資格、完整 query 與 UI 閉環。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0。新增複合研究收藏契約正式六測試通過，涵蓋原保存來源與新程序精確重開；四群 bundle opener 候選兩測試通過，但正常 View／Watchlist 儲存接線及 UI 閉環仍未完成。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 | F06 波動 | 尚無 full-N reader-issued 結果；方法提案不代表已採納產品規則。詳見[產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。 |
-| F12 月營收 | D focused tests 為 17 passed／4 subtests passed；唯一 Main attempt exit 1，後續 E 修正尚未驗證。[F12 D/Main follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
-| H20 source-port | O attempt02 exit 1，失敗於設定讀取前置 guard；initial／terminal 檔案與 SQLite 真讀均未發生，source-port 未通過。[H20 O attempt02 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| F12 月營收 | Q Main 的來源資格與 65 欄 query oracle 均通過，但比較籃旅程失敗。R 真點擊定向測試為 5 passed／1 failed，失敗於測試漏設載入後按鈕狀態，修正版尚未執行；完整收藏新程序旅程未通過。[F12 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| H20 source-port | I Main 已真正讀回原 H20：10 檔可用／0 未知、2382 原估計 684 bp 與三日期吻合，名單載入階段 16.547s。實際雙擊已觸發選股投影；舊 QA 誤等重新建立名單，圖表與返回旅程仍待對齊並驗收。G／H timeout 不代表產品 worker 未完成。[H20 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 
 P01 詳細結果見 [P01 效能 root review](../06_qa/BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md)；F02 旅程見 [F02 root review](../06_qa/BALDR_MA_V9_CHILD_IDENTITY_ROOT_REVIEW_20261009.md)。產品缺口總表見 [補完缺口 review](../06_qa/BALDR_COMPLETION_GAP_REVIEW_20261008.md)，續接時依 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)、[交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md) 及 [產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)查閱。交接及各 root review 中的通過、失敗、未驗證界線均有效；文件整理不關閉 Gate。
 

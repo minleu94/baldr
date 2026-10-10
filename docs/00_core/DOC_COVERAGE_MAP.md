@@ -178,8 +178,6 @@
 - docs/01_architecture/system_architecture.md - 現行系統資料流與資料層架構（架構變更時）
 - docs/03_data/DATA_FETCHING_LOGIC.md - 現行來源、欄位與獲取邏輯
 - docs/03_data/daily_data_update_guide.md - 使用者更新流程（流程變更時）
-- `docs/03_data/DATA_FETCHING_LOGIC.md` - 資料獲取邏輯（如資料獲取邏輯變更）
-- `docs/03_data/daily_data_update_guide.md` - 每日資料更新指南（如更新流程變更）
 
 **應該更新（Should）：**
 - `docs/00_core/DOCUMENTATION_INDEX.md` - 若新增文檔，需更新索引

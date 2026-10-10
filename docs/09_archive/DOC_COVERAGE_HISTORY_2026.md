@@ -1914,3 +1914,33 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 登記已核實並完成的時間標示修正。 |
 
 未修改 R031 或其他 QA 收據、設計內容、Scoped SSOT、Snapshot／Roadmap 狀態；未執行測試。
+
+<a id="coverage-entry-178"></a>
+## 2026-10-09 補齊歷史 Superpowers 導引的現行權威入口
+
+唯讀盤點確認 `docs/superpowers/` 內 96 個歷史路徑 stub 都能連回對應 Archive 原文，但 6 個 stub 缺少直達目前 Scoped SSOT 的連結。這些入口本身不是壞鏈，也沒有可刪除的歷史內容；本次只在相容 stub 補上現況或領域權威入口，避免閱讀舊計畫時把歷史 QA 與舊設計誤當成目前的產品狀態。Archive 原文、manifest、原始 bytes／SHA 與舊結論均未修改。直接連到現行 Scoped SSOT 的 stub 覆蓋由 90/96 提升為 96/96。
+
+| 相容導引 | 新增入口 |
+|---|---|
+| `docs/superpowers/plans/2026-06-14-legacy-test-governance.md`、`specs/2026-06-14-legacy-test-governance-design.md` | Snapshot、QA 主題地圖；保留最新測試清冊與 manual tests 入口。 |
+| `docs/superpowers/plans/2026-06-15-month-3-recommendation-factor-feed.md` | Snapshot、產品 Roadmap。 |
+| `docs/superpowers/plans/2026-07-02-post-v1-evidence-importers.md` | Snapshot、產品 Roadmap、QA 主題地圖。 |
+| `docs/superpowers/specs/2026-07-02-post-v1-evidence-importers-design.md` | Snapshot、產品 Roadmap。 |
+| `docs/superpowers/specs/2026-07-02-v1-1-decision-workflow-integration-design.md` | Snapshot、產品 Roadmap、系統架構與文件索引。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 記錄候選修正、導引覆蓋數與未改動封存原文的界線。 |
+
+未移動或改寫 Archive 原文，未改 manifest、QA 收據或測試結論；未執行測試。
+
+<a id="coverage-entry-179"></a>
+## 2026-10-09 校正文件治理矩陣口徑與導覽
+
+第二輪唯讀核對發現固定基線掃描的分區敘述有誤：Git tree `217115f2` 有 1,485 份 Markdown（`docs/` 1,459、其餘目錄 26），實際掃描排除 F03 follow-up 後為 1,484 份（`docs/` 1,458、其餘 26）。原報告把分區記為 1,468／16；本次在矩陣更正，並明示該掃描與既有 Graphify 都是歷史固定基線，不能當成目前 HEAD 或全部正文已核實的證明。QA 索引目標數另改用可重算口徑：舊基線 246 個本機 Markdown 目的地，其中 200 個 QA 目的地、排除 5 個索引後 195 個葉節點；`217115f2` 則為 248／201／196。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更正固定基線 Markdown 分區數；校正六份 README 連結數為 109 次／82 個正規化本機目的地、Phase 轉址與圖表指南行數；補明主題範圍權威與 excluded local state；明確將最終 Graphify 與目前 HEAD 連結驗證留到所有目錄內容審核及修訂後。 |
+| `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DOCUMENTATION_INDEX.md` | 將 Index 定位為文件導覽而非完整文件清單；加入歷史目錄快照及本輪狀態矩陣入口。 |
+| `docs/00_core/DOC_COVERAGE_MAP.md` | 移除重複的資料獲取與每日更新 Must 條目，保留一次具體規則。 |
+| `docs/agents/README.md` | 補記 2026-10-09 對齊根目錄平台指引的更新記錄。 |
+
+沒有移除文件或 QA 證據；F03 follow-up、根目錄 `$null` 及其他非本批工作樹變更均未改動。未執行測試、未刷新 Graphify，亦未改寫固定基線歷史產物。

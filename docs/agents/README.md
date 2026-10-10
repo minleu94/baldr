@@ -217,4 +217,5 @@ Antigravity 的 repo 根目錄入口是 `GEMINI.md`，輔助規則放在 `.agent
 - 2026-06-23：新增 Testing / QA Agent 權威角色文件，並進行 QA 文件架構重組清理。
 - 2026-07-04：新增外部專案參考與 V1.5-V2.0 版本形狀 companion 的 Agent 讀取規則，涉及外部參考、資料源擴充或未來版本規劃時需讀 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`。
 - 2026-07-06：新增 V2.0 之後長期版本階梯 companion 的 Agent 讀取規則，涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時需讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
+- 2026-10-09：改由 Codex／Antigravity 根目錄指令維護完整條件式必讀順序；本頁保留共同資源與角色路由，避免複製出會過期的縮短清單。
 

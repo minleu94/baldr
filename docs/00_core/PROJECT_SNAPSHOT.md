@@ -32,4 +32,4 @@ P01 詳細結果見 [P01 效能 root review](../06_qa/BALDR_P01_PATH_RENDER_DESI
 
 ## 下一步與導航
 
-產品補完已在 2026-10-09 本機 WIP checkpoint 後恢復開發。方向見 [Roadmap Hub](DEVELOPMENT_ROADMAP.md)，工程 Gate 順序見 [6M 工程 Roadmap](ROADMAP_6M_ENGINEERING.md)，邊界見 [目前架構](../01_architecture/system_architecture.md)／[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，完整文件清單與維護流程見 [文檔索引](DOCUMENTATION_INDEX.md)。Snapshot 只負責目前狀態，不取代 Roadmap、架構契約或 QA 原始證據。
+產品補完已在 2026-10-09 本機 WIP checkpoint 後恢復開發。方向見 [Roadmap Hub](DEVELOPMENT_ROADMAP.md)，工程 Gate 順序見 [6M 工程 Roadmap](ROADMAP_6M_ENGINEERING.md)，邊界見 [目前架構](../01_architecture/system_architecture.md)／[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，文件導覽與維護流程見 [文檔索引](DOCUMENTATION_INDEX.md)；全量路徑快照是[日期化目錄清冊](DOCUMENTATION_CATALOG_20261006.md)，本輪可追溯的分類與覆核基線見[文件整理狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)。Snapshot 只負責目前狀態，不取代 Roadmap、架構契約或 QA 原始證據。

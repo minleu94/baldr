@@ -39,7 +39,7 @@
 
 成功須同時證明原完整名單核驗、2382 原身分、H20／chart 實際狀態、一般報告獨立 endpoint、精確返回、來源前後不變、副本清理及所有 worker native finish。四段耗時分開公布；若某段失敗仍保留其真實終態。尚未訂新的產品速度達標數字，本方案不降低原計畫的效能門檻。
 
-目前：配置小檔已定位；原列／manifest／來源資格、一次真旅程、Native 真人及新 EXE 尚未取得。既有合成 MainWindow 測試只用來證明操作契約，不能替代本方案。
+目前：G 原保存來源已取得一次 native exit0 的名單→2382 H20證據／圖表→精確返回旅程；Main至名單35.281秒、雙擊至H20證據250ms、返回203ms。一般報告為 partial_or_D_sqlite_blocked，完整四端點仍未通過；首次載入速度改善、Native 真人及新 EXE 尚未取得。來源 metadata 前後一致、worker 全部停止及私人副本清理為空；完整收據、SHA與範圍見[補完進度](BALDR_PRODUCT_COMPLETION_STATUS_20261010.md)。既有合成 MainWindow 測試不能替代原來源或完整報告。
 
 程式依據：`ui_qt/main.py` 的 H20 configuration、refresh、request、saved-product read、return 路徑；`scripts/scheduled/personal_h20_daily_hook.py` 的 cohort／verified selection；`data_module/pinned_sqlite_read_session.py` 的 snapshot／終態核驗；`ui_qt/views/stock_research_report_view.py` 的一般報告 worker／reportLoaded。
 

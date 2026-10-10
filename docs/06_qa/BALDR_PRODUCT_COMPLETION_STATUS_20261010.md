@@ -11,7 +11,7 @@
 | P02 技術條件 | 既有 MA/KD/MACD／具名量比，另有排列、KDJ、BB／ATR 的有限方法 | 跨方法完整規則、同母體正常來源、返回／收藏／新程序與版本等價驗收；原料不等於策略 |
 | P03 其他資料域 | 原籌碼、法人、基本面、產業與官方狀態服務；營收有獨立分支 | 各域可得時間、coverage、版本／PIT、保存完整母體與 UI 閉環，缺資料不能補為安全 |
 | P04 共享選股體驗 | 部分全域篩選、排序、分頁、比較及收藏已接 | 所有域／條件共同 query、正常產製來源、跨頁狀態保存及重開 |
-| P05 個股可讀性 | `65d5f515` H20 來源／完整錯誤修正、`9d5e8cd4` 正常 Main 耐久案例 | 原 2382 同源首次名單／下鑽／報告／返回速度、跨域時效、摘要與用途真人判讀 |
+| P05 個股可讀性 | `65d5f515` H20 來源／完整錯誤修正、`9d5e8cd4` 正常 Main 耐久案例；G 原2382 H20下鑽／返回 native0 | 首次名單35.281秒仍待改善、一般報告不完整；跨域時效、摘要與用途真人判讀 |
 | P06 持倉情境 | 原 Portfolio／Health／研究情境基礎 | 同股多帳本、明示配置情境、保存／新程序與原模型關係；不能直接把毛報酬轉權重 |
 | P07 自有策略 | Registry／StrategySpec／限定封存規則卡；`6407d6e8` 有限方法目錄對齊 | 完整策略規則／executor、型態與 VCP 定義、多策略共振、正常 UI 消費者；目錄尚不是策略產品 |
 | P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報、Registry 歷史比較；版本帳戶 binding／分離路徑，50 PASS／1 skip；快照來源紀錄原子保存／讀回，55 PASS；同次唯讀價格／證據及來源時鐘核驗，39 PASS | 真實 seed／daily 逐筆 provenance、受控 writer／ledger／benchmark／績效與正常 UI；新帳戶週報保持不可計算，daily writer 仍限制 paper-main |
@@ -75,3 +75,5 @@ H20 G 小型 Qt 探針已由 root 全讀後執行一次：完全不可見、只�
 P01 的小型隔離 setup 探針已取得 native exit0：458字元、12段的 manifest 路徑可沿原 `_map_segments_path` 反向核對 source／private 映射，兩種錯誤身分被拒絕；extended syscall 建立的真實 hardlink 被正式 bounded reader 以 `technical_snapshot_v4_file_type_rejected` 拒絕。最後還原的 bytes、檔案身分、大小、mtime 與 link count 均相同，合成 source 未改、Q13 runner 未改。收據在 `output/qa/p01_manifest_link_setup_root_20261010/receipt.json`，SHA `1387217a00b9717ed53f628e3bb905fee55425c91124e3ea18616e8af66a56e7`。此探針沒有驗 symlink、完整 issued-manifest 負例矩陣或效能；Q13 原300ms門檻仍失敗，下一 sibling 仍須整合已核映射與完整還原流程。
 
 Manual 現行 §6.4 已補推薦理由展開、結果頁捲動與鍵盤到全文末尾，以及未入選中文解釋的用途；操作說明不再只留在日期化補充。這是既有功能的文件同步，沒有新的 UI 修改或新增真人驗收結果。H20 一般報告、收藏新程序與策略帳戶完整績效仍依上表續辦。
+
+H20 G 原保存來源已由 root 審閱完整 F→G 差異、封套及 launcher，逐份核對 artifact SHA，30＋17 pins 與唯讀預檢通過後執行一次。Session `15462`／child PID `32164` 原生 exit0，外層39.237秒、未逾時或終止。Main 至首次原名單35.281秒、頁籤操作至名單31.219秒，10列可研究、0未知、2382唯一；這是一次觀測，不能宣稱 p95 或載入速度改善。方向核驗的原生捲動12次（外層11次）於344ms露出第8列；實際雙擊至 H20 證據與圖表 available 為250ms，返回原H20頁及同一2382選取為203ms。一般報告雖發出 `reportLoaded`，但7次非私人SQLite連線及3次非私人open寫入被守門阻擋，品質為 `partial_or_D_sqlite_blocked`；完整四端點仍為false，不能稱完整個股研究通過。Main自然關閉、registry worker0、三個H20 worker均停止、私人SQLite清理為空，原來源metadata前後相同。G manifest SHA `450d0dbb676fa9374a2b2d29c30fafc5b08d87e3dc2061edda9f721d579d3b53`；內層收據 `E:/t/h20p2382g/output/qa/h20_2382_timing_receipt.json` SHA `ed02f787c5b1335e65911e165dc16ab0ab19e066a84ebdf111247d5fcf66d5fe`。下一步分別處理首次載入耗時與一般報告精確唯讀路由，不放寬原資料寫入限制。

@@ -38,7 +38,7 @@
 
 ### 🚀 Daily Boot Prompt（每次開新對話先用這個）
 
-**當你打開 Cursor 新對話時，直接使用這個 Prompt，Tech Lead 會自動讀取專案狀態並給出下一步建議：**
+**在新的 Codex 任務中，先依 repository 根目錄 `AGENTS.md` 的必讀順序載入專案文件，再使用這個 Prompt。根目錄 `AGENTS.md` 是自動入口；不能假設新對話會自動讀完專案狀態或本目錄的 Agent 文件：**
 
 ```
 你是本專案 Tech Lead。

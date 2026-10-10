@@ -40,7 +40,7 @@ Recommendation內切換每日研究條件與既有推薦研究來源。明示≤
 籌碼頁分列分點、法人、信用、集保持股分布與事件；級距 JSON 轉成持股範圍、人數、股數與比例，差異數調整／合計明確標示。事件顯示白話標籤，原始識別與可得時間可追溯，缺資料仍顯示缺資料，不轉成零值或評分。
 
 
-> **最後整理**：2026-09-30
+> **最後整理**：2026-10-07
 > **適用範圍**：`ui_qt/` 目前主要使用者介面。
 
 ### 頁面內操作說明（2026-10-05）
@@ -243,7 +243,6 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - 總覽第一屏新增「今日行動中心」：只用既有 `WorkbenchDashboardDTO` 的資料狀態、review items、Advice DTO 與 Action Items，整理資料／市場／Advice／持倉四張行動卡與一個下一步按鈕。按鈕僅呼叫既有數據更新、Daily Decision、推薦分析或持倉管理導覽 callback；不讀 DB、不更新資料、不執行 Policy、不寫入持倉或交易。
 - 主 shell 使用 `ui_qt/widgets/adaptive_workspace_stack.py`，只讓當前可見工作區貢獻尺寸提示，避免隱藏工作區的圖表／設定面板鎖死視窗最小尺寸；主視窗在窄桌面寬度會暫時收合左側導覽，但不改變 workspace、資料載入或 service 行為。
 - Runtime 窄版（小於 720px）會把治理左右面板改為上下排列，並以內嵌垂直捲動保留完整診斷內容；Session context status strip 會依可用寬度截斷文字。主視窗明確窄版下限為 320px，避免 Runtime 的長路徑提示把視窗鎖在桌面尺寸。
-- Runtime 窄版（小於 720px）會把治理左右面板改為上下排列，並以內嵌垂直捲動保留完整診斷內容；Session context status strip 會依可用寬度截斷文字。主視窗明確窄版下限為 320px，避免 Runtime 的長路徑提示把視窗鎖在桌面尺寸。
 - 第一版已從中文 read-only shell 推進到 background evidence feed / read-only Action Items 人工佇列體驗，並完成 Phase 2 read-only Operating Loop closeout：呈現 status strip、今日待判讀、背景證據流、依 severity / queue group / source 排序的只讀 Action Items、操作節奏、Evidence mode / data quality、Daily Checklist、warnings / degraded source。
 - 只透過 `WorkbenchSourceService` 取得 `WorkbenchDashboardDTO`，或直接呈現呼叫端提供的 DTO；UI 不直接讀 SQLite、不讀 replay DB、不寫 DB、不啟用 scheduler。
 - 主程式開啟後，Workbench 首次讀取與重新整理由受管 `TaskWorker` 在背景取得唯讀 DTO，不會在建構主視窗時同步讀資料；Research Console 只在第一次切入「研究證據」分頁時載入。SQL／artifact 讀取支援合作式取消；主視窗關閉會取消這兩項讀取並等待安全結束，舊日期／成本情境結果不會覆蓋最新請求。狀態與關閉診斷只記錄階段、耗時與 worker 數，不改 DTO、財務計算、正式資料 writer 或交易邊界。
@@ -268,7 +267,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 
 - 不重算 scoring、recommendation、portfolio、backtest 或 lifecycle。
 - 不產生買賣建議、不下單、不套用 lifecycle action。
-- Phase 0 weekly history 目前由具名 owner-approved projection 顯示 `3/3 ready`，但 `formal_credit_authorized=false`；multi-day dry-run 亦為 `3/3 ready`。畫面仍需明確揭露這只是 read-only readiness，不構成 Formal evidence credit 或 production scheduler approval；pending sidecar 週期仍須 owner/reviewer 審核，兩者皆不能用 fixture、手動改表或 replay 取代。
+- Phase 0 weekly history 與 multi-day dry-run 只顯示具名 owner-approved projection 提供的 readiness；計數會隨來源變更，本文件不固定保存 `3/3 ready` 等即時數值。`formal_credit_authorized=false` 時，read-only readiness 不構成 Formal evidence credit 或 production scheduler approval；pending sidecar 週期仍須 owner/reviewer 審核，不能用 fixture、手動改表或 replay 取代。最新狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與具名 QA 為準。
 
 ### Gate 1 Advice（決策工作台）
 
@@ -408,7 +407,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - UI 不應自行重算金融核心數值。
 - 來源追溯不能被 UI 手動覆蓋成不可追蹤狀態。
 
-目前 Gate 4 尚未收口的部分：Paper Portfolio 的完整 cash-flow ledger、受控 Paper producer 的實際來源資料與人工 review、Equal Weight builder 的明確確認後正式 output review、Stress Lab 的正式 evidence 累積與跨期間 review。現有 UI 已能揭露 Paper snapshot／cost ledger readiness、預覽／匯入 Paper fills、重建最近週報並保存研究用 Stress history，但實際 producer 輸入、成本後證據、壓力結果與 forward outcome 的關聯及 Gate review 仍未完成。
+Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、受控 Paper producer 的實際來源資料與人工 review、Equal Weight builder 的正式 output review，以及 Stress Lab 的正式 evidence 與跨期間 review。現有 UI 可揭露 Paper snapshot／cost ledger readiness、預覽／匯入 Paper fills、重建最近週報並保存研究用 Stress history；本段是功能／驗收範圍摘要，不是即時完成狀態。實際進度以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 與最新具名 QA 為準。
 
 文件同步重點：
 

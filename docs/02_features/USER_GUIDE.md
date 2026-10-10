@@ -245,6 +245,8 @@ ML 的 `continue_shadow` 只表示可繼續離線診斷；`formal_oos_allowed=fa
 
 ## 推薦分析 - Profiles 策略風格
 
+> **判讀界線**：以下風格與篩選說明是專題教學，不是策略執行契約或績效證據。`risk_level` 是 Registry metadata；不可由策略名稱或此頁數值推定預期報酬、最大回撤或適用性。現行設定以程式／Registry 為準，操作以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 ### 功能說明
 Profiles 是預設的策略風格配置，讓使用者可以快速選擇適合的投資風格，無需手動調整複雜的參數。
 
@@ -252,10 +254,10 @@ Profiles 是預設的策略風格配置，讓使用者可以快速選擇適合�
 
 #### 1. 暴衝策略（Momentum）
 **適用市場狀態：** 趨勢追蹤、突破準備  
-**風險等級：** 高  
+**Registry 風險標籤：** `high`（metadata，不是實證風險分數）
 **特點：**
 - 尋找價格快速上漲且成交量明顯放大的股票
-- 預期最大回撤：15-30%
+- 沒有可支持預期最大回撤的對應研究證據；不提供回撤預測值。
 - 建議持有期間：1-5 天
 - 適合：願意承擔高風險、追求快速獲利的交易者
 
@@ -266,10 +268,10 @@ Profiles 是預設的策略風格配置，讓使用者可以快速選擇適合�
 
 #### 2. 穩健策略（Stable）
 **適用市場狀態：** 均值回歸  
-**風險等級：** 低  
+**Registry 風險標籤：** `low`（metadata，不是實證風險分數）
 **特點：**
 - 在均值回歸市場中尋找被低估的機會
-- 預期最大回撤：5-10%
+- 沒有可支持預期最大回撤的對應研究證據；不提供回撤預測值。
 - 建議持有期間：5-20 天
 - 適合：風險承受度低、偏好穩定報酬的投資者
 
@@ -280,10 +282,10 @@ Profiles 是預設的策略風格配置，讓使用者可以快速選擇適合�
 
 #### 3. 長期策略（Long-term）
 **適用市場狀態：** 趨勢追蹤、突破準備  
-**風險等級：** 中  
+**Registry 風險標籤：** `medium`（metadata，不是實證風險分數）
 **特點：**
 - 基於長期趨勢和基本面，尋找具有持續成長潛力的股票
-- 預期最大回撤：10-20%
+- 沒有可支持預期最大回撤的對應研究證據；不提供回撤預測值。
 - 建議持有期間：20-60 天
 - 適合：長期持有、追求穩定成長的投資者
 
@@ -376,6 +378,8 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 
 ## 推薦分析 - 一鍵送回測
 
+> **版本界線**：本節保留較早版推薦送回測流程的教學快照，不作目前操作權威。未選股票時自動取前 20 檔、六個月日期預設及依 Profile 設定成交價等舊說明，均不得當成目前 UI 契約；目前入口與參數請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對。
+
 ### 功能說明
 一鍵送回測目前有兩種用途：
 
@@ -395,26 +399,25 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 - 可以按住 Ctrl 鍵多選多檔股票
 
 **方式二：使用全部推薦股票**
-- 不選擇任何股票（系統會自動使用前 20 檔）
+- 舊版流程曾以未選列時取前 20 檔；目前選取範圍以當前 UI 與 Manual 為準。
 
 #### 步驟 3：一鍵送回測
 1. 點擊推薦結果上方的「一鍵送回測」按鈕
 2. 系統會自動：
    - 切換到「策略回測」工作區
    - 創建選股清單並載入股票
-   - 根據 Profile 風險等級自動設置執行價格
-   - 設置日期範圍（預設最近 6 個月）
+   - 舊版流程曾載入回測設定；目前按鈕行為以 Manual 為準，不能假設 Profile 的 `risk_level` 會決定成交價格
+   - 日期範圍依目前回測畫面及 Manual；此舊流程的「最近 6 個月」不是現行預設保證
 
 #### 步驟 4：執行回測
 1. 檢查回測配置（日期範圍、初始資金等）
 2. 選擇策略和設定參數
 3. 點擊「執行回測」
 
-### 自動配置說明
+### 舊版自動配置說明（僅作來源追溯）
 
-#### 執行價格自動設置
-- **暴衝策略**：自動設置為「下一根K開盤價 (next_open)」（更激進）
-- **穩健/長期策略**：自動設置為「當根K收盤價 (close)」（更保守）
+#### 執行價格
+- 舊文依 Profile 自動選擇 `next_open`／`close` 的說法已不適用。一般回測的成交假設依畫面明示；`close` 是同根 K 收盤假設。推薦回放使用 `next-session-open.v2`，細節以 [Backtest Lab 功能文件](BACKTEST_LAB_FEATURES.md)及 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 #### 選股清單自動創建
 - 系統會自動創建一個選股清單
@@ -697,12 +700,11 @@ Baseline 對比用於評估策略是否優於被動持有（Buy & Hold）基準�
 - **策略總報酬率**：回測策略的總報酬率
 - **超額報酬率（Excess Return）**：策略報酬率 - Baseline 報酬率
 - **相對 Sharpe 比率**：策略 Sharpe 比率相對於 Baseline 的改善
-- **統計顯著性（p-value）**：策略表現優於 Baseline 的統計顯著性
+> 舊版教學曾列出 p-value 與 `p-value < 0.05` 判讀；本輪核對的 `ui_qt/`、`app_module/`、`backtest_module/` 未找到相應計算或結果欄位，因此不把它列為目前能力，也不可依此門檻宣稱策略具統計顯著性。
 
 **結果解讀：**
 - **超額報酬率 > 0**：策略優於 Buy & Hold
 - **超額報酬率 < 0**：策略不如 Buy & Hold，需要重新評估
-- **p-value < 0.05**：策略表現優於 Baseline 具有統計顯著性
 
 **注意事項：**
 - Baseline 對比會自動在回測報告中顯示
@@ -714,9 +716,11 @@ Baseline 對比用於評估策略是否優於被動持有（Buy & Hold）基準�
 過擬合風險提示用於識別策略是否過度擬合歷史數據，評估策略在未來表現的穩定性。
 
 **風險等級：**
-- **低風險（0.0 - 3.0）**：策略穩定性良好，過擬合風險低
-- **中風險（3.0 - 6.0）**：策略穩定性中等，需要進一步驗證
-- **高風險（6.0 - 10.0）**：策略穩定性差，過擬合風險高，不建議使用
+- **低風險（分數 < 2）**：目前程式依已提供指標計算出的分級，不是未來績效保證
+- **中風險（2 ≤ 分數 < 4）**：需要進一步驗證
+- **高風險（分數 ≥ 4）**：需要謹慎檢查與額外驗證
+
+目前 `PerformanceAnalyzer` 將參數敏感性、Walk-Forward 退化與 Fold 一致性各計 0–2 分，總分最多 6 分；缺少項目會列在 `missing_data`。本分數是啟發式警示，不能當成統計顯著性或策略適用證明。
 
 **風險指標：**
 1. **Walk-Forward 退化程度（Degradation）**：
@@ -951,7 +955,7 @@ A: 請檢查：
 當您在 UI 中選擇股票（例如：2330）並執行回測或參數最佳化時，系統會讀取以下文件：
 
 #### 1. 價格數據
-**文件路徑：** `D:/Min/Python/Project/FA_Data/meta_data/stock_data_whole.csv`
+**文件路徑範例：** `{DATA_ROOT}/meta_data/stock_data_whole.csv`
 
 **載入邏輯：**
 - 讀取整個文件
@@ -960,7 +964,9 @@ A: 請檢查：
 - 包含欄位：開盤、最高、最低、收盤、成交量等
 
 #### 2. 技術指標數據
-**文件路徑：** `D:/Min/Python/Project/FA_Data/technical_analysis/2330_indicators.csv`
+**文件路徑範例：** `{DATA_ROOT}/technical_analysis/2330_indicators.csv`
+
+`DATA_ROOT` 由 `data_module/config.py` 的 `TWStockConfig` 決定；預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。以上是檔案位置範例，不取代目前操作／來源判讀；請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對當前流程。
 
 **載入邏輯：**
 - 直接讀取對應股票的技術指標文件
@@ -1068,7 +1074,7 @@ Why Not 功能提供反向解釋，說明為什麼股票未被推薦或分數較
 券商分點資料更新功能可以從 MoneyDJ 抓取指定券商分點的每日買賣資料，用於分析籌碼流向。
 
 ### 追蹤的分點
-系統目前由 `{meta_data_dir}/broker_branch_registry.csv` 管理啟用分點，現行 registry 已擴充至 37 個分點。不要在 Manual 固定複製完整清單，實際追蹤範圍以 registry 的啟用列與 Smart Money 的分點下拉選單為準。
+系統由 `{meta_data_dir}/broker_branch_registry.csv` 管理啟用分點。追蹤數量會隨 Registry 變更，不在教學中固定列數；實際範圍以有效啟用列及 Smart Money 分點選單為準，操作以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 ### 使用方法
 
@@ -1088,12 +1094,12 @@ Why Not 功能提供反向解釋，說明為什麼股票未被推薦或分數較
 
 **每日原始資料**：
 ```
-D:\Min\Python\Project\FA_Data\broker_flow\{branch_system_key}\daily\{YYYY-MM-DD}.csv
+{DATA_ROOT}\broker_flow\{branch_system_key}\daily\{YYYY-MM-DD}.csv
 ```
 
 **合併後的歷史資料**：
 ```
-D:\Min\Python\Project\FA_Data\broker_flow\{branch_system_key}\meta\merged.csv
+{DATA_ROOT}\broker_flow\{branch_system_key}\meta\merged.csv
 ```
 
 **範例**：
@@ -1128,22 +1134,20 @@ MoneyDJ `c=E` 張數榜與 `c=B` 金額榜是各自獨立的 Top 50，系統採 
 
 ### 注意事項
 
-1. **更新時間**：建議在交易日收盤後更新，確保資料完整
-2. **請求間隔**：系統預設使用 4 秒延遲，避免對網站造成負擔
-3. **自動跳過**：如果某日資料已存在，系統會自動跳過（除非選擇「強制重新抓取」）
-4. **Driver 自動恢復**：如果 ChromeDriver 崩潰，系統會自動重新創建並繼續執行
-5. **重試機制**：每個日期最多重試 3 次，自動處理暫時性錯誤
+1. **更新時機與範圍**：依資料源狀態及 Manual 指示選擇日期與更新方式。
+2. **節流、跳過與重試**：以目前下載流程及 Manual 說明為準；不要沿用舊版固定間隔或重試次數。
+3. **資料品質**：`observed`、`estimated`、`unavailable` 必須分開判讀，`unavailable` 不代表 0。
 
 ### 常見問題
 
-**Q: 更新時出現 ChromeDriver 錯誤？**
-A: 系統已實現自動恢復機制，會自動重新創建 driver 並繼續執行。如果問題持續，請檢查 Chrome 瀏覽器是否已安裝。
+**Q: 更新時出現下載或瀏覽器錯誤？**
+A: 依 Manual 的目前資料源診斷步驟檢查來源狀態與錯誤訊息；本教學不保證特定 Driver 自動恢復或重試行為。
 
 **Q: 資料顯示中文亂碼？**
-A: 系統已修復編碼問題，所有檔案使用 UTF-8 with BOM 編碼，Excel 可直接開啟。
+A: 不同輸出檔可能使用不同編碼；依 Manual 與該資料源的輸出契約判讀，不要假設所有檔案都帶 BOM。
 
 **Q: 如何新增追蹤分點？**
-A: 需要修改 `{meta_data_dir}/broker_branch_registry.csv` 檔案，添加新的分點資訊。
+A: 先核對 Registry 欄位契約與目前維護流程；本教學不授權直接編輯正式資料根目錄中的 Registry。更新後再依 Manual 檢查啟用列與資料狀態。
 
 ## 持倉管理 - 籌碼面監控與下鑽
 

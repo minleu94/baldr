@@ -114,7 +114,7 @@ docs/                # 專案文檔
 - 台股資料的 `日期` 欄可能是數字型 `YYYYMMDD`。處理 replay / backtest 日期時必須使用 `parse_stock_dates()` 或同等明確格式解析，不可直接用裸 `pd.to_datetime(series)`，否則會被解讀成 epoch nanoseconds 而落到 1970 年。
 - 歷史 replay 需要保留 `candidate_limit` / prefilter 機制；不要在沒有上限的情況下對全市場每期都跑完整 pattern analysis。
 - Pattern regression 點位不足或 x 值退化時應安全跳過，不應讓 `np.polyfit` 的 underconstrained case 汙染 UI log 或中斷推薦 replay。
-- 後續擴充券商表現、營收數據、Sortino / Sharpe / Monte Carlo 等穩健分析時，應新增 factor/metric layer，避免把新因子硬塞進 UI 或現有單一 scoring 函式。
+- 推薦組合回測目前已顯示 Sharpe、Sortino 與 Monte Carlo P05/P50/P95；新增券商表現、營收資料或進一步擴充穩健分析時，應建置 factor/metric layer，避免把新因子硬塞進 UI 或現有單一 scoring 函式。現有指標與可用範圍以 [Backtest Lab 功能文件](../02_features/BACKTEST_LAB_FEATURES.md) 為準。
 - 後續擴充營收、基本面、估值、三大法人與其他資料因子時，必須保存 `as_of_date` / `available_date` / 資料品質狀態，避免未來函數滲漏。
 
 ## ⚠️ 禁止事項

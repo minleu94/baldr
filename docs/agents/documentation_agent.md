@@ -232,7 +232,7 @@
 **檢查項目（使用 docs/00_core/DOC_COVERAGE_MAP.md 的「一致性檢查清單」）：**
 1. Snapshot 的目前狀態是否與系統架構描述一致。
 2. Snapshot 的本週優先事項是否落在 6M Roadmap 的當前月度目標內。
-3. Roadmap Hub 是否只作入口與短版 Next，不重新保存完整歷史。
+3. Roadmap Hub 是否只提供權威文件入口，不重複保存目前狀態、逐輪 Next 或完整歷史。
 4. Architecture 是否反映目前模組邊界與資料流。
 5. Index 是否包含所有新增、搬移、歸檔 Markdown。
 6. Archive 是否明確標示歷史文件不作目前狀態依據。

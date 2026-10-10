@@ -1956,3 +1956,20 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 將 fixed／quantile Gate 明確限定為 10 檔 pilot，不推定完整股票池或全市場已驗收。 |
 
 未修改 pilot 原始 QA 報告或其數據，未重新宣告更大股票池 P0 的現行完成狀態；未執行測試或刷新 Graphify。
+
+<a id="coverage-entry-181"></a>
+## 2026-10-09 校正功能教學、資料導覽與 QA／Archive 分類
+
+以 HEAD `47a2e15e` 為可重現盤點基線，核讀 `02_features/` 6 份、`03_data/` 8 份、`04_broker_branch/` 2 份、`05_phases/` 2 份及 `08_technical/` 3 份全文文件；另對 `agents/` 的現行規範、狀態宣稱及 `strategies/` 策略說明作全文或局部核對。架構／指南 244 個 Markdown 的 link scan 為 1,370 個目標、missing=0、bad anchors=0。QA／Archive 互斥路徑分類亦已修正：`06_qa/` 為 6 個導覽、67 個符合精確三行規則的 Archive redirect、491 個其餘 QA／證據路徑；`09_archive/` 的 6 份 README 與 2 份現行清冊連結聯集可達 406/406 個 tracked paths。歷史標題樣式／短摘要可能重疊，不再推定為純 stub；可達性也不冒充正文審查。
+
+本輪已確認並修正下列內容漂移：User Guide 的無研究依據預期回撤、未實作 p-value 判讀、過時 Promote／推薦送回測流程、硬編碼資料路徑、動態分點總數及舊節流／重試保證；UI 功能文件的舊整理日期、無來源 `3/3 ready` 與 Gate 4 即時狀態語氣；資料取得指南中可能被誤認為操作推薦的舊腳本列表；Agent 文件中過時的指標、平台自動載入及 Roadmap Hub `Next` 規則；以及 R001／R028 任務規格把舊工作樹／提交狀態寫成當前狀態的段落。策略設計稿舊 Promote 步驟已在原章節內標示為歷史流程。尚未確認的 Backtest Lab 推薦整合 TODO 範圍與 shared_context 儲存格式摘要保留為待釐清項目。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 補列 03／04／05／08 小目錄全部 tracked 路徑的角色；補列 06 QA 與 09 Archive 的互斥角色、讀取限制、導覽可達數與刻意 mirror；更新至 HEAD `47a2e15e` 的 1,478 個 `docs/` tracked paths。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_TASKS/R001.md`、`R028.md` | 為未提交文件／未追蹤檔及提交未完成陳述加上任務建立或提交前的歷史日期界線。 |
+| `docs/02_features/USER_GUIDE.md`、`UI_FEATURES_DOCUMENTATION.md`、`STRATEGY_DESIGN_SPECIFICATION.md` | 移除無依據數值與未實作統計宣稱；將舊 UI／Promote 流程標為歷史；修正資料路徑、動態狀態與日期描述。 |
+| `docs/03_data/DATA_FETCHING_LOGIC.md`、`HOW_TO_UPDATE_DAILY_DATA.md` | 區分 repository 腳本位置與目前建議操作，移除動態分點數。 |
+| `docs/agents/README.md`、`shared_context.md`、`documentation_agent.md`、`tech_lead.md` | 修正有限 pilot 範圍、現有回測指標、Scoped SSOT、Roadmap Hub 與 Codex 自動載入描述。 |
+
+本批未刪除或移動文件、未改寫 QA 收據與 Archive 原文、未執行測試或刷新 Graphify。F03 follow-up 工作樹變更及根目錄 `$null` 未碰觸；所有目錄正文審查與本機最終 repo-wide link／anchor scan 仍未完成。

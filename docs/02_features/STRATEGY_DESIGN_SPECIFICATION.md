@@ -317,7 +317,9 @@
 - **若通過**：進入下一階段（參數優化、Walk-Forward 驗證）
 - **若未通過**：檢討策略假設，調整評分模型或信號邏輯
 
-#### 步驟 6：升級為策略版本（Promote）
+#### 步驟 6：升級為策略版本（Promote；歷史流程快照）
+
+> 本節是附錄 D 所記 2026-01-02 舊流程的歷史快照；下列績效門檻與按鈕步驟不構成目前 Promote 資格或操作契約。現行 Registry-based Promote Gate 與操作入口請依 [Backtest Lab 功能文件](BACKTEST_LAB_FEATURES.md)及 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對。
 - **前提條件**：完成 Walk-Forward 驗證且通過升級條件檢查
 - **升級條件**：
   - 基本績效指標：總報酬率 > 0、Sharpe Ratio >= 0.5、最大回撤 < 30%、勝率 >= 50%

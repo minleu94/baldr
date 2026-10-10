@@ -346,10 +346,12 @@ if file_path.exists():
 - **`../00_core/PROJECT_SNAPSHOT.md`** - 目前狀態、已知風險與優先事項
 - **[歷史資料收集架構藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)** - 早期 API、CSV 與儲存路徑設計；現行流程以本文件及 [system_architecture.md](../01_architecture/system_architecture.md) 為準。
 
-### 腳本文檔
-- **`scripts/batch_update_daily_data.py`** - 批量更新腳本（推薦使用）
-- **`scripts/update_daily_stock_data.py`** - 單日更新腳本（推薦使用）
-- **`scripts/merge_daily_data.py`** - 數據合併腳本
+### Repository 內的 CLI 實作位置
+
+以下腳本仍存在於 repository，可供追查實作；本清單未逐一核對其目前支援契約，不代表推薦的日常操作入口。執行前請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對現行流程與安全範圍。
+- `scripts/batch_update_daily_data.py` - 批量更新實作
+- `scripts/update_daily_stock_data.py` - 單日更新實作
+- `scripts/merge_daily_data.py` - 資料合併實作
 
 ### 模組文檔
 - **[`data_module/data_loader.py`](../../data_module/data_loader.py)** - 目前 TWSE 擷取實作；行為以程式碼為準，本文件僅提供摘要與歷史追溯

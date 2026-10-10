@@ -55,7 +55,7 @@
 3. 點擊「合併券商分點」。
 4. 確認 `broker_flows` 日期與筆數。
 
-目前 registry 已擴充至 37 個追蹤分點；資料品質使用 observed、estimated、unavailable 三態。`broker_flows` 的 SQLite 身份鍵包含 `trade_type`，因此同一分點 / 股票 / 日期可以同時保存買超與賣超榜單；舊 DB 若仍是三欄主鍵，下一次同步券商分點時會先備份再受控升級。
+追蹤範圍以 Registry 的有效啟用列為準，數量可能隨設定變更。資料品質使用 `observed`、`estimated`、`unavailable` 三態。`broker_flows` 的 SQLite 身份鍵包含 `trade_type`，因此同一分點 / 股票 / 日期可以同時保存買超與賣超榜單；舊 DB 若仍是三欄主鍵，下一次同步券商分點時會先備份再受控升級。現行操作與安全界線以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 ### 技術指標
 

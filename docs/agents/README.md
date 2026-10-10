@@ -63,7 +63,7 @@
 - 主要 UI 是 `ui_qt/`，入口為 `python ui_qt/main.py`，使用 PySide6。
 - 目前可見 UI 功能包含：數據更新工作台、市場觀察（大盤/強弱股/強弱產業/主力流向）、策略回測、推薦分析、觀察清單、持倉管理與 Runtime Observatory。
 - 推薦組合回測 MVP 已完成：推薦 Tab 可把 Profile/Config 送到回測 Tab，由回測頁在歷史日期重播推薦邏輯，評估整組推薦組合而不是只回測當下股票清單。
-- Strategy & Scoring Governance 增量 A / B 已完成機制回歸；真實股票池 fixed / quantile walk-forward 實證仍是 P0，quantile 維持 opt-in。
+- 截至 2026-10-09，Strategy & Scoring Governance 增量 A / B 已完成機制回歸；具名 QA 已完成 10 檔、單一策略與固定成本組合的 OOS pilot，但不能外推成完整股票池驗收。quantile 維持 opt-in；目前優先順序以 `PROJECT_SNAPSHOT.md` 為準。[Pilot 證據](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)
 - 文件治理採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，V2.1+ maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部參考看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前架構看 `system_architecture.md`，目標領域背景看 `target_system_architecture.md`，目標實作設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `09_archive/`。
 - 處理推薦 replay / backtest 日期時，必須留意台股資料 `日期` 欄可能是數字型 `YYYYMMDD`，請使用共用解析工具避免誤判成 1970 epoch。
 - 資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理；正式資料根目錄預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。

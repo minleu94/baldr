@@ -347,6 +347,10 @@ Application Services / DTO / Repository
 
 完整母體 v4 的產製與嚴格讀取在 worker 執行；UI 保留明示來源 pins、查詢、頁碼、選取及比較籃。個股、比較與收藏重開原保存來源及 query，不自動改讀最新資料或重產製。關閉／換來源時以 generation 隔離合作取消，晚到結果不得覆蓋新結果或觸發錯誤導覽。
 
+### 官方市場與技術條件研究的查詢邊界
+
+Recommendation 的來源頁籤接入 `DailyMarketTechnicalOfficialDispositionCompositeView`；Main 透過 `open_daily_market_technical_official_disposition_bundle_projection_group_session_v2`，將同次已核驗 bundle session 與正式發行的 projection group 綁定。`app_module/daily_market_technical_official_disposition_composite_reader_v1.py` 與 `app_module/daily_market_technical_official_disposition_composite_query_v1.py` 以保存母體為共同查詢範圍，合併技術、四均線、KDJ、波動率四個可啟用條件群。列範圍、官方市場／處置與指定代碼仍是外層硬限制；群組 AND／OR、未知政策及全域排序在完整查詢上處理，再分頁，每頁最多 256 列。View 與 typed presenter 只呈現已核驗結果，不重算保存指標或官方狀態；資料可得時間未知時不取得歷史 PIT、Advice 或交易資格。
+
 <a id="daily-decision-desk"></a>
 <a id="4-daily-decision-desk"></a>
 ### 目前 9 個頂層工作區
@@ -725,6 +729,8 @@ db_file    -> <DATA_ROOT>/sqlite/twstock.db
 ### Watchlist 與市場資料庫的儲存邊界
 
 Watchlist／bookmark 是使用者保存狀態，不等同市場 `twstock.db`、研究快照或 producer 輸出。資料路徑與格式依現有設定／selector 判定；個人 store root／mode 和 converter activation 必須明示選擇。一般讀取不得建立缺失 store、轉換來源或切換 activation。格式相容、copy-on-write（COW）與正式套用限制見 §11；目前操作與批准狀態以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 和 Snapshot 為準。
+
+複合研究收藏使用 typed bookmark 與 UI 狀態 envelope：內層保存完整來源 pins、原查詢及結果／分頁／選取／比較籃／捲動身份；外層 envelope identity 作為觀察清單項目識別，內層 bookmark identity 用於精確重開。`WatchlistService` 沿目前明示的 JSON／SQLite 儲存模式讀寫，Watchlist／Main 走專用 typed reopen，重新核驗固定來源；缺件或身份不符即拒絕，不退回一般／最新個股讀取，也不隱式轉換或啟用新 store。
 
 ### Immutable technical-universe source
 
@@ -1409,3 +1415,7 @@ exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID �
 ### 技術保存母體 M2（契約與驗收入口；2026-10-08 補記）
 
 完整母體 v4 的保存、分段驗核、全域查詢、個股／比較下鑽、收藏與正常 UI 讀回之逐次實作與工程證據，見 [M2 completion QA](../06_qa/BALDR_COMPLETION_M2_20261007.md) 與 [逐段核驗 QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md)。架構契約集中於本文件 §3、§4、§8、§11；QA 收據保存當時的測試範圍、效能觀測及未驗事項。它們不替代 Snapshot 的目前進度，也不把保存能力等同 PIT、正式推薦或投資資格。
+
+### 2026-10-10 官方市場與技術條件複合研究
+
+Recommendation 來源頁籤以同次核驗來源查詢四個條件群；外層限制、群組判斷、全域排序與分頁的責任見 §3。觀察清單沿既有儲存模式保留 typed UI 狀態並精確重開固定來源，內外層身份與轉換界線見 §8。使用者操作及資格限制見 [APPLICATION_MANUAL §6.7](../07_guides/APPLICATION_MANUAL.md#67-官方市場與技術條件研究)。

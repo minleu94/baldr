@@ -326,6 +326,8 @@ python ui_qt/main.py
 - 負責：策略配置編排、推薦結果生成、結果保存
 - 推薦 Tab 也能把目前 Profile/Config 送到 Backtest Tab 的「推薦組合回測」，由回測頁在歷史日期重播推薦邏輯。
 
+**保存來源研究子頁（不是推薦評分或 Advice）**：同一推薦分析頁籤列另有「官方市場與技術條件研究」。UI 在 `ui_qt/views/daily_market_technical_official_disposition_composite_view.py`；全母體查詢與來源接線分別見 `app_module/daily_market_technical_official_disposition_composite_query_v1.py`、`app_module/daily_market_technical_official_disposition_composite_reader_v1.py`，Main 路由在 `ui_qt/main.py`。它以已保存來源查詢技術、四均線、KDJ、波動率四群條件及官方市場／處置外層條件；操作與限制見 [Manual §6.7](docs/07_guides/APPLICATION_MANUAL.md#67-官方市場與技術條件研究)。
+
 **真正動邏輯的地方**：
 - `decision_module/strategy_configurator.py`：策略配置（技術指標、圖形模式設定）
 - `decision_module/scoring_engine.py`：打分引擎（統一打分模型，0-100 分）
@@ -466,6 +468,7 @@ python ui_qt/main.py
 - 負責：跨 Tab 共用候選池管理、JSON 持久化
 - `app_module/watchlist_analysis_service.py`：唯讀取回保存推薦的分數、樣本與來源 metadata
 - `app_module/decision_presentation.py`：觀察清單與研究報告共用呈現契約
+- 官方市場與技術條件研究使用專用 typed 收藏：`app_module/daily_market_technical_official_disposition_composite_bookmark_v1.py` 與 `app_module/daily_market_technical_official_disposition_composite_bookmark_storage_v1.py` 保存原來源 pins、查詢和畫面狀態；`WatchlistService`／`WatchlistView`／Main 以 envelope 身份路由至精確重核。從本清單按「查看選中個股研究報告」或雙擊可重開原研究；身份不符時拒絕，不改讀最新來源。
 
 **真正動邏輯的地方**：
 - `app_module/watchlist_service.py`：觀察清單的完整邏輯都在這裡（沒有 Domain 層依賴）
@@ -584,3 +587,5 @@ python ui_qt/main.py
 ## 更新記錄
 
 原 2026-10-05 至 10-07 日期化導覽與驗收摘要已移至[歷史摘錄](docs/09_archive/PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md)，原文保留。它不作目前狀態或執行順序依據；目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)，工程入口見 [DEVELOPMENT_ROADMAP](docs/00_core/DEVELOPMENT_ROADMAP.md)，驗收界線見具名 QA。
+
+- 2026-10-10：補入 Recommendation 保存來源複合研究與 Watchlist typed 收藏的程式入口；操作見 Manual §6.7，現況與驗收界線依 Snapshot／具名 QA。

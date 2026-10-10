@@ -327,6 +327,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - 一鍵送策略回測。
 - 送 Research Lab 批次回測。
 - 推薦結果表的單股研究按鈕、雙擊與右鍵入口會建立 `ResearchStockContextDTO`，帶入股票、決策日、資料日、結果 ID、Profile 與來源 workspace；市場探索頁的共用 context strip 可顯示這些欄位並返回來源清單。
+- 「官方市場與技術條件研究」是使用既有保存來源的獨立子頁，不執行推薦評分；支援技術、四均線、KDJ、波動率條件群與官方市場／處置外層條件，明示 AND／OR、未知政策、全域排序及每頁最多 256 列。資料缺件或可得時間未知時保留未知／來源限制，不推成 Advice、歷史 PIT 或交易資格。操作見 [APPLICATION_MANUAL §6.7](../07_guides/APPLICATION_MANUAL.md#67-官方市場與技術條件研究)。
 - 建立候選池 / Watchlist。
 - Fixed / quantile 門檻模式與 eligible universe 橫斷面百分位排名。
 - 可選月營收 YoY 最低值與 PE 最高值篩選；啟用時只讀 `available_date <= decision_date` 的 PIT 基本面版本，無法標準化決策日期、缺 PE／去年同期營收或不符門檻者寫入 screening matrix 的 `skipped` 原因，不補零也不讀未來資料。
@@ -355,6 +356,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - 從 Market Watch、Recommendation、Backtest 取得候選標的。
 - 支援後續送入 Backtest / Research workflow。
 - 觀察清單單股下鑽會只讀保存結果 metadata 取得來源 ID／資料日／Profile，無保存結果時保留明確缺漏，不重新計算推薦或猜測來源。
+- 支援官方市場與技術條件研究的專用收藏列；儲存原來源、查詢、頁面、選取與比較狀態，從列按「查看選中個股研究報告」或雙擊會沿固定來源重新核驗後重開，失配時不改讀最新來源。
 - 選取標的時以共用呈現契約顯示既有保存的排名分數、排名百分位／方法、樣本數與理由；校準機率沒有合格來源時固定顯示研究中／不可用，不補值。
 - `saved` 只代表有保存的研究結果，動作適合度仍為研究；`not_in_result` 不解讀為看空，也不轉成 0 分。
 
@@ -500,6 +502,8 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 
 
 ## 更新記錄
+
+- 2026-10-10：補入官方市場與技術條件研究子頁及 Watchlist 專用收藏重開能力；操作與安全限制見 Manual §6.7。
 
 - 2026-10-05：內建Breadth／Relative Strength的共用與獨立SQLite讀取接入合作取消，視窗等native worker結束才退出；Native查詢中關閉及取消→正常重試通過，取消不冒充完成。四檔backend改動，UI main／view未改；原速度目標與Backtest未達項保留，見 [SQL取消收據](../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)。
 

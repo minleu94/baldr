@@ -137,3 +137,25 @@ B 唯一 attempt01 已終態 **exit 1，1 failed／14 passed／13 errors，671.2
 13 個 publication cases 在 setup 階段因 draft tests 只引入 `exact_query`、漏引其依賴的 `exact_p01_session` fixture 而未執行；原正式 fixture 定義已核對。唯一 failed 為 fresh-child legacy stub 把 `builder.verified_session` 設成裸 object，真 bundle opener 需要其 `create_query`，因此 AttributeError。這兩項是 QA 接線首紅，不能當成真 publication 正例／負例執行失敗，也不能因其餘 14 綠燈宣稱 publication 完成。原件全部保留。
 
 C 只獲靜態 QA revision 授權：補真 fixture dependency、修 session stub 契約，先交完整差異與依賴圖。下一輪只覆蓋尚未驗的 publication／lazy child，不重跑來源與候選均未改的已通過 prepare／原 F17 nodes；正式 sources 保持凍結。H20 P7 靜態審查另發現 bridge helper 還讀舊 `base_fdopen` local，新 wrapper 真 closure 名為 `bridged_base_fdopen`，已要求在 freeze 前逐一核對 pins／closure／真 locals，未執行 P7。
+
+### P7 凍結審查及 C 受控收集（追加）
+
+H20 P7 已修正真 wrapper local 名稱並凍結：runner SHA `81fd6773e1036cac82936f5a7ef94c59f9a79367eccf8230823c722ae32b3852`、完整 P6→P7 diff SHA `48d27383d52de6aaafcc574089b14dfbb4bae4d2488823ecab42b285432a01f4` 由 root 重算。root 已完整讀差異、bridge／wrapper／helpers 和靜態收據：六個原 N helpers 不覆寫；QA-only FunctionType clone 保留原 code／closure／defaults，globals 只替 clone 的 sys 提供私有 shim；shim 限真 frame、depth 1、同 thread、單次 token、相鄰 clone→wrapper→原 caller，原守衛後續 admission／audit／caps 不變。N／P6 pins 保持。root 授權唯一 P7 attempt01 窄實測，啟動前須 fresh source pins／至少 2 GiB commit headroom，不能重跑首紅；此段落尚無原生結果。不授 public cohort／Main／原 2382 個股／速度資格。
+
+C 完整 B→C diff SHA `6925630f0721ef4dfd2b4e521604dedf2313ccfcdf4bca5795320768ea79a91a`，manifest SHA `6d09bf5f7238d4bb77bf14e972d8ef9a4dc20503b41c328860e7b47fa1c70eae`。root 已讀完整最小差異、正式 fixture 定義及 opener stub 契約，獨立重算 20 formal／11 draft pins，mismatch 空。批准在 P7 確認終態後唯一 collect01（只有 C publication 檔，預期 14 nodes）；collection 不會 setup fixtures，不能當成 fixture resolution 或功能通過。真 focused 仍待 root 讀收集結果後授權，沒有修改正式 sources。
+
+F12 F 任意 ancestor 搜尋改為精確有限鏈的設計另經實碼核對：query task 經 `_open_from_bundle`、bundle source opener、`_open_and_publish`、monthly index archived opener、snapshot archived opener，再到 `_open_reader_attempt`；目前 bookmark task 實際經 `_restore_bookmark`、recipe reopen、`_open_and_publish`。同檔 `_open_from_recipe` 不是此 bookmark task 的 callsite，root 先前僅由 helper 存在推作 route 的推論已撤回，依 agent 與 root 實讀目前 pinned source 修正。尚未凍結 F 或執行 F。
+
+### P7 真終態與 C focused 放行（追加）
+
+P7 唯一 attempt01 exit 1，Popen elapsed **5.1313974 秒**，120 秒期限未到；launcher PID 26348、Popen PID 15076，並未取得完整 venv redirector／real native Python chain，不能把兩個 PID 當成完整原生程序身分證據。原 launcher receipt SHA `8ced4f6816d090d2b2db04f16af897d4f74c82738577a528128f9c599822a26f`、stdout SHA `89784cdaeb871ebfcd8cfb6ce27ef426049aa73970802b0081a5f9e76e97e7e1`、stderr SHA `7e3531e9a29c3d6c92c0535cbef1f004eb6fd326c78b0b30551b94ee34111a5a` 均由 root 重算。原封套保持。
+
+實際首紅已越過 P6：真 initial terminal receipt 讀取 4046 bytes，原三個 phase helpers 與六個 fdopen helpers setup/final 均匹配。接著初始 source callback 的 config get-root ordinal 1 進入真 Windows reader，open／fdopen／close 各 1，卻在 `_p_storage_fdopen` 的裸 `BoundStorageConfigReader` 名稱處發生 NameError；該類其實是 guard nested class，方法中的裸名不在其 lexical/globals scope。config payload read 0、SQLite 全部 attempts 0、主要負例尚未開始。來源／fixture／snapshot 未變、cleanup errors 空、descriptor 0、aliases／environment／Python/logger 恢復；不宣稱 H20／public cohort／Main 通過。
+
+此 P7 launcher **未執行授權要求的啟動前 commit-memory gate**，agent 把 C: 磁碟餘裕誤作記憶體餘裕。原 `preflight_status=passed` 只涵蓋已實作的來源／磁碟等檢查，不能授予至少 2 GiB CommittedBytes／CommitLimit 資格；不得用事後 counters 補證、回填原件或重跑 P7。P8 只授最小 static revision：修 nested class 的精確 factory／作用域、盤點同類引用，並交完整新 launcher 由 root 審查；memory 與 disk 分欄、觀測失敗即拒跑。
+
+root 已讀 C collect01：恰 14 個 publication／lazy-child nodes，overlay reader SHA 正確；exit 0、elapsed 1.5286749 秒。receipt SHA `f597d29b7c7b7939ddc5dcf8d7f290906348b0f888c87f40c15b45b09799b9e8`、stdout SHA `e435e5fec268f445d010261b96c9aba6b75a3163c692ca9fa932e316a0ee91f1`；fresh commit headroom 4,318,068,736 bytes，sources／drafts／manifest 前後相同。collection 不證 fixture resolution。root CIM 已確認無 P7 runner／launcher 存活 Python，放行唯一 C attempt01 真 focused，仍需新的 pins／memory preflight；本段尚無其測試終態，其他兩路 static-only。
+
+F12 靜態推論再校準：UI helper 只產生未建立的 `parent/f12-revenue-<id>`，source `_new_operation_root` 驗證、mkdir 並回傳同一路徑，並沒有第二層隨機 root；原單層 parent binding 保持。真 callback 的 `effective_cancel` 來自 monthly read-session adapter（不是 selection reader），index opener只轉傳；snapshot reader 的 `session_cancelled` 再包此 callback，需核對兩層閉包與各自 event。這些校準未執行 F，也未放寬來源路徑。
+
+C focused 已開始，agent 持有原 live handle 10589；root 獨立 CIM 核對四程序鏈 52048（venv launcher）→22296（real launcher）→57960（venv pytest）→44804（real pytest），建立時間均為 2026-10-10 02:04:52 UTC、commands 均指 C。唯讀觀察收據 `output/qa/resume_root_validation_20261009_a/f03_c_live_process_observation_20261010_a.json`，SHA `a90d21016ff656a6ae7c4d215c3dcbf68738a9b515fb02bcd5af397dbe1ad87e`。本段尚無 native 終態，不重啟、不並行新 runtime；若超時須另核 exact descendants，不能以 launcher timeout 推定已全止。

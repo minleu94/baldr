@@ -81,3 +81,7 @@ H20 G 原保存來源已由 root 審閱完整 F→G 差異、封套及 launcher�
 推薦理由滾輪另有正式元件合成探針：460×600、90段長文字，內層 scrollbar maximum0、外層maximum1806；在文字可見區向 QWindow 送31次真實 Qt wheel event，外層從0到1806、全文最後一行可見，native exit0。直接 `sendEvent` 到文字 viewport 的三次事件均被忽略且無捲動，不用它冒充視窗輸入失敗；結論以 QWindow 路徑為準。收據 `output/qa/reason_wheel_root_20261010/receipt.json` SHA `6eab06eae2cc91ab96c8b2f1d2e14dea2d4327c6b859e519d5b0cf36f3dcf8e5`。未修改正式UI；此證據只涵蓋理由元件，不代表完整Main、EXE或真人驗收。
 
 P08 前向現金開戶已正式整合：root要求並審核 transaction內首次檢查、public append委派、namespaced-only路由及非字串schema拒絕，核對候選／依賴／QA artifact hash與正式pre/postimage後套用。正式import取得74 PASS／1 skip／4.59秒／native exit0；mypy兩來源、三檔語法與diff check通過。此能力只保存exact binding的500000 Decimal現金／空持倉與當下aware時鐘，沒有執行真帳戶開戶，也未接daily／週報資格或正常UI。[契約與回滾](BALDR_P08_CASH_SEED_SLICE_20261010.md)
+
+## 正式推薦頁滾輪的追加證據
+
+Root 以正式 `RecommendationView`、原 explain／why-not presenter 與90段合成長文，分別在800×700、460×700視窗送入 QWindow 滾輪事件；59次及60次操作均沿結果外層捲動到「可能影響排名的因素」與文件最後一行可見，內層捲軸maximum=0。程序native exit0／4.56秒，沒有修改UI或執行推薦、市場來源與Main。收據 `output/qa/recommendation_view_wheel_root_20261010/receipt.json` SHA `ceef6528e376bff4b72a6be815c4b4cc32c77aa2cc2148f4cfffcff4d255be7a`；probe SHA `7d404deaacb2a3030aa5f9198f25f8470a2bde01e7bfa5ea08ab389a095788bf`。這補強先前單一文字元件的滾輪證據，不代表原推薦結果、Main、新EXE或真人已驗收。

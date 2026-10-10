@@ -20,12 +20,18 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel
 
 from ui_qt.main import MainWindow, _drain_qt_deferred_deletes
-from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.workers.task_worker import (
+    TaskWorker,
+    _LIVE_TASK_WORKERS,
+    _MANAGED_TASK_WORKERS,
+    running_task_workers,
+)
 
 
 def _configure_isolated_environment(
@@ -868,3 +874,406 @@ def test_actual_mainwindow_close_cancels_saved_h20_drilldown_without_publish(
     finally:
         release.set()
         _close_mainwindow(app, window)
+
+
+def test_actual_mainwindow_h20_full_error_and_cancel_preserve_selected_row_and_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """真 MainWindow 窄窗保留來源長文、完整錯誤、舊選取與 native 收尾。"""
+
+    error_entered = threading.Event()
+    error_release = threading.Event()
+    cancel_entered = threading.Event()
+    cancel_release = threading.Event()
+    mode: dict[str, Any] = {"block_cohort_operation_before": 3}
+    app, window, saved, network_attempts, task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=cancel_entered,
+        source_release=cancel_release,
+    )
+    source_database = Path(saved["snapshot_database"])
+    source_bytes_before = source_database.read_bytes()
+    source_stat_before = source_database.stat()
+
+    import scripts.scheduled.run_personal_current_observed_h20_daily as runner_module
+    import app_module.recommendation.personal_h20_research_cohort as cohort_module
+
+    original_ports_factory = runner_module.personal_current_observed_h20_read_ports
+    original_cohort_reader = cohort_module.read_personal_h20_research_cohort
+    injected_error = "h20_durable_controlled_source_verifier_error"
+    error_injected = threading.Event()
+    injected_errors: list[str] = []
+    public_reader_results: list[Any] = []
+    worker_error_messages: list[str] = []
+    started_workers: list[TaskWorker] = []
+
+    def controlled_ports_factory(*args: Any, **kwargs: Any) -> Any:
+        ports = original_ports_factory(*args, **kwargs)
+        original_source_verifier = ports["source_verifier"]
+
+        def controlled_source_verifier(binding: Any) -> Any:
+            is_second_cohort_read = (
+                getattr(task_context, "task_name", "")
+                == "read_personal_h20_verified_cohort_view"
+                and getattr(task_context, "cohort_operation_number", 0) == 2
+            )
+            if is_second_cohort_read and not error_injected.is_set():
+                error_injected.set()
+                error_entered.set()
+                if not error_release.wait(timeout=45):
+                    raise RuntimeError("h20_durable_error_barrier_timeout")
+                injected_errors.append(injected_error)
+                raise RuntimeError(injected_error)
+            return original_source_verifier(binding)
+
+        return {**ports, "source_verifier": controlled_source_verifier}
+
+    def observe_public_cohort_reader(*args: Any, **kwargs: Any) -> Any:
+        result = original_cohort_reader(*args, **kwargs)
+        public_reader_results.append(result)
+        return result
+
+    monkeypatch.setattr(
+        runner_module,
+        "personal_current_observed_h20_read_ports",
+        controlled_ports_factory,
+    )
+
+    def capture_native_finish(worker: TaskWorker) -> threading.Event:
+        native_finished = threading.Event()
+        worker.native_thread_finished.connect(native_finished.set)
+        started_workers.append(worker)
+        return native_finished
+
+    def wait_for_native_cleanup(
+        worker: TaskWorker,
+        native_finished: threading.Event,
+    ) -> None:
+        _wait_for(
+            app,
+            lambda: (
+                getattr(window, "_personal_h20_cohort_worker", None) is None
+                and native_finished.is_set()
+                and worker not in _MANAGED_TASK_WORKERS
+                and worker not in _LIVE_TASK_WORKERS
+                and worker not in running_task_workers()
+            ),
+            timeout_seconds=45.0,
+        )
+
+    def assert_readable_end(
+        editor: Any,
+        expected_text: str,
+        *,
+        require_native_scroll: bool,
+        require_outer_scroll: bool,
+    ) -> int:
+        recommendation = window.recommendation_view
+        outer_viewport = recommendation.result_scroll.viewport()
+        assert editor.isReadOnly() and editor.isEnabled() and editor.isVisibleTo(window)
+        assert editor.toPlainText() == expected_text
+        outer_scrollbar = recommendation.result_scroll.verticalScrollBar()
+
+        def wait_for_stable_geometry() -> tuple[Any, ...]:
+            previous_geometry: tuple[Any, ...] | None = None
+            stable_samples = 0
+            geometry: tuple[Any, ...] = ()
+            for _ in range(40):
+                app.processEvents()
+                origin = editor.mapTo(outer_viewport, QPoint(0, 0))
+                geometry = (
+                    editor.width(),
+                    editor.height(),
+                    editor.viewport().width(),
+                    editor.viewport().height(),
+                    editor.verticalScrollBar().maximum(),
+                    origin.x(),
+                    origin.y(),
+                    outer_viewport.width(),
+                    outer_viewport.height(),
+                    outer_scrollbar.value(),
+                    outer_scrollbar.maximum(),
+                )
+                if geometry == previous_geometry:
+                    stable_samples += 1
+                    if stable_samples >= 2:
+                        break
+                else:
+                    previous_geometry = geometry
+                    stable_samples = 0
+                time.sleep(0.01)
+            assert stable_samples >= 2, f"H20 長文字版面未穩定：{geometry!r}"
+            return geometry
+
+        assert recommendation.ensure_result_widget_visible(editor)
+        geometry = wait_for_stable_geometry()
+        if require_outer_scroll:
+            outer_max_before = int(outer_scrollbar.maximum())
+            assert outer_max_before > 0, f"外層結果頁沒有溢出範圍：{geometry!r}"
+            # 外層末端只是公開 helper 的測試前置狀態，不代表真人鍵盤操作。
+            # 真人捲動仍由下方對文件自己的內層 scrollbar 執行 End 驗證。
+            outer_scrollbar.setValue(outer_max_before)
+            app.processEvents()
+            outer_max_after = int(outer_scrollbar.maximum())
+            outer_end_value = int(outer_scrollbar.value())
+            outer_editor_rect = QRect(
+                editor.mapTo(outer_viewport, QPoint(0, 0)), editor.size()
+            )
+            assert outer_end_value == outer_max_after, (
+                "穩定版面後安排外層末端前置狀態失敗："
+                f"value={outer_end_value}; maximum_before={outer_max_before}; "
+                f"maximum_after={outer_max_after}; focus={app.focusWidget() is outer_scrollbar}; "
+                f"editor={outer_editor_rect!r}; viewport={outer_viewport.rect()!r}"
+            )
+            assert recommendation.ensure_result_widget_visible(editor)
+            app.processEvents()
+            assert int(outer_scrollbar.value()) < outer_end_value, (
+                "公開顯示 helper 未將文字區從外層末端帶回可視範圍："
+                f"before={outer_end_value}; after={outer_scrollbar.value()}; "
+                f"maximum={outer_scrollbar.maximum()}; editor="
+                f"{QRect(editor.mapTo(outer_viewport, QPoint(0, 0)), editor.size())!r}; "
+                f"viewport={outer_viewport.rect()!r}"
+            )
+
+        line_widths: list[float] = []
+        block = editor.document().begin()
+        while block.isValid():
+            layout = block.layout()
+            line_widths.extend(
+                layout.lineAt(index).naturalTextWidth()
+                for index in range(layout.lineCount())
+            )
+            block = block.next()
+        assert line_widths and all(
+            width <= editor.viewport().width() for width in line_widths
+        ), f"H20 文字行超出內部 viewport：{line_widths!r}; {editor.viewport().size()!r}"
+
+        scrollbar = editor.verticalScrollBar()
+        if require_native_scroll:
+            assert scrollbar.maximum() > 0, "長來源文件應有可觀察的內層垂直溢出"
+        if scrollbar.maximum() > 0:
+            assert scrollbar.isVisible() and scrollbar.isEnabled()
+            scrollbar.setFocus(Qt.FocusReason.OtherFocusReason)
+            app.processEvents()
+            assert scrollbar.hasFocus()
+            QTest.keyClick(scrollbar, Qt.Key.Key_End)
+            _wait_for(app, lambda: scrollbar.value() == scrollbar.maximum(), timeout_seconds=5)
+            # 內層 End 可能改變外層版面位置；依正式流程再次公開顯示，再等映射穩定。
+            assert recommendation.ensure_result_widget_visible(editor)
+            geometry = wait_for_stable_geometry()
+
+        end_cursor = QTextCursor(editor.document())
+        end_cursor.movePosition(QTextCursor.MoveOperation.End)
+        end_rect = editor.cursorRect(end_cursor)
+        last_cursor = QTextCursor(end_cursor)
+        if last_cursor.position() > 0:
+            last_cursor.movePosition(QTextCursor.MoveOperation.PreviousCharacter)
+        last_rect = editor.cursorRect(last_cursor)
+        editor_viewport = editor.viewport()
+        end_outer_rect = QRect(
+            editor_viewport.mapTo(outer_viewport, end_rect.topLeft()), end_rect.size()
+        )
+        last_outer_rect = QRect(
+            editor_viewport.mapTo(outer_viewport, last_rect.topLeft()), last_rect.size()
+        )
+        assert editor_viewport.rect().contains(end_rect), f"文件末端未在內層 viewport：{end_rect!r}"
+        assert editor_viewport.rect().contains(last_rect), f"最後字元未在內層 viewport：{last_rect!r}"
+        assert outer_viewport.rect().contains(end_outer_rect), (
+            f"文件末端未完整落在外層 viewport：{end_outer_rect!r}; "
+            f"{outer_viewport.rect()!r}"
+        )
+        assert outer_viewport.rect().contains(last_outer_rect), (
+            f"最後字元未完整落在外層 viewport：{last_outer_rect!r}; "
+            f"{outer_viewport.rect()!r}"
+        )
+
+        QTest.mouseClick(
+            editor.viewport(),
+            Qt.MouseButton.LeftButton,
+            pos=last_rect.center(),
+        )
+        QTest.keyClick(editor, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+        selected_text = editor.textCursor().selectedText().replace("\u2029", "\n")
+        assert selected_text == expected_text, "完整文件文字不可由使用者選取"
+        return int(scrollbar.maximum())
+
+    try:
+        window.show()
+        window.showNormal()
+        window.resize(676, window.height())
+        app.processEvents()
+        assert window.width() == 676 and not window.isMaximized() and not window.isFullScreen()
+        widget = _load_h20_list(app, window)
+        recommendation = window.recommendation_view
+        previous_cohort = widget._cohort
+        assert previous_cohort is not None
+        assert mode.get("_cohort_operation_count") == 1
+        assert widget.table.rowCount() == len(previous_cohort.rows) == 1
+
+        item = widget.table.item(0, 0)
+        assert item is not None and item.text() == "2382"
+        recommendation.ensure_result_widget_visible(widget.table)
+        app.processEvents()
+        row_position = widget.table.visualItemRect(item).center()
+        assert widget.table.viewport().rect().contains(row_position)
+        QTest.mouseClick(
+            widget.table.viewport(), Qt.MouseButton.LeftButton, pos=row_position
+        )
+        app.processEvents()
+        selection = item.data(Qt.ItemDataRole.UserRole)
+        assert selection is not None
+        assert widget.table.currentItem() is item
+        assert widget.table.selectionModel().selectedRows()[0].row() == 0
+        assert widget.table.selectedItems()
+
+        expected_scope_text = (
+            f"模型 {previous_cohort.candidate_id}｜cycle {previous_cohort.cycle_id}\n"
+            f"contract {previous_cohort.contract_hash}\n"
+            f"manifest {previous_cohort.manifest_path}\n"
+            f"raw pin {previous_cohort.manifest_sha256}"
+        )
+        assert str(previous_cohort.manifest_path) in expected_scope_text
+        assert window.recommendation_view.ensure_result_widget_visible(widget.scope_text)
+        scope_scroll_maximum = assert_readable_end(
+            widget.scope_text,
+            expected_scope_text,
+            require_native_scroll=True,
+            require_outer_scroll=True,
+        )
+        assert scope_scroll_maximum > 0
+
+        outsider = QLabel("不屬於結果來源頁的元件", window)
+        assert recommendation.ensure_result_widget_visible(outsider) is False
+
+        # 初次公開名單讀取已完成；只記錄本案例的錯誤 refresh，避免混入初始讀取。
+        monkeypatch.setattr(
+            cohort_module,
+            "read_personal_h20_research_cohort",
+            observe_public_cohort_reader,
+        )
+        recommendation.ensure_result_widget_visible(window._personal_h20_refresh_button)
+        app.processEvents()
+        assert window._personal_h20_refresh_button.isEnabled()
+        QTest.mouseClick(
+            window._personal_h20_refresh_button,
+            Qt.MouseButton.LeftButton,
+            pos=window._personal_h20_refresh_button.rect().center(),
+        )
+        _wait_for(app, error_entered.is_set)
+        error_worker = getattr(window, "_personal_h20_cohort_worker", None)
+        assert error_worker is not None and error_worker.isRunning()
+        error_native_finished = capture_native_finish(error_worker)
+        error_worker.error.connect(worker_error_messages.append)
+        assert widget._cohort is previous_cohort
+        assert widget.table.currentItem() is item
+        assert item.data(Qt.ItemDataRole.UserRole) == selection
+        assert widget.table.selectionModel().selectedRows()[0].row() == 0
+
+        error_release.set()
+        wait_for_native_cleanup(error_worker, error_native_finished)
+        _wait_for(app, lambda: len(worker_error_messages) == 1)
+        assert error_injected.is_set() and injected_errors == [injected_error]
+        assert mode.get("_cohort_operation_count") == 2
+        assert len(public_reader_results) == 2
+        assert [
+            (row.symbol, row.status, row.reason)
+            for result in public_reader_results
+            for row in result.rows
+        ] == [
+            ("2382", "unknown", injected_error),
+            ("2382", "unknown", "personal_h20_source_binding_changed_before_terminal_read"),
+        ]
+        assert len(worker_error_messages) == 1
+        raw_worker_error = worker_error_messages[0]
+        assert len(raw_worker_error) > 300
+        assert raw_worker_error.startswith(
+            "personal_h20_cohort_changed_during_terminal_read\nTraceback (most recent call last):"
+        )
+        assert raw_worker_error.rstrip().endswith(
+            "ValueError: personal_h20_cohort_changed_during_terminal_read"
+        )
+        error_prefix = "本次完整核驗失敗；上次名單若存在只代表上次完成時的結果："
+        assert widget.summary_label.text() == error_prefix
+        assert widget.error_detail.toPlainText() == raw_worker_error
+        assert widget.summary_label.text() + widget.error_detail.toPlainText() == (
+            error_prefix + raw_worker_error
+        )
+        assert widget._cohort is previous_cohort
+        assert widget.table.currentItem() is item
+        assert item.data(Qt.ItemDataRole.UserRole) == selection
+        assert widget.table.selectionModel().selectedRows()[0].row() == 0
+        error_scroll_maximum = assert_readable_end(
+            widget.error_detail,
+            raw_worker_error,
+            require_native_scroll=False,
+            require_outer_scroll=True,
+        )
+        assert error_scroll_maximum >= 0
+        assert_readable_end(
+            widget.scope_text,
+            expected_scope_text,
+            require_native_scroll=True,
+            require_outer_scroll=True,
+        ) > 0
+
+        cancel_entered.clear()
+        cancel_release.clear()
+        recommendation.ensure_result_widget_visible(window._personal_h20_refresh_button)
+        app.processEvents()
+        QTest.mouseClick(
+            window._personal_h20_refresh_button,
+            Qt.MouseButton.LeftButton,
+            pos=window._personal_h20_refresh_button.rect().center(),
+        )
+        _wait_for(app, cancel_entered.is_set)
+        cancel_worker = getattr(window, "_personal_h20_cohort_worker", None)
+        assert cancel_worker is not None and cancel_worker.isRunning()
+        cancel_native_finished = capture_native_finish(cancel_worker)
+        assert widget._cohort is previous_cohort
+        assert widget.table.currentItem() is item
+        assert item.data(Qt.ItemDataRole.UserRole) == selection
+        assert widget.table.selectionModel().selectedRows()[0].row() == 0
+        assert not widget.isEnabled()
+        assert not window._personal_h20_refresh_button.isEnabled()
+        assert window._personal_h20_cancel_read_button.isEnabled()
+
+        recommendation.ensure_result_widget_visible(window._personal_h20_cancel_read_button)
+        app.processEvents()
+        QTest.mouseClick(
+            window._personal_h20_cancel_read_button,
+            Qt.MouseButton.LeftButton,
+            pos=window._personal_h20_cancel_read_button.rect().center(),
+        )
+        assert cancel_worker.is_cancel_requested()
+        assert cancel_worker.isRunning()
+        assert "已送出取消" in window._personal_h20_loading_label.text()
+        cancel_release.set()
+        wait_for_native_cleanup(cancel_worker, cancel_native_finished)
+        assert mode.get("_cohort_operation_count") == 3
+        assert widget._cohort is previous_cohort
+        assert widget.table.currentItem() is item
+        assert item.data(Qt.ItemDataRole.UserRole) == selection
+        assert widget.table.selectionModel().selectedRows()[0].row() == 0
+        assert "名單讀取已取消" in window._personal_h20_loading_label.text()
+        assert widget.isEnabled() and window._personal_h20_refresh_button.isEnabled()
+        assert not window._personal_h20_cancel_read_button.isEnabled()
+        assert_readable_end(
+            widget.scope_text,
+            expected_scope_text,
+            require_native_scroll=True,
+            require_outer_scroll=True,
+        )
+        assert network_attempts == []
+    finally:
+        error_release.set()
+        cancel_release.set()
+        _close_mainwindow(app, window)
+
+    source_stat_after = source_database.stat()
+    assert source_database.read_bytes() == source_bytes_before
+    assert source_stat_after.st_size == source_stat_before.st_size
+    assert source_stat_after.st_mtime_ns == source_stat_before.st_mtime_ns
+    assert all(worker not in running_task_workers() for worker in started_workers)

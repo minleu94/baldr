@@ -41,6 +41,16 @@ root 從暖操作原 `child_result.json` 各 30 筆 elapsed_ns 獨立重算 near
 
 ### H20 O 實跑終態（後於上述靜態狀態）
 
-O SHA `409ace8f414edd108059fb13ae852ddc205567d7568d0098307ed7ca439e9d7b`。attempt01 sandbox 匯入固定 N/M helper 遭 strict resolve WinError 5；保留原生 stderr 與 terminal receipt。獲核准的 attempt02 隔離實跑 **exit 1／約 4.67 秒**：原 source verifier 在 callback 前讀取研究根目錄設定，`msvcrt.open_osfhandle` 被原 N guard 以 `windows_open_osfhandle_callsite_or_flags_denied` 拒絕。callback、initial/terminal 真讀取與 SQLite 嘗試均為 0，負例未跑；不能宣稱 SQLite 或 source-port 通過。
+O SHA `409ace8f414edd108059fb13ae852ddc205567d7568d0098307ed7ca439e9d7b`。attempt01 sandbox 匯入固定 N/M helper 遭 strict resolve WinError 5；保留原生 stderr 與 terminal receipt。獲核准的 attempt02 隔離實跑 **exit 1／約 4.67 秒**：已進入原 source callback，在 loader 前置步驟讀取研究根目錄設定，`msvcrt.open_osfhandle` 被原 N guard 以 `windows_open_osfhandle_callsite_or_flags_denied` 拒絕。initial/terminal terminal-file 真讀取與 SQLite 嘗試均為 0，負例未跑；不能宣稱 SQLite 或 source-port 通過。
+
+補正當次 callback 計數判讀：traceback 確實經 `exact_delegate → source_verifier → _source_port`；輸出 `source_callback_delegate_calls=[]` 是失敗路徑沒有更新初始欄位，不能用它宣稱實際 callback 0。原輸出保持；新 P 候選必須在 finally 保存實際完整 ledger。guard 原只認 queries reader 的 code/globals/locals；真正 storage-config reader 來自原 `data_module.ml_research_output_boundary`，其 `O_RDONLY|O_BINARY` 與 no-follow 開啟不因不同 callsite 自動變成無效。新增角色須綁固定 146-byte 設定、exact hash/root/env/file identity 與原 loader 父鏈，不以一般 fixture path 白名單放行。
 
 root 實讀原 `attempt02/stdout.native.txt`：source、fixture、H20 source group、snapshot JSON 起訖一致；cleanup errors 空、aliases／環境恢復、private root 清空、descriptor 0。O 沒有重跑；下一步唯讀對照 config loader 真 callsite 與固定角色授權，先審查最小新候選再執行。原封套：`output/qa/h20_guarded_sourceport_sqlite_slice_20261009_o/attempt01`、`attempt02`。本文件承接 F03 修正 commit `115600d3`，所有首紅與未完成範圍保留。
+
+### F12 D 定向測試與 Main 真狀態
+
+D runner SHA `08f825ed29e612908c8c3318d841e9a4291b5b1443cb168d5047749609862750`；完整 C3→D diff SHA `6979417f80d002d467ffb4d1479c53f619bd364fc4044622a344aac9a56b20c3`。root 實讀完整差異、原 logs 並重算 SHA。D focused 首輪 sandbox 遭 strict resolve WinError 5（3 failed／14 passed／4 subtests）；原紀錄保留。隔離權限 focused 終態三命令 exit 0、無 timeout，**17 passed／4 subtests passed**，58 source pins 起訖一致、候選檔案穩定；真 JobObject child bounded stop、worker API、274-char 路徑與 junction 負例通過。成功收據 `output/qa/f12_main_revenue_new_pid_20261009_d/evidence/20261010T002208Z_38860_c879815b/receipt.json`。
+
+D 唯一完整 Main attempt exit 1；當時 mode/message 已實際保存：`upgrade_available`／「目前沿用原 JSON 觀察清單；可由頁面按一次『升級觀察清單儲存』。」seed 206 bytes、SHA `653bfc9e7844d1c5a5aa8a167a83b7b140b94bcf3ac884347718016b5dc7e555`，路徑相符；嚴格 `personal_source_readonly` gate 保持拒絕。正常 close/drain 成功、cleanup errors 空、post-drain Qt accesses 0、aliases／環境恢復。原 after=null 保持，不據此宣稱來源起訖一致。原生 receipt `run_attempt_6fc40c40c0754c0382ad2c1a14f0cf26/f12_main_revenue_receipt.json`；launcher/raw stdout/stderr 位於 D 的 `evidence/authorized_main_run_20261010T002355Z_a91d0c68`。
+
+root 從目前 QA source 找到具體原因：`_build_private_environment()` 新增兩個個人收藏 env keys，卻把 pinned helper 原有包含這兩 keys 的 unset 清單直接返回；Main 前先 update(env)、再 unset，兩個設定隨即被刪掉，`TWStockConfig` 取得預設 None，factory 選 legacy。後續 E 只調整 QA 明示 opt-in 的兩個 keys 與 unset 衝突，其他敏感／來源移除清單、原 gate 及產品 source 不放寬；尚未實跑 E，不宣稱完整收藏旅程完成。

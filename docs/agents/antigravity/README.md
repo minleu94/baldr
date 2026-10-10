@@ -4,20 +4,9 @@
 
 ## 先讀什麼
 
-Antigravity 開工前依序閱讀：
+Antigravity 開工的完整必讀順序與條件式文件，以根目錄 [`GEMINI.md`](../../../GEMINI.md) 為準。本頁負責角色分流與交接，不另維護一份縮短版必讀清單；每項適用的權威文件都要先讀，再依下表選擇角色文件。
 
-1. `GEMINI.md`
-2. `docs/agents/README.md`
-3. `docs/agents/shared_context.md`
-4. `docs/agents/git_exclusions.md`
-5. `docs/00_core/PROJECT_SNAPSHOT.md`
-6. `docs/00_core/DEVELOPMENT_ROADMAP.md`（Roadmap Hub）
-7. 任務涉及方向、架構或中高風險時讀 `docs/00_core/ROADMAP_6M_ENGINEERING.md`
-8. 任務涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時讀 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`
-9. 任務涉及舊工作承接、Phase Gate 或優先順序時讀 `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
-10. 任務涉及架構、資料流或模組邊界時讀 `docs/01_architecture/system_architecture.md`
-11. 任務涉及 UI、使用流程、參數、結果判讀或安全限制時，依 `docs/07_guides/README.md` 的操作手冊章節地圖閱讀相關章節
-12. 本目錄中與任務對應的角色文件
+若依任務範圍略過條件式文件，請在交接模板的「不適用項目」欄說明原因。
 
 ## 角色選擇
 

@@ -8,21 +8,24 @@
 
 ## 必讀順序
 
-在執行任何任務前，依序閱讀：
+在執行任何任務前，依序閱讀。條件式項目須依任務範圍判斷；不適用時可略過，但不可用本清單摘要取代相關權威文件：
 
 1. `docs/agents/README.md` - Agent 總覽與強制流程
 2. `docs/agents/shared_context.md` - 全 Agent 共用規範
 3. `docs/agents/git_exclusions.md` - Git 排除與不應提交清單
 4. `docs/00_core/PROJECT_SNAPSHOT.md` - 專案目前狀態
 5. `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub 與文件權威入口
-6. `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線（涉及方向、優先序或大型規劃時必讀）
-7. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
-8. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交與 Gate（涉及舊工作承接、Phase 或優先順序時必讀）
-9. `docs/01_architecture/system_architecture.md` - 系統架構（涉及架構、模組邊界或資料流時必讀）
-10. `docs/07_guides/README.md` 的「操作手冊章節地圖」與 `APPLICATION_MANUAL.md` 中和任務相關的章節（涉及 UI 流程、參數、結果判讀或安全限制時必讀）；跨工作區任務讀取涉及的各章，日期化補充只讀相關部分
-11. `docs/agents/skills_registry.md` - Codex / Antigravity 共用的角色選擇與協作入口
-12. `docs/agents/antigravity/README.md` - Antigravity 適配摘要與工作方式
-13. 與任務對應的權威角色文件：
+6. `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 涉及產品方向、Advice、Portfolio、Exit、Data、ML 或大型規劃時必讀
+7. `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 涉及方向、優先序或大型規劃時必讀
+8. `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 涉及外部參考或資料源擴充時必讀
+9. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - 涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀
+10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 涉及舊工作承接、Phase 或優先順序時必讀
+11. `docs/01_architecture/system_architecture.md` - 涉及架構、模組邊界或資料流時必讀
+12. `docs/01_architecture/target_system_architecture.md` - 涉及目標領域背景或演進時必讀；涉及目標實作設計時並讀 `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`
+13. `docs/agents/skills_registry.md` - Codex / Antigravity 共用的角色選擇與協作入口
+14. `docs/agents/antigravity/README.md` - Antigravity 適配摘要與工作方式
+15. `docs/07_guides/README.md` 的「操作手冊章節地圖」與 `APPLICATION_MANUAL.md` 中和任務相關的章節（涉及 UI、使用流程、參數、結果判讀或安全限制時必讀）；跨工作區任務讀取涉及的各章，日期化補充只讀相關部分
+16. 與任務對應的權威角色文件：
    - 技術判斷 / 架構建議：`docs/agents/tech_lead.md`
    - 受控實作 / Bug 修復：`docs/agents/execution_agent.md`
    - 文檔同步 / Coverage：`docs/agents/documentation_agent.md`

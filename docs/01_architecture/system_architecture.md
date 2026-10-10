@@ -347,6 +347,8 @@ Application Services / DTO / Repository
 
 完整母體 v4 的產製與嚴格讀取在 worker 執行；UI 保留明示來源 pins、查詢、頁碼、選取及比較籃。個股、比較與收藏重開原保存來源及 query，不自動改讀最新資料或重產製。關閉／換來源時以 generation 隔離合作取消，晚到結果不得覆蓋新結果或觸發錯誤導覽。
 
+<a id="daily-decision-desk"></a>
+<a id="4-daily-decision-desk"></a>
 ### 目前 9 個頂層工作區
 
 1. 決策工作台（包含「決策來源」Daily Decision drill-down）
@@ -382,6 +384,7 @@ Application Services / DTO / Repository
 - 資料來源選擇、fallback 與服務組合。
 - 研究、推薦、回測與 Portfolio 來源追溯。
 
+<a id="windows-launcher-and-composition"></a>
 ### Windows launcher 與 composition
 
 `baldr_launcher.py` 統一 source 與 frozen 入口；在重型 UI 匯入前處理 frozen multiprocessing，再交由既有 `ui_qt.main` 啟動。`python ui_qt/main.py`、`python -m ui_qt.main` 與 frozen 子程序的 script／module 呼叫沿套件資源根解析，不依賴目前工作目錄。`application_bootstrap` 純解析設定，完成明示套用後才注入既有 `MainWindow`；不替換全域 `project_root`、registry constructor 或視窗類別。

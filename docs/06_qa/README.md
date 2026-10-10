@@ -24,6 +24,21 @@
 
 ## 相容深連結
 
+<a id="ml-shadow-與前瞻證據"></a>
+### ML Shadow 與前瞻證據
+
+前瞻與 ML 收據請從[資料與 ML 索引](DATA_ML_GOVERNANCE_QA_INDEX.md)進入；目前模型狀態依 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判讀。
+
+<a id="排程與自動化"></a>
+### 排程與自動化
+
+排程修復、稽核與測試收據請從[營運與測試索引](OPERATIONS_TESTING_QA_INDEX.md)進入；全排程共用操作見 [BALDR Scheduled Audit Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
+<a id="h20-個股研究"></a>
+### H20 個股研究
+
+個股研究與 H20 收據請從[產品與個股研究索引](PRODUCT_UX_QA_INDEX.md)進入；目前狀態依 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判讀。
+
 <a id="wp1wp5-package-evidence-index"></a>
 ### WP1–WP5 工作包收據索引
 

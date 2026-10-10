@@ -16,24 +16,15 @@ baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策�
 |---|---|
 | `main` | 乾淨可 clone 版本，保留必要文件、程式碼、測試與範例。 |
 | `dev` | 日常開發主線，延續目前進行中的 healthcheck、UI smoke、文件與功能深化。 |
-| `codex/*` / `feature/*` | 短期任務分支，完成合併後清理。 |
+| `codex/*` / `ag/*` / `research/*` | 短期治理、實作或研究工作分支；角色與整合界線見 [Multi-Agent 協作流程](docs/agents/multi_agent_workflow.md)。 |
 
 不要把本機輸出、QA artifact、SQLite DB、log、暫存資料或正式資料根目錄內容提交到 `main`。
 
-## 必讀順序
+## 平台指令與快覽
 
-1. [AGENTS.md](AGENTS.md) - Codex repo 指令入口。
-2. [docs/agents/README.md](docs/agents/README.md) - Agent 總覽與強制流程。
-3. [docs/agents/shared_context.md](docs/agents/shared_context.md) - 全 Agent 共用規範。
-4. [docs/agents/git_exclusions.md](docs/agents/git_exclusions.md) - 不應提交清單。
-5. [docs/00_core/PROJECT_SNAPSHOT.md](docs/00_core/PROJECT_SNAPSHOT.md) - 目前狀態、高風險區與工作模式。
-6. [docs/00_core/DEVELOPMENT_ROADMAP.md](docs/00_core/DEVELOPMENT_ROADMAP.md) - Roadmap Hub。
-7. [docs/00_core/ROADMAP_6M_ENGINEERING.md](docs/00_core/ROADMAP_6M_ENGINEERING.md) - 未來 6 個月工程路線。
-8. [docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md](docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md) - V2.0 之後長期版本階梯（涉及 V2 之後版本命名或長期成熟度時）。
-9. [docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md](docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md) - 外部專案參考、資料源優先序與 V1.5-V2.0 版本形狀（涉及方向或版本規劃時）。
-10. [docs/01_architecture/system_architecture.md](docs/01_architecture/system_architecture.md) - 架構與模組邊界。
-11. [docs/07_guides/APPLICATION_MANUAL.md](docs/07_guides/APPLICATION_MANUAL.md) - 使用者操作權威。
-12. 與任務對應的 Agent 文件，例如 `execution_agent.md`、`documentation_agent.md`、`data_cleanup_agent.md`。
+本檔是跨工具快速導航，不另定義必讀順序。開工順序與條件式文件由使用中的平台根目錄指令決定：Codex 依 [AGENTS.md](AGENTS.md)，Antigravity 依 [GEMINI.md](GEMINI.md)。完整角色入口見 [Agent 總覽](docs/agents/README.md)，專案目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)。
+
+條件式文件依任務範圍判斷；不要用這份快覽取代平台指令列出的產品、Roadmap、架構或操作手冊權威文件。
 
 ## Scoped SSOT
 

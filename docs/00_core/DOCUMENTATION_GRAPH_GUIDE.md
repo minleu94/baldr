@@ -2,6 +2,8 @@
 
 > 2026-10-06。Graphify 是導航輔助；文件內容正確性、原驗收與 Scoped SSOT 不由圖譜成功決定。
 
+> 2026-10-09 本機重驗：`graphify-out/.graphify_python` 指向的 Python 可載入 `graphifyy 0.9.11`；但 `graphify --version` 回報 `uv trampoline failed to canonicalize script path`，`uv tool list` 因工具鎖檔存取遭拒而失敗。因此套件版本已由該 interpreter 確認，CLI 啟動器與工具清單仍未能驗證。執行 recipe 前仍須依安全範圍重新檢查工具與路徑。
+
 目前文件導航以 [文檔索引](DOCUMENTATION_INDEX.md) 與各專區 README 為準；[2026-10-06 全文件目錄快照](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) 僅供追溯。圖譜用於跨文件／程式結構關係，來源事實仍應回讀原頁／原 code，不能把推論 edge 當完成證據。
 
 ## 安全範圍
@@ -21,9 +23,9 @@
 
 2026-10-06 的整理結果、當時限制與精確命令見[歷史驗收原文](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)；它只代表該次 fixed HEAD snapshot。每輪仍須重新核對當前輸入、依賴與輸出。圖譜若未完成，必須明列 blocker，不能用另一份自製圖冒稱完整 Graphify semantic build。
 
-## 本輪可重用的本機方法
+## 本機受控方法（版本已核、CLI 啟動器需修復）
 
-已安裝工具為 `graphifyy 0.9.11`；先用 `graphify --help`／`uv tool list` 核來源，不自動安裝。repo ignore 規則會排除 `output/` 下的 snapshot，普通 CLI 探測得到零輸入，不能當成功。因此本輪對複製到受控 input 的 Python 白名單使用正式本機 API：
+目前記錄的 interpreter 可載入 `graphifyy 0.9.11`；CLI 啟動器本次無法執行，工具來源清單也因本機鎖檔權限無法讀取，不自動安裝。repo ignore 規則會排除 `output/` 下的 snapshot，普通 CLI 探測得到零輸入，不能當成功。因此本輪對複製到受控 input 的 Python 白名單使用正式本機 API：
 
 ```python
 from graphify.extract import extract

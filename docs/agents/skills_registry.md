@@ -12,30 +12,9 @@
 - `docs/agents/antigravity/` 與 `.agent/rules/` 僅為 Antigravity 適配摘要，不得維護平行規則。
 - 若任何適配層與 `docs/agents/` 衝突，以 `docs/agents/` 為唯一真相。
 
-## 2. 固定必讀文件
+## 2. 技能載入前的必讀依據
 
-任何 AI 在使用技能前，必須先閱讀：
-
-1. `docs/agents/README.md`
-2. `docs/agents/shared_context.md`
-3. `docs/agents/git_exclusions.md`
-4. `docs/00_core/PROJECT_SNAPSHOT.md`
-5. `docs/00_core/DEVELOPMENT_ROADMAP.md`
-6. `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`（涉及產品方向、Advice、Portfolio、Exit、Data、ML 或大型規劃時）
-7. `docs/00_core/ROADMAP_6M_ENGINEERING.md`（涉及方向、優先順序或大型規劃時）
-8. `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（涉及外部專案參考或資料源擴充時；歷史版本形狀不代表目前交付順序）
-9. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時）
-10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`（涉及舊工作承接或 Phase Gate 時）
-11. `docs/01_architecture/system_architecture.md`（涉及目前架構、模組邊界或資料流時）
-12. `docs/01_architecture/target_system_architecture.md`（目標領域背景與演進導覽）及 `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`（涉及目標實作設計時）
-13. `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（涉及 UI、使用流程、參數、結果判讀或安全限制時）
-14. 與任務對應的 Agent 權威文件：
-   - 架構判斷：`docs/agents/tech_lead.md`
-   - 受控實作：`docs/agents/execution_agent.md`
-   - 文檔同步：`docs/agents/documentation_agent.md`
-   - 資料驗證：`docs/agents/data_audit_agent.md`
-   - 清理整理：`docs/agents/data_cleanup_agent.md`
-   - 測試驗證：`docs/agents/testing_qa_agent.md`
+使用技能前，先依平台根目錄指令完成完整必讀順序與條件式文件：Codex 依根目錄 `AGENTS.md`，Antigravity 依根目錄 `GEMINI.md`。本登錄表只做角色與技能路由，不維護縮短版或第二套必讀清單；任務對應的權威 Agent 文件依下方角色表選取。
 
 ## 3. 權威 Agent 與協作流程
 
@@ -57,7 +36,7 @@
 
 小型文檔更新、簡單查詢、單一低風險修正：
 
-1. 讀固定必讀文件。
+1. 依平台根目錄指令完成適用的必讀項目。
 2. 只載入與任務直接相關的一份權威 Agent 文件；需要交接時再載入 `docs/agents/skills/team.md`。
 3. 可用對話摘要交接，不強制寫入 shared state。
 
@@ -141,3 +120,4 @@
 - 2026-07-04：新增 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 的條件式必讀規則，用於外部參考、資料源擴充與 V1.5-V2.0 版本規劃任務。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的條件式必讀規則，用於 V2.1+ 版號、長期成熟度與 V3/V4 規劃任務。
 - 2026-07-06：新增 V1.9 `twstock-evidence-access` 本地 MCP 說明，限定 read-only evidence access 與 report template 邊界。
+- 2026-10-09：移除重複的固定必讀文件清單，改由 `AGENTS.md`／`GEMINI.md` 維護完整順序與條件式項目。

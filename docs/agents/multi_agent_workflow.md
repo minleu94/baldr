@@ -1,95 +1,65 @@
-# Multi-Agent Collaboration Workflow Protocol
+# 多 Agent 協作流程
 
-This document defines the formal multi-agent collaboration workflow for the repository.
+> 本流程補充 Agent 的分支、工作樹、交接與整合檢查。平台必讀順序依根目錄 `AGENTS.md`／`GEMINI.md`；Git 排除規則依 [`git_exclusions.md`](git_exclusions.md)，分支與工作樹生命週期依 [`shared_context.md`](shared_context.md)。
 
-## Branch Roles
+## 分支角色
 
-### `main`
-* Production-like stable branch.
-* 必須永遠可執行。
-* 不允許直接開發。
+| 分支 | 用途 | 邊界 |
+|---|---|---|
+| `dev` | 開發主線 | 任務成果依核准流程整合至此；完成整合不代表有 push 授權。 |
+| `main` | 供使用者下載的穩定版本 | 不直接開發；發布前檢查必要程式碼、操作文件與有效回歸測試。未取得明確發布授權，不修改或推送此分支。 |
+| `codex/*` | 架構、治理、審查與遷移設計工作 | 不預設要重寫既有實作；先列出證據、影響與相容路徑。 |
+| `ag/*` | 功能、UI、服務整合等實作工作 | 優先採增量修改，維持既有契約。 |
+| `research/*` | 實驗性研究 | 未經整合審查不視為產品交付。 |
 
-### `ag/*` (Antigravity)
-* Implementation branches.
-* UI / feature / service integration.
-* Additive change preferred.
+上述前綴是協作慣例，實際工作分支與整合目標仍以任務指示和共用上下文為準；舊版 `develop` 分支圖已由 `dev` 開發主線取代。
 
-### `codex/*` (Codex)
-* Architecture / governance / review branches.
-* Proposal / audit / migration design.
-* 不直接假設 full rewrite。
+## 平行工作與工作樹生命週期
 
-### `research/*`
-* Experimental ideas.
-* 不保證 merge。
+1. 開始修改共享文件或程式前，先確認最新 HEAD、工作目錄與 `git status`／`git diff`，辨識其他人留下的變更。
+2. 平行任務優先重用合適的現有工作樹；建立新工作樹前先檢查是否已有可用工作樹。只在同一工作目錄輪流切換工具時，先確認前一個工具已停止工作。
+3. 不覆寫或清理其他 Agent／使用者的未提交修改。提交時只列本任務檔案；QA 暫存、本機工具輸出與排除路徑依 `git_exclusions.md` 處理。
+4. 成果整合到 `dev` 後，先確認獨有提交和未提交內容都已保存，再依共用上下文檢查其他聊天與程序是否仍在使用，最後才清理短期分支或工作樹。
+5. 本機備份、Git bundle、工作樹 ZIP 與清理盤點放在已排除的 `output/`；不提交、不推送這些產物。
 
-## Merge Protocol
+## 整合前檢查
 
-任何 branch merge 前，必須檢查以下項目：
+依變更類型執行適用檢查，並在交接中記下命令、結果與未驗證項目：
 
-### 1. Compile / Runtime
-* Application 可啟動。
-* Imports 無循環依賴。
-* DTO contract 未破壞。
+### 程式與執行流程
 
-### 2. Architecture Boundary
-* `ui_qt` 不直接 import repository/db。
-* `app_module` 不依賴 `ui_qt`。
-* Domain logic 不回流 UI。
+- 必要時確認應用程式可啟動、import 沒有循環依賴，並確認 DTO 契約沒有破壞。
+- 維持架構邊界：`ui_qt` 不直接依賴 repository／DB，`app_module` 不依賴 `ui_qt`，domain logic 不回流 UI。
+- 涉及策略、回測、推薦或績效計算時，依根目錄規範檢查 Decimal／整數精度與 look-ahead bias，並執行相應驗證。
 
-### 3. Merge Risk Analysis
-在 Merge 前必須明確標示：
-* Safe to merge
-* Requires migration
-* Breaking change
-* Experimental only
+### 文件與證據
 
-### 4. Shared Contract Safety
-**必須避免：**
-* Rename shared DTO。
-* Changing event payload schema。
-* Changing service signatures。
-* Hidden coupling。
+- 核對 Markdown 相對連結、錨點、目錄索引及 Scoped SSOT 邊界。
+- 保留 QA 原收據、SHA、PASS／FAIL／未驗證界線；不要把有限驗證改寫為整體完成。
+- 文件整理任務記錄原路徑、Archive 原文、替代入口及必要的來源指紋。
 
-## Conflict Resolution
+### 風險分類
 
-如果 branch concept 發生衝突：
-**絕對不要直接 rewrite 對方實作。**
+整合前將變更標為下列一種，並簡述依據：
 
-而是必須依序：
-1. 提出 Conflict explanation。
-2. 提出 Migration path。
-3. 提出 Compatibility adapter。
-4. 提出 Phased transition plan。
+- 可安全整合
+- 需要遷移
+- 破壞相容性
+- 僅限實驗
 
-## Development Principle
+## 共用契約與衝突處理
 
-**優先：**
-* Additive architecture
-* Adapters
-* Extension points
-* Compatibility layer
+避免未經設計與驗收而重新命名共用 DTO、改變事件 payload 或服務介面，或新增隱性耦合。
 
-**避免：**
-* Destructive rewrite
-* Hidden dependency
-* Broad refactor without migration
-* Silent contract breaking
+若分支概念或實作發生衝突，不直接重寫對方內容，依序提出：
 
-## Git Workflow
+1. 衝突範圍與可查證原因。
+2. 遷移路徑及相容性需求。
+3. 必要的相容 adapter。
+4. 分階段轉換與驗收條件。
 
-推薦流程：
+## 開發原則與整合權限
 
-```text
-main
-  ↑
-develop
-  ↑
-feature/ag/*
-feature/codex/*
-research/*
-```
+優先採用增量架構、adapter、extension point 與相容層；避免破壞性重寫、隱藏依賴、未經遷移計畫的大型重構與靜默破壞契約。
 
-> **注意：**
-> AI agents 不可自行 merge 到 `main`。
-> 最終 merge decision 由 human architecture owner 決定。
+Agent 不自行合併到 `main`。最終發布決定由人類架構負責人做出；`dev` 整合、建立 PR、推送或清理分支的授權範圍依任務指示與共用上下文判讀。

@@ -72,20 +72,16 @@
 
 ## ⛔ 強制流程（所有 Agent 必須遵守）
 
-### 全 Agent 必讀文件清單（固定順序）
+### 平台必讀文件來源
 
-**任何 Agent 在執行任務前，必須依序閱讀：**
+開工順序依執行平台的根目錄指令為準，避免在本頁維護一份會逐漸落後的縮短清單：
 
-1. `docs/agents/README.md` - Agent 總覽（本文件）
-2. `docs/agents/shared_context.md` - 共用上下文（不可違背前提）
-3. `docs/agents/git_exclusions.md` - Git 排除與不應提交清單
-4. `docs/00_core/PROJECT_SNAPSHOT.md` - 專案快照（開場 30 秒狀態）
-5. `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub 與權威文件入口
-6. `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 涉及產品方向或大型規劃時必讀
-7. `docs/agents/skills_registry.md` - Codex / Antigravity 共用的角色選擇與協作入口
-8. 自身對應的 Agent 文件（如：`tech_lead.md`、`execution_agent.md`）
+- **Codex**：依根目錄 [`AGENTS.md`](../../AGENTS.md) 的完整順序與條件式必讀項目執行。
+- **Antigravity**：依根目錄 [`GEMINI.md`](../../GEMINI.md) 的完整順序與條件式必讀項目執行。
+- **共同 Agent 資源**：包含本總覽、[`shared_context.md`](shared_context.md)、[`git_exclusions.md`](git_exclusions.md)、任務相關的 Scoped SSOT 與 [`skills_registry.md`](skills_registry.md)；完整閱讀順序依平台根目錄指令。
+- [`antigravity/README.md`](antigravity/README.md) 與 [`antigravity/handoff_template.md`](antigravity/handoff_template.md) 是 Antigravity 的角色路由與交接輔助，不得取代 `GEMINI.md` 的完整條件式清單。
 
-**未完成上述閱讀，不得執行任何任務。**
+下列角色補充必讀只會增加該角色的閱讀範圍，不會縮短或取代平台根目錄指令。文件中的狀態事實仍依各主題 Scoped SSOT 判讀。
 
 ### 特定 Agent 補充必讀文件
 

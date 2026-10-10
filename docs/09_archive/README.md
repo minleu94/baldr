@@ -19,6 +19,7 @@
 | 歷史 QA／完成收據 | [封存文件清單](#archive-document-catalog)；仍有待驗收或 Gate 的 QA 從[現行 QA 導覽](../06_qa/README.md)進入。 |
 | 舊 plan/spec 與執行脈絡 | [開發計畫與規格追溯](#archive-plans-and-specs)；目前明確進行中的 plan 看 [Superpowers README](../superpowers/README.md)。 |
 | 2026-10-06 文件入口整理前的快照 | [治理入口原文快照](#governance-entry-snapshots)。 |
+| 舊版 Multi-Agent workflow（2026-10-09 前） | [Agent 工作流歷史快照](#2026-10-09-agent-workflow-pre-dev-history)。 |
 | Task Loop 01–07 歷史 handoff | [Task Loop 歷史入口](#task-loop-handoffs)。 |
 
 > 封存計畫中的待辦或日期化狀態不會自動成為目前優先事項或執行授權；判讀目前狀態請回到 Snapshot、對應 QA 與現行 Roadmap。
@@ -106,6 +107,11 @@
 
 - [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。
 - 現行權威邊界、文件同步矩陣與 DoD 仍由 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 維護；本清冊只供追溯。
+
+<a id="2026-10-09-agent-workflow-pre-dev-history"></a>
+## 2026-10-09 Agent workflow 舊版歷史快照
+
+- [Multi-Agent workflow 原文快照](MULTI_AGENT_WORKFLOW_PRE_DEV_20261009_HISTORY.md)：保存舊版以 `develop` 為主線的分支圖與合併協議；現行分支、整合與工作樹生命週期依 [`docs/agents/multi_agent_workflow.md`](../agents/multi_agent_workflow.md) 及 [`shared_context.md`](../agents/shared_context.md) 判讀。
 
 ## 2026-10-09 文件治理規則與舊計畫索引
 
@@ -592,6 +598,7 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。2026-07-07 Scheduler Approval plan/spec 配對於 2026-10-09 封存；測試現讀取 Archive 原件，不代表正式排程已核准或啟用。
 
+<a id="2026-10-09-post-v1-evidence-review-dashboards-plan-spec"></a>
 ### 2026-10-09 Post-V1 Evidence Review Dashboards plan/spec
 
 [7/11 dashboard plan 原文](superpowers/plans/2026-07-11-post-v1-evidence-review-dashboards.md) 與[設計 spec 原文](superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。工程實作及對應測試由[具名 QA 收據](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)記錄；[7/12 人工 UI smoke checklist](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md) 的結果表仍空白，multi-day dry-run 與 production scheduler approval 是分開的開放 Gate。本次歸檔不代表這些 Gate 已完成；原件 bytes／SHA 與生命週期判讀見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

@@ -13,6 +13,24 @@ from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_KEYS,
 )
 from app_module.daily_market_method_contract import method_contracts_payload, method_contracts_sha256
+from app_module.daily_market_technical_kdj_evidence_v1 import (
+    KDJ_METHOD_ID_V1,
+    KDJ_METHOD_VERSION_V1,
+)
+from app_module.daily_market_technical_ma_alignment_evidence_v1 import (
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1,
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1,
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_WARMUP_V1,
+)
+from app_module.daily_market_technical_volatility_evidence_v1 import (
+    ATR14_SMA_METHOD_ID_V1,
+    ATR14_SMA_METHOD_VERSION_V1,
+    ATR14_SMA_REQUIRED_RAW_ROWS_V1,
+    ATR14_SMA_TRUE_RANGE_COUNT_V1,
+    BOLLINGER_BANDWIDTH_METHOD_ID_V1,
+    BOLLINGER_BANDWIDTH_METHOD_VERSION_V1,
+    BOLLINGER_BANDWIDTH_WINDOW_V1,
+)
 from app_module.daily_market_research_capabilities import (
     DAILY_MARKET_RESEARCH_FEATURE_CAPABILITIES,
     DAILY_MARKET_RESEARCH_METHOD_CAPABILITIES,
@@ -103,17 +121,81 @@ def test_unknown_exact_lookup_preserves_missing_and_never_supported(key):
     assert unknown.blockers == ("unknown_family_id",)
 
 
-def test_only_two_existing_versioned_methods_share_one_family():
+def test_versioned_method_refs_align_only_supported_family_components():
     contracts = method_contracts_payload()
     family = families.get_rule_research_family("close_vs_moving_average")
     assert family.versioned_method_refs == (
-        "daily_market.close_above_ma20@1.0.0", "daily_market.close_above_ma60@1.0.0",
+        "daily_market.close_above_ma20@1.0.0",
+        "daily_market.close_above_ma60@1.0.0",
+        f"{DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1}@{DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1}",
     )
     assert {contract["family"] for contract in contracts.values()} == {family.family_id}
     upper = families.get_rule_research_family("bollinger_compression_breakout")
     assert upper.versioned_method_refs == ("daily_market.close_above_bbands30_upper@1.0.0",)
-    assert all(not item.versioned_method_refs for item in families.list_rule_research_families()
-               if item.family_id not in (family.family_id, upper.family_id))
+    volatility = families.get_rule_research_family("volatility_contraction")
+    assert volatility.versioned_method_refs == (
+        f"{BOLLINGER_BANDWIDTH_METHOD_ID_V1}@{BOLLINGER_BANDWIDTH_METHOD_VERSION_V1}",
+        f"{ATR14_SMA_METHOD_ID_V1}@{ATR14_SMA_METHOD_VERSION_V1}",
+    )
+    pattern = families.get_rule_research_family("pattern_confirmation")
+    assert pattern.status == "unavailable"
+    assert pattern.versioned_method_refs == ()
+    kdj_ref = f"{KDJ_METHOD_ID_V1}@{KDJ_METHOD_VERSION_V1}"
+    assert all(
+        kdj_ref not in item.versioned_method_refs
+        for item in families.list_rule_research_families()
+    )
+    supported_families = {
+        "close_vs_moving_average",
+        "bollinger_compression_breakout",
+        "volatility_contraction",
+    }
+    assert all(
+        bool(item.versioned_method_refs) == (item.family_id in supported_families)
+        for item in families.list_rule_research_families()
+    )
+
+
+def test_ma_and_volatility_metadata_preserve_method_specific_limits():
+    ma = families.get_rule_research_family("close_vs_moving_average")
+    assert ma.status == "partial"
+    assert {"close", "MA5", "MA10", "MA20", "MA60"} <= set(ma.required_fields)
+    assert ma.warmup["required_observation_counts"] == {
+        "MA20": 20,
+        "MA60": 60,
+        "sma_close_alignment_5_10_20_60": DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_WARMUP_V1,
+    }
+    assert ma.warmup["formal_or_calendar_qualification"] is False
+
+    upper = families.get_rule_research_family("bollinger_compression_breakout")
+    assert "BB_Upper" in upper.required_fields
+    upper_contract = method_contracts_payload(include_bbands30_upper=True)[
+        "close_above_bbands30_upper"
+    ]
+    assert upper.warmup["required_observation_count"] == upper_contract["parameters"]["timeperiod"]
+    assert upper.warmup["compression_threshold"] is None
+    assert upper.warmup["compression_window"] is None
+
+    volatility = families.get_rule_research_family("volatility_contraction")
+    assert volatility.status == "partial"
+    assert {"close", "high", "low"} <= set(volatility.required_fields)
+    assert volatility.warmup["required_observation_counts"] == {
+        BOLLINGER_BANDWIDTH_METHOD_ID_V1: BOLLINGER_BANDWIDTH_WINDOW_V1,
+        ATR14_SMA_METHOD_ID_V1: ATR14_SMA_TRUE_RANGE_COUNT_V1,
+    }
+    assert volatility.warmup["required_raw_row_counts"] == {
+        BOLLINGER_BANDWIDTH_METHOD_ID_V1: BOLLINGER_BANDWIDTH_WINDOW_V1,
+        ATR14_SMA_METHOD_ID_V1: ATR14_SMA_REQUIRED_RAW_ROWS_V1,
+    }
+    assert volatility.warmup["contraction_window"] is None
+    assert volatility.warmup["contraction_threshold"] is None
+    for item in (ma, upper, volatility):
+        assert item.missing["state"] == "unknown"
+        assert item.missing["unknown_is_preserved"] is True
+        assert item.missing["missing_is_negative_sample"] is False
+        assert item.availability["official_availability_state"] == "unknown"
+        assert item.availability["historical_pit_eligible"] is False
+        assert item.availability["formal_eligible"] is False
 
 
 def test_bollinger_candidate_is_not_a_saved_or_enabled_compression_method():
@@ -124,7 +206,7 @@ def test_bollinger_candidate_is_not_a_saved_or_enabled_compression_method():
     assert family.warmup["parameters"] == {"timeperiod": 30, "nbdevup": "2.0", "nbdevdn": "2.0", "matype": "SMA"}
     assert family.warmup["compression_threshold"] is None
     assert family.warmup["compression_window"] is None
-    assert {"upperband", "middleband", "lowerband"}.issubset(family.required_fields)
+    assert {"BB_Upper", "upperband", "middleband", "lowerband"}.issubset(family.required_fields)
     assert "upperband" not in DAILY_MARKET_FEATURE_KEYS
     assert "未啟用" in "".join(family.blockers)
 

@@ -110,6 +110,11 @@ def _build_catalog() -> tuple[RuleResearchFamilyCapability, ...]:
         f"{contract['method_id']}@{contract['version']}"
         for contract in (contracts["close_above_ma20"], contracts["close_above_ma60"])
     )
+    ma_alignment_ref = "sma_close_alignment_5_10_20_60@1"
+    volatility_refs = (
+        "daily_market.bollinger_bandwidth_sma30_population_2x@bollinger-bandwidth-sma30-population-2x.v1",
+        "daily_market.atr14_sma_true_range@atr14-sma-true-range.v1",
+    )
     return (
         _capability(
             "original_price_volume_ranking", "原價量排名",
@@ -121,16 +126,33 @@ def _build_catalog() -> tuple[RuleResearchFamilyCapability, ...]:
         ),
         _capability(
             "close_vs_moving_average", "趨勢轉強",
-            ("close", "MA20", "MA60"),
-            ("app_module/daily_market_method_contract.py", "app_module/daily_market_feature_snapshot.py"),
-            ("目前僅 close 高於 MA20／MA60 的觀察；不是方向、交叉、量能完整策略",),
-            status="partial", versioned_method_refs=ma_refs,
-            warmup={"state": "inherited", "required_observation_counts": {"MA20": 20, "MA60": 60},
-                    "basis": "連續有效 OHLC 觀測", "formal_or_calendar_qualification": False},
+            ("close", "MA5", "MA10", "MA20", "MA60"),
+            (
+                "app_module/daily_market_method_contract.py",
+                "app_module/daily_market_feature_snapshot.py",
+                "app_module/daily_market_technical_ma_alignment_evidence_v1.py",
+                "app_module/daily_market_technical_universe_ma_alignment_query_v1.py",
+            ),
+            (
+                "close 高於 MA20／MA60 與四均線排列是不同觀察；排列只比較 MA5>MA10>MA20>MA60",
+                "四均線排列不提供斜率、交叉觸發、量能條件或完整進出場；其他獨立方法沿各自契約",
+                "MA20 上彎與完整進出場策略未定版；本目錄不授予執行資格",
+            ),
+            status="partial", versioned_method_refs=(*ma_refs, ma_alignment_ref),
+            warmup={
+                "state": "method_specific_observed_rows",
+                "required_observation_counts": {
+                    "MA20": 20,
+                    "MA60": 60,
+                    "sma_close_alignment_5_10_20_60": 60,
+                },
+                "basis": "各方法依連續有效來源觀測；F02 不代表官方交易日曆完整性",
+                "formal_or_calendar_qualification": False,
+            },
         ),
         _capability(
             "bollinger_compression_breakout", "布林壓縮突破",
-            ("close", "upperband", "middleband", "lowerband", "compression_history", "volume", "liquidity"),
+            ("close", "BB_Upper", "upperband", "middleband", "lowerband", "compression_history", "volume", "liquidity"),
             ("analysis_module/technical_analysis/technical_indicators.py:calculate_causal_indicators",
              "app_module/daily_market_feature_snapshot.py"),
             ("v2 保留 close／MA20／MA60；opt-in v3 已保存 BB_Upper 有限上軌比較",
@@ -147,9 +169,33 @@ def _build_catalog() -> tuple[RuleResearchFamilyCapability, ...]:
         ),
         _capability(
             "volatility_contraction", "波動收斂",
-            ("ATR", "amplitude", "bandwidth", "volume_history"),
-            ("analysis_module/technical_analysis/technical_indicators.py:calculate_causal_indicators",),
-            ("收斂窗口與門檻未定版且未保存必要欄位", "完整 VCP 多段收縮／樞紐／突破尚未辨識驗證"),
+            ("ATR", "amplitude", "bandwidth", "volume_history", "close", "high", "low"),
+            (
+                "analysis_module/technical_analysis/technical_indicators.py:calculate_causal_indicators",
+                "app_module/daily_market_technical_volatility_evidence_v1.py",
+                "app_module/daily_market_technical_universe_volatility_alignment_query_v1.py",
+            ),
+            (
+                "目前僅有 BB30 bandwidth 與 ATR14-SMA 原料量測；不是已定版的收斂判斷",
+                "收斂窗口與門檻未定版；完整 VCP 多段收縮／樞紐／突破尚未辨識驗證",
+                "資料可得時間仍 unknown，projection/query 不代表 reader qualification 或策略執行資格",
+            ),
+            status="partial", versioned_method_refs=volatility_refs,
+            warmup={
+                "state": "component_measurements_only",
+                "required_observation_counts": {
+                    "daily_market.bollinger_bandwidth_sma30_population_2x": 30,
+                    "daily_market.atr14_sma_true_range": 14,
+                },
+                "required_raw_row_counts": {
+                    "daily_market.bollinger_bandwidth_sma30_population_2x": 30,
+                    "daily_market.atr14_sma_true_range": 15,
+                },
+                "basis": "連續有效 close／OHLC 觀測；ATR14 需前一收盤價形成 14 個 true range",
+                "contraction_window": None,
+                "contraction_threshold": None,
+                "formal_or_calendar_qualification": False,
+            },
         ),
         _capability(
             "pattern_confirmation", "型態確認",

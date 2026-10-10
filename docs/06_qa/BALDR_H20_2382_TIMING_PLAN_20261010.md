@@ -8,6 +8,10 @@
 
 該 activation 的 fit receipt 指向 `C:/Projects/PythonProjects/technical_analysis/output/qa/pc-fit-v7/fit-v7-fe4e918b1257.receipt.json`。下一步需核這個小檔及沿途是否為連結、讀取契約是否接受；不能修改 activation 或原收據來避過拒絕。
 
+同日 root 獨立核小檔：activation SHA-256 為 `769a40ba527c0c6d845349ef4f1002f9845ff6f68f5c3695800aee863c62ad3f`；`h20_product_reference.json` 為 623 bytes，SHA-256 `a2f2dbcf4c7cc70d212f37147cc465546748ea83cd03864d148e66b8abe319fa`。其指定 manifest 為 5,057 bytes，SHA-256 `a2cad4b3ac8ff978f52ecb28d006da37573cd1313efcee28bfc1d5d632661e76` 與 reference 相符；completed、decision_date=2026-10-07，十檔中 2382 唯一，captures 中也有唯一 2382 的 sample／prediction／path／raw SHA。尚未讀 capture 或大型 SQLite，不能因此授予 available、PIT 或正式用途資格。
+
+子代理唯讀確認上述 fit receipt 存在、沿途無 reparse/Junction；尚未讀其內容。實際使用者 `C:/Users/archi/AppData/Local/baldr/config.json` 的 DATA_ROOT／OUTPUT_ROOT 對應 D 市場根／其 output。沙箱 shell 的 LOCALAPPDATA 與 GUI 不同，量測 runner 必須明示 BALDR_CONFIG，不能用目前 shell 的預設宣稱與真人同設定。
+
 `MainWindow._personal_h20_configuration()` 以 `PERSONAL_H20_ACTIVATION_CONFIG` 覆蓋，否則使用市場根的 `personal/recommendation_h20/activation.json`。必須核 bootstrap 的實際市場根與覆蓋值，不能從 ML research storage 猜 H20 根。現用 `output/ml_research_storage.json` 的 `active_root` 為 `D:/Min/Python/Project/FA_ML_Research`，用途與上述 activation 不同。
 
 測量前還需固定：目前程式版本／來源 pins、原保存 reference／manifest、一般報告的 DATA_ROOT／OUTPUT_ROOT、2382 的 available 列身分與決策日。若原列不存在或 unknown，本次應如實留下失敗／未知，不能換股票、改日期或換成合成來源取得成功。

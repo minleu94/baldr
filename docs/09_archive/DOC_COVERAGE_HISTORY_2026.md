@@ -1887,18 +1887,18 @@ runbook 原安全條款把當日較早的 `0/3` readiness 數字寫成現況；�
 |---|---|---|---|
 | `docs/agents/multi_agent_workflow.md` 改寫前版本 | [`MULTI_AGENT_WORKFLOW_PRE_DEV_20261009_HISTORY.md`](MULTI_AGENT_WORKFLOW_PRE_DEV_20261009_HISTORY.md) | 2,035 / `1886AF563B50150EEEF1590B339427C90D457241F5B8C1CBA4EADE707B77DC45`（來源與副本相同） | [`docs/09_archive/README.md`](README.md) 列為舊版入口；現行流程仍在 `docs/agents/multi_agent_workflow.md`。 |
 
-全 repo Markdown 路徑掃描於基準 HEAD `4fb3a3b8` 加入當下文件整理工作樹內容執行，共讀取 1,485 份 Markdown（1,478 份 `docs/` 文件及 7 份根目錄文件），明確排除另一 Agent 的 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md`。9,442 個連結目標中有 0 個缺少本機目標、0 個超出文件樹目標；532 個錨點目標均匹配。GitHub `#L206` 指向的文件共 576 行，行號有效。完整機器結果保存在 ignored `output/qa/baldr_documentation_reorganization_20261009/full_repo_documentation_link_anchor_check.json`；外部連結未做網路探測，檢查不代表正文內容已審閱。
+全 repo Markdown 路徑掃描以文件整理 commit `217115f2` 為路徑與內容基線，共讀取 1,484 份 Markdown（`docs/` 1,468 份、其他目錄 16 份）；只以本次整理工作樹的 Graph Guide、Status Matrix、Coverage History 三份文件覆蓋基線內容，排除另一 Agent 的 F03 follow-up。9,432 個連結目標中有 0 個缺少本機目標、0 個超出文件樹目標；532 個錨點目標均匹配，8,904 個一般本機目標及 482 個外部連結。GitHub `#L206` 指向的文件共 576 行，行號有效。完整機器結果保存在 ignored `output/qa/baldr_documentation_reorganization_20261009/full_repo_documentation_link_anchor_check.json`；外部連結未做網路探測，檢查不代表正文內容已審閱。
 
-Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載入 `graphifyy 0.9.11`。CLI `graphify --version` 仍回報 `uv trampoline failed to canonicalize script path`，而 `uv tool list` 因本機工具鎖檔存取遭拒；維護指南已區分可確認的套件版本與無法使用的啟動器。既有 `graphify-out/graph.json`（51,303 nodes、152,332 links）未覆寫，未執行圖譜刷新。
+Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載入 `graphifyy 0.9.11`。CLI `graphify --version` 仍回報 `uv trampoline failed to canonicalize script path`，而 `uv tool list` 因本機工具鎖檔存取遭拒。受控 API 以固定 HEAD `217115f2348e3aa1cdaecce870b034fa66d34d65` 的 Git blobs 建立新導覽圖；輸入 1,475 份 Markdown／文字文件及 1,069 個 Python 檔，輸出 35,299 nodes、102,233 edges、990 communities，semantic extraction skipped、token 0、network transfer none。manifest SHA-256 為 `e92d4b74e4f4d8f9180bdc317e6d35e0830190d5fadeb83a063e5349b1583f75`，2,544 個輸入來源均與該 commit 對上，未追蹤的 agent shared state 未納入。全清單跨模組 reconcile 超過四分鐘沒有產物後停止，最後合併 38 個分塊 AST；跨 chunk import 未 reconcile，8,116 條無法解析端點的 AST 邊由診斷保留並從最終圖過濾。新圖、aggregate HTML、diagnostics 與報告只在 ignored `output/qa/baldr_documentation_reorganization_20261009/graphify_runs/system_graph/`；原 `graphify-out` 的 7,000 files、26 directories、645,610,308 bytes 與 metadata SHA 前後一致，沒有讀取或雜湊其檔案內容，也沒有覆寫舊圖。
 
 | 文件 | 處理 |
 |---|---|
 | `docs/00_core/AI_CONTEXT_PACK.md` | 新增封存原文連結。 |
-| `docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md` | 記錄當前 Python 套件版本與 CLI／uv 工具清單的本機錯誤，保留工具安裝與資料範圍限制。 |
+| `docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md` | 記錄當前 Python 套件版本、CLI／uv 工具清單錯誤、新圖輸入與輸出摘要、跨分塊 reconcile 限制及舊圖譜不變檢查。 |
 | `GEMINI.md`、`docs/agents/README.md` | 對齊平台根目錄條件式必讀清單，避免總覽以縮短清單取代。 |
 | `docs/agents/antigravity/README.md`、`docs/agents/antigravity/handoff_template.md` | 改為遵循 `GEMINI.md`；交接表補齊任務條件式文件與不適用理由欄位。 |
 | `docs/agents/multi_agent_workflow.md` | 更新 `dev` 整合、分支角色、工作樹生命週期及協作檢查。 |
 | `docs/01_architecture/system_architecture.md`、`docs/06_qa/README.md`、`docs/09_archive/README.md` | 補齊舊版 Daily Decision Desk、Windows launcher、QA 主題與歷史 plan 的明確相容錨點，保留現有深連結。 |
-| `docs/09_archive/README.md`、`docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增加歷史快照入口並將追蹤路徑盤點更新至 1,478。 |
+| `docs/09_archive/README.md`、`docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增加歷史快照入口、將追蹤路徑盤點更新至 1,478，並記錄 repo-wide link scan 與受控 Graphify 刷新結果。 |
 
 已檢視 `DOC_COVERAGE_MAP.md`；本次未改變其 Scoped SSOT、文件同步矩陣或 DoD，因此保留原文，逐批審閱狀態留在本矩陣與 Coverage History。未修改 QA 原始收據、SHA、PASS／FAIL／未驗證結論，未執行測試或安裝套件。其他 Agent 的 F03、程式與測試工作樹變更保持未動、未納入本筆整理。

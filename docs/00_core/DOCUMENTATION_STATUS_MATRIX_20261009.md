@@ -5,7 +5,7 @@
 ## 盤點基線與範圍
 
 - 初始審閱基線：`9b8e0ea45294d89cd08c5185478f0b8c51e0f54e`（2026-10-09），當時有 **1,473** 個已追蹤 `docs/` 路徑。
-- 本次整理完成後的目錄角色表共 **1,478** 個已追蹤路徑；相較 9b 初始基線增加 5 個：本矩陣、排程修正 QA、共用排程稽核 Runbook、封存的 morning-check 原文副本與 Agent workflow 歷史快照。舊 morning-check 路徑保留短導引，不另增加該路徑數；其他本機未追蹤檔不計入。
+- 本次整理完成後、截至文件 commit `217115f2` 的目錄角色表共 **1,478** 個已追蹤路徑；相較 9b 初始基線增加 5 個：本矩陣、排程修正 QA、共用排程稽核 Runbook、封存的 morning-check 原文副本與 Agent workflow 歷史快照。舊 morning-check 路徑保留短導引，不另增加該路徑數；其他本機未追蹤檔不計入。後續平行開發 commits `45d138b7`、`963b04ea` 的內容未納入本輪正文審閱或圖譜基線。
 - 使用者已確認 `e6f79063` 的排程修正可納入本次文檔整理。已完整閱讀 `BALDR_SCHEDULE_REMEDIATION_20261009.md` 與 `BALDR_SCHEDULED_AUDIT_RUNBOOK.md`，並核對 QA README、Index、Snapshot、Manual、Guides README 及排程操作指南中的相關段落與互相連結。F03 follow-up 的未提交正文仍屬其他工作的進行中內容，本輪不覆寫。
 - 分類是目錄層級角色盤點，不等於逐檔正文核實。內容審閱深度只計入可由審閱記錄明確證實的路徑或數量；未留下深度記錄者標為「不可還原」，不推定已讀或未讀。
 - QA／Archive 舊有正文核讀數據，是先前 `0c9f84bb` 基線的歷史下限；其他目錄的分類與連結抽取多依 `9b8e0ea4` 初始基線。本表另外列出目前 HEAD 的追蹤路徑數，以及本次可具名追溯的補充閱讀；舊連結抽取結果不冒充全庫最新驗證。
@@ -46,7 +46,7 @@
 
 ## 入口與本機連結檢查
 
-- **2026-10-09 全 repo Markdown 掃描：** 檢查根目錄與 `docs/` 共 1,485 份 Markdown，包含 1,478 份 `docs/` 路徑；明確略過另一 Agent 的 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md`。解析 9,442 個連結目標，其中 8,914 個一般本機目標、482 個外部連結及 532 個含錨點目標；缺少的本機目標 0、超出文件樹目標 0、未匹配錨點 0。GitHub `#L206` 行號錨點也依 576 行目標文件確認在範圍內。這是路徑與錨點檢查，不驗證外部網站或正文內容。完整本機結果位於忽略輸出的 `output/qa/baldr_documentation_reorganization_20261009/full_repo_documentation_link_anchor_check.json`。
+- **2026-10-09 全 repo Markdown 掃描：** 以基準 HEAD `217115f2` 為路徑與內容基線，掃描 1,484 份 Markdown（`docs/` 1,468 份、其他目錄 16 份）；僅以本次整理工作樹中的 Graph Guide、Status Matrix、Coverage History 三份文件覆蓋基線內容，排除另一 Agent 的 F03 follow-up。解析 9,432 個連結目標，其中 8,904 個一般本機目標、482 個外部連結及 532 個含錨點目標；缺少的本機目標 0、超出文件樹目標 0、未匹配錨點 0。GitHub `#L206` 行號錨點也依 576 行目標文件確認在範圍內。這是路徑與錨點檢查，不驗證外部網站或正文內容。完整本機結果位於忽略輸出的 `output/qa/baldr_documentation_reorganization_20261009/full_repo_documentation_link_anchor_check.json`。
 - **Architecture + Guides：** 初始基線抽取 1,323 個 Markdown 本機連結（1,265 個相對連結、58 個 Windows `file://` 連結）；1,317 個指向基線追蹤目標，6 個未命中 Git 追蹤目標且都指向被忽略的 `output/qa/` 收據。e6 新增 Runbook 的 Index／Guide／Manual 入口已逐項核對；上述 10/09 掃描補上目前本機目標與錨點檢查，舊基線數字仍只代表原固定快照。
 - **QA：** 初始基線的 5 份主索引連到 200 個去重目標，其中 195 個是 QA 目標；32 份歷史相容轉址皆指向追蹤中的 Archive 原文。e6 的排程 QA 現由 QA README、中央 Index、Snapshot 與 Manual 連入；不將該新增頁面追寫為初始基線的本地 QA 索引覆蓋數。舊基線 195/531（36.7%）是直接入口比例，不是全文審核比例，也不含其他 QA 文件間的轉介。
 - **Archive：** 初始基線的 6 份 README、Coverage History 與 Superpowers manifest 曾核對 404/404 個追蹤路徑；新封存的 morning-check 與 Agent workflow 原文皆有 Archive README 直接入口。全 repo 連結掃描已完成，但沒有重新核算 manifest／目錄清冊與 406 個 Archive 路徑的一對一覆蓋；入口可達仍不代表正文均已審閱。
@@ -81,7 +81,7 @@
 ### 已查證並於 Coverage History Entry 176 完成第二輪修正
 
 - `docs/00_core/AI_CONTEXT_PACK.md` 已直連封存原文；Archive README 原有封存清單入口保留。
-- Graphify recorded interpreter 可載入 `graphifyy 0.9.11`；`graphify --version` 的 uv trampoline 啟動器失敗，`uv tool list` 因本機工具鎖檔權限不足失敗。指南已記錄此版本與啟動器狀態；本次不安裝工具、不覆寫既有圖譜。
+- Graphify recorded interpreter 可載入 `graphifyy 0.9.11`；`graphify --version` 的 uv trampoline 啟動器失敗，`uv tool list` 因本機工具鎖檔權限不足失敗。受控本機 API 以固定 HEAD `217115f2` 的 Git blobs 建出導覽圖：1,475 份 Markdown／文字文件、1,069 個 Python 檔，35,299 個節點、102,233 條邊、990 個 communities。manifest SHA-256 為 `e92d4b74e4f4d8f9180bdc317e6d35e0830190d5fadeb83a063e5349b1583f75`；語義抽取停用、token 0、未傳出網路。跨 chunk import 未 reconcile，8,116 條無法解析端點的 AST 邊已列入診斷並從最終圖過濾。完整新圖只保存在 ignored `output/qa/baldr_documentation_reorganization_20261009/graphify_runs/system_graph/`；原 `graphify-out` metadata 前後一致（7,000 files、26 directories、645,610,308 bytes、metadata SHA 相同），未覆寫。
 - Codex 與 Antigravity 的根目錄指令現列出完整條件式必讀文件；Agent README、Antigravity 入口與 handoff template 改為遵循各自根目錄清單。`multi_agent_workflow.md` 已依 `dev` 主線與 shared context 更新，並保存舊版原文快照供追溯。
 
 ## 後續整理順序與完成定義
@@ -89,6 +89,6 @@
 1. 先完成本矩陣列出的逐檔內容衝突核對；每批只改核實過的乾淨文件，保留另一 agent 的工作樹變更。
 2. 每次搬移、改名或改入口時，同步更新對應目錄 README／主題索引、中央 Index（若入口或權威邊界受影響）與 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。
 3. QA 與 Archive 從入口可達、正文已讀、狀態與證據仍有效四方面分開統計；不把舊 QA 快照重寫成新結論。
-4. 全部目錄候選清理完後，再做全庫連結與錨點檢查、複核矩陣數字，最後刷新並驗證文件圖譜。圖譜刷新不代表正文審核已完成。
+4. 2026-10-09 已完成 repo-wide Markdown 連結／錨點掃描及固定 HEAD 的受控 Graphify 刷新；若後續移動或新增文件，再重跑對應檢查。圖譜刷新不代表正文審核已完成。
 
-**狀態：** 目錄角色與可追溯審閱基線已建立；Entry 171 修正 4 組明確內容漂移，Entry 172 更新排程文件覆核並校正圖表指南，Entry 173 校正 Recommendation ML 與 Allocation Gate 7 的證據連結，Entry 174 校正 V2.2 weekly review 文件的狀態時點，Entry 175 封存舊 morning-check 指南，Entry 176 完成第二輪入口、Agent workflow 與全 repo 連結／錨點掃描。P8 候選已撤回；尚未核讀文件的逐篇正文審查與 Archive 清冊一對一覆蓋仍未完成。Graphify 的 Python 套件可載入；目前 CLI 啟動器故障，完整新圖譜尚待以受控 Python recipe 建置，既有圖譜保持原狀。
+**狀態：** 目錄角色與可追溯審閱基線已建立；Entry 171 修正 4 組明確內容漂移，Entry 172 更新排程文件覆核並校正圖表指南，Entry 173 校正 Recommendation ML 與 Allocation Gate 7 的證據連結，Entry 174 校正 V2.2 weekly review 文件的狀態時點，Entry 175 封存舊 morning-check 指南，Entry 176 完成第二輪入口、Agent workflow、repo-wide 連結／錨點掃描及受控 Graphify 刷新。P8 候選已撤回；尚未核讀文件的逐篇正文審查與 Archive 清冊一對一覆蓋仍未完成。Graphify CLI 啟動器仍故障；新的 AST／明示 Markdown link 導覽圖已保存於 ignored QA 輸出，但未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。

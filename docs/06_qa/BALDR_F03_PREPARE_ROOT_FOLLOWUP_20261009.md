@@ -105,3 +105,9 @@ F12 F 私有 QA 草案加入真 worker error/status capture 與精確 monthly sn
 F03 私有草案已修正完整母體與單股 selection 混用，核對全部 segment included codes；immutable prepared view 與 live collector 分離，發行後替換 collector 不得改變已封存 view。root 另要求新 group/prepare 模組只在明示 opt-in 分支延遲載入，舊兩個 opener 不因新增入口付出載入成本；正常 opener 的多 segment／257 included、單股 selection 測試仍待執行。正式 F17 source 仍凍結，未提前套用草案。
 
 H20 P5 只獲靜態接線修改授權：取消多餘 os.open wrapper，fdopen 的原分支保留精確單次 caller token，並全面核對 Windows handle fallback；不得改 frozen N 或增加 SQLite cap。尚未實跑 P5。三位 Luna Max 分別處理 H20、F03、F12，由 root 審查；完整補完範圍、未完成真人驗收與效能門檻均不縮減，沒有新 EXE。
+
+### 凍結草案的實際接線缺口（追加）
+
+H20 P5 SHA `221124e9d13c4bc790d05a53409806228494c04551b84688a727d19828907048`，完整 P4→P5 diff SHA `327909a05e524f15b3a4b374345e87fa8452e5c80ba579e314346f6eeb195c3e` 均由 root 重算。root 實讀完整差異，發現 `_p_function_frame_matches` 比對 pinned function 的 code/globals/closure，卻沒有核對傳入的實際 frame code/globals；精確 frame 契約尚不成立，已要求下一個最小靜態 revision 與錯 code/globals 負例。P5 的非 config Windows handle fallback 仍多一層 wrapper，agent 明示 fail-closed／未驗；需先完成原 reader 呼叫鏈與窄 trampoline 審查，未授權 P5 runtime。
+
+F03 A 凍結 draft reader SHA `d494cb0e157f17f1f5ef772af79a9ece9742f668cbb00b6ac6cf56469d1ae689`、group issuer SHA `0d47c6887c3e41f84345fb57f2a4376dc386fe756a467d8c50378129abe856da`。root 已讀完整 issuer、F17 diff、新測試與 test plan；發現測試還從 F17 模組取得已改成 local import 的 issuer 名稱，必須改 hook 真 group-session 模組。fresh child 的 lazy-import 測試亦須明示載入 draft reader，不能測到正式舊版造成假通過。A 原件保留，B 隔離 revision 正在補正及準備只覆蓋兩個 draft modules 的 package-path bootstrap；正式 F17 不修改。test plan 中尚未實作／執行的矩陣不算通過證據，正常 opener 與完整母體實跑仍待驗。

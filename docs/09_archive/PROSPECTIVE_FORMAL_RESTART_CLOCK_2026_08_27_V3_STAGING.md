@@ -1,3 +1,5 @@
+> **2026-08-27 歷史 V3 staging 快照**：本文保存當時的 clock、staging 與 hash 狀態，不代表目前排程、readiness 或 formal acceptance。現況請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新具名 QA ([QA 主題地圖](../06_qa/README.md))。
+
 # Prospective Formal Restart — 2026-08-27 v3 successor staging
 
 日期：2026-08-25（Asia/Taipei）

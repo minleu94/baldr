@@ -1,3 +1,5 @@
+> **歷史 Gemini review input（本文未記日期、HEAD 與完整範圍）**：泛稱的 REVIEW_STATUS: PASS 不等同 task acceptance。R002 結果以 [SOL 整合審查](R002_SOL_INTEGRATION_REVIEW.md) 與 [Wave 1 checkpoint](WAVE1_CHECKPOINT.md) 為準；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 # GEMINI REVIEW — R002
 
 ## FINDINGS

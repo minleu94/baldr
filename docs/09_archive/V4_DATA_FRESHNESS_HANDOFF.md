@@ -1,3 +1,5 @@
+> **2026-09-08 歷史 handoff 快照**：本文的資料筆數、狀態與 next step 只代表該日記錄，不表示目前 freshness、release readiness 或待辦。現況請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新具名 QA ([QA 主題地圖](../06_qa/README.md))。
+
 # V4 全資料更新稽核、Freshness 修補與每日增量閉環交接
 
 日期：2026-09-08

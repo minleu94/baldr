@@ -1,3 +1,5 @@
+> **2026-09-23 歷史 handoff prompt（勿重送／勿依此派工）**：本文保存當時 C1 reopen／Wave 6 hold 的工作指令；後續結果見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)。目前狀態請看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，目標設計權威為 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
+
 # 可直接交給下一位主模型的重構接手 prompt
 
 你現在接手 `C:\Projects\PythonProjects\technical_analysis` 的 R001–R031／C1–C4 重構執行協調。請使用繁體中文。你的角色只限 orchestration、架構符合性裁決、依賴與 wave gate 管理、獨立審查、測試結果判讀及驗收報告；**所有 production code、測試與 task 相關實作文件的修改，都派給 fresh Luna Max sub-agent**。需要並行時在檔案 owner 與 DAG 允許範圍內同時開多位 Luna Max；不要使用 Gemini。不要因主模型能力較強就親自實作。Luna worker 每人只擁有單一 Rxxx 或具名 C1 修復切片，必須產出 implementation report；高風險切片交另一位 Luna Max 獨立審查，主模型最後核對實際 diff、測試與架構。不要 stage、commit、push，也不要還原、刪除、覆寫既有其他人未提交變更或碰正式資料。

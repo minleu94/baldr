@@ -1,3 +1,5 @@
+> **C1 歷史切片狀態**：本文只保存個別修補／審查時點的範圍與 evidence，不代表目前整體 Gate 狀態，也不構成新的工作授權。整體 C1 裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，目標設計權威看 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
+
 # C1 U5a Forward Consumer Readiness Implementation Report
 
 **狀態：`U5A_ACCEPTED_PENDING_FULL_C1_GATE`**

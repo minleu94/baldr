@@ -1,3 +1,5 @@
+> **過期協作流程快照（Pre-dev）**：本文所述 `develop` 分支流程是歷史版本，不是目前分支指示。現行開發主線為 `dev`；協作與安全規則請依[共用規範](../agents/shared_context.md)及[技能登錄](../agents/skills_registry.md)判讀。
+
 # Multi-Agent Collaboration Workflow Protocol
 
 This document defines the formal multi-agent collaboration workflow for the repository.

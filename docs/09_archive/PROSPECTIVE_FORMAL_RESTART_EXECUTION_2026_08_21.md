@@ -1,3 +1,5 @@
+> **2026-08-21 歷史 clock／staging 快照**：本文的 planned／scheduled／readiness 狀態只限當次執行，不代表目前排程或 formal acceptance。現況請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新具名 QA ([QA 主題地圖](../06_qa/README.md))。
+
 # Prospective Formal Restart 執行狀態（2026-08-21）
 
 > 狀態：`planned / scheduled / strict-readiness-pending`

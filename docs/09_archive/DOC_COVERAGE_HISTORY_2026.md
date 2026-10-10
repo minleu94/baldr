@@ -2307,3 +2307,21 @@ QA 增量複核發現 `V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 保存 DEV-66 
 | docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md | 登錄逐檔核對範圍、確認的描述衝突及未重新查核限制。 |
 
 唯讀核讀 docs/03_data/ 17 paths、04_broker_branch/ 6、05_phases/ 15、08_technical/ 7、strategies/ 3 與根 docs/README.md；相關小目錄文件皆已逐篇閱讀或逐路徑核對。no-data 契約核對程式片段與兩份資料指南；月營收列的實際公告日／來源真實性未驗證；冷封存／quarantine 收據與 junction 未獨立核實。範圍限定的連結與 whitespace 檢查不代表全 repo 最終 link／anchor scan。未刪除／搬移檔案、未改資料、未跑測試或刷新 Graphify。
+
+<a id="coverage-entry-200"></a>
+## 2026-10-10 校正報告分類並補足歷史直開界線
+
+本批把架構長篇證據與 Archive root 原件分類為歷史來源，補上現況路由及不可沿用的授權界線。原文主體保留；未刪除或搬移文件，也未改原始資料。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/01_architecture/target_architecture_2026_09_22/README.md` | 將 REFACTOR_REPORTS 描述改為任務證據索引，補明並非所有原件都明示完整日期，不能只依檔名推定時點。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/README.md` | 將 Wave 1–3 checkpoint 改標歷史導覽；目前 C1／Wave 6 gate 與現況改連後續 checkpoint、Snapshot。另替 18 份高風險 C1／Wave／handoff 原件加上 scope、狀態與授權界線，原證據正文保留。 |
+| `docs/09_archive/` 8 份 root 歷史文件 | 4 份 V4／formal-restart handoff，加 4 份清理報告、重整提案、舊 multi-agent workflow 與 workspace cleanup 快照，均只加歷史時點提示、保留原文。清理報告自身「15」與「16」計數矛盾已在提示中標為未經原始收據驗證。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 將 `01_architecture/` 核讀統計更新為 71 全文、25 局部、128 未讀；REFACTOR_REPORTS 為 2 全文、22 局部、120 未讀，Archive root 另 8 份局部閱讀。 |
+
+REFACTOR_REPORTS 目錄共 144 個 tracked paths：1 個 README、143 個同層文件；README 有 146 次本機 Markdown 連結引用，涵蓋 143 個不同目標，缺失 0。角色重新核算為 1 個索引、4 個相容 redirect、139 個日期化實作／審查／決策證據，修正 Entry 192 原列 5 redirects／138 evidence 的分類計數；原 Entry 192 保留為當時記錄，本更正為後續重算結果。簡易時點篩選在 144 paths 中標出 78 份正文未見完整日期、88 份開頭 16 行未見清楚時點／狀態界線；這是候選篩選，不等於逐篇語義閱讀。
+
+另完成 `REFACTOR_DISPATCH/` 19/19 全文核讀及 README 26 個本機 Markdown 目的地檢查（0 missing，未驗 anchors）。兩份完整舊 Gemini prompt／review 原件仍有過時派送、SHA 或 Wave 3 blocked 文字；矩陣已記錄為待下一批修訂，尚未改動該目錄。目標架構 bundle 另有 21 個直接文件，但原 10/3/8 核讀摘要沒有逐檔列出 8 個未讀檔名；本輪無法可靠反推，已在矩陣明示清冊缺口，不據此宣稱 bundle 全面排除衝突。
+
+本批未執行測試、Graphify 刷新或最終 repo-wide Markdown links／anchors scan；根目錄 `$null` 未納入。

@@ -1,3 +1,5 @@
+> **歷史派工基線（勿依此重新派工）**：owner、HEAD、檔案雜湊、路徑與狀態只代表該次交接快照，不代表目前負責人或執行授權。現況與優先順序看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 及最新具名 QA；目標設計以 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md) 為準。
+
 # Wave 5／R012 派工基線
 
 派工時 HEAD：`fbc4047b6d0e5c31d64164e95987a6ff1a15f104`。Git index 為空。R012 的兩個既有 exclusive-owner 檔 `app_module/recommendation_repository.py`、`app_module/recommendation_save_coordinator.py` 在派工前均無工作樹差異，SHA-256 分別為 `D7B8460FBCD5F1D70D66D640E5770DBA9FB3662284EF6F7D4AC9BA156208373F`、`86844FFD8A5EC0E4C956E5B4068C78ADA877343AFFE8566C43F36FC01423411D`。預定的新 `app_module/recommendation/{ports,persistence,save,queries}.py`、`data_module/result_artifact_store.py` 尚不存在。

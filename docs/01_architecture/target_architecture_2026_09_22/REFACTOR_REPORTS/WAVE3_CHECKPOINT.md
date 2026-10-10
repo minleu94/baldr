@@ -1,3 +1,5 @@
+> **歷史 Wave checkpoint**：本文只記錄當時的依賴與有限釋出狀態，不提供目前的 release 或派工授權。後續 C1／Wave 6 裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 # Wave 3 codec／ML boundary checkpoint
 
 CHECKPOINT_STATUS: PASS

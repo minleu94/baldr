@@ -9,7 +9,7 @@
 ## 任務與驗收
 
 - [任務 DAG](REFACTOR_IMPLEMENTATION_DAG.md)、[31 份任務規格](REFACTOR_TASKS/README.md)、[執行順序](REFACTOR_EXECUTION_ORDER.md)、[驗證矩陣](REFACTOR_VALIDATION_MATRIX.md)和[風險登錄](REFACTOR_RISK_REGISTER.md)：保留依賴、交付、驗收與回滾契約，不當作目前待辦清單。
-- [`REFACTOR_REPORTS` 報告索引](REFACTOR_REPORTS/README.md)：各任務實作、審查與重驗的日期化證據。不同輪次不相互覆蓋，不把 bounded acceptance 當作全域通過。
+- [`REFACTOR_REPORTS` 任務證據索引](REFACTOR_REPORTS/README.md)：各任務實作、審查與重驗證據；部分原文沒有明示完整日期，不得只憑檔名推定時點，應依可追溯任務／commit baseline 判讀。不同輪次不相互覆蓋，不把 bounded acceptance 當作全域通過。
 - [`REFACTOR_DISPATCH` 封包索引](REFACTOR_DISPATCH/README.md)：歷史分派、審查意見與重作要求；可能引用報告原文與固定 SHA，以維持交接證據。舊指令不構成新的執行授權。
 
 ## 歷史設計與裁決輸入

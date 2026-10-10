@@ -1,3 +1,5 @@
+> **歷史派工基線（勿依此重新派工）**：owner、HEAD、檔案雜湊、路徑與狀態只代表該次交接快照，不代表目前負責人或執行授權。現況與優先順序看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 及最新具名 QA；目標設計以 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md) 為準。
+
 # Wave 3 R009／R010 隔離派工基線
 
 CURRENT_STATUS: RELEASED_AFTER_DEPENDENCY_SYNC。R008 result_id 勘誤已依 `R008_SOL_RESULT_ID_ACCEPTANCE.md` 與 `WAVE2_RESULT_ID_CHECKPOINT.md` 通過；兩個 worktree 的 app contract/test 已更新至新 SHA，逐檔核對 13 個共用凍結輸入皆與 main 相同、HEAD 同為 `166ad745…`。兩位 worker 在修正期間曾被中斷，未留下 R009/R010 task output，現可在原隔離 worktree 續作。

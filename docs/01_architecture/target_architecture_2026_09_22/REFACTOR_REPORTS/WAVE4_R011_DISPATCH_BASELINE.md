@@ -1,3 +1,5 @@
+> **歷史派工基線（勿依此重新派工）**：owner、HEAD、檔案雜湊、路徑與狀態只代表該次交接快照，不代表目前負責人或執行授權。現況與優先順序看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 及最新具名 QA；目標設計以 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md) 為準。
+
 # Wave 4 R011 中央 execution 派工基線
 
 CURRENT_STATUS: R011_IN_PROGRESS

@@ -1,4 +1,4 @@
-# 重構實作報告
+# 重構任務證據索引
 
 每個 R-task 的 implementer 必須新增 `Rxxx_IMPLEMENTATION_REPORT.md`。報告至少包含：
 
@@ -192,7 +192,7 @@ Worker 的 `READY_FOR_REVIEW` 只是交給 SOL／指定 reviewer 檢查，不等
 
 ### C1、Wave 與共用證據
 
-> 目前 Gate 快照入口：Wave 1 看 `WAVE1_CHECKPOINT.md`／`WAVE1_R007_TZNAME_CHECKPOINT.md`；Wave 2 看 `WAVE2_RESULT_ID_CHECKPOINT.md` 與 `WAVE2_BATCH_VALIDATION_PLAN.md`；Wave 3 看 `WAVE3_CHECKPOINT.md`。這些 bounded checkpoint 不代表 C1、Wave 6 或整體重構完成；整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。舊 pending／blocked／preflight 中間紀錄已移入[歷史 Archive 索引](../../../09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/README.md)，來源路徑保留相容導引。
+> 歷史 Gate／Wave checkpoint 導覽（Wave 1–3）：Wave 1 看 `WAVE1_CHECKPOINT.md`／`WAVE1_R007_TZNAME_CHECKPOINT.md`；Wave 2 看 `WAVE2_RESULT_ID_CHECKPOINT.md` 與 `WAVE2_BATCH_VALIDATION_PLAN.md`；Wave 3 看 `WAVE3_CHECKPOINT.md`。這些歷史 checkpoint 只記錄當時的 bounded 依賴／釋出狀態，不提供新的派工或 release 授權，也不代表整體重構完成；C1 與 Wave 6 的後續裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)，目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。舊 pending／blocked／preflight 中間紀錄已移入[歷史 Archive 索引](../../../09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/README.md)，來源路徑保留相容導引。
 - [C1_CHECKPOINT.md](C1_CHECKPOINT.md)
 - [C1_CODEC_REPAIR_IMPLEMENTATION_REPORT.md](C1_CODEC_REPAIR_IMPLEMENTATION_REPORT.md)
 - [C1_CONSUMER_READINESS_TEST_MATRIX.md](C1_CONSUMER_READINESS_TEST_MATRIX.md)

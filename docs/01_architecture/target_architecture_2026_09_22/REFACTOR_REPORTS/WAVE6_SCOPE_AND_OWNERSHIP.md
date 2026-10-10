@@ -1,3 +1,5 @@
+> **2026-09-23 scoped release 決議快照**：本文記錄當時 Wave 7 釋出實作工作的範圍；不指定目前 owner／待辦，也不代表 formal data acceptance、ML promotion 或 production deployment。現況看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與最新具名 QA；設計權威見 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
+
 # Wave 6 派工與同檔 owner 裁決
 
 SOL 最終裁決（2026-09-23）：C1 為 `C1 ENGINEERING GATE PASS`；R013、R014、R016、R017 均為 `ACCEPTED_SCOPE`（synthetic／engineering）；Wave 7 為 `RELEASED_FOR_IMPLEMENTATION`。各切片的 reviewer 結論、驗證數字與限制見 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；C1 最終狀態見 [C1_CHECKPOINT.md](C1_CHECKPOINT.md)，各 owner 的原始驗證見個別 implementation report。R013／R014／R016／R017 的 scoped acceptance 不等於完整整合 suite 全面通過：42-file／656-test combined run 未完成，另有一項舊 Qt ACK fixture failure 屬 R015 deferred。Wave 7 釋出僅允許後續工程實作，不代表 formal data acceptance、ML promotion 或 production deployment。C1 原 PASS 曾因[契約缺口](C1_CONTRACT_COMPLETENESS_FINDING.md)重開並撤回，修補後才重新裁決通過。保持原有 owner 與 task dependencies 不變。

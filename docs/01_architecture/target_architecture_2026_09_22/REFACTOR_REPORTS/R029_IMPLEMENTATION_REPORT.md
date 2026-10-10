@@ -44,4 +44,4 @@ R029 的 `ACCEPTED_WITH_RETAINED_COMPATIBILITY` 是具名有限 gate 裁定，�
 
 ## C2 裁定後的明確保留項目
 
-本報告和 ledger 僅關閉已接受的 bounded 條件。REC-02 的 typed business-source exit 已依原條件接受；必要 public list/latest surface、live v1 projection、failed/cancelled diagnostics與歷史 decoder留作永久相容，不把它們改寫成已退役。app orchestration/capture及execution telemetry依R029明文保留。NUM-01已按原 bounded gate CLOSED；REC-05/STR-01/RGM-01的必要 aliases/API已有明確永久相容設計及驗收。此句記錄2026-09-25時的歷史列管狀態；2026-09-27 R028 scoped migration已接受，R006 unknown artifact仍不載入或推論安全。上述不表示所有可能範圍均已測試；整體重構仍未完成，尚無最終驗收或提交。
+本報告和 ledger 僅關閉已接受的 bounded 條件。REC-02 的 typed business-source exit 已依原條件接受；必要 public list/latest surface、live v1 projection、failed/cancelled diagnostics與歷史 decoder留作永久相容，不把它們改寫成已退役。app orchestration/capture及execution telemetry依R029明文保留。NUM-01已按原 bounded gate CLOSED；REC-05/STR-01/RGM-01的必要 aliases/API已有明確永久相容設計及驗收。此句記錄2026-09-25時的歷史列管狀態；2026-09-27 R028 scoped migration其後已接受並提交，R006 unknown artifact仍不載入或推論安全。這不表示所有可能範圍均已測試或整體產品驗收完成；後續 refactor checkpoint 與保留風險見 [R031 2026-09-27 current checkpoint](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md#2026-09-27-current-checkpoint)。

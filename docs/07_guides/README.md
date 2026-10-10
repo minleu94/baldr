@@ -67,6 +67,8 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
 
 - **[BALDR_SCHEDULED_AUDIT_RUNBOOK.md](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)**
   - 兩個Codex operational heartbeat的共同21-task唯讀查核、實際來源根、期限、資料品質、通知與排錯規則。
+- **[EVIDENCE_SCHEDULED_MORNING_CHECK.md](EVIDENCE_SCHEDULED_MORNING_CHECK.md)**
+  - 舊晨間檢查路徑的相容導引；封存原文保留在 `docs/09_archive/`，目前排程稽核請看上方共同 Runbook。
 - **[PORTABLE_WINDOWS.md](PORTABLE_WINDOWS.md)**
   - 可攜 Windows 版的資料夾要求、首次啟動、設定位置與已驗／未驗邊界
 - **[SCHEDULE_OPERATIONS_AND_MIGRATION.md](SCHEDULE_OPERATIONS_AND_MIGRATION.md)**

@@ -2031,3 +2031,27 @@ F03 follow-up QA 已在 2026-10-10 commit `577210b1` 記錄 formal reader／grou
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 修正 F03 工作樹文字的時間範圍，記錄 QA 長篇僅局部摘要核對。 |
 
 未刪除或移動文件及資料；未執行測試、未刷新 Graphify，未執行最終 repo-wide link／anchor scan。
+
+<a id="coverage-entry-185"></a>
+## 2026-10-10 補齊 QA 導覽並同步狀態與 Agent 規則
+
+以已提交 HEAD `8945df89` 為本輪狀態證據。QA 路由稽核依 [DOCUMENTATION_STRUCTURE 的 QA evidence retention 規則](../00_core/DOCUMENTATION_STRUCTURE.md#qa-evidence-retention) 與 `DOC_COVERAGE_MAP.md` 的索引／原件要求，找到 6 份完整 QA 收據沒有從 QA README 的入口樹抵達；它們原先不是 Archive stub，也不該移動或刪除。本輪依營運、資料／ML 及產品／UX 主題加入四份 QA 索引。加鏈後 QA README 沿 QA／Archive 導覽可到達 553/553 份 QA Markdown；四主題索引與 QA README 直接列出 556 個根層 QA 證據中的 201 個。Archive README 對 266/266 根層非索引路徑有精確連結，非 Superpowers 巢狀路徑 43/43 有 README 導覽；tracked Archive paths 共 406/406 可達。對受查 QA／Archive Markdown 的 6,231 個本機 link／anchor（排除 Superpowers 子樹與非 Markdown 伴隨檔）未發現失效。導覽可達不等於正文已全部審閱。
+
+架構報告覆核找到兩處可能被讀成現況的日期狀態。R029 在保留 2026-09-25 歷史段落時仍寫「尚無最終驗收或提交」，但 2026-09-27 R028 scoped migration 後續已接受並提交；R026 原標題稱 9/25 checkpoint 為「目前」。本輪只加日期界線及通往 R031 9/27 checkpoint 的入口，保留各 bounded slice 的限制與整體未驗範圍，沒有宣稱整體產品／重構全部完成。
+
+Agent 全文審核確認 `antigravity/documentation_agent.md` 將 Coverage Pass 寫成使用者要求時可直接略過確認，與權威 `documentation_agent.md` 的兩階段流程不一致；已改為即使要求直接更新也先確認 Coverage 清單。`execution_agent.md` 的回滾範例使用會覆蓋目標檔未提交內容的 Git 命令；本輪補上先保存差異、限本任務範圍與不得覆蓋他人變更的條件。`agents/` 21/21 與 `strategies/` 3/3 本輪全文閱讀；`01_architecture/` 224 份中本輪全文 44、局部 7、未讀 173，未讀項目不推定為正確或過時。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/06_qa/PRODUCT_UX_QA_INDEX.md` | 以 commit `8945df89` 的已提交證據同步 F03、F06、F12、H20／P01 狀態與限制；共享工作樹中的 F03 後續修改不納入。 |
+| `docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md` | 加入固定來源封存 Git identity probe 收據入口。 |
+| `docs/06_qa/DATA_ML_GOVERNANCE_QA_INDEX.md` | 加入 F17 full-N facts、pinned SQLite 及市場 assignment 收據入口，明列各自範圍。 |
+| `docs/06_qa/PRODUCT_UX_QA_INDEX.md` | 加入 P10 source-date presentation 與完整母體保存來源 Main 旅程入口，明列合成／bounded 限制。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md` | 將 9/27 接受及提交與 9/25 歷史狀態分開，連結後續 R031 checkpoint。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md` | 將 9/25 runtime handoff checkpoint 標成歷史 snapshot，連結後續 R031 checkpoint。 |
+| `docs/agents/antigravity/documentation_agent.md`、`docs/agents/execution_agent.md` | 對齊 Coverage Pass 確認步驟，並限制可能丟棄未提交變更的回滾範例。 |
+| `docs/07_guides/README.md` | 補入 morning-check 歷史原文的相容導引入口。 |
+| `docs/01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md` | 將 9/24 R020 gate progress row 標成 snapshot，避免該時點用語被誤讀為目前狀態。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新補充日期、Architecture／Agent 閱讀深度、QA／Archive 路由結果及未讀限制。 |
+
+QA／Archive 入口修正前，受查 Markdown 的 6,231 個本機 link／anchor 未發現失效；本輪新增的六個 QA 目標路徑已逐一確認存在。沒有刪除或移動文件、沒有改動原始資料或 QA 收據結論。共享工作樹中 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md` 的修改及根目錄 `$null` 未讀寫、未納入提交。未跑測試、未刷新 Graphify；全 repo 最終 link／anchor scan 與 Graphify 仍等所有目錄內容稽核及修訂完成後執行。

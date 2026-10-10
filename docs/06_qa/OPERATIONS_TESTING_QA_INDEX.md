@@ -11,6 +11,7 @@
 | Gate 2–7 工程交接與外部驗證 | [Engineering Control Center](GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md) → [External Validation Register](GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) → [Gate 7](GATE_7_ML_SHADOW_ENGINEERING.md)；Register 是 append-only 外部驗證登錄，當前狀態看 Snapshot 與對應 Gate。 |
 | 測試資產候選與保留判斷 | [結案報告](../09_archive/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) → [V2 方法補正](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md) → [V1 撤回紀錄](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)；139 組／1,107 檔為 bounded 範圍，不代表完整測試母體 |
 | 根目錄殘留檔盤點與處置邊界 | [2026-10-09 root review](BALDR_ROOT_RESIDUAL_FILES_REVIEW_20261009.md)；僅盤點與比較需求，未移動或刪除檔案，也不構成後續清理授權 |
+| 固定來源封存的 Git identity probe 修正（10/08） | [固定來源封存不探測上層 Git](BUILD_ARCHIVE_NO_GIT_PROBE_20261008.md)；原診斷仍為 failed，修正只讓有 Git 標記的來源根讀取 Git 身分，沒有放寬 QA 子程序限制 |
 
 ## 其他常用路徑
 

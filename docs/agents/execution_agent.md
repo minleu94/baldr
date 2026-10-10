@@ -40,7 +40,7 @@
 
 | 檔案路徑 | 變更類型 | 變更摘要 | 回滾方式 | 回滾風險 |
 |---------|---------|---------|---------|---------|
-| `path/to/file1.py` | 修改 | 新增 XXX 功能 | 使用 Git 還原：`git checkout HEAD -- path/to/file1.py` | 無風險（僅新增功能） |
+| `path/to/file1.py` | 修改 | 新增 XXX 功能 | 確認並保存該檔未提交差異後，只在本任務工作範圍還原：`git checkout HEAD -- path/to/file1.py` | 會丟棄該路徑所有未提交內容；共享工作樹或含他人修改時不可直接執行 |
 | `path/to/file2.py` | 新增 | 新增 YYY 模組 | 刪除檔案：`rm path/to/file2.py` | 需確認無其他檔案依賴 |
 | `path/to/file3.py` | 刪除 | 移除過時功能 | 從 Git 歷史還原：`git checkout HEAD~1 -- path/to/file3.py` | 需確認功能確實過時 |
 
@@ -51,7 +51,7 @@
    - 確認回滾不會影響其他正在進行的工作
 
 2. **執行回滾**
-   - [ ] 檔案 1：`git checkout HEAD -- path/to/file1.py`
+   - [ ] 檔案 1：確認已保存且只回滾本任務變更後，才執行 `git checkout HEAD -- path/to/file1.py`
    - [ ] 檔案 2：`rm path/to/file2.py`
    - [ ] 檔案 3：`git checkout HEAD~1 -- path/to/file3.py`
 
@@ -81,7 +81,7 @@
 
 ### 回滾方式說明
 
-- **Git 還原**：使用 `git checkout` 還原檔案（適用於已提交的變更）
+- **Git 還原**：使用 `git checkout` 還原檔案前，先逐檔確認並保存未提交差異；該命令會覆蓋目標路徑的未提交內容，只適用於已確認僅含本任務變更的工作範圍，不得覆蓋其他人的修改
 - **刪除檔案**：直接刪除新增的檔案（適用於新增的檔案）
 - **手動還原**：提供具體的還原步驟（適用於複雜變更）
 - **從備份還原**：從備份檔案還原（適用於重要變更）

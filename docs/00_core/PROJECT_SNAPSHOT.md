@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-> 更新基線：2026-10-09 本機 dev WIP checkpoint；2026-10-10 僅補入截至已提交 QA commit `577210b1` 的 F03 bounded evidence。另有未提交 F03 工作樹變更未納入此頁，也不視為驗收；該工作完成後需再同步。詳細測試過程及各項驗收界線以交接文件、恢復 QA 與具名 root review 為準。
+> 更新基線：2026-10-10；本頁增量依已提交 commit `8945df89` 及其追蹤 QA 文件核對。後續未提交的 F03 QA 追加未納入，也不視為驗收；需完成核對後再同步。詳細測試過程及各項驗收界線以交接文件、恢復 QA 與具名 root review 為準。
 
 ## 目前狀態
 
@@ -9,12 +9,12 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
-| P01 千檔效能 | 固定矩陣仍未通過原 300 ms 門檻：換頁 p95 239.4695 ms；篩選 1074.3634 ms、排序 344.7445 ms，後兩項失敗。render-prefill bounded 修補的 19 項定向回歸通過，但尚未重跑完整矩陣，不能視為效能門檻通過；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
+| P01 千檔效能 | 固定 85bc 六角色診斷矩陣已跑完；暖操作 p95：翻頁 196.205 ms、排序 191.8186 ms、篩選 523.902 ms，篩選仍未達原 300 ms 門檻；冷啟動至首頁 p95 為 20.0319 秒。這是隔離診斷矩陣，不是一般產品旅程驗收，P01 尚未完成；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
 | F02 四均線 | 固定合成來源的 V11 父 Main→收藏→關閉→新程序 Watchlist 單擊／雙擊旅程有界通過；不代表原始來源、新 EXE 或真人驗收。 |
-| F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0。複合研究收藏契約六測試通過，四群 bundle 入口通過兩項完整母體／取消測試。2026-10-10 又完成 formal reader／group-session bounded publication slice：首輪 15 passed、2 個測試因 QA overlay 環境設定失敗；修正後只重跑兩個失敗節點並通過，故不是修正後全套重跑。不同籃狀態的收藏身份、full-population query、正常 View、收藏／新程序與 Main 閉環仍未完成；不得以此 slice 宣告產品完成。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
-| F06 波動 | 尚無 full-N reader-issued 結果；方法提案不代表已採納產品規則。詳見[產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。 |
-| F12 月營收 | Q Main 的來源資格與 65 欄 query oracle 均通過。S 六項定向測試及真 Main 首頁比較籃通過，下一頁缺少 `_page_index` 導致旅程失敗。正式最小修補已通過四項按鈕回歸及強制 UI 檢查；新來源版本的完整收藏／新程序旅程仍待驗。[F12 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
-| H20 source-port | I Main 已真正讀回原 H20：10 檔可用／0 未知、2382 原估計 684 bp 與三日期吻合，名單載入階段 16.547s。實際雙擊已觸發選股投影；舊 QA 誤等重新建立名單，圖表與返回旅程仍待對齊並驗收。G／H timeout 不代表產品 worker 未完成。[H20 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0；formal reader／group-session publication slice 有 17 個節點取得通過證據（首輪 15 通過，僅重跑兩個 QA overlay 修正節點）。另有固定 258/257/1 來源的窄窗 View G8 與收藏 identity C bounded slice 通過；一般 Main 整合及新程序收藏讀回仍待驗，不等於整體 reader／產品 Gate 完成。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| F06 波動 | 尚無 full-N reader-issued 結果，方法提案不代表已採納產品規則。`8945df89` 已提交呈現層與回歸測試，2 項 focused tests 及記錄中的強制 UI／型態／語法檢查通過；目前沒有正式 UI 呼叫端，因此不代表使用者已取得新功能。詳見[產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。 |
+| F12 月營收 | `_page_index` 按鈕修補與四項按鈕回歸已通過；最新 T10 focused 12 項通過，但完整 Main 旅程仍在 `explicit Watchlist COW activation` 逾時，來源維持唯讀，未完成完整收藏／新程序讀回。[F12 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
+| H20 source-port | M7 原來源 S4 Main bounded 旅程已完成：原 10 檔 cohort、2382 真實圖表下鑽／返回及 120 筆 OHLC 對照一致，原始來源前後不變。這不代表新 EXE、真人驗收、首次載入改善或正式 PIT／收益資格。[H20 follow-up](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |
 
 P01 詳細結果見 [P01 效能 root review](../06_qa/BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md)；F02 旅程見 [F02 root review](../06_qa/BALDR_MA_V9_CHILD_IDENTITY_ROOT_REVIEW_20261009.md)。產品缺口總表見 [補完缺口 review](../06_qa/BALDR_COMPLETION_GAP_REVIEW_20261008.md)，續接時依 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)、[交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md) 及 [產品／UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)查閱。交接及各 root review 中的通過、失敗、未驗證界線均有效；文件整理不關閉 Gate。
 

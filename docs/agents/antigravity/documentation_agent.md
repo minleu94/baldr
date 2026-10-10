@@ -34,7 +34,7 @@
 - Snapshot / Roadmap Hub / 6M Roadmap / V2.1-V4.0 Roadmap / Legacy Carryover / Architecture / Application Manual / Index 一致性檢查
 - 需要使用者補充的資訊
 
-Coverage Pass 不直接產出 patch，除非使用者明確要求直接更新。
+Coverage Pass 不產出 patch。即使使用者要求直接更新，也先列出並確認 Coverage 清單，再依 Patch Pass 修改已確認範圍。
 
 ### Patch Pass
 

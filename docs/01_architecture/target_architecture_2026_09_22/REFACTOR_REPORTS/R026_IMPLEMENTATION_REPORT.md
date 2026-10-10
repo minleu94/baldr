@@ -1,6 +1,8 @@
 # R026 實作報告：舊 calibration preparation synthetic baseline
 
-## 目前 runtime handoff checkpoint（2026-09-25）
+## 2026-09-25 runtime handoff checkpoint snapshot
+
+> 本節只記錄 2026-09-25 的 checkpoint，不代表目前整體 gate 狀態。後續 refactor 與保留風險見 [R031 2026-09-27 current checkpoint](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md#2026-09-27-current-checkpoint)；本報告後續各節仍是各自有界 source slice 的日期化證據，不可合併解讀為 R026 或整體 migration 全面完成。
 
 Root 已接受 R026 supported production caller/profile 與 typed post-calibration handoff 的 bounded engineering scope；`TMP-ML-01` 定義的正常 `RecommendationService` 遷移條件已 `CLOSED`。支援範圍限下表 NP1／NP2 exact runtime tuple、exact consumer/loader/default deserializer 與 allowlisted model graph，且 capability 成功時使用 `PreparedMLRuntimeInputV1`；capability 不成立時維持原 `project_many()` 行為。此結論不宣稱所有 runtime profiles、custom consumers 或任意 model graph 已驗證，也不代表正式資料、模型 promotion 或 production deployment 已核准。
 

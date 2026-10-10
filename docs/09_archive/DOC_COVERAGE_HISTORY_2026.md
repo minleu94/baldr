@@ -2132,3 +2132,22 @@ Architecture README 曾概括第 16 節的 10/03–10/07 混合增量，未提�
 | `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄核讀範圍、程式依據、修改清單與驗證限制。 |
 
 未刪除或搬移文件及原始資料，未修改封存原件。未執行測試、未刷新 Graphify、未執行最終 repo-wide link／anchor scan；本批 75 個相對連結的檢查只確認本機目標存在，錨點與外部連結未逐一重驗。
+
+<a id="coverage-entry-190"></a>
+## 2026-10-10 校正每日行情文件的時區與 CLI 邊界
+
+本輪逐檔閱讀 `docs/03_data/` 全部 17 個 tracked paths：8 份 Markdown 正文與月營收 availability CSV 欄位範本全文核對；另 8 個舊路徑只檢查 redirect stub 與目的地，不把封存原文算作全文閱讀。抽取到 114 個本機 Markdown 連結目標，存在 114 個、缺少 0 個；手冊第 4、12、4.6 節相關錨點符合目前標題。外部目的地與其他錨點未全量驗證。
+
+與現行 Manual 及市場 session 程式碼對照後，將兩份 freshness 說明中的錯誤「台北 04:30」更正為 04:30 America/Los_Angeles，台北時間依 DST 換算。UI 安全更新清單補列 `daily_price_tpex/YYYYMMDD.csv`，和 TWSE 日檔一起同步至 `daily_prices`；TWSE CSV 欄位與週末交易日段落則明確限縮為 TWSE `MI_INDEX` 契約，避免套用到 TPEX parser。
+
+CLI 範例原先以「替代方式」呈現，會讓讀者把幾個不同腳本當成 UI 完整流程。批次腳本只抓 TWSE raw 日檔、不做 SQLite 同步；舊單日 `--merge` 只彙整 TWSE 日檔至 `all_stocks_data_file`；`scripts/merge_daily_data.py` 另讀 TWSE 與 TPEX 日檔並輸出彙整 CSV，但不代表完成 UI 的 SQLite 同步或技術指標更新。指南已改標受限 CLI 參考，並把批次日期改為明確起訖範本。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/03_data/daily_data_update_guide.md` | 更正 freshness cutoff 時區；安全更新列出 TWSE／TPEX；標明 CSV 契約只適用 TWSE。 |
+| `docs/03_data/DATA_FETCHING_LOGIC.md` | 更正 freshness cutoff 時區。 |
+| `docs/03_data/HOW_TO_UPDATE_DAILY_DATA.md` | 說明舊 CLI 的 TWSE／TPEX、彙整檔與 SQLite 能力邊界，避免稱作完整替代流程。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 03_data 判讀及本次覆蓋摘要。 |
+| `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md` | 登錄檔案範圍、證據、修改項目及驗證限制。 |
+
+沒有刪除或搬移文件、修改原始資料或改寫封存原文。未執行測試、未刷新 Graphify、未執行最終 repo-wide link／anchor scan；本批 link 檢查僅驗證路徑存在與指定的相關 Manual 錨點。

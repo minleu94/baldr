@@ -80,18 +80,14 @@ SQLite Inspector 日期控件預設為單一日期今天、區間本月 1 日至
 
 個別資料頁的「匯出 CSV 備案」可輸出最近範圍或全部歷史，使用 UTF-8 with BOM。
 
-## 7. 命令列替代方式
+## 7. 受限 CLI 參考（不等同完整 UI 流程）
+
+以下舊式 CLI 範例不等同 UI 的完整 TWSE／TPEX／SQLite／技術指標流程。`batch_update_daily_data.py` 僅下載 TWSE 日檔到 `daily_price/`，不會同步 SQLite `daily_prices`；省略 `--end-date` 時會更新到今天。`update_daily_stock_data.py --merge` 會把 TWSE 日檔彙整到 `all_stocks_data_file`，不含 TPEX，也不會同步 `daily_prices`。這與下方 `scripts/merge_daily_data.py` 是不同流程：後者讀取 `daily_price/` 與 `daily_price_tpex/` 可用日檔並寫出彙整 CSV，也不代表已完成 UI 的 SQLite 同步或技術指標更新。日常完整更新請依上方 UI 流程；執行任何會寫入的 CLI 前，先確認 `DATA_ROOT`、輸出路徑與日期範圍。
 
 ### 批量更新
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date 2026-06-01
-```
-
-指定結束日期：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date 2026-06-01 --end-date 2026-06-12
+.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 ```
 
 ### 單日更新

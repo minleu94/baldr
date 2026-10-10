@@ -16,7 +16,7 @@
 
 ## 2026-10-03 freshness 與隔離候選操作補充
 
-更新頁的 Formal／Candidate 狀態分別對應正式 SQLite 與隔離 Candidate DB；`FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是狀態 token，不是同一資料集的兩種名稱。freshness receipt 綁定 `DATA_ROOT`、SQLite／Candidate DB 路徑、cutoff 與各來源實際期別；台北 04:30 cutoff 前檢查的 `expected_wait` 若到查詢時已跨過 cutoff，必須重新執行唯讀 freshness probe，狀態先標 unknown／needs_revalidation，不自行推定 current 或 stale。
+更新頁的 Formal／Candidate 狀態分別對應正式 SQLite 與隔離 Candidate DB；`FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是狀態 token，不是同一資料集的兩種名稱。freshness receipt 綁定 `DATA_ROOT`、SQLite／Candidate DB 路徑、cutoff 與各來源實際期別；每日發布截止為 **04:30 America/Los_Angeles**，台北時間會隨夏令時間換算。截止前檢查的 `expected_wait` 若到查詢時已跨過 cutoff，必須重新執行唯讀 freshness probe，狀態先標 unknown／needs_revalidation，不自行推定 current 或 stale。
 
 更新頁「取消目前工作」採合作式停止，於檔案／日期／transaction 安全邊界生效。已安全提交的部分資料可保留，但本輪仍應明示取消或失敗並重新檢查，不可標為完整成功。TDCC 是週候選、只對應官方最近一個每週最後營業日；資料 rows 與 checkpoint 同 transaction，完全相同自然鍵可冪等重試，衝突或未完成 transaction 仍須診斷。MOPS 月營收抓取取消可以保留完整 raw HTML，未完成 candidate CSV 不發布；「已解析資料」數量不表示候選列已可用。詳細 UI 操作與安全邊界見[完整手冊第 4 節](../07_guides/APPLICATION_MANUAL.md)。
 
@@ -113,7 +113,7 @@ python scripts/merge_daily_data.py
 
 日常維護建議優先使用 Qt UI 的「數據更新」Tab →「安全更新所有數據」。此流程預設補結束日前最近 10 個工作日，會保留既有 CSV 輸出，同時在成功步驟後補做 SQLite 同步：
 
-1. 更新 `daily_price/YYYYMMDD.csv` 後，同步到 `daily_prices`。
+1. 更新 TWSE `daily_price/YYYYMMDD.csv` 與 TPEX `daily_price_tpex/YYYYMMDD.csv` 後，一併同步到 `daily_prices`。
 2. 更新 `market_index.csv` / `industry_index.csv` 後，同步到 `market_indices` / `industry_indices`。
 3. 合併 `stock_data_whole.csv` 後，再以合併結果同步 `daily_prices`。
 4. 合併券商分點 `merged.csv` 後，同步到 `broker_flows`。
@@ -140,9 +140,9 @@ UpdateService overview／detail 在 SQLite 缺失時會先停在 `unavailable`�
 
 備份檔集中存放在 `meta_data/backup/`。為降低硬碟負擔，系統會在新備份成功後清理同一來源的舊備份：同一天只保留最新一份，且最多保留最新 5 個日期版本；清理範圍僅限備份目錄內「完全符合來源前綴 + 日期戳」的檔案，不會刪除正式資料，也不會讓一般 `twstock_*.db` 清掉 `twstock_fundamental_schema_*.db` 這類不同用途的標籤備份。2026-07-06 備份來源與當時的大檔清理候選見[歷史稽核快照](../09_archive/BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)；目前資產用途與恢復邊界看 [STORAGE_ASSET_REGISTER_20261006.md](STORAGE_ASSET_REGISTER_20261006.md)。
 
-### CSV 欄位契約與週末交易日證據
+### TWSE CSV 欄位契約與週末交易日證據
 
-同步 `daily_price/YYYYMMDD.csv` 前，檔案必須至少包含 `證券代號` 與 `收盤價`；像單一市場序列、指數或其他非個股格式的 CSV 會被警告並跳過，不會寫入 `daily_prices`。週末日期也不採「一律跳過」：只有 TWSE `MI_INDEX` 對該日回傳官方交易資料時才會同步；若官方查詢沒有資料、逾時或解析失敗，則 fail-closed 不寫入，並保留原始 CSV 供人工稽核。這避免把補班、特殊開市或錯置檔案用星期規則誤判。
+同步 TWSE `daily_price/YYYYMMDD.csv` 前，檔案必須至少包含 `證券代號` 與 `收盤價`；像單一市場序列、指數或其他非個股格式的 CSV 會被警告並跳過，不會寫入 `daily_prices`。週末日期也不採「一律跳過」：只有 TWSE `MI_INDEX` 對該日回傳官方交易資料時才會同步；若官方查詢沒有資料、逾時或解析失敗，則 fail-closed 不寫入，並保留原始 CSV 供人工稽核。這避免把補班、特殊開市或錯置檔案用星期規則誤判。TPEX 原始日檔位於 `daily_price_tpex/`，依其來源 parser 與驗證流程處理，再和 TWSE 資料一併同步；不套用本段 TWSE `MI_INDEX` 條件。
 
 寫入 SQLite 前，UpdateService 會把宣告過的欄位別名正規化為 canonical schema：日期接受 `日期`／`date`／`Date`／`trade_date`／`decision_date`，股票代號接受 `證券代號`／`股票代號`／`stock_code`／`stock_id`／`code`／`ticker`，股票名稱接受 `證券名稱`／`股票名稱`／`stock_name`／`name`。日期與股票代號也會統一格式；正規化只作用於寫入用副本，不會原地改寫 raw CSV 或呼叫端 DataFrame。缺少日期（且檔名無法補日期）或缺少 `證券代號`／`收盤價` 時仍會跳過並保留診斷。
 

@@ -16,8 +16,8 @@
 - `WAVEx_GEMINI_PROMPTS.md`：歷史交接 prompt；完整原文如已封存，舊路徑只保留相容導引。不得把舊 prompt 當成目前授權。
 - `GEMINI_WAVE1_PARALLEL_ANALYSIS.md`：已封存的一次性唯讀分析輸入；實際分析與正式 review 結果見 `REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md` 與 `WAVE1_R003_R005_GEMINI_REVIEW.md`。
 - 已封存的 Wave 1 review prompts 僅供追溯：[封存原件](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md)。R003／R005／R006 review 已有結果，不需重送；R006 長測限制與 RK-19 依 R031 保留。
-- `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與已封存的 `WAVE2_GEMINI_PROMPTS.md`：R008 唯讀預分析輸入與一次性 prompt 均已結束；prompt 原文見 [Archive](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md)，舊路徑保留導引。結果看 R008 report／Wave 2 checkpoint；這不是正式 review，也不釋出 Wave 3。
-- `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：較早 Gemini 審查狀態的歷史封包／prompt，內含的暫停與重送文字不代表目前指示；請勿重送。R008 現行判定看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)、[R008 acceptance](../REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md) 與 [Wave 2 checkpoint](../REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)。
+- `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與已封存的 `WAVE2_GEMINI_PROMPTS.md`：R008 唯讀預分析輸入與一次性 prompt 均已結束，兩者不是正式 review。現行分工與 Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)；封存材料只供追溯，不提供釋出授權。
+- `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：較早 Gemini 審查狀態的歷史封包／prompt，內含的舊 SHA、暫停、重送與 Wave 3 blocked 文字不代表目前指示；請勿重送。現行分工與 Wave 狀態只看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)，整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，R008 後續相依證據見 [schema-range recheck](../REFACTOR_REPORTS/R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md)。[Result-ID acceptance](../REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md) 與 [Wave 2 checkpoint](../REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md) 是有限範圍的歷史證據；其中「current gate」及「Wave 3 尚未執行」等文字只代表當時。
 
 未解鎖 task 不預先建立 packet，避免 dependency evidence、HEAD、dirty scope 或測試結果過時。Packet 本身不授權下一 wave。
 
@@ -48,7 +48,7 @@
 - [已封存的 GEMINI_REWORK_R006.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REWORK_R006.md)（來源路徑保留導引）
 
 #### R008
-- [GEMINI_REVIEW_R008.md](GEMINI_REVIEW_R008.md)
+- [歷史 Gemini R008 review packet（勿重送）](GEMINI_REVIEW_R008.md)
 
 ### Wave／共用 packets
 - [已封存的 GEMINI_WAVE1_PARALLEL_ANALYSIS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE1_PARALLEL_ANALYSIS.md)
@@ -56,4 +56,4 @@
 - [已封存的 WAVE1_GEMINI_PROMPTS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_PROMPTS.md)（舊路徑保留相容導引；Wave 1 分析與 review 已完成，R006 未知正式 binary 風險仍依 RK-19 列管。）
 - [已封存的 WAVE1_GEMINI_REVIEW_PROMPTS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md)（歷史 prompt 不需重送；R006 限制依 R031。）
 - [已封存的 WAVE2_GEMINI_PROMPTS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md)（舊路徑保留相容導引；R008 唯讀預分析不等於正式 review 或 Wave 3 授權。）
-- [WAVE2_GEMINI_REVIEW_PROMPTS.md](WAVE2_GEMINI_REVIEW_PROMPTS.md)
+- [歷史 Wave 2 Gemini review prompt（勿執行／重送）](WAVE2_GEMINI_REVIEW_PROMPTS.md)

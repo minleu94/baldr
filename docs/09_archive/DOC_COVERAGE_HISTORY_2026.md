@@ -2325,3 +2325,41 @@ REFACTOR_REPORTS 目錄共 144 個 tracked paths：1 個 README、143 個同層�
 另完成 `REFACTOR_DISPATCH/` 19/19 全文核讀及 README 26 個本機 Markdown 目的地檢查（0 missing，未驗 anchors）。兩份完整舊 Gemini prompt／review 原件仍有過時派送、SHA 或 Wave 3 blocked 文字；矩陣已記錄為待下一批修訂，尚未改動該目錄。目標架構 bundle 另有 21 個直接文件，但原 10/3/8 核讀摘要沒有逐檔列出 8 個未讀檔名；本輪無法可靠反推，已在矩陣明示清冊缺口，不據此宣稱 bundle 全面排除衝突。
 
 本批未執行測試、Graphify 刷新或最終 repo-wide Markdown links／anchors scan；根目錄 `$null` 未納入。
+
+<a id="coverage-entry-201"></a>
+## 2026-10-10 限定舊 Gemini review prompt 的時點與授權範圍
+
+唯讀核對發現 Dispatch README 雖將舊 Gemini packets 說成歷史材料，兩份完整 R008／Wave 2 review prompt 的內文仍留有舊 SHA、暫停重送指示及「Wave 3 blocked」文字；其索引也直接連到 R008 bounded result-ID acceptance 與 Wave 2 舊 checkpoint，容易被誤作目前 gate。現已補強原件開頭警語、更新 README 導覽至 Model Assignments、Snapshot 與 R008 schema-range recheck；原 prompt／驗收正文保留，沒有搬移、刪除或重寫測試證據。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R008.md` | 加強直開警語：明示下方 Gemini 指派、SHA 與 Wave 3 blocked 語句是歷史原文、不可重送；更新現行狀態路由。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_REVIEW_PROMPTS.md` | 明示舊 pause／freeze／Gemini 指示僅供追溯，保留完整 prompt。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md` | 將 R008 判定與 Wave 狀態導回 Model Assignments／Snapshot；schema-range recheck 列為 R008 後續窄範圍證據；result-ID acceptance 與 Wave 2 checkpoint 明確限為歷史 scope。逐檔索引標示兩份舊 prompt 勿重送。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md` | 在開頭把 PASS 限定為 result-ID bounded acceptance，指出後續相依重驗與目前狀態的正確入口，保留原驗收記錄。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | REFACTOR_DISPATCH 19/19 全文閱讀、README 26 個本機 Markdown 目的地存在；更新 REFACTOR_REPORTS 與 Architecture 閱讀深度計數。 |
+
+本批只修改導覽文字與 additive 狀態提示；未搬移、刪除文件或改原始資料。讀取範圍限於兩份 prompt、Dispatch README，以及 R008 acceptance／schema-range recheck／Model Assignments 的相關段落；非本批所有 dispatch／report 正文均已複審。範圍限定 links／whitespace 檢查不是最終 repo-wide links／anchors scan；未執行測試或 Graphify 刷新。
+
+<a id="coverage-entry-202"></a>
+## 2026-10-10 核對目標架構直接文件與 R027／R028 狀態界線
+
+逐篇全文核對 target architecture bundle 根層 21 個直接 Markdown 文件，建立逐檔角色／生命週期清冊；舊矩陣只有 10 全文、3 局部、8 未讀的彙總，未列出舊未讀檔名，因此這次是新逐檔基線，不能宣稱可反推原先 8 篇。另對照 FINAL migration ledger、R027 revision B QA、R028 implementation report 與 R031 9/27 checkpoint，確認 9/24 Wave 9 原 strict R027 prerequisite 與後續 9/27 versioned revision／R028 scoped acceptance 是不同時點及 scope；原 strict verdict 仍 `INCONCLUSIVE`，versioned revision B 已接受，`TMP-ML-02` 原 conditional scope 已 CLOSED。未將此解讀為 Wave 9 全面 closeout、formal artifact 相容、產品 release 或原 strict PASS。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_EXECUTION_ORDER.md` | 保留 Wave 9 原 strict 條件，新增 2026-09-27 revision B 與 R028 scoped acceptance overlay；明示不回寫原 strict 結果或宣告 Wave 9 closeout。 |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md` | 將 Wave 7／9／14 標作舊 checkpoint，補入 9/27 後續 migration/QA 狀態界線；保留舊快照與其他具名相容風險。 |
+| `docs/01_architecture/target_architecture_2026_09_22/SYSTEM_ARCHITECTURE_ASSESSMENT.md` | 在檔首標明 2026-09-22 原始碼評估是歷史基線，加入目前架構、FINAL 設計與 Snapshot 入口。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 將 `01_architecture/` 校正為 82 全文、23 局部、119 未讀；target bundle 改列 21/21 全文，並新增逐檔角色清冊。 |
+
+原件與日期化驗收內容保留，未刪檔或改原始 QA 收據；僅修訂狀態解讀與導覽。範圍內未跑測試、Graphify 或最終 repo-wide links／anchors scan；這些仍須待所有目錄整理完成後執行。
+
+<a id="coverage-entry-203"></a>
+## 2026-10-10 更新 QA inventory 並開始逐篇葉文件核讀
+
+Git 路徑 metadata 現核得 `docs/` 共 1,480 個 tracked paths；其中 `06_qa/` 有 565 個 tracked paths。排除一個受保護路徑正文後，安全可讀範圍為 564 paths（553 Markdown、10 JSON、1 HTML）。新增 `BALDR_COMPOSITE_HUMAN_CHECK_20261010.md` 已列在 QA README／Product UX index，角色是待執行真人驗收計畫，不是自動化 QA 通過收據；操作權威仍是 Manual §6.7。QA README 舊 552/552 遞迴可達基線可隨新檔路由更新為 553/553；五個主要入口 current bounded link parse 為 201/556；200/555 保留為較早掃描基線，不是目前分母。
+
+逐篇葉文件稽核第一批目前累計 36 份全文、6 份局部、511 份未讀；其中涵蓋 README／四主題索引與近期 composite completion、F02、F03 安全文件子集、F06、F12、H20 等收據。此為持續中的核讀快照，不代表 `06_qa/` 已全量審查。已定位待修候選：F06 evidence plan 尚稱 BB bandwidth／ATR 公式待 P07 定版，但同日方法提案已有接受／實作記錄；F12 index integration 開頭仍稱接線進行中，內文已有後續 synthetic 8-pass，須補時點與產品/UI 範圍界線。兩者目前只記錄為待修，尚未改原件。
+
+本次只讀，未接觸受保護文件正文；尚未修改 QA 葉文件，未跑測試、Graphify 或最終 repo-wide links／anchors scan。後續 batches 持續更新本矩陣，避免把中途分母誤標為完成。

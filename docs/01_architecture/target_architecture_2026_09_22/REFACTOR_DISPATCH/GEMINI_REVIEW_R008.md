@@ -1,6 +1,6 @@
 # GEMINI_REVIEW_R008 — Wave 2 正式獨立審查封包
 
-> 歷史封包：後續分工已改為獨立 LUNA_MAX review + SOL gate；本檔的 Gemini 指派、SHA 與派送文字僅供追溯，請勿重送或視為目前授權。現行狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)、[R008 acceptance](../REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md) 與 [Wave 2 checkpoint](../REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)。
+> **舊 SHA Gemini 派送封包（已結束，勿重送）**：下方的 Gemini review 指示、舊 SHA 與「Wave 3 blocked」均是當時歷史原文，不代表目前授權或狀態。現行分工與 wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)；目前整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，R008 後續窄範圍相依證據見 [schema-range recheck](../REFACTOR_REPORTS/R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md)。
 
 > 暫停派送：R008 並行稽核找到需回修的深凍結與 contract validation 缺口；下列 SHA 是本次回修前快照。SOL 更新本封包與九檔 SHA 後才能作正式 Gemini 審查。
 

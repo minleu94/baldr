@@ -1,6 +1,6 @@
 # 系統架構評估
 
-> 2026-09-22；原始碼基線 `574de045e6cf1e7c28be01eb027a8f672a6c7776`。本次僅設計文件，沒有改 production code、正式資料、模型或排程。結論是保留現有系統，以執行契約與責任抽取改善，不做全面重寫。
+> **歷史評估（2026-09-22）**：本文以原始碼基線 `574de045e6cf1e7c28be01eb027a8f672a6c7776` 作設計分析，非目前系統狀態或最新程式盤點。現行架構看 [system architecture](../system_architecture.md)，目標設計看 [FINAL target architecture](FINAL_TARGET_ARCHITECTURE.md)，目前專案狀態看 [PROJECT_SNAPSHOT](../../00_core/PROJECT_SNAPSHOT.md)。本次僅產出設計文件，沒有改 production code、正式資料、模型或排程；結論為保留既有系統並抽取執行契約與責任，不做全面重寫。
 
 ## 1. 範圍、證據與限制
 

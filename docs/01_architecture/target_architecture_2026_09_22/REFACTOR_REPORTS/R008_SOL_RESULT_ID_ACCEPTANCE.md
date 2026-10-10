@@ -1,5 +1,7 @@
 # R008 result_id 相容性勘誤：SOL 終版驗收
 
+> **Result-ID bounded acceptance evidence（歷史範圍）**：本文的 PASS 僅記錄 result-ID 勘誤驗收，不等於後續 schema-range recheck 或目前 Wave 狀態。R008 後續相依證據見 [schema-range recheck](R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md)；現行分工與 Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。本文內「目前 gate evidence」與 R009／R010 尚待續作的措辭只代表當時範圍，請勿外推。
+
 TASK_STATUS: PASS
 
 R008 原 `_validate_result_id()` 只接受連字號 UUID，與既有 caller-provided opaque ID、服務自產 `rec_{uuid4().hex}` 及 legacy timestamp ID 不相容。現版只要求精確內建 `str` 且非空白，保留原字串；`MLReceiptBinding`、`RecommendationExecution`、`SaveReceipt` 仍用同一 helper，execution 與 receipt 的 ID mismatch 仍明確拒絕。這是 R008「preserve result_id」原 scope 內修正，沒有更動發號服務、R002 golden、計算或 ML ABI。

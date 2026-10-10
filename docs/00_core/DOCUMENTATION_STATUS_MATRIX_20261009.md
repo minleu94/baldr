@@ -5,9 +5,9 @@
 ## 盤點基線與範圍
 
 - 初始審閱基線：`9b8e0ea45294d89cd08c5185478f0b8c51e0f54e`（2026-10-09），當時有 **1,473** 個已追蹤 `docs/` 路徑。
-- 目錄角色分類的原固定基線為 HEAD `47a2e15e`，共有 **1,478** 個已追蹤 `docs/` 路徑；相較初始 `9b8e0ea4` 增加的 5 個路徑見既有基線記錄。HEAD `8945df89` 與審閱基線 `53b13fa4` 當時均核對為 1,478；其後本輪新增一份 `09_archive/` 手冊歷史筆記，現有 1,479 個 tracked paths。原角色表保留為目錄分類基線；補充路徑與正文核讀、QA 路由及狀態更正列於 Coverage History Entry 185–197。舊 morning-check 路徑保留短導引；其他本機未追蹤檔不計入。
-- 此處範圍只含 Git 追蹤的 `docs/` 路徑；由 `git_exclusions.md` 排除的本機／ignored 狀態檔（例如 `docs/agents/shared_state/`）不計入，亦不作為文件完整性或現況證據。2026-10-10 另新增一份手冊日期化工程紀錄封存文件；原分類基線為 1,478 paths，目前總數增為 1,479，差異只在 `09_archive/`。
-- 2026-10-10 另盤點 repository 中 `docs/` 外的 26 個 Git 追蹤 Markdown；它們維持獨立附錄計數，不加進 `docs/` 的 1,479 路徑統計。長篇文件的抽查與逐篇全文審查仍分開記錄。
+- 目錄角色分類的原固定基線為 HEAD `47a2e15e`，共有 **1,478** 個已追蹤 `docs/` 路徑；相較初始 `9b8e0ea4` 增加的 5 個路徑見既有基線記錄。HEAD `8945df89` 與審閱基線 `53b13fa4` 當時均核對為 1,478；其後新增一份 `09_archive/` 手冊歷史筆記及一份 `06_qa/` 真人驗收計畫，現有 1,480 個 tracked paths。原角色表保留為目錄分類基線；補充路徑與正文核讀、QA 路由及狀態更正列於 Coverage History。
+- 此處範圍只含 Git 追蹤的 `docs/` 路徑；由 `git_exclusions.md` 排除的本機／ignored 狀態檔（例如 `docs/agents/shared_state/`）不計入，亦不作為文件完整性或現況證據。原分類基線為 1,478 paths；目前 1,480，新增差異分別在 `09_archive/` 與 `06_qa/`。
+- 2026-10-10 另盤點 repository 中 `docs/` 外的 26 個 Git 追蹤 Markdown；它們維持獨立附錄計數，不加進 `docs/` 的 1,480 路徑統計。長篇文件的抽查與逐篇全文審查仍分開記錄。
 - 使用者已確認 `e6f79063` 的排程修正可納入本次文檔整理。已完整閱讀 `BALDR_SCHEDULE_REMEDIATION_20261009.md` 與 `BALDR_SCHEDULED_AUDIT_RUNBOOK.md`，並核對 QA README、Index、Snapshot、Manual、Guides README 及排程操作指南中的相關段落與互相連結。Entry 184 當時只依已提交 QA 增量 `577210b1` 同步 F03 摘要；其後 commit `8945df89` 加入 F06 呈現層與回歸測試證據，本輪據此更新 Snapshot／QA index。盤點時 F03 QA 文件在共享工作樹有未提交修改；本輪未讀寫該文件或其差異，也未納入接受狀態或提交。
 - 分類是目錄層級角色盤點，不等於逐檔正文核實。內容審閱深度只計入可由審閱記錄明確證實的路徑或數量；未留下深度記錄者標為「不可還原」，不推定已讀或未讀。
 - QA／Archive 舊有正文核讀數據，是先前 `0c9f84bb` 基線的歷史下限；其他目錄的角色分類仍依固定分類基線。本表另列以 `53b13fa4` 核對的路徑數、各輪可具名追溯的補充閱讀與目前可重算的 QA／Archive 路由；舊 repo-wide 連結抽取仍是歷史基線，不冒充目前 HEAD 的最終驗證。
@@ -25,24 +25,24 @@
 | `03_data/` | 17 | 3 | 1 | 0 | 4 | 0 | 8 | 1 | 另有一份月營收可得性 CSV 欄位模板，不是實際公告日期資料。 |
 | `04_broker_branch/` | 6 | 1 | 1 | 0 | 0 | 0 | 4 | 0 | 主要為歷史指南／快照。 |
 | `05_phases/` | 15 | 0 | 2 | 0 | 0 | 0 | 13 | 0 | 13 份舊 Phase 轉址頁；轉址頁仍需保留舊入口。 |
-| `06_qa/` | 564 | 0 | 6 | 0 | 491 | 0 | 67 | 0 | 5 份主索引及 1 份子目錄 README；67 份符合精確三行 Archive redirect 規則；其餘 QA／證據尚未逐篇語義分類，含 11 個非 Markdown 路徑。 |
+| `06_qa/` | 565 | 0 | 6 | 1 | 491 | 0 | 67 | 0 | 5 份主索引及 1 份子目錄 README；另有 1 份待真人驗收計畫；67 份符合精確三行 Archive redirect 規則；其餘 QA／證據尚未逐篇語義分類，含 11 個非 Markdown 路徑。 |
 | `07_guides/` | 20 | 4 | 1 | 8 | 0 | 2 | 5 | 0 | Manual、安裝／速查、專項 Runbook 與歷史導引並存；18 份全文、Manual 與 Supplements 局部核讀。 |
 | `08_technical/` | 7 | 2 | 1 | 0 | 0 | 0 | 4 | 0 | 含一份已做全文核對的圖表渲染文件。 |
 | `09_archive/` | 407 | 0 | 8 | 0 | 0 | 0 | 399 | 0 | 8 份導覽／來源清冊，其餘為歷史文件與附屬資產；共含 400 個 Markdown 路徑。 |
 | `agents/` | 21 | 11 | 9 | 0 | 0 | 0 | 1 | 0 | 工作流程權威、角色入口與歷史相容文件。 |
 | `strategies/` | 3 | 0 | 1 | 2 | 0 | 0 | 0 | 0 | 兩份使用者策略說明依其 README 為非權威參考；策略規格與程式登錄才是權威。 |
 | `superpowers/` | 167 | 0 | 97 | 1 | 0 | 0 | 69 | 0 | 96 份舊路徑轉址加 README，共 97 導覽項；1 份目前 task plan；69 份保留歷史原文。 |
-| **合計** | **1,479** | **44** | **139** | **47** | **636** | **4** | **608** | **1** | 原角色分類基線為 HEAD `47a2e15e` 的 1,478 paths；本輪只新增一份 `09_archive/` 歷史筆記，其他角色數不變。 |
+| **合計** | **1,480** | **44** | **139** | **48** | **636** | **4** | **608** | **1** | 原角色分類基線為 HEAD `47a2e15e` 的 1,478 paths；後續各新增一份 `09_archive/` 歷史筆記與 `06_qa/` 真人驗收計畫。 |
 
 ## 正文核讀覆蓋
 
 | 範圍 | 可證實的核讀狀況 | 尚未確認／限制 |
 |---|---|---|
 | `00_core/`（18） | 18/18 份已全文閱讀；前三輪標為局部的 `DOC_COVERAGE_MAP.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 與本矩陣已在本輪完成全文複核。 | 全文閱讀只證明已逐篇核讀，不代表文件內引用的外部狀態已重新取得；Blueprint 外部 repo 與來源接受狀態仍未重新查核。 |
-| `01_architecture/` + `07_guides/`（244） | `01_architecture/` 224 份：71 全文、25 局部、128 未讀（根層 8 全文；target bundle 10 全文／3 局部／8 未讀；REFACTOR_TASKS 32 全文；REFACTOR_REPORTS 2 全文／22 局部／120 未讀；DISPATCH 19 全文）。`07_guides/`：18 份全文、Manual 與 Supplements 2 份局部核讀；另核對 Manual、Guide README 與排程操作指南的相關段落及連結。封存 morning-check 原文只計入 Archive，不重複計入這 244 份。 | 01／07 共 244 份 Markdown 的舊連結掃描為 1,370 個連結、missing=0、bad anchors=0；此為歷史掃描。REFACTOR_REPORTS 另按 144 paths 分成索引 1、相容 redirect 4、日期化實作／審查／決策證據 139；本輪對 18 份高風險直開文件做局部核讀並加上時點／狀態提示，抽查不代表全文閱讀。架構長篇、Manual 全文與歷史報告仍未逐篇覆核。本輪另修正 R029 的歷史提交狀態句、將 R026 的 9/25 checkpoint 明確限定為 snapshot；另確認 system architecture §16 有 10/10 複合研究入口，其穩定責任落在 §§3、8，現況仍看 Snapshot；手冊 §14 後 1,358 行日期化記錄已封存，104 個舊標題仍保留轉址，但搬移不等於逐項重新驗證全文。 |
+| `01_architecture/` + `07_guides/`（244） | `01_architecture/` 224 份：82 全文、23 局部、119 未讀（根層 8 全文；target bundle 21 全文；REFACTOR_TASKS 32 全文；REFACTOR_REPORTS 2 全文／23 局部／119 未讀；DISPATCH 19 全文）。`07_guides/`：18 份全文、Manual 與 Supplements 2 份局部核讀；另核對 Manual、Guide README 與排程操作指南的相關段落及連結。封存 morning-check 原文只計入 Archive，不重複計入這 244 份。 | 01／07 共 244 份 Markdown 的舊連結掃描為 1,370 個連結、missing=0、bad anchors=0；此為歷史掃描。REFACTOR_REPORTS 另按 144 paths 分成索引 1、相容 redirect 4、日期化實作／審查／決策證據 139；本輪對 18 份高風險直開文件做局部核讀並加上時點／狀態提示，抽查不代表全文閱讀。REFACTOR_REPORTS 尚有 119 份未讀。另修正 R029 的歷史提交狀態句、將 R026 的 9/25 checkpoint 明確限定為 snapshot；system architecture §16 的 10/10 複合研究入口已核實穩定責任落在 §§3、8，現況仍看 Snapshot；手冊 §14 後 1,358 行日期化記錄已封存，104 個舊標題仍保留轉址，但搬移不等於逐項重新驗證全文。 |
 | 根 `docs/README.md`、`02_features/`、`03_data/`、`04_broker_branch/`、`05_phases/`、`08_technical/`（55） | 22 份非 stub Markdown 已全文核讀：根目錄 README 1、02_features 6、03_data 8、04_broker_branch 2、05_phases 2、08_technical 3；另完整閱讀 `03_data/` 月營收 CSV 欄位範本。02_features 的 9/9、04_broker_branch 的 6/6、05_phases 的 15/15、08_technical 的 7/7 tracked paths 均已閱讀或逐路徑核對；各目錄 Archive redirect stub 只代表導向已核對，不等於原文全文閱讀。 | `docs/03_data/` 月營收 CSV 是欄位範本，不是實際公告日期資料。六份 README 抽出 109 次 Markdown 連結、82 個正規化唯一本機目的地；本輪 01／07 的 244 文件連結掃描仍是歷史基線，不代表目前 HEAD 全量通過。 |
 | `agents/`、`strategies/`、`superpowers/`（191） | `agents/` 21/21 全文、`strategies/` 3/3 全文；`superpowers/` 全目錄 167 路徑分類、96 個舊路徑 stub 的 136 個 Archive 連結逐一核對，README 與 8 份代表文件作全文／重點核讀；另抽查 5 份保留授權／worker 指令的計畫與 handoff 原件並加歷史警語。 | Superpowers 的代表性核讀不代表 69 份歷史原文均已全文閱讀。Entry 185 記錄 Antigravity 文件 Agent 的 Coverage Pass 摘要與權威規則不一致，已更正；另限定 execution Agent 的 Git 回滾範例，避免覆蓋他人未提交變更。External Validation Register 的歷史性已在 README 明確標出，當前狀態導回 Snapshot／近期 QA。|
-| `06_qa/`、`09_archive/`（971） | 舊基線 `0c9f84bb` 有明確記錄下限：全文 10 份（QA 5、Archive 5），局部核讀至少 2 份 QA；Entry 181–184 另有具名全文或局部閱讀。本輪完整閱讀 QA README 與四個主題索引，並檢查六份此前無路由 QA 收據的標題／範圍；不把開頭確認算成全文審讀。 | QA README 加四份主題索引核對 357 個本機 Markdown 連結目標，未發現失效或簡化 slug 錨點缺漏；從 QA README 遞迴可達 552/552 個本次安全核對的 QA Markdown，另遍歷 400 個 Archive Markdown。五個主要入口直接索引 200/555 個安全範圍根層證據。Archive README 對 267/267 根層非索引路徑有直達連結，另有 43/43 個非 Superpowers 巢狀路徑受 README 導覽；總體可達 407/407 個 tracked Archive paths。另對 8 份 Archive root 歷史原件做局部閱讀並補上歷史狀態界線。舊 6,231 links／anchors 為歷史基線，不代表目前 HEAD 全量通過。 | 本輪排除一個共享工作樹 QA 檔案的正文與連結，只納入其 Git 路徑 metadata；其餘安全盤點為 563/564 paths（552 Markdown、10 JSON、1 HTML）。QA／Archive 正文仍未逐篇閱讀；67 個精確三行歷史轉址仍計入 Markdown 可達率，10 JSON 與 1 HTML 不計入。2026-10-10 唯讀 inventory audit 掃到 `tests/` 下 1,463 個 filesystem `.py` paths（Git index 1,461，另有 2 個 filesystem-only paths）、registry 1,303 筆、未登錄 160、stale 0；未做 pytest collection。P0 register §7 的 DEV-66 limited 決議與 §14 的 `limited=0` machine 總數仍有未調和差異，不能將後者外推為目前全域狀態。 |
+| `06_qa/`、`09_archive/`（972） | 舊基線 `0c9f84bb` 有明確記錄下限：全文 10 份（QA 5、Archive 5），局部核讀至少 2 份 QA；Entry 181–184 另有具名全文或局部閱讀。本輪完整閱讀 QA README 與四個主題索引，並檢查六份此前無路由 QA 收據的標題／範圍；不把開頭確認算成全文審讀。 | QA README 加四份主題索引的 357 targets 為舊 link scan 基線；README 遞迴可達 553/553 個安全範圍 QA Markdown（含本輪新增且已列入 README 的真人驗收計畫）。五個主要入口的 current bounded link parse 為 201/556 個安全範圍根層證據；舊掃描 200/555 保留為歷史基線。此不是最終全量 parser/anchor scan。另遍歷 400 個 Archive Markdown。Archive README 對 267/267 根層非索引路徑有直達連結，另有 43/43 個非 Superpowers 巢狀路徑受 README 導覽；總體可達 407/407 個 tracked Archive paths。另對 8 份 Archive root 歷史原件做局部閱讀並補上歷史狀態界線。舊 6,231 links／anchors 為歷史基線，不代表目前 HEAD 全量通過。 | 本輪排除一個共享工作樹 QA 檔案的正文與連結，只納入 Git 路徑 metadata；安全範圍現為 564 paths（553 Markdown、10 JSON、1 HTML），另有 1 個排除正文的受保護路徑。QA／Archive 正文仍未逐篇閱讀；截至目前逐篇核讀快照為 43 份全文、6 份局部、504 份未讀；QA 審閱仍持續進行；67 個精確三行歷史轉址仍計入 Markdown 可達率。2026-10-10 唯讀 inventory audit 掃到 `tests/` 下 1,463 個 filesystem `.py` paths（Git index 1,461，另有 2 個 filesystem-only paths）、registry 1,303 筆、未登錄 160、stale 0；未做 pytest collection。P0 register §7 的 DEV-66 limited 決議與 §14 的 `limited=0` machine 總數仍有未調和差異，不能將後者外推為目前全域狀態。 |
 
 全體文件沒有一個可支持「已逐篇讀完」的比例。上述數字只表達可追溯的審閱證據；正文審閱數、入口連結覆蓋及分類完成度是不同指標，不能互相代替。e6 排程 QA 與 Runbook 已納入補充閱讀；全 repo 最終 link／anchor 掃描與 Graphify 刷新仍待所有目錄內容審核及修訂完成後進行。
 
@@ -117,7 +117,7 @@
 
 | 範圍 | 追蹤路徑與互斥角色 | 導覽／來源追溯 | 核讀深度與限制 |
 |---|---|---|---|
-| `06_qa/`（564） | 6 份導覽：`README.md`、`DATA_ML_GOVERNANCE_QA_INDEX.md`、`INTEGRATION_QA_INDEX.md`、`OPERATIONS_TESTING_QA_INDEX.md`、`PRODUCT_UX_QA_INDEX.md`、`project_status_2026_08_14/README.md`；67 份歷史轉址；491 份其餘 QA／證據（含 11 個非 Markdown）。 | 五個主要入口直接索引 200/555 個安全範圍根層證據；QA README 遞迴可達 552/552 個安全核對 Markdown。本輪也為 dated test inventory snapshots、未對帳數字與 Gate projection 加註時間邊界。 | 受保護共享工作檔只計 Git 路徑 metadata，不讀其正文或連結；安全範圍為 552 Markdown、10 JSON、1 HTML。357 個入口 Markdown link targets 均存在，簡化 slug 未見缺漏；此檢查不等同完整 Markdown parser。67 個精確三行 redirect 仍計入可達分母；82 個短頁與 30 個「已歸檔」標題可能重疊，不與 67 相加，也不一概視為 stub。可達不等於逐篇正文審查。 |
+| `06_qa/`（565） | 6 份導覽：`README.md`、`DATA_ML_GOVERNANCE_QA_INDEX.md`、`INTEGRATION_QA_INDEX.md`、`OPERATIONS_TESTING_QA_INDEX.md`、`PRODUCT_UX_QA_INDEX.md`、`project_status_2026_08_14/README.md`；1 份真人驗收計畫；67 份歷史轉址；491 份其餘 QA／證據（含 11 個非 Markdown）。 | 五個主要入口的 current bounded link parse 為 201/556 個安全範圍根層證據；舊 200/555 結果保留為歷史基線。QA README 遞迴可達 553/553 個安全範圍 Markdown。本輪也為 dated test inventory snapshots、未對帳數字與 Gate projection 加註時間邊界。 | 受保護共享工作檔只計 Git 路徑 metadata，不讀其正文或連結；安全範圍為 553 Markdown、10 JSON、1 HTML。357 個入口 Markdown link targets 是舊掃描值，未重跑 parser；上述限定入口解析不是完整 Markdown parser。67 個精確三行 redirect 仍計入可達分母；82 個短頁與 30 個「已歸檔」標題可能重疊，不與 67 相加，也不一概視為 stub。可達不等於逐篇正文審查。 |
 | `09_archive/`（407） | 6 個子目錄群：根目錄 268、`broker_branch/` 6、`phase3_5_research/` 4、`project_status_2026_08_14/` 3、`superpowers/` 96、`target_architecture_2026_09_22/` 30；其中 400 Markdown、7 份其他資產。 | 8 個現行導覽／清冊角色為 6 份 README 加 `DOC_COVERAGE_HISTORY_2026.md`、`SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md`；各頁目的地重疊，聯集可達 407/407 tracked Archive paths。Archive README 直連 267/267 根層非索引項目，另有 43/43 個非 Superpowers 巢狀項目有 README 導覽。`DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md` 是另外的歷史整理／恢復記錄，不列入 8 個現行導覽角色，但連到其中 4 個 Archive paths。 | Archive 標頭與入口複核發現 8 份原件的歷史狀態容易脫離 README 脈絡；Entry 193 已加檔首警語並修正兩個現行權威路由。既有 6,231 個 QA／Archive link／anchor 結果是歷史基線，不代表目前 HEAD。QA／Archive 的兩份同 blob 文件是明文記錄的刻意 mirror：`DATA_COMPLETION_2026_09_09.md`／`_HISTORY.md`，以及 `POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md` 的 QA 路徑／Archive 凍結副本。 |
 
 ### `09_archive/` 根層內容初篩（審閱基線 HEAD `53b13fa4`）
@@ -134,12 +134,38 @@
 |---|---|---|---|
 | `01_architecture/` 根層 | 8 份；目標架構 bundle 另有 216 份。 | 現行架構權威、導覽、任務契約、日期化證據與歷史轉址並存。 | 本輪 8/8 全文核讀。確認並修正 §16 10/03–10/07 增量及 10/08 M2 補記的導覽描述；為目標架構 Current status、UI 設計基線及 Runtime 檢查表補上現況判讀界線。 |
 | `REFACTOR_TASKS/` | 32 份：1 README + 31 task specs。 | README 覆蓋所有 31 份任務規格；任務契約不等於目前待辦清單。 | 本輪 32/32 全文閱讀；`R001.md` 建立時未提交／未追蹤狀態加上 2026-09-22 快照界線；`R028.md` 的提交前敘述改為歷史快照，指出後續 commit `d77ba23f`。 |
-| `REFACTOR_REPORTS/` | 144 份：1 README、139 份日期化實作／審查／checkpoint 證據、4 個 Archive redirect stub。 | 證據與歷史導引分列；日期化證據不是目前狀態。 | 本輪 README、R028 全文；R020、R026、R029、R016 及 18 份高風險直開報告／checkpoint／派工基線局部；120 份未讀。README 對 143 個同層文件均有索引連結（146 次連結引用、0 個缺失目標）；簡易時點掃描標出 78 份正文未見完整日期、88 份開頭 16 行未見清楚時點／狀態界線，這是篩選訊號，不等於逐篇語義審閱。R029、R026 及本批高風險文件已補上時點／狀態界線。 |
-| `REFACTOR_DISPATCH/` | 19 份：1 README、2 份完整舊 Gemini prompt／review 證據、16 個 Archive redirect stub。 | README 定義現行分派 gate；完整舊 prompt 是歷史證據，不能依其正文派工。 | 本輪 19/19 全文核讀；README 26 個本機 Markdown 連結目標存在（未檢查錨點）。兩份完整舊 prompt 仍含已過時 Gemini 派送、SHA 與 Wave 3 blocked 文字；README 與其直接開啟界線待下一批同步修訂。 |
-| 目標架構直接文件／FINAL 草案 | bundle 21 個直接文件中有 6 個 FINAL 替代草案相容 stub；另 32 個 task index/spec 已列上方。 | 目標設計權威與替代草案歷史導引並存。 | 本輪 10 份全文、3 份局部、8 份未讀；舊記錄未列出 8 份未讀的檔名，無法可靠反推，待補 21 份直接文件逐檔清冊後對應並覆核。六個草案 stub 可由入口抵達，未把它們當成目前設計權威。 |
+| `REFACTOR_REPORTS/` | 144 份：1 README、139 份日期化實作／審查／checkpoint 證據、4 個 Archive redirect stub。 | 證據與歷史導引分列；日期化證據不是目前狀態。 | 本輪 README、R028 全文；R020、R026、R029、R016 及 18 份高風險直開報告／checkpoint／派工基線局部；119 份未讀。README 對 143 個同層文件均有索引連結（146 次連結引用、0 個缺失目標）；簡易時點掃描標出 78 份正文未見完整日期、88 份開頭 16 行未見清楚時點／狀態界線，這是篩選訊號，不等於逐篇語義審閱。R029、R026、本批高風險文件與 R008 result-ID bounded acceptance 均已補上時點／狀態界線。 |
+| `REFACTOR_DISPATCH/` | 19 份：1 README、2 份完整舊 Gemini prompt／review 證據、16 個 Archive redirect stub。 | README 定義現行分派 gate；完整舊 prompt 是歷史證據，不能依其正文派工。 | 本輪 19/19 全文核讀；README 26 個本機 Markdown 連結目標存在（未檢查錨點）。兩份完整舊 prompt 的直接開啟警語與 README 路由已同步修訂；原 prompt 主體保留。 |
+| 目標架構直接文件／FINAL 草案 | bundle 21 個直接文件中有 6 個 FINAL 替代草案相容 stub；另 32 個 task index/spec 已列上方。 | FINAL 設計權威、執行契約、日期化證據、歷史評估與相容轉址並存。 | 2026-10-10 新建逐檔基線：21/21 全文核對；舊 10/3/8 摘要沒有具名清單，不能映射原先未讀名單。發現 Wave 9 的 R027→R028 條件、Model Assignments 的 Wave 7/9/14 狀態快照與 9/27 後續接受裁定不一致，已加時點／scope overlay；System Architecture Assessment 已補直開歷史界線。 |
 | `07_guides/` | 20 份文件，逐檔分類見下表；含現行操作權威、入門／速查、開發指南、受限操作 Runbook 及歷史導引。 | Guide README 導航目前操作權威；兩個舊路徑 stub 保留相容入口。 | 18 份全文閱讀；Manual 局部核對安裝、資料位置、每日更新、觀察清單與回測入口，Supplements 僅核對前言、章節日期及歷史定位。四項已核實的速查、安裝、CLI 標示與重複文字問題已修正，詳見 Entry 182。 |
 
 01／07 合計 244 份 Markdown 的舊 link scan 為 1,370 個連結、0 個 missing local target、0 個 bad anchor。這只證明當次掃描到的本機連結可達，不代表 244 份正文均已審核；本輪未重跑該目錄全量 link scan。
+
+### `target_architecture_2026_09_22/` 直接文件逐檔分類與核讀
+
+| 文件 | 角色／生命週期 | 本輪核讀與判讀 |
+|---|---|---|
+| `README.md` | bundle 導覽 | 全文；權威分層與狀態入口清楚。 |
+| `FINAL_TARGET_ARCHITECTURE.md` | 唯一目標架構設計權威 | 全文；2026-09-22 設計基線，不宣稱全域已完成。 |
+| `FINAL_ARCHITECTURE_INVARIANTS.md` | 設計不變條件契約 | 全文；不當作實作完成證據。 |
+| `FINAL_DATA_FLOW.md` | 目標資料流與執行模型 | 全文；與 FINAL 主文一致。 |
+| `FINAL_EXTENSIBILITY_MODEL.md` | 目標擴充邊界 | 全文；未宣稱已新增產品功能。 |
+| `FINAL_ML_COMPATIBILITY_CONTRACT.md` | ML 相容契約 | 全文；保留相容性與 promotion 邊界。 |
+| `FINAL_MIGRATION_SEQUENCE.md` | 遷移 ledger／具名 scope 裁定 | 全文；日期化 overlay 保留原 strict 結果，9/27 revision B 與 R028 scoped acceptance 有明確記錄。 |
+| `REFACTOR_IMPLEMENTATION_DAG.md` | 任務依賴與驗收契約 | 全文；規劃基線及 blocker 文字需依日期化裁定判讀。 |
+| `REFACTOR_EXECUTION_ORDER.md` | Wave 順序與執行契約 | 全文；Wave 9 原 strict R027 條件加上 9/27 versioned revision overlay，未改寫原結果。 |
+| `REFACTOR_MODEL_ASSIGNMENTS.md` | implementer/reviewer 分工與 Wave 狀態快照 | 全文；Wave 7/9/14 舊狀態已標日期並導向後續 migration/QA overlay。 |
+| `REFACTOR_RISK_REGISTER.md` | 風險、owner 與處置 ledger | 全文；R027 strict 與 revision B、R028 scope 分開記錄。 |
+| `REFACTOR_VALIDATION_MATRIX.md` | 驗證計畫 | 全文；屬計畫，不是 PASS 收據。 |
+| `SYSTEM_ARCHITECTURE_ASSESSMENT.md` | 2026-09-22 歷史系統評估 | 全文；新增檔首歷史界線與現行架構／狀態路由。 |
+| `ARCHITECTURE_RED_TEAM_REVIEW.md` | 歷史 review 輸入 | 全文；現有 FINAL 採納裁定路由清楚。 |
+| `ARCHITECTURE_REQUIRED_CHANGES.md` | FINAL 前建議與採納索引 | 全文；明示不是現行待辦。 |
+| `ARCHITECTURE_INVARIANTS.md` | 舊稿相容 redirect stub | 全文核對 stub；導向 Archive 與 FINAL。 |
+| `EXTENSIBILITY_TEST.md` | 舊稿相容 redirect stub | 全文核對 stub；導向 Archive 與 FINAL。 |
+| `MIGRATION_STRATEGY.md` | 舊稿相容 redirect stub | 全文核對 stub；導向 Archive 與 FINAL。 |
+| `ML_COMPATIBILITY_PLAN.md` | 舊稿相容 redirect stub | 全文核對 stub；導向 Archive 與 FINAL。 |
+| `TARGET_ARCHITECTURE.md` | 舊稿相容 redirect stub | 全文核對 stub；導向 Archive 與 FINAL。 |
+| `TARGET_DATA_FLOW.md` | 舊稿相容 redirect stub | 全文核對 stub；導向 Archive 與 FINAL。 |
 
 ### `01_architecture/` 根層逐檔分類與核讀
 
@@ -298,9 +324,11 @@
 3. QA 與 Archive 從入口可達、正文已讀、狀態與證據仍有效四方面分開統計；不把舊 QA 快照重寫成新結論。
 4. 固定基線的連結／錨點掃描與受控 Graphify 建置只作為歷史導覽基線；它們不代表本次內容治理完成，也不涵蓋後續提交的變更。待所有目錄的文件分類、正文衝突／過時檢查與修訂批次完成後，才執行並驗證最終 repo-wide 連結／錨點掃描及 Graphify 刷新。
 
-**狀態：** Entry 171–200 的整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登小型目錄與 QA／Archive 分層盤點，Entry 182–197 登錄 Guides、repo 外 Markdown、F03 單項同步、QA／Archive 路由、權威邊界修正、`02_features/` 全文覆核與歷史 Phase 引用校正、Architecture 根層及 REFACTOR_REPORTS 核讀修訂、Archive／Superpowers 原件時點提示、QA 路徑／inventory 差異與歷史清冊快照更正、圖表／技術指南範圍校正、03_data 操作流程校正、過時派送材料與 Manual 歷史內容分流及舊標題轉址。Entry 198–200 補登待真人驗收與資料契約入口、REFACTOR_REPORTS 時點提示、Archive 直開界線及 Entry 192 的類別數校正。`docs/` 目前有 1,479 個 tracked paths；小型目錄已列全檔路徑，Core、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、QA 葉節點、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
+**狀態：** Entry 171–203 的整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登小型目錄與 QA／Archive 分層盤點，Entry 182–197 登錄 Guides、repo 外 Markdown、F03 單項同步、QA／Archive 路由、權威邊界修正、`02_features/` 全文覆核與歷史 Phase 引用校正、Architecture 根層及 REFACTOR_REPORTS 核讀修訂、Archive／Superpowers 原件時點提示、QA 路徑／inventory 差異與歷史清冊快照更正、圖表／技術指南範圍校正、03_data 操作流程校正、過時派送材料與 Manual 歷史內容分流及舊標題轉址。Entry 198–203 補登待真人驗收與資料契約入口、REFACTOR_REPORTS／Archive 時點提示、Dispatch 舊 Gemini prompt 導覽校正、目標架構逐檔核對與 Wave 7/9/14 scope 衝突修訂、QA 可讀範圍增量與最新核讀進度。`docs/` 目前有 1,480 個 tracked paths；小型目錄已列全檔路徑，Core、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、QA 葉節點、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
 
 **2026-10-10 增量：** Coverage History Entry 182 已登錄 Guides 20 份逐檔分類（18 全文、2 局部）、四項內容修正，以及 Superpowers 7 筆 Archive manifest 生命週期欄位修正與一份舊計畫的歷史定位標示。這些批次未刪除或移動文件；未跑測試、未刷新 Graphify。F03 follow-up 與根目錄 `$null` 仍保持未納入本批。
+
+**2026-10-10 增量：** Entry 202 新增 target architecture bundle 21 份直屬文件的逐檔分類與全文核讀基線；修訂 Wave 9 原 strict R027 prerequisite 與 9/27 revision B／R028 scoped acceptance 的時點界線，並為 9/22 Architecture Assessment 加上直開歷史提示。Dispatch 舊 Gemini prompt 導覽／授權提示與 R008 result-ID acceptance 範圍提示同步完成。未執行測試、最終 repo-wide Markdown links／anchors scan 或 Graphify 刷新。
 
 **2026-10-10 第二增量：** Coverage History Entry 183 已登錄 `docs/` 外 26 個 Markdown 的角色清冊與本批狀態修正，並補校目標架構分冊／DAG 將 9/22 設計時狀態誤當現況、R028 accepted slice 未同步、MOPS scratch 證據可攜性、舊 notebook 資料根及 UI workspace 清單。此次只核對具名矛盾與相關段落；全庫長篇正文仍有未讀區段。未刪除原始資料；未跑測試或刷新 Graphify。
 

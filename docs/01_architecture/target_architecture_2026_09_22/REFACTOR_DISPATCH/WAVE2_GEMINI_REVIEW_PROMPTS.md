@@ -1,6 +1,6 @@
 # Wave 2 Gemini 正式 review prompt
 
-> 歷史 prompt：R008 現行分工已改為獨立 LUNA_MAX review + SOL gate；本檔內的暫停、版本凍結與 Gemini 重送指示僅供追溯，請勿重送或視為目前授權。現行判定看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)、[R008 acceptance](../REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md) 與 [Wave 2 checkpoint](../REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)。
+> **Wave 2 Gemini review prompt（歷史原文，勿執行／重送）**：下方仍保留舊暫停、凍結 SHA、Gemini 派送與「Wave 3 blocked」指示，均屬歷史快照；不得視為目前 gate。現行分工與 wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)，整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，R008 後續窄範圍相依證據見 [schema-range recheck](../REFACTOR_REPORTS/R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md)。
 
 > 暫停派送：Wave 2 並行稽核已重現 R008 深凍結與契約驗證缺口，Luna 正在同一 R008 範圍回修。本檔的九檔 SHA 是回修前版本；待 SOL 重驗、重新凍結並移除此註記後才可交 Gemini。
 

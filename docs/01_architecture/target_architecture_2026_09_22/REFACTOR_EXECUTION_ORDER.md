@@ -2,6 +2,8 @@
 
 > 本文件將 [實作 DAG](REFACTOR_IMPLEMENTATION_DAG.md) 排成低衝突 waves。Wave 內「可平行」只代表檔案 owner 與依賴允許；dispatcher 仍須確認當時 worktree、前一 wave evidence 與實際 diff。不要為追求並行讓兩個 agent 同時改中央檔案。
 
+> **2026-10-10 狀態界線：** Wave 9 下方的 R027→R028 prerequisite 保留原 strict gate 規則與 2026-09-24 當時 checkpoint，不是後續接受結果。2026-09-27 另立的 R027 logical-time revision B 已由 root full8 與獨立 review 接受，並依該 revision 接受 R028 scoped production migration；原 strict R027 仍為 `INCONCLUSIVE`，不改寫 oracle 或舊收據。這不代表 Wave 9 full closeout、R028 全範圍相容或產品 release。依 [FINAL migration ledger](FINAL_MIGRATION_SEQUENCE.md)、[revision B QA](../../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R031 current checkpoint](../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 判讀。
+
 ## 執行規則
 
 1. 每個 task 使用獨立 branch/worktree 或嚴格串行；開始前記錄 HEAD、dirty files、依賴task的commit/evidence。
@@ -106,6 +108,8 @@ Checkpoint：多日／same-day／cooldown parity；execution-time regime 保存�
 | R028 | 只在R027 PASS；可與R018/R024平行 | 擁有update/technical publication files。 |
 
 若R027非PASS：建立 `AB-ML-01` 決策記錄，R028不啟動。這不是「略過失敗測試」。
+
+上列條件記錄原 strict R027 分支。2026-09-27 的 revision B／R028 acceptance 是另行核准、scope 受限的後續裁定；不回填為原 strict `PASS`，也不宣告 Wave 9 關閉。具體結果見文件開頭所列 FINAL migration ledger 與 QA 收據。
 
 Checkpoint：input providers parity、factor reverse edges收斂；條件ML分支狀態可審核。
 

@@ -62,3 +62,15 @@ root 已審查並提交 `76ed1b5e`：只有 strict leaf 已驗證的純 renderin
 E QA 可更新上述 source 的單一 pin，其他 57 pins、fixed inputs、route 與 deadlines 必須保持；完整 Main 尚待後續終態。D 的獨立 13-root postflight 與 before 相同，原 receipt 的 after=null 不回填。
 
 H20 P 初版仍未實跑。root 靜態審查找到 ownership 時點不相容：原 boundary 在 `open_osfhandle` 成功後把 `owned_handle` 設 False，P 初版卻對後續 fdopen/stream 一律要求 True。已要求保存初版，區分轉移前 True 與轉移後已註冊 descriptor 的 False；不可直接移除 ownership guard。另一位 Luna Max 做獨立差異審查。H20 真 source-port／SQLite 閉環與原 2382 尚未完成，沒有新 EXE 或真人驗收入口。
+
+### E 首輪與 P 父鏈追加審查
+
+E focused 首輪終態 exit 1，原生收據 `output/qa/f12_main_revenue_new_pid_20261009_e/evidence/20261010T003808Z_47028_6ddaade0/receipt.json`；self-test strict resolve 遭 sandbox WinError 5，route exit 0，pytest **4 failed／18 passed／4 subtests passed**。58 pins 與候選檔起訖一致。root 另實讀 stderr 發現真 Config factory 測試曾嘗試開啟正式 D 資料區的 config.log，sandbox 拒絕；因此沒有逕行升權重跑。agent 確認無升權程序或 live handle；下一個候選須在子程序首次 import 前明示 private DATA_ROOT／OUTPUT_ROOT，保留第一個紅測與來源守衛，不刪 factory 測試。這不構成正式資料全面未變的證明。
+
+root 獨立逐欄比對 E/D manifest 的 54 code pins 與 4 guard pins，唯一差異是已核准 P01 source 的 SHA／size；其他 57 完全一致。完整 E Main 尚未執行。
+
+H20 P 的初版 `81f25d62…` 及完整 O→P diff 保留，尚未執行。除 ownership 外，root 實讀原 N `_config_session_phase` 發現 P callback globals 的否定條件方向相反，以及 P 一律要求 `_verify` frame／delegate terminal attribution 與原 `finish` 直接呼叫 verifier 不符。已要求新 P2 和最小追加提案分別核 initial `_verify → verify_source`、terminal `finish` 的 exact code/globals/self/kind；原 N phase authority 不得替換。這些是靜態必拒的原因，不能宣稱執行正例已通過。
+
+E2 終態另存 `evidence/20261010T004430Z_9296_5dc698bb/receipt.json`：候選 self-test、route 均 exit 0，pytest **1 failed／21 passed／4 subtests passed**。唯一失敗為新增 child-env 測試傳入尚不存在的硬編碼 fixture root，原 pinned helper 正確以 strict resolve 拒絕；沒有放寬 helper。原生 stderr 確認 Config 的 DATA_ROOT／OUTPUT_ROOT 已在該 attempt 私有區。58 pins／候選檔起訖一致，E2 原 test/diff 與 receipt 保存。E3 僅把該測試換成真正建立的 fresh private application／f17 目錄，原 child-validator 正反例保留；待終態，不宣稱 Main 完成。
+
+root 和獨立 reviewer 又核對原 frozen loader，修正先前「每 phase 一次 config read」的錯誤要求：真流程為 get-root 一次、兩個 root resolution 各一次、四個 pinned-path resolution 各一次，合計每 phase 七次、initial/terminal 共十四次。新角色只能依這三類 exact caller/code/globals/locals 與固定順序授權；每次 146-byte／SHA、16KiB 上限與新鮮讀取不變，不能快取設定掩蓋真流程，不增加 SQLite cap。P/P2 不執行，先保留靜態材料並重定最小角色方案。獨立審查另發現 descriptor 碰撞及 stream.close 錯誤的清理缺口；修補須關閉已轉移所有權的 CRT descriptor，保留 primary/secondary 錯誤，不把 CloseHandle 當成 os.close。

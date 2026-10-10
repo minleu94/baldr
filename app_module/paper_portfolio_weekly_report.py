@@ -1,4 +1,4 @@
-"""Cost-basis aware weekly read model for research paper portfolios."""
+"""明示成本基礎的研究用 Paper Portfolio 週報讀取模型。"""
 
 from __future__ import annotations
 

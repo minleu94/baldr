@@ -853,3 +853,10 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - Root 完整讀 K→L diff 並核對凍結 manifest SHA `1ec14119afc1d3f1d4304d2fdd41232b63e3255edd0f45680e3ac39d7c6cdbc0`、controller SHA `9e527f7700794872c0c41f1b97ca90e8896c7e5e592ad5e75d3ca721d984e8f0`。靜態 preflight exit 0、7.412 秒，收據 `output/qa/p01_filter_parallel_experiment_design_20261010_l/static_preflight_6580c8feb745.json`。
 - 唯一實際 warm attempt `C:/t/p01cur_rd_088d042d9a` 終態 exit 1。`child_events.jsonl` 記 P01 真 opener 已讀 1,000 included，oracle runner 返回 failed、scratch removedempty；沒有新的有效配對速度結果。`supervisor_result.json` 記 source/store unchanged、Job cleanup 完成且活動程序為空。
 - 本次 `child_result.json` 未能保存；supervisor 的原 stderr 明確記 `child_result_write_failed / json_output_limit_exceeded`。寫檔錯誤證明輸出超過既有 4 MiB 上限；Root 另實讀 `_io_summary`，確認回傳所有 lstat/open 明細，這是待核的主要容量來源。超限 payload 本身未保存，原 oracle failure 被二次寫檔錯誤遮蔽，不能猜成產品計算失敗。新 J4/M 僅補有界診斷輸出：完整 I/O 次數與全序列 SHA／執行時序列比較不減少，輸出明示 first/last sample 與 omitted count；原錯誤及超限 fallback 收據必須保留，不盲增大小上限。原 L/J3 封套保持不變。
+
+### 2026-10-10 續接靜態覆核：T24 與 J4／M 尚未執行
+
+- Root 與獨立 Luna max 在 T24 草稿辨識並要求修正：current schema detection 誤列為 marker detection、共用 tail 重複 get_stocks、closed-connection verifier 缺 sqlite module 身分，以及未登記 worker 的執行／撤守門缺口。逐項修正仍在候選內，尚未取得凍結封套及 runtime 證據；不宣稱 F12 通過。
+- 清理必須同時證明兩個 control idle、全域 worker registry 空、native finished 與 queued cleanup 完成；TLS 還原放在無條件 finally。視窗 constructor 中途失敗與 addCleanup fallback 也必須遵守相同撤守門條件，不能因 view 尚未賦值或忽略 scope close errors 而漏掉存活 worker；私人 fixture 退出前必須完成排空。正式 COW／來源寫入權限未變。
+- Root 已完整讀 J4 最後輸出壓縮 diff 與 M controller 草稿 diff：完整 I/O oracle 及配對比較先完成，僅發布時保存五類序列的首尾各最多八筆、完整序列 SHA、總數與省略數；M 保存原 oracle 返回錯誤、payload 大小／SHA、精確 child_result 的有界超限 fallback 及 supervisor readback 身分。尚未凍結或 preflight，不作新速度或負例通過證據。
+- 三名 Luna max 分別處理 F12 候選、獨立守門審查及 P01 診斷封套；Root 審核後統一執行隔離測試，避免重負載互相干擾。正式程式、原 D 槽資料、排程及其他文件 agent 的變更不在本段修改範圍。真人驗收入口沿用前述具名文件，尚無新真人結果。

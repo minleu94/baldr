@@ -1,6 +1,6 @@
 # 目標架構與重構契約入口
 
-本目錄保存三種不同用途的文件。檔案多不代表有多套實作權威；目前進度與未解除限制請讀 [PROJECT_SNAPSHOT](../../00_core/PROJECT_SNAPSHOT.md)及 [R031 closeout](../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。
+本目錄保存三種不同用途的文件。檔案多不代表有多套實作權威；目前進度與未解除限制請讀 [PROJECT_SNAPSHOT](../../00_core/PROJECT_SNAPSHOT.md)。[R031 closeout](../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 是 2026-09-25 日期化、範圍有限的重構驗收收據，只用於追溯當時結果，不作為目前狀態來源。
 
 ## 實作設計權威
 

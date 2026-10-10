@@ -1,4 +1,4 @@
-# baldr 理想目標系統架構
+# 目標領域背景與演進導覽（非實作權威）
 
 > **2026-09-22 最終架構權威入口**：[FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 已逐項裁決紅隊審查，是後續實作唯一目標架構 SSOT；其五份 FINAL 分冊細化資料流、擴充、ML 相容、不變條件與遷移。先前六份草案已被取代，只保留審查歷史。[現況評估](target_architecture_2026_09_22/SYSTEM_ARCHITECTURE_ASSESSMENT.md) 保留為來源證據。
 >
@@ -369,8 +369,8 @@ flowchart LR
 - **Dependencies**：Research / Evidence、model registry。
 - **Persistent artifacts**：model、dataset、prediction、calibration、drift、rollback metadata。
 - **Failure / degraded**：停止 shadow / rollback，不 fallback 成無版本輸出。
-- **Current status**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。既有 daily policy 內的 candidate adoption／rollback 可自動執行；正式 DB／Advice 仍不受影響。正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。
-- **狀態範圍**：此處的 `CANDIDATE` 指全域 Recommendation ML Shadow Layer，不代表當下必有 active candidate/model，也不涵蓋 Personal H20 Gross。每日 shadow policy 內部的 candidate adoption／rollback，不是正式 Advice promotion；逐日現況必須回查 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新 QA 收據。Personal H20 是個股研究頁的獨立唯讀投影，不改寫本層的 formal gate。
+- **Implementation status summary（非即時狀態權威）**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。既有 daily policy 內的 candidate adoption／rollback 可自動執行；正式 DB／Advice 仍不受影響。正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。當前資格以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 和最新 QA 為準。
+- **狀態範圍**：此處的 `CANDIDATE` 指全域 Recommendation ML Shadow Layer，不代表當下必有 active candidate/model，也不涵蓋 Gate 7 Portfolio Allocation ML 或 Personal H20 Gross。每日 shadow policy 內部的 candidate adoption／rollback，不是正式 Advice promotion。各 ML 路線與目前架構邊界見[目前系統架構](system_architecture.md)；逐日狀態回查 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與各路線最新 QA。Personal H20 是個股研究頁的獨立唯讀投影，不改寫本層的 formal gate。
 - **Target status**：Champion / Challenger governed layer。
 - **修改正式決策**：Gate 前否；Gate 後只能經 versioned adapter。
 

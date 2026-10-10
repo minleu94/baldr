@@ -47,7 +47,7 @@
 
 1. 先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認現況，再看 [目前系統架構](system_architecture.md) 中的「ML 路線與狀態判讀」。
 2. Personal H20 artifact／lineage 身分見[第 11 節](system_architecture.md#personal-h20-artifact-and-lineage-boundary)；ML source custody 見[同節](system_architecture.md#ml-lineage-reader-dependency-boundary)，自然成熟 proof owner 與 model-loader 分工見[同節](system_architecture.md#natural-maturity-proof-and-model-loader-boundary)。10/06 原模型讀取與 loader 增量已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，其當日狀態不代表目前接線。
-3. [目標架構 ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer) 描述全域 Recommendation ML 的設計邊界，不作為 active model 或目前資格的證據。
+3. [目標架構 ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer) 描述全域 Recommendation ML 的設計邊界，不作為 active model 或目前資格的證據。產品 Roadmap 的 Gate 7 是 Portfolio Allocation ML 的條件式 shadow gate；[FINAL ML 相容性契約](target_architecture_2026_09_22/FINAL_ML_COMPATIBILITY_CONTRACT.md)中的 R7 則是 UpdateService identity／時序相容實驗，不是模型 promotion gate，兩者不可混為一談。
 4. [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 記錄投組配置 ML 的研究訓練與 Formal gate；[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) 記錄個股研究 H20 投影範圍。
 5. [ASTRA Engineering Closeout（2026-10-03）](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 是特定日期的歷史執行記錄；只用來追溯當時狀態，不覆蓋較新的 Snapshot／QA。
 

@@ -33,7 +33,7 @@ P01 最新證據為 Q13 single-warm：30 組完整 DTO 相等；baseline p95 1,3
 | F07 | Decimal 價格區間／排序已有旅程切片；正常來源、EXE／守衛收尾及真人接受不能省。高中低命名須有明示數值。 |
 | F08–F09 | 分點與三大法人分開；原期間、coverage、連續官方開市日、缺日與 available_at 必須保存核驗。 |
 | F10–F11 | 權證標的／掛牌／到期關係；基本面具名成長指標、前期／期間／修訂與 PIT，未知不可當不符合。 |
-| F12 | 營收 reader/query/view/bookmark 切片存在；T36a 正常轉到 Watchlist 後新 worker 阻擋 COW entry，尚無完整新 PID。這是轉場 idle 問題，不能寫成 SQL gate 已執行失敗。 |
+| F12 | 營收 reader/query/view/bookmark 切片存在；T37 正常 Watchlist 轉場的 FullN／Price／H20 worker 均自然收尾。完整流程停在收藏前的 `personal_writer_disabled: invalid_explicit_marker`，未到 fresh child；失敗當下的 resolver message 未保存，待 T38 精確診斷，不放寬 marker／SQL 守門。 |
 | F13–F15 | 產業同期分類／母體與相對強度；族群核心的透明定義；成交額代理與真淨新資金分開，不能冒稱來源不存在的流入。 |
 | F16–F18 | 注意／處置當下 reader 與完整事件／可得時鐘分開；處置預警須有公開規則版本與累積史料，未知不是安全。 |
 | F19–F21 | 各域資料日／風險三態、全域多欄穩定排序、完整已選母體分母與清除／復原；已選 cohort 不冒稱全市場。 |
@@ -44,9 +44,9 @@ P01 最新證據為 Q13 single-warm：30 組完整 DTO 相等；baseline p95 1,3
 M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成；M2 有多個保存／完整已選母體／新程序切片，但條件、資源矩陣、原來源與真人未閉合；M3 策略獨立帳本與歷史績效工作流未完成。
 
 - root：審查正式差異、執行驗證、保存進度；不覆寫其他文件整理工作。
-- F12 葉片：T37 正常 Watchlist 轉場獨立觀察／自然 drain，所有 pending worker 波都需收尾；constructor 原兩 worker 分母保持。凍結交審後才執行。
+- F12 葉片：T37 已執行一次，正常轉場自然 drain 通過；T38 僅補 marker 拒絕診斷及 wrapper launcher→native PID 鏈核對，凍結交審後才執行。
 - 原 2382 葉片：真正 Main／正式 reader 的一次同源計時候選，E 槽副本／私人狀態，D 原來源唯讀；目前尚未執行。見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)。
-- P08 Luna max：唯讀核帳戶身份、版本政策、成本／benchmark 與實際 consumer 路由；root 審設計後才新增帳戶服務，不先改金融 writer。
+- P08 Luna max：QA 候選正在補明示版本／政策／成本／benchmark binding 與帳戶子目錄；週報對缺少逐列 provenance 的新帳戶保持不可計算。root 尚未套用正式碼，不先改金融 writer。
 
 真人目前可做[合成來源六步驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：窄窗、完整文字、返回、比較、收藏即時重開及關閉後重開。它使用 1000／1256，不替代原 2382／H20、真實推薦或整體四用途接受。
 

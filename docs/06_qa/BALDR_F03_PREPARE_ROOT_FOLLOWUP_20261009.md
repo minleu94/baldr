@@ -889,3 +889,10 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 本段僅同步本任務 QA 記錄；其他文件 agent 的整理變更與原始資料保持原狀。真人入口沿用具名驗收指南，尚無新真人結果。
 - N 正向讀取的完整 DTO（baseline／candidate／strict）相等；三側各 442 次 bounded reads、10,556 次 lstat、26 次 layout scan，候選僅將 26 次 strict manifest parse 改為 26 次 fresh issued-manifest 檢查。這是已保存的正向一致性證據，不抵銷未完成負例或未取得配對計時。
 - Root 以相同 `.venv` 的 `-I -B` 唯讀單葉定位：265 字元 plain path 的 open 為 Errno 2、stat 為 WinError 3，沙箱外同結果；PowerShell 與同 Python 的 Windows extended-path 語法均讀得 2,207 bytes、SHA `57b64af7c30f9a8161ba708d6cd136b8578f700bbe19568f1683ab5f186aaa27`。收據 `output/qa/p01_filter_parallel_experiment_design_20261010_n/root_leaf_path_probe_20261010.json`。此檔案的 plain-path 存取限制已證實，但不推論全 copytree 只有此原因，也未放寬 controller 的寫入守門。O 僅建立步驟診斷候選；下一個長路徑方案仍須精確設計及審查。
+
+### 2026-10-10 接線與長路徑候選進行中（尚未執行）
+
+- 三名 Luna max 分工：T27 實際 Main 接線、P 長路徑測試候選、獨立守門與清理審查。Root 已確認六個正式功能檔 pins 維持原值；目前工作限於 QA 候選，未發布新版本。
+- T27 草稿已加入 Main 的 worker scope、TLS dispatcher 與收藏前排空呼叫。審查發現 parent 清理誤接 child finally，以及 unsafe worker 未傳遞 parent 保留旗標；前者已修正，後者與 retirement callback 正在完善。控制項 observer 與 TaskCapture 必須在安全排空後、Qt delete 前關閉；runtime guards、TEMP 與環境只在安全 retirement 後還原。待凍結、獨立審查及實際聚焦測試，不能計為 Main 通過。
+- P 候選保留 plain logical identity，僅於本機絕對 drive path 的 syscall 邊界轉換長路徑；recursive copy／cleanup 的 root 亦需轉換，避免子路徑再次變成 plain。Root 初讀 focused tests 並要求補上精確長樹清理與實際 guard 的驗證範圍；尚未執行 P，N／O 封套保持不變。
+- H20 只讀調查確認既有名單讀取在背景 worker，程式已有等待文字與計時器；原 M7／S4 證據沒有直接捕捉 worker 執行期間的可見提示，故首畫面等待提示仍待聚焦驗證。原約 4 GB 來源的初始／終態核驗不可為縮短等待任意移除；本次未重跑來源讀取。

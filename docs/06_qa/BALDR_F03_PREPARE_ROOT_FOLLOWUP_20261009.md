@@ -860,3 +860,10 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 清理必須同時證明兩個 control idle、全域 worker registry 空、native finished 與 queued cleanup 完成；TLS 還原放在無條件 finally。視窗 constructor 中途失敗與 addCleanup fallback 也必須遵守相同撤守門條件，不能因 view 尚未賦值或忽略 scope close errors 而漏掉存活 worker；私人 fixture 退出前必須完成排空。正式 COW／來源寫入權限未變。
 - Root 已完整讀 J4 最後輸出壓縮 diff 與 M controller 草稿 diff：完整 I/O oracle 及配對比較先完成，僅發布時保存五類序列的首尾各最多八筆、完整序列 SHA、總數與省略數；M 保存原 oracle 返回錯誤、payload 大小／SHA、精確 child_result 的有界超限 fallback 及 supervisor readback 身分。尚未凍結或 preflight，不作新速度或負例通過證據。
 - 三名 Luna max 分別處理 F12 候選、獨立守門審查及 P01 診斷封套；Root 審核後統一執行隔離測試，避免重負載互相干擾。正式程式、原 D 槽資料、排程及其他文件 agent 的變更不在本段修改範圍。真人驗收入口沿用前述具名文件，尚無新真人結果。
+
+### 2026-10-10 J4／M 實際診斷：原錯誤已保留，Gate 未通過
+
+- Root 完整審閱凍結 J3→J4 與 L→M diff 並逐檔核對 artifact bytes／SHA。J4 manifest SHA `615ba1fc3e7f6270719d7d5b77bd7b3e1e407e4e8d199a2542fc5406a5b2bc7c`、runner SHA `73ce052ff04ab81aca68dd4b854c127a70ee27c366195199e4e728634c2bb260`；M manifest SHA `4e4142c50db0336b9c95da01dc0e67e5f84d24d1c81d3eac2dbe6c4baa47b38c`、controller SHA `38937141f7de97bdb1b36808caa80c860df58909c89b8d3e3ee9259e8534026d`。
+- M static preflight exit 0、6.280 秒，收據 `output/qa/p01_filter_parallel_experiment_design_20261010_m/static_preflight_41c8f203cbe6.json`；network／SQLite／subprocess attempts 均為零。唯一 warm runtime `C:/t/p01cur_rd_c41961fe2f` terminal exit 1，原 source／sealed store 起訖 unchanged、native Job 無活動程序、指定 scratch removed_empty_root；未執行第二次同候選。
+- 本次 child result 已完整保存 17,957 bytes，沒有再次被 4 MiB 上限遮蔽。Oracle return receipt 同時保留 `io_sequence_output_shape_invalid: bounded_reads` 與原 `p01_i_oracle_unexpected_error / Error`：shutil 建立負例副本時報來源／目的 receipt 路徑 Errno 2。沒有有效的新配對效能樣本，P01 原 300 ms Gate 保持未完成。
+- Root 靜態定位摘要錯誤：壓縮後新增的 `io_sequence_samples` 自身也含 bounded_reads key，遞迴投影又將 sample mapping 誤當原始 trace list。下一候選應只辨識完整原 I/O summary、避免再次處理新樣本，不修改內部完整 oracle。第一個報錯的來源 receipt 路徑長 265 字元，host 唯讀檢查檔案存在、2,207 bytes；長路徑複製是待核假設，不把 Errno 2 解讀成原資料遺失。J4／M 原封套及失敗證據保留。

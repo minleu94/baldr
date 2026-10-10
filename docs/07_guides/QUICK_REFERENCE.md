@@ -57,5 +57,5 @@ Update
 - Smart Money 無資料：檢查券商分點下載、合併與 `broker_flows`。
 - 回測 0 交易：檢查整股資金、暖機、門檻與成交量限制。
 - Promote 停用：先保存結果並確認驗證狀態不是 FAIL。
-- Watchlist 直接送回測停用：先保存為選股清單，再從 Research Lab 載入。
+- Watchlist 可直接送 Research Lab 批次回測；若要保存成可重用的 Universe，再另存為選股清單。
 

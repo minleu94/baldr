@@ -22,7 +22,7 @@
 
 ### 1. 數據更新腳本
 
-#### `batch_update_daily_data.py` ⭐ **推薦**
+#### `batch_update_daily_data.py`（CLI 批次替代入口）
 - **功能**：批量更新多個交易日的每日股票數據（使用主模組）
 - **特點**：
   - 使用主模組 `data_module/data_loader.py` 的 `download_from_api()` 方法
@@ -124,8 +124,8 @@
 ## 腳本分類
 
 ### 📊 數據管理腳本
-- `batch_update_daily_data.py` ⭐ - **批量更新每日股票數據（推薦）**
-- `update_daily_stock_data.py` ⭐ - **更新單日股票數據（推薦）**
+- `batch_update_daily_data.py` - 批次更新每日股票數據（CLI 替代入口）
+- `update_daily_stock_data.py` - 更新單日股票數據（CLI 替代入口）
 - `update_all_data.py` - 全面數據更新
 - `update_stock_data.py` - 股票數據更新
 - `merge_daily_data.py` - 數據合併
@@ -145,7 +145,7 @@
 
 ## 日常操作與維修入口
 
-日常資料更新以[每日更新指南](../03_data/HOW_TO_UPDATE_DAILY_DATA.md)為入口；該指南說明目前 UI 流程與經核對的 CLI 替代方式。本頁只列開發／維修腳本，不定義額外的「更新 → 合併 → 重算」固定串接順序，避免重複執行 UI 已整合的 SQLite 同步與技術指標增量更新。
+日常資料更新以[每日更新指南](../03_data/HOW_TO_UPDATE_DAILY_DATA.md)及其中的 UI 流程為入口；該指南另列經核對的 CLI 替代方式。本頁的「CLI 替代入口」只表示可按該指南的條件使用，不代表日常操作優先推薦。執行任何會更新、合併或修復資料的命令前，先確認該入口實際解析到的 `DATA_ROOT`／`OUTPUT_ROOT`；不同腳本支援的設定覆蓋方式不一，應先看本頁上方的資料路徑注意事項與對應操作指南。本頁也不定義額外的「更新 → 合併 → 重算」固定串接順序，避免重複執行 UI 已整合的 SQLite 同步與技術指標增量更新。
 
 資料修復前先查看對應 QA、資料來源與實際腳本行為。`fix_market_index.py` 和 `fix_industry_index.py` 是直接執行修復的入口，不支援 report-only；不可把它們當成檢查命令。需要只讀診斷時，使用對應的狀態檢查或 QA 工具。
 

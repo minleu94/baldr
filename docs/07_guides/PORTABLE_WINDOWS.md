@@ -34,8 +34,6 @@ Runtime 狀態位於 `OUTPUT_ROOT/application_state`；ML研究registry的reposi
 
 新版 Python 與 candidate 的技術分析日誌均寫入 `OUTPUT_ROOT/application_state/logs/technical_calculation.log`，不依工作目錄。資源位置仍有必要差異：Python 固定來源快照的 `ui_qt/`，exe 的 `_internal/ui_qt/`；主視窗版本提示列與 `--launch-info` 明示實體路徑。資料、runtime與研究保存根不因此改變。
 
-新版 Python 與 candidate 的技術分析日誌均寫入 `OUTPUT_ROOT/application_state/logs/technical_calculation.log`，不依工作目錄。資源位置仍有必要差異：Python 固定來源快照的 `ui_qt/`，exe 的 `_internal/ui_qt/`；主視窗版本提示列與 `--launch-info` 明示實體路徑。資料、runtime與研究保存根不因此改變。
-
 ## 子程序與排程
 
 ### exe 與 source 入口的資料優先序
@@ -61,7 +59,6 @@ H20 原 hook 使用 DATA_ROOT 下 `personal/recommendation_h20/activation.json`�
 - 任意深層 OUTPUT_ROOT 的既有 Windows 長路徑限制仍適用；本輪測 Unicode／空格，未保證所有大於 260 字元的保存路徑。
 - 維護者在固定依賴環境執行 `.\.venv\Scripts\python.exe packaging/build_windows.py --commit <完整40字元已驗證commit>`。以 `packaging/windows-dependencies.lock.json` 精確核對Python、CPU與所有distribution；不符即拒絕，不自行安裝／升級。Git archive輸出固定commit快照，再從該快照spec建置；不混dirty工作樹，也不新增worktree。輸出到獨立 `dist/candidate_<commit>_<job>/baldr`，保存版本、commit、依賴鎖／資源SHA與候選receipt，狀態先為built_not_validated。現有 `dist/baldr` 與active_delivery不被自動替換。
 - 同版比較必須使用candidate receipt的source_directory、同一依賴鎖、同一隔離JSON與測試資料，分別跑Python與exe；四用途、模型讀回、保存／返回／新PID、日期、錯誤與取消、資源和子程序都需核對。通過工程比較仍不等於Native真人、真私人模型或正式Task自然run通過。
-- 執行 `.\.venv\Scripts\python.exe packaging/verify_same_version.py --receipt <candidate資料夾/BUILD_INFO.json>`，先核對exe／archive SHA、來源逐檔bytes與精確依賴，再用該固定來源的probe跑兩種形態。新收據與兩組raw log留在 `output/qa/baldr_same_version_<commit>_<job>`；失敗收據保留，不能直接覆寫成通過。推薦synthetic呈現和canonical讀回限制分列，H20呈現fixture不替代原capture資格。
 - 執行 `.\.venv\Scripts\python.exe packaging/verify_same_version.py --receipt <candidate資料夾/BUILD_INFO.json>`，先核對exe／archive SHA、來源逐檔bytes與精確依賴，再用該固定來源的probe跑兩種形態。新收據與兩組raw log留在 `output/qa/baldr_same_version_<commit>_<job>`；失敗收據保留，不能直接覆寫成通過。推薦synthetic呈現和canonical讀回限制分列，H20呈現fixture不替代原capture資格。
 - 建置器限定venv／系統PATH與空userbase，避免外部Poppler ICU遮蔽Windows系統ICU；spec統一已安裝Qt wheel附帶C++ runtime。只收正式程式、必要資源與依賴，不收QA、experiments、FA_Data、私人模型或 `.env`。
 

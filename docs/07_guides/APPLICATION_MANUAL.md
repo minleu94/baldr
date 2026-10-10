@@ -114,16 +114,17 @@ Windows Task 執行 producer；Codex 05:30 晨報／06:20 晚間驗收只讀取�
 在專案根目錄執行：
 
 ```powershell
-py -m venv .venv
+$env:PYTHONUTF8 = "1"
+py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-runtime.txt -c requirements-py311-windows.constraints.txt
 ```
 
-若專案已經有可用的 `.venv`，不需要重新建立。
+新使用者的 Windows x64／Python 3.11 安裝細節、空資料根與驗證步驟見[安裝指南](INSTALL_GUIDE.md)。`requirements.txt` 是相容的完整開發環境入口，不是一般使用者的預設安裝方式。若專案已經有可用且相容的 `.venv`，不需要重新建立。
 
 ### 2.2 資料位置
 
-預設正式資料根目錄：
+`TWStockConfig` 未設定時的相容預設正式資料根目錄：
 
 ```text
 D:/Min/Python/Project/FA_Data
@@ -135,6 +136,8 @@ D:/Min/Python/Project/FA_Data
 $env:DATA_ROOT = "D:\your\data\root"
 $env:OUTPUT_ROOT = "D:\your\data\root\output"
 ```
+
+新使用者請依[安裝指南](INSTALL_GUIDE.md)為行情與輸出各設定自己的空目錄；既有使用者則沿用已確認的原始資料根，不要因新建環境而改指向上述預設位置。
 
 SQLite 主資料庫位於：
 

@@ -1973,3 +1973,24 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `docs/agents/README.md`、`shared_context.md`、`documentation_agent.md`、`tech_lead.md` | 修正有限 pilot 範圍、現有回測指標、Scoped SSOT、Roadmap Hub 與 Codex 自動載入描述。 |
 
 本批未刪除或移動文件、未改寫 QA 收據與 Archive 原文、未執行測試或刷新 Graphify。F03 follow-up 工作樹變更及根目錄 `$null` 未碰觸；所有目錄正文審查與本機最終 repo-wide link／anchor scan 仍未完成。
+
+<a id="coverage-entry-182"></a>
+## 2026-10-10 校正操作指南並同步 Superpowers 封存清冊
+
+`docs/07_guides/` 有 20 個 tracked 文件：18 份全文核讀，`APPLICATION_MANUAL.md` 與 `APPLICATION_MANUAL_SUPPLEMENTS.md` 局部核讀。Manual 局部檢查與新使用者 `INSTALL_GUIDE.md` 對照後，確認新環境需要 Windows x64／Python 3.11、runtime requirements 與 constraints，並為行情及輸出設定自己的空目錄；舊 Manual 範例未指定 Python 版本，且把完整 `requirements.txt` 當安裝步驟、把正式 `DATA_ROOT` 預設位置直接當標準說明。另確認速查表錯述 Watchlist 不可直接送 Research Lab 批次回測、scripts 索引將 CLI 替代入口標成「推薦」但日常操作另指定 UI／指南，以及可攜指南有兩段逐字重複。修正內容並保留既有資料根安全界線與腳本參數差異警告。
+
+`docs/superpowers/` 全目錄角色分類為 167 路徑：README 1、plan 111、spec 53、prompt 2；包含 96 個歷史路徑 stub、69 份完整歷史原文、1 份現行計畫及 README。96 個 stub 的 136 個 Archive 連結全部有效。Archive manifest 有 167 列與 165 個唯一歷史來源路徑，兩筆 Scheduler Approval plan/spec 是明示的重複列。README／Archive README 已記錄 2026-10-09 封存的 SQLite 分頁、Post-V1 importer、V1.1 Decision Workflow 及 V2.2 simulated-phase 四組 plan/spec；逐檔 manifest 仍有 7 列寫「同原路徑」，本次改為舊路徑 stub → Archive 原文。對 69 份歷史正文未作逐篇全文審查。
+
+另為 `2026-06-23-testing-qa-agent-super-healthcheck-roadmap.md` 增加日期化歷史快照提示，說明舊完成度、測試數與可複製接手 prompt 都不代表現況或現在的執行授權；計畫正文保留，現況轉看 Snapshot／QA／Agent 文件。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增列 `07_guides/` 20 份逐檔分類與閱讀深度，並記錄 Guide 與 Superpowers 審查發現及未覆核範圍。 |
+| `docs/07_guides/QUICK_REFERENCE.md` | 校正 Watchlist 可直接送 Research Lab 批次回測的說明。 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 對齊新使用者安裝指南的 Python／依賴流程，區別正式根目錄預設與新使用者自有空資料根。 |
+| `docs/07_guides/scripts_readme.md` | 把腳本明確標為 CLI 替代入口，補充執行前核對實際解析的資料根。 |
+| `docs/07_guides/PORTABLE_WINDOWS.md` | 刪除兩段逐字重複文字，保留一份原操作說明。 |
+| `docs/09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md` | 修正 7 筆已封存 plan/spec 的來源 stub 與 Archive 原文位置欄位。 |
+| `docs/superpowers/plans/2026-06-23-testing-qa-agent-super-healthcheck-roadmap.md` | 加註 2026-06-23 歷史快照範圍，避免舊狀態與接手 prompt 被當作現況。 |
+
+本批沒有刪除或移動文件，未修改 QA 收據、Archive 原文或測試結果；未執行測試、未刷新 Graphify。另一項 F03 follow-up 工作樹變更及根目錄 `$null` 均未納入或覆寫。

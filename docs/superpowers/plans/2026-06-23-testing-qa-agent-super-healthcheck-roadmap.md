@@ -1,5 +1,7 @@
 # Testing QA Agent Super Healthcheck Roadmap Implementation Plan
 
+> **歷史計畫快照（2026-06-23）**：下方「目前完成度」、測試數、核取清單與可複製接手 prompt 都記錄當時上下文，不代表目前進度，也不構成現在的執行授權。現況請看 [Project Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[QA 主題索引](../../06_qa/README.md) 與現行 Agent／操作文件；接手前先重新確認任務範圍。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把「非破壞式超級 UI / release healthcheck 腳本」與「Testing / QA Agent 調度員」整合成一個可詢問、可路由、可執行、可解讀、可交接的 QA 小員工。

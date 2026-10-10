@@ -838,3 +838,11 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - Root 完整審閱 K controller diff，固定 manifest SHA `67fcc4f90c15fca1e4f0707f8bac6c61765194c11bc89c5e52026626b70fa9c9`。靜態 preflight exit 0、6.442 秒；收據 `output/qa/p01_filter_parallel_experiment_design_20261010_k/static_preflight_ec5fd3e22c7a.json`。沒有 producer、SQL、子程序或產品模組載入；此項不是效能驗收。
 - 實際 warm_01 attempt `C:/t/p01cur_rd_c68a787540` 終態 exit 1。`child_result.json` 保留 `p01_i_oracle_unexpected_error`：固定 runtime 的 `DailyMarketTechnicalUniverseV4ReadSelection` 沒有 `to_dict`，oracle 在建立完整結果比較紀錄時失敗；沒有可接受的新配對樣本。`supervisor_result.json` 記 source/store 起訖 unchanged、native Job 已無活動程序；指定 scratch 已清空並移除。原 K/J2 封套保持不變，新 J3/L 只修 typed serialization 與對應 pins，待審待跑；300ms Gate 未關閉。
 - F12 T24 僅在全新 QA sibling 實作。兩位 Luna max 已獨立核對 worker 的精確 ownership、thread-local proof、target RO 與 marker 驗證短 RW lock；主 UI one-shot proof 保持獨立。要求建構與重載 workers 都自然結束並處理 native-finished queued slots，再 shutdown、負向 probes、role close；task-result signal 或非同步 cancel 不算排空。尚未取得 T24 執行結果，完整 Main 仍待。
+
+### 2026-10-10 Worker 身分與排空的獨立審查基準
+
+- Root 已完整讀取獨立靜態收據 `output/qa/f12_worker_scope_review_20261010/review_receipt.md`（繁中修正版 SHA `68581499e129cb349659721a8235aab4aa063bb005c85075f4b063c484ae01af`）。收據以 T23 固定來源、候選及實際 caller 診斷為基準；不是新的 runtime 通過。
+- 每個實際收藏 list worker 的 `get_stocks` 有五個 target RO callsite（marker schema、history schema、history inventory、current schema、current inventory），另有一次 target-only writer-exclusion 短 RW lock。四類邏輯區域不能當成只有四次連線；T24 必須全部精確核對，沒有通用 RW 或 activation publish 權限。
+- Root 另實讀 PersonalWatchlistService：第 80 行建立同實例 `RLock`，第 283 行先取得此鎖再執行 resolve、marker guard 與資料讀取。兩個控制項使用同一 service 的背景讀取會自然排隊；不把同時啟動 worker 本身判成產品缺陷，也不在 QA 加額外序列化掩蓋正式流程。
+- Native finished、queued cleanup、兩控制項無 worker／pending refresh 是撤除守門前的必要證據；result signal 或非同步 cancel 不算排空。T24 仍在隔離候選實作，待完整 diff 與獨立審查後才執行。
+- P01 已確認固定 Selection 為 13 個 dataclass fields，SelectionPage wrapper 為 6 個，兩者沒有 to_dict。新 J3/L 修正需明示逐欄與公開 property、reader seal 身分、inner Page／原 Query payload 及每組完整 typed 結果比較，不能退化成只比摘要或股票代碼。尚無新的效能結果。

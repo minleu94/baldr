@@ -1,3 +1,5 @@
+> **C1 子階段歷史狀態**：本文中的 `C1/Wave 6 BLOCKED` 或 reopened 僅代表 U1 切片當時狀態；後續 [C1 checkpoint](C1_CHECKPOINT.md) 記錄 C1 Engineering PASS、Wave 6 released。R014／R017／R020 與 symlink/reparse 限制仍以 checkpoint 為準；U1 範圍結果保留，不構成產品或生產授權。
+
 # C1 Contract Repair Implementation Report
 
 - **狀態：** `U1_ACCEPTED_FOR_U2`

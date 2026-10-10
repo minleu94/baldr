@@ -376,3 +376,70 @@
 **2026-10-10 第十六增量：** Coverage History Entry 198 為 10/10 複合研究待真人驗收收據補上 QA README 與 Product/UX 索引入口；並在 Superpowers 主題表補列 Wave 1／2A、Terra V0 與舊自動化提案，原 plan/spec 及其 manifest 雜湊未改。P0 Register 的 DEV-66 limited 決議與 8/28 machine audit limited=0 差異仍待底層 registry 調和。QA／Archive 與 Architecture 大量證據原文仍未逐篇全文閱讀；未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-10 第十七增量：** Coverage History Entry 199 將 Manual 的 TWSE no-data 分類條件對齊程式與資料指南，並為舊 system-Python 排錯段、CSV mapping 範本列及回歸基準策略標出界線；Architecture §8 的 2026-06 資料筆數改列歷史快照。小型資料／指南目錄完成逐篇或逐路徑核對，未把文件內記載的冷封存／quarantine 主張視為重新驗證證據。未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+<a id="named-review-batches-20261010"></a>
+## 2026-10-10 新增具名核讀清單（Entry 207–208）
+
+以下清單逐檔記錄本輪新增的完整閱讀證據，方便後續按路徑去重。由於先前 QA 與 Archive 彙總批次未保存完整逐檔 manifest，這些清單**不直接加進既有全文／未讀累計**；舊總數維持原值，待可重建的路徑基線後再調整。
+
+### `docs/09_archive/` 根層：本批全文核讀 20 份
+
+| 路徑 | 角色／處理 |
+|---|---|
+| `DATA_REBUILD_GUIDE_HISTORY.md` | 舊全量重建操作；已加現行操作入口與不可直接執行提示。 |
+| `DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md` | 日期化 QA 快照；既有檔首已限定時點。 |
+| `EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md` | 工程演練收尾證據；保留原範圍。 |
+| `EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md` | E2E 工程驗收證據；保留原範圍。 |
+| `FORMAL_DATA_RECONCILIATION_2026_08_06.md` | 正式資料對帳日期快照；不推論現況。 |
+| `FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md` | 舊 QA 工具鏈收束；已加測試數字／命令的時點界線。 |
+| `GATE_1_ADVICE_CLOSEOUT_2026_07_12.md` | Bounded Advice Contract closeout；已限定驗收範圍。 |
+| `GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md` | 純工程收尾證據；原文已有工程／產品 Gate 範圍界線。 |
+| `GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md` | 歷史文件裁決；已將 `Snapshot=current` 限定為當時快照。 |
+| `HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md` | ML shadow 驗收快照；保留既有日期與限制。 |
+| `LUNA_B_ENVIRONMENT_2026_09_07.md` | 舊環境／套件版本快照；已連回 requirements 與安裝指南。 |
+| `LUNA_PROMPT_A_DATA_ML_2026_09_07.md` | 舊工作提示與授權；已標示不可重送。 |
+| `LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md` | 舊工作提示與授權；已標示不可重送。 |
+| `LUNA_PROMPT_C_UX_2026_09_07.md` | 舊工作提示與授權；已標示不可重送。 |
+| `OWNER_PRODUCTION_READINESS_2026_08_06.md` | Owner readiness 日期快照；保留原範圍。 |
+| `P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md` | 授權條款 probe 證據；保留原結論與日期。 |
+| `P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md` | 候選與 owner handoff 快照；保留原範圍。 |
+| `PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md` | 歷史 PIT repair 工具／coverage 收據；保留限制。 |
+| `POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md` | 人工核准清單；原文已區分尚待人工核准。 |
+| `V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md` | 舊工作提示與 Git 授權；已標示不可重送或沿用。 |
+
+### `docs/06_qa/` 葉文件：本批全文核讀 8 份
+
+| 路徑 | 核對結果／處理 |
+|---|---|
+| `BALDR_1000_STOCK_PERFORMANCE_NEXT_GATE_20261009.md` | 813／1208／879 ms 屬不同固定來源／操作基線，不與 Snapshot 六角色矩陣數字混為一談；保留原 scope。 |
+| `BALDR_A01_BBANDS_UPPER_20261006.md` | 後續中央整合已接續部分 wiring；已補範圍界線。 |
+| `BALDR_A02_H20_GROSS_MODEL_20261006.md` | 後續整合已有 H20 consumer／lineage wiring 與 bounded readback；已補資格界線。 |
+| `BALDR_A03_PERSONAL_MODEL_DAILY_20261006.md` | 舊中央 caller 待辦已由後續收據接續；已補命令時點及授權界線。 |
+| `BALDR_B01_HISTORICAL_LABEL_BOUNDARY_20261006.md` | 固定 lane 回退命令；已補重核工作樹與所有權提醒。 |
+| `BALDR_B03_MARKET_HOME_20261006.md` | Manual 待辦已由手冊附冊承接；已補路由，保留真人／Native 驗收限制。 |
+| `BALDR_B04_SELECTION_WATCHLIST_20261006.md` | 早期 session-only 狀態被同文後段持久化 API 更新；已補時序導讀。 |
+| `BALDR_B14_SHADOW_CONTROL_20261006.md` | 合成 control-port 證據與條件式 Gate 一致；保留原 scope。 |
+
+QA 既有 205 全文／4 局部／344 未讀與 Entry 203 的 36／6／511 分批數字互不相符，且舊清冊沒有足夠路徑資料解決重疊；本批 8 份只記在具名清單，不改 aggregate。受保護 QA 文件未讀、未搜尋、未 diff。
+
+### `REFACTOR_REPORTS/`：本批全文核讀 13 份
+
+| 路徑 | 判讀／處理 |
+|---|---|
+| `C1_CODEC_REPAIR_IMPLEMENTATION_REPORT.md` | U2 子階段 `BLOCKED` 為舊整體狀態；已補後續 checkpoint。 |
+| `C1_CONTRACT_REPAIR_IMPLEMENTATION_REPORT.md` | U1 子階段 `BLOCKED` 為舊整體狀態；已補後續 checkpoint。 |
+| `C1_CROSS_BOUNDARY_READINESS_REPORT.md` | 合成切片的 reopened 狀態過時；已補整體 Gate 時點。 |
+| `C1_FORWARD_CONSUMER_READINESS_IMPLEMENTATION_REPORT.md` | U5a 範圍保留，整體 blocked 狀態已更新路由。 |
+| `C1_INVOCATION_CAPTURE_IMPLEMENTATION_REPORT.md` | U3 範圍保留；已補後續 C1 Gate 與 R014 限制。 |
+| `C1_PERSISTENCE_QUERY_IMPLEMENTATION_REPORT.md` | U4 範圍保留；已補後續 checkpoint。 |
+| `C1_ML_FIXTURE_INDEPENDENT_REVIEW.md` | 僅 fixture 複審，不裁定整體 Gate；已補路由。 |
+| `C1_ML_FIXTURE_REPAIR_REPORT.md` | 僅 synthetic fixture 修正；已補路由。 |
+| `C1_CONTRACT_COMPLETENESS_FINDING.md` | 明確日期化的歷史 finding；原文保留。 |
+| `C1_ML_ABI_RECEIPT_READINESS_REPORT.md` | 已有日期／範圍警語；原文保留。 |
+| `C1_REOPEN_DISPATCH_BASELINE.md` | 明確日期化的 dispatch baseline；原文保留。 |
+| `C1_CONSUMER_READINESS_TEST_MATRIX.md` | 與目前 checkpoint 一致；原文保留。 |
+| `C1_VALIDATION_PLAN.md` | 已明確指向最終 rerun／checkpoint；原文保留。 |
+
+原先 Architecture／REFACTOR_REPORTS 累計也缺少可用於交叉去重的完整路徑基線，本批不重算舊總數。以上只補日期、範圍及權威路由，未改寫驗收證據；本批未刪除／搬移文件、未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+**目前進度（Coverage History Entries 207–208）：** 新增具名全文核讀清單 41 份（Archive 根層 20、QA 葉文件 8、REFACTOR_REPORTS 13）；因舊累計缺少可去重的逐檔清單，既有全文／未讀總數維持不變。本批修改 24 份原件的時點、範圍或權威提示，另更新 Archive README、Coverage History 與本矩陣。沒有刪除／搬移文件或資料；測試、最終全 repo links／anchors scan 與 Graphify 刷新尚未執行。

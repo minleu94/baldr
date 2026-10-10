@@ -1,5 +1,7 @@
 # BALDR B01-H6/H7 歷史 label 契約邊界裁決（2026-10-06）
 
+> **歷史 lane 操作警示（2026-10-10）**：本文的 rollback 命令只屬固定 base／隔離 worktree 的當時證據，不可直接套用到目前工作樹。任何回退前都要重新核對檔案所有權與未提交變更；現況看 [中央 closeout](BALDR_CLOSEOUT_STATUS_20261006.md)及[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 本包僅裁決 H6/H7，承接 [中央精確表](BALDR_CLOSEOUT_STATUS_20261006.md)。固定 base `5d9ddf9d611bd6e117d75d0b4fdbf8751ee2e5a0`，隔離 branch `lane/baldr-b01-h6-h7-20261006`，worktree `output/worktrees/baldr-b01-h6-h7`。主 owner 為 `01a11020-88c2-7506-acc3-d51ecb674032`。修改範圍僅 guard、CLI tests 與本文件；shared DTO、app reader、其他 production、source_id 待批准三檔與 global aggregate assertion 均未修改。
 
 ## 原始來源與裁決

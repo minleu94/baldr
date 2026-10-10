@@ -1,3 +1,5 @@
+> **範圍導讀（2026-10-10）**：本文只複審合成 fixture 修復，不裁定目前 C1／Wave 6 Gate；整體工程 Gate 與未完成限制看 [C1 checkpoint](C1_CHECKPOINT.md)。
+
 # C1 ML Fixture Repair 獨立複審
 
 REVIEW_STATUS: PASS

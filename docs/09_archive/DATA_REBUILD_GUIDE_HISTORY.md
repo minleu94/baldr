@@ -1,5 +1,7 @@
 # 數據重建指南
 
+> **歷史操作警示（2026-10-10）**：本文保存舊版 `--force-all` 全量重建流程與硬編碼資料路徑；不得直接作為目前修復或全量重建指引。現行資料操作請先查[每日資料更新指南](../03_data/daily_data_update_guide.md)與[操作手冊](../07_guides/APPLICATION_MANUAL.md)，目前狀態以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 為準。
+
 當 `daily_price` 數據完整，但其他數據（`stock_data_whole.csv`、`*_indicators.csv`、`all_stocks_data.csv`）需要重新生成時，請按照以下步驟執行。
 
 ## 數據流程

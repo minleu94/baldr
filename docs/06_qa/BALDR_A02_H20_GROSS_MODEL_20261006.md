@@ -1,5 +1,7 @@
 # A02：私人 H20 毛報酬契約與受控讀模型
 
+> **後續整合範圍（2026-10-10）**：本文保存 A02 的隔離合約與 reader 交付；後續收據記錄 H20 consumer、lineage wiring 及十股真保存讀回。這仍不等於正式來源資格、PIT／自然成熟或產品啟用 Gate 通過；現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)與[中央整合收據](BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)。
+
 本包已完成隔離工程：既有 calibration 的 H20 absolute gross return head → 精確 artifact／lineage／runtime pins → 原 same-bytes loader → typed 整數 bp 輸出。最終 focused **64 passed／3.92s**；原 loader 相鄰 **16 passed／0.66s**；三檔 targeted mypy、三檔 compile 與既有 quant guard 通過。僅合成 artifact，沒有載入三個來源未證候選、真 fit、正式 Task 或正式產品啟用。
 
 固定 base：`36dc1baf740007834f385ff0f654c7fe268a36f3`。獨立 branch：`codex/baldr-a02-h20-gross-20261006`；worktree：`output/worktrees/baldr-a02-h20-gross`。本包新增四檔，原 trainer／loader／config／main／consumer／Task／Manual／原 plan 均未修改。

@@ -1,5 +1,7 @@
 # 中央完整模型名單／自然 caller／BB UI 整合
 
+> **歷史狀態更正（2026-10-10）**：本文「唯一仍受批准阻擋」一節保留的是 BBP01 核准與採入前的舊等待狀態，已被上方 2026-10-06 核准、cherry-pick 成功及同版測試收據取代。該節不表示目前仍待批准；現行 C1／Wave Gate 以架構 checkpoint、目前產品狀態以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 判讀。原始時間順序與證據保留。
+
 ## 最終四包同版增量（2026-10-06 17:50 UTC 真人批准後）
 
 父層轉交直接真人 `Sentinel_e4836b4d8b048191b01a788ab618f8ce` 對 exact BBP01 本機 dev 採入答覆「當然，可以合併」。中央先保存 `930c5c59`，再原 cherry-pick 一次成功：`b7830889437365df7ec7d9bbb399cf1895686ab6` → `5eefe3317e01f92f8dca1ce343e2df46a070d396`。先前審核阻塞已解除，以下原三包時點的等待文字保留為歷史。
@@ -51,7 +53,9 @@ raw／JUnit／compile清單／metadata／新程序結果保存在 ignored `outpu
 
 下一原自然排程 **2026-10-07 12:45 UTC＝Pacific05:45＝Taipei20:45**，父層唯讀驗收新 raw-cycle／terminal／manifest／全原 prediction pins。未手動trigger，未宣稱下一run成功。自然caller接線合成可用；其真登記、成熟與品質尚待原自然週期。原Stage1done/8partial、UX2done/22partial、七有限closed UX03/04/05/06/09/15/17與F1 18.6219658% vs20%／Journey8.109s vs8s保持。
 
-## 唯一仍受批准阻擋的工程
+## 採入前仍受批准阻擋的歷史狀態
+
+> 本節記錄核准前的等待狀態；上方核准及採入收據是後續結果，請勿將本節讀成目前阻塞。
 
 BBP01 `b7830889437365df7ec7d9bbb399cf1895686ab6` 已交四檔44pass，仍未採入。先前自動審核拒 `git cherry-pick b7830889437365df7ec7d9bbb399cf1895686ab6`，將no mainmerge解讀為禁止localdev採入；父層已向使用者詢問。中央未重試、未抽檔、未間接採入。須父層提供直接human批准後，才原工具一次localdev cherry-pick，然後真v3 owner→parent→acceptance→saved/newprocess小型delta；不重44或全面gate。此阻塞不取消已完成三包接線，不宣稱BB全母體日常完整鏈done。
 

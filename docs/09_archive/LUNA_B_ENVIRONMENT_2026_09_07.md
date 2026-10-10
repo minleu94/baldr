@@ -1,5 +1,7 @@
 # LUNA B 開發環境與依賴基線
 
+> **日期化環境快照（2026-10-10）**：套件版本與既有 `.venv` 檢查只代表 2026-09-07 的環境，不是目前安裝狀態或 clean-install 驗收。現行依賴與安裝流程看 [requirements-runtime.txt](../../requirements-runtime.txt)及[安裝指南](../07_guides/INSTALL_GUIDE.md)；專案目前狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 > 目的：把 runtime、QA/development 與已驗證版本分開，避免把一次性的 `pip freeze` 誤當成可重建的專案需求。本文是 B 線工程環境紀錄，不改寫產品狀態或正式資料政策。
 
 ## 1. 需求檔關係

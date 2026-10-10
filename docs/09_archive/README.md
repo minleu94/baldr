@@ -18,12 +18,25 @@
 | 架構與券商分點歷史原件 | [目標架構封存包](target_architecture_2026_09_22/README.md)、[券商分點封存包](broker_branch/README.md)。 |
 | 歷史 QA／完成收據 | [封存文件清單](#archive-document-catalog)；仍有待驗收或 Gate 的 QA 從[現行 QA 導覽](../06_qa/README.md)進入。 |
 | 舊 plan/spec 與執行脈絡 | [開發計畫與規格追溯](#archive-plans-and-specs)；目前明確進行中的 plan 看 [Superpowers README](../superpowers/README.md)。 |
+| 舊提示詞、重建命令與日期化快照 | [Archive 根層直開風險導覽](#2026-10-10-archive-root-direct-open-review)。 |
 | 2026-10-06 文件入口整理前的快照 | [治理入口原文快照](#governance-entry-snapshots)。 |
 | 舊版 Multi-Agent workflow（2026-10-09 前） | [Agent 工作流歷史快照](#2026-10-09-agent-workflow-pre-dev-history)。 |
 | Task Loop 01–07 歷史 handoff | [Task Loop 歷史入口](#task-loop-handoffs)。 |
 | Application Manual 舊版開發／候選功能紀錄 | [2026-10-03 至 10-08 快照](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)；原標題在手冊保留舊連結導引。 |
 
 > 封存計畫中的待辦或日期化狀態不會自動成為目前優先事項或執行授權；判讀目前狀態請回到 Snapshot、對應 QA 與現行 Roadmap。
+
+<a id="2026-10-10-archive-root-direct-open-review"></a>
+## 2026-10-10 Archive 根層直開風險導覽
+
+以下 20 份根層原件已全文核讀，全部是歷史操作、QA／工程收據、環境快照或舊任務提示，不是目前狀態權威。前 9 份在原件檔首補了時點、範圍或授權提醒；其餘文件保留原文與既有時間／範圍限制。現況與操作分別回到 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md)、[每日資料更新指南](../03_data/daily_data_update_guide.md)及[現行 QA 導覽](../06_qa/README.md)。逐檔清單與核讀限制見 [Coverage History Entry 207](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-207)。
+
+| 類別 | 已核讀原件 | 處理 |
+|---|---|---|
+| 舊操作／環境基線 | [資料重建指南](DATA_REBUILD_GUIDE_HISTORY.md)、[Luna B 環境基線](LUNA_B_ENVIRONMENT_2026_09_07.md) | 已加不可直接作為現行操作／安裝依據的檔首提醒。 |
+| 舊工作提示／授權 | [Luna A](LUNA_PROMPT_A_DATA_ML_2026_09_07.md)、[Luna B](LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md)、[Luna C](LUNA_PROMPT_C_UX_2026_09_07.md)、[V4 三線接手提示](V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md) | 已標示舊工作分工與授權不可重送或沿用。 |
+| 舊裁決／工具鏈／Gate 收據 | [Gemini 文件交叉稽核裁決](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Full App Healthcheck 收束](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[Gate 1 Advice closeout](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md) | 已限定日期及有限工程範圍，並連回現行 Snapshot／Roadmap／QA。 |
+| 其他歷史證據與核准清單 | [資料刷新顯示 QA](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Evidence Rehearsal engineering closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)、[Evidence Rehearsal E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)、[正式資料對帳快照](FORMAL_DATA_RECONCILIATION_2026_08_06.md)、[Gate 2–7 engineering closeout](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)、[ML shadow MVP closeout](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)、[Owner production readiness](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license evidence](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[PIT repair closeout](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[scheduler approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md) | 保留明確日期與範圍，不將舊證據推論為目前狀態或核准。 |
 
 ## 2026-10-10 Application Manual 日期化工程快照
 

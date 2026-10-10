@@ -1,5 +1,7 @@
 # Gate 1 Daily Usable Advice Closeout
 
+> **歷史驗收範圍（2026-10-10）**：本文的「完成」限定於 2026-07-12 的 read-only／bounded Advice Contract 工程交付，不代表目前 Gate 1 產品驗收或 Advice 有效性。現行產品方向與工程 Gate 分別看 [Product Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)及[6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)，目前狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 > 日期：2026-07-12
 > 結論：**完成（read-only / bounded Advice Contract）**
 > 非目標：投資有效性、broker execution、production scheduler、DB write、lifecycle action、P0 source acceptance。

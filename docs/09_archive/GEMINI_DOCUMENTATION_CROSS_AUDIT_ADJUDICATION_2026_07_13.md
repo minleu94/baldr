@@ -1,5 +1,7 @@
 # Gemini Repository 文件交叉稽核裁決
 
+> **歷史裁決快照（2026-10-10）**：本文的 `Snapshot=current`、週進度與結論只表示 2026-07-13 稽核基線及當時證據，不是目前狀態或優先序。現況請看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)及對應現行 Roadmap；本文原裁決與日期化 evidence 保留供追溯。
+
 > 裁決日期：2026-07-13
 >
 > 稽核基線：`dev` / `7c173b0`（修補前），並追溯 `4f72766`、`4b7169e`、`873fb61` 與 `74c2eac`

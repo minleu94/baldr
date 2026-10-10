@@ -1,5 +1,7 @@
 # Full App Healthcheck / Testing QA Agent 收束報告 2026-06-23
 
+> **歷史 QA 快照（2026-10-10）**：本文的「目前」、測試數量、Track 狀態與命令只代表 2026-06-23 至 06-30 的工具鏈交付；不代表目前 test suite 或 release gate 狀態，也不是現行執行授權。現行 QA 導覽看 [QA README](../06_qa/README.md)及[測試路由矩陣](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。
+
 > 範圍：本文件總結非破壞式 Testing / QA Agent + Full App Healthcheck Runner 路線在 Track A-E 完成後的狀態。這是一份收束與交接文件，不是新的實作計畫。
 
 ## 目前狀態

@@ -1,4 +1,4 @@
-> **C1 歷史切片狀態**：本文只保存個別修補／審查時點的範圍與 evidence，不代表目前整體 Gate 狀態，也不構成新的工作授權。整體 C1 裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，目標設計權威看 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
+> **C1 子階段歷史狀態**：本文的未通過／blocked 描述只代表 U3 invocation capture 切片當時狀態；後續 [C1 checkpoint](C1_CHECKPOINT.md) 記錄 C1 Engineering PASS、Wave 6 released。R014 真正 wrapper parity 仍未完成；本文 U3 的窄範圍結果保留，不構成產品或生產授權。
 
 # C1 U3 Invocation Capture Implementation Report
 

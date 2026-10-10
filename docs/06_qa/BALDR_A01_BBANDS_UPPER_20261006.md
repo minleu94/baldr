@@ -1,5 +1,7 @@
 # A01 BBANDS30 上軌工程驗證（2026-10-06）
 
+> **後續整合範圍（2026-10-10）**：本文的中央接線待辦屬 A01 lane 當時狀態；後續整合收據記錄 A01/A03 採入及 H20 consumer 接線。這不代表正式來源、PIT、自然成熟或產品 Gate 通過；現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)與[中央整合收據](BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)。
+
 固定 base：`36dc1baf740007834f385ff0f654c7fe268a36f3`。隔離分支：`lane/baldr-a01-bbands-upper-20261006`。本包完成有限 `close > BBANDS30 upper` 的版本化來源、保存及研究投影；驗證使用隔離 synthetic fixture，不作正式產品或模型資格證據。
 
 ## Ownership 與來源

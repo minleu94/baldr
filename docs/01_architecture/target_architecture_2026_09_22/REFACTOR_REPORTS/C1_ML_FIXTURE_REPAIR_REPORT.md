@@ -1,3 +1,5 @@
+> **範圍導讀（2026-10-10）**：本文只記錄 calibration integration 測試的日期與合成 fixture 修正，不裁定目前 C1／Wave 6 Gate；整體工程 Gate 與未完成限制看 [C1 checkpoint](C1_CHECKPOINT.md)。原本 fixture 與 production guard 限制保留。
+
 # C1 ML Fixture Repair Report
 
 ## 結果

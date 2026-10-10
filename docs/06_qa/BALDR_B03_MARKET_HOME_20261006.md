@@ -1,5 +1,7 @@
 # B03 首頁與市場判讀限定收據（2026-10-06）
 
+> **待辦時點說明（2026-10-10）**：本文提出的中央 Manual 更新，後續已由 [操作手冊補充](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md)記錄首頁用途與股號搜尋；此 lane 的 Native／真人接受仍維持原收據所列範圍，不因 Manual 更新而升格。現行操作看[操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+
 主整合 owner：thread `01a11020-88c2-7506-acc3-d51ecb674032`。本 lane 為 `lane/baldr-b03-market-home-20261006`；base `a42b2cb9df44b2fd928104ae02992b0e557c2a39`，工作樹 `output/worktrees/baldr-b03-market-home`。本地 commit 的完整 HEAD 與 receipt hash 由同目錄 `output/qa/baldr_b03_20261006/handoff.json` 及交接訊息提供，避免文件嵌入自身 commit hash。
 
 沿唯一原計畫第 4 節三層閱讀、第 5 節搜尋／返回、第 6.1 節首頁及 Astra B03；未另建 dashboard、搜尋引擎或研究計算。原 plan 唯讀 SHA256：`9730be99e060ea467827a532abb24a2342db1a3ecc2e5f756d0a979ee2a28543`。既有七項有限工程接受不重開，整項 UX03／13 及 Native／真人未因此升 done。

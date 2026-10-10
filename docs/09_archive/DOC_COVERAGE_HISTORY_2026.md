@@ -2415,3 +2415,35 @@ QA 唯讀複核另確認：四份舊文件治理報告是相容／歷史導引�
 | `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 96/96 全文閱讀狀態及 9 份直開警語完成情形。 |
 
 9 份原始 bytes／SHA-256 與舊 manifest 清冊相符；移除新增警語後，9 份歷史正文逐位元組與原始內容一致；附記中的目前 bytes／SHA-256 也與工作檔實算相符。未刪除／搬移文件、未改原始資料；未跑測試、Graphify 或最終 repo-wide links／anchors scan。`$null` 未納入。
+
+<a id="coverage-entry-207"></a>
+## 2026-10-10 全文核讀 Archive 根層 20 份並補高風險直開提示
+
+全文核讀 `docs/09_archive/` 根層 20 份歷史原件，逐檔清單及角色見 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md#named-review-batches-20261010)。舊 Archive 彙總的 57 份全文未提供逐檔 manifest，無法證明本批 20 份均未包含在舊數字中；因此本 Entry 記錄路徑證據，但不調整全文／待讀總數。
+
+| 文件 | 處理 |
+|---|---|
+| `DATA_REBUILD_GUIDE_HISTORY.md` | 對舊 `--force-all` 全量重建與硬編碼資料根加歷史操作提醒，導回目前資料更新指南、Manual 與 Snapshot。 |
+| `LUNA_PROMPT_A_DATA_ML_2026_09_07.md`、`LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md`、`LUNA_PROMPT_C_UX_2026_09_07.md`、`V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md` | 對舊工作分工與可重送提示加入非現行任務／授權警語。 |
+| `GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md` | 將 `Snapshot=current` 與 weekly 狀態限定為 7/13 快照。 |
+| `FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md` | 將測試數字、工具鏈狀態與命令限定為 6/23–6/30 歷史 QA。 |
+| `GATE_1_ADVICE_CLOSEOUT_2026_07_12.md` | 將「完成」限定為當日 read-only／bounded Advice Contract 工程交付。 |
+| `LUNA_B_ENVIRONMENT_2026_09_07.md` | 將套件版本限定為日期化環境快照，導回目前 requirements 與安裝指南。 |
+| `DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md`、兩份 Evidence Rehearsal closeout、`FORMAL_DATA_RECONCILIATION_2026_08_06.md`、`GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md`、`HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md`、`OWNER_PRODUCTION_READINESS_2026_08_06.md`、兩份 P0 evidence／MOPS packet、`PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md`、`POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md` | 保留具日期與範圍的歷史證據；未推論為目前狀態或操作授權。 |
+| `docs/09_archive/README.md` | 增加根層 20 份文件索引、風險分類及現況路由。 |
+
+原文與歷史證據保留；未刪除／搬移文件或原始資料，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-208"></a>
+## 2026-10-10 核讀 QA／REFACTOR_REPORTS 並校正時點與範圍
+
+本批全文核讀 8 份 QA 葉文件與 13 份 `REFACTOR_REPORTS` 文件。逐檔名單、處理與計數限制見 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md#named-review-batches-20261010)。舊 QA 205/4/344 與 Entry 203 的 36/6/511 不一致，報告資料也不足以對 REFACTOR_REPORTS 舊 cumulative total 做逐檔去重；本批只登錄具名閱讀證據，不改 aggregate。
+
+| 範圍 | 修訂／判讀 |
+|---|---|
+| `docs/06_qa/` | A01／A02／A03 加入後續 wiring 與資格範圍提示；B01 加入 lane rollback 前重核提醒；B03 導回已更新的 Manual supplements；B04 明示同文件後段持久化 API 取代早期 session-only 狀態。8 份核讀中，千檔效能數據保留為獨立基線、B14 保留合成證據限制。 |
+| `BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md` | 將「唯一仍受批准阻擋」段落改標成採入前歷史狀態，因其與上方已核准／cherry-pick 成功收據直接矛盾；原等待文字與時間順序保留。 |
+| `REFACTOR_REPORTS/` | 8 份 C1 子階段／fixture 報告補日期或整體 Gate 路由；另 5 份已有充分日期／範圍或與 checkpoint 一致，保留原文。整體 C1 Engineering PASS、Wave 6 released 以 `C1_CHECKPOINT.md` 為 gate 依據，R014／R017／R020 及 symlink/reparse 限制仍保留。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增加本批 8＋13 份具名核讀清單；未用不可去重的舊彙總數量推算完成總數。 |
+
+原始 QA／驗收正文與數據保留，未刪除／搬移文件或原始資料；未執行測試、Graphify 或最終 repo-wide links／anchors scan。受保護文件內容未讀、未搜尋、未 diff；根目錄 `$null` 未納入。

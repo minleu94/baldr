@@ -1,6 +1,8 @@
 # Prompt B：架構、冗餘與測試治理（LUNA MAX）
 
-以下全文可貼入獨立 worktree 的新對話。模型選 `gpt-5.6-luna`、`max`。
+> **歷史任務提示警示（2026-10-10）**：本文保存 2026-09-07 的舊工作分工與長時間實作授權；不要直接貼入新對話或沿用其中的 owner、worktree、測試治理及提交指令。現行任務只依使用者當前指示與根目錄 `AGENTS.md`；目前狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
+當時用途說明（已失效）：原文件曾稱以下內容可貼入獨立 worktree 的新對話；請以檔首歷史提示警示為準。模型選 `gpt-5.6-luna`、`max`。
 
 ---
 

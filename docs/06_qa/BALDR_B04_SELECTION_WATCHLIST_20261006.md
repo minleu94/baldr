@@ -1,5 +1,7 @@
 # B04 選股來源與收藏查看狀態限定交付（2026-10-06）
 
+> **文件內時序導讀（2026-10-10）**：前段「僅本次視窗」的收藏查看狀態是較早切片；本文後段「第二次委派」記錄的持久化 Watchlist revision API 才是後續結果，且與[操作手冊](../07_guides/APPLICATION_MANUAL.md)目前說明一致。本文仍只證明該 lane 的限定交付，不代表整體 UX／產品 Gate 完成。
+
 本文件是 lane QA／整合交接，不取代唯一主 plan `output/plans/baldr_product_experience_plan_20261004.md`。原七個有限 closed、性能例外、全局 stage／UX 狀態均不重開、不升格。
 
 ## 基準與 ownership

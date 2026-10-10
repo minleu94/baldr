@@ -1,3 +1,5 @@
+> **C1 子階段歷史狀態**：本文末尾的 C1 reopened／Wave 6 blocked 描述只代表 SCHEMA/AB synthetic review 當時狀態；後續 [C1 checkpoint](C1_CHECKPOINT.md) 記錄 C1 Engineering PASS、Wave 6 released。本文的合成證據限制仍有效，整體現況及未完成限制以 checkpoint 為準，不構成產品或生產授權。
+
 # C1 Cross-Boundary Readiness Report
 
 > **範圍狀態：SCHEMA/AB synthetic evidence only，原 reviewer 已接受限定範圍；SOL 複審確認無剩餘 P1/P2。** Reviewer 接受 source-binding 修復後的限定測試證據。此接受只涵蓋 SCHEMA/AB synthetic evidence，仍不是 C1 full gate、C1 PASS 或 Wave 6 release 證據。

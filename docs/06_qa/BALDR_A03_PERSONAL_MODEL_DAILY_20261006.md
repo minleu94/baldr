@@ -1,5 +1,7 @@
 # A03 個人模型每日保存與自然結果
 
+> **後續整合範圍（2026-10-10）**：本文的中央 CLI／App caller 接線待辦屬 A03 lane 當時狀態；後續收據記錄自然 caller 與消費端整合。本文命令仍是該隔離 lane 的證據，不授予目前排程或正式資料操作授權。自然效果與資格限制仍以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)和[中央整合收據](BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)為準。
+
 本 lane 固定 base `36dc1baf740007834f385ff0f654c7fe268a36f3`，只交付五個 owned 檔案。每日工程鏈已提供：既有 personal recommendation producer → canonical exact-ID 讀回 → immutable 個人 prediction capture → 官方 H20 sessions resolver → 個人 natural outcome。自然效果尚未成熟不阻擋保存新的已交付預測；缺官方交易日／價格／資格仍保持 unknown，不補平日或零值。
 
 本次只使用隔離合成 fixture；未執行真來源、Task 註冊、ACL、交易、push、migration 或新 fit。中央保有 config／main／consumer composition／Task／Manual／原 plan，本 lane 未改這些檔案。repo `.agents/skills` 本機不存在，已讀 `docs/agents/skills_registry.md` 與 `docs/agents/skills/team.md`、`quant_defense_guard.md`；Graphify 舊圖只作定位，當前程式為準。

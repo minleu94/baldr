@@ -2,6 +2,8 @@
 
 > 本頁只維護現行權威邊界、文件同步矩陣與 DoD。逐批文件生命週期、原路徑／目的地、來源證據與替代入口統一見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)；歷史記錄不取代各主題權威文件。
 
+全 `docs/` 目錄的角色數量、可追溯正文核讀深度、導覽覆蓋與待核對候選，見 [2026-10-09 文件整理狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)。該矩陣是帶基線日期的盤點，不取代本頁的 Scoped SSOT。
+
 ## 可追溯性限制
 
 [2026-10-06 BALDR First Wave QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md) 引用的 Python／exe 截圖目前只存在本機 `output/qa/`；該目錄受 Git ignore 排除，因此乾淨 checkout 無法取得圖片。QA 收據文字與檢查結果仍保留，但圖片本身沒有隨 repository 封存，不能在乾淨 checkout 重新核對視覺截圖。
@@ -402,6 +404,7 @@
 
 ## 更新記錄
 
+- 2026-10-09：新增全 `docs/` 目錄角色與內容核讀基線，明確分開分類、正文審閱及連結覆蓋；範圍與限制記於[文件整理狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)，批次沿革見 [Entry 170](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-170)。
 - 2026-10-09：將日期化更新流水帳與逐批快速索引移入 [歷史快照](../09_archive/DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)，逐批來源、目的地與 SHA-256 仍由 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md) 維護；本次收斂依據與原區塊身分見 [Entry 111](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-111)。
 - 2026-10-09：將文件 DoD 改為分層可達性：中央 Index 維護權威與領域入口，領域 README／主題索引分類文件；新增、搬移與歸檔仍須在對應層更新，避免把完整文件集扁平塞進中央索引。
 - 2026-10-09：將 External Reference Blueprint 的歷史版本範圍校正為 V1.8–V2.0，與該文件及核心 README 一致。

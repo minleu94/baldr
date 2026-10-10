@@ -4,6 +4,10 @@
 
 ## 章首歷史補充與舊連結導引
 
+### 2026-10-09 全排程與 Codex automation 驗收
+
+Windows Task 執行 producer；Codex 05:30 晨報／06:20 晚間驗收只讀取已保存結果。全部21個Task的操作、來源根、時鐘、參數／期限判讀、安全限制與排錯見[全排程驗收runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。本輪已啟用Scheduler Operational，修正Direct10:00期待與四個背景action誤判；ML Forward休市／preflight須讀scheduler根，不能借舊child狀態。正式來源缺口、最新結果與回復見[10/09修正QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)。
+
 > 下列章首補充原文已完整移入[手冊附冊](APPLICATION_MANUAL_SUPPLEMENTS.md)，這些連結保留舊章節錨點。原文中的日期、通過、失敗、pending 與未驗證界線均照原樣保留；目前使用方式請依[操作手冊章節地圖](README.md)查找。
 
 ### 均線／月營收／官方對照研究（開發中，尚未交付新版）

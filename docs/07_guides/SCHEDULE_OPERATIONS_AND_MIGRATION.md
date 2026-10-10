@@ -31,14 +31,14 @@ Codex 的文字 prompt 中寫某個模型，不能代替實際 execution model�
 | ml-promotion-authority-daily | 05:18 daily | 讀相容 promotion evidence；機器 DPAPI authority | run_ml_promotion_authority.cmd | O/release_v4/ml_promotion_authority/latest_status.json |
 | ml-allocation-copilot-daily | 05:20 daily | 核 promotion／forward／Paper，缺資格維持 rule-only | run_ml_allocation_copilot.cmd | O/scheduled/ml_allocation_copilot/latest_status.json |
 | decision-evidence-capture-daily | 05:25 daily | 保存 decision snapshot／evidence event；核 decision 日期與來源 | run_decision_evidence_capture.cmd | O/scheduled/decision_evidence_capture/latest_status.json |
-| ml-direct-chain-maintainer | 05:30 daily | Direct／OOC custody chain；lock、儲存、來源 gate | run_ml_direct_chain_maintenance.cmd | O/scheduled/ml_direct_chain_maintenance/latest_status.json |
+| ml-direct-chain-maintainer | 10:00 daily | Direct／OOC custody chain；lock、儲存、來源 gate；10/07 已調整晨間競爭窗口 | run_ml_direct_chain_maintenance.cmd | O/scheduled/ml_direct_chain_maintenance/latest_status.json |
 | forward-outcomes-daily | 05:40 daily | 有界 evidence outcome writer；需到期可見行情 | run_forward_outcomes_daily.cmd | O/scheduled/forward_outcomes/latest_status.json |
 | recommendation-calibration-learning-daily | 05:45 daily | source capture→推薦→outcome→shadow learning；讀原 H20 activation | run_recommendation_calibration_learning.cmd | S/scheduled/recommendation_calibration_learning/latest_status.json |
 | recommendation-calibration-learning-banktaiwan-shadow-daily | 05:50 daily | 重用同源 learning snapshot／custody，成本 shadow lane | run_banktaiwan_recommendation_learning_daily.cmd | B/scheduled/recommendation_learning_banktaiwan/latest_status.json |
 | paper-execution-eod-replay-daily | 06:00 daily | Quick／freshness 同日 gate 後 EOD Paper；同凍結來源最多 3 次、間隔 900s | run_paper_execution_daily_isolated.cmd | R/output/paper_execution_eod_replay/dependency_gate/latest.json 指向 hash 綁定收據及 retry／terminal |
 | pit-sector-membership-preopen-capture-daily | 16:00 daily | 台北開盤前 Rule／PIT 候選，verified denominator | run_pit_sector_membership_preopen_capture.cmd | R/output/formal_daily_publications/scheduler/pit_preopen_capture/latest_status.json；rule_source 的獨立收據 |
 | paper-portfolio-daily | 帶 offset；當次美西 17:25 | 台北 08:25 wake-up／08:30 guard；原 Paper state 與 calendar | run_paper_portfolio_daily.cmd | R/output/paper_execution_eod_replay/scheduled/paper_portfolio_isolated/latest_status.json |
-| ml-allocation-forward-daily | 帶 offset；當次美西 17:25 | 台北 08:30 cutoff／08:35 deadline；calendar、PIT、Paper、release pin | run_ml_allocation_forward_daily.cmd | R/output/v4_ml_daily_derived_shadow_real_v2/scheduled/ml_allocation_forward/latest_status.json |
+| ml-allocation-forward-daily | 帶 offset；當次美西 17:25 | 台北 08:30 cutoff／08:35 deadline；calendar、PIT、Paper、release pin | run_ml_allocation_forward_daily.cmd | holiday／config preflight：R/output/v4_ml_forward_scheduler/latest_status.json；config child：依 config.output_root/scheduled/ml_allocation_forward/latest_status.json |
 | formal-pit-sidecar-postcutoff-daily | 18:00 daily | cutoff 後 sidecar；同 wrapper 續做 Paper event capture | run_formal_pit_sidecar_postcutoff.cmd | R/output/formal_daily_publications/scheduler/pit_sidecar/latest_status.json；Paper event source capture 另核 |
 | formal-input-producer-daily | 21:25 daily | Rule＋causal Paper ledger＋PIT 三路 handoff；candidate 不冒 formal | run_formal_input_producer_daily.cmd | R/output/formal_daily_publications/scheduler/latest_status.json |
 | v2-2-weekly-collection | Sunday 18:00 weekly | core collection 成功後基本面／公告／季度 research children | run_v2_2_weekly_collection.cmd | O/scheduled/v2_2_weekly_collection/latest_status.json locator→hash 綁定 terminal |
@@ -48,6 +48,8 @@ Codex 的文字 prompt 中寫某個模型，不能代替實際 execution model�
 本機 Codex operational heartbeat：morning report 是美西 05:30 有限唯讀核對；paper 是美西 06:20 有限唯讀核對。它們不應自行修改 Task、重跑 producer、重訓或改正式資料。其他專案、停用的舊重構排程與全部模型清冊保存在私有清單，不納入本 repo 公版模板。
 
 ## Python 與可攜入口
+
+2026-10-09實際回讀：Direct、Paper Portfolio、Sector preopen、ML Allocation Forward四個既有Task使用`pythonw.exe → run_scheduled_cmd_hidden.py --task <固定名稱>`，由固定mapping執行原CMD；其餘17個Task仍為canonical CMD action。下段CMD形狀描述的是wrapper契約；核對已部署背景action時依[全排程驗收runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)確認精確interpreter／argv／cwd。Operational日誌本輪已啟用；不補回先前未記錄事件。
 
 現有 action 為 `cmd.exe /c "<REPO>/scripts/scheduled/<wrapper>.cmd"`，WorkingDirectory 為 REPO。wrapper 再選 `.venv/Scripts/python.exe` 或受支援的 BALDR_PYTHON；部分舊 wrapper 缺 venv 會 fallback `python`。搬機應驗 Python 3.11 runtime 與依賴，不能直接複製舊 venv；沒有 venv 不應讓全域 Python 偶然代跑。每個 wrapper 是否接受 BALDR_PYTHON 需逐檔核對。
 

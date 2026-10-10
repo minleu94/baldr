@@ -1793,3 +1793,12 @@ docs/09_archive/README.md 已加入歷史快照入口，ROADMAP_6M_ENGINEERING.m
 | 來源範圍 | 搬移前來源 | Archive 原文 | 結果 |
 |---|---|---|---|
 | `docs/01_architecture/target_system_architecture.md` 第 3 節前「2026-09-06 八卡工程後的差距基線（歷史快照）」整段 | 節段 2,643 bytes／SHA-256 `d829890117e2617d032e46dbf33682630c95486be69ebb7e86459a9ae75224db`；搬移前整檔 36,444 bytes／SHA-256 `7e699ef05325ac8d979c367d06fd0d8c8fd525ce319c80bc6f28f4214e45e265` | [`TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md`](TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md)：2,681 bytes／SHA-256 `4d8eef5876d8c863b24b38ca114cfba4604e73d17a53673c637c4bfe53919fa2`；保留節段內容，僅將 2 個 Markdown 相對連結改為符合 Archive 位置的路徑 | 原標題留在 `target_system_architecture.md` 作相容導引；現況／目標入口維持 Snapshot、system architecture 與 FINAL。 |
+
+<a id="coverage-entry-170"></a>
+## 2026-10-09 建立全文件目錄整理狀態基線
+
+新增全 `docs/` 的目錄角色、正文核讀深度、導覽連結範圍與內容不一致候選矩陣，基線為 `9b8e0ea45294d89cd08c5185478f0b8c51e0f54e`，盤點 1,473 個已追蹤路徑。分類數不冒充逐篇正文審核；無法還原的核讀深度明確標示未知。QA／Archive 的正文核讀數另標為 `0c9f84bb` 的歷史下限，未寫成最新 HEAD 全面覆核。
+
+盤點時保留另一個 agent 的 Snapshot、Index、Manual、Guides、QA 與排程工作樹變更，並略過其 F03 follow-up 正文及未追蹤 runbook。未修改原始 QA 收據、SHA、PASS／FAIL／未驗證結論；後續逐批修正與 Graphify 更新仍待完成。
+
+完整分目錄數量、逐項審閱限制與修正候選見[文件整理狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。

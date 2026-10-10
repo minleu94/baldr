@@ -23,6 +23,8 @@ SCHEMA_VERSION = "scheduled-task-registration.v1"
 DEFAULT_EXECUTABLE = "schtasks.exe"
 DEFAULT_TIMEOUT_SECONDS = 15
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 EXPECTED_TASKS: tuple[dict[str, str], ...] = (
     {"name": "baldr-data-update-quick-daily", "schedule": "DAILY 04:20", "required": "true"},
@@ -35,7 +37,7 @@ EXPECTED_TASKS: tuple[dict[str, str], ...] = (
     {"name": "baldr-ml-promotion-authority-daily", "schedule": "DAILY 05:18", "required": "true"},
     {"name": "baldr-ml-allocation-copilot-daily", "schedule": "DAILY 05:20", "required": "true"},
     {"name": "baldr-decision-evidence-capture-daily", "schedule": "DAILY 05:25", "required": "true"},
-    {"name": "baldr-ml-direct-chain-maintainer", "schedule": "DAILY 05:30", "required": "true"},
+    {"name": "baldr-ml-direct-chain-maintainer", "schedule": "DAILY 10:00", "required": "true"},
     {"name": "baldr-forward-outcomes-daily", "schedule": "DAILY 05:40", "required": "true"},
     {"name": "baldr-recommendation-calibration-learning-daily", "schedule": "DAILY 05:45", "required": "true"},
     {"name": "baldr-recommendation-calibration-learning-banktaiwan-shadow-daily", "schedule": "DAILY 05:50", "required": "true"},
@@ -370,6 +372,13 @@ def _action_matches_wrapper(
         for item in actions:
             if not isinstance(item, Mapping):
                 continue
+            # 已部署的背景入口不直接帶 CMD 路徑；核固定 dispatcher 的
+            # interpreter、argv、cwd 與 task→CMD 對應，不以名稱子字串接受。
+            arguments = item.get("arguments")
+            if isinstance(arguments, str) and "run_scheduled_cmd_hidden.py" in arguments:
+                return _hidden_action_matches_wrapper(
+                    item, repo_root=repo_root, wrapper_path=wrapper_path,
+                )
             parts = [item.get("command"), item.get("arguments"), item.get("working_directory")]
             action_values.append(" ".join(
                 _redact_sensitive_text(value)
@@ -386,6 +395,35 @@ def _action_matches_wrapper(
         normalized_absolute in candidate.replace("/", "\\").replace('"', "").lower()
         or normalized_relative in candidate.replace("/", "\\").replace('"', "").lower()
         for candidate in action_values
+    )
+
+
+def _hidden_action_matches_wrapper(
+    action: Mapping[str, Any], *, repo_root: Path, wrapper_path: object,
+) -> bool:
+    from scripts.scheduled.run_scheduled_cmd_hidden import TASK_SCRIPTS
+
+    if not isinstance(wrapper_path, str):
+        return False
+    launcher = repo_root / "scripts" / "scheduled" / "run_scheduled_cmd_hidden.py"
+    if not launcher.is_file() or launcher.is_symlink():
+        return False
+    task_name = next(
+        (name for name, relative in TASK_WRAPPER_PATHS.items() if relative == wrapper_path),
+        None,
+    )
+    if task_name is None or task_name not in TASK_SCRIPTS:
+        return False
+    if TASK_SCRIPTS[task_name] != Path(wrapper_path).name:
+        return False
+    def normalize(value: object) -> str:
+        return str(value).replace("/", "\\").casefold()
+    expected_command = repo_root / ".venv" / "Scripts" / "pythonw.exe"
+    expected_arguments = f'"{launcher}" --task {task_name}'
+    return (
+        normalize(action.get("command")) == normalize(expected_command)
+        and normalize(action.get("arguments")) == normalize(expected_arguments)
+        and normalize(action.get("working_directory")) == normalize(repo_root)
     )
 
 

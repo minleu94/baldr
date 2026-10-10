@@ -9,9 +9,12 @@ import sys
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from scripts.inspect_scheduled_task_registration import (
     EXPECTED_TASKS,
     TASK_WRAPPER_PATHS,
+    _action_matches_wrapper,
     _is_zero_duration,
     _parse_list_summary,
     _redact_sensitive_text,
@@ -23,6 +26,74 @@ from scripts.inspect_scheduled_task_registration import (
 
 ROOT = Path(__file__).resolve().parents[1]
 COM_SCHEMA = "scheduler-com-query.v1"
+
+
+def test_direct_expected_schedule_matches_deployed_ten_am_window() -> None:
+    direct = next(s for s in EXPECTED_TASKS if s["name"] == "baldr-ml-direct-chain-maintainer")
+    assert direct["schedule"] == "DAILY 10:00"
+
+
+@pytest.mark.parametrize("task", (
+    "baldr-ml-direct-chain-maintainer", "baldr-paper-portfolio-daily",
+    "baldr-pit-sector-membership-preopen-capture-daily", "baldr-ml-allocation-forward-daily",
+))
+def test_deployed_hidden_action_resolves_to_fixed_original_wrapper(task: str) -> None:
+    launcher = ROOT / "scripts/scheduled/run_scheduled_cmd_hidden.py"
+    summary = {"actions": [{
+        "command": str(ROOT / ".venv/Scripts/pythonw.exe"),
+        "arguments": f'"{launcher}" --task {task}',
+        "working_directory": str(ROOT),
+    }]}
+    assert _action_matches_wrapper(summary, repo_root=ROOT, wrapper_path=TASK_WRAPPER_PATHS[task]) is True
+
+
+@pytest.mark.parametrize("field,value", (
+    ("command", "pythonw.exe"),
+    ("arguments", "wrong_task"),
+    ("arguments", "extra_argument"),
+    ("working_directory", "C:/wrong"),
+))
+def test_hidden_action_mismatch_is_not_masked_by_schtasks_wrapper_text(field: str, value: str) -> None:
+    task = "baldr-paper-portfolio-daily"
+    launcher = ROOT / "scripts/scheduled/run_scheduled_cmd_hidden.py"
+    action = {
+        "command": str(ROOT / ".venv/Scripts/pythonw.exe"),
+        "arguments": f'"{launcher}" --task {task}',
+        "working_directory": str(ROOT),
+    }
+    if value == "wrong_task":
+        action[field] = f'"{launcher}" --task baldr-ml-direct-chain-maintainer'
+    elif value == "extra_argument":
+        action[field] += " --confirm"
+    else:
+        action[field] = value
+    summary = {
+        "actions": [action],
+        "task_to_run": str(ROOT / TASK_WRAPPER_PATHS[task]),
+    }
+    assert _action_matches_wrapper(summary, repo_root=ROOT, wrapper_path=TASK_WRAPPER_PATHS[task]) is False
+
+
+def test_hidden_action_verifier_loads_fixed_mapping_from_file_entrypoint(tmp_path: Path) -> None:
+    # 模擬 Task／CLI 的檔案入口與外部 cwd；不查 Scheduler 或執行 producer。
+    script = ROOT / "scripts/inspect_scheduled_task_registration.py"
+    code = (
+        "import runpy; from pathlib import Path; "
+        "m=runpy.run_path(" + repr(str(script)) + "); "
+        "root=m['PROJECT_ROOT']; task='baldr-paper-portfolio-daily'; "
+        "action={'command':str(root/'.venv/Scripts/pythonw.exe'),"
+        "'arguments':'\"'+str(root/'scripts/scheduled/run_scheduled_cmd_hidden.py')+'\" --task '+task,"
+        "'working_directory':str(root)}; "
+        "assert m['_action_matches_wrapper']({'actions':[action]},repo_root=root,"
+        "wrapper_path=m['TASK_WRAPPER_PATHS'][task]) is True"
+    )
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def _com_task_rows(repo_root: Path, *, missing: set[str] | None = None) -> list[dict[str, object]]:

@@ -1347,6 +1347,8 @@ LastRun／LastTaskResult 保持；詳見 [本輪收尾證據](../../docs/06_qa/A
 
 ## Codex Morning Summary
 
+2026-10-09兩個heartbeat已更新為[全21-task共同驗收runbook](../../docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。Direct現行10:00，G9 CMD總預算14400秒；ML Forward休市／config preflight讀`output/v4_ml_forward_scheduler/latest_status.json`，child依實際config定位。稽核器精確接受四個固定背景action，不把其誤報為wrapper drift；host查詢失敗與task missing分開。[10/09修正QA](../../docs/06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)保存Operational啟用與受控回讀，不能用Task exit0宣稱整鏈成功。
+
 The Codex app has two separate read-only heartbeats. `baldr-scheduled-evidence-morning-report` runs daily at 05:30 Pacific local time and reads the Windows Task status plus the same-run update, freshness, recommendation and evidence receipts. `paper` (「晚間學習與 Paper 排程驗收」) runs daily at 06:20 Pacific local time and checks the Paper／ML run identity, immutable receipts, terminal state and bounded warning sections. Both use `America/Los_Angeles`, so DST is handled by the local-time schedule. Their prompts were updated in place and read back; they notify only on meaningful changes and do not launch producer tasks, train models, modify receipts, or perform Paper actions. They are Codex app automations, not Windows Task Scheduler entries.
 
 It must not rerun data update, rerun data freshness, rerun the evidence pipeline, enter confirm write mode, create or modify Windows Task Scheduler tasks, write the production evidence DB, change portfolio / scoring / recommendation weights, apply lifecycle actions, push, or produce trading advice.

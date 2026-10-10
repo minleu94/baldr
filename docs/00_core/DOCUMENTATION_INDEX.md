@@ -26,6 +26,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 ## 必要調度與維運
 
+[2026-10-09排程／automation修正與最新報告](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)：21個Task設定回讀、Operational啟用、兩個prompt修正、稽核誤判修復與仍未解除的資料資格事項；共同操作見[全排程驗收runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
 [2026-10-08 自然排程故障修正與驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)：保存該日排程修正範圍、驗證結果與限制；目前狀態以 Snapshot 為準。
 
 [2026-10-07 排程故障修正與有限驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)：保存該日的故障修正與有限驗證證據；不取代較新的排程狀態。

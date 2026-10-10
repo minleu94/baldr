@@ -66,6 +66,9 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
   - PIT 歷史資料修復 Runbook，說明月營收、季度財報 availability mapping 與 coverage audit
 
 ### 5. Windows 發布、排程搬機與歷史修復
+
+- **[BALDR_SCHEDULED_AUDIT_RUNBOOK.md](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)**
+  - 兩個Codex operational heartbeat的共同21-task唯讀查核、實際來源根、期限、資料品質、通知與排錯規則。
 - **[PORTABLE_WINDOWS.md](PORTABLE_WINDOWS.md)**
   - 可攜 Windows 版的資料夾要求、首次啟動、設定位置與已驗／未驗邊界
 - **[SCHEDULE_OPERATIONS_AND_MIGRATION.md](SCHEDULE_OPERATIONS_AND_MIGRATION.md)**

@@ -4,6 +4,8 @@
 
 ## 目前狀態
 
+2026-10-09 17:49 PDT排程修正：Windows21個Task已在host唯讀環境核對，trigger／action／working directory均符合現行契約；Direct仍running，不授全鏈成功。Operational日誌已啟用，修正稽核器舊05:30期待與四個背景action誤判；兩個既有Codex監測prompt已更新並保留cadence／thread／通知。較晚結果確認G6研究cycle完成但正式revision hold保留、Forward1538歷史缺價及G9來源依賴失敗；183推薦degraded是153流動性排除＋30無訊號，真正missing為1516。精確結果、未解事項與界線見[10/09排程修正QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)。
+
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |

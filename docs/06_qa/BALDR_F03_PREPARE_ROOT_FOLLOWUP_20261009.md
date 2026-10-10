@@ -965,3 +965,19 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - Root 讀 Q2 真 serializer focused 草稿，確認目前案例使用空 `batch_artifacts`／空 `finished_windows`，可查 outer／parent receipt 重鏈與 public `read_exact`，但不足以證明非空 child manifest 的精確路徑映射。已要求另補實際 generation／batch／attempt／manifest 形狀與 immutable child bytes／hash 的非空案例；不執行 producer 或 SQLite，既有空 cohort 證據保留原限制。P01 效能與整體 Gate 均未完成。
 - H20 B 最終 manifest SHA `0c915b0a08ac065b8431cc2df00ee6535a84d2a884b44cddc652beba12954ef6`；Root 讀 05→06 wrapper 差異及修正後 predicates，核 wrapper SHA `4b2cdb774ae2b9e938e208c33023dac51aa73216bcd936e8777505e64932043f` 後實際執行唯一 attempt06。原生 exit 1，pytest **1 failed／1 warning，4.75 秒**、wrapper 8.329 秒、timeout=false、51 pins 起訖相同、callback hits 空；收據與原 stdio 保存於 `output/qa/h20_c_true_origin_root_attempt06/`，私人根 `C:/t/h20d06` 保留。錯誤完成後的可見捲軸 End、正捲動範圍／最大值、文件末端與末字在內外 viewport 的完整矩形可見性全部通過；這只證明該閱讀操作，不能稱 error 全流程成功。新首紅為 C test 第 369 行 summary_label 換行判準：Qt bounds 寬 888，大於 contents 寬 640；尚未進入第三次取消。已交付代理定位長字串與展示修正，凍結 C／B 與歷史收據保持不變，不降低完整原文或幅寬門檻。
 
+
+
+### 2026-10-10 恢復後 H20 F actual01 補記
+
+使用者恢復推進；三位 Luna max 分別製作 H20 F、F12 T28b、P01 Q3，root 負責審核與執行。H20 F manifest `36955fb9297d553ef149d3a112cba8ee43db7342479a1c0149c69aefcc0f18e9` 已核對完整 E→F 差異，正式 overlay 仍未套用。
+
+root 新 wrapper `output/qa/run_h20_f_true_origin_root_attempt01.py` 採私人 `C:/t/h20f01`、54 個隔離環境鍵、180 秒期限、固定來源前後核對。首次 sandbox 存取遭 WinError5，尚未建立測試根；核准隔離執行後完成一次 actual。收據 `output/qa/h20_f_true_origin_root_attempt01/receipt.json`：pytest 1 failed、1 warning、3.62 秒，wrapper 10.547 秒，未 timeout；所有來源與候選 pins unchanged=true，callback 掃描無命中。子程序最終碼 3221225477，須另查 native crash，不能解讀成正常退出。wrapper 在收據保存後因 cp1252 列印繁體中文發生 UnicodeEncodeError；未因此重跑測試或改寫原收據。
+
+具體第一紅燈：676px 一般視窗的 initial scope 內層原生 End 到達 2/2，完整文字與剪貼簿比對通過；但末端與末字矩形 y=373、高14，超出外層 viewport 高380。中心可見不足以證明完整末字可見，兩項完整矩形斷言正確拒絕。錯誤／取消階段未驗到，不宣稱通過。已交原 owner 唯讀診斷公開外層完整 reveal 與 native cleanup；F 封套、actual01 與正式資料保持不變。T28b/Q3 仍待凍結及 root 審核，尚未執行。
+
+
+### 2026-10-10 T28b focused actual01 通過補記
+
+root 完整審閱 T28a→T28b diff，固定 review manifest `f04f39137bb48851b2e79efe5d58f0c5e2c77d221cec3697f632f32a04c782fc` 後執行 22 節點，私人根 `C:/t/t28b01`。收據 `output/qa/f12t28b_main_1010/root_attempts/20261010T123208Z_32056_b26873bb/receipt.json`：exit0、未 timeout、22 passed、39 deselected、1 subtest passed、6.31 秒，58 個正式來源 pins unchanged。完整 stdout/stderr 已核對注入 constructor failure 屬預期負例，未見 Traceback、Python override、ignored exception、QThread destroyed 或 isinstance TypeError 標記。
+
+這只證明具名 focused scope；完整 Main、新 PID、COW、營收讀取、來源還原與真人流程仍待驗。已要求 owner 準備可審核的真 Main 隔離 wrapper，禁止自行執行。正式檔與原始資料未修改。

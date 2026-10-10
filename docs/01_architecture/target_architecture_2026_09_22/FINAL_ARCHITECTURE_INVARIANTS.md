@@ -1,6 +1,6 @@
 # 最終架構不變條件
 
-> 設計定案，尚未實作。唯一決策來源：[FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)。以下 18 條是目標系統與後續實作 prompt 的強制規則；現況尚未全部符合。過渡違規只能以 [遷移退休帳](FINAL_MIGRATION_SEQUENCE.md) 的具名 owner／退出條件列管，不允許整包永久豁免。
+> 設計定案（2026-09-22 基線）；完整目標尚未全域完成，個別 bounded slices 已有日期化驗收。唯一決策來源：[FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)。以下 18 條是目標系統與後續實作的強制規則；現況尚未全部符合。切片狀態以 [遷移退休帳](FINAL_MIGRATION_SEQUENCE.md) 及其連結的報告／收據判讀。過渡違規只能以具名 owner／退出條件列管，不允許整包永久豁免。
 
 | ID | 必須遵守 | 驗證方式 |
 |---|---|---|

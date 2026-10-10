@@ -27,23 +27,18 @@ UI 層不應直接承擔：
 
 ## 頂層工作區
 
-1. 數據更新
-   - 快速更新與安全更新
-   - 個別資料來源維護
-   - 技術指標增量/全量計算
-   - CSV 匯出
-   - SQLite Inspector
+1. 決策工作台
+   - 工作流與只讀來源導覽；不另建立 Daily Decision Desk 實例
 
-2. 市場觀察
-   - 大盤 Regime
-   - 強勢/弱勢個股
-   - 強勢/弱勢產業
-   - Smart Money 個股與分點追蹤
+2. 市場探索
+   - 大盤 Regime、強勢/弱勢個股與產業、Smart Money 個股與分點追蹤
+   - Daily Decision Desk v1 位於「市場探索 > 市場總覽」
 
-3. 每日決策
-   - Market Breadth、Sector Rotation、Relative Strength / Liquidity Ranking
-   - Watchlist Trigger、Portfolio Alert 與 fundamental risk prompts
-   - answer-first dashboard 與資料品質 / warning 揭露
+3. 推薦分析
+   - 新手/進階模式
+   - Profile、Regime 建議、Why / Why Not / Explain
+   - fixed / eligible-universe 百分位排名
+   - 候選池、批次回測、推薦回放與 Portfolio 入口
 
 4. 策略回測
    - 單股、批次、固定組合、推薦回放、策略研究
@@ -51,16 +46,13 @@ UI 層不應直接承擔：
    - fixed / quantile 雙模式
    - 保存、比較、Promote 與 Portfolio 來源追溯
 
-5. 推薦分析
-   - 新手/進階模式
-   - Profile、Regime 建議、Why / Why Not / Explain
-   - fixed / eligible-universe 百分位排名
-   - 候選池、批次回測、推薦回放與 Portfolio 入口
-
-6. 觀察清單
+5. 觀察清單
    - 候選池
    - 選股清單 Universe CRUD
    - Research Lab 輸入準備
+
+6. 個股研究
+   - 個股研究報告與原生圖表
 
 7. 持倉管理
    - 手動交易與來源追溯
@@ -68,7 +60,13 @@ UI 層不應直接承擔：
    - 策略/價格、停損停利與籌碼監控
    - Smart Money 下鑽
 
-8. Runtime Observatory
+8. 數據更新
+   - 快速更新與安全更新
+   - 個別資料來源維護
+   - 技術指標增量/全量計算
+   - CSV 匯出與 SQLite Inspector
+
+9. 系統狀態（Runtime Observatory）
    - FSM 狀態
    - 治理健康
    - append-only event stream
@@ -112,14 +110,13 @@ ui_qt/
 - fast chart renderer 與 Matplotlib fallback
 - 批次回測並行化與合作式取消
 - Strategy & Scoring Governance 機制回歸
-- Research Run Registry、Cross-run Comparison、Indicator Parameter Registry、Recommendation Weight Contract 與 Month 6 lifecycle / Portfolio feedback 入口
+- Research Run Registry、Cross-run Comparison、Indicator Parameter Registry 與 Recommendation Weight Contract；各項能力的目前範圍與限制以 Snapshot 和具名 QA 為準
 
 ## 目前 Backlog
 
 以 [ROADMAP_6M_ENGINEERING.md](../docs/00_core/ROADMAP_6M_ENGINEERING.md) 為準，近期包括：
 
 - 全 UI 健檢與 release healthcheck runner 收斂
-- Month 6.1 lifecycle QA、manual approval workflow、Review Dashboard 與 Evidence Explainability
 - PDF 規格化研究報告輸出
 
 ## UI 修改驗證

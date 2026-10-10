@@ -1,6 +1,6 @@
 # 重構實作 DAG
 
-> 狀態：實作任務契約，尚未執行。唯一架構權威是 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md) 及其五份 FINAL 分冊；本文件只決定工作切片、依賴與驗收，不重新設計架構。
+> 本文件是規劃基線上的實作任務契約，不是全案目前狀態表。多個 R 任務已有 bounded implementation／acceptance evidence；切片現況以日期化 reports、QA receipts 與 [FINAL_MIGRATION_SEQUENCE](FINAL_MIGRATION_SEQUENCE.md) 的狀態導覽為準。唯一架構權威是 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md) 及其五份 FINAL 分冊；本文件只定義工作切片、依賴與驗收，不重新設計架構。
 
 ## 1. 規劃基線與證據
 
@@ -359,8 +359,8 @@ flowchart TD
 
 ### R028 — 條件式 technical publication orchestration 遷移
 
-- **Purpose / architectural objective**：只有R027 PASS時，將跨服務technical publication協調移至具名app job，data保留reader/writer，維持原identity。
-- **Prerequisites**：R027=PASS；若非PASS，本task blocked並觸發AB-ML-01。
+- **Purpose / architectural objective**：依原始 strict gate 條件，只有 R027 PASS 時才將跨服務 technical publication 協調移至具名 app job，data 保留 reader/writer，維持原 identity。實際 R028 依使用者接受的 R027 logical-time revision B 與 root dated decision 啟動及接受；原 strict verdict 仍保留，見 [R027 revision](../../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 report](REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)。
+- **Prerequisites**：原任務契約寫 R027=PASS；實際採 revision B 的版本化例外與 root 接受裁定。原 strict 非 PASS 的歷史結果不被改寫；若沒有新版本裁定，原 blocker 條件仍適用。
 - **Files likely involved**：`app_module/update_service.py`、新具名job、`data_module/prospective_technical_shadow_producer.py`／composition、affected tests。
 - **Explicitly out of scope**：公式、warmup、writer格式、Direct 15 paths、checkpoint/hash定義、正式scheduler啟用。
 - **Legacy behavior to preserve / requirements**：原publication/commit/cancel順序、numeric bytes、feature materialization clock、resume behavior。

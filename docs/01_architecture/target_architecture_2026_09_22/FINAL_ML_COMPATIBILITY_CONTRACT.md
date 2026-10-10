@@ -1,10 +1,10 @@
 # 最終 ML 相容性契約
 
-> **狀態：最終設計，尚未實作。** [FINAL_TARGET_ARCHITECTURE.md](FINAL_TARGET_ARCHITECTURE.md) 是本輪唯一設計權威；本文件是其 ML 規範分冊，細化資料、模型與遷移契約，不建立另一套目標架構。既有 [ML_COMPATIBILITY_PLAN.md](../../09_archive/target_architecture_2026_09_22/ML_COMPATIBILITY_PLAN.md) 留作上一輪提案追溯，衝突處依最終主文與本分冊。本文件不授權重訓、資料重建、正式寫入或 promotion。
+> **狀態：最終設計基線（2026-09-22）；完整目標尚未全域完成，部分 bounded slices 已有接受記錄。** [FINAL_TARGET_ARCHITECTURE.md](FINAL_TARGET_ARCHITECTURE.md) 是本輪唯一設計權威；本文件是其 ML 規範分冊，細化資料、模型與遷移契約，不建立另一套目標架構。既有 [ML_COMPATIBILITY_PLAN.md](../../09_archive/target_architecture_2026_09_22/ML_COMPATIBILITY_PLAN.md) 留作上一輪提案追溯，衝突處依最終主文與本分冊。本文件不授權重訓、資料重建、正式寫入或 promotion。
 
-**2026-09-27 dated acceptance addendum：** 使用者接受另立 R027 logical-time revision B；Root其後依frozen source diff、R028 full8與獨立source/runtime review接受scoped R028 migration。此決策不改寫本分冊原 strict gate、Direct／OOC identity、artifact ABI或任何既有 `INCONCLUSIVE` receipt。原R027 strict仍INCONCLUSIVE，原oracle/raw receipts保留。詳見 [R027 logical-time acceptance revision](../../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 implementation report](REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)；R031 attempt6 current relevant regression及mandatory checks已由root接受；本紀錄為提交前snapshot，staged review與commit結果以Git history及root最後交付為準。原strict與artifact/identity邊界不變。
+**2026-09-27 dated acceptance addendum：** 使用者接受另立 R027 logical-time revision B；Root其後依frozen source diff、R028 full8與獨立source/runtime review接受scoped R028 migration。此決策不改寫本分冊原 strict gate、Direct／OOC identity、artifact ABI或任何既有 `INCONCLUSIVE` receipt。原R027 strict仍INCONCLUSIVE，原oracle/raw receipts保留。詳見 [R027 logical-time acceptance revision](../../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 implementation report](REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)；R031 attempt6 當時的 relevant regression及mandatory checks已由root接受；本紀錄為提交前snapshot，staged review與commit結果以Git history及root最後交付為準。原strict與artifact/identity邊界不變。
 
-本分冊已讀取 [紅隊審查](ARCHITECTURE_RED_TEAM_REVIEW.md) 及 [必要變更](ARCHITECTURE_REQUIRED_CHANGES.md)。紅隊的 ML 中途取資料風險納入必要設計邊界；必要變更第 7 項之搬移／hash 實驗分類為 **NEEDS IMPLEMENTATION EXPERIMENT**，尚未執行，不保證搬移後 hash 或 feature materialization 時序不變。
+本分冊已讀取 [紅隊審查](ARCHITECTURE_RED_TEAM_REVIEW.md) 及 [必要變更](ARCHITECTURE_REQUIRED_CHANGES.md)。紅隊的 ML 中途取資料風險納入必要設計邊界。原第 7 項實驗要求是 2026-09-22 設計時狀態；其後 [R028 scoped production migration](REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md) 已接受 `TechnicalIndicatorJob` orchestration 切片，但該接受不等於整個 ML frozen-input／feature materialization／artifact compatibility 目標全部完成。
 
 ## 1. 永久目標與第一輪凍結
 
@@ -138,7 +138,7 @@ Owner：ML/data contract 維護者共同保存 source 清冊與 artifact depende
 
 ## 7. R7：UpdateService 搬移實驗與明確 Gate
 
-**分類：NEEDS IMPLEMENTATION EXPERIMENT。狀態：未執行。** `UpdateService.calculate_technical_indicators` 目前位於 `app_module/update_service.py`；該路徑不在第 5 節的 15 路徑清單。這只能說明未被清單直接列入，不能證明抽取不會改 listed dependency、loaded-code 驗證、publication／commit 順序或 feature materialization 時間。因此在實驗通過前不搬這條路徑。
+**2026-09-27 scoped acceptance：R028 technical-publication migration 已接受。** `UpdateService.calculate_technical_indicators` 的 orchestration owner 已移至 `app_module.technical_indicator_job.TechnicalIndicatorJob`，UpdateService 保留 lazy facade；範圍與限制見 [R028 implementation report](REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)。這項接受只覆蓋該報告明列的 source/runtime 與 publication 邊界，不推定所有 listed dependencies、ML feature materialization timing、模型輸入 hash 或 artifact compatibility 均已驗收；其餘契約仍須逐項依下方條件核對。
 
 未來實驗必須是獨立、可丟棄程式副本與極小 fixture，source／DB／輸出 root 全隔離，無正式資料、scheduler 實跑、重訓或 full-market rebuild。不得在同一長存進程內先 import baseline 再替換磁碟程式冒充 candidate。
 
@@ -162,7 +162,7 @@ Owner：ML/data contract 維護者共同保存 source 清冊與 artifact depende
 
 小型相容驗證至少包含：正常／missing／真零／極值、跨年度 carry、欄位調序、wrong hash/library/schema、quarantine、重複／缺 row key、all-missing column、train-only transform、同版本 prediction、checkpoint resume 成功／拒絕、低容量／path guard、execution A/B 交錯及保存時來源更新。整數／bp 與 binary output exact equality；浮點若不能 bitwise 比較，事前按具體欄位定義 tolerance，不以全域寬鬆誤差掩蓋改變。
 
-可從現有 `test_ml_model_artifact_manifest.py`、`test_ml_model_artifact_loader.py`、`test_ml_direct_numeric_shared_reuse.py`、`test_recommendation_training_lineage.py`、`test_recommendation_service_calibration_integration.py` 與 `test_ml_shadow_dependency_boundary.py` 路由起步，再依改動選 affected tests。這是未來驗收要求，**本文件沒有執行這些測試或 R7 實驗**。
+可從現有 `test_ml_model_artifact_manifest.py`、`test_ml_model_artifact_loader.py`、`test_ml_direct_numeric_shared_reuse.py`、`test_recommendation_training_lineage.py`、`test_recommendation_service_calibration_integration.py` 與 `test_ml_shadow_dependency_boundary.py` 路由起步，再依改動選 affected tests。此段是設計時的驗收要求；R028 已有其具名 bounded route，但本文件列出的其餘測試及全範圍 ML 相容性條件不能因此視為已執行或通過。
 
 本輪只完成契約定稿與原始碼核對。ML 外側 envelope、`PreparedMLInput`、provider 隔離、ownership 抽取與 source-path 退出均不得記為已實作；原 rule-only／shadow／formal／natural／production safety gates 維持原狀。
 

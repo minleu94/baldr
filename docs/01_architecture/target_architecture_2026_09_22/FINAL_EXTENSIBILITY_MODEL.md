@@ -1,6 +1,6 @@
 # 最終擴充模型與變更影響推演
 
-> 設計定案，尚未實作。本分冊展開唯一權威 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)。下面的局部修改承諾以 canonical row、schema-driven codec、完整 execution 與 replay 遷移已完成為前提；不把目前仍存在的多份 dict/DTO 當作已消除。
+> 設計定案（2026-09-22 基線）；完整目標尚未全域完成，部分 bounded slices 已有日期化驗收。本分冊展開唯一權威 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)。下面的局部修改承諾以 canonical row、schema-driven codec、完整 execution 與 replay 遷移已完成為前提；不把目前仍存在的多份 dict/DTO 當作已消除。
 
 ## 1. 如何決定 owner
 
@@ -60,7 +60,7 @@ RecommendationItem.confidence_status: str = "not_computed" # 受契約枚舉驗�
 | 新 schema revision 被舊 reader 開啟 | 明示 unsupported，不丟欄再回存 |
 | 沒有改 ML contract | 原 matrix/registry hash/model input 完全不變 |
 
-**設計推演結論：通過。** 消除手工 codec／replay mapping 是前提；上述測試尚未執行，不能宣稱目前程式通過。
+**設計推演結論：通過。** 消除手工 codec／replay mapping 是前提。設計交付時尚未執行上述測試；其後 [R030 fixture QA](../../06_qa/R030_EXTENSIBILITY_FIXTURE_QA_20260925.md) 對有限合成 fixture 執行 17 passed／0 skipped，另有 48 個相鄰路由測試通過。這只驗證報告列明的 confidence／strategy／feature fixture slice，不代表 production 擴充、完整 codec／replay 遷移或整體 refactor gate 通過。
 
 ## 4. 必測推演 B：完全新策略
 

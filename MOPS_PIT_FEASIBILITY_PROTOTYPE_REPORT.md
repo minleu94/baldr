@@ -1,6 +1,8 @@
 # MOPS Fundamental PIT Source Feasibility Prototype Report
 **MOPS ezsearch、重大訊息與官方開放資料之 Fundamental PIT 可行性調查報告（最終修正版）**
 
+> **證據可攜限制：** 本報告中的部分 `file:///.../scratch/` 參照指向作者工作站的本機暫存資料，不屬於此 repository。報告所述逐檔重算結果僅代表原工作站上的候選證據；未取得並核對那些檔案前，其他 checkout 無法獨立重現，也不能把「100% 可重算」解讀成 repo 內證據完整。
+
 > **本版相對前版修正清單 (Change Log)**：
 > 1. **Hash B 命名與實作精準化**：撤回「RFC 8785」之表述，明確標記 Hash B 為經 Python `json.dumps(ensure_ascii=False, sort_keys=True, separators=(',', ':'))` 規範化排序序列化後之 SHA-256。
 > 2. **Hash C 命名精準化**：修正 Hash C 定義為「HTTP response body bytes SHA-256」，明確其不包含 headers/status line，亦非底層傳輸 stream。

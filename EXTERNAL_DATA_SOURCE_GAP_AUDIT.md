@@ -1,28 +1,29 @@
 # Executive Summary
 
+> **狀態補記（2026-10-10）：** 原摘要與候選矩陣有部分結論被後續證據否定或限縮。請以本段更新後判斷及 [GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md](GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md) 的逐項審查為準；這份報告不代表正式來源接納或完整 PIT gate 通過。
+
 1. **我們現在真的缺哪些資料？**
-   - **歷史產業分類 (Historical Industry Classification)**：目前 repository 內依賴 2026-05-01 邊界與最新分類（current-only），缺乏全歷史的 PIT (Point-In-Time) 產業變更證據。
-   - **真實交易成本與流動性 (Transaction Cost & Liquidity)**：目前缺乏歷史逐筆買賣價差 (bid-ask spread) 或衝擊成本資料，使得 outcome evaluation 的 after-cost 計算被迫保持 missing 或使用固定手續費估算（臺銀成本列為研究限定）。
-   - **TDCC 歷史資料 (TDCC Historical Data)**：TDCC 官方 OpenAPI (`/v1/opendata/1-5`) 僅提供最新或近期週頻資料，無法完整輪詢歷史，導致新啟動的環境缺乏歷史集保持股分散資料。
+   - **歷史產業分類 (Historical Industry Classification)**：完整歷史 PIT 尚未成立；目前的事件候選不含可證實的完整初始分類、變更、effective interval 與全市場覆蓋。
+   - **真實交易成本與流動性 (Transaction Cost & Liquidity)**：缺乏可證明歷史逐筆價差或衝擊成本的資料。Gross-return 研究可明示限制；宣稱真實 after-cost／可成交表現時，固定費稅估算不足以替代 spread/impact evidence。
+   - **TDCC 歷史資料 (TDCC Historical Data)**：近期已有官方候選及正式覆蓋記錄；更舊歷史仍需另驗合法可取得範圍。OpenAPI 近期可用不代表完整歷史已補齊。
 
 2. **哪些只是缺 evidence (PIT/Publication Timestamp)？**
-   - **月營收與季報的歷史公告日 (Fundamental PIT)**：資料值本身（如 EPS、月營收數字）可透過 TWSE/MOPS 取得，但欠缺官方發布時間戳記 (publication/announcement timestamp)。目前使用 `first-seen` 或 expected period 會導致 PIT 證據不滿足 (`official_publication_timestamp_missing`)。
+   - **月營收與季報的歷史公告日 (Fundamental PIT)**：MOPS 畫面及 F26–F29 bounded adapter 有秒級公告時間候選；這不證明正式 `available_at` 語意、數值版本關聯或完整歷史。現有研究 policy 與正式來源接納仍須分開判讀。
 
 3. **哪些只是 pipeline 沒接好？**
-   - **三大法人與信用交易 (Institutional & Credit)**：官方 OpenData 與 endpoint 其實有提供，目前專案內也已寫入 candidate schema (Phase 3C backfill 成功抓取 126,014 列)。問題在於 pipeline 需要通過 governance/acceptance 才會進到 formal DB (`formal_records=0`)，因此這是 `PIPELINE_WIRING_MISSING`。
+   - **三大法人與信用交易 (Institutional & Credit)**：舊 candidate register 的 `formal_records=0` 不代表正式表為空。2026-09-21 唯讀 QA 記錄 `institutional_flows=229,472`、`credit_transactions=22,163`，最新資料同為 2026-09-08；這些列數不證明新鮮度或治理接納，pipeline/consumer 狀態須另查。
 
 4. **哪些只是等待自然 maturity？**
-   - **ML 預測成果 (Outcome Evaluation - Natural Forward)**：部分 V4/V6 的 Outcome `not_evaluable` 或 `missing` 是因為 pending insufficient future data（尚未到期），而非缺乏外部資料來源（`NATURAL_EVIDENCE_NOT_YET_MATURE`）。
+   - **ML 預測成果 (Outcome Evaluation - Natural Forward)**：M11 原始摘要僅記 1 capture、19 pending、0 matured、0 outcome artifact，reason 為 `personal_outcome_source_or_cost_incomplete`。摘要沒有 19 筆逐列原因，因此自然到期等待的比例尚未證實，不能把 `not_evaluable` 一概歸因於 maturity。
 
 5. **是否真的需要購買新資料源？**
-   - **PARTIALLY (部分需要)**。
-     - **不需要**購買外部資料。
-     - **月營收與季報的精確公告日 (PIT)**：可以透過建立自行維護的網路爬蟲，定期抓取「公開資訊觀測站 - 公告快易查 (ezsearch)」的 AJAX 端點，以獲取精確到秒的歷史公告時間。
-     - **歷史產業分類與 TDCC**：可利用既有 OpenAPI，配合定期抓取與增量累積，自行建立歷史資料庫。
+   - **依目標歷史窗與資料聲明決定**。個人研究目前可在明示的來源／PIT 限制下先不購買；若要求全歷史、多市場、可稽核的 fundamental/industry PIT，免費來源是否足夠尚未證明。ezSearch 秒級列、事件爬蟲或未來增量累積都不能單獨證明完整回建。
 
 ---
 
 # Verified Gap Registry
+
+> 表內月份、季度與 candidate 數值保留原調查快照，不能視為 2026-10-10 的即時覆蓋；現況以連結的 Snapshot、source register 與日期化 QA 為準。以下分類已按後續獨立審查修正。
 
 | Dataset / Evidence | Existing source | Current coverage | Historical coverage | PIT status | Availability timestamp status | Revision evidence | Current problem | External source actually needed? | Classification |
 |---|---|---|---|---|---|---|---|---|---|
@@ -30,9 +31,9 @@
 | 季報 (Quarterly Statements) | MOPS | `2024-Q1` (待正式 apply) | Available (Values only) | `official_publication_timestamp_missing` | Missing | None | Missing actual announcement dates | Yes (For PIT timestamp) | `PIT_EVIDENCE_MISSING` |
 | 產業分類 (Industry Classification) | TWSE B12.00 PDF, Website | Current-only | Unknown | `industry_membership_pit_unavailable` | Missing | Manual tracking | No historical mapping API; safe boundary `2026-05-01` | Yes (Required for PIT) | `DATA_MISSING` |
 | TDCC 集保持股分散 | TDCC OpenAPI `1-5` | Latest week | Missing | OK for recent | Weekly publish | N/A | Official API doesn't support full historical polling | Yes | `COVERAGE_MISSING` |
-| 三大法人 & 信用交易 (Inst/Credit) | TWSE/TPEx OpenData | `2026-08-28` in candidate | Available | OK | OK | OK | Exists in candidate DB, but formal DB is empty (`formal_records=0`) | No (Fix pipeline) | `PIPELINE_WIRING_MISSING` |
+| 三大法人 & 信用交易 (Inst/Credit) | TWSE/TPEx OpenData | 舊候選快照為 `2026-08-28`；2026-09-21 formal QA 最新同為 `2026-09-08` | Formal QA 記有資料列，非空 | Source timestamp 不足以判定目前可用性 | 需另驗 | 需另驗 | formal QA 記錄 229,472 institutional 與 22,163 credit rows；不證明 freshness 或 governance admission | 不應從舊 `formal_records=0` 推斷；先查資料新鮮度及 consumer | `FRESHNESS_AND_GOVERNANCE_REVIEW` |
 | 交易成本與流動性 (Transaction Cost) | None (Fixed estimations) | N/A | N/A | N/A | N/A | N/A | `after_cost` targets missing or degraded | Yes (If strict cost required) | `OUTCOME_INPUT_MISSING` |
-| 預測評估 (Outcome Evaluation) | N/A | N/A | N/A | OK | OK | N/A | `mature observations 0`, waiting for future data | No | `NATURAL_EVIDENCE_NOT_YET_MATURE` |
+| 預測評估 (Outcome Evaluation) | N/A | M11 snapshot：1 capture、19 pending、0 matured、0 outcome artifact | 尚無 outcome artifact | reason 為 combined source/cost incomplete | 不適用 | 不適用 | M11 summary 未提供 pending rows 的逐列原因 | Cause breakdown 未證；不能全部歸因自然成熟等待 | `CAUSE_BREAKDOWN_NOT_PROVEN` |
 
 ---
 
@@ -40,15 +41,17 @@
 
 | Gap | Candidate | Authority | PIT capable | Historical availability | Automation | Cost | Confidence | Decision |
 |---|---|---:|---:|---|---|---|---|---|
-| Fundamental PIT (月營收/季報公告日) | MOPS 公告快易查 (ezsearch) 爬蟲 | High | YES | Full history (需自行累積) | Medium (需實作爬蟲) | Free | High | REQUIRED (自行開發) |
-| Historical Industry (產業分類變更) | MOPS / TWSE 公告爬蟲 | High | YES | Full history (需自行累積) | Medium (需實作爬蟲) | Free | High | REQUIRED (自行開發) |
-| TDCC 歷史資料 | 官方 OpenAPI 增量累積 | High | YES | Verified (Repo history) | High | Free | High | USEFUL |
-| 交易成本 (Bid-Ask Spread) | 固定手續費估算或大盤流動性推估 | Medium | YES | N/A | High | Free | Medium | OPTIONAL |
-| Inst/Credit (三大法人/信用) | 修正既有 TWSE/TPEx Pipeline | Official | YES | Already in candidate | High | Free | High | NOT_NEEDED — FIX EXISTING PIPELINE |
+| Fundamental PIT (月營收/季報公告日) | MOPS ezSearch 秒級事件候選＋既有 F26–F29 bounded adapter | High | Partial research evidence; formal `available_at` not established | Full revision/history coverage unverified | Prototype / source-limited | Free candidate | Medium | Research candidate only; not a formal PIT admission or proven OOS unblock |
+| Historical Industry (產業分類變更) | MOPS / TWSE event discovery | High | Event dates do not establish complete effective intervals | Initial state and full-market history unverified | Partial discovery; needs scoped review | Free candidate | Low for complete reconstruction | Do not call full-history PIT; prospective collection or explicit paid-source review are options |
+| TDCC 歷史資料 | 官方 OpenAPI、官方查詢與已保存的近期候選 | High | Recent data only; availability policy scoped | Longer historical span not proven | Prospective capture possible | Free candidate | Medium for recent coverage | Useful for bounded recent window; old history requires separate source/retention review |
+| 交易成本 (Bid-Ask Spread) | Fixed fee/tax scenarios; spread/impact source still missing | Depends on claim | No historical spread/impact PIT evidence | Not established | No verified automation | Free estimates do not prove execution cost | Low for real after-cost claim | Optional for gross-return research; required evidence for a true after-cost/execution claim |
+| Inst/Credit (三大法人/信用) | Existing TWSE/TPEx data and formal tables; validate consumers and freshness | Official | Do not infer from candidate flag alone | Rows exist in 2026-09-21 QA, currentness beyond that requires refresh | Pipeline status needs targeted check | Existing sources | Medium | The old empty-formal-table claim is contradicted; do not route directly to new-source purchase or blanket pipeline fix |
 
 ---
 
 # Official Sources
+
+來源存在、畫面顯示時間或 API 可查，均不自動證明全歷史 coverage、修訂鏈、決策時點 `available_at` 或 formal admission；各來源應依 [獨立 review](GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md) 的範圍判讀。
 
 1. **TWSE 政府資料開放平臺 (OpenData)**
    - URL: `https://data.gov.tw/`
@@ -95,15 +98,15 @@
 按照 **correctness → PIT integrity → outcome completeness → automation reliability → research enhancement** 排序：
 
 ## P0
-1. **實作 MOPS 公告快易查 (ezsearch) 爬蟲**：這是解決「月營收與季報缺乏精確公告時間 (PIT)」的最佳免費方案。透過攔截並模擬 `mopsov.twse.com.tw/mops/web/ezsearch` 的 AJAX POST 請求，可以直接抓取到包含年月日時分秒的真實公告時間，解決 OOS blocked 的問題。
-2. **實作產業分類歷史變更爬蟲**：透過爬取公開資訊觀測站的歷史重大訊息，解析產業分類變更公告，建立自己的 PIT 產業對照表。
+1. **若續做 MOPS ezSearch 原型**：先驗證端點可達性、時間欄位語意、numeric lineage、修訂事件與完整性；現有秒級畫面／F26–F29 bounded evidence 不得直接當正式 `available_at` 或宣稱 OOS blocked 已解除。
+2. **若續做產業事件 discovery**：可評估部分公告事件的資料化，但須先定義初始分類、effective date、市場異動及全市場 denominator；不能預先承諾爬蟲可建立完整 PIT 對照表。
 
 ## P1
-3. **建立 TDCC 歷史資料累積機制**：官方 API (`1-5`) 雖無完整歷史輪詢，但可透過排程定期抓取並儲存當週資料，逐步累積成內部歷史資料庫。
-4. **修復既有 Pipeline (三大法人、信用)**：不需外部購買，但需解除 `PIPELINE_WIRING_MISSING` 與 governance blocks，讓已抓到的候選資料寫入正式 DB。
+3. **限定 TDCC 歷史窗**：近期官方資料可依來源政策累積；若需求含官方保存期以外的歷史，先查合法封存或商業交付，不把未來累積描述為舊資料回補。
+4. **核查三大法人／信用資料的新鮮度與 consumer**：先以最新唯讀 QA 對照來源、正式表及治理狀態；不能沿用舊 `formal_records=0` 作為目前 pipeline 故障證明。
 
 ## P2
-5. **交易成本估算模型**：在不購買 Tick Data 的情況下，可利用現有的成交量、週轉率等數據，建立滑價 (Slippage) 的機器學習推估模型。
+5. **交易成本研究**：成交量／週轉率可作情境或代理變數，不能由此聲稱模型已學得真實 spread／impact；先明確區分 gross、估算成本及可成交 after-cost 結果。
 
 ---
 
@@ -111,9 +114,9 @@
 
 > Based on verified repository evidence and externally verified sources, does this project currently need additional external data sources?
 
-**NO (不需要)**
+**目前個人研究可先不購買；全歷史 PIT 是否可由免費來源補足，尚未證明。**
 
 原因：
-1. **自行開發爬蟲可解決 P0 缺口**：使用者已經明確指出 MOPS「公告快易查 (ezsearch)」擁有我們需要的精確公告時間。透過 Python 的 `requests` 模擬 AJAX POST 請求，我們完全可以自行抓取真實的 Publication Timestamp，建立滿足 PIT 規範的本地資料庫，無需購買外部 API。
-2. **官方 OpenData 足以支援**：包含三大法人、信用交易、TDCC 集保等，官方均有提供 API 或 CSV。只要落實本地的排程抓取與增量累積（Incremental Loading），並修復 Pipeline Wiring，即可補足歷史缺口。
-3. **等待成熟 (Maturity Issues)**：Outcome evaluation 的 `not_evaluable` 是因為時間未到 (Natural forward data is not yet mature)，買再多資料也無法加速未來的時間。
+1. 個人研究可採明示的受限來源與歷史窗，不代表 formal PIT 或 full OOS。未來是否購買取決於使用者要求的市場、年份、修訂完整度與成本聲明。
+2. MOPS 秒級候選、事件公告、TWSE/TDCC OpenData 的存在不證明完整歷史、版本 lineage 或決策可得性；是否需要外部來源仍取決於缺口與目標範圍。
+3. M11 pending 原因尚未逐筆拆解；自然成熟只對經證實的未到期觀測成立，不能作為所有 `not_evaluable` 的總解釋。

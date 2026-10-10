@@ -297,7 +297,7 @@ python ui_qt/main.py
 
 **如果我要改市場觀察邏輯**：先看 `app_module/screening_service.py` 或 `app_module/regime_service.py`，再看 `decision_module/` 對應的檔案。
 
-**如果我要做 Daily Decision Desk / Market Breadth / Watchlist Trigger**：先看 `docs/01_architecture/system_vision_specification.md` 與 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 的 Month 4；實作前先設計 `DecisionDeskSnapshot` / service 邊界，不要直接在 UI 層重算。
+**如果我要做 Daily Decision Desk / Market Breadth / Watchlist Trigger**：Daily Decision Desk v1 的唯一 UI 實例位於「市場探索 > 市場總覽」；目前狀態依 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)，後續 Advice／Evidence 工作依 [ROADMAP_6M_ENGINEERING](docs/00_core/ROADMAP_6M_ENGINEERING.md) 的 Gate 1／2 判讀。修改現有行為先看 `docs/01_architecture/system_architecture.md` 與 [APPLICATION_MANUAL](docs/07_guides/APPLICATION_MANUAL.md)，維持 service／DTO 邊界，不在 UI 層重算。
 
 ---
 

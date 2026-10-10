@@ -1,6 +1,8 @@
 # MOPS PIT Feasibility Codex Review Packet
 **MOPS ezsearch PIT 來源可行性獨立審查送審封包（最終修正版）**
 
+> **證據可攜限制：** 本封包中的部分 `file:///.../scratch/` 參照指向作者工作站的本機暫存資料，不屬於此 repository。封包所述逐檔重算結果僅代表原工作站上的候選證據；未取得並核對那些檔案前，其他 checkout 無法獨立重現，也不能把「100% 可重算」解讀成 repo 內證據完整。
+
 > **提交者**：MOPS Fundamental PIT Source Feasibility Investigator  
 > **審查對象**：Codex / Tech Lead / Independent Evidence Reviewer  
 > **日期**：2026-09-29  

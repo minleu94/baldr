@@ -2,6 +2,8 @@
 
 > Risk owner 是負責產生證據與停止條件的 task，不代表可自行變更架構。任何風險觸發 rollback／blocker時，先保留差異，再由 program manager決定下一task。
 
+> 本文件的日期化 checkpoint／correction 是歷史裁定快照；其中的「current」只指該段標示日期的觀測，不代表 2026-10-10 現況。實際使用前應核對連結的最新 report、receipt 與 Git history。
+
 | ID | 風險／觸發訊號 | 影響 tasks | 預防與偵測 | 停止／回滾條件 | Owner |
 |---|---|---|---|---|---|
 | RK-01 | 推薦計算、filter、ranking、order語意漂移 | R002,R011,R018,R019,R020 | 固定輸入golden/手算、同mode exact parity、stable sort/tie-break | 任一未核准差異即停止該slice | R002基線；各實作task |
@@ -31,7 +33,7 @@
 | RK-25 | 未檢入的外部 caller／deployment extension 或未知支援期，使 facade 移除成 migration dead end | R001,R014,R025,R029 | 依 R025／R029 preflight 保存有限 repo caller 與 literal-path inventory；目前已知 direct strategy callers 已遷移，literal-path 命中為相容 alias fixture，有限檢查未找到 generic loader 中的舊 facade 字串。未檢入 deployment/plugin caller 與 external support period 仍須具名保留；未決前保留相容 facade | 發現不可遷移外部 caller，或支援期／deprecation 未決而試圖移除 facade | R001/R029；各 compatibility owner |
 | RK-26 | 既有 opaque result_id 直接作檔名造成路徑逃逸、保留名稱或大小寫碰撞 | R008,R009,R012,R016 | 保留 exact identity；R012 writer採安全檔名映射、target containment／symlink 檢查與 readback exact ID；隔離fixture測 traversal／separator／Windows保留名／case collision | 任一 ID 可寫出預期 artifact root、同名不同 ID 碰撞或讀回身份不符即停止保存切片 | R012；R008 僅維持 typed ID／binding |
 
-## 2026-09-25 R026／C2–C4 current checkpoint（C4 accepted with named boundary baseline）
+## 2026-09-25 R026／C2–C4 checkpoint snapshot（C4 accepted with named boundary baseline）
 
 R026 exact consumer、明列 NP1／NP2 profile 與同次 capability 的 bounded runtime migration，以及 typed post-calibration handoff 已由 root 接受；`TMP-ML-01` 對此支援集合已關閉。R020 bounded replay criteria 已接受，`TMP-REC-04` 已關閉；兩者均不代表所有 profile／model graph、全部 replay caller 或 numeric boundary 都完成。Unsupported/custom caller 保留相容路徑。C2 current union 為 1,860 passed／5 skipped／34 warnings、exit 0，root 裁定 `ACCEPTED_WITH_NAMED_QA_BASELINE`；該次 Update validator 的 synthetic SQLite teardown `WinError 32` 仍為具名歷史例外，Owner 為 Update QA／DB resource lifecycle。後續 C4 Update validator 為 25 passed／0 failed／4 skipped，不改寫 C2 原始結果。
 
@@ -70,7 +72,7 @@ C4 mandatory gates 已驗證：Workbench 84 passed、Update validator 25 passed�
 
 C2 的 Update validator teardown failure 仍以 `ACCEPTED WITH OWNER` 保留為 QA resource-lifecycle 歷史例外；C4 Update validator 成功不回寫 C2。RK-09 dependency-direction residual、RK-22 11-occurrence guard baseline 與 R030 四項 Direct／`FactorDiagnostic`／`DBManager` issues 是不同帳目。R027/R028 與 unknown serialized artifacts 不因 R026 supported-profile acceptance 而解除。
 
-## 2026-09-27 current correction
+## 2026-09-27 correction snapshot
 
 本次R031 attempt6的288-path relevant regression與mandatory checks已由root接受；這是提交前驗收snapshot，staged review與commit結果以Git history及root最後交付為準。上方2026-09-25 R026／C2–C4 checkpoint、9/26 Wave14及R031 attempt1–5都是各自凍結來源快照的歷史結果，不覆寫歷史。工程驗收不涵蓋正式資料、native UI teardown、scheduler、full-market rebuild、未知formal artifact載入或model promotion。
 
@@ -81,7 +83,7 @@ C2 的 Update validator teardown failure 仍以 `ACCEPTED WITH OWNER` 保留為 
 - **RK-22／guard：** C3/C4的11 occurrences／10 distinct與584/589-file scans是歷史diagnostics並保留原receipt；current static guard scan為591 files／0 violations，aggregate regression 2P已接受，不把舊baseline描述成現行違規。
 - **RK-23／R031：** Attempt6的288-path relevant regression自然exit0並由root接受：2,951P／5S／36W、817.03秒；JUnit 2,956 tests／0 failures／0 errors。Workbench 84P、Update QA 25P／0F／4S、mypy 731 files／0 issues、changed-Python compile 109 files均完成；3,313 source／fixture inputs無drift，Direct15與pinned5 exact。5個pytest skip（4個Windows symlink權限、1個longdouble mantissa）及Update QA四項下載／merge skip不計PASS。這是提交前驗收snapshot，commit狀態以Git history/root最後交付為準；正式資料、native UI teardown、scheduler、未知artifact與promotion仍未驗收。
 
-REC-02、REC-05、STR-01、NUM-01與RGM-01的current bounded verdict及永久相容界線依R029 implementation report和current audit matrix；它們不合併成global completion。其他C1–C4、Wave14與各task receipts保留原日期及scope。
+REC-02、REC-05、STR-01、NUM-01與RGM-01 的 bounded verdict 依 R029 implementation report 及相應 audit matrix 核對日期與範圍；本登錄的歷史裁定不合併成 global completion。其他 C1–C4、Wave14 與各 task receipts 保留原日期及 scope。
 ## 風險 review 節點
 
 - **C1/R012**：RK-01–06、15–17、26。
@@ -97,9 +99,9 @@ REC-02、REC-05、STR-01、NUM-01與RGM-01的current bounded verdict及永久相
 - 發現既有產品bug時另建behavior-change task；除FINAL已明確要求的execution-time snapshot/create-only一致性修正外，不混入結構task。
 
 
-## 2026-09-27 latest current disposition
+## 2026-09-27 disposition snapshot
 
-本節更新本登錄較早日期快照中的「R028開始／未驗收」與589-file guard數字；舊數字與當時收據仍作歷史紀錄。
+本節是 2026-09-27 的接受裁定快照，更新本登錄較早日期快照中的「R028開始／未驗收」與589-file guard數字；不是 2026-10-10 的完整現況表。後續狀態以日期化 reports、QA receipts 與 Git history 為準；舊數字與當時收據仍作歷史紀錄。
 
 - **RK-18／R027、R028：** 原R027 strict仍8/8 `INCONCLUSIVE`／947 differences，oracle與raw receipt不變。使用者接受的versioned logical-time revision已8 cases／8 controls PASS並經獨立review；Root另以R028 full8與source/runtime review接受 `ACCEPTED_SCOPED_R028_PRODUCTION_MIGRATION`。Root decision SHA `cc375897612e705e6c6c268a0ef63aa38c4f998d214a32fdd74d038567f792db`；raw full8 SHA `1a3b496973c7053c7d25612754a733cb505765667afa478be453efd2c5a19d82`。這些scoped gate不等於R031 final regression。
 - **TMP-ML-02：** 原conditional migration scope已滿足；`TechnicalIndicatorJob`是production orchestration owner，UpdateService lazy-delegates，既有process-pool port維持父程序單一寫入邊界。Direct15/OOC identity、data source identity與既有checkpoint定義保留；app/job source-owner mapping依核准manifest變更。

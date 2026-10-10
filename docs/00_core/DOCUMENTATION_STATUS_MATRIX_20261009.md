@@ -7,6 +7,7 @@
 - 初始審閱基線：`9b8e0ea45294d89cd08c5185478f0b8c51e0f54e`（2026-10-09），當時有 **1,473** 個已追蹤 `docs/` 路徑。
 - 文件 commit `217115f2` 的目錄角色表共 **1,478** 個已追蹤路徑；相較 `9b8e0ea4` 初始基線增加 5 個：本矩陣、排程修正 QA、共用排程稽核 Runbook、封存的 morning-check 原文副本與 Agent workflow 歷史快照。本次逐目錄角色分類與 QA／Archive 計數固定在 HEAD `47a2e15e`；本批文件修訂 commit `21881d97` 沒有新增或移除路徑，目前 `docs/` tracked paths 仍為 1,478。舊 morning-check 路徑保留短導引，不另增加該路徑數；其他本機未追蹤檔不計入。後續平行開發 commits `45d138b7`、`963b04ea` 的內容未納入原固定正文審閱或圖譜基線。
 - 此處範圍只含 Git 追蹤的 `docs/` 路徑；由 `git_exclusions.md` 排除的本機／ignored 狀態檔（例如 `docs/agents/shared_state/`）不計入，亦不作為文件完整性或現況證據。
+- 2026-10-10 另盤點 repository 中 `docs/` 外的 26 個 Git 追蹤 Markdown；它們維持獨立附錄計數，不加進 `docs/` 的 1,478 路徑統計。長篇文件的抽查與逐篇全文審查仍分開記錄。
 - 使用者已確認 `e6f79063` 的排程修正可納入本次文檔整理。已完整閱讀 `BALDR_SCHEDULE_REMEDIATION_20261009.md` 與 `BALDR_SCHEDULED_AUDIT_RUNBOOK.md`，並核對 QA README、Index、Snapshot、Manual、Guides README 及排程操作指南中的相關段落與互相連結。F03 follow-up 的未提交正文仍屬其他工作的進行中內容，本輪不覆寫。
 - 分類是目錄層級角色盤點，不等於逐檔正文核實。內容審閱深度只計入可由審閱記錄明確證實的路徑或數量；未留下深度記錄者標為「不可還原」，不推定已讀或未讀。
 - QA／Archive 舊有正文核讀數據，是先前 `0c9f84bb` 基線的歷史下限；其他目錄的分類與連結抽取多依 `9b8e0ea4` 初始基線。本表另列本輪分類基線的追蹤路徑數及其後 `21881d97` 的路徑計數複核，以及本次可具名追溯的補充閱讀；舊連結抽取結果不冒充全庫最新驗證。
@@ -225,9 +226,38 @@
 - `docs/superpowers/` 全目錄 167 路徑的角色數與 README 分類一致：96 個舊路徑 stub、69 份保留原路徑的歷史原文，以及 1 個目前 task plan 和 README；96 個 stub 的 136 個 Archive 連結都有效。Archive manifest 有 167 列、165 個唯一歷史來源，Scheduler Approval plan/spec 各有一列重複登錄。另修正 SQLite pagination、Post-V1 evidence importer、V1.1 Decision Workflow 及 V2.2 simulated-phase 的 7 個 manifest 列，明確標成舊路徑 stub → Archive 原文。未全文審閱 69 份歷史原文。
 - `2026-06-23-testing-qa-agent-super-healthcheck-roadmap.md` 保留原路線內容，檔首新增日期化歷史快照警語，界定舊「目前完成度」、test count 與可複製接手 prompt 不代表現況或執行授權，並導回目前 Snapshot／QA／Agent 文件。
 
+## Repository tracked Markdown outside `docs/`
+
+本附錄將 repo 根目錄及其他工作目錄下的 Markdown 納入文件治理範圍，與上方 `docs/` 目錄角色表分開計數。共 26 個 tracked paths；此表是角色盤點與本輪重點段落審核，不宣稱每份長篇文件均已全文核讀。
+
+| 角色群 | 數量 | 路徑 | 本輪核讀範圍／判讀 |
+|---|---:|---|---|
+| 平台／專案指令 | 2 | `AGENTS.md`、`GEMINI.md` | 根目錄權威入口；遵循指令並核對文件工作規範，未把專案指令算成產品現況文件。 |
+| Antigravity 規則 | 4 | `.agent/rules/00_project_entry.md`、`10_development_execution.md`、`20_documentation_sync.md`、`30_git_safety.md` | 00 entry 優先清單已全文核對並改回 Scoped SSOT；其餘三份列為工作規範，正文未逐篇全文審閱。 |
+| 專案入口／導覽／盤點 | 4 | `AGENT_CONTEXT.md`、`README.md`、`PROJECT_NAVIGATION.md`、`PROJECT_INVENTORY.md` | 導覽角色已分類；`PROJECT_NAVIGATION.md` Daily Decision Desk roadmap 指向已修正；Inventory 的 9 個 UI workspace 清單與程式核對。其餘內容未作全文審閱。 |
+| 外部資料研究報告 | 4 | `EXTERNAL_DATA_SOURCE_GAP_AUDIT.md`、`GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md`、`MOPS_PIT_FEASIBILITY_CODEX_REVIEW_PACKET.md`、`MOPS_PIT_FEASIBILITY_PROTOTYPE_REPORT.md` | Gap Audit summary、registry、candidate matrix、P0/P1 與 verdict 已按獨立 review 修正；MOPS 報告補上本機 scratch evidence 不可攜限制。未重新取得或重跑 scratch 原始證據。 |
+| 模組／工具指南 | 5 | `app_module/README.md`、`examples/README.md`、`mcp_servers/README.md`、`runtime/README.md`、`scripts/scheduled/README.md` | `app_module` 的 Month 6.1 清單已移除並導回 Snapshot/Roadmap。其他目錄依用途分類；`scripts/scheduled/README.md` 約 1,370 行，本輪僅抽查／局部檢視，不計全文核讀。 |
+| 歷史 notebook 程式匯出 | 2 | `notebooks/01_stock_data_collector.md`、`notebooks/02_technical_calculator.md` | 屬舊程式／輸出示例，含 2025-04 輸出與硬編碼資料根；已補歷史示例及執行前核對路徑警語，不把它們當目前 API 或操作手冊。 |
+| 測試與 fixture provenance 指南 | 3 | `tests/manual/README.md`、`tests/fixtures/p0_official_sources/README.md`、`tests/fixtures/security_lifecycle/README.md` | 依其目錄功能列作測試／來源 provenance 導覽；僅作角色及相關段落抽查，未逐份全文審閱。 |
+| UI 指南 | 2 | `ui_app/README.md`、`ui_qt/README.md` | `ui_qt/README.md` workspace 清單已對齊 `WORKSPACE_DEFINITIONS` 的 9 個入口，並說明 Daily Decision Desk 唯一位置；完成／backlog 不再另列未出現在 Roadmap 的 Month 6.1。`ui_app` 作 legacy UI 導覽，未全文審閱。 |
+| **合計** | **26** |  | 與 `docs/` 的 1,478 個 tracked paths 分開計數。 |
+
+### 本批已修正的 repo 外文件衝突
+
+- `.agent/rules/00_project_entry.md` 的固定優先事項清單已撤換為 Snapshot／Roadmap 導向，避免把舊 Strategy & Scoring、文件治理及 Phase 5 項目誤認成目前狀態。
+- `app_module/README.md`、`ui_qt/README.md` 的 Month 6.1 及 lifecycle backlog 語句已移除，工程待辦改由 Snapshot 與相對 Gate Roadmap 統一提供。
+- `PROJECT_NAVIGATION.md` 原將 Daily Decision Desk 指向 Month 4，已改為現在實例位置及 Gate 1／2 後續工作入口。
+- `ui_qt/README.md` 原列 8 個且混淆「市場觀察／每日決策」的頂層工作區；已依程式定義列出 9 個，補上「個股研究」。
+- `EXTERNAL_DATA_SOURCE_GAP_AUDIT.md` 原稱 institutional/credit formal table 空白、ezSearch 可解 OOS、免費資料可完整補歷史、自然成熟可解釋 outcome；已分別修正為有列數但 freshness/governance 未證、PIT 僅 bounded 候選、全歷史免費覆蓋未證、M11 pending 原因未逐筆拆解。
+- MOPS 可行性報告引用的本機 `scratch/` 檔案不是 repo 內證據；兩份報告已明示此可攜性限制。Notebook 的舊資料根也新增歷史示例警語。
+
+### 審閱限制
+
+26 份已全部納入路徑清冊及主要角色分類；本輪不是 26 份全文內容審查。長篇排程 README、兩份 notebook、外部 MOPS 報告與其他測試／模組說明仍有未讀全文區段；local `scratch/` 證據未取得。未覆核項目不推定為正確或過時，後續依查詢風險與實際使用範圍優先補讀。
+
 ## 後續整理順序與完成定義
 
-1. 先完成本矩陣列出的逐檔內容衝突核對；每批只改核實過的乾淨文件，保留另一 agent 的工作樹變更。
+1. 先完成本矩陣列出的 `docs/` 與 `docs/` 外逐檔內容衝突核對；每批只改核實過的乾淨文件，保留其他工作的工作樹變更。
 2. 每次搬移、改名或改入口時，同步更新對應目錄 README／主題索引、中央 Index（若入口或權威邊界受影響）與 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。
 3. QA 與 Archive 從入口可達、正文已讀、狀態與證據仍有效四方面分開統計；不把舊 QA 快照重寫成新結論。
 4. 固定基線的連結／錨點掃描與受控 Graphify 建置只作為歷史導覽基線；它們不代表本次內容治理完成，也不涵蓋後續提交的變更。待所有目錄的文件分類、正文衝突／過時檢查與修訂批次完成後，才執行並驗證最終 repo-wide 連結／錨點掃描及 Graphify 刷新。
@@ -235,3 +265,5 @@
 **狀態：** Entry 171–178 的既有整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登 Feature／Data／Agent／Architecture 修正及 QA／Archive 分層盤點。`docs/` 目前有 1,478 個 tracked paths；小型目錄已列全檔路徑，Core、02_features、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、QA 葉節點、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
 
 **2026-10-10 增量：** Coverage History Entry 182 已登錄 Guides 20 份逐檔分類（18 全文、2 局部）、四項內容修正，以及 Superpowers 7 筆 Archive manifest 生命週期欄位修正與一份舊計畫的歷史定位標示。這些批次未刪除或移動文件；未跑測試、未刷新 Graphify。F03 follow-up 與根目錄 `$null` 仍保持未納入本批。
+
+**2026-10-10 第二增量：** Coverage History Entry 183 已登錄 `docs/` 外 26 個 Markdown 的角色清冊與本批狀態修正，並補校目標架構分冊／DAG 將 9/22 設計時狀態誤當現況、R028 accepted slice 未同步、MOPS scratch 證據可攜性、舊 notebook 資料根及 UI workspace 清單。此次只核對具名矛盾與相關段落；全庫長篇正文仍有未讀區段。未刪除原始資料；未跑測試或刷新 Graphify。

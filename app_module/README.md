@@ -108,10 +108,5 @@ result = service.detect_regime()
 
 ## 近期工程方向
 
-以 [ROADMAP_6M_ENGINEERING.md](../docs/00_core/ROADMAP_6M_ENGINEERING.md) 為準：
-
-- 全 UI 健檢與 release healthcheck runner 收斂。
-- Month 6.1 Strategy Lifecycle QA、manual approval workflow、Review Dashboard 與 Evidence Explainability。
-- Portfolio feedback attribution 與 lifecycle review workflow 的證據保存、可解釋性與操作風險提示深化。
-- PDF 研究報告輸出仍屬後續 backlog；Excel 規格化匯出已完成。
+目前待辦與 Gate 優先序以 [PROJECT_SNAPSHOT.md](../docs/00_core/PROJECT_SNAPSHOT.md) 及 [ROADMAP_6M_ENGINEERING.md](../docs/00_core/ROADMAP_6M_ENGINEERING.md) 為準；Month 1–6 是相對 Gate 排序，不另設 Month 6.1 清單。PDF 研究報告輸出仍屬後續 backlog；Excel 規格化匯出已完成。
 

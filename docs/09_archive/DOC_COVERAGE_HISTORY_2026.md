@@ -1994,3 +1994,25 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `docs/superpowers/plans/2026-06-23-testing-qa-agent-super-healthcheck-roadmap.md` | 加註 2026-06-23 歷史快照範圍，避免舊狀態與接手 prompt 被當作現況。 |
 
 本批沒有刪除或移動文件，未修改 QA 收據、Archive 原文或測試結果；未執行測試、未刷新 Graphify。另一項 F03 follow-up 工作樹變更及根目錄 `$null` 均未納入或覆寫。
+
+<a id="coverage-entry-183"></a>
+## 2026-10-10 納入 repo 外 Markdown 並校正架構與來源狀態
+
+補充盤點 `docs/` 外 26 個 tracked Markdown，與 `docs/` 1,478 路徑分開計數。角色清冊涵蓋根目錄指令／導覽／研究報告、`.agent/rules/`、模組與工具 README、notebooks、tests／fixtures README 及兩個 UI README。此批為指定矛盾及重要段落核對，不代表所有 26 份全文已閱讀；尤其 `scripts/scheduled/README.md`、MOPS 長篇報告、notebooks 與其他支援 README 仍有抽查範圍。MOPS 兩份報告已標示其本機 `scratch/` 參照不可由 repository 其他 checkout 重現。
+
+架構文件修訂以具名接受證據為界：R026 typed ML handoff、R027 revision B、R028 bounded technical-publication migration、R030 synthetic fixture QA 已各自保留接受範圍；9/22 FINAL 設計、舊 DAG 與 required-changes 審查輸入不再寫成「全未實作」或現行 TODO。原 R027 strict `INCONCLUSIVE`、歷史 receipts、測試數字與 formal/native/scheduler 等未驗範圍均保留。R028 任務規格、風險登錄與 migration sequence 的 9/27 precommit/current 字樣已改標為日期快照。
+
+對外資料 gap report 依獨立 review 修正：formal institutional/credit tables 有 2026-09-21 QA 列數但不代表 freshness 或 admission；MOPS 秒級時間是 bounded research candidate，不是正式 `available_at`；完整歷史來源 coverage 未證；M11 pending 原因缺逐列拆解。另對 Antigravity 固定優先事項、Month 6.1 backlog、Daily Decision Desk roadmap 指向及 Qt UI 8／9 workspace 不一致做同步修正；兩個舊 notebook 加上資料根與操作位置警語。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增列 repo 外 26 個 Markdown 的獨立清冊、角色／核讀深度、衝突修正與未讀限制；`docs/` 的 1,478 路徑數維持獨立。 |
+| `docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md`、`FINAL_DATA_FLOW.md`、`FINAL_EXTENSIBILITY_MODEL.md`、`FINAL_TARGET_ARCHITECTURE.md`、`FINAL_ML_COMPATIBILITY_CONTRACT.md` | 將 2026-09-22 設計狀態標成設計基線；指出全目標尚未完成、部分切片已有 bounded acceptance；補入 R030 fixture 限制與 R028 ML publication scope。 |
+| `docs/01_architecture/target_architecture_2026_09_22/ARCHITECTURE_REQUIRED_CHANGES.md`、`REFACTOR_IMPLEMENTATION_DAG.md`、`REFACTOR_TASKS/README.md`、`REFACTOR_TASKS/R028.md` | 將舊審查輸入／規劃任務與現況狀態分離；記錄 R027 revision B／R028 accepted exception，保留 original strict verdict。 |
+| `docs/01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md`、`REFACTOR_RISK_REGISTER.md` | 把 9/27 接受及 callback evidence 限定為歷史 snapshot；將 9/23「production migration 未執行」標成其時點，避免覆蓋後續 R028 acceptance。 |
+| `.agent/rules/00_project_entry.md`、`app_module/README.md`、`PROJECT_NAVIGATION.md`、`ui_qt/README.md` | 固定優先事項改以 Scoped SSOT 為準；移除 Month 6.1 獨立清單、將 Daily Decision Desk 指向 Gate 1／2 與其唯一 UI 實例，並依程式列出 9 個 Qt workspace。 |
+| `EXTERNAL_DATA_SOURCE_GAP_AUDIT.md` | 修正 institution/credit、ezSearch PIT、歷史免費來源及自然成熟的過時／過度主張，與獨立 review 對齊。 |
+| `MOPS_PIT_FEASIBILITY_CODEX_REVIEW_PACKET.md`、`MOPS_PIT_FEASIBILITY_PROTOTYPE_REPORT.md` | 新增 `scratch/` 本機證據不可攜的再現性界線，不把本機驗證誤寫成 repository 內完整可重算證據。 |
+| `notebooks/01_stock_data_collector.md`、`notebooks/02_technical_calculator.md` | 標示 2025-04 歷史示例與硬編碼資料根，提醒依正式 config 並先核對資料讀寫路徑。 |
+
+沒有刪除或移動文件及原始資料；只移除了此前確認的重複段落（已記於 Entry 182），本 Entry 的其他內容為定位／判讀修訂。未跑測試、未刷新 Graphify，未執行最終 repo-wide link／anchor scan。根目錄 `$null` 與既有其他工作變更未納入。

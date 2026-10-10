@@ -1,3 +1,5 @@
+> **歷史示例（非目前操作手冊）：** 本檔是舊程式／輸出筆記，含 2025-04 輸出與硬編碼的 `D:/Min/Python/Project/FA_Data` 路徑；不代表目前設定、依賴或支援 API。正式資料根設定以 `data_module/config.py` 為準。執行前先檢查所有資料讀寫路徑與副作用，勿直接套用到正式資料。
+
 ```python
 import pandas as pd
 import numpy as np

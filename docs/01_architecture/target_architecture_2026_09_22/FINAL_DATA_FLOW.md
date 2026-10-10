@@ -1,6 +1,6 @@
 # 最終資料流
 
-> 設計定案，尚未實作。本分冊展開唯一權威 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)；資料、模型與正式權限保持既有治理。圖中都是目標通信，不是現況全已符合。
+> 設計定案（2026-09-22 基線）；完整目標尚未全域完成，部分 bounded slices 已有日期化驗收。本分冊展開唯一權威 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)；資料、模型與正式權限保持既有治理。圖中是目標通信，不代表現況全已符合。
 
 ## 1. 主路徑與協調位置
 

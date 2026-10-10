@@ -15,7 +15,7 @@
 | 6 | [R013](R013.md)、[R014](R014.md)、[R016](R016.md)、[R017](R017.md) |
 | 7 | [R015](R015.md)、[R021](R021.md)、[R023](R023.md)、[R025](R025.md)、[R027](R027.md) |
 | 8 | [R022](R022.md) |
-| 9 | [R018](R018.md)、[R024](R024.md)、[R028](R028.md)（僅 R027 PASS） |
+| 9 | [R018](R018.md)、[R024](R024.md)、[R028](R028.md)（原始條件為 R027 strict PASS；R028 實際依使用者接受的 revision B 與 root dated decision 啟動及接受，原 strict verdict 仍保留，見 [R027 revision](../../../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 report](../REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)） |
 | 10 | [R019](R019.md) |
 | 11 | [R020](R020.md)、[R026](R026.md) |
 | 12 | [R029](R029.md) |

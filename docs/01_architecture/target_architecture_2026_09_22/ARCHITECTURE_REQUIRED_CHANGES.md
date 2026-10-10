@@ -1,5 +1,7 @@
 # 必要的架構變更 (ARCHITECTURE REQUIRED CHANGES)
 
+> 本文件是最終架構裁決前的審查輸入，不是目前待辦清單。採納、修改或取消的項目以 [FINAL_TARGET_ARCHITECTURE.md](FINAL_TARGET_ARCHITECTURE.md) §2 及其分冊為準；例如草案中搬移 `app_module/adapters/factors` 的方案已被最終裁決取代。下文「現況」是原審查時點觀察，不應當作目前程式狀態。
+
 ## 實作前必須修改 (MUST CHANGE BEFORE IMPLEMENTATION)
 
 1. **重新排序遷移策略 (Reorder Migration Strategy)**

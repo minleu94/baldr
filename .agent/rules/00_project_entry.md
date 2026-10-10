@@ -29,11 +29,7 @@
 
 ## 目前重點
 
-依 Scoped SSOT 判讀：目前狀態以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準，6 個月工程方向以 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 為準，V2.0 之後長期版號階梯以 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 為準，舊工作承接以 `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` 為準，架構邊界以 `docs/01_architecture/system_architecture.md` 為準。現階段優先事項包含：
-
-- Strategy & Scoring Governance 實證：fixed / quantile walk-forward 對照與統計摘要
-- 文件治理收尾：Snapshot / Roadmap Hub / 6M Roadmap / Architecture / Index / Agent docs 一致
-- Phase 5 研究輸出：Research Run Registry 與跨 run 比較能力
+依 Scoped SSOT 判讀：目前狀態與優先事項只看 `docs/00_core/PROJECT_SNAPSHOT.md`；6 個月工程方向與 Gate 順序看 `docs/00_core/ROADMAP_6M_ENGINEERING.md`；V2.0 之後長期版號階梯看 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`；舊工作承接看 `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`；架構邊界看 `docs/01_architecture/system_architecture.md`。本入口不重複維護會隨時間過期的固定優先事項清單。
 
 ## 語言
 

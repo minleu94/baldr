@@ -1,6 +1,6 @@
 # 最終目標架構：單一實作權威
 
-> 決議日期：2026-09-22。狀態：**設計定案，尚未實作**。程式核對基線為 `f3c3f23eb813fad0a6c40e5180034fcf429b715f`；原評估基線 `574de045` 至此僅有其他任務的操作手冊提交。
+> 決議日期：2026-09-22。此文件是設計基線；完整目標尚未全域完成，R026 typed ML handoff 與 R028 technical-publication migration 等 bounded slices 已有接受記錄，詳見 [遷移序列](FINAL_MIGRATION_SEQUENCE.md) 及日期化 reports。程式核對基線為 `f3c3f23eb813fad0a6c40e5180034fcf429b715f`；原評估基線 `574de045` 至此僅有其他任務的操作手冊提交。
 >
 > 本文件是後續實作 agent 的**唯一目標架構決策來源**，取代本目錄先前六份設計草案。以下五份 FINAL 分冊展開本決議，不各自建立另一套架構。原草案保留為審查歷史，不能授權實作。`target_system_architecture.md` 保留領域背景與導覽，涉及 package、契約、依賴或遷移順序時以本文件為準。
 >

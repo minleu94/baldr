@@ -2016,3 +2016,18 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `notebooks/01_stock_data_collector.md`、`notebooks/02_technical_calculator.md` | 標示 2025-04 歷史示例與硬編碼資料根，提醒依正式 config 並先核對資料讀寫路徑。 |
 
 沒有刪除或移動文件及原始資料；只移除了此前確認的重複段落（已記於 Entry 182），本 Entry 的其他內容為定位／判讀修訂。未跑測試、未刷新 Graphify，未執行最終 repo-wide link／anchor scan。根目錄 `$null` 與既有其他工作變更未納入。
+
+<a id="coverage-entry-184"></a>
+## 2026-10-10 將 F03 新 QA 切片同步到現況入口
+
+F03 follow-up QA 已在 2026-10-10 commit `577210b1` 記錄 formal reader／group-session bounded publication slice：首輪測試 15 passed、2 個 QA overlay 設定失敗；修正後只重跑這兩個節點並通過，不能寫成修正後全套同一輪重跑。該報告仍明確保留 full-population query、正常 UI、收藏／新程序、Main 與其他產品閉環缺口。H20 O attempt02 仍為設定讀取前 guard 的失敗，未取得真檔／SQLite 讀取成功證據。
+
+檢查發現 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 和 [產品／UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md) 仍只呈現較早 F03 bounded prepare 狀態。已在 Snapshot 增列 10/10 publication slice 的範圍、首輪與修正後重跑方式及尚未完成事項；QA Index 更新 F03 入口摘要，兩處明定基準是已提交 QA commit `577210b1`。工作途中再次出現未提交 F03 QA／程式變更，因此本批只引用已提交證據，未讀寫或 stage 該工作樹變更；待該變更另行驗收後應再同步 Snapshot／索引。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/00_core/PROJECT_SNAPSHOT.md` | 將更新基線標註為 10/09 checkpoint 加 10/10 F03 單項增量；同步 F03 範圍，不推論產品結案。 |
+| `docs/06_qa/PRODUCT_UX_QA_INDEX.md` | 更新 F03 路由摘要，保留 17 個節點的分次通過限制與尚未完成的 UI／query／collection 閉環。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 修正 F03 工作樹文字的時間範圍，記錄 QA 長篇僅局部摘要核對。 |
+
+未刪除或移動文件及資料；未執行測試、未刷新 Graphify，未執行最終 repo-wide link／anchor scan。

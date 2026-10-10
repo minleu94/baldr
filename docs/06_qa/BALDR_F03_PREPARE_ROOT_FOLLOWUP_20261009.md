@@ -253,3 +253,31 @@ H20 P10唯一attempt01已原生exit0／5.041568s。root讀原JSON確認selftest 
 複合篩選正式module與定向tests由Luna Max實作，root尚未授runtime或修改reader接線。F12 H僅static：新增rollback/not_applicable精確transaction角色，保持WAL路徑與57個其他source pins，完整primary／final writer診斷；G原件保留。
 
 正式b封套終態：2 passed／179.68s，wrapper exit0／181.579s；啟動commit headroom 8,737,202,176 bytes。known5928與23952已gone。首輪15項與本次修正2項合計17項全部取得原生通過。只證明publication／舊入口lazy／取消及exact reopen回歸；composite query／UI／收藏／效能／新EXE仍未完成。
+
+### 2026-10-10 UTC：publication提交後的整合審查
+
+共同publication四檔已保存於 `d4d40e24`；其他agent未提交內容保持。root初讀composite query時發現active_groups／active_group_count重parse完整F17 JSON的熱路徑風險，已要求reader預先驗query與active flags、逐股pure evaluation復用，保留canonical起訖驗證；尚未凍結module或授runtime。F12 H新增rollback proof已初讀journal=rollback／wal_state=not_applicable、無prime／typed archived binding、exact task-worker chain與source-capture gates；strict JSON序列化fallback原會丟失primary，已要求保留明示type/message scalar與phase/event。仍待完整G→H差異／pins凍結審查。
+
+H20 `approved_for_launch=false` 是source-only建置流程的內部待驗旗標，不是使用者或auto-review拒絕。使用者已授權隔離QA；不另索批准、不改旗標冒充完成，沿既有builder核實版本與原684 source綁定後產生真正launch inputs。Luna Max正準備最小Main QA候選；沒有啟動Main。
+
+root重新對照原補完計畫，完整P00–P14／M1–M3／F01–F23保持。推薦理由現有detail expand＋可捲文字區及個人模式幾何測試已定位，但來源版測試不能代替同版新EXE與真人；驗收候選仍須能捲到可能影響排名因素／分數拆解末尾，並走原2382來源→摘要→圖表→返回同選取。
+### 複合篩選狀態語意審查（實作中，未授runtime）
+
+root逐段讀四組truth helper發現active evaluators對pending/excluded回傳not_evaluated，但global predicate對hard-eligible只接受match/no_match/unknown。既有F17 hard eligibility為outer membership AND P01 stock filter，對這兩種status也可能真，直接套接會使整份query拒絕。Luna Max已採納修訂：保留原hard gates、另分evaluability；active pending/excluded固定not_evaluated／不可進unknown policy或OR入選；全inactive保持舊MA audit browse（hard eligible可見、predicate_match false）。完整declared／included／excluded／pending分母仍核，不以只留下processed掩蓋缺件。Counts須明示evaluability／audit-visible；新增混合status案例，pending目前不由groupissuer發布不等於pure契約可以不測。
+
+另已定位technical helper仍於combine_mode逐股parse query JSON，改復用context.f17_query；reader預先解析query/context與status一次。修訂尚在子代理檔案，root待凍結後完整diff＋型態＋定向QA，不能當已驗證產品結果。
+### F12 H完整root審查與單次focused授權
+
+H已凍結；review_manifest SHA `7817d772bf92abbc0d6d38fc40d97c79d122d35029453610189d120a224dcf2b`，source manifest SHA `5ad4ebd50e654d7aed53de2f3c44031fd0c7d98cf153b67d030a3b3be161811b`。root獨立核8artifact大小／SHA全部匹配、54 code＋4 guard共58source全部匹配；唯一G→H source rebase是正式reader d494…ae689，其他57項相同。G fixed_inputs、route、capture launcher、preflight不變，G原封套保留。
+
+root已讀candidate完整539行diff、tests178行diff、focused12行diff及source manifest13行diff；工具截斷的archived verification／transaction gate段另讀實檔1520–1710補齊。rollback新proof只允exact Selection.open呼叫鏈／同次attempt、typed archived binding、task token-worker-thread-cancel-provider/capture/pins，一次原archived verifier成功才發transaction_pending，no-prime與WAL/absent prime分開。transaction仍exact readonly URI／uri=True單次，沒新增generic URI whitelist。strict JSON child/parent原錯誤與writer錯誤另寫stderr；序列化fallback保留明示primary type/message和phase，不用default=str。三個改動Python compile-only通過。
+
+已授Luna Max僅執行凍結H的11節點focused一次（原8＋本3），沿既有fresh commit headroom>=2GiB／58source preflight／隔離runtime。尚未授Main；要先讀focused原生終態，不把helper probes當真SQLite／Main通過。沒有其他root runtime並行。
+
+F12 H focused原生終態：11 passed／24 deselected／0.88s，exit0、未timeout。root讀原stdout／stderr及收據；兩筆stderr是finally測試預期的injected constructor ValueError JSON，非首紅。封套evidence/20261010T030733Z_33044_6e767c81，receipt SHA bdc9d60edf9411708ded2fdfbdc495632ebbaed8510c3c0e56d29d534d0e3bb4；啟動commit headroom 8,595,501,056 bytes、8artifact／58pins起訖0差。已授同凍結H capture launcher完整Main一次，fresh preflight／private副本／新PID收藏流程；尚待實際原生終態，不把helper綠當Main通過。
+
+### F12 H唯一Main原生首紅（不是focused通過的延伸）
+
+H Main封套 `evidence/20261010T030833Z_47616_3d643502`，同exec handle27445原生exit1；root獨立CIM抓到38072→42660（venv capture）→47616（real capture）→46788（venv runner）→48812（real runner），終態後四個known Python PID皆gone。launcher只授單次，未重跑。真正TaskWorker錯誤仍為`unexpected_private_sqlite_uri`，monthly_reader=[]，新transaction-only proof未建立；不能宣稱rollback角色已通過。root另核本次私有snapshot_capture確為rollback/not_applicable，不由G舊模式推測。
+
+H新strict JSON fallback首次保存完整primary stack，並明示final writer錯誤`TypeError: Object of type WindowsPath is not JSON serializable`；native candidate receipt仍running，是未能寫終態的舊內容，不是live證據。root靜態定位 `_serializable_task_diagnostic` 原樣回傳context.operation_parent，而context_for保存expected_parent Path。下一個獨立I候選只轉這個明確path欄位為文字、不用default=str；角色未匹配仍須readonly逐條核 exact caller/locals/gates，先明確首紅條件後才授新runtime。H的after/cleanup終態未保存，不宣稱完整清理成功；既有H/G原件保留。

@@ -19,6 +19,7 @@
 |---|---|
 | 四用途 UX 結果、近期工程增量 | [B03 Update／Runtime](BALDR_B03_UPDATE_RUNTIME_20261006.md)、[B04 收藏](BALDR_B04_SELECTION_WATCHLIST_20261006.md)、[B05 圖表](BALDR_B05_CHART_INCREMENT_20261006.md)、[B06 投資組合摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)、[B10 私人覆盤](BALDR_B10_PRIVATE_REVIEW_20261006.md)、[B12 隔離 runtime](BALDR_B12_DAILY_RUNTIME_20261006.md) |
 | 個股研究的其他讀回 | [報告與 ML 分流](H20_REPORT_ML_SEPARATION_COPY_20261008.md)、[目前來源診斷](H20_SAVED_AND_CURRENT_SOURCE_DIAGNOSIS_20261008.md)、[獨立 current research](H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md)、[載入 candidate](BALDR_H20_LOADING_CANDIDATE_421BC973_20261008.md) |
+| BALDR／H20／UX 分支與 bounded 收據 | [36 份原件的分組導覽](BALDR_UX_EVIDENCE_GUIDE_20261009.md) | 依模型／自然結果、候選與發布、Registry／復原、圖表、研究工作台、capture 分組；逐份狀態仍以原件與較新 QA 判讀。 |
 
 <a id="baldr-b01b14"></a>
 ### BALDR B01–B14
@@ -52,4 +53,5 @@
 - **Workbench 歷史 UI closeout**：[左側主導覽 IA（2026-07-07）](../09_archive/WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md)、[視覺層級 polish（2026-07-07）](../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md)：保留當時 UI 與測試證據，不作目前狀態依據；現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 - **Readability polish closeout（2026-07-07，歷史）**：[Archive 原文](../09_archive/README.md#2026-07-broker-flow-and-ui-closeout)；當時 formal-data waits 是該次快照，現況看 Snapshot／Manual。
 - **Workbench 低流動性提示分流 QA（2026-09-21，歷史）**：[封存收據](../09_archive/WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21_HISTORY.md)保留當日 read-only snapshot／UI route 與 `1121` liquidity、`10` weakness 的 bounded 結果；後續整合路由見[封存的 V5 readability acceptance](../09_archive/V5_READABILITY_ACCEPTANCE_2026_09_21.md)，目前操作仍以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。該收據不驗證 liquidity 資料品質或正式來源 Gate；本批封存來源 bytes／SHA 見 [Coverage History Entry 149](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-149)，低流動性收據原件見 [Entry 125](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-125)。
+- **Position Health／Paper thesis 工程盤點（V4，2026-09-08）**：[source-to-caller gap map](V4_POSITION_HEALTH_SOURCE_CALLER_GAP_MAP_2026_09_08.md) → [transition evaluator contract](V4_POSITION_HEALTH_TRANSITION_EVALUATOR_CONTRACT_2026_09_08.md)。兩份原件記錄當時輸入盤點與 proposal-only caller 範圍，不代表目前 Gate 6 readiness 或投資有效性；現況看 Snapshot 與近期 QA。
 - **UI geometry audit（2026-09-29，歷史）**：[封存收據](../09_archive/UI_LAYOUT_AUDIT_20260929.md)記錄六格 offscreen viewport 矩陣及合成 UI 覆蓋；這不證明 Windows 原生視窗行為，也未證實先前 native access violation 的根因或永久修復。原路徑保留相容導引，來源與替代入口見 [Coverage History Entry 151](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-151)。

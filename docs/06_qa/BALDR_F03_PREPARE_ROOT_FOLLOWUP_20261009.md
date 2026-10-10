@@ -405,3 +405,17 @@ root 重新讀 b controller source_input_inventory 全文：它核原十股 capt
 代理完成對 frozen config/Main 的唯讀核對，b child environment 缺 PERSONAL_H20_SQLITE_READ_ROOT；config 回 None，Main 因此不啟動 cohort worker。這是 QA 候選的私有根接線缺口，未 runtime，不能歸為正式原來源失效。root 授 C sibling static-only：新增 case/research_state/personal_h20_sqlite 私有目錄及明示環境參數、納入 existing_dirs guard；另做六 role/36 member 整組前後metadata與actual hash驗證及負例。保留b／S4原 pins/caps／frozen正式來源，不以補參數放寬讀取器。
 
 正常Main會經真 pinned read session把H20 source 4,054,339,584B複製到私有 reader.sqlite；market 4,061,761,536B只做檔案雜湊且SQLite連線被guard拒絕。這是必要的合法私有讀取副本，不能將S4 builder的零DB複製描述延伸成Main亦零複製。單次copy已有 main_size+8MiB disk gate；controller外層另需fresh commit headroom至少2GiB及足夠磁碟。C不得以JSON輸入清單取代actual source重核，尚未啟動child。
+
+
+### 複合正式 reader 五項真整合測試進行中
+
+root 完整審閱Luna Max凍結候選461行，SHAea8443f1caba0fbc8a8863e4973de0cfcb6ab71f2cf56c039cbfabceacd3d157，安裝到 tests/test_daily_market_technical_official_disposition_composite_reader_v1.py（原路徑不存在，沒有覆寫）。collection-only原生5 collected／0.51s／exit0。兩owner均由真public projection_group opener建立完整257 included+1 excluded，不stub正例；OR由反向concrete P01狀態與concrete KDJ可接受狀態救回、AND交集拒絕；all-inactive audit母體258驗256+2；MA未知政策include/exclude；execute延後取消及selected-row真委派spy取消不回partial。這五項尚不涵蓋MA具體match、volatility OR、null-tail/tie、page request重開、wrong-owner矩陣或100k/300ms。
+
+唯一runtime封套 output/qa/composite_reader_focused_20261010_attempt01，同handle21297；全新隔離DATA_ROOT/OUTPUT_ROOT/temp，不碰正式D來源。fresh commit headroom11,503,423,488B，五expected source pins匹配：testea844／executora4abab／query2375／readerd59b／groupb976。root獨立live觀測41796→32240→30516→5184，wrapper running receipt32240/30516。尚待同handle原生終態，不能先記通過、不重啟、不改凍結source/tests。另授代理新sibling static補尚缺sort/reopen/owner負例，不共編已啟動的五節點。
+
+
+### 複合 reader 五項真整合原生通過（169.33s）
+
+唯一handle21297原生exit0，pytest5passed169.33s、wrapper171.485s；stdout112B SHA6368633134aea7607f7665ff20b131a495f055b947a07e415be7b57d590ad009、stderr0、receipt SHAc947b58c3ce558c83861c2be694ee77f4c31d09388a4802366641f1b1c0368ad。root讀完整stdout/receipt，獨立重hash比對及核五pins起訖一致，32240／30516／5184皆gone。真257母體technical no_match由KDJ OR救回、AND拒絕；256+1 processed頁、全inactive258 audit的256+2頁、全域MA未知include/exclude、execute中途及selected-row公開取消皆實跑綠。這是正式typed API/backend資格，不是正常UI／收藏新PID／Native EXE／真人或100k/300ms資格。既有來源availability unknown/current_only/PITfalse保持。
+
+來源executor a4abab、reader d59b 與testea844已凍結。下一葉片只補尚缺sort/null-tail/tie、page request重開、wrongowner/query/group/pin矩陣；原五unchanged不重跑。H20 C預審另抓到members-before與hash交錯（須先整組36metadata再hash），以及負例fixture6present與36/34/2 gate不符（須真34present+2missing）；授靜態修正，不放寬production gate。尚未執行H20 child。

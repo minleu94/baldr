@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 
 if TYPE_CHECKING:
+    from app_module.daily_market_technical_official_disposition_composite_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionCompositeQueryV1,
+        DailyMarketTechnicalOfficialDispositionCompositeVerifiedQueryResultV1,
+        DailyMarketTechnicalOfficialDispositionCompositePageRequestV1,
+        DailyMarketTechnicalOfficialDispositionCompositeQueryPageV1,
+    )
     from app_module.daily_market_technical_universe_projection_group_session_v2 import (
         DailyMarketTechnicalUniverseProjectionGroupSessionV2,
     )
@@ -2112,6 +2118,29 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
         page = _issue_page_v1(result=result, request=request, rows=tuple(rows))
         _check_cancel(cancel_callback)
         return page
+
+    def execute_composite_query_v1(
+        self,
+        query: DailyMarketTechnicalOfficialDispositionCompositeQueryV1,
+        *,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionCompositeVerifiedQueryResultV1:
+        """在完整 declared 母體一次合併四組條件與全域排序。"""
+        from app_module.daily_market_technical_official_disposition_composite_reader_v1 import (
+            execute_composite_query_v1,
+        )
+        return execute_composite_query_v1(self, query, cancel_callback=cancel_callback)
+
+    def _materialize_composite_query_page_v1(
+        self,
+        result: DailyMarketTechnicalOfficialDispositionCompositeVerifiedQueryResultV1,
+        request: DailyMarketTechnicalOfficialDispositionCompositePageRequestV1,
+        cancel_callback: Callable[[], object] | None,
+    ) -> DailyMarketTechnicalOfficialDispositionCompositeQueryPageV1:
+        from app_module.daily_market_technical_official_disposition_composite_reader_v1 import (
+            materialize_composite_query_page_v1,
+        )
+        return materialize_composite_query_page_v1(self, result, request, cancel_callback)
 
     def execute_ma_query_v1(
         self,

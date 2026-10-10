@@ -10,8 +10,9 @@
 |---|---|---|
 | F03 完整母體共同發行 | C13nodes與F正常node已有原生通過；root已套入正式reader、新group-session與14節點測試，補精確prepared型態後mypy兩source綠、三檔語法綠。 | 正式17節點首輪原生終態：15 passed、2 failed／499.90s；兩紅均為測試仍依賴QA overlay環境變數，已窄修為正式module路徑及tmp_path子程序參數，修正後b封套只重驗兩節點，原生2 passed／179.68s、exit0；首輪15項加修正2項全部取得通過，未重跑其餘15項。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
 | H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10唯一attempt01原生exit0／5.04s；真fixed2讀2關、config14讀14關、1private SQLite／0source connection；來源與fixture不變、cleanup完整。negative core通過但完整negative scope仍false；原JSON loader pin、private replay等缺口保留。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
-| F12 收益與跨程序收藏 | J focused 原生13 passed／0.83s。K 全新隔離 Main 已成功 exact 核來源、完成 bundle 查詢與唯讀月營收 transaction；原生 exit1 止於 f12_initial_query_contract_mismatch，尚未保存各條件實值，不能猜測。 | 下一步只補初始 query／count／scope／page／recipe 明示診斷，保留既有驗收條件。完整收藏／新PID重開尚未完成。歷史封套及原來源保持。 |
-| P01 效能 | 正式 render prefill `76ed1b5e` 的定向 19 cases 通過。舊六角色矩陣的篩選 p95 618.493 ms 未達 300 ms，冷啟動 p95 25.931 s。 | 新 prefill 尚未重做完整矩陣，不把定向綠燈當產品速度通過。 |
+| H20 Main 操作與退出 | M 的四種操作、完整理由與背景工作收尾測試通過，但原生退出為0xC0000005，整體未通過。純Qt B的四次空MIME還原後清理情境正常退出，只是隔離診斷。 | N只修測試建立的空剪貼簿owner收尾，已凍結測試差異；外層封套待審查與實跑。原2382載入時間、正式產品根因、真人與EXE仍待驗。 |
+| F12 收益與跨程序收藏 | T33 focused原生23 passed／13 subtests／6.81s；T35完整Main已到65 query oracle，首錯明確為H20初始worker尚非None，之前20個入場前提成立。 | T36補獨立H20 startup觀察與自然收尾，保留原COW／SQL資格及期限。完整收藏／新PID重開尚未完成，不以focused綠燈替代。 |
+| P01 效能 | Q11d映射正／負例7 passed／0.230s；Q11完整single-warm核到1000股票／63引用與四段映射，來源及副本均正常清理。舊篩選p95仍未達300ms。 | Q11止於normalized DTO欄位不一致，七負例及30組速度配對尚未開始。Q12僅補逐欄失敗診斷，保留原相等要求；完整cold/warm、分頁、排序及AND/OR矩陣仍待驗。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。
 
@@ -1140,3 +1141,5 @@ Q11d外部review `9aed1f04d881b616530302c2ce398e17c2fbc454bc8316e00faeb4dd30358f
 T35唯讀追線顯示Main會在Watchlist建構之後configure H20並啟動列表worker，而既有constructor observer／drain只涵蓋FullN／Price；它不能證明H20初始列表已native退休或正式handler已清引用。T36只補獨立H20 startup ledger／自然processEvents drain，保留原兩worker分母、COW idle與SQL資格，維持parent原300秒及fresh child原240秒期限與各自cleanup reserve。不手改worker、不sleep／terminate；成功tuple名單與error／cancel安全收尾分列，後兩者保持unknown。具體T35當時native狀態仍未證實。startup ledger最多留存8個proof，超限拒絕；這是測試防無界留存的上限，不是正式UI刷新次數限制。
 
 H20 N test-only候選已凍結（manifest `f2ac7dd20b5eb70f10fb39372fa8a83fa0bfdb018d147860ea03a9132a5068ef`、M→N diff `3a25d9dcff36320c124b697ff667c10d9563b8f1993d8c600e79c9ccff8332ed`），root已全文讀測試收尾差異，尚未執行。原M runner硬綁M，另建N外層封套與專屬runner接線，不原地改N manifest；真來源overlay與54鍵隔離流程保留。N僅在四次還原全部核對、offscreen與原／現內容皆空後清理測試MIME owner；完整native退出及root owner身分證據仍待實測，不能以純Qt B推定N已通過。
+
+N外層manifest `f7afd90aba382fb204050fa44d9a839a4cb50c5db13d8f7137f745718a7f41a8`、wrapper `2a51a2523a1caadba0516da522523ea5accb87464ea784b15d19bd7d3631ea6a`與child runner `ceef0e28f9626019835c3494efb67f25e395dad61fc72b2297444731a5344d93`由root全文審閱增量及完整wrapper，18個檔案pin／AST核對通過；首次root靜態命令因PowerShell引號而SyntaxError，改以stdin標準程式後核對成功，未改候選。啟動命令隨後在wrapper line414預檢exit1：`固定 M root wrapper SHA 不符`；尚未建立attempt／private或啟動Qt。root核M實際SHA正確，封套的M/N manifest綁定放在巢狀lineage欄位，啟動器卻讀頂層，得到None；root的18檔核對未涵蓋有效schema接線。N與本封套凍結保留，授權N2 wrapper-only新封套修正精確欄位路徑，並實際走唯讀inventory預檢後交審，不改guard、N測試或正式來源。

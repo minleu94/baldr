@@ -489,3 +489,22 @@ F唯一Main封套原生exit1、wrapper125.563s，所有candidate/S4來源pins起
 ### F 等待成因細分：重複副本建立尚待小檔定因
 
 root逐項讀worker_progress：核驗/複製階段反覆重新從0開始，8次copy、前7次到準備讀取副本，未見任何reader_transaction_ready。正式operation成功後應按canonical(path,SHA)共用session；open_copy失敗未寫入session快取，後續capture可再走複製。F child外層guarded_connect僅接受原來源RO和3個runtime DB，沒有明示委派D9既有private reader.sqlite RO分支；這是待小檔證明的QA guard疑點，不能直接歸為正式產品每檔必複製或未來函數問題。Luna H20改優先核對精確D9契約並交G最小候選/負例，保持S4/guard/90s/原資料不變，不重跑4GB猜測。
+
+
+### F 反覆複製定因：QA 外層 SQLite guard 誤拒私有 RO
+
+root獨立讀controller_receipt.main_journey.child_result.final_guard_state：private_sqlite_directory_created/removed均8，sqlite_connections/mode_ro/query_only均0；extra sqlite_denied10，8個target IDs均database_not_allowlisted。S4真reader在copy後以reader_path.as_uri()+?mode=ro開啟；F外層只允許原source及3個runtime DB，拒絕合法私有reader，故open_copy失敗後下一capture重建。這證明本輪8次副本/超時包含QA守衛缺口，不是正式產品正常流程耗時證據。G必須只對同case明示私有根/pinned-sqlite-32hex/reader.sqlite普通單link/no-reparse的RO URI委派D9真guard，其餘拒絕；先小檔正負例，再單次完整Main。既有90s/240s、S4 source、D9原guard不變。未到2382下鑽，原人驗資格仍待完成。
+
+
+### 單次 bundle 四群來源入口候選實跑與 O 審查退回
+
+root以AST移除唯一新增bundle_projection_group_session_v2函式後，核候選reader與正式d59b AST完全相同；專用QA child只將已讀完/已釘選a08d新增函式載入正式reader namespace，保留真DTO/issuer及正式檔案不變。兩項測試封套composite_bundle_opener_focused_20261010_attempt01、handle13432，fresh commit headroom38,075,555,840B，live30360→6028→24060→3308。真257+1 fixture驗單次exact-read/完整group與取消beforemetadata，尚待原生終態；這僅候選function runtime，未授formal安裝或正常UI資格。O58pins仍d59b。
+
+O static freeze bc338d87dbc44560ee9073f3f20f4553c20074af54b9b9ffda99352f2399069d、diff8b7950d580e677bb24c410f89c078eb22fd16605c6a3acf8496ad7c8e1ca0a3e、review manifest b88a65bd8b4b3f6c3a89a1af4469e08ef04c436723e1979d3a9b723817d91e36，root獨立SHA核與8candidate size/hash一致。審閱退回兩個必然阻擋：technical_query_json誤與外層f17_query_json互比；top-level source reference無declared_stock_codes_sha256卻與nested snapshot hash比。root實際讀原90327B bookmark確認top-level hash為None、nested hash98ac5b5278e6e1db5fb25a6a5de4635b499a082559840c8bf1ca671a7a12926f。O沒有runtime；要求P sibling精確修正nested canonical JSON及canonical codes hash，保留原資料/58pins/recipe資格並增真bookmark正反例。
+
+
+### Bundle 四群來源入口候選兩節點原生通過；收藏契約唯一封套啟動
+
+handle13432原生exit0：2passed143.37s；root獨立核receipt/stdout/stderr及七pins起訖一致、當下formal reader仍d59b。正例真producer/257 included+1 excluded/exact store，全群一次bundle exact-read，三indices皆257、全inactive audit258之256+2頁，頁面後exact-read仍1次；取消beforemetadata正例無來源讀取。新增function透過已驗AST等價的QA child執行，尚未formal安裝，未取得UI/真人/100k/300ms資格。
+
+root逐段審bookmark53KB來源及6節點tests：保存完整37pins/query/group/P01/result/count/request/page/row原身分，fresh PID經真projection_group opener重發、逐一精確一致才接受；真shard bytes變動拒絕且finally只還原本次合成fixture，before-open與first-page後取消不回partial context。candidate SHA df4d44e52ed4cff8e076701486cbdfff3b2e88cbc14d7fbe0d16ae0ca0005fc6、test SHA68aee77b40165b864ca45afa13b38ba1bd506f16fad87dba0ba6ba6d0872535e已root實核。唯一composite_bookmark_focused_20261010_attempt01、handle88069啟動，尚待原生終態；正式模組未改。新View的原comparison basket membership還需依MA既有契約保存，不能因selected去重而自行增刪原籃選取。

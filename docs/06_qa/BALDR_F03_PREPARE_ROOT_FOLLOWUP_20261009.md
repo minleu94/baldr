@@ -815,3 +815,11 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 只讀審查發現 focused modal poll 在成功之後不再輪詢；若 postload 開啟「錯誤」modal，可能卡在巢狀事件迴圈。這是待驗假設，尚未確認根因。T21 僅補測試診斷與有限等待，保留成功斷言、精確守門及正式來源；聚焦成功前不執行完整 Main。
 - 真人啟動器已完成獨立靜態覆核：`output/qa/composite_human_20261010/review_receipt_20261010.md`，SHA `e2f1ed56e574cce369238495bc0d6446f34730c4b209ffabb8954d0ad75fe75a`。來源碼入口、六正式 SHA、固定合成 manifest、私人設定及收藏保留範圍均有記錄；CheckOnly 仍會重設私人設定，不能當作完全不寫檔。尚未啟動 UI 或取得真人結果，不能外推成新 EXE 驗收。
 - 其他文件 agent 的 Manual／索引／封存整理變更維持原狀；本輪只補具名 QA 記錄。P01 可執行負例與配對效能候選持續平行準備，300ms Gate 未關閉。
+
+### 2026-10-10 T21 成功後重載診斷（未驗收）
+
+- Root 完整讀 T20→T21 diff 並依 manifest SHA `b26e6dc4367a9fb07de39a0634c3fb5f8f6c5563a4f8548f3ea2b9ee5141148f` 凍結；候選正式守門未改，僅 focused 測試增加成功後輪詢、完整意外 modal 診斷及 25 秒 watchdog。Root wrapper 同時補逾時收據與 unbuffered stdout。
+- 全新私人合成測試終態 2 passed／6 subtests passed／1 failed／51 deselected，6.25 秒，wrapper 7.078 秒、exit 1、timed_out=false，66 pins 起訖一致。收據 `output/qa/f12_t21_focused_root_attempt01/receipt.json`；原 stdout/stderr 保留。
+- 真實成功 modal 之後出現「錯誤」modal，文字與 traceback 為 personal_writer_disabled: sqlite_unavailable；role ledger 的實際拒絕為 activation_lock_callsite_invalid。診斷以標準 OK 關閉意外視窗，使原成功斷言失敗可返回，未把意外 modal 當成功。
+- 實際 stack：View._load_watchlist→WatchlistService.get_stocks→personal_load_gate→PersonalWatchlistService._load_watchlist→contextlib.__enter__→PersonalWatchlistService._writer_guard generator→contextlib.__enter__→watchlist_service_writer_guard generator。獨立靜態收據 `output/qa/f12_postload_static_review_20261010/receipt.md`（SHA `15ffe0d295fd47b5163aa1ec006b23133f72d1e3a3dbb3595f37f379977b15fc`）指出四條 postload patterns 的 generator／__enter__ 相鄰順序列反；T21 重現支援此判斷。T22 只修這四條 QA 精確鏈，聚焦通過前不跑完整 Main。
+- P01 J 可執行 oracle 已交 root 完整逐段審閱，尚未執行。要求 J2 在每組配對計時之外比對兩側完整 DTO；K controller 另行建立精確 scratch mutation／清理邊界及既有 source／store／native Job 守衛。原 300ms Gate、完整 P00–P14／M1–M3／F01–F23 保持未完成。

@@ -55,3 +55,7 @@ M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成
 H20 D 後續實測：root 完整審查 C→D 差異及 launcher，五份核心 hash 與唯讀 preflight 30＋17 pins 相符，執行一次取得 child PID 35724／exit1，未逾時、未由 launcher 終止。真頁籤箭頭點擊三次成功；原名單 10 列可研究、0 列未知、2382 唯一。Main 啟動至列表就緒 35.422 秒，頁籤揭露與點擊至就緒 30.891 秒；這是一次固定來源觀測，不是 p95。隨後因「2382 列未在真實表格 viewport 內」停止，未取得下鑽／報告／返回時間。原來源 metadata 前後相同；內層收據 `E:/t/h20p2382d/output/qa/h20_2382_timing_receipt.json` SHA-256 為 `a3ae7d65fa99e6bbff3730885d4b68f794cf4050bae3a1aff99fb777b8633636`。下一 sibling 補有界真實表格捲動，不覆寫 D 收據，也不以程式直接選取冒稱真實操作。
 
 詳細成功／失敗與 scope 證據保留於[root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。本表沒有宣稱 live Task、原自然結果、正式模型品質或全產品完成。
+
+P08 receipt v2 已經 root 審核並整合，正式 import 路徑取得 55 PASS／native exit0、mypy／語法檢查通過。此基礎僅有 unknown 與合成 seed_reference 的原子保存／讀回；未接真實 seed、daily writer 或週報資格，P08／M3 仍未完成。契約、驗證及回滾見[快照紀錄切片](BALDR_P08_SNAPSHOT_RECEIPT_SLICE_20261010.md)。
+
+H20 viewport 的純合成 root 探針：正式 RecommendationView 嵌入同 PersonalH20ResearchWidget／panel constraints，960×700、680×500、460×600 都取得 table 高192、viewport 高147，scrollToItem 後第八列可見，native exit0；未重現 D 停點。這不包含 Main 原來源、真 manifest 文字或 worker；E sibling 必須記錄真實初末幾何及 ancestor 裁切，待幾何穩定再以原生捲動操作，不能以此探針宣稱原下鑽成功。

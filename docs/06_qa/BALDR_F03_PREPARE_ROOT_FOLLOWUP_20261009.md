@@ -54,3 +54,11 @@ D runner SHA `08f825ed29e612908c8c3318d841e9a4291b5b1443cb168d5047749609862750`�
 D 唯一完整 Main attempt exit 1；當時 mode/message 已實際保存：`upgrade_available`／「目前沿用原 JSON 觀察清單；可由頁面按一次『升級觀察清單儲存』。」seed 206 bytes、SHA `653bfc9e7844d1c5a5aa8a167a83b7b140b94bcf3ac884347718016b5dc7e555`，路徑相符；嚴格 `personal_source_readonly` gate 保持拒絕。正常 close/drain 成功、cleanup errors 空、post-drain Qt accesses 0、aliases／環境恢復。原 after=null 保持，不據此宣稱來源起訖一致。原生 receipt `run_attempt_6fc40c40c0754c0382ad2c1a14f0cf26/f12_main_revenue_receipt.json`；launcher/raw stdout/stderr 位於 D 的 `evidence/authorized_main_run_20261010T002355Z_a91d0c68`。
 
 root 從目前 QA source 找到具體原因：`_build_private_environment()` 新增兩個個人收藏 env keys，卻把 pinned helper 原有包含這兩 keys 的 unset 清單直接返回；Main 前先 update(env)、再 unset，兩個設定隨即被刪掉，`TWStockConfig` 取得預設 None，factory 選 legacy。後續 E 只調整 QA 明示 opt-in 的兩個 keys 與 unset 衝突，其他敏感／來源移除清單、原 gate 及產品 source 不放寬；尚未實跑 E，不宣稱完整收藏旅程完成。
+
+### P01 正式修補與後續驗證邊界
+
+root 已審查並提交 `76ed1b5e`：只有 strict leaf 已驗證的純 rendering 可預填原 bounded page memo，每次檔案狀態與內容驗證仍照常執行。審查另發現 lone-surrogate 的提前編碼錯誤，已最小修正為預填不新增 entry、保持原 component tuple；真正 strict renderer 仍按原時點拒絕，沒有放寬輸入。原生 **19 passed／27.69s，exit 0**，包含完整頁面 fresh-I/O、selected/unselected mtime restore 竄改、取消及 junction/reparse；targeted mypy、compile 與 whitespace 通過。root 重算 source/test/log SHA 與收據相符。詳見 `BALDR_P01_RENDER_PREFILL_20261009.md`。這次沒有重跑 1,000 股矩陣，不能把機制測試當成原 300ms 門檻已過。
+
+E QA 可更新上述 source 的單一 pin，其他 57 pins、fixed inputs、route 與 deadlines 必須保持；完整 Main 尚待後續終態。D 的獨立 13-root postflight 與 before 相同，原 receipt 的 after=null 不回填。
+
+H20 P 初版仍未實跑。root 靜態審查找到 ownership 時點不相容：原 boundary 在 `open_osfhandle` 成功後把 `owned_handle` 設 False，P 初版卻對後續 fdopen/stream 一律要求 True。已要求保存初版，區分轉移前 True 與轉移後已註冊 descriptor 的 False；不可直接移除 ownership guard。另一位 Luna Max 做獨立差異審查。H20 真 source-port／SQLite 閉環與原 2382 尚未完成，沒有新 EXE 或真人驗收入口。

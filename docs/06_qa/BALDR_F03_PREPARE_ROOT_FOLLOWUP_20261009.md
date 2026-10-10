@@ -477,3 +477,15 @@ root已安裝typed presenter（SHA288725c3a14a4bd7a26889b98fef6bbe61ac7da89629f3
 H20 E guard focused原第一attempt3pass1skip、3QA f-string錯誤及1長路徑失敗；只修正QA literal braces及縮短attempt路徑，四個原失敗節點第二attempt全pass0.421s，合計七pass一skip，未宣稱同一次八項全綠。E完整Main的guard已通過，但0.328s因QA helper ambient import缺失結束，SQLite/訓練/預測計數皆0；原來源及封套pins保持。F sibling只以同目錄普通單鏈檔及SHA載入helper；root已實際抽取執行loader並成功取得callable，不改sys.path/guard/S4。F完整Main唯一attempt已啟動，尚待原生終態，不記2382/684bp通過。
 
 回滾僅限新增presenter及其測試、本任務QA紀錄；尚無其他正式模組依賴該presenter。其他agent文件與正式資料不納入回滾。
+
+
+### H20 F 真正名單載入仍超時，保留效能缺口
+
+F唯一Main封套原生exit1、wrapper125.563s，所有candidate/S4來源pins起訖不變。guard通過，helper載入缺口已消除；真正Main開始initial_full_cohort。trace在82.953s仍核驗原4,054,339,584B來源，103.032s完成建立4GB安全副本；104.016s開始shutdown，106.141s記canonical_main_stage_timeout:initial_full_cohort。90s stage gate未放寬，worker因shutdown取消，尚未完成十股名單或2382下鑽，不能記原684bp與三日期/同capture圖表通過。下一步需分清全檔核驗、複製、終態重驗及UI progress耗時，提出維持來源資格的修正；不借先前hash、不改90s成綠、不重跑同款失敗。
+
+顯示投影與四測試已保存本機dev提交7131ae29，未push。正常Composite View與typed bookmark候選持續由Luna Max分工，營收O來源qualified同attempt oracle仍待交付。完整產品補完與真人EXE資格保持未完成。
+
+
+### F 等待成因細分：重複副本建立尚待小檔定因
+
+root逐項讀worker_progress：核驗/複製階段反覆重新從0開始，8次copy、前7次到準備讀取副本，未見任何reader_transaction_ready。正式operation成功後應按canonical(path,SHA)共用session；open_copy失敗未寫入session快取，後續capture可再走複製。F child外層guarded_connect僅接受原來源RO和3個runtime DB，沒有明示委派D9既有private reader.sqlite RO分支；這是待小檔證明的QA guard疑點，不能直接歸為正式產品每檔必複製或未來函數問題。Luna H20改優先核對精確D9契約並交G最小候選/負例，保持S4/guard/90s/原資料不變，不重跑4GB猜測。

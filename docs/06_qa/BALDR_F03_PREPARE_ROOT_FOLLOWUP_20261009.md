@@ -560,3 +560,32 @@ I唯一Main 20261010T052245Z_5f5e4b70183c 原生exit1，來源起訖不變。名
 營收 R review manifest `54db301048287d4bece677c8b78cc2e9d43904ef303ef04cb2d8d7989204a1d9`，完整 Q→R diff `fd9f37ed80732eb4a30fc06b23dcffd8f34e03a6dec3f18870fb6eae862151ef`。root 全讀新可見 viewport QTest mouseClick／精確 typed row／頁碼契約；原 58 pins 不改。第一封套 `20261010T052806Z_30432_e11dd550` 因沙箱 WinError5 阻於 bootstrap，沒有開始測試。受控執行的第二封套 `20261010T052820Z_16756_e9be296b` 原生 exit1：5passed、1failed、38deselected／1.38s，stdout SHA `44a1ce0f8dcea32524491ee0af500575a2988806cb72cdf25120c0ceb6406a79`，stderr 空。新測試真點擊精確選列已通過，但加入比較籃仍為空；需核對產品 handler 與 fixture 的啟用條件，不能跳過籃選驗證或直接跑 Main。R 原封套凍結保留，要求另建 S。
 
 P01 counter probe A script SHA `0778362f07fd5f8637329dc3a90fe6fa18b0b94a5e9b846dcb05d325d747d8b9`，root 已審其 observer 委派、quota-zero 對照、來源及 published page/query/selection pins、操作後清理。首次執行 exit1，失敗在 `_read_candidate_manifest`：controller 仍讀原 manifest `e17582…`，但 probe 期待明示 runtime overlay v3 `f0e639…`；尚未開 verified session、沒有 DB 操作或 page invocation。失敗收據及原始 stdout/stderr 保存在 `output/qa/p01_memo_counter_probe_20261010_a/`，要求 B sibling 精確修正明示 overlay 路由並恢復 controller 狀態；不修改原 runtime、資料或效能門檻。這次沒有任何 300ms 驗收結論。
+
+### 營收真換頁產品缺陷與 P01 cache 診斷證據
+
+S 僅修隔離 Qt fixture 的載入後按鈕狀態，原產品 Main 未手動啟用。review anchor `5f32c0ec84f9ad48771469e8fe5c0deb909dec5ba8e90bfc31c7873c304d1a07`，root 全讀 R→S diff；focused `20261010T053222Z_26672_10177b6c` 原生6passed／38deselected／1.27s，8候選＋58來源獨立 postflight 全匹配。
+
+S 唯一 Main handle45718 原生 exit1，outer `20261010T053230Z_40564_04ac9655`、native PID37748／redirector10124／wrapper40564，鏈資格 `venv_redirector_child` 無錯誤。真首頁 viewport click 成功選中 typed 1000，首頁比較籃 gate 已通過；下一頁按鈕原生 stderr 報 `AttributeError: ... has no attribute '_page_index'`。root 核正式 RevenueView 718／722 的兩個按鈕 lambda 都呼叫該不存在方法，沒有定義；這是產品接線缺陷，不是改寫 QA 可修。Main 收據 timeout `f12_ui_stage_timeout:F12 page 1`／197.094s，source inventory 起訖一致、cleanup errors空。已交最小產品修補候選及實際 next／previous 按鈕回歸，完整旅程仍未通過。
+
+P01 B script `ca9e648b753bbf340f84f083f97dd2652a83097a90506211e7da27a728bc2cc2`，root 審完整 A→B diff及原 metadata 回傳契約後執行，handle80231 exit0，收據 `p01_memo_counter_probe_20261010_b/memo_counter_probe_receipt.json`。candidate manifest e17582 與 overlay f0e639 分開核驗；只在同值、初始已匹配的 route 範圍執行原 reader/verifier，finally 恢復原綁定。單一 verified session、兩個原慢 filter shape、兩種 memo policy 的原 page/query/selection/hash 全一致，來源/store pins 起訖一致，八次操作都 clear一次及零殘留。
+
+實際 baseline component tuples 寫入832,790 UTF-16 bytes，只有12／13次 hits；AND render hits5181、misses5921、byte-budget blocks5789。QA quota-zero component 對照 render hits10521、misses581、blocks0；OR 同方向，由5445／6084變成10927／602。這支持共享1MiB budget 被低重用 component tuples 占用，原「component零hits」假設修正為低hits。AND 儀器計時676.7851／551.8624ms、OR642.791／536.1734ms僅診斷；不得充作正式效能驗收，原300ms gate及完整矩陣失敗狀態保持。
+
+Composite Watchlist 儲存／Qt route 小切片已凍結，root 審 storage c14323、service diff ec0b72、View diff459711、真257測試b64a55；唯一隔離封套 `composite_watchlist_route_20261010_attempt01`、handle27671 啟動。只在 child 記憶體套用 exact baseline 的兩份 diff，正式來源不變；完整257 fixture、JSON duplicate／明示 COW／typed專用重開及一般/latest拒絕尚待原生終態，不能先宣稱通過。
+
+同 handle27671 原生 exit0：1passed／144.49s、wrapper147.125s、13 pins 起訖不變，stdout SHA `080abc1f2b026414eb136a3c38f0cd668c2377cf1eec4053f851062aec86da36`，stderr空。接受範圍為真257 reader owner 的 JSON duplicate、明示 COW、typed 專用 Qt 重開訊號及一般/latest拒絕；測試直接呼叫 Qt route，不授 Main 實際點擊／全View資格。root 另提出未覆蓋身份邊界：同一 strict bookmark 的不同有效比較籃順序／selected membership 會產生不同 envelope identity，但 service 目前按內層 bookmark_id 去重；須明確保存不可變 UI 狀態身份，不能悄悄忽略新籃狀態。此風險尚待專用正反例與候選設計，正式接入保留未完成。
+
+#### 月營收換頁最小修補的事前回滾清單
+
+| 檔案 | 類型 | 修補範圍 | 回滾方式與風險 |
+| --- | --- | --- | --- |
+| `ui_qt/views/daily_market_technical_official_disposition_revenue_view.py` | 修改 | 補兩個既有頁碼按鈕共用的 `_page_index`，只取目前已核頁碼／無頁時0 | 只移除本次方法；會恢復已確認按鈕例外，不修改來源或其他工作 |
+| `tests/test_ui_qt_revenue_page_navigation_buttons.py` | 新增 | 實際 QPushButton 訊號與無頁／首末頁邊界 | 隨修補撤回新增測試；不取代真來源旅程 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 修改 | 補保存來源研究頁碼操作及失敗時保持目前頁的判讀 | 只還原本次操作補充，保留其他 agent 文檔整理 |
+| 本 QA 紀錄／Snapshot | 修改 | 同步修補與驗收界線 | 僅還原本次附加段／相應表格列 |
+
+事前未來函數自查：本修補不新增篩選、估計或財務計算，只讀目前已發行頁碼；`navigate_page` 仍核同 source／result／query 並執行既有取消及來源檢查，不使用新資料或當日來源補歷史。正式插入後將執行實際按鈕回歸及 repository 強制 UI 檢查，通過前不提交產品修補。
+
+root 已正式補四行 `_page_index`，RevenueView SHA `a5131b1759ebfa24718c8bef86a149038fa72d3c9011cfde6f353b06aba4d4e4`；Manual 主檔同步來源／頁碼／操作與失敗判讀，歷史附冊未改。強制 checks：工作台85passed／3.47s；update_tab 原生 exit0，25pass／0fail／4skip，使用自身隔離合成資料；mypy939 source files無錯誤；該 View py_compile通過。仍待真按鈕回歸與新版來源 pin 的完整 Main 旅程，尚未 commit 此產品修補。後續 Main 必須明示重建 anchor，不能宣稱與 S 原 c0c50 View 相同；S 所有原失敗收據保留。
+
+root 審 pager sibling 四項單元測試後，以繁中註解新增正式 `test_ui_qt_revenue_page_navigation_buttons.py`；僅按鈕游標 fixture，不冒稱 reader-issued query page。四項實際按鈕回歸原生4passed／0.79s：無頁雙按鈕停用、首頁Next要求1、第二頁Previous要求0、首末頁向外按鈕停用。`navigate_page` 由測試攔截只核訊號接線，沒有來源讀寫；完整來源／新PID旅程仍保留 pending。根另核 S 的 `_detail_selection` 是 MA 私有契約誤套：正式 Revenue 用 typed row／目前 page/query/result/request，bookmark由 `from_issued_result_page` 綁定；後續 QA 須核真 Revenue 契約，不能新增假的 MA 欄位來滿足舊斷言。

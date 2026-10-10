@@ -1312,6 +1312,10 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self._clear_basket()
         self.apply_filters()
 
+    def _page_index(self) -> int:
+        """提供換頁按鈕目前已核頁碼；尚無結果時從零開始。"""
+        return self._page.page_index if self._page is not None else 0
+
     def navigate_page(self, page_index: int) -> None:
         if (
             self._recipe is None

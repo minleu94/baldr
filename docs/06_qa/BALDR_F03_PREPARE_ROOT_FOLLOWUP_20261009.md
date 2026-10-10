@@ -880,3 +880,12 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - 唯一實際聚焦 attempt：3 passed／6 subtests passed／51 deselected，7.46 秒；wrapper 8.219 秒、exit 0、timed_out=false，58 正式來源＋8候選檔起訖一致。收據 `output/qa/f12_t24a_focused_root_attempt01/receipt.json`，原 stdout／stderr 保留。
 - 通過範圍是私人合成清單的真確認／stage／activation／UI reload，以及兩個真收藏 helper 各五 RO＋一次 target-only 短 RW、六連線 closed probe、native finished／全域 registry／queued control cleanup、無 TLS 連線拒絕與原錯誤 mode／callsite／target probes。Price helper 為零筆，逐筆價格收藏讀取未觸發；完整 worker-specific 負例及 timeout／exception 矩陣尚未執行，不能外推成完整 COW／F12 Gate。
 - 完整 Main 將另建 T26 bootstrap，依 T24a 基底、原 G reviewed-set schema、58 source pins、精確八檔與外部 manifest SHA，candidate／fixed_inputs 綁同一全新私人 parent。T25 是未執行的舊靜態草稿，不能拿來作通過證據。T26 審閱前不執行 Main；正式程式、原 D 槽資料、新 EXE 與真人狀態不變。
+
+### 2026-10-10 恢復推進：T26 主視窗接線缺件與 N 實際終態
+
+- T26 bootstrap manifest SHA `0ddae92753ec78adc6605cf1f59bcb7406bf87b363165d21a5f3ca35ac083442`、八候選檔與 58 source pins 靜態吻合；但 Root 與獨立 Luna max 確認 worker scope 僅在 focused 測試安裝，完整 Main 沒有安裝、TLS dispatcher 或排空後關閉接線。T26 未執行，不能以 T24a 局部通過代替 Main 通過。T27 先設計實際 Main 接線與失敗清理；成功 COW 不得先 shutdown，後續還需儲存收藏與 fresh child 重開。所有 hook 必須在 native、queued controls 與 registry 安全排空後才撤除，Qt wrapper 刪除前完成。
+- Root 完整讀 J4→J5、J5→N 與 M→N 差異。N manifest SHA `a14e27b6f2097e8e74c4c068e4d17b8acb3caac03ad67f667b2a7971def570c8`；靜態 preflight exit 0、6.214 秒，收據 `output/qa/p01_filter_parallel_experiment_design_20261010_n/static_preflight_55635d459943.json`，network／SQLite／subprocess attempts 均為零。候選僅修完整 I/O summary 投影與負例副本的有界串流複製，完整序列 oracle、來源／clone 全樹 SHA、固定 reader 與隔離守門維持。
+- 唯一 N warm attempt `C:/t/p01cur_rd_2dbcf2d216` 終態 exit 1；source／store 起訖 unchanged、Job 無活動程序、scratch removed_empty_root。摘要投影錯誤不再出現，原負例副本 Errno 2 仍在；oracle canonical 返回 134,501 bytes、SHA `72029528fb011fb5c68299450be8e0525ae4b11eda8609ee0e4ce6f3a7b7bd4c`，原錯誤與原生輸出保留。尚無有效配對速度結果，不能宣稱長路徑歸因、300 ms Gate 或 P01 資格通過；下一步只讀定位失敗步驟，不盲重跑。
+- 本段僅同步本任務 QA 記錄；其他文件 agent 的整理變更與原始資料保持原狀。真人入口沿用具名驗收指南，尚無新真人結果。
+- N 正向讀取的完整 DTO（baseline／candidate／strict）相等；三側各 442 次 bounded reads、10,556 次 lstat、26 次 layout scan，候選僅將 26 次 strict manifest parse 改為 26 次 fresh issued-manifest 檢查。這是已保存的正向一致性證據，不抵銷未完成負例或未取得配對計時。
+- Root 以相同 `.venv` 的 `-I -B` 唯讀單葉定位：265 字元 plain path 的 open 為 Errno 2、stat 為 WinError 3，沙箱外同結果；PowerShell 與同 Python 的 Windows extended-path 語法均讀得 2,207 bytes、SHA `57b64af7c30f9a8161ba708d6cd136b8578f700bbe19568f1683ab5f186aaa27`。收據 `output/qa/p01_filter_parallel_experiment_design_20261010_n/root_leaf_path_probe_20261010.json`。此檔案的 plain-path 存取限制已證實，但不推論全 copytree 只有此原因，也未放寬 controller 的寫入守門。O 僅建立步驟診斷候選；下一個長路徑方案仍須精確設計及審查。

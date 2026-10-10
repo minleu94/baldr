@@ -129,3 +129,11 @@ root 已完整審查 B revision diff、package-path bootstrap、launcher 和新�
 F12 F 仍為未凍結的隔離 QA 草案，未啟動 focused／Main。兩階段角色依原 primer verifier、prime、typed archived binding verifier、selection transaction 順序接線。root 審查要求消除任意 ancestor 搜尋，限定真呼叫鏈並核對 code／globals／thread／task／custody；單次 proof 在所有終態消耗與清理，連線取得後若後置檢查失敗須關閉連線並保留主錯誤與清理錯誤。SQLite 全域 hook 亦須重新核對當下 thread 和 task，不能僅靠函式身分放行。這些是候選審查發現，不能算作已通過負例或產品修復。
 
 三位 Luna Max 維持 H20、F03、F12 分工，root 審查。H20 P7 只獲靜態候選接線授權；原 N helper 身分、來源和 P6 首紅保留。沒有新增 EXE、真人驗收入口或正式排程變更，完整 P00–P14／M1–M3／F01–F23 補完範圍保持。
+
+### F03 B 原生終態與最小 QA 修正（追加）
+
+B 唯一 attempt01 已終態 **exit 1，1 failed／14 passed／13 errors，671.25 秒**；沒有 timeout。root 已實讀原 stdout 與 receipt 並重算：receipt SHA `3d1ec0fd481784e490e325da36c9f4f115390afa95b164fc770dceba368e5fbb`、stdout SHA `157ad7830e396e3659b8b7edac64366fac283fd2ed05fdcead1c9d106cd0e85f`、stderr 為空檔。原生 log 明示載入 B overlay reader 與正確 draft SHA；20 正式 source pins、9 draft pins 與 manifest 起訖相同。root 另用 CIM 核對四個已知 PID 均已不存在；沒有重啟或終止未知程序。
+
+13 個 publication cases 在 setup 階段因 draft tests 只引入 `exact_query`、漏引其依賴的 `exact_p01_session` fixture 而未執行；原正式 fixture 定義已核對。唯一 failed 為 fresh-child legacy stub 把 `builder.verified_session` 設成裸 object，真 bundle opener 需要其 `create_query`，因此 AttributeError。這兩項是 QA 接線首紅，不能當成真 publication 正例／負例執行失敗，也不能因其餘 14 綠燈宣稱 publication 完成。原件全部保留。
+
+C 只獲靜態 QA revision 授權：補真 fixture dependency、修 session stub 契約，先交完整差異與依賴圖。下一輪只覆蓋尚未驗的 publication／lazy child，不重跑來源與候選均未改的已通過 prepare／原 F17 nodes；正式 sources 保持凍結。H20 P7 靜態審查另發現 bridge helper 還讀舊 `base_fdopen` local，新 wrapper 真 closure 名為 `bridged_base_fdopen`，已要求在 freeze 前逐一核對 pins／closure／真 locals，未執行 P7。

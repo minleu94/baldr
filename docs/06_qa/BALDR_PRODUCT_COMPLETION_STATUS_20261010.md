@@ -14,7 +14,7 @@
 | P05 個股可讀性 | `65d5f515` H20 來源／完整錯誤修正、`9d5e8cd4` 正常 Main 耐久案例 | 原 2382 同源首次名單／下鑽／報告／返回速度、跨域時效、摘要與用途真人判讀 |
 | P06 持倉情境 | 原 Portfolio／Health／研究情境基礎 | 同股多帳本、明示配置情境、保存／新程序與原模型關係；不能直接把毛報酬轉權重 |
 | P07 自有策略 | Registry／StrategySpec／限定封存規則卡；`6407d6e8` 有限方法目錄對齊 | 完整策略規則／executor、型態與 VCP 定義、多策略共振、正常 UI 消費者；目錄尚不是策略產品 |
-| P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報、Registry 歷史比較；明示版本帳戶 binding／分離路徑，50 PASS／1 skip；快照來源紀錄原子保存／讀回，55 PASS | 真實 seed／daily 逐筆 provenance、受控 writer／ledger／benchmark／績效與正常 UI；新帳戶週報保持不可計算，daily writer 仍限制 paper-main |
+| P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報、Registry 歷史比較；版本帳戶 binding／分離路徑，50 PASS／1 skip；快照來源紀錄原子保存／讀回，55 PASS；同次唯讀價格／證據及來源時鐘核驗，39 PASS | 真實 seed／daily 逐筆 provenance、受控 writer／ledger／benchmark／績效與正常 UI；新帳戶週報保持不可計算，daily writer 仍限制 paper-main |
 | P09 收藏與追蹤 | 不同來源的 bookmark／restore 切片 | 全域 query/source/origin、各域新程序、錯版／半批／晚到回呼與完整返回 |
 | P10 四用途首頁 | 四用途引導卡、九工作區導覽已存在 | 同源日期、市場／模型／持倉／更新完整往返／重開、跨時區與真人理解 |
 | P11 自然結果 | 既有 daily journey 與 Forward Performance 部分進度 | 每筆 prediction→entry→outcome→readiness／公平比較接線；未成熟保持 waiting，不用 replay 代自然結果 |
@@ -33,7 +33,7 @@ P01 最新證據為 Q13 single-warm：30 組完整 DTO 相等；baseline p95 1,3
 | F07 | Decimal 價格區間／排序已有旅程切片；正常來源、EXE／守衛收尾及真人接受不能省。高中低命名須有明示數值。 |
 | F08–F09 | 分點與三大法人分開；原期間、coverage、連續官方開市日、缺日與 available_at 必須保存核驗。 |
 | F10–F11 | 權證標的／掛牌／到期關係；基本面具名成長指標、前期／期間／修訂與 PIT，未知不可當不符合。 |
-| F12 | 營收 reader/query/view/bookmark 切片存在；T38 正常轉場與自然收尾通過，收藏前精確 resolver message 為 `unexpected_private_sqlite_uri`。這是 QA 守門拒絕，不能據此推論正式 marker 損壞；未到 fresh child。正在追精確 URI／callsite，不放寬 SQL 守門。 |
+| F12 | 營收 reader/query/view/bookmark 切片存在；T39 第一條收藏 worker-load marker lock 已通過，之後仍遭 QA 守門拒絕 `unexpected_private_sqlite_uri`；未到保存成功或 fresh child。完整盤點精確 resolver／detect／reader 與其後保存刷新角色，不放寬 SQL 守門。 |
 | F13–F15 | 產業同期分類／母體與相對強度；族群核心的透明定義；成交額代理與真淨新資金分開，不能冒稱來源不存在的流入。 |
 | F16–F18 | 注意／處置當下 reader 與完整事件／可得時鐘分開；處置預警須有公開規則版本與累積史料，未知不是安全。 |
 | F19–F21 | 各域資料日／風險三態、全域多欄穩定排序、完整已選母體分母與清除／復原；已選 cohort 不冒稱全市場。 |
@@ -44,13 +44,13 @@ P01 最新證據為 Q13 single-warm：30 組完整 DTO 相等；baseline p95 1,3
 M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成；M2 有多個保存／完整已選母體／新程序切片，但條件、資源矩陣、原來源與真人未閉合；M3 策略獨立帳本與歷史績效工作流未完成。
 
 - root：審查正式差異、執行驗證、保存進度；不覆寫其他文件整理工作。
-- F12 葉片：T38 已執行一次，正常轉場與 launcher→native PID 鏈核對通過；收藏前 QA SQLite 拒絕仍未解，下一候選先交 root 審核。
-- 原 2382 葉片：D 已取得原名單載入 35.422 秒、10 列可研究與 2382 唯一的證據，native exit1、自然收尾。列尚未進入表格可見範圍，未取得下鑽速度；E 候選正在補真實可達的捲動操作及完整幾何。C／D 原收據保留，E 槽私人副本／狀態、D 原來源唯讀；見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)及下方 D 終態。
+- F12 葉片：T39 一次終態詳見下方；第一個鎖核驗已過，其後精確 QA SQLite 路由仍待，下一 sibling 先盤點完整呼叫流程及合成驗證，再交 root 審核。
+- 原 2382 葉片：F 原名單首次就緒21.250秒、10列可研究、2382唯一，尚未下鑽；G小型Qt方向探針已通過，正在準備完整G旅程。C–F原收據保留，E槽私人副本／狀態、D原來源唯讀；見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)及下方終態。
 - P08 Luna max：binding／帳戶路徑、成本 reader 與快照來源紀錄基礎已分別整合，receipt 正式回歸 55 PASS。下一步是明示真實 seed 與 daily 來源鏈候選；產製、週報資格及策略 UI 尚未完成。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)及[快照紀錄切片](BALDR_P08_SNAPSHOT_RECEIPT_SLICE_20261010.md)。
 
 真人目前可做[合成來源六步驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：窄窗、完整文字、返回、比較、收藏即時重開及關閉後重開。它使用 1000／1256，不替代原 2382／H20、真實推薦或整體四用途接受。
 
-推薦理由窄窗與鍵盤捲動聚焦測試取得 3 PASS／native exit0；七份人驗入口 UI 指紋再次相符，仍沒有真人結果。T39 月營收精確鎖核驗候選與 H20 E 候選由兩個葉片平行準備，root 審查後才執行。
+推薦理由窄窗與鍵盤捲動聚焦測試取得 3 PASS／native exit0；七份人驗入口 UI 指紋再次相符，仍沒有真人結果。T39已終態，H20完整G候選與P08真seed／daily來源鏈由葉片平行準備，root審查後才執行。
 
 H20 D 後續實測：root 完整審查 C→D 差異及 launcher，五份核心 hash 與唯讀 preflight 30＋17 pins 相符，執行一次取得 child PID 35724／exit1，未逾時、未由 launcher 終止。真頁籤箭頭點擊三次成功；原名單 10 列可研究、0 列未知、2382 唯一。Main 啟動至列表就緒 35.422 秒，頁籤揭露與點擊至就緒 30.891 秒；這是一次固定來源觀測，不是 p95。隨後因「2382 列未在真實表格 viewport 內」停止，未取得下鑽／報告／返回時間。原來源 metadata 前後相同；內層收據 `E:/t/h20p2382d/output/qa/h20_2382_timing_receipt.json` SHA-256 為 `a3ae7d65fa99e6bbff3730885d4b68f794cf4050bae3a1aff99fb777b8633636`。下一 sibling 補有界真實表格捲動，不覆寫 D 收據，也不以程式直接選取冒稱真實操作。
 
@@ -66,4 +66,8 @@ P01 Q13 連結負例的 root 唯讀追線另發現第二個 setup 問題：原 c
 
 F session `16461`／child PID `32648` 已終止，外層及 native exit1，無逾時或 launcher 終止；Main 自然關閉、worker registry 為0、三個 H20 worker 均停止，operation-local SQLite 清理後為空，來源大型檔 metadata 前後相同。F 11 個封套檔起訖不變；manifest SHA `6a7c8f11f02827bc02c145fe66eae8d9ae3f48767d867fe4cc30f4c34d0fec5c`，內層收據 `E:/t/h20p2382f/output/qa/h20_2382_timing_receipt.json` SHA `c547e801256d71796585c991507813949c51a358951f8c64ca1f17adf07bd8e7`。原資料與正式來源沒有修改。
 
-並行審查另發現兩個待修候選問題：T39 QA 在 resolver 尚未回傳時要求 writer guard 的 `active` 已賦值，已交回修正不可能成立的條件；P08 所用 TWSE publication reader 在多 projection manifest 時以迴圈最後一份 manifest 比對所選列，正準備獨立修正與雙 manifest 回歸、同次 SQLite readback 價格／證據 API。兩者尚未正式套用或驗收。
+並行審查發現的 T39 `active` 尚未賦值自鎖已在 QA sibling 修正。Root 全讀增量及正式呼叫流程後執行一次 T39：native exit1、210.437 秒、未逾時，58 來源 pins 前後相同、callback error markers 為0；第一條 bookmark worker-load 的 `BEGIN IMMEDIATE`→`ROLLBACK`→close 通過，但後續 resolver 仍被 QA guard 拒絕，`invalid_explicit_marker`／`unexpected_private_sqlite_uri`。Worker 回傳與原生 finished 均已觀測，error1／result0，hooks 按身分還原；沒有保存成功或新程序讀回。原 T39 封套與收據保留，下一輪先完整盤點 resolver／detect／reader 與保存刷新角色，不據此推論正式 marker 損壞。
+
+P08 的多 manifest 選列問題已正式修正，並補上來源回執時間一致性與同次唯讀 scalar／列 hash API。Root 的原 reader 合成負例曾證明有效重封的 2000 年 first-observed 可被誤接受；修正後正式 import 取得39 PASS／2.86秒／native exit0，mypy與語法／whitespace檢查通過。舊介面保持相容；真 seed、daily writer、帳本與績效資格尚待。[行情證據切片](BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)
+
+H20 G 小型 Qt 探針已由 root 全讀後執行一次：完全不可見、只露頂端10px與完整可見三例均通過，native exit0。分別用11／9／0次外層點擊，加一次真正 AddLine 內層點擊，使內層 value 由0增至1；每例578／500／47ms，均符合20次外層、31次總點擊、3秒上限。收據位於 `output/qa/h20_scrollbar_direction_probe_root01/`，stdout SHA `bbe4c6e4317e10289aa41011396788239b9776979eb2b6a6ffdcccab5d05d137`。這只驗證方向點位方法，尚未代表 Main 原2382下鑽；下一 sibling 移植同一 helper 後再驗。

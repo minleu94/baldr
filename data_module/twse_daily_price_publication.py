@@ -68,6 +68,25 @@ class DailyPriceEvidenceReadResult:
     row: DailyPriceRowEvidenceV1 | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _DailyPriceEvidenceReadResultWithScalar:
+    status: str
+    reason_code: str
+    row: DailyPriceRowEvidenceV1 | None = None
+    scalar_value: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DailyPriceScalarEvidenceReadResult:
+    """單一行情值與其列級證據；值及列 hash 來自同次 SQLite snapshot。"""
+
+    status: str
+    reason_code: str
+    scalar_column: str | None = None
+    scalar_value: object | None = None
+    row: DailyPriceRowEvidenceV1 | None = None
+
+
 def _canonical_json(value: object) -> bytes:
     return json.dumps(
         value,
@@ -548,6 +567,7 @@ def _load_projection_manifest(
         custody_path = _resolve_relative_file(output_root, payload.get(path_field))
         if _sha256(custody_path.read_bytes()) != payload.get(hash_field):
             raise DailyPriceEvidenceError(f"custody file changed: {path_field}")
+    receipt_captured_at: dict[str, str] = {}
     for path_field in ("custody_receipt_relative_path", "observation_receipt_relative_path"):
         receipt_path = _resolve_relative_file(output_root, payload.get(path_field))
         try:
@@ -564,6 +584,21 @@ def _load_projection_manifest(
             or receipt_value.get("parser_id") != _DAILY_PRICE_PARSER_ID
         ):
             raise DailyPriceEvidenceError("custody receipt identity differs")
+        receipt_captured_at[path_field] = _aware_timestamp(
+            receipt_value.get("captured_at"), field="captured_at"
+        )
+    first_observed_at = _aware_timestamp(
+        payload.get("first_observed_at"), field="first_observed_at"
+    )
+    observed_at = _aware_timestamp(payload.get("observed_at"), field="observed_at")
+    if first_observed_at != receipt_captured_at["custody_receipt_relative_path"]:
+        raise DailyPriceEvidenceError("manifest first observation differs from custody receipt")
+    if observed_at != receipt_captured_at["observation_receipt_relative_path"]:
+        raise DailyPriceEvidenceError("manifest observation differs from observation receipt")
+    if datetime.fromisoformat(observed_at) < datetime.fromisoformat(first_observed_at):
+        raise DailyPriceEvidenceError("manifest observation precedes first observation")
+    payload["first_observed_at"] = first_observed_at
+    payload["observed_at"] = observed_at
     return payload
 
 
@@ -682,6 +717,33 @@ def _atomic_row_readback(
         connection.close()
 
 
+def _atomic_row_readback_readonly(
+    *, database_path: Path, source_date: str, stock_code: str, columns: Sequence[str]
+) -> tuple[dict[str, object], str] | None:
+    """以唯讀 SQLite URI 在單一交易中讀取列值及 projection hash。"""
+
+    supplied_path = database_path.expanduser()
+    if supplied_path.is_symlink():
+        raise DailyPriceEvidenceError("SQLite database cannot be a symlink")
+    path = supplied_path.resolve(strict=True)
+    connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=30)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA query_only = ON")
+        connection.execute("BEGIN")
+        return _sqlite_snapshot(
+            connection,
+            table="daily_prices",
+            source_date=source_date,
+            stock_code=stock_code,
+            columns=columns,
+        )
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
 def publish_sqlite_row_evidence(
     *,
     output_root: str | Path,
@@ -718,6 +780,13 @@ def publish_sqlite_row_evidence(
             )
         except (DailyPriceEvidenceError, OSError):
             continue
+        if datetime.fromisoformat(written_timestamp) < datetime.fromisoformat(
+            str(manifest["observed_at"])
+        ):
+            return {
+                "status": "unknown",
+                "reason_code": "publication_written_before_source_available",
+            }
         normalized = _date_key(date_value)
         if normalized != _date_key(manifest.get("source_date")):
             continue
@@ -836,7 +905,7 @@ def publish_sqlite_row_evidence(
     }
 
 
-def read_sqlite_daily_price_evidence(
+def _read_sqlite_daily_price_evidence(
     *,
     output_root: str | Path,
     data_root: str | Path,
@@ -844,13 +913,14 @@ def read_sqlite_daily_price_evidence(
     descriptor: Mapping[str, object] | None,
     source_date: str,
     stock_code: str,
-) -> DailyPriceEvidenceReadResult:
-    """Opt-in strict reader；任何身份或資料漂移都回傳 UNKNOWN。"""
+    scalar_column: str | None,
+) -> _DailyPriceEvidenceReadResultWithScalar:
+    """內部共用嚴格讀取流程；scalar 與列 hash 使用同一唯讀 SQLite 交易。"""
 
     if not isinstance(descriptor, Mapping):
-        return DailyPriceEvidenceReadResult("unknown", "publication_descriptor_missing")
+        return _DailyPriceEvidenceReadResultWithScalar("unknown", "publication_descriptor_missing")
     if descriptor.get("status") != "captured" or descriptor.get("schema_version") != PUBLICATION_SCHEMA_V1:
-        return DailyPriceEvidenceReadResult("unknown", "publication_descriptor_unavailable")
+        return _DailyPriceEvidenceReadResultWithScalar("unknown", "publication_descriptor_unavailable")
     try:
         output = Path(output_root).expanduser().resolve(strict=True)
         data = Path(data_root).expanduser().resolve(strict=True)
@@ -893,7 +963,7 @@ def read_sqlite_daily_price_evidence(
             and row.get("stock_code") == wanted_code
         ]
         if not selected:
-            return DailyPriceEvidenceReadResult("unknown", "key_not_observed")
+            return _DailyPriceEvidenceReadResultWithScalar("unknown", "key_not_observed")
         if len(selected) != 1:
             raise DailyPriceEvidenceError("published row identity is duplicated")
         row = selected[0]
@@ -928,7 +998,13 @@ def read_sqlite_daily_price_evidence(
             raise DailyPriceEvidenceError("published projection columns are invalid")
         if columns != projected_manifest.get("projection_columns"):
             raise DailyPriceEvidenceError("published projection columns differ from CSV")
-        actual = _atomic_row_readback(
+        if scalar_column is not None and (
+            not isinstance(scalar_column, str)
+            or not scalar_column
+            or scalar_column not in columns
+        ):
+            raise DailyPriceEvidenceError("requested scalar column is not attested")
+        actual = _atomic_row_readback_readonly(
             database_path=database,
             source_date=wanted_date,
             stock_code=wanted_code,
@@ -936,16 +1012,28 @@ def read_sqlite_daily_price_evidence(
         )
         if actual is None:
             raise DailyPriceEvidenceError("SQLite row is missing")
-        _actual_values, actual_hash = actual
+        actual_values, actual_hash = actual
         if actual_hash != row.get("sqlite_projection_row_sha256"):
             raise DailyPriceEvidenceError("SQLite row drift")
+        row_first_observed_at = _aware_timestamp(
+            row.get("first_observed_at"), field="first_observed_at"
+        )
+        selected_first_observed_at = _aware_timestamp(
+            projected_manifest.get("first_observed_at"), field="first_observed_at"
+        )
+        if row_first_observed_at != selected_first_observed_at:
+            raise DailyPriceEvidenceError("published first observed time differs")
+        if datetime.fromisoformat(written_at) < datetime.fromisoformat(
+            _aware_timestamp(projected_manifest.get("observed_at"), field="observed_at")
+        ):
+            raise DailyPriceEvidenceError("publication written before source available")
         if (
             row.get("source_id") != _DAILY_PRICE_SOURCE_ID
             or row.get("parser_id") != _DAILY_PRICE_PARSER_ID
-            or row.get("raw_response_sha256") != manifest.get("raw_response_sha256")
-            or row.get("custody_receipt_sha256") != manifest.get("custody_receipt_sha256")
-            or row.get("observation_receipt_sha256") != manifest.get("observation_receipt_sha256")
-            or row.get("csv_sha256") != manifest.get("csv_sha256")
+            or row.get("raw_response_sha256") != projected_manifest.get("raw_response_sha256")
+            or row.get("custody_receipt_sha256") != projected_manifest.get("custody_receipt_sha256")
+            or row.get("observation_receipt_sha256") != projected_manifest.get("observation_receipt_sha256")
+            or row.get("csv_sha256") != projected_manifest.get("csv_sha256")
             or row.get("source_published_at") is not None
             or row.get("written_at") != written_at
         ):
@@ -955,7 +1043,7 @@ def read_sqlite_daily_price_evidence(
             stock_code=wanted_code,
             source_id=_DAILY_PRICE_SOURCE_ID,
             parser_id=_DAILY_PRICE_PARSER_ID,
-            first_observed_at=_aware_timestamp(row.get("first_observed_at"), field="first_observed_at"),
+            first_observed_at=row_first_observed_at,
             written_at=written_at,
             source_published_at=None,
             raw_response_sha256=str(row["raw_response_sha256"]),
@@ -966,27 +1054,112 @@ def read_sqlite_daily_price_evidence(
             sqlite_projection_row_sha256=actual_hash,
             projection_columns=tuple(columns),
         )
-        return DailyPriceEvidenceReadResult("attested", "ok", result)
+        return _DailyPriceEvidenceReadResultWithScalar(
+            "attested",
+            "ok",
+            result,
+            actual_values.get(scalar_column) if scalar_column is not None else None,
+        )
     except (DailyPriceEvidenceError, OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
         message = str(exc).casefold()
         if "sqlite row drift" in message:
             reason_code = "sqlite_row_drift"
         elif "downloaded csv changed" in message:
             reason_code = "csv_changed"
+        elif (
+            "manifest first observation differs" in message
+            or "manifest observation differs" in message
+            or "manifest observation precedes" in message
+        ):
+            reason_code = "manifest_clock_mismatch"
         elif "custody file changed" in message or "custody receipt" in message:
             reason_code = "custody_evidence_changed"
+        elif "published first observed time differs" in message:
+            reason_code = "first_observed_at_mismatch"
+        elif "publication written before source available" in message:
+            reason_code = "publication_written_before_source_available"
+        elif "requested scalar column" in message:
+            reason_code = "scalar_not_attested"
         else:
             reason_code = "evidence_validation_failed"
-        return DailyPriceEvidenceReadResult("unknown", reason_code)
+        return _DailyPriceEvidenceReadResultWithScalar("unknown", reason_code)
+
+
+def read_sqlite_daily_price_evidence(
+    *,
+    output_root: str | Path,
+    data_root: str | Path,
+    database_path: str | Path,
+    descriptor: Mapping[str, object] | None,
+    source_date: str,
+    stock_code: str,
+) -> DailyPriceEvidenceReadResult:
+    """Opt-in 嚴格 reader；保留舊呼叫介面與三欄回傳契約。"""
+
+    result = _read_sqlite_daily_price_evidence(
+        output_root=output_root,
+        data_root=data_root,
+        database_path=database_path,
+        descriptor=descriptor,
+        source_date=source_date,
+        stock_code=stock_code,
+        scalar_column=None,
+    )
+    return DailyPriceEvidenceReadResult(result.status, result.reason_code, result.row)
+
+
+def read_sqlite_daily_price_scalar_evidence(
+    *,
+    output_root: str | Path,
+    data_root: str | Path,
+    database_path: str | Path,
+    descriptor: Mapping[str, object] | None,
+    source_date: str,
+    stock_code: str,
+    scalar_column: str,
+) -> DailyPriceScalarEvidenceReadResult:
+    """同次驗證發布證據與 SQLite row snapshot，回傳一個已簽證 scalar。
+
+    此 API 不以 source date 推導可取得時間；`scalar_value` 僅表示它與
+    `row.sqlite_projection_row_sha256` 同次讀回，呼叫端仍須執行自己的 PIT gate。
+    """
+
+    if not isinstance(scalar_column, str) or not scalar_column:
+        return DailyPriceScalarEvidenceReadResult(
+            status="unknown",
+            reason_code="scalar_not_attested",
+            scalar_column=None,
+            scalar_value=None,
+            row=None,
+        )
+
+    result = _read_sqlite_daily_price_evidence(
+        output_root=output_root,
+        data_root=data_root,
+        database_path=database_path,
+        descriptor=descriptor,
+        source_date=source_date,
+        stock_code=stock_code,
+        scalar_column=scalar_column,
+    )
+    return DailyPriceScalarEvidenceReadResult(
+        status=result.status,
+        reason_code=result.reason_code,
+        scalar_column=scalar_column,
+        scalar_value=result.scalar_value,
+        row=result.row,
+    )
 
 
 __all__ = [
     "DailyPriceEvidenceError",
     "DailyPriceEvidenceReadResult",
     "DailyPriceRowEvidenceV1",
+    "DailyPriceScalarEvidenceReadResult",
     "PROJECTION_SCHEMA_V1",
     "PUBLICATION_SCHEMA_V1",
     "create_download_projection_manifest",
     "publish_sqlite_row_evidence",
     "read_sqlite_daily_price_evidence",
+    "read_sqlite_daily_price_scalar_evidence",
 ]

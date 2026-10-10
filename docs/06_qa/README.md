@@ -10,7 +10,8 @@
 4. [10/09 排程與 Codex automation 修正](BALDR_SCHEDULE_REMEDIATION_20261009.md)：21 個 Task 的回讀結果、仍未解除的來源缺口與回復資訊；producer 結果與排程 exit code 分開判讀，共同只讀操作規則見 [排程稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 5. [10/09 產品補完恢復開發基線](BALDR_COMPLETION_RESUME_20261009.md)：記錄 checkpoint 後的工作分工與首輪驗證；不是產品完成或發布收據。原暫停點見 [10/09 交接](BALDR_COMPLETION_HANDOFF_20261009.md)。
 6. [10/10 複合研究真人驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：自動化旅程已通過，但真人結果尚未取得；只完成逐步真人操作並留下結果後才算驗收。
-7. 按下方主題地圖選擇索引；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+7. [10/10 補完進度](BALDR_PRODUCT_COMPLETION_STATUS_20261010.md)與[P08 行情證據切片](BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)：完整待辦範圍及同次唯讀取值／來源時鐘核驗；不代表策略績效資格完成。
+8. 按下方主題地圖選擇索引；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
 <a id="主題地圖"></a>
 ## 主題地圖

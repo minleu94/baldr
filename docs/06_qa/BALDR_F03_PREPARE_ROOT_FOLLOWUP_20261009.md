@@ -380,3 +380,14 @@ composite契約／tests／本紀錄已提交0bb65fb6，未含新executor。root�
 F12 L歷史58pins保持，不再以舊d494 pin執行新reader；下一候選須明示rebase／審新reader完整diff。L已清楚firstfalse query identity，原source成功；原因由真canonicalquery／UI條件／原oracle比較查清，不直接換expected。
 
 H20 a靜態封套已回：template a6755493b4675d0720d5763daafb89a78c32a9bf90850c7a6ecedc870ce12d98、36path receipt f5cf3b79c3fecb4bc59258c0600284d9db40c68bfcbe1fd12521c28aa8d5f85e、controller973f369bdbcf63d9b669f49acf69a12142cb9d27d4c2328f1ac3b827697b0658。root讀完整controller差異並補讀截斷的launch綁定段，發現builder將role按字母排序，而原template順序非canonical；controller直接比較template陣列，合法build output必誤拒。尚未build，授b sibling static-only排序正規化與模板pin更新，保留a／36來源member值，不放寬值比對。另要求確認原十股public保存來源／2382廣達684bp→摘要→同capture圖表→返回真Main assertions；2382是股票代碼，不是2382檔母體。現候選的builder dual-copy environment不是完整dual-copy驗收證據。
+
+
+### S4 真來源快照建置完成；複合取消修正與 F12 oracle 診斷
+
+root 建立 S4 非 source-only approval，SHA4346660f3a9fbdd414978e169a89c6c96a7fd857215894ad1de83050804e2a5e；保留既有22 required pins/profile、九個實際 overlay，逐項 size/SHA 核對。真 builder 單次原生 exit0（handle26313），產製 s4/source 4161 files／77,229,228B。manifest SHA2d259ecb468af0833b1c6638e917f278b1079b8158cb6302795c259f934a6188、launch_inputs SHAb3ca6f3c60a31720cd78dc60d420d4ce66f6227c6eedccfeb8d8c2a3ff00ceeb、source archive SHA25d98adafa4898879f784e18b8cadf0e02e58748e5f4555a61deee61754b536b；root 獨立重新雜湊三檔及確認 approval 正規化 template 完全等於 b。來源 Main SHA813fa8c4c2349cc295e590a2ec867e5ac01d76b84b1c8a6363027f0a8c70f5c9。建置 external_source_groups_opened=0／sqlite_connections_opened=0／main_started=false；內部 approved_for_launch=false 與三驗收 pending 保持，這不是真人批准阻擋或 Main 驗收通過。
+
+b sibling 模板 SHA258da4fa22e0c6bdfd19448a245b2b8545e98ceb87d4330cdfef0262fb53fb65、runner ca3a267f59002bf4a333f4e24eac028ba9339fca9f87d3df9644eb3a64b19eb5、完整 a→b diff4bbfeac495981f488402c42df1213e8c246dd1a7722d769292bd4599ab746576。六 role canonical 順序 activation/calendar/config/h20_db/manifest/market_db，其他值不变；a 保持。child 靜態確認包含真 MainWindow、公用 cohort 十股與2382原684bp／三日期、真表格 signal、同 capture chart/table、返回原 manifest/selection assertions；尚未執行。它直接建 MainWindow，未走正式 main()/startup/preload 或完整 dual-copy supervisor，故不可拿此窄流程授 full Main qualification。
+
+root 修正 composite page 下層 BundleError 的公開例外映射，先 _check_source_error_cancelled，再包 reader page-specific error；不漏出 BundleCancelled。executor 最新 SHAa4abab6737bfd9685ae50784a17a98abb51960c17d20be34d0c3a2173c1cfe0b，formal reader d59b 保持。兩 source targeted mypy 綠；尚未 actual executor runtime。Luna Max 審查 full-N join／OR hard gate 無其他必然阻擋，已轉準備 real full257 integration test 候選；不把靜態審查算 OR/AND／256+1／取消／100k／300ms 通過。
+
+F12 唯讀核對查明 expected cccf 來自舊 attempt04 bookmark，而 L 本次 seed 是206-byte空清單。月營收 read-session identity 包含 snapshot_id 與 reader DB path，真 snapshot 每次 uuid4 新建，因此跨 attempt 固定舊 query hash 不可作同 session oracle。L 沒保存四個實際月營收子身份/canonical body，不能把完整差異推算成已證明。下一 M sibling 保留 L 原件、舊 gate/expected，追加受限 typed canonical fields 的逐欄診斷與明示新 reader source pin rebase；尚未 runtime，不直接替換 expected 或放寬正式身分驗證。

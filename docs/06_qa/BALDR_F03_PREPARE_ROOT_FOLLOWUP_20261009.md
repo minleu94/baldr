@@ -6,12 +6,14 @@
 
 以下為本文件最新工程切片狀態；後文的日期化追加保留原始歷史，不以舊「待測」覆蓋新終態。完整補完仍依原計畫 P00–P14／M1–M3／F01–F23，這三路不代表全部產品範圍。
 
+全範圍工作包／條件／里程碑與目前分工見[2026-10-10 補完狀態索引](BALDR_PRODUCT_COMPLETION_STATUS_20261010.md)。目前正式程式已包含 `6407d6e8` 的有限能力目錄對齊；不是完整策略或新 EXE 資格。
+
 | 工作 | 已取得的證據 | 接下來與未完成項 |
 |---|---|---|
 | F03 完整母體共同發行 | C13nodes與F正常node已有原生通過；root已套入正式reader、新group-session與14節點測試，補精確prepared型態後mypy兩source綠、三檔語法綠。 | 正式17節點首輪原生終態：15 passed、2 failed／499.90s；兩紅均為測試仍依賴QA overlay環境變數，已窄修為正式module路徑及tmp_path子程序參數，修正後b封套只重驗兩節點，原生2 passed／179.68s、exit0；首輪15項加修正2項全部取得通過，未重跑其餘15項。composite query／UI／收藏／新程序／EXE待辦，不能以此切片代替全產品完成。 |
 | H20 原 source-port 接線 | P9 attempt01 最終中文 stdout 被 CP1252 拒絕，不能取回內部結果；原件保留。byte-identical launcher 的 attempt02 改用 process-tree UTF-8，原生 exit1；逐row PITfalse／hash／日期及12 core negatives通過，來源與fixture不變、cleanup完成。 | 唯一首紅為 QA receipt 的 tuple dictionary key（`('original_n_base_fdopen',)`）；P10唯一attempt01原生exit0／5.04s；真fixed2讀2關、config14讀14關、1private SQLite／0source connection；來源與fixture不變、cleanup完整。negative core通過但完整negative scope仍false；原JSON loader pin、private replay等缺口保留。public cohort、Main、原2382的684bp／圖表／速度、真人仍待驗。 |
 | H20 Main 操作與退出 | N3外層實跑1 passed／4.77s，原生exit0，389 pins不變；四次操作及空剪貼簿owner身分／清理核對通過，callback markers空。 | 這是true-origin overlay與合成資料測試資格。F/J/H 閱讀修正已整合正式來源，85項UI、更新頁25項、mypy941與三檔語法通過；H20既有32項及新完整文字耐久1項均原生通過。原2382載入時間、真人與EXE仍待驗；不以測試清理推定正式產品崩潰根因。 |
-| F12 收益與跨程序收藏 | T33 focused原生23 passed／13 subtests／6.81s；T35完整Main已到65 query oracle，首錯明確為H20初始worker尚非None，之前20個入場前提成立。 | T36a fullMain已證明 FullN2／H20startup1 自然收尾，仍在COW入場的h20_worker_is_none為false而失敗；唯讀核第二次刷新時序。完整收藏／新PID重開尚未完成，不以focused綠燈替代。 |
+| F12 營收與跨程序收藏 | T33 focused原生23 passed／13 subtests／6.81s；T35完整Main已到65 query oracle，首錯明確為H20初始worker尚非None，之前20個入場前提成立。 | T36a fullMain已證明 FullN2／H20startup1 自然收尾，仍在COW入場的h20_worker_is_none為false而失敗；已追到正常選頁會再次刷新，T37獨立觀察／自然收尾所有轉場波，尚未執行。完整收藏／新PID重開尚未完成，不以focused綠燈替代。 |
 | P01 效能 | Q11d映射正／負例7 passed／0.230s；Q11完整single-warm核到1000股票／63引用與四段映射，來源及副本均正常清理。舊篩選p95仍未達300ms。 | Q12明確取得Query.to_dict包裝欄位差異；Q13四個精確live DTO owner映射已核相等，30pairs全DTO一致；candidate p95約1.40秒未達300ms，另link拒絕fixture未建立，整體failed。完整cold/warm、分頁、排序及AND/OR矩陣仍待驗。 |
 
 目前沒有可交真人驗收的新 EXE，不要求使用者重試舊版。三位 Luna Max 分別承接 H20、F03、F12，root 審查；另一 agent 的未提交文件、原始 D 槽資料與正式排程保持。

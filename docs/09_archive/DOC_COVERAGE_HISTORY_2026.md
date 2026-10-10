@@ -1771,3 +1771,16 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 | 根目錄 `PROJECT_NAVIGATION.md` 的 `## 更新記錄` 至 EOF | 18,814 / `EA31097984A00E20587E59ABFB5740C8B615AB4DA7C93F77B9FC89611E72330A` | [`PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md`](PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md) 保留相同記錄文字；為使 Archive 內連結可用，將 30 個舊 repo-root `docs/...` Markdown 目標改為 Archive 相對 `../...`。調整後摘錄 18,754 bytes、SHA-256 `5EDE0B49B1C3C321E1E2A82C9CD91B68AD4B32EA73F716838D9866E29355B965`；含導讀的整份歷史文件 19,155 bytes、SHA-256 `9409F8BF314E5BC30B6E85252E7B405F67FE05312C6CDF7AB13ED95A090B336A`。根目錄原標題留作相容導引。 |
 
 歷史 Manual 章節仍保留原本的通過、失敗、pending、未知及真人／EXE 未驗收敘述；WIP 研究入口另導向 F12 root review。導覽歷史不再混入目前程式導航。全 repo Markdown 搜尋未找到指向 Manual 前置 16 個標題或 `PROJECT_NAVIGATION.md#...` 的入站錨點，仍保留原 Manual 標題與兩個根入口路徑。`DOCUMENTATION_INDEX`、根 `README`、Guides README 與 Archive README 已同步現行入口；Roadmap Hub、Architecture README、Scoped SSOT 分工未改。冷封存終態與資料文件已逐一對照 reconciliation，既有 03_data README／Asset Register／batch 文件、Snapshot、Index 與根 README 的 34-root 敘述一致，故不重寫。
+
+<a id="coverage-entry-168"></a>
+## 2026-10-09 精簡 PROJECT_SNAPSHOT 首屏並保留歷史快照
+
+將 PROJECT_SNAPSHOT 的逐輪產品施工補記收斂為目前狀態摘要與證據入口，保留 WIP checkpoint、整體 P/M/F 範圍、P01 效能失敗、F02 合成旅程有界通過、F03 bounded prepare 通過、F12 Main 與 H20 source-port 失敗、F06 未驗證及冷封存終態的判讀邊界。精簡前全文另存為歷史快照；為使 Archive 副本中的導覽有效，只調整標題、加入歷史提示，並修正 Roadmap Hub 與 Index 兩個相對連結。QA 原始收據、各 root review、封存 SHA 與冷封存資料文件未修改。
+
+| 對象 | 來源 bytes／SHA-256 | 結果 |
+|---|---:|---|
+| 精簡前 docs/00_core/PROJECT_SNAPSHOT.md | 13,033 / ED962440B8A02C980FDC228D5546C41537234E3F2565403CAB4A20904B304B1D | 精簡前原文副本 |
+| [PROJECT_SNAPSHOT_HISTORY_20261009.md](PROJECT_SNAPSHOT_HISTORY_20261009.md) | 13,231 / 6546B1619F2E020D3F7FEF7D87BAFCEA6E32949AC26EE48473142C5467B14793 | 保留完整原文；改歷史標題並增加提示，調整 2 個指向核心文件的 Archive 相對連結 |
+| 精簡後 docs/00_core/PROJECT_SNAPSHOT.md | 5,160 / EDFB43DBD630568A8C5C74A6345B97599C8F404F48F1C607D84E1837B975217F | 目前狀態摘要、證據入口、工作區／資料保護與導覽 |
+
+docs/09_archive/README.md 已加入歷史快照入口，ROADMAP_6M_ENGINEERING.md 的 checkpoint 標籤改為續接參考；system_architecture.md 與其 README 說明第 16 節仍有混合增量與未抽出的契約。Scoped SSOT 分工未變，因此未改 DOC_COVERAGE_MAP.md 或 DOCUMENTATION_INDEX.md。冷封存兩批終態仍以 [reconciliation](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) 為準；本次不重算全量 SHA、不重述即時容量，也不改寫資料資產文件。

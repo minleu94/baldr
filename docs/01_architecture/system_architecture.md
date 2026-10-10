@@ -1151,8 +1151,8 @@ UI 修改：
 
 ## 16. 更新記錄
 
-> 本節逐次狀態與驗收記錄已移至 [系統架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)。
-> 這些記錄只描述當時變更，不是目前狀態摘要；目前狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+> 較早的架構更新流水帳與部分日期化切片已移至 [系統架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；本節仍保留 2026-10-03 至 10-07 的增量。這些段落混有穩定架構契約、QA 收據摘要與當時狀態，尚未整節歸檔。
+> 不要依日期或段落順序推斷現況：目前狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，驗收結果看各段落連結的具名 QA。穩定架構契約分布於相關主文段落；第 16 節仍有尚未抽出的契約，因此不可把整節當成純歷史，也不可從其中的日期狀態推斷現況。
 
 ## 2026-10-03 Decision Desk 品質與研究證據邊界
 

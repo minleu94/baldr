@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文是 Wave 1 先行驗證的歷史 checkpoint；其中 SHA（如有）、scope、待審狀態與結論只代表當時快照，不得據此重派、重跑或視為目前 gate／授權。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 Wave 1 checkpoint 見 [WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md)。
+
 # Wave 1 checkpoint 先行驗證（正式審查待回）
 
 ## 判定

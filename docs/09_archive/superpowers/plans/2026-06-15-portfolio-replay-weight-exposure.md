@@ -1,4 +1,7 @@
 # Portfolio Replay Weight Exposure Implementation Plan
+> **歷史操作警示（2026-10-10）**：以下操作指令僅供追溯歷史脈絡，不構成目前操作授權。
+> 不得重送本文中的舊 prompt，也不得直接照做舊 Git、rollback、刪除或 `--apply` 命令。
+> 若需執行相關工作，請先依當前使用者指示、根目錄 `AGENTS.md` 與 `docs/agents/git_exclusions.md`，並查核 `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DEVELOPMENT_ROADMAP.md`、`docs/00_core/ROADMAP_6M_ENGINEERING.md`、`docs/07_guides/APPLICATION_MANUAL.md` 後判定現況、範圍與授權。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

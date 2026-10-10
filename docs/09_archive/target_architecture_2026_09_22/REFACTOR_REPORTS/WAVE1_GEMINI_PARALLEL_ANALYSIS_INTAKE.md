@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文是 Wave 1 分析收件的歷史快照；其中 SHA（如有）、scope、待審狀態與結論只代表當時快照，不得據此重派、重跑或視為目前 gate／授權。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 Wave 1 checkpoint 見 [WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md)。
+
 # Wave 1 Gemini 唯讀分析收件與 SOL 對照
 
 - 來源：使用者提供 `C:\Users\archi\.codex\attachments\634621e7-baa4-461d-acbf-43c3ac8379c7\Pasted text.txt`，31667 bytes，內容標記 `WAVE1_PARALLEL_ANALYSIS`。

@@ -46,6 +46,17 @@
 
 全體文件沒有一個可支持「已逐篇讀完」的比例。上述數字只表達可追溯的審閱證據；正文審閱數、入口連結覆蓋及分類完成度是不同指標，不能互相代替。e6 排程 QA 與 Runbook 已納入補充閱讀；全 repo 最終 link／anchor 掃描與 Graphify 刷新仍待所有目錄內容審核及修訂完成後進行。
 
+### `09_archive/` 巢狀目錄核讀補充
+
+| 範圍 | 可證實核讀狀況 | 判讀與處理 |
+|---|---|---|
+| `09_archive/` 直屬 Markdown（263） | 57 份全文、206 份待讀；`APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` 僅讀至第 120 行，仍列待讀。 | Archive 直屬原件尚未讀完。 |
+| `09_archive/target_architecture_2026_09_22/`（30） | 30/30 全文；其中 18 份過時 dispatch／review prompt／checkpoint 已加直開歷史警語。 | 舊 SHA、Git 授權與 Wave 狀態屬歷史；警語保留原驗收／計畫正文，現況回到 Snapshot、Model Assignments 與具名後續 checkpoint。 |
+| `09_archive/broker_branch/`、`phase3_5_research/`、`project_status_2026_08_14/`（13 paths） | 11 份 Markdown 全文、1 份 JSON 全文、1 份 HTML 靜態 body 核對。 | Archive README 增加 Phase 3.5 歷史索引；broker README 標出舊刪 CSV 建議、`c=E` URL 與未重驗腳本／步驟風險。Phase 3.5 固定門檻不代表目前 Gate；專案狀態報告保留 8/14 快照範圍。 |
+| `09_archive/superpowers/`（96） | 96/96 全文：65 份 plan、30 份 spec、1 份 prompt。 | 已確認其 manifest 與大部分狀態導覽相符；9 份含可重送 prompt、舊 Git 授權或 rollback／`--apply` 操作的文件已加上直開警語。原始封存 bytes／SHA 保留作來源核對，manifest 附記另列目前版本雜湊；Superpowers README 的最後整理日已校正為 2026-10-10。 |
+
+上述巢狀路徑合計 139 個 tracked paths（137 Markdown、2 個非 Markdown）；加上直屬 268 paths（263 Markdown），對應 `09_archive/` 共 407 tracked paths／400 Markdown。巢狀目錄核讀不代表直屬 206 份待讀原件已完成審查。
+
 ### `00_core/` 逐檔分類與本輪核讀
 
 | 文件 | 角色／生命週期 | 本輪核讀深度與判讀 |

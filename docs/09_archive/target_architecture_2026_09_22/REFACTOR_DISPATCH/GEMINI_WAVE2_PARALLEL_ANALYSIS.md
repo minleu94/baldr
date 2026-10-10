@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文保留當時的 Wave 2 分析派送內容；其中 SHA（如有）、scope、角色、指令與狀態僅代表原快照，不得據此重派、重跑或視為目前任務／授權。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 checkpoint 見 [WAVE2_RESULT_ID_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md) 與 [WAVE3_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE3_CHECKPOINT.md)。
+
 # Wave 2 Gemini 並行唯讀分析封包 — R008 契約驗收風險
 
 ## ROLE／TASK ID／PURPOSE

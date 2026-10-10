@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文保存當時的 review prompts 與狀態；其中 SHA（如有）、scope、角色與結論只代表當時快照，不得據此重派、重送或重跑。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 Wave 1 checkpoint 見 [WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md)。
+
 # Wave 1 Gemini 正式 review prompts
 
 狀態更新：**R003、R005、R006 正式 Gemini review 與 SOL 整合驗收均已 PASS，不需重送。** R003／R005 合併審查原文保存於 `REFACTOR_REPORTS/WAVE1_R003_R005_GEMINI_REVIEW.md`；Wave 1 checkpoint 已 PASS。以下 prompt 僅作歷史派送紀錄。R006 的完整長測仍有一項具名既有 shadow-boundary failure，不可說成全通過。

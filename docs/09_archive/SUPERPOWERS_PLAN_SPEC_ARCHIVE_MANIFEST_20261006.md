@@ -260,3 +260,20 @@ V3 Score Effectiveness／ML Readiness plan/spec 均指向 read-only／shadow rea
 ## 2026-10-09 Strategy & Scoring Governance 歸檔批次
 
 四份 2026-06-13 plan/spec 原文現已封存；上述列項仍保留初始 manifest 的 LF-normalized Git byte count／SHA-256，工作樹實際原件及 Archive raw bytes／SHA-256 見 [Coverage History Entry 164](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-164)。原路徑皆保留相容 stub；所有計畫原 checklist 狀態未改寫。對應的 `WALK_FORWARD_COMPARISON_REPORT` 僅涵蓋 10 檔、單策略 bounded pilot，quantile 的 opt-in 使用方式仍看 Application Manual。
+
+
+## 2026-10-10 歷史操作警示核讀附記
+
+上方原清冊對下列九份原件列出的 bytes／SHA-256，是本次加上歷史操作警示前的封存來源證據；本附記新增前已逐檔實算核對。為保留封存證據，未覆寫原列欄位。本次只在各文件標題後加入警示，標題之後的原正文位元組保持不變。下表「原始」與「目前」的 bytes 及 SHA-256 均依檔案實際位元組計算並再次核對。
+
+| Archive 原件路徑 | 原始 bytes | 原始 SHA-256 | 目前 bytes | 目前 SHA-256 |
+| --- | ---: | --- | ---: | --- |
+| `docs/09_archive/superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md` | 37186 | `5867d4dfbadc30bf179ef10d19c89fd589379b1d00ea558a5edc153fb5c23429` | 37747 | `3ea8134c1593085296c683a4edb2930d072127a9f9b0b49841c12b8ef36bf192` |
+| `docs/09_archive/superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md` | 24767 | `c89a8838dc2b8e0c1cd583fffe0653697b5e03e14a7effb94b2acccbf3c62523` | 25328 | `4f46bfcef86202b666033bec170e979c6942419676dd75e84376b51068570f0a` |
+| `docs/09_archive/superpowers/plans/2026-06-15-month3-closure-audit.md` | 5667 | `4b2e1b2463d2d602af7c195ad887704d610fa8b6f6c585436b53b54d3ccf2283` | 6228 | `d57bc6eac4245db66205f99754f3808377d717a54ca41189f2e44280ab9a98c1` |
+| `docs/09_archive/superpowers/plans/2026-06-15-portfolio-replay-gap-risk-labels.md` | 6255 | `13363e1223daefe1f9caec668c2e442f881118f1c206630ee5949d931ca4b82d` | 6816 | `c3a5e833be2b8ebd80e446634b7f4d1cdb19e3e9cea4cff89e119e87dded11f1` |
+| `docs/09_archive/superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md` | 14756 | `77f3d4f33bb7e96f68f785b0dda5ebcda6c65dd927c358dc018babc2a452bf42` | 15317 | `d293c747dd60c6615240686d80c9dc6e604c07f16196e7c97c93efb4909dbf21` |
+| `docs/09_archive/superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md` | 18737 | `9978f6b4793ff750d83a7ce14c44268bdbd50b3c112bf7704ee49b04791c7fa1` | 19298 | `ca7190e1b26d378704451f05ccd8b9cb68ddf96056a48ffdbe30de4394b8d15f` |
+| `docs/09_archive/superpowers/plans/2026-06-16-tpex-daily-price-backfill.md` | 18279 | `060c078dad61fac2fa05ca689ed40ec5b0aa6d6ef322ee1724d27c14b13c7f9b` | 18840 | `e63ac89d4fa195a183ce4d0cc550cfa3087aea6b5dcd8af58ae0305e615c762a` |
+| `docs/09_archive/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md` | 41402 | `4b4da66a9fd054fd228a6afad6f000387fd439d64fcc594bd144ad8693a1f626` | 41963 | `72d2d63d979d743085d507b3f4b7953fab32e92d4c55590a1f01e92a0193812b` |
+| `docs/09_archive/superpowers/plans/2026-06-14-month-3-factor-layer.md` | 37872 | `092ce0f3bfd4316fc88648741f672c84459327e1648e83ed4e6086f95d0a139e` | 38433 | `48e7af8baebb8cb0f720809ce1232504183447da85fbab50ee092113ae78ff09` |

@@ -1,6 +1,6 @@
 # Superpowers Specs / Plans 目錄
 
-> **最後整理**：2026-10-09
+> **最後整理**：2026-10-10
 > **定位**：本目錄保存 Superpowers 流程產生的設計規格、實作計畫與 execution artifacts。既有文件通常是歷史追溯資料；目前例外是已由 Snapshot／Index 明確接續的 [Baldr 產品補完計畫](plans/baldr_product_completion_plan_20261006.md)，其工作狀態仍以 Snapshot 與對應 QA 為準。
 
 目前專案的狀態與方向仍以 scoped authority 判讀：

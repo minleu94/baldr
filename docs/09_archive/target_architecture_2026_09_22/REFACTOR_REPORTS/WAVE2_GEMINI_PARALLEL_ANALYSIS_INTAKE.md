@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文是 Wave 2 分析收件與 R008 gate 判定的歷史快照；其中 SHA（如有）、scope、待審狀態與結論只代表當時快照，不得據此重派、重跑或視為目前 gate／授權。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 checkpoint 見 [WAVE2_RESULT_ID_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md) 與 [WAVE3_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE3_CHECKPOINT.md)。
+
 # Wave 2 Gemini 並行分析收件與 R008 gate 判定
 
 ## 收件性質

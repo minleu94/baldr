@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文保留當時的回修派送內容；其中 SHA（如有）、scope、角色、指令與狀態僅代表原快照，不得據此重派、重跑或視為目前任務／授權。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 Wave 1 狀態見 [WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md)。
+
 # GEMINI_REWORK_PACKET — R003
 
 本次狀態為 CHANGES_REQUIRED。請在同一 R003 scope 內修補 SOL findings，保留已通過的測試與既有 working-tree changes；完成後更新原 implementation report。下面先列最新 SOL review，再附完整原始任務封包。若兩者有細節差異，以最新 review 的修補要求為準，架構與 scope 仍以原封包為準。

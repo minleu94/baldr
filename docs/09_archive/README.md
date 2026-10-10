@@ -400,6 +400,11 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 - **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。逐檔原路徑、bytes／SHA 與搬移前後 blob 核對見 [Coverage History Entry 116](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-116)。
 
+### Phase 3.5 研究與門檻歷史索引
+
+- [研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)：均為歷史研究／SOP 材料；固定績效門檻及 Phase 4 入場結論不代表目前產品 Gate 或現況。
+- Phase／Gate 的目前界線看[現行 Phase 導覽](../05_phases/README.md)；現行工程 Gate 看[6 個月工程路線](../00_core/ROADMAP_6M_ENGINEERING.md)，目前狀態看[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作方式看[Application Manual](../07_guides/APPLICATION_MANUAL.md)。
+
 ### Post-V1 Evidence Pipeline QA
 
 2026-07 的階段性 QA／working-copy smoke／scheduler readiness 收據，保存當時的驗證與限制；不作目前排程操作或產品狀態權威。目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 與本目錄的較新 QA 收據。除 multi-day dry-run 登記表外，`docs/06_qa/POST_V1_*.md` 舊路徑保留短轉址；[multi-day dry-run record 的現行可續寫路徑](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md) 因程式讀取固定路徑而保留，以下 Archive 副本是原始凍結快照，不在此追加新資料。修正與逐檔來源核對見 [Coverage History Entry 119](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-119)。

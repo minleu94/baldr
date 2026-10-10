@@ -10,6 +10,8 @@
 | [解析改進](BROKER_BRANCH_PARSING_IMPROVEMENT_HISTORY.md) | 2026-01 對手券商名稱解析案例與建議 | 不作為目前 parser 契約或來源資料品質的證明 |
 | [手動整合測試與故障排除指南](BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md) | 2025-12-29 手動測試、troubleshooting 與歷史測試結果 | 三個人工整合腳本有 2026-10-08 停止警告；勿執行，舊測試結果不代表目前驗收 |
 
+> **操作安全提醒：**解析改進歷史中「刪除 CSV 後重新處理」的建議、設計歷史中的舊 URL 範例（例如 `c=E`），以及故障排除原件中除上述三支腳本停止警告以外、尚未重新驗證的修復／檢查腳本與步驟，都不能當成現行操作指引。URL 後續修正追溯見[初期實作摘要](BROKER_BRANCH_IMPLEMENTATION_SUMMARY_HISTORY.md)；目前操作依[Application Manual](../../07_guides/APPLICATION_MANUAL.md)，目前模組邊界與資料流依[系統架構](../../01_architecture/system_architecture.md)。
+
 ## 現行入口
 
 - 目前模組邊界與資料流：[系統架構](../../01_architecture/system_architecture.md)

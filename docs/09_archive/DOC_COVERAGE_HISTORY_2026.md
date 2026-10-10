@@ -2382,3 +2382,36 @@ Archive root 複核亦確認多項可由日期或範圍解釋、但原件缺少�
 QA 唯讀複核另確認：四份舊文件治理報告是相容／歷史導引；QA README 的範圍聲明及真人驗收仍待人工結果；根目錄殘留檔收據說明備份不等於已刪除或整理完成；合成 1,000 檔效能收據的三類 p95 皆超過 300 ms，後續 profiling 計畫不代表改善或 Main／EXE／真人驗收；多項工程切片也不等於整體工作流完成。另四份 QA 葉文件的核讀是否與既有清單重疊無法確認，不加進全文／局部完成數。
 
 本批只調整文件狀態提示與路由，未刪除或搬移文件、未修改原始 QA 證據或資料，未執行測試、Graphify 刷新及最終 repo-wide Markdown links／anchors scan。受保護 F03 文件內容未讀、未搜尋、未 diff；根目錄 `$null` 未納入。
+
+<a id="coverage-entry-205"></a>
+## 2026-10-10 核讀 Archive 巢狀目錄並補上直開歷史警語
+
+全文核讀 `docs/09_archive/target_architecture_2026_09_22/` 30/30 份 Markdown；另核讀 `broker_branch/` 6/6、`phase3_5_research/` 4/4、`project_status_2026_08_14/` 3/3 個 tracked paths（11 份 Markdown、1 份 JSON、1 份 HTML 靜態 body）。Broker 歷史把刪除 CSV 作為重新處理建議，與不得破壞原始資料的現行規則衝突；其 `c=E` URL 範例與後續實作摘要的 `c=B` 修正不同，部分修復／檢查腳本未重新驗證。Phase 3.5 的固定門檻與 Phase 4 結論是歷史研究，不代表現行 Gate；目前工程 Gate 看 6M Roadmap。8/14 project status 文件維持日期快照，未發現足以推翻該歷史範圍的差異。
+
+目標架構 Archive 原件包含舊 SHA、過期派送／Git 授權與 Wave 狀態；另有 Wave 1／2 報告缺少直接狀態路由。以下文件只新增直開歷史警語與現況入口，保留舊 prompt、checkpoint、驗收及計畫正文：
+
+| 範圍 | 修訂 |
+|---|---|
+| `docs/09_archive/README.md` | 增加 Phase 3.5 歷史索引，導向現行 Phase、工程 Gate、Snapshot 與 Manual。 |
+| `docs/09_archive/broker_branch/README.md` | 明示刪 CSV 建議、舊 URL 及未重驗腳本／步驟不可作為現行操作指引；連到後續實作摘要與現行架構／Manual。 |
+| `docs/09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/` | 14 份歷史 prompt／review／rework 文件新增警語及適用的現況路由。 |
+| `docs/09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/` | 4 份過時 checkpoint／intake／preflight 報告新增警語及後續狀態入口。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 登錄 Archive 400 個 Markdown 的核讀分布：直屬 263 份中 57 全文、206 待讀；巢狀子目錄 137 份 Markdown 中，目標架構 30/30、Superpowers 96/96、小型子目錄 11/11 全文。 |
+
+全部巢狀目錄共 139 個 tracked paths（137 Markdown、2 個非 Markdown）；加上 Archive 直屬 268 paths，與 407 tracked paths 的 inventory 相符。窄範圍 link target 存在檢查及 `git diff --check` 通過；未刪除或搬移文件、未修改原始資料，未跑測試、Graphify 或最終 repo-wide links／anchors scan。`09_archive/superpowers/` 的 96 份原文全文核讀已完成；其中 9 份含舊 prompt 授權或可直接複製的歷史 rollback／`--apply` 命令，下一批將在保留原始 bytes／SHA 證據下另行加警語。受保護 F03 文件正文仍未讀、未搜尋、未 diff；根目錄 `$null` 未納入。
+
+<a id="coverage-entry-206"></a>
+## 2026-10-10 加強 Superpowers 歷史 prompt 與操作指令警示
+
+全文核讀 `docs/09_archive/superpowers/` 的 96 份歷史原文後，發現 `docs/superpowers/README.md` 的最後整理日期落後於 Entry 194 記載的 2026-10-10 更新；另有一份 start-prompt pack 自稱可直接貼到新 Codex 任務，含舊 `git push origin dev` 授權，對應 master plan 也保留舊 branch／worker／Git coordinator 指令。另 7 份歷史計畫中有 rollback、刪除、`--apply` 或 Git stage／commit 操作，可能被直開後誤當現行授權。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/09_archive/superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md` | 在標題後新增歷史操作警示：不得重送 prompt 或沿用舊 Git 授權；原 prompt 內容保留。 |
+| `docs/09_archive/superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md` | 在標題後新增歷史操作警示，限定舊 worker／branch／Git coordinator 指令不可直接執行；原計畫保留。 |
+| `docs/09_archive/superpowers/plans/2026-06-15-month3-closure-audit.md`、`2026-06-15-portfolio-replay-gap-risk-labels.md`、`2026-06-15-portfolio-replay-weight-exposure.md`、`2026-06-23-healthcheck-batch4-research-lab-results.md`、`2026-06-16-tpex-daily-price-backfill.md`、`2026-06-14-month-2-parameter-run-storage-governance.md`、`2026-06-14-month-3-factor-layer.md` | 在標題後新增不得照做歷史 rollback／刪除／`--apply`／Git 命令的警示；原任務與驗收正文保留。 |
+| `docs/superpowers/README.md` | 將最後整理日從 2026-10-09 校正為 2026-10-10。 |
+| `docs/09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md` | 保留原有封存來源 bytes／SHA；附記列出 9 份加警語後的目前 bytes／SHA-256 與相應來源雜湊。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 更新 96/96 全文閱讀狀態及 9 份直開警語完成情形。 |
+
+9 份原始 bytes／SHA-256 與舊 manifest 清冊相符；移除新增警語後，9 份歷史正文逐位元組與原始內容一致；附記中的目前 bytes／SHA-256 也與工作檔實算相符。未刪除／搬移文件、未改原始資料；未跑測試、Graphify 或最終 repo-wide links／anchors scan。`$null` 未納入。

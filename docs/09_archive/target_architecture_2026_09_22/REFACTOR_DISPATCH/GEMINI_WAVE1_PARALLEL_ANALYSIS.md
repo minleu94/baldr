@@ -1,3 +1,5 @@
+> **歷史封存警語（2026-10-10）：**本文保留當時的 Wave 1 分析派送內容；其中 SHA（如有）、scope、角色、指令與狀態僅代表原快照，不得據此重派、重跑或視為目前任務／授權。現況請以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 [REFACTOR_MODEL_ASSIGNMENTS](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_MODEL_ASSIGNMENTS.md) 為準；後續 Wave 1 狀態見 [WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md)。
+
 # Gemini Wave 1 唯讀獨立驗收分析封包
 
 以下整份內容可直接複製給 Gemini。R003、R005、R006 的回修現由三位 Luna Max 在同一 repository 的互不重疊檔案範圍平行執行。你要同步進行跨模組、相容性敏感的**唯讀**分析，提供 SOL 後續審查使用；本工作不是實作，也不是回修後的正式 PASS review。

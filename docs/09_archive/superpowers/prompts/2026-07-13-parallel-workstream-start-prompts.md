@@ -1,4 +1,7 @@
 # Parallel Workstream Start Prompt Pack
+> **歷史操作警示（2026-10-10）**：以下操作指令僅供追溯歷史脈絡，不構成目前操作授權。
+> 不得重送本文中的舊 prompt，也不得直接照做舊 Git、rollback、刪除或 `--apply` 命令。
+> 若需執行相關工作，請先依當前使用者指示、根目錄 `AGENTS.md` 與 `docs/agents/git_exclusions.md`，並查核 `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DEVELOPMENT_ROADMAP.md`、`docs/00_core/ROADMAP_6M_ENGINEERING.md`、`docs/07_guides/APPLICATION_MANUAL.md` 後判定現況、範圍與授權。
 
 本文件的每一段都是可直接貼到「新 Codex 任務」的第一個 prompt。所有任務共用同一個 repository、同一個 `dev` branch 與同一個 working tree；同時建議最多四條互不重疊的實作流。Worker 可平行編輯 exclusive ownership 檔案並跑 focused tests，但所有 Git index／history／remote 寫入只能由單一 Git Coordinator 序列執行。Worker 不得自行建立或切換 branch/worktree，也不得 stage、commit 或 push。
 

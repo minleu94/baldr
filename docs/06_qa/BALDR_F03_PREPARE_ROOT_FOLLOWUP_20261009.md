@@ -300,3 +300,23 @@ root 另核共同 group-session 的 MA view 直接來自 prepared.ma.index，F17
 F12 I first-false 診斷候選已初讀：固定 gate／field／frame ordinal、有界64筆、overflow不授資格；path／cancel checks 使用逐項 lazy call 保留短路。原 build_proof 路徑例外的 catch 只記錄型別後 raise；原 exact-chain path helper 原本回 False 的部分維持回 False。完整 H→I diff、凍結 pins 與 focused 終態仍待 root 核驗，不把初讀當 runtime 通過。
 
 H20 sibling controller 初始仍有 C611 舊常數與舊 child 名稱，屬實作中的副本；已要求完成 S3／真 launch_inputs 接線與完整 frozen SHA 才審可執行資格。S3 source-only 旗標不改；builder 產生合法啟動輸入屬已授權 QA 的工程工作，並非新的真人批准事項。
+
+### I 完整初版 diff 審核與兩項實際 schema 錯誤（最新追加）
+
+root 已讀 I 初版完整 H→I diff，SHA `7ecd23da22a02b4812bf754713715fa46431204c54100fc5d2ed0221175cbfa9`；獨立核8 artifacts／58 source pins與6 Python compile-only全匹配。初版review manifest SHA `230f095a55d28f09a851e71c5acb1dc9261e2104847d6b4f883400ecd5822267`，runner SHA `a139038574b4cf0a2ab5217a44f8bf71429fa68cd91fb6d93ef1d3c581841641`。逐項lazy checks維持原判定順序／例外傳播，沒有新增URI允許範圍。初版tests仍與H相同，receipt列的是測試描述而非真正pytest節點；已要求補最小 first-false ordinal、Path JSON、64筆overflow fail-closed真測試再凍結。未啟動I runtime。
+
+H20圖表helper初版把PIT／formal training／research only查在PersonalH20ResearchRow上；root讀S3 dataclass證實該row根本沒有這三欄，必然首紅。已要求在已核原manifest／capture／typed projection的真正欄位驗資格，不用missing默認false，不刪限制；原684bp／10股／日期與hash保持。
+
+composite新版owner pin核驗初版使用MA request.to_dict().get(request_identity_sha256)。root讀真MA契約證實該身分是property計算SHA(to_dict())，序列化body沒有此欄；已要求改用實際property。KD／vol request JSON則確實有該欄，兩者不得混同。Luna Max正補同group原entry object identity核驗與actual owner資格測試，尚未凍結或授runtime。
+
+
+I 最終新增真測試後再凍結：review manifest `d009ea405b82476e32d2781b53a6c8103d8b44ba3ffff2cb462a184aacdad944`，完整diff `7a291a32a8c5c2ddc4a9d2107ce8f268437802286751393837ede1a308b62842`，static receipt `15c3dc991932840882cf421f67a0d0facd9a0951a8c52f3223d111b3637ea20b`。root另讀新增10-frame首local/code/globals ordinal測試、Path JSON與64容量overflow測試，核有界helper確接實際build_proof；8artifacts／6compile獨立匹配。已授凍結I12節點focused一次，fresh memory／58source gate及隔離runtime，尚未授Main；結果待原生終態。
+
+
+### I focused通過、Main取得確切首紅與J窄修（最新終態）
+
+I focused唯一封套 `evidence/20261010T032637Z_15592_efbcc676` 原生12 passed／24 deselected／0.83s、exit0。root讀完整stdout8991B／stderr678B並重算SHA，兩個stderr是預期constructor負例；receipt SHA `df2a75b84123d60b86739966752c580778cb07a40951d7a46dbb0c3d76955868`。8artifact／58source起訖匹配，fresh commit headroom8,769,060,864B。
+
+root隨後授凍結I完整Main一次，同handle19474原生exit1且未timeout，沒有重啟。封套 `evidence/20261010T032727Z_17580_b5cd2a12`；root獨立CIM觀測44308→42228→17580→33052→41012，終態後四known Python PID皆gone。launcher receipt SHA `fc5ac9534af5dd1143e37765fce26e43dc9cabd3605a23639962aee21224b019`，native receipt SHA `af5a85df79f4f6ac0b40685cbf9d3057fd298f80fa1a5068dc215e0087d8e603`。本次native終態JSON成功保存failed／17.281s，source_inventory_unchanged=true、after captured matched、cleanup_errors空、環境及runtime guards恢復；不再把舊running收據誤作live。
+
+primary仍unexpected_private_sqlite_uri，但I首次明示唯一proof rejection：frame_chain.local／field f17_query／ordinal4／bundle／token2、overflow false。root對照正式revenue_source_v1.py1112與1120證實route local是f17_query，_open_and_publish直接傳同物件；QA route_specs bundle卻讀舊'f17'而得到None。已授新J sibling static-only最小名稱修正與真source callsite schema回歸，不放寬guard、不改I/H或正式source；待凍結diff／pins／focused後再驗Main。完整收藏／新PID仍未通過。

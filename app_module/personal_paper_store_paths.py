@@ -28,6 +28,8 @@ class PersonalStoreCustody:
             if route.domain is PersonalStoreDomain.PAPER:
                 pp = PersonalPaperStorePaths.from_route(route, portfolio_id=route.identity.key)
                 selected.update((pp.state_db, pp.benchmark_db, pp.baseline, pp.status))
+                if pp.binding_manifest is not None:
+                    selected.add(pp.binding_manifest)
             for value in selected:
                 self._allowed.add(value)
                 self._allowed.add(value.with_name(f".{value.name}.lock"))
@@ -93,6 +95,7 @@ class PersonalPaperStorePaths:
     cost_ledger_db: Path
     baseline: Path
     status: Path
+    binding_manifest: Path | None = None
 
     @classmethod
     def from_route(cls, route: PersonalStoreRoute, *, portfolio_id: str) -> "PersonalPaperStorePaths":
@@ -103,6 +106,29 @@ class PersonalPaperStorePaths:
         source = route.read_source
         if not source.is_absolute() or ".." in source.parts:
             raise PersonalStoreRouteError("absolute_path_required")
+        if route.paper_account_namespace is not None:
+            namespace = route.paper_account_namespace
+            if (
+                source.name != "paper_trade_ledger.sqlite"
+                or source.parent.name != namespace
+                or source.parent.parent.name != "accounts"
+                or source.parent.parent.parent.name != "paper_portfolio"
+            ):
+                raise PersonalStoreRouteError("paper_account_layout_mismatch")
+            account_root = source.parent
+            return cls(
+                state_db=account_root / "paper_portfolio.sqlite",
+                benchmark_db=account_root / "paper_equal_weight_benchmark.sqlite",
+                cost_ledger_db=source,
+                baseline=account_root / "baseline.json",
+                status=(
+                    account_root
+                    / "scheduled"
+                    / "paper_portfolio_daily"
+                    / "latest_status.json"
+                ),
+                binding_manifest=account_root / "account_binding.json",
+            )
         if source.name != "paper_trade_ledger.sqlite" or source.parent.name != "paper_portfolio":
             raise PersonalStoreRouteError("paper_existing_layout_required")
         root = source.parent.parent

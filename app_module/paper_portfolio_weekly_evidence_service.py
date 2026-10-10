@@ -212,6 +212,34 @@ class PaperPortfolioWeeklyEvidenceService:
 
         start_text = start.isoformat()
         end_text = end.isoformat()
+        if (
+            self.custody.route is not None
+            and self.custody.route.paper_account_namespace is not None
+        ):
+            return PaperPortfolioWeeklyEvidenceDTO(
+                generated_at=_utc_now_text(),
+                status="not_computable",
+                period_start=start_text,
+                period_end=end_text,
+                expected_trading_days=expected_trading_days,
+                portfolio_id=self.portfolio_id,
+                benchmark_id=self.benchmark_id,
+                state_db_path=str(self.state_db_path),
+                benchmark_db_path=(
+                    str(self.benchmark_db_path)
+                    if self.benchmark_db_path is not None
+                    else None
+                ),
+                cost_ledger_db_path=(
+                    str(self.cost_ledger_db_path)
+                    if self.cost_ledger_db_path is not None
+                    else None
+                ),
+                blockers=("strategy_account_row_provenance_unverified",),
+                diagnostics=(
+                    "strategy binding does not yet prove snapshot/fill/benchmark row attribution",
+                ),
+            )
         blockers: list[str] = []
         warnings: list[str] = []
         diagnostics: list[str] = []
@@ -318,6 +346,18 @@ class PaperPortfolioWeeklyEvidenceService:
             raise ValueError("expected_trading_days must be a positive integer")
         if expected_trading_days <= 0:
             raise ValueError("expected_trading_days must be a positive integer")
+        if (
+            self.custody.route is not None
+            and self.custody.route.paper_account_namespace is not None
+        ):
+            return self._empty_result(
+                status="not_computable",
+                expected_trading_days=expected_trading_days,
+                blockers=("strategy_account_row_provenance_unverified",),
+                diagnostics=(
+                    "strategy binding does not yet prove snapshot/fill/benchmark row attribution",
+                ),
+            )
         dates, blockers, diagnostics = self._list_snapshot_dates()
         if not dates:
             return self._empty_result(

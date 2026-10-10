@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import re
 
 from app_module.personal_data_paths import PersonalDataPaths
 
@@ -71,8 +72,27 @@ class PersonalStoreRoute:
     read_source: Path
     write_target: Path | None
     evidence_refs: tuple[EvidenceSourceRef, ...] = ()
+    paper_account_namespace: str | None = None
 
     def __post_init__(self) -> None:
+        if self.paper_account_namespace is not None:
+            if self.domain is not PersonalStoreDomain.PAPER:
+                raise PersonalStoreRouteError("paper_account_namespace_domain_mismatch")
+            if self.mode is not PersonalStoreMode.PERSONAL:
+                raise PersonalStoreRouteError("paper_account_namespace_requires_personal_mode")
+            _validate_paper_account_namespace(self.paper_account_namespace)
+            if self.identity.key != self.paper_account_namespace:
+                raise PersonalStoreRouteError("paper_account_namespace_identity_mismatch")
+            if not self.read_source.is_absolute() or ".." in self.read_source.parts:
+                raise PersonalStoreRouteError("paper_account_path_invalid", str(self.read_source))
+            expected_suffix = (
+                "paper_portfolio",
+                "accounts",
+                self.paper_account_namespace,
+                "paper_trade_ledger.sqlite",
+            )
+            if tuple(self.read_source.parts[-4:]) != expected_suffix:
+                raise PersonalStoreRouteError("paper_account_path_namespace_mismatch")
         if self.domain is PersonalStoreDomain.EVIDENCE:
             if self.mode is not PersonalStoreMode.MARKET_READ_ONLY:
                 raise PersonalStoreRouteError("evidence_market_reader_required")
@@ -86,6 +106,15 @@ class PersonalStoreRoute:
         if self.mode in (PersonalStoreMode.PERSONAL, PersonalStoreMode.LEGACY_COMPAT):
             if self.write_target != self.read_source:
                 raise PersonalStoreRouteError("selected_store_read_write_mismatch")
+
+
+_PAPER_ACCOUNT_NAMESPACE = re.compile(r"^acct-[0-9a-f]{64}$")
+
+
+def _validate_paper_account_namespace(value: str) -> str:
+    if not isinstance(value, str) or not _PAPER_ACCOUNT_NAMESPACE.fullmatch(value):
+        raise PersonalStoreRouteError("paper_account_namespace_invalid")
+    return value
 
 
 def _required_identity(
@@ -142,7 +171,24 @@ def _route_path(
     legacy_output_root: Path | None,
     market_db_path: Path | None,
     portfolio_ledger_path: Path | None,
+    paper_account_namespace: str | None,
 ) -> tuple[Path, StoreSourceKind, Path | None]:
+    if paper_account_namespace is not None:
+        _validate_paper_account_namespace(paper_account_namespace)
+        if domain is not PersonalStoreDomain.PAPER:
+            raise PersonalStoreRouteError("paper_account_namespace_domain_mismatch")
+        if mode is not PersonalStoreMode.PERSONAL:
+            raise PersonalStoreRouteError("paper_account_namespace_requires_personal_mode")
+        root = _personal_root(personal_paths)
+        source = (
+            root
+            / "paper_portfolio"
+            / "accounts"
+            / paper_account_namespace
+            / "paper_trade_ledger.sqlite"
+        )
+        return source, StoreSourceKind.PERSONAL, source
+
     if domain is PersonalStoreDomain.EVIDENCE:
         if mode is not PersonalStoreMode.MARKET_READ_ONLY:
             raise PersonalStoreRouteError("evidence_market_reader_required")
@@ -190,6 +236,7 @@ def select_personal_store_route(
     legacy_output_root: Path | None = None,
     market_db_path: Path | None = None,
     portfolio_ledger_path: Path | None = None,
+    paper_account_namespace: str | None = None,
     evidence_refs: tuple[EvidenceSourceRef, ...] = (),
 ) -> PersonalStoreRoute:
     """回傳一項 store 的 typed Path 契約，不碰檔案系統或資料庫。
@@ -214,6 +261,7 @@ def select_personal_store_route(
         legacy_output_root=legacy_output_root,
         market_db_path=market_db_path,
         portfolio_ledger_path=portfolio_ledger_path,
+        paper_account_namespace=paper_account_namespace,
     )
     return PersonalStoreRoute(
         domain=domain,
@@ -223,4 +271,5 @@ def select_personal_store_route(
         read_source=read_source,
         write_target=write_target,
         evidence_refs=evidence_refs,
+        paper_account_namespace=paper_account_namespace,
     )

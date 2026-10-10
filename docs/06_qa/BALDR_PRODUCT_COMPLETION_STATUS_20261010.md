@@ -1,6 +1,6 @@
 # Baldr 補完範圍與下一步（2026-10-10，未完成）
 
-本表是本次產品補完工作的具名 QA 接續索引，完整需求仍以[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)為準；不取代 Snapshot、Roadmap、架構或 Manual 的 Scoped SSOT。保留 P00–P14、M1–M3、F01–F23 全部範圍，不以已通過的切片重新定義完成。最近正式程式提交為 `6407d6e8`；新 EXE 與真人結果尚未取得。
+本表是本次產品補完工作的具名 QA 接續索引，完整需求仍以[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)為準；不取代 Snapshot、Roadmap、架構或 Manual 的 Scoped SSOT。保留 P00–P14、M1–M3、F01–F23 全部範圍，不以已通過的切片重新定義完成。P07 目錄切片提交為 `6407d6e8`；本輪另完成 P08 帳戶綁定基礎與相關回歸，新 EXE 與真人結果尚未取得。
 
 ## 工作包：現有基礎與未完成驗收
 
@@ -14,7 +14,7 @@
 | P05 個股可讀性 | `65d5f515` H20 來源／完整錯誤修正、`9d5e8cd4` 正常 Main 耐久案例 | 原 2382 同源首次名單／下鑽／報告／返回速度、跨域時效、摘要與用途真人判讀 |
 | P06 持倉情境 | 原 Portfolio／Health／研究情境基礎 | 同股多帳本、明示配置情境、保存／新程序與原模型關係；不能直接把毛報酬轉權重 |
 | P07 自有策略 | Registry／StrategySpec／限定封存規則卡；`6407d6e8` 有限方法目錄對齊 | 完整策略規則／executor、型態與 VCP 定義、多策略共振、正常 UI 消費者；目錄尚不是策略產品 |
-| P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報、Registry 歷史比較基礎 | 策略版本→獨立帳戶 binding／資金／ledger／benchmark／績效與正常 UI；writer 仍限制 paper-main |
+| P08 策略帳本與績效 | 原 `paper-main`、ledger/snapshot、唯讀週報、Registry 歷史比較；明示版本帳戶 binding／分離路徑，50 PASS／1 skip | 逐筆 provenance、受控 writer／ledger／benchmark／績效與正常 UI；新帳戶週報保持不可計算，writer 仍限制 paper-main |
 | P09 收藏與追蹤 | 不同來源的 bookmark／restore 切片 | 全域 query/source/origin、各域新程序、錯版／半批／晚到回呼與完整返回 |
 | P10 四用途首頁 | 四用途引導卡、九工作區導覽已存在 | 同源日期、市場／模型／持倉／更新完整往返／重開、跨時區與真人理解 |
 | P11 自然結果 | 既有 daily journey 與 Forward Performance 部分進度 | 每筆 prediction→entry→outcome→readiness／公平比較接線；未成熟保持 waiting，不用 replay 代自然結果 |
@@ -46,7 +46,7 @@ M1 有歷史固定候選切片，但現在碼版的 EXE／Native 真人未完成
 - root：審查正式差異、執行驗證、保存進度；不覆寫其他文件整理工作。
 - F12 葉片：T37 已執行一次，正常轉場自然 drain 通過；T38 僅補 marker 拒絕診斷及 wrapper launcher→native PID 鏈核對，凍結交審後才執行。
 - 原 2382 葉片：真正 Main／正式 reader 的一次同源計時候選，E 槽副本／私人狀態，D 原來源唯讀；目前尚未執行。見[四段計時方案](BALDR_H20_2382_TIMING_PLAN_20261010.md)。
-- P08 Luna max：QA 候選正在補明示版本／政策／成本／benchmark binding 與帳戶子目錄；週報對缺少逐列 provenance 的新帳戶保持不可計算。root 尚未套用正式碼，不先改金融 writer。
+- P08 Luna max：root 已審閱套用明示 binding／帳戶路徑切片，50 PASS／1 skip；金融 writer 與正常 UI 尚未開放。見[P08 契約與限制](BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md)。
 
 真人目前可做[合成來源六步驗收](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)：窄窗、完整文字、返回、比較、收藏即時重開及關閉後重開。它使用 1000／1256，不替代原 2382／H20、真實推薦或整體四用途接受。
 

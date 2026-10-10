@@ -38,3 +38,9 @@ P01 六角色矩陣 C 已執行一次，五個冷啟動與一個暖操作程序�
 F12 C3 完整 Main 首次執行 exit 1，拒絕代碼 `parent_initial_personal_json_not_readonly`；原收據未保存當時的 mode/message，不能直接歸因產品來源錯誤。清理另遇 QA 呼叫不存在的 worker helper；後續 job helper 亦需核對真實 API。首紅封套保持，補正前不宣稱 Main 閉環通過。H20 O 仍只完成靜態檢查，尚未執行真 source-port／SQLite 正例；reader replay 與 storage config 錯 root/hash 負例仍未覆蓋。
 
 root 從暖操作原 `child_result.json` 各 30 筆 elapsed_ns 獨立重算 nearest-rank p95，三類結果與 aggregate 相同，90 筆 status 均 `ok`；六角色 cleanup 沒有 active job PID。F12 另存事後獨立 `readonly_postflight_20261009.json`，13 roots SHA 與原 before 一致、58/58 pins 相符；原 receipt 的 after 仍為 null，沒有冒充補造原當次 after。原 merged stdout 無法從 compacted context 逐字取回，缺口明示保存。
+
+### H20 O 實跑終態（後於上述靜態狀態）
+
+O SHA `409ace8f414edd108059fb13ae852ddc205567d7568d0098307ed7ca439e9d7b`。attempt01 sandbox 匯入固定 N/M helper 遭 strict resolve WinError 5；保留原生 stderr 與 terminal receipt。獲核准的 attempt02 隔離實跑 **exit 1／約 4.67 秒**：原 source verifier 在 callback 前讀取研究根目錄設定，`msvcrt.open_osfhandle` 被原 N guard 以 `windows_open_osfhandle_callsite_or_flags_denied` 拒絕。callback、initial/terminal 真讀取與 SQLite 嘗試均為 0，負例未跑；不能宣稱 SQLite 或 source-port 通過。
+
+root 實讀原 `attempt02/stdout.native.txt`：source、fixture、H20 source group、snapshot JSON 起訖一致；cleanup errors 空、aliases／環境恢復、private root 清空、descriptor 0。O 沒有重跑；下一步唯讀對照 config loader 真 callsite 與固定角色授權，先審查最小新候選再執行。原封套：`output/qa/h20_guarded_sourceport_sqlite_slice_20261009_o/attempt01`、`attempt02`。本文件承接 F03 修正 commit `115600d3`，所有首紅與未完成範圍保留。

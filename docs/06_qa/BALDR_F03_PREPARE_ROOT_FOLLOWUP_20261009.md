@@ -1014,3 +1014,13 @@ root 審閱 Q4→Q5 diff 的 fixture 變更後，以 manifest `dff5d7307ac8691b2
 H20 G 最終 manifest `9f36a12ab5f71892d994e04e4cfb510e6b07e2d227c4f747533b102091cb5751` 已執行全新私人根 `C:/t/h20g01`。收據 `output/qa/h20_g_true_origin_root_attempt01/receipt.json`：1 failed（4.49 秒），child exit `3221225477`／`0xC0000005`，未逾時，pins 前後一致。第二次公開 reveal 後外層僅移動 6 px，末字完整矩形下緣仍超出 viewport 1 px；初始 scope 的完整末端與末字外層矩形仍未通過，錯誤／取消旅程未到達。native exit 原因未證明，不能因 callback 掃描為空宣稱正常退出。已要求下一個獨立 H 候選修正實際產品 reveal 幾何，保留完整矩形守門與 G 原失敗證據，不新增測試 reveal 迴圈或放寬可讀標準。
 
 T28b full Main 外層 wrapper 尚未執行。恢復稿靜態覆核發現 wrapper 根與候選根混用，已要求獨立固定兩者並核對檔案存在與身份，再凍結封套；不複製候選或修改正式來源。未新增 EXE 或真人驗收版本，產品補完 Gate 維持未完成。
+
+### 2026-10-10 T28b full Main actual01
+
+root 完整審閱重建 wrapper 並要求分開 wrapper／candidate 根、無 receipt 仍掃 raw、stdin DEVNULL、shell=False 及非空 child inventory SHA 後，以外層 manifest `a2a8ad91bf544aa450d096cf21b4bf5e96565f9426bf77b384085426157e1aa0` 與 T28b manifest `f04f39137bb48851b2e79efe5d58f0c5e2c77d221cec3697f632f32a04c782fc` 執行。外層收據 `output/qa/f12t28b_full_main_wrapper_20261010/root_attempts/20261010T125328Z_9524_7ab85d17/receipt.json`：exit 1、24.016 秒、未逾時；58 正式來源、候選、Manual／FullN 輔助 pins 與 wrapper 前後一致。callback marker 為零但有 `candidate_primary_failure`，不宣稱旅程正常。
+
+candidate attempt `output/qa/f12t28b_main_1010/run_attempt_95a9d668a7ae4874ae0e95735ae522e7` 的 constructor 觀察為 2 workers、2 native finished、2 run returned，proof passed；65 欄來源 query oracle 全部吻合。首次失敗於 `parent_watchlist_cow_activation`：`watchlist_cow_role_contract_or_restore_failed`。terminal 後殘留 JSON 暫存檔記錄單一 `post_activation_read_entry` 拒絕 `typed_service_return_or_ui_chain_mismatch`，實際鏈為 get_stocks→_list_personal_h20_bookmarks→TaskWorker。cleanup 的兩個 COW worker proof 通過，source inventory 未變；此暫存只是診斷證據，不代替已發布 terminal receipt。
+
+最終 receipt 原子替換另遇 WinError 5，已發布 receipt 因而仍停在 running 階段；stderr 保存 primary failure 與 receipt_write_failed。root 曾於執行中讀取該 receipt，可能影響 Windows 分享／替換，未證明因果，且不能拿來解釋先發生的 COW 拒絕。後續避免讀 live receipt，保留本輪所有原件；要求 owner 唯讀查精確 H20 worker／service 角色路由，不放寬通用 guard。新 PID 收藏重開尚未到達，F12 Gate 未完成。
+
+Q5 focused 通過後另發現繼承的 controller 仍指向舊 P runner。直接跑舊 controller 無法驗證 Q5 雙樹重鏈，不能將 focused manifest 套入另一 schema。已授權全新 Q6 QA-only controller／manifest 精確接線供 root 審閱，再執行 single-warm；不修改正式 reader、原 sealed store 或效能門檻。

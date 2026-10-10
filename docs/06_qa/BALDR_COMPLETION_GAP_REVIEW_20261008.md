@@ -134,3 +134,9 @@ Root 重新查看目前來源：daily_market_technical_universe_kdj_alignment_qu
 Root 進一步實讀現有發行邊界：F17 query reader `_bind_ma_projection` 只建立 MA collector；`_issue_session_from_verified_bundle` 直接呼叫 MA `finalize_verified_publication`。現有 MA finalize 要求 `builder._verified_projection is self`，而 KDJ group 綁定後 builder projection 是 group，因此不能把現有 group 直接塞入 reader 就宣稱兩群 qualified。KDJ group 現有 immutable ordered fan-out、同一 MA source request identity、parent/segment順序與 poison-on-failure 可保留，但缺共同終態發行。
 
 接手實作需把驗證與發行分開：先完整驗 MA/KDJ 的來源request、同一builder/session/bundle/selection、全部parent observations、counts及compact identities；兩群均合格且最終cancel check通過後才對外發行一個共同 qualified state。任何一群失敗或取消，外部不能拿到另一群的qualified session；不得單純放寬 `is self`、允許任意duck-typed group或先發MA再驗KDJ。既有純MA入口必須保持原契約。驗收至少包含跨兩parent、missing/unknown、第二群失敗、最終取消、錯group/member/來源pins、排序後分頁、收藏新程序復原；之後才接UI。此段是具體施工入口，尚未實作。
+
+### 2026-10-10 三群共同發行的現況覆核
+
+目前來源已具備 MA／KDJ／volatility 三群共同發行，較早「尚無共同終態」段落保留為當時施工障礙，不能當作現在缺少程式接點。Root 已實讀 `_prepare_and_issue_projection_group_session_v2`：固定型別與 builder 身分、三群完整 included codes／counts、ordered parent references、來源 pins 與 payload budget 全數核對，最後取消檢查後只發行一個 opaque group session；失敗會 poison 整組。F17 `_issue_session_from_verified_bundle` 明確分開純 MA 舊 finalizer 與 opt-in group issuer，外層綁定失敗亦 poison group。
+
+獨立只讀收據位於 `output/qa/f03_f06_next_slice_design_20261010/review_receipt.md`，SHA `dfebc2d9071bfba2ec6a918bd0f3fba11d9fd6a5fbda6a35923ae7afc2616cfa`。本次沒有重跑測試或讀正式 D 槽來源；原具名合成與 bounded Main 證據依 Snapshot／F03 follow-up 判讀。接續應補尚缺的正式母體、方法規則與產品驗收證據，不重複建立第二套三群 issuer；F06 full-N 方法資格、真人、新 EXE 與全產品 Gate 仍未完成。

@@ -846,3 +846,10 @@ Manual completeness所需資訊已由實際UI／G／K確認，不需新使用者
 - Root 另實讀 PersonalWatchlistService：第 80 行建立同實例 `RLock`，第 283 行先取得此鎖再執行 resolve、marker guard 與資料讀取。兩個控制項使用同一 service 的背景讀取會自然排隊；不把同時啟動 worker 本身判成產品缺陷，也不在 QA 加額外序列化掩蓋正式流程。
 - Native finished、queued cleanup、兩控制項無 worker／pending refresh 是撤除守門前的必要證據；result signal 或非同步 cancel 不算排空。T24 仍在隔離候選實作，待完整 diff 與獨立審查後才執行。
 - P01 已確認固定 Selection 為 13 個 dataclass fields，SelectionPage wrapper 為 6 個，兩者沒有 to_dict。新 J3/L 修正需明示逐欄與公開 property、reader seal 身分、inner Page／原 Query payload 及每組完整 typed 結果比較，不能退化成只比摘要或股票代碼。尚無新的效能結果。
+
+### 2026-10-10 J3／L 審閱與第二次 oracle 終態
+
+- Root 完整讀 J2→J3 diff、manifest／README，獨立 AST 比對固定 85bc 的九個 dataclass 欄位清單全部一致（Query 27、Selection 13、wrapper 6、inner Page 10 等）；J3 runner SHA `4630f4ac32a3dcbc5c72dcd0f2eca992e90565d6baffb0a93294c60b863cdf46`、manifest SHA `948f15023ce3e0ee69c6a6fe664d7abb6321b492b52822dbe9eb42f77045a3b3`。所有欄位、公開 property、原 payload、reader seal 身分與容器型別均保留完整比較；暖機及 30 組配對比較仍在計時之外。
+- Root 完整讀 K→L diff 並核對凍結 manifest SHA `1ec14119afc1d3f1d4304d2fdd41232b63e3255edd0f45680e3ac39d7c6cdbc0`、controller SHA `9e527f7700794872c0c41f1b97ca90e8896c7e5e592ad5e75d3ca721d984e8f0`。靜態 preflight exit 0、7.412 秒，收據 `output/qa/p01_filter_parallel_experiment_design_20261010_l/static_preflight_6580c8feb745.json`。
+- 唯一實際 warm attempt `C:/t/p01cur_rd_088d042d9a` 終態 exit 1。`child_events.jsonl` 記 P01 真 opener 已讀 1,000 included，oracle runner 返回 failed、scratch removedempty；沒有新的有效配對速度結果。`supervisor_result.json` 記 source/store unchanged、Job cleanup 完成且活動程序為空。
+- 本次 `child_result.json` 未能保存；supervisor 的原 stderr 明確記 `child_result_write_failed / json_output_limit_exceeded`。寫檔錯誤證明輸出超過既有 4 MiB 上限；Root 另實讀 `_io_summary`，確認回傳所有 lstat/open 明細，這是待核的主要容量來源。超限 payload 本身未保存，原 oracle failure 被二次寫檔錯誤遮蔽，不能猜成產品計算失敗。新 J4/M 僅補有界診斷輸出：完整 I/O 次數與全序列 SHA／執行時序列比較不減少，輸出明示 first/last sample 與 omitted count；原錯誤及超限 fallback 收據必須保留，不盲增大小上限。原 L/J3 封套保持不變。

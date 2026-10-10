@@ -997,3 +997,12 @@ H20 F actual01 唯讀摘要另存 `output/qa/h20_f_true_origin_root_attempt01/ro
 root 唯讀核 fixed85bc `rule_research_technical_parent_capture_v4.py` 1317–1319，空batch的repository_output_root必須None；同時核Q3 runner2104–2116已明確保留None而不做path map，無runtime修正必要。已授權全新Q4只修正正向empty fixture的None，另保留原非None root作正式reader拒絕負例。fixed feature `_parse_parameters`逐dict.items保留順序，而`_canonical_json`2263使用sort_keys=True；故手建來源物件和canonical JSON讀回的tuple順序可能不同。Q4應以pinned from_json(snapshot_raw)完整typed expected比對讀回，並驗原始to_dict/to_json/全欄位及rawSHA內容一致；不可通用排除identity或參數欄位。Q3與actual01凍結不修改，Q4未執行。
 
 H20 G將只在內層原生End之後再走公開reveal並有界穩定，重新核全末端矩形；原首次post-End快照保留。T28b真Main待精簡外層wrapper固定58pins與54私有環境鍵，沿用candidate既有300秒父COW/新PID子restore契約；外層360秒捕獲所有父子stdout/stderr、timeout與來源核對，未執行。真人入口與EXE驗收仍未新增通過宣稱。
+
+
+### 2026-10-10 Q4 focused actual01 與 Q5 契約補記
+
+root 已審完整 Q3→Q4 diff（46509 bytes、SHA `500ae9cbbc82c87212a3b1d9f770b3570acb5664c1ac683553b82c1a5345613d`），固定 manifest `b06a18097be829b0f0461367d40910c95d5cd17a35264b018c3641d214f9e1fb` 後執行root wrapper `output/qa/run_p01_q4_focused_root_attempt01.py`，私人根 `C:/t/p01q4f01`。收據 `output/qa/p01_q4_focused_root_attempt01/receipt.json`：4 passed、1 error、unittest1.090秒、exit1、未timeout；4666個固定來源 inventory 和候選 pins 前後不變。stderr SHA `03d07cb9fec8cc85692c30a33e8866f68bcc3b7519f842dabe22011e6aafeac0`。empty正例／錯root負例與canonical完整typed比較已越過；nonempty在outer publicreader958遇到 `technical_parent_v4_terminal_transition_invalid`。
+
+root及owner獨立核固定parent1368–1383與writer流程：新增batch必須寫partial receipt；complete不能同時新增batch。Q4 fixture直接seq1空partial→seq2含batchcomplete非法。已授權全新Q5正例補seq2含batchpartial→seq3同batch/root/writercomplete，保存原跳步作獨立public reader精確拒絕負例；在clone/rechain前先讓固定public parent reader核合法source fixture，之後仍須outer private reader核全文。Q4及原attempt不修改；runtime guard、正式來源、正市場與效能pins不放寬。Q5未執行。
+
+H20 G審查另要求將finally使用的journal path在try前初始化，避免early failure被UnboundLocalError蓋掉；fit分支第二次reveal後重核當時幾何。T28b full Main wrapper審查要求無parent receipt時也掃原始stdout/stderr；不以空掃描當作無callback。兩者均待最終封套及root實際執行，尚未宣稱通過或新增真人驗收版本。

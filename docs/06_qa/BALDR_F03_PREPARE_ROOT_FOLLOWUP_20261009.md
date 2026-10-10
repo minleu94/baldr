@@ -436,3 +436,19 @@ root完整審edgecase259行與volatility162行，安裝新tests來源（原路�
 唯一runtimeoutput/qa/composite_reader_focused_20261010_attempt02，同handle4474；fresh headroom11,090,501,632B、七source pins匹配，全新隔離DATA_ROOT/OUTPUT_ROOT/temp。root live36480→15076→56496→42500，尚待同handle原生終態，不重啟、不改凍結source/tests。MA60另授代理新synthetic源在producer前建合法60session，重建全部generation/clock/receipt/bundle，禁止改舊40來源後沿舊pins。
 
 root審M L→M diff發現fixed_inputs cutoff非必要改成local時區字串，雖同instant仍超出授權診斷/rebase範圍且可能改canonical bytes；M未runtime。授N sibling恢復L精確UTC、全新runs-n與自識別hash，保留M/L。N靜態交付receipt e37c841ac226ea40b78b8f4a9e385a8d37d686f153a3825bab822a265cc63bc9、M→N diff595cfafbf283d7e2fb53dec61f58ea7a064326e71841e06be066565e691153e5、L→N diffc420782a61b1be64e636965dae4353a9d806a2e0fafcf121b29b499f58a67574；尚待root完整審查，未focused/Main。原gate與expected cccf保持，不能以session/path變動直接改expected。
+
+
+### 2026-10-10 原生終態：組合排序測試設定首紅、H20 D 啟動保護與營收 N 診斷
+
+組合 attempt02 同 handle4474 已 exit1：3 passed、3 errors／317.10s，七來源 pins 起訖不變。三個 errors 共用同一 fixture，在 query.create 即拒絕 stock_code desc（stock_code_tiebreak_invalid）；既有契約要求股票代碼作最後升序 tie-break。這是測試設定與既有契約衝突，未取得排序、page-request reopen、wrong-pin 三項資格。KDJ 預設升序 tie、wrong-owner 與真 volatility OR/AND 三項原生通過。保留原 attempt，不放寬正式 sort validator；授代理建立合法排序 sibling 與 desc 拒絕負例，待 root 審查。
+
+H20 D 唯一 controller 已 exit1，wrapper source_pins_unchanged=true。native attempt20261010T042131Z_405ccc9fdad8 完整 trace 首錯是 D9 guard line347 canonical_probe_runtime_log_allowlist_required；仍在保護自檢，不能記 MainWindow／原十股 2382／684bp 下鑽通過。授代理先逐項核對 guard 與啟動環境 contract，再交最小 E sibling，不修改 C/D 或正式 guard。
+
+營收 N 三個 focused 原生3passed、37deselected／0.68s、exit0。root 獨立核 stdout SHA1b2cdd3b4cd85914685ef792b3d9388cf2667e27347eaeb4801c5796528b6206、stderr空、8 candidate與58來源 before/after一致。其後唯一正常主視窗驗證 evidence20261010T042525Z_40736_15b13afd 已 exit1，native receipt run_attempt_7108432794e144dea4ce08c34e7624fe/f12_main_revenue_receipt.json。實際 monthly readonly transaction 核驗通過、source_inventory_unchanged=true；原 query gate 保留而拒絕不同 hash。65項 canonical projection 完整 captured，僅四個 monthly session/index/cohort/source-clock identity 及總 query identity 不同，其餘60相同。actual ecf4a2c19ed73c8ca3509b4f63e6bb619aa65a74d2ffe6fb2495b33610508a03 與歷史 expected cccf9aeaef309fc9bf579149390e14e840ae158c72d68e0972fa0e18d2b7410c 不同；下一步以同 attempt 真正核驗的來源 session 構建獨立 oracle，保留固定條件及來源資格，不能直接採用 actual hash 充作期望。收藏新 PID 尚未抵達。
+
+
+### 排序最小修案四節點原生通過，MA60 真 match 單節點啟動
+
+使用者暫停後明確恢復。root重新核工作区所有權，其他文檔／排程agent變更保留。edgecase sibling僅改合法 kdj_state desc＋最後 stock_code asc、对应升序断言，新增 desc stock-code 拒絕負例；正式validator未改。新test SHA8c66ff79ffee15a1b4ad7afe5b19163f2c9ccddcb582d20595048e0ba1a6783f。唯一attempt03同handle96431已exit0，4passed、2deselected／153.05s、wrapper158.343s，stdoutSHA02864fe363676759c2dbd036415ed089448c8b409f24f5f5f61edcbff0fee808、stderr空。root獨立核stdout/stderr hashes、七pin before/after一致；實際live11972→33956→19300已皆gone。與attempt02 unchanged已綠三節點合計七項覆蓋，不稱一次七項全跑。相同known KDJ值可證降序選項被接受、null-tail與asc tie，不證多known KDJ值的相對排序。
+
+root完整審MA60原403行與strict sibling diff，獨立核公開MA index屬性。固定遞增close80..139 oracle強化為實際ma_state=match、reason ma_alignment_strictly_descending、warmup60及prefix連續；不動態接受no_match。新formal test tests/test_daily_market_technical_official_disposition_composite_reader_v1_ma60.py SHAaa79e88d21a841ee432a370da2eaf106aa7d4450d41317f9b8340cb26db517e2。唯一attempt04同handle38762啟動，fresh commit headroom42,260,983,808B、七pins匹配，root live18852→9552→27180→32556。完整全新DB／producer兩segment／exact store／新capture／bundle／public group重建。60列只是合成觀測窗，不是官方交易日或crossover；原5357候選保留。尚待原生終態，不能先記pass。正常Composite UI／typed bookmark／新PID／真人／100k/300ms仍未完成。

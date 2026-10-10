@@ -608,3 +608,23 @@ root 在正式接入前核原reader d59b與候選a08d，AST移除唯一新增函
 H20 J 靜態審查退回兩個必紅：summary已雜湊 IDs、return gate卻期待原字串；AST小測試缺hashlib全域。J不執行且原封保存。K只修這兩個 QA 契約並增嚴格 matcher 正反例，child SHA `a0e94a561fcfa99b63fbe747f80b77f6778590beac2b3911019dc8d7c0ddd64d`、test `bc8730443f51203a280927b28ceb3c2935a1fbbaf974e6df2657e3b8d75e6b64`，完整 J→K diff `ba1f160d737fed8dff5136c60e4b87be762092e2211152ca7b92b6f2ec5763e7`。隔離短目錄六focused原生6passed／4.32s，typed容器不冒稱view seal、假chart/假evidence拒絕、返回hash缺欄／錯值／混原ID拒絕；真public reader小fixture仍不取代原684bp。
 
 K唯一完整 Main 封套由root固定K／原33source／S4manifest／launch／D9 guard與runner pins；原來源前後全核及原期限／headroom保持。handle45324啟動，尚待原十股、2382同來源OHLCV及專用return worker終態；正式工作區新API不替換固定S4來源，不混入這次H20資格。
+
+K 原生 handle45324 已終態 exit1；outer封套 `root_main_capture_20261010_01`，native封套 `20261010T054832Z_3bac5cb294b5`，controller elapsed55.89s。失敗明確為同來源 OHLCV QA helper 第187行使用 `Path` 卻未匯入，child elapsed31.563s；不是產品 worker 例外或讀取逾時。起訖來源 pins 不變，原收據保留，不重跑未修改候選。另原 guard 記錄三次 platform 主機資訊查詢開啟 DEVNULL 被拒，後續僅檢視 guard 前 bootstrap 的等價初始化，不放寬寫入規則。新 sibling 須補實際 helper 回歸及精確差異，完整 chart／return 資格仍未取得。
+
+FullView 靜態切片 manifest `8f65016e5bea1f3a01ce9fb4ea9146e4d614a71066533202885d970ee5150043`、receipt `218e8218d7d0c8e18128b886a2f5761e3c1cd0f29116b7a710bb6e66fdd9134c` 已送 root。root 全讀1416行 View、兩份真257測試及 Main 接線提案：候選 constructor 先取尚未建立的 `stock_code_input.setEnabled`，必為 AttributeError，故不啟動昂貴來源測試。新 sibling 須先建立該控件、忙碌結束後恢復代碼固定升冪控件狀態；窄窗回歸須核實際寬度460及操作可達性，不能僅 resize 後冒稱窄窗。原切片保持不變，Main 標題與 storage identity 後續另核；此候選尚未正式接入。
+
+P01 C 凍結 runner `72122bd8dca187de5ccc5e9608cf68813ac8ef79015b80bf692858dc18851a02`、純 component retention 刪除 diff `e86e49c302a515dcaab6179128073afc4f9746cab8116886c30d9cd384235c38`、receipt `6dcf3567f7f71e2bc2af9ef4f6b57c3ec357edaada62cd23447fa3d1802bc279`。root 全讀 diff／runner後，唯一隔離 handle67555 原生 exit0，封套 `p01_quota_zero_capture_root_20261010_attempt01`。一個已核1000母體 session、四暖身排除、兩原慢shape各六組交錯配對；AND median821.6029→605.89ms、OR832.6278→606.23975ms，所有原 page／query／selection 摘要相同，來源／store pins 起訖相同，method／ContextVar／sys.path／helper module均恢復。首次session open21288.0418ms另列，不與頁面計時混合。此結果只診斷舊1f08版本的快取爭用；正式e5ba已有零component retention加render預填，須另核版本差異，不能重複套舊diff或把此結果當300ms門檻通過。
+
+FullView B sibling `composite_view_candidate_20261010_b` 修正建構順序、來源／結果動作兩欄、排序／分頁兩列及busy後固定代碼升冪；View `88bbaa49077865dcf474b6f4a023bc09a0e561de8c83aaa92e1249288c15c727`、完整差異 `d4bb6de356859e8aee72a6e71fb9fdde4f136cfe035d13a3af406516f2d60bbd`。root 審逐行diff後無producer constructor回歸原生1passed／2.95s，15pins不變。唯一完整真257窄窗／條件驗收 handle39677 已啟動；尚待實際460px、文字末行、256＋1返回及四群AND／OR／unknown結果，不提前授予通過或Main資格。
+
+F12 T 已凍結完整差異 `fef850916d44c8b4c5a7526348d14ded37844fef1314fb3939cde5c79c0f9b4a`，僅明示rebase RevenueView與reader兩source pins，其餘56保持；root全讀後發現新增負例使用SimpleNamespace，卻未提供helper所讀四個current properties，會先AttributeError。T不執行且原封保存；新sibling須以四個read-only properties的QA fixture驗真正外來page／request／row，不能放鬆正式Revenue契約。
+
+### 後續終態：窄視窗與月營收仍未驗收
+
+FullView B 的 handle39677 原生終態 exit1：1failed／1passed／1deselected，564.79s，15 pins 不變。真257四群 AND／OR／unknown 條件測試通過，包含完整258宣告、257 included、1 excluded及256＋1頁；窄窗則實際460px但body906大於viewport422，未到文字／返回驗收。C僅改剩餘橫排，root先跑無producer檢查：1failed／1.23s，body428仍大於422，pins不變；不重跑昂貴來源測試、不放寬窄窗門檻。B、C及原失敗均保留；正常View／Main閉環仍待。
+
+F12 T3 原長路徑封套在產生原子收據前超出 Windows 路徑限制，pytest未啟動；root短路徑精確封套才實跑6passed／1failed／1.50s，QA query缺identity。T4補QA query identity及recipe.to_dict後，七項定向測試7passed／1.24s，八候選及58來源pins起訖一致。九個候選／manifest共519,502 bytes完整核驗後複製到同層短路徑 `output/qa/f12t4_main_1010`，不更改來源錨定。
+
+T4唯一完整Main handle3131已終態exit1，native PID33060，封套 `20261010T060750Z_40708_4834ed5c`；native receipt `run_attempt_a6291967851b4a8e8c4a2ab262fbcb74/f12_main_revenue_receipt.json`。原query qualification通過，但 `revenue_result_clicked_row_not_bound_to_issued_page` 阻止後續收藏／新PID重開；不能以七項focused通過宣稱完整旅程成功。候選SHA保持，收據及原始錯誤保留，下一輪先核真Revenue點選列與已發行頁綁定。
+
+Composite storage identity B 尚未正式接入：靜態shadow mypy為10 errors，八項schema字串不足以收窄union、一項generic context誤容Composite、一項removal matches舊union。修正必須維持typed envelope及嚴格decode，不用Any掩蓋。P01下一輪採固定產品commit85bc225b完整tracked source（4666 blobs、81,023,636 bytes）準備新錨定；目前僅靜態盤點，未建立clone、未重建千檔資料、未重跑300ms完整矩陣。

@@ -1,5 +1,7 @@
 # R008 終版 SOL 整合驗收
 
+> **時點提示（2026-10-10）：** 本文件的 PASS 是當時凍結版本的驗收快照；後續 result-ID 勘誤與 schema-range 相依重驗分別見 [result-ID acceptance](R008_SOL_RESULT_ID_ACCEPTANCE.md) 與 [schema-range recheck](R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md)。目前 R008／Wave 狀態以 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 為準；本文早期的「終版」及 gate 字句不取代後續證據。
+
 TASK_STATUS: PASS
 
 R008 已在 R007 最新 dependency PASS 後，以新的凍結 SHA 完成獨立 Luna 複核及 SOL 驗收。早期 Gemini PASS、前兩次 Luna `CHANGES_REQUIRED` 與初版 implementation report 均保留為各自舊 SHA 的歷史紀錄，不能替代本次結論。

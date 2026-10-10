@@ -1,5 +1,7 @@
 # Decision → Outcome Journey 唯讀垂直切片 QA（2026-09-14）
 
+> **歷史唯讀切片（2026-10-10）：** 本文保存 2026-09-14 的 API、正式資料數字與 UI／Workbench 缺口快照；當時 `582 evidence`、pending horizons、unlink trade 與未納入 PaperTradeLedger 等結論不是目前狀態。後續 MainWindow 跨頁驗收見 [2026-09-15 acceptance](CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md) 與 [Increment C QA](DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)，但這些 bounded receipts 不構成目前完整產品驗收。現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA 導覽](../06_qa/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 ## 結論
 
 本輪完成一個獨立的 "decision-outcome-journey.v1" read model：以單一

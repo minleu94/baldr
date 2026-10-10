@@ -1,5 +1,7 @@
 # 每日機率學習下一個有用增量：有界唯讀審計
 
+> **歷史審計快照（2026-10-10）：** 本文依 2026-09-15 的 HEAD 與資料流留下唯讀審計；其優先方案、「尚未完成」缺口及後續標記 landed 的文字不是目前工單／狀態。現況與後續 QA 以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [QA 導覽](../06_qa/README.md) 為準；文中命令僅屬當時審計證據，不代表現行 runner 授權。
+
 日期：2026-09-15
 審計 HEAD：`89a264f6`（`feat: wire prospective PIT industry membership callers`）
 範圍：只追蹤 `snapshot/outcome → dataset → calibration candidate → compare/retain/adopt/rollback → 隔日推薦/UI` 的真實資料流。未重做 H/I 持倉 read model、J PIT caller、K continuity 或 L official taxonomy producer。

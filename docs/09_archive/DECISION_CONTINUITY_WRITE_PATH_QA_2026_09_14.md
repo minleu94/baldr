@@ -1,5 +1,7 @@
 # Decision Continuity Write Path Increment A QA
 
+> **歷史 QA 快照（2026-10-10）：** 本文保留 2026-09-14 的 storage／Journal 路徑驗收；UI migration 與控制項狀態可能已由後續工作改變。文中 pytest／mypy 命令僅是當時隔離收據，不代表目前操作或驗收狀態；可與[較早的 write-path 實作前審查](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md)對照。本文是在較早審查後的 Increment A QA，並不改寫該審查原始日期。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA 導覽](../06_qa/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
 日期：2026-09-14
 範圍：typed decision identity、WatchlistRepository current/history、JournalService append-only revision、JSONL reader boundary。
 

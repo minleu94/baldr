@@ -1,5 +1,7 @@
 ﻿# 台股數據收集架構文檔
 
+> **歷史參考（2026-10-10）：** 本文不是現行資料操作手冊；2026-10-03 的 freshness 補記只代表該日邊界，其他路徑、腳本與更新命令保留為舊架構／示例，請勿照舊指令重建或更新正式資料。現行操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 與 [03_data 導覽](../03_data/README.md) 為準，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## 相關文檔
 - [系統架構文檔](../01_architecture/system_architecture.md) - 系統架構和模組說明
 - [技術分析優化文檔](../08_technical/technical_analysis_optimizations.md) - 技術分析模塊優化說明

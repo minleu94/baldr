@@ -1,5 +1,7 @@
 # V5「觀察清單／持倉 → 接受／略過／筆記 → 下次檢視」Decision Identity 保存鏈審查
 
+> **歷史實作前基線（2026-10-10）：** 本審查記錄 Increment A 實作前的 delete/clear 與 tombstone 缺口；同日後續 [Increment A QA](DECISION_CONTINUITY_WRITE_PATH_QA_2026_09_14.md) 已接受 append-only tombstone 的 bounded storage／Journal slice，本文舊結論在該範圍已被後續收據覆蓋。UI Increment B 仍是當時另外的範圍；本文方案與授權脈絡不可當成目前實作許可。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
 **日期：** 2026-09-14
 **狀態：** 僅供父層審查；本文件不授權實作 write path
 **範圍：** 觀察清單、持倉、交易日記、既有 ledger、研究下鑽與已提交的 `DecisionOutcomeJourney`。

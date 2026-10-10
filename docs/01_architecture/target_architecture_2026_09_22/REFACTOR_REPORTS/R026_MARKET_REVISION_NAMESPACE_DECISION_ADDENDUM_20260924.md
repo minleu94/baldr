@@ -1,5 +1,7 @@
 # R026 市場修訂 namespace 證據身份決策附錄
 
+> **時點／範圍提示（2026-10-10）：** 本文的「R026 整體／`TMP-ML-01` open」記錄 2026-09-24 的單一 `market_revision` slice 狀態。後續接受的 NP1／NP2 supported caller/profile runtime migration 不代表此 namespace 或所有 R026 source-evidence 範圍一併結案。現行範圍看 [R026 implementation report](R026_IMPLEMENTATION_REPORT.md) 與 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)，整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 **日期：** 2026-09-24
 **狀態：** 僅 `market_revision` namespace bounded checker slice 已由 root 依獨立複核判為 `ACCEPTED_SCOPE`；root fresh TEMP 五檔 route 為 62 passed。本文只裁決此 namespace 的 role identity 與讀取邊界，不涵蓋其他 namespace 或跨 namespace aggregate；R026 整體與 `TMP-ML-01` 仍 open，也不代表 ML cutover 完成。
 **關聯：** [R026 實作報告](R026_IMPLEMENTATION_REPORT.md)、[R026 跨資源 source revision identity 決策附錄](R026_SOURCE_REVISION_IDENTITY_DECISION_ADDENDUM_20260924.md)、`REFACTOR_TASKS/R026.md`、`data_module/contracts/source_revision.py`。

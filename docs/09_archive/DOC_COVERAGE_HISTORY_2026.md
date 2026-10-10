@@ -2363,3 +2363,22 @@ Git 路徑 metadata 現核得 `docs/` 共 1,480 個 tracked paths；其中 `06_q
 逐篇葉文件稽核第一批目前累計 36 份全文、6 份局部、511 份未讀；其中涵蓋 README／四主題索引與近期 composite completion、F02、F03 安全文件子集、F06、F12、H20 等收據。此為持續中的核讀快照，不代表 `06_qa/` 已全量審查。已定位待修候選：F06 evidence plan 尚稱 BB bandwidth／ATR 公式待 P07 定版，但同日方法提案已有接受／實作記錄；F12 index integration 開頭仍稱接線進行中，內文已有後續 synthetic 8-pass，須補時點與產品/UI 範圍界線。兩者目前只記錄為待修，尚未改原件。
 
 本次只讀，未接觸受保護文件正文；尚未修改 QA 葉文件，未跑測試、Graphify 或最終 repo-wide links／anchors scan。後續 batches 持續更新本矩陣，避免把中途分母誤標為完成。
+
+<a id="coverage-entry-204"></a>
+## 2026-10-10 追加核讀報告與歷史文件並校正覆蓋口徑
+
+REFACTOR_REPORTS 本批從先前未讀清單新增全文核讀 74 份，並修正 11 份報告索引／時點提示；Archive root 核讀累計為 57 份全文、206 份待讀（其中 `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` 只讀至第 120 行，仍列待讀）。早前 C1／R001–R007 核讀批次未保存逐檔 manifest，因此不把 74 篇直接合併到舊有 82／23／119 Architecture 或 2／23／119 REFACTOR_REPORTS 統計，也不估算剩餘篇數。
+
+本次高風險報告複核發現：R008 接受報告缺少後續 result-ID／schema-range 重驗的直達路由；R009、R011、R012 保留較早的 `READY_FOR_REVIEW`／review finding 描述；Wave 1 checkpoint 未直連 R007 後續 erratum；Wave 6 final gate 留有早期 R015 unfinished／blocked 狀態；R026 主報告與三份 addendum 的 `ACTIVE` 狀態需限定到來源證據仍開放的範圍。已在文件開頭與索引補上時間、scope 與現行入口，保留原驗收／實作正文及歷史結論。
+
+Archive root 複核亦確認多項可由日期或範圍解釋、但原件缺少彼此路由的表面衝突：Increment A tombstone QA 晚於 write-path audit 基線；BankTaiwan 標準 05:45 lane 與獨立 05:50 lane 範圍不同；每日投資旅程／continuity 舊待辦晚於 MainWindow 與 Roadmap 的後續驗收。另替舊資料收集架構、資料完成快照、BankTaiwan 操作快照及歷史決策／旅程文件補上時點與現行權威提示。舊操作命令與歷史數字未重新驗證，仍以 Manual、Snapshot、現行架構及具名 QA 為準。
+
+| 範圍 | 處理 |
+|---|---|
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/` | 11 份報告／索引文件補充狀態時間與跨文件導覽：R008、R009、R011、R012、R026 及三份 R026 addendum、README、WAVE1_CHECKPOINT、WAVE6_FINAL_GATE_REPORT。 |
+| `docs/09_archive/` root | 15 份歷史原件加上歷史時點、操作範圍或後續收據路由：CONTINUITY_REVIEW_LOOP_GAP_AUDIT、CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW、DAILY_BANKTAIWAN_LEARNING_COST、DAILY_BANKTAIWAN_OPERATIONAL、DAILY_INVESTMENT_JOURNEY、DAILY_PROBABILITY_LEARNING_NEXT_INCREMENT_AUDIT、DATA_COLLECTION_ARCHITECTURE_HISTORY、DATA_COMPLETION_2026_09_09_HISTORY、DATA_UPDATE_DISPLAY_REFRESH、DECISION_CONTINUITY_INCREMENT_B_QA、DECISION_CONTINUITY_INCREMENT_C_QA、DECISION_CONTINUITY_WRITE_PATH_AUDIT、DECISION_CONTINUITY_WRITE_PATH_QA、DECISION_OUTCOME_JOURNEY、DECISION_OUTCOME_JOURNEY_UI。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 保留 74 篇 REFACTOR_REPORTS 與 57/206 Archive root 核讀紀錄；將 QA 553/553 可達宣稱降為未充分記錄方法的歷史有界結果，補記 QA-only BFS 318/553 是不含跨資料夾與 reference／HTML parsing 的下限。另列 QA 安全 Markdown 核讀快照 205 全文、4 局部、344 未讀；201/556 根層入口統計與 553 Markdown 的分母不同。 |
+
+QA 唯讀複核另確認：四份舊文件治理報告是相容／歷史導引；QA README 的範圍聲明及真人驗收仍待人工結果；根目錄殘留檔收據說明備份不等於已刪除或整理完成；合成 1,000 檔效能收據的三類 p95 皆超過 300 ms，後續 profiling 計畫不代表改善或 Main／EXE／真人驗收；多項工程切片也不等於整體工作流完成。另四份 QA 葉文件的核讀是否與既有清單重疊無法確認，不加進全文／局部完成數。
+
+本批只調整文件狀態提示與路由，未刪除或搬移文件、未修改原始 QA 證據或資料，未執行測試、Graphify 刷新及最終 repo-wide Markdown links／anchors scan。受保護 F03 文件內容未讀、未搜尋、未 diff；根目錄 `$null` 未納入。

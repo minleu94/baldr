@@ -1,5 +1,7 @@
 # R012 實作報告：create-only result artifact store、save 與 query
 
+> **狀態時點提示（2026-10-10）：** `READY_FOR_REVIEW`、初次 `CHANGES_REQUIRED` 與本文所述待審項目是較早凍結版本的實作／review 快照；後續獨立複審與 SOL 整合 acceptance 已完成，見 [Luna rework review](R012_LUNA_REWORK_REVIEW.md) 與 [SOL acceptance](R012_SOL_INTEGRATION_ACCEPTANCE.md)。目前 task／Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。原始範圍與證據保留於本文。
+
 IMPLEMENTATION_STATUS: READY_FOR_REVIEW
 
 ## 範圍與基線

@@ -1,5 +1,7 @@
 # 2026-09-09 正式資料補齊驗收
 
+> **歷史資料快照（2026-10-10）：** 本文中的筆數、寫入完成與資料可讀性只描述 2026-09-09 當日驗收；不證明目前資料庫仍有相同涵蓋、freshness 或排程狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](../06_qa/README.md)，目前操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 本次驗收以實際資料庫與報告讀回為準，工程測試通過不代表資料已更新。
 
 ## 月營收

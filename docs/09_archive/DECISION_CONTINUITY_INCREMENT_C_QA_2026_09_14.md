@@ -1,5 +1,7 @@
 # Decision Continuity Increment C QA 紀錄
 
+> **歷史 QA 快照（2026-10-10）：** 本文記錄 2026-09-14～15 的受控 launcher、TPEX 取消與 MainWindow/readback 驗收；其中 `614 source files`、CLOSE／TPEX 結果與 runner 命令不代表目前資料、功能或缺陷狀態，也不是重跑授權。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA 導覽](../06_qa/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
 日期：2026-09-14～2026-09-15
 狀態：完成受控 launcher 的 Win32 process-tree 修正、TPEX 合作式取消與 MainWindow 一次 X 自動收尾驗證；已完成真實 production MainWindow 的 idle／busy 單次關閉與兩個獨立 child continuity readback。
 

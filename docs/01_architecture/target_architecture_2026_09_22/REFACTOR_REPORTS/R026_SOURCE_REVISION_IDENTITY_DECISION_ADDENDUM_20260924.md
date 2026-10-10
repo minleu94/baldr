@@ -1,5 +1,7 @@
 # R026 跨資源 source revision identity 決策附錄
 
+> **時點／範圍提示（2026-10-10）：** 本文的 `R026 IN_PROGRESS`／`TMP-ML-01 ACTIVE` 是 2026-09-24 的 source-evidence 決策快照。後續只接受 NP1／NP2 supported caller/profile 的有界 runtime migration，並關閉正常 `RecommendationService` 遷移子條件；這不代表所有 R026 source-evidence slice 均已完成。現行範圍看 [R026 implementation report](R026_IMPLEMENTATION_REPORT.md) 與 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)，整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 **日期：** 2026-09-24
 **狀態：** 合成 TEMP 證據與架構裁決；Slice 1 純契約已實作並有 focused QA，尚待獨立 review；未接線、未驗 production cutover。
 **關聯：** [R026 實作報告](R026_IMPLEMENTATION_REPORT.md)、[PreparedMLInput 與 transient runtime input 設計裁決](R026_PREPARED_RUNTIME_INPUT_DECISION_ADDENDUM_20260924.md)、`REFACTOR_TASKS/R026.md`、FINAL_ML_COMPATIBILITY_CONTRACT。

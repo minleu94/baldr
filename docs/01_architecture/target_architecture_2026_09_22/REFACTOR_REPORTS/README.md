@@ -16,7 +16,7 @@ Worker 的 `READY_FOR_REVIEW` 只是交給 SOL／指定 reviewer 檢查，不等
 
 ## 逐檔導覽索引
 
-> 索引按檔名中的 task ID／波次分組；同一 task 的 implementation、review、erratum、recheck 和 checkpoint 各有不同範圍，不可互相替代。文件存在不代表 task PASS 或目前仍有效；現況以 Snapshot 與具名 QA closeout 為準。新增實質報告時請同步補入本索引；只保留舊路徑的 redirect stub 另列於下方，不作實質報告項目。
+> 索引按檔名中的 task ID／波次分組；同一 task 的 implementation、review、erratum、recheck 和 checkpoint 各有不同範圍，不可互相替代。文件存在不代表 task PASS 或目前仍有效；目前 task／Wave gate 看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)、整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，專項 QA 以具名 closeout 為準。部分 implementation report 保留 `READY_FOR_REVIEW` 或早期 review finding 作歷史快照，請沿各檔首路由查後續 acceptance。新增實質報告時請同步補入本索引；只保留舊路徑的 redirect stub 另列於下方，不作實質報告項目。
 
 ### 舊路徑相容轉址（不屬於實質報告）
 

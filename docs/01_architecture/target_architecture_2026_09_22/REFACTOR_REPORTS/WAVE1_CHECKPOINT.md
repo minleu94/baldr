@@ -1,5 +1,7 @@
 # Wave 1 正式 checkpoint — characterization 與 leaf contract
 
+> **歷史時點提示（2026-10-10）：** 本文保存原 Wave 1 checkpoint 快照。R007 後續兩次勘誤與恢復 PASS 的新 SHA 證據見 [依賴勘誤 checkpoint](WAVE1_R007_ERRATUM_CHECKPOINT.md) 與 [tzname checkpoint](WAVE1_R007_TZNAME_CHECKPOINT.md)；目前 task／Wave 狀態以 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 為準。下方舊 gate 與未完成事項只代表原 checkpoint 時點。
+
 ## 判定
 
 R002–R007 六項 task 均已 PASS，必要 Gemini 獨立審查與 SOL 實際檔案整合驗收均 PASS。R003、R005 的 Gemini 合併審查原文見 `WAVE1_R003_R005_GEMINI_REVIEW.md`，各自 SOL 判定見 `R003_SOL_INTEGRATION_REVIEW.md`、`R005_SOL_INTEGRATION_REVIEW.md`。R006 的正式獨立審查與 SOL 驗收見 `R006_GEMINI_REVIEW.md`、`R006_SOL_INTEGRATION_REVIEW.md`。本 checkpoint 通過 Wave 1 的明定條件：原實作上的 characterization 可重跑，既有 gap 明示而未先修正，R007 只提供尚未接 production 的 leaf contract。Wave 2 的 R008 因此前置 gate 解鎖；C1–C4 仍未到執行點。

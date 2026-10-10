@@ -1,5 +1,7 @@
 # 每日推薦學習：臺銀成本估算 lane QA 紀錄
 
+> **歷史狀態快照（2026-10-10）：** 本文的成本 lane、legacy fixed 50bp、active pointer 與接線敘述只反映 2026-09-14 當日的研究／合成範圍，不代表目前成本政策、排程、champion 或正式下單能力。同日另有 [獨立 05:50 BankTaiwan 營運 QA](DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md)，兩者 scope 應分開讀；該次註冊／run 也不是目前狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](../06_qa/README.md)，操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 日期：2026-09-14
 範圍：`banktaiwan-electronic-estimate` 研究用成本情境、每日 bounded replay、capture → natural outcome → promotion authority → consumer，以及既有 `legacy-fixed-round-trip-bp` 相容性。
 

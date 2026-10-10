@@ -1,5 +1,7 @@
 # Decision Continuity Increment B QA（2026-09-14）
 
+> **歷史 QA 快照（2026-10-10）：** 本文是 2026-09-14 的隔離驗收與一次性 JSON→SQLite migration 記錄；本文所列安全條件不授權目前正式資料 migration，舊測試命令只供追溯當時證據。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](../06_qa/README.md)，操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 ## 範圍
 
 本次驗收涵蓋個股研究報告「決策 → 結果」分頁的研究動作控制項、Journey Journal 精確範圍，以及觀察清單 JSON → SQLite 的明確一次性升級。研究動作只保存 append-only Journal，不採用 Advice、不建立 Portfolio trade、不呼叫 broker。

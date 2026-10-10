@@ -1,5 +1,7 @@
 # R009 實作報告
 
+> **狀態時點提示（2026-10-10）：** `READY_FOR_REVIEW` 是實作者交付時標籤，不是目前 R009 狀態。後續獨立複核與 SOL 整合驗收為 PASS，見 [Luna review](R009_LUNA_INDEPENDENT_REVIEW.md) 與 [SOL acceptance](R009_SOL_INTEGRATION_ACCEPTANCE.md)；目前 task／Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。本報告保留當時實作快照。
+
 TASK_STATUS: READY_FOR_REVIEW
 
 ## 範圍與結果

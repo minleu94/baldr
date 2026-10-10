@@ -1,5 +1,7 @@
 # R026 historical-session revision namespace evidence Slice 4
 
+> **時點／範圍提示（2026-10-10）：** 本文的 `R026 IN_PROGRESS`／`TMP-ML-01 ACTIVE` 是 2026-09-25 的單一 session namespace evidence slice 快照。後續 accepted scope 僅涵蓋 NP1／NP2 supported caller/profile 的有界 runtime migration；跨 namespace、ABA 與其他 source-evidence 範圍仍須分開判讀。現行範圍看 [R026 implementation report](R026_IMPLEMENTATION_REPORT.md) 與 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)，整體狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 **日期：** 2026-09-25  
 **狀態：** Root 以 fresh TEMP 六檔路由 **91 passed** 獨立判定本 session PIT evidence collector 為 bounded `ACCEPTED_SCOPE`。此接受不涵蓋 `validate_session_replacement()` 的 legacy scan、跨 namespace aggregate、ABA 或 ML 接線；R026 維持 `IN_PROGRESS`，`TMP-ML-01` 維持 `ACTIVE`。
 

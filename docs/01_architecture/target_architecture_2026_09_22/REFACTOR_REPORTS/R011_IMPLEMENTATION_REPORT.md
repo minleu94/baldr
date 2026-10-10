@@ -1,5 +1,7 @@
 # R011 實作報告
 
+> **狀態時點提示（2026-10-10）：** `READY_FOR_REVIEW` 及本文後段「review 尚未完成」均是實作者交付時快照，已由後續獨立 review 與 SOL 整合 gate 覆蓋。裁決見 [Luna final review](R011_LUNA_FINAL_REVIEW.md)、[SOL acceptance](R011_SOL_INTEGRATION_ACCEPTANCE.md)；目前 task／Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。本報告保留原始實作證據。
+
 TASK_STATUS: READY_FOR_REVIEW
 
 ## 範圍與呼叫路徑

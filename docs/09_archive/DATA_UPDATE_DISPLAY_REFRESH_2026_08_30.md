@@ -1,5 +1,7 @@
 # Data Update Display Refresh — 2026-08-30
 
+> **歷史修正收據（2026-10-10）：** 本文記錄 2026-08-30 的 freshness 顯示修正與當次 QA，不代表目前資料更新日期、來源健康或 freshness。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [03_data 導覽](../03_data/README.md)，操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 ## 發現
 
 8/30 的實際 quick update 已成功完成，資料涵蓋至最後交易日 2026-08-28；同日 freshness probe 也以 2026-08-30 的檢查時間確認日價／技術指標最新日為 2026-08-28。原本共用時間軸卻把 freshness 的 `data_update_quick_checked_date`（檢查發生日期）當成資料 end date 比對，因而產生：

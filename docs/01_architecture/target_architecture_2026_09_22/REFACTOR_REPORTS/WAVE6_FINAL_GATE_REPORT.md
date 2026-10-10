@@ -1,5 +1,7 @@
 # Wave 6 最終工程 gate 報告
 
+> **歷史時點提示（2026-10-10）：** 本文是 2026-09-23 的工程 gate 快照；下方「R015 unfinished」及 Wave 7 blocked 等結論已由後續有界 checkpoint 更新。後續狀態見 [C1 checkpoint](C1_CHECKPOINT.md)、[Wave 7–10 bounded release checkpoint](WAVE7_10_R020_BOUNDED_RELEASE_CHECKPOINT_20260924.md) 與 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)。有界接受不等於整體 Wave／產品或正式資料驗收，現況另見 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 執行日期：2026-09-23
 範圍：C1 與 R013／R014／R016／R017 synthetic／engineering closeout
 SOL 裁決：R013、R014、R016、R017 均 `ACCEPTED_SCOPE`；Wave 7 `RELEASED_FOR_IMPLEMENTATION`

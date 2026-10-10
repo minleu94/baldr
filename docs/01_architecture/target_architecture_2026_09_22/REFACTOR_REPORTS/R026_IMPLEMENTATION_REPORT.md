@@ -1,5 +1,7 @@
 # R026 實作報告：舊 calibration preparation synthetic baseline
 
+> **現況路由（2026-10-10）：** 本報告保留各日期與 namespace 的 bounded evidence snapshot。NP1／NP2 supported caller/profile 的接受範圍及仍未結案的來源證據，以 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 判讀；正常 `RecommendationService` 遷移子條件關閉不等於所有 R026 source-evidence slice、profiles 或 production release 均完成。
+
 ## 2026-09-25 runtime handoff checkpoint snapshot
 
 > 本節只記錄 2026-09-25 的 checkpoint，不代表目前整體 gate 狀態。後續 refactor 與保留風險見 [R031 2026-09-27 current checkpoint](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md#2026-09-27-current-checkpoint)；本報告後續各節仍是各自有界 source slice 的日期化證據，不可合併解讀為 R026 或整體 migration 全面完成。

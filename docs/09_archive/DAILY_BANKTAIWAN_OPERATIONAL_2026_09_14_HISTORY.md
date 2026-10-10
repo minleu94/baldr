@@ -1,5 +1,7 @@
 # BankTaiwan 研究型推薦每日自動學習營運 QA
 
+> **歷史操作快照（2026-10-10）：** 本文記錄 2026-09-14 的排程註冊／Ready 狀態與一次性營運檢查；文內 `register`、trigger 時間及 task 狀態不代表目前已註冊或可重跑，也不是當前操作授權。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[排程稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) 與 [排程修正 QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)；操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+
 日期：2026-09-14
 
 範圍：BankTaiwan electronic estimated-research cost lane、daily shadow learning、Task Scheduler wiring、receipt custody

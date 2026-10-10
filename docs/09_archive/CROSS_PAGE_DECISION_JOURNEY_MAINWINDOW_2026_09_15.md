@@ -1,5 +1,7 @@
 # 跨頁決策旅程：真實 MainWindow 驗收紀錄（2026-09-15）
 
+> **歷史驗收快照（2026-10-10）：** 本文記錄 2026-09-15 的 bounded MainWindow／隔離資料驗收；下方 PASS、QA／runner 命令與 Manual 同步描述均是當次證據，不代表目前跨頁完整驗收或產品 release，也不構成重新執行授權。現行操作與狀態看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)、[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [QA 導覽](../06_qa/README.md)。
+
 ## 結論
 
 本次 bounded acceptance 已完成。驗收以實際 `MainWindow` signal／slot 路徑驗證：

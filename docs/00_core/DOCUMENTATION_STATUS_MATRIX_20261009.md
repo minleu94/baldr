@@ -84,6 +84,10 @@
 - Graphify recorded interpreter 可載入 `graphifyy 0.9.11`；`graphify --version` 的 uv trampoline 啟動器失敗，`uv tool list` 因本機工具鎖檔權限不足失敗。受控本機 API 以固定 HEAD `217115f2` 的 Git blobs 建出導覽圖：1,475 份 Markdown／文字文件、1,069 個 Python 檔，35,299 個節點、102,233 條邊、990 個 communities。manifest SHA-256 為 `e92d4b74e4f4d8f9180bdc317e6d35e0830190d5fadeb83a063e5349b1583f75`；語義抽取停用、token 0、未傳出網路。跨 chunk import 未 reconcile，8,116 條無法解析端點的 AST 邊已列入診斷並從最終圖過濾。完整新圖只保存在 ignored `output/qa/baldr_documentation_reorganization_20261009/graphify_runs/system_graph/`；原 `graphify-out` metadata 前後一致（7,000 files、26 directories、645,610,308 bytes、metadata SHA 相同），未覆寫。
 - Codex 與 Antigravity 的根目錄指令現列出完整條件式必讀文件；Agent README、Antigravity 入口與 handoff template 改為遵循各自根目錄清單。`multi_agent_workflow.md` 已依 `dev` 主線與 shared context 更新，並保存舊版原文快照供追溯。
 
+### 已核實並於 Coverage History Entry 177 完成時間標示修正
+
+- `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` 原結尾把 2026-09-24 設計交付時的「下一個安全接手點」留在長青設計文件，容易被讀成目前待辦。已明確標示該節及接手點屬歷史時點；目標設計內容與現況／驗收判斷未改，仍以 Snapshot 與最新具名證據為準。
+
 ## 後續整理順序與完成定義
 
 1. 先完成本矩陣列出的逐檔內容衝突核對；每批只改核實過的乾淨文件，保留另一 agent 的工作樹變更。
@@ -91,4 +95,4 @@
 3. QA 與 Archive 從入口可達、正文已讀、狀態與證據仍有效四方面分開統計；不把舊 QA 快照重寫成新結論。
 4. 2026-10-09 已完成 repo-wide Markdown 連結／錨點掃描及固定 HEAD 的受控 Graphify 刷新；若後續移動或新增文件，再重跑對應檢查。圖譜刷新不代表正文審核已完成。
 
-**狀態：** 目錄角色與可追溯審閱基線已建立；Entry 171 修正 4 組明確內容漂移，Entry 172 更新排程文件覆核並校正圖表指南，Entry 173 校正 Recommendation ML 與 Allocation Gate 7 的證據連結，Entry 174 校正 V2.2 weekly review 文件的狀態時點，Entry 175 封存舊 morning-check 指南，Entry 176 完成第二輪入口、Agent workflow、repo-wide 連結／錨點掃描及受控 Graphify 刷新。P8 候選已撤回；尚未核讀文件的逐篇正文審查與 Archive 清冊一對一覆蓋仍未完成。Graphify CLI 啟動器仍故障；新的 AST／明示 Markdown link 導覽圖已保存於 ignored QA 輸出，但未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
+**狀態：** 目錄角色與可追溯審閱基線已建立；Entry 171 修正 4 組明確內容漂移，Entry 172 更新排程文件覆核並校正圖表指南，Entry 173 校正 Recommendation ML 與 Allocation Gate 7 的證據連結，Entry 174 校正 V2.2 weekly review 文件的狀態時點，Entry 175 封存舊 morning-check 指南，Entry 176 完成第二輪入口、Agent workflow、repo-wide 連結／錨點掃描及受控 Graphify 刷新，Entry 177 標明目標架構交付查核的歷史時點。P8 候選已撤回；尚未核讀文件的逐篇正文審查與 Archive 清冊一對一覆蓋仍未完成。Graphify CLI 啟動器仍故障；新的 AST／明示 Markdown link 導覽圖已保存於 ignored QA 輸出，但未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。

@@ -1902,3 +1902,15 @@ Graphify 本機檢查確認 `graphify-out/.graphify_python` 所指 Python 可載
 | `docs/09_archive/README.md`、`docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 增加歷史快照入口、將追蹤路徑盤點更新至 1,478，並記錄 repo-wide link scan 與受控 Graphify 刷新結果。 |
 
 已檢視 `DOC_COVERAGE_MAP.md`；本次未改變其 Scoped SSOT、文件同步矩陣或 DoD，因此保留原文，逐批審閱狀態留在本矩陣與 Coverage History。未修改 QA 原始收據、SHA、PASS／FAIL／未驗證結論，未執行測試或安裝套件。其他 Agent 的 F03、程式與測試工作樹變更保持未動、未納入本筆整理。
+
+<a id="coverage-entry-177"></a>
+## 2026-10-09 標記目標架構文件中的歷史交付時點
+
+`FINAL_TARGET_ARCHITECTURE.md` 是 2026-09-22 定案的目標設計權威；其第 10 節記錄 2026-09-24 的交付查核，但末句仍稱「下一個安全接手點」是 Block 1 基線盤點。後續 R031 收據與目前 Snapshot 已記錄更晚的重構結果，未標時點的措辭可能讓讀者把舊接手提示當成現行待辦。本次只明示章節日期，並把該接手提示限定為當時記錄；設計契約、任務驗收與現況均未改寫。
+
+| 文件 | 處理 |
+|---|---|
+| `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` | 將第 10 節標為 2026-09-24 歷史查核，註明 Block 1 接手提示只代表當時交付狀態。 |
+| `docs/00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md` | 登記已核實並完成的時間標示修正。 |
+
+未修改 R031 或其他 QA 收據、設計內容、Scoped SSOT、Snapshot／Roadmap 狀態；未執行測試。

@@ -2,6 +2,8 @@
 
 封存日期：2026-09-08。原始檔案SHA256：22cf23928e31d01a70e209caeb08c115210ef9f2d7069718d5bd07e5fa733076。以下保留完整文字與時間順序，只調整可解析的相對連結；現況以[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)為準。
 
+> 歷史範圍：本文內嵌的「目前狀態入口」僅指 2026-09-08 當日原始 Snapshot；不得由本封存版本推定現況，現況請依 [目前專案快照](../00_core/PROJECT_SNAPSHOT.md)。
+
 ---
 
 # PROJECT_SNAPSHOT（必讀｜每次開新對話先看）

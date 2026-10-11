@@ -516,3 +516,5 @@ QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不�
 **2026-10-10 第十八增量（Coverage History Entry 212）：** 由接手的 Agent 以命令字串風險分流掃描 `09_archive/` 根層，50 份含 `--apply`／`--confirm`／`git`／`schtasks` 命令，其中 12 份缺檔首警語者已補歷史操作警示（`V4_NEXT_FORMAL`、`V4_TDCC`、`V4_NEXT_OPS`、`V4_AUTOMATED_REVIEW`、`NEXT_ACTION_PLAN`、`FUNDAMENTAL_SOURCE_INVENTORY` 與 6 份 Post-V1 QA）。此批閱讀深度為檔首與命令段落，不是全文審閱，不改 Archive 全文／待讀總數；`LUNA_C_HANDOFF` 全文核讀後無需修改。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-10 第十九增量（Coverage History Entry 213）：** 以狀態字樣掃描 REFACTOR_REPORTS 26 份候選，10 份會被直開誤讀成目前 disposition 者已加導向 R031 index／final closeout／Snapshot 的時點導覽，其餘 16 份保留。閱讀深度為檔首與狀態字樣行，不是全文審閱，不改該目錄全文／未讀彙總；未驗證各 task 的 R031 逐項 disposition。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+**2026-10-10 第二十增量（Coverage History Entry 214）：** 以命令字串掃描 `06_qa/` 根層，16 份候選中 15 份為窄範圍 `git revert`／已限定 ownership 的回滾說明而保留，1 份（`PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md`）的 `Remove-Item` 回滾表已加歷史回滾警示。命令字串類風險分流在 Archive 根層、REFACTOR_REPORTS 與 QA 根層已各掃描一輪；語意層的過時狀態、正文衝突與全文審閱仍未完成，不得視為內容治理完成。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。

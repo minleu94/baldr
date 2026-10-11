@@ -2493,3 +2493,10 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 接手 Agent 以狀態字樣（BLOCKED、READY_FOR_REVIEW、CHANGES_REQUIRED、NOT PASSED、REOPEN 等）掃描 	arget_architecture_2026_09_22/REFACTOR_REPORTS/ 中尚未列入具名清單、且檔首 14 行沒有時點／現況導覽者，得 26 份候選；逐一檢視狀態字樣所在行與檔首後，16 份屬設計內容、已有時點界線或已解決於同文，保留不動。10 份的狀態字樣會被直開誤讀成目前 disposition，已在檔首加導向 R031 task index、final closeout 與 Project Snapshot 的時點導覽：R005_SOL_REVIEW、R005_SOL_REWORK_REVIEW、R007_IMPLEMENTATION_REPORT、R008_IMPLEMENTATION_REPORT、R008_SOL_CHANGES_REQUIRED_ML_AVAILABILITY、R008_SOL_REWORK_REVIEW、R008_SOL_BATCH_AUDIT_DECISION、R012_SOL_REVIEW_FINDINGS、R022_IMPLEMENTATION_REPORT、R020_PORTFOLIO_READBACK_SCOPE_ADDENDUM_20260924。
 
 讀取深度為檔首與狀態字樣所在行，**不是全文審閱**，不調整 REFACTOR_REPORTS 全文／未讀彙總；原審查結論、PASS／FAIL 與限制逐字保留。未驗證各 task 在 R031 的逐項最終 disposition，因此導覽只指向 index，不重述結論。未刪除／搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-214"></a>
+## 2026-10-10 QA 葉文件命令字串風險分流
+
+接手 Agent 掃描 `docs/06_qa/` 根層 Markdown 中含 `git reset／checkout／clean／push／stash`、`--apply`、`Remove-Item`、`rm -rf`、`schtasks /Change／Create／Delete`、`Unregister-ScheduledTask`、`git revert` 且檔首 20 行無歷史／非授權界線、也未列入具名清單者，得 16 份。逐一檢視命令所在行：15 份只是 `git revert <commit>` 型回滾說明或已限定核對 ownership／保留資料的回滾表，屬窄範圍回復說明，保留不動；僅 `PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md` 的 `Remove-Item` 回滾表所列檔案後來已被修改、歸檔或被其他工作依賴，已在既有歷史補註後加歷史回滾警示。
+
+讀取深度為命令所在行與檔首，**不是全文審閱**，不調整 QA 全文／未讀彙總。受保護 F03 QA 文件未列入。未刪除／搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。

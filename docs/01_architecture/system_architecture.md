@@ -10,6 +10,10 @@ Coordinator 按原 artifact 順序取結果、核列與回呼，錯誤或取消�
 
 ## 人選持倉情境計算契約（2026-10-11，接線中）
 
+`StrategyPaperPortfolioResearchAccountReader` 以明示 strategy／version／namespace／operation／snapshot 與 aware decision cutoff，消費公開 checkpoint reader 核實的完整 snapshot／writer availability／實際 ledger。讀取不收 caller 宣稱的來源 hash、不猜 latest；綁定錯帳戶、錯快照或 cutoff 前未可得即拒絕。AccountState 保存實際現金、NAV、全部股數／價格／市值與來源身分；顯示 bp 不還原資金。此 adapter 不推定 Health，只支援策略 Paper；manual／user_declared 的各自來源與正常 UI／Main 仍待，P08 歷史 prefix／同交易 ledger 資格亦須獨立接受。
+
+`PaperTradeLedgerRepository.read_exact_daily_operation()` 由 ledger owner 提供 typed `PaperTradeDailyOperationRead`，同一 route-bound 唯讀連線／BEGIN 讀取目標 marker、當日 ordered fills／transition 與有界歷史 prefix。核對 raw schema／SQLite primitive、marker鏈、foreign portfolio、operation payload與各層 hash，prefix保持既有v1 canonical位元格式及排序；後續合法日期append不改舊checkpoint。金融解碼與hash序列化使用獨立Decimal context。此API不核上層available-at／來源clock、不授策略或績效資格；availability公開接線及整合回歸仍續辦。[27項正式ledger回歸](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)
+
 完整情境 codec 在封存／讀回時，成本列加總與金額守恆核驗均使用獨立 Decimal context；呼叫端的 precision、指數界線或 traps 不影響原封存 bytes、hash 與結果。這項核驗不重算當下引擎，也不讀新行情或授來源可得資格。
 
 `PortfolioAllocationService.project_rule_only()` 使用 `PortfolioRuleAllocationRequestV1` 接收人選整數 bp 目標，共用原 Rule/ML `project()` 的 `_project_weights()` 計算。ML authorization／blend 路徑仍只屬原入口；純規則入口不建立 ML proposal 或模型 metadata。共用 projection 保存 target、可執行研究權重／股數、Decimal 成本／現金與 diagnostic；結果固定為 research-only，不授送單或套用配置。

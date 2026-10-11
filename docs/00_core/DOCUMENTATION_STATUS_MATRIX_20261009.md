@@ -572,3 +572,20 @@ Archive 根層本批只補五份歷史原件的時點／權威提示；不調整
 依 Entry 228，Manual 的 10/09 排程驗收摘要已標記為當日狀態快照，並連到現行 21-task Runbook 與 Project Snapshot；沒有讀取或修改使用者進行中的完成進度文件。
 
 依 Entry 229，Manual 的 9/30 排程執行與 10/1 研究收集狀態兩段已逐位元組移入 Archive 日期化工程筆記；Manual 保留同名章節錨點與現行 Runbook／Snapshot 入口。Guide 目錄仍待 Manual／Supplements 全面核讀與剩餘日期段分類。
+
+### `docs/09_archive/` 根層補充具名全文核讀：10 份（Entry 230）
+
+| 路徑 | 判讀／處理 |
+|---|---|
+| `BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md` | 9/25 唯讀基線與 production／writer 未授權界線清楚；保留。 |
+| `BALDR_SCHEDULER_RECONCILIATION_20260925.md` | 21 tasks／48 automations 為 9/25 快照；Ready／exit-zero 不視為產品證據。 |
+| `BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md` | 只記 9/27 Git 狀態，不作現況或清理授權；Archive README 有現況導向。 |
+| `BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md` | 7/13 scoped performance gate 收據；不代表整體 dashboard 通過。 |
+| `BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md` | 保留整體 gate 未通過數據，與後續 scoped 修正分開。 |
+| `CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md` | 已有 10/10 後續增量與剩餘 journey 限制提示。 |
+| `CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md` | Synthetic bounded acceptance，不推論 broker order／實際成交。 |
+| `DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md` | 成本與 smoke 範圍清楚，未證自然成熟。 |
+| `DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md` | 專用歷史 shadow task 與當次執行，不授予交易或 broker action。 |
+| `DAILY_INVESTMENT_JOURNEY_2026_09_14.md` | 9/14 readonly snapshot；後續 R1 不等於自然成熟或完整產品驗收。 |
+
+本批 10 份在現有具名 manifest 未見全文紀錄；Entry 204 的 74 份報告早期批次無逐檔 manifest，故不據此宣稱全歷史零重疊、不累加舊 aggregate。逐檔引用與限制見 Coverage History Entry 230。

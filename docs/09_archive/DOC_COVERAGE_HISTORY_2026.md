@@ -2613,3 +2613,10 @@ Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。
 ## 2026-10-11 Manual 排程狀態內容移入 Archive
 
 將 `APPLICATION_MANUAL.md` 內兩段日期化狀態移至 `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md`，並保留 Manual 原標題作相容導覽：`2026-09-30 排程執行與日期判讀` 原區塊 8,921 bytes、SHA-256 `a25abdd8159c90dceceeaeaa7029972e66bed2c8b1ce7ac535169c35c85961cd`；`2026-10-01 研究收集與排程狀態` 原區塊 7,482 bytes、SHA-256 `438955060af0369e920d69834f8c7b73c361d5fbc1860c33132f39926e85e10e`。兩段在 Archive 保留原始文字與時間／狀態收據，明示為歷史快照；Manual 標題直接連至 Archive，並指向現行 21-task Runbook 與 Project Snapshot。其他日期化區塊尚待核對，這一批不代表 Guide 完成歸檔。未讀取或修改使用者進行中的完成進度文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-230"></a>
+## 2026-10-11 Archive 根層第四批 10 份具名全文核讀
+
+全文閱讀 `BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md`、`BALDR_SCHEDULER_RECONCILIATION_20260925.md`、`BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md`、`BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md`、`BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md`、`CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md`、`CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md`、`DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md`、`DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md`、`DAILY_INVESTMENT_JOURNEY_2026_09_14.md`。上述路徑均在既有具名清冊未見全文記錄；Entry 204 早期 74 份報告無逐檔 manifest，因此不宣稱能由此證明全歷史無重複，也不調整舊 aggregate。
+
+判讀確認 9/25 scheduler／integration、9/27 Git consolidation、9/14 investment／BankTaiwan 文件都是各自日期的唯讀或 scoped snapshot；`Ready`、exit-zero、synthetic journey 與 160-row smoke 不視為 production acceptance、broker order、自然成熟或現況／清理授權。July broker performance 原 gate 未通過與後續 scoped semantic 修正分開保留。Continuity gap 文件已有 10/10 增量與仍未完成的 journey 界線。Archive README 的直達入口與現況路由有效；本批未改原始 QA／收據或歷史結論，未執行測試、Graphify 或最終 repo-wide links／anchors scan。

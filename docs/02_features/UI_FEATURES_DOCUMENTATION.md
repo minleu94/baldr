@@ -483,9 +483,11 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 
 ---
 
-## 五、目前缺口與 6M Roadmap 對齊
+## 五、早期缺口清單（現況待核）
 
-近期 UI 相關缺口：
+> 以下是較早的缺口記錄，未逐項附上最新核對日期，僅供追溯，不代表目前未完成事項或目前工程優先序。現況與工程順序請查 [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md)、[ROADMAP_6M_ENGINEERING.md](../00_core/ROADMAP_6M_ENGINEERING.md) 及對應的具名 QA。
+
+原清單列出的 UI 缺口：
 
 - Phase 5 大表格分頁已完成 (SQLite 檢視器分頁)。
 - 規格化 Excel 報告輸出已完成；PDF 仍待完成。
@@ -505,6 +507,7 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 
 ## 更新記錄
 
+- 2026-10-11：將未逐項核對的 UI 缺口清單標為歷史記錄，避免當成目前狀態；現況導回 Snapshot、6M Roadmap 與具名 QA。
 - 2026-10-10：補入官方市場與技術條件研究子頁及 Watchlist 專用收藏重開能力；操作與安全限制見 Manual §6.7。
 
 - 2026-10-05：內建Breadth／Relative Strength的共用與獨立SQLite讀取接入合作取消，視窗等native worker結束才退出；Native查詢中關閉及取消→正常重試通過，取消不冒充完成。四檔backend改動，UI main／view未改；原速度目標與Backtest未達項保留，見 [SQL取消收據](../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)。

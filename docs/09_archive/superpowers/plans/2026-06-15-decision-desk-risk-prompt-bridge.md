@@ -1,5 +1,7 @@
 # Daily Decision Desk Risk Prompt Bridge Implementation Plan
 
+> **歷史範圍註記（2026-10-11）**：這是歷史實作計畫，不是目前實作或驗收證據；目前是否實作及驗收仍未知。重用前請核對[目前專案狀態](../../../00_core/PROJECT_SNAPSHOT.md)與[現行操作手冊](../../../07_guides/APPLICATION_MANUAL.md)。本計畫尚有未解的品質判定差異：品質規則要求由警告文字衍生的提示標為 `DEGRADED`，但實作草圖只依來源區段品質判定，同時又會從 Watchlist 警告產生提示；須以現行契約核實，勿將此草圖視為已解決規格。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add Daily Decision Desk Risk Prompt Bridge v1 so existing section outputs become concise Why Not / risk prompts without recomputing scoring, screening, portfolio, chip, or liquidity logic in the UI.

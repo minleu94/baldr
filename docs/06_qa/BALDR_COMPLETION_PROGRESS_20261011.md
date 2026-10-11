@@ -392,3 +392,5 @@ Root新增兩個QA-only故障紅測，實際得到 **2 FAIL／1.89秒／native1*
 F12 safe-dup候選與P08完整策略路由仍在owner scratch，未凍結、未執行QA。Root審查要求F12 constructor若已閉dup再重用其數字，cleanup須核當前handle身分，不能誤關新descriptor；P08 hold_unknown須在target construction中保留原quantity，不能由等權再平衡間接成交。這是待驗要求，不宣稱候選修正或產品完成。
 
 本輪coverage／preimages／回滾packet為 `root/phase_v6_root_review_20261011/`。產品UI／Manual、架構、Roadmap方向與Index入口未變；完整補完範圍保持。兩輪root QA均terminal，沒有root live runner。
+
+Root隨後以原v5 frozen wrapper／測試執行一次 `test_full_sealed_store_preflight_matches_all_frozen_hashes`，取得 **1 PASS／6.78秒／native0**，receipt `root/p01_sealed_after_timeout_root01_2c75a649318f44a288e0fdc3de2975a4/receipt.json`、launcher46096終態，99 raw pins一致。重新唯讀核全部1457 entries、sealed tree SHA `a8d9946d94361733d8f268894e8452a73999c22ff47676528f8660f769e7f3b9`與原DB／inventory hash相同。這是逾時之後的新時點核驗，不能改寫原v5不存在runner postinventory的事實；沒有新matrix／p95或Qt旅程。

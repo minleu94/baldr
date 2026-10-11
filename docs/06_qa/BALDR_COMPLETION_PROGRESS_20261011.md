@@ -569,3 +569,23 @@ Root另存 **22份raw** 於 `root/f12_recipe_terminal_review_f3f0f20241d5454bbcd
 Health v1 archive候選已freeze（manifest `fe1c3f05af35635927dcd93f3b98faf2838b64ac59954aa961ac69825f264484`），root靜態讀到witness只parse source observed clock，缺與evaluation／archive／cutoff的完整時序核驗；另授同owner新sibling增加refresh不可變source witness、exact portfolio／shares與分欄clock，舊baseline不回填。P08新增reference／execution具名publication選版，公開reader逐角色核clock，完整日volume不得進開盤sizing；仍在scratch，無QA或完整P06／P08／M3接受。
 
 Readonly契約稽核已完成：正式RevenueQuery的hash body含monthly reader／index／operation clock，重開會新發；原source測試458、472–478行明確要求query／read-session／index身分更新。Bookmark原selected query/request是收藏當下的歷史識別；正式verify_exact_row要求stable recipe／facts及重開當次query／page／request互綁。Root已獨立讀上述程式及原測試，授新QA sibling保留原selected ID／完整saved request核驗，另核fresh當次query/page/request及全部recipe條件與stable fact context；父子receipt分列selected／reopened身分，不以刪斷言換通過。新候選未套、未QA，原失敗保留。
+
+### F12 固定合成來源完整 Main／保存／新程序旅程通過
+
+上一 goal turn 只回覆進度，分類為 no progress。本輪獨立審查、套用兩份 QA 測試並完成三階段實測，完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持。
+
+新 identity 候選 full-freeze SHA `df4bef434bba22255c3d4516184c4106dcfecd9cafe2e3195ff62de51c55355b`，patch SHA `deb15c4755a38e8b380645b11281adf970388854744c410b67a9bb7f88ac7593`。原 freeze `2fee9a4d` 保留；metadata sibling 只修 verification.preimage_directory，另增加 correction／superseded metadata 及核驗工具 artifacts。Root逐檔核全部artifact／64pins、62非test依賴不變、23來源，並從ace399／e92c preimages重算完整diff。整個module AST只有Main旅程函式與child.main改動，斷言數增加；正式程式、guard、來源與期限未改。Main候選 `953dd450900f3160734ea76bdf0316924eee4fd15ca99d505efda68a373286b3`，child `ccc5862a6bb005867d969ca9a0bf21df6b7088445993475b7766f28cbbd9ea28` 已套；preimage封套 `root/f12_reopen_identity_static_apply_root01_3e08ccda0cc74b80856a92166fe47cb5`。
+
+| 同版階段 | Root實測 |
+|---|---|
+| 五個guard節點 | **5 PASS／3.98秒／native0**，host `f12_reopen_identity_guard_host_root01_656b32fcb74b41b082e1214cfa8e06df`。完整47斷言與descriptor records0、Job／handles收尾通過。 |
+| 真Watchlist按鈕／Yes／私人COW | **1 PASS／12.24秒／native0**，host `f12_reopen_identity_cow_host_root01_e3a0659347064af89ab08e3726169f4f`。schema3、公開reader query_only／write_blocked、active service及worker registry0通過。 |
+| 完整Main旅程 | **1 PASS／80.19秒／native0**，host `f12_reopen_identity_main_host_root01_ff80d566dc7a4585a9b09d4e79097aa1`，inner `main_candidate_b405fa27564f4bec8471bca282159731`。內層pytest **1 PASS／76.39秒／native0**；父／child均自然0、非逾時，專屬Job active0、程序樹與handles閉合。 |
+
+完整旅程核258檔declared／visible count、同來源列選取／下鑽／返回、真bookmark writer完成與公開service全文讀回、私人DB保存後hash變化、原JSON不變、父Main關閉，再啟動新PID17708（父Main PID27280，child supervisor33036）。Child exact雙來源重開、完整recipe與F17 canonical JSON相等，selected原query/request保留，當次reopened query/page/request互綁且身份更新；頁面0／100、AND／unknown include／stock_code asc及保存條件完整核對。Child正常close後自然exit0，Job remaining PID空；privateDB讀回前後相等。這次保存／重開條件是ma_states及minimum_yoy均null，不能外推其他條件組合。
+
+Query仍明示current_only／availability unknown／historical_pit_eligible false。三階段64pins與23來源觀測起訖一致；成功query的guard診斷仍有fdopen被拒事件，不把query成功寫成guard零事件。Root獨立解析journey與child標記收據，重核新舊身分、stable recipe／F17、PID、source／DB hash及Job終態，另保存 **23份raw** 於 `root/f12_reopen_identity_terminal_review_519eaa3819424fb5a76c0bcc98ca8910/receipt.json`，SHA `5d09ff63aa9eb08b0458466ee708275de6bcd2a21fd7513b45134eee010709c5`。Session26437已terminal；本輪release均consumed，不重用。
+
+接受固定42f合成來源的此完整Main旅程；原來源、其他條件、同版EXE／Native／真人與完整F12／P09／M2仍待。Coverage及精確回滾見 `root/f12_reopen_identity_coverage_and_rollback.md`；本輪只同步QA／Snapshot，不新增Manual操作或架構／Roadmap政策。
+
+F12 owner已回P01 phase QA-only候選，保留原WinError5及缺暖p95。Health v2仍在scratch，完整clock順序及真refresh→identity→evaluator→archive→新PID測試待freeze；只支援paper-main盤前邊界，策略EOD adapter仍缺。P08 v3另補empty selector不得藏非空target、execution open／volume／close同列row identity及精確symbol universe，以及行情與intent/calendar同受控DB核驗；真金融batch／兩namespace／績效與UI未授完成。

@@ -9,6 +9,7 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
+| 10/11 F12 固定來源完整旅程 | Root核QA-only身份修正完整diff／64pins／23來源；guard **5 PASS／3.98秒**、真COW **1 PASS／12.24秒**、完整Main **1 PASS／80.19秒／native0**。父PID27280真收藏保存／關閉、新PID17708正常重開及關閉；歷史selected身份保留、fresh query/page/request互綁、完整recipe／F17相等。inner／child自然0、Job排空、來源不變；接受258檔合成來源的此旅程，其他條件、原來源／EXE／真人與完整F12仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P01 v9b3 千檔終態 | v3純preflight native0／store0、真Job **10 PASS／8.10秒**。原六角色五cold20頁／完整DTO通過、啟動至首頁p95 **33.9451527秒**；warm **65.6722947秒／自然native1**，首筆翻頁196.3811ms後QA phase換檔WinError5。717pins／postguards／Job排空通過；只有1筆暖樣本、篩選排序0筆，無有效暖p95，完整P01／300ms仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 F12 保存／新程序接續 | Root核兩QA測試完整diff及64pins／23來源；guard **5 PASS／4.65秒**、真COW **1 PASS／10.48秒**。完整Main **1 FAIL／77.32秒**，收藏實際保存與父Main關閉通過，新PID重開後完整recipe／F17相等；QA誤要求舊runtime query identity不變，正式契約核對完成、新QA候選待審。inner／child自然native1、Job排空、來源不變；完整旅程／F12 Gate仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 F12 呼叫位置診斷接續 | 新eefdbd同版guard **5 PASS／4.27秒**、真COW **1 PASS／12.26秒**；完整Main **1 FAIL／34.01秒／自然native1**，64pins／23來源不變、Job排空。新診斷把三次拒寫定位至私人revenue操作根下snapshot／attempt status暫存檔；guard仍判外根，canonical比較候選待審。12 frames皆guard，尚無正式caller；完整F12保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |

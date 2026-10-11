@@ -2914,3 +2914,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 REFACTOR_TASKS R024–R027／R029–R031 七份具名全文再核讀
 
 全文再核讀 `REFACTOR_TASKS/R024.md`、`R025.md`、`R026.md`、`R027.md`、`R029.md`、`R030.md`、`R031.md`；本批精確 basename 先前未在 Matrix／History 出現，屬舊 32/32 aggregate 無 manifest 下的具名再核讀。依任務 README、FINAL_TARGET_ARCHITECTURE 與 R031 overlay 核對 bounded scope／retained compatibility；R027 明確區分新 revision B PASS、舊 strict INCONCLUSIVE 與 R028 scoped acceptance。七份規格及內鏈可達，原件保留未改，行數與 SHA 前後相同；限定 diff check 無診斷。合併 Entry 280–282 後，先前 basename 掃描列出的 23 個 REFACTOR_TASKS 候選皆已具名，但這不把舊 aggregate 轉成可還原的精確歷史總數。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-283"></a>
+## 2026-10-11 Core 權威與導航文件十五份具名全文再核讀
+
+全文再核讀 `AI_CONTEXT_PACK.md`、`DEVELOPMENT_ROADMAP.md`、`DOCUMENTATION_CATALOG_20261006.md`、`DOCUMENTATION_GRAPH_GUIDE.md`、`DOCUMENTATION_INDEX.md`、`DOCUMENTATION_STRUCTURE.md`、`README.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`、`LEGACY_ROADMAP_CARRYOVER.md`、`NEXT_ACTION_PLAN.md`、`PRODUCT_ROADMAP_POST_REFACTOR.md`、`ROADMAP_6M_ENGINEERING.md`、`V4_COMPLETION_PLAN_2026_09_07.md`、`VERSION_ROADMAP_V1_1_TO_V2_0.md`、`VERSION_ROADMAP_V2_1_TO_V4_0.md`。舊 Matrix `18/18` 與 Entry 180 的 `11 full／7 partial` 都是沒有逐檔深度對照的 aggregate；本批建立這 15 條精確 full-read 記錄，不推算淨增量。另全文核讀 `DOC_COVERAGE_MAP.md` 作為治理入口，但它不列入新增候選。Scoped SSOT、Roadmap Hub、產品方向／6M 順序／maturity／external source priority／legacy Gate 相互一致，歷史 stub 路由正常；未發現需修訂的內容或入口。上述 15 份及 Coverage Map 行數、SHA 前後相同；受保護的 Snapshot 未讀未改，Matrix 僅作稽核入口。未跑測試、Graphify 或最終 repo-wide links／anchors scan。

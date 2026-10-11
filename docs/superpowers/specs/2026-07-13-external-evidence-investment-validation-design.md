@@ -1,5 +1,7 @@
 # External Evidence and Investment Effectiveness Validation 設計
 
+> **歷史設計／非現行授權（2026-10-11）：** 本規格保存 2026-07-13 的核准規劃基線與 immediate work package，不代表目前狀態、派工或投資有效性資格。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、外部驗證 QA／收據及[Superpowers 閱讀入口](../README.md)重新核對。
+
 > **設計日期**：2026-07-13
 > **核准方案**：策略二「雙時鐘並行」
 > **文件狀態**：已核准的規劃規格；尚未開始 EV1～EV5 實作

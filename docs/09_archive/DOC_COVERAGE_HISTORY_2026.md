@@ -2730,3 +2730,20 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 具名全文讀 `docs/03_data/` 九份非索引內容或 redirect：`C_DRIVE_QA_COLD_ARCHIVE_20261009.md`、`C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md`、`daily_data_update_guide.md`、`DATA_FETCHING_LOGIC.md`、`HISTORICAL_TEST_QUARANTINE_20261006.md`、`HOW_TO_UPDATE_DAILY_DATA.md`、`STORAGE_ASSET_REGISTER_20261006.md`、`BACKUP_RETENTION_AUDIT_2026_07_06.md`（redirect）、`TROUBLESHOOTING_DAILY_UPDATE.md`（redirect）；並以 `README.md` 與 `docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md` 作路由／終態參照。既有 Matrix 已將七份內容列為全文核讀、兩份列為 redirect，因此不累加舊 aggregate。
 
 `daily_data_update_guide.md` 的「技術細節」未標明其中 TWSE `tables[8]`、舊 endpoint 與延遲數字屬舊實作；已在該節加上歷史提示，路由到 `DATA_FETCHING_LOGIC.md` 的現行行為與 Manual。後者明確標出舊 API／整合段落已由欄位辨識方式取代，無需另改；其他封存終態數量、收據與資產分類與 QA reconciliation 一致。未讀 Manual、Snapshot、受保護架構文件或 code/tests，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-247"></a>
+## 2026-10-11 Superpowers retained originals 第六批具名全文核讀與直開提示
+
+全文核讀 12 份 plans：`2026-06-23-healthcheck-batch2-daily-dashboard-smart-money.md`、`2026-06-23-non-destructive-release-healthcheck-runner.md`、`2026-07-12-v2-2-sidecar-weekly-collection.md`、`2026-07-12-v2-versioned-delivery.md`、`2026-07-13-external-evidence-investment-validation-master-plan.md`、`2026-07-13-oos-exposure-custody-audit-execution-plan.md`、`2026-07-13-two-day-evidence-foundation.md`、`2026-07-13-twse-t86-candidate-recovery-pilot.md`；及 specs：`2026-07-13-external-evidence-investment-validation-design.md`、`2026-07-13-external-evidence-wave-1-authorization-addendum.md`、`2026-07-13-external-evidence-wave-2a-authorization-addendum.md`、`2026-07-13-terra-development-dataset-v0-design.md`。本批原件逐檔行數、bytes、SHA-256 由讀取前後重算確認一致，完整 metadata 見本次 agent handoff；未讀 manifest。
+
+三份缺乏明確檔首歷史界線的原件已加提示：non-destructive runner plan 特別標示 Task 8 force-merge placeholder 曾可被記為 `passed`、但不證明取消已驗證；two-day Evidence Foundation plan 與 External Evidence 投資驗證 spec 分別明示舊時程／未勾 Gate 與 immediate work package 不構成現行派工、資料資格或投資有效性。Superpowers README 增加六項直達風險路由：Batch 2 healthcheck plan、runner plan、V2.2 sidecar weekly plan、V2 versioned delivery plan、OOS custody companion、two-day foundation plan；External Evidence spec 既有主題表路由保留並補上歷史基線界線。其餘原件已有足夠日期／授權提示，未改。Superpowers retained originals 共 66 份具名全文核讀、估計尚有 39 份未全文核讀；原件讀取總量與舊 aggregate 不混算。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-248"></a>
+## 2026-10-11 QA 下一批具名全文核讀（7 份）
+
+全文核讀 `BALDR_1000_STOCK_PERFORMANCE_NEXT_GATE_20261009.md`、`BALDR_B08_PERSONAL_ROUTES_20261006.md`、`BALDR_B09_PERSONAL_PORTFOLIO_20261006.md`、`BALDR_B10_NOTES_BACKUP_20261006.md`、`BALDR_B10_PRIVATE_REVIEW_20261006.md`、`BALDR_B11_FAMILY_CATALOG_20261006.md`、`BALDR_B12_DAILY_RUNTIME_20261006.md`。七份均可由 Product UX QA index 到達，與 Second Wave Integration 後續收據核對後未見需改的矛盾。1000-stock 舊 benchmark 與 fixed-85bc 後續結果是不同 base／操作基線，不合併其數字；B11 原 QA 欄數錯誤已由後續收據更正，現文一致。舊 QA aggregate 缺逐檔 manifest，不調整總量；受保護文件未讀，未修訂正文或執行測試、Graphify、最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-249"></a>
+## 2026-10-11 Archive 根層第七批具名全文核讀與一次性收據提示
+
+新增全文核讀根層 3 份：`PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_28_STAGING.md`（93 行，SHA-256 `EA9DAC100654688C0C16DBFB434AE11149FC266CB9468CCD7C219FF5D025D4C3`）、`PROSPECTIVE_FORMAL_RESTART_WEEKLY_UPDATE_2026_08_25.md`（175 行，`6598A792AFCB073F0A86397761D951DB89B052642F29443CBBCED5E12C42BCE3`）、`V4_ML_RELEASE_2026_09_07.md`（1,432 行，`6D68CA79CC8DC11053A1D42BBEF2E26049D67B8C7F53046174F338D5350C1FB5`）。Archive README 均已有直接路由；前兩份依日期順序記錄一次性 clock activation blocked 與 validator 修復，未見結果內部矛盾，但早期命令不應重跑。V4 是 bounded research receipt，formal OOS／alpha／promotion／broker 權限均 false；長文中的 D 槽、lock 與 audit 命令不能當現行授權。三份檔首均加歷史時點／勿重跑提示，正文與數據保留。舊 Archive aggregate 無可還原逐檔 manifest，不重算；未讀受保護文件或執行測試、Graphify、最終 repo-wide links／anchors scan。

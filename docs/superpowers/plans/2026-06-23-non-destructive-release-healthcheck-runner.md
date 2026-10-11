@@ -1,5 +1,7 @@
 # Non-Destructive Release Healthcheck Runner Implementation Plan
 
+> **歷史計畫／非現行 release gate（2026-10-11）：** 本文是 2026-06-23 計畫，不是目前 release gate 或執行授權。Task 8 的 force-merge placeholder 曾可回傳結果而被 Runner 記為 `passed`，真正取消驗證預計於 Task 10 補上；不可將該 `passed` 當成取消已驗證。重用前依[現行 QA 主題地圖](../../06_qa/README.md)、目前 Roadmap 及[Superpowers 閱讀入口](../README.md)重核。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立 Release 前使用的非破壞式 Full App Healthcheck Runner，能以快速、完整、高風險 dry-run 三種模式驗證 PySide6 主 UI、流程閉環、視窗縮放、截圖證據與 service / SQLite oracle，而不寫入正式資料。

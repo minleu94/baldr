@@ -70,6 +70,11 @@
 
 下列歷史內容特別容易被搜尋後誤用，引用時先回到本 README 確認生命週期：
 
+- [Healthcheck Batch 2 Daily Dashboard／Smart Money 計畫](plans/2026-06-23-healthcheck-batch2-daily-dashboard-smart-money.md) 保留未勾項目及 `git checkout HEAD --` 回退命令；只作歷史計畫，不要直接重跑。
+- [Non-Destructive Release Healthcheck Runner 計畫](plans/2026-06-23-non-destructive-release-healthcheck-runner.md) 的 Task 8 force-merge placeholder 曾能被記為 `passed`，該結果不證明取消行為已驗證，也不是現行 release gate。
+- [V2.2 Sidecar Weekly Collection 計畫](plans/2026-07-12-v2-2-sidecar-weekly-collection.md)、[V2.1–V2.5 Versioned Delivery 計畫](plans/2026-07-12-v2-versioned-delivery.md) 與 [OOS Exposure／Custody companion 計畫](plans/2026-07-13-oos-exposure-custody-audit-execution-plan.md) 的排程、checklist、資料路徑及 Git 步驟均是歷史內容，不是目前派工或授權。
+- [Two-Day Evidence Foundation 計畫](plans/2026-07-13-two-day-evidence-foundation.md) 保留舊時程與未勾 Gate；不能當成 forward evidence 或目前待辦。
+- [External Evidence 投資驗證設計](specs/2026-07-13-external-evidence-investment-validation-design.md) 的 baseline／immediate work package 是 7/13 歷史規劃，不代表目前授權或投資有效性資格。
 - [平行系統執行 master plan 原路徑](plans/2026-07-13-parallel-system-execution-master-plan.md) 與[工作流啟動 prompts 原路徑](prompts/2026-07-13-parallel-workstream-start-prompts.md)現為導引 stub；逐位元組原文分別保存在 [Archive plan](../09_archive/superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md) 與 [Archive prompts](../09_archive/superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md)。這是 2026-07-13 的歷史任務拆分和工作指令，不代表已完成、目前優先序、工作授權或 Git commit／push 授權；現況看 Snapshot／Roadmap。
 - [Plan/spec 日期與狀態稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md) 是 7 月稽核收據；其中的 `Next Action` 保留當時結論，不是目前待辦。
 

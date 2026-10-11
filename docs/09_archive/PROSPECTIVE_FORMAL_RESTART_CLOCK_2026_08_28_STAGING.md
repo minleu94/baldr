@@ -1,5 +1,7 @@
 # Prospective Formal Restart — 2026-08-28 staging record
 
+> **一次性歷史收據／不可重跑（2026-10-11）：** 本文記錄 2026-08-28 的 staging、calendar／PIT custody 與 activation 結果；內含的一次性命令與狀態不得直接複製重跑，也不代表目前 readiness 或授權。現況依[Archive 導覽](README.md)指向的權威與近期 QA 判讀。
+
 日期：2026-08-25（Asia/Taipei）
 
 ## Future clock

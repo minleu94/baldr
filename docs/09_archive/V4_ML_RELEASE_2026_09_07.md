@@ -1,5 +1,7 @@
 # V4 ML release bounded QA（2026-09-07）
 
+> **有界歷史 QA／非現行授權（2026-10-11）：** 本文只記錄 2026-09-07 的 V4 ML bounded research release，不代表目前 release、formal OOS、alpha、promotion 或 broker 權限。D 槽路徑、shared lock 與命令都是該次收據的歷史內容，不要照抄重跑；現況依[Archive 導覽](README.md)及[QA 主題地圖](../06_qa/README.md)連到的權威判讀。
+
 本次交付包含兩條可審核的 linear shadow slice：bounded fixture 的 minimal
 producer，以及從 immutable Direct parent 選出的 derived h5 producer。兩者均經過
 `allocation-ooc-training.v5` → release builder →

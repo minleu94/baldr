@@ -1,5 +1,7 @@
 # Prospective Formal Restart Weekly Update（2026-08-25）
 
+> **歷史週報／非現行狀態（2026-10-11）：** 本文由 2026-08-25 起記錄至 8/28 的一次性 clock／activation 時序，檔首初始狀態已被後文更新；不得單獨用來判斷目前 Gate、readiness 或重跑授權。現況依[Archive 導覽](README.md)指向的權威與近期 QA 判讀。
+
 > 報告自然週：`2026-08-18` 至 `2026-08-24`
 >
 > 報告截止：`2026-08-25T14:21:00+08:00`（Asia/Taipei，2026-08-27 successor activation 前）

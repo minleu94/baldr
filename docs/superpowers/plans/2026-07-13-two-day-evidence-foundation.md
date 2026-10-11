@@ -1,5 +1,7 @@
 # Two-Day Evidence Foundation Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保存 2026-07-13 的時程、工作拆解、命令與未勾選 Gate，不代表目前派工、forward evidence 或完成狀態。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、對應 QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在兩個完整工作日內，建立 replay／殘缺資料／新來源／ML shadow 的統一工程驗證基線與 forward evidence 接手包。

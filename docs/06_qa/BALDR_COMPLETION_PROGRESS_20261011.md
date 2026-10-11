@@ -306,3 +306,35 @@ Root唯讀metadata確認報錯目錄普通path不存在、延伸路徑存在且�
 ### P08 前向觀察候選審查（未套用）
 
 Owner scratch沿真v4 source session／child／parent writer及公開exact reader投影五predicate之一，保留完整included cohort合法UNKNOWN與source availability unknown／historical PIT false。Root全讀候選，要求讀回時source cutoff、parent completed clock逐值綁真public package，重核capture不早於真parent並補重封hash負例；讀檔改有界且各層reparse／hardlink驗證，不先read_bytes全量再核上限。保存時鐘語意亦須精確，不能以preparation clock稱已保存。候選不授完整StrategySpec、帳戶producer或績效；正式P07／P08／M3及完整產品scope保持。
+
+### P01 v5 原 sealed 清冊與凍結後漂移
+
+Root全讀v5 runner相對原runner差異：僅將lstat／scandir／檔案I/O轉為Windows extended path，canonical root、relative payload、排序、identity、reparse與hardlink拒絕均保持。原80 source、51產品module、594runtime及fixed inputs的manifest值相同。Root在manifest `9509fb22782f1bec5a72f54aca0f6a2882010f9de1cc558359aa285f4a4dc7cb`凍結時獨立 **2 PASS／2.84秒／native0／89 pins一致**，receipt `root/p01_extended_v5_01_d3ec4b112ba34af4860330c11c4fa311/receipt.json`。真sealed source共1457 entries（1150 files／307 directories），tree SHA `a8d9946d94361733d8f268894e8452a73999c22ff47676528f8660f769e7f3b9`、source DB SHA `54ad8d6cdd018cecfc449062edd8ced56ba682b3fde8c86c1bce25d311674f27`與原封套一致；無來源重建、移動或縮母體。
+
+Owner其後同path新增bridge欄位造成9509 manifest變成e4；root要求保留e4新檔並恢復exact9509。Owner依已記錄欄位重建，computed SHA精確等於9509，root目前Get-FileHash已核實；e4另存preimage。新bridge manifest為 `772f77b8d9f7aa479f4e826dbb0456469d66d7578859c1a360215a0f43c8e45a`，但root獨立啟動時發現attempt30 freeze的preflight SHA `88f138ff0c6e68dfbe1fe9a63d33ad649fd30e1baca3d5680c01d88962b92be7`與現檔 `b6bc82f926874ccf6393f60c9a43817c4aa671dec32298571d9588249621dbae`不同，於產品／store前停止。該停止沒有pytest／matrix樣本；已要求唯一owner新filename與新freeze，不能把已凍結候選原地改寫。原300ms、五cold／一warm、每類30samples及完整DTO oracle不改。
+
+### F12 descriptor 私人正例與 alias 夾具失敗
+
+Root審查pre-open nlink1／private containment及每次真DOS0 handle、Winfileinfo／fstat identity候選；freeze `be682af87e765785e46a44270789648fa5c09b0e5b8d6733eea7685d600279d5`，harness source `5f8ae9f30c84f39d3d2acf1d5552d6a7767b19767d709014674ca47a78327005`、child保持 `32456ac7c5c526c927a9a9c744676f07bdd050d08006562a08012f07200bf2bb`。首root attempt忘明示F12_SYNTHETIC_ROOT，在child前1FAIL／0.91秒；收據完整保留。第二attempt明示原42f來源，receipt `root/f12_descriptor_preopen_02_cc9ec1499f5a476ea989c533a21157a9/receipt.json`為 **1FAIL／3.60秒／native1**；64source pins與17檔／14sidecar觀測起訖相同。
+
+Inner `output/qa/f12_resume_20261011/fdopen_guard_probe_73ecba9a56d44ff297c81efaee38f6d6/`真private writer成功且bytes一致；外部／readonly source／closed／同fd數字reuse／pipe皆拒絕。預先開啟的hardlink handle、os.open O_TRUNC與builtin open wb都拒絕，外部檔bytes與SHA不變。唯一失敗是os.symlink缺權限WinError1314，未真正建立alias，不能宣稱reparse負例通過。Launcher PID46396已native1終態，owned Job／root handles閉合、remaining PIDs空。下一候選改新私人目錄junction，不skip、不移除alias斷言；小型COW與完整Main尚未驗。Guard-only release需明示未授Main，舊base繼承的true旗標不能當新授權。
+
+### P08 前向觀察來源鏈的 root 獨立驗證
+
+上一goal turn只答進度，分類no progress；本輪root重核現工作樹、完整讀凍結候選與八項測試，manifest SHA `a9634ca5815ef73dca5f570ce0a587ed2d0c9eb3485d1c4027b1ddac492f5c7e`。候選source `c9d67dd6ad5c28c0595a9bd6c51a7072bac7eeb253b623c059968e44554a600d`、test `e53aba44b8e19f8a6a78034218dfebcd6682f1fadae29245b1a01849a109e47d`。Root guard保留前輪28財務／UI pins，再加入候選及19正式技術source/test依賴，所有raw pins起訖一致。
+
+Root01沙箱在.t.resolve(strict=True)被WinError5拒絕，8個setup errors／2.54秒／native1，未進來源；receipt `root/p08_forward_root01_3b1771175930482a871e2a6f544cbd8e/receipt.json`保留。核准相同bytes的工作區隔離測試Root02取得 **8 PASS／0 skip／8.99秒／native0**，receipt `root/p08_forward_root02_87ba28556269405e811dda66b0a46e6f/receipt.json`，launcher PID41036終態。包含真v4 read session→child／parent writer→公開exact reader→新觀察保存→fresh reader、完整included UNKNOWN、重封訊號／重複成員／cutoff與parent completed clock、naive／晚到／foreign universe、caller score禁止、junction／hardlink／2MiB超限拒絕與hostile Decimal context。
+
+新程序收據 `output/qa/p08_resume_20261011/forward_signal_candidate/fresh_source_reader_receipt_32124_27568.json`記PID27568／exit0，保存與重開signals相等（2330 unknown、2382 match）；來源SQLite SHA before=after=`c1a7c08dcbd925e64d84875470a06da399a8b2116f95bf3b4e1798b8fd12bc05`。此為隔離synthetic source經真正式來源API的證據，非正式市場來源或交易績效資格；source availability unknown／historical PIT false保留。候選尚未套正式module。下一包須有完整版本卡、entry／hold／exit／unknown政策及typed executor、exact account daily route與原金融引擎；完整P07／P08／M3與所有產品Gate維持未完成。
+
+本輪文檔coverage／preimages／回滾packet為 `root/forward_and_descriptor_docs_944bd7b90d8b4fa29482d88c6c8cb39c/`；沒有產品UI／架構行為變更，Manual／Roadmap／Index無需新增流程。原資料、失敗QA、其他writer及main／push／發布邊界保留。
+
+### P01 v5 新 final 獨立通過與唯一矩陣啟動
+
+Owner保留88 preimage、新名b6 preflight，另發final freeze `7d31f9434a63f4a478aff510f10c1bbed8a6acf4d27f80e47f96fa37b5f90736`；root全讀delta僅新增parent product-path map與fixed-input equality核驗。Supervisor v4→v5僅變manifest／runner／自身檔名與fixed identity，Job、deadline與operation protocol不變。Root獨立 **12 PASS／10.95秒／native0／99 raw pins一致**，receipt `root/p01_v5_final_root01_dbf6e3641549425db911a82a675e10ed/receipt.json`，PID50580 terminal；包含full sealed store、真standalone help／bootstrap、assignment／resume／timeout／postguard收據及精確runtime。不是原10項與新增2項的重複累加。
+
+新名preflight獨立native0，receipt `root/p01_v5_final_preflight01_a75db7c34364465aa420f6d66c93af38/receipt.json`，PID42160 terminal；80 source/file、51 product origins、594 runtime/DLL及四版本相同，store內容存取0，99 pins一致。Root通知兩owner停止QA，已收到無QA／新subprocess確認；host唯讀盤點只有其他專案risk-lab Python程序，未停止或修改它們，因此不宣稱整台機器完全無其他負載。
+
+Root釋出並啟動唯一一次完整矩陣，session49268／launcherPID1180，packet `root/p01_normal_matrix_v5_root01_18aa1514b6b248d099032a933a97d6fb/`；inner `supervised_matrix_attempts/attempt_20261011T110425Z_a2cdc0776321/`。本段記錄時仍execute_role:cold_01，外層handle已實際poll確認live，尚無native終態或p95。五cold／一warm、每role600秒、1000母體／20頁、各操作30samples、strict<300ms及完整DTO serial oracle保持。後續依同一handle收終態，不因觀察逾時另起矩陣。
+
+F12新freeze `5e78321c1a7a060498feafea029b7e1d42e33c40b33d29d0100572bcc0669ebd`（main513745c6、child32456ac7）已靜態審查與64-pin核對；root純guard release `f12_junction_guard_root_release_20261011.json` SHA `24c30fa4ab210fce34ebae329ba80c9724ae2c5863270fdb59489d53ec4e17b8`明示released_for_one_Main_attempt=false。尚未跑descriptor、COW或Main；待矩陣terminal再按相同freeze接續。P08 owner於scratch做完整策略卡／executor／daily route，保持已凍結依賴不變。

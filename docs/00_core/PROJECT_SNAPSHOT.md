@@ -9,6 +9,8 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
+| 10/11 P08 前向來源觀察 | Root 凍結候選獨立 8 PASS／8.99 秒／native0，候選及正式依賴起訖一致；真 v4 source→parent→觀察保存→新程序 exact 重開保留完整 UNKNOWN，來源 SQLite 未變，重封訊號／來源時鐘及 alias／超限拒絕通過。尚為隔離候選，完整策略生命週期／帳戶 producer／績效與 UI 未完成。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
+| 10/11 P01／F12 預檢接續 | P01 v5 root 2 PASS／2.84 秒，1457 筆 sealed 清冊與原 tree／DB hash 相符；新 final bridge 獨立12 PASS／10.95秒及純preflight80／51／594 native0，99 pins一致，完整矩陣已啟動、尚無終態。兩次凍結後變更與攔截保留。F12 DOS handle 正例及硬連結兩種截斷拒絕有實際證據，alias fixture 因 WinError1314 未建成而整項失敗，junction 新候選待驗。完整 Main／COW／Gate 保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P01 正常矩陣啟動接續 | Root v4 supervisor獨立10 PASS／6.07秒／native0，86 pins一致，真Job standalone匯入及51產品origin／594runtime核驗通過。一次完整matrix在cold01來源清冊lstat長路徑WinError3停止；同目錄延伸路徑唯讀存在，尚無操作／p95樣本。Owned Job關閉排空、source/runtime postguard通過；候選清冊長路徑修正待審，原300ms Gate保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P06 策略帳戶 reader | 已接公開 exact checkpoint 至完整情境 AccountState；真 writer 空倉／買進、低精度、錯來源與可得時間拒絕7項已納入 root ledger／daily／availability／P06 reader 全組81 PASS／246.73秒／native0，28 pins一致。四來源定向mypy與八檔語法通過；Health／其他帳戶／正常UI與完整Gate未完成。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P08 daily／公開歷史 reader 整合 | Ledger 單一唯讀 BEGIN exact API保留v1 prefix，核 ordered fills／transition／operation、raw schema／primitive與有界拒絕；availability移除私有ledger schema／解碼／prefix重複實作，消費一次公開typed bundle並核state／base／可得時鐘。Root 正式匯入四組81 PASS／246.73秒／native0，28 pins一致；四來源mypy、八檔語法通過。Daily跨庫仍逐步恢復，策略producer／成本與日曆資格／benchmark／績效／UI／M3仍未完成。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |

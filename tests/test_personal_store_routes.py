@@ -29,6 +29,7 @@ def paths(tmp_path: Path) -> PersonalDataPaths:
     ("domain", "relative"),
     [
         (PersonalStoreDomain.TRADES, Path("portfolio") / "trades.jsonl"),
+        (PersonalStoreDomain.PORTFOLIO_RESEARCH, Path("portfolio") / "research_scenarios.sqlite"),
         (
             PersonalStoreDomain.DECLARED_HOLDINGS,
             Path("portfolio") / "user_declared_holdings.jsonl",

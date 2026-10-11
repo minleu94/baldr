@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import date, datetime, time
-from decimal import Decimal, ROUND_DOWN
+from decimal import Context, Decimal, ROUND_DOWN, localcontext
 import hashlib
 import json
 from pathlib import Path
@@ -27,6 +27,7 @@ from app_module.portfolio_allocation_dtos import (
 )
 from financial_module.portfolio_turnover import canonical_turnover_bp
 from financial_module.units import quantize_money, round_down_to_lot
+from app_module.portfolio_research_valuation import PortfolioResearchValuation, PortfolioResearchValuedPosition
 from ml_module.allocation_validation import (
     AllocationPromotionEvaluator,
     PromotionAuthorizationVerifier,
@@ -61,7 +62,11 @@ class PortfolioAllocationService:
     def allocation_policy_hash(self) -> str:
         """綁定實際配置政策及此版本固定的成本／成交限制。"""
         payload = {
-            "schema": "portfolio-allocation-policy.v1",
+            "schema": "portfolio-allocation-policy.v2",
+            "projection_methods": {
+                "causal-portfolio-state.v1": "weight-derived-money.v1",
+                "causal-portfolio-state.v2": "exact-money-post-cost-nav.v1",
+            },
             "policy": {key: str(value) if isinstance(value, Decimal) else value
                        for key, value in asdict(self._policy).items()},
             "buy_cost_bp": _BUY_COST_BP,
@@ -243,6 +248,20 @@ class PortfolioAllocationService:
         ml_weights: AllocationWeightContract,
         reasons: list[str],
     ) -> PortfolioAllocationProjectionV1:
+        if self._exact_valuation(request) is not None:
+            # 精確估值的合法界線固定；計算不受 caller 的全域 precision／Emax 影響。
+            with localcontext(Context(prec=60)):
+                return self._project_weights_impl(request=request, blended=blended, ml_weights=ml_weights, reasons=reasons)
+        return self._project_weights_impl(request=request, blended=blended, ml_weights=ml_weights, reasons=reasons)
+
+    def _project_weights_impl(
+        self,
+        *,
+        request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1,
+        blended: AllocationWeightContract,
+        ml_weights: AllocationWeightContract,
+        reasons: list[str],
+    ) -> PortfolioAllocationProjectionV1:
         contexts = {row.stock_code: row for row in request.contexts}
         causal_state_symbols = (
             set(request.causal_portfolio_state.complete_symbol_universe)
@@ -290,10 +309,7 @@ class PortfolioAllocationService:
         executable_shares: dict[str, int | None]
         executable_amounts: dict[str, Decimal]
         row_costs: dict[str, Decimal]
-        post_cost_cash_amount = self._amount_from_bp(
-            request.capital_amount,
-            request.current_cash_bp,
-        )
+        post_cost_cash_amount = self._starting_cash_amount(request)
 
         if not current_complete:
             reasons.append("current_portfolio_state_incomplete_no_execution")
@@ -330,6 +346,8 @@ class PortfolioAllocationService:
                 current=current_weights,
                 contexts=contexts,
                 post_cost_cash_amount=post_cost_cash_amount,
+                executable_shares=executable_shares,
+                executable_amounts=executable_amounts,
             )
             if hard_constraint_violations:
                 reasons.extend(hard_constraint_violations)
@@ -345,10 +363,7 @@ class PortfolioAllocationService:
                     symbol: Decimal("0.00") for symbol in all_symbols
                 }
                 row_costs = {symbol: Decimal("0.00") for symbol in all_symbols}
-                post_cost_cash_amount = self._amount_from_bp(
-                    request.capital_amount,
-                    request.current_cash_bp,
-                )
+                post_cost_cash_amount = self._starting_cash_amount(request)
             else:
                 executable_weights = {
                     symbol: executable_weights_complete[symbol]
@@ -396,6 +411,7 @@ class PortfolioAllocationService:
             rows=rows,
             current_complete=current_complete,
             contexts=contexts,
+            valuation=self._exact_valuation(request),
         )
         all_reasons = tuple(
             dict.fromkeys(
@@ -703,6 +719,10 @@ class PortfolioAllocationService:
 
         weights: dict[str, int] = {}
         complete = True
+        valued = (
+            {row.stock_code: row for row in causal_portfolio_state.valuation.positions}
+            if causal_portfolio_state.valuation is not None else None
+        )
         for symbol in symbol_list:
             expected_weight = causal_portfolio_state.current_weights.weight_for(
                 symbol
@@ -722,6 +742,14 @@ class PortfolioAllocationService:
                 )
             else:
                 weights[symbol] = expected_weight
+                if valued is not None:
+                    position = valued.get(symbol)
+                    expected_shares = position.quantity if position is not None else 0
+                    if context.current_shares != expected_shares or (
+                        position is not None and context.reference_price != position.mark_price
+                    ):
+                        complete = False
+                        row_diagnostics[symbol].append("causal_portfolio_context_valuation_mismatch")
         if complete and sum(weights.values()) + current_cash_bp != TOTAL_WEIGHT_BP:
             complete = False
             for symbol in weights:
@@ -916,16 +944,26 @@ class PortfolioAllocationService:
         Decimal,
     ]:
         symbols = sorted(turnover_target)
+        valuation = self._exact_valuation(request)
+        valued = {row.stock_code: row for row in valuation.positions} if valuation is not None else {}
         executable = dict(current)
         shares: dict[str, int | None] = {
             symbol: contexts[symbol].current_shares for symbol in symbols
         }
         amounts = {
-            symbol: self._amount_from_bp(request.capital_amount, current[symbol])
+            symbol: (valued[symbol].market_value if symbol in valued else Decimal("0.00"))
+            if valuation is not None else self._amount_from_bp(request.capital_amount, current[symbol])
             for symbol in symbols
         }
         costs = {symbol: Decimal("0.00") for symbol in symbols}
-        cash = self._amount_from_bp(request.capital_amount, request.current_cash_bp)
+        for symbol in symbols:
+            if (valuation is not None and symbol in valued and current[symbol] == 0
+                    and turnover_target[symbol] == 0
+                    and symbol not in request.rule_requested_weights.symbol_weights_bp
+                    and not contexts[symbol].hard_risk_reasons
+                    and contexts[symbol].health_state not in {"EXIT_CANDIDATE", "CLOSED"}):
+                row_diagnostics[symbol].append("zero_bp_position_retained_by_rebalance_controls")
+        cash = self._starting_cash_amount(request)
         reserve = self._amount_from_bp(
             request.capital_amount,
             self._policy.minimum_cash_bp,
@@ -935,7 +973,11 @@ class PortfolioAllocationService:
             (
                 symbol
                 for symbol in symbols
-                if turnover_target[symbol] < current[symbol]
+                if turnover_target[symbol] < current[symbol] or (
+                    valuation is not None and current[symbol] == 0 and turnover_target[symbol] == 0
+                    and (contexts[symbol].current_shares or 0) > 0
+                    and (contexts[symbol].hard_risk_reasons or contexts[symbol].health_state in {"EXIT_CANDIDATE", "CLOSED"})
+                )
             ),
             key=lambda symbol: (
                 -int(
@@ -956,9 +998,11 @@ class PortfolioAllocationService:
             if context.reference_price is None or context.current_shares is None:
                 row_diagnostics[symbol].append("sell_execution_inputs_missing")
                 continue
-            desired_reduction_amount = self._amount_from_bp(
-                request.capital_amount,
-                current[symbol] - turnover_target[symbol],
+            desired_reduction_amount = (
+                max(Decimal("0.00"), amounts[symbol] - self._amount_from_bp(request.capital_amount, turnover_target[symbol]))
+                if valuation is not None else self._amount_from_bp(
+                    request.capital_amount, current[symbol] - turnover_target[symbol],
+                )
             )
             raw_sell_shares = int(
                 (desired_reduction_amount / context.reference_price).to_integral_value(
@@ -1010,9 +1054,11 @@ class PortfolioAllocationService:
             if current_shares is None:
                 row_diagnostics[symbol].append("buy_current_shares_missing")
                 continue
-            desired_increment_amount = self._amount_from_bp(
-                request.capital_amount,
-                turnover_target[symbol] - current[symbol],
+            desired_increment_amount = (
+                max(Decimal("0.00"), self._amount_from_bp(request.capital_amount, turnover_target[symbol]) - amounts[symbol])
+                if valuation is not None else self._amount_from_bp(
+                    request.capital_amount, turnover_target[symbol] - current[symbol],
+                )
             )
             raw_buy_shares = int(
                 (desired_increment_amount / context.reference_price).to_integral_value(
@@ -1071,7 +1117,23 @@ class PortfolioAllocationService:
                 row_diagnostics[symbol].append(
                     "portfolio_post_cost_cash_below_floor_existing_state"
                 )
-        contract = self._contract_from_symbol_weights(executable)
+        if valuation is not None:
+            final_rows: list[PortfolioResearchValuedPosition] = []
+            for symbol in symbols:
+                quantity = shares[symbol] or 0
+                if quantity <= 0:
+                    continue
+                price = contexts[symbol].reference_price
+                if price is None:
+                    raise ValueError("exact projection held reference price missing")
+                final_rows.append(PortfolioResearchValuedPosition(symbol, quantity, price, amounts[symbol]))
+            final_positions = tuple(final_rows)
+            final_value = quantize_money(cash + sum(amounts.values(), Decimal("0.00")))
+            final_valuation = PortfolioResearchValuation(cash, final_value, final_positions)
+            contract = final_valuation.display_weights
+            executable = {symbol: contract.weight_for(symbol) for symbol in symbols}
+        else:
+            contract = self._contract_from_symbol_weights(executable)
         return contract, executable, shares, amounts, costs, cash
 
     def _execution_constraint_violations(
@@ -1082,8 +1144,34 @@ class PortfolioAllocationService:
         current: Mapping[str, int],
         contexts: Mapping[str, PortfolioAllocationContextRow],
         post_cost_cash_amount: Decimal,
+        executable_shares: Mapping[str, int | None],
+        executable_amounts: Mapping[str, Decimal],
     ) -> tuple[str, ...]:
         violations: list[str] = []
+        if self._exact_valuation(request) is not None:
+            nav = post_cost_cash_amount + sum(executable_amounts.values(), Decimal("0.00"))
+            held = {symbol for symbol in executable if (executable_shares[symbol] or 0) > 0}
+            if post_cost_cash_amount * TOTAL_WEIGHT_BP < nav * self._policy.minimum_cash_bp:
+                violations.append("hard_constraint_exact_cash_floor_violated")
+            if len(held) > self._policy.max_positions:
+                violations.append("hard_constraint_position_count_violated")
+            sectors: dict[str, Decimal] = {}
+            for symbol in held:
+                row = contexts[symbol]
+                if executable_amounts[symbol] * TOTAL_WEIGHT_BP > nav * self._policy.max_single_position_bp:
+                    violations.append("hard_constraint_single_position_cap_violated")
+                if row.sector_id is not None:
+                    sectors[row.sector_id] = sectors.get(row.sector_id, Decimal("0.00")) + executable_amounts[symbol]
+                else:
+                    violations.append(f"hard_constraint_exact_sector_unknown:{symbol}")
+                if row.hard_risk_reasons or row.health_state in {"EXIT_CANDIDATE", "CLOSED"}:
+                    violations.append(f"hard_constraint_exit_quantity_nonzero:{symbol}")
+                if row.health_state in {"WATCH", "REDUCE_CANDIDATE"} and (executable_shares[symbol] or 0) > (row.current_shares or 0):
+                    violations.append(f"hard_constraint_health_add_prohibited:{symbol}")
+            if any(amount * TOTAL_WEIGHT_BP > nav * self._policy.max_sector_weight_bp for amount in sectors.values()):
+                violations.append("hard_constraint_sector_cap_violated")
+            # 精確金額狀態以實際股數／金額核約束，顯示 bp 不推定加倉或空倉。
+            return tuple(dict.fromkeys(violations))
         executable_cash_bp = TOTAL_WEIGHT_BP - sum(executable.values())
         if executable_cash_bp < self._policy.minimum_cash_bp:
             violations.append("hard_constraint_cash_weight_floor_violated")
@@ -1131,6 +1219,18 @@ class PortfolioAllocationService:
         ):
             violations.append("hard_constraint_sector_cap_violated")
         return tuple(dict.fromkeys(violations))
+
+    @staticmethod
+    def _exact_valuation(request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1) -> PortfolioResearchValuation | None:
+        state = request.causal_portfolio_state
+        valuation = state.valuation if state is not None else None
+        if valuation is not None and request.capital_amount != valuation.total_value:
+            raise ValueError("allocation capital differs from exact monetary state")
+        return valuation
+
+    def _starting_cash_amount(self, request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1) -> Decimal:
+        valuation = self._exact_valuation(request)
+        return valuation.cash_amount if valuation is not None else self._amount_from_bp(request.capital_amount, request.current_cash_bp)
 
     @staticmethod
     def _scale_to_total(weights: Mapping[str, int], target_total: int) -> dict[str, int]:
@@ -1217,9 +1317,24 @@ class PortfolioAllocationService:
         rows: tuple[PortfolioAllocationRowV2, ...],
         current_complete: bool,
         contexts: Mapping[str, PortfolioAllocationContextRow],
+        valuation: PortfolioResearchValuation | None = None,
     ) -> str:
         if not current_complete:
             return "NO_NEW_POSITION"
+        if valuation is not None:
+            for row in rows:
+                context = contexts[row.stock_code]
+                if (context.current_shares or 0) > 0 and (
+                    context.hard_risk_reasons or context.health_state in {"EXIT_CANDIDATE", "CLOSED"}
+                ):
+                    return "EXIT_CANDIDATE"
+            if rows and all(row.executable_shares is None for row in rows):
+                return "NO_NEW_POSITION"
+            if any(row.executable_shares is not None and row.executable_shares < (contexts[row.stock_code].current_shares or 0) for row in rows):
+                return "REDUCE_CANDIDATE"
+            if any(row.executable_shares is not None and row.executable_shares > (contexts[row.stock_code].current_shares or 0) for row in rows):
+                return "ADD_CANDIDATE"
+            return "HOLD" if valuation.positions else "NO_NEW_POSITION"
         for row in rows:
             context = contexts[row.stock_code]
             if (

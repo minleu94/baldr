@@ -12,6 +12,7 @@ from app_module.portfolio_allocation_dtos import (
     PortfolioRuleAllocationRequestV1,
 )
 from app_module.portfolio_allocation_service import PortfolioAllocationService
+from app_module.portfolio_research_valuation import PortfolioResearchValuation, PortfolioResearchValuedPosition
 from app_module.portfolio_research_scenario_service import (
     PortfolioResearchAccountState, PortfolioResearchContextEvidence,
     PortfolioResearchPosition, PortfolioResearchScenarioRequest,
@@ -41,12 +42,15 @@ def _state(*, kind: str = "paper", account_id: str = "paper-a") -> PortfolioRese
         capital_amount=Decimal("1000000.00"),
         current_weights=AllocationWeightContract({"2330": 1000}, 9000),
         positions=(PortfolioResearchPosition("2330", 1000),),
+        valuation=PortfolioResearchValuation(Decimal("900000.00"), Decimal("1000000.00"), (
+            PortfolioResearchValuedPosition("2330", 1000, Decimal("100.00"), Decimal("100000.00")),
+        )),
     )
 
 
 def _evidence(symbol: str, *, kind: str = "paper", account_id: str = "paper-a") -> PortfolioResearchContextEvidence:
     return PortfolioResearchContextEvidence(
-        account_kind=kind, portfolio_id=account_id, source_hash=HASH,
+        account_kind=kind, portfolio_id=account_id, snapshot_id="snapshot-a", source_hash=HASH,
         available_at=AVAILABLE, health_known=True,
         context=PortfolioAllocationContextRow(
             stock_code=symbol, current_weight_bp=1000 if symbol == "2330" else 0,
@@ -114,6 +118,7 @@ def test_snapshot_date_clock_and_identity_are_checked(change: dict, message: str
 @pytest.mark.parametrize("mutation, message", [
     ({"portfolio_id": "other"}, "another account"),
     ({"account_kind": "manual"}, "another account"),
+    ({"snapshot_id": "snapshot-b"}, "another account snapshot"),
     ({"available_at": datetime(2026, 10, 10, tzinfo=timezone.utc)}, "after decision"),
     ({"health_known": False}, "unknown is not healthy"),
 ])
@@ -144,7 +149,7 @@ def test_full_account_universe_and_selected_candidates_are_required() -> None:
         service.compare(replace(request, contexts=request.contexts[1:]))
     with pytest.raises(ValueError, match="unselected symbol"):
         service.compare(replace(request, explicit_weights=AllocationWeightContract({"9999": 1500}, 8500)))
-    with pytest.raises(ValueError, match="complete positive-weight universe"):
+    with pytest.raises(ValueError, match="complete valued quantity universe"):
         replace(_state(), positions=())
     with pytest.raises(ValueError, match="duplicate candidate"):
         replace(request, candidate_symbols=("2330", "2330"))
@@ -180,6 +185,29 @@ def test_research_hash_freezes_prices_policy_and_account_but_not_candidate_order
     assert result.input_hash != service.compare(replace(request, contexts=(request.contexts[0], evidence, request.contexts[2]))).input_hash
     other = PortfolioResearchScenarioService(ExactReader(_state(account_id="other"))).compare(_request(account_id="other"))
     assert result.input_hash != other.input_hash
+
+
+def test_same_account_unchanged_positions_still_require_exact_context_snapshot() -> None:
+    request = _request()
+    state = replace(_state(), snapshot_id="snapshot-b")
+    request_b = replace(request, snapshot_id="snapshot-b")
+    service = PortfolioResearchScenarioService(ExactReader(state))
+    with pytest.raises(ValueError, match="another account snapshot"):
+        service.compare(request_b)
+    coupled = replace(request_b, contexts=tuple(
+        replace(evidence, snapshot_id="snapshot-b") for evidence in request.contexts
+    ))
+    result_b = service.compare(coupled)
+    result_a = PortfolioResearchScenarioService(ExactReader(_state())).compare(request)
+    assert result_a.input_hash != result_b.input_hash
+    assert result_b.request.to_dict()["contexts"][0]["snapshot_id"] == "snapshot-b"
+    assert result_b.to_dict()["schema"] == "portfolio-research-scenarios.v3"
+
+
+@pytest.mark.parametrize("snapshot_id", ["", " snapshot-a "])
+def test_context_snapshot_identity_must_be_explicit_and_canonical(snapshot_id: str) -> None:
+    with pytest.raises(ValueError):
+        replace(_evidence("2330"), snapshot_id=snapshot_id)
 
 
 def test_taipei_decision_day_uses_aware_clock_and_rejects_naive_datetime() -> None:

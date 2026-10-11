@@ -6,7 +6,11 @@
 
 `PortfolioResearchScenarioService` 依注入的 `PortfolioResearchAccountReader.read_exact()` 取得已選 manual／user_declared／paper 的完整狀態，核對 kind／portfolio／snapshot，並比較維持、等權及人選明示目標。等權沿既有 Construction；風控、現金、集中度、成交量、冷卻期、整股與成本沿既有 Allocation。Account state、context 與 research source hash 分別保存；input hash 綁各項事實與實際 policy。Unknown Health、缺完整持倉、跨帳本 context、同日／未來帳本或晚到證據都拒絕，不補為空倉、健康或零。
 
-Reader protocol 是接線契約，不能代替來源核驗。正式 adapter 必須沿現有帳本／Health public reader 驗來源及可得時鐘；情境 artifact、正常 UI 與跨程序恢復仍待接入。此 backend 增量不代表 P06 或 M3 完成；本輪實作與受限測試見[接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+`portfolio_research_scenario_artifact.py` 封存完整 account／request／context／原計算結果；v3 canonical decoder 拒絕未知版本、非 Decimal 金額、含糊 JSON 與不一致契約。每份 context 必須與 account／request 綁同一 exact snapshot；舊 v1／v2 缺身分或精確金額證據，不猜補或改寫，須由已核完整來源重新建立情境。比較／input schema 為 v3，SQL store schema 仍為 v1。讀回另核股數／市值、成本／現金移動、完整 final valuation 與顯示權重；v3 固定沿既有買 25／賣 55bp 成本，這是封存事實一致性核對，不重跑現行 Allocation。`PortfolioResearchScenarioRepository` 要求明示 `PORTFOLIO_RESEARCH` route，使用派生私人 SQLite；append 在同交易內保存 content-addressed artifact，重試保留原 saved clock。public exact reader 沿 custody／mode=ro／query-only 與同一 read transaction 核 payload 大小、hash、索引與所選帳本，再讀原結果；沒有猜 latest。空庫不初始化、不 fallback。隔離合成回歸涵蓋另一個 Python PID 讀回，不代表正常 Main 已接線。
+
+Reader protocol 是接線契約，不能代替來源核驗。正式 adapter 必須沿現有帳本／Health public reader 驗來源及可得時鐘；正常 UI、Main 返回／重開、原來源、同版 EXE 與真人仍待。此 backend 增量不代表 P06 或 M3 完成；本輪實作與受限測試見[接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+
+`PortfolioResearchValuation` 是完整估值事實契約，保存 Decimal 現金／NAV、所有持倉的股數／mark price／市值，核金額守恆與原 snapshot 股票 bp。正股數但 0bp 的持倉保持存在；`display_weights` 採整數分的最大餘數分配，不反推資金。`CausalPortfolioState.v2` 綁完整估值；同一 Allocation 引擎的 valued 分支用實際金額／股數及成本後 NAV 核風控，固定獨立 Decimal context，目標與再平衡政策仍沿整數 bp。v1 請求保留原 weight-derived 金額路徑。`portfolio-allocation-policy.v2` hash 明示兩種計算版本與固定限制。未知產業／股數／價格拒絕；硬退出與持倉數按正股數判定，微小持倉不能以 0bp 推為空倉。此契約不開來源 DB，也不授 receipt／可得時鐘／Health 資格；正常 source adapter／UI 尚待，不能把後端契約當作 P06 可操作功能。
 
 > **閱讀入口**：本文件包含架構主文與日期化增量。要理解系統定位、分層與模組責任，請從[第 1 節：系統定位](#1-系統定位)開始；要確認目前完成度與阻礙，先看[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。日期化增量可能保存尚未濃縮進主文的細部架構契約；其測試結果與當日狀態只作追溯，不能取代 Snapshot 或各主題最新 QA。
 

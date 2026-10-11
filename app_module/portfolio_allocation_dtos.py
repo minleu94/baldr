@@ -12,7 +12,10 @@ from decimal import Decimal
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, cast
+from typing import Any, Iterable, Mapping, TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from app_module.portfolio_research_valuation import PortfolioResearchValuation
 
 
 TOTAL_WEIGHT_BP = 10000
@@ -457,6 +460,7 @@ class CausalPortfolioState:
     current_weights: AllocationWeightContract
     complete_symbol_universe: tuple[str, ...]
     state_hash: str
+    valuation: PortfolioResearchValuation | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -466,7 +470,13 @@ class CausalPortfolioState:
         )
         if not isinstance(self.current_weights, AllocationWeightContract):
             raise ValueError("current_weights must be AllocationWeightContract")
-        if any(weight <= 0 for weight in self.current_weights.symbol_weights_bp.values()):
+        if self.valuation is not None:
+            from app_module.portfolio_research_valuation import PortfolioResearchValuation
+            if not isinstance(self.valuation, PortfolioResearchValuation):
+                raise ValueError("valuation must be complete PortfolioResearchValuation")
+            if self.current_weights != self.valuation.display_weights:
+                raise ValueError("causal monetary weights differ from complete valuation")
+        elif any(weight <= 0 for weight in self.current_weights.symbol_weights_bp.values()):
             raise ValueError(
                 "causal portfolio state must omit zero-weight symbols"
             )
@@ -521,12 +531,29 @@ class CausalPortfolioState:
         )
 
     def _payload_without_hash(self) -> dict[str, object]:
-        return {
-            "schema_version": "causal-portfolio-state.v1",
+        payload: dict[str, object] = {
+            "schema_version": "causal-portfolio-state.v2" if self.valuation is not None else "causal-portfolio-state.v1",
             "as_of_date": self.as_of_date,
             "complete_symbol_universe": list(self.complete_symbol_universe),
             "current_weights": self.current_weights.to_dict(),
         }
+        if self.valuation is not None:
+            payload["valuation"] = self.valuation.to_dict()
+        return payload
+
+    @classmethod
+    def create_valued(cls, *, as_of_date: str, valuation: PortfolioResearchValuation) -> CausalPortfolioState:
+        from app_module.portfolio_research_valuation import PortfolioResearchValuation
+        if not isinstance(valuation, PortfolioResearchValuation):
+            raise ValueError("complete monetary valuation required")
+        weights = valuation.display_weights
+        symbols = tuple(weights.symbol_weights_bp)
+        payload = {
+            "schema_version": "causal-portfolio-state.v2", "as_of_date": as_of_date,
+            "complete_symbol_universe": list(symbols), "current_weights": weights.to_dict(),
+            "valuation": valuation.to_dict(),
+        }
+        return cls(as_of_date, weights, symbols, _payload_hash(payload), valuation)
 
     def to_dict(self) -> dict[str, object]:
         return {

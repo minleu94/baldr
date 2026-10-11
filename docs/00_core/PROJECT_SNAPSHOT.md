@@ -9,7 +9,7 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
-| 10/11 P06 接續增量 | 純規則配置入口與維持／等權／明示目標計算 API 已實作，共用既有金融引擎；56 項定向回歸、3 個 source 定向 mypy、語法與量化 guard 通過。正式帳本／Health adapter、情境保存／讀回、正常 UI、新程序與完整 P06／M3 Gate 尚未完成。三個 Luna Max 葉片持續推進 P01、F12、P08；具體 scope、回滾與驗收見[10/11 接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。 |
+| 10/11 P06 接續增量 | 純規則維持／等權／明示目標共用既有金融引擎；新增完整情境封存、明示私人 route 與公開 exact reader。Context 綁同份 exact snapshot；AccountState／causal v2 明示完整現金、NAV、股數與估值，同引擎用實際金額及成本後 NAV 核風控、保留 0bp 正股數並修正硬退出 Advice。比較／input payload 升為 v3；舊 v1／v2 不猜補或自動遷移。八組最終定向回歸 **205 PASS／7.94 秒／native0**，含另一 Python PID 讀回、金融守恆／成本／風控、低 Decimal context、錯快照／只讀／交易／損壞／隱藏權重拒絕與雙 writer 冪等；6 個 source 定向 mypy、語法與量化 guard 通過。正式帳本／Health adapter、正常 UI／Main 新程序、原來源與完整 P06／M3 Gate 尚未完成。三個 Luna Max 葉片持續推進 P01、F12、P08；scope、回滾與驗收見[10/11 接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。 |
 | P01 千檔效能 | 固定 85bc 六角色診斷矩陣已跑完；暖操作 p95：翻頁 196.205 ms、排序 191.8186 ms、篩選 523.902 ms，篩選仍未達原 300 ms 門檻；冷啟動至首頁 p95 為 20.0319 秒。這是隔離診斷矩陣，不是一般產品旅程驗收，P01 尚未完成；後續乾淨 helper 配對 A/B 的 candidate p95=551.0107 ms，仍超過 300 ms，未套用正式 helper；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
 | F02 四均線 | 固定合成來源的 V11 父 Main→收藏→關閉→新程序 Watchlist 單擊／雙擊旅程有界通過；不代表原始來源、新 EXE 或真人驗收。 |
 | F03 多父群組 | bounded prepare attempt02 為 13 passed／exit 0；formal reader／group-session publication slice 有 17 個節點取得通過證據（首輪 15 通過，僅重跑兩個 QA overlay 修正節點）。另有固定 258/257/1 來源的窄窗 View G8 與收藏 identity C bounded slice 通過；`8c7fd469` 已提交正式 Main／View／收藏接線及 Manual §6.7：7 項正式耐久旅程、85 項工作台、更新頁、mypy 941 檔及語法檢查通過；另有固定封套新程序 K 讀回 1 項通過。960px、新 EXE、真人視覺及完整 COW 未驗，不等於整體 reader／產品 Gate 完成。[follow-up QA](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) |

@@ -29,6 +29,7 @@ class PersonalStoreDomain(str, Enum):
     DECLARED_HOLDINGS = "declared_holdings"
     PAPER = "paper"
     PORTFOLIO_LEDGER = "portfolio_ledger"
+    PORTFOLIO_RESEARCH = "portfolio_research"
     REVIEW = "review"
     EVIDENCE = "evidence"
 
@@ -160,6 +161,8 @@ def _domain_relative_path(domain: PersonalStoreDomain) -> Path:
         return Path("paper_portfolio") / "paper_trade_ledger.sqlite"
     if domain is PersonalStoreDomain.REVIEW:
         return Path("reviews") / "decision_quality.sqlite"
+    if domain is PersonalStoreDomain.PORTFOLIO_RESEARCH:
+        return Path("portfolio") / "research_scenarios.sqlite"
     raise PersonalStoreRouteError("domain_has_no_derived_path", domain.value)
 
 

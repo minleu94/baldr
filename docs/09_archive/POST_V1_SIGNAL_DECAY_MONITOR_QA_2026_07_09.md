@@ -2,6 +2,8 @@
 
 > **歷史確認寫入警示（2026-10-10）**：本文 `capture_signal_decay.py --confirm` 只代表 2026-07-09 對指定 working-copy DB 的驗證；不構成目前資料庫寫入或 production 授權。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
 
+> **時間序提示（2026-10-11）：** 下方 Not Done／Next Increment 僅描述 2026-07-09 本輪狀態；後續 [2026-07-11 dashboard QA 收據](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md) 記錄 Signal Decay Dashboard read-only UI 已新增。保留本文當時基線，不由此推論現況。
+
 日期：2026-07-09
 
 ## Scope

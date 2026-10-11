@@ -10,9 +10,11 @@ Coordinator 按原 artifact 順序取結果、核列與回呼，錯誤或取消�
 
 ## 人選持倉情境計算契約（2026-10-11，接線中）
 
-`StrategyPaperPortfolioResearchAccountReader` 以明示 strategy／version／namespace／operation／snapshot 與 aware decision cutoff，消費公開 checkpoint reader 核實的完整 snapshot／writer availability／實際 ledger。讀取不收 caller 宣稱的來源 hash、不猜 latest；綁定錯帳戶、錯快照或 cutoff 前未可得即拒絕。AccountState 保存實際現金、NAV、全部股數／價格／市值與來源身分；顯示 bp 不還原資金。此 adapter 不推定 Health，只支援策略 Paper；manual／user_declared 的各自來源與正常 UI／Main 仍待，P08 歷史 prefix／同交易 ledger 資格亦須獨立接受。
+`StrategyPaperPortfolioResearchAccountReader` 以明示 strategy／version／namespace／operation／snapshot 與 aware decision cutoff，消費公開 checkpoint reader 核實的完整 snapshot／writer availability／實際 ledger。讀取不收 caller 宣稱的來源 hash、不猜 latest；綁定錯帳戶、錯快照或 cutoff 前未可得即拒絕。AccountState 保存實際現金、NAV、全部股數／價格／市值與來源身分；顯示 bp 不還原資金。策略 Paper adapter 已納入公開歷史 ledger／daily／availability 整合回歸；manual／user_declared 的各自來源、Health 與正常 UI／Main 仍待。
 
-`PaperTradeLedgerRepository.read_exact_daily_operation()` 由 ledger owner 提供 typed `PaperTradeDailyOperationRead`，同一 route-bound 唯讀連線／BEGIN 讀取目標 marker、當日 ordered fills／transition 與有界歷史 prefix。核對 raw schema／SQLite primitive、marker鏈、foreign portfolio、operation payload與各層 hash，prefix保持既有v1 canonical位元格式及排序；後續合法日期append不改舊checkpoint。金融解碼與hash序列化使用獨立Decimal context。此API不核上層available-at／來源clock、不授策略或績效資格；availability公開接線及整合回歸仍續辦。[27項正式ledger回歸](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)
+`PaperTradeLedgerRepository.read_exact_daily_operation()` 由 ledger owner 提供 typed `PaperTradeDailyOperationRead`，同一 route-bound 唯讀連線／BEGIN 讀取目標 marker、當日 ordered fills／transition 與有界歷史 prefix。核對 raw schema／SQLite primitive、marker鏈、foreign portfolio、operation payload與各層 hash，prefix保持既有v1 canonical位元格式及排序；後續合法日期append不改舊checkpoint。金融解碼與hash序列化使用獨立Decimal context。Availability 只消費一次公開bundle，不匯入ledger私有解碼／schema或另算prefix；核對state operation／base receipt／availability、binding、marker與兩個rowset hash、ordered fills及transition。State與ledger各自使用唯讀交易，不宣稱跨庫原子snapshot。此API不授策略或績效資格。[81項正式整合回歸](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)
+
+`StrategyPaperAccountDailyWriter` 保存 exact version／namespace 帳戶的隔離 research-only checkpoint：state PENDING → ledger CAS operation → LEDGER_COMMITTED → snapshot與daily receipt／FINALIZED → writer availability companion。每階段已提交內容保留，重試核原operation identity與完整payload；不能將部分提交視為可讀finalized checkpoint。成本payload、quote row與完整現金／股數／估值核對不等於沿已綁成本政策重算或官方日曆／P07訊號資格；目前仍不授績效與forward資格，正常account-aware producer另行整合。
 
 完整情境 codec 在封存／讀回時，成本列加總與金額守恆核驗均使用獨立 Decimal context；呼叫端的 precision、指數界線或 traps 不影響原封存 bytes、hash 與結果。這項核驗不重算當下引擎，也不讀新行情或授來源可得資格。
 

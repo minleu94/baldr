@@ -204,3 +204,83 @@ Root 收取原 session80658 終態：執行中取消排空與超過八個 artifa
 P08 owner 回報 daily／availability 新版38 PASS／223.73秒／session19119 native0；此為 owner 證據，公開 exact checkpoint reader、共用 producer 與 root 完整審查仍續辦，尚未授完整P08／M3。F12完整 Main／fresh child 仍待候選凍結與 root 釋跑。
 
 依原計畫與現況，剩餘工作可整理為六類：完整母體效能及共用查詢；其他資料域與策略定義；正常 UI／收藏／返回／重開；持倉情境與策略獨立帳本／績效；自然結果與維運終態；同版 EXE、Native 與3–5位真人接受。P00–P14全部仍有完整驗收缺口；M1／M2已有有限旅程，M3剩餘實作最多。此分類只供狀態說明，不重定義原工作包、條件或Gate，也沒有可核完整完成率或日曆工期。
+
+### Root 保存與正常讀回審查接續
+
+已核定的15個P01取消／有界讀取、P06完整codec精度檔案與五份操作／架構／狀態文件保存於本機dev `7dba5f82`。Stage前重核兩份final receipt共23個source／test pins全部相符，cached範圍精確且diff check native0；其他owner dirty候選保留，main／push未動。本提交不關閉任何完整工作包。
+
+P08公開checkpoint reader靜態審查發現：用marker的歷史rowset_after比對當下完整rowset，後續合法成交後會拒絕原checkpoint；多次ledger public calls亦各用獨立連線，尚未證明同份read snapshot。已交owner先收session92496終態，之後補真兩日writer歷史重開與same-BEGIN exact ledger候選；新40節點結果即使綠燈，也不涵蓋這兩項尚未補入的契約。
+
+F12候選freeze `96b184032190863d8aeaa97be0539a41a55028a5aa10e06ec3076c8b839c0607` 的58 formal＋5 harness pins由root重核全部相符。新startup audit對任何file URI無條件拒絕；root隔離probe在QA普通DB建立後，以其合法mode=ro URI讀取，取得 `F12 write guard 拒絕未解析 SQLite URI`。receipt位於 `output/qa/baldr_completion_20261011/root/f12_uri_probe_58357112669d401caadff4b9b5c6bc41/receipt.json`，harness raw SHA `7799cca2ae3a29e098cdca1d4781a6f74dedb336a6953d8a551b1a7605c56d1f` 起訖相同。Probe最後stdout受cp1252輸出限制拋UnicodeEncodeError／native1，receipt已先寫入；這是拒絕實證，不稱PASS。已要求owner補精確私人／受核合成唯讀URI及外部／歧義拒絕案例，重新freeze後才釋完整Main；未碰正式SQLite或舊失敗來源。
+
+### P06 策略 Paper 完整帳戶 adapter 候選
+
+新增 `portfolio_research_account_reader.py`，從使用者明示strategy/version/namespace/operation/snapshot與本次aware cutoff讀公開checkpoint。公開reader核完整帳本／clock後才建立AccountState；source hash綁binding、snapshot、base receipt、availability與ledger operation，未收caller hash、不推Health、不猜latest或現金。錯kind／portfolio／snapshot拒絕，晚到availability不能用於舊決策。因果自查及回滾清單於 `root/account_reader_preimages_01/`：沿原exact source及完整Decimal valuation，沒有新行情、公式或writer。
+
+Root首兩輪各為2 FAIL／5 PASS（13.01秒與11.55秒），原因依序為測試引用writer結果不存在的snapshot欄位、valuation不存在的cash欄位。修正為獨立完整現金／NAV／股數／mark／市值與writer available_at數值oracle；原失敗不抹除，未減assertion。第一輪受控runner又在test helper建過長Windows路徑前失敗6 FAIL／1 PASS／0.80秒，17pins一致，收據 `account_reader_final01_ed9847dabcb8435abd6145176a0bf79a`；不是產品來源拒絕。改用既有短隔離QA basetemp後，完整七節點 **7 PASS／10.08秒／native0**，收據 `output/qa/baldr_completion_20261011/root/account_reader_final02_4b1fc7526aa34554a3c1d87d92ea3fb1/receipt.json`，child50644，17 source/test pins起訖一致。隔離state/ledger DB bytes讀取前後相同；source定向mypy、兩檔compile及量化guard兩項native0。
+
+此候選只支援策略Paper source，依賴P08未提交reader；Health、manual/user_declared source、正常UI/Main、原來源、同版EXE、真人與完整P06/M3仍待，不以七測試關閉工作包。
+
+### F12 URI修正的root小型證據
+
+新版startup guard允精確QA/run/synthetic的mode=ro URI並強制query_only，private mode=rw限制QA/run；外部、歧義與未明示uri=True拒絕。Root同款隔離URI probe native0，收據 `root/f12_uri_probe_2049ed31edb6497c94ee25b8f061f268/receipt.json`，harness SHA `29231ffd60a4daab1d7757c01fc33c0849e4b6dc78c3f5a4a618e937f14daf76` 起訖相同，補足前輪誤拒反例。
+
+Root小型六節點native0／6 PASS／2.79秒，但執行中journey test source變更，63 pins核驗不一致，runner因此拒絕接受該freeze。原收據 `root/f12_guard_supervisor01_abdbe981539a4c418149dac0d80d9201/receipt.json` 保留；不稱同一凍結候選PASS。Owner完成修改後重新freeze，root再核及精確重驗；Main仍未釋跑，原deadline及來源限制不變。
+
+### F12 固定來源與最終小型回歸接續
+
+Root 最終小型回歸收據 `root/f12_guard_supervisor02_9e04fba9f9354cff97d2eb86416afa93/receipt.json` 為 **10 PASS／2 deselected／3.01 秒／native0**，63 個來源／測試 pins 起訖相同，涵蓋 URI、環境、Job 清理及查詢期限服從總期限。這補足前輪執行中來源變更的拒絕；完整 Main 與原 resolver 節點不在這十項範圍內。
+
+Owner 的來源重驗曾將 sandbox／長路徑讀取失敗判為三個 bundle 檔案缺失，原診斷保留。Root 改以核准的唯讀程序及 Windows extended path 直接核 bytes：原 `synthetic_main_42f484b9f27b47328b7d268a866cc755` **17／17 檔案 SHA 與大小相符、20／20 目錄存在**；收據 `root/f12_inventory_readonly_c6b32e82ac9a43c39713ae29aba23062.json`，沒有來源寫入。另由正式 catalog 在相同原根執行 native0 預檢：scan complete、唯一一筆可 exact-read、declared count 258。無須修復或重建原來源；已停止替代來源重建，部分 QA 根與失敗日誌保留。此證據解除來源缺檔誤判，仍須最終 freeze 與一次有界 Main→保存→正常關閉→新程序精確重開驗證，尚不授完整 F12 Gate。
+
+本次 goal turn 接續前一輪的來源核驗進展；P08 公開 ledger reader 候選審查另發現 operation payload hash 必須由 repository 自行重算、transition fill order 與 foreign portfolio prefix 必須明確核對。候選尚未套用，不把暫時跨模組私有 schema 讀取當成正式架構完成。
+
+### F12 固定來源 Main v3 終態與診斷缺口
+
+Root 重核 v3 的63個候選 pins，另加入實際載入的 task_cancellation 依賴，共64個；原42f來源17檔與月營收14個來源／sidecar觀測均納入前後守衛。釋跑一次有界正常 Main，收據 `root/f12_main_v3_01_f43c9ac6902e4761b7442febc946a8d9/receipt.json` 記錄 terminal native1；外層測試1 FAIL／11.02秒，內層1 FAIL／6.98秒。Main 初始化完成5.469秒，收藏啟用按鈕 enabled，但點擊後仍為 personal_source_readonly，尚未進入查詢／保存／新程序。所有64個source pins及來源觀測前後一致。
+
+專屬 supervisor 收據 `output/qa/f12_resume_20261011/main_candidate_c29656ee9ab140c0a9f1b6db4066adc7/supervisor-receipt.json` 記錄 owned Job 程序樹已關閉、最後active count為0、沒有逾時終止。這是失敗後程序清理證據，不是完整正常關閉旅程通過。舊log未保存 handler 捕獲例外所在的status_label，因此不能宣稱已定位錯誤；正式COW流程沒有mode=rwc，不放寬guard。接續先補正常頁面導航、可見按鈕滑鼠操作及有界標籤診斷，再以正式元件小型探針追因；不原樣重跑完整Main。
+
+### P08 公開 exact reader 的原始列格式反例
+
+Root 對候選reader以獨立合成帳本實際append成交／transition；只把fill的schema_version改為wrong-fill-schema，重算raw rowset_after及marker hash，沒有變動operation payload。候選read_exact_daily_operation仍接受，DTO重新顯示paper-trade-ledger.v1。探針native0，兩候選source／test pins前後一致；收據 `root/p08_schema_probe_0eb89b8b10d547819d68eb8001156246.json`。這證明目前22項owner候選測試尚未覆蓋原始fill schema的拒絕，不將其當完整reader接受。
+
+已交唯一owner在解碼前明確核對schema，並審查原始SQLite整數／flags／文字是否被轉型掩蓋；新增重封schema負例後再交不可變base/post manifest及patch。正式ledger未套本候選。Owner daily／availability首次47節點回歸在過長basetemp建檔時取得44 FAIL／3 PASS、session78437已native1終態；改短隔離QA路徑後才重驗，不改產品來源掩蓋路徑問題。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍進行中。
+
+### P08 公開歷史 reader 正式套用與 raw schema 精確重驗
+
+Root以同一獨立合成反例重驗新版候選，wrong-fill-schema已被ValueError明確拒絕；native0、兩candidate pins起訖一致，收據 `root/p08_schema_probe_4fb78cb5f2094ec3b52a5d5d1f3c56db.json`。此結果補足前節誤接受，不抹除原反例。
+
+完整審查候選原始schema／SQLite primitive、獨立Context、canonical JSON、既有v1串流prefix、foreign portfolio、operation重算、transition fill order及有界讀取後，root保存working preimage與回滾清單，精確套用兩檔。Packet `root/p08_exact_apply_0d984d2399694dca92b53bcd9a45da49/`；patch SHA `7c639e44b415caa0b74a7aa2045a9aa067bac1e9fe72ff010f2c036c6a8db6dc`，raw post source `b4a9244cf692c038f00b978f752cf5c7996585a8350fc0f8aa03ca0ba86aa07c`／test `aba7f3a7f1e663aa617bab6d7867a050447dc18e1be2ecdd2b10d6f7026dfcd3`，完全等於隔離套用候選。前置與後置量化靜態guard兩項通過；沒有正式資料或既有SQLite寫入。
+
+Root正式import全套ledger取得 **27 PASS／1.33秒／native0**，收據 `root/p08_exact_ledger01_120ba6037854473d822055c11e013a51/receipt.json`，child PID2716、28個source／test pins起訖一致。包括後續成交後歷史買賣／零成交重開、單BEGIN與WAL同snapshot、caller prec=1／Emax=1／Emin=-1／Inexact trap、重封raw schema／REAL股數與bp／錯flag、marker／fill／transition／rowset／foreign prefix及cap拒絕。Ledger定向mypy、兩檔compile與diff check通過；不能與owner同27項重複累加。
+
+Owner短basetemp重驗原daily／availability取得47 PASS／325.16秒／session1897 native0；仍是暫時private ledger reader證據。現已釋availability唯一owner改用公開API，移除重複schema／rowset算法，保留clock／base／source operation拒絕；完成freeze後再由root跑正式ledger＋daily／availability＋P06帳戶reader完整定向回歸。正常producer／成本政策／日曆／benchmark／績效／UI與完整M3尚未完成。
+
+F12小型owner探針取得真可見按鈕／QTest click／Yes確認各一次，仍readonly；標籤為path_preflight_failed，cause為PermissionError errno13／WinError5。Session28079／nested PID34588已native1終態、Job清理後remaining PID為空；來源未變。此與既有sandbox strict resolve誤拒須分開判讀，root待新診斷freeze後用核准的隔離小型probe核原因，不弱化正式custody。P01候選後置guard錯誤原會只寫failed而native0，已交owner修非零退出及純fixture；矩陣未釋跑。完整目標維持active，本輪已有正式code套用及原生回歸進展。
+
+### P08 公開 API 接線與四組 root 整合終態
+
+上一 goal turn 僅回覆剩餘範圍，分類為 no progress。本輪重新讀目前工作樹與 availability raw freeze：source `f9d3e7aceb343dd0d00e5f03fb755f8a7863bdd87a039c0324d884d2f6dafc8f`、test `074cb8d04d26284e66f192f04aceff621d05243d6e08afe878217b8aff9b539f`；owner preimages 在 `output/qa/p08_resume_20261011/availability_preimage/`。Root全讀pre/post差異：移除跨模組私有ledger schema／prefix／row decoders，只呼叫一次公開 `read_exact_daily_operation()`，核 typed bundle、marker、state operation、ordered fills／transition與上層clock。Public integrity errors保留cause並轉為availability拒絕碼；沒有取消state／來源核驗。
+
+Root正式import四組 **81 PASS／246.73秒／native0**，包含ledger27、daily23、availability24、P06帳戶reader7；不與前輪或owner重複累加。收據 `output/qa/baldr_completion_20261011/root/p08_public_integration01_cf99f14a663f4ac7b4fc92dfb0632164/receipt.json`，child PID42924，28個source／test raw pins起訖一致。包含真writer空倉／買賣、零成交checkpoint、跨庫失敗恢復／冪等、後續append後歷史讀回、raw schema與payload篡改拒絕、同BEGIN及一次公開bundle並行寫入後仍讀原結果／下次拒絕、低Decimal context與錯帳戶／cutoff拒絕。
+
+四來源定向mypy native0，收據 `root/p08_public_mypy01_9c596ba956904145b07117ecff3fd69c/receipt.json`；八個Python語法native0，`root/p08_public_compile01_3f659df612424133b88afe1843822468/receipt.json`；兩項白名單量化靜態guard native0，`root/p08_public_quant02_f2ba6a4371414924aeafbe68e9c2e723/receipt.json`，皆28 pins一致。首輪quant wrapper在child已結束／receipt已保存後，打印emoji被cp1252拒絕；原 `p08_public_quant01_ea6f15b338d34c6dbeb862242b29f68d` 保留，重驗明示UTF-8，不將wrapper例外寫成檢查PASS。
+
+驗證期間另一工作保存本機dev `3da61351`，含本輪八個金融source／test與F12 harness；root未執行這個commit。提交存在不授F12新候選或整體驗收。Daily仍為逐庫恢復，saved recommendation execution只核目前canonical config／clock，不授完整P07訊號；quote／成本policy／官方日曆、正常account-aware producer、benchmark／績效與UI／M3仍開放。P08 owner只在scratch盤點公開P07 signal、T−1 preopen volume與原policy／fill引擎契約，不接受caller target/hash代替策略權威。
+
+### P01 final freeze 純核驗與失敗傳播負例
+
+Root明示final manifest path與SHA `4c3691192e6b0bb8c207c52ceef20e842312d23935626fad4dd988992eaa339f`，sidecar一致；純preflight兩次核80個source/runtime file pins、51個實際產品module及594個runtime package/DLL檔案一致，native0／8.56秒。收據 `root/p01_pure_preflight_20c06f0359f64f9b82c51e5736f4a4ef.json`；沒有store讀取或矩陣啟動。
+
+本輪root三個純負例 **3 PASS／6.21秒／native0**，80 raw pins起訖一致，收據 `root/p01_pure_guard01_1ddbe1afdae947dd82c236c64e2f45f2/receipt.json`，child PID9068。實際runner保存post-guard失敗並native1；未列入freeze的金融產品module及放在output的產品module alias皆拒絕。該module負例沿owner已凍結的versioned fixture，沒有拿latest正式來源資格。Supervisor `c6d730f89471ba02f2c7993a4bcdc4a39c1f2f9a1c35cecec73b0f6d65222d6e` 靜態審查尚缺失敗role的PID／Job清理／logs收據、失敗後postguard及supervisor自身漂移拒絕；已交唯一owner補正負例。正常六角色矩陣未釋跑，原300ms Gate保持。
+
+### F12 root 小型 WatchlistView 的下一失敗定位
+
+Root核小型candidate main SHA `cd03151036b5102c224fe522237ca588d9b58260ea29cdf107be1d707dc14de3`／child SHA `32456ac7c5c526c927a9a9c744676f07bdd050d08006562a08012f07200bf2bb`，只替換原64-pin release的兩harness；其他來源及data觀測沿原42f不替代。新release `root/f12_small_probe_root_release_20261011.json` 僅授單一小型node，Main未釋跑。
+
+核准隔離probe收據 `root/f12_small_watchlist01_91de1ff0e9c64e97a4570da3869d5b02/receipt.json` 為native1／外層1FAIL／5.64秒；64 source pins及data前後一致。內層 `output/qa/f12_resume_20261011/watchlist_view_probe_fdc167fa972f45449f7df9de893235b6/` 保存真可見click／Yes各1，status label是 `personal_watchlist_convert_blocked: source_backup_write_failed`；preflight causes為空，已越過前輪path預檢。目標DB未建立、原source SHA不變；view正常close、worker0，專屬Job／root handles已關閉，remaining PIDs空。
+
+測試停在information＋warning必須1的assertion，但正式handler捕獲exception只設標籤並return，兩modal為0符合該分支；不視為modal產品缺陷。Source backup真路徑是os.open→os.fdopen，QA audit目前將integer descriptor當路徑拒絕的假設待小型實證。已交owner補backup cause observer與分支modal oracle；若修fd守門，須以OS實際handle path核private containment，外部／合成readonly source／closed或reuse fd／非檔案拒絕，不能一概放行integer。未改正式COW或放寬資料防護，完整F12旅程仍待。
+
+Owner其後交純descriptor child的具名收據 `output/qa/f12_resume_20261011/fdopen_guard_probe_f7280b3f45954bd6b7ffedeeaa3e1f4c/fdopen-guard-role-receipt.json`。Root直接核收據及supervisor：private regular file的os.open成功但fdopen被PermissionError拒絕，private file仍空；同數字重用、closed fd、pipe、外部及readonly synthetic source皆拒絕，source SHA不變。Supervisor child PID29524／native0、owned Job關閉後remaining PIDs空。此為owner基線反例，補足前節假設的特定guard行為，沒有證明修正或完整COW成功；精確OS handle候選仍待freeze／root review。

@@ -37,10 +37,9 @@
 1. 選擇「每日股價」。
 2. 設定結束日期與最近範圍。
 3. 點擊「手動下載此資料源」。
-4. 點擊「合併每日股價」。
-5. 到「技術指標」執行增量更新。
+4. 等待完成，並確認 SQLite 同步與技術指標更新結果。
 
-左側「每日股價」手動下載現在會同時補齊 TWSE 與 TPEX 指定日期範圍：TWSE 寫入 `DATA_ROOT/daily_price/YYYYMMDD.csv`，TPEX 寫入 `DATA_ROOT/daily_price_tpex/YYYYMMDD.csv`，完成後同步 SQLite `daily_prices` 並執行技術指標增量更新。若 TPEX 暫時 timeout，UI 會顯示 warning 並保留已成功的 TWSE / SQLite 流程，之後可補跑缺漏日期。
+目前 UI 的「每日股價」手動下載會依序處理 TWSE 與 TPEX 指定日期範圍：TWSE 寫入 `DATA_ROOT/daily_price/YYYYMMDD.csv`，TPEX 寫入 `DATA_ROOT/daily_price_tpex/YYYYMMDD.csv`，接著同步 SQLite `daily_prices` 並執行技術指標增量更新。因此這個流程不需要再手動點「合併每日股價」或另開「技術指標」重跑。若來源更新、SQLite 同步或技術指標計算失敗，請依完成訊息中的失敗／警告檢查狀態，再針對缺漏項目處理；TPEX 暫時 timeout 時 UI 會顯示 warning。
 
 若需要長期間補齊 TPEX 與技術指標，可在每日股價頁使用「背景補齊 TPEX + 技術指標」；進度由 `DATA_ROOT/meta_data/tpex_full_refresh_status.json` 記錄，並可用「檢查背景任務狀態」讀取。
 

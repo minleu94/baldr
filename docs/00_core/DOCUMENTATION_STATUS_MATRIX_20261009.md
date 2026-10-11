@@ -703,3 +703,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 Core 治理路由與證據範圍：** Coverage History Entry 320 精簡中央 Index 的日期化排程摘要，改由 QA 主題索引集中導覽；為 Legacy Carryover 的完成列加直接報告／驗收路由並收窄分頁及 Excel 工程完成範圍；Coverage Map 的 First Wave 截圖位置改標為 10/06 收據所記錄的本機位置，不再暗示目前仍可用。
 
 **2026-10-11 tracked inventory 重算：** Coverage History Entry 321 依目前 Git index 重算 `docs/` 為 1,487 paths（1,468 Markdown、19 非 Markdown），並更正本矩陣 repo 外 Markdown 附表與狀態摘要中沿用的 1,486 舊總數；歷史 Entry 215 的 1,486 數字保留為當時快照。
+
+**2026-10-11 具名核讀增量（Coverage History Entries 322–323）：** QA C2–C4／Continuity 再全文核讀 8 份；維持 C4 具名失敗與跨頁 acceptance 未完成界線，不把歷史 accepted 推成現況全綠。`03_data/` 另具名全文抽查 8 份（README 另核 21 個本機連結），依目前單一來源程式流程修正每日股價指南重複步驟，並把第二批冷封存普通目錄描述限定在 2026-10-09。這是增量／抽樣證據，不能推算舊 aggregate 的精確去重總數，也不代表 `03_data/` 全目錄已全文核完；Graphify 與全庫 links／anchors scan 仍待所有目錄正文治理完成後執行。

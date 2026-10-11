@@ -55,7 +55,7 @@
 
 複製及釋放兩個程序均 exit 0；28 個目錄、145,850 個檔案、39,268,782,429 bytes（36.57 logical GiB）完整保存。複製階段逐檔比對 SHA-256；移除來源前再次全檔比對 C／E 內容，並核對樹狀項目數與精確路徑。`released_complete.json` status=complete，全部根均為 archived_verified_junction_installed。
 
-Root 最後另查 28 個 Junction 的精確目標；27 個非空根各抽一檔從原 C 路徑讀回，SHA-256 與 manifest 相同。candidate_20261006 原本空目錄，只核對拓樸與連結。抽樣只證明連結讀回，不替代前兩輪全檔核驗。現行 baldr、回退版本與 d9a115f67d2b 仍為普通目錄。`integration_20261002` 雖在初始 29-root 嘗試被排除，後續已列入精確 28-root 清單；目前 C 槽原路徑是指向第二批 E 槽副本的 Junction。
+Root 最後另查 28 個 Junction 的精確目標；27 個非空根各抽一檔從原 C 路徑讀回，SHA-256 與 manifest 相同。candidate_20261006 原本空目錄，只核對拓樸與連結。抽樣只證明連結讀回，不替代前兩輪全檔核驗。**在 2026-10-09 第二批完成核對時，baldr、回退版本與 d9a115f67d2b 仍為普通目錄；此句不代表目前狀態。**`integration_20261002` 雖在初始 29-root 嘗試被排除，後續已列入精確 28-root 清單；當時 C 槽原路徑是指向第二批 E 槽副本的 Junction。
 
 釋放程序期間 C 可用空間由 194,551,021,568 增至 228,999,462,912 bytes，觀測淨增加約 32.08 GiB；這不是 logical bytes，也不假定期間沒有其他程序寫入。postflight C 約剩 213.27 GiB，E 約剩 168.89 GiB。
 

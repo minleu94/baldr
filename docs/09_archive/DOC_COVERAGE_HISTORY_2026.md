@@ -3250,3 +3250,15 @@ Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告�
 ## 2026-10-11 docs tracked inventory 基數重算
 
 以目前 Git index `git ls-files docs` 重新計數：1,487 個 tracked paths，其中 1,468 Markdown、19 非 Markdown。按目錄分組與矩陣路徑總數相符。更正 Matrix repo 外 Markdown 附表與舊狀態摘要中沿用的 1,486 現行總數；Entry 215 的 1,486／1,467 留作當時日期快照，不回寫成錯誤歷史。此為路徑 metadata 統計，不是正文審核完成度證據；未讀任何額外文件，未跑測試、Graphify 或 links／anchors scan。
+
+<a id="coverage-entry-322"></a>
+## 2026-10-11 QA C2–C4／Continuity 八份具名全文核讀
+
+在 HEAD `4a5391f0c975998c63841659b7ff574513499a85` 下，逐篇全文核讀 8 份 clean QA 文件：`C2_CURRENT_UNION_PYTEST_BASELINE_20260925.md`、`C2_MANDATORY_UI_STATIC_GATES_20260925.md`、`C2_NON_ML_CONSUMER_UNION_PREFLIGHT_20260925.md`、`C3_C4_RELEVANT_SUITE_PREFLIGHT_DRAFT_20260925.md`、`C4_FINAL_MANDATORY_STATIC_GATES_20260925.md`、`CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md`、`CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md`、`CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md`。日期化 C2／C4 baseline、C4 仍有 2 項失敗、R1 bounded route 與未完成的跨頁 acceptance plan 均保留各自範圍；未以歷史 `accepted`／`final` 推稱目前全綠。部分 QA 文件提及的 receipt／截圖位於使用者本機 `.codex\visualizations`，本批未驗證其目前可用性或可攜保存。已核對的 repo 相對 Markdown 目的地存在，受保護 Snapshot 目的地只核路徑、未開啟正文。這是具名批次，不與無逐檔清冊的舊 aggregate 相加；未修改文件、未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-323"></a>
+## 2026-10-11 `03_data/` 八份全文核讀與操作／時點校正
+
+於 2026-10-11、HEAD `09fb5980fc2424ed74c9c9b044e42e33184f7575`，逐篇讀至 EOF 核對 8 份 clean tracked 文件：`HOW_TO_UPDATE_DAILY_DATA.md`、`FUNDAMENTAL_SOURCE_INVENTORY.md`、`HISTORICAL_TEST_QUARANTINE_20261006.md`、`STORAGE_ASSET_REGISTER_20261006.md`、`C_DRIVE_QA_COLD_ARCHIVE_20261009.md`、`C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md`、`DATA_FLOW_LOGIC.md`、`DATA_REBUILD_GUIDE.md`；另讀 `README.md`，其 21 個本機 Markdown 連結目標均存在。這只是 8 份具名全文抽查，不涵蓋該目錄其餘 tracked 文件，也不代表全目錄完成全文審核。
+
+依目前 HEAD `4a5391f0c975998c63841659b7ff574513499a85` 的 `SourceUpdateRequest._execute_daily`，單一來源每日股價流程會依序更新 TWSE／TPEX、同步 `daily_prices`，再執行技術指標增量計算；修正 `HOW_TO_UPDATE_DAILY_DATA.md`，移除重複手動合併與另跑指標步驟，並保留錯誤／警告後續檢查界線。另將冷封存第二批收據的「普通目錄」與 C 槽 Junction 描述限定為 2026-10-09 核對時，避免讀者誤認為目前狀態。10/06 十根未執行隔離計畫與 10/09 三十四根封存收據範圍不同，未視為衝突。未修改原始資料，未跑測試、Graphify 或 repo-wide links／anchors scan。

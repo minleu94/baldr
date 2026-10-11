@@ -414,3 +414,48 @@ Root另發現測試在全部案例結束後從constructor_event_start往後反�
 獨立raw SHA／size／AST審查收據 `root/f12_owned_dup_static86ec_root02_4d6d5a84e8964b36a876fdfd12c3aaf4/receipt.json` 為 `static_rejected_cleanup_event_cross_case`：64 pins及10個source snapshot／preimage／diff／來源清冊artifact均核相符；只有Main test pin改變，其餘63不變。原17檔來源與14筆monthly觀測去重後23個路徑起訖期待一致；此為唯讀靜態核驗，不是執行旅程證據。Root審查腳本首輪因candidate多了size metadata而整份monthly row相等斷言失敗；核實只有8列新增size後，改為逐項比較原path／SHA／present並另核所有新增size，沒有放寬來源契約。
 
 Coverage及回滾清單在 `root/f12_dup_review_20261011/COVERAGE_AND_ROLLBACK.md`；QA與Snapshot preimages在上述收據packet。Snapshot仍正確記完整F12待驗，產品行為／Manual／架構／Roadmap與Index未變。P01 v7與P08完整策略路由仍由原owner續辦，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持。
+
+新版event-window freeze SHA `7b9630e3bb1d87c7781c8de95a5f4e75eb5fae38867a3056838659ce70d2fdae`、Main test `87a4852bbe83821bc32921ae79be6ae0996d1a3bd6129faa232558d8aa863628`；Root獨立核64 raw SHA／size、aggregate `f34d7e2c5b782887494132234870f892a9b0d8bbda2c46b54ae1444b6f39fcaa`及11個artifact pins，原17檔／14筆來源觀測仍一致。AST除write guard／收藏觀察event projection／descriptor fixture三個頂層函式外，其餘42個頂層函式與9fe5完全相同。`root/f12_owned_dup_event87a4_root01_54519c01f2ba426684cc21751035e7a1/receipt.json`保存來源／文件preimages及純guard release；未授COW／Main。
+
+Root第一次同版三節點為 **1 FAIL／2 PASS／8.57秒／native1**，packet `root/f12_owned_dup_guard_root01_5ea4846f7f1746ca9b5da9911c270208/receipt.json`、launcher45176終態，64 pins及23個去重來源觀測起訖一致。Sandbox hardlink setup遭WinError5拒絕，未進descriptor cases；inner launcher37164原生1、Job排空／handles閉合，不能稱已驗hardlink負例。
+
+同freeze改由host執行隔離案例，實際取得 **1 FAIL／2 PASS／3.73秒／native1**，packet `root/f12_owned_dup_guard_host_root02_ace771f4fb3247b5aaa87431ec1c360d/receipt.json`、launcher29464終態，64 pins及來源仍一致。Inner `fdopen_guard_probe_7cd156b08895496193d4e4f123144acf` launcher19368在60秒原期限內自然1、active count0／remaining PIDs空／Job及handles閉合；測試在4423行 `len(descriptor_records)` 發生NameError，因dict是guard installer的local而fixture不可見。當次沒有完整role receipt，不授descriptor矩陣／COW／Main成功。
+
+已交owner保留7b963原freeze，改以持鎖、僅回傳整數的QA-only唯讀record count getter，禁止曝光／移交descriptor dict或handle權限，並靜態核新closure引用。P01 v7另外補runner diagnostic writer故障不得遮蔽primary及loader測試OUT宣告；P08需由真normal producer的ledger fills證明hold／UNKNOWN原quantity保留、多strategy namespace隔離。此輪不是重跑逾時程序，兩次root QA皆已取得終態；完整Gate仍待。
+
+### P01 v7 同版真 reader、程序管理及新完整矩陣終態
+
+上一 goal turn 核得當次新矩陣五 cold role 的具名收據，分類 progress；本輪取得原 session30083 的 terminal/native1，沒有因觀察逾時重啟。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍維持。
+
+固定 v7 manifest SHA `75a6db87bca478d8c03b5bc945278978aff39cdea60205a3a6755339ab6c80c2`，runner `39483ae750618f5858a0fe149964a0b3a539e6fc8b1f2f35b056db5639f3994e`、helper `f6d8a4c961013631da97c38302b5f52605f0ad20c85d67680afacb012cce6ca8`。Root 靜態讀 loader、restore／後檢／failure writer、真 reader 整合案例及 preflight／supervisor 增量，保存於 `root/p01_v7_frozen_review_f0fef364885b4c8cac62aa96e9daa406/receipt.json`；104 pins 核相符。兩個 timer 函式與七個矩陣常數仍與 v5 AST 相同，不能據此宣稱新效能通過。
+
+| 同版 root 實際驗證 | 結果與界線 |
+|---|---|
+| v7 候選測試 | sandbox 12 PASS／1 ERROR／4.37秒，私人 fixture 的 strict resolve 遭 WinError5；host 新封套 **13 PASS／8.90秒／native0**、104 pins 不變。`root/p01_v7_candidate_tests_host_root02_21660be06d1642919cf7dd76e69f60dd/receipt.json`。包含真 writer→public reader 完整 DTO、兩 artifact 併行、真 issued cancellation capability、coordinator callback 與 raw source 損壞拒絕；不累加 sandbox 重複案例。 |
+| 純 preflight | **native0**、80 source／51 product modules／594 runtime package files、Python3.11.9／PySide6 6.10.1、`store_access_attempt_count=0`；104 pins 不變。`root/p01_v7_pure_preflight_root01_e37476b39b204266b883c82fbb0afe7f/receipt.json`。 |
+| v7 真 Windows Job／失敗收據 | root 從原 v5 failure tests 派生 v7 精確 supervisor 路徑；首輪9 PASS／1 FAIL／5.93秒為沿用 v5 bootstrap hash。獨立 AST 展開 v7 bootstrap 原文核新 SHA `30048173174b33a000179e19a522ead338e798f304c3cf5afb336d92efd20965`，只改派生測試該期待 hash；新封套 **10 PASS／10.41秒／native0**、107 pins 不變，`root/p01_v7_owned_supervisor_v2_root02_fd1f294d724840dd8fe3f3ec3da506b9/receipt.json`。保留 timeout、assign／ack／resume failure、primary failure 與 cleanup assertions。 |
+| 原規格六角色完整矩陣 | attempt `attempt_20261011T121108Z_5e9bae30c9ac`：**五 cold 全通過；warm_01 自然 native1／46.724425秒**，非600秒逾時。暖操作第一個 sample 的 `record→_assert_capability_claim` 發生 `read_page_capability_claim_count_mismatch`，matrix為空 dict，**沒有有效暖操作樣本或 p95**。各 role 來源／store／程式後檢與 observer restore、shutdown 通過，Job 排空；outer native1、110 pins 起訖相同。 |
+
+Root 對六份 result／role receipt及 supervisor／outer原文另存獨立封套 `root/p01_v7_terminal_review_04cb319835774434992a13c5dcd3c327/receipt.json`，SHA `53c8dd08f5e8f8d0c67bd27137beb65f0f6660a55aeff0973a6419aad824f141`。五 cold 皆完成20頁及完整序列 DTO核對；程序啟動到首頁 nearest-rank p95 為 **21.0448914秒**，與暖操作300ms Gate分開。暖 failure role 沒有 supervisor result_sha256 欄位，root只保存與自行核 raw hash，不冒稱該欄存在。收據整理工具初輪 deep-copy路徑 Win206、以及 cold status／failure schema期待不符的停止保留；僅修 root 讀取與封存工具，未重跑矩陣或修改產品。
+
+v5 600秒失敗無 phase／stack／result，精確停點仍未知；新 v7 的 cold 通過不能倒推 v5原因。Owner 新 v8 scratch僅重用page0重複oracle，未採納、未跑QA；當前優先診斷新暖操作claim次數，不放寬能力核驗、N=1000／20頁／五cold一warm／每類30 samples／600秒role或strict p95<300ms。完整P01／EXE／Native／真人仍待。
+
+### F12 唯讀 count getter 的實際通過與完整 Main 新失敗
+
+新 freeze SHA `ba3f1beba403d8d96404c37c9cd5d14b45e7e520c4ada779f8a1ac142f072fd3`、Main harness `5c739885de4acf481f91e992960c86a6858bbd4aa508a15251c6ae952819bb5a`，child仍為 `32456ac7c5c526c927a9a9c744676f07bdd050d08006562a08012f07200bf2bb`。新增持鎖的唯讀 integer count getter，fixture不再引用 installer區域dict；64 pins／23個去重來源路徑及候選artifact核相符。Root static收據 `root/f12_count5c73_root01_f08c990824e84b6ea82ef2f9127badec/receipt.json` 的 unchanged函式count顯示43包含新增getter；精確判讀為原基線 **42個頂層函式未變，加1個新getter**，不是43個舊函式未變。
+
+依同版 guard→小型COW→完整Main順序，各階段使用新release：
+
+- guard三節點 **3 PASS／3.26秒／native0**；`root/f12_count5c73_guard_host_root01_04300a98cf9d4682a0f82e756946e08d/receipt.json`，inner37 assertions全True、descriptor records0、Job排空／handles閉合。
+- 小型真WatchlistView click／Yes私人COW **1 PASS／8.55秒／native0**；`root/f12_count5c73_cow_host_root01_dfe78b7190084e45aba8857d0c3925ef/receipt.json`，click1／Yes1、private schema3、query_only及write-blocked、active service讀回、source不變、worker0及Job排空。
+- 完整Main **1 FAIL／27.31秒／native1**；`root/f12_count5c73_full_main_host_root01_37f7fbab3a4e4aa8ad7997b5999e43f7/receipt.json`，inner `main_candidate_372fdbe0fe074fb7861c5f6505e82869` 的child29652自然1、未逾時、Job排空／handles閉合。Main各初始化與私人COW完成，query在5427行因 `monthly_revenue_yoy_index_v1_source_archived_open_failed:PermissionError:[Errno13]F12writeguardblocked:outside_allowed_private_root` 失敗；完整收藏／下鑽／新程序未完成。
+
+上述三階段64 pins與23來源路徑前後均相同；原closefd=False及getter NameError失敗亦保留。現有收據不足以指出 query期間是哪個audit event／path拒絕；正在另建query事件window及finally create-only診斷候選，不擴writable roots、不修改正式reader／原來源／child。完整F12 Gate未閉合。
+
+### P08 v2 凍結候選的 root 靜態拒絕
+
+Root 獨立核 manifest `d5795a909c60d90ec32c59fb263fd25eec36cccf5d946d07dc12785c330dfb41`及dependency manifest `f5ef35df38e80f51e41d197fa49952705a6ce216c53aa04870a27ca83028ac87`，43個去重raw pins全部相符；只讀候選、正式construction公式及AST，**未匯入／執行候選或跑QA**。封套 `root/p08_v2_static_root_533bab710cef4665835908ce4b99c2b7/receipt.json`，SHA `d51b481b39c60efcd83a0f2edb6b4cf18072ca4efacf729e3fcc4477b3fe7f73` 保存五份來源preimage。
+
+拒絕點：producer第4779行使用未匯入／定義的Context/localcontext；daily候選接正式availability而新增execution receipt欄位的候選接線未完成；空倉且無新entry日因空source evidence被拒絕，未有合法零成交checkpoint；完整batch Decimal context隔離與真policy／fills下hold／UNKNOWN quantity保留未證明。另multi-entry純target test的15%公式錯誤：124000入場預算每檔上限18600，price8／lot1000應各2000股、兩檔純target residual268000；原9300／1000股／284000期待與正式construction公式不符。
+
+Owner在獨立p08_v3修正，v2及正式檔維持；第二個不同家族KD策略、完整normal producer／雙namespace／真ledger、benchmark／績效／UI仍待。Coverage與回滾依 `root/p01_v7_review_coverage_20261011.md`：只同步QA／Snapshot，正式行為與Manual／架構／Roadmap／Index入口未變；保留所有原資料及其他writer dirty內容。

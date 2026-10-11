@@ -1,5 +1,7 @@
 # MainWindow UI Smoke Operation Design
 
+> **歷史設計／非現行授權（2026-10-11）：** 本文件保存 2026-06-30 的 opt-in UI smoke 設計、命令與 rollback reference；不代表目前 runner 能力、branch/tag 狀態或操作授權。現行 UI 操作看 [Application Manual](../../07_guides/APPLICATION_MANUAL.md)，系統邊界看 [system architecture](../../01_architecture/system_architecture.md)。
+
 > Date: 2026-06-30
 > Scope: Full App Healthcheck 的 opt-in MainWindow 操作層。
 

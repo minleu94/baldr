@@ -1,5 +1,7 @@
 # Workbench Overview Density Redesign
 
+> **歷史設計／非現行授權（2026-10-11）：** 本文件記錄 2026-07-07 的 Workbench 總覽密度設計與驗收提案，不代表目前 UI 實作或目前待辦。現行 Workbench 操作以 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 為準，系統邊界以 [system architecture](../../01_architecture/system_architecture.md) 為準。
+
 ## 背景
 
 2026-07-07 主 UI「決策工作台 > 總覽」已能揭露 freshness、scheduled evidence dry-run、manual recommendation fallback、replay diagnostics 與 read-only boundary，但背景證據流與其他總覽區塊把完整 diagnostics / source trace 直接放進表格欄位，造成資訊密度過高、水平捲動與判讀負擔。

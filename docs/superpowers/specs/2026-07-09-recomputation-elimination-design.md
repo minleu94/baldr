@@ -1,5 +1,7 @@
 # 重複計算消除與排程相容設計
 
+> **歷史設計／非現行授權（2026-10-11）：** 本文件保存重複計算消除的設計提案，不證明所列優化已實作或仍是目前待辦。重用前請依 [system architecture](../../01_architecture/system_architecture.md)、[Superpowers 閱讀入口](../README.md) 與現行程式／QA 重新核對；目前工程優先序以 [6M Engineering Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 為準。
+
 ## 目標
 
 在不改變推薦、回測、每日決策與既有排程公開入口的前提下，消除三類重複工作：

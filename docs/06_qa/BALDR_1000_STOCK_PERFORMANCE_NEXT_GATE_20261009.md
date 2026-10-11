@@ -1,5 +1,7 @@
 # 1,000 檔研究效能：目前失敗與下一驗收
 
+> **時點／版本：**本文記錄 2026-10-09 的固定來源、合成母體效能 gate 與後續 profiling 準備。下文「目前程式」接點是當時核對的 checkout／pin（文末列出），不是對後續 HEAD 的即時判斷；原效能 gate 未通過，亦沒有完整 Main／EXE／真人 UI 接受證據。
+
 Root 實讀 `C:/t/p01_mc6g40xn/benchmark_result.json` 的完整 operation summaries，原 status 是 failed。這是固定來源、合成母體的來源引擎測試，沒有完整 Main／EXE／真人 UI p95 接受。
 
 | 每類 30 次樣本 | 原 p95 | 300 ms gate |

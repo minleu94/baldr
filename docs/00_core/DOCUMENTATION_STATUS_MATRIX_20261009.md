@@ -697,3 +697,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 `02_features/` Backtest Lab 歷史 schema／規劃清單界線：** Coverage History Entry 317 將 `BACKTEST_LAB_FEATURES.md` 中舊 `runs` 表與 `output_root/backtest` 資料路徑標為 Legacy 格式，避免與 Research Run Registry 現行保存／讀回混淆；將無日期的「未來擴展」標為較早規劃清單，並指出推薦組合回測及整合已有日期化後續記錄，策略組合回測範圍與 PDF 匯出現況仍待核實。02_features 仍為 9/9 tracked paths 已核讀或核對，本批未刪除或搬移文件；未跑測試、Graphify 或全庫 links／anchors scan。
 
 **2026-10-11 `03_data/` freshness cutoff 日期界線：** Coverage History Entry 318 將兩份指南一致記載的 04:30 America/Los_Angeles 明確限定為 2026-10-03 日期化實作邊界，補上台北同日 19:30（夏令時間）／20:30（標準時間）換算，並與台灣市場日期欄位分開；未把該快照升格為現行政策，因本次可讀權威文件未能核定政策現況。
+
+**2026-10-11 QA H20／效能收據增量：** Coverage History Entry 319 具名全文核讀 10 份 QA 內容文件；5 份加上日期、版本或授權範圍提示，另修正原保存 2382 計時方案標題，精確表示部分旅程已執行但完整四端點驗收未通過。不同合成來源與固定版本收據維持各自範圍，不合併成產品／Main／EXE／真人接受。舊 QA aggregate 仍無逐檔 manifest，不據此推算全域完成率。

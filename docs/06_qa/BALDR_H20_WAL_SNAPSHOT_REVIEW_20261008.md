@@ -1,5 +1,7 @@
 # H20市場副本的非空WAL方案：合成中央審核
 
+> **時點／範圍：**本文記錄 2026-10-08 至 10-09 的合成 SQLite WAL snapshot 方案與隔離測試；不代表 D Main 或完整產品旅程已執行。其他固定來源／Main 路徑需由各自收據判讀，不能把本文件的合成結果轉移為其接受證據。
+
 此驗證限定全新隔離合成SQLite；不是原市場DB、H20 Main、候選EXE或真人接受。原凍結bridge／child／supervisor沒有因此修改或取得啟動資格。
 
 helper SHA `169fa40c6c87c68268bfe40caf361f54618732e685adca02fd9de931c373221f`，runner SHA `a46d2eda07ce3f85dc476940827007e8d4bcb64fef87c91b5a501f37c024c713`。中央獨立native重跑exit0，log `output/qa/h20_wal_snapshot_20261008_a/root_wal_selftest_native.log`；receipt `attempt_receipt_20261009T000230Z_db4419c137f2/receipt.json` SHA `60e78b8b5b8b4e96bee719a1c4a2f77af50b818bfc61613870c52982269021e6`。

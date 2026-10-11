@@ -41,7 +41,7 @@ raw 位於本 worktree `output/qa/bbui01_20261007/`：
 
 排錯：BB收藏缺原保存manifest/artifact或來源pin錯誤顯示不可核驗，不补latest、重算、改hash或修改舊快照；核對原snapshot_root/cohort/date/raw SHA/feature version。关闭後返回與晚到callback拒收。
 
-中央仍持有 main/config/shared DTO/Manual/Scoped SSOT/原plan/整合；正式日常owner/parent v3 acceptance接線與BBP01 localdev採入由中央處理，本包未替pick或抽檔。重型Workbench mandatory、update validator、fullmypy只由中央稳定union一次。九Stage／24UX、七有限closed、performance例外、compression/U1未決不改。本包不宣稱完整日常模型選股或自然credit完成，不執行Task/ACL/真資料搬移/DB寫入/交易/push/cleanup/Native。
+截至本 lane 2026-10-07 記錄時，中央仍持有 main/config/shared DTO/Manual/Scoped SSOT/原plan/整合，正式日常 owner／parent v3 acceptance 接線與 BBP01 localdev 採入由中央處理；這是當日責任分界，不應覆蓋檔首 2026-10-10 的後續 checkout readback。重型 Workbench mandatory、update validator、fullmypy 只由中央穩定 union 一次。九 Stage／24 UX、七有限 closed、performance 例外、compression/U1 未決不改。本包不宣稱完整日常模型選股或自然 credit 完成，不執行 Task/ACL/真資料搬移/DB 寫入/交易/push/cleanup/Native。
 
 ## 回滾
 

@@ -3229,3 +3229,12 @@ R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明�
 在 `docs/03_data/daily_data_update_guide.md` 與 `docs/03_data/DATA_FETCHING_LOGIC.md` 對 04:30 America/Los_Angeles 的一致記載旁加上 2026-10-03 日期化實作邊界說明；明列台北時間在夏令時間期間為同日 19:30、標準時間期間為同日 20:30，並區分更新頁顯示的台灣市場日期欄位。產品 Roadmap、六個月工程 Roadmap 與可讀的 target architecture 背景均未規定 04:30 現行政策；本次排除受保護的 Snapshot、Application Manual、system architecture 與使用者完成計畫，因此不核定政策現況，也不改 cutoff 值或 receipt 行為。README 的操作導向仍指向受治理權威與程式實作。
 
 兩文件原有對 cutoff 跨越後須重新 freshness probe、不可自行推定 fresh 的範圍保留。這是用字／時區對應澄清，不是執行驗證或政策變更；未跑測試、Graphify 或 repo-wide links／anchors scan。分類與範圍限制見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。
+
+<a id="coverage-entry-319"></a>
+## 2026-10-11 QA H20／效能收據的日期、路徑與授權範圍
+
+具名全文核讀 10 份 clean QA 文件：`BALDR_1000_STOCK_PERFORMANCE_NEXT_GATE_20261009.md`、`BALDR_BBANDS_RESEARCH_UI_20261007.md`、`BALDR_H20_2382_TIMING_PLAN_20261010.md`、`BALDR_H20_CURRENT_CANDIDATE_93F9C57D_20261008.md`、`BALDR_H20_FIXED_SOURCE_BUILD_REVIEW_20261009.md`、`BALDR_H20_LOADING_CANDIDATE_421BC973_20261008.md`、`BALDR_H20_RUNTIME_ROOT_CONTRACT_REVIEW_20261008.md`、`BALDR_H20_VERIFIER_MODULE_COMPATIBILITY_ROOT_REVIEW_20261009.md`、`BALDR_H20_WAL_KEEPER_ROOT_REVIEW_20261009.md`、`BALDR_H20_WAL_SNAPSHOT_REVIEW_20261008.md`。核讀時綁定 HEAD `d7c5c90db625b92bcfdc50b5406d83da260e58d5`；後續僅修改下列六份原件，沒有搬移或刪除收據。
+
+修訂 1,000 檔效能收據，將「目前程式」接點限定為 10/09 核對的版本與 checkout；BBUI 收據把「中央仍持有」句限縮為 10/07 lane 當時的責任分界，保留檔首 10/10 後續 readback。2382 計時方案改稱完整四端點「驗收未通過」，因三段原保存來源旅程已有實際收據，而一般報告仍 partial／blocked。WAL keeper 與 verifier 收據明示單次授權只適用其具名凍結 attempt，不構成目前授權；WAL snapshot 收據限定 10/08–09 合成 snapshot 範圍。其餘五份候選／審查原件維持隔離來源、固定 pins、未真人驗收等限制，候選身份彼此不同，未見可合併接受的證據。
+
+此批只檢查 9 個 inline Markdown link 的路徑存在性：7 個允許讀取的目標存在；指向 Manual 與使用者完成計畫的 2 個目標依禁讀要求未開啟。未驗 anchors、HTML／reference-style links、外網、backticked evidence paths 或連結目標正文；未跑測試、Graphify 或全庫 links／anchors scan。Matrix 更新見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。

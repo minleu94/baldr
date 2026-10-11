@@ -1,5 +1,7 @@
 # H20 合成 WAL keeper：Root 小測複核
 
+> **時點／授權範圍：**本文是 2026-10-09 的隔離合成 WAL 審查記錄。文中對具名 attempt 的「已授權一次」只指當時凍結的執行計畫，不構成目前或其他來源／版本的執行授權；後續路徑的證據不能回填成本文件所述 attempt 的接受結果。
+
 這份紀錄只涵蓋隔離合成行情庫的 WAL 準備與複製，不代表 Main 視窗流程、原 H20 2382、收藏重開或 EXE 已通過。
 
 Root 實讀 `output/qa/h20_wal_keeper_candidate_20261009_a/market_wal_keeper_qa.py` 的開啟邊界與 `selftest_native_attempt05.log`。小測實際為 6 passed、0.97 秒、exit 0；log SHA-256 為 `4d735a80489f961f447d9c0951123c03ca634019f5e8d40d6bd73ff5004218b7`。當時 keeper SHA-256 為 `d3982c5f42555b0fbb207ec2c9414df60824c8e81dc034fc720915a090cdad73`。

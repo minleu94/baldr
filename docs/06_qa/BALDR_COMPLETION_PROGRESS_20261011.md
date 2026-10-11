@@ -605,3 +605,19 @@ Health v2_01 manifest SHA `7f1008d7bb67888e53e0b55865e0c8be02e92cd225fbf5d2908a2
 Root另存 **10份raw** 至 `root/phase_health_review_f2d813c1fb9b452281f7e33c8778f50d/receipt.json`，SHA `8b43186e55e4afb558aa3264f4b5efad8169aed9b557b8d73d6a367ce286753c`；其中29個Health靜態pins不是完整runtime closure。Coverage／回滾見 `root/phase_health_coverage_20261011.md`。P01 owner正準備全新六角色sibling，原五cold＋一warm、1000列20頁、三類各30樣本、600秒與strict300ms保持，尚未釋跑。P08仍補MA／KD intent首次寫入同一physical DB身份與完整金融daily整合，未QA；正式Health、完整P01／P06／P08／M3仍未完成。
 
 本節兩份文件已精確存本機dev `031d9ae6`；暫存期間另一文件owner保存其成果，root使用 `commit --only` 僅提交本輪兩檔，不重設其他人的index。後續root讀v2_02 frozen overlay，核到initializer把 `parents[1]` 的test_bootstrap目錄誤當freeze根，使candidate path不存在、只能fallback正式；缺actual module origin斷言亦已交owner補v2_03。Owner另發現static closure只涵蓋app_module，其他repo roots須補全；v2_02保持原樣、未QA。P08 owner回報scratch KD intent將canonical字串直接傳sha256的TypeError已修為UTF-8 bytes，尚無QA證據。
+
+### P01 新封套預檢通過與 Health fresh origin 拒絕證據
+
+上一 goal turn 是產品進度回覆，分類 no progress。本輪重新核工作樹與三位 live 代理，完成獨立靜態審查及預檢；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持。正式產品來源、原資料、main／push／發布未由本輪變更。
+
+P01 第一份 phase matrix sibling 的 focused path 多了 `test_`，且 runner 的未使用 expected-relative 常數仍指舊 v7 檔名；保留原 freeze `ca3eb9b4`，另建 v2。新 freeze SHA `357d9eaf9bd5076a43aa18adf3428715a0e51b4524f75897fb5d7efaadee1e99`；runner `7600f42a`、manifest `ed27f247`、supplement `5249200e`、完整24784-byte patch `9ce840d4`。Root全讀patch、從五份原 preimage 與新 test 重建全文diff，核 runner AST僅身份metadata改動；正式source／runtime／fixed-input／protocol maps與原v9b完全一致。完整 JoinedStr 由六項實際插值獨立重算 UTF-8 SHA `385232ce4701d02b0b6d0d170ae2ffd50c9784813d3cadc52ea5f1f1b9ea33a5`，與 assertion／supplement一致；887個raw pins逐檔核相同。
+
+新 pure preflight host `root/p01_pm2_preflight_root01_9b6f92c5a31f4f19ad7a131f8a3bb24f` 為 **native0／store access0**；80 source files／51產品／594套件核驗通過。新真 Job failure-test host `root/p01_pm2_failures_root01_c14df2ff836b4dddb5385be35c461f3e` 為 **10 PASS／10.37秒／native0**，兩階段887pins起訖相同；helper三測沿先前相同bytes證據，不重複累加。
+
+另釋新一次性 full release SHA `5172ffc3ac5a25c4df16a72aa87e5e124299c47ebcfe2ee975ffbd68e029042f`，893pins；wrapper SHA `eb55aaa1cb04c1b3f8dcfa3e8127b3d4a14285c644b42bca274626a25211361b`。原五cold＋一warm、1000列20頁／50列、三類各30樣本、600秒與strict300ms保持。**目前執行中**：session3127、supervisor PID49176，host `root/p01_pm2_full_matrix_root01_cf1eef2c39434322a250b97b17526f9d`；candidate attempt `attempt_20261011T140252Z_c583b095d40a` 的 cold01 childPID5964，phase seq25為 `strict_read_session_open_failed`／`technical_parent_v4_child_path_invalid`。此前source／1457-entry store核驗通過；尚未取得首頁或操作樣本。原deadline與監督器保持，不因觀察逾時重啟，不推定終態或新p95。Owner正唯讀核精確路徑與例外成因。
+
+Health v2_03 manifest SHA `7aa88777092df7a2dc22a3cf9999e5ec5943b38703a7afece7ac3bfe48f567cf`；Root核422pins、四正式preimages與新目標不存在，從六檔重建163302-byte完整diff，四product AST與已審v2_01相同。新origin probe host `root/health_v203_origin_b6b144a94df240f19ea81fca5a47920e`、PID12512自然 **native1**：四候選origin檢查後，已載入本機module清冊核驗發現 `data_module/contracts/__init__.py` 未列pin；422起訖pins相同，未跑候選pytest。Readonly枚舉原321modules還核到其他逐層父package initializer缺漏，已交owner保留v2_03另補閉包。
+
+Health v2_04新manifest SHA `78772aaaf394e9da6692e9c069afde48175531f6699dd3e40323724584862113`；355 repo modules（含22 initializer）、1 namespace、68 stdlib與20 external，未解析local為0。Root獨立460pins／原版本保全／完整diff重建與四source AST再核相同；這是靜態證據，fresh origin／pytest待P01矩陣終態後串行。兩consumer相容sibling已續授；paper-main preopen之外的策略EOD adapter、正常P06／完整P08／M3仍缺。
+
+Root保存 **22份已終態raw** 至 `root/p01_health_v203_review_7b703e0090f845ec9a96af5c4882c838/receipt.json`，SHA `f3f93b4ab2a8eacadad05a70e0f028fb4a3ecaf407c146f8d3f83a404a9ab1fa`；其中full matrix欄明列live、不是終態接受。本輪新增的root工具／receipts／preimages只在ignored QA根。P08 owner已寫真v4→forward observation→MA intent→公開行情→daily→ledger→fresh reader候選測試，未freeze／未QA；KD與兩namespace完整交易／成本及績效／UI驗收保留。

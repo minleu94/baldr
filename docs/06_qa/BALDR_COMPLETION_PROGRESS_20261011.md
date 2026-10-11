@@ -673,3 +673,38 @@ Root初版工具誤將stdlib-relative paths當repo-relative，曾報一批缺件
 Root create-only保存10份raw／兩formal文件前像於 `root/health_compat_v5_review_packet_5efd92a63d8948f0898979f47dd5339b/receipt.json`，SHA `ec2fe602772e3030f115b8f33f62894a6161dc6de10d9cc1518c36f6f5db4386`。Scope／回滾見 `root/health_compat_v5_scope_root01.md`；僅追加本QA與Snapshot，不新增Manual操作或更改Roadmap／架構。
 
 Owner已接續Health v2_05五項原失敗修正，之後另建metadata-only compat v6，保留v5原件並精確pin v4 sidecar及v5 predecessor；兩者仍須root審查。P01 owner續補原error chain與真error callback收尾，P08 owner續補真seed／availability及MA／KD lifecycle。完整效能、帳本、績效、UI、同版EXE、自然排程與真人接受保持開放。
+
+### P01 錯誤收據定向通過與 Health v2_05 真來源 fixture 擋點
+
+上一 goal turn 只回覆產品進度，分類 no progress。本輪獨立審查新候選並執行已授權驗證，取得可改變下一步的證據，分類 progress；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持。
+
+#### P01 QA-only 錯誤診斷與等待
+
+Error-receipt freeze SHA `8dfde1f0ca3475bb507b836256bd2ec7ecd3d960a8855c93d62204274551f5d8`，runner SHA `ebea7622bb09690a1fdb805937db6d61ccf90e3e256a5e1e87ccd9caa77a02c3`、95419 bytes。Root全讀runner增量與五測，獨立核994次檔案hash／774個unique paths，從v2 runner preimage逐byte重建24648-byte diff相同；source_freeze／runtime_file_sha256／runtime_environment／fixed_inputs／normal_view_protocol／semantic_oracle六maps與原manifest完全相等。Static收據為 `root/p01_error_receipt_static_review_c12dabc7b51c47f3aaf94b8f9406f20b/receipt.json`。
+
+候選保留例外cause/context拓樸、qualified type、errno／winerror與有界traceback；只保存遮蔽絕對路徑的message／repr／frames，不保存locals或source lines。初次load在exact TaskWorker.start owner接額外error observer，仍執行原start與正式View error receiver。只有worker已release且保存error／strict-open failure時，等待才走typed失敗；原成功result type／query／page identity assertions與600秒預設期限保留。
+
+Root在host fresh interpreter執行 `candidate/test_p01_taskworker_error_receipt_candidate_20261011.py` 全五測，**5 PASS／1.98秒／native0**，outer2.703秒，stderr空，774pins起訖相同。含真TaskWorker錯誤及成功signals、正式View錯誤receiver、native finished後release，以及synthetic cause/context／cycle／成功identity。成功wait測試仍是小型fake DTO，因此不授千檔完整DTO／p95或整體P01。Focused收據 `root/p01_error_receipt_focused_4f09c3836beb49a8b49443df99128597/receipt.json`，SHA `ae5879e3f02767daf4d60e69e64690d2a930026bed1d07da3d27e0a7d843c35b`；JUnit與stdout同目錄，完整矩陣未啟動。
+
+前輪cold01的底層cause仍未知，不能用synthetic error倒推原WinError5或逾時原因。原600秒矩陣、sealed store／source guards、1000列20頁、五cold一warm、三類各30筆與strict p95<300ms仍有效；owner另建supervisor／preflight／bootstrap重綁候選，須root核驗後才執行。
+
+#### Health v2_05 完整增量與實際失敗
+
+新manifest SHA `62bd436cf22e811d03ed2ff5b07741d150814e8eeac04a88ac29b4872dbea9e2`。Root核476個unique pins、四formal preimages與兩new targets仍absent，逐byte重建formal→candidate完整168742-byte diff及v2_04→v2_05 delta；兩reader／evaluator AST不變，產品差異只在refresh私有UTC clock seam與archive OS I/O邊界（新增import及五函式），canonical／strict resolve／reparse／single-link／stable-read／create-only契約保留。Repo dependency仍355 modules／68 stdlib／20 external／unresolved0。Review／release工具只寫ignored QA根。
+
+Fresh origin host **native0**，四candidate product origins、39個載入local modules與725個actual runtime files已保存，476pins不變，formal new targets仍absent。Receipt在 `root/health_v205_origin_43eb75d7124646e9b291e0457b10e980/`；這不是完整UI／金融接受。
+
+Host兩檔定向pytest：**36 PASS／2 FAIL／1 skip／3.64秒／native1**；不與前版32 PASS相加，476pins及formal absence保持。收據與stdout在 `root/health_v205_focused_tests_9fe5026b2ff84fa6ae89ad17f8aeaa85/`。v2_04原五失敗與所有freeze原件保留；新負例及長路徑停點解除後的既有負例仍有fixture缺口：
+
+1. 新late-source負例使用 `_scope()` 的synthetic預設POSITION_ID，真writer保存的是另一個entry lineage，所以先被 `saved_health_scope_position_identity_mismatch` 擋下，未抵達日期守衛。Root用原baseline保存的真position id／code／shares建立typed scope，對相同已保存receipt唯讀重開，唯一blocker確為 `position_health_source_future_dated:provenance.position_identity_source.observed_at`；不用換expected assertion遮過。
+2. Extra-universe測試修改baseline多加一列後，對新content SHA所定位的 `saved_baseline_witnesses/<SHA>.json` 不存在。Receipt已保存 `health_baseline_witness_unavailable:saved_health_artifact_missing`，public reader因此先回 `saved_health_source_witness_invalid`。下一候選須建立與新完整baseline相符的有效witness，再測request scope少一持倉時的完整universe拒絕；錯witness另保留負例。
+
+Root公開reader唯讀對照在 `root/health_v205_saved_failures_root01.json`；23個原fixture檔及476source pins前後相同，沒有更新fixture／writer／reader或正式帳本。已授原owner另建v2_06 test／sourcefixture sibling；不放寬因果或身分守衛。Skip仍無成功reparse setup證據，保持未驗。v2_05未套正式；paper-main preopen之外的P08 EOD／正常P06 UI與M3仍待。
+
+#### P08 績效接續的公開比較器證據
+
+Root以實際 `ResearchRunComparisonService.evaluate_comparability` 與記憶體DTO做四例唯讀probe：兩筆缺status／身分／fingerprint／metrics，以及兩筆無資格legacy零metrics，均回Comparable；明示cancelled與不同fingerprint則各回Incompatible。DTO預設status回退completed及空fingerprint相等不自行授績效資格。因此P08新read service消費既有公開ResearchRunService／ComparisonService前，須逐run核完整資格與metric validity，缺件保持未知，不把零值當有效歷史績效或排名。原metrics／broker／ResearchRunService／ComparisonService維持既有復用邊界，本輪未改程式或計算金融指標。
+
+Probe收據 `root/performance_comparison_probe_31353601236348a79d5c21ac0354df9e/receipt.json`，SHA `02dd096bf30740541fcc9697040f00a14fee8b3edc452a4981b064376a78d6d5`；兩formal module origins及hash起訖相等、無DB／UI或正式資料。這是新consumer設計的必要前置證據，不是完整P08接受。P08 owner目前仍補真seed writer／availability→MA與KD首intent→daily CAS／checkpoint，績效與UI尚未完成。
+
+Root create-only保存28份raw及兩formal文檔前像於 `root/error_health205_review_packet_f4e885be1bb340e28b093f7d1a6c63ee/receipt.json`，SHA `6d700a46a626bda058d5c84c49ac531512a2ba3604e65856ee0860cd8590746c`。Coverage／回滾見 `root/p01_error_receipt_review_scope_root01.md`及候選Health rollback；本輪只追加Snapshot／本QA，Manual、Roadmap、架構政策與main／push／發布未改。Compat metadata-only v6已由owner交root，但尚未獨立核驗／QA，不取代v5原拒絕。

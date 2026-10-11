@@ -740,3 +740,64 @@ V4 seed lifecycle manifest SHA `df09831050ea15850b73253dd65a3cdef1c30d01460ae85e
 原owner接續scratch績效reader／兩卡widget及public ResearchRun讀回。已盤點原DTO允許空status／fingerprint、legacy metrics無schema及benchmark缺exact source／clock。新consumer逐run驗資格、缺件保持未知；另要求提供root可實作的版本化metrics／benchmark producer接點及可計算研究績效契約，不以永久unknown卡完成P08。兩策略成本後研究績效、歷史比較、正常UI與新程序仍是完整終態要求。
 
 Coverage及回滾見 `root/health_v206_scope_root01.md`與候選README。Root create-only保存51份raw及兩formal文檔前像於 `root/health206_compat_p01_review_packet_e2cc74f5508147d88230e2a05e3d6920/receipt.json`，SHA `9f39b6737279a9fff156050f819ebd6c505a837be36206a53c0c1098628d765d`；第一份長檔名packet在第48份遇Windows長路徑限制，其47份已複製原件保留，新packet以短檔名及完整source metadata完成。Root本輪QA全部終態，只追加Snapshot／本QA；Manual、Roadmap、架構政策、正式產品來源、原資料、main／push／發布未改。
+
+### Health compat v7 靜態拒絕與 P08 seed 守衛核實
+
+上一 goal turn 回報進度並核實 P08 的兩個原函式分支，取得可改變修正動作的證據，分類 progress。本輪續核 Health v7 與 P08 交易／整合案例；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包接受。
+
+#### Health v7：產品內容與閉包核對通過，清冊 live pin 拒絕
+
+Manifest SHA `e621d12905c9366cda131fb12698110b788c9e21446e90719aa4e3c5da7a6451`。Root 核969 checks／499 unique paths、四份formal preimages與65756-byte全文diff重建；兩個產品來源與v6所指v5 bytes相同。四個Health依賴均指v2_06實際candidate，root逐項核其355 repository modules由v7的360項覆蓋，僅五個compat-only modules；套件initializer／overlay與forward candidate另核精確重綁。已讀兩份產品validator及測試差異，fixture改動保留日期與typed blocker守衛。
+
+唯一不符為 `prior_compat_freeze_pin.sidecar_sha256`：path指v4的111-byte `.sha256`原檔，但expected值`86337ea3…67d2bee`是檔內manifest token；actual raw file SHA為`9ed4b9d77642d4d4bd043dcdf89aeb8303672a79e14dfcc514f8be26cd1666ba`。此欄由v5繼承，未沿v6修正，故**QA前拒絕，沒有執行origin／pytest／Qt**。原拒絕收據 `root/health_compat_v7_static_review_b254b5259ac2434db5c7b0512cfc721c/receipt.json` SHA `c2a8bd1b38c88ae49dae92dff2c60a6e7f4d55f394d5222f48197a29ca6fa4de`。已交原owner另建metadata-only v8，保留v7原件與產品／測試／overlay／closure的原bytes及paths。另核v7說明誤寫v6有3 skip，原stdout終態實為47 PASS／4 FAIL／3.04秒、沒有skip；新版說明需據原件修正，舊說明保留追溯。
+
+#### P08 v4：兩個消費狀態分支實際核實與交易窗口
+
+Root只抽取凍結原AST的 `_require_columns`、`_require_primary_key`、`_seed_consumption_status`，在純記憶體SQLite執行；未跑完整reader／writer或金融計算。存在同帳戶later snapshot時，daily兩表缺席及兩表存在但皆空，**兩案實際均回unconsumed**。沒有可驗daily證據的later snapshot應回unknown，歷史seed仍可讀但首次clock／恢復寫入應拒絕；不可憑缺證據推定未消費。
+
+另靜態核 `_record_seed_clock` line1025在BEGIN IMMEDIATE（1068）前讀exact seed，鎖內至commit（1102）沒有base／hash／consumption重驗，存在並行consumer先提交的窗口；**未重現runtime race**。測試line228仍期待clock_unknown，但新writer已自動寫clock；pending daily測試line437建表即結束、無assert，receipt／operation片段誤放line463的later-snapshot測試並引用未定義connection。已交owner保留v4與績效v5 WIP、另建seed lifecycle v2修正版：鎖內核同份base／身份／消費狀態、真companion failure與resume、正確分離測試scope並保留真daily consumed整合。
+
+75 pins起訖相同；收據 `root/p08_v4_seed_guards_057fcc07bc444cacb96111cb56c51968/receipt.json` SHA `86b7e187f2178f44ef9de5816980ef90b37e770f35e108eacf184bfeb54e26f1`。Root診斷工具前兩次僅因自己的常數擷取不足停止，未產生成功收據；修為只取數值budget後完成上述原函式核實，沒有改候選產品。續讀整合案例確認MA／KD各自seed／intent／ledger、buy成本、blocked zero-fill hold、death-cross exit與fresh PID讀回有具體assertions；這是測試內容審查，**未執行或接受完整生命週期、績效、正常UI／M3**。
+
+#### 保存與接續
+
+P01 v3首次create-only組裝遇歷史預像深層路徑限制，partial原件保留；原owner以短名稱唯一sibling及history_v1／history_v2映射續行，未跑preflight或matrix。三位原代理均confirmed running。Root保存10份raw與兩文件前像至 `root/compat7_seed_review_a46ca13b7af143959f9c31ff236c184f/receipt.json`，SHA `deb249e775b5cf92498bf80e0a17cd105fcc266e4bbdea099ac6832ac2d0ee69`。Coverage限定Snapshot最新狀態與本QA追加；產品入口／Manual／Roadmap／架構與Index未變，保留其他owner dirty內容。正式產品與原始資料未動，完整目標active。
+
+### Health 正式十檔整合與廣回歸缺口／P08 seed v2 原函式核驗
+
+上一 goal turn 回覆產品剩餘狀態，分類 no progress。本輪重新核工作樹與三位原代理，完成正式 Health 套用及回歸，取得可改變接續動作的失敗證據；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包接受。
+
+#### 前序候選與 P01 終態補記
+
+Health compat v8 manifest SHA `c894f72c1c8c5bd261e43911de84e0fafec479b410de86031c20941e0fde9069`：root 核991 checks／504 unique pins、實際六來源，兩檔 **51 PASS／4.29秒／native0**，起訖 pins 不變、fresh bytecode 根空；metadata-only 修正保留 v7 產品與測試原件。Focused 收據 `root/health_compat_v8_focused_tests_7311445cb8db4166afe4fdeecbf24b8a/receipt.json` SHA `e9184c47c35731da61be6b625edf5faa0f77b866373eb5a22fdb82665947dd00`。Health v2_06＋compat v8 六來源 mypy、十檔語法通過，577 個 union pins 不變；收據 `root/health_pair_types_193424d3d90b423493214ae71a695f81/receipt.json` SHA `4985a04dc2e9d9c8ff1cd713158527de48e26acb9e460bd6a51006a3c5a5c115`。
+
+P01 supervision v3f manifest SHA `214405d0ef0a821930260062434a4b65e2ab59102291d6c4ae45c41111a65d62`：root 核2327 checks／1107 pins、20 bridges與全文 delta，pure preflight native0／store access0、80 formal／51 product／594 runtime。完整十個 Job failure tests **8 PASS／2 FAIL／1.72秒／native1**；兩 fail 均在 supervisor line230 把 supplement 的 path／SHA／size row 與原 manifest 的 path／SHA row 作整個 dict 相等比較。實際 path／SHA 相同，153015-byte size 只在 supplement，故不得宣稱 preflight 通過代表 standalone 已可跑。收據 `root/p01_v3f_jobs_9b2585ed01614c9ea7e212557f011dd4/receipt.json` SHA `650a7343a8cf9b504dbd818c135daa89a8b7ae0dc414d6ab1f06cedf412ee065`；1107 pins 不變，完整矩陣未釋出。Owner 新 v4 freeze `ed111070c0767a9eda93eebc05098ebda4129d43b258e78af5c1714dbdc0004f` 已回，root 尚未審查／執行；原五 cold／一 warm、1000列20頁／完整DTO、三類各30樣本、600秒與strict300ms保持。
+
+#### 正式 Health 套用與逐函式轉換審查
+
+十目標提案 `output/qa/health_formal_1011/freeze_v1/`，manifest SHA `c5ba9311661c8994c06def2cf9bdce9c00b8675269dbf0f082cc4d952b37c56f`。Root 核596 pins，從八份現有正式原檔及兩個 absent target 重建224941-byte全文diff。六個 product sources 與 v2_06／v8 已驗候選逐 byte 相同；四份 test 的所有原函式 AST 保持，只有兩個 archive 新程序函式移除 child origin scaffolding 並改正式 cwd／env，root 逐語句核其餘內容與 assertion 相同。新 helper 只清除 PYTHONPATH 並要求 PYTHONNOUSERSITE；沒有刪新程序旅程或負例。
+
+Static 收據 `root/health_formal_static_a25960a3e2384205b4717080b5068699/receipt.json` SHA `2e7811d3d7034c66460e28cc0346ab4f4e8f5cec7fccf5b3c4289ddebd3943eb`。Root 保存八份 preimages 後套入六產品及四測試，新增 `app_module/position_health_saved_archive.py`／`tests/test_position_health_saved_archive.py`；apply 收據 `root/health_formal_apply_64415fb690f34c34a6518e27b1fde5ae/receipt.json` SHA `73f1bf9a7d7c2eee03c2fbabb60b76a374a5d180e59669e1a811457177d6d228`。這些正式檔目前是未提交 WIP，廣回歸失敗未解，不授整合完成。
+
+| 正式匯入階段 | 原始終態與界線 |
+|---|---|
+| 六來源 origin | Fresh interpreter 真正式 app_module 六來源／54 loaded local 核驗通過；不載入 scratch overlay，fresh bytecode 根空。 |
+| 四檔 focused sandbox | **39 PASS／51 FAIL／21.45秒**。私人 temp 的 os.replace／strict resolve 遭 WinError5；原失敗完整保存，不能寫成產品全部通過。 |
+| 同源四檔 focused host | **89 PASS／1 skip／9.64秒／native0**，610 pins 起訖相同。收據 `root/health_formal_focused_babce770647a4b0faf1021fc2069626a/receipt.json` SHA `3302b3dc89e0927e200e83a6e0b0b5c50bab74247c4d056528238dece677208b`；skip 為 reparse 環境能力，未授 G3／G4。 |
+| 六來源 mypy／十檔語法 | **兩命令 native0**，610 pins 相同、fresh cache空。收據 `root/health_formal_types_a6b72637c80a4735b15a1a67b7dc2560/receipt.json` SHA `926f1933b529bd37680eab873e0ab98c32c8787e8366dcf30133e8a78bca4913`。 |
+| 十一檔既有回歸 sandbox | **100 PASS／22 FAIL／1 skip／53.45秒**。來源不變；含私人 strict resolve WinError5，完整 failure list 保留。 |
+| 同源十一檔回歸 host | **117 PASS／5 FAIL／1 skip／29.81秒／native1**，610 pins 相同。收據 `root/health_formal_regression_03252c1e43f84723a2bc69738b05a507/receipt.json` SHA `6c542b5325292a52e7dede9d449393701f3cdee321df89357941a9c527b3c451`。 |
+
+Host 的五項缺口：舊 baseline bridge fixture 的 `sha256:rows` 被 archive receipt hash validator 拒絕；scheduled integration 預期 manual_action_required=true、實際 false（本輪未改 scheduler）；三個 source-provider 案例的9/8 captured＋31日 calendar fixture 在目前日期已失效。Root 已讀 JUnit 原 assertion 與 SQL／calendar 入口，交 owner 分辨既有 fixture／契約與產品回歸，不先刪 assertion 或放寬 validator。正常 Portfolio／Main exact receipt 操作與策略 EOD adapter 仍待。
+
+Root QA 工具先因 Windows path 分類、命令列過長而在 child 啟動前停止；改用 manifest 檔輸入後，第一個 origin 把 .venv 誤判 repository source，native1 原件保留。修成與原 origin probe 相同的 repository／.venv 分類後才進入 pytest；沒有修改產品或把工具錯誤當產品 defect。Static 工具先因 CRLF 與 receipt exit-code 欄位差異停止，修正 raw decode／具名欄位後完成全文核對。
+
+#### P08 seed v2：原分支修正通過，完整候選待 QA
+
+Manifest SHA `5f222a3fd38f40d6a59d588fe4e707929a05ce58eb7203305c8eca8927b8eb51`。Root 176 checks／118 pins，核21 base＋21 candidate＋18 dependencies及v4原件；九檔 patch逐 hunk 套原文重建全部新內容，prior module AST只變 consumption及clock writer兩函式，其餘變更限定scratch import或明示測試。純記憶體SQLite執行原三helper：沒有later時 absent／empty 均unconsumed，有later時兩案均unknown。Writer 的 exact binding／base／hash／consumption讀回已在 BEGIN IMMEDIATE與commit之間；真writer failure／resume與真daily consumed交錯測試內容已核，未執行完整reader／writer或runtime race。
+
+收據 `root/p08_seed_v2_review_2b5469a59c1c4a62ac7b8ed210ef611b/receipt.json` SHA `dbfdb4d88d3a7f5dcf32b071373fe49585755307619445e5931aaa1a61f1d215`。Root另核新existing-clock分支在SQL byte/type預檢前materialize receipt_json，交owner補有界讀取；窄v3 sibling freeze SHA `857476db66da8f3d4bc6b6f13c74feb472cd36388bcc205aeadf481b2d851920` 已回，待root審查。V2與v4保持原件；完整MA／KD生命週期、績效／benchmark、正常UI與M3仍未接受。
+
+#### 保存、文件與接續
+
+Root保存79份raw及Snapshot／本QA／目前架構／Manual四份前像至 `root/health_formal_seed_review_128321c02af048b683d4dfdfd932fb5e/receipt.json` SHA `b175dd7459fd03f540ad385a6236ef99e2084f3cd2d836fc3833a87078980503`。Coverage限定四份文件的本輪增量，Roadmap方向／驗收標準、target architecture、中央Index入口與UI來源未改。UI強制命令未因backend變更重跑；已執行Portfolio既有UI回歸，不能代完整Main。原始資料、main／push／發布未改；本輪所有root QA已終態，三代理續行Health五缺口／正常UI、P01 v4／完整效能、P08有界clock與績效。正式產品改動留WIP，完整目標active。

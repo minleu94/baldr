@@ -32,3 +32,5 @@
 ## 全清單、歷史與維護
 
 [2026-10-06 全文件目錄（歷史快照）](09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md)是當日 tracked 文件的盤點快照，不是即時清冊；新增文件或後續變更以目前目錄、各區 README 與 [DOCUMENTATION_INDEX](00_core/DOCUMENTATION_INDEX.md) 核對。[整理 manifest](09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)保存該輪歸檔與恢復紀錄。原日期化補充完整見[入口歷史](09_archive/DOCUMENTATION_ENTRY_HISTORY_20261006.md)，資料保留用途看[資產登記](03_data/STORAGE_ASSET_REGISTER_20261006.md)，知識圖使用看[Graphify 維護](00_core/DOCUMENTATION_GRAPH_GUIDE.md)。
+
+本輪全文件現況以[文件治理狀態矩陣](00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)與[逐檔路徑 manifest](00_core/DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)為準；前者列出權威、導覽、證據、歷史分類與未解衝突，後者保存逐路徑狀態及 clean 文件的 HEAD 指紋。

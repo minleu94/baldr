@@ -48,3 +48,7 @@ result = extract(paths, cache_root=isolated_input, parallel=True, max_workers=4)
 最終圖有 35,299 個節點、102,233 條邊及 990 個 communities。Graph JSON、aggregate HTML、`GRAPH_REPORT.md`、diagnostics、unresolved edges、manifest 與 recipe 均保存在 ignored `output/qa/baldr_documentation_reorganization_20261009/`。原 `graphify-out` metadata 前後一致：7,000 files、26 directories、645,610,308 bytes，metadata SHA-256 為 `ee8800cce274fb1cab612471d0076d6c5e9858f2cda450d9484003dcd68aa911`；只核對 metadata，未讀取或雜湊原圖內容。
 
 source-based community labels 只描述主要來源檔，AST 的 INFERRED 關係是靜態 heuristic，不是 LLM 或 runtime／測試事實。超過 5000 nodes 只用 aggregate HTML；原 JSON、diagnostics、raw cohesion 與圖譜 snapshot SHA 維持 ignored。
+
+## 2026-10-11 全 docs 治理後刷新
+
+本輪逐檔核對及目錄分類見[文件治理狀態矩陣](DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)與[逐檔路徑 manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。Graphify 刷新安排在矩陣、清冊及導覽入口完成精確路徑提交後；輸入只取當時 clean tracked 文件與核准的正式 Python 原始碼，dirty／受保護路徑不讀取、不納入。圖譜與 build summary 保存在 ignored `output/qa/baldr_documentation_reorganization_20261011/`；保留根目錄既有 `graphify-out`。本輪使用本機 AST 與明示 Markdown 連結，不做 semantic extraction 或 network transfer；細節記錄於該輸出目錄的 `graphify_build_summary.json`。

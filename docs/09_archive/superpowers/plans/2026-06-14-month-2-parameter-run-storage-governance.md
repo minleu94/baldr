@@ -3,6 +3,8 @@
 > 不得重送本文中的舊 prompt，也不得直接照做舊 Git、rollback、刪除或 `--apply` 命令。
 > 若需執行相關工作，請先依當前使用者指示、根目錄 `AGENTS.md` 與 `docs/agents/git_exclusions.md`，並查核 `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DEVELOPMENT_ROADMAP.md`、`docs/00_core/ROADMAP_6M_ENGINEERING.md`、`docs/07_guides/APPLICATION_MANUAL.md` 後判定現況、範圍與授權。
 
+> **歷史狀態稽核（2026-10-11）**：保留原有核取狀態。本文內部有未解矛盾：A3 Step 1 與 Step 4 仍勾選，但第二輪驗收明說兩步不得標為完成；A6 Step 7 的使用者核准未勾選，卻與 §0 的 M2-A 核准及 M2-B 已開始並存；B6 的「核准後才開始 M2-C」未勾選，卻與 §0 的 M2-C 已開始及 Month 2 最終 Gate 通過並存。故本計畫不能單獨證明目前核准或 closeout；須回到具名日期化 QA 收據及[目前專案狀態](../../../00_core/PROJECT_SNAPSHOT.md)核實。不得改動下方歷史核取框，也不得由此推定 Gate 狀態。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 完成指標參數、推薦權重、統一 Research Run Registry、Cross-run Comparison 與 Registry-based Promote Gate，使每一次研究 run 可保存、可比較、可重播、可追溯。

@@ -87,7 +87,7 @@
 | `BACKTEST_LAB_FEATURES.md` | Backtest Lab 功能與回放契約參考。 | 全文；修正 sizing／市場限制仍列待辦的過時狀態；保留未單獨核實的成本模型切換項目；區分 Phase 3.5 的 10 筆 UI 前置檢查與 Registry Lifecycle 20 筆最低門檻，並限定圖表 benchmark 說明不代表 Registry readback 會回抓。未完成清單所稱「與推薦分析整合」範圍仍含糊，保留待釐清。 |
 | `SCORE_EXPLANATION.md` | 評分規則／結果解釋參考。 | 全文；未發現和本輪核對的 Scoped SSOT 明確衝突。 |
 | `STRATEGY_DESIGN_SPECIFICATION.md` | 策略設計參考，不取代 Registry／程式契約。 | 全文；舊 Promote 流程維持 2026-01-02 歷史快照；新增研究提案／示例不代表現行實作的界線，標明 MVP 日期與門檻及前向填充只是設計建議。 |
-| `UI_FEATURES_DOCUMENTATION.md` | UI 行為參考，不是操作或即時狀態權威。 | 全文；更新整理日期至 2026-10-07、刪除重複窄版敘述，將無來源 `3/3 ready` 改為動態 projection 說明，並將 Gate 4 文字改成驗收範圍而非即時狀態。 |
+| `UI_FEATURES_DOCUMENTATION.md` | UI 行為參考，不是操作或即時狀態權威。 | 全文；Entry 187 原核讀至 2026-10-07。本輪重新全文核讀 656 行現況，新增的 5 行是後續研究背景取消、Watchlist 精確收藏重開與更新記錄；未發現和 README、Product §11、QA 真人接受限制的衝突，未改原件。 |
 | `USER_GUIDE.md` | 推薦／回測／資料治理的進階教學，不是操作權威。 | 全文；移除無研究依據的預期回撤數值，校正風險分數分級，移除未見程式實作的 p-value 判讀，標示舊推薦送回測流程，改用 `DATA_ROOT`，撤掉固定 37 分點與舊節流／重試保證；另標明「最新」優化記錄日期，補正 SQLite 優先、CSV fallback 的回測資料讀取順序。 |
 | `BACKTEST_LAB_CHECKLIST.md` | Archive 歷史原文的相容導引。 | 全文核對短導引與目標位置，不把 stub 當 Archive 正文核讀。 |
 | `BACKTEST_LAB_FAQ.md` | Archive 歷史原文的相容導引。 | 全文核對短導引與目標位置，不把 stub 當 Archive 正文核讀。 |
@@ -662,3 +662,7 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 REFACTOR_DISPATCH 補記：** 八份歷史 Gemini dispatch／review 導引已具名全文再核讀；已含在 Entry 201 的 19/19 aggregate，舊 aggregate 無逐檔清冊，本批不推算淨增量。歷史派工與 review 提示不構成目前開工授權；受保護的 system architecture 未納入。見 [Coverage History Entry 286](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-286)。
 
 **2026-10-11 REFACTOR_REPORTS 補記：** 8 份具名全文核讀，六份既有局部記錄升 full、兩份新增全文；兩份舊 checkpoint 的過時狀態已依 R031／test inventory 加日期與範圍提示。Entry 213 的可辨識局部清單已全部升 full，惟舊 74-file aggregate 仍因無 manifest 不可精確去重。見 [Coverage History Entry 287](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-287)。
+
+**2026-10-11 UI 功能文件增量：** `UI_FEATURES_DOCUMENTATION.md` 依現行 656 行全文再核讀；相較既有 Entry 187 的 651 行版本新增 5 行，內容與 README／Product §11／QA pending 界線一致，原件保留。見 [Coverage History Entry 288](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-288)。Entry 187 的成本模型切換與「與推薦分析整合」範圍未解項目仍待核實。
+
+**2026-10-11 QA Operations／Integration 增量：** 再核讀 7 份 QA 單篇文件，均為新增具名全文紀錄，對照後續收據後原件保留未改；BankTaiwan 假日 skip、Stage1／Integration／V6 等證據界線均維持限定範圍。見 [Coverage History Entry 289](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-289)。舊 QA aggregate 無逐檔 manifest，不據此重算全域去重數。

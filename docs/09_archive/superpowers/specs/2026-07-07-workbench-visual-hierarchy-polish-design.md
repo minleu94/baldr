@@ -23,4 +23,6 @@
 
 ## Formal Data Gate
 
+> **歷史快照界線（2026-10-11）**：以下 Phase 0 `0/3`、multi-day dry-run `1/3` 與 Phase 5 approval 等數字，只代表 2026-07-07 當日記錄；原數字保留作歷史脈絡。現況須查最新具名 QA receipt 與 Snapshot。
+
 本次只改善 UI 可讀性。Phase 0 weekly history `0/3`、multi-day dry-run `1/3`、manual review note rhythm、action item rhythm 與 Phase 5 scheduler approval 仍需正式資料與真實時間紀錄才能標示完成。

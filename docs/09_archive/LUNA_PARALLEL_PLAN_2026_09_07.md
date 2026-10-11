@@ -1,5 +1,7 @@
 # LUNA MAX 三線平行交付計畫
 
+> **歷史任務計畫（2026-10-11）：** 本文是 2026-09-07 的工作計畫；其中長篇 worktree、ownership 與執行指示只適用於當時工作包，不構成目前授權，請勿重播或視為當前任務。現行工作依使用者當前指示、根目錄 `AGENTS.md` 與目前權威文件判讀。
+
 > 使用者要求的下一輪工作包，為 [V4 Completion Plan](../00_core/V4_COMPLETION_PLAN_2026_09_07.md) 的執行 companion。它不覆寫目前狀態、產品方向或版本 Gate。查核基線與本輪清理見[專案整併報告](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)。
 
 ## 目標與主要判斷

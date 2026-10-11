@@ -650,3 +650,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 REFACTOR_REPORTS 補記：** R001／R002／R008 再全文核讀 8 份；R008 三份由 Entry 213 局部掃描升為全文，另五份新增具名全文記錄。原件狀態與 R031／後續 acceptance 一致，無需修訂；舊 74-file aggregate 無逐檔 manifest，不推算精確去重數。見 [Coverage History Entry 279](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-279)。
 
 **2026-10-11 REFACTOR_TASKS 補記：** R007、R009–R015 八份 task spec 已全文再核讀並新增逐檔可查證紀錄。Matrix 第 146 行舊有 32/32 aggregate 沒有逐檔 manifest；本批只補精確路徑／核讀證據，不重算 aggregate，也不把 task spec 視為目前派工或授權。見 [Coverage History Entry 280](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-280)。
+
+**2026-10-11 REFACTOR_TASKS 補記：** R016–R023 八份 task spec 已全文再核讀；R031 後續 disposition 與各規格範圍一致，原件保留。這批與 Entry 280 同屬舊 32/32 aggregate 的具名再核讀，不據此重算總數。見 [Coverage History Entry 281](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-281)。

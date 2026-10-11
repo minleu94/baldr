@@ -3245,3 +3245,8 @@ R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明�
 全文複核 `DOCUMENTATION_INDEX.md`、`DOC_COVERAGE_MAP.md` 與 `LEGACY_ROADMAP_CARRYOVER.md` 的對應段落。Index 移除重複逐日排程 QA 摘要，保留 10/09 當日摘要與共用 Runbook，將 10/08、10/07、10/06 日期化收據導向 Operations Testing QA Index。Coverage Map 將 First Wave 截圖敘述限定為 QA 收據在 2026-10-06 的記錄；未核實本機 `output/qa/` 當前仍有檔案，clean checkout 亦取不到 ignored 圖片。
 
 Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告、Month 2 Registry 治理計畫、V1 completion record 及 Full App Healthcheck coverage mapping 的直接連結。工程交付與現行驗收界線分開：十檔 OOS pilot 不代表全市場；U-024 雖歷史上列通過，mapping 同時記錄 compact pagination 回歸風險；Excel B-037/R-019 及批次 B-040 仍列 candidate，不能由背景 TaskWorker／原子寫入的實作紀錄外推成所有 UI 匯出流程正式通過。未讀受保護 Snapshot、Manual、system architecture、使用者完成計畫；未執行測試、Graphify 或全域 links／anchors scan。
+
+<a id="coverage-entry-321"></a>
+## 2026-10-11 docs tracked inventory 基數重算
+
+以目前 Git index `git ls-files docs` 重新計數：1,487 個 tracked paths，其中 1,468 Markdown、19 非 Markdown。按目錄分組與矩陣路徑總數相符。更正 Matrix repo 外 Markdown 附表與舊狀態摘要中沿用的 1,486 現行總數；Entry 215 的 1,486／1,467 留作當時日期快照，不回寫成錯誤歷史。此為路徑 metadata 統計，不是正文審核完成度證據；未讀任何額外文件，未跑測試、Graphify 或 links／anchors scan。

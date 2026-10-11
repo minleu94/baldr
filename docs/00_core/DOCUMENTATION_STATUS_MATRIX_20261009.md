@@ -314,7 +314,7 @@
 | 歷史 notebook 程式匯出 | 2 | `notebooks/01_stock_data_collector.md`、`notebooks/02_technical_calculator.md` | 屬舊程式／輸出示例，含 2025-04 輸出與硬編碼資料根；已補歷史示例及執行前核對路徑警語，不把它們當目前 API 或操作手冊。 |
 | 測試與 fixture provenance 指南 | 3 | `tests/manual/README.md`、`tests/fixtures/p0_official_sources/README.md`、`tests/fixtures/security_lifecycle/README.md` | 依其目錄功能列作測試／來源 provenance 導覽；僅作角色及相關段落抽查，未逐份全文審閱。 |
 | UI 指南 | 2 | `ui_app/README.md`、`ui_qt/README.md` | `ui_qt/README.md` workspace 清單已對齊 `WORKSPACE_DEFINITIONS` 的 9 個入口，並說明 Daily Decision Desk 唯一位置；完成／backlog 不再另列未出現在 Roadmap 的 Month 6.1。`ui_app` 作 legacy UI 導覽，未全文審閱。 |
-| **合計** | **26** |  | 與 `docs/` 目前 1,486 個 tracked paths 分開計數。 |
+| **合計** | **26** |  | 與 `docs/` 目前 1,487 個 tracked paths 分開計數。 |
 
 ### 本批已修正的 repo 外文件衝突
 
@@ -336,7 +336,7 @@
 3. QA 與 Archive 從入口可達、正文已讀、狀態與證據仍有效四方面分開統計；不把舊 QA 快照重寫成新結論。
 4. 固定基線的連結／錨點掃描與受控 Graphify 建置只作為歷史導覽基線；它們不代表本次內容治理完成，也不涵蓋後續提交的變更。待所有目錄的文件分類、正文衝突／過時檢查與修訂批次完成後，才執行並驗證最終 repo-wide 連結／錨點掃描及 Graphify 刷新。
 
-**狀態：** Entry 171–206 的整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登小型目錄與 QA／Archive 分層盤點，Entry 182–197 登錄 Guides、repo 外 Markdown、F03 單項同步、QA／Archive 路由、權威邊界修正、`02_features/` 全文覆核與歷史 Phase 引用校正、Architecture 根層及 REFACTOR_REPORTS 核讀修訂、Archive／Superpowers 原件時點提示、QA 路徑／inventory 差異與歷史清冊快照更正、圖表／技術指南範圍校正、03_data 操作流程校正、過時派送材料與 Manual 歷史內容分流及舊標題轉址。Entry 198–204 補登待真人驗收與資料契約入口、REFACTOR_REPORTS／Archive 時點提示、Dispatch 舊 Gemini prompt 導覽校正、目標架構逐檔核對與 Wave 7/9/14 scope 衝突修訂、QA 可讀範圍增量與最新核讀進度、報告／Archive 原件的後續全文核讀及歷史範圍修訂；Entry 205–206 完成 Archive 巢狀目錄核讀、歷史操作警語及原始雜湊保全。`docs/` 目前有 1,486 個 tracked paths；小型目錄已列全檔路徑，Core、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、非索引 QA 目的頁、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
+**狀態：** Entry 171–206 的整理及其歷史範圍見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)。Entry 179 校正固定基線計數與導覽口徑，Entry 180 完成 Core 18 份逐檔分類，Entry 181 補登小型目錄與 QA／Archive 分層盤點，Entry 182–197 登錄 Guides、repo 外 Markdown、F03 單項同步、QA／Archive 路由、權威邊界修正、`02_features/` 全文覆核與歷史 Phase 引用校正、Architecture 根層及 REFACTOR_REPORTS 核讀修訂、Archive／Superpowers 原件時點提示、QA 路徑／inventory 差異與歷史清冊快照更正、圖表／技術指南範圍校正、03_data 操作流程校正、過時派送材料與 Manual 歷史內容分流及舊標題轉址。Entry 198–204 補登待真人驗收與資料契約入口、REFACTOR_REPORTS／Archive 時點提示、Dispatch 舊 Gemini prompt 導覽校正、目標架構逐檔核對與 Wave 7/9/14 scope 衝突修訂、QA 可讀範圍增量與最新核讀進度、報告／Archive 原件的後續全文核讀及歷史範圍修訂；Entry 205–206 完成 Archive 巢狀目錄核讀、歷史操作警語及原始雜湊保全。依目前 Git index 重算，`docs/` 有 1,487 個 tracked paths（1,468 Markdown、19 非 Markdown）；小型目錄已列全檔路徑，Core、agents、strategies 逐檔列出；大型 Architecture、QA、Archive 與 Superpowers 依索引、清冊及分層計數記錄。這是分類與抽樣覆核基線，不代表所有正文已逐篇核實。P8 候選已撤回；仍有長篇任務／歷史證據、非索引 QA 目的頁、Archive 原文與 Superpowers 原文未全文閱讀，Archive 可達性也不等於逐筆語義來源核對。Graphify 最終刷新與目前 HEAD 的 repo-wide 連結／錨點驗證均待所有目錄內容治理與修訂完成後執行。現有 Graphify CLI 啟動器仍故障；固定基線新建的 AST／明示 Markdown link 導覽圖保存在 ignored QA 輸出，未做語義抽取且跨 chunk import 未 reconcile。舊 `graphify-out` 保持原狀。
 
 **2026-10-10 增量：** Coverage History Entry 182 已登錄 Guides 20 份逐檔分類（18 全文、2 局部）、四項內容修正，以及 Superpowers 7 筆 Archive manifest 生命週期欄位修正與一份舊計畫的歷史定位標示。這些批次未刪除或移動文件；未跑測試、未刷新 Graphify。F03 follow-up 與根目錄 `$null` 仍保持未納入本批。
 
@@ -701,3 +701,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA H20／效能收據增量：** Coverage History Entry 319 具名全文核讀 10 份 QA 內容文件；6 份加上日期、版本或授權範圍提示，另修正原保存 2382 計時方案標題，精確表示部分旅程已執行但完整四端點驗收未通過。不同合成來源與固定版本收據維持各自範圍，不合併成產品／Main／EXE／真人接受。舊 QA aggregate 仍無逐檔 manifest，不據此推算全域完成率。
 
 **2026-10-11 Core 治理路由與證據範圍：** Coverage History Entry 320 精簡中央 Index 的日期化排程摘要，改由 QA 主題索引集中導覽；為 Legacy Carryover 的完成列加直接報告／驗收路由並收窄分頁及 Excel 工程完成範圍；Coverage Map 的 First Wave 截圖位置改標為 10/06 收據所記錄的本機位置，不再暗示目前仍可用。
+
+**2026-10-11 tracked inventory 重算：** Coverage History Entry 321 依目前 Git index 重算 `docs/` 為 1,487 paths（1,468 Markdown、19 非 Markdown），並更正本矩陣 repo 外 Markdown 附表與狀態摘要中沿用的 1,486 舊總數；歷史 Entry 215 的 1,486 數字保留為當時快照。

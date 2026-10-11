@@ -1,5 +1,7 @@
 # R007 標準時區名稱別名勘誤獨立審查
 
+> 本 `PASS` 限於本文列出的三份 timezone-name erratum 凍結 bytes；它不替代 R007 task disposition。現行 bounded import scope 請核對 [R031 R007 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 ## 凍結範圍
 
 本次只審查 root 指定的三份凍結輸入。審查開始、測試完成後的 SHA-256 均相同。

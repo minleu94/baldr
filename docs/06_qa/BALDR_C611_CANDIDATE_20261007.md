@@ -4,7 +4,7 @@
 
 新候選在 dist/candidate_c611ed515ca0_1cc2db97/baldr/baldr.exe，53,122,929 bytes，SHA256 d37bed44f21be2a1bde646a54c53097cb3f5a2898693e31efa9fd205b8c5e2ef。source archive SHA256 4336ff7be5ddb8581e3e205ede6397ecfae7321b4a02145f19e6171baa9653bb，依賴鎖 b1a3bb4bd03246c025f09bca3658104aff6c676983c878f46d118cec992df743，建置完成於 2026-10-08 02:06:52.986117 UTC。中央逐值核 source metadata／BUILD_INFO／candidate receipt、archive 與 exe hashes；原 exe SHA ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e 不變。
 
-BUILD_INFO 保持 immutable built_not_validated，驗證收據另存，不覆寫建置收據。中央建置核對 output/qa/c611_candidate_build_root_20261007_a.json 不授同版、原 Main H20 或 Native 資格。
+BUILD_INFO 保持 immutable built_not_validated，驗證收據另存，不覆寫建置收據。中央建置核對 `output/qa/c611_candidate_build_root_20261007_a.json` 只記建置階段證據，本身不授同版、原 Main H20 或 Native 資格；固定候選後續的完整母體同版收據見下方「最新完整母體同版資格」。
 
 | 驗收範圍 | 目前證據 | 邊界 |
 |---|---|---|

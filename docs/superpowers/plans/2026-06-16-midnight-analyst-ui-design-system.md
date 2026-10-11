@@ -1,5 +1,8 @@
 # Midnight Analyst UI Design System Implementation Plan
 
+> **歷史設計提醒（2026-06-16）**：本文是 Midnight Analyst 的歷史 UI 設計，不是目前 UI 行為、實作狀態或待辦權威。現行操作與結果判讀依 [Application Manual](../../07_guides/APPLICATION_MANUAL.md)；具體功能狀態依各主題 QA 與 Scoped SSOT。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Establish a unified dark PySide6 design language named Midnight Analyst, then rebuild Daily Decision Desk as the first reference screen.

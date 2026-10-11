@@ -1,5 +1,8 @@
 # Broker Flow SQLite and UI Recovery Plan
 
+> **歷史計畫／操作提醒（2026-06-11）**：本文包含 SQLite 寫入與回補步驟，僅供歷史追溯，不是目前修復派工、資料寫入或 rollback 授權，請勿直接重跑。現行 broker-flow 唯一鍵包含 trade_type，欄位契約依 [DATA_FETCHING_LOGIC §MoneyDJ](../../03_data/DATA_FETCHING_LOGIC.md)；操作入口依 [Application Manual](../../07_guides/APPLICATION_MANUAL.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:systematic-debugging` first, then `superpowers:test-driven-development`. Do not modify production data until the duplicate-key source and the broken read path are proven.
 
 **Goal:** 找出並修復券商分點同步 SQLite 的唯一鍵衝突，以及主力流向頁面資料錯誤、空白或數值異常問題，同時保證 MoneyDJ `c=E` 張數與 `c=B` 千元金額不再混用。

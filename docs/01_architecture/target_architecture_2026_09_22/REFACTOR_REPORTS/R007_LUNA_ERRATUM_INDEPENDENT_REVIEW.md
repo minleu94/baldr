@@ -1,5 +1,7 @@
 # R007 日期深凍結勘誤獨立審查
 
+> 本 `PASS` 僅適用下列凍結 bytes 與 aware-datetime 深凍結勘誤；後續標準時區名稱別名修正另由 [timezone-name 獨立審查](R007_LUNA_TZNAME_INDEPENDENT_REVIEW.md) 驗收。R007 目前的 bounded import disposition 以 [R031 R007 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 為準。
+
 REVIEW_STATUS: PASS
 
 ## 凍結範圍

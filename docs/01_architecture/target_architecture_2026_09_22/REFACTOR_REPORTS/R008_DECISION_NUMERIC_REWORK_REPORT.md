@@ -1,5 +1,7 @@
 # R008 Decision 數值與 Enum 深凍結回修報告
 
+> 本報告記錄數值／Enum 欄位回修的 scoped evidence；文末「未處理項」是該回修的 ownership 範圍，不單獨裁定目前 R008 task blockers。現行 bounded contract disposition 見 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 ## 結果
 
 依 R008-LUNA-04、R008-IQA-01 decision 側 finding，以及 FINAL_TARGET_ARCHITECTURE §5.3 與 INV-06／08／11，完成限定回修：

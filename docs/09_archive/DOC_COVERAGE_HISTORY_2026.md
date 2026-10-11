@@ -2632,3 +2632,42 @@ Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。
 本批具名全文核讀 10 份：`LEARNING_EVIDENCE_DENOMINATORS_2026_09_18.md`、`LEARNING_EVIDENCE_WORKBENCH_2026_09_14.md`、`LUNA_B_HANDOFF_2026_09_07.md`、`MARKET_CSV_EXPORT_CONSUMER_LANE_20261006.md`、`MATURITY_CALENDAR_REFRESH_WIRING_2026_09_18.md`、`MATURITY_CALENDAR_WIRING_2026_09_18.md`、`ML_RESTATED_DATASET_V2_MERGE_CONTRACT_2026_09_23.md`、`ML_REVISION_AWARE_REBUILD_EXECUTION_PLAN_20261001.md`、`ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md`、`MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md`。既有具名清冊未見這些精確路徑的全文核讀記錄；較早 QA aggregate 無逐檔 manifest，故不推定零重疊，也不調整舊 aggregate。
 
 複核確認這 10 份皆有 QA 主題索引路由，未見索引缺口。應保留日期界線的內容包括：9/17–18 的 learning denominator 數字、9/14–15 workbench 狀態、9/17–18 calendar cache／排程觀測、Luna B 日期化交接，以及 ML merge／rebuild 的舊命令模板。R026 文件內的舊 diagnostics 與待辦應按其歷史收據及 R031 後續收口文件判讀，不作為現行違規或一般能力驗收。未修改這 10 份 QA 原文，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-233"></a>
+## 2026-10-11 REFACTOR_REPORTS R006–R008 具名全文核讀增量
+
+本增量以具名路徑記錄 REFACTOR_REPORTS 的 36 份全文核讀，不回算舊有 82／23／119 基線，因早期報告批次未留完整逐檔清冊，不能證明與舊 aggregate 零重疊。
+
+- **R006／R007 初批（10 份，僅核讀）：** R006_IMPLEMENTATION_REPORT.md、R006_GEMINI_REVIEW.md、R006_SOL_REVIEW.md、R006_SOL_FINAL_PRE_REVIEW.md、R006_SOL_INTEGRATION_REVIEW.md、R006_SOL_REWORK_REVIEW.md、R007_IMPLEMENTATION_REPORT.md、R007_DATETIME_FREEZE_ERRATUM_REPORT.md、R007_TZNAME_ALIAS_ERRATUM_REPORT.md、R007_SOL_TZNAME_ACCEPTANCE.md。R031 雖記錄 R006 closed，正式 binary 仍未載入／預測；R007 驗收只覆蓋 scoped import boundary，不代表一般 reflection sandbox。早期 review verdict 與 Wave 狀態保留為該次歷史結果。
+- **R007 導覽修正（6 份）：** R007_LUNA_ERRATUM_INDEPENDENT_REVIEW.md、R007_LUNA_TZNAME_INDEPENDENT_REVIEW.md、R007_SOL_DATETIME_DEPENDENCY_ERRATUM.md、R007_SOL_ERRATUM_ACCEPTANCE.md、R007_SOL_REVIEW.md、R013_IMPLEMENTATION_REPORT.md。原始 verdict／finding 保留；檔首新增時點與範圍導覽，連到 R031 及適用後續收據。
+- **R008 第一批（10 份）：** R008_APP_DATETIME_FREEZE_REPORT.md、R008_DECISION_DATETIME_FREEZE_REPORT.md、R008_DECISION_NUMERIC_REWORK_REPORT.md、R008_GEMINI_PRE_BATCH_PASS_INTAKE.md、R008_GEMINI_PRE_BATCH_PASS.md、R008_LUNA_DATETIME_FINAL_REVIEW.md、R008_LUNA_FINAL_FROZEN_REVIEW_V2.md、R008_LUNA_FINAL_INDEPENDENT_REVIEW.md、R008_LUNA_PARALLEL_CONTRACT_AUDIT.md、R008_LUNA_PARALLEL_IMPORT_QA_AUDIT.md。
+- **R008 第二批（10 份）：** R008_LUNA_RESULT_ID_INDEPENDENT_REVIEW.md、R008_LUNA_TIMEDELTA_FINAL_REVIEW.md、R008_ML_BINDING_SCOPE_AUDIT.md、R008_ML_RECEIPT_BINDING_ADDENDUM.md、R008_RESULT_ID_COMPATIBILITY_ERRATUM_REPORT.md、R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md、R008_SCOPE_ADDENDUM.md、R008_SOL_DATETIME_FREEZE_ADDENDUM.md、R008_SOL_PRELIMINARY_REVIEW.md、R008_STALE_GEMINI_REVIEW_INTAKE.md。兩批 R008 文件的原 verdict／finding 保留，檔首導向 R031 scoped disposition；timezone-name finding 另連至 app／decision freeze reports 與 SOL final acceptance。R031 closeout 未列 R008 專項，故不聲稱逐項 closeout；R008 的 ML receipt body/hash 與 production wiring 責任仍依 R010／R026 判讀。
+
+R008 去重時另讀 R008_IMPLEMENTATION_REPORT.md 與 R008_SOL_CHANGES_REQUIRED_ML_AVAILABILITY.md，確認既有 Coverage History 以 basename 收錄後排除，不改原件、不列入本批 36 份。四批具名文件中 26 份加上時點／狀態導覽；限定路徑 git diff --check 通過，僅有 CRLF／LF 提示。未讀或採用先前從 dirty PROJECT_SNAPSHOT.md 得到的結論；本項不引用受保護文件。未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-234"></a>
+## 2026-10-11 Superpowers retained originals 第二批全文核讀及檔首警語
+
+全文核讀以下 24 份 retained originals。第一組 12 份 plans：2026-06-11-broker-flow-dual-metric.md、2026-06-11-broker-flow-sqlite-and-ui-recovery.md、2026-06-12-broker-flow-ranked-metric-reconciliation.md、2026-06-16-midnight-analyst-ui-design-system.md、2026-06-16-month5-abnormal-fundamental-diagnostics.md、2026-06-16-month5-availability-data-entrypoint.md、2026-06-16-month5-fundamental-layer-preflight.md、2026-06-16-month5-fundamental-sqlite-migration-v1.md、2026-06-16-month5-revenue-factor-pack-v1.md、2026-06-16-month5-valuation-data-layer-v1.md、2026-06-16-month5-valuation-presentation-policy.md、2026-07-06-broker-branch-registry-backfill.md。第二組 12 份 specs：2026-06-23-healthcheck-issue-resolution-design.md、2026-06-29-full-app-healthcheck-ui-smoke-design.md、2026-06-30-mainwindow-ui-smoke-operation-design.md、2026-07-06-v2-0-unified-decision-workbench-design.md、2026-07-07-workbench-left-navigation-ia-design.md、2026-07-07-workbench-overview-density-redesign.md、2026-07-08-v3-0-engineering-candidate-spec.md、2026-07-09-evidence-quality-design.md、2026-07-09-recomputation-elimination-design.md、2026-07-09-v3-refactor-automation-design.md、2026-07-11-afternoon-safe-refactor-cycles-design.md、2026-07-11-safe-refactor-four-extra-cycles-design.md。舊代表文件／授權樣本 aggregate 缺逐檔 manifest，故不推定零重疊、不調整 69 份歷史原件的舊分母，也不宣稱 69 份均全文閱讀。
+
+第一組中 9 份高風險 plans、第二組中 6 份有直開風險的 specs，共 15 份在標題後新增日期、時點、來源資格或操作授權提醒，原 checklist／正文保留。README 增加直達風險導覽；Archive manifest 保留初始清冊 bytes／SHA 並新增 15 份加註後目前 bytes／SHA 附記，逐份核對吻合。直接開啟的舊 git reset --hard 不再缺少回滾授權提醒；7/11 四輪 automation 的 12／15 矛盾保留為未解歷史差異，不自行推定。新增檔首相對連結均核對目的檔存在。未改另外 9 份已由同批讀取的 retained originals；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-235"></a>
+## 2026-10-11 QA U–Z 具名全文核讀增量（10 份）
+
+全文核讀 10 份：UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md、UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md、UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md、USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md、UX10_MULTI_METHOD_LANE_20261006.md、UX11_SAVED_RESULT_RULE_READBACK_20261006.md、UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md、UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md、UX20_DAILY_OWNER_ISOLATED_20261006.md、UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md。七份原件分別補 Manual 操作入口、區分初次 handoff 與後續 receipt、限定 10/06 日期化 hold、補上後續 UX18 evidence 路由，及澄清 daily-owner／觀察日驗收範圍；原 QA 結果與未完成界線保留。三份未修改文件的入口與日期範圍可判讀。舊 QA aggregate 無逐檔 manifest，不調整歷史全文總數；受保護完成進度文件未讀。未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-236"></a>
+## 2026-10-11 Archive 根層第五批具名全文核讀（7 份）
+
+全文核讀 DOCUMENTATION_INDEX_HISTORY_2026_09_27.md、DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06_HISTORY.md、DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md、DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md、DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md、EPIC2_MVP2_ARCHITECTURE_DESIGN.md、EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md。7/3、7/6 一次性治理稽核內仍有不搬 Phase 文件的過時建議，現行文件結構與 10/08 搬移已取代；兩份原件 SHA 吻合既有 History／Manifest，為保留來源證據未改原件，README 已有一次性稽核導覽。兩份 Epic Archive 原文需與 05_phases/ 同名 redirect stub 依完整路徑區分，SHA 亦吻合 Entry 116。舊狀態、數字與未勾選清單均限定當時快照；不調整 Archive 根層缺少逐檔清冊的舊 aggregate。未修改文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+
+
+<a id="coverage-entry-237"></a>
+## 2026-10-11 QA A–J 具名全文核讀增量（10 份）
+
+全文核讀 BALDR_C611_CANDIDATE_20261007.md、BALDR_CANDIDATE_ACD18A1E_20261008.md、BALDR_COMPLETE_REASONS_REVIEW_20261008.md、BALDR_COMPLETION_FIRST_WAVE_20261006.md、BALDR_COMPLETION_GAP_REVIEW_20261008.md、BALDR_COMPLETION_RESUME_20261009.md、BALDR_DEV_MAIN_RELEASE_PREPARATION_20261007.md、BALDR_ENGINEERING_DECISION_DELTA_20261006.md、BALDR_FINAL_AUTHORIZED_UNION_20261006.md、BALDR_H20_2382_TIMING_PLAN_20261010.md。10 份均可由 PRODUCT_UX_QA_INDEX.md 路由到達；Completion Gap 與 Resume 亦在 QA README 導覽。
+
+八份原件已加時點／範圍澄清：C611 build receipt 不授予同版／H20／Native 資格並導向後續同版收據；ACD18A1E 加入隔離合成 F07 收藏旅程後續結果與非涵蓋範圍；Completion Gap 更新 F12／F17 的後續接線狀態並明列 Main／EXE／真人接受仍未完成；Resume 將「解除暫停」限定於 10/09 接續；branch snapshot 標為 10/07 本機 remote refs 時點；Engineering Decision Delta 及 Final Authorized Union 將「已完成」限於 10/06 授權清單／凍結 HEAD；H20/2382 標題指出完整四端點尚未執行。Complete Reasons 與 First Wave 未見需修改的衝突。舊 QA aggregate 缺逐檔 manifest，不推定與舊 aggregate 零重疊、不重算總量。受保護的 10/11 completion progress 未讀、未搜尋、未 diff；未執行測試、Graphify 或最終 repo-wide links／anchors scan。

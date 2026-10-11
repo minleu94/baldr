@@ -305,3 +305,24 @@ V3 Score Effectiveness／ML Readiness plan/spec 均指向 read-only／shadow rea
 | `docs/superpowers/specs/2026-07-08-v3-0-engineering-candidate-spec.md` | 8913 | `d7bdaadde879233db906bda17651f5d8751226bd8d17e79875c6c986c4aff5d6` |
 | `docs/superpowers/plans/2026-06-29-full-app-healthcheck-ui-smoke.md` | 11753 | `168da50efc91a89606688cd1e2b53948229e49f50429b786c65e20d1e7038959` |
 | `docs/superpowers/plans/2026-06-30-mainwindow-ui-smoke-operation.md` | 7746 | `dbefcac58a596475ca1b3f10e1bbaf0e443c38aeda61156f3afdcb2d823dfd40` |
+## 2026-10-11 retained source date/scope warnings
+
+本次在 15 份保留原路徑的歷史 plan/spec 標題後加上日期、範圍、操作授權或後續收據提示；原標題之後的既有正文與核取狀態保留。下表原始 bytes／SHA-256 沿用上方初始清冊；目前欄位以加入提示後的實際工作樹 bytes 計算。最後一份 7/11 spec 的既有目前 hash 已由本表更新為本次新增提示後值。
+
+| retained 原路徑 | 初始 bytes | 初始 SHA-256 | 目前 bytes | 目前 SHA-256 |
+| --- | ---: | --- | ---: | --- |
+| docs/superpowers/plans/2026-06-11-broker-flow-dual-metric.md | 3682 | 29d6591bf043c63e144102affeeed5b915f294e81b02db712de17d4b0af30931 | 3988 | 8086a04dbeb7711788cbd16f3350a08ff9732cb50021c05552aa490b38927784 |
+| docs/superpowers/plans/2026-06-11-broker-flow-sqlite-and-ui-recovery.md | 14370 | 8a0a58654e133d6372f74b065ab55ae4b207280a481041ef1be550f5ffb5be12 | 14789 | dcfe317327afb94b0c677ec646423ec1a79851fef5742fd4975ba40e040ca908 |
+| docs/superpowers/plans/2026-06-12-broker-flow-ranked-metric-reconciliation.md | 10354 | 67fa5bf484679ccb7f41bd15ce38e6ae5a39d07082bd3789e058bd64a185574c | 10658 | 436963908bcdb08a7dc75ea74e0295ba0c8bc1743eaa248d9875fa6dad782549 |
+| docs/superpowers/plans/2026-06-16-month5-availability-data-entrypoint.md | 12084 | 87232d9bc2ed14d6f46378b90552fe5010b01e067f1507dc0cc55b87e728f3e5 | 12815 | adc6cbfd928ac1d890528805876293bafb8b3cb18e1144da008fa0640fcad846 |
+| docs/superpowers/plans/2026-06-16-month5-abnormal-fundamental-diagnostics.md | 13562 | 6e171e879ad17e6c4196eb4107de10308468f30536c8194c63ca4c08eed3a823 | 14340 | 800e2609c9d97437eab4aab033500803e78e52ed817074428bd066a62c7c7611 |
+| docs/superpowers/plans/2026-06-16-month5-valuation-data-layer-v1.md | 11801 | 576b896e75687bd20a251aef6399d1597f52bca7ae7f8d5426e7b43fb06264cf | 12520 | 73173decc1d3dcf3406da05023fe46bce3e332e1aee7784f3d923137747dcd14 |
+| docs/superpowers/plans/2026-06-16-month5-valuation-presentation-policy.md | 28419 | 229fd1a5e864319a4a81862598efe57b1296df1ba1fe2cc5722a68b28ca58c07 | 29625 | ee60a72af652f9533c9c3930747c333ea87d1a864dbb64ea8a458aa7cf4bb065 |
+| docs/superpowers/plans/2026-06-16-midnight-analyst-ui-design-system.md | 22025 | 2ec33da5090ab43705453747c36ff6f91542907e0fa968488193f25b69f9afd9 | 22323 | 03e8c55c42c90a2be6aedb905d4d499975b309584c8eb4b64a4678b4056cb92a |
+| docs/superpowers/plans/2026-06-16-month5-revenue-factor-pack-v1.md | 9792 | 0495c7065718e2cead6615070d3440741447078ac5883b52172d04cab95635f6 | 10470 | 2a6dd236da67b958fe5cd9595b0e1f27c6e609ce66475aa820129fcb3da9544c |
+| docs/superpowers/specs/2026-06-23-healthcheck-issue-resolution-design.md | 21493 | 0bcfa4f56016662f7c844611d1d39578a0066105d2157745ed7c18b5961c6130 | 22326 | b2bcb4d93b88f384194be15a0e9e0afa6e820469b46c853cbbe8fcfbe9cd922e |
+| docs/superpowers/specs/2026-06-29-full-app-healthcheck-ui-smoke-design.md | 5806 | d302408380c83b1890231684d018fcc0ad283d22d141d8b1ff01a0fc7645f75f | 6177 | 786302a694d307f1b6d4339d0d7b178732b68ff672508530b5ca4936b525b797 |
+| docs/superpowers/specs/2026-07-06-v2-0-unified-decision-workbench-design.md | 8460 | bbacbcb52b5f9344f1f8e4ddf9cc3fff3b1396d750bae5a070dd1f6a8bc5c433 | 8785 | 170e38066447d6656dc808c786a4f9b3a162f18490412595553648c99f2adc6c |
+| docs/superpowers/specs/2026-07-07-workbench-left-navigation-ia-design.md | 13391 | e89211e774803e06ad9ce064a5b491bc0d7e53fa9c7e46a7bde447c37bc48f34 | 13761 | 5f1507d587408cbd6805d4f90342cf0439578038b61016200723e748a50a0b51 |
+| docs/superpowers/specs/2026-07-09-evidence-quality-design.md | 3440 | a12b80299541ab5918fdd48bf9f2075b423c2ca462696c4b6dccd10c478f6758 | 3833 | 1851876d3841f896316501dba8200c3dd33dabb9d947af6ebc9bdbd8d199169f |
+| docs/superpowers/specs/2026-07-11-safe-refactor-four-extra-cycles-design.md | 2219 | 15cb17d0d974f074d6ecd01315197595a0871de6d9faacf2d7e364a0a7be9470 | 2887 | d90bf7fee7fca71cd711285f282e219157958a05027b50b2a0b2ef735a7ec92f |

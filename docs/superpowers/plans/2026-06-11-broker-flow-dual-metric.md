@@ -1,5 +1,8 @@
 # Broker Flow Dual Metric Implementation Plan
 
+> **歷史計畫提醒（2026-06-11）**：本文的雙指標設計與候選操作只代表當時方案，不是目前來源、rank／observed／NULL 契約或執行授權。現行 MoneyDJ 欄位與指標依 [DATA_FETCHING_LOGIC §MoneyDJ](../../03_data/DATA_FETCHING_LOGIC.md) 及相關 QA 判讀。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 將 MoneyDJ 券商分點資料改為同時抓取張數 `c=E` 與金額 `c=B`，並確保 Phase 4.2 只以張數進行籌碼判斷。

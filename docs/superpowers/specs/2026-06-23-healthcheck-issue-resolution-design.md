@@ -1,5 +1,8 @@
 # Full App Healthcheck Issue Resolution Design
 
+> **歷史設計提醒（2026-06-23）**：本文的 issue 清單、直接修復批次與命令是當時 healthcheck 計畫，不是目前待辦或操作授權。現行 healthcheck 覆蓋依 [FULL_APP_HEALTHCHECK_COVERAGE_MAPPING](../../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 判讀；opt-in UI smoke 的證據仍須按該 QA 範圍理解。
+
+
 > 日期：2026-06-23  
 > 來源：`docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md`  
 > 範圍：PySide6 主 UI、跨工作區流程、healthcheck 已知 issue 收斂設計。  

@@ -1,5 +1,8 @@
 # Evidence Quality Semantics Design
 
+> **歷史資料品質提醒（2026-07-09）**：本文描述的 MoneyDJ／observed／estimated quality contract 不代表來源已正式接受或具備下游資格。現行欄位契約依 [DATA_FETCHING_LOGIC §MoneyDJ](../../03_data/DATA_FETCHING_LOGIC.md)，來源資格依 [P0 source acceptance register](../../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 與 Product Roadmap §11。
+
+
 ## Goal
 
 Keep the existing MoneyDJ 48-branch update as the upstream source while making

@@ -4,7 +4,7 @@
 
 使用者直接真人同意本機dev採入BBP01，並要求最終只留dev開發／main乾淨供別人使用。此輪先完成四包工程與穩定驗收，不將localdev批准擴大為遠端發布。本文件是整理清單，尚未執行branch刪除、worktree移除、main更新或push。
 
-唯讀時點dev `5eefe3317e01f92f8dca1ce343e2df46a070d396`；main與origin/main、origin/dev均為 `1bedee9a`（本機remote refs，未fetch，非遠端即時聲明）。origin為 `https://github.com/minleu94/technical_analysis.git`。dev比main多509 commits，2097檔差異，760211新增／23062刪除行；不能僅憑這次61P宣稱整個差異都已發布驗收。
+2026-10-07 唯讀時點 dev `5eefe3317e01f92f8dca1ce343e2df46a070d396`；main 與 origin/main、origin/dev 均為 `1bedee9a`（本機 remote refs，未 fetch，非遠端即時聲明）。origin 為 `https://github.com/minleu94/technical_analysis.git`。dev 比 main 多 509 commits、2,097 檔差異、760,211 新增／23,062 刪除行；不能僅憑這次 61P 宣稱整個差異都已發布驗收。
 
 42個local branches、42個worktrees；其中主dev因本輪新增test/inventory當時dirty，其餘41個tracked/untracked status clean。clean不代表ignored內容可丟棄：盤點另外保存每個worktree的ignored目錄項，包含QA raw、Temp與模型試驗產物。原始完整盤點 `output/qa/baldr_central_resume_20261007/branch_audit.json`（ignored，不stage）。未更改git global safe.directory；sandbox讀外部既有worktree遭dubious ownership後，原使用者升權只讀完成。
 

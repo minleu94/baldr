@@ -1,5 +1,8 @@
 # Month 5 Valuation Presentation Policy Implementation Plan
 
+> **歷史設計提醒（2026-06-16）**：本文的 valuation presentation policy 是歷史方案，不代表現行 UI、估值資格或已採納的資料來源。操作與結果判讀依 [Application Manual](../../07_guides/APPLICATION_MANUAL.md)，產品與來源邊界依 [Product Roadmap](../../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the conservative valuation presentation policy boundary for Month 5 Fundamental Layer without implying buy/sell actions or producing target prices.

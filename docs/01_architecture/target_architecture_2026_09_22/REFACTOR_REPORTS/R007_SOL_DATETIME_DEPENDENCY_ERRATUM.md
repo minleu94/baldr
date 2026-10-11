@@ -1,5 +1,7 @@
 # R007 aware datetime 深凍結依賴勘誤
 
+> 本檔的 `REOPENED_FOR_TARGETED_ERRATUM` 與 Wave 3 blocked 敘述是勘誤啟動時的歷史狀態；該 R007 範圍後續由 [SOL 勘誤驗收](R007_SOL_ERRATUM_ACCEPTANCE.md) 與 [Luna 獨立審查](R007_LUNA_ERRATUM_INDEPENDENT_REVIEW.md) 判為 PASS。較廣的 R007 bounded import disposition 見 [R031 R007 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)；R008 仍需自己的驗收。
+
 DEPENDENCY_STATUS: REOPENED_FOR_TARGETED_ERRATUM
 
 R008 的獨立深凍結審查顯示，aware `datetime` 可保留呼叫者所有的可變 `tzinfo`。SOL 在 R007 的 `Availability.available_at` 與 `MarketSlice.cutoff_at` 重現相同問題：來源 `tzinfo` 偏移由 0 改 9 小時後，已建構 record 的 `utcoffset()` 跟著改變。此項具體違反 FINAL_ARCHITECTURE_INVARIANTS INV-08，也影響 R008 對 R007 leaf contract 的依賴信任。

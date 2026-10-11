@@ -1,5 +1,8 @@
 # 安全重構四個延長循環設計
 
+> **歷史數字差異提醒（2026-07-11）**：本文對 D–G 四輪 automation 數量記載不一致（各輪合計與驗收寫 12，生命週期段落寫 15）；此差異未由本文解決，請勿據此推定目前 automation 數、待辦或建立／執行授權。現行操作依 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 與對應日期化 QA 判讀。
+
+
 > **歷史設計（2026-07-11）**：本文記錄的一次性 automation、舊排程與 Git 操作不代表目前任務狀態或執行授權。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與現行協作規範。
 
 ## 目標

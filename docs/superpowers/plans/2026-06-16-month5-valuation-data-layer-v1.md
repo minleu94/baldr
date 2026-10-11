@@ -1,5 +1,8 @@
 # Month 5 Valuation Data Layer v1 Implementation Plan
 
+> **歷史設計提醒（2026-06-16）**：本文的 valuation data-layer 範圍與 checklist 只記錄當時設計／計畫，不是目前實作或來源接受證據。現況與產品方向依 [Product Roadmap](../../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)，來源與資料限制依 [source acceptance register](../../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a governed valuation metric data layer that supplies industry-relative percentiles to the existing valuation presentation policy.

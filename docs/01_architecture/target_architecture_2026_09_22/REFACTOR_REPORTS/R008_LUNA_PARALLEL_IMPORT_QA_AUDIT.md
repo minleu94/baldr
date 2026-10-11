@@ -1,5 +1,7 @@
 # R008 獨立 import／QA 稽核
 
+> 本 `AUDIT_STATUS: CHANGES_REQUIRED` 記錄舊 frozen inputs 的 findings 與當時 QA；它不是目前 R008 task verdict。請以 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 核對現行 bounded scope，並保留下文 findings 作歷史 audit 證據。
+
 ## 範圍與依據
 
 本次只審核 R008 的 contract、兩個 parent package lazy exports、相關 import/deep-freeze 測試，以及指定的 calibration fixture 失敗。依序核對 `REFACTOR_TASKS/R008.md`、`REFACTOR_REPORTS/R008_SCOPE_ADDENDUM.md`、`REFACTOR_REPORTS/R008_SOL_REWORK_REVIEW.md`、`FINAL_ARCHITECTURE_INVARIANTS.md` 的 INV-02/03/08–11 與 `REFACTOR_VALIDATION_MATRIX.md` 的 Wave 2/R008 要求；亦讀取 QA Agent 指定的測試清冊、路由矩陣與相關手冊內容。

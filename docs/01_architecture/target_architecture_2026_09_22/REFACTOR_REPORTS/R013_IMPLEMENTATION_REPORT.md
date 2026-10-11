@@ -1,5 +1,7 @@
 # R013 — Qt Recommendation consumer 遷移
 
+> 本報告保留 R013 Qt execution/save slice 的原始 `ACCEPTED_SCOPE` 與 dated QA evidence。R031 將現行裁定細化為 `ACCEPTED_WITH_PORTFOLIO_NAVIGATION_SCOPE`，並明示 persisted display-summary 不在該接受範圍內；請以 [R031 R013 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 核對目前 scope。
+
 TASK_STATUS: ACCEPTED_SCOPE
 SOL_DECISION: R013_ACCEPTED_SCOPE (synthetic/engineering)
 INDEPENDENT_REVIEW: Accept with nonblocking notes

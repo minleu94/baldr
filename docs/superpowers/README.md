@@ -13,6 +13,15 @@
 
 2026-10-11 已為 20 份仍保留原路徑的高風險／日期敏感 plan/spec 加檔首歷史及授權界線，正文與 checklist 保留；逐檔目前 bytes／SHA-256 見 [Archive manifest 附記](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md#retained-source-high-risk-warning-20261011)。其餘 retained originals 仍以本 README 的歷史追溯定位為準，不代表計畫現行、已完成或獲目前授權。
 
+2026-10-11 另全文核對 12 份 retained originals；以下幾類內容有額外直開風險，原件與原始 hash 均保留，請先核對現行契約：
+- [舊 broker-flow SQLite／UI recovery plan](plans/2026-06-11-broker-flow-sqlite-and-ui-recovery.md) 的 Task 13 使用三欄唯一鍵；現行唯一鍵包含 `trade_type`，依 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) §MoneyDJ 判讀。
+- [broker-flow ranked-metric reconciliation plan](plans/2026-06-12-broker-flow-ranked-metric-reconciliation.md) 的 Task 11 是歷史同步提案，不是正式 SQLite 寫入授權；現行 rank／observed／NULL 契約依 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md)。
+- [Month 5 availability entrypoint plan](plans/2026-06-16-month5-availability-data-entrypoint.md) 中 allowlist 認得來源標籤，不代表來源已正式採納；月營收目前判讀依 [F12 月營收來源 QA](../06_qa/BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md) 與[來源接受條件](../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)。
+- [Month 5 revenue factor plan](plans/2026-06-16-month5-revenue-factor-pack-v1.md) 的 announced／available dates 是 fixture 輸入，不構成來源可得時鐘或 PIT 資格；另見上述兩份來源 QA。
+- [dual-metric plan](plans/2026-06-11-broker-flow-dual-metric.md)、[midnight analyst UI plan](plans/2026-06-16-midnight-analyst-ui-design-system.md)、[abnormal diagnostics plan](plans/2026-06-16-month5-abnormal-fundamental-diagnostics.md)、[valuation data-layer plan](plans/2026-06-16-month5-valuation-data-layer-v1.md) 與[valuation presentation plan](plans/2026-06-16-month5-valuation-presentation-policy.md) 保留未勾選步驟、舊命令或 handoff／commit 提示；這些不是目前待辦或授權。所有 retained original 的 bytes／SHA 仍以 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 為來源追溯依據。
+
+同日第二批全文核對 12 份 retained specs，並在 6 份高風險原件標題後加上範圍提示：`2026-06-23-healthcheck-issue-resolution-design` 與 `2026-06-29-full-app-healthcheck-ui-smoke-design` 的命令／rollback 是歷史內容；V2.0 的 Phase 2 不可與其他版本同名階段混用；左側導覽的 collapsed future-slice 已有後續 closeout；MoneyDJ quality 說明不等於來源接受；四輪 automation 的 12／15 數字差異仍未解。保留原文與原 checklist，逐檔原始／目前 bytes 及 SHA-256 見 [第二批來源 hash 附記](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md#2026-10-11-retained-source-datescope-warnings)。
+
 2026-07-07 Scheduler Approval plan/spec 原文已移至 [Archive scheduler approval 區](../09_archive/README.md#2026-10-09-post-v1-scheduler-approval-plan-spec)：plan 的工程項目 17/17 已勾選，但 production scheduler 仍未核准、未啟用。舊路徑是導引頁；逐檔雜湊與生命週期見 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 
 2026-10-09 另將四組早期計畫／規格原文移至 [歷史計畫封存入口](../09_archive/README.md#2026-10-09-early-plan-specs)：SQLite 分頁／Excel 匯出、Post-V1 evidence importer、V1.1 Decision Workflow 與 V2.2 simulated phase progress。原路徑保留相容導引；原 checklist 與未完成邊界不因封存而改寫，逐檔 bytes／SHA 與判讀見 [Coverage History Entry 163](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-163)。目前 Gate 及產品狀態仍回到 Snapshot、6M Roadmap、版本 Roadmap 與 Manual。

@@ -1,5 +1,7 @@
 # R008 Luna 平行契約審查
 
+> 本檔是 2026-09-22 的獨立契約 audit，不是 Gemini 正式 verdict；所列 `CHANGES_REQUIRED` findings 對應當時 SHA。後續 task-level bounded disposition 見 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)，原 findings 保留作歷史審查證據。
+
 審查日期：2026-09-22。此文件是獨立唯讀契約審查，不是 Gemini 正式 `REVIEW_STATUS`，也不代表 Wave 3 放行。
 
 ## 版本基準

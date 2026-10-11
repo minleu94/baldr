@@ -1,5 +1,8 @@
 # Full App Healthcheck UI Smoke Design
 
+> **歷史 rollback 提醒（2026-06-29）**：本文 rollback/full-app-healthcheck-ui-smoke-20260629 tag 與 git reset --hard 範例是當時的回滾點，不是目前 branch 狀態或回滾授權；不得直接重放。現行 healthcheck 覆蓋依 [FULL_APP_HEALTHCHECK_COVERAGE_MAPPING](../../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 判讀。
+
+
 > 建立日期：2026-06-29
 > Rollback baseline：`rollback/full-app-healthcheck-ui-smoke-20260629` (`a73ac65`)
 > 工作分支：`codex/full-app-healthcheck-ui-smoke`

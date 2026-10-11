@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文的 `INTAKE_STATUS`、finding 判讀與歷史派送路由只適用其舊版審查封包，不等同 R008 整體現行 disposition。[R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 將 R008 列為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`；[R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 未列 R008 專項。此處僅導覽 task-level 狀態，不重裁本文對舊版封包的結論或限制；原始判讀與限制保留。
+
 # R008 舊版 Gemini 正式審查收件裁決
 
 INTAKE_STATUS: SUPERSEDED_SNAPSHOT_REVIEW

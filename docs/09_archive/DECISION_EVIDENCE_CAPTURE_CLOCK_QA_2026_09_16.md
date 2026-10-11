@@ -1,5 +1,7 @@
 # Decision Desk／Evidence capture 真實時鐘 QA（2026-09-16）
 
+> **歷史 QA 快照（2026-10-11）：** 本文保存 2026-09-16～17 的正式 receipt 唯讀讀回、隔離修復與測試結果；表中的資料 freshness、scheduler／Task Scheduler 狀態、Direct recovery plan 及「已修正／待重跑」只代表各自記錄時點，不能作為目前狀態或操作授權。本文包含歷史 D 槽路徑與命令，請勿直接重放。現行產品與 Evidence Gate 依 [PRODUCT_ROADMAP_POST_REFACTOR](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 及 [ROADMAP_6M_ENGINEERING Gate 2](../00_core/ROADMAP_6M_ENGINEERING.md#6-gate-2real-evidence-operating-loop)；操作依 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
 ## 結論
 
 已修正每日 evidence capture 的 caller clock 錯誤。原本 05:25 Pacific 執行的

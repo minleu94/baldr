@@ -1,5 +1,8 @@
 # Broker Flow Ranked Metric Reconciliation Plan
 
+> **歷史計畫／操作提醒（2026-06-12）**：本文 Task 11 的正式 SQLite 同步／reconciliation 是歷史提案，不構成目前資料寫入授權；本文的 rank、observed 與 NULL 假設須以現行 [DATA_FETCHING_LOGIC](../../03_data/DATA_FETCHING_LOGIC.md) 和產品 QA 為準。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:systematic-debugging`, `superpowers:test-driven-development`, and `superpowers:verification-before-completion`. Do not treat an absent E/B row as zero.
 
 **Goal:** 正確處理 MoneyDJ `c=E` 張數榜與 `c=B` 金額榜各自獨立排序、各取買超/賣超 Top 50 的資料契約，避免把榜外資料誤判為零、抓取失敗或整檔股票不可用。

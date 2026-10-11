@@ -1,5 +1,7 @@
 # R007 SOL Review
 
+> 本 `PASS` 是原始 R007 leaf contract／import-boundary review 的歷史裁定；後續 aware-datetime 與 timezone-name 深凍結問題分別記於 R007 errata 和其獨立驗收，不由本檔的 verdict 取代。現行 bounded import disposition 見 [R031 R007 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 ## 結論
 
 R007 在一次 `CHANGES_REQUIRED` 修正後通過。初版正確揭露 parent `data_module/__init__.py` eager imports 會破壞 leaf contract 的無 I/O import；SOL 判定這是可在既定架構內處理的窄 implementation conflict，允許 R007 獨占將原四個 public exports 改為 lazy exports。第二次 review 發現局部型別推斷造成兩個 mypy errors；worker 只加入 `value: object`，未改 runtime 行為。

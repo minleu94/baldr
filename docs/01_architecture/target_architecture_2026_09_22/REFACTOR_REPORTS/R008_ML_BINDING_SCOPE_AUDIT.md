@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文的範圍裁決與 `SCOPE_STATUS` 是當時的歷史判讀，不等同 R008 整體現行 disposition。後續具體化的 receipt binding 範圍見 [R008 ML receipt binding addendum](R008_ML_RECEIPT_BINDING_ADDENDUM.md)。[R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 將 R008 列為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`；[R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 未列 R008 專項。此處僅導覽 task-level 狀態，不重裁本文特定範圍或限制；原始判讀與限制保留。
+
 # R008-LUNA-02 ML Receipt／Execution Binding 範圍裁決
 
 審查日期：2026-09-22。此報告為指定範圍的唯讀裁決，只新增本文件，未修改 production/test/既有檔案，也未 stage、commit 或 push。

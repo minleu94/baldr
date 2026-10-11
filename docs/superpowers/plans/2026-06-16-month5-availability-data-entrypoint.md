@@ -1,5 +1,8 @@
 # Month 5 Availability Data Entrypoint Implementation Plan
 
+> **歷史設計提醒（2026-06-16）**：本文 allowlist 僅描述當時的來源標籤入口，不代表來源已正式採納、資料已具備 availability／PIT 資格或下游可使用。現行判讀依 [F12 source QA](../../06_qa/BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md) 與 [source acceptance register](../../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the formal validation entrypoint for monthly revenue announcement / `available_date` mappings.

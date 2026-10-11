@@ -1,5 +1,7 @@
 # R008 Luna Max 終版獨立審查（V2）
 
+> 本 `PASS` 限於本文凍結的 R008 source/test bytes。文末 R007 dependency gate 後續另由 [R007 SOL timezone-name acceptance](R007_SOL_TZNAME_ACCEPTANCE.md) 記錄；目前 R007／R008 task disposition 見 [R031 index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。本文不單獨宣告 Wave 2 release。
+
 本審查為唯讀，僅檢查 root 指定的 R008 凍結 bytes、授權的 lazy-export 支援檔與 R007 dependency。未實作程式碼、未修改測試或其他既有檔案；唯一新增檔案是本報告。
 
 ## 凍結範圍與 SHA-256

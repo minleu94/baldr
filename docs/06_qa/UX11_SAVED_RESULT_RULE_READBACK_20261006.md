@@ -31,4 +31,4 @@ TaskWorker最多一個，選取／metadata更新時拒絕舊回呼；取消在�
 
 按需設定卡及保存結果readback兩個有限工程子項已完成。UX11整項沿前plan保留partial：現有來源未有完整typed入場／出場／稅費及原始資料／executor資格證據時維持unknown，這是明示資料／執行來源限制，不新增人工blocking gate；不要求先有自然樣本才可使用介面。Stage6仍partial；Native／真人放在原整合驗收範圍，本包不冒稱已完成。
 
-UX20 4bcc842獨立lane已交父層，本包不review/pick／擴16股條件或改其檔案。UTC2026-10-06 07:00暫停review期限不變；真migration／activation、push／清理未執行，所有worktrees保留。
+UX20 4bcc842獨立lane已交父層，本包不review/pick／擴16股條件或改其檔案。UTC 2026-10-06 07:00 暫停 review 是當日交接時點；本頁不確認該暫停於後續日期仍生效，也不設定新期限。真 migration／activation、push／清理未執行，所有 worktrees 保留。

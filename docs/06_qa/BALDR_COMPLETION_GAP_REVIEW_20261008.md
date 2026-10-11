@@ -51,7 +51,7 @@ P01 技術 v4 的契約上限為 100,000 檔，每頁上限 256；目前接受�
 | F07 價格區間／排序 | 已有獨立 v1 Decimal 收盤價範圍／全域排序、分頁／比較／收藏與來源版 257 股 Main／新程序讀回；固定 EXE 已還原保存狀態，但完整守衛／收尾及真人接受仍未通過。 |
 | F08 分點、F09 法人連買 | 有原料／既有服務，缺保存全母體事實及可得時間契約。 |
 | F10 權證 | 缺標的關係與掛牌／到期／終止來源契約。 |
-| F11 基本面、F12 月營收 | F12 Decimal 事實及真正 source read-session 已中央通過 45 項回歸，source wrapper 保存於 `fa46281a`；全母體 compact index／query 正在實作，UI 與跨程序原版重開尚待。F11 其他基本面條件未完成。 |
+| F11 基本面、F12 月營收 | F12 Decimal 事實及真正 source read-session 已中央通過 45 項回歸，source wrapper 保存於 `fa46281a`；「全母體 compact index／query 正在實作」是較早狀態。10/09 後續已記錄 compact index/query 與研究分頁掛載；attempt04 只有隔離真來源 view/worker、WatchlistService 保存／typed 讀回及 unbound Main route restore 證據，不等於完整 Main constructor 或 EXE 接受，見 [F12 整合審查](BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md)。F11 其他基本面條件未完成。 |
 | F13 族群強度、F14 族群核心 | 未接版本化保存事實與全母體條件。 |
 | F15 新資金 | 未接；成交金額不能冒稱已核淨流入。 |
 | F16 注意股票 | 有 current reader，缺帶 coverage 的保存事件條件。 |
@@ -77,6 +77,8 @@ F17 目前仍是 `current_only`、`official_available_at=None`、`historical_pit
 F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆候選；逾時發生在「選取保存版本並 exact-open」背景 worker，沒有結果頁或 app-side error。`close_error` 使用已過期的全程 deadline，因此不能據此另判 Main 關閉缺陷；目前封套未證 cooperative cancel latency。下一步需分段記錄 exact bundle／技術來源 open、execute 與 page 的耗時，不改 pins、成功條件或總期限。
 
 正常官方更新確有原始輸出：`refresh_current_market_status_observation.capture_sources` 保存 raw bytes、manifest 與 current pointer；`CurrentMarketAssignmentReader`、`CurrentOfficialDisposalReader` 提供 typed source pins。尚缺將正常更新輸出與技術 generation 送入 `create_from_pins` 並回報保存版的接線。兩 pin 的 cutoff 必須與技術 clock 相同，來源捕捉與 pointer 發布不得晚於 cutoff；較新捕捉不能補入舊 generation。
+
+> 時序補充（2026-10-09）：上述「尚缺接線」是較早狀態；後續已核對正常來源 pair producer、UI button/worker 與真 writer 的窄接線，見 [F17 正常來源 UI 增量核驗](BALDR_F17_NORMAL_PRODUCTION_UI_REVIEW_20261009.md)。完整 Main、原 H20／2382、全母體效能、EXE 及真人接受仍未完成。
 
 ## 更新記錄
 

@@ -1,5 +1,7 @@
 # R008 app contract aware datetime 深凍結回修報告
 
+> 本報告記錄 2026-09-22 app-owner 深凍結切片與其 SHA／QA 證據；文末等待跨 owner 統一複核是當時狀態。R008 現行 bounded contract disposition 見 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)；本切片不代表其他 consumer 或 Wave gate 完成。
+
 日期：2026-09-22
 
 ## 範圍與結果

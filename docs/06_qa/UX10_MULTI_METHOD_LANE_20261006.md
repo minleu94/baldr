@@ -1,6 +1,6 @@
 # UX10 多方法共同符合：獨立 lane 限定交接
 
-日期：2026-10-06。狀態：**可驗證 readmodel 切片完成，整項 UX10 partial，待主 owner 審查**。
+日期：2026-10-06。原 lane handoff 狀態為 **readmodel 切片完成、整項 UX10 partial，待主 owner 審查**；後續 dev consumer 整合另記於下方「2026-10-06 dev consumer 整合收據」，應以該段判讀有限接線結果。該收據仍將整項 UX10 列為 partial。
 
 ## 所有權、基線與回滾
 

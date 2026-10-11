@@ -1,5 +1,8 @@
 # Month 5 Revenue Factor Pack v1 Implementation Plan
 
+> **歷史設計／PIT 提醒（2026-06-16）**：本文 fixture 中的 announced／available dates 是合成輸入，不證明真實來源可得時間或 PIT 資格，也不代表該來源已正式接受。現行判讀依 [F12 source QA](../../06_qa/BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md) 與 [source acceptance register](../../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add Revenue YoY, Revenue MoM, three-month trend, and revenue new high factor adapters.

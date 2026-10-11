@@ -1,5 +1,8 @@
 # Month 5 Abnormal Fundamental Diagnostics Implementation Plan
 
+> **歷史設計提醒（2026-06-16）**：本文的 fundamental diagnostics 與候選資料流程是歷史設計，不代表目前產品已實作、來源已接受或資料符合 PIT。現行產品方向依 [Product Roadmap](../../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)，來源資格依 [source acceptance register](../../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add conservative abnormal fundamental flags and surface them as diagnostics in research and Daily Decision Desk flows.

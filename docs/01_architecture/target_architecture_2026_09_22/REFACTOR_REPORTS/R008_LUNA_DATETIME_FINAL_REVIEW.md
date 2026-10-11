@@ -1,5 +1,7 @@
 # R008 Luna Max datetime 深凍結最終獨立審查
 
+> 本 `PASS` 僅適用下列 frozen hashes 與 focused evidence；文末 R007 dependency pending 語句是當時 checkpoint，後續 R007 深凍結範圍由 [SOL 驗收](R007_SOL_ERRATUM_ACCEPTANCE.md) 記錄。現行 R007／R008 bounded dispositions 見 [R031 index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 REVIEW_STATUS: PASS
 
 本次以工作樹中的實際 bytes 獨立審查 R008 datetime 回修。四個指定 SHA-256 全部吻合：

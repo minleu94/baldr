@@ -1,5 +1,8 @@
 # V2.0 Unified Decision Workbench Phase 1 設計
 
+> **歷史版本範圍提醒（2026-07-06）**：本文的 Phase 2 屬 V2.0 設計階段，不等同其他版本所稱的 Phase 2，也不是目前工作順序或驗收狀態。現行工程 Gate 依 [6M Engineering Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)，目前狀態看各主題 QA 與權威狀態入口。
+
+
 ## 目標
 
 V2.0 Phase 1 建立 Unified Decision Workbench 的唯讀設計原型，先驗證資訊架構與每日使用動線，再決定是否進入 Phase 2 MVP。

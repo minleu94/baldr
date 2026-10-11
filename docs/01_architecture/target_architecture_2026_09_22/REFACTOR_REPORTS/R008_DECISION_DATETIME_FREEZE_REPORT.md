@@ -1,5 +1,7 @@
 # R008 decision aware datetime 深凍結回修報告
 
+> 本報告是 decision-owner datetime 回修證據，不是 R008 task-level verdict。現行 bounded contract disposition 以 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 為準；consumer／codec 等範圍仍依各自 task 判定。
+
 ## 結果與範圍
 
 修復 `decision_module/recommendation/contracts.py` 的 aware `datetime` alias 洩漏。封存時會建立新的 datetime 值，保留年月日時分秒、微秒與 `fold`。只有標準 `datetime.timezone` / `ZoneInfo` 搭配 exact builtin `timedelta` offset 與 exact builtin `str` timezone name 才沿用 tzinfo；其他情況會從 `timedelta` 基底描述符讀取 `days`、`seconds`、`microseconds`，建立 exact builtin `timedelta` 後再建固定 offset timezone。這可隔離自訂 tzinfo 回傳的可變 `timedelta` 子類，也涵蓋 exact `timezone` 本身回傳該子類的情況。重建 timezone 時會用 `str.__str__` 複製名稱的底層文字，保留名稱值並移除 `str` 子類 alias。

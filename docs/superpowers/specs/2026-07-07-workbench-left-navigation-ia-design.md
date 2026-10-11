@@ -1,5 +1,8 @@
 # Workbench Left Navigation IA Design
 
+> **歷史設計狀態提醒（2026-07-07）**：本文把 icon-only collapsed navigation 列為 future slice；後續 [Workbench visual hierarchy closeout](../../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md) 已記錄 collapsed mode 完成。本文 future-slice 狀態已被後續收據取代，現況仍應按 Manual／QA 判讀。
+
+
 ## Purpose
 
 重排主 UI 的資訊架構，讓 app 打開後第一眼回答「今天我該看什麼」。新首頁採用中密度 `決策工作台`，以「今日待判讀」作為主心臟；需要深挖時再進入市場、決策來源、Evidence 或持倉細節。

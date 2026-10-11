@@ -1,5 +1,7 @@
 # UX16 唯讀來源契約與 UX02 Native 中文驗證（2026-10-05）
 
+> **閱讀界線：** 本頁是 2026-10-05 起追加的多增量 QA 收據，各段只描述各自列出的基線與驗收時點。較早段落的「尚待／不可用」不覆蓋後續「最新延伸」；原排名 publisher 的後續有限收尾見[UX18 原引擎排名 QA](UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)及本頁末段。此頁不裁定目前產品狀態。
+
 ## 2026-10-05 UX13／18／05：具名母體盤勢與既有值排序
 
 基線 `f07f298002f21067bd6634c498c90fb4a4e3c229`。新增純共用 cohort 投影，盤勢與名單接收同一 verified v2 snapshot，沿原 pinned context 開個股；不重做已驗收固定方法契約。manifest／artifact／scope／日期／方法／根目錄／rows 與原條件結果逐一核對，同 hash 偽造方法判斷也拒絕。原排名未提供明示 unknown，只排序原 close／MA20／MA60／資料日／股票代碼，Decimal 精確，同值股票代碼穩定，缺值置尾；無新綜合分數／alpha／強弱公式。

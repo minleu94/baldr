@@ -4,7 +4,7 @@
 
 ## 已授自主工程未完清單
 
-**本輪已授清單沒有已知未完項或未修blocker。** R01已採，有界歷史Registry shared reader不再列待辦。原source_id／F01、I156/P2/R01清冊、selected Paper producer私人路由、市場alias拒絕、COW深路徑、M01–M04 dependency boundary均有有限收據。這不等於原24UX全maturity done，或所有1284檔已執行。
+**截至 2026-10-06，本輪已授清單沒有已知未完項或未修 blocker。** R01已採，有界歷史Registry shared reader不再列待辦。原source_id／F01、I156/P2/R01清冊、selected Paper producer私人路由、市場alias拒絕、COW深路徑、M01–M04 dependency boundary均有有限收據。這不等於原24UX全maturity done，或所有1284檔已執行。
 
 ## 具體可用範圍
 

@@ -1,5 +1,7 @@
 # R008 Luna Max 最終獨立審查
 
+> 本 `CHANGES_REQUIRED` 是修正前 frozen snapshot 的歷史審查；本文列出的 datetime alias finding 後續由 app／decision 深凍結回修處理。現行 R008 bounded contract disposition 見 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)；保留本頁 finding 作為原始審查證據。
+
 本報告只判定修正前 frozen snapshot；審查基準包含 `app_module/recommendation/contracts.py` SHA-256 `B5F2B11FF362F470974B89D0B7E5881EEAEE9F1076517F43EAEA94EC50851C83` 與 `decision_module/recommendation/contracts.py` SHA-256 `C4F691881CB96A86EEF58DB91DDFB4D01AD368DE0C6F6F5DB495C27AB6FA7018`。後續 datetime 回修 bytes 不屬於這次審查或結論，須以新 SHA 另行複審。依指定範圍核對 R008 任務規格、FINAL target architecture §5/6、architecture invariants、ML compatibility contract §2、兩份 scope addendum、implementation/numeric rework reports、兩份 Luna parallel audit 與 SOL batch decision；另依 repo 架構文件確認 owner 與匯入邊界。沒有啟動其他 R-task，也沒有修改 production 或測試檔。
 
 ## Frozen bytes 與工作樹範圍

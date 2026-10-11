@@ -42,10 +42,10 @@ targeted mypy2、compile3、quant precision/look-ahead、diffcheck通過。UI未
 | 官方calendar接既有來源驗證、raw來源可得時間/custody與revision接受治理；目前明示dates＋stat pins | 認可的官方來源/日曆與修訂接受規則；未知維持未知 |
 | UX21純Outcome契約主線接受後再接saved來源與consumer；接受policy瀏覽／正式日報consumer尚未加UI | 後續派工與驗收，不因自然樣本未成熟拖延工程 |
 
-下一個最小工程包建議隔離daily owner dry-run／execute-isolated adapter，重用本policy＋既有producer/parent/accept API，用明示目標日串兩步與retry，不選latest；synthetic新程序回復、busy/源缺日/partial/capacity停止與已發布但accept失敗收據驗證，再由父層決定正式Task。官方證據、逐日自然收據、後續交易日與outcome準確度是另一類證據依賴。
+下一個最小工程包當時建議隔離 daily owner dry-run／execute-isolated adapter，重用本 policy＋既有 producer/parent/accept API，用明示目標日串兩步與 retry，不選 latest；synthetic 新程序回復、busy/源缺日/partial/capacity 停止與已發布但 accept 失敗收據驗證，再由父層決定正式 Task。後續的 bounded daily-owner 實作與隔離全鏈見[UX20 隔離 daily owner QA](UX20_DAILY_OWNER_ISOLATED_20261006.md)；該收據仍將正式部署列為未完成。官方證據、逐日自然收據、後續交易日與 outcome 準確度是另一類證據依賴。
 
 ## 計畫、文件與回滾
 
 9階段done1（0）／partial7（1/2/3/4/5/6/8）／pending1（7）；24UXdone2（01/02）／partial19（03/04/05/06/07/08/09/10/11/12/13/14/15/16/17/18/19/20/24）／pending3（21/22/23）。本有限終點完成，UX20仍partial，UX21獨立lane尚未主線接受。
 
-Must同步QA、Manual＋Supplements、Snapshot、Architecture、Features、Guide、Index、Navigation及唯一原計畫；方向／6M／版號未改。git revert本批commit回復程式／文件，保留原parent與接受收據/partial，無資料搬移或刪除。UTC07:00安全暫停安排仍有效，父層安排review。
+Must同步QA、Manual＋Supplements、Snapshot、Architecture、Features、Guide、Index、Navigation及唯一原計畫；方向／6M／版號未改。git revert本批commit回復程式／文件，保留原parent與接受收據/partial，無資料搬移或刪除。UTC 07:00 安全暫停是本文件記錄的 2026-10-06 交接安排；本頁不確認它於後續日期仍有效，後續 review 依 parent 目前安排判定。

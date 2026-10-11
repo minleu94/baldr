@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文的 finding 與 `REVIEW_STATUS` 是該次獨立審查的歷史結果，不等同 R008 整體現行 disposition。本文提出的 timezone-name alias finding，後續 app／decision 凍結修正及最終 scoped 驗收見 [app freeze report](R008_APP_DATETIME_FREEZE_REPORT.md)、[decision freeze report](R008_DECISION_DATETIME_FREEZE_REPORT.md) 與 [SOL final acceptance](R008_SOL_FINAL_ACCEPTANCE.md)。[R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 將 R008 列為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`；[R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 未列 R008 專項，因此保留本文原始判讀與限制，並按上述具名驗收核對該 finding。
+
 # R008 Luna Max timedelta 深凍結最終獨立審查
 
 REVIEW_STATUS: CHANGES_REQUIRED

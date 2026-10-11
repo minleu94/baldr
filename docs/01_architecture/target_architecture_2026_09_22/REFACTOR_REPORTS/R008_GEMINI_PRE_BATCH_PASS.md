@@ -1,5 +1,7 @@
 > **歷史 Gemini 舊 SHA transcript**：其中的 PASS 僅適用 [R008 intake](R008_GEMINI_PRE_BATCH_PASS_INTAKE.md) 與 [Wave 2 validation plan](WAVE2_BATCH_VALIDATION_PLAN.md) 記錄的舊檔案雜湊，不是目前或正式驗收。後續 task 結果見 [R008 SOL final acceptance](R008_SOL_FINAL_ACCEPTANCE.md)；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
 
+> 核對目前 R008 bounded contract scope 請另看 [R031 R008 row](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)；此歷史 transcript 的 PASS 不代表 Wave 2 或其他 task release。
+
 Ran command: `$files = @(
   "app_module/__init__.py",
   "decision_module/__init__.py",

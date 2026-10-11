@@ -3,6 +3,8 @@
 > 日期：2026-09-15
 >
 > 範圍：使用者自行聲明持倉的 research-only 保存、修訂、封存、PIT 研究讀模型、Portfolio UI 與關閉生命週期。
+>
+> 操作步驟與欄位判讀請從[操作手冊 §10.0](../07_guides/APPLICATION_MANUAL.md)進入；本 QA 僅保存本輪 bounded acceptance evidence。
 
 ## 1. 驗收結論
 

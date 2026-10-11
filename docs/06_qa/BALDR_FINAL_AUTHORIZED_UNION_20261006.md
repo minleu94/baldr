@@ -20,7 +20,7 @@ R01 worker `output/qa/baldr_r01_read_budget_20261006/receipt.json`及17份raw已
 
 ## 可用範圍與未決
 
-目前已授的自主工程清單已完成，沒有已知未修blocker：四用途／保存身份／個股日K-量-MA-合格保存標記-精確表／三帳分離／私人覆盤／COW深路徑／有界歷史Registry／selected Paper synthetic producer-consumer／v2 custody／ML boundary及清冊均有相應證據。Notes backup新GUI、週月圖、更多indicator依原plan屬未選後續，不混成必修。
+截至 2026-10-06 凍結 HEAD，已授的自主工程清單已完成，沒有已知未修 blocker：四用途／保存身份／個股日K-量-MA-合格保存標記-精確表／三帳分離／私人覆盤／COW深路徑／有界歷史Registry／selected Paper synthetic producer-consumer／v2 custody／ML boundary及清冊均有相應證據。Notes backup新GUI、週月圖、更多indicator依原plan屬未選後續，不混成必修。
 
 U1第二家族BBANDS30上軌有限比較與U2 H20 gross研究政策仍等待使用者回覆，沒有自行選用，不冒充compression或正式模型。正式Task／真personal migration／模型fit-control／ACL／前景Native未批准；真來源/PIT/account/calendar資格、自然forward成熟與OOS效果仍要各自證據。自然時間不是工程gate，unknown不造。
 

@@ -8,7 +8,8 @@
 
 中央 68116 terminal0：boundary、H20 widget、來源穩定性、完整 capture 與更新工作台共 **134 passed / 2 skipped in 6.61s**（`C:/t/h20-external-config-central-20261007-a`）。全域 mypy 882 檔無錯誤，diff check 通過。兩項 skip 屬平台連結能力；不授該能力驗收。首次 sandbox 原生檔案操作失敗與 agent 並行暫存祖先 mtime 競態失敗保留，最後測試沿修正後 reader 串行通過。
 
-尚待固定新 commit 打包、同版 exe/來源核驗及真人重驗，不能宣告 H20 真人驗收完成。
+> **階段狀態更新：** 下方「原十股 canonical 同版讀回補驗」已記錄固定 commit `0f25b8c6` 的 Python／EXE 10/10 available 與來源讀回。這完成該收據限定的同版核驗；真人操作與產品接受仍未完成。
+
 ## 原十股 canonical 同版讀回補驗
 
 固定0f25b8c6來源快照與exe沿原啟用設定、原manifest與十份capture，經公開 `read_personal_h20_product_cohort` 及原prediction reader完整讀回：Python／exe皆10/10 available，2382預估20交易日未扣成本毛報酬684bp（+6.84%），決策／來源／特徵日為2026-10-07／10-06／10-05。真H20 widget選2382後按鈕enabled，點一次發出完全相符的原 `PersonalH20ResearchSelection`。

@@ -1,5 +1,7 @@
 # Formal Scheduler Current Readiness Audit — 2026-09-20
 
+> **時點界線：** 本文件後續追加至 2026-09-21；「current」只指各段落記錄的當日唯讀觀測，不代表現在的 scheduler readiness。現行專案狀態請看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與最新排程 QA。
+
 本 QA 是一次 current-only、唯讀的正式 scheduler readiness 檢查。觀測時間為 `2026-09-20T15:05:49+08:00`，`decision_date` 取同一個實際 Asia/Taipei aware clock 日期 `2026-09-20`。它不代表下一個交易日已通過，也不改判 2026-09-18 的歷史 decision。
 
 ## 執行邊界

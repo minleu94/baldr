@@ -1,5 +1,7 @@
 # H20 原來源收藏核心驗證
 
+> **階段歷史：** 本文件先記錄收藏核心完成時的缺口；後續 Watchlist／Main 接線與新程序重開證據見本文件下方及 [Bookmark controls 收據](H20_BOOKMARK_CONTROLS_20261007.md)。下方早期「尚未接線」只描述當時階段，不代表後續接線仍未完成；整體現況以 Product UX QA index 與 Project Snapshot 為準。
+
 新增 H20 專屬 immutable 收藏描述與精確重開 API。描述只保存原 manifest、activation scope、候選模型與契約的來源身份、原選取列以及排序／捲動位置；不保存私人絕對路徑或預測報酬。重開以收藏中的 manifest SHA 找到原 receipt，不讀取最新 product pointer。
 
 現行明示 activation 必須仍對應原市場根、核准個人根與 scope。模型版本變更或停用以 typed 狀態呈現；歷史收藏不會重新啟用模型。原 manifest／capture／列身份沿公開 cohort reader 核驗，缺 capture 留在原名單並呈現未知，不能替換成同股的新預測。取消以 InterruptedError 傳遞。

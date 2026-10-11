@@ -10,7 +10,7 @@ Root 新增獨立 `tests/test_ui_qt_revenue_worker_lifecycle.py`，**2 passed，
 
 最新終態：真來源 UI attempt04 **1 passed／5 deselected，246.52 秒**。Root 已實讀原始 Tee log；旅程覆蓋 exact source 開啟、跨頁比較、isolated WatchlistService 保存及新 service typed 讀回、Main unbound route fresh restore 與 shutdown 拒絕。此測試使用真 view／worker，但不是完整 Main constructor 或新版 EXE 驗收。修正後 Root 再跑必要 gate：更新工作台 **85 passed，5.22 秒**、QA **25 passed／0 failed／4 skipped**、mypy **926 source files 無錯誤**，整合七檔 py_compile 通過。原長路徑與 tooltip 失敗封套繼續保留。
 
-表格修正後 Root 重新執行 projection 小測，結果 **2 passed／4 deselected，2.42 秒**。實讀修正確認六欄 cell／tooltip 與 model 契約相符，投影驗證在 source／recipe／query／result／page 更新前完成；不合格列投影失敗時原表格及六個來源狀態參照保留。完整 UI attempt04 已由 owner 使用唯一 native basetemp 執行，仍需其終態證據驗證真來源、跨頁、比較、服務保存與 Main 重開。
+表格修正後 Root 重新執行 projection 小測，結果 **2 passed／4 deselected，2.42 秒**。實讀修正確認六欄 cell／tooltip 與 model 契約相符，投影驗證在 source／recipe／query／result／page 更新前完成；不合格列投影失敗時原表格及六個來源狀態參照保留。這段「仍需終態證據」是 attempt04 終態前的歷史記錄；該 attempt 後續結果見上方，為 1 passed。它仍不代表完整 Main constructor 或新版 EXE 驗收。
 
 真 UI attempt03 已通過初次 exact reader，但在套用表格時失敗。Root 實讀表格 model 與 view：model 要求每列 cells／tooltips 都等於六欄，view 卻用完整明細的前十二行加提示作 tooltips，必然違反契約。已要求 owner 修正六欄投影，不放寬 model；並在更新目前 source／result／page 前先驗證投影，確保失敗訊息所稱「保留原研究」與實際狀態一致。此結果不能宣稱分頁、比較或收藏重開通過。
 

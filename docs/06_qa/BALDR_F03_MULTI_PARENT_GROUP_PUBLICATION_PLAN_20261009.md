@@ -1,6 +1,8 @@
 # F03 多 parent 投影群組與共同發行邊界計畫
 
-狀態：設計提案，尚未實作或驗收。這份文件只定義 MA、KDJ、波動度三路投影如何沿同一次 F17 exact read 完成完整 parent 核驗並共同發行；不代表 F03 全母體 query、UI、收藏或跨程序恢復已完成。
+> **狀態更新：** 本文保留實作前的設計提案。後續 [F03 prepare root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md) 記錄正式 reader／group-session 的 17 節點 bounded publication slice 已取得通過證據；這只表示共同發行切片有限通過。完整 query、UI、收藏與跨程序恢復仍未完成。
+
+狀態（設計基線）：本文定義 MA、KDJ、波動度三路投影如何沿同一次 F17 exact read 完成完整 parent 核驗並共同發行；不代表 F03 全產品範圍完成。
 
 ## 目前可用接點與缺口
 

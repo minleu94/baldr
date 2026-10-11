@@ -42,7 +42,7 @@ Root 實讀 p 固定 writer seam：43 個 qualification checks 全通過，25 �
 實際 outer root `C:/t/f02_ma_composite_257_v4_c9aa2cc65e05` 的原始 receipt/worker marker 顯示 failed、worker returncode 1、Job empty 且 closed。仍在 fixture_creation，未完成 oracle；具名診斷這次明確指出 `bundle_read_guard.module_registry_identity` 失配，actual/expected 都是 module、identity false，caller 為固定 writer `_publish_objects`。
 
 Root 直接核對 supervisor `_run_fixed_target`：`runpy.run_path(..., run_name="__main__")`；固定 target 尾端以空 argv 呼叫 `_run_case()`。已要求 owner 在新候選以穩定具名 target 模組及核驗後的真正 `_run_case` 入口執行，保持 supervisor registry 與完整來源／code／globals 身分核驗，不修改 target bytes，也不刪除 module identity check。先驗真正 launcher 至 writer 的最小 seam，再核新的完整母體計畫；p 失敗封套保留。
-# q 候選清理流程審查與 r 完整矩陣追蹤（2026-10-09）
+## q 候選清理流程審查與 r 完整矩陣追蹤（2026-10-09）
 
 ## r 終態與長路徑診斷
 
@@ -60,9 +60,9 @@ Owner 最新有效 public StoreReader exact 重開成功（5.704 秒）：宣告
 
 已交 owner 評估保留 strict canonical／reparse 驗證的最小修正與 bounded 原始 callsite 診斷；不得直接降成 strict=False、縮短 QA 路徑掩蓋問題、移除守衛或未經審查再跑完整 producer。此項仍可推進，不需要真人補件。
 
-## r 完整矩陣執行前核驗
+## r 完整矩陣啟動時核驗（其後已終態）
 
-完整矩陣已實際啟動一次，由 owner 持有 session `23324`。Root 讀到 `C:/t/f02_ma_composite_257_v4_f2aafa0e9dd2/supervisor_started.json` 及 r target 唯一 `attempt_11b3a820d18542be/acceptance_receipt.json`；此時 receipt 為 `running/fixture_creation`。觀察尚無終態，不能判斷成功或重啟。外層收據依設計保存在 C:/t，不在 supervisor 原始碼 QA 目錄。
+以下是 owner 啟動完整矩陣時的觀察快照；當時 target receipt 為 `running/fixture_creation`，尚無終態。後續同一 session `23324` 以 exit 1 結束，target receipt 為 failed／fixture_creation，generation directory 發生 WinError 3；該次未完成 oracle，不能視為母體通過。終態與後續唯讀診斷詳見上方「r 終態與長路徑診斷」。外層收據依設計保存在 C:/t，不在 supervisor 原始碼 QA 目錄。
 
 Root 已讀 r 計畫與 source manifest（SHA `1bf21b473deea24e8469f4a0866ff104911c6f4db955951e83dc9fb2ed18c973`），獨立重算 27 筆來源／runtime pins，失配為 0；r target 只有固定 script，C:/t 是普通既有目錄。q→r 只有 TARGET_PATH 目錄字串差異，target bytes 未改。已授權 owner 依固定 argv 執行一次完整矩陣；來源 direct-import pins 需前後獨立比對，終態依原 oracle、原守衛及 Job empty／closed／zero-owned 證據驗收。此段僅是啟動前放行，不代表完整矩陣已通過。
 

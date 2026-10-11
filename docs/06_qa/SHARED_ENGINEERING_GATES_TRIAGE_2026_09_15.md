@@ -3,6 +3,8 @@
 > 性質：有界 triage。初始診斷未重跑全域 pytest；後續依 owner 授權修補兩個 calendar fixture 測試，並完成 accepted inventory path 補登；未修改 production code、GUI、排程、Manual／SSOT，未 stage／commit。
 >
 > 基準：目前 HEAD 031e11ab（feat: complete continuity review workbench R1）。主要結果與節點來源為 docs/06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md。
+>
+> **歷史快照：** 本文中的 inventory 數字與「目前 HEAD」只描述 2026-09-15 triage。較新的唯讀 inventory 核對見 [文件治理狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)；不得把本文 836／831／5 的數字當作目前清冊。
 
 ## 結論摘要
 

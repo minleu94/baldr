@@ -3,7 +3,7 @@
 *Audited at: 2026-07-21T23:05:19.888177*
 
 > [!IMPORTANT]
-> 本報告為唯讀工程稽核，記錄目前 SQLite 數據、P0 資料源治理、PIT 安全與 Gate 狀態。
+> 本報告是截至 2026-07-21 的唯讀工程快照，所稱「目前」僅指該次觀測；SQLite 數據、P0 資料源治理、PIT 安全與 Gate 狀態不代表現況。最新專案狀態請看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
 > **本報告不構成正式 Gate 2 人工 Credit 核准或 Production Enablement。**
 
 ## 1. 資料庫基礎設施與資料表統計

@@ -53,6 +53,8 @@
 
 ## 限制與後續
 
+> **階段狀態更新：** 本節記錄投影撰寫時尚待實作的排程 hook。後續接線結果見 [scheduler hook QA](SCHEDULER_ML_DAILY_SOURCE_ROW_HOOK_20261001.md)；自然 Task 驗收仍待完成。
+
 這是對已保存 2026-09-30 source candidate 的單日 research projection，不是 general revision-aware raw build，不包含歷史 partitions、features、labels、Direct/OOC consumption 或 source unit acceptance。9/30 原始 source receipt 時間在當日 cutoff 之後，且本投影沒有評估 cutoff policy，故不能回填 PIT 或歷史可得性。
 
 下一步若接入每日排程，必須在同一次 runner 內僅於 prospective capture 返回 `captured` 或已驗證 `already_captured` 後，使用該回傳的 exact manifest path/hash 啟動投影；capture 失敗不得啟動。投影 child 失敗不得改寫 core collection／Formal revision hold 的狀態或 exit。需另建每次 run 的 create-only terminal receipt，並由 runner 對輸出 readback 和 exact pins 完成驗證；不能以 mutable latest 或 `awaiting_terminal_revision_validation` 中間 receipt 宣稱完成。此排程 hook 尚待實作與自然 Task 驗收。

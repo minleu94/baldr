@@ -9,6 +9,8 @@
 > - [DEVELOPMENT_ROADMAP.md](../00_core/DEVELOPMENT_ROADMAP.md) - Roadmap Hub
 > 
 > **最後更新**：2026-01-03（標記為歷史文檔）
+>
+> 本文中的 Python 版本、套件清單、資料路徑、測試命令與測試數量均是 2026-01-03 的歷史快照；不可據此判定目前環境、測試結果或覆蓋率。`example.com`、`your-repo` 與示例聯絡人是範本文字，不代表真實專案連結或聯絡方式。
 
 ## 測試環境設置
 

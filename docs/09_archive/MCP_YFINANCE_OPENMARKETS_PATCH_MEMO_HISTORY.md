@@ -1,6 +1,7 @@
 # MCP Yahoo Finance / openmarkets Patch Memo
 
 > **適用範圍：本機環境歷史備忘。** 本文記錄當時 Python 3.11、Pydantic 2、FastMCP 3.x 環境下的相容性觀察，未固定 `openmarkets`／`mcp-server-yfinance` 套件版本或 artifact hash，也未證明 patch 適用於目前或新環境。重建 `.venv` 時不要自動重套；新環境安裝依 [INSTALL_GUIDE](../07_guides/INSTALL_GUIDE.md)。只有核對實際套件版本與來源相符，且重現本文描述的故障後，才把下列片段當作診斷線索。
+> **用語限定：** 正文中的「目前環境」僅指本備忘錄記錄當時的本機環境，不表示當前工作環境；本文的套件設定只作待核實的診斷線索。
 
 ## 背景
 

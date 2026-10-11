@@ -1,5 +1,7 @@
 # ML Release v4 Storage Retention Cleanup — 2026-08-29
 
+> **歷史授權範圍（2026-10-11）：** 本文只記錄 2026-08-28／29 使用者當時明確授權的 immutable ML publication／training run retention 清理及當時容量盤點結果。該次授權與容量讀數是歷史收據，不構成目前清理或 retention 授權，也不證明目前容量／readiness。現況須查 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新具名 inventory；任何新清理須先核對最新依賴與範圍並取得當前明確授權。本文原始數字、操作範圍及證據保留。
+
 ## 結論
 
 2026-08-28（America/Los_Angeles）依使用者明確指示，對

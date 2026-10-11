@@ -1,5 +1,7 @@
 # A 線正式與相鄰 lane latest-status 唯讀 review（2026-09-17）
 
+> **截至 2026-09-17 的歷史 readback 快照**：標題中的 latest 指當日讀回的 latest receipt，不代表目前最新狀態；目前判讀須重新讀取授權來源與具名證據。
+
 本 artifact 只讀六個已命名 `latest_status.json` 及其檔案 metadata；沒有啟動
 scheduled job、沒有修改 Task Scheduler、沒有寫入正式 `D:\Min\Python\Project\FA_Data`
 或任何 SQLite。日期採 receipt 的 `decision_date`／`as_of_date`，檔案時間只作定位。

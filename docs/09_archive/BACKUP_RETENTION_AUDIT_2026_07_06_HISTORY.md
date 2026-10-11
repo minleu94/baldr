@@ -1,5 +1,7 @@
 # Backup Retention Audit 2026-07-06
 
+> **歷史盤點快照**：本文的檔案數量、容量、retention 覆蓋與清理候選只代表 2026-07-06 盤點；2026-08-29 另有 V4 immutable publication 補記。這些記錄不代表目前庫存或目前未處理候選，清理前須另做新 inventory。
+
 > 本文件記錄 2026-07-06 對 repo 與 `D:/Min/Python/Project/FA_Data` 備份檔的盤點結果。初次盤點沒有刪除任何正式資料或既有備份；同日後續依使用者明確指示，已清理 repo / Temp 內可重建的 working-copy 與 QA raw output，正式 `FA_Data/sqlite/twstock.db` 未被修改。
 
 ## 結論

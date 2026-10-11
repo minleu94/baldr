@@ -2,7 +2,7 @@
 
 ## 狀態與來源
 
-**等待 root 審查；尚未套用。** 唯讀檢查現有 `automation.toml`，未直接修改 TOML，也未呼叫 Codex automation 管理工具。
+**歷史提案快照（截至 2026-09-25）：當時等待 root 審查，尚未套用。** 後續已於 2026-09-26 由管理工具套用並完成唯讀 readback；結果見[產品整合與排程接續驗收](BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md)。本頁保留當時提案內容。唯讀檢查現有 `automation.toml`，未直接修改 TOML，也未呼叫 Codex automation 管理工具。
 
 - automation：`paper`，`ACTIVE`，heartbeat，目標 thread `01a0b393-181a-7ef3-9ad7-2af05bc09f8b`。
 - 現有日程：`FREQ=DAILY;BYHOUR=6;BYMINUTE=20;BYSECOND=0`，依 automation 的本地時間每日 06:20 執行，目前對應台北 21:20。提案保留日程、thread、名稱、狀態、model 欄位與通知設定；DST 後以實際觸發時間為準。

@@ -3193,3 +3193,25 @@ Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../sc
 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md` | 歷史 preflight 導引 | 14 | 1176 | `89e2a2e86ca5fcdef5cbdf97439d959d20f9d1b3956523faa209d788164d91a4` |
 
 R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明示不是正式 PASS review，含工作站絕對路徑；其餘五份記錄歷史 checkpoint、preflight 與後續替代入口，均不可推定為現況。七份文件彼此未見重大實質衝突；因受保護現況權威未讀，未能交叉核對其所述目前狀態。允許範圍內僅檢查內部引用目的地存在性，未讀其內容；`REFACTOR_MODEL_ASSIGNMENTS.md` 預期資料夾位置未找到，絕對路徑未逐一驗證。兩份 dirty 路徑 `WAVE1_R007_TZNAME_CHECKPOINT.md` 與 `WAVE2_BATCH_VALIDATION_PLAN.md` 完全排除，未讀。未修改來源、未跑測試、Graphify 或全域 links／anchors scan。
+
+<a id="coverage-entry-316"></a>
+## 2026-10-11 Archive 根層十份歷史文件時點限定與全文覆核
+
+針對 `docs/09_archive/` 根層 10 份 tracked 文件全文核讀至 EOF；讀前目標均 clean。其後 7 份以目前 HEAD `b8f2d595660cf72f4127dba6830ada7aa857db1f` 的 Git blob 綁定身份並讀至 EOF；另 3 份在本次限定修訂前於 clean worktree 讀取，現表中的 SHA 是本次修訂後完整 bytes。此批不是 Archive 263 份 Markdown 的全量核讀。
+
+| Archive 根層路徑 | 分類 | 行數 | bytes | 目前 SHA-256 |
+|---|---|---:|---:|---|
+| `A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md` | 歷史運行 readback 證據 | 34 | 4235 | `ef2ecd8623b6212be529457b30b84ed5d641d5f0c6273204553da8da3059c300` |
+| `API_INVESTIGATION_REPORT.md` | 2025-12-08 歷史 incident 研究 | 130 | 4604 | `576f228ce9a2777f8a11a0294379d91cc7ac60247f1cf46007b58e6685b34656` |
+| `ARCH_GOVERNANCE_CHECKLIST.md` | 2026-06-24 歷史架構治理備忘 | 55 | 2510 | `5fecf547198c56fe1b84421dbedd0d7bd5676acb2fcae432afb73be6ebd2cc4d` |
+| `ARCH_GOVERNANCE_LIFECYCLE.md` | 2026-06-24 歷史治理流程提案 | 19 | 1051 | `1cb7633095b962f3244b19add561e113f6b14607754213e609479b829cc5ef3c` |
+| `ARCH_VIOLATION_RESPONSE_POLICY.md` | 2026-06-24 歷史違規處理備忘 | 39 | 1407 | `2b3fd4fde7713cf7d5adf714843e29c2b261420125a662b99bdc6cfbe64b2dc2` |
+| `BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md` | 歷史備份盤點／retention 證據 | 118 | 10422 | `c45127e2be0e8486564a9a8137d115458079414e3f73b71a4350c624c74bc3cb` |
+| `BALDR_DAILY_TECHNICAL_PARSE_DIAGNOSTIC_QA_20260925.md` | 2026-09-25–26 隔離 QA 收據 | 60 | 6005 | `a2341d67c9a99dca1b3cb5281a9302a98cb19ebe000f9314983549c9b4d712c9` |
+| `BALDR_PAPER_AUTOMATION_PROMPT_PROPOSAL_20260925.md` | 2026-09-25 automation 歷史提案 | 45 | 6798 | `797e7e7e9670c6aed937d1fa68f9e7b36cd1b8617a535eda131ab38c16fcf6fa` |
+| `BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md` | 2026-09-25–26 bounded integration／驗收紀錄 | 108 | 13833 | `c1dcce764cb676f474f3cf70ae69f328c032c51312a588c3aae60eec2a5262a7` |
+| `BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md` | 2026-09-27 歷史 refs／worktree 整理紀錄 | 45 | 5499 | `438b804568847c0b651c26af57ed6be3a8de3a708fe7569be4e5095d91218c9a` |
+
+六份文件已作歷史時點修訂：A Operations 明示 latest 指 9/17 readback；Architecture Checklist 將「用途」改為 6/24 原提案用途；Backup Retention 限定數量與清理候選是 7/6 盤點，含 8/29 獨立補記；Paper prompt proposal 明示等待審查／尚未套用只代表 9/25，並連到後續 integration record；integration 狀態節標為截至 9/26 的歷史記錄；Branch consolidation 明示 refs/worktree/local-branch 狀態只截至 9/27 整理完成時。其他四份維持既有日期界線，未發現需要改寫的 current-authority 聲明。Archive README 已有相關入口；本次新增的 proposal → integration 連結目標存在。
+
+目前 HEAD 的 7 個 clean blob 中抽取 11 個 inline 本機連結，目的地全存在；三份本次修訂文件的既有導覽與新增目的地亦可定位。未驗證 anchors、HTML/reference-style links 或外部連結；未核讀任何連結所指正文，也未讀受保護的 system architecture、Application Manual、Snapshot 或使用者補完計畫。原根層文件留存；本次僅修改上述 6 份歷史文件與本矩陣/History。`git diff --check` 通過；未跑測試、Graphify 或 repo-wide links／anchors scan。

@@ -1,5 +1,8 @@
 # Fixed vs Quantile 驗證報告
 
+> 本報告的量化結果是 2026-06-14 的 10 檔 fixed／quantile OOS pilot，只適用於該次資料與策略設定；此處「目前」不代表現行績效或產品狀態。
+> 現行狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [DEVELOPMENT_ROADMAP](../00_core/DEVELOPMENT_ROADMAP.md)；本文保留歷史實證與契約驗證。
+
 ## 1. 驗證狀態
 
 本文件記錄 Strategy & Scoring Governance 的機制與回歸驗證。

@@ -10,6 +10,8 @@
 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE1_PARALLEL_ANALYSIS.md` | [Wave 1 analysis packet](GEMINI_WAVE1_PARALLEL_ANALYSIS.md) | [Wave 1 analysis report](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md)、[R003／R005 review](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R003_R005_GEMINI_REVIEW.md)。分析輸入不等於正式 review。 |
 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE2_PARALLEL_ANALYSIS.md` | [Wave 2 analysis packet](GEMINI_WAVE2_PARALLEL_ANALYSIS.md) | [R008 report](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R008_IMPLEMENTATION_REPORT.md) 與 [Wave 2 result_id checkpoint](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)。唯讀預分析不等於正式 review 或 Wave 3 gate。 |
 
+| 舊路徑 | 歷史原件 | 現行結果／限制 |
+|---|---|---|
 | docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R002.md | [GEMINI_REVIEW_R002.md](GEMINI_REVIEW_R002.md) | R002 ACCEPTED：characterization 有界完成；precision gate 仍以 R031／具名 QA 為準。 |
 | docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_R003.md | [GEMINI_R003.md](GEMINI_R003.md) | R003 ACCEPTED_WITH_BOUNDED_SCOPE；細節看 R031 與 R003 report。 |
 | docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R003.md | [GEMINI_REVIEW_R003.md](GEMINI_REVIEW_R003.md) | R003 ACCEPTED_WITH_BOUNDED_SCOPE；Portfolio P2 限 source navigation identity。 |

@@ -2782,3 +2782,23 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 Archive 根層第八批八份具名全文核讀與歷史狀態提示
 
 全文核讀根層 `PHASE2_ARCHITECTURE.md`、`PHASE2_STRATEGY_LIBRARY.md`、`PHASE_2A_DATA_SOURCES_AUDIT.md`、`PHASE3_3B_RESEARCH_DESIGN.md`、`PHASE4_PORTFOLIO_DESIGN.md`、`WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md`、`V1_RELEASE_CHECKLIST_2026_06_30.md`、`MCP_YFINANCE_OPENMARKETS_PATCH_MEMO_HISTORY.md`；八份均有 Archive README 直達。對六份歷史設計／來源／release 文件補充檔首時點界線，尤其區分未勾子項與上層完成標記、不同日期資料來源整理、歷史「現在」文字與舊 release 指示；不改正文命令、勾選或數字。兩份既有歷史提示足夠，保留。早期 Archive aggregate 無逐檔名單，無法排除與本批重疊，不以本批推算舊 aggregate 或未讀總數。限定八檔 `git diff --check` 通過；未跑測試、Graphify 或最終全 repo links／anchors scan。
+
+<a id="coverage-entry-257"></a>
+## 2026-10-11 QA 正常入口與推薦工作區八份具名全文核讀
+
+全文核讀 `BALDR_F17_NORMAL_PRODUCTION_UI_REVIEW_20261009.md`、`BALDR_F17_NORMAL_CAPTURE_PAIR_REVIEW_20261009.md`、`BALDR_MA_V9_CHILD_IDENTITY_ROOT_REVIEW_20261009.md`、`BALDR_MA_NORMAL_OPENER_REVIEW_20261008.md`、`BALDR_RECOMMENDATION_SCROLL_CURRENT_REVIEW_20261009.md`、`BALDR_RECOMMENDATION_KEYBOARD_SCROLL_20261008.md`、`BALDR_RECOMMENDATION_HUMAN_FEEDBACK_20261007.md`、`BALDR_PARENT_BBANDS30_UPPER_20261007.md`。八份均可由 Product UX QA index 到達。MA normal opener 原「尚待驗證」清單與後續 V11 Root acceptance receipt 不一致，已補日期界線與後續摘要；接受範圍限固定合成來源的新程序／收藏流程，原始 H20、真人、候選 EXE、自然觀測與效能門檻仍未驗。其餘七份證據範圍及索引路由一致，沒有可推廣為正式／全市場驗收的結論。舊 QA aggregate 缺完整逐檔 manifest，不重算總數；未讀受保護完成進度，未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-258"></a>
+## 2026-10-11 REFACTOR_REPORTS R014–R020 八份具名全文核讀與後續狀態導覽
+
+全文核讀 `R014_IMPLEMENTATION_REPORT.md`、`R015_IMPLEMENTATION_REPORT.md`、`R016_CONSUMER_CUTOVER_IMPLEMENTATION_REPORT.md`、`R016_LEGACY_QUERY_PROJECTION_IMPLEMENTATION_REPORT.md`、`R017_IMPLEMENTATION_REPORT.md`、`R018_IMPLEMENTATION_REPORT.md`、`R019_IMPLEMENTATION_REPORT.md`、`R020_IMPLEMENTATION_REPORT.md`，並對照 R031、R029、migration ledger 與 QA index。R015、R016 legacy query、R017–R020 的舊快照／待辦文字已由檔首補上後續 bounded acceptance／closeout 導覽，同時保留原裁定、compatibility 與未驗範圍；不推論所有 runtime、caller、parity、ML inference 或跨 store 原子性已完成。R014 與 R016 consumer cutover 無須修改。早期 REFACTOR_REPORTS 74 份 aggregate 缺逐檔清單，不能排除重疊，故本批具名列檔但不加算為精確總數。限定八檔 diff check 無 whitespace error；未跑測試、Graphify 或最終全 repo links／anchors scan。
+
+<a id="coverage-entry-259"></a>
+## 2026-10-11 Archive 根層第九批八份具名全文核讀與過期流程提示
+
+全文核讀 Archive 根層 `PROGRAM_READINESS_AUDIT_2026_08_27.md`、`PROGRAM_READINESS_AUDIT_2026_08_28.md`、`PROGRAM_STATUS_REBASELINE_2026_08_29.md`、`FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md`、`RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md`、`PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md`、`ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md`、`WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md`；Archive README 均有直達連結。為 status rebaseline、已過期的 ML allocation 日期計畫及含整理／Git 步驟的 workspace cleanup 快照補上時點／非現行操作授權提示。其餘文件已具足夠歷史界線；舊容量數字與後續狀態的差異由清理前快照定位。早期 Archive aggregate 無逐檔 manifest，不重算總量。限定八檔 diff check 無 whitespace error；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-260"></a>
+## 2026-10-11 Superpowers 導引 provenance 修正
+
+核對三份 retained source stubs 所標 commit 與 Git 記錄：UI readability closeout 修正為 `08b879e3a`，Workbench visual hierarchy closeout 修正為 `5b4b845c7`；V3 ML readiness 導引改列實作 commit `b5ec05dd5` 與 closeout handoff `5b391fd66`，不再把 plan/spec 建立 commit 誤標為 closeout。已在 live Superpowers README 的 UI readability／presentation 主題列補上兩組 UI polish plan/spec 直達連結。歸檔原文與 manifest 未改；三份 commit 以 `git show --stat` 核實。未跑測試、Graphify 或最終 repo-wide links／anchors scan。

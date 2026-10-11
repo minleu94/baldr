@@ -1,5 +1,7 @@
 # R016 legacy 完整 payload query projection 實作報告
 
+> **2026-10-11 狀態導覽：** 本報告記錄 U4 query extension 的凍結切片；下文「Journey production adapter 尚未改接」是該切片當時的狀態。後續 R016 consumer cutover 已將 Journey 接到 verified query/read view，見 [R016 consumer cutover report](R016_CONSUMER_CUTOVER_IMPLEMENTATION_REPORT.md) 與 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。這不改變 U4 對沒有獨立可信 digest 的 legacy bytes 僅具 read-time hash 的限制。
+
 TASK_STATUS: `U4_LEGACY_QUERY_EXTENSION_ACCEPTED_SCOPE`
 OWNER: `Luna Max — R016 U4 query extension`
 DATA_SCOPE: `synthetic tmp_path only`

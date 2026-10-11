@@ -1,5 +1,7 @@
 # R018 推薦 input preparation／provider 抽離實作報告
 
+> **2026-10-11 狀態導覽：** 本報告末尾「`TMP-REC-01` 仍由 R019 依退休帳完成」是 R018 當時的交接狀態。R031 current overlay 記錄 R018 為 `ACCEPTED_WITH_INPUT_PREPARATION_SCOPE`；R019 後續關閉的僅是 legacy latest-state/matrix 到 canonical rule result 的窄 bridge，不代表 app source-orchestration body 或 invocation capture 已移除。見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。
+
 ## 狀態與範圍
 
 - TASK：R018 Recommendation input preparation／provider extraction

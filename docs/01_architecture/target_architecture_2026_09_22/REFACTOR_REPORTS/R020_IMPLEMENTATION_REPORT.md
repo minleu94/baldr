@@ -1,5 +1,7 @@
 # R020 replay 共用 evaluator 與版本化 policy 實作進度
 
+> **2026-10-11 狀態導覽：** 本文的 2026-09-25 checkpoint 與多處 `R020 IN_PROGRESS`、`TMP-REC-04 ACTIVE`、`TMP-NUM-01 ACTIVE`、`C2 未放行` 均保留當時 frozen snapshots；不得當作目前 disposition。R031 current overlay 將 R020 列為 `CLOSED_FOR_R005_REPLAY_RECOVERY`，R029 將 bounded `TMP-REC-04` 與原範圍 `TMP-NUM-01` gate 列為 CLOSED，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。此 closure 不代表所有 caller/runtime、完整無界 V-REPLAY parity 或跨 store 原子交易完成。現況與邊界見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R031 closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 與 [R029 report](R029_IMPLEMENTATION_REPORT.md)。
+
 ## 目前 checkpoint（2026-09-25）
 
 Root 已接受 R020 bounded engineering scope，並裁定 `TMP-REC-04` `CLOSED`。C2 current union route 為 **1860 passed／5 skipped／34 warnings**、102.75 秒、exit 0，141 個測試路徑前後 229 hashes unchanged；log `C:\Users\archi\AppData\Local\Temp\c2s_bcd34f\pytest.log` SHA-256 `193EF45EA69B984A356F238CFAD4D00D714AB2B026E01CE89887260E59604687`。Workbench 84 passed，broad mypy 724 files／0 issues；Update validator 的 Windows `WinError 32` cleanup failure 保留為具名 baseline（25 passed／1 teardown failure／4 skipped、exit 1），因此 C2 是 `ACCEPTED_WITH_NAMED_QA_BASELINE`，非全綠。`TMP-NUM-01` 仍 `BLOCKED_WITH_OWNER`（decision recommendation／app codec），其獨立數值支援與 caller parity 範圍不由 R020 closeout 關閉。此接受不代表正式資料或 model promotion 已完成。細節見 [C2 mandatory UI/static gate 現況收據](../../../06_qa/C2_MANDATORY_UI_STATIC_GATES_20260925.md)。

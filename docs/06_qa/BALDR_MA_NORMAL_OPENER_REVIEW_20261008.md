@@ -22,12 +22,14 @@
 
 測試來源不足 60 個觀測交易時段，因此全部 MA unknown 是合理結果。本次不證明正向多頭排列條件命中，也不證明正式資料完整性或效能門檻。先前 attempt01 計數顯示錯誤、attempt02 測試腳本字串屬性存取錯誤均保留，不能作為通過證據。
 
-## 尚待驗證
+## 尚待驗證（截至 2026-10-08 原紀錄）
 
 1. 全新程序以保存 canonical query 重開，保持 F17、P01 與 MA identities，重做兩股條件及完整母體還原。
 2. 至少 60 個觀測交易時段的正向／反向來源證據與決策日界線。
 3. 正常 UI 條件、排序、分頁、返回及收藏流程；候選 EXE 必須另驗。
 4. 1,000 檔固定來源效能矩陣。上述秒數是個別測試耗時，不能視為 p95。
+
+2026-10-09 後續收據更新：原清單第 1 項已由 V11 固定合成來源的新程序 Main／Watchlist 收藏重開旅程接受；第 3 項的 Main、排序／分頁與 typed 收藏路由也在同一固定合成旅程中得到接受。這些結果不涵蓋候選 EXE、真人驗收或原始 H20。第 2、4 項仍未解除；精確範圍見本文末的 V11 收據摘要及 [MA V9 child identity Root review](BALDR_MA_V9_CHILD_IDENTITY_ROOT_REVIEW_20261009.md)。
 
 ## 正常查詢接入的審核要求
 
@@ -175,4 +177,10 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 前三次測試側失敗分別為應用根應在repo外的矛盾、Windows長路徑解析及tree pin遺漏technical database，收據原樣保留。修正後固定已生成的同一bundle進行重驗，沒有每次重產。此接受是同程序完整合成Main旅程；仍不授新程序／新EXE、原H20、F02複合矩陣、效能p95或整個補完計畫完成。
 
 中央另以一般 pytest 環境、不提供四項固定來源 pins，獨立複驗完整 Main 測試：session 55697 terminal exit 0，2 passed／165.35 秒（包含全新合成來源建立）。收據 `output/qa/ma_bookmark_main_startup_20261008_a/attempt_1791505227381209400_22756/main_startup_receipt.json` SHA `a244d893d41348179374b95a0db6d06b5f1c1f32ba6c7be7c12e6d9a2c01957e`，`source_origin=fresh_unique_bundle_fixture`，Main 旅程耗時 36.453 秒。來源 inventory 前後 SHA 同為 `0370adad1811b3b5ef872ac1671c9fb96981e65e6f8205fd710fdafc81ef3c48`，exact read 2 次，startup/open/save/typed fresh restore 通過、網路嘗試空、正常關閉且原生 workers 終止。這補足完整 Main 測試的一般合成 fixture 路由；不代表正式股票來源、新 EXE 或人工作業接受。
+
+## V11 固定合成來源 Main／新程序收藏重開接受（2026-10-09）
+
+MA V9 Root review 記錄唯一完整旅程 `run_attempt_ffce90498c624514a7f3f1874b89e644`，terminal exit 0。父 Main 以固定合成來源完成 AND／OR／OR-only 三組名單（59／158／97 股，page size 50）並正常關閉；fresh child 再經可見 Watchlist 的實際點選與雙擊，typed capture 恰 1、generic route 為 0，成功重開四均線研究收藏。Child 保留 page 1／50、selected 1000、比較籃 1010／1000 與 query/page identities；Watchlist bytes 與固定九來源前後一致，workers 終止、Job 關閉、launcher/reporter inactive。Root 接受此固定合成 MA 閉環，不再重跑同一旅程。
+
+此後續收據只關閉原待驗清單中固定合成來源的 Main／fresh child 與收藏路由缺口。未取得原始 H20／官方資料資格、候選 EXE 或真人接受；build identity 仍為 unverified／unknown；此結果也不提供 1,000 檔效能 p95 或 60 個自然觀測交易時段的正反向驗證。
 

@@ -1,5 +1,7 @@
 # R017 replay canonical bridge 實作報告
 
+> **2026-10-11 狀態導覽：** R031 current overlay 將 R017 列為 `ACCEPTED_WITH_TYPED_REPLAY_BRIDGE_SCOPE`。R020／R029 後續已關閉 `TMP-REC-04` 的 bounded R005 replay/recovery gate；這完成具名交接，不代表所有 runtime、caller 或無界 replay parity 均已驗收。本文所列「R020 移除」是當時的預定退場安排，現況見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [R020 report](R020_IMPLEMENTATION_REPORT.md)。
+
 ## 狀態與範圍
 
 - TASK：R017 replay canonical bridge

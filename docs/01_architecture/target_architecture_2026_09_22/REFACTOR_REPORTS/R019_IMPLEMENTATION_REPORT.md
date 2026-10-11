@@ -1,5 +1,7 @@
 # R019 純推薦 evaluator 抽離實作報告
 
+> **2026-10-11 狀態導覽：** 本文頂部與 C3C3 段落的 `TMP-REC-02`、`TMP-NUM-01`、`TMP-ML-01 ACTIVE` 及「R020 尚未完成」等狀態是 2026-09-24 切片快照。R031 current overlay 將 R019 列為 `ACCEPTED_WITH_RULE_BRIDGE_SCOPE`；R029／migration ledger 後續將窄 `TMP-REC-01` bridge、原 bounded `TMP-NUM-01` gate 及 supported caller/profile `TMP-ML-01` 條件列為 CLOSED，並為 `TMP-REC-02` 記錄永久相容保留。這些裁定不代表所有 caller、runtime、formal data 或 production gate 完成。見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。
+
 ## 狀態與範圍
 
 - TASK：R019 — 純推薦 evaluator 抽離。

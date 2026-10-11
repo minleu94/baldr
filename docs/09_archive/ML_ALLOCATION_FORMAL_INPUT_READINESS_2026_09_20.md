@@ -1,5 +1,7 @@
 # ML allocation Formal input readiness（2026-09-20）
 
+> **歷史時點提示（2026-10-11）**：本文為 2026-09-20、以 2026-09-21 為目標日的查核與計畫；該目標日已過。文中的 candidate、時窗與「下個合法動作」不得當成目前 clock、現況證據或派工／授權；須依實際新證據重新核對。
+
 本頁是 2026-09-20 的 bounded 唯讀查核，針對下一個官方開市日 2026-09-21。沒有執行帶未來 `training_as_of` 的 readiness validator，沒有啟動 writer／scheduler，沒有改 binding、source pins、Formal flags 或 accepted artifact。
 
 ## 判定

@@ -1,5 +1,7 @@
 # R015 personal recommendation producer/save/ACK migration report
 
+> **2026-10-11 status route:** The `Wave 7–14 remain BLOCKED` line below is the R015 report-time snapshot. The later R031 current overlay records R015 as `ACCEPTED_WITH_PERSONALIZATION_IDENTITY_SCOPE`; R029 and the migration ledger record `TMP-REC-03` as retired with legacy JSON exact-retry/read compatibility retained. This bounded acceptance does not establish natural ML inference, formal data acceptance, model promotion, or production rollout. See the [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md), [R029 report](R029_IMPLEMENTATION_REPORT.md), and [migration ledger](../FINAL_MIGRATION_SEQUENCE.md).
+
 ## Status and baseline
 
 - Task: R015 personalization producer/save/ACK migration.

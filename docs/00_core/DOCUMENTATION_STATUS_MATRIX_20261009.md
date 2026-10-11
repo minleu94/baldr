@@ -45,6 +45,8 @@
 
 全體文件沒有一個可支持「已逐篇讀完」的比例。上述數字只表達可追溯的審閱證據；正文審閱數、入口連結覆蓋及分類完成度是不同指標，不能互相代替。e6 排程 QA 與 Runbook 已納入補充閱讀；全 repo 最終 link／anchor 掃描與 Graphify 刷新仍待所有目錄內容審核及修訂完成後進行。
 
+**增量口徑校正：** 本節的 `07_guides/` 18 全文／2 局部、QA 205 全文／4 局部／344 未讀，以及 Archive 根層 57 全文／206 待讀，都是舊盤點快照，不是目前總數。Coverage History Entries 182、197、207–302 後續新增具名核讀與修訂，但早期 aggregate 缺少逐檔 manifest，無法可靠去重回算目前全域總數；Entry 262 已將 `APPLICATION_MANUAL_SUPPLEMENTS.md` 從局部提升為全文。現有檔案記錄仍有待讀／局部項目及受保護排除路徑，因此不能宣告所有內容複核已完成；最終 repo-wide links／anchors scan 與 Graphify 依完成定義繼續保留為未執行 gate。
+
 ### `09_archive/` 巢狀目錄核讀補充
 
 | 範圍 | 可證實核讀狀況 | 判讀與處理 |

@@ -49,6 +49,7 @@
 ### 2026-10-10 待真人實測
 
 - **複合研究與收藏重開**：[真人驗收步驟](BALDR_COMPOSITE_HUMAN_CHECK_20261010.md)。原碼自動化旅程已通過，但真人結果尚未取得；此收據不代表完整 UI、EXE 或投資驗收。
+- **BALDR／P08 有界工程收據**：[產品補完狀態快照](BALDR_PRODUCT_COMPLETION_STATUS_20261010.md)、[P08 價格證據切片](BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)、[P08 現金種子切片](BALDR_P08_CASH_SEED_SLICE_20261010.md)。這些是 10/10 的狀態與有限工程證據，不代表 P08 或整體產品補完完成。
 
 ## 其他常用路徑
 

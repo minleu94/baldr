@@ -60,6 +60,8 @@ source DB 前後 stat：size `3,568,181,248` bytes、LastWriteTime `2026-09-14T0
 
 ## 目前排程狀態與下一步接線
 
+> **範圍釐清（2026-10-11）：** 本節「未把臺銀 lane 接入每日自動累積」指未接入／取代正式 daily/default learning chain，該 default 仍是 `legacy_fixed_bp`；這不否認另行註冊的獨立 05:50 BankTaiwan shadow task 與單次受控 run，操作收據見[同日營運 QA](DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md)。本註記只釐清兩份歷史證據的範圍，不表示該 task 目前仍註冊或可重跑。
+
 目前正式每日排程仍使用 `legacy_fixed_bp` 的 fixed 50bp default；本次沒有把臺銀 lane 接入每日自動累積，也沒有把它宣稱成已完成的自然 forward learning。新 lane 目前只由受控 CLI／fixture 驗收與上述 real-source smoke 使用。
 
 下一個明確接線點是 `scripts/scheduled/run_daily_recommendation_learning_pipeline.py` 將既有 `learning_arguments` 傳給 `run_daily_recommendation_learning.py` 的區段（cost flags 已可轉送）。接線時必須以獨立 root 執行，例如：

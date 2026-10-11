@@ -69,9 +69,13 @@ def audit_monthly(quick_path: Path, *, now: datetime) -> dict[str, Any]:
     )
     if parent is None or binding.get("binding_status") != "verified":
         raise ValueError("quick_parent_terminal_identity_not_verified")
+    parent_identity = {
+        "parent_run_id": parent.get("run_id"),
+        "parent_status_sha256": binding.get("status_sha256"),
+    }
     declaration = parent.get("monthly_revenue_research_capture")
     if not isinstance(declaration, dict) or not declaration.get("result_receipt_path"):
-        return {"status": "not_recorded", "parent_run_id": parent.get("run_id"), "reason": "monthly_child_receipt_not_declared"}
+        return {"status": "not_recorded", **parent_identity, "reason": "monthly_child_receipt_not_declared"}
     child_path = Path(declaration["result_receipt_path"])
     child, child_sha = _object(child_path)
     if child.get("schema_version") != "scheduled-monthly-revenue-research-capture.v1":
@@ -84,7 +88,14 @@ def audit_monthly(quick_path: Path, *, now: datetime) -> dict[str, Any]:
     if not isinstance(capture, dict):
         raise ValueError("monthly_child_result_missing")
     if capture.get("status") != "captured":
-        return {"status": "failed", "parent_run_id": parent["run_id"], "child_sha256": child_sha, "reason": capture.get("reason", "monthly_capture_not_completed")}
+        child_result = capture.get("result")
+        return {
+            "status": "failed", **parent_identity,
+            "child_path": str(child_path), "child_sha256": child_sha,
+            "reason": capture.get("reason", "monthly_capture_not_completed"),
+            "child_status": capture.get("child_status"),
+            "child_diagnostics": child_result.get("diagnostics", []) if isinstance(child_result, dict) else [],
+        }
     result = capture.get("result")
     if not isinstance(result, dict) or result.get("schema_version") != "monthly-revenue-research-candidate-status.v1" or result.get("status") != "captured":
         raise ValueError("monthly_capture_result_schema_mismatch")
@@ -176,14 +187,33 @@ def audit_quick_monthly_capture(
         result = audit_monthly(quick_status_path, now=now)
     except (OSError, ValueError, TypeError, KeyError, ImportError, SyntaxError) as exc:
         return {"status": "blocked", "reason": str(exc) or type(exc).__name__, "error_type": type(exc).__name__, "formal_credit": False}
-    expected_parent_sha = str(quick_binding.get("status_sha256", ""))
-    actual_parent_sha = str(result.get("parent_status_sha256", ""))
+    expected_parent_sha = str(quick_binding.get("status_sha256") or "")
+    actual_parent_sha = str(result.get("parent_status_sha256") or "")
     if expected_parent_sha.startswith("sha256:"):
         expected_parent_sha = expected_parent_sha[7:]
     if actual_parent_sha.startswith("sha256:"):
         actual_parent_sha = actual_parent_sha[7:]
-    if not expected_parent_sha or expected_parent_sha != actual_parent_sha:
-        return {"status": "blocked", "reason": "quick_parent_changed_during_child_audit", "formal_credit": False}
+    if not expected_parent_sha or not actual_parent_sha:
+        return {"status": "blocked", "reason": "quick_parent_audit_hash_missing", "formal_credit": False}
+    # 完成 child 查核後再讀父檔；缺少 pin 與真實 bytes 改變分開判讀。
+    try:
+        _, final_binding = _quick_status_snapshot(
+            status_path=quick_status_path, canonical_status_path=quick_status_path, observed_at=now,
+        )
+    except (OSError, ValueError, TypeError, KeyError, ImportError, SyntaxError) as exc:
+        return {"status": "blocked", "reason": str(exc) or type(exc).__name__, "formal_credit": False}
+    final_parent_sha = str(final_binding.get("status_sha256") or "").removeprefix("sha256:")
+    if not final_parent_sha:
+        return {"status": "blocked", "reason": "quick_parent_audit_hash_missing", "formal_credit": False}
+    if expected_parent_sha != actual_parent_sha or actual_parent_sha != final_parent_sha:
+        return {
+            "status": "blocked", "reason": "quick_parent_changed_during_child_audit", "formal_credit": False,
+            "expected_parent_sha256": expected_parent_sha,
+            "audited_parent_sha256": actual_parent_sha,
+            "final_parent_sha256": final_parent_sha,
+        }
+    if final_binding.get("binding_status") != "verified":
+        return {"status": "blocked", "reason": "quick_parent_terminal_identity_not_verified", "formal_credit": False}
     return {**result, "formal_credit": False}
 
 

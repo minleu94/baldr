@@ -179,6 +179,67 @@ def test_sequential_wait_rejects_unobserved_process(
         )
 
 
+@pytest.mark.parametrize("returncode", [0, 2])
+def test_owned_exited_child_does_not_require_live_pid(monkeypatch, returncode):
+    monkeypatch.setattr(psutil, "Process", lambda _: pytest.fail("已退出的自有 child 不查 live PID"))
+    process = SimpleNamespace(pid=31415, poll=lambda: returncode)
+    chain._wait_for_expected_process(
+        process_id=31415, spawned_process=process,
+        expected_fragments=("target.py",), poll_seconds=1,
+    )
+
+
+def test_owned_live_child_still_requires_matching_command(monkeypatch):
+    monkeypatch.setattr(psutil, "Process", lambda _: SimpleNamespace(cmdline=lambda: ["unrelated.py"]))
+    process = SimpleNamespace(pid=31415, poll=lambda: None)
+    with pytest.raises(RuntimeError, match="custody mismatch"):
+        chain._wait_for_expected_process(
+            process_id=31415, spawned_process=process,
+            expected_fragments=("target.py",), poll_seconds=1,
+        )
+
+
+def test_owned_process_handle_must_match_pid():
+    with pytest.raises(ValueError, match="pid mismatch"):
+        chain._wait_for_expected_process(
+            process_id=31415, spawned_process=SimpleNamespace(pid=27182),
+            expected_fragments=("target.py",), poll_seconds=1,
+        )
+
+
+@pytest.mark.parametrize("ooc_code,release_code", [(2, 0), (0, 2), (0, 0)])
+def test_supervisor_reads_exited_helpers_and_requires_success_codes(monkeypatch, tmp_path, ooc_code, release_code):
+    training = tmp_path / "training"
+    training.mkdir()
+    for name in ("continuation_status.json", "post_ooc_followup_status.json"):
+        (training / name).write_text(json.dumps({"status": "complete"}), encoding="utf-8")
+    children = iter([
+        SimpleNamespace(pid=101, poll=lambda: 0, wait=lambda: 0),
+        SimpleNamespace(pid=102, poll=lambda: ooc_code, wait=lambda: ooc_code),
+        SimpleNamespace(pid=103, poll=lambda: release_code, wait=lambda: release_code),
+    ])
+    monkeypatch.setattr(chain, "_start_logged", lambda *args: next(children))
+    monkeypatch.setattr(chain, "_assert_no_active_target_processes", lambda **_: None)
+    monkeypatch.setattr(chain, "validate_heavy_chain_reservation_handoff", lambda _: None)
+    monkeypatch.setattr(chain, "_latest_direct_manifest", lambda _: (tmp_path / "manifest.json", {"manifest_hash": "sha256:" + "a" * 64}))
+    monkeypatch.setattr(psutil, "Process", lambda _: pytest.fail("child 已退出，不得重新要求 live custody"))
+    argv = [
+        "--legacy-direct-process-id", "0", "--legacy-ooc-helper-process-id", "0",
+        "--legacy-release-process-id", "0", "--resume-after-legacy-chain",
+        "--raw-manifest", str(tmp_path / "raw.json"), "--store-output-dir", str(tmp_path / "store"),
+        "--training-output-dir", str(training), "--output-root", str(tmp_path / "output"),
+        "--database", str(tmp_path / "db"), "--training-as-of", "2026-07-30T08:30:00+08:00",
+        "--benchmark-entity", "TAIEX",
+    ]
+    expected = 0 if ooc_code == release_code == 0 else 2
+    assert chain.main(argv) == expected
+    result = json.loads((training / "v3_refresh_chain_status.json").read_text(encoding="utf-8"))
+    assert result["status"] == ("complete" if expected == 0 else "blocked")
+    assert result["ooc_process_returncode"] == ooc_code
+    assert result["release_process_returncode"] == release_code
+    assert result["formal_oos_allowed"] is False
+
+
 def test_chain_heartbeat_preserves_status_and_records_process_custody(
     tmp_path: Path,
 ) -> None:

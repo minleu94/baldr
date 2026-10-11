@@ -3852,6 +3852,10 @@ row count／content hash 沒有變化。未同時提供 owner approval、無並�
 
 ### 11.2 營運排程判讀
 
+全排程的唯讀驗收入口為 [BALDR_SCHEDULED_AUDIT_RUNBOOK](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。Quick 月營收排錯可執行 `.\.venv\Scripts\python.exe scripts/audit_scheduled_research_acquisition.py --quick-status <實際 OUTPUT_ROOT>/scheduled/data_update_quick/latest_status.json --output-root <實際 OUTPUT_ROOT>`；兩個參數分別指定 Quick 父狀態與 weekly 收據定位根，省略 `--output` 僅輸出 stdout，不啟動採集。核心更新與研究 child 分開判讀：child `failed` 的 `child_diagnostics` 若指出 TWSE／TPEx 月份不同，保持研究候選拒絕，等待來源對齊；不得改月份或寫入正式 DB。父檔 SHA 真正改變才報 `quick_parent_changed_during_child_audit`；缺少 pin 為 `quick_parent_audit_hash_missing`。
+
+Direct 的 custody 錯誤須追同次 supervisor 與 OOC／release 日誌。修正後自有 child 可透過保留的程序 handle 讀取退出碼；完整鏈仍要求兩個 child exit 0 且 terminal 都 `complete`。正式 teacher／ledger／sector／Rule history 缺件保持 blocked；程式修正、排程啟用或正在等待共用鎖都不代表 fit 或正式資格已完成。不要為驗收重跑正在執行的 producer。
+
 - **正常**：核心工作已保存可接受的最新狀態。
 - **安全邊界中**：工作受保護地完成或停在預期 gate；例如具完整 natural-maturity 證據的 evidence `degraded`、ML promotion `blocked`，或 ML Co-pilot `passed_rule_only`／`alpha=0`。這不是 ML 已 promotion，也不能人工解除 gate。
 - **需要注意**：核心 status 缺失、無法讀取、過期、evidence 缺少完整 natural-maturity 證據，或有未預期狀態。先查看列出的 raw status、時間來源、source path 與 diagnostic，再回到對應功能／排程日誌處理。ML Direct/OOC 顯示 `blocked_insufficient_storage` 時，應先依 `storage_preflight.free_bytes` 盤點容量與保留策略，不要直接重跑或刪除既有 run。

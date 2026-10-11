@@ -329,6 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         _wait_for_expected_process(
             process_id=direct_process.pid,
+            spawned_process=direct_process,
             expected_fragments=(
                 "build_portfolio_ml_direct_numeric_store.py",
                 str(store_output_dir),
@@ -346,23 +347,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         direct_manifest_path, direct_manifest = _latest_direct_manifest(
             store_output_dir
         )
-        if research_mode:
-            ooc_returncode = ooc_process.wait()
-        else:
-            _wait_for_expected_process(
-                process_id=ooc_process.pid,
-                expected_fragments=(
-                    "continue_ml_direct_ooc_after_store.py",
-                    str(training_output_dir),
-                ),
-                poll_seconds=args.poll_seconds,
-                status_path=status_path,
-                wait_phase="ooc_helper",
-            )
-            ooc_returncode = ooc_process.wait()
+        _wait_for_expected_process(
+            process_id=ooc_process.pid,
+            spawned_process=ooc_process,
+            expected_fragments=(
+                "continue_ml_direct_ooc_after_store.py",
+                str(training_output_dir),
+            ),
+            poll_seconds=args.poll_seconds,
+            status_path=status_path,
+            wait_phase="ooc_helper",
+        )
+        ooc_returncode = ooc_process.wait()
+        release_returncode = None
         if release_process is not None:
             _wait_for_expected_process(
                 process_id=release_process.pid,
+                spawned_process=release_process,
                 expected_fragments=(
                     "continue_ml_release_after_ooc.py",
                     str(training_output_dir),
@@ -371,6 +372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 status_path=status_path,
                 wait_phase="release_helper",
             )
+            release_returncode = release_process.wait()
         ooc_status = _read_json(
             training_output_dir / "continuation_status.json"
         )
@@ -383,6 +385,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         complete = bool(
             not research_mode
+            and ooc_returncode == 0
+            and release_returncode == 0
             and ooc_status.get("status") == "complete"
             and isinstance(release_status, Mapping)
             and release_status.get("status") == "complete"
@@ -396,6 +400,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "release_status": release_status,
             "formal_release_coordinator_started": not research_mode,
             "ooc_process_returncode": ooc_returncode,
+            "release_process_returncode": release_returncode,
             "formal_oos_allowed": False,
             "production_alpha_bp": 0,
             "broker_order_allowed": False,
@@ -577,9 +582,12 @@ def _wait_for_expected_process(
     already_observed: bool = False,
     status_path: Path | None = None,
     wait_phase: str | None = None,
+    spawned_process: subprocess.Popen[Any] | None = None,
 ) -> None:
     if process_id <= 0 or poll_seconds <= 0:
         raise ValueError("process_id and poll_seconds must be positive")
+    if spawned_process is not None and spawned_process.pid != process_id:
+        raise ValueError("spawned process custody pid mismatch")
     try:
         import psutil
     except ImportError as exc:
@@ -587,6 +595,10 @@ def _wait_for_expected_process(
     expected = tuple(fragment.casefold() for fragment in expected_fragments)
     observed = already_observed
     while True:
+        # 本 supervisor 持有 Popen handle；已退出 child 可讀真實 exit code，
+        # 不要求它在等待上游數小時後仍出現在 psutil 的 live PID 清單。
+        if spawned_process is not None and spawned_process.poll() is not None:
+            return
         try:
             process = psutil.Process(process_id)
             command = " ".join(process.cmdline()).casefold()
@@ -603,6 +615,10 @@ def _wait_for_expected_process(
                     command=command,
                 )
         except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            if spawned_process is not None:
+                if spawned_process.poll() is not None:
+                    return
+                raise RuntimeError(f"spawned process {process_id} custody unavailable")
             if not observed:
                 raise RuntimeError(
                     f"process {process_id} was not observed under custody"

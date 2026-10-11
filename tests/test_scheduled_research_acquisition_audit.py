@@ -47,6 +47,56 @@ def test_changed_monthly_entity_rejected(monkeypatch, tmp_path):
         audit.audit_monthly(quick, now=datetime.now(timezone.utc))
 
 
+@pytest.mark.parametrize("failed", [False, True])
+def test_monthly_outer_audit_preserves_stable_parent_and_child_result(monkeypatch, tmp_path, failed):
+    quick = monthly_fixture(monkeypatch, tmp_path)
+    pin = "sha256:" + "a" * 64
+    parent, _ = audit._quick_status_snapshot()
+    monkeypatch.setattr(audit, "_quick_status_snapshot", lambda **_: (parent, {"binding_status": "verified", "status_sha256": pin}))
+    monkeypatch.setattr(audit, "quick_monthly_capture_status", lambda **_: {"status": "receipt_present"})
+    if failed:
+        child_path = Path(parent["monthly_revenue_research_capture"]["result_receipt_path"])
+        child = json.loads(child_path.read_text(encoding="utf-8"))
+        child["research_capture"] = {
+            "status": "failed", "reason": "research_capture_child_not_captured",
+            "child_status": "rejected", "result": {"diagnostics": ["source periods differ"]},
+        }
+        child_path.write_text(json.dumps(child), encoding="utf-8")
+    result = audit.audit_quick_monthly_capture(
+        quick, quick_payload=parent,
+        quick_binding={"binding_status": "verified", "status_sha256": pin.removeprefix("sha256:")},
+        now=datetime.now(timezone.utc),
+    )
+    assert result["status"] == ("failed" if failed else "captured_verified")
+    assert result["parent_status_sha256"] == pin
+    assert result["formal_credit"] is False
+    if failed:
+        assert result["reason"] == "research_capture_child_not_captured"
+        assert result["child_diagnostics"] == ["source periods differ"]
+
+
+@pytest.mark.parametrize("final_pin,expected_reason", [
+    ("sha256:" + "b" * 64, "quick_parent_changed_during_child_audit"),
+    (None, "quick_parent_audit_hash_missing"),
+])
+def test_monthly_outer_audit_rechecks_parent_after_child(monkeypatch, tmp_path, final_pin, expected_reason):
+    quick = monthly_fixture(monkeypatch, tmp_path)
+    parent, _ = audit._quick_status_snapshot()
+    pin = "sha256:" + "a" * 64
+    snapshots = iter([
+        (parent, {"binding_status": "verified", "status_sha256": pin}),
+        (parent, {"binding_status": "verified", "status_sha256": final_pin}),
+    ])
+    monkeypatch.setattr(audit, "_quick_status_snapshot", lambda **_: next(snapshots))
+    monkeypatch.setattr(audit, "quick_monthly_capture_status", lambda **_: {"status": "receipt_present"})
+    result = audit.audit_quick_monthly_capture(
+        quick, quick_payload=parent, quick_binding={"status_sha256": pin}, now=datetime.now(timezone.utc),
+    )
+    assert result["status"] == "blocked"
+    assert result["reason"] == expected_reason
+    assert result["formal_credit"] is False
+
+
 def test_parent_terminal_requires_verified_binding(monkeypatch, tmp_path):
     monkeypatch.setattr(audit, "_quick_status_snapshot", lambda **_: ({}, {"binding_status": "unverified"}))
     with pytest.raises(ValueError, match="parent_terminal_identity"):

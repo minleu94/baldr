@@ -10,7 +10,7 @@ Workbench＋初版 affected tests 106 passed；最終 D01＋launcher 30 passed�
 
 官方 PyPI 安裝固定 PyInstaller 6.16.0，沒有更新 runtime 或下載未知 binary。初次 usersite 枚舉 PermissionError 改用標準 Python 空 userbase；初次 QtWidgets DLL 失敗實際原因為 PATH 其他工具 Poppler ICU78 遮蔽 Windows ICU，建置 PATH 隔離／spec 排除不相容 ICU，Qt wheel runtime 統一，後續固定包通過。原 timeout／DLL 失敗 log 保留；沒有改 ACL 或安全防護。
 
-未簽章／SmartScreen 信譽未知。Native 真人、其他 Windows 機器、真實私人模型與正式 Task 自然 run 未由本輪驗證。明日原 Task 2026-10-07 12:45 UTC／05:45 PDT 保留。既有個人模型沿原設定及可信 artifact；首次空資料不借 development 絕對 path。操作與回滾見 PORTABLE_WINDOWS；替換整個包，保留外部資料／設定，不清 cache、不重建 DB。
+未簽章／SmartScreen 信譽未知。Native 真人、其他 Windows 機器、真實私人模型與正式 Task 自然 run 未由本輪驗證。原 Task 預定時間（2026-10-07 12:45 UTC／05:45 PDT）是本收據的歷史排程，已過期；本行不表示目前 Task 仍存在或授權再次啟動。既有個人模型沿原設定及可信 artifact；首次空資料不借 development 絕對 path。操作與回滾見 PORTABLE_WINDOWS；替換整個包，保留外部資料／設定，不清 cache、不重建 DB。
 
 四用途增強 probe：市場／個股／持倉畫面以合成 DTO 與缺報價安全 N/A 驗證；選股用合成 sealed execution 展示。推薦 legacy SQLite runs canonical readback 被原 no-follow root／ancestor guard 阻擋，保留失敗 raw，不列 pass、不換路放寬來源資格。Watchlist 保存跨程序讀回與推薦保存是不同契約。
 

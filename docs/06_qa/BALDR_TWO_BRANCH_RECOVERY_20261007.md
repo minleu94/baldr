@@ -10,7 +10,9 @@ market-csv-export遇14個synthetic parent junction，守衛即停。metadata證�
 
 新main發布工作區604extras另存 `main_release_final_extras.zip`／manifest；原a7候選611extras與原all_refs bundle仍保留，最終main a8與dev809e另有final_main_refs.bundle。普通remove恢復段（最後10個）的卷可用空間觀測增加 **737,497,088 bytes（約703 MiB）**；這不是前32個加總或全程獨佔净值，沒有假報完整釋放量。收據：ignored `retirement_result.json`／`resume_space_before.json`／兩輪raw／reparse metadata。
 
-## 結果
+## 較早的中間結果（42 個 worktree 尚保留）
+
+本節記錄先完成 branch 清理、尚未執行最終 checkout retirement 的中間狀態；`cleanup_result.json` 對應的 `worktrees_deleted=0`、`main=1bedee9`、`dev=4e234576`，之後 `bbp_cleanup_result.json` 才移除最後一個 lane ref。另一份 `closure_receipt.json`／`closure_refs.bundle` 記錄了 42 個 checkout 已移除、當時 refs 為 `main=a8c81bf`、`dev=07da90c`；`release_refs.bundle` 與 `main_release_backup_receipt.json` 則是 `main=a7a54d1` 的候選。最後的 `main_release_final_backup_receipt.json` 和 `final_main_refs.bundle` 一致核對 `main=a8c81bf`、`dev=809e088`，由 `retirement_result.json` 的 42 項 ordinary remove 與單一剩餘 checkout 收尾。因此本節「42 個 worktree 目錄全部保留」只描述較早的 cleanup 中間狀態，不是最終結果；後續 closure／release refs 也各有其明確時點。
 
 本機 `refs/heads` 已只剩 **dev／main**。40個lane分支名稱已在逐一驗證持久備份、clean與exact HEAD後，以原地detached checkout及expected-old-SHA CAS ref移除完成。**42個worktree目錄全部保留**，無永久刪除、無force prune、無main reset、無push／公開分享／visibility變更。primary ignored／正式FA_Data私人資料未搬移、未刪除。
 
@@ -36,3 +38,7 @@ BBP01原thread初查active，中央先跳過；父層取得最新turn completed�
 先驗上列SHA及manifest，再以 `git fetch <backup>/all_refs.bundle refs/heads/<原名>:refs/heads/<原名>` 恢復缺失branch，對原SHA；若同名branch已存在且分歧，停止而不覆寫。原checkout可直接以該branch重新checkout。另可在新目錄clone mirror，再以原HEAD建立detached worktree；extras script只向缺失檔寫入並核SHA／mtime，links僅保存metadata、需人工核對後重建，不跟隨到外部私人資料。
 
 main用途與發布邊界由父層独立只讀審查；2097檔大型差異不直接快轉。下一步先完善README／安裝／首次設定／合成示例、核無private或憑證後，選可逆本機發布commit保留原main parent及dev完整歷史；不擴成遠端授權。產品自然排程與品質成熟仍採原中央QA分域，不因branch整理獲新資格。
+
+## 2026-10-11 refs 時點補記
+
+上列 refs 與還原方案是 2026-10-07 的歷史狀態。2026-10-11 核對時，這個工作樹的本機 `dev` 已為 `06816b70107ebfae60712be71bc9c29734b39df7`、本機 `main` 為 `305635642ecdf5f1331a24a0c81566d07f36cb0d`；本機 remote-tracking `origin/dev`／`origin/main` 仍指向 `1bedee9aff0be2a375f90eb677911cb029688339`。勿把 10-07 的 refs 當作目前 branch pointers；任何還原前仍須重新核對目標 refs，若同名 branch 已存在或分歧即停止，不覆寫。

@@ -633,7 +633,7 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 
 **2026-10-11 QA 排程增量補記：** 新增 8 份具名全文核讀，當日日期界線及後續排程收據沒有矛盾，原件皆保留未改；具名快照累計 95／36。見 [Coverage History Entry 271](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-271)。舊 aggregate 無逐檔 manifest，總閱讀數不作精確累加。
 
-**2026-10-11 QA H20／Personal Paper 增量補記：** 新具名全文核讀 8 份，1 份補驗收 commit/tree 範圍；具名快照累計 103／37。發現另有一份雙分支 recovery 原件對 worktree 數量的內部矛盾，尚待原收據／refs 核實，不先改寫。見 [Coverage History Entry 275](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-275)。
+**2026-10-11 QA H20／Personal Paper 增量補記：** 新具名全文核讀 8 份，1 份補驗收 commit/tree 範圍；具名快照累計 103／37。Entry 275 發現的雙分支 recovery worktree 數量差異，已由 Entry 278 核對原始收據並確認是中間清理與最終 retirement 的時序差異，原件已補清界線。
 
 **2026-10-11 REFACTOR_REPORTS R009／R020／Wave 增量：** 8 份全文核讀，7 份新增具名全文、1 份 partial→full；7 份補後續狀態導覽。另修正 Entry 213 的目錄路徑 tab typo。見 [Coverage History Entry 276](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-276)。舊 aggregate 無逐檔 manifest，不推算精確去重數。
 
@@ -644,3 +644,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 REFACTOR_REPORTS 補記：** R011／R012 再具名核讀 8 份，6 份新增具名全文紀錄、2 份 partial→full；4 份原件加入後續 bounded disposition 導覽。見 [Coverage History Entry 273](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-273)。舊 aggregate 未具名，不推算精確去重總數。
 
 **2026-10-11 Archive Superpowers 子目錄盤點補記：** 兩份先前未具名計畫已全文再核讀並登錄；目前 132 份非 README 子目錄 Markdown 的精確 basename 均可在 Matrix／History 找到，且既有 aggregate 覆蓋維持原口徑。Month 4 closure 的 checklist 差異已由原 README／manifest／Entry 128 明列。詳見 [Coverage History Entry 274](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-274)。
+
+**2026-10-11 QA 產品收據增量：** 再全文核讀 8 份 Product UX／Operations QA 證據文件，4 份補充後續狀態或歷史時點提示。Entry 275 暫列待核的 Two Branch Recovery worktree 差異已依原始收據釐清為中間與最終狀態；見 [Coverage History Entry 278](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-278)。舊 QA aggregate 無逐檔 manifest，不據此重算全域去重總數。受保護的完成進度文件未讀未改；未執行測試、Graphify 或最終 repo-wide links／anchors scan。

@@ -1,6 +1,6 @@
 # 1,000 檔合成保存研究產製與獨立讀回
 
-最新單次診斷 session6599（`C:/t/p01_ou8p3n_6`）終態 exit1，完整 report 身分與八項來源 pins 通過後，strict-open 的合法唯讀 `fdopen` 被 QA 守衛拒絕；尚無 pstats／效能樣本。來源前後一致且 Job 已證明零 owned 殘留。下一步修正診斷工具的精確唯讀 descriptor 契約，詳見本文末段；既有完整矩陣的三項效能失敗仍有效。先前 session45903 的 report 映射失敗封套保留，不能覆寫為通過。
+單次診斷 session6599（`C:/t/p01_ou8p3n_6`）曾在完整 report 身分與八項來源 pins 通過後，因 QA 守衛拒絕 strict-open 的合法唯讀 `fdopen` 而以 exit1 結束；當次沒有 pstats／效能樣本。來源前後一致且 Job 已證明零 owned 殘留。本文後段記錄了精確唯讀 descriptor 契約修正、guard selftest 通過，以及一次 `passed_diagnostic_only` 換頁剖析；該單次剖析不是 p95 或 300ms 驗收。固定 `acd18a1e` 完整矩陣的三類暖操作效能失敗仍有效。先前 session45903 的 report 映射失敗封套保留，不能覆寫為通過。
 
 ## 固定 acd 讀取器完整矩陣（2026-10-08，效能未通過）
 

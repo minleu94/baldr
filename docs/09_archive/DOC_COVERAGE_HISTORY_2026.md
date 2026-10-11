@@ -2872,3 +2872,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 Archive Superpowers 剩餘兩份計畫具名全文再核讀
 
 全文再核讀 `docs/09_archive/superpowers/plans/2026-06-16-month4-daily-decision-desk-closure.md` 與 `2026-07-11-safe-refactor-continuation.md`。兩份均包含於既有 Superpowers 96/96 aggregate full-read，但先前未按精確 basename 具名；Archive README、manifest、Entry 128／後續 QA 與 closeout commit 均可追溯。Month 4 closure 的「結案」與後段 24 個未勾選項屬既有 lifecycle discrepancy，README／manifest／Entry 128 已明列，原件保留；Safe Refactor 47 項 checklist 與授權、release gate 後續收據一致。兩份原件 SHA 與 manifest 相符，未修改。更新後精確 basename 掃描顯示 Archive 子目錄 132 份納入範圍的文件均已在 Matrix／History 具名；另有子目錄 README 5 份。限定路徑 `git diff --check` 通過；未跑測試、Graphify 或最終全 repo links／anchors scan。
+
+<a id="coverage-entry-275"></a>
+## 2026-10-11 QA H20／Personal Paper 八份具名全文核讀
+
+全文核讀 `BALDR_LAYOUT_TEARDOWN_AND_NARROW_CONTROLS_20261008.md`、`BALDR_LOCAL_MAIN_PACKAGING_20261007.md`、`BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md`、`BALDR_PARALLEL_NEXT_WORK_20261009.md`、`BALDR_PARALLEL_ROOT_REVIEW_20261009.md`、`BALDR_PERSONAL_PAPER_LEDGERS_20261006.md`、`BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md`、`BALDR_PORTABLE_CONFIGURED_BOOTSTRAP_20261006.md`；先前 Matrix／History 均無具名全文紀錄，依 Product UX QA Index 路由並核對同 lane 後續收據。七份原件的局部驗收、日期脈絡與限制清楚，保留未改；`BALDR_LOCAL_MAIN_PACKAGING_20261007.md` 補上收據固定於 `a8c81bf` 與對應 tree，避免外推至後續 branch head。後續 portable EXE 雜湊不同，未視為同一成品。唯一變更原件的限定 `git diff --check` 通過；未跑測試、Graphify 或最終 repo-wide links／anchors scan。本批另發現 `BALDR_TWO_BRANCH_RECOVERY_20261007.md` 的 worktree 數量敘述互相矛盾，交由後續批次追查原收據／Git refs，未自行改寫。

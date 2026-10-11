@@ -1,5 +1,9 @@
 # 本機 main 使用版 packaging 驗收
 
+## 驗收 commit 範圍（2026-10-11 clarification）
+
+本收據的 packaging 結果固定對應 `main=a8c81bf534952cdf35d35a57d9e367c0fa10c817` 與 tree `1477a445dc5b76e0498fcd231e99e3bd6a0ad2a4`。截至本次核對，本機 main 已前進至 `305635642ecdf5f1331a24a0c81566d07f36cb0d`，並包含 `a8c81`；此收據不代表其後提交已重做 packaging 驗收。
+
 ## 本機發布結果
 
 使用者要求dev開發／main乾淨易用，父層明示採本機main單一squash commit。最終 `main=a8c81bf534952cdf35d35a57d9e367c0fa10c817`，唯一parent仍是原 `1bedee9aff0be2a375f90eb677911cb029688339`，tree `1477a445dc5b76e0498fcd231e99e3bd6a0ad2a4`。來源dev `809e0884`，dev完整歷史保留；未reset／force／push／public share／visibility變更。初候選a7已durable bundle保全，本聊天僅在未發布leaf補回必要文件，未改原main歷史。main本機可用，不代表完整Git歷史已審可公開再散布。

@@ -61,3 +61,9 @@ New-Item -ItemType Directory -Path $env:DATA_ROOT,$env:OUTPUT_ROOT -Force | Out-
 `qa/full_app_healthcheck/test_inventory.py` 已將新測試登錄為 `service-oracle-recommendation`；同檔當時 SHA-256 為 `3718BA224D306A1145D3CD80DACEC30B53C25280D68DBAEC03891973EB942B72`。inventory guard 的其餘全庫測試為 6 passed、1 failed；唯一失敗是全庫 `test_all_python_files_in_tests_are_registered_exactly_once`，列出多個與本 slice 無關、尚未登錄的測試/fixture。新測試路徑已登錄，且不在該次 missing 清單內；不將全庫 inventory 宣稱為 PASS。
 
 新測試 SHA-256：`0B7A9B7FF9E60044AD3D4FE2BE049F5F4F802123DB467041DA12A15CDD8A3988`。以上只證明目前 legacy profile 的舊行為，不替代 pure evaluator 遷移後的 same-mode parity，也不解除 R020、`TMP-REC-04` 或 `TMP-NUM-01` gate。
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+本文件的 2026-09-24／25 行為觀察與測試仍是日期化 legacy evidence。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+後續裁定不把本文件單獨提升為 provider/evaluator cutover 或 full same-mode parity 證明，也不外推至所有 runtime/profile/caller、無界 V-REPLAY 或跨 store atomic recovery；原始 legacy 行為、測試數字與限制保留其歷史時點。

@@ -52,3 +52,9 @@ Fresh TEMP 使用 `PROFILE=test`、`DATA_ROOT`／`OUTPUT_ROOT`／`TEMP`／`TMP` 
 | `decision_module/derived_market_features.py` | `FA60BADCA63AAE754344BAAA58CF2D0886677CA582457F5466EDD09E6257869E` |
 | `decision_module/recommendation/evaluate.py` | `88B55FC4F450230ADFB92E46C7BC30ABD67A28AF4FC83C31138D8A96EC73F6CC` |
 | TEMP `pytest.log` | `E8BA77F470FFE3AB7AFB49A222B14F5C5182AE1D44816CB8069FAA383FD92725` |
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+本文件的 2026-09-24 real-scorer observation 仍是固定 legacy behavior evidence。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+此裁定不把本文件單獨提升為 full same-mode parity、完整 V-REPLAY、跨 runtime／caller 或 official PIT 證據；原測試只描述記錄時點的 synthetic Windows profile。

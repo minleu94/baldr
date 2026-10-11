@@ -669,3 +669,4 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 
 **2026-10-11 Archive 根層增量：** 八份先前局部掃描的歷史單篇文件已全文核讀，僅 `NEXT_ACTION_PLAN.md` 補強 §7–§9 派工／驗證內容的歷史警示，其餘保留未改。見 [Coverage History Entry 290](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-290)。
 **2026-10-11 QA Integration 增量：** 再核讀 8 份 QA 單篇文件（2 份局部紀錄升全文、6 份首次具名全文），後續收據核對後原件均保留未改。見 [Coverage History Entry 291](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-291)。
+**2026-10-11 QA R020 增量：** 新增 8 份具名全文核讀；原件補上 10/11 bounded disposition，定位過時的 IN_PROGRESS／ACTIVE 為歷史狀態，不擴大各 QA slice 的接受範圍。見 [Coverage History Entry 292](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-292)。

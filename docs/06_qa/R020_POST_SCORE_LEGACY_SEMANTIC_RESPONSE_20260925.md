@@ -81,3 +81,9 @@ adapter 於 legacy 原呼叫點重拋。這兩個結果只讓 downstream adapter
 v1 rows、codec、portfolio 計算或 R026/ML 路徑；未驗 provider cutover、跨 runtime numeric、
 完整 same-mode V-REPLAY 或 R005 全矩陣。此切片不改 R020 狀態：R020 `IN_PROGRESS`、
 `TMP-REC-04`／`TMP-NUM-01` `ACTIVE`。
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+本文件的 2026-09-25 typed response oracle 仍是該 slice 的歷史證據。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+此後續裁定不表示此 evaluator/projector slice 已驗 provider event/error adapter、所有 runtime/profile/caller、無界 same-mode V-REPLAY 或完整 R005 全矩陣；原 `IN_PROGRESS`／`ACTIVE` 記錄保留為其當時狀態。

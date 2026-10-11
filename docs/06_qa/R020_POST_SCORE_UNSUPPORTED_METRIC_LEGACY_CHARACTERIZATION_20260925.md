@@ -55,3 +55,9 @@ $python = (Resolve-Path '.\.venv\Scripts\python.exe').Path
 | `qa/full_app_healthcheck/test_inventory.py` | `A7A757477194B68CB288C9193F5AF66FC01CDBF5E7790E1D5D908343C2C7C305` |
 
 新測試已登錄為 `service-oracle-recommendation`。這是舊路徑的 test baseline，尚未驗證 deferred evaluator 對 unsupported metric 的 request／terminal 行為，也未完成 warning/counter adapter 或 same-mode replay parity。
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+本文件的 2026-09-25 unsupported-metric observations 仍是日期化 legacy oracle。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+這些後續狀態不把本文件提升為 deferred evaluator 的完整 unsupported-metric parity 證明，也不外推至所有 runtime/profile/caller 或無界 V-REPLAY；原測試結果與缺口仍依其 frozen scope 判讀。

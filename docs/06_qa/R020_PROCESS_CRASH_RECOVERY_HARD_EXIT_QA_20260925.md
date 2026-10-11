@@ -65,3 +65,9 @@ $env:PYTHONPYCACHEPREFIX = Join-Path $qaRoot 'c'
 此前獨立 reviewer 的 40-test typed-handoff NP1／NP2 rerun 沒有保存可 readback 的 console-log files；原報告不虛構 log path/hash，也未為重建歷史收據而重跑同一 route。C2 current union NP2 有保存 manifest 與完整 log，可讀回該凍結時點的 40 個 R020 test bytes；本報告另保存新增 recovery test bytes 的 42-pass targeted log。新增測試完成後，C2 manifest 不再代表當前這一個測試檔；C2 route 與後續 recovery route 按各自 frozen identity 分開判讀。
 
 上述證據建議作為 R020 closeout review 的輸入：本收據沒有發現剩餘的 R020-specific recovery window 或未涵蓋的既有 R005 vector；C2 mandatory UI／validator／broad-mypy final gates 和 root 最終裁定仍待完成。沒有新增「跨 store 原子交易／自動重建」或「所有平台／所有可能向量」前置條件。未 stage、commit 或 push。
+
+## 2026-10-11 後續 R020／C2 disposition（保留本收據範圍）
+
+後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md)、[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 接受 R020 的 R005 replay／typed handoff 與有限 recovery scope，將 `TMP-REC-04` 及原範圍 `TMP-NUM-01` 列為 CLOSED；C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`，不是全綠基線。
+
+本收據仍只證明所列合成 hard-exit windows／reconcile 行為；後續 disposition 不增加跨 store atomic transaction、補償 rollback、自動重建、所有平台或所有向量的保證。

@@ -69,3 +69,9 @@ $env:OUTPUT_ROOT = Join-Path $qaRoot 'out'
 ```
 
 Scoped mypy 對策略配置器、screening support 與 observer test 為 `3 files／0 issues`；三個 Python 檔 `py_compile` 通過。Frozen source/test SHA-256：`decision_module/strategy_configurator.py` `1758FC07654E744A218D04EE193F627C9D1379D88D27EF00EBEA997EC53D3100`；`tests/test_r020_post_score_diagnostics_observer.py` `AD3A8D22C31B710C36946B9D24A13876250F0EAE2F8CB6451A1CC5FB0B856CE0`。R020 維持 `IN_PROGRESS`，`TMP-REC-04`／`TMP-NUM-01` 維持 `ACTIVE`；完整 Pandas native parity、provider 接線與 full V-REPLAY 均未由此 slice 驗收。
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+本文件的 2026-09-25 observer 結果仍是該 slice 的歷史證據。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+這些裁定不把 observer slice 外推為完整 Pandas native parity、所有 provider/caller 或無界 V-REPLAY；原始 `IN_PROGRESS`／`ACTIVE` 文字保留為其記錄時點，不再代表目前 gate 狀態。

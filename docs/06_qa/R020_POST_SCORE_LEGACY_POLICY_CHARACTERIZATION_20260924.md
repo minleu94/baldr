@@ -112,3 +112,9 @@ window 與錯誤時點。它沒有授權以文字描述把兩階視為同一 pol
 `SKIPPED_EMPTY`、terminal 與 v1 row order。該設計仍須由 R020 owner/root 明確裁決；
 production evaluator cutover、full same-mode parity、跨 runtime numeric、完整
 future/PIT 與 portfolio 證據仍未由此切片覆蓋。
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+本文件的 2026-09-24／25 legacy-policy observation 仍是日期化行為 oracle。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+後續狀態不改寫本文件凍結的舊 scorer 結果，也不表示此 slice 單獨證明 full same-mode parity、所有 runtime/profile/caller、無界 V-REPLAY 或完整 future/PIT／portfolio evidence。

@@ -63,3 +63,9 @@ evaluator cutover、legacy diagnostics／threshold parity 或 R020 全體 gate�
 `tests/test_r020_strategy_filter_normalization.py`
 `FF71B2D0C1B267728860B0EE6D787706C9FF3C04385D85BECF64323F29540E8F`。R020 保持
 `IN_PROGRESS`；`TMP-REC-04` 與 `TMP-NUM-01` 保持 `ACTIVE`。
+
+## 2026-10-11 後續 R020 disposition（保留本收據範圍）
+
+上述 `IN_PROGRESS`／`ACTIVE` 是本切片 2026-09-25 的歷史狀態。後續 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md) 記錄 post-score cutover 僅在已測 Win32／Python 3.11.9／Pandas 2.3.3／NumPy 1.26.4 與 2.3.5 profiles bounded accepted；[R029 ledger](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 將 R020 R005 replay/recovery bounded scope、`TMP-REC-04`、原範圍 `TMP-NUM-01` 列為已關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`。
+
+這些 disposition 不代表 alias normalization slice 單獨驗收 provider/evaluator cutover、所有 runtime/profile/caller、無界 V-REPLAY 或 full same-mode parity；此檔的驗證範圍仍限其 frozen helper／filter 行為。

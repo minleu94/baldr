@@ -1,5 +1,7 @@
 # Gate 1 Daily Usable Advice 設計規格
 
+> **歷史原件／非現行授權（2026-10-11）：** 本文件保留 2026-07-12 的規劃與設計狀態，不代表目前狀態、Gate 完成、來源接受或執行授權。重用前請核對[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、對應 QA／收據與[共用 Git 規範](../../agents/shared_context.md)；分類及後續證據見[Superpowers 閱讀入口](../README.md)。
+
 > 日期：2026-07-12  
 > 狀態：已確認設計，待實作  
 > 範圍：Gate 0 治理收口與 Gate 1 / V2.1 Daily Usable Advice

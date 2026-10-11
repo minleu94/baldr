@@ -1,5 +1,7 @@
 # Gate 1 Daily Usable Advice Implementation Plan
 
+> **歷史原件／非現行授權（2026-10-11）：** 本文件保留 2026-07-12 的規劃與設計狀態，不代表目前狀態、Gate 完成、來源接受或執行授權。重用前請核對[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、對應 QA／收據與[共用 Git 規範](../../agents/shared_context.md)；分類及後續證據見[Superpowers 閱讀入口](../README.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 完成 Gate 1 的可拒絕、可回溯、唯讀 Advice Contract，並在 closeout 後以證據重整 `PROJECT_SNAPSHOT.md`。

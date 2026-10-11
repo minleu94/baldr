@@ -1,5 +1,7 @@
 # P0 Daily Source Candidate Ingestion Implementation Plan
 
+> **歷史原件／非現行授權（2026-10-11）：** 本文件保留 2026-07-13 的規劃與設計狀態，不代表目前狀態、Gate 完成、來源接受或執行授權。重用前請核對[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、對應 QA／收據與[共用 Git 規範](../../agents/shared_context.md)；分類及後續證據見[Superpowers 閱讀入口](../README.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans`, `superpowers:test-driven-development`, and the repository data-audit workflow.
 
 **Goal:** 將三大法人、信用交易與TDCC現有fetcher升級為具官方schema fixtures、真實publication／first-observed時間、normalized contract、raw manifest、quarantine、coverage與安全working-copy ingestion的candidate-only pipeline。

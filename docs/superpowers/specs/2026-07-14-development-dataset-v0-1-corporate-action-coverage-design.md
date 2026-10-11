@@ -1,5 +1,7 @@
 # Development Dataset V0.1 Corporate-Action Coverage 設計規格
 
+> **歷史原件／非現行授權（2026-10-11）：** 本文件保留 2026-07-14 的規劃與設計狀態，不代表目前狀態、Gate 完成、來源接受或執行授權。重用前請核對[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、對應 QA／收據與[共用 Git 規範](../../agents/shared_context.md)；分類及後續證據見[Superpowers 閱讀入口](../README.md)。
+
 ## 決策
 
 採用 **Coverage-first／既有來源優先**。本切片只使用 repository 與正式資料根中已存在、可唯讀且具可驗證歷史時間語意的 corporate-action 資料；不申請或接入新外部來源，不以價格跳空反推事件，不調整 Rule／ML 模型或超參數。

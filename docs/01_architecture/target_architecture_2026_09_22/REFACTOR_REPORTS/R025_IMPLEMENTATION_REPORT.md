@@ -1,5 +1,7 @@
 # R025 實作報告：strategy contracts／registry／executors 移至 decision
 
+> **時點／範圍導覽（2026-10-11）：** 本報告的 `ACCEPTED_SCOPE` 與 `TMP-STR-01 ACTIVE` 記錄 R025 截至 2026-09-23 的有限策略 owner 移轉及當時 retirement gate 狀態。後續 R029 已接受 bounded caller／owner cutover，並將 9 個舊 app public／qualified-name aliases 分類為 `PERMANENT_COMPATIBILITY`；aliases 仍保留。此裁定不表示自然舊 executor artifact 存在、aliases 已刪除或整體重構已完成。後續裁定與退休帳狀態見 [R029 retirement gate acceptance report](R029_IMPLEMENTATION_REPORT.md) 及 [FINAL_MIGRATION_SEQUENCE](../FINAL_MIGRATION_SEQUENCE.md)。
+
 **Task**：[R025 task spec](../REFACTOR_TASKS/R025.md)　|　**日期**：2026-09-23　|　**實作者**：GPT-6 Luna Max（Codex subagent）
 
 **IMPLEMENTATION_STATUS: ACCEPTED_SCOPE**

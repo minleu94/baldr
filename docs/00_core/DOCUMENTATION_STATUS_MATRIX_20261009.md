@@ -601,9 +601,9 @@ Archive 根層本批只補五份歷史原件的時點／權威提示；不調整
 
 | 目錄 | 新增全文核讀 | 本次修訂 | 判讀與待處理 |
 |---|---:|---:|---|
-| 01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/ | 36 | 26 | R006／R007／R008 具名增量見 [Coverage History Entry 233](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-233)。保留每份報告原始 verdict；新增時點／範圍導覽。舊 82／23／119 基線不重算。 |
+| 01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/ | 46 | 27 | R006／R007／R008 增量見 [Entry 233](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-233)，R024–R029 新批見 [Entry 239](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-239)。保留原 verdict；新增時點／範圍導覽。舊 82／23／119 基線不重算。 |
 | 06_qa/ | 20 | 15 | U–Z 及 A–J 各 10 份、皆核對主題索引入口；修訂後續日期／範圍的直開誤讀。見 [Entry 235](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-235) 與 [Entry 237](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-237)。QA 舊 aggregate 缺逐檔 manifest，不重算全文總數；使用者進行中的完成進度文件排除。 |
-| 09_archive/ 根層 | 7 | 0 | 第五批全文核讀及 SHA／同名 stub 區分見 [Entry 236](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-236)。兩份稽核保留原始 bytes，因此其過時「不搬 Phase」建議仍是直開風險；README 導覽與 History 記錄現行決策。舊 aggregate 不重算。 |
-| superpowers/ retained originals | 24 | 15 | 兩批 12 份 plans／12 份 specs 全文核讀；15 份原件新增檔首授權／時點提示，README 與 Archive manifest 同步。見 [Entry 234](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-234)。69 份原件仍未全數具名全文核讀，舊 aggregate 不重算。 |
+| 09_archive/ 根層 | 12 | 0 | 第五、六批全文核讀見 [Entry 236](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-236) 與 [Entry 240](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-240)。保留歷史時點及 SHA 差異判讀；舊 aggregate 不重算。 |
+| superpowers/ retained originals | 36 | 27 | 三批共 36 份 plans／specs 全文核讀；新增警語的具名原件見 [Entry 234](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-234) 與 [Entry 238](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-238)。原件總量估算 105，尚有 69 份未逐篇全文核讀；舊 aggregate 不重算。 |
 
 REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還原舊基線」，不可把本表的新數字加到舊全文／未讀數作為精確現況。所有目錄完成內容複核與修訂前，不執行 Graphify 刷新或最終 repo-wide link／anchor scan。

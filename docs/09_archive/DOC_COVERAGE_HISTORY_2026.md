@@ -2908,4 +2908,9 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 <a id="coverage-entry-281"></a>
 ## 2026-10-11 REFACTOR_TASKS R016–R023 八份具名全文再核讀
 
-全文再核讀 `REFACTOR_TASKS/R016.md` 至 `R023.md`；精確 basename 先前均未出現在 Matrix／History。與 Entry 280 相同，舊 Matrix 32/32 aggregate 沒有逐檔 manifest，本批是可核對的具名重讀，不調整舊 aggregate 或推算 net 新增。依任務索引及 FINAL_TARGET_ARCHITECTURE 路由，並對照 R031 current overlay、相關 repair／acceptance：R016 readonly query、R017 typed replay bridge、R018 支援輸入準備範圍、R019 bounded rule bridge、R020 僅關閉 R005 replay recovery／TMP-REC-04 且 NUM-01 gate 分開、R021 scoped IndustryMapper/provider follow-up、R022 retained compatibility、R023 依 R024 repair 接受且無 standalone implementation report。規格及限制一致，原件保留未改；連結有效、限定 `git diff --check` 通過、SHA 前後相同。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+全文再核讀 `REFACTOR_TASKS/R016.md`、`R017.md`、`R018.md`、`R019.md`、`R020.md`、`R021.md`、`R022.md`、`R023.md`；精確 basename 先前均未出現在 Matrix／History。與 Entry 280 相同，舊 Matrix 32/32 aggregate 沒有逐檔 manifest，本批是可核對的具名重讀，不調整舊 aggregate 或推算 net 新增。依任務索引及 FINAL_TARGET_ARCHITECTURE 路由，並對照 R031 current overlay、相關 repair／acceptance：R016 readonly query、R017 typed replay bridge、R018 支援輸入準備範圍、R019 bounded rule bridge、R020 僅關閉 R005 replay recovery／TMP-REC-04 且 NUM-01 gate 分開、R021 scoped IndustryMapper/provider follow-up、R022 retained compatibility、R023 依 R024 repair 接受且無 standalone implementation report。規格及限制一致，原件保留未改；連結有效、限定 `git diff --check` 通過、SHA 前後相同。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-282"></a>
+## 2026-10-11 REFACTOR_TASKS R024–R027／R029–R031 七份具名全文再核讀
+
+全文再核讀 `REFACTOR_TASKS/R024.md`、`R025.md`、`R026.md`、`R027.md`、`R029.md`、`R030.md`、`R031.md`；本批精確 basename 先前未在 Matrix／History 出現，屬舊 32/32 aggregate 無 manifest 下的具名再核讀。依任務 README、FINAL_TARGET_ARCHITECTURE 與 R031 overlay 核對 bounded scope／retained compatibility；R027 明確區分新 revision B PASS、舊 strict INCONCLUSIVE 與 R028 scoped acceptance。七份規格及內鏈可達，原件保留未改，行數與 SHA 前後相同；限定 diff check 無診斷。合併 Entry 280–282 後，先前 basename 掃描列出的 23 個 REFACTOR_TASKS 候選皆已具名，但這不把舊 aggregate 轉成可還原的精確歷史總數。未跑測試、Graphify 或最終 repo-wide links／anchors scan。

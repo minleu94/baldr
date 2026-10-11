@@ -1,6 +1,6 @@
 # Workbench Left Navigation IA Design
 
-> **歷史設計狀態提醒（2026-07-07）**：本文把 icon-only collapsed navigation 列為 future slice；後續 [Workbench visual hierarchy closeout](../../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md) 已記錄 collapsed mode 完成。本文 future-slice 狀態已被後續收據取代，現況仍應按 Manual／QA 判讀。
+> **歷史設計狀態提醒（2026-07-07；勘誤 2026-10-11）**：本文把 icon-only collapsed navigation 列為 future slice；後續 [Workbench visual hierarchy closeout](../../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md) 已記錄完成：collapsed 狀態只顯示 icon，完整 label 保留在 tooltip。文末「可再新增」的 future-slice 狀態已被收據取代；本提醒保留原設計歷史，現況仍應按 Manual／QA 判讀。
 
 
 ## Purpose

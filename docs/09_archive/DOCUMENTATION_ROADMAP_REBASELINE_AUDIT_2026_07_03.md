@@ -1,5 +1,7 @@
 # Documentation / Roadmap Rebaseline Audit（2026-07-03）
 
+> **歷史範圍（2026-07-03）**：文中的 V1.1→V2.0 節奏只記錄當時規劃，不代表現行優先序。現行產品方向請看 [PRODUCT_ROADMAP_POST_REFACTOR](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)，V2.1→V4.0 長期成熟度請看 [VERSION_ROADMAP_V2_1_TO_V4_0](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)。
+
 > **範圍**：本稽核整理 roadmap、docs 入口與 `docs/05_phases/` 判讀邊界。
 > **結論**：`docs/05_phases/` 保留是對的，但必須明確降格為 Historical / Reference；目前 roadmap 只看 core scoped authority 與 Post-V1 version roadmap。
 

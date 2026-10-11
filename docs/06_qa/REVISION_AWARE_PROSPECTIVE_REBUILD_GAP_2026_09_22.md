@@ -68,3 +68,7 @@ file SHA `sha256:9af39ed407f49ddf6394b7f156176c6123433e7349e215618e32e1caa752590
 4. 新決策的 future label window 必須保存為 `pending`；不得為了完成 manifest 預填成熟 label，也不得使用 current clock 回填舊 capture。只有自然 future window 真實到期並通過既有 maturity 規則，才可另行形成 outcome evidence。
 
 本輪未新增 acceptance code，未修改 gate/DB/credit，也未提交。這份文件只供 root review。
+
+## 2026-10-11 後續版本化研究 build 範圍
+
+後續 [model repair execution](MODEL_REPAIR_EXECUTION_2026_09_23.md)、[bounded restated-research fit](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md) 與 [revision-aware rebuild status](ML_REVISION_AWARE_REBUILD_EXECUTION_PLAN_20261001.md) 記錄不同版本的 current-restated research work。這些結果不會追溯補上本文件 9/22 capture 缺失的權威 `available_at`、source snapshot 與 row-level disjointness 證據，也不接受原 prospective gate；PIT／formal／OOS／promotion 與 production eligibility 仍未由此取得。

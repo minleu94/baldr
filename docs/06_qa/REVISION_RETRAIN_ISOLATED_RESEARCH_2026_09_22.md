@@ -64,3 +64,7 @@ $TrainingAsOf = [DateTimeOffset]::UtcNow.ToString('o')
 原始 worktree output 路徑只在該 linked worktree 存在時有效；永久 preview 副本與 transfer receipt 位於主 repo ignored archive。保留的 D archive/run01/run02 receipts 與此 preview 都是 research-only/non-release，不是模型重訓結果。
 
 focused synthetic tests：`python -B -m pytest -q -o addopts= -p no:cacheprovider tests/test_ml_daily_price_revision_acceptance_preview.py`，`4 passed`。測試涵蓋 late-obtained／label pending positive summary、錯誤 transfer hash 拒絕、捏造 historical `available_at` 拒絕及輸出不得覆寫。
+
+## 2026-10-11 後續版本化研究 fit 範圍
+
+後續 [Model repair execution](MODEL_REPAIR_EXECUTION_2026_09_23.md) 與 [bounded restated-research fit](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md) 記錄的是另行版本化的研究候選與 fit，不回填本文件 9/22 的 868-row artifact、frozen entry 或其未接受狀態。原始候選仍缺歷史 `available_at`、相容訓練輸入與 formal／OOS／PIT／promotion 資格；後續 fit 不構成這些 gate 的接受，也不授予 production eligibility。

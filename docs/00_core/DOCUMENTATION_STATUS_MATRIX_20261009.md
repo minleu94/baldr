@@ -514,3 +514,5 @@ QA 既有 205 全文／4 局部／344 未讀與 Entry 203 的 36／6／511 分�
 QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不調整 QA aggregate；P2／M03 receipt 是交叉核對來源，不列入此葉文件 manifest。Manual §10 將 B09 狀態由「待接線」改為有限 route／paths 注入與 query-only readback 已有證據，並明示 Paper producer 全鏈、正式啟用、migration 及排程授權未完成；§9.9.1h 補入 BBANDS 的保存來源、快照更新、參數、結果與未知狀態說明。所有原始驗收正文與歷史命令仍保留；本批沒有刪除或搬移文件。
 
 **2026-10-10 第十八增量（Coverage History Entry 212）：** 由接手的 Agent 以命令字串風險分流掃描 `09_archive/` 根層，50 份含 `--apply`／`--confirm`／`git`／`schtasks` 命令，其中 12 份缺檔首警語者已補歷史操作警示（`V4_NEXT_FORMAL`、`V4_TDCC`、`V4_NEXT_OPS`、`V4_AUTOMATED_REVIEW`、`NEXT_ACTION_PLAN`、`FUNDAMENTAL_SOURCE_INVENTORY` 與 6 份 Post-V1 QA）。此批閱讀深度為檔首與命令段落，不是全文審閱，不改 Archive 全文／待讀總數；`LUNA_C_HANDOFF` 全文核讀後無需修改。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
+
+**2026-10-10 第十九增量（Coverage History Entry 213）：** 以狀態字樣掃描 REFACTOR_REPORTS 26 份候選，10 份會被直開誤讀成目前 disposition 者已加導向 R031 index／final closeout／Snapshot 的時點導覽，其餘 16 份保留。閱讀深度為檔首與狀態字樣行，不是全文審閱，不改該目錄全文／未讀彙總；未驗證各 task 的 R031 逐項 disposition。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。

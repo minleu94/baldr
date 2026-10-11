@@ -2486,3 +2486,10 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 | `POST_V1_DECISION_QUALITY_REVIEW_QA_2026_07_10.md`、`POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md`、`POST_V1_FORWARD_PERFORMANCE_READ_MODEL_QA_2026_07_03.md`、`POST_V1_LIVE_RESEARCH_GAP_LINKAGE_QA_2026_07_08.md`、`POST_V1_SIGNAL_DECAY_MONITOR_QA_2026_07_09.md` | 各加歷史確認寫入警示：`--confirm` 只代表當日 working-copy／暫存 DB 驗證，不是現行寫入或 production 授權。 |
 
 僅在檔首插入警示，原正文逐字保留；CRLF 檔維持 CRLF。原件 SHA 已改變，未在 manifest 另列（這些根層原件不在 Superpowers manifest）。尚缺警語但命令僅屬唯讀查詢或明示範圍已受限者（例如 `DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md`、`RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md`、`PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md`）保留，不加警語。未刪除／搬移文件或原始資料；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-213"></a>
+## 2026-10-10 REFACTOR_REPORTS 狀態字樣風險分流與 10 份時點導覽
+
+接手 Agent 以狀態字樣（BLOCKED、READY_FOR_REVIEW、CHANGES_REQUIRED、NOT PASSED、REOPEN 等）掃描 	arget_architecture_2026_09_22/REFACTOR_REPORTS/ 中尚未列入具名清單、且檔首 14 行沒有時點／現況導覽者，得 26 份候選；逐一檢視狀態字樣所在行與檔首後，16 份屬設計內容、已有時點界線或已解決於同文，保留不動。10 份的狀態字樣會被直開誤讀成目前 disposition，已在檔首加導向 R031 task index、final closeout 與 Project Snapshot 的時點導覽：R005_SOL_REVIEW、R005_SOL_REWORK_REVIEW、R007_IMPLEMENTATION_REPORT、R008_IMPLEMENTATION_REPORT、R008_SOL_CHANGES_REQUIRED_ML_AVAILABILITY、R008_SOL_REWORK_REVIEW、R008_SOL_BATCH_AUDIT_DECISION、R012_SOL_REVIEW_FINDINGS、R022_IMPLEMENTATION_REPORT、R020_PORTFOLIO_READBACK_SCOPE_ADDENDUM_20260924。
+
+讀取深度為檔首與狀態字樣所在行，**不是全文審閱**，不調整 REFACTOR_REPORTS 全文／未讀彙總；原審查結論、PASS／FAIL 與限制逐字保留。未驗證各 task 在 R031 的逐項最終 disposition，因此導覽只指向 index，不重述結論。未刪除／搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。

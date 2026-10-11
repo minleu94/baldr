@@ -4,7 +4,7 @@
 
 ## Coverage 與處置
 
-Coverage Pass 已依使用者明示的整個 repo 整理 scope 完成，Patch Pass 承接此授權。Must：Snapshot 現況／歷史分離、主索引與 docs README、全清單、資產登記、歸檔 manifest／QA／graph 維護；Should：root README／Navigation 入口、結構規則、Manual／Architecture 現況判讀、7 個壞鏈；歷史 plans/specs 原地 lifecycle 登記。產品方向／6M／長期 maturity／外部藍圖／Legacy Carryover 保持 scoped authority，文檔整理不更改其 Gate 或優先序。
+本段所稱 Coverage Pass 已依當時明示的 repo 整理 scope 完成，只表示本 manifest 所列 2026-10-06 baseline 與處置範圍，Patch Pass 當時承接該授權；不表示後續全庫內容治理、最終 links／anchors scan 或 Graphify refresh 已完成。Must：Snapshot 現況／歷史分離、主索引與 docs README、全清單、資產登記、歸檔 manifest／QA／graph 維護；Should：root README／Navigation 入口、結構規則、Manual／Architecture 現況判讀、7 個壞鏈；歷史 plans/specs 原地 lifecycle 登記。產品方向／6M／長期 maturity／外部藍圖／Legacy Carryover 保持 scoped authority，文檔整理不更改其 Gate 或優先序。
 
 | old | new／保存位置 | 日期／狀態／superseded-by | 恢復 |
 |---|---|---|---|

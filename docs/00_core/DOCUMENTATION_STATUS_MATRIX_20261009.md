@@ -512,6 +512,24 @@ QA 既有 205 全文／4 局部／344 未讀與 Entry 203 的 36／6／511 分�
 
 QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不調整 QA aggregate；P2／M03 receipt 是交叉核對來源，不列入此內容文件 manifest。Manual §10 將 B09 狀態由「待接線」改為有限 route／paths 注入與 query-only readback 已有證據，並明示 Paper producer 全鏈、正式啟用、migration 及排程授權未完成；§9.9.1h 補入 BBANDS 的保存來源、快照更新、參數、結果與未知狀態說明。所有原始驗收正文與歷史命令仍保留；本批沒有刪除或搬移文件。
 
+### 2026-10-11 Archive 根層補充具名核讀（Coverage History Entry 222）
+
+本批核讀下列 9 份 Archive 根層文件；這是具名增量清單，不併入缺少早期逐檔 manifest 的舊累計，也不代表 Archive 根層或全 repo 全文核讀完成。
+
+| 路徑 | 核對結果／處理 |
+|---|---|
+| `APPLICATION_MANUAL_CHANGELOG_2026_09_27.md` | 日期化變更記錄範圍清楚，未見需更正的現況宣稱。 |
+| `DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md` | 兩個 repo 絕對路徑改為相對連結，方便在其他 checkout 閱讀。 |
+| `DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md` | 限定為 10/06 整理基線；全文件核讀、最終連結／錨點掃描與 Graphify 刷新另計。 |
+| `SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md` | 標明日期化盤點，不作目前完整清冊或現況。 |
+| `V4_WORKSPACE_CLEANUP_CLOSEOUT.md` | 修正「可回滾」的範圍：可重建輸出不等同逐位元組還原原件。 |
+| `TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md` | 補 9/21、10/03 後續觀察與 P0 source acceptance register；候選觀察不等於來源採納。 |
+| `POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md` | 明示原件未記建立日期、非現行核准，連到 Manual 與唯讀 Runbook。 |
+| `PHASE2_5_COMPLETION_STATUS.md` | 說明後續 10 檔單策略 Walk Forward pilot 不等於全市場或策略優越性驗收。 |
+| `PHASE4_STARTUP_SUMMARY.md` | 歷史啟動摘要範圍清楚，未見需更正的現況宣稱。 |
+
+其中 `V4_ML_RELEASE` 長文件（1,432 行）不在本批核讀範圍。七份需澄清的文件及 Archive README 已補範圍／日期／後續證據入口；沒有刪除或搬移文件。未執行測試、Graphify 或最終全 repo links／anchors scan。
+
 **2026-10-10 第十八增量（Coverage History Entry 212）：** 由接手的 Agent 以命令字串風險分流掃描 `09_archive/` 根層，50 份含 `--apply`／`--confirm`／`git`／`schtasks` 命令，其中 12 份缺檔首警語者已補歷史操作警示（`V4_NEXT_FORMAL`、`V4_TDCC`、`V4_NEXT_OPS`、`V4_AUTOMATED_REVIEW`、`NEXT_ACTION_PLAN`、`FUNDAMENTAL_SOURCE_INVENTORY` 與 6 份 Post-V1 QA）。此批閱讀深度為檔首與命令段落，不是全文審閱，不改 Archive 全文／待讀總數；`LUNA_C_HANDOFF` 全文核讀後無需修改。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-10 第十九增量（Coverage History Entry 213）：** 以狀態字樣掃描 REFACTOR_REPORTS 26 份候選，10 份會被直開誤讀成目前 disposition 者已加導向 R031 index／final closeout／Snapshot 的時點導覽，其餘 16 份保留。閱讀深度為檔首與狀態字樣行，不是全文審閱，不改該目錄全文／未讀彙總；未驗證各 task 的 R031 逐項 disposition。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。

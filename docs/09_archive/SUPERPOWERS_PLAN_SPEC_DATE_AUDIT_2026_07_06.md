@@ -1,5 +1,7 @@
 # Superpowers Plan / Spec Date Audit - 2026-07-06
 
+> **歷史日期稽核（2026-07-06）：** 本文的「目前」與 `Next Action` 只描述當日 plan/spec 日期標記，不能當成目前 roadmap、待辦或派工。現在狀態與優先序依 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 與具名 QA 判讀。
+
 ## Purpose
 
 本紀錄用來釐清 `docs/superpowers/plans/` 與 `docs/superpowers/specs/` 中 2026-07-06 之後的檔名日期：這些日期多數是 Post-V1 milestone sequencing label，不是實際完成日、也不是 roadmap 權威日期。

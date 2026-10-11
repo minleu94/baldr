@@ -2558,3 +2558,9 @@ Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。
 對 8 份 QA 內容文件的第二批只讀複核發現三處值得在直開時澄清：`BALDR_DAILY_BBANDS_CENTRAL_20261007.md` 的「先整合 BBP01」待辦已由 44-case focused union 的後續收據接續，但 daily caller／UI 仍未完成；`BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md` 檔首早期狀態「尚未完成每日目前來源啟用」與文內 10/07 revision 1 `effective_model_run=true` 後續收據時間不同；`BALDR_PERSONAL_MODEL_ACTIVATION_PREFLIGHT_20261006.md` 是啟用前固定基線，早於後續接線。三份 QA 僅新增階段時序／範圍提示與跨文件連結，保留原始收據和結果。
 
 同批另外五份收據的有限 scope、失敗／成功與資格界線未見需改寫的矛盾。逐檔清單不加入歷史全文覆蓋總數，因早期 QA 累計缺少逐檔去重 manifest，且只確認本批名稱不在現有具名清單；受保護的 10/11 產品完成進度文件未讀。未重跑 QA 中的測試，未執行 Graphify 或最終 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-222"></a>
+## 2026-10-11 Archive 根層補充具名核讀
+
+具名核讀 9 份 Archive 根層文件：`APPLICATION_MANUAL_CHANGELOG_2026_09_27.md`、`DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md`、`DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md`、`SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md`、`V4_WORKSPACE_CLEANUP_CLOSEOUT.md`、`TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md`、`POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md`、`PHASE2_5_COMPLETION_STATUS.md`、`PHASE4_STARTUP_SUMMARY.md`。前兩份文件既有日期化變更或收尾範圍清楚；Roadmap History 的 repo 絕對路徑已換成相對路徑。整理 manifest 與 Superpowers date audit 加上時點／範圍說明，明確不代表全文件治理已完成。V4 cleanup 的「可回滾」已縮限為可重建輸出，不代表可逐位元組恢復原件。T86 pilot 連到 9/21 data contract repair、10/03 scheduler diagnosis 與 P0 source acceptance register，候選觀察仍不代表來源已採納。Scheduler SOP 標明原件未記建立日期且不是現行操作核准，並連到 Manual 與唯讀 Runbook。Phase 2.5 歷史狀態連到後續 10 檔單策略 Walk Forward pilot，未延伸為全市場驗收或策略優越性證據。`V4_ML_RELEASE`（1,432 行）明確不在本次核讀範圍。Archive README 與 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md) 已同步七項修正及具名清單；未刪除或搬移文件，未執行測試、Graphify 或最終全 repo links／anchors scan。

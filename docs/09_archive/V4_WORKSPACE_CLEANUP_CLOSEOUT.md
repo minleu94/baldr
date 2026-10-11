@@ -1,6 +1,6 @@
 # V4 工作區清理收尾（2026-09-08）
 
-本文件記錄本輪兩批有限、可回滾的工作區清理。清理範圍只包含 repo 內已確認可再生的快取與過期 QA 暫存；`.git`、`.venv`、`D:` 原始資料、`output` 正式證據／帳本／SQLite／WAL／raw／checkpoint，以及 `graphify-out` 均保留。
+本文件記錄本輪兩批有限的工作區清理。第一批只移除可再生快取；第二批只移除過期 QA 暫存。第二批未保存 145 個檔案的完整 bytes，因此只能依清冊重跑 healthcheck 產生新結果，不能 byte-identical 還原；整體清理不可一概稱為可回滾。清理範圍只包含 repo 內已確認可再生的快取與過期 QA 暫存；`.git`、`.venv`、`D:` 原始資料、`output` 正式證據／帳本／SQLite／WAL／raw／checkpoint，以及 `graphify-out` 均保留。
 
 ## 第一批：repo 快取
 

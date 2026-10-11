@@ -2,6 +2,8 @@
 
 > **歷史判讀**：本文件保留為 Phase 2.5 完成狀態追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
+> **後續證據提示（2026-10-11）：** 本文的 Priority 3「fixed／quantile 尚未實作」與當時 Governance A／B 已完成、walk-forward 待比較的不同工作範圍並列；後續 [Walk Forward Comparison Report](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md) 已完成 10 檔、單策略 bounded pilot，不代表全市場或量化門檻優於 fixed。2025-12-20 基線原文保留，不能用這項 pilot 推論整個 Phase 2.5 或所有 checklist 已完成。
+
 **檢查日期**：2025-12-20  
 **檢查範圍**：UI 模組（ui_qt/）與相關服務層（app_module/, backtest_module/, ui_app/）
 

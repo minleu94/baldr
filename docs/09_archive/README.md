@@ -276,7 +276,7 @@
 ### 2026-10-08 Data and source-owner receipts
 
 - **資料／介面快照**：[Data Update display refresh（8/30）](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Formal data reconciliation（8/06）](FORMAL_DATA_RECONCILIATION_2026_08_06.md)。這些是當日觀察，不是目前資料可得性或正式完成結論。
-- **Source／owner bounded evidence**：[Owner production readiness（8/06）](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license capture（8/28）](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet（8/28）](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[TWSE T86 20-day pilot](TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md)。保留原授權、provenance、coverage 與 pilot 邊界；較新的 P0 handoff 見 [8/30 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+- **Source／owner bounded evidence**：[Owner production readiness（8/06）](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license capture（8/28）](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet（8/28）](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[TWSE T86 20-day pilot](TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md)。保留原授權、provenance、coverage 與 pilot 邊界；T86 後續觀察見 [9/21 data contract repair](../06_qa/SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md) 與 [10/03 scheduler diagnosis](../06_qa/SCHEDULER_REMAINING_DIAGNOSIS_20261003.md)，來源採納仍看 [V2.3 P0 source acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md)。較新的 P0 handoff 見 [8/30 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
 ### 2026-10-08 Prospective Formal clock history
 
@@ -364,7 +364,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。
 - **Gate／ML bounded closeouts**：[Gate 1 Advice](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md)、[Gate 2–7 pure engineering](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)（External Register／Control Center 的舊引用由轉址承接）、[historical ML Shadow MVP](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)。pure-engineering 收據不等於目前 external qualification；狀態回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)。
 - **Healthcheck／PIT／project audit**：[Full App agent closeout](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[PIT historical data repair](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[PROJECT_SNAPSHOT audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[shim removal audit](SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md)。目前測試覆蓋看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)，目前狀態看 Snapshot。
-- **文件治理／執行藍圖**：[Gemini documentation adjudication](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Superpowers date audit](SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)、[system execution blueprint closeout](SYSTEM_EXECUTION_BLUEPRINT_CLOSEOUT_2026_07_15.md)。目前文檔生命週期看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)，目前架構看 [system_architecture](../01_architecture/system_architecture.md)。原 QA 路徑保留短轉址。
+- **文件治理／執行藍圖**：[Gemini documentation adjudication](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Superpowers date audit](SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)（2026-07-06 歷史盤點，非目前清冊）、[system execution blueprint closeout](SYSTEM_EXECUTION_BLUEPRINT_CLOSEOUT_2026_07_15.md)。目前文檔生命週期看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)，目前架構看 [system_architecture](../01_architecture/system_architecture.md)。原 QA 路徑保留短轉址。
 
 ### 2026-10-08 Early Recommendation and Update Tab QA
 
@@ -414,7 +414,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 兩份 2026-09-08 工作區盤點與清理收尾記錄保留當日數字、路徑界線與實際清理限制；它們不是即時 inventory 或現行清理授權。逐檔 output manifest 當時留在 ignored 本機 `output/`，沒有提交或隨文件封存。原 QA 路徑保留短導引；目前檔案與清理規範須回核現行文件及 Git exclusion。
 
 - [工作區檔案盤點](WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)
-- [V4 工作區清理收尾](V4_WORKSPACE_CLEANUP_CLOSEOUT.md)
+- [V4 工作區清理收尾](V4_WORKSPACE_CLEANUP_CLOSEOUT.md)：當次只可重建清理結果，未保存可逐位元組還原的原件清單；「可回滾」不代表可還原原始檔案內容。
 
 ### 2026-10-08 workspace commit validation history
 
@@ -422,7 +422,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 - [2026-09-26 工作區分批提交驗證](WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md)
 
-- **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。逐檔原路徑、bytes／SHA 與搬移前後 blob 核對見 [Coverage History Entry 116](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-116)。
+- **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)（2025-12 歷史狀態；後續僅有 10 檔、單策略 walk-forward pilot，非全市場成熟驗收，見 [Walk Forward comparison report](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)）、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。逐檔原路徑、bytes／SHA 與搬移前後 blob 核對見 [Coverage History Entry 116](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-116)。
 
 ### Phase 3.5 研究與門檻歷史索引
 
@@ -435,7 +435,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 - **Evidence store／source／replay**：[Event Store](POST_V1_EVIDENCE_EVENT_STORE_QA_2026_07_01.md)、[Importers](POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md)、[Source persistence](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md)、[Historical replay](POST_V1_HISTORICAL_EVIDENCE_REPLAY_QA_2026_07_06.md)。
 - **Forward outcome／review**：[Forward read model](POST_V1_FORWARD_PERFORMANCE_READ_MODEL_QA_2026_07_03.md)、[Dashboard](POST_V1_FORWARD_PERFORMANCE_DASHBOARD_QA_2026_07_05.md)、[Decision quality](POST_V1_DECISION_QUALITY_REVIEW_QA_2026_07_10.md)、[Review dashboards](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)、[UI smoke](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md)、[Live vs research gap](POST_V1_LIVE_RESEARCH_GAP_LINKAGE_QA_2026_07_08.md)、[Signal decay](POST_V1_SIGNAL_DECAY_MONITOR_QA_2026_07_09.md)。
-- **Operations／scheduler**：[Weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[multi-day dry-run frozen snapshot](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)、[working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)、[approval SOP](POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md)、[scheduler dry run](POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md)、[scheduled dry-run history](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)。目前可續寫登記表仍在 [`docs/06_qa`](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)。
+- **Operations／scheduler**：[Weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[multi-day dry-run frozen snapshot](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)、[working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)、[approval SOP](POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md)（原件未記錄建立日期；非現行操作核准，現行操作看 Manual／唯讀 Runbook）、[scheduler dry run](POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md)、[scheduled dry-run history](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)。目前可續寫登記表仍在 [`docs/06_qa`](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)。
 - **Superseded daily check guide**：[2026-10-09 歸檔快照](EVIDENCE_SCHEDULED_MORNING_CHECK_HISTORY_20261009.md)。舊的四-task morning check 只供追溯；目前 21-task 操作見 [共用稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)，舊路徑保留相容導引。
 - **Versioned evidence operations**：[V1.3 operations](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md) · [V1.4 review history](POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md)。
 
@@ -716,7 +716,7 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - [整理前 PROJECT_SNAPSHOT](PROJECT_SNAPSHOT_HISTORY_20261006.md)
 - [整理前 DOCUMENTATION_INDEX](DOCUMENTATION_INDEX_HISTORY_20261006.md)
 - [整理前 docs README 與索引前言](DOCUMENTATION_ENTRY_HISTORY_20261006.md)
-- [文件重新整理 mapping 與處置清冊](DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)
+- [文件重新整理 mapping 與處置清冊](DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)：記錄 2026-10-06 當時的整理範圍，不代表後續全文件核讀、最終全 repo links／anchors 或 Graphify 刷新已完成。
 
 <a id="task-loop-handoffs"></a>
 ## 2026-10-08 Task Loop 01-07 historical handoffs

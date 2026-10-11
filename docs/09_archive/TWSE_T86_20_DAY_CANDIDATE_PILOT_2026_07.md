@@ -1,5 +1,7 @@
 # TWSE T86 20 日 Candidate Source Recovery Pilot
 
+> **歷史 pilot 提示（2026-10-11）：** `deferred` 是 2026-07 candidate pilot 的來源資格判讀，不是目前狀態；後續 [9/21 scheduled data QA](../06_qa/SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md)、[10/03 scheduler diagnosis](../06_qa/SCHEDULER_REMAINING_DIAGNOSIS_20261003.md) 與 [P0 source acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 記錄了新觀測及仍待人工接受的限制。新候選觀測不等於 source acceptance、正式 ingestion 或 PIT 資格；目前狀態仍依 Snapshot 與具名 QA 判讀。
+
 ## 結論
 
 本次只完成 retroactive-baseline candidate research。TWSE T86 source dossier 狀態固定為 **`deferred`**；`source_accepted=false`、`formal_validation_allowed=false`、`formal_oos_allowed=false`、`production_blend_alpha_bp=0`。本結果不構成 source acceptance、正式 ingestion、forward evidence 或投資有效性證據。

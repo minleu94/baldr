@@ -1,5 +1,7 @@
 # Post-V1 Evidence Scheduler Approval SOP
 
+> **歷史 SOP 提示（2026-10-11）：** 原文未標明本 SOP 的建立日期；其中 scheduler 核准階段與 V2.2 weekly Task 例外只記錄原 SOP 當時的界線，不代表目前排程核准或執行授權。現行操作／查核請從 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [唯讀排程 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) 開始；相關 manual QA scaffold 見 Manual §9.9.3。
+
 ## Purpose
 
 本 SOP 定義 Evidence Pipeline 從手動 dry-run 走向未來 production scheduler implementation 的人工核准路徑。現在不啟用 production scheduler、cron 或 production background job。例外是 V2.2 的 `baldr-v2-2-weekly-collection` Windows Task：它只將週期資料收集至 sidecar，結果只能是 `pending_human_review` 或 `collection_failed`；它不是人工 review、不寫 weekly history，也不改 `production_scheduler_allowed=false`。

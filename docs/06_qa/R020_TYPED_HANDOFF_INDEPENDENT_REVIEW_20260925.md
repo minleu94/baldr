@@ -109,3 +109,7 @@ Manifest source set 與 hashes：
 ### Root 最終複核裁定（2026-09-25）
 
 Root 已讀回 C2 manifest／NP2 log，確認 136-test route 為 `1793 passed／5 skipped` 且 214 inputs 零漂移；並複核新 recovery report、42-pass log/hash 與完整 DTO／child-byte assertions，未見 P1／P2。Root 接受本報告列明的有限 closure checklist：目前沒有剩餘 R020-specific recovery state 或既有 R005 vector 缺口。`TMP-REC-04` 的 R020 子範圍可在 C2 mandatory UI／validator／broad-mypy gates 通過後關閉；`TMP-NUM-01` 其他獨立 numeric gate 不反向阻塞 R020。C2 final gates 與 Root 對 R020／Wave 的最終裁定仍 pending。本附記不改寫本報告歷史的 `NOT PASSED`／pending snapshots，也不把 C2 pytest baseline 升格成 C2 final pass。
+
+### 後續 bounded disposition（2026-10-11）
+
+上方 2026-09-25 的 C2／R020 pending 文字保留為當時快照。後續 R031 current checkpoint 與 R020 implementation report 已確認：R020 的 R005／V-REPLAY typed handoff 和五個 distinct hard-exit recovery windows bounded accepted，`TMP-REC-04` bounded replay/recovery scope CLOSED；C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`，Update validator 的 `WinError 32` TEMP SQLite teardown 仍是具名 baseline，不稱全綠。獨立 `TMP-NUM-01` numeric gate 不因 R020 bounded closeout 而關閉，且不反向阻塞此 R020 範圍。此更新不宣稱 full V-REPLAY、所有平台／runtime／caller 或無界 parity 已驗收；詳見 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 與 [R020 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R020_IMPLEMENTATION_REPORT.md)。

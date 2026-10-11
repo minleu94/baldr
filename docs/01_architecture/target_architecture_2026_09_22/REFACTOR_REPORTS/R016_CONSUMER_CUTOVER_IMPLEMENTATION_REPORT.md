@@ -1,5 +1,7 @@
 # R016 — saved-result consumer cutover 實作報告
 
+> **2026-10-11 reader inventory 路由補充：** 範圍外的兩個 reader `app_module/user_declared_holding_research.py:774-807` 與 `ui_qt/views/portfolio_view.py:2947-3000` 仍屬未解；目前未核實到呼叫端專屬的遷移收據。[R031 的 2026-09-27 checkpoint](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md#2026-09-27-current-checkpoint) 僅接受限定的 288-path regression，其中 REC-02／REC-05 摘要不能證明這兩個 reader 已完成接線。後續負責人與遷移路由請參照 [R029 實作報告](R029_IMPLEMENTATION_REPORT.md) 及[最終遷移順序](../FINAL_MIGRATION_SEQUENCE.md)；在取得精確呼叫端收據前，兩個 reader 的 owner／處置均維持未解。此日期化導覽不改變 R016 的歷史範圍或驗收結果。
+
 TASK_STATUS: `ACCEPTED_SCOPE_SYNTHETIC_ENGINEERING`
 OWNER: `Luna Max — R016 saved-result consumers`
 DATA_SCOPE: `synthetic tmp roots / pytest tmp_path only`

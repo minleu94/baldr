@@ -22,7 +22,7 @@
 | 2026-10-06 文件入口整理前的快照 | [治理入口原文快照](#governance-entry-snapshots)。 |
 | 舊版 Multi-Agent workflow（2026-10-09 前） | [Agent 工作流歷史快照](#2026-10-09-agent-workflow-pre-dev-history)。 |
 | Task Loop 01–07 歷史 handoff | [Task Loop 歷史入口](#task-loop-handoffs)。 |
-| Application Manual 舊版開發／候選功能紀錄 | [2026-10-03 至 10-08 快照](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)；原標題在手冊保留舊連結導引。 |
+| Application Manual 舊版開發／候選功能紀錄 | [初始 10/03–10/08 快照與 10/11 歷史移存補記](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)；原標題在手冊保留舊連結導引。 |
 
 > 封存計畫中的待辦或日期化狀態不會自動成為目前優先事項或執行授權；判讀目前狀態請回到 Snapshot、對應 QA 與現行 Roadmap。
 
@@ -51,7 +51,7 @@
 
 ## 2026-10-10 Application Manual 日期化工程快照
 
-[APPLICATION_MANUAL 日期化工程與操作快照](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)保存原手冊第 14 節後、2026-10-03 至 10-08 的開發版、候選版與有限驗收描述。它們不作目前操作或產品狀態依據；現行操作回到 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前進度看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，驗收看各自具名 QA。原手冊保留 104 個同名標題導引以接住舊錨點。
+[APPLICATION_MANUAL 日期化工程與操作快照](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)最初保存原手冊第 14 節後、2026-10-03 至 10-08 的開發版、候選版與有限驗收描述；10/11 又移入歷史排程收據與早期研究模板。這些內容都不作目前操作或產品狀態依據；現行操作回到 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前進度看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，驗收看各自具名 QA。原手冊保留 104 個同名標題導引以接住舊錨點。
 
 <a id="2026-10-09-early-plan-specs"></a>
 ## 2026-10-09 早期 SQLite、Evidence Importer、V1.1 與 V2.2 計畫／規格歸檔

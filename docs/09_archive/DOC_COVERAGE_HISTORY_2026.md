@@ -3155,3 +3155,9 @@ Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../sc
 ## 2026-10-11 Archive V4 ML release 現行版本再核讀
 
 全文再核讀 `docs/09_archive/V4_ML_RELEASE_2026_09_07.md`（1,434 行，101,254 bytes，SHA-256 `baf0428c08e8834c073f993efba93a57ea6ed9d8473788a9e9395b4c58fc7ef3`）；讀取前後目標均 clean。Entry 249 的先前現行版本為 1,432 行、SHA-256 `6D68CA79CC8DC11053A1D42BBEF2E26049D67B8C7F53046174F338D5350C1FB5`。兩版差異僅為目前版本在檔首新增的 10/11 歷史／勿重跑警語；核對移除該警語後 SHA 與 Entry 249 相同，正文與數據未漂移。此文件屬 9/7 bounded ML research QA 收據，明示 formal OOS、production alpha/action、broker order 權限均 false；不是 release 操作說明或 promotion 證據。Archive README 與舊 QA redirect 均有路由，本文 README 及 43 個 repo-local `.py`／`.md` 引用目標存在。長文中的 D 槽、ignored output 與命令仍只代表當時收據，不能視為現行操作授權；未核對受保護來源、ignored output 或 D 槽。未改原件、未跑測試、Graphify 或 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-312"></a>
+## 2026-10-11 Manual 日期化歷史快照範圍補正與全文核讀
+
+全文核讀 `docs/09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md`（原始版本 1,648 行／270,328 bytes，SHA-256 `A114ECDA3C6F22A45E66C38B33C34C8817A7857427E0A6C08B932059052BA2AD`）；讀取前後目標均 clean。文件最初標示 10/03–10/08，但正文後段另有 10/11 移入的 9/30、10/01 歷史排程收據與 10/03 revision-aware 研究早期模板，原檔首和 Archive／Guides README 仍只涵蓋初始日期。已在原件檔首標明初始日期及 10/11 補記，並同步 Archive README 與 Guides README；不改原始歷史章節，分類仍是舊 Manual 日期化開發／候選／有限驗收快照。更新後原件為 1,649 行／270,579 bytes，SHA-256 `17a56999a9c3d8b1ba6a6e4ba10e3e8d4cad7b2f7bb7d1ee7a3f5df88c34105d`。原檔 81 個 Markdown links、64 個唯一本地檔案路徑的目的地存在；外部 anchors 未核。未讀或更改受保護的 Application Manual、Snapshot、system architecture 或使用者 plan；未跑測試、Graphify 或 repo-wide link scan。

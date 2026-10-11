@@ -338,3 +338,43 @@ Owner保留88 preimage、新名b6 preflight，另發final freeze `7d31f9434a63f4
 Root釋出並啟動唯一一次完整矩陣，session49268／launcherPID1180，packet `root/p01_normal_matrix_v5_root01_18aa1514b6b248d099032a933a97d6fb/`；inner `supervised_matrix_attempts/attempt_20261011T110425Z_a2cdc0776321/`。本段記錄時仍execute_role:cold_01，外層handle已實際poll確認live，尚無native終態或p95。五cold／一warm、每role600秒、1000母體／20頁、各操作30samples、strict<300ms及完整DTO serial oracle保持。後續依同一handle收終態，不因觀察逾時另起矩陣。
 
 F12新freeze `5e78321c1a7a060498feafea029b7e1d42e33c40b33d29d0100572bcc0669ebd`（main513745c6、child32456ac7）已靜態審查與64-pin核對；root純guard release `f12_junction_guard_root_release_20261011.json` SHA `24c30fa4ab210fce34ebae329ba80c9724ae2c5863270fdb59489d53ec4e17b8`明示released_for_one_Main_attempt=false。尚未跑descriptor、COW或Main；待矩陣terminal再按相同freeze接續。P08 owner於scratch做完整策略卡／executor／daily route，保持已凍結依賴不變。
+
+### P01 v5 完整矩陣終態：cold01 到達原期限
+
+上一goal turn已poll同一session49268並確認live，分類為verified wait。本輪再次poll同一handle後取得native1終態，沒有重啟矩陣。Root packet `root/p01_normal_matrix_v5_root01_18aa1514b6b248d099032a933a97d6fb/receipt.json` 保存99 raw pins起訖一致；inner `supervised_matrix_attempts/attempt_20261011T110425Z_a2cdc0776321/supervisor_receipt.json` 在cold01達600秒，由專屬Job終止owned tree。
+
+Role rootPID3844、截止前Job成員3844／28700／29812；Job與root handles已閉合，remaining PIDs及cleanup errors皆空。80 source/file、51 product origins、594 runtime/DLL與supervisor postguard通過。兩個role log為0 bytes、沒有result.json／oracle檔或p95；不能由空log判斷停在open、selection或page讀取，也不能由三個PID推為artifact reader程序。既有sealed store全清冊是啟動前證據，本次強制終止沒有runner來源post-inventory，不能由程式pins代替來源全樹證明。下一版增加原子phase與有限stack觀察，保留1000母體／20頁／完整serial DTO oracle、五cold一warm、600秒與strict<300ms，不直接提高期限或縮小範圍。
+
+### 正式前向規則來源 API 整合
+
+Root先保存Coverage／回滾與候選raw preimages於 `root/forward_formal_adoption_ecb2e49e834a4992a1bcfa101d514355/`，以create-only新增 `app_module/strategy_rule_forward_observation.py` 及 `tests/test_strategy_rule_forward_observation.py`。沿原candidate c9d67dd6／test e53aba44，只有繁中說明、正式import、型別驗證明確分支及非空bool、fresh reader60秒精確kill／wait與receipt搬到ignored QA根；原candidate與19正式技術依賴保持不變。型態檢查首輪23 errors、第二輪5 errors完整保留；在前次測試native terminal後才修改正式source，沒有凍結期間覆寫。
+
+最終source SHA `9c02bce9b80797eab62433f1468a1db0e908950a6e758fac9f3d3e46af4420a7`、test SHA `b641e8e2083926f237cf76dbf65b4e31ad00c1871207740b6046f43354001bdb`。Root正式匯入 **8 PASS／7.84秒／0 skip／native0**，receipt `root/forward_formal_v3_root01_68efbce9b940415b8a6bf86607f7c368/receipt.json`，launcherPID37036終態，53 raw pins起訖一致。不與原候選八項、前兩次正式測試重複累加。新程序收據 `output/qa/strategy_rule_forward_observation/fresh_source_reader_receipt_18744_31532.json` 記childPID31532／exit0、2330 unknown／2382 match與保存相同，來源SQLite before=after=`c1a7c08dcbd925e64d84875470a06da399a8b2116f95bf3b4e1798b8fd12bc05`。
+
+最終mypy native0 `root/forward_formal_v3_mypy01_6b00b18f9cb74266a2281afd5d524087/receipt.json`；兩檔語法native0 `root/forward_formal_v3_compile01_f7ce87ab0b66461cac72a1cd58ab207f/receipt.json`；兩項白名單量化guard native0 `root/forward_formal_v3_quant01_6912ca0a78704c90bb8582673a541658/receipt.json`，均53 pins一致。白名單guard沒有涵蓋新module，來源時鐘／未來資料拒絕依完整八項與root review判讀。
+
+追加既有v4八組來源回歸首輪 **91 PASS／20 FAIL／40.43秒／native1**，receipt `root/forward_source_regression01_49d88191a5ec48d88e671d5764e703fd/receipt.json`，53 pins一致；失敗集中在runner將basetemp放`.t`，無research_scope的舊測試producer依既有允許根契約拒絕`technical_snapshot_v4_isolated_output_required`。原失敗保留，僅以新wrapper改到既有允許的output/qa重驗，正式producer／既有測試沒有修改。
+
+此正式API只授前向研究觀察、完整UNKNOWN、exact來源重讀，source availability unknown／historical PIT false／execution及performance false保持。完整版本卡、entry／hold／exit政策、typed executor、原金融引擎normal daily route、官方日曆／成本／benchmark／績效與正常UI仍待；P07／P08／M3及完整產品Gate未完成。
+
+### F12 junction fixture 第二輪審查
+
+Root按freeze5e78321c與main513745c6執行三個guard／branch節點，receipt `root/f12_junction_root01_ffbaefcc1a644b5a9ef586d655e18877/receipt.json` 為 **1 FAIL／2 PASS／3.71秒／native1**，64 pins及原17檔／14sidecar觀測起訖不變。Inner `fdopen_guard_probe_e0b216ccc52a4bf8940c3d0206505cc8` launcher2196自然native1，ownedJob／handles閉合、remaining PIDs空；junction流程之後仍引用已移除的private_sha_before_reparse，NameError使role receipt未完成，不宣稱junction通過。
+
+Owner保持513745preimage並修新main9fe5dac0；freeze9778fa22的test_files已更新，但pin_inventory仍引用513745／舊size，root新prepare在pytest前拒絕兩份清冊不一致。沒有guard、COW或Main新樣本；已要求保留9778原bytes、另建一致的新freeze，不略過inventory equality。完整COW、Main保存／關閉／fresh reader仍待。
+
+### 本輪來源回歸與 F12 私人副本獨立通過
+
+相同八組來源測試僅改basetemp到producer既有允許的output/qa，取得 **110 PASS／1 skip／51.76秒／native0**，receipt `root/forward_source_regression02_f9f67d0f18374548bffd1ad5b9c67aac/receipt.json`，launcherPID33812終態，53 pins起訖一致。具名skip原因補查 `root/forward_source_symlink_reason01_6edfce9eda544245804bc8cfa2bc0d56/receipt.json`：原artifact symlink fixture因WinError1314無權建立而跳過，不視為該拒絕案例通過。正式新觀察API自己的八項維持0 skip，兩者覆蓋不互相替代。
+
+F12 owner新freeze `14e3d64317aa542819b90f14c30976e665b35bf5a8399057d6e2fac034499b45` 保持main9fe5dac0／child32456ac7，64-pin aggregate `a747590f769ec24036697b38d096fb10df74acafcc00b5be93730f525aa6cc69`；root重新逐列比原base＋本輪Main差異，完整inventory與test_files相等後建立新guard release `e381a25bf040dee0e39f59206aec5166feeda7f2921a8a2da5ef7060d60c92a5`，仍未授Main。Root獨立 **3 PASS／3.52秒／native0**，receipt `root/f12_junction_pinrefresh_root01_364dd270767f4c58859a7abe8a903dbb/receipt.json`，64 pins及原來源觀測前後一致。
+
+Inner `fdopen_guard_probe_a87335dd431e4c14a9f52a841f3fdb22/fdopen-guard-role-receipt.json` 全部assertions為true：private DOS handle writer及exact bytes、external／readonly source／closed／reuse／pipe拒絕、兩種hardlink截斷pre-open拒絕且外部bytes不變。實際junction創建成功、alias寫入被拒，target SHA在before／after-attempt／after-cleanup皆 `fc1c6f1bdd46318f9ed5e7b0d65bed6f56bc2b8d99dc53efdda0b8319891f952`；alias已非遞迴移除而target存在。Create／remove各自owned Job的PID31736／50900均native0、handles閉合、remaining PIDs空。
+
+按同freeze釋單一小型COW release `fd971d4dc7e3a9fa07b562737d698f6f9c2cb321f1b75d268a4fea50a8ae99cf`，Root **1 PASS／8.37秒／native0**，receipt `root/f12_small_cow_junction_root01_39caa64443a64a939a419182484a04d0/receipt.json`，64 pins及來源觀測不變。Inner `watchlist_view_probe_154961274ee04880898444a5ed0bb3c0` 真可見WatchlistView按鈕QTest click1／Yes確認1／information1／warning0，service repository active；新私人target在run root、SQLite v3 ready、query_only true／write_blocked true、active reader成功，原source SHA未變。Worker34208 native0、registry排空及owned Job／handles關閉、remaining PIDs空。這是私人副本啟用證據，完整營收query與收藏fresh reader仍另驗。
+
+Root核上述COW三份inner receipt、當前64pins後，建立唯一一次完整Main release `f0aef1f2238bc3112f88bf2380091b031171f444ad09e8b3a2e0662aaa2f7a48`。Session15138／launcherPID47352，packet `root/f12_full_main_after_cow_root01_23779aee1cb14e11b4a1fac9967fc4a6/` 已啟動，記錄時尚live／沒有終態。原42f來源與258完整cohort不換，worker2400／Main init600／fresh subprocess600／fresh init540／query min480remaining為防失控上限，不當產品效能門檻。後續poll同handle收結果，無新EXE／真人或完整Gate驗收。
+
+完整Main同一session15138後續poll取得 **1 FAIL／25.97秒／native1**，receipt `root/f12_full_main_after_cow_root01_23779aee1cb14e11b4a1fac9967fc4a6/receipt.json`，64 pins及來源觀測起訖一致。Inner `main_candidate_6f6597e4d85e422d8e707e90739e0b84` launcher17792、active count0／tree closed／root handles closed，未逾時。Main QApplication／theme／真正MainWindow全部初始化完成，私人副本啟用後，在「核驗雙來源並執行全母體查詢」停止：`monthly_revenue_yoy_index_v1_source_archived_open_failed:PermissionError:fdopen_must_transfer_descriptor_ownership`。
+
+Root靜態沿真source archived路徑核 `data_module/fundamental_read_snapshot.py` 的2445／2903：private封存writer使用os.fdopen(..., wb, closefd=False)，以caller保留fd供flush／fsync／close；現QA guard在write mode強制closefd=True。此是guard與正式writer生命週期契約的下一停點，不據此宣稱產品讀取缺陷。Owner接續exact actualhandle／private regular nlink1／descriptor ownership候選與closefalse正負矩陣，不放行外部／hardlink／reparse／closed／reuse／pipe，也不改正式fundamental reader、縮母體或略過保存／fresh child。完整F12旅程未通過；root現無live QA，後續新freeze審後重驗。

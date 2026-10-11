@@ -1,5 +1,11 @@
 # 系統架構
 
+## 前向技術規則來源觀察（2026-10-11）
+
+`app_module/strategy_rule_forward_observation.py` 提供 `write_forward_signal_observation_from_exact_parent()` 與 `read_exact_forward_signal_observation()`。Writer 沿公開 v4 parent exact reader 核版本化方法、完整 included cohort、來源 cutoff 與 parent completed 時鐘，保存單一 predicate 的 match／no_match／unknown；API 不接受 caller score、target、fill 或來源時鐘。Artifact、saved receipt 與 complete receipt 依序保存並讀回，公開 reader 再沿原 parent 重核全列與來源 binding，重封 hash 不能替代來源證據。
+
+保存使用 writer 時鐘，decision cutoff 必須不早於 available_at；來源 historical PIT=false、availability unknown 與 research_only 資格保留。Reader 使用有界 regular-file 讀取，逐層拒絕 reparse／hardlink，限制單 capture 2MiB、256 captures 與64MiB總量。這個來源 API 為完整策略生命週期與帳戶 producer 的接線基礎；交易日曆、進出場政策、成本、benchmark、績效與正常 UI 仍各自驗證。正式匯入八項測試、mypy與語法證據見[10/11 接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+
 ## 保存母體頁面讀取與取消契約
 
 `TaskWorker` 只對明確宣告內部參數的 task 發行一次性取消能力；精確 worker 類別、原始取消方法、Event 方法與未被 caller 覆寫的 callback 必須同時符合。能力綁定發行執行緒及傳入 task 的同一 callback 物件；任一 claim 嘗試均消耗能力，身分不符、跨執行緒或重用只返回序列讀取資格。這是程序內的語意檢查，不是外部輸入授權機制。

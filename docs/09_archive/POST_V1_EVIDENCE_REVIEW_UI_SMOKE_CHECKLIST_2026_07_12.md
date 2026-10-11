@@ -1,5 +1,7 @@
 # Post-V1 Evidence Review UI Smoke Checklist（2026-07-12）
 
+> **歷史模板提示（2026-10-11）：** 本文是 2026-07-12 的人工 smoke checklist；下方 Manual Result Table 全空表示沒有填入實測結果，不能當作 pass/fail 證據或現況驗收。現況請依[最新 QA 導覽](../06_qa/README.md)中的具名收據與[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)核對。
+
 ## Scope
 
 本 checklist 用於人工驗證 Research Lab `Evidence Review` read-only UI pack。它是手動 UI smoke closeout，不會寫入 evidence DB，不會建立 scheduler，不會改 portfolio，不會自動套用任何 lifecycle action。

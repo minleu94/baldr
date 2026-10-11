@@ -1,5 +1,7 @@
 # Post-V1 Evidence Review Dashboards QA（2026-07-11）
 
+> **歷史範圍提示（2026-10-11）：** 本文只記錄 2026-07-11 的 Evidence Review dashboard UI/read-only QA 收據，不表示目前 UI 或測試狀態。現況請依[最新 QA 導覽](../06_qa/README.md)中的具名收據與[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)核對。
+
 ## Scope
 
 本輪新增 Research Lab `Evidence Review` read-only UI pack，包含 Decision Quality Review、Signal Decay、Live vs Research Gap 三個 dashboard，並保留既有 Forward Evidence 子頁。

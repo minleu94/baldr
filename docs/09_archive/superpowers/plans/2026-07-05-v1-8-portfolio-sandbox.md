@@ -1,5 +1,7 @@
 # V1.8 Portfolio Sandbox Implementation Plan
 
+> **歷史狀態界線（2026-10-11）**：目前只有設計與計畫文件建立項目勾選；提交、實作、QA 與文件收尾均未勾選，不代表功能已執行或驗證。下方跨目錄的寬泛 `git add` 命令可能超出本計畫路徑並納入無關改動，已標為 `ARCHIVED — DO NOT RUN`；原命令保留供追溯。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立 research-only portfolio construction sandbox 與 virtual execution trace inspection。
@@ -164,6 +166,7 @@ git commit -m "feat: add v1.8 virtual execution trace"
 - [ ] Commit docs:
 
 ```powershell
+# ARCHIVED — DO NOT RUN: broad staging scope can include unrelated changes.
 git add PROJECT_NAVIGATION.md docs/00_core docs/01_architecture/system_architecture.md docs/07_guides/APPLICATION_MANUAL.md docs/06_qa/V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md
 git commit -m "docs: close out v1.8 portfolio sandbox"
 ```

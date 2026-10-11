@@ -676,3 +676,4 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA PIT／R027／revision 增量：** 新增 8 份單篇全文核讀；兩份 revision 文件補上後續 bounded scope，不追溯補足原始 PIT／時間與來源證據。見 [Coverage History Entry 296](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-296)。
 **2026-10-11 QA Product UX／Paper EOD 增量：** 新增 8 份具名全文核讀；只有 9/16 read-only personalization 文件補充 M10 後續 bounded 路徑與狀態，其餘收據保留。見 [Coverage History Entry 297](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-297)。
 **2026-10-11 QA Operations／C2-C4 增量：** 新增 8 份具名全文核讀；R020 independent review 補上 bounded closeout，C2 named baseline／WinError32 限制保留。見 [Coverage History Entry 298](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-298)。
+**2026-10-11 QA Product UX／個人資料／Stage1 增量：** 新增 8 份具名全文核讀；3 份原件補上後續日期／範圍狀態，保留其餘歷史測量與整體驗收限制。見 [Coverage History Entry 299](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-299)。

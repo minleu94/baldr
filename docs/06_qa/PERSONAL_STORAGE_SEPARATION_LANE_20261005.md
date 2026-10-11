@@ -147,3 +147,7 @@ App 以 config 的 personal_data_root／personal_watchlist_source 成對選擇�
 本批只接觀察清單；Portfolio／notes／ledger 未接 selector。市場 export 仍是固定 CSV 白名單 metadata manifest，來源 JSON、SQLite、私人 output 不放行；沒有打包 copy consumer，TOCTOU／內容／來源權限審查仍待後續。正式 root 選擇、真實 migration／配置啟用／新程式 Native 重開與使用者驗收另行批准。F1 18.621965821542936% 保留已接受效能例外，20% 目標未達。
 
 最終整合：selector 8＋App/config/CLI/UI 6＋既有 UI 1＋既有 CLI 4＝**19 passed（13.94s）**；與 foundational 169 為不同檔案共 **188 passed／2 skipped**。Workbench 85 另列、不重複相加；validator 25／4skip／0fail。全域 source roots＋CLI mypy **798 source files** 通過；本批 7 Python 檔 compile、量化精度／未來函數 guard、diff check 通過。原計畫只追加本批結果，raw 收據置 output/qa/personal_storage_app_integration_20261006（ignored）。提交後工作檔 Git blob 與 commit blob 核對另於最終交付回報。
+
+## 2026-10-11 儲存根位置補充
+
+本文較早的 `%LOCALAPPDATA%/baldr/personal` 與 `C:/Users/archi/AppData/Local/baldr/personal` 是先前提案／整合快照，已由 2026-10-06 的位置決策取代：個人根選為 `DATA_ROOT/personal`，預設對應 `D:/Min/Python/Project/FA_Data/personal`。後續 [子樹政策 QA](PERSONAL_SUBTREE_POLICY_LANE_20261006.md) 與 [Personal Journal lane](PERSONAL_JOURNAL_LANE_20261006.md) 記錄了選址及受限接線。這只確定根目錄位置；正式目錄建立、資料搬移及 activation 仍未批准或執行。

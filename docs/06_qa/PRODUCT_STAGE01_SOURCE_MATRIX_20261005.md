@@ -36,3 +36,7 @@
 6. ML 要列明 pinned feature registry 的全部字段、各字段 PIT／warm-up、標籤 horizon/maturity、正式 universe 與模型產物；另確定 benchmark 身分／窗口與成本目標。沒有此證據不建立新方法、不做暖機結論或採用資格判定。
 
 本矩陣只交付 UX16 的來源子集與下一包依賴；未建立新 ranking、factor 或 benchmark，也未啟動 UX18。
+
+## 2026-10-11 後續 UX18 有界工程收據
+
+上方「未啟動 UX18」只代表本矩陣的 2026-10-05 查核時點。後續 [UX18 原引擎排名發布 QA](UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md) 完成原有四模式排名的不可變發布／讀回；[原排名收藏與個股來源版本化](UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md) 完成 bounded 收藏與 pinned source 返回。這些收據不補足本矩陣列出的正式 universe 覆蓋、逐欄官方 availability／歷史 PIT／來源時鐘、完整 feature dictionary 或 benchmark 證據，也不授予正式排名或推薦資格；來源缺口仍依各自後續契約與 gate 判讀。

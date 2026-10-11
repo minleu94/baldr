@@ -707,3 +707,7 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 具名核讀增量（Coverage History Entries 322–323）：** QA C2–C4／Continuity 再全文核讀 8 份；維持 C4 具名失敗與跨頁 acceptance 未完成界線，不把歷史 accepted 推成現況全綠。`03_data/` 另具名全文抽查 8 份（README 另核 21 個本機連結），依目前單一來源程式流程修正每日股價指南重複步驟，並把第二批冷封存普通目錄描述限定在 2026-10-09。這是增量／抽樣證據，不能推算舊 aggregate 的精確去重總數，也不代表 `03_data/` 全目錄已全文核完；Graphify 與全庫 links／anchors scan 仍待所有目錄正文治理完成後執行。
 
 **2026-10-11 `02_features/`／`04_broker_branch/` 全目錄核讀（Coverage History Entry 324）：** 15 份 tracked 文件（9＋6）均逐篇全文核讀，目標連結路徑已核對；修正 02 的信號冷卻條件、回撤級距、Walk-Forward 門檻、TotalScore 說明及高風險 CLI 指引，並把 User Guide 尾段日期化工程／QA 更新完整歸入 Archive、保留入口連結。`04_broker_branch/` 未需改正文。這兩個目錄已完成本輪全文覆蓋；其餘目錄仍依矩陣狀態分批核讀，完整 Graphify 與 repo-wide links／anchors scan 尚未執行。
+
+**2026-10-11 `03_data/` 全目錄完成核讀（Coverage History Entry 325）：** 16 份 Markdown 與 1 個 CSV 範本（17/17 tracked paths）均有具名 EOF 全文核讀；本機 Markdown 連結共 120 個目的地路徑全存在。修正每日股價手動下載的一般注意事項矛盾。README 已將 CSV 範本示例列標為未驗證，不把它當正式來源資料。這項完成僅涵蓋本目錄 tracked files；其他目錄、ignored 資產與受保護文件仍分開判定。
+
+**2026-10-11 QA R006／封存與 Evidence dry-run 增量（Coverage History Entry 326）：** 新增 8 份 QA 文件具名全文核讀；將 10/08 固定來源 archive 建置收據與 10/03 行情／Paper 隔離快照的狀態限定在各自日期，不把它們摘要成目前全域狀態。temporary cleanup、兩份 evidence dry-run 與 ignored 本機 receipt 各保留原證據範圍，不據此宣稱永久刪除、營運全驗收或證據可攜封存。舊 QA aggregate 無逐檔 manifest，不據本批推算全域完成率。

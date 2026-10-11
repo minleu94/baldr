@@ -2862,3 +2862,13 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 Archive Superpowers Portfolio Replay 八份具名全文再核讀
 
 全文再核讀 `docs/09_archive/superpowers/plans/2026-06-15-month3-factor-replay-coverage.md`、`2026-06-15-portfolio-replay-cash-constrained-orders.md`、`2026-06-15-portfolio-replay-cash-ledger.md`、`2026-06-15-portfolio-replay-credibility-manifest.md`、`2026-06-15-portfolio-replay-execution-costs.md`、`2026-06-15-portfolio-replay-liquidity-gate.md`、`2026-06-15-portfolio-replay-lot-sizing.md`、`2026-06-15-portfolio-replay-unfilled-orders.md`。八份已納入既有 Superpowers 96/96 aggregate full-read（Matrix 第 55 行、History Entry 206），但該 aggregate 未逐檔列名；Entry 253 是不同八份原件。本批新增逐檔可核對記錄，不增加 aggregate 總數。逐一核對 Archive README、manifest、原件 SHA／bytes、implementation commit 及 Month 3 closeout：計畫步驟與歷史範圍吻合，未見需更正內容；原件與 manifest SHA 一致，全部保留未改。限定八檔 `git diff --check` 通過；未跑測試、Graphify 或最終 repo-wide links／anchors scan。剩餘兩份未具名候選列於後續批次。
+
+<a id="coverage-entry-273"></a>
+## 2026-10-11 REFACTOR_REPORTS R011／R012 八份具名全文核讀
+
+全文核讀 `R011_LUNA_REVIEW_RECHECK.md`、`R011_SOL_REVIEW_PRECHECK.md`、`R012_LUNA_INDEPENDENT_REVIEW.md`、`R012_LUNA_REWORK_REVIEW.md`、`R012_SCHEMA_PUBLICATION_ROLLBACK.md`、`R012_SOL_INTEGRATION_ACCEPTANCE.md`、`R012_SOL_REVIEW_FINDINGS.md`、`R022_IMPLEMENTATION_REPORT.md`。前六份首次具名全文核讀，另兩份由 Entry 213 partial scan 升為全文；舊 74-file aggregate 無逐檔 manifest，不據此計算精確去重總量。對照 REFACTOR_REPORTS README、R031 task index/disposition、R011/R012 specs 與 acceptance、R029：舊 review／precheck 狀態為前置快照，已在四份原件加入後續時點／bounded disposition 導覽；兩份 partial 原件已有足夠狀態導覽，rollback 限制與 R022 compatibility scope 清楚，未改。新增連結目標存在；限定修改檔 `git diff --check` 通過。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-274"></a>
+## 2026-10-11 Archive Superpowers 剩餘兩份計畫具名全文再核讀
+
+全文再核讀 `docs/09_archive/superpowers/plans/2026-06-16-month4-daily-decision-desk-closure.md` 與 `2026-07-11-safe-refactor-continuation.md`。兩份均包含於既有 Superpowers 96/96 aggregate full-read，但先前未按精確 basename 具名；Archive README、manifest、Entry 128／後續 QA 與 closeout commit 均可追溯。Month 4 closure 的「結案」與後段 24 個未勾選項屬既有 lifecycle discrepancy，README／manifest／Entry 128 已明列，原件保留；Safe Refactor 47 項 checklist 與授權、release gate 後續收據一致。兩份原件 SHA 與 manifest 相符，未修改。更新後精確 basename 掃描顯示 Archive 子目錄 132 份納入範圍的文件均已在 Matrix／History 具名；另有子目錄 README 5 份。限定路徑 `git diff --check` 通過；未跑測試、Graphify 或最終全 repo links／anchors scan。

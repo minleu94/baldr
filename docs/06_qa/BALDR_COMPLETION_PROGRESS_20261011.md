@@ -484,4 +484,26 @@ JUnit `root/p01_v9b_focused_host_root01.junit.xml`實際保存六次sanitized ob
 
 Root將上述四份host收據／logs、F12 actual診斷／supervisor／worker log、P01 JUnit共16份raw另存 `root/query6284_v9b_terminal_root_0cf4078f781b4d848d4a5159bbc778c4/receipt.json`，SHA `c9c46b87e356f589b7adebcd1e4b6e498a559b362b6360fbe693a284ed616ebb`，獨立核自然終態、pins、三次拒絕與六次observer。P01正在準備v9b專用preflight／supervisor與真Job失敗案例，未釋完整矩陣；P08 v3真金融整合仍待。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4維持進行中。
 
+### F12 呼叫位置診斷實測與 P01 v9b 監督封套接續
+
+上一 goal turn 只回答產品進度，分類為 no progress；本輪完成候選審查、三階段 F12 實測及 P01 預檢／真 Job 驗證，取得改變下一步的原始證據。未縮減原工作包或驗收條件。
+
+F12 原 `5a8c9d` freeze 的 `test_files`／artifacts 仍指前版，與候選 `eefdbd` 不一致，root 在執行前拒絕；原 freeze 保存於 `root/f12_callsite_freeze_rejected_952ae69424ec47dbb328c2b735c9dce7/receipt.json`，SHA `69cec59de079308931a1f6773a727a45cb063bfe5a8ad29704f1d59b0a0be1e7`。Owner 另建 final freeze SHA `eb8fd4667e6bf20fc6905332bc8a99ee1d297329e03d4461658364720410ead2`，沒有覆寫原件。Root 核64 current pins／63非Main不變、23來源、兩份test snapshot及628494 preimage；AST只新增三個診斷helper、四個診斷／測試function差異及stack上限12，其餘整個module相同，guard installer／Main行為及寫入根不變。`formal_source_pins` 是原release的歷史清冊，current pins 由 `pin_inventory` 給出；root初次validator誤要求二者相等後修正歷史對照，未改候選。Static收據 `root/f12_callsite_eef_root01_1385f4aa52524de3a1dc2dd3429723db/receipt.json`。
+
+| 同版 F12 實際階段 | 結果 |
+|---|---|
+| 五個 guard／診斷節點 | **5 PASS／4.27秒／native0**；host `f12_callsite_eef_guard_host_root01_504f5fdb98714d89afdcead5aaa0bf23`。原descriptor 37 assertions、records0及Job收尾通過。 |
+| 真 Watchlist 按鈕／Yes／私人COW | **1 PASS／12.26秒／native0**；host `f12_callsite_eef_cow_host_root01_4514cfccb6854299baa34777bc026185`。schema3、query_only／write_blocked、active service讀回與worker0通過。 |
+| 完整 Main | **1 FAIL／34.01秒／自然native1**；host `f12_callsite_eef_main_host_root01_7a9b0a8e19ad4dcb953b114631fc5081`、inner `main_candidate_342bec40d6394a9eabb13562a07bc90d`。Main初始化及COW後，query仍被outside_allowed_private_root拒絕；launcher33984、無逾時或強制終止原因、程序樹及handles閉合、Job active0。 |
+
+三階段64 pins／23來源起訖一致。實際query診斷 SHA `04352bdff2a294a8887e1c3cabc14c48e3a4dedf0f136251bfc17f2c84506477`，window10:320共310 events；三次write_path_rejected的原guard role仍為outside_manifest_roots，但新增診斷明確分類private_run_write_root，relative都是 `revenue-operations/f12-revenue-4043c815291346e3a1932a182d3ed792/monthly_snapshot_operations/ebdbbfc487e54e1b9f348c61cb796eea/` 下 `.attempt_status.json`／`.snapshot_capture.json` 的隨機tmp。最多12個stack frames目前都是QA guard wrappers，沒有正式writer caller；不能聲稱已取得完整caller。此證據將下一步收斂至guard與診斷的路徑表示／canonical比較，owner準備真extended-path正例與外根／alias／reparse／hardlink等負例候選；尚未接受修正或放寬寫根，完整F12仍待。
+
+P01 v9b supervision v1 supplement SHA `81496c4e` 在執行前被root拒絕：preflight及supervisor要求artifact key `full_diff`，清冊卻只有`v9b_full_diff`及`supervision_full_diff`；四份原件保存於 `root/p01_v9b_supplement_rejected_dd7c272945b44a339a5ee6674e2438b5/`。Owner另建獨立v2 supplement SHA `5649f7f87a9b1ea7929552b45c722b8fe42271d0c7584cdc86f74a576d36dc88`，alias指同一v9b patch。Root核717 raw pins及v1→v2 AST metadata差異，原8 formal／51 product／80 runtime／594 package與sealed store／5cold+1warm／600秒／三類各30樣本／strict p95<300ms／1000列20頁完整DTO協議不變。
+
+v2純preflight **native0／store access attempts0**、80／51／594及匯入origin核對通過；host `p01_v9b2_pure_preflight_root01_00d66952850f471987567eaab1e7c869`。真Job全組 **9 PASS／1 FAIL／5.12秒／native1**；host `p01_v9b2_job_tests_root01_e1fe125233cd47b5b90952bd42a47266`，717pins起訖相同。失敗節點是standalone bootstrap exact hash仍期待舊v7 bytes的`6d23a8`，v9b path／manifest插值後實際為`daf849adfaaa2a1e44db43dd047414d0f7a174403487a7bd02ea7ab064dce29d`。Owner另建v3並先核完整插值內容；不能只從失敗抄hash改期待。完整矩陣未釋出，沒有新p95。
+
+上述五份host receipt／stdout／stderr及F12 inner診斷／supervisor／worker log共18份raw另存 `root/callsite_eef_v9b2_terminal_c4bcdf58a8874cb8a4b2e1dd512a9926/receipt.json`，SHA `9ce88bd9eb430817dcc37deaf2d48f34dcbc0c084efe7e179234fd72a9cfbf36`；獨立核自然終態、來源不變及三個relative target。Root sessions53189／25369均terminal，無live root QA。
+
+P06前置核查確認現行Health reader只讀可變latest_status／latest指標；evaluator沒有不可變歷史receipt及保存後可得時鐘。Root接續補writer-owned封存／public exact reader，未實作前不授歷史情境資格。P08另發現seed_created_at是append前準備clock，首個intent不能直接消費現行daily-only checkpoint reader；owner獨立scratch新增seed prior／首次讀回clock候選，尚未凍結／執行。Root要求區分歷史seed讀回與新執行CAS，避免首日daily完成後讓原seed／intent無法重開；真金融batch→ledger→checkpoint、MA／KD正常接線、benchmark／績效與UI仍待。
+
 本輪coverage僅QA／Snapshot與隔離QA核驗工具；無正式功能或入口變更，Manual／架構／Roadmap／Index不改。回滾只移除此兩文件本節／新增列，依root封存preimage保留其他writer與raw資料；不得reset整樹或清舊失敗。各定向／Main程序已terminal，root無live QA handle。

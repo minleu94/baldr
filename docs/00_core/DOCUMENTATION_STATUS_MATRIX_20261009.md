@@ -570,3 +570,5 @@ Archive 根層本批只補五份歷史原件的時點／權威提示；不調整
 另依 Entry 227 修正 `docs/06_qa/H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md` 的固定版候選描述：區分早期 `421bc973a891` 與後續後代 `bd5d2f86367ae8adb3d110f7e2b83fb829a620cf`，並限定後者的同版收據只覆蓋圖表範圍。未推定獨立研究入口已通過固定版驗收。
 
 依 Entry 228，Manual 的 10/09 排程驗收摘要已標記為當日狀態快照，並連到現行 21-task Runbook 與 Project Snapshot；沒有讀取或修改使用者進行中的完成進度文件。
+
+依 Entry 229，Manual 的 9/30 排程執行與 10/1 研究收集狀態兩段已逐位元組移入 Archive 日期化工程筆記；Manual 保留同名章節錨點與現行 Runbook／Snapshot 入口。Guide 目錄仍待 Manual／Supplements 全面核讀與剩餘日期段分類。

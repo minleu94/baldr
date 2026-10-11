@@ -2608,3 +2608,8 @@ Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。
 ## 2026-10-11 Manual 10/09 排程摘要時點提示
 
 在 `docs/07_guides/APPLICATION_MANUAL.md` 的「2026-10-09 全排程與 Codex automation 驗收」章首標明結果只代表 10/09 快照，並直連現行 21-task 驗收 Runbook 與 Project Snapshot。原 QA 入口及正文保留。未讀取或修改使用者進行中的完成進度文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-229"></a>
+## 2026-10-11 Manual 排程狀態內容移入 Archive
+
+將 `APPLICATION_MANUAL.md` 內兩段日期化狀態移至 `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md`，並保留 Manual 原標題作相容導覽：`2026-09-30 排程執行與日期判讀` 原區塊 8,921 bytes、SHA-256 `a25abdd8159c90dceceeaeaa7029972e66bed2c8b1ce7ac535169c35c85961cd`；`2026-10-01 研究收集與排程狀態` 原區塊 7,482 bytes、SHA-256 `438955060af0369e920d69834f8c7b73c361d5fbc1860c33132f39926e85e10e`。兩段在 Archive 保留原始文字與時間／狀態收據，明示為歷史快照；Manual 標題直接連至 Archive，並指向現行 21-task Runbook 與 Project Snapshot。其他日期化區塊尚待核對，這一批不代表 Guide 完成歸檔。未讀取或修改使用者進行中的完成進度文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。

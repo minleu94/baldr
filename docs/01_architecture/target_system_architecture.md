@@ -376,7 +376,7 @@ flowchart LR
 - **Target status**：Champion / Challenger governed layer。
 - **修改正式決策**：Gate 前否；Gate 後只能經 versioned adapter。
 
-目前實作的 scheduler 順序是 05:40 forward outcome 後接 05:45 learning runner。Historical replay 僅是 training data，不能取得 natural forward evidence credit；live candidate／active capture 綁定 feature availability、freeze、artifact／manifest／policy／probability-transform lineage。自然 outcome 需用 capture 的 immutable row 與之後可得的 market close source 重新計算，且以 distinct matured decision dates 去重。`recommendation_source_contract` 會重算實際來源內容 digest、coverage 與 symbol 範圍，驗證 technical `available_at` 及 corporate action window；未調整 corporate action 只保守排除 label rows，不視為已通過。after-cost 沒有觀測成本時維持 missing；採用 active model 的成熟 post-adoption rows 只有在 label availability cutoff 前通過 identity／receipt 驗證後，才可進下一 training cycle。routine shadow adoption／rollback 仍受既有 policy、identity、receipt 與 safety flag 約束；超出既有正式影響範圍才需另立 promotion review。這些能力仍是研究／shadow custody，不是 Target 的正式 Advice promotion、broker execution 或自動改權重授權。
+截至 2026-10-09 的排程回讀記錄，`baldr-forward-outcomes-daily` 與 `recommendation-calibration-learning-daily` 分別於主機 local time 05:40、05:45 執行；該輪 upstream blocked／exit2，learning failed／exit1。這是該次排程回讀，不代表後續 run 或目前執行結果（詳見[排程修復 QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)）。Historical replay 僅是 training data，不能取得 natural forward evidence credit；live candidate／active capture 綁定 feature availability、freeze、artifact／manifest／policy／probability-transform lineage。自然 outcome 需用 capture 的 immutable row 與之後可得的 market close source 重新計算，且以 distinct matured decision dates 去重。`recommendation_source_contract` 會重算實際來源內容 digest、coverage 與 symbol 範圍，驗證 technical `available_at` 及 corporate action window；未調整 corporate action 只保守排除 label rows，不視為已通過。after-cost 沒有觀測成本時維持 missing；採用 active model 的成熟 post-adoption rows 只有在 label availability cutoff 前通過 identity／receipt 驗證後，才可進下一 training cycle。routine shadow adoption／rollback 仍受既有 policy、identity、receipt 與 safety flag 約束；超出既有正式影響範圍才需另立 promotion review。這些能力仍是研究／shadow custody，不是 Target 的正式 Advice promotion、broker execution 或自動改權重授權。
 
 ### 10.12 AI Research Copilot
 
@@ -517,3 +517,5 @@ portfolio_advice_eligible
 > 本節日期化更新記錄已移至[目標架構歷史檔](../09_archive/TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md)；此標題保留舊錨點。
 
 本文件仍保存目標領域背景與治理邊界；工程目標設計看 [FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，目前實作與模組邊界看 [system architecture](system_architecture.md)，狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。R031 日期狀態與證據界線見 [R031 closeout QA](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 及 [Coverage History Entry 159](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-159)。
+
+- 2026-10-11：將 §10.11 scheduler 時序限定為 2026-10-09 排程回讀，並連結當輪結果收據。

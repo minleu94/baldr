@@ -1098,9 +1098,12 @@ custody QA 已以 `currentity→verified receipt reuse` 修復並通過：2026-0
 production source audit 的 hash／value／lineage 與正式 ADX producer 輸出均通過；命令結果為
 `1 passed, 1 warning in 1.25s`。這只證明 bounded fixture 的跨 root custody，不授予 real natural
 forward、formal PIT、actual cost 或 V4 credit。scheduler `14 passed`、04:22 wrapper true-success
-與已交付工程 gate 已接受；僅主 Luna git commit 尚待完成。
+與已交付工程 gate 已接受。這是 2026-09-14 handoff 當時的文件提交狀態；相關文件後續已由 commit
+`b26f943afe8815e7a8beb0a0bfa17af07fb032a5` 提交。該提交只結清文件交付，不改 natural evidence、
+formal PIT 或 actual cost 等各自 gate（見 [V4.2 QA 後續註記](../06_qa/V4_2_PROSPECTIVE_SOURCE_DAILY_LEARNING_2026_09_14.md)）。
 
-目前 registry 已保存：
+ResearchRun Registry schema 支援保存下列 run metadata／artifact 欄位（不表示每筆 run 均已填值；欄位定義見
+[ResearchRunMetadataDTO](../../app_module/research_run_dtos.py) 與 [ResearchRunRepository](../../app_module/research_run_repository.py)）：
 
 - 資料截止日與 hash
 - 策略版本
@@ -1465,3 +1468,7 @@ exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID �
 ### 2026-10-10 官方市場與技術條件複合研究
 
 Recommendation 來源頁籤以同次核驗來源查詢四個條件群；外層限制、群組判斷、全域排序與分頁的責任見 §3。觀察清單沿既有儲存模式保留 typed UI 狀態並精確重開固定來源，內外層身份與轉換界線見 §8。使用者操作及資格限制見 [APPLICATION_MANUAL §6.7](../07_guides/APPLICATION_MANUAL.md#67-官方市場與技術條件研究)。
+
+### 2026-10-11 歷史狀態界線校準
+
+將 2026-09-14 handoff 的待提交句限定為當時狀態，並將 Registry 欄位列表明確標為 schema 支援範圍。

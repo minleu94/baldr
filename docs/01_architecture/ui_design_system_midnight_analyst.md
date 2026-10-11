@@ -44,9 +44,9 @@ Midnight Analyst 的原始目標是建立一套深色、專業、效能友善的
 4. **一致的狀態語言**：`OBSERVED`、`ESTIMATED`、`DEGRADED`、`MISSING` 必須用同一套 badge / 色彩規則呈現。
 5. **用樣板逐步遷移**：Daily Decision Desk 是第一個 reference screen；2026-07-02 後，持倉管理、推薦分析、回測、Watchlist、資料更新與市場觀察相關表格也已開始共用同一套 token / table helper / button variant。2026-07-07 後，主殼層採左側主導覽，Daily Decision Desk 內嵌於 `決策工作台 > 決策來源`，原市場觀察重新定位為 `市場探索`；左側 rail 使用自製線條 SVG icon，並可收合為 icon-only，以支援小螢幕筆電的橫向空間。
 
-目前使用者回饋：
+歷史使用者回饋紀錄（首條記錄於 2026-06-15；非目前狀態）：
 
-- 目前實作已足以支撐 Month 4 service-backed daily workflow 收尾。
+- 2026-06-15 記錄的回饋認為，當時實作已足以支撐 Month 4 service-backed daily workflow 收尾。
 - 2026-07-02 已完成第一輪低風險視覺整理：修缺字 icon、統一設計 token、表格樣式、按鈕 variant、空狀態，並優先整理每日決策與持倉管理兩個門面頁。
 - 後續調整應繼續改善視覺層級、空間比例與整體精緻度，但不得為了美化改動資料抓取、SQLite 同步、推薦、回測、每日決策 snapshot 或持倉計算語意。
 
@@ -402,6 +402,7 @@ Midnight Analyst 的原始目標是建立一套深色、專業、效能友善的
 
 ## 13. 更新記錄
 
+- 2026-10-11：將第 2 節首條使用者回饋明確標為 2026-06-15 歷史記錄，避免把舊評估誤讀為目前狀態。
 - 2026-10-10：標明第 8、11 節狀態敘述屬 2026-07-07 基線，並導回 PROJECT_SNAPSHOT 判讀目前狀態。
 - 2026-07-07：補記左側主導覽自製線條 SVG icon / icon-only 收合、Workbench 四格指揮台摘要列與預留深挖區定位、Runtime compact scope note、以及 `跌幅%` 這類正數但負向語意欄位應使用負向色的規則。
 - 2026-07-02：同步全 UI 低風險 polish 狀態；補記新增 token、button variants、表格 helper、EmptyStatePanel、text sanitizer、全域 QSS 補強、遷移狀態與「只改呈現層、不改 service/domain 運算」邊界。

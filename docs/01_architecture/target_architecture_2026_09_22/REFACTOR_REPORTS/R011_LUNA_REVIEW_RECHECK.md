@@ -1,5 +1,7 @@
 # R011 Luna review recheck
 
+> **時點／狀態導覽（2026-10-11）：** 本文的 `REVIEW_STATUS: CHANGES_REQUIRED` 是針對當時凍結版本的歷史裁定；後續 [R011 SOL 整合驗收](R011_SOL_INTEGRATION_ACCEPTANCE.md) 記錄非有限數值轉字串問題已修正，且 [R011 Luna 最終複審](R011_LUNA_FINAL_REVIEW.md) 為 `PASS`。目前 task disposition 以 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 為準；R029 的保留相容範圍見 [R029 report](R029_IMPLEMENTATION_REPORT.md)。本 recheck 保留原始發現，不代表整體 refactor 或其他 Gate 通過。
+
 REVIEW_STATUS: CHANGES_REQUIRED
 
 ## 凍結版本與範圍

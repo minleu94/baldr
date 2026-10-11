@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文依序保留 R009 初版與 v2 的 `CHANGES_REQUIRED` finding，以及 v3 凍結版 `PASS` 複核；中間 finding 是已修正的歷史，不代表目前仍待修。R031 current disposition 將 R009 列為 `ACCEPTED_FOR_KNOWN_CODEC_BYTES`；整合驗收見 [R009 SOL acceptance](R009_SOL_INTEGRATION_ACCEPTANCE.md)。這些裁定只涵蓋具名 codec／known old bytes，不代表任意 pickle ABI 或未知 class path 相容；後者另依 R006 retention 範圍處理，詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R009 Luna 獨立審查
 
 ## 初版凍結審查

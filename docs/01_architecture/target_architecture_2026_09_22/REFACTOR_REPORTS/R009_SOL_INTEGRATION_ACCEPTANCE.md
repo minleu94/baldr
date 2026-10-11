@@ -1,3 +1,5 @@
+> **時點／範圍導覽（2026-10-11）**：`TASK_STATUS: PASS` 是本文所列 R009 frozen source、legacy decoder 與 DTO 薄委派整合 gate 的 bounded acceptance。R031 current disposition 將 R009 列為 `ACCEPTED_FOR_KNOWN_CODEC_BYTES`；未知 class paths 依 R006 retention 另行處理。本文不代表任意 pickle ABI 或所有未知 artifact 均可解碼，詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R009 schema-driven codec：SOL 整合驗收
 
 TASK_STATUS: PASS

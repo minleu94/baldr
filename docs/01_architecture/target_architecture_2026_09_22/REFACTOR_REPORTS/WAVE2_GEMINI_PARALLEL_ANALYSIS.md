@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文是基線 HEAD `391b057c92037ec7a19cab2bf951d6029d29b020` 上、R008 實作前的唯讀風險分析；`ANALYSIS_STATUS: COMPLETE` 只表示檢查表完成，不是實作或 acceptance verdict。R031 current disposition 將 R008 列為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`；實際實作與後續裁定請看 [R008 implementation report](R008_IMPLEMENTATION_REPORT.md) 與 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。本文的基線觀察與 checklist 保留為歷史分析，不取代現行 contract。
+
 # Wave 2 並行唯讀契約驗收風險分析：R008 規範與審查檢查表
 
 > **任務識別碼**：`WAVE2_PARALLEL_ANALYSIS`（R008 契約驗收風險）  

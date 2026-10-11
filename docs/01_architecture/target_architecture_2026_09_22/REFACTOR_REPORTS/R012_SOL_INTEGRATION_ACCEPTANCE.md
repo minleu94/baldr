@@ -1,5 +1,7 @@
 # R012 — SOL 整合驗收
 
+> **時點／狀態導覽（2026-10-11）：** `TASK_STATUS: PASS` 僅指本文列出的 R012 save/store/query scope；結尾「R013/R014/R016/R017 仍待 C1 gate」是驗收當時的快照，不是目前 C1 狀態。R031 後續 disposition 將 R012 列為 `ACCEPTED_WITH_CREATE_ONLY_STORE_SCOPE`，C1 列為 `ACCEPTED_WITH_SCOPED_SYNTHETIC_GATE`；詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。不外推為整體 refactor 或產品 Gate 通過。
+
 TASK_STATUS: PASS
 
 R012 的新 writer 採 `RecommendationExecution` → canonical codec bytes/hash → 專用 `execution_artifacts/` create-only artifact → 與舊 writer 共用 SQLite identity claim → 可重建查詢索引。相同 ID/hash 冪等、不同 hash 拒絕；新舊 writer 不能把同一 ID 各存一份結果。保存不讀 service `last_*`、不重算 regime/score/ML。舊 JSON/SQLite 的 load/list、純舊 replace 與相同 bytes 的 legacy orphan recovery 保留；正式資料與模型 bytes 未改。

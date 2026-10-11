@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文是 R009 v2 階段的窄範圍 schema-owner 裁決；其中「Wave 3 仍 `IN_PROGRESS`」是當時 gate snapshot，不是目前狀態。後續 v3 review 與 SOL integration acceptance 已完成，R031 current disposition 為 `ACCEPTED_FOR_KNOWN_CODEC_BYTES`；請以 [R009 SOL acceptance](R009_SOL_INTEGRATION_ACCEPTANCE.md) 與 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 判讀後續結果。本文核准的範圍僅為 supported revision tuple 的 contract ownership，不擴大為任意舊格式相容。
+
 # R009 schema revision 支援範圍落點補充裁決
 
 STATUS: APPROVED_NARROW_SCOPE_ADDENDUM

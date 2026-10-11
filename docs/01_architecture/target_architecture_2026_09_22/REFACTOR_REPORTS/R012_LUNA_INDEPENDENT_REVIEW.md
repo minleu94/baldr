@@ -1,5 +1,7 @@
 # R012 Luna 獨立唯讀審查
 
+> **時點／狀態導覽（2026-10-11）：** 本文的 `CHANGES_REQUIRED` 是第一版凍結內容的歷史 finding；後續 [R012 Luna 回修複審](R012_LUNA_REWORK_REVIEW.md) 與 [SOL 整合驗收](R012_SOL_INTEGRATION_ACCEPTANCE.md) 記錄四項 finding 已按 bounded scope 回修並通過 R012 gate。目前 R012 disposition 以 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 為準。原 findings、skip 與未放行聲明保留為歷史證據，不代表目前仍有相同 blocker，也不宣稱整體 refactor 通過。
+
 **結論：`CHANGES_REQUIRED`。** 此審查針對 worker 凍結 SHA，並核對 R012 spec、FINAL §6.2、FINAL_DATA_FLOW §3、INV-01/10/12/17、R004 characterization，以及 R009 codec contract。未修改實作或測試。以下兩項資料完整性問題需修正並補上回歸測試；目前不放行 C1 或 Wave 6。
 
 ## 凍結版本與驗證

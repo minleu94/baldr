@@ -2490,7 +2490,7 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 <a id="coverage-entry-213"></a>
 ## 2026-10-10 REFACTOR_REPORTS 狀態字樣風險分流與 10 份時點導覽
 
-接手 Agent 以狀態字樣（BLOCKED、READY_FOR_REVIEW、CHANGES_REQUIRED、NOT PASSED、REOPEN 等）掃描 	arget_architecture_2026_09_22/REFACTOR_REPORTS/ 中尚未列入具名清單、且檔首 14 行沒有時點／現況導覽者，得 26 份候選；逐一檢視狀態字樣所在行與檔首後，16 份屬設計內容、已有時點界線或已解決於同文，保留不動。10 份的狀態字樣會被直開誤讀成目前 disposition，已在檔首加導向 R031 task index、final closeout 與 Project Snapshot 的時點導覽：R005_SOL_REVIEW、R005_SOL_REWORK_REVIEW、R007_IMPLEMENTATION_REPORT、R008_IMPLEMENTATION_REPORT、R008_SOL_CHANGES_REQUIRED_ML_AVAILABILITY、R008_SOL_REWORK_REVIEW、R008_SOL_BATCH_AUDIT_DECISION、R012_SOL_REVIEW_FINDINGS、R022_IMPLEMENTATION_REPORT、R020_PORTFOLIO_READBACK_SCOPE_ADDENDUM_20260924。
+接手 Agent 以狀態字樣（BLOCKED、READY_FOR_REVIEW、CHANGES_REQUIRED、NOT PASSED、REOPEN 等）掃描 target_architecture_2026_09_22/REFACTOR_REPORTS/ 中尚未列入具名清單、且檔首 14 行沒有時點／現況導覽者，得 26 份候選；逐一檢視狀態字樣所在行與檔首後，16 份屬設計內容、已有時點界線或已解決於同文，保留不動。10 份的狀態字樣會被直開誤讀成目前 disposition，已在檔首加導向 R031 task index、final closeout 與 Project Snapshot 的時點導覽：R005_SOL_REVIEW、R005_SOL_REWORK_REVIEW、R007_IMPLEMENTATION_REPORT、R008_IMPLEMENTATION_REPORT、R008_SOL_CHANGES_REQUIRED_ML_AVAILABILITY、R008_SOL_REWORK_REVIEW、R008_SOL_BATCH_AUDIT_DECISION、R012_SOL_REVIEW_FINDINGS、R022_IMPLEMENTATION_REPORT、R020_PORTFOLIO_READBACK_SCOPE_ADDENDUM_20260924。
 
 讀取深度為檔首與狀態字樣所在行，**不是全文審閱**，不調整 REFACTOR_REPORTS 全文／未讀彙總；原審查結論、PASS／FAIL 與限制逐字保留。未驗證各 task 在 R031 的逐項最終 disposition，因此導覽只指向 index，不重述結論。未刪除／搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
 
@@ -2877,3 +2877,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 QA H20／Personal Paper 八份具名全文核讀
 
 全文核讀 `BALDR_LAYOUT_TEARDOWN_AND_NARROW_CONTROLS_20261008.md`、`BALDR_LOCAL_MAIN_PACKAGING_20261007.md`、`BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md`、`BALDR_PARALLEL_NEXT_WORK_20261009.md`、`BALDR_PARALLEL_ROOT_REVIEW_20261009.md`、`BALDR_PERSONAL_PAPER_LEDGERS_20261006.md`、`BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md`、`BALDR_PORTABLE_CONFIGURED_BOOTSTRAP_20261006.md`；先前 Matrix／History 均無具名全文紀錄，依 Product UX QA Index 路由並核對同 lane 後續收據。七份原件的局部驗收、日期脈絡與限制清楚，保留未改；`BALDR_LOCAL_MAIN_PACKAGING_20261007.md` 補上收據固定於 `a8c81bf` 與對應 tree，避免外推至後續 branch head。後續 portable EXE 雜湊不同，未視為同一成品。唯一變更原件的限定 `git diff --check` 通過；未跑測試、Graphify 或最終 repo-wide links／anchors scan。本批另發現 `BALDR_TWO_BRANCH_RECOVERY_20261007.md` 的 worktree 數量敘述互相矛盾，交由後續批次追查原收據／Git refs，未自行改寫。
+
+<a id="coverage-entry-276"></a>
+## 2026-10-11 REFACTOR_REPORTS R009／R020／Wave 1–2 八份具名全文核讀
+
+全文核讀 `R009_LUNA_INDEPENDENT_REVIEW.md`、`R009_SCHEMA_RANGE_SCOPE_ADDENDUM.md`、`R009_SOL_INTEGRATION_ACCEPTANCE.md`、`R020_PORTFOLIO_READBACK_SCOPE_ADDENDUM_20260924.md`、`REFACTOR_HANDOFF_PROMPT_20260923.md`、`WAVE1_R003_R005_GEMINI_REVIEW.md`、`WAVE1_R007_ERRATUM_CHECKPOINT.md`、`WAVE2_GEMINI_PARALLEL_ANALYSIS.md`。七份新增具名全文紀錄；R020 addendum 由 Coverage History Entry 213 的局部狀態掃描升為全文。舊 74-file aggregate 無逐檔 manifest，不據此估算去重總量。對照報告 README、R031 current overlay 與後續 R009/R020 acceptance：R009 初版／v2 review 狀態、Wave 1–2 局部 PASS／COMPLETE、R020 IN_PROGRESS／TMP ACTIVE 等均有後續 bounded disposition，七份原件補導覽；handoff prompt 原已有勿重送警示，內容符合範圍，未修改。新增 12 個相對連結目標存在，限定修改檔 `git diff --check` 通過。另修正 Entry 213 將 `target_architecture_2026_09_22` 誤寫成含 tab 的 `arget_architecture_2026_09_22` 路徑。未跑測試、Graphify 或最終 repo-wide links／anchors scan。

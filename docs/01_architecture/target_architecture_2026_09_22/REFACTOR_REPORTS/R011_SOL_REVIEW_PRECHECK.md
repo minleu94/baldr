@@ -1,5 +1,7 @@
 # R011 — SOL 審查前置清單
 
+> **時點／狀態導覽（2026-10-11）：** `IN_PROGRESS` 與下列六項 fixture failure 是審查前置快照，不是目前 R011 狀態；後續 [R011 SOL 整合驗收](R011_SOL_INTEGRATION_ACCEPTANCE.md) 與 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 記錄 R011 已依 bounded scope 接受並保留必要相容性。舊 fixture 觀測仍是當時範圍的歷史紀錄，勿解讀成目前 Gate verdict。
+
 狀態：`IN_PROGRESS`。本檔只記錄唯讀稽核發現與驗收條件，不代表 R011 已通過。
 
 ## 必須由實際 diff 與測試證明

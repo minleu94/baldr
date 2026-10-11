@@ -1,3 +1,5 @@
+> **時點／狀態導覽（2026-10-11）**：本文是基線 HEAD `391b057c92037ec7a19cab2bf951d6029d29b020` 上對 R003/R005 凍結切片的歷史唯讀審查；文末 `PASS` 只適用該審查範圍，不代表完整 task、wave 或所有 profile 的現況。R031 current disposition 分別為 R003 `ACCEPTED_WITH_BOUNDED_SCOPE`、R005 `ACCEPTED_WITH_R020_BOUNDED_REPLAY`；後續範圍與限制見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # Gemini 獨立審查報告：R003 與 R005 Luna 回修
 
 ---

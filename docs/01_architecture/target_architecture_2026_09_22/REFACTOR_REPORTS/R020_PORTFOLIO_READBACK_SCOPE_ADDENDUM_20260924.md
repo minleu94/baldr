@@ -1,4 +1,4 @@
-> **時點／狀態導覽（2026-10-10）**：本文的 `CHANGES_REQUIRED`、`READY_FOR_REVIEW`、`BLOCKED` 與 Wave／下游 gate 敘述，只代表撰寫當時的 implementer／reviewer／root 裁定，不是目前 disposition；目前 task 狀態看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，現況看 [Project Snapshot](../../../00_core/PROJECT_SNAPSHOT.md)。原審查結論與限制保留。
+> **時點／狀態導覽（2026-10-11）**：本文記錄 2026-09-24 的 scope 與 gate snapshot；文內 `R020 IN_PROGRESS`、`TMP-REC-04`／`TMP-NUM-01 ACTIVE`、`C2 未放行`、`R028 BLOCKED` 及 recovery 尚未完成等字樣，不是目前 disposition。後續 R020 finite closeout 與 R031 2026-09-27 current overlay 將 R020 列為 `CLOSED_FOR_R005_REPLAY_RECOVERY`、`TMP-REC-04` 與 `TMP-NUM-01` 依各自原定 bounded gate 關閉，C2 為 `ACCEPTED_WITH_NAMED_QA_BASELINE`；詳見 [R020 implementation report](R020_IMPLEMENTATION_REPORT.md)、[R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。這些是具名範圍的接受結果，不表示所有 runtime/profile parity、跨 store 原子交易或 production ML quality 均已驗收。原始 scope 與限制保留。
 
 # R020 portfolio result readback scope addendum
 

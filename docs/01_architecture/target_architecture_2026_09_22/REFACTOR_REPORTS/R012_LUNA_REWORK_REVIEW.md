@@ -1,5 +1,7 @@
 # R012 Luna 回修版獨立複審
 
+> **時點／狀態導覽（2026-10-11）：** 本文的 `PASS` 僅適用其凍結版本上的 R012 bounded gate；「不放行 C1 或 Wave 6」是本複審當時的下游狀態。R031 後續將 R012 列為 `ACCEPTED_WITH_CREATE_ONLY_STORE_SCOPE`，並記錄 C1 的 scoped synthetic gate 已接受；詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。此處四項 finding 的修復與 Windows skip 限制仍按原範圍保留。
+
 REVIEW_STATUS: PASS
 
 **狀態：PASS（僅 R012 gate；不放行 C1 或 Wave 6）。** 逐項重查前一輪四項 CHANGES_REQUIRED，並檢視實作、交易順序與新增回歸測試。未修改 production/test 檔案。

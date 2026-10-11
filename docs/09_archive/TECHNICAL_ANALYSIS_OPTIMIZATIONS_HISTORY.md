@@ -1,5 +1,8 @@
 # 技術分析模組優化文檔
 
+> [!WARNING]
+> **歷史-only／無日期快照：** 本文件保留舊版技術分析描述，原文未標示形成日期，也未核實其內容是否仍符合現行實作。文中未限定的「現在」、舊儲存路徑與 `TWSTOCK_DATA_DIR` 等設定不得作為目前狀態、實作或操作依據。現況請查閱 [專案快照](../00_core/PROJECT_SNAPSHOT.md)，操作方式請查閱 [應用程式操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+
 ## 相關文檔
 - [系統架構文檔](../01_architecture/system_architecture.md) - 系統架構和模組說明
 - [早期資料收集架構藍圖（歷史）](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md) - 舊 API、CSV 與路徑設計追溯

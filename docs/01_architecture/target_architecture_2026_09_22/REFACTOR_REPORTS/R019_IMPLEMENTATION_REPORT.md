@@ -1,6 +1,6 @@
 # R019 純推薦 evaluator 抽離實作報告
 
-> **2026-10-11 狀態導覽：** 本文頂部與 C3C3 段落的 `TMP-REC-02`、`TMP-NUM-01`、`TMP-ML-01 ACTIVE` 及「R020 尚未完成」等狀態是 2026-09-24 切片快照。R031 current overlay 將 R019 列為 `ACCEPTED_WITH_RULE_BRIDGE_SCOPE`；R029／migration ledger 後續將窄 `TMP-REC-01` bridge、原 bounded `TMP-NUM-01` gate 及 supported caller/profile `TMP-ML-01` 條件列為 CLOSED，並為 `TMP-REC-02` 記錄永久相容保留。這些裁定不代表所有 caller、runtime、formal data 或 production gate 完成。見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。
+> **2026-10-11 狀態導覽：** 本文「狀態與範圍」、「Retained temporary boundaries」、「C3C3」及「回滾與接手」中的 `TMP-*`／R020／wave gate 狀態均是 2026-09-24 report-time snapshot；其中 R020 `IN_PROGRESS`、`TMP-REC-04`／`TMP-NUM-01`／`TMP-ML-01 ACTIVE` 是當時狀態，不代表現況。R031 current overlay 將 R019 列為 `ACCEPTED_WITH_RULE_BRIDGE_SCOPE`，並將 R020 bounded replay/recovery scope 列為 `CLOSED_FOR_R005_REPLAY_RECOVERY`；R029／migration ledger 將 `TMP-REC-01` narrow rule bridge、`TMP-NUM-01` 原 bounded gate 與 `TMP-ML-01` supported caller/profile 條件列為 CLOSED，`TMP-REC-02` 則依原條件保留為 permanent compatibility。上述 bounded dispositions 不等於所有 caller、runtime、formal data 或 production gate 完成。現況見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)、[R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。
 
 ## 狀態與範圍
 
@@ -84,7 +84,7 @@ R019 的精確行為覆蓋如下：
 
 上述 TEMP route 設定 `PROFILE=test`，`DATA_ROOT`、`OUTPUT_ROOT` 與 pytest `basetemp` 指向新建短 TEMP。沒有跑完整 repo pytest、正式資料 CLI、正式 scheduler 或 production output 流程。
 
-## Retained temporary boundaries 與後續 gate
+## Retained temporary boundaries 與後續 gate（2026-09-24 status snapshot）
 
 | ID | 現況 | 退出條件／本報告不主張的事項 |
 |---|---|---|
@@ -98,11 +98,11 @@ R019 的精確行為覆蓋如下：
 
 C3C2 將八個 legacy field 組成一份 invocation-local `LegacyCompatibilitySnapshot`：capture 整體 graph 一次 deepcopy、每次 `materialize()` 回傳整份獨立 deepcopy，保留跨欄 alias 和 dataclass provenance。production owner 已修正 snapshot capture／strict-validation timing；先前兩項失敗 fixture 未修改。R027 獨立 reviewer 給予 bounded `ACCEPTED_SCOPE`（fresh TEMP `29 passed`）；owner 回報 focused route `155 passed`，root 另回報 focused route `65 passed`，並回報 broad mypy `704/0`。以上是不同來源／範圍的 gate 證據，僅接受 C3C2 bounded scope，不等於全 R019 接受。該 snapshot 仍供相容 capture 使用；其保留不阻止 REC-01 的窄 rule bridge closure。
 
-### C3C3：legacy capture narrowing（bounded ACCEPTED_SCOPE）
+### C3C3：legacy capture narrowing（bounded ACCEPTED_SCOPE；2026-09-24 status snapshot）
 
 C3C3 已移除泛用 `capture['legacy_state']` dictionary；`LegacyCompatibilitySnapshot` 與 `_r011_invocation_capture` 仍保留，作為尚未退役的 app compatibility／execution capture 路徑。R027 獨立 reviewer 依 frozen source SHA 審查，未發現 P1/P2；其 8-file fresh TEMP route `73 passed`，isolated recommendation QA `7 passed`。owner 回報 focused route `342 passed, 1 skipped`，root 回報 focused route `52 passed`。以上是不同來源／範圍的 bounded QA 證據，支持 C3C3 `ACCEPTED_SCOPE`，不單獨代表整體 task gate；2026-09-24 root final gate 已另行裁定 R019 bounded task `BOUNDED_COMPLETE`。REC-01 窄 rule bridge已 CLOSED；`TMP-REC-02`、`TMP-NUM-01`、`TMP-ML-01` 仍 ACTIVE。R020 evaluator-core dependency gate 已 satisfied，R020 replay 本身尚未完成。
 
-## 回滾與接手
+## 回滾與接手（2026-09-24 status snapshot）
 
 - 本報告作者只增加本報告與其文件索引，不 stage／commit，不改 production、正式資料、ledger 或 roadmap。
 - source paths 為多 task 共享 dirty files，不能對整檔執行 `git restore`、checkout 或 reset。若 parity 回歸，依 R019 owner 的 hunk／slice rollback 恢復該責任搬移；保留既有歷史 oracle，不調整預期值掩蓋差異。

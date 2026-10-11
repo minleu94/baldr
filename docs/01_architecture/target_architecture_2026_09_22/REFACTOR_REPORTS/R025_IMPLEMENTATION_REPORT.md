@@ -1,6 +1,6 @@
 # R025 實作報告：strategy contracts／registry／executors 移至 decision
 
-> **時點／範圍導覽（2026-10-11）：** 本報告的 `ACCEPTED_SCOPE` 與 `TMP-STR-01 ACTIVE` 記錄 R025 截至 2026-09-23 的有限策略 owner 移轉及當時 retirement gate 狀態。後續 R029 已接受 bounded caller／owner cutover，並將 9 個舊 app public／qualified-name aliases 分類為 `PERMANENT_COMPATIBILITY`；aliases 仍保留。此裁定不表示自然舊 executor artifact 存在、aliases 已刪除或整體重構已完成。後續裁定與退休帳狀態見 [R029 retirement gate acceptance report](R029_IMPLEMENTATION_REPORT.md) 及 [FINAL_MIGRATION_SEQUENCE](../FINAL_MIGRATION_SEQUENCE.md)。
+> **時點／範圍導覽（2026-10-11）：** 本報告的 `ACCEPTED_SCOPE` 與 `TMP-STR-01 ACTIVE` 只記錄 R025 截至 2026-09-23 的有限策略 owner 移轉及當時 retirement gate 狀態。R029 後續接受 bounded caller／owner cutover，將 9 個舊 app public／qualified-name aliases 分類為 `PERMANENT_COMPATIBILITY`；R031 current row 同樣確認必要 9 個薄 aliases 保留。此 bounded disposition 不表示自然舊 executor artifact 存在、aliases 已刪除或整體重構已完成。後續裁定與退休帳狀態見 [R029 retirement gate acceptance report](R029_IMPLEMENTATION_REPORT.md)、[R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [FINAL_MIGRATION_SEQUENCE](../FINAL_MIGRATION_SEQUENCE.md)。
 
 **Task**：[R025 task spec](../REFACTOR_TASKS/R025.md)　|　**日期**：2026-09-23　|　**實作者**：GPT-6 Luna Max（Codex subagent）
 
@@ -8,7 +8,7 @@
 
 **R025_GATE_STATUS: ACCEPTED_SCOPE**
 
-R025 把策略契約、唯一 mutable registry、三個既有 executor 與理由標籤 generator 的實作 owner 搬到 `decision_module`。公式、threshold、signal schema、持久化 keys/defaults、排序、回測結果與 UI 策略清單均保留；舊 app import paths 由 `TMP-STR-01` 薄 facade 相容至 R029 caller retirement gate。
+**2026-09-23 R025 implementation-time snapshot（後續 status 見上方 R029／R031 links）：** R025 把策略契約、唯一 mutable registry、三個既有 executor 與理由標籤 generator 的實作 owner 搬到 `decision_module`。公式、threshold、signal schema、持久化 keys/defaults、排序、回測結果與 UI 策略清單均保留；舊 app import paths 由 `TMP-STR-01` 薄 facade 相容至 R029 caller retirement gate。
 
 ## 1. HEAD、dirty baseline 與權威依據
 
@@ -101,7 +101,7 @@ Update Tab validator 前兩次遇到 `TemporaryDirectory` 清理 `twstock.db` �
 
 Pycompile 使用單一 `-m py_compile` 對 44 個檔案執行；範圍涵蓋 `decision_module/strategies/*.py`、`decision_module/reason_tags.py`、app facades/callers、`ui_qt/main.py`/Backtest view、相關 QA scripts 及 strategy tests。
 
-## 6. Acceptance 與暫時相容狀態
+## 6. Acceptance 與暫時相容狀態（2026-09-23 R025 snapshot）
 
 | R025 acceptance | 結果 |
 |---|---|
@@ -115,7 +115,7 @@ Pycompile 使用單一 `-m py_compile` 對 44 個檔案執行；範圍涵蓋 `de
 
 `TMP-STR-01` 現況為 **ACTIVE**：app compatibility facade 仍提供舊 import paths。R029 退出前須完成 direct/dynamic/importlib/string/external caller 清查、source support window 結束證據及逐 alias 移除；若持久化 artifact 依賴其中任何 class path，需先拆成永久 alias 並測 exact deserialize。R025 不宣稱此臨時 facade 已退休或存在永久 executor path alias。
 
-## 7. Residual、rollback 與接手界線
+## 7. Residual、rollback 與接手界線（2026-09-23 R025 snapshot）
 
 - Existing strategy preprocessing 的 `bfill()` 與舊 executor 的浮點 normalize 未改；靜態 guard 不是完整 causal/PIT proof，公式或精度變更應另開 task。
 - `ReasonTagGenerator.analyze_tag_statistics()` 是未呼叫的 legacy float analytics helper；若它將來進入核心績效路徑，需單獨評估 Decimal/bp，不應藉 R025 靜默擴大公式範圍。

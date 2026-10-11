@@ -41,7 +41,7 @@ read_model = composition.queries.get(execution.result_id)
 | `scripts/run_personalization_recommendation.py` | 保留給 R015；本次未改。 |
 | service/unit characterization tests | 仍有多處直接呼叫 legacy `run_recommendation()` 來測試推薦 engine 行為。它們不負責 scheduled persistence 或本次直接 QA CLI 路徑，故保留。 |
 
-已知 R016 下游依賴：`DailyInvestmentJourneyService._read_candidate` 原本直接讀 `runs/<result_id>.json`，對新 canonical artifact 路徑會回報 `recommendation_run_missing`；evidence/status 讀 legacy runs table 也可能看不到新結果。R016 consumer owner 正處理統一 query/read seam。R014 不另寫 legacy JSON，也不改該 consumer，避免破壞 create-only 唯一保存與 ownership 邊界。
+**2026-09-23 R014 implementation-time snapshot（後續 reader 狀態見 R016／R031）：** 當時已知 R016 下游依賴：`DailyInvestmentJourneyService._read_candidate` 原本直接讀 `runs/<result_id>.json`，對新 canonical artifact 路徑會回報 `recommendation_run_missing`；evidence/status 讀 legacy runs table 也可能看不到新結果。R016 consumer owner 正處理統一 query/read seam。R014 不另寫 legacy JSON，也不改該 consumer，避免破壞 create-only 唯一保存與 ownership 邊界。R016 後續接受具名 bounded canonical read-only query cutover，並保留 legacy JSON read-only compatibility 與其餘明列的 scope 限制；現行範圍見 [R016 consumer cutover report](R016_CONSUMER_CUTOVER_IMPLEMENTATION_REPORT.md) 與 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
 
 R014 的實作範圍限於 scheduled wrapper、四支直接推薦 QA CLI、wrapper 測試、新 `app_module/recommendation/composition.py`、QA execution/readback helper 與本報告。cutover 接受後另窄幅同步 `scripts/scheduled/README.md` 的目前輸出／查詢路徑，歷史範例保持原樣。沒有修改 Qt、R016 readers、R017 replay、R012 store/save/query、`decision_service_composition.py`、calendar/scheduler registration、forward producer 或推薦/ML business policy。沒有新增裸 `float` 計算。
 

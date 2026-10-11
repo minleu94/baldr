@@ -56,7 +56,9 @@
 | worker lifecycle | barrier 讓 worker 保持執行 → `deleteLater()` 設為 deferred 且 worker 留在 managed registry → 放行、native thread finished → registry 移除、QObject `destroyed` signal 送達。 | deferred close/native completion 的可觀察生命週期已覆蓋。 |
 | nested aliases | 建立 request 後修改外部 nested config → request/service 看到變更；`execute()` 回傳物與 service 持有同一 list，兩端後續 nested mutation 互相可見。 | 現況違反 INV-08 的 input/output alias 證據；未加入 freeze/copy 行為。 |
 
-## 現況 gaps 與後續要求
+## 現況 gaps 與後續要求（2026-09-22 R003 snapshot）
+
+> 本節的 gap 與後續要求記錄 R003 characterization 當時所見；狀態均為 2026-09-22 snapshot，不表示目前系統行為。R003 current bounded disposition 見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
 
 - `RecommendationService` 仍以同一 instance 的 `last_*` 欄位暴露最後一次執行資料，執行回傳的 list 不含其完整 context。A/B delayed-read 測試證明 invocation identity 和 hidden state 可分離；R008/R011 依核准架構建立 execution result 時須把 identity/context 隨該次結果綁定（INV-07、INV-10）。
 - 實際 `_execute_recommendation` 在 worker 啟動前就清除 table model、detail、`current_recommendations` 與 `current_result_id`，所以新請求尚未成功時 last-good 已不可用；實際 finished callback 也沒有 request correlation 欄位，測試把 active request 標記為 B 時，延遲 A callback 仍覆蓋目前顯示的 last-good 結果。後續核准的 UI/canonical execution 遷移需保留 last-good，並用 request identity 忽略 stale callback（INV-09、INV-16）。本 task 僅記錄 gap。

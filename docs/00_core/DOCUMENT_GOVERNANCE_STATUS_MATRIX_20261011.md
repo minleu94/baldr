@@ -7,12 +7,12 @@
 - 稽核基準 HEAD：`a6aad0e8684e6607c750b6d1d1444d4074b0959b`。
 - 基準 tracked 路徑：1489；其中 clean 且有逐檔核讀 ledger、OID／實體行數完全核對：1454；dirty status-only：34；受保護 status-only：1。
 - clean eligible 文件 ledger 覆蓋率 100%；缺漏 0、過期指紋 0。dirty 與受保護路徑不讀正文、diff、OID、行數或分類；CSV 對這些路徑只列 `path` 與 `status`。
-- 本輪新增兩份治理文件後，docs tracked 預期為 1491 條路徑。兩個治理輸出在 CSV 中標為 `generated_self_reference_exempt`；README 與 Graphify guide 最終指紋列於 CSV。
-- 基準 tracked 文件種類：.csv 1；.html 2；.json 13；.md 1470；.txt 3。
+- 基準之外新增三份治理輸出（文件治理矩陣、逐檔 manifest、開發線路矩陣）後，目前 docs tracked 共 1492 條路徑；三份治理輸出在 CSV 中標為 `generated_self_reference_exempt`，不列入下方 1489 個治理對象的目錄分類統計。README、Graphify guide 與本輪已修訂文件的最終指紋列於 CSV。
+- 基準 tracked 文件種類：.csv 1；.html 2；.json 13；.md 1470；.txt 3。三份治理輸出另增 .csv 1 與 .md 2，目前路徑種類合計為 .csv 2、.html 2、.json 13、.md 1472、.txt 3。
 
 ## 目錄分類矩陣
 
-`clean` 是逐檔核對 OID 與物理行數的文件；每份 clean 文件依主要用途只計一類。導覽／證據的次要用途、衝突與權威界線寫在逐檔 CSV。dirty／受保護計數只反映 Git status，沒有從正文推論分類。
+`clean` 是逐檔核對 OID 與物理行數的文件；每份 clean 文件依主要用途只計一類。導覽／證據的次要用途、衝突與權威界線寫在逐檔 CSV。目錄表統計 1489 個基準治理對象，不含三份 self-reference exempt 治理輸出；dirty／受保護計數只反映 Git status，沒有從正文推論分類。
 
 | docs 目錄 | tracked | clean 已核對 | 權威 | 導覽 | 證據 | 歷史 | status-only |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -107,6 +107,8 @@
 | `462b7b57` | `docs/09_archive/PROJECT_SNAPSHOT_HISTORY_2026_09_08.md` |
 | `e8fbd9b9` | `docs/09_archive/QA_RECOMMENDATION_TAB_ISSUES.md` |
 | `a6aad0e8` | `docs/09_archive/REFACTORING_MIGRATION_PLAN_2025.md` |
+| `b19b6d83` | `docs/00_core/README.md`; `docs/00_core/DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011.md` |
+| `977063ba` | `docs/06_qa/SCHEDULER_ML_DAILY_SOURCE_ROW_PROJECTION_20261001.md`; `docs/00_core/DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011.md` |
 
 ## 核對方法與 Graphify
 

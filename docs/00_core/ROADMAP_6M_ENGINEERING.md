@@ -3,6 +3,7 @@
 > **目前狀態與優先事項**：以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準；本文件中的日期化執行收據不代表目前進度。
 > **歷史狀態紀錄**：開頭日期化補記見[歷史流水帳](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；Gate 3／4 中 2026-08-26 至 08-28 的工程觀測見[補充歷史紀錄](../09_archive/ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md)。Gate 定義與工程順序保留於本文。
 > **2026-10-09 checkpoint 續接參考**：本機產品補完 checkpoint 是 WIP，不代表完成驗收；原暫停界線見 [BALDR_COMPLETION_HANDOFF](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)，續接基線與各項通過／失敗／未驗證結果見 [BALDR_COMPLETION_RESUME](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。Gate 進度仍以 Snapshot 與具名 QA 判讀。
+> **2026-10-10 最新產品狀態收據**：[BALDR_PRODUCT_COMPLETION_STATUS_20261010](../06_qa/BALDR_PRODUCT_COMPLETION_STATUS_20261010.md) 補記 bounded H20 G 原保存來源 Main 讀回及其他當日工程證據；各項接受與未完成界線仍依原收據判讀，Gate 進度以 Snapshot 為準。
 
 
 ---

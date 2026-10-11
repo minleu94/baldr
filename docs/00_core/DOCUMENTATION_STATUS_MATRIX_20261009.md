@@ -658,3 +658,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 Core 文件補記：** 15 份權威／導航文件已具名全文再核讀；舊 `18/18` aggregate 未附逐檔深度，因此只新增可核對路徑，不推算淨增量。另將 `DOC_COVERAGE_MAP.md` 作為治理入口全文核讀，不列新增候選。未發現需修訂的內容或入口；Snapshot 仍排除於本輪。見 [Coverage History Entry 283](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-283)。
 
 **2026-10-11 QA R026 增量：** 新增 16 份具名全文核讀（Entries 284–285）；11 份原件補後續 dated status overlay，並保留各 experimental／historical slice 的限制，不外推正常 service migration 接受範圍。舊 QA aggregate 無逐檔 manifest，不據此推算全域 net total。見 [Entry 284](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-284) 與 [Entry 285](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-285)。
+
+**2026-10-11 REFACTOR_DISPATCH 補記：** 八份歷史 Gemini dispatch／review 導引已具名全文再核讀；已含在 Entry 201 的 19/19 aggregate，舊 aggregate 無逐檔清冊，本批不推算淨增量。歷史派工與 review 提示不構成目前開工授權；受保護的 system architecture 未納入。見 [Coverage History Entry 286](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-286)。

@@ -106,7 +106,7 @@ financial_data = D:/Min/Python/Project/FA_Data/financial_data
 - `--apply` 未搭配 `--confirm apply-fundamental-schema` 時會拒絕執行並回傳 2。
 - 正式 apply 由 `data_module.fundamental_migration.apply_fundamental_schema_migration()` 負責，會先在 `TWStockConfig.backup_dir` 建立備份，再套用 schema；發生例外時會 rollback connection 並以備份檔 restore 來源 DB。
 - 本 workflow 不接入 `DBManager.init_database()`，因此不會在一般啟動、資料更新或測試以外流程中自動修改正式 SQLite。
-- 截至 2026-06-16，本 repo 已完成 migration tooling、測試與正式 `twstock.db` schema apply；備份檔為 `D:/Min/Python/Project/FA_Data/meta_data/backup/twstock_fundamental_schema_20260616_022301.db`。正式 DB 已有三張 fundamental 表，其中 `fundamental_valuation_metrics` 已寫入 831 筆 P/E records，月營收與財報仍未寫入。
+- 截至 2026-06-16，本 repo 已完成 migration tooling、測試與正式 `twstock.db` schema apply；備份檔為 `D:/Min/Python/Project/FA_Data/meta_data/backup/twstock_fundamental_schema_20260616_022301.db`。正式 DB 已有三張 fundamental 表，其中 `fundamental_valuation_metrics` 已寫入 831 筆 P/E records。此處「月營收尚未寫入」僅指較早 migration checkpoint；月營收於同日後續正式回填 1,848 筆，見 §3.3；財報仍未回填。
 
 ### 3.3 月營收 normalized backfill workflow
 

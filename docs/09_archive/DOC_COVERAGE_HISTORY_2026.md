@@ -3143,3 +3143,10 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 | `docs/06_qa/V4_NEXT_OPS_HANDOFF_2026_09_08.md` | redirect stub | 3 | 462 | `4cacc2a21523dd3f869bdb6cc0a0bc357b2bb15fef03af260b1c8fe9c4870f7b` |
 
 11 份內容／導覽文件中，B13、B14、BALDR UX guide、P01、Position Health、R026 guide、Research Source、UX02、UX21、UX22 的範圍或日期提示足夠，無需變更。R026 prepared runtime input 設計原先將 9/25「等待獨立覆核；未接 production route」狀態放在檔首，而 10/11 bounded NP1／NP2 typed-preparation 與 post-calibration handoff 已記於結尾。為避免舊狀態先入眼，將 10/11 後續狀態移至檔首，並將舊狀態明確標為設計快照；保留精確 caller/profile 範圍及其他 source-evidence／production promotion 限制。原始稽核版本為 226 行／15,181 bytes／SHA-256 `6b0ef47700f2d79bf7d1761af500ae1b086f9277c3af9ebb83a071223a618578`；現行版本 224 行／15,156 bytes，SHA 如表。17 份歷史 stub 均維持 redirect 分類；未讀 Archive 原件正文，亦未把 stub 導覽判作原件內容覆核。受保護 Snapshot、Application Manual、system architecture 與指定 plan 不作本批狀態判斷；全域 links／anchors scan 與 Graphify 仍待所有目錄完成後執行。
+
+<a id="coverage-entry-310"></a>
+## 2026-10-11 MOPS 證據 URI 與 scheduled README 路徑可達性覆核
+
+Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../scratch/` 參照。只讀檢查其 10 個具名本機證據檔目標，在目前工作樹 10/10 存在；`git check-ignore` 確認樣本目標由 `.gitignore:181` 的 `scratch/` 規則排除。這支持兩份文件檔首既有「乾淨 checkout 無法重現」警語，未讀取 scratch 檔內容，也不代表其他 checkout 或 repository 歷史取得了證據。`file:///.../scratch/` 中省略號路徑本身不是有效檔案目標。
+
+另對 `scripts/scheduled/README.md` 的 16 個 inline Markdown 本機連結作路徑存在性檢查：12 個不同檔案目標均存在；重複目標含 `APPLICATION_MANUAL.md` 的錨點連結。受保護的 Application Manual 未讀，因此不檢查錨點是否存在。此範圍不涵蓋 reference-style／HTML links 或 repo-wide links／anchors scan；後者與 Graphify 仍待全部目錄內容治理完成後執行。兩份 MOPS 文件正文沿用 Entry 306 的全文核讀，不因本次 URI 路徑檢查重複計數。

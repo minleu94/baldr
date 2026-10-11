@@ -297,10 +297,10 @@ V3 Score Effectiveness／ML Readiness plan/spec 均指向 read-only／shadow rea
 | `docs/superpowers/specs/2026-07-09-v3-refactor-automation-design.md` | 5844 | `c20cc83d1eb033b1e46721ca5c06048c33a9e7bd73e342a05a4dbbb29e1e4a24` |
 | `docs/superpowers/plans/2026-07-11-afternoon-safe-refactor-cycles.md` | 4715 | `1a8663b4351f916b5183266d26682ea83be36f032682bd8ba30a9b2da570ac57` |
 | `docs/superpowers/specs/2026-07-11-afternoon-safe-refactor-cycles-design.md` | 5156 | `962716561321549d33c3e52835444fa3b836d2ab4ce6e124180f1e3d2f0fa4d9` |
-| `docs/superpowers/plans/2026-07-11-safe-refactor-four-extra-cycles.md` | 4406 | `02447f37cd1ef0b82019e25fc3036d1b21042945895ceecad52395d7fbc7bf9e` |
-| `docs/superpowers/specs/2026-07-11-safe-refactor-four-extra-cycles-design.md` | 2502 | `96f95120f568365c8c82ab216e2ad9a7066638f1b716660d0142bbb01ac3a998` |
+| `docs/superpowers/plans/2026-07-11-safe-refactor-four-extra-cycles.md` | 4649 | `85c6552c212049a71c3e9fd33f560050705c4986b6965d1b26c84a373d02e4d9` |
+| `docs/superpowers/specs/2026-07-11-safe-refactor-four-extra-cycles-design.md` | 2887 | `d90bf7fee7fca71cd711285f282e219157958a05027b50b2a0b2ef735a7ec92f` |
 | `docs/superpowers/plans/2026-07-12-v2-2-sidecar-weekly-collection.md` | 7487 | `30dd6c3fb8baebb7cebf056e2d331fff40cea6eff6105d44eeab534bfa041fcd` |
-| `docs/superpowers/specs/2026-07-12-v2-2-sidecar-weekly-collection-design.md` | 5723 | `4d79d60a0e74624ca53aeeaca5e248463eae628ddf97e4b528ef52e8c433d517` |
+| `docs/superpowers/specs/2026-07-12-v2-2-sidecar-weekly-collection-design.md` | 5973 | `fbad7643032c5d29e0ae66921cfe14b2d6eac4e5388ff83a72de27dd3fc16c0c` |
 | `docs/superpowers/plans/2026-06-16-month5-fundamental-layer-preflight.md` | 6624 | `c293943c30666d2d3f0f69109f86c36b014ea025178230d8084d04fc843cfb4c` |
 | `docs/superpowers/specs/2026-07-08-v3-0-engineering-candidate-spec.md` | 8913 | `d7bdaadde879233db906bda17651f5d8751226bd8d17e79875c6c986c4aff5d6` |
 | `docs/superpowers/plans/2026-06-29-full-app-healthcheck-ui-smoke.md` | 11753 | `168da50efc91a89606688cd1e2b53948229e49f50429b786c65e20d1e7038959` |

@@ -3058,3 +3058,50 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 回核 `docs/02_features/` 9 個 tracked paths 與 `docs/03_data/` 17 個 tracked paths，沿用 Entries 187、190 中具名正文／CSV／redirect 深度；redirect stub 仍不列為原文全文核讀。修正兩處有直接內文證據的範圍／日期問題：`docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` 將 v1.1.0 原始日期與本次修訂日期分列，保留原始版本資訊；`docs/02_features/USER_GUIDE.md` 將未選列一鍵送回測載入前 20 檔限定為舊流程，指向 Application Manual。`03_data/` 未發現需改的衝突。兩檔更新後 SHA-256：策略規格 `A09A55AF0E1C9AFFC80646F3AA7E0D231D5983776A89AE347AB0B35CB21A933A`；USER_GUIDE `2C02A0B19F4905C77A31F4C11B1BD83F53A5871E19C32F27EB578F3D94E62618`。`git diff --check` 通過。
 
 受保護的 Snapshot、Manual、system architecture 與指定 revenue test 未讀；本批未執行測試、Graphify 或 repo-wide links／anchors scan。小型目錄未讀項為零，但其他目錄與全庫最終治理仍未完成。
+
+<a id="coverage-entry-308"></a>
+## 2026-10-11 Superpowers retained originals 與 Agent 現行版本回核
+
+`docs/agents/` 21/21 tracked Markdown 再核對為全文覆蓋：17 份與 Entry 185 所用 `8945df89` blob 一致；4 份後續版本已全文核讀，分別是 `README.md`、`documentation_agent.md`、`antigravity/documentation_agent.md`、`execution_agent.md`。分類仍為 11 份 authority/workflow、9 份 navigation/support、1 份 archived history；沒有發現需再修的現況或角色衝突。
+
+`docs/superpowers/` 依目前分類有 69 份 retained originals。Entry 250 記錄其 69/69 全文核讀；逐檔 current SHA 對照顯示 36 份仍與既有 current-hash 證據相同，其餘 33 份本次均全文再讀並取得目前 bytes／SHA。33 份相對已封存原文的改變，是檔首歷史、範圍或非現行授權警語的新增／擴充；沒有發現正文、checklist 或執行步驟漂移，也無須修改原件。這 69 份不含另一份受保護的使用者進行中 task plan；其正文仍未讀。README 與 96 個舊路徑 redirect 的導覽角色維持既有分類，136 個 Archive 連結已逐一核對。
+
+稽核封存清冊 `SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md` 的 2026-10-11「目前 bytes／SHA-256」20 列附記時，與目前 clean 原件逐列核算，發現三列因後續檔首警語擴充而過期，已更新 current metadata；原始來源 bytes／SHA 欄保留不變：safe-refactor plan `4649` bytes／`85c6552c212049a71c3e9fd33f560050705c4986b6965d1b26c84a373d02e4d9`、safe-refactor design `2887` bytes／`d90bf7fee7fca71cd711285f282e219157958a05027b50b2a0b2ef735a7ec92f`、V2.2 sidecar design `5973` bytes／`fbad7643032c5d29e0ae66921cfe14b2d6eac4e5388ff83a72de27dd3fc16c0c`。其餘 17 列與目前原件 bytes／SHA 相符。
+
+以下為本次 33 份現行原件的精確 SHA-256 與 bytes；路徑皆在全文核讀前後確認 clean。這份增量只補現行版本證據，不把 33 次重讀重複加到既有 69/69 aggregate：
+
+| 現行原件路徑 | bytes | SHA-256 |
+|---|---:|---|
+| `docs/superpowers/plans/2026-06-23-non-destructive-release-healthcheck-runner.md` | 86726 | `9651cde10f4d8de9922d8b26ba45500b1c64b8cebdbc59148835e2b009823e98` |
+| `docs/superpowers/plans/2026-07-06-v2-0-unified-decision-workbench.md` | 32120 | `693bc42a5252b9ffd77046aefc793365e8de4535d0626314033ca2a7ab01ee06` |
+| `docs/superpowers/plans/2026-07-07-workbench-left-navigation-ia.md` | 19917 | `0568110bbddb4eaa068e20432d1fd9a9b19ccffb9312f7685198ddf7bee114ee` |
+| `docs/superpowers/plans/2026-07-08-v3-0-engineering-candidate-plan.md` | 24323 | `df4de1455fbf3071fe92a66cbd27373a0e3cf94751cb0603c427ec43bc60f63a` |
+| `docs/superpowers/plans/2026-07-09-evidence-quality-semantics.md` | 11054 | `2da98305ac6254b882901f96ff28d1e63e0745fa04ad38f7009cc2fff70bd1d7` |
+| `docs/superpowers/plans/2026-07-09-recomputation-elimination.md` | 27088 | `fbd4a9e25d13f36902aa691443db33c48ce6168cf89e6361611eb77585259338` |
+| `docs/superpowers/plans/2026-07-11-safe-refactor-four-extra-cycles.md` | 4649 | `85c6552c212049a71c3e9fd33f560050705c4986b6965d1b26c84a373d02e4d9` |
+| `docs/superpowers/plans/2026-07-12-evidence-v3-data-quality.md` | 11444 | `c0ea97e29bceea88ad759c0da723b22c149b1175c77ad0269aeb59a0fe6b03f3` |
+| `docs/superpowers/plans/2026-07-12-gate-1-daily-usable-advice.md` | 10443 | `58a294e66b8f7f8690d3c573a8036d564614bad9d052e76722a478ea24946d2c` |
+| `docs/superpowers/plans/2026-07-12-gate-2-to-7-master-commit-map.md` | 4913 | `739c43c6f59e94abb15feac8fe24ea93aca43da7c7ad1449bfe0b69db91db89f` |
+| `docs/superpowers/plans/2026-07-12-v2-versioned-delivery.md` | 7643 | `51842aad38283985bd349a386a582a6b342bf02c49712ce49689c87750ef1e7c` |
+| `docs/superpowers/plans/2026-07-13-broker-flow-performance.md` | 16271 | `f235d85dd43e6c687f253f184a7eb213166406b3b3a78a63b4f46f3a445eabe0` |
+| `docs/superpowers/plans/2026-07-13-cross-workstream-integration-closeout.md` | 23230 | `cb639f2cc26d6eff0bb0c86efad16a4faed6a7b472dc0d548aa155f3e9e2e4fd` |
+| `docs/superpowers/plans/2026-07-13-evidence-rehearsal-real-e2e.md` | 20733 | `2f66ee702faaddfe25922e0b59c837445bf408b12e524afb2152652d3cc29cca` |
+| `docs/superpowers/plans/2026-07-13-external-evidence-investment-validation-master-plan.md` | 80614 | `2233efc9c2b9bff06dea149519f75153228237a6209a9611370365076214c910` |
+| `docs/superpowers/plans/2026-07-13-historical-ml-shadow-mvp.md` | 33327 | `01f1c3470ec88923933faec08a767cd83699990f950c0ff177465da8b04ab081` |
+| `docs/superpowers/plans/2026-07-13-market-dashboard-visibility.md` | 17327 | `5742ec82a7b1797442b124870a99c3d78b94bb608b262c3086647dc93b647ac6` |
+| `docs/superpowers/plans/2026-07-13-ml-daily-inference-operations.md` | 28083 | `1153f2ce81445636770f72b285a1efb5c99322e4ca5499621ad2069094a14eae` |
+| `docs/superpowers/plans/2026-07-13-oos-exposure-custody-audit-execution-plan.md` | 7517 | `97824d6b44cc7e3ae48418e069f459f44c111c3689987f2ba86976ea1a754c37` |
+| `docs/superpowers/plans/2026-07-13-p0-daily-source-ingestion.md` | 21655 | `5c3c897683ba01aa98f358cb0809469bb47c33ff73782cc8dd9cf44d4efde59b` |
+| `docs/superpowers/plans/2026-07-13-pit-historical-data-repair.md` | 24383 | `567722e513a0e6077e97affbc0a7b0ec05cc4830da9ddd12a4eed7bc35712c04` |
+| `docs/superpowers/plans/2026-07-13-terra-development-dataset-v0.md` | 12735 | `a74262191c453e91e41cb090f9a2d0a800c0d8da8e9e9c85ec2c223da38a0b8c` |
+| `docs/superpowers/plans/2026-07-13-two-day-evidence-foundation.md` | 20569 | `5e5d42677d402be5af3f7cdcb814dd2d8d9993fe219e4ccc6880e94a841fede5` |
+| `docs/superpowers/plans/2026-07-13-twse-t86-candidate-recovery-pilot.md` | 3442 | `52648def9a5982761bf94fb4c331c83ab1874d7c74f772a700a50798af64f1ca` |
+| `docs/superpowers/prompts/2026-07-13-terra-external-evidence-execution-handoff.md` | 7905 | `e380360417d38fe3fa01b7431f36c8772e49bc52029fe745bde10e9542c55427` |
+| `docs/superpowers/specs/2026-07-12-gate-1-daily-usable-advice-design.md` | 5261 | `f7ae27641b3236a76f37e0af3e9d61cc8a441d19aea3683e7694f9fe5da69930` |
+| `docs/superpowers/specs/2026-07-12-gate-2-to-7-engineering-closure-design.md` | 11038 | `ab272f39d37b32170a49a198f906ec21f793a8b6b2f0cf4d5253bf5241e73728` |
+| `docs/superpowers/specs/2026-07-12-v2-1-to-v3-0-versioned-delivery-design.md` | 3825 | `795779b17c0dcc21bc25f65e3f80a18285033debbd73a4a14cfa1f5a6eb4d5d4` |
+| `docs/superpowers/specs/2026-07-12-v2-2-sidecar-weekly-collection-design.md` | 5973 | `fbad7643032c5d29e0ae66921cfe14b2d6eac4e5388ff83a72de27dd3fc16c0c` |
+| `docs/superpowers/specs/2026-07-13-external-evidence-investment-validation-design.md` | 36635 | `8b74160a528c9cad6efd4baf49aefa4cc3847b1864aae63cc3711f0e7b07653d` |
+| `docs/superpowers/specs/2026-07-13-parallel-evidence-ml-dashboard-design.md` | 16153 | `50c81d03f4024bcffd0fb45d3f4d140345dee4f4708f692d4e25d74c40b9a62e` |
+| `docs/superpowers/specs/2026-07-13-two-day-evidence-foundation-design.md` | 3652 | `e9c241de21d3681cee290d2a30c942d3975bb05562c7260f87b67573a5afe40e` |
+| `docs/superpowers/specs/2026-07-14-development-dataset-v0-1-corporate-action-coverage-design.md` | 8689 | `97ec2dabd320152cd3d34f1d4f7129e61418ca8bd08590c667fdfd6f07e9e1ad` |

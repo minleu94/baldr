@@ -4,6 +4,8 @@
 
 ## 首次啟動與既有使用者
 
+> **2026-10-06 交付紀錄快照**：以下原交付與 `4b40788bea9e` 首波候選的路徑、hash 和驗收只描述該日具名版本；目前交付版本與 Gate 狀態請查 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及最新具名 QA，本文件不推定其後版本。
+
 本機現有交付位置：`C:/Projects/PythonProjects/technical_analysis/dist/baldr/baldr.exe`。exe 大小 **52,301,884 bytes**；SHA256：`ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`，與實際檔案及 `output/packaging/active_delivery.json` 相符。這是原日期／啟動畫面交付，尚未包含補完首波。建置依賴 PyInstaller 6.16.0／Python 3.11.9／Qt 6.10；支援 Windows 10 1809 以上 x64／Windows 11，依 [Qt 平台文件](https://doc.qt.io/qt-6.10/supported-platforms.html)。舊驗收不延伸為本輪candidate驗收。
 
 首波候選另放 `dist/candidate_4b40788bea9e_dd7335f7/baldr/baldr.exe`；固定來源 `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6`，52,413,416 bytes，SHA256 `6015311ff93286fa045ff04ed2a82284f812ed009cd48db79db435a2ef344410`。Python比較使用 `output/packaging/build_4b40788bea9e_dd7335f7/source` 的同commit快照，不使用當前dev。精確依賴及同一隔離JSON下的四用途、shadow模型／新PID、收藏保存／重開、H20呈現、日期／異常／取消／spawn比對通過；詳見[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)。`BUILD_INFO.json`保留建置事實，`VALIDATION_INFO.json`連結獨立驗證收據；固定發布身分不等於已替換現有交付或Native接受。以下原交付歷史驗收與新candidate的具名結果分開判讀。

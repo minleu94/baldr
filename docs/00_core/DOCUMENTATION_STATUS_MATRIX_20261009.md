@@ -668,3 +668,4 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA Operations／Integration 增量：** 再核讀 7 份 QA 單篇文件，均為新增具名全文紀錄，對照後續收據後原件保留未改；BankTaiwan 假日 skip、Stage1／Integration／V6 等證據界線均維持限定範圍。見 [Coverage History Entry 289](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-289)。舊 QA aggregate 無逐檔 manifest，不據此重算全域去重數。
 
 **2026-10-11 Archive 根層增量：** 八份先前局部掃描的歷史單篇文件已全文核讀，僅 `NEXT_ACTION_PLAN.md` 補強 §7–§9 派工／驗證內容的歷史警示，其餘保留未改。見 [Coverage History Entry 290](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-290)。
+**2026-10-11 QA Integration 增量：** 再核讀 8 份 QA 單篇文件（2 份局部紀錄升全文、6 份首次具名全文），後續收據核對後原件均保留未改。見 [Coverage History Entry 291](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-291)。

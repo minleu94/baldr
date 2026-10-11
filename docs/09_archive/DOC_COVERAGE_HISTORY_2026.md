@@ -2603,3 +2603,8 @@ Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。
 ## 2026-10-11 H20 獨立目前研究固定版候選身分釐清
 
 另修正一份 H20 QA 頁 `H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md`：`421bc973a891` 是早期候選，缺少目前研究入口；後續 `bd5d2f86367ae8adb3d110f7e2b83fb829a620cf` 為其後代並納入後續 H20 研究及圖表變更。`H20_BOUND_CHART_INTEGRATION_20261008.md` 的同版收據只驗圖表範圍，不能證明獨立研究入口本身已在固定版通過。保留真人等待、原資料保護及完整資料脈絡等未完成限制；未執行測試、Graphify 或最終全 repo links／anchors scan。
+
+<a id="coverage-entry-228"></a>
+## 2026-10-11 Manual 10/09 排程摘要時點提示
+
+在 `docs/07_guides/APPLICATION_MANUAL.md` 的「2026-10-09 全排程與 Codex automation 驗收」章首標明結果只代表 10/09 快照，並直連現行 21-task 驗收 Runbook 與 Project Snapshot。原 QA 入口及正文保留。未讀取或修改使用者進行中的完成進度文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。

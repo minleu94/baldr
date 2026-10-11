@@ -568,3 +568,5 @@ QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不�
 Archive 根層本批只補五份歷史原件的時點／權威提示；不調整缺逐檔 manifest 的舊 aggregate。逐篇判讀見 Coverage History Entry 226。未刪除或搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
 
 另依 Entry 227 修正 `docs/06_qa/H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md` 的固定版候選描述：區分早期 `421bc973a891` 與後續後代 `bd5d2f86367ae8adb3d110f7e2b83fb829a620cf`，並限定後者的同版收據只覆蓋圖表範圍。未推定獨立研究入口已通過固定版驗收。
+
+依 Entry 228，Manual 的 10/09 排程驗收摘要已標記為當日狀態快照，並連到現行 21-task Runbook 與 Project Snapshot；沒有讀取或修改使用者進行中的完成進度文件。

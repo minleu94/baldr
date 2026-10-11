@@ -37,3 +37,25 @@
 ## 其他常用路徑
 
 - **2026-09 決策工作台與 continuity dated audits**：查 [Archive 專區](../09_archive/README.md#2026-10-08-decision-workbench-and-continuity-audit-history)；當時的 gap 與 next-increment 判讀不代表目前優先序，現在狀態回 Snapshot／Roadmap。
+
+## 補充收據索引（2026-10-10 治理補登共 17 份）
+
+> 本區收錄經 2026-10-10 全量盤點查核之專屬 QA 驗收證據；各原件維持各自日期與範圍，不推升為目前全域狀態。
+
+- [原產品計畫首波整合收據（2026-10-06）](BALDR_FIRST_WAVE_INTEGRATION_20261006.md)
+- [B03–B14 第二波中央整合收據（2026-10-06）](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)
+- [C3／C4 relevant suite 預檢草稿（2026-09-25）](C3_C4_RELEVANT_SUITE_PREFLIGHT_DRAFT_20260925.md)
+- [明示市場CSV consumer／CLI dev整合（2026-10-06）](MARKET_CSV_EXPORT_INTEGRATION_20261006.md)
+- [R020 post-score 診斷與篩選舊行為 characterization](R020_POST_SCORE_DIAGNOSTICS_CHARACTERIZATION_20260924.md)
+- [R020 Post-score Diagnostics Observer Slice](R020_POST_SCORE_DIAGNOSTICS_OBSERVER_20260925.md)
+- [R020 後置 scorer 篩選政策特性化](R020_POST_SCORE_LEGACY_POLICY_CHARACTERIZATION_20260924.md)
+- [R020 post-score legacy 語意回應切片（2026-09-25）](R020_POST_SCORE_LEGACY_SEMANTIC_RESPONSE_20260925.md)
+- [R020 post-score 缺欄與 unsupported metric 的 legacy characterization](R020_POST_SCORE_UNSUPPORTED_METRIC_LEGACY_CHARACTERIZATION_20260925.md)
+- [R020 跨 store 硬中止復原 QA（2026-09-25）](R020_PROCESS_CRASH_RECOVERY_HARD_EXIT_QA_20260925.md)
+- [R020 實際 scorer 後置篩選特性化](R020_REAL_SCORER_FILTER_STAGE_CHARACTERIZATION_20260924.md)
+- [R020 scorer 後置篩選 alias normalization helper](R020_STRATEGY_FILTER_NORMALIZATION_20260925.md)
+- [R020 typed provider → replay handoff 獨立複核（2026-09-25）](R020_TYPED_HANDOFF_INDEPENDENT_REVIEW_20260925.md)
+- [R030 架構邊界與擴充推演 QA](R030_EXTENSIBILITY_FIXTURE_QA_20260925.md)
+- [Security Lifecycle Contract QA — 2026-09-15](SECURITY_LIFECYCLE_CONTRACT_QA_2026_09_15.md)
+- [2026-10-05 有界語意審查與體驗接手](SEMANTIC_REVIEW_AND_EXPERIENCE_HANDOFF_20261005.md)
+- [Shared Engineering Gates Triage（2026-09-15）](SHARED_ENGINEERING_GATES_TRIAGE_2026_09_15.md)

@@ -2500,3 +2500,13 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 接手 Agent 掃描 `docs/06_qa/` 根層 Markdown 中含 `git reset／checkout／clean／push／stash`、`--apply`、`Remove-Item`、`rm -rf`、`schtasks /Change／Create／Delete`、`Unregister-ScheduledTask`、`git revert` 且檔首 20 行無歷史／非授權界線、也未列入具名清單者，得 16 份。逐一檢視命令所在行：15 份只是 `git revert <commit>` 型回滾說明或已限定核對 ownership／保留資料的回滾表，屬窄範圍回復說明，保留不動；僅 `PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md` 的 `Remove-Item` 回滾表所列檔案後來已被修改、歸檔或被其他工作依賴，已在既有歷史補註後加歷史回滾警示。
 
 讀取深度為命令所在行與檔首，**不是全文審閱**，不調整 QA 全文／未讀彙總。受保護 F03 QA 文件未列入。未刪除／搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-215"></a>
+## 2026-10-10 全庫基線核對與 QA 證據主題索引全量覆蓋補全
+
+接手 Agent 依據 repo 指令與 Documentation Agent 規範完成全庫基線與生命週期核對：
+1. **基線查明與核實**：確認舊基線（1,351 份、Archive 314、QA 533、History 128）為前期粗估與局部子集；目前全庫精確 Tracked Markdown 為 1,467 份（含 Archive 400、QA 560、Core 18、Arch 224、Features 9、Data 16、Broker 6、Phases 15、Guides 20、Technical 7、Agents 21、Strategies 3、Superpowers 167、Root README 1），另有 19 份非 Markdown 追蹤檔案（總計 1,486 tracked files）。工作樹上唯一的非 tracked Markdown 為 `docs/agents/shared_state/handoff_log.md`（依 git_exclusions 與 .gitignore 正式排除）。
+2. **fsmonitor IPC 處理**：以不變更 repo 設定之 `git -c core.fsmonitor=false status` 與索引比對完成驗證，確認工作樹乾淨無污染。
+3. **QA 導航覆蓋補全**：逐篇清查 `docs/06_qa/` 的 560 份 Markdown（包含 180 份歷史相容 redirect stubs、6 份索引文件及 374 份內容收據）。此前四個主題索引共收錄 202 份內容收據，尚有 172 份收據未被任何主題索引收錄；本輪將此 172 份依領域完整分流收錄至 `PRODUCT_UX_QA_INDEX.md`（補登 85 份）、`DATA_ML_GOVERNANCE_QA_INDEX.md`（補登 54 份）、`INTEGRATION_QA_INDEX.md`（補登 17 份）與 `OPERATIONS_TESTING_QA_INDEX.md`（補登 16 份），使 QA 目錄 374 份內容收據之導航可達率達到 100%。
+4. **失效連結修復**：修復 `ARCHITECTURE_RED_TEAM_REVIEW.md` 跨層相對路徑至 `PROJECT_SNAPSHOT.md`，以及 `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` 歸檔後至 `PORTABLE_WINDOWS.md` 之相對連結；全庫 10,277 個本地連結掃描確認零有效 Markdown 斷鏈（僅餘 2 處對 gitignored 本機 png 截圖之既有記錄限制）。
+5. **逐檔盤點清冊建立**：完成全庫 1,467 份 Markdown 檔案之生命週期分類（Active 98、QA evidence 549、Historical 473、redirect 346），重算嚴格成熟度指標。未刪除任何檔案，未更動非文件資料，未執行破壞性變更。

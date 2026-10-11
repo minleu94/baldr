@@ -33,3 +33,24 @@
 - **歷史流程與文件治理紀錄**：2026-09-27 branch/worktree 與文件整併紀錄、2026-09-21 legacy recommendation failure review、9/30 唯讀服務取消收據已移至 [Archive 歷史入口](../09_archive/README.md#qa-historical-process-failure-review-20261009)；10/06 全 repo 文檔整理驗收是固定 HEAD 的歷史快照，見[封存報告](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)，現行生命週期規則以 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md) 為準。首批歸檔判定見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)，R029 成對歸檔與 hash 見 [Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)，取消 QA 的當次範圍與 SHA 見 [Entry 104](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
 - **1477 Native 取消、重試、保存與新程序讀回（2026-10-05，歷史）**：[封存驗收原文](../09_archive/NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md)保留 generation 2 取消、generation 3 重試、保存新身份、新程序讀回，以及來源日期、artifact 日期、run identity、index hash 四項拒絕。此收據只驗收單次 Native 操作鏈，不代表 ML 正式資格、PIT 或交易資格；原 QA 路徑留短導引。bytes／SHA 見 [Coverage History Entry 132](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-132)。
 - **Batch9 最小續接 handoff（2026-10-05，歷史）**：[封存全文](../09_archive/MINIMAL_CONTINUATION_HANDOFF_20261005_HISTORY.md)保存多批次 append-only 工程交接及各時點的驗收／未解限制；較早狀態由後續段落更正，不能當目前任務或 Gate 清單。原 QA 路徑留短導引；目前狀態與順序看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)／[Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。bytes／SHA 見 [Coverage History Entry 133](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-133)。
+
+## 補充收據索引（2026-10-10 治理補登共 16 份）
+
+> 本區收錄經 2026-10-10 全量盤點查核之專屬 QA 驗收證據；各原件維持各自日期與範圍，不推升為目前全域狀態。
+
+- [BankTaiwan 首次排程學習執行失敗紀錄（2026-09-15）](BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md)
+- [C2 current union pytest 基線（2026-09-25）](C2_CURRENT_UNION_PYTEST_BASELINE_20260925.md)
+- [Evidence dry-run 日期序列化 QA（2026-10-02）](EVIDENCE_DRY_RUN_DATE_SERIALIZATION_QA_20261002.md)
+- [Evidence dry-run read-only and Exit business-date QA — 2026-10-02](EVIDENCE_DRY_RUN_READONLY_EXIT_DATE_QA_20261002.md)
+- [2026-10-05 每日鏈容量與接線修正](HEARTBEAT_CHAIN_REPAIR_20261005.md)
+- [2026-09-21 歷史價格尖峰稽核](HISTORICAL_PRICE_SPIKE_2026_09_21.md)
+- [明示市場 CSV consumer 工程 lane](MARKET_CSV_EXPORT_CONSUMER_LANE_20261006.md)
+- [2026-09-21 全市場跨日價格稽核](PRICE_JUMP_AUDIT_2026_09_21.md)
+- [原計畫階段 0 首包：來源與效能基線](PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)
+- [階段1限定效能修正驗證（2026-10-05）](PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)
+- [晨間排程、資料接線與 Evidence 契約修復 QA（2026-09-21）](SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md)
+- [Freshness 與 Quick 收據身分綁定（2026-10-01）](SCHEDULER_FRESHNESS_QUICK_BINDING_20261001.md)
+- [TWSE／TPEx 季度 OpenAPI 研究觀測器 QA（2026-10-01）](SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md)
+- [2026-10-03 剩餘排程診斷與信用交易受控恢復](SCHEDULER_REMAINING_DIAGNOSIS_20261003.md)
+- [每週 MOPS 公告候選 custody 與來源讀回 QA（2026-10-01）](SCHEDULER_STATEMENT_CUSTODY_REPAIR_20261001.md)
+- [測試暫存同盤可還原隔離收尾](TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md)

@@ -56,7 +56,7 @@
 - QA 原文保存當時輸入、失敗、結果、回滾與接受邊界；入口摘要只供導覽，不改寫證據結論。
 - **生命週期**：日期或「完成」標籤不代表可搬移。仍有未解 Gate／重驗、活躍文件引用、測試／腳本依賴或固定輸出路徑的收據留在本目錄；只有結案、替代入口明確且依賴解除後才歸檔，保留舊路徑導引與原件 bytes／hash。詳見 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md#qa-evidence-retention)。
 - 超長報告先讀標題、開頭的範圍／結論及本頁入口，再依問題查原始章節；不要把整份 terminal dump 當成目前狀態。
-- 全 repository 的文件分類、核讀深度與未解矛盾見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)；矩陣不是產品現況 SSOT，產品狀態仍以 Snapshot 為準。
+- 全 repository 的文件分類、核讀深度與未解矛盾見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)；矩陣不是產品現況 SSOT，產品狀態仍以 Snapshot 為準。經 2026-10-10 文件治理整理，本目錄所有 374 份非 stub 內容收據已依主題完整納入上述 4 個主題索引與冷封存對照表，達成 100% 導航可達覆蓋。
 - **2026-08-14 BALDR 本機狀態報告**：JSON 與 HTML 原件已逐位元組封存至 [歷史報告套件](../09_archive/project_status_2026_08_14/README.md)；[舊 QA 路徑相容導引](project_status_2026_08_14/README.md)保留原路徑入口。這是當日 CPU／MCP／Git／QA 快照，不代表目前狀態；現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，來源 bytes／SHA 與依賴檢查見 [Coverage History Entry 117](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-117)。
 - 其他 JSON 收據與機器／報告伴隨物，仍須與對應說明文件一起判讀；不要只憑檔名把它們當作獨立產品文件。
 - 歷史 archive 的定位與規則見 [docs/09_archive README](../09_archive/README.md)；完整文件分類見 [DOCUMENTATION_INDEX](../00_core/DOCUMENTATION_INDEX.md)。

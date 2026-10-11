@@ -1,6 +1,6 @@
 # 架構紅隊審查 (ARCHITECTURE RED TEAM REVIEW)
 
-> 歷史審查輸入：本文件記錄 FINAL 架構裁決前的紅隊意見，不是目前實作設計或當前狀態依據。現行目標設計以 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md) 為準，實作進度以 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 為準；閱讀以下建議時請一併查閱 FINAL 的裁決。
+> 歷史審查輸入：本文件記錄 FINAL 架構裁決前的紅隊意見，不是目前實作設計或當前狀態依據。現行目標設計以 [FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md) 為準，實作進度以 [PROJECT_SNAPSHOT](../../00_core/PROJECT_SNAPSHOT.md) 為準；閱讀以下建議時請一併查閱 FINAL 的裁決。
 
 ## 執行摘要：核心問題
 **六個月後的開發者，能明確知道該在哪裡修改程式碼嗎？**

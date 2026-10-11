@@ -656,3 +656,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 REFACTOR_TASKS 補記：** R024–R027、R029–R031 七份 task spec 已全文再核讀。連同 Entries 280–281，前一輪 exact-basename 掃描列出的 23 個 REFACTOR_TASKS 候選均有具名記錄；這是路徑可追溯狀態，不重算舊 32/32 aggregate。見 [Coverage History Entry 282](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-282)。
 
 **2026-10-11 Core 文件補記：** 15 份權威／導航文件已具名全文再核讀；舊 `18/18` aggregate 未附逐檔深度，因此只新增可核對路徑，不推算淨增量。另將 `DOC_COVERAGE_MAP.md` 作為治理入口全文核讀，不列新增候選。未發現需修訂的內容或入口；Snapshot 仍排除於本輪。見 [Coverage History Entry 283](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-283)。
+
+**2026-10-11 QA R026 增量：** 新增 16 份具名全文核讀（Entries 284–285）；11 份原件補後續 dated status overlay，並保留各 experimental／historical slice 的限制，不外推正常 service migration 接受範圍。舊 QA aggregate 無逐檔 manifest，不據此推算全域 net total。見 [Entry 284](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-284) 與 [Entry 285](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-285)。

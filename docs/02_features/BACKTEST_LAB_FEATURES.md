@@ -316,9 +316,8 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 5. 查看結果摘要和退化分析
 
 **結果解讀**：
-- **退化 < 20%**：策略穩定性良好
-- **退化 20-50%**：策略穩定性一般
-- **退化 > 50%**：策略可能過擬合
+- 舊版教學曾以 20%／50% 作示例分界；這些數字不是目前共用的穩定性門檻。`WalkForwardService` 與 `PerformanceAnalyzer` 的退化方向及零值處理不同，應按 [策略設計規格 §3.1](STRATEGY_DESIGN_SPECIFICATION.md#31-資料切分策略) 指明實際口徑並保留各 Fold 原始結果。
+- 單一退化百分比或一致性比率不能獨立證明策略穩定、可 Promote 或適用於投資。
 
 ---
 
@@ -365,7 +364,8 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 ### 服務層
 - `PresetService`：策略預設管理
 - `UniverseService`：選股清單管理
-- `BacktestRunRepository`：回測結果儲存庫（SQLite）
+- `ResearchRunService` / `ResearchRunRepository`：目前 Research Run Registry 的新增保存與查詢入口（SQLite metadata + Parquet 詳情）
+- `BacktestRunRepository`：舊回測結果的相容讀取與 backfill 來源，不是新 Research Run 的保存入口
 - `OptimizerService`：參數最佳化服務（Grid Search）
 - `WalkForwardService`：Walk-forward 驗證服務
 - `RecommendationReplayService`：歷史日期重播推薦邏輯
@@ -380,9 +380,9 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
   - 比較視圖
 
 ### 資料儲存
-- JSON：預設和清單（人類可讀）
-- SQLite：回測結果（查詢效率）
-- Parquet：大型資料（equity curve, trade list）
+- JSON：預設和清單（人類可讀；依目前維護流程操作）
+- Research Run Registry：SQLite 保存 metadata，Parquet 保存大型 equity curve／trade 明細
+- Legacy SQLite／Parquet：保留相容讀取與 backfill；不與 Registry 混為同一保存契約
 
 ---
 

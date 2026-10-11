@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import date, datetime, time
 from decimal import Decimal, ROUND_DOWN
+import hashlib
+import json
 from pathlib import Path
 from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -15,9 +18,12 @@ from app_module.portfolio_allocation_dtos import (
     AllocationWeightContract,
     CausalPortfolioState,
     PortfolioAllocationContextRow,
+    PortfolioAllocationProjectionV1,
     PortfolioAllocationRequestV2,
     PortfolioAllocationResultV2,
     PortfolioAllocationRowV2,
+    PortfolioRuleAllocationRequestV1,
+    PortfolioRuleAllocationResultV1,
 )
 from financial_module.portfolio_turnover import canonical_turnover_bp
 from financial_module.units import quantize_money, round_down_to_lot
@@ -50,6 +56,21 @@ class PortfolioAllocationService:
         self._promotion_evaluator = (
             promotion_evaluator or AllocationPromotionEvaluator()
         )
+
+    @property
+    def allocation_policy_hash(self) -> str:
+        """綁定實際配置政策及此版本固定的成本／成交限制。"""
+        payload = {
+            "schema": "portfolio-allocation-policy.v1",
+            "policy": {key: str(value) if isinstance(value, Decimal) else value
+                       for key, value in asdict(self._policy).items()},
+            "buy_cost_bp": _BUY_COST_BP,
+            "sell_cost_bp": _SELL_COST_BP,
+            "volume_participation_percent": _MAX_VOLUME_PARTICIPATION_PERCENT,
+            "lot_size": _LOT_SIZE,
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
     def blend_weights(
         self,
@@ -155,6 +176,73 @@ class PortfolioAllocationService:
             ml_weights=request.ml_proposal.requested_weights,
             alpha_bp=effective_alpha_bp,
         )
+        projection = self._project_weights(
+            request=request,
+            blended=blended,
+            ml_weights=request.ml_proposal.requested_weights,
+            reasons=[*request.ml_proposal.reasons, *authorization_reasons],
+        )
+        return PortfolioAllocationResultV2(
+            decision_date=request.decision_date,
+            alpha_bp=effective_alpha_bp,
+            rule_requested_weights=request.rule_requested_weights,
+            ml_requested_weights=request.ml_proposal.requested_weights,
+            blended_weights=blended,
+            target_weights=projection.target_weights,
+            executable_weights=projection.executable_weights,
+            rows=projection.rows,
+            current_cash_bp=projection.current_cash_bp,
+            post_cost_cash_amount=projection.post_cost_cash_amount,
+            total_estimated_cost=projection.total_estimated_cost,
+            advice_action=projection.advice_action,
+            coverage_bp=request.ml_proposal.coverage_bp,
+            model_hash=request.ml_proposal.model_hash,
+            dataset_identity_hash=request.ml_proposal.dataset_identity_hash,
+            dataset_manifest_file_hash=request.ml_proposal.dataset_manifest_file_hash,
+            universe_hash=request.ml_proposal.universe_hash,
+            policy_hash=request.ml_proposal.policy_hash,
+            rule_policy_hash=request.rule_policy_hash,
+            causal_portfolio_state_hash=(
+                request.causal_portfolio_state.state_hash
+                if request.causal_portfolio_state is not None else None
+            ),
+            missing_family_ids=request.ml_proposal.missing_family_ids,
+            reasons=projection.reasons,
+        )
+
+    def project_rule_only(
+        self, request: PortfolioRuleAllocationRequestV1
+    ) -> PortfolioRuleAllocationResultV1:
+        """以人選權重進行相同風控投影；不需要模型提案。"""
+        if not isinstance(request, PortfolioRuleAllocationRequestV1):
+            raise ValueError("request must be PortfolioRuleAllocationRequestV1")
+        projection = self._project_weights(
+            request=request,
+            blended=request.rule_requested_weights,
+            ml_weights=AllocationWeightContract.cash_only(),
+            reasons=["rule_only_research_scenario"],
+        )
+        return PortfolioRuleAllocationResultV1(
+            decision_date=request.decision_date,
+            requested_weights=request.rule_requested_weights,
+            projection=projection,
+            source_hash=request.source_hash,
+            rule_policy_hash=request.rule_policy_hash,
+            allocation_policy_hash=self.allocation_policy_hash,
+            causal_portfolio_state_hash=(
+                request.causal_portfolio_state.state_hash
+                if request.causal_portfolio_state is not None else None
+            ),
+        )
+
+    def _project_weights(
+        self,
+        *,
+        request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1,
+        blended: AllocationWeightContract,
+        ml_weights: AllocationWeightContract,
+        reasons: list[str],
+    ) -> PortfolioAllocationProjectionV1:
         contexts = {row.stock_code: row for row in request.contexts}
         causal_state_symbols = (
             set(request.causal_portfolio_state.complete_symbol_universe)
@@ -164,17 +252,12 @@ class PortfolioAllocationService:
         all_symbols = sorted(
             set(blended.symbol_weights_bp)
             | set(request.rule_requested_weights.symbol_weights_bp)
-            | set(request.ml_proposal.requested_weights.symbol_weights_bp)
+            | set(ml_weights.symbol_weights_bp)
             | set(contexts)
             | causal_state_symbols
         )
         target = {symbol: blended.weight_for(symbol) for symbol in all_symbols}
         row_diagnostics: dict[str, list[str]] = {symbol: [] for symbol in all_symbols}
-        reasons: list[str] = [
-            *request.ml_proposal.reasons,
-            *authorization_reasons,
-        ]
-
         self._apply_health_and_hard_risk(
             target=target,
             contexts=contexts,
@@ -288,7 +371,7 @@ class PortfolioAllocationService:
                 stock_code=symbol,
                 stock_name=contexts[symbol].stock_name if symbol in contexts else "",
                 rule_requested_weight_bp=request.rule_requested_weights.weight_for(symbol),
-                ml_requested_weight_bp=request.ml_proposal.requested_weights.weight_for(symbol),
+                ml_requested_weight_bp=ml_weights.weight_for(symbol),
                 blended_weight_bp=blended.weight_for(symbol),
                 target_weight_bp=target[symbol],
                 current_weight_bp=(
@@ -326,12 +409,7 @@ class PortfolioAllocationService:
                 ]
             )
         )
-        return PortfolioAllocationResultV2(
-            decision_date=request.decision_date,
-            alpha_bp=effective_alpha_bp,
-            rule_requested_weights=request.rule_requested_weights,
-            ml_requested_weights=request.ml_proposal.requested_weights,
-            blended_weights=blended,
+        return PortfolioAllocationProjectionV1(
             target_weights=target_contract,
             executable_weights=executable_contract,
             rows=rows,
@@ -339,21 +417,6 @@ class PortfolioAllocationService:
             post_cost_cash_amount=post_cost_cash_amount,
             total_estimated_cost=total_cost,
             advice_action=advice_action,
-            coverage_bp=request.ml_proposal.coverage_bp,
-            model_hash=request.ml_proposal.model_hash,
-            dataset_identity_hash=request.ml_proposal.dataset_identity_hash,
-            dataset_manifest_file_hash=(
-                request.ml_proposal.dataset_manifest_file_hash
-            ),
-            universe_hash=request.ml_proposal.universe_hash,
-            policy_hash=request.ml_proposal.policy_hash,
-            rule_policy_hash=request.rule_policy_hash,
-            causal_portfolio_state_hash=(
-                request.causal_portfolio_state.state_hash
-                if request.causal_portfolio_state is not None
-                else None
-            ),
-            missing_family_ids=request.ml_proposal.missing_family_ids,
             reasons=all_reasons,
         )
 
@@ -543,7 +606,7 @@ class PortfolioAllocationService:
     def _apply_liquidity_caps(
         self,
         *,
-        request: PortfolioAllocationRequestV2,
+        request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1,
         target: dict[str, int],
         contexts: Mapping[str, PortfolioAllocationContextRow],
         row_diagnostics: dict[str, list[str]],
@@ -839,7 +902,7 @@ class PortfolioAllocationService:
     def _apply_lot_cost_and_cash(
         self,
         *,
-        request: PortfolioAllocationRequestV2,
+        request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1,
         turnover_target: Mapping[str, int],
         current: Mapping[str, int],
         contexts: Mapping[str, PortfolioAllocationContextRow],
@@ -1014,7 +1077,7 @@ class PortfolioAllocationService:
     def _execution_constraint_violations(
         self,
         *,
-        request: PortfolioAllocationRequestV2,
+        request: PortfolioAllocationRequestV2 | PortfolioRuleAllocationRequestV1,
         executable: Mapping[str, int],
         current: Mapping[str, int],
         contexts: Mapping[str, PortfolioAllocationContextRow],

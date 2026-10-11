@@ -1,5 +1,13 @@
 # 系統架構
 
+## 人選持倉情境計算契約（2026-10-11，接線中）
+
+`PortfolioAllocationService.project_rule_only()` 使用 `PortfolioRuleAllocationRequestV1` 接收人選整數 bp 目標，共用原 Rule/ML `project()` 的 `_project_weights()` 計算。ML authorization／blend 路徑仍只屬原入口；純規則入口不建立 ML proposal 或模型 metadata。共用 projection 保存 target、可執行研究權重／股數、Decimal 成本／現金與 diagnostic；結果固定為 research-only，不授送單或套用配置。
+
+`PortfolioResearchScenarioService` 依注入的 `PortfolioResearchAccountReader.read_exact()` 取得已選 manual／user_declared／paper 的完整狀態，核對 kind／portfolio／snapshot，並比較維持、等權及人選明示目標。等權沿既有 Construction；風控、現金、集中度、成交量、冷卻期、整股與成本沿既有 Allocation。Account state、context 與 research source hash 分別保存；input hash 綁各項事實與實際 policy。Unknown Health、缺完整持倉、跨帳本 context、同日／未來帳本或晚到證據都拒絕，不補為空倉、健康或零。
+
+Reader protocol 是接線契約，不能代替來源核驗。正式 adapter 必須沿現有帳本／Health public reader 驗來源及可得時鐘；情境 artifact、正常 UI 與跨程序恢復仍待接入。此 backend 增量不代表 P06 或 M3 完成；本輪實作與受限測試見[接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+
 > **閱讀入口**：本文件包含架構主文與日期化增量。要理解系統定位、分層與模組責任，請從[第 1 節：系統定位](#1-系統定位)開始；要確認目前完成度與阻礙，先看[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。日期化增量可能保存尚未濃縮進主文的細部架構契約；其測試結果與當日狀態只作追溯，不能取代 Snapshot 或各主題最新 QA。
 
 ## Windows 可攜 composition（2026-10-06）

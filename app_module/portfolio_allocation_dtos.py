@@ -634,6 +634,42 @@ class PortfolioAllocationRequestV2:
 
 
 @dataclass(frozen=True)
+class PortfolioRuleAllocationRequestV1:
+    """人選目標的純規則研究請求，沒有 ML 或執行授權欄位。"""
+
+    decision_date: str
+    capital_amount: Decimal
+    rule_requested_weights: AllocationWeightContract
+    contexts: tuple[PortfolioAllocationContextRow, ...]
+    current_cash_bp: int
+    source_hash: str
+    rule_policy_hash: str
+    weekly_turnover_used_bp: int = 0
+    causal_portfolio_state: CausalPortfolioState | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "decision_date", _validate_iso_date("decision_date", self.decision_date))
+        _validate_decimal("capital_amount", self.capital_amount, positive=True)
+        if not isinstance(self.rule_requested_weights, AllocationWeightContract):
+            raise ValueError("rule_requested_weights must be AllocationWeightContract")
+        _validate_bp("current_cash_bp", self.current_cash_bp)
+        _validate_bp("weekly_turnover_used_bp", self.weekly_turnover_used_bp)
+        for name in ("source_hash", "rule_policy_hash"):
+            object.__setattr__(self, name, _validate_sha256(name, getattr(self, name)))
+        if not isinstance(self.contexts, tuple) or any(
+            not isinstance(row, PortfolioAllocationContextRow) for row in self.contexts
+        ):
+            raise ValueError("contexts must be a tuple of PortfolioAllocationContextRow")
+        symbols = [row.stock_code for row in self.contexts]
+        if len(symbols) != len(set(symbols)):
+            raise ValueError("contexts must contain unique stock_code values")
+        if self.causal_portfolio_state is not None and not isinstance(
+            self.causal_portfolio_state, CausalPortfolioState
+        ):
+            raise ValueError("causal_portfolio_state must be CausalPortfolioState")
+
+
+@dataclass(frozen=True)
 class PortfolioAllocationRowV2:
     """單一標的從請求權重到可執行研究提案的完整軌跡。"""
 
@@ -695,6 +731,96 @@ class PortfolioAllocationRowV2:
             "executable_amount": str(self.executable_amount),
             "estimated_cost": str(self.estimated_cost),
             "diagnostics": list(self.diagnostics),
+        }
+
+
+@dataclass(frozen=True)
+class PortfolioAllocationProjectionV1:
+    """共用風控計算的數值結果；不推造模型身分。"""
+
+    target_weights: AllocationWeightContract
+    executable_weights: AllocationWeightContract | None
+    rows: tuple[PortfolioAllocationRowV2, ...]
+    current_cash_bp: int
+    post_cost_cash_amount: Decimal
+    total_estimated_cost: Decimal
+    advice_action: str
+    reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.target_weights, AllocationWeightContract):
+            raise ValueError("target_weights must be AllocationWeightContract")
+        if self.executable_weights is not None and not isinstance(
+            self.executable_weights, AllocationWeightContract
+        ):
+            raise ValueError("executable_weights must be AllocationWeightContract or None")
+        if not isinstance(self.rows, tuple) or any(
+            not isinstance(row, PortfolioAllocationRowV2) for row in self.rows
+        ):
+            raise ValueError("rows must be a tuple of PortfolioAllocationRowV2")
+        if len({row.stock_code for row in self.rows}) != len(self.rows):
+            raise ValueError("rows must contain unique stock_code values")
+        _validate_bp("current_cash_bp", self.current_cash_bp)
+        _validate_decimal("post_cost_cash_amount", self.post_cost_cash_amount, non_negative=True)
+        _validate_decimal("total_estimated_cost", self.total_estimated_cost, non_negative=True)
+        if self.advice_action not in {
+            "ADD_CANDIDATE", "HOLD", "REDUCE_CANDIDATE", "EXIT_CANDIDATE",
+            "NO_NEW_POSITION", "AVOID",
+        }:
+            raise ValueError("unsupported advice_action")
+        object.__setattr__(self, "reasons", _validate_string_tuple("reasons", self.reasons))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "target_weights": self.target_weights.to_dict(),
+            "executable_weights": (
+                self.executable_weights.to_dict() if self.executable_weights is not None else None
+            ),
+            "rows": [row.to_dict() for row in self.rows],
+            "current_cash_bp": self.current_cash_bp,
+            "post_cost_cash_amount": str(self.post_cost_cash_amount),
+            "total_estimated_cost": str(self.total_estimated_cost),
+            "advice_action": self.advice_action,
+            "reasons": list(self.reasons),
+        }
+
+
+@dataclass(frozen=True)
+class PortfolioRuleAllocationResultV1:
+    """純規則結果：模型估計、送單與套用權限均不由情境推導。"""
+
+    decision_date: str
+    requested_weights: AllocationWeightContract
+    projection: PortfolioAllocationProjectionV1
+    source_hash: str
+    rule_policy_hash: str
+    allocation_policy_hash: str
+    causal_portfolio_state_hash: str | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "decision_date", _validate_iso_date("decision_date", self.decision_date))
+        if not isinstance(self.requested_weights, AllocationWeightContract):
+            raise ValueError("requested_weights must be AllocationWeightContract")
+        if not isinstance(self.projection, PortfolioAllocationProjectionV1):
+            raise ValueError("projection must be PortfolioAllocationProjectionV1")
+        for name in ("source_hash", "rule_policy_hash", "allocation_policy_hash"):
+            object.__setattr__(self, name, _validate_sha256(name, getattr(self, name)))
+        if self.causal_portfolio_state_hash is not None:
+            _validate_sha256("causal_portfolio_state_hash", self.causal_portfolio_state_hash)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "portfolio-rule-allocation.v1",
+            "decision_date": self.decision_date,
+            "requested_weights": self.requested_weights.to_dict(),
+            "projection": self.projection.to_dict(),
+            "source_hash": self.source_hash,
+            "rule_policy_hash": self.rule_policy_hash,
+            "allocation_policy_hash": self.allocation_policy_hash,
+            "causal_portfolio_state_hash": self.causal_portfolio_state_hash,
+            "research_only": True,
+            "broker_order_allowed": False,
+            "apply_rebalance": False,
         }
 
 

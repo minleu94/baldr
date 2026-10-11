@@ -2772,3 +2772,13 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 REFACTOR_REPORTS R010–R012 八份具名全文核讀與範圍提示
 
 全文核讀並補充時點／範圍說明 `R010_IMPLEMENTATION_REPORT.md`、`R010_LUNA_INDEPENDENT_REVIEW.md`、`R010_SOL_INTEGRATION_ACCEPTANCE.md`、`R011_IMPLEMENTATION_REPORT.md`、`R011_LUNA_FINAL_REVIEW.md`、`R011_LUNA_INDEPENDENT_REVIEW.md`、`R011_SOL_INTEGRATION_ACCEPTANCE.md`、`R012_IMPLEMENTATION_REPORT.md`。R010/R011 的 PASS 限於各自凍結契約與驗收範圍；R012 的 R031 接受只覆蓋 create-only store，不代表 multi-store 原子交易全數完成。TMP-ML-01→R026 是後續計畫；較早 SHA 的 CHANGES_REQUIRED 與較晚修訂 SHA 的 PASS 分開標清。對照 R031、QA index 與相關報告。早期 Coverage History 的 74 份 REFACTOR_REPORTS 聚合未留下具名清單，無法排除重疊，因此本批只增列可稽核檔名，不將 8 份加進既有確切總數。未修改索引、未跑測試、Graphify 或最終全 repo links／anchors scan。
+
+<a id="coverage-entry-255"></a>
+## 2026-10-11 QA P01／P08 十份具名全文核讀與效能矩陣界線
+
+全文核讀 `BALDR_P01_COMPONENT_TUPLE_MEMO_20261009.md`、`BALDR_P01_PAGE_PATH_RENDER_MEMO_20261009.md`、`BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md`、`BALDR_P01_PROOF_GATED_REHYDRATION_20261009.md`、`BALDR_P01_RENDER_PREFILL_20261009.md`、`BALDR_P01_SESSION_METADATA_PERFORMANCE_CANDIDATE_20261009.md`、`BALDR_P08_ACCOUNT_BINDING_SLICE_20261010.md`、`BALDR_P08_CASH_SEED_SLICE_20261010.md`、`BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md`、`BALDR_P08_SNAPSHOT_RECEIPT_SLICE_20261010.md`。依 Integration QA index 導覽並對照固定矩陣／後續收據。P01 五份原件補上版本各自的固定矩陣或受控 Root review 界線，避免把 lexical-only、component tuple、proof-gated、session-metadata overlay 的 p95 混算，也保留 filter 未通過及冷啟動等不同計時範圍。P08 四份仍是有限測試切片，不推論真人帳戶、每日流程、UI 或 PIT 通過；另有一份 Root review 收據未需修訂。未讀受保護完成進度、未跑測試、Graphify 或全 repo links／anchors scan。
+
+<a id="coverage-entry-256"></a>
+## 2026-10-11 Archive 根層第八批八份具名全文核讀與歷史狀態提示
+
+全文核讀根層 `PHASE2_ARCHITECTURE.md`、`PHASE2_STRATEGY_LIBRARY.md`、`PHASE_2A_DATA_SOURCES_AUDIT.md`、`PHASE3_3B_RESEARCH_DESIGN.md`、`PHASE4_PORTFOLIO_DESIGN.md`、`WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md`、`V1_RELEASE_CHECKLIST_2026_06_30.md`、`MCP_YFINANCE_OPENMARKETS_PATCH_MEMO_HISTORY.md`；八份均有 Archive README 直達。對六份歷史設計／來源／release 文件補充檔首時點界線，尤其區分未勾子項與上層完成標記、不同日期資料來源整理、歷史「現在」文字與舊 release 指示；不改正文命令、勾選或數字。兩份既有歷史提示足夠，保留。早期 Archive aggregate 無逐檔名單，無法排除與本批重疊，不以本批推算舊 aggregate 或未讀總數。限定八檔 `git diff --check` 通過；未跑測試、Graphify 或最終全 repo links／anchors scan。

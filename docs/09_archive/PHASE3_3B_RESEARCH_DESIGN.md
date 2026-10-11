@@ -2,6 +2,8 @@
 
 > **歷史判讀**：本文件保留為 Phase 3.3b 研究設計追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
+> **2026-10-11 直開判讀**：文中的 Walk-Forward、p-value、Promote 門檻、時程估算與「✅」標記都屬歷史設計假設／格式，不是現行策略驗收、升級條件或通過收據。現行產品方向與工程 Gate 請分別回到 `../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`、`../00_core/ROADMAP_6M_ENGINEERING.md` 與具名 QA。
+
 ## 目標
 
 完成真正的閉環：**推薦 → 回測 → 最佳化 → Promote 成策略版本 → 回到推薦**

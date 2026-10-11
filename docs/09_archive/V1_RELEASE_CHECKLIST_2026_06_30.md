@@ -5,6 +5,8 @@
 > **目前執行分支**：先在 `dev` 驗證；只有通過本清單的 release-critical gate 後，才 cherry-pick / merge 必要內容到 `main`。
 > **定位**：本文件是 v1 release readiness gate，不是新功能 roadmap。它只判定目前系統是否足夠乾淨、可啟動、可驗證、可人工操作，能否標記為正式 v1。
 
+> **2026-10-11 Archive 直開判讀**：本清單與 `dev`→`main` 合入／release 命令只記錄 2026-06-30 的 v1 收尾，不構成目前版本狀態、release 核准或合入授權。另第 4 節的 clean clone/install 核取項目仍未勾選，但第 8 節記錄該 Gate 後續通過；保留此原始差異，不以本文單獨判定目前 release readiness。
+
 ---
 
 ## 1. 版本判定規則

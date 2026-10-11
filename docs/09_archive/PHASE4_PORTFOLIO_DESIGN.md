@@ -2,6 +2,8 @@
 
 > **歷史判讀**：本文件保留為 Phase 4 Portfolio MVP 初始設計追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；目前 Portfolio / lifecycle 架構請看 `../01_architecture/system_architecture.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
+> **2026-10-11 直開判讀**：頁尾標示「最後更新：2026-01-07」，但第 4 節另有「2026-06-09 起」的後續增補，故頁尾日期不是整份文件的版本日期。文中「目前主路徑」及 UI 接線敘述只代表各自記載時點的歷史快照，不作當前 Portfolio 行為或架構證據。
+
 ## 概述
 
 Phase 4 建立一個 **Read-only / Decision-support** 的 Position/Portfolio Layer，用於觀察、理解與管理既有策略/股票的部位狀態，**不進行任何自動交易或調倉決策**。

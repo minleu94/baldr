@@ -51,3 +51,7 @@ Look-ahead 自查：此切片只從已驗證的原 snapshot bytes 還原相同�
 ## 更新記錄
 
 - 2026-10-09：新增 P01 proof-gated 私有 DTO 重建與 ContextVar nested read 回歸結果，明確保留效能門檻未驗收狀態。
+
+## 後續固定效能矩陣
+
+後續 QA 接續記錄此 proof-gated 來源已完成固定 1,000 檔、五 cold／一 warm、每類 30 樣本矩陣：page flip p95 `220.0639 ms`、global sort p95 `248.2336 ms` 通過嚴格 `< 300 ms`；filter p95 `677.9689 ms` 未通過。首次冷啟動至 page 0 的 p95 為 `21.1921328 秒`，是不同計時項目，不代表原 2382 Main 操作延遲已改善。完整時點與範圍見[補完缺口再核對](BALDR_COMPLETION_GAP_REVIEW_20261008.md)。本矩陣不把本文件的定向回歸改寫成效能通過；篩選失敗仍未解除。

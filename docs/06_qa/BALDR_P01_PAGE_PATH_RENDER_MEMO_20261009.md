@@ -44,3 +44,7 @@
 ## 驗收界線
 
 這些是純 memo contract、17 股合成來源頁讀取及既有定向回歸，不是固定 1,000 股 benchmark，也沒有聲稱 300 ms 或 p95 通過。仍需沿固定來源與原始測量矩陣重驗正式 runtime 效能；本文件只記錄不減少 fresh I/O/identity checks 的 operation-local path rendering memo。
+
+## 後續固定效能矩陣
+
+後續固定 d12 archive 加四個受審 overlay 的六角色矩陣已完成，Root 對 warm child 每類 30 筆原始耗時獨立重算 nearest-rank p95：page flip `174.3009 ms`、filter/select/page `525.9606 ms`、global sort/select/page `219.2445 ms`。翻頁與排序通過嚴格 `< 300 ms`，篩選未通過；這是四 overlay 候選的矩陣結果，不代表完整 Main、EXE 或真人驗收。後續加入 component tuple 的不同版本矩陣結果見[Root 路徑字串重用審查](BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md)，不可混用兩組 p95。

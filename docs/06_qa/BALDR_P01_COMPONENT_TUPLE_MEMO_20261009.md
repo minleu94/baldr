@@ -47,3 +47,9 @@ $env:TMP = $env:TEMP
 ## 效能與未完成驗收
 
 此切片只證明輸出及 fresh I/O/reparse 行為與 strict 路徑相同，沒有執行或宣稱新的 1,000 檔 benchmark。最近一次六角色 1,000 檔矩陣仍維持原結果：page flip 與 global sort p95 通過 300 ms；filter p95 為 525.9606 ms，未通過。此變更仍需 Root 審查後，才可建立新的固定 overlay 並按原 5 cold + 1 warm / 90 samples / 300 ms 條件驗證；不得以本次單元測試替代效能 gate。
+
+## 後續效能矩陣與接續候選
+
+上段 `525.9606 ms` 是 lexical-only 四 overlay 候選的 filter 結果，不是本 component tuple overlay 的效能結果。後續 Root 以本文件所列兩個 component tuple 正式來源 SHA 建立固定候選，完成六角色矩陣；每類各 30 筆的 nearest-rank p95 為：page flip `239.4695 ms`（通過）、filter `1074.3634 ms`（未通過）、global sort `344.7445 ms`（未通過）。完整來源、封套及 profile 判讀見[Root 路徑字串重用審查](BALDR_P01_PATH_RENDER_DESIGN_ROOT_REVIEW_20261009.md)。角色讀回與清理通過不改變兩類效能失敗，也不能把之前 lexical-only 的 525.9606 ms 套用到 component tuple 版本。
+
+後續接續記錄 `BALDR_COMPLETION_RESUME_20261009.md` 另載一個移除 component tuple cache admission、保留原 lexical renderer 的固定來源候選（`personal_data_paths.py` SHA-256 `adf0b776dbced091e0f27b84de76daa87986302548ff635cc6e6e738d92650f2`）；其定向回歸完成，但該記錄明示尚無新完整效能矩陣。這是與本文件 tuple-cache overlay 不同的來源版本，不以 focused 回歸推升 300 ms 門檻。

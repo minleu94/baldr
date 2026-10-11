@@ -2,6 +2,8 @@
 
 > **歷史判讀**：本文件保留為 Phase 2 策略架構設計追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
+> **2026-10-11 直開判讀**：Step 標題的「✅」與下方未勾選項目並存（例如 Step 1、Step 3–5），文件未提供可解消差異的逐項驗收紀錄；這些標記不作完成證據或目前進度判定。
+
 ## 核心設計原則
 
 ### 1. 策略可插拔規格

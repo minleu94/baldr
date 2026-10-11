@@ -126,3 +126,7 @@ warm child 的三份 cProfile 是插樁診斷，時間不納入 90 個 p95 樣�
 建議先在隔離測試以 strict 路徑作逐值 oracle，量測 decode/semantic call count，不改現行 p95 矩陣或門檻。驗收需包含：同 bytes 的 DTO `to_dict()` 和 selection identity 完全相等；selected 與 unselected artifact 改 bytes（保留 mtime）均被 fresh SHA 拒絕；manifest/reference、proof clone、跨 root/session/store、method/schema pin 不符均拒絕快速路徑；取消在讀取前、中、末端都不發布部分頁面；close 後 proof/cache reference 歸零。普通 `from_json` 仍需獨立證明嚴格路徑不變。
 
 filter profile 的高比例路徑檢查是另一個候選，不應與 semantic reuse 混成同一變更。若要減少同一 `read_selected_exact` 內重複祖先路徑解析，必須先證明不會跨 operation 使用 stat-only cache，並保留每個 leaf 的 reparse/hardlink/regular-file、大小、bytes/SHA、讀取前後檔案身分、全 layout 與 cancellation 核對。任何 ancestor reuse 都須有同次呼叫內明確的 directory handle/identity 邊界，不能只記錄一個先前 `lstat` 結果。這項尚未實作，也沒有安全或效能接受結果。
+
+## 後續 proof-gated 候選結果
+
+上段建議的 proof-gated 私有 DTO 重建後續已實作，定向回歸為 37 passed；其固定 1,000 檔矩陣另得 page flip `220.0639 ms`、global sort `248.2336 ms`、filter `677.9689 ms` 的 p95。前兩類通過嚴格 `< 300 ms`，篩選仍未通過。這是不同於本文件 session-metadata overlay 的來源與矩陣：本文件的 `604.9607／1541.0285／1533.123 ms` 三類失敗仍是 session-metadata 候選自己的結果，不能以後續 proof-gated 結果取代。後續收據見[proof-gated 回歸](BALDR_P01_PROOF_GATED_REHYDRATION_20261009.md)與[補完缺口再核對](BALDR_COMPLETION_GAP_REVIEW_20261008.md)。

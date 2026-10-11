@@ -507,3 +507,47 @@ v2純preflight **native0／store access attempts0**、80／51／594及匯入orig
 P06前置核查確認現行Health reader只讀可變latest_status／latest指標；evaluator沒有不可變歷史receipt及保存後可得時鐘。Root接續補writer-owned封存／public exact reader，未實作前不授歷史情境資格。P08另發現seed_created_at是append前準備clock，首個intent不能直接消費現行daily-only checkpoint reader；owner獨立scratch新增seed prior／首次讀回clock候選，尚未凍結／執行。Root要求區分歷史seed讀回與新執行CAS，避免首日daily完成後讓原seed／intent無法重開；真金融batch→ledger→checkpoint、MA／KD正常接線、benchmark／績效與UI仍待。
 
 本輪coverage僅QA／Snapshot與隔離QA核驗工具；無正式功能或入口變更，Manual／架構／Roadmap／Index不改。回滾只移除此兩文件本節／新增列，依root封存preimage保留其他writer與raw資料；不得reset整樹或清舊失敗。各定向／Main程序已terminal，root無live QA handle。
+
+### P01 v9b3 六角色終態與 F12 extended-path 守門接續
+
+上一 goal turn 為產品狀態回覆，分類為 no progress；本輪重新輪詢原 session47255，確認它已自然終態，未因觀察期限重新啟動矩陣。本節保留原 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍。
+
+P01 supervision v3 supplement SHA `6d772e092444191fe48cc5c6390795fdfbf0fa5f530ef99ef5ad43d1cb6e9ae1`，root 獨立核完整差異、717 raw pins 與原協議。Standalone probe 的 JoinedStr AST 與 v5 相同；root 僅重算已審插值，舊版本 `6d23a8` 與新版本 `daf849adfaaa2a1e44db43dd047414d0f7a174403487a7bd02ea7ab064dce29d` 的差異來自 runner／manifest 路徑與 hash，沒有執行 probe 來推導期待值。v3 純 preflight native0、store access0，真 Job 失敗與收尾全組 **10 PASS／8.10秒／native0**；717 pins 起訖相同。Host 分別為 `p01_v9b3_pure_preflight_root01_7f60ad3f95ec4c55b73332669f2ab6f7` 與 `p01_v9b3_job_tests_root01_f675e8e8b7194f6d94a3d6e92a8fc712`。
+
+原 1000 列／20 頁、五 cold＋一 warm、每 role600秒、三類各30樣本與 strict p95<300ms 協議實際執行；host `p01_v9b3_full_matrix_host_root01_1946c3bf43e64464862bbcc9b0e2f53b`，inner `attempt_20261011T125444Z_06eb0335ca4b`。
+
+| P01 實際結果 | 判讀 |
+|---|---|
+| 五次 cold | 五 role 均 native0；完整20頁與 DTO 相等，啟動至首頁 nearest-rank p95 **33.9451527秒**。不能把此值當暖查詢 p95。 |
+| warm | **65.6722947秒／自然native1**，非600秒逾時。完成20頁與第一筆翻頁樣本 **196.3811ms**，完整DTO相等且真TaskWorker能力已claimed；下一次導航前，phase helper 的 `os.replace(temporary_path, self.path)` 遭 **WinError5**。 |
+| 樣本與資源 | 暖翻頁只有1筆，篩選／排序0筆，matrix空；沒有有效暖p95或效能接受。717 pins起訖一致，每role postguard／observer restore／shutdown通過、Job排空及handles閉合。 |
+
+Root另存17份原始收據／logs／phase證據於 `root/p01_v9b3_terminal_review_33aeffedf22843c89aa4cb0e1279513f/receipt.json`，SHA `203d0b346cfd696b85387124c7a71b789663418afa3d0cfaf3e0e97747ec6638`。新失敗已越過前輪claim-count停點，但不能由單筆樣本授300ms或完整P01。Supervisor原碼在role執行期間沒有讀phase JSON；實際WinError5的佔用來源尚未證明，不能直接歸因監督器輪讀。QA-only phase封套候選另交代理準備，原v9b3與失敗封套不改。
+
+F12 extended候選以eefdbdb為preimage，Main test `5c007ea42717f21a4a2f1dbcedb87a92e504b7b1c3e298158b50645cbfc01db5`。原freeze `46e9d018` 的 prior inventory派生metadata過時，owner另建只修該欄位的immutable sibling，SHA `6c313768cd9a7653710b3ab217c2bff66961cb77efdf29c230aeb3f16f5d07a6`；root核其餘全部欄位相同。Root核64 current pins／63非Main不變、23來源、patch精確由preimage重算。整個module AST只允三個top-level functions改動；guard installer只新增DOS prefix驗證helper，替換guarded_path及lexical helper兩處呼叫，其他內容包括完整Main／產品assertions均相同。本輪 `formal_source_pins` 已是current清冊，root初次validator誤要求歷史清冊後修正對照，未改候選。Static收據 `root/f12_extended_static_root01_933b6885a7ca4e86930359c8f6f6accf/receipt.json`。
+
+同版五節點guard實測 **4 PASS／1 FAIL／5.97秒／native1**，host `f12_extended_guard_host_root01_92929b50181e4a1fb57e67c08e31ee22`，inner `fdopen_guard_probe_a5883ed2f3324590bdeb3f23649a3df4`。47 assertions唯一false是private payload精確bytes；本機extended target已成功接受、handle／volume-file／nlink=1驗證成立，七個outside／dot alias／reparse／hardlink／唯讀source／UNC／未知namespace負例皆拒絕且原件bytes不變。Root精確讀回探針payload為 `extended DOS private write allowed\r\n`，而期待LF；Windows os.open文字模式造成CRLF，下一候選只補正例O_BINARY旗標。records0、64pins／23來源不變，專屬Job自然退出並排空。本階段未通過，不釋COW或完整Main。
+
+七份raw另存 `root/f12_extended_guard_failed_terminal_e0bf57f23d2d432bbd7dacce484c412c/receipt.json`，SHA `d7cc56d540cb23fe680a19aeb4600f65f941fc11ff9a5bb463db8444b28c1e86`。Health不可變receipt／public exact reader由原P01代理在scratch實作，正式套用與後續情境/UI由root審核；P08仍補真batch→ledger→daily checkpoint、歷史seed與兩策略正常authority。候選與定向測試不授完整P06／P08／M3。
+
+### F12 O_BINARY 探針通過與完整 Main 保存契約失敗
+
+上一 goal turn 只回覆使用者補完狀態，分類 no progress；本輪重核工作樹與三代理 ownership，保存既有 guard／COW／Main 的 terminal 原收據，不重啟 consumed release。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持。
+
+O_BINARY sibling freeze `6f2c95360c023e233779828df1af22187a466f016f80da9a0032114d3dcda718`；Main test SHA `2b1e225f53c3fdebb22575d03798e78a91fe331bb9de5876af15795030554c4d`，child 仍 `32456ac7` 前序版本。Root 逐 byte 核整個 module 只把私人正例 os.open 旗標增加 `getattr(os, "O_BINARY", 0)`；其餘 guard、七類負例及產品旅程斷言全部不變，64 pins／23來源核驗通過。Static收據 `root/f12_binary_static_root01_0d1ac6b1107b44faa8cd761eb2eccdd2/receipt.json`。
+
+| 階段 | 同版 root 實測與界線 |
+|---|---|
+| guard | **5 PASS／4.42秒／native0**，host `f12_binary_guard_host_root01_324df7c0d6924ece8421c444c62bd795`。47 assertions全true、descriptor records0，專屬Job／root handles閉合、remaining PID空。 |
+| 真私人 COW | **1 PASS／11.00秒／native0**，host `f12_binary_cow_host_root01_e7f155fcc1254803b14e7e473a21150b`。真按鈕／Yes各一次、schema3、公開reader query_only且寫入拒絕、active service可讀、worker registry0、Job排空。 |
+| 完整 Main | **1 FAIL／38.94秒／outer native1**，host `f12_binary_main_host_root01_73c2d2cbb4584b759fbf91230ac175e9`。Main初始化、私人COW及完整母體查詢成功，已操作列／下鑽／返回及準備收藏；尚未等待保存完成、核持久化收藏或新程序重開。 |
+
+Main inner `main_candidate_852151c96b3148d2844012244d0353f0` worker pytest為1 FAIL／31.57秒，首個錯誤在 `tests/test_ui_qt_revenue_main_journey.py:6483`：`bookmark.saved_recipe.f17_query.bundle_identity_sha256`。正式 `DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1` 提供 `f17_query_json`，沒有 `f17_query` 屬性。代理正核整個 Main／freshchild 後續欄位與正式decoder契約，另建 QA sibling，不能以刪除身分核驗或增加產品相容屬性掩蓋測試錯誤。
+
+內層 supervisor記 **exit3221226505**、termination_reason null、active_process_count0、process_tree_closed true、owned_tree_closed＋owned_root_handles_closed。這不是自然native1成功收尾；native異常原因未證實，原初始化600／旅程2400秒期限未觸發。Query診斷明示 settled／success true／write_authority_unchanged true，window10:710共700事件：676個 `fdopen_rejected/canonical_handle_path_unavailable`、11個os_open_registered、11個descriptor_closed_via_os_close、2個owned-duplicate授權；不能稱Main guard零事件，也不能將這些已被query處理的事件當query失敗。三階段64pins／23來源路徑前後不變。
+
+Root唯讀另存 **23份raw** 於 `root/f12_binary_terminal_review_9cb232226d0e4970b62a63bfae6ea04a/receipt.json`，SHA `3425e77a9647b581f393555cfa5888e3e14853ccb827f53c6852a517c1a54e48`。保存工具初輪錯假設每個成功事件都含reason key，KeyError停止；保留該未完成封套，僅修root讀取工具為保留「欄位不存在」，沒有修改原收據或重跑產品。
+
+Health候選仍在scratch：dated baseline缺portfolio_id與observed_at，不能以mutable latest_status補歷史資格；缺完整witness保持degraded。P08正補兩策略exact intent、分開T−1決策來源與execution／close來源及公開日曆clock；尚未QA。此輪coverage／回滾見 `root/binary_terminal_coverage_20261011.md`，正式來源、Manual行為、架構與Roadmap Gate未改；完整F12／P06／P08／M3仍待。
+
+Root另全讀 F12 QA-only saved-recipe patch `256706bb953db5053bbcebfebab5b249e4cb854739fe0c711cfd2761d0e49231`：兩個測試均用正式F17 decoder解析保存JSON，保留bundle斷言並新增完整canonical JSON等價。原full-freeze `9e098de2` 的 verification仍含舊patch hash、錯prior inventory、舊Main preimage與63非Main計數；root尚未套用或釋跑，已交owner建立只修派生metadata的不可變 sibling。62個非test依賴與 guard不改，舊freeze原件保留。

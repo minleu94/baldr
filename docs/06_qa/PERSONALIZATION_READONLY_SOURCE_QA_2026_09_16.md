@@ -100,3 +100,7 @@
 ## 安全結論與後續
 
 目前可接受的是 read-only source diagnosis、exact matched row assembly，以及通過 preflight 後由使用者明示的 `PersonalizationDecisionRecorder` action entry。只有新的 producer path 先保存完整 scope、prediction、receipt、horizon、cost、label／return contract，再在 delivery ACK 後以 `action_at >= delivered_at` 寫入既有 Journal revision，才可進入後續 cohort；舊 action 不 retrofit。正式 natural effect、utility、adoption、promotion 與交易授權仍未達成，應等待真實 scope-linked decision／mature outcome，而不是用 fixture、Paper 或 user-declared context 代替。
+
+## 2026-10-11 後續個人 V2 路徑範圍
+
+上方 2026-09-16 的唯讀 probe 數字與 scope 缺件仍限於該次正式來源、identity 與 as-of；後續 [M10 widget receipt](PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md) 使用獨立固定 snapshot 與 user-declared-source-time policy，完成 bounded candidate inference、canonical save/readback 與 capture v3。M10 Stage C 仍是 mature 0／pending 19，`official_historical_pit_verified=false`，最終 policy 為 `rule_only`；該路徑不追溯連結本次 probe 的 rows，也不證明 natural credit、global promotion、正式資料寫入或 OS foreground／真人驗收。

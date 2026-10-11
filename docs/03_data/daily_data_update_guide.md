@@ -12,7 +12,7 @@
 
 本文檔說明如何使用主模組更新每日股票數據。系統已實現完整的數據更新功能，包括批量更新、單日更新和數據合併。
 
-產業指數批次更新只檢查本次請求交易日的 capture／projection marker。請求範圍外的舊 CSV 日期即使仍屬 unknown，也不會讓當日已驗證的 no-op 排程失敗；請求範圍內的未驗證 legacy 日期仍須回報 unknown／失敗，不可當成已更新或整份同步至 SQLite。排錯時應對照 `data_update_quick/latest_status.json` 的 `verified_skipped_dates`、`unverified_legacy_dates` 與 `failed_dates`，不要僅看 CSV 是否存在。
+產業指數批次更新只檢查本次請求交易日的 capture／projection marker。請求範圍外的舊 CSV 日期即使仍屬 unknown，也不會讓當日已驗證的 no-op 排程失敗；請求範圍內的未驗證 legacy 日期仍須回報 unknown／失敗，不可當成已更新或整份同步至 SQLite。排錯時應對照 `OUTPUT_ROOT/scheduled/data_update_quick/latest_status.json` 的 `verified_skipped_dates`、`unverified_legacy_dates` 與 `failed_dates`，不要僅看 CSV 是否存在。
 
 ## 2026-10-03 freshness 與隔離候選操作補充
 
@@ -198,9 +198,7 @@ python scripts/update_daily_stock_data.py --date 2025-08-29 --merge
 
 > **舊排錯說明，已由現行環境指南取代：** 下列 System Python 指令不是標準安裝或環境修復方式。一般情況直接使用 repo 的 `.venv` 解譯器；僅符合[受限 System Python 備援條件](../08_technical/RUN_WITHOUT_VENV.md)的本機環境才採用 system Python。
 
-**解決方案**：
-- 直接使用系統 Python：`python scripts/batch_update_daily_data.py --start-date 2025-08-28`
-- 不需要激活虛擬環境
+**解決方案**：一般情況直接使用 repo 的 `.venv` 解譯器，無須啟用環境：`.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date 2025-08-28 --end-date YYYY-MM-DD`。只有電腦已配置相容 Python 3.11 x64 與所需 runtime 套件，且確認命令解析到該解譯器時，才依[受限 System Python 備援條件](../08_technical/RUN_WITHOUT_VENV.md)改用 system Python。
 
 ## 相關文檔
 

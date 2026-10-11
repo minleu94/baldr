@@ -28,6 +28,15 @@
 
 以下一次性摘要與舊版架構指南不作目前操作依據。原文已移至封存區，舊路徑保留導引：
 
+以下六個檔案仍保留在本目錄，供既有連結使用；它們只導向封存原文或目前權威文件，不代表現行操作流程：
+
+- [DATA_FLOW_LOGIC.md](DATA_FLOW_LOGIC.md)：舊 CSV／`ui_app` 資料流程導引，原文見[封存版本](../09_archive/RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md)。
+- [DATA_REBUILD_GUIDE.md](DATA_REBUILD_GUIDE.md)：舊 CSV 全量重建導引，原文見[封存版本](../09_archive/DATA_REBUILD_GUIDE_HISTORY.md)。
+- [INDUSTRY_INDEX_UPDATE_SUMMARY.md](INDUSTRY_INDEX_UPDATE_SUMMARY.md)：產業指數更新歷史摘要，原文見[封存版本](../09_archive/INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md)。
+- [MERGE_AND_MARKET_INDEX_SUMMARY.md](MERGE_AND_MARKET_INDEX_SUMMARY.md)：合併與大盤指數歷史摘要，原文見[封存版本](../09_archive/MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)。
+- [SQLITE_STORAGE_GUIDE.md](SQLITE_STORAGE_GUIDE.md)：SQLite 雙軌相容歷史指南，原文見[封存版本](../09_archive/SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)。
+- [TROUBLESHOOTING_DAILY_UPDATE.md](TROUBLESHOOTING_DAILY_UPDATE.md)：每日更新舊版排錯導引，原文見[封存版本](../09_archive/TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)。
+
 - [產業指數更新摘要（歷史）](../09_archive/INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md)
 - [合併與大盤指數摘要（歷史）](../09_archive/MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)
 - [SQLite 雙軌相容指南（2026-06 歷史版）](../09_archive/SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)

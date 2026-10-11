@@ -3105,3 +3105,41 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 | `docs/superpowers/specs/2026-07-13-parallel-evidence-ml-dashboard-design.md` | 16153 | `50c81d03f4024bcffd0fb45d3f4d140345dee4f4708f692d4e25d74c40b9a62e` |
 | `docs/superpowers/specs/2026-07-13-two-day-evidence-foundation-design.md` | 3652 | `e9c241de21d3681cee290d2a30c942d3975bb05562c7260f87b67573a5afe40e` |
 | `docs/superpowers/specs/2026-07-14-development-dataset-v0-1-corporate-action-coverage-design.md` | 8689 | `97ec2dabd320152cd3d34f1d4f7129e61418ca8bd08590c667fdfd6f07e9e1ad` |
+
+<a id="coverage-entry-309"></a>
+## 2026-10-11 QA 單篇文件全文再核讀與 R026 狀態導讀修訂
+
+兩批共 28 個 `docs/06_qa/` 乾淨路徑全文讀至 EOF；稽核前後均以精確路徑確認其 Git 狀態。11 份為證據／導覽文件，17 份為三行歷史轉址 stub。各檔分類與目前位元組／SHA-256 如下；此具名增量不與無逐檔清冊的 205／4／344 舊 aggregate 相加。17 個 stub 中，兩份 prospective restart stub 的 Archive README 路徑尚未確認；其餘 stub 的 Archive 原件或索引路徑已確認。Archive 原件正文不在本批覆核範圍。
+
+| QA 路徑 | 分類 | 行數 | bytes | 目前 SHA-256 |
+|---|---|---:|---:|---|
+| `docs/06_qa/BALDR_B13_MODEL_INPUT_20261006.md` | QA evidence | 114 | 11603 | `ad530e9763c42a8ada9b13512133fa79fabf0e1f6b54ac1c85b976c499196b93` |
+| `docs/06_qa/BALDR_B14_SHADOW_CONTROL_20261006.md` | QA evidence | 86 | 11855 | `cfe3ff0eca18603079fd3453c1e39595719a7f3d2277e968e90dc74864d24c30` |
+| `docs/06_qa/BALDR_UX_EVIDENCE_GUIDE_20261009.md` | navigation | 65 | 4082 | `7b022da43ff6647c503383ac24a62ebd3c077ff9595c17b537c071d8b51402d2` |
+| `docs/06_qa/P01_FILTER_PROFILE_DIAGNOSTIC_CONTRACT_20261008.md` | QA evidence | 37 | 7458 | `7aa9a5ead83b0764d6afb21123f87e00369f01b7a2badac3a12bfe927dccf764` |
+| `docs/06_qa/POSITION_HEALTH_INCREMENT_1_QA_2026_09_15.md` | QA evidence | 103 | 6104 | `cf15955ac7e0465d3fd12959b978d026eacc09ffc03ef20ec288e01ada2a9098` |
+| `docs/06_qa/POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md` | redirect stub | 3 | 358 | `14647dbe5af7fe9e45c653f8a998f64a32fcf11dfbc93ab3c5aaf52a89baeb15` |
+| `docs/06_qa/POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md` | redirect stub | 3 | 338 | `f18b24beba1db2f82f9ff188449ede31dd71f7c7f9bc17d9c6dee9b6a29ce23b` |
+| `docs/06_qa/POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md` | redirect stub | 3 | 355 | `d2771b09b9689dd7c16f609c7140c9be1aa431ec9656e4f90c5c5694291bba87` |
+| `docs/06_qa/POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md` | redirect stub | 3 | 347 | `1c7bd95dd39c7d2c885b920821405723acb5e47ddb39641f052ab9caf9670090` |
+| `docs/06_qa/POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md` | redirect stub | 3 | 344 | `a011ecbf11455a852fccb53d0a04d920ad62faef6ba5c237cc9310003f0ac16d` |
+| `docs/06_qa/POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md` | redirect stub | 3 | 348 | `e35d9727d50f98ec10cb9d75c2050b69cb2903c2fa38b0dcaf5eac5a003c704f` |
+| `docs/06_qa/PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md` | redirect stub | 3 | 278 | `cd627e71ea9fa0d6820b8c91a4d17ef32e640ed5ff90e47f3b7a645f8fd53398` |
+| `docs/06_qa/PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md` | redirect stub | 3 | 397 | `14dfe745b4c2fc2825bbfe0ea2702d6c13376525aad45050ca9465e42aeadd4f` |
+| `docs/06_qa/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md` | redirect stub | 3 | 389 | `e1bbcd235e9e8394c5ac4cc604cd5de0bd4053e4ef6ca015be2ded9855816f58` |
+| `docs/06_qa/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md` | redirect stub | 3 | 278 | `1388caec60b3bc18f56577694005898159c1e029d466e8dc9b5b4bf5c520e3e4` |
+| `docs/06_qa/PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md` | redirect stub | 3 | 294 | `36bf3fe687c424563b45d333ec2f9f1614529c6f79bce8309887c45e5a9339fd` |
+| `docs/06_qa/R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925.md` | redirect stub | 3 | 456 | `757cb00598d4256ca4b03757646bb94c3e17070c94d14bdca447f06cf518933f` |
+| `docs/06_qa/R026_EVIDENCE_GUIDE.md` | navigation | 60 | 4912 | `ef6dcf562b2a4ab05aeaf18d9eda96a8488ccf7311321c1b32c8277c0870ece1` |
+| `docs/06_qa/R026_PREPARED_RUNTIME_INPUT_TYPES_API_DESIGN_20260925.md` | dated design / QA evidence | 224 | 15156 | `87317abb7375f8d63fc90a6014c27f78dd0d225b261460e00fc36d9c113dc6b5` |
+| `docs/06_qa/REFACTOR_BASELINE_R001_20260922.md` | redirect stub | 3 | 299 | `f94d3d0bb8a0b78a21fa12815f8f49ef170e1533bf5ecdfa9bc66317c274db71` |
+| `docs/06_qa/REFACTOR_ML_ABI_BASELINE_R006_20260922.md` | redirect stub | 3 | 437 | `10d19d70f46926de5b0e490f70039ee38b797600426bf0c07280c9672f3ab3c9` |
+| `docs/06_qa/RESEARCH_SOURCE_DATE_PRESENTATION_20261008.md` | QA evidence | 15 | 1250 | `18c4e9328fe05c75898dee9f83e9c14f727556f885aff5bc09dd5f9f3747c004` |
+| `docs/06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md` | QA evidence | 52 | 7750 | `bc6a86bd81c018e623cad966df4db9298edd759ce7fbdd8faf1c009f681b5907` |
+| `docs/06_qa/UX21_FORWARD_OUTCOME_20261006.md` | QA evidence | 74 | 16011 | `caf3f5aaaea3b129630dc1f1ef80c91bc57d624b33c3edf88ad1dc48eff5d33f` |
+| `docs/06_qa/UX22_FAIR_COMPARISON_20261006.md` | QA evidence | 55 | 8409 | `462889d6ec75d21766bab6a349c72eb57aa59b75a30a2eb072ff7f1d2e40ba72` |
+| `docs/06_qa/V4_NEXT_FORMAL_HANDOFF_2026_09_08.md` | redirect stub | 3 | 592 | `066b5d7186600f2d3a38add5de028c77a5854597a65ef062e560c6ad2e8cd64f` |
+| `docs/06_qa/V4_NEXT_ML_HANDOFF_2026_09_08.md` | redirect stub | 3 | 364 | `df4743663a67c1e7a6f39857ad0828a0e7c0bbd2908534ab351a465dcbcfd76b` |
+| `docs/06_qa/V4_NEXT_OPS_HANDOFF_2026_09_08.md` | redirect stub | 3 | 462 | `4cacc2a21523dd3f869bdb6cc0a0bc357b2bb15fef03af260b1c8fe9c4870f7b` |
+
+11 份內容／導覽文件中，B13、B14、BALDR UX guide、P01、Position Health、R026 guide、Research Source、UX02、UX21、UX22 的範圍或日期提示足夠，無需變更。R026 prepared runtime input 設計原先將 9/25「等待獨立覆核；未接 production route」狀態放在檔首，而 10/11 bounded NP1／NP2 typed-preparation 與 post-calibration handoff 已記於結尾。為避免舊狀態先入眼，將 10/11 後續狀態移至檔首，並將舊狀態明確標為設計快照；保留精確 caller/profile 範圍及其他 source-evidence／production promotion 限制。原始稽核版本為 226 行／15,181 bytes／SHA-256 `6b0ef47700f2d79bf7d1761af500ae1b086f9277c3af9ebb83a071223a618578`；現行版本 224 行／15,156 bytes，SHA 如表。17 份歷史 stub 均維持 redirect 分類；未讀 Archive 原件正文，亦未把 stub 導覽判作原件內容覆核。受保護 Snapshot、Application Manual、system architecture 與指定 plan 不作本批狀態判斷；全域 links／anchors scan 與 Graphify 仍待所有目錄完成後執行。

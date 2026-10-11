@@ -1,5 +1,7 @@
 # Healthcheck Batch 6 Closeout / Regime / Research Lab Plan
 
+> **歷史狀態界線（2026-10-11）**：Tasks 1–4 未勾選，但 Execution Log / Verification Result 記為完成與通過，且沒有 commit identity；請保留兩種記錄，本文不能單獨作為目前驗證收據，現況依最新 Snapshot 與具名 QA 收據判讀。下表舊 rollback 命令僅供歷史查閱，禁止執行。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: 使用 superpowers:executing-plans 依序執行本計畫。每完成一個 task 後必須跑該 task 的 verification；若測試失敗或 scope 偏離，先修正再進下一步。
 
 **Goal:** 收斂 Batch 1-5 後 healthcheck 母檔仍明確未完整解決的項目：Research Lab 入口 / 結果頁自動載入 / 升級後導引、healthcheck 狀態欄位一致化，以及 `MARKET-ISSUE-002` Regime confidence / 子分數計算排查。Update 受控並行仍列後續設計，不在本批直接做高風險平行化。
@@ -80,16 +82,16 @@
 
 | 檔案路徑 | 變更類型 | 回滾方式 | 風險 |
 |---|---|---|---|
-| `ui_qt/views/backtest/result_panel.py` | 可能修改 | `git checkout HEAD -- ui_qt/views/backtest/result_panel.py` | 移除 tab auto-load hook |
-| `ui_qt/views/backtest/config_panel.py` | 可能修改 | `git checkout HEAD -- ui_qt/views/backtest/config_panel.py` | 推薦回放 / 策略研究提示回到 Batch 5 |
-| `ui_qt/views/backtest_view.py` | 可能修改 | `git checkout HEAD -- ui_qt/views/backtest_view.py` | 歷史 / 圖表 / 升級導引回到 Batch 5 |
-| `decision_module/market_regime_detector.py` | 可能修改 | `git checkout HEAD -- decision_module/market_regime_detector.py` | Regime confidence 修正回滾 |
-| `tests/test_ui_qt_research_workflow.py` | 修改 | `git checkout HEAD -- tests/test_ui_qt_research_workflow.py` | UI closeout 覆蓋下降 |
+| `ui_qt/views/backtest/result_panel.py` | 可能修改 | `git checkout HEAD -- ui_qt/views/backtest/result_panel.py` — ARCHIVED — DO NOT RUN | 移除 tab auto-load hook |
+| `ui_qt/views/backtest/config_panel.py` | 可能修改 | `git checkout HEAD -- ui_qt/views/backtest/config_panel.py` — ARCHIVED — DO NOT RUN | 推薦回放 / 策略研究提示回到 Batch 5 |
+| `ui_qt/views/backtest_view.py` | 可能修改 | `git checkout HEAD -- ui_qt/views/backtest_view.py` — ARCHIVED — DO NOT RUN | 歷史 / 圖表 / 升級導引回到 Batch 5 |
+| `decision_module/market_regime_detector.py` | 可能修改 | `git checkout HEAD -- decision_module/market_regime_detector.py` — ARCHIVED — DO NOT RUN | Regime confidence 修正回滾 |
+| `tests/test_ui_qt_research_workflow.py` | 修改 | `git checkout HEAD -- tests/test_ui_qt_research_workflow.py` — ARCHIVED — DO NOT RUN | UI closeout 覆蓋下降 |
 | `tests/test_market_regime_detector.py` | 可能新增 | 刪除新檔 | Regime confidence 覆蓋下降 |
-| `docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` | 修改 | `git checkout HEAD -- docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` | healthcheck 狀態回到 Batch 5 |
-| `docs/07_guides/APPLICATION_MANUAL.md` | 可能修改 | `git checkout HEAD -- docs/07_guides/APPLICATION_MANUAL.md` | Manual 缺少 Batch 6 closeout |
-| `docs/01_architecture/system_architecture.md` | 可能修改 | `git checkout HEAD -- docs/01_architecture/system_architecture.md` | 架構文件不描述 Regime confidence contract |
-| `docs/00_core/DOCUMENTATION_INDEX.md` | 修改 | `git checkout HEAD -- docs/00_core/DOCUMENTATION_INDEX.md` | plan 不在索引 |
+| `docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` | 修改 | `git checkout HEAD -- docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` — ARCHIVED — DO NOT RUN | healthcheck 狀態回到 Batch 5 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 可能修改 | `git checkout HEAD -- docs/07_guides/APPLICATION_MANUAL.md` — ARCHIVED — DO NOT RUN | Manual 缺少 Batch 6 closeout |
+| `docs/01_architecture/system_architecture.md` | 可能修改 | `git checkout HEAD -- docs/01_architecture/system_architecture.md` — ARCHIVED — DO NOT RUN | 架構文件不描述 Regime confidence contract |
+| `docs/00_core/DOCUMENTATION_INDEX.md` | 修改 | `git checkout HEAD -- docs/00_core/DOCUMENTATION_INDEX.md` — ARCHIVED — DO NOT RUN | plan 不在索引 |
 | `docs/superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md` | 新增 | 刪除本檔 | 無資料風險 |
 
 ## TDD Steps

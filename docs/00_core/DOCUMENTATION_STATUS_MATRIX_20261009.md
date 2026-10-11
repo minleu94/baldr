@@ -70,7 +70,7 @@
 | `DOC_COVERAGE_MAP.md` | 現行跨文件 Scoped SSOT、同步矩陣與 DoD 權威。 | 全文；修正中央 Index 與領域 README／主題索引要求互相矛盾，並把 Blueprint 限定為候選來源研究細節。 |
 | `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 外部專案與候選資料源研究 companion，不是現況、來源優先序或交付順序權威。 | 全文；區分 2026-07-11 研究基線與 2026-08-14 具名來源審查，現行來源優先序導回 Product Roadmap §11；未重新查核外部 repo／接受狀態。 |
 | `LEGACY_ROADMAP_CARRYOVER.md` | 2026-06-15 歷史移交／結案記錄；目前工程順序回到 6M Roadmap，現況回到 Snapshot。 | 全文；將 fixed／quantile Gate 明確限定為 10 檔 pilot，不推定完整股票池已驗收。 |
-| `NEXT_ACTION_PLAN.md` | 已封存一次性計畫的相容入口。 | 全文；明確導回現行 Snapshot／Roadmap。 |
+| `NEXT_ACTION_PLAN.md` | 已封存一次性計畫的相容入口。 | 全文；補充 §7–§9 派工／驗證指示均為歷史內容，導回現行 Development／Product／6M Roadmap。 |
 | `PRODUCT_ROADMAP_POST_REFACTOR.md` | 現行產品方向與產品 Gate 權威，不負責目前進度。 | 全文；方向、產品 Gate 與 Snapshot／6M 權責相符，基線日期 2026-09-17 有標示。 |
 | `PROJECT_SNAPSHOT.md` | 現行唯一狀態入口。 | 全文；已把 Index 從「完整文件清單」改為導覽，並分連歷史目錄快照與本矩陣。 |
 | `README.md` | Core 區導航頁，不取代主題權威。 | 全文；Scoped Authority 導覽相符。 |
@@ -666,3 +666,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 UI 功能文件增量：** `UI_FEATURES_DOCUMENTATION.md` 依現行 656 行全文再核讀；相較既有 Entry 187 的 651 行版本新增 5 行，內容與 README／Product §11／QA pending 界線一致，原件保留。見 [Coverage History Entry 288](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-288)。Entry 187 的成本模型切換與「與推薦分析整合」範圍未解項目仍待核實。
 
 **2026-10-11 QA Operations／Integration 增量：** 再核讀 7 份 QA 單篇文件，均為新增具名全文紀錄，對照後續收據後原件保留未改；BankTaiwan 假日 skip、Stage1／Integration／V6 等證據界線均維持限定範圍。見 [Coverage History Entry 289](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-289)。舊 QA aggregate 無逐檔 manifest，不據此重算全域去重數。
+
+**2026-10-11 Archive 根層增量：** 八份先前局部掃描的歷史單篇文件已全文核讀，僅 `NEXT_ACTION_PLAN.md` 補強 §7–§9 派工／驗證內容的歷史警示，其餘保留未改。見 [Coverage History Entry 290](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-290)。

@@ -4,7 +4,7 @@
 > 歷史歸檔：2026-06-12
 > 狀態：✅ 已全數執行完畢
 >
-> **歷史警示（2026-10-10）**：本文是 2026-06 的一次性計畫；`git checkout -b codex/...` 等分支步驟與「目前真實狀態」不是現行待辦或授權。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程順序看 [6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)。
+> **歷史警示（2026-10-10）**：本文是 2026-06 的一次性計畫；`git checkout -b codex/...` 等分支步驟、「目前真實狀態」及 §7–§9 的派工／驗證指示都是當時封存內容，不是現行待辦或授權。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，文件入口看 [Development Roadmap](../00_core/DEVELOPMENT_ROADMAP.md)，產品方向看 [Product Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)，工程順序看 [6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)。
 
 ---
 

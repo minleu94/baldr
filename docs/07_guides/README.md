@@ -10,7 +10,7 @@
 - **[APPLICATION_MANUAL.md](APPLICATION_MANUAL.md)**
   - 目前 PySide6 UI 的完整操作手冊（SSOT）
   - 涵蓋目前 9 個頂層工作區、跨工作區流程、參數設定、結果判讀、安全限制與排錯
-  - 第 14 節後最初的 2026-10-03 至 10-08 日期化開發／候選紀錄及 10/11 移存的歷史排程／研究模板，已移至 [Archive](../09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)；同名標題留在手冊只作舊書籤導引
+  - 第 14 節後最初的 2026-10-03 至 10-08 日期化開發／候選紀錄及 10/11 移存的歷史排程／研究模板，已移至 [Archive](../09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)；手冊尾段以舊書籤導引為主，仍保留少數操作摘要，例如 [9.9.1h BBANDS 保存研究條件](APPLICATION_MANUAL.md#991h-h20-gross-每日收據與-bbands-上軌保存版別2026-10-06)。
 - **[APPLICATION_MANUAL_SUPPLEMENTS.md](APPLICATION_MANUAL_SUPPLEMENTS.md)**
   - 操作手冊附冊：保留較長的日期化操作補充、進階研究 CLI、排程與受控維運，以及從主手冊前置區移入的歷史原文；不另作目前狀態權威
 - **[QUICK_START.md](QUICK_START.md)**
@@ -24,7 +24,7 @@
 
 APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章節即可。跨工作區流程讀取涉及的章節；日期化工程補充只在與本次功能相關時閱讀，並沿章節連結查看 QA 證據。
 
-主手冊正文從第 1 章開始；原先堆在章首的日期化補充已移入附冊，初始 2026-10-03 至 10-08 的開發／候選快照及 10/11 後續移存的歷史排程／研究模板則移入 Archive，舊標題保留導引以接住既有連結。功能是否已交付與驗收，仍以 Snapshot 和具名 QA 為準。
+主手冊正文從第 1 章開始；原先堆在章首的日期化補充已移入附冊，初始 2026-10-03 至 10-08 的開發／候選快照及 10/11 後續移存的歷史排程／研究模板則移入 Archive。第 14 節後以歷史導引為主，但少數章節仍保留操作摘要，應依章節內容與 QA 連結辨認；功能是否已交付與驗收，仍以 Snapshot 和具名 QA 為準。
 
 | 任務 | 在 APPLICATION_MANUAL 搜尋的章節標題 |
 |---|---|
@@ -34,7 +34,7 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
 | 市場探索 | 5. 市場探索 |
 | 推薦分析與結果判讀 | 6. 推薦分析 |
 | 觀察清單與選股清單 | 7. 觀察清單與選股清單 |
-| Research Lab、策略回測 | 9. Research Lab / 策略回測 |
+| Research Lab、策略回測 | 9. Research Lab / 策略回測；[9.9.1h BBANDS 保存研究條件](APPLICATION_MANUAL.md#991h-h20-gross-每日收據與-bbands-上軌保存版別2026-10-06) |
 | 持倉管理 | 10. 持倉管理 |
 | Runtime 與營運監控 | 11. Runtime Observatory（Owner 營運與治理監控） |
 | 常見問題與覆蓋狀態 | 12. 常見問題、13. Manual 覆蓋狀態 |

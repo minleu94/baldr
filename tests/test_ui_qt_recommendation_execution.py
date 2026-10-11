@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from dataclasses import replace
+import json
 import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -957,6 +958,79 @@ def test_saved_empty_canonical_execution_load_keeps_identity_and_date(
         assert "原結果沒有推薦列" in view.result_status_label.text()
     finally:
         view.close()
+
+
+def test_daily_snapshot_auto_load_uses_exact_status_identity(qt_app, tmp_path):
+    result_id = "rec-scheduled-ui-smoke"
+    output_root = tmp_path / "output"
+    runs_dir = output_root / "recommendation" / "runs"
+    runs_dir.mkdir(parents=True)
+    status_path = (
+        output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    )
+    status_path.parent.mkdir(parents=True)
+    status_path.write_text(
+        json.dumps(
+            {
+                "task": "baldr-recommendation-snapshot-daily",
+                "status": "passed",
+                "confirm": False,
+                "writes_recommendation_result": True,
+                "writes_evidence_db": False,
+                "auto_trading": False,
+                "lifecycle_action": False,
+                "decision_date": "2026-09-23",
+                "result_id": result_id,
+                "recommendations_count": 1,
+                "output_root": str(output_root),
+                "runs_dir": str(runs_dir),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class _Config:
+        def __init__(self, root) -> None:
+            self.output_root = root
+
+        def resolve_output_path(self, subfolder):
+            path = self.output_root / subfolder
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+
+    execution = _execution(result_id)
+    from app_module.recommendation.composition import build_recommendation_composition
+
+    composition = build_recommendation_composition(_Config(output_root))
+    composition.save_service.save_execution(
+        execution, label="daily snapshot", notes="test"
+    )
+    view = RecommendationView(
+        recommendation_service=MagicMock(),
+        regime_service=SimpleNamespace(
+            detect_regime=lambda: SimpleNamespace(regime="Trend"),
+            get_strategy_config=lambda _regime: {},
+        ),
+        config=_Config(output_root),
+        universe_service=MagicMock(),
+    )
+    view.recommendation_composition = composition
+    try:
+        qt_app.processEvents()
+        worker = view._saved_result_load_worker
+        assert worker is not None and worker.wait(10_000)
+        qt_app.processEvents()
+        qt_app.processEvents()
+
+        assert view.current_read_model is not None, view.result_status_label.text()
+        assert view.current_read_model.result_id == result_id
+        assert view.current_save_receipt is None
+        assert view._verified_saved_result_id() == result_id
+        assert "每日排程研究候選" in view.result_status_label.text()
+        assert "僅供研究判讀" in view.result_status_label.text()
+    finally:
+        view.close()
+        qt_app.processEvents()
 
 
 def _config_for_request():

@@ -53,6 +53,10 @@ from app_module.recommendation.negative_evidence_projection import (
     project_canonical_negative_evidence,
 )
 from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.scheduled_recommendation_status import (
+    ScheduledRecommendationPointer,
+    read_latest_scheduled_recommendation_pointer,
+)
 from decision_module.recommendation.contracts import RecommendationItem
 from app_module.recommendation_profile_service import (
     RecommendationProfile,
@@ -858,6 +862,7 @@ class RecommendationView(QWidget):
         self._saved_result_load_worker: TaskWorker | None = None
         self._saved_result_load_generation = 0
         self._saved_result_load_requested_id = ""
+        self._pending_scheduled_recommendation: ScheduledRecommendationPointer | None = None
         self._saved_source_list_worker: TaskWorker | None = None
         self._saved_source_list_generation = 0
         self._saved_source_expected_identity: tuple[str, ...] | None = None
@@ -922,6 +927,7 @@ class RecommendationView(QWidget):
         self._refresh_profile_options()
 
         self._setup_ui()
+        QTimer.singleShot(0, self._load_latest_scheduled_recommendation)
         self._load_current_regime()
         if getattr(self._personal_use_policy, "revision", 0) > 1:
             self._refresh_personal_policy_history()
@@ -3647,6 +3653,16 @@ class RecommendationView(QWidget):
         self.refresh_saved_sources_button.setEnabled(self.config is not None)
         self.refresh_saved_sources_button.clicked.connect(self._refresh_saved_sources)
         saved_result_row.addWidget(self.refresh_saved_sources_button)
+        self.load_daily_recommendation_button = QPushButton("載入每日推薦")
+        self.load_daily_recommendation_button.setObjectName("loadDailyScheduledRecommendation")
+        self.load_daily_recommendation_button.setToolTip(
+            "讀取今日排程已保存的研究候選；不重新執行、不寫入證據或交易。"
+        )
+        self.load_daily_recommendation_button.setEnabled(self.config is not None)
+        self.load_daily_recommendation_button.clicked.connect(
+            self._load_latest_scheduled_recommendation
+        )
+        saved_result_row.addWidget(self.load_daily_recommendation_button)
         self.cancel_saved_source_button = QPushButton("取消讀取")
         self.cancel_saved_source_button.setEnabled(False)
         self.cancel_saved_source_button.clicked.connect(self._cancel_saved_source_read)
@@ -6633,6 +6649,31 @@ class RecommendationView(QWidget):
         self.result_status_label.setText("已取消保存來源讀取；原選項與結果保留。")
         self.cancel_saved_source_button.setEnabled(False)
 
+    def _load_latest_scheduled_recommendation(self) -> None:
+        """Load the exact result named by the validated daily scheduler pointer."""
+        if self.config is None:
+            return
+        if getattr(self, "_saved_result_load_worker", None) is not None:
+            return
+        self._pending_scheduled_recommendation = None
+        output_root = getattr(self.config, "output_root", None)
+        if output_root is None:
+            return
+        if not output_root:
+            self.result_status_label.setText("未設定每日推薦輸出位置；目前結果保留。")
+            return
+        try:
+            pointer = read_latest_scheduled_recommendation_pointer(output_root)
+        except Exception as exc:
+            self.result_status_label.setText(
+                f"每日推薦目前無法載入；目前結果保留。原因：{type(exc).__name__}: {exc}"
+            )
+            return
+        self._saved_source_expected_identity = None
+        self._pending_scheduled_recommendation = pointer
+        self.saved_result_id_input.setText(pointer.result_id)
+        self._load_saved_recommendation_result()
+
     def _load_saved_recommendation_result(self) -> None:
         """Read one explicitly named canonical saved result on a background worker."""
 
@@ -6673,6 +6714,14 @@ class RecommendationView(QWidget):
         if expected_identity is not None and expected_identity[3] != requested_result_id:
             self.result_status_label.setText("選項與結果 ID 不一致；請重新選擇來源。")
             return
+        scheduled_pointer = getattr(
+            self, "_pending_scheduled_recommendation", None
+        )
+        if (
+            scheduled_pointer is not None
+            and scheduled_pointer.result_id != requested_result_id
+        ):
+            scheduled_pointer = None
         # A queued run completion from a prior native worker must not overwrite this readback.
         self._execution_generation = getattr(self, "_execution_generation", 0) + 1
         self.load_saved_result_button.setEnabled(False)
@@ -6686,7 +6735,18 @@ class RecommendationView(QWidget):
             if callable(cancel_callback) and cancel_callback():
                 return None
             # Deliberately use get(result_id), never list() or a latest-result fallback.
-            return composition.queries.get(requested_result_id)
+            read_model = composition.queries.get(requested_result_id)
+            if scheduled_pointer is not None:
+                execution = getattr(read_model, "execution", None)
+                context = getattr(execution, "context", None)
+                as_of = getattr(context, "as_of_date", None)
+                if as_of != scheduled_pointer.decision_date:
+                    raise ValueError("每日快照決策日期與保存結果不一致")
+                if len(getattr(execution, "items", ())) != (
+                    scheduled_pointer.recommendations_count
+                ):
+                    raise ValueError("每日快照候選筆數與保存結果不一致")
+            return read_model
 
         worker = TaskWorker(read_one_result)
         worker.saved_result_generation = generation
@@ -6810,6 +6870,14 @@ class RecommendationView(QWidget):
             self.result_status_label.setText(
                 f"已讀取 canonical 保存結果 {requested_result_id}；原結果沒有推薦列。"
             )
+        pointer = getattr(self, "_pending_scheduled_recommendation", None)
+        if pointer is not None and pointer.result_id == requested_result_id:
+            self.result_status_label.setText(
+                f"每日排程研究候選｜決策日 {pointer.decision_date.isoformat()}｜"
+                f"快照標示 {pointer.recommendations_count} 檔。僅供研究判讀，不代表投資建議或交易。\n"
+                + self.result_status_label.text()
+            )
+            self._pending_scheduled_recommendation = None
         self._update_watchlist_action_state()
         self._update_detail_text()
         self._refresh_personal_choice_controls()
@@ -6824,6 +6892,9 @@ class RecommendationView(QWidget):
         if generation != getattr(self, "_saved_result_load_generation", None):
             return
         short_message = str(message).splitlines()[0][:300]
+        pointer = getattr(self, "_pending_scheduled_recommendation", None)
+        if pointer is not None and pointer.result_id == requested_result_id:
+            self._pending_scheduled_recommendation = None
         self.result_status_label.setText(
             f"讀取結果 {requested_result_id} 失敗；原畫面保留。原因：{short_message}"
         )
@@ -6835,6 +6906,9 @@ class RecommendationView(QWidget):
     ) -> None:
         if generation != getattr(self, "_saved_result_load_generation", None):
             return
+        pointer = getattr(self, "_pending_scheduled_recommendation", None)
+        if pointer is not None and pointer.result_id == requested_result_id:
+            self._pending_scheduled_recommendation = None
         self.result_status_label.setText(
             f"已取消讀取 {requested_result_id}；原畫面保留。"
         )

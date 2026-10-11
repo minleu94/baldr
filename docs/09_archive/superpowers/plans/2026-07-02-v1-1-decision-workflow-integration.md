@@ -1,5 +1,7 @@
 # V1.1 Decision Workflow Integration Implementation Plan
 
+> **歷史操作警示（2026-10-11）**：本計畫目前全未勾選；其中舊 `git commit`／`git push origin dev` 命令僅是歷史提案，不證明曾執行，也不構成目前授權。重用前須取得新的明確授權；下方原命令保留供追溯，不要直接執行。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 完成 V1.1 的每日決策到推薦策略驗證 workflow bridge，補齊 Profile Replay Comparison 的服務邊界與可見 Profile 差異。

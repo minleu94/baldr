@@ -1,5 +1,7 @@
 # Paper EOD 非交易日 gate 修正 QA（2026-09-25）
 
+> 本文狀態截至 2026-09-25；文中年度休市 cache 已於 9/28 到期。後續 Paper gate 與自然排程狀態須另查更新的具名收據，不能沿用本次 direct gate 結果。
+
 本次 bounded 修正只處理 Paper dependency gate 的官方休市分類。9/25 的 TWSE 年度休市 cache 以 exact target date、完整年度、raw response hash、content hash、available/captured 時間鏈與 freshness window 驗證；只有 verified `schedule[target] is False` 才回傳 `status=not_trading_day`、`ready=true`、`adapter_noop=true`。這個結果由既有 retry runner 的 no-op 分支消費，因此不進 isolated Paper adapter 或 writer。
 
 gate 使用 `data_module.official_trading_calendar_cache.load_verified_twse_calendar_cache`，production default cache root 是 `output/paper_execution_eod_replay/calendar_cache`。open、cache missing、expired、tampered 或其他驗證失敗都不產生日曆 no-op，繼續走原有 quick、freshness、source file、SQLite readback 與 blocker 規則。quick updater 沒有修改；其真實 technical failure 仍保留在原始 receipt。Legacy alias 造成的 technical 真錯誤也不在本修正範圍。

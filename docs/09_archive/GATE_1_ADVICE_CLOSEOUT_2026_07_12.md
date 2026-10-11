@@ -41,10 +41,10 @@ Qt focused tests 已驗證 Advice DTO 可被 Workbench 呈現，且無 policy �
 
 ## 殘餘與下一 Gate
 
-- Gate 2 仍需真實 weekly review history、manual review note 與 action-item rhythm；目前 weekly history 是 `0/3 waiting_for_time`。
-- multi-day dry-run 的目前可驗證值為 `3/3 ready`，但不代表 production scheduler approval。
+- 截至 2026-07-12 本輪 Gate 1 closeout，Gate 2 仍需真實 weekly review history、manual review note 與 action-item rhythm；當時 weekly history 是 `0/3 waiting_for_time`。
+- 截至同日，multi-day dry-run 的可驗證值為 `3/3 ready`，但不代表 production scheduler approval。
 - Gate 1 不驗證策略 / Advice 的投資有效性，也不接受 replay、fixture 或 candidate source 作為 Gate 2 / Gate 3 credit。
 
 ## 回退
 
-Gate 1 由上述原子 commits 組成；如需回退，依 commit 反序處理並重跑本文件的 focused suite。不得以回退為由刪除既有 evidence 或改寫正式資料。
+對 2026-07-12 本輪具名原子 commits 的歷史回退說明：當時須依 commit 反序處理並重跑本文件的 focused suite。這不是目前 HEAD 的回退指示；不得以回退為由刪除既有 evidence 或改寫正式資料。

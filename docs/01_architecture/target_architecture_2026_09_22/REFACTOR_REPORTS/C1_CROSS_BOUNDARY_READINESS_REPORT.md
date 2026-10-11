@@ -65,4 +65,4 @@ SCHEMA 測試將 rev1 raw SHA、payload hash 和 byte length 固定在 assertion
 
 ## Gate 限制
 
-這份結果可作為 SCHEMA/AB 跨邊界案例的聚焦測試輸入與審核材料，**不足以作為 C1 full gate 證據**。它不覆蓋 R014 forward consumer、R016 全部 legacy/query 類型、R017 replay bridge、ML ABI、整合測試矩陣或最終獨立審核。因此 C1 仍維持 reopened 狀態；本報告不宣稱 C1 PASS，也不授權 Wave 6 release、formal、promotion 或 production。
+這份結果可作為 SCHEMA/AB 跨邊界案例的聚焦測試輸入與審核材料，**不足以作為 C1 full gate 證據**。它不覆蓋 R014 forward consumer、R016 全部 legacy/query 類型、R017 replay bridge、ML ABI、整合測試矩陣或最終獨立審核。因此在本次 SCHEMA/AB 審查時，C1 仍維持 reopened；本報告本身不宣稱 C1 PASS，也不授權 Wave 6 release、formal、promotion 或 production。後續狀態依文首所連 C1 checkpoint 判讀。

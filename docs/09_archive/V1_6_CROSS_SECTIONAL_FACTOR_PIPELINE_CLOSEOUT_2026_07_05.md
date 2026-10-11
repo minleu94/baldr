@@ -26,7 +26,7 @@
 - V1.6 不把新 factor 直接接進 `ScoringEngine`，不改推薦權重、不把 rank / quantile 當作推薦。
 - V1.6 不新增三大法人、信用交易、TDCC 或其他外部資料 ingestion。
 - V1.6 不建立 production scheduler；snapshot 必須由受控 workflow 明確保存。
-- V1.7 才接續 Screening Matrix、Why Not / Liquidity payload 完整持久化與 Negative Evidence。
+- 依 2026-07-05 當時版本順序，Screening Matrix、Why Not / Liquidity payload 完整持久化與 Negative Evidence 留待 V1.7；後續結果見 [V1.7 closeout](V1_7_NEGATIVE_EVIDENCE_CLOSEOUT_2026_07_05.md)。
 
 ## Verification
 

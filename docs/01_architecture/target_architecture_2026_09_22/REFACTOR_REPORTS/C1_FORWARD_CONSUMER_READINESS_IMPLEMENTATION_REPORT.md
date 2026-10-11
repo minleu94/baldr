@@ -4,7 +4,7 @@
 
 **狀態：`U5A_ACCEPTED_PENDING_FULL_C1_GATE`**
 
-本報告記錄 C1 U5a typed verified-read forward consumer readiness 實作。獨立 Luna Max 審查已 `Accept U5a only`，確認 45 項測試、scoped mypy 與 py_compile 通過，且沒有剩餘 P0/P1/P2。此簽收只涵蓋 U5a；R014 真 scheduled wrapper parity 尚未驗證，C1 仍為 `REOPENED`、Wave 6 為 `BLOCKED`，不代表完整 C1、Wave 6 或正式資料流程通過。
+本報告記錄 C1 U5a typed verified-read forward consumer readiness 實作。獨立 Luna Max 審查已 `Accept U5a only`，確認 45 項測試、scoped mypy 與 py_compile 通過，且沒有剩餘 P0/P1/P2。此簽收只涵蓋 U5a；在該次審查時 R014 真 scheduled wrapper parity 尚未驗證，C1 為 `REOPENED`、Wave 6 為 `BLOCKED`，不代表完整 C1、Wave 6 或正式資料流程通過。後續狀態依文首 checkpoint 判讀。
 
 ## 實作範圍
 

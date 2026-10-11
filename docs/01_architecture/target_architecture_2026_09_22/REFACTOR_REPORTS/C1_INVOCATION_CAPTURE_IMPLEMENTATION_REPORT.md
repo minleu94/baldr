@@ -88,6 +88,6 @@ Luna Max 獨立複審：**`Accept U3 only`**，沒有剩餘 P0/P1/P2。複審涵
 ## 暫存元件、風險與 rollback
 
 - 未建立需要獨立移除的 temporary component；新增 direct seam 是後續 R014 可接線的 execution API，不包含 wrapper 接線。
-- 未 stage／commit/push；HEAD 仍是 `dcc27a42a37c2f69ad83fecee6c245177a457e01`。工作樹內含其他 slice 的 dirty/untracked 檔案，不可用 HEAD checkout 或整目錄刪除作 rollback。
+- 該報告結束時未 stage／commit/push；當時 HEAD 是 `dcc27a42a37c2f69ad83fecee6c245177a457e01`。當時工作樹內含其他 slice 的 dirty/untracked 檔案，不可用 HEAD checkout 或整目錄刪除作 rollback。
 - 若獨立 review 要求回退 U3，應只撤回本報告列出的 direct method 與 U3 capture/callback/row capture 變更，以及本 slice 新增的 capture tests/report；需保留 R011 `execute.py` 與舊 DTO list delegation 所需程式。不要刪除共享的 `app_module/recommendation/` 目錄或重置其他 dirty paths。
 - 限制：synthetic fixture 證明同次 capture 與現行 builder/hash oracle 的一致性；沒有實際呼叫 R014 wrapper，因此不能據此宣稱真 scheduled config parity、saved readback 或 C1 PASS。

@@ -1,5 +1,7 @@
 # 2026-05-20 價格修訂的模型影響與最小隔離
 
+> 本文紀錄日期為 2026-09-22；標題的 2026-05-20 是受影響的市場資料日期。模型隔離只涵蓋本文具名確認的產物，不代表全部歷史模型均已核實。
+
 本紀錄涵蓋模型 metadata 盤點與修訂保護；這部分未載入正式 joblib/pickle、未重訓或 promote，focused tests 僅使用隔離 synthetic fixture。另一路已完成的正式價格修復見[修復紀錄](HISTORICAL_PRICE_SPIKE_2026_09_21.md)。價格修復 receipt 的 canonical schema 是 `historical-price-spike-repair-20260921.v1`；模型 guard 不另建第二套 receipt 格式。
 
 ## 已確認的產物

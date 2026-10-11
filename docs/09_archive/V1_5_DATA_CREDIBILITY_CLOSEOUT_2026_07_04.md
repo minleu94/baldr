@@ -65,6 +65,6 @@ git diff --check
 
 ## Follow-up
 
-1. V1.6：建立 cross-sectional factor pipeline / sector rotation v2 的可追溯 snapshot。
-2. V1.7：將 screening matrix、Why Not / Liquidity payload 與 negative evidence 提升到與 recommendation evidence 同等地位。
+1. 當時規劃 V1.6：建立 cross-sectional factor pipeline / sector rotation v2 的可追溯 snapshot；後續結果見 [V1.6 closeout](V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md)。
+2. 當時規劃 V1.7：將 screening matrix、Why Not / Liquidity payload 與 negative evidence 提升到與 recommendation evidence 同等地位；後續結果見 [V1.7 closeout](V1_7_NEGATIVE_EVIDENCE_CLOSEOUT_2026_07_05.md)。
 3. 後續資料源 ingestion 必須先補 `source_id`、`available_date`、quality、missing policy 與 no-look-ahead tests，再接入任何 factor 或 evidence pipeline。

@@ -58,6 +58,6 @@ ml_abi_manifest.json：**2,230 bytes**；固定 SHA-256：
 - Repo 目前沒有公開的 OOC numeric store reader；ml_module.allocation_out_of_core_training_service._NumericStore 是 private。測試不呼叫該 private class，也不新增私有 stub；改由公開 builder 發布後，依公開 manifest 指定的 dtype／shape／hash 直接核對 binary bytes、SQLite rows 與 fold refs。因此這驗證 producer artifact ABI，不等同 downstream runtime loader 的完整驗收。建立 public OOC reader 需另立授權範圍。
 - 合成 recommendation receipt 的 training_provenance.status 是 legacy_unproven；本輪驗證 inference source/dependency hashes、candidate package identity、receipt binding 與 U4 read view，不宣稱通過 verified training lineage readiness。test_recommendation_training_lineage.py 的 11 項基線另行通過。
 - OOC positive case 只在全新的 pytest tmp_path 新建一次 latest_manifest.json 並檢查其 run/hash 指向；沒有讀寫或更新任何既存／active／production pointer。OOC 負例、model package、candidate package、receipt、execution store 均留在各自測試 tmp root。未觸及 DATA_ROOT，沒有執行 scheduled main，沒有跑模型推論、訓練或 full-market rebuild，也沒有改寫歷史 receipt。
-- 本結果只代表小型 synthetic readiness。依 scope ruling，C1 gate／Wave 6 仍 blocked；不得外推成正式 artifact inventory、正式資料相容或放行結論。
+- 本結果只代表 2026-09-23 這次小型 synthetic readiness。依當時 scope ruling，C1 gate／Wave 6 為 blocked；不得外推成正式 artifact inventory、正式資料相容或放行結論。後續 gate 狀態須查具名 checkpoint。
 
 沒有修改 production、其他 tests／fixtures 或既有 U4／U5a fixtures／manifests；沒有 stage 或 commit。

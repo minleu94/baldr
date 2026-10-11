@@ -13,7 +13,7 @@
 | Gate 7 Structured Traditional ML Shadow | 9 | complete |
 | Control Center / Closeout | 5 + registry CLI | complete |
 
-每個切片均以獨立 commit 交付。機器可讀 closeout verifier 逐項檢查 35 個必要 artifact/commit pairs；最終驗證命令：
+每個切片均以獨立 commit 交付。機器可讀 closeout verifier 逐項檢查 35 個必要 artifact/commit pairs；下列是 2026-07-12 當時的驗證命令，含 `--output` 與 `--gate-db` 路徑參數，執行前須確認現行程式的讀寫行為與隔離位置；它不構成目前執行或修改 gate DB 的授權：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\verify_gate_2_to_7_closeout.py --output <closeout.json> --gate-db <control.sqlite>

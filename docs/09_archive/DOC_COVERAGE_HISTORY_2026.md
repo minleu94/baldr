@@ -3300,3 +3300,24 @@ Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告�
 於 HEAD `f163e6fde33c7c64b0f39a7bd5a931c9e677c25f`，`07_guides/` 20 個 tracked paths 中，排除受保護的 `APPLICATION_MANUAL.md` 後，其餘 19 份 clean 文件均逐篇讀至 EOF；包含 2,710 行的 `APPLICATION_MANUAL_SUPPLEMENTS.md`。這是對先前 19/19 核讀紀錄的再核，不增加受保護 Manual 的閱讀深度。允許範圍抽出的 148 個本機 Markdown link 目標路徑均存在；未驗錨點、目標正文或外部連結。
 
 附冊原稱「目前 18 daily + 1 weekly = 19 tasks」，與後續排程指南的 21-task 查核範圍時點不同，已標為當時快照並導向實際 task 查詢與排程指南。`V2_2_WEEKLY_REVIEW_RUNBOOK.md` 原可直接執行 `register-all` 建立 12 daily + weekly 的段落，已標成舊 aggregate 模板，明示不可用來重建目前全集；`07_guides/README.md` 把 P0 候選來源 Runbook 限定在 2026-07-19 前後的範例範圍。其餘隔離／研究 Runbook 保留原範圍，沒有以舊 receipt 推稱目前全域接受。本批未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-330"></a>
+## 2026-10-11 價格／正式資料／TPEX／Paper 八份 QA 具名核讀
+
+於 HEAD `19ee0dce1af877f76e554ef62fa6ac4b04d7db8c`，逐篇讀至 EOF 核對 8 份 clean tracked QA 文件：`PRICE_JUMP_AUDIT_2026_09_21.md`、`PRICE_REPAIR_MODEL_IMPACT_2026_09_22.md`、`FORMAL_DATA_RECONCILIATION_2026_08_06.md`（歷史轉址）、`FORMAL_DATA_REPAIR_2026_09_23.md`、`FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md`、`TPEX_SOURCE_GAP_DIAGNOSTICS_2026_09_18.md`、`TPEX_SINGLE_DAY_PRECAPTURED_BACKFILL_2026_09_18.md`、`PAPER_EOD_NON_TRADING_DAY_GATE_QA_2026_09_25.md`。31 個本機 Markdown 目的地路徑均存在；受保護目標只核路徑，未讀正文或驗錨點。
+
+價格事故的稽核、模型隔離、正式修復分屬 9/21 至 9/24 的不同階段；TPEX 9/18 缺源、9/19 晚取得 raw 及正式補入也沒有被追認為歷史 PIT；H5 研究資料未寫回正式 DB，模型品質未達正式使用條件。為避免歷史狀態被誤讀，已在價格稽核、模型影響、正式資料修復、H5 研究 QA 與 Paper holiday gate 五份文件加上紀錄日期／執行期間／狀態截止提示。Paper 使用的年度 cache 已於 9/28 到期；9/25 direct gate 不代表後續自然排程驗收。未覆核外部連結、ignored `output/qa` receipt 可攜性、後續營運狀態，未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-331"></a>
+## 2026-10-11 C1 REFACTOR_REPORTS 八份具名核讀與狀態時點校正
+
+於 HEAD `19ee0dce1af877f76e554ef62fa6ac4b04d7db8c`，逐篇讀至 EOF 核對 8 份 clean tracked 文件：`C1_CONTRACT_COMPLETENESS_FINDING.md`、`C1_CODEC_REPAIR_IMPLEMENTATION_REPORT.md`、`C1_CONSUMER_READINESS_TEST_MATRIX.md`、`C1_CROSS_BOUNDARY_READINESS_REPORT.md`、`C1_FORWARD_CONSUMER_READINESS_IMPLEMENTATION_REPORT.md`、`C1_INVOCATION_CAPTURE_IMPLEMENTATION_REPORT.md`、`C1_ML_ABI_RECEIPT_READINESS_REPORT.md`、`C1_ML_FIXTURE_INDEPENDENT_REVIEW.md`。均為歷史工程／切片驗收證據，不取代 C1 checkpoint 或現行 Snapshot。16 個本機 Markdown 目的地路徑存在，受保護目標只核路徑；兩份共享工作樹 dirty WAVE 文件未讀未動。
+
+修正 Cross Boundary 結尾仍稱 C1 reopened、U5a Forward Consumer 中仍直述 C1／Wave 6 blocked、ML ABI 末段的現在式 gate，以及 Invocation Capture 的「HEAD 仍是 dcc27…」，把它們明確限定為各自審查或報告結束時的狀態。先前文件所列 pytest／mypy／py_compile 是作者當時收據，本批沒有重跑；其他 REFACTOR_REPORTS 文件仍待逐篇核讀，未刷新 Graphify 或執行全庫 links／anchors scan。
+
+<a id="coverage-entry-332"></a>
+## 2026-10-11 Archive 根層八份 closeout／healthcheck 原文核讀
+
+於 HEAD `19ee0dce1af877f76e554ef62fa6ac4b04d7db8c`，逐篇讀至 EOF 核對 8 份 clean tracked Archive 原文：`FULL_APP_HEALTHCHECK_2026_06_16.md`、`FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md`、`GATE_1_ADVICE_CLOSEOUT_2026_07_12.md`、`GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md`、`V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md`、`V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md`、`V1_7_NEGATIVE_EVIDENCE_CLOSEOUT_2026_07_05.md`、`V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md`。兩份 Full App 在 QA 目錄有同名路徑的審閱記錄，但 Archive 原文是不同路徑，本批分開記錄。9 個本機 Markdown 目的地路徑存在；受保護目標只核路徑、未讀正文，錨點未驗。
+
+Full App 6/16 的「單一入口」已改成當時集中 smoke 記錄，6/23 QA Agent closeout 的 HEAD、母檔與現行 QA 入口時點也已釐清。Gate 1 的 `0/3`／`3/3` 限定為 7/12 快照，舊回退語句限定於當時具名 commits。Gate 2–7 的 verifier 命令標為歷史範例，路徑參數不構成目前 gate DB 操作授權。V1.5／V1.6 的「後續」項目標成當時規劃並連向已存在的 V1.6／V1.7 closeout。V1.7、V1.8 原文保留工程交付與產品／排程接受分界。未核外部來源、後續產品 Gate 現況或 ignored evidence 可攜性，未跑測試、Graphify 或全庫 links／anchors scan。

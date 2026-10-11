@@ -10,7 +10,7 @@ Track A-E 的 metadata 路線已於 commit `7a8db37` 完成到 E-4。後續 repo
 
 目前交付的是一層圍繞既有 Full App Healthcheck Runner 的非破壞式 QA metadata、測試路由、結果解讀與 release review 輔助能力。它沒有把 quick mode 或 full mode 轉成強制 CI / release gate。
 
-目前 repo HEAD 已有後續功能提交，例如 `591ea9b` 的券商分點 MoneyDJ HTTP fast path 與 `7419295` 的 UpdateView / Market Regime UI 收斂。這些提交可能需要同步人工 healthcheck 測項備註，但不改變本 closeout 對 Testing / QA Agent 路線的結論。
+截至 2026-06-30 本文件整理時，repo HEAD 已有後續功能提交，例如 `591ea9b` 的券商分點 MoneyDJ HTTP fast path 與 `7419295` 的 UpdateView / Market Regime UI 收斂。這些提交當時可能需要同步人工 healthcheck 測項備註，但不改變本 closeout 對 Testing / QA Agent 路線的結論。
 
 ## 狀態判讀
 
@@ -21,7 +21,7 @@ Track A-E 的 metadata 路線已於 commit `7a8db37` 完成到 E-4。後續 repo
 - 未啟用：正式 release gate、CI blocking、預設 MainWindow 自動 smoke、資料寫入、migration 或 backfill apply。MainWindow 啟動 / tab 切換 / screenshot / resize / cancel-only dialog 已有 explicit opt-in `--ui-smoke` 執行層。
 - 仍需人工：`docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` 內的完整 UI smoke test、manual UX gaps、write-risk paths 與跨工作區可用性判讀。
 
-換句話說，本文件是「Testing / QA Agent 工具鏈收束」；`FULL_APP_HEALTHCHECK_2026_06_16.md` 仍是完整人工 UI healthcheck 的母檔。
+換句話說，本文件是「Testing / QA Agent 工具鏈收束」；`FULL_APP_HEALTHCHECK_2026_06_16.md` 是當時的人工 UI smoke 記錄。現行驗證入口依文首 QA README 與測試路由矩陣。
 
 ## 已完成 Track
 

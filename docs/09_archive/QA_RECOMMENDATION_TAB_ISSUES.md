@@ -1,6 +1,8 @@
 # Recommendation Analysis Tab 問題盤點
 
 > **歷史問題盤點（2026-10-11）：** 本文的舊 `ui_app/...` 路徑與 ✅／⚠️ 狀態只描述當時盤點，不代表目前程式缺陷、修復或驗收狀態。現況請依現行 QA 與操作文件判讀。
+>
+> **內部數值矛盾（2026-10-11 文件治理檢查）：** §1.1 將 `volume_ratio_min: 1.0` 解讀為成交量變化率 ≥100%，§4.1 則解讀為 ≥0%；兩處說法互相矛盾。保留原文，不據此推定修復細節；重用前請回查[現行推薦 UI](../../ui_qt/views/recommendation_view.py)、[推薦 service](../../app_module/recommendation_service.py)、[推薦 QA 主題索引](../06_qa/PRODUCT_UX_QA_INDEX.md)與[測試路由矩陣](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。
 
 ## 1️⃣ 邏輯錯誤（Machine-checkable）
 

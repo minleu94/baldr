@@ -705,3 +705,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 tracked inventory 重算：** Coverage History Entry 321 依目前 Git index 重算 `docs/` 為 1,487 paths（1,468 Markdown、19 非 Markdown），並更正本矩陣 repo 外 Markdown 附表與狀態摘要中沿用的 1,486 舊總數；歷史 Entry 215 的 1,486 數字保留為當時快照。
 
 **2026-10-11 具名核讀增量（Coverage History Entries 322–323）：** QA C2–C4／Continuity 再全文核讀 8 份；維持 C4 具名失敗與跨頁 acceptance 未完成界線，不把歷史 accepted 推成現況全綠。`03_data/` 另具名全文抽查 8 份（README 另核 21 個本機連結），依目前單一來源程式流程修正每日股價指南重複步驟，並把第二批冷封存普通目錄描述限定在 2026-10-09。這是增量／抽樣證據，不能推算舊 aggregate 的精確去重總數，也不代表 `03_data/` 全目錄已全文核完；Graphify 與全庫 links／anchors scan 仍待所有目錄正文治理完成後執行。
+
+**2026-10-11 `02_features/`／`04_broker_branch/` 全目錄核讀（Coverage History Entry 324）：** 15 份 tracked 文件（9＋6）均逐篇全文核讀，目標連結路徑已核對；修正 02 的信號冷卻條件、回撤級距、Walk-Forward 門檻、TotalScore 說明及高風險 CLI 指引，並把 User Guide 尾段日期化工程／QA 更新完整歸入 Archive、保留入口連結。`04_broker_branch/` 未需改正文。這兩個目錄已完成本輪全文覆蓋；其餘目錄仍依矩陣狀態分批核讀，完整 Graphify 與 repo-wide links／anchors scan 尚未執行。

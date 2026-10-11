@@ -133,13 +133,13 @@ TotalScore = (
 3. **圖形模式識別**：識別技術圖形模式
 4. **總分計算**：
    ```
-   TotalScore = W_pattern × PatternScore + W_indicator × IndicatorScore + W_volume × VolumeScore
+   TotalScore = (pattern_bp × PatternScore + technical_bp × IndicatorScore + volume_bp × VolumeScore) / 10000
    ```
 5. **信號生成**：
    - 檢查 `TotalScore >= buy_score` 是否連續 `buy_confirm_days` 天
    - 檢查 `TotalScore <= sell_score` 是否連續 `sell_confirm_days` 天
    - 考慮 cooldown 期間（交易後 `cooldown_days` 天內禁止反向操作）
-6. **執行交易**：根據信號執行買入或賣出
+6. **回測撮合**：回測依設定的成交規則產生模擬買入或賣出；訊號不等同真實下單。
 
 ---
 

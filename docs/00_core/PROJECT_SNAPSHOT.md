@@ -9,6 +9,8 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
+| 10/11 P01 v9b 定向核驗 | Root獨立708 raw pins、runner AST只交換claim與完整DTO oracle兩statement；真17股／兩artifact writer→View／TaskWorker focused **1 PASS／9.04秒／native0**。舊順序重現count mismatch，新順序兩次Apply page0成功，6次sanitized observer為3Worker／3serial，pins不變。非跨頁或p95證據；v9b專用preflight／supervisor候選正準備，完整P01保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
+| 10/11 F12 query actual診斷 | 628494同freeze guard **5 PASS／4.13秒**、小型真COW **1 PASS／8.13秒**，64pins／23來源不變。完整Main **1 FAIL／27.79秒／自然native1**、Job排空；create-only診斷window10:320共310事件，write_path_rejected3次皆audit open／outside_manifest_roots／relative null。已核事件時段，確切目標／callsite仍待；不放寬寫根，完整收藏／新程序／F12 Gate未完成。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P01 v7 最新矩陣 | root候選13 PASS／8.90秒、純preflight80／51／594且store讀取0、真Job派生10 PASS／10.41秒。新六角色五cold通過20頁／完整DTO，啟動至首頁p95=21.0448914秒；warm46.724425秒自然1，read_page_capability_claim_count_mismatch，無有效暖p95。110 pins不變、各role後檢／還原／關閉及Job排空通過；原600秒v5原因未知，300ms門檻與完整P01保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P08 策略候選審查 | v2凍結43 raw pins一致，但producer未匯入Decimal Context、daily候選availability接線與空倉無entry日缺口、真batch精度／hold與UNKNOWN fills未驗，multi-entry cap測試公式不符正式引擎。未跑候選QA；另建v3與第二家族KD策略，正式檔未改，完整P08／M3仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P08 前向來源觀察 | 已新增正式公開 writer／exact reader，最終正式匯入 8 PASS／7.84 秒／native0，53 pins 起訖一致，mypy／語法通過。真 v4 source→parent→觀察保存→新程序 exact 重開保留完整 UNKNOWN，來源 SQLite 未變，重封訊號／來源時鐘及 alias／超限拒絕通過。完整策略生命週期／帳戶 producer／績效與 UI 未完成。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |

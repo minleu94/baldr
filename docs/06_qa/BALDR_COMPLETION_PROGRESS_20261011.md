@@ -459,3 +459,29 @@ Root 獨立核 manifest `d5795a909c60d90ec32c59fb263fd25eec36cccf5d946d07dc12785
 拒絕點：producer第4779行使用未匯入／定義的Context/localcontext；daily候選接正式availability而新增execution receipt欄位的候選接線未完成；空倉且無新entry日因空source evidence被拒絕，未有合法零成交checkpoint；完整batch Decimal context隔離與真policy／fills下hold／UNKNOWN quantity保留未證明。另multi-entry純target test的15%公式錯誤：124000入場預算每檔上限18600，price8／lot1000應各2000股、兩檔純target residual268000；原9300／1000股／284000期待與正式construction公式不符。
 
 Owner在獨立p08_v3修正，v2及正式檔維持；第二個不同家族KD策略、完整normal producer／雙namespace／真ledger、benchmark／績效／UI仍待。Coverage與回滾依 `root/p01_v7_review_coverage_20261011.md`：只同步QA／Snapshot，正式行為與Manual／架構／Roadmap／Index入口未變；保留所有原資料及其他writer dirty內容。
+
+### F12 query 診斷候選的 root 審查與實際終態
+
+上一 goal turn 核對並回報剩餘範圍，未改 authoritative state 或執行驗證，分類為 no progress。本輪接續已凍結 query 候選，未重跑已消耗的舊 release。Freeze SHA `c77b0f7be4689badd1537086a778a4f5bd25a2468146e4fd5ceb7f2bc9df7a3d`、Main harness SHA `628494edb44f5aa1ff7eb1912983394cdf74bcabcf222e7e01473988fe5e7134`，child不變。Root全讀28,851-byte patch，獨立核64 pins、23個去重來源路徑及artifact；相對5c73只新增六個頂層定義、修改installer與Main兩個定義。搬移前後原守衛判斷body、其餘nested guard、write roots與Main query成功後所有旅程assertions的AST相同。收據 `root/f12_query6284_root01_a995aa4cfab048c5b207df214a9cf174/receipt.json`。
+
+凍結前靜態審查已要求修正ContextVar區域import造成先用後定義，以及診斷捕捉失敗遮蔽原PermissionError；事件範圍改固定start:end。兩個新增helper測試只覆蓋安全事件投影與writer失敗保留primary，不自行證明actual guard或Main finally。Root reviewer初輪對外部runtime pin位置、次輪對搬移docstring的AST期待停止；只修root讀取核驗工具，未改候選／產品或測試門檻。
+
+| 新同版實際驗證 | 結果與界線 |
+|---|---|
+| Guard與兩個helper，五節點 | **5 PASS／4.13秒／native0**；`root/f12_query6284_guard_host_root01_2d322a8ea11f4c4d85917d5855b0fb75/receipt.json`。原descriptor角色37 assertions及records0成立；inner `fdopen_guard_probe_34abe4a6ed0f4efaabcfb226592adedd`，Job排空／handles閉合。 |
+| 小型真WatchlistView／Yes／私人COW | **1 PASS／8.13秒／native0**；`root/f12_query6284_cow_host_root01_3f964940027147f8928441e28ee462a5/receipt.json`。inner `watchlist_view_probe_946713e4dc2149d0a4e8a99aa5871942`；真按鈕與確認各1次、private schema3、readonly query_only／write_blocked、active service讀回、worker0及Job排空。 |
+| 完整Main | **1 FAIL／27.79秒／native1**；`root/f12_query6284_full_main_host_root01_6a439d00222648eba6301ebf21482242/receipt.json`。inner `main_candidate_955c9a30ede740f8a607bce6962e52a8`、launcher52340自然1、非逾時；Job active0／tree與handles閉合。初始化與COW完成，query在5770行仍因source_archived_open_failed／outside_allowed_private_root失敗；完整收藏／新程序未完成。 |
+
+三階段64 pins與23來源均起訖不變。Actual create-only `monthly-revenue-query-guard-diagnostics.json` SHA `bb5f6fe48a7d0e74ddfdd5a776d46d5b3558a5655b28baab1a2616294174ddb9` 已保存：query window10:320共310 events，其中fdopen_rejected283、os_open_registered11、os_close11、owned duplicate2、write_path_rejected **3次**；三次皆audit `open`／observedTrue／thread45620／outside_manifest_roots／relative null。這只證明拒絕事件與時段，尚未識別目標或callsite，不能由283個canonical失敗推定產品根因。接續先靜態trace archived pipeline與operation root，再補有限callsite／診斷角色；不得授更多write roots或改來源。
+
+### P01 v9b 窄順序修正的真 View／TaskWorker 驗證
+
+Owner初版v9只移動call開頭的草稿未採納；另凍結v9b，manifest SHA `622594a3f7250a4d5d264b1ab8ed86a93ea36d6108852ee6c362b7e9b55e3d90`、runner `020cdfde50cc0769f91767e081b9e099ac17e3760c1b58011e71659b98a4d689`、focused test `a78f7148aa0d32296bcb6986492cf05e625f1476a0c6bb4aeb72054d55935d6c`。Root全讀runner單一hunk與223-line focused test，獨立核8 formal／51 product／80 runtime／594 package與candidate artifacts，共708去重raw pins；AST只交換record中完整claim assertion與完整DTO oracle兩statement，其餘runner完全相同，不納入v8 page0最佳化。Static receipt `root/p01_v9b_static_root01_fab095c41999463eabe5ec4db1b36428/receipt.json`。
+
+Root新隔離host **1 PASS／9.04秒／native0**，708 pins起訖相同；`root/p01_v9b_focused_host_root01_f2da921b2ec44e5f8b58d45ba5595241/receipt.json`。真writer產製17股／兩artifact，正常View load與兩次Apply經真TaskWorker／公開reader。先serial oracle再claim明確重現原count mismatch；修正後先claim再完整DTO，兩次均通過。Fixture只有1頁，這是再次Apply page0，**不是跨頁next導航**，後者仍待千檔矩陣。
+
+JUnit `root/p01_v9b_focused_host_root01.junit.xml`實際保存六次sanitized observer：3個真Worker callback／issued+claimed probe，執行緒5496／24856／11008；3個無能力serial callback在coordinator25084，交替順序正確。未序列化能力物件。Pytest另有record_property與xunit2相容性warning，但property實際存在並由root解析；不隱藏warning。原v7 actual暖失敗未保存精確claim count，本輪小型重現不能倒推其數值，也不授p95／完整P01。
+
+Root將上述四份host收據／logs、F12 actual診斷／supervisor／worker log、P01 JUnit共16份raw另存 `root/query6284_v9b_terminal_root_0cf4078f781b4d848d4a5159bbc778c4/receipt.json`，SHA `c9c46b87e356f589b7adebcd1e4b6e498a559b362b6360fbe693a284ed616ebb`，獨立核自然終態、pins、三次拒絕與六次observer。P01正在準備v9b專用preflight／supervisor與真Job失敗案例，未釋完整矩陣；P08 v3真金融整合仍待。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4維持進行中。
+
+本輪coverage僅QA／Snapshot與隔離QA核驗工具；無正式功能或入口變更，Manual／架構／Roadmap／Index不改。回滾只移除此兩文件本節／新增列，依root封存preimage保留其他writer與raw資料；不得reset整樹或清舊失敗。各定向／Main程序已terminal，root無live QA handle。

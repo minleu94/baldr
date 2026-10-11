@@ -15,6 +15,7 @@
 | 外部參考與 V1.8–V2.0 歷史版本形狀 | [EXTERNAL_REFERENCE_VERSION_BLUEPRINT](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md) | 研究候選與歷史背景，不決定現行優先序。 |
 | 舊 Roadmap 項目處置 | [LEGACY_ROADMAP_CARRYOVER](LEGACY_ROADMAP_CARRYOVER.md) | 保留舊項目唯一處置與新版移交位置；新工程順序看 6M Roadmap。 |
 | 不確定該讀哪份 Roadmap | [DEVELOPMENT_ROADMAP](DEVELOPMENT_ROADMAP.md) | 導覽 Hub，不複製狀態、風險或歷史 Done。 |
+| 開發線路、演進歷史與迴圈狀態 | [DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011](DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011.md) | 將產品／工程 Gate、資料／ML／排程 evidence 與待核問題映射成線路索引；不取代 Snapshot。 |
 | 文件位置與分類 | [DOCUMENTATION_INDEX](DOCUMENTATION_INDEX.md) | 導航入口，不是狀態或架構權威。 |
 | 文件同步責任與 DoD | [DOC_COVERAGE_MAP](DOC_COVERAGE_MAP.md) | 現行權威邊界、跨文件同步矩陣與完成條件。 |
 | 文件生命週期與歸檔規則 | [DOCUMENTATION_STRUCTURE](DOCUMENTATION_STRUCTURE.md) | Active、Historical、QA evidence 與歸檔判準。 |

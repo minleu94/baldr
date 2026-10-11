@@ -29,6 +29,7 @@ meta_data/all_stocks_data.csv
 將 `daily_price` 目錄中的所有 CSV 文件合併成 `stock_data_whole.csv`。
 
 ```bash
+# ARCHIVED — DO NOT RUN：僅保留舊流程證據；不可用於目前資料重建。
 # 強制重新合併所有數據（忽略現有數據）
 python scripts/merge_daily_data.py --force-all
 ```
@@ -46,6 +47,7 @@ python scripts/merge_daily_data.py --force-all
 從 `stock_data_whole.csv` 讀取數據，計算所有股票的技術指標。
 
 ```bash
+# ARCHIVED — DO NOT RUN：僅保留舊流程證據；不可用於目前資料重建。
 # 強制重新計算所有技術指標
 python scripts/calculate_technical_indicators.py --force-all
 ```
@@ -69,6 +71,7 @@ python scripts/calculate_technical_indicators.py --force-all
 如果需要完全重建所有數據，按順序執行：
 
 ```bash
+# ARCHIVED — DO NOT RUN：以下是歷史全量重建命令，保留作為證據，不得執行。
 # 1. 重新合併每日數據
 python scripts/merge_daily_data.py --force-all
 
@@ -119,6 +122,7 @@ print(f"日期範圍: {df['日期'].min()} ~ {df['日期'].max()}")
 ### Q: 如果只想更新特定股票的指標？
 
 ```bash
+# ARCHIVED — DO NOT RUN：僅保留舊流程證據；不可用於目前資料重建。
 python scripts/calculate_technical_indicators.py --stock 2330 --force-all
 ```
 

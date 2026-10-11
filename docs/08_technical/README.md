@@ -7,7 +7,7 @@
 ## 現況與歷史判讀
 
 - 目前模組邊界與資料流以[系統架構](../01_architecture/system_architecture.md)為準；目前操作以[完整操作手冊](../07_guides/APPLICATION_MANUAL.md)及[安裝指南](../07_guides/INSTALL_GUIDE.md)為準。
-- 本目錄的日期化參數建議、舊版本備忘與本機 patch 記錄用於追溯。它們不建立目前工程待辦，也不代表新環境的預設安裝步驟；目前優先順序看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md)。
+- 本目錄的日期化參數建議、舊版本備忘與本機 patch 記錄用於追溯。它們不建立目前工程待辦，也不代表新環境的預設安裝步驟；目前狀態與優先事項看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，工程順序看 [六個月工程路線](../00_core/ROADMAP_6M_ENGINEERING.md)，[Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) 只作權威導覽。
 
 ## 📄 目前技術文件
 

@@ -1,5 +1,7 @@
 # 2026-09-21 歷史價格尖峰稽核
 
+> 本文依序保存 2026-09-21 唯讀稽核、9/22 受控修復與 9/23 後續計算修復的歷史紀錄。下文開頭的「沒有寫入」只適用於 9/21 稽核階段；不能用它判定後續是否已修復，也不能把價格修復推論為模型重訓或全庫來源驗收。
+
 本次稽核針對 2026-05-20 的 1256、1477 價格異常，採唯讀 evidence；沒有寫入 formal SQLite、沒有執行修復、回填、collector 或 scheduler。原始稽核結果見 [no_merged_v2 evidence](../../output/qa/historical_price_spike_20260921/no_merged_v2/historical_price_spike_audit.json) 與 [merged baseline evidence](../../output/qa/historical_price_spike_20260921/historical_price_spike_audit.json)。
 
 官方 response 的日期欄為 `20260520`，表題為 `115年05月20日 每日收盤行情(全部)`。完整已驗 hash response 與 canonical daily price 對照確認：

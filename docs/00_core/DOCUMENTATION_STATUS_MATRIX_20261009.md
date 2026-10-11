@@ -711,3 +711,9 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 `03_data/` 全目錄完成核讀（Coverage History Entry 325）：** 16 份 Markdown 與 1 個 CSV 範本（17/17 tracked paths）均有具名 EOF 全文核讀；本機 Markdown 連結共 120 個目的地路徑全存在。修正每日股價手動下載的一般注意事項矛盾。README 已將 CSV 範本示例列標為未驗證，不把它當正式來源資料。這項完成僅涵蓋本目錄 tracked files；其他目錄、ignored 資產與受保護文件仍分開判定。
 
 **2026-10-11 QA R006／封存與 Evidence dry-run 增量（Coverage History Entry 326）：** 新增 8 份 QA 文件具名全文核讀；將 10/08 固定來源 archive 建置收據與 10/03 行情／Paper 隔離快照的狀態限定在各自日期，不把它們摘要成目前全域狀態。temporary cleanup、兩份 evidence dry-run 與 ignored 本機 receipt 各保留原證據範圍，不據此宣稱永久刪除、營運全驗收或證據可攜封存。舊 QA aggregate 無逐檔 manifest，不據本批推算全域完成率。
+
+**2026-10-11 Phase／Technical 重核（Coverage History Entry 327）：** `05_phases/` 15/15、`08_technical/` 7/7 clean tracked 文件重新逐篇核對；102 個本機 Markdown 目的地存在，錨點未驗。修正 Technical README 把 Roadmap Hub 混作目前優先順序權威的描述，移除圖表技術文中無日期的「本次未測試」工作狀態。兩目錄沒有新增未讀項；這不代替其 Archive 轉址目標的正文驗收。
+
+**2026-10-11 QA 八份具名核讀（Coverage History Entry 328）：** 成本、排程失敗、重述模型、效能、Decision 日期／歷史轉址、價格尖峰與 Paper capture 共 8 份 clean QA 文件讀至 EOF；效能基線與價格尖峰原件補上日期及多輪狀態界線。QA 全量正文仍未完成；本批只增加具名證據，不與舊 aggregate 加總。
+
+**2026-10-11 Guides 允許範圍重核（Coverage History Entry 329）：** `07_guides/` 除受保護 Manual 外的 19/19 份 clean tracked 文件重新逐篇讀至 EOF；148 個本機 Markdown 目的地路徑存在，錨點未驗。修正附冊 19-task 數字的歷史時點、V2.2 舊 `register-all` 模板的誤用風險，以及 P0 候選來源指南的 2026-07-19 範圍。上方仍保留的 18 全文／2 局部是舊盤點快照；Entry 262 已使附冊升為全文，本批再核 19 份；受保護 Manual 不列入本次正文核讀。

@@ -53,7 +53,7 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
 - **[V2_2_WEEKLY_REVIEW_RUNBOOK.md](V2_2_WEEKLY_REVIEW_RUNBOOK.md)**
   - V2.2 人工 Evidence Review、working-copy DB 安全操作、sidecar 收集與 append-only history 操作邊界
 - **[P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md](P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md)**
-  - 13 項 P0 候選資料來源唯讀品質稽核指令、結果判讀與排程隔離邊界
+  - 2026-07-19 前後的 13 項 P0 候選來源唯讀品質稽核範例、結果判讀與排程隔離邊界；現行來源與接受狀態須核對具名 QA、Snapshot 及排程實作
 
 ### 4. 專項研發與歷史修復 Runbook
 - **[EVIDENCE_REHEARSAL_RUNBOOK.md](EVIDENCE_REHEARSAL_RUNBOOK.md)**

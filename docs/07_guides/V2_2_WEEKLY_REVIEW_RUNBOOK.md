@@ -19,10 +19,7 @@
 - 註冊前可執行 `scripts\scheduled\register_baldr_scheduled_tasks.cmd dryrun` 檢視排程；`weekly-register` 只建立或取代此週日 task，不建立、取代或啟用任何既有每日 task。查核使用 `schtasks /Query /TN baldr-v2-2-weekly-collection /V /FO LIST`。
 - 回復此收集 task 時，只能在 Windows Task Scheduler 停用，或執行 `scripts\scheduled\unregister_baldr_scheduled_tasks.cmd weekly-unregister`。禁止自動刪除 sidecar SQLite table；既有 record 與錯誤記錄保留供人工診斷。
 
-補充：若要一次建立 12 個每日 task 與週日 collection task，可使用
-scripts\scheduled\register_baldr_scheduled_tasks.cmd register-all；若只要建立週日
-task，使用 weekly-register。兩種註冊模式都會先做 wrapper-file preflight，缺檔時
-不會呼叫 schtasks。
+歷史補充：`register-all` 對應當時 12 個每日 task 與週日 collection task 的 aggregate 模板，不是目前排程全集；不得依這段舊程序重建全部 task。若只需建立或更新週日 collection task，先依[排程操作指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)核對現行清單及既有設定，再使用上述 `weekly-register` 受控流程。註冊模式會先做 wrapper-file preflight，缺檔時不會呼叫 schtasks。
 
 ## 3. 每週固定操作順序
 

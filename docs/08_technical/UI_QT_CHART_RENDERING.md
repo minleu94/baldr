@@ -59,7 +59,7 @@ QtWebEngine Canvas 設定為可聚焦的 `role="img"`，並提供 ARIA label、�
 
 ## 驗證入口
 
-以下是文件記錄的定向檢查命令；本次文件整理未執行測試：
+以下是文件記錄的定向檢查命令；是否已執行及結果須查對應日期的 QA 收據：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -o addopts= tests\test_ui_qt_chart_payloads.py tests\test_ui_qt_chart_widget_factory.py tests\test_portfolio_mvp.py -q

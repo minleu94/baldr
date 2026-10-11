@@ -3273,7 +3273,7 @@ Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告�
 <a id="coverage-entry-325"></a>
 ## 2026-10-11 `03_data/` 剩餘文件核讀與 17/17 tracked 路徑覆蓋
 
-於 HEAD `eac6e0d12d45bbc097feb56a697a03a949355500` 完成 `docs/03_data/` 其餘 8 條 tracked paths（7 份 Markdown、1 份 CSV）的核對：`BACKUP_RETENTION_AUDIT_2026_07_06.md`、`C_DRIVE_QA_COLD_ARCHIVE_20261009.md`、`C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md`、`DATA_FETCHING_LOGIC.md`、`INDUSTRY_INDEX_UPDATE_SUMMARY.md`、`MERGE_AND_MARKET_INDEX_SUMMARY.md`、`SQLITE_STORAGE_GUIDE.md`、`TROUBLESHOOTING_DAILY_UPDATE.md`、`templates/monthly_revenue_availability.csv`（CSV 範本列入 8 paths）。`HOW_TO_UPDATE_DAILY_DATA.md` 與 `C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md` 因先前增量修訂而在該 HEAD 重新全文核讀；此前 Entry 323 的 8 份加上 README 也覆蓋本目錄其餘 tracked paths。README 列出的 21 個本機連結與全目錄 Markdown 共 120 個本機連結目標路徑均存在；只核路徑，不核受保護文件正文／錨點。全目錄達 16/16 Markdown＋CSV template，共 17/17 tracked paths 有逐篇 EOF 核讀，不包含 ignored／非 tracked 資產，也不代表受保護權威文件的正文已核讀。
+於 HEAD `eac6e0d12d45bbc097feb56a697a03a949355500` 完成 `docs/03_data/` 其餘 8 條 tracked paths（7 份 Markdown、1 份 CSV）的核對：`BACKUP_RETENTION_AUDIT_2026_07_06.md`、`DATA_FETCHING_LOGIC.md`、`INDUSTRY_INDEX_UPDATE_SUMMARY.md`、`MERGE_AND_MARKET_INDEX_SUMMARY.md`、`SQLITE_STORAGE_GUIDE.md`、`TROUBLESHOOTING_DAILY_UPDATE.md`、`daily_data_update_guide.md`、`templates/monthly_revenue_availability.csv`（CSV 範本列入 8 paths）。`HOW_TO_UPDATE_DAILY_DATA.md` 與 `C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md` 因先前增量修訂而在該 HEAD 重新全文核讀；此前 Entry 323 的 8 份加上 README 也覆蓋本目錄其餘 tracked paths。README 列出的 21 個本機連結與全目錄 Markdown 共 120 個本機連結目標路徑均存在；只核路徑，不核受保護文件正文／錨點。全目錄達 16/16 Markdown＋CSV template，共 17/17 tracked paths 有逐篇 EOF 核讀，不包含 ignored／非 tracked 資產，也不代表受保護權威文件的正文已核讀。
 
 內部對照確認 10/06 十根未執行隔離計畫與 10/09 34 根冷封存收據範圍不同；新發現 `HOW_TO_UPDATE_DAILY_DATA.md` 第 118 行把每日股價與其他來源一概說成仍須手動合併／計算，與本指南第 4 節和現行 UI 流程不一致，已限定為每日股價 UI 自動同步及指標計算、其他來源依各自完成狀態判斷。monthly revenue CSV 範本保留未驗證的示例列，README 已明示不得作正式公告日 mapping。`daily_data_update_guide.md` 頂部仍把操作手冊列為現行權威，本文的 2026-10-03 freshness 界線不代表政策裁定；本輪未逐項重新驗證其所有操作細節的程式實作。未改 CSV 或原始資料，未跑測試、Graphify 或 repo-wide links／anchors scan。
 
@@ -3281,3 +3281,22 @@ Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告�
 ## 2026-10-11 QA R006／封存建置／資料隔離／Evidence dry-run 八份全文核讀
 
 核對綁定 HEAD `549fd34ac5a4090f92ced55198450b53ad68e243`；8 份 clean tracked 文件均讀至 EOF：`R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md`、`BUILD_ARCHIVE_NO_GIT_PROBE_20261008.md`、`DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md`、`TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md`、`OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md`、`DAILY_CAPTURE_RECOVERY_2026_09_18.md`、`EVIDENCE_DRY_RUN_DATE_SERIALIZATION_QA_20261002.md`、`EVIDENCE_DRY_RUN_READONLY_EXIT_DATE_QA_20261002.md`。R006 仍限於有界 retention、不證明未知 binary 可載入或相容；temporary cleanup receipt 記錄可還原隔離／保留與永久刪除為 0，不證明空間已回收；兩份 10/02 dry-run 修正範圍不同，不合併為整體營運驗收。`BUILD_ARCHIVE_NO_GIT_PROBE_20261008.md` 新增日期範圍提示，將尚未進新 archive／exe 與未重跑 H20 Main 限定在 10/08 收據時點；`OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md` 將 task／資格狀態限定在 10/03 快照。`DAILY_CAPTURE_RECOVERY_2026_09_18.md` 仍以 9/18 為標題與狀態證據日期，不能當作新的 capture 結果。已核對的 repo 相對連結路徑存在；Manual、Snapshot 連結依禁讀要求不開啟正文。部分收據引用 ignored `output/qa/` 或使用者本機路徑，其內容未確認為可攜封存。未修改原始 QA 結果，未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-327"></a>
+## 2026-10-11 `05_phases/` 與 `08_technical/` 重核及權威導覽校正
+
+於 HEAD `f163e6fde33c7c64b0f39a7bd5a931c9e677c25f`，逐篇讀至 EOF 核對兩目錄全部 22 份 clean tracked 文件：`05_phases/` 15 份（2 份歷史索引、13 份原路徑轉址）與 `08_technical/` 7 份（README、Qt 圖表與 System Python 技術說明、4 份歷史導引）。102 個本機 Markdown 目的地路徑均存在；未核錨點或受保護目標正文。Phase 轉址的舊 Phase 4 與現行 Gate 4 界線清楚。`08_technical/README.md` 已把目前狀態／優先事項、工程順序與 Roadmap Hub 導覽分回各自權威；`UI_QT_CHART_RENDERING.md` 移除未標日期的「本次文件整理未執行測試」，保留定向檢查命令並指向具日期 QA 收據判讀結果。本次僅修訂文件，未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-328"></a>
+## 2026-10-11 QA 成本／模型／效能／Decision／價格八份具名核讀
+
+於 HEAD `f163e6fde33c7c64b0f39a7bd5a931c9e677c25f`，逐篇讀至 EOF 核對 8 份 clean tracked 文件：`BANKTAIWAN_COST_ESTIMATE_2026_09_14.md`、`BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md`、`BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md`、`DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md`、`DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md`（歷史轉址）、`DECISION_SNAPSHOT_DATE_SEMANTICS_20261006.md`、`HISTORICAL_PRICE_SPIKE_2026_09_21.md`、`PAPER_EVENT_SOURCE_CAPTURE_FAILURE_DIAGNOSTICS_QA_20261002.md`。BankTaiwan 成本仍是 `estimated_research_only`，排程 shadow retry 沒有自然樣本或 promotion；模型 v3 的 17,285 列與 v2 的 22,093 列分屬不同母體，原文已警告不可比較或作 production 證據；Decision Desk 日期檢查只代表 10/06 快照，保存結果未知；Paper capture 後續 attempt 雖有 durable capture，整體仍以 blocked／exit 2 結束。
+
+`DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md` 新增 8/28 時點與追加段落非時間順序提示，避免把歷史「目前」當成現況；`HISTORICAL_PRICE_SPIKE_2026_09_21.md` 加註 9/21 唯讀、9/22 修復、9/23 計算修復的時間線，避免用首段「沒有寫入」否定後續執行，也不把價格修復當成模型重訓。已抽查本機 Markdown 目的地存在；外部連結、ignored `output/qa` 與 TEMP 證據可攜性、受保護目的地正文及錨點未核。未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-329"></a>
+## 2026-10-11 `07_guides/` 允許範圍重核與排程數量校正
+
+於 HEAD `f163e6fde33c7c64b0f39a7bd5a931c9e677c25f`，`07_guides/` 20 個 tracked paths 中，排除受保護的 `APPLICATION_MANUAL.md` 後，其餘 19 份 clean 文件均逐篇讀至 EOF；包含 2,710 行的 `APPLICATION_MANUAL_SUPPLEMENTS.md`。這是對先前 19/19 核讀紀錄的再核，不增加受保護 Manual 的閱讀深度。允許範圍抽出的 148 個本機 Markdown link 目標路徑均存在；未驗錨點、目標正文或外部連結。
+
+附冊原稱「目前 18 daily + 1 weekly = 19 tasks」，與後續排程指南的 21-task 查核範圍時點不同，已標為當時快照並導向實際 task 查詢與排程指南。`V2_2_WEEKLY_REVIEW_RUNBOOK.md` 原可直接執行 `register-all` 建立 12 daily + weekly 的段落，已標成舊 aggregate 模板，明示不可用來重建目前全集；`07_guides/README.md` 把 P0 候選來源 Runbook 限定在 2026-07-19 前後的範例範圍。其餘隔離／研究 Runbook 保留原範圍，沒有以舊 receipt 推稱目前全域接受。本批未跑測試、Graphify 或全庫 links／anchors scan。

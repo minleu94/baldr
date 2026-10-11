@@ -1255,7 +1255,7 @@ Asia/Taipei 08:30 cutoff guard 等待兩種 offset 的早到喚醒，不能把 P
 scripts\scheduled\query_baldr_scheduled_tasks.cmd
 ```
 
-目前 18 個 daily tasks 加 1 個 weekly task 共 19 個 Windows tasks。ML evidence／Authority／Co-pilot 三段與 Direct chain maintainer 已實際觸發且 `Last Result=0`；raw PIT refresh 與 Direct chain 各有獨立 immutable／bootstrap status，若 OOC／replay 尚未完整仍只輸出 `blocked` 或維持等待，Authority 可輸出 `skipped_evidence_unavailable`，這些都是成功的 fail-closed 營運狀態。Scheduler process-level 成功不表示資料來源全數 observed 或 ML promotion 已通過。所有 tasks 都不得送單；只有經成熟度、交易日、雙 replay、簽章與 inference-release identity 全部驗證的 evidence 才能影響 alpha。Forward task 的註冊完成也不表示它已有自然執行結果；請以 registration inspector、wrapper preflight 與當日 receipt 分別判讀。
+此段保留當時 18 個 daily tasks 加 1 個 weekly task、共 19 個 Windows tasks 的查核快照；它不是目前 task 數量。現行清單應以排程查詢結果及[排程操作指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)的具名 task 範圍核對。當時 ML evidence／Authority／Co-pilot 三段與 Direct chain maintainer 已實際觸發且 `Last Result=0`；raw PIT refresh 與 Direct chain 各有獨立 immutable／bootstrap status，若 OOC／replay 尚未完整仍只輸出 `blocked` 或維持等待，Authority 可輸出 `skipped_evidence_unavailable`，這些都是成功的 fail-closed 營運狀態。Scheduler process-level 成功不表示資料來源全數 observed 或 ML promotion 已通過。所有 tasks 都不得送單；只有經成熟度、交易日、雙 replay、簽章與 inference-release identity 全部驗證的 evidence 才能影響 alpha。Forward task 的註冊完成也不表示它已有自然執行結果；請以 registration inspector、wrapper preflight 與當日 receipt 分別判讀。
 
 Paper EOD replay 現行 trigger 為 Pacific 06:00，PDT／PST 分別對應台北 21:00／22:00，位於 Pacific 04:20 quick data update 之後。2026-09-08 00:05 的非零結果只屬變更前歷史證據；部署後仍須以 `schtasks /Query /TN baldr-paper-execution-eod-replay-daily /V /FO LIST` 讀取 Next Run、Last Result、登入模式與電池條件，再以 dependency gate receipt 判定資料是否真的可用。現行 `Logon Mode=Interactive only`、停止於電池且不喚醒，登出或休眠時不能保證自然 capture；缺跑應由 task query 與各 latest status／receipt 的 freshness 監控揭露。
 

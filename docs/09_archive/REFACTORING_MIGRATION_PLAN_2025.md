@@ -2,6 +2,8 @@
 
 > **歷史歸檔**：本計畫記錄 2025 年的架構遷移背景，其中 `ui_app/` 與舊依賴描述不代表目前狀態。現況以 `docs/01_architecture/system_architecture.md`、`docs/00_core/PROJECT_SNAPSHOT.md` 為準。
 
+> **2026-10-11 歷史範圍補充**：正文中的 rename／向後相容敘述是當時階段紀錄；2026-07-12 補記記錄其後移除 `recommendation_module_legacy/`。兩階段文字均保留作歷史紀錄，不得單獨解讀為目前實作狀態。現況請查 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [系統架構](../01_architecture/system_architecture.md)。
+
 **生成日期**：2025-01-XX  
 **目標**：將專案重構為可維護、可持續演進的架構，最小改動、可回退
 

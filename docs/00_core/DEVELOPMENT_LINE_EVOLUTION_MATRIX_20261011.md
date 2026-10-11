@@ -101,7 +101,7 @@ ML 待追蹤的分離里程碑：source custody／available-at／cutoff；datase
 |---|---|---|---|
 | MOPS 7/27 `limited` 與 8/28 `accepted=0 limited=0` | 來源接受權威／receipt reconciliation | 核原始稽核輸入及 registry 後更新現行接受狀態；歷史 receipt 保留。 | 未解 |
 | 專名 no-data 分支缺少實跑 closeout receipt | 資料更新證據缺口 | 新增一次具名來源、request diagnostics、response hash、處置步驟與 DB／下游 readback 的驗收收據。 | 待補證據 |
-| ML projection 中「hook 尚待實作」 | 過時歷史句子，後續接線已證明 | 以帶日期的 erratum 更正狀態為「已接線、自然 Task 待驗」；保留當時 research／cutoff 界線。 | 可窄幅修正 |
+| ML projection 中「hook 尚待實作」 | 過時歷史句子，後續接線已證明 | 2026-10-11 已加日期化 erratum 為「已接線、自然 Task 待驗」；保留當時 research／cutoff 界線與原始收據。 | 已窄幅修正 |
 | 10/09 排程 readback 與 10/10／10/11 現況 | 日期快照界線 | 新增當次 readback；不改寫 10/09 原始收據。 | 待新收據 |
 | 2025 OOS custody／usage gate | Evidence 使用資格衝突 | 取得現行 signed custody／QA receipt 前，不推定 2025 可作正式 OOS。 | 未解 |
 | 歷史 automation 12／15、R002 coverage 8／9 | 歷史文件內部數字張力 | 不猜數；若無原始收據，標明日期／範圍與差異即可。 | 歷史保留 |

@@ -1,5 +1,7 @@
 > **時點／狀態導覽（2026-10-10）**：本文的 `CHANGES_REQUIRED`、`READY_FOR_REVIEW`、`BLOCKED` 與 Wave／下游 gate 敘述，只代表撰寫當時的 implementer／reviewer／root 裁定，不是目前 disposition；目前 task 狀態看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，現況看 [Project Snapshot](../../../00_core/PROJECT_SNAPSHOT.md)。原審查結論與限制保留。
 
+> **2026-09-27 TMP-RGM-01 路由補充：** 下方 `ACTIVE` 段落是早期快照；R029 後續將此項裁定為 `ACCEPTED_WITH_RETAINED_COMPATIBILITY`，並具名保留 constructor fallback、detector adapter 與 wrappers。[R029 實作報告](R029_IMPLEMENTATION_REPORT.md)及 [R031 的 2026-09-27 checkpoint](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md#2026-09-27-current-checkpoint) 是後續裁定入口。這項狀態分類不表示 wrappers 已刪除，也不表示 external support period 已結束；下方 ACTIVE 文字保留為歷史記錄。
+
 # R022 實作報告：Regime policy／state transition 與 I/O 分離
 
 **IMPLEMENTATION_STATUS: ACCEPTED_SCOPE**

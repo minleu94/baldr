@@ -2852,3 +2852,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 QA Natural Learning／Personal Delivery 八份具名全文核讀
 
 全文核讀 `NATURAL_LEARNING_CALLER_WIRING_2026_09_18.md`、`NATURAL_LEARNING_TRACE_2026_09_18.md`、`NATURAL_MATURITY_SESSION_RESOLVER_2026_09_18.md`、`NATURAL_SESSION_LABEL_BINDING_2026_09_18.md`、`PERSONAL_DAILY_PRODUCT_DELIVERY_20261006.md`、`PERSONAL_DELIVERY_ACTIVATION_2026_09_18.md`、`PERSONAL_JOURNAL_LANE_20261006.md`、`PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md`；均未見於既有具名全文清單。自然 Shadow 收據屬 ML allocation lane，不推定 recommendation calibration 自然樣本；四份 Natural Learning 保留 9/18 時點與 0/20／resolver proof／label integration 邊界。三份 Personal delivery 原件依 M10 bounded widget、canonical save/readback、capture v3 與 15 秒 wait 後續收據更新狀態，仍保留 mature 0、pending 19、非 OS foreground／正式 PIT／WP5 整體驗收限制；M10 acceptance 原件本身一致，未改。限定八檔 `git diff --check` 通過，修改三份 Personal delivery 原件；未改索引／Matrix，未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-271"></a>
+## 2026-10-11 QA Scheduler 八份具名全文核讀
+
+全文核讀 `BALDR_SCHEDULE_AUDIT_20261006.md`、`BALDR_SCHEDULE_REPAIR_20261007.md`、`BALDR_SCHEDULE_REPAIR_20261008.md`、`SCHEDULER_FRESHNESS_QUICK_BINDING_20261001.md`、`SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md`、`SCHEDULER_REMAINING_DIAGNOSIS_20261003.md`、`SCHEDULER_STATEMENT_CUSTODY_REPAIR_20261001.md`、`SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md`；先前均無具名全文紀錄。依 Operations QA Index 路由並對照 10/03 診斷及 10/09 後續排程收據；各文件中的舊日期狀態、research observation、非 Formal／非 credit 與未完成自然驗收限制均無矛盾，後續進展不回填成舊文當日結論。本批八份皆保留原件、未修改；行數與 SHA-256 前後一致。限定八檔 `git diff --check` exit 0；未跑測試、Graphify 或最終 repo-wide links／anchors scan。

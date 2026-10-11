@@ -47,3 +47,7 @@ Root 於 2026-09-25 使用下列 5 個測試檔另跑 fresh TEMP 路由，確認
 結果為 **48 passed，1.83 秒**。環境為合成測試、`PROFILE=test`、新系統 TEMP `C:\Users\archi\AppData\Local\Temp\r30r_01c542`；未讀寫正式資料。pytest log 位於 `C:\Users\archi\AppData\Local\Temp\r30r_01c542\pytest.log`，101 bytes，SHA-256 `73495DB39B1F91769C6364181C78A834A5D71070D601414A455B41C8060E877B`。manifest 12 項 frozen source／fixture 加上 3 個相鄰測試的執行前、執行後 SHA 清單完全相同；兩份清單均為 3,486 bytes，SHA-256 `9164C456DE1FB0ED21152602ED41FFD33555F0C4EA48DF2C85664C0A85DC5C02`。完整檔案選擇及 readback receipt 已追加至 JSON manifest。
 
 這是 R030 frozen slice 的 bounded 獨立複核，不代表 C2、R029 cleanup、C3/C4 或整體 refactor gate 通過。
+
+## 2026-10-11 後續 bounded disposition
+
+上方一般 import-following mypy 的兩項 R026 NoModel union-attr errors，是 2026-09-25 並行 WIP 時點的跨路徑觀察。後續 [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 記錄 broad mypy 724 files／0 issues，並將 R030 的原 17 passed 加獨立 5-file 48 passed 收據列為 bounded fixture acceptance。這不改寫本報告原測試收據，也不把 C2、C3／C4 或整體 refactor gate 升格為無條件通過。

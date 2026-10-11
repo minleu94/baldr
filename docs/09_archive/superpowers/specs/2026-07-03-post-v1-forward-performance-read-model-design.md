@@ -5,6 +5,8 @@
 > 範圍：Importer → Event Store → Outcome Calculator E2E smoke；Forward Performance Read Model v1  
 > 非目標：Dashboard UI、scheduler、ML、scoring 權重、portfolio position、automatic lifecycle action。
 
+> **歷史範圍界線（2026-10-11）**：「已實作」只指 2026-07-03 本文件範圍內當日已完成的切片；同文記載 DDD durable snapshot repository 尚缺、production scheduler 尚未就緒，屬當日剩餘 gate。現況應看最新 Snapshot 與具名 QA receipt；原狀態文字保留作歷史記錄。
+
 ## 1. 問題
 
 Evidence Event Store v1、Forward Outcome Calculator v1 與 Importers v1 已可分別運作，但還需要兩個工程證據：

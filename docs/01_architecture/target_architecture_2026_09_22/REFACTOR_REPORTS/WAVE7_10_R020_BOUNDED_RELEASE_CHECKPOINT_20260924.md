@@ -1,3 +1,5 @@
+> **歷史時點／現況導覽（2026-10-11）**：本文只記錄 2026-09-24 的 Wave 6–14 gate reconciliation 與 R020 bounded implementation release；文內 R027 `INCONCLUSIVE`、`AB-ML-01 OPEN`、`TMP-ML-02 ACTIVE`、R028 `BLOCKED`、R020 `IN_PROGRESS`／TMP ACTIVE 及 C2 未通過均是當時快照。R031 2026-09-27 current overlay 後續列出 R020 `CLOSED_FOR_R005_REPLAY_RECOVERY`、`TMP-REC-04`／`TMP-NUM-01` 依具名原 gate 關閉、C2 `ACCEPTED_WITH_NAMED_QA_BASELINE`、R027 `ACCEPTED_FOR_USER_VERSIONED_REVISION`（原 strict oracle 仍 `INCONCLUSIVE`），以及 R028 `ACCEPTED_SCOPED_R028_PRODUCTION_MIGRATION`；R031 closeout 另記錄 `TMP-ML-02` 原 conditional migration scope 已由 R028 scoped acceptance 滿足。這些 bounded disposition 不代表 Wave 7–10 full closeout、任意 runtime/profile parity 或正式資料／模型 promotion 已驗收；請以 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)、[R020 implementation report](R020_IMPLEMENTATION_REPORT.md) 與 [R020 hard-exit recovery QA](../../../06_qa/R020_PROCESS_CRASH_RECOVERY_HARD_EXIT_QA_20260925.md) 追後續證據。
+
 # Wave 7–10 至 R020 bounded-release checkpoint
 
 **日期：** 2026-09-24

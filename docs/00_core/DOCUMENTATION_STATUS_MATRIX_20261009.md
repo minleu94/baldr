@@ -637,6 +637,8 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 
 **2026-10-11 REFACTOR_REPORTS R009／R020／Wave 增量：** 8 份全文核讀，7 份新增具名全文、1 份 partial→full；7 份補後續狀態導覽。另修正 Entry 213 的目錄路徑 tab typo。見 [Coverage History Entry 276](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-276)。舊 aggregate 無逐檔 manifest，不推算精確去重數。
 
+**2026-10-11 REFACTOR_REPORTS Wave 4–7 增量：** 7 份先前未具名報告全文核讀；3 份補 bounded 後續狀態導覽，另四份既有歷史提示足夠。見 [Coverage History Entry 277](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-277)。此為 basename gap 消除記錄，不代表舊 74-file aggregate 可還原精確去重總數；Entry 213 的局部掃描尚有個別項目待確認全文狀態。
+
 **2026-10-11 Archive Superpowers 補記：** Portfolio Replay 8 份歷史計畫已逐檔全文再核讀並與 README／manifest／closeout 核對；它們已在既有 96/96 aggregate 中，本次僅補具名路徑，不增加 aggregate 數。見 [Coverage History Entry 272](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-272)；另兩份待查路徑將另記。
 
 **2026-10-11 REFACTOR_REPORTS 補記：** R011／R012 再具名核讀 8 份，6 份新增具名全文紀錄、2 份 partial→full；4 份原件加入後續 bounded disposition 導覽。見 [Coverage History Entry 273](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-273)。舊 aggregate 未具名，不推算精確去重總數。

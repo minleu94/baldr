@@ -2882,3 +2882,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 REFACTOR_REPORTS R009／R020／Wave 1–2 八份具名全文核讀
 
 全文核讀 `R009_LUNA_INDEPENDENT_REVIEW.md`、`R009_SCHEMA_RANGE_SCOPE_ADDENDUM.md`、`R009_SOL_INTEGRATION_ACCEPTANCE.md`、`R020_PORTFOLIO_READBACK_SCOPE_ADDENDUM_20260924.md`、`REFACTOR_HANDOFF_PROMPT_20260923.md`、`WAVE1_R003_R005_GEMINI_REVIEW.md`、`WAVE1_R007_ERRATUM_CHECKPOINT.md`、`WAVE2_GEMINI_PARALLEL_ANALYSIS.md`。七份新增具名全文紀錄；R020 addendum 由 Coverage History Entry 213 的局部狀態掃描升為全文。舊 74-file aggregate 無逐檔 manifest，不據此估算去重總量。對照報告 README、R031 current overlay 與後續 R009/R020 acceptance：R009 初版／v2 review 狀態、Wave 1–2 局部 PASS／COMPLETE、R020 IN_PROGRESS／TMP ACTIVE 等均有後續 bounded disposition，七份原件補導覽；handoff prompt 原已有勿重送警示，內容符合範圍，未修改。新增 12 個相對連結目標存在，限定修改檔 `git diff --check` 通過。另修正 Entry 213 將 `target_architecture_2026_09_22` 誤寫成含 tab 的 `arget_architecture_2026_09_22` 路徑。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-277"></a>
+## 2026-10-11 REFACTOR_REPORTS Wave 4–7 十範圍收據七份具名全文核讀
+
+全文核讀 `WAVE4_CHECKPOINT.md`、`WAVE4_R011_DISPATCH_BASELINE.md`、`WAVE5_CHECKPOINT.md`、`WAVE5_R012_DISPATCH_BASELINE.md`、`WAVE6_FINAL_GATE_REPORT.md`、`WAVE6_SCOPE_AND_OWNERSHIP.md`、`WAVE7_10_R020_BOUNDED_RELEASE_CHECKPOINT_20260924.md`；七個 basename 均未出現在 Matrix／Coverage History 具名清單。早期 74-file aggregate 無逐檔 manifest，無法證明是否涵蓋，不據此估算去重總量。檔首既有導覽充分的 Wave 4/5 四份保留；Wave 6 final gate 補導向 R031 index／closeout，但保留原 42-file／656-test run 未完成的歷史結果；scope ownership 補後續路由而保留當日 scoped release 決議；Wave 7–10 checkpoint 補 R031 後續 bounded disposition 與非 full closeout／非無界 parity 限制。新增連結目標存在，限定七檔 `git diff --check` 通過。未跑測試、Graphify 或最終 repo-wide links／anchors scan。

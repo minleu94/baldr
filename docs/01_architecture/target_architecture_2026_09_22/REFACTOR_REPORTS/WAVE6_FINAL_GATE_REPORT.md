@@ -1,6 +1,6 @@
 # Wave 6 最終工程 gate 報告
 
-> **歷史時點提示（2026-10-10）：** 本文是 2026-09-23 的工程 gate 快照；下方「R015 unfinished」及 Wave 7 blocked 等結論已由後續有界 checkpoint 更新。後續狀態見 [C1 checkpoint](C1_CHECKPOINT.md)、[Wave 7–10 bounded release checkpoint](WAVE7_10_R020_BOUNDED_RELEASE_CHECKPOINT_20260924.md) 與 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)。有界接受不等於整體 Wave／產品或正式資料驗收，現況另見 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+> **歷史時點／現況導覽（2026-10-11）**：本文是 2026-09-23 的工程 gate 快照；下方 R015 unfinished、Wave 7 blocked 等結論是當時狀態。R031 2026-09-27 current overlay 更新了 R013–R017、C1 及後續任務的 bounded disposition，請看 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 與 [R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。本文所記 42-file／656-test combined run 仍是當時未完成的歷史執行，不因後續 relevant regression acceptance 而回寫成通過。有界工程接受不等於正式資料、ML promotion 或 production deployment 驗收；其餘歷史 gate 證據見 [C1 checkpoint](C1_CHECKPOINT.md)、[Wave 7–10 bounded release checkpoint](WAVE7_10_R020_BOUNDED_RELEASE_CHECKPOINT_20260924.md) 與 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md)。
 
 執行日期：2026-09-23
 範圍：C1 與 R013／R014／R016／R017 synthetic／engineering closeout

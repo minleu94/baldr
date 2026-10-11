@@ -1,4 +1,4 @@
-> **2026-09-23 scoped release 決議快照**：本文記錄當時 Wave 7 釋出實作工作的範圍；不指定目前 owner／待辦，也不代表 formal data acceptance、ML promotion 或 production deployment。現況看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與最新具名 QA；設計權威見 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
+> **2026-09-23 scoped release 決議快照**：本文記錄當時 Wave 7 釋出實作工作的範圍；不指定目前 owner／待辦，也不代表 formal data acceptance、ML promotion 或 production deployment。後續 task disposition 見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 與 [R031 final closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)；設計權威見 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
 
 # Wave 6 派工與同檔 owner 裁決
 

@@ -86,3 +86,7 @@ git diff --check
 本包可用純 contract＋pinned reader／bounded writer，不假稱自然 scheduler ready。仍缺正式來源的固定決策時點及可證 source availability、正式 capture owner／日曆／漏日政策／時點失敗與修訂接受流程、超過16股完整市場母體及合法分批 producer、長期保留容量治理、Outcome H5／10／20與政策／calendar成熟核對。沒有更改既有 Evidence／Paper capture producer或 scheduler，本包不能代替它們。
 
 主線 review 後可 cherry-pick 本包限定 commit；Manual／UI／config／原計畫整合由唯一 owner 承接。stage5／UX20 只能標有限工程切片，不能整項 done、自然樣本成熟、正式資料可寫或 ML fit ready。本包完成停止，保留 branch／worktree／證據，不自行恢復。
+
+## 2026-10-11 後續收據核對
+
+本節的主線接線與多批 producer 缺口是本 lane 收尾時的狀態。後續 `UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md` 記錄 sample capture 已接入隔離 CLI 與既有研究畫面；`UX20_PARENT_CAPTURE_INTEGRATION_20261006.md` 再交付有界多批 parent capture，並由 `UX20_PARENT_RECEIPT_UI_20261006.md` 提供保存收據瀏覽。因此此 adapter 不再是未整合 lane，且已交付有界多批工程；這不代表完整市場母體、正式來源可得性、自然成熟或 UX20 整項完成，資格限制仍有效。

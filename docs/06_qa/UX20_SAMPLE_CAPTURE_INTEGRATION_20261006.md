@@ -45,3 +45,7 @@ writer 只接受 repo output/qa 或 Temp 的子目錄；容量 reserve200GiB、�
 個人儲存／Journal 程式先前已整合（含 6d9a4316、18224c33、0a58d9f2）；尚未正式 migration／activation。不是未整合程式，也不重新採用舊25c3b326 lane。其他 owner 三檔／未知 root paper_event_source_capture.py 不讀不動。
 
 補充：CLI capture失敗仍返回原producer manifest/status，另標sample_capture_status=rejected，避免把已發布快照誤說成全部未寫。容量不足的追加實際fixture案例1pass、CLI targeted mypy1及compile2通過；不重複加總146。正式reserve不放寬。
+
+## 2026-10-11 後續收據核對
+
+本文只完成單批、最多 16 股的整合，並把大母體合法分批列為後續工程。`UX20_PARENT_CAPTURE_INTEGRATION_20261006.md` 後續記錄有界多批 parent capture、批次身份與完整母體分母核對，`UX20_PARENT_RECEIPT_UI_20261006.md` 記錄相應的唯讀保存收據瀏覽。原單批上限是此交付當時的範圍，不能代表現有流程仍完全沒有多批工程；後續交付仍受有界 capture 規則約束，UX20／Stage5 仍 partial，正式來源時點及自然成熟證據仍缺。

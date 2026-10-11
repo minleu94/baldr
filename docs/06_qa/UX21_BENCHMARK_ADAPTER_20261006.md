@@ -63,3 +63,7 @@ mypy 首輪 adapter 有一處 nullable availability 比較，修正後單檔通�
 ## 更新記錄
 
 - 2026-10-06：完成 UX21 benchmark adapter 獨立 lane 與同版 35 項測試、獨立審查；來源 qualification 與 actual source/store 接線留唯一主 owner。
+
+## 2026-10-11 後續收據核對
+
+更新記錄中的「來源 qualification 與 actual source/store 接線留唯一主 owner」是獨立 lane 交付時的停止點。後續 `UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md` 記錄 adapter 已接入 explicit benchmark source／store、CLI 與唯讀結果畫面；其隔離 fixture 可比較，但實際公開 TAIEX 請求因 company-action basis／accepted pins 缺件仍為 unknown，excess 為 null。接線完成不等於來源合格，UX21 仍 partial，formal／PIT／training／trading 資格維持 false。

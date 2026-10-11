@@ -76,3 +76,7 @@ UX22／23 仍 pending，不 fit、不開 shadow Task。以上列的是原計畫�
 ### 最後畫面缺件可讀性補正
 
 今日未成熟結果的原決策日價格缺件也明示於主文：2筆價格資料不足；來源未調整收盤價，非含息總報酬。結果與缺件分開保留，不隱藏已知不足。8個結果UI案例最終通過；Workbench85／validator25+4skip／mypy812再次通過。首次新UI test只因ASCII連字號與既有em dash占位符不符失敗，修正test接受既有符號，沒有改數值或guard，原失敗XML保留。最後XML去重 95不同affected案例passed，10變更Python檔compile，quant/diffcheck通過；前段94為補正前數字，由本段取代。95不包含Workbench85。原計畫只追加、原prefix完整；進度1/7/1與2/20/2不變，完成commit/readback後停止。
+
+## 2026-10-11 後續收據核對
+
+本文 partial 表格仍將「qualified benchmark adapter」列為 UX21 工程缺口，該列已由後續 `UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md` 取代：明示 adapter、保存、CLI 與唯讀畫面接線已完成。後續公開資料收據仍為 benchmark unknown／spec null／excess null，因 basis 與 accepted pins 未滿足，故沒有來源 qualification。完整期間 labels、正式 daily 部署、official session／custody、自然成熟與 Native／真人驗收仍未完成；UX21 整項保持 partial。

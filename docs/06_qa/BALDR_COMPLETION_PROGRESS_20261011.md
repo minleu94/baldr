@@ -551,3 +551,21 @@ Root唯讀另存 **23份raw** 於 `root/f12_binary_terminal_review_9cb232226d0e4
 Health候選仍在scratch：dated baseline缺portfolio_id與observed_at，不能以mutable latest_status補歷史資格；缺完整witness保持degraded。P08正補兩策略exact intent、分開T−1決策來源與execution／close來源及公開日曆clock；尚未QA。此輪coverage／回滾見 `root/binary_terminal_coverage_20261011.md`，正式來源、Manual行為、架構與Roadmap Gate未改；完整F12／P06／P08／M3仍待。
 
 Root另全讀 F12 QA-only saved-recipe patch `256706bb953db5053bbcebfebab5b249e4cb854739fe0c711cfd2761d0e49231`：兩個測試均用正式F17 decoder解析保存JSON，保留bundle斷言並新增完整canonical JSON等價。原full-freeze `9e098de2` 的 verification仍含舊patch hash、錯prior inventory、舊Main preimage與63非Main計數；root尚未套用或釋跑，已交owner建立只修派生metadata的不可變 sibling。62個非test依賴與 guard不改，舊freeze原件保留。
+
+### F12 真收藏保存與新 PID 重開接續
+
+Metadata-only sibling SHA `391167320fd4c054bc67ca7c04115186049af64d57c63f0f9207fb5015a34670` 保留原candidate／patch／62非測試依賴；root獨立核只有created_at／scope／verification／pin_inventory派生metadata變更。逐檔核current preimage、候選snapshot、完整diff與64pins，AST只變Main旅程函式及child.main；guard及其他top-level內容不變，斷言數增加。兩QA測試已套，preimages／rollback在 `root/f12_recipe_static_apply_root01_c0d3b99c654e462d8001fa363796c624`；64pin aggregate為 `dad1ec6b7ccf783a0ca71c46e6e6228762273d71a623e6aadaa936976c6675a7`。不是正式產品修改。
+
+首輪sandbox guard **4 PASS／1 FAIL／14.08秒／native1**，host `f12_recipe_guard_host_root01_e989f909b42441769f05adbf9ef298c7`。內層在guard安裝前os.link合成hardlink setup遭WinError5，尚非守門拒絕證據；Job自然退出、handles閉合、來源與pins相同。Root保存原raw於 `root/f12_recipe_sandbox_guard_terminal_root01`，另發同候選host權限release，不改test或來源。釋出工具曾因placeholder proof hash先行assert停止、未寫release；核實際hash後才釋出，不修改原proof。
+
+同候選guard **5 PASS／4.65秒／native0**，host `f12_recipe_guard_host_root02_f0712aa2ac444e37afc85199f65fd344`、inner `fdopen_guard_probe_c22ce1f41a964cee8d3e2144690a9dd0`，完整47斷言／records0及Job排空由stage release核驗。真COW **1 PASS／10.48秒／native0**，host `f12_recipe_cow_host_root01_0dc77a03e398465dad13cdda53cf17a1`、inner `watchlist_view_probe_cdabf1502e3a4c298527c941944c23b9`；真click／Yes／schema3／readonly reader／worker0／Job閉合均核。
+
+同版Main **1 FAIL／77.32秒／outer native1**，host `f12_recipe_main_host_root01_f3b9cbaacf0d4d67be9a6befd267f48f`；inner `main_candidate_1231a414304b4587a94ed42479baf92d` worker **1 FAIL／72.34秒／native1**，init600／total2400秒未觸發，Jobclosed／active0。這次已核真bookmark writer完成、service完整to_dict讀回相等、原JSON不變、私人DB hash改變、父Main關閉與shutdown requested，再啟動另一PID。
+
+Fresh child PID53448已正常Main初始化、公開bookmark讀回、雙來源exact重開，outcome成功，bundle與canonical F17一致、完整recipe JSON相等。停在child line234：要求重開 `current_query.query_identity_sha256 == expected_query_identity`。child自然native1、600秒期限未觸發、Job排空及root handles閉合；尚未完成後續page/request、收據與正常child關閉斷言，不授完整F12。Root已核正式bookmark.verify_exact_row沿穩定recipe／facts及當次query-page互綁，而原selected query／request保存歷史操作身分；具名SavedRecipe QA亦明示操作ID可更新。已交owner只讀核所有後續父子query／request斷言，先確認差異成因，不能只刪身分核驗。
+
+Root另存 **22份raw** 於 `root/f12_recipe_terminal_review_f3f0f20241d5454bbcdb87874307ed38/receipt.json`，SHA `772124f084655ddbc8dfa7167171a862b44eefa23120e7284b0f08229fed23af`。三階段64pins／23來源前後不變，session54535已terminal，全部本輪release已consumed，無live root QA。Coverage／回滾見 `root/f12_recipe_coverage_and_rollback.md`；本輪前序終態文件已存本機dev `e7d3f78e`，沒有main／push／release。
+
+Health v1 archive候選已freeze（manifest `fe1c3f05af35635927dcd93f3b98faf2838b64ac59954aa961ac69825f264484`），root靜態讀到witness只parse source observed clock，缺與evaluation／archive／cutoff的完整時序核驗；另授同owner新sibling增加refresh不可變source witness、exact portfolio／shares與分欄clock，舊baseline不回填。P08新增reference／execution具名publication選版，公開reader逐角色核clock，完整日volume不得進開盤sizing；仍在scratch，無QA或完整P06／P08／M3接受。
+
+Readonly契約稽核已完成：正式RevenueQuery的hash body含monthly reader／index／operation clock，重開會新發；原source測試458、472–478行明確要求query／read-session／index身分更新。Bookmark原selected query/request是收藏當下的歷史識別；正式verify_exact_row要求stable recipe／facts及重開當次query／page／request互綁。Root已獨立讀上述程式及原測試，授新QA sibling保留原selected ID／完整saved request核驗，另核fresh當次query/page/request及全部recipe條件與stable fact context；父子receipt分列selected／reopened身分，不以刪斷言換通過。新候選未套、未QA，原失敗保留。

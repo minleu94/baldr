@@ -9,6 +9,7 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
+| 10/11 P01 phase／Health候選審查 | QA-only原子replace重試三測 **3 PASS／1.66秒／native0**，734pins重核相同；含真Win32占用後恢復，不授原故障原因或完整暖p95。Health v2_01靜態pins一致，root核到兩既有consumer只認v1及candidate import遮蔽；compat／origin候選正補，未QA或套正式。新千檔完整矩陣仍待，原300ms與完整P06／P08／M3保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 F12 固定來源完整旅程 | Root核QA-only身份修正完整diff／64pins／23來源；guard **5 PASS／3.98秒**、真COW **1 PASS／12.24秒**、完整Main **1 PASS／80.19秒／native0**。父PID27280真收藏保存／關閉、新PID17708正常重開及關閉；歷史selected身份保留、fresh query/page/request互綁、完整recipe／F17相等。inner／child自然0、Job排空、來源不變；接受258檔合成來源的此旅程，其他條件、原來源／EXE／真人與完整F12仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P01 v9b3 千檔終態 | v3純preflight native0／store0、真Job **10 PASS／8.10秒**。原六角色五cold20頁／完整DTO通過、啟動至首頁p95 **33.9451527秒**；warm **65.6722947秒／自然native1**，首筆翻頁196.3811ms後QA phase換檔WinError5。717pins／postguards／Job排空通過；只有1筆暖樣本、篩選排序0筆，無有效暖p95，完整P01／300ms仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 F12 保存／新程序接續 | Root核兩QA測試完整diff及64pins／23來源；guard **5 PASS／4.65秒**、真COW **1 PASS／10.48秒**。完整Main **1 FAIL／77.32秒**，收藏實際保存與父Main關閉通過，新PID重開後完整recipe／F17相等；QA誤要求舊runtime query identity不變，正式契約核對完成、新QA候選待審。inner／child自然native1、Job排空、來源不變；完整旅程／F12 Gate仍待。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |

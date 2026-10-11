@@ -589,3 +589,17 @@ Query仍明示current_only／availability unknown／historical_pit_eligible fals
 接受固定42f合成來源的此完整Main旅程；原來源、其他條件、同版EXE／Native／真人與完整F12／P09／M2仍待。Coverage及精確回滾見 `root/f12_reopen_identity_coverage_and_rollback.md`；本輪只同步QA／Snapshot，不新增Manual操作或架構／Roadmap政策。
 
 F12 owner已回P01 phase QA-only候選，保留原WinError5及缺暖p95。Health v2仍在scratch，完整clock順序及真refresh→identity→evaluator→archive→新PID測試待freeze；只支援paper-main盤前邊界，策略EOD adapter仍缺。P08 v3另補empty selector不得藏非空target、execution open／volume／close同列row identity及精確symbol universe，以及行情與intent/calendar同受控DB核驗；真金融batch／兩namespace／績效與UI未授完成。
+
+### P01 phase 原子替換定向通過與 Health v2 相容性審查
+
+上一 goal turn 只回覆產品進度，分類 no progress。本輪重核工作樹與三個 live 代理 ownership，保存既有測試終態並完成 Health 新版 baseline 的正式 consumer 相容性稽核；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持。
+
+P01 phase QA-only freeze SHA `6a2dc96d31618c8bc110322fce1f979e6a837c2e41575354f87ce051f40c47ff`，新 helper SHA `d717e79601b80decde99ae1ea7de228cf23c4e1a5d2e3267a2a127a6c8604ece`。Root全讀diff及三個tests，以AST核原helper全部函式只有 `_write_locked` 的一次replace呼叫改接新helper；只對Windows PermissionError／WinError5或32最多四次、100ms重試預算，其他錯誤原樣raise。原xb／flush／fsync／atomic publication／temp cleanup與大小上限保持。
+
+Root原命令 `python -X utf8 -B output/qa/baldr_completion_20261011/root/run_p01_phase_replace_root01_review.py p01_phase_replace_tests_root01 -m pytest output/qa/p01_phase_replace_candidate_20261011/candidate/test_p01_phase_evidence_replace_candidate_20261011.py -q -p no:cacheprovider -o addopts=` 取得 **3 PASS／1.66秒／native0**、child PID14008，host `root/p01_phase_replace_tests_root01_fa0f02c37718435bb4c54e927e36854f`。正例用獨立子程序真正持有不分享DELETE的Win32讀取handle，實際replace遭5／32後釋放、成功保存完整JSON；負例核WinError3只一次、持續WinError5四次、原exception／舊bytes與temp清理。734 pins起訖相同，本輪獨立逐檔重核；release SHA `3ec1bf4dd29ad7fb3614009b1811a19d814f45ed931bf3518403c757e87f0efd` 只授這三測，不授完整矩陣。原Windows占用者未知，不能由此正例判定原故障原因。
+
+Health v2_01 manifest SHA `7f1008d7bb67888e53e0b55865e0c8be02e92cd225fbf5d2908a29bbae8d216b`，四候選source、兩tests、四formal preimages／targets、11直接deps、full.diff／rollback與v1 manifest均逐檔重核。本輪補讀 archive writer、exact reader、receipt/result/source全身分、完整時序、position／shares與有界regular-file讀寫；missing／unqualified撤銷正向Health，invalid阻擋。這是靜態審查，沒有候選pytest或正式套用。
+
+兩個具體接續缺口已交同owner：`forward_position_thesis_candidate_producer.py:1397` 僅接受daily-refresh.v1，新v2會拒絕；`position_health_market_source_producer.py:421` 僅v1走完整snapshot/as-of／source邊界，新v2會落legacy分支。另發現candidate app_module缺initializer時，Python會選正式regular package；v2_02須提供test-only overlay、fresh-cache／actual-origin核驗與child環境pins。原v2_01保留，新compat sibling須保留v1行為、具名v2來源與日期檢查，加入真refresh至兩producer回歸後再審；策略EOD adapter未完成。
+
+Root另存 **10份raw** 至 `root/phase_health_review_f2d813c1fb9b452281f7e33c8778f50d/receipt.json`，SHA `8b43186e55e4afb558aa3264f4b5efad8169aed9b557b8d73d6a367ce286753c`；其中29個Health靜態pins不是完整runtime closure。Coverage／回滾見 `root/phase_health_coverage_20261011.md`。P01 owner正準備全新六角色sibling，原五cold＋一warm、1000列20頁、三類各30樣本、600秒與strict300ms保持，尚未釋跑。P08仍補MA／KD intent首次寫入同一physical DB身份與完整金融daily整合，未QA；正式Health、完整P01／P06／P08／M3仍未完成。

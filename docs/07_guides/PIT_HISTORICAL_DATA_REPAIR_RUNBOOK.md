@@ -33,7 +33,7 @@
 
 `first_observed`、`local_first_seen`、本機 observation 或 `manual.available_date_mapping` 類來源一律只屬 shadow／研究證據，不得作為正式 PIT mapping 的輸入。retroactive baseline 仍可保留為 degraded coverage，但不能轉換成歷史公告證據。
 
-為了不倒退既有 Owner 可用性，僅目前已 materialize 的 2026-06 月營收 mapping 可走限縮 legacy compatibility：`twse.monthly_revenue_announcement / twse-openapi-t187ap05-l-2026-07-14` 與 `tpex.monthly_revenue_announcement / tpex-openapi-mopsfin-t187ap05-o-2026-07-14`。此例外是精確 source/version pair，不是新 ingestion 的模板；任何新 source snapshot 都必須使用 v2 provenance。
+以下僅記錄截至 2026-07-14 source/version snapshot 已 materialize 的 2026-06 月營收 mapping；目前狀態依 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新具名 QA 核對。為了不倒退當時的 Owner 可用性，該快照中的 mapping 可走限縮 legacy compatibility：`twse.monthly_revenue_announcement / twse-openapi-t187ap05-l-2026-07-14` 與 `tpex.monthly_revenue_announcement / tpex-openapi-mopsfin-t187ap05-o-2026-07-14`。此例外是精確 source/version pair，不是新 ingestion 的模板；任何新 source snapshot 都必須使用 v2 provenance。
 
 ## 3. 隔離執行環境
 

@@ -671,3 +671,4 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA Integration 增量：** 再核讀 8 份 QA 單篇文件（2 份局部紀錄升全文、6 份首次具名全文），後續收據核對後原件均保留未改。見 [Coverage History Entry 291](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-291)。
 **2026-10-11 QA R020 增量：** 新增 8 份具名全文核讀；原件補上 10/11 bounded disposition，定位過時的 IN_PROGRESS／ACTIVE 為歷史狀態，不擴大各 QA slice 的接受範圍。見 [Coverage History Entry 292](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-292)。
 **2026-10-11 QA R026 增量：** 新增 7 份身分／準備能力單篇文件的具名全文核讀與後續狀態補記；supported NP1／NP2 handoff 已結案，但其他 source-evidence／identity slices 仍保留各自限制。見 [Coverage History Entry 293](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-293)。
+**2026-10-11 QA V4／Prospective Formal 增量：** 新增 8 份單篇文件具名全文核讀，其中 1 份補上已結清的歷史交付狀態；其餘 QA／PIT／maturity 限制均保留原範圍。見 [Coverage History Entry 294](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-294)。

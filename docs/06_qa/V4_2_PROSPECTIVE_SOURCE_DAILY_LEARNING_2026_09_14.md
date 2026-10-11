@@ -299,3 +299,7 @@ proof；real durable flow 仍為 `retain_current`。
 - 2026-09-14 04:22:11-07:00：正式 default wrapper true-success readback：pipeline passed_with_warnings、blockers=[]；quick publication 完成於 2026-09-14T04:21:27.181165-07:00 且為 published；technical receipt 0f533bde5119890a 已 verified，2148 檔股票 bounded 真重算完成；learning child completed，symbol source=scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible、symbols=1528、candidate=rec-cal-29c1b6129396a3885a89d080、natural sample=0、decision=retain_current；新 immutable capture hash=sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0。前兩輪 180 秒 timeout 與 04:10 microsecond／nested capture false-success 均不列驗收；主 Luna 回報 QA 7.1 為 33 passed、34.54s、exit 0；工程與正式 default smoke 已由父任務接受，僅 git commit 尚待完成。
 
 - 2026-09-14：建立本 QA handoff，固定 wrapper／pipeline／source custody／normal snapshot／learning 行為、參數、路徑、retry／timeout、durable readback 與 source lane 限制。所有最終 QA 判定先維持 `PENDING`，等待父任務轉交正常 cohort 與測試結果。
+
+## 2026-10-11 歷史交付狀態補記
+
+本文多處「僅主 Luna git commit 尚待完成」只表示 2026-09-14 handoff 當時狀態。文件後續已包含於 commit `b26f943afe8815e7a8beb0a0bfa17af07fb032a5`（2026-09-14，`Finalize daily learning custody UI and docs`）。此提交只結清當時的文件交付狀態；本 QA 的 durable readback、natural sample、formal PIT、observed cost、promotion 與 V4.2 整體成熟度仍維持各自 2026-09-14 記錄範圍，不因提交而改判。

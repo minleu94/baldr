@@ -1,5 +1,7 @@
 # Broker Flow SQLite Dashboard 效能收口
 
+> **歷史基線範圍（2026-07-13）**：本文保留優化前量測的失敗結果，不代表修復後驗收。後續優化量測記錄於 [Broker Flow Batch Semantics 效能優化證據](BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md)，其中 Week／Month dashboard gates 記為 PASS。兩份文件反映不同量測階段，皆不作為現行效能保證。
+
 量測日期：2026-07-13（America/Los_Angeles）
 結論：**未通過整體驗收**。Week 與 month dashboard warm p95 均超過門檻；detail、branch tracker、UI loading／heartbeat 與 production DB 零寫入檢查通過。
 

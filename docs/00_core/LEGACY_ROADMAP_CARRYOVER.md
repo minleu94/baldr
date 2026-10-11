@@ -20,13 +20,13 @@
 
 | Legacy 項目 | 處置 | 新版落點 | 完成或驗收定義 |
 |---|---|---|---|
-| 指標參數改進（RSI/MACD/KD/ADX/MA/ATR/BBANDS） | 已完成 | Month 2「參數與權重治理」 | 已建立 Indicator Parameter Registry；參數具單位、範圍、預設值、版本與適用資料頻率；研究 run 可保存完整參數快照。 |
-| buy_score / sell_score 改為分位數 | 已完成 | - | fixed / quantile 雙模式已完成，且已於 2026-06-14 完成 10 檔代表性個股的 OOS 實證比較，產出大盤 regime 分層歸因報告。 |
-| 推薦系統參數改進 | 已完成 | Month 2「參數與權重治理」 | 推薦技術、圖形、量能權重已建立可版本化 Recommendation Weight Contract，並可保存到 Research Run。 |
-| 完整測試與穩定性驗證 | 已完成 | Month 2 Registry | 2026-06-14 已完成 10 檔個股 OOS 比較、資料版本/成本/成交假設鎖定實證；並完成 Unified Research Run Registry 實作、hash integrity、crash reconciliation、UI 保存、比較 UI、promotion gate 與完整驗證。 |
-| 大表格分頁 | 已完成 | Month 1「Phase 5 最小可用輸出」 | 已完成 SQLite Inspector 穩定分頁查詢與 UI 頁碼控制，解決大量資料載入 UI 假死。 |
-| 匯出研究報告（Excel / PDF） | 部分完成 | Month 1「Phase 5 最小可用輸出」；PDF 移交研究輸出 backlog | Excel 報告匯出與資料完整性/追溯元數據已完成，背景 TaskWorker + 原子寫入防護；PDF 尚未完成，後續驗收需具備同等元數據、資料完整性區域與非阻塞匯出防護，但不阻塞 Month 3 Factor Layer、Portfolio Replay 可信度或 Month 4 Daily Decision Desk。 |
-| 回測結果摘要模板 | 已完成 | Month 1「Phase 5 最小可用輸出」 | Excel 報告中已包含完整元數據與資料完整性檢核區域。 |
+| 指標參數改進（RSI/MACD/KD/ADX/MA/ATR/BBANDS） | 已完成 | Month 2「參數與權重治理」 | Indicator Parameter Registry、版本化欄位與 Research Run 快照的歷史交付見 [Month 2 Registry 治理計畫](../09_archive/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md)。 |
+| buy_score / sell_score 改為分位數 | 已完成 | - | fixed / quantile 雙模式與 2026-06-14 十檔 OOS pilot 的數據、Gate 及限制見 [Walk-forward 比較報告](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)；結果不代表全市場或 quantile 優於 fixed。 |
+| 推薦系統參數改進 | 已完成 | Month 2「參數與權重治理」 | Recommendation Weight Contract 與參數保存的歷史交付見 [Month 2 Registry 治理計畫](../09_archive/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md)。 |
+| 完整測試與穩定性驗證 | 已完成 | Month 2 Registry | 2026-06-14 範圍內完成十檔 OOS pilot、Unified Research Run Registry、hash integrity、crash reconciliation、UI 保存／比較與 promotion gate；分項結果及驗證邊界見 [Walk-forward 比較報告](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)與 [Month 2 Registry 治理計畫](../09_archive/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md)，不是目前全 App 的完整驗收聲明。 |
+| 大表格分頁 | 已完成（歷史實作） | Month 1「Phase 5 最小可用輸出」 | SQLite Inspector 分頁實作記於 [V1 完成紀錄](../09_archive/ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)；Full App Healthcheck 將 U-024 列為通過，但註明近期 compact pagination 有回歸風險、需維持 direct bridge，見 [Coverage Mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。這不單獨宣稱目前 UI 無回歸。 |
+| 匯出研究報告（Excel / PDF） | 部分完成 | Month 1「Phase 5 最小可用輸出」；PDF 移交研究輸出 backlog | Excel 報告格式化、追溯 metadata、TaskWorker 與原子寫入的歷史交付見 [V1 完成紀錄](../09_archive/ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)。Full App Healthcheck 將 B-037／R-019 匯出仍列為 candidate、B-040 批次結果的匯出仍是 candidate，故這些工程交付不代表所有 UI 匯出流程已正式驗收，見 [Coverage Mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。PDF 尚未完成；後續規格與限制如原列。 |
+| 回測結果摘要模板 | 已完成（歷史實作） | Month 1「Phase 5 最小可用輸出」 | Excel 報告中的 metadata 與資料完整性區域見 [V1 完成紀錄](../09_archive/ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)；UI 匯出驗收仍應依 [Coverage Mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 的 candidate 範圍判讀。 |
 
 ## 3. 舊 Roadmap current section 的後續工作
 

@@ -3238,3 +3238,10 @@ R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明�
 修訂 1,000 檔效能收據，將「目前程式」接點限定為 10/09 核對的版本與 checkout；BBUI 收據把「中央仍持有」句限縮為 10/07 lane 當時的責任分界，保留檔首 10/10 後續 readback。2382 計時方案改稱完整四端點「驗收未通過」，因三段原保存來源旅程已有實際收據，而一般報告仍 partial／blocked。WAL keeper 與 verifier 收據明示單次授權只適用其具名凍結 attempt，不構成目前授權；WAL snapshot 收據限定 10/08–09 合成 snapshot 範圍。其餘五份候選／審查原件維持隔離來源、固定 pins、未真人驗收等限制，候選身份彼此不同，未見可合併接受的證據。
 
 此批只檢查 9 個 inline Markdown link 的路徑存在性：7 個允許讀取的目標存在；指向 Manual 與使用者完成計畫的 2 個目標依禁讀要求未開啟。未驗 anchors、HTML／reference-style links、外網、backticked evidence paths 或連結目標正文；未跑測試、Graphify 或全庫 links／anchors scan。Matrix 更新見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。
+
+<a id="coverage-entry-320"></a>
+## 2026-10-11 Core 索引減重與 Legacy Carryover 證據邊界
+
+全文複核 `DOCUMENTATION_INDEX.md`、`DOC_COVERAGE_MAP.md` 與 `LEGACY_ROADMAP_CARRYOVER.md` 的對應段落。Index 移除重複逐日排程 QA 摘要，保留 10/09 當日摘要與共用 Runbook，將 10/08、10/07、10/06 日期化收據導向 Operations Testing QA Index。Coverage Map 將 First Wave 截圖敘述限定為 QA 收據在 2026-10-06 的記錄；未核實本機 `output/qa/` 當前仍有檔案，clean checkout 亦取不到 ignored 圖片。
+
+Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告、Month 2 Registry 治理計畫、V1 completion record 及 Full App Healthcheck coverage mapping 的直接連結。工程交付與現行驗收界線分開：十檔 OOS pilot 不代表全市場；U-024 雖歷史上列通過，mapping 同時記錄 compact pagination 回歸風險；Excel B-037/R-019 及批次 B-040 仍列 candidate，不能由背景 TaskWorker／原子寫入的實作紀錄外推成所有 UI 匯出流程正式通過。未讀受保護 Snapshot、Manual、system architecture、使用者完成計畫；未執行測試、Graphify 或全域 links／anchors scan。

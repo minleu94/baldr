@@ -6,7 +6,7 @@
 
 ## 可追溯性限制
 
-[2026-10-06 BALDR First Wave QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md) 引用的 Python／exe 截圖目前只存在本機 `output/qa/`；該目錄受 Git ignore 排除，因此乾淨 checkout 無法取得圖片。QA 收據文字與檢查結果仍保留，但圖片本身沒有隨 repository 封存，不能在乾淨 checkout 重新核對視覺截圖。
+[2026-10-06 BALDR First Wave QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md) 記錄當日 Python／exe 截圖位於本機 `output/qa/`；該目錄受 Git ignore 排除，乾淨 checkout 無法取得圖片。本 Map 未核實該本機路徑目前是否仍存在；QA 收據文字與檢查結果保留，但圖片本身沒有隨 repository 封存，不能在乾淨 checkout 重新核對視覺截圖。
 
 ## 一、文件權威邊界（Scoped SSOT）
 

@@ -1,6 +1,6 @@
 # 文檔索引
 
-> 2026-10-10 更新。本頁維護閱讀與文件位置；目前狀態只看 Snapshot，日期化測試數字只看原 QA receipt。
+> 2026-10-11 更新。本頁維護閱讀與文件位置；目前狀態只看 Snapshot，日期化測試數字只看原 QA receipt。
 
 ## 權威入口
 
@@ -28,11 +28,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [2026-10-09排程／automation修正與最新報告](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)：21個Task設定回讀、Operational啟用、兩個prompt修正、稽核誤判修復與仍未解除的資料資格事項；共同操作見[全排程驗收runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
-[2026-10-08 自然排程故障修正與驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)：保存該日排程修正範圍、驗證結果與限制；目前狀態以 Snapshot 為準。
-
-[2026-10-07 排程故障修正與有限驗證](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)：保存該日的故障修正與有限驗證證據；不取代較新的排程狀態。
-
-[Windows／Codex 排程運維與搬機指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) 提供任務用途、入口、依賴、時區、私有清冊與搬機驗收；[2026-10-06 排程稽核](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md) 保存該次唯讀稽核證據。
+[Windows／Codex 排程運維與搬機指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) 提供任務用途、入口、依賴、時區、私有清冊與搬機驗收；日期化修正與稽核收據集中由 [Operations Testing QA Index](../06_qa/OPERATIONS_TESTING_QA_INDEX.md) 導覽，避免中央索引重複保存逐日摘要。
 
 [Scheduled CMD／契約](../../scripts/scheduled/README.md)、[Evidence rehearsal](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML shadow inference 維運](../07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[模型 shadow runbook](../07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md) 與安裝／設定手冊是調度及維運文件入口；目前全排程唯讀查核見上方共用 Runbook，啟用狀態與驗收資格看 Manual、Snapshot 及具名 QA。
 

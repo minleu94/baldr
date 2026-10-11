@@ -1,5 +1,7 @@
 # R007 時區名稱別名勘誤：SOL 驗收
 
+> 本頁的 PASS、R008 待終審與 Wave 3 未解鎖，均屬本次 R007 tzname 勘誤驗收時的切片狀態；後續範圍與放行依 [R031 任務索引](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)及具名 checkpoint 判讀，不由本頁推定目前狀態。
+
 TASK_STATUS: PASS
 
 R007 的前次 PASS 僅適用於舊 SHA。本次補上 exact `datetime.timezone` 保留 caller-owned `str` 子類名稱的別名缺口；封存後的 `tzname()` 不再回傳呼叫者持有且可變的名稱物件。修正只涉及 R007 leaf contract、其測試與勘誤報告，沒有接入 production consumer 或改動資料、數值計算、ML ABI。

@@ -1,5 +1,7 @@
 # PIT Historical Data Repair Closeout（2026-07-15）
 
+> 本文的 pending／deferred、Git Coordinator 交接與 coverage 判斷只截至 2026-07-15；目前資料與驗收狀態須查 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)及[資料目錄](../03_data/README.md)，不能把本頁當成現行派工或 production apply 授權。
+
 ## 1. 結論
 
 E2 已完成 PIT contract、月營收／季度財報 mapping、corporate timeline、`p0-ml-eligibility.v1` 與正式 DB 唯讀 coverage audit tooling。工程 tooling 可重跑，但實際歷史 coverage 尚未完成，來源 acceptance 與 production apply 全部保持 pending／deferred。

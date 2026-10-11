@@ -1,5 +1,7 @@
 # 明示市場CSV consumer／CLI dev整合（2026-10-06）
 
+> 本頁的「UX23 未採納」只記錄市場 CSV 包結束時的父層安排；後續 [UX23 scoped registry 整合](UX23_REGISTRY_INTEGRATION_20261006.md) 已記錄 lane 採納與有界驗收。兩份收據對 24UX pending／partial 的統計基準未調和，不能把下文 `0pending` 推成 UX23 當時已接受，也不能把 UX23 切片接受推成整體 gate 完成。
+
 review兩個lane commits f0e1d8e62727a305ee7ff74c3b42e363fecce1db → 8d0a6090b13bc52ce49a216daf1af29133648104，dev依序採納ac0cc19b→ffa6e537；最小修正另commit。既有viewport UI包609dfb4a獨立交付，這包不改sharedUI/config或正式資料。
 
 ## 實用範圍

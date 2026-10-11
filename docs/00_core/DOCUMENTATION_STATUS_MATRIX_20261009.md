@@ -725,3 +725,7 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 Archive closeout／healthcheck 增量（Coverage History Entry 332）：** 根層 8 份 clean 原文具名全文核讀，9 個本機 Markdown 連結目標存在。Full App 舊單一入口、Gate 1 指標與回退、Gate 2–7 verifier 命令及 V1.5／V1.6 後續項目皆加上日期或已完成導向；不把同 basename 的 QA 與 Archive 路徑合併去重，也不據此宣稱 Archive 根層原文已全讀。
 
 **2026-10-11 新增三組逐檔覆蓋（Coverage History Entries 333–335）：** C1／R005／R006／Wave 1 報告 12 份、QA 派工／個人模型／UX 圖表 12 份、Archive 根層資料／Roadmap／Guide 原文 12 份，均以 clean tracked HEAD blob 讀至 EOF；各組本機目的地分別 57、26、180 個均存在，錨點與連結目標正文未驗。修正歷史 gate／回滾／舊 Agent 唯一 SSOT 指示，並標示 UX08 計數尚未調和。QA、Archive、REFACTOR_REPORTS 舊 aggregate 仍缺去重 manifest，不因這 36 份就宣稱大型目錄全覆蓋。
+
+**2026-10-11 R006–R008 報告增量（Coverage History Entry 336）：** 15 份 clean REFACTOR_REPORTS 具名全文核讀，25 個本機連結目標存在；R007 PASS 與 R008 舊回滾命令加上範圍／時點提示。其他報告與兩份 dirty WAVE 文件仍未由本批覆蓋，舊 82／23／119 aggregate 不因此換算為最新總數。
+
+**2026-10-11 Archive／QA 新批次（Coverage History Entries 337–338）：** Archive 根層 15 份、QA 內容頁 13 份 clean tracked 文件逐篇讀至 EOF；本機連結目標分別 17、96 個均存在。修正舊排程註冊、`--apply`、DB 備份回復與日期狀態的直開風險；QA 將 UX23「當時未採納」與後續唯讀切片接受分開，24UX 統計仍待母體調和。這兩個大型目錄的舊 aggregate 缺逐檔去重證據，不能以本批推算全域完成率。

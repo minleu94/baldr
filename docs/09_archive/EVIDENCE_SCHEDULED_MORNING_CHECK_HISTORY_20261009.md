@@ -1,6 +1,6 @@
 # Evidence Scheduled Morning Check
 
-> 適用範圍：`scripts/scheduled/` 的 CMD safe scheduled wrappers。這份指南只用於檢查 read-only freshness 與 evidence dry-run 結果，不代表任何事件類型有效。
+> **2026-10-09 歷史操作範圍：** 本頁記錄 `scripts/scheduled/` 的 CMD wrappers。查詢 freshness 與 evidence dry-run 結果屬唯讀檢查；下文 `register`、手動建立 Task 與 `unregister` 會變更排程，並非唯讀，也不構成目前執行授權。現行操作先依 [排程指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) 與 Manual 核對，不從本頁推定任何事件類型有效。
 
 ## 1. 檢查 Windows Task Scheduler
 

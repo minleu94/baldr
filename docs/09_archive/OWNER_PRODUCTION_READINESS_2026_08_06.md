@@ -1,10 +1,12 @@
 # Owner Production Readiness — 2026-08-06
 
+> 本文以 2026-08-06 的 Owner 使用與資料庫檢查為基線；表中的 OOC v5 行另收錄 2026-08-07 發布後的補記，不能把該行算成 8/6 已驗證。以下「目前」均依其當時段落判讀，現況另查 Project Snapshot 與具名最新 QA。
+
 ## 結論
 
 目前可供 Owner 日常使用的正式範圍是：**Rule 驅動 Decision／Advice、推薦、日常資料更新、Paper Portfolio、證據保存與只讀 Runtime 監控**。這不是券商交易系統，也不代表投資績效或 ML 已正式 promotion。
 
-本文件只記錄 2026-08-06 的實測狀態；長期產品方向仍以 `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` 與 Gate registry 為準。
+本文件主要記錄 2026-08-06 的實測狀態，另含上方標明的 8/7 OOC 補記；長期產品方向仍以 `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` 與 Gate registry 為準。
 
 ## Owner 功能狀態
 

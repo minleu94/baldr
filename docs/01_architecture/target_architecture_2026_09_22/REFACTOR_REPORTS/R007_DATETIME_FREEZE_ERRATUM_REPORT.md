@@ -1,5 +1,7 @@
 # R007 aware datetime 深凍結依賴勘誤報告
 
+> 本頁的 PASS 只涵蓋 2026-09-22 aware datetime 深凍結勘誤；後續 timezone-name 別名修正見 [R007 SOL 驗收](R007_SOL_TZNAME_ACCEPTANCE.md)，整體波次狀態依 [R031 任務索引](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)判讀。
+
 日期：2026-09-22
 狀態：`PASS`
 

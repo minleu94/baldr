@@ -27,6 +27,8 @@
 
 ## 使用方式
 
+以下 production／test／staging 命令只保留 2024-10-16 v1.3.0 的歷史範例；其中 production 命令可能寫入資料，不可照抄執行，應依現行 Manual 與 `TWStockConfig` 重新確認路徑與行為。
+
 ### 生產模式（預設）
 ```bash
 # 使用預設D槽路徑

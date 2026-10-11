@@ -1,5 +1,7 @@
 # Post-V1 Evidence Production Scheduler Approval Checklist
 
+> 本頁是截至 2026-07-07 的人工批准模板與當時 readiness 快照，不是目前核准狀態或排程啟用授權；下文「Latest」「current」「next」均限於該日期，現況須重新核對具名 QA 與 Project Snapshot。
+
 日期：2026-07-07
 
 ## Scope

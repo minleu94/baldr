@@ -91,4 +91,4 @@ $files = Get-ChildItem app_module,data_module,scripts -Filter *.py | Select-Obje
 
 ## Rollback Note
 
-若正式 DB 已套用 evidence schema，需要回復時可使用 `apply_evidence_event_schema_migration()` 產生的 backup file 覆蓋回原 DB。因本次 schema 只新增 evidence tables，程式層停用可先停止呼叫 repository / CLI，不需修改既有 scoring、recommendation、portfolio 或 UI 模組。
+這是 2026-07-01 schema migration 的歷史回復構想，不是目前正式 DB 的 recovery 指令。當時若需回復，曾記錄可使用 `apply_evidence_event_schema_migration()` 產生的 backup file；實際回復前必須由受控程序核對 DB identity、備份建立時點與其後新增資料，不能直接以舊備份覆蓋目前 DB。因本次 schema 只新增 evidence tables，當時程式層停用可先停止呼叫 repository / CLI，不需修改既有 scoring、recommendation、portfolio 或 UI 模組。

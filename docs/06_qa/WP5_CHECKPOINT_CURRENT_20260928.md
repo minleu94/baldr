@@ -1,5 +1,7 @@
 # WP5 整合檢查點：目前可核證狀態（2026-09-28）
 
+> 標題的「目前」只指 2026-09-28 這次 frozen route／後續附記的收據時點；本頁不是 2026-10 的 WP5 現況判定。後續狀態須另查具名最新 QA 與 Snapshot。
+
 本文件是 [`WP5_INTEGRATION_CHECKLIST_20260928.md`](WP5_INTEGRATION_CHECKLIST_20260928.md) 的新檢查點，不覆寫其中的歷史結論。原 checklist 所標 HEAD 為 `2a85bc92019798668ef12f50ef87fb587d0dc58c`；較早版本檢查點曾讀到 `29ff35b4a17fa3fc270aef6168ab70eaf48eeb1b`。本次 final scoped route 的 HEAD 為 `fd76b4e8dbb59034f9da5d4ff36021220ee3cfd4`。工作樹並非乾淨且沒有 staged diff；final route receipt 以 31 個 dirty source/test/doc paths 的前後 SHA-256 及 HEAD 建立同一 freeze manifest。因此以下只描述收據所涵蓋的 bounded route，不是完整 pytest suite 或整體 WP5 驗收。
 
 一般 MainWindow 來源綁定的 UI P1 三檔已按本次整合路由固定 hash 並通過相鄰回歸；之後 m11 也完成 scoped Qt widget journey，Boundary review 無 P0/P1。m11 證據與限制列於本文末尾附記；它不證 OS 前景畫面或真人操作，也不代表完整 WP5 通過。

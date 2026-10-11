@@ -47,6 +47,8 @@
 
 ## 回滾與限制
 
+下列 `%TEMP%` 備份路徑是當時作業記錄，未核實至今仍存在或仍對應目前版本；不可直接作目前還原指示。
+
 本次 tzname alias 增補前的 contract、test 與報告副本保存在 `%TEMP%\r008-decision-tzname-alias-before-review\`。若需回滾本輪增補，先確認沒有後續編輯，再從該目錄還原三個檔案；不得用 Git checkout/reset 還原整個未追蹤 contract。此次未修改 app contract/test、parent `__init__.py` 或其他 R-task，未 stage、commit 或 push。
 
 自訂 mutable tzinfo 的 timezone name 與 DST 規則不會被複製；其封存結果固定在當刻 offset。標準 `timezone` 與 `ZoneInfo` 只有在 offset 與 name 都是 exact builtin 型別時保留原 tzinfo；timezone name 為 `str` 子類時則複製底層文字值。這次只處理 decision contract，app contract 的時間欄位與跨 contract 相容性由其 owner 負責。

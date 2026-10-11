@@ -65,6 +65,8 @@ TZ name alias 複核修正 SHA：
 
 ## 回滾清單
 
+以下表格只保存當時新增檔案的回滾設計，包括移除本報告的命令；它不是目前工作樹可直接執行的清理指示。任何回復先核對目前 HEAD、檔案 owner 與後續修改。
+
 | 檔案 | 變更類型 | 回滾方式 | 回滾風險 |
 |---|---|---|---|
 | `app_module/recommendation/contracts.py` | 修改 | 僅撤回本報告描述的 `_freeze_aware_datetime`、datetime 遞迴分支及三個直接欄位封存 hunks；該檔本切片前為 untracked，勿用 `git checkout HEAD` 覆蓋。 | 會恢復 mutable tzinfo alias 問題。 |

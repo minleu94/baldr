@@ -14,6 +14,8 @@
 
 ## 範圍與回滾
 
+本節的 `%TEMP%` 備份與回滾說明只適用當次未追蹤工作樹；副本是否仍存在或適用目前 HEAD 未核實，不可直接照做。
+
 本次僅修改 `decision_module/recommendation/contracts.py`，新增 `tests/test_r008_decision_numeric_enum_rework.py`，以及本報告。未修改既有 `tests/test_recommendation_contracts.py`、app contract／報告、parent `__init__.py` 或其他 R-task 檔案。
 
 契約檔在任務開始前為未追蹤檔案，且已有其他 worker 的內容。修改前已將原檔複製至 `%TEMP%\technical_analysis_R008_decision_contracts_before_20260922.py`；回滾需先檢查並只撤銷本次 patch，不能以 Git 還原或刪除整個既有契約檔。兩個新增檔案若需回滾，須先確認沒有後續 worker 編輯，再移除。

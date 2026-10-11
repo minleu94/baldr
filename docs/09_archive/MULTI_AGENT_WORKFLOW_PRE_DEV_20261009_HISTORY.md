@@ -2,7 +2,7 @@
 
 # Multi-Agent Collaboration Workflow Protocol
 
-This document defines the formal multi-agent collaboration workflow for the repository.
+本文件保存 Pre-dev 時期的多 Agent 協作流程；目前指令依上方警語所連的共用規範與技能登錄判讀。
 
 ## Branch Roles
 

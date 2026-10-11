@@ -3342,3 +3342,24 @@ C1 重開派工基線加上 9/23 歷史狀態與後續 checkpoint 導向。R005 
 於 HEAD `b071c3bb1ddd1c85b32f96a4d8a60644c7417725`，逐篇讀至 EOF 核對 12 份 clean tracked Archive 根層原文：`DATA_COLLECTION_ARCHITECTURE_HISTORY.md`、`DATA_REBUILD_GUIDE_HISTORY.md`、`DEVELOPMENT_ROADMAP_LEGACY_2026_06.md`、`DOCUMENTATION_INDEX_HISTORY_20261006.md`、`INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md`、`MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md`、`ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md`、`VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`、`VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md`、`RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md`、`USER_GUIDE_HISTORICAL_UPDATES_20260611_TO_20261006.md`。180 個本機 Markdown 目的地路徑存在；未核錨點、目標正文或外部連結。
 
 三份缺直開警示的產業指數、Merge／大盤、推薦資料流原文已加歷史定位與現行 Manual／資料或架構入口；資料收集架構的「系統目前已實現完整」改成當時聲明。舊 Development Roadmap 的 Living Section「所有 Agent 必讀」與唯一 SSOT 指示明確標為已失效，V1.1–V2.0 歷史 Roadmap 不再把自身狀態段落列為現行狀態權威。資料重建原文保留 `--force-all`，既有首頁已禁止照舊指令執行。其他日期化狀態與 Guide 歷史段落仍以首頁時點提示判讀；本批未對舊資料命令執行或重新驗證，也未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-336"></a>
+## 2026-10-11 R006／R007／R008 十五份歷史報告核讀
+
+於 HEAD `de504b01378b1e0c32fb7a871ae67b7984f7814d`，逐篇讀至 EOF 核對 15 份 clean tracked `01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/` 文件：`R006_GEMINI_REVIEW.md`、`R007_DATETIME_FREEZE_ERRATUM_REPORT.md`、`R007_LUNA_ERRATUM_INDEPENDENT_REVIEW.md`、`R007_LUNA_TZNAME_INDEPENDENT_REVIEW.md`、`R007_SOL_DATETIME_DEPENDENCY_ERRATUM.md`、`R007_SOL_ERRATUM_ACCEPTANCE.md`、`R007_SOL_REVIEW.md`、`R007_SOL_TZNAME_ACCEPTANCE.md`、`R008_APP_DATETIME_FREEZE_REPORT.md`、`R008_DECISION_DATETIME_FREEZE_REPORT.md`、`R008_DECISION_NUMERIC_REWORK_REPORT.md`、`R008_GEMINI_PRE_BATCH_PASS.md`、`R008_LUNA_DATETIME_FINAL_REVIEW.md`、`R008_LUNA_FINAL_FROZEN_REVIEW_V2.md`、`R008_LUNA_FINAL_INDEPENDENT_REVIEW.md`。25 個本機 Markdown／file URI 目標存在，未讀目標正文或驗錨點。
+
+R007 tzname SOL 驗收的 R008 pending／Wave 3 未解鎖限定於該次裁決，9/22 datetime erratum PASS 分開導向後續 tzname 勘誤與 R031；R008 app rollback 的 `Remove-Item`、decision 兩份 `%TEMP%` 副本均標為不可直接重送的歷史回滾記錄。其餘報告原有 frozen SHA／切片範圍與後續入口保留，沒有把 R008 Gemini 預審中截斷的 SHA 當完整 hash 證據。報告內測試結果僅是原執行紀錄，本批未重跑測試、Graphify 或全庫 links／anchors scan；兩份共享 dirty WAVE 文件未讀未動。
+
+<a id="coverage-entry-337"></a>
+## 2026-10-11 Archive 排程／來源／Evidence 十五份根層原文核讀
+
+於 HEAD `de504b01378b1e0c32fb7a871ae67b7984f7814d`，逐篇讀至 EOF 核對 15 份 clean tracked Archive 原文：`EVIDENCE_SCHEDULED_MORNING_CHECK_HISTORY_20261009.md`、`FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md`、`LEGACY_RECOMMENDATION_LEARNING_FAILURE_REVIEW_2026_09_21_HISTORY.md`、`ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15_HISTORY.md`、`MULTI_AGENT_WORKFLOW_PRE_DEV_20261009_HISTORY.md`、`NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md`、`OWNER_PRODUCTION_READINESS_2026_08_06.md`、`PARAMETER_DESIGN_IMPROVEMENTS_HISTORY.md`、`PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md`、`PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md`、`POST_V1_EVIDENCE_EVENT_STORE_QA_2026_07_01.md`、`POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md`、`POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md`、`POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md`、`POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md`。17 個本機 Markdown 目標路徑存在；外部 TWSE URL、錨點與連結目標正文未驗。
+
+舊 Morning Check 的「只用於唯讀」與 `register`／`unregister` 並列矛盾已改為分清查詢和排程變更；Fundamental 原警語擴至全文 `--apply` 與長批次 CLI；v1.3 路徑隔離範例加不可直接執行標示。Event Store 7/1 以 migration backup 覆蓋正式 DB 的舊 rollback 句改為歷史構想，要求核對 DB／備份身份與後續資料；Owner readiness 分開 8/6 基線和 8/7 OOC 補記。Pre-dev 多 Agent「defines formal workflow」改成舊流程；PIT closeout 與 scheduler approval checklist 補上日期及非現行授權界線。其他文件原有 research／working-copy／未啟用邊界保留。未執行舊命令、資料修復、測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-338"></a>
+## 2026-10-11 QA C 槽／UX／PFS／WP5 十三份內容頁核讀
+
+於 HEAD `de504b01378b1e0c32fb7a871ae67b7984f7814d`，逐篇讀至 EOF 核對 13 份 clean tracked QA 內容文件：`C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md`、`MARKET_CSV_EXPORT_INTEGRATION_20261006.md`、`POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`、`PROSPECTIVE_FORMAL_SIMULATED_PORTFOLIO_EXECUTION_PLAN_2026_08_14.md`、`QT_NATIVE_CRASH_READONLY_FOLLOWUP_2026_09_15.md`、`R031_FINAL_REFACTOR_CLOSEOUT_20260925.md`、`UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md`、`UX22_LABEL_READINESS_20261006.md`、`UX23_REGISTRY_INTEGRATION_20261006.md`、`V2_2_PHASE5_APPROVAL_REHEARSAL_PACKAGE_2026_07_07.md`、`V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md`、`WALK_FORWARD_COMPARISON_REPORT.md`、`WP5_CHECKPOINT_CURRENT_20260928.md`。96 個本機 Markdown 目的地路徑存在；未驗錨點或目標正文。
+
+Market CSV 包原稱 UX23 未採納，UX23 後續收據則記錄唯讀 lane 採納與 scoped 驗收；已在 Market CSV 與 UX22 首段分開各自凍結時點、切片接受及整體 gate pending，並明示 24UX 計數母體未調和。C 槽對照的「目前」改為 10/09 收據時點，WP5 標題的「目前」也限為 9/28 frozen route。V2.3 台帳自身已保留 DEV-66 limited 與 8/28 audit `limited=0` 的未調和差異，本批不推定決議撤銷；Walk-forward 10 檔 pilot 不作整體策略績效結論。三份轉址 stub 與疑似使用者計畫未列入這 13 份內容頁；未跑測試、Graphify 或全庫 links／anchors scan。

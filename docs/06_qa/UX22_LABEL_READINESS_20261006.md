@@ -1,5 +1,7 @@
 # UX21 endpoint label → UX22 樣本／公平比較 readiness（2026-10-06）
 
+> 文末「UX23 仍 pending」與 24UX 統計屬本 UX22 收據凍結時點；後續 [UX23 scoped 整合](UX23_REGISTRY_INTEGRATION_20261006.md) 已採納唯讀 lane，但未證正式 shadow 啟用或整體 UX23／產品 gate 完成。不同收據的進度數字不可直接相加。
+
 基線 `8104d0a921fe020b7640250ef62221e44252e55b`；承接已接受的 benchmark source／store／UI。本包是有界唯讀 consumer，不重造 learner，不訓練真模型。root 負責 CLI、整合 review 與收據，唯一 Luna Max 實作薄 adapter／focused cases。
 
 ## 既有元件與真正缺口

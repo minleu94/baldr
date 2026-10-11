@@ -10,4 +10,4 @@ INTAKE_STATUS: SUPERSEDED_SNAPSHOT_REVIEW
 
 SOL 現讀 `app_module/recommendation/contracts.py` 已有 frozen `MLAvailability`、typed status/reason、`RecommendationExecution.ml_availability`，專用測試明示相同空 refs 下的未要求、未知、不可用與 blocked 狀態。SOL 再跑 `tests/test_recommendation_contracts.py` 與 `tests/test_update_service_import_contract.py`：`15 passed`。這證明舊 finding 的核心缺口在目前版本已補上；**是否完全符合 INV-09／FINAL ML 契約仍待 Gemini 針對最新九檔 SHA 獨立審查**。
 
-目前權威派送文件為 `REFACTOR_DISPATCH/GEMINI_REVIEW_R008.md` 和 `REFACTOR_DISPATCH/WAVE2_GEMINI_REVIEW_PROMPTS.md`。Gemini 應重新讀取兩者、核對 `R008_SOL_REWORK_REVIEW.md` 的九個目前 SHA 和實際 diff，對最新版本給出單一 `REVIEW_STATUS`。Wave 2 gate 及 Wave 3 仍未放行。
+在本文 intake 撰寫當時，權威派送文件為 `REFACTOR_DISPATCH/GEMINI_REVIEW_R008.md` 和 `REFACTOR_DISPATCH/WAVE2_GEMINI_REVIEW_PROMPTS.md`，Wave 2 gate 及 Wave 3 尚未放行。後續 Wave 2 在 R008 新 SHA 上恢復 PASS，見 [R008 schema-range dependency recheck](R008_SCHEMA_RANGE_DEPENDENCY_RECHECK.md)；目前 R008 task disposition 以 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 為準。

@@ -708,3 +708,35 @@ Root以實際 `ResearchRunComparisonService.evaluate_comparability` 與記憶體
 Probe收據 `root/performance_comparison_probe_31353601236348a79d5c21ac0354df9e/receipt.json`，SHA `02dd096bf30740541fcc9697040f00a14fee8b3edc452a4981b064376a78d6d5`；兩formal module origins及hash起訖相等、無DB／UI或正式資料。這是新consumer設計的必要前置證據，不是完整P08接受。P08 owner目前仍補真seed writer／availability→MA與KD首intent→daily CAS／checkpoint，績效與UI尚未完成。
 
 Root create-only保存28份raw及兩formal文檔前像於 `root/error_health205_review_packet_f4e885be1bb340e28b093f7d1a6c63ee/receipt.json`，SHA `6d700a46a626bda058d5c84c49ac531512a2ba3604e65856ee0860cd8590746c`。Coverage／回滾見 `root/p01_error_receipt_review_scope_root01.md`及候選Health rollback；本輪只追加Snapshot／本QA，Manual、Roadmap、架構政策與main／push／發布未改。Compat metadata-only v6已由owner交root，但尚未獨立核驗／QA，不取代v5原拒絕。
+
+### Health v2_06 定向通過、相容測試終態與 P01 預檢差異拒絕
+
+上一 goal turn 為進度回覆，分類 no progress；本輪取得新實際來源／測試終態及可改變下一步的靜態拒絕，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包接受。
+
+#### Health v2_06 真來源與完整兩檔測試
+
+Manifest SHA `c2fac8383c3645b106eda6ff8e3bc4556135b087aa7cdd37d8044be16242782c`。Root核515個raw pins、正式四前像／兩新檔缺席、172479-byte full.diff及5478-byte v2_05→v2_06 delta全文重建。四個產品來源bytes與v2_05完全相同；唯一變更為saved archive測試：晚到負例使用真refresh writer產生的position id，extra-universe負例重封完整合成baseline witness並先核structurally_valid，以抵達原scope universe守衛。這份合成witness不取得正式資料資格。
+
+第一個root origin探針已載入新四檔，但其繼承依賴清冊仍指v2_05路徑，故以來源清冊assertion停止；515 pins及空bytecode根保持。保留原失敗，另建v2探針逐一核四對equal bytes、移除舊依賴路徑並精確綁新v2_06路徑。Fresh child **native0**，四candidate／39 local／725 observed runtime來源核驗通過；`root/health_v206_v2_origin_d1015e94b577464b95c5bf1da8634096/receipt.json` SHA `d57bbe0ac4719765010c9e40387138b3a4f97569e97db6a783f6400e7c90b640`。沒有把此root探針錯誤當成產品故障。
+
+Host完整 `test_position_health_daily_refresh_service.py` 與 `test_position_health_saved_archive.py` 為 **38 PASS／1 skip／5.58秒／native0**；515 pins起訖相同，正式兩新檔仍缺席，fresh `PYTHONPYCACHEPREFIX` 起訖為空並使用 `-B`，未載入候選保存的舊相鄰bytecode。收據 `root/health_v206_v2_focused_tests_9d96082d6f714cac9b53a732569eeedd/receipt.json` SHA `5efc2fc74fd2f7d9c8dc266bfa35ed66464a9675075c4e7480049c0d13eb04b6`；JUnit同目錄。候選四來源mypy為0 issues、六檔語法通過／兩命令native0，515pins相同；`root/health_v206_types_dc4849c8b6644e21b8196434991477c6/receipt.json` SHA `912e5356dacfdb0c95c1f6ee931ad443544b47f87685554d4bfb68ae646f26f1`。Skip仍未有成功reparse setup證據，完整Health／正常P06 UI／策略EOD／P08／M3未授接受；本版未套正式。
+
+#### Compat v6 實際測試與下一版範圍
+
+V6為保留v5來源bytes的metadata-only sibling，manifest SHA `f34e3dd868a8f28e1b2bdc7d814d0870377aa61c470083b5cff5d82f3cadcd2e`。Root500 checks／469 unique pins、原四formal前像及59123-byte全文diff／metadata delta重建通過。四Health依賴仍是v2_04，不是v2_06。Fresh origin native0、六candidate／54 local／830 observed runtime；完整兩producer測試 **47 PASS／4 FAIL／3.04秒／native1**，469pins起訖相同。原收據在 `root/health_compat_v6_origin_9e43ef31d2dc4cee84706a1403d062ce/`及 `root/health_compat_v6_focused_tests_2bb2b94225884d33b53113c1b8e7cf39/`。
+
+Root確認兩個新測例把不回傳值的 `_write_json` helper當作Path，導致Path(None)而未抵達目標validator；approved-machine-policy fixture的v1 baseline缺decision_date，producer回 `health_baseline_decision_date_invalid`；weekend fixture為 `market_date_not_latest_verified_session`。Owner唯讀triage指出共用calendar cache的captured=09/08、31日expiry=10/09已早於10/11 host QA日期，另建有效且完整hash-bound測試cache；不改producer日期或因果守衛。已授v7完整fixture修正、typed blocker assertions及四Health依賴的實際origin／closure精確重綁v2_06，原v5／v6保留；v7尚未執行或接受。
+
+#### P01 新監督器 v2：QA 前靜態拒絕
+
+Freeze SHA `315ee11ccd6177a1cf5b5738fac39b88c027b0112a0ea22f5b8993999081f194`。Root1664 checks／837 unique paths一致，145567-byte完整patch由原三harness preimages、已審error runner diff、standalone bootstrap及builder全文重建相同；原Job／程序控制核心AST不變，九項原failure tests不變，只有第十項改為新standalone bootstrap。原manifest保留error-receipt bytes及其歷史writer_scope，不把focused五測授成full matrix。
+
+Root靜態核到preflight line183 `_exact_artifact(..., "full_diff", V9B_DIFF_PATH)`，其常數仍指normal_view候選的舊v7 patch，但supplement列新v2完整delta；必定回 `v7_candidate_artifact_path_mismatch:full_diff`。**未跑preflight／pytest／Qt或完整矩陣**。拒絕收據 `root/p01_error_supervision_v2_static_a29db55f58af4a6d8fe0cc8d54f4cd16/receipt.json` SHA `011a3a3f9fcb7d905210626ee538f09c60b9636c630e85f6c2448ac442d646fa`。已授原owner保留v2、另建v3並逐項靜態比較expected path與被讀manifest row，分開新版完整delta及原phase-evidence diff。原千檔20頁／full DTO、五cold一warm、三類各30samples、600秒及strict300ms不變。
+
+#### P08 候選清冊與完整終態保持
+
+V4 seed lifecycle manifest SHA `df09831050ea15850b73253dd65a3cdef1c30d01460ae85e614e26d9a968dd81`。Root只核清冊／正式兩target提案patch：79 checks／75 unique pins、26凍結檔、37正式source及8focused tests，66104-byte patch從原seed writer前像及新typed-prior檔全文重建一致，新formal target仍absent／imports沒有scratch來源。收據 `root/p08_v4_inventory_2e2359b7c1c54abca60abca886a7a21f/receipt.json` SHA `74e91ff88629c093c0996b37884307867c519d625ad4f82b2219e98beb56bad3`。**完整生命週期邏輯未接受、未QA或套正式**，不能單獨套seed patch取代daily v2整合。
+
+原owner接續scratch績效reader／兩卡widget及public ResearchRun讀回。已盤點原DTO允許空status／fingerprint、legacy metrics無schema及benchmark缺exact source／clock。新consumer逐run驗資格、缺件保持未知；另要求提供root可實作的版本化metrics／benchmark producer接點及可計算研究績效契約，不以永久unknown卡完成P08。兩策略成本後研究績效、歷史比較、正常UI與新程序仍是完整終態要求。
+
+Coverage及回滾見 `root/health_v206_scope_root01.md`與候選README。Root create-only保存51份raw及兩formal文檔前像於 `root/health206_compat_p01_review_packet_e2cc74f5508147d88230e2a05e3d6920/receipt.json`，SHA `9f39b6737279a9fff156050f819ebd6c505a837be36206a53c0c1098628d765d`；第一份長檔名packet在第48份遇Windows長路徑限制，其47份已複製原件保留，新packet以短檔名及完整source metadata完成。Root本輪QA全部終態，只追加Snapshot／本QA；Manual、Roadmap、架構政策、正式產品來源、原資料、main／push／發布未改。

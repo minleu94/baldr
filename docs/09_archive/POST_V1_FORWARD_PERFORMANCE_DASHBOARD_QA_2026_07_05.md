@@ -1,5 +1,7 @@
 # Post-V1 Forward Performance Dashboard QA 2026-07-05
 
+> **歷史範圍提示（2026-10-11）：** 本文只記錄 2026-07-05 的 read-only dashboard QA 收據；Not Done／Next Increment 只表示當日狀態，不代表目前缺項或計畫。現況請依 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與[最新 QA 導覽](../06_qa/README.md)中的具名收據核對。
+
 ## Scope
 
 本 QA 覆蓋 Forward Performance Dashboard read-only UI v1：dashboard DTO/service、Qt table model、Research Lab `Forward Evidence` view、只讀資料邊界、禁用交易語氣檢查與文件同步。

@@ -1,5 +1,7 @@
 # V4 Next ML／Effectiveness handoff — 2026-09-08
 
+> 歷史範圍：本檔記錄 2026-09-08 至 2026-09-17 的 ML handoff 與驗收。狀態、命令及證據只適用於各自記錄時點，不代表 2026-10-11 的現況或操作授權；執行前須核對目前的 Scoped SSOT 與排程操作文件。
+
 本輪 ML owner 的第一個可重現缺陷是前瞻輸入與自然有效性 clock 沒有形成同一條可驗證鏈：舊 derived CLI 不接受 scheduled caller 傳入的 deadline／operational file hash，orchestration 只記錄 start capture，collector 在 inference 後仍可能跨 08:35 append；另外 archive readback 第二次讀 publication 時沒有以 raw bytes hash 綁定回傳 rows。這些缺口已各自補上並有正負測試。現有 2026-09-07 盤後 shadow 仍是研究證據，不能改算 forward credit，也沒有重讀 fold006+ 或啟動 heavy fit。
 
 ## Ownership

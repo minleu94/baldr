@@ -1,5 +1,7 @@
 # Weekly Natural Evidence Review（2026-09-20）
 
+> 歷史範圍：本文件整理 2026-09-14 至 2026-09-20 的週期資料，並記錄截至 2026-09-21 的唯讀觀測。所有 cutoff、狀態與結果均為該時點快照，不代表 2026-10-11 現況或之後累積的自然證據。
+
 本文件整理 2026-09-14 至 2026-09-20 的自然證據與 V2.2 weekly collection 狀態，並納入 2026-09-21 的唯讀觀測。V2.2 collection、BankTaiwan natural capture 與 ML natural shadow 是不同 lane；本文件不把研究觀測、prospective input 或 collection metadata 當成自然成熟績效。
 
 ## 週期與觀測邊界

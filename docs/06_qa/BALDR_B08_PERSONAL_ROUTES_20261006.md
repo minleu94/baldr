@@ -1,5 +1,7 @@
 # BALDR B08 私人路由契約 QA
 
+> **後續整合證據（2026-10-06）：** 後續中央整合記錄 MainWindow 在成對明示私人 store 設定時，將已解析路由與 `selection.paths` 一併注入 Portfolio composition；未配置時保留既有 legacy defaults。見[第二波整合收據](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。這只佐證 bounded caller wiring，不代表私人正式資料已啟用、已遷移或 Paper 全鏈驗收；目前狀態以[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)為準。
+
 ## 範圍與狀態
 
 B08 新增純型別的私人 store 路由契約，供後續 caller 選擇既有 repository 的讀取來源與寫入目標。這項工作尚未接到 Portfolio、Paper、Quality、Journal 或 Evidence caller；不代表這些 caller 已完成私人資料隔離，也沒有啟用私人資料庫、搬移資料或建立 schema。

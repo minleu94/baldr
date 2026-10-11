@@ -171,6 +171,8 @@ runner 預設把 run root 與 full JSON receipt 寫到系統 TEMP，並拒絕與
 
 ## AB-ML-01 與 TMP-ML-02 退出條件
 
+> **歷史狀態快照（截至 2026-09-27 scoped acceptance 前）**：本節保留當時的退出條件與 R028 未解鎖判斷；其中「R028 不啟動」及 “Do not unlock R028” 只反映該時點，已由本報告後續的 [2026-09-27 R028 scoped migration accepted](#2026-09-27-r028-scoped-migration-accepted) 取代。請勿據此判定該 scoped migration 目前仍 blocked。
+
 `AB-ML-01` 由本次 exact-clock 不可比與 candidate scope 不足立案，狀態 OPEN。R028 不啟動。要重新評估 R027，至少須提供既有 production seam 可支援的共同固定 clock／literal publication timestamp，並讓獨立 candidate orchestration 在隔離 process 內證明 publication/commit timing、path/SHA、loaded integrity、numeric bytes/shape/dtype/mask、warmup、resume 正反例、cancel、failure recovery、source-change/unchanged 及 downstream identity 全部無例外 exact equality。若無法安全控制 live source 或證明 availability／call order，仍維持舊接線及拒絕 projection；不得碰正式資料補證。重新執行若存在任一差異，判 FAIL；比較面仍不可觀測則維持 INCONCLUSIVE。
 
 `TMP-ML-02` 是既有 FINAL_MIGRATION_SEQUENCE 暫時機制登錄，本輪狀態維持 ACTIVE：Direct 15-path frozen exception、assembler/OOC/teacher source-path 限制及 `UpdateService.calculate_technical_indicators` 搬移限制均不退休。其退出條件不變：完成精確 caller/source inventory、隔離 hash/bytes/timing/resume 實驗，證明透明相容，或先明示新 identity/run 與舊 checkpoint 處置計畫；此 R027 結果沒有達成退出條件。

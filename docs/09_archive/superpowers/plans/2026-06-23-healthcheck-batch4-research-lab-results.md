@@ -1,4 +1,7 @@
 # Healthcheck Batch 4 Research Lab Results Implementation Plan
+
+> **歷史狀態界線（文件日期 2026-06-23）**：Tasks 1–5 仍未勾選，但後文 Execution Summary 全勾並聲稱相關驗證已完成；請保留兩種原始記錄，本文不能單獨作為目前完成收據，現況依最新 Snapshot 與具名 QA 收據判讀。
+
 > **歷史操作警示（2026-10-10）**：以下操作指令僅供追溯歷史脈絡，不構成目前操作授權。
 > 不得重送本文中的舊 prompt，也不得直接照做舊 Git、rollback、刪除或 `--apply` 命令。
 > 若需執行相關工作，請先依當前使用者指示、根目錄 `AGENTS.md` 與 `docs/agents/git_exclusions.md`，並查核 `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DEVELOPMENT_ROADMAP.md`、`docs/00_core/ROADMAP_6M_ENGINEERING.md`、`docs/07_guides/APPLICATION_MANUAL.md` 後判定現況、範圍與授權。

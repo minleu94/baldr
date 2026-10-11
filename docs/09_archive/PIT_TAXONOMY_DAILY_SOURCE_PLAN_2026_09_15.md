@@ -4,6 +4,8 @@
 > 性質：read-only source/design audit；本文件只提出下一個 implementation increment，不修改 production code、UI、scheduler、既有 artifact 或正式資料。
 > 研究邊界：只查官方 TWSE、TPEx、data.gov.tw 公開頁與既有 repository entrypoint；未做 bulk crawl、歷史回填或正式資料寫入。
 
+> **歷史提案／狀態補記（2026-10-11）：** 本文後段包含 2026-09-16 的 bounded probe 與 P0 工程狀態補報；當時 `5371` exact join 仍 blocked，沒有產生 taxonomy bundle。P0／P1 工作切片與來源建議是該時點方案，不代表目前來源接受、現行待辦或執行授權；現況依後續 QA 判讀。
+
 ## 結論
 
 要讓正常日產物可被 `PITSectorMembershipReader` 消費，來源不能再由一份手寫 mapping 代替，至少要拆成三個可追溯角色：

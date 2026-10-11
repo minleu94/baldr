@@ -2802,3 +2802,48 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 Superpowers 導引 provenance 修正
 
 核對三份 retained source stubs 所標 commit 與 Git 記錄：UI readability closeout 修正為 `08b879e3a`，Workbench visual hierarchy closeout 修正為 `5b4b845c7`；V3 ML readiness 導引改列實作 commit `b5ec05dd5` 與 closeout handoff `5b391fd66`，不再把 plan/spec 建立 commit 誤標為 closeout。已在 live Superpowers README 的 UI readability／presentation 主題列補上兩組 UI polish plan/spec 直達連結。歸檔原文與 manifest 未改；三份 commit 以 `git show --stat` 核實。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-261"></a>
+## 2026-10-11 Archive 根層第十批八份具名全文核讀與正式資料 smoke 提示
+
+全文核讀根層 `DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md`、`DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md`、`DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md`、`DECISION_CONTINUITY_WRITE_PATH_QA_2026_09_14.md`、`DECISION_OUTCOME_JOURNEY_2026_09_14.md`、`DECISION_OUTCOME_JOURNEY_UI_2026_09_14.md`、`INDUSTRY_DECISION_JOURNEY_2026_09_14.md`、`PIT_INDUSTRY_SOURCE_ACCEPTANCE_DISCOVERY_2026_09_15.md`。Archive README 均有直接路由。前七份時點、資料／驗收界線充分，未改；UI journey 文件中的 opt-in real smoke 會讀正式資料並可產生 QA 截圖，已加上日期及不可直接照舊重跑的資料界線。正式資料 migration 沒有被誤當授權；Industry source discovery 仍是 candidate，不宣稱完整 PIT qualification。早期 Archive aggregate 無完整逐檔 manifest，不以本批推算總數。限定本批八檔 diff check 通過，未跑測試、Graphify 或全 repo link／anchor scan。
+
+<a id="coverage-entry-262"></a>
+## 2026-10-11 Guides 非 Manual 文件完整核讀與三份日期提示
+
+全文核讀 `docs/07_guides/` 中 Manual 以外的 19 份 Markdown：`README.md`、`APPLICATION_MANUAL_SUPPLEMENTS.md`、`INSTALL_GUIDE.md`、`HISTORICAL_ML_SHADOW_RUNBOOK.md`、`EVIDENCE_REHEARSAL_RUNBOOK.md`、`tests_readme.md`、`BALDR_SCHEDULED_AUDIT_RUNBOOK.md`、`scripts_readme.md`、`SCHEDULE_OPERATIONS_AND_MIGRATION.md`、`QUICK_START.md`、`QUICK_REFERENCE.md`、`PORTABLE_WINDOWS.md`、`PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md`、`PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md`、`P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md`、`ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md`、`V2_2_WEEKLY_REVIEW_RUNBOOK.md`、`EVIDENCE_SCHEDULED_MORNING_CHECK.md`、`LUNA_PARALLEL_PLAN_2026_09_07.md`。依 Guide README 檢查 25 個本機連結目標皆存在；新加的 Archive closeout 連結亦可達。補上三份日期／狀態界線：`scripts_readme.md` 固定日期為範例、`P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md` 的候選來源與日期屬歷史觀測範圍、`ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md` 的 artifact 狀態限定為 2026-07-15 closeout。其他文件已有足夠範圍及日期界線。APPLICATION_MANUAL 本輪未讀未改；其餘 19 份舊基線已有 18 份全文、Supplements 局部，本輪將最後一份提升為全文。未跑測試、Graphify 或最終全 repo link／anchor scan。
+
+<a id="coverage-entry-263"></a>
+## 2026-10-11 QA H20 候選八份具名全文核讀與 M7 範圍同步
+
+全文核讀 `BALDR_H20_LOADING_CANDIDATE_421BC973_20261008.md`、`BALDR_H20_CURRENT_CANDIDATE_93F9C57D_20261008.md`、`BALDR_H20_FIXED_SOURCE_BUILD_REVIEW_20261009.md`、`BALDR_H20_SNAPSHOT_BUILDER_REVIEW_20261008.md`、`BALDR_H20_WAL_SNAPSHOT_REVIEW_20261008.md`、`BALDR_H20_WAL_KEEPER_ROOT_REVIEW_20261009.md`、`BALDR_H20_VERIFIER_MODULE_COMPATIBILITY_ROOT_REVIEW_20261009.md`、`BALDR_H20_SOURCE_MAP_SEAM_REVIEW_20261009.md`；八份均由 Product UX QA Index 到達，並對照 F03 Root follow-up 的 M7 receipt。M7 只接受另一條 S4 固定來源 Main 路徑，未驗 421bc／93f9 EXE、builder／WAL／verifier／seam 候選、真人、全母體、獨立行情或 p95；因此三份原件補上範圍更正，其餘五份保留原候選失敗／未驗界線，不把不同路徑的成功回填到候選上。`approved_for_launch=false` 保留。限定三份修改檔 `git diff --check` 通過；未讀受保護 completion-progress、未跑測試、Graphify 或最終全 repo link／anchor scan。
+
+<a id="coverage-entry-264"></a>
+## 2026-10-11 Archive 根層第十一批八份具名全文核讀與歷史界線
+
+全文核讀根層 `QA_RECOMMENDATION_TAB_ISSUES.md`、`QA_RECOMMENDATION_TAB_SUMMARY.md`、`QA_UPDATE_TAB_ISSUES.md`、`QA_UPDATE_TAB_SUMMARY.md`、`DAILY_PROBABILITY_LEARNING_NEXT_INCREMENT_AUDIT_2026_09_15.md`、`PIT_TAXONOMY_DAILY_SOURCE_PLAN_2026_09_15.md`、`ULTIMATE_DECISION_WORKBENCH_2026_09_14.md`、`ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md`；Archive README 均有直達。前四份舊 UI QA 的「已修復」描述與零筆推薦／下載及合併測試未執行等限制未能合併為現況驗收，已補歷史／不可重跑授權提示；PIT taxonomy、Ultimate workbench 與 next increment 文本增加 9/15 歷史狀態及非現行來源／派工界線。Daily Probability 稽核既有 10/10 日期界線足夠，未改。Archive aggregate 缺完整逐檔 manifest，不據此重算總量。限定八檔 diff check 通過；未跑測試、Graphify 或最終全 repo link／anchor scan。
+
+<a id="coverage-entry-265"></a>
+## 2026-10-11 REFACTOR_REPORTS R021 具名全文核讀與證據範圍提示
+
+全文核讀 `R021_IMPLEMENTATION_REPORT.md`，並核對 REFACTOR_REPORTS README、Data/ML QA index、R031 task index 與 closeout。原 StockScreener 24P I/O slice 與後續 IndustryMapper 18P 收據屬不同測試範圍；較早 audit matrix 的 pending 記載是前置快照。R021 檔首新增閱讀提示，導向 R031 current disposition，避免混算測試或將舊 snapshot 誤作現況；其餘原文保留。舊 74 份 aggregate 缺逐檔 manifest，不據本批推算精確去重數。限定檔案 diff check 通過；未跑測試、Graphify 或最終 repo-wide link／anchor scan。
+
+<a id="coverage-entry-266"></a>
+## 2026-10-11 Archive 根層第十二批八份具名全文核讀與 frozen receipt 提示
+
+全文核讀 `DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md`、`POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md`、`QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md`、`QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md`、`UI_LAYOUT_AUDIT_20260929.md`、`UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`、`UX08_CHART_VIEWPORT_STATE_QA_20261006_HISTORY.md`、`POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md`；Archive README 均有直達。UX08 舊文前段尚未接線與文末 10/06 完成收據存在時間差，已加導覽到後續整合收據，並保留 Native／真人驗收缺口；凍結 Post-V1 dry-run 副本含 working-copy 寫入命令，已明示不得從 Archive 副本續填或直接重跑，連到現行 QA 路徑。其餘六份的測試範圍、時間界線與限制充分，未修改。舊 Archive aggregate 缺逐檔 manifest，不據本批推算精確總數。限定八檔 diff check 通過；未跑測試、Graphify 或最終全 repo link／anchor scan。
+
+<a id="coverage-entry-267"></a>
+## 2026-10-11 QA F12／H20 bounded 收據八份具名全文核讀
+
+全文核讀 `BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md`、`BALDR_F12_SAVED_RECIPE_ROOT_REVIEW_20261009.md`、`BALDR_F12_WAL_EXACT_REOPEN_ROOT_REVIEW_20261009.md`、`BALDR_H20_L_CONFIG_SOURCEPORT_ROOT_REVIEW_20261009.md`、`BALDR_H20_NATURAL_BATCH_20261007.md`、`BALDR_H20_RESEARCH_COHORT_20261007.md`、`BALDR_H20_RUNTIME_ROOT_CONTRACT_REVIEW_20261008.md`、`BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md`。依 Product UX／Data ML indexes 路由，並比對 F12 query/Main/durable archive、F03 T38/M7 後續收據。六份修訂各自補上後續 bounded evidence 及獨立測試路徑，保留 current-only、PIT false、完整 Main／typed fresh reopen、dual-copy supervisor、自然成熟及正式驗收限制；沒有把另一個固定來源 S4 Main journey 外推為候選、WAL 或 production 通過。兩份原件原有狀態仍與後續收據一致，未改。限定八檔 diff check 通過；未碰受保護 completion-progress，未跑測試、Graphify 或最終全 repo link／anchor scan。
+
+<a id="coverage-entry-268"></a>
+## 2026-10-11 Archive 根層 PROJECT_SNAPSHOT 歷史文件全文核讀
+
+全文核讀 `PROJECT_SNAPSHOT_HISTORY_2026_09_08.md`（1,429 行、376,546 bytes；SHA-256 `F7205F98A04F5AA9C805D8C359570350D147AD080148B4B2BC31A8A937042EAD`）。Matrix 與既有 Coverage History 無此檔具名全文紀錄。Archive README 及原件檔首均標示為 9/8 歷史快照並指向現況權威；對照 LUNA 整合 closeout 與 V4 完成計畫歷史入口後，工程整合結論一致，正式 ML 仍為 0/3、fail-closed，未宣稱 alpha、正式 OOS 或交易資格。原件保留，未修改；全文核讀前後 SHA 相同。直接子檔盤點為 263 份 Markdown，排除 README 與 Coverage History 後，原唯一未具名文件現已登錄。限定檔案 diff check 通過；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-269"></a>
+## 2026-10-11 REFACTOR_REPORTS 八份具名全文核讀與時點導覽
+
+全文核讀 `C1_REPLAY_BRIDGE_READINESS_REPORT.md`、`C1_UPSTREAM_REPAIR_SCOPE_RULING.md`、`R005_SOL_FINAL_PRE_REVIEW.md`、`R005_SOL_INTEGRATION_REVIEW.md`、`R009_IMPLEMENTATION_REPORT.md`、`R005_SOL_REVIEW.md`、`R005_SOL_REWORK_REVIEW.md`、`R008_SOL_REWORK_REVIEW.md`。三份先前僅局部掃描的報告升為全文核讀；其餘五份補入具名核讀清單。C1 readiness／ruling 導向後續 R031/R020 bounded disposition 並保留無界 production parity 限制；R005 pre-review／integration 導向後續 acceptance 並保留 profile／Wave 範圍；R009 的既有 READY_FOR_REVIEW 時點標籤與後續 review／SOL acceptance 一致，無需修訂；其餘三份原有歷史導覽充分。限定八檔 `git diff --check` 通過，修改限 C1 replay、C1 ruling、R005 pre-review、R005 integration 四份。未跑測試、Graphify 或最終全 repo links／anchors scan。

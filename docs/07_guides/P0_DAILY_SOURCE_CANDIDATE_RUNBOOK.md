@@ -2,6 +2,8 @@
 
 本工具只做候選資料的唯讀探測與品質投影。它不寫正式資料庫、不啟用排程、不改 `ScoringEngine`、Advice、Portfolio 或交易路徑。
 
+本文固定的 `--decision-date`／`--captured-at` 日期與候選來源清單，記錄的是 2026-07-19 前後的操作範例及觀測範圍，不代表今日 probe 日期或目前完整來源覆蓋。新一輪探測須使用本次明確的決策／擷取時間，並以當次 receipt 與最新具名 QA 判讀。
+
 ## 執行
 
 ```powershell

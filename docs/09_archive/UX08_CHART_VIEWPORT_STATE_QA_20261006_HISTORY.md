@@ -1,5 +1,7 @@
 # UX08 純圖表範圍 controller 交接
 
+> **歷史交接狀態（2026-10-11）：** 本文件前段記錄整合前的 lane／owner 狀態；文末記錄 2026-10-06 已由 dev owner 採納 controller 並完成產品按鈕與來源 identity 接線。整合後範圍以[整合 QA](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)為準；Native／真人驗收仍未完成。前段的 branch、worktree、owner、revert 與停等指示只屬當時交接，不是目前派工或 Git 操作授權。
+
 基準：`1454a125db0e61dbecc7522c48b236997ff7b242`（已核對 dev）。分支：`lane/ux08-chart-viewport-20261006`。worktree：`C:/Projects/PythonProjects/technical_analysis/output/worktrees/ux08-chart-viewport`。本 lane 只新增 controller、專屬 tests、本文件，不改共享 renderer、主視窗、Manual、config 或原計畫。唯一整合 owner：`01a10f1e-1fa7-7660-b46e-4e2107d52078`；尚未接入產品按鈕，UX08 整項仍 partial。
 
 ## 既有契約核對

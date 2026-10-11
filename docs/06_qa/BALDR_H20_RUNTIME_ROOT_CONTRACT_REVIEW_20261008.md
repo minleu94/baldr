@@ -15,3 +15,7 @@ Root 以 native Python 獨立執行 `output/qa/h20_dual_runtime_contract_2026100
 - supervisor：`70d3574bfe9501a1863fc3fefc8a47e59e2997bedf2b1210acac15e48ccaf7e7`
 
 下一個必要驗證是明示型別的 WAL merged market bridge：原市場 main/WAL pins 與合併副本 SHA 必須分別保留，不能冒充既有 `PinnedSQLiteReadSession`。完成橋接、固定來源封套與完整主視窗旅程後，才能製作供真人驗收的新版本。本紀錄不代表 launch 範本核准或正式資料接受。
+
+## 後續 M7 S4 Main 路徑註記（2026-10-10）
+
+之後 M7 的另一條固定來源 S4 Main 路徑已完成 bounded H20 journey；M7 controller receipt 明確記錄「不執行 dual-copy supervisor」。因此 Main journey 的存在更新了全局時序，但不構成本文件 runtime-contract candidate、WAL-merged market bridge 或 dual-copy supervisor 的通過證據。本候選需依本文件所列 source-port／路徑身分繼續判讀，不把 M7 回填為此候選的驗收。

@@ -1,5 +1,7 @@
 # C1 上游修復範圍裁決
 
+> **後續狀態導覽（2026-10-11）：** 本裁決中 R017 production replay bridge 與 `TMP-REC-04` 的後續工作描述 C1 gate 當時邊界。R031 後續將 R017 列為 `ACCEPTED_WITH_TYPED_REPLAY_BRIDGE_SCOPE`，R020 也關閉 bounded R005 replay/recovery 的 `TMP-REC-04` 範圍；這不等於所有 runtime/caller 或無界 replay parity 已驗收。詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)、[R017 report](R017_IMPLEMENTATION_REPORT.md) 與 [R020 report](R020_IMPLEMENTATION_REPORT.md)。原裁決與限制保留。
+
 RULING_STATUS: `C1_ENGINEERING_GATE_PASS`  
 WAVE6_STATUS: `RELEASED_FOR_IMPLEMENTATION`
 

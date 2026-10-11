@@ -6,7 +6,7 @@
 
 Root 同版比較 session 52656 exit 0，`output/qa/baldr_same_version_93f9c57d7995_d10a2d84/same_version_receipt.json` 為 `passed_isolated_fixture`。Python 固定 archive 與 EXE 的啟動／journey／model／H20 呈現／invalid-config 結果相等；沒有使用正式市場 DB 或 provider 網路。
 
-此同版 H20 是 presentation fixture，不能替代原十股 capture 核驗；推薦 canonical 保存的既有 nofollow blocker仍保留；全母體、真原 H20、獨立目前行情的真人流程與效能仍待。BUILD_INFO 的 `built_not_validated` 原值不改為全面接受，真人接受也尚未取得。來源版完整65項及必要檢查另見 [獨立目前研究 QA](H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md)。
+此同版 H20 是 presentation fixture，不能替代原十股 capture 核驗；推薦 canonical 保存的既有 nofollow blocker仍保留。後續另有 M7 固定來源 S4 Main 收據，完成原十檔 cohort、2382 圖表／摘要下鑽與返回原選取，並核對同一 capture 的 120 筆 OHLC 與 684 bp；該收據使用固定來源 Main，不是本文件的 93f9 EXE，不能作為此候選驗收。全母體、獨立目前行情、真人 EXE 操作與 p95 效能仍待，單次 cohort 首載也不代表等待改善。BUILD_INFO 的 `built_not_validated` 原值不改為全面接受，真人接受也尚未取得。來源版完整65項及必要檢查另見 [獨立目前研究 QA](H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md)；M7 收據見 [F03 root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。
 
 真人 helper：`output/qa/recommendation_feedback_93f9c57d7995_20261008_a/start_feedback_93f9c57d7995.cmd`；同目錄有 `真人驗收說明.md`。PS1 是 ASCII，以 Windows PowerShell `-ValidateOnly` 驗證固定 SHA、原設定、既有官方日曆與 ML config、全新私人讀取副本根；沒有自動啟動真人設定。原始資料與正式排程不在本次自動 QA 範圍。
 

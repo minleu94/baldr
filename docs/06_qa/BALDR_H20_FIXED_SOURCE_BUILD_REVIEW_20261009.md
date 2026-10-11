@@ -18,4 +18,8 @@ Root 第二次獨立讀回全部 ZIP 與來源樹，核對每檔大小／SHA、�
 
 `snapshots/s2` 則在清冊階段遇到 `.cmd` 的 Windows `lstat`／`fstat` permission bits 差異。新 QA helper 只在路徑與 handle 交叉比較時以相同檔案類型取代 permission bits；device、file ID、大小、時間、連結數與 attributes 保持精確，外層完整 `lstat` 起訖核對也不變。實際 `.cmd` 正例及其他八種身分欄位／檔案類型變更拒絕檢查通過。`native_identity_diagnosis.json` 與 s2 失敗日誌保留。
 
-接續工作為以固定來源執行真正 Main 的 H20 列表、2382 下鑽、返回、收藏及 typed fresh reopen，保存分段耗時與完整程序清理。合成旅程不能代替原始 10 檔／684 bp 保存版本；原始來源啟動仍需獨立 launch 環境、來源及 runtime 路由驗收。
+## M7 後續固定來源 S4 Main 收據
+
+後續 M7 固定來源 S4 Main 已完成原 10 檔 cohort、2382 圖表／摘要下鑽及返回原 manifest／選取；同一 capture 的 120 筆 OHLC、684 bp 與決策／來源／特徵日期一致。分段收據記錄 cohort 首載 21.031 秒、下鑽至摘要 0.422 秒、返回 0.297 秒；程序結束為 0 workers，來源 archive、兩 DB 與 template groups 起訖一致。收據使用 commit `396c08e8f16c0d6e0ec2807e15aee387e56ca60e` 與 Main SHA `813fa8c4c2349cc295e590a2ec867e5ac01d76b84b1c8a6363027f0a8c70f5c9`，詳見 [F03 root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。
+
+這是固定來源 S4 的 bounded Main 旅程，不回溯授權本文件的 source-only `s3` 封套（其 `approved_for_launch=false` 仍保留），也不覆蓋收藏、typed fresh reopen、EXE、真人驗收、p95 效能或正式 PIT／收益資格。接續只需補足該旅程未覆蓋的收藏與 typed fresh reopen，以及各自明確的接受收據。

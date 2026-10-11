@@ -1,5 +1,7 @@
 # R021 Implementation Report — StockScreener concrete I/O boundary
 
+> **閱讀提示（2026-10-11）：** 下方 `Status` 與前段 QA 表記錄的是原始 StockScreener I/O slice。末段標為 `2026-09-27` 的 IndustryMapper provider/caller follow-up 是另一個有界工作；其 18P mapper 路由須與原始 24P focused suite 分開判讀，不相加也不互相替代。R021 目前 disposition 與 attempt6 收錄情形見 [R031 任務報告索引](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [R031 最終 closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。此有界接受不代表 Wave 7–14 或正式資料接受。
+
 ## Status
 
 `GATE_STATUS: ACCEPTED_SCOPE`

@@ -1,5 +1,7 @@
 # Post-V1 Evidence Pipeline Multi-day Dry-run Record
 
+> **凍結歷史快照（2026-10-11）：** 本文表格與命令保存 2026-07 的觀察紀錄及當時範例，不要從 Archive 副本續填或直接重跑；需要續寫時使用[目前保留的 QA 路徑](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)，並依現行 Manual／核准流程操作。working-copy confirm 命令會寫入指定資料庫，舊表格與命令不構成資料庫或 production scheduler 操作授權。
+
 ## Purpose
 
 這份紀錄用於正式 scheduler 前的穩定性觀察。它不代表 production scheduler 已啟用，也不代表任何 evidence dashboard 能證明策略有效。

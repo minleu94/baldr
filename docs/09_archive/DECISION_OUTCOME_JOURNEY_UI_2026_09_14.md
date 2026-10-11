@@ -2,6 +2,8 @@
 
 > **歷史 UI／資料 QA（2026-10-10）：** 本文的正式資料筆數、效能數字、測試結果與「完整 UI mypy 有 7 errors」均是 2026-09-14 的證據快照，不代表目前資料量或 UI 缺陷狀態，也不表示完整產品驗收。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA 導覽](../06_qa/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
+> **歷史 smoke 重跑界線（2026-10-11）：** 文中的 `RUN_DECISION_OUTCOME_JOURNEY_REAL_SMOKE=1` 命令是當日 opt-in 驗收收據；執行會讀取設定的正式 result／Evidence SQLite，並可依截圖環境變數寫入 QA 圖片。此歷史命令不授權目前重讀正式資料或產生 QA 輸出。
+
 ## 範圍
 
 本切片把既有 `ResearchStockContextDTO.result_id` 帶入「個股研究報告」對話框，新增唯讀「決策 → 結果」分頁。畫面由 `DecisionOutcomeJourneyService` 建立 read model，不重算推薦、不寫 Journal／Portfolio、不建立交易。

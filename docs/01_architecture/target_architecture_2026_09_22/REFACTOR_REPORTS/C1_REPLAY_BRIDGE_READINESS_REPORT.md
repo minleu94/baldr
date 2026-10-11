@@ -1,4 +1,4 @@
-> **C1 歷史切片狀態**：本文只保存個別修補／審查時點的範圍與 evidence，不代表目前整體 Gate 狀態，也不構成新的工作授權。整體 C1 裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)，目標設計權威看 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
+> **C1 歷史切片狀態**：本文只保存個別修補／審查時點的範圍與 evidence，不代表目前整體 Gate 狀態，也不構成新的工作授權。整體 C1 裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；後續任務狀態見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。R031／R020 後續已關閉 `TMP-REC-04` 的 bounded replay/recovery 範圍；這不代表無界 production annotation 或 consumer parity 均已驗收，細節見 [R017 report](R017_IMPLEMENTATION_REPORT.md) 與 [R020 report](R020_IMPLEMENTATION_REPORT.md)。目標設計權威看 [FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。
 
 # C1 R017 Option 2 Replay Bridge Readiness
 

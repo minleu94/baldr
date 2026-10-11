@@ -17,3 +17,9 @@ Root 已直接閱讀 `test_daily_market_monthly_revenue_exact_reopen_v1.py` 的 
 此 v1 重開仍檢查 live original DB 與 live raw capture 是否符合舊 pins；不證明 live 資料更新或缺檔後仍可重開。新 durable raw archive schema／入口由營收 owner 另行實作、測試並交 Root 審查，不得把本次 WAL 成功當作該功能完成。
 
 UI、收藏、EXE 同版與真人可讀性均不在此案例範圍。原始資料及正式排程未納入測試。
+
+## 後續 durable archive v2 證據（2026-10-11）
+
+此處 v1 對 live DB／raw capture pins 的限制，後續另由 `BALDR_F12_DURABLE_RAW_ARCHIVE_V2_20261009.md` 與 `BALDR_F12_ARCHIVED_FINISH_ROOT_REVIEW_20261009.md` 覆蓋：v2 合成 exact-reopen 回歸 16 passed、1 skipped；Root 的 archived-finish 審查記錄 61 passed、1 skipped，並涵蓋 live source 更新或歷史 source ancestor 移走後由 archive fresh-child 重開，以及 finish／取消發行界線。Windows symlink skip 不算通過，junction 正反例另有覆蓋。
+
+因此「durable raw archive 尚待實作」只保留為本 v1 WAL 收據當時的狀態，v2 bounded backend 工作已另有收據。這些仍是合成來源；不證明正式資料可用、F12 完整 Main／UI／收藏、EXE、真人或 PIT 資格，也不把 v2 結果回填成本 v1 WAL attempt 的結果。

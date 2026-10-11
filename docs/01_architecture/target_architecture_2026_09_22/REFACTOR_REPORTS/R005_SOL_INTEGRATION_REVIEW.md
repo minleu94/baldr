@@ -1,3 +1,5 @@
+> **時點／範圍導覽（2026-10-11）：** `TASK_STATUS: PASS` 記錄的是本文所述 R005 V-REPLAY SOL integration review；R031 index 記錄 R005 disposition 為 `ACCEPTED_WITH_R020_BOUNDED_REPLAY`，不代表所有 profiles 或整體 Wave 均已完成。詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 與 [R020 implementation report](R020_IMPLEMENTATION_REPORT.md)。原 review verdict 與證據保留。
+
 # R005 SOL 整合驗收
 
 ## 判定與證據

@@ -69,3 +69,9 @@ Root 獨立 native 純合成測試為 7/7、exit 0，Main 未呼叫、SQLite con
 Root 重算 p 三目的 SHA 與 11 項依賴，確認內容匹配；source_recheck_receipt 沒有 expected 欄位值，Root 明示以記錄／實際一致的 `a76de47008375d3033ecab1d7b8adfa521c8ec1efecfe4d47cf1a77e978cecfb` 接收本次前置記錄，不改原封套。批准的 p controller 唯一 handle 53997 已 exit 1，Root 已讀 child stderr／controller receipt：preparer exit 0、child exit 1、child_result 不存在、Job tree 清空。source inventory／archive 起訖不變；尚未進 Main。
 
 錯誤模組名來自固定 dual `guarded_dual_sqlite_h20_child.py:1555` 的 `extra_modules`，再附加至 legacy.MODULES；不是原 legacy 的 MODULES 清單。dual 要求 `app_module.recommendation.stock_research_report_service`，s3 保存的是 `app_module/stock_research_report_service.py`，SHA `86c0a2db60a6d933128bab50e9c6c77bf6e55258a164eacf2b4450a331b41291`。舊封套保留。Root 已要求先核對完整原清單＋extras 與 sealed inventory，再準備 only-verifier 的精確名稱相容版本；不得刪除驗證項、建立假 alias 或略過 source hash。下一 Main 尚未批准。
+
+## 2026-10-10 後續 M7 路徑狀態
+
+在上述 p 候選於 Main 前失敗後，另一條固定來源 S4 Main 路徑的 M7 收據已完成 bounded H20 旅程：原 10 檔 cohort、2382 圖表／摘要下鑽、返回原 manifest／選取及同一 capture 的 120 筆 OHLC／684 bp 對照均通過；exit 0、shutdown 0 workers，來源與 template groups 起訖 unchanged。分段時間為 cohort 首載 21.031 秒、下鑽至摘要 0.422 秒、返回 0.297 秒。詳細結果見 [F03 root follow-up](BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。
+
+此後續證據不回填為 p 或其 source-map seam 候選通過，也不證明錯誤模組名相容性修復已接入該 Main 路徑；M7 收據仍限於固定來源 S4 bounded Main，不代表 EXE、真人、p95、正式 PIT／收益資格或完整 2382 個股流程。

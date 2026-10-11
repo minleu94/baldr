@@ -4,7 +4,7 @@
 
 本 Runbook 僅適用於工程受控的 ML shadow contract path。此流程可驗證 frozen artifact 載入契約、單日推論、prediction registry 冪等寫入、lifecycle rollback 模擬及唯讀檢視；不會改變正式規則、排序、分數、推薦或交易決策。
 
-目前 repository 未提供可供此工作流執行的真實 frozen B artifact，因此尚未完成真實 artifact 的 one-date smoke。CLI 固定回報：
+截至 2026-07-15 closeout，repository 尚未提供可供此工作流執行的真實 frozen B artifact，因此當時尚未完成真實 artifact 的 one-date smoke（[歷史 closeout](../09_archive/ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15_HISTORY.md)）。這是歷史時點，不代表今日 artifact 狀態；執行前請依目前 Snapshot 與最新具名 QA 核對。CLI 固定回報：
 
 - `evidence_mode = controlled_contract_path`
 - `validated_artifact_observed` 表示受控 artifact 已通過載入契約

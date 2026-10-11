@@ -30,3 +30,7 @@ Root 直接補讀 controller 的實際清理欄位：`child_exit_code=1`、`elap
 Root 接續讀回 native_05／06／07 原始 stderr。05 與 06 均未通過 context-exit fault 注入；06 的報告顯示 primary_type=None、phase 判定累計 15 次、stream／descriptor 已關且 active_descriptors=0，但預期拒絕未觸發。07 改為逐案標記後，仍只記錄 fixed_capture_reader 標籤，未命中 reader_context_exit，不能宣稱窄 slice 通過。owner 接續改用實際呼叫者 code 身分分辨 enter／read／exit，不依賴第 N 次呼叫。mock phase 資源清理證據仍須與固定 source-port 的實際 initial／terminal 呼叫鏈分開；沒有擴大 public pipeline／Main 的執行範圍。
 
 Root實讀 cycle_terminal_slice_native_01／02 原始logs：01在module Path.resolve遭sandbox Win5；02仍從完整run進舊diagnostic contract，因mockguard缺_cycle_terminal_file而AttributeError，未到新slice。兩者不得視為新的產品讀取失敗或slice驗證。已要求owner建立獨立slice入口與完整guard fixture，避免重跑已接受04或逐欄補mock。新resource cleanup contract明示mockphase、實際fd/stream清理；這只能證明資源清理，實際fixed source-port初讀／終讀呼叫鏈與許可正例仍須分開驗證。仍未授權public pipeline/Main。
+
+## 後續 M7 固定來源 Main 路徑註記（2026-10-10）
+
+其後 M7 另有固定來源 S4 Main receipt 成功，但未把此文件 L attempt 的 pipeline failure 改判通過。M7 receipt 證明一條 bounded Main route；本 L 文件記錄的 `os.open`／terminal-read seam、L 完整 pipeline 失敗與後續 M diagnostic slice 仍按各自 candidate identity 判讀。M7 receipt 未以此 L attempt／診斷封套作接受依據；詳情見 F03 root follow-up M7 段。不得將另一條 Main route 回填成 L candidate 的 caller／許可驗收。

@@ -4,6 +4,12 @@
 
 本包完成唯讀 readmodel 與實際消費它的獨立 Qt widget；未接 main／推薦工作區。模型日常研究的原保存輸出可依 gross 排序及 exact 下鑽返回，但中央 mount 尚未完成，不能宣稱全模型選股流程或全市場預測完成。效果未成熟不是本包工程阻擋；不變更正式／PIT／交易資格。
 
+## 後續固定來源 S4 Main 路徑（2026-10-10）
+
+後續 M7 receipt 的固定來源 S4 Main fingerprint 包含 `app_module.recommendation.personal_h20_research_cohort`（SHA `36803f7ac675e6b74e3ff4ee0078f930665d26aecce5e10b81c7ffd68c251627`）與 `ui_qt.widgets.personal_h20_research_widget`（SHA `62500745a91ee0bec18efd8fbcbc5cb085002339d5d8230118542947255d7a46`）。該 bounded Main 路徑載入 10 檔 cohort，完成 2382 圖表／摘要下鑽及返回原 manifest／選取；同一 capture 的 120 筆 OHLC／684 bp 對照通過，shutdown 為 0 workers。收據詳見 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md` 的 M7 段。
+
+這更新了「尚未接 main」的後續狀態：固定來源 S4 route 已有 Main mount／操作證據，但 receipt 明確不代表公開 cohort、完整 2382 個股流程、全市場預測或 p95。它也不證明自然成熟、正式 PIT、EXE 或真人驗收；原保存輸出與未知／未成熟界線照舊。
+
 ## Ownership 與回滾
 
 只新增下列五檔，既有 producer、capture、outcome、推薦服務、main、config、shared DTO、Manual 與原 plan 全部唯讀：

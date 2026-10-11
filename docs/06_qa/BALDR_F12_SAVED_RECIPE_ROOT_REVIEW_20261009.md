@@ -12,3 +12,7 @@ recipe 自身的 JSON/hash 只保存條件與固定參照，不授予資料資�
 
 先前失敗封套保留：operation clock 與原保存 clock 誤混、query 方法 ID 誤用 reference 方法 ID，以及翻頁後錯誤要求 recipe identity 不變，均不當作通過證據。這次接受範圍為 backend 連續重開；尚未證明新 Qt 畫面、完整 Main 收藏按鈕、EXE 或真人操作。下一步以此真 API 建立獨立畫面與保存入口，再依 UI gate 驗證。
 
+## 後續 UI／Main 路徑狀態（2026-10-11）
+
+上述建立獨立畫面與保存入口的下一步，已在後續 `BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md` attempt04 完成 bounded 真來源 UI 路徑：真 worker、隔離 WatchlistService 保存、新 service typed 讀回、Main unbound route fresh restore 與 shutdown 均在該 attempt 通過。這不等於完整 Main constructor、EXE 或真人接受。較後 F03 T38 full Main 仍在 `unexpected_private_sqlite_uri` 失敗，尚未到 child／新程序 typed reopen；不能把 attempt04 的局部 UI 通過合併為 F12 Gate 通過。
+

@@ -22,3 +22,9 @@ Root 在 native 環境執行完整 P03 32 項、生命周期 5 項、月營收 8
 早期零基期來源 reference 對應錯誤、callback 測試預期及 archive 信任範圍錯誤已經修正；受限 sandbox 的 WinError 5 失敗保留，未靠移除來源核驗解決。
 
 下一批需將 reader-issued 全清冊事實接到版本化 compact index 與複合查詢，重用既有 Decimal 投影，保存各域來源身份、完整分母與 unknown／blocked。不能以這個獨立讀取器宣稱 F12 選股條件、UI、跨程序還原或全補完計畫完成。
+
+## 後續索引／查詢整合狀態（2026-10-11）
+
+上段列出的 reader-to-index/query 工作，已由後續 `BALDR_F12_INDEX_INTEGRATION_REVIEW_20261009.md` attempt03 與 `F12_MONTHLY_REVENUE_QUERY_READER_20261009.md` 取得 bounded 合成驗收：258 declared、257 processed、1 excluded，8 passed。這更新的是 full-population synthetic reader/query 切片；current-observed-only、availability unknown、PIT false 仍保留，不能外推為正式市場或完整產品通過。
+
+後續 `BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md` 的真來源 UI／worker attempt04 有界通過，但不是完整 Main constructor。F03 root follow-up 的 T38 full Main 仍於收藏前 `unexpected_private_sqlite_uri` 失敗，child 與新程序 typed reopen 未到達；正常更新閉環、完整 Main／收藏、EXE、真人與正式 PIT 尚未因此完成。

@@ -612,3 +612,19 @@ Archive 根層本批只補五份歷史原件的時點／權威提示；不調整
 REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還原舊基線」，不可把本表的新數字加到舊全文／未讀數作為精確現況。所有目錄完成內容複核與修訂前，不執行 Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-11 增量補記：** QA 新增 8 份具名全文核讀、1 份原件修訂（累計 63／24）；見 [Entry 257](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-257)。Archive 根層新增 8 份具名全文核讀、3 份原件修訂（累計 31／12）；見 [Entry 259](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-259)。REFACTOR_REPORTS 再具名核讀 R014–R020 共 8 份、其中 6 份加後續導覽；因早期 74 份 aggregate 無逐檔清單，不併入精確總數，見 [Entry 258](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-258)。Superpowers README 已補兩組 UI polish 導覽，三個 retained source-stub 的 Git commit provenance 已修正，見 [Entry 260](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-260)。以上增量未改動 QA 舊 aggregate 或封存原文；保護路徑仍排除。全庫 links／anchors scan 與 Graphify 等待全部目錄內容審閱完成。
+
+**2026-10-11 Archive 根層增量補記：** 第十批再具名核讀 8 份、1 份增加正式資料 smoke 時點／操作界線（具名快照累計 39／13）；詳細清單見 [Coverage History Entry 261](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-261)。早期 aggregate 未具名，總覆蓋數仍無法精確重算。
+
+**2026-10-11 Guides 增量補記：** `docs/07_guides/` 的 APPLICATION_MANUAL_SUPPLEMENTS.md 由局部升為全文核讀，Manual 以外共 19/19 份全文；另修訂 scripts、P0 daily source、ML shadow 三份日期／狀態提示。具名內容及路由檢查見 [Coverage History Entry 262](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-262)。APPLICATION_MANUAL 本輪保持未讀／未改；先前 25-link 目標核對不等於全庫錨點驗證。
+
+**2026-10-11 QA H20 候選增量補記：** 另全文核讀 8 份 H20 候選／收據文件，其中 3 份依 M7 後續收據補上日期與路徑界線（具名快照累計 71／27）；見 [Coverage History Entry 263](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-263)。不把 M7 固定來源 Main 路徑的接受外推為候選 EXE、WAL、真人或正式驗收；舊 QA aggregate 仍因無 manifest 不重算。
+
+**2026-10-11 Archive 根層增量補記：** 第十一批再具名核讀 8 份、7 份補上歷史／操作界線（具名快照累計 47／20）；見 [Coverage History Entry 264](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-264)。早期 aggregate 未具名，總覆蓋數仍無法精確重算。
+
+**2026-10-11 REFACTOR_REPORTS 增量補記：** 再核讀 R021 一份並補一份證據範圍提示；已具名增量再加一份，舊 74 份聚合無逐檔清單故不計精確總量。見 [Coverage History Entry 265](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-265)。
+
+**2026-10-11 Archive 根層增量補記：** 第十二批新增 8 份具名全文核讀、2 份原件加範圍／凍結操作提示（具名快照累計 55／22）；見 [Coverage History Entry 266](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-266)。
+
+**2026-10-11 QA F12／H20 增量補記：** 再全文核讀 8 份 QA，6 份原件依後續 bounded 收據修訂（具名快照累計 79／33）；見 [Coverage History Entry 267](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-267)。舊 QA aggregate 未具名，總閱讀數不作精確累加。
+
+**2026-10-11 Archive 根層補記：** 全文核讀 `PROJECT_SNAPSHOT_HISTORY_2026_09_08.md`，原件歷史邊界與後續 closeout 一致，保留未改；該路徑已列入 Coverage History Entry 268。REFACTOR_REPORTS 八份具名全文核讀，三份由局部掃描升為全文，四份補後續狀態導覽；見 [Entry 269](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-269)。舊 aggregate 無逐檔 manifest，故不推算去重總數。

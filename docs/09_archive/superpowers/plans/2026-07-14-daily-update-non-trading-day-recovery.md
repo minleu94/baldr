@@ -1,5 +1,7 @@
 # 每日資料更新無資料日恢復 Implementation Plan
 
+> **歷史提案（2026-07-14；狀態界線核對於 2026-10-11）**：本計畫的核取方塊全未勾選，僅表示提案內容，不能據此認定實作、測試、QA 或文件同步已完成，也不構成目前執行授權。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** TWSE 明確查無資料日不再阻斷快速更新與排程，真正失敗必須在 UI 與 freshness 可見。
@@ -245,5 +247,7 @@ Run:
 Expected: 指定 pytest、QA 與編譯命令 exit 0；mypy 的既有失敗必須逐項記錄並另外驗證本次檔案。
 
 - [ ] **Step 3: Commit**
+
+> **ARCHIVED — DO NOT RUN**：此歷史 `git add`／`git commit` 命令會 stage `docs/07_guides/APPLICATION_MANUAL.md`；該檔目前有使用者未提交變更。不可重播這組命令；原命令保留作歷史記錄。
 
 Run: `git add docs/03_data/daily_data_update_guide.md docs/07_guides/APPLICATION_MANUAL.md docs/superpowers/plans/2026-07-14-daily-update-non-trading-day-recovery.md; git commit -m "docs(data): explain daily update skip diagnostics"`

@@ -683,3 +683,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA UX20／UX21／UX23 增量：** 新增 8 份具名全文核讀，6 份補後續工程收據；partial acceptance 與外部來源 qualification 限制保留。見 [Coverage History Entry 301](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-301)。
 
 **2026-10-11 QA 剩餘 basename 候選補記：** Entry 302 完成最後 15 份 QA basename 候選的具名全文核讀，3 份補 dated scope overlay；另排除一份既有 dirty R026 handoff 與受保護完成進度文件，沒有納入本批提交。這消除本輪 QA 候選清單缺口，但不把無逐檔 manifest 的舊 QA aggregate 換算為精確全域去重數。尚待確認各目錄剩餘未讀／局部文件是否在原計畫範圍內；Graphify 與最終 repo-wide links／anchors scan 仍須待此確認及所有內容修訂完成後執行。見 [Coverage History Entry 302](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-302)。
+
+**2026-10-11 後續具名增量（Coverage History Entries 303–306）：** QA 再核讀 8 份（其中 ASTRA 僅局部，餘 7 全文；4 份增補時點界線）；Archive 根層核讀 8 份、2 份增補 P0 歷史警語；REFACTOR_REPORTS 核讀 21 份、6 份增加狀態導讀；repo 外 Markdown 核讀 7 份，其中 notebooks/01 與 scheduled README 補日期／範圍提示。這些是具名清單，不與無逐檔 manifest 的舊 aggregate 相加。ASTRA 全文、受保護文件及各目錄未讀／局部文件、舊 74-file／QA／Archive aggregate 尚未結清；MOPS 本機 scratch 引用、scheduled README links／Manual anchors 未驗。全庫 links／anchors scan 與 Graphify 刷新仍須等內容治理完成後再做。

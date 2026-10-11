@@ -1,3 +1,5 @@
+> **歷史修正與範圍導讀（2026-10-11）**：本文記錄的 `IMPLEMENTATION_STATUS: READY_FOR_REVIEW` 是該 erratum 的原始交付狀態；R007 task-level disposition 由 R031 列為 `ACCEPTED_WITH_SCOPED_IMPORT_BOUNDARY`。時區名稱別名修正的後續獨立複審與 SOL 接受見 [R007 Luna review](R007_LUNA_TZNAME_INDEPENDENT_REVIEW.md) 與 [R007 SOL acceptance](R007_SOL_TZNAME_ACCEPTANCE.md)。此 bounded import/contract evidence 不代表一般 reflection sandbox 或擴大驗收範圍。見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R007 標準時區名稱別名勘誤報告
 
 IMPLEMENTATION_STATUS: READY_FOR_REVIEW

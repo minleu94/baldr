@@ -1,5 +1,7 @@
 # B03–B14 第二波中央整合收據（2026-10-06）
 
+> **時點與範圍（2026-10-11）**：本文只保存截至 2026-10-06 的有界整合結果；各節「目前／仍」均是該批固定驗收時點，不代表今日進度。後續產品狀態請看[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作與主題入口見[文件索引](../00_core/DOCUMENTATION_INDEX.md)。本文原有測試數字、失敗及資格限制均維持歷史收據，不合併成新 aggregate。
+
 ## 2026-10-06 final authorized validation / R01 accepted
 
 R01 worker `2381b1abbec87c0015dc8a581816db02e9b54bbb` 採入 `4e51f34a`；測試清冊與中央文件凍結為 **`c5eb5c80884a9b23ad50f40e28c481338a02855d`**。原64四用途精確nodes與整檔Registry／selected Paper／source_id／v2／boundary去重後，一次union收集522項、執行521項；真fit的real_runner明示deselected。

@@ -1,5 +1,7 @@
 # BALDR 有界收尾狀態與移交（2026-10-06）
 
+> **歷史時點導覽（2026-10-11）**：本文的十五包、Stage／UX、inventory 及「當前」欄位都是 2026-10-06 固定驗收狀態，不作今天的總結。最新產品狀態以[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)為準；個別後續收據依[文件索引](../00_core/DOCUMENTATION_INDEX.md)與 QA 主題索引追讀。此處原始計數、未完成項和證據範圍仍按當日保留，不回算成現況 aggregate。
+
 ## 2026-10-06 final authorized validation / R01 accepted
 
 R01 worker `2381b1abbec87c0015dc8a581816db02e9b54bbb` 採入 `4e51f34a`；測試清冊與中央文件凍結為 **`c5eb5c80884a9b23ad50f40e28c481338a02855d`**。原64四用途精確nodes與整檔Registry／selected Paper／source_id／v2／boundary去重後，一次union收集522項、執行521項；真fit的real_runner明示deselected。

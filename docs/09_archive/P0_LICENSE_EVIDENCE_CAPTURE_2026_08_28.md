@@ -1,5 +1,7 @@
 # P0 License Evidence Capture（2026-08-28）
 
+> **歷史時點警語（2026-10-11）**：本檔只記錄 2026-08-28 三個條款 URL 的 bounded response capture。`captured_count=2`、`failed_count=1` 與當時的 `13 blocked_provenance` 是該次快照，不代表目前 source acceptance、授權或整體 P0 狀態，也不是重跑舊日期的指示。後續 machine evidence 見 [2026-08-30 P0 refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)；來源決議依 [P0 acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 判讀。矩陣已記錄該 register §7 DEV-66 `limited` 與 §14 `limited=0` 尚未調和；不可用本 capture 推論任何決議被撤銷或套用。
+
 ## Capture result
 
 在明確的 `capture-p0-license-evidence` confirmation 下，對 route registry

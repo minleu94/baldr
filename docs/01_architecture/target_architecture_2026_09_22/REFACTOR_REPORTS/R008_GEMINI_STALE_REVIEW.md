@@ -1,5 +1,7 @@
 # R008 正式唯讀獨立審查報告
 
+> **歷史審查狀態導讀（2026-10-11）**：本文的 `REVIEW_STATUS: CHANGES_REQUIRED` 是初版 R008 contract 的歷史 finding；當時指出缺少可表達 ML availability 與原因的 typed 欄位。後續 [R008 SOL 終版整合驗收](R008_SOL_FINAL_ACCEPTANCE.md) 已核對 ML availability、receipt binding 與其範圍，R031 task index 將 R008 列為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`。原 finding 保留為初版證據；此更新不宣稱 receipt bytes／body、PreparedMLInput 與正式 consumer 的端到端驗證，該範圍仍由 R010／R026 負責。
+
 > **審查基準**：
 > - 審查封包：`docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R008.md`
 > - 收件參照：`docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md`

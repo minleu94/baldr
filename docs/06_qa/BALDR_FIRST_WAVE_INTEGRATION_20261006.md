@@ -1,5 +1,7 @@
 # 原產品計畫首波整合收據（2026-10-06）
 
+> **後續時點導覽（2026-10-11）**：本文只記錄 2026-10-06 首波驗收；文中「次波仍進行中」是當時狀態。後續中央驗收及其未完成界線見[第二波整合收據](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)與[有界收尾狀態](BALDR_CLOSEOUT_STATUS_20261006.md)；目前專案狀態以[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)為準。本文數值與原失敗仍保留為首波歷史證據。
+
 唯一dev owner：`01a11020-88c2-7506-acc3-d51ecb674032`。原需求只沿 `output/plans/baldr_product_experience_plan_20261004.md`（Danny Quant即此原plan）；本文件是有限scope驗收，不是新roadmap。接手base `a42b2cb9df44b2fd928104ae02992b0e557c2a39`，開場tracked clean。
 
 ## 接受與保留

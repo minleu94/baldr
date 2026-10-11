@@ -1,3 +1,5 @@
+> **歷史審查狀態導讀（2026-10-11）**：本文 `REVIEW_STATUS: CHANGES_REQUIRED` 是早期 R006 證據不足的 finding；其後 R006 在原 scope 內補建唯讀 ABI／artifact 清冊與受控 fixture 證據，並由 R031 task index 將 R006 inventory／retention scope 列為 `CLOSED`。原 known shadow-boundary failure 與未檢視正式 serialized binaries 的限制仍保留，不代表正式模型相容已驗證。見 [R006 implementation report](R006_IMPLEMENTATION_REPORT.md)、[R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [unknown-artifact retention addendum](../../../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。
+
 # R006 SOL 審查
 
 ## 判定

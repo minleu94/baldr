@@ -1,5 +1,7 @@
 # P0／MOPS／Owner Packet Refresh — 2026-08-28
 
+> **歷史時點警語（2026-10-11）**：本文件「最新」僅指 2026-08-28 當次封包；其 P0 row counts、`action_required`、外部待辦與 `2026-09-01` planned clock 均為歷史快照，不是目前派工、啟用或寫入授權。後續 machine evidence 見 [2026-08-30 P0 refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，來源決議依 [P0 acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 判讀；`limited` 總數差異依 [文件狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md) 所記保持未調和。原文外部輸入項目只保留當時上下文，不能直接重送或執行。
+
 ## 目的
 
 本紀錄保存 2026-08-28 依序推進時的最新唯讀證據。它只更新候選 evidence 與

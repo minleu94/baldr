@@ -1,5 +1,7 @@
 # Baldr M2 施工與驗證紀錄
 
+> **歷史時點導覽（2026-10-11）**：本文是 2026-10-07 起累積的 M2 工程日誌；文中「目前／仍待」只代表各筆記錄當時，不是今日狀態。最新產品進度以[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)為準，後續核驗入口見[文件索引](../00_core/DOCUMENTATION_INDEX.md)。保留原測試數字、失敗與尚缺範圍，不把不同日期的局部結果合併成通過。
+
 本輪沿用[單一產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)的 P01／P02／P04 與使用者回饋，持續由 Luna Max 葉片實作、中央審核。本文件保存工程證據；M2、完整選股器、Native 真人與原計畫全部工作包仍未完成。
 
 ## 已完成的局部驗證

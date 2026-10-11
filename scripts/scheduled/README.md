@@ -1,5 +1,7 @@
 # baldr Scheduled Operational Wrappers
 
+> **時點與操作範圍（2026-10-11 盤點）：** 本檔最新日期化整合摘要截至 2026-10-09，並混有早期排程紀錄；Task 數量、狀態、trigger、timeout、路徑與 hash 均不是即時設定證據。文件中的 aggregate 數量記載（例如 18 daily + 1 weekly、16 daily + 1 weekly、21-task inventory）彼此不一致，操作前應以現行註冊器輸出、Task Scheduler 讀回及同次 producer／consumer receipts 核對。
+
 ## 2026-10-08 背景入口與故障修正
 
 四個已存在的 Direct／Paper Portfolio／Sector／ML Allocation Forward Task 已改用 `.venv/Scripts/pythonw.exe` 呼叫 `run_scheduled_cmd_hidden.py --task <固定 task 名稱>`。原 CMD 與環境參數保留；每 run 的 stdout／stderr、started／terminal 位於 `output/scheduled_launches`。launcher exit 只表示 child 程式結束，必須另核 pipeline terminal／consumer pins。

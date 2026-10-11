@@ -1,3 +1,5 @@
+> **歷史狀態導讀（2026-10-11）**：本文原始 `IMPLEMENTATION_STATUS: READY_FOR_REVIEW` 與 2026-09-27 的 inventory／retention 裁定，應依各自時點閱讀；R031 task index 將 R006 原 scope 列為 `CLOSED`。未知正式 model binaries 仍未 load／predict，保留為 RK-19 unsupported compatibility risk；本結案不宣稱模型或 prediction 相容。詳見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 與 [R006 unknown-artifact retention addendum](../../../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。
+
 # R006 實作報告
 
 - TASK：R006

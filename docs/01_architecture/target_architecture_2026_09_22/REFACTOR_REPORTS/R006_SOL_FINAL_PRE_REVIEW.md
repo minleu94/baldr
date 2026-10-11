@@ -1,3 +1,5 @@
+> **歷史送審狀態導讀（2026-10-11）**：本文 `AWAITING_GEMINI_REVIEW` 只代表 R006 回修後、SOL 初審完成時的階段；R031 task index 後續將 R006 原 scope 列為 `CLOSED`。本文保留的 73 passed／1 known shadow-boundary failure 與未知正式 binary 限制仍按原凍結範圍判讀，不因 R006 closeout 改寫；正式 model class path／prediction 相容仍未驗證。見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [unknown-artifact retention addendum](../../../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。
+
 # R006 Luna 回修之 SOL 初審完成
 
 ## 判定

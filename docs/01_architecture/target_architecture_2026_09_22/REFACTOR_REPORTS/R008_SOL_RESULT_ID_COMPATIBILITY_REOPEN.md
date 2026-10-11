@@ -1,3 +1,5 @@
+> **歷史 gate 狀態導讀（2026-10-11）**：本文 `TASK_STATUS: CHANGES_REQUIRED_WITHIN_R008` 是 result-ID compatibility finding 當時的裁定；後續 [R008 SOL result-ID acceptance](R008_SOL_RESULT_ID_ACCEPTANCE.md) 記錄原 opaque／generated／legacy ID 範圍已修正並通過獨立複審，R031 task index 將 R008 列為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`。原 finding 與 R012 路徑安全界線保留；此狀態不延伸為所有 R008 consumer、receipt body 或 production writer 的端到端接受。見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。
+
 # R008 result_id 相容性勘誤重開
 
 TASK_STATUS: CHANGES_REQUIRED_WITHIN_R008

@@ -43,12 +43,13 @@
 - **2026-07／08 日期化資料與 owner 收據**：查 [Archive 專區](../09_archive/README.md#2026-10-08-data-and-source-owner-receipts)；source pilot、license capture、owner packet 與 data reconciliation 保留原始限制，不代表目前來源採納或 production approval。
 - **2026-08 前瞻正式時鐘歷史**：查 [Archive 專區](../09_archive/README.md#2026-10-08-prospective-formal-clock-history)；目前重啟方向與決策時鐘契約仍留在此目錄，歷史 activation、staging 與失敗收據不授權重啟或發布。
 
-## 補充收據索引（2026-10-10 治理補登共 54 份）
+## 補充收據索引（2026-10-10 治理補登 54 份；2026-10-11 追加 1 份）
 
-> 本區收錄經 2026-10-10 全量盤點查核之專屬 QA 驗收證據；各原件維持各自日期與範圍，不推升為目前全域狀態。
+> 原列 54 份為 2026-10-10 全量盤點查核的專屬 QA 證據；其後追加的 2026-10-11 C3/C4 manifest reconciliation 是聚焦核對，不改寫原收據。各原件維持各自日期與範圍，不推升為目前全域狀態。
 
 - [Bounded 全特徵重述研究模型：實際 fit、OOF 與當日 heads readback](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)
 - [C2 非 ML Consumer Union 預檢（2026-09-25）](C2_NON_ML_CONSUMER_UNION_PREFLIGHT_20260925.md)
+- [C3/C4 manifest identity 與 route delta reconciliation（2026-10-11）](C3_C4_MANIFEST_DIFF_RECONCILIATION_20261011.md)
 - [derived-h5 修訂研究雙時鐘契約（2026-09-22）](DERIVED_H5_RESTATED_RESEARCH_DUAL_CLOCK_CONTRACT_2026_09_22.md)
 - [Derived-h5 run02 研究訓練輸入缺件盤點（2026-09-23）](DERIVED_H5_RUN02_RESEARCH_INPUT_AUDIT_2026_09_23.md)
 - [F07 保存來源價格查詢契約（來源版有限接受；執行檔與效能待驗）](F07_PRICE_QUERY_CONTRACT_20261008.md)

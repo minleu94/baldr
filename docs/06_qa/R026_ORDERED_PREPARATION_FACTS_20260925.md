@@ -42,3 +42,7 @@ Frozen SHA-256：
 - `tests/test_r026_ml_preparation_facts.py`: `E8C8EEF258538683A5F22708FB8A6B2416FE994306093338BB88F64AF49E00BA`
 
 R015 獨立 fresh TEMP 四檔路由為 **42 passed**；scoped mypy 1 source file／0 issues，`py_compile` 通過，未發現 P1/P2。此 slice 的測試已在 `qa/full_app_healthcheck/test_inventory.py` 以 `service-oracle-recommendation` 登錄一筆。這只證明本測試的 membership/category；inventory 全庫仍有其他既存 missing/guard failures，不能稱全庫 inventory guard 通過。後續非阻擋覆蓋建議包括 nested `FactorContribution`／`SourceRef`／`UniverseReference` hash golden，以及 factory 直接收到 future `available_date` 的負控。此 slice 不證明 model/snapshot binding、外部 feature-row source custody、projector no-I/O、receipt parity、A/B runtime handoff 或 TMP-ML-01 retirement。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+本文的 `TMP-ML-01` 與「未建立 `PreparedMLRuntimeInputV1`」是此 preparation-facts factory 的 2026-09-25 範圍描述。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 後續已採 prepared-runtime／typed post-calibration handoff，遷移條件為 `CLOSED`；不表示本 `RecommendationMLPreparationFactsV1` factory 已接入該路徑，亦不關閉 R026 其他 source-evidence slices。

@@ -53,3 +53,7 @@ Manifest/producer/schema 與 serialized model bytes 均未改；既有 artifact 
 本 slice 僅讀取 shadow model artifact 與 manifest，不讀市場資料、不建 feature、不預測、不改模型、不訓練，也不改 decision date/cutoff；沒有新增 look-ahead 路徑。Deserializer 只在 artifact bytes 已與已驗 manifest 宣告 hash 相符後執行，且只呼叫既有預設 `joblib.load`，不接受自訂 deserializer 擴大載入接口。
 
 其餘 pointer/candidate/manifest/training-lineage/receipt 仍各自有 path reads；manifest hash 是 canonical payload hash，不等於原始 manifest bytes hash。現行 consumer 尚未使用新 API；active/prior 測試是兩個合成 artifact-root 呼叫，不是 lineage integration test。Captured spool 與 path postcheck 不能排除路徑 restore/ABA 或 postcheck 之後競態；temp disk 容量、超大模型、磁碟錯誤與其他 joblib/runtime profile 未驗。這個 single-artifact slice 不證明完整同次 source/model/receipt identity，不建立完整 ModelBinding，不構成 PreparedMLRuntimeInput 或 runtime handoff，也不關閉 R026／`TMP-ML-01`。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 是本 artifact-loader slice 的 checkpoint，且「現行 consumer 尚未使用新 API」限一般 service／production 路徑；本文後續 capability-only ordered-lineage 小節另記 experimental capability 對此 API 的使用。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 遷移條件後續已 `CLOSED`，但本 single-artifact loader 不是該 handoff 的完整 source/model/receipt binding；R026 其他 source-evidence slices 仍未全部完成。

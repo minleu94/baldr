@@ -42,3 +42,7 @@ Fresh 短 TEMP 根：`C:\Users\archi\AppData\Local\Temp\r269084e3`。`PROFILE=te
 R027 對 frozen service/test bytes 做 read-only review，並以 fresh short TEMP 重跑本 QA 所列兩檔 route：**34 passed**，11.78 秒，exit 0；TEMP root `C:\Users\archi\AppData\Local\Temp\r026live_review_ff84e49b`。未發現 P1/P2，僅接受 sidecar pre/post gate 的 bounded scope。服務 SHA-256 為 `54205E777A6C3C8754217003FF50A819A3AA114CE8E3F264CAECCCBC0875926F`；測試 SHA-256 為 `C35F7068AE4528FE905F20964982B9AD73D573803A01F2D3B25B8DB2939F1DE7`。
 
 R026 另有 [provider-only SQLite read lease 原型](R026_SQLITE_READ_LEASE_20260925.md)，目前尚未接入 service，且仍待獨立複核。四 namespace evidence digest 不包含 SQLite row bytes/generation；SQLite-only mutation、跨資源原子性與 ABA 仍是後續 gate，故不關閉 `TMP-ML-01`。
+
+## 後續 service 接線與 supported handoff 狀態（2026-10-10）
+
+上段 provider-only lease「尚未接入 service、待獨立複核」是 2026-09-25 checkpoint；後續 [live calibration SQLite lease wiring receipt](R026_LIVE_CALIBRATION_SQLITE_LEASE_WIRING_20260925.md) 記錄單次 provider `load()` lease 已接入並獲 bounded acceptance。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 遷移條件後續已 `CLOSED`。這不把 sidecar aggregate 升格為 SQLite row generation，也不消除本收據列出的跨資源原子性、ABA 或 historical replay 限制。

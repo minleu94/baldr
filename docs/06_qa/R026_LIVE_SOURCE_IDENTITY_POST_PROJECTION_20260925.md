@@ -48,3 +48,7 @@ $env:OUTPUT_ROOT = 'C:\t\r26sp_output'
 R023 獨立 fresh short TEMP 路由 `C:\t\r26post_d3f03293` 為 **32 passed／0 failed**，log `C:\t\r26post_d3f03293\pytest.log` SHA-256 `687396FFF60A3BC02217D76D8656A4836911A740FECFF751B98F7E48E71BFBF4`。Scoped mypy 2 source files／0 issues、`py_compile` 與 targeted diff-check 通過，未發現 P1/P2。Owner 路由為 32 passed；原 owner log `C:\t\r26shadow_final\pytest.log` SHA-256 `A3E416FA532299C349CD76071CCF20E9474F9230020D26E20F078423941D167A`。Root 依 frozen bytes 與獨立複核判本切片 bounded `ACCEPTED_SCOPE`。
 
 此接受不涵蓋三個 sidecar namespace 與 SQLite 的原子快照、短暫變更後還原的 ABA，或第三次 sidecar sample 到 receipt 發布間的 TOCTOU；不代表完整 R026／`TMP-ML-01` 完成，也不授權 runtime handoff。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+本文的 `TMP-ML-01` 是本 shadow-recheck slice 的 2026-09-25 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 遷移條件後續已 `CLOSED`；這不表示本 shadow identity 已納入 typed runtime input 或 receipt。三個 sidecar sample 與 SQLite 之間的原子性、ABA 及 postcheck 後競態限制仍在，R026 整體仍 `IN_PROGRESS`。

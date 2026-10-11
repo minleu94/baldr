@@ -52,3 +52,7 @@ R015 對最終 source/test/inventory SHA fresh short TEMP 獨立重跑相同八�
 `SnapshotReference.source_id` 使用邏輯 provider contract ID；`source_revision` 仍為 `None`，availability/quality/scope 仍是 `UNKNOWN`。Raw SQLite rows、四 namespace digest 與 lease observation 各自分開，沒有將 sidecar digest 冒充 SQLite row generation。此切片不證明四 namespace 與 SQLite 是原子快照、不排除跨資源 ABA、receipt persistence 的 postcheck TOCTOU，亦不涵蓋 replay 中多次 provider calls 使用相同 durable generation。
 
 本切片已 bounded `ACCEPTED_SCOPE`；不是 `PreparedMLRuntimeInputV1` handoff，也不改既有 projection、receipt、output bytes 或 model eligibility。第二次 sidecar sample 後的變更、跨資源原子性/ABA、receipt postcheck TOCTOU 與 replay 多次 provider call 仍未解。R026 維持 `IN_PROGRESS`，`TMP-ML-01` 維持 `ACTIVE`。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 是本 shadow-capture slice 的 2026-09-25 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 遷移條件後續已 `CLOSED`；該結果不表示此 invocation-local shadow join 已交給 runtime model consumer、`PreparedMLRuntimeInputV1` 或 receipt。本文列出的跨資源、ABA 與 replay 限制仍在，R026 整體仍 `IN_PROGRESS`。

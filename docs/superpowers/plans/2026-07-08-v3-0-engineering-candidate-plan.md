@@ -1,5 +1,7 @@
 # V3.0 Engineering Candidate Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保存 2026-07-08 的 V3 candidate 目標、readiness 名稱與未勾選步驟，不代表目前 Gate／版本資格或執行授權。重用前依[現行版本 Roadmap](../../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)、QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the V3.0 Evidence-Validated Decision System engineering candidate: read-only effectiveness projection, gap classifier, sample sufficiency / confidence labels, signal-alert-gate review scaffold, and manual validation report.

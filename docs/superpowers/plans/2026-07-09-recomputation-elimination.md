@@ -1,5 +1,7 @@
 # 重複計算消除 Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保存 2026-07-09 的設計意圖與未勾選工作項，不證明目前實作狀態或目前契約。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、對應 QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重核使用範圍、owner 與時序限制。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在不改變推薦、回測、Daily Decision Desk 與排程公開介面的前提下，統一推薦衍生特徵、重用契約相符的預存技術指標，並讓單次 Decision Desk snapshot 共用同一市場資料 frame。

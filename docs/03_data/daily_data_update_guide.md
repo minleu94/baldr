@@ -211,6 +211,8 @@ python scripts/update_daily_stock_data.py --date 2025-08-29 --merge
 
 ## 技術細節
 
+> **歷史實作參考：** 本節所列 TWSE endpoint、`tables[8]` 資料位置及固定延遲是舊擷取實作的描述，不代表目前程式行為；目前 table 選擇方式見 [DATA_FETCHING_LOGIC 的現行 TWSE 擷取行為](DATA_FETCHING_LOGIC.md#現行-twse-擷取行為)，操作請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。
+
 ### API 資訊
 
 - **端點**：`https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX`

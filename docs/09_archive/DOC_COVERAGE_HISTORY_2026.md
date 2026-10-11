@@ -2709,3 +2709,24 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 全文核讀六份未加歷史／非現行授權警語的計畫：`plans/2026-07-13-terra-development-dataset-v0.md`（236 行）、`plans/2026-07-13-pit-historical-data-repair.md`（400 行）、`plans/2026-07-13-ml-daily-inference-operations.md`（513 行）、`plans/2026-07-13-historical-ml-shadow-mvp.md`（588 行）、`plans/2026-07-13-evidence-rehearsal-real-e2e.md`（339 行）、`plans/2026-07-13-cross-workstream-integration-closeout.md`（406 行）。檔案 SHA-256 分別為 `f1ff2b4eb94aa2c23e7d382de49a917ae095da3a95208cd9f8fe79903c0f2f34`、`4cc9ad4b3eb065cda37d7c8ac5ddcc1c078a43bf05fd421e8916bbb30aa4c610`、`311ecd49f873abec2c4b429056b8563ecec3ea384239b413cf82c2c1881575b9`、`face00c39ab0dbd48f8b298c476f4d0f93d4140828f1c56d57e0f45a9f3b6d94`、`e5058eb19e3a64aa32527da5f1b91180febbe820431a6437dcf33c7ba8ac2b93`、`a4f6c34ac22b86478fc882342e2aa3efd323866701371e5c9e0540b9756bd0a`。
 
 六份均在檔首新增歷史／非現行執行授權提示，計畫內容與 checklist 保留。直開風險包括 dated prerequisites、未勾步驟、共享 dev／Git 協議、可執行測試與資料 smoke commands、以及 stage／commit／push 或中央 SSOT 修改步驟；重用前須重新核對當前 Roadmap、QA／收據、owner 與資料界線。未改 code／tests 或其他文件；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-244"></a>
+## 2026-10-11 Superpowers retained originals 第五批全文核讀與警語
+
+全文核讀 12 份未列入前四批的 `docs/superpowers/plans/` retained originals：`2026-06-23-healthcheck-batch1-direct-fixes.md`（43,837 bytes，SHA-256 `ADC9C51000AC724880055F39A319650089EF0F9D6FD13FE6E8D4EF077FED87E5`）、`2026-06-23-testing-qa-agent-super-healthcheck-roadmap.md`（26,745，`53EBD8E649D635DE7F43EDE28C66ECE5B17A0C1D3617BB58C916C83978C89091`）、`2026-06-23-report-only-healthcheck-sections.md`（22,880，`A54DF6551F34D0BEE3B59C30970DCF9F22EB9A2B5781D25EC0345FEAF36D8BF6`）、`2026-06-29-full-app-healthcheck-ui-smoke.md`（11,753，`168DA50EFC91A89606688CD1E2B53948229E49F50429B786C65E20D1E7038959`）、`2026-06-30-mainwindow-ui-smoke-operation.md`（7,746，`DBEFCAC58A596475CA1B3F10E1BBAF0E443C38AEDA61156F3AFDCB2D823DFD40`）、`2026-07-06-v2-0-unified-decision-workbench.md`（31,722，`5B14638D170F7B540E1DA0E297B842301F825A3298D9BAE2401F4941E987B6F6`）、`2026-07-07-workbench-left-navigation-ia.md`（19,519，`7A77EF5474F4F97D2426035C523035D0AE005BCF9527374F80FDC70E1AB287BF`）、`2026-07-08-v3-0-engineering-candidate-plan.md`（23,907，`C011DABC202FD39CF8C1DE7F858559AACFF2221E635A16C36B755813B69D99C8`）、`2026-07-09-evidence-quality-semantics.md`（10,649，`FA6900644DE13E1C1045C3C16B90C30C46B99B76F5C14868827838EC4A35AEBB`）、`2026-07-09-recomputation-elimination.md`（26,682，`79C26669A4B8C9C38D94D6214204068BA6F293A909B60A3DA0E693004B175F7B`）、`2026-07-09-v3-refactor-automation-plan.md`（7,341，`9C66A178F08F3ED177E1C6C904F40C22A687F1A4EBE38E09E63203D4865D8B22`）、`2026-07-11-afternoon-safe-refactor-cycles.md`（4,715，`1A8663B4351F916B5183266D26682EA83BE36F032682BD8BA30A9B2DA570AC57`）。
+
+其中五份缺檔首日期／授權界線的原件已補歷史提示：V2.0 workbench、left navigation IA、V3 candidate、evidence quality semantics、recomputation elimination。其他七份原已有足夠警語；其中 automation 與一次性循環排程已過期，維持原文但不作現行排程或 push 授權。舊測試數字、runner／UI smoke 命令、階段狀態及 plan checkbox 僅屬歷史；不調整舊 aggregate。Superpowers retained originals 已具名全文讀 54 份，估計尚有 51 份未全文讀；本批未讀 manifest、未改其他原件，未測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-245"></a>
+## 2026-10-11 目標架構分冊具名全文再核對（10 份）
+
+逐篇全文再核對 `docs/01_architecture/target_architecture_2026_09_22/` 10 份非 REFACTOR_REPORTS 文件：`FINAL_ARCHITECTURE_INVARIANTS.md`、`FINAL_DATA_FLOW.md`、`FINAL_EXTENSIBILITY_MODEL.md`、`FINAL_ML_COMPATIBILITY_CONTRACT.md`、`FINAL_MIGRATION_SEQUENCE.md`、`REFACTOR_IMPLEMENTATION_DAG.md`、`REFACTOR_VALIDATION_MATRIX.md`、`ARCHITECTURE_REQUIRED_CHANGES.md`、`REFACTOR_RISK_REGISTER.md`、`REFACTOR_EXECUTION_ORDER.md`。Matrix 先前已將目標架構直接文件列作 21/21 全文核讀，故本批是補具名路徑與角色的再核對，不將 10 再加到全文總數。
+
+唯一建議修訂的 `REFACTOR_VALIDATION_MATRIX.md` 已在檔首標明其為驗收計畫／任務映射，不是執行紀錄或目前進度，實際結果回到 Migration Sequence、日期化 reports 與 QA 收據。其餘九份權威或日期邊界已清楚；保留 R027 strict 與 R028 revision B 為各自裁定，不宣稱整體目標或 Wave closeout 完成。受保護主文、Snapshot、Manual、code/tests 均未讀；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-246"></a>
+## 2026-10-11 03_data 九份內容／redirect 再核對
+
+具名全文讀 `docs/03_data/` 九份非索引內容或 redirect：`C_DRIVE_QA_COLD_ARCHIVE_20261009.md`、`C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md`、`daily_data_update_guide.md`、`DATA_FETCHING_LOGIC.md`、`HISTORICAL_TEST_QUARANTINE_20261006.md`、`HOW_TO_UPDATE_DAILY_DATA.md`、`STORAGE_ASSET_REGISTER_20261006.md`、`BACKUP_RETENTION_AUDIT_2026_07_06.md`（redirect）、`TROUBLESHOOTING_DAILY_UPDATE.md`（redirect）；並以 `README.md` 與 `docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md` 作路由／終態參照。既有 Matrix 已將七份內容列為全文核讀、兩份列為 redirect，因此不累加舊 aggregate。
+
+`daily_data_update_guide.md` 的「技術細節」未標明其中 TWSE `tables[8]`、舊 endpoint 與延遲數字屬舊實作；已在該節加上歷史提示，路由到 `DATA_FETCHING_LOGIC.md` 的現行行為與 Manual。後者明確標出舊 API／整合段落已由欄位辨識方式取代，無需另改；其他封存終態數量、收據與資產分類與 QA reconciliation 一致。未讀 Manual、Snapshot、受保護架構文件或 code/tests，未執行測試、Graphify 或最終 repo-wide links／anchors scan。

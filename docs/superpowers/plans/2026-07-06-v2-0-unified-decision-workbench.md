@@ -1,5 +1,7 @@
 # V2.0 Unified Decision Workbench Phase 1 Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保存 2026-07-06 的階段、命令與 milestone 規劃，不能單獨證明目前狀態或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重核路徑、owner 與操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 完成 V2.0 Unified Decision Workbench Phase 1 read-only prototype：建立 Workbench DTO、唯讀 composer 與 standalone prototype artifact，讓第一屏呈現「今日任務中控台」，Evidence 作為 drill-down mode，Daily Checklist 作為每日流程檢查，不改 production UI、不寫正式 DB、不啟用 scheduler。Phase 1 可選擇讀取 `_reference_fix` historical replay JSON summary，作為 source gap、payload gap、outcome maturity 與 quality boundary 的參考輸入。

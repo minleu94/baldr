@@ -1,5 +1,7 @@
 # Workbench Left Navigation IA Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保存 2026-07-07 的 IA 目標、流程與日期化狀態，不能單獨代表目前 UI 或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重核現況、owner 與操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 將主工作區從上方 tab 改為左側主導覽，讓「決策工作台」成為預設首頁，並把「每日決策」降級成 Workbench 內的「決策來源」子頁。

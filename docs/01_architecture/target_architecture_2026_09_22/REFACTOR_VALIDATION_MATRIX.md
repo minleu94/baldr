@@ -1,5 +1,7 @@
 # 重構驗證矩陣
 
+> **文件定位（2026-10-11）：** 本矩陣列出規劃中的驗收 bundle、任務映射與成功條件，不是測試執行紀錄或目前進度。實際結果依 [Migration Sequence](FINAL_MIGRATION_SEQUENCE.md)、日期化 REFACTOR_REPORTS 與對應 QA 收據判讀。
+
 > 每個task只跑足以證明該切片的 focused validation；四個 checkpoint 再跑完整相關suite。正式資料、完整ML rebuild、scheduler實跑與model promotion不在本計畫的自動驗證範圍。
 
 ## 1. 驗證 bundle

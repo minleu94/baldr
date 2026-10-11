@@ -1,5 +1,7 @@
 # Evidence Quality Semantics Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保存 2026-07-09 的設計與驗證步驟，不是目前實作、資料接受或排程狀態的證據。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、Evidence QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重核範圍、owner 與操作授權。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Preserve MoneyDJ provenance while reporting fixed-threshold recommendations and complete mixed-quality source coverage accurately.

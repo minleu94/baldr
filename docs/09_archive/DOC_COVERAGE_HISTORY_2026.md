@@ -3222,3 +3222,10 @@ R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明�
 修訂 `docs/02_features/BACKTEST_LAB_FEATURES.md`：將 `runs` 表及 `output_root/backtest` 標成 Legacy 保存格式，明示新結果保存／讀回由 Research Run Registry 承接；依文件既有 Research Run Registry 功能段落、推薦組合保存的日期化後續記錄及 `RESEARCH_RUN_REGISTRY_SPEC.md` 歷史導引校正舊 schema 的時態。將沒有日期的「未來擴展」改為「較早的未來擴展清單」，並限定推薦組合回測與推薦分析整合已在後文記錄，避免沿用舊 TODO；「策略組合回測」的具體範圍及 PDF 匯出現況未在本批重新核實，因此明確保留待查，不宣稱已完成。
 
 本次修訂沒有刪除 Legacy schema 或歷史清單。既有文件中 Phase 3.5 的 10 筆 UI SOP 前置檢查與 Registry Lifecycle 20 筆最低 Gate、成本模型切換未核實、Benchmark 執行時／Registry 讀回差異均保留原範圍。本批無測試、Graphify 或最終 repo-wide links／anchors scan；矩陣相應目錄分類與後續未解項同步見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。
+
+<a id="coverage-entry-318"></a>
+## 2026-10-11 03_data freshness cutoff 日期界線與時區換算
+
+在 `docs/03_data/daily_data_update_guide.md` 與 `docs/03_data/DATA_FETCHING_LOGIC.md` 對 04:30 America/Los_Angeles 的一致記載旁加上 2026-10-03 日期化實作邊界說明；明列台北時間在夏令時間期間為同日 19:30、標準時間期間為同日 20:30，並區分更新頁顯示的台灣市場日期欄位。產品 Roadmap、六個月工程 Roadmap 與可讀的 target architecture 背景均未規定 04:30 現行政策；本次排除受保護的 Snapshot、Application Manual、system architecture 與使用者完成計畫，因此不核定政策現況，也不改 cutoff 值或 receipt 行為。README 的操作導向仍指向受治理權威與程式實作。
+
+兩文件原有對 cutoff 跨越後須重新 freshness probe、不可自行推定 fresh 的範圍保留。這是用字／時區對應澄清，不是執行驗證或政策變更；未跑測試、Graphify 或 repo-wide links／anchors scan。分類與範圍限制見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。

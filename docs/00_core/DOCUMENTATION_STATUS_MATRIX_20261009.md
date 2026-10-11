@@ -695,3 +695,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA redirect 繁中校正：** 將 `V4_ML_RELEASE_2026_09_07.md` 英文三行歷史路徑導引改為繁體中文，保留 Archive 原文與 Snapshot 現況連結；全文身分見 Coverage History Entry 313。
 
 **2026-10-11 `02_features/` Backtest Lab 歷史 schema／規劃清單界線：** Coverage History Entry 317 將 `BACKTEST_LAB_FEATURES.md` 中舊 `runs` 表與 `output_root/backtest` 資料路徑標為 Legacy 格式，避免與 Research Run Registry 現行保存／讀回混淆；將無日期的「未來擴展」標為較早規劃清單，並指出推薦組合回測及整合已有日期化後續記錄，策略組合回測範圍與 PDF 匯出現況仍待核實。02_features 仍為 9/9 tracked paths 已核讀或核對，本批未刪除或搬移文件；未跑測試、Graphify 或全庫 links／anchors scan。
+
+**2026-10-11 `03_data/` freshness cutoff 日期界線：** Coverage History Entry 318 將兩份指南一致記載的 04:30 America/Los_Angeles 明確限定為 2026-10-03 日期化實作邊界，補上台北同日 19:30（夏令時間）／20:30（標準時間）換算，並與台灣市場日期欄位分開；未把該快照升格為現行政策，因本次可讀權威文件未能核定政策現況。

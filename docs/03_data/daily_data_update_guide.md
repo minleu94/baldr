@@ -16,7 +16,7 @@
 
 ## 2026-10-03 freshness 與隔離候選操作補充
 
-更新頁的 Formal／Candidate 狀態分別對應正式 SQLite 與隔離 Candidate DB；`FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是狀態 token，不是同一資料集的兩種名稱。freshness receipt 綁定 `DATA_ROOT`、SQLite／Candidate DB 路徑、cutoff 與各來源實際期別；每日發布截止為 **04:30 America/Los_Angeles**，台北時間會隨夏令時間換算。截止前檢查的 `expected_wait` 若到查詢時已跨過 cutoff，必須重新執行唯讀 freshness probe，狀態先標 unknown／needs_revalidation，不自行推定 current 或 stale。
+更新頁的 Formal／Candidate 狀態分別對應正式 SQLite 與隔離 Candidate DB；`FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是狀態 token，不是同一資料集的兩種名稱。freshness receipt 綁定 `DATA_ROOT`、SQLite／Candidate DB 路徑、cutoff 與各來源實際期別。本文此段記錄 2026-10-03 的實作邊界：每日發布截止欄位為 **04:30 America/Los_Angeles**；對應台北時間為夏令時間期間同日 19:30、標準時間期間同日 20:30。此日期化記錄本身不核定現行政策；更新頁顯示的台灣市場日期是另一個欄位語意。截止前檢查的 `expected_wait` 若到查詢時已跨過 cutoff，必須重新執行唯讀 freshness probe，狀態先標 unknown／needs_revalidation，不自行推定 current 或 stale。
 
 更新頁「取消目前工作」採合作式停止，於檔案／日期／transaction 安全邊界生效。已安全提交的部分資料可保留，但本輪仍應明示取消或失敗並重新檢查，不可標為完整成功。TDCC 是週候選、只對應官方最近一個每週最後營業日；資料 rows 與 checkpoint 同 transaction，完全相同自然鍵可冪等重試，衝突或未完成 transaction 仍須診斷。MOPS 月營收抓取取消可以保留完整 raw HTML，未完成 candidate CSV 不發布；「已解析資料」數量不表示候選列已可用。詳細 UI 操作與安全邊界見[完整手冊第 4 節](../07_guides/APPLICATION_MANUAL.md)。
 

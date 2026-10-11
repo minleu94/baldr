@@ -1,5 +1,7 @@
 # ML Daily Inference／Registry／Drift／Rollback Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保留 2026-07-13 的工作拆解、命令與未勾選步驟，不能單獨證明目前狀態或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、ML QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對範圍、owner、資料界線與操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans`, `superpowers:test-driven-development`, and the ML shadow boundary checks.
 
 **Goal:** 載入B已凍結的shadow model artifact，使用同一feature registry／builder執行每日inference，append-only保存量化prediction，監控drift／calibration與lifecycle，任何錯誤都停止ML overlay並維持正式rule-only。

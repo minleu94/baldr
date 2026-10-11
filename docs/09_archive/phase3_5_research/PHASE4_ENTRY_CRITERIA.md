@@ -2,6 +2,8 @@
 
 > **歷史判讀**：本文件保留為 Phase 4 entry gate 追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前 Portfolio 與 lifecycle 狀態請看 `../../00_core/PROJECT_SNAPSHOT.md` 與 `../../01_architecture/system_architecture.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
+> **原件內部狀態說明：** 下方 2026-01-07 的 Gate 通過及 Phase 3.3b 100% 記錄只代表當日判讀；文件後段未勾選的 checklist 是未回填的歷史模板，不代表現況，也不構成目前投資資格。
+
 ## 概述
 
 本文檔定義了**進入 Phase 4（持倉管理）的前置條件**，確保使用者在 Phase 3 階段已經具備足夠的研究能力和判斷標準，能夠穩定、可靠地進行策略研究。

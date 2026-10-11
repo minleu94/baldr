@@ -602,8 +602,9 @@ Archive 根層本批只補五份歷史原件的時點／權威提示；不調整
 | 目錄 | 新增全文核讀 | 本次修訂 | 判讀與待處理 |
 |---|---:|---:|---|
 | 01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/ | 46 | 27 | R006／R007／R008 增量見 [Entry 233](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-233)，R024–R029 新批見 [Entry 239](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-239)。保留原 verdict；新增時點／範圍導覽。舊 82／23／119 基線不重算。 |
-| 06_qa/ | 20 | 15 | U–Z 及 A–J 各 10 份、皆核對主題索引入口；修訂後續日期／範圍的直開誤讀。見 [Entry 235](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-235) 與 [Entry 237](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-237)。QA 舊 aggregate 缺逐檔 manifest，不重算全文總數；使用者進行中的完成進度文件排除。 |
+| 06_qa/ | 30 | 17 | U–Z、A–J 與 B03–B07 各批皆核對主題索引入口；修訂後續日期／範圍的直開誤讀。見 [Entry 235](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-235)、[237](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-237) 與 [241](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-241)。QA 舊 aggregate 缺逐檔 manifest，不重算全文總數；使用者進行中的完成進度文件排除。 |
 | 09_archive/ 根層 | 12 | 0 | 第五、六批全文核讀見 [Entry 236](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-236) 與 [Entry 240](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-240)。保留歷史時點及 SHA 差異判讀；舊 aggregate 不重算。 |
-| superpowers/ retained originals | 36 | 27 | 三批共 36 份 plans／specs 全文核讀；新增警語的具名原件見 [Entry 234](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-234) 與 [Entry 238](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-238)。原件總量估算 105，尚有 69 份未逐篇全文核讀；舊 aggregate 不重算。 |
+| 09_archive/ 子目錄 | 10 | 5 | Archive 子目錄第七批見 [Entry 242](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-242)。券商舊操作文件有檔首提示；Phase 4 原件補充 checklist 時點界線。 |
+| superpowers/ retained originals | 42 | 33 | 四批共 42 份 plans／specs 全文核讀；新增警語的具名原件見 [Entry 234](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-234)、[238](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-238) 與 [243](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-243)。原件總量估算 105，尚有 63 份未逐篇全文核讀；舊 aggregate 不重算。 |
 
 REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還原舊基線」，不可把本表的新數字加到舊全文／未讀數作為精確現況。所有目錄完成內容複核與修訂前，不執行 Graphify 刷新或最終 repo-wide link／anchor scan。

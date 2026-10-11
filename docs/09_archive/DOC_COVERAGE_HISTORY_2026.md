@@ -2688,3 +2688,24 @@ R008 去重時另讀 R008_IMPLEMENTATION_REPORT.md 與 R008_SOL_CHANGES_REQUIRED
 ## 2026-10-11 Archive 根層第六批具名全文核讀
 
 新增全文核讀 `docs/09_archive/` 根層 5 份：`A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md`、`BALDR_PAPER_AUTOMATION_PROMPT_PROPOSAL_20260925.md`、`DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md`、`SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md`、`DOCUMENTATION_CONSOLIDATION_20260927_HISTORY.md`。五份均以 Archive README 路由到當前權威或後續證據；日期化舊狀態不作現況。Paper prompt 來源與封存分別 6,582／6,591 bytes 且 SHA 不同，History 未解釋差異，因此不宣稱逐位元組相同。R01 excerpt 先列最終結果後列同日待 raw/JUnit 前置快照，時間順序可能造成疑義；保留歷史證據及既有 QA 導覽，不改數值。其餘來源與封存 bytes／SHA 依 Entry 077、111、113、136 核對。舊 aggregate 無逐檔清冊，不回算總量。未讀受保護架構文件，未執行 link scan、測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-241"></a>
+## 2026-10-11 QA B03／B07 後續狀態核對（10 份）
+
+具名全文核讀 10 份此前未在 Coverage History 具名的 QA 內容文件：`BALDR_A01_BBANDS_UPPER_20261006.md`、`BALDR_A02_H20_GROSS_MODEL_20261006.md`、`BALDR_A03_PERSONAL_MODEL_DAILY_20261006.md`、`BALDR_B01_HISTORICAL_LABEL_BOUNDARY_20261006.md`、`BALDR_B03_MARKET_HOME_20261006.md`、`BALDR_B03_UPDATE_RUNTIME_20261006.md`、`BALDR_B04_SELECTION_WATCHLIST_20261006.md`、`BALDR_B05_CHART_INCREMENT_20261006.md`、`BALDR_B06_PORTFOLIO_SUMMARY_20261006.md`、`BALDR_B07_RULE_HISTORY_20261006.md`。10 份均可由 `PRODUCT_UX_QA_INDEX.md` 到達。
+
+B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_WAVE_INTEGRATION_20261006.md` 已記錄 §4.1／§11／§11.1 更新完成；Native、Windows Task、真資料更新仍未驗收。B07 原文將 caller budget／Manual 寫成待辦；後續收據記錄 64 MiB 單檔、256 MiB 每輪限制及中央 caller 五項測試，本文 154／54／11 是 lane 範圍結果，不能與中央項目合併計數。兩份已加檔首後續時點／範圍導覽。其餘八份已有恰當路由或日期限制，未修改；不推論來源資格、PIT、Native、真人或正式使用已驗收。QA 舊 aggregate 缺逐檔 manifest，不調整分母。依限制未讀 Snapshot、完整 Manual 或受保護架構文件；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-242"></a>
+## 2026-10-11 Archive 子目錄第七批具名全文核讀（10 份）
+
+全文核讀券商分點歷史四份：`docs/09_archive/broker_branch/BROKER_BRANCH_DATA_MODULE_DESIGN_V2_HISTORY.md`、`BROKER_BRANCH_ERROR_DETECTION_IMPROVEMENT_HISTORY.md`、`BROKER_BRANCH_IMPLEMENTATION_SUMMARY_HISTORY.md`、`BROKER_BRANCH_PARSING_IMPROVEMENT_HISTORY.md`；Phase 3.5 research 四份：`BENCHMARK_PRESENTATION.md`、`METRIC_INTERPRETATION_PRIORITY.md`、`PHASE4_ENTRY_CRITERIA.md`、`RESEARCH_ITERATION_PLAYBOOK.md`；目標架構 Archive 兩份：`target_architecture_2026_09_22/MIGRATION_STRATEGY.md`、`EXTENSIBILITY_TEST.md`。券商四檔來源／封存 SHA 符合 Entry 116；目標架構兩檔搬移與 SHA 差異有 Entry 1158、1159 記錄；Phase 3.5 四檔與 Entry 1061–1064 一致。
+
+券商四檔新增檔首歷史／非現行操作提示；正文保留。來源包含舊 `c=E` URL 與「刪 CSV 重抓」步驟，README 已提醒後者不可作現行操作，修復記錄則使用 `c=B`；不把舊測試或準確率宣稱當現況。`PHASE4_ENTRY_CRITERIA.md` 增補說明：2026-01-07 的 Gate 結果是當日記錄，後段未勾 checklist 是未回填的歷史模板，兩者均非目前投資資格。其餘六份已有清楚歷史定位／現行路由，未修改。另曾檢視 `ARCHITECTURE_INVARIANTS.md` 與 `ML_COMPATIBILITY_PLAN.md` 檔首，兩者有取代標頭，但未全文讀、不計本批。受保護文件與 code/tests 未讀；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-243"></a>
+## 2026-10-11 Superpowers retained originals 第四批全文核讀及操作提示
+
+全文核讀六份未加歷史／非現行授權警語的計畫：`plans/2026-07-13-terra-development-dataset-v0.md`（236 行）、`plans/2026-07-13-pit-historical-data-repair.md`（400 行）、`plans/2026-07-13-ml-daily-inference-operations.md`（513 行）、`plans/2026-07-13-historical-ml-shadow-mvp.md`（588 行）、`plans/2026-07-13-evidence-rehearsal-real-e2e.md`（339 行）、`plans/2026-07-13-cross-workstream-integration-closeout.md`（406 行）。檔案 SHA-256 分別為 `f1ff2b4eb94aa2c23e7d382de49a917ae095da3a95208cd9f8fe79903c0f2f34`、`4cc9ad4b3eb065cda37d7c8ac5ddcc1c078a43bf05fd421e8916bbb30aa4c610`、`311ecd49f873abec2c4b429056b8563ecec3ea384239b413cf82c2c1881575b9`、`face00c39ab0dbd48f8b298c476f4d0f93d4140828f1c56d57e0f45a9f3b6d94`、`e5058eb19e3a64aa32527da5f1b91180febbe820431a6437dcf33c7ba8ac2b93`、`a4f6c34ac22b86478fc882342e2aa3efd323866701371e5c9e0540b9756bd0a`。
+
+六份均在檔首新增歷史／非現行執行授權提示，計畫內容與 checklist 保留。直開風險包括 dated prerequisites、未勾步驟、共享 dev／Git 協議、可執行測試與資料 smoke commands、以及 stage／commit／push 或中央 SSOT 修改步驟；重用前須重新核對當前 Roadmap、QA／收據、owner 與資料界線。未改 code／tests 或其他文件；未跑測試、Graphify 或最終 repo-wide links／anchors scan。

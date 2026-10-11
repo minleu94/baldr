@@ -1,5 +1,7 @@
 # PIT Historical Data Repair Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保留 2026-07-13 的工作拆解、命令與未勾選步驟，不能單獨證明目前狀態或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、資料來源接受 QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對範圍、owner、資料界線與操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans`, `superpowers:test-driven-development`, and the repository data-audit workflow.
 
 **Goal:** 為月營收、季度財報與corporate-action／restriction建立可稽核的歷史announcement／available／revision timeline與ML label-window eligibility artifact，修正「所有歷史row在2026-06-17才可得」造成的PIT缺口，但絕不猜日期或直接改正式DB。

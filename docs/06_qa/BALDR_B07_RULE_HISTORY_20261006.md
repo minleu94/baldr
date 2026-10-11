@@ -1,5 +1,7 @@
 # BALDR B07 規則卡與研究歷史查找驗證（2026-10-06）
 
+> **後續狀態導覽（2026-10-11）：** 本文的 154／54／11 項數字是各自 lane 的測試結果；後續中央整合另記錄 caller 採用 64 MiB 單檔／256 MiB 每輪預算、中央 caller 五項測試通過及 Manual 同步完成。這些有限收據不代表 Native、真人、正式資料或投資有效性驗收。細節見[第二波中央整合收據](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
+
 ## 範圍與整合邊界
 
 獨立 lane：`lane/baldr-b07-rule-history-20261006`；固定 base：`11a56284f871e0098f30be869b3419dad74f9a4f`。worktree：`output/worktrees/baldr-b07-rule-history`。本次需求依據為原 `baldr_product_experience_plan_20261004.md`、Astra completion inventory 與 Sol completion review 的 B07；不新增計畫來源、不改原 plan。

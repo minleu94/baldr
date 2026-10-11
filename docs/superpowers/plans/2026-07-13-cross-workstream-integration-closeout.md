@@ -1,5 +1,7 @@
 # Cross-workstream Integration／QA／Closeout Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保留 2026-07-13 的工作拆解、命令與 Gate 步驟，不能單獨證明目前狀態或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、目前整合 QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對七條工作流的 handoff、owner、範圍及操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Do not enter the write phase until every upstream handoff gate is satisfied.
 
 **Goal:** 在 A、B、C、D、E1、E2、F 七條工作流都由 Git Coordinator 串行提交到共享 `dev` 後，驗證其 handoff、檔案 ownership、契約與測試，建立一條可重跑的跨工作流驗證鏈，完成全量 QA、中央 SSOT 文件同步與誠實 closeout。

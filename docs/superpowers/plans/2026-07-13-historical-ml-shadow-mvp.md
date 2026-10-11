@@ -1,5 +1,7 @@
 # Historical ML Shadow MVP Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保留 2026-07-13 的工作拆解、命令與未勾選步驟，不能單獨證明目前狀態或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、ML QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對範圍、owner、資料界線與操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` and `superpowers:test-driven-development` to implement this plan task-by-task.
 
 **Goal:** 以 2024 年（含）以前的 PIT-safe 價量、技術、市場與產業資料建立可重現 dataset、trading-calendar purged walk-forward、linear／HGB shadow challengers，最後對 2025 執行一次 locked OOS。

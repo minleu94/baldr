@@ -1,5 +1,7 @@
 # Evidence Rehearsal Real E2E Implementation Plan
 
+> **歷史原件／非現行執行授權（2026-10-11）：** 本計畫保留 2026-07-13 的工作拆解、命令與未勾選步驟，不能單獨證明目前狀態或授權執行。重用前依[現行 Roadmap](../../00_core/DEVELOPMENT_ROADMAP.md)、Evidence QA／收據、[共用 Git 規範](../../agents/shared_context.md)及[Superpowers 閱讀入口](../README.md)重新核對範圍、owner、資料界線與操作條件。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 保留既有 replay-summary projection 相容模式，新增真正開啟唯讀 source DB、建立隔離 working copy、執行 historical replay／P0／可選 ML comparison／lineage 的 Evidence Rehearsal E2E 模式。

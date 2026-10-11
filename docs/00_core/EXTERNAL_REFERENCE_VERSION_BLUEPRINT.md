@@ -225,9 +225,11 @@ artifact 不可作為 `causal_non_cash_portfolio_ledger` 的 owner-controlled fo
 
 ---
 
-## 7. baldr 已經具備或更嚴謹的部分
+## 7. baldr 能力比較（研究描述，非現況驗收）
 
-baldr 目前不是從零開始追外部 repo，已經有幾個核心能力與成熟專案方向一致：
+> 本節的「已建立／已保存／已能」是藍圖中的研究比較摘要，未逐項核驗 2026-10-11 的 HEAD、正式 runtime 或最新 QA 收據；不得視為目前功能或正式證據的驗收證明。當前狀態須依相關 Scoped SSOT 與同範圍、日期化 QA 收據確認；research、candidate 或 shadow 證據不得擴張為 formal acceptance。
+
+本藍圖記錄 baldr 在撰寫時已有若干與成熟專案方向一致的核心能力或治理方向：
 
 - **SQLite-first 本地資料底座**：類似 Freqtrade / screener 類專案的本地資料思路，但更聚焦台股與 evidence governance。
 - **Research Run Registry**：方向接近 Qlib recorder / research workflow，已能保存 metadata、hash、Parquet 明細、比較與 promote gate。

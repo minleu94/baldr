@@ -1,5 +1,7 @@
 # Portfolio Replay Liquidity Gate Implementation Plan
 
+> **歷史範例警示（2026-06-15）**：本文 helper 範例以裸 `float` 計算成交價與參與金額，與根目錄 `AGENTS.md` 的金融核心規則不符。此程式碼僅供追溯當時設計，不得作為現行實作模板或複製至金融核心計算；原範例保留供歷史查閱。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在推薦組合回放中新增第一版 liquidity gate，當推薦股票有價格但成交量不足以承接配置金額時，記錄 `liquidity_limited` unfilled order。

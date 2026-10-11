@@ -2504,9 +2504,9 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 <a id="coverage-entry-215"></a>
 ## 2026-10-10 全庫基線核對與 QA 證據主題索引全量覆蓋補全
 
-接手 Agent 依據 repo 指令與 Documentation Agent 規範完成全庫基線與生命週期核對：
-1. **基線查明與核實**：確認舊基線（1,351 份、Archive 314、QA 533、History 128）為前期粗估與局部子集；目前全庫精確 Tracked Markdown 為 1,467 份（含 Archive 400、QA 560、Core 18、Arch 224、Features 9、Data 16、Broker 6、Phases 15、Guides 20、Technical 7、Agents 21、Strategies 3、Superpowers 167、Root README 1），另有 19 份非 Markdown 追蹤檔案（總計 1,486 tracked files）。工作樹上唯一的非 tracked Markdown 為 `docs/agents/shared_state/handoff_log.md`（依 git_exclusions 與 .gitignore 正式排除）。
-2. **fsmonitor IPC 處理**：以不變更 repo 設定之 `git -c core.fsmonitor=false status` 與索引比對完成驗證，確認工作樹乾淨無污染。
-3. **QA 導航覆蓋補全**：逐篇清查 `docs/06_qa/` 的 560 份 Markdown（包含 180 份歷史相容 redirect stubs、6 份索引文件及 374 份內容收據）。此前四個主題索引共收錄 202 份內容收據，尚有 172 份收據未被任何主題索引收錄；本輪將此 172 份依領域完整分流收錄至 `PRODUCT_UX_QA_INDEX.md`（補登 85 份）、`DATA_ML_GOVERNANCE_QA_INDEX.md`（補登 54 份）、`INTEGRATION_QA_INDEX.md`（補登 17 份）與 `OPERATIONS_TESTING_QA_INDEX.md`（補登 16 份），使 QA 目錄 374 份內容收據之導航可達率達到 100%。
-4. **失效連結修復**：修復 `ARCHITECTURE_RED_TEAM_REVIEW.md` 跨層相對路徑至 `PROJECT_SNAPSHOT.md`，以及 `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` 歸檔後至 `PORTABLE_WINDOWS.md` 之相對連結；全庫 10,277 個本地連結掃描確認零有效 Markdown 斷鏈（僅餘 2 處對 gitignored 本機 png 截圖之既有記錄限制）。
-5. **逐檔盤點清冊建立**：完成全庫 1,467 份 Markdown 檔案之生命週期分類（Active 98、QA evidence 549、Historical 473、redirect 346），重算嚴格成熟度指標。未刪除任何檔案，未更動非文件資料，未執行破壞性變更。
+接手 Agent 依據 repo 指令與 Documentation Agent 規範進行文件基線與生命週期盤點；本 Entry 是增量紀錄，不代表整體治理完成：
+1. **基線範圍校正**：精確 `git ls-files` 統計為 `docs/` 內 1,486 個 tracked paths（1,467 Markdown、19 非 Markdown）；另有 `docs/` 外 26 份 tracked Markdown，不能併稱 1,467 份為全 repository Markdown。`docs/` Markdown 分布為 Archive 400、QA 560、Core 18、Architecture 224、Features 9、Data 16、Broker 6、Phases 15、Guides 20、Technical 7、Agents 21、Strategies 3、Superpowers 167、`docs/README.md` 1。共享狀態 `docs/agents/shared_state/handoff_log.md` 依 `git_exclusions.md`／`.gitignore` 排除，不納入 tracked 清冊。
+2. **fsmonitor IPC 處理**：以不變更 repo 設定的 `git -c core.fsmonitor=false status` 讀取工作樹；該次輸出只代表檢查當時的狀態，不作為後續修改已提交的證據。
+3. **QA 導航覆蓋補全**：`docs/06_qa/` 有 571 個 tracked paths（560 Markdown、11 非 Markdown）。560 份 Markdown 中，180 份為相容導引、6 份為 QA 導覽入口，374 份為其餘非 stub 內容文件（其中 1 份另按矩陣分類為待真人驗收計畫）。此前四個主題索引共收錄 202 份內容文件，本輪將原未收錄的 172 份分流補入 `PRODUCT_UX_QA_INDEX.md`（85 份）、`DATA_ML_GOVERNANCE_QA_INDEX.md`（54 份）、`INTEGRATION_QA_INDEX.md`（17 份）與 `OPERATIONS_TESTING_QA_INDEX.md`（16 份）。這證明入口可達性，不代表正文已逐篇審閱。
+4. **連結掃描範圍**：修復 `ARCHITECTURE_RED_TEAM_REVIEW.md` 至 `PROJECT_SNAPSHOT.md` 及 Archive 手冊筆記至 `PORTABLE_WINDOWS.md` 的相對路徑。當時 10,277 個本地 Markdown 連結的掃描只驗證目的路徑；其中 2 個目的地是 Git 忽略的本機 PNG，未驗證錨點。全 repository 最終連結／錨點掃描仍待內容治理完成後執行。
+5. **生命週期清冊待校正**：草稿的分類數字為 Active 98、QA evidence 549、Historical 473、redirect 346，合計 1,466，比 `docs/` 的 1,467 份 tracked Markdown 少 1；且該草稿未包含 `docs/` 外另 26 份 Markdown。因此目前只能視為待校正草稿，不能宣稱全庫逐檔分類完成或據此計算成熟度。未刪除任何檔案，未更動非文件資料，未執行破壞性變更。

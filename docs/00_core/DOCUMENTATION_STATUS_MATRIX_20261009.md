@@ -530,7 +530,7 @@ QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不�
 | `PHASE2_5_COMPLETION_STATUS.md` | 說明後續 10 檔單策略 Walk Forward pilot 不等於全市場或策略優越性驗收。 |
 | `PHASE4_STARTUP_SUMMARY.md` | 歷史啟動摘要範圍清楚，未見需更正的現況宣稱。 |
 
-其中 `V4_ML_RELEASE` 長文件（1,432 行）不在本批核讀範圍。七份需澄清的文件及 Archive README 已補範圍／日期／後續證據入口；沒有刪除或搬移文件。未執行測試、Graphify 或最終全 repo links／anchors scan。
+`V4_ML_RELEASE_2026_09_07.md` 不在 Entry 222 的九份核讀批次，但已由 Entry 249 全文核讀；本輪再讀現行 1,434 行版本，確認相對 Entry 249 的 1,432 行版本只增加檔首歷史／勿重跑警語，正文未變。現行 bytes／SHA-256 及範圍判讀見 Coverage History Entry 311。七份需澄清的文件及 Archive README 已補範圍／日期／後續證據入口；沒有刪除或搬移文件。未執行測試、Graphify 或最終全 repo links／anchors scan。
 
 **2026-10-10 第十八增量（Coverage History Entry 212）：** 由接手的 Agent 以命令字串風險分流掃描 `09_archive/` 根層，50 份含 `--apply`／`--confirm`／`git`／`schtasks` 命令，其中 12 份缺檔首警語者已補歷史操作警示（`V4_NEXT_FORMAL`、`V4_TDCC`、`V4_NEXT_OPS`、`V4_AUTOMATED_REVIEW`、`NEXT_ACTION_PLAN`、`FUNDAMENTAL_SOURCE_INVENTORY` 與 6 份 Post-V1 QA）。此批閱讀深度為檔首與命令段落，不是全文審閱，不改 Archive 全文／待讀總數；`LUNA_C_HANDOFF` 全文核讀後無需修改。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 

@@ -3150,3 +3150,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../scratch/` 參照。只讀檢查其 10 個具名本機證據檔目標，在目前工作樹 10/10 存在；`git check-ignore` 確認樣本目標由 `.gitignore:181` 的 `scratch/` 規則排除。這支持兩份文件檔首既有「乾淨 checkout 無法重現」警語，未讀取 scratch 檔內容，也不代表其他 checkout 或 repository 歷史取得了證據。`file:///.../scratch/` 中省略號路徑本身不是有效檔案目標。
 
 另對 `scripts/scheduled/README.md` 的 16 個 inline Markdown 本機連結作路徑存在性檢查：12 個不同檔案目標均存在；重複目標含 `APPLICATION_MANUAL.md` 的錨點連結。受保護的 Application Manual 未讀，因此不檢查錨點是否存在。此範圍不涵蓋 reference-style／HTML links 或 repo-wide links／anchors scan；後者與 Graphify 仍待全部目錄內容治理完成後執行。兩份 MOPS 文件正文沿用 Entry 306 的全文核讀，不因本次 URI 路徑檢查重複計數。
+
+<a id="coverage-entry-311"></a>
+## 2026-10-11 Archive V4 ML release 現行版本再核讀
+
+全文再核讀 `docs/09_archive/V4_ML_RELEASE_2026_09_07.md`（1,434 行，101,254 bytes，SHA-256 `baf0428c08e8834c073f993efba93a57ea6ed9d8473788a9e9395b4c58fc7ef3`）；讀取前後目標均 clean。Entry 249 的先前現行版本為 1,432 行、SHA-256 `6D68CA79CC8DC11053A1D42BBEF2E26049D67B8C7F53046174F338D5350C1FB5`。兩版差異僅為目前版本在檔首新增的 10/11 歷史／勿重跑警語；核對移除該警語後 SHA 與 Entry 249 相同，正文與數據未漂移。此文件屬 9/7 bounded ML research QA 收據，明示 formal OOS、production alpha/action、broker order 權限均 false；不是 release 操作說明或 promotion 證據。Archive README 與舊 QA redirect 均有路由，本文 README 及 43 個 repo-local `.py`／`.md` 引用目標存在。長文中的 D 槽、ignored output 與命令仍只代表當時收據，不能視為現行操作授權；未核對受保護來源、ignored output 或 D 槽。未改原件、未跑測試、Graphify 或 repo-wide links／anchors scan。

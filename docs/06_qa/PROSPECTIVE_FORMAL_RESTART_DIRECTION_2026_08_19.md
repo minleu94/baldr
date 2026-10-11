@@ -6,6 +6,8 @@
 >
 > 安全狀態：`formal_oos_allowed=false`、`production_blend_alpha_bp=0`、`broker_order_allowed=false`。
 
+> **狀態時點**：`restart_execution_not_started` 僅描述 2026-08-19 核准本方向時的狀態。後續 staging／execution attempts 各由獨立 QA 收據記錄；本文不代表其後嘗試成功或目前執行狀態。現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，後續證據入口見 [QA 主題地圖](README.md)。
+
 ## 1. 本次定案
 
 Owner 已核准後續長任務採用下列唯一方向：

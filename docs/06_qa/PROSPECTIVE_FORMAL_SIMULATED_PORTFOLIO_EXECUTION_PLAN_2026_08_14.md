@@ -6,6 +6,8 @@
 >
 > 安全狀態：`formal_oos_allowed=false`、`production_blend_alpha_bp=0`、`broker_order_allowed=false`；重型 ML watcher 維持停止。
 
+> **狀態時點**：頂端 `restart_execution_not_started` 是 2026-08-14 計畫建立時的快照；§8「下列是目前可執行的順序」描述本計畫及 2026-08-19 方向更新所處時點的 runbook。其後的 staging／execution attempts 由各自 QA 收據記錄；本文不表示後續嘗試成功或目前狀態。現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，後續證據入口見 [QA 主題地圖](README.md)。
+
 > **2026-08-19 方向更新**：舊 `clock:prospective:20260819:v1` 已錯過且不得回填。Owner 已核准改建新未來 clock、由 Codex 提出 Rule Champion、採 TWSE／TPEX 官方產業來源、Broker 持續關閉；完整責任與下一個長任務順序見 [Prospective Formal Restart Direction](PROSPECTIVE_FORMAL_RESTART_DIRECTION_2026_08_19.md)。本更新不建立新 clock 或任何 Gate credit。
 
 ## 1. Owner 決策與產品語意

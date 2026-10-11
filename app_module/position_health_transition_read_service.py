@@ -1,10 +1,9 @@
-"""Read-only consumer for the persisted Paper Position Health evaluation.
+"""唯讀讀取已保存的 Paper Position Health evaluation。
 
-The daily refresh/evaluator owns source construction and derived receipt writes.
-This module only reads ``latest_status.json`` and its hash-bound result, validates
-the receipt boundary again, and returns the typed presentation model shared by
-Portfolio and Workbench.  It never invokes the evaluator and never writes an
-artifact, registry, scheduler state, ledger, Paper state, or broker action.
+既有 ``read_latest`` 依可變 ``latest_status.json`` 指標取得最新結果；
+``read_saved_exact`` 則選取一份不可變 receipt，完全不查詢 latest 指標。
+兩者都回傳 typed presentation model，不會執行 evaluator，也不寫入 artifacts、
+registry、scheduler state、ledger、Paper state 或 broker action。
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from app_module.decision_presentation import (
@@ -26,6 +25,13 @@ from app_module.decision_presentation import (
     PositionHealthPresentationDTO,
     PositionHealthReadModel,
 )
+
+if TYPE_CHECKING:
+    from app_module.position_health_saved_archive import (
+        PositionHealthExactScope,
+        SavedHealthReceiptSelector,
+        SavedPositionHealthReadModel,
+    )
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -68,9 +74,31 @@ class PositionHealthTransitionReadService:
         *,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
+        self._requested_output_dir = Path(output_dir).expanduser().absolute()
         self.output_dir = Path(output_dir).expanduser().resolve()
         self.status_path = self.output_dir / "latest_status.json"
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+
+    def read_saved_exact(
+        self,
+        selector: "SavedHealthReceiptSelector",
+        scope: "PositionHealthExactScope",
+    ) -> "SavedPositionHealthReadModel":
+        """依 exact receipt identity 讀取一份不可變 Health 結果。
+
+        此路徑不讀取可變 latest 指標。呼叫端只提供 typed account 範圍與時間
+        cutoff；selector 不接受 caller hash、path 或 source availability 時間。
+        """
+
+        from app_module.position_health_saved_archive import (
+            read_saved_health_receipt,
+        )
+
+        return read_saved_health_receipt(
+            reader=self,
+            selector=selector,
+            scope=scope,
+        )
 
     def read_latest(
         self,

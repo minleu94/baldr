@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
+
+import app_module.position_health_daily_refresh_service as _daily_refresh_module
 
 from app_module.forward_position_thesis_candidate_producer import (
     ForwardPositionThesisCandidateProducer,
@@ -35,6 +37,7 @@ from data_module.official_trading_calendar_cache import (
 
 
 UTC = timezone.utc
+
 
 
 def _write_json(path: Path, payload: object) -> Path:
@@ -1189,6 +1192,8 @@ def test_approved_machine_policy_binds_real_decimal_market_source_into_health_ev
         entry_date="2026-09-08",
     )
     baseline = _baseline(entry_date="2026-09-08")
+    # v1 consumer contract 需要明示決策日；此案例的 snapshot 與決策均為 9/8。
+    baseline["decision_date"] = "2026-09-08"
     baseline["source_snapshot_date"] = "2026-09-08"
     baseline["as_of_date"] = "2026-09-08"
     fill = json.loads(paper_candidate.read_text(encoding="utf-8"))["fills"][0]
@@ -1326,3 +1331,219 @@ def test_approved_machine_policy_binds_real_decimal_market_source_into_health_ev
     reasons = evaluated["positions"][0]["reasons"]
     assert "invalidation_triggered:macd_hist" in reasons
     assert evaluated["apply_transition"] is False
+
+
+def _create_real_v2_health_baseline(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    state_db = tmp_path / "paper" / "paper.sqlite"
+    state_db.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(state_db) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE paper_portfolio_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                portfolio_id TEXT NOT NULL,
+                decision_date TEXT NOT NULL,
+                source_result_id TEXT NOT NULL,
+                cash TEXT NOT NULL,
+                total_value TEXT NOT NULL
+            );
+            CREATE TABLE paper_portfolio_positions (
+                snapshot_id TEXT NOT NULL,
+                stock_code TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                weight_bp INTEGER NOT NULL,
+                PRIMARY KEY (snapshot_id, stock_code)
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO paper_portfolio_snapshots VALUES (?, ?, ?, ?, ?, ?)",
+            ("paper-main-20260908", "paper-main", "2026-09-08", "paper-eod-20260908", "100000", "200000"),
+        )
+        connection.execute(
+            "INSERT INTO paper_portfolio_positions VALUES (?, ?, ?, ?)",
+            ("paper-main-20260908", "2330", 100, 5000),
+        )
+    status_path = tmp_path / "paper" / "latest_status.json"
+    _write_json(
+        status_path,
+        {
+            "schema_version": "paper-portfolio-daily-status.v1",
+            "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
+            "status": "passed",
+            "decision_date": "2026-09-08",
+            "decision_at": "2026-09-08T08:30:00+08:00",
+            "snapshot_id": "paper-main-20260908",
+            "portfolio_id": "paper-main",
+            "state_db": str(state_db.resolve()),
+            "paper_ledger_db": str((state_db.parent.parent / "paper_trade_ledger.sqlite").resolve()),
+            "snapshot_appended": True,
+            "paper_ledger_transitions_applied": 0,
+            "trading_calendar_validated": True,
+            "writes_market_db": False,
+            "auto_rebalance_allowed": False,
+            "changes_advice": False,
+            "broker_execution": False,
+        },
+    )
+    output = tmp_path / "health"
+    receipt = _daily_refresh_module.PositionHealthDailyRefreshService(
+        state_db_path=state_db,
+        status_path=status_path,
+    ).refresh(
+        as_of_date=date(2026, 9, 8),
+        output_dir=output,
+        observed_at=datetime.now(UTC),
+    )
+    assert receipt["status"] == "passed"
+    baseline_path = Path(str(receipt["baseline_path"]))
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert baseline["schema_version"] == "position-health-daily-refresh.v2"
+    return baseline_path, baseline
+
+
+def test_real_daily_refresh_v2_is_provenanced_and_unverified_entry_stays_waiting(
+    tmp_path: Path,
+) -> None:
+    baseline_path, baseline = _create_real_v2_health_baseline(tmp_path)
+    now = datetime.now(UTC) + timedelta(seconds=2)
+    recommendation_path = _write_json(
+        tmp_path / "recommendation.json",
+        _recommendation(stock_code="2330"),
+    )
+    producer = ForwardPositionThesisCandidateProducer(
+        tmp_path / "forward",
+        calendar=_WeekdayCalendar(),
+        now_provider=lambda: now,
+    )
+    produced = producer.produce(recommendation_path)
+    candidate_path = Path(str(produced["candidates"][0]["path"]))
+
+    binding = producer.bind(candidate_path, baseline_path)
+
+    assert binding["status"] == "awaiting_paper_fill"
+    assert binding["baseline_schema_version"] == "position-health-daily-refresh.v2"
+    assert binding["baseline_portfolio_id"] == "paper-main"
+    assert binding["baseline_source_result_id"] == "paper-eod-20260908"
+    assert binding["baseline_snapshot_id"] == "paper-main-20260908"
+    assert binding["baseline_snapshot_rows_sha256"].startswith("sha256:")
+    assert binding["baseline_source_decision_boundary"] == "paper-main-preopen"
+    assert "paper_entry_identity_not_verified" in binding["warnings"]
+    assert binding["auto_action_allowed"] is False
+    assert binding["writes_paper_state"] is False
+
+    unqualified = dict(baseline)
+    unqualified["source_decision_boundary"] = None
+    unqualified["source_decision_at"] = None
+    unqualified_path = _write_json(tmp_path / "unqualified-baseline.json", unqualified)
+    unqualified_binding = producer.bind(candidate_path, unqualified_path)
+    assert unqualified_binding["status"] == "awaiting_paper_fill"
+    assert "health_baseline_preopen_boundary_unverified" in unqualified_binding["warnings"]
+
+    future_clock = dict(baseline)
+    future_clock["source_available_at"] = "2099-01-01T00:00:00Z"
+    future_clock_path = _write_json(tmp_path / "future-source-clock.json", future_clock)
+    future_clock_binding = producer.bind(candidate_path, future_clock_path)
+    assert future_clock_binding["status"] == "blocked"
+    assert any(
+        "health_source_available_at_after_observed" in item
+        for item in future_clock_binding["blockers"]
+    )
+
+    identity_cases = (
+        (
+            "identity-entry-not-preopen",
+            "2026-09-08",
+            baseline["source_observed_at"],
+            "health_baseline_identity_entry_not_preopen",
+        ),
+        (
+            "identity-clock-after-source",
+            "2026-09-07",
+            "2099-01-01T00:00:00Z",
+            "health_baseline_identity_available_after_observed",
+        ),
+    )
+    for name, entry_date, identity_available_at, expected_blocker in identity_cases:
+        invalid_identity_baseline = dict(baseline)
+        invalid_positions = [dict(item) for item in baseline["positions"]]
+        invalid_row = invalid_positions[0]
+        invalid_row["position_id"] = "paper:paper-main:2330"
+        invalid_row["entry_lineage_id"] = "entry:2330"
+        invalid_row["position_identity_source"] = {
+            "status": "same_snapshot_verified",
+            "stock_code": "2330",
+            "position_id": invalid_row["position_id"],
+            "entry_lineage_id": invalid_row["entry_lineage_id"],
+            "current_snapshot_id": baseline["source_snapshot_id"],
+            "current_snapshot_date": baseline["source_snapshot_date"],
+            "entry_date": entry_date,
+            "available_at": identity_available_at,
+        }
+        invalid_identity_baseline["position_identity_source"] = {
+            "schema_version": "paper-position-identity-source.v1",
+            "provider": "PaperPositionIdentityProvider",
+            "portfolio_id": "paper-main",
+            "requested_snapshot_id": baseline["source_snapshot_id"],
+            "requested_snapshot_date": baseline["source_snapshot_date"],
+            "observed_at": baseline["source_observed_at"],
+            "status": "verified",
+            "resolved_codes": ["2330"],
+            "identity_count": 1,
+        }
+        invalid_identity_baseline["positions"] = invalid_positions
+        invalid_identity_path = _write_json(
+            tmp_path / f"{name}.json", invalid_identity_baseline
+        )
+        invalid_identity_binding = producer.bind(candidate_path, invalid_identity_path)
+        assert invalid_identity_binding["status"] == "blocked"
+        assert any(
+            expected_blocker in item
+            for item in invalid_identity_binding["blockers"]
+        )
+
+    future_identity_source = dict(baseline)
+    future_identity_source["position_identity_source"] = {
+        "schema_version": "paper-position-identity-source.v1",
+        "provider": "PaperPositionIdentityProvider",
+        "portfolio_id": "paper-main",
+        "requested_snapshot_id": baseline["source_snapshot_id"],
+        "requested_snapshot_date": baseline["source_snapshot_date"],
+        "observed_at": "2099-01-01T00:00:00Z",
+        "status": "degraded",
+        "resolved_codes": [],
+        "identity_count": 0,
+    }
+    future_identity_source_path = _write_json(
+        tmp_path / "future-identity-source.json", future_identity_source
+    )
+    future_identity_source_binding = producer.bind(
+        candidate_path, future_identity_source_path
+    )
+    assert future_identity_source_binding["status"] == "blocked"
+    assert any(
+        "health_position_identity_source_observed_after_cutoff" in item
+        for item in future_identity_source_binding["blockers"]
+    )
+
+    mismatched_snapshot = dict(baseline)
+    mismatched_snapshot["source_snapshot_date"] = "2026-09-07"
+    mismatched_snapshot_path = _write_json(
+        tmp_path / "mismatched-snapshot.json", mismatched_snapshot
+    )
+    mismatch_binding = producer.bind(candidate_path, mismatched_snapshot_path)
+    assert mismatch_binding["status"] == "blocked"
+    assert any(
+        "health_baseline_date_mismatch" in item
+        for item in mismatch_binding["blockers"]
+    )
+
+    unknown_schema = dict(baseline)
+    unknown_schema["schema_version"] = "position-health-daily-refresh.v99"
+    unknown_schema_path = _write_json(tmp_path / "unknown-schema.json", unknown_schema)
+    unknown_binding = producer.bind(candidate_path, unknown_schema_path)
+    assert unknown_binding["status"] == "blocked"
+    assert any(
+        "health_baseline_schema_invalid" in item
+        for item in unknown_binding["blockers"]
+    )

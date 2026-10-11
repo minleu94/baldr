@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sqlite3
 
 import pytest
+
+import app_module.position_health_daily_refresh_service as _daily_refresh_module
 
 from app_module.position_health_market_source_producer import (
     PositionHealthMarketSourceError,
@@ -14,6 +16,10 @@ from app_module.position_health_market_source_producer import (
 from app_module.position_health_source_providers import (
     DecimalMetricSourceProvider,
     PITConditionSourceProvider,
+)
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
 )
 from scripts import run_position_health_market_sources
 
@@ -26,6 +32,41 @@ OBSERVED = datetime(2026, 9, 8, 13, 5, tzinfo=timezone.utc)
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_weekend_calendar_cache(tmp_path: Path) -> tuple[Path, Path]:
+    """建立於決策前可用、在本次固定 QA 日期仍未過期的年度日曆。"""
+
+    captured_at = datetime(2026, 9, 12, 13, 0, tzinfo=timezone.utc)
+    raw_response = json.dumps(
+        [
+            {
+                "Name": "測試年度休市",
+                "Date": "1150101",
+                "Weekday": "四",
+                "Description": "依規定放假1日。",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=raw_response,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"Content-Type": "application/json"},
+        max_age=timedelta(days=31),
+    )
+    cache_path = (
+        tmp_path
+        / "isolated-calendar-cache"
+        / "twse_holiday_schedule_2026_fixture.json"
+    )
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    write_twse_calendar_cache(cache_path, cache, allowed_root=tmp_path)
+    return cache_path.parent, cache_path
 
 
 def _make_market_db(path: Path) -> None:
@@ -731,7 +772,6 @@ def test_cli_leaves_capture_clock_with_producer(tmp_path: Path, monkeypatch) -> 
 
 @pytest.mark.parametrize("scenario", ["valid_weekend", "intervening_trade", "future", "calendar_missing"])
 def test_health_market_day_requires_verified_calendar_gap(tmp_path, scenario):
-    from tests.test_position_health_source_providers import _write_isolated_calendar_cache
     baseline, quick, freshness, market, output = _make_inputs(tmp_path)
     now = datetime(2026,9,13,1,0,tzinfo=timezone.utc)
     payload = json.loads(baseline.read_text(encoding="utf-8")); payload["as_of_date"] = "2026-09-13"
@@ -745,17 +785,353 @@ def test_health_market_day_requires_verified_calendar_gap(tmp_path, scenario):
     with sqlite3.connect(market) as conn:
         conn.execute("UPDATE technical_indicators SET 日期=?",(market_day,))
         conn.execute("UPDATE daily_prices SET 日期=?",(market_day,))
-    cache = None if scenario == "calendar_missing" else _write_isolated_calendar_cache(tmp_path)
+    if scenario == "calendar_missing":
+        cache = None
+        cache_file = None
+    else:
+        cache, cache_file = _write_weekend_calendar_cache(tmp_path)
     producer = PositionHealthMarketSourceProducer(market_db_path=market,quick_status_path=quick,freshness_status_path=freshness,calendar_cache_path=cache,now_provider=lambda:now)
     if scenario != "valid_weekend":
         with pytest.raises(PositionHealthMarketSourceError):
             producer.produce(baseline_path=baseline,output_dir=output,decision_date="2026-09-13",decision_at=now,observed_at=now)
         assert not output.exists()
     else:
+        inputs_before = {
+            path: path.read_bytes()
+            for path in (baseline, quick, freshness, market, cache_file)
+            if path is not None
+        }
+        market_stat_before = market.stat()
+        cache_stat_before = cache_file.stat()
         result = producer.produce(baseline_path=baseline,output_dir=output,decision_date="2026-09-13",decision_at=now,observed_at=now)
         assert result["decision_date"] == "2026-09-13"
         assert result["market_data_date"] == "2026-09-11"
         assert result["market_calendar"]["status"] == "verified"
+        assert result["market_calendar"]["start_date"] == "2026-09-11"
+        assert result["market_calendar"]["end_date"] == "2026-09-13"
+        assert result["market_calendar"]["trading_dates_count"] == 1
+        assert result["market_calendar"]["years"][2026]["available_at"] == (
+            "2026-09-12T13:00:00+00:00"
+        )
+        assert result["available_at"] == now.isoformat()
+        assert result["decision_cutoff_at"] == now.isoformat()
+        assert result["observed_at"] == now.isoformat()
         assert result["condition_row_count"] == 1
         condition = json.loads(Path(result["condition_source_path"]).read_text(encoding="utf-8"))
         assert condition["as_of_date"] == "2026-09-13" and condition["market_data_date"] == "2026-09-11"
+        assert all(path.read_bytes() == raw for path, raw in inputs_before.items())
+        market_stat_after = market.stat()
+        cache_stat_after = cache_file.stat()
+        assert (market_stat_after.st_size, market_stat_after.st_mtime_ns) == (
+            market_stat_before.st_size,
+            market_stat_before.st_mtime_ns,
+        )
+        assert (cache_stat_after.st_size, cache_stat_after.st_mtime_ns) == (
+            cache_stat_before.st_size,
+            cache_stat_before.st_mtime_ns,
+        )
+
+
+def _create_real_v2_health_baseline(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    state_db = tmp_path / "paper" / "paper.sqlite"
+    state_db.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(state_db) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE paper_portfolio_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                portfolio_id TEXT NOT NULL,
+                decision_date TEXT NOT NULL,
+                source_result_id TEXT NOT NULL,
+                cash TEXT NOT NULL,
+                total_value TEXT NOT NULL
+            );
+            CREATE TABLE paper_portfolio_positions (
+                snapshot_id TEXT NOT NULL,
+                stock_code TEXT NOT NULL,
+                quantity INTEGER NOT NULL,
+                weight_bp INTEGER NOT NULL,
+                PRIMARY KEY (snapshot_id, stock_code)
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO paper_portfolio_snapshots VALUES (?, ?, ?, ?, ?, ?)",
+            ("paper-main-20260908", "paper-main", "2026-09-08", "paper-eod-20260908", "100000", "200000"),
+        )
+        connection.execute(
+            "INSERT INTO paper_portfolio_positions VALUES (?, ?, ?, ?)",
+            ("paper-main-20260908", "2330", 100, 5000),
+        )
+    status_path = tmp_path / "paper" / "latest_status.json"
+    _write_json(
+        status_path,
+        {
+            "schema_version": "paper-portfolio-daily-status.v1",
+            "producer": "scripts.scheduled.run_paper_portfolio_daily_isolated",
+            "status": "passed",
+            "decision_date": "2026-09-08",
+            "decision_at": "2026-09-08T08:30:00+08:00",
+            "snapshot_id": "paper-main-20260908",
+            "portfolio_id": "paper-main",
+            "state_db": str(state_db.resolve()),
+            "paper_ledger_db": str((state_db.parent.parent / "paper_trade_ledger.sqlite").resolve()),
+            "snapshot_appended": True,
+            "paper_ledger_transitions_applied": 0,
+            "trading_calendar_validated": True,
+            "writes_market_db": False,
+            "auto_rebalance_allowed": False,
+            "changes_advice": False,
+            "broker_execution": False,
+        },
+    )
+    output = tmp_path / "health"
+    receipt = _daily_refresh_module.PositionHealthDailyRefreshService(
+        state_db_path=state_db,
+        status_path=status_path,
+    ).refresh(
+        as_of_date=date(2026, 9, 8),
+        output_dir=output,
+        observed_at=datetime.now(timezone.utc),
+    )
+    assert receipt["status"] == "passed"
+    baseline_path = Path(str(receipt["baseline_path"]))
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert baseline["schema_version"] == "position-health-daily-refresh.v2"
+    return baseline_path, baseline
+
+
+def test_real_daily_refresh_v2_keeps_exact_schema_and_unresolved_identity_degraded(
+    tmp_path: Path,
+) -> None:
+    _baseline_v1, quick, freshness, market, _legacy_output = _make_inputs(tmp_path)
+    baseline_path, baseline = _create_real_v2_health_baseline(tmp_path)
+    now = datetime.now(timezone.utc) + timedelta(seconds=2)
+    output = tmp_path / "market-v2"
+    result = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: now,
+    ).produce(
+        baseline_path=baseline_path,
+        output_dir=output,
+        decision_date=DECISION,
+        decision_at=now,
+        observed_at=now,
+    )
+
+    observation = result["position_snapshot_observation"]
+    assert observation["schema_version"] == "position-health-daily-refresh.v2"
+    assert observation["producer"] == "app_module.position_health_daily_refresh_service"
+    assert observation["portfolio_id"] == "paper-main"
+    assert observation["source_result_id"] == "paper-eod-20260908"
+    assert observation["source_snapshot_id"] == "paper-main-20260908"
+    assert observation["source_snapshot_rows_sha256"] == baseline[
+        "source_snapshot_rows_sha256"
+    ]
+    assert observation["source_decision_boundary"] == "paper-main-preopen"
+    assert observation["same_day_paper_producer_success_proven"] is False
+    assert result["status"] == "degraded"
+    assert result["unresolved_identity_codes"] == ["2330"]
+    assert result["condition_row_count"] == 0
+    assert result["writes_paper_state"] is False
+    assert result["writes_formal_state"] is False
+    assert result["broker_execution"] is False
+
+    unqualified = dict(baseline)
+    unqualified["source_decision_boundary"] = None
+    unqualified["source_decision_at"] = None
+    unqualified_path = tmp_path / "unqualified-boundary.json"
+    _write_json(unqualified_path, unqualified)
+    unqualified_result = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: now,
+    ).produce(
+        baseline_path=unqualified_path,
+        output_dir=tmp_path / "market-unqualified-boundary",
+        decision_date=DECISION,
+        decision_at=now,
+        observed_at=now,
+    )
+    assert unqualified_result["status"] == "degraded"
+    assert unqualified_result["unresolved_identity_codes"] == ["2330"]
+    assert unqualified_result["condition_row_count"] == 0
+    assert (
+        unqualified_result["position_snapshot_observation"]["source_decision_boundary"]
+        is None
+    )
+
+    invalid_cases = (
+        (
+            "future-source-clock",
+            {"source_available_at": "2099-01-01T00:00:00Z"},
+            "health_baseline_source_available_after_observed",
+        ),
+        (
+            "source-observed-after-cutoff",
+            {"source_observed_at": "2099-01-01T00:00:00Z"},
+            "health_baseline_source_observed_after_cutoff",
+        ),
+        (
+            "snapshot-date-mismatch",
+            {"source_snapshot_date": "2026-09-07"},
+            "health_baseline_date_mismatch",
+        ),
+        (
+            "partial-snapshot-identity",
+            {"source_snapshot_rows_sha256": None},
+            "health_baseline_snapshot_rows_hash_invalid",
+        ),
+        (
+            "wrong-portfolio",
+            {"portfolio_id": "paper-other"},
+            "health_baseline_portfolio_invalid",
+        ),
+        (
+            "late-preopen-clock",
+            {"source_decision_at": "2026-09-08T09:00:00+08:00"},
+            "health_baseline_preopen_clock_invalid",
+        ),
+    )
+    for name, updates, error in invalid_cases:
+        invalid = dict(baseline)
+        invalid.update(updates)
+        invalid_path = tmp_path / f"{name}.json"
+        _write_json(invalid_path, invalid)
+        with pytest.raises(PositionHealthMarketSourceError) as raised:
+            PositionHealthMarketSourceProducer(
+                market_db_path=market,
+                quick_status_path=quick,
+                freshness_status_path=freshness,
+                now_provider=lambda: now,
+            ).produce(
+                baseline_path=invalid_path,
+                output_dir=tmp_path / f"market-{name}",
+                decision_date=DECISION,
+                decision_at=now,
+                observed_at=now,
+            )
+        assert str(raised.value) == error
+
+    future_identity_source = dict(baseline)
+    future_identity_source["position_identity_source"] = {
+        "schema_version": "paper-position-identity-source.v1",
+        "provider": "PaperPositionIdentityProvider",
+        "portfolio_id": "paper-main",
+        "requested_snapshot_id": baseline["source_snapshot_id"],
+        "requested_snapshot_date": baseline["source_snapshot_date"],
+        "observed_at": "2099-01-01T00:00:00Z",
+        "status": "degraded",
+        "resolved_codes": [],
+        "identity_count": 0,
+    }
+    future_identity_source_path = tmp_path / "future-identity-source.json"
+    _write_json(future_identity_source_path, future_identity_source)
+    with pytest.raises(
+        PositionHealthMarketSourceError,
+        match="health_baseline_identity_source_observed_after_cutoff",
+    ):
+        PositionHealthMarketSourceProducer(
+            market_db_path=market,
+            quick_status_path=quick,
+            freshness_status_path=freshness,
+            now_provider=lambda: now,
+        ).produce(
+            baseline_path=future_identity_source_path,
+            output_dir=tmp_path / "market-future-identity-source",
+            decision_date=DECISION,
+            decision_at=now,
+            observed_at=now,
+        )
+
+    for name, entry_date, identity_available_at, error in (
+        (
+            "identity-entry-not-preopen",
+            baseline["source_snapshot_date"],
+            baseline["source_observed_at"],
+            "health_baseline_identity_entry_not_preopen",
+        ),
+        (
+            "identity-clock-after-source",
+            "2026-09-07",
+            "2099-01-01T00:00:00Z",
+            "health_baseline_identity_available_after_observed",
+        ),
+    ):
+        invalid_identity = dict(baseline)
+        invalid_positions = [dict(item) for item in baseline["positions"]]
+        invalid_row = invalid_positions[0]
+        invalid_row["position_id"] = "paper:paper-main:2330"
+        invalid_row["entry_lineage_id"] = "entry:2330"
+        invalid_row["position_identity_source"] = {
+            "status": "same_snapshot_verified",
+            "stock_code": "2330",
+            "position_id": invalid_row["position_id"],
+            "entry_lineage_id": invalid_row["entry_lineage_id"],
+            "current_snapshot_id": baseline["source_snapshot_id"],
+            "current_snapshot_date": baseline["source_snapshot_date"],
+            "entry_date": entry_date,
+            "available_at": identity_available_at,
+        }
+        invalid_identity["position_identity_source"] = {
+            "schema_version": "paper-position-identity-source.v1",
+            "provider": "PaperPositionIdentityProvider",
+            "portfolio_id": "paper-main",
+            "requested_snapshot_id": baseline["source_snapshot_id"],
+            "requested_snapshot_date": baseline["source_snapshot_date"],
+            "observed_at": baseline["source_observed_at"],
+            "status": "verified",
+            "resolved_codes": ["2330"],
+            "identity_count": 1,
+        }
+        invalid_identity["positions"] = invalid_positions
+        invalid_path = tmp_path / f"{name}.json"
+        _write_json(invalid_path, invalid_identity)
+        with pytest.raises(PositionHealthMarketSourceError) as raised:
+            PositionHealthMarketSourceProducer(
+                market_db_path=market,
+                quick_status_path=quick,
+                freshness_status_path=freshness,
+                now_provider=lambda: now,
+            ).produce(
+                baseline_path=invalid_path,
+                output_dir=tmp_path / f"market-{name}",
+                decision_date=DECISION,
+                decision_at=now,
+                observed_at=now,
+            )
+        assert str(raised.value) == error
+
+
+def test_unknown_daily_refresh_schema_keeps_legacy_observation_contract(
+    tmp_path: Path,
+) -> None:
+    baseline_path, quick, freshness, market, output = _make_inputs(tmp_path)
+    unknown = json.loads(baseline_path.read_text(encoding="utf-8"))
+    unknown["schema_version"] = "position-health-daily-refresh.v99"
+    unknown.pop("producer", None)
+    unknown.pop("source_type", None)
+    unknown.pop("source_read_mode", None)
+    unknown_path = tmp_path / "unknown-schema.json"
+    _write_json(unknown_path, unknown)
+
+    result = PositionHealthMarketSourceProducer(
+        market_db_path=market,
+        quick_status_path=quick,
+        freshness_status_path=freshness,
+        now_provider=lambda: OBSERVED,
+    ).produce(
+        baseline_path=unknown_path,
+        output_dir=output,
+        decision_date=DECISION,
+        decision_at=CUTOFF,
+        observed_at=OBSERVED,
+    )
+
+    observation = result["position_snapshot_observation"]
+    assert observation["schema_version"] == "position-health-daily-refresh.v99"
+    assert observation["observation_semantics"] == "legacy_baseline_decision_date_match"
+    assert "source_snapshot_rows_sha256" not in observation

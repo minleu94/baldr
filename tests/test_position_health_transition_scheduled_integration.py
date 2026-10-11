@@ -34,7 +34,6 @@ def test_scheduled_wrapper_wires_transition_evaluation_to_isolated_output(
                     {
                         "as_of_date": "2026-09-08",
                         "source_snapshot_id": "snapshot-1",
-                        "source_snapshot_rows_sha256": "sha256:rows",
                         "positions": [],
                     }
                 ),
@@ -65,6 +64,7 @@ def test_scheduled_wrapper_wires_transition_evaluation_to_isolated_output(
             "status": "degraded",
             "blockers": [],
             "warnings": ["thesis_contract_missing"],
+            "manual_action_required": True,
             "positions": [],
         }
 

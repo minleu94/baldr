@@ -1,5 +1,29 @@
 # Baldr 補完接續（2026-10-11，進行中）
 
+## 最新整合：Health 廣回歸通過與 P08 clock guard
+
+Root 核三檔 fixture 候選 manifest `2fd1467d2a2fb6ca3ad2e7ba1c8d6ba21d0d26f90a1cd3da6f14835e6837044b`、6940-byte full.diff、原 host 失敗收據及 JUnit；完整 diff 逐檔重建，所有原函式斷言 AST 相同。移除 degraded 正例的假 rows hash，另保留具名 malformed-hash 拒絕；scheduled double 明示其原預期 manual action；calendar fixture 只固定模組局部觀測時間，新增 future／expired 負例，不改正式 cache freshness、來源 hash 或決策 cutoff。保存三檔原始 bytes 與變更前回滾清單後套用，apply 收據 `root/health_fixture_apply_0818ce2a2dce4750ac324d693ea34d09/receipt.json` SHA `c3dd4f49c44188b5e1bed2567ab86a6e2b165711d546acdf2497039c1bd55693`。原五失敗收據保留。
+
+| 同源正式驗證 | 終態與收據（相對本次 root QA 根） |
+|---|---|
+| 原十一檔 regression | **125 PASS／1 skip／21.41秒／native0**；`health_formal_v2_regression_b12ff680e22e4291871fa47a7ffc42b5/receipt.json` SHA `a666c5fa296d5c5dba6ab083fc62237e59790fb68073adc466b16f164d1c8991`。 |
+| 原四檔 focused | **89 PASS／1 skip／7.34秒／native0**；`health_formal_v2_focused_6fa44230bf2e461bbf85349e8459ee20/receipt.json` SHA `95379302e45e8afef2c01795be989ea4e2159b63ac753ec1de51d6ce63655318`。不與 regression 累加為產品測試總數。 |
+| 型態與語法 | 六正式產品 mypy、十三檔語法均 **native0**；`health_formal_v2_types_03f758140fe144d6b200ec4e579240e9/receipt.json` SHA `7d5a61a725479d4eb9f7fe0878df78bf39e4cd6545296f7e1e68e1447da1fd06`。 |
+
+各輪 fresh child 都實際匯入六正式來源與 54 個本機依賴；625 pins 起訖相同、fresh bytecode 根空。兩組 skip 都是 reparse 環境能力，不能授原生 link／完整 G3／G4。六產品、四原 focused tests 與三 fixture tests 的後端增量可保存；正常 Health Portfolio／Main 介面、策略 EOD adapter 與完整 P06／M3 尚未接受。Calendar 的雙時鐘是獨立產品缺口，fixture 固定時鐘沒有修正它；live／historical operation clock 候選持續實作。
+
+提交前 `git diff --cached --check` 抓到新封存測試檔 EOF 多餘空行；第一個提交 helper 在 commit 前停止，未建立提交。Root 保存原件及回滾清單，僅移除末尾空行並核 AST 完全相同，after SHA `10d1e522ab3a69d1891998cc05ecf645ecac4cdc0c438bebc42ea60eec9210db`。最終 bytes 的原四 focused＋十一 regression 合併為十五個不同檔案，**214 PASS／2 skip／27.52秒／native0**，六來源 mypy／十三檔語法通過；626 pins 起訖相同、fresh bytecode 根空。這是獨立最終執行，不與先前 125／89 累加。收據 `root/health_formal_v3_all_eceb523cd91141168fc835a972d63b92/receipt.json` SHA `08326fdec6d3ac2b0fb4520e2a5af84e1821f1a7fa417161f83121ed965cedc5`；EOF 修正收據 `root/health_eof_normalization_41c7a7ff1347413f9d634860df6fdba8/receipt.json` SHA `f6584ecc5d6a93c590d9acc1ecc4345d763ce6c4827e218024fe6727d11f9bc0`。所有程序已自然終態。
+
+P08 clock guard v3 靜態核 151 次／130 pins、完整 patch 與同 BEGIN 的 type／byte 預檢順序後，僅釋出四個 SQLite guard tests；**4 PASS／6.68秒／native0**、130 pins 相同、bytecode 根空。Oversized 8193 bytes、BLOB、duplicate 在 full receipt SELECT 前拒絕，8192-byte TEXT 邊界允許取值。收據 `root/p08_clock_v3_guards_8a8ee097caf745aea61cb3b982ebf10d/receipt.json` SHA `4c1c5085febbf4de276032108047b08064cc04551d4532018911ae23cc36f16f`；不授 canonical receipt、完整 reader／writer race、兩策略生命週期或績效資格。
+
+P08 v6 財務候選靜態審查已修正最大回撤以比例比較、次分拒絕及零 prior NAV 的未定義日報酬；新有界 series reader 仍需 type／byte 預檢、完整 prior SHA／ledger rowset 鏈及結尾 exact 重驗，已交 owner 補齊。候選尚未 frozen／QA／套正式，benchmark／ResearchRun v2／正常 UI 的完整交付持續推進。原範圍與全部 Gate 保持開放。
+
+## 最新終態：P01 v4 完整千檔矩陣
+
+原五 cold／一 warm、每角色 600 秒、三類各 30 samples 與嚴格小於 300 ms 門檻均保留。Session 86056／supervisor PID 42504 已自然 native0；不是效能 Gate 通過。Root 直接讀取原 90 筆耗時並按 nearest-rank 獨立重算：翻頁 p95 **207.0988 ms**、全域排序 **251.5675 ms**、篩選 **446.3604 ms**；三類完整 DTO 全部相等，篩選仍未達標。五冷啟動至首頁 p95 **31.9190474 秒**，與操作耗時分列。1464 pins 起訖相同，各角色完成後 Job 清理無殘留；原失敗封套保留。這是固定合成來源診斷矩陣，不授正式全市場、正常產品旅程、新 EXE 或真人接受。
+
+Root 收據：`output/qa/baldr_completion_20261011/root/p01_v4_matrix_8095af1b05a24c17ad252c3af7a02e8c/receipt.json`，SHA `2e5591e209368a7831615c112dea51113ca810e06a0f50c8006e314a303b6c50`。Supervisor 收據：`output/qa/p01r_1011/ers_v4/candidate/supervised_matrix_attempts/attempt_20261011T154146Z_101430b2f974/supervisor_receipt.json`，SHA `12d389df0170223947c02f5c3241735be0e2683e5ae5432dea4a6bfa4c2a47b2`。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 仍持續推進。
+
 完整需求仍依 [原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，保留 P00–P14、M1–M3、F01–F23 與 G0–G4。本文只記錄本次實作與驗證，不取代 Snapshot 或 Manual。起點為 `dev`／`04b35387`；原九份文件 dirty 保留。
 
 ## 排他分工

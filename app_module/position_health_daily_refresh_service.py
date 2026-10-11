@@ -12,13 +12,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
+import stat
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app_module.paper_daily_status_contract import paper_daily_status_schema_supported
 from app_module.position_health_baseline_service import PositionHealthBaselineService
@@ -30,6 +33,10 @@ from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
 
 SCHEMA_VERSION = "position-health-daily-refresh.v1"
+BASELINE_SCHEMA_VERSION = "position-health-daily-refresh.v2"
+SAVED_BASELINE_WITNESS_SCHEMA_VERSION = "position-health-daily-baseline-witness.v2"
+SAVED_BASELINE_WITNESS_PRODUCER = "app_module.position_health_daily_refresh_service"
+SAVED_BASELINE_WITNESS_MAX_BYTES = 256 * 1024
 _REQUIRED_STATE_COLUMNS = {
     "snapshot_id",
     "portfolio_id",
@@ -77,6 +84,13 @@ _HEALTH_STATES = {
     "EXIT_CANDIDATE",
     "CLOSED",
 }
+_TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+def _utc_now() -> datetime:
+    """取得 writer 自己的 UTC clock；測試可用私有 seam 固定因果時序。"""
+
+    return datetime.now(timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -107,6 +121,451 @@ def _canonical_sha256(payload: object) -> str:
 
 def _canonical_json(payload: object) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+
+
+def _canonical_compact_bytes(payload: object) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _read_stable_regular_bytes(path: Path, *, max_bytes: int) -> bytes:
+    before = path.lstat()
+    attributes = int(getattr(before, "st_file_attributes", 0))
+    if stat.S_ISLNK(before.st_mode) or attributes & 0x400:
+        raise ValueError("health_baseline_witness_reparse_rejected")
+    if not stat.S_ISREG(before.st_mode) or int(getattr(before, "st_nlink", 1)) != 1:
+        raise ValueError("health_baseline_witness_not_single_link_regular_file")
+    if before.st_size < 0 or before.st_size > max_bytes:
+        raise ValueError("health_baseline_witness_size_invalid")
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        raw = stream.read(max_bytes + 1)
+        after_open = os.fstat(stream.fileno())
+    after = path.lstat()
+    if len(raw) > max_bytes or len(raw) != after.st_size:
+        raise ValueError("health_baseline_witness_size_changed")
+    if not (
+        _stat_signature(before)
+        == _stat_signature(opened)
+        == _stat_signature(after_open)
+        == _stat_signature(after)
+    ):
+        raise ValueError("health_baseline_witness_changed_during_read")
+    return raw
+
+
+def _stat_signature(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        int(info.st_dev),
+        int(info.st_ino),
+        int(info.st_mode),
+        int(info.st_size),
+        int(getattr(info, "st_mtime_ns", int(info.st_mtime * 1_000_000_000))),
+        int(getattr(info, "st_ctime_ns", int(info.st_ctime * 1_000_000_000))),
+        int(getattr(info, "st_nlink", 1)),
+    )
+
+
+def _unique_json_object(raw: bytes, *, field_name: str) -> dict[str, Any]:
+    def unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"{field_name}_duplicate_key")
+            result[key] = value
+        return result
+
+    def reject_float(_value: str) -> None:
+        raise ValueError(f"{field_name}_float_rejected")
+
+    def reject_constant(_value: str) -> None:
+        raise ValueError(f"{field_name}_nonstandard_constant")
+
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=unique_pairs,
+        parse_float=reject_float,
+        parse_constant=reject_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"{field_name}_object_required")
+    return payload
+
+
+def _write_immutable_bytes(path: Path, raw: bytes, *, max_bytes: int) -> bytes:
+    _ensure_directory_chain(path.parent)
+    try:
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        prior = _read_stable_regular_bytes(path, max_bytes=max_bytes)
+        if prior != raw:
+            raise ValueError("health_immutable_witness_identity_conflict")
+        return prior
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    persisted = _read_stable_regular_bytes(path, max_bytes=max_bytes)
+    if persisted != raw:
+        raise OSError("health_immutable_witness_readback_mismatch")
+    return persisted
+
+
+def _ensure_directory_chain(directory: Path) -> None:
+    absolute = directory.absolute()
+    current = Path(absolute.anchor)
+    for component in absolute.parts[1:]:
+        current = current / component
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            current.mkdir()
+            info = current.lstat()
+        attributes = int(getattr(info, "st_file_attributes", 0))
+        if stat.S_ISLNK(info.st_mode) or attributes & 0x400 or not stat.S_ISDIR(info.st_mode):
+            raise ValueError("health_immutable_witness_directory_unsafe")
+
+
+def _position_identity_rows(baseline: Mapping[str, Any]) -> tuple[list[dict[str, Any]], bool]:
+    raw_positions = baseline.get("positions")
+    if not isinstance(raw_positions, list):
+        return [], False
+    rows: list[dict[str, Any]] = []
+    position_ids: set[str] = set()
+    stock_codes: set[str] = set()
+    complete = True
+    for item in raw_positions:
+        if not isinstance(item, Mapping):
+            complete = False
+            continue
+        position_id = item.get("position_id")
+        stock_code = item.get("stock_code")
+        shares = item.get("paper_shares")
+        if (
+            not isinstance(position_id, str)
+            or not position_id.strip()
+            or not isinstance(stock_code, str)
+            or not stock_code.strip()
+            or isinstance(shares, bool)
+            or not isinstance(shares, int)
+            or shares <= 0
+        ):
+            complete = False
+            continue
+        if position_id in position_ids or stock_code in stock_codes:
+            raise ValueError("health_baseline_duplicate_position_identity")
+        position_ids.add(position_id)
+        stock_codes.add(stock_code)
+        rows.append(
+            {
+                "position_id": position_id,
+                "stock_code": stock_code,
+                "paper_shares": shares,
+            }
+        )
+    return rows, complete
+
+
+def _baseline_witness_payload(
+    *,
+    baseline: Mapping[str, Any],
+    baseline_name: str,
+    baseline_sha256: str,
+) -> dict[str, Any]:
+    positions, positions_complete = _position_identity_rows(baseline)
+    source_observed = baseline.get("source_observed_at")
+    source_available = baseline.get("source_available_at")
+    try:
+        source_observed_utc = _parse_aware_timestamp(
+            source_observed, "source_observed_at"
+        )
+        source_clock_valid = source_available is None or (
+            _parse_aware_timestamp(source_available, "source_available_at")
+            <= source_observed_utc
+        )
+    except (TypeError, ValueError):
+        source_clock_valid = False
+    try:
+        decision_at = _parse_aware_timestamp(
+            baseline.get("source_decision_at"), "source_decision_at"
+        ).astimezone(_TAIPEI)
+        source_observed_utc = _parse_aware_timestamp(
+            source_observed, "source_observed_at"
+        )
+        preopen_contract_valid = (
+            baseline.get("portfolio_id") == "paper-main"
+            and baseline.get("source_decision_boundary") == "paper-main-preopen"
+            and decision_at.date().isoformat()
+            == baseline.get("source_snapshot_date")
+            and decision_at.timetz().replace(tzinfo=None) < time(9, 0)
+            and decision_at.astimezone(timezone.utc) <= source_observed_utc
+        )
+    except (TypeError, ValueError):
+        preopen_contract_valid = False
+    required = (
+        baseline.get("schema_version") == BASELINE_SCHEMA_VERSION
+        and baseline.get("producer") == SAVED_BASELINE_WITNESS_PRODUCER
+        and baseline.get("status") == "fresh"
+        and baseline.get("source_type") == "paper_snapshot_read_only"
+        and baseline.get("source_read_mode") == "sqlite_uri_mode_ro_and_query_only"
+        and preopen_contract_valid
+        and baseline.get("research_only") is True
+        and baseline.get("writes_positions_db") is False
+        and baseline.get("auto_action_allowed") is False
+        and baseline.get("broker_execution") is False
+        and baseline.get("formal_credit") is False
+        and isinstance(baseline.get("portfolio_id"), str)
+        and bool(str(baseline.get("portfolio_id") or "").strip())
+        and isinstance(baseline.get("source_snapshot_id"), str)
+        and bool(str(baseline.get("source_snapshot_id") or "").strip())
+        and isinstance(baseline.get("source_snapshot_rows_sha256"), str)
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(baseline.get("source_snapshot_rows_sha256") or ""),
+        ) is not None
+        and isinstance(baseline.get("source_result_id"), str)
+        and bool(str(baseline.get("source_result_id") or "").strip())
+        and source_clock_valid
+        and baseline.get("source_snapshot_date") == baseline.get("decision_date")
+    )
+    status = "structurally_valid" if required and positions_complete else "unqualified"
+    reason = "" if status == "structurally_valid" else "health_baseline_identity_or_positions_incomplete"
+    return {
+        "schema_version": SAVED_BASELINE_WITNESS_SCHEMA_VERSION,
+        "producer": SAVED_BASELINE_WITNESS_PRODUCER,
+        "status": status,
+        "reason": reason,
+        "baseline_name": baseline_name,
+        "baseline_sha256": baseline_sha256,
+        "portfolio_id": baseline.get("portfolio_id"),
+        "snapshot_id": baseline.get("source_snapshot_id"),
+        "snapshot_date": baseline.get("source_snapshot_date"),
+        "source_result_id": baseline.get("source_result_id"),
+        "source_decision_boundary": baseline.get("source_decision_boundary"),
+        "source_decision_at": baseline.get("source_decision_at"),
+        "source_snapshot_rows_sha256": baseline.get("source_snapshot_rows_sha256"),
+        "source_observed_at": baseline.get("source_observed_at"),
+        "source_available_at": baseline.get("source_available_at"),
+        "positions": positions,
+        "research_only": True,
+        "writes_positions_db": False,
+        "auto_action_allowed": False,
+        "broker_execution": False,
+        "formal_credit": False,
+    }
+
+
+def _publish_baseline_witness(
+    *,
+    output: Path,
+    baseline_path: Path,
+    baseline: Mapping[str, Any],
+    baseline_raw: bytes,
+) -> tuple[Path, bytes, dict[str, Any]]:
+    baseline_sha256 = _sha256_bytes(baseline_raw)
+    witness_dir = output / "saved_baseline_witnesses"
+    witness_path = witness_dir / f"{baseline_sha256.removeprefix('sha256:')}.json"
+    payload = _baseline_witness_payload(
+        baseline=baseline,
+        baseline_name=baseline_path.name,
+        baseline_sha256=baseline_sha256,
+    )
+    if witness_path.exists() or witness_path.is_symlink():
+        prior_raw = _read_stable_regular_bytes(
+            witness_path, max_bytes=SAVED_BASELINE_WITNESS_MAX_BYTES
+        )
+        prior = _unique_json_object(prior_raw, field_name="health_baseline_witness")
+        if _canonical_compact_bytes(prior) != prior_raw:
+            raise ValueError("health_baseline_witness_not_canonical")
+        prior_without_saved = dict(prior)
+        saved_at = prior_without_saved.pop("saved_available_at", None)
+        if prior_without_saved != payload:
+            raise ValueError("health_baseline_witness_identity_conflict")
+        _parse_aware_timestamp(saved_at, "saved_available_at")
+        _validate_saved_baseline_witness(prior)
+        return witness_path, prior_raw, prior
+
+    # 這個 clock 在 dated baseline 已讀回後才取得，並以 create-only sidecar
+    # 保存；同一 baseline identity 再試時沿用首次保存的 clock。
+    payload["saved_available_at"] = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+    witness_raw = _canonical_compact_bytes(payload)
+    persisted = _write_immutable_bytes(
+        witness_path,
+        witness_raw,
+        max_bytes=SAVED_BASELINE_WITNESS_MAX_BYTES,
+    )
+    decoded = _unique_json_object(persisted, field_name="health_baseline_witness")
+    if _canonical_compact_bytes(decoded) != persisted:
+        raise ValueError("health_baseline_witness_not_canonical")
+    _validate_saved_baseline_witness(decoded, expected=payload)
+    return witness_path, persisted, decoded
+
+
+def _parse_aware_timestamp(value: object, field_name: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"health_{field_name}_missing")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"health_{field_name}_invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"health_{field_name}_naive")
+    return parsed.astimezone(timezone.utc)
+
+
+def _paper_preopen_decision_at(
+    status_payload: Mapping[str, Any],
+    *,
+    snapshot: _PaperSnapshot,
+    observed_at: datetime,
+) -> str | None:
+    """只辨認既有 paper-main preopen 邊界，不替 EOD checkpoint 背書。"""
+    if snapshot.portfolio_id != "paper-main":
+        return None
+    try:
+        decision_at = _parse_aware_timestamp(
+            status_payload.get("decision_at"), "paper_decision_at"
+        )
+    except (TypeError, ValueError):
+        return None
+    local = decision_at.astimezone(_TAIPEI)
+    if (
+        local.date() != snapshot.decision_date
+        or local.timetz().replace(tzinfo=None) >= time(9, 0)
+        or decision_at > observed_at.astimezone(timezone.utc)
+    ):
+        return None
+    return decision_at.isoformat(timespec="microseconds")
+
+
+def _validate_saved_baseline_witness(
+    payload: Mapping[str, Any], *, expected: Mapping[str, Any] | None = None
+) -> None:
+    required = {
+        "schema_version",
+        "producer",
+        "status",
+        "reason",
+        "baseline_name",
+        "baseline_sha256",
+        "portfolio_id",
+        "snapshot_id",
+        "snapshot_date",
+        "source_result_id",
+        "source_decision_boundary",
+        "source_decision_at",
+        "source_snapshot_rows_sha256",
+        "source_observed_at",
+        "source_available_at",
+        "positions",
+        "research_only",
+        "writes_positions_db",
+        "auto_action_allowed",
+        "broker_execution",
+        "formal_credit",
+        "saved_available_at",
+    }
+    if set(payload) != required:
+        raise ValueError("health_baseline_witness_fields_invalid")
+    if payload.get("schema_version") != SAVED_BASELINE_WITNESS_SCHEMA_VERSION:
+        raise ValueError("health_baseline_witness_schema_invalid")
+    if payload.get("producer") != SAVED_BASELINE_WITNESS_PRODUCER:
+        raise ValueError("health_baseline_witness_producer_invalid")
+    if payload.get("status") not in {"structurally_valid", "unqualified"}:
+        raise ValueError("health_baseline_witness_status_invalid")
+    if payload.get("research_only") is not True or any(
+        payload.get(name) is not False
+        for name in (
+            "writes_positions_db",
+            "auto_action_allowed",
+            "broker_execution",
+            "formal_credit",
+        )
+    ):
+        raise ValueError("health_baseline_witness_boundary_invalid")
+    source_observed = _parse_aware_timestamp(
+        payload.get("source_observed_at"), "source_observed_at"
+    )
+    saved_available = _parse_aware_timestamp(
+        payload.get("saved_available_at"), "saved_available_at"
+    )
+    if saved_available < source_observed:
+        raise ValueError("health_baseline_witness_saved_before_observed")
+    if payload.get("source_available_at") is not None:
+        source_available = _parse_aware_timestamp(
+            payload.get("source_available_at"), "source_available_at"
+        )
+        if source_available > source_observed:
+            raise ValueError("health_baseline_witness_source_available_after_observed")
+    rows_hash = payload.get("source_snapshot_rows_sha256")
+    if not isinstance(rows_hash, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", rows_hash) is None:
+        raise ValueError("health_baseline_witness_snapshot_rows_hash_invalid")
+    if payload.get("status") == "structurally_valid":
+        for name in (
+            "baseline_name",
+            "baseline_sha256",
+            "portfolio_id",
+            "snapshot_id",
+            "snapshot_date",
+            "source_result_id",
+        ):
+            value = payload.get(name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"health_baseline_witness_{name}_missing")
+        baseline_hash = payload.get("baseline_sha256")
+        if not isinstance(baseline_hash, str) or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", baseline_hash
+        ) is None:
+            raise ValueError("health_baseline_witness_baseline_hash_invalid")
+        snapshot_date = payload.get("snapshot_date")
+        if _parse_date(snapshot_date, "snapshot_date").isoformat() != snapshot_date:
+            raise ValueError("health_baseline_witness_snapshot_date_invalid")
+        if payload.get("portfolio_id") != "paper-main":
+            raise ValueError("health_baseline_witness_portfolio_scope_invalid")
+        if payload.get("source_decision_boundary") != "paper-main-preopen":
+            raise ValueError("health_baseline_witness_decision_boundary_invalid")
+        decision_at = _parse_aware_timestamp(
+            payload.get("source_decision_at"), "source_decision_at"
+        ).astimezone(_TAIPEI)
+        if (
+            decision_at.date().isoformat() != snapshot_date
+            or decision_at.timetz().replace(tzinfo=None) >= time(9, 0)
+            or decision_at.astimezone(timezone.utc)
+            > source_observed.astimezone(timezone.utc)
+        ):
+            raise ValueError("health_baseline_witness_preopen_clock_invalid")
+        positions = payload.get("positions")
+        if not isinstance(positions, list):
+            raise ValueError("health_baseline_witness_positions_invalid")
+        ids: set[str] = set()
+        codes: set[str] = set()
+        for row in positions:
+            if not isinstance(row, Mapping):
+                raise ValueError("health_baseline_witness_position_invalid")
+            position_id = row.get("position_id")
+            stock_code = row.get("stock_code")
+            shares = row.get("paper_shares")
+            if (
+                not isinstance(position_id, str)
+                or not position_id.strip()
+                or not isinstance(stock_code, str)
+                or not stock_code.strip()
+                or isinstance(shares, bool)
+                or not isinstance(shares, int)
+                or shares <= 0
+            ):
+                raise ValueError("health_baseline_witness_position_identity_invalid")
+            if position_id in ids or stock_code in codes:
+                raise ValueError("health_baseline_witness_duplicate_position_identity")
+            ids.add(position_id)
+            codes.add(stock_code)
+    if expected is not None and dict(payload) != dict(expected):
+        raise ValueError("health_baseline_witness_expected_payload_mismatch")
 
 
 def _parse_date(value: object, field_name: str) -> date:
@@ -217,10 +676,11 @@ class PositionHealthDailyRefreshService:
     ) -> dict[str, Any]:
         if not isinstance(as_of_date, date):
             raise ValueError("as_of_date must be a date")
-        observed = observed_at or datetime.now(timezone.utc)
+        observed = observed_at or _utc_now()
         if observed.tzinfo is None or observed.utcoffset() is None:
             raise ValueError("observed_at must include timezone")
         observed_utc = observed.astimezone(timezone.utc)
+        source_observed_at: datetime | None = None
         output = Path(output_dir).expanduser().resolve()
         base_status: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
@@ -257,6 +717,14 @@ class PositionHealthDailyRefreshService:
                     warnings=warnings,
                     snapshot=snapshot,
                 )
+            # 此時 snapshot 與 Paper status 已在本次 refresh 通過讀取與核驗。
+            # 這是本 writer 觀察來源的時間，不沿用 refresh 開始或 caller clock。
+            source_observed_at = _utc_now()
+            source_decision_at = _paper_preopen_decision_at(
+                status_payload,
+                snapshot=snapshot,
+                observed_at=source_observed_at,
+            )
             if snapshot.positions:
                 (
                     previous,
@@ -270,19 +738,22 @@ class PositionHealthDailyRefreshService:
                 )
                 warnings.extend(previous_warnings)
             else:
-                # A validated empty snapshot needs neither historical thesis
-                # carry nor position identity. The current snapshot/status
-                # still pass all normal schema, date, and boundary checks.
+            # 已驗證的空 snapshot 不需要沿用歷史 thesis 或 position identity。
+            # 目前 snapshot 與 status 仍須通過一般 schema、日期及時間邊界核驗。
                 previous = {}
                 previous_hash = None
                 previous_snapshot_id = None
                 previous_snapshot_date = None
             identity_source: PositionIdentitySourceResult | None = None
-            if snapshot.positions and self.position_identity_provider is not None:
+            if (
+                snapshot.positions
+                and self.position_identity_provider is not None
+                and source_decision_at is not None
+            ):
                 identity_source = self.position_identity_provider.resolve(
                     snapshot_id=snapshot.snapshot_id,
                     snapshot_date=snapshot.decision_date,
-                    observed_at=observed_utc,
+                    observed_at=source_observed_at,
                     previous_baseline=previous,
                 )
                 warnings.extend(identity_source.warnings)
@@ -294,6 +765,9 @@ class PositionHealthDailyRefreshService:
                         warnings=warnings,
                         snapshot=snapshot,
                     )
+            elif snapshot.positions and self.position_identity_provider is not None:
+                warnings.append("paper_position_identity_preopen_boundary_unverified")
+            assert source_observed_at is not None
             baseline = self._build_baseline(
                 snapshot=snapshot,
                 previous=previous,
@@ -302,6 +776,8 @@ class PositionHealthDailyRefreshService:
                 previous_snapshot_date=previous_snapshot_date,
                 status_hash=status_hash,
                 as_of_date=as_of_date,
+                source_observed_at=source_observed_at,
+                source_decision_at=source_decision_at,
                 warnings=warnings,
                 identity_source=identity_source,
             )
@@ -408,9 +884,8 @@ class PositionHealthDailyRefreshService:
         snapshot: _PaperSnapshot,
     ) -> tuple[list[str], list[str]]:
         blockers: list[str] = []
-        # The status hash is provenance stored in the receipt/baseline.  It is
-        # not a quality warning; treating every hash as a warning would keep
-        # a freshly refreshed health source degraded forever.
+        # status hash 是 receipt/baseline 保存的來源脈絡，不代表品質警告。
+        # 若每次都把 hash 當警告，新完成 refresh 的 Health 來源會一直降級。
         warnings: list[str] = []
         if not paper_daily_status_schema_supported(payload):
             blockers.append("paper_daily_status_schema_mismatch")
@@ -859,6 +1334,8 @@ class PositionHealthDailyRefreshService:
         previous_snapshot_date: date | None,
         status_hash: str,
         as_of_date: date,
+        source_observed_at: datetime,
+        source_decision_at: str | None,
         warnings: list[str],
         identity_source: PositionIdentitySourceResult | None = None,
     ) -> dict[str, Any]:
@@ -932,9 +1409,7 @@ class PositionHealthDailyRefreshService:
                 None if prior_record is None else prior_record.get("reasons")
             )
             if prior_record is not None:
-                # Preserve prior human input and diagnostic context in the
-                # derived history even when the current projection cannot
-                # safely inherit it.
+                # 即使目前投影無法安全沿用，也要在衍生歷史保留先前人工輸入與診斷脈絡。
                 item["historical_prior_state"] = str(
                     prior_record.get("state") or "unknown"
                 )
@@ -958,9 +1433,8 @@ class PositionHealthDailyRefreshService:
                     historical_prior_codes.append(code)
                     item["state_projection_blocked"] = "closed_state_with_active_quantity"
                     item["entry_lineage_status"] = "closed_prior_not_projected"
-                    # A live quantity cannot be labelled CLOSED merely because
-                    # the prior baseline used that state.  Do not copy its
-                    # thesis into the active projection either.
+                    # 目前仍有持倉，不能只因先前 baseline 標示 CLOSED 就沿用該狀態；
+                    # active projection 也不能複製該 thesis。
                     for field in _HEALTH_FIELDS:
                         item[field] = None
                     prior = None
@@ -970,9 +1444,8 @@ class PositionHealthDailyRefreshService:
             reasons = [f"missing_{field}" for field in required]
             reasons.append("health_transition_not_evaluated")
             if prior is not None and prior_reasons:
-                # A carried state must retain the prior trigger context; the
-                # daily producer may append diagnostics but must not erase an
-                # earlier EXIT/WATCH reason when rebuilding the list.
+                # 沿用狀態時必須保留先前觸發脈絡；daily producer 可追加診斷，
+                # 但重建清單時不能刪除較早的 EXIT/WATCH 原因。
                 reasons = list(dict.fromkeys(prior_reasons + reasons))
             item["required_human_fields"] = required
             item["reasons"] = reasons
@@ -989,9 +1462,8 @@ class PositionHealthDailyRefreshService:
                     f"paper_position_identity:{identity.get('status', 'verified')}"
                 )
             elif identity_source is not None:
-                # Keep an explicit null identity in the baseline so a
-                # downstream evaluator cannot accidentally fall back to the
-                # stock code as a lineage key.
+                # baseline 保留明確的 null identity，避免下游 evaluator
+                # 意外退回以 stock code 作為 lineage key。
                 item["position_id"] = None
                 item["entry_lineage_id"] = None
                 item["position_identity_source"] = {
@@ -1012,10 +1484,9 @@ class PositionHealthDailyRefreshService:
             elif identity_source is not None and item.get("entry_lineage_status") not in {
                 "closed_prior_not_projected",
             }:
-                # Snapshot continuity can justify carrying historical fields,
-                # but it cannot turn a stock-code-only row into a stable
-                # position identity.  Keep the current lineage explicitly
-                # unproven when the identity provider has no evidence.
+                # Snapshot 延續性可支持沿用歷史欄位，但不能把只有 stock code 的列
+                # 變成穩定 position identity。identity provider 沒有證據時，
+                # 必須明確標示目前 lineage 尚未證實。
                 item["entry_lineage_status"] = "unproven"
             item["auto_action_allowed"] = False
             positions.append(item)
@@ -1058,18 +1529,28 @@ class PositionHealthDailyRefreshService:
         if positions:
             baseline_warnings.append(transition_diagnostic)
         else:
-            # These describe the empty projection's limits without turning a
-            # verified no-position result into degraded health evidence.
+            # 這些欄位說明空投影的限制，但不會把已驗證的無持倉結果降級。
             baseline_diagnostics.append(transition_diagnostic)
         baseline.update(
             {
-                "schema_version": SCHEMA_VERSION,
+                "schema_version": BASELINE_SCHEMA_VERSION,
+                "producer": SAVED_BASELINE_WITNESS_PRODUCER,
                 "status": "fresh",
                 "as_of_date": as_of_date.isoformat(),
+                "portfolio_id": snapshot.portfolio_id,
+                "source_observed_at": source_observed_at.astimezone(timezone.utc).isoformat(),
+                "source_decision_boundary": (
+                    "paper-main-preopen" if source_decision_at is not None else None
+                ),
+                "source_decision_at": source_decision_at,
+                # 上游 Paper snapshot 沒有可用的 immutable source availability clock。
+                # 不以本 refresh clock 或後續 Health archive clock代替。
+                "source_available_at": None,
                 "source_path": str(self.state_db_path),
                 "source_type": "paper_snapshot_read_only",
                 "source_snapshot_id": snapshot.snapshot_id,
                 "source_snapshot_date": snapshot.decision_date.isoformat(),
+                "source_result_id": snapshot.source_result_id,
                 "source_snapshot_rows_sha256": snapshot.rows_sha256,
                 "source_data_version": snapshot.data_version,
                 "paper_status_path": str(self.status_path),
@@ -1122,7 +1603,7 @@ class PositionHealthDailyRefreshService:
         status_hash: str,
     ) -> dict[str, Any]:
         output.mkdir(parents=True, exist_ok=True)
-        encoded = _canonical_json(baseline).encode("utf-8")
+        encoded = _canonical_compact_bytes(baseline)
         dated = output / f"baseline_{snapshot.decision_date.strftime('%Y%m%d')}.json"
         result_status = "passed"
         if dated.exists():
@@ -1133,8 +1614,23 @@ class PositionHealthDailyRefreshService:
                 dated = output / f"baseline_{snapshot.decision_date.strftime('%Y%m%d')}_{suffix}.json"
                 if dated.exists() and dated.read_bytes() != encoded:
                     raise ValueError("health baseline immutable filename collision")
-        if not dated.exists():
-            dated.write_bytes(encoded)
+        _write_immutable_bytes(
+            dated,
+            encoded,
+            max_bytes=SAVED_BASELINE_WITNESS_MAX_BYTES * 64,
+        )
+        baseline_raw = _read_stable_regular_bytes(
+            dated,
+            max_bytes=SAVED_BASELINE_WITNESS_MAX_BYTES * 64,
+        )
+        if baseline_raw != encoded:
+            raise OSError("health_baseline_immutable_readback_mismatch")
+        _publish_baseline_witness(
+            output=output,
+            baseline_path=dated,
+            baseline=baseline,
+            baseline_raw=baseline_raw,
+        )
         latest = output / "latest.json"
         _atomic_write_json(latest, baseline)
         receipt = {
@@ -1187,7 +1683,6 @@ class PositionHealthDailyRefreshService:
             self._validate_output_dir(output)
             _atomic_write_json(output / "latest_status.json", receipt)
         except (OSError, ValueError):
-            # The source failure is still returned to the scheduled caller;
-            # never turn an unsafe output path into a write elsewhere.
+            # source failure 仍須回傳排程呼叫端；不得因輸出路徑不安全而改寫到其他位置。
             pass
         return receipt

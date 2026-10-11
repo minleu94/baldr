@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -63,6 +63,8 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 SCHEMA_VERSION = "forward-position-thesis-candidate.v1"
 POLICY_SCHEMA_VERSION = "forward-position-policy.v1"
 BINDING_SCHEMA_VERSION = "forward-position-entry-binding.v1"
+HEALTH_BASELINE_V1 = "position-health-daily-refresh.v1"
+HEALTH_BASELINE_V2 = "position-health-daily-refresh.v2"
 _SHA256_PREFIX = "sha256:"
 _RECOMMENDATION_SCORE_FIELDS = (
     ("close_price", "收盤價"),
@@ -180,6 +182,205 @@ def _parse_aware(value: object, field_name: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ForwardPositionThesisError(f"{field_name}_must_be_timezone_aware")
     return parsed.astimezone(UTC)
+
+
+def _validate_health_baseline_v2(
+    baseline: Mapping[str, Any],
+    *,
+    candidate_decision_date: date,
+    bind_observed_at: datetime,
+) -> bool:
+    """驗證 v2 的 Paper 身分、來源時鐘與 preopen 邊界；回傳是否可用於綁定。"""
+
+    if baseline.get("producer") != "app_module.position_health_daily_refresh_service":
+        raise ForwardPositionThesisError("health_baseline_producer_invalid")
+    if baseline.get("status") != "fresh":
+        raise ForwardPositionThesisError("health_baseline_not_fresh")
+    if baseline.get("source_type") != "paper_snapshot_read_only":
+        raise ForwardPositionThesisError("health_baseline_source_type_invalid")
+    if baseline.get("source_read_mode") != "sqlite_uri_mode_ro_and_query_only":
+        raise ForwardPositionThesisError("health_baseline_source_read_mode_invalid")
+    if baseline.get("research_only") is not True:
+        raise ForwardPositionThesisError("health_baseline_boundary_invalid")
+    for field in (
+        "writes_positions_db",
+        "auto_action_allowed",
+        "broker_execution",
+        "formal_credit",
+    ):
+        if baseline.get(field) is not False:
+            raise ForwardPositionThesisError(
+                f"health_baseline_boundary_invalid:{field}"
+            )
+    if _required_text(baseline.get("portfolio_id"), "health_portfolio_id") != "paper-main":
+        raise ForwardPositionThesisError("health_baseline_portfolio_invalid")
+    _required_text(baseline.get("source_snapshot_id"), "health_snapshot_id")
+    _required_text(baseline.get("source_result_id"), "health_source_result_id")
+    if not _is_sha256(baseline.get("source_snapshot_rows_sha256")):
+        raise ForwardPositionThesisError("health_baseline_snapshot_rows_hash_invalid")
+
+    snapshot_date = _parse_date(
+        baseline.get("source_snapshot_date"), "health_snapshot_date"
+    )
+    decision_date = _parse_date(
+        baseline.get("decision_date"), "health_baseline_decision_date"
+    )
+    as_of_date = _parse_date(baseline.get("as_of_date"), "health_baseline_as_of_date")
+    if (
+        snapshot_date != decision_date
+        or as_of_date < snapshot_date
+        or snapshot_date < candidate_decision_date
+    ):
+        raise ForwardPositionThesisError("health_baseline_date_mismatch")
+
+    source_observed = _parse_aware(
+        baseline.get("source_observed_at"), "health_source_observed_at"
+    )
+    if source_observed > bind_observed_at:
+        raise ForwardPositionThesisError("health_source_observed_at_after_bind")
+    source_available_value = baseline.get("source_available_at")
+    if source_available_value is not None:
+        source_available = _parse_aware(
+            source_available_value, "health_source_available_at"
+        )
+        if source_available > source_observed:
+            raise ForwardPositionThesisError(
+                "health_source_available_at_after_observed"
+            )
+
+    identity_source = baseline.get("position_identity_source")
+    if identity_source is not None:
+        if not isinstance(identity_source, Mapping):
+            raise ForwardPositionThesisError(
+                "health_position_identity_source_invalid"
+            )
+        if (
+            identity_source.get("schema_version")
+            != "paper-position-identity-source.v1"
+            or identity_source.get("provider") != "PaperPositionIdentityProvider"
+            or identity_source.get("portfolio_id") != "paper-main"
+            or identity_source.get("requested_snapshot_id")
+            != baseline.get("source_snapshot_id")
+            or identity_source.get("requested_snapshot_date")
+            != snapshot_date.isoformat()
+            or identity_source.get("status") not in {"verified", "degraded", "blocked"}
+        ):
+            raise ForwardPositionThesisError(
+                "health_position_identity_source_snapshot_invalid"
+            )
+        identity_source_observed = _parse_aware(
+            identity_source.get("observed_at"),
+            "health_position_identity_source_observed_at",
+        )
+        if (
+            identity_source_observed > source_observed
+            or identity_source_observed > bind_observed_at
+        ):
+            raise ForwardPositionThesisError(
+                "health_position_identity_source_observed_after_cutoff"
+            )
+        resolved_codes = identity_source.get("resolved_codes", [])
+        if not isinstance(resolved_codes, list) or not all(
+            isinstance(code, str) and code.strip() == code for code in resolved_codes
+        ):
+            raise ForwardPositionThesisError(
+                "health_position_identity_source_codes_invalid"
+            )
+        if len(set(resolved_codes)) != len(resolved_codes):
+            raise ForwardPositionThesisError(
+                "health_position_identity_source_codes_invalid"
+            )
+        if identity_source.get("status") in {"verified", "degraded"}:
+            identity_count = identity_source.get("identity_count")
+            if (
+                isinstance(identity_count, bool)
+                or not isinstance(identity_count, int)
+                or identity_count != len(resolved_codes)
+            ):
+                raise ForwardPositionThesisError(
+                    "health_position_identity_source_count_invalid"
+                )
+
+    boundary = baseline.get("source_decision_boundary")
+    decision_at_value = baseline.get("source_decision_at")
+    if boundary is None:
+        if decision_at_value is not None:
+            raise ForwardPositionThesisError("health_baseline_decision_clock_invalid")
+        preopen_qualified = False
+    elif boundary == "paper-main-preopen":
+        decision_at = _parse_aware(decision_at_value, "health_source_decision_at")
+        decision_at_taipei = decision_at.astimezone(TAIPEI)
+        if (
+            decision_at_taipei.date() != snapshot_date
+            or decision_at_taipei.time().replace(tzinfo=None) >= time(9, 0)
+            or decision_at > source_observed
+        ):
+            raise ForwardPositionThesisError("health_baseline_preopen_clock_invalid")
+        preopen_qualified = True
+    else:
+        raise ForwardPositionThesisError("health_baseline_decision_boundary_invalid")
+
+    positions = baseline.get("positions")
+    if not isinstance(positions, list):
+        raise ForwardPositionThesisError("health_baseline_positions_invalid")
+    for item in positions:
+        if not isinstance(item, Mapping):
+            raise ForwardPositionThesisError("health_baseline_position_invalid")
+        code = _required_text(item.get("stock_code"), "health_position_stock_code")
+        shares = item.get("paper_shares")
+        if isinstance(shares, bool) or not isinstance(shares, int) or shares <= 0:
+            raise ForwardPositionThesisError("health_baseline_position_shares_invalid")
+        position_id = item.get("position_id")
+        lineage_id = item.get("entry_lineage_id")
+        identity = item.get("position_identity_source")
+        has_identity = position_id is not None or lineage_id is not None
+        if not preopen_qualified and (has_identity or identity not in (None, {})):
+            raise ForwardPositionThesisError(
+                "health_baseline_identity_without_preopen_boundary"
+            )
+        if has_identity:
+            if identity_source is None:
+                raise ForwardPositionThesisError(
+                    "health_position_identity_source_missing"
+                )
+            if not isinstance(identity, Mapping):
+                raise ForwardPositionThesisError("health_baseline_identity_invalid")
+            if identity.get("status") not in {
+                "natural_entry_verified",
+                "carried_verified",
+                "same_snapshot_verified",
+                "ledger_continuous_no_trade",
+            }:
+                raise ForwardPositionThesisError("health_baseline_identity_unverified")
+            if (
+                identity.get("stock_code") != code
+                or identity.get("position_id") != position_id
+                or identity.get("entry_lineage_id") != lineage_id
+                or identity.get("current_snapshot_id")
+                != baseline.get("source_snapshot_id")
+                or identity.get("current_snapshot_date") != snapshot_date.isoformat()
+            ):
+                raise ForwardPositionThesisError("health_baseline_identity_snapshot_mismatch")
+            resolved_codes = identity_source.get("resolved_codes", [])
+            if code not in resolved_codes:
+                raise ForwardPositionThesisError(
+                    "health_position_identity_source_code_mismatch"
+                )
+            entry_date = _parse_date(
+                identity.get("entry_date"), "health_identity_entry_date"
+            )
+            identity_available = _parse_aware(
+                identity.get("available_at"), "health_identity_available_at"
+            )
+            if entry_date >= snapshot_date:
+                raise ForwardPositionThesisError(
+                    "health_baseline_identity_entry_not_preopen"
+                )
+            if identity_available > source_observed or identity_available > bind_observed_at:
+                raise ForwardPositionThesisError(
+                    "health_baseline_identity_available_after_observed"
+                )
+    return preopen_qualified
 
 
 def _decimal_text(value: object, field_name: str, *, allow_float: bool = False) -> str:
@@ -1394,18 +1595,43 @@ class ForwardPositionThesisCandidateProducer:
         decision_date = _parse_date(source.get("decision_date"), "candidate_decision_date")
         available_at = _parse_aware(source.get("available_at"), "candidate_available_at")
         stock_code = _required_text(instrument.get("stock_code"), "candidate_stock_code")
-        if baseline.get("schema_version") != "position-health-daily-refresh.v1":
+        baseline_schema = baseline.get("schema_version")
+        if baseline_schema not in {HEALTH_BASELINE_V1, HEALTH_BASELINE_V2}:
             raise ForwardPositionThesisError("health_baseline_schema_invalid")
         if baseline.get("status") != "fresh":
             raise ForwardPositionThesisError("health_baseline_not_fresh")
         if baseline.get("research_only") is not True or baseline.get("auto_action_allowed") is not False:
             raise ForwardPositionThesisError("health_baseline_boundary_invalid")
-        snapshot_date = _parse_date(baseline.get("source_snapshot_date"), "health_snapshot_date")
-        if snapshot_date < decision_date:
-            raise ForwardPositionThesisError("health_snapshot_before_candidate")
+        preopen_qualified = True
+        if baseline_schema == HEALTH_BASELINE_V2:
+            preopen_qualified = _validate_health_baseline_v2(
+                baseline,
+                candidate_decision_date=decision_date,
+                bind_observed_at=_parse_aware(
+                    self.now_provider(), "health_binding_observed_at"
+                ),
+            )
+        else:
+            snapshot_date = _parse_date(
+                baseline.get("source_snapshot_date"), "health_snapshot_date"
+            )
+            if snapshot_date < decision_date:
+                raise ForwardPositionThesisError("health_snapshot_before_candidate")
         positions = baseline.get("positions")
         if not isinstance(positions, list):
             raise ForwardPositionThesisError("health_baseline_positions_invalid")
+        if baseline_schema == HEALTH_BASELINE_V2 and not preopen_qualified:
+            return self._binding_result(
+                candidate=candidate,
+                candidate_hash=candidate_hash,
+                candidate_path=candidate_path,
+                baseline=baseline,
+                baseline_hash=baseline_hash,
+                baseline_path=baseline_path,
+                status="awaiting_paper_fill",
+                stock_code=stock_code,
+                warnings=("health_baseline_preopen_boundary_unverified",),
+            )
         matches = [item for item in positions if isinstance(item, Mapping) and str(item.get("stock_code") or "").strip() == stock_code]
         if len(matches) > 1:
             return self._binding_result(
@@ -1750,8 +1976,16 @@ class ForwardPositionThesisCandidateProducer:
             "candidate_available_at": source.get("available_at"),
             "baseline_path": str(baseline_path),
             "baseline_file_sha256": baseline_hash,
+            "baseline_schema_version": baseline.get("schema_version"),
+            "baseline_portfolio_id": baseline.get("portfolio_id"),
+            "baseline_source_result_id": baseline.get("source_result_id"),
             "baseline_snapshot_id": baseline.get("source_snapshot_id"),
             "baseline_snapshot_date": baseline.get("source_snapshot_date"),
+            "baseline_snapshot_rows_sha256": baseline.get("source_snapshot_rows_sha256"),
+            "baseline_source_observed_at": baseline.get("source_observed_at"),
+            "baseline_source_available_at": baseline.get("source_available_at"),
+            "baseline_source_decision_boundary": baseline.get("source_decision_boundary"),
+            "baseline_source_decision_at": baseline.get("source_decision_at"),
             "stock_code": stock_code,
             "entry": None if entry is None else dict(entry),
             "health_handoff": None,

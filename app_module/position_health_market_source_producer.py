@@ -15,7 +15,7 @@ JSON；不寫市場 SQLite、不回寫 Paper／Formal，也不使用 UI cache。
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -24,6 +24,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app_module.portfolio_condition_monitor import (
     PortfolioConditionResult,
@@ -38,6 +39,9 @@ from app_module.position_health_source_providers import (
 
 UTC = timezone.utc
 SOURCE_VERSION = "position-health-market-source.v1"
+HEALTH_BASELINE_V1 = "position-health-daily-refresh.v1"
+HEALTH_BASELINE_V2 = "position-health-daily-refresh.v2"
+TAIPEI = ZoneInfo("Asia/Taipei")
 SOURCE_ID_PREFIX = "twstock:technical_indicators_daily_prices"
 _DECIMAL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("close_price", "close_price"),
@@ -134,6 +138,279 @@ def _parse_aware(value: object, field_name: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise PositionHealthMarketSourceError(f"{field_name}_must_be_timezone_aware")
     return parsed.astimezone(UTC)
+
+
+def _validate_daily_health_baseline_v2(
+    payload: Mapping[str, Any],
+    *,
+    decision: date,
+    cutoff: datetime,
+    observed: datetime,
+) -> dict[str, Any]:
+    """驗證具名 v2 Paper baseline，並回傳實際來源事實供輸出封存。"""
+
+    if payload.get("producer") != "app_module.position_health_daily_refresh_service":
+        raise PositionHealthMarketSourceError("health_baseline_producer_invalid")
+    if payload.get("status") != "fresh":
+        raise PositionHealthMarketSourceError("health_baseline_not_fresh")
+    if payload.get("source_type") != "paper_snapshot_read_only":
+        raise PositionHealthMarketSourceError("health_baseline_source_type_invalid")
+    if payload.get("source_read_mode") != "sqlite_uri_mode_ro_and_query_only":
+        raise PositionHealthMarketSourceError("health_baseline_source_read_mode_invalid")
+    if payload.get("portfolio_id") != "paper-main":
+        raise PositionHealthMarketSourceError("health_baseline_portfolio_invalid")
+    if payload.get("research_only") is not True:
+        raise PositionHealthMarketSourceError("health_baseline_boundary_invalid")
+    for field in (
+        "writes_positions_db",
+        "auto_action_allowed",
+        "broker_execution",
+        "formal_credit",
+    ):
+        if payload.get(field) is not False:
+            raise PositionHealthMarketSourceError(
+                f"health_baseline_boundary_invalid:{field}"
+            )
+
+    snapshot_id = str(payload.get("source_snapshot_id") or "").strip()
+    source_result_id = str(payload.get("source_result_id") or "").strip()
+    if not snapshot_id or not source_result_id:
+        raise PositionHealthMarketSourceError("health_baseline_snapshot_identity_invalid")
+    rows_hash = payload.get("source_snapshot_rows_sha256")
+    if not _is_sha256(rows_hash):
+        raise PositionHealthMarketSourceError("health_baseline_snapshot_rows_hash_invalid")
+
+    baseline_date = _parse_date(
+        payload.get("decision_date"), "health_baseline_decision_date"
+    )
+    snapshot_date = _parse_date(
+        payload.get("source_snapshot_date"), "health_baseline_source_snapshot_date"
+    )
+    as_of_date = _parse_date(payload.get("as_of_date"), "health_baseline_as_of_date")
+    if (
+        snapshot_date != baseline_date
+        or snapshot_date > decision
+        or as_of_date != decision
+    ):
+        raise PositionHealthMarketSourceError("health_baseline_date_mismatch")
+
+    source_observed = _parse_aware(
+        payload.get("source_observed_at"), "health_baseline_source_observed_at"
+    )
+    if source_observed > cutoff or source_observed > observed:
+        raise PositionHealthMarketSourceError(
+            "health_baseline_source_observed_after_cutoff"
+        )
+    source_available_value = payload.get("source_available_at")
+    if source_available_value is not None:
+        source_available = _parse_aware(
+            source_available_value, "health_baseline_source_available_at"
+        )
+        if source_available > source_observed or source_available > cutoff:
+            raise PositionHealthMarketSourceError(
+                "health_baseline_source_available_after_observed"
+            )
+
+    identity_source = payload.get("position_identity_source")
+    if identity_source is not None:
+        if not isinstance(identity_source, Mapping):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_identity_source_invalid"
+            )
+        if (
+            identity_source.get("schema_version")
+            != "paper-position-identity-source.v1"
+            or identity_source.get("provider") != "PaperPositionIdentityProvider"
+            or identity_source.get("portfolio_id") != "paper-main"
+            or identity_source.get("requested_snapshot_id") != snapshot_id
+            or identity_source.get("requested_snapshot_date")
+            != snapshot_date.isoformat()
+            or identity_source.get("status") not in {"verified", "degraded", "blocked"}
+        ):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_identity_source_snapshot_invalid"
+            )
+        identity_source_observed = _parse_aware(
+            identity_source.get("observed_at"),
+            "health_baseline_identity_source_observed_at",
+        )
+        if (
+            identity_source_observed > source_observed
+            or identity_source_observed > cutoff
+            or identity_source_observed > observed
+        ):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_identity_source_observed_after_cutoff"
+            )
+        resolved_codes = identity_source.get("resolved_codes", [])
+        if not isinstance(resolved_codes, list) or not all(
+            isinstance(code, str) and code.strip() == code for code in resolved_codes
+        ):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_identity_source_codes_invalid"
+            )
+        if len(set(resolved_codes)) != len(resolved_codes):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_identity_source_codes_invalid"
+            )
+        if identity_source.get("status") in {"verified", "degraded"}:
+            identity_count = identity_source.get("identity_count")
+            if (
+                isinstance(identity_count, bool)
+                or not isinstance(identity_count, int)
+                or identity_count != len(resolved_codes)
+            ):
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_source_count_invalid"
+                )
+
+    boundary = payload.get("source_decision_boundary")
+    source_decision_at_value = payload.get("source_decision_at")
+    if boundary is None:
+        if source_decision_at_value is not None:
+            raise PositionHealthMarketSourceError(
+                "health_baseline_decision_clock_invalid"
+            )
+        preopen_qualified = False
+    elif boundary == "paper-main-preopen":
+        source_decision_at = _parse_aware(
+            source_decision_at_value, "health_baseline_source_decision_at"
+        )
+        source_decision_taipei = source_decision_at.astimezone(TAIPEI)
+        if (
+            source_decision_taipei.date() != snapshot_date
+            or source_decision_taipei.time().replace(tzinfo=None) >= time(9, 0)
+            or source_decision_at > source_observed
+        ):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_preopen_clock_invalid"
+            )
+        preopen_qualified = True
+    else:
+        raise PositionHealthMarketSourceError(
+            "health_baseline_decision_boundary_invalid"
+        )
+
+    positions = payload.get("positions")
+    if not isinstance(positions, list):
+        raise PositionHealthMarketSourceError("health_baseline_positions_invalid")
+    seen_stock_codes: set[str] = set()
+    seen_position_ids: set[str] = set()
+    for row in positions:
+        if not isinstance(row, Mapping):
+            raise PositionHealthMarketSourceError("health_baseline_position_not_object")
+        code = str(row.get("stock_code") or "").strip()
+        shares = row.get("paper_shares")
+        if (
+            not code
+            or isinstance(shares, bool)
+            or not isinstance(shares, int)
+            or shares <= 0
+        ):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_position_shares_invalid"
+            )
+        if code in seen_stock_codes:
+            raise PositionHealthMarketSourceError(
+                f"health_baseline_duplicate_stock_code:{code}"
+            )
+        seen_stock_codes.add(code)
+        position_id = row.get("position_id")
+        lineage_id = row.get("entry_lineage_id")
+        identity = row.get("position_identity_source")
+        has_identity = (
+            position_id is not None
+            or lineage_id is not None
+            or identity not in (None, {})
+        )
+        if not preopen_qualified and (has_identity or identity not in (None, {})):
+            raise PositionHealthMarketSourceError(
+                "health_baseline_identity_without_preopen_boundary"
+            )
+        if has_identity:
+            if identity_source is None:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_source_missing"
+                )
+            if not isinstance(identity, Mapping):
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_unverified"
+                )
+            if identity.get("status") not in {
+                "natural_entry_verified",
+                "carried_verified",
+                "same_snapshot_verified",
+                "ledger_continuous_no_trade",
+            }:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_unverified"
+                )
+            position_id = str(position_id or "").strip()
+            lineage_id = str(lineage_id or "").strip()
+            if not position_id or not lineage_id:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_unverified"
+                )
+            if (
+                identity.get("stock_code") != code
+                or identity.get("position_id") != position_id
+                or identity.get("entry_lineage_id") != lineage_id
+                or identity.get("current_snapshot_id") != snapshot_id
+                or identity.get("current_snapshot_date") != snapshot_date.isoformat()
+            ):
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_snapshot_mismatch"
+                )
+            resolved_codes = identity_source.get("resolved_codes", [])
+            if code not in resolved_codes:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_source_code_mismatch"
+                )
+            if position_id in seen_position_ids:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_duplicate_position_identity"
+                )
+            seen_position_ids.add(position_id)
+            entry_date = _parse_date(
+                identity.get("entry_date"), "health_baseline_identity_entry_date"
+            )
+            if entry_date >= snapshot_date:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_entry_not_preopen"
+                )
+            identity_available = _parse_aware(
+                identity.get("available_at"),
+                "health_baseline_identity_available_at",
+            )
+            if identity_available > source_observed or identity_available > cutoff:
+                raise PositionHealthMarketSourceError(
+                    "health_baseline_identity_available_after_observed"
+                )
+
+    return {
+        "schema_version": HEALTH_BASELINE_V2,
+        "producer": payload.get("producer"),
+        "portfolio_id": payload.get("portfolio_id"),
+        "source_result_id": source_result_id,
+        "source_snapshot_id": snapshot_id,
+        "source_snapshot_date": snapshot_date.isoformat(),
+        "source_snapshot_rows_sha256": rows_hash,
+        "source_observed_at": source_observed.isoformat(),
+        "source_available_at": (
+            None
+            if source_available_value is None
+            else _parse_aware(
+                source_available_value, "health_baseline_source_available_at"
+            ).isoformat()
+        ),
+        "source_decision_boundary": boundary,
+        "source_decision_at": source_decision_at_value,
+        "decision_date": baseline_date.isoformat(),
+        "as_of_date": as_of_date.isoformat(),
+        "observation_semantics": "paper_holdings_snapshot_observation_only",
+        "same_day_paper_producer_success_proven": False,
+        "is_stale_as_of": snapshot_date < decision,
+    }
 
 
 def _decimal(value: object, field_name: str) -> Decimal:
@@ -418,7 +695,8 @@ class PositionHealthMarketSourceProducer:
         receipt_observed = requested_observed or run_started
 
         baseline_payload, baseline_hash = _read_json(baseline, "health_baseline")
-        if baseline_payload.get("schema_version") == "position-health-daily-refresh.v1":
+        baseline_schema = baseline_payload.get("schema_version")
+        if baseline_schema == HEALTH_BASELINE_V1:
             baseline_date = _parse_date(
                 baseline_payload.get("decision_date"),
                 "health_baseline_decision_date",
@@ -478,7 +756,7 @@ class PositionHealthMarketSourceProducer:
                         "health_baseline_boundary_invalid"
                     )
             position_snapshot_observation = {
-                "schema_version": "position-health-daily-refresh.v1",
+                "schema_version": HEALTH_BASELINE_V1,
                 "source_snapshot_id": snapshot_id or None,
                 "source_snapshot_date": (
                     baseline_date.isoformat()
@@ -496,6 +774,13 @@ class PositionHealthMarketSourceProducer:
                 "same_day_paper_producer_success_proven": False,
                 "is_stale_as_of": is_stale_snapshot,
             }
+        elif baseline_schema == HEALTH_BASELINE_V2:
+            position_snapshot_observation = _validate_daily_health_baseline_v2(
+                baseline_payload,
+                decision=decision,
+                cutoff=receipt_cutoff,
+                observed=receipt_observed,
+            )
         else:
             baseline_date = _parse_date(
                 baseline_payload.get("decision_date") or baseline_payload.get("as_of_date"),

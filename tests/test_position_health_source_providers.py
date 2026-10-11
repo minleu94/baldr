@@ -31,8 +31,12 @@ from app_module.position_thesis_contract import (
     PositionInvalidationRule,
     PositionThesisContract,
 )
+from data_module import official_trading_calendar as official_trading_calendar_module
 from data_module.official_trading_calendar_cache import (
+    OfficialCalendarCacheError,
+    OfficialCalendarCacheExpired,
     build_twse_calendar_cache,
+    load_verified_twse_calendar_cache,
     write_twse_calendar_cache,
 )
 
@@ -83,10 +87,29 @@ def _canonical_hash(payload: object) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-def _write_isolated_calendar_cache(tmp_path: Path) -> Path:
-    """在 tmp_path 建立固定時間、hash-bound 的官方年度日曆 fixture。"""
+def _freeze_official_calendar_clock(
+    monkeypatch: pytest.MonkeyPatch, observed_at: datetime = DECISION_AT
+) -> None:
+    """只固定 OfficialTradingCalendar 內部的現在時間，不改測試或系統時鐘。"""
 
-    captured_at = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
+    class FrozenCalendarDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return observed_at.replace(tzinfo=None)
+            return observed_at.astimezone(tz)
+
+    monkeypatch.setattr(
+        official_trading_calendar_module, "datetime", FrozenCalendarDatetime
+    )
+
+
+def _write_isolated_calendar_cache(
+    tmp_path: Path,
+    *,
+    captured_at: datetime = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc),
+) -> Path:
+    """在 tmp_path 建立固定時間、hash-bound 的官方年度日曆 fixture。"""
     raw_response = json.dumps(
         [
             {
@@ -116,6 +139,51 @@ def _write_isolated_calendar_cache(tmp_path: Path) -> Path:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     write_twse_calendar_cache(cache_path, cache, allowed_root=tmp_path)
     return cache_path.parent
+
+
+@pytest.mark.parametrize(
+    ("captured_at", "expected_error", "expected_message"),
+    [
+        (
+            DECISION_AT + timedelta(seconds=1),
+            OfficialCalendarCacheError,
+            "calendar cache capture is in the future",
+        ),
+        (
+            DECISION_AT - timedelta(days=32),
+            OfficialCalendarCacheExpired,
+            "freshness window expired",
+        ),
+    ],
+)
+def test_official_calendar_cache_rejects_future_and_expired_at_frozen_clock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_at: datetime,
+    expected_error: type[OfficialCalendarCacheError],
+    expected_message: str,
+) -> None:
+    _freeze_official_calendar_clock(monkeypatch)
+    cache_directory = _write_isolated_calendar_cache(
+        tmp_path, captured_at=captured_at
+    )
+    cache_path = cache_directory / "twse_holiday_schedule_2026_fixture.json"
+
+    result = OfficialCalendarSourceProvider(
+        calendar_cache_path=cache_directory
+    ).read_range(
+        start_date="2026-09-07",
+        end_date="2026-09-08",
+        decision_at=DECISION_AT,
+        observed_at=DECISION_AT,
+    )
+    assert result.values == {}
+    assert result.blockers and "official_calendar_unknown" in result.blockers[0]
+
+    with pytest.raises(expected_error, match=expected_message):
+        load_verified_twse_calendar_cache(
+            cache_path, calendar_year=2026, observed_at=DECISION_AT
+        )
 
 
 def _write_frozen_rule_status(tmp_path: Path) -> Path:
@@ -581,8 +649,9 @@ def test_source_providers_reject_future_or_float_metric_inputs(tmp_path: Path) -
 
 
 def test_official_calendar_provider_reads_verified_cache_without_network(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _freeze_official_calendar_clock(monkeypatch)
     calendar_cache_path = _write_isolated_calendar_cache(tmp_path)
     result = OfficialCalendarSourceProvider(
         calendar_cache_path=calendar_cache_path
@@ -598,8 +667,9 @@ def test_official_calendar_provider_reads_verified_cache_without_network(
 
 
 def test_bundle_reports_missing_human_sources_but_keeps_real_calendar(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _freeze_official_calendar_clock(monkeypatch)
     calendar_cache_path = _write_isolated_calendar_cache(tmp_path)
     bundle = build_position_health_source_bundle(
         positions=_positions(),
@@ -615,8 +685,9 @@ def test_bundle_reports_missing_human_sources_but_keeps_real_calendar(
 
 
 def test_evaluator_end_to_end_consumes_verified_sources_and_persists_proposal(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    _freeze_official_calendar_clock(monkeypatch)
     registry = tmp_path / "thesis.json"
     contract = _contract()
     _writer(registry).append(

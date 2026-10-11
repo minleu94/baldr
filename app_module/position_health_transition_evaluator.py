@@ -36,6 +36,7 @@ from app_module.position_health_transition_repository import (
     PositionHealthTransitionRecord,
     PositionHealthTransitionRepository,
 )
+from app_module.position_health_saved_archive import publish_saved_health_receipt
 from app_module.position_thesis_contract import PositionThesisContract
 from app_module.strategy_lifecycle_service import GateStatus
 
@@ -959,6 +960,14 @@ def _persist_evaluation_result(
         dated = output / f"transition_{date_key}_{suffix}.json"
     if not dated.exists():
         dated.write_bytes(encoded)
+    if dated.read_bytes() != encoded:
+        raise OSError("health_evaluation_result_readback_mismatch")
+    # 先確認 immutable result 已完整寫入且可穩定讀回，archive writer 才會取
+    # 自己的 UTC available_at；不沿用 evaluator 的 observed_at 或 caller clock。
+    saved_receipt = publish_saved_health_receipt(
+        output_dir=output,
+        result_path=dated,
+    )
     latest = output / "latest.json"
     _atomic_write(latest, result)
     receipt = {
@@ -983,6 +992,11 @@ def _persist_evaluation_result(
     result["result_path"] = str(dated)
     result["latest_path"] = str(latest)
     result["receipt_path"] = str(output / "latest_status.json")
+    result["saved_receipt_id"] = saved_receipt["receipt_id"]
+    result["saved_receipt_path"] = saved_receipt["receipt_path"]
+    result["saved_receipt_sha256"] = saved_receipt["receipt_sha256"]
+    result["saved_receipt_available_at"] = saved_receipt["available_at"]
+    result["saved_source_witness_status"] = saved_receipt["source_witness_status"]
     return result
 
 

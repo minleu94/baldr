@@ -12,7 +12,6 @@ from app_module.position_health_daily_refresh_service import (
     PositionHealthDailyRefreshService,
 )
 
-
 def _make_state(path: Path, *, snapshot_id: str = "paper-main-20260907", weight_bp: int = 1500) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as connection:
@@ -514,7 +513,7 @@ def test_refresh_accepts_verified_empty_snapshot_without_health_or_identity_carr
 
     class IdentityMustNotBeRequested:
         def resolve(self, **_kwargs):
-            raise AssertionError("empty snapshot has no active position identity to resolve")
+            raise AssertionError("空 snapshot 沒有需要解析的 active position identity")
 
     receipt = PositionHealthDailyRefreshService(
         state_db_path=state_db,
@@ -535,6 +534,53 @@ def test_refresh_accepts_verified_empty_snapshot_without_health_or_identity_carr
     assert "position_health_baseline_is_not_an_exit_instruction" in baseline["diagnostics"]
     assert "position_health_daily_refresh_does_not_evaluate_transition" in baseline["diagnostics"]
     assert baseline["position_identity_source"] is None
+
+
+def test_eod_snapshot_is_not_sent_to_preopen_identity_provider(
+    tmp_path: Path,
+) -> None:
+    state_db = tmp_path / "state.sqlite"
+    status_path = tmp_path / "status.json"
+    output = tmp_path / "health"
+    _make_state(state_db)
+    _write_status(status_path, state_db)
+    status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+    status_payload["decision_at"] = "2026-09-07T17:00:00+08:00"
+    status_path.write_text(
+        json.dumps(status_payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    class PreopenProviderMustNotReceiveEod:
+        def resolve(self, **_kwargs):
+            raise AssertionError("EOD checkpoint 不屬於 preopen identity 契約")
+
+    receipt = PositionHealthDailyRefreshService(
+        state_db_path=state_db,
+        status_path=status_path,
+        position_identity_provider=PreopenProviderMustNotReceiveEod(),  # type: ignore[arg-type]
+    ).refresh(
+        as_of_date=date(2026, 9, 7),
+        output_dir=output,
+    )
+
+    assert receipt["status"] == "passed"
+    baseline_path = Path(str(receipt["baseline_path"]))
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert baseline["source_decision_boundary"] is None
+    assert baseline["source_decision_at"] is None
+    assert baseline["position_identity_source"] is None
+    assert baseline["position_identity_verified_codes"] == []
+    assert "paper_position_identity_preopen_boundary_unverified" in baseline[
+        "warnings"
+    ]
+    witness_path = (
+        output
+        / "saved_baseline_witnesses"
+        / f"{str(receipt['baseline_sha256']).removeprefix('sha256:')}.json"
+    )
+    witness = json.loads(witness_path.read_text(encoding="utf-8"))
+    assert witness["status"] == "unqualified"
 
 
 @pytest.mark.parametrize(

@@ -18,6 +18,7 @@ from app_module.portfolio_condition_monitor import (
     PortfolioConditionResult,
     PortfolioCurrentSnapshot,
 )
+from app_module.position_health_saved_archive import SavedHealthArchiveError
 from app_module.position_health_service import PositionHealthState
 from app_module.position_health_state_machine import PositionHealthMetric
 from app_module.position_health_transition_evaluator import (
@@ -774,7 +775,6 @@ def test_baseline_file_bridge_is_executable_and_degraded_without_sources(tmp_pat
     baseline = tmp_path / "baseline.json"
     baseline.write_text(
         '{"as_of_date":"2026-09-08","source_snapshot_id":"snapshot-1",'
-        '"source_snapshot_rows_sha256":"sha256:rows",'
         '"positions":[{"position_id":"p1","stock_code":"2330",'
         '"paper_shares":1000,"state":"WATCH",'
         '"entry_lineage_status":"same_snapshot_verified"}]}',
@@ -795,3 +795,24 @@ def test_baseline_file_bridge_is_executable_and_degraded_without_sources(tmp_pat
     assert (output / "latest.json").exists()
     assert (output / "latest_status.json").exists()
     assert result["positions"][0]["transition_event"]["persistence"] == "written"
+
+
+def test_baseline_file_bridge_rejects_malformed_source_rows_hash(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(
+        '{"as_of_date":"2026-09-08","source_snapshot_id":"snapshot-1",'
+        '"source_snapshot_rows_sha256":"sha256:rows",'
+        '"positions":[]}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SavedHealthArchiveError,
+        match="saved_health_receipt_snapshot_rows_hash_invalid",
+    ):
+        evaluate_baseline_file(
+            baseline_path=baseline,
+            output_dir=tmp_path / "transition-output",
+            observed_at=_observed(),
+            decision_date="2026-09-08",
+        )

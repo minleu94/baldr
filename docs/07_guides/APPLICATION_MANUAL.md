@@ -3749,7 +3749,7 @@ Health 已增加不可變結果封存與精確讀回服務；目前一般持倉�
 
 來源觀測、評估觀測與封存可得時間分開判讀。封存可得時間由 writer 在完整結果讀回後記錄，重試保留原時間；cutoff 早於可得時間、來源晚到、帳戶／股數不符、檔案損壞或重新封裝 hash 仍有身分不符時，精確讀回會拒絕。缺少原來源 witness 時保留 degraded／unknown，不以最新檔案補成 HEALTHY 或歷史 PIT 資格。這些研究結果不觸發 broker、平倉或自動配置。
 
-排錯時先核對所選帳戶、snapshot、完整持倉及含時區 cutoff，再查看具名來源與 clock blocker；不要修改原檔、回填時鐘或降低驗證。這份後端整合的廣回歸仍有五項失敗，正式開發檔待修正與完整 UI 接線；目前進度與失敗界線見[補完 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+排錯時先核對所選帳戶、snapshot、完整持倉及含時區 cutoff，再查看具名來源與 clock blocker；不要修改原檔、回填時鐘或降低驗證。後端整合已通過具名廣回歸；正常 UI 的封存選取流程與正式日曆 live／historical 觀測時鐘仍在接線。歷史 cache 不能由使用者回填舊觀測時間而取得目前 freshness；目前進度與未驗界線見[補完 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
 
 ### 10.9 籌碼監控
 

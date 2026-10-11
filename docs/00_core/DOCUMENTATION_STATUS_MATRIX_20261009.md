@@ -589,3 +589,7 @@ Archive 根層本批只補五份歷史原件的時點／權威提示；不調整
 | `DAILY_INVESTMENT_JOURNEY_2026_09_14.md` | 9/14 readonly snapshot；後續 R1 不等於自然成熟或完整產品驗收。 |
 
 本批 10 份在現有具名 manifest 未見全文紀錄；Entry 204 的 74 份報告早期批次無逐檔 manifest，故不據此宣稱全歷史零重疊、不累加舊 aggregate。逐檔引用與限制見 Coverage History Entry 230。
+
+依 Entry 231，Manual 中 2026-10-03 的 Revision-Aware 早期操作模板已移入 Archive；Manual 保留同名標題與指向現行 §7.0.1／整合修復 QA 的短導引。10/03 weekly 收據段與 10/02 Paper／quote 安全操作段仍待分別判斷是否保留或拆分。
+
+**2026-10-11 QA K–R 批次（Coverage History Entry 232）：** 已具名全文複核 10 份 QA 內容文件；10 份皆有主題索引路由。歷史數字、日期化交接與 ML 命令模板需依原文件時點及 R031 收據判讀，不視為即時狀態／現行操作授權。因舊 QA aggregate 缺逐檔 manifest，不調整累計總數。受保護的完成進度文件未納入本批；本批未改 QA 原文、未執行測試、Graphify 或最終 repo-wide links／anchors scan。

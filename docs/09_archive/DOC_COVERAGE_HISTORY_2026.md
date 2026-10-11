@@ -2620,3 +2620,15 @@ Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。
 全文閱讀 `BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md`、`BALDR_SCHEDULER_RECONCILIATION_20260925.md`、`BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md`、`BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md`、`BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md`、`CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md`、`CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md`、`DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md`、`DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md`、`DAILY_INVESTMENT_JOURNEY_2026_09_14.md`。上述路徑均在既有具名清冊未見全文記錄；Entry 204 早期 74 份報告無逐檔 manifest，因此不宣稱能由此證明全歷史無重複，也不調整舊 aggregate。
 
 判讀確認 9/25 scheduler／integration、9/27 Git consolidation、9/14 investment／BankTaiwan 文件都是各自日期的唯讀或 scoped snapshot；`Ready`、exit-zero、synthetic journey 與 160-row smoke 不視為 production acceptance、broker order、自然成熟或現況／清理授權。July broker performance 原 gate 未通過與後續 scoped semantic 修正分開保留。Continuity gap 文件已有 10/10 增量與仍未完成的 journey 界線。Archive README 的直達入口與現況路由有效；本批未改原始 QA／收據或歷史結論，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-231"></a>
+## 2026-10-11 Manual Revision-Aware 早期模板移入 Archive
+
+將 `docs/07_guides/APPLICATION_MANUAL.md` 中「歷史：Revision-Aware 研究早期操作模板（2026-10-03）」全文移至 `docs/09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md`。來源區塊為 10,319 bytes，SHA-256 `fe23813e9602bee4a15bced03fb549bcdda77563e642157ca2f4b3f513480ca3`；Archive 保留完整模板／原始限制並新增固定 HTML anchor。Manual 原標題留作相容入口，連到 Archive，並直連現行 §7.0.1 與整合修復 QA；10/02 Paper／quote 安全操作全文仍保留 Manual，避免移除唯一的恢復指引。未修改 QA 收據或使用者完成進度文件；未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-232"></a>
+## 2026-10-11 QA 內容文件 K–R 全文複核（10 份）
+
+本批具名全文核讀 10 份：`LEARNING_EVIDENCE_DENOMINATORS_2026_09_18.md`、`LEARNING_EVIDENCE_WORKBENCH_2026_09_14.md`、`LUNA_B_HANDOFF_2026_09_07.md`、`MARKET_CSV_EXPORT_CONSUMER_LANE_20261006.md`、`MATURITY_CALENDAR_REFRESH_WIRING_2026_09_18.md`、`MATURITY_CALENDAR_WIRING_2026_09_18.md`、`ML_RESTATED_DATASET_V2_MERGE_CONTRACT_2026_09_23.md`、`ML_REVISION_AWARE_REBUILD_EXECUTION_PLAN_20261001.md`、`ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md`、`MODEL_REPAIR_CURRENT_INPUTS_2026_09_23.md`。既有具名清冊未見這些精確路徑的全文核讀記錄；較早 QA aggregate 無逐檔 manifest，故不推定零重疊，也不調整舊 aggregate。
+
+複核確認這 10 份皆有 QA 主題索引路由，未見索引缺口。應保留日期界線的內容包括：9/17–18 的 learning denominator 數字、9/14–15 workbench 狀態、9/17–18 calendar cache／排程觀測、Luna B 日期化交接，以及 ML merge／rebuild 的舊命令模板。R026 文件內的舊 diagnostics 與待辦應按其歷史收據及 R031 後續收口文件判讀，不作為現行違規或一般能力驗收。未修改這 10 份 QA 原文，未執行測試、Graphify 或最終 repo-wide links／anchors scan。

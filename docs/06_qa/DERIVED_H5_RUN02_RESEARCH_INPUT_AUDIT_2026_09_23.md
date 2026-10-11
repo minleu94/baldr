@@ -66,3 +66,7 @@ D current corporate-action sidecar 雖已存在，其 `manifest_hash=sha256:8287
 本記錄使用 D transfer receipt 中的 26-file inventory/hash 與既有 tracked technical verifier；未對所有封存內容重算 hash。另行核對的檔案內容只包括 transfer receipt、run02 source manifest、D current corporate-action latest/run manifests、舊 Direct manifest 及 C derived-h5 release/training/preprocessor manifests。未讀入完整 SQLite 或全量 feature/label/store shards；因此未宣稱這些未讀 payload 已在本輪獨立完成 hash/readback。
 
 本輪為 docs-only QA 紀錄，沒有新增程式或測試；不代表資料 builder 已完成或允許模型 fit。
+
+## 2026-10-11 後續狀態範圍提示
+
+本 NO-GO 是針對這份 run02 raw custody artifact 能否直接提供本文列出的 derived-h5 全量訓練 inputs；它不表示之後沒有建立其他 restated-research 資料或 H5 candidate fit。[Allocation 重訓 Runner QA](RESTATED_ALLOCATION_REPAIR_TRAINING_2026_09_23.md)與[官方市場 v3 驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)記錄後續 H5 研究候選的獨立資料 identity、來源 custody 及 full fit；[bounded 重述研究 fit](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)與[模型修復執行紀錄](MODEL_REPAIR_EXECUTION_2026_09_23.md)記錄另一條 bounded candidate。後續訓練 QA 明示未接線正式 daily consumer 或 historical PIT gate，bounded candidate 也不代表原 CLI 預設雙算法模型已修復。故本文對 868-row raw artifact 的 NO-GO 及缺少的 row-level evidence 仍保留；候選結果按其各自 receipt 判讀，不授予正式啟用或 promotion。

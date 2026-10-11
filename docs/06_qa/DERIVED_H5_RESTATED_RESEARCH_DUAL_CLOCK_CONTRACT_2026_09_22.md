@@ -62,3 +62,7 @@ Fold 必須由 fold manifest hash 識別，日期分割不得重疊或倒置；p
 ## 回滾清單
 
 本變更只新增上述三個檔案，且在 ignored linked worktree 與 task branch 中完成。回滾方式是只還原該 task branch commit，或刪除這三個新檔；不需要改動主 `dev` 工作樹、正式資料、既有模型或 PIT gate。
+
+## 2026-10-11 後續狀態範圍提示
+
+本文所述 868-row run02 custody artifact、`pending` 狀態及不能 fit 的判定，限定於 2026-09-22 的 raw input 與本文 `restated-derived-h5-*` row contract。後續 [Allocation 重訓 Runner QA](RESTATED_ALLOCATION_REPAIR_TRAINING_2026_09_23.md) 與[官方市場 v3 驗收](FULL_OFFICIAL_MARKET_V3_REPAIR_QA_2026_09_23.md)記錄另外版本化的 H5 研究資料及完整候選 fit；[bounded 重述研究 fit](BOUNDED_RESTATED_RESEARCH_FIT_QA_2026_09_23.md)與[模型修復執行紀錄](MODEL_REPAIR_EXECUTION_2026_09_23.md)則記錄另一條 bounded 候選。這些後續產物不替代本文的 row schema 或 identity，也不代表正式 daily consumer、PIT gate、release pointer 或 production 已接受。按各自 receipt 判讀；勿把本文件的當日 `pending` 解讀為之後從未有研究 fit。

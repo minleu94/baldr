@@ -97,6 +97,9 @@
 * **Typical Use Case (典型情境)**：每日盤後產生推薦清單並驗證策略勝率。
 
 ### B. 多 Agent 協作工作流 (Simplified Main-Centric Workflow)
+
+> **舊版流程，已被取代**：本節的 `main` 主線與直接協作規則不再適用。現行分支、整合與工作樹生命週期請依 [Multi-Agent Collaboration Workflow](../agents/multi_agent_workflow.md) 與 [Shared Context](../agents/shared_context.md)；本節只保留 2026-08-30 的歷史上下文，不構成目前操作指示。
+
 * **Purpose (目的)**：降低多分支維護成本，恢復單一工作區的穩定開發體驗。
 * **Path (路徑)**：`main` (Primary active branch)。所有 Agent 直接在 `main` 上進行協作與迭代。
 * **Agent Roles (角色分工作業)**：

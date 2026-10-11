@@ -550,3 +550,21 @@ QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不�
 - **S–T，51 份全文**（Entry 225）：34 份 QA 內容文件及 17 份歷史 redirect stub；34 份內容文件均有 QA 主題索引入口，17 個 stub 的 Archive 目標均存在。修正投影 QA 過時的排程 hook 待辦時點與 9/15 inventory triage 的歷史數字提示；修正 9 個測試清冊理由欄位完全重複的文字。Entry 222 已核讀的 Archive 原件不重複計入本批 QA 路徑清單。
 
 上述修改只調整狀態說明、導覽及重複文字；沒有搬移／刪除原始 QA。受保護的使用者進行中文件仍未讀正文、未搜尋或 diff。未執行測試、Graphify 或最終 repo-wide link／anchor scan。
+### `docs/09_archive/` 根層補充具名核讀：10 份（2026-10-11）
+
+| 路徑 | 核對結果／處理 |
+|---|---|
+| `AI_CONTEXT_PACK_HISTORY_20260830.md` | 在舊 main-centric 協作章節加上就地取代提示，直連現行 multi-agent workflow／shared context。 |
+| `API_INVESTIGATION_REPORT.md` | 明確 Selenium 等替代方案與待辦只是歷史提案，不代表已核准或實作。 |
+| `ARCH_GOVERNANCE_CHECKLIST.md` | 歷史自檢清單已有非現行強制 gate 界線；保留原文。 |
+| `ARCH_GOVERNANCE_LIFECYCLE.md` | 早期提案與現行治理流程界線清楚；保留原文。 |
+| `ARCH_VIOLATION_RESPONSE_POLICY.md` | 歷史政策已有非現行 enforcement 界線；保留原文。 |
+| `BACKTEST_LAB_CHECKLIST.md` | 釐清 v1.1／v1.0 日期為版本記錄，2026-05-27 為後續補充。 |
+| `BACKTEST_LAB_FAQ.md` | 將 10 筆明確限定為歷史 UI 前置檢查，連回現行 Manual 的 Registry Promote 20 筆門檻。 |
+| `BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md` | 備份輪替、歷史候選與禁止推定刪除授權等界線足夠；保留原文。 |
+| `BALDR_DAILY_EVIDENCE_MODEL_READINESS_20260925.md` | 增加 9/25 時點提示與 Project Snapshot 現況入口。 |
+| `BALDR_DAILY_TECHNICAL_PARSE_DIAGNOSTIC_QA_20260925.md` | 已清楚限定 synthetic QA、日期、hash 與未涵蓋範圍；保留原文。 |
+
+Archive 根層本批只補五份歷史原件的時點／權威提示；不調整缺逐檔 manifest 的舊 aggregate。逐篇判讀見 Coverage History Entry 226。未刪除或搬移文件，未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+另依 Entry 227 修正 `docs/06_qa/H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md` 的固定版候選描述：區分早期 `421bc973a891` 與後續後代 `bd5d2f86367ae8adb3d110f7e2b83fb829a620cf`，並限定後者的同版收據只覆蓋圖表範圍。未推定獨立研究入口已通過固定版驗收。

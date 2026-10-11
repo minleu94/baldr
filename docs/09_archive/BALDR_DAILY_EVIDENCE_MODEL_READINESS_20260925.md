@@ -1,5 +1,7 @@
 # BALDR 每日 Evidence 與 Model Readiness（2026-09-25）
 
+> **歷史狀態提示**：本文是 2026-09-25 的唯讀證據快照；文中的「目前／現行」均指該次讀回時點，不代表今天的資格或執行狀態。當前狀態請看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，不得以本文推定任何模型已取得 formal、production 或產品資格。
+
 > 查核基準：2026-09-25 Pacific；檔案內的最新採集時鐘跨至 2026-09-26 UTC／台北。這是正式資料及既有 artifacts 的唯讀工程盤點，不是訓練、推論、重播、自然成熟、模型品質或 promotion 驗收。
 >
 > 本輪沒有執行模型 pickle／joblib 載入、訓練、推論、scheduler、正式資料寫入或 pointer 修改。正式 SQLite 以 `mode=ro`、`PRAGMA query_only=ON`、單次讀取交易後 `ROLLBACK`；personalization index 同樣唯讀。Direct/OOC 維持凍結，R027 維持 INCONCLUSIVE、R028 維持 BLOCKED。

@@ -213,9 +213,9 @@ is_batch_mode = len(stock_codes) > 1
 
 ## 8. 為什麼 SOP 驗證失敗 (❌ FAIL)？如何處理？
 
-### 8.1 樣本不足限制 (交易次數 < 10)
-為確保策略具備統計學上的可靠性，避免過擬合或運氣成分，Phase 3.5 規範要求回測必須積累 **至少 10 次交易** 才能進行正式版策略晉升。
-* **FAIL 的後果**：無法將此回測的策略參數一鍵晉升（Promote 按鈕將被自動禁用）。
+### 8.1 樣本不足限制（歷史 UI 檢查：交易次數 < 10）
+本節的 10 筆是 Phase 3.5 舊版 UI／SOP 的前置檢查門檻，不是目前 Registry-based Promote 的最低交易數。現行操作與分層門檻請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md)；Lifecycle Gate 的預設最低交易數為 20 筆，其他資料條件也可能阻擋升級。此 FAQ 僅作歷史背景，不能用來判定目前 Promote 資格。
+* **歷史 FAIL 的後果**：舊 UI 會停用其一鍵 Promote；目前資格須按 Registry Gate 判讀。
 * **保留功能**：您依然可以透過右鍵點擊下方的交易明細表，將個別交易「記錄到持倉管理（Portfolio）」中進行追蹤。
 
 ### 8.2 解決方法

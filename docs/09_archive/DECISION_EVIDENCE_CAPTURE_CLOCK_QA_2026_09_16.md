@@ -397,11 +397,9 @@ invalidation policy、reviewer approval 與實際 Paper fill／closed ledger evi
 仍待外部或其他 owner 的 bounded follow-up：
 
 - 補資料 freshness、PIT denominator、OOC／ledger／license 與 endpoint custody。
-- 修復 Direct 缺失 checkpoint provenance；Forward child 的 Paper ledger／preopen
+- Direct 缺失 checkpoint provenance 仍待修復；Forward child 的 Paper ledger／preopen
   read-only integrity 已完成 repository-isolated bounded QA，正式 scheduled rerun 仍待
   owner 在合法時間窗執行。
-- 後續仍待外部或其他 owner 的 data freshness、PIT denominator、OOC／ledger／license、
-  endpoint custody 與 forward Paper read-only integrity follow-up。
 
 本輪沒有執行正式資料庫、raw source、scheduler registration 或歷史 event 的
 修改；也沒有把任何舊 receipt 宣告為盤前或自然 authority。

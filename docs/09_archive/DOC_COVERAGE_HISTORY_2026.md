@@ -3215,3 +3215,10 @@ R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明�
 六份文件已作歷史時點修訂：A Operations 明示 latest 指 9/17 readback；Architecture Checklist 將「用途」改為 6/24 原提案用途；Backup Retention 限定數量與清理候選是 7/6 盤點，含 8/29 獨立補記；Paper prompt proposal 明示等待審查／尚未套用只代表 9/25，並連到後續 integration record；integration 狀態節標為截至 9/26 的歷史記錄；Branch consolidation 明示 refs/worktree/local-branch 狀態只截至 9/27 整理完成時。其他四份維持既有日期界線，未發現需要改寫的 current-authority 聲明。Archive README 已有相關入口；本次新增的 proposal → integration 連結目標存在。
 
 目前 HEAD 的 7 個 clean blob 中抽取 11 個 inline 本機連結，目的地全存在；三份本次修訂文件的既有導覽與新增目的地亦可定位。未驗證 anchors、HTML/reference-style links 或外部連結；未核讀任何連結所指正文，也未讀受保護的 system architecture、Application Manual、Snapshot 或使用者補完計畫。原根層文件留存；本次僅修改上述 6 份歷史文件與本矩陣/History。`git diff --check` 通過；未跑測試、Graphify 或 repo-wide links／anchors scan。
+
+<a id="coverage-entry-317"></a>
+## 2026-10-11 Backtest Lab 舊 schema 與無日期規劃清單界線
+
+修訂 `docs/02_features/BACKTEST_LAB_FEATURES.md`：將 `runs` 表及 `output_root/backtest` 標成 Legacy 保存格式，明示新結果保存／讀回由 Research Run Registry 承接；依文件既有 Research Run Registry 功能段落、推薦組合保存的日期化後續記錄及 `RESEARCH_RUN_REGISTRY_SPEC.md` 歷史導引校正舊 schema 的時態。將沒有日期的「未來擴展」改為「較早的未來擴展清單」，並限定推薦組合回測與推薦分析整合已在後文記錄，避免沿用舊 TODO；「策略組合回測」的具體範圍及 PDF 匯出現況未在本批重新核實，因此明確保留待查，不宣稱已完成。
+
+本次修訂沒有刪除 Legacy schema 或歷史清單。既有文件中 Phase 3.5 的 10 筆 UI SOP 前置檢查與 Registry Lifecycle 20 筆最低 Gate、成本模型切換未核實、Benchmark 執行時／Registry 讀回差異均保留原範圍。本批無測試、Graphify 或最終 repo-wide links／anchors scan；矩陣相應目錄分類與後續未解項同步見 [Documentation Status Matrix](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md)。

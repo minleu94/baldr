@@ -86,7 +86,7 @@
 | 文件 | 角色／生命週期 | 本輪核讀與判讀 |
 |---|---|---|
 | `README.md` | 目錄導覽；Application Manual 才是操作權威。 | 全文；分類邊界清楚。 |
-| `BACKTEST_LAB_FEATURES.md` | Backtest Lab 功能與回放契約參考。 | 全文；修正 sizing／市場限制仍列待辦的過時狀態；保留未單獨核實的成本模型切換項目；區分 Phase 3.5 的 10 筆 UI 前置檢查與 Registry Lifecycle 20 筆最低門檻，並限定圖表 benchmark 說明不代表 Registry readback 會回抓。未完成清單所稱「與推薦分析整合」範圍仍含糊，保留待釐清。 |
+| `BACKTEST_LAB_FEATURES.md` | Backtest Lab 功能與回放契約參考。 | 全文；修正 sizing／市場限制仍列待辦的過時狀態；保留未單獨核實的成本模型切換項目；區分 Phase 3.5 的 10 筆 UI 前置檢查與 Registry Lifecycle 20 筆最低門檻，並限定圖表 benchmark 說明不代表 Registry readback 會回抓。Entry 317 再將 `runs`／`output_root/backtest` 標為 Legacy schema，並將無日期的「未來擴展」改成歷史清單；策略組合回測範圍及 PDF 匯出現況仍待核實。 |
 | `SCORE_EXPLANATION.md` | 評分規則／結果解釋參考。 | 全文；未發現和本輪核對的 Scoped SSOT 明確衝突。 |
 | `STRATEGY_DESIGN_SPECIFICATION.md` | 策略設計參考，不取代 Registry／程式契約。 | 全文；舊 Promote 流程維持 2026-01-02 歷史快照；新增研究提案／示例不代表現行實作的界線，標明 MVP 日期與門檻及前向填充只是設計建議。 |
 | `UI_FEATURES_DOCUMENTATION.md` | UI 行為參考，不是操作或即時狀態權威。 | 全文；Entry 187 原核讀至 2026-10-07。本輪重新全文核讀 656 行現況，新增的 5 行是後續研究背景取消、Watchlist 精確收藏重開與更新記錄；未發現和 README、Product §11、QA 真人接受限制的衝突，未改原件。 |
@@ -693,3 +693,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 Archive 手冊日期化補充全文核讀：** `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` 從舊矩陣記錄的 120 行 partial 升為全文；確認檔案最初 10/03–10/08 的範圍已在 10/11 擴入歷史排程／研究模板，並同步更新 Archive 與 Guides README 導覽。原文歷史分類及操作限制保留，現行 Manual 未讀未改。全文身分與逐檔連結檢查見 Coverage History Entry 312。
 
 **2026-10-11 QA redirect 繁中校正：** 將 `V4_ML_RELEASE_2026_09_07.md` 英文三行歷史路徑導引改為繁體中文，保留 Archive 原文與 Snapshot 現況連結；全文身分見 Coverage History Entry 313。
+
+**2026-10-11 `02_features/` Backtest Lab 歷史 schema／規劃清單界線：** Coverage History Entry 317 將 `BACKTEST_LAB_FEATURES.md` 中舊 `runs` 表與 `output_root/backtest` 資料路徑標為 Legacy 格式，避免與 Research Run Registry 現行保存／讀回混淆；將無日期的「未來擴展」標為較早規劃清單，並指出推薦組合回測及整合已有日期化後續記錄，策略組合回測範圍與 PDF 匯出現況仍待核實。02_features 仍為 9/9 tracked paths 已核讀或核對，本批未刪除或搬移文件；未跑測試、Graphify 或全庫 links／anchors scan。

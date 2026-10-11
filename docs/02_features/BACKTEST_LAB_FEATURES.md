@@ -250,10 +250,13 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 }
 ```
 
-### 回測結果資料庫結構
-- **runs 表**：儲存基本資訊和績效摘要
+### Legacy 回測結果資料庫結構（歷史 schema）
+
+> 以下 `runs` 表與 `output_root/backtest` 位置屬舊保存格式。現行保存讀回已由 Research Run Registry 承接；勿將此段當作新結果的資料庫契約。
+
+- **runs 表**：舊格式儲存基本資訊和績效摘要
 - **索引**：created_at, strategy_id, stock_code
-- **檔案**：equity_curve 和 trade_list 以 Parquet 格式儲存
+- **檔案**：舊格式的 equity_curve 和 trade_list 以 Parquet 格式儲存
 
 ---
 
@@ -468,11 +471,13 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 
 ---
 
-## 未來擴展
+## 較早的未來擴展清單（日期未標示）
 
-- 策略組合回測
-- 與推薦分析模組整合
-- 匯出報告（PDF 格式）
+> 以下保留較早版本的規劃項目，不代表目前待辦。本文上方與 2026-05-27 日期化記錄已描述推薦組合回測及其與推薦分析流程的整合；「策略組合回測」的具體範圍及 PDF 匯出現況未在本次重新核實，應以現行程式與具名 QA 證據判定。
+
+- 策略組合回測（原清單項目；範圍與現況待核）
+- 與推薦分析模組整合（後續本文已記錄推薦組合回測入口）
+- 匯出報告（PDF 格式，現況待核）
 
  
 ## 2026-05-27 推薦組合穩健性指標
@@ -543,4 +548,5 @@ Legacy 已保存的推薦組合 research run 可透過 Backtest「推薦組合�
 
 ## 更新記錄
 
+- 2026-10-10：核對原優先級 8 待辦與市場限制；成本模型可切換仍列為待另行核實，操作與完整 Gate 以 Application Manual 為準。
 - 2026-09-06：同步 next-session-open.v2、取消／末端持倉、Registry 版本與顯式恢復；校正 legacy 強制平倉不等於真實 fills。

@@ -201,6 +201,8 @@ Recommendation / Backtest / Strategy Version
 
 ## 風險
 
+> **歷史界線（2026-10-11）**：下列第 3 點關於 Portfolio DTO／`float` 的敘述僅代表 2026-06-04 的當時觀察；它不能代表現況，也不能放寬根目錄 `AGENTS.md` 對金融核心不得新增裸 `float` 計算的規則。原文保留作歷史脈絡。
+
 1. BacktestView 已經很大，若直接在同一檔案加更多 UI，會讓維護性更差。第一階段應優先抽小元件或先做低風險分組。
 2. Watchlist 目前既是候選池又是管理器，文案與資料模型存在不同步風險。第一階段先改入口與顯示，不急著重寫儲存。
 3. Portfolio 現有 DTO 使用 float，第一階段若新增 trade metadata，應避免擴大金融計算邊界；後續需另開合規化任務處理 Decimal / integer unit。

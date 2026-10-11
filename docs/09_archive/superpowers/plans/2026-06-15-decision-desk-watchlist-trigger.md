@@ -1,5 +1,7 @@
 # Watchlist Trigger Provider Connection Implementation Plan
 
+> **歷史範圍註記（2026-10-11）**：這是歷史實作計畫，不是目前實作或驗收證據；目前是否實作及驗收仍未知。重用前請核對[目前專案狀態](../../../00_core/PROJECT_SNAPSHOT.md)與[現行操作手冊](../../../07_guides/APPLICATION_MANUAL.md)。實作草圖以一般 `sqlite3.connect()` 開啟連線，未示範唯讀限制，並以裸 `float()` 計算 `score_bp` 與風險門檻；這些內容尚未證明符合現行唯讀契約及數值邊界，須先核實。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Connect Watchlist Trigger service to real data sources, retrieving active watchlists from WatchlistService and scoring/risk alerts from SQLite technical_indicators.

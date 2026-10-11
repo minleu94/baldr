@@ -40,7 +40,7 @@
 
 ### 第二批：2026-10-10 根層歷史盤點、排程與寫入收據核讀
 
-以下 20 份原件已全文核讀；其中清理報告的 15／16 刪除計數，以及 Phase 3.3b「完成」與未完成清單並存，仍列為未解文件內差異。涉及 Scheduler 註冊、DB 寫入、`--confirm-network` 或 Git rollback 的舊命令只保存當日證據，不能直接重跑。逐檔角色與核讀限制見 [Coverage History Entry 209](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-209)。
+以下 20 份原件已全文核讀。清理報告內的刪除數可按範圍讀為第 4 節列 15 項、另列 `CURRENT_STATUS.md` 1 項，合計 16；83 份是 2026-01-03 歷史盤點範圍，未以原始收據驗證實際刪除。Phase 3.3b「完成」與未完成清單並存仍無足夠證據消解，保留為未解差異。涉及 Scheduler 註冊、DB 寫入、`--confirm-network` 或 Git rollback 的舊命令只保存當日證據，不能直接重跑。逐檔角色與核讀限制見 [Coverage History Entry 209](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-209)。
 
 | 類別 | 原件 | 入口與處理 |
 |---|---|---|
@@ -344,7 +344,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [終極決策工作台整合缺口矩陣（9/14）](ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
 - [終極目標產品完成度與下一增量稽核（9/15）](ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md)
 - [Decision Continuity write-path audit（9/14）](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md)
-- [Continuity Review Loop pre-R1 gap audit（9/15）](CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md)：保留 R1 前的 gap baseline；後續 R1 acceptance 留在 [QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，完整跨頁旅程仍看留在 QA 的 [acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md)。
+- [Continuity Review Loop pre-R1 gap audit（9/15）](CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md)：保留 R1 前的 gap baseline；後續已驗收唯讀 due projection、Portfolio identity guard 與 Workbench exact drilldown，詳見 [R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)。完整跨頁旅程仍看留在 QA 的 [acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md)。
 
 ### 2026-10-08 Early decision and industry journey receipts
 
@@ -353,11 +353,11 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [Decision Continuity Write Path Increment A QA（9/14）](DECISION_CONTINUITY_WRITE_PATH_QA_2026_09_14.md)
 - [Decision Continuity Increment B QA（9/14）](DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md)：保留當時 isolated widget smoke、exact identity 與 explicit watchlist storage activation 驗收；測試數字不是目前基線。
 - [Decision Continuity Increment C QA（9/14–15）](DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)：保留當時 launcher／TPEX cancellation、MainWindow close lifecycle 與獨立 child readback；不代表完整跨頁 acceptance。
-- [Daily Investment Journey QA（9/14）](DAILY_INVESTMENT_JOURNEY_2026_09_14.md)：唯讀資料、evidence／learning projection 與未完成項的日期快照；候選數與 maturity 數字不作目前狀態。
+- [Daily Investment Journey QA（9/14）](DAILY_INVESTMENT_JOURNEY_2026_09_14.md)：唯讀資料、evidence／learning projection 與未完成項的日期快照；後續 R1 補上有界 continuity 提醒與 identity 下鑽（見 [R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)），不代表自然成熟或完整產品驗收。候選數與 maturity 數字不作目前狀態。
 - [真實 MainWindow 跨頁決策旅程 acceptance（9/15）](CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md)：當時的 bounded path 使用 synthetic upstream fixture；完整目前驗收範圍仍看 QA 中的 open acceptance plan。
 - [Decision → Outcome Journey read model QA（9/14）](DECISION_OUTCOME_JOURNEY_2026_09_14.md)
 - [Decision → Outcome Journey UI QA（9/14）](DECISION_OUTCOME_JOURNEY_UI_2026_09_14.md)
-- [產業強弱與產業→個股決策旅程 QA（9/14）](INDUSTRY_DECISION_JOURNEY_2026_09_14.md)
+- [產業強弱與產業→個股決策旅程 QA（9/14）](INDUSTRY_DECISION_JOURNEY_2026_09_14.md)：保存當日 current-research smoke；後續 PIT caller 有受控路徑，但 exact company join 與完整 historical PIT qualification 仍是資格限制，詳見 [PIT caller QA](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。
 
 ### 2026-10-08 Early QA closeouts
 

@@ -1,6 +1,6 @@
 # Continuity Review Loop 與正式 Decision Outcome 對應盤點
 
-> **歷史唯讀盤點（2026-10-10）：** 本文的 Workbench due projection、Portfolio identity guard 與「等待 J」結論是 2026-09-15 的程式／資料契約快照，不是目前待辦清單。較後的 R1 due projection／exact drilldown 收據見 [2026-09-27 Roadmap History](DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)；現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[目前 QA 導覽](../06_qa/README.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+> **歷史唯讀盤點（2026-10-10）：** 本文的 Workbench due projection、Portfolio identity guard 與「等待 J」結論是 2026-09-15 的程式／資料契約快照，不是目前待辦清單。後續已驗收唯讀 due projection、精確 Portfolio identity guard 與 Workbench exact drilldown，詳見 [R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md) 及 [Manual R1 操作補充](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md#2026-09-15-continuity-review-workbench-r1)；完整跨頁旅程仍未驗收。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[目前 QA 導覽](../06_qa/README.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 
 > 日期：2026-09-15
 > 性質：有界唯讀驗收盤點；本文件只記錄目前程式與資料契約，不改程式、不改正式資料、不執行測試、不 stage、不 commit。

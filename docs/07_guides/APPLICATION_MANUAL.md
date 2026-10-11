@@ -938,11 +938,11 @@ process-pool throughput 與 crash recovery 已有獨立 staging probe，broker H
 
 在更新頁中途取消 MOPS 候選抓取時，已完整取得的 raw HTML response 可留作診斷；取消流程不會發布不完整的 candidate CSV。訊息「保留 X 筆已解析資料」是本次解析進度摘要，不代表這些列已形成可載入候選檔。先檢查本次狀態與保存的 raw response；要重新產生候選時，使用新的完整受控 run，不要把未完成輸出手動併入正式資料。
 
-今晚建議先跑兩個檔案：
+以下是 2026-06-16 留存的歷史命令範本，不是目前日期或正式資料根目錄。要重新抓取時，先確認本機 `DATA_ROOT`／`OUTPUT_ROOT`、本次查詢期間與 fetch date，再以自己的值取代範本中的 `YYYY-MM`、`YYYY-MM-DD` 和路徑；不要照抄歷史日期或 `D:\Min\Python\Project\FA_Data`：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\fetch_mops_monthly_revenue_snapshot.py --start-period 2014-04 --end-period 2026-05 --markets twse,tpex --output-dir D:\Min\Python\Project\FA_Data\output\monthly_revenue_mops_snapshots --fetch-date 2026-06-16 --sleep-seconds 0.5
-.\.venv\Scripts\python.exe scripts\fetch_finmind_monthly_revenue_create_time.py --start-date 2014-04-01 --end-date 2026-05-31 --raw-dir D:\Min\Python\Project\FA_Data\financial_data --output-dir D:\Min\Python\Project\FA_Data\output\monthly_revenue_finmind_create_time --max-requests-per-hour 480 --resume --fetch-date 2026-06-16
+.\.venv\Scripts\python.exe scripts\fetch_mops_monthly_revenue_snapshot.py --start-period YYYY-MM --end-period YYYY-MM --markets twse,tpex --output-dir "<OUTPUT_ROOT>\monthly_revenue_mops_snapshots" --fetch-date YYYY-MM-DD --sleep-seconds 0.5
+.\.venv\Scripts\python.exe scripts\fetch_finmind_monthly_revenue_create_time.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD --raw-dir "<DATA_ROOT>\financial_data" --output-dir "<OUTPUT_ROOT>\monthly_revenue_finmind_create_time" --max-requests-per-hour 480 --resume --fetch-date YYYY-MM-DD
 ```
 
 第一個命令會保存 MOPS raw HTML 與完整市場月營收 snapshot CSV；它只代表營收內容快照，不得用 period 或歷史查詢日推定官方公告日。若從某天開始每日保存 MOPS snapshot，可把本機首次看見該月營收列的日期視為 first-seen observation candidate，搭配 `available_date=first_seen+1 calendar day` 作保守候選 mapping；這仍不是官方 MOPS 公告日，正式寫入前必須由人工確認。第二個命令會使用已加密保存於本機的 FinMind token 逐檔抓取 `TaiwanStockMonthRevenue.create_time`，輸出 create_time 分組檔；`create_time` 只作備用 / 交叉檢查與每月分批更新參考，不作主線 mapping。若 FinMind 流程中斷，用同一個 `--output-dir` 加 `--resume` 重跑即可接續。
@@ -3743,9 +3743,7 @@ Watchlist 預設 writer 切換到 repository，也不對正式資料執行 migra
 
 ### 10.10 清空全體數據
 
-此操作仍會永久清空持倉交易，需要二次確認並先確認備份；覆盤日誌的清空則
-只追加 tombstone，active 列表變為空但原始 JSONL／history 保留，不能把畫面
-空白解讀成歷史資料已不存在。
+此操作會永久清空持倉交易，必須二次確認。執行前先確認受影響的帳本／交易範圍，並建立可讀回的獨立備份；若對話框未清楚列出範圍、或尚未確認備份可恢復，請取消操作。此手冊目前沒有記錄此清空操作的備份位置與復原程序，不要把市場 SQLite 的備份當成個人持倉備份。覆盤日誌的清空則只追加 tombstone，active 列表變為空但原始 JSONL／history 保留，不能把畫面空白解讀成歷史資料已不存在。
 
 ## 11. Runtime Observatory（Owner 營運與治理監控）
 
@@ -3756,7 +3754,7 @@ Watchlist 預設 writer 切換到 repository，也不對正式資料執行 migra
 1. **營運排程**：只讀 `<OUTPUT_ROOT>/scheduled/*/latest_status.json` 已保存產物，顯示核心資料更新、資料新鮮度、推薦快照、證據 dry-run、決策證據與 Paper Portfolio，以及 ML／官方市場事件／ML Direct-OOC 維護等安全狀態。
 2. **治理 Runtime**：只讀 `runtime/` 的任務、context 與 append-only 治理事件；它反映 agent／governance workflow，不是日常資料、推薦或 Paper 流程的健康度。
 
-營運排程的每一列是「已保存檔案的讀取結果」，**不是** Windows Task Scheduler 的註冊、啟動中、成功結束或 `Last Result` 證明；某 task 被列出或未列出，都不能反推其 Windows task 狀態。若要確認 Scheduler，請使用本手冊「release_v4 工程排程（不代表 V4.0 closeout）」章節的 query 命令。
+營運排程的每一列是「已保存檔案的讀取結果」，**不是** Windows Task Scheduler 的註冊、啟動中、成功結束或 `Last Result` 證明；畫面能讀取的 status artifact 子集合也不等於 Windows Task 總數。若要查核全部 21 個 baldr Windows tasks，請依[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)執行；該 Runbook 的唯讀查詢不會啟動 producer 或修改 Task。
 
 「路徑與讀寫診斷」、「排程來源與原始診斷」、「治理任務、上下文與完整事件明細」預設收合；按「展開／收合」查看完整上下文、原始狀態、來源路徑及錯誤原因。刷新保留收合選擇與仍存在的工作／路徑選擇；不會啟動更新、訓練或修復。無法讀取／部分無法解析的事件檔即使標為目前觀測，也不能顯示為健康；先核對來源與診斷，再按既有排錯流程處理。
 
@@ -3927,10 +3925,10 @@ row count／content hash 沒有變化。未同時提供 owner approval、無並�
 | 數據更新 | 完成 | 完成 | 完成 | 完成 | 完成 |
 | 市場探索 | 完成 | 完成 | 完成 | 完成 | 完成 |
 | 推薦分析 | 完成 | 完成 | 完成 | 完成 | 完成 |
-| 觀察清單 | 完成 | 完成 | 完成 | 完成 | 完成 |
+| 觀察清單／個股研究 | 完成 | 完成 | 完成 | 完成 | 完成 |
 | 市場探索 / 市場總覽；決策工作台 / 決策來源 | 完成（唯一每日決策實例與跨頁導覽） | 完成 | 完成 | 日期、來源品質、主結論、行動等級、焦點卡、空狀態與降級結果判讀 | 完成；不改評分／交易權限，projection、research 與 formal evidence 分開；即時進度見 Snapshot |
 | Research Lab | 完成 | 完成 | 完成 | 完成 | 完成 |
-| 持倉管理 | 完成 | 完成 | 完成 | 手動交易、CSV 預覽／匯入、日誌、監控、情境壓力投影與研究快照判讀；Paper 成交／成本缺件須明示，不補造結果 | 完成；明確確認、研究唯讀與 fail-closed 邊界，不接券商自動交易；目前接受範圍見 Snapshot |
+| 持倉管理 | 完成 | 完成 | 完成 | 手動交易、CSV 預覽／匯入、日誌、監控、情境壓力投影與研究快照判讀；Paper 成交／成本缺件須明示，不補造結果 | 部分完成；一般研究唯讀與不接券商自動交易界線已說明，但「清空全體數據」仍需補明帳本範圍、備份位置與復原步驟；該缺口未完成前應取消清空操作 |
 | Runtime Observatory | 完成 | 完成 | 不適用 | 完成 | 完成 |
 
 功能行為改動時，必須同步更新本表與對應章節。

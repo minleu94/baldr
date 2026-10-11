@@ -1,5 +1,7 @@
 # 產業強弱與產業→個股決策旅程 QA 證據（2026-09-14）
 
+> **歷史範圍提示（2026-10-11）：** 本文驗收的是 9/14 current-research smoke，當時沒有 qualified historical PIT industry membership／available-time export。後續已有受控 prospective PIT caller 路徑（見 [PIT caller QA](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md) 與 [Manual PIT 產業輸入補充](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md)），但 exact company join 與完整 historical PIT qualification 仍未通過；勿將當日 smoke 解讀成目前完全沒有 PIT caller，也勿視為完整 PIT 產業驗收。
+
 ## 結論與範圍
 
 本輪完成的是 Daily Decision Desk 的唯讀 current-research 產業強弱讀模型與 UI

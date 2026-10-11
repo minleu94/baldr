@@ -451,7 +451,7 @@ QA 既有 205 全文／4 局部／344 未讀與 Entry 203 的 36／6／511 分�
 
 | 路徑 | 核對結果／處理 |
 |---|---|
-| `DOCUMENTATION_CLEANUP_REPORT.md` | 保留歷史刪除報告；15／16 與 83 總數未重新驗證，維持待查差異。 |
+| `DOCUMENTATION_CLEANUP_REPORT.md` | 保留歷史刪除報告；內文可核對為第 4 節列 15 項、另列 `CURRENT_STATUS.md` 1 項，合計 16。83（81 MD + 2 TXT）是 2026-01-03 歷史盤點範圍，未用原始收據驗證刪除操作。 |
 | `DOCUMENTATION_ENTRY_HISTORY_20261006.md` | 舊 README 快照，導回現行 Archive README。 |
 | `DOCUMENTATION_INDEX_HISTORY_20261006.md` | 舊 Core Index 快照，導回現行權威入口。 |
 | `DOCUMENTATION_REORGANIZATION_PROPOSAL.md` | 舊提案；保留問題與其歷史狀態。 |

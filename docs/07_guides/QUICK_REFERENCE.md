@@ -40,12 +40,14 @@ Update
 
 ## 常用維護命令
 
+以下日期是參數範本，不是目前最新日。執行前請替換為本次目標日期，並確認 `DATA_ROOT`／`OUTPUT_ROOT` 指向自己的資料位置。
+
 ```powershell
 # 批量更新股價
-.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date 2026-06-01
+.\.venv\Scripts\python.exe scripts\batch_update_daily_data.py --start-date YYYY-MM-DD
 
 # 更新單日並合併
-.\.venv\Scripts\python.exe scripts\update_daily_stock_data.py --date 2026-06-12 --merge
+.\.venv\Scripts\python.exe scripts\update_daily_stock_data.py --date YYYY-MM-DD --merge
 
 # 合併既有每日檔
 .\.venv\Scripts\python.exe scripts\merge_daily_data.py

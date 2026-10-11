@@ -2526,3 +2526,19 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 回看 Entry 203 暫列的 F06 與 F12 待修候選後，確認兩者是證據範圍不同，不是原件與後續結果相互矛盾。F06 的 Decimal 方法提案已接受且 bounded 原料 leaf 已實作，但提案明確未設定波動收斂門檻、持續天數或突破規則，也未接入產品；F06 計畫稱這些 P07 決策仍待定版是準確的。依 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md` 的 P07 狀態，F06 原料目錄仍標示 contraction window／threshold 為未定，且沒有家族 UI consumer 或完整策略 executor。
 
 F12 整合審查內的 attempt03 8 passed 是隔離合成資料上的 reader 測試；其正文已限定不代表 UI、收藏跨程序 exact reopen、EXE 或真人接受。文件標題「進行中」與後續 Main 候選的失敗／未完成狀態一致。兩份 QA 原件的範圍提示已足夠，無須改寫原始證據；Entry 203 的舊候選判斷已修正。未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-218"></a>
+## 2026-10-11 Archive 歷史計數與後續收據路由釐清
+
+Archive 根層第二批 20 份文件的複核釐清：`DOCUMENTATION_CLEANUP_REPORT.md` 第 4 節標示的 15 項，對應其編號 1–15；`CURRENT_STATUS.md` 另列於後續「過時狀態文檔」段，故報告內文合計 16 項。這只核對了報告內部列項，沒有原始刪除收據可證明實際刪除操作。報告摘要的 83 份（81 Markdown、2 TXT）是 2026-01-03 的歷史盤點範圍，不是目前 `docs/` 總量。Archive README 與矩陣已更新此判讀；`PHASE_3_3B_IMPLEMENTATION_PLAN.md` 的「三個 Epic 100%」與未完成 checklist 並存，仍缺足夠證據消解，維持未解文件內差異。
+
+另一批 Archive 根層文件的直開導覽補上後續 bounded evidence：Continuity R1 QA 證明唯讀 due projection、Portfolio identity guard 與 Workbench exact drilldown 已驗收，但不代表完整跨頁 journey 或自然 evidence maturity；Daily Investment Journey 條目連到此範圍限制。Industry Journey 條目則連到 PIT caller QA，說明受控 caller 路徑已存在，但 exact company join 與完整 historical PIT qualification 仍未完成。三份歷史 QA 原件只在檔首補日期／範圍提醒與後續證據連結，正文與原始結論未改寫；另更新 Archive README、清理報告判讀提示與矩陣。本批未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-219"></a>
+## 2026-10-11 Guides／Manual 操作界線修正
+
+Guide／Manual 定向審查後修正三項會誤導現行操作的內容：Manual §11.2 不再把可讀 status artifact 數量當成 Windows Task 數量，改連全部 21 個 baldr task 的唯讀稽核 Runbook；§4.9 與 Quick Reference 將固定 2026-06 日期及資料根路徑改成需由使用者代入的日期／路徑範本，標明舊日期不是目前值。Manual §13 覆蓋矩陣補列「個股研究」；持倉管理的「清空全體數據」安全欄降為部分完成，因為手冊未列出其精確帳本範圍、備份位置和復原程序，並提醒未能確認備份可還原時取消操作。這項操作缺口仍待後續按實際功能驗證並補齊；本輪未讀取 dirty implementation 或推論實作細節。
+
+Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。20 份 Guides 的簡化相對 Markdown link／anchor scan 為 466 個目標，沒有缺失路徑或錨點；此結果不等於 20 份全文內容均已審查。本輪未把完整日期化工程維運區段移出 Manual，該結構一致性仍留待覆蓋盤點決定，不宣稱此目錄已全篇更新。未執行測試、Graphify 或最終 repo-wide links／anchors scan。

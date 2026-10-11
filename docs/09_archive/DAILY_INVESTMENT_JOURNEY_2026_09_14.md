@@ -1,6 +1,6 @@
 # Daily Investment Journey QA — 2026-09-14
 
-> **單日歷史觀測（2026-10-10）：** 本卡的候選數、成熟樣本及狀態只描述 2026-09-14 的唯讀研究觀測；不是目前 freshness、champion、投資有效性或 V4/V5 formal closeout。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](../06_qa/README.md)，操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
+> **單日歷史觀測（2026-10-10）：** 本卡的候選數、成熟樣本及狀態只描述 2026-09-14 的唯讀研究觀測；不是目前 freshness、champion、投資有效性或 V4/V5 formal closeout。後續 R1 已完成有界 continuity 提醒與 identity 下鑽（見 [R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)），但未證明自然 evidence maturity、完整 Portfolio ledger 鏈或整體產品驗收。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](../06_qa/README.md)，操作以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 本卡只記錄 Workbench 的唯讀每日決策旅程增量，不代表 V5、V4 formal 或投資有效性 closeout。
 

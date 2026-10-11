@@ -1,6 +1,6 @@
 # Epic 2 MVP-2 過擬合風險提示 - 架構設計文檔
 
-> **歷史判讀**：本文件保留為 Phase / Epic 時期的設計追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
+> **歷史判讀（2026-10-11）：** 本文件保留為 Phase / Epic 時期的設計追溯，不作為目前 roadmap、目前完成狀態、風險計分實作契約或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。**原始計分定義內部不一致，僅保留作歷史證據：** 註解宣稱 0–10 分並列有可選 0–4 分，但本文所列三項邏輯每項只加 0／1／2 分，合計上限為 6；範例 2.5 分也不符合這些增量。本文不推定原意、不改寫原公式或範例；現行實作應以程式與具名 QA 證據核實。
 
 **版本**：v1.2.0  
 **狀態**：✅ 已完成（所有階段完成）  

@@ -9,6 +9,7 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
+| 10/11 P01 停點觀察審查 | v6 純工具 root 3 PASS／2.06秒／native0、15 pins一致；追加故障紅測2 FAIL／1.89秒證明堆疊writer例外與watchdog未排空未傳給呼叫端。另發v7修補與真reader整合驗收，v6未放行完整矩陣；原cold01 600秒失敗與300ms門檻保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P08 前向來源觀察 | 已新增正式公開 writer／exact reader，最終正式匯入 8 PASS／7.84 秒／native0，53 pins 起訖一致，mypy／語法通過。真 v4 source→parent→觀察保存→新程序 exact 重開保留完整 UNKNOWN，來源 SQLite 未變，重封訊號／來源時鐘及 alias／超限拒絕通過。完整策略生命週期／帳戶 producer／績效與 UI 未完成。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P01／F12 預檢接續 | P01 v5 root 2 PASS／2.84 秒，1457 筆 sealed 清冊與原 tree／DB hash 相符；新 final bridge 獨立12 PASS／10.95秒及純preflight80／51／594 native0，99 pins一致。完整矩陣cold01在600秒終止、native1／Job排空／程式postguard通過，沒有result或p95；精確停點觀察候選待審。凍結後漂移與攔截保留。F12 NameError與清冊不一致修正後，新guard3 PASS／3.52秒、小型真按鈕私人COW1 PASS／8.37秒，64 pins及來源不變、唯讀reader／程序排空通過。完整Main初始化與COW後，全母體query被QA guard的closefd=False限制拒絕，1FAIL／25.97秒；完整Gate保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P01 正常矩陣啟動接續 | Root v4 supervisor獨立10 PASS／6.07秒／native0，86 pins一致，真Job standalone匯入及51產品origin／594runtime核驗通過。一次完整matrix在cold01來源清冊lstat長路徑WinError3停止；同目錄延伸路徑唯讀存在，尚無操作／p95樣本。Owned Job關閉排空、source/runtime postguard通過；候選清冊長路徑修正待審，原300ms Gate保留。[接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |

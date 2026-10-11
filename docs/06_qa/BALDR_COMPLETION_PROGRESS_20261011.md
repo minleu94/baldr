@@ -378,3 +378,17 @@ Root核上述COW三份inner receipt、當前64pins後，建立唯一一次完整
 完整Main同一session15138後續poll取得 **1 FAIL／25.97秒／native1**，receipt `root/f12_full_main_after_cow_root01_23779aee1cb14e11b4a1fac9967fc4a6/receipt.json`，64 pins及來源觀測起訖一致。Inner `main_candidate_6f6597e4d85e422d8e707e90739e0b84` launcher17792、active count0／tree closed／root handles closed，未逾時。Main QApplication／theme／真正MainWindow全部初始化完成，私人副本啟用後，在「核驗雙來源並執行全母體查詢」停止：`monthly_revenue_yoy_index_v1_source_archived_open_failed:PermissionError:fdopen_must_transfer_descriptor_ownership`。
 
 Root靜態沿真source archived路徑核 `data_module/fundamental_read_snapshot.py` 的2445／2903：private封存writer使用os.fdopen(..., wb, closefd=False)，以caller保留fd供flush／fsync／close；現QA guard在write mode強制closefd=True。此是guard與正式writer生命週期契約的下一停點，不據此宣稱產品讀取缺陷。Owner接續exact actualhandle／private regular nlink1／descriptor ownership候選與closefalse正負矩陣，不放行外部／hardlink／reparse／closed／reuse／pipe，也不改正式fundamental reader、縮母體或略過保存／fresh child。完整F12旅程未通過；root現無live QA，後續新freeze審後重驗。
+
+### P01 v6 停點觀察工具獨立審查與故障紅測
+
+上一goal turn只回報補完狀態，分類no progress。本輪重新核工作樹與葉片狀態後，完整讀v6 observer及正式reader簽名。Manifest SHA `9c83dce562acea8b60b213a6868b579f96cd761974d9d071d194a75be4136701`，helper `f1d90c40dc57492917c97781564ea9d3fa395f9e099400182cc30b977a95bee1`、runner `a1fcac9c4141ccd19c632ecab33317c10cbe6d3baa8de5f0e4e7d6170e6ebe62`均保留；沒有啟動runner、Qt／Main或讀sealed store。
+
+Root獨立純工具 **3 PASS／2.06秒／native0**，receipt `root/p01_phase_v6_pure_root01_b8d659944a584343a990026db8bf8b38/receipt.json`、launcher46232終態。完整15個候選／正式依賴raw pins起訖一致；只證有界history、短stack與正常watchdog停止，不授真reader wrappers或全矩陣資格。
+
+Root新增兩個QA-only故障紅測，實際得到 **2 FAIL／1.89秒／native1**，receipt `root/p01_phase_v6_red_root01_fb64ce22db4d4cb5bcdb611f8c55ea33/receipt.json`、launcher35544終態、同15 pins一致。第一例注入snapshot writer RuntimeError，背景執行緒停止而operation仍完成；第二例先真停止watchdog再注入stop=False，operation仍完成。兩例都因呼叫端沒有收到應有RuntimeError而失敗；未建立失控執行緒或讀取產品資料。Root test SHA `fe43b476e3eb97ef724542577965121cdb219ca7f98930cf120f16e01a17f237`，wrapper SHA `50a701adc5414d40b3bb68c5d764177a3643d9ce3914316698998e8c3e38b9c1`。
+
+已要求另建v7，保留v6全部bytes：故障必須傳遞且排空失敗具名，補最長有界context／多stack與真小型writer→reader的baseline／instrumented完整DTO、issued能力、UNKNOWN、fresh來源拒絕及異常還原。v6收據對v5誤稱sealed-input postguard通過，亦須在新版本更正；v5沒有runner store postinventory，正式source／runtime postguard不能替代它。原1000母體、20頁、五cold一warm、30samples／類、600秒與strict<300ms保持，尚未放行下一完整矩陣。
+
+F12 safe-dup候選與P08完整策略路由仍在owner scratch，未凍結、未執行QA。Root審查要求F12 constructor若已閉dup再重用其數字，cleanup須核當前handle身分，不能誤關新descriptor；P08 hold_unknown須在target construction中保留原quantity，不能由等權再平衡間接成交。這是待驗要求，不宣稱候選修正或產品完成。
+
+本輪coverage／preimages／回滾packet為 `root/phase_v6_root_review_20261011/`。產品UI／Manual、架構、Roadmap方向與Index入口未變；完整補完範圍保持。兩輪root QA均terminal，沒有root live runner。

@@ -2857,3 +2857,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 QA Scheduler 八份具名全文核讀
 
 全文核讀 `BALDR_SCHEDULE_AUDIT_20261006.md`、`BALDR_SCHEDULE_REPAIR_20261007.md`、`BALDR_SCHEDULE_REPAIR_20261008.md`、`SCHEDULER_FRESHNESS_QUICK_BINDING_20261001.md`、`SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md`、`SCHEDULER_REMAINING_DIAGNOSIS_20261003.md`、`SCHEDULER_STATEMENT_CUSTODY_REPAIR_20261001.md`、`SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md`；先前均無具名全文紀錄。依 Operations QA Index 路由並對照 10/03 診斷及 10/09 後續排程收據；各文件中的舊日期狀態、research observation、非 Formal／非 credit 與未完成自然驗收限制均無矛盾，後續進展不回填成舊文當日結論。本批八份皆保留原件、未修改；行數與 SHA-256 前後一致。限定八檔 `git diff --check` exit 0；未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-272"></a>
+## 2026-10-11 Archive Superpowers Portfolio Replay 八份具名全文再核讀
+
+全文再核讀 `docs/09_archive/superpowers/plans/2026-06-15-month3-factor-replay-coverage.md`、`2026-06-15-portfolio-replay-cash-constrained-orders.md`、`2026-06-15-portfolio-replay-cash-ledger.md`、`2026-06-15-portfolio-replay-credibility-manifest.md`、`2026-06-15-portfolio-replay-execution-costs.md`、`2026-06-15-portfolio-replay-liquidity-gate.md`、`2026-06-15-portfolio-replay-lot-sizing.md`、`2026-06-15-portfolio-replay-unfilled-orders.md`。八份已納入既有 Superpowers 96/96 aggregate full-read（Matrix 第 55 行、History Entry 206），但該 aggregate 未逐檔列名；Entry 253 是不同八份原件。本批新增逐檔可核對記錄，不增加 aggregate 總數。逐一核對 Archive README、manifest、原件 SHA／bytes、implementation commit 及 Month 3 closeout：計畫步驟與歷史範圍吻合，未見需更正內容；原件與 manifest SHA 一致，全部保留未改。限定八檔 `git diff --check` 通過；未跑測試、Graphify 或最終 repo-wide links／anchors scan。剩餘兩份未具名候選列於後續批次。

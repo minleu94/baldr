@@ -632,3 +632,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA 增量補記：** 再具名全文核讀 8 份 Natural Learning／Personal Delivery 文件，3 份依 M10 bounded widget 與後續跨頁等待收據更新；QA 具名快照累計 87／36。見 [Coverage History Entry 270](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-270)。舊 aggregate 無逐檔 manifest，故不推算去重總數。
 
 **2026-10-11 QA 排程增量補記：** 新增 8 份具名全文核讀，當日日期界線及後續排程收據沒有矛盾，原件皆保留未改；具名快照累計 95／36。見 [Coverage History Entry 271](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-271)。舊 aggregate 無逐檔 manifest，總閱讀數不作精確累加。
+
+**2026-10-11 Archive Superpowers 補記：** Portfolio Replay 8 份歷史計畫已逐檔全文再核讀並與 README／manifest／closeout 核對；它們已在既有 96/96 aggregate 中，本次僅補具名路徑，不增加 aggregate 數。見 [Coverage History Entry 272](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-272)；另兩份待查路徑將另記。

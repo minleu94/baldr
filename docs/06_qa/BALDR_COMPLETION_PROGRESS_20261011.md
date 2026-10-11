@@ -621,3 +621,55 @@ Health v2_03 manifest SHA `7aa88777092df7a2dc22a3cf9999e5ec5943b38703a7afece7ac3
 Health v2_04新manifest SHA `78772aaaf394e9da6692e9c069afde48175531f6699dd3e40323724584862113`；355 repo modules（含22 initializer）、1 namespace、68 stdlib與20 external，未解析local為0。Root獨立460pins／原版本保全／完整diff重建與四source AST再核相同；這是靜態證據，fresh origin／pytest待P01矩陣終態後串行。兩consumer相容sibling已續授；paper-main preopen之外的策略EOD adapter、正常P06／完整P08／M3仍缺。
 
 Root保存 **22份已終態raw** 至 `root/p01_health_v203_review_7b703e0090f845ec9a96af5c4882c838/receipt.json`，SHA `f3f93b4ab2a8eacadad05a70e0f028fb4a3ecaf407c146f8d3f83a404a9ab1fa`；其中full matrix欄明列live、不是終態接受。本輪新增的root工具／receipts／preimages只在ignored QA根。P08 owner已寫真v4→forward observation→MA intent→公開行情→daily→ledger→fresh reader候選測試，未freeze／未QA；KD與兩namespace完整交易／成本及績效／UI驗收保留。
+
+### P01 矩陣終態、strict resolve 身分對照與 Health 五項具體缺口
+
+上一 goal turn 已以精確 session3127 handle 核 live，分類 verified wait；本輪繼續同 handle 至 terminal，再完成 Health 真載入、兩次定向測試及唯讀 cause 核對，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有新的完整工作包接受。
+
+#### P01 原矩陣停止與程序收尾
+
+原 session3127 於 `2026-10-11T14:12:57.035253+00:00` 終態 **exit1**，不再以 live 判讀。Host `root/p01_pm2_full_matrix_root01_cf1eef2c39434322a250b97b17526f9d/receipt.json` 的893個pre/post raw pins相同。原 supervisor attempt `attempt_20261011T140252Z_c583b095d40a` 總elapsed **604.0349435秒**；cold01真角色600秒期限用盡後，primary為TimeoutExpired，外層OwnedCommandFailure。Role收據的native1是Job收尾後的exit，不稱自然成功。
+
+原Job before-cleanup為5964／49308／52052，after-cleanup與after-root-exit均空、closed=true、cleanup_errors空；80 runtime file／51產品origin／594套件postguards通過。只有cold01啟動，其他四cold與warm沒有執行；result.json不存在，phase seq25最後為 `strict_read_session_open_failed`／`technical_parent_v4_child_path_invalid`。原1457-entry store初核通過；沒有首頁或暖操作採樣、新p95或300ms接受。原role stderr僅font cache warning，沒有保存底層OSError。
+
+Root使用同一唯讀探針對固定sealed segment0第一個child的205字元repository root與437字元manifest核對：manifest SHA `580c2a7710546b343e651393715b9556e53605390965575e5f5d7e087c3958c6` 起訖相同，lstat的dev／ino／size／mtime／nlink／attributes保持。Sandbox兩路徑皆strict realpath PermissionError／errno13／WinError5；經自動審查允許的host兩路徑皆成功，去extended prefix後與原canonical identity完全相等。原收據為 `root/strict_resolve_p01_pm2_sandbox.json`、`root/strict_resolve_p01_pm2_host.json`。這證明這兩個精確路徑有執行環境存取差異；不能冒稱已取得原live underlying cause、全部sealed路徑已驗或完整矩陣通過。原來源與守衛不改，owner另建QA-only exception chain／真正error callback早收尾候選。
+
+#### Health v2_04 真載入與 sandbox／host 重驗
+
+同一manifest `78772aaaf394e9da6692e9c069afde48175531f6699dd3e40323724584862113`、root release `20d3c13d841eff6189d282bba8f7c50363aafb095f6f5f3ada98a9e52f496287` 保持。Fresh origin host `root/health_v204_origin_feff383b32de42d3b5eced4aa856dc56` 為 **native0**：四個candidate實際`__file__`／SHA成立，39個已載入本機模組皆在manifest expected pins中，另保存725個實際runtime檔案觀測；後者不是725項外部runtime全部已預先pin的宣稱。460 pre/post pins相同，新formal targets仍不存在。
+
+Origin wrapper啟動venv PID47524，probe實際base Python PID48552；root初次額外解析錯誤假設兩者相等，AssertionError後直接讀原JSON核到此區別，沒有改candidate或把它當origin失敗。後續以四origin、39本機module與460pins的原assertions判讀。
+
+| 固定候選階段 | 終態與範圍 |
+|---|---|
+| Sandbox兩測試檔 | `root/health_v204_focused_tests_81c1a39628f049efa3b423e28c5ab4b5`：**15 PASS／23 FAIL／10.38秒／native1**，460pins相同。23FAIL均在archive `root_abs.resolve(strict=True)` PermissionError／WinError5，未到完整新程序旅程。 |
+| 同script唯讀路徑對照 | `strict_resolve_health_v204_sandbox.json`／`strict_resolve_health_v204_host.json`：同四個既存路徑、兩種strict API共八檢；sandbox八拒絕、host八成功，所有metadata／source hash相同。未修改產品守衛。 |
+| Host兩測試檔 | 自動審查允許後，沿同候選／460pins、全新私人`.t`根重驗；`root/health_v204_focused_tests_1897f1bc8d1244eebf15e8c1a260660b`：**32 PASS／5 FAIL／1 skip／3.09秒／native1**，460pins相同、formal新檔仍不存在。原sandbox失敗完整保留，不累加兩次passes。 |
+
+Host五項失敗已逐項核，不再統稱環境問題：
+
+1. 真refresh→PaperPositionIdentityProvider→baseline/witness→evaluator/archive成功，但exact read為blocked。Root用同public reader唯讀重開原結果，唯一blocker是 `position_health_source_future_dated:provenance.position_identity_source.observed_at`：10/11觀察被用於10/08決策。因果守衛正確；新版fixture須用明示受控盤前時鐘，保留晚觀察拒絕，不放寬reader。
+2. 原structural-only baseline無來源witness，exact model為degraded／unqualified；source_observed_at與baseline_saved_available_at都為None，測試卻fromisoformat('None')。缺時鐘須保持未知，不借archive時鐘補值。
+3. Raw shares `100.0` 的負例在archive嚴格JSON parser被 `saved_health_result_floating_json_number_rejected` 拒絕。須對齊真正拒絕契約，不授浮點股數或改鬆parser。
+4. Extra-universe負例保存receipt時，plain `os.open` 的長temporary path得到FileNotFoundError／WinError2。
+5. Wrong-source負例在另一個長receipt temporary path發生同類plain I/O失敗；需沿既有internal I/O path邊界，保留canonical identity與create-only publication。
+
+Root唯讀重開兩原結果的證據在 `root/health_v204_existing_saved_models_root01.json`；460pins及原health目錄全部bytes保持。Skip尚未提供reparse setup成功證據。五項缺口已交owner另建v2_05，原v2_04保持；兩consumer相容候選先獨立freeze，不把盤前Health授成策略EOD或完整P06。
+
+Root獨立核終態、Job、pins、原路徑對照與兩模型後，create-only保存 **34份raw** 至 `root/p01_health_v204_terminal_review_51fbab12675c46c398491c198d4cee69/receipt.json`，SHA `d86ae0fce0dc3cf6d6827586a841d46759e21c50675b3459c472f60ff0147fd5`；兩份正式文件preimages亦保留。Coverage／回滾是 `root/health_v204_terminal_scope_and_rollback.md`，僅追加Snapshot與本QA，不新增Manual功能或更改Roadmap／架構契約。
+
+P08 v3新freeze SHA `a7123366b679e44677aca2ef6a5bc1fc643a9578b840a1d9ec9500d5f7009282` 已交root，尚未QA或正式套用。Owner明列正式seed writer未保存availability、MA首intent依scratch reader、KD僅接受既有daily checkpoint、daily首seed gate只核準備時鐘等生命週期缺口；另建v4補真seed→MA/KD首intent→daily／checkpoint，不能用setup-only bootstrap結案。完整策略、績效、UI、M3與全部產品交付Gate繼續。
+
+### Health consumer v5 獨立清冊審查：前版 sidecar 檔案雜湊不符
+
+上一 goal turn 為產品進度回覆，分類 no progress。本輪依目前工作樹繼續獨立靜態審查，產生可改變後續動作的拒絕證據，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持。
+
+Compat freeze_v5 manifest SHA `5a99b878bdc42420d84150fb89003616233e85a3d7918df1bdcdcafa2d311993`，full.diff SHA `360b34068fc7eefa88bc7a922bb639d502812b268e2752d315f0c44249983756`、59123 bytes。Root全讀兩個product差異、既有consumer呼叫與兩份新增測試／overlay／look-ahead及回滾，核對具名v1／v2分支、paper-main preopen、來源與identity clock、entry日及缺identity保持awaiting／degraded；未把本候選授成P08 EOD、正常Main或完整Health。
+
+Root審查工具從四份saved preimage逐行重建全文diff，與原full.diff bytes完全相同；四formal targets仍等於各preimage SHA。修正後獨立檔案檢查共475次、462個unique paths，包含candidate／formal／依賴／runtime／stdlib／前版metadata。唯一真正mismatch是 `prior_compat_freeze_pin.sidecar_sha256`：宣告 `86337ea37dca461746b80dc4f1e95667d63189f2d3dc10fb517c6f70367d2bee` 是v4 manifest hash；111-byte sidecar檔本身實際hash為 `9ed4b9d77642d4d4bd043dcdf89aeb8303672a79e14dfcc514f8be26cd1666ba`。Sidecar第一token與manifest相同不等於sidecar file SHA相同，故v5仍為static_rejected，未執行candidate origin／pytest或套正式。
+
+Root初版工具誤將stdlib-relative paths當repo-relative，曾報一批缺件；原工具與第一收據保留。讀dependency builder及manifest後沿sysconfig stdlib根修正，再核其餘檔案全部一致，不能把root的路徑解讀錯誤算為candidate缺件。最終收據 `root/health_compat_v5_static_review_0fbf15e99b2b4ae8b47a1f09992dd1b3/receipt.json`，AST核四個目標只增加具名validator／consumer接線與候選測試。這是靜態差異證據，不是實際runtime／金融／UI通過。
+
+Root create-only保存10份raw／兩formal文件前像於 `root/health_compat_v5_review_packet_5efd92a63d8948f0898979f47dd5339b/receipt.json`，SHA `ec2fe602772e3030f115b8f33f62894a6161dc6de10d9cc1518c36f6f5db4386`。Scope／回滾見 `root/health_compat_v5_scope_root01.md`；僅追加本QA與Snapshot，不新增Manual操作或更改Roadmap／架構。
+
+Owner已接續Health v2_05五項原失敗修正，之後另建metadata-only compat v6，保留v5原件並精確pin v4 sidecar及v5 predecessor；兩者仍須root審查。P01 owner續補原error chain與真error callback收尾，P08 owner續補真seed／availability及MA／KD lifecycle。完整效能、帳本、績效、UI、同版EXE、自然排程與真人接受保持開放。

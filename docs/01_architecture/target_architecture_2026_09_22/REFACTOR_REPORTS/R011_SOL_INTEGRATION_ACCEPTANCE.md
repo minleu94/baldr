@@ -1,5 +1,7 @@
 # R011 — SOL 整合驗收
 
+> **範圍提示（2026-10-11）：** `TASK_STATUS: PASS` 僅適用 R011 所列 execution capture、legacy projection 與相容證據。R031 現行 disposition 為 `ACCEPTED_WITH_RETAINED_COMPATIBILITY`；後續 TMP／caller 裁定見 [R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [FINAL migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。本 acceptance 不代表整體 refactor、產品 Gate 或所有 callers 無界相容。
+
 TASK_STATUS: PASS
 
 ## 凍結版本與實際範圍

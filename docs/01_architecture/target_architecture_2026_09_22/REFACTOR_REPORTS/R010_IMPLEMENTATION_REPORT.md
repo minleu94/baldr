@@ -1,5 +1,7 @@
 # R010 實作報告：PreparedMLInput 與 ML 邊界契約
 
+> **狀態時點提示（2026-10-11）：** 本文記錄 R010 凍結契約與 focused 驗證；`TMP-ML-01 → R026` 是當時的執行安排。R031 目前將 R010 定為 `ACCEPTED_WITH_ML_BINDING_AND_GUARD_SCOPE`；supported caller/profile 的遷移條件後由 R026／R029 有界接受，未驗證的 runtime profile、custom／unknown model artifact 與 promotion 不在此結論內。現行 task disposition 見 [R031 31-task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)，目前狀態見 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。原始驗收證據保留。
+
 ## 結果
 
 R010 已在隔離 worktree 完成純資料契約、應用層 Protocol shell 與 focused tests。依獨立審查的兩項 CHANGES_REQUIRED finding，已補 production model safety gate 與 date-only availability 支援。沒有修改既有 ML feature、model、loader、store、producer、資料庫或 provider；也沒有載入模型、讀取來源、建 feature、推論、訓練或寫入正式資料。R010 不是資料搬移或 ML ABI 相容實驗的完成證明。

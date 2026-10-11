@@ -1,5 +1,7 @@
 # R010 PreparedMLInput：SOL 整合驗收
 
+> **範圍提示（2026-10-11）：** `TASK_STATUS: PASS` 僅接受 R010 的 immutable input contract、application Protocol 與所列 focused integration checks。後續 R026／R029 只關閉 supported caller/profile 的 `TMP-ML-01` 遷移條件；未知／custom artifacts、其他 runtime profiles 與 model promotion 仍不在範圍內。R031 現行 task disposition 見 [31-task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)，目前狀態見 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
+
 TASK_STATUS: PASS
 
 R010 的純 `PreparedMLInput` leaf contract、application-side ML adapter Protocol 與專用測試已按凍結 SHA 整合到 main；沒有 provider I/O、builder/model 呼叫、source path 搬移、feature schema 更動、artifact 發布或 ML 推論。最終相依的 R008 app contract 是 R009 窄補充後的 SHA `813539DDD5D073EF9407686534EB8874D262F2F9615F50F8A356A356975E1D81`。

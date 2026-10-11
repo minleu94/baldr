@@ -2,6 +2,8 @@
 
 > **歷史計畫（2026-07-11）**：本文的一次性 automation、舊排程與 Git commit／push 操作只記錄當日循環，不是目前派工、automation 或發佈授權；不得直接重啟。現況與優先序看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)。
 
+> **歷史核對補充（2026-10-11）**：Superpowers README 記錄四輪 automation 的 12／15 數字差異仍未解；本文列出的十二支 cron 是當時計畫內容，不能用來消解此差異或推論目前 automation 設定。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 將安全重構 automation 從 08:00 延長至 12:00，新增四個完整 Planner → Implementation → QA 循環。

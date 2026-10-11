@@ -12,13 +12,15 @@
 
 日期欄按 `YYYYMMDD`／ISO 日期解析；SQLite 整數日期不會交由 pandas 當成 epoch nanoseconds。rowset hash 保留列順序及 JSON scalar 型別差異。既有 SQLite-first、CSV fallback、missing／empty 與錯誤降級行為未變；六欄 CSV wire format、update writer、DB schema、歷史 cutoff 路徑均未變。
 
-## 上游時間與仍缺的來源契約
+## 初始 Current-only 切片中的上游時間邊界
 
-`data_module/data_loader.py::DataLoader.update_industry_index` 會向 TWSE `MI_INDEX` 端點請求資料並解析 JSON，再更新既有產業指數 CSV；目前它沒有把原始 response bytes/hash、最終 response URL 或 source-specific capture completion time 一同持久化。SQLite 同步由既有資料更新流程負責，也沒有在這個切片中增加 source receipt。因此 provider 不能證明某列何時由官方發布或何時可供決策。
+以下前兩段記錄本文件初始 current-only slice 檢視時的上游狀態；其後的 2026-09-28 follow-up 已新增 TWSE capture receipt 與 date-scoped projection。
+
+在初始切片檢視時，`data_module/data_loader.py::DataLoader.update_industry_index` 會向 TWSE `MI_INDEX` 端點請求資料並解析 JSON，再更新既有產業指數 CSV；當時 writer 沒有把原始 response bytes/hash、最終 response URL 或 source-specific capture completion time 一同持久化。SQLite 同步由既有資料更新流程負責，也沒有在該切片中增加 source receipt。因此該 slice 的 provider observation 不能證明某列何時由官方發布或何時可供決策。
 
 `scripts/scheduled/data_freshness_probe.py` 對 SQLite source status 使用 quick-update receipt clock，並明列 `source_publish_or_fetch_receipt_not_recorded` 一類 time provenance。該 quick receipt 不是 `industry_indices` 原始 response 的 source-specific capture receipt；此切片不讀它，也不把它轉成 `available_at`。`companies.csv` 的既有 registry sidecar只描述公司分類來源，不能替產業指數背書。
 
-所以此 payload 只可說明「本次 current mapper 實際看見哪些列及其內容身份」。它不得供歷史 recommendation/PIT membership、回測或 personal model 的時間資格使用。要提升為 source-time contract，後續 writer 必須在同一官方 response 寫入流程保存實際 endpoint、request date/type、response bytes hash 與 aware UTC capture 完成時間，並將 receipt 原子地綁到所寫列；本切片沒有改動該 writer。
+所以初始 payload 只可說明「本次 current mapper 實際看見哪些列及其內容身份」，不得供歷史 recommendation/PIT membership、回測或 personal model 的時間資格使用。後續 writer follow-up 已保存 endpoint、request date/type、response bytes hash 與 aware UTC local capture 完成時間，並將 receipt 綁到 date-scoped projection；但 official `available_at`／`published_at` 仍 unknown，且本 provider observation 不讀取 receipt 或 projection marker，也沒有與它們綁定。因此後續 capture evidence 仍不能讓這份 current observation 取得歷史 PIT 資格。
 
 ## 檔案與驗證
 

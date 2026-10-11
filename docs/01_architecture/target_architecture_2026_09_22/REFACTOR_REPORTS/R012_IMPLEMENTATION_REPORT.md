@@ -1,6 +1,6 @@
 # R012 實作報告：create-only result artifact store、save 與 query
 
-> **狀態時點提示（2026-10-10）：** `READY_FOR_REVIEW`、初次 `CHANGES_REQUIRED` 與本文所述待審項目是較早凍結版本的實作／review 快照；後續獨立複審與 SOL 整合 acceptance 已完成，見 [Luna rework review](R012_LUNA_REWORK_REVIEW.md) 與 [SOL acceptance](R012_SOL_INTEGRATION_ACCEPTANCE.md)。目前 task／Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。原始範圍與證據保留於本文。
+> **狀態時點提示（2026-10-11）：** `READY_FOR_REVIEW`、初次 `CHANGES_REQUIRED` 與本文所述待審項目是較早凍結版本的實作／review 快照；後續獨立複審與 SOL 整合 acceptance 已完成，見 [Luna rework review](R012_LUNA_REWORK_REVIEW.md) 與 [SOL acceptance](R012_SOL_INTEGRATION_ACCEPTANCE.md)。R031 現行 disposition 為 `ACCEPTED_WITH_CREATE_ONLY_STORE_SCOPE`，明確不外推至所有 multi-store atomic transactions；R020 recovery／`TMP-REC-04` 範圍見 [R020 report](R020_IMPLEMENTATION_REPORT.md)，TMP 最新裁定見 [R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [FINAL migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。現況見 [R031 31-task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。原始範圍與證據保留於本文。
 
 IMPLEMENTATION_STATUS: READY_FOR_REVIEW
 

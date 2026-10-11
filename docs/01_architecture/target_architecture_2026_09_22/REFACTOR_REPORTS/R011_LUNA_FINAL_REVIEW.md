@@ -1,5 +1,7 @@
 # R011 Luna final independent review
 
+> **範圍提示（2026-10-11）：** `REVIEW_STATUS: PASS` 僅適用本文列出的 R011 凍結 SHA 與 acceptance scope。R031 現行 disposition 為 `ACCEPTED_WITH_RETAINED_COMPATIBILITY`；必要相容與後續 TMP 狀態見 [R029 report](R029_IMPLEMENTATION_REPORT.md) 及 [FINAL migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。這不是整體 refactor 或所有產品／模型 Gate 通過宣告。
+
 REVIEW_STATUS: PASS
 
 ## 凍結版本與範圍

@@ -1,5 +1,7 @@
 # R011 Luna independent review
 
+> **狀態時點提示（2026-10-11）：** 本文 `REVIEW_STATUS: CHANGES_REQUIRED` 是較早凍結 SHA 的初次複審及 finding 記錄；後續 [R011 final review](R011_LUNA_FINAL_REVIEW.md) 對修正版為 PASS，並由 [SOL integration acceptance](R011_SOL_INTEGRATION_ACCEPTANCE.md) 接受 R011 有界範圍。R031 現行 disposition 為 `ACCEPTED_WITH_RETAINED_COMPATIBILITY`；後續相容／TMP 裁定見 [R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [FINAL migration ledger](../FINAL_MIGRATION_SEQUENCE.md)。初次 finding 不再代表目前未解 blocker，原文保留。
+
 REVIEW_STATUS: CHANGES_REQUIRED
 
 ## 審查基準

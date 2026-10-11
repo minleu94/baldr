@@ -1,5 +1,7 @@
 # R010 Luna 獨立審查
 
+> **狀態時點提示（2026-10-11）：** 本文前段 `INITIAL_REVIEW_STATUS: CHANGES_REQUIRED` 僅適用原凍結 SHA；同文後段對修正 SHA 的最終複審為 `REVIEW_STATUS: PASS`，另由 [SOL integration acceptance](R010_SOL_INTEGRATION_ACCEPTANCE.md) 接受 R010 有界契約範圍。R031 的現行 task disposition 與 R026／R029 後續 supported caller/profile 範圍見 [R031 31-task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)；不代表所有模型／profile 或 promotion 已驗收。原 finding 保留為歷史證據。
+
 ## 初版審查（舊凍結 SHA）
 
 INITIAL_REVIEW_STATUS: CHANGES_REQUIRED

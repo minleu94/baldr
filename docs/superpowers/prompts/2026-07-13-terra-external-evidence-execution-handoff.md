@@ -1,6 +1,6 @@
 # Terra External Evidence Execution Handoff and Prompt Pack
 
-> **歷史 handoff／prompt pack（2026-07-13）**：下列 Wave 授權與可啟動狀態只代表當時的交接記錄，不是目前授權，也不應據此啟動 worker。現況與優先序看[專案快照](../../00_core/PROJECT_SNAPSHOT.md)，Gate 判讀看[近期 QA 主題地圖](../../06_qa/README.md)。
+> **歷史 handoff／prompt pack（2026-07-13）**：下列 Wave 授權與可啟動狀態只代表當時的交接記錄，不是目前授權，也不應據此啟動 worker。現況與產品／工程優先序依[專案快照](../../00_core/PROJECT_SNAPSHOT.md)、[Product Roadmap](../../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 與 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 判讀；Gate 與來源接受依[近期 QA 主題地圖](../../06_qa/README.md)及具名收據判讀。External Validation Register 僅供 append-only 歷史追蹤，其中授權文字不能單獨作為目前派工依據。
 
 > Handoff 日期：2026-07-13
 >
@@ -15,6 +15,8 @@
 > 授權增補：[External Evidence Wave 1 執行授權增補](../specs/2026-07-13-external-evidence-wave-1-authorization-addendum.md)
 
 ## 1. Authority 與目前真相
+
+> **標題判讀**：「目前真相」只指本 handoff 在 2026-07-13 的交接快照，不代表目前專案狀態或工作授權。
 
 - A～G engineering integration 已驗證但不得重做；immutable engineering anchor=`4f72766a1d1e7bd4b80ccb595ad3cb2fa84bd84a`。
 - Terra 啟動時由 Coordinator 動態封存 `execution_baseline_sha`；必須是 clean、同步 `dev` 且為工程錨點後代。

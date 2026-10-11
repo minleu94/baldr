@@ -2747,3 +2747,28 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 Archive 根層第七批具名全文核讀與一次性收據提示
 
 新增全文核讀根層 3 份：`PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_28_STAGING.md`（93 行，SHA-256 `EA9DAC100654688C0C16DBFB434AE11149FC266CB9468CCD7C219FF5D025D4C3`）、`PROSPECTIVE_FORMAL_RESTART_WEEKLY_UPDATE_2026_08_25.md`（175 行，`6598A792AFCB073F0A86397761D951DB89B052642F29443CBBCED5E12C42BCE3`）、`V4_ML_RELEASE_2026_09_07.md`（1,432 行，`6D68CA79CC8DC11053A1D42BBEF2E26049D67B8C7F53046174F338D5350C1FB5`）。Archive README 均已有直接路由；前兩份依日期順序記錄一次性 clock activation blocked 與 validator 修復，未見結果內部矛盾，但早期命令不應重跑。V4 是 bounded research receipt，formal OOS／alpha／promotion／broker 權限均 false；長文中的 D 槽、lock 與 audit 命令不能當現行授權。三份檔首均加歷史時點／勿重跑提示，正文與數據保留。舊 Archive aggregate 無可還原逐檔 manifest，不重算；未讀受保護文件或執行測試、Graphify、最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-250"></a>
+## 2026-10-11 Superpowers retained originals 最後三份具名全文核讀
+
+全文核讀最後 3 份保留原件：`plans/2026-07-11-safe-refactor-four-extra-cycles.md`、`specs/2026-07-12-v2-2-sidecar-weekly-collection-design.md`、`prompts/2026-07-13-terra-external-evidence-execution-handoff.md`。三份都已補強日期／狀態界線：十二支 cron 不得用來推定目前 automation 數量；V2.2 排程不代表現行啟用或寫入授權；「目前真相」只指 7/13 handoff 快照，外部授權文字不得單獨作派工依據。Superpowers 目前 69 份 retained originals 均有具名全文核讀；README 已有相應主題入口。全目錄既有 105 份估算與目前實際分類的 69 份 retained originals 不再混用。未改其他路徑、未跑測試、Graphify 或最終全庫 links／anchors scan。
+
+<a id="coverage-entry-251"></a>
+## 2026-10-11 QA WP1–WP4 八份具名全文核讀
+
+全文核讀 `docs/06_qa/WP1_DAILY_CHAIN_REVALIDATION_20260928.md`、`WP1_PARTIAL_INDUSTRY_CAPTURE_SYNC_20260928.md`、`WP1_REAL_CHILD_REHEARSAL_20260928.md`、`WP2_INDUSTRY_INDEX_CURRENT_PROVENANCE_20260928.md`、`WP2_INDUSTRY_INDEX_UI_OBSERVATION_20260928.md`、`WP3_WATCHLIST_QA_20260928.md`、`WP4_FAIL_CLOSED_VALIDATION_20260928.md`、`WP4_PERSONAL_MODEL_ASSESSMENT_READBACK_20260928.md`。八份均為有界歷史 QA 證據，非現行權威；依 Integration QA index 路由並對照 WP5 後續 receipt。修訂 WP2 provenance：將「未保存 receipt」限定為初始 slice，並區分後續 local capture/projection receipt 與仍未知的官方 available/published time；provider 未綁定 receipt，故不推論 PIT 資格。其他七份沒有需要改寫的內部矛盾；仍缺各自列明的自然日／正式 PIT／前景 UI 等證據，不將 bounded fixture 結果外推。舊 QA aggregate 缺完整逐檔 manifest，不重算總數；未碰受保護的 completion-progress 文件，未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-252"></a>
+## 2026-10-11 Archive target architecture／Dispatch 八份具名再核讀
+
+具名再核讀 `docs/09_archive/target_architecture_2026_09_22/ARCHITECTURE_INVARIANTS.md`、`ML_COMPATIBILITY_PLAN.md`、`TARGET_ARCHITECTURE.md`、`TARGET_DATA_FLOW.md`，以及 `REFACTOR_DISPATCH/GEMINI_REVIEW_R002.md`、`GEMINI_R003.md`、`GEMINI_REVIEW_R003.md`、`GEMINI_REVIEW_R004.md`。此前 Matrix 已記目標架構 Archive 套件 30/30 全文核讀，舊 Entry 205 未逐檔列名；本次只補可查證路徑，不加算覆蓋總量。四份設計原件是歷史提案／草案，四份派送文件是歷史 review 材料，均不是現行權威或派工授權；Archive README 的替代映射、Dispatch README 與 R031 索引的範圍／結論一致。Dispatch README 未逐列連到 R002–R004 收據，記作導覽缺口未修。`TARGET_ARCHITECTURE.md` 中少量簡體字保留於歷史原件，不改寫。未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-253"></a>
+## 2026-10-11 Archive Superpowers 八份具名再核讀與來源差異
+
+具名再核讀 `docs/09_archive/superpowers/plans/2026-07-08-v3-score-effectiveness-ml-readiness.md`、`specs/2026-07-08-v3-score-effectiveness-ml-readiness-design.md`、`plans/2026-07-07-ui-ux-readability-polish.md`、`specs/2026-07-07-ui-ux-readability-polish-design.md`、`plans/2026-07-07-workbench-visual-hierarchy-polish.md`、`specs/2026-07-07-workbench-visual-hierarchy-polish-design.md`、`plans/2026-06-14-month-3-factor-run-integration.md`、`specs/2026-06-14-month-3-factor-layer-design.md`。原件 SHA／bytes 與 manifest 相符，讀前讀後一致；既有 Matrix 已列該子目錄 96/96 全文核讀，本次補具名路徑、不增加總數。Archive README 與八個舊路徑 stub 可到達原件；兩組 UI polish 未在 live Superpowers README 直接列名，記為導覽改善候選。三組 source-stub commit 與 manifest 之間仍有未查 Git history 的 provenance 差異，明列未解，不推定修復。Factor integration completion 不代表整個 Factor Layer 已驗收。未改原件、未跑測試、Graphify 或最終全庫 links／anchors scan。
+
+<a id="coverage-entry-254"></a>
+## 2026-10-11 REFACTOR_REPORTS R010–R012 八份具名全文核讀與範圍提示
+
+全文核讀並補充時點／範圍說明 `R010_IMPLEMENTATION_REPORT.md`、`R010_LUNA_INDEPENDENT_REVIEW.md`、`R010_SOL_INTEGRATION_ACCEPTANCE.md`、`R011_IMPLEMENTATION_REPORT.md`、`R011_LUNA_FINAL_REVIEW.md`、`R011_LUNA_INDEPENDENT_REVIEW.md`、`R011_SOL_INTEGRATION_ACCEPTANCE.md`、`R012_IMPLEMENTATION_REPORT.md`。R010/R011 的 PASS 限於各自凍結契約與驗收範圍；R012 的 R031 接受只覆蓋 create-only store，不代表 multi-store 原子交易全數完成。TMP-ML-01→R026 是後續計畫；較早 SHA 的 CHANGES_REQUIRED 與較晚修訂 SHA 的 PASS 分開標清。對照 R031、QA index 與相關報告。早期 Coverage History 的 74 份 REFACTOR_REPORTS 聚合未留下具名清單，無法排除重疊，因此本批只增列可稽核檔名，不將 8 份加進既有確切總數。未修改索引、未跑測試、Graphify 或最終全 repo links／anchors scan。

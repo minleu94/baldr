@@ -1,6 +1,6 @@
 # V2.2 Sidecar Weekly Collection Design
 
-> **歷史設計核准（2026-07-12）**：本文的「已取得設計核准」、排程時間與正式路徑只表示當日設計狀態，不代表目前排程啟用或資料寫入授權。現況以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 及 [排程唯讀 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) 為準。
+> **歷史設計核准（2026-07-12）**：本文的「已取得設計核准」、排程時間與正式路徑只表示當日設計狀態，不代表目前排程啟用或資料寫入授權。現況與工程順序以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[Product Roadmap](../../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 與 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 為準；V2.2 成熟度定義看 [Version Roadmap](../../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)，排程證據與操作邊界看 [QA 主題地圖](../../06_qa/README.md) 及 [排程唯讀 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 > 日期：2026-07-12
 > 狀態：已取得使用者設計核准；等待 written spec review 後才進入實作。

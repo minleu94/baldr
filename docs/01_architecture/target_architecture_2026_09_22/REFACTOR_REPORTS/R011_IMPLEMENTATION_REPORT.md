@@ -1,6 +1,6 @@
 # R011 實作報告
 
-> **狀態時點提示（2026-10-10）：** `READY_FOR_REVIEW` 及本文後段「review 尚未完成」均是實作者交付時快照，已由後續獨立 review 與 SOL 整合 gate 覆蓋。裁決見 [Luna final review](R011_LUNA_FINAL_REVIEW.md)、[SOL acceptance](R011_SOL_INTEGRATION_ACCEPTANCE.md)；目前 task／Wave 狀態看 [Model Assignments](../REFACTOR_MODEL_ASSIGNMENTS.md) 與 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。本報告保留原始實作證據。
+> **狀態時點提示（2026-10-11）：** `READY_FOR_REVIEW` 及本文後段「review 尚未完成」是實作者交付快照，已由後續獨立 review 與 SOL 整合 gate 覆蓋。R031 現行 disposition 為 `ACCEPTED_WITH_RETAINED_COMPATIBILITY`；本文 TMP 表格中的後續 owner／待移除描述，請以 [R029 report](R029_IMPLEMENTATION_REPORT.md) 與 [FINAL migration ledger](../FINAL_MIGRATION_SEQUENCE.md) 的後續裁定判讀。複審見 [Luna final review](R011_LUNA_FINAL_REVIEW.md) 與 [SOL acceptance](R011_SOL_INTEGRATION_ACCEPTANCE.md)；現況見 [R031 31-task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 及 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。本報告保留原始實作證據。
 
 TASK_STATUS: READY_FOR_REVIEW
 

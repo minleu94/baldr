@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
-from threading import Thread
+from threading import Barrier, Event, Lock, Thread, get_ident
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,9 @@ import app_module.daily_market_technical_parent_v4_query as parent_query_module
 import app_module.daily_market_technical_snapshot_v4_repository as snapshot_repository_module
 import app_module.daily_market_technical_universe_v4_query as universe_query_module
 import app_module.personal_data_paths as personal_data_paths_module
+from app_module.task_cancellation import (
+    _issue_read_operation_cancellation_capability,
+)
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalRuleStateFilterV4,
 )
@@ -1047,6 +1050,295 @@ def test_p01_page_path_render_memo_preserves_lexical_key_and_thread_boundary(
     assert rendered_inputs.count(str(relative_path)) == 1
 
 
+def test_p01_parallel_child_read_round_is_bounded_equivalent_and_keeps_fallbacks(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_small_full_store
+    session = _open_small_read_session(fixture)
+    strict_clone = dataclass_replace(session)
+    query = session.create_query(
+        stock_filter=("S0000", "S0016"), sort_key="stock_code", page_size=2
+    )
+    selection = session.select_stock_codes(query)
+    assert selection.stock_codes == ("S0000", "S0016")
+    assert len({session._candidates[index].artifact_index for index in selection._candidate_indexes}) == 2
+
+    original_reader = universe_query_module._read_session_child_snapshots_for_session
+    original_executor = universe_query_module.ThreadPoolExecutor
+    requested_workers: list[int] = []
+
+    class TrackingExecutor(original_executor):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            requested_workers.append(kwargs["max_workers"])
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(universe_query_module, "ThreadPoolExecutor", TrackingExecutor)
+    caller_thread_id = get_ident()
+    phase = ["fast"]
+    barrier = Barrier(2)
+    lock = Lock()
+    active = 0
+    max_active = 0
+    reads_by_phase: dict[str, list[int]] = {
+        "fast": [],
+        "capability": [],
+        "pre_cancel": [],
+        "strict": [],
+        "cancel": [],
+    }
+    completed_reads: list[int] = []
+    callback_threads: list[int] = []
+    worker_memos: list[tuple[str, int, Any]] = []
+
+    def observed_reader(*args: Any, **kwargs: Any) -> Any:
+        nonlocal active, max_active
+        thread_id = get_ident()
+        memo = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            reads_by_phase[phase[0]].append(thread_id)
+            if phase[0] in ("fast", "capability"):
+                worker_memos.append((phase[0], thread_id, memo))
+        try:
+            if phase[0] in ("fast", "capability"):
+                assert memo is not None
+                assert memo._owner_thread_id == thread_id
+                barrier.wait(timeout=10)
+                if phase[0] == "capability":
+                    assert kwargs["cancel_callback"] is not capability_callback
+            result = original_reader(*args, **kwargs)
+            if phase[0] == "cancel":
+                completed_reads.append(thread_id)
+            return result
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(
+        universe_query_module, "_read_session_child_snapshots_for_session", observed_reader
+    )
+
+    fast_page = session.read_selection_page(
+        selection, page_index=0, page_size=2, cancel_callback=None
+    )
+    assert len(reads_by_phase["fast"]) == 2
+    assert len(set(reads_by_phase["fast"])) == 2
+    assert max_active == 2
+    assert requested_workers == [2] and requested_workers[0] <= 8
+    assert len(worker_memos) == 2
+    assert len({id(memo) for _phase, _thread, memo in worker_memos}) == 2
+    assert all(memo._closed and not memo._values and not memo._components for _, _, memo in worker_memos)
+
+    # 合法 TaskWorker capability 允許 child reader 只輪詢 Event probe；外部
+    # callback 仍只在目前 page operation 執行緒檢查。
+    phase[0] = "capability"
+    callback_threads.clear()
+    capability_event = Event()
+
+    def capability_callback() -> bool:
+        callback_threads.append(get_ident())
+        return capability_event.is_set()
+
+    capability = _issue_read_operation_cancellation_capability(
+        event=capability_event,
+        callback=capability_callback,
+    )
+    capability_page = session.read_selection_page(
+        selection,
+        page_index=0,
+        page_size=2,
+        cancel_callback=capability_callback,
+        _read_operation_cancellation_capability=capability,
+    )
+    assert len(reads_by_phase["capability"]) == 2
+    assert len(set(reads_by_phase["capability"])) == 2
+    assert max_active == 2
+    assert requested_workers == [2, 2] and all(count <= 8 for count in requested_workers)
+    assert callback_threads and set(callback_threads) == {caller_thread_id}
+    capability_memos = [item for item in worker_memos if item[0] == "capability"]
+    assert len(capability_memos) == 2
+    assert all(memo._closed and not memo._values and not memo._components for _, _, memo in capability_memos)
+
+    # 已設定的 Event 在 dispatch 前取消時，不可啟動任何 child reader。
+    phase[0] = "pre_cancel"
+    reads_by_phase["pre_cancel"].clear()
+    pre_cancel_event = Event()
+    pre_cancel_event.set()
+
+    def pre_cancel_callback() -> bool:
+        callback_threads.append(get_ident())
+        return pre_cancel_event.is_set()
+
+    pre_cancel_capability = _issue_read_operation_cancellation_capability(
+        event=pre_cancel_event,
+        callback=pre_cancel_callback,
+    )
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as pre_cancelled:
+        session.read_selection_page(
+            selection,
+            page_index=0,
+            page_size=2,
+            cancel_callback=pre_cancel_callback,
+            _read_operation_cancellation_capability=pre_cancel_capability,
+        )
+    assert pre_cancelled.value.code == "technical_universe_v4_query_cancelled"
+    assert reads_by_phase["pre_cancel"] == []
+
+    phase[0] = "strict"
+    strict_page = strict_clone.read_selection_page(
+        selection, page_index=0, page_size=2, cancel_callback=None
+    )
+    assert reads_by_phase["strict"] == [caller_thread_id, caller_thread_id]
+    assert _read_selection_page_payload(fast_page) == _read_selection_page_payload(strict_page)
+    assert _read_selection_page_payload(capability_page) == _read_selection_page_payload(strict_page)
+
+    phase[0] = "cancel"
+    callback_threads.clear()
+    reads_by_phase["cancel"].clear()
+    completed_reads.clear()
+
+    def cancel_after_first_child() -> bool:
+        callback_threads.append(get_ident())
+        return bool(completed_reads)
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as cancelled:
+        session.read_selection_page(
+            selection,
+            page_index=0,
+            page_size=2,
+            cancel_callback=cancel_after_first_child,
+        )
+    assert cancelled.value.code == "technical_universe_v4_query_cancelled"
+    assert reads_by_phase["cancel"] == [caller_thread_id]
+    assert callback_threads and set(callback_threads) == {caller_thread_id}
+
+
+def test_p01_token_parallel_reader_errors_keep_artifact_order(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_small_full_store
+    session = _open_small_read_session(fixture)
+    query = session.create_query(
+        stock_filter=("S0000", "S0016"), sort_key="stock_code", page_size=2
+    )
+    selection = session.select_stock_codes(query)
+    assert len({session._candidates[index].artifact_index for index in selection._candidate_indexes}) == 2
+
+    callback = lambda: False
+    capability = _issue_read_operation_cancellation_capability(
+        event=Event(), callback=callback
+    )
+    higher_artifact_failed = Event()
+    observed_memos: list[Any] = []
+
+    def fail_in_reverse_completion_order(session_arg: Any, reference: Any, **kwargs: Any) -> Any:
+        artifact_index = session_arg._artifact_references.index(reference)
+        memo = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        assert memo is not None and memo._owner_thread_id == get_ident()
+        observed_memos.append(memo)
+        if artifact_index == 1:
+            higher_artifact_failed.set()
+            raise RuntimeError("artifact one failed first")
+        assert higher_artifact_failed.wait(timeout=10)
+        raise RuntimeError("artifact zero error has serial precedence")
+
+    monkeypatch.setattr(
+        universe_query_module,
+        "_read_session_child_snapshots_for_session",
+        fail_in_reverse_completion_order,
+    )
+
+    with pytest.raises(RuntimeError, match="artifact zero error has serial precedence"):
+        session.read_selection_page(
+            selection,
+            page_index=0,
+            page_size=2,
+            cancel_callback=callback,
+            _read_operation_cancellation_capability=capability,
+        )
+
+    assert len(observed_memos) == 2
+    assert all(memo._closed and not memo._values and not memo._components for memo in observed_memos)
+
+
+def test_p01_token_parallel_reader_failure_joins_every_started_child(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_small_full_store
+    session = _open_small_read_session(fixture)
+    query = session.create_query(
+        stock_filter=("S0000", "S0016"), sort_key="stock_code", page_size=2
+    )
+    selection = session.select_stock_codes(query)
+    original_reader = universe_query_module._read_session_child_snapshots_for_session
+    second_reader_started = Event()
+    release_second_reader = Event()
+    second_reader_finished = Event()
+    call_returned = Event()
+    result: dict[str, Any] = {}
+    callback_threads: list[int] = []
+
+    def observed_reader(session_arg: Any, reference: Any, **kwargs: Any) -> Any:
+        artifact_index = session_arg._artifact_references.index(reference)
+        if artifact_index == 0:
+            assert second_reader_started.wait(timeout=10)
+            raise RuntimeError("lowest artifact failed")
+        second_reader_started.set()
+        try:
+            assert release_second_reader.wait(timeout=10)
+            return original_reader(session_arg, reference, **kwargs)
+        finally:
+            second_reader_finished.set()
+
+    monkeypatch.setattr(
+        universe_query_module,
+        "_read_session_child_snapshots_for_session",
+        observed_reader,
+    )
+
+    def run_page_read() -> None:
+        caller_thread = get_ident()
+
+        def callback() -> bool:
+            callback_threads.append(get_ident())
+            return False
+
+        capability = _issue_read_operation_cancellation_capability(
+            event=Event(), callback=callback
+        )
+        try:
+            session.read_selection_page(
+                selection,
+                page_index=0,
+                page_size=2,
+                cancel_callback=callback,
+                _read_operation_cancellation_capability=capability,
+            )
+        except BaseException as exc:
+            result["error"] = exc
+        finally:
+            result["caller_thread"] = caller_thread
+            call_returned.set()
+
+    caller = Thread(target=run_page_read)
+    caller.start()
+    assert second_reader_started.wait(timeout=10)
+    assert not call_returned.wait(timeout=0.1)
+    release_second_reader.set()
+    caller.join(timeout=10)
+
+    assert not caller.is_alive()
+    assert isinstance(result.get("error"), RuntimeError)
+    assert str(result["error"]) == "lowest artifact failed"
+    assert second_reader_finished.is_set()
+    assert call_returned.is_set()
+    assert callback_threads and set(callback_threads) == {result["caller_thread"]}
+
+
 def test_p01_page_path_render_memo_is_bounded_nested_and_always_cleared(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1408,3 +1700,209 @@ def test_p01_page_rejects_reparse_component_and_restores_synthetic_tree(
             os.rmdir(component_io_path)
         if moved and os.path.lexists(target_io_path):
             os.rename(target_io_path, component_io_path)
+
+def test_p01_token_cancellation_after_two_children_start_is_observed_and_joined(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """合法 token 在兩個真 child reader 已啟動後取消，並等兩者自然結束。"""
+    fixture = synthetic_small_full_store
+    session = _open_small_read_session(fixture)
+    query = session.create_query(
+        stock_filter=("S0000", "S0016"), sort_key="stock_code", page_size=2
+    )
+    selection = session.select_stock_codes(query)
+    expected_artifacts = {
+        session._candidates[index].artifact_index
+        for index in selection._candidate_indexes
+    }
+    assert len(expected_artifacts) == 2
+
+    original_reader = universe_query_module._read_session_child_snapshots_for_session
+    cancel_event = Event()
+    all_children_started = Event()
+    lock = Lock()
+    started_artifacts: list[int] = []
+    finished_artifacts: list[int] = []
+    child_probe_observations: list[tuple[int, int, bool]] = []
+    callback_threads: list[int] = []
+    outcome: dict[str, Any] = {}
+    operation_returned = Event()
+
+    def observed_reader(session_arg: Any, reference: Any, **kwargs: Any) -> Any:
+        artifact_index = session_arg._artifact_references.index(reference)
+        with lock:
+            started_artifacts.append(artifact_index)
+            if len(started_artifacts) == 2:
+                # 兩個 child 都已進入真 reader seam，再設定原始 Event。
+                cancel_event.set()
+                all_children_started.set()
+        assert all_children_started.wait(timeout=10)
+        probe = kwargs.get("cancel_callback")
+        assert callable(probe)
+        child_probe_observations.append((artifact_index, get_ident(), probe()))
+        try:
+            # 不略過 custody／正式 repository；原 reader 應從取消 probe 拒絕。
+            return original_reader(session_arg, reference, **kwargs)
+        finally:
+            with lock:
+                finished_artifacts.append(artifact_index)
+
+    monkeypatch.setattr(
+        universe_query_module,
+        "_read_session_child_snapshots_for_session",
+        observed_reader,
+    )
+
+    def run_page() -> None:
+        coordinator_thread_id = get_ident()
+
+        def callback() -> bool:
+            callback_threads.append(get_ident())
+            return cancel_event.is_set()
+
+        capability = _issue_read_operation_cancellation_capability(
+            event=cancel_event,
+            callback=callback,
+        )
+        try:
+            session.read_selection_page(
+                selection,
+                page_index=0,
+                page_size=2,
+                cancel_callback=callback,
+                _read_operation_cancellation_capability=capability,
+            )
+        except BaseException as exc:
+            outcome["error"] = exc
+        finally:
+            outcome["coordinator_thread_id"] = coordinator_thread_id
+            operation_returned.set()
+
+    coordinator = Thread(target=run_page)
+    coordinator.start()
+    coordinator.join(timeout=10)
+
+    assert not coordinator.is_alive()
+    assert operation_returned.is_set()
+    error = outcome.get("error")
+    assert isinstance(error, DailyMarketTechnicalUniverseV4QueryError)
+    assert error.code == "technical_universe_v4_query_cancelled"
+    assert set(started_artifacts) == expected_artifacts
+    assert set(finished_artifacts) == expected_artifacts
+    assert len(finished_artifacts) == 2
+    assert {item[0] for item in child_probe_observations} == expected_artifacts
+    assert all(item[2] is True for item in child_probe_observations)
+    assert len({item[1] for item in child_probe_observations}) == 2
+    assert all(
+        thread_id == outcome["coordinator_thread_id"]
+        for thread_id in callback_threads
+    )
+    assert callback_threads
+
+
+def test_p01_token_parallel_reader_caps_outstanding_at_eight_and_matches_full_dto(
+    synthetic_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """九個以上真 artifact 讀取維持八個 outstanding 上限與完整 DTO 順序。"""
+    fixture = synthetic_full_store
+    session = _open_small_read_session(fixture)
+    query = session.create_query(sort_key="stock_code", page_size=256)
+    selection = session.select_stock_codes(query)
+    expected_artifact_indexes = tuple(
+        dict.fromkeys(
+            session._candidates[index].artifact_index
+            for index in selection._candidate_indexes[:256]
+        )
+    )
+    assert len(expected_artifact_indexes) >= 9
+
+    original_executor = universe_query_module.ThreadPoolExecutor
+    original_reader = universe_query_module._read_session_child_snapshots_for_session
+    lock = Lock()
+    executor_workers: list[int] = []
+    outstanding = 0
+    maximum_outstanding = 0
+    submitted = 0
+    actual_reader_artifacts: list[int] = []
+    observe_parallel_readers = True
+
+    class TrackingExecutor(original_executor):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            executor_workers.append(kwargs["max_workers"])
+            super().__init__(*args, **kwargs)
+
+        def submit(self, fn: Any, /, *args: Any, **kwargs: Any) -> Any:
+            nonlocal outstanding, maximum_outstanding, submitted
+            with lock:
+                outstanding += 1
+                submitted += 1
+                maximum_outstanding = max(maximum_outstanding, outstanding)
+            try:
+                future = super().submit(fn, *args, **kwargs)
+            except BaseException:
+                with lock:
+                    outstanding -= 1
+                raise
+
+            def mark_finished(_future: Any) -> None:
+                nonlocal outstanding
+                with lock:
+                    outstanding -= 1
+
+            future.add_done_callback(mark_finished)
+            return future
+
+    def observed_reader(session_arg: Any, reference: Any, **kwargs: Any) -> Any:
+        artifact_index = session_arg._artifact_references.index(reference)
+        if observe_parallel_readers:
+            actual_reader_artifacts.append(artifact_index)
+        return original_reader(session_arg, reference, **kwargs)
+
+    monkeypatch.setattr(universe_query_module, "ThreadPoolExecutor", TrackingExecutor)
+    monkeypatch.setattr(
+        universe_query_module,
+        "_read_session_child_snapshots_for_session",
+        observed_reader,
+    )
+
+    operation_thread_id = get_ident()
+    callback_threads: list[int] = []
+    cancel_event = Event()
+
+    def callback() -> bool:
+        callback_threads.append(get_ident())
+        return cancel_event.is_set()
+
+    capability = _issue_read_operation_cancellation_capability(
+        event=cancel_event,
+        callback=callback,
+    )
+    parallel_page = session.read_selection_page(
+        selection,
+        page_index=0,
+        page_size=256,
+        cancel_callback=callback,
+        _read_operation_cancellation_capability=capability,
+    )
+    assert set(actual_reader_artifacts) == set(expected_artifact_indexes)
+    assert len(actual_reader_artifacts) == len(expected_artifact_indexes)
+    observe_parallel_readers = False
+
+    # 普通 callback、無 capability 必須走序列 fallback，作為完整 DTO oracle。
+    serial_page = session.read_selection_page(
+        selection,
+        page_index=0,
+        page_size=256,
+        cancel_callback=lambda: False,
+    )
+
+    assert executor_workers == [8]
+    assert submitted == len(expected_artifact_indexes)
+    assert maximum_outstanding <= 8
+    assert outstanding == 0
+    assert callback_threads and set(callback_threads) == {operation_thread_id}
+    assert _read_selection_page_payload(parallel_page) == _read_selection_page_payload(
+        serial_page
+    )

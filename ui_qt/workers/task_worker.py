@@ -10,6 +10,10 @@ import threading
 import traceback
 from weakref import WeakSet
 from app_module.exceptions import BacktestCancelledError
+from app_module.task_cancellation import (
+    _event_methods_are_original,
+    _issue_read_operation_cancellation_capability,
+)
 
 
 _MANAGED_TASK_WORKERS: WeakSet[QThread] = WeakSet()
@@ -36,17 +40,139 @@ def _supports_cancel_callback(task_function: Callable[..., Any]) -> str | None:
     return None
 
 
+_READ_OPERATION_CANCELLATION_PARAMETER = "_read_operation_cancellation_capability"
+
+
+def _supports_explicit_read_operation_cancellation(
+    task_function: Callable[..., Any],
+) -> bool:
+    """只接受明確宣告且可用 keyword 傳入的內部取消能力參數。"""
+    try:
+        parameter = inspect.signature(task_function).parameters.get(
+            _READ_OPERATION_CANCELLATION_PARAMETER
+        )
+    except (TypeError, ValueError):
+        return False
+    return parameter is not None and parameter.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
+
+
+def _task_parameter_was_supplied(
+    task_function: Callable[..., Any],
+    parameter_name: str,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> bool:
+    """保守判定 caller 是否已提供指定參數；無法判讀時不發行能力。"""
+    if parameter_name in kwargs:
+        return True
+    try:
+        parameters = inspect.signature(task_function).parameters
+    except (TypeError, ValueError):
+        return True
+    parameter = parameters.get(parameter_name)
+    if parameter is None:
+        return False
+    if parameter.kind is inspect.Parameter.KEYWORD_ONLY:
+        return False
+    if parameter.kind not in (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    ):
+        return True
+    positional_names = [
+        item.name
+        for item in parameters.values()
+        if item.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+    try:
+        position = positional_names.index(parameter_name)
+    except ValueError:
+        return True
+    return position < len(args)
+
+
+def _taskworker_has_original_event_cancellation(
+    worker: Any,
+    cancel_callback: Callable[[], bool],
+) -> bool:
+    """只允許原始 TaskWorker bound methods 對應其 Event 取消語意。"""
+
+    worker_class = globals().get("_ORIGINAL_TASKWORKER_CLASS")
+    original_check = globals().get("_ORIGINAL_TASKWORKER_IS_CANCEL_REQUESTED")
+    original_cancel = globals().get("_ORIGINAL_TASKWORKER_CANCEL")
+    if (
+        worker_class is None
+        or type(worker) is not worker_class
+        or original_check is None
+        or original_cancel is None
+    ):
+        return False
+    try:
+        instance_namespace = object.__getattribute__(worker, "__dict__")
+    except (AttributeError, TypeError):
+        return False
+    if type(instance_namespace) is not dict or any(
+        name in instance_namespace
+        for name in ("is_cancel_requested", "cancel")
+    ):
+        return False
+
+    # 以載入時保存的 method identity 作基準，不信任已 monkeypatch 的 class
+    # attribute；同時檢查真正會傳入 task 的 bound callback。
+    worker_namespace = worker_class.__dict__
+    if (
+        worker_namespace.get("is_cancel_requested") is not original_check
+        or worker_namespace.get("cancel") is not original_cancel
+        or getattr(cancel_callback, "__self__", None) is not worker
+        or getattr(cancel_callback, "__func__", None) is not original_check
+    ):
+        return False
+    try:
+        bound_check = object.__getattribute__(worker, "is_cancel_requested")
+        bound_cancel = object.__getattribute__(worker, "cancel")
+    except (AttributeError, TypeError):
+        return False
+    return (
+        getattr(bound_check, "__self__", None) is worker
+        and getattr(bound_check, "__func__", None) is original_check
+        and getattr(bound_cancel, "__self__", None) is worker
+        and getattr(bound_cancel, "__func__", None) is original_cancel
+    )
+
+
 def _invoke_task_with_optional_cancel(
     task_function: Callable[..., Any],
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
     callback: Callable[[], bool],
+    *,
+    read_operation_capability: object | None = None,
 ) -> Any:
-    """只對明確支援的任務注入合作式取消 callback。"""
+    """只注入任務明確支援的取消 callback 與讀取操作能力。"""
     call_kwargs = dict(kwargs)
     callback_name = _supports_cancel_callback(task_function)
-    if callback_name is not None and callback_name not in call_kwargs:
+    if callback_name is not None and not _task_parameter_was_supplied(
+        task_function, callback_name, args, call_kwargs
+    ):
         call_kwargs[callback_name] = callback
+    if (
+        read_operation_capability is not None
+        and _supports_explicit_read_operation_cancellation(task_function)
+        and not _task_parameter_was_supplied(
+            task_function,
+            _READ_OPERATION_CANCELLATION_PARAMETER,
+            args,
+            call_kwargs,
+        )
+    ):
+        call_kwargs[_READ_OPERATION_CANCELLATION_PARAMETER] = read_operation_capability
     return task_function(*args, **call_kwargs)
 
 
@@ -219,11 +345,35 @@ class TaskWorker(_ManagedTaskThread):
                 return
 
             # 執行任務函數
+            cancel_callback = self.is_cancel_requested
+            read_operation_capability = None
+            callback_name = _supports_cancel_callback(self.task_function)
+            if (
+                _taskworker_has_original_event_cancellation(self, cancel_callback)
+                and _event_methods_are_original(self._cancel_event)
+                and callback_name is not None
+                and _supports_explicit_read_operation_cancellation(self.task_function)
+                and not _task_parameter_was_supplied(
+                    self.task_function, callback_name, self.args, self.kwargs
+                )
+                and not _task_parameter_was_supplied(
+                    self.task_function,
+                    _READ_OPERATION_CANCELLATION_PARAMETER,
+                    self.args,
+                    self.kwargs,
+                )
+            ):
+                read_operation_capability = _issue_read_operation_cancellation_capability(
+                    event=self._cancel_event,
+                    callback=cancel_callback,
+                )
+
             result = _invoke_task_with_optional_cancel(
                 self.task_function,
                 self.args,
                 self.kwargs,
-                self.is_cancel_requested,
+                cancel_callback,
+                read_operation_capability=read_operation_capability,
             )
 
             # ✅ 再次檢查是否已取消（任務執行期間可能被取消）
@@ -253,6 +403,14 @@ class TaskWorker(_ManagedTaskThread):
         self._is_cancelled = True
         if wait:
             self.wait()
+
+
+# 在外部替換 TaskWorker 類別方法前保存原實作。
+# 能力發行同時核對這些實作身分，
+# 以及精確 worker 實例上的綁定方法。
+_ORIGINAL_TASKWORKER_CLASS = TaskWorker
+_ORIGINAL_TASKWORKER_IS_CANCEL_REQUESTED = TaskWorker.is_cancel_requested
+_ORIGINAL_TASKWORKER_CANCEL = TaskWorker.cancel
 
 
 class ProgressTaskWorker(_ManagedTaskThread):

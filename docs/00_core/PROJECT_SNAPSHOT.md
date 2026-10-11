@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-> 更新基線：2026-10-10；本頁增量依已提交 commit `8c7fd469` 與 `8945df89` 及其追蹤 QA 文件核對。未提交候選仍不視為驗收。詳細測試過程及各項驗收界線以交接文件、恢復 QA 與具名 root review 為準。
+> 更新基線：2026-10-11；已提交基礎含 `8c7fd469`、`8945df89` 與 `1e53417d`，本頁接續增量依具名 root QA 核對。未提交候選仍不視為完整驗收。詳細測試過程及各項驗收界線以交接文件、恢復 QA 與具名 root review 為準。
 
 ## 目前狀態
 
@@ -9,6 +9,8 @@
 | 項目 | 判讀 |
 |---|---|
 | 產品補完範圍 | 仍為 P00–P14、M1–M3、F01–F23；checkpoint 是 WIP，不代表產品完成。Gate 狀態以本頁與具名 QA 判讀。 |
+| 10/11 P01 取消與有界讀取 | 正式 TaskWorker／v4 View／query 已接一次取消能力與最多八個未完成讀取。Root 原 query＋View 全組30 PASS／1測試順序失敗；保留完整 DTO 比較並修正後，精確節點1 PASS。純能力／真Worker50 PASS、工作台85 PASS、validator25通過／4跳過、全範圍mypy與語法通過。Root 追加執行中取消排空與八個未完成工作上限兩測試2 PASS／130.56秒／native0，八 pins一致。這些是接線／定向證據；千檔正常 worker 冷暖矩陣、原300ms門檻及完整P01仍待。[本輪QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
+| 10/11 P06 封存精度補強 | 完整情境codec新增 caller precision／Emax／Inexact traps 負例，重現成本加總受 ambient context 影響後修為獨立Context。八組定向回歸208 PASS／10.66秒／native0，15個source／test pins起訖相同；不與前輪205相加。正常帳本／Health、UI與完整P06／M3仍待。[精度接續QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
 | 10/11 P06 接續增量 | 純規則維持／等權／明示目標共用既有金融引擎；新增完整情境封存、明示私人 route 與公開 exact reader。Context 綁同份 exact snapshot；AccountState／causal v2 明示完整現金、NAV、股數與估值，同引擎用實際金額及成本後 NAV 核風控、保留 0bp 正股數並修正硬退出 Advice。比較／input payload 升為 v3；舊 v1／v2 不猜補或自動遷移。八組最終定向回歸 **205 PASS／7.94 秒／native0**，含另一 Python PID 讀回、金融守恆／成本／風控、低 Decimal context、錯快照／只讀／交易／損壞／隱藏權重拒絕與雙 writer 冪等；6 個 source 定向 mypy、語法與量化 guard 通過。正式帳本／Health adapter、正常 UI／Main 新程序、原來源與完整 P06／M3 Gate 尚未完成。三個 Luna Max 葉片持續推進 P01、F12、P08；scope、回滾與驗收見[10/11 接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。 |
 | P01 千檔效能 | 固定 85bc 六角色診斷矩陣已跑完；暖操作 p95：翻頁 196.205 ms、排序 191.8186 ms、篩選 523.902 ms，篩選仍未達原 300 ms 門檻；冷啟動至首頁 p95 為 20.0319 秒。這是隔離診斷矩陣，不是一般產品旅程驗收，P01 尚未完成；後續乾淨 helper 配對 A/B 的 candidate p95=551.0107 ms，仍超過 300 ms，未套用正式 helper；見 [P01 root review](../06_qa/BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md)。 |
 | F02 四均線 | 固定合成來源的 V11 父 Main→收藏→關閉→新程序 Watchlist 單擊／雙擊旅程有界通過；不代表原始來源、新 EXE 或真人驗收。 |

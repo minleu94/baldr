@@ -270,7 +270,10 @@ class PortfolioResearchScenarioComparison:
                 result.projection.executable_weights)
             if any(contract is not None and set(contract.symbol_weights_bp) - symbols for contract in weight_contracts):
                 raise ValueError("scenario weight universe contains hidden symbols")
-            if result.projection.total_estimated_cost != sum((row.estimated_cost for row in result.projection.rows), Decimal("0")):
+            # 封存核驗與原計算採相同獨立精度，不繼承 caller 的精度、指數或 traps。
+            with localcontext(Context(prec=60)):
+                saved_total_cost = sum((row.estimated_cost for row in result.projection.rows), Decimal("0"))
+            if result.projection.total_estimated_cost != saved_total_cost:
                 raise ValueError("scenario total cost differs from saved rows")
             _validate_frozen_money(self.account, result.projection, contexts)
             for row in result.projection.rows:

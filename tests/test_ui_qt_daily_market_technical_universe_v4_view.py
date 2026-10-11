@@ -18,6 +18,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QTableView
 
+import app_module.daily_market_technical_universe_v4_query as universe_query_module
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalParentV4Row,
     DailyMarketTechnicalRuleStateFilterV4,
@@ -53,6 +54,7 @@ from ui_qt.widgets.daily_market_technical_v4_production_setup import (
     ProductionSetupSummary,
 )
 import ui_qt.views.daily_market_technical_universe_v4_view as universe_view_module
+from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.views.daily_market_technical_universe_v4_view import (
     DailyMarketTechnicalUniverseV4View,
 )
@@ -101,6 +103,19 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
 ) -> None:
     fixture = synthetic_full_store
     calls = {"strict_open": 0, "selection": 0, "selection_page": 0, "selected_stock": 0}
+    capability_claims: list[tuple[object, object, object | None, int]] = []
+    original_claim = universe_query_module._claim_read_operation_cancellation_probe
+
+    def observe_capability_claim(capability: object, callback: Any) -> Any:
+        probe = original_claim(capability, callback)
+        capability_claims.append((capability, callback, probe, get_ident()))
+        return probe
+
+    monkeypatch.setattr(
+        universe_query_module,
+        "_claim_read_operation_cancellation_probe",
+        observe_capability_claim,
+    )
     original_open = universe_view_module.open_daily_market_technical_universe_v4_read_session
     original_select = DailyMarketTechnicalUniverseV4ReadSession.select_stock_codes
     original_page = DailyMarketTechnicalUniverseV4ReadSession.read_selection_page
@@ -178,6 +193,12 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert calls["strict_open"] == 1
     assert calls["selection"] == 1
     assert calls["selection_page"] == 1
+    assert len(capability_claims) == 1
+    capability, callback, probe, _claim_thread = capability_claims[0]
+    worker = getattr(callback, "__self__", None)
+    assert capability is not None and probe is not None
+    assert type(worker) is TaskWorker
+    assert getattr(callback, "__func__", None) is TaskWorker.is_cancel_requested
     page = view.current_page
     query = view.current_query
     assert page is not None and query is not None
@@ -332,11 +353,13 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     view.mode.setCurrentIndex(view.mode.findData("OR"))
     view.sort.setCurrentIndex(view.sort.findData("volume_ratio_20_including_current.ratio"))
     view.descending.setCurrentIndex(view.descending.findData(False))
+    claims_before_filter = len(capability_claims)
     view.apply_query()
     # 第二個立即套用的同條件查詢改成降冪；第一個晚到結果不得覆蓋後者。
     view.descending.setCurrentIndex(view.descending.findData(True))
     view.apply_query()
     _wait(app, lambda: view._worker is None and view.current_page is not None)
+    assert any(item[2] is not None for item in capability_claims[claims_before_filter:])
     assert view.current_query is not None and view.current_query.combine_mode == "OR"
     assert view.current_page is not None
     assert view.current_page.matching_count == 255
@@ -349,6 +372,7 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     selection_calls_before_page_turn = calls["selection"]
     strict_opens_before_page_turn = calls["strict_open"]
 
+    claims_before_page_turn = len(capability_claims)
     view.next_button.click()
     _wait(app, lambda: view._worker is None and view.current_query is not None
           and view.current_query.page_index == 1)
@@ -357,6 +381,7 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert view.current_page.matching_count == 255
     assert calls["strict_open"] == strict_opens_before_page_turn
     assert calls["selection"] == selection_calls_before_page_turn
+    assert any(item[2] is not None for item in capability_claims[claims_before_page_turn:])
     second_page = view.current_page
     final_page = second_page
     final_query = view.current_query
@@ -470,8 +495,22 @@ def test_diagnostic_catalog_rows_cannot_be_loaded_or_resumed(app: QApplication, 
 def test_real_pinned_comparison_basket_cross_page_and_origin_restore(
     app: QApplication,
     synthetic_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = synthetic_full_store
+    capability_claims: list[tuple[object, object, object | None, int]] = []
+    original_claim = universe_query_module._claim_read_operation_cancellation_probe
+
+    def observe_capability_claim(capability: object, callback: Any) -> Any:
+        probe = original_claim(capability, callback)
+        capability_claims.append((capability, callback, probe, get_ident()))
+        return probe
+
+    monkeypatch.setattr(
+        universe_query_module,
+        "_claim_read_operation_cancellation_probe",
+        observe_capability_claim,
+    )
     view = DailyMarketTechnicalUniverseV4View(fixture["store_output_root"])
     view.show()
     comparisons: list[object] = []
@@ -484,6 +523,7 @@ def test_real_pinned_comparison_basket_cross_page_and_origin_restore(
     view.sources.setCurrentIndex(complete_index)
     view.load_selected()
     _wait(app, lambda: view._worker is None and view.current_page is not None)
+    assert capability_claims and capability_claims[0][2] is not None
 
     first_query = view.current_query
     assert first_query is not None
@@ -529,8 +569,10 @@ def test_real_pinned_comparison_basket_cross_page_and_origin_restore(
 
     # 比較欄返回時，視圖須依欄位保存的 query pins 重開原頁並選回原股票。
     returned_column = comparison.columns[0]
+    claims_before_restore = len(capability_claims)
     view.restore_origin(returned_column.origin_query, returned_column.row.stock_code)
     _wait(app, lambda: view._worker is None and view.current_query == first_query)
+    assert any(item[2] is not None for item in capability_claims[claims_before_restore:])
     restored_row = view._selected_row()
     assert restored_row is not None
     assert restored_row.stock_code == returned_column.row.stock_code

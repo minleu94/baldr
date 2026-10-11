@@ -1,6 +1,16 @@
 # 系統架構
 
+## 保存母體頁面讀取與取消契約
+
+`TaskWorker` 只對明確宣告內部參數的 task 發行一次性取消能力；精確 worker 類別、原始取消方法、Event 方法與未被 caller 覆寫的 callback 必須同時符合。能力綁定發行執行緒及傳入 task 的同一 callback 物件；任一 claim 嘗試均消耗能力，身分不符、跨執行緒或重用只返回序列讀取資格。這是程序內的語意檢查，不是外部輸入授權機制。
+
+`DailyMarketTechnicalUniverseV4View` 的選版、查詢、換頁與返回原頁，將同一 callback／能力交給 public read-session。頁面 reader 先 claim，之後才隔離可重入 callback 的 path memo。合格來源的多 artifact 頁面可分批平行讀取，最多八個未完成 future；child 只輪詢原始 Event 的唯讀 probe，每個執行緒有自身有界 memo。一般自訂 callback、無資格 worker 或無 reader-issued proof／rehydration capability 保留序列路徑。沒有 callback 的既有合格頁面仍可平行。
+
+Coordinator 按原 artifact 順序取結果、核列與回呼，錯誤或取消時等待已啟動工作自然收尾；每次讀取仍核原路徑、檔案類型、bytes／SHA，不跨操作保存 I/O 成功。此接線不提供 p95 保證，不授完整 P01、Main／EXE 或真來源產品 Gate；證據見[10/11 接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+
 ## 人選持倉情境計算契約（2026-10-11，接線中）
+
+完整情境 codec 在封存／讀回時，成本列加總與金額守恆核驗均使用獨立 Decimal context；呼叫端的 precision、指數界線或 traps 不影響原封存 bytes、hash 與結果。這項核驗不重算當下引擎，也不讀新行情或授來源可得資格。
 
 `PortfolioAllocationService.project_rule_only()` 使用 `PortfolioRuleAllocationRequestV1` 接收人選整數 bp 目標，共用原 Rule/ML `project()` 的 `_project_weights()` 計算。ML authorization／blend 路徑仍只屬原入口；純規則入口不建立 ML proposal 或模型 metadata。共用 projection 保存 target、可執行研究權重／股數、Decimal 成本／現金與 diagnostic；結果固定為 research-only，不授送單或套用配置。
 

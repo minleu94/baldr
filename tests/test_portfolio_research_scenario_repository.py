@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal
+from decimal import Context, Decimal, Inexact, localcontext
 import hashlib
 import json
 import os
@@ -87,6 +87,20 @@ def repo(paths):
 
 def _json(payload):
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+@pytest.mark.parametrize("precision", [1, 3, 28])
+def test_complete_frozen_scenario_codec_is_independent_of_caller_decimal_context(precision):
+    comparison = _comparison()
+    expected_payload = encode_scenario_artifact(comparison)
+    expected_restored = decode_scenario_artifact(expected_payload)
+    caller_context = Context(prec=precision, Emax=1, Emin=-1)
+    caller_context.traps[Inexact] = True
+    with localcontext(caller_context):
+        restored = decode_scenario_artifact(expected_payload)
+        roundtrip_payload = encode_scenario_artifact(restored)
+    assert restored == expected_restored
+    assert roundtrip_payload == expected_payload
 
 
 @pytest.mark.parametrize("kind", ["manual", "user_declared", "paper"])

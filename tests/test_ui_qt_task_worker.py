@@ -2,6 +2,9 @@
 
 import pytest
 
+from app_module.task_cancellation import (
+    _claim_read_operation_cancellation_probe,
+)
 from ui_qt.workers.task_worker import (
     ProgressTaskWorker,
     TaskWorker,
@@ -125,6 +128,123 @@ def test_task_worker_does_not_inject_cancel_callback_into_legacy_callable():
     worker.run()
 
     assert calls == ["ran"]
+
+
+def test_task_worker_explicit_page_capability_binds_the_injected_callback_once():
+    observed = {}
+
+    def page_task(cancel_callback=None, _read_operation_cancellation_capability=None):
+        observed["callback"] = cancel_callback
+        observed["capability"] = _read_operation_cancellation_capability
+
+    TaskWorker(page_task).run()
+
+    callback = observed["callback"]
+    capability = observed["capability"]
+    assert callback is not None
+    assert capability is not None
+    assert _claim_read_operation_cancellation_probe(capability, callback) is not None
+    assert _claim_read_operation_cancellation_probe(capability, callback) is None
+
+
+@pytest.mark.parametrize("override_name", ["is_set", "set"])
+def test_task_worker_event_instance_method_override_falls_back_to_callback(
+    override_name,
+):
+    observed = {}
+    finished = []
+    errors = []
+
+    def page_task(cancel_callback=None, _read_operation_cancellation_capability=None):
+        observed["callback"] = cancel_callback
+        observed["capability"] = _read_operation_cancellation_capability
+        observed["callback_result"] = cancel_callback()
+        return "completed"
+
+    worker = TaskWorker(page_task)
+    setattr(worker._cancel_event, override_name, lambda: False)
+    worker.finished.connect(finished.append)
+    worker.error.connect(errors.append)
+    worker.run()
+
+    callback = observed["callback"]
+    assert finished == ["completed"]
+    assert errors == []
+    assert callback is not None
+    assert callback.__self__ is worker
+    assert callback.__func__ is TaskWorker.is_cancel_requested
+    assert observed["callback_result"] is False
+    assert observed["capability"] is None
+
+
+def test_task_worker_does_not_duplicate_positionally_supplied_cancel_callback():
+    supplied_callback = lambda: False
+    observed = []
+
+    def page_task(cancel_callback=None, _read_operation_cancellation_capability=None):
+        observed.append((cancel_callback, _read_operation_cancellation_capability))
+
+    TaskWorker(page_task, supplied_callback).run()
+
+    assert observed == [(supplied_callback, None)]
+
+
+def test_task_worker_kwargs_alone_do_not_opt_in_to_read_capability():
+    observed = {}
+
+    def custom_task(**kwargs):
+        observed.update(kwargs)
+
+    TaskWorker(custom_task).run()
+
+    assert callable(observed["cancel_callback"])
+    assert "_read_operation_cancellation_capability" not in observed
+
+
+@pytest.mark.parametrize("override_name", ["is_cancel_requested", "cancel"])
+def test_task_worker_instance_cancellation_override_disables_read_capability(
+    override_name,
+):
+    observed = []
+
+    def page_task(cancel_callback=None, _read_operation_cancellation_capability=None):
+        observed.append(_read_operation_cancellation_capability)
+
+    worker = TaskWorker(page_task)
+    setattr(worker, override_name, lambda *args, **kwargs: False)
+    worker.run()
+
+    assert observed == [None]
+
+
+@pytest.mark.parametrize("override_name", ["is_cancel_requested", "cancel"])
+def test_task_worker_class_method_override_disables_read_capability(
+    override_name,
+    monkeypatch,
+):
+    observed = []
+
+    def page_task(cancel_callback=None, _read_operation_cancellation_capability=None):
+        observed.append(_read_operation_cancellation_capability)
+
+    monkeypatch.setattr(TaskWorker, override_name, lambda self, *args, **kwargs: False)
+    TaskWorker(page_task).run()
+
+    assert observed == [None]
+
+
+def test_task_worker_subclass_does_not_receive_read_capability():
+    observed = []
+
+    def page_task(cancel_callback=None, _read_operation_cancellation_capability=None):
+        observed.append(_read_operation_cancellation_capability)
+
+    class SpecializedTaskWorker(TaskWorker):
+        pass
+
+    SpecializedTaskWorker(page_task).run()
+
+    assert observed == [None]
 
 
 @pytest.mark.parametrize("worker_class", [TaskWorker, ProgressTaskWorker])

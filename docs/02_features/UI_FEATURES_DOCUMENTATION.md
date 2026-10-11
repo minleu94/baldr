@@ -328,6 +328,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - 送 Research Lab 批次回測。
 - 推薦結果表的單股研究按鈕、雙擊與右鍵入口會建立 `ResearchStockContextDTO`，帶入股票、決策日、資料日、結果 ID、Profile 與來源 workspace；市場探索頁的共用 context strip 可顯示這些欄位並返回來源清單。
 - 「官方市場與技術條件研究」是使用既有保存來源的獨立子頁，不執行推薦評分；支援技術、四均線、KDJ、波動率條件群與官方市場／處置外層條件，明示 AND／OR、未知政策、全域排序及每頁最多 256 列。資料缺件或可得時間未知時保留未知／來源限制，不推成 Advice、歷史 PIT 或交易資格。操作見 [APPLICATION_MANUAL §6.7](../07_guides/APPLICATION_MANUAL.md#67-官方市場與技術條件研究)。
+- 保存母體的選版、篩選、翻頁及返回讀取沿受管背景 worker 執行合作式取消；取消保留最後已核結果，晚到結果不覆蓋新請求。已開始的檔案讀取會安全排空後收尾；等待狀態結束再重試，不強制終止執行緒。此接線不新增操作參數；千檔效能、完整 Main／原來源／同版 EXE 與真人驗收仍依具名 QA 分別判讀。
 - 建立候選池 / Watchlist。
 - Fixed / quantile 門檻模式與 eligible universe 橫斷面百分位排名。
 - 可選月營收 YoY 最低值與 PE 最高值篩選；啟用時只讀 `available_date <= decision_date` 的 PIT 基本面版本，無法標準化決策日期、缺 PE／去年同期營收或不符門檻者寫入 screening matrix 的 `skipped` 原因，不補零也不讀未來資料。

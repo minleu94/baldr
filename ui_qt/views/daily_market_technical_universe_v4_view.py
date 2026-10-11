@@ -226,6 +226,7 @@ def _read_entry_page(
     entry: DailyMarketTechnicalUniverseV4CatalogEntry,
     *,
     cancel_callback: Callable[[], bool] | None = None,
+    _read_operation_cancellation_capability: object | None = None,
 ) -> _QueryReadResult:
     if not entry.is_selectable:
         raise ValueError("technical_universe_v4_catalog_entry_not_selectable")
@@ -254,6 +255,9 @@ def _read_entry_page(
         selection,
         query,
         cancel_callback=cancel_callback,
+        _read_operation_cancellation_capability=(
+            _read_operation_cancellation_capability
+        ),
     )
 
 
@@ -271,6 +275,7 @@ def _read_query_page(
     selection_query: DailyMarketTechnicalUniverseV4Query | None = None,
     selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None,
     cancel_callback: Callable[[], bool] | None = None,
+    _read_operation_cancellation_capability: object | None = None,
 ) -> _QueryReadResult:
     if _cancelled(cancel_callback):
         raise ValueError("technical_universe_v4_query_cancelled")
@@ -312,6 +317,9 @@ def _read_query_page(
         selection,
         query,
         cancel_callback=cancel_callback,
+        _read_operation_cancellation_capability=(
+            _read_operation_cancellation_capability
+        ),
     )
 
 
@@ -393,6 +401,7 @@ def _read_origin_page(
     selection_query: DailyMarketTechnicalUniverseV4Query | None = None,
     selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None,
     cancel_callback: Callable[[], bool] | None = None,
+    _read_operation_cancellation_capability: object | None = None,
 ) -> _OriginRestoreResult:
     if _cancelled(cancel_callback):
         raise ValueError("technical_universe_v4_origin_restore_cancelled")
@@ -424,6 +433,9 @@ def _read_origin_page(
         selection,
         exact_query,
         cancel_callback=cancel_callback,
+        _read_operation_cancellation_capability=(
+            _read_operation_cancellation_capability
+        ),
     )
     page = result.page
     if page is None:
@@ -518,6 +530,7 @@ def _read_selection_page_result(
     query: DailyMarketTechnicalUniverseV4Query,
     *,
     cancel_callback: Callable[[], bool] | None,
+    _read_operation_cancellation_capability: object | None = None,
 ) -> _QueryReadResult:
     if (
         not session.matches_source(selection_query)
@@ -530,6 +543,9 @@ def _read_selection_page_result(
         page_index=query.page_index,
         page_size=query.page_size,
         cancel_callback=cancel_callback,
+        _read_operation_cancellation_capability=(
+            _read_operation_cancellation_capability
+        ),
     )
     page = selection_page.page
     if (
@@ -1090,10 +1106,13 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
 
         self._start(
             "嚴格核驗來源",
-            lambda cancel_callback=None: _read_entry_page(
+            lambda cancel_callback=None, _read_operation_cancellation_capability=None: _read_entry_page(
                 self.store_output_root,
                 entry,
                 cancel_callback=cancel_callback,
+                _read_operation_cancellation_capability=(
+                    _read_operation_cancellation_capability
+                ),
             ),
             apply,
         )
@@ -1120,7 +1139,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         read_session = self._read_session
         self._start(
             "更新全域查詢",
-            lambda cancel_callback=None: _read_query_page(
+            lambda cancel_callback=None, _read_operation_cancellation_capability=None: _read_query_page(
                 base,
                 rule_state_filters=filters,
                 combine_mode=combine_mode,
@@ -1131,6 +1150,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 page_size=page_size,
                 read_session=read_session,
                 cancel_callback=cancel_callback,
+                _read_operation_cancellation_capability=(
+                    _read_operation_cancellation_capability
+                ),
             ),
             self._apply_query_result,
         )
@@ -1148,7 +1170,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         selection = self._selection
         self._start(
             f"讀取第 {next_index + 1} 頁",
-            lambda cancel_callback=None: _read_query_page(
+            lambda cancel_callback=None, _read_operation_cancellation_capability=None: _read_query_page(
                 base,
                 rule_state_filters=base.rule_state_filters,
                 combine_mode=base.combine_mode,
@@ -1161,6 +1183,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 selection_query=selection_query,
                 selection=selection,
                 cancel_callback=cancel_callback,
+                _read_operation_cancellation_capability=(
+                    _read_operation_cancellation_capability
+                ),
             ),
             self._apply_query_result,
         )
@@ -1285,13 +1310,16 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
 
         self._start(
             f"返回 {stock_code} 原查詢",
-            lambda cancel_callback=None: _read_origin_page(
+            lambda cancel_callback=None, _read_operation_cancellation_capability=None: _read_origin_page(
                 query,
                 stock_code,
                 read_session=read_session,
                 selection_query=selection_query,
                 selection=selection,
                 cancel_callback=cancel_callback,
+                _read_operation_cancellation_capability=(
+                    _read_operation_cancellation_capability
+                ),
             ),
             apply,
         )

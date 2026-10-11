@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace as dataclass_replace
 from datetime import date
@@ -30,6 +31,9 @@ from app_module.daily_market_technical_feature_snapshot_v4 import (
 from app_module.personal_data_paths import (
     _p01_page_operation_path_render_scope,
     _suspend_p01_page_operation_path_render_scope,
+)
+from app_module.task_cancellation import (
+    _claim_read_operation_cancellation_probe,
 )
 from app_module.daily_market_technical_snapshot_v4_repository import (
     DailyMarketTechnicalBatchArtifactV4,
@@ -2343,6 +2347,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         page_count: int,
         capture_stock_code: str | None,
         cancel_callback: Callable[[], bool] | None,
+        read_operation_cancel_probe: Callable[[], bool] | None = None,
     ) -> tuple[
         DailyMarketTechnicalUniverseV4Page,
         tuple[_ReadIndexCandidate, DailyMarketTechnicalFeatureSnapshotV4] | None,
@@ -2350,22 +2355,16 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         selected_by_artifact: dict[int, list[_ReadIndexCandidate]] = {}
         for candidate, _value in page_candidates:
             selected_by_artifact.setdefault(candidate.artifact_index, []).append(candidate)
+        grouped_candidates = tuple(sorted(selected_by_artifact.items()))
         page_rows: dict[str, DailyMarketTechnicalParentV4Row] = {}
         captured: tuple[_ReadIndexCandidate, DailyMarketTechnicalFeatureSnapshotV4] | None = None
-        for artifact_index, selected_candidates in sorted(selected_by_artifact.items()):
-            if _is_cancelled(cancel_callback):
-                _fail("technical_universe_v4_query_cancelled")
-            reference = _read_session_artifact_reference(
-                self._artifact_references, artifact_index, selected_candidates
-            )
-            artifact_snapshots = _read_session_child_snapshots_for_session(
-                self,
-                reference,
-                selected_stock_codes=tuple(
-                    candidate.stock_code for candidate in selected_candidates
-                ),
-                cancel_callback=cancel_callback,
-            )
+
+        def consume_artifact_snapshots(
+            artifact_index: int,
+            selected_candidates: Sequence[_ReadIndexCandidate],
+            artifact_snapshots: tuple[DailyMarketTechnicalFeatureSnapshotV4, ...],
+        ) -> None:
+            nonlocal captured
             snapshots = {item.stock_code: item for item in artifact_snapshots}
             if len(snapshots) != len(artifact_snapshots):
                 _fail("technical_universe_v4_query_duplicate_page_stock")
@@ -2386,6 +2385,87 @@ class DailyMarketTechnicalUniverseV4ReadSession:
                 page_rows[row.stock_code] = row
                 if capture_stock_code == candidate.stock_code:
                     captured = (candidate, snapshot)
+
+        def read_artifact_snapshots(
+            artifact_index: int,
+            selected_candidates: Sequence[_ReadIndexCandidate],
+            *,
+            child_cancel_callback: Callable[[], bool] | None,
+        ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+            reference = _read_session_artifact_reference(
+                self._artifact_references, artifact_index, selected_candidates
+            )
+            return _read_session_child_snapshots_for_session(
+                self,
+                reference,
+                selected_stock_codes=tuple(
+                    candidate.stock_code for candidate in selected_candidates
+                ),
+                cancel_callback=child_cancel_callback,
+            )
+
+        can_parallelize_child_reads = (
+            (cancel_callback is None or read_operation_cancel_probe is not None)
+            and len(grouped_candidates) > 1
+            and self._source_metadata_for_use() is not None
+            and all(
+                0 <= artifact_index < len(self._artifact_references)
+                and self._artifact_references[artifact_index].semantic_proof is not None
+                and self._artifact_references[artifact_index]._rehydration_capability is not None
+                for artifact_index, _selected_candidates in grouped_candidates
+            )
+        )
+        if can_parallelize_child_reads:
+            def read_in_worker(
+                artifact_index: int,
+                selected_candidates: Sequence[_ReadIndexCandidate],
+            ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+                # worker 不複製呼叫端 ContextVar；各自建立受限 path render memo，
+                # reader 只收到此操作的唯讀取消 probe。
+                with _p01_page_operation_path_render_scope():
+                    return read_artifact_snapshots(
+                        artifact_index,
+                        selected_candidates,
+                        child_cancel_callback=read_operation_cancel_probe,
+                    )
+
+            # 同一 executor 分批工作，任何時間最多保留八個未完成 future。
+            # 離開 executor 時會等待所有已啟動工作自然結束。
+            with ThreadPoolExecutor(
+                max_workers=min(8, len(grouped_candidates)),
+                thread_name_prefix="read-operation-child-read",
+            ) as executor:
+                for batch_start in range(0, len(grouped_candidates), 8):
+                    batch = grouped_candidates[batch_start:batch_start + 8]
+                    futures = {}
+                    for artifact_index, selected_candidates in batch:
+                        if _is_cancelled(cancel_callback):
+                            _fail("technical_universe_v4_query_cancelled")
+                        futures[artifact_index] = executor.submit(
+                            read_in_worker, artifact_index, selected_candidates
+                        )
+                    # 依 artifact index 取結果，保留舊序列錯誤優先序。
+                    for artifact_index, selected_candidates in batch:
+                        if _is_cancelled(cancel_callback):
+                            _fail("technical_universe_v4_query_cancelled")
+                        consume_artifact_snapshots(
+                            artifact_index,
+                            selected_candidates,
+                            futures[artifact_index].result(),
+                        )
+        else:
+            for artifact_index, selected_candidates in grouped_candidates:
+                if _is_cancelled(cancel_callback):
+                    _fail("technical_universe_v4_query_cancelled")
+                consume_artifact_snapshots(
+                    artifact_index,
+                    selected_candidates,
+                    read_artifact_snapshots(
+                        artifact_index,
+                        selected_candidates,
+                        child_cancel_callback=cancel_callback,
+                    ),
+                )
         expected_codes = tuple(candidate.stock_code for candidate, _value in page_candidates)
         if tuple(code for code in expected_codes if code not in page_rows) or set(page_rows) != set(expected_codes):
             _fail("technical_universe_v4_query_page_rows_missing")
@@ -2530,9 +2610,15 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         page_index: int,
         page_size: int,
         cancel_callback: Callable[[], bool] | None = None,
+        _read_operation_cancellation_capability: object | None = None,
     ) -> DailyMarketTechnicalUniverseV4ReadSelectionPage:
         """切既有全域排序清單，僅精確重開該頁需要的 child artifact。"""
 
+        # 必須先以原 callback identity claim，再建立會隔離 path scope 的 wrapper。
+        read_operation_cancel_probe = _claim_read_operation_cancellation_probe(
+            _read_operation_cancellation_capability,
+            cancel_callback,
+        )
         operation_cancel_callback = cancel_callback
         if cancel_callback is not None:
             def isolated_cancel_callback() -> bool:
@@ -2547,6 +2633,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
                 page_index=page_index,
                 page_size=page_size,
                 cancel_callback=operation_cancel_callback,
+                read_operation_cancel_probe=read_operation_cancel_probe,
             )
 
     def _read_selection_page_scoped(
@@ -2556,6 +2643,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         page_index: int,
         page_size: int,
         cancel_callback: Callable[[], bool] | None,
+        read_operation_cancel_probe: Callable[[], bool] | None,
     ) -> DailyMarketTechnicalUniverseV4ReadSelectionPage:
         """執行已建立 page-operation path scope 的頁面讀取。"""
 
@@ -2610,6 +2698,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             page_count=page_count,
             capture_stock_code=None,
             cancel_callback=cancel_callback,
+            read_operation_cancel_probe=read_operation_cancel_probe,
         )
         return DailyMarketTechnicalUniverseV4ReadSelectionPage(
             selection_identity_sha256=selection.selection_identity_sha256,

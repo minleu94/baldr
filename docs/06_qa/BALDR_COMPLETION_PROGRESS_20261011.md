@@ -149,3 +149,58 @@ Root 已讀 daily writer 全文與 ledger CAS 主流程。Owner 的 ledger 14／
 原 session `83137` 經同 handle 收取為 **exit 1／1 failed／1214.47 秒**，不冒稱 PASS 或測試 deadline timeout。Main 初始化最終完成，但 COW 按鈕不啟用；來源選擇回報 `personal_watchlist_source_unavailable`，尚未進 COW／catalog／query／fresh child。此前子代理工作區路由逾時不是程序終態；root 在 08:19:38 UTC 的 elevated CIM 確認 observer 可見且 exact runner tree（32848→52112→39552）已不存在，後由 owner 收取 pytest 終態。原來源 guard 保持。
 
 根因仍需核 fixture：PROFILE=test 會使 output_root 加 `/_test`，而 test source 預建於未加後綴的路徑。先做小型配置／resolver 探針，再修自身 fixture；另加初始化階段 log、faulthandler 與明示 deadline，避免無界初始化觀察。未因 poll 逾時重啟、不用失敗 fixture 宣稱正式產品缺陷；新 Main candidate 須重新凍結來源再驗。
+
+### P01 正式取消能力接線與整合驗證
+
+前一 goal turn 僅回覆使用者進度，分類為 no progress；本輪核對當前 dev 後，root 審閱並套用六檔 Event qualification 候選，保留完整補完範圍。正式 TaskWorker／v4 View／query 與三個回歸檔在套用前逐檔核 base SHA，前版本及回滾表保存於 `output/qa/baldr_completion_20261011/root/p01_apply_2f16e38ff9ad4d1dbcbd6987b43a1a36/`；包含原 query／測試未提交增量，不以 HEAD 還原覆寫它們。
+
+候選 patch SHA 為 `a44d8bcb3284ddb40dcfdbdd0ac5a993954e0b91c7b73f5c52283660bedc8abf`。`git apply --check` 通過；套用後 raw SHA 差異來自 newline，root 先斷言六檔 normalize 後文字與 pinned candidate 完全相等，再寫回原 candidate bytes，使六個 raw pins 與 manifest 相符。純 Python 能力模組與測試保持原候選版本。
+
+TaskWorker 只在明確 opt-in、exact worker／原 method／Event 身分與未被 caller 提供的 callback 下發行能力；Event 方法不合格仍用原 callback 執行，不將 helper TypeError 當成任務失敗。v4 View 的選版／查詢／換頁／返回將同一 callback 與一次能力傳至 public reader。多 artifact 有界讀取保留 fresh I/O、原結果／錯誤順序、獨立 path memo 及 worker 自然排空；自訂回呼仍走序列路徑。沒有修改金融計算或來源資格。
+
+| Root 驗證 | 結果及界線 |
+|---|---|
+| 純能力＋真 TaskWorker | 50 PASS；收據版重驗 1.82 秒／native0，八個 source／test raw pins 起訖一致。包含 positional callback、不以 kwargs 自動 opt-in、worker／Event override fallback。 |
+| 更新工作台強制回歸 | 85 PASS／4.06 秒／native0；原測試未刪。 |
+| 更新頁 validator | 25 通過／0 失敗／4 跳過／native0；合成 Temp 資料，不代表真下載或正式資料更新。 |
+| 全範圍 mypy | 首輪 950 檔僅 P08 候選 daily JSON None 型別錯誤；交 owner 收窄後第二輪 950 檔通過／native0。保留首輪失敗；此結果不授 P08 金融／來源接受。 |
+| 八個變更 Python 語法 | native0。 |
+| 正式 query＋v4 View 全組 | session79511／pytest PID24644 執行中；尚未取得終態，不授整合通過。 |
+
+Root raw 收據由 `output/qa/baldr_completion_20261011/root/run_p01_review.py` 保存 command、UTC 起訖、child PID、八個 raw source／test SHA 及檔案 log。stdout／stderr 直接寫專屬 regular file，沒有未排空 PIPE。觀察期限若到期會記 live_after_observation_timeout，不推定程序死亡；需沿原 handle／exact PID 核程序樹，不盲目重跑。
+
+Manual §6.7 已同步背景讀取、取消後保留已核結果、晚到結果隔離與安全收尾；架構記錄程序內能力及序列 fallback 邊界。原千檔 filter p95 超過 300 ms 仍有效；完整 matrix、正常 Main／原來源／EXE／真人與完整 P01 Gate 尚待。P01 owner 接續 scratch 追加開始後取消、九個以上 artifact outstanding 上限與正常 TaskWorker matrix，未授權先跑重型 matrix。
+
+### P08 Decimal context 審查負例
+
+Root 在 availability source SHA `7429d5d047636fb9c4d7553f51fd98255ac0f2016594b13b960252ebcec2948d` 上只呼叫純 helper：同一合法 `500000.00`，caller Decimal precision 28 接受，precision 3 卻回 `root_cash_precision_invalid`。收據 `output/qa/baldr_completion_20261011/root/p08_decimal_context_probe01.json`；未開 DB。完整 snapshot 加總／估值／bp 核驗也仍使用 caller context，已交唯一 owner 補獨立、有界 Decimal 核驗及低精度正負例。Owner 前版 30 PASS 不涵蓋此缺口；新版金融資格尚未 root 接受，成本與 account-aware producer 候選仍續辦。
+
+### F12 supervisor 聚焦更新
+
+Owner 配置探針已確認 PROFILE=test 的來源需位於解析後 `output_root/_test/watchlist/default.json`；不合格舊路徑保持拒絕。小型 supervisor fixtures 為 2 PASS／2.26 秒：create-only regular log 寫入 3,145,945 bytes 且沒有 PIPE，專屬 suspended Windows Job 在 deadline 後清理其五個成員 PID。這些是 owner 小型證據，不是完整 Main／query／保存與 fresh child。舊失敗封套保留；root 審讀另要求 fresh child 改為 bounded log 與相同 owned tree 管理、明示 startup 隔離環境及新的來源 freeze。完整 Main 仍未釋跑，不關閉 F12 Gate。
+
+### P01 query／View 終態與精確修正
+
+Root 沿原 session79511 收取 terminal native exit1：**30 PASS／1 failure／609.08 秒**；八個 source／test raw pins 起訖相同。唯一失敗在 `test_p01_parallel_child_read_round_is_bounded_equivalent_and_keeps_fallbacks`：測試在 strict_page 賦值前比較 DTO，traceback 明示 UnboundLocalError，不能當成產品 reader 通過或功能缺陷。
+
+已保存兩檔 preimage 與回滾表於 `p01_apply_2f16e38ff9ad4d1dbcbd6987b43a1a36/terminal_fix`。Root 只將 capability／strict DTO 完整比較移到 strict_page 賦值後，未刪除 assertion；另將 Worker 新增三行註解改為繁體中文，沒有 runtime 變更。精確失敗 node 重驗 **1 PASS／6.09 秒／native0**，收據 `output/qa/baldr_completion_20261011/root/p01_exact_fix01_9ca2bb8ec2e24cba8033bb28e0e63e38/receipt.json`，八 pins 不變。原全組的其餘 30 項不重複累加，這兩次證據合計覆蓋原 31 個獨立節點；不宣稱同一次全組全部綠燈。
+
+註解修正後純能力＋真 Worker 重驗 **50 PASS／1.34 秒／native0**，收據 `p01_worker03_bf5e91f557a340f48d291351c4095434/receipt.json`；八檔語法 `p01_compile02_28fe736a237743d5b1f3f1317224a76e` native0。量化靜態 guard 兩項通過；它不代替新金融來源的因果與精度核驗。P01 owner 正準備執行中取消與超過八個 artifact 的 outstanding 上限回歸；兩測試尚未 root 接受，完整冷暖矩陣及原300ms Gate仍未閉合。
+
+上一 goal turn 新收取特定 session79511 的終態與完整 failure trace，證據確認下一修正動作，分類為 progress；本輪已修正式測試順序並精確重驗。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持，沒有完整包結案。
+
+### P06 完整封存成本核驗的 caller context 修正
+
+Root 對已提交情境 codec 追加完整 encode／decode 回歸，caller precision 分別為1／3／28，Emax=1、Emin=-1並啟用 Inexact trap。修正前同份合法 frozen payload三例均於 Comparison 成本列加總拋 Decimal Overflow；另純記憶體 precision1探針重現成本比較 ValueError。原205項主要覆蓋 Allocation／估值的獨立 context，未覆蓋這段 Comparison 加總，保留原成功範圍與此次反例。
+
+Root 只將封存成本加總包在 `localcontext(Context(prec=60))`，既有完整結果比較、成本／現金守恆、身份／clock／hash／政策均保留。未讀行情或重跑當下 engine，payload v3格式與算法政策未變；同一封存的 bytes/hash不變。修改前preimage與標準回滾表在 `output/qa/baldr_completion_20261011/root/scenario_context01/`。
+
+精確三例重驗 **3 PASS／0.75秒／native0**；接續八組完整定向回歸 **208 PASS／10.66秒／native0**，不與前輪205或本輪3累加。收據 `output/qa/baldr_completion_20261011/root/scenario_context_final01_a09be89bd3b7459aa10722fbb47c648a/receipt.json` 保存command／UTC／child PID11144、15個source／test起訖SHA，pins一致。兩檔compile與source定向mypy通過，量化guard兩項通過。正常帳本／Health可得時鐘、UI／Main／原來源／EXE／真人及完整P06／M3／G2–G4仍待。
+
+### 產品剩餘範圍與 P01 追加終態核對
+
+Root 收取原 session80658 終態：執行中取消排空與超過八個 artifact 的未完成工作上限兩測試 **2 PASS／21 deselected／130.56秒／native0**，八個 source／test raw pins 起訖一致。收據 `output/qa/baldr_completion_20261011/root/p01_additional_tests01_f19220a90fe2426abc6d657150d8f23a/receipt.json`，child PID32044。正式 query 測試追加後語法檢查 native0；前輪全範圍 mypy 950檔 native0 的12個受核 pins 一致，收據 `completion_mypy01_360becf725a746d1ae57bfc0570ffd34/receipt.json`。這補足前節兩測試待接受狀態，仍不代表正常千檔冷暖矩陣或原300ms門檻通過。
+
+P08 owner 回報 daily／availability 新版38 PASS／223.73秒／session19119 native0；此為 owner 證據，公開 exact checkpoint reader、共用 producer 與 root 完整審查仍續辦，尚未授完整P08／M3。F12完整 Main／fresh child 仍待候選凍結與 root 釋跑。
+
+依原計畫與現況，剩餘工作可整理為六類：完整母體效能及共用查詢；其他資料域與策略定義；正常 UI／收藏／返回／重開；持倉情境與策略獨立帳本／績效；自然結果與維運終態；同版 EXE、Native 與3–5位真人接受。P00–P14全部仍有完整驗收缺口；M1／M2已有有限旅程，M3剩餘實作最多。此分類只供狀態說明，不重定義原工作包、條件或Gate，也沒有可核完整完成率或日曆工期。

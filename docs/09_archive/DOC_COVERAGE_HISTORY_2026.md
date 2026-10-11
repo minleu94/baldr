@@ -3161,3 +3161,9 @@ Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../sc
 ## 2026-10-11 Manual 日期化歷史快照範圍補正與全文核讀
 
 全文核讀 `docs/09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md`（原始版本 1,648 行／270,328 bytes，SHA-256 `A114ECDA3C6F22A45E66C38B33C34C8817A7857427E0A6C08B932059052BA2AD`）；讀取前後目標均 clean。文件最初標示 10/03–10/08，但正文後段另有 10/11 移入的 9/30、10/01 歷史排程收據與 10/03 revision-aware 研究早期模板，原檔首和 Archive／Guides README 仍只涵蓋初始日期。已在原件檔首標明初始日期及 10/11 補記，並同步 Archive README 與 Guides README；不改原始歷史章節，分類仍是舊 Manual 日期化開發／候選／有限驗收快照。更新後原件為 1,649 行／270,579 bytes，SHA-256 `17a56999a9c3d8b1ba6a6e4ba10e3e8d4cad7b2f7bb7d1ee7a3f5df88c34105d`。原檔 81 個 Markdown links、64 個唯一本地檔案路徑的目的地存在；外部 anchors 未核。未讀或更改受保護的 Application Manual、Snapshot、system architecture 或使用者 plan；未跑測試、Graphify 或 repo-wide link scan。
+
+
+<a id="coverage-entry-313"></a>
+## 2026-10-11 V4 ML release 舊 QA 路徑繁中校正
+
+將 `docs/06_qa/V4_ML_RELEASE_2026_09_07.md` 三行英文歷史 redirect 改為繁體中文，保留封存原件與目前狀態入口；沒有改動來源收據或路由目標。原檔 3 行／274 bytes，SHA-256 `543C3FAC300F185178EA37FA81F231DAD05A202F801D76DFFF686FF6AEB6B6D2`；更新後 3 行／258 bytes，SHA-256 `d6f3c1c4fd7cbea012df1e11269ae983121a2ff2eb2b5d095d751e39937b8600`。Archive README 對封存原文有直接入口；本次未將此 redirect 另加 QA README，也未讀取受保護 Snapshot 內容。`git diff --check` 通過。

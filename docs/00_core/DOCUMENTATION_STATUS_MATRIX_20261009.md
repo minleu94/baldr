@@ -691,3 +691,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 局部連結可達性覆核：** Entry 306 所列兩份 MOPS repo 外文件的 10 個具名 scratch 證據 file URI 在本工作樹皆有目標檔，但 `scratch/` 由 `.gitignore:181` 排除，因此既有檔首「乾淨 checkout 無法重現」警語正確；文件中的 `file:///.../scratch/` 省略號範例本身不是可解析目的地。另對 `scripts/scheduled/README.md` 抽取 16 個 inline Markdown 本機連結（12 個不同檔案目標），12/12 路徑存在；此為路徑存在性檢查，不含 anchors、reference-style／HTML 連結或受保護 Manual 內容核對。
 
 **2026-10-11 Archive 手冊日期化補充全文核讀：** `APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md` 從舊矩陣記錄的 120 行 partial 升為全文；確認檔案最初 10/03–10/08 的範圍已在 10/11 擴入歷史排程／研究模板，並同步更新 Archive 與 Guides README 導覽。原文歷史分類及操作限制保留，現行 Manual 未讀未改。全文身分與逐檔連結檢查見 Coverage History Entry 312。
+
+**2026-10-11 QA redirect 繁中校正：** 將 `V4_ML_RELEASE_2026_09_07.md` 英文三行歷史路徑導引改為繁體中文，保留 Archive 原文與 Snapshot 現況連結；全文身分見 Coverage History Entry 313。

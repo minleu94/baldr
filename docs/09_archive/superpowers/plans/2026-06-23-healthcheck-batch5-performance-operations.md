@@ -1,5 +1,7 @@
 # Healthcheck Batch 5 Performance / Operations Implementation Plan
 
+> **歷史狀態界線（文件日期 2026-06-23）**：Tasks 1–4 仍未勾選，但 Docs Update Checklist 與 Execution Summary 均記為完成，兩種原始狀態並存。本文不能單獨作為目前實作或驗證收據；現況依最新 Snapshot 與具名 QA 收據判讀。下表舊 rollback 命令僅供歷史查閱，禁止執行。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: 使用 superpowers:executing-plans 依序執行本計畫。每完成一個 task 後必須跑該 task 的 verification；若測試失敗或 scope 偏離，先修正再進下一步。
 
 **Goal:** 完成 Healthcheck Batch 5 的效能、取消、長任務可預期性與資料操作穩定性最小修復。主要落點是參數最佳化的大型範圍 UX、組合數預估、worker 數設定、SQLite / CSV 邊界說明、bounded submission 與取消訊息；Market Watch / Update 相關 issue 先做 repo evidence 排查與文件化最小界定，避免在本批引入高風險資料更新並行。
@@ -98,15 +100,15 @@
 
 | 檔案路徑 | 變更類型 | 變更摘要 | 回滾方式 | 回滾風險 |
 |---|---|---|---|---|
-| `app_module/optimizer_service.py` | 修改 | 組合數估算、bounded futures、取消彙總 | `git checkout HEAD -- app_module/optimizer_service.py` | 最佳化回到一次 submit 全部任務 |
-| `ui_qt/views/backtest/config_panel.py` | 修改 | worker spinbox、提示文字、最佳化區塊配置 | `git checkout HEAD -- ui_qt/views/backtest/config_panel.py` | UI 不再顯示 worker / SQLite 邊界 |
-| `ui_qt/views/backtest_view.py` | 修改 | preflight、worker 寫回、取消/錯誤文字 | `git checkout HEAD -- ui_qt/views/backtest_view.py` | 大型掃描缺少預估確認 |
-| `tests/test_optimizer_service.py` | 新增/修改 | Optimizer focused tests | `git checkout HEAD -- tests/test_optimizer_service.py` 或刪除新檔 | 測試覆蓋下降 |
-| `tests/test_ui_qt_research_workflow.py` | 修改 | 最佳化 UI focused tests | `git checkout HEAD -- tests/test_ui_qt_research_workflow.py` | UI 回歸少一層測試 |
-| `docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` | 修改 | Batch 5 issue 狀態與剩餘風險 | `git checkout HEAD -- docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` | healthcheck 狀態回到 Batch 4 |
-| `docs/07_guides/APPLICATION_MANUAL.md` | 修改 | 參數最佳化操作與安全限制 | `git checkout HEAD -- docs/07_guides/APPLICATION_MANUAL.md` | Manual 不描述新 UI |
-| `docs/01_architecture/system_architecture.md` | 可能修改 | Optimizer execution boundary | `git checkout HEAD -- docs/01_architecture/system_architecture.md` | 架構文件不描述 bounded optimizer |
-| `docs/00_core/DOCUMENTATION_INDEX.md` | 修改 | 新增 Batch 5 plan 索引 | `git checkout HEAD -- docs/00_core/DOCUMENTATION_INDEX.md` | plan 不在索引 |
+| `app_module/optimizer_service.py` | 修改 | 組合數估算、bounded futures、取消彙總 | `git checkout HEAD -- app_module/optimizer_service.py` — ARCHIVED — DO NOT RUN | 最佳化回到一次 submit 全部任務 |
+| `ui_qt/views/backtest/config_panel.py` | 修改 | worker spinbox、提示文字、最佳化區塊配置 | `git checkout HEAD -- ui_qt/views/backtest/config_panel.py` — ARCHIVED — DO NOT RUN | UI 不再顯示 worker / SQLite 邊界 |
+| `ui_qt/views/backtest_view.py` | 修改 | preflight、worker 寫回、取消/錯誤文字 | `git checkout HEAD -- ui_qt/views/backtest_view.py` — ARCHIVED — DO NOT RUN | 大型掃描缺少預估確認 |
+| `tests/test_optimizer_service.py` | 新增/修改 | Optimizer focused tests | `git checkout HEAD -- tests/test_optimizer_service.py` — ARCHIVED — DO NOT RUN；或刪除新檔 | 測試覆蓋下降 |
+| `tests/test_ui_qt_research_workflow.py` | 修改 | 最佳化 UI focused tests | `git checkout HEAD -- tests/test_ui_qt_research_workflow.py` — ARCHIVED — DO NOT RUN | UI 回歸少一層測試 |
+| `docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` | 修改 | Batch 5 issue 狀態與剩餘風險 | `git checkout HEAD -- docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md` — ARCHIVED — DO NOT RUN | healthcheck 狀態回到 Batch 4 |
+| `docs/07_guides/APPLICATION_MANUAL.md` | 修改 | 參數最佳化操作與安全限制 | `git checkout HEAD -- docs/07_guides/APPLICATION_MANUAL.md` — ARCHIVED — DO NOT RUN | Manual 不描述新 UI |
+| `docs/01_architecture/system_architecture.md` | 可能修改 | Optimizer execution boundary | `git checkout HEAD -- docs/01_architecture/system_architecture.md` — ARCHIVED — DO NOT RUN | 架構文件不描述 bounded optimizer |
+| `docs/00_core/DOCUMENTATION_INDEX.md` | 修改 | 新增 Batch 5 plan 索引 | `git checkout HEAD -- docs/00_core/DOCUMENTATION_INDEX.md` — ARCHIVED — DO NOT RUN | plan 不在索引 |
 | `docs/superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md` | 新增 | 本計畫 | 刪除本檔 | 無資料風險 |
 
 ## TDD Steps

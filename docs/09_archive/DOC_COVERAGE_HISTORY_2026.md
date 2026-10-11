@@ -3176,3 +3176,20 @@ Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../sc
 舊閱讀 aggregate `205 full / 4 partial / 344 unread` 與另一舊 aggregate `36 / 6 / 511` 均無逐檔名單且互相不一致，不可合併或推斷目前路徑狀態。Entry 309 的 28 個具名全文核讀路徑可逐檔核對；本次另全文核讀 `docs/06_qa/BALDR_PRODUCT_COMPLETION_STATUS_20261010.md`，目標讀前後皆 clean，95 行／20,043 bytes，SHA-256 `8ef3cf92ff022913b03a691f1d46f14335b8a4cbb45b182ee350e925b943ff36`。分類為日期化 QA 狀態／續作導覽，不是驗收收據或當前狀態 SSOT；應保留日期範圍並把當前狀態導向最新授權證據及相應 SSOT。文件列出的受保護 plan 與 ignored output 未讀。
 
 可辨識 partial 路徑 `ASTRA_ENGINEERING_CLOSEOUT_20261003.md` 已由 Entry 303 的 partial 更新為 Entry 307 的全文核讀；目前沒有可辨識且尚未升為全文的 clean partial 候選。由於舊 aggregate 無逐檔 manifest，未能還原其餘 unread／partial 路徑，也尚未形成涵蓋全部歷史批次的去重閱讀狀態清冊。未修改 QA 原件、未讀受保護 plan、未跑測試、Graphify 或全域 links／anchors scan。
+
+<a id="coverage-entry-315"></a>
+## 2026-10-11 REFACTOR_REPORTS 七份 clean 文件全文核讀
+
+七份 tracked Markdown 均於讀前與讀後以精確路徑確認 clean，全文讀至 EOF，行數／bytes／SHA-256 讀前後一致。Matrix 與舊 aggregate 未留具名全文證據；雖然這些 basename 曾出現在 coverage 缺口與 History 的狀態導覽中，路徑提及或替代狀態不等於全文核讀證據。此批與舊 74 份報告批次的交集未知，不得相加推算去重總數。
+
+| REFACTOR_REPORTS 路徑 | 分類 | 行數 | bytes | SHA-256 |
+|---|---|---:|---:|---|
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R008_SOL_FINAL_ACCEPTANCE.md` | 有界歷史 acceptance evidence | 34 | 4582 | `b296e6babd0758cf61d8cff014e70ed41d8517ae1618e419296000dddae08f7a` |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md` | 歷史相容導引 | 12 | 1047 | `7f3581c94a6a68a27cbf8042b32c0519f4b83248226db6c1a7a543e18e6a28d9` |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md` | 歷史平行分析／建議，非正式 PASS review | 183 | 30938 | `d960cae5dfb643dcc8d83b094ff22ac77f7665e6182d1c9f1cb795b8b677fa80` |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_PRELIMINARY_CHECKPOINT.md` | 歷史 checkpoint 導引 | 12 | 1095 | `21377d6347ae14a93e6457c867613ac1a9893349d33db7c62bbec7c6b962c8c5` |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_CHECKPOINT.md` | 歷史 checkpoint 導引 | 5 | 576 | `90428d38a823d421a4d0ffa0a0fe1ef6d7f20882f44f139d7f0ea37f28491171` |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md` | 歷史相容導引 | 14 | 1194 | `d9ed512206002a18061e088397aa3e8d27c79cdc1e3e318918e17a5284b58630` |
+| `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md` | 歷史 preflight 導引 | 14 | 1176 | `89e2a2e86ca5fcdef5cbdf97439d959d20f9d1b3956523faa209d788164d91a4` |
+
+R008 PASS 僅是當時凍結 SHA 範圍的驗收證據；WAVE1 Gemini 報告明示不是正式 PASS review，含工作站絕對路徑；其餘五份記錄歷史 checkpoint、preflight 與後續替代入口，均不可推定為現況。七份文件彼此未見重大實質衝突；因受保護現況權威未讀，未能交叉核對其所述目前狀態。允許範圍內僅檢查內部引用目的地存在性，未讀其內容；`REFACTOR_MODEL_ASSIGNMENTS.md` 預期資料夾位置未找到，絕對路徑未逐一驗證。兩份 dirty 路徑 `WAVE1_R007_TZNAME_CHECKPOINT.md` 與 `WAVE2_BATCH_VALIDATION_PLAN.md` 完全排除，未讀。未修改來源、未跑測試、Graphify 或全域 links／anchors scan。

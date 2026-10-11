@@ -1,5 +1,7 @@
 # Full App Healthcheck UI Smoke Implementation Plan
 
+> **歷史測試計畫（2026-06-29）**：本文未勾選的 UI smoke、測試及 Git 步驟只記錄當日計畫，不代表目前待辦或執行授權。執行前須核對目前測試入口、隔離資料路徑與本次任務授權；現況看 [QA 導覽](../../06_qa/README.md) 與 [Manual](../../07_guides/APPLICATION_MANUAL.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 讓 Full App Healthcheck 支援分 tab 驗證，並逐步接近真人 UI 操作測試，同時維持非破壞、安全可回滾。

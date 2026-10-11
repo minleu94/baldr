@@ -1,5 +1,7 @@
 # V3.0 Engineering Candidate Spec
 
+> **日期化候選基線（2026-07-08）**：下列 milestone、branch、report 與 Gate 狀態只記錄當日，不代表目前候選或工程進度；現況以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與具名 QA 為準。
+
 > Automation: `baldr milestone planner 0000`
 > Run date: 2026-07-08
 > Active milestone: V3.0 engineering candidate

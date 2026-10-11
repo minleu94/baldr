@@ -1,5 +1,7 @@
 # Afternoon Safe Refactor Cycles Implementation Plan
 
+> **歷史計畫（2026-07-11）**：本文的一次性 automation、舊排程及 Git commit／push 操作只記錄當日循環，不是目前派工、automation 或發佈授權；不得直接重啟。現況與優先序看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 2026-07-11 14:00–19:00 建立並啟動五輪、每輪最多兩切片的單日安全重構循環。

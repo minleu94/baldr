@@ -1,5 +1,7 @@
 # Month 5 Fundamental SQLite Migration v1 Implementation Plan
 
+> **歷史計畫（2026-06-16）**：本文的 SQLite schema migration、正式 apply／backup／restore 命令與 `--confirm` 步驟只記錄當時設計，不是目前資料寫入授權或操作指南；不得直接重跑。現況與受控操作以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[Manual](../../07_guides/APPLICATION_MANUAL.md) 及具名 QA 為準。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add an explicit, backed-up migration workflow for the fundamental SQLite tables that already exist as dry-run schema.

@@ -1,5 +1,7 @@
 # 安全重構四個延長循環設計
 
+> **歷史設計（2026-07-11）**：本文記錄的一次性 automation、舊排程與 Git 操作不代表目前任務狀態或執行授權。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與現行協作規範。
+
 ## 目標
 
 在既有 08:00 QA 後新增四個不壓縮的 Planner → Implementation → QA 循環，延長安全重構到 12:00，並維持現已歸檔為 `docs/09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md` 的所有 Gate、產物追溯與 atomic commit/push 模式。

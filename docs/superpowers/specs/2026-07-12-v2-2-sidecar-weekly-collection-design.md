@@ -1,5 +1,7 @@
 # V2.2 Sidecar Weekly Collection Design
 
+> **歷史設計核准（2026-07-12）**：本文的「已取得設計核准」、排程時間與正式路徑只表示當日設計狀態，不代表目前排程啟用或資料寫入授權。現況以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 及 [排程唯讀 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) 為準。
+
 > 日期：2026-07-12
 > 狀態：已取得使用者設計核准；等待 written spec review 後才進入實作。
 

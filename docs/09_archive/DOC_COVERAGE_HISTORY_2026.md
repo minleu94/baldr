@@ -2542,3 +2542,19 @@ Archive 根層第二批 20 份文件的複核釐清：`DOCUMENTATION_CLEANUP_REP
 Guide／Manual 定向審查後修正三項會誤導現行操作的內容：Manual §11.2 不再把可讀 status artifact 數量當成 Windows Task 數量，改連全部 21 個 baldr task 的唯讀稽核 Runbook；§4.9 與 Quick Reference 將固定 2026-06 日期及資料根路徑改成需由使用者代入的日期／路徑範本，標明舊日期不是目前值。Manual §13 覆蓋矩陣補列「個股研究」；持倉管理的「清空全體數據」安全欄降為部分完成，因為手冊未列出其精確帳本範圍、備份位置和復原程序，並提醒未能確認備份可還原時取消操作。這項操作缺口仍待後續按實際功能驗證並補齊；本輪未讀取 dirty implementation 或推論實作細節。
 
 Guide README 指向 Manual／附冊／各類 Runbook 的章節地圖仍有效。20 份 Guides 的簡化相對 Markdown link／anchor scan 為 466 個目標，沒有缺失路徑或錨點；此結果不等於 20 份全文內容均已審查。本輪未把完整日期化工程維運區段移出 Manual，該結構一致性仍留待覆蓋盤點決定，不宣稱此目錄已全篇更新。未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-220"></a>
+## 2026-10-11 Superpowers retained originals 高風險警語
+
+唯讀核對 `docs/superpowers/` retained originals 的 69 份具名清冊：45 plans、23 specs、1 prompt；69/69 原路徑存在，`docs/09_archive/superpowers/` 無對應副本。它們都是歷史追溯內容，無現行狀態權威；README 直接連到其中 14 份，屬選擇性導覽。初始 manifest bytes／SHA 有 53 份 raw match、9 份僅換行差異、7 份正文差異；既有歷史紀錄可解釋其中 6 份日期狀態／警語增補，但完整 retained-current hash 表過去未建立。
+
+本批在 20 份直接包含正式資料寫入／SQLite migration、破壞性 Git rollback／push、automation／Task Scheduler 操作、明示舊 owner 授權或日期化工程狀態的 plan/spec 標題後新增歷史／授權提醒。保留原正文與所有 checklist，不執行其命令；逐檔目前位元組數與 SHA-256 已增補在 [SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md#retained-source-high-risk-warning-20261011)。其餘 retained originals 由 `docs/superpowers/README.md` 的明確歷史定位導覽；目前全數內容仍未逐篇全文審閱，不能宣稱 Superpowers retained originals 的內容治理完成。未執行測試、Graphify 或最終 repo-wide links／anchors scan。
+
+
+<a id="coverage-entry-221"></a>
+## 2026-10-11 QA 日期狀態提示更新
+
+對 8 份 QA 內容文件的第二批只讀複核發現三處值得在直開時澄清：`BALDR_DAILY_BBANDS_CENTRAL_20261007.md` 的「先整合 BBP01」待辦已由 44-case focused union 的後續收據接續，但 daily caller／UI 仍未完成；`BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md` 檔首早期狀態「尚未完成每日目前來源啟用」與文內 10/07 revision 1 `effective_model_run=true` 後續收據時間不同；`BALDR_PERSONAL_MODEL_ACTIVATION_PREFLIGHT_20261006.md` 是啟用前固定基線，早於後續接線。三份 QA 僅新增階段時序／範圍提示與跨文件連結，保留原始收據和結果。
+
+同批另外五份收據的有限 scope、失敗／成功與資格界線未見需改寫的矛盾。逐檔清單不加入歷史全文覆蓋總數，因早期 QA 累計缺少逐檔去重 manifest，且只確認本批名稱不在現有具名清單；受保護的 10/11 產品完成進度文件未讀。未重跑 QA 中的測試，未執行 Graphify 或最終 repo-wide links／anchors scan。

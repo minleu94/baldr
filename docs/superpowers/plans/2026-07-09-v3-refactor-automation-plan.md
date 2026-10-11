@@ -1,5 +1,7 @@
 # V3 後續簡化佇列自動化 Implementation Plan
 
+> **歷史計畫（2026-07-09）**：本文的 Codex automation、排程與 Git commit／push 步驟只記錄當日方案，不是目前派工、automation 設定或發佈授權；不得直接重啟。現況與優先序以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 和 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 為準。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 將 6 個既有 V3.0 milestone cron 改為可在原有夜間時間盒內自動完成多個安全重構切片、測試、commit 與 push 的 V3 後續簡化佇列。

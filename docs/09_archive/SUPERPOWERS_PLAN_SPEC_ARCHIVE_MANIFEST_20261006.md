@@ -277,3 +277,31 @@ V3 Score Effectiveness／ML Readiness plan/spec 均指向 read-only／shadow rea
 | `docs/09_archive/superpowers/plans/2026-06-16-tpex-daily-price-backfill.md` | 18279 | `060c078dad61fac2fa05ca689ed40ec5b0aa6d6ef322ee1724d27c14b13c7f9b` | 18840 | `e63ac89d4fa195a183ce4d0cc550cfa3087aea6b5dcd8af58ae0305e615c762a` |
 | `docs/09_archive/superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md` | 41402 | `4b4da66a9fd054fd228a6afad6f000387fd439d64fcc594bd144ad8693a1f626` | 41963 | `72d2d63d979d743085d507b3f4b7953fab32e92d4c55590a1f01e92a0193812b` |
 | `docs/09_archive/superpowers/plans/2026-06-14-month-3-factor-layer.md` | 37872 | `092ce0f3bfd4316fc88648741f672c84459327e1648e83ed4e6086f95d0a139e` | 38433 | `48e7af8baebb8cb0f720809ce1232504183447da85fbab50ee092113ae78ff09` |
+
+<a id="retained-source-high-risk-warning-20261011"></a>
+## 2026-10-11 保留原路徑高風險歷史文件警語補記
+
+以下 20 份保留於 `docs/superpowers/` 原路徑的歷史 plan/spec，已在標題後新增日期化歷史／授權界線與目前狀態入口，正文 checklist、設計與原授權記錄保留。上方原始 SHA 欄位仍代表初始清冊中的歷史來源 bytes；本表記錄本次補警語後目前工作樹 bytes／SHA-256。原清冊 69 份 retained originals 仍由 README 統一界定為歷史追溯資料；下表只列本次處理的高風險及日期敏感子集。
+
+| 目前原路徑 | 目前 bytes | 目前 SHA-256 |
+| --- | ---: | --- |
+| `docs/superpowers/plans/2026-07-06-broker-branch-registry-backfill.md` | 4579 | `df8558d14f5a96bce554fade0f8a18923c0e6ba5fbc9598cdd5b0cfed39b8a7b` |
+| `docs/superpowers/plans/2026-06-23-healthcheck-batch1-direct-fixes.md` | 43837 | `adc9c51000ac724880055f39a319650089ef0f9d6fd13fe6e8d4ef077fed87e5` |
+| `docs/superpowers/plans/2026-06-23-healthcheck-batch2-daily-dashboard-smart-money.md` | 55591 | `13ebbb157613bb97ea218d8fb1ab9528feeb48be221a9616524ec64d350ab510` |
+| `docs/superpowers/plans/2026-06-23-report-only-healthcheck-sections.md` | 22880 | `a54df6551f34d0bee3b59c30970dcf9f22eb9a2b5781d25ec0345feaf36d8bf6` |
+| `docs/superpowers/plans/2026-06-16-month5-fundamental-sqlite-migration-v1.md` | 12543 | `a12fbfcc77770579efd02269ac38d72332a30b9f7106feb48e347acc1255c351` |
+| `docs/superpowers/specs/2026-07-13-external-evidence-wave-1-authorization-addendum.md` | 5420 | `fa56bf048e52132faba5da196bae0daf40161c9d89d3073271c967f4464f62a0` |
+| `docs/superpowers/specs/2026-07-13-external-evidence-wave-2a-authorization-addendum.md` | 6011 | `b0ca89062a2115e3f271bafed92e6c7ee4eccbde28c2c39f11dc0be22e7bf52a` |
+| `docs/superpowers/specs/2026-07-13-terra-development-dataset-v0-design.md` | 5942 | `f1cda5f270555c480d67b3b6b3f75fb817fcf724cbe77a46ef679faec4c29bc6` |
+| `docs/superpowers/plans/2026-07-09-v3-refactor-automation-plan.md` | 7341 | `9c66a178f08f3ed177e1c6c904f40c22a687f1a4ebe38e09e63203d4865d8b22` |
+| `docs/superpowers/specs/2026-07-09-v3-refactor-automation-design.md` | 5844 | `c20cc83d1eb033b1e46721ca5c06048c33a9e7bd73e342a05a4dbbb29e1e4a24` |
+| `docs/superpowers/plans/2026-07-11-afternoon-safe-refactor-cycles.md` | 4715 | `1a8663b4351f916b5183266d26682ea83be36f032682bd8ba30a9b2da570ac57` |
+| `docs/superpowers/specs/2026-07-11-afternoon-safe-refactor-cycles-design.md` | 5156 | `962716561321549d33c3e52835444fa3b836d2ab4ce6e124180f1e3d2f0fa4d9` |
+| `docs/superpowers/plans/2026-07-11-safe-refactor-four-extra-cycles.md` | 4406 | `02447f37cd1ef0b82019e25fc3036d1b21042945895ceecad52395d7fbc7bf9e` |
+| `docs/superpowers/specs/2026-07-11-safe-refactor-four-extra-cycles-design.md` | 2502 | `96f95120f568365c8c82ab216e2ad9a7066638f1b716660d0142bbb01ac3a998` |
+| `docs/superpowers/plans/2026-07-12-v2-2-sidecar-weekly-collection.md` | 7487 | `30dd6c3fb8baebb7cebf056e2d331fff40cea6eff6105d44eeab534bfa041fcd` |
+| `docs/superpowers/specs/2026-07-12-v2-2-sidecar-weekly-collection-design.md` | 5723 | `4d79d60a0e74624ca53aeeaca5e248463eae628ddf97e4b528ef52e8c433d517` |
+| `docs/superpowers/plans/2026-06-16-month5-fundamental-layer-preflight.md` | 6624 | `c293943c30666d2d3f0f69109f86c36b014ea025178230d8084d04fc843cfb4c` |
+| `docs/superpowers/specs/2026-07-08-v3-0-engineering-candidate-spec.md` | 8913 | `d7bdaadde879233db906bda17651f5d8751226bd8d17e79875c6c986c4aff5d6` |
+| `docs/superpowers/plans/2026-06-29-full-app-healthcheck-ui-smoke.md` | 11753 | `168da50efc91a89606688cd1e2b53948229e49f50429b786c65e20d1e7038959` |
+| `docs/superpowers/plans/2026-06-30-mainwindow-ui-smoke-operation.md` | 7746 | `dbefcac58a596475ca1b3f10e1bbaf0e443c38aeda61156f3afdcb2d823dfd40` |

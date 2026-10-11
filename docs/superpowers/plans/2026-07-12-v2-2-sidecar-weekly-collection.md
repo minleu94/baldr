@@ -1,5 +1,7 @@
 # V2.2 Sidecar Weekly Collection Implementation Plan
 
+> **歷史計畫（2026-07-12）**：本文記錄的正式 DB／sidecar 路徑、Task Scheduler 時間與執行步驟只屬當日方案，不是目前排程或資料寫入授權；不得直接重跑。現況與操作看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 及 [排程唯讀 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立週日 Windows Task，自動將 Evidence Review collection 保存到 sidecar DB，並保留人工審核與既有 weekly history 的分界。

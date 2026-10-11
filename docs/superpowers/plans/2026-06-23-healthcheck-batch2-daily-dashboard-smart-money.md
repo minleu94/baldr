@@ -1,5 +1,7 @@
 # Healthcheck Batch 2 Daily Dashboard / Smart Money Implementation Plan
 
+> **歷史計畫（2026-06-23）**：本文中的 `git checkout HEAD --` 回退、Git staging／commit、檔案覆寫與測試步驟只屬當日記錄，不是目前派工或回退授權；不得直接重跑或套用到目前工作樹。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[QA 導覽](../../06_qa/README.md) 與 [Manual](../../07_guides/APPLICATION_MANUAL.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve Healthcheck Batch 2 by upgrading Daily Decision Desk to an answer-first dashboard and adding a governed Smart Money semantic layer for 5 / 20 / 60 day chip diagnostics.

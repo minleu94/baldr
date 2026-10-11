@@ -1,5 +1,7 @@
 # 2026-07-11 下午安全重構五輪循環設計
 
+> **歷史設計（2026-07-11）**：本文記錄的一次性 automation、舊排程與 Git 操作不代表目前任務狀態或執行授權。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與現行協作規範。
+
 ## 目標
 
 只在 2026-07-11 14:00–19:00（America/Los_Angeles）追加五輪 `SAFE_REFACTORING_MASTER_PROGRAM`。每輪維持 Planner → Implementation → QA 的完整交接，最多安排兩個彼此獨立且能在同一時間盒內完成的切片；不以增加數量為由略過 RED／GREEN、focused tests、conditional gates、push 或獨立 QA。

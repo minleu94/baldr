@@ -1,5 +1,7 @@
 # Broker Branch Registry Backfill Implementation Plan
 
+> **歷史計畫（2026-07-06）**：本文件的正式資料路徑、SQLite／CSV 寫入與歷史回補步驟只記錄當時方案，不是目前派工或資料寫入授權；不得直接重跑。現況、優先序與操作限制以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)、[Manual](../../07_guides/APPLICATION_MANUAL.md) 及具名 QA 為準。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add 8 verified broker branches to the formal registry, smoke-test one trading day, sync SQLite, then backfill the missing historical range in the background.

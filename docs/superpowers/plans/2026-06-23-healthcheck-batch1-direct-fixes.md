@@ -1,5 +1,7 @@
 # Healthcheck Batch 1 Direct Fixes Implementation Plan
 
+> **歷史計畫（2026-06-23）**：本文的測試、Git staging／commit 與檔案處置步驟只屬當日工作記錄，不是目前派工或回退授權；執行前須重新核對目前工作樹、Scoped SSOT 與明確任務授權。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](../../06_qa/README.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve the first executable batch of issues from `docs/06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md`: `UPDATE-ISSUE-030`, `UPDATE-ISSUE-031`, `PORTFOLIO-ISSUE-001` through `PORTFOLIO-ISSUE-009`, `RUNTIME-ISSUE-001` through `RUNTIME-ISSUE-004`, and Research Lab Batch 1 UX readability items.

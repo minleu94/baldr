@@ -1,5 +1,7 @@
 # 個人 H20 模型中央接線與真候選核對（2026-10-06）
 
+> **階段時序提示（2026-10-11）：** 下一段「尚未完成每日目前來源啟用」是 10/06 早期階段摘要；本文後段記錄的 10/07 revision 1 已有 `effective_model_run=true` 的實際個人效果收據。該結果只證明有界個人切片，Task 尚未實際執行、自然結果尚未成熟；不代表整體產品完成或取得交易、正式 PIT／global promotion 資格。現況回到 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](README.md)。
+
 本次接受原 H20 毛報酬 head 的精確讀取工程，尚未完成每日目前來源啟用。使用者已明示接受有限 BBANDS30 上軌比較與 H20 gross、希望真模型在每日個人研究中實際使用；自然績效成熟度不再作個人使用的工程門檻。原交易、正式 PIT、global promotion 等資格不因此提升。
 
 ## Coverage

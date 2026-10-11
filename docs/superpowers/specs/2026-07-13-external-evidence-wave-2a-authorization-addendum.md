@@ -1,5 +1,7 @@
 # External Evidence Wave 2A 執行授權增補
 
+> **歷史授權記錄（2026-07-13）**：本文保留的 owner authorization、資料來源及執行 slice 只適用當日；不構成目前網路抓取、資料寫入或任務派發授權。任何執行都須重新核對現行 Scoped SSOT 並取得本次明確授權；現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與具名 QA。
+
 > 日期：2026-07-13
 >
 > 授權人：使用者明確授權

@@ -1,5 +1,7 @@
 # 個人真模型啟用前讀回入口
 
+> **歷史 preflight（2026-10-06）：** 本文件固定在啟用前，記錄當時尚未選定 root／設定；後續接線與 revision 1 效果見[個人模型中央接線 QA](BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。此 preflight 不代表目前未啟用或目前待辦；現況看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [QA 導覽](README.md)。
+
 固定接手基準 `36dc1baf740007834f385ff0f654c7fe268a36f3`。
 
 使用者要求既有真模型以正確原含義實際參與個人每日研究。新增 H20 gross 模型不是所有既有模型啟用的前置門檻。既有 calibration 可保其 H20 上漲機率／校準 target，工程來源相容通過後接個人 policy；準確度自然觀測，不能假造歷史 PIT。

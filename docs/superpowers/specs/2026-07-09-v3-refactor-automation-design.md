@@ -1,5 +1,7 @@
 # V3 後續簡化佇列自動化設計
 
+> **歷史設計（2026-07-09）**：本文的 automation、排程與 Git 操作契約是日期化設計，不代表目前 automation／排程狀態，也不授權建立或重啟任務。現況以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與現行協作規範為準。
+
 ## 目標
 
 將已完成的 V3.0 Engineering Candidate closeout 排程，改為可在既有夜間時段內連續處理多個「保持行為不變」重構切片的自動化迴圈。每個完成切片都必須驗證、commit 並 push 到 `dev`，讓早晨報告可直接驗收實際完成量。

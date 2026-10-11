@@ -1,5 +1,7 @@
 # 日常 BB 版號中央接線（2026-10-07）
 
+> **後續狀態提示（2026-10-11）：** 本文的「先整合 BBP01 parent API」是 10/07 當時狀態；後續 [BBP01 母體驗證](BALDR_PARENT_BBANDS30_UPPER_20261007.md) 已完成 44-case focused union。本文的 daily caller／UI 接線仍未完成，10 個專屬案例與 2 個 v2 讀回案例不代表 v3 producer 或完整日常產品驗收。
+
 固定基準 d222ba0dbd3e87991ba5404fec29470646af2c68。中央只修改 daily owner、runtime adapter、observation acceptance 與專屬測試。BBP01 的 parent/producer CLI 四檔仍由其 lane 排他持有，本次沒有改其來源。
 
 runtime 與 observation policy 可新增同值 `feature_contract_version`；缺欄仍使用原 v2，明示 v3 使用 `daily-market-feature-snapshot.v3.bbands30-upper`。policy 方法 hash 按版號重建核對，runtime/policy 異版、跨 segment 異版、保存 parent/policy 異版均拒絕。舊 runtime 不傳新 parent 參數，明示版號才傳 `contract_version`。沒有調整配額、200GiB capture reserve、cohort 上限、資格或 Task。

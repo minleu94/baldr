@@ -1,5 +1,7 @@
 # Report-only Healthcheck Sections 實作計畫
 
+> **歷史計畫（2026-06-23）**：本文的測試、Git commit／push 與分支操作只記錄當時方案，不是目前派工或發佈授權；不得直接重跑。現況、優先序與測試入口看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 及 [QA 導覽](../../06_qa/README.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 讓 Full App Healthcheck output 可用 opt-in 方式附加 QA metadata sections，但不改變預設 runner 行為、不啟用 gate、不阻擋 release。

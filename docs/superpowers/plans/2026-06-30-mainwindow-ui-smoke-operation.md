@@ -1,5 +1,7 @@
 # MainWindow UI Smoke Operation Implementation Plan
 
+> **歷史測試計畫（2026-06-30）**：本文的 UI smoke、測試與 Git 步驟只記錄當日計畫，不代表目前待辦或執行授權。執行前須核對現行測試入口、隔離資料路徑與本次任務授權；現況看 [QA 導覽](../../06_qa/README.md) 與 [Manual](../../07_guides/APPLICATION_MANUAL.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build an opt-in Full App Healthcheck MainWindow UI smoke layer that launches the real PySide6 MainWindow, switches tabs, captures screenshots, tests resize, and verifies cancel-only dialog paths.

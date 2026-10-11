@@ -1,6 +1,6 @@
 # Superpowers Specs / Plans 目錄
 
-> **最後整理**：2026-10-10
+> **最後整理**：2026-10-11
 > **定位**：本目錄保存 Superpowers 流程產生的設計規格、實作計畫與 execution artifacts。既有文件通常是歷史追溯資料；目前例外是已由 Snapshot／Index 明確接續的 [Baldr 產品補完計畫](plans/baldr_product_completion_plan_20261006.md)，其工作狀態仍以 Snapshot 與對應 QA 為準。
 
 目前專案的狀態與方向仍以 scoped authority 判讀：
@@ -10,6 +10,8 @@
 - V1.1–V2.0 已完成版本演進看 [歷史歸檔](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 - V2.0 之後的長期版號階梯看 [V2.1–V4.0 版本 Roadmap](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)。
 - 架構與模組邊界看 [目前系統架構](../01_architecture/system_architecture.md)。
+
+2026-10-11 已為 20 份仍保留原路徑的高風險／日期敏感 plan/spec 加檔首歷史及授權界線，正文與 checklist 保留；逐檔目前 bytes／SHA-256 見 [Archive manifest 附記](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md#retained-source-high-risk-warning-20261011)。其餘 retained originals 仍以本 README 的歷史追溯定位為準，不代表計畫現行、已完成或獲目前授權。
 
 2026-07-07 Scheduler Approval plan/spec 原文已移至 [Archive scheduler approval 區](../09_archive/README.md#2026-10-09-post-v1-scheduler-approval-plan-spec)：plan 的工程項目 17/17 已勾選，但 production scheduler 仍未核准、未啟用。舊路徑是導引頁；逐檔雜湊與生命週期見 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 

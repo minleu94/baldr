@@ -1,5 +1,7 @@
 # Terra Development Dataset V0 設計規格
 
+> **歷史設計／授權記錄（2026-07-13）**：本文中的 owner authorization、holdout 決策及執行範圍只代表當日；不構成目前資料下載、資料集產生或任務派發授權。執行前須重新核對現況與本次明確授權；依 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與具名 QA 判讀。
+
 ## 目的與授權
 
 本規格建立一個獨立的 development-only historical dataset generation，供研究訓練與離線評估使用。專案 owner 已明確選擇 2025 方案 B：2025 永久標示為 `seen_oos`／`development_data`，不再具備 virgin／untouched formal OOS 資格。

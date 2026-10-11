@@ -1,5 +1,7 @@
 # Month 5 Fundamental Layer Preflight Implementation Plan
 
+> **歷史狀態快照（2026-06-16）**：本文的工作包狀態、入口條件與檔案存在記錄只反映當日，不代表目前工作狀態或待辦。現況與優先序以 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)、[Manual](../../07_guides/APPLICATION_MANUAL.md) 及具名 QA 為準。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:writing-plans before implementation and superpowers:executing-plans when this preflight becomes active work. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prepare Month 5 Fundamental Layer without introducing look-ahead bias, ungoverned raw data ingestion, or direct scoring-engine coupling.

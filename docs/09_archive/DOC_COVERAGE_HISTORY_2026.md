@@ -2360,7 +2360,7 @@ REFACTOR_REPORTS 目錄共 144 個 tracked paths：1 個 README、143 個同層�
 
 Git 路徑 metadata 當時核得 `docs/` 共 1,480 個 tracked paths；其中 `06_qa/` 有 565 個 tracked paths。這是較早快照，已由 Entry 215 校正為目前 1,486／571。排除一個受保護路徑正文後，安全可讀範圍為 564 paths（553 Markdown、10 JSON、1 HTML）。新增 `BALDR_COMPOSITE_HUMAN_CHECK_20261010.md` 已列在 QA README／Product UX index，角色是待執行真人驗收計畫，不是自動化 QA 通過收據；操作權威仍是 Manual §6.7。QA README 舊 552/552 遞迴可達基線可隨新檔路由更新為 553/553；五個主要入口 current bounded link parse 為 201/556；200/555 保留為較早掃描基線，不是目前分母。
 
-逐篇內容文件稽核第一批目前累計 36 份全文、6 份局部、511 份未讀；其中涵蓋 README／四主題索引與近期 composite completion、F02、F03 安全文件子集、F06、F12、H20 等收據。此為持續中的核讀快照，不代表 `06_qa/` 已全量審查。已定位待修候選：F06 evidence plan 尚稱 BB bandwidth／ATR 公式待 P07 定版，但同日方法提案已有接受／實作記錄；F12 index integration 開頭仍稱接線進行中，內文已有後續 synthetic 8-pass，須補時點與產品/UI 範圍界線。兩者目前只記錄為待修，尚未改原件。
+逐篇內容文件稽核第一批目前累計 36 份全文、6 份局部、511 份未讀；其中涵蓋 README／四主題索引與近期 composite completion、F02、F03 安全文件子集、F06、F12、H20 等收據。此為持續中的核讀快照，不代表 `06_qa/` 已全量審查。當時列出的兩個待修候選經 Entry 217 複核後解除：F06 方法提案已接受並實作原料 evidence leaf，但 P07 的收斂／突破規則與產品整合仍未完成，因此計畫中的待定項目與提案範圍不同；F12 的 8 passed 僅是合成 reader 測試，文件標題「進行中」仍符合 UI、收藏跨程序重開及產品驗收未完成的限制。原始收據內容無須修改。
 
 本次只讀，未接觸受保護文件正文；尚未修改 QA 內容文件，未跑測試、Graphify 或最終 repo-wide links／anchors scan。後續 batches 持續更新本矩陣，避免把中途分母誤標為完成。
 
@@ -2518,3 +2518,11 @@ B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task�
 複核 Entry 215 後發現，三份 10/10 收據——`BALDR_PRODUCT_COMPLETION_STATUS_20261010.md`、`BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md`、`BALDR_P08_CASH_SEED_SLICE_20261010.md`——未列入四個 QA 主題索引；已加入 `PRODUCT_UX_QA_INDEX.md`，並在其範圍提示中說明這些是有限狀態／工程證據，不代表 P08 或產品補完完成。QA README 不再宣稱非 stub 內容 100% 可達，改為指向矩陣與 Coverage History 的覆蓋核對及核讀狀態。
 
 矩陣與歷史紀錄中的「QA 葉文件／葉節點」改為「QA 內容文件／非索引 QA 頁面」，避免把樹狀圖術語當成文件類型名稱。另修正矩陣 repo 外文件表的 `docs/` 現行基數為 1,486；Entry 215 全庫數字明確列為 4,686 tracked paths／1,493 Markdown，並與 `docs/` 的 1,486 paths／1,467 Markdown 分開。此次只修改導覽與盤點說明，未更動 QA 原始證據或使用者正在進行的產品完成工作。
+
+
+<a id="coverage-entry-217"></a>
+## 2026-10-11 複核 QA 過時內容候選
+
+回看 Entry 203 暫列的 F06 與 F12 待修候選後，確認兩者是證據範圍不同，不是原件與後續結果相互矛盾。F06 的 Decimal 方法提案已接受且 bounded 原料 leaf 已實作，但提案明確未設定波動收斂門檻、持續天數或突破規則，也未接入產品；F06 計畫稱這些 P07 決策仍待定版是準確的。依 `BALDR_F03_PREPARE_ROOT_FOLLOWUP_20261009.md` 的 P07 狀態，F06 原料目錄仍標示 contraction window／threshold 為未定，且沒有家族 UI consumer 或完整策略 executor。
+
+F12 整合審查內的 attempt03 8 passed 是隔離合成資料上的 reader 測試；其正文已限定不代表 UI、收藏跨程序 exact reopen、EXE 或真人接受。文件標題「進行中」與後續 Main 候選的失敗／未完成狀態一致。兩份 QA 原件的範圍提示已足夠，無須改寫原始證據；Entry 203 的舊候選判斷已修正。未執行測試、Graphify 或最終 repo-wide links／anchors scan。

@@ -519,3 +519,6 @@ QA 舊累計缺少逐檔路徑資料，本批 13 份只增加具名證據，不�
 **2026-10-10 第二十增量（Coverage History Entry 214）：** 以命令字串掃描 `06_qa/` 根層，16 份候選中 15 份為窄範圍 `git revert`／已限定 ownership 的回滾說明而保留，1 份（`PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md`）的 `Remove-Item` 回滾表已加歷史回滾警示。命令字串類風險分流在 Archive 根層、REFACTOR_REPORTS 與 QA 根層已各掃描一輪；語意層的過時狀態、正文衝突與全文審閱仍未完成，不得視為內容治理完成。未刪除或搬移文件，未執行測試、Graphify 刷新或最終 repo-wide link／anchor scan。
 
 **2026-10-10 第二十一增量（Coverage History Entry 215）：** 接手 Agent 完成全庫基線與生命週期核對。`docs/` 範圍核實為 1,486 個 tracked paths（1,467 份 Markdown、19 份非 Markdown）；全 repository 為 4,686 個 tracked paths、1,493 份 Markdown，另有 `docs/` 外 26 份 Markdown。排查並查明舊基線（1,351 份、Archive 314、QA 533、History 128）為前期未計入巢狀與局部子集之粗估數。完成 QA 主題索引的一批集中補登：將原先未被 4 個主題索引收錄的 172 份 QA 內容收據依主題完整補登至 `PRODUCT_UX_QA_INDEX.md`（85 份）、`DATA_ML_GOVERNANCE_QA_INDEX.md`（54 份）、`INTEGRATION_QA_INDEX.md`（17 份）與 `OPERATIONS_TESTING_QA_INDEX.md`（16 份），其 100% 可達宣稱已依 Entry 216 複核撤回；同步修復架構紅隊審查與 Archive 手冊筆記之相對斷鏈；產生 `docs/` 1,467 份 Markdown 的生命週期清冊草稿；草稿分類尚待逐檔校正，不據此計算成熟度。未刪除或搬移文件，未執行破壞性變更。
+
+
+**2026-10-11 增量（Coverage History Entry 217）：** 解除 Entry 203 對 F06／F12 的兩項暫列待修候選。F06 原料方法提案與 P07 收斂／突破規則屬不同範圍；F12 的 8 項通過只覆蓋合成 reader，不能代表 UI／跨程序收藏／產品接受。兩份原件的限制足以避免誤讀，無須改寫。

@@ -2899,3 +2899,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 REFACTOR_REPORTS R001／R002／R008 八份具名全文核讀
 
 全文核讀 `R008_SOL_BATCH_AUDIT_DECISION.md`、`R008_IMPLEMENTATION_REPORT.md`、`R008_SOL_CHANGES_REQUIRED_ML_AVAILABILITY.md`、`R001_IMPLEMENTATION_REPORT.md`、`R001_SOL_ERRATUM_REVIEW.md`、`R001_SOL_REVIEW.md`、`R002_GEMINI_REVIEW.md`、`R002_IMPLEMENTATION_REPORT.md`。前三份由 Coverage History Entry 213 所記檔首／狀態行 partial scan 升為全文；Entry 233 對其中兩份僅記 dedup read，未列入其全文清單。後五份先前僅有範圍／提示記錄，無 History 精確 basename 全文記錄。依 REFACTOR_REPORTS README、R031 current overlay、R001/R002/R008 task acceptance 與後續收據路由。八份目前 bounded disposition／歷史狀態提示足以避免直開誤讀，原件均保留未改；限定目標連結均存在、八檔 `git diff --check` 通過、SHA 前後相同。舊 74-file aggregate 無逐檔 manifest，不推算精確去重總量。未跑測試、Graphify 或最終 repo-wide links／anchors scan。
+
+<a id="coverage-entry-280"></a>
+## 2026-10-11 REFACTOR_TASKS R007／R009–R015 八份具名全文再核讀
+
+全文再核讀 `REFACTOR_TASKS/R007.md`、`R009.md`、`R010.md`、`R011.md`、`R012.md`、`R013.md`、`R014.md`、`R015.md`。目前 Matrix 第 146 行的 32/32 是先前 aggregate 全文核讀聲明，但未附逐檔 manifest；本次 8 個精確 basename 先前均未出現在 Matrix／History，故只建立具名再核讀證據，不增算 aggregate 或宣稱精確 net 新增。依 REFACTOR_TASKS README 的歷史規格／非開工授權界線，對照 FINAL_TARGET_ARCHITECTURE、R031 current overlay 及 task 對應 acceptance；各規格範圍與後續 disposition 一致，原件保留未改，行數與 SHA 前後一致，限定連結與 `git diff --check` 通過。未跑測試、Graphify 或最終 repo-wide links／anchors scan。

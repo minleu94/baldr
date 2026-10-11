@@ -19,7 +19,7 @@ Testing / QA Agent 負責系統功能的驗證、測試路由的調配與執行�
 ## 3. 職責範圍 (Scope In)
 
 ### 3.1 功能查詢到測試路由
-- 接收使用者的功能詢問，將其映射到系統的六大高頻 UI 工作區或底層 service。
+- 接收使用者的功能詢問，映射至相關 UI 工作區或底層 service。2026-06-23 矩陣中的「六大高頻 UI 工作區」只代表該矩陣時點的盤點，不代表目前完整工作區總數。
 - 查詢 [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) 決策矩陣，判斷適用之測試範疇。
 
 ### 3.2 測試分類與模式判讀
@@ -58,16 +58,16 @@ Testing / QA Agent 負責系統功能的驗證、測試路由的調配與執行�
 
 ---
 
-## 6. 必讀文件
+## 6. QA 局部補充清單
 
-在執行任何任務前，Testing / QA Agent 必須依序閱讀以下文件：
+所有任務先依根目錄 `AGENTS.md` 的完整必讀順序及條件式項目執行。下列內容僅是 Testing / QA 角色的 local supplemental checklist，不能取代、縮減或重排根目錄要求；清單中的共通文件仍以根指令的先後與適用條件為準。
 1. [README.md](./README.md) - Agent 總覽與強制流程
 2. [shared_context.md](./shared_context.md) - 全 Agent 共用規範
 3. [git_exclusions.md](./git_exclusions.md) - Git 排除與不應提交清單
 4. [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md) - 專案目前狀態
 5. [操作手冊章節地圖](../07_guides/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 的相關章節
-6. [TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md) - 全量測試分類
-7. [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) - 測試路由矩陣
+6. [TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md) - 2026-06-23 測試分類快照；使用前核對是否有後續更新
+7. [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) - 2026-06-23 測試路由矩陣快照；「六大高頻工作區」只描述該時點範圍
 
 ---
 

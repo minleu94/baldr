@@ -3321,3 +3321,24 @@ Legacy Carryover 表格為已完成／部分完成列補上 Walk-forward 報告�
 於 HEAD `19ee0dce1af877f76e554ef62fa6ac4b04d7db8c`，逐篇讀至 EOF 核對 8 份 clean tracked Archive 原文：`FULL_APP_HEALTHCHECK_2026_06_16.md`、`FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md`、`GATE_1_ADVICE_CLOSEOUT_2026_07_12.md`、`GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md`、`V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md`、`V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md`、`V1_7_NEGATIVE_EVIDENCE_CLOSEOUT_2026_07_05.md`、`V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md`。兩份 Full App 在 QA 目錄有同名路徑的審閱記錄，但 Archive 原文是不同路徑，本批分開記錄。9 個本機 Markdown 目的地路徑存在；受保護目標只核路徑、未讀正文，錨點未驗。
 
 Full App 6/16 的「單一入口」已改成當時集中 smoke 記錄，6/23 QA Agent closeout 的 HEAD、母檔與現行 QA 入口時點也已釐清。Gate 1 的 `0/3`／`3/3` 限定為 7/12 快照，舊回退語句限定於當時具名 commits。Gate 2–7 的 verifier 命令標為歷史範例，路徑參數不構成目前 gate DB 操作授權。V1.5／V1.6 的「後續」項目標成當時規劃並連向已存在的 V1.6／V1.7 closeout。V1.7、V1.8 原文保留工程交付與產品／排程接受分界。未核外部來源、後續產品 Gate 現況或 ignored evidence 可攜性，未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-333"></a>
+## 2026-10-11 C1／R005／R006／Wave 1 十二份歷史報告核讀
+
+於 HEAD `b071c3bb1ddd1c85b32f96a4d8a60644c7417725`，逐篇讀至 EOF 核對 12 份 clean tracked `01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/` 文件：`C1_CONTRACT_REPAIR_IMPLEMENTATION_REPORT.md`、`C1_ML_FIXTURE_REPAIR_REPORT.md`、`C1_PERSISTENCE_QUERY_IMPLEMENTATION_REPORT.md`、`C1_REOPEN_DISPATCH_BASELINE.md`、`C1_VALIDATION_PLAN.md`、`C1_FULL_GATE_VALIDATION_REPORT.md`、`R004_SOL_INTEGRATION_REVIEW.md`、`R005_IMPLEMENTATION_REPORT.md`、`WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md`、`R006_SOL_INTEGRATION_REVIEW.md`、`R006_SOL_REWORK_REVIEW.md`、`R007_IMPLEMENTATION_REPORT.md`。其中 7 份先前無檔名命中，5 份先前只有狀態、庫存或未標 EOF 的核讀記錄；本次獨立具名全文登錄。57 個本機 Markdown／file URI 目標於本機存在；其中 25 個 `file:///C:/...` 是原 Gemini 分析的不可攜絕對連結。
+
+C1 重開派工基線加上 9/23 歷史狀態與後續 checkpoint 導向。R005 原稱 R001 source-path 差異仍待修，已限為當時觀察並導向後續勘誤；`%TEMP%` 回滾命令標成未核仍存在的歷史副本。R006 前輪 `CHANGES_REQUIRED` 審查與後輪切片 PASS 加上互相導向和當時 Wave 狀態。Wave 1 Gemini 原文保留 25 個絕對連結，但增加可攜的 R003／R005／R006 相對規格入口；它仍不是正式 PASS review。其他報告的工程切片／測試收據不外推為目前 release 或全域產品接受。兩份共享 dirty WAVE 文件未讀未動；本批未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-334"></a>
+## 2026-10-11 QA 派工／個人模型／UX 圖表十二份全文核讀
+
+於 HEAD `b071c3bb1ddd1c85b32f96a4d8a60644c7417725`，逐篇讀至 EOF 核對 12 份 clean tracked QA 內容文件：`BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md`、`BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md`、`BALDR_PERSONAL_MODEL_ACTIVATION_PREFLIGHT_20261006.md`、`M11_PERSONAL_RESEARCH_OUTCOME_STAGEC_20260928.md`、`NATURAL_SHADOW_WEEKLY_EVIDENCE_AUDIT_2026_09_20.md`、`PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md`、`P0_EVIDENCE_REFRESH_2026_08_30.md`、`UX07_CHART_FEASIBILITY_20261005.md`、`UX08_NATIVE_CHART_CONTRACT_20261005.md`、`UX08_RECOMMENDATION_SAVED_CHART_20261006.md`、`UX08_SAVED_CHART_READBACK_20261006.md`、`UX08_VIEWPORT_INTEGRATION_20261006.md`。26 個相對 Markdown 連結目標路徑存在，錨點和目標正文未核；另外辨識的三份轉址 stub 未計入本批 12 份內容文件。
+
+長篇 Baldr 派工原件加上 10/06 分段時點提示；P0 TEMP retry 刪除句限定於當時作者已識別產物，不是目前通用清理授權。UX08 原生圖的舊 saved history pending 與新 daily parent chart artifact 讀回已分開說明；多份 UX08 收據中的 stage／UX 計數母體或更新時點未調和，故在原件加上不可相加或當現況總進度的警語。個人模型與 M11 各維持其個人、隔離研究及非交易資格範圍；本次未核正式資料或產品全域接受，未跑測試、Graphify 或全庫 links／anchors scan。
+
+<a id="coverage-entry-335"></a>
+## 2026-10-11 Archive 根層資料／Roadmap／Guide 十二份原文核讀
+
+於 HEAD `b071c3bb1ddd1c85b32f96a4d8a60644c7417725`，逐篇讀至 EOF 核對 12 份 clean tracked Archive 根層原文：`DATA_COLLECTION_ARCHITECTURE_HISTORY.md`、`DATA_REBUILD_GUIDE_HISTORY.md`、`DEVELOPMENT_ROADMAP_LEGACY_2026_06.md`、`DOCUMENTATION_INDEX_HISTORY_20261006.md`、`INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md`、`MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md`、`ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md`、`VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`、`VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md`、`RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md`、`EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md`、`USER_GUIDE_HISTORICAL_UPDATES_20260611_TO_20261006.md`。180 個本機 Markdown 目的地路徑存在；未核錨點、目標正文或外部連結。
+
+三份缺直開警示的產業指數、Merge／大盤、推薦資料流原文已加歷史定位與現行 Manual／資料或架構入口；資料收集架構的「系統目前已實現完整」改成當時聲明。舊 Development Roadmap 的 Living Section「所有 Agent 必讀」與唯一 SSOT 指示明確標為已失效，V1.1–V2.0 歷史 Roadmap 不再把自身狀態段落列為現行狀態權威。資料重建原文保留 `--force-all`，既有首頁已禁止照舊指令執行。其他日期化狀態與 Guide 歷史段落仍以首頁時點提示判讀；本批未對舊資料命令執行或重新驗證，也未跑測試、Graphify 或全庫 links／anchors scan。

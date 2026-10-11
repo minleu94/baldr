@@ -1,6 +1,8 @@
 # 推薦分析數據流程邏輯說明
 
-## 📊 當前系統邏輯
+> **歷史架構原文：** 本文的 CSV-only 讀取、舊 `ui_app` 路徑、即時計算與指標使用方式是早期資料流描述，不能據此判斷目前推薦流程。現行資料流以[系統架構](../01_architecture/system_architecture.md)與[資料目錄](../03_data/README.md)為準，使用者操作依[完整操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+
+## 📊 當時系統邏輯
 
 ### 1. 產業篩選階段
 

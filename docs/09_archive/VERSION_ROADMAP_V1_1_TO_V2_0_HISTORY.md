@@ -22,7 +22,7 @@
 - V2.0：等 V1.x 的真實使用與 evidence 證明使用者每天怎麼決策後，再重整資訊架構與主要工作台。
 - V2.1+：由 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 維護長期版號階梯；V3/V4 是 maturity milestone，不代表已證明投資有效性。
 - 任何策略、回測、推薦、factor、portfolio 或績效改動，都維持 no-look-ahead、Decimal / 整數單位與資料可得日防線。
-- 文件判讀採 Scoped SSOT：部分 Post-V1 design / QA 檔名沿用後續里程碑日期，完成狀態與本週優先事項仍以 `PROJECT_SNAPSHOT.md`、`ROADMAP_6M_ENGINEERING.md` 與本文件的狀態段落為準。
+- 文件判讀採 Scoped SSOT：部分 Post-V1 design / QA 檔名沿用後續里程碑日期；本文件的狀態段落只供歷史追溯，目前狀態與本週優先事項以 `PROJECT_SNAPSHOT.md`、工程順序以 `ROADMAP_6M_ENGINEERING.md` 為準。
 
 ---
 

@@ -1,5 +1,7 @@
 # R006 Luna 回修之 SOL 審查
 
+> 本文是 R006 前一輪 `CHANGES_REQUIRED` 審查與回修指示的歷史記錄；後續接受結果見 [R006 SOL 整合驗收](R006_SOL_INTEGRATION_REVIEW.md)。下文命令及修改指示不構成目前派工授權。
+
 ## 判定
 
 R006 已把先前過度宣稱改為分層證據，且 15/15 Direct source raw bytes/size/SHA-256 已由 SOL 對目前工作樹獨立核對一致；受控 joblib fixture、歷史 20 欄與 OOC dtype/field order 有新增測試。但 QA 文件仍缺原審查要求的逐項 owner 和 ABI→test 對照，且大段英文敘述及兩處英文程式註解違反 repository 的繁體中文規範。這些均可在 R006 原 scope 修正，不構成 architecture blocker。

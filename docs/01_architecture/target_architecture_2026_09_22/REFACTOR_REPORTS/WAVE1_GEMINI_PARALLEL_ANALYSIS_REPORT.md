@@ -1,6 +1,7 @@
 # Gemini Wave 1 並行唯讀分析原文
 
 > 此檔保存使用者帶回的 Gemini 分析原文；分析發生於 Luna 回修期間，不是 R003／R005／R006 的正式 PASS review。SOL 對照與處置見 `WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md`。
+> 原文中的 `file:///C:/...` 連結只適用原 Windows 工作區；可攜的規格入口為 [R003](../REFACTOR_TASKS/R003.md)、[R005](../REFACTOR_TASKS/R005.md)、[R006](../REFACTOR_TASKS/R006.md)，後續判讀仍以具名 SOL 整合審查為準。
 
 # Gemini Wave 1 唯讀獨立驗收分析報告
 

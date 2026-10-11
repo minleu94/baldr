@@ -1,5 +1,7 @@
 # Baldr 下一波精確 ownership 派工收據（2026-10-06）
 
+> 本文逐段保存 2026-10-06 的提案、派工與後續有界驗證；較早段落中的「待處理」只表示當時狀態，不能取代文首較晚的 R01 驗證結果，也不能作為目前新派工授權。現行進度仍依 Snapshot 與具名最新 QA 判讀。
+
 ## 2026-10-06 final authorized validation / R01 accepted
 
 R01 worker `2381b1abbec87c0015dc8a581816db02e9b54bbb` 採入 `4e51f34a`；測試清冊與中央文件凍結為 **`c5eb5c80884a9b23ad50f40e28c481338a02855d`**。原64四用途精確nodes與整檔Registry／selected Paper／source_id／v2／boundary去重後，一次union收集522項、執行521項；真fit的real_runner明示deselected。

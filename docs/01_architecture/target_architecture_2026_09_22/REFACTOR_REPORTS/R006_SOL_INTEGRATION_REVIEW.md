@@ -1,5 +1,7 @@
 # R006 Gemini 獨立審查之 SOL 整合驗收
 
+> 本文保存 R006 當次 PASS 切片；下文 R003／R005 review 與 Wave 1 checkpoint 的 pending 描述只限當時。後續波次與驗收狀態依 [報告索引](README.md)及具名 checkpoint 判讀，不由本頁推定目前放行。
+
 ## 判定
 
 使用者回傳 Gemini 對 R006 Luna 回修的正式唯讀審查，最終 `REVIEW_STATUS: PASS`，全文保存於 `R006_GEMINI_REVIEW.md`（SHA-256 `2B98D21B1B2CF093FBFA6789EE08A1BA71F9BB00DBF2C12C805F285597B9E497`）。SOL 依實際 repository 檔案、R006 規格、QA 清冊與測試獨立核對後，接受 R006 為 **TASK_STATUS: PASS**。此判定只關閉 R006；R003/R005 的 Gemini 正式審查及 Wave 1 checkpoint 仍待完成，Wave 2 不放行。

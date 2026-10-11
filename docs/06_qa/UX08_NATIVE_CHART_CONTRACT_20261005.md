@@ -1,5 +1,7 @@
 # UX08 原生圖同源契約限定驗證（2026-10-05）
 
+> 本頁 10/05–10/06 的 saved history pending 指舊保存結果及當時未具備同版本圖表歷史的來源；新 daily parent chart artifact 的有界讀回另見 [10/06 保存圖表收據](UX08_SAVED_CHART_READBACK_20261006.md)。兩份收據的 stage／UX 計數基準未在此調和，不宜視為同一現行進度表。
+
 ## 2026-10-06 歷史 MA20／MA60 限定切片（最新）
 
 基線d9a4a086。read service追加有界唯讀technical_indicators歷史入口，只讀價格日期與cutoff交集、最多120列，沿既有「證券代號／stock_code／Code」欄位別名。report尾端追加frozen歷史DTO，保留位置參數相容；舊儲存schema／bookmark與feature artifact沒有改寫。只投影已存MA20／MA60，不重算指標、策略或暖機。

@@ -53,7 +53,7 @@ R001 證據確認 replay 是獨立 legacy engine boundary，由 R005/R017/R020 �
 - Annotation 測試只固定 replay wrapper 原樣複製 provider 回傳的 annotation payload。Fixture 不載入歷史持久化結果，也沒有 current-model inference seam，因此不能證明 persisted annotation 與後續重算隔離；歷史讀取/顯示交 R016，重算與 evaluator parity 交 R020。
 - Provider 對個股例外沒有 diagnostic contract；測試固定現況為 silent skip，不能辨別失敗原因。R020 如保留此 policy，需保留成功候選及 manifest 不納入失敗股票的結果。
 - 一般互動 `RecommendationService` 的完整 policy/result 不在 R005 oracle 範圍；只登錄 owner 差異，不要求跨 mode 結果相等。
-- R001 baseline 的 replay/provider source path 與 HEAD symbol 定義位置不同，需後續文件 owner 校正；本 task 不改該 baseline 或其他文件。
+- R001 baseline 的 replay/provider source path 與當時 HEAD symbol 定義位置不同；本 R005 task 當時未改該 baseline，後續文件 owner 已於 R001 報告／勘誤收口，見文首導讀。
 
 ## 驗證
 
@@ -74,6 +74,8 @@ V-REPLAY focused suites：`.\.venv\Scripts\python.exe -m pytest tests/test_recom
 - 日期與 factor handoff 以 `test_portfolio_replay_pins_outer_snapshot_dates_and_factor_manifest` 完整固定結果為 oracle。R017/R020 使用同 mode 比對，不用跨 mode 相等取代。
 
 ## 回滾
+
+以下 `%TEMP%` 副本與 `Copy-Item` 是 2026-09-22 當次工作的歷史回滾記錄；路徑及 bytes 未核實仍存在，不可作為目前 HEAD 的 restore 指令。
 
 為只回滾本次 price 上界增補並保留先前 R005 oracle，開始前已將兩個檔案複製到 `%TEMP%\r005_luna_rework_20260922_before_max_boundary`。在 repo 根目錄執行 `$backup = Join-Path $env:TEMP 'r005_luna_rework_20260922_before_max_boundary'`，再執行 `Copy-Item -LiteralPath (Join-Path $backup 'test_recommendation_replay_characterization.py') -Destination 'tests/test_recommendation_replay_characterization.py' -Force` 與 `Copy-Item -LiteralPath (Join-Path $backup 'R005_IMPLEMENTATION_REPORT.md') -Destination 'docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R005_IMPLEMENTATION_REPORT.md' -Force`。這只移除本次上界增補；完整回到首次 R005 修改前的副本仍位於 `%TEMP%\r005_luna_rework_20260922`。回滾風險是失去對應版本的 R005 characterization/report 變更；不影響 production data 或其他檔案。
 

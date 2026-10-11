@@ -79,6 +79,8 @@ license／owner acceptance 尚未完成。
 
 ## 安全與回滾
 
+以下清理範圍只限 2026-08-30 作者當時確認的 TEMP retry 產物；不是對目前暫存目錄或 evidence 的通用刪除指示，執行前必須重新核對精確路徑與 owner。
+
 本次只新增 TEMP candidate artifacts；沒有寫正式 SQLite、SourceAcceptanceDecisionRegistry、
 Evidence DB 或 repository source。若需回滾，刪除本節列出的四個 retry artifact 與同日
 `p0_evidence_20260830_live_host.json` 即可；不得刪除既有成功 evidence 或原始資料。

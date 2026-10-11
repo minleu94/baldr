@@ -1,5 +1,7 @@
 # C1 重開派工基線
 
+> 本文是 2026-09-23 的歷史派工快照；下列 C1 reopened／Wave 6 blocked 只屬當時狀態。後續 [C1 checkpoint](C1_CHECKPOINT.md) 已記錄 C1 Engineering PASS／Wave 6 released；本頁不代表目前 release 或產品授權。
+
 - 基線日期：2026-09-23
 - 分支：`dev`
 - HEAD：`dcc27a42a37c2f69ad83fecee6c245177a457e01`

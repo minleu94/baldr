@@ -498,7 +498,9 @@
 
 ---
 
-## 📍 Living Section 定義（重要：所有 Agent 必讀）
+## 📍 Living Section 定義（舊版 Agent 政策，已失效）
+
+> 下列「唯一 SSOT」「所有 Agent 必讀」及同步 Snapshot／Index 的指示只記錄 2026-06 封存前政策，現已由根目錄 `AGENTS.md` 與 Scoped SSOT 分工取代，不得作目前文件更新規則。
 
 ### 什麼是 Living Section
 
@@ -966,7 +968,7 @@ Recommendation / Backtest → Portfolio → Condition Monitor → Journal → �
 
 ---
 
-**這份文件是唯一的開發事實來源（Single Source of Truth），並且永遠都用繁體中文回答或做註解。**
+**歷史原文曾稱本文件為「唯一的開發事實來源」；此權威宣稱已失效。** 回覆與文件使用繁體中文的現行規則以根目錄 `AGENTS.md` 為準。
 
 ## 2026-05-27 推薦組合穩健性更新
 

@@ -3167,3 +3167,12 @@ Entry 306 已記錄兩份 repo 外 MOPS 文件含作者工作站 `file:///.../sc
 ## 2026-10-11 V4 ML release 舊 QA 路徑繁中校正
 
 將 `docs/06_qa/V4_ML_RELEASE_2026_09_07.md` 三行英文歷史 redirect 改為繁體中文，保留封存原件與目前狀態入口；沒有改動來源收據或路由目標。原檔 3 行／274 bytes，SHA-256 `543C3FAC300F185178EA37FA81F231DAD05A202F801D76DFFF686FF6AEB6B6D2`；更新後 3 行／258 bytes，SHA-256 `d6f3c1c4fd7cbea012df1e11269ae983121a2ff2eb2b5d095d751e39937b8600`。Archive README 對封存原文有直接入口；本次未將此 redirect 另加 QA README，也未讀取受保護 Snapshot 內容。`git diff --check` 通過。
+
+<a id="coverage-entry-314"></a>
+## 2026-10-11 QA 索引清冊口徑與具名核讀缺口覆核
+
+唯讀核對 QA tracked 路徑與四份主題索引：561 個 Markdown 由矩陣分類為 6 個導覽頁、1 份待人工驗收方案、374 個其他非 stub QA 頁及 180 個三行歷史 redirect stub。以索引 Markdown 連結解析相對路徑、移除 fragment、限於 `git ls-files docs/06_qa` 中 tracked `.md` 並去重，四索引各自 unique targets 為 208／97／41／39，union 為 377；其中 2 個 README 導覽頁與 1 份人工驗收方案，故對應 374 個非索引內容頁。此為索引可達性，不能替代逐篇全文核讀或驗收。
+
+舊閱讀 aggregate `205 full / 4 partial / 344 unread` 與另一舊 aggregate `36 / 6 / 511` 均無逐檔名單且互相不一致，不可合併或推斷目前路徑狀態。Entry 309 的 28 個具名全文核讀路徑可逐檔核對；本次另全文核讀 `docs/06_qa/BALDR_PRODUCT_COMPLETION_STATUS_20261010.md`，目標讀前後皆 clean，95 行／20,043 bytes，SHA-256 `8ef3cf92ff022913b03a691f1d46f14335b8a4cbb45b182ee350e925b943ff36`。分類為日期化 QA 狀態／續作導覽，不是驗收收據或當前狀態 SSOT；應保留日期範圍並把當前狀態導向最新授權證據及相應 SSOT。文件列出的受保護 plan 與 ignored output 未讀。
+
+可辨識 partial 路徑 `ASTRA_ENGINEERING_CLOSEOUT_20261003.md` 已由 Entry 303 的 partial 更新為 Entry 307 的全文核讀；目前沒有可辨識且尚未升為全文的 clean partial 候選。由於舊 aggregate 無逐檔 manifest，未能還原其餘 unread／partial 路徑，也尚未形成涵蓋全部歷史批次的去重閱讀狀態清冊。未修改 QA 原件、未讀受保護 plan、未跑測試、Graphify 或全域 links／anchors scan。

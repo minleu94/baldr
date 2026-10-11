@@ -2847,3 +2847,8 @@ B03 Update／Runtime 原文仍稱 Manual 待中央同步，後續 `BALDR_SECOND_
 ## 2026-10-11 REFACTOR_REPORTS 八份具名全文核讀與時點導覽
 
 全文核讀 `C1_REPLAY_BRIDGE_READINESS_REPORT.md`、`C1_UPSTREAM_REPAIR_SCOPE_RULING.md`、`R005_SOL_FINAL_PRE_REVIEW.md`、`R005_SOL_INTEGRATION_REVIEW.md`、`R009_IMPLEMENTATION_REPORT.md`、`R005_SOL_REVIEW.md`、`R005_SOL_REWORK_REVIEW.md`、`R008_SOL_REWORK_REVIEW.md`。三份先前僅局部掃描的報告升為全文核讀；其餘五份補入具名核讀清單。C1 readiness／ruling 導向後續 R031/R020 bounded disposition 並保留無界 production parity 限制；R005 pre-review／integration 導向後續 acceptance 並保留 profile／Wave 範圍；R009 的既有 READY_FOR_REVIEW 時點標籤與後續 review／SOL acceptance 一致，無需修訂；其餘三份原有歷史導覽充分。限定八檔 `git diff --check` 通過，修改限 C1 replay、C1 ruling、R005 pre-review、R005 integration 四份。未跑測試、Graphify 或最終全 repo links／anchors scan。
+
+<a id="coverage-entry-270"></a>
+## 2026-10-11 QA Natural Learning／Personal Delivery 八份具名全文核讀
+
+全文核讀 `NATURAL_LEARNING_CALLER_WIRING_2026_09_18.md`、`NATURAL_LEARNING_TRACE_2026_09_18.md`、`NATURAL_MATURITY_SESSION_RESOLVER_2026_09_18.md`、`NATURAL_SESSION_LABEL_BINDING_2026_09_18.md`、`PERSONAL_DAILY_PRODUCT_DELIVERY_20261006.md`、`PERSONAL_DELIVERY_ACTIVATION_2026_09_18.md`、`PERSONAL_JOURNAL_LANE_20261006.md`、`PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md`；均未見於既有具名全文清單。自然 Shadow 收據屬 ML allocation lane，不推定 recommendation calibration 自然樣本；四份 Natural Learning 保留 9/18 時點與 0/20／resolver proof／label integration 邊界。三份 Personal delivery 原件依 M10 bounded widget、canonical save/readback、capture v3 與 15 秒 wait 後續收據更新狀態，仍保留 mature 0、pending 19、非 OS foreground／正式 PIT／WP5 整體驗收限制；M10 acceptance 原件本身一致，未改。限定八檔 `git diff --check` 通過，修改三份 Personal delivery 原件；未改索引／Matrix，未跑測試、Graphify 或最終 repo-wide links／anchors scan。

@@ -99,7 +99,7 @@ DecisionQuality／DeskSnapshot／EvidenceEvent 均有 config.db_file fallback，
 
 - Watchlist舊 inplace-upgrade expectation 改為明示拒絕舊schema原地升級，再執行synthetic COW獨立target；target migration_baseline明示synthetic，來源bytes不變。指定案例root／lane各自隔離通過，未放寬production guard。
 - busy-close wrapper缺少as_of_date會在worker barrier前被cutoff guard拒絕；只補參數並原樣forward。root以原隔離fixture單獨執行新driver，receipt pid2824：close_requested_while_busy=true、dialog_finished=true、app_exec_returncode=0、process_exit_code=0，正常退出；沒有Native／真notes。
-- 完整 `test_producer_backed_workbench_to_shared_report_journey_and_readback` 仍在line373逾時，尚未執行到該case的busy-close子程序。Temp同步deadline診斷：journey存在／已載入，journey worker已清空；report worker仍running且未finished、dialog busy=true、狀態loading而非error，8s前置未完成。未加timeout／放寬predicate，根因仍未確認，完整跨頁readback gate不能標pass。這是工程／driver驗證待辦，不能說等自然成熟。
+- 當時完整 `test_producer_backed_workbench_to_shared_report_journey_and_readback` 在 line373 逾時，未到該案例 busy-close 子程序；Temp 同步 deadline 診斷為 report worker 仍 running、dialog busy、狀態 loading。這保留該次 8 秒收據的原始結果；後續功能 gate disposition 見本文件末尾附記。
 
 初始sandbox重驗的Recommendation no-follow讀取失敗，以完全相同canonical單例證明sandbox fail／escalated pass後，改在允許Win32 handles的隔離fixture重驗；production no-follow guard未修改。新增App16項涵蓋獨立設定、不改市場路徑、writer/controller/readback、全部RO來源、未知type與alias拒絕、漏selector fail-closed、compat writer、新程序JSONL重開，以及兩種模式的實際MainWindow offscreen composition。MainWindow fixture的正式ML registry被stub，不當真模型或Native資格。
 
@@ -113,4 +113,4 @@ DecisionQuality／DeskSnapshot／EvidenceEvent 均有 config.db_file fallback，
 
 ### 最新後續收據
 
-精確data_root/personal policy已review／整合為18224c33，主線App／notes reader與新process已使用合成內置root驗證；未設定仍不自動啟用。詳見[子樹政策QA](PERSONAL_SUBTREE_POLICY_LANE_20261006.md)。原8秒跨頁gate current/base皆fail，read_report為8.109／8.141秒且正常terminal，詳見[worker gate診斷](JOURNAL_JOURNEY_WORKER_GATE_20261006.md)；未放寬門檻。先前外部-only限制及等待位置批准均由最新決策取代，真migration／activation仍未批准。
+精確 `data_root/personal` policy 已 review／整合為 `18224c33`，主線 App／notes reader 與新 process 已用合成內置 root 驗證；未設定時仍不自動啟用。詳見[子樹政策 QA](PERSONAL_SUBTREE_POLICY_LANE_20261006.md)。先前 8 秒觀測的 current/base 均未達門檻，`read_report` 分別為 8.109／8.141 秒。後續父層將指定功能等待調整至 15 秒；完整合成 offscreen 案例於 12.32 秒通過（1 passed），僅更新等待門檻，未放寬來源／path guards。原 8 秒表現仍是性能觀察，不是性能通過。詳見[worker gate 診斷](JOURNAL_JOURNEY_WORKER_GATE_20261006.md)。先前外部-only 限制及等待位置批准均由最新決策取代，真 migration／activation 仍未批准。

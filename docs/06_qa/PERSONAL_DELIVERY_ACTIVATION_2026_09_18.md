@@ -106,3 +106,9 @@ warning 僅為 pytest cache 權限提示；本次沒有 Python source change，�
 本次可接受變更只有此 QA 文件與 ignored 的唯讀 QA output。若不採用文件，可移除 `docs/06_qa/PERSONAL_DELIVERY_ACTIVATION_2026_09_18.md`；`output/qa/personal_delivery_20260918/` 可由 root 依需要清理。沒有 source code、pointer、formal D／DB、scheduler 或 global state 變更可 rollback。
 
 後續只有既有 authority policy 通過並產生可驗證 receipt 後，才可從新的正常產品操作開始累積 evidence；不得把本次歷史 rows、shadow capture、fixture probe、technical ACK 或既有 holding 當作使用者 action、natural outcome、adoption 或 calibration success。
+
+## 2026-09-28 後續個人 V2 widget 路徑
+
+本文件的 `rule_only`／無 active candidate 判斷是 2026-09-18 對當時 normal UI global-calibration delivery path 的唯讀觀測。後續 M10 在固定隔離 source snapshot 上，另以個人 V2 user-declared-source-time policy 完成 bounded Qt widget journey：個人候選輸出、canonical result save/readback、capture v3、cold restart、停用及 fresh-source rollback 均通過。詳見 [M10 widget receipt](PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md)。
+
+這證明後續另有一條 bounded V2 個人 policy path 可產生模型輸出與 capture；不表示 2026-09-18 所記 normal UI global-calibration path 的 active-pointer blocker 已解除。global active pointer 仍未由 M10 改動；該收據也不是 global promotion、正式 natural credit、official PIT、正式 D/DB 寫入或 OS foreground／真人驗收。M10 Stage C 仍是 mature 0／pending 19，不得回填成正式或自然成熟證據。

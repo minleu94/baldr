@@ -394,3 +394,23 @@ F12 safe-dup候選與P08完整策略路由仍在owner scratch，未凍結、未�
 本輪coverage／preimages／回滾packet為 `root/phase_v6_root_review_20261011/`。產品UI／Manual、架構、Roadmap方向與Index入口未變；完整補完範圍保持。兩輪root QA均terminal，沒有root live runner。
 
 Root隨後以原v5 frozen wrapper／測試執行一次 `test_full_sealed_store_preflight_matches_all_frozen_hashes`，取得 **1 PASS／6.78秒／native0**，receipt `root/p01_sealed_after_timeout_root01_2c75a649318f44a288e0fdc3de2975a4/receipt.json`、launcher46096終態，99 raw pins一致。重新唯讀核全部1457 entries、sealed tree SHA `a8d9946d94361733d8f268894e8452a73999c22ff47676528f8660f769e7f3b9`與原DB／inventory hash相同。這是逾時之後的新時點核驗，不能改寫原v5不存在runner postinventory的事實；沒有新matrix／p95或Qt旅程。
+
+### P01 v7 草稿靜態審查：後檢與 helper 載入界線
+
+上一goal turn已有root故障紅測與全清冊核驗，分類progress。Root本輪讀v7草稿與正式reader簽名、保存三份raw preimages並做AST比對，packet `root/p01_v7_static_d07cb9a2b4204f5695accc207a36f0c9/receipt.json`。當次v7 source SHA `a04f3e37307a16ccbc7d5188cd2a4a3be3c486cae850c8236e56566c38ebf53b`，不是最終freeze。兩個計時函式 `_click_and_measure`／`_configure_and_click_and_measure` 與七個矩陣常數在v5/v6/v7 AST相同；不外推成全runner等價或新p95。
+
+當次草稿helper先在21行匯入，28行之後才查origin/hash，且hash仍為placeholder；還原失敗在1686行直接raise、1688行才定義postguard，會跳過來源／runtime／store後檢與result持久化。已要求新版以canonical sibling核raw bytes後compile/exec，拒絕wrong-origin／wrong-SHA前不能有sentinel副作用；cleanup逐項嘗試restorers、postguards與保存收據，最後具名回報，保留primary exception。Initial observer的restore亦須按replacement identity核對且不因單項conflict漏還原其餘項。Owner已接受並接續補純loader／restoreconflict測試；此時尚無新freeze、QA或完整矩陣放行。
+
+靜態腳本首輪只在console輸出繁中JSON時因cp1252 UnicodeEncodeError停止，當次raw/receipt已保存於 `root/p01_v7_static_5cf64bdb0bc846639e1ed00f841617f1/`；UTF-8輸出重驗相同分析取得native0並保存上述新packet。兩次都只parse AST，沒有執行candidate或匯入產品／讀store。F12仍在owner完成safe-dup lease／cleanup與新freeze；P08仍在修hold/UNKNOWN固定quantity、來源日曆可得時鐘及正常多策略daily route。完整產品與M3 Gate未完成。
+
+Root續讀F12尚未freeze的lease helper，發現constructor例外事件引用不存在的duplicate_record.path_role，會以KeyError覆蓋原TypeError；已要求在凍結前修為核驗後的record或實際duplicate_role，原未凍結source preimage及review JSON保存於上述packet。尚未據此執行guard／COW／Main，也未改正式fundamental reader。
+
+### F12 owned duplicate 凍結候選的事件範圍審查
+
+上一goal turn為進度回答，分類no progress。本輪root完整讀9fe5→86ec候選diff，新freeze SHA `15b25ea8cabc324b47f31922b6cb8cbf765667ecba4745507c6eff46f9f489c5`，Main test SHA `86ec737352a2dc205a1c7b2cbb1c17a6b4b3984e433e924024ce1e09cf31d944`。原constructor事件已改讀validated record，lease／fresh DOS handle／Win file identity核驗的cleanup保留caller及重用descriptor。
+
+Root另發現測試在全部案例結束後從constructor_event_start往後反向取最後cleanup，會取到後來descriptor重用案例，而不是原constructor失敗事件；早期正確事件其實已存入closefd_false_constructor_result。已交owner改用該封存事件並綁每案例事件範圍，保留原freeze／失敗證據、不改正式reader。此候選未放行pytest、COW或Main。
+
+獨立raw SHA／size／AST審查收據 `root/f12_owned_dup_static86ec_root02_4d6d5a84e8964b36a876fdfd12c3aaf4/receipt.json` 為 `static_rejected_cleanup_event_cross_case`：64 pins及10個source snapshot／preimage／diff／來源清冊artifact均核相符；只有Main test pin改變，其餘63不變。原17檔來源與14筆monthly觀測去重後23個路徑起訖期待一致；此為唯讀靜態核驗，不是執行旅程證據。Root審查腳本首輪因candidate多了size metadata而整份monthly row相等斷言失敗；核實只有8列新增size後，改為逐項比較原path／SHA／present並另核所有新增size，沒有放寬來源契約。
+
+Coverage及回滾清單在 `root/f12_dup_review_20261011/COVERAGE_AND_ROLLBACK.md`；QA與Snapshot preimages在上述收據packet。Snapshot仍正確記完整F12待驗，產品行為／Manual／架構／Roadmap與Index未變。P01 v7與P08完整策略路由仍由原owner續辦，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持。

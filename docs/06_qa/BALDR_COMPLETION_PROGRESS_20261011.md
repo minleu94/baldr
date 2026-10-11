@@ -284,3 +284,25 @@ Root核小型candidate main SHA `cd03151036b5102c224fe522237ca588d9b58260ea29cdf
 測試停在information＋warning必須1的assertion，但正式handler捕獲exception只設標籤並return，兩modal為0符合該分支；不視為modal產品缺陷。Source backup真路徑是os.open→os.fdopen，QA audit目前將integer descriptor當路徑拒絕的假設待小型實證。已交owner補backup cause observer與分支modal oracle；若修fd守門，須以OS實際handle path核private containment，外部／合成readonly source／closed或reuse fd／非檔案拒絕，不能一概放行integer。未改正式COW或放寬資料防護，完整F12旅程仍待。
 
 Owner其後交純descriptor child的具名收據 `output/qa/f12_resume_20261011/fdopen_guard_probe_f7280b3f45954bd6b7ffedeeaa3e1f4c/fdopen-guard-role-receipt.json`。Root直接核收據及supervisor：private regular file的os.open成功但fdopen被PermissionError拒絕，private file仍空；同數字重用、closed fd、pipe、外部及readonly synthetic source皆拒絕，source SHA不變。Supervisor child PID29524／native0、owned Job關閉後remaining PIDs空。此為owner基線反例，補足前節假設的特定guard行為，沒有證明修正或完整COW成功；精確OS handle候選仍待freeze／root review。
+
+### P01 啟動器 v2／v3／v4 的獨立驗證與真啟動失敗
+
+上一goal turn只答產品剩餘範圍，分類為no progress；本輪重核目前檔案並推進凍結候選。Root v2測試7 PASS／1.89秒／native0／82 pins一致，receipt `root/p01_supervisor_v2_01_8c69d089e207449796ad3cc433eaaa62/receipt.json`。一次v2 matrix在首role spawn前拒絕，原因是`sys.implementation.name`的cpython和manifest的CPython表示不一致；packet `root/p01_normal_matrix_v2_01_1450223121824f72827ad21dedba4bdb`保留，沒有效能樣本。
+
+V3改用與manifest/runner一致的`platform.python_implementation()`，追加真正guard正例及錯implementation負例。Root9 PASS／1.84秒／native0／84 pins一致，receipt `root/p01_supervisor_v3_01_176d17d9c762442aa98e9289af06645d/receipt.json`。一次v3 matrix第一role native1，standalone runner無repository root搜尋路徑，import app_module失敗；packet `root/p01_normal_matrix_v3_01_1461e11a0be44a9e9b9222ccd2c9680a`及stderr保留。Job已排空、postguard通過，沒有store內容或p95樣本。
+
+V4僅令child PYTHONPATH固定repository root，不繼承caller；final manifest `4c3691192e6b0bb8c207c52ceef20e842312d23935626fad4dd988992eaa339f`及runner `055669702e0d217957df5380d49532fba90bfd7a2c0f73ed51fb1a67fb466bca`原bytes保持。Root全讀delta及新增測試，以受污染caller環境跑真suspended Windows Job standalone runner --help，再核bootstrap全部51產品origin、80file pins、594package/DLL及四版本；零store內容存取，Main及QApplication未啟動。Root獨立 **10 PASS／6.07秒／native0／86 pins一致**，receipt `root/p01_supervisor_v4_01_a9ddf2c44c314a698052301a57f29b5c/receipt.json`。V4 supervisor SHA `f52a1602e6bc835c9a991e4b84d0849bae591688b04b623dc97bdfb2b4031f26`，test SHA `5d1674a0a4c03e4c819382cd06dc71d58445ebd8b67ca0e6565dd7c71692cbb8`。
+
+Root確認沒有本任務QA競爭程序後啟動一次五cold／一warm矩陣；packet `root/p01_normal_matrix_v4_01_369bed5846674873ab31bacd52562ae5` native1／86 pins一致。Inner `supervised_matrix_attempts/attempt_20261011T104818Z_58b6e6a8b4a4` cold01在`_fixed_store_snapshot`的sealed inventory `os.lstat`碰到長路徑WinError3，cold_metrics及matrix皆空，不能寫成效能不合格或通過。Role supervisor PID50568／runner PID2864；owned Job closed、remaining PIDs空、cleanup errors空，80／51／594及supervisor自身postguard通過。Runner來源樹前／後核驗均停在同路徑，不能由code pins推整份store已核一致。
+
+Root唯讀metadata確認報錯目錄普通path不存在、延伸路徑存在且為directory；這僅支持長路徑存取診斷，沒有證明全store hash。Owner接續new versioned runner／manifest長路徑候選及真sealed store全量預檢，禁止移動、重建、縮母體或略過子樹。原每role600秒、各類30樣本、嚴格p95<300ms、1000母體／20頁及完整DTO序列oracle保持，Main／EXE／真人與完整P01未完成。
+
+### F12 Win32 實際 handle 診斷與截斷防護審查
+
+同一API probe腳本SHA `42456040c15944797edcd5a686723996464490da7665742cb9be7b1a1e6216d5`在sandbox的DOS/GUID GetFinalPath失敗WinError5、NT/NONE成功；root核准隔離新QA根執行相同bytes後，三access modes的八種valid flags全成功。Root receipt `root/f12_handle_api_4465164d84004ff2907a3c22c9e6f330/win32-handle-api-receipt.json`，PID43804／native0，DISK／fstat／Winfileinfo的volume、inode與nlink1一致，descriptor全部關閉。此證據支持保留NORMALIZED DOS(0)精確guard，不採NT fallback；尚非私人副本／Main旅程成功。
+
+候選guard逐次核真正handle path及identity、單連結與private containment。Root另發現write-capable os.open若先O_TRUNC後查hardlink，拒絕前已可能破壞外部別名；已交owner補pre-open／audit existing file link count及os.open／builtin open兩種截斷負例，外部bytes須保持。完整Main仍未釋跑。
+
+### P08 前向觀察候選審查（未套用）
+
+Owner scratch沿真v4 source session／child／parent writer及公開exact reader投影五predicate之一，保留完整included cohort合法UNKNOWN與source availability unknown／historical PIT false。Root全讀候選，要求讀回時source cutoff、parent completed clock逐值綁真public package，重核capture不早於真parent並補重封hash負例；讀檔改有界且各層reparse／hardlink驗證，不先read_bytes全量再核上限。保存時鐘語意亦須精確，不能以preparation clock稱已保存。候選不授完整StrategySpec、帳戶producer或績效；正式P07／P08／M3及完整產品scope保持。

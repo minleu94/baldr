@@ -3,6 +3,8 @@
 > 建立日期：2026-06-09  
 > 歷史歸檔：2026-06-12
 > 狀態：✅ 已全數執行完畢
+>
+> **歷史警示（2026-10-10）**：本文是 2026-06 的一次性計畫；`git checkout -b codex/...` 等分支步驟與「目前真實狀態」不是現行待辦或授權。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程順序看 [6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)。
 
 ---
 

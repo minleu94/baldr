@@ -1,5 +1,7 @@
 # V4 TDCC 集保股權候選資料補齊（2026-09-09）
 
+> **歷史操作警示（2026-10-10）**：本文的 `apply_tdcc_shareholding_candidate.py --apply` 會對正式 SQLite 寫入，且硬編碼資料根、檔名與備份路徑屬 2026-09-09 當日證據。不得照抄執行；現行資料操作須依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與目前 `TWStockConfig` 確認路徑及備份，現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 本片只建立官方 raw、完整級距 candidate 與可審核的 apply 工具；沒有寫入 D 槽原始檔，也沒有寫入任何正式 SQLite。候選仍是 `candidate_only=true`、`downstream_eligibility=none`，不授予 PIT、scoring、recommendation 或 scheduler credit。
 
 ## 官方來源與時間語意

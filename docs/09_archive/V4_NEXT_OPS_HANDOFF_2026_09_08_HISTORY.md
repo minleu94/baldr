@@ -1,5 +1,7 @@
 # V4 Next Ops Handoff — 2026-09-08
 
+> **歷史排程警示（2026-10-10）**：本文的 18 個 task 清單、時刻表、`schtasks /Change`／register 操作與「目前」字樣只代表 2026-09-08 當日狀態，之後排程已有變更（見排程修正與稽核 Runbook）。不得依本文重新註冊或修改 Task Scheduler；現行排程判讀看 [排程操作與遷移](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)、[排程稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) 與 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 本文件是 scheduler／operations owner 的交付，記錄 Windows Task Scheduler、Paper EOD 相依性、真實資料累積入口與可回溯證據。工作只在共用 `dev` checkout 進行，沒有建立 branch、worktree、commit 或 push。
 
 ## 目前 ownership 與邊界

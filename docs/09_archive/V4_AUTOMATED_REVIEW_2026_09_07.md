@@ -1,6 +1,8 @@
 # V4 機器證據解卡紀錄（2026-09-07）
 
 > **閱讀導覽**：本報告只驗證 P0 source acceptance 的 bounded machine-evidence caller；其結果不繞過 13-source owner review，也不把 `pending_human_review` 改成核准。這是當日工程證據，不等於正式來源資格或目前狀態；目前判讀以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 和現行來源契約為準。
+>
+> **歷史排程警示（2026-10-10）**：本文的 `schtasks /Create`、`/Change ... /DISABLE`、register 與 `--confirm-network` 操作只是 2026-09-07 當日的受控證據，不是現行排程或網路抓取授權；不得照抄重新註冊或停用 task。現行排程看 [排程操作與遷移](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) 與 [排程稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 ## 範圍與 owner
 

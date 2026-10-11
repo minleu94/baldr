@@ -1,5 +1,7 @@
 # Post-V1 Evidence Source Persistence QA 2026-07-04
 
+> **歷史確認寫入警示（2026-10-10）**：本文 CLI Examples 的 `--confirm` 未指定 `--db-path`，會寫入預設資料庫；只代表 2026-07-04 當時的驗證範例，不構成目前資料庫寫入、production 或 scheduler 授權。重跑前須改用隔離 working copy 並依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對；現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## Scope
 
 本 QA 覆蓋 Round 4：Durable Daily Decision Desk snapshot repository、snapshot capture / inspect CLI、Evidence capture durable snapshot provider wiring、Recommendation optional exclusion payload，以及 source coverage inspection CLI。

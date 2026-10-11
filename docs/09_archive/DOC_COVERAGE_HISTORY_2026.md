@@ -2468,3 +2468,21 @@ QA 唯讀複核另確認：四份舊文件治理報告是相容／歷史導引�
 全文核讀 QA 第二批 13 份葉文件，清單見 [DOCUMENTATION_STATUS_MATRIX](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md#named-review-batches-20261010)。比較 B09 初始 handoff、後續 custody 補強、MainWindow route／paths injection 及 P2／M03 readback 後，將 Manual §10 與 B06／B09 handoff 的狀態統一為「有限接線已有證據；Paper producer 全鏈、正式啟用、migration、排程與產品資格仍未完成」。`BALDR_BBANDS_RESEARCH_UI_20261007.md` 的中央待辦文字限定在 10/07 handoff 時點；目前 Manual §9.9.1h 補充保存來源選擇、v3 快照明示更新、BBANDS 參數、結果判讀與 unknown 限制。
 
 B05、B10–B14 收據增加鍵盤／marker、backup／restore、提案、task、模型輸入與 evidence-store 寫入／資格界線。B03、B07、B08 保留原文。舊 QA aggregate 缺少逐路徑去重基線，本批不更動總數。未刪除／搬移文件或原始資料、未執行測試、Graphify 或最終 repo-wide links／anchors scan；受保護 QA 文件未讀、未搜尋、未 diff。
+
+<a id="coverage-entry-212"></a>
+## 2026-10-10 Archive 根層命令風險分流與 12 份歷史操作警示
+
+接手後改以可重現的風險分流處理 Archive 根層：掃描 `docs/09_archive/` 根層 Markdown 內含 `--apply`、`--confirm`、`--force`、`git reset／checkout／push／add／commit`、`schtasks` 等命令字串者共 50 份，再檢查檔首 14 行是否已有歷史／非授權警語。本批只處理尚缺警語、且命令可能被誤當現行授權的 12 份；讀取深度為檔首、命令所在段落及上下文，**不是全文審閱**，因此不調整 Archive 全文／待讀彙總。`LUNA_C_HANDOFF_2026_09_07.md` 全文核讀後確認其 `git reset`／`checkout` 僅出現在「不可使用」的回滾提醒，且檔首已有整合補註，保留原文。
+
+| 文件 | 處理 |
+|---|---|
+| `V4_NEXT_FORMAL_HANDOFF_2026_09_08_HISTORY.md` | 加歷史操作警示：`--apply` binding 寫入與「目前部署與回滾的唯一權威方案」只屬 9/8 交付。 |
+| `V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md` | 加警示：`--apply` 會寫正式 SQLite，硬編碼資料根與備份路徑不可照抄。 |
+| `V4_NEXT_OPS_HANDOFF_2026_09_08_HISTORY.md` | 加警示：18 task 清單、時刻表與 `schtasks /Change` 屬 9/8 當日狀態，之後排程已變更。 |
+| `V4_AUTOMATED_REVIEW_2026_09_07.md` | 既有閱讀導覽補排程／`--confirm-network` 歷史警示。 |
+| `NEXT_ACTION_PLAN.md` | 加警示：2026-06 一次性計畫，`git checkout -b` 步驟非現行待辦。 |
+| `POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md` | 加警示：CLI 範例 `--confirm` 未指定 `--db-path`，會寫預設資料庫。 |
+| `FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md` | 加警示：`migrate_fundamental_schema.py --apply` 與 831／1,848 筆等筆數屬歷史快照。 |
+| `POST_V1_DECISION_QUALITY_REVIEW_QA_2026_07_10.md`、`POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md`、`POST_V1_FORWARD_PERFORMANCE_READ_MODEL_QA_2026_07_03.md`、`POST_V1_LIVE_RESEARCH_GAP_LINKAGE_QA_2026_07_08.md`、`POST_V1_SIGNAL_DECAY_MONITOR_QA_2026_07_09.md` | 各加歷史確認寫入警示：`--confirm` 只代表當日 working-copy／暫存 DB 驗證，不是現行寫入或 production 授權。 |
+
+僅在檔首插入警示，原正文逐字保留；CRLF 檔維持 CRLF。原件 SHA 已改變，未在 manifest 另列（這些根層原件不在 Superpowers manifest）。尚缺警語但命令僅屬唯讀查詢或明示範圍已受限者（例如 `DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md`、`RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md`、`PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md`）保留，不加警語。未刪除／搬移文件或原始資料；未執行測試、Graphify 或最終 repo-wide links／anchors scan。

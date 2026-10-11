@@ -1,5 +1,7 @@
 # Post-V1 Forward Performance Read Model QA（2026-07-03）
 
+> **歷史確認寫入警示（2026-10-10）**：本文 `smoke_evidence_pipeline.py --confirm` 只代表 2026-07-03 對暫存 DB 的驗證；不構成目前資料庫寫入或 production 授權。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## Scope
 
 本輪涵蓋兩段：

@@ -1,5 +1,7 @@
 # Month 5 Fundamental Source Inventory
 
+> **歷史操作警示（2026-10-10）**：本文 `migrate_fundamental_schema.py --apply` 會對正式 SQLite 套用 schema，且 831／1,848 筆等筆數、備份路徑與「目前」字樣都是 2026-06／08 的快照；不得照抄執行，也不代表目前資料筆數或基本面資格。現行資料與 PIT 狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [資料指南](../03_data/README.md)。
+
 > **最後更新**：2026-08-12
 > **範圍**：Month 5 Fundamental Layer preflight 的資料來源盤點。本文只描述資料來源與可用性，不宣告任何基本面因子已可用於推薦、回測或 Daily Decision Desk。
 

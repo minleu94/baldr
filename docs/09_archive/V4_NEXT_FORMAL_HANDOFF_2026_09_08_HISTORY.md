@@ -1,5 +1,7 @@
 # V4 Next Formal／Paper Hand-off（2026-09-08）
 
+> **歷史操作警示（2026-10-10）**：本文的 `--apply`、binding 寫入、回滾命令與「目前部署與回滾的唯一權威方案」等字樣只屬 2026-09-08 當日 owner 交付，不是目前部署授權或現行唯一方案。不得照抄命令寫入正式 runtime binding；現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作與安全條件看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。
+
 本文件是 `v4_formal_paper` owner 的可重播 hand-off。它記錄本次實際讀回、工程修補、受控設定更新的先決條件與回滾方式。QA output 只保存證據，不能把 repository candidate 直接寫入 D 的正式路徑。
 
 ## Ownership

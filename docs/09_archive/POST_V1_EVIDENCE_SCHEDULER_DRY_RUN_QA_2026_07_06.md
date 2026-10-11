@@ -1,5 +1,7 @@
 # Post-V1 Evidence Scheduler Dry-run QA
 
+> **歷史確認寫入警示（2026-10-10）**：本文 `--confirm`／`--db-path` 規則只描述 2026-07-06 的 dry-run QA 當時行為；不構成目前資料庫寫入、production 或 scheduler 授權。現行排程看 [排程操作與遷移](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)，現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+
 日期：2026-07-06
 
 ## Scope

@@ -1,5 +1,7 @@
 # Formal Data Reconciliation — 2026-08-06
 
+> **歷史範圍（2026-08-06）：** 本文的正式 DB 對帳數據、可接受寫入 `0 records` 與後續工作決策只代表 8/6 快照。判讀目前資料狀態須查看最新具名 receipt 與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，重新核實後再決定任何寫入；下文原數據與決策保留作歷史證據。
+
 ## 結論
 
 正式 SQLite `D:/Min/Python/Project/FA_Data/sqlite/twstock.db` 已完成本輪安全對帳；`PRAGMA quick_check=ok`。在不偽造 PIT、來源驗收或 provenance 的前提下，可直接寫入正式 DB 的剩餘資料為 **0 records**。

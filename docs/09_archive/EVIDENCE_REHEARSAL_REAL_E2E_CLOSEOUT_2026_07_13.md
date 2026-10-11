@@ -1,5 +1,7 @@
 # Evidence Rehearsal Real E2E 工程收口（2026-07-13）
 
+> **歷史範圍（2026-07-13）：** 下文「目前」只表示該日的工程 real E2E 快照，不代表現況。本文保留當時工程結果與外部／Formal／forward／paper／live 未完成界線；現行狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
 ## Truth status
 
 本工作流目前只可標示為 `engineering_real_e2e_complete`。CLI contract v2 的 `working_copy_e2e` 已接入真實 orchestration；source 維持唯讀，historical replay 與故障 mutation 僅作用於 `DATA_ROOT` 外的 working copy，P0／ML 狀態由既有 boundary service 計算，lineage 與 blockers 來自實際產物。

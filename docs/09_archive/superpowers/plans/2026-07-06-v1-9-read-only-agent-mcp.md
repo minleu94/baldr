@@ -1,5 +1,7 @@
 # V1.9 Read-only Agent MCP Evidence Access Implementation Plan
 
+> **歷史狀態／操作警示（2026-10-11）**：目前只有設計與計畫建立項目勾選，實作、QA 與文件收尾均未勾選，不代表 MCP 功能已完成。下方跨目錄的寬泛 `git add` 命令可能納入無關改動，已標為 `ARCHIVED — DO NOT RUN`；原命令保留供追溯。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 完成 V1.9 Read-only Agent / MCP Evidence Access，提供 evidence / research run / portfolio review saved evidence 查詢與 AI report template，並完成分段 commit。
@@ -118,6 +120,7 @@ git commit -m "feat: expose v1.9 evidence access mcp server"
 - [ ] Commit docs:
 
 ```powershell
+# ARCHIVED — DO NOT RUN: broad staging scope can include unrelated changes.
 git add mcp_servers/README.md docs/00_core docs/01_architecture/system_architecture.md docs/07_guides/APPLICATION_MANUAL.md docs/agents/skills_registry.md docs/06_qa/V1_9_READ_ONLY_AGENT_MCP_CLOSEOUT_2026_07_06.md
 git commit -m "docs: close out v1.9 read-only agent mcp"
 ```

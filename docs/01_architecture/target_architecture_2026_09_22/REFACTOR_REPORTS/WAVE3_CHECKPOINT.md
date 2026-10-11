@@ -1,5 +1,7 @@
 > **歷史 Wave checkpoint**：本文只記錄當時的依賴與有限釋出狀態，不提供目前的 release 或派工授權。後續 C1／Wave 6 裁決見 [C1 checkpoint](C1_CHECKPOINT.md) 與 [Wave 6 最終 gate 報告](WAVE6_FINAL_GATE_REPORT.md)；目前狀態看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。
 
+> **2026-10-11 R029 相容性勘誤：** 下方將 `TMP-REC-05` 寫成「移除舊 façade」並不正確。R029 僅將 19 個 repo 內非序列化 imports 切至 canonical leaf；兩個 `app_module.dtos` 舊 class paths 仍保留為必要 public/pickle aliases，歷史 decoder 亦保留（見 [R029 實作報告](R029_IMPLEMENTATION_REPORT.md)）。本勘誤只更正相容性描述，不改變原 Wave3 checkpoint gate 結論。
+
 # Wave 3 codec／ML boundary checkpoint
 
 CHECKPOINT_STATUS: PASS

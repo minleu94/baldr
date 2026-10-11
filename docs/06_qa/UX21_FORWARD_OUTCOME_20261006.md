@@ -68,3 +68,7 @@ UX21從pending變partial：純計算器＋exact saved consumer＋最小畫面工
 - 原plan追加前211,524 bytes／SHA256 `865687c9d8f57333682ea23f4efdb5acde52fe1ec9eea745e563c0f07eda4cf8`，追加後原前綴SHA一致；原文不覆寫。before／after pins與本包commit/blob對照在ignored `output/qa/ux21_consumer_20261006/plan_before.json`、`plan_after.json`、`commit_readback.json`；raw QA／plan／shared_state不stage。
 - 文字校正曾誤用text read/write正規化舊plan換行，前綴校驗發現後，以既有UX10 plan_before備份的相同內容前綴還原原換行；最終211,524bytes原前綴SHA完全一致。沒有刪改原計畫內容或放寬「只追加」。恢復方式與最終hash保留於plan_after.json。
 - 新程序readback、UI測試子程序都正常退出；沒有派出仍工作的subagent或Native程序。完成接線本地commit/readback後本owner停止交父層，不等截止才停，也不開UX22或部署。
+
+## 2026-10-11 後續 UX21–UX23 收據核對
+
+上文「UX22/23未開始」及純計算器尚待接線，描述的是 2026-10-06 本包主線採納時的停止點。後續 [UX21 benchmark source/store/UI 收據](UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md) 記錄明示 benchmark adapter、保存、CLI 與唯讀畫面已接線；公開 TAIEX 仍因 basis／accepted pins 缺件而 unknown，UX21 仍 partial。後續 [UX22 label readiness](UX22_LABEL_READINESS_20261006.md) 與 [UX22 同源公平比較](UX22_FAIR_COMPARISON_20261006.md) 記錄有限 readiness／事後比較工程，沒有真模型 fit 或 qualification。後續 [UX23 registry integration](UX23_REGISTRY_INTEGRATION_20261006.md) 記錄唯讀 registry consumer／CLI 整合，但正式資格仍全 false，沒有啟用正式 shadow。這些後續切片不把任何 UX 或 Stage 推定為整體完成。

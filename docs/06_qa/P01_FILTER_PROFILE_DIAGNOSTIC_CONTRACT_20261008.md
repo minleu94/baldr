@@ -31,3 +31,7 @@
 固定3d跨版本證據現已補齊兩種收藏：一般P01測試1 passed／14.40秒，價格F07測試1 passed／11.10秒。中央直接讀取價格測試原log、`price-cross-version-compatibility-receipt.json` 與source SHA收據：舊模組由固定3d archive載入，新PID價格reader由工作樹載入；完整source／query／result／page／bookmark JSON一致，`price_index_bytes=9173`，主選S0001仍在S0002/S0001比較籃。此處只授這份17股真Store下的格式／來源相容，真Main／257股／效能／EXE仍分別驗證。
 
 中央獨立 repository proof 回歸1 passed／2.27秒：batch GC後selected fresh讀回、clone拒絕、未選sibling同mtime改動拒絕與取消都通過。產品兩檔維持repository SHA `85a8ce21806a902d64f46d2bfb013ac9e06ab8a9324902453a077606750cf9fa`、query SHA `22ba48aa2ba2d52f37d187410c6b8bfe1633b2a2ef3e807b4cbac032328ab471`；跨版價格測試新增後read_session test SHA `de496a5d8d534b30bd7c2f35b59693b07f0d35312f484eb5e5e0528d4c1e4627`。未重跑1,000矩陣，也未以相容證據宣稱效能達標。
+
+## 2026-10-11 後續矩陣狀態核對
+
+本文所列 10/08 原診斷與其固定來源結果仍是歷史證據；後續 session-metadata 與 proof-gated 收據使用不同 runtime/source pins，不能混成同一組 p95。`BALDR_P01_PROOF_GATED_REHYDRATION_20261009.md` 記錄 page flip 220.0639 ms、global sort 248.2336 ms 通過、filter 677.9689 ms 未通過；目前 `PRODUCT_UX_QA_INDEX.md` 所列 85bc 六角色矩陣則為翻頁 196.205 ms、排序 191.8186 ms、篩選 523.902 ms，冷啟動至首頁 20.0319 秒。這些是隔離候選矩陣，篩選仍高於 300 ms，且不代表完整 Main／EXE／真人驗收。

@@ -220,3 +220,7 @@ pure verification、projector／service 接線與 production cutover 都由後�
 - strict dense 候選以 `(candidate_id, symbol)` 配對；strict+sparse 明確不支援。Legacy sparse 與 all-missing contract tests 通過。
 - Root 獨立驗收以 fresh TEMP 再跑 11 tests，`0.24s`、exit 0；log SHA-256 `8982682D27D7B2AA6FBE3C43615A38AB0FD5D16D8FAAFDA5B824FACDF5BDC1C4`，收據目錄 `C:\Users\archi\AppData\Local\Temp\r26pure_2215669e`。
 - Root 驗收時三個 pure source/test SHA-256：`prepared_source_contract.py` `9568839F471AA341C7F7CEEB97BBC325FDF5D6B31D547582A07384AC59F1FACF`；`prepared_runtime_input.py` `C09E6AD887A0575ABA1A0645E01496A31A9B2CC7425718F6031B2003FE258EB9`；`test_prepared_runtime_input.py` `8391E9C61604F6CE2F9CCDCD0885A931EC4998E4499F43C5E5A69D0662AD83BE`。
+
+## 2026-10-11 後續 handoff 狀態核對
+
+本文狀態行是 2026-09-25 純型別設計與 contract tests 的當時快照。後續 `R026_IMPLEMENTATION_REPORT.md` 與 `R031_TASK_REPORT_INDEX_DRAFT_20260925.md` 已將正常 `RecommendationService` 的 NP1／NP2 allowlisted caller/profile typed preparation 與 post-calibration handoff 記為 bounded accepted，`TMP-ML-01` 對該集合 closed。這只更新已支援的精確 tuple／caller 範圍；其他 profiles、custom consumers、任意 model graph、R026 其他 source-evidence slices 與 production promotion 仍不在接受結論內。

@@ -679,3 +679,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 QA Product UX／個人資料／Stage1 增量：** 新增 8 份具名全文核讀；3 份原件補上後續日期／範圍狀態，保留其餘歷史測量與整體驗收限制。見 [Coverage History Entry 299](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-299)。
 **2026-10-11 QA R023／R030／V4 增量：** 新增 8 份具名全文核讀；R030 補後續 bounded fixture acceptance，其餘收據保留各自 PIT／read-model／整體 gate 限制。見 [Coverage History Entry 300](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-300)。
 **2026-10-11 QA UX20／UX21／UX23 增量：** 新增 8 份具名全文核讀，6 份補後續工程收據；partial acceptance 與外部來源 qualification 限制保留。見 [Coverage History Entry 301](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-301)。
+
+**2026-10-11 QA 剩餘 basename 候選補記：** Entry 302 完成最後 15 份 QA basename 候選的具名全文核讀，3 份補 dated scope overlay；另排除一份既有 dirty R026 handoff 與受保護完成進度文件，沒有納入本批提交。這消除本輪 QA 候選清單缺口，但不把無逐檔 manifest 的舊 QA aggregate 換算為精確全域去重數。尚待確認各目錄剩餘未讀／局部文件是否在原計畫範圍內；Graphify 與最終 repo-wide links／anchors scan 仍須待此確認及所有內容修訂完成後執行。見 [Coverage History Entry 302](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-302)。

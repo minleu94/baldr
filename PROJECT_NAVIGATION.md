@@ -20,7 +20,7 @@
 有界唯讀來源：`app_module/daily_market_snapshot_source.py`；發布：`daily_market_snapshot_producer.py`；核驗讀回：`daily_market_snapshot_repository.py`；實際 consumer：`StockResearchReportReadService.read_report()`；隔離 CLI：`scripts/produce_daily_market_research_snapshot.py`。既有 close／MA 投影仍由 `daily_market_feature_snapshot.py` 負責。操作與資格限制見 [Manual UX19](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)，[QA 收據](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)保存有限完成範圍。
 
 **版本**：v1.4.10
-**最後更新**：2026-10-05
+**最後更新**：2026-10-11
 
 本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[V4.1 歷史方法包 QA](docs/06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
 
@@ -428,7 +428,7 @@ python ui_qt/main.py
 
 ### 📌 Portfolio（持倉管理）
 
-**目前狀態**：Portfolio 閉環已建立且完成主要深化：Portfolio Tab、domain/service/test、Recommendation/Backtest 來源追溯 metadata、策略與價格監控、生命週期回顧、目前價格對照、未實現損益、停損停利警示、籌碼監控與 Smart Money 下鑽皆已完成。V1.8 另新增 research-only portfolio construction / virtual execution trace sandbox；它只做研究配置與虛擬事件，不是正式持倉帳務或下單入口。V1.9 已新增 read-only Agent / MCP evidence access；它只查 evidence rows、quality、warnings 與 source trace，不寫 DB、不改策略、不下單。
+**目前狀態**：Portfolio 已有 bounded tracking 與 monitoring 能力，包括 Portfolio Tab、domain/service/test、Recommendation/Backtest 來源追溯 metadata、策略與價格監控、生命週期回顧、目前價格對照、未實現損益、停損停利警示、籌碼監控與 Smart Money 下鑽。這些能力不代表完整 Portfolio Advice 或 Position Health／Exit 已完成；兩者仍依 [產品 Roadmap](docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 與 [6M 工程 Roadmap](docs/00_core/ROADMAP_6M_ENGINEERING.md) 的 Gate 4／6 判定。V1.8 的 research-only portfolio construction / virtual execution trace sandbox 只做研究配置與虛擬事件，不是正式持倉帳務或下單入口。V1.9 的 read-only Agent / MCP evidence access 只查 evidence rows、quality、warnings 與 source trace，不寫 DB、不改策略、不下單。
 
 **從哪個 UI 進**：`ui_qt/views/portfolio_view.py`（持倉管理 Tab）
 
@@ -589,3 +589,4 @@ python ui_qt/main.py
 原 2026-10-05 至 10-07 日期化導覽與驗收摘要已移至[歷史摘錄](docs/09_archive/PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md)，原文保留。它不作目前狀態或執行順序依據；目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)，工程入口見 [DEVELOPMENT_ROADMAP](docs/00_core/DEVELOPMENT_ROADMAP.md)，驗收界線見具名 QA。
 
 - 2026-10-10：補入 Recommendation 保存來源複合研究與 Watchlist typed 收藏的程式入口；操作見 Manual §6.7，現況與驗收界線依 Snapshot／具名 QA。
+- 2026-10-11：全 docs 逐檔治理入口見 [狀態矩陣](docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md) 與 [逐檔 manifest](docs/00_core/DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)；開發線路歷史與現況見 [演進矩陣](docs/00_core/DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011.md)。本列是導覽入口，不取代各 Scoped SSOT。

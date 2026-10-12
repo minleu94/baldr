@@ -2,7 +2,7 @@
 
 > 本頁只維護現行權威邊界、文件同步矩陣與 DoD。逐批文件生命週期、原路徑／目的地、來源證據與替代入口統一見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)；歷史記錄不取代各主題權威文件。
 
-全 `docs/` 目錄的角色數量、可追溯正文核讀深度、導覽覆蓋與待核對候選，見 [2026-10-09 文件整理狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)。該矩陣是帶基線日期的盤點，不取代本頁的 Scoped SSOT。
+全 `docs/` 目錄的角色數量、逐檔審閱狀態、權威／導覽／證據／歷史分類與未解事項，見[2026-10-11 文件治理狀態矩陣](DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)及[逐檔路徑 manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。[2026-10-09 文件整理狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)保留為日期化歷史快照，不取代本頁的 Scoped SSOT。
 
 ## 可追溯性限制
 

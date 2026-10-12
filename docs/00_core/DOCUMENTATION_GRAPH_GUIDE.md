@@ -49,8 +49,12 @@ result = extract(paths, cache_root=isolated_input, parallel=True, max_workers=4)
 
 source-based community labels 只描述主要來源檔，AST 的 INFERRED 關係是靜態 heuristic，不是 LLM 或 runtime／測試事實。超過 5000 nodes 只用 aggregate HTML；原 JSON、diagnostics、raw cohesion 與圖譜 snapshot SHA 維持 ignored。
 
-## 2026-10-11 開發線路矩陣後刷新
+## 2026-10-11 前次刷新（歷史）
 
 全 docs 基線分類與逐檔清冊見[文件治理狀態矩陣](DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)及[逐檔路徑 manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)；各線路的演進、閉環、狀態證據與待核處置見[開發線路矩陣](DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011.md)。線路矩陣與導覽修訂已精確路徑提交；本輪最終 Graphify 使用其後的 clean HEAD，且只取 clean tracked 文件及核准的正式 Python 原始碼，dirty／受保護路徑不讀取、不納入。
 
-前一批固定於 `fbb698aa` 的刷新與 build summary 保存在 ignored `output/qa/baldr_documentation_reorganization_20261011_final2/`；較早固定於 `ecfb720b` 的結果留在 `output/qa/baldr_documentation_reorganization_20261011/`。每次後續文件修訂都須另建獨立 run 目錄，不覆寫前次結果或根目錄既有 `graphify-out`；每批的輸入 manifest 與 build summary 記錄實際 HEAD、來源指紋、Graphify 版本、nodes／edges／communities 及 diagnostics。本流程使用本機 AST 與確定性 Markdown 連結，不做 semantic extraction 或 network transfer；圖譜仍是導航輔助，不提升任何產品 Gate。
+前一批固定於 `fbb698aa` 的刷新與 build summary 保存在 ignored `output/qa/baldr_documentation_reorganization_20261011_final2/`；較早固定於 `ecfb720b` 的結果留在 `output/qa/baldr_documentation_reorganization_20261011/`。這些是 10/11 的歷史輸出。每次後續文件修訂都須另建獨立 run 目錄，不覆寫前次結果或根目錄既有 `graphify-out`；每批的輸入 manifest 與 build summary 記錄實際 HEAD、來源指紋、Graphify 版本、nodes／edges／communities 及 diagnostics。本流程使用本機 AST 與確定性 Markdown 連結，不做 semantic extraction 或 network transfer；圖譜仍是導航輔助，不提升任何產品 Gate。
+
+## 2026-10-12 全 docs 治理後刷新
+
+全 docs 目錄覆核、分類、衝突標註及矩陣／manifest exact-path commits 完成後，才執行此刷新。輸出使用全新 ignored 目錄 `output/qa/baldr_documentation_reorganization_20261012_final/`；來源 manifest 明列 clean tracked Markdown／文字文件與核准的正式 Python 原始碼，排除三條 protected status-only 路徑、避免自我指涉的本矩陣與 path manifest、tests、scripts、examples、output、資料庫、備份與資料根目錄。`DEVELOPMENT_LINE_EVOLUTION_MATRIX` 保留為文件導航來源。build summary 記錄固定 HEAD、來源 fingerprint、工具版本、nodes／edges／communities、診斷與 unresolved endpoints；原 `graphify-out` 與前次輸出均保留。使用本機 AST 及確定性 Markdown links，不做 semantic extraction 或 network transfer；這仍是導覽圖，不是語義完整性證明。

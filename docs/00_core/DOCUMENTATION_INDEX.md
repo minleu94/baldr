@@ -14,7 +14,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 | 長期 maturity／外部候選研究／舊工作 | [V2.1–V4.0](VERSION_ROADMAP_V2_1_TO_V4_0.md)、[外部候選研究藍圖](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)、[Legacy Carryover](LEGACY_ROADMAP_CARRYOVER.md) |
 | 目前與未來架構 | [目前架構](../01_architecture/system_architecture.md)、[目標領域背景](../01_architecture/target_system_architecture.md)、[FINAL 目標實作設計](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
 | 安裝與操作 | [安裝](../07_guides/INSTALL_GUIDE.md)、[快速開始](../07_guides/QUICK_START.md)、[完整 Manual](../07_guides/APPLICATION_MANUAL.md) |
-| 文件治理與歷史目錄快照 | [結構規則](DOCUMENTATION_STRUCTURE.md)、[Coverage Map](DOC_COVERAGE_MAP.md)、[2026-10-11 全 docs 治理矩陣](DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)、[逐檔路徑 manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)、[2026-10-09 歷史狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)、[2026-10-06 全文件目錄快照](DOCUMENTATION_CATALOG_20261006.md) |
+| 文件治理與歷史目錄快照 | [結構規則](DOCUMENTATION_STRUCTURE.md)、[Coverage Map](DOC_COVERAGE_MAP.md)、[2026-10-12 全 docs 治理矩陣](DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)、[逐檔路徑 manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)、[2026-10-09 歷史狀態矩陣](DOCUMENTATION_STATUS_MATRIX_20261009.md)、[2026-10-06 全文件目錄快照](DOCUMENTATION_CATALOG_20261006.md) |
 | 資料、保留與恢復 | [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)、[C 槽冷封存終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) |
 | 知識圖與更新 | [Graphify 維護入口](DOCUMENTATION_GRAPH_GUIDE.md) |
 

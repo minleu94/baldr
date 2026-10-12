@@ -1,0 +1,1522 @@
+{
+  "schema_version": "baldr-document-disposition.v1",
+  "task_id": "documentation-productization-20261012",
+  "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+  "current_hash_scope": "UTF-8 bytes，僅CRLF正規化為LF；不移除BOM或修改正文。original_sha256始終核原始bytes。",
+  "original_link_context": "exact-byte originals 的相對連結按原source所在位置解讀；其他正文必須通過現行連結檢查。",
+  "preservation_policy": "現行契約重述並以主題正文查找；歷史QA數字與失敗原貌保存；未刪正式原始資料，未改他人task singleton。",
+  "foreign_changes_excluded": [
+    "docs/06_qa/README.md",
+    "docs/06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md"
+  ],
+  "records": [
+    {
+      "source": "AGENTS.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "9f52b7707e93b2cdce8f9f109eeb2db9b2ce2ee6e242afccb83d3a53222530b2",
+      "original_bytes": 6217,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/AGENTS.md",
+      "current_targets": [
+        "AGENTS.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "4a08f3a2d1f1c018a63613b7f1726acf67484948cf2ee41e68b14973b2a7aa32"
+    },
+    {
+      "source": "AGENT_CONTEXT.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "edcb15600d61c2f169d4ada23e5218f745b3a2718c3dec7c7037d7b227dc05fe",
+      "original_bytes": 4661,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/AGENT_CONTEXT.md",
+      "current_targets": [
+        "AGENT_CONTEXT.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "dcf61662b2413ea8265fdbed02e62a595fcc64bd3d4e17709fb57742b8b861dc"
+    },
+    {
+      "source": "GEMINI.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "4b3f3bfe6beeb87691ae15ff8f08f7a543479860c1361f7b82ba50e576d034da",
+      "original_bytes": 938,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/GEMINI.md",
+      "current_targets": [
+        "GEMINI.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "35a62438fdae27d002676abac97bf19b55e39d48488f6034c7169466837c98e9"
+    },
+    {
+      "source": "PROJECT_INVENTORY.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "1d3ac68aa291d6a334ac3b406100ea22e76c5cd3c98162c54bfcab2473bb785d",
+      "original_bytes": 12429,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/PROJECT_INVENTORY.md",
+      "current_targets": [
+        "PROJECT_INVENTORY.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "043a77ea9795864d19df7e7af64f2d762c60a85c346018ac2ef73d556a9112d5"
+    },
+    {
+      "source": "PROJECT_NAVIGATION.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "3129ab6e6595e9ed23a7c687f794b2ff2e6abfe91b0908bb021bb7376ef06ecf",
+      "original_bytes": 49811,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/PROJECT_NAVIGATION.md",
+      "current_targets": [
+        "PROJECT_NAVIGATION.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "739cf20096100957b40ddd8d468e83fbd9b633943f26c5edfc0af57a0aa66f33"
+    },
+    {
+      "source": "README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "ff59748af0293b917e69868da8db25fc8b484d8f7ce121bb124a58bb96956f44",
+      "original_bytes": 3959,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/README.md",
+      "current_targets": [
+        "README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "276fcbc45578bcc0a487e58024f2558f503157eb80310977253ff53b4ef08d3b"
+    },
+    {
+      "source": "docs/00_core/DEVELOPMENT_ROADMAP.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "7450bb5349dce0f11280ab6e77a657e575d30a543171c591e20d8e7617f8706b",
+      "original_bytes": 2606,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/DEVELOPMENT_ROADMAP.md",
+      "current_targets": [
+        "docs/00_core/DEVELOPMENT_ROADMAP.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "374eaf39a04f3ad1de27228a66226728bde499017b5ac2e7eb5809245daf49cd"
+    },
+    {
+      "source": "docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "4f30243955d54a12e05b4cfd12d2b7f8e36e02c02e8a113cdd0169460ab62efa",
+      "original_bytes": 9738,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md",
+      "current_targets": [
+        "docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "58fcc080917e804e61a3e341cd738040c2c1d7333cbfe23b247e8bee7e4883d2"
+    },
+    {
+      "source": "docs/00_core/DOCUMENTATION_INDEX.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "34ab4b78f208f298e84e25b86fe5bdfd31dca34c2614caab23a1331431ad5932",
+      "original_bytes": 13428,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/DOCUMENTATION_INDEX.md",
+      "current_targets": [
+        "docs/00_core/DOCUMENTATION_INDEX.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "79c73102b14dfd9716fefba787c1c13796d9a5e6b4ccd5fec1ce5d4633b7ffa2"
+    },
+    {
+      "source": "docs/00_core/DOCUMENTATION_STRUCTURE.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "24c20adcb949daa95ff21307fa50b10d17d3c3946621eb76d26ed661f69f4d7b",
+      "original_bytes": 11682,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/DOCUMENTATION_STRUCTURE.md",
+      "current_targets": [
+        "docs/00_core/DOCUMENTATION_STRUCTURE.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "a1e8fff94228ad6e95ac8a13e5b9228dc656abc883300a204582a41eb9774785"
+    },
+    {
+      "source": "docs/00_core/DOC_COVERAGE_MAP.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "5655e810de7e2cb88c7860e9ed580bbd6c60593b229968829d51b953d9dd9934",
+      "original_bytes": 23798,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/DOC_COVERAGE_MAP.md",
+      "current_targets": [
+        "docs/00_core/DOC_COVERAGE_MAP.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "9293eb57ec5757b62724535fa618346f38e932cf30adb33c23a3608ddd022c12"
+    },
+    {
+      "source": "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "819faa313ddb23a72d5c41940b954b3f6e25779320f3c9291c171c62ff3ce32f",
+      "original_bytes": 34000,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md",
+      "current_targets": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "747787d6d8e3ad16e0c4b6d1b90c76377b80f785d3c7665c8f624479adea2ae5"
+    },
+    {
+      "source": "docs/00_core/PROJECT_SNAPSHOT.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "0c465a171597b0f95ccd7245fcf2cdf25c5be21582c18e7b12bd603d8c7f6e1d",
+      "original_bytes": 94679,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/PROJECT_SNAPSHOT.md",
+      "current_targets": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "shared_worktree_note": "本任務只提交自己的Snapshot候選；另一owner的後續產品增量保留在工作樹，未包含其未提交QA。",
+      "current_sha256": "95e00be13d58dc41588b99c7a9b1c9843029e00ca9a2ff5881915398d64b8a43"
+    },
+    {
+      "source": "docs/00_core/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "5c00484d08c4403c194e4d062eb7e446ece65c7569e9f9b7597ca12671c59e4c",
+      "original_bytes": 5113,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/README.md",
+      "current_targets": [
+        "docs/00_core/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "2247c8bfbe03fa547cb292f6a2a94ba25ca9c75bd8b0eb5a8bc209ad90581a47"
+    },
+    {
+      "source": "docs/00_core/ROADMAP_6M_ENGINEERING.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "78056c437d9d4792c5184a749c6699b831af698c57473b1bfb9d317ea6324b8d",
+      "original_bytes": 23768,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/ROADMAP_6M_ENGINEERING.md",
+      "current_targets": [
+        "docs/00_core/ROADMAP_6M_ENGINEERING.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "b3abb6c38ced8554e389a3e145357d44a1fea5ec539539f08a2cc7a8e384d479"
+    },
+    {
+      "source": "docs/01_architecture/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "4ca5ca837cae0ed9855945a80a866581b74207c010ac1aa9fd532d471b08900b",
+      "original_bytes": 9948,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/01_architecture/README.md",
+      "current_targets": [
+        "docs/01_architecture/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "40104c2ed0cacefa28689d19b89b8a5635f23404c3c1b02be4c065cd51483de6"
+    },
+    {
+      "source": "docs/01_architecture/system_architecture.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "全貌保留在短入口；現行契約按UI／決策／資料三冊拆分並獨立核對，日期化驗收原文封存。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "be62b41e019ce90b7b8ee7450eb5e6a2ddfa252766dc27fcb8b78f7c9658d808",
+      "original_bytes": 224450,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/01_architecture/system_architecture.md",
+      "current_targets": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/application_and_workspaces.md",
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/01_architecture/current/data_storage_runtime.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "db2ac873ca64dde1ce5bba1fca6411054fb8f42b3e9a1cd29f274ac9ff827807"
+    },
+    {
+      "source": "docs/01_architecture/target_system_architecture.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "5b038e269c1d964e4e93278d193ef853f17afb676ee39b0b805c52644c00d86b",
+      "original_bytes": 35527,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/01_architecture/target_system_architecture.md",
+      "current_targets": [
+        "docs/01_architecture/target_system_architecture.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "363c09c996d1a28ba695fbdedfa0f7714e4713fee9de9ff925485e39996dd502"
+    },
+    {
+      "source": "docs/07_guides/APPLICATION_MANUAL.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "主手冊保留日常旅程與相容書籤；現行操作分到三冊，Supplement日期紀錄改為歷史入口。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "b372c1c86f219556866d0e6b9f5be197169f5312ecc9e9ed4f8f4be3ed9a3115",
+      "original_bytes": 558129,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/APPLICATION_MANUAL.md",
+      "current_targets": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "8432a0b9c9dd231b26d8d8e62d1a032fbd9134df02f8b9a8d8362b3c1e24259b"
+    },
+    {
+      "source": "docs/07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "主手冊保留日常旅程與相容書籤；現行操作分到三冊，Supplement日期紀錄改為歷史入口。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "bec36070dd49d87ac93d6dcd091ee327578f9f69e407fd393846e8b4d5f7075f",
+      "original_bytes": 312981,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md",
+      "current_targets": [
+        "docs/07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "b273fab8b7a74aa78589d5f557197303e2c409671375a3a7924cdeb34e3885fd"
+    },
+    {
+      "source": "docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "環境、移機及排程清冊按可執行流程查找；21任務與平台、時區、自然驗收分開，舊registrar差異明示。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "160d370ad4658b16d9fd52fcd1585f1979e16f8d6816c7885e6e7cf1fc673630",
+      "original_bytes": 10385,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md",
+      "current_targets": [
+        "docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md",
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "a40c814f3513d91742b2f6f8a32c0657280cbb704152672c120fbc15890a1ddb"
+    },
+    {
+      "source": "docs/07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "bfd31e04ff9cdc5ed820f8d402585bcf98845c91cccc9458ace8d32d44350679",
+      "original_bytes": 6114,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "0805df6bb088ae7c8e4469333febbd1b033f054a68da365644943d9b801d7d6e",
+      "original_bytes": 823,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "6799e75ed13066c84cbcc4cb2b9d6c7ce02c90b86b2b899750c3eb159948d2bf",
+      "original_bytes": 8882,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/INSTALL_GUIDE.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "環境、移機及排程清冊按可執行流程查找；21任務與平台、時區、自然驗收分開，舊registrar差異明示。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "6a348065b83b111c4a846cf1ebeb7a356eb00cca761cbd2e3b8f536d7a55032b",
+      "original_bytes": 1911,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/INSTALL_GUIDE.md",
+      "current_targets": [
+        "docs/07_guides/INSTALL_GUIDE.md",
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "3a79d0784323269d333aeef43221a0c3bd21702d65f2c69babed5549ea954e0b"
+    },
+    {
+      "source": "docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "6ffcc8e091efc11e8e287201aec546a1c337a6ea484375f509f28d3265d6043a",
+      "original_bytes": 815,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "42596cd612715c1f452f5b85477854297aefacda87a59c7a9ce21463ae48e72e",
+      "original_bytes": 5126,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "da5bd823aa7f3c19506fce5ddfdaadbe939dfc58aab5c5cae9dc2a58b9b46dd5",
+      "original_bytes": 6969,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/P0_DAILY_SOURCE_CANDIDATE_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "d94b95b3e5a66565b6da335bff292deab02856a2dbfb1f5a1f86e2efa3561c1f",
+      "original_bytes": 3546,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "97c385fece864fa2bcd6750eabffe5b512774f5ef1dcef0f191e6104e4d18258",
+      "original_bytes": 7300,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/PORTABLE_WINDOWS.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "環境、移機及排程清冊按可執行流程查找；21任務與平台、時區、自然驗收分開，舊registrar差異明示。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "07d5172a11242e183269d7f8a31f8023f10b1af63f47cb3208a37e249709a4be",
+      "original_bytes": 11565,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/PORTABLE_WINDOWS.md",
+      "current_targets": [
+        "docs/07_guides/PORTABLE_WINDOWS.md",
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "604b1396a01bd7890b50b7b4ee372f82f9d28d7cf8b4f9f0582a5b85e4a54c72"
+    },
+    {
+      "source": "docs/07_guides/QUICK_REFERENCE.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "c9d78e3e2c6c2203e57889ce261bb1330b86d5d17b9af7638caf88485bd50f38",
+      "original_bytes": 2436,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/QUICK_REFERENCE.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/QUICK_START.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "6a5d281f1942709b1994649826874f80aca610f5eff8a1ed454022092095e172",
+      "original_bytes": 1451,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/QUICK_START.md",
+      "current_targets": [
+        "docs/07_guides/QUICK_START.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "5185cae2ece058b13f3b53a151e9580d2a353cd531831f09aefecbbcc92acbc0"
+    },
+    {
+      "source": "docs/07_guides/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "56ec15a42d68bce39056e7dffd18ff5b495169ceec136216bad25e1f2d205c82",
+      "original_bytes": 7048,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/README.md",
+      "current_targets": [
+        "docs/07_guides/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "eb97cfd52763fba42eaf562c23d50528679a6a93b93cc4b15ac3f23966054eac"
+    },
+    {
+      "source": "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "環境、移機及排程清冊按可執行流程查找；21任務與平台、時區、自然驗收分開，舊registrar差異明示。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "4afa26cf6d74c537cff18b0f2f9d763209578aba858913cecb6e498116b84b16",
+      "original_bytes": 16903,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md",
+      "current_targets": [
+        "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md",
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "804926ed49d97c85713fb2cbd7e598df183b4a8eda78aced5f4ca30870a4dca8"
+    },
+    {
+      "source": "docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "256a9ab86465bdc09155d741d105bfc65d2d88d52dbc4ffc108cfdb58f0988d6",
+      "original_bytes": 11079,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/scripts_readme.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "60f7d1a534d28fe3e464847e84aaab31c2e98ace01d6887094990d0a9f61a5cb",
+      "original_bytes": 10292,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/scripts_readme.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/07_guides/tests_readme.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "915133c43c97e490e50c6b1bf0ebbe0a2b9297528607a936117ae839a204321d",
+      "original_bytes": 4416,
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/tests_readme.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/09_archive/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "8b6af71b8273fbb7e22bf6efe2707aefa2c63177c216c18e20d5245891eb4b12",
+      "original_bytes": 122938,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/09_archive/README.md",
+      "current_targets": [
+        "docs/09_archive/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "87a741d6be4575bf117a16b896407359ab55ee4c9516b80e4f8cabf4f6bd2049"
+    },
+    {
+      "source": "docs/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "1f3bfcc5c38f05a2a95a7148caff2f020258a1c74120036d63eedf9439b6f1ff",
+      "original_bytes": 3414,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/README.md",
+      "current_targets": [
+        "docs/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "b098606c7e37b01749324cb7179c003275d5d04d32e1b1aef38cd323c42779a9"
+    },
+    {
+      "source": "docs/agents/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "a719d8be8199f98cf01e5186af50ac50585df43c14cd61d4dd13d0c603a67849",
+      "original_bytes": 15531,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/README.md",
+      "current_targets": [
+        "docs/agents/README.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "80eece982d4c089feb15a58efb2c0492792e901d044433bcf175128bd29e708f"
+    },
+    {
+      "source": "docs/agents/antigravity/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "a924007483ae6e5e544d90c6ab4da2f3b75cfc022ab540da65f8e2a6caf48a4e",
+      "original_bytes": 3070,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/README.md",
+      "current_targets": [
+        "docs/agents/antigravity/README.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "f7b8740f477762e18292714046ebde108c62ea510af9a278eac8016ba8a5f199"
+    },
+    {
+      "source": "docs/agents/antigravity/data_audit_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "afe7b09dc12f006f7890a9a894a46c9340f350feffc36da3eda23c1822d19862",
+      "original_bytes": 2063,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/data_audit_agent.md",
+      "current_targets": [
+        "docs/agents/antigravity/data_audit_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "e38dce3373fbe6aef7062ba2175511293f45c6f93dd3345fad317b4f82a01459"
+    },
+    {
+      "source": "docs/agents/antigravity/data_cleanup_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "cd234179a235b03759c8ed69f35892584ca84ea31560524ff2308f202f80193c",
+      "original_bytes": 1035,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/data_cleanup_agent.md",
+      "current_targets": [
+        "docs/agents/antigravity/data_cleanup_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "981de09b44a6b127aa2c142a70864d5ca7fa1700ed64ffa88eb72919a7aca130"
+    },
+    {
+      "source": "docs/agents/antigravity/documentation_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "3ccf92f3ec9435fb09b8d2b25a39347220ba3dd4d3178ccd17b096289ff1e88a",
+      "original_bytes": 2863,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/documentation_agent.md",
+      "current_targets": [
+        "docs/agents/antigravity/documentation_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "6abc7d8f4d6a540645f5b473e6bbf645f5bb4bf06f8aba36f2e320e73e150ccd"
+    },
+    {
+      "source": "docs/agents/antigravity/execution_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "ffc9f8874be3860fd40709fec9cbfdd3edc5f2c0358a8d529066a670e978b9de",
+      "original_bytes": 1837,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/execution_agent.md",
+      "current_targets": [
+        "docs/agents/antigravity/execution_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "b9558ab1edb62b189d0f21064d9053c96364dfffa08322e473505aac99550097"
+    },
+    {
+      "source": "docs/agents/antigravity/handoff_template.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "e05fc8cbedaca738fa0ff915b2cff7ca6b19cab6fc3b758152ba6b63f51cfd24",
+      "original_bytes": 1919,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/handoff_template.md",
+      "current_targets": [
+        "docs/agents/antigravity/handoff_template.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "f07345da907e901a95cbdcd140bc13a4f4cbd4fccf012b54e70fe502e2a4bde2"
+    },
+    {
+      "source": "docs/agents/antigravity/tech_lead_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "aff88fbf77c3452db0bd426c8b5d8a89e1d8251398d8655340957dfdded8e387",
+      "original_bytes": 1734,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/antigravity/tech_lead_agent.md",
+      "current_targets": [
+        "docs/agents/antigravity/tech_lead_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "7c2ebaf3530236f561a8de56d52b5b1743f7d3739d945fdb6fdc09122e5a1c11"
+    },
+    {
+      "source": "docs/agents/data_audit_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "be935ce634b66bfcc06fbfa5239ed986d329863559e97aa72ba3ea3b0aead187",
+      "original_bytes": 12850,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/data_audit_agent.md",
+      "current_targets": [
+        "docs/agents/data_audit_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "236380aa797ef917d809afde8585fe65d07c3ecdbb6dec2be4a2f756935a86b4"
+    },
+    {
+      "source": "docs/agents/data_cleanup_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "64daec8d0e544e15d6ff85905688fb0a1bcd8e8e2887225f79435f5f203b2f1a",
+      "original_bytes": 11895,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/data_cleanup_agent.md",
+      "current_targets": [
+        "docs/agents/data_cleanup_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "c891f8f0c3a6cddee086b42933469a87b5f89b1db6c5664b1214dac9357a0393"
+    },
+    {
+      "source": "docs/agents/documentation_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "fe2c4e8cd283cd24cd39c63cad8ba96b820c01c1c6383d97e11bf11b202ccc5c",
+      "original_bytes": 13505,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/documentation_agent.md",
+      "current_targets": [
+        "docs/agents/documentation_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "8b9d0e4952f46c7c2b1c040dbaf575ea99247b5606fcd6d59a1b67557c4f6e5e"
+    },
+    {
+      "source": "docs/agents/execution_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "f684ce6536403c54f9295478bbdab201e61ceb589985cc7a336b0f81693ba5aa",
+      "original_bytes": 13258,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/execution_agent.md",
+      "current_targets": [
+        "docs/agents/execution_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "91d80dc7e51ff18376b512af32a128482843e1f09b3adc0696bf95d68f9d45ea"
+    },
+    {
+      "source": "docs/agents/git_exclusions.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本輪核對後不需修改；只移除本任務建立的未使用預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "59e9c6bc2f7856c43d5986b25b2306ef096503b957fbcc1e7a464b166cf3073d",
+      "original_bytes": 3982,
+      "original_archive": null,
+      "current_targets": [
+        "docs/agents/git_exclusions.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/agents/multi_agent_workflow.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "ecde919808649ee3cf7aa7958be6cb9fffbde31948a52a091bb73a70d41e33f9",
+      "original_bytes": 3792,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/multi_agent_workflow.md",
+      "current_targets": [
+        "docs/agents/multi_agent_workflow.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "0e1ae3eced72f2f9a39feb5d78f381dab31860ed25e191a6dba94b3b9cde301a"
+    },
+    {
+      "source": "docs/agents/shared_context.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "d73ae026053544576f7b309efc97e4d582b4b6227358250b2f5d44f9ffad4b7b",
+      "original_bytes": 15983,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/shared_context.md",
+      "current_targets": [
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "7c4e12676eeed1e6700790e832c0a6f5dd13d265646da9bb1c0b1a8760f6d640"
+    },
+    {
+      "source": "docs/agents/skills/team.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "94b20ed92148b6fff3950be9f4dbbc83f1edf96638f8ed9abf78bab6f4dd2b20",
+      "original_bytes": 9498,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/skills/team.md",
+      "current_targets": [
+        "docs/agents/skills/team.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "4a1c135b757d86971918e8d1cda5e8f5b8fe467471d4fc7ac5ca9b4111299d78"
+    },
+    {
+      "source": "docs/agents/skills_registry.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "890e667c973889bdc0aafe66840cbbc802e87ba292de8e27d48e7bc5d7c66610",
+      "original_bytes": 8315,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/skills_registry.md",
+      "current_targets": [
+        "docs/agents/skills_registry.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "25a9d4349fb4df9d0d9b6d37fd8bda88e36d367516bf3e7a7a582c466e9564ea"
+    },
+    {
+      "source": "docs/agents/tech_lead.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "6d3ed21ac51919e0d05862eb2dda2fc4082c05afe3700cd207c9dfb26d292808",
+      "original_bytes": 9343,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/tech_lead.md",
+      "current_targets": [
+        "docs/agents/tech_lead.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "226c0f597977047abf226ea2adb76bd5e80ce9f09200f9f0813ac270030357bc"
+    },
+    {
+      "source": "docs/agents/testing_qa_agent.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "9e59248217d6eef09ef0090323c2f7d0a6b5e6ac4f7c1ff2c0b32837f5377c72",
+      "original_bytes": 6548,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/agents/testing_qa_agent.md",
+      "current_targets": [
+        "docs/agents/testing_qa_agent.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "76687e11d529463d670e4f79955067b5ca67067ff101d8d253e9f8c09948123c"
+    },
+    {
+      "source": "scripts/auto_state_sync.py",
+      "disposition": "replace_current_preserve_original",
+      "reason": "預設改為唯讀；明示task與owner才原子更新指定task Git欄位，不再寫共用singleton。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "acda1a12790f791cf4ba97ac7479ff48736b1e59738da8abc11949909be593a5",
+      "original_bytes": 5499,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/scripts/auto_state_sync.py",
+      "current_targets": [
+        "scripts/auto_state_sync.py",
+        "tests/test_auto_state_task_json.py"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "5dfe719258180c666a0db35895be1e5da1e357b7bb7197917ce6e499cb569eb5"
+    },
+    {
+      "source": "scripts/scheduled/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "環境、移機及排程清冊按可執行流程查找；21任務與平台、時區、自然驗收分開，舊registrar差異明示。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "1921c07a323d6eb8dc8d6f523eeda84ab59daa533c5d14e51eabfafa7aa6aae3",
+      "original_bytes": 138473,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/scripts/scheduled/README.md",
+      "current_targets": [
+        "scripts/scheduled/README.md",
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "fca07b288cd764e13061a1daef8e866b2100f984f5b0ba06ae819896c1967233"
+    },
+    {
+      "source": ".agent/rules/00_project_entry.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "exact_git_blob",
+      "original_sha256": "306e3e20f66e6fdfb510221334cbe76944adc96c0e05e634e762f62432aef71a",
+      "original_bytes": 734,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/.agent/rules/00_project_entry.md",
+      "current_targets": [
+        ".agent/rules/00_project_entry.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "0872c2abbea82f84124728e4de744b8d511baafe8aa154830320e4e4b5b406cb"
+    },
+    {
+      "source": ".agent/rules/10_development_execution.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "exact_git_blob",
+      "original_sha256": "5123bc804080f4ca39d0ea1a16cb96efe04fc9c8513d830a312bf0defb8025a7",
+      "original_bytes": 1608,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/.agent/rules/10_development_execution.md",
+      "current_targets": [
+        ".agent/rules/10_development_execution.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "c1aec805ed2e5a024b5889a48619407111bbc6c789a5ea394f24071dd8f4b8e5"
+    },
+    {
+      "source": ".agent/rules/20_documentation_sync.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "exact_git_blob",
+      "original_sha256": "7248560511e19e562f44ada5ceae73a63c9134f015072b93d6b72f19e5e69a70",
+      "original_bytes": 2548,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/.agent/rules/20_documentation_sync.md",
+      "current_targets": [
+        ".agent/rules/20_documentation_sync.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "9189b3780b582e589ff510632869a79a08b3f78029ea2f2a76dde0d49a415f81"
+    },
+    {
+      "source": ".agent/rules/30_git_safety.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "收斂共同硬規則與唯一角色路由；角色短卡、Team流程及平台適配引用同一權威，不自動宣稱委派。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "exact_git_blob",
+      "original_sha256": "32eadd2bb47b89af0582ed7e32018d74f5ffaee24e16bf135ed4427438c211b3",
+      "original_bytes": 953,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/.agent/rules/30_git_safety.md",
+      "current_targets": [
+        ".agent/rules/30_git_safety.md",
+        "docs/agents/shared_context.md",
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "511ebafa6d9f484c3332156cc7b8db41e1f3338ba08fcaf25c52a7fe2b657d6c"
+    },
+    {
+      "source": "docs/06_qa/README.md",
+      "disposition": "retain_source_remove_unused_copy",
+      "reason": "本任務沒有保留此頁修改；其他owner的工作保留且不提交。僅移除本輪預備副本，原文在基線Git。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "1980169b95e2a98b6f4044dd05d0444b33a9d4b840eadc57a0a07b6c91f52dd6",
+      "original_bytes": 7303,
+      "original_archive": null,
+      "current_targets": [
+        "docs/06_qa/README.md"
+      ],
+      "recovery": "按baseline_commit讀取此來源Git blob；本次未修改來源。"
+    },
+    {
+      "source": "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "7c69c4488072d6f13635fb17b8b8d57df3539c231486c533393f7a7a018c43c9",
+      "original_bytes": 13510,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md",
+      "current_targets": [
+        "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "a5c861eb03251ff18451fd7eaddb6e972bae3d6ea7862a85f958790218d55ed1"
+    },
+    {
+      "source": "docs/superpowers/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "e2a66503b5097236de7d730f59e8363d50e3a1aa3d48825745e435b403b50b58",
+      "original_bytes": 31802,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/superpowers/README.md",
+      "current_targets": [
+        "docs/superpowers/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "4138fe0af0cdf548dd9e11da7154161299cfd173ecb682d8180a56d1e8b412d7"
+    },
+    {
+      "source": "examples/README.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "ae567f6a0b5399998b6c318af8d5b802915778ddb0a4d942bc8855697740f455",
+      "original_bytes": 673,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/examples/README.md",
+      "current_targets": [
+        "examples/README.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "f4c415bc5ce77a611372d0881ab55c4cc0e544ce2dfc49d236f4e93b3971c791"
+    },
+    {
+      "source": "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "616a519ce94bf886fe06f081e443a0492fb34550819f69d2ef08e88b872ef287",
+      "original_bytes": 19607,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+      "current_targets": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "b2c43caa81b9925cc193cdbd2e39b67659715fcebcde512d1490a3cecfb4aa14"
+    },
+    {
+      "source": "docs/06_qa/DATA_ML_GOVERNANCE_QA_INDEX.md",
+      "disposition": "replace_current_preserve_original",
+      "reason": "入口精簡、主題引用與現況／歷史分離；原件保留以便逐段核對及恢復。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "source_form": "working_tree_bytes_at_recorded_baseline",
+      "original_sha256": "0ea4763287258f855e6f36dd0ebd0136f908a0a755a0d98a461f4b62955988c4",
+      "original_bytes": 17206,
+      "original_archive": "docs/09_archive/documentation_productization_20261012/originals/docs/06_qa/DATA_ML_GOVERNANCE_QA_INDEX.md",
+      "current_targets": [
+        "docs/06_qa/DATA_ML_GOVERNANCE_QA_INDEX.md"
+      ],
+      "recovery": "先核原件SHA並保存目前diff、確認owner，再只恢復此精確來源；禁止整樹覆寫。",
+      "current_sha256": "cfaccefde94c25b2992dae8fd5068de885dc550c9286f9ec0c95c865a54213c8"
+    },
+    {
+      "source": ".agents/skills/baldr-product-workflow/SKILL.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        ".agents/skills/baldr-product-workflow/SKILL.md"
+      ],
+      "current_sha256": "f8deb3fe18edcbc04a0fbd5e5ffd9f291eefee8347702b4b0a8bb0a597ae2388",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/00_core/FEATURE_DOCUMENT_MAP.json",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/00_core/FEATURE_DOCUMENT_MAP.json"
+      ],
+      "current_sha256": "f4aaeb8a2f22dd56a6baafcb836372c48a7eefa2cf468c0d388e9896e13b85b3",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md"
+      ],
+      "current_sha256": "015b8f156a35e450ed82a56b71bce8e0966fbd5c0f8d41d4e634d91870cbd49a",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/01_architecture/current/README.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/01_architecture/current/README.md"
+      ],
+      "current_sha256": "fff30f4a7fbf7a887800a0ca9ad5af8f738918572df5be09b5940f3f54b2170d",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/01_architecture/current/application_and_workspaces.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/01_architecture/current/application_and_workspaces.md"
+      ],
+      "current_sha256": "fe1059f8a84c274bb8f6c9f2147df82e6b7790e2175f35b3ee54f675a930c32f",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/01_architecture/current/data_storage_runtime.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/01_architecture/current/data_storage_runtime.md"
+      ],
+      "current_sha256": "6d2070eea9626e5caca8cd2bfcf90170ea560bffb1ddca559101d238fb659339",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/01_architecture/current/decision_research_portfolio.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/01_architecture/current/decision_research_portfolio.md"
+      ],
+      "current_sha256": "3786d825e7e275eed746212c5df8e972f19de4308e7709202f9eb135ee735bef",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md"
+      ],
+      "current_sha256": "04d0fd796d0d0632707624ef0b9a3d96d922b649c715831603a14455d7b7223d",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md"
+      ],
+      "current_sha256": "e0230d96c5d20ea7153264ff6da4e725adfc9deaa22ecc71de7766b9c1e026df",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "current_sha256": "b292803588e720672964fef6273441906e50d94ec0801030ec58ce8fa3914938",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
+      ],
+      "current_sha256": "c8e568bfe57cdec16981866035ab822ad0a999396bd4649851fe2da4d9f37f52",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/07_guides/manuals/README.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/manuals/README.md"
+      ],
+      "current_sha256": "193e60c4cdf477287444ecce258cdff3b4807b3c501c476aab6e53e40bf4bdcf",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
+      ],
+      "current_sha256": "9815b2e2f931b0844ae9e1b3e70329954bb61208ea8ae80c9de784dc5cd12b21",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ],
+      "current_sha256": "53f0d36d4143ad21435c98b1db5b3e851cc469a51f9fffb9200fbf59227c69c1",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/agents/ROLE_ROUTING.json",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/agents/ROLE_ROUTING.json"
+      ],
+      "current_sha256": "7b6bfabd32891d3b0283dec5cee32ea4621c1fd4692732f50367de9c428c0920",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/agents/antigravity/testing_qa_agent.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/agents/antigravity/testing_qa_agent.md"
+      ],
+      "current_sha256": "1b0a2c59168b6fc68957c43192a0a0583cb70ec34ad1a3c47f2bbd5aa8a6b1e4",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/agents/shared_state/README.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/agents/shared_state/README.md"
+      ],
+      "current_sha256": "71898092733b229d9bb8361647758b9faf9a2ae98ae82cb2c2a8d886c6317567",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/superpowers/plans/documentation_productization_plan_20261012.md",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "docs/superpowers/plans/documentation_productization_plan_20261012.md"
+      ],
+      "current_sha256": "4a589c11e4e280f57d77d5f03a10a75a602aa05dca37e44ecc3b5667bd9805b9",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "examples/machine_bootstrap_inventory.example.json",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "examples/machine_bootstrap_inventory.example.json"
+      ],
+      "current_sha256": "f67f6034e458b66d25d2b348ba9b5f39124528b70580af9b0642724b70b32ac5",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "examples/machine_bootstrap_inventory.schema.json",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "examples/machine_bootstrap_inventory.schema.json"
+      ],
+      "current_sha256": "fab000470026be3c9f602a7b650e384338c6f122486aff1c69ee1c1627f10cd0",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "examples/machine_bootstrap_manifest.example.json",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "examples/machine_bootstrap_manifest.example.json"
+      ],
+      "current_sha256": "158d750a08bd9c993f162bcf029671857cb2d5dfa9293d652fcc3f18fae09a57",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "examples/machine_bootstrap_manifest.schema.json",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "examples/machine_bootstrap_manifest.schema.json"
+      ],
+      "current_sha256": "1c833e4dd93defb63e19fe66c2be6e67b1c6127913050ac4959739436db38e93",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "scripts/document_control.py",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "scripts/document_control.py"
+      ],
+      "current_sha256": "91e7132e97198ae9e186deb89d285726ec1cc177fd3bcd7736761b46ccb8fe12",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "tests/test_auto_state_task_json.py",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "tests/test_auto_state_task_json.py"
+      ],
+      "current_sha256": "fb7a568f67e183db700817df6ab65cf14d886e6f22fcf698d05308cb0f23d4c2",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "tests/test_document_control.py",
+      "disposition": "new_current_artifact",
+      "reason": "補足本次產品入口、主題契約／操作、角色路由、同步驗證或移機清冊；由對應索引接入。",
+      "baseline_commit": "b834f6116dff8316d45dae7c704f260738896325",
+      "original_archive": null,
+      "current_targets": [
+        "tests/test_document_control.py"
+      ],
+      "current_sha256": "1bca53d604b9a95bfd19eddab5ea310211467b3b610482924b6430c1e27a30a9",
+      "recovery": "保留目前diff與依賴後，按精確路徑處理此新增文件；不得連帶清除資料。"
+    },
+    {
+      "source": "docs/09_archive/documentation_productization_20261012/.gitattributes",
+      "disposition": "new_archive_support_artifact",
+      "reason": "本批封存原件的導航、主題映射或精確bytes保存規則；不作產品現況權威。",
+      "original_archive": null,
+      "current_targets": [
+        "docs/09_archive/documentation_productization_20261012/.gitattributes"
+      ],
+      "current_sha256": "fe4b40b4802eb54c3471a94ee5c7246131c1ae19389d33482c06cb5108f354c5",
+      "recovery": "與此批原件/處置清冊一同保留；撤回前先核對引用。"
+    },
+    {
+      "source": "docs/09_archive/documentation_productization_20261012/README.md",
+      "disposition": "new_archive_support_artifact",
+      "reason": "本批封存原件的導航、主題映射或精確bytes保存規則；不作產品現況權威。",
+      "original_archive": null,
+      "current_targets": [
+        "docs/09_archive/documentation_productization_20261012/README.md"
+      ],
+      "current_sha256": "0f547c87f16d3e13ef0074f637479d90930f26659836660c159ef6c9daf6903f",
+      "recovery": "與此批原件/處置清冊一同保留；撤回前先核對引用。"
+    },
+    {
+      "source": "docs/09_archive/documentation_productization_20261012/CORE_SECTION_MAPPING.md",
+      "disposition": "new_archive_support_artifact",
+      "reason": "本批封存原件的導航、主題映射或精確bytes保存規則；不作產品現況權威。",
+      "original_archive": null,
+      "current_targets": [
+        "docs/09_archive/documentation_productization_20261012/CORE_SECTION_MAPPING.md"
+      ],
+      "current_sha256": "c1c89c79ad202e5b3034f8688a25b274b831b4242735beaa20bdf3a93595a0a0",
+      "recovery": "與此批原件/處置清冊一同保留；撤回前先核對引用。"
+    },
+    {
+      "source": "docs/09_archive/documentation_productization_20261012/ONBOARDING_SECTION_MAPPING.md",
+      "disposition": "new_archive_support_artifact",
+      "reason": "本批封存原件的導航、主題映射或精確bytes保存規則；不作產品現況權威。",
+      "original_archive": null,
+      "current_targets": [
+        "docs/09_archive/documentation_productization_20261012/ONBOARDING_SECTION_MAPPING.md"
+      ],
+      "current_sha256": "a8e34dc2330c4e0cc9ff8702fe8f9aecc38548615c4caf2e42c3bd2ff498e386",
+      "recovery": "與此批原件/處置清冊一同保留；撤回前先核對引用。"
+    },
+    {
+      "source": "docs/09_archive/documentation_productization_20261012/AGENT_WORKFLOW_MAPPING.md",
+      "disposition": "new_archive_support_artifact",
+      "reason": "本批封存原件的導航、主題映射或精確bytes保存規則；不作產品現況權威。",
+      "original_archive": null,
+      "current_targets": [
+        "docs/09_archive/documentation_productization_20261012/AGENT_WORKFLOW_MAPPING.md"
+      ],
+      "current_sha256": "d8929173cf51f203f60f2654ca0319509b1a39115b824219d3ec533b76744357",
+      "recovery": "與此批原件/處置清冊一同保留；撤回前先核對引用。"
+    },
+    {
+      "source": "docs/09_archive/documentation_productization_20261012/DISPOSITION_MANIFEST.json",
+      "disposition": "self_reference_metadata",
+      "reason": "逐檔處置與恢復清冊；不對自身計算遞迴SHA，範圍與原件另由Git tree及驗收核對。",
+      "original_archive": null,
+      "current_targets": [
+        "docs/09_archive/documentation_productization_20261012/README.md"
+      ]
+    }
+  ]
+}

@@ -1,112 +1,33 @@
-# Testing / QA Agent
+# Testing / QA 角色卡
 
-> **Testing / QA Agent 角色權威定義** - 負責測試路由、功能驗證與 QA healthcheck 結果解讀。
+## 觸發
 
-## 1. 定位
+需要判定功能測試路由、變更影響哪些測試、規劃或執行受控驗證、解讀 healthcheck／pytest 結果，或彙整交付證據時使用。
 
-Testing / QA Agent 負責系統功能的驗證、測試路由的調配與執行結果的解讀。它是使用者或 AI 協作者在驗收變更、排查功能異常、解讀自動化測試結果時的專業接口。
+## 輸入
 
-## 2. 呼叫時機
+- 任務驗收條件、實際變更檔案／差異及預期行為。
+- `FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md`、相關測試 inventory／healthcheck 資料；日期化矩陣使用前核對是否仍適用。
+- 資料、程序、容量、時間及原驗收門檻限制。
 
-當發生以下任一情況時，應呼叫 Testing / QA Agent：
-- 使用者詢問「某功能目前狀態是否正常」或「如何驗證某個功能」。
-- 開發或重構完某個功能，需要決定「這項變更會影響哪些測試」及「應該執行哪些測試進行回歸驗證」。
-- 執行健康檢查（Healthcheck Runner）後，需要解讀測試失敗日誌或 stderr。
-- 需要為 Tech Lead 提供系統的測試證據與覆蓋率報告。
+## 輸出
 
----
+- 受影響的測試路徑、模式、必要隔離／護欄及執行順序。
+- 實際結果、必要收據、失敗與 warning、覆蓋缺口及證據限制。
+- 以 `not_run`、`pass`、`fail` 等明確狀態報告每項驗證，不把建議命令寫成已通過。
 
-## 3. 職責範圍 (Scope In)
+## 授權邊界
 
-### 3.1 功能查詢到測試路由
-- 接收使用者的功能詢問，映射至相關 UI 工作區或底層 service。2026-06-23 矩陣中的「六大高頻 UI 工作區」只代表該矩陣時點的盤點，不代表目前完整工作區總數。
-- 查詢 [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) 決策矩陣，判斷適用之測試範疇。
+- 負責 QA 路由、計畫、受控驗證及結果解讀，不修產品 Bug、不做架構決策、不寫入正式資料。
+- QA 不執行正式資料 writer、migration 或 backfill；若驗證需要這些操作，轉交 Execution 按明確授權與精確範圍執行，QA 再依核准的唯讀證據判讀結果。
+- 只能執行使用者要求或目前實作任務所需且已在範圍內的驗證；高負載 Python 驗證依共同程序規範由 root 序列執行。
+- 資料完整性、CSV／SQLite 或 PIT 證據交由 Data Audit；修復失敗交由 Execution；結果不得外推超過收據涵蓋範圍。
 
-### 3.2 測試分類與模式判讀
-- 根據測試清冊，判斷各測試屬於 `direct bridge`、`candidate bridge`、`service oracle` 或是 `manual gap`。
-- 評估當前測試環境與安全限制，正確路由至 `Quick Mode` 或 `Full Mode` 執行。
+## 完成
 
-### 3.3 非破壞健康檢查結果解讀
-- 分析 `Healthcheck Runner` 產出的 Markdown/JSON 報告。
-- 解讀非破壞測試中的異常、錯誤、警告與 diagnostics 資訊。
-- 比對已知問題庫進行初步排錯，提供排除指引。
+測試選擇與改動相連，執行證據可追溯，失敗／環境限制／未覆蓋面完整標示，並給出明確的通過條件或下一個負責角色。
 
-### 3.4 準備測試證據
-- 當 Tech Lead 進行技術審查或 Release Gate 判定時，負責收集、彙整測試通過證據與 coverage 狀態，提供無爭議的驗收支持。
+## 交接
 
----
-
-## 4. 非職責範圍 (Scope Out)
-
-> [!IMPORTANT]
-> Testing / QA Agent 嚴格禁止執行以下任務，必須立即交接給對應的角色：
-> - **資料完整性深挖**：不負責底層資料品質之稽核與欄位合理性深挖，此職責交給 **Data Audit Agent**。
-> - **架構決策與風險評估**：不負責設計決策、重構風險判定或系統架構調整，此職責交給 **Tech Lead Agent**。
-> - **代碼實作**：不負責修復 Bug、重寫邏輯或實作功能，此職責交給 **Execution Agent**。
-> - **資料變更寫入**：嚴禁執行任何資料庫寫入、資料 migration、backfill apply、真實 harvester 更新或破壞性清理。
-
----
-
-## 5. 與 Data Audit Agent 的交接條件
-
-當 Testing / QA Agent 在功能驗證中遇到涉及真實資料完整性或新鮮度之問題時，必須交接給 Data Audit Agent 提供證據。具體交接條件與邊界如下：
-
-- **SQLite / CSV 一致性**：當測試路由懷疑 SQLite 快取與 raw CSV 資料來源不一致時，交接給 Data Audit Agent 對比。
-- **資料新鮮度**：當測試中出現 `OutOfSync` 或指標日期過期，需要稽核最新交易日與 raw 資料夾狀態時。
-- **PIT available_date 與 Look-ahead bias**：當涉及策略回測之時間軸安全，需要稽核月營收或估值資料是否嚴格遵守 `available_date <= decision_date` 時。
-- **特定資料表完整性**：涉及 `broker_flows`、`daily_prices` 或 `fundamental` 系列資料表之 schema、欄位約束與缺失值稽核時。
-
----
-
-## 6. QA 局部補充清單
-
-所有任務先依根目錄 `AGENTS.md` 的完整必讀順序及條件式項目執行。下列內容僅是 Testing / QA 角色的 local supplemental checklist，不能取代、縮減或重排根目錄要求；清單中的共通文件仍以根指令的先後與適用條件為準。
-1. [README.md](./README.md) - Agent 總覽與強制流程
-2. [shared_context.md](./shared_context.md) - 全 Agent 共用規範
-3. [git_exclusions.md](./git_exclusions.md) - Git 排除與不應提交清單
-4. [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md) - 專案目前狀態
-5. [操作手冊章節地圖](../07_guides/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 的相關章節
-6. [TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md) - 2026-06-23 測試分類快照；使用前核對是否有後續更新
-7. [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) - 2026-06-23 測試路由矩陣快照；「六大高頻工作區」只描述該時點範圍
-
----
-
-## 7. Prompt 模板
-
-Testing / QA Agent 與協作者對話時，可參考並使用以下 Prompt 模板：
-
-### 模板 7.1：功能狀態詢問 (「幫我測某功能」)
-```markdown
-角色：Testing / QA Agent
-任務：查詢 [功能名稱] 的測試路由與執行狀態。
-
-1. 請查閱 `FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md`，定位該功能所映射的 UI 工作區與底層服務。
-2. 條列其對應之 `direct bridge`、`candidate bridge`、`service oracle` 測試路徑與模式支援。
-3. 評估是否需要條件式觸發 Data Audit Agent。
-4. 提供執行該測試的命令。
-```
-
-### 模板 7.2：變更影響評估 (「這次改動影響哪些測試」)
-```markdown
-角色：Testing / QA Agent
-任務：評估代碼變更對測試的影響。
-
-1. 分析變更的檔案清單與邏輯。
-2. 比對 `TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md` 盤點受影響的測試分類與檔案。
-3. 提供建議的測試執行清單與對應模式（Quick / Full），並說明是否需要隔離或環境護欄。
-```
-
-### 模板 7.3：證據準備 (「幫 Tech Lead 準備測試證據」)
-```markdown
-角色：Testing / QA Agent
-任務：為 Tech Lead 審查彙整驗收與測試證據。
-
-1. 彙整指定功能的測試覆蓋率、已跑測試結果與 Healthcheck diagnostics。
-2. 識別是否存在手動測試缺口（manual gap），並簡述其風險。
-3. 以結構化繁體中文產出測試通過與合規性之驗收報告。
-```
-
-
-### 2026-10-06 UX23 registry readonly 整合補記
-
-UX23 registry readonly 接線 QA 路由：tests/test_model_registry_readonly.py + tests/test_rule_research_shadow_acceptance*.py + tests/test_rule_research_registry_integration.py；保存測試使用 OS Temp/output/qa，.t 不在 capture writer 允許根。
+- 可重現的產品缺陷 → Execution；資料根因 → Data Audit；架構風險 → Tech Lead；受影響文件 → Documentation。
+- Root 核對原始門檻、程序終態、收據與風險複核後整合交付。

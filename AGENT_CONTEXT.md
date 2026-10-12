@@ -1,82 +1,45 @@
-# Agent / Developer Context
+# Agent／Developer 快速導航
 
-> **用途**：本檔是給 Codex、Antigravity 與專案開發者的高密度入口。使用者導向介紹請看 [README.md](README.md)；共用 repo 強制規則入口為 [AGENTS.md](AGENTS.md)。
+baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策工作台。這份文件只導覽穩定入口，不保存日期化 readiness、任務狀態或第二套工作流程。
 
-## 專案定位
+## 開始任務
 
-baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策工作台。核心不是「每天吐股票」，而是把資料、研究、回測、候選、持倉與策略生命週期串成可檢查的決策流程。
-
-## 開始任務前的狀態入口
-
-本檔只提供穩定的專案與協作導覽，不保存日期化 readiness、容量或待辦摘要。開始任務時先讀 [`PROJECT_SNAPSHOT.md`](docs/00_core/PROJECT_SNAPSHOT.md)；其他主題依下方 Scoped SSOT 導航到各自權威文件。
-
-## 分支與工作流
-
-| 分支 | 用途 |
-|---|---|
-| `main` | 乾淨可 clone 版本，保留必要文件、程式碼、測試與範例。 |
-| `dev` | 日常開發主線，延續目前進行中的 healthcheck、UI smoke、文件與功能深化。 |
-| `codex/*` / `ag/*` / `research/*` | 短期治理、實作或研究工作分支；角色與整合界線見 [Multi-Agent 協作流程](docs/agents/multi_agent_workflow.md)。 |
-
-不要把本機輸出、QA artifact、SQLite DB、log、暫存資料或正式資料根目錄內容提交到 `main`。
-
-## 平台指令與快覽
-
-本檔是跨工具快速導航，不另定義必讀順序。共用開工順序與條件式文件由 [AGENTS.md](AGENTS.md) 維護；Codex 與 Antigravity 會讀取該檔，Gemini CLI 由 [GEMINI.md](GEMINI.md) 匯入。Antigravity 另依任務套用 `.agent/rules/` 細則。完整角色入口見 [Agent 總覽](docs/agents/README.md)，專案目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)。
-
-條件式文件依任務範圍判斷；不要用這份快覽取代平台指令列出的產品、Roadmap、架構或操作手冊權威文件。
+依根目錄 [`AGENTS.md`](AGENTS.md) 開工：先讀共同安全規範，再讀目前狀態摘要，再由唯一人類路由入口 [`docs/agents/skills_registry.md`](docs/agents/skills_registry.md) 選角色。多階段工作使用 [`docs/agents/skills/team.md`](docs/agents/skills/team.md)。
 
 ## Scoped SSOT
 
-| 主題 | 權威文件 |
+| 問題 | 權威入口 |
 |---|---|
-| 目前狀態 / 高風險區 | `docs/00_core/PROJECT_SNAPSHOT.md` |
-| 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` |
-| V2.0 之後長期版本階梯 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` |
-| 外部專案／候選資料源研究與歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（不作現行來源優先序或工程順序；來源優先序看 Product Roadmap §11，工程順序看 6M Roadmap） |
-| Roadmap 入口 | `docs/00_core/DEVELOPMENT_ROADMAP.md` |
-| 舊 Roadmap 移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` |
-| 架構 / 模組邊界 | `docs/01_architecture/system_architecture.md` |
-| 使用者操作 | `docs/07_guides/APPLICATION_MANUAL.md` |
-| 文件索引 | `docs/00_core/DOCUMENTATION_INDEX.md` |
-| 文件生命週期 | `docs/00_core/DOCUMENTATION_STRUCTURE.md` |
+| 目前狀態與當前風險 | `docs/00_core/PROJECT_SNAPSHOT.md` |
+| 產品方向與現行資料來源優先序 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` |
+| 六個月工程里程碑 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` |
+| 長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` |
+| Roadmap 導覽、舊工作承接 | `docs/00_core/DEVELOPMENT_ROADMAP.md`、`LEGACY_ROADMAP_CARRYOVER.md` |
+| 現行架構 | `docs/01_architecture/system_architecture.md` |
+| 目標領域背景與目標實作設計 | `docs/01_architecture/target_system_architecture.md`、`target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` |
+| 使用者操作 | `docs/07_guides/README.md` 章節地圖、`APPLICATION_MANUAL.md` 相關章節 |
+| 文件位置與生命週期 | `docs/00_core/DOCUMENTATION_INDEX.md`、`DOCUMENTATION_STRUCTURE.md` |
+| 文件 coverage 與變更流程 | `DOC_COVERAGE_MAP.md`、`FEATURE_DOCUMENT_MAP.json`、`PRODUCT_CHANGE_WORKFLOW.md` |
 
-## 主要入口與模組
+依任務載入相關文件，不將此導航表當成每項任務都要完整閱讀的清單。日期化歷史只供相關主題追溯。
 
-- 主 UI：`ui_qt/main.py`
+## 主要程式入口
+
+- PySide6 UI：`ui_qt/main.py`
 - Application services：`app_module/`
 - Decision domain：`decision_module/`
-- Backtest engine：`backtest_module/`
-- Portfolio domain：`portfolio_module/`
+- Backtest：`backtest_module/`
+- Portfolio：`portfolio_module/`
 - Runtime：`runtime/`
-- Data / SQLite / config：`data_module/`
-- QA / maintenance scripts：`scripts/`
+- Data、SQLite 與設定：`data_module/`
+- QA／維護工具：`scripts/`
 
-## 高風險規則
+資料路徑、量化精度、Look-ahead bias、程序管理、Git 與未提交變更等共同硬規則見 [`docs/agents/shared_context.md`](docs/agents/shared_context.md)。Antigravity／Gemini CLI 的平台適配見 [`GEMINI.md`](GEMINI.md) 及 `.agent/rules/`。
 
-- 不刪除或破壞正式資料根目錄。資料位置以 `TWStockConfig` / `DATA_ROOT` 為準。
-- 策略、回測、推薦、資金、倉位、風控與績效不可新增裸 `float` 核心計算。
-- 涉及策略、回測、推薦、績效、風控時，先做 Look-ahead bias 自查。
-- UI 不直接重算 scoring、screening、broker flow、portfolio 或 Daily Decision Desk domain logic。
-- Stage / commit 前先看 `docs/agents/git_exclusions.md`，並確認 `git status --short` 只包含本任務檔案。
+## 任務狀態
 
-## 常用驗證
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest tests/test_ui_qt_update_view_workbench.py -q -o addopts=
-.\.venv\Scripts\python.exe scripts\qa_validate_update_tab.py
-.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime
-```
-
-金融核心修改另跑：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\check_financial_float_boundaries.py
-```
+多階段本機任務狀態位於 `output/tasks/<task_id>/task.json`，建立與 legacy singleton 所有權見 [`docs/agents/shared_state/README.md`](docs/agents/shared_state/README.md)。它不取代 Snapshot 或其他產品狀態權威。
 
 ## 更新記錄
 
-- 2026-08-29：補入目前 maturity、七 lane rebaseline 與 release_v4 retention custody 入口。
-- 2026-07-06：補上 V2.0 之後長期版本階梯 companion 入口，供 Agent 在 V2.1-V4.0 規劃時定位 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
-- 2026-07-04：補上外部專案參考與 V1.5-V2.0 版本形狀 companion 入口，供 Agent 在方向規劃時定位 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`。
-- 2026-06-30：從根目錄 README 拆出 Agent / Developer 上下文，使 `README.md` 可作為乾淨使用者入口。
+- 2026-10-12：改為穩定入口與 Scoped SSOT 導覽，不複製完整必讀清單、硬規則或日期化任務狀態。

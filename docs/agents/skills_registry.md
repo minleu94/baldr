@@ -1,124 +1,45 @@
-# Shared AI Skills Registry
+# baldr 角色路由
 
-> Codex 與 Antigravity 共用的技能總目錄索引。
-> 本文件只負責「角色選擇、流程導引與共享上下文入口」，不保存第二套 Agent 規則，避免平行權威與上下文污染。
+> 本頁是唯一人類可讀的角色路由入口。六份 `docs/agents/*.md` 是各角色行為權威；`ROLE_ROUTING.json` 是供 `scripts/document_control.py route` 使用的機器可讀投影，兩者由同一規則維護。若工具回報 `needs_classification`，由 root 根據任務與影響範圍分類，不猜選角色。
 
-## 1. 定位
+## 先載入
 
-本文件是 Shared AI Layer 的技能入口。
+所有任務先讀：
 
-- `docs/agents/*.md` 是唯一角色與規則權威。
-- `docs/agents/skills/*.md` 只保存跨 AI 協作流程、交接規則與輕量調用指南，不得重新定義既有 Agent。
-- `docs/agents/antigravity/` 與 `.agent/rules/` 僅為 Antigravity 適配摘要，不得維護平行規則。
-- 若任何適配層與 `docs/agents/` 衝突，以 `docs/agents/` 為唯一真相。
+1. `docs/agents/shared_context.md`：共同安全與工程規範。
+2. `docs/00_core/PROJECT_SNAPSHOT.md`：目前狀態摘要與當前風險。
+3. 本頁：選擇任務需要的角色，再讀其權威卡。
 
-## 2. 技能載入前的必讀依據
+多階段、需交接或跨多角色的任務另讀 `docs/agents/skills/team.md`。產品、工程、架構、目標設計及操作文件按任務條件載入，遵循根目錄 `AGENTS.md` 的 Scoped SSOT 導航。
 
-使用技能前，先依平台規則完成完整必讀順序與條件式文件：Codex 及 Antigravity 依根目錄 `AGENTS.md`；Gemini CLI 由根目錄 `GEMINI.md` 匯入該規則。本登錄表只做角色與技能路由，不維護縮短版或第二套必讀清單；任務對應的權威 Agent 文件依下方角色表選取。
+## 角色選擇
 
-## 3. 權威 Agent 與協作流程
-
-| 任務類型 | 權威文件 / 流程文件 | 用途 |
+| 任務訊號 | 主要角色 | 權威卡 |
 |---|---|---|
-| 團隊分流、交接、角色選擇 | `docs/agents/skills/team.md` | Task Intake、Role Routing、Handoff Pack |
-| 量化合規檢查（Float / 未來函數） | `docs/agents/skills/quant_defense_guard.md` | 量化精度防禦與未來函數審查技能 |
-| 架構判斷、風險雷達、是否該做 | `docs/agents/tech_lead.md` | Tech Lead 權威角色 |
-| 明確 scope 的實作或 bugfix | `docs/agents/execution_agent.md` | Execution 權威角色 |
-| 測試路由、功能驗證、測試矩陣與 healthcheck 結果解讀 | `docs/agents/testing_qa_agent.md` | Testing / QA 權威角色，負責測試路由與結果解讀 |
-| 實作完成後實際執行驗證命令、git safety、交付前檢查 | `docs/agents/execution_agent.md` + `docs/agents/shared_context.md` | 依專案驗證與安全規則執行交付 |
-| 文檔 coverage、索引、Snapshot / Product Roadmap / 6M Roadmap / Version Roadmap / Current / Target Architecture / Manual 同步 | `docs/agents/documentation_agent.md` | Documentation 權威角色 |
-| 資料完整性、SQLite / CSV 一致性 | `docs/agents/data_audit_agent.md` | Data Audit 權威角色 |
-| 清理、移除、死碼、依賴精簡 | `docs/agents/data_cleanup_agent.md` | Cleanup 權威角色 |
+| 技術選型、架構邊界、風險、是否該做 | Tech Lead | `docs/agents/tech_lead.md` |
+| SQLite／CSV／原始資料完整性、來源比較、品質 | Data Audit | `docs/agents/data_audit_agent.md` |
+| 刪除、搬移、清理或依賴精簡的影響盤點 | Data Cleanup | `docs/agents/data_cleanup_agent.md` |
+| 已授權的功能實作、修錯、UI／測試修改 | Execution | `docs/agents/execution_agent.md` |
+| 文件覆蓋、索引、手冊及專題文件同步 | Documentation | `docs/agents/documentation_agent.md` |
+| 測試路由、QA 計畫、健康檢查或結果判讀 | Testing / QA | `docs/agents/testing_qa_agent.md` |
 
-## 4. 載入規則
+任務可由同一位 Agent 依序戴上多個角色處理；這是預設方式。只有使用者或適用指令明確授權獨立 subagent 時才委派，並為其指定有限輸入、輸出與檔案範圍。Root 始終是任務負責者，負責整合與交付，不因委派而轉移責任。
 
-### 小任務
+以下 `kind` 是文件工具的選擇值，不是另一套路由規則。完整條件與角色組合以 `ROLE_ROUTING.json` 為準；可使用 `scripts/document_control.py route --kind ... --request ...` 初判，再用 `--changed-file` 納入實際變更影響：`query`、`documentation`、`implementation`、`ui`、`data_audit`、`data_write`、`architecture`、`cleanup`、`bootstrap`、`release`。未分類或條件衝突時停止自動選擇，交由 root 裁決。
 
-小型文檔更新、簡單查詢、單一低風險修正：
+## 必要複核
 
-1. 依平台根目錄指令完成適用的必讀項目。
-2. 只載入與任務直接相關的一份權威 Agent 文件；需要交接時再載入 `docs/agents/skills/team.md`。
-3. 可用對話摘要交接，不強制寫入 shared state。
+Root 對 Scope、風險複核、驗證狀態與最終交付負責。依實際風險加入複核角色：
 
-### 中大型任務
+- 介面、模組邊界、資料流或目標設計改變：Tech Lead 在實作前審查設計；契約實際改變時再核對整合影響。
+- 資料來源、品質、SQLite／CSV 一致性：Data Audit 提供唯讀證據；任何寫入另須明確授權與 Execution 的受控變更。
+- 刪除、搬移或依賴清理：Data Cleanup 先交付精確盤點、引用與復原路徑；Execution 只執行已授權項目。
+- 實作／UI／資料寫入等變更 kind：按 `ROLE_ROUTING.json` 保留 Testing / QA 與 Documentation 覆蓋階段；它們依實際影響判定所需驗證及文件修訂，無須擴成六角色全開。
+- 其他使用流程或專題文件改變：依實際影響加入 Testing / QA、Documentation 或其他角色，並按文件覆蓋地圖完成同步。
+- 高風險變更或發布交付：Root 確認指定複核、證據、未解風險及 Git 範圍都齊備後才交付。Stage／commit 前讀 `docs/agents/git_exclusions.md`。
 
-跨多檔案、跨模組、需要多輪交接或需要 Codex / Antigravity 輪流處理：
+路由要求的角色需完成其適用覆蓋判定；覆蓋判定可得出不需額外測試或文件修訂。角色不因跨階段而延後已授權範圍內的必要 QA 或文件同步。共享硬規則見 `docs/agents/shared_context.md`；協作步驟見 `docs/agents/skills/team.md`。
 
-1. 先載入 `docs/agents/skills/team.md`。
-2. 由 Team skill 判斷後續應使用哪一份權威 Agent 文件。
-3. 必須定義 Scope In / Scope Out。
-4. 必須在交接時更新 shared state。
+## 更新記錄
 
-### 高風險任務
-
-涉及下列任一情況，必須使用嚴格流程：
-
-- SQLite 寫入、migration、schema 變更、CSV fallback。
-- 策略、回測、推薦、績效、風控、資金、倉位。
-- 正式資料根目錄。
-- 大規模重構、刪除、清理。
-- 分支清理、commit、stage、push。
-
-嚴格流程：
-
-1. 載入 `docs/agents/skills/team.md`。
-2. 依任務載入對應權威 Agent 文件，例如 `docs/agents/tech_lead.md`、`docs/agents/data_audit_agent.md`、`docs/agents/execution_agent.md`、`docs/agents/documentation_agent.md` 或 `docs/agents/testing_qa_agent.md`。
-3. 寫入 `docs/agents/shared_state/active_task.yaml`。
-4. 交接時追加 `docs/agents/shared_state/handoff_log.md`。
-5. 完成前必須執行驗證與風險檢查。
-
-## 5. 全技能硬性約束
-
-所有技能都必須遵守：
-
-- 一律使用繁體中文。
-- 不得破壞正式資料。
-- 資料位置以 `data_module/config.py` 的 `TWStockConfig` 為準。
-- 不得覆寫使用者、Codex、Antigravity 或其他 Agent 的未提交變更。
-- 不得擴張未被要求的 scope。
-- 修改功能時必須檢查文檔同步需求。
-- 文件判讀採 Scoped SSOT：目前狀態看 Snapshot，產品方向看 Product Roadmap，未來工程路線看 6M Roadmap，V2.1+ maturity 看 V2.1-V4.0 Roadmap，舊工作承接看 Legacy Carryover，目前架構看 system architecture，目標領域背景看 target system architecture，目標實作設計看 FINAL_TARGET_ARCHITECTURE，操作看 Application Manual，歷史看 archive。
-- 使用者可見流程、參數、結果判讀或安全限制改變時，必須同步 Application Manual。
-- Stage / commit 前必須先讀 `docs/agents/git_exclusions.md`。
-- 涉及量化核心計算時，嚴禁新增裸 `float`。
-- 涉及策略、回測、推薦、績效、風控時，必須先做 Look-ahead bias 自查。
-
-## 6. 不建立第二權威
-
-禁止在 `docs/agents/skills/` 中建立與既有 Agent 同名、同職責的完整規則文件，例如：
-
-- `docs/agents/skills/tech_lead.md`
-- `docs/agents/skills/execution.md`
-- `docs/agents/skills/documentation.md`
-- `docs/agents/skills/data_audit.md`
-- `docs/agents/skills/data_cleanup.md`
-
-若未來需要輕量操作卡，必須明確標示為「調用卡」或「流程卡」，且只能指回 `docs/agents/*.md` 權威文件，不得複製或改寫角色規則。
-
-## 7. 本地輔助 MCP 伺服器
-
-專案配備以下 Python 版本地 MCP 伺服器（基於 `fastmcp`）。程式碼存在不代表目前 Agent session 已載入；修改 MCP 設定後必須重啟 Codex / Antigravity，再由工具清單確認：
-
-- **`twstock-context`** (`mcp_servers/project_context_server.py`)：提供專案啟動上下文與 `TWStockConfig` 配置快照。
-- **`twstock-sqlite-inspector`** (`mcp_servers/sqlite_server.py`)：提供強制唯讀 SQLite 查詢、執行計劃審查與 Schema 檢索；最多回傳 1000 列。它可協助診斷索引與查詢計劃，但不保證消除 database lock。
-- **`twstock-git-assistant`** (`mcp_servers/git_server.py`)：提供 Git 工作區狀態、Diff 與 Log 輔助；Git 失敗會明確拋錯，Diff 輸出設有安全上限。
-- **`twstock-evidence-access`** (`mcp_servers/evidence_access_server.py`)：提供 V1.9 read-only Evidence / Research Run / Portfolio Review saved evidence 查詢、Agent permission model 與 AI report template；只回 evidence rows、quality、warnings、source trace 與 diagnostics，不寫 DB、不改策略、不下單、不套用 lifecycle action。
-
-本機註冊位置：
-
-- Codex：`C:\Users\archi\.codex\config.toml`
-- Antigravity：`C:\Users\archi\.gemini\config\mcp_config.json`
-
-## 8. 更新記錄
-
-- 2026-06-09：改為「索引 + 分冊」架構，將本文件降級為短索引，技能細則移至 `docs/agents/skills/`。
-- 2026-06-09：修正為「既有 Agent 單一權威制」，`skills/` 僅保留團隊協作與交接流程，不建立同名角色分冊。
-- 2026-06-13：更新固定必讀與文件同步描述，對齊 Snapshot / Roadmap Hub / 6M Roadmap / Architecture 的 Scoped SSOT。
-- 2026-06-13：補入 Legacy Carryover 與 Application Manual 的條件式必讀及權威範圍。
-- 2026-06-14：新增量化防禦技能 `quant_defense_guard.md` 與本地輔助 MCP 伺服器說明。
-- 2026-06-23：新增 Testing / QA Agent 至權威與協作流程，指向 `docs/agents/testing_qa_agent.md`。
-- 2026-07-04：新增 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 的條件式必讀規則，用於外部參考、資料源擴充與 V1.5-V2.0 版本規劃任務。
-- 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的條件式必讀規則，用於 V2.1+ 版號、長期成熟度與 V3/V4 規劃任務。
-- 2026-07-06：新增 V1.9 `twstock-evidence-access` 本地 MCP 說明，限定 read-only evidence access 與 report template 邊界。
-- 2026-10-09：移除重複的固定必讀文件清單，改由平台根目錄規則維護完整順序與條件式項目。
-- 2026-10-12：統一由 `AGENTS.md` 維護共用順序；Gemini CLI 經 `GEMINI.md` 匯入，Antigravity 按需載入具有效 trigger 的 `.agent/rules/*.md`。
+- 2026-10-12：收斂為唯一人類路由入口，明確區分同一 Agent 分階段履職、明確授權的 subagent，以及 root 的持續責任。

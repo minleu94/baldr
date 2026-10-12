@@ -25,7 +25,7 @@
 | Selection 現況市場歸屬來源 | [市場名錄 assignment 收據](SELECTION_MARKET_ASSIGNMENTS_20261007.md) | 依 CMS 保存的官方名錄原件與明示 pin 判定；缺件、空名錄、重複或衝突會拒絕已知市場。合成測試及部分真實封存不等於完整 facts 或產品驗收。 |
 | V2.3 P0 source decisions | [目前逐來源 Register](V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) → [7/12 導入方向與 FinMind 候選決議歷史](../09_archive/README.md#2026-10-08-v23-data-source-decision-receipts) | 歷史 approval 只授權研究／補證方向；FinMind 帳戶權限是當日觀察，不替代目前來源接受或 eligibility。 |
 | P0 owner／reviewer handoff | [8/30 P0 evidence packet](P0_EVIDENCE_REFRESH_2026_08_30.md) → [8/30 Evidence weekly approval packet](EVIDENCE_WEEKLY_APPROVAL_REFRESH_2026_08_30.md) | 兩份是 External Validation Register 引用的原始 handoff；當日數字不代表目前 P0／Evidence 狀態，現況看 Snapshot／逐來源 Register。 |
-| ML 儲存保留與清理 | [8/29 一次性 retention cleanup custody](../09_archive/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) → [現行 immutable retention policy](../01_architecture/system_architecture.md#111-immutable-ml-publication-retention) → [操作與授權步驟](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md) | 歸檔收據記錄當次授權與不可逆結果，不代表目前容量、run 數或 retention 決議。 |
+| ML 儲存保留與清理 | [8/29 一次性 retention cleanup custody](../09_archive/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) → [現行 immutable retention policy](../01_architecture/system_architecture.md#111-immutable-ml-publication-retention) → [目前檢視與核准邊界](../01_architecture/current/data_storage_runtime.md#immutable-ml-retention-的目前檢視與核准邊界) | 唯讀 inventory 不執行刪移；歸檔收據與舊 Supplements 只支持當次範圍，不代表目前容量、run 數或 retention 決議。 |
 | 8/30 Readiness 詳細收據 | [Runtime／Paper／Formal lane refresh](../09_archive/README.md#2026-10-08-program-readiness-refresh-details) | 保留當日 probe 與 strict input 證據；目前狀態看 Snapshot。P0 與 Evidence weekly handoff 的原始收據仍在本目錄。 |
 
 ### 2026-10-06 至 10-09 基本面與資料快照

@@ -1,0 +1,223 @@
+# Agent 總覽
+
+> **一切從這裡開始** - 這是所有 Agent 的入口文檔
+
+## 📋 目錄
+
+本資料夾包含專案中使用的各種 AI Agent 定義與 Prompt 模板。每個 Agent 都有其特定的職責與使用場景。
+
+### 核心 Agent
+
+1. **[技術總管 Agent](./tech_lead.md)** (`tech_lead.md`)
+   - 負責技術決策、架構方向與風險評估
+   - 提供是否應該實作的判斷與建議（不進行實作）
+
+2. **[資料對比/驗證 Agent](./data_audit_agent.md)** (`data_audit_agent.md`)
+   - 資料完整性驗證
+   - 資料一致性檢查
+   - 資料品質評估
+
+3. **[專案清理 Agent](./data_cleanup_agent.md)** (`data_cleanup_agent.md`)
+   - 識別並清理冗餘代碼
+   - 移除未使用的檔案與依賴
+   - 優化專案結構
+
+4. **[執行型 Prompt Agent](./execution_agent.md)** (`execution_agent.md`)
+   - 僅依照明確指令執行指定任務（不補步驟、不最佳化）
+   - 指令不完整必須先列「需要確認事項」
+   - 產出可回滾的變更清單（檔案 / diff / steps）
+
+5. **[文檔覆蓋完整性 Agent](./documentation_agent.md)** (`documentation_agent.md`)
+   - 確保文件與實際系統行為、專案狀態、使用流程完全一致
+   - 識別所有需要更新的文件（包括容易被忽略的）
+   - 檢查 Snapshot / Roadmap Hub / 6M Roadmap / Architecture / Index 一致性
+
+6. **[Testing / QA Agent](./testing_qa_agent.md)** (`testing_qa_agent.md`)
+   - 負責系統功能的驗證、測試路由的調配與執行結果的解讀。
+   - 根據 [FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) 判定測試範疇與執行模式。
+
+### 共用資源
+
+- **[共用上下文](./shared_context.md)** (`shared_context.md`)
+  - 所有 Agent 必須遵守的前提條件
+  - 專案規範與約定
+  - 不可違背的規則
+- **[Git 排除與不應提交清單](./git_exclusions.md)** (`git_exclusions.md`)
+  - 說明哪些本機輸出、暫存目錄與 QA raw output 不應被順手 stage
+- **[Shared AI Skills Registry](./skills_registry.md)** (`skills_registry.md`)
+  - Codex 與 Antigravity 共用的角色選擇、流程導引與 shared context 入口
+  - 僅指向既有 Agent 權威文件，不重新定義角色規則
+- **[Multi-Agent Collaboration Workflow](./multi_agent_workflow.md)** (`multi_agent_workflow.md`)
+  - 定義 Agent 分支角色、合併前檢查與協作協議
+- **[Quant Defense Guard](./skills/quant_defense_guard.md)** (`skills/quant_defense_guard.md`)
+  - 量化精度防禦（無裸 float）與未來函數審查技能及一鍵式檢測工具說明
+- **[Antigravity Agent 入口](./antigravity/README.md)** (`antigravity/README.md`)
+  - 給 Antigravity 使用的角色分流與必讀規則
+  - 與 repo 根目錄 `GEMINI.md`、`.agent/rules/` 搭配使用
+- **[Gate 2–7 Engineering Control Center](../06_qa/GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md)**
+  - Gate 2–7 純工程完成後，所有 agent 的人工補件、時間驗證、資料接受與 ML revalidation 接手入口
+  - 必須沿用 append-only registry；不得把工程完成解讀成正式產品核准
+
+## 目前專案現況速記
+
+- 主要 UI 是 `ui_qt/`，入口為 `python ui_qt/main.py`，使用 PySide6。
+- 目前可見 UI 功能包含：數據更新工作台、市場觀察（大盤/強弱股/強弱產業/主力流向）、策略回測、推薦分析、觀察清單、持倉管理與 Runtime Observatory。
+- 推薦組合回測 MVP 已完成：推薦 Tab 可把 Profile/Config 送到回測 Tab，由回測頁在歷史日期重播推薦邏輯，評估整組推薦組合而不是只回測當下股票清單。
+- 截至 2026-10-09，Strategy & Scoring Governance 增量 A / B 已完成機制回歸；具名 QA 已完成 10 檔、單一策略與固定成本組合的 OOS pilot，但不能外推成完整股票池驗收。quantile 維持 opt-in；目前優先順序以 `PROJECT_SNAPSHOT.md` 為準。[Pilot 證據](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)
+- 文件治理採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向與現行資料來源優先序看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，V2.1+ maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部專案與候選資料源研究看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前架構看 `system_architecture.md`，目標領域背景看 `target_system_architecture.md`，目標實作設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `09_archive/`。
+- 處理推薦 replay / backtest 日期時，必須留意台股資料 `日期` 欄可能是數字型 `YYYYMMDD`，請使用共用解析工具避免誤判成 1970 epoch。
+- 資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理；正式資料根目錄預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。
+- repo 內沒有固定的正式 `data/` 目錄時，不代表資料不存在；Agent 必須先查設定，不可憑相對路徑推斷。
+- Codex 自動入口是 repo 根目錄 `AGENTS.md`；本目錄保存完整 Agent 職責與 Prompt 模板。
+
+## ⛔ 強制流程（所有 Agent 必須遵守）
+
+### 平台必讀文件來源
+
+開工順序依執行平台的根目錄指令為準，避免在本頁維護一份會逐漸落後的縮短清單：
+
+- **Codex**：依根目錄 [`AGENTS.md`](../../AGENTS.md) 的完整順序與條件式必讀項目執行。
+- **Antigravity**：自動載入根目錄 [`AGENTS.md`](../../AGENTS.md) 的共用順序與條件式必讀項目，並載入 [`GEMINI.md`](../../GEMINI.md) 的平台適配；Gemini CLI 則由 `GEMINI.md` 匯入共用規則。
+- **共同 Agent 資源**：包含本總覽、[`shared_context.md`](shared_context.md)、[`git_exclusions.md`](git_exclusions.md)、任務相關的 Scoped SSOT 與 [`skills_registry.md`](skills_registry.md)；完整閱讀順序依平台根目錄指令。
+- [`antigravity/README.md`](antigravity/README.md) 與 [`antigravity/handoff_template.md`](antigravity/handoff_template.md) 是 Antigravity 的角色路由與交接輔助，不取代 `AGENTS.md` 的共用條件式規則；Gemini CLI 由 `GEMINI.md` 匯入該共用規則。
+
+下列角色補充必讀只會增加該角色的閱讀範圍，不會縮短或取代平台根目錄指令。文件中的狀態事實仍依各主題 Scoped SSOT 判讀。
+
+### 特定 Agent 補充必讀文件
+
+以下文件僅特定 Agent 需要閱讀，其他 Agent 不需要：
+
+#### Tech Lead Agent 補充必讀
+- `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 重構完成後的產品方向權威。
+- `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線（涉及方向、優先順序或大型規劃時必讀）
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考、候選資料源研究與歷史版本形狀；現行資料來源優先序看 Product Roadmap §11、工程交付順序看 6M Roadmap（涉及外部參考或資料源擴充時必讀）
+- `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
+- `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣（涉及舊工作承接、Phase Gate 或優先順序時必讀）
+- `docs/01_architecture/system_architecture.md` - 系統架構（涉及架構、模組邊界或資料流時必讀）
+- `docs/01_architecture/target_system_architecture.md` - 目標領域背景與演進導覽（涉及未來架構或領域邊界時必讀）
+- `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` - 目標實作設計唯一權威（涉及目標 package、契約、依賴或遷移設計時必讀）
+- `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（只用來定位文件入口，不作為事實來源）
+
+#### Documentation Agent 補充必讀
+- `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - Post-Refactor 產品方向權威。
+- `docs/00_core/DOC_COVERAGE_MAP.md` - 文檔覆蓋矩陣（判斷 coverage 的規則文件）⭐ **必須讀取**
+- `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（了解文檔結構）
+- `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub
+- `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考與歷史版本形狀；目前 roadmap／版本順序以 Product／6M Roadmap 為準（涉及外部參考同步時必讀）
+- `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
+- `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣
+- `docs/01_architecture/system_architecture.md` - 系統架構
+- `docs/01_architecture/target_system_architecture.md` - 目標領域背景與演進導覽
+- `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` - 目標實作設計唯一權威
+- `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（依任務讀取；跨工作區任務讀取涉及章節）
+- 本次變更涉及的檔案（由使用者提供，或由 Agent 提出需求）
+
+#### 其他 Agent
+- 無補充必讀文件（僅需閱讀全 Agent 必讀文件清單）
+
+## 🚀 使用方式
+
+### 基本流程
+
+1. **閱讀共用上下文**：開始任何任務前，先閱讀 `shared_context.md`
+2. **選擇合適的 Agent**：根據任務類型選擇對應的 Agent 文檔
+3. **參考 Agent Prompt**：使用文檔中的 Prompt 模板與 AI 協作
+4. **遵循規範**：確保所有操作符合共用上下文中的規範
+
+### 範例場景
+
+**場景 1：需要進行資料驗證**
+```
+1. 閱讀 shared_context.md 了解專案規範
+2. 參考 data_audit_agent.md 中的 Prompt
+3. 使用對應的 Agent 進行資料驗證
+```
+
+**場景 2：需要清理專案**
+```
+1. 閱讀 shared_context.md 了解專案結構
+2. 參考 data_cleanup_agent.md 中的清理策略
+3. 執行清理任務並確認不影響現有功能
+```
+
+**場景 3：需要技術決策**
+```
+1. 閱讀 shared_context.md 了解技術棧與架構
+2. 參考 tech_lead.md 中的決策框架
+3. 進行技術評估與決策
+```
+## 📤 Agent 輸出原則（重要）
+
+- **必須使用繁體中文**（所有文檔、對話、回答、註解都必須使用繁體中文，禁止使用簡體中文）
+- 所有 Agent 回覆必須結構化（條列或段落）
+- 不使用模糊詞彙（例如：也許、可能、應該）
+- 未被請求的行為視為違規
+- 不確定時必須明確標示「需要確認」
+
+## 🎯 Tech Lead Agent 設計理念
+
+**Tech Lead Agent 不記得專案，是刻意的設計。**
+
+專案上下文必須由人類顯式指定，避免 AI 代替你做隱性決策。
+
+這個系統不是在「用 AI 幫你寫程式」，而是在做：
+
+**「把決策權留在人類，執行與審查外包給 AI」**
+
+這個方向是完全正確的。
+
+
+## 📝 注意事項
+
+- **所有 Agent 都必須遵守 `shared_context.md` 中的規範**
+- **在執行任何破壞性操作前，務必先進行驗證**
+- **保持文檔與代碼同步更新**
+- **記錄所有重要的決策與變更**
+
+## Codex 載入方式
+
+Codex 不會自動把 `docs/agents/*.md` 當成 repo 指令載入。Codex 的自動入口是作用範圍內的 `AGENTS.md`。
+
+本專案已在 repo 根目錄建立 `AGENTS.md`，作為 Codex 可識別的入口文件。該文件保留輕量索引與強制必讀順序，完整 Agent 職責、Prompt 與工作流仍以本目錄為唯一來源。
+
+## Antigravity 載入方式
+
+Antigravity 會自動讀取 repo 根目錄 `AGENTS.md` 與 `GEMINI.md`；輔助規則放在 `.agent/rules/`。完整角色文件放在 `docs/agents/antigravity/`，並指回本目錄既有的權威 Agent 文件。
+
+`docs/agents/antigravity/` 與 `.agent/rules/` 只作為 Antigravity 適配摘要；若與本目錄權威 Agent 文件衝突，以 `docs/agents/*.md`、`shared_context.md` 與 `git_exclusions.md` 為準。
+
+使用方式：
+
+1. 在 Antigravity 開新任務時，確認工作目錄位於 repo 根目錄。
+2. 確認根目錄 `AGENTS.md` 與 `GEMINI.md` 已載入；`GEMINI.md` 是平台適配入口，完整共用規則以 `AGENTS.md` 為準。
+3. 再讀 `docs/agents/skills_registry.md` 判斷應啟用哪一個權威 Agent。
+4. 依任務類型讀本目錄中的對應 Agent 文件；`docs/agents/antigravity/README.md` 僅作為 Antigravity 適配摘要。
+5. 若 Antigravity 與 Codex 指令描述不同，以 `docs/agents/*.md`、`docs/agents/shared_context.md`、`docs/agents/git_exclusions.md` 與 `docs/00_core/` 的 scoped authority 文件為準。
+
+使用方式：
+
+1. 開新 Codex 任務時，確認工作目錄位於 repo 根目錄或其子目錄。
+2. Codex 會讀取根目錄 `AGENTS.md`。
+3. 根據任務類型，先讀 `docs/agents/skills_registry.md`，再讀取本目錄中的對應 Agent 文件。
+4. 若子目錄未來需要專屬規範，可在該子目錄新增自己的 `AGENTS.md`。
+
+## 🔄 更新記錄
+
+- 2026-01-03：初始建立 Agent 文檔結構
+- 2026-01-03：統一所有 Agent 的必讀文件清單，明確定義全 Agent 必讀與特定 Agent 補充必讀
+- 2026-05-20：新增根目錄 `AGENTS.md` 作為 Codex 自動識別入口，保留 `docs/agents/` 作為完整 Agent 架構來源
+- 2026-05-20：補充目前 `ui_qt`、資料根目錄與 Codex 載入現況，避免 Agent 使用舊版路徑假設
+- 2026-05-27：新增 Antigravity 入口說明，對齊 `GEMINI.md`、`.agent/rules/` 與 `docs/agents/antigravity/`
+- 2026-06-09：新增 `skills_registry.md` 作為 Codex / Antigravity 共用協作入口，明確 `docs/agents/*.md` 為唯一角色權威，Antigravity 文件降級為適配摘要
+- 2026-06-13：配合 Roadmap Hub 與 6 個月工程 Roadmap，更新 Agent 必讀順序與 scoped authority 判讀規則
+- 2026-06-13：補入 Legacy Carryover 與 Application Manual 的條件式必讀及權威範圍
+- 2026-06-14：新增量化防禦技能與一鍵檢測工具，整合 Python 版本地 MCP 伺服器並更新文檔結構說明。
+- 2026-06-14：治理工具 review 後補強 fail-closed、SQLite 強制唯讀、Git 輸出上限與 MCP 雙端註冊；設定異動後需重啟 Agent 應用。
+- 2026-06-23：新增 Testing / QA Agent 權威角色文件，並進行 QA 文件架構重組清理。
+- 2026-07-04：新增外部專案參考與 V1.5-V2.0 版本形狀 companion 的 Agent 讀取規則，涉及外部參考、資料源擴充或未來版本規劃時需讀 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`。
+- 2026-07-06：新增 V2.0 之後長期版本階梯 companion 的 Agent 讀取規則，涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時需讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
+- 2026-10-09：改由 Codex／Antigravity 根目錄指令維護完整條件式必讀順序；本頁保留共同資源與角色路由，避免複製出會過期的縮短清單。
+- 2026-10-10：澄清外部參考藍圖只負責候選資料源研究；現行來源優先序回到 Product Roadmap §11。
+- 2026-10-12：統一以 `AGENTS.md` 維護共用規則；Antigravity 自動載入，Gemini CLI 由 `GEMINI.md` 匯入；補充規則須使用有效 YAML trigger。
+

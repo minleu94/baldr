@@ -8,6 +8,8 @@
 
 ## 安全範圍
 
+2026-10-12 的文件產品化修改尚未反映於下方歷史 Graphify snapshot。本次關聯以[功能地圖](FEATURE_DOCUMENT_MAP.json)、[文件索引](DOCUMENTATION_INDEX.md)與[處置映射](../09_archive/documentation_productization_20261012/README.md)查找；沒有覆寫 root `graphify-out`，也不宣稱前次 snapshot 已驗證本次正文。後續刷新需另用固定提交來源與隔離輸出，依本頁安全範圍執行。
+
 只處理受控的 repo 文件與程式結構；exclude 私人／來源 DB、模型 bytes、備份、資料 roots、大型 output、raw QA 與安裝環境。既有 `{REPO}/graphify-out` 含 query memory／reflections／learning，不刪除、不覆蓋。每輪新結果與工具核驗放在日期化的 `output/qa/baldr_documentation_reorganization_YYYYMMDD/` 專用分區，維持 ignored，不 commit 巨型 graph/cache。
 
 執行前核本機已安裝 graphify CLI／interpreter、輸入白名單、輸出位置與 network／模型行為。不得為建圖安裝不明套件、加金鑰、改權限或把資料送到新外部服務；需要這些動作時回報 exact action。本輪授權限定本機可核工具。semantic 關係與 AST／Markdown 明示連結分開，未實際 semantic 抽取就列為限制。

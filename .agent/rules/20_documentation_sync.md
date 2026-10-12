@@ -1,46 +1,12 @@
 ---
 trigger: model_decision
-description: "新增、編輯、移動或移除專案文件或使用者可見行為時載入。"
+description: "新增、編輯、移動專案文件，或實作影響使用者流程時載入。"
 ---
 
-# Antigravity Rule 20 - Documentation Sync
+# Antigravity Documentation 適配
 
-## 適用時機
-
-新增、修改或刪除功能、使用流程、架構、Agent 文件、Markdown 文件時套用。
-
-## Coverage 規則
-
-1. 讀 `docs/agents/antigravity/documentation_agent.md`。
-2. 讀 `docs/00_core/DOC_COVERAGE_MAP.md`。
-3. 先做 Coverage Pass：界定需要更新的文件、段落與原因，再在使用者授權範圍內直接完成有證據支持的修訂。
-4. 只有遇到無法由權威或證據裁決的現行衝突，或工作範圍外的高風險刪除／移動時，才先提出具體選項。
-
-## 必查文件
-
-- `docs/00_core/PROJECT_SNAPSHOT.md`
-- `docs/00_core/DEVELOPMENT_ROADMAP.md`
-- `docs/00_core/ROADMAP_6M_ENGINEERING.md`
-- `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時）
-- `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`（涉及舊工作移交或 Gate 時）
-- `docs/01_architecture/system_architecture.md`
-- `docs/00_core/DOCUMENTATION_INDEX.md`
-- `docs/07_guides/APPLICATION_MANUAL.md`（涉及使用者可見流程、參數、結果或限制時）
-- `PROJECT_NAVIGATION.md`
-- 變更所屬功能文件，例如 `docs/02_features/BACKTEST_LAB_FEATURES.md`
-
-## 權威判讀
-
-- 目前狀態、Next、Risks 以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準。
-- 未來 6 個月工程路線以 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 為準。
-- V2.0 之後長期版號階梯以 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 為準；它不取代 6M Roadmap、Vision 或目前狀態權威。
-- Roadmap 入口與歷史導引由 `docs/00_core/DEVELOPMENT_ROADMAP.md` 負責。
-- 舊 Roadmap 未完成事項的承接與 Gate 由 `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` 負責。
-- 架構、資料流與模組邊界以 `docs/01_architecture/system_architecture.md` 為準。
-- 目前操作流程、參數、結果判讀與安全限制以 `docs/07_guides/APPLICATION_MANUAL.md` 為準。
-
-## 新增 Markdown 的硬規則
-
-新增或刪除 Markdown 文件時，必須更新所屬領域 README／主題索引並確認中央導航路徑可到達；只有主要入口或權威邊界改變時，才同步更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
-
-功能改變若會影響使用者操作、參數、結果判讀或安全限制，必須同步更新 `docs/07_guides/APPLICATION_MANUAL.md`；手冊至少涵蓋入口、步驟與參數、結果判讀、安全限制、常見排錯。
+- 閱讀 `docs/agents/documentation_agent.md`，並依 `docs/agents/skills/team.md` 完成文件階段。
+- 用 `docs/00_core/FEATURE_DOCUMENT_MAP.json`、`DOC_COVERAGE_MAP.md` 及 `PRODUCT_CHANGE_WORKFLOW.md` 定位受影響的領域文件、QA 與 Manual。
+- 先完成 Coverage Pass；在既有任務授權範圍內直接完成 Patch Pass。
+- 新增、移動或歸檔文件時更新領域 README／主題索引；主要入口或權威邊界改變時再更新中央 Index。
+- 共同文件規則及 Scoped SSOT 判讀見 `docs/agents/shared_context.md`。

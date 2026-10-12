@@ -4,6 +4,8 @@
 
 ## 全域狀態
 
+> 下列統計與指紋是前次全文件核讀基線。2026-10-12 的產品入口、Agent 流程與架構／操作拆分另見[處置清冊](../09_archive/documentation_productization_20261012/README.md)和[驗收摘要](../06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md)，不把本矩陣的零漂移結論外推到後續工作樹。
+
 - 內容覆核基準 HEAD（本輪逐檔覆核開始時）：`eb2e2cc27a13cc5801a5b3d7d0a5f6b1a6848937`。
 - 本清冊涵蓋 `docs/` 全部 1494 個 tracked 路徑及 `docs/` 以外 26 個 tracked Markdown 文件，共 1520 條治理路徑。1517 份一般文件已逐檔讀至 EOF、分類、核對 HEAD blob OID 與物理行數；3 份治理輸出列為 self-reference exempt。
 - 五項修復基準：`d929e003a508a24e97611b73f282f5061f9b0c7b`；本輪覆核變更文件與新增收據，既有全檔覆核歷史保留，逐檔最終指紋同步提交內容。

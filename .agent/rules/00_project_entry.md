@@ -1,11 +1,11 @@
 ---
 trigger: model_decision
-description: "在 Antigravity 任務選擇 repo 入口、Scoped SSOT 或 Agent 角色時載入。"
+description: "在 Antigravity 任務選擇 repo 入口、角色路由或 Scoped SSOT 時載入。"
 ---
 
-# Antigravity 專案入口規則
+# Antigravity 專案入口適配
 
-- 共用 repo 流程依根目錄 `AGENTS.md`；Gemini CLI 由 `GEMINI.md` 匯入，Antigravity 自動發現根目錄規則。
-- Use `docs/agents/skills_registry.md` to select a role and its authoritative `docs/agents/*.md` guide. Do not keep a second copy of the full required-reading list here.
-- Use `AGENT_CONTEXT.md` only as quick navigation. Current state and topic-specific conclusions belong to the scoped authorities named in `AGENTS.md`.
-- Keep this rule limited to entry and routing. Put code, documentation, and Git procedures in their task-specific rules.
+- 共用規範依根目錄 `AGENTS.md` 及 `docs/agents/shared_context.md`。
+- 角色只由 `docs/agents/skills_registry.md` 路由；本規則不複製必讀清單或角色表。
+- 依實際任務讀取 `PROJECT_SNAPSHOT.md` 摘要、所選角色權威卡及相關 Scoped SSOT。
+- 快速導航見 `AGENT_CONTEXT.md`；日期化狀態仍以主題權威文件為準。

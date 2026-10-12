@@ -1,48 +1,34 @@
 # baldr
 
-baldr 是台股資料整理、技術研究、選股比較與投資組合研究工具，主要介面是 PySide6。研究輸出與資料更新、手動保存會寫入你設定的資料／報告目錄；不內附私人行情庫、帳戶、模型或憑證，不會因安裝而建立 Windows 排程或自動交易。
+baldr 是一套以台灣股票為範圍的桌面研究工具。它把行情資料更新、市場觀察、候選比較、策略回測、觀察清單與持倉研究放在同一個 PySide6 介面，方便使用者沿著資料日期與來源閱讀研究結果。
 
-`main` 是本機使用版本，`dev` 保留完整開發歷史、規劃與驗收素材。模型推論接線及研究功能可使用，正式資格、自然結果成熟與投資效果依具名來源判讀；unknown／pending 不當零，也不代表可交易。
+它適合想在自己的 Windows 電腦上檢查台股資料、比較研究候選、保存研究結果並追蹤自選清單的人。使用者需要自行準備可合法使用的資料來源，並為行情與輸出設定自己的資料夾。
 
-## 安裝與首次啟動
+日常常見的四種情境：
 
-取得本機可攜版後，保留整個 `baldr` 資料夾並雙擊 `baldr.exe`；不需 IDE 或全域 Python。`_internal` 是必要依賴，不能只複製 exe。首次空資料、外部 JSON 設定、既有私人模型選擇、子程序與排錯見 [Windows 可攜指南](docs/07_guides/PORTABLE_WINDOWS.md)。未簽章，Windows 信譽未知；不繞過系統警告。
+| 你要做什麼 | 從哪裡開始 |
+|---|---|
+| 更新行情並確認資料是否到齊 | 「數據更新」→「檢查數據狀態」→依缺件選擇更新方式 |
+| 了解大盤、強弱個股／產業與籌碼流向 | 「市場探索」→先看市場總覽，再查看個股或產業細節 |
+| 比較推薦候選或檢視策略歷史結果 | 「推薦分析」或「策略回測」→核對日期、來源、條件與風險說明 |
+| 整理自選名單並研究持倉 | 「觀察清單」、「個股研究」或「持倉管理」→沿同一股票與來源閱讀 |
 
-以下為 source 版安裝方式：
+目前介面另有決策工作台、個股研究與系統狀態等工作區；各項能力的成熟度和資料覆蓋不同，請以[目前狀態快照](docs/00_core/PROJECT_SNAPSHOT.md)和畫面中的來源、日期、品質及 warnings 判讀。缺資料、unknown、待成熟與零筆是不同狀態；研究候選、回測和 Paper 結果都不能單獨證明投資有效。
 
-使用 Windows x64、Python 3.11。在專案根目錄的同一個 PowerShell 執行：
+baldr 不提供預載的私人行情庫或帳戶資料，不會因安裝而註冊 Windows 排程，也不會自動下單或控制券商帳戶。它不保證獲利；持倉、交易、Paper、Recommendation 與模型結果依各自來源和資格閱讀。
 
-```powershell
-$env:PYTHONUTF8 = "1"
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-runtime.txt -c requirements-py311-windows.constraints.txt
-$env:DATA_ROOT = Join-Path $env:LOCALAPPDATA "baldr\data"
-$env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
-.\.venv\Scripts\python.exe ui_qt\main.py
-```
+## 開始使用
 
-兩個 roots 必須分別設定：只改 DATA_ROOT 不會同步改 OUTPUT_ROOT。PYTHONUTF8 避免舊版 Windows pip 將 requirements 註解以其他編碼解讀。這些環境設定只作用於目前 shell；`.env.example` 是欄位示意，目前程式不自動載入 `.env`。首次不設定 PERSONAL_*／模型 opt-in。
+- 新裝 source 版：閱讀[快速開始](docs/07_guides/QUICK_START.md)與[首次安裝 Prompt](docs/07_guides/FIRST_INSTALL_PROMPT.md)。
+- 已有整包 Windows 可攜版：從[可攜版指南](docs/07_guides/PORTABLE_WINDOWS.md)設定自己的資料與輸出位置。
+- 搬到新電腦或接手既有排程：先用[機器啟動 Runbook](docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md)盤點，再依[排程運維與搬機指南](docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)處理。
+- 日常操作入口：[完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)與[指南目錄](docs/07_guides/README.md)。
 
-首次開啟「數據更新」→「檢查數據狀態」，確認缺庫／缺表與來源日期。依官方來源、所需日期與使用權取得資料後再更新研究；資料不足時保留缺件，不補假值。程式會建立目錄與 logging。不要把別人的 SQLite、持倉或模型直接放進自己的 roots。
+## 深入了解
 
-- [安裝與排錯](docs/07_guides/INSTALL_GUIDE.md)
-- [快速開始](docs/07_guides/QUICK_START.md)
-- [完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)
-- [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)
-- [文件入口索引](docs/00_core/DOCUMENTATION_INDEX.md)
-- [資料資產用途與恢復](docs/03_data/STORAGE_ASSET_REGISTER_20261006.md)
-- [C 槽歷史 QA 冷封存終態對照](docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)：兩批封存狀態、核對範圍與容量快照判讀。
-- [示例資料說明](examples/README.md)
-
-## 開發與架構導覽
-
-- [Roadmap Hub](docs/00_core/DEVELOPMENT_ROADMAP.md)：導向目前狀態、產品方向與工程 Gate。
-- [目前系統架構](docs/01_architecture/system_architecture.md)：描述 repo 現有模組、邊界與資料流。
-- [目標架構背景](docs/01_architecture/target_system_architecture.md)與[最終目標實作設計](docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)：前者供領域導覽，後者是目標設計權威；兩者都不表示目標能力已實作。
-- [開發者導航](PROJECT_NAVIGATION.md)保留程式定位；日期化歷史記錄由[Archive 目錄](docs/09_archive/README.md)導覽。
-
-## 開發與限制
-
-需要測試及型態檢查時，另裝 `requirements-dev.txt`；`requirements.txt` 保留相容的完整開發安裝。constraints 是 Windows Python3.11 的直接依賴快照，不是跨平台完整鎖檔；安裝或來源失敗請保留錯誤型別，不抄用他人的本機 wheel 或憑證。
-
-此 repo 尚未提供新的開源授權；本機 main 整理不代表已公開發布或授予再散布權。歷史資料及來源也需各自授權。不要提交私人根目錄、token、模型權重或測試暫存。正式自然日常結果與品質成熟仍待實際排程及交易日驗收。
+- [目前專案狀態](docs/00_core/PROJECT_SNAPSHOT.md)
+- [目前系統架構](docs/01_architecture/system_architecture.md)
+- [目標架構背景](docs/01_architecture/target_system_architecture.md)與[目標實作設計](docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)：描述演進方向，不代表目標能力已全部交付。
+- [開發者功能導航](PROJECT_NAVIGATION.md)與[專案目錄盤點](PROJECT_INVENTORY.md)
+- [Roadmap Hub](docs/00_core/DEVELOPMENT_ROADMAP.md)：導向產品方向和工程路線權威。
+- [文件索引](docs/00_core/DOCUMENTATION_INDEX.md)：全域文件入口。

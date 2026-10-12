@@ -1,0 +1,38 @@
+{
+  "schema_version": "baldr-role-routing.v1",
+  "roles": {
+    "tech_lead": "docs/agents/tech_lead.md",
+    "execution": "docs/agents/execution_agent.md",
+    "documentation": "docs/agents/documentation_agent.md",
+    "data_audit": "docs/agents/data_audit_agent.md",
+    "cleanup": "docs/agents/data_cleanup_agent.md",
+    "testing_qa": "docs/agents/testing_qa_agent.md"
+  },
+  "kinds": {
+    "query": {"primary": "tech_lead", "required": [], "risk": "low"},
+    "documentation": {"primary": "documentation", "required": [], "risk": "medium"},
+    "implementation": {"primary": "execution", "required": ["testing_qa", "documentation"], "risk": "medium"},
+    "ui": {"primary": "execution", "required": ["testing_qa", "documentation"], "risk": "medium"},
+    "data_audit": {"primary": "data_audit", "required": [], "risk": "medium"},
+    "data_write": {"primary": "execution", "required": ["data_audit", "testing_qa", "documentation"], "risk": "high"},
+    "architecture": {"primary": "tech_lead", "required": ["documentation"], "risk": "medium"},
+    "cleanup": {"primary": "cleanup", "required": ["testing_qa", "documentation"], "risk": "high"},
+    "bootstrap": {"primary": "execution", "required": ["testing_qa", "documentation"], "risk": "high"},
+    "release": {"primary": "testing_qa", "required": ["tech_lead", "documentation"], "risk": "high"}
+  },
+  "request_hints": {
+    "documentation": ["文件", "文檔", "索引", "readme", "manual"],
+    "ui": ["ui", "按鈕", "畫面", "工作區"],
+    "data_audit": ["資料對比", "資料稽核", "資料一致性", "sqlite與csv", "sqlite/csv"],
+    "data_write": ["migration", "資料遷移", "schema變更", "重建資料", "backfill"],
+    "architecture": ["架構", "技術選型", "模組邊界"],
+    "cleanup": ["清理", "移除", "刪除"],
+    "bootstrap": ["首次安裝", "移機", "搬機", "換電腦"],
+    "release": ["發布", "發佈", "可發布", "release"],
+    "implementation": ["實作", "修復", "修bug", "新增功能"]
+  },
+  "mutating_kinds": ["implementation", "ui", "data_write", "cleanup", "bootstrap"],
+  "financial_paths": ["backtest_module/*", "decision_module/*", "portfolio_module/*", "app_module/recommendation*", "app_module/portfolio*", "app_module/*performance*"],
+  "architecture_paths": ["app_module/dtos/*", "runtime/*", "data_module/config.py"],
+  "ui_paths": ["ui_qt/*.py", "ui_qt/**/*.py"]
+}

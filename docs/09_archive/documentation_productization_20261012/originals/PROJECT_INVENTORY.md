@@ -1,0 +1,165 @@
+# 專案盤點報告
+
+> **最後整理**：2026-10-08
+> **用途**：提供根目錄層級的結構盤點，不複製會快速過期的進度狀態。文件位置以 `docs/00_core/DOCUMENTATION_INDEX.md` 為準；目前狀態以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準。
+>
+> **2026-08-29歷史程式盤點**：七個 readiness lane、當時工程與產品 Gate 見
+> `docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md`。2026-08-29 的
+> `FA_Data/output/release_v4` retention 行為、43 個刪除目標、18 個 retained runs、pointer
+> 與歷史 tombstone 見
+> `docs/06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md`；8/30 P0 官方唯讀
+> refresh 見 `docs/06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md`；raw data 未納入清理。
+
+## 本輪結構整併入口
+
+- [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)與[2026-09-08 LUNA workspace closeout 收據](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)。此日期化收據是該輪結果，不代表本輪或目前驗收。
+- [工作區檔案分類](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)與[實際清理結果](docs/06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)：區分原始碼、虛擬環境、Git變更與執行產物。
+
+- [整理結果與架構判斷](docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)：全 tracked tree 清查、精確移除／回滾、保留邊界與本次驗證限制。
+- [LUNA 三線計畫](docs/09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)：資料／ML、架構／QA、UI／UX 各自的所有權與可貼用 Prompt（歷史歸檔）。
+- [LUNA B 環境基線](docs/09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)：runtime／dev requirements、Windows／Python／TA-Lib／PySide6 驗證邊界（歷史歸檔）。
+- `scripts/audit_luna_b_repo_map.py`：只讀 repo map；輸出 Git 分類清單、AST／引用證據與候選 keep／merge／remove／defer 判斷到 `output/luna_B/`。
+- `analysis_module/signal_combiner_support.py` 共用訊號流程；兩條歷史入口的可靠性／回測契約保留。
+- 七份固定路徑／失效 runner 的 manual diagnostics 與重複 README 已移除；雙入口欄位測試已參數化整併。其餘歷史／相容入口不因年代而刪除。
+- 測試逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準，數量由 audit tool 產生；不要在本文件再複製一份會漂移的完整清冊。
+
+---
+
+## 1. 根目錄應保留文件
+
+| 文件 | 角色 | 狀態 |
+|---|---|---|
+| `README.md` | 使用者導向專案入口、啟動方式、功能概覽與分支策略 | Active |
+| `AGENT_CONTEXT.md` | Agent / 開發者快速上下文，補充文件權威、分支策略與接手導覽 | Active |
+| `PROJECT_NAVIGATION.md` | 開發者導航，回答「我要改 X 要去哪裡」 | Active |
+| `PROJECT_INVENTORY.md` | 本文件，專案結構盤點摘要 | Active |
+| `AGENTS.md` | Codex 自動讀取的 repo 指令入口，導向 `docs/agents/` 完整 Agent 架構 | Active |
+| `GEMINI.md` | Antigravity 自動讀取的 repo 指令入口，導向 `docs/agents/antigravity/` 與 `.agent/rules/` | Active |
+| `EXTERNAL_DATA_SOURCE_GAP_AUDIT.md` | 外部資料候選來源的日期化缺口盤點 | Evidence；現行來源優先序與授權看 Product Roadmap §11 |
+| `GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md` | 外部資料稽核的日期化獨立審閱記錄 | Evidence；不取代現行來源契約或正式接受收據 |
+| `MOPS_PIT_FEASIBILITY_CODEX_REVIEW_PACKET.md` | MOPS PIT 可行性審查封包與研究範圍 | Evidence；原作者本機 scratch 收據不在 repository，formal admission 未成立 |
+| `MOPS_PIT_FEASIBILITY_PROTOTYPE_REPORT.md` | MOPS PIT 原型證據與限制 | Evidence；不代表正式來源接受或現行產品狀態 |
+| `requirements.txt` | 向後相容的 all-in-one Python 依賴入口 | Active |
+| `requirements-runtime.txt` | 最小直接 runtime 依賴 | Active |
+| `requirements-dev.txt` | runtime 加 pytest／pytest-qt／mypy 的開發／QA 依賴 | Active |
+| `requirements-py311-windows.constraints.txt` | 現有 Windows x64／Python 3.11.9 的 direct constraints 快照 | Evidence |
+
+已移出或刪除：
+
+- `CLEANUP_PLAN.md`：舊清理計劃，內容已執行或被新版 docs 結構取代，已刪除。
+- `策略回測功能清單.md`：原件已歸檔至[歷史清單](docs/09_archive/BACKTEST_LAB_CHECKLIST.md)；[舊路徑](docs/02_features/BACKTEST_LAB_CHECKLIST.md)是相容導引，現行功能契約看 [BACKTEST_LAB_FEATURES](docs/02_features/BACKTEST_LAB_FEATURES.md)。
+- `策略回測常見問題解答.md`：原件已歸檔至[歷史 FAQ](docs/09_archive/BACKTEST_LAB_FAQ.md)；[舊路徑](docs/02_features/BACKTEST_LAB_FAQ.md)是相容導引，現行操作看[完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)，功能契約看 [BACKTEST_LAB_FEATURES](docs/02_features/BACKTEST_LAB_FEATURES.md)。
+- `01_stock_data_collector_enhanced.py`：舊 notebook 匯出參考腳本，已刪除；正式資料處理請看 `data_module/` 與 `scripts/update_all_data.py`。
+- `tests/test_finmind_integration.py`：只測舊參考腳本且依賴外部 FinMind token，已刪除。
+- `readme.txt`：原根目錄長版舊 README，內容停留在舊 Phase、舊入口與舊路徑說明；2026-06-18 已移至 `docs/09_archive/root_readme_legacy_2025_12.txt`。
+- `docs/00_core/note.txt`：歷史開發進度筆記，已於 2026-06-30 移至 `docs/09_archive/dev_progress_note_legacy_2026_01.txt`，不再作為核心權威文件。
+- `output/` 與根目錄 `test.parquet`：本機 QA / 驗證 / 測試產物，已從乾淨 `main` 移出 Git 追蹤；可分享結論請整理到 `docs/06_qa/`。
+
+---
+
+## 2. 核心模組
+
+| 目錄 | 角色 | 狀態 |
+|---|---|---|
+| `data_module/` | `TWStockConfig`、資料載入、日期範圍與資料處理 | Active |
+| `analysis_module/` | 技術分析、型態、信號、ML 分析 | Active |
+| `decision_module/` | Domain Layer：篩選、打分、推薦理由、Regime、籌碼信號 | Active |
+| `app_module/` | Application Service Layer：推薦、回測、資料更新、Runtime、Portfolio services | Active |
+| `backtest_module/` | 策略測試、績效分析、交易模擬與風險指標 | Active |
+| `portfolio_module/` | Portfolio domain layer（append-only trades、positions projection、Decimal 邊界） | Active |
+| `runtime/` | Governance-aware AI Runtime、event/store/state/registry | Active |
+
+---
+
+## 3. UI 與入口
+
+| 目錄 | 角色 | 狀態 |
+|---|---|---|
+| `ui_qt/` | PySide6 Qt UI，目前主要入口 | Active |
+| `ui_app/` | 舊版 Tkinter UI | Legacy |
+| `examples/` | 範例與舊示範 | Reference |
+
+主要啟動方式：
+
+```bash
+.\.venv\Scripts\python.exe ui_qt\main.py
+```
+
+目前 `ui_qt` 近期狀態：
+
+- 9 個頂層工作區：決策工作台、市場探索、推薦分析、策略回測、觀察清單、個股研究、持倉管理、數據更新、系統狀態；名稱與註冊順序以 `ui_qt/main_window_coordinator.py` 的 `WORKSPACE_DEFINITIONS` 為準。
+- `ui_qt/views/update_view.py` 已重整為數據更新工作台，包含左側資料來源導覽與「安全更新所有數據」入口。
+- `ui_qt/views/runtime_view.py` 與 `runtime/` 已完成 Runtime Observatory MVP。
+- `ui_qt` 主 UI 已接上 Daily Decision Desk v1，透過 service snapshot 顯示 Market Breadth、Sector Rotation、Relative Strength / Liquidity Ranking、Watchlist Trigger、Portfolio Alert 與 fundamental risk prompts。
+- `ui_qt/views/portfolio_view.py`：Portfolio Tab 已建立，含策略與價格監控、生命週期回顧、未實現損益、停損停利警示、籌碼監控與 Smart Money 下鑽。
+- 策略回測頁已整理為 Research Lab 多模式實驗室語意。
+
+回測圖表渲染：
+
+- `ui_qt/widgets/chart_payloads.py`：Backtest 圖表資料 payload layer。
+- `ui_qt/widgets/fast_chart_widget.py`：QtWebEngine + HTML5 Canvas fast renderer。
+- `ui_qt/widgets/chart_widget.py`：Matplotlib fallback widgets。
+- 架構說明：`docs/08_technical/UI_QT_CHART_RENDERING.md`。
+
+---
+
+## 4. 文件系統
+
+| 目錄 | 角色 |
+|---|---|
+| `docs/00_core/` | snapshot、6 個月 roadmap、Roadmap Hub、文件索引與維護規則 |
+| `docs/01_architecture/` | 架構與流程 |
+| `docs/02_features/` | 使用者可見功能與策略回測文件 |
+| `docs/03_data/` | 資料更新、資料流與故障排除 |
+| `docs/04_broker_branch/` | 券商分點與 Smart Money 資料 |
+| `docs/05_phases/` | 歷史 Phase 設計與研究 SOP 追溯；Historical / Reference，不作目前 roadmap |
+| `docs/06_qa/` | QA 問題、總結與審核 |
+| `docs/07_guides/` | 快速開始、安裝、腳本與測試 |
+| `docs/08_technical/` | 技術優化與環境備忘 |
+| `docs/09_archive/` | 歷史文件，不作目前狀態依據 |
+| `docs/agents/` | Agent 職責與協作規範 |
+| `docs/strategies/` | 策略說明 |
+| `docs/superpowers/` | Superpowers specs / plans implementation trace，不作目前 roadmap |
+
+文件入口：
+
+- `docs/README.md`
+- `README.md`
+- `AGENT_CONTEXT.md`
+- `docs/00_core/DEVELOPMENT_ROADMAP.md`
+- `docs/00_core/ROADMAP_6M_ENGINEERING.md`
+- `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`
+- `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
+- `docs/00_core/PROJECT_SNAPSHOT.md`
+- `docs/00_core/DOCUMENTATION_INDEX.md`
+- `docs/00_core/DOCUMENTATION_STRUCTURE.md`
+- `docs/07_guides/APPLICATION_MANUAL.md`
+
+---
+
+## 5. 狀態與路線圖入口
+
+本盤點只記錄結構、模組責任與導航。完成度、阻礙、容量觀測與本週優先事項會隨時間改變，集中由以下文件負責，避免在多份根目錄文件重複維護：
+
+- 目前狀態與本週優先事項：[`docs/00_core/PROJECT_SNAPSHOT.md`](docs/00_core/PROJECT_SNAPSHOT.md)
+- Roadmap 導覽：[`docs/00_core/DEVELOPMENT_ROADMAP.md`](docs/00_core/DEVELOPMENT_ROADMAP.md)
+- 產品方向：[`docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`](docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)
+- 六個月工程 Gate：[`docs/00_core/ROADMAP_6M_ENGINEERING.md`](docs/00_core/ROADMAP_6M_ENGINEERING.md)
+- 長期成熟度：[`docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`](docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)
+- 舊工作移交：[`docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`](docs/00_core/LEGACY_ROADMAP_CARRYOVER.md)
+
+## 6. 更新記錄
+
+- 2026-10-08：將專案盤點收斂為結構與導航文件，移除重複的 8/30 動態狀態摘要；工作區數量校正為 9，並指定 `WORKSPACE_DEFINITIONS` 為名稱與順序來源。
+- 2026-08-30：完成 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh；整理 current SSOT、8/30 fresh capacity、週末 freshness 語意、舊 readiness artifact marker 與完整 pytest `3,826 passed / 1 skipped`。
+- 2026-08-29：依全程式 rebaseline 校正八個工作區名稱與目前主線；新增七個 readiness lane、release_v4 retention cleanup 與容量不等於 Gate closeout 的邊界。
+- 2026-07-06：補上 V2.1 至 V4.0 長期版本路線圖入口，並同步 Post-V1 V1.7-V1.9、V2.0 Phase 1 與後續 gate-based 主線描述。
+- 2026-07-05：同步 Post-V1 V1.5 / V1.6 v1 完成狀態，新增 data credibility gate 與 cross-sectional factor pipeline closeout，下一步改為 V1.7 Negative Evidence。
+- 2026-07-03：同步 Post-V1 V1.1 至 V1.4 v1 完成狀態，並將 `docs/05_phases/` 定位改為 Historical / Reference。
+- 2026-06-30：將根目錄 `README.md` 改為使用者導向入口，新增 `AGENT_CONTEXT.md` 承接 Agent / 開發者上下文；將歷史 `docs/00_core/note.txt` 歸檔，並將 `output/` raw output 從乾淨 `main` 移出追蹤。
+- 2026-06-18：整理根目錄 README 入口，將過期 `readme.txt` 移入 `docs/09_archive/root_readme_legacy_2025_12.txt`，並同步 docs 索引。
+- 2026-06-17：同步 Month 5 Fundamental Layer v1 closeout 與 Daily Decision Desk v1 主 UI 狀態，將目前主線轉向 Month 6 Strategy Lifecycle / Portfolio Feedback scope。
+- 2026-06-17：同步 Month 6 Strategy Lifecycle / Portfolio Feedback v1，新增 lifecycle gate、post-trade attribution 與持倉管理生命週期回顧入口。
+- 2026-06-17：同步 Month 6 lifecycle residual，新增 append-only evidence、latest state projection 與 demote / retire proposed evidence 保存。
+- 2026-06-15：同步 baldr 願景與新版 6M Roadmap，標示 Daily Decision Desk 為未完成目標閉環，並更新未來主線排序。

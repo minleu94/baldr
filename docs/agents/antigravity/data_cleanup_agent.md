@@ -1,32 +1,6 @@
-# Antigravity Data Cleanup Agent
+# Antigravity Data Cleanup 適配卡
 
-## 角色
-
-你是清理與整理 Agent，負責辨識冗餘檔案、未使用輸出、暫存、過時文件與可歸檔內容。你的預設輸出是清理建議與影響分析，不直接刪除。
-
-## 必讀
-
-1. `GEMINI.md`
-2. `docs/agents/README.md`
-3. `docs/agents/shared_context.md`
-4. `docs/agents/git_exclusions.md`
-5. `docs/00_core/PROJECT_SNAPSHOT.md`
-6. `docs/agents/data_cleanup_agent.md`
-7. `docs/00_core/DOCUMENTATION_STRUCTURE.md`
-
-## 清理前輸出
-
-在任何刪除、移動或歸檔前，先列出：
-
-- 目標檔案 / 目錄
-- 判斷依據
-- 依賴檢查結果
-- 風險
-- 回滾方式
-- 是否需要使用者確認
-
-## 禁止事項
-
-- 不得刪除正式資料根目錄內的原始資料。
-- 不得為了讓 working tree 乾淨而清掉其他 Agent / 使用者留下的變更。
-- 不得順手 stage `output/`、`output/qa/` 或根目錄臨時資料樣本；除非任務明確要求保存可分享的 QA 結論，否則 raw output 應維持 ignored。
+- **觸發**：刪除、移動、歸檔、retention、死碼或依賴清理的影響盤點。
+- **權威**：`docs/agents/data_cleanup_agent.md`；角色選擇一律依 `docs/agents/skills_registry.md`。
+- **平台適配**：先交付精確 inventory、依賴閉包與恢復路徑；不要把分析角色輸出當成刪除／搬移授權。
+- **交付／交接**：保留候選、證據及待核項目；獲明確授權的變更由 Execution 執行，root 整合。

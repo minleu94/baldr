@@ -1,55 +1,70 @@
-# baldr 全排程唯讀驗收
+# baldr 全排程唯讀稽核 Runbook
 
-本文件是兩個既有 operational heartbeat 的共同查核規則。Windows Task 負責執行 producer；Codex 晨報 05:30、晚間／Paper 驗收 06:20 是 America/Los_Angeles 時區的報告工作。報告時間不是 producer trigger 或完成期限。實際設定以當輪 Windows readback 為準。
+本 Runbook 核對既有排程設定與同次執行證據；它不註冊、啟用、停用、手動觸發任務，不啟動 producer、訓練、重建資料或寫入 Task／Codex automation。完整 21-task 文件化時點見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)，新機接手見[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)。
 
-## 1. 有限唯讀查核與查詢環境
+本機兩個 operational heartbeat 的文件化時間為 America/Los_Angeles 05:30 晨報與 06:20 晚間／Paper 報告。它們僅彙整已有證據，不等於 Windows producer trigger、完成期限或自然執行證據；實際 automation／thread 狀態需另行唯讀讀回。
 
-依 AGENTS.md 完成必讀。使用 `scripts/inspect_scheduled_task_registration.py` 的預設 stdout 模式，一次查核其中 EXPECTED_TASKS 的全部 21 個 baldr task，包括完整 path、State、Enabled、LastRunTime、LastTaskResult、NextRunTime、missed runs、action、arguments、working directory、trigger、timeout、IgnoreNew 與電源條件。此工具不修改 Task，也不觸發 producer。
+## 1. 查詢範圍與限制
 
-普通 sandbox 的 CIM access denied、schtasks network address／0x80070003、COM unknown 只表示查詢環境失敗。在當輪工具提供且核准精確 host read-only 查詢時，可用該環境重做同一唯讀查詢；不改 ACL、principal、登入、權限或系統服務。核准被拒或仍無法讀取時標 unknown，保存錯誤類別，不能說 task 缺失。`confirmed_missing=0` 也不能證明 task 存在。Scheduler Operational 查詢另列 enabled／disabled／unknown；heartbeat 不啟用日誌。
+既有唯讀檢查器 `scripts/inspect_scheduled_task_registration.py` 預設 stdout 模式一次盤點預期的 21 個 baldr tasks，包括完整 task path、State、Enabled、LastRun、LastTaskResult、NextRun、action、arguments、working directory、trigger、timeout、IgnoreNew／retry 與電源條件。使用前核對當下程式入口和其設定的 EXPECTED_TASKS；不要拿本文件表格代替主機查詢。
 
-檢查器接受四個已部署固定 `pythonw.exe → run_scheduled_cmd_hidden.py --task <exact task> → canonical CMD`，必須核 interpreter、argv、cwd 與固定 mapping。Direct maintainer 目前為 10:00 Pacific；05:30 是舊設定，不用舊期待宣稱 trigger drift。其餘 17 個既有 canonical CMD 同樣核對，不自行套用註冊器。
+一般 sandbox 的 CIM access denied、COM unknown、schtasks network／path 錯誤只代表查詢受限。保留錯誤並將相應欄位標為 `unknown`；不得改 ACL、principal、系統服務或權限，也不能把 query failure 推成 task missing。`confirmed_missing=0` 也不表示所有 task 已存在。
 
-## 2. 最新產出與來源根
+2026-10-09 具名設定 QA 的 readback 範圍記錄 Direct、Paper Portfolio、PIT sector preopen 和 ML Allocation Forward 四項透過 `pythonw.exe → run_scheduled_cmd_hidden.py --task <exact task> → canonical CMD`；另 17 項使用 canonical CMD action。這是該次主機 QA 的設定描述，不是本次或新機驗收。核 hidden dispatcher 時逐項比對 interpreter、exact argv、cwd 和固定 mapping。
 
-個人 H20（2026-10-12 修正）另讀 G9 `personal_h20_natural_lane`：其母體必須等於同次 G6 terminal 的完整 `current_symbols`，不能借一般推薦名單。沿 lane 的 `output_root` 讀 `recommendation_learning` captures／outcomes，沿 daily receipt 讀 activation 私人根的 immutable manifest／predictions，核 exact run／hash。`completed_with_pending` 只代表模型完成而 entry／自然結果仍待條件；漏日不能當自然成熟。當輪唯讀 audit 不啟動此 producer。工程試跑與期限收據見 [自然迴路驗證](../06_qa/BALDR_NATURAL_LOOP_TRIAL_20261012.md)。
+Direct maintainer 文件化 trigger 是 Pacific 10:00；05:30 是舊預期。舊 trigger expectation 不能用來判斷目前 drift；仍應以該輪 scheduler readback 為準。
 
-全部 21 個 Windows task 的 wrapper／status 對應看 [排程操作與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。沿實際 action／CMD、TWStockConfig 及有效環境建立 task→producer→status→immutable receipt→artifact→consumer 關係，不以根目錄或 mtime 猜結果。latest 只定位；locator／pointer 必須核 typed schema、exact parent/run/date、receipt SHA 和原 bytes。
+## 2. 先確認同一執行身份
 
-- 正式 source roots 預設 DATA_ROOT=`D:/Min/Python/Project/FA_Data`、OUTPUT_ROOT=`DATA_ROOT/output`；研究 active root 沿 repository `output/ml_research_storage.json`。shadow、Bank、Paper 與模型根分別定位。
-- Official market wrapper 從 `OUTPUT_ROOT/scheduled/official_market_events_wrapper/latest_status.json` 追同次 immutable status，分別驗三個 children，不只查 historical events 舊 status。
-- ML Allocation Forward 非交易日／config preflight receipt 在 repository `output/v4_ml_forward_scheduler/latest_status.json`；已載入 config 的 child 才使用 `config.output_root/scheduled/ml_allocation_forward/latest_status.json`。先追當輪 launcher stdout／receipt 和 config，不借舊 child 失敗當今日結果。
-- Quick／weekly 研究採集使用 `scripts/audit_scheduled_research_acquisition.py --quick-status <actual path> --output-root <actual root>`，stdout-only；weekly typed parent、start／terminal、monthly／quarterly children 及 artifacts 分別核對。固定工具期限按實作；不可按資料夾時間補父 binding。
-- G6 raw 外層正式來源 hold 和同 run research cycle 分列；追 cycle terminal、B terminal、source context、snapshot、model 與 registry original pins。registry index 可能續增，核當輪 immutable record，不把現 index hash與完成時 hash不同當失敗。canonical hash與file bytes SHA不同欄位，不混稱。
+依實際 action、wrapper、TWStockConfig 與有效環境整理以下鏈：
 
-## 3. 時鐘、依賴與失敗判讀
+`task → producer → status → immutable terminal/receipt → artifact → consumer readback`
 
-每個 task 都列「文件 cadence」「實際 trigger」「當輪查核截止時間」「Scheduler結果」「producer／consumer結果」。Pacific 執行日與 Asia/Taipei 決策日、data_as_of／market session 分別顯示；台北可能已是次日。Task Ready、exit0 或 LastTaskResult0 都不授整鏈成功。
+每一環記錄 task identity、execution run／parent ID、實際日期與時區、source/data date、status、hash、輸出根和 consumer。`latest`／locator 只用來找到候選結果；必須核 typed schema、exact parent/run/date、receipt SHA 和原始 bytes。Hash 欄位若定義為 canonical content hash，就不能和 file-byte SHA 混稱。
 
-晨報通常早於 05:40 Forward、05:45 learning、05:50 Bank、06:00 EOD；報告尚未到期的項目並回讀上一個已驗 terminal。晚間 06:20 也不保證長 G6／G9 已完成；讀 heartbeat、實際 wrapper期限及 exact source wait pin。G9 CMD 預設 14400 秒（四小時）、children 各3600秒及300秒收尾；Bank Task PT5H／child7200秒；G6 annual child預設六小時。均以當輪實際 argv／settings為準。未到期限列進行中，heartbeat過期或逾時無 terminal 明確列工程問題，不靠改檢查時間掩蓋。
+先依實際設定確認來源根；source mode 常見預設 `DATA_ROOT=D:/Min/Python/Project/FA_Data`，`OUTPUT_ROOT` 預設相對於 DATA_ROOT，但環境與 runtime 可能覆蓋。研究 active root、Paper、Shadow、BankTaiwan、私人持倉和模型根各別解析，不用 repository／`OUTPUT_ROOT` 假定全部寫在一處，也不從檔案 mtime 推導有效性。
 
-G9 failed 時要讀 `steps.recommendation_learning.child_status.dependencies.source_contract` 和 typed terminal：DailyPriceSourceRevisionError、technical_prospective_source_not_ready、cohort缺股屬來源／工程資格缺口，不能全歸為自然樣本不足。parent blocked_source_revision 也不阻止對已驗 research child獨立報告，但不授 formal PIT。
+有幾個容易誤讀的 status 位置：
 
-Evidence wrapper 非零須另核 `paper_health_source_receipt.blockers`，不能只看 `pipeline_exit_code`。若舊 baseline 的 carried entry 日期／可得時鐘缺失，列原身分證據缺口；修正後只沿 `position_identity_source` 原證據延續，缺件維持 unproven，不改舊檔。G9 `live_capture.calendar_diagnostic` 的官方年表要求須沿公開 `read_operation` 的同次 evidence 核驗，不以私有 instance memo 或本地指數列授 session proof。工程回歸與自然排程恢復分列，見[10/12 契約修正 QA](../06_qa/BALDR_SCHEDULE_CONTRACT_REPAIR_20261012.md)。
+- 官方市場 wrapper 應追 wrapper 自己的同次 immutable status，再分別核三個 children；舊 `historical_events` status 不能代表整條 wrapper。
+- ML Allocation Forward 的 holiday/config preflight receipt 在 repository `output/v4_ml_forward_scheduler/latest_status.json`；已載入 config 的 child 才沿該 config 的 `output_root/scheduled/ml_allocation_forward/latest_status.json`。先確認本輪 launcher／config identity，不借舊 child status 結案。
+- Quick、weekly research acquisition 要同時核 parent／child、開始與 terminal、日期／hash及 artifacts；task exit 0 不能補齊缺少的 parent binding。
+- H20 natural lane 若由同次 G6／G9 research chain 生產，核母體與 source pin 一致、exact run／hash、activation lineage；`completed_with_pending` 代表仍有條件未到或缺件，不是成熟成功。唯讀 audit 不啟動該 producer。
 
-Quick 月營收 child 的 `failed`／`rejected` 必須保留 parent SHA、child receipt SHA 與 `child_diagnostics`。`quick_parent_changed_during_child_audit` 只用於初始、child 查核所用與查核後父檔的 bytes SHA 不一致；缺少 SHA 應是 `quick_parent_audit_hash_missing`，不能推定檔案競態。若官方 TWSE／TPEx 原件月份不同（例如 11508／11509），列來源月份不一致、研究候選未建立；核心 Quick 結果另列，不改期別、不合併不同月份、不用核心 exit 0 解除 child 失敗。後次官方來源自然對齊並經同次 child/artifact 驗證後，才報恢復。
+## 3. 時鐘與 lane 依賴
 
-Direct supervisor 對自己啟動的 builder／OOC／release child 使用保留的 `Popen` handle 確認退出並讀取 exit code；已退出的 child 不需要在等待上游後再次出現在 live PID 清單。仍活躍的 child 必須符合 command custody；外來 legacy PID 仍需實際觀測。完整鏈必須同時滿足 OOC／release exit 0 與兩份 terminal `complete`，否則保留 child blocker。`was not observed under custody` 要核對自有 child 等待邏輯與其日誌，不能直接斷言 fit 未啟動／未完成，也不能把修正程式當成歷史執行已成功。缺 formal teacher、ledger、sector 或 Rule history 時維持資格 gate，不藉改 prompt、重試上限或排程時間解除。
+逐項列「文件基準 cadence」「主機實際 trigger」「查核時點」「Scheduler 結果」「producer／consumer 結果」。Pacific execution date、Asia/Taipei decision date、market session／`data_as_of` 可能不是同一天；日期字串需連時區一起記錄。
 
-Forward `outcome_price_missing` 要列 event_id、symbol、planned official maturity date／horizon與價格查核結果；最新正常行情不解除歷史缺價。Maturity official calendar與附加 calendar_observation分開，後者unknown不等同前者invalid。未成熟的未來價格保持null；不補平盤、不猜停牌、不刪失敗或回填時鐘。
+Paper Portfolio 與 ML forward 於台北 08:25（UTC 00:25）offset 喚醒，PDT 前一日 17:25／PST 前一日 16:25 是同一時刻的時區換算，不代表當季 Task 已自然驗收。前者等真實 08:30 guard；後者等 08:30 cutoff 並有 08:35 deadline。新機必須讀 Task XML offset 和實際 UTC／本地 `NextRun`。台北 cutoff 尚未到、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 都不能當成完整成功或自然 maturity。
 
-## 4. 資料、研究與人工事項
+晨間 05:30 report 早於 05:40 Forward、05:45 learning、05:50 Bank 和 06:00 EOD；只可報告這些尚未到期或上一個已驗 terminal 的實際狀態。06:20 report 也不保證長時間 G6／G9 chain 已完成；timeout、仍活躍 child 或 heartbeat 過期分別報告，不能以放寬檢查時間掩蓋。timeout、retry、電源條件及 cutoff 以當次實際 argv／Task XML 為準。
 
-Candidate credit／institutional current、歷史 reconciliation conflicts、formal monthly／statement、current-observed與正式 PIT 分列。當前日期恢復不清舊衝突；保留各日期keys／值差異、舊raw／parser／revision溯源需求。正式基本面缺期或availability map缺檔需官方公告、available-at、revision lineage；研究capture不得補成正式歷史可得日。TDCC週頻及官方休市按有效日曆／發布寬限判讀，不降門檻。
+跨 task 依賴透過同次 source identity、receipt、lock、terminal 和 consumer readback 來判斷，不能因排程時間前後相接就推定上游完成。`Task Ready`、`LastTaskResult=0`、process exit 0、單一 status file 存在、heartbeat 回報和人工執行成功各是不同證據。
 
-Recommendation 保存成功與cohort/source品質分列：列result_id、decision_date／data_as_of、requested／eligible／missing／degraded、why-not原因、status binding hash和可核的獨立 payload hash；缺獨立payload hash明列未驗。cohort degraded先讀逐股具名原因，區分低流動性／無訊號與資料缺件，不籠統歸為source failure。
+## 4. 產出與結果解讀
 
-Evidence列工程errors、actionable warnings、natural maturity、advisories、blocking gaps與readiness；dry_run=true／confirm=false／writes_evidence_db=false／production_scheduler_allowed=false維持原值。INSUFFICIENT_SAMPLE、pending_human_review與owner-approved UI projection不授正式接受。若需manual review，列真實待審對象／影響及期限；相同待審不每天催。
+| 候選結果 | 必要核對 | 不足以單獨證明 |
+|---|---|---|
+| Window Task 已啟動 | exact task path、action／argv／cwd、trigger、principal、last／next run | task ready 或 action 字串相似 |
+| Producer 完成 | 同一 run ID 的 terminal／exit、source/date、結果 status、輸出 hash | exit 0、舊 latest 或 output mtime |
+| Artifact 可讀 | typed manifest、bytes hash、lineage、source/account、日期／cutoff、coverage | 檔案存在或 model 權重有大小 |
+| Consumer 接受 | 同一 parent/run/date/hash 的唯讀 consumer readback 與 warnings | 上游 status 顯示 complete |
+| 自然成熟 | 自然 trigger 發生於正確時區／cutoff，等待期滿，完成同次 terminal、lineage 與 consumer 核驗 | 手動 replay、離線 QA、未到期資料或 engineer trial |
 
-Paper machine seed 1418不是真人持倉；不要求補虛構交易或thesis。真正manual_action_required／user_actions與research qualification分開。每個write flag都標主詞：上游producer宣告的寫入，不等於本輪唯讀audit有寫入；反之audit唯讀不否認其他正式排程已宣告的有界寫入。
+遇到 `failed`、`blocked`、`unknown`、`partial`、`degraded`、`pending` 或空結果，保留原 status 和原因。工程程式修復、人工手動執行、來源恢復、自然 trigger 和下游讀回要分開記錄；程式修正不追溯改寫舊 run 成功。樣本不足、合法等待和缺證據也要分開，不把未成熟值補成平盤或零報酬。
 
-## 5. 通知與完成標準
+有代表性的 lane 限制：
 
-以目標thread上份實際報告的run/hash與未解問題為基準，只在新增／惡化失敗、恢復、完成、逾時、重要binding drift或需要使用者動作時通知。相同已揭露缺件、合法休市／週頻等待／自然成熟／待審保持安靜；首次無基準一次完整摘要。
+- Evidence 的 `dry_run`、`confirm`、寫入旗標和 production permission 分別讀；`INSUFFICIENT_SAMPLE` 或 `pending_human_review` 不代表已正式接受。
+- Paper seed／機器模擬資料不是使用者真實持倉。Paper snapshot、成交 ledger、EOD replay 和 Paper Portfolio schedule 也不是同一資料。
+- 推薦候選與 cohort 先列 result／decision date、data date、requested／eligible／missing／degraded 和 why-not；空候選與來源失敗分開。
+- Forward outcomes 必須按 official calendar 的 planned maturity date 和可得價格查核。尚未成熟保持 null；不能拿近期價格、row offset 或其他交易日補成熟結果。
+- 正式 PIT、current-observed、shadow 和歷史 replay 的資格分開列。candidate／shadow 狀態不會因排程成功自動升格為 Formal、promotion 或 broker authority。
 
-通知先用白話列「這輪恢復／新增失敗、影響用途、下一個具體處理」，再附21-task精簡表與精確來源；僅差異／blocked項詳列run、receipt/hash、原因及owner。把「可修工程」「需來源證據」「待自然成熟／人工審查」與驗收條件列清楚。不得自行修復、HTTP抓資料、啟動producer／訓練、寫DB／sidecar／repo/output、改Task／automation／ACL、使用confirm、交易、promotion、commit/push；另一次人類明確授權的修正任務依其scope執行。
+## 5. 彙報與不變事項
+
+每份 audit 至少包含日期／時區、21 tasks 的查詢覆蓋、read failure／unknown、兩個 heartbeat 讀回狀態（若有）、新增／恢復／持續 blocker、exact run／receipt／hash、下游結果和下一步 owner。只對新失敗、恢復、完成、超期或需要人處理的差異詳報；例行休市、正常週頻等待、自然成熟等待和既有人工待審依 notification 契約處理。
+
+這項稽核不得自行 HTTP 抓資料、執行 writer／producer／訓練、修改 DB／sidecar／repo output、改 Task／Codex automation／credentials／ACL、交易、promotion、commit 或 push。發現需要修正時，留下具體 affected run、原始 blocker、驗收條件與所需 owner；若另獲明確授權再以獨立 scope 修正。
+
+過往逐日診斷、工程假設與 named QA 時點見[歷史封存區](../09_archive/README.md)，不可用來推定目前排程已存在或已自然執行。現行排程基準與 lane 入口見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。

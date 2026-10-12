@@ -36,6 +36,8 @@
 
 ## 快速閱讀順序
 
+一般使用者從[產品介紹](../../README.md)、[快速開始](../07_guides/QUICK_START.md)與[日常操作](../07_guides/APPLICATION_MANUAL.md)進入。維護者依[產品變更流程](PRODUCT_CHANGE_WORKFLOW.md)及[功能關聯地圖](FEATURE_DOCUMENT_MAP.json)完成同步；本次內容處置見[原件與映射](../09_archive/documentation_productization_20261012/README.md)。
+
 1. 先讀 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) 了解目前狀態。
 2. 依問題選產品方向、六個月工程路線或長期成熟度；不確定時從 [Roadmap Hub](DEVELOPMENT_ROADMAP.md) 進入。
 3. 核對目前實作看 System Architecture；規劃目標設計看 Final Target Architecture；操作系統看 Application Manual。

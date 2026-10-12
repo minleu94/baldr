@@ -1,314 +1,55 @@
-# 共用上下文 - 不可違背前提
-
-> **所有 Agent 必須遵守的專案規範與前提條件**
-
-## 🎯 核心原則
-
-### 1. 資料完整性優先
-- **絕對不可刪除或修改正式資料根目錄內的原始/每日資料檔案**。正式資料根目錄由 `data_module/config.py` 的 `TWStockConfig.data_root` 決定，預設為 `D:/Min/Python/Project/FA_Data`，也可由 `DATA_ROOT` 覆蓋。
-- 所有資料處理必須是**非破壞性**的
-- 資料驗證失敗時，必須**停止執行**並報告問題
-
-### 2. 向後相容性
-- **不可破壞現有功能**
-- API 變更必須保持向後相容，或提供明確的遷移路徑
-- 移除功能前必須先確認沒有其他地方使用
-
-### 3. 測試覆蓋
-- **關鍵功能必須有測試**
-- 修改現有功能時，必須更新或新增對應測試
-- 測試失敗時不可合併代碼
-
-### 4. 文檔同步
-- **代碼變更必須同步更新文檔**
-- API 變更必須更新對應的使用文檔
-- 新增功能必須更新相關文檔（README、使用指南等）
-
-### 4.1 Git 暫存與排除規範
-- Stage 或 commit 前必須先查看 `docs/agents/git_exclusions.md`。
-- `.superpowers/`、`docs/.tmp.driveupload/` 與一般快取/測試輸出不得提交。
-- `output/`、`output/qa/` 與根目錄臨時資料樣本（例如 `test.parquet`）屬於本機產出；若任務需要可分享的 QA 結論，請整理到 `docs/06_qa/`，不要提交 raw output。
-- 不得為了讓 working tree 乾淨而 revert、刪除或覆寫其他 agent / 使用者留下的未提交變更。
-
-### 分支與工作樹生命週期（2026-09-27 使用者確認）
-
-- `dev` 是開發主線；任務完成後將有效成果整合到 `dev`，確認獨有提交與未提交內容已保存後清理短期 branch / worktree。
-- `main` 是供他人下載使用的乾淨、可用版本；發布前檢查必要程式碼、操作文件與有效回歸測試，排除一次性 QA 產物、臨時測試、過時任務報告及無關文件，不把整個開發工作區直接視為發布內容。
-- 新增隔離工作樹前先確認現有工作樹是否可重用；不因任務結束而累積未處理的工作樹。清理前檢查其他聊天與程序使用情況，保留可還原備份，不覆寫進行中的工作。
-- 本機備份、Git bundle、工作樹 ZIP 與清理盤點保存在已排除的 `output/`；不提交或推送這些產物。整合 `dev` 不代表已授權修改或推送 `main`。
-
-### 4.2 股票/量化防禦條款（高優先級）
-- 策略、回測、推薦、資金、倉位、風控、交易成本、滑價、績效與風險指標等核心計算，嚴禁新增裸 `float` 計算。
-- 金融核心數值必須使用 `Decimal`、整數單位（分、股、基點、萬分點）或明確定義的量化格式；若第三方套件、pandas/numpy 或圖表需要浮點數，必須隔離在資料分析、轉換或展示邊界，不能反向污染策略決策層。
-- 實作或修改任何策略、回測、推薦、篩選、績效或 benchmark 邏輯前，必須先完成未來函數（Look-ahead bias）自查。
-- Look-ahead 自查至少確認：訊號日期、特徵窗口、標準化樣本、排序/篩選 universe、停損停利判斷、benchmark 對齊、交易價格與持倉更新，都只使用決策當下可取得的資料。
-- 無法證明無未來資料滲漏時，必須停止實作並標示「需要確認」。
-
-### Python 任務程序管理（2026-10-11 使用者確認）
-
-- 同一補完任務一次只執行一組 Python 重型驗證；subagent 只做靜態閱讀與候選編輯，pytest、mypy、compile、產品 import 與 QA 子程序由 root 序列執行。
-- Windows 驗證使用可讀回上限的 Job、kill-on-close 與同工作區執行鎖；目前補完預設全 Job committed memory 上限8 GiB、最多12程序，啟動前至少保留8 GiB可用 RAM。不得為了通過測試默默放寬資源上限或原驗收門檻。
-- 工具等待逾時或輸出中斷時，繼續追蹤同一 session／Job，禁止直接另開同一驗證。下一輪前須確認上一輪 terminal、Job剩餘0、process／Job handles關閉與執行鎖釋放。
-- 異常與取消須回收該次 Job 的整棵 owned process tree；正常 QA 如果依賴強制清除才排空，不算成功。subagent結束也須交付其自行啟動程序的終態，不能只報程式碼完成。
-- Host盤點依PID、建立時間、來源、父系與Job membership判斷所有權；PID可能重用，不得全機終止Python或清除其他專案／IDE／MCP服務。只有確認屬於本任務的殘留程序才可回收。
-
-### 5. 語言規範（強制要求）
-- **所有 Agent 必須使用繁體中文**
-- **所有文檔、對話、回答、註解都必須使用繁體中文**
-- **禁止使用簡體中文**
-- **程式碼註解也必須使用繁體中文**
-
-## 📁 專案結構規範
-
-### 核心模組（不可隨意修改）
-```
-analysis_module/      # 技術分析模組
-app_module/          # 應用層模組
-backtest_module/     # 回測模組
-data_module/         # 資料處理模組
-decision_module/     # 決策引擎模組
-portfolio_module/    # Portfolio domain layer
-runtime/             # Governance-aware AI Runtime
-ui_qt/               # PySide6 Qt UI（目前主要 UI）
-```
-
-### 資料目錄結構（目前實際規則）
-
-資料不以 repo 內 `data/` 作為唯一來源。所有 Agent 必須先查看 `TWStockConfig` 或執行環境變數，再判定資料位置：
-
-- `DATA_ROOT`：正式資料根目錄，預設 `D:/Min/Python/Project/FA_Data`
-- `OUTPUT_ROOT`：輸出根目錄，預設 `D:/Min/Python/Project/FA_Data/output`
-- `PROFILE=test` 時，`data_root` 與 `output_root` 會自動加上 `_test`
-
-```
-{DATA_ROOT}/
-├── daily_price/          # 每日價格資料（YYYYMMDD.csv）
-├── meta_data/            # 元資料與整合檔
-│   ├── market_index.csv
-│   ├── industry_index.csv
-│   ├── stock_data_whole.csv
-│   ├── all_stocks_data.csv
-│   └── broker_branch_registry.csv
-├── technical_analysis/   # 技術指標資料
-├── broker_flow/          # 券商分點資料
-└── logs/                 # 更新與設定日誌
-```
-
-### 文檔目錄
-```
-docs/                # 專案文檔
-├── agents/          # Agent 文檔（本目錄）
-├── strategies/      # 策略文檔
-└── [其他文檔]
-```
-
-## 🔧 技術棧與依賴
-
-### 核心技術
-- **Python 3.x**
-- **PySide6**（目前主要 UI：`ui_qt/`）
-- **pandas**（資料處理）
-- **numpy**（數值計算）
-
-### 資料格式
-- **CSV**：主要資料格式（`stock_data_whole.csv` 等）
-- **Parquet**：高效能資料儲存（可選）
-- **JSON**：配置與元資料
-
-## 🔁 推薦組合回測共同規範
-
-- 推薦組合回測不是「拿當下推薦名單去批次回測」，而是用 Recommendation Profile/Config 在歷史日期重播推薦邏輯，再依持有天數與資金配置形成整組 portfolio result。
-- 相關服務入口：`app_module/recommendation_replay_service.py`、`app_module/recommendation_portfolio_backtest_service.py`、`app_module/recommendation_dataframe_provider.py`、`app_module/recommendation_portfolio_dates.py`。
-- 台股資料的 `日期` 欄可能是數字型 `YYYYMMDD`。處理 replay / backtest 日期時必須使用 `parse_stock_dates()` 或同等明確格式解析，不可直接用裸 `pd.to_datetime(series)`，否則會被解讀成 epoch nanoseconds 而落到 1970 年。
-- 歷史 replay 需要保留 `candidate_limit` / prefilter 機制；不要在沒有上限的情況下對全市場每期都跑完整 pattern analysis。
-- Pattern regression 點位不足或 x 值退化時應安全跳過，不應讓 `np.polyfit` 的 underconstrained case 汙染 UI log 或中斷推薦 replay。
-- 推薦組合回測目前已顯示 Sharpe、Sortino 與 Monte Carlo P05/P50/P95；新增券商表現、營收資料或進一步擴充穩健分析時，應建置 factor/metric layer，避免把新因子硬塞進 UI 或現有單一 scoring 函式。現有指標與可用範圍以 [Backtest Lab 功能文件](../02_features/BACKTEST_LAB_FEATURES.md) 為準。
-- 後續擴充營收、基本面、估值、三大法人與其他資料因子時，必須保存 `as_of_date` / `available_date` / 資料品質狀態，避免未來函數滲漏。
-
-## ⚠️ 禁止事項
-
-### 絕對禁止
-1. ❌ **刪除或修改原始資料檔案**
-2. ❌ **破壞現有 API 的向後相容性**
-3. ❌ **移除未經確認的依賴**（可能被其他模組使用）
-4. ❌ **跳過測試直接合併代碼**
-5. ❌ **修改核心模組結構而未更新文檔**
-
-### 需要謹慎操作
-1. ⚠️ **修改資料處理邏輯**（可能影響下游）
-2. ⚠️ **重構核心模組**（需要完整測試）
-3. ⚠️ **變更資料格式**（需要遷移腳本）
-4. ⚠️ **移除功能**（需要確認使用情況）
-
-## 📋 工作流程規範
-
-### 開發流程
-1. **閱讀相關文檔** → 了解現有架構
-2. **檢查測試** → 確認現有測試狀態
-3. **實現代碼** → 遵循編碼規範
-4. **執行測試** → 確保所有測試通過
-5. **更新文檔** → 同步更新相關文檔
-6. **代碼審查** → 使用 tech_lead Agent 進行審查
-
-### UI 修改後強制驗證
-1. 執行 `.\.venv\Scripts\python.exe -m pytest tests/test_ui_qt_update_view_workbench.py -q -o addopts=`
-2. 執行 `.\.venv\Scripts\python.exe scripts\qa_validate_update_tab.py`
-3. 執行型態檢查：`.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`
-4. 對本次修改的 Python 檔執行 `.\.venv\Scripts\python.exe -m py_compile <changed-python-files>`
-
-### 資料處理流程
-1. **驗證輸入資料** → 使用 data_audit_agent
-2. **處理資料** → 非破壞性處理
-3. **驗證輸出資料** → 確保資料完整性
-4. **記錄變更** → 更新資料處理日誌
-
-### 清理流程
-1. **識別目標** → 使用 data_cleanup_agent 分析
-2. **確認影響** → 檢查依賴關係
-3. **備份重要資料** → 以防萬一
-4. **執行清理** → 逐步進行
-5. **驗證功能** → 確保無破壞性影響
-
-## 📝 文件更新責任與規範
-
-### 文件更新責任
-
-**負責者：**
-- **Documentation Agent**：負責識別需要更新的文件、產出更新內容（Coverage Pass + Patch Pass）
-- **使用者授權**：定義可修改的工作範圍；已明確要求執行的工作不需再確認同一份 Coverage 清單。是否採用或合併成果仍由使用者決定。
-- **Execution Agent**：執行代碼變更時，必須同步觸發 Documentation Agent 的 Coverage Pass
-
-**責任流程：**
-1. 代碼變更發生 → Execution Agent 或人類通知 Documentation Agent
-2. Documentation Agent 執行 Coverage Pass → 列出需要更新的文件清單
-3. 核對既有使用者授權；若本次已要求執行，Coverage 完成後直接進入 Patch Pass
-4. Documentation Agent 在授權範圍內執行 Patch Pass → 產出更新內容
-5. 人類審查更新內容 → 確認後合併
-
-### 必須更新文件的情況
-
-以下情況發生時，**必須**更新對應文件：
-
-1. **功能行為改變**
-   - 功能新增、修改、移除
-   - API 介面變更（參數、返回值、行為）
-   - 使用者操作流程變更
-
-2. **系統狀態改變**
-   - Phase 完成狀態變更
-   - 優先事項變更
-   - 高風險區變更
-   - 系統定位變更
-
-3. **架構或流程改變**
-   - 模組結構變更
-   - 資料流程變更
-   - 工作流程變更（「現在的工作模式」）
-
-4. **文件結構改變**
-   - 新增/刪除/重組文檔
-   - 文檔索引結構變更
-
-**更新範圍：**
-- 根據 `docs/00_core/DOC_COVERAGE_MAP.md` 的「變更類型 → 必須更新的文件對照表」識別
-- 所有標示為 Must 優先級的文件必須更新
-- 必須執行 Snapshot / Roadmap Hub / 6M Roadmap / Legacy Carryover / Architecture / Manual / Index 一致性檢查
-- 使用者可見流程、參數、結果判讀或安全限制改變時，必須同步 `docs/07_guides/APPLICATION_MANUAL.md`
-
-### 可以不更新文件的情況
-
-以下情況發生時，**可以不更新**文件（但建議記錄在變更日誌）：
-
-1. **純內部重構**
-   - 代碼重構但不改變外部行為
-   - 函數/類別重命名但不改變功能
-   - 代碼風格調整
-
-2. **不影響外部行為的變更**
-   - 性能優化但不改變功能
-   - Bug 修復但不改變 API
-   - 測試覆蓋增加但不改變功能
-
-3. **臨時性變更**
-   - 實驗性功能（未正式發布）
-   - 開發中的功能（未完成）
-
-**判斷標準：**
-- 使用者是否會感受到差異？
-- API 是否改變？
-- 操作流程是否改變？
-- 如果答案都是「否」，則可以不更新文件
-
-### 更新記錄 / 變更日誌規範
-
-**位置：**
-- **文件底部**：每個文件在底部維護「🔄 更新記錄」段落
-- **集中式變更日誌**：重大變更記錄在 `docs/UPDATE_LOG_YYYY_MM_DD.md`（如存在）
-
-**基本格式：**
-
-**文件底部更新記錄格式：**
-```markdown
-## 🔄 更新記錄
-
-- YYYY-MM-DD：[變更摘要]（影響範圍：XXX）
-- YYYY-MM-DD：[變更摘要]（影響範圍：XXX）
-```
-
-**集中式變更日誌格式（如存在）：**
-```markdown
-## YYYY-MM-DD 變更記錄
-
-### 變更摘要
-[1-2 句話描述變更內容]
-
-### 影響範圍
-- 文件：[列出受影響的文件]
-- 功能：[列出受影響的功能]
-- 使用者：[說明對使用者的影響]
-
-### 相關文件
-- [文件路徑 1]：更新了 XXX 段落
-- [文件路徑 2]：更新了 XXX 段落
-```
-
-**更新記錄責任：**
-- **Documentation Agent**：在 Patch Pass 階段產出更新記錄內容
-- **人類確認**：確認更新記錄準確性後合併
-
-**更新記錄時機：**
-- 所有 Must 優先級的文件更新時，必須更新記錄
-- 重大變更（影響多個文件、影響使用者流程）時，建議記錄在集中式變更日誌
-
-## 🔍 驗證檢查清單
-
-在執行任何重要操作前，必須檢查：
-
-- [ ] 是否影響現有功能？
-- [ ] 是否有對應的測試？
-- [ ] 是否更新了相關文檔？
-- [ ] 是否破壞了向後相容性？
-- [ ] 是否影響資料完整性？
-- [ ] 是否遵循了專案結構規範？
-
-## 📚 參考資源
-
-- **專案文檔**：`docs/` 目錄
-- **策略文檔**：`docs/strategies/`
-- **目前狀態**：`docs/00_core/PROJECT_SNAPSHOT.md`
-- **6 個月工程路線**：`docs/00_core/ROADMAP_6M_ENGINEERING.md`
-- **Roadmap Hub**：`docs/00_core/DEVELOPMENT_ROADMAP.md`
-- **舊 Roadmap 移交**：`docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
-- **系統架構**：`docs/01_architecture/system_architecture.md`
-- **操作與結果判讀**：先看 `docs/07_guides/README.md` 的操作手冊章節地圖，再讀 `APPLICATION_MANUAL.md` 相關章節；跨工作區流程讀涉及章節，日期化補充只讀相關部分。
-
-## 🔄 更新記錄
-
-- 2026-01-03：初始建立共用上下文規範
-- 2026-01-03：新增「文件更新責任與規範」段落（定義更新責任、必須/可以不更新情況、更新記錄格式）
-- 2026-05-20：更新資料根目錄、`ui_qt`/PySide6、Portfolio 與 Runtime 現況，避免 Agent 誤判 repo 內 `data/` 為正式資料位置
-- 2026-05-29：新增股票/量化防禦條款，並將 UI 修改後 QA script 與型態檢查列為強制驗證流程
-- 2026-06-13：更新文件治理規範為 Scoped SSOT，補充 factor layer 資料可得日與品質治理要求
-- 2026-06-13：補入 Legacy Carryover 與 Application Manual 的權威範圍及同步要求
-- 2026-06-30：更新 Git 暫存與排除規範，將 `output/` 與根目錄臨時資料樣本視為不應提交的本機產出。
+# 共同安全與工程規範
 
+> 本文件是所有平台、角色與任務共用硬規則的唯一權威。其他 Agent 文件、平台適配與提示只引用本頁，不複製或改寫規則。產品狀態與領域事實仍依各自 Scoped SSOT。
+
+## 工作邊界與資料保護
+
+- 使用繁體中文回覆與更新文件；新增程式註解也使用繁體中文。只在使用者授權的範圍內工作，不自行擴張功能、資料、清理或發布範圍。
+- 不覆寫、revert、刪除或清理使用者或其他 Agent 留下的未提交變更。先辨認工作目錄、HEAD 與 dirty tree；只整合本任務成果。
+- 不得刪除、覆寫、重建或破壞正式資料根目錄內的原始／每日資料。位置由 `data_module/config.py` 的 `TWStockConfig` 決定，預設 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。資料審計預設唯讀；任何寫入、migration、backfill 或重建都必須有明確授權與精確範圍。
+- 不確定資料所有權、現行產品事實或操作影響時，先查對應 Scoped SSOT 和證據；無法裁決時標示需要確認，不猜測現況。
+- 刪除、清理、正式資料寫入／重建、migration、分支或工作樹清理，以及其他不可逆操作，只能在明確授權和完成影響／恢復性檢查後進行。不得使用寬泛 wildcard 或清理不明目標。
+
+## 量化精度與時間安全
+
+- 策略、回測、推薦、篩選、資金、倉位、風控、交易成本、滑價、績效與風險指標等核心計算，嚴禁新增裸 `float` 計算。使用 `Decimal`、整數分／股／基點／萬分點或明確定義的量化格式。第三方套件、資料轉換與圖表所需浮點數必須留在隔離的分析或展示邊界，不得回流策略決策。
+- 實作或修改策略、回測、推薦、篩選、績效或 benchmark 邏輯前，先做 Look-ahead bias 自查。訊號日期、特徵窗口、標準化樣本、排序與篩選 universe、停損停利、benchmark 對齊、交易價格與持倉更新只能使用決策當下可取得的資料；月營收、估值等 PIT 資料需滿足 `available_date <= decision_date`。
+- 無法證明資料時間可得性或精度符合要求時，停止該部分工作並明確記錄阻塞點。
+- 台股 `日期` 可能是數字型 `YYYYMMDD`；Recommendation replay／Portfolio backtest 必須使用共用 `parse_stock_dates()` 或明確格式，不能裸用 `pd.to_datetime(series)` 造成 1970 epoch 誤判。歷史 replay 保留 candidate limit／prefilter，回歸點位不足或 x 退化時安全跳過。
+
+## 變更、驗證與文件交付
+
+- 依既有架構、介面與驗收方式增量修改；破壞契約時需先提出明確遷移與相容路徑。
+- 已授權的實作任務包含完成必要的影響檢查、QA 與文件同步；不可因角色分工或「只照字面執行」停在半成品。驗證失敗須保留失敗並處理或交接，不得降低測試強度或宣稱未執行的項目通過。
+- UI 改動完成後必須執行：`.\.venv\Scripts\python.exe -m pytest tests/test_ui_qt_update_view_workbench.py -q -o addopts=`、`.\.venv\Scripts\python.exe scripts\qa_validate_update_tab.py`，以及 `.\.venv\Scripts\python.exe -m mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`。修改 Python 檔後執行 `.\.venv\Scripts\python.exe -m py_compile <changed-python-files>`；量化核心檢查依任務適用的防線執行。
+- 文件同步依 `docs/00_core/DOC_COVERAGE_MAP.md`、`docs/00_core/FEATURE_DOCUMENT_MAP.json` 與 `docs/00_core/PRODUCT_CHANGE_WORKFLOW.md`。使用者可見操作變更必須同步 `docs/07_guides/APPLICATION_MANUAL.md` 的入口、步驟、參數、結果判讀、安全限制與排錯。
+- Root 對任務範圍、風險複核、驗證狀態與最終交付負責。依任務路由加入相應角色，不將 QA、資料或架構複核責任留在模糊的「之後再看」。
+- QA 收據、原始輸出與未驗證界線須依原貌記錄；有限測試結果不得外推為整體產品或 Gate 接受。
+
+## Python 驗證程序與資源
+
+- 同一任務一次只執行一組 Python 重型驗證；在授權的多 Agent 任務中，subagent 只做靜態閱讀與候選編輯，pytest、mypy、compile、產品 import 與 QA 子程序由 root 序列執行。
+- Windows 驗證使用可讀回上限的 Job、kill-on-close 與同工作區執行鎖。受控補完預設全 Job committed memory 上限 8 GiB、最多 12 個程序，啟動前至少保留 8 GiB 可用 RAM；不得默默放寬資源上限或原驗收門檻。
+- 工具等待逾時或輸出中斷時，追蹤同一 session／Job，不另開同一驗證。開始下一輪前確認前一輪 terminal、Job 剩餘程序為 0、process／Job handles 關閉及執行鎖釋放。
+- 異常與取消時回收該次 Job 的整棵 owned process tree。以 PID、建立時間、來源、父系與 Job membership 判定所有權；PID 可能重用，不得全機終止 Python 或清除其他專案、IDE、MCP 服務。只有確認屬於本任務的殘留程序才可回收。正常 QA 若依賴強制清除才排空，不算成功。
+
+## Git、分支與工作樹
+
+- Stage 或 commit 前先讀 [`git_exclusions.md`](git_exclusions.md)，並核對 `git status --short`；只納入本任務檔案。本機暫存、工具輸出、正式資料與非本任務 QA raw output 不得順手提交。
+- `dev` 是開發整合主線，`main` 是穩定版本；整合到 `dev` 不代表取得修改或推送 `main` 的授權。分支命名與工作樹生命週期見 [`multi_agent_workflow.md`](multi_agent_workflow.md)。
+- 新增工作樹前先找可重用的工作樹；清理前確認沒有其他聊天或程序使用且可還原。不得為了整潔而破壞未提交內容。
+
+## 任務狀態與並行所有權
+
+- 多階段、需恢復或需交接的任務使用 `output/tasks/<task_id>/task.json`；由 `scripts/document_control.py init-task` 建立，命令與欄位契約以該工具和 `docs/agents/shared_state/README.md` 為準。
+- `task.json` 是被忽略的本機協作狀態，不是產品狀態或領域 SSOT。每個 task ID 由單一 root／task owner 負責更新；並行協作者回報給 owner，不同 task 不共寫同一檔案。
+- 現有 `docs/agents/shared_state/active_task.yaml`、`handoff_log.md` 與 resume prompt 是既有 singleton／交接資產；不得自動搬移、覆寫、追加或刪除。它們與新 task JSON 可並存；若需遷移，必須由其現有 owner 明確處理並保留原件。
+
+## 權威與更新
+
+- 目前狀態看 `docs/00_core/PROJECT_SNAPSHOT.md`；產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`；工程順序看 `ROADMAP_6M_ENGINEERING.md`；長期成熟度看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`；現行架構看 `docs/01_architecture/system_architecture.md`；目標設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`；操作看 `docs/07_guides/APPLICATION_MANUAL.md`；外部候選研究看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`；舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`。`DEVELOPMENT_ROADMAP.md` 與 `DOCUMENTATION_INDEX.md` 是導覽，不取代主題權威。
+- 新增、移動或歸檔文件時更新適當領域 README／主題索引，中央 Index 僅在主要入口或權威邊界改變時更新。歷史或日期化文件不得覆蓋現況權威。
+
+## 更新記錄
+
+- 2026-10-12：收斂共用安全、精度、程序、Git、交付與任務狀態規範；角色與平台文件改為引用本頁。

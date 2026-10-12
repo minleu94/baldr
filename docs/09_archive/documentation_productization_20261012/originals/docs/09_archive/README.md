@@ -1,0 +1,782 @@
+# 歸檔文檔目錄
+
+> **歷史記錄和總結文檔（歸檔）**
+> **最後整理**：2026-10-11
+
+本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
+歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
+
+## 快速導覽
+
+| 你要找的內容 | 從這裡開始 |
+|---|---|
+| 目前狀態、優先序與工程 Gate | [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) → [6 個月工程路線](../00_core/ROADMAP_6M_ENGINEERING.md)；本 Archive 只供追溯。 |
+| 尋找各主題目前有效的文件入口 | [Documentation Index](../00_core/DOCUMENTATION_INDEX.md)。 |
+| 目前操作方式 | [Application Manual](../07_guides/APPLICATION_MANUAL.md)。 |
+| 封存生命週期與目前文件權責 | [Documentation Structure](../00_core/DOCUMENTATION_STRUCTURE.md) 與 [DOC Coverage Map](../00_core/DOC_COVERAGE_MAP.md)。 |
+| 某份文件搬去哪裡、原件 hash、替代入口 | [Coverage History](DOC_COVERAGE_HISTORY_2026.md)。 |
+| 架構與券商分點歷史原件 | [目標架構封存包](target_architecture_2026_09_22/README.md)、[券商分點封存包](broker_branch/README.md)。 |
+| 歷史 QA／完成收據 | [封存文件清單](#archive-document-catalog)；仍有待驗收或 Gate 的 QA 從[現行 QA 導覽](../06_qa/README.md)進入。 |
+| 舊 plan/spec 與執行脈絡 | [開發計畫與規格追溯](#archive-plans-and-specs)；目前明確進行中的 plan 看 [Superpowers README](../superpowers/README.md)。 |
+| 舊提示詞、重建命令與日期化快照 | [Archive 根層直開風險導覽](#2026-10-10-archive-root-direct-open-review)。 |
+| 2026-10-06 文件入口整理前的快照 | [治理入口原文快照](#governance-entry-snapshots)。 |
+| 舊版 Multi-Agent workflow（2026-10-09 前） | [Agent 工作流歷史快照](#2026-10-09-agent-workflow-pre-dev-history)。 |
+| Task Loop 01–07 歷史 handoff | [Task Loop 歷史入口](#task-loop-handoffs)。 |
+| Application Manual 舊版開發／候選功能紀錄 | [初始 10/03–10/08 快照與 10/11 歷史移存補記](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)；原標題在手冊保留舊連結導引。 |
+
+> 封存計畫中的待辦或日期化狀態不會自動成為目前優先事項或執行授權；判讀目前狀態請回到 Snapshot、對應 QA 與現行 Roadmap。
+
+<a id="2026-10-10-archive-root-direct-open-review"></a>
+## 2026-10-10 Archive 根層直開風險導覽
+
+以下 20 份根層原件已全文核讀，全部是歷史操作、QA／工程收據、環境快照或舊任務提示，不是目前狀態權威。前 9 份在原件檔首補了時點、範圍或授權提醒；其餘文件保留原文與既有時間／範圍限制。現況與操作分別回到 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md)、[每日資料更新指南](../03_data/daily_data_update_guide.md)及[現行 QA 導覽](../06_qa/README.md)。逐檔清單與核讀限制見 [Coverage History Entry 207](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-207)。
+
+| 類別 | 已核讀原件 | 處理 |
+|---|---|---|
+| 舊操作／環境基線 | [資料重建指南](DATA_REBUILD_GUIDE_HISTORY.md)、[Luna B 環境基線](LUNA_B_ENVIRONMENT_2026_09_07.md) | 已加不可直接作為現行操作／安裝依據的檔首提醒。 |
+| 舊工作提示／授權 | [Luna A](LUNA_PROMPT_A_DATA_ML_2026_09_07.md)、[Luna B](LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md)、[Luna C](LUNA_PROMPT_C_UX_2026_09_07.md)、[V4 三線接手提示](V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md) | 已標示舊工作分工與授權不可重送或沿用。 |
+| 舊裁決／工具鏈／Gate 收據 | [Gemini 文件交叉稽核裁決](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Full App Healthcheck 收束](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[Gate 1 Advice closeout](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md) | 已限定日期及有限工程範圍，並連回現行 Snapshot／Roadmap／QA。 |
+| 其他歷史證據與核准清單 | [資料刷新顯示 QA](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Evidence Rehearsal engineering closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)、[Evidence Rehearsal E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)、[正式資料對帳快照](FORMAL_DATA_RECONCILIATION_2026_08_06.md)、[Gate 2–7 engineering closeout](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)、[ML shadow MVP closeout](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)、[Owner production readiness](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license evidence](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[PIT repair closeout](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[scheduler approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md) | 保留明確日期與範圍，不將舊證據推論為目前狀態或核准。 |
+
+### 第二批：2026-10-10 根層歷史盤點、排程與寫入收據核讀
+
+以下 20 份原件已全文核讀。清理報告內的刪除數可按範圍讀為第 4 節列 15 項、另列 `CURRENT_STATUS.md` 1 項，合計 16；83 份是 2026-01-03 歷史盤點範圍，未以原始收據驗證實際刪除。Phase 3.3b「完成」與未完成清單並存仍無足夠證據消解，保留為未解差異。涉及 Scheduler 註冊、DB 寫入、`--confirm-network` 或 Git rollback 的舊命令只保存當日證據，不能直接重跑。逐檔角色與核讀限制見 [Coverage History Entry 209](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-209)。
+
+| 類別 | 原件 | 入口與處理 |
+|---|---|---|
+| 舊文件治理 | [Documentation cleanup report](DOCUMENTATION_CLEANUP_REPORT.md)、[舊 docs README](DOCUMENTATION_ENTRY_HISTORY_20261006.md)、[舊核心 Index](DOCUMENTATION_INDEX_HISTORY_20261006.md)、[重整提案](DOCUMENTATION_REORGANIZATION_PROPOSAL.md)、[更新摘要](DOCUMENTATION_UPDATE_SUMMARY.md) | 清理計數差異保留待核；其餘由檔首導回目前 README／Index／Structure。 |
+| 舊計畫／任務分解 | [Master Goal Playbook](MASTER_GOAL_PLAYBOOK_2026_09_06.md)、[Phase 3.3b implementation plan](PHASE_3_3B_IMPLEMENTATION_PLAN.md) | 已明示舊提示不可作現行派工；Phase 狀態差異不自行推定完成。 |
+| Post-V1 QA／操作證據 | [working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[importer QA](POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md)、[weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[scheduled dry run](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline QA](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)、[V1.3 evidence operations QA](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md)、[V1.4 review history QA](POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md) | 日期化測試證據保留；會寫 DB、重跑 smoke 或修改 Task Scheduler 的命令已加警示。 |
+| Formal clock／calendar 快照 | [Snapshot audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[calendar capture](PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md)、[clock activation handoff](PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md)、[8/26 restart staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md)、[8/27 V3 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md)、[restart execution handoff](PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md) | 全部是日期化的一次性證據；網路 capture、owner override、clock、publish、rollback 均不是現行授權。 |
+
+## 2026-10-10 Application Manual 日期化工程快照
+
+[APPLICATION_MANUAL 日期化工程與操作快照](APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md)最初保存原手冊第 14 節後、2026-10-03 至 10-08 的開發版、候選版與有限驗收描述；10/11 又移入歷史排程收據與早期研究模板。這些內容都不作目前操作或產品狀態依據；現行操作回到 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前進度看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，驗收看各自具名 QA。原手冊保留 104 個同名標題導引以接住舊錨點。
+
+<a id="2026-10-09-early-plan-specs"></a>
+## 2026-10-09 早期 SQLite、Evidence Importer、V1.1 與 V2.2 計畫／規格歸檔
+
+以下四組原文已逐位元組移至 `superpowers/plans/` 與 `superpowers/specs/`；七個舊路徑保留相容導引。這些歷史 plan/spec 不代表原計畫全數完成，也不自動構成目前待辦或授權。現況、操作與 Gate 依 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)、[V2.1–V4.0 maturity](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 及具名 QA 判讀。
+
+| 歷史主題 | Archive 原文 | 當時效力與目前邊界 |
+|---|---|---|
+| SQLite 分頁與 Excel 匯出 | [plan](superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md) | 原 plan checklist 0/54；SQLite／Excel 的目前能力另依 Legacy Carryover 與操作手冊判讀，Full App B-037 仍是 candidate lane，PDF 仍在 backlog。封存不表示原計畫完成或完整 UI 驗收通過。 |
+| Post-V1 Evidence Importers | [plan](superpowers/plans/2026-07-02-post-v1-evidence-importers.md)、[design spec](superpowers/specs/2026-07-02-post-v1-evidence-importers-design.md) | 原 plan 0/8；配套 QA 記錄 28 項測試，但 DDD importer CLI 尚未自動建構完整 provider，沒有 dashboard、scheduler 或投資有效性結論。 |
+| V1.1 Decision Workflow Integration | [plan](superpowers/plans/2026-07-02-v1-1-decision-workflow-integration.md)、[design spec](superpowers/specs/2026-07-02-v1-1-decision-workflow-integration-design.md) | 原 plan 0/16；V1.1–V2.0 版本演進列為歷史不代表原 plan 逐項完成。 |
+| V2.2 Simulated Phase Progress | [plan](superpowers/plans/2026-07-07-v2-2-simulated-phase-progress.md)、[design spec](superpowers/specs/2026-07-07-v2-2-simulated-phase-progress-design.md) | 原 plan 0/16；當日 official weekly history 0/3、multi-day dry-run 1/3，historical replay 不計 Gate。現行 Gate 2 仍要求真實週期與操作日 evidence；Manual 保留 CLI 操作與 simulated 結果判讀。 |
+
+來源路徑導引與逐檔來源／Archive bytes、SHA-256、引用核對見 [Coverage History Entry 163](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-163)。歷史文件目錄另見 [Superpowers README](../superpowers/README.md) 與 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+<a id="2026-10-09-strategy-scoring-governance"></a>
+## 2026-10-09 Strategy & Scoring Governance plan/spec
+
+四份 2026-06-13 的策略評分治理 plan/spec 原文已封存至 `superpowers/plans/` 與 `superpowers/specs/`；原路徑保留相容導引。三份 plan 的 checklist 仍為 0/4、0/54、0/49，不因搬移補勾。現行 [Strategy Design Specification](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 承接策略規則入口；[Walk Forward Comparison Report](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md) 的結果限於 10 檔、單一策略 bounded pilot，不代表跨策略或全市場通過；quantile 操作仍依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 判讀。
+
+| 原計畫／規格 | Archive 原文 |
+|---|---|
+| [治理總計畫原路徑導引](../superpowers/plans/2026-06-13-strategy-scoring-governance.md) | [Archive plan 原文](superpowers/plans/2026-06-13-strategy-scoring-governance.md) |
+| [A：回測門檻原路徑導引](../superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md) | [Archive plan 原文](superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md) |
+| [B：推薦排名原路徑導引](../superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) | [Archive plan 原文](superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) |
+| [治理設計規格原路徑導引](../superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) | [Archive spec 原文](superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) |
+
+來源／Archive bytes、SHA-256、LF-normalized Git identities 與引用判讀見 [Coverage History Entry 164](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-164)；全體計畫清單見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+## 2026-10-09 券商分點早期設計與實作記錄
+
+- [券商分點文件封存專區](broker_branch/README.md)：保存早期資料模組設計、實作摘要、錯誤檢測、解析改進與手動測試指南原文。現況看[券商分點導覽](../04_broker_branch/README.md)、[系統架構](../01_architecture/system_architecture.md)與[操作手冊](../07_guides/APPLICATION_MANUAL.md)；四份早期設計／實作記錄見 [Coverage History Entry 126](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-126)，手動測試指南見 [Entry 155](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-155)。
+- [舊手動整合測試與故障排除指南](broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md)：保存 2025-12-29 長篇原文。三支 `tests/scripts/` 腳本的停止執行警告仍有效；不要執行它們，直到錯誤 `project_root` 已修正並確認使用隔離 `DATA_ROOT`。原路徑仍有同一警告與目前測試／操作入口。
+
+## 2026-10-09 目標架構舊草案
+
+- [2026-09-06 八卡工程後的差距基線（歷史快照）](TARGET_SYSTEM_ARCHITECTURE_GAP_BASELINE_20260906_HISTORY.md)：保留當時 Current／Transitional 判讀；不代表目前狀態或完成度。現況看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[目前系統架構](../01_architecture/system_architecture.md)與最新 QA；目標設計看 [FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)。原架構文件保留相容導引。
+- [2026-09-22 目標架構草案包](target_architecture_2026_09_22/README.md)：六份非 FINAL 草案已由同目錄的 `FINAL_*` 設計取代；Archive 保留決策追溯，原架構路徑留有相容導引。舊提案不代表目前實作或已完成狀態，開放中的遷移 Gate 仍看 FINAL migration sequence、Snapshot 與具名 QA。
+- 同一架構套件另保留[Wave 2 舊 R008 SHA checkpoint](target_architecture_2026_09_22/README.md#wave2-old-sha-checkpoint)：舊快照只適用原 SHA；現行 result_id 驗收與 Gate 狀態看原架構報告索引及 Coverage History Entry 129。
+- [已結束的架構 dispatch／分析封包](target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md)：十六份歷史 dispatch／review／Wave 分析材料；舊路徑保留相容導引，任務狀態以 R031 與原架構 reports 為準。R006 未知正式 binary 仍未 load／predict，RK-19 風險持續；來源 bytes／SHA 見 Coverage History Entries 135、147、153。
+
+- [Wave 1／Wave 2 pending／blocked 中間狀態報告](target_architecture_2026_09_22/REFACTOR_REPORTS/README.md)：四份歷史預檢已被後續正式 checkpoint 取代；整體遷移狀態仍看 PROJECT_SNAPSHOT。原件與引用核對見 [Coverage History Entry 139](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-139)。
+
+<a id="workbench-liquidity-routing-qa-20260921"></a>
+## 2026-10-09 Workbench 低流動性提示分流歷史 QA
+
+- [WorkBench 低流動性提示分流 QA（2026-09-21）](WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21_HISTORY.md)：保留 `dds_290832656f329969` 唯讀 snapshot、UI readback，以及 liquidity `1121`／weakness `10` 聚合為兩筆背景 batch 的當日觀測。這是 projection 分流收據，不是資料品質、正式 source admission 或全流程 Gate 驗收；較後續的 [V5 readability acceptance](V5_READABILITY_ACCEPTANCE_2026_09_21.md) 以整合 route 重跑 `299 passed`、`1 warning`，不改寫 9/21 原始觀測。現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，來源 bytes／SHA 與依賴判定見 [Coverage History Entry 125](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-125)。
+- 原 QA 路徑保留相容導引；收據提及的 `output/qa/` 原始測試／更新頁報告是 Git 忽略輸出，本次未移動或提交。
+
+<a id="v5-readability-acceptance-20260921"></a>
+## 2026-10-09 V5 日常操作與可讀性 bounded acceptance QA
+
+- [V5 日常操作與可讀性驗收報告（2026-09-21）](V5_READABILITY_ACCEPTANCE_2026_09_21.md)：保存 frozen worktree 的 R1–R10 工程證據；整合 route 為 299 passed、1 warning，八項 sign-off 均完成。範圍不構成正式 V4／V5 Gate、V6 個人化成熟、自然 learning 效果或 production data readiness。原始測試日誌、效能 JSON、截圖與基線 sidecar 位於 Git 忽略的 `output/qa/v5_readability_20260921/`，未封存且不保證乾淨 checkout 可重現；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。原路徑保留相容導引，原件 bytes／SHA 與引用清點見 [Coverage History Entry 149](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-149)。
+
+<a id="ux24-first-version-engineering-seal-20261006"></a>
+## 2026-10-09 UX24 第一版有限工程封存收據
+
+- [UX24 第一版 stage 1–3 有限工程封存](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)：保存 F1–F4 範圍內七項有限工程終點的實測結果。它記錄 9 stages 為 1 done／7 partial／1 pending，24 UX 為 2 done／20 partial／2 pending；不構成整體 UX 結案、正式 apply、Native／真人接受、PIT／自然 maturity、ML OOS 或 benchmark／target policy 通過。`output/qa/ux24_first_version_20261006/` 的 run receipts、logs、XML、baseline／容量 raw evidence 屬本機 ignored output，未封存；原文只保留當時記錄與 hash。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，UX QA 導覽看 [PRODUCT_UX_QA_INDEX](../06_qa/PRODUCT_UX_QA_INDEX.md) 與 [Feature Test Routing Matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。原路徑保留相容導引，逐檔 bytes／SHA 與引用核對見 [Coverage History Entry 150](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-150)。
+
+<a id="ui-layout-audit-20260929"></a>
+## 2026-10-09 UI Layout Audit 歷史收據
+
+- [UI Layout Audit（2026-09-29）](UI_LAYOUT_AUDIT_20260929.md)：保存六格 offscreen MainWindow viewport 矩陣通過的有限結果，以及 54 次 workspace visits、1,488 次 page visits、1,308 次 table/list checks、834 次 scroll checks；當時 Qt suite 為 567 passed／1 opt-in skipped，runner 46 passed，Update 85 passed，validator 25 passed／4 skipped，mypy 739 files clean。這些是當時測量，不代表目前版本已重跑。
+- 先前 per-view QObject controller 曾出現 native access violation；後續 app-owned dispatcher focused tests 與六格 offscreen 矩陣未重現，但根因與永久修復尚未證實。Offscreen 結果不能證明 Windows 原生視窗／顯示行為；official data smoke 與 Native input 未執行。`output/qa/ui_layout_20260929/` 的 raw logs、screenshots、summaries 是 ignored 本機輸出，未封存。原路徑相容導引、依賴與 hash 見 [Coverage History Entry 151](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-151)；目前 UI 說明看 [UI Features](../02_features/UI_FEATURES_DOCUMENTATION.md)，QA 導覽看 [Product UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md)。
+
+## 2026-10-09 歷史狀態快照
+
+- [BALDR 本機狀態報告（2026-08-14）](project_status_2026_08_14/README.md)：保存當日 JSON／HTML 原件；舊 `next_actions` 與 CPU／MCP／QA 數字不代表目前狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，來源與 SHA 見 [Coverage History Entry 117](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-117)。
+
+<a id="data-completion-20260909"></a>
+## 2026-10-09 Data Completion 9/9 歷史 QA
+
+- [正式資料補齊驗收快照](DATA_COMPLETION_2026_09_09_HISTORY.md)、[V4 flows 交接](V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909_HISTORY.md)、[V4 TDCC 補齊收據](V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md)：保存 2026-09-09 的 bounded 補資料與讀回證據。總驗收全文因既有跨 Agent 交接仍保留在 [QA 原路徑](../06_qa/DATA_COMPLETION_2026_09_09.md)，這裡是逐 byte 相同的凍結副本；flows 與 TDCC 原文則移至 Archive，舊 QA 路徑保留導引。法人／信用資料的 `available_date` 為 `NULL`，不授予歷史 PIT／ML credit；當時月營收未全市場公告，財報亦有缺項。不可據此宣稱完整歷史、正式 source admission 或每日自動刷新。
+- `output/data_completion_20260909/` 的本機 raw、candidate、manifest、backup 與讀回 sidecar 屬 Git 忽略的 output，沒有封存在 repository。`data_module/institutional_credit_flows_service.py` 與 `scripts/capture_tdcc_shareholding_candidate.py` 仍將此目錄作為預設輸出位置；本次只歸檔文件，不移動或改寫 sidecar。
+- 目前狀態與來源治理看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA Data Governance 導覽](../06_qa/README.md#主題地圖)及較新的 [個股研究資料事件調查（9/21）](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。逐檔 bytes／SHA 見 [Coverage History Entry 121](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-121)；總驗收原路徑保留的修正見 [Entry 122](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-122)。
+
+<a id="daily-update-no-data-20260714"></a>
+## 2026-10-09 每日資料更新無資料日恢復 plan/spec
+
+- [歷史 Implementation Plan](superpowers/plans/2026-07-14-daily-update-non-trading-day-recovery.md) 與[設計 spec](superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md)：保存 2026-07-14 的設計與實作計畫。原 plan 18 個步驟均未勾選，且目前未找到具名 QA closeout；本次封存是計畫生命週期整理，不表示已完成或驗收。現行行為依[每日資料更新指南](../03_data/daily_data_update_guide.md)、[操作手冊](../07_guides/APPLICATION_MANUAL.md)、程式與測試判讀；當前專案狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。原路徑保留相容導引，逐檔 bytes／SHA 與引用核對見 [Coverage History Entry 138](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-138)。
+## 2026-10-08 Coverage Map 歷史清冊
+
+- [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。
+- 現行權威邊界、文件同步矩陣與 DoD 仍由 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 維護；本清冊只供追溯。
+
+<a id="2026-10-09-agent-workflow-pre-dev-history"></a>
+## 2026-10-09 Agent workflow 舊版歷史快照
+
+- [Multi-Agent workflow 原文快照](MULTI_AGENT_WORKFLOW_PRE_DEV_20261009_HISTORY.md)：保存舊版以 `develop` 為主線的分支圖與合併協議；現行分支、整合與工作樹生命週期依 [`docs/agents/multi_agent_workflow.md`](../agents/multi_agent_workflow.md) 及 [`shared_context.md`](../agents/shared_context.md) 判讀。
+
+## 2026-10-09 文件治理規則與舊計畫索引
+
+- [DOCUMENTATION_STRUCTURE 原第 4／6 節整理決策與更新流水帳](DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md)：保存抽離前的原文區塊；現行生命週期規則回到 [`DOCUMENTATION_STRUCTURE.md`](../00_core/DOCUMENTATION_STRUCTURE.md)。原區塊與完整快照 bytes／SHA 見 [Coverage History Entry 109](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-109)。
+- [全 repo 文檔整理驗收（2026-10-06）](DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)：保存 fixed HEAD 的文件清點、Graphify 方法與當日 unknown；內文的文件數和 2026-10-07 下一 Task 都是歷史快照，不代表目前狀態。現行整理規則看 [`DOCUMENTATION_STRUCTURE.md`](../00_core/DOCUMENTATION_STRUCTURE.md)／[`DOC_COVERAGE_MAP.md`](../00_core/DOC_COVERAGE_MAP.md)，目前狀態看 [`PROJECT_SNAPSHOT.md`](../00_core/PROJECT_SNAPSHOT.md)；來源／Archive hash 與舊路徑承接見 [Coverage History Entry 131](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-131)。
+- 同一清冊補記既有的 [UI Qt roadmap audit](UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md)、[refactoring migration plan](REFACTORING_MIGRATION_PLAN_2025.md) 與 [safe refactoring report](SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md) 來源路徑及 SHA；這些都是歷史參考，不是目前計畫或狀態依據。
+
+## 2026-10-09 平行工作流 plan／prompt 歷史
+
+- [平行系統執行 master plan](superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md) 與[工作流啟動 prompts](superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md)：保存 2026-07-13 的工作拆分、handoff 與當時 Git 操作流程。這些歷史原文不證明工作已完成，也不構成目前工作或 Git 寫入授權；舊路徑保留導引。bytes／SHA 與依賴範圍見 [Coverage History Entry 110](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-110)。
+
+## 2026-10-09 Coverage Map 舊更新流水帳
+
+- [Coverage Map 整理前更新記錄與快速索引快照](DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)：保存精簡前的全部日期化變更與逐批索引；現行權威、同步矩陣與 DoD 回到 [`DOC_COVERAGE_MAP.md`](../00_core/DOC_COVERAGE_MAP.md)，逐批原路徑／目的地／雜湊回到 Coverage History。來源區塊與快照雜湊見 [Entry 111](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-111)。
+
+## 2026-10-09 備份保留稽核日期快照
+
+- [Backup Retention Audit（2026-07-06）](BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)：保留當日 repo／FA_Data 備份來源、容量掃描與清理候選；其中 retention 規則摘要仍見每日資料更新指南，資產用途／恢復以較新的 [Storage Asset Register](../03_data/STORAGE_ASSET_REGISTER_20261006.md) 為準。歷史候選不構成目前搬移或刪除授權；原 QA／操作引用可經舊路徑短導引抵達。原件 bytes／SHA 與引用清單見 [Coverage History Entry 112](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-112)。
+
+<a id="2026-10-09-r029-retirement-preflight"></a>
+## 2026-10-09 R029 retirement preflight 歷史
+
+- [R029 retirement gate 草稿](R029_RETIREMENT_GATE_DRAFT_20260925_HISTORY.md) 與[唯讀 caller／alias 預檢清冊](R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925_HISTORY.md)：保留 2026-09-25 裁定前狀態與當時有限搜尋證據，不代表目前 caller 完整性或 cleanup 授權。現行裁定看 [implementation/acceptance report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [FINAL_MIGRATION_SEQUENCE](../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md)；原 QA 路徑保留相容導引，逐檔 bytes／SHA 見 [Coverage History Entry 098](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
+
+<a id="2026-10-09-qa-historical-snapshots-scheduler-health-and-ux08-controller"></a>
+## 2026-10-09 歷史 QA 快照：排程 health 與 UX08 controller handoff
+
+- [Scheduler Health & Observability（2026-08-27）](SCHEDULER_HEALTH_OBSERVABILITY_REPORT_20260827_HISTORY.md)：保存當日五個邏輯任務的 read-only 狀態；不是目前 scheduler health。產生器只有在明確傳入 `--markdown-output` 時才寫檔，沒有固定 QA 路徑 consumer；現況以 Snapshot 與近期排程 QA 為準。
+- [A 線正式與相鄰 lane latest-status review（2026-09-17）](A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md)：保存當日 Formal／isolated Paper、BankTaiwan、official-events 與 Raw PIT 的唯讀狀態及未完成 Gate；reader 隔離修正未代表正式 job 已重跑。現況以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [近期排程 QA](../06_qa/README.md) 為準；QA 舊路徑保留導引，原件 bytes／SHA 見 [Coverage History Entry 113](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-113)。
+- [UX08 純 chart viewport controller handoff（2026-10-06）](UX08_CHART_VIEWPORT_STATE_QA_20261006_HISTORY.md)：保存整合前 controller API、測試與 owner 邊界；後續產品按鈕接線看 [UX08 viewport integration QA](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)，Native／真人驗收仍未完成。原 QA 路徑保留相容導引，hash 見 [Coverage History Entry 099](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-099)。
+
+<a id="qa-historical-process-failure-review-20261009"></a>
+## 2026-10-09 QA 歷史流程與失效分析
+
+- [Branch/worktree 整理紀錄](BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md)：保存 2026-09-27 當時的本機分支與工作樹盤點；目前 Git 狀態看實際 checkout 與 `PROJECT_SNAPSHOT`。
+- [文件整併審查](DOCUMENTATION_CONSOLIDATION_20260927_HISTORY.md)：保存 2026-09-27 的文件盤點數字與整理方法；不是目前文件數量或現行索引。
+- [舊推薦學習失效回顧](LEGACY_RECOMMENDATION_LEARNING_FAILURE_REVIEW_2026_09_21_HISTORY.md)：保留當日 read-only failure review 與 BankTaiwan capture 邊界；目前行為與狀態以 Snapshot、Architecture 及近期 QA 為準。
+
+來源 `docs/06_qa/` 路徑保留短導引；原始 bytes／SHA 與其餘待覆核候選的處置見 [Coverage History Entry 097](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
+
+- [唯讀服務合作式取消 QA（2026-09-30）](READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md)：保留當次 cancellation suites 19 passed，以及另一組 service contracts 125 passed／1 failed 的原始分層結果。V5 readability acceptance 另有 fixture 調整後的通過收據，不改寫 9/30 結果。raw pytest logs 位於 ignored `output/qa/ui_shutdown_20260930/`，沒有封存進 repository；現行行為看 [`sqlite_read_only.py`](../../app_module/sqlite_read_only.py) 與 [取消回歸測試](../../tests/test_read_only_service_cancellation.py)。QA 舊路徑保留導引，逐檔 bytes／SHA 見 [Coverage History Entry 104](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
+
+<a id="2026-10-09-qt-shutdown-teardown-bounded-qa"></a>
+## 2026-10-09 Qt MainWindow shutdown teardown bounded QA
+
+- [Qt MainWindow shutdown teardown 修正 QA（2026-09-15）](QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)：保存 production MainWindow 在 `QApplication.exec()` 返回後的 Qt teardown hang 修正與 bounded 驗收。它沒有證明舊 memory-write popup 同根因，也沒有驗收仍在 QA 的 [Native crash read-only follow-up](../06_qa/QT_NATIVE_CRASH_READONLY_FOLLOWUP_2026_09_15.md) 或獨立 [SQLite inspector shutdown probe](../06_qa/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)。原 QA 路徑保留短導引；原文 bytes／SHA 與引用核對見 [Coverage History Entry 100](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-100)。
+
+<a id="2026-10-09-position-health-calendar-cache-isolation-qa"></a>
+## 2026-10-09 Position Health calendar-cache 測試隔離 QA
+
+- [Position Health Source Provider Calendar Cache 隔離 QA（2026-09-15）](POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md)：保留測試把年度 calendar cache 移至 isolated `tmp_path` fixture 的 bounded 修復收據。現行 test helper 仍在 [`tests/test_position_health_source_providers.py`](../../tests/test_position_health_source_providers.py)；這份歷史 QA 不代表 Position Health source-backed transition Gate 已結案。原 QA 路徑與歷史 Catalog 引用保留相容導引；逐檔 bytes／SHA 見 [Coverage History Entry 101](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-101)。
+
+<a id="2026-10-09-ml-formal-input-candidate-snapshot"></a>
+<a id="ml-dated-readiness-evidence-20261009"></a>
+## 2026-10-09 ML Formal input candidate-only 歷史快照
+
+- [ML allocation Formal input readiness（2026-09-20）](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 自然日之前的 candidate runtime wiring、source pins 與當時缺件；沒有執行 validator、writer 或 scheduler，也不是 9/21 的實際驗收。同期 Natural Shadow weekly receipts 屬不同 lane，不能替代這份 Formal candidate snapshot。原 QA 路徑保留相容導引；目前 Gate／狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)，逐檔 bytes／SHA 見 [Coverage History Entry 102](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
+
+## 2026-10-09 V4 daily natural evidence loop handoff 歷史
+
+- [V4 每日自然證據運行閉環 QA handoff（2026-09-12）](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md)：保存當日 scheduler、forward outcome、progress receipt、Paper ledger 與跨日證據交接。原收據明列 5／10／20／60 horizons 尚待自然成熟、benchmark 截止 2026-08-28、外部 fills CSV 缺件、saved checkout Scheduler／receipt freshness 待 owner 確認及 ACL warning；歸檔不表示這些 Gate 已解除。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。原 QA 路徑保留相容導引；bytes／SHA 見 [Coverage History Entry 127](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-127)。
+
+## 2026-10-09 1477 Native 取消、重試與讀回歷史 QA
+
+[完整驗收原文](NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md)記錄 2026-10-05 的 bounded Native 操作鏈：取消後以新 generation 重試、保存新結果、由新程序讀回，並驗證截止日、artifact 決策日、result/run identity 與 index hash 四種拒絕案例。原結果是未入選篩選紀錄，不是推薦成功；也不代表自然成熟、ML 正式資格、PIT 或交易資格。原 QA 路徑保留短導引，來源／Archive bytes 與引用追蹤見 [Coverage History Entry 132](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-132)。
+
+## 2026-10-09 封存 Batch9 最小續接 handoff 歷史
+
+[封存全文](MINIMAL_CONTINUATION_HANDOFF_20261005_HISTORY.md)保存 2026-10-05 起多批 UX、Native、效能與儲存工程的 append-only handoff；較早狀態由後續批次更正，並保留當日失敗、容量與未解資格限制。它不是目前任務清單或 Gate 狀態，最新狀態與工作順序看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。原 QA 路徑留短導引；Archive 副本已把同層 QA 文件連結改成來源目錄路徑，原件與封存 hash 見 [Coverage History Entry 133](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-133)。
+
+## 2026-10-09 V4.2 Daily Recommendation Learning 9/13 歷史 QA
+
+- [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
+
+## 2026-10-09 V4.2 C 線每日決策工作台 9/12 QA 歷史
+
+- [V4.2 C 線每日決策工作台 QA handoff（2026-09-12）](V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12_HISTORY.md)：保留該輪 bounded UI／read-model adapter 測試結果與人工／視覺驗證限制。後續整合證據已在主線；目前操作看 [Application Manual Supplements](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md)，presentation-only 邊界看 [System Architecture](../01_architecture/system_architecture.md)。整體跨頁流程仍由 QA 的 [open acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md) 追蹤，不能把此 handoff 當作全流程結案。原 QA 路徑保留導引，原件 bytes／SHA 見 [Coverage History Entry 123](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-123)。
+
+## 2026-10-09 Weekly Natural Evidence 9/20 歷史快照
+
+- [Weekly Natural Evidence Review（2026-09-20）](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保留 9/14–20 週期與 9/21 唯讀觀測；V2.2 collection、BankTaiwan capture、ML natural shadow 是不同 lane，pending 不等於 matured／promotion／Formal／human approval。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)。舊 QA 路徑保留導引，原件 SHA 見 [Coverage History Entry 106](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
+
+<a id="2026-10-09-banktaiwan-2026-09-14-initial-shadow-run"></a>
+## 2026-10-09 BankTaiwan 9/14 初始 shadow run 歷史快照
+
+- [研究型成本估算與 real-source smoke](DAILY_BANKTAIWAN_LEARNING_COST_2026_09_14_HISTORY.md)：保存當日 versioned fee/tax scenario、160 個 replay samples 與估算結果；`formal_order_allowed=false`，滑價及實際成交成本未被估算，不能據此聲稱實際 after-cost 成效。
+- [研究型學習營運 QA](DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md)：保存獨立 task 註冊與一次受控 run。該次為 `completed_waiting_natural_maturity`／`retain_current`、自然成熟樣本 0；9/15 預定排程因當日 scheduled snapshot 缺件而未啟動 child。這些 bounded 結果不代表 lane maturity、正式來源採納或 promotion。
+
+目前狀態與資格看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 及較新 QA；操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。兩個 `docs/06_qa/` 原路徑保留導引，來源 bytes／SHA 與目前替代入口見 [Coverage History Entry 120](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-120)。
+
+## 2026-10-09 Watchlist analysis／ML visibility 9/6 歷史 QA
+
+- [觀察清單分析與 ML 可見性驗收（2026-09-06）](WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md)：保留 Watchlist 摘要／導覽與當日 readiness inspection；`0/3` 與 stale projection 不是目前 ML 狀態，也沒有啟用訓練或 promotion。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，來源邊界看 [system architecture](../01_architecture/system_architecture.md)，Gate／現況看 Gate 7／Snapshot。原 QA 路徑保留導引，SHA 見 [Coverage History Entry 107](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。
+
+## 2026-10-09 9/14 排程與週資料受託審查歷史
+
+- [排程與週資料受託審查（2026-09-14）](SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md)：單次 `reviewed_with_follow_up` 記錄，正式採認未通過；保留 SQLite read-only 檢查與 warning／持倉證據的日期範圍，不代表 CSV／SQLite 全量一致、目前 scheduler 狀態或出場建議。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與近期排程 QA。原 QA 路徑保留相容導引，bytes／SHA 見 [Coverage History Entry 103](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。
+
+## 2026-10-08 V1.5／V1.9 plan/spec history
+
+- [V1.5 Data Credibility plan](superpowers/plans/2026-07-04-v1-5-data-credibility.md) 與 [design spec](superpowers/specs/2026-07-04-v1-5-data-credibility-design.md)：保留完整原文；v1 closeout 範圍以 [QA 收據](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md) 為準。原計畫未勾項目仍留作歷史，QA 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成。
+- [V1.9 Read-only Agent MCP plan](superpowers/plans/2026-07-06-v1-9-read-only-agent-mcp.md) 與 [design spec](superpowers/specs/2026-07-06-v1-9-read-only-agent-mcp-design.md)：唯讀 v1 closeout 依 [QA 收據](V1_9_READ_ONLY_AGENT_MCP_CLOSEOUT_2026_07_06.md) 判讀；計畫留有未勾項目，weekly evidence、人工 UI smoke、多日 dry-run、真實 workflow sample 等不視為由該 closeout 自動完成。歷史文件不授權 production scheduler 或寫入。
+- 四份 `docs/superpowers/` 原位置保留短導引；目前狀態與架構分別看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [system architecture](../01_architecture/system_architecture.md)。bytes、SHA-256、old→new 路徑與生命週期判讀見 [plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+## 2026-10-09 早期技術分析優化備忘錄
+
+- [技術分析模組優化文檔原文](TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md)：保留早期指標 API、回傳型態、資料路徑、形態與 ML 描述，僅供歷史追溯；其中 API／路徑與目前實作不符，不應當作現況或操作指引。現況看 [系統架構](../01_architecture/system_architecture.md)、[TechnicalAnalyzer](../../analysis_module/technical_analysis/technical_analyzer.py)、[TechnicalIndicatorCalculator](../../analysis_module/technical_analysis/technical_indicators.py)、[TWStockConfig](../../data_module/config.py) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊路徑保留短導引，原文 bytes／SHA 與引用盤點見 [Coverage History Entry 115](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-115)。
+## 2026-10-09 Month 5 Fundamental 主序列歷史備忘錄
+
+- [Month 5 Fundamental 主序列備忘錄原文](superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md)：保存 2026-06-16 的五步基本面工作排序。原文自述為 sequencing memo，不是 execution plan。此處舊稱「Month 5 Fundamental」不等同 [6M Roadmap 現行 Month 5 / Gate 5](../00_core/ROADMAP_6M_ENGINEERING.md) 的 signal effectiveness、ablation 與 pruning 順序。
+- memo 列出的 [availability entrypoint](../superpowers/plans/2026-06-16-month5-availability-data-entrypoint.md)、[SQLite migration](../superpowers/plans/2026-06-16-month5-fundamental-sqlite-migration-v1.md)、[revenue factor pack](../superpowers/plans/2026-06-16-month5-revenue-factor-pack-v1.md)、[valuation data layer](../superpowers/plans/2026-06-16-month5-valuation-data-layer-v1.md) 與 [abnormal diagnostics](../superpowers/plans/2026-06-16-month5-abnormal-fundamental-diagnostics.md) 仍是各自獨立的歷史計畫；歸檔 memo 不替這五份文件判定完成或授權狀態。
+- 目前狀態與基本面實際邊界看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[system architecture](../01_architecture/system_architecture.md)、[Fundamental Source Inventory](../03_data/FUNDAMENTAL_SOURCE_INVENTORY.md) 與 [QA 主題地圖](../06_qa/README.md)。舊路徑導引與逐檔 bytes／SHA 見 [Coverage History Entry 148](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-148)。
+
+## 2026-10-08 資料實作摘要
+
+- [Month 5 Fundamental Source Inventory（截至 2026-08-12）](FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md)：保留基本面來源搜尋、available_date／PIT 缺口及候選工作歷史；目前狀態看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，來源與接受判斷看 [近期基本面 QA](../06_qa/README.md) 及 current architecture。
+- [產業指數更新摘要](INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md)：保留舊 CSV／API 更新步驟；現行操作看 [每日資料更新指南](../03_data/daily_data_update_guide.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+- [合併與大盤指數實作摘要](MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)：保留舊 merge、CSV 路徑及欄位假設；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。
+- [SQLite 雙軌相容指南（2026-06-02）](SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)：保留 v1.1 CSV-SSOT／SQLite-cache 描述、當時遷移步驟與效能聲稱；目前資料保存與同步邊界看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。
+- [CSV 全量重建指南](DATA_REBUILD_GUIDE_HISTORY.md)：保留舊 `merge_daily_data.py --force-all`／`calculate_technical_indicators.py --force-all` 操作說明，不作目前修復程序；操作看 [每日資料更新指南](../03_data/daily_data_update_guide.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+- [推薦分析資料流程（舊版）](RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md)：保留舊 CSV／`ui_app`／`StrategyConfigurator` 流程；目前資料來源與指標重用邊界以 [system_architecture](../01_architecture/system_architecture.md) 為準。
+- [每日更新故障排除指南（舊版）](TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)：保留已過時的 log／資料路徑與早期 API 排錯命令；目前更新操作看 [APPLICATION_MANUAL 第 4 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)，排錯看第 12 節。
+
+### 2026-10-08 Backtest Lab checklist and FAQ snapshots
+
+- [回測頁功能清單與進度快照](BACKTEST_LAB_CHECKLIST.md)：原文保留舊待辦，例如將已提供的報告匯出列為待實作；只供追溯，不代表目前功能缺口。
+- [回測 FAQ](BACKTEST_LAB_FAQ.md)：保留早期路徑、流程與建議，其中一些已不適用目前架構及操作；不要照舊命令或策略建議操作。
+
+目前功能契約以 [BACKTEST_LAB_FEATURES](../02_features/BACKTEST_LAB_FEATURES.md) 為準，操作、安全限制與排錯以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。原 `docs/02_features/` 路徑保留短導引。
+
+## 2026-10-08 歸檔
+
+### 2026-10-08 Data and source-owner receipts
+
+- **資料／介面快照**：[Data Update display refresh（8/30）](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Formal data reconciliation（8/06）](FORMAL_DATA_RECONCILIATION_2026_08_06.md)。這些是當日觀察，不是目前資料可得性或正式完成結論。
+- **Source／owner bounded evidence**：[Owner production readiness（8/06）](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license capture（8/28）](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet（8/28）](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[TWSE T86 20-day pilot](TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md)。保留原授權、provenance、coverage 與 pilot 邊界；T86 後續觀察見 [9/21 data contract repair](../06_qa/SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md) 與 [10/03 scheduler diagnosis](../06_qa/SCHEDULER_REMAINING_DIAGNOSIS_20261003.md)，來源採納仍看 [V2.3 P0 source acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md)。較新的 P0 handoff 見 [8/30 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
+### 2026-10-08 Prospective Formal clock history
+
+七份收據保存 2026-08-18 至 08-28 的 clock activation、execution、weekly update、calendar capture、staging 及失敗邊界。它們是當時的歷史證據，不代表目前已重啟、已產生 formal output 或取得發布授權；目前方向與時鐘契約仍看 QA 的 [Prospective Formal restart direction](../06_qa/PROSPECTIVE_FORMAL_RESTART_DIRECTION_2026_08_19.md)。8/26 staging 是一次性具名例外，不應泛化成常規流程。
+
+- **啟動與執行紀錄**：[8/18 clock activation](PROSPECTIVE_FORMAL_CLOCK_ACTIVATION_2026_08_18.md) → [8/21 restart execution](PROSPECTIVE_FORMAL_RESTART_EXECUTION_2026_08_21.md) → [8/25 weekly update](PROSPECTIVE_FORMAL_RESTART_WEEKLY_UPDATE_2026_08_25.md)。
+- **Staging／calendar 收據**：[8/26 named staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_26_STAGING.md)、[8/27 V3 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V3_STAGING.md)、[8/28 staging](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_28_STAGING.md)、[8/28 calendar capture](PROSPECTIVE_FORMAL_CALENDAR_CAPTURE_2026_08_28.md)。
+
+### 2026-10-08 V2/V3/V4 dated readiness reports
+
+這六份文件保存 2026-07 的 paper baseline、工程 readiness、人工驗證及 7/30 release-freeze 收據。V2.4／V2.5 首份 paper baseline 未達 formal closeout；V3.0 的 `ready_for_manual_validation` 與 `DEFER_ALL_PRUNING_DECISIONS` 僅是當時的工程／資料決議；7/30 V4 report 已明確標為 historical／superseded。它們均不代表目前 maturity、production readiness 或投資有效性；目前狀態回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，8/29 詳細歷史快照見 [Program Status Rebaseline 歸檔原文](PROGRAM_STATUS_REBASELINE_2026_08_29.md)。
+
+- **V2.4／V2.5 paper baselines**：[V2.4](V2_4_PAPER_BASELINE_2026_07_12.md)、[V2.5 position health](V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md)。
+- **V3.0 engineering readiness／manual validation**：[automated readiness](V3_0_AUTOMATED_READINESS_2026_07_12.md)、[engineering candidate manual validation](V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md)、[Week 1 manual validation](V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md)。
+- **V4.0 dated release freeze**：[operational production closeout report](V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md)。
+- **V2.4 paper-only approval decisions**：2026-07-12 的 [policy baseline 核准](V2_4_PAPER_POLICY_APPROVAL_2026_07_12_HISTORY.md) 與 [Portfolio Coach scope 開工核准](V2_4_SCOPE_APPROVAL_2026_07_12_HISTORY.md)；核准範圍限於工程與 paper／research simulation，沒有真實交易授權。舊 QA 路徑保留相容導引；目前唯讀操作邊界看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)。
+
+### 2026-10-08 Program Status Rebaseline snapshot
+
+[Program Status Rebaseline（2026-08-29）](PROGRAM_STATUS_REBASELINE_2026_08_29.md) 記錄當時全專案七個 readiness lanes、Gate blockers 與 8/30 更新收據。報告中的 current／ready 數字是日期快照，現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準；原 QA 路徑保留相容導引，內部連結分別指向仍留在 QA 的 P0／Evidence handoff 及 Archive 原件。
+
+### 2026-10-08 ML storage retention cleanup custody
+
+[ML Release v4 Storage Retention Cleanup（2026-08-29）](ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) 保存使用者授權的一次性 release_v4 清理範圍、不可逆性、before／after inventory、保留鏈與 tombstone。它不是目前容量或 run inventory；現行 retention policy 看 [system architecture §11.1](../01_architecture/system_architecture.md#111-immutable-ml-publication-retention)，操作程序看 [Application Manual Supplements](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md)。原 QA 路徑保留相容導引。
+
+### 2026-10-08 Program readiness refresh details
+
+- [Runtime／Performance Readiness Refresh（2026-08-30）](RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md)：保留當日容量、`preflight-only` 與 canary owner packet；不是目前 runtime readiness。
+- [Paper Portfolio Readiness Refresh（2026-08-30）](PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md)：保留當日 snapshot／fills／cost ledger 盤點；不是目前 Paper 狀態。
+- [Formal／ML Input Readiness Refresh（2026-08-30）](FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md)：保留當日 strict `0/3` 與 owner-controlled input 證據；不是目前 validator 結果。
+
+三份文件補充同日的 Program Status Rebaseline；目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，QA 原路徑保留相容導引。
+
+### 2026-10-08 BALDR September integration closeout and readiness history
+
+以下文件保存 2026-09-25／26 的產品整合盤點、排程 inventory、evidence-model readback、technical parser closeout，以及已套用 automation prompt 的 before／after 與 request receipt。這些是已結束的日期快照；目前產品缺口、排程與 ML readiness 分別看 [QA 主題地圖](../06_qa/README.md) 與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。舊 QA 路徑保留相容導引；原始 JSON request／inventory receipt 也在此封存，並非現行操作設定。
+
+- [BALDR product integration acceptance（9/25–26）](BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md)：當時的跨線盤點及後續 closeout；不代表目前完成度。
+- [Windows Scheduler reconciliation（9/25）](BALDR_SCHEDULER_RECONCILIATION_20260925.md) 與 [結構化 inventory JSON](BALDR_SCHEDULER_RECONCILIATION_20260925.json)：保留當時唯讀匯出與原始 hash。
+- [Daily evidence-model readiness（9/25）](BALDR_DAILY_EVIDENCE_MODEL_READINESS_20260925.md)：當日 maturity／candidate readback，非目前模型資格。
+- [Daily technical parse／partial-failure QA（9/25）](BALDR_DAILY_TECHNICAL_PARSE_DIAGNOSTIC_QA_20260925.md)：完成的隔離 bug-fix 驗證。
+- [Paper automation prompt proposal（9/25）](BALDR_PAPER_AUTOMATION_PROMPT_PROPOSAL_20260925.md) 與 [update request JSON](BALDR_PAPER_AUTOMATION_UPDATE_REQUEST_20260925.json)：9/26 已套用並 read back；目前 prompt／task 狀態仍須看近期 inventory。
+
+Product-integration baseline 與 Codex automation inventory 的大型 JSON 伴隨物是本機 ignored 檔，依排除規則沒有移動或提交；它們留在 QA 原路徑供當前工作樹中的歸檔報告連結。乾淨 checkout 可能不含這兩個本機 sidecar。
+
+<a id="2026-10-08-v2-3-data-source-decision-receipts"></a>
+### 2026-10-08 V2.3 data-source decision receipts
+
+- [V2.3 P0 Sources Batch Principle Approval（2026-07-12）](V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) 保存使用者核准 13 個 P0 source 的導入方向；下游 eligibility 當時仍為 `none`，不是來源接受或正式 ingestion 授權。
+- [V2.3 FinMind Candidate Source Audit（2026-07-12）](V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md) 保存當時帳戶權限與 dataset / available-date 限制；帳戶方案可能改變，不把歷史權限當成目前狀態。
+
+本節上述兩份歷史收據的原 QA 路徑保留相容導引。現行逐來源決議以 [P0 Source Acceptance Register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 與 [近期資料來源 QA](../06_qa/README.md) 為準。
+
+### 2026-10-08 LUNA three-line integration history
+
+- [Luna A data／ML handoff（9/7）](LUNA_A_HANDOFF_2026_09_07.md) 與 [Luna C UI/UX handoff（9/7）](LUNA_C_HANDOFF_2026_09_07.md)：保留各線交付當時的範圍、未完成項、驗收限制及 rollback 邊界。
+- [LUNA integration closeout（9/8）](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)：整合缺陷、當時完整驗證及 Git 收尾的最終收據；其測試數字不代表目前 HEAD。
+
+Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留在 QA，因 repository inventory／repo-map audits 直接讀取這兩份原始文件；舊 QA 路徑仍保留導引。當前程式與狀態分別看 system architecture 與 PROJECT_SNAPSHOT。
+
+### 2026-10-08 Decision workbench and continuity audit history
+
+三份 2026-09-14／15 audit 記錄當時的全決策工作台整合證據、下一增量判讀及 continuity write-path 保存鏈缺口。另封存一份 pre-R1 continuity loop gap audit；它列出的 Workbench projection 缺口由後續 R1 QA 驗收，不能再當成目前待辦。內文中的日期化優先序不取代 Snapshot／Roadmap，也不直接授權後續工程；原 QA 路徑保留相容導引。
+
+- [終極決策工作台整合缺口矩陣（9/14）](ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
+- [終極目標產品完成度與下一增量稽核（9/15）](ULTIMATE_NEXT_INCREMENT_AUDIT_2026_09_15.md)
+- [Decision Continuity write-path audit（9/14）](DECISION_CONTINUITY_WRITE_PATH_AUDIT_2026_09_14.md)
+- [Continuity Review Loop pre-R1 gap audit（9/15）](CONTINUITY_REVIEW_LOOP_GAP_AUDIT_2026_09_15.md)：保留 R1 前的 gap baseline；後續已驗收唯讀 due projection、Portfolio identity guard 與 Workbench exact drilldown，詳見 [R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)。完整跨頁旅程仍看留在 QA 的 [acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md)。
+
+### 2026-10-08 Early decision and industry journey receipts
+
+八份 2026-09-14／15 收據保存當時的 bounded write-path、read-model、UI、watchlist 儲存啟用、MainWindow shutdown／child readback、日期化 daily investment snapshot、synthetic-fixture MainWindow acceptance 與 current-research industry smoke。Decision／Outcome 的後續 reader 證據看 [R1 Workbench QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，目前更完整的驗收範圍仍由 [open acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md) 追蹤；產業 smoke 的 PIT eligible 為 0，較新 provenance、UI observation 與 source/caller gate 看 [WP2 current provenance](../06_qa/WP2_INDUSTRY_INDEX_CURRENT_PROVENANCE_20260928.md)、[WP2 UI observation](../06_qa/WP2_INDUSTRY_INDEX_UI_OBSERVATION_20260928.md)、[PIT taxonomy](../06_qa/PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) 與 [industry caller acceptance](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。MainWindow acceptance 使用 synthetic Market／Industry 與 Portfolio fixtures，不代表自然／正式 outcome 或 PIT qualification 已成立。screenshots、capture manifest、raw JSON 與 runner logs 均為本機 sidecar，未隨文件封存。
+
+- [Decision Continuity Write Path Increment A QA（9/14）](DECISION_CONTINUITY_WRITE_PATH_QA_2026_09_14.md)
+- [Decision Continuity Increment B QA（9/14）](DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md)：保留當時 isolated widget smoke、exact identity 與 explicit watchlist storage activation 驗收；測試數字不是目前基線。
+- [Decision Continuity Increment C QA（9/14–15）](DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)：保留當時 launcher／TPEX cancellation、MainWindow close lifecycle 與獨立 child readback；不代表完整跨頁 acceptance。
+- [Daily Investment Journey QA（9/14）](DAILY_INVESTMENT_JOURNEY_2026_09_14.md)：唯讀資料、evidence／learning projection 與未完成項的日期快照；後續 R1 補上有界 continuity 提醒與 identity 下鑽（見 [R1 QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)），不代表自然成熟或完整產品驗收。候選數與 maturity 數字不作目前狀態。
+- [真實 MainWindow 跨頁決策旅程 acceptance（9/15）](CROSS_PAGE_DECISION_JOURNEY_MAINWINDOW_2026_09_15.md)：當時的 bounded path 使用 synthetic upstream fixture；完整目前驗收範圍仍看 QA 中的 open acceptance plan。
+- [Decision → Outcome Journey read model QA（9/14）](DECISION_OUTCOME_JOURNEY_2026_09_14.md)
+- [Decision → Outcome Journey UI QA（9/14）](DECISION_OUTCOME_JOURNEY_UI_2026_09_14.md)
+- [產業強弱與產業→個股決策旅程 QA（9/14）](INDUSTRY_DECISION_JOURNEY_2026_09_14.md)：保存當日 current-research smoke；後續 PIT caller 有受控路徑，但 exact company join 與完整 historical PIT qualification 仍是資格限制，詳見 [PIT caller QA](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。
+
+### 2026-10-08 Early QA closeouts
+
+- **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。
+- **Gate／ML bounded closeouts**：[Gate 1 Advice](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md)、[Gate 2–7 pure engineering](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)（External Register／Control Center 的舊引用由轉址承接）、[historical ML Shadow MVP](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)。pure-engineering 收據不等於目前 external qualification；狀態回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)。
+- **Healthcheck／PIT／project audit**：[Full App agent closeout](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[PIT historical data repair](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[PROJECT_SNAPSHOT audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[shim removal audit](SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md)。目前測試覆蓋看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)，目前狀態看 Snapshot。
+- **文件治理／執行藍圖**：[Gemini documentation adjudication](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Superpowers date audit](SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)（2026-07-06 歷史盤點，非目前清冊）、[system execution blueprint closeout](SYSTEM_EXECUTION_BLUEPRINT_CLOSEOUT_2026_07_15.md)。目前文檔生命週期看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)，目前架構看 [system_architecture](../01_architecture/system_architecture.md)。原 QA 路徑保留短轉址。
+
+### 2026-10-08 Early Recommendation and Update Tab QA
+
+四份早期產品 QA 問題盤點與摘要記錄推薦分析、數據更新 Tab 的舊程式路徑、測試快照及當時待覆驗事項。推薦分析摘要曾記錄所有測試配置皆回傳 0 筆推薦，因此不能把它解讀成目前已驗收或已修復；數據更新摘要中的測試數字也只屬當時結果。現行操作與排錯看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，測試範圍看 [Feature-to-test routing matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。四份原文逐位元組保留，QA 原路徑提供相容導引。
+
+- [Recommendation Tab issues](QA_RECOMMENDATION_TAB_ISSUES.md) · [Recommendation Tab summary](QA_RECOMMENDATION_TAB_SUMMARY.md)
+- [Update Tab issues](QA_UPDATE_TAB_ISSUES.md) · [Update Tab summary](QA_UPDATE_TAB_SUMMARY.md)
+
+### 2026-10-08 Source, clock and probability-learning audits
+
+以下文件保存已完成的 2026-09-15／16 discovery、read-only source design 與有界機率學習 audit。來源／caller 的後續驗收仍留在 QA；clock 與 ML 原文中的日期狀態及當時建議只供追溯，現況回到 Snapshot、Manual 與 QA 主題地圖。原 QA 路徑保留短轉址。
+
+- [Decision Desk／Evidence capture 真實時鐘 QA（9/16）](DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md)：保存 clock 修正、跨線 readback 與當時後續事項，不作目前排程狀態。
+- [PIT 產業來源驗收 discovery（9/15）](PIT_INDUSTRY_SOURCE_ACCEPTANCE_DISCOVERY_2026_09_15.md)：source/wiring discovery baseline；後續 caller acceptance 與 taxonomy source QA 仍在 QA。
+- [PIT taxonomy daily source plan（9/15）](PIT_TAXONOMY_DAILY_SOURCE_PLAN_2026_09_15.md)：read-only source/design proposal；後續實作與驗收看 QA 原件。
+- [每日機率學習下一增量 audit（9/15）](DAILY_PROBABILITY_LEARNING_NEXT_INCREMENT_AUDIT_2026_09_15.md)：保存 P1 實作補報及審計界線，不代表目前 ML 待辦或 adoption。
+
+### 2026-07 Broker Flow and UI closeout
+
+- **Broker Flow dashboard 效能鏈**：[原始 dashboard failed gate](BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md) → [後續 semantics scoped pass](BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md)。保留原始完整母體與失敗數據，以及後續針對語意批次的優化證據；後者不改寫前一 gate，也不代表目前整體效能資格。
+- **Readability polish closeout**：[UI / UX 收據（2026-07-07）](UI_UX_READABILITY_POLISH_CLOSEOUT_2026_07_07.md)。保存當時 bounded UI slice 與 formal-data waits；目前 UI 行為看 [system architecture](../01_architecture/system_architecture.md)、操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)、目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。原 QA 路徑保留短轉址。
+
+### 2026-10-08 R001, R006, R020 historical QA
+
+- [R001 baseline inventory](REFACTOR_BASELINE_R001_20260922_HISTORY.md)：原範圍已在 [R031 task index](../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 標記 CLOSED；保留起始 inventory 與來源基線。
+- [R006 ML ABI baseline](REFACTOR_ML_ABI_BASELINE_R006_20260922_HISTORY.md)：原 inventory／retention scope 已關閉；未知 formal artifact 仍未載入或預測，細節見 [R006 dated addendum](../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。
+- [R020 post-score deferred-threshold QA](R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925_HISTORY.md)：2026-09-25 的 dated review；bounded R005 replay／recovery disposition 及範圍見 [R031 task index](../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。三個 QA 原路徑保留短轉址；封存不擴大 task 的驗收範圍。
+
+### 2026-10-08 V4 Data, Direct and stock-research handoff history
+
+三份 2026-09-08 owner handoff 保存當時的資料更新 freshness／calendar evidence、Direct capacity gate／年度 consumer readback、個股研究報告 UI 與 source coverage 驗收。它們的日期數字與 next step 不代表目前狀態；後續資料收尾見 [10/03 data closeout](../06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)，現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，ML／Direct 狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。舊 QA 路徑保留相容導引。
+
+- [V4 Data freshness handoff（9/8）](V4_DATA_FRESHNESS_HANDOFF.md)：保留 source matrix、官方交易日曆修補與當時月營收／季報 blocker。
+- [V4 Direct／OOC／Release handoff（9/8）](V4_DIRECT_RELEASE_HANDOFF.md)：保留 Direct capacity gate、2014–2020 readback 與 release preflight 邊界。
+- [V4 Stock Research Report handoff（9/8）](V4_STOCK_RESEARCH_REPORT_HANDOFF.md)：保留當時 UI／source coverage／操作與驗收證據。
+
+### 2026-10-08 V4 NEXT handoff history
+
+2026-09-08 的 Formal／Paper、ML／Effectiveness 與 Operations handoff 保存當時的 owner scope、證據與 rollback；內文的 Next 項目不代表目前授權或待辦。Formal 的 9/30 後續讀回見 [scheduler bootstrap repair](../06_qa/SCHEDULER_FORMAL_BOOTSTRAP_REPAIR_20260930.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
+- [V4 NEXT Formal／Paper handoff](V4_NEXT_FORMAL_HANDOFF_2026_09_08_HISTORY.md)
+- [V4 NEXT ML／Effectiveness handoff](V4_NEXT_ML_HANDOFF_2026_09_08_HISTORY.md)
+- [V4 NEXT Ops handoff](V4_NEXT_OPS_HANDOFF_2026_09_08_HISTORY.md)
+
+### 2026-10-08 V4 9/8 workspace cleanup receipts
+
+兩份 2026-09-08 工作區盤點與清理收尾記錄保留當日數字、路徑界線與實際清理限制；它們不是即時 inventory 或現行清理授權。逐檔 output manifest 當時留在 ignored 本機 `output/`，沒有提交或隨文件封存。原 QA 路徑保留短導引；目前檔案與清理規範須回核現行文件及 Git exclusion。
+
+- [工作區檔案盤點](WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)
+- [V4 工作區清理收尾](V4_WORKSPACE_CLEANUP_CLOSEOUT.md)：當次只可重建清理結果，未保存可逐位元組還原的原件清單；「可回滾」不代表可還原原始檔案內容。
+
+### 2026-10-08 workspace commit validation history
+
+2026-09-26 的分批提交驗證是特定 HEAD／dirty worktree 的工程快照；報告明示 focused routes 和廣域 mypy 結果，不代表全 repository pytest、正式資料或排程驗收。root `.tmp_*`／`.obsidian` 忽略規則與 fixture 調整保留為當日處置證據；現況以 Snapshot、最新 Git state 與 git exclusions 為準。歷史 Catalog 的 QA 原路徑由短導引承接。
+
+- [2026-09-26 工作區分批提交驗證](WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md)
+
+- **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)（2025-12 歷史狀態；後續僅有 10 檔、單策略 walk-forward pilot，非全市場成熟驗收，見 [Walk Forward comparison report](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md)）、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。逐檔原路徑、bytes／SHA 與搬移前後 blob 核對見 [Coverage History Entry 116](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-116)。
+
+### Phase 3.5 研究與門檻歷史索引
+
+- [研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)：均為歷史研究／SOP 材料；固定績效門檻及 Phase 4 入場結論不代表目前產品 Gate 或現況。
+- Phase／Gate 的目前界線看[現行 Phase 導覽](../05_phases/README.md)；現行工程 Gate 看[6 個月工程路線](../00_core/ROADMAP_6M_ENGINEERING.md)，目前狀態看[Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作方式看[Application Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+### Post-V1 Evidence Pipeline QA
+
+2026-07 的階段性 QA／working-copy smoke／scheduler readiness 收據，保存當時的驗證與限制；不作目前排程操作或產品狀態權威。目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 與本目錄的較新 QA 收據。除 multi-day dry-run 登記表外，`docs/06_qa/POST_V1_*.md` 舊路徑保留短轉址；[multi-day dry-run record 的現行可續寫路徑](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md) 因程式讀取固定路徑而保留，以下 Archive 副本是原始凍結快照，不在此追加新資料。修正與逐檔來源核對見 [Coverage History Entry 119](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-119)。
+
+- **Evidence store／source／replay**：[Event Store](POST_V1_EVIDENCE_EVENT_STORE_QA_2026_07_01.md)、[Importers](POST_V1_EVIDENCE_IMPORTERS_QA_2026_07_02.md)、[Source persistence](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md)、[Historical replay](POST_V1_HISTORICAL_EVIDENCE_REPLAY_QA_2026_07_06.md)。
+- **Forward outcome／review**：[Forward read model](POST_V1_FORWARD_PERFORMANCE_READ_MODEL_QA_2026_07_03.md)、[Dashboard](POST_V1_FORWARD_PERFORMANCE_DASHBOARD_QA_2026_07_05.md)、[Decision quality](POST_V1_DECISION_QUALITY_REVIEW_QA_2026_07_10.md)、[Review dashboards](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)、[UI smoke](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md)、[Live vs research gap](POST_V1_LIVE_RESEARCH_GAP_LINKAGE_QA_2026_07_08.md)、[Signal decay](POST_V1_SIGNAL_DECAY_MONITOR_QA_2026_07_09.md)。
+- **Operations／scheduler**：[Weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[multi-day dry-run frozen snapshot](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)、[working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)、[approval SOP](POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md)（原件未記錄建立日期；非現行操作核准，現行操作看 Manual／唯讀 Runbook）、[scheduler dry run](POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md)、[scheduled dry-run history](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)。目前可續寫登記表仍在 [`docs/06_qa`](../06_qa/POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)。
+- **Superseded daily check guide**：[2026-10-09 歸檔快照](EVIDENCE_SCHEDULED_MORNING_CHECK_HISTORY_20261009.md)。舊的四-task morning check 只供追溯；目前 21-task 操作見 [共用稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)，舊路徑保留相容導引。
+- **Versioned evidence operations**：[V1.3 operations](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md) · [V1.4 review history](POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md)。
+
+### V4 2026-09-07 bounded evidence
+
+以下是 2026-09-07 的 bounded data recovery、machine review 與 ML release 收據，不代表目前 source acceptance、ML eligibility 或待辦狀態。資料後續收尾見 [10/03 data closeout](../06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)；目前判讀看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與後續 QA。
+
+- [V4 data recovery record](V4_DATA_RECOVERY_2026_09_07.md)
+- [V4 automated review](V4_AUTOMATED_REVIEW_2026_09_07.md)
+- [V4 ML release bounded QA](V4_ML_RELEASE_2026_09_07.md)
+- [三面向清查建議實作交接（2026-09-07）](THREE_PERSPECTIVE_IMPLEMENTATION_2026_09_07_HISTORY.md)：保存分析／交易與持倉證據、ML 容量／release、UI／UX 的當日工程驗收及未完成 Gate；當時的 0/3 Formal inputs 與 UI 人工驗收限制不代表目前狀態。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 108](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-108)。
+
+- [早期 Full App healthcheck（2026-06-16）](FULL_APP_HEALTHCHECK_2026_06_16.md)：保存當時 8 個 UI 工作區的人工 smoke 結果；目前 UI 架構看 [system_architecture](../01_architecture/system_architecture.md)，操作步驟看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留轉址。
+
+- [早期資料收集架構藍圖](DATA_COLLECTION_ARCHITECTURE_HISTORY.md)：保留 2026-06 資料/API 基線、2026-06-11 券商雙指標契約與 2026-10-03 freshness 補記；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
+- [路徑隔離更新 v1.3.0（2024-10-16）](PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md)：保留舊版路徑覆蓋、dry-run 與測試說明；原 `docs/08_technical/path_isolation_update.md` 路徑提供轉址。目前設定依 `TWStockConfig`、[系統架構](../01_architecture/system_architecture.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md) 判讀；原件識別見 [Coverage History Entry 162](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-162)。
+
+
+- [全文件目錄快照（2026-10-06）](DOCUMENTATION_CATALOG_20261006_HISTORY.md)：保留當日 tracked 文件清單；它不是即時清冊，目前導航看 DOCUMENTATION_INDEX 與各專區 README。
+
+
+- [Workbench 左側主導覽 IA closeout（2026-07-07）](WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md) 與 [視覺層級 polish closeout（2026-07-07）](WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md)：保留一次性 UI closeout 與當時 QA 證據；目前操作流程見 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，目前狀態見 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
+- [V4 完成計畫（2026-09-07）](V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)：保留截至 2026-09-10 仍標示「進行中」的計畫與執行紀錄；這是當時狀態，不表示目前 V4 完成度。舊核心路徑保留導引頁。
+- [V1.1–V2.0 歷史版本路線](VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)：保留已完成版本的歷史演進；工程優先順序與目前狀態看 Snapshot／6M Roadmap。
+- [V1.5–V2.0 里程碑 QA](#v15v20-qa-milestones)：將已結束的早期版本收尾與 V1 release checklist 集中歸檔；舊 `docs/06_qa/` 路徑留有轉址頁，既有目錄／歷史連結仍可開啟。
+- [V2.1–V2.5 readiness／closeout 歷史](#v21v25-historical-readiness-and-closeout)：集中已結束的工程準備度與 closeout 報告；來源資格與 policy／approval 原件仍留在 QA。
+- [舊 AI Context Pack（截至 2026-08-30）](AI_CONTEXT_PACK_HISTORY_20260830.md)：封存過期狀態包；目前 Agent／開發者入口改看根目錄 `AGENT_CONTEXT.md`。
+- [6M Roadmap 歷史狀態與更新流水帳（2026-07 至 2026-09）](ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)：保存首屏補記、單輪 handoff、Gate 7 狀態、Gate 校正與變更記錄；Gate 定義仍在核心 Roadmap。
+- [產品 Roadmap 歷史狀態與行動草案（2026-07 至 2026-09）](PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md)：保存當時的工程／handoff 狀態與原始 30／60／90 日行動草案，不承擔產品方向或目前狀態權威。
+- [Product Roadmap 日期化交接紀錄（2026-09-14 至 09-21）](PRODUCT_ROADMAP_HANDOFF_HISTORY_20260914_TO_20260921.md)：保存 V4.1／V4.2 工程觀測與 V5／V6 當時 handoff；產品原則仍看核心 Product Roadmap。
+- [6M Roadmap Gate 3／4 歷史狀態（2026-08-26 至 08-28）](ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md)：保留原先留在 Gate 定義中的日期化 P0、Portfolio 與 Paper 工程觀測；目前狀態仍以 Snapshot 為準。
+- [V2.1–V4.0 版本路線更新歷史（2026-07-11 至 09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_UPDATE_HISTORY_20260711_TO_20260915.md)：保存成熟度文件曾附加的狀態快照與 handoff；版本 Gate 標準仍看核心版本 Roadmap。
+- [V2.1–V4.0 工程交接紀錄（2026-09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)：保存當時工程分流與下一步；版本成熟度標準仍以核心 Roadmap 為準。
+- [V2.1–V4.0 版本狀態快照（2026-07-12 至 2026-08-30）](VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)：保存各成熟度版本曾附加的階段狀態；目前狀態以 Snapshot 為準。
+- [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保存原第 16 節較早的流水帳，以及 2026-09-27、09-29、09-30、10-05／06 的指定日期切片；不是整個第 16 節的搬移。TechnicalIndicatorJob／IndustryMapper、SQLite connection lifecycle、ML initialization、H20 lineage、ML reader／loader、daily research snapshot／cohort／method／saved chart、homepage 與 private store routing 契約已留在 `system_architecture.md` 第 3、4、8、11 節。第 16 節仍有 10/03–10/07 混合增量與未抽出的契約；日期化接線與 guard 結果僅作歷史，當期驗收看 QA，現況看 Snapshot。
+- [PROJECT_SNAPSHOT 2026-10-09 精簡前歷史快照](PROJECT_SNAPSHOT_HISTORY_20261009.md)：保存現行 Snapshot 首屏精簡前的完整內容與當時的 WIP／通過／失敗／未驗證紀錄；只供追溯，現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及具名 QA 為準。
+- [目標系統架構更新歷史（2026-07-11 至 2026-09-25）](TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md)：保存目標架構背景文件原「更新記錄」逐次狀態；目標設計仍看 FINAL_TARGET_ARCHITECTURE，現況看 Snapshot／system architecture，R031 限制仍以具名 QA 為準。
+- [System Architecture R01 validation excerpt（2026-10-06）](SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)：保存從架構主文抽出的逐次 QA 記錄全文（僅去掉段落分隔用的尾端空白）；R01 讀取預算契約已集中於 `system_architecture.md` 第 11 節，驗收現況看對應 QA 與 Snapshot。
+- [舊端到端流程藍圖](SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)：保存舊 feature store、signals／recommendation 路徑、過時模組位置與建議新增元件；現況請看 `docs/01_architecture/system_architecture.md`，目標請看 `target_system_architecture.md`。
+- [文件編碼稽核（2026-06-16）](DOCUMENT_ENCODING_AUDIT_2026_06_16.md)：一次性 UTF-8／mojibake 掃描；保留當時結論，不代表目前 repo 的完整編碼檢查。
+- [文件與 Roadmap 重整稽核（2026-07-03）](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)：一次性文件治理稽核；Phase 歷史判讀已納入現行 `DOCUMENTATION_STRUCTURE.md`。
+- [Pre-push 文件治理稽核（2026-07-06）](DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06_HISTORY.md)：保留該次一次性文件盤點；後續治理狀態看現行 Index／Snapshot 與日期版 rebaseline。
+- [Pre-V2 非排程 readiness closeout（2026-07-06）](PRE_V2_NON_SCHEDULE_READINESS_CLOSEOUT_2026_07_06_HISTORY.md)：保留當時非時間型 V2.0 closeout 與仍待時間累積的限制；不得用來判定目前 readiness。
+- [ML Shadow 推論操作 closeout（2026-07-15）](ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15_HISTORY.md)：保留受控工程操作層結論及當時真實 frozen artifact smoke blocker；操作步驟仍看現行 runbook，模型資格仍看 Snapshot／現行 QA。
+- [SQLite inspector 關閉探測（2026-09-15）](QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)：保留 bounded probe 收據；當時未重現問題，不代表排除所有競態。
+- [Program Readiness 稽核（2026-08-27）](PROGRAM_READINESS_AUDIT_2026_08_27.md)保存初版盤點；[8/28 cleanup 前快照](PROGRAM_READINESS_AUDIT_2026_08_28.md)保留授權清理前的容量與剩餘 blocker，兩者均非目前狀態。8/29 後續處置見 [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md) 與 [Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)；目前 readiness 回 Snapshot。
+- [Prospective Formal Restart 被拒絕的 V2 staging（2026-08-27）](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md)：v2 calibration identity 綁定錯誤而遭拒絕；v3 是當時 successor。保留 staging／PIT hash 作歷史證據，不可採用此 clock，現況看 Snapshot。
+- [測試資產整理與候選處置結案（2026-09-17）](TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)是當時 bounded inventory 與處置依據；閱讀方法沿革時，同看[已撤回估算的 V1](TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)與[方法補正的 V2](TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md)。V1 的重複數／可刪數與行數收益已撤回，V2 的歷史檔案數及 inventory 口徑也不能當目前狀態；139 組候選／1,107 檔只屬 bounded union，不是完整測試母體。
+
+### V1.5–V2.0 QA milestones
+
+- [V1.5 Data Credibility closeout](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md)
+- [V1.6 Cross-sectional Factor Pipeline closeout](V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md)
+- [V1.6 Cross-sectional Factor Pipeline implementation plan（原 checklist 0/23）](superpowers/plans/2026-07-05-v1-6-cross-sectional-factor-pipeline.md) · [design spec](superpowers/specs/2026-07-05-v1-6-cross-sectional-factor-pipeline-design.md)
+- [V1.7 Negative Evidence closeout](V1_7_NEGATIVE_EVIDENCE_CLOSEOUT_2026_07_05.md)
+- [V1.8 Portfolio Sandbox closeout](V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md)
+- [V1.8 Portfolio Sandbox implementation plan（原 checklist 2/18 已勾）](superpowers/plans/2026-07-05-v1-8-portfolio-sandbox.md) · [design spec](superpowers/specs/2026-07-05-v1-8-portfolio-sandbox-design.md)
+
+原 plan checklist 狀態保留；QA closeout 另記錄 39 項測試通過。兩者不代表投資有效性或正式推薦／券商整合。
+- V1.6 原 plan checklist 0/23；closeout QA 獨立記錄 15 項工程測試通過。QA 不代表原 plan 完成，也不代表 ScoringEngine 接入、外部資料 ingestion、production scheduler 或投資有效性。
+- [V1.9 Read-only Agent MCP closeout](V1_9_READ_ONLY_AGENT_MCP_CLOSEOUT_2026_07_06.md)
+- [V1 Release checklist](V1_RELEASE_CHECKLIST_2026_06_30.md)
+- [V2.0 Workbench Phase 1 closeout](V2_0_WORKBENCH_PHASE1_CLOSEOUT_2026_07_06.md)
+- [V2.0 read-only source adapter closeout](V2_0_WORKBENCH_READ_ONLY_SOURCE_ADAPTER_CLOSEOUT_2026_07_06.md)
+
+### V2.1–V2.5 historical readiness and closeout
+
+- [V2.1 engineering readiness](V2_1_ENGINEERING_READINESS_2026_07_12.md) · [V2.1 formal closeout](V2_1_FORMAL_CLOSEOUT_2026_07_12.md) · [V2.1 Workbench Phase 2](V2_1_WORKBENCH_PHASE2_CLOSEOUT_2026_07_07.md)
+- [V2.2 engineering readiness](V2_2_ENGINEERING_READINESS_2026_07_12.md) · [Evidence operating loop check](V2_2_EVIDENCE_OPERATING_LOOP_READONLY_CHECK_2026_07_07.md) · [simulated phase progress QA](V2_2_SIMULATED_PHASE_PROGRESS_QA_2026_07_07.md) · [Week 1 review](V2_2_WEEK1_REVIEW_2026_07_12.md)
+- [V2.3 engineering readiness](V2_3_ENGINEERING_READINESS_2026_07_12.md) · [official source evidence pass](V2_3_OFFICIAL_SOURCE_EVIDENCE_PASS_2026_07_12.md)
+- [V2.4 engineering readiness](V2_4_ENGINEERING_READINESS_2026_07_12.md)
+- [V2.5 engineering readiness](V2_5_ENGINEERING_READINESS_2026_07_12.md)
+
+These are completed, dated engineering/readiness records. Current source acceptance and the V2.2/V2.3 approval packages remain in `docs/06_qa/`; the V2.4 policy/scope approvals are dated history in the Archive section above. Current paper-only execution controls are documented in the Application Manual and system architecture.
+
+<a id="archive-document-catalog"></a>
+## 📄 文檔列表
+
+### 2026-10-09 技術歷史參考
+
+- [Phase 2.5 參數設計改進紀錄](PARAMETER_DESIGN_IMPROVEMENTS_HISTORY.md)：保留當時的參數建議與實施狀態；目前優先順序看 Snapshot／6M Roadmap，評分行為看 Score Explanation 與具名 QA。來源路徑留下相容導引。
+- [MCP Yahoo Finance／openmarkets 本機 Patch 備忘](MCP_YFINANCE_OPENMARKETS_PATCH_MEMO_HISTORY.md)：特定本機環境觀察，沒有套件版本鎖定或 artifact hash；不可直接重套。新環境安裝看 [INSTALL_GUIDE](../07_guides/INSTALL_GUIDE.md)。來源路徑留下相容導引。
+
+- [操作手冊更新歷史（2026-09-27）](APPLICATION_MANUAL_CHANGELOG_2026_09_27.md)：原手冊的逐次更新記錄；操作步驟保留於主手冊與附冊。
+
+- [Roadmap Hub 整理前歷史（2026-09-27）](DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)：原 Hub 的日期化狀態、Next 與更新紀錄；現行導航已收斂至核心 Hub，不以本頁判斷目前進度。
+- [External Reference Version Blueprint §10–§11 歷史摘錄（2026-07-04 至 2026-10-08）](EXTERNAL_REFERENCE_VERSION_BLUEPRINT_HISTORY_20260704_TO_20261008.md)：保留 7/11 Roadmap 審查及更新記錄；現況與交付順序看 Snapshot／6M Roadmap，外部參考與資料源候選仍在核心藍圖 §§1–9，未宣告重新查核或完成。
+- [文檔索引整理前歷史（2026-09-27）](DOCUMENTATION_INDEX_HISTORY_2026_09_27.md)：保留舊索引的詳細分類與日期化摘要；目前閱讀入口以核心索引為準。
+- [專案快照整理前歷史（2026-09-27）](PROJECT_SNAPSHOT_HISTORY_2026_09_27.md)：保存 9/8–9/26 的逐輪觀測、驗證數字與限制；最新範圍及未解除邊界留在核心 Snapshot。
+
+- [PROJECT_SNAPSHOT歷史封存](PROJECT_SNAPSHOT_HISTORY_2026_09_08.md)：2026-09-08整理前的完整快照與時間順序；僅作追溯。
+
+- **[DOCUMENTATION_UPDATE_SUMMARY.md](DOCUMENTATION_UPDATE_SUMMARY.md)**
+  - 文檔更新總結（歷史記錄）
+
+- **[DOCUMENTATION_CLEANUP_REPORT.md](DOCUMENTATION_CLEANUP_REPORT.md)**
+  - 文檔清理報告（歷史記錄）
+
+- **[DOCUMENTATION_REORGANIZATION_PROPOSAL.md](DOCUMENTATION_REORGANIZATION_PROPOSAL.md)**
+  - 文檔重新整理建議（已執行）
+
+- **[SOLUTION_SUMMARY.md](SOLUTION_SUMMARY.md)**
+  - 早期解決方案快照；原文所列 UI 入口仍指向舊 `ui_app/`，不得據此判讀目前入口或操作。現行 UI／操作看 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
+- **[API_INVESTIGATION_REPORT.md](API_INVESTIGATION_REPORT.md)**
+  - 2025-12-08 的歷史 API 調查；前段「今天／本週」待辦屬當時工作，不能當成目前待辦或現行 API 契約。現行資料管線看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md)，架構與操作分別看 [system_architecture](../01_architecture/system_architecture.md) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+- **[ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md](ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)**
+  - 原 6M Roadmap 中 V1 / Month 1-6 / V1.1-V1.9 的歷史完工紀錄；目前工程順序仍以 [6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 為準。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
+
+- **`UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`**
+  - 2026-05-19 `ui_qt` 對照舊 roadmap 的歷史審核報表；部分狀態已被後續 UI / Portfolio / Workbench 進度取代。
+
+- **[PHASE_3_3B_IMPLEMENTATION_PLAN.md](PHASE_3_3B_IMPLEMENTATION_PLAN.md)**
+  - Phase 3.3b 歷史實施規劃（完成度待核）
+
+- **[NEXT_ACTION_PLAN.md](NEXT_ACTION_PLAN.md)**
+  - 下一輪 Roadmap Rebaseline、技術治理與 Agent 交接行動計畫（已執行，歷史歸檔）；現行狀態與優先序請看 Snapshot 與各 scoped roadmap。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
+
+- **`REFACTORING_MIGRATION_PLAN_2025.md`**
+  - 2025 年專案結構化與遷移計畫；各遷移步驟已完成，只作架構演進追溯
+
+- **`SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`**
+  - Gate 0 行為不變安全重構的已完成執行紀錄、rollback 與 residual candidate companion
+
+- **[DEVELOPMENT_ROADMAP_LEGACY_2026_06.md](DEVELOPMENT_ROADMAP_LEGACY_2026_06.md)**
+  - 2026-06-13 前的 Roadmap 歷史副本，包含舊線性 Phase、歷史 Done 與舊 Living Section；只作追溯，不作目前狀態依據。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
+
+- **[readme_test.txt](readme_test.txt)**
+  - 歷史測試文檔（已過時，保留作為參考）
+
+- **[root_readme_legacy_2025_12.txt](root_readme_legacy_2025_12.txt)**
+  - 原根目錄 `readme.txt`，內容停留在舊 Phase、舊入口與舊路徑說明；2026-06-18 已移入歸檔，只作歷史追溯，不作目前狀態依據。
+
+- **[dev_progress_note_legacy_2026_01.txt](dev_progress_note_legacy_2026_01.txt)**
+  - 原 `docs/00_core/note.txt` 歷史開發進度筆記；2026-06-30 自核心目錄歸檔，只作追溯，不作目前狀態依據。
+
+- **[ARCH_GOVERNANCE_CHECKLIST.md](ARCH_GOVERNANCE_CHECKLIST.md)**
+  - 早期架構治理自檢清單；2026-06-24 自 `docs/00_core/` 歸檔。目前架構權威以 `docs/01_architecture/system_architecture.md` 為準。
+
+- **[ARCH_GOVERNANCE_LIFECYCLE.md](ARCH_GOVERNANCE_LIFECYCLE.md)**
+  - 早期架構治理生命週期備忘；2026-06-24 自 `docs/00_core/` 歸檔，並非現行架構治理流程。模組邊界看 [system_architecture](../01_architecture/system_architecture.md)，目標遷移順序看 [FINAL_MIGRATION_SEQUENCE](../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md)；DOC_COVERAGE_MAP 與 DOCUMENTATION_STRUCTURE 只規範文件治理。
+
+- **[ARCH_VIOLATION_RESPONSE_POLICY.md](ARCH_VIOLATION_RESPONSE_POLICY.md)**
+  - 早期架構違規處理政策備忘；2026-06-24 自 `docs/00_core/` 歸檔，不是現行 enforcement policy 或例外登記簿。目前架構邊界以 [system_architecture](../01_architecture/system_architecture.md) 為準，目標設計不變條件見 [FINAL_ARCHITECTURE_INVARIANTS](../01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md)。
+
+- **[MASTER_GOAL_PLAYBOOK_2026_09_06.md](MASTER_GOAL_PLAYBOOK_2026_09_06.md)**
+  - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；01–07 的逐卡 bounded 工程交接見[歷史封存組](#2026-10-08-task-loop-01-07-historical-handoffs)，08-B 中央整合收據仍在 `docs/06_qa/TASK_LOOP_08_HANDOFF.md`。逐卡與中央工程整合不代表正式來源接受、自然前瞻、真實 Paper fills、具名 Formal review 或 V4 closeout 完成。
+
+- **[LUNA_PARALLEL_PLAN_2026_09_07.md](LUNA_PARALLEL_PLAN_2026_09_07.md)**
+  - 2026-09-07 Luna 三線平行規劃，該輪已於 2026-09-08 結案；整合結果見 [Luna Integration Closeout](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
+
+- **[LUNA_PROMPT_A_DATA_ML_2026_09_07.md](LUNA_PROMPT_A_DATA_ML_2026_09_07.md)**、**[LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md](LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md)**、**[LUNA_PROMPT_C_UX_2026_09_07.md](LUNA_PROMPT_C_UX_2026_09_07.md)**
+  - 2026-09-07 給 Luna A/B/C 三位子代理的一次性任務 Prompt；任務已結案並整合，歷史提示詞歸檔。
+
+- **[V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md](V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)**
+  - 2026-09-08 給新 Luna A/B/C 三線的接手任務 Prompt；已在 `docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md` 複核並提交入庫，歷史提示詞歸檔。
+
+- **[LUNA_B_ENVIRONMENT_2026_09_07.md](LUNA_B_ENVIRONMENT_2026_09_07.md)**
+  - 2026-09-07 Luna B 開發環境與依賴基線記錄快照；現行環境指引以 `docs/07_guides/INSTALL_GUIDE.md` 與 requirements 檔為準。
+
+<a id="archive-plans-and-specs"></a>
+## 開發計畫與規格追溯
+
+`docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
+
+<a id="2026-10-09-healthcheck-batch-3-recommendation-profile-regime-plan"></a>
+### 2026-10-09 Healthcheck Batch 3 Recommendation Profile／Regime 歷史 plan
+
+[Batch 3 plan 原文](superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md) 已保留於 Archive；舊 `docs/superpowers/plans/` 路徑保留相容導引。這次只整理計畫的歷史位置，不代表人工驗收完成：Full App healthcheck 仍將 R-002–R-005 與 RECOMMEND-ISSUE-001–004／008 標為「已修正待驗證」。目前操作與架構看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)，目前狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)；逐檔來源、雜湊、引用與前次保留決策見 [Coverage History Entry 142](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-142)。
+
+<a id="2026-10-09-healthcheck-batch-4-research-lab-results-plan"></a>
+### 2026-10-09 Healthcheck Batch 4 Research Lab Results 歷史 plan
+
+[Batch 4 plan 原文](superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md) 已保留於 Archive；舊 `docs/superpowers/plans/` 路徑保留相容導引。原計畫的 Execution Summary 與文件同步清單已勾選，但 Full App healthcheck 仍將 BACKTEST-ISSUE-013／015／022／024 與 B-029／030／033／040／042 標為「已修正待驗證」；本次歸檔不代表人工重測通過。QA 狀態仍可從 [Full App healthcheck coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 查閱；目前操作／架構／狀態分別看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[system architecture](../01_architecture/system_architecture.md) 與 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。逐檔 bytes／SHA 與引用判讀見 [Coverage History Entry 143](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-143)。
+
+### 2026-10-09 Healthcheck Batch 5 效能／營運計畫
+
+[Batch 5 歷史計畫原文](superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md)；舊 [`docs/superpowers/plans/` 路徑](../superpowers/plans/2026-06-23-healthcheck-batch5-performance-operations.md)保留相容導引。原件的 Execution Summary 與文件同步清單標示完成，但 17 個 TDD 步驟仍未勾選；此狀態差異原樣保留。Full App healthcheck 對 BACKTEST-ISSUE-010／011／012 的狀態仍是「已修正待驗證」，MARKET-ISSUE-003 是「已排查待驗證」，UPDATE-ISSUE-013／014 則仍是未平行化的後續設計。這次封存不宣告人工驗收或這些後續設計完成。現行 optimizer contract 看 [系統架構](../01_architecture/system_architecture.md)，使用與限制看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，逐檔 bytes／SHA 與引用範圍見 [Coverage History Entry 141](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-141) 及 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+### 2026-10-09 Data Update／Research Lab 舊計畫與規格
+
+- Data Update Workbench 的[計畫原文](superpowers/plans/2026-05-20-data-update-workbench.md)與[設計 spec](superpowers/specs/2026-05-20-data-update-workbench-design.md)保留 2026-05 的工作台方向；plan 的 24 項工程核取均未勾。原頂層 Tab 方向已由後續市場探索入口取代；封存不表示完整實作或重新授權工作。
+- Research Lab Workbench V1 的[計畫](superpowers/plans/2026-06-04-research-lab-workbench-v1.md)與[設計 spec](superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md)，以及 workflow redesign 的[計畫](superpowers/plans/2026-06-04-research-lab-workflow-redesign.md)與[設計 spec](superpowers/specs/2026-06-04-research-lab-workflow-redesign.md)保留初始設計脈絡；兩份 plan 的 35／55 項核取均未勾。歸檔不宣告完成，也不把原 plan 轉成現行待辦。
+- 原路徑保留相容導引，六份原件 bytes／SHA 與路徑引用見 [Superpowers plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 140](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-140)。目前狀態／優先序看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作與架構看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)／[system architecture](../01_architecture/system_architecture.md)。
+
+### 2026-10-09 Research Run Registry Month 1 schema 設計
+
+- [Research Run Registry 設計規格（2026-06-14）](RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md)：保存 Month 1 提出的欄位、儲存方式與 API 草案。提案中的 `delete_run()` 與獨立績效欄位不等於目前 repository/service 契約；現況以 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與現行程式碼為準。功能目錄的舊路徑留相容導引，來源 bytes／SHA 與引用核對見 [Coverage History Entry 137](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-137)。
+
+### 2026-10-08 Post-V1 engineering plans and specs
+
+13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。2026-07-07 Scheduler Approval plan/spec 配對於 2026-10-09 封存；測試現讀取 Archive 原件，不代表正式排程已核准或啟用。
+
+<a id="2026-10-09-post-v1-evidence-review-dashboards-plan-spec"></a>
+### 2026-10-09 Post-V1 Evidence Review Dashboards plan/spec
+
+[7/11 dashboard plan 原文](superpowers/plans/2026-07-11-post-v1-evidence-review-dashboards.md) 與[設計 spec 原文](superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。工程實作及對應測試由[具名 QA 收據](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)記錄；[7/12 人工 UI smoke checklist](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md) 的結果表仍空白，multi-day dry-run 與 production scheduler approval 是分開的開放 Gate。本次歸檔不代表這些 Gate 已完成；原件 bytes／SHA 與生命週期判讀見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+<a id="2026-10-09-post-v1-scheduler-approval-plan-spec"></a>
+### 2026-10-09 Post-V1 Scheduler Approval plan/spec
+
+[7/7 plan 原文](superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md) 與[design spec 原文](superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。Plan 內 17/17 個工程項目已勾選；其工作範圍是 working-copy smoke、readiness evaluator 與人工 approval checklist。正式排程仍未核准、未啟用，readiness 仍受 `production_scheduler_allowed=false` 限制；multi-day dry-run 與人工 UI smoke 等 Gate 分開判讀。測試已改為直接讀取 Archive 原件，未改斷言；bytes／SHA 與引用路徑見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 136](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-136)。
+
+<a id="2026-10-09-post-v1-evidence-operations-source-persistence-plan-spec"></a>
+### 2026-10-09 Post-V1 Evidence Operations／Source Persistence plan/spec
+
+[7/2 V1.3 Evidence Operations plan 原文](superpowers/plans/2026-07-02-v1-3-evidence-operations.md) 與[設計 spec](superpowers/specs/2026-07-02-v1-3-evidence-operations-design.md)，以及[7/4 Evidence Source Persistence plan 原文](superpowers/plans/2026-07-04-post-v1-evidence-source-persistence.md) 與[設計 spec](superpowers/specs/2026-07-04-post-v1-evidence-source-persistence-design.md)，已移至 Archive；`docs/superpowers/` 舊路徑保留導引。原始核取狀態為 11/3 與 29/2（已勾／未勾），完整狀態未改寫；封存不宣告未勾項目完成。配套 [V1.3 QA](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md) 與 [Source Persistence QA](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md) 保存原驗收範圍。Dashboard UI、scheduler design、歷史 payload 與其他 coverage gaps 依 QA 原文判讀；production scheduler 未因此核准或啟用。bytes／SHA 與舊路徑引用見 [Coverage History Entry 152](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-152)。
+
+<a id="2026-10-09-post-v1-evidence-event-store-plan-spec"></a>
+### 2026-10-09 Post-V1 Evidence Event Store plan/spec
+
+[7/1 Event Store plan 原文](superpowers/plans/2026-07-01-post-v1-evidence-event-store.md) 與[設計 spec 原文](superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留導引。原 plan checklist 為 **0/20 項已勾選**；配套 [QA 收據](POST_V1_EVIDENCE_EVENT_STORE_QA_2026_07_01.md) 記錄實作及測試結果。這個差異保留，不替原件補勾，也不代表 Gate 2、投資有效性、UI 或 importer 工作通過。QA 中的測試數字是原報告記錄，非本次重跑。原件 bytes／SHA、依賴盤點與生命週期判讀見 [Coverage History Entry 154](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-154)。
+
+### 2026-10-08 Month 2 Registry／storage plan
+
+[Month 2 Parameter & Run Storage Governance Plan 原文](superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 已結案並移至本目錄；[舊路徑](../superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 保留導引。原文 C4 驗證證據與 Definition of Done 記錄最終完成狀態；前段「等待核准」文字是過程快照，不能作為目前狀態。原始 bytes／SHA 與生命週期見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+### 2026-10-08 Month 3 Factor Layer 歷史設計與實作材料
+
+Factor Layer v1 的 [設計規格](superpowers/specs/2026-06-14-month-3-factor-layer-design.md)、[實作計畫](superpowers/plans/2026-06-14-month-3-factor-layer.md) 與 [Research Run 整合計畫](superpowers/plans/2026-06-14-month-3-factor-run-integration.md) 已依類型歸檔；原路徑保留導引。實作計畫的 Task 1–10 均勾選完成，但「Commit only after user approval」仍未勾選；Git history 有對應實作提交，歸檔保留該差異而不推定核准流程。設計、架構與目前狀態請回到 [系統架構](../01_architecture/system_architecture.md) 與 [專案快照](../00_core/PROJECT_SNAPSHOT.md)。原件路徑與 SHA 見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+另外，[Factor Replay coverage plan](superpowers/plans/2026-06-15-month3-factor-replay-coverage.md) 與 [Recommendation factor feed plan](superpowers/plans/2026-06-15-month-3-recommendation-factor-feed.md) 是後續已執行的 Month 3 factor 擴充計畫；各自的 QA／lint 證據留在原文，現況仍以 Snapshot 與 Architecture 為準。
+
+### 2026-10-09 Daily Decision Desk Spark plan 與 Month 4 closure
+
+[初始 Spark execution plan 原文](superpowers/plans/2026-06-15-daily-decision-desk-spark-execution-plan.md) 與 [Month 4 closure plan 原文](superpowers/plans/2026-06-16-month4-daily-decision-desk-closure.md) 均已封存，各自舊路徑保留導引。初始 plan 要求新增頂層「每日決策」Tab，已由現行唯一入口「市場探索 > 市場總覽」取代；closure plan 記錄 service-backed v1 結案與驗證數字，但 Task 1–7 核取方塊仍未勾選，兩種狀態原樣保留。現況與操作分別看 [system architecture](../01_architecture/system_architecture.md) 與 [Application Manual §8](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk)。來源 bytes／SHA、替代入口與引用核對見 [Coverage History Entry 128](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-128) 及 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+### 2026-10-08 Safe Refactor continuation plan
+
+[Safe Refactor continuation plan 原文](superpowers/plans/2026-07-11-safe-refactor-continuation.md) 已結案並移至 Archive；[舊路徑](../superpowers/plans/2026-07-11-safe-refactor-continuation.md) 保留導引。核准、shim／legacy removal audit、release healthcheck 與測試收據見 [原始 QA audit](../06_qa/SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md) 和 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；目前架構以 system architecture 為準。
+### 2026-10-08 Month 3 Portfolio Replay history
+
+Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation commit 的 Portfolio Replay 計畫原文已歸檔：
+
+- [Month 3 closure audit](superpowers/plans/2026-06-15-month3-closure-audit.md)
+- [Cash-constrained orders](superpowers/plans/2026-06-15-portfolio-replay-cash-constrained-orders.md)、[cash ledger](superpowers/plans/2026-06-15-portfolio-replay-cash-ledger.md)、[credibility manifest](superpowers/plans/2026-06-15-portfolio-replay-credibility-manifest.md)
+- [Execution costs](superpowers/plans/2026-06-15-portfolio-replay-execution-costs.md)、[gap-risk labels](superpowers/plans/2026-06-15-portfolio-replay-gap-risk-labels.md)、[liquidity gate](superpowers/plans/2026-06-15-portfolio-replay-liquidity-gate.md)
+- [Lot sizing](superpowers/plans/2026-06-15-portfolio-replay-lot-sizing.md)、[unfilled orders](superpowers/plans/2026-06-15-portfolio-replay-unfilled-orders.md)
+
+以上 8 份計畫的實作步驟均已勾選，且各有 implementation commit。Archive manifest 記錄原路徑、commit、bytes 與 SHA。現況仍看 Snapshot、Architecture、Manual 與具名 QA。
+
+### 2026-10-09 Portfolio Replay weight/exposure plan 增補
+
+[weight/exposure plan 原文](superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md) 已於 10/09 封存，來源路徑留下短導引。實作 commit `d8276f5b` 包含計畫、程式、測試、Snapshot、Roadmap 與 Manual；原計畫最後一個 diff／stage 檢查核取項目仍未勾選。保留此狀態差異，不推論為獨立 QA 結案或目前行為證明；bytes／SHA 見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+### 2026-10-08 V3 score effectiveness／ML readiness history
+
+[V3 Score Effectiveness／ML Readiness design spec](superpowers/specs/2026-07-08-v3-score-effectiveness-ml-readiness-design.md) 與 [implementation plan](superpowers/plans/2026-07-08-v3-score-effectiveness-ml-readiness.md) 已依原類型歸檔，舊路徑保留導引。當時 V3 engineering candidate inputs 標示完成；計畫明確停在 read-only audit、shadow research 與 closeout readiness，不訓練或部署 production ML。此為 2026-07 判斷，目前 ML 狀態以 Snapshot、Architecture 與現行 QA 為準。
+
+### 2026-10-08 UI readability polish plans
+
+- [UI UX Readability Polish plan](superpowers/plans/2026-07-07-ui-ux-readability-polish.md) 與 [design spec](superpowers/specs/2026-07-07-ui-ux-readability-polish-design.md)
+- [Workbench Visual Hierarchy Polish plan](superpowers/plans/2026-07-07-workbench-visual-hierarchy-polish.md) 與 [design spec](superpowers/specs/2026-07-07-workbench-visual-hierarchy-polish-design.md)
+
+兩組計畫均有 closeout commit，原件及各自範圍外的未完成門檻均保留。現況 UI 行為以 Application Manual 為準。
+
+### 2026-10-08 TPEX daily-price backfill plan
+
+[2026-06 TPEX daily-price backfill plan](superpowers/plans/2026-06-16-tpex-daily-price-backfill.md) 已結案並移至 Archive，舊路徑保留導引。原計畫與 `8d02af91e` 文件 closeout 相符；它描述的 OpenAPI 流程早於後來新增的 official raw custody、capture metadata、CSV／DB preflight 與 PIT 限制。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，後續正式驗收看 [2026-09-18 TPEX backfill QA](../06_qa/TPEX_SINGLE_DAY_PRECAPTURED_BACKFILL_2026_09_18.md)。
+
+### 2026-10-08 Financial float boundary governance history
+
+[金融 float 邊界治理 plan](superpowers/plans/2026-06-11-financial-float-boundary-governance.md) 與[配套設計 spec](superpowers/specs/2026-06-11-financial-float-boundary-governance-design.md) 已依類型歸檔，原路徑保留導引。計畫驗收項目全數勾選，Git closeout 為 `2d27d02bd`；此處只結束 2026-06 的實作計畫，不表示金融數值邊界政策失效。現行狀態看 [專案快照](../00_core/PROJECT_SNAPSHOT.md) 與 [系統架構](../01_architecture/system_architecture.md)。
+
+### 2026-10-08 Documentation roadmap rebaseline plan
+
+[Scoped SSOT／Roadmap rebaseline plan](superpowers/plans/2026-06-13-doc-governance-roadmap-rebaseline.md) 已完成並封存，舊路徑保留導引；結案檢查見 `76a30273f`、`d6533557f`，當期稽核見[文件與 Roadmap 重整稽核](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)。現行職責看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)、[DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 與 [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md)。
+
+### 2026-10-08 Legacy Test Governance history
+
+[Legacy Test Governance 計畫](superpowers/plans/2026-06-14-legacy-test-governance.md) 與[設計規格](superpowers/specs/2026-06-14-legacy-test-governance-design.md) 已結案並封存，舊路徑保留導引。計畫 23 個工作項目全數勾選，並由 `c617a6104` 記錄 closeout；此資料只記錄 2026-06 的 API 遷移與 pytest collection 整理。現行測試清冊、分類與手動測試界線請看[最新測試清冊](../06_qa/TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[QA 主題地圖](../06_qa/README.md) 與 [manual tests README](../../tests/manual/README.md)。
+
+<a id="governance-entry-snapshots"></a>
+## 2026-10-06 治理入口整理原文快照
+
+下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：
+
+- [整理前 PROJECT_SNAPSHOT](PROJECT_SNAPSHOT_HISTORY_20261006.md)
+- [整理前 DOCUMENTATION_INDEX](DOCUMENTATION_INDEX_HISTORY_20261006.md)
+- [整理前 docs README 與索引前言](DOCUMENTATION_ENTRY_HISTORY_20261006.md)
+- [文件重新整理 mapping 與處置清冊](DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)：記錄 2026-10-06 當時的整理範圍，不代表後續全文件核讀、最終全 repo links／anchors 或 Graphify 刷新已完成。
+
+<a id="task-loop-handoffs"></a>
+## 2026-10-08 Task Loop 01-07 historical handoffs
+
+七份逐卡 handoff 記錄各自的 bounded 工程範圍、驗收與限制。08-B 後續完成中央整合並逐卡覆核；因此 01–07 移至 Archive，中央整合與外部 Gate 殘餘邊界仍由 QA 的 [TASK_LOOP_08_HANDOFF](../06_qa/TASK_LOOP_08_HANDOFF.md) 說明。這批歸檔只整理歷史證據，不把正式來源接受、PIT／自然前瞻、真實 Paper fills、具名 review 或 V4 maturity 標示為完成。舊 QA 路徑保留短轉址；原文 bytes 與 SHA-256 見 [Coverage History Entry 082](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-082)。
+
+- [TASK_LOOP_01_HANDOFF.md](TASK_LOOP_01_HANDOFF.md)
+- [TASK_LOOP_02_HANDOFF.md](TASK_LOOP_02_HANDOFF.md)
+- [TASK_LOOP_03_HANDOFF.md](TASK_LOOP_03_HANDOFF.md)
+- [TASK_LOOP_04_HANDOFF.md](TASK_LOOP_04_HANDOFF.md)
+- [TASK_LOOP_05_HANDOFF.md](TASK_LOOP_05_HANDOFF.md)
+- [TASK_LOOP_06_HANDOFF.md](TASK_LOOP_06_HANDOFF.md)
+- [TASK_LOOP_07_HANDOFF.md](TASK_LOOP_07_HANDOFF.md)
+
+<a id="2026-10-09-healthcheck-batch6-regime-research-lab-plan"></a>
+## 2026-10-09 Healthcheck Batch 6 Regime／Research Lab plan
+
+- [2026-06-23 Batch 6 plan 原文](superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md) 已移至 Archive；[原路徑](../superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md)保留相容導引。原 Execution Log／Verification Result 記錄 Task 1–4 與當時的測試結果；12 個 TDD／verification 步驟仍未勾，原文照存，不推定整體或人工驗收完成。
+- `MARKET-ISSUE-002` 最後一筆 Full App healthcheck 記錄仍為「已修正待驗證／待使用者驗證」；本次未找到較新的 issue-specific 使用者重測 closeout。此為歷史狀態，今天的實際判讀應回到 [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[system architecture](../01_architecture/system_architecture.md) 與目前 QA，不以舊 plan 建立新優先序。
+- 原件 bytes／SHA、引用查核、狀態差異及替代入口見 [Coverage History Entry 145](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-145)；原路徑與 Archive 位置見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+<a id="2026-10-09-backtest-chart-plan"></a>
+## 2026-10-09 回測 fast renderer 歷史 plan
+
+- [2026-05-19 Optimize UI Qt Charts plan 原文](superpowers/plans/2026-05-19-optimize-ui-qt-charts.md) 已移至 Archive；[原路徑](../superpowers/plans/2026-05-19-optimize-ui-qt-charts.md)保留相容導引。原計畫 13 個實作／驗證核取項目均未勾，不將程式或測試存在解讀為所有步驟、人工操作或視覺驗收已完成。
+- 回測結果圖的 B-038 仍依 [Full App QA Coverage Mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 標示「已修正待驗證」，視覺 pixel QA 尚待完成。[UX07](../06_qa/UX07_CHART_FEASIBILITY_20261005.md) 為可行性調查；[UX08](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md) 是個股原生圖表契約，兩者都不取代 B-038 回測圖表驗收。
+- 目前操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前狀態與優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。原件 bytes／SHA、引用稽核與效力界線見 [Coverage History Entry 144](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-144)；原路徑與封存位置也列於 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+<a id="2026-10-09-decision-desk-portfolio-alert-plans"></a>
+## 2026-10-09 Daily Decision Desk Portfolio Alert 歷史計畫
+
+- [Portfolio Alert Chip Provider 原文](superpowers/plans/2026-06-15-decision-desk-portfolio-alert-chip-provider.md) 與 [Portfolio Alert Attribution 原文](superpowers/plans/2026-06-15-decision-desk-portfolio-alert-attribution.md) 已移至 Archive；[兩個舊路徑](../superpowers/plans/)保留相容導引。原計畫分別有 25／37 個未勾選工程／驗證項目；歸檔保留原始核取狀態，不代表實作或 QA 完成。
+- Full App healthcheck 的 `D-009` 仍為「需確認」，真實 Portfolio 狀態仍需人工確認。本次沒有升級 QA 狀態；目前操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，架構責任看 [system architecture](../01_architecture/system_architecture.md)。
+- 原件 bytes／SHA、引用查核與生命週期效力見 [Coverage History Entry 146](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-146)；原路徑／Archive 對照見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+## 2026-10-09 Midnight Analyst UI 遷移歷史
+
+- [2026-07-02 第一輪低風險 UI 遷移清單](UI_DESIGN_SYSTEM_MIDNIGHT_ANALYST_MIGRATION_HISTORY_20260702.md)：保存 UI 設計系統文件中的日期化遷移完成描述；它不代表目前全 UI 一致性或 QA 已全面通過。現行 theme 規格與尚保留的遷移邊界見[架構文件](../01_architecture/ui_design_system_midnight_analyst.md)。來源範圍與 bytes／SHA-256 見 [Coverage History Entry 160](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-160)。
+
+<a id="2026-10-09-daily-decision-desk-ranking-and-risk-prompt-plans"></a>
+## 2026-10-09 Daily Decision Desk 排序、風險提示與觀察清單歷史 plans
+
+- [Relative Strength／Liquidity Ranking 原文](superpowers/plans/2026-06-15-decision-desk-relative-strength-liquidity-ranking.md)、[Risk Prompt Bridge 原文](superpowers/plans/2026-06-15-decision-desk-risk-prompt-bridge.md)、[Watchlist Trigger 原文](superpowers/plans/2026-06-15-decision-desk-watchlist-trigger.md) 已移入 Archive；三個[原路徑](../superpowers/plans/)保留相容導引。原 plan 的 Step checklist 分別是 0/31、0/33、0/25；這是保存當時核取狀態，不代表實作已完成或未完成。
+- Full App QA 的 D-007、D-008、D-009 仍標示「需確認」，各自保留低流動性／歷史不足提示、候選池真實狀態、Portfolio 真實狀態的人工確認要求。本次沒有變更 QA 狀態。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，架構看 [system architecture](../01_architecture/system_architecture.md)。
+- 原路徑、Archive 位置、bytes／SHA-256 與正規化雜湊見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 161](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-161)。
+
+<a id="2026-10-09-recommendation-portfolio-optimization-plan-spec"></a>
+## 2026-10-09 Recommendation Portfolio Optimization 歷史 plan/spec
+
+- [舊 plan 路徑導引](../superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md)與[舊 spec 路徑導引](../superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md)保留相容入口；逐位元組原文分別在 [plan](superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md) 與 [spec](superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md)。
+- 原 plan checklist 為 0/38。`RecommendationPortfolioOptimizerService` 與一個參數排序單元測試存在，但這只證明有一段程式與有限測試，不代表原計畫、使用者流程或真實大型搜尋全部驗收；Full App B-027 仍需確認，真實大型搜尋限人工。此歷史提案不構成目前待辦或交易依據。
+- 目前方向與狀態回到 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 及 [6M Gate 4](../00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1)；操作與推薦組合回測能力看 [Backtest Lab 功能文件](../02_features/BACKTEST_LAB_FEATURES.md)，QA 範圍看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。逐檔 bytes／SHA、引用核對與效力見 [Coverage History Entry 165](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-165)。
+
+## 2026-10-09 PROJECT_NAVIGATION 日期化更新記錄
+
+- [2026-10-05 至 10-07 導覽更新歷史](PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md)：保存根目錄開發者導航原有的日期化更新記錄與 QA 導覽文字。它是歷史快照，不作目前狀態或執行順序依據；現況回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[DEVELOPMENT_ROADMAP](../00_core/DEVELOPMENT_ROADMAP.md) 與各具名 QA。來源範圍、bytes／SHA 與替代入口見 [Coverage History Entry 167](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-167)。
+
+## ⚠️ 注意
+
+這些文檔主要用於記錄歷史，日常使用時請參考：
+- `../00_core/DOCUMENTATION_INDEX.md` - 文檔索引
+- `../00_core/PROJECT_SNAPSHOT.md` - 專案快照
+- `../00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線

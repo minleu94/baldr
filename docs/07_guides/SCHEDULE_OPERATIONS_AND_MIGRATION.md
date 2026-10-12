@@ -1,102 +1,114 @@
 # Windows／Codex 排程運維與搬機指南
 
-本指南維護排程用途與搬機契約；實際任務清單、帳戶、絕對路徑、XML、模型與回讀證據保存於本機 ignored 清冊。最新設定與 producer 回讀見 [2026-10-09 排程修正 QA](../06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md)；日常唯讀核查規則見[全排程稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。[2026-10-06 排程稽核](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md)保留較早的時點證據。本文件不是自動註冊、啟用或切換 exe 的授權。
+本指南說明 baldr 排程的種類、日常核對入口與移機界線。它是操作文件，不是註冊、啟用、手動觸發、改帳戶或切換 portable executable 的授權。若目標是新機或 owner 移交，從[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)開始；唯讀查證看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
-## 排程的三個層次
+## 排程種類與權威
 
-| 層次 | 執行內容與前提 | 搬機處理 |
+| 類型 | 由什麼執行 | 移機時要核對 |
 |---|---|---|
-| Windows Task Scheduler | 以所選 Windows 帳戶執行 canonical cmd wrapper；受登入、電源、時區、trigger、timeout、權限影響 | 重建 action／環境與同等必要權限，核對 XML 與自然 run |
-| 本機 Codex cron | 從保存 prompt 建立獨立工作；具有自己的 execution model／effort／project／cwd | 新機重新連結 project，保留 cadence、停用狀態、通知，核對真 model 欄位 |
-| 本機 Codex heartbeat | 喚回既有對話，TOML 通常僅保存 target thread；模型需核對目標對話 metadata | 同帳戶確認目標對話可用；缺對話時先重建持久指令並保持停用，不搬 session DB |
-| 雲端使用者排程 | 與本機 Codex 分開管理，沒有本機資料夾存取契約 | 從雲端排程頁另盤點；不要因本機找不到就新增重複項 |
+| Windows Task Scheduler | baldr canonical CMD wrapper 或固定隱藏 dispatcher | Task identity、action／argv、working directory、principal、timezone／trigger、enabled、retry／timeout、依賴和同次產物 |
+| 本機 Codex cron | 保存的 automation prompt 加 execution model／effort／project／working directory | 原 owner、目標 project、實際 execution model、effort、通知、cadence、timezone、paused／active |
+| 本機 Codex heartbeat | 喚回既有 Codex 對話；保存目標 thread 與週期 | 目標 thread 是否可用、對話真正 model、週期、timezone、通知和狀態；不可搬 session database |
+| 雲端排程 | 雲端服務自己的 automation | 需在雲端排程頁另行盤點；本機找不到不代表沒有，也不應新增重複工作 |
 
-Codex 的文字 prompt 中寫某個模型，不能代替實際 execution model。heartbeat 目標對話的模型 metadata 也不是下一輪 server 已接受模型的證據。修改需 supported API／UI，保留 effort、fast、通知、owner、trigger、timezone、cwd、status；不能直接修改對話資料庫或執行中的 turn。官方 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 說明本機工作需要電腦開機、App 運行與 project 可用，並可選模型／reasoning effort。
+Prompt 文字寫著某模型不代表實際 execution model；heartbeat 對話 metadata 也不是下一輪已接受模型的證據。變更使用該平台支援的 UI／API，保留 owner、timezone、通知、effort、cwd 與 enabled 狀態。不得直接修改 Codex 對話資料庫或執行中的 turn。
 
-## Windows 任務與入口
+## Windows 21 個任務的文件化基準
 
-以下是 2026-10-06 的 21 個專案任務。時間除兩個帶 offset 的任務外，都是 **Windows `Pacific Standard Time` 本地時間，隨 DST**；不是全年固定 UTC 或台北時刻。Task 名稱加 `baldr-` 前綴，入口都在 `scripts/scheduled/`。Windows 工作的 Codex model／effort 為「不適用」；ML 模型則是具 lineage 的模型 artifact，不是 Codex LLM。
+下表逐項對照 `scripts/inspect_scheduled_task_registration.py` 的 `EXPECTED_TASKS`（21 個完整 ID 與預期 trigger）及 `TASK_WRAPPER_PATHS`（21 個 canonical CMD 路徑），並保留 2026-10-06 文件化用途。這是 repo 靜態契約／文件基準，不是任何 Windows 主機的 scheduler readback。Checker 的 19 個一般 Pacific 時間字串不包含 timezone；`Pacific Standard Time` 是目前註冊契約與文件基準，兩個 offset 任務則在 checker 字串中明列 `+08:00`。新機仍須讀 XML、principal、trigger、timezone／offset 與實際 UTC／本地 `NextRun`，不可由此表推定已註冊或自然 run 通過。
 
-縮寫：`O` 是有效 OUTPUT_ROOT，`R` 是 repository root，`S` 是既有 recommendation-learning shadow root，`B` 是 BankTaiwan shadow root。`O` 不一定等於 `R/output`；私人／Paper／模型根也不能全塞進 O。收據欄列驗收入口，還必須追同次 immutable terminal／run identity／hash。
+| 完整 Task ID | 預期 trigger／timezone | canonical wrapper | Lane／用途 |
+|---|---:|---|---|
+| `baldr-data-update-quick-daily` | DAILY 04:20 · Pacific local | `scripts/scheduled/run_daily_data_update_quick.cmd` | Quick 行情與 SQLite 增量、近期研究資料 child |
+| `baldr-official-market-events-daily` | DAILY 04:50 · Pacific local | `scripts/scheduled/run_official_market_event_backfill.cmd` | 官方事件 append-only 回填 |
+| `baldr-data-freshness-check-daily` | DAILY 05:00 · Pacific local | `scripts/scheduled/run_daily_data_freshness_check.cmd` | 唯讀檢查行情與來源新鮮度 |
+| `baldr-ml-raw-pit-refresh-daily` | DAILY 05:05 · Pacific local | `scripts/scheduled/run_ml_raw_pit_refresh.cmd` | 通過 freshness／revision gate 後更新 PIT |
+| `baldr-recommendation-snapshot-daily` | DAILY 05:10 · Pacific local | `scripts/scheduled/run_recommendation_snapshot.cmd` | 保存推薦研究與候選快照 |
+| `baldr-evidence-pipeline-dry-run-daily` | DAILY 05:15 · Pacific local | `scripts/scheduled/run_evidence_pipeline_dry_run.cmd` | 唯讀 Evidence dry-run |
+| `baldr-ml-promotion-evidence-daily` | DAILY 05:17 · Pacific local | `scripts/scheduled/run_ml_promotion_evidence.cmd` | 核 promotion evidence 與同源 lineage |
+| `baldr-ml-promotion-authority-daily` | DAILY 05:18 · Pacific local | `scripts/scheduled/run_ml_promotion_authority.cmd` | 讀相容 evidence／本機 authority |
+| `baldr-ml-allocation-copilot-daily` | DAILY 05:20 · Pacific local | `scripts/scheduled/run_ml_allocation_copilot.cmd` | 缺資格時維持 rule-only 的配置研究 |
+| `baldr-decision-evidence-capture-daily` | DAILY 05:25 · Pacific local | `scripts/scheduled/run_decision_evidence_capture.cmd` | 保存決策摘要與 evidence event |
+| `baldr-ml-direct-chain-maintainer` | DAILY 10:00 · Pacific local | `scripts/scheduled/run_ml_direct_chain_maintenance.cmd` | Direct／OOC／release custody chain |
+| `baldr-forward-outcomes-daily` | DAILY 05:40 · Pacific local | `scripts/scheduled/run_forward_outcomes_daily.cmd` | 有界 forward outcomes writer |
+| `baldr-recommendation-calibration-learning-daily` | DAILY 05:45 · Pacific local | `scripts/scheduled/run_recommendation_calibration_learning.cmd` | 推薦 capture／outcome／learning shadow |
+| `baldr-recommendation-calibration-learning-banktaiwan-shadow-daily` | DAILY 05:50 · Pacific local | `scripts/scheduled/run_banktaiwan_recommendation_learning_daily.cmd` | 同源 BankTaiwan 成本 shadow lane |
+| `baldr-paper-execution-eod-replay-daily` | DAILY 06:00 · Pacific local | `scripts/scheduled/run_paper_execution_daily_isolated.cmd` | EOD Paper replay 與 bounded dependency gate |
+| `baldr-pit-sector-membership-preopen-capture-daily` | DAILY 16:00 · Pacific local | `scripts/scheduled/run_pit_sector_membership_preopen_capture.cmd` | PIT 產業成分盤前 capture |
+| `baldr-paper-portfolio-daily` | DAILY 08:25 +08:00 · Asia/Taipei | `scripts/scheduled/run_paper_portfolio_daily.cmd` | Paper preopen snapshot；08:30 guard |
+| `baldr-ml-allocation-forward-daily` | DAILY 08:25 +08:00 · Asia/Taipei | `scripts/scheduled/run_ml_allocation_forward_daily.cmd` | Forward candidate-only shadow；08:30 cutoff／08:35 deadline |
+| `baldr-formal-pit-sidecar-postcutoff-daily` | DAILY 18:00 · Pacific local | `scripts/scheduled/run_formal_pit_sidecar_postcutoff.cmd` | cutoff 後 PIT sidecar／Paper event capture |
+| `baldr-formal-input-producer-daily` | DAILY 21:25 · Pacific local | `scripts/scheduled/run_formal_input_producer_daily.cmd` | Rule、Paper、PIT candidate handoff |
+| `baldr-v2-2-weekly-collection` | WEEKLY SUN 18:00 · Pacific local | `scripts/scheduled/run_v2_2_weekly_collection.cmd` | Weekly collection 及有界研究 children |
 
-| Task（省略 baldr-） | Trigger | 用途／先後依賴 | canonical wrapper | 驗收輸出 |
-|---|---|---|---|---|
-| data-update-quick-daily | 04:20 daily | Quick 行情與 SQLite 增量、research monthly child；官方來源與交易日 | run_daily_data_update_quick.cmd | O/scheduled/data_update_quick/latest_status.json；子收據另核 |
-| official-market-events-daily | 04:50 daily | append-only 官方事件；來源 raw／availability | run_official_market_event_backfill.cmd | O/scheduled/official_market_events/latest_status.json |
-| data-freshness-check-daily | 05:00 daily | 唯讀核 Quick、DB／raw 日期及來源契約 | run_daily_data_freshness_check.cmd | O/scheduled/data_freshness/latest_status.json |
-| ml-raw-pit-refresh-daily | 05:05 daily | freshness 與 revision-ready 後發布 immutable PIT | run_ml_raw_pit_refresh.cmd | O/scheduled/ml_raw_pit_refresh/latest_status.json |
-| recommendation-snapshot-daily | 05:10 daily | 保存研究推薦／candidate；current-observed 與 thesis policy | run_recommendation_snapshot.cmd | O/scheduled/recommendation_snapshot/latest_status.json |
-| evidence-pipeline-dry-run-daily | 05:15 daily | 讀推薦／freshness／Paper 證據，不當 production write | run_evidence_pipeline_dry_run.cmd | O/scheduled/evidence_pipeline_dry_run/latest_status.json |
-| ml-promotion-evidence-daily | 05:17 daily | 同源 OOC／replay／shadow evidence，需 corporate-action custody | run_ml_promotion_evidence.cmd | O/scheduled/ml_promotion_evidence/latest_status.json |
-| ml-promotion-authority-daily | 05:18 daily | 讀相容 promotion evidence；機器 DPAPI authority | run_ml_promotion_authority.cmd | O/release_v4/ml_promotion_authority/latest_status.json |
-| ml-allocation-copilot-daily | 05:20 daily | 核 promotion／forward／Paper，缺資格維持 rule-only | run_ml_allocation_copilot.cmd | O/scheduled/ml_allocation_copilot/latest_status.json |
-| decision-evidence-capture-daily | 05:25 daily | 保存 decision snapshot／evidence event；核 decision 日期與來源 | run_decision_evidence_capture.cmd | O/scheduled/decision_evidence_capture/latest_status.json |
-| ml-direct-chain-maintainer | 10:00 daily | Direct／OOC custody chain；lock、儲存、來源 gate；10/07 已調整晨間競爭窗口 | run_ml_direct_chain_maintenance.cmd | O/scheduled/ml_direct_chain_maintenance/latest_status.json |
-| forward-outcomes-daily | 05:40 daily | 有界 evidence outcome writer；需到期可見行情 | run_forward_outcomes_daily.cmd | O/scheduled/forward_outcomes/latest_status.json |
-| recommendation-calibration-learning-daily | 05:45 daily | source capture→推薦→outcome→shadow learning；原 H20 activation 另沿 exact G6 中央母體 | run_recommendation_calibration_learning.cmd | S/scheduled/recommendation_calibration_learning/latest_status.json；H20 獨立 lane 位於實際 learning output/personal_h20_natural/recommendation_learning/，私人 manifest 沿 activation 根 |
-| recommendation-calibration-learning-banktaiwan-shadow-daily | 05:50 daily | 重用同源 learning snapshot／custody，成本 shadow lane | run_banktaiwan_recommendation_learning_daily.cmd | B/scheduled/recommendation_learning_banktaiwan/latest_status.json |
-| paper-execution-eod-replay-daily | 06:00 daily | Quick／freshness 同日 gate 後 EOD Paper；同凍結來源最多 3 次、間隔 900s | run_paper_execution_daily_isolated.cmd | R/output/paper_execution_eod_replay/dependency_gate/latest.json 指向 hash 綁定收據及 retry／terminal |
-| pit-sector-membership-preopen-capture-daily | 16:00 daily | 台北開盤前 Rule／PIT 候選，verified denominator | run_pit_sector_membership_preopen_capture.cmd | R/output/formal_daily_publications/scheduler/pit_preopen_capture/latest_status.json；rule_source 的獨立收據 |
-| paper-portfolio-daily | 帶 offset；當次美西 17:25 | 台北 08:25 wake-up／08:30 guard；原 Paper state 與 calendar | run_paper_portfolio_daily.cmd | R/output/paper_execution_eod_replay/scheduled/paper_portfolio_isolated/latest_status.json |
-| ml-allocation-forward-daily | 帶 offset；當次美西 17:25 | 台北 08:30 cutoff／08:35 deadline；calendar、PIT、Paper、release pin | run_ml_allocation_forward_daily.cmd | holiday／config preflight：R/output/v4_ml_forward_scheduler/latest_status.json；config child：依 config.output_root/scheduled/ml_allocation_forward/latest_status.json |
-| formal-pit-sidecar-postcutoff-daily | 18:00 daily | cutoff 後 sidecar；同 wrapper 續做 Paper event capture | run_formal_pit_sidecar_postcutoff.cmd | R/output/formal_daily_publications/scheduler/pit_sidecar/latest_status.json；Paper event source capture 另核 |
-| formal-input-producer-daily | 21:25 daily | Rule＋causal Paper ledger＋PIT 三路 handoff；candidate 不冒 formal | run_formal_input_producer_daily.cmd | R/output/formal_daily_publications/scheduler/latest_status.json |
-| v2-2-weekly-collection | Sunday 18:00 weekly | core collection 成功後基本面／公告／季度 research children | run_v2_2_weekly_collection.cmd | O/scheduled/v2_2_weekly_collection/latest_status.json locator→hash 綁定 terminal |
+Windows task 啟動順序不代表上游成功或來源已完成。`IgnoreNew` 僅限制同一 task；跨 task 需沿 immutable receipt、run／date、lock、source identity 及 consumer readback 確認依賴，不以時間間隔替代。
 
-排程時間只提供啟動順序，不保證上游已完成。Windows 的 IgnoreNew 僅約束同一 Task，不保證不同 Task 共用來源檔案不重疊；接受同次來源／lock／idempotency gate，不以時間間隔代替依賴核驗。05:45 learning 會重用 Quick status，因此 04:20 的驗收須依 run id／時間／immutable receipt，不只讀 latest。
+## Codex operational heartbeats
 
-本機 Codex operational heartbeat：morning report 是美西 05:30 有限唯讀核對；paper 是美西 06:20 有限唯讀核對。它們不應自行修改 Task、重跑 producer、重訓或改正式資料。其他專案、停用的舊重構排程與全部模型清冊保存在私有清單，不納入本 repo 公版模板。
+文件化的兩個本機唯讀 heartbeat 為：
 
-## Python 與可攜入口
+| 用途 | 文件化週期 | 時區 | 操作界線 |
+|---|---:|---|---|
+| 晨間 report | 每日 05:30 | `America/Los_Angeles` | 彙整已存在 evidence；不啟動 producer 或修復來源 |
+| 晚間／Paper report | 每日 06:20 | `America/Los_Angeles` | 核對已存在 Paper／排程 evidence；不寫帳本、不啟動排程 |
 
-2026-10-09實際回讀：Direct、Paper Portfolio、Sector preopen、ML Allocation Forward四個既有Task使用`pythonw.exe → run_scheduled_cmd_hidden.py --task <固定名稱>`，由固定mapping執行原CMD；其餘17個Task仍為canonical CMD action。下段CMD形狀描述的是wrapper契約；核對已部署背景action時依[全排程驗收runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)確認精確interpreter／argv／cwd。Operational日誌本輪已啟用；不補回先前未記錄事件。
+這是文件化基準，不表示目標 thread 或本機 automation 現況已讀回。Heartbeat 對話通常保存 cadence／target，而 prompt 的模型文字不是實際模型設定。兩份 report 都不能代替 Windows producer trigger 或自然執行期限。
 
-現有 action 為 `cmd.exe /c "<REPO>/scripts/scheduled/<wrapper>.cmd"`，WorkingDirectory 為 REPO。wrapper 再選 `.venv/Scripts/python.exe` 或受支援的 BALDR_PYTHON；部分舊 wrapper 缺 venv 會 fallback `python`。搬機應驗 Python 3.11 runtime 與依賴，不能直接複製舊 venv；沒有 venv 不應讓全域 Python 偶然代跑。每個 wrapper 是否接受 BALDR_PYTHON 需逐檔核對。
+## 時區、offset 與 DST
 
-可攜版需整個 `baldr` 資料夾。單腳本 dispatch 形狀為 `baldr.exe scripts/scheduled/<原腳本>.py <原參數>`，模組為 `baldr.exe -m <原模組> <原參數>`。**不是** `baldr.exe <wrapper>.cmd`，也不能省略 wrapper 的多段執行、環境、gate、timeout 或原 flags。上表 canonical wrapper 與本機 `wrapper_audit.json` 保存各 Python 子入口；遷移 exe 時需逐段列出展開後 argv，包含官方 calendar、Paper retry、weekly children 等，另做相容驗證。目前 Task 保持 source／Python，exe 的新版本修復由另一 owner 處理。
+多數 Windows task 依 `Pacific Standard Time` 本地時鐘執行，隨 DST 變化；Generic registrar 在現有文件化契約中只接受 Windows Pacific 時區，不要把台北時間改寫成一個固定 Pacific 鐘點。Paper Portfolio 與 ML forward 兩者於 Taipei 08:25（UTC 00:25）offset 喚醒；其時區換算是 PDT 前一日 17:25／PST 前一日 16:25。這是鐘點換算，不是 seasonal Task QA 或自然 run 證據。
 
-Source roots 沿 TWStockConfig／wrapper；exe 為環境 > 外部 config.json > LOCALAPPDATA 空根，兩者都不自動載入 `.env`。只搬 config.json 不會替 Windows Python wrapper 改 roots。詳 [可攜指南](PORTABLE_WINDOWS.md)。
+Paper 流程再等真實台北 08:30 guard；ML forward 在 08:30 cutoff 前不消費並有 08:35 deadline。移機或 DST 變換後須讀新機 Task XML offset、trigger 與實際 UTC／本地 `NextRun`，再核台北時鐘、日曆和 lane status。若實際時區不同、offset 缺失或查詢權限不足，標示 drift／unknown 並停在 plan；不可手工換算後宣稱驗收通過。
 
-## 資料、私人與模型需求
+## 登記器範圍與 runtime
 
-- 市場 DATA_ROOT、衍生 OUTPUT_ROOT、Shadow 根、repository Paper operation root 分別登記。部分 Paper adapter 固定受控原市場來源，writer 固定 repository output；改環境不等於可自由 retarget。換路徑需先檢查相關 contract／hard-coded defaults。
-- 私人 DATA／Watchlist、Journal、Store 的 root／mode 成對保存，仍採原已選來源；不新建空庫替代真帳，不覆寫來源。H20 使用 DATA_ROOT/personal/recommendation_h20/activation.json 或明示 override；和 PERSONAL_MODEL_POLICY_PATH namespace 分開，不因搬機重啟 enable／fit。
-- ML forward 需要原 release bundle、release_manifest.json 與其 file hash pin、training／derived manifest、PIT archive、official calendar cache、Paper snapshot／ledger、日期化 config。policy、raw、dataset/model lineage 必須可回驗，不能只搬模型權重。推薦 thesis policy 與 PIT taxonomy source config 也需單獨檢查。
-- DPAPI authority 不可直接複製成新機有效授權；新機需經原可信註冊／授權流程重新建立。不要搬 authentication token、password、broker credential、Codex auth.json 或私聊 session 資料庫。
-- 存在檔案只是 readiness metadata，不等於 hash、source/account、PIT／cutoff、coverage 或模型品質已接受。unknown／candidate／shadow 保持原資格。
+Aggregate registrar 只覆蓋它定義的子集，不代表完整 21-task inventory；它不註冊 ML forward 專用 XML，也不包含 BankTaiwan recommendation shadow lane。Paper Portfolio、PIT sector capture 與部分 Direct／Forward 入口亦有專屬 wrapper、preflight 或 dispatcher 契約，需按各自 lane 核驗，不能以 aggregate 的成功代替。
 
-## 建立本機私有清冊
+`scripts/scheduled/register_baldr_scheduled_tasks.cmd` 是舊批次入口：它仍把 `baldr-ml-direct-chain-maintainer` 顯示及建立為 05:30，和 checker `EXPECTED_TASKS`、現行 `register_baldr_scheduled_tasks.ps1` 的 10:00 基準衝突。移機註冊不要使用這個舊 `.cmd`。對 PowerShell registrar 支援的子集，先唯讀查詢現有設定並逐項核對完整 desired-versus-observed 差異；其 dry-run 輸出不能取代完整差異審查，也未在此證明 writer 冪等。只有差異、專用 lane 與帳戶／action 已核實、完整變更清冊已獲授權後才可註冊，之後立即精確讀回。
 
-將以下內容保存至 ignored `output/qa/<日期化目錄>/`，做外部安全備份；ignored 不會隨 Git 搬機。公版文件只留 placeholder，不提交帳號、使用者絕對私人值或 XML 原機 principal。
+在 2026-10-09 具名設定 QA 的回讀範圍內，Direct、Paper Portfolio、PIT sector preopen 和 ML Allocation Forward 四項使用 `pythonw.exe → run_scheduled_cmd_hidden.py --task <exact task> → canonical CMD`；另外 17 項使用 canonical CMD action。這是該次 QA 記錄，不是新機讀回結果。source GUI 和 portable GUI 都有各自設定流程；更換 GUI 不會自動將排程 wrapper 從 CMD／Python 換成 EXE。
 
-| 每項必填 | 核對內容 |
+移植 wrapper 時不可複製 venv。先依目標 runtime 建立相容 Python／portable environment，核 wrapper 的 interpreter、展開 argv、working directory、timeout、flags 和環境根。個別 `BALDR_PYTHON`、fallback 或子命令是否可用，需按原 wrapper source 和該機 readback 確認。可攜版要搬整個包，但 Task Scheduler replacement 必須逐項另行審核。
+
+## 帳戶、資料根與模型權限
+
+- 每個 task 核 Windows principal、登入／電源情境、必要檔案 ACL、可讀寫 roots、timeout 與 retry。Task XML 備份不等於新機可直接沿用原 principal 或 HighestAvailable。
+- `DATA_ROOT`、`OUTPUT_ROOT`、Shadow、BankTaiwan、repository Paper、私人持倉與 model/research root 各自盤點，不以 `OUTPUT_ROOT` 或檔案存在推斷其他 root。
+- 使用者帳戶、Paper／私人資料與 model lineage 需要 owner 的來源／帳本／manifest／hash pins；模型權重單檔不足以證明 source/account、PIT、cutoff 或使用資格。
+- DPAPI/native credential 綁定機器與帳戶，舊機狀態不能靠複製檔案搬移。新機需由可信流程重新註冊／授權；不可複製密碼、token、broker credential 或 Codex auth/session 檔。
+- 查詢拒絕或可見範圍不足時記 `unknown`；不要降低 gate、改 ACL 或把私人資產置換成空資料庫。
+
+## 搬機順序與差異處理
+
+逐步執行[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)：
+
+1. 舊機匯出清冊與 task XML 備份，記錄 assets、clock、model pins、Codex cron／heartbeat 的實際狀態。
+2. 停止要移交的舊機 writer 並取得可核證據；manifest 的 `old_machine_writer_stopped` 是布林欄位，設為 false 或缺少證據時不要在新機啟用同 lane。
+3. 新機選 source／portable GUI，設定自己的 `repo_root`、roots、timezone，依 owner 授權移交資產；不搬 venv 或 credentials。
+4. 將 manifest 的 `schedules[]` 作為 desired、`observed_schedules[]` 作為新機實際讀回，逐項比較 task identity、platform、wrapper／argv、working directory、timezone、principal 和 enabled state。
+5. `scripts/document_control.py bootstrap-plan` 只唯讀檢查／輸出 JSON 計畫，不能安裝、搬資料、寫設定或註冊排程。差異、pending 和 error 修正後可再產生計畫；plan 可重複讀取，不表示 schedule writer 已證明冪等。
+6. 操作前核對 owner 是否已授權這份完整、具體的變更清冊。清冊逐項列 before／after、owner、停舊／啟新順序、風險及回滾；一份授權可涵蓋清冊列出的完整範圍，不必每個 task 重複詢問。尚未授權時先交付可審查 plan；超出清冊或出現高風險新差異才另行確認。一個 writer/lane 一次切換，不可雙機同時寫入。
+7. 排程設定 readback、第一次自然 run 和下游 consumer readback 分開驗收；自然 run 前不能宣稱該季節、時區或 lane 已驗收。
+
+Manifest 公版欄位與範例見 [`examples/machine_bootstrap_manifest.example.json`](../../examples/machine_bootstrap_manifest.example.json)。私有本機 manifest、帳戶、絕對私人路徑和 credential 不得提交進 repository；task 狀態和計畫位置由工具實際回報的 `output/tasks/` 任務目錄核對。
+
+## 日常核對與自然 run 驗收
+
+唯讀 audit 用 [`scripts/inspect_scheduled_task_registration.py`](../../scripts/inspect_scheduled_task_registration.py) 核對完整 task name/path、State、Enabled、LastRun／LastResult、NextRun、action、argv、working directory、trigger、timeout、電源／retry 及 dispatcher mapping。CIM、COM、schtasks 權限錯誤代表查詢環境失敗，不代表 task missing；能讀幾項也不代表全表完整。細節見[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
+每次驗收沿同一 identity 建立 `task → producer → status → immutable terminal/receipt → artifact → consumer readback` 路徑。latest status 只用來定位；核 exact run/date、parent/hash、terminal 和下游 readback。`Task Ready`、`LastResult=0`、exit 0、heartbeat 回報、status receipt 存在或檔案時間更新都不足以單獨宣稱自然成功。
+
+對 Paper／Forward，保留其共同 08:25 wakeup 與 08:30 readiness/cutoff 的不同角色；未到 cutoff、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 不能結案成成功或自然成熟。對 recommendation learning、Forward outcome、promotion 與 model shadow，source／樣本不完整或未到 maturity 保持 pending，不從工程試跑、舊 latest 或離線 replay 增授自然 credit。
+
+## lane 操作入口
+
+| Lane | 使用者入口 |
 |---|---|
-| 身份與用途 | 層次、Task path／automation id、所屬 project、owner、writer／readonly |
-| 模型 | cron execution model／effort／fast；heartbeat target model 與觀測來源；Windows ML artifact／pin |
-| 時鐘與狀態 | trigger／timezone、DST／offset、NextRun、啟用或停用、notification、missed-start／retry／power／timeout |
-| 執行環境 | executable、展開 argv、WorkingDirectory、Python／portable branch、登入方式及必要權限 |
-| 依賴與設定 | 上游 immutable receipts、DATA／OUTPUT／private／model 根、config／policy／calendar／source pins |
-| 驗收 | LastResult＋同次 terminal＋consumer readback、run/date/hash、failed／unknown／warnings |
-| 恢復 | 哪些可以原單次冪等重試、不可替換凍結來源、備份及本輪差異撤回步驟 |
+| Quick 更新與 freshness | [資料與市場研究手冊](manuals/DATA_AND_MARKET_RESEARCH.md) |
+| Recommendation、forward outcome 與 calibration shadow | [推薦與 Research Lab 手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[排程唯讀稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md) |
+| Paper EOD／Portfolio、持倉與成本 | [觀察清單與持倉手冊](manuals/WATCHLIST_AND_PORTFOLIO.md) |
+| ML shadow／自然 evidence | [ML Shadow 推論操作 Runbook](ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)及[歷史 ML Shadow Runbook](HISTORICAL_ML_SHADOW_RUNBOOK.md) |
+| PIT、正式 sidecar／repair | [PIT 歷史資料修復 Runbook](PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md) |
+| Weekly collection | [V2.2 Weekly Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md) |
 
-Windows 可用 `Get-ScheduledTask`／`Get-ScheduledTaskInfo`／`Export-ScheduledTask` 唯讀查詢；權限拒絕記 unknown，取得核准的唯讀權限後再查，不改 ACL 或 credential。原 XML 只是備份，不能直接作新機最高權限／原帳號模板。Codex 可用 automation API view，失敗時可讀已合法授權的 automation.toml；改 prompt 後還要核真正 execution model。
-
-## 搬機檢查表
-
-1. 保存舊機清冊、所有停用狀態、Task XML、wrapper／model／policy pin、immutable receipt；記錄原時區與下一自然 run。舊機先由使用者安排停寫窗口，避免新舊雙 writer。
-2. 取得正確 repository 分支與可回溯 commit。重新建立 Windows x64／Python 3.11 venv，按 requirements-runtime 安裝；可攜 GUI 另搬整包並驗校驗。不要把另一工作樹暫存當正式源。
-3. 依 [資料資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md) 搬市場、輸出、Shadow、Paper、私人與模型資產，保留原 bytes／lineage。活躍 SQLite 用一致備份契約，勿僅複製正在寫入的主 DB；本輪指南不授資料遷移。
-4. 用新機合法路徑設定環境／外部 JSON，逐項核實原 selected store 與 H20 descriptor。若受控 Paper 固定來源不符，先提出最小修改並審核，不能用 alias／ACL 繞過。
-5. Codex 登入與連 project，核模型 catalog 支援原 effort。cron 改真 execution field；heartbeat 確認 target／模型的 supported 設定方式，保留通知及停用，不直接改 threads DB。不因搬機新增重複排程。
-6. 先 `scripts/scheduled/register_baldr_scheduled_tasks.cmd dryrun` review 註冊計畫；aggregate 模板不是全部 21 個現況，forward、Paper、BankTaiwan 與 PIT 的專用註冊／pins 需另核。dryrun 本身不註冊，但個別 preflight 是否寫檔依原實作檢查；首次在隔離 output 做。不要在舊機自然觀測窗口跑 execute。
-7. 核對美西本地 trigger 與帶 offset trigger，依新機時區換算台北 cutoff。兩者不能統一改成當地相同鐘點；避免 DST 重複／缺失小時。Generic registrar 目前只接受 Windows Pacific 時區，換時區時不要直接套用。
-8. 用新機帳戶建立最小必要權限的停用 Task／paused automation；需無人登入也執行時另審帳戶模式與 credential，不照搬舊 Interactive 或 HighestAvailable。保留原停用項；不複製 credential。
-9. 先隔離 dry-run／preflight 核 argv、roots、依賴 hash、日期／unknown behavior；無 execute 權限時不跑 writer。使用者批准啟用後按依賴窗口啟用，逐個自然 run 驗收。LastResult=0＋檔案存在不足，需 exact run/date/hash／terminal／consumer。
-10. 驗收 failed 時先保存失敗收據，查源日期、model manifest／pin、principal、環境、時區、權限、空間與上游終態。暫時來源失敗只用原 bounded retry；不造數據、不重建資料、不改 frozen source／cutoff、降低 gate 或補未來資料。
-
-## 回滾
-
-新機 Task 設定有誤時，由使用者停用新機 writer，保存失敗證據，核對沒有舊機雙 writer後恢復已核舊設定。程序版本回退不等於資料 schema 可回退；保留資料與備份。模型欄位或 prompt 修改前保存原 TOML bytes／SHA、exact diff與readback；回退前先比較目前與本輪 after pin，若他人已更新，不整檔覆蓋，僅撤回本輪欄位。公版文件可逐項撤回新增段落，不回復他人 dirty 檔。
-
-2026-10-06：新增排程層次、21 Task契約、私有清冊與搬機／驗收／回滾檢查表。沒有註冊、啟用、手動 trigger、資料／模型寫入或 Task executable 切換。
-2026-10-09：加入最新 21-task 設定與 producer 回讀 QA、共用唯讀稽核 Runbook 入口；保留 10/06 稽核作為歷史時點證據，沒有更改操作授權。
+舊排程日記、逐次 error、特定 QA 時點和全部私有路徑已移入[歷史封存](../09_archive/README.md)，以原件追溯時不可取代當前主機讀回。回滾前先停止新機 writer、保存本輪 XML／diff／產物，再逐項撤回本次變更；確認新機停止後才能另行授權恢復舊機 writer，避免雙寫。

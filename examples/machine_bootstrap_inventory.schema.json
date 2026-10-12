@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "baldr 舊機排程正規化盤點",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "machine",
+    "observed_at",
+    "raw_exports",
+    "schedules"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "baldr-machine-inventory.v1"
+    },
+    "machine": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "description": "具有時區的盤點時間；不是來源可得時間或排程執行結果"
+    },
+    "raw_exports": {
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "type": "array"
+    },
+    "schedules": {
+      "items": {
+        "$ref": "#/$defs/schedule"
+      },
+      "type": "array"
+    }
+  },
+  "$defs": {
+    "schedule": {
+      "type": "object",
+      "required": [
+        "id",
+        "platform",
+        "desired_enabled",
+        "timezone",
+        "trigger"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "enum": [
+            "windows",
+            "codex-cron",
+            "codex-heartbeat"
+          ]
+        },
+        "desired_enabled": {
+          "type": "boolean"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_wrapper": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "working_directory": {
+          "type": "string"
+        },
+        "notification_policy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasoning_effort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_thread": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "principal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "logon_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run_level": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_time_limit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "multiple_instances": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "missed_start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retry_policy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "power_policy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # 文件入口
 
-目前狀態與本週優先事項請讀 [專案快照](00_core/PROJECT_SNAPSHOT.md)。本頁只提供文件入口；不重複維護容量、Gate、測試數字或當前待辦。
+第一次接觸專案請先讀根目錄的[產品介紹](../README.md)，再依[快速開始](07_guides/QUICK_START.md)操作。目前能力與限制看[專案快照](00_core/PROJECT_SNAPSHOT.md)；換電腦看[首次安裝 Prompt](07_guides/FIRST_INSTALL_PROMPT.md)。本頁提供領域入口。
 
 ## 權威閱讀順序
 
@@ -33,4 +33,4 @@
 
 [2026-10-06 全文件目錄（歷史快照）](09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md)是當日 tracked 文件的盤點快照，不是即時清冊；新增文件或後續變更以目前目錄、各區 README 與 [DOCUMENTATION_INDEX](00_core/DOCUMENTATION_INDEX.md) 核對。[整理 manifest](09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)保存該輪歸檔與恢復紀錄。原日期化補充完整見[入口歷史](09_archive/DOCUMENTATION_ENTRY_HISTORY_20261006.md)，資料保留用途看[資產登記](03_data/STORAGE_ASSET_REGISTER_20261006.md)，知識圖使用看[Graphify 維護](00_core/DOCUMENTATION_GRAPH_GUIDE.md)。
 
-本輪全文件現況以[文件治理狀態矩陣](00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)與[逐檔路徑 manifest](00_core/DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)為準；前者列出權威、導覽、證據、歷史分類與未解衝突，後者保存逐路徑狀態及 clean 文件的 HEAD 指紋。
+後續修改依[產品變更流程](00_core/PRODUCT_CHANGE_WORKFLOW.md)及[功能與文件關聯](00_core/FEATURE_DOCUMENT_MAP.json)完成同步。本次拆分與原件去向見[處置清冊](09_archive/documentation_productization_20261012/README.md)；[治理狀態矩陣](00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md)及[逐檔路徑 manifest](00_core/DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)保存前次全文件核讀基線，不能作本次修改後的指紋。

@@ -1,57 +1,6 @@
-# Antigravity Documentation Agent
+# Antigravity Documentation 適配卡
 
-## 角色
-
-你是文檔覆蓋完整性 Agent，負責確認文件與實際系統行為、專案狀態、使用流程一致。
-
-## 必讀
-
-1. `GEMINI.md`
-2. `docs/agents/README.md`
-3. `docs/agents/shared_context.md`
-4. `docs/agents/git_exclusions.md`
-5. `docs/00_core/PROJECT_SNAPSHOT.md`
-6. `docs/agents/documentation_agent.md`
-7. `docs/00_core/DOC_COVERAGE_MAP.md`
-8. `docs/00_core/DOCUMENTATION_INDEX.md`
-9. `docs/00_core/DEVELOPMENT_ROADMAP.md`（Roadmap Hub）
-10. `docs/00_core/ROADMAP_6M_ENGINEERING.md`
-11. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
-12. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`
-13. `docs/01_architecture/system_architecture.md`
-14. `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（涉及 UI／使用流程時）
-
-## 工作流程
-
-### Coverage Pass
-
-先列出：
-
-- 變更摘要
-- 需要更新的文件
-- 優先級：Must / Should / Nice-to-have
-- 需要更新的段落
-- Snapshot / Roadmap Hub / 6M Roadmap / V2.1-V4.0 Roadmap / Legacy Carryover / Architecture / Application Manual / Index 一致性檢查
-- 需要使用者補充的資訊
-
-Coverage Pass 用來界定有證據支持的修改範圍。若任務只要求評估，先交付 Coverage 結果；若使用者已要求執行，完成此檢查後直接進入 Patch Pass，不需再次確認相同範圍。
-
-### Patch Pass
-
-在已授權範圍內完成有證據支持的修訂；若要超出既有範圍，或證據無法裁決現況主張／高風險刪移，再詢問該部分。
-
-## 特別規則
-
-- 新增或刪除 Markdown 時，必須更新所屬領域 README／主題索引並確認中央導航路徑可到達；只有主要入口或權威邊界改變時才更新 `docs/00_core/DOCUMENTATION_INDEX.md`。
-- 目前狀態、Next、Risks 以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準。
-- 未來 6 個月工程路線以 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 為準。
-- V2.0 之後長期版號階梯以 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 為準；它不取代 6M Roadmap、Vision 或目前狀態權威。
-- Roadmap 入口與歷史導引由 `docs/00_core/DEVELOPMENT_ROADMAP.md` 負責。
-- 舊 Roadmap 未完成事項的承接與 Gate 由 `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` 負責。
-- 架構、資料流與模組邊界以 `docs/01_architecture/system_architecture.md` 為準。
-- 目前操作流程、參數、結果判讀與安全限制以 `docs/07_guides/APPLICATION_MANUAL.md` 為準。
-- Snapshot 是短版入口，不能放過多歷史細節。
-
-## 更新記錄
-
-- 2026-10-10：將新增／刪除 Markdown 的導航要求對齊權威 Documentation Agent 與 DOC_COVERAGE_MAP，採領域索引逐份導覽、中央 Index 條件式更新。
+- **觸發**：文件 coverage、專題索引、Snapshot／roadmap／架構／手冊同步，或程式變更的文件交付。
+- **權威**：`docs/agents/documentation_agent.md`；角色選擇一律依 `docs/agents/skills_registry.md`。
+- **平台適配**：使用 `DOC_COVERAGE_MAP.md`、`FEATURE_DOCUMENT_MAP.json` 與 `PRODUCT_CHANGE_WORKFLOW.md`；Coverage Pass 後在既有授權範圍完成 Patch Pass。
+- **交付／交接**：列實際更新與未更新理由、Manual 影響、連結及權威一致性，再交 root 核對。

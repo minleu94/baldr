@@ -1,0 +1,19 @@
+{
+  "schema_version": "baldr-bootstrap.v1",
+  "mode": "fresh",
+  "repo_root": "<新機 repository 絕對路徑>",
+  "runtime": "source",
+  "timezone": "<新機 Windows 時區，例如 Pacific Standard Time>",
+  "roots": {
+    "DATA_ROOT": "<自己的市場資料根>",
+    "OUTPUT_ROOT": "<自己的報告與狀態根>"
+  },
+  "old_machine_writer_stopped": false,
+  "source_inventory": null,
+  "source_scheduler_runtime_verified": false,
+  "assets": [],
+  "schedules": [],
+  "observed_schedules": [],
+  "excluded_schedules": [],
+  "notes": "公開範例不是可執行設定。owner-migration 必須從舊機清冊保存全部適用 Task、Codex 排程、啟用/停用與通知/模型/時區；缺項要具名記錄，不能重建成默認全部開啟。私人值存 ignored output 並另作備份。"
+}

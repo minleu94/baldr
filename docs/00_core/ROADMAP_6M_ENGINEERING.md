@@ -1,9 +1,8 @@
 # baldr 未來六個月工程 Roadmap
-> **範圍**：定義未來六個月的工程 Gate、交付物、依賴與 Exit Criteria。
-> **目前狀態與優先事項**：以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準；本文件中的日期化執行收據不代表目前進度。
-> **歷史狀態紀錄**：開頭日期化補記見[歷史流水帳](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；Gate 3／4 中 2026-08-26 至 08-28 的工程觀測見[補充歷史紀錄](../09_archive/ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md)。Gate 定義與工程順序保留於本文。
-> **2026-10-09 checkpoint 續接參考**：本機產品補完 checkpoint 是 WIP，不代表完成驗收；原暫停界線見 [BALDR_COMPLETION_HANDOFF](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)，續接基線與各項通過／失敗／未驗證結果見 [BALDR_COMPLETION_RESUME](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。Gate 進度仍以 Snapshot 與具名 QA 判讀。
-> **2026-10-10 最新產品狀態收據**：[BALDR_PRODUCT_COMPLETION_STATUS_20261010](../06_qa/BALDR_PRODUCT_COMPLETION_STATUS_20261010.md) 補記 bounded H20 G 原保存來源 Main 讀回及其他當日工程證據；各項接受與未完成界線仍依原收據判讀，Gate 進度以 Snapshot 為準。
+> **本頁權責**：工程 Gate、依賴、交付物、驗證及 Exit Criteria。產品問題與產品接受界線見 [PRODUCT_ROADMAP_POST_REFACTOR.md](PRODUCT_ROADMAP_POST_REFACTOR.md)。
+> **狀態判讀**：Gate 進度與目前優先事項只看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 及最新適用的具名 QA 收據；本頁不記錄逐輪完成度。
+> **時間語意**：Month 1–6 是依賴排序的相對月份，沒有指定起始日，不可換算成日曆進度。Gate 7 只有在 Gate 5 形成可判讀 baseline 時才啟動 shadow experiment，也不承諾 production ML。
+> **歷史追溯**：日期化工程狀態見[歷史流水帳](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)，Gate 3／4 的 2026-08 觀測見[補充歷史紀錄](../09_archive/ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md)。歷史收據不取代本頁 Gate 定義或 Snapshot。
 
 
 ---
@@ -218,7 +217,7 @@ Recommendation、Portfolio Advice、Alert 與 Exit 是否被持續、可比較�
 ### Engineering Deliverables
 
 1. 統一 Source Contract：source id/version、as-of、available-date、quality、missing、license、rate limit、look-ahead、ingestion stage、downstream eligibility。
-2. Data Source Control Center read model：freshness、coverage、schema、quarantine、retry、eligibility。詳見 [2026-08-26 實作狀態（歷史）](../09_archive/ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md#gate3-20260826)。
+2. Data Source Control Center read model：freshness、coverage、schema、quarantine、retry、eligibility。
 3. Adapter + raw evidence + manifest；不得由 UI 或 domain 直接呼叫 vendor。
 4. Diagnostics → Shadow → Evidence Review → Accepted Feature 的逐來源狀態機。
 5. Corporate action / restriction 對 execution、Why Not、Health 的 candidate impact report。
@@ -275,8 +274,6 @@ Recommendation、Portfolio Advice、Alert 與 Exit 是否被持續、可比較�
 6. Paper Portfolio 與 Trade Import / Decision Journal foundation：fill、partial fill、override、reason、execution gap。
 7. Scenario & Stress Lab v1：快速下跌、跳空跌停、流動性消失、相關股同跌、集中、source outage。
 
-> Gate 4 日期化工程觀測（2026-08-27 至 08-28）已移至[歷史紀錄](../09_archive/ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md#gate4-20260827-28)。
-
 ### Testing
 
 - Integer bp 總和 / cap / residual cash / lot size / Decimal 金額。
@@ -302,6 +299,8 @@ Recommendation、Portfolio Advice、Alert 與 Exit 是否被持續、可比較�
 - 不以 unconstrained mean-variance 作早期正式方法。
 - 不因 optimizer 有解就視為可交易。
 - 不接 production broker API。
+
+<a id="9-gate-5signal-effectiveness-pruning"></a>
 
 ## 9. Gate 5：Signal Effectiveness & Pruning
 
@@ -351,6 +350,8 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 - 不以單次最佳參數或 dashboard 視覺判斷有效。
 - 不只新增 feature；必須允許刪除與退休。
 - 不把 ML 作為規則 baseline 不可判讀時的逃生口。
+
+<a id="10-gate-6position-health-exit-engine-v1"></a>
 
 ## 10. Gate 6：Position Health & Exit Engine v1
 
@@ -403,7 +404,7 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 
 ## 11. Gate 7：ML Shadow Layer（條件式）
 
-Gate 7 只有在 Gate 5 於第六個月前產生可判讀 baseline 時，才可啟動 shadow experiment；readiness scaffold 不構成啟動許可，也不承諾 production 上線。工程入口與限制見 [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。日期化 handoff 與驗收觀測已集中於[歷史流水帳](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)。
+Gate 7 只有在 Gate 5 於第六個月前產生可判讀 baseline 時，才可啟動 shadow experiment；readiness scaffold 不構成啟動許可，也不承諾 production 上線。工程入口與限制見 [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。
 
 ## 12. 跨 Gate 驗證規則
 
@@ -430,5 +431,6 @@ Gate 7 只有在 Gate 5 於第六個月前產生可判讀 baseline 時，才可�
 
 ---
 
-## 更新記錄
-> 日期化更新流水帳已移至 [6M Roadmap 歷史紀錄](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；本文件只保留現行 Gate 定義.
+## 歷史追溯
+
+原 roadmap 的日期化狀態、工程 handoff 與逐輪驗收摘錄已保留於[歷史流水帳](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)、[Gate 3／4 補充歷史](../09_archive/ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md)及核心文件原 bytes 封存。本文只維護現行工程 Gate 定義。

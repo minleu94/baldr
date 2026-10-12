@@ -1,0 +1,30 @@
+{
+  "schema_version": "baldr-machine-inventory.v1",
+  "machine": "<舊機身份，不含憑證>",
+  "observed_at": "<盤點時刻與offset>",
+  "raw_exports": [
+    {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "path": "<已去秘密的Windows XML或Codex定義匯出絕對路徑>"
+    }
+  ],
+  "schedules": [
+    {
+      "id": "baldr-data-update-quick-daily",
+      "platform": "windows",
+      "desired_enabled": false,
+      "timezone": "Pacific Standard Time",
+      "trigger": "DAILY 04:20",
+      "canonical_wrapper": "scripts/scheduled/run_daily_data_update_quick.cmd",
+      "argv": [
+        "<核實的action參數>"
+      ],
+      "working_directory": "<舊機repo>",
+      "principal": "<舊機作用帳戶>",
+      "notification_policy": null,
+      "model": null,
+      "reasoning_effort": null
+    }
+  ],
+  "note": "只有一列資料形狀示例，並非完整舊機清冊；21 Windows及所有適用Codex排程均需實際盤點。零SHA與佔位文字必須替換。未知狀態不得填成false。"
+}

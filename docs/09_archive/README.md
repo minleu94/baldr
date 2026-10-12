@@ -774,6 +774,10 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 
 - [2026-10-05 至 10-07 導覽更新歷史](PROJECT_NAVIGATION_HISTORY_20261005_TO_20261007.md)：保存根目錄開發者導航原有的日期化更新記錄與 QA 導覽文字。它是歷史快照，不作目前狀態或執行順序依據；現況回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[DEVELOPMENT_ROADMAP](../00_core/DEVELOPMENT_ROADMAP.md) 與各具名 QA。來源範圍、bytes／SHA 與替代入口見 [Coverage History Entry 167](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-167)。
 
+## 2026-10-12 文件產品化原件
+
+[本批原件與處置](documentation_productization_20261012/README.md)保存初級入口、架構、操作及 Agent 流程整理前的原件、章節映射與逐檔 SHA。現行契約已移到各主題正文；歷史數字、當日收尾與未驗證界線仍按原件判讀。本次沒有刪除正式資料、改寫既有 QA 結果或遷移其他任務 singleton。
+
 ## ⚠️ 注意
 
 這些文檔主要用於記錄歷史，日常使用時請參考：

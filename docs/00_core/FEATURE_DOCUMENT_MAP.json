@@ -1,0 +1,477 @@
+{
+  "schema_version": "baldr-feature-documents.v1",
+  "scope": "依現行 WORKSPACE_DEFINITIONS 九個穩定工作區 key 及開發／移機流程建立查找與同步入口；代表性 code/tests 不替代完整 QA 清冊或產品 Gate。新增功能須新增關聯，未知變更須由總負責者分類。",
+  "features": [
+    {
+      "id": "workspace:workbench",
+      "workspace_key": "workbench",
+      "label": "決策工作台",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/application_and_workspaces.md"
+      ],
+      "code": [
+        "ui_qt/views/workbench_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_workbench_view.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/workbench_view.py",
+        "app_module/decision_desk*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/application_and_workspaces.md"
+      ]
+    },
+    {
+      "id": "workspace:market_explore",
+      "workspace_key": "market_explore",
+      "label": "市場探索",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/application_and_workspaces.md"
+      ],
+      "code": [
+        "ui_qt/views/market_regime_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_market_regime_view.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/market*",
+        "app_module/regime_service.py",
+        "app_module/industry_strength*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/application_and_workspaces.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
+      ]
+    },
+    {
+      "id": "workspace:recommendation",
+      "workspace_key": "recommendation",
+      "label": "推薦分析",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/decision_research_portfolio.md"
+      ],
+      "code": [
+        "ui_qt/views/recommendation_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_recommendation_execution.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/recommendation*",
+        "app_module/recommendation*",
+        "decision_module/*",
+        "analysis_module/*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
+      ]
+    },
+    {
+      "id": "workspace:backtest",
+      "workspace_key": "backtest",
+      "label": "策略回測",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/decision_research_portfolio.md"
+      ],
+      "code": [
+        "ui_qt/views/backtest_view.py"
+      ],
+      "tests": [
+        "tests/test_backtest_view_presenter.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/backtest/*",
+        "ui_qt/views/backtest_view.py",
+        "backtest_module/*",
+        "app_module/*backtest*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md"
+      ]
+    },
+    {
+      "id": "workspace:watchlist",
+      "workspace_key": "watchlist",
+      "label": "觀察清單",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/decision_research_portfolio.md"
+      ],
+      "code": [
+        "ui_qt/views/watchlist_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_watchlist_layout.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/watchlist*",
+        "app_module/*watchlist*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ]
+    },
+    {
+      "id": "workspace:stock_research",
+      "workspace_key": "stock_research",
+      "label": "個股研究",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/decision_research_portfolio.md"
+      ],
+      "code": [
+        "ui_qt/views/stock_research_report_view.py"
+      ],
+      "tests": [
+        "tests/test_stock_research_report_service.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/stock_research*",
+        "app_module/stock_research*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ]
+    },
+    {
+      "id": "workspace:portfolio",
+      "workspace_key": "portfolio",
+      "label": "持倉管理",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/decision_research_portfolio.md"
+      ],
+      "code": [
+        "ui_qt/views/portfolio_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_portfolio_view.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/portfolio*",
+        "portfolio_module/*",
+        "app_module/portfolio*",
+        "app_module/position_health*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+      ]
+    },
+    {
+      "id": "workspace:update",
+      "workspace_key": "update",
+      "label": "數據更新",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/data_storage_runtime.md"
+      ],
+      "code": [
+        "ui_qt/views/update_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_update_view_workbench.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
+      ],
+      "evidence": [
+        "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/update*",
+        "app_module/update*",
+        "data_module/*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/data_storage_runtime.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
+      ]
+    },
+    {
+      "id": "workspace:runtime",
+      "workspace_key": "runtime",
+      "label": "系統狀態",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/data_storage_runtime.md"
+      ],
+      "code": [
+        "ui_qt/views/runtime_view.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_runtime_view.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md"
+      ],
+      "evidence": [
+        "docs/06_qa/OPERATIONS_TESTING_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/views/runtime*",
+        "runtime/*",
+        "app_module/runtime_services/*"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/system_architecture.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/01_architecture/current/data_storage_runtime.md"
+      ]
+    },
+    {
+      "id": "platform:document_workflow",
+      "label": "文件與開發角色交付",
+      "requirements": [
+        "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md"
+      ],
+      "contracts": [
+        "docs/agents/skills_registry.md",
+        "docs/agents/skills/team.md"
+      ],
+      "code": [
+        "scripts/document_control.py",
+        "scripts/auto_state_sync.py"
+      ],
+      "tests": [
+        "tests/test_document_control.py",
+        "tests/test_auto_state_task_json.py"
+      ],
+      "manual": [
+        "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md"
+      ],
+      "evidence": [
+        "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "AGENTS.md",
+        "GEMINI.md",
+        "AGENT_CONTEXT.md",
+        "README.md",
+        "PROJECT_NAVIGATION.md",
+        "PROJECT_INVENTORY.md",
+        "docs/README.md",
+        "docs/agents/*",
+        "docs/00_core/DOCUMENTATION_INDEX.md",
+        "docs/00_core/DOCUMENTATION_STRUCTURE.md",
+        "docs/00_core/DOC_COVERAGE_MAP.md",
+        "docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md",
+        "docs/00_core/FEATURE_DOCUMENT_MAP.json",
+        "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md",
+        "docs/00_core/README.md",
+        "scripts/document_control.py",
+        "scripts/auto_state_sync.py",
+        "tests/test_document_control.py",
+        "tests/test_auto_state_task_json.py",
+        ".agent/rules/*",
+        ".agents/skills/*"
+      ],
+      "sync_documents": [
+        "docs/agents/skills_registry.md",
+        "docs/00_core/DOCUMENTATION_INDEX.md",
+        "docs/00_core/DOC_COVERAGE_MAP.md",
+        "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md"
+      ]
+    },
+    {
+      "id": "platform:bootstrap",
+      "label": "首次安裝與個人完整移機",
+      "requirements": [
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "contracts": [
+        "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md"
+      ],
+      "code": [
+        "scripts/document_control.py",
+        "scripts/scheduled/register_baldr_scheduled_tasks.ps1",
+        "scripts/inspect_scheduled_task_registration.py"
+      ],
+      "tests": [
+        "tests/test_document_control.py"
+      ],
+      "manual": [
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md"
+      ],
+      "evidence": [
+        "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md",
+        "docs/06_qa/BALDR_SCHEDULE_REMEDIATION_20261009.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md",
+        "docs/07_guides/INSTALL_GUIDE.md",
+        "docs/07_guides/PORTABLE_WINDOWS.md",
+        "docs/07_guides/QUICK_START.md",
+        "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md",
+        "docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md",
+        "scripts/scheduled/*",
+        "scripts/inspect_scheduled_task_registration.py",
+        "examples/machine_bootstrap*"
+      ],
+      "sync_documents": [
+        "docs/07_guides/README.md",
+        "docs/07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md",
+        "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md",
+        "docs/07_guides/FIRST_INSTALL_PROMPT.md"
+      ]
+    }
+  ]
+}

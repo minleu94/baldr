@@ -28,6 +28,8 @@
 
 ## 子目錄
 
+本次[文件產品化計畫](plans/documentation_productization_plan_20261012.md)的範圍、所有權與驗收另列；成果見[驗收摘要](../06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md)及[逐檔處置](../09_archive/documentation_productization_20261012/README.md)。
+
 | 目錄 | 放什麼 | 判讀方式 |
 |---|---|---|
 | `specs/` | 功能或治理增量的設計規格、邊界、資料契約與非目標 | 歷史設計追溯；是否已完成仍以 Snapshot、QA closeout 與 Git closeout 為準。 |

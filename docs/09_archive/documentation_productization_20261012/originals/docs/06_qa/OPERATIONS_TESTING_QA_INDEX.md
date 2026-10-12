@@ -1,0 +1,58 @@
+# 營運與測試 QA 索引
+
+> [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。
+
+## 近期營運與測試收據
+
+| 要查的內容 | 證據入口 |
+|---|---|
+| 個人 H20 中央母體接線與完整自然迴路試跑 | [10/12 自然迴路 QA](BALDR_NATURAL_LOOP_TRIAL_20261012.md)；真來源隔離試跑、歷史缺日及自然成熟分開判讀。 |
+| Paper 身分延續與 G9 官方日曆 operation 契約修正 | [10/12 排程契約修正](BALDR_SCHEDULE_CONTRACT_REPAIR_20261012.md)；工程回歸與自然排程／來源資格分開，原失敗收據保留。 |
+| 指定時點的排程修復、失敗與後續補充 | [10/09 排程與 Codex automation 修正](BALDR_SCHEDULE_REMEDIATION_20261009.md) → [全排程共用唯讀稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) → [10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [9/30 bounded repair](SCHEDULED_OPERATIONS_REPAIR_20260930.md) → [9/29 完整 21-task inventory](SCHEDULED_OPERATIONS_REPAIR_20260929.md) → [9/17 A 線狀態審查歷史](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) → [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史)；日期化收據不代表目前 scheduler readiness。 |
+| Formal scheduler readiness audit（9/20） | [current-only 唯讀審查](FORMAL_SCHEDULER_READINESS_AUDIT_2026_09_20.md) | 只描述 2026-09-20 的實際觀測與 decision date，不代表下一交易日或目前 scheduler readiness，也沒有執行排程或寫入。 |
+| Gate 2–7 工程交接與外部驗證 | [Engineering Control Center](GATE_2_TO_7_ENGINEERING_CONTROL_CENTER.md) → [External Validation Register](GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md) → [Gate 7](GATE_7_ML_SHADOW_ENGINEERING.md)；Register 是 append-only 外部驗證登錄，當前狀態看 Snapshot 與對應 Gate。 |
+| 測試資產候選與保留判斷 | [結案報告](../09_archive/TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md) → [V2 方法補正](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md) → [V1 撤回紀錄](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)；139 組／1,107 檔為 bounded 範圍，不代表完整測試母體 |
+| 根目錄殘留檔盤點與處置邊界 | [2026-10-09 root review](BALDR_ROOT_RESIDUAL_FILES_REVIEW_20261009.md)；僅盤點與比較需求，未移動或刪除檔案，也不構成後續清理授權 |
+| 固定來源封存的 Git identity probe 修正（10/08） | [固定來源封存不探測上層 Git](BUILD_ARCHIVE_NO_GIT_PROBE_20261008.md)；原診斷仍為 failed，修正只讓有 Git 標記的來源根讀取 Git 身分，沒有放寬 QA 子程序限制 |
+
+## 其他常用路徑
+
+- **排程與自動化**：[10/09 修正與最新回讀](BALDR_SCHEDULE_REMEDIATION_20261009.md) → [10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [10/07 修復](BALDR_SCHEDULE_REPAIR_20261007.md) → [10/06 稽核](BALDR_SCHEDULE_AUDIT_20261006.md)；共用唯讀查核步驟見[排程稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)，需要歷史初始狀況再讀 [9/30 收據](SCHEDULED_OPERATIONS_REPAIR_20260930.md)，8/27 舊 health snapshot 已移至 [Archive](../09_archive/README.md#2026-10-09-qa-historical-snapshots-scheduler-health-and-ux08-controller)。
+- **Data Update 效能基線**：[2026-08-28 量測與平行化邊界](DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)；目前操作見 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。基線明示 production workers／併發尚未由該次 probe 授權，後續使用前須查現行 Snapshot 與排程 QA。
+- **策略／評分 Walk-forward 比較**：[Walk Forward Comparison Report](WALK_FORWARD_COMPARISON_REPORT.md)。報告只有 10 檔、單一策略及指定成本設定的 bounded 樣本；應按報告條件判讀，不代表全市場或所有策略效能。
+- **測試路由與人工驗收**：[Feature-to-test routing matrix](FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)、[Full App healthcheck coverage mapping](FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)、[test inventory healthcheck classification](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[早期 Full App healthcheck（已歸檔）](../09_archive/FULL_APP_HEALTHCHECK_2026_06_16.md)、[歷史 V1 release checklist](../09_archive/V1_RELEASE_CHECKLIST_2026_06_30.md)。Coverage mapping 是目前人工驗收／workbench 範圍索引；16 日報告只是早期 smoke 快照。
+- **Evidence scheduler approval rehearsal**：[V2.2 Phase 5 simulated rehearsal package](V2_2_PHASE5_APPROVAL_REHEARSAL_PACKAGE_2026_07_07.md)；Application Manual 仍引用此材料供準備審核包，內容不代表正式 approval，也不啟用 scheduler。
+- **歷史工程閉環與沿用契約**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md) 仍被外部驗證登記、Control Center 與 Manual supplements 引用為 Daily／Weekly／Monthly／Maturity／Failure 操作契約；引用契約時需回核現行 Manual／Snapshot。 [V4 daily evidence handoff（9/12 歷史）](../09_archive/V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md) 是日期化交接，所列自然成熟、benchmark、fills 與部署後確認事項仍依現行 Gate／Snapshot 判讀。V1.5–V2.0 milestone QA 見[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；V2.1–V2.5 readiness／closeout 見[第二歷史專區](../09_archive/README.md#v21v25-historical-readiness-and-closeout)；Program Readiness 與測試資產舊稽核亦已歸檔。現行 P0 source register 仍在本目錄；V2.3 batch principle approval 與 FinMind audit 已移至 [Archive](../09_archive/README.md#2026-10-08-v2-3-data-source-decision-receipts)，QA 舊路徑保留相容導引。歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
+- **V4 9/7 bounded release／data／三面向 QA（歷史）**：當日 data／machine／ML 收據與[三面向實作交接](../09_archive/README.md#v4-2026-09-07-bounded-evidence)保留各自範圍與未完成 Gate；資料後續收尾見 [10/03 closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)，目前狀態仍看 Snapshot／Gate 7／Manual。
+- **V4 9/8 Formal／ML／Ops handoffs（歷史）**：三份 owner handoff 已移入 [Archive 專區](../09_archive/README.md#2026-10-08-v4-next-handoff-history)；Formal bootstrap 的後續讀回見 [9/30 repair](SCHEDULER_FORMAL_BOOTSTRAP_REPAIR_20260930.md)，目前排程狀態看 Snapshot／近期 QA，操作看 Manual。
+- **V4 9/8 Data／Direct／Stock Research handoffs（歷史）**：三份詳細 handoff 已移至 [Archive 專區](../09_archive/README.md#2026-10-08-v4-data-direct-and-stock-research-handoff-history)；資料後續看 [10/03 closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)，個股報告操作看 Manual／H20 QA，ML／Direct 狀態看 Snapshot。
+- **V4 9/8 工作區清理（歷史）**：[當日檔案盤點](../09_archive/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)與[清理收尾](../09_archive/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)已移入 Archive；本機 `output/` 的逐檔 manifest 沒有提交，不隨封存文件提供。當日容量不是目前 inventory，清理原始 QA 暫存也沒有 bytes backup。
+- **9/26 工作區分批提交驗證（歷史）**：[完整收據](../09_archive/WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md)保留當日分支、focused 測試與工具處置；該次結果不是 repository-wide pytest、正式資料或排程驗收，也不代表目前工作區狀態。
+- **Post-V1 Evidence Pipeline（2026-07，歷史）**：當時的 event store、forward outcome、review 與 scheduler 收據已集中於 [Archive 專區](../09_archive/README.md#post-v1-evidence-pipeline-qa)；目前狀態看 Snapshot，操作看 Manual 與最新排程 QA。唯有 [multi-day dry-run record](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md) 仍保留在本目錄作為可續寫登記表，因 readiness reader 解析此固定路徑的日期列，morning-check 操作指南也指定在此填寫；它不代表目前 scheduler 核准。Archive 同名檔是凍結快照，詳見 [Coverage History Entry 119](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-119)。
+- **Broker Flow 效能歷史收據（2026-07）**：[原始 dashboard failed gate → 後續 semantics scoped pass](../09_archive/README.md#2026-07-broker-flow-and-ui-closeout)；兩份收據保留各自的母體、測量與 gate 範圍。
+- **2026-06／07 一次性 QA、工程 closeout 與 audit**：依主題於 [Archive 專區](../09_archive/README.md#2026-10-08-early-qa-closeouts)查找；Evidence Rehearsal runbook、Full App coverage mapping、External Validation Register 與現行狀態文件仍留在目前入口。
+- **Post-V1 Evidence Pipeline 已執行計畫／規格**：原文與 QA 收據分別收於 [Archive 歷史索引](../09_archive/README.md#2026-10-08-post-v1-engineering-plans-and-specs) 與 [QA 收據索引](../09_archive/README.md#post-v1-evidence-pipeline-qa)；Scheduler Approval plan/spec 已移至 [Archive 專區](../09_archive/README.md#2026-10-09-post-v1-scheduler-approval-plan-spec)，原路徑保留導引。工程 plan 的 17/17 項已勾選，正式排程仍未核准／未啟用。
+- **歷史流程與文件治理紀錄**：2026-09-27 branch/worktree 與文件整併紀錄、2026-09-21 legacy recommendation failure review、9/30 唯讀服務取消收據已移至 [Archive 歷史入口](../09_archive/README.md#qa-historical-process-failure-review-20261009)；10/06 全 repo 文檔整理驗收是固定 HEAD 的歷史快照，見[封存報告](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)，現行生命週期規則以 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md) 為準。首批歸檔判定見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)，R029 成對歸檔與 hash 見 [Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)，取消 QA 的當次範圍與 SHA 見 [Entry 104](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
+- **1477 Native 取消、重試、保存與新程序讀回（2026-10-05，歷史）**：[封存驗收原文](../09_archive/NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md)保留 generation 2 取消、generation 3 重試、保存新身份、新程序讀回，以及來源日期、artifact 日期、run identity、index hash 四項拒絕。此收據只驗收單次 Native 操作鏈，不代表 ML 正式資格、PIT 或交易資格；原 QA 路徑留短導引。bytes／SHA 見 [Coverage History Entry 132](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-132)。
+- **Batch9 最小續接 handoff（2026-10-05，歷史）**：[封存全文](../09_archive/MINIMAL_CONTINUATION_HANDOFF_20261005_HISTORY.md)保存多批次 append-only 工程交接及各時點的驗收／未解限制；較早狀態由後續段落更正，不能當目前任務或 Gate 清單。原 QA 路徑留短導引；目前狀態與順序看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)／[Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。bytes／SHA 見 [Coverage History Entry 133](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-133)。
+
+## 補充收據索引（2026-10-10 治理補登共 16 份）
+
+> 本區收錄經 2026-10-10 全量盤點查核之專屬 QA 驗收證據；各原件維持各自日期與範圍，不推升為目前全域狀態。
+
+- [BankTaiwan 首次排程學習執行失敗紀錄（2026-09-15）](BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md)
+- [C2 current union pytest 基線（2026-09-25）](C2_CURRENT_UNION_PYTEST_BASELINE_20260925.md)
+- [Evidence dry-run 日期序列化 QA（2026-10-02）](EVIDENCE_DRY_RUN_DATE_SERIALIZATION_QA_20261002.md)
+- [Evidence dry-run read-only and Exit business-date QA — 2026-10-02](EVIDENCE_DRY_RUN_READONLY_EXIT_DATE_QA_20261002.md)
+- [2026-10-05 每日鏈容量與接線修正](HEARTBEAT_CHAIN_REPAIR_20261005.md)
+- [2026-09-21 歷史價格尖峰稽核](HISTORICAL_PRICE_SPIKE_2026_09_21.md)
+- [明示市場 CSV consumer 工程 lane](MARKET_CSV_EXPORT_CONSUMER_LANE_20261006.md)
+- [2026-09-21 全市場跨日價格稽核](PRICE_JUMP_AUDIT_2026_09_21.md)
+- [原計畫階段 0 首包：來源與效能基線](PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)
+- [階段1限定效能修正驗證（2026-10-05）](PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)
+- [晨間排程、資料接線與 Evidence 契約修復 QA（2026-09-21）](SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md)
+- [Freshness 與 Quick 收據身分綁定（2026-10-01）](SCHEDULER_FRESHNESS_QUICK_BINDING_20261001.md)
+- [TWSE／TPEx 季度 OpenAPI 研究觀測器 QA（2026-10-01）](SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md)
+- [2026-10-03 剩餘排程診斷與信用交易受控恢復](SCHEDULER_REMAINING_DIAGNOSIS_20261003.md)
+- [每週 MOPS 公告候選 custody 與來源讀回 QA（2026-10-01）](SCHEDULER_STATEMENT_CUSTODY_REPAIR_20261001.md)
+- [測試暫存同盤可還原隔離收尾](TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md)

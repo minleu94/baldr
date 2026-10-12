@@ -133,8 +133,8 @@
 
 1. 先取 tracked docs 路徑清單，再以 exact path batches 讀取每個文件正文至 EOF，記錄主要用途分類、範圍／權威界線、衝突、處置、HEAD blob OID 與物理行數。
 2. 將結果與 JSONL audit ledger 對照；逐檔 manifest 保存分類、用途、時間／權威界線、衝突判讀、處置、基準與最終 OID／行數及來源 ledger。
-3. 所有內容與清冊修訂提交後，Graphify 以最終 HEAD 的 Git blobs 建立受控 snapshot，逐筆核對來源 path／blob OID／SHA-256，再驗證來源數、連結、節點端點與 root `graphify-out` 未變更。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣及補完計畫納入導覽來源。最終產物與驗收收據保存在 ignored `output/qa/gf613_final/`，不得以舊 HEAD 圖譜代替。
+3. 所有內容與清冊修訂提交後，Graphify 以最終 HEAD 的 Git blobs 建立受控 snapshot，逐筆核對來源 path／blob OID／SHA-256，再驗證來源數、連結、節點端點與 root `graphify-out` 未變更。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣及補完計畫納入導覽來源。最終產物與驗收收據保存在 ignored `output/qa/gf613_verification/`，不得以舊 HEAD 圖譜代替。
 
-2026-10-12 最終 Graphify 驗收：PASS。來源包含 1517 份文件及 1087 個 production Python 檔；明示 Markdown links 11355 條，其中文件 10450、程式碼 313、未解析本機文件／程式連結 0。最終圖為 36094 nodes、106054 edges、1011 communities，dangling edges 0、missing endpoints 0；8309 條跨來源 AST 未解析邊另列診斷，不當作已解析關聯。Graphify 0.9.11 使用本機 AST 與明示 Markdown links，未使用 semantic model 或網路；根 `graphify-out` metadata 前後一致。逐項固定 HEAD、來源指紋及檢查結果見 `output/qa/gf613_final/graphify_final_verification.json`。補完計畫僅作為可追蹤文件納入，不代表產品 Gate 已接受。
+2026-10-12 最終 Graphify 驗收：PASS。來源包含 1517 份文件及 1087 個 production Python 檔；明示 Markdown links 11355 條，其中文件 10450、程式碼 313、未解析本機文件／程式連結 0。最終圖的 nodes、edges、communities 精確計數見 JSON 收據；dangling edges 0、missing endpoints 0。8309 條跨來源 AST 未解析邊另列診斷，不當作已解析關聯。Graphify 0.9.11 使用本機 AST 與明示 Markdown links，未使用 semantic model 或網路；根 `graphify-out` metadata 前後一致。逐項固定 HEAD、來源指紋及檢查結果見 `output/qa/gf613_verification/graphify_final_verification.json`。補完計畫僅作為可追蹤文件納入，不代表產品 Gate 已接受。
 
 逐檔清冊：[DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。`docs/` 下 1490 份一般文件，以及 `docs/` 外 26 份 tracked Markdown，都有分類、界線、衝突判讀、HEAD OID、物理行數及來源 ledger；本矩陣、path manifest 與開發線路矩陣 3 份治理輸出保留自我參照豁免。

@@ -12,6 +12,8 @@
 
 ## 2. 最新產出與來源根
 
+個人 H20（2026-10-12 修正）另讀 G9 `personal_h20_natural_lane`：其母體必須等於同次 G6 terminal 的完整 `current_symbols`，不能借一般推薦名單。沿 lane 的 `output_root` 讀 `recommendation_learning` captures／outcomes，沿 daily receipt 讀 activation 私人根的 immutable manifest／predictions，核 exact run／hash。`completed_with_pending` 只代表模型完成而 entry／自然結果仍待條件；漏日不能當自然成熟。當輪唯讀 audit 不啟動此 producer。工程試跑與期限收據見 [自然迴路驗證](../06_qa/BALDR_NATURAL_LOOP_TRIAL_20261012.md)。
+
 全部 21 個 Windows task 的 wrapper／status 對應看 [排程操作與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。沿實際 action／CMD、TWStockConfig 及有效環境建立 task→producer→status→immutable receipt→artifact→consumer 關係，不以根目錄或 mtime 猜結果。latest 只定位；locator／pointer 必須核 typed schema、exact parent/run/date、receipt SHA 和原 bytes。
 
 - 正式 source roots 預設 DATA_ROOT=`D:/Min/Python/Project/FA_Data`、OUTPUT_ROOT=`DATA_ROOT/output`；研究 active root 沿 repository `output/ml_research_storage.json`。shadow、Bank、Paper 與模型根分別定位。

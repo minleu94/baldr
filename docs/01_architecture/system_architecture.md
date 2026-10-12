@@ -1455,6 +1455,8 @@ P2資料流：TWStockConfig→既有selector→同帳Paper route＋PersonalDataP
 
 ### 2026-10-07 個人H20完整保存母體／自然caller增量
 
+2026-10-12 接線修正：G9 個人 H20 caller 先核 exact G6 completed terminal，再依 terminal 完整 `current_symbols` 建立獨立 source contract／daily／entry／outcome lane，保存於 learning output 的 `personal_h20_natural` 子根。一般推薦 current-observed lane 不登記個人 H20 manifest，避免推薦 eligible 子集合取代中央母體。來源核驗、原 frozen model、20-session projector 與 create-only joins 契約不變；歷史漏日不回填。工程與真來源試跑見 [自然迴路 QA](../06_qa/BALDR_NATURAL_LOOP_TRIAL_20261012.md)。
+
 MainWindow在既有推薦source tabs掛PersonalH20ResearchWidget；背景CLI composition注入原public prediction ports，App只持唯讀typed cohort，不匯入ML。原activation/reference→immutablemanifest→全symbols預測pins→整數gross排序→原ResearchStockContextDTO與記憶selection→重讀exactrestore。canonical result_id不造。日常三分支沿原entry保存後登記manifest/entry pins，原outcome verifier後以captureSHA定址歷史manifest；原20-session projector與create-only joins不改，無新model writer或市場資料庫寫入。BBUI與bookmarkcodec只認已核原v3來源，BBP01 parent尚待直接human批准採入。完整同版scope與限制見[中央整合QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)。
 
 

@@ -1894,17 +1894,26 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
-    personal_h20_daily: dict[str, Any] | None = None
     if getattr(args, "personal_h20_activation_config", None) is not None:
-        from scripts.scheduled.personal_h20_daily_hook import run_personal_h20_for_current_cycle
-
-        personal_binding, _ = _capture_source_contract_binding(source_contract_audit)
-        personal_h20_daily = run_personal_h20_for_current_cycle(
-            args.personal_h20_activation_config, personal_binding,
-            market_root=config.data_root,
+        # 個人 H20 沿 G6 中央母體；推薦 eligible cohort 屬另一條來源 lane。
+        source_contract_audit["personal_h20_natural_lane"] = _run_personal_h20_central_natural_lane(
+            config_path=args.personal_h20_activation_config,
+            config=config,
+            canonical_output_root=current_observed_source_output_root,
+            learning_output_root=learning_output_root,
+            source_artifact_root=source_artifact_root,
+            source_db=source_db,
+            decision_date=decision_day,
+            observed_at=checked_clock,
             expected_raw_run_id=args.current_observed_expected_raw_run_id,
+            expected_cycle_terminal=args.current_observed_expected_cycle_terminal,
+            expected_cycle_terminal_sha256=args.current_observed_expected_cycle_terminal_sha256,
+            fixed_round_trip_cost_bp=effective_fixed_cost,
+            cost_scenario=cost_scenario,
+            calendar_cache_path=args.calendar_cache_path,
+            temporary_closure_path=args.temporary_closure_cache_path,
+            capture_requested=args.capture_current,
         )
-        source_contract_audit["personal_h20_daily"] = personal_h20_daily
     if capture_only_legacy_rule_pointer:
         rule_only_current_input_capture = _persist_current_observed_input_capture(
             output_root=learning_output_root,
@@ -1914,11 +1923,6 @@ def main(argv: list[str] | None = None) -> int:
             cost_scenario=cost_scenario,
             fixed_round_trip_cost_bp=effective_fixed_cost,
         )
-        if personal_h20_daily is not None:
-            rule_only_current_input_capture["personal_h20_daily"] = personal_h20_daily
-            from scripts.scheduled.personal_h20_natural_hook import register_personal_h20_natural_entry
-            rule_only_current_input_capture["personal_h20_natural"] = register_personal_h20_natural_entry(
-                args.personal_h20_activation_config, daily=personal_h20_daily, entry=rule_only_current_input_capture)
         rule_only_current_natural_research: dict[str, Any] = {
             "status": "pending",
             "reason": "current_observed_research_not_run",
@@ -2059,11 +2063,6 @@ def main(argv: list[str] | None = None) -> int:
                     cost_scenario=cost_scenario,
                     fixed_round_trip_cost_bp=effective_fixed_cost,
                 )
-                if personal_h20_daily is not None:
-                    current_observed_input_capture["personal_h20_daily"] = personal_h20_daily
-                    from scripts.scheduled.personal_h20_natural_hook import register_personal_h20_natural_entry
-                    current_observed_input_capture["personal_h20_natural"] = register_personal_h20_natural_entry(
-                        args.personal_h20_activation_config, daily=personal_h20_daily, entry=current_observed_input_capture)
                 current_binding, current_binding_reason = _capture_source_contract_binding(
                     source_contract_audit
                 )
@@ -2615,6 +2614,7 @@ def main(argv: list[str] | None = None) -> int:
         calendar_cache_path=args.calendar_cache_path,
         temporary_closure_path=args.temporary_closure_cache_path,
         personal_h20_activation_config=getattr(args, "personal_h20_activation_config", None),
+        personal_h20_register_entry=False,
     )
     capture_result = dict(capture_result)
     capture_result["current_observed_input_capture"] = current_observed_natural_lane[
@@ -4032,6 +4032,93 @@ def _audit_source_contract(
         }
 
 
+def _run_personal_h20_central_natural_lane(
+    *, config_path: Path, config: TWStockConfig, canonical_output_root: Path,
+    learning_output_root: Path, source_artifact_root: Path, source_db: Path,
+    decision_date: date, observed_at: datetime, expected_raw_run_id: str | None,
+    expected_cycle_terminal: Path | None, expected_cycle_terminal_sha256: str | None,
+    fixed_round_trip_cost_bp: int | None, cost_scenario: RecommendationCostScenario,
+    calendar_cache_path: Path | None, temporary_closure_path: Path | None,
+    capture_requested: bool,
+) -> dict[str, Any]:
+    """同 run 的中央母體→原 H20→獨立 entry/outcome，不混用推薦母體。"""
+    from app_module.recommendation.personal_h20_activation import read_personal_h20_activation
+    from app_module.recommendation.personal_current_observed_h20_capture import read_pinned_json
+    from scripts.scheduled.personal_h20_daily_hook import run_personal_h20_for_current_cycle
+
+    lane_root = learning_output_root / "personal_h20_natural"
+    base: dict[str, Any] = {
+        "scope": "personal_h20_central_cohort_natural_only", "output_root": str(lane_root),
+        "historical_pit_eligible": False, "formal_training_allowed": False,
+        "production_action_allowed": False, "promotion_credit_created": False,
+    }
+    try:
+        activation = read_personal_h20_activation(config_path)
+        if not activation.enabled:
+            return {**base, "status": "disabled"}
+        if Path(activation.market_root) != config.data_root:
+            raise ValueError("personal_h20_market_root_mismatch")
+        if expected_cycle_terminal is None or expected_cycle_terminal_sha256 is None or not expected_raw_run_id:
+            return {**base, "status": "pending", "reason": "personal_h20_exact_current_cycle_required"}
+        terminal = read_pinned_json(expected_cycle_terminal, expected_cycle_terminal_sha256)
+        if (terminal.get("schema_version") != "current-stock-research-cycle-terminal.v1"
+                or terminal.get("status") != "completed"
+                or terminal.get("raw_run_id") != expected_raw_run_id
+                or terminal.get("cycle_id") != expected_raw_run_id):
+            return {**base, "status": "pending", "reason": "personal_h20_completed_central_cycle_required"}
+        symbols = terminal.get("current_symbols")
+        if (not isinstance(symbols, list) or not 1 <= len(symbols) <= 50
+                or any(not isinstance(symbol, str) or not symbol.strip() for symbol in symbols)
+                or len(set(symbols)) != len(symbols)):
+            raise ValueError("personal_h20_central_cohort_invalid")
+        cohort = tuple(sorted(symbols))
+        snapshot = _current_observed_feature_snapshot_for_learning(
+            canonical_output_root=canonical_output_root, config=config, decision_date=decision_date,
+            history_start_date=activation.history_start_date, symbols=cohort, observed_at=observed_at,
+            expected_raw_run_id=expected_raw_run_id, expected_cycle_terminal_path=expected_cycle_terminal,
+            expected_cycle_terminal_sha256=expected_cycle_terminal_sha256,
+            calendar_cache_path=calendar_cache_path, temporary_closure_path=temporary_closure_path,
+        )
+        if snapshot.get("status") != "captured":
+            return {**base, "status": "pending", "symbols": list(cohort),
+                    "reason": snapshot.get("reason"), "source_snapshot": snapshot}
+        audit = _audit_source_contract(
+            data_root=config.data_root, output_root=source_artifact_root, source_db=source_db,
+            learning_output_root=lane_root, decision_date=decision_date, symbols=cohort,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp, cost_scenario=cost_scenario,
+            history_start_date=activation.history_start_date, replay_start_date=activation.history_start_date,
+            replay_end_date=decision_date.isoformat(), availability_cutoff_at=observed_at.isoformat(),
+            current_observed_snapshot=snapshot,
+        )
+        binding, binding_reason = _capture_source_contract_binding(audit)
+        if binding is None:
+            return {**base, "status": "pending", "symbols": list(cohort), "reason": binding_reason}
+        daily = run_personal_h20_for_current_cycle(config_path, binding, market_root=config.data_root,
+                                                 expected_raw_run_id=expected_raw_run_id)
+        audit["personal_h20_daily"] = daily
+        natural = _run_current_observed_natural_research_lane(
+            learning_output_root=lane_root, data_root=config.data_root, source_db=source_db,
+            source_contract_audit=audit, current_feature_snapshot=snapshot,
+            decision_date=decision_date, evaluation_at=observed_at,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp, cost_scenario=cost_scenario,
+            capture_requested=capture_requested, calendar_cache_path=calendar_cache_path,
+            temporary_closure_path=temporary_closure_path, personal_h20_activation_config=config_path,
+        )
+        state = "completed" if daily.get("effective_model_run") is True else str(daily.get("status") or "blocked")
+        entry = natural["current_observed_input_capture"]
+        registration = entry.get("personal_h20_natural", {})
+        outcome = natural["current_observed_natural_research"]
+        if entry.get("status") == "blocked" or registration.get("status") == "blocked" or outcome.get("status") == "blocked":
+            state = "blocked"
+        if state == "completed" and (entry.get("status") != "captured" or outcome.get("status") == "pending"):
+            state = "completed_with_pending"
+        return {**base, **natural, "status": state, "symbols": list(cohort),
+                "raw_run_id": expected_raw_run_id, "daily": daily}
+    except (OSError, RuntimeError, TypeError, ValueError, KeyError, sqlite3.Error) as exc:
+        return {**base, "status": "blocked", "reason": f"{type(exc).__name__}:{exc}",
+                "effective_model_run": False}
+
+
 def _capture_source_contract_binding(
     audit: Mapping[str, Any] | None,
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -5175,6 +5262,7 @@ def _run_current_observed_natural_research_lane(
     calendar_cache_path: Path | None,
     temporary_closure_path: Path | None,
     personal_h20_activation_config: Path | None = None,
+    personal_h20_register_entry: bool = True,
 ) -> dict[str, Any]:
     """Capture prospective no-model observations and scan their natural labels.
 
@@ -5233,9 +5321,11 @@ def _run_current_observed_natural_research_lane(
                 "capture_eligible": False,
             }
 
-    if personal_h20_activation_config is not None:
+    if personal_h20_activation_config is not None and personal_h20_register_entry:
         from scripts.scheduled.personal_h20_natural_hook import register_personal_h20_natural_entry
         daily = source_contract_audit.get("personal_h20_daily")
+        if isinstance(daily, Mapping):
+            input_capture["personal_h20_daily"] = dict(daily)
         input_capture["personal_h20_natural"] = register_personal_h20_natural_entry(
             personal_h20_activation_config, daily=daily if isinstance(daily, Mapping) else None,
             entry=input_capture)
@@ -5411,6 +5501,9 @@ def _inspect_dependencies(
         "source_contract": dict((source_contract_audit or {}).get("source_contract") or {}),
         "source_contract_receipt": dict(
             (source_contract_audit or {}).get("source_contract_receipt") or {}
+        ),
+        "personal_h20_natural_lane": dict(
+            (source_contract_audit or {}).get("personal_h20_natural_lane") or {}
         ),
         "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
@@ -7617,6 +7710,7 @@ def _cli_payload(
         "replay": replay_result.to_dict() if replay_result is not None else None,
         "replay_manifest_path": str(manifest_path) if manifest_path is not None else None,
         "dependencies": dict(dependencies),
+        "personal_h20_natural_lane": dict(dependencies.get("personal_h20_natural_lane") or {}),
         "run": {
             "run_id": run_result.run_id,
             "status": run_result.status,

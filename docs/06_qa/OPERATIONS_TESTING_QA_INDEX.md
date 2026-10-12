@@ -6,6 +6,7 @@
 
 | 要查的內容 | 證據入口 |
 |---|---|
+| 個人 H20 中央母體接線與完整自然迴路試跑 | [10/12 自然迴路 QA](BALDR_NATURAL_LOOP_TRIAL_20261012.md)；真來源隔離試跑、歷史缺日及自然成熟分開判讀。 |
 | Paper 身分延續與 G9 官方日曆 operation 契約修正 | [10/12 排程契約修正](BALDR_SCHEDULE_CONTRACT_REPAIR_20261012.md)；工程回歸與自然排程／來源資格分開，原失敗收據保留。 |
 | 指定時點的排程修復、失敗與後續補充 | [10/09 排程與 Codex automation 修正](BALDR_SCHEDULE_REMEDIATION_20261009.md) → [全排程共用唯讀稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) → [10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [9/30 bounded repair](SCHEDULED_OPERATIONS_REPAIR_20260930.md) → [9/29 完整 21-task inventory](SCHEDULED_OPERATIONS_REPAIR_20260929.md) → [9/17 A 線狀態審查歷史](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) → [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史)；日期化收據不代表目前 scheduler readiness。 |
 | Formal scheduler readiness audit（9/20） | [current-only 唯讀審查](FORMAL_SCHEDULER_READINESS_AUDIT_2026_09_20.md) | 只描述 2026-09-20 的實際觀測與 decision date，不代表下一交易日或目前 scheduler readiness，也沒有執行排程或寫入。 |

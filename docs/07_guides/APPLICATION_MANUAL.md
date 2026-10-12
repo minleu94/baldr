@@ -4392,6 +4392,10 @@ BBANDS 參數為 30 根有效 OHLC 觀測、SMA、上下標準差倍數 2.0，�
 
 ### 9.9.1i 個人 H20 每日研究預測、配置與回滾
 
+2026-10-12 排程修正：啟用個人 H20 時，G9 讀取同次 G6 `completed` terminal 的完整 `current_symbols`，驗證 run／cycle／SHA 與當下可取得的來源，再使用原 activation 指定的 frozen model。一般推薦 eligible 名單不再作為個人 H20 母體。個人自然擷取與結果保存於 G9 learning output 下的 `personal_h20_natural/recommendation_learning/`，每日 manifest 仍沿 activation 的私人根；查核 `personal_h20_natural_lane.daily`、`current_observed_input_capture.personal_h20_natural` 與 `current_observed_natural_research`，不能只看 Task exit code。
+
+缺同次 terminal、來源未發布或尚無當日 close 時，依 receipt 列 pending；缺價、來源資格阻擋與自然 H20 未成熟分別判讀。此接線不補造漏日預測、不改原模型、不給正式 PIT／promotion credit。完整試跑紀錄見 [自然迴路驗證](../06_qa/BALDR_NATURAL_LOOP_TRIAL_20261012.md)。
+
 > 歷史原文：[封存筆記](../09_archive/APPLICATION_MANUAL_DATED_ENGINEERING_NOTES_20261010.md#manual-tail-059)；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
 
 #### H20目前用途與下一次排程（2026-10-07）

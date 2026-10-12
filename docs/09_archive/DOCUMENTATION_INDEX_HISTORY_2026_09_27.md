@@ -1,4 +1,5 @@
 > 歷史索引：保存整理前的文件分類與日期化摘要；現行導航見 [DOCUMENTATION_INDEX](../00_core/DOCUMENTATION_INDEX.md)。相對連結已依歸檔位置調整。
+> **日期快照界線（2026-09-27）：** 下方索引與狀態摘要只代表當日整理結果，不反映目前功能、完成度或優先順序。現況依 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[產品 Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 與 [6 個月工程 Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 判讀。
 
 # 文檔索引
 

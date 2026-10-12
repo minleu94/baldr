@@ -1,9 +1,9 @@
 # 外部專案參考與歷史版本形狀
 
 > **研究基準日期**：2026-07-11
-> **最後整理**：2026-10-10（收窄權威範圍與研究日期說明；未重新查核外部 repo）
+> **最後整理**：2026-10-12（收窄 bounded shadow-acquisition 能力敘述；未重新查核外部 repo）
 > **時效性**：外部 repo 查核與基礎 Roadmap 研究以 2026-07-11 為基線；資料源章節另有截至 2026-08-14 的具名來源審查與決議，未重新查核其後的外部狀態或接受資格。本文件不定義現行來源優先序或交付順序：來源優先序看 [PRODUCT_ROADMAP_POST_REFACTOR §11](PRODUCT_ROADMAP_POST_REFACTOR.md#11-data-source-roadmap)，近期工程順序看 [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)，現況看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
-> **狀態校正**：P0 adapters 已完成 shadow engineering，但仍須逐來源 license / quality / PIT 人工接受；candidate 不得進 ScoringEngine 或 formal Advice。
+> **狀態校正**：P0/P13 已接線 bounded shadow-acquisition routes；這只表示存在隔離的工程能力，不證明各來源 probe 可用或已接受。來源 license / quality / PIT 仍須逐源核對；candidate 不得進 ScoringEngine 或 formal Advice。
 > **定位**：本文件保存外部開源專案對照、候選資料源研究細節、可借鑑設計、Blueprint 衝突檢查，以及當時 V1.8 至 V2.0 的歷史版本形狀參考。候選分級不等於現行來源優先序；現行優先序以 Product Roadmap §11 為準。V1.1 至 V2.0 的已完成路線已移至 [歷史封存](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)；本文件不表示該版本節奏仍是目前交付順序，也不取代 Vision、Snapshot、6M Roadmap、長期版本階梯或 Architecture。
 
 ---

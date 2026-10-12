@@ -3937,6 +3937,12 @@ Direct 的 custody 錯誤須追同次 supervisor 與 OOC／release 日誌。修�
 
 確認結果已保存，且驗證狀態不是 FAIL。樣本不足、無結果、未保存、run 已封存、run 已升級、資料完整性不是 valid、缺少參數合約版本、最低 validation gate 未通過、缺 benchmark excess return、factor snapshot 品質不足、regime compatibility 不足或 Month 6 lifecycle gate 未通過時，不允許升級。若策略版本 JSON 已寫入但 Registry 回填失敗，系統會執行補償刪除；刪除失敗時標記 reconciliation required，需進入受控修復流程。
 
+### 排程 Evidence／G9 回傳非零
+
+先按[全排程稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)唯讀查 Task，再沿同次 wrapper／child receipt、run 與 hash 判讀。Evidence child 回傳 0，不代表 Paper health source 已通過；檢查 wrapper 的 `paper_health_source_receipt.blockers`。Paper 身分延續會讀保存 baseline 列的 `position_identity_source`，保留原 entry 日期、fill／event／hash 與 `available_at`；缺失、晚到或身分不一致維持 `unproven`。舊版已遺失證據的 baseline 不會自動修補，須由 owner 核對原 entry 證據後另做受控重建，不能手填 entry 或換成 refresh 時鐘。
+
+G9 的 `live_capture.calendar_diagnostic` 若顯示官方年表缺件，核對有效 `--calendar-cache-path`（或既有自然成熟度日曆環境設定）與年度 cache receipt、hash、期限。Session proof 使用同一次公開 calendar read operation 的交易日與證據，禁止線上 fallback；本地指數列不能替代 hash-bound 官方年表。修正讀取契約不代表 source revision、technical prospective、自然樣本、人工審查或 promotion gate 已通過。不要從這個排錯流程重跑 producer、修改 Task 或補行情；人工修復需另有明確 scope。10/12 兩項工程修正與驗證界線見[排程契約修正 QA](../06_qa/BALDR_SCHEDULE_CONTRACT_REPAIR_20261012.md)。
+
 ## 13. Manual 覆蓋狀態
 
 > 本表的「完成」只表示操作手冊已覆蓋入口、步驟、參數、結果判讀與排錯，不表示該工作區

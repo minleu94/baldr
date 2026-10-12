@@ -281,7 +281,12 @@ class PaperPositionIdentityProvider:
                 )
                 continue
 
-            carried = _verified_prior_identity(previous_records.get(code), stock_code=code)
+            carried = _verified_prior_identity(
+                previous_records.get(code),
+                stock_code=code,
+                snapshot_date=target_date,
+                observed_at=observed,
+            )
             if carried is not None and start_quantity > 0 and current.positions.get(code, 0) > 0:
                 identities[code] = {
                     **carried,
@@ -703,6 +708,8 @@ def _verified_prior_identity(
     value: Mapping[str, Any] | None,
     *,
     stock_code: str,
+    snapshot_date: date,
+    observed_at: datetime,
 ) -> Mapping[str, Any] | None:
     if not isinstance(value, Mapping):
         return None
@@ -715,14 +722,52 @@ def _verified_prior_identity(
         return None
     if str(value.get("state") or "").strip().upper() == "CLOSED":
         return None
+    # Daily refresh 將 entry 證據保存在此巢狀物件；外層持倉列沒有
+    # entry_date／available_at。只沿用原證據，不以 refresh 時鐘補造。
+    identity = value.get("position_identity_source")
+    if not isinstance(identity, Mapping):
+        return None
+    if (
+        identity.get("position_id") != position_id
+        or identity.get("entry_lineage_id") != lineage_id
+        or identity.get("stock_code") != stock_code
+        or identity.get("status") != status
+        or not str(identity.get("current_snapshot_id") or "").strip()
+    ):
+        return None
+    try:
+        entry_date = _parse_date(identity.get("entry_date"), "prior_entry_date")
+        prior_snapshot_date = _parse_date(
+            identity.get("current_snapshot_date"), "prior_snapshot_date"
+        )
+        available_at = _aware(identity.get("available_at"), "prior_available_at")
+    except (TypeError, ValueError):
+        return None
+    if (
+        entry_date >= prior_snapshot_date
+        or prior_snapshot_date > snapshot_date
+        or available_at > observed_at
+    ):
+        return None
+    evidence_hash = str(identity.get("entry_evidence_hash") or "")
+    if (
+        not str(identity.get("entry_fill_id") or "").strip()
+        or not str(identity.get("entry_source_event_id") or "").strip()
+        or not evidence_hash.startswith("sha256:")
+        or len(evidence_hash) != 71
+        or any(character not in "0123456789abcdef" for character in evidence_hash[7:])
+    ):
+        return None
     return {
         "position_id": position_id,
         "entry_lineage_id": lineage_id,
         "stock_code": stock_code,
-        "entry_date": value.get("entry_date"),
-        "entry_fill_id": value.get("entry_fill_id"),
-        "entry_source_event_id": value.get("entry_source_event_id"),
-        "entry_evidence_hash": value.get("entry_evidence_hash"),
+        "entry_date": identity.get("entry_date"),
+        "entry_fill_id": identity.get("entry_fill_id"),
+        "entry_source_event_id": identity.get("entry_source_event_id"),
+        "entry_evidence_hash": identity.get("entry_evidence_hash"),
+        "available_at": identity.get("available_at"),
+        "coverage_status_file_sha256": identity.get("coverage_status_file_sha256"),
     }
 
 

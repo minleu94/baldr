@@ -28,6 +28,8 @@
 
 G9 failed 時要讀 `steps.recommendation_learning.child_status.dependencies.source_contract` 和 typed terminal：DailyPriceSourceRevisionError、technical_prospective_source_not_ready、cohort缺股屬來源／工程資格缺口，不能全歸為自然樣本不足。parent blocked_source_revision 也不阻止對已驗 research child獨立報告，但不授 formal PIT。
 
+Evidence wrapper 非零須另核 `paper_health_source_receipt.blockers`，不能只看 `pipeline_exit_code`。若舊 baseline 的 carried entry 日期／可得時鐘缺失，列原身分證據缺口；修正後只沿 `position_identity_source` 原證據延續，缺件維持 unproven，不改舊檔。G9 `live_capture.calendar_diagnostic` 的官方年表要求須沿公開 `read_operation` 的同次 evidence 核驗，不以私有 instance memo 或本地指數列授 session proof。工程回歸與自然排程恢復分列，見[10/12 契約修正 QA](../06_qa/BALDR_SCHEDULE_CONTRACT_REPAIR_20261012.md)。
+
 Quick 月營收 child 的 `failed`／`rejected` 必須保留 parent SHA、child receipt SHA 與 `child_diagnostics`。`quick_parent_changed_during_child_audit` 只用於初始、child 查核所用與查核後父檔的 bytes SHA 不一致；缺少 SHA 應是 `quick_parent_audit_hash_missing`，不能推定檔案競態。若官方 TWSE／TPEx 原件月份不同（例如 11508／11509），列來源月份不一致、研究候選未建立；核心 Quick 結果另列，不改期別、不合併不同月份、不用核心 exit 0 解除 child 失敗。後次官方來源自然對齊並經同次 child/artifact 驗證後，才報恢復。
 
 Direct supervisor 對自己啟動的 builder／OOC／release child 使用保留的 `Popen` handle 確認退出並讀取 exit code；已退出的 child 不需要在等待上游後再次出現在 live PID 清單。仍活躍的 child 必須符合 command custody；外來 legacy PID 仍需實際觀測。完整鏈必須同時滿足 OOC／release exit 0 與兩份 terminal `complete`，否則保留 child blocker。`was not observed under custody` 要核對自有 child 等待邏輯與其日誌，不能直接斷言 fit 未啟動／未完成，也不能把修正程式當成歷史執行已成功。缺 formal teacher、ledger、sector 或 Rule history 時維持資格 gate，不藉改 prompt、重試上限或排程時間解除。

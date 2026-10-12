@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+import copy
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
 
+import pytest
+
+import app_module.position_health_daily_refresh_service as daily_refresh_module
+
 from app_module.paper_position_identity_provider import PaperPositionIdentityProvider
 from app_module.position_health_daily_refresh_service import PositionHealthDailyRefreshService
 from app_module.position_health_transition_evaluator import evaluate_baseline_file
+from app_module.position_health_market_source_producer import PositionHealthMarketSourceProducer
 
 
 def _make_state(path: Path, snapshots: list[tuple[str, str, dict[str, int]]]) -> None:
@@ -590,7 +596,7 @@ def test_daily_refresh_and_evaluator_consume_derived_entry_identity(tmp_path: Pa
         previous_baseline_path=previous,
         observed_at=datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc),
     )
-    assert receipt["status"] == "passed"
+    assert receipt["status"] == "passed", receipt
     baseline = json.loads((output / "latest.json").read_text(encoding="utf-8"))
     assert baseline["position_identity_verified_codes"] == ["2330"]
     assert baseline["positions"][0]["position_id"].startswith("paper:paper-main:2330:entry-")
@@ -608,3 +614,135 @@ def test_daily_refresh_and_evaluator_consume_derived_entry_identity(tmp_path: Pa
     assert "thesis_contract_missing" in " ".join(
         evaluation["positions"][0]["reasons"]
     )
+
+
+def test_daily_refresh_carries_original_nested_entry_to_market_consumer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capture_clock = datetime(2026, 9, 8, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(daily_refresh_module, "_utc_now", lambda: capture_clock)
+    state_db = tmp_path / "paper.sqlite"
+    ledger_db = tmp_path / "ledger.sqlite"
+    status_path = tmp_path / "status.json"
+    _make_state(state_db, [
+        ("paper-main-20260907", "2026-09-07", {"2330": 0}),
+        ("paper-main-20260908", "2026-09-08", {"2330": 1000}),
+    ])
+    _make_ledger(ledger_db, [_ledger_row(
+        token="entry", event_date="2026-09-07", stock_code="2330", side="buy", quantity=1000,
+    )])
+    _write_status(status_path, state_db=state_db, ledger_db=ledger_db,
+                  snapshot_id="paper-main-20260908", decision_date="2026-09-08", transitions=1)
+    service = PositionHealthDailyRefreshService(
+        state_db_path=state_db, status_path=status_path, ledger_db_path=ledger_db,
+        coverage_status_path=status_path,
+        position_identity_provider=_provider(state_db, ledger_db, status_path),
+    )
+    first = service.refresh(as_of_date=date(2026, 9, 8), output_dir=tmp_path / "first",
+                            observed_at=datetime(2026, 9, 8, 1, tzinfo=timezone.utc))
+    assert first["status"] == "passed", first
+    first_path = Path(first["baseline_path"])
+    first_baseline = json.loads(first_path.read_text(encoding="utf-8"))
+    original = first_baseline["positions"][0]["position_identity_source"]
+    assert "entry_date" not in first_baseline["positions"][0]
+
+    with sqlite3.connect(state_db) as connection:
+        connection.execute("INSERT INTO paper_portfolio_snapshots VALUES (?, ?, ?, ?, ?, ?)",
+                           ("paper-main-20260909", "paper-main", "2026-09-09", "source-2026-09-09",
+                            "100000.00", "200000.00"))
+        connection.execute("INSERT INTO paper_portfolio_positions VALUES (?, ?, ?, ?, ?, ?)",
+                           ("paper-main-20260909", "2330", 1000, "10.00", "10000", 1000))
+    _write_status(status_path, state_db=state_db, ledger_db=ledger_db,
+                  snapshot_id="paper-main-20260909", decision_date="2026-09-09", transitions=0)
+    state_before, ledger_before = state_db.read_bytes(), ledger_db.read_bytes()
+    capture_clock = datetime(2026, 9, 9, 1, tzinfo=timezone.utc)
+    second = service.refresh(as_of_date=date(2026, 9, 9), output_dir=tmp_path / "second",
+                             previous_baseline_path=first_path,
+                             observed_at=datetime(2026, 9, 9, 1, tzinfo=timezone.utc))
+    second_path = Path(second["baseline_path"])
+    # 同 snapshot 再讀保存 baseline，不能在第二次 carry 再遺失 entry 時鐘。
+    capture_clock = datetime(2026, 9, 9, 2, tzinfo=timezone.utc)
+    repeated = service.refresh(as_of_date=date(2026, 9, 9), output_dir=tmp_path / "repeated",
+                               previous_baseline_path=second_path,
+                               observed_at=datetime(2026, 9, 9, 2, tzinfo=timezone.utc))
+    baseline_path = Path(repeated["baseline_path"])
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    carried = baseline["positions"][0]["position_identity_source"]
+    assert carried["status"] == "carried_verified"
+    assert baseline["position_identity_verified_codes"] == ["2330"]
+    for field in ("position_id", "entry_lineage_id", "entry_date", "entry_fill_id",
+                  "entry_source_event_id", "entry_evidence_hash", "available_at",
+                  "coverage_status_file_sha256"):
+        assert carried[field] == original[field]
+
+    market_db = tmp_path / "market.sqlite"
+    with sqlite3.connect(market_db) as connection:
+        connection.execute('CREATE TABLE daily_prices (日期 TEXT, 證券代號 TEXT, 收盤價 TEXT, '
+                           '開盤價 TEXT, 最高價 TEXT, 最低價 TEXT, 成交股數 INTEGER)')
+        connection.execute("INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?, ?)",
+                           ("20260909", "2330", "10", "10", "11", "9", 100000))
+        connection.execute('CREATE TABLE technical_indicators (日期 TEXT, 證券代號 TEXT, '
+                           'RSI TEXT, MACD TEXT, MACD_signal TEXT, MACD_hist TEXT, '
+                           'MA5 TEXT, MA10 TEXT, MA20 TEXT, MA60 TEXT, ATR TEXT, ADX TEXT)')
+        connection.execute("INSERT INTO technical_indicators VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           ("20260909", "2330", "50", "1", "1", "0", "10", "10", "10", "10", "1", "20"))
+    quick, freshness = tmp_path / "quick.json", tmp_path / "freshness.json"
+    quick.write_text(json.dumps({"status": "passed", "writes_market_data_db": True,
+                                 "end_date": "2026-09-09", "completed_at": "2026-09-09T12:30:00Z"}), encoding="utf-8")
+    freshness.write_text(json.dumps({"status": "passed", "checked_at": "2026-09-09T13:00:00Z",
+                                     "checks": {"daily_prices_latest_date_key": "20260909",
+                                                "technical_indicators_latest_date": "20260909"}}), encoding="utf-8")
+    observed = datetime(2026, 9, 9, 13, 5, tzinfo=timezone.utc)
+    result = PositionHealthMarketSourceProducer(
+        market_db_path=market_db, quick_status_path=quick, freshness_status_path=freshness,
+        now_provider=lambda: observed,
+    ).produce(baseline_path=baseline_path, output_dir=tmp_path / "sources",
+              decision_date="2026-09-09", decision_at=observed, observed_at=observed)
+    assert result["status"] == "passed"
+    assert result["condition_row_count"] == 1
+    assert state_db.read_bytes() == state_before
+    assert ledger_db.read_bytes() == ledger_before
+
+
+@pytest.mark.parametrize("field,value", [
+    ("entry_date", None), ("entry_date", "2026-09-09"),
+    ("available_at", None), ("available_at", "2026-09-09T02:00:00Z"),
+    ("available_at", "2026-09-08T08:30:00"),
+    ("stock_code", "1418"), ("position_id", "other-entry"),
+    ("entry_lineage_id", "other-lineage"), ("status", "unproven"),
+    ("current_snapshot_date", "2099-01-01"),
+    ("entry_fill_id", None), ("entry_source_event_id", None), ("entry_evidence_hash", None),
+])
+def test_provider_does_not_promote_incomplete_or_future_prior_entry(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    state_db, ledger_db, status_path = (tmp_path / name for name in ("paper.sqlite", "ledger.sqlite", "status.json"))
+    _make_state(state_db, [
+        ("paper-main-20260908", "2026-09-08", {"2330": 1000}),
+        ("paper-main-20260909", "2026-09-09", {"2330": 1000}),
+    ])
+    _make_ledger(ledger_db, [])
+    _write_status(status_path, state_db=state_db, ledger_db=ledger_db,
+                  snapshot_id="paper-main-20260909", decision_date="2026-09-09", transitions=0)
+    prior = {
+        "stock_code": "2330", "state": "WATCH", "position_id": "entry-2330",
+        "entry_lineage_id": "entry-2330", "entry_lineage_status": "natural_entry_verified",
+        "position_identity_source": {
+            "stock_code": "2330", "position_id": "entry-2330", "entry_lineage_id": "entry-2330",
+            "status": "natural_entry_verified", "entry_date": "2026-09-07",
+            "entry_fill_id": "fill-entry", "entry_source_event_id": "event-entry",
+            "entry_evidence_hash": "sha256:" + "a" * 64, "available_at": "2026-09-08T00:30:00Z",
+            "current_snapshot_id": "paper-main-20260908", "current_snapshot_date": "2026-09-08",
+        },
+    }
+    prior["position_identity_source"][field] = value
+    original = copy.deepcopy(prior)
+    result = _provider(state_db, ledger_db, status_path).resolve(
+        snapshot_id="paper-main-20260909", snapshot_date="2026-09-09",
+        observed_at=datetime(2026, 9, 9, 1, tzinfo=timezone.utc), previous_baseline={"2330": prior},
+    )
+    assert result.identities == {}
+    assert result.provenance["status"] == "degraded"
+    assert result.provenance["unknown_codes"] == ["2330"]
+    assert "paper_position_identity_unproven:2330" in result.warnings
+    assert prior == original

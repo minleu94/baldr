@@ -50,6 +50,61 @@ FEATURE_SCHEMA = (("momentum_bp", "int", "bp"), ("volume_ratio_bp", "int", "bp")
 FEATURE_REGISTRY_HASH = "sha256:" + "3" * 64
 
 
+@pytest.mark.parametrize("cache_state", ["valid", "missing", "expired", "corrupt"])
+def test_live_session_proof_reads_public_calendar_operation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cache_state: str,
+) -> None:
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+    from data_module import official_trading_calendar as calendar_module
+    from data_module.official_trading_calendar_cache import build_twse_calendar_cache, write_twse_calendar_cache
+
+    checked = datetime(2026, 10, 2, 8, 0, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return checked.replace(tzinfo=None) if tz is None else checked.astimezone(tz)
+
+    monkeypatch.setattr(calendar_module, "datetime", FrozenDateTime)
+    database = tmp_path / "market.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute('CREATE TABLE market_indices (日期 TEXT, 指數名稱 TEXT, 收盤指數 TEXT)')
+        connection.execute('INSERT INTO market_indices VALUES (?, ?, ?)', ("20261002", "TAIEX", "23000"))
+    cache_root = tmp_path / "calendar"
+    cache_root.mkdir()
+    path = cache_root / "twse_holiday_schedule_2026_fixture.json"
+    if cache_state != "missing":
+        captured = checked - timedelta(days=8 if cache_state == "expired" else 1)
+        cache = build_twse_calendar_cache(
+            calendar_year=2026,
+            raw_response=json.dumps([{"Name": "測試休市", "Date": "1150101",
+                                      "Weekday": "四", "Description": "測試年度年表"}]).encode(),
+            requested_at=captured - timedelta(seconds=1), captured_at=captured,
+            response_status=200, response_headers={"ETag": '"session-proof-fixture"'},
+            max_age=timedelta(days=7),
+        )
+        write_twse_calendar_cache(path, cache, allowed_root=cache_root)
+        if cache_state == "corrupt":
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["content_sha256"] = "sha256:" + "0" * 64
+            path.write_text(json.dumps(payload), encoding="utf-8")
+    before = None if not path.exists() else path.read_bytes()
+    kwargs = dict(provider=SimpleNamespace(database_path=database), decision_date=date(2026, 10, 2),
+                  observed_at=checked, calendar_cache_path=cache_root, temporary_closure_path=None)
+    if cache_state == "valid":
+        proof = daily_learning._verified_current_capture_session_proof(**kwargs)
+        assert proof["calendar_evidence"]["mode"] == "hash_bound_official_calendar_cache"
+        assert proof["calendar_evidence"]["is_trading_day"] is True
+        assert proof["scheduled_market_close_at"] == "2026-10-02T13:30:00+08:00"
+        assert proof["formal_training_allowed"] is False
+        assert proof["historical_pit_eligible"] is False
+    else:
+        # 本地指數列不能替代已驗官方年表或解除 cache freshness／hash gate。
+        with pytest.raises(ValueError, match="official session|hash-bound official annual"):
+            daily_learning._verified_current_capture_session_proof(**kwargs)
+    assert (None if not path.exists() else path.read_bytes()) == before
+
+
 class _FixedPredictionModel:
     def __init__(self, model_id: str, probability_bp: int) -> None:
         self.model_id = model_id

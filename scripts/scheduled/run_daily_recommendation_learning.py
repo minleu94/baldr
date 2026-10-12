@@ -5456,27 +5456,18 @@ def _verified_current_capture_session_proof(
         calendar_cache_path=resolved_calendar_path,
         temporary_closure_path=resolved_temporary_path,
     )
-    is_trading_day, reason = calendar.is_official_trading_day(
-        decision_date,
-        allow_online_probe=False,
-    )
-    if is_trading_day is not True:
-        raise ValueError(f"official session is unresolved or closed: {reason}")
-    schedule_evidence_by_year = getattr(calendar, "_schedule_evidence", None)
-    schedule_evidence = (
-        schedule_evidence_by_year.get(decision_date.year)
-        if isinstance(schedule_evidence_by_year, Mapping)
-        else None
-    )
-    if (
-        not isinstance(schedule_evidence, Mapping)
-        or schedule_evidence.get("mode") != "hash_bound_official_calendar_cache"
-    ):
+    # 日曆證據由 operation 保存；不用已移除的 instance 私有 memo。
+    # 同一 operation 重驗原 cache bytes／live freshness，不允許網路 fallback。
+    with calendar.read_operation(allow_online_probe=False) as operation:
+        is_trading_day, reason = operation.is_official_trading_day(decision_date)
+        if is_trading_day is not True:
+            raise ValueError(f"official session is unresolved or closed: {reason}")
+        evidence = operation.evidence_for(decision_date)
+    if evidence.get("mode") != "hash_bound_official_calendar_cache":
         # A local market-index row can also resolve a trading day, but it is
         # insufficient for a close-time proof. Never replace the official
         # cache with a weekday or database-presence assumption.
         raise ValueError("hash-bound official annual calendar cache is required")
-    evidence = calendar.evidence_for(decision_date)
     return _build_current_observed_entry_session_proof(
         decision_date=decision_date,
         observed_at=observed_at,

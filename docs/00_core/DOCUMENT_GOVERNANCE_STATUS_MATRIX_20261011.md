@@ -134,8 +134,8 @@
 
 1. 先取 tracked docs 路徑清單，再以 exact path batches 讀取每個文件正文至 EOF，記錄主要用途分類、範圍／權威界線、衝突、處置、HEAD blob OID 與物理行數。
 2. 將結果與 JSONL audit ledger 對照；逐檔 manifest 保存分類、用途、時間／權威界線、衝突判讀、處置、基準與最終 OID／行數及來源 ledger。
-3. 所有內容與清冊修訂提交後，Graphify 以最終 HEAD 的 Git blobs 建立受控 snapshot，逐筆核對來源 path／blob OID／SHA-256，再驗證來源數、連結、節點端點與 root `graphify-out` 未變更。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣及補完計畫納入導覽來源。前輪與本輪產物／驗收收據分別保存在 ignored `output/qa/gf613_verification/` 與 `output/qa/gov5gf/`，不得以舊 HEAD 圖譜代替。
+3. 所有內容與清冊修訂提交後，Graphify 以最終 HEAD 的 Git blobs 建立受控 snapshot，逐筆核對來源 path／blob OID／SHA-256，再驗證來源數、連結、節點端點與 root `graphify-out` 未變更。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣及補完計畫納入導覽來源。前輪與本輪產物／驗收收據分別保存在 ignored `output/qa/gf613_verification/` 與 `output/qa/gov5gf2/`，不得以舊 HEAD 圖譜代替。
 
-前輪定版 d929e003 的 Graphify 驗收為 PASS：1517 份文件、1087 個 production Python 檔、11355 條明示 Markdown links、未解析本機文件／程式連結 0，收據保存在 output/qa/gf613_verification/graphify_final_verification.json。本輪新增裁決收據並修復 caller，提交後於 output/qa/gov5gf/graphify_final_verification.json 重新核對固定 HEAD、1518 份文件及 1087 個 production Python 檔、全部 bytes／blob 指紋、連結及端點；不將舊 AST 當作新程式碼。nodes／edges／communities 與未解析 AST 診斷以新 JSON 收據為準，只有 passed=true 才代表本輪定版圖驗收。使用 Graphify 0.9.11 本機 AST 與明示 Markdown links，無 semantic model 或網路；root graphify-out 不變核對也列入收據。補完計畫納入導覽不代表產品 Gate 接受。
+前輪定版 d929e003 的 Graphify 驗收為 PASS：1517 份文件、1087 個 production Python 檔、11355 條明示 Markdown links、未解析本機文件／程式連結 0，收據保存在 output/qa/gf613_verification/graphify_final_verification.json。本輪新增裁決收據並修復 caller，提交後於 output/qa/gov5gf2/graphify_final_verification.json 重新核對固定 HEAD、1518 份文件及 1087 個 production Python 檔、全部 bytes／blob 指紋、連結及端點；不將舊 AST 當作新程式碼。nodes／edges／communities 與未解析 AST 診斷以新 JSON 收據為準，只有 passed=true 才代表本輪定版圖驗收。使用 Graphify 0.9.11 本機 AST 與明示 Markdown links，無 semantic model 或網路；root graphify-out 不變核對也列入收據。補完計畫納入導覽不代表產品 Gate 接受。
 
 逐檔清冊：[DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。`docs/` 下 1491 份一般文件，以及 `docs/` 外 26 份 tracked Markdown，都有分類、界線、衝突判讀、HEAD OID、物理行數及來源 ledger；本矩陣、path manifest 與開發線路矩陣 3 份治理輸出保留自我參照豁免。

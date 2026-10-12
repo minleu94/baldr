@@ -15,7 +15,7 @@
 | 既有治理矩陣、manifest、線路矩陣、相關操作／QA 導覽 | 修改 | 同步此次裁決與實際驗證結果 | 只反向本輪 hunk；避免留下與程式不同版的狀態。 |
 | 本收據 | 新增 | 可核對的裁決與驗收證據 | 只有入站引用解除且收據保存後才可移除。 |
 
-Coverage Pass：治理矩陣、逐檔 manifest、線路矩陣、上述來源文件及 QA 入口為 Must。Manual 的聲明持倉操作／結果／缺件／排錯同步，架構補唯一 query 讀取 seam 與可比性界線；Snapshot、Roadmap Hub、6M、Legacy、中央 Index 維持各自權威，相關入口與本輪有限工程接受不衝突，產品補完暫停與全域 Gate 保持。未改產品優先序、來源接受決議、ML、交易／績效計算或正式原始資料。Look-ahead 自查：讀取保存結果維持原 decision/data date 與 evaluation cutoff；日曆修復只共用固定觀測 operation，不改日期選擇或行情。
+Coverage Pass：治理矩陣、逐檔 manifest、線路矩陣、上述來源文件及 QA 入口為 Must。Manual 的聲明持倉操作／結果／缺件／排錯同步，架構補唯一 query 讀取 seam 與可比性界線，圖譜指南更正舊的受保護清單／分母並導向最後 fixed-HEAD 收據；Snapshot、Roadmap Hub、6M、Legacy、中央 Index 維持各自權威，相關入口與本輪有限工程接受不衝突，產品補完暫停與全域 Gate 保持。未改產品優先序、來源接受決議、ML、交易／績效計算或正式原始資料。Look-ahead 自查：讀取保存結果維持原 decision/data date 與 evaluation cutoff；日曆修復只共用固定觀測 operation，不改日期選擇或行情。
 
 ## 2. G02：12／15 是不同流程的設定數
 
@@ -105,4 +105,6 @@ update-tab 的 4 skip 為腳本既有離線／接口限制，沒有正式下載�
 
 最終產品來源 bytes SHA-256：caller `a00c673f8393fdee4c99f998e36310a555e21fe84128f41e75aacb0777294e33`；Quick `faace121d251a31107f45352471c296cf57ee69a18b71b04a320d0021543e830`；候選 CLI `cc4b00c3627515aad33ebc62fc491f37129ac3eb99632ef5c93f794855222bb2`。相關測試的 source pins 與起訖一致判斷見各 Job stdout，Git 最終 blob OID／物理行數則見逐檔 manifest 與提交，不把 CRLF 工作檔 bytes hash 混為 Git blob hash。
 
-定版 Graphify 在限定提交完成後重抽本機 AST／明示文件 links，固定 HEAD 與來源指紋核驗見 `output/qa/gov5gf/graphify_final_verification.json`；只有該收據 passed=true 才判定本輪刷新通過。root `graphify-out` 保持不變，不以舊圖覆蓋新程式碼。本輪沒有 Push 或刪除原始資料、歷史文件；完整產品補完計畫與 Gate 的接受狀態保持。
+定版 Graphify 在限定提交完成後重抽本機 AST／明示文件 links；圖譜指南收尾只改文件，全部 code path／blob map 完全相符且前輪通過才重用本次 fresh AST，文件 links 仍重建。驗收與來源 hash／HEAD 記錄於收據，固定 HEAD 與來源指紋核驗見 `output/qa/gov5gf2/graphify_final_verification.json`；只有該收據 passed=true 才判定本輪刷新通過。root `graphify-out` 保持不變，不以舊圖覆蓋新程式碼。本輪沒有 Push 或刪除原始資料、歷史文件；完整產品補完計畫與 Gate 的接受狀態保持。
+
+首輪 fresh AST／文件圖固定 `6d18a4d6`，六步均 return code 0；1,518 docs／1,087 code、local links 未解析 0、dangling／missing endpoints 0、root metadata 不變。來源驗證 SHA-256 `3931249B4E754EE50E22F8B23D5BE823D2DB05147CA6424F7DFF24A1C7B0D11D`。Job 收據 `single_owned_qa_487276a3ae2445cda3761409b3957004` 的 SHA-256 `6D9BA9DF60D40344A638169147AC732D33CFEC38C57CAF93155267755EFD0122`，child／Job exit 0、remaining PIDs 空、handles 關閉及 mutex 釋放。外層工具在收據寫完後列印 UTF-8 stdout 時遇 cp1252 UnicodeEncodeError；這是 terminal 顯示失敗，原 stdout／stderr／receipt 全保留。最後定版外層也明示 `-X utf8`，不重抽已核對同源程式碼或改產品。

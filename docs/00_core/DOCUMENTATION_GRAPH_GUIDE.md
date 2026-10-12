@@ -35,7 +35,7 @@ assert all(path.suffix == ".py" for path in paths)
 result = extract(paths, cache_root=isolated_input, parallel=True, max_workers=4)
 ```
 
-分區後以同一明示清單／cache root reconcile 跨檔 import；Markdown links 另以 deterministic parser 抽取，須以 `posixpath.normpath` 折疊 `../`，再確認沒有超出 repo 與來源白名單。原 AST missing endpoints 清單保留，展示圖可以 scope filter，但必須同時報告剔除數與 unknown。
+分區以同一明示清單／cache root 抽取 AST；若另做全清單 import reconcile，須保存獨立成功收據，未完成時保留跨 chunk 未解析診斷。Markdown links 另以 deterministic parser 抽取，須以 `posixpath.normpath` 折疊 `../`，再確認沒有超出 repo 與來源白名單。原 AST missing endpoints 清單保留，展示圖可以 scope filter，但必須同時報告剔除數與 unknown。
 
 本機 recipe 保存在每輪 audit 的 `prepare_graphify_corpus.py`、`run_graphify_ast.py`、`merge_ast_chunks.py`、`build_documentation_graph.py` 與 `verify_graphify_out_unchanged.py`。這些是 ignored 輔助程式；換機器須先核 input／output 路徑與工具版本，或按本指南建立新 recipe，不把本機 cache 當必要產品依賴。原 Graphify 通用 `graphify update .` 模板不適用本 repo 保護範圍，不能直接在 repo root 使用。
 
@@ -57,4 +57,8 @@ source-based community labels 只描述主要來源檔，AST 的 INFERRED 關係
 
 ## 2026-10-12 全治理範圍後刷新
 
-所有文件修訂、逐檔清冊與矩陣提交後才刷新 Graphify。當輪輸出使用獨立 ignored 目錄 `output/qa/baldr_documentation_reorganization_20261012_governed_final/`；來源 manifest 固定最終 clean HEAD，涵蓋 `docs/` 的受控文件類型、repo 根目錄 Markdown、`.agent/rules/*.md`、其他 26 份 tracked Markdown及核准的正式 Python 原始碼。排除本狀態矩陣與逐檔 path manifest 兩份 self-reference 輸出，並遵守使用者同時編輯中的補完計畫保護範圍：`docs/superpowers/plans/baldr_product_completion_plan_20261006.md` 保留在逐檔治理清冊，但不讀取或納入本輪 Graphify snapshot。`DEVELOPMENT_LINE_EVOLUTION_MATRIX`、另外兩份原 status-only 文件與其他乾淨、可核對來源納入。tests、scripts、examples 的程式與非文件產物、既有 Graphify 輸出、資料庫、備份與資料根目錄依 Graphify 範圍規則排除；其中屬於治理範圍的 tracked Markdown 仍納入文件節點。最終文件節點數應為 1,516（排除兩份 self-reference 輸出及受保護計畫）。build summary 記錄固定 HEAD、來源 fingerprint、工具版本、nodes／edges／communities、診斷與 unresolved endpoints；原 `graphify-out` 與歷史輸出均保留。使用本機 AST 及確定性 Markdown links，不做 semantic extraction 或 network transfer；這仍是導覽圖，不是語義完整性證明。實際產物摘要留在該 run 目錄，避免為記錄 Graphify 結果而在刷新後再次改動輸入文件。
+所有文件修訂、逐檔清冊與矩陣提交後才刷新 Graphify。早期的 `output/qa/baldr_documentation_reorganization_20261012_governed_final/` 曾排除受保護補完計畫、預期 1,516 份文件；那是當時的暫時範圍。前輪 `d929e003` 的定版驗證實際納入該計畫的已提交 Git blob，為 1,517 份文件，收據在 `output/qa/gf613_verification/`。歷史輸出不覆寫；不把另一任務正在編輯的未提交內容納入 snapshot，也不修改該內容。
+
+本次五項治理修復新增一份 QA 收據；最新定版驗收入口為 ignored `output/qa/gov5gf2/graphify_final_verification.json`，固定 HEAD 必須與最後提交一致，只有 `passed=true` 才成立。預期 1,518 份文件及 1,087 個 production Python 檔：文件包含 `docs/` 受控類型及 `docs/` 外全部 26 份 tracked Markdown；僅排除狀態矩陣與逐檔 manifest 兩份 self-reference 輸出。開發線路矩陣、補完計畫的已提交 blob 均納入；不以 Graphify 內容提升產品 Gate。tests／scripts／examples 的程式、既有圖譜、DB、備份及資料根不抽 AST，其中屬治理範圍的 tracked Markdown 仍納入文件節點。
+
+`6d18a4d6` 的 production code 已於 `output/qa/gov5gf/` 重新抽取本機 AST。只改文件的後續定版可以重用這次抽取，但必須先驗前次收據通過、所有 code path／blob OID map 完全相同，並記錄原 AST hash／來源 HEAD；任一程式碼不符即拒絕重用。Markdown links 每次重新抽取，不以舊文件圖取代新導覽。build summary 與最終 verifier 核來源 fingerprints、local links、dangling／missing endpoints，未解析 AST edges 另列診斷；chunk imports 未 reconcile，不宣稱語義完整性。原 root `graphify-out` metadata 必須前後不變。HTML 僅社群摘要，完整關聯保存 JSON；本機 AST／明示 links 無 semantic model 或 network transfer。

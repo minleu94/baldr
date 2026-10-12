@@ -2,7 +2,7 @@
 
 > 更新基線：2026-10-11；已提交基礎含 `8c7fd469`、`8945df89` 與 `1e53417d`，本頁接續增量依具名 root QA 核對。未提交候選仍不視為完整驗收。詳細測試過程及各項驗收界線以交接文件、恢復 QA 與具名 root review 為準。
 
-> 使用者暫停（2026-10-12）：補完工作已停止，QA Python0；接手見 [停點與Prompt](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。
+> 使用者已於2026-10-12授權恢復補完；治理後來源3產品／4tests需重封，M25／Main／P08及Health正式整合續辦，完整Gate未接受。原暫停交接保留於[停點與Prompt](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。
 
 ## 目前狀態
 
@@ -299,3 +299,38 @@ Main native Windows事件1000／1001已保存XML：91546 SHA54079b57002c9f78fe0b
 最新界線：Health完整Main1PASS已保存但正式提升未做；P01 M24 origin已通過、矩陣在QA phase replace失敗且無p95，M25重試successor封裝途中被中斷，完整檔案SHA inventory另存暫停封包，不能直接執行未封存候選。Main lease producer期間native access violation仍未確定根因；靜態Qt／ABI沒有找到具體錯誤。舊644秒Main的實際conftest／test／fresh bytes與本次相同，先前agent誤讀predecessor pins的說法已撤回，但舊query／repository及guard99不替代新lease接受。P08新origin collect5guard clean，完整latest append仍待天然UTC07:10及required clocks，原60秒期限保持。
 
 官方PDB純資料的GUID／age與DLL相符，沒有安裝或更換Python；DbgHelp exact lookup126、純PDB parser未找到fault RVA procedure，最後工具失敗／Job自然0，仍未定位原生函式，不可把它當根因實證。交接入口記明來源檔案及所有診斷停點。正式產品／原始資料未變，未stage／commit；文件治理後應依最新權威與路徑接手，保留其他未提交變更。
+
+
+## 使用者恢復補完：治理後來源基線核對（2026-10-12）
+
+使用者明確授權恢復原完整補完範圍P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4，goal已active。依Team協作分流，Root負責審查／受控執行與文件，三位既有subagent只做靜態：M25內部封裝、保存推薦讀取與Health/Main交集、兩CLI與P08交集。Scope Out保持交易／push／部署／正式資料破壞、放寬來源／PIT／財務精度／原QA門檻；QA私有store寫入屬已授權驗證，風險High，正式來源不先提升。
+
+治理後HEAD5eba9bc3，git working tree開工乾淨，正式3075來源逐檔純唯讀SHA核對，精確差異是3產品＋4既有tests：user_declared_holding_research、Quick／Phase3C CLI，以及各對應保存結果／Main／CLI回歸。P01Main／P08舊靜態封套各7pins drift；Health另有Manual／架構／Navigation共10；M24 nested closure只含Phase3C CLI來源1pin drift（經本節更正）。Root收據resume_source_drift_c97d52221a8044caab7153d3cd796206/receipt.json SHA5f0b27712a2839f2623072888922e9d77329ad3d71558f58789678f832235fbd。這份audit不授重封來源接受或產品PASS；先核治理QA與完整source delta，再獨立建立新lineage，保留舊收據及candidate/assert/deadline，不盲改舊pin或直接重跑stale封套。
+
+M25仍按原有限phase replace retry邊界完成內部封裝；外部closure drift須明示並由Root重封。Main native crash仍未確認根因，原FAIL保留；原生符號診斷可選，不優先擴張成新工具專案。P08 UTC07:10 gate目前已自然到達（Root觀測UTC17:43），完整suite仍先確認全部required clocks與新來源lineage。Health原Main1PASS只沿原版本證據，正式整合與完整Gate未接受，治理修復的76／27／5／40回歸與mypy也不折抵補完包。
+
+啟動前host唯讀核owned QA Python0、可用16.73GiB；目前尚未啟動新的Python產品／QA。Root一次一組named Job、suspended assign-before-resume、全組8GiB／12程序、至少8GiB可用RAM保持；必須terminal、自然Job0、handles關閉與mutex釋放才下一組。所有subagent禁止Python/import/compile/QA/子程序，其他IDE／MCP／risk-lab程序不處理。Coverage為本節四份狀態文件；治理後Manual/架構/索引內容保留，不覆寫新規則或他人變更。
+
+
+## 治理後來源重封與 P08 新程序回讀結果（2026-10-12）
+
+更正前節 M24 closure 漂移路徑：唯一 stale formal row 是 `scripts/update_phase3c_candidates.py`（c70→cc4），不是 user_declared_holding_research。其餘375 formal row保持；M26 sibling依此重封，舊M24/M25封套保留。
+
+Root已核對治理前七個精確raw preimage、治理後3075正式來源、既有治理QA stdout與終態，建立獨立新lineage；P083103映像只換七筆formal rows，其餘3096列與候選產品／旅程／fresh bytes不變。收據current_source_lineage_p08_0270b415806a41dea4751b494d28373a/receipt.json SHA f48460920abb13dbcf3b4639dfda82aecad504ad457994101471df776be27bfc，formal inventory SHA6d8e3e34448b4ba0dfe584f858edf1754c4e656e2dd6d8d4a251e129e09d02f3。Main3075映像另建立同樣七筆lineage，收據current_source_lineage_p01_main_4c6c7452ff004223b899cf8132b63ec8/receipt.json SHA77918602394bdccca43712aa88ce01580ee291c600cbff7b6dab27822702519b；此項僅來源與語法核對，未重跑崩潰旅程。
+
+P08新來源origin native0／source guard clean／五項collected，收據0f431bc21929b90e548b99ebb4759ea25d3a390566f097b2d5f20e86b913f6df。Root在UTC18:02確認原全部fixture clock已自然可用，完整suite以原fresh60秒執行，結果1FAIL／4PASS22.69秒；兩個actual PID來源守衛、pins與3103mirror一致。失敗在旅程517：公開fresh_read_observation_sha256為`sha256:`＋64hex，共71字符，測試仍assert長度64。完整收據c83a4bc9b15e0d25d6058af34f2b0fe4e8842e5df7b998f023a857d939a8bbb9，原失敗保留，不宣告旅程PASS。先追公開DTO與fresh輸出格式契約，再由test-only sibling修正同等強度的精確格式斷言；禁止直接削prefix或放寬產品驗證。
+
+本輪四組Root Job皆terminal／自然remaining0，process及Job handles關閉、mutex釋放，沒有forced cleanup；持續8GiB／12程序與單組序列。三位既有agent僅靜態：M26 phase retry closure重封、P08格式契約、Main owned-PID崩潰觀測方案。未提升正式產品、未寫正式資料、未stage/commit；Health正式整合與P01 Main原生崩潰仍待辦，完整補完範圍及Gate仍進行中。
+
+
+## P08 完整候選旅程通過與 Main 原生崩潰精確關聯（2026-10-12）
+
+P08 公開 `_HASH_RE`／`_sha256` 契約確定為 `sha256:`＋64小寫hex。新版只改旅程517–518兩個assert的精確格式期望，仍39個assert、相同產品ad877與fresh4347、10參數／60秒及fixture clocks。Root完整raw正逆、整AST逆回與3103來源圖核對，靜態收據960974f9ead491a08e518bd1120ba5c14fc58e2df7364aef260769368755e9d2。
+
+另一人工修復聊天「釐清待解決問題」正在修改paper_position_identity_provider及對應test；Root05套件前置守衛以來源漂移拒絕，沒有啟動產品旅程。Root另以已驗證origin的完整mirror將這兩筆physical source指向相同舊SHA的保存副本，其他3101列、全部logical SHA與精確namespace保持，沒有採用未完成修補或覆寫其正式檔。凍結收據3eff63ba48563159f3971475f09c0795e85a67d9f2da36cedf47dbc32c6e3060。
+
+此凍結版本完整suite **5PASS／21.89秒／native0**：latest append、舊prefix重開、fresh公開回讀與四calendar guards通過。兩actual PID來源守衛clean，pins／3103mirror一致；fresh actualPID37376以原60秒、sameJob-before-resume及runtime-before-code通過，native0／handles關閉。完整收據p08_v4_public_suite_9ba4b62bef2649bfa5a9c587bb2e22ba/receipt.json SHA2d0a6619610692eaadfafbc72e81a446a46ed3a83cf29d28e2cbd9672544a55f；外Job自然0／handles閉合／mutex釋放，SHA1fed5f01951b6421cc1a2d7a313f5ae57348a90bc0180f8667d90a885c2e1452。這是指定候選版本的合成旅程證據，不授最新formal修補版本、正式來源資格或完整P08／Gate接受。
+
+Main治理後同樣3075來源已collect native0；只讀observer記錄sameJob PID／creation／exe／ppid，保留原600秒／1000rows／QTest／GC與所有產品bytes。一次受觀測完整suite再次native3221225477，未產atexit origins／fresh，pins及mirror一致，收據899c41bd87c487821cdcf665147808fbb43cdc7b1383071292d94a96e1c67885。Windows Event1000 record91609與owned actualPID38008的建立時刻、image、Job membership及時間窗口精確相符，python311.dll故障offset259cf3；前次offset1aaaeb與Python frame不同。本次Python fatal frame停pathlib parse_parts，不能把pathlib／JSON當根因。事件封包收據ba8fd600194db4abbf74f05ab429b55b708c78d3e4fcb9acdcd87871adc8e56a。Main外Job自然0／handles閉合／mutex釋放，無OOM／timeout或強制回收，根因仍未確認。
+
+M25 650pins／17sources compile與原協定／完整raw delta核對通過，但closure仍有唯一stale Phase3C CLI，execution_ready=false；M26限CLI重封與一個temp open/write/fsync focused regression，候選待Root核對。Health正式整合亦先保留並行身分修補。全P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4維持active；不以局部PASS相加授整包接受。Root最後Job後available18.35GiB，當前本任務QA零殘留，所有agent STATIC ONLY。沒有正式產品／原始資料寫入或stage/commit。

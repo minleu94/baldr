@@ -12,6 +12,7 @@
 - 長期成熟度：[VERSION_ROADMAP_V2_1_TO_V4_0](VERSION_ROADMAP_V2_1_TO_V4_0.md)。
 - 舊工作承接：[LEGACY_ROADMAP_CARRYOVER](LEGACY_ROADMAP_CARRYOVER.md)。
 - 外部專案與候選資料源研究、歷史版本形狀：[EXTERNAL_REFERENCE_VERSION_BLUEPRINT](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)；現行來源優先序以 Product Roadmap §11 為準，工程交付順序以 6M Roadmap 為準。
+- 跨產品與工程 Gate 的開發線路、迴圈、演進時間線及待核證據：[DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011](DEVELOPMENT_LINE_EVOLUTION_MATRIX_20261011.md)。此矩陣是線路導航與日期化證據索引；當前全域狀態仍以 Snapshot、各 scoped authority 及最新適用收據為準。
 
 ## 架構與操作
 

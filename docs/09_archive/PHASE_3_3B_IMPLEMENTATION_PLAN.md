@@ -1,14 +1,13 @@
-# Phase 3.3b 架構層級實施規劃（已歸檔／已完成）
+# Phase 3.3b 架構層級實施規劃（已歸檔／完成度待核）
 
 > **文件內狀態差異（2026-10-10）**：檔首稱三個 Epic 已於 2026-01-02 100% 完成，但後文仍保留 Epic 1／2／3 的未完成清單；這兩種說法未由本輪找到的證據完全調和。請將完成度保留為待核，不以檔首總結推定每項已驗收，也不把歷史 plan 當成目前 backlog；現況以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Development Roadmap](../00_core/DEVELOPMENT_ROADMAP.md)與具名 QA 為準。
 
-**版本**：v1.3.0  
-**狀態**：Historical Plan (COMPLETED & ARCHIVED)  
-**最後更新**：2026-06-03
+- **版本**：v1.3.0
+- **狀態**：歷史計畫（已歸檔；完成度未核實）
+- **最後更新**：2026-06-03
 
 > [!NOTE]
-> **本文件已歸檔**。本文件保留了 Phase 3.3b 的歷史實施規劃脈絡。
-> 該階段所定義的所有三個 Epic 均已於 2026-01-02 100% 實作完成，並通過完整綠燈驗證。最新專案狀態請參閱 [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md)，Roadmap 入口請參閱 [DEVELOPMENT_ROADMAP.md](../00_core/DEVELOPMENT_ROADMAP.md)。
+> **本文件已歸檔，完成度待核**。原文保留了 2026-01-02 的 100% 完成聲明，同時仍列出 Epic 2 MVP-2 與 Epic 3／Epic 1 的未勾選工作；目前沒有同範圍收據調和這項差異。因此，本文件只作歷史規劃追溯，不作已驗收證據或目前 backlog。現況請參閱 [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md)、[DEVELOPMENT_ROADMAP.md](../00_core/DEVELOPMENT_ROADMAP.md) 與具名 QA 收據。
 
 ## 歷史進度存檔
 - ✅ **Epic 1：Promote 機制**：已於 2026-01-02 實作完成，回測結果可升級為 Presets/Versions。

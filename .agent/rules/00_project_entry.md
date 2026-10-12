@@ -9,14 +9,19 @@
 3. `docs/agents/shared_context.md`
 4. `docs/agents/git_exclusions.md`
 5. `docs/00_core/PROJECT_SNAPSHOT.md`
+6. `docs/agents/skills_registry.md`（依任務選擇角色與協作流程）
 
 若任務涉及技術方向、Phase、優先事項或風險，再讀：
 
 - `docs/00_core/DEVELOPMENT_ROADMAP.md`（Roadmap Hub）
+- `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`（產品方向、現行資料來源優先序；涉及 Advice、Portfolio、Exit、Data、ML 或大型規劃時必讀）
 - `docs/00_core/ROADMAP_6M_ENGINEERING.md`
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（外部專案參考、候選來源研究或資料源擴充時必讀）
 - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時）
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`（涉及舊工作移交、Phase Gate 或優先順序時）
 - `docs/01_architecture/system_architecture.md`
+- `docs/01_architecture/target_system_architecture.md`（目標領域背景與演進導覽）
+- `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`（涉及目標實作設計時；唯一目標實作設計權威）
 - `docs/00_core/DOCUMENTATION_INDEX.md`
 
 若任務涉及 UI 操作流程、使用者參數、結果判讀或安全限制，再讀：

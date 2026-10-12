@@ -767,7 +767,7 @@ Promote 機制可以將通過驗證的回測結果升級為策略版本，並在
 系統會自動檢查以下條件：
 
 1. **Walk-Forward 驗證通過**：
-   - 一致性（Consistency）>= 60%
+   - 一致性（Consistency）>= 60%（歷史門檻，不作目前驗收依據）
    - 平均退化程度（Average Degradation）< 40%（歷史門檻，不作目前驗收依據）
 
 2. **Baseline 對比優於基準**：

@@ -552,7 +552,7 @@ These are completed, dated engineering/readiness records. Current source accepta
   - 2026-05-19 `ui_qt` 對照舊 roadmap 的歷史審核報表；部分狀態已被後續 UI / Portfolio / Workbench 進度取代。
 
 - **[PHASE_3_3B_IMPLEMENTATION_PLAN.md](PHASE_3_3B_IMPLEMENTATION_PLAN.md)**
-  - Phase 3.3b 實施規劃（已執行，歷史歸檔）
+  - Phase 3.3b 歷史實施規劃（完成度待核）
 
 - **[NEXT_ACTION_PLAN.md](NEXT_ACTION_PLAN.md)**
   - 下一輪 Roadmap Rebaseline、技術治理與 Agent 交接行動計畫（已執行，歷史歸檔）；現行狀態與優先序請看 Snapshot 與各 scoped roadmap。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)

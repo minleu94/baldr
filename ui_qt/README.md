@@ -98,7 +98,11 @@ ui_qt/
 └── bridges/
 ```
 
-## 目前已完成
+## 日期化能力摘要（狀態需回查現行權威）
+
+以下「已完成」清單與 Backlog 是本 README 的歷史整理，沒有共同凍結日期；不可單獨用來判斷目前功能或產品驗收狀態。現況依 [PROJECT_SNAPSHOT](../docs/00_core/PROJECT_SNAPSHOT.md)、近期 Roadmap 與具名 QA receipt 核對。
+
+## 曾記錄已完成
 
 - Phase 1、Phase 2、Phase 2.5 核心能力
 - Phase 3.1、3.2、3.3a、3.3b 研究閉環
@@ -112,7 +116,7 @@ ui_qt/
 - Strategy & Scoring Governance 機制回歸
 - Research Run Registry、Cross-run Comparison、Indicator Parameter Registry 與 Recommendation Weight Contract；各項能力的目前範圍與限制以 Snapshot 和具名 QA 為準
 
-## 目前 Backlog
+## 歷史 Backlog 摘要
 
 以 [ROADMAP_6M_ENGINEERING.md](../docs/00_core/ROADMAP_6M_ENGINEERING.md) 為準，近期包括：
 

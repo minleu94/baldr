@@ -14,7 +14,7 @@
 
 ## 2. 技能載入前的必讀依據
 
-使用技能前，先依平台根目錄指令完成完整必讀順序與條件式文件：Codex 依根目錄 `AGENTS.md`，Antigravity 依根目錄 `GEMINI.md`。本登錄表只做角色與技能路由，不維護縮短版或第二套必讀清單；任務對應的權威 Agent 文件依下方角色表選取。
+使用技能前，先依平台規則完成完整必讀順序與條件式文件：Codex 及 Antigravity 依根目錄 `AGENTS.md`；Gemini CLI 由根目錄 `GEMINI.md` 匯入該規則。本登錄表只做角色與技能路由，不維護縮短版或第二套必讀清單；任務對應的權威 Agent 文件依下方角色表選取。
 
 ## 3. 權威 Agent 與協作流程
 
@@ -120,4 +120,5 @@
 - 2026-07-04：新增 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 的條件式必讀規則，用於外部參考、資料源擴充與 V1.5-V2.0 版本規劃任務。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的條件式必讀規則，用於 V2.1+ 版號、長期成熟度與 V3/V4 規劃任務。
 - 2026-07-06：新增 V1.9 `twstock-evidence-access` 本地 MCP 說明，限定 read-only evidence access 與 report template 邊界。
-- 2026-10-09：移除重複的固定必讀文件清單，改由 `AGENTS.md`／`GEMINI.md` 維護完整順序與條件式項目。
+- 2026-10-09：移除重複的固定必讀文件清單，改由平台根目錄規則維護完整順序與條件式項目。
+- 2026-10-12：統一由 `AGENTS.md` 維護共用順序；Gemini CLI 經 `GEMINI.md` 匯入，Antigravity 按需載入具有效 trigger 的 `.agent/rules/*.md`。

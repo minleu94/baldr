@@ -55,7 +55,7 @@
 - **同一服務實例狀態覆寫**（`test_same_service_ab_and_late_real_ui_callback_expose_shared_state_gap` & `test_real_recommendation_service_last_context_is_latest_instance_state`）：
   - 使用**同一個** service 實例，A 完成後啟動 B，service 的 `last_run_context` 即被 B 覆寫為 B config。
   - 當延遲的 A callback 抵達 `RecommendationView._on_recommendation_finished`，由於目前回呼簽章僅有 `(self, recommendations)`，無 request generation token，A 的結果直接覆寫了已顯示的 last-good 模型。
-  - **判定**：此測試忠實揭露並固定了現行實作違反 [INV-07](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L13)、[INV-09](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L15)、[INV-10](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L16) 的現況缺陷，並在報告中完整登記為 R008/R011 的交接項目，未在 R003 偷改 production。
+  - **判定**：此測試忠實揭露並固定了現行實作違反 [INV-07](../FINAL_ARCHITECTURE_INVARIANTS.md#L13)、[INV-09](../FINAL_ARCHITECTURE_INVARIANTS.md#L15)、[INV-10](../FINAL_ARCHITECTURE_INVARIANTS.md#L16) 的現況缺陷，並在報告中完整登記為 R008/R011 的交接項目，未在 R003 偷改 production。
 
 ### 5. Last-Good 清除時機現況 GAP
 - **新請求啟動前清空**（`test_new_request_clears_last_good_view_before_worker_start`）：
@@ -67,7 +67,7 @@
 
 ### 7. Nested Mutable Alias 現況 GAP
 - **輸入與輸出兩側的別名修改**（`test_nested_input_and_returned_value_aliases_are_visible_gaps`）：
-  - 外部修改 config 會直接反映到 request 內部；caller 修改回傳清單會直接反映到 service 內部快取。已依 [INV-08](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L14) 將此缺陷標記為現況 gap。
+  - 外部修改 config 會直接反映到 request 內部；caller 修改回傳清單會直接反映到 service 內部快取。已依 [INV-08](../FINAL_ARCHITECTURE_INVARIANTS.md#L14) 將此缺陷標記為現況 gap。
 
 ---
 
@@ -124,12 +124,12 @@
   - `RecommendationReplayService`（回測外層 Snapshot 切割與 availability 排除包裝）。
   - 未將 DataFrame provider 誤稱為互動推薦，各 mode 責任清晰。
 
-### 3. Future Append 與 Cutoff 穩定性（[INV-05](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L11)）
+### 3. Future Append 與 Cutoff 穩定性（[INV-05](../FINAL_ARCHITECTURE_INVARIANTS.md#L11)）
 - **非固定常數 Mock 驗證**（`test_replay_full_snapshot_is_exact_and_future_append_does_not_change_it`）：
   - 採用 `_ScoreFromFixture` 讀取資料內的 `oracle_score`（A 股 85 分、B 股 91 分），並在追加的未來 rows 注入 999 與 1000 之極端分數。
   - 追加前後之 `RecommendationSnapshotDTO`（包含 recommendations、factor scores、config、as_of_date、diagnostics）逐欄位 100% 精確一致，證明時間截斷生效且不受未來資料污染。
 
-### 4. Available Date 排除與 Diagnostics 統計（[INV-05](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L11)）
+### 4. Available Date 排除與 Diagnostics 統計（[INV-05](../FINAL_ARCHITECTURE_INVARIANTS.md#L11)）
 - **逐列 Cutoff 且非整股 Veto**（`test_replay_availability_cutoff_excludes_missing_and_future_availability_before_provider`）：
   - 含有 `available_date` 欄位時，晚於決策日或 NaN 的列被剔除，並計入 `diagnostics: ["unavailable_rows_excluded:2"]`。
   - 當先前仍有 20 列有效資料時，該股票不會被整股否定，仍能以歷史有效資料參與推薦評分。

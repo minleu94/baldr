@@ -404,10 +404,10 @@ Anchor：`## 2026-09-08 V4 持續目標啟動（尚未完成）` 之下，放在
 
 本輪 raw QA 與 candidate 均在 ignored output，供 root／owner 讀回：
 
-- [probe_after_patch.json](C:/Projects/PythonProjects/technical_analysis/output/v4_data_freshness_handoff_20260908/probe_after_patch.json)
-- [probe_after_patch.log](C:/Projects/PythonProjects/technical_analysis/output/v4_data_freshness_handoff_20260908/probe_after_patch.log)
-- [MOPS snapshot](C:/Projects/PythonProjects/technical_analysis/output/v4_data_freshness_handoff_20260908/monthly_revenue_mops_snapshots/mops_monthly_revenue_snapshot_2026-07_2026-07_2026-09-08.csv)
-- [availability candidate](C:/Projects/PythonProjects/technical_analysis/output/v4_data_freshness_handoff_20260908/monthly_revenue_mops_snapshots/monthly_revenue_availability_candidate_2026-07.csv)
+- probe_after_patch.json（Git-ignored 本機輸出，未入庫；原位置：output/v4_data_freshness_handoff_20260908/probe_after_patch.json）
+- probe_after_patch.log（Git-ignored 本機輸出，未入庫；原位置：output/v4_data_freshness_handoff_20260908/probe_after_patch.log）
+- MOPS snapshot（Git-ignored 本機輸出，未入庫；原位置：output/v4_data_freshness_handoff_20260908/monthly_revenue_mops_snapshots/mops_monthly_revenue_snapshot_2026-07_2026-07_2026-09-08.csv）
+- availability candidate（Git-ignored 本機輸出，未入庫；原位置：output/v4_data_freshness_handoff_20260908/monthly_revenue_mops_snapshots/monthly_revenue_availability_candidate_2026-07.csv）
 - raw MOPS HTML：`C:\Projects\PythonProjects\technical_analysis\output\v4_data_freshness_handoff_20260908\monthly_revenue_mops_snapshots\raw_html\{twse,tpex}_2026-07.html`
 - scheduler registration readback：`C:\Projects\PythonProjects\technical_analysis\output\v4_next_ops\task_registration_after_forward_20260908.json`
 - natural quick receipt：`D:\Min\Python\Project\FA_Data\output\scheduled\data_update_quick\latest_status.json`

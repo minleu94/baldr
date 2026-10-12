@@ -12,7 +12,7 @@
 
 ## 本輪結構整併入口
 
-- [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)與[本輪驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)。
+- [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)與[2026-09-08 LUNA workspace closeout 收據](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)。此日期化收據是該輪結果，不代表本輪或目前驗收。
 - [工作區檔案分類](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)與[實際清理結果](docs/06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)：區分原始碼、虛擬環境、Git變更與執行產物。
 
 - [整理結果與架構判斷](docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)：全 tracked tree 清查、精確移除／回滾、保留邊界與本次驗證限制。
@@ -35,6 +35,10 @@
 | `PROJECT_INVENTORY.md` | 本文件，專案結構盤點摘要 | Active |
 | `AGENTS.md` | Codex 自動讀取的 repo 指令入口，導向 `docs/agents/` 完整 Agent 架構 | Active |
 | `GEMINI.md` | Antigravity 自動讀取的 repo 指令入口，導向 `docs/agents/antigravity/` 與 `.agent/rules/` | Active |
+| `EXTERNAL_DATA_SOURCE_GAP_AUDIT.md` | 外部資料候選來源的日期化缺口盤點 | Evidence；現行來源優先序與授權看 Product Roadmap §11 |
+| `GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md` | 外部資料稽核的日期化獨立審閱記錄 | Evidence；不取代現行來源契約或正式接受收據 |
+| `MOPS_PIT_FEASIBILITY_CODEX_REVIEW_PACKET.md` | MOPS PIT 可行性審查封包與研究範圍 | Evidence；原作者本機 scratch 收據不在 repository，formal admission 未成立 |
+| `MOPS_PIT_FEASIBILITY_PROTOTYPE_REPORT.md` | MOPS PIT 原型證據與限制 | Evidence；不代表正式來源接受或現行產品狀態 |
 | `requirements.txt` | 向後相容的 all-in-one Python 依賴入口 | Active |
 | `requirements-runtime.txt` | 最小直接 runtime 依賴 | Active |
 | `requirements-dev.txt` | runtime 加 pytest／pytest-qt／mypy 的開發／QA 依賴 | Active |

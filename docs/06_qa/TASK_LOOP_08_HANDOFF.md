@@ -116,7 +116,7 @@ Rollback 前核對所有 owner 最新 dirty hunks，保留限定 patch，再 rev
 - `scripts/qa_validate_runtime_loop.py`：獨立 observer QA 的 upstream 結果使用 `not_evaluated_by_observer_only_qa`；最終跨卡通過依本節與 completion audit，不由 observer QA 代替。
 - 03／07 owner 另完成真實 `current_result_id` 與候選來源 ID 接線：保存成功才記錄 result_id，新分析清除舊 ID，未保存維持空值；DataFrame 入口保留來源欄位並處理 pd.NA。其差異及六個新案例歸各 owner 交接，不列為 08-B 越權改檔。
 
-推薦 context 保持 `recommendation-context.v1`，執行為 `next-session-open.v2`／明選 `legacy-same-day-close.v1`，Evidence lineage 為 `evidence-lineage.v1`，Runtime 為 `runtime-state.v2`；08-B 沒有新增 schema 版本或改寫既有 run。輸入均為各卡 synthetic fixture／隔離保存產物；八卡 handoff、contract、QA 與本輪文件的實際 SHA-256 集中於 [COMPLETION_AUDIT.json](C:/Projects/PythonProjects/technical_analysis/output/master_goal/TASK-LOOP-08/artifacts/integration/COMPLETION_AUDIT.json)。fixture hash 不等於正式來源 custody。
+推薦 context 保持 `recommendation-context.v1`，執行為 `next-session-open.v2`／明選 `legacy-same-day-close.v1`，Evidence lineage 為 `evidence-lineage.v1`，Runtime 為 `runtime-state.v2`；08-B 沒有新增 schema 版本或改寫既有 run。輸入均為各卡 synthetic fixture／隔離保存產物；八卡 handoff、contract、QA 與本輪文件的實際 SHA-256 集中於 COMPLETION_AUDIT.json（Git-ignored 本機輸出，未入庫；原位置：output/master_goal/TASK-LOOP-08/artifacts/integration/COMPLETION_AUDIT.json）。fixture hash 不等於正式來源 custody。
 
 ### 逐卡閉環覆核
 

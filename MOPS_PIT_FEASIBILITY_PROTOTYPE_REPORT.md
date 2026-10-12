@@ -1,7 +1,7 @@
 # MOPS Fundamental PIT Source Feasibility Prototype Report
 **MOPS ezsearch、重大訊息與官方開放資料之 Fundamental PIT 可行性調查報告（最終修正版）**
 
-> **證據可攜限制：** 本報告中的部分 `file:///.../scratch/` 參照指向作者工作站的本機暫存資料，不屬於此 repository。報告所述逐檔重算結果僅代表原工作站上的候選證據；未取得並核對那些檔案前，其他 checkout 無法獨立重現，也不能把「100% 可重算」解讀成 repo 內證據完整。
+> **證據可攜限制：** 下方標為「作者本機：scratch/...（未入庫）」的來源指向原工作站暫存資料，不屬於此 repository。報告所述逐檔重算結果僅代表原工作站上的候選證據；未取得並核對那些檔案前，其他 checkout 無法獨立重現，也不能把「100% 可重算」解讀成 repo 內證據完整。
 
 > **本版相對前版修正清單 (Change Log)**：
 > 1. **Hash B 命名與實作精準化**：撤回「RFC 8785」之表述，明確標記 Hash B 為經 Python `json.dumps(ensure_ascii=False, sort_keys=True, separators=(',', ':'))` 規範化排序序列化後之 SHA-256。
@@ -138,20 +138,20 @@ $$\text{原公告} \longrightarrow \text{更正／重編公告} \longrightarrow 
 
 | 檔案名稱 | 查詢代號 | 列數 | 狀態 | 大小 | Hash A (本地檔案 SHA-256) | Hash B (raw_response Canonical SHA) | Hash C (HTTP Body SHA) |
 |:---|:---|:---:|:---:|:---:|:---|:---|:---:|
-| [`F22_1DAY_cef0ade1.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/F22_1DAY_cef0ade1.json) | `F22_1DAY` | 371 | 200 | 210,423 | `e3d0bdf28b6e7196559c48494e09f93d6227e01ab6297c618031313ed7edc83f` | `cef0ade1b5f3490b861e5ce8e0bd252d1ac55a2c71eed2dea55ea9769a3413db` | *無 (僅本地封裝)* |
-| [`F26_MAY_5edcd8d4.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/F26_MAY_5edcd8d4.json) | `F26_MAY` | 762 | 200 | 433,350 | `c7b7da3d7cfab2a8191ad59e6545fc3120a6a405f5e392cac369be7f9023adcb` | `5edcd8d4471fa56ea18f5c865305e24a23fe907f6656e08fb5ccb2578e18e8e7` | *無 (僅本地封裝)* |
-| [`QUANTA_2025_2026_15b30606.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/QUANTA_2025_2026_15b30606.json) | `QUANTA` | 351 | 200 | 193,663 | `71456e2b8d8cd2ec726318536e5df7c413ee902b8d71a9492edffd001570df2a` | `15b30606156c626fe9ab86a1e87f771a44a15e2bb9323b49ce6f913141b4482e` | *無 (僅本地封裝)* |
-| [`TSMC_2025_2026_1697a2e3.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/TSMC_2025_2026_1697a2e3.json) | `TSMC` | 644 | 200 | 348,896 | `cc55fe14d96bac01b0f87655050a0781c25ceec37c82013f5a4b022dff867e20` | `1697a2e319ff58da6325be0a90438ef35903c63d4d0de3436ee5d3e0da1d976e` | *無 (僅本地封裝)* |
-| [`F22_MID_AUG_c8c481e7.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/F22_MID_AUG_c8c481e7.json) | `F22_AUG` | 45 | 200 | 26,113 | `416207669768660dbeea1ce1e9e7fa21adca52cb136e0e240d04883946b5a199` | `c8c481e7d074e385e9bc40dc0d39eef266ceb02ba627a39bc724f99dd62a0ab8` | *無 (僅本地封裝)* |
-| [`F22_MID_SEP_183dffa2.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/F22_MID_SEP_183dffa2.json) | `F22_SEP` | 30 | 200 | 17,616 | `ed69b8151c10a745ef7ad80aa2f95752fcf392a88bf3eb44c557916f0de4febb` | `183dffa236eb248853c0deecdf4ebe8c8081df04cbc557300281653204e7e133` | *無 (僅本地封裝)* |
-| [`F22_REVISION_1_cd7bc344.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/F22_REVISION_1_cd7bc344.json) | `F22_REV1` | 0 | 200 | 615 | `baec5f53b5278618210af44ec0463638df7ff8f877cf6034398b1b89bec3032c` | `cd7bc344d77edd4c0d28a9e508933ca31468669e71411748dadc2d4dbcbb5731` | *無 (僅本地封裝)* |
-| [`F26_REVISION_1_cd7bc344.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/F26_REVISION_1_cd7bc344.json) | `F26_REV1` | 0 | 200 | 615 | `ba89a3a36222586ed6c58310ee92beaa7b91dce7016cc9807cca06513edd71c9` | `cd7bc344d77edd4c0d28a9e508933ca31468669e71411748dadc2d4dbcbb5731` | *無 (僅本地封裝)* |
-| [`IND_CLASS_CHANGE_cd7bc344.json`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_evidence/IND_CLASS_CHANGE_cd7bc344.json) | `IND_CLASS` | 0 | 200 | 620 | `0d74b35aaff43c6b445c9e8c920369ac80cb85abee95a62a8806cef2bc64427b` | `cd7bc344d77edd4c0d28a9e508933ca31468669e71411748dadc2d4dbcbb5731` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/F22_1DAY_cef0ade1.json（未入庫）` | `F22_1DAY` | 371 | 200 | 210,423 | `e3d0bdf28b6e7196559c48494e09f93d6227e01ab6297c618031313ed7edc83f` | `cef0ade1b5f3490b861e5ce8e0bd252d1ac55a2c71eed2dea55ea9769a3413db` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/F26_MAY_5edcd8d4.json（未入庫）` | `F26_MAY` | 762 | 200 | 433,350 | `c7b7da3d7cfab2a8191ad59e6545fc3120a6a405f5e392cac369be7f9023adcb` | `5edcd8d4471fa56ea18f5c865305e24a23fe907f6656e08fb5ccb2578e18e8e7` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/QUANTA_2025_2026_15b30606.json（未入庫）` | `QUANTA` | 351 | 200 | 193,663 | `71456e2b8d8cd2ec726318536e5df7c413ee902b8d71a9492edffd001570df2a` | `15b30606156c626fe9ab86a1e87f771a44a15e2bb9323b49ce6f913141b4482e` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/TSMC_2025_2026_1697a2e3.json（未入庫）` | `TSMC` | 644 | 200 | 348,896 | `cc55fe14d96bac01b0f87655050a0781c25ceec37c82013f5a4b022dff867e20` | `1697a2e319ff58da6325be0a90438ef35903c63d4d0de3436ee5d3e0da1d976e` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/F22_MID_AUG_c8c481e7.json（未入庫）` | `F22_AUG` | 45 | 200 | 26,113 | `416207669768660dbeea1ce1e9e7fa21adca52cb136e0e240d04883946b5a199` | `c8c481e7d074e385e9bc40dc0d39eef266ceb02ba627a39bc724f99dd62a0ab8` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/F22_MID_SEP_183dffa2.json（未入庫）` | `F22_SEP` | 30 | 200 | 17,616 | `ed69b8151c10a745ef7ad80aa2f95752fcf392a88bf3eb44c557916f0de4febb` | `183dffa236eb248853c0deecdf4ebe8c8081df04cbc557300281653204e7e133` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/F22_REVISION_1_cd7bc344.json（未入庫）` | `F22_REV1` | 0 | 200 | 615 | `baec5f53b5278618210af44ec0463638df7ff8f877cf6034398b1b89bec3032c` | `cd7bc344d77edd4c0d28a9e508933ca31468669e71411748dadc2d4dbcbb5731` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/F26_REVISION_1_cd7bc344.json（未入庫）` | `F26_REV1` | 0 | 200 | 615 | `ba89a3a36222586ed6c58310ee92beaa7b91dce7016cc9807cca06513edd71c9` | `cd7bc344d77edd4c0d28a9e508933ca31468669e71411748dadc2d4dbcbb5731` | *無 (僅本地封裝)* |
+| `作者本機：scratch/mops_evidence/IND_CLASS_CHANGE_cd7bc344.json（未入庫）` | `IND_CLASS` | 0 | 200 | 620 | `0d74b35aaff43c6b445c9e8c920369ac80cb85abee95a62a8806cef2bc64427b` | `cd7bc344d77edd4c0d28a9e508933ca31468669e71411748dadc2d4dbcbb5731` | *無 (僅本地封裝)* |
 
 ### 4.2 新探測收據 (`scratch/mops_audit_evidence/`)
 
 - 探測總數：27 次（26 次 HTTP 307，1 次無 status 網路逾時）。
-- 關鍵抽樣：[`Q01_CAP1000_F26_SII_MONTH.bin`](file:///c:/Projects/PythonProjects/technical_analysis/scratch/mops_audit_evidence/raw_bytes/Q01_CAP1000_F26_SII_MONTH.bin)
+- 關鍵抽樣：`作者本機：scratch/mops_audit_evidence/raw_bytes/Q01_CAP1000_F26_SII_MONTH.bin（未入庫）`
   - 檔案大小：800 bytes
   - HTTP 狀態：307
   - **Hash C (HTTP Response Body Bytes SHA-256)**：`8fb54d2505a6e2c03299fbd105e50769aa122c057a3b92275c178d2e0ab7c376`

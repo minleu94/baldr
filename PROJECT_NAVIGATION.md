@@ -2,6 +2,8 @@
 
 文件位置以 [文檔索引](docs/00_core/DOCUMENTATION_INDEX.md) 與各專區 README 為準；[2026-10-06 全文件目錄歷史快照](docs/09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) 僅供追溯。以下日期化功能接線保留為開發參考；當時未啟用／pending 不自動代表現在，現況看 [Snapshot](docs/00_core/PROJECT_SNAPSHOT.md)，操作看 [Manual](docs/07_guides/APPLICATION_MANUAL.md)。歷史整理與恢復見 [manifest](docs/09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)。
 
+外部資料來源與 MOPS 僅有日期化研究／可行性材料：[來源缺口盤點](EXTERNAL_DATA_SOURCE_GAP_AUDIT.md)、[Gemini 獨立審查](GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md)、[MOPS Codex review packet](MOPS_PIT_FEASIBILITY_CODEX_REVIEW_PACKET.md)、[MOPS prototype report](MOPS_PIT_FEASIBILITY_PROTOTYPE_REPORT.md)。這些文件不代表來源已獲現行接受、PIT 證明或正式使用授權；目前來源優先序依 [Product Roadmap §11](docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md#11-data-source-roadmap)。
+
 ## 2026-10-06 首頁四用途與個股摘要
 
 `ui_qt/views/workbench_view.py`沿既有callbacks開盤勢／持倉／選股／個股；股號明示當下搜尋不借保存身份。`market_regime_view.py`保收合／展開與來源unknown；`stock_research_report_view.py`focus summary使用原change與section sufficiency並保留ML限制。入口與排錯依[Manual](docs/07_guides/APPLICATION_MANUAL.md)，中央與lane驗收依[首波QA](docs/06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。personal長路徑canonical／OS IO契約在`app_module/personal_data_paths.py`，不授真migration或writer。
@@ -407,20 +409,20 @@ python ui_qt/main.py
 
 ### 📌 Agent / Codex / Antigravity 指引
 
-**Codex 自動讀取入口**：`AGENTS.md`
+**共用 Codex／Antigravity 規則入口**：`AGENTS.md`
 
 **Agent / 開發者快速上下文**：`AGENT_CONTEXT.md`
 
-**Antigravity 自動讀取入口**：`GEMINI.md`
+**Gemini CLI 匯入入口**：`GEMINI.md`
 
 **Antigravity 輔助規則**：`.agent/rules/`
 
 **完整 Agent 架構**：`docs/agents/`
 
 **使用規則**：
-- Codex 會讀取 repo 根目錄 `AGENTS.md`。
+- Codex 會讀取 repo 根目錄 `AGENTS.md`；Antigravity 也會自動發現根目錄 `AGENTS.md` 與 `GEMINI.md`。
 - `AGENT_CONTEXT.md` 補充分支策略、文件權威與開發導覽；它不是強制規則，強制規則仍以 `AGENTS.md` 與 `docs/agents/` 為準。
-- Antigravity 會讀取 repo 根目錄 `GEMINI.md`，並可搭配 `.agent/rules/` 的任務規則。
+- Gemini CLI 由根目錄 `GEMINI.md` 匯入 `AGENTS.md`；Antigravity 另外依有效 frontmatter 按需載入 `.agent/rules/*.md`。
 - `docs/agents/` 保存完整 Agent 職責、Prompt 與共用上下文，但不會單靠檔名自動成為 Codex 指令入口。
 - 資料路徑請以 `data_module/config.py` 的 `TWStockConfig` 與 `DATA_ROOT` 為準，不要假設 repo 內一定存在正式 `data/` 目錄。
 

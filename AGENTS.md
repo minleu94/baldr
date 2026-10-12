@@ -35,6 +35,8 @@
 - `docs/agents/*.md` 是專案 Agent 知識庫，不是 Codex 會自動載入的檔名；本檔負責把 Codex 指向那些文件。
 - `docs/agents/skills_registry.md` 是 Codex 與 Antigravity 共用的協作入口，只負責角色選擇、流程導引與 shared context，不重新定義 Agent。
 - `AGENT_CONTEXT.md` 是給 Codex、Antigravity 與開發者快速理解專案入口、分支策略與文件權威的輔助導覽；強制規則仍以本檔與 `docs/agents/` 為準。
+- 根目錄 `AGENTS.md` 是共用 repo 規則唯一來源；`GEMINI.md` 只做 Gemini CLI／Antigravity 平台適配。Gemini CLI 由 `GEMINI.md` 匯入本檔；Antigravity 會自動發現根目錄的 `AGENTS.md` 與 `GEMINI.md`。
+- `.agent/rules/*.md` 是按需載入的補充細則；每份都必須有有效 YAML `trigger`，使用 `model_decision` 時並提供 `description`。不要在其中複製本檔的完整必讀清單。
 - 若未來某個子目錄需要更細規則，可在該子目錄新增自己的 `AGENTS.md`，其規則只作用於該子目錄樹。
 
 ## 工作規範

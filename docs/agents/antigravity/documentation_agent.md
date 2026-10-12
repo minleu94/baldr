@@ -34,11 +34,11 @@
 - Snapshot / Roadmap Hub / 6M Roadmap / V2.1-V4.0 Roadmap / Legacy Carryover / Architecture / Application Manual / Index 一致性檢查
 - 需要使用者補充的資訊
 
-Coverage Pass 不產出 patch。即使使用者要求直接更新，也先列出並確認 Coverage 清單，再依 Patch Pass 修改已確認範圍。
+Coverage Pass 用來界定有證據支持的修改範圍。若任務只要求評估，先交付 Coverage 結果；若使用者已要求執行，完成此檢查後直接進入 Patch Pass，不需再次確認相同範圍。
 
 ### Patch Pass
 
-使用者確認 Coverage 後，再修改已確認範圍內的文件。
+在已授權範圍內完成有證據支持的修訂；若要超出既有範圍，或證據無法裁決現況主張／高風險刪移，再詢問該部分。
 
 ## 特別規則
 

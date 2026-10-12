@@ -4,15 +4,13 @@
 
 ## 全域狀態
 
-- 內容覆核基準 HEAD（本次矩陣／清冊更新前）：`d1348963f6e8acf42b30b22a75fa7a3178d21db9`。
-- 目前 docs tracked 路徑：1493；其中 1487 條 eligible 文件都有逐檔 EOF 覆核、分類、目前 HEAD blob OID 與物理行數；3 條受保護路徑只查 Git status；3 份治理輸出列為 self-reference exempt。
-- eligible 覆核覆蓋率 100%；缺漏 0、過期指紋 0。受保護路徑不讀正文、diff、OID、行數或分類；CSV 僅列 `path` 與 `status`。本矩陣涵蓋 1490 條治理路徑（1487 eligible + 3 protected），另 3 份治理輸出不計入文件分類。
-- Protected status-only 路徑：`docs/06_qa/BALDR_COMPLETION_PROGRESS_20261011.md`、`docs/superpowers/plans/baldr_product_completion_plan_20261006.md`、`docs/agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md`。
-- 三份 self-reference exempt 輸出為本矩陣、逐檔 manifest、開發線路演進矩陣。檔案類型總數：.csv 2、.html 2、.json 13、.md 1473、.txt 3。
+- 內容覆核基準 HEAD（本輪逐檔覆核開始時）：`eb2e2cc27a13cc5801a5b3d7d0a5f6b1a6848937`。
+- 本清冊涵蓋 `docs/` 全部 1493 個 tracked 路徑及 `docs/` 以外 26 個 tracked Markdown 文件，共 1519 條治理路徑。1516 份一般文件已逐檔讀至 EOF、分類、核對 HEAD blob OID 與物理行數；3 份治理輸出列為 self-reference exempt。
+- 一般文件覆核覆蓋率 100%；缺漏 0、過期指紋 0、protected status-only 0。三份 self-reference exempt 輸出為本矩陣、逐檔 manifest、開發線路演進矩陣，不計入自身內容覆核或分類。`docs/` 檔案類型：.csv 2、.html 2、.json 13、.md 1473、.txt 3；外部補充範圍是 repo 根目錄 Markdown、`.agent/rules/*.md` 與其他目錄的 tracked Markdown，不含程式、設定、資料檔或 `.ipynb`。
 
 ## 目錄分類矩陣
 
-`clean` 是逐檔核對 OID 與物理行數的文件；每份 clean 文件依主要用途只計一類。導覽／證據的次要用途、衝突與權威界線寫在逐檔 CSV。目錄表統計 1490 條治理路徑，不含三份 self-reference exempt 治理輸出；3 條 protected 只保留狀態，不由正文推論分類。
+`clean` 是逐檔讀至 EOF 並核對 OID 與物理行數的文件；每份文件依主要用途只計一類。導覽／證據的次要用途、衝突與權威界線寫在逐檔 CSV。下表只統計 `docs/` 的 1490 份一般文件；repo 其他 Markdown 另列於補充表，避免混淆目錄分母。本輪沒有 status-only 文件。
 
 | docs 目錄 | tracked | clean 已核對 | 權威 | 導覽 | 證據 | 歷史 | status-only |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -22,17 +20,26 @@
 | `03_data` | 17 | 17 | 3 | 8 | 5 | 1 | 0 |
 | `04_broker_branch` | 6 | 6 | 1 | 1 | 0 | 4 | 0 |
 | `05_phases` | 15 | 15 | 0 | 15 | 0 | 0 | 0 |
-| `06_qa` | 573 | 572 | 0 | 78 | 494 | 0 | 1 |
+| `06_qa` | 573 | 573 | 0 | 78 | 495 | 0 | 0 |
 | `07_guides` | 20 | 20 | 11 | 6 | 1 | 2 | 0 |
 | `08_technical` | 7 | 7 | 1 | 2 | 0 | 4 | 0 |
 | `09_archive` | 408 | 408 | 0 | 13 | 4 | 391 | 0 |
-| `agents` | 22 | 21 | 12 | 8 | 0 | 1 | 1 |
+| `agents` | 22 | 22 | 12 | 9 | 0 | 1 | 0 |
 | `docs_root` | 1 | 1 | 0 | 1 | 0 | 0 | 0 |
 | `strategies` | 3 | 3 | 2 | 1 | 0 | 0 | 0 |
-| `superpowers` | 167 | 166 | 0 | 93 | 0 | 73 | 1 |
-| **合計** | **1490** | **1487** | **93** | **266** | **617** | **511** | **3** |
+| `superpowers` | 167 | 167 | 0 | 93 | 0 | 74 | 0 |
+| **docs/ 合計** | **1490** | **1490** | **93** | **267** | **618** | **512** | **0** |
 
-全域 clean 分類：權威 93、導覽 266、證據 617、歷史 511。
+## `docs/` 以外的 tracked Markdown 補充矩陣
+
+| 範圍 | tracked Markdown | clean 已核對 | 權威 | 導覽 | 證據 | 歷史 | status-only |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Repo 根目錄 | 10 | 10 | 1 | 5 | 4 | 0 | 0 |
+| `.agent/rules/` | 4 | 4 | 4 | 0 | 0 | 0 | 0 |
+| 其他目錄 Markdown | 12 | 12 | 0 | 6 | 2 | 4 | 0 |
+| **補充範圍合計** | **26** | **26** | **5** | **11** | **6** | **4** | **0** |
+
+全治理範圍合計：1519 條 tracked 文件路徑、1516 份 clean 已核對、3 份 self-reference exempt；一般文件分類為權威 98、導覽 278、證據 624、歷史 516。逐檔狀態、HEAD blob OID、物理行數與分類見 [path manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。
 
 ## 權威、導覽、證據與歷史的使用界線
 
@@ -45,17 +52,17 @@
 
 | ID | 議題 | 判定與處置 |
 |---|---|---|
-| G01 | 2025 OOS 證據使用順序未解 | `docs/09_archive/superpowers/specs/2026-07-13-parallel-evidence-ml-dashboard-design.md`、`docs/09_archive/superpowers/specs/2026-07-13-terra-development-dataset-v0-design.md` 與 `docs/superpowers/specs/2026-07-13-external-evidence-investment-validation-design.md` 對 2025 development/OOS 使用順序與 custody audit gate 有張力；在現行權威提供 signed custody/QA receipt 前，不推定 2025 可作正式 OOS。 |
-| G02 | 自動化數量規格矛盾 | `docs/superpowers/specs/2026-07-11-safe-refactor-four-extra-cycles-design.md` 同一歷史設計列出 12 與 15；保留原文並標為歷史，不能拿來推定現行排程。 |
+| G01 | 2025 OOS custody／正式使用資格未取得正向證據 | 實際受版本控制的規格位於 `docs/superpowers/specs/2026-07-13-parallel-evidence-ml-dashboard-design.md`、`docs/superpowers/specs/2026-07-13-terra-development-dataset-v0-design.md` 與 `docs/superpowers/specs/2026-07-13-external-evidence-investment-validation-design.md`。現行契約與測試固定 `formal_oos_allowed=false`、alpha=0、2025 僅 development；custody helper 只檢查 metadata／signed declaration，不讀取 payload。未取得 signed custody／QA receipt 前，不升格為正式 OOS；這是資格仍待驗，不代表規格已批准使用。 |
+| G02 | 歷史 automation 實際建立／執行生命週期缺 receipt | D–G 四輪規格原始與目前正文都只記 12 支；另一份 H–L 五輪設計另記 15 支，但沒有證據證明它是 2026-10-11 差異提示中「15」的來源。該提示已更正；當時實際建立／執行數仍無 Scheduler receipt，故歷史設計只作方案，不推定現行排程或授權。 |
 | G03 | MOPS limited 數值待核 | `docs/09_archive/P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md` 與 `docs/06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 的 DEV-66 `limited` 決議，和該 register §14 的 `limited=0` 總數口徑不一致。§14 的 2026-10-10 調和註記已確認仍缺原始 audit artifact／registry 比對；保留兩筆歷史證據，不推定任何一方代表全域目前授權。 |
-| G04 | Portfolio／Exit 兩個 raw caller cutover 未收斂 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R016_CONSUMER_CUTOVER_IMPLEMENTATION_REPORT.md` 指出 `user_declared_holding_research.py:774-807` 與 `portfolio_view.py:2947-3000` 尚有直接讀取；既有 R029/R031/REC02/05 未涵蓋這兩個 exact caller。 |
+| G04 | Portfolio consumer cutover 證據部分過時 | R016 的日期化 overlay 指出兩個候選 caller。現行 `ui_qt/views/portfolio_view.py:_validated_recommendation_result_id()` 已走 `build_recommendation_execution_queries().get()`，並做 canonical integrity／identity 驗證；舊 overlay 的 `portfolio_view.py:2947–3000` 已是 stress-history UI。`tests/test_cross_page_decision_journey_mainwindow.py:1638–1759` 覆蓋跨頁 workflow identity／mismatch，但 monkeypatch 該 method，沒有專門驗證新的 canonical／legacy query path；因此記錄 code cutover，仍待 caller 專屬 regression／acceptance receipt。`app_module/user_declared_holding_research.py:_candidate_results()` 仍直接讀 SQLite `runs.data_path` 與 JSON（目前約 lines 787–844），exact caller cutover receipt 也未取得。Exit operational readback 是另一個未完成出口。 |
 | G05 | Phase 3.3B headline 與 checklist 狀態不一致 | 實際文件是 `docs/09_archive/PHASE_3_3B_IMPLEMENTATION_PLAN.md`；歷史標題的三 Epic 100% headline 與 Epic 2 MVP2 pending、Epic 3/Epic 1 unchecked 清單狀態衝突。該文件已加「完成度待核」歷史 erratum；未取得同範圍收據前不宣稱完成。 |
-| G06 | R002 測試覆蓋類別總數不一致 | `docs/09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R002.md` 概述稱 8 tests、清單列 9 個覆蓋類別；保留為歷史審查證據，數字未裁定。 |
-| G07 | 補完計畫狀態未驗正文 | `docs/09_archive/README.md` 內嵌的補完計畫狀態聲明無法以受保護計畫正文核對；受保護路徑僅保留 Git status，矩陣不把該聲明當已驗證現況。 |
+| G06 | R002 pytest case 與語意覆蓋標籤曾被混成同一計數 | 來源有 6 個 pytest test functions，其中 missing-score 參數化產生 3 個 case，共 8 collected cases；review packet 的 9 項是語意覆蓋標籤，部分 test 同時覆蓋多項。計數單位不同，不構成測試數缺口；歷史數字保留並標明單位。 |
+| G07 | 補完計畫、進度收據與 resume prompt 的狀態／授權語句 | 10/06 計畫正文描述歷史工作範圍與驗收清單；10/11 progress receipt 與 10/12 Snapshot 記錄治理期間暫停、沒有新完整工作包或 Gate 接受。resume prompt 原第 67 行「現在授權恢復」與當前暫停狀態衝突，已改為必須依接手時最新使用者指示確認是否恢復。三份正文已 EOF 覆核；它們分屬 history、evidence、navigation，產品完成度仍以 Snapshot 和具名 receipts 判讀。 |
 | G08 | 外部參考藍圖中的未日期能力清單 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` §7 已明示能力列表是研究比較摘要、未逐項核對目前 HEAD／runtime／QA，不可作現況或正式驗收證明。此界線已充分標註；逐項現況仍未核，應保留為研究／歷史內容，不因缺少逐項 receipt 而刪除。 |
 | G09 | 現行架構主文混有日期增量 | `docs/01_architecture/system_architecture.md` §16 同時保留 2026-10-03 至 10-08 增量與穩定契約；文件已將目前狀態導回 Snapshot，沒有未限定的現況錯誤。本輪不拆改主文；後續若要降低維護負擔，可把已結束增量移入 QA／歷史並保留穩定架構責任。 |
 
-尚未由同範圍現行權威或可核對 receipt 解決的議題均保留待核；G08 已以研究範圍警語限制，不視為現況主張。G09 是結構整理候選，並非現況錯誤。本輪受保護的三條路徑維持 status-only，待使用者工作完成後另行核對。
+尚未由同範圍現行權威或可核對 receipt 解決的事項保留待核；G01、G02、G03、G04、G05 仍有資格、生命週期或 acceptance receipt 缺口。G06 計數單位已釐清；G07 文件狀態與授權語句已調和，但產品工作仍暫停；G08 已以研究範圍警語限制，不視為現況主張；G09 是結構整理候選，並非現況錯誤。
 
 ## 已完成的窄幅修訂
 
@@ -123,8 +130,8 @@
 
 ## 核對方法與 Graphify
 
-1. 先取 Git status 路徑清單，排除所有 dirty 路徑與受保護計畫，再以 exact clean path batches 取 HEAD blob OID，僅對 eligible OID 讀 blob 並計算物理行數。
+1. 先取 tracked docs 路徑清單，再以 exact path batches 讀取每個文件正文至 EOF，記錄主要用途分類、範圍／權威界線、衝突、處置、HEAD blob OID 與物理行數。
 2. 將結果與 JSONL audit ledger 對照；逐檔 manifest 保存分類、用途、時間／權威界線、衝突判讀、處置、基準與最終 OID／行數及來源 ledger。
-3. 所有目錄核對完成、矩陣／清冊／導覽入口 exact-path commit 後，才刷新 Graphify。2026-10-12 的新輸出位於 ignored `output/qa/baldr_documentation_reorganization_20261012_final/`；build summary 記錄實際來源清單、工具版本、節點／邊／community 計數及診斷。使用本機 AST 與明示 Markdown links，沒有 semantic extraction 或 network transfer；根目錄 `graphify-out` 保留。Graphify 排除三條 protected 路徑與本矩陣／path manifest 兩份 self-reference 狀態輸出；開發線路演進矩陣保留為導航來源。
+3. 所有目錄核對完成、矩陣／清冊／導覽入口 exact-path commit 後，才刷新 Graphify。最終輸出與實際 HEAD、來源清單、工具版本、節點／邊／community 計數及診斷一併記錄於 ignored `output/qa/baldr_documentation_reorganization_20261012_governed_final/`；只用本機 AST 與明示 Markdown links，不做 semantic extraction 或 network transfer；根目錄 `graphify-out` 保留。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣保留為導航來源。
 
-逐檔清冊：[DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。三條受保護路徑及三份 self-reference exempt 治理輸出只列 `path` 與 `status`；其餘 1487 條都列有分類、界線、衝突判讀、HEAD OID、物理行數及來源 ledger。
+逐檔清冊：[DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。1490 條一般文件都有分類、界線、衝突判讀、HEAD OID、物理行數及來源 ledger；本矩陣、path manifest 與開發線路矩陣 3 份治理輸出保留自我參照豁免。

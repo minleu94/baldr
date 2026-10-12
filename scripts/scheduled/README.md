@@ -651,7 +651,9 @@ target 停止且 primary status 尚未 `complete` 時，才會呼叫既有
 
 補充：`continue_ml_direct_v3_refresh_chain.py` 若以自訂 `--status-path` 啟動，會自動把 direct／OOC／release 的 operational log 寫到 heartbeat 同層的 `logs` 目錄；因此即使正式資料目錄的 log 權限受限，也能繼續執行而不改寫正式資料。未指定自訂 status path 時仍使用既有 direct/training `logs` 位置。
 
-## Register
+## Historical Register command reference
+
+> 下列數量及 action 清單是舊版註冊器說明；本節所列 16／17 數字不得當成現行 task inventory 或直接執行依據。執行前先核對目前註冊器內容、Task Scheduler 讀回與最新排程 QA；本檔首頁所列數量衝突仍未由同範圍 receipt 調和。
 
 Preview:
 

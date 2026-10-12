@@ -32,8 +32,8 @@ DTO 讀取結果為 582 筆 exact result evidence event、4 筆 maturity row（5
 
 可讀 CJK 截圖：
 
-- [default 收合版](<C:/Projects/PythonProjects/technical_analysis/output/qa/decision_outcome_journey_20260914_default.png>)
-- [技術詳情展開版](<C:/Projects/PythonProjects/technical_analysis/output/qa/decision_outcome_journey_20260914_expanded.png>)
+- default 收合版（Git-ignored 本機輸出，未入庫；原位置：output/qa/decision_outcome_journey_20260914_default.png）
+- 技術詳情展開版（Git-ignored 本機輸出，未入庫；原位置：output/qa/decision_outcome_journey_20260914_expanded.png）
 
 ## 驗證結果
 

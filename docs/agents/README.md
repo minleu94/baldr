@@ -77,9 +77,9 @@
 開工順序依執行平台的根目錄指令為準，避免在本頁維護一份會逐漸落後的縮短清單：
 
 - **Codex**：依根目錄 [`AGENTS.md`](../../AGENTS.md) 的完整順序與條件式必讀項目執行。
-- **Antigravity**：依根目錄 [`GEMINI.md`](../../GEMINI.md) 的完整順序與條件式必讀項目執行。
+- **Antigravity**：自動載入根目錄 [`AGENTS.md`](../../AGENTS.md) 的共用順序與條件式必讀項目，並載入 [`GEMINI.md`](../../GEMINI.md) 的平台適配；Gemini CLI 則由 `GEMINI.md` 匯入共用規則。
 - **共同 Agent 資源**：包含本總覽、[`shared_context.md`](shared_context.md)、[`git_exclusions.md`](git_exclusions.md)、任務相關的 Scoped SSOT 與 [`skills_registry.md`](skills_registry.md)；完整閱讀順序依平台根目錄指令。
-- [`antigravity/README.md`](antigravity/README.md) 與 [`antigravity/handoff_template.md`](antigravity/handoff_template.md) 是 Antigravity 的角色路由與交接輔助，不得取代 `GEMINI.md` 的完整條件式清單。
+- [`antigravity/README.md`](antigravity/README.md) 與 [`antigravity/handoff_template.md`](antigravity/handoff_template.md) 是 Antigravity 的角色路由與交接輔助，不取代 `AGENTS.md` 的共用條件式規則；Gemini CLI 由 `GEMINI.md` 匯入該共用規則。
 
 下列角色補充必讀只會增加該角色的閱讀範圍，不會縮短或取代平台根目錄指令。文件中的狀態事實仍依各主題 Scoped SSOT 判讀。
 
@@ -183,14 +183,14 @@ Codex 不會自動把 `docs/agents/*.md` 當成 repo 指令載入。Codex 的自
 
 ## Antigravity 載入方式
 
-Antigravity 的 repo 根目錄入口是 `GEMINI.md`，輔助規則放在 `.agent/rules/`。完整角色文件放在 `docs/agents/antigravity/`，並指回本目錄既有的權威 Agent 文件。
+Antigravity 會自動讀取 repo 根目錄 `AGENTS.md` 與 `GEMINI.md`；輔助規則放在 `.agent/rules/`。完整角色文件放在 `docs/agents/antigravity/`，並指回本目錄既有的權威 Agent 文件。
 
 `docs/agents/antigravity/` 與 `.agent/rules/` 只作為 Antigravity 適配摘要；若與本目錄權威 Agent 文件衝突，以 `docs/agents/*.md`、`shared_context.md` 與 `git_exclusions.md` 為準。
 
 使用方式：
 
 1. 在 Antigravity 開新任務時，確認工作目錄位於 repo 根目錄。
-2. 先讀 `GEMINI.md`。
+2. 確認根目錄 `AGENTS.md` 與 `GEMINI.md` 已載入；`GEMINI.md` 是平台適配入口，完整共用規則以 `AGENTS.md` 為準。
 3. 再讀 `docs/agents/skills_registry.md` 判斷應啟用哪一個權威 Agent。
 4. 依任務類型讀本目錄中的對應 Agent 文件；`docs/agents/antigravity/README.md` 僅作為 Antigravity 適配摘要。
 5. 若 Antigravity 與 Codex 指令描述不同，以 `docs/agents/*.md`、`docs/agents/shared_context.md`、`docs/agents/git_exclusions.md` 與 `docs/00_core/` 的 scoped authority 文件為準。
@@ -219,4 +219,5 @@ Antigravity 的 repo 根目錄入口是 `GEMINI.md`，輔助規則放在 `.agent
 - 2026-07-06：新增 V2.0 之後長期版本階梯 companion 的 Agent 讀取規則，涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時需讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
 - 2026-10-09：改由 Codex／Antigravity 根目錄指令維護完整條件式必讀順序；本頁保留共同資源與角色路由，避免複製出會過期的縮短清單。
 - 2026-10-10：澄清外部參考藍圖只負責候選資料源研究；現行來源優先序回到 Product Roadmap §11。
+- 2026-10-12：統一以 `AGENTS.md` 維護共用規則；Antigravity 自動載入，Gemini CLI 由 `GEMINI.md` 匯入；補充規則須使用有效 YAML trigger。
 

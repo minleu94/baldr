@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "實作或修改應用程式程式碼、測試、UI 或 runtime 行為時載入。"
+---
+
 # Antigravity Rule 10 - Development Execution
 
 ## 適用時機
@@ -27,3 +32,5 @@
 ## 驗證
 
 依變更範圍執行最小但足夠的測試。若無法執行測試，必須在回覆中明確說明原因與風險。
+
+Python-heavy QA、平行驗證及程序回收依 `docs/agents/shared_context.md` 的「Python 任務程序管理」執行；同一驗證逾時時追蹤原 session／Job，不另開重複工作，並確認本任務啟動的程序已正常終止。

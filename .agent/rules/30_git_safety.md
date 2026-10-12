@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "準備 stage、commit，或處理共用工作樹與產出檔案時載入。"
+---
+
 # Antigravity Rule 30 - Git Safety
 
 ## Git 前置檢查

@@ -47,36 +47,36 @@
 
 | 排名 | 測試檔案路徑 | 資產類別 | 總行數 | 非空行數 | 測項數 | 檔案大小 (Bytes) | 主要保護範疇 |
 |---:|---|---|---:|---:|---:|---:|---|
-| 1 | [test_ui_qt_update_view_workbench.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ui_qt_update_view_workbench.py) | automated_test_cases | 2,387 | 1,925 | 83 | 90,676 | 數據更新工作台 UI 互動、狀態機與非阻塞更新流程 |
-| 2 | [test_paper_formal_daily_source_chain.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_formal_daily_source_chain.py) | automated_test_cases | 2,196 | 2,003 | 18 | 81,439 | Paper／Formal 每日官方資料鏈相依與狀態鎖定 |
-| 3 | [test_daily_recommendation_learning_loop.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_daily_recommendation_learning_loop.py) | automated_test_cases | 2,172 | 2,007 | 24 | 91,893 | 每日推薦學習回圈、成熟度比對與模型回退機制 |
-| 4 | [test_ml_allocation_shadow_evidence.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ml_allocation_shadow_evidence.py) | automated_test_cases | 2,093 | 1,944 | 31 | 72,159 | ML 資產配置 Shadow 證據保存與驗證 |
-| 5 | [qa_validate_epic2_mvp1.py](file:///c:/Projects/PythonProjects/technical_analysis/scripts/qa_validate_epic2_mvp1.py) | qa_runners_and_tooling | 2,017 | 1,595 | 30 | 77,283 | Epic 2 MVP1 驗證 Runner（早期驗收工具） |
-| 6 | [test_update_service_status.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_update_service_status.py) | automated_test_cases | 1,994 | 1,643 | 62 | 72,983 | 資料更新服務內部狀態流轉與錯誤復原 |
-| 7 | [qa_validate_research_journey_qt.py](file:///c:/Projects/PythonProjects/technical_analysis/scripts/qa_validate_research_journey_qt.py) | qa_runners_and_tooling | 1,760 | 1,598 | 0 | 72,945 | 研究旅程跨頁 Qt 流程驗證腳本 |
-| 8 | [test_daily_banktaiwan_learning_cost.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_daily_banktaiwan_learning_cost.py) | automated_test_cases | 1,705 | 1,619 | 19 | 69,519 | 臺銀成本情境學習隔離、50bp 邊界與 Root 衝突防護 |
-| 9 | [test_pit_taxonomy_daily_source.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_pit_taxonomy_daily_source.py) | automated_test_cases | 1,688 | 1,581 | 31 | 72,438 | 官方 PIT 產業分類來源、版本演進與 Fail-closed 驗證 |
-| 10 | [test_daily_ml_allocation_orchestration.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_daily_ml_allocation_orchestration.py) | automated_test_cases | 1,687 | 1,482 | 31 | 59,493 | 每日 ML 配置排程編排與前置條件檢查 |
-| 11 | [test_build_mops_statement_pit_candidate.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_build_mops_statement_pit_candidate.py) | automated_test_cases | 1,683 | 1,530 | 54 | 67,228 | 公開資訊觀測站財報 PIT 候選集建置與別名映射 |
-| 12 | [test_portfolio_ml_dataset_assembler.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_portfolio_ml_dataset_assembler.py) | automated_test_cases | 1,624 | 1,497 | 29 | 54,009 | 持倉 ML 訓練資料組裝與時序窗口切割 |
-| 13 | [test_forward_position_thesis_candidate_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_forward_position_thesis_candidate_producer.py) | automated_test_cases | 1,582 | 1,462 | 22 | 59,963 | 前瞻持倉論點候選生成器契約 |
-| 14 | [test_formal_rule_source_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_rule_source_producer.py) | automated_test_cases | 1,529 | 1,411 | 24 | 57,758 | 正式規則資料源生成器、Cutoff 與 Universe Hash 保障 |
-| 15 | [test_paper_daily_execution_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_daily_execution_producer.py) | automated_test_cases | 1,515 | 1,353 | 20 | 54,952 | Paper 每日模擬下單產生器與資產負債平衡對帳 |
-| 16 | [test_formal_daily_input_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_daily_input_producer.py) | automated_test_cases | 1,494 | 1,349 | 24 | 52,652 | 正式每日輸入資料產出與 SHA256 溯源存證 |
-| 17 | [test_recommendation_service_calibration_integration.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_service_calibration_integration.py) | automated_test_cases | 1,438 | 1,299 | 13 | 53,747 | 推薦服務校準與分數整合測試 |
-| 18 | [test_portfolio_ml_out_of_core_pipeline.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_portfolio_ml_out_of_core_pipeline.py) | automated_test_cases | 1,359 | 1,257 | 19 | 46,242 | 持倉 ML Out-of-Core 記憶體安全訓練管道 |
-| 19 | [test_scheduled_evidence_pipeline_dry_run_wrapper.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py) | automated_test_cases | 1,348 | 1,250 | 18 | 51,911 | 排程證據管道 Dry-run 安全封裝 |
-| 20 | [qa_ml_direct_ooc_shared_reuse.py](file:///c:/Projects/PythonProjects/technical_analysis/scripts/qa_ml_direct_ooc_shared_reuse.py) | qa_runners_and_tooling | 1,319 | 1,239 | 0 | 66,567 | ML OOC 數值重用機制驗證腳本 |
-| 21 | [test_ml_allocation_copilot.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ml_allocation_copilot.py) | automated_test_cases | 1,273 | 1,180 | 14 | 44,986 | ML 配置副駕駛合規審查與權限控制 |
+| 1 | [test_ui_qt_update_view_workbench.py](../../tests/test_ui_qt_update_view_workbench.py) | automated_test_cases | 2,387 | 1,925 | 83 | 90,676 | 數據更新工作台 UI 互動、狀態機與非阻塞更新流程 |
+| 2 | [test_paper_formal_daily_source_chain.py](../../tests/test_paper_formal_daily_source_chain.py) | automated_test_cases | 2,196 | 2,003 | 18 | 81,439 | Paper／Formal 每日官方資料鏈相依與狀態鎖定 |
+| 3 | [test_daily_recommendation_learning_loop.py](../../tests/test_daily_recommendation_learning_loop.py) | automated_test_cases | 2,172 | 2,007 | 24 | 91,893 | 每日推薦學習回圈、成熟度比對與模型回退機制 |
+| 4 | [test_ml_allocation_shadow_evidence.py](../../tests/test_ml_allocation_shadow_evidence.py) | automated_test_cases | 2,093 | 1,944 | 31 | 72,159 | ML 資產配置 Shadow 證據保存與驗證 |
+| 5 | [qa_validate_epic2_mvp1.py](../../scripts/qa_validate_epic2_mvp1.py) | qa_runners_and_tooling | 2,017 | 1,595 | 30 | 77,283 | Epic 2 MVP1 驗證 Runner（早期驗收工具） |
+| 6 | [test_update_service_status.py](../../tests/test_update_service_status.py) | automated_test_cases | 1,994 | 1,643 | 62 | 72,983 | 資料更新服務內部狀態流轉與錯誤復原 |
+| 7 | [qa_validate_research_journey_qt.py](../../scripts/qa_validate_research_journey_qt.py) | qa_runners_and_tooling | 1,760 | 1,598 | 0 | 72,945 | 研究旅程跨頁 Qt 流程驗證腳本 |
+| 8 | [test_daily_banktaiwan_learning_cost.py](../../tests/test_daily_banktaiwan_learning_cost.py) | automated_test_cases | 1,705 | 1,619 | 19 | 69,519 | 臺銀成本情境學習隔離、50bp 邊界與 Root 衝突防護 |
+| 9 | [test_pit_taxonomy_daily_source.py](../../tests/test_pit_taxonomy_daily_source.py) | automated_test_cases | 1,688 | 1,581 | 31 | 72,438 | 官方 PIT 產業分類來源、版本演進與 Fail-closed 驗證 |
+| 10 | [test_daily_ml_allocation_orchestration.py](../../tests/test_daily_ml_allocation_orchestration.py) | automated_test_cases | 1,687 | 1,482 | 31 | 59,493 | 每日 ML 配置排程編排與前置條件檢查 |
+| 11 | [test_build_mops_statement_pit_candidate.py](../../tests/test_build_mops_statement_pit_candidate.py) | automated_test_cases | 1,683 | 1,530 | 54 | 67,228 | 公開資訊觀測站財報 PIT 候選集建置與別名映射 |
+| 12 | [test_portfolio_ml_dataset_assembler.py](../../tests/test_portfolio_ml_dataset_assembler.py) | automated_test_cases | 1,624 | 1,497 | 29 | 54,009 | 持倉 ML 訓練資料組裝與時序窗口切割 |
+| 13 | [test_forward_position_thesis_candidate_producer.py](../../tests/test_forward_position_thesis_candidate_producer.py) | automated_test_cases | 1,582 | 1,462 | 22 | 59,963 | 前瞻持倉論點候選生成器契約 |
+| 14 | [test_formal_rule_source_producer.py](../../tests/test_formal_rule_source_producer.py) | automated_test_cases | 1,529 | 1,411 | 24 | 57,758 | 正式規則資料源生成器、Cutoff 與 Universe Hash 保障 |
+| 15 | [test_paper_daily_execution_producer.py](../../tests/test_paper_daily_execution_producer.py) | automated_test_cases | 1,515 | 1,353 | 20 | 54,952 | Paper 每日模擬下單產生器與資產負債平衡對帳 |
+| 16 | [test_formal_daily_input_producer.py](../../tests/test_formal_daily_input_producer.py) | automated_test_cases | 1,494 | 1,349 | 24 | 52,652 | 正式每日輸入資料產出與 SHA256 溯源存證 |
+| 17 | [test_recommendation_service_calibration_integration.py](../../tests/test_recommendation_service_calibration_integration.py) | automated_test_cases | 1,438 | 1,299 | 13 | 53,747 | 推薦服務校準與分數整合測試 |
+| 18 | [test_portfolio_ml_out_of_core_pipeline.py](../../tests/test_portfolio_ml_out_of_core_pipeline.py) | automated_test_cases | 1,359 | 1,257 | 19 | 46,242 | 持倉 ML Out-of-Core 記憶體安全訓練管道 |
+| 19 | [test_scheduled_evidence_pipeline_dry_run_wrapper.py](../../tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py) | automated_test_cases | 1,348 | 1,250 | 18 | 51,911 | 排程證據管道 Dry-run 安全封裝 |
+| 20 | [qa_ml_direct_ooc_shared_reuse.py](../../scripts/qa_ml_direct_ooc_shared_reuse.py) | qa_runners_and_tooling | 1,319 | 1,239 | 0 | 66,567 | ML OOC 數值重用機制驗證腳本 |
+| 21 | [test_ml_allocation_copilot.py](../../tests/test_ml_allocation_copilot.py) | automated_test_cases | 1,273 | 1,180 | 14 | 44,986 | ML 配置副駕駛合規審查與權限控制 |
 | 22 | `test_ml_teacher_shadow_pipeline.py` | automated_test_cases | 1,256 | 1,173 | 18 | 44,611 | ML 教師模型 Shadow 模式管道隔離 |
 | 23 | `test_portfolio_ml_ooc_release_gate.py` | automated_test_cases | 1,250 | 1,147 | 25 | 43,473 | ML OOC 發布閥門與回歸指標驗收 |
 | 24 | `test_official_events_pipeline.py` | automated_test_cases | 1,213 | 1,114 | 22 | 44,528 | 官方重大訊息與市場事件抓取清洗管線 |
-| 25 | [test_corporate_action_availability_history.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_corporate_action_availability_history.py) | automated_test_cases | 1,202 | 1,130 | 18 | 46,281 | 除權息歷史可用日與復權因子防未來函數 |
+| 25 | [test_corporate_action_availability_history.py](../../tests/test_corporate_action_availability_history.py) | automated_test_cases | 1,202 | 1,130 | 18 | 46,281 | 除權息歷史可用日與復權因子防未來函數 |
 | 26 | `test_market_data_service.py` | automated_test_cases | 1,198 | 1,067 | 37 | 45,984 | 市場資料服務查詢、快取與 Fallback |
-| 27 | [test_fubon_shadow_decision_service.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_fubon_shadow_decision_service.py) | automated_test_cases | 1,184 | 1,091 | 28 | 42,951 | 富邦 Shadow 決策服務與唯讀授權防護 |
-| 28 | [test_ui_qt_workbench_view.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ui_qt_workbench_view.py) | automated_test_cases | 1,183 | 1,048 | 29 | 44,821 | 決策工作台視圖 UI 渲染與事件流 |
-| 29 | [test_scheduled_decision_evidence_capture.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_scheduled_decision_evidence_capture.py) | automated_test_cases | 1,173 | 1,080 | 15 | 42,504 | 定時排程決策存證抓取契約 |
-| 30 | [test_evidence_rehearsal_service.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_evidence_rehearsal_service.py) | automated_test_cases | 1,167 | 1,082 | 23 | 41,833 | 證據彩排服務之唯讀演練與日誌驗證 |
+| 27 | [test_fubon_shadow_decision_service.py](../../tests/test_fubon_shadow_decision_service.py) | automated_test_cases | 1,184 | 1,091 | 28 | 42,951 | 富邦 Shadow 決策服務與唯讀授權防護 |
+| 28 | [test_ui_qt_workbench_view.py](../../tests/test_ui_qt_workbench_view.py) | automated_test_cases | 1,183 | 1,048 | 29 | 44,821 | 決策工作台視圖 UI 渲染與事件流 |
+| 29 | [test_scheduled_decision_evidence_capture.py](../../tests/test_scheduled_decision_evidence_capture.py) | automated_test_cases | 1,173 | 1,080 | 15 | 42,504 | 定時排程決策存證抓取契約 |
+| 30 | [test_evidence_rehearsal_service.py](../../tests/test_evidence_rehearsal_service.py) | automated_test_cases | 1,167 | 1,082 | 23 | 41,833 | 證據彩排服務之唯讀演練與日誌驗證 |
 
 ---
 
@@ -163,8 +163,8 @@ pie title 測試檔案分類分布 (852 檔案)
 
 #### 候選 01：[DUP-A-b942830e] Windows 排程註冊時區阻擋測試完全重複
 * **涉及位置**：
-  * [test_formal_registration_plan.py:L74-88](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_registration_plan.py#L74-88) (`test_dedicated_registration_rejects_non_pacific_timezone`)
-  * [test_paper_execution_registration_plan.py:L133-149](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_execution_registration_plan.py#L133-149) (`test_dedicated_paper_registration_rejects_non_pacific_timezone`)
+  * [test_formal_registration_plan.py:L74-88](../../tests/test_formal_registration_plan.py#L74-88) (`test_dedicated_registration_rejects_non_pacific_timezone`)
+  * [test_paper_execution_registration_plan.py:L133-149](../../tests/test_paper_execution_registration_plan.py#L133-149) (`test_dedicated_paper_registration_rejects_non_pacific_timezone`)
 * **觸發路徑與斷言**：兩者均建立 mock `tzutil.cmd` 回傳 `UTC`，執行對應命令並斷言 `result.returncode == 2` 與 `"timezone must be Pacific Standard Time"`。
 * **共同與獨有**：完全相同的 Windows 時區檢查防衛邏輯。
 * **建議處置**：將 mock `tzutil` 抽取至共用 helper，兩測試檔共用同一個時區斷言邏輯。
@@ -173,8 +173,8 @@ pie title 測試檔案分類分布 (852 檔案)
 
 #### 候選 02：[DUP-A-fa52cf96] 存證彩排 DTO 輸入拒絕測試重複
 * **涉及位置**：
-  * [test_evidence_rehearsal_dtos.py:L74-79](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_evidence_rehearsal_dtos.py#L74-79) (`test_scenario_rejects_production_like_inputs`)
-  * [test_evidence_rehearsal_dtos.py:L89-94](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_evidence_rehearsal_dtos.py#L89-94) (`test_scenario_rejects_production_evidence_filename_variants`)
+  * [test_evidence_rehearsal_dtos.py:L74-79](../../tests/test_evidence_rehearsal_dtos.py#L74-79) (`test_scenario_rejects_production_like_inputs`)
+  * [test_evidence_rehearsal_dtos.py:L89-94](../../tests/test_evidence_rehearsal_dtos.py#L89-94) (`test_scenario_rejects_production_evidence_filename_variants`)
 * **觸發路徑與斷言**：兩函式內部代碼 100% 相同（均為 `with pytest.raises(ValueError, match=field_name): _scenario(...)`），僅裝飾器參數列表被拆為兩個函式。
 * **建議處置**：合併為單一測試函式，將兩組參數整合至同一個 `@pytest.mark.parametrize`。
 * **承接位置**：`tests/test_evidence_rehearsal_dtos.py`。
@@ -182,8 +182,8 @@ pie title 測試檔案分類分布 (852 檔案)
 
 #### 候選 03：[DUP-A-8713a259] 數值邊界檢查器忽略非標記註解測試重複
 * **涉及位置**：
-  * [test_financial_float_boundary_checker.py:L111-112](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_financial_float_boundary_checker.py#L111-112) (`test_unrelated_numeric_boundary_comments_are_ignored`)
-  * [test_financial_float_boundary_checker.py:L196-199](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_financial_float_boundary_checker.py#L196-199) (`test_multiline_boundary_marker_applies_to_managed_float_token_line`)
+  * [test_financial_float_boundary_checker.py:L111-112](../../tests/test_financial_float_boundary_checker.py#L111-112) (`test_unrelated_numeric_boundary_comments_are_ignored`)
+  * [test_financial_float_boundary_checker.py:L196-199](../../tests/test_financial_float_boundary_checker.py#L196-199) (`test_multiline_boundary_marker_applies_to_managed_float_token_line`)
 * **觸發路徑與斷言**：兩者斷言完全相同（`assert scan_source(source, path="sample.py") == []`）。
 * **建議處置**：保留兩者的測試輸入樣本，將其合流為參數化案例。
 * **承接位置**：`tests/test_financial_float_boundary_checker.py`。
@@ -191,19 +191,19 @@ pie title 測試檔案分類分布 (852 檔案)
 
 #### 候選 04：[DUP-B-4cfe7515 / 7fda9aff] 跨 10 檔 CLI CP1252 編碼安全樣板重複
 * **涉及位置**：
-  * [test_append_portfolio_stress_history_cli.py:L96-110](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_append_portfolio_stress_history_cli.py#L96-110)
-  * [test_inspect_ml_storage_retention.py:L115-129](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_inspect_ml_storage_retention.py#L115-129)
-  * [test_monthly_revenue_availability_merge.py:L232-246](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_monthly_revenue_availability_merge.py#L232-246)
-  * [test_append_paper_trade_csv_cli.py:L110-125](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_append_paper_trade_csv_cli.py#L110-125)
-  * [test_run_p0_source_evidence_audit.py:L739-754](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_run_p0_source_evidence_audit.py#L739-754)
+  * [test_append_portfolio_stress_history_cli.py:L96-110](../../tests/test_append_portfolio_stress_history_cli.py#L96-110)
+  * [test_inspect_ml_storage_retention.py:L115-129](../../tests/test_inspect_ml_storage_retention.py#L115-129)
+  * [test_monthly_revenue_availability_merge.py:L232-246](../../tests/test_monthly_revenue_availability_merge.py#L232-246)
+  * [test_append_paper_trade_csv_cli.py:L110-125](../../tests/test_append_paper_trade_csv_cli.py#L110-125)
+  * [test_run_p0_source_evidence_audit.py:L739-754](../../tests/test_run_p0_source_evidence_audit.py#L739-754)
 * **觸發路徑與斷言**：以 Windows CP1252 編碼執行 CLI `--help`，驗證繁體中文字元不會引發 `UnicodeEncodeError`。代碼在 10 個 CLI 測試檔中逐字複製。
 * **建議處置**：在 `tests/conftest.py` 建立共用輔助函式 `assert_cli_help_utf8_safe(cli_module)`。
 * **預期收益**：消除約 120-150 行重複樣板。
 
 #### 候選 05：[DUP-B-c21b84ac / d8e16f36 / 767b13af] MOPS 財報科目代碼別名解析重複
 * **涉及位置**：
-  * [test_build_mops_statement_pit_candidate.py:L267-463](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_build_mops_statement_pit_candidate.py#L267-463)（7 個函式）
-  * [test_mops_statement_3064_alias.py:L4-294](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_mops_statement_3064_alias.py#L4-294)（5 個函式）
+  * [test_build_mops_statement_pit_candidate.py:L267-463](../../tests/test_build_mops_statement_pit_candidate.py#L267-463)（7 個函式）
+  * [test_mops_statement_3064_alias.py:L4-294](../../tests/test_mops_statement_3064_alias.py#L4-294)（5 個函式）
 * **觸發路徑與斷言**：呼叫 `resolve_official_item_code` 驗證不同財報科目（營業外損益、營收、成本等）在不同官方命名下的解析與縮排判定。
 * **建議處置**：以單一參數化矩陣 `(alias_name, expected_code, expected_indent)` 表達所有科目映射。
 * **承接位置**：`tests/test_build_mops_statement_pit_candidate.py`，完成後可評估封存 `test_mops_statement_3064_alias.py`。
@@ -211,21 +211,21 @@ pie title 測試檔案分類分布 (852 檔案)
 
 #### 候選 06：[DUP-B-a314f99d] 因子契約邊界值拒絕測試重複
 * **涉及位置**：
-  * [test_factor_contract.py:L43-85](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_factor_contract.py#L43-85) (`test_factor_record_rejects_out_of_range_score_bp`, `test_factor_record_rejects_empty_factor_name`, `test_factor_record_rejects_empty_stock_code`)
+  * [test_factor_contract.py:L43-85](../../tests/test_factor_contract.py#L43-85) (`test_factor_record_rejects_out_of_range_score_bp`, `test_factor_record_rejects_empty_factor_name`, `test_factor_record_rejects_empty_stock_code`)
 * **觸發路徑與斷言**：三個函式各自 13 行，均測試 `FactorRecord` 在非法欄位下的 `ValueError`。
 * **建議處置**：改寫為 `@pytest.mark.parametrize("invalid_kwarg", [...])`。
 * **預期收益**：減少 15 行代碼。
 
 #### 候選 07：[DUP-B-add9c5f0] TWSE 資料載入器下載狀態判定重複
 * **涉及位置**：
-  * [test_data_loader.py:L224-300](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_core/test_data_loader.py#L224-300)
+  * [test_data_loader.py:L224-300](../../tests/test_core/test_data_loader.py#L224-300)
 * **觸發路徑與斷言**：模擬 TWSE 查無資料、未來日期、暫態連線錯誤的三次回應與狀態轉換。
 * **建議處置**：參數化 `(twse_raw_response, expected_status)`。
 * **預期收益**：減少 16 行代碼。
 
 #### 候選 08：[DUP-B-bf1f0571] 前瞻績效服務缺漏降級測試重複
 * **涉及位置**：
-  * [test_forward_performance_service.py:L290-324](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_forward_performance_service.py#L290-324)
+  * [test_forward_performance_service.py:L290-324](../../tests/test_forward_performance_service.py#L290-324)
 * **觸發路徑與斷言**：除權息缺口與交易限制缺口觸發時之 outcome degradation 斷言完全同構。
 * **建議處置**：參數化 `(gap_type, expected_degrade_reason)`。
 * **預期收益**：減少 14 行代碼。
@@ -235,55 +235,55 @@ pie title 測試檔案分類分布 (852 檔案)
 ### 【第二優先：重度重複 Setup／Fixture 抽取（最高行數收益）】
 
 #### 候選 09：[DUP-C-025] Paper 每日來源鏈檔案 12 測項重複 Setup
-* **涉及位置**：[test_paper_formal_daily_source_chain.py:L1-2196](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_formal_daily_source_chain.py)
+* **涉及位置**：[test_paper_formal_daily_source_chain.py:L1-2196](../../tests/test_paper_formal_daily_source_chain.py)
 * **重複現象**：全檔 12 個主要測試函式，每個函式前段均耗費 20-35 行手動構建假目錄樹、寫入 mock 行事曆與生成假的 source receipt。
 * **建議處置**：抽取模組層級 fixture `mock_daily_source_environment(tmp_path)`。
 * **預期收益**：**減少約 231 行** 重複初始化代碼，測項 100% 保留。
 
 #### 候選 10：[DUP-C-016] 前瞻持倉論點候選生成器 11 測項重複 Setup
-* **涉及位置**：[test_forward_position_thesis_candidate_producer.py:L1-1582](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_forward_position_thesis_candidate_producer.py)
+* **涉及位置**：[test_forward_position_thesis_candidate_producer.py:L1-1582](../../tests/test_forward_position_thesis_candidate_producer.py)
 * **重複現象**：11 個測項各自手動宣告近 25 行相同的 thesis payload 結構與 mock candidate。
 * **建議處置**：抽取 `base_thesis_candidate_payload` fixture。
 * **預期收益**：**減少約 210 行** 重複代碼。
 
 #### 候選 11：[DUP-C-036] 推薦服務校準整合測試 8 測項重複 Setup
-* **涉及位置**：[test_recommendation_service_calibration_integration.py:L1-1438](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_service_calibration_integration.py)
+* **涉及位置**：[test_recommendation_service_calibration_integration.py:L1-1438](../../tests/test_recommendation_service_calibration_integration.py)
 * **重複現象**：8 個測項重複建立假的歷史推薦記錄與評估器設定檔。
 * **建議處置**：抽取 `mock_calibration_context` fixture。
 * **預期收益**：**減少約 182 行** 重複代碼。
 
 #### 候選 12：[DUP-C-013] 正式每日輸入生成器 10 測項重複 Setup
-* **涉及位置**：[test_formal_daily_input_producer.py:L1-1494](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_daily_input_producer.py)
+* **涉及位置**：[test_formal_daily_input_producer.py:L1-1494](../../tests/test_formal_daily_input_producer.py)
 * **重複現象**：10 個測項各自初始化相同的 input manifest 與 hash checker。
 * **建議處置**：抽取 `base_formal_input_manifest` fixture。
 * **預期收益**：**減少約 135 行** 重複代碼。
 
 #### 候選 13：[DUP-C-024] Paper 每日模擬執行生成器 10 測項重複 Setup
-* **涉及位置**：[test_paper_daily_execution_producer.py:L1-1515](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_daily_execution_producer.py)
+* **涉及位置**：[test_paper_daily_execution_producer.py:L1-1515](../../tests/test_paper_daily_execution_producer.py)
 * **重複現象**：重複手動初始化模擬持倉簿與撮合交易環境。
 * **建議處置**：抽取 `mock_paper_execution_state` fixture。
 * **預期收益**：**減少約 135 行** 重複代碼。
 
 #### 候選 14：[DUP-C-010] 每日推薦學習回圈 7 測項重複 Setup
-* **涉及位置**：[test_daily_recommendation_learning_loop.py:L1-2172](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_daily_recommendation_learning_loop.py)
+* **涉及位置**：[test_daily_recommendation_learning_loop.py:L1-2172](../../tests/test_daily_recommendation_learning_loop.py)
 * **重複現象**：7 個長測試各自配置一套完整的 Shadow directory 結構與模型 registry。
 * **建議處置**：抽取 `shadow_learning_env` fixture。
 * **預期收益**：**減少約 132 行** 重複代碼。
 
 #### 候選 15：[DUP-C-014] 正式規則資料源生成器 12 測項重複 Setup
-* **涉及位置**：[test_formal_rule_source_producer.py:L1-1529](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_rule_source_producer.py)
+* **涉及位置**：[test_formal_rule_source_producer.py:L1-1529](../../tests/test_formal_rule_source_producer.py)
 * **重複現象**：12 個測項重複構建 stock universe 與預設權重分佈。
 * **建議處置**：抽取 `mock_rule_universe` fixture。
 * **預期收益**：**減少約 121 行** 重複代碼。
 
 #### 候選 16：[DUP-C-007] 臺銀成本情境學習 7 測項重複 Setup
-* **涉及位置**：[test_daily_banktaiwan_learning_cost.py:L1-1705](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_daily_banktaiwan_learning_cost.py)
+* **涉及位置**：[test_daily_banktaiwan_learning_cost.py:L1-1705](../../tests/test_daily_banktaiwan_learning_cost.py)
 * **重複現象**：重複構建 50bp 與電子下單手續費折讓情境。
 * **建議處置**：抽取 `banktaiwan_cost_scenario_fixture`。
 * **預期收益**：**減少約 114 行** 重複代碼。
 
 #### 候選 17：[DUP-C-047] 更新工作台 UI 測試 10 測項重複 Setup
-* **涉及位置**：[test_ui_qt_update_view_workbench.py:L1-2387](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ui_qt_update_view_workbench.py)
+* **涉及位置**：[test_ui_qt_update_view_workbench.py:L1-2387](../../tests/test_ui_qt_update_view_workbench.py)
 * **重複現象**：10 個 UI 測試重複手動構造 `UpdateService` 的模擬進度信號與 worker 回調。
 * **建議處置**：抽取 `mock_update_workbench_context` fixture。
 * **預期收益**：**減少約 90 行** 重複代碼。
@@ -302,12 +302,12 @@ pie title 測試檔案分類分布 (852 檔案)
 * **預期收益**：自測試專案中清理 4,228 行不可執行的死碼，大幅降低新進開發者或 AI 的探索干擾。
 
 #### 候選 19：[STALE-042] `tests/test_research_run_legacy_adapter.py`
-* **涉及位置**：[test_research_run_legacy_adapter.py:L1-118](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_research_run_legacy_adapter.py)
+* **涉及位置**：[test_research_run_legacy_adapter.py:L1-118](../../tests/test_research_run_legacy_adapter.py)
 * **問題證據**：專門保護舊版回測資料轉至新版 `ResearchRunRepository` 的轉接層。
 * **建議處置**：**暫時保留（待確認）**。需由 Data Audit 查核目前正式資料根目錄中是否仍殘留舊格式的回測結果；若無舊檔案，此 Adapter 與測試方可同步退役。
 
 #### 候選 20：[CONFIG-BUG] `tests/test_promotion_authority_secret_store.py` 被 `.gitignore` 誤排除
-* **涉及位置**：[test_promotion_authority_secret_store.py:L1-57](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_promotion_authority_secret_store.py)
+* **涉及位置**：[test_promotion_authority_secret_store.py:L1-57](../../tests/test_promotion_authority_secret_store.py)
 * **問題證據**：該測試是保護 Windows DPAPI 加密存儲的有效測試，且已在 `test_inventory.py` 登錄。但因 `.gitignore` 第 98 行設有通用規則 `*secret*.py`，導致該測試檔被 Git 忽略，無法被正常版本控制。
 * **建議處置**：在 `.gitignore` 中加入例外白名單：`!tests/test_promotion_authority_secret_store.py`。
 * **預期收益**：修復潛在的代碼丟失與版本不同步風險。
@@ -412,13 +412,13 @@ graph TD
 1. **主審計報告**（本文件）：
    `docs/06_qa/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md`
 2. **測試資產全量關聯清冊**（902 筆測試資產之生產相依、防禦契約與引用狀態）：
-   [test_asset_index.csv](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/test_asset_index.csv)
+   test_asset_index.csv（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/test_asset_index.csv）
 3. **重複候選群清冊**（141 組候選，含 A~E 類別、位置、差異、建議與行數粗估）：
-   [duplicate_candidates.csv](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/duplicate_candidates.csv)
+   duplicate_candidates.csv（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/duplicate_candidates.csv）
 4. **過時與失效候選清冊**（41 筆失效項目，含缺失模組、跳過測試、歷史遺留標記）：
-   [stale_candidates.csv](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/stale_candidates.csv)
+   stale_candidates.csv（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/stale_candidates.csv）
 5. **規模度量統計 JSON**：
-   [test_scale_summary.json](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/test_scale_summary.json)
+   test_scale_summary.json（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/test_scale_summary.json）
 6. **可重跑分析工具集**：
    * 規模度量：`output/qa/test_asset_audit/measure_test_scale.py`
    * 資產關聯生成：`output/qa/test_asset_audit/build_test_asset_index.py`

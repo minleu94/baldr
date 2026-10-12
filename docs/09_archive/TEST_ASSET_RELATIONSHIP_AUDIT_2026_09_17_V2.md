@@ -88,8 +88,8 @@ graph TD
 
 #### 組別 01：[DUP-A-b942830e] Windows 排程註冊時區阻擋測試
 * **涉及檔案**：
-  * [test_formal_registration_plan.py:L74-88](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_registration_plan.py#L74-88) (`test_dedicated_registration_rejects_non_pacific_timezone`)
-  * [test_paper_execution_registration_plan.py:L133-149](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_execution_registration_plan.py#L133-149) (`test_dedicated_paper_registration_rejects_non_pacific_timezone`)
+  * [test_formal_registration_plan.py:L74-88](../../tests/test_formal_registration_plan.py#L74-88) (`test_dedicated_registration_rejects_non_pacific_timezone`)
+  * [test_paper_execution_registration_plan.py:L133-149](../../tests/test_paper_execution_registration_plan.py#L133-149) (`test_dedicated_paper_registration_rejects_non_pacific_timezone`)
 * **作用域差異事實**：
   * 兩函式本體均呼叫 `_run_registration("dryrun", env=env)`。
   * 但 `test_formal_registration_plan.py` 頂層指向 `scripts/scheduled/register_formal_input_producer_task.cmd` (保護 `baldr-formal-input-producer-daily` 任務)。
@@ -99,7 +99,7 @@ graph TD
 * **淨行數收益**：抽取 helper 定義約 8 行，兩測試各呼叫 1 行，淨節省約 **10 行**。
 
 #### 組別 02：[DUP-A-fa52cf96] 存證彩排 DTO 輸入拒絕測試
-* **涉及檔案**：[test_evidence_rehearsal_dtos.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_evidence_rehearsal_dtos.py)
+* **涉及檔案**：[test_evidence_rehearsal_dtos.py](../../tests/test_evidence_rehearsal_dtos.py)
   * L74-79: `test_scenario_rejects_production_like_inputs`
   * L89-94: `test_scenario_rejects_production_evidence_filename_variants`
 * **參數差異事實**：
@@ -111,7 +111,7 @@ graph TD
 * **淨行數收益**：消除 1 個函式簽名與 docstring（6 行），新增 1 行參數宣告，淨節省 **5 行**。
 
 #### 組別 03：[DUP-A-8713a259] 數值邊界檢查器標記與註解測試
-* **涉及檔案**：[test_financial_float_boundary_checker.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_financial_float_boundary_checker.py)
+* **涉及檔案**：[test_financial_float_boundary_checker.py](../../tests/test_financial_float_boundary_checker.py)
   * L105-112: `test_unrelated_numeric_boundary_comments_are_ignored` (掛載 2 組無關文字註解參數)
   * L174-199: `test_multiline_boundary_marker_applies_to_managed_float_token_line` (掛載 3 組跨行標記語法參數)
 * **語意差異與參數事實**：
@@ -170,7 +170,7 @@ graph LR
 ---
 
 ### 5.1 候選一：[DUP-C-025] TWSE HTTP Mock Response 重複定義 (第一批受控實作與驗證)
-* **檔案路徑**：[test_paper_formal_daily_source_chain.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_formal_daily_source_chain.py)
+* **檔案路徑**：[test_paper_formal_daily_source_chain.py](../../tests/test_paper_formal_daily_source_chain.py)
 * **整併狀態**：**已於本批小範圍完成受控實作與驗證** (落實於該檔案 L407-438 之本地 `_MockHttpResponse`)。
 * **10 處原有 `_Response` 之逐一事實查核與差異對比**：
 
@@ -209,7 +209,7 @@ graph LR
 ---
 
 ### 5.2 候選二：[DUP-C-016] 前瞻部位假說產出器前置環境重複
-* **檔案路徑**：[test_forward_position_thesis_candidate_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_forward_position_thesis_candidate_producer.py)
+* **檔案路徑**：[test_forward_position_thesis_candidate_producer.py](../../tests/test_forward_position_thesis_candidate_producer.py)
 * **重複代碼行號**：L456-468, L530-538, L576-586, L649-656, L672-680, L696-702, L711-722, L799-810, L832-845, L884-897, L963-976 (共 11 個測試函式)。
 * **重複區塊原始碼摘要**：
   ```python
@@ -257,7 +257,7 @@ graph LR
 ---
 
 ### 5.3 候選三：[DUP-C-036] 推薦服務校準整合前置重複
-* **檔案路徑**：[test_recommendation_service_calibration_integration.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_service_calibration_integration.py)
+* **檔案路徑**：[test_recommendation_service_calibration_integration.py](../../tests/test_recommendation_service_calibration_integration.py)
 * **重複代碼行號**：L264-280, L314-325, L360-375, L421-435, L563-580, L792-810, L1496-1510 (共 8 個測試函式)。
 * **重複區塊原始碼摘要**：
   ```python
@@ -323,7 +323,7 @@ graph LR
 ---
 
 ### 5.4 候選四：[DUP-C-013] 正式每日輸入產出器前置物件組裝重複
-* **檔案路徑**：[test_formal_daily_input_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_formal_daily_input_producer.py)
+* **檔案路徑**：[test_formal_daily_input_producer.py](../../tests/test_formal_daily_input_producer.py)
 * **重複代碼行號**：L271-275, L324-328, L354-358, L483-494, L511-516, L537-545, L599-605, L715-722, L926-936, L1160-1168 (共 10 個測試函式)。
 * **重複區塊原始碼摘要**：
   ```python
@@ -368,7 +368,7 @@ graph LR
 ---
 
 ### 5.5 候選五：[DUP-C-024] Paper 每日執行佇列環境組裝重複
-* **檔案路徑**：[test_paper_daily_execution_producer.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_paper_daily_execution_producer.py)
+* **檔案路徑**：[test_paper_daily_execution_producer.py](../../tests/test_paper_daily_execution_producer.py)
 * **重複代碼行號**：L735-750, L800-815, L840-855, L875-890, L1030-1045, L1110-1125, L1175-1190 (共 7 個測試函式)。
 * **重複區塊原始碼摘要**：
   ```python
@@ -475,12 +475,12 @@ graph LR
 ## 8. Promotion Authority Secret Store 安全合規與白名單建議
 
 ### 8.1 唯讀安全審查結果
-1. **測試檔案**：[tests/test_promotion_authority_secret_store.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_promotion_authority_secret_store.py) (57 行)
+1. **測試檔案**：[tests/test_promotion_authority_secret_store.py](../../tests/test_promotion_authority_secret_store.py) (57 行)
    - **性質**：100% 純自動化單元測試。
    - **行為**：使用 pytest `tmp_path` 生成臨時檔案 `authority-secret.dpapi.json`，調用 `PromotionAuthoritySecretStore.load_or_create()`。
    - **驗證項目**：Windows DPAPI 使用者範圍加密穩定性、明文禁止外洩、JSON 雜湊篡改拒絕、以及 Issuer/Custody 身分不符拒絕。
    - **機密檢查**：**無任何硬編碼真實密鑰、密碼、Token 或私鑰**。
-2. **生產檔案**：[runtime/promotion_authority_secret_store.py](file:///c:/Projects/PythonProjects/technical_analysis/runtime/promotion_authority_secret_store.py) (201 行)
+2. **生產檔案**：[runtime/promotion_authority_secret_store.py](../../runtime/promotion_authority_secret_store.py) (201 行)
    - **性質**：核心運行期安全授權模組 (`baldr ML promotion authority v1`)。
    - **行為**：利用 `win32crypt.CryptProtectData` (DPAPI) 實作 Fail-closed 本地機密保護，每次初始化動態透過 `secrets.token_bytes(32)` 產生隨機 HMAC 密鑰。
    - **機密檢查**：**無任何硬編碼真實密鑰**。
@@ -560,6 +560,6 @@ graph LR
 
 * **審計報告 V2**：[docs/09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md](TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md)
 * **審計報告 V1 (保留)**：[docs/09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md](TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)
-* **修正版候選清單**：[output/qa/test_asset_audit/duplicate_candidates_v2.csv](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/duplicate_candidates_v2.csv)
-* **修正版過時測試清單**：[output/qa/test_asset_audit/stale_candidates_v2.csv](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/stale_candidates_v2.csv)
-* **修正版資產索引清單**：[output/qa/test_asset_audit/test_asset_index_v2.csv](file:///c:/Projects/PythonProjects/technical_analysis/output/qa/test_asset_audit/test_asset_index_v2.csv)
+* **修正版候選清單**：output/qa/test_asset_audit/duplicate_candidates_v2.csv（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/duplicate_candidates_v2.csv）
+* **修正版過時測試清單**：output/qa/test_asset_audit/stale_candidates_v2.csv（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/stale_candidates_v2.csv）
+* **修正版資產索引清單**：output/qa/test_asset_audit/test_asset_index_v2.csv（Git-ignored 本機輸出，未入庫；原位置：output/qa/test_asset_audit/test_asset_index_v2.csv）

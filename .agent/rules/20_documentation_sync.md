@@ -1,3 +1,8 @@
+---
+trigger: model_decision
+description: "新增、編輯、移動或移除專案文件或使用者可見行為時載入。"
+---
+
 # Antigravity Rule 20 - Documentation Sync
 
 ## 適用時機
@@ -8,8 +13,8 @@
 
 1. 讀 `docs/agents/antigravity/documentation_agent.md`。
 2. 讀 `docs/00_core/DOC_COVERAGE_MAP.md`。
-3. 先做 Coverage Pass：列出需要更新的文件、優先級、段落與原因。
-4. 使用者確認後再做 Patch Pass，除非使用者明確要求直接更新。
+3. 先做 Coverage Pass：界定需要更新的文件、段落與原因，再在使用者授權範圍內直接完成有證據支持的修訂。
+4. 只有遇到無法由權威或證據裁決的現行衝突，或工作範圍外的高風險刪除／移動時，才先提出具體選項。
 
 ## 必查文件
 

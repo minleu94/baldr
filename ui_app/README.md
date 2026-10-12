@@ -9,5 +9,5 @@
 
 **模組狀態**：
 - `main.py`：Tkinter UI 主程式（已更新為使用 `decision_module`）
-- 業務邏輯已遷移至 `decision_module/`
+- 應用服務位於 `app_module/`，決策邏輯位於 `decision_module/`
 - 此模組保留僅為向後兼容與參考用途

@@ -28,9 +28,9 @@
 
 ### Git Tracked Diff 範圍核實
 檢查 `git diff` 僅限於核准的 3 個既有檔案：
-1. [app_module/__init__.py](file:///c:/Projects/PythonProjects/technical_analysis/app_module/__init__.py)：移除頂層 eager 匯入，改以 `_LAZY_EXPORTS` 字典搭配 `__getattr__` 延遲載入並快取至 `globals()`，`__all__` 順序與名稱完全保留，`__dir__` 保留反射可見性。
-2. [decision_module/__init__.py](file:///c:/Projects/PythonProjects/technical_analysis/decision_module/__init__.py)：同上模式，移除 eager 匯入（避免傳遞載入 analysis/pattern/matplotlib），改為窄 lazy exports。
-3. [tests/test_update_service_import_contract.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_update_service_import_contract.py)：將原先「僅 import `update_service` 就斷言其餘 7 個服務已被載入」的 eager 依賴 oracle，調整為「存取前不預載未存取模組；存取後驗證 class identity 與 public exports 不變」的雙時點契約測試。
+1. [app_module/__init__.py](../../../../app_module/__init__.py)：移除頂層 eager 匯入，改以 `_LAZY_EXPORTS` 字典搭配 `__getattr__` 延遲載入並快取至 `globals()`，`__all__` 順序與名稱完全保留，`__dir__` 保留反射可見性。
+2. [decision_module/__init__.py](../../../../decision_module/__init__.py)：同上模式，移除 eager 匯入（避免傳遞載入 analysis/pattern/matplotlib），改為窄 lazy exports。
+3. [tests/test_update_service_import_contract.py](../../../../tests/test_update_service_import_contract.py)：將原先「僅 import `update_service` 就斷言其餘 7 個服務已被載入」的 eager 依賴 oracle，調整為「存取前不預載未存取模組；存取後驗證 class identity 與 public exports 不變」的雙時點契約測試。
 
 ---
 
@@ -39,19 +39,19 @@
 ### 1. Parent Package 窄 Lazy-Export 相容性與反射限制
 - **載入行為**：實測驗證，在全新直譯器中執行 `from app_module import RecommendationService` 或 `from app_module import *`，均能正常取得目標類別，且 `is` 判斷與原始定義類別完全一致（class identity 保留）。
 - **已揭露之時序差異**：在裸匯入 `import app_module` 當下，尚未存取的公開 class 不會立即出現在 `app_module.__dict__` 中，必須透過 `getattr` 或直接存取後才會載入並快取。此差異已在 R008 規格與實作報告中如實記錄，符合「不偽稱完全相同」之受控要求。
-- **測試驗證**：[test_parent_public_exports_keep_order_direct_star_getattr_and_class_identity](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_contracts.py#L481-L529) 與既有 [test_update_service_import_contract.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_update_service_import_contract.py) 均以獨立子程序執行且通過。
+- **測試驗證**：[test_parent_public_exports_keep_order_direct_star_getattr_and_class_identity](../../../../tests/test_recommendation_contracts.py#L481-L529) 與既有 [test_update_service_import_contract.py](../../../../tests/test_update_service_import_contract.py) 均以獨立子程序執行且通過。
 
 ### 2. 無 I/O 匯入與模組邊界隔離（INV-03）
 - 透過 Python `sys.addaudithook` 稽核：
-  - 匯入 [decision_module.recommendation.contracts](file:///c:/Projects/PythonProjects/technical_analysis/decision_module/recommendation/contracts.py) 時，無任何 `sqlite3.connect`，無非 `.py/.pyc` 檔案讀取，且未載入 `app_module`、`pandas` 或 `matplotlib`。
-  - 匯入 [app_module.recommendation.contracts](file:///c:/Projects/PythonProjects/technical_analysis/app_module/recommendation/contracts.py) 時，無任何 `sqlite3.connect`，無非程式檔案讀取，且未預先載入 `recommendation_service`、`dtos`、`scoring_engine`、`pandas` 或 `matplotlib`。
+  - 匯入 [decision_module.recommendation.contracts](../../../../decision_module/recommendation/contracts.py) 時，無任何 `sqlite3.connect`，無非 `.py/.pyc` 檔案讀取，且未載入 `app_module`、`pandas` 或 `matplotlib`。
+  - 匯入 [app_module.recommendation.contracts](../../../../app_module/recommendation/contracts.py) 時，無任何 `sqlite3.connect`，無非程式檔案讀取，且未預先載入 `recommendation_service`、`dtos`、`scoring_engine`、`pandas` 或 `matplotlib`。
 - 完全滿足純 leaf contracts 匯入零 I/O 之規定。
 
 ### 3. 深凍結防護與資料封存（INV-08）
 - **不可變性**：所有合約類別均宣告 `@dataclass(frozen=True, slots=True)`。
 - **防止別名穿透**：
-  - [decision_module/recommendation/contracts.py](file:///c:/Projects/PythonProjects/technical_analysis/decision_module/recommendation/contracts.py#L32-L135) 與 [app_module/recommendation/contracts.py](file:///c:/Projects/PythonProjects/technical_analysis/app_module/recommendation/contracts.py#L36-L139) 各自持有封存 helper。
-  - 傳入的 `Mapping` 或 `MappingProxyType` 均會被**複製**為全新的內部 dict，遞迴凍結後再封裝為 `MappingProxyType`，成功杜絕修改外部 backing dict 造成的後續穿透（[test_mappingproxy_input_is_copied_before_sealing](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_contracts.py#L164-L177) 驗證通過）。
+  - [decision_module/recommendation/contracts.py](../../../../decision_module/recommendation/contracts.py#L32-L135) 與 [app_module/recommendation/contracts.py](../../../../app_module/recommendation/contracts.py#L36-L139) 各自持有封存 helper。
+  - 傳入的 `Mapping` 或 `MappingProxyType` 均會被**複製**為全新的內部 dict，遞迴凍結後再封裝為 `MappingProxyType`，成功杜絕修改外部 backing dict 造成的後續穿透（[test_mappingproxy_input_is_copied_before_sealing](../../../../tests/test_recommendation_contracts.py#L164-L177) 驗證通過）。
   - `Sequence` 嚴格轉換為 `tuple`。
 - **白名單限制**：`_ALLOWED_FROZEN_RECORD_TYPES` 嚴格限定為合約內明確列出之 exact class，不接受任意外部 frozen dataclass 或合約子類別（逃生口被徹底封堵）。
 - **循環參照防護**：`active_path` 追蹤物件識別碼，遭遇循環結構時拋出 `TypeError("偵測到循環參照")`。
@@ -60,7 +60,7 @@
 - **禁止裸 float 滲入**：
   - `RecommendationItem.rule_score`、`FactorContribution.value`、`RecommendationItem.confidence` 嚴格要求 `Decimal | int | None`。
   - 純 scalar 驗證以 `type(val) in (Decimal, int)` 且排除 `bool`（因 `isinstance(True, int)` 為真），並排除非有限 `Decimal('NaN')` 或 `Decimal('Infinity')`。
-  - [test_legacy_float_values_are_not_quantized_or_moved_into_domain_contract](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_contracts.py#L360-L387) 證實傳入舊 DTO 之 float 分數會明確引發 `TypeError`，未發生偷轉型、偷量化或未經授權的 bp 替代。
+  - [test_legacy_float_values_are_not_quantized_or_moved_into_domain_contract](../../../../tests/test_recommendation_contracts.py#L360-L387) 證實傳入舊 DTO 之 float 分數會明確引發 `TypeError`，未發生偷轉型、偷量化或未經授權的 bp 替代。
 
 ### 5. 終端狀態互斥與身分唯一性（INV-07, INV-09）
 - **狀態與決策互斥**：
@@ -106,7 +106,7 @@ ml_receipt_refs: tuple[VersionReference, ...] = ()
 
 ### [Finding R008-01] (架構不變條件違規 / 嚴重度：中高)
 - **檔案與行號**：
-  [app_module/recommendation/contracts.py:202-215](file:///c:/Projects/PythonProjects/technical_analysis/app_module/recommendation/contracts.py#L202-L215)
+  [app_module/recommendation/contracts.py:202-215](../../../../app_module/recommendation/contracts.py#L202-L215)
 - **違規條款**：`FINAL_ARCHITECTURE_INVARIANTS.md` INV-09、`FINAL_ML_COMPATIBILITY_CONTRACT.md` §2、`FINAL_TARGET_ARCHITECTURE.md` §5.2。
 - **可重現 Evidence**：
   在目前合約下，建構一個 Rule 計算完成但 ML 因特徵 cutoff 不一致被封鎖的案例：
@@ -131,7 +131,7 @@ ml_receipt_refs: tuple[VersionReference, ...] = ()
   # 若嘗試設置 failure_reason="ml_cutoff_mismatch"，會因 L253 觸發 ValueError: "completed execution 不得附帶 failure_reason"
   ```
 - **最小修正方向（Minimal Solution，不改動任何 ML 內部 ABI）**：
-  在 [app_module/recommendation/contracts.py](file:///c:/Projects/PythonProjects/technical_analysis/app_module/recommendation/contracts.py) 的純應用合約範圍內增設 ML 狀態列舉與報告結構：
+  在 [app_module/recommendation/contracts.py](../../../../app_module/recommendation/contracts.py) 的純應用合約範圍內增設 ML 狀態列舉與報告結構：
   1. 新增狀態列舉：
      ```python
      class MLAvailabilityStatus(str, Enum):
@@ -149,7 +149,7 @@ ml_receipt_refs: tuple[VersionReference, ...] = ()
      ```
      （或封裝為 `ml_availability: QualityReport` / `MLAvailabilityReport`）
   3. 在 `_freeze_execution` 中將 `ml_availability_reasons` 納入 `_freeze_tuple(..., str)`。
-  4. 在 [tests/test_recommendation_contracts.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_recommendation_contracts.py) 增加測試案例，驗證 `status=COMPLETED` 下，`ml_availability=MLAvailabilityStatus.BLOCKED` 且帶有 reasons 時，能明確與 `NOT_REQUESTED` 區隔，完整滿足 INV-09 的四維度分離。
+  4. 在 [tests/test_recommendation_contracts.py](../../../../tests/test_recommendation_contracts.py) 增加測試案例，驗證 `status=COMPLETED` 下，`ml_availability=MLAvailabilityStatus.BLOCKED` 且帶有 reasons 時，能明確與 `NOT_REQUESTED` 區隔，完整滿足 INV-09 的四維度分離。
 
 ---
 

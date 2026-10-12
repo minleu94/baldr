@@ -64,7 +64,7 @@ Root是唯一可啟動Python／import／pytest／mypy／compile／subprocess的�
 ```text
 請接手 C:\Projects\PythonProjects\technical_analysis 的 Baldr 產品補完工作。
 先依目前 AGENTS.md 讀完必讀文件，再讀 docs/agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md，以及文件治理後最新的 PROJECT_SNAPSHOT、BALDR_COMPLETION_PROGRESS、active_task、handoff_log。若治理後改名，先循現行索引找到；不要覆寫新文件或其他未提交變更。
-原工作因我做文件治理而暫停，現在授權恢復。請負責審查與整合，完整範圍仍是補完計畫 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4。核對本機收據/SHA及未完成封套後，按交接順序繼續M25 phase控制修正、P01 Main native crash、P08 V4完整旅程與Health正式整合；不要把局部PASS當完整工作包/Gate完成。
+原工作因文件治理而暫停；本交接稿只記錄停點，不構成恢復工作的授權。接手時須依當時最新使用者指示確認是否恢復，再負責審查與整合。完整歷史範圍仍是補完計畫 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4。若獲授權，核對本機收據/SHA及未完成封套後，按交接順序繼續 M25 phase 控制修正、P01 Main native crash、P08 V4 完整旅程與 Health 正式整合；不要把局部 PASS 當完整工作包/Gate 完成。
 資源限制務必遵守：subagent只做靜態工作；Python/pytest/mypy/compile/子程序只由Root串行執行。一個Windows Job總上限8GiB/12程序，啟動前至少8GiB可用RAM；前一組真正terminal、Job0、所有handles關閉及mutex釋放後才下一組。不要一直開Python或盲重跑，不要終止其他IDE/MCP/專案程序。保留原assert、來源守衛、PIT及期限；未凍結M25不可直接執行。
 請先簡短回報接手現況與下一步，再持續推進；使用繁體中文。
 ```

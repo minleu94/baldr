@@ -1,6 +1,6 @@
 # Agent / Developer Context
 
-> **用途**：本檔是給 Codex、Antigravity 與專案開發者的高密度入口。使用者導向介紹請看 [README.md](README.md)；Codex 強制規則入口仍是 [AGENTS.md](AGENTS.md)。
+> **用途**：本檔是給 Codex、Antigravity 與專案開發者的高密度入口。使用者導向介紹請看 [README.md](README.md)；共用 repo 強制規則入口為 [AGENTS.md](AGENTS.md)。
 
 ## 專案定位
 
@@ -22,7 +22,7 @@ baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策�
 
 ## 平台指令與快覽
 
-本檔是跨工具快速導航，不另定義必讀順序。開工順序與條件式文件由使用中的平台根目錄指令決定：Codex 依 [AGENTS.md](AGENTS.md)，Antigravity 依 [GEMINI.md](GEMINI.md)。完整角色入口見 [Agent 總覽](docs/agents/README.md)，專案目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)。
+本檔是跨工具快速導航，不另定義必讀順序。共用開工順序與條件式文件由 [AGENTS.md](AGENTS.md) 維護；Codex 與 Antigravity 會讀取該檔，Gemini CLI 由 [GEMINI.md](GEMINI.md) 匯入。Antigravity 另依任務套用 `.agent/rules/` 細則。完整角色入口見 [Agent 總覽](docs/agents/README.md)，專案目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)。
 
 條件式文件依任務範圍判斷；不要用這份快覽取代平台指令列出的產品、Roadmap、架構或操作手冊權威文件。
 

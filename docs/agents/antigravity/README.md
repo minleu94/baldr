@@ -2,9 +2,16 @@
 
 > 給 Antigravity 使用的角色分流入口。專案權威仍維護在 `docs/agents/` 與 `docs/00_core/`。
 
+## 平台規則載入
+
+- Gemini CLI 依 `GEMINI.md` 的階層載入上下文；根目錄 `GEMINI.md` 匯入 `AGENTS.md`，讓共用 repo 規則只有一份來源。
+- Antigravity 會自動讀取工作區根目錄及目標目錄祖先中的 `AGENTS.md`、`GEMINI.md` 與規則目錄。此 repo 保留舊版相容位置 `.agent/rules/*.md`。
+- 規則目錄中的每個 Markdown 都必須以 YAML frontmatter 宣告有效 `trigger`：`always_on`、`model_decision`、`glob` 或 `manual`。`model_decision` 另需 `description`；未宣告或值無效時，Antigravity 會靜默忽略該規則。
+- 一般細則使用 `model_decision` 以按需載入；跨任務的短而穩定原則放在 `AGENTS.md`。修改規則格式前，核對[官方 Antigravity Rules 文件](https://antigravity.google/docs/rules/)及[Gemini CLI GEMINI.md 文件](https://google-gemini.github.io/gemini-cli/docs/cli/gemini-md.html)。
+
 ## 先讀什麼
 
-Antigravity 開工的完整必讀順序與條件式文件，以根目錄 [`GEMINI.md`](../../../GEMINI.md) 為準。本頁負責角色分流與交接，不另維護一份縮短版必讀清單；每項適用的權威文件都要先讀，再依下表選擇角色文件。
+Antigravity 開工的完整必讀順序與條件式文件以根目錄 [`AGENTS.md`](../../../AGENTS.md) 為準；`GEMINI.md` 供 Gemini CLI 匯入同一份規則。本頁負責角色分流與交接，不另維護一份縮短版必讀清單；每項適用的權威文件都要先讀，再依下表選擇角色文件。
 
 若依任務範圍略過條件式文件，請在交接模板的「不適用項目」欄說明原因。
 

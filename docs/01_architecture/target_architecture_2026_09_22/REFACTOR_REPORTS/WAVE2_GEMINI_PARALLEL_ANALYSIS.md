@@ -11,7 +11,7 @@
 
 ## 一、已確認的契約事實（Confirmed Contract Facts）
 
-本分析依據現行程式庫（`app_module/dtos/__init__.py`、`data_module/contracts/market.py`、`app_module/recommendation_service.py`、`app_module/recommendation_save_coordinator.py`）及權威架構文件（[FINAL_TARGET_ARCHITECTURE.md §5](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md#L170)、[FINAL_DATA_FLOW.md §2、§6](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_DATA_FLOW.md)、[FINAL_ARCHITECTURE_INVARIANTS.md](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md)），確認以下不可變更之核心事實：
+本分析依據現行程式庫（`app_module/dtos/__init__.py`、`data_module/contracts/market.py`、`app_module/recommendation_service.py`、`app_module/recommendation_save_coordinator.py`）及權威架構文件（[FINAL_TARGET_ARCHITECTURE.md §5](../FINAL_TARGET_ARCHITECTURE.md#L170)、[FINAL_DATA_FLOW.md §2、§6](../FINAL_DATA_FLOW.md)、[FINAL_ARCHITECTURE_INVARIANTS.md](../FINAL_ARCHITECTURE_INVARIANTS.md)），確認以下不可變更之核心事實：
 
 ### 1. 現有 DTO 欄位混合現況與法定歸屬劃分
 
@@ -96,7 +96,7 @@ SOL 在審查 Luna 的 R008 diff 時，應逐項核對以下檢查表（任一�
   def __init__(self, config: dict):
       object.__setattr__(self, "config", MappingProxyType(config))
   ```
-- **為何失敗**：Caller 在建構合約後，依然持有原本的 `config` 參照。當外部調用 `config["threshold"] = 999` 時，合約內的 `self.config["threshold"]` 會隨之被篡改！這直接破壞了 [INV-08](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L14)（不保留 mutable alias）。
+- **為何失敗**：Caller 在建構合約後，依然持有原本的 `config` 參照。當外部調用 `config["threshold"] = 999` 時，合約內的 `self.config["threshold"]` 會隨之被篡改！這直接破壞了 [INV-08](../FINAL_ARCHITECTURE_INVARIANTS.md#L14)（不保留 mutable alias）。
 - **正確實作要求**：合約建構時必須進行**遞迴防禦性複製（recursive deep copy）**至新建的私有 dict，再包裝為 `MappingProxyType`；且巢狀 dict 亦必須遞迴轉為 `MappingProxyType`。
 
 #### 反例 B：Dataclass 欄位直接接收 List / Set
@@ -112,7 +112,7 @@ SOL 在審查 Luna 的 R008 diff 時，應逐項核對以下檢查表（任一�
 
 #### 反例 C：接受 Naive Datetime 破壞決策時間戳
 - **錯誤設計**：直接接受 `datetime.now()` 或無時區之 `datetime(2026, 9, 22, 10, 0)`。
-- **為何失敗**：跨系統、跨時區回測與儲存時產生歧義，違反 PIT availability（[INV-05](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L11)）。
+- **為何失敗**：跨系統、跨時區回測與儲存時產生歧義，違反 PIT availability（[INV-05](../FINAL_ARCHITECTURE_INVARIANTS.md#L11)）。
 - **拒絕測試**：傳入 `datetime.now()` 必須拋出 `ValueError("decision_at must include a timezone")`。
 
 ---
@@ -124,12 +124,12 @@ Luna 的測試套件必須包含以下拒絕測試，證明合約具備自我防
 | 拒絕情境 | 觸發條件 | 預期例外 | 哪種錯誤設計會漏測 |
 |---|---|---|---|
 | **重複代碼** | `DecisionBatch(items=[item_2330, item_2330])` | `ValueError("duplicate stock_code in DecisionBatch")` | 未在 `DecisionBatch.__post_init__` 檢查 `len(set(codes)) == len(codes)`。 |
-| **COMPLETED 缺決策** | `RecommendationExecution(terminal_status=COMPLETED, decision=None)` | `ValueError("completed execution requires a DecisionBatch")` | 未檢查終端狀態與決策對象的依賴一致性（[INV-09](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L15)）。 |
-| **非法 result_id** | `RecommendationExecution(result_id="invalid_id_123")` | `ValueError("result_id must start with rec_")` | 未校驗 UUID 命名規則（[INV-07](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L13)）。 |
-| **浮點數混充 Decimal** | `RecommendationItem(close_price=105.5)` (若宣告為 Decimal) | `TypeError("close_price must be Decimal")` | 允許 float 隱式傳入，引發二進位浮點精度截斷（[INV-06](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L12)）。 |
-| **未知 Schema Revision** | 傳入 `schema_revision=2`（而當前實作為 1） | `ValueError("unsupported schema revision")` | 缺乏版本白名單防禦（[INV-11](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L17)）。 |
+| **COMPLETED 缺決策** | `RecommendationExecution(terminal_status=COMPLETED, decision=None)` | `ValueError("completed execution requires a DecisionBatch")` | 未檢查終端狀態與決策對象的依賴一致性（[INV-09](../FINAL_ARCHITECTURE_INVARIANTS.md#L15)）。 |
+| **非法 result_id** | `RecommendationExecution(result_id="invalid_id_123")` | `ValueError("result_id must start with rec_")` | 未校驗 UUID 命名規則（[INV-07](../FINAL_ARCHITECTURE_INVARIANTS.md#L13)）。 |
+| **浮點數混充 Decimal** | `RecommendationItem(close_price=105.5)` (若宣告為 Decimal) | `TypeError("close_price must be Decimal")` | 允許 float 隱式傳入，引發二進位浮點精度截斷（[INV-06](../FINAL_ARCHITECTURE_INVARIANTS.md#L12)）。 |
+| **未知 Schema Revision** | 傳入 `schema_revision=2`（而當前實作為 1） | `ValueError("unsupported schema revision")` | 缺乏版本白名單防禦（[INV-11](../FINAL_ARCHITECTURE_INVARIANTS.md#L17)）。 |
 | **缺失值與零混淆** | 傳入 `score_percentile_bp=0` vs `None` | 兩者在合約內嚴格不等且不可互換 | 錯誤將 `None` 透過 `or 0` 預設值轉為 0。 |
-| **外部別名修改** | 建立合約後修改傳入的 input list/dict | 合約內部值完全不受影響 | 僅做淺層複製或直接引用原始物件（[INV-08](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L14)）。 |
+| **外部別名修改** | 建立合約後修改傳入的 input list/dict | 合約內部值完全不受影響 | 僅做淺層複製或直接引用原始物件（[INV-08](../FINAL_ARCHITECTURE_INVARIANTS.md#L14)）。 |
 
 ---
 

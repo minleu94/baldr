@@ -32,9 +32,11 @@
 * **Clear Allowed/Forbidden Actions**: 透過 `registry/agents_registry.json`，嚴格規範每個角色的邊界，例如禁止 Execution Agent 修改架構規則。
 * **Enforced Rollback**: 任何系統變更輸出都必須包含人類可讀的 `rollback_plan`，確保具備災難復原能力。
 
-## 4. MVP Limitations (目前尚未支援的能力)
+## 4. MVP Limitations（該 MVP 範圍當時尚未支援的能力）
 
-基於 MVP 限制，目前**尚未實作**以下功能：
-* **Intent Router & Autonomous Workflow**: 尚未實作自動將任務分派給不同 Agent 的 Python 控制迴圈。目前流程為手動將 output 轉發。
-* **Memory Retrieval System**: 尚未結合 Vector DB 或 RAG 機制來檢索過去的記憶，僅依賴輕量級的 JSON Context。
-* **Async / Concurrency**: Agent 與驗證流程均為同步 (Synchronous) 執行，無併發設計，確保日誌清晰與易於除錯。
+> 本節記錄此 README 所描述的 MVP 範圍；尚未以 Runtime 專屬版本或 QA 收據逐項核對目前實作，不應當作整個 repository 的現況清單。
+
+基於該 MVP 範圍當時的限制，當時**尚未實作**以下功能：
+* **Intent Router & Autonomous Workflow**: 該 MVP 範圍當時尚未實作自動將任務分派給不同 Agent 的 Python 控制迴圈；當時由人工轉發 output。
+* **Memory Retrieval System**: 當時尚未結合 Vector DB 或 RAG 機制檢索過去的記憶，僅依賴輕量級的 JSON Context。
+* **Async / Concurrency**: 該 MVP 範圍當時採同步 (Synchronous) Agent 與驗證流程，未設計併發，以維持日誌清晰並便於除錯。

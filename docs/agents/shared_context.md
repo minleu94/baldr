@@ -175,14 +175,14 @@ docs/                # 專案文檔
 
 **負責者：**
 - **Documentation Agent**：負責識別需要更新的文件、產出更新內容（Coverage Pass + Patch Pass）
-- **人類確認**：確認 Coverage 清單、審查更新內容、決定是否合併
+- **使用者授權**：定義可修改的工作範圍；已明確要求執行的工作不需再確認同一份 Coverage 清單。是否採用或合併成果仍由使用者決定。
 - **Execution Agent**：執行代碼變更時，必須同步觸發 Documentation Agent 的 Coverage Pass
 
 **責任流程：**
 1. 代碼變更發生 → Execution Agent 或人類通知 Documentation Agent
 2. Documentation Agent 執行 Coverage Pass → 列出需要更新的文件清單
-3. 人類確認 Coverage 清單 → 授權更新範圍
-4. Documentation Agent 執行 Patch Pass → 產出更新內容
+3. 核對既有使用者授權；若本次已要求執行，Coverage 完成後直接進入 Patch Pass
+4. Documentation Agent 在授權範圍內執行 Patch Pass → 產出更新內容
 5. 人類審查更新內容 → 確認後合併
 
 ### 必須更新文件的情況

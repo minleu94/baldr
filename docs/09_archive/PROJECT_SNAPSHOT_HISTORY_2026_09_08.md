@@ -86,18 +86,18 @@
 
 ## 2026-09-06 八卡閉環工程增量
 
-整體仍為 `action_required`、`V3.3 Engineering Complete / V4 Evidence Accumulation`。本輪補強資料、研究、候選帳本與唯讀觀測契約，08-B 隔離工程整合驗收已完成；各卡驗收不能折抵正式來源接受、自然前瞻時間、具名覆盤、真實 Paper fills／cost 或 production canary。完整證據以 [TASK-08 交接](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) 當輪紀錄為準，不將早期並行驗收數字當成本輪全域結果。
+整體仍為 `action_required`、`V3.3 Engineering Complete / V4 Evidence Accumulation`。本輪補強資料、研究、候選帳本與唯讀觀測契約，08-B 隔離工程整合驗收已完成；各卡驗收不能折抵正式來源接受、自然前瞻時間、具名覆盤、真實 Paper fills／cost 或 production canary。完整證據以 [TASK-08 交接](../06_qa/TASK_LOOP_08_HANDOFF.md) 當輪紀錄為準，不將早期並行驗收數字當成本輪全域結果。
 
 | 任務 | 已落地工程與入口 | 保留邊界 |
 |---|---|---|
-| [01 DATA](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_01_HANDOFF.md) | 更新狀態 DTO、查詢不寫 manifest、冪等落地與指標單一寫入者的離線驗證 | 未執行正式更新、網路下載或 candidate promotion；更新 QA 的 4 個 skip 不算通過 |
-| [02 MARKET](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_02_HANDOFF.md) | 決策日／有效日／品質 DTO、日期先行切片與市場排名 | 保留舊 API 相容；分類匹配度不是勝率 |
-| [03 RECO](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_03_HANDOFF.md) | `recommendation-context.v1`、設定快照、行情及基本面指紋、未知分數拒用 | fixed 預設、quantile opt-in；缺 PIT 產業成分時歷史產業篩選拒用 |
-| [04 EXEC](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_04_HANDOFF.md) | `next-session-open.v2`、Decimal／整數帳務、成本後基準、取消與末端持倉揭露 | legacy 同日收盤須明選；固定組合仍是 per-stock 研究；無真實 fills 證據 |
-| [05 REGISTRY](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_05_HANDOFF.md) | 顯式保存／恢復、實際內容冪等、版本隔離、`evidence-lineage.v1` 與人工覆盤提案 | 建構／查詢不 reconcile；tier 宣告與 reviewer 字串不構成 Formal credit |
-| [06 PORT](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_06_HANDOFF.md) | 可注入的 append-only SQLite 候選帳本、補償事件、精確投影與副本 migration | 預設手動 JSONL 路徑未切換；正式 Paper ledger／fills 不由合成帳本補足 |
-| [07 DESK](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_07_HANDOFF.md) | 候選池副本 SQLite、App 名稱查詢、同日聚合、完整 loop payload 與過期回呼隔離 | 預設 JSON 未切換；沒有已刪除候選的歷史 membership；缺行情不顯示安全 |
-| [08 OBS](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) | `runtime-state.v2`、未知來源、取消訂閱、受限事件去重；08-B 集中組裝與驗收 | EventBus 不是 durable queue；不啟動 task、scheduler、promotion 或交易 |
+| [01 DATA](../06_qa/TASK_LOOP_01_HANDOFF.md) | 更新狀態 DTO、查詢不寫 manifest、冪等落地與指標單一寫入者的離線驗證 | 未執行正式更新、網路下載或 candidate promotion；更新 QA 的 4 個 skip 不算通過 |
+| [02 MARKET](../06_qa/TASK_LOOP_02_HANDOFF.md) | 決策日／有效日／品質 DTO、日期先行切片與市場排名 | 保留舊 API 相容；分類匹配度不是勝率 |
+| [03 RECO](../06_qa/TASK_LOOP_03_HANDOFF.md) | `recommendation-context.v1`、設定快照、行情及基本面指紋、未知分數拒用 | fixed 預設、quantile opt-in；缺 PIT 產業成分時歷史產業篩選拒用 |
+| [04 EXEC](../06_qa/TASK_LOOP_04_HANDOFF.md) | `next-session-open.v2`、Decimal／整數帳務、成本後基準、取消與末端持倉揭露 | legacy 同日收盤須明選；固定組合仍是 per-stock 研究；無真實 fills 證據 |
+| [05 REGISTRY](../06_qa/TASK_LOOP_05_HANDOFF.md) | 顯式保存／恢復、實際內容冪等、版本隔離、`evidence-lineage.v1` 與人工覆盤提案 | 建構／查詢不 reconcile；tier 宣告與 reviewer 字串不構成 Formal credit |
+| [06 PORT](../06_qa/TASK_LOOP_06_HANDOFF.md) | 可注入的 append-only SQLite 候選帳本、補償事件、精確投影與副本 migration | 預設手動 JSONL 路徑未切換；正式 Paper ledger／fills 不由合成帳本補足 |
+| [07 DESK](../06_qa/TASK_LOOP_07_HANDOFF.md) | 候選池副本 SQLite、App 名稱查詢、同日聚合、完整 loop payload 與過期回呼隔離 | 預設 JSON 未切換；沒有已刪除候選的歷史 membership；缺行情不顯示安全 |
+| [08 OBS](../06_qa/TASK_LOOP_08_HANDOFF.md) | `runtime-state.v2`、未知來源、取消訂閱、受限事件去重；08-B 集中組裝與驗收 | EventBus 不是 durable queue；不啟動 task、scheduler、promotion 或交易 |
 
 **08-B 當輪驗收**：八卡契約與代表整合 177 passed、UI 更新頁 81 passed、全模組 mypy 532 files 通過；專用 QA 依序 exit 0，更新 QA 保留 4 個下載／合併 skip。main 保存推薦 provider、current_result_id 及 Workbench 新來源欄位重載已接線；quick healthcheck=`20260906_173334`、full healthcheck=`20260906_173515` 均 passed，兩項金融／未來函數掃描與 08-B 改檔 py_compile 通過。這是現有 healthcheck 路由與 UI／QA bridge 驗收，未 opt-in 真 MainWindow 截圖 smoke，也不代表全量 pytest 或人工 UI 完整驗收。
 

@@ -109,7 +109,7 @@ QA 文件之 `ABI 條款 → 測試／證據對照` 表，對各項特性採用 
   - `production_imports_ml_module:app_module\personalization_save_adapter.py:ml_module.recommendation_inference_provenance:read_inference_projection_receipt`
   - `production_imports_ml_module:app_module\recommendation_calibration_consumer.py:ml_module.recommendation_calibration_training:RECOMMENDATION_RETURN_BASIS`
   - `production_imports_ml_module:app_module\recommendation_calibration_consumer.py:ml_module.recommendation_calibration_training:recommendation_label_contract_id`
-- **判定**：此 4 條違規為專案既有之 ML guard baseline failure，非 R006 所引致。Luna 依架構不變條件（[INV-14](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L20)）忠實記錄此失敗，未擅自擴大 allowlist 偽造全綠，亦未修改 production code。報告對長測結果之表述為 `73 passed, 1 failed`，完全符合事實。
+- **判定**：此 4 條違規為專案既有之 ML guard baseline failure，非 R006 所引致。Luna 依架構不變條件（[INV-14](../FINAL_ARCHITECTURE_INVARIANTS.md#L20)）忠實記錄此失敗，未擅自擴大 allowlist 偽造全綠，亦未修改 production code。報告對長測結果之表述為 `73 passed, 1 failed`，完全符合事實。
 
 ---
 
@@ -118,7 +118,7 @@ QA 文件之 `ABI 條款 → 測試／證據對照` 表，對各項特性採用 
 R006 經過 Luna Max 的兩輪回修，先前 SOL 指出的過度宣稱、責任模糊、虛構測試欄位、注入假模型及語言規範等缺點已全數獲得徹底修正：
 1. 15 條 Direct 相依路徑之 SHA-256、責任歸屬及計算身份分帳精確可信。
 2. 歷史 20 欄與 OOC 常數皆已建立嚴格之受控測試斷言。
-3. 採用真實受控 Joblib fixture 驗證 loader 合約，未知模型維持未載入與 unknown 狀態，堅守安全防線（[INV-01](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L7)、[INV-18](file:///C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/target_architecture_2026_09_22/FINAL_ARCHITECTURE_INVARIANTS.md#L24)）。
+3. 採用真實受控 Joblib fixture 驗證 loader 合約，未知模型維持未載入與 unknown 狀態，堅守安全防線（[INV-01](../FINAL_ARCHITECTURE_INVARIANTS.md#L7)、[INV-18](../FINAL_ARCHITECTURE_INVARIANTS.md#L24)）。
 4. 四級 ABI 證據矩陣界線分明，完全達到供 R010/R026/R027 使用之交付標準。
 5. 嚴格遵守檔案修改邊界，未動任何 production 檔案或正式資產。
 

@@ -5,12 +5,13 @@
 ## 全域狀態
 
 - 內容覆核基準 HEAD（本輪逐檔覆核開始時）：`eb2e2cc27a13cc5801a5b3d7d0a5f6b1a6848937`。
-- 本清冊涵蓋 `docs/` 全部 1493 個 tracked 路徑及 `docs/` 以外 26 個 tracked Markdown 文件，共 1519 條治理路徑。1516 份一般文件已逐檔讀至 EOF、分類、核對 HEAD blob OID 與物理行數；3 份治理輸出列為 self-reference exempt。
-- 一般文件覆核覆蓋率 100%；缺漏 0、過期指紋 0、protected status-only 0。三份 self-reference exempt 輸出為本矩陣、逐檔 manifest、開發線路演進矩陣，不計入自身內容覆核或分類。`docs/` 檔案類型：.csv 2、.html 2、.json 13、.md 1473、.txt 3；外部補充範圍是 repo 根目錄 Markdown、`.agent/rules/*.md` 與其他目錄的 tracked Markdown，不含程式、設定、資料檔或 `.ipynb`。
+- 本清冊涵蓋 `docs/` 全部 1494 個 tracked 路徑及 `docs/` 以外 26 個 tracked Markdown 文件，共 1520 條治理路徑。1517 份一般文件已逐檔讀至 EOF、分類、核對 HEAD blob OID 與物理行數；3 份治理輸出列為 self-reference exempt。
+- 五項修復基準：`d929e003a508a24e97611b73f282f5061f9b0c7b`；本輪覆核變更文件與新增收據，既有全檔覆核歷史保留，逐檔最終指紋同步提交內容。
+- 一般文件覆核覆蓋率 100%；缺漏 0、過期指紋 0、protected status-only 0。三份 self-reference exempt 輸出為本矩陣、逐檔 manifest、開發線路演進矩陣，不計入自身內容覆核或分類。`docs/` 檔案類型：.csv 2、.html 2、.json 13、.md 1474、.txt 3；外部補充範圍是 repo 根目錄 Markdown、`.agent/rules/*.md` 與其他目錄的 tracked Markdown，不含程式、設定、資料檔或 `.ipynb`。
 
 ## 目錄分類矩陣
 
-`clean` 是逐檔讀至 EOF 並核對 OID 與物理行數的文件；每份文件依主要用途只計一類。導覽／證據的次要用途、衝突與權威界線寫在逐檔 CSV。下表只統計 `docs/` 的 1490 份一般文件；repo 其他 Markdown 另列於補充表，避免混淆目錄分母。本輪沒有 status-only 文件。
+`clean` 是逐檔讀至 EOF 並核對 OID 與物理行數的文件；每份文件依主要用途只計一類。導覽／證據的次要用途、衝突與權威界線寫在逐檔 CSV。下表只統計 `docs/` 的 1491 份一般文件；repo 其他 Markdown 另列於補充表，避免混淆目錄分母。本輪沒有 status-only 文件。
 
 | docs 目錄 | tracked | clean 已核對 | 權威 | 導覽 | 證據 | 歷史 | status-only |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -20,7 +21,7 @@
 | `03_data` | 17 | 17 | 3 | 8 | 5 | 1 | 0 |
 | `04_broker_branch` | 6 | 6 | 1 | 1 | 0 | 4 | 0 |
 | `05_phases` | 15 | 15 | 0 | 15 | 0 | 0 | 0 |
-| `06_qa` | 573 | 573 | 0 | 78 | 495 | 0 | 0 |
+| `06_qa` | 574 | 574 | 0 | 78 | 496 | 0 | 0 |
 | `07_guides` | 20 | 20 | 11 | 6 | 1 | 2 | 0 |
 | `08_technical` | 7 | 7 | 1 | 2 | 0 | 4 | 0 |
 | `09_archive` | 408 | 408 | 0 | 13 | 4 | 391 | 0 |
@@ -28,7 +29,7 @@
 | `docs_root` | 1 | 1 | 0 | 1 | 0 | 0 | 0 |
 | `strategies` | 3 | 3 | 2 | 1 | 0 | 0 | 0 |
 | `superpowers` | 167 | 167 | 0 | 93 | 0 | 74 | 0 |
-| **docs/ 合計** | **1490** | **1490** | **93** | **267** | **618** | **512** | **0** |
+| **docs/ 合計** | **1491** | **1491** | **93** | **267** | **619** | **512** | **0** |
 
 ## `docs/` 以外的 tracked Markdown 補充矩陣
 
@@ -39,7 +40,7 @@
 | 其他目錄 Markdown | 12 | 12 | 0 | 6 | 2 | 4 | 0 |
 | **補充範圍合計** | **26** | **26** | **5** | **11** | **6** | **4** | **0** |
 
-全治理範圍合計：1519 條 tracked 文件路徑、1516 份 clean 已核對、3 份 self-reference exempt；一般文件分類為權威 98、導覽 278、證據 624、歷史 516。逐檔狀態、HEAD blob OID、物理行數與分類見 [path manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。
+全治理範圍合計：1520 條 tracked 文件路徑、1517 份 clean 已核對、3 份 self-reference exempt；一般文件分類為權威 98、導覽 278、證據 625、歷史 516。逐檔狀態、HEAD blob OID、物理行數與分類見 [path manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。
 
 ## 權威、導覽、證據與歷史的使用界線
 
@@ -53,17 +54,17 @@
 | ID | 議題 | 判定與處置 |
 |---|---|---|
 | G01 | 2025 永久 development-only 政策與 legacy locked-OOS verifier 能力不同 | 現行操作政策見 `docs/07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md`：2025 永久為 `seen_oos`／`development_data`，`formal_oos_allowed=false`，停用 `scripts/evaluate_ml_2025_oos.py` 及 `--oos-payload`；新 holdout 另由 `DevelopmentDataUsageDecision.jsonl:new_holdout_start` 管理。舊 `ml_module/locked_oos.py` 的 generic verifier 在呼叫者提供 `formal_oos_allowed=true`、確認、日期及 hash gates 時仍可通過；`tests/test_ml_2025_locked_oos.py` 55–64 行只以合成 true 測 unit preflight，67–92 行的 CLI 整合測試只驗 false 時 fail-closed，沒有 positive CLI integration test。這些測試只證明 legacy code capability，不是 owner 授權或 custody receipt；不可據此把 2025 升格為 formal OOS。未來 prospective holdout 是獨立 custody／owner／QA gate。 |
-| G02 | 歷史 automation 實際建立／執行生命週期缺 receipt | D–G 四輪規格原始與目前正文都只記 12 支；另一份 H–L 五輪設計另記 15 支，但沒有證據證明它是 2026-10-11 差異提示中「15」的來源。該提示已更正；當時實際建立／執行數仍無 Scheduler receipt，故歷史設計只作方案，不推定現行排程或授權。 |
-| G03 | MOPS limited 數值待核 | `docs/09_archive/P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md` 與 `docs/06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §7 的 DEV-66 `limited` 決議，和該 register §14 的 `limited=0` 總數口徑不一致。§14 的 2026-10-10 調和註記已確認仍缺原始 audit artifact／registry 比對；保留兩筆歷史證據，不推定任何一方代表全域目前授權。 |
-| G04 | Portfolio consumer cutover 有歷史 QA 收據，但本輪重跑未通過，其他 consumer 仍待接線／驗收 | R016 的日期化 overlay 所列 `portfolio_view.py:2947–3000` 已是 stress-history UI。現行 `ui_qt/views/portfolio_view.py:_validated_recommendation_result_id()` 走 `build_recommendation_execution_queries().get()`，並做 canonical integrity／identity 驗證。`docs/06_qa/WP3_WATCHLIST_QA_20260928.md` 記錄跨頁測試 1 passed、整檔 4 passed；但 2026-10-12 對兩項相關測試重跑為 2 failed、1 teardown error：MainWindow journey 在 recommendation save 階段（測試第 654 行）因 `cannot safely check saved artifact identity` 失敗，未抵達 Portfolio validator，teardown 又因 `config.log` 被占用而無法清除本輪臨時目錄；legacy alias 測試第 1672 行預期中文-only saved row 可回傳 `R1`，實際回傳空字串。故歷史通過收據不證明目前測試接受，canonical 的現行驗收仍待修復並重跑。測試原始碼中的 main journey 確有真方法成功／竄改摘要拒絕斷言；alias test 也直接測真方法，並非 monkeypatch。`tests/test_ui_qt_portfolio_view.py::test_linked_position_research_keeps_canonical_saved_dates` 才是 mock 此方法的 UI-context 測試。仍待治理的 caller 是 `app_module/user_declared_holding_research.py:_candidate_results()`（目前約 lines 787–844）直接讀 SQLite `runs.data_path` 與 JSON，尚無 exact caller cutover／接受收據；Exit operational readback 也是另一個未完成出口。 |
-| G05 | Phase 3.3B headline 與 checklist 狀態不一致 | 實際文件是 `docs/09_archive/PHASE_3_3B_IMPLEMENTATION_PLAN.md`；歷史標題的三 Epic 100% headline 與 Epic 2 MVP2 pending、Epic 3/Epic 1 unchecked 清單狀態衝突。該文件已加「完成度待核」歷史 erratum；未取得同範圍收據前不宣稱完成。 |
+| G02 | 配置分母已裁決；觸發起源仍 unknown | D–G 四輪 12 個與 H–L 五輪 15 個配置範圍不同；27/27 現存 PAUSED TOML 與 9/25 inventory hash 相符，memory 及兩份 closeout 支持持久化配置／執行交接。配置數不等於完成切片數，缺 host trigger audit，不能重建全部建立事件或宣稱每次由 Scheduler 觸發。四份原文已加日期界線，詳見[五項裁決 QA](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。 |
+| G03 | MOPS 分母差異已裁決 | 同期 canonical P0 13 contracts 含 pit.quarterly_financials、不含 DEV-66 EZSearch availability lane；P0 audit accepted=0／limited=0 與 EZSearch owner limited 不是同一分母。已取回 owner JSON 核 source／revision／hash，register／archive 已補註記；8/28、8/30 raw audit 仍缺件，不推定最新 registry 接受。research-only／alpha=0／禁 formal OOS、credit、scheduler 界線不變，詳見[五項裁決 QA](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。 |
+| G04 | 保存 caller 工程回歸通過；Exit 資格有界 | 真 MainWindow 整檔 5 passed，未 mock Portfolio validator；修正 alias fixture 缺 lineage 及 fixture-owned FileHandler teardown。聲明持倉已經 canonical／registered legacy query，核 Request／Context profile、配置、日期與獨立 baseline，不再旁路 SQLite／JSON，exact caller 回歸通過。Exit 契約 38 passed／1 環境 skip；10/12 實際產物 hash／日期可核，仍 degraded／transition_count=0／no_exit_transition_rows，wrapper overall failed，無獨立 run_id attestation，不代表完整退出有效性接受。詳見[五項裁決 QA](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。 |
+| G05 | 完成措辭已校準；歷史完整接受 unknown | Phase 3.3B 原三 Epic 完成文字標為未驗證歷史自述，日期及 MVP2 pending／unchecked 清單保留；兩份同範圍原始驗證報告缺件，TASK-LOOP-04／08 bounded QA 不替代三 Epic 完整接受。文件誤導已排除，不把 unchecked 單獨當未實作證明，詳見[五項裁決 QA](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。 |
 | G06 | R002 pytest case 與語意覆蓋標籤曾被混成同一計數 | 來源有 6 個 pytest test functions，其中 missing-score 參數化產生 3 個 case，共 8 collected cases；review packet 的 9 項是語意覆蓋標籤，部分 test 同時覆蓋多項。計數單位不同，不構成測試數缺口；歷史數字保留並標明單位。 |
 | G07 | 補完計畫、進度收據與 resume prompt 的狀態／授權語句 | 10/06 計畫正文描述歷史工作範圍與驗收清單；10/11 progress receipt 與 10/12 Snapshot 記錄治理期間暫停、沒有新完整工作包或 Gate 接受。resume prompt 原第 67 行「現在授權恢復」與當前暫停狀態衝突，已改為必須依接手時最新使用者指示確認是否恢復。Snapshot 原「下一步」曾將 10/09 恢復開發寫成現況並指向舊 10/09 矩陣；本輪已改成日期化歷史、明示 10/12 暫停，並連到本矩陣，舊矩陣標為歷史追溯。三份正文已 EOF 覆核；它們分屬 history、evidence、navigation，產品完成度仍以 Snapshot 和具名 receipts 判讀。 |
 | G08 | 外部參考藍圖的研究能力與來源接受範圍 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` 已將原「P0 adapters 完成 shadow engineering」收窄為 P0/P13 bounded shadow-acquisition routes 已接線；這只證明隔離工程能力，不代表每個 probe 可用或來源已接受。§7 亦明示研究比較未逐項核對目前 HEAD／runtime／QA；現行來源順序以 Product Roadmap §11 為準。保留研究內容，不將其用作現況或正式驗收收據。 |
 | G09 | 現行架構主文混有日期增量 | `docs/01_architecture/system_architecture.md` §16 同時保留 2026-10-03 至 10-08 增量與穩定契約；文件已將目前狀態導回 Snapshot，沒有未限定的現況錯誤。本輪不拆改主文；後續若要降低維護負擔，可把已結束增量移入 QA／歷史並保留穩定架構責任。 |
-| G10 | 資料來源 no-data fail-closed 缺少自然執行收據 | `docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md` 描述 no-data／source readiness 的契約與判讀，但本輪未找到同範圍自然 Task 的 producer＋consumer 同次 run receipt。文件中的 fail-closed 規則是操作契約，不等於 runtime 已依預期執行；待有界 no-data run 保存路徑、hash、status 與 consumer readback 後再核定。 |
+| G10 | 日曆 API 修復；自然 no-data 收據仍缺 | Quick explicit cache preflight 改單一 offline read operation，缺件／無效年度仍 fail closed，Quick 76 passed／同類候選 CLI 40 passed。正式 Quick 115 history rows／100 logs 定向搜尋未見 explicit no-data；最新同 run 為有資料回應，空 no_data_skipped_dates 不能當 no-data。仍需自然 explicit no-data producer receipt 與同 run consumer binding，不造回應或啟動正式 producer 補證，詳見[五項裁決 QA](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。 |
 
-尚未由同範圍現行權威或可核對 receipt 解決的事項保留待核；G02、G03、G04、G05、G10 仍有生命週期、測試或 acceptance receipt 缺口。G01 的 2025 development-only 政策已明確，legacy verifier capability 不構成授權；未來新 holdout 需獨立證據。G06 計數單位已釐清；G07 文件狀態與授權語句已調和，但產品工作仍暫停；G08 已以研究範圍警語限制，不視為現況主張；G09 是結構整理候選，並非現況錯誤。
+2026-10-12 五項逐一裁決：G02／G03 分母與 G05 完成措辭已修正，G04 caller 及 G10 日曆工程缺陷已修復並驗證。歷史觸發起源、Phase 3.3B 完整接受、Exit 非退化資格及自然 no-data 同 run 收據仍是外部證據界線，不把缺件改寫成完成。G01 的 2025 development-only 政策已明確，legacy verifier capability 不構成授權；未來新 holdout 需獨立證據。G06 計數單位已釐清；G07 文件狀態與授權語句已調和，但產品工作仍暫停；G08 已以研究範圍警語限制，不視為現況主張；G09 是結構整理候選，並非現況錯誤。
 
 ## 已完成的窄幅修訂
 
@@ -133,8 +134,8 @@
 
 1. 先取 tracked docs 路徑清單，再以 exact path batches 讀取每個文件正文至 EOF，記錄主要用途分類、範圍／權威界線、衝突、處置、HEAD blob OID 與物理行數。
 2. 將結果與 JSONL audit ledger 對照；逐檔 manifest 保存分類、用途、時間／權威界線、衝突判讀、處置、基準與最終 OID／行數及來源 ledger。
-3. 所有內容與清冊修訂提交後，Graphify 以最終 HEAD 的 Git blobs 建立受控 snapshot，逐筆核對來源 path／blob OID／SHA-256，再驗證來源數、連結、節點端點與 root `graphify-out` 未變更。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣及補完計畫納入導覽來源。最終產物與驗收收據保存在 ignored `output/qa/gf613_verification/`，不得以舊 HEAD 圖譜代替。
+3. 所有內容與清冊修訂提交後，Graphify 以最終 HEAD 的 Git blobs 建立受控 snapshot，逐筆核對來源 path／blob OID／SHA-256，再驗證來源數、連結、節點端點與 root `graphify-out` 未變更。Graphify 排除本矩陣與 path manifest 兩份自我參照輸出；開發線路演進矩陣及補完計畫納入導覽來源。前輪與本輪產物／驗收收據分別保存在 ignored `output/qa/gf613_verification/` 與 `output/qa/gov5gf/`，不得以舊 HEAD 圖譜代替。
 
-2026-10-12 最終 Graphify 驗收：PASS。來源包含 1517 份文件及 1087 個 production Python 檔；明示 Markdown links 11355 條，其中文件 10450、程式碼 313、未解析本機文件／程式連結 0。最終圖的 nodes、edges、communities 精確計數見 JSON 收據；dangling edges 0、missing endpoints 0。8309 條跨來源 AST 未解析邊另列診斷，不當作已解析關聯。Graphify 0.9.11 使用本機 AST 與明示 Markdown links，未使用 semantic model 或網路；根 `graphify-out` metadata 前後一致。逐項固定 HEAD、來源指紋及檢查結果見 `output/qa/gf613_verification/graphify_final_verification.json`。補完計畫僅作為可追蹤文件納入，不代表產品 Gate 已接受。
+前輪定版 d929e003 的 Graphify 驗收為 PASS：1517 份文件、1087 個 production Python 檔、11355 條明示 Markdown links、未解析本機文件／程式連結 0，收據保存在 output/qa/gf613_verification/graphify_final_verification.json。本輪新增裁決收據並修復 caller，提交後於 output/qa/gov5gf/graphify_final_verification.json 重新核對固定 HEAD、1518 份文件及 1087 個 production Python 檔、全部 bytes／blob 指紋、連結及端點；不將舊 AST 當作新程式碼。nodes／edges／communities 與未解析 AST 診斷以新 JSON 收據為準，只有 passed=true 才代表本輪定版圖驗收。使用 Graphify 0.9.11 本機 AST 與明示 Markdown links，無 semantic model 或網路；root graphify-out 不變核對也列入收據。補完計畫納入導覽不代表產品 Gate 接受。
 
-逐檔清冊：[DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。`docs/` 下 1490 份一般文件，以及 `docs/` 外 26 份 tracked Markdown，都有分類、界線、衝突判讀、HEAD OID、物理行數及來源 ledger；本矩陣、path manifest 與開發線路矩陣 3 份治理輸出保留自我參照豁免。
+逐檔清冊：[DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)。`docs/` 下 1491 份一般文件，以及 `docs/` 外 26 份 tracked Markdown，都有分類、界線、衝突判讀、HEAD OID、物理行數及來源 ledger；本矩陣、path manifest 與開發線路矩陣 3 份治理輸出保留自我參照豁免。

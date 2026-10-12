@@ -765,12 +765,34 @@ def _calendar_for_candidate_cli(
     first_year = min(start.year, end.year)
     last_year = max(start.year, end.year)
     calendar = OfficialTradingCalendar(calendar_cache_path=cache_path)
-    for calendar_year in range(first_year, last_year + 1):
-        if calendar._load_cached_year_schedule(calendar_year) is None:
-            raise OfficialTradingCalendarError(
-                "explicit annual calendar cache unavailable for "
-                f"{calendar_year}; online fallback is disabled"
+    with calendar.read_operation(allow_online_probe=False) as operation:
+        for calendar_year in range(first_year, last_year + 1):
+            probe_date = date(calendar_year, 1, 1)
+            evidence: dict[str, object] | None = None
+            # 週末／官方臨時休市可能先短路，須找到實際核驗年度年表的平日。
+            while probe_date.year == calendar_year:
+                if probe_date.weekday() >= 5:
+                    probe_date += timedelta(days=1)
+                    continue
+                evidence = operation.evidence_for(probe_date)
+                if evidence.get("reason_code") != "twse_temporary_closure_official":
+                    break
+                probe_date += timedelta(days=1)
+            cache_verified = (
+                evidence is not None
+                and evidence.get("mode") == "hash_bound_official_calendar_cache"
+                and evidence.get("is_trading_day") is not None
             )
+            if not cache_verified:
+                detail = (
+                    str(evidence.get("reason_code"))
+                    if evidence is not None and evidence.get("reason_code")
+                    else "explicit annual cache unavailable"
+                )
+                raise OfficialTradingCalendarError(
+                    "explicit annual calendar cache unavailable for "
+                    f"{calendar_year}; online fallback is disabled: {detail}"
+                )
     return calendar
 
 

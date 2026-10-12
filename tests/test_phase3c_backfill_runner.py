@@ -306,15 +306,44 @@ def test_candidate_cli_explicit_calendar_cache_is_validated_and_forces_offline(
 ):
     cache_path = tmp_path / "calendar_cache"
     cache_path.mkdir()
-    observed = {}
+    observed = {"operations": [], "operation_flags": [], "dates": []}
+
+    class _Operation:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def evidence_for(self, target_date):
+            observed["dates"].append((target_date, id(self)))
+            if target_date == observed.get("temporary_closed_date"):
+                return {
+                    "mode": "official_temporary_closure",
+                    "is_trading_day": False,
+                    "reason_code": "twse_temporary_closure_official",
+                }
+            if target_date.year == observed.get("missing_year"):
+                return {
+                    "mode": "unavailable",
+                    "is_trading_day": None,
+                    "reason_code": "annual_schedule_cache_missing",
+                }
+            return {
+                "mode": "hash_bound_official_calendar_cache",
+                "is_trading_day": True,
+                "reason_code": "twse_holiday_schedule_cache_open",
+            }
 
     class _Calendar:
         def __init__(self, *, calendar_cache_path):
             observed["calendar_cache_path"] = calendar_cache_path
 
-        def _load_cached_year_schedule(self, calendar_year):
-            observed.setdefault("years", []).append(calendar_year)
-            return object()
+        def read_operation(self, *, allow_online_probe):
+            observed["operation_flags"].append(allow_online_probe)
+            operation = _Operation()
+            observed["operations"].append(operation)
+            return operation
 
     monkeypatch.setattr(candidates_script, "OfficialTradingCalendar", _Calendar)
     calendar = candidates_script._calendar_for_candidate_cli(
@@ -325,7 +354,46 @@ def test_candidate_cli_explicit_calendar_cache_is_validated_and_forces_offline(
 
     assert isinstance(calendar, _Calendar)
     assert observed["calendar_cache_path"] == cache_path.resolve()
-    assert observed["years"] == [2025, 2026]
+    assert observed["operation_flags"] == [False]
+    assert len(observed["operations"]) == 1
+    assert [target for target, _operation_id in observed["dates"]] == [
+        date(2025, 1, 1),
+        date(2026, 1, 1),
+    ]
+    assert len({operation_id for _target, operation_id in observed["dates"]}) == 1
+
+    observed["missing_year"] = 2026
+    with pytest.raises(
+        candidates_script.OfficialTradingCalendarError,
+        match="explicit annual calendar cache unavailable for 2026",
+    ):
+        candidates_script._calendar_for_candidate_cli(
+            cache_path,
+            "2025-12-31",
+            "2026-01-02",
+        )
+
+    assert observed["operation_flags"] == [False, False]
+    assert len(observed["operations"]) == 2
+    assert [target for target, _operation_id in observed["dates"]] == [
+        date(2025, 1, 1),
+        date(2026, 1, 1),
+        date(2025, 1, 1),
+        date(2026, 1, 1),
+    ]
+    assert len({operation_id for _target, operation_id in observed["dates"][2:]}) == 1
+
+    observed.pop("missing_year")
+    observed["temporary_closed_date"] = date(2026, 1, 1)
+    candidates_script._calendar_for_candidate_cli(
+        cache_path, "2026-01-01", "2026-01-02"
+    )
+    assert observed["operation_flags"] == [False, False, False]
+    assert [target for target, _operation_id in observed["dates"][-2:]] == [
+        date(2026, 1, 1),
+        date(2026, 1, 2),
+    ]
+    assert len({operation_id for _target, operation_id in observed["dates"][-2:]}) == 1
 
 
 @pytest.mark.parametrize(

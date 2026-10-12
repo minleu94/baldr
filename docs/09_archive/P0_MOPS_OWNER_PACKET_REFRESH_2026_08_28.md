@@ -1,6 +1,12 @@
 # P0／MOPS／Owner Packet Refresh — 2026-08-28
 
-> **歷史時點警語（2026-10-11）**：本文件「最新」僅指 2026-08-28 當次封包；其 P0 row counts、`action_required`、外部待辦與 `2026-09-01` planned clock 均為歷史快照，不是目前派工、啟用或寫入授權。後續 machine evidence 見 [2026-08-30 P0 refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，來源決議依 [P0 acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 判讀；`limited` 總數差異依 [文件狀態矩陣](../00_core/DOCUMENTATION_STATUS_MATRIX_20261009.md) 所記保持未調和。原文外部輸入項目只保留當時上下文，不能直接重送或執行。
+> **歷史時點警語（2026-10-11；範圍裁決補記 2026-10-12）**：本文件「最新」僅指 2026-08-28 當次封包；其 P0 row counts、`action_required`、外部待辦與 `2026-09-01` planned clock 均為歷史快照，不是目前派工、啟用或寫入授權。後續 machine evidence 見 [2026-08-30 P0 refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，來源決議依 [P0 acceptance register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 判讀。當次 `accepted=0`／`limited=0` 只屬於 13 個 canonical P0 contract IDs 的 audit snapshot；它與 DEV-66 EZSearch availability-lane 決議事件使用不同 source ID，不表示決議互相撤銷。最新 applying revision 未經核實，詳細裁決見下節。原文外部輸入項目只保留當時上下文，不能直接重送或執行。
+
+## 2026-10-12 範圍裁決與證據界線
+
+本封包所記 `accepted=0`／`limited=0` 是 2026-08-28 P0 audit 的 13 列 canonical contract denominator。同期 `P0_SOURCE_IDS` 含 `pit.quarterly_financials`、不含 `mops.ezsearch.statement_publication`；DEV-66 的 `limited` 決議事件則只核准後者作內部 statement-availability research。source identity contract 將 EZSearch 明定為 availability lane，並將 numeric／governance source 分開為 `pit.quarterly_financials`。所以這組 0/0 計數不包含、也不撤銷 DEV-66；當次 MOPS 季報候選的 machine verification 亦不構成 source acceptance。詳細程式證據與 Register 修正見 [P0 acceptance register §14](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md#14-2026-08-28-p0-多路徑-live-evidence-refresh-append-only)。
+
+此裁決只解決來源身分與 denominator 的差異。封包記載的原始 audit JSON 路徑 `C:\Users\archi\AppData\Local\Temp\technical_analysis_p0_source_evidence_live_with_mops_new.json` 在目前 host 不存在；原始 audit rows／registry input 未取得，DEV-66 working-copy registry 的完整 revision 序列也未核實。因此本封包不能證明 DEV-66 是否仍是最新 applying revision，亦不能由 0/0 推導全域或目前 registry 狀態。保留本文件其餘原始內容作為 2026-08-28 歷史快照。
 
 ## 目的
 

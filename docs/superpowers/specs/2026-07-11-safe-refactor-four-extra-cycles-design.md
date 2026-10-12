@@ -1,6 +1,6 @@
 # 安全重構四個延長循環設計
 
-> **範圍釐清（2026-10-12）**：本文只涵蓋 D–G 四輪，共 12 支 Planner／Implementation／QA automation；本文原始 Git 版本與目前正文都只記載 12。另一份 H–L 下午五輪設計另記 15 支，但無證據證明它是 2026-10-11 差異提示中「15」的來源；兩個方案不可合併計數。當時實際建立、執行與生命週期仍缺可核對的 Scheduler receipt；本歷史計畫不授權現在建立或執行 automation。現行操作依 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 與對應日期化 QA 判讀。
+> **來源與生命週期核對（2026-10-12）**：本文 D–G 是四輪、每輪 Planner／Implementation／QA 各一支的 12 個設定；另一份 H–L 下午設計是五輪、共 15 個設定，兩者屬不同時段與 scope，不應合併或互相替代。追溯來源為 2026-09-25 的 [Codex automation inventory](../../06_qa/BALDR_CODEX_AUTOMATION_INVENTORY_20260925.json)：清冊列出兩組各自的 automation ID、當時狀態與 TOML 雜湊；目前 CODEX_HOME 內兩組 TOML 亦保存為 PAUSED。各 automation 的本機 `memory.md` 與 ignored `output/automation/version_loop/refactor_nightly_closeout_20260711.md`、`refactor_afternoon_closeout_20260711.md` 記錄了兩段執行交接鏈；closeout 的工作切片數與設定支數是不同單位，D–G 所屬當日 00:00–12:00 鏈記 6 個切片，H–L 記 4 個完成切片、J 輪為 `NO_SAFE_SLICE`。這些資料支持設定曾持久化及流程有執行記錄，但未找到獨立 Codex host event/audit receipt 以證明每次由排程器觸發，因此觸發來源仍未知。細節見 [本次治理核對收據](../../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)；本文計數是設計設定數，不是完成切片數，也不授權現在建立或執行 automation。現行操作依 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 與對應日期化 QA 判讀。
 
 
 > **歷史設計（2026-07-11）**：本文記錄的一次性 automation、舊排程與 Git 操作不代表目前任務狀態或執行授權。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與現行協作規範。

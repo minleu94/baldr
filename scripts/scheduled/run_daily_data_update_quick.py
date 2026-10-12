@@ -177,17 +177,35 @@ def _calendar_for_run(
         first_year = (reference_date - timedelta(days=92)).year
         last_year = reference_date.year
     required_years = range(first_year, last_year + 1)
-    for calendar_year in required_years:
-        verified = calendar._load_cached_year_schedule(calendar_year)
-        if verified is None:
-            observed, reason = calendar.is_official_trading_day(
-                reference_date,
-                allow_online_probe=False,
+    with calendar.read_operation(allow_online_probe=False) as operation:
+        for calendar_year in required_years:
+            # 透過公開 operation 證據介面核對該年度年表；跳過週末與已驗證
+            # 的臨時休市，避免它們的短路結果取代年度 cache 驗證。
+            probe_date = date(calendar_year, 1, 1)
+            evidence: dict[str, object] | None = None
+            while probe_date.year == calendar_year:
+                if probe_date.weekday() >= 5:
+                    probe_date += timedelta(days=1)
+                    continue
+                evidence = operation.evidence_for(probe_date)
+                if evidence.get("reason_code") != "twse_temporary_closure_official":
+                    break
+                probe_date += timedelta(days=1)
+
+            cache_verified = (
+                evidence is not None
+                and evidence.get("mode") == "hash_bound_official_calendar_cache"
+                and evidence.get("is_trading_day") is not None
             )
-            detail = reason if observed is None else "explicit annual cache unavailable"
-            raise OfficialTradingCalendarError(
-                f"explicit annual calendar cache unavailable for {calendar_year}: {detail}"
-            )
+            if not cache_verified:
+                detail = (
+                    str(evidence.get("reason_code"))
+                    if evidence is not None and evidence.get("reason_code")
+                    else "explicit annual cache unavailable"
+                )
+                raise OfficialTradingCalendarError(
+                    f"explicit annual calendar cache unavailable for {calendar_year}: {detail}"
+                )
     return calendar, False
 
 

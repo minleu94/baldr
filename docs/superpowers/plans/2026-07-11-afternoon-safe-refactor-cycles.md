@@ -2,6 +2,8 @@
 
 > **歷史計畫（2026-07-11）**：本文的一次性 automation、舊排程及 Git commit／push 操作只記錄當日循環，不是目前派工、automation 或發佈授權；不得直接重啟。現況與優先序看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)。
 
+> **來源與生命週期核對（2026-10-12）**：本文 H–L 五輪計畫規定 15 個 Planner／Implementation／QA 設定；D–G 四輪計畫另規定 12 個設定，兩者是不同時段與 scope。2026-09-25 的 [Codex automation inventory](../../06_qa/BALDR_CODEX_AUTOMATION_INVENTORY_20260925.json) 逐列保存兩組 ID、狀態及 TOML 雜湊，目前 CODEX_HOME 中兩組 TOML 均為 PAUSED。本機 per-automation `memory.md` 和 ignored `output/automation/version_loop/refactor_afternoon_closeout_20260711.md`、`refactor_nightly_closeout_20260711.md` 記錄兩段執行交接鏈；H–L 有 4 個完成切片、J 輪為 `NO_SAFE_SLICE`，D–G 所屬當日 00:00–12:00 鏈記 6 個切片。原計畫 checklist 未回填不能用來否定這些執行記錄，亦不能把設定支數當成完成切片數。未找到獨立 Codex host event/audit receipt 證明每次實際觸發來源；排程器或受控手動流程的來源仍未知。細節見[本次治理核對收據](../../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)；本文仍是歷史計畫，不授權重建或重啟 automation。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 在 2026-07-11 14:00–19:00 建立並啟動五輪、每輪最多兩切片的單日安全重構循環。

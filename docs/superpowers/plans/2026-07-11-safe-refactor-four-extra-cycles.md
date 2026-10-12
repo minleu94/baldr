@@ -2,7 +2,7 @@
 
 > **歷史計畫（2026-07-11）**：本文的一次性 automation、舊排程與 Git commit／push 操作只記錄當日循環，不是目前派工、automation 或發佈授權；不得直接重啟。現況與優先序看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md)。
 
-> **歷史核對補充（2026-10-11）**：Superpowers README 記錄四輪 automation 的 12／15 數字差異仍未解；本文列出的十二支 cron 是當時計畫內容，不能用來消解此差異或推論目前 automation 設定。
+> **來源與生命週期核對（2026-10-12）**：本文計畫 D–G 四輪、共 12 個 Planner／Implementation／QA 設定；另一份 H–L 下午計畫為五輪、15 個設定，兩組是不同時段與 scope，不是同一組計畫的互斥數字。2026-09-25 的 [Codex automation inventory](../../06_qa/BALDR_CODEX_AUTOMATION_INVENTORY_20260925.json) 逐列保存兩組 ID、狀態與 TOML 雜湊；目前 CODEX_HOME 的 TOML 為 PAUSED。兩組本機 automation `memory.md` 及 ignored `output/automation/version_loop/` closeout 記錄了 D–G 所屬 00:00–12:00 執行鏈與 H–L 下午執行鏈；記錄的切片數分別為當日總計 6 個、H–L 完成 4 個（J 為 `NO_SAFE_SLICE`），不可與設定支數互換。沒有獨立 Codex host event/audit receipt 能確認每次執行的觸發來源；排程器或受控手動流程的來源仍未知。本文未勾選步驟只代表此歷史計畫沒有回填執行勾選，不證明未執行。詳見 [本次治理核對收據](../../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)；本文記錄的是規劃步驟，不是目前 automation 授權。
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

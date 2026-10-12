@@ -11,7 +11,7 @@ slippage。保存採 append-only JSONL，讓修訂與封存仍可追溯，且不
 
 from __future__ import annotations
 
-from contextlib import closing, contextmanager, nullcontext
+from contextlib import contextmanager, nullcontext
 import csv
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -24,7 +24,6 @@ import math
 import os
 from pathlib import Path
 import re
-import sqlite3
 import time
 from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
@@ -736,12 +735,12 @@ class FilesystemDailyMarketObservationProvider:
 
 
 class SavedRecommendationConditionContextProvider:
-    """從既有已保存 RecommendationResultDTO 建立 condition 規則上下文。
+    """從已驗證保存結果建立 condition 規則上下文。
 
-    這個 provider 只讀 runs registry／JSON，不初始化 writer、不重新評分，
-    也不把 user_declared holding 與正式成交 identity 綁在一起。它只在保存
-    結果含有可比較的 regime／score 或明確停損停利欄位時提供 context；沒有
-    規則時由下游維持 WAIT_CONFIRMATION。
+    這個 provider 只透過 recommendation execution query 讀取 canonical execution
+    或已註冊 legacy DTO，不初始化 writer、不重新評分，也不把 user_declared
+    holding 與正式成交 identity 綁在一起。它只在保存結果含有可比較的 regime／score
+    或明確停損停利欄位時提供 context；沒有規則時由下游維持 WAIT_CONFIRMATION。
     """
 
     def __init__(self, config_or_output_root: Any):
@@ -768,6 +767,41 @@ class SavedRecommendationConditionContextProvider:
 
     @staticmethod
     def _result_date(result: Any) -> date | None:
+        execution = getattr(result, "execution", None)
+        if execution is not None:
+            from app_module.recommendation.contracts import ExecutionStatus
+            from app_module.saved_recommendation_queries import (
+                canonical_scheduled_decision_date,
+                execution_result_config,
+            )
+
+            if (
+                execution.status is not ExecutionStatus.COMPLETED
+                or execution.decision is None
+            ):
+                return None
+            config = execution_result_config(execution)
+            if config.get("scheduled_snapshot") is True:
+                saved_date = canonical_scheduled_decision_date(result)
+                if saved_date is None:
+                    return None
+                try:
+                    parsed = date.fromisoformat(saved_date)
+                except ValueError:
+                    return None
+                return parsed if parsed.isoformat() == saved_date else None
+            context_date = execution.context.as_of_date
+            request_date = execution.request.as_of_date
+            if (
+                context_date is None
+                or (request_date is not None and request_date != context_date)
+            ):
+                return None
+            return context_date
+
+        legacy_result = getattr(result, "legacy_result", None)
+        if legacy_result is not None:
+            result = legacy_result
         run_context = getattr(result, "run_context", {})
         run_context_mapping = run_context if isinstance(run_context, Mapping) else {}
         result_config = getattr(result, "config", {})
@@ -784,6 +818,105 @@ class SavedRecommendationConditionContextProvider:
         except ValueError:
             return None
 
+    @staticmethod
+    def _result_config(result: Any) -> dict[str, Any]:
+        execution = getattr(result, "execution", None)
+        if execution is not None:
+            from app_module.saved_recommendation_queries import execution_result_config
+
+            config = execution_result_config(execution)
+        else:
+            legacy_result = getattr(result, "legacy_result", None)
+            target = legacy_result if legacy_result is not None else result
+            config = getattr(target, "config", {})
+        return dict(config) if isinstance(config, Mapping) else {}
+
+    @staticmethod
+    def _result_run_context(result: Any) -> dict[str, Any]:
+        execution = getattr(result, "execution", None)
+        if execution is None:
+            legacy_result = getattr(result, "legacy_result", None)
+            target = legacy_result if legacy_result is not None else result
+            context = getattr(target, "run_context", {})
+            return dict(context) if isinstance(context, Mapping) else {}
+
+        context = execution.context
+        run_context: dict[str, Any] = {}
+        if context.as_of_date is not None:
+            run_context["as_of_date"] = context.as_of_date.isoformat()
+        if context.profile_ref is not None:
+            run_context["profile_id"] = context.profile_ref.reference_id
+            if context.profile_ref.version is not None:
+                run_context["profile_version"] = context.profile_ref.version
+        if context.strategy_identity is not None:
+            for field_name in ("strategy_config_id", "strategy_config_hash"):
+                value = getattr(context.strategy_identity, field_name)
+                if value is not None:
+                    run_context[field_name] = value
+        return run_context
+
+    @staticmethod
+    def _result_created_at(result: Any) -> str:
+        execution = getattr(result, "execution", None)
+        if execution is not None:
+            created_at = execution.context.created_at
+            return created_at.isoformat() if created_at is not None else ""
+        legacy_result = getattr(result, "legacy_result", None)
+        target = legacy_result if legacy_result is not None else result
+        return str(getattr(target, "created_at", "") or "")
+
+    @staticmethod
+    def _recommendation_score(recommendation: Any) -> Any:
+        if hasattr(recommendation, "total_score"):
+            return recommendation.total_score
+        return getattr(recommendation, "rule_score", None)
+
+    @staticmethod
+    def _recommendation_regime_match(recommendation: Any) -> bool:
+        value = getattr(recommendation, "regime_match", False)
+        return value if isinstance(value, bool) else False
+
+    @staticmethod
+    def _recommendation_reasons(recommendation: Any) -> str:
+        value = getattr(recommendation, "recommendation_reasons", None)
+        if value is not None:
+            return str(value or "")
+        reason_text = getattr(recommendation, "reason_text", None)
+        if reason_text is not None:
+            return str(reason_text)
+        return "; ".join(getattr(recommendation, "reasons", ()) or ())
+
+    @classmethod
+    def _recommendation_snapshot(cls, recommendation: Any) -> Any:
+        to_dict = getattr(recommendation, "to_dict", None)
+        if callable(to_dict):
+            return to_dict()
+        return {
+            "stock_code": getattr(recommendation, "stock_code", ""),
+            "stock_name": getattr(recommendation, "stock_name", None),
+            "close_price": getattr(recommendation, "close_price", None),
+            "price_change": getattr(recommendation, "price_change", None),
+            "total_score": cls._recommendation_score(recommendation),
+            "indicator_score": getattr(recommendation, "indicator_score", None),
+            "pattern_score": getattr(recommendation, "pattern_score", None),
+            "volume_score": getattr(recommendation, "volume_score", None),
+            "recommendation_reasons": cls._recommendation_reasons(recommendation),
+            "industry": getattr(recommendation, "industry", None),
+            "regime_match": cls._recommendation_regime_match(recommendation),
+            "rank": getattr(recommendation, "rank", None),
+            "score_percentile_bp": getattr(
+                recommendation, "score_percentile_bp", None
+            ),
+            "eligible_universe_size": getattr(
+                recommendation, "eligible_universe_size", None
+            ),
+            "eligible_universe_date": getattr(
+                recommendation, "eligible_universe_date", None
+            ),
+            "ranking_method": getattr(recommendation, "ranking_method", None),
+            "threshold_mode": getattr(recommendation, "threshold_mode", None),
+        }
+
     def _candidate_results(
         self,
         stock_code: str,
@@ -791,52 +924,65 @@ class SavedRecommendationConditionContextProvider:
         *,
         cancel_callback: Callable[[], bool] | None = None,
     ) -> list[tuple[Any, Any, datetime]]:
-        db_path = self.runs_dir / "recommendation_runs.db"
         _raise_if_cancelled(cancel_callback)
-        if not db_path.is_file():
-            return []
-        try:
-            with closing(
-                sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
-            ) as connection:
-                connection.execute("PRAGMA query_only=ON")
-                rows = connection.execute(
-                    "SELECT data_path FROM runs ORDER BY created_at DESC, result_id"
-                ).fetchall()
-        except (OSError, sqlite3.Error):
-            return []
-        result_type: Any
-        from app_module.recommendation.legacy_dtos import RecommendationResultDTO
+        from app_module.recommendation.contracts import ExecutionStatus
+        from app_module.recommendation.queries import RecommendationExecutionReadModel
+        from app_module.saved_recommendation_queries import (
+            build_recommendation_execution_queries,
+        )
 
-        result_type = RecommendationResultDTO
+        try:
+            read_models = build_recommendation_execution_queries(
+                None,
+                runs_dir=self.runs_dir,
+            ).list()
+        except Exception:
+            return []
         candidates: list[tuple[Any, Any, datetime]] = []
-        runs_root = self.runs_dir.resolve()
-        for (raw_path,) in rows:
+        for read_model in read_models:
             _raise_if_cancelled(cancel_callback)
-            try:
-                path = Path(str(raw_path)).resolve()
-                if not path.is_relative_to(runs_root) or not path.is_file():
+            if type(read_model) is not RecommendationExecutionReadModel:
+                continue
+            recommendations: Sequence[Any]
+            if read_model.execution is not None:
+                if (
+                    read_model.legacy_result is not None
+                    or read_model.execution.status is not ExecutionStatus.COMPLETED
+                    or read_model.execution.decision is None
+                ):
                     continue
-                result = result_type.from_dict(json.loads(path.read_text(encoding="utf-8")))
+                result = read_model
+                recommendations = read_model.execution.decision.items
+            elif read_model.legacy_result is not None:
+                result = read_model
+                recommendations = read_model.legacy_result.recommendations
+            else:
+                continue
+            persisted_at = read_model.persisted_at
+            try:
                 source_date = self._result_date(result)
-                if source_date is None or source_date > evaluation_date:
+                if (
+                    source_date is None
+                    or source_date > evaluation_date
+                    or not isinstance(persisted_at, datetime)
+                    or persisted_at.tzinfo is None
+                    or persisted_at.utcoffset() is None
+                ):
                     continue
                 matches = [
                     item
-                    for item in (getattr(result, "recommendations", ()) or ())
+                    for item in recommendations
                     if str(getattr(item, "stock_code", "")) == stock_code
                 ]
-                _raise_if_cancelled(cancel_callback)
                 if len(matches) != 1:
                     continue
-                available_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-                candidates.append((result, matches[0], available_at))
-            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                candidates.append((result, matches[0], persisted_at))
+            except (ValueError, TypeError, KeyError):
                 continue
         candidates.sort(
             key=lambda item: (
                 self._result_date(item[0]) or date.min,
-                str(getattr(item[0], "created_at", "") or ""),
+                self._result_created_at(item[0]),
                 str(getattr(item[0], "result_id", "") or ""),
             ),
             reverse=True,
@@ -908,10 +1054,10 @@ class SavedRecommendationConditionContextProvider:
                 baseline=baseline,
             )
 
-        baseline_context = dict(getattr(baseline_result, "run_context", {}) or {})
-        baseline_config = dict(getattr(baseline_result, "config", {}) or {})
-        current_context = dict(getattr(current_result, "run_context", {}) or {})
-        current_config = dict(getattr(current_result, "config", {}) or {})
+        baseline_context = self._result_run_context(baseline_result)
+        baseline_config = self._result_config(baseline_result)
+        current_context = self._result_run_context(current_result)
+        current_config = self._result_config(current_result)
         baseline_regime = self._result_regime(baseline_result)
         current_regime = self._result_regime(current_result)
         source_summary: dict[str, Any] = {
@@ -920,13 +1066,15 @@ class SavedRecommendationConditionContextProvider:
             "baseline_result_date": baseline_date.isoformat(),
             "current_result_date": current_date.isoformat(),
             "entry_regime": baseline_regime,
-            "entry_total_score": getattr(baseline_recommendation, "total_score", None),
+            "entry_total_score": self._recommendation_score(baseline_recommendation),
             "regime": baseline_regime,
-            "total_score": getattr(baseline_recommendation, "total_score", None),
-            "recommendation_reasons": str(
-                getattr(baseline_recommendation, "recommendation_reasons", "") or ""
+            "total_score": self._recommendation_score(baseline_recommendation),
+            "recommendation_reasons": self._recommendation_reasons(
+                baseline_recommendation
             ),
-            "regime_match": bool(getattr(baseline_recommendation, "regime_match", False)),
+            "regime_match": self._recommendation_regime_match(
+                baseline_recommendation
+            ),
             "profile_id": str(
                 baseline_context.get("profile_id") or baseline_config.get("profile_id") or ""
             ),
@@ -946,14 +1094,18 @@ class SavedRecommendationConditionContextProvider:
             "baseline": {
                 "result_id": source_summary["baseline_result_id"],
                 "as_of_date": baseline_date.isoformat(),
-                "recommendation": _json_safe(getattr(baseline_recommendation, "to_dict")()),
+                "recommendation": _json_safe(
+                    self._recommendation_snapshot(baseline_recommendation)
+                ),
                 "run_context": _json_safe(baseline_context),
                 "config": _json_safe(baseline_config),
             },
             "current": {
                 "result_id": source_summary["current_result_id"],
                 "as_of_date": current_date.isoformat(),
-                "recommendation": _json_safe(getattr(current_recommendation, "to_dict")()),
+                "recommendation": _json_safe(
+                    self._recommendation_snapshot(current_recommendation)
+                ),
                 "run_context": _json_safe(current_context),
                 "config": _json_safe(current_config),
             },
@@ -969,19 +1121,37 @@ class SavedRecommendationConditionContextProvider:
             available_at=current_available_at,
             source_summary=source_summary,
             current_regime=current_regime,
-            current_total_score=getattr(current_recommendation, "total_score", None),
+            current_total_score=self._recommendation_score(current_recommendation),
             reasons=("saved_recommendation_baseline_current_pair",),
             quality="observed",
-            # JSON run file mtime 是本機觀測，不是官方 availability custody。
+            # Query persisted_at 是讀取排序時鐘，不是官方 availability custody。
             availability_custody=False,
         )
 
     @staticmethod
     def _result_regime(result: Any) -> str:
-        result_context = dict(getattr(result, "run_context", {}) or {})
-        config = dict(getattr(result, "config", {}) or {})
+        execution = getattr(result, "execution", None)
+        if execution is not None:
+            result_context = SavedRecommendationConditionContextProvider._result_run_context(
+                result
+            )
+            config = SavedRecommendationConditionContextProvider._result_config(result)
+            decision_regime = (
+                execution.decision.regime if execution.decision is not None else None
+            )
+            return str(
+                decision_regime
+                or result_context.get("regime")
+                or config.get("regime")
+                or ""
+            ).strip()
+
+        legacy_result = getattr(result, "legacy_result", None)
+        target = legacy_result if legacy_result is not None else result
+        result_context = dict(getattr(target, "run_context", {}) or {})
+        config = dict(getattr(target, "config", {}) or {})
         return str(
-            getattr(result, "regime", None)
+            getattr(target, "regime", None)
             or result_context.get("regime")
             or config.get("regime")
             or ""
@@ -991,8 +1161,97 @@ class SavedRecommendationConditionContextProvider:
     def _analysis_identity(result: Any) -> tuple[str, str, str] | None:
         """取得可比較的 profile／version／計分配置 identity。"""
 
-        context = dict(getattr(result, "run_context", {}) or {})
-        config = dict(getattr(result, "config", {}) or {})
+        execution = getattr(result, "execution", None)
+        if execution is not None:
+            context = execution.context
+            config = SavedRecommendationConditionContextProvider._result_config(result)
+            profile_ref = context.profile_ref
+            request_profile_ref = execution.request.profile_ref
+            strategy_identity = context.strategy_identity
+
+            if (
+                profile_ref is None
+                or request_profile_ref is None
+                or profile_ref != request_profile_ref
+            ):
+                return None
+
+            def consistent_value(*values: Any) -> str | None:
+                texts: list[str] = []
+                for value in values:
+                    if value is None or value == "":
+                        continue
+                    if type(value) is not str:
+                        return None
+                    text = value.strip()
+                    if text:
+                        texts.append(text)
+                if not texts:
+                    return None
+                if len(set(texts)) != 1:
+                    return None
+                return texts[0]
+
+            profile_id = consistent_value(
+                profile_ref.reference_id,
+                request_profile_ref.reference_id,
+                config.get("profile_id"),
+                config.get("selected_profile"),
+            )
+            profile_version = consistent_value(
+                profile_ref.version,
+                request_profile_ref.version,
+                config.get("profile_version"),
+            )
+            context_strategy_id = (
+                strategy_identity.strategy_config_id
+                if strategy_identity is not None
+                else None
+            )
+            config_strategy_id = config.get("strategy_config_id")
+            context_strategy_hash = (
+                strategy_identity.strategy_config_hash
+                if strategy_identity is not None
+                else None
+            )
+            config_strategy_hash = config.get("strategy_config_hash")
+            score_config_id = consistent_value(
+                context_strategy_id,
+                config_strategy_id,
+            )
+            score_config_hash = consistent_value(
+                context_strategy_hash,
+                config_strategy_hash,
+            )
+            if (
+                (context_strategy_id is not None or config_strategy_id is not None)
+                and score_config_id is None
+            ) or (
+                (context_strategy_hash is not None or config_strategy_hash is not None)
+                and score_config_hash is None
+            ):
+                return None
+            if score_config_hash is not None and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", score_config_hash
+            ) is None:
+                return None
+            if score_config_id is not None and score_config_hash is not None:
+                expected_id = (
+                    "recommendation-strategy-config-v1:"
+                    + score_config_hash.removeprefix("sha256:")
+                )
+                if score_config_id != expected_id:
+                    return None
+            if score_config_id is None:
+                score_config_id = score_config_hash
+            if not profile_id or not profile_version or not score_config_id:
+                return None
+            return profile_id, profile_version, score_config_id
+
+        legacy_result = getattr(result, "legacy_result", None)
+        target = legacy_result if legacy_result is not None else result
+        context = dict(getattr(target, "run_context", {}) or {})
+        config = dict(getattr(target, "config", {}) or {})
         profile_id = str(
             context.get("profile_id")
             or config.get("profile_id")

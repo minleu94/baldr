@@ -3449,6 +3449,11 @@ Registry 比較只使用已保存的 metadata、equity curve 與 benchmark_resul
   baseline 與評估日的 current 必須是不同保存結果，且 profile、profile version、score
   config identity 相同；缺 baseline、只找到一個結果、結果不是獨立 snapshot 或 identity
   不同時，動作維持「待確認」，不會自我比較一份 current 結果。
+- 查看持倉研究結果時，先在「查看技術詳情」核對 baseline／current 的 `result_id`、資料日、
+  profile／version 與 score config identity。沒有可比較的 baseline、身份不符、缺少資料日期，
+  或結果日期超過評估日時，動作固定為 `WAIT_CONFIRMATION`（「待確認」）；不以另一個 scope 或同一 current
+  結果補成比較。query 的 `persisted_at` 只是本地保存時間／排序欄位，不是官方來源 custody
+  或資料 availability 時間。聲明持倉 saved-query caller 的工程回歸範圍見[本輪治理 QA 收據](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。
 - `評估日期` 不得晚於目前台北日。歷史日必須明確提供同一台北日的 cutoff；source 的
   `as_of_date` 不得晚於評估日，`available_at` 不得晚於 cutoff，來源品質、source ID 與
   `sha256:<64 hex>` snapshot hash 也必須通過檢查。資料不完整、過期、future、hash／品質

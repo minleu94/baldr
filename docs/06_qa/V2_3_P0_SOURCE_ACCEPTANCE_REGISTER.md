@@ -1,7 +1,7 @@
 # V2.3 P0 資料來源人工接受台帳
 
 > 日期：2026-07-12
-> 狀態：`engineering_readiness_only`；`mops.ezsearch.statement_publication` 已 limited 接受於內部 research PIT availability，其餘列仍為 `requires_human_acceptance`
+> 狀態：`engineering_readiness_only`；本 register 記錄 DEV-66（2026-07-27）對 `mops.ezsearch.statement_publication` 的 `limited` 決議事件，限內部 research PIT availability。這是歷史事件紀錄，不代表 append-only registry 最新 applying revision；最新 revision 未經本文件證據核實。
 > 適用 Gate：Gate 3 / V2.3 P0 Data Credibility
 > 權威邊界：本台帳記錄待決的人工作業；不得將任何列解讀為正式 ingestion、`ScoringEngine` feature、排程核准、投資有效性或交易資格。
 
@@ -202,5 +202,6 @@ Project Owner 已聲明下列意圖適用於 13 項 P0 來源：可作內部研�
 - **Control Center 解讀**：載入上述完整 audit 後，`contract_only=0`、`blocked_provenance=12`、`research_shadow=1`，machine=`12 degraded / 1 verified`。未載入 audit 時顯示的 13 列 `contract_only` 只代表 projection 缺失，不能再用來判定資料不存在。
 - **仍未解除的決議**：13 項 source decision 均為 `not_supplied`，`accepted=0`、`limited=0`、`downstream_eligible=0`。仍須補 publication／decision-time provenance、具名 owner/reviewer、license/use-case、quality／coverage 與 rollback evidence；程式不得代替人工或來源方作出授權事實。
 - **2026-10-10 範圍調和註記**：此處 `13 項 not_supplied／limited=0` 與第 7 節 DEV-66 的具名 MOPS `limited` 決議不一致；本節沒有指出當次 audit 所讀取的 decision-registry 輸入，也沒有說明該決議為何未反映。兩筆歷史證據均保留，不能把本節總數當成撤銷 DEV-66 或全域目前狀態。此差異尚待比對 2026-08-28 原始 audit artifact／registry 後調和；在調和前，只能依各自日期與範圍引用，不得以未說明的總數推導來源決議已撤銷。
+- **2026-10-12 範圍裁決（更正前註的同分母解讀）**：同期 `P0_SOURCE_IDS` 的 13 個 canonical contract ID 含 `pit.quarterly_financials`、不含 `mops.ezsearch.statement_publication`；audit runner 逐一依該集合建立矩陣。同期 source identity contract 明定 EZSearch 是 announcement availability lane，numeric／governance source 為 `pit.quarterly_financials`。因此本節 `accepted=0`／`limited=0` 是 2026-08-28 audit 對 canonical P0 denominator 的日期化計數，不計入或撤銷第 7 節 DEV-66 對另一 source ID 的 `limited` 決議事件；MOPS artifact 對 `pit.quarterly_financials` 的 machine verification 也不等於人工接受。證據路徑：[P0 source IDs](../../data_module/p0_source_contract_registry.py#L9-L23)、[audit runner](../../scripts/run_p0_source_evidence_audit.py#L1304)、[MOPS source identity mapping](../../data_module/p0_source_contract_registry.py#L207-L233)。此處只裁決分母／來源身分差異，不宣稱全域或目前 registry 狀態：原始 audit JSON 在封存記載路徑未找到，當次 registry 輸入與後續 revision 序列未能核實；故 DEV-66 limited 決議事件是否仍為最新 applying revision，仍為未知。
 - **安全邊界**：`candidate_evidence_only=true`、`formal_eligible=false`、`production_ingestion_allowed=false`、`scheduler_allowed=false`。本次沒有寫正式 DB、沒有把 machine verified 自動升格、沒有增加 Formal clock 或 ML credit。
 - **完整盤點**：[Program Readiness Audit 2026-08-28](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_28.md)。

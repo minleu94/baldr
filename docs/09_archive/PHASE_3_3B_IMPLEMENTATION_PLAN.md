@@ -1,19 +1,19 @@
 # Phase 3.3b 架構層級實施規劃（已歸檔／完成度待核）
 
-> **文件內狀態差異（2026-10-10）**：檔首稱三個 Epic 已於 2026-01-02 100% 完成，但後文仍保留 Epic 1／2／3 的未完成清單；這兩種說法未由本輪找到的證據完全調和。請將完成度保留為待核，不以檔首總結推定每項已驗收，也不把歷史 plan 當成目前 backlog；現況以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Development Roadmap](../00_core/DEVELOPMENT_ROADMAP.md)與具名 QA 為準。
+> **歷史完成狀態核對（2026-10-12）**：原文「100% 完成」是本計畫的來源自述；後文 Epic 2 MVP-2、Epic 3、Epic 1 checklist 留有未勾選項目，但該 checklist 沒有作為事後狀態收據回填，不能據此推定未實作。原文引用的 `output/qa/epic2_mvp2_validation/VALIDATION_REPORT.md` 與 `output/qa/phase3_3b_validation/VALIDATION_REPORT.md` 在本次工作區均不存在。較晚的 [TASK-LOOP-04 handoff](TASK_LOOP_04_HANDOFF.md) 記錄 `scripts/qa_validate_phase3_3b.py` 的 2/2 離線 fixture 檢查，且明示 `--legacy-full` 未執行；[TASK-LOOP-08 handoff](../06_qa/TASK_LOOP_08_HANDOFF.md) 也記錄 2 個預設離線檢查通過。這些窄範圍收據不涵蓋三個 Epic 的完整驗收，也不能回證 2026-01-02 的狀態。故歷史實作與完整驗收狀態均未知；以下原文自述只保留作為歷史來源，不作完成證明。本文件也不是目前 backlog。現況以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Development Roadmap](../00_core/DEVELOPMENT_ROADMAP.md)與具名 QA 為準。
 
 - **版本**：v1.3.0
 - **狀態**：歷史計畫（已歸檔；完成度未核實）
 - **最後更新**：2026-06-03
 
 > [!NOTE]
-> **本文件已歸檔，完成度待核**。原文保留了 2026-01-02 的 100% 完成聲明，同時仍列出 Epic 2 MVP-2 與 Epic 3／Epic 1 的未勾選工作；目前沒有同範圍收據調和這項差異。因此，本文件只作歷史規劃追溯，不作已驗收證據或目前 backlog。現況請參閱 [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md)、[DEVELOPMENT_ROADMAP.md](../00_core/DEVELOPMENT_ROADMAP.md) 與具名 QA 收據。
+> **本文件已歸檔，歷史完成度未知**。2026-01-02 的 100% 完成文字是原文自述；Epic 2 MVP-2 與 Epic 3／Epic 1 的未勾選 checklist 只記錄本計畫的勾選狀態，不能證明相關工作未實作。原文指向的兩份 `output/qa/` 驗證報告在本次工作區不存在；後續 TASK-LOOP-04／08 收據僅驗證預設離線 fixture 範圍，未執行 `--legacy-full`，不能替代三個 Epic 的完整收據或回證原日期狀態。故不能核實完整實作或驗收是否完成。本文只作歷史規劃追溯，不作已驗收證據或目前 backlog。現況請參閱 [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md)、[DEVELOPMENT_ROADMAP.md](../00_core/DEVELOPMENT_ROADMAP.md) 與具名 QA 收據。
 
-## 歷史進度存檔
-- ✅ **Epic 1：Promote 機制**：已於 2026-01-02 實作完成，回測結果可升級為 Presets/Versions。
-- ✅ **Epic 2：回測穩健性驗證**：已於 2026-01-02 實作完成，包含 Walk-Forward 暖機期、Baseline 對比、過擬合風險提示。
+## 原文完成度自述（未驗證）
+- 原文自述：✅ **Epic 1：Promote 機制**：已於 2026-01-02 實作完成，回測結果可升級為 Presets/Versions。
+- 原文自述：✅ **Epic 2：回測穩健性驗證**：已於 2026-01-02 實作完成，包含 Walk-Forward 暖機期、Baseline 對比、過擬合風險提示。
   - 驗證報告：`output/qa/epic2_mvp2_validation/VALIDATION_REPORT.md`
-- ✅ **Epic 3：視覺驗證**：已於 2026-01-02 實作完成，支援 K 線圖買賣點標記與理由標籤。
+- 原文自述：✅ **Epic 3：視覺驗證**：已於 2026-01-02 實作完成，支援 K 線圖買賣點標記與理由標籤。
   - 驗證報告：`output/qa/phase3_3b_validation/VALIDATION_REPORT.md`
 
 ---

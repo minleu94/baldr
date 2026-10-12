@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import subprocess
@@ -419,6 +420,93 @@ def _hash_paths(paths: tuple[Path, ...]) -> dict[str, str]:
     }
 
 
+def _close_fixture_file_handlers(
+    output_root: Path,
+    logger: logging.Logger,
+) -> None:
+    """只關閉 process-visible 且屬於本隔離 fixture 的 FileHandler。"""
+
+    fixture_root = output_root.resolve()
+    root_logger = logging.getLogger()
+    loggers: dict[int, logging.Logger] = {id(root_logger): root_logger}
+    for candidate in logging.Logger.manager.loggerDict.values():
+        if isinstance(candidate, logging.Logger):
+            loggers.setdefault(id(candidate), candidate)
+    loggers.setdefault(id(logger), logger)
+
+    owned_handlers: dict[int, logging.FileHandler] = {}
+    for owner in loggers.values():
+        for handler in tuple(owner.handlers):
+            if not isinstance(handler, logging.FileHandler):
+                continue
+            try:
+                handler_path = Path(handler.baseFilename).resolve()
+                is_fixture_owned = handler_path.is_relative_to(fixture_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if is_fixture_owned:
+                owned_handlers.setdefault(id(handler), handler)
+
+    for handler in owned_handlers.values():
+        for owner in loggers.values():
+            if handler in owner.handlers:
+                owner.removeHandler(handler)
+        handler.close()
+
+
+def test_fixture_handler_cleanup_deduplicates_owned_handlers_and_keeps_external_open(
+    tmp_path: Path,
+) -> None:
+    class _CountingFileHandler(logging.FileHandler):
+        def __init__(self, filename: Path) -> None:
+            self.close_calls = 0
+            super().__init__(filename, mode="a", encoding="utf-8")
+
+        def close(self) -> None:
+            self.close_calls += 1
+            super().close()
+
+    output_root = tmp_path / "isolated-output"
+    owned_path = (
+        output_root / "application_state" / "logs" / "technical_calculation.log"
+    )
+    external_path = tmp_path / "external.log"
+    owned_path.parent.mkdir(parents=True)
+
+    owned_handler = _CountingFileHandler(owned_path)
+    external_handler = logging.FileHandler(external_path, mode="a", encoding="utf-8")
+    config_logger = logging.getLogger("data_module.config")
+    duplicate_logger = logging.getLogger(
+        f"tests.fixture_handler_cleanup.{id(owned_handler)}"
+    )
+    config_logger.addHandler(owned_handler)
+    duplicate_logger.addHandler(owned_handler)
+    config_logger.addHandler(external_handler)
+    try:
+        _close_fixture_file_handlers(output_root, config_logger)
+
+        assert owned_handler.close_calls == 1
+        assert owned_handler not in config_logger.handlers
+        assert owned_handler not in duplicate_logger.handlers
+        assert external_handler in config_logger.handlers
+        assert external_handler.stream is not None
+        external_handler.stream.write("external handler remains writable\n")
+        external_handler.flush()
+        assert external_path.read_text(encoding="utf-8") == (
+            "external handler remains writable\n"
+        )
+    finally:
+        if owned_handler in config_logger.handlers:
+            config_logger.removeHandler(owned_handler)
+        if owned_handler in duplicate_logger.handlers:
+            duplicate_logger.removeHandler(owned_handler)
+        if external_handler in config_logger.handlers:
+            config_logger.removeHandler(external_handler)
+        owned_handler.close()
+        external_handler.close()
+        logging.Logger.manager.loggerDict.pop(duplicate_logger.name, None)
+
+
 def test_actual_mainwindow_cross_page_decision_journey_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -431,16 +519,25 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
     # the legacy runs root; pytest's AppData TEMP may contain an unopenable
     # reparse ancestor, so keep this isolated output tree under the repo.
     isolated_output = TemporaryDirectory(
-        prefix=".tmp_cross_page_decision_journey_",
+        prefix=".tmp_cpj_",
         dir=Path.cwd(),
     )
-    request.addfinalizer(isolated_output.cleanup)
     output_root = Path(isolated_output.name).resolve()
+
+    config_logger: logging.Logger | None = None
+
+    def cleanup_isolated_output() -> None:
+        if config_logger is not None:
+            _close_fixture_file_handlers(output_root, config_logger)
+        isolated_output.cleanup()
+
+    request.addfinalizer(cleanup_isolated_output)
     monkeypatch.setenv("DATA_ROOT", str(data_root))
     monkeypatch.setenv("OUTPUT_ROOT", str(output_root))
     monkeypatch.setenv("PYTHONIOENCODING", "utf-8")
 
     config = TWStockConfig(data_root=data_root, output_root=output_root)
+    config_logger = config.logger
     _seed_saved_results(config)
     _seed_watchlist_candidates(config)
     _seed_evidence(
@@ -1665,6 +1762,10 @@ def test_portfolio_bilingual_saved_stock_alias_conflict_fails_closed(
         source_summary={
             "result_id": "R1",
             "stock_code": "2330",
+            "decision_date": DECISION_DATE,
+            "data_date": DATA_DATE,
+            "source_snapshot_id": "snap-r1",
+            "source_snapshot_hash": "hash-r1",
         },
     )
 
@@ -1684,6 +1785,10 @@ def test_portfolio_bilingual_saved_stock_alias_conflict_fails_closed(
     position.source_summary = {
         "result_id": "R1",
         "stock_code": "2330",
+        "decision_date": DECISION_DATE,
+        "data_date": DATA_DATE,
+        "source_snapshot_id": "snap-r1",
+        "source_snapshot_hash": "hash-r1",
     }
 
     # A legacy/alternate English-only row remains compatible as well.

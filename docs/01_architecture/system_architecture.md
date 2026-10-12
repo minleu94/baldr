@@ -12,6 +12,10 @@
 
 保存使用 writer 時鐘，decision cutoff 必須不早於 available_at；來源 historical PIT=false、availability unknown 與 research_only 資格保留。Reader 使用有界 regular-file 讀取，逐層拒絕 reparse／hardlink，限制單 capture 2MiB、256 captures 與64MiB總量。這個來源 API 為完整策略生命週期與帳戶 producer 的接線基礎；交易日曆、進出場政策、成本、benchmark、績效與正常 UI 仍各自驗證。正式匯入八項測試、mypy與語法證據見[10/11 接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
 
+## 聲明持倉的保存推薦讀取（2026-10-12）
+
+`SavedRecommendationConditionContextProvider` 經 `build_recommendation_execution_queries()` 讀取已核驗 canonical execution 或已註冊 legacy DTO，不再旁路查 `runs.data_path`／自行讀 JSON。canonical 只接受 completed、有 decision 的結果，核決策日期與保存配置；baseline／current 必須獨立且 profile／version／計分配置可比。缺件、身份衝突或超過 evaluation date 時維持不可比較，不補為 HOLD。Query 的 `persisted_at` 只作讀取排序與 baseline 獨立性檢查，不提供官方 availability custody 或 PIT 資格；完整範圍及回歸見[五項治理 QA](../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。此局部接線不改完整 P06／M3 的接受狀態。
+
 ## 保存母體頁面讀取與取消契約
 
 `TaskWorker` 只對明確宣告內部參數的 task 發行一次性取消能力；精確 worker 類別、原始取消方法、Event 方法與未被 caller 覆寫的 callback 必須同時符合。能力綁定發行執行緒及傳入 task 的同一 callback 物件；任一 claim 嘗試均消耗能力，身分不符、跨執行緒或重用只返回序列讀取資格。這是程序內的語意檢查，不是外部輸入授權機制。

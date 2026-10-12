@@ -207,6 +207,66 @@ def test_explicit_calendar_override_uses_only_supplied_caches_offline(
             )
 
 
+def test_explicit_calendar_override_preflights_multiple_years_in_one_operation(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    calendar_root = tmp_path / "qa" / "calendar"
+    closure_root = tmp_path / "qa" / "temporary-closures"
+    closure_root.mkdir(parents=True)
+    _write_test_calendar_cache(calendar_root, year=2026)
+    monkeypatch.setattr(
+        "data_module.official_trading_calendar.safe_request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("explicit QA calendar must not probe online")
+        ),
+    )
+
+    operation_options = []
+    read_operation = runner.OfficialTradingCalendar.read_operation
+
+    def track_read_operation(calendar, **kwargs):
+        operation = read_operation(calendar, **kwargs)
+        operation_options.append(kwargs)
+        return operation
+
+    monkeypatch.setattr(
+        runner.OfficialTradingCalendar,
+        "read_operation",
+        track_read_operation,
+    )
+    args = SimpleNamespace(
+        calendar_cache_path=calendar_root,
+        temporary_closure_path=closure_root,
+        start_date="2026-12-31",
+        end_date="2027-01-04",
+    )
+
+    with pytest.raises(
+        runner.OfficialTradingCalendarError,
+        match="annual calendar cache unavailable for 2027",
+    ):
+        runner._calendar_for_run(
+            args,
+            db_path=tmp_path / "missing-market.sqlite",
+            reference_date=date(2027, 1, 4),
+        )
+
+    assert operation_options == [{"allow_online_probe": False}]
+
+    _write_test_calendar_cache(calendar_root, year=2027)
+    operation_options.clear()
+    calendar, allow_online_probe = runner._calendar_for_run(
+        args,
+        db_path=tmp_path / "missing-market.sqlite",
+        reference_date=date(2027, 1, 4),
+    )
+
+    assert allow_online_probe is False
+    assert calendar.calendar_cache_path == calendar_root.resolve()
+    assert operation_options == [{"allow_online_probe": False}]
+
+
 def test_explicit_calendar_override_fails_closed_but_legacy_uses_default(
     monkeypatch,
     tmp_path: Path,

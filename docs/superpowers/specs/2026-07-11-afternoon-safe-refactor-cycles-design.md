@@ -2,6 +2,8 @@
 
 > **歷史設計（2026-07-11）**：本文記錄的一次性 automation、舊排程與 Git 操作不代表目前任務狀態或執行授權。現況看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 與現行協作規範。
 
+> **來源與生命週期核對（2026-10-12）**：本文 H–L 是五輪、每輪 Planner／Implementation／QA 各一支的 15 個設定；D–G 四輪設計另有 12 個設定，兩者是不同時段與 scope。2026-09-25 的 [Codex automation inventory](../../06_qa/BALDR_CODEX_AUTOMATION_INVENTORY_20260925.json) 分別列出兩組 ID、狀態及 TOML 雜湊，目前 CODEX_HOME 中兩組 TOML 都為 PAUSED。各 automation 的本機 `memory.md` 與 ignored `output/automation/version_loop/refactor_afternoon_closeout_20260711.md`、`refactor_nightly_closeout_20260711.md` 記錄了 H–L 及 D–G 所屬執行交接鏈；H–L closeout 記 4 個完成切片、J 輪為 `NO_SAFE_SLICE`，D–G 所屬當日 00:00–12:00 closeout 記 6 個切片。這證明設定存在及有流程執行記錄，不等同各設定支數或完成切片數，也沒有獨立 Codex host event/audit receipt 可證明每次皆由排程器觸發，觸發來源仍未知。詳見[本次治理核對收據](../../06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md)。本文件仍只記錄歷史設計，不授權重建或重啟。
+
 ## 目標
 
 只在 2026-07-11 14:00–19:00（America/Los_Angeles）追加五輪 `SAFE_REFACTORING_MASTER_PROGRAM`。每輪維持 Planner → Implementation → QA 的完整交接，最多安排兩個彼此獨立且能在同一時間盒內完成的切片；不以增加數量為由略過 RED／GREEN、focused tests、conditional gates、push 或獨立 QA。

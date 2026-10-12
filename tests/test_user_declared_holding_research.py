@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+import hashlib
 import json
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 import pytest
@@ -29,11 +31,32 @@ from app_module.user_declared_holding_research import (
 )
 from app_module.portfolio_condition_monitor import PortfolioConditionMonitor
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation.contracts import (
+    Context,
+    ExecutionStatus,
+    RecommendationExecution,
+    RecommendationResultConfigSnapshot,
+    ReferenceKind,
+    Request,
+    VersionReference,
+)
+from app_module.recommendation.persistence import RecommendationExecutionPersistence
 from app_module.recommendation_repository import RecommendationRepository
+from data_module.result_artifact_store import ResultArtifactStore
+from decision_module.recommendation.contracts import DecisionBatch, RecommendationItem
 
 
 NOW = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
 EVALUATION_DATE = date(2026, 9, 15)
+
+
+@pytest.fixture
+def saved_recommendation_query_root(request: pytest.FixtureRequest) -> Path:
+    # Windows 驗證讀取器會逐層固定路徑且不跟隨 reparse point；
+    # 因此將隔離 query store 放在 repository root 下。
+    isolated = TemporaryDirectory(prefix=".tmp_srqr_", dir=Path.cwd())
+    request.addfinalizer(isolated.cleanup)
+    return Path(isolated.name).resolve()
 
 
 def _service(tmp_path: Path) -> UserDeclaredHoldingResearchService:
@@ -743,11 +766,330 @@ def _save_recommendation_result(
     os.utime(result_path, (mtime.timestamp(), mtime.timestamp()))
 
 
-def test_saved_recommendation_provider_compares_independent_results_and_identity(
+def _save_canonical_recommendation_result(
     tmp_path: Path,
+    *,
+    result_id: str,
+    as_of_date: date,
+    score: Decimal,
+    regime: str,
+    profile_id: str = "momentum",
+    profile_version: str = "2.0.0",
+    strategy_config_id: str = "score-config-v1",
+    request_profile_id: str | None = None,
+    request_as_of_date: date | None = None,
+    persisted_at: datetime,
+) -> None:
+    runs_dir = tmp_path / "recommendation" / "runs"
+    store = ResultArtifactStore(
+        artifact_root=runs_dir / "execution_artifacts",
+        database_path=runs_dir / "recommendation_runs.db",
+    )
+    persistence = RecommendationExecutionPersistence(store)
+    profile_ref = VersionReference(
+        ReferenceKind.PROFILE,
+        profile_id,
+        profile_version,
+    )
+    result_config = {
+        "profile_id": profile_id,
+        "profile_version": profile_version,
+        "strategy_config_id": strategy_config_id,
+        "regime": regime,
+    }
+    raw_result_config = json.dumps(
+        result_config,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    config_snapshot = RecommendationResultConfigSnapshot(
+        raw_result_config_json=raw_result_config,
+        config_sha256=(
+            "sha256:" + hashlib.sha256(raw_result_config.encode("utf-8")).hexdigest()
+        ),
+    )
+    execution = RecommendationExecution(
+        result_id=result_id,
+        request=Request(
+            as_of_date=(
+                request_as_of_date
+                if request_as_of_date is not None
+                else as_of_date
+            ),
+            profile_ref=VersionReference(
+                ReferenceKind.PROFILE,
+                request_profile_id or profile_id,
+                profile_version,
+            ),
+        ),
+        context=Context(
+            as_of_date=as_of_date,
+            created_at=persisted_at,
+            decision_at=persisted_at,
+            profile_ref=profile_ref,
+            result_config_snapshot=config_snapshot,
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(
+            items=(
+                RecommendationItem(
+                    stock_code="2330",
+                    stock_name="測試2330",
+                    rule_score=score,
+                    close_price=Decimal("100"),
+                    price_change=Decimal("0"),
+                    indicator_score=score,
+                    pattern_score=Decimal("0"),
+                    volume_score=Decimal("0"),
+                    industry="測試",
+                    reason_text="canonical saved query fixture",
+                    regime_match=True,
+                ),
+            ),
+            regime=regime,
+        ),
+    )
+    persistence.save(
+        execution,
+        label=result_id,
+        now=lambda: persisted_at,
+    )
+
+
+def test_saved_recommendation_provider_reads_canonical_query_pair(
+    saved_recommendation_query_root: Path,
+) -> None:
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id="canonical-baseline",
+        as_of_date=date(2026, 9, 10),
+        score=Decimal("80"),
+        regime="Trend",
+        persisted_at=datetime(2026, 9, 10, 10, tzinfo=timezone.utc),
+    )
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id="canonical-current",
+        as_of_date=EVALUATION_DATE,
+        score=Decimal("60"),
+        regime="Reversion",
+        persisted_at=datetime(2026, 9, 15, 10, tzinfo=timezone.utc),
+    )
+    service = _service(saved_recommendation_query_root)
+    record = service.create_holding(
+        _draft(declared_date=date(2026, 9, 10)), request_id="canonical-create-1"
+    )
+    provider = SavedRecommendationConditionContextProvider(
+        saved_recommendation_query_root
+    )
+
+    context = provider.get_condition_context(record, EVALUATION_DATE)
+
+    assert context is not None
+    assert "canonical-baseline" in context.source_id
+    assert "canonical-current" in context.source_id
+    assert context.source_summary["entry_total_score"] == Decimal("80")
+    assert context.current_total_score == Decimal("60")
+    assert context.availability_custody is False
+
+
+def test_saved_recommendation_provider_rejects_canonical_identity_mismatch(
+    saved_recommendation_query_root: Path,
+) -> None:
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id="canonical-baseline",
+        as_of_date=date(2026, 9, 10),
+        score=Decimal("80"),
+        regime="Trend",
+        persisted_at=datetime(2026, 9, 10, 10, tzinfo=timezone.utc),
+    )
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id="canonical-current",
+        as_of_date=EVALUATION_DATE,
+        score=Decimal("60"),
+        regime="Reversion",
+        profile_id="different-profile",
+        profile_version="9.0.0",
+        strategy_config_id="score-config-v9",
+        persisted_at=datetime(2026, 9, 15, 10, tzinfo=timezone.utc),
+    )
+    service = _service(saved_recommendation_query_root)
+    record = service.create_holding(
+        _draft(declared_date=date(2026, 9, 10)), request_id="canonical-create-1"
+    )
+    provider = SavedRecommendationConditionContextProvider(
+        saved_recommendation_query_root
+    )
+
+    context = provider.get_condition_context(record, EVALUATION_DATE)
+
+    assert context is not None
+    assert context.reasons == ("research_analysis_identity_mismatch",)
+    assert context.availability_custody is False
+
+
+def test_saved_recommendation_provider_rejects_request_context_profile_mismatch(
+    saved_recommendation_query_root: Path,
+) -> None:
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id="canonical-baseline",
+        as_of_date=date(2026, 9, 10),
+        score=Decimal("80"),
+        regime="Trend",
+        persisted_at=datetime(2026, 9, 10, 10, tzinfo=timezone.utc),
+    )
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id="canonical-current",
+        as_of_date=EVALUATION_DATE,
+        score=Decimal("60"),
+        regime="Reversion",
+        request_profile_id="different-request-profile",
+        persisted_at=datetime(2026, 9, 15, 10, tzinfo=timezone.utc),
+    )
+    service = _service(saved_recommendation_query_root)
+    record = service.create_holding(
+        _draft(declared_date=date(2026, 9, 10)), request_id="canonical-create-1"
+    )
+
+    context = SavedRecommendationConditionContextProvider(
+        saved_recommendation_query_root
+    ).get_condition_context(record, EVALUATION_DATE)
+
+    assert context is not None
+    assert context.reasons == ("research_analysis_identity_mismatch",)
+    assert context.availability_custody is False
+
+
+@pytest.mark.parametrize(
+    ("result_id", "context_date", "request_date"),
+    (
+        pytest.param(
+            "canonical-future-date",
+            EVALUATION_DATE + timedelta(days=1),
+            EVALUATION_DATE + timedelta(days=1),
+            id="future-as-of-date",
+        ),
+        pytest.param(
+            "canonical-mismatched-request-date",
+            EVALUATION_DATE,
+            EVALUATION_DATE - timedelta(days=1),
+            id="request-context-date-mismatch",
+        ),
+    ),
+)
+def test_saved_recommendation_provider_excludes_canonical_cutoff_mismatches(
+    saved_recommendation_query_root: Path,
+    result_id: str,
+    context_date: date,
+    request_date: date,
+) -> None:
+    _save_canonical_recommendation_result(
+        saved_recommendation_query_root,
+        result_id=result_id,
+        as_of_date=context_date,
+        request_as_of_date=request_date,
+        score=Decimal("80"),
+        regime="Trend",
+        persisted_at=datetime(
+            context_date.year,
+            context_date.month,
+            context_date.day,
+            10,
+            tzinfo=timezone.utc,
+        ),
+    )
+    service = _service(saved_recommendation_query_root)
+    record = service.create_holding(
+        _draft(declared_date=EVALUATION_DATE), request_id="canonical-cutoff-create-1"
+    )
+
+    context = SavedRecommendationConditionContextProvider(
+        saved_recommendation_query_root
+    ).get_condition_context(record, EVALUATION_DATE)
+
+    assert context is None
+
+
+def test_canonical_strategy_id_conflict_cannot_fall_back_to_hash() -> None:
+    profile_ref = VersionReference(
+        ReferenceKind.PROFILE,
+        "momentum",
+        "2.0.0",
+    )
+    strategy_hash = "sha256:" + "a" * 64
+    result = SimpleNamespace(
+        execution=SimpleNamespace(
+            request=SimpleNamespace(profile_ref=profile_ref),
+            context=SimpleNamespace(
+                profile_ref=profile_ref,
+                strategy_identity=SimpleNamespace(
+                    strategy_config_id="context-strategy-id",
+                    strategy_config_hash=strategy_hash,
+                ),
+                result_config_snapshot=SimpleNamespace(
+                    raw_result_config_json=json.dumps(
+                        {
+                            "strategy_config_id": "config-strategy-id",
+                            "strategy_config_hash": strategy_hash,
+                        }
+                    )
+                ),
+            ),
+        )
+    )
+
+    assert (
+        SavedRecommendationConditionContextProvider._analysis_identity(result)
+        is None
+    )
+
+
+def test_saved_recommendation_provider_fails_closed_for_legacy_id_mismatch(
+    saved_recommendation_query_root: Path,
 ) -> None:
     _save_recommendation_result(
-        tmp_path,
+        saved_recommendation_query_root,
+        result_id="registered-legacy-result",
+        stock_code="2330",
+        as_of_date=EVALUATION_DATE,
+        score=Decimal("80"),
+        regime="Trend",
+        mtime=datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc),
+    )
+    result_path = (
+        saved_recommendation_query_root
+        / "recommendation"
+        / "runs"
+        / "registered-legacy-result.json"
+    )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    payload["result_id"] = "different-unregistered-id"
+    result_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    service = _service(saved_recommendation_query_root)
+    record = service.create_holding(
+        _draft(declared_date=EVALUATION_DATE), request_id="legacy-create-1"
+    )
+
+    context = SavedRecommendationConditionContextProvider(
+        saved_recommendation_query_root
+    ).get_condition_context(record, EVALUATION_DATE)
+
+    assert context is None
+
+
+def test_saved_recommendation_provider_compares_independent_results_and_identity(
+    saved_recommendation_query_root: Path,
+) -> None:
+    _save_recommendation_result(
+        saved_recommendation_query_root,
         result_id="rec-baseline",
         stock_code="2330",
         as_of_date=date(2026, 9, 10),
@@ -756,7 +1098,7 @@ def test_saved_recommendation_provider_compares_independent_results_and_identity
         mtime=datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc),
     )
     _save_recommendation_result(
-        tmp_path,
+        saved_recommendation_query_root,
         result_id="rec-current",
         stock_code="2330",
         as_of_date=EVALUATION_DATE,
@@ -764,7 +1106,7 @@ def test_saved_recommendation_provider_compares_independent_results_and_identity
         regime="Reversion",
         mtime=datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc),
     )
-    service = _service(tmp_path)
+    service = _service(saved_recommendation_query_root)
     record = service.create_holding(
         _draft(declared_date=date(2026, 9, 10)), request_id="create-1"
     )
@@ -772,11 +1114,13 @@ def test_saved_recommendation_provider_compares_independent_results_and_identity
     condition_source = PortfolioConditionResearchProvider(
         market_source,
         condition_monitor=PortfolioConditionMonitor(),
-        condition_context_source=SavedRecommendationConditionContextProvider(tmp_path),
+        condition_context_source=SavedRecommendationConditionContextProvider(
+            saved_recommendation_query_root
+        ),
     )
-    context = SavedRecommendationConditionContextProvider(tmp_path).get_condition_context(
-        record, EVALUATION_DATE
-    )
+    context = SavedRecommendationConditionContextProvider(
+        saved_recommendation_query_root
+    ).get_condition_context(record, EVALUATION_DATE)
     assert context is not None
     assert "rec-baseline" in context.source_id
     assert "rec-current" in context.source_id
@@ -798,10 +1142,10 @@ def test_saved_recommendation_provider_compares_independent_results_and_identity
 
 
 def test_saved_recommendation_provider_does_not_self_compare_one_current_result(
-    tmp_path: Path,
+    saved_recommendation_query_root: Path,
 ) -> None:
     _save_recommendation_result(
-        tmp_path,
+        saved_recommendation_query_root,
         result_id="rec-only-current",
         stock_code="2330",
         as_of_date=EVALUATION_DATE,
@@ -809,14 +1153,16 @@ def test_saved_recommendation_provider_does_not_self_compare_one_current_result(
         regime="Trend",
         mtime=datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc),
     )
-    service = _service(tmp_path)
+    service = _service(saved_recommendation_query_root)
     record = service.create_holding(
         _draft(declared_date=EVALUATION_DATE), request_id="create-1"
     )
     market_source = lambda stock_code, _: _market(stock_code, price=Decimal("123"))
     condition_source = PortfolioConditionResearchProvider(
         market_source,
-        condition_context_source=SavedRecommendationConditionContextProvider(tmp_path),
+        condition_context_source=SavedRecommendationConditionContextProvider(
+            saved_recommendation_query_root
+        ),
     )
     model = service.read_research(
         evaluation_date=EVALUATION_DATE,
@@ -832,10 +1178,10 @@ def test_saved_recommendation_provider_does_not_self_compare_one_current_result(
 
 
 def test_saved_recommendation_provider_rejects_cross_profile_or_score_config(
-    tmp_path: Path,
+    saved_recommendation_query_root: Path,
 ) -> None:
     _save_recommendation_result(
-        tmp_path,
+        saved_recommendation_query_root,
         result_id="rec-baseline",
         stock_code="2330",
         as_of_date=date(2026, 9, 10),
@@ -847,7 +1193,7 @@ def test_saved_recommendation_provider_rejects_cross_profile_or_score_config(
         mtime=datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc),
     )
     _save_recommendation_result(
-        tmp_path,
+        saved_recommendation_query_root,
         result_id="rec-current",
         stock_code="2330",
         as_of_date=EVALUATION_DATE,
@@ -858,14 +1204,16 @@ def test_saved_recommendation_provider_rejects_cross_profile_or_score_config(
         strategy_config_id="score-config-v9",
         mtime=datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc),
     )
-    service = _service(tmp_path)
+    service = _service(saved_recommendation_query_root)
     record = service.create_holding(
         _draft(declared_date=date(2026, 9, 10)), request_id="create-1"
     )
     market_source = lambda stock_code, _: _market(stock_code, price=Decimal("90"))
     condition_source = PortfolioConditionResearchProvider(
         market_source,
-        condition_context_source=SavedRecommendationConditionContextProvider(tmp_path),
+        condition_context_source=SavedRecommendationConditionContextProvider(
+            saved_recommendation_query_root
+        ),
     )
     row = service.read_research(
         evaluation_date=EVALUATION_DATE,

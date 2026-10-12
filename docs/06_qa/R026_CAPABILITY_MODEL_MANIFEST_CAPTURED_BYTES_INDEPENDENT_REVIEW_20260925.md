@@ -55,3 +55,7 @@ A→B→A 或最後一次檢查後的變更；此 slice 不提供 pointer／cand
 
 未執行 scheduled main，未讀寫正式資料根目錄；未 stage、commit 或 push。全域狀態仍依 owner note
 維持 R026 `IN_PROGRESS`、`TMP-ML-01` `ACTIVE`、R028 `BLOCKED`。
+
+## 後續狀態補記（2026-10-10）
+
+上列全域狀態是本複核的 2026-09-25 checkpoint。後續 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 記錄正常 `RecommendationService` NP1／NP2 supported caller/profile 的 `TMP-ML-01` 遷移條件已 `CLOSED`；[R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 另記 2026-09-27 的 R028 scoped migration acceptance。這些更新不擴大本 manifest slice 的 bounded acceptance，也不表示 R026 全部 source evidence 或所有 runtime profiles 已完成。

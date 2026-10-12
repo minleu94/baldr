@@ -9,7 +9,11 @@ from unittest.mock import patch
 
 import pytest
 
-from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module import official_trading_calendar as official_calendar_module
+from data_module.official_trading_calendar import (
+    CalendarObservationClock,
+    OfficialTradingCalendar,
+)
 from data_module.official_trading_calendar_cache import (
     OfficialCalendarCacheError,
     TWSE_NEWS_CONTENT_URL,
@@ -105,6 +109,252 @@ def test_cache_is_hash_bound_full_year_and_used_without_network(
     assert evidence["source_hash"] == cache["source"]["response_sha256"]
     assert evidence["coverage"]["complete_year"] is True  # type: ignore[index]
     assert evidence["coverage"]["day_count"] == 365  # type: ignore[index]
+
+
+def test_annual_cache_is_revalidated_for_each_new_operation(tmp_path: Path) -> None:
+    cache_path = tmp_path / "calendar" / "twse_holiday_schedule_2026_recheck.json"
+    anchor = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+    _cache(cache_path, captured_at=anchor - timedelta(hours=1))
+    calendar = OfficialTradingCalendar(
+        tmp_path / "missing-market.sqlite",
+        calendar_cache_path=cache_path,
+    )
+
+    first = calendar.is_official_trading_day(
+        date(2026, 1, 5),
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(anchor),
+    )
+    with calendar.read_operation(
+        observation_clock=CalendarObservationClock.historical_as_of(
+            anchor + timedelta(days=8)
+        ),
+        allow_online_probe=False,
+    ) as operation:
+        expired_evidence = operation.evidence_for(date(2026, 1, 5))
+
+    assert first == (True, "twse_holiday_schedule_cache_open")
+    assert expired_evidence["is_trading_day"] is None
+    assert expired_evidence["reason_code"] == "twse_holiday_schedule_cache_expired"
+    assert expired_evidence["calendar_observation"] == {
+        "mode": "historical_as_of",
+        "effective_at": (anchor + timedelta(days=8)).isoformat(),
+    }
+
+
+def test_annual_cache_is_memoized_only_inside_immutable_operation(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "calendar" / "twse_holiday_schedule_2026_operation-clock.json"
+    anchor = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+    _cache(cache_path, captured_at=anchor - timedelta(hours=1))
+    calendar = OfficialTradingCalendar(
+        tmp_path / "missing-market.sqlite",
+        calendar_cache_path=cache_path,
+    )
+    original_loader = official_calendar_module.load_verified_twse_calendar_cache
+
+    with patch.object(
+        official_calendar_module,
+        "load_verified_twse_calendar_cache",
+        wraps=original_loader,
+    ) as load_cache:
+        with calendar.read_operation(
+            observation_clock=CalendarObservationClock.historical_as_of(anchor),
+            allow_online_probe=False,
+        ) as first_operation:
+            first = first_operation.evidence_for(date(2026, 1, 5))
+            second = first_operation.evidence_for(date(2026, 1, 6))
+            assert load_cache.call_count == 1
+            assert first_operation.observation.effective_at == anchor
+            assert second["calendar_observation"] == first["calendar_observation"]
+
+        with calendar.read_operation(
+            observation_clock=CalendarObservationClock.historical_as_of(
+                anchor + timedelta(days=8)
+            ),
+            allow_online_probe=False,
+        ) as next_operation:
+            next_operation_evidence = next_operation.evidence_for(
+                date(2026, 1, 5)
+            )
+
+    assert load_cache.call_count == 2
+    assert first["reason_code"] == "twse_holiday_schedule_cache_open"
+    assert second["reason_code"] == "twse_holiday_schedule_cache_open"
+    assert next_operation_evidence["reason_code"] == (
+        "twse_holiday_schedule_cache_expired"
+    )
+    assert next_operation_evidence["calendar_observation"] == {
+        "mode": "historical_as_of",
+        "effective_at": (anchor + timedelta(days=8)).isoformat(),
+    }
+
+
+def test_annual_missing_negative_is_not_reused_after_cache_appears(
+    tmp_path: Path,
+) -> None:
+    cache_dir = tmp_path / "calendar"
+    anchor = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+    calendar = OfficialTradingCalendar(
+        tmp_path / "missing-market.sqlite",
+        calendar_cache_path=cache_dir,
+    )
+    first = calendar.is_official_trading_day(
+        date(2026, 1, 5),
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(anchor),
+    )
+    _cache(
+        cache_dir / "twse_holiday_schedule_2026_after-miss.json",
+        captured_at=anchor - timedelta(hours=1),
+    )
+    second = calendar.is_official_trading_day(
+        date(2026, 1, 5),
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(anchor),
+    )
+
+    assert first == (None, "lacks_official_evidence")
+    assert second == (True, "twse_holiday_schedule_cache_open")
+
+
+def test_temporary_closure_positive_is_rehashed_each_new_operation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "closures" / "twse_temporary_closure_20260910.json"
+    target = date(2026, 9, 10)
+    observed = datetime(2026, 9, 10, 13, 0, tzinfo=timezone.utc)
+    source_url = (
+        "https://www.twse.com.tw/zh/announcement/announcement/detail.html?id=abc"
+    )
+    raw = "<html>臺灣證券交易所集中交易市場於115年9月10日全日休市一天，因颱風影響。</html>".encode()
+    cache = build_twse_temporary_closure_cache(
+        closure_date=target,
+        raw_response=raw,
+        source_url=source_url,
+        requested_at=observed - timedelta(minutes=2),
+        captured_at=observed - timedelta(minutes=1),
+        response_status=200,
+        response_headers={"Content-Type": "text/html"},
+        response_url=source_url,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_twse_temporary_closure_cache(path, cache, allowed_root=tmp_path)
+    calendar = OfficialTradingCalendar(
+        tmp_path / "missing-market.sqlite",
+        temporary_closure_path=path,
+    )
+    first = calendar.is_official_trading_day(
+        target,
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(observed),
+    )
+    changed = json.loads(path.read_text(encoding="utf-8"))
+    changed["event"]["status"] = "open"  # type: ignore[index]
+    path.write_text(json.dumps(changed), encoding="utf-8")
+    second = calendar.is_official_trading_day(
+        target,
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(observed),
+    )
+
+    assert first == (False, "twse_temporary_closure_official")
+    assert second == (None, "lacks_official_evidence")
+
+
+def test_temporary_closure_missing_negative_is_not_reused_after_cache_appears(
+    tmp_path: Path,
+) -> None:
+    target = date(2026, 9, 10)
+    observed = datetime(2026, 9, 10, 13, 0, tzinfo=timezone.utc)
+    cache_dir = tmp_path / "closures"
+    calendar = OfficialTradingCalendar(
+        tmp_path / "missing-market.sqlite",
+        temporary_closure_path=cache_dir,
+    )
+    first = calendar.is_official_trading_day(
+        target,
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(observed),
+    )
+    source_url = (
+        "https://www.twse.com.tw/zh/announcement/announcement/detail.html?id=abc"
+    )
+    raw = "<html>臺灣證券交易所集中交易市場於115年9月10日全日休市一天，因颱風影響。</html>".encode()
+    cache = build_twse_temporary_closure_cache(
+        closure_date=target,
+        raw_response=raw,
+        source_url=source_url,
+        requested_at=observed - timedelta(minutes=2),
+        captured_at=observed - timedelta(minutes=1),
+        response_status=200,
+        response_headers={"Content-Type": "text/html"},
+        response_url=source_url,
+    )
+    # 保留第一次讀取時目錄不存在的負例；確認 negative 不重用後才建立 writer 目錄。
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    write_twse_temporary_closure_cache(
+        cache_dir / "twse_temporary_closure_20260910.json",
+        cache,
+        allowed_root=tmp_path,
+    )
+    second = calendar.is_official_trading_day(
+        target,
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.historical_as_of(observed),
+    )
+
+    assert first == (None, "lacks_official_evidence")
+    assert second == (False, "twse_temporary_closure_official")
+
+
+def test_compound_read_uses_one_live_observation_across_scan_and_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed_now = datetime(2026, 9, 10, 13, 0, tzinfo=timezone.utc)
+    cache_root = tmp_path / "calendar"
+    cache_path = cache_root / "twse_holiday_schedule_2026_single-clock.json"
+    prior_year_cache_path = cache_root / "twse_holiday_schedule_2025_single-clock.json"
+    _cache(cache_path, captured_at=fixed_now - timedelta(hours=1), year=2026)
+    _cache(
+        prior_year_cache_path,
+        captured_at=fixed_now - timedelta(hours=1),
+        year=2025,
+    )
+    calls: list[datetime] = []
+
+    class CountingDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = fixed_now if tz is not None else fixed_now.replace(tzinfo=None)
+            calls.append(value)
+            return value
+
+    monkeypatch.setattr(official_calendar_module, "datetime", CountingDateTime)
+    records = OfficialTradingCalendar(
+        tmp_path / "missing-market.sqlite",
+        calendar_cache_path=cache_root,
+    ).get_recent_official_trading_days(
+        date(2026, 1, 5),
+        5,
+        include_reference=True,
+        allow_online_probe=False,
+        observation_clock=CalendarObservationClock.live_now(),
+    )
+
+    assert len(calls) == 1
+    assert len(records) == 5
+    assert {
+        json.dumps(record["evidence"]["calendar_observation"], sort_keys=True)
+        for record in records
+    } == {
+        json.dumps(
+            {"mode": "live_now", "effective_at": fixed_now.isoformat()},
+            sort_keys=True,
+        )
+    }
 
 
 def test_cache_rejects_rehashed_payload_with_changed_raw_response(

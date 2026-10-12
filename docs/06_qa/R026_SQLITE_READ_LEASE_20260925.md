@@ -64,3 +64,7 @@ R015 使用兩個 fresh TEMP 根執行彼此獨立、內容有重疊的三檔路
 兩次均設 `PROFILE=test`，將 `DATA_ROOT`、`OUTPUT_ROOT` 與 pytest `--basetemp` 指向各自 TEMP 子目錄；未接觸正式資料。Scoped mypy 命令 `python -B -m mypy --follow-imports=silent data_module/ml_historical_snapshot_provider.py tests/test_r026_sqlite_read_lease.py` 結果為 2 source files／0 issues；provider、lease test 與 provider test 的 `py_compile` 通過。QA 執行結果為本次工具輸出，未另存 pytest log，故不提供 log hash。
 
 複核確認同連線 `data_version`、單次 load 的交易結束、WAL commit 觀察、DELETE journal 鎖與交易後寫入檢查。此結論只接受 provider-only bounded slice：lease 尚未接入 service，`close()` 不自動呼叫 `assert_unchanged()`；sidecar／SQLite atomicity、durable generation、跨多次 provider call 的同版本保證與完整 ABA 排除仍未解。R026 維持 `IN_PROGRESS`，`TMP-ML-01` 維持 `ACTIVE`。
+
+## 後續 service 接線補記（2026-09-25）
+
+上段「lease 尚未接入 service」記錄 provider-only 複核時點；後續 [live calibration SQLite lease wiring receipt](R026_LIVE_CALIBRATION_SQLITE_LEASE_WIRING_20260925.md) 記錄單次 provider `load()` lease 已接入 live recommendation calibration，並僅接受該 bounded service slice。這不擴大 provider-only receipt 的驗證範圍，也不證明跨資源原子性、durable generation、ABA 排除、historical replay 多次呼叫同版本或整體 R026 完成。

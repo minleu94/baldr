@@ -84,3 +84,7 @@ Mypy 檢查 2 個來源檔、0 項問題；`py_compile` 結束碼 0；`git diff 
 **資料來源可用性邊界：** 目前 `SnapshotReference.source_revision`、availability、quality、scope 有些仍是 `None`／`UNKNOWN`，詳見 R026 report 的 source identity slices。這些值須原樣表示 unknown，不能以新的 manifest digest 升格為 `KNOWN`。UNKNOWN 應按現行政策拒絕或降級推論；它不要求本輪做全市場資料回填／重建，也不應無限擴張 producer scope。來源完整性／PIT 驗收與 R026 runtime contract 是不同 Gate。
 
 全域狀態維持：C1 工程 Gate `PASS`；R020、R026 `IN_PROGRESS`；C2 未完成；R027 `INCONCLUSIVE`、`AB-ML-01` `OPEN`，R028 `BLOCKED`。
+
+## 後續獨立複核與 supported handoff 狀態（2026-10-10）
+
+本文開頭的 `READY_FOR_INDEPENDENT_REVIEW` 已由 [manifest independent review](R026_CAPABILITY_MODEL_MANIFEST_CAPTURED_BYTES_INDEPENDENT_REVIEW_20260925.md) 後續收據取代：該切片無 P0／P1／P2，並獲 bounded acceptance。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，依賴表中「尚無 `PreparedMLRuntimeInputV1`」也是 2026-09-25 的歷史描述；NP1／NP2 supported normal-service route 後續已使用 typed prepared-runtime／post-calibration handoff，`TMP-ML-01` 該遷移條件為 `CLOSED`。這不表示本 experimental manifest-capture slice 本身已接入 service，也不關閉其他 R026 source-evidence slices、profiles 或 production release。

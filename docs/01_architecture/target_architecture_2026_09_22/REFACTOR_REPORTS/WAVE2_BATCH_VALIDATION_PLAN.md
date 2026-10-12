@@ -1,5 +1,7 @@
 # Wave 2／R008 批次驗證計畫
 
+> **2026-10-11 直開範圍提示：** 本文件的 `GATE_STATUS`、測試結果與「Wave 3 可啟動」均是 R008 result-ID 勘誤後的歷史驗收快照；R031 current row 將 R008 定界為 `ACCEPTED_WITH_TYPED_CONTRACT_SCOPE`，後續 consumer wiring 由 R011–R019 分別處理，見 [R031 task index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md) 與 [R031 closeout](../../../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。下方 test-inventory 缺項說明也屬當時狀態；2026-10-11 核對時兩個測試均已列入[目前清冊](../../../../qa/full_app_healthcheck/test_inventory.py)，這只確認項目存在，不代表整體 inventory audit 通過。
+
 ## Gate 判定
 
 **GATE_STATUS: PASS_AFTER_RESULT_ID_ERRATUM**

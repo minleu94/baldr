@@ -1,5 +1,368 @@
 # Baldr 補完接續（2026-10-11，進行中）
 
+> 最新：使用者為文件治理要求暫停；Root QA Python0、subagent已停。Health Main1PASS；P01 M25未封存、Main native crash未解；P08完整旅程待天然時間。接手prompt見末節，完整Gate仍待。
+
+> 前次紀錄：P01唯一warm profiling90樣本完成且Job自然0；P39 40/2，V2首次建庫後日曆回讀與unit fixture仍待。Health joint v3正常957檔mypy零錯誤。完整Gate未接受。
+> 前次紀錄：日曆50PASS、legacy17PASS/1SKIP與Health saved-log來源回放均通過。P08 fixture5原41仍40/1，已定位首次benchmark writer錯用reader的missing-DB前置條件；新產品修正待審查，完整Gate未接受。
+
+> 前次紀錄：日曆public selector原50項與actual來源守衛通過；Health保存log來源回放通過但新normal types待跑。Legacy v2終態見末節；P08原41仍40/1停V2 benchmark，fixture5 writer時鐘修正待QA，完整Gate未接受。
+
+> 前次紀錄：固定P38＋fixture2正常型態6／14來源與projection15通過；績效40/1停在V2首個intent的日曆因果守衛，完整Gate未接受。詳見本頁末節與具名收據。
+
+## 最新接續：程序資源限制與 Health v6 真 Worker 驗證
+
+使用者於 2026-10-11 恢復補完，要求禁止 subagent 留存／反覆增加 Python 造成 RAM 耗盡。本輪限制已寫入 shared context；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 scope 仍有效。沒有新增完整工作包或 Gate 接受。
+
+### 程序資源與收尾
+
+Root 的 `run_one_owned_qa_root02.py` SHA `89e3886b740010926bbb03ea1c409583b09f21bb348f8ade23c3df0f3e09fd1c` 用同工作區 named mutex 阻止重複 QA，父程序 suspended assign Job 後才 resume；讀回 kill-on-close、12 個程序及 8 GiB 全 Job committed-memory 上限，啟動前要求至少 8 GiB 可用 RAM。Orphan probe 收據 `single_owned_qa_dc04c364e4974270be1a2bdb38efcf23/receipt.json` SHA `1109fc11c2b81c905000ababea787aafcb16873aa6f0c19b8064c06df2de79f5` 證明父退出後剩餘子程序被同 Job 回收，終態0。正常驗證若需要強制回收，仍以125拒絕成功。未宣稱 mutex 競爭負例或記憶體分配壓力測試已執行。
+
+本輪所有已結束 Job 都排空、handle 關閉、mutex 釋放；只有一位 Luna Max 做 P01 靜態候選，禁止 Python／import／compile／QA。Host 盤點有其他專案程序；20:32 UTC 新一批 Python 的父系實際屬於 Antigravity IDE 的兩個 language server 與 formatter，與本 QA Job 不同，沒有終止它們。PID 可能重用，判斷必須含建立時間、實際來源與父系；不能以舊 PID 或整台 Python 數量推論洩漏。
+
+### Health 來源清冊與傳遞
+
+原 617 pins 的正式父程序補充先重建為875，explicit F12 synthetic root 未設定的 setup failure保留；納入 scripts 後為887。Root 再由全部31候選入口、遞迴 AST 匯入及15個可解析內嵌 child 字串重建764模組／891 pins；收據 `health_complete_overlay_closure_16e77edb706a474cba81ac9ee6e54be5/receipt.json` SHA `a356d7216765683671f560fcd02b04f8a1814d4b76dcc0c160f280cc8bdf6707`。這是靜態允許清冊；每個真 PID 仍檢查實際 exec／sys.modules 路徑與 SHA。
+
+17 個原合成來源與月營收 DB／CSV／raw HTML 起訖固定，SQLite 三種 sidecar 保持不存在；最長290字元來源只在 OS syscall 用 extended path，不改 canonical identity。Qt 的相對虛擬 `signature_bootstrap.py`／`shibokensupport/*` 僅在沒有對應 repo 檔案、shiboken6 載入路徑與三個檔案 SHA固定時另記第三方 embedded source；其他未知 repo source照樣拒絕。不宣稱全 Qt binary 核驗。長 child `-c` 程式用 create-only 私人檔案傳遞，完整 bytes／SHA、原指令與改送指令均保存；child核 SHA 後以原 `<string>` 執行，argv／原 supervisor／期限不變。
+
+舊原始失敗均保留：root03 長路徑讀取、root04 scripts 漏列、root05 工具自身字串轉換 SyntaxError（未跑 pytest）、root06 Qt 虛擬來源錯判及 WinError206、root07 Health baseline 依賴漏列。這些不算產品通過，沒有放寬原 candidate assertion 或修改 v6 freeze。
+
+### 真程序結果
+
+固定 v6 manifest SHA `5adf6bcf2c9166e9f5e18d0f2247ee96f3ce5c0178fe0af5b588dd9c1f37099e`；root08 runner SHA `d1f0b3bddd7fdc0d615e3be410f04f1c5f94c1cf0cb8d89108c76dc601cb3f35`。
+
+- 聚焦：**3 PASS／2 deselected／14.56秒／native0**。成功選擇保存、保存失敗保留舊選擇、真 TaskWorker 五代 A→B→A、stale不保存、cancel與close owner保留直到matching native finish／registry排空。四個 actual PID、完整第一方 origin clean、pins起訖相同、pycache空。收據 `health_v6_focused_9428a9b8899c4f63a2a9962529a17a44/receipt.json` SHA `5def740b6d83e442cf36f01abb0ea41037ebe72339a2778d5002203ffb4a811d`；外 Job SHA `a152b6605d85c0dd810f6ada269745d3580be5582dcfcd1b11a2c24668377356`，剩餘0、未強制回收。
+- 全組：**4 PASS／1 FAIL／23.65秒／native1**。另取得 panel lifecycle 通過；writer 階段被 F12 canonical SQLite URI guard 拒絕，daily-refresh blocked／PermissionError。尚未進入完整 Main返回與fresh PID reopen。六個 actual PID、origin clean、pins相同、pycache空；收據 `health_v6_full_a1cd730557e04663a4e5be2e184ca61a/receipt.json` SHA `caaaa76ac0ddcb178dd9ecac533635685deab5c1b5e98b78ab2dbac8283411db`；外 Job SHA `d4c4870b27282f6060c07595d6e3f8fd0fe36c5b1022269c6c9463726ca51a83`，剩餘0、未強制回收。
+
+兩輪都有 F12 helper 預先導入而無法 pytest assertion rewrite 的 warning；原 child assertion照常執行，沒有隱藏 warning。結果不相加。接續先診斷 writer URI 原始值、canonical reconstruction 與 callsite，保留護欄；再完成 Main、fresh PID及正式 UI／型態驗收。P01 v11 靜態續辦；P08 v30 目錄內 manifest／README 仍指 v29，暫停前未完成封裝，不可當成已交付候選執行。
+
+### 保存與回滾
+
+五份共用文件前像、20組原始收據／日誌、parent/child origin、傳遞程式與工具先保存到本輪 `resume_resource_focus_handoff_*` packet。Rollback只在 after bytes相同時逐檔還原保存前像；若後續有人改動，人工合併本輪新增段落，不用整檔 git restore。只有 QA 工具及文件異動；正式產品、Manual 操作與架構不變。
+
+## 最新接續：Health v6 靜態通過與父程序閉包拒絕；P01 v10 預檢原文比較失敗
+
+上一輪為狀態查詢，分類 no progress。本輪取得原方法、完整差異與真程序拒絕證據，改變接續動作，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 仍保留，沒有新增完整工作包或 Gate 接受。
+
+### Health v6：正常選擇提交與 bootstrap
+
+Root 先前以 v5 原函式 AST 建構 bootstrap 重現 `NameError: _health_json`：六處外層 f-string 插值引用只有子程序字串內才定義的 alias。原證據 `health_v5_bootstrap_probe_3e6a550c865743209077b716cd7f03b3/receipt.json` SHA `74f1e1d6229785948bfd32acc540dac6448f69e8d6e5eb5ecc74d4e9bc1dd423` 保留；host 只構字串，未啟動 child／Qt／產品。
+
+v6 manifest SHA `5adf6bcf2c9166e9f5e18d0f2247ee96f3ce5c0178fe0af5b588dd9c1f37099e`。Root **617 unique pins／716 checks**、31候選／25正式前像、10 target 含4新檔的 full patch 與僅 panel／candidate test 兩 target 的 v5→v6 delta 全 hunk 重建。58個原 outer AST assert 保留，新增16個 outer assert；既有測試函式（含原 child scripts）AST相同，僅 bootstrap 六處 json.dumps 與 stage prefix 的兩新鍵窄改。原 `_on_finished` AST 五案證明 current open_candidate 先解包再保存與呈現、open_saved 不再保存、stale／closing 不保存、保存失敗不覆寫原選擇。bootstrap 19440字元成功建構與 AST parse；未執行 child 字串。靜態收據 `health_v6_static_aedda8c0ca0a4115b53dd4de4ca30cb3/receipt.json` SHA `4526c557627fd37e545f4f782d7b5949e2db7adb76278fd0ef6bcf89c80e3cc3`。
+
+Root 新增完整第一方 Python audit exec／sys.modules 來源核驗後啟動聚焦候選，actual parent PID55588，native1、來源起訖相同。parent 導入正式 F12 test helper 時，其 `app_module.personal_watchlist_service.py` 不在候選509靜態閉包內，guard 拒絕；沒有進入三項 test body、沒有取得成功 UI 或真 TaskWorker 證據。原始 stdout／stderr／parent-origins 與收據 `health_v6_focused_19cf99d628424edf8c7617d73f3d0200/receipt.json` SHA `0cd62c7b27a9449a36797fe9f75893ae79125899a7f0b0977d59b3992b01e1b6` 保留；不能推論產品缺陷。Owner 另建 parent pytest/F12 helper 全遞迴 AST closure artifact，v6不動；不逐檔猜補、不放寬 guard。這次 guard 範圍是所有實際第一方 repository Python，未宣稱外部 Qt binary 完整核驗。
+
+### P01 v10：sidecar 已修，預檢自身的片語守衛仍錯
+
+Root核 **594 pins／1057 checks／78 indexed files／380 closure**；8段 full diff 全 hunk 重建，git文字差異明示 CRLF→LF、raw bytes另由SHA固定。query／完整query test／bridge byte與AST沿v9；80 formal sources、原 fixed inputs／protocol／semantic oracle 完全相等。預檢與supervisor sidecar常數指向實際 `.json.sha256`。靜態收據 `p01_v10_static_a2ba79927efa4c4c8c0f091363da04c3/receipt.json` SHA `b22a77016c1028c08716f89816ee4384064c505e73dcf967ec22710b72ce5b04`。
+
+真正 pure preflight actual PID7712／native1／來源起訖相同，line144要求 literal `full DTO` 存在於 `semantic_oracle.all_pages`，但原各版都使用 `each role uses real View next-button TaskWorker path for all 20 pages and compares each complete DTO to serial fallback before warm samples`；`full nested equality` 是另一 equality欄。這是預檢比較原文錯置，不是已證明的 protocol drift。收據 `p01_v10_preflight_682f8f7d129248aabf8a4aa0d29c3616/receipt.json` SHA `1d57b5c710f520d10c3189dc137eed1d3539d2a8690f06cbaa0ccf72cd125b52`。保留v10，v11窄修精確 metadata 驗證並先逐行審核剩餘preflight／supervisor／probe；origin與matrix未釋。原5 cold＋1 warm、1000列／20頁、每操作30樣本／600秒與strict<300ms全部保持；最後有效filter446.3604ms仍未達標。
+
+### 接續、Coverage 與保存
+
+P08 owner 靜態發現 observation projection 仍遞迴剔除 nested同名欄位，另建 sibling 做已核 envelope 淺層剔除並保留 nested負例；尚未由root驗收。不改來源 expiry／available/captured／cache SHA/path／date/status 守衛。
+
+Raw與四文件前像先保存 `output/qa/baldr_completion_20261011/root/health_v6_p01_v10_handoff_59a3b850029a4fbba2e795509000c965`。本輪正式產品、原資料、Manual操作及架構未改，Coverage只需Snapshot、具名QA、shared state與handoff四檔；rollback僅在本輪after bytes相同時還原保存前像，不覆寫後續他人變更。所有root程序terminal，完整goal仍active。
+
+## 最新接續：公開日曆同源雜湊差異核實；Health v5 正常開啟阻擋
+
+本輪完成公開日曆runtime核實與Health全文patch/原AST診斷，取得改變下一步的證據，分類progress。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保留；沒有完整工作包或產品Gate接受。
+
+### P08 Calendar v5 觀測封套
+
+Root以fixture05保存的calendar/cache與DB原件為唯讀來源，先複製到新私人根，再沿真正 `OfficialTradingCalendar.read_operation(allow_online_probe=False).evidence_for(2026-10-07)` 做兩次live讀取，socket連線／DNS audit拒絕；未改歷史clock或正式source。兩次來源cache/path/hash/available_at/captured_at/expires_at/status/date完整相同，原candidate `_stable_calendar_projection` 已去validated_at，但仍含不同 `calendar_observation.effective_at`，因此原hash不同；僅去該觀測封套後完整dict相等。
+
+診斷收據 `p08_calendar_observation_probe_deed93205e704f5a8c5071ba46b75478/receipt.json` SHA `0c0a18a949a4d1ca48799c5f7dd1fc5da619d319e586ad04dbde2f04fcc57167`，native0／actual PID 28752／source guard clean／502pins相同。原fixture與兩私人副本起訖bytes相同、fresh pycache空。這是公開reader與原helper的根因證據，不是修正接受或策略生命週期驗收。原owner v28需區分不可變source hash與operation observation，保留expiry、來源時鐘、cache SHA/path、日期/status及因果守衛；projection語意變更須明示版本與舊版拒絕/decoder，不能靜默重解釋原v3 artifact。
+
+### Health v5 全文與正常開啟拒絕
+
+Manifest SHA `54e13cd530b07682cae2f5815dcd2c68289dc6ceb64cef04011aee778ec66e61`。Root **609 unique pins／707 checks／592 role entries**，31候選與25current正式前像相同；964022-byte full patch **10targets含4new** 及v4→v5 **2targets** 所有hunk逐行重建。其餘候選bytes沿v4，不把既有風險導覽或靜態清冊當runtime證明。
+
+`PositionHealthSavedPanel._on_finished` 第243行對open_candidate在解包 `opened,record=value` 之前呼叫 `selection_store.save(record)`，record尚未賦值。Root僅抽原函式AST執行最小store/label，實際saved_calls=0，捕獲UnboundLocalError後return；因此正常選擇不能保存/呈現。收據 `health_v5_static_rejected_03c368846b50443888dc08fe5d0d0585/receipt.json` SHA `ead6b82565149d4ba146219d6210fe921f84c80ae73586138dfdbde9e07f730a`。未匯入Qt/專案、未跑Main/完整candidate QA，產品v5拒絕。原owner另建v6 narrow sibling先解包再UI thread commit，維持generation、stale/取消不落盤、open_saved不另保存、原exact bundle及真TaskWorker斷言，並加保存失敗保留原選擇案例。
+
+P01 v9 sidecar缺件拒絕仍有效，v10新sibling待審；原strict<300ms與446.3604ms缺口保持。Raw/helpers/四文件前像先保存 `output/qa/baldr_completion_20261011/root/calendar_probe_health_v5_handoff_6715e63b151b44a3b1b803c7c0679608`；root QA皆terminal，正式產品與原資料未變，完整goal保持active。
+
+## 最新接續：P08 fixture05 日曆一致性失敗；P01 v9 預檢缺件拒絕
+
+上一goal turn主要回答產品狀態，分類no progress。本輪獨立核P01新候選及保存P08新全組終態，證據改變接續動作，分類progress。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4維持，沒有完整工作包或產品Gate接受。
+
+### P08 同版八檔原回歸
+
+Fixture05 manifest SHA `da00bdcbf84f2aa73e24941d8d8a72200fc093aa0d6002a1d2a52bcdcf6b734b`。Root靜態完整重建delta、核14產品namespace正規化bytes仍同v27/04、393原assert完整保留；新public exact reader回讀增加7個DTO／eligibility=false斷言。Static `p08_fixture05_static_38bbbd94ea754525ab3b054a88a420a8/receipt.json` SHA `ba35d6f086af6f56ec00a31d123121ded5f0d56a80d92b129b8ba8060f73e950`。真14origins native0／505pins相同／來源守衛clean；收據SHA `6b88ee37711099743753b3437a04d800c64320d63cb157637a93e28b35df5904`。
+
+八檔全組 **60 PASS／2 FAIL／1 skip／70.63秒／native1**，506pins相同、source guard clean、3 actual PIDs。Suite `p08_fixture05_suite_0c5348c1cb4e48648eb33e8cd2da900e/receipt.json` SHA `1528001babf5190e4d3d8d492c31d55e5fa670de22f1a628d33568161dd01a4d`；stdout/JUnit/actual origins全部保存。兩個失敗是完整MA旅程與public-v5 availability案例，都於intent preflight/current日曆核驗報 `p08_intent_calendar_changed_during_preparation`，未到新增公開reader斷言。不能將此版視為通過，也不能與較早其他版本的通過數相加。
+
+Root靜態定位 `_stable_calendar_projection` 只移除validated_at，Calendar v5 source_evidence新增的calendar_observation內即時clock仍參與hash；KD亦復用此helper。已交原owner新v28 sibling核同operation clock與不可變source projection，來源available/captured/expires/cache SHA/path/status/date及因果檢查保持。另新public fixture的 `_TARGET_READ_CUTOFF` 無定義，這是未執行到的靜態缺口，須用既有checkpoint時鐘補正並保留7斷言。績效草稿的版本契約／有界讀取、完整benchmark及正常UI仍待。
+
+### P01 v9 靜態來源與啟動拒絕
+
+Root核 **512pins／552checks**，75個封套檔案SHA/size一致；380-module closure只重綁五個正式已套依賴。原query/test/bridge bytes與AST相同，外層source/runtime、sealed inputs、normal protocol及完整DTO oracle相同，五cold／一warm、1000×20、三類各30樣本、600秒及strict<300ms門檻保持。
+
+預檢第18行與supervisor第33行精確sidecar常數都指向不存在的 `...20261011.sha256`，實際freeze只保存 `...20261011.json.sha256`。Root在執行前拒絕；static `p01_overlay_v9_static_rejected_492024a2ca364caa9f8712f61f3b8824/receipt.json` SHA `9d5b16e9dc55fbfacdddc4622bc04293ce7706d83624100608a525199c549009`。這輪未跑v9 preflight/origin/matrix，未讀sealed store，也未宣稱全文diff重建。原件保留，原owner另建v10 narrow sibling修正精確檔名與self pins。最新有效filter p95仍446.3604ms，不授P01／300ms Gate。
+
+Health v5 owner自查完整diff漏四個candidate-only new files，原freeze保留，另建完整diff sibling待root審。原正式caller同版322PASS及954檔mypy證據維持；這輪沒有套正式產品或改正式資料。四文件前像、來源收據與helpers先保存於 `output/qa/baldr_completion_20261011/root/p08_fixture05_p01_v9_handoff_e45d69a21ff0447ab89f9143b1e16b50`，完整goal維持active。
+
+## 最新接續：正常持倉日曆預設 clock 修正及同版驗證完成
+
+上一 goal turn 回答狀態，分類 no progress；本輪完成八模組型態來源核驗與原回歸接續，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包或產品 Gate 結案。
+
+### 正式 caller 與原斷言
+
+Root已完整審caller四檔diff與所有原測試AST。`PortfolioService`保留ledger預設now provider，但cadence只收到caller明示provider；widget沒有明示clock時以live日曆核驗，不從service.now猜歷史模式。明示historical clock仍要求aware／不晚於現在，不授PIT；custom cadence identity優先。原金融函式未改、沒有新增裸float，日曆只核決策時可得觀測。Apply收據SHA `021d60e457a046540cd7316ce2604cd1a7a1c77221a572b0ab64b22967375783`及四前像保留。
+
+首輪23檔320 PASS／2 FAIL／2 skip：兩個新widget fixture缺output_root，未到clock斷言。Root只補新fixture路徑，所有原斷言AST相同；產品未為fixture放寬。首輪、fixture apply與第二輪raw均保存。
+
+正式23檔 **322 PASS／0 FAIL／2環境skip**；兩skip仍是無symlink權限，未宣稱平台負例已驗。原工作台 **85 PASS**、原validator **25 PASS／4 skip**、私人 **13檔語法通過**。第二輪收據 `calendar_callers_formal_60c43a88e2fd4d088193ab40835f81e1/receipt.json` SHA `4ce3cffc674ca8ad6fd3c374be1fa02227fe9c5fd0aeec6836ea963fad12ef3c`，各上述stage actual origins clean、起訖1453pins相同。第二輪總native125是型態stage來源守衛拒絕，不能改寫為總native0。
+
+### 型態與Qt來源證據
+
+正常原mypy.ini／follow-imports／explicit-package-bases／no-fast-exit之八模組 **954檔0 issues**。舊守衛的Qt原生內嵌signature_bootstrap raw marshal雜湊在完整code欄位讀取前後不同；舊政策與兩次來源拒絕保留，不以不存在的repo檔案補白名單。新獨立reference政策核相同七原生runtime SHA、26精確虛擬名稱及13 ZIP成員；九函式所有執行／traceback code欄位、巢狀code與typed constants逐值保存。另在同一型態PID起訖要求相同module／loader／importer class／九函式與不可變code物件。初末完整欄位相同，任何未知／缺失來源仍拒絕。
+
+獨立types-only收據 `calendar_callers_types_fields_f3830bddc3884274b0476b9c101e5f0e/receipt.json` SHA `88a0ffb81fd54412c742f8d4a0f66a2e33fde2ace11297180b6cdc74bf9d718f`：actual PID 11672、native0、來源守衛clean、1456pins相同、fresh pycache空。此收據未重跑23檔；與第二輪來源hash逐項同版比對後接受本切片的回歸／UI強制命令／型態與語法，不累加舊測試，不授全部巢狀PID或程序樹資源接受。
+
+### 仍開放
+
+Health正常Main封存選取、真TaskWorker取消／重選／close與exact bundle反例由既有owner準備v5；P08 fixture04實際raw helper並非public reader已核實，05另加7公開DTO／qualification斷言待root全組；績效03草稿以未接受04為基準並明示9條unresolved import，未授來源或績效接受。P01 v9重綁五已整合依賴，完整矩陣待審；最後有效filter p95仍446.3604ms，原strict<300ms門檻不變。
+
+Raw、helpers、正式來源副本及七文件前像先保存。同步入口、clock語意、限制與排錯；原始行情、Task、模型、交易、main/push/release未變。完整goal保持active。
+
+## 最新接續：日曆正式整合廣回歸通過；P08 八檔仍有兩個 fixture 失敗
+
+上一 goal turn 僅回答狀態，分類 no progress；本輪完成正式日曆／Health 二十檔原回歸與正常型態／語法，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包或產品 Gate 接受。
+
+### 日曆 v5：已套正式來源並完成同版廣回歸
+
+Root 先核十一個目前 formal preimages 與 v5 bytes、原候選四階段收據，再套五產品與五測試；另一 cadence 測試相同未改。全部正式前像與 candidate manifest/full/delta 已保存。Apply `root/calendar_v5_formal_apply_9b7f2f1d971348e5856d021376c6f3fd/receipt.json` SHA `5c5f409de527c282912494e1d773c8e8970b5d7e25d63859b99b600047492d15`；其 `formal_QA_executed=false` 是套用當時事實，不改原收據，由本輪新 QA 證明後續狀態。
+
+首個 formal runner 原二十檔 **264 PASS／25 FAIL／1 skip／29.15秒／native1**：25失敗全是 QA write guard，包含 Windows `\\?\` extended path 的同一私人路徑與原 `workspace_qa_tmp` 新 UUID fixture 被誤拒絕；另265 actual origins未列，包含真 Main 來源及26 Qt 內嵌虛擬來源。九來源正常 mypy／十四檔語法通過，902pins起訖相同。原收據 `root/calendar_health_formal_f82fcde9391b4a0aadb6d18fe4f0242d/receipt.json` SHA `a5861400247aa9dada0114dc1eee0d5280676ebb8dd066b9e56b573b9a5d3fab` 保留，不能授產品失敗或通過。Root02／03各於 QA 前發現 signature_bootstrap 虛擬路徑而停止，未改原件或產品。
+
+Root04 從二十檔、正常 conftest/plugins、Main 靜態 import 與首輪 actual來源重建825 source／3271邊。只允原 fixture 當次新建且不存在的八個 `pytest_health_<32hex>` 子根；extended path 先解為真路徑再核私人根。Qt26虛擬名稱另以七原生 runtime pins、13實際 embedded ZIP 成員 SHA、loader identity與bootstrap code hashes核驗，不跳過未知或缺失 repo 檔。四個直接 QA 子程序實際載入來源均通過，1206pins相同、fresh pycache根空。
+
+正式來源廣回歸 **288 PASS／0 FAIL／2 skip／34.17秒／native0**；JUnit290案例、time34.127秒，兩skip均為環境無法建立symlink，不宣稱已驗兩個平台負例。正常原mypy.ini／正常follow-imports／explicit-package-bases／no-fast-exit：**0 issues／9 sources／native0**；私人目的地 **14檔語法通過**。Actual Python PID依序57332(origin)、9344(pytest)、59704(types)、34736(syntax)，不以venv wrapper PID代替。Receipt `root/calendar_health_formal_3c6c2c0967904ad6bf73e00b503b1d26/receipt.json` SHA `0558cf220553d198102580ed917e02cd64d5c296b06543fc019cae5977e3c934`。這是正式日曆及既有 Health 同版廣回歸；不與先前候選96或Health214累加，不授巢狀PID／完整Windows程序樹／整體UI接受。
+
+日曆 API 明示 `live_now` 與 `historical_as_of`；同一read operation一次capture，跨日／年度與expiry共用相同觀測。歷史clock不授PIT或目前freshness。最新 caller audit發現 `PortfolioService` 將預設 now lambda無條件傳cadence.clock，聲明持倉widget同樣傳預設service.now，會錯標historical；交原P01 owner新scratch修正，尚未套正式。正常Health封存選取UI、策略EOD adapter與完整P06／M3仍待。
+
+### P08 composition02：重新審觀測版本後八檔取得失敗證據
+
+原交付manifest `f2c8c11d…` 在交付後被owner改寫，未保留原bytes，root拒絕以原freeze宣稱只改README。Owner停止寫02後，root完整重審實際觀測manifest `28a01b0f31c2a378a0031ac11ebd2f251b6355cc887cd8b01cd4c220e497007e`，另封存全部observed files／provenance gap。完整46069-byte delta重建、1468pins／419modules／393asserts／19target cases核驗；14產品只對v27重綁namespace，六fixture改用public cash seed／daily checkpoint／typed prior，原負例與exact error equality保留。Static `root/p08_prior_composition02_static_a42ef158abf24e43b521820e5a21bc46/receipt.json` SHA `26c4aed044e1e39470e068b4aa5c39f85b7087acf50d67ba954b0f659b34f590`；不能補回原f2c freeze缺失證明。
+
+十四actual origins通過；八檔 **60 PASS／2 FAIL／1 skip／52.83秒／native1**，1476pins起訖相同、4 actual PIDs source guard clean。Receipt `root/p08_p08_type_candidate_20261011_v27_prior_fixture_02_suite_3dab2f18cbc44d50ad2ccff7e09dba6a/receipt.json` SHA `a37c4ab00e19b91b38088ce2267843617341234d4ae32603da89541067457752`。一案舊positive receipt helper不符合v5完整fields；另一案tampered fill只有source_type，太早被symbol格式守衛拒絕，未到原fill-hash錯誤。交原owner另建public v5 writer/readback fixture並從真fill改有效欄位；保持原assert／hash qualification拒絕。03又有source-base metadata誤指direct parent，未QA；新04 fixture-only已交root待審，另以接受後同版接performance，不授02／03或完整P08／M3接受。
+
+### Coverage、保存與接續
+
+Root正式QA全部terminal，session66367／50002均已消費。保存formal apply／首輪與通過QA／P08 static與suite全raw、Qt embedded來源、正式QA來源副本及六文件before；同步Snapshot、本QA、架構、Manual與本機shared state／handoff。方向與入口不改，完整原計畫保持；原始行情、main／push／release／Task／模型／交易未改。三個既有Luna Max續推default caller修正、Health新formal freeze、P08 fixtures及績效；P01 v8來源probe／cold-warm矩陣待root審查，篩選446.3604ms／strict<300ms缺口不變。
+
+## 最新接續：日曆 v5 全組與型態通過，P01 query 來源證明仍待
+
+上一 goal turn 只回覆產品進度，分類 no progress。本輪接續已凍結候選完成日曆正常型態驗證，重核上輪 query／日曆終態並保存原收據；完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包接受。
+
+日曆 v5 manifest `8d5ce5a038f9bb5088926988d229c99043cce3e621ed2f923403878d4b7653c5`；root 靜態核623 pins／509 modules／592祖先／1736import邊，87427-byte full.diff及42219-byte v4增量全文重建，279原assert AST保留。產品只補六slot型態與LockType，移除annotations後與v4 runtime AST相等；三fixture保持原日期及count，沿真public writer補parent與跨年cache。Static receipt SHA `a327b06b53155961b84744710c98c7ef334ca73221835f872b3939b288a345ed`。
+
+Fresh origin五產品 native0／actual PID54684／629pins相同，收據SHA `8efc5af478c8a7b3bcad128f38ede46bb91918d93c9d3dc20e360866374facd8`。六檔 **96 PASS／0 FAIL／0 skip／6.34秒／native0**，actual PID26268／635pins相同，收據 `root/calendar_v5_calendar_fa0e377779654df5a8c40775e425ccca/receipt.json` SHA `923addc50062e707aa819ae6864004bb9f14a7c838bddb1b73cc3e1a62ca1ed3`。正常mypy原mypy.ini／explicit-package-bases／正常follow-imports，**0 issues／5 sources／native0／13.938秒**，actual PID54692／635pins相同，收據 `root/calendar_v5_types_6bad79186a1748b887e775252a4aeaa4/receipt.json` SHA `6d06abf14e19d016574bfed077511920ea55434e1783ed7133b8a2bf49cf3a17`。三階段actual source guard clean、fresh bytecode根空；接受此同版來源／日曆回歸及型態切片，正式整合、正常UI與完整P06／M3仍待。Popen封套不授完整程序樹接受。
+
+P01 v7完整query **25 PASS／573.37秒**，但child／launcher／root **native1**：`p01_child_fresh_subprocess_candidate_import_not_observed`，不能接受完整query來源證明。Root receipt `root/p01_rolling_v7_query_a2931ab7e7b84226bd2ea10b9c0d12e7/receipt.json` SHA `158f9d3e0139d665087c6e2a1cbd9fd8f7ac90f70585de41392e65501c41f816`；2185pins相同。原fresh-reopen測試的文字結果通過，但缺新PID候選載入事件；已交原owner新sibling查bootstrap，保留原assert及跨PID/hash拒絕守衛。原query未失敗不蓋掉來源核驗失敗；完整cold/warm與原篩選446.3604ms／strict<300ms仍待。
+
+P08 prior composition01因整檔替換遺失v27 availability負例拒絕：root69pins、原389→392assert不能證原負例保留，收據SHA `0fa531d47af26c450b997e7b63c3dcda163edbfbdd7d51ded982fcaf98cfe669`。新composition02以v27為基底，只移植六指定prior測試與必要helper，待root全審／QA。另root AST核兩份legacy v2公開provenance reader：18個SQL metadata位置只核前16個，payload index16未預檢且上限錯套index14；3pins／2觀察收據SHA `79071b9381de4c48375f2348e644d94e28d966be47ff76d5f095e8023438d22a`。此為靜態缺口，沒有runtime race結論；新同版績效候選補reader與鎖內writer預檢，v2/v3版本及原證據保持。
+
+所有root QA已terminal，session98502已消費exit0。四文件before及raw先保存；本輪只同步Snapshot／本QA／本機shared state／handoff。產品操作、Manual／架構／Roadmap／Index入口與原始資料未變，未套正式日曆。Health UI v2由原owner做逐函式三方整合；P01真新程序／矩陣與P08同版prior／績效持續推進。
+
+
+## 最新接續：P01 v7 真程序與來源十四契約通過
+
+本輪接續P08 v27後完成P01 v7獨立審查、唯讀預檢與真Win32 Job契約；全部root QA自然terminal。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持，沒有完整P01或產品Gate接受。
+
+Manifest `54b66e91665f975a56a1803cf38eaaefb6e50df6213dd91c1fe65fa655a3ebbb`。Root **2181pins／4277checks／380repo modules／1666external files（1675 module names／140681548bytes）**，49825-byte complete diff及三support deltas全文重建相符。原query／test bytes、runtime來源、閉包、五cold／一warm、1000×20、三類各30樣本、600秒及strict<300ms門檻保持；八程序案例原88assert AST相同，六origin負例bytes不變。Static `root/p01_rolling_v7_static_0dad268288e341e88a4837e0d85d0bea/receipt.json` SHA `ccc01e98ca287f8f7908d888644dff10567ba96535825b1bb86822b003edaf59`。
+
+Host preflight **native0／2183pins相同／source_store_access false**；`root/p01_rolling_v7_preflight_1271d020dacc43f0aab8fbcdd96bfb14/receipt.json` SHA `8c4a1968f7aac1661e651af0e5f9e6693ae48da7d3a9cf61fafec3ca88aec8ad`。十四原契約 **14 PASS／6.89秒／native0**，2184pins相同；`root/p01_rolling_v7_contracts_89a0feaff00c41de8bf547c635ce3ae1/receipt.json` SHA `1e51a10973d4bd2caf85bcbeb30ec1d5a02c3d69688b996fa70af01798e1c251`。
+
+Root另唯讀核七個_run_child完整結果及retained stdout/stderr的SHA／bytes。短命descendant自然排空；長命descendant在自然期限後保留 `job_child_processes_remained_after_natural_drain` 原failure，再由同一Job終止，conhost／base Python／venv Python三個member實際signal／exited125、query handles closed、Job0／PID[]。既有parent return0不蓋掉residual-child failure。原v6 state running失敗保留；v7以保留handle的共享monotonic deadline實際等待，不由Job空推定exited。
+
+以上接受此十四定向契約；原query全檔與完整cold/warm矩陣未跑，無新p95。原篩選446.3604ms／strict<300ms缺口仍在，不能以監督器修正或十四PASS授效能／正式整合接受。七完整raw與index、三root封套、manifest／diff／helpers及四docs前像先保存；只追加Snapshot／本QA及本機shared state／handoff。正常UI、正式產品／原始資料、Manual／Roadmap／架構未變。
+
+接續：v27 true-prior同版composition已交root待審，performance正在完整同版重綁；P01 owner續做Calendar v5三fixture／14slot typing修正，Health UI v2仍施工。root下一步完整組合審查與原query回歸；所有目標保持進行中。
+
+
+## 最新接續：P08 typed v27 同版正常型態與完整 MA／KD 旅程通過
+
+本輪在日曆 v4 終態後串行核 v27，所有 root QA 已自然 terminal，session89967與4933均已消費native0；沒有 live root handle。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保持。
+
+Owner manifest `7b254c9f6c63be7a9ec9c06fe8512945f4e4d9000a8ecb681c3a5d26c0953b3f`。Root獨立 **1389pins／2095checks／418modules／22mapping／389原assert**，全文full/type/incremental三diff重建。原v26到v27只有MA與KD allocation local由quantity改constructed_quantity；逐完整module AST只還原該Name後與v26相等，原金融計算、None／exact-int／股數／整張與target寫入守衛保持。首個root重建器把incremental header／順序設錯而停止，保留root03，root04按實際header／順序重建相同；沒有修改候選bytes。Static `root/p08_type_v27_static_5d925710822749f8ae38882f54fb9d25/receipt.json` SHA `6442a58cc4a6ef38bda9e598ee85e006f5d48c7a893db7ac8b5384e678b64072`。
+
+Fresh origin **14產品／native0**，1396pins相同、1 actual PID、guard clean；`root/p08_p08_type_candidate_20261011_v27_01_origin_7530c1b41cde4623b888d7cb42d829f1/receipt.json` SHA `43f02dc2b16b3b981acc0e3205ffe1bd078afc79e75b2df21ede38d2685879d1`。正常mypy原mypy.ini、explicit-package-bases、正常follow-imports：**0 issues／14 source files／native0**，1397pins相同、actual guard clean、fresh bytecode根空；`root/p08_p08_type_candidate_20261011_v27_01_types_cef1da74f03a41daacb6a4aa18284c68/receipt.json` SHA `128881a207d407608337dcbeb8a9d0e21ab39cfeb7f3e4a9acbf4762bafbc78f`。
+
+同版原完整MA／KD節點 **1 PASS／0 FAIL／74.22秒／native0**，1397pins相同，7 actual PIDs來源乾淨。涵蓋真public source→intent→共享金融引擎→daily/checkpoint、已消費seed／歷史prior、新PID讀回、兩家族進場與賣出、blocked／UNKNOWN零成交及空倉日；行情與訊號仍是具名合成fixture，不授真市場PIT、官方event或交易／績效資格。`root/p08_p08_type_candidate_20261011_v27_01_integration_ccf746eb283c4092bb51a87304f1b931/receipt.json` SHA `6a38710418e94f4c375e547961f1d61960f84838dec51e1ac950d0a614a90f0c`。
+
+接受本v27的十四來源正常型態與這條原完整旅程；不是八檔全組或完整P08／M3接受。另一owner已接v27同版public-prior fixture composition，再將performance修正完整同版重綁；MA/KD與舊receipt原exact assertions保持。績效、benchmark、正常UI、原來源、同版EXE／Native／真人及完整交付Gate仍待；原v26／所有失敗封套保留，未套正式來源。
+
+本輪只追加Snapshot／本QA及本機shared state／handoff，四文件before與全部raw先保存。Manual／Roadmap／架構契約未變，正式產品及原始資料未改；Popen封套不授完整Windows程序樹資源驗收。後續依同版本完整組合與原驗收門檻推進。
+
+
+## 最新接續：日曆 v4 真來源通過，六檔回歸與正常型態缺口已定位
+
+上一 goal turn 只回覆補完進度，分類 no progress。本輪完成靜態閉包與真來源核驗、六檔完整回歸及五來源正常 mypy，取得可改變下一版動作的原始證據，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持；沒有新增完整工作包接受。
+
+Calendar v4 manifest SHA `c58af21bff2531fcf9d40648ac708d1859919b4e7c9ad82f73202db17784bbce`。Root 獨立核 **574 pins／509 modules／592祖先 initializer／1736具名import邊**；原十一份 candidate／preimage bytes、488列舊閉包不變，新增21來源。86757-byte full.diff與37535-byte v3→v4增量全文重建相符，bridge完整讀核。Static receipt `root/calendar_v4_static_review_a6abc008483749418baf58cf081f3b98/receipt.json` SHA `8bb16466bd41ac5da6c3309c84c6243629e7fe52d3a3f8df31c73701be8332d8`。
+
+Fresh host origin **native0／2.141秒**，五個candidate產品皆來自exact v4來源；576pins相同、actual PID2448、guard clean、fresh bytecode根空。Receipt `root/calendar_v4_origin_d150f6a95a1f4d7b9874092c0209dcaf/receipt.json` SHA `fa82e2e706fabe6ec47dfdd7cdd832fded1c51e91c2625c4357bc95c49b1f502`。不以wrapper PID6500代替actual Python PID。
+
+Root runner前兩次QA終態因 Windows nul裝置被root外根寫入守衛誤判；分別native3／native1，兩份未完成JUnit保存，不當產品測試結果。Root03明示私人pytest log，只辨識exact `os.devnull` Windows裝置；candidate產品／測試及外根檔案限制未放寬。六檔96項回歸 **93 PASS／3 FAIL／0 skip／JUnit5.459秒**；controller8.578秒、native1、583pins相同、actual PID40400、guard clean。Receipt `root/calendar_v4_calendar_961a12fef2bb48d7a08abdb6dccdbdaf/receipt.json` SHA `4e4d9b805d969ea04ae1a13152796b69a0aa5c898d85ebac1c0bc9d2ef09760f`。
+
+三失敗都位於新增calendar cache fixtures：兩temporary-closure案例在public writer前沒有建立要求存在的parent；單clock五日查詢從2026-01-05跨到2025-12-31，但只有2026annual cache，因此原unknown守衛拒絕。已交原owner另建v5：補私人parent（missing-negative案保留先讀missing順序），保留原reference/count與全部assert，真public builder/writer補2025年度並沿同directory定位；不mock整個calendar或把未知當開市。
+
+正常mypy沿原mypy.ini、explicit-package-bases及正常follow-imports，五來源 **14 errors／1 file／native1／14.141秒**；587pins相同、actual PID33456、guard clean、fresh bytecode根空。全數為CalendarObservation六private slot欄位經object.__setattr__建構卻缺型態宣告；v5補明確str／datetime／bool／真LockType annotations，保留slots、不可變守衛、issuance與單次claim，不新增ignore／Any／cast。Receipt `root/calendar_v4_types_d572041fdb6940be8750a40e95cb2327/receipt.json` SHA `ea0e0f8591b5783b990abada264b14c3dadae2a552352d772720f82d472b82cc`。
+
+Root全部QA terminal，原session97370已消費exit1。原件／stdout／stderr／JUnit／actual origins／pins與helpers先保存，再追加Snapshot、本QA及本機shared state／handoff。正式產品／原始資料未改；Manual、Roadmap、架構政策未變。日曆完整回歸／型態與正式整合未接受；P01 v7、typed v27、Health UI v2及同版prior／performance接續。此Popen封套不授Windows完整程序樹資源接受。
+
+
+## 最新接續：績效來源定位器的公開 publisher 契約拒絕
+
+Root全文讀33972-byte price locator並核目前正式publisher：公開descriptor的SHA為 `sha256:`＋64hex，content-addressed路徑是2hex shard＋64hex filename。候選 `_HASH_RE` 卻僅認裸64hex，並用於prefixed SHA及2hex shard；exact reader甚至同時要求shard64hex與等於filename前2字，條件互斥。
+
+原publisher line886路徑expression與候選初始guard AST四案核實：合法prefixed SHA先回 `price_locator_pinned_descriptor_identity_invalid`，去掉prefix後同一合法path仍回 `price_locator_pinned_descriptor_path_invalid`；`_find_candidates`／`_enumerate_publications` 的原prefix.name guard皆拒絕2hex目錄。14pins相同；原收據 `output/qa/baldr_completion_20261011/root/p08_locator_contract_d78478a401ff48558a0fdd0de3cf7734/receipt.json` SHA `79f79dceabd60169fae5c5c687b84ba3ab31b797ca9f92f69df3152478746b95`。只隔離原初始守衛並stub request validation，沒有完整writer／locator、產品imports或市場／帳本讀取；不授完整price／benchmark接受。
+
+已交原P08 owner新performance sibling，分開prefixed contenthash／裸64hex filename／2hex shard三個明示patterns，完整保留root／containment／shard／filename／內容hash、公開row reader與雙projection hashes；不跑已知失敗v6或放寬來源。等typed v27時先獨立準備weekend／bounded writer／locator修正初稿，再完整同版重綁；fixture組合優先。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍待；正式產品、原始資料、Manual、Roadmap與架構未改。
+
+
+## 最新接續：績效 v6 週末日曆分支核實
+
+完整scope保持。本輪續讀完整EOD series reader與metrics producer／reader，並讀benchmark v3的prefix writer／reader、baseline／calendar／close policy／manifest／persist核心；不宣稱136269-byte整份v3或完整benchmark／ResearchRun接受。
+
+Root在兩份凍結benchmark的 `_read_calendar_window` 核到：weekend convention證據沒有official clock/hash，卻沿相同官方來源驗證降為unknown。抽取原AST函式、以合成工作日完整clock/hash作分支輸入，2026-10-10週末兩份均回 `calendar_evidence_clock_or_source_hash_missing`；v3 2026-09-05至10-06窗口工作日皆open、週末皆unknown，`_v3_baseline_date`精確回 `benchmark_v3_baseline_calendar_unknown`。這是原純函式分支證據，沒有產品imports／市場／帳本讀取或完整性能QA。13pins起訖相同；原收據 `output/qa/baldr_completion_20261011/root/p08_performance_weekend_ad9743f80f2e4b1bbacfd858a7b5869f/receipt.json` SHA `613b62dbd5103ee0b081abf7c8125543c19c99038c67346999504ae733a7a72c`。
+
+Owner已授新performance sibling：週末closed慣例與工作日official evidence分開，不虛造週末clock/hash；缺工作日來源仍unknown、baseline只取真open，補真public calendar cache案例。另靜態讀到v3writer在BEGIN IMMEDIATE內SELECT既有provenance_json／manifest_json／clock無SQL type/byte預檢，先前readonly有界預檢不能證跨交易窗口不變；未runtime重現race，鎖內有界讀取需補。原v6及v2/v3日期／路由／資格界線保持，不改金融計算或放寬因果守衛。
+
+本輪原始證據與四文件前像create-only保存；coverage只追加Snapshot／本QA／local shared state與handoff，正式產品、Manual、Roadmap、架構及原始資料未改。Typed v27待freeze；fixture同版組合與performance修正由原owner續行，沒有live root QA handle或完整Gate接受。
+
+
+## 最新接續：P01 v6 真契約與 P08 v26 正常型態終態
+
+上一 goal turn 只回覆剩餘範圍，分類 no progress；本輪取得新實際來源與真程序契約／正常型態結果，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保留，沒有新增完整工作包或 Gate 接受。
+
+### P01 v6：來源與預檢通過，程序最終狀態仍失敗
+
+Manifest SHA `b084e7d6ef00591e9e94da27bb771be5519d465b9a7d7c771e9d5d3b26d9cf3e`。Root 2130 pins／2551 checks、380 repo modules與1666外部檔（1675 module names／140681548 bytes）核對相同；四個先前真repo漏列已補，原376項不變。67075-byte完整產品／三support diff全文重建；query及原tests逐byte等同v5，五cold／一warm、1000列20頁、每類30samples、600秒、strict p95<300ms未變。Static `output/qa/baldr_completion_20261011/root/p01_rolling_v6_static_05e093b1415747689f8eae1604a83e37/receipt.json`，SHA `d97332d32f62c545b63987ce4eb0a9ad4c07b9829f6953064cc00ec1e4e0ed88`。
+
+Host唯讀預檢 native0／2132 pins，source/store access=false。十四契約 **13 PASS／1 FAIL／6.81秒／native1**，2133 pins起訖相同。長命descendant的Job active0、PID清單空、owned handles closed及獨立process signaled檢查均通過，但保存member state仍running，原line305拒絕；不能憑Job accounting空推定retained process handle已signaled。收據 `output/qa/baldr_completion_20261011/root/p01_rolling_v6_contracts_d92a45395c6c4978990264827ce9edaa/receipt.json`，SHA `09e4f7c5496cd8259c6e87a9ad81d2da3bdaecb6e6fccb920a00b529e24d982b`。完整query／matrix未釋出；owner保留v6，另v7使用共同有界deadline等member handles、讀實際exit code並保存raw result；不改原assert或吞cleanup失敗。原篩選446.3604ms／300ms門檻保持。
+
+### P08 typed v26：實際匯入通過，型態剩兩個局部名稱衝突
+
+Manifest SHA `b7cde9efae57205c6ed56f30e6f45a46bf12edd4b480fe5f6f6012a03569b810`。Root1311pins／1856checks、22source/test mappings、418module closure／389原assert相同；完整差異與v24→v26 type diff重建。V25→v26只補兩DTO imports及daily local union annotation，runtime guards與金融邏輯不改。第一個root generic工具錯用v25 type-diff header，QA前assert停止；保留原helper，root02按實際v26 header全文重建，不改candidate。Static `output/qa/baldr_completion_20261011/root/p08_type_v26_static_8afc187ef9a44603b7ce2d737ea7aa70/receipt.json`，SHA `9ab30b42de7d08e6fe1b9ce65c2bf48be691351705b86ccb81e426cea2f30ebc`。
+
+Fresh interpreter **14 candidate origins／native0**、1318pins相同、一actual PID source guard clean。正常mypy（explicit-package-bases、正常follow-imports、無ignore／Any／cast）**2 errors／2 files／14targets／native1**，1319pins相同、一actual PID clean；較前v24的23errors減少，但未通過。MA executor line615與KD executor line693都把 int|None executable_shares 指派給先前held loop已推int的quantity。收據 `output/qa/baldr_completion_20261011/root/p08_p08_type_candidate_20261011_v26_01_types_08c021622e6040ff889948d04d2ee3af/receipt.json`，SHA `9d6eb0bda1849bcf37af3710cea8aae004de33b12c64ece626d9cd79942edecc`。Owner另v27只拆local名稱，保留guard與assert；真prior fixture等同版v27再compose。沒有跑v26完整旅程／八檔全組或套正式，不累加不同版成功。
+
+### Health UI 與真 prior fixture：先前靜態發現已交修正
+
+Health UI v1 root113pins、九product差異全文重建；new QA test混合newline只能邏輯hunk重建，另raw SHA pin，不宣稱raw全文相等。Panel舊worker native_finished即使不是current仍無條件消費_pending，可能在新worker上啟動另一讀取；已授v2綁worker identity／generation／pending並保持slot至native finish、補stale callback／取消／新選取／close負例。Preference保存與取消一致性續審；主畫面內部hash／receipt英文key改可讀中文並提供展開diagnostics。`output/qa/baldr_completion_20261011/root/health_ui_v1_static_eba1ffe3da124672b19080294a8036a6/receipt.json`，SHA `d650c30a1d3dd58d9351569215e1f56c9a54a3e23bb64a8852f7dbd3de1e98d7`；未QA或套正式。
+
+Prior fixture v25 root1024pins、34309-byte四段patch重建，六target案例19金融assert保持，真public cash seed／daily checkpoint／typed exact prior取代手工字典。MA先前10/01 decision早於10/03 prior availability改10/04，KD仍10/09，保留500000／8 policy與原金融值；fixture仍合成price/signals，不授正式PIT／execution／績效。Root抓到新pytest.raises的未錨定regex弱於舊exact str(error)==，next composition需保留原exact equality。`output/qa/baldr_completion_20261011/root/p08_prior_fixture_v25_static_0358cea2ebfb40f4b875ec39d4763e45/receipt.json`，SHA `25e0ecd1ad7c5d6711c1cb278bccc2d2f66a8a8469d7690a692d16c7a3054634`。
+
+### 保存、Coverage 與接續
+
+本輪root QA全部terminal；保存原始stdout／stderr／JUnit／origin／清冊／diff及四文檔前像。只追加Snapshot／本QA及本機shared state／handoff；正常產品API／UI／Manual／Roadmap／架構未變，原始資料未動。三位原Luna Max續做P01 v7與Calendar v4、typed v27與Health UI v2、真正prior fixture同版組合；績效reader／benchmark／正常UI與全部交付範圍仍待。
+
+
+## 最新接續：日曆 v3 實際匯入拒絕
+
+前一純狀態回覆分類 no progress；本輪重新核目前 HEAD／來源及原始日曆終態，保存會改變下一版閉包修正的證據。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持開放。
+
+Calendar v3 origin **native1／2.016秒**，527 pins 起訖相同；wrapper PID49584、actual Python PID28912。五產品尚未全部安裝完成，source guard false；38 個已載入來源可核，另有四個真正 repo initializer 未列：app_module/recommendation/__init__.py、data_module/contracts/__init__.py、decision_module/__init__.py、decision_module/recommendation/__init__.py。第三方分類修正尚未完成整個 import closure，不能以 v3 靜態 488 module 清冊授予實際匯入接受。
+
+原收據 `output/qa/baldr_completion_20261011/root/calendar_v3_origin_b3c38f7010be4a928336bcb8bd9922d8/receipt.json` SHA `7ca2a37f1bf92f90d9b4629a261e5f1f817108a3aade841d33db3cd464e67283`；stderr／actual origins／pins／manifest／完整差異／runner 原件已先備份。v3 失敗保存且不重跑；原 owner 另建 v4，補完整 package initializer 與 actual import closure 後重新審查。Focused 五檔 QA、型態與正式整合仍未釋出；沒有 live root QA handle。
+
+本輪 Coverage 只追加 Snapshot、此 QA 與本機 shared state／handoff；正常 API、UI、Manual、Roadmap 及架構契約未變。正式來源／原始資料／main／push／release未改。
+
+
+## 最新接續：P01 真程序契約／P08 型態同版旅程／日曆審查
+
+上一純狀態回覆為 no progress；本輪完成真子程序與完整旅程驗證，取得改變修正動作的失敗證據，分類 progress。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持，沒有完整工作包或 Gate 接受。
+
+### P01 rolling v5：測試通過、封套失敗，效能仍待
+
+Manifest `94d8960f192ba9952005664639ee4fa26c0676ff67fbe03c15ce7bb3e9fdae91`。Root 核418 pins／429 checks、376 module closure、21626-byte產品diff及v4→v5 launcher全文delta；改用原生CreateProcessW保留hProcess/hThread，先Assign Job再Resume，初始suspend count必須1。只讀預檢native0／420 pins，七個真子程序案例 **7 PASS／1.21秒／native0**、421 pins不變，覆蓋真暫停、Create／Assign／Resume失敗、錯suspend count、逾時及後代回收。收據 `root/p01_rolling_v5_contracts_ad02e2204319479ab02c21d266dde8ad/receipt.json` SHA `9f34c696a9a224b5c997212d658aced8ee40f960d1d7a2062594f5a9276a4d1b`。
+
+同版query全檔 **25 PASS／433.34秒**，但child origin後檢失敗、native1。1679個unlisted origins中1675個是venv第三方，真正repo缺四個：decision_module/__init__.py、decision_module/factors/__init__.py、utils/__init__.py、utils/io_utils.py。不能只跳過venv而漏真閉包。Parent PID37800終止時Job仍有PID8904；未證其是redirector短暫收尾或真正殘留。Job最後Terminate排空0、三handles皆closed、沒有逾時，但cleanup error保留，不能授完整程序資源接受。Root收據 `root/p01_rolling_v5_query_216320d79c204032bcf8b613766028af/receipt.json` SHA `51b74b0c16048787de4ead768a84b494034a4f2eb7f465094d37d1d4d69d7796`，422 pins不變。新v6先修exact第三方分類／完整初始化及動態閉包、記Job member PID/exe/exit與有界自然排空；原v5封套留存，不重跑已知失敗或釋放matrix。原篩選p95=446.3604ms及strict<300ms要求不變。
+
+### P08 typed v24：完整旅程通過，正常型態仍有23項
+
+Owner manifest `eca13853bfaad76d31183a5b96083b9211f43bb3b79f5770568c376edf0174c1`。Root核1164 pins／2237 checks，71534-byte產品diff的23段全文重建、389個原assert AST相同，八原tests只重綁namespace；adapter由本版AST重建418 modules／edges，保留v24 card文字與七個prior-clock keys。實際14候選origin native0／1168 pins。首個完整旅程因root封套只設PERSONAL_DATA_ROOT而缺配對來源，被既有TWStockConfig拒絕，原 **1 FAIL／9.57秒** 保存；移除不完整個人儲存override後，同candidate與原assert **1 PASS／82.56秒／native0**，1172 pins不變、7 actual PIDs source guard clean。收據 `root/p08_type_v24_integration_b597258025d844b29a5fa9a176e75f77/receipt.json` SHA `fb65c13d26ad6899bd5af322a1c4bcd1f7426a9d1938fb8e5416a7de150ecf3f`。
+
+首次正常mypy因namespace package被辨識兩個名字，native2；依本機mypy原碼加explicit-package-bases，關閉hard exit以保存atexit來源紀錄，不改正常follow-imports或typing規則。第二次 **23 errors／6 files（14 targets）／native1**，1172 pins起訖相同、source guard clean；收據 `root/p08_type_v24_types_956498645883401394036f48bd74579f/receipt.json` SHA `99975ca7c6b8d48c43788fe415a0ec71e73448f82fa70e3cfdfccae78b8a8d97`。缺口為完整TypedDict keys、nullable欄位、prior locator／decision/card unions及JSON narrowing；不能用ignore／Any／cast或放寬validator掩蓋。原owner另建typed v25，另一owner以真正public seed/checkpoint writer→exact typed prior修六target fixture及一舊receipt。未跑本版八檔全組、不與不同版通過數相加，未套正式source。
+
+### 日曆與績效候選
+
+Calendar v2 origin native1：bridge把venv urllib3.exceptions錯判為unlisted repo，來源pins不變，五候選載入未完成；未跑focused QA。靜態追線另核兩個DecisionDesk入口仍用cadence.clock，而v2移除該公開屬性。原失敗 `root/calendar_v2_origin_df57417213cd422590db691015ec1f8c/receipt.json` 保留。新v3恢復clock callable、保留assess明示observation policy，新增兩個真入口clock傳遞回歸；第三方只排除runtime/sys.prefix/sysconfig所固定的purelib/platlib根。Root只核525 pins、488 closure及86757-byte全文diff重建；manifest `2bba498dfffd5406b7ed33e46f31a1094761545e4e41c116f9c19655d4197dd3`，尚待完整bridge語義／origin／定向QA／型態，不授正式整合。
+
+P08 performance v6仍是review候選。Root第二份清冊盤點56 pins／56 checks、11 Python AST可解析、無顯式float constants/calls；已讀整分／獨立Decimal context核心，完整series reader／benchmark／ResearchRun及新程序語義仍待。原首份清冊34 pins未走進帶path/sha的上層內嵌source mapping，保留並以第二份核全部22 upstream mappings；不把首份當完整來源核對。v2舊public series與v3新metrics route各自binding及日期語義分開，v3名義13:30不是官方收盤事件證明，所有qualification保留false。完整同版performance組合待typed修正後接續。
+
+### 保存與Coverage
+
+本輪所有root QA handles皆已消費終態；三位既有Luna Max續做P01封套、P08型態及真fixture。只追加Snapshot／本QA／本機shared state／handoff；正常UI／正式API／Manual／Roadmap及架構政策未改，既有QA入口仍可到達。原始資料、正式產品、main／push／release均未改。Raw與四文件preimages已先保存；不能由本輪局部通過宣稱產品完成。
+
+目前 HEAD `3f7690e02e48d63ed57e128763a6871b3ffb7946`，Health保存後另有其他工作提交兩個排程scripts與兩個tests；不是本root修改或驗收。Root重新核本輪四個QA receipt所有來源pins，與這四條外部source變更沒有交集，原驗證來源仍相同。不能再把HEAD至Health之間稱為只有docs變更。
+
+
+## 最新接續：P08 真候選接線與完整生命週期重驗
+
+本輪讀回 dev HEAD `ef5edd675abcd7cf211ed609874e5b20ec8b43b2`；Health 正式後端提交為 `f163e6fde33c7c64b0f39a7bd5a931c9e677c25f`，兩者間只新增文件變更，產品來源仍與 QA pins 相同。Health 後端最終十五檔 **214 PASS／2 skip** 已保存，不代表正常 Health UI 完成。本輪 P08 產品變更全部在不可變 scratch sibling，沒有套用正式模組或改原始資料。
+
+Root 由 seed/clock v2＋v3 組合候選逐輪核驗，保留失敗與原測試預期。已修正：seed canonical receipt 記錄、producer stock grammar 缺件、daily 參考價格提前使用未初始化變數、官方 calendar cache hash 格式、quote receipt 綁 SQLite row hash、exact reader 區域 receipt 名稱。CSV projection 與 SQLite projection 的雜湊分別綁各自實際型別序列化，依公開 publication 契約逐一重核，不要求兩者字面相等；SQLite REAL 僅在 reader 序列化邊界轉成有限 Decimal，沒有新增金融 float 算式。Checkpoint DTO 明示 execution/performance eligibility 均為 False，true／1／None／文字假值八負例保留。
+
+v8 的共享批次引擎→daily 帳本→已消費 seed→歷史 seed／新 PID 讀回節點 **1 PASS**，同輪另一完整旅程 **1 FAIL／25.88秒／native1**，667 pins 不變；收據 `root/p08_seed_clock_integration_de2ec154d3e34c9d8b2264104db7c921/receipt.json` SHA `926523ce8cb14da3f944bca0ad3d26e194e684a5b303f045ce1eaee9c91eb738`。這是有限真 API 合成來源旅程，不是正式行情／交易／績效資格。
+
+Root 在 v10 將公開行情 scalar DTO 延遲匯入本版 daily，MA／KD forward source DTO 及三個 executor/intent 的 exception 也改成本版 candidate。v10 起從全 415 封存 Python 來源 AST 重建 import edges；22 source/test hashes 與原斷言 AST 核驗，改動不使用 formal 舊 DTO 代替候選。v10 首次 sandbox **1 FAIL／13.72秒**，精確暫存路徑 stat 相同、resolve 在 sandbox WinError5／host 成功；同 freeze host 再驗 **1 FAIL／16.30秒**，已走過 MA 成交、公 reader、新 PID seed，停於兩個負例 SQLite connection 未設 Row factory。v11 只補兩 fixture 的 Row factory，**1 FAIL／19.79秒**，超限負例到原預期錯誤，之後三個舊 DTO `.marker` 屬性斷言待修。v12 只沿公 checkpoint `ledger_operation` 直接讀 zero_fill，三原 False/True 值不變，金融／來源／時鐘判斷不變。
+
+v24 manifest SHA `44ab7fe12ea82e60ae187f5912655a13c4de3c92308de22ad0f1902f6056c42e`。v12 整體1 FAIL／16.53秒，KD forward 公 reader 的 isinstance 因測試替換 datetime 被誤判；v13只修隔離 clock double 的 instance 判讀，沿標準庫 datetime 判別型別，原 naive／future guards 不變。v13 整體1 FAIL／17.15秒，實際 KD source consumer 錯要求二欄訊號，公開 DTO 嚴格提供五欄。v14 改核精確五欄，新增逐股 snapshot／source-window／raw-window 三個 pin 與 exact parent 快照重核；不省訊號、來源或時鐘 guard。v14 整體1 FAIL／18.27秒，KD intent 成功後 daily 把指標窗口日期當作收盤價日期。v15 價格日改綁同份 exact capture.decision_date（strict date），MA/KD public source 已證 close 只取該日唯一有效 OHLC；仍核官方 T−1、public close/value/row hash 與 cutoff。指標缺暖機保留 unknown，不新增金融 float。v15 整體1 FAIL／16.39秒，KD SourceCaptureView adapter 遺漏原已核 source 的 decision_date；v16 只補 date 欄位與 _make_read 的同值委派，source projection 原已有 source_decision_date，artifact/hash/clock/qualification 未改。v16 整體1 FAIL／15.81秒，shared engine caller 仍讀 MA 專用 strategy_decision.source_decision_date；v17 改用同函式前方 strict date 已核 capture.decision_date，兩家族來源／官方參考日核驗保留。v17 整體1 FAIL／18.88秒，測試時鐘替身繼承 fromisoformat 回傳 datetime 子類，被共享引擎的 exact datetime 守衛拒絕；v18 僅改 QA helper 的解析回標準庫 datetime，不改原 ISO 值／naive/future 檢查、產品 guards 或 assert。v17 wrapper 印含繁中文字串另遇 cp1252 UnicodeEncodeError，child 原始終態 native1、pins/guard 與完整 raw receipt 已在列印前保存；v18 以 -X utf8 啟動 wrapper，不修改舊 runner。v18 整體1 FAIL／19.69秒，首次 KD seed 尚無成本帳本，policy 的 readonly open 正確拒絕；MA fixture 手工初始化曾隱藏此缺口。v19 daily 只在 exact typed、unconsumed seed 使用已選帳戶 route 的 public ledger writer 建空 schema，移除 MA 手工 bootstrap，讓兩家族都走真首次 writer。既有 checkpoint／consumed seed 不建立缺失帳本，政策／交易鎖／CAS與資金計算不變。v19 整體1 FAIL／27.06秒，MA/KD首次進場、兩家族 consumed seed／新PID讀回及原斷言已走過，10/15 KD blocked intent 被10/06+預設7日cache的到期守衛拒絕。v20只在跨10/06–10/23的fixture明示公 builder合法31日max_age，實際receipt/hash/expiry重算；捕捉日期、future／expired守衛與原assert不變。v20 整體1 FAIL／39.44秒，blocked intent已通過，下一daily prior validator只接受v1卻遇本版writer發布v2 receipt。v21只准原v1及唯一具名P08 v2，完整canonical bytes/hash/account/snapshot/qualification守衛不變；隨後public availability _verify_base_checkpoint逐schema核operation配對、ledger、來源／clock與p08 engine receipt，未知版本仍拒絕。v21 整體1 FAIL／39.94秒，KD blocked daily及exit writer已走過，KD讀回cutoff07:15但observer仍07:10，被未來cutoff守衛拒絕。v22只在該讀回前將mock observer設為既有SECOND_CHECKPOINT_READ_CLOCK，如原MA讀回；所有原cutoff、價格、成交與assert不變。v22 整體1 FAIL／104.45秒，MA/KD 首次進場、KD UNKNOWN／超限零成交、雙家族賣出與空倉日、KD新PID公 reader已返回；fixture仍把nested snapshot JSON取為flat欄位，於snapshot_id KeyError停止。v23只改九個斷言左側 API取用，snapshot_id/cash沿snapshot取值、positions投影原stock_code/quantity/market_value三欄；原所有右側值、比較運算與產品函式均不變。v23 原八檔終態52 PASS／10 FAIL／1 skip／110.42秒，1209 pins相同、9 actual PIDs clean；完整MA/KD節點通過，剩餘6個typed prior fixture、1個舊v1 executionreceipt、2個KD最小clock先決schema及1個card token。v24補KD七prior clock keys，負例仍要求原database identity拒絕；card只將15_percent與of_current_NAV間空白改底線，建構15% entry budget及policy 15% NAV皆不變。原三節點3 PASS／5.23秒／native0，1244 pins起訖相同，收據root/p08_seed_clock_integration_69b5422c66fa4976905f2248b537ac0a/receipt.json；不能與v23不同版結果相加或宣稱全組已通過。Card hash自然重算後另驗完整MA/KD節點。Fresh origin 實際匯入14候選／native0；完整 host 節點 **1 PASS／0 FAIL／native0**，1252 pins 起訖相同、source guard clean、7 個實際 PID 有載入來源證據。完整 MA／KD 同來源旅程通過。原始收據 `output/qa/baldr_completion_20261011/root/p08_seed_clock_integration_252e151b5c5c4da89c16ba13cfd76038/receipt.json` SHA `1716db0ffd4f282ca13b109d8eafffaebaeb340c5d746c1eae5b023c3b9023e1`；stdout／JUnit／actual origins 全部保存，不授完整 Windows Job／資源清理或全部測試接受。
+
+v9 十四來源型態診斷 **54 errors／10 files**，收據 `root/p08_types_eebba157537444788e43df1ea3fa1e88/receipt.json` SHA `a0282b05669732a0802c7f5a0322ba64a67b3f403eb89c3fc20f087913334113`。此為 follow-imports=skip 診斷，尚非型態接受；需修 TypeAlias、JSON narrowing 與 typed fixtures，不可廣泛 ignore／Any 或放寬 runtime guards。
+
+接續依據：完整同版八檔回歸、typed fixtures／型態、績效／benchmark及正常 UI。P01 rolling scheduler／QA bridge、Calendar immutable live/historical clock 及 P08 performance v6 繼續準備；Health Main/Portfolio／新 PID 候選 freeze SHA 32bd32853d39283afc8bd0d0d7d7ad2deaac865fc8090905d5de53dbf6c440c5 已交 root 待審，未授 QA。原 Health Luna Max 接 P08 型態候選、performance owner 後接 public-prior 真 fixture；無新正式套用。所有 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持開放。
+
+本輪 Coverage 限 Snapshot／本 QA／本機 shared state；正常 UI、正式 API、架構、Manual、Roadmap 方向及門檻未變，既有入口可到達。文檔／raw 前像封套 `output/qa/baldr_completion_20261011/root/p08_composition_handoff_d4e92d91012948409e439e4928439bb8`；上一純狀態輪為 no progress，本輪有候選接線修正與改變接續動作的真 QA 證據，分類 progress。
+
+本輪完整節點 JUnit 用時 **66.26秒**，controller 用時 **67.72秒**，兩者分列。
+
+Calendar v2 靜態核 **517 pins／485 module closure／83,246-byte 全文 diff** 重建一致；bridge 實際 SHA `3c09fef50eb50cac23e5611b323a5aaaa24684f55c1fcae34195ee8ec62d105f` 與 manifest 相符，owner 交接字串 e270… 已校正，不判為來源漂移。收據 `root/calendar_v2_static_review_0b49b0c112784fa6aac86fb55143e860/receipt.json` SHA `86e3d3489905d13e02be51b4cffc42e769b31a90b5fe13bb3fbce885d51dccde`；尚未完成整體語義審查、origin 或 QA。
+
+### P01 v4 靜態拒絕與 benchmark 版本裁決
+
+Root 重核 P01 rolling v4 manifest SHA `10f84f7e99e86a5dfdcf44fffde176abb0b8cbca994e2bf828390be3907f2fec`、403 unique pins、376 AST module closure 與完整21,626-byte diff。演算法保留最多8 unfinished futures／16 submitted unconsumed groups、順序 DTO／error、取消能力與 reader 守衛；沒有執行測試或新效能矩陣。Launcher 卻在 CREATE_SUSPENDED 的 Popen 後要求 `_thread`。實際 `C:/Program Files/Python311/Lib/subprocess.py` 中 Popen 的 AST 無 `_thread`，`_execute_child` 只保存 process handle 並 CloseHandle(ht)，因此新版一定在 Resume 前因 thread handle missing 失敗；QA 前拒絕。收據 `root/p01_rolling_v4_review_42f791a8baf44421bba6f205cf2aad73/receipt.json` SHA `7dd0494019b1d970caac39234346443522f15c0b8999c12224eadd443e8bb746`，實際stdlib／launcher原件與diff已保存。Owner先完成Calendar immutable clock v2，再另建v5保留真thread handle→Assign Job→Resume及錯誤收尾；原446.3604ms篩選與300ms門檻不變。
+
+P08 performance v6 尚未freeze/QA。新版名義台北13:30政策採獨立 `p08-source-cohort-equal-weight-eod-clock-v2-1`／2.1.0 與新版schema，舊 `p08-source-cohort-equal-weight`／2.0.0 reader 委派舊契約，不重解舊rows。正式binding依id/version/hash與account route固定；public ledger API驗兩ID不碰撞，各版本用合法獨立binding/route驗寫讀，不造雙binding共用route。舊ResearchRun prefix於later append後fresh PID不變、真writer與typed fixtures仍待驗。13:30明示為名義政策，不代表已取得官方close event或正式績效資格。
+
+## 最新接續：P08 真候選接線與完整生命週期重驗
+
+本輪讀回 dev HEAD `ef5edd675abcd7cf211ed609874e5b20ec8b43b2`；Health 正式後端提交為 `f163e6fde33c7c64b0f39a7bd5a931c9e677c25f`，兩者間只新增文件變更，產品來源仍與 QA pins 相同。Health 後端最終十五檔 **214 PASS／2 skip** 已保存，不代表正常 Health UI 完成。本輪 P08 產品變更全部在不可變 scratch sibling，沒有套用正式模組或改原始資料。
+
+Root 由 seed/clock v2＋v3 組合候選逐輪核驗，保留失敗與原測試預期。已修正：seed canonical receipt 記錄、producer stock grammar 缺件、daily 參考價格提前使用未初始化變數、官方 calendar cache hash 格式、quote receipt 綁 SQLite row hash、exact reader 區域 receipt 名稱。CSV projection 與 SQLite projection 的雜湊分別綁各自實際型別序列化，依公開 publication 契約逐一重核，不要求兩者字面相等；SQLite REAL 僅在 reader 序列化邊界轉成有限 Decimal，沒有新增金融 float 算式。Checkpoint DTO 明示 execution/performance eligibility 均為 False，true／1／None／文字假值八負例保留。
+
+v8 的共享批次引擎→daily 帳本→已消費 seed→歷史 seed／新 PID 讀回節點 **1 PASS**，同輪另一完整旅程 **1 FAIL／25.88秒／native1**，667 pins 不變；收據 `root/p08_seed_clock_integration_de2ec154d3e34c9d8b2264104db7c921/receipt.json` SHA `926523ce8cb14da3f944bca0ad3d26e194e684a5b303f045ce1eaee9c91eb738`。這是有限真 API 合成來源旅程，不是正式行情／交易／績效資格。
+
+Root 在 v10 將公開行情 scalar DTO 延遲匯入本版 daily，MA／KD forward source DTO 及三個 executor/intent 的 exception 也改成本版 candidate。v10 起從全 415 封存 Python 來源 AST 重建 import edges；22 source/test hashes 與原斷言 AST 核驗，改動不使用 formal 舊 DTO 代替候選。v10 首次 sandbox **1 FAIL／13.72秒**，精確暫存路徑 stat 相同、resolve 在 sandbox WinError5／host 成功；同 freeze host 再驗 **1 FAIL／16.30秒**，已走過 MA 成交、公 reader、新 PID seed，停於兩個負例 SQLite connection 未設 Row factory。v11 只補兩 fixture 的 Row factory，**1 FAIL／19.79秒**，超限負例到原預期錯誤，之後三個舊 DTO `.marker` 屬性斷言待修。v12 只沿公 checkpoint `ledger_operation` 直接讀 zero_fill，三原 False/True 值不變，金融／來源／時鐘判斷不變。
+
+v23 manifest SHA `cccfd7a981466bb80b3929499d50a87c9b56d7d49bca64967d9c265da2c8be91`。v12 整體1 FAIL／16.53秒，KD forward 公 reader 的 isinstance 因測試替換 datetime 被誤判；v13只修隔離 clock double 的 instance 判讀，沿標準庫 datetime 判別型別，原 naive／future guards 不變。v13 整體1 FAIL／17.15秒，實際 KD source consumer 錯要求二欄訊號，公開 DTO 嚴格提供五欄。v14 改核精確五欄，新增逐股 snapshot／source-window／raw-window 三個 pin 與 exact parent 快照重核；不省訊號、來源或時鐘 guard。v14 整體1 FAIL／18.27秒，KD intent 成功後 daily 把指標窗口日期當作收盤價日期。v15 價格日改綁同份 exact capture.decision_date（strict date），MA/KD public source 已證 close 只取該日唯一有效 OHLC；仍核官方 T−1、public close/value/row hash 與 cutoff。指標缺暖機保留 unknown，不新增金融 float。v15 整體1 FAIL／16.39秒，KD SourceCaptureView adapter 遺漏原已核 source 的 decision_date；v16 只補 date 欄位與 _make_read 的同值委派，source projection 原已有 source_decision_date，artifact/hash/clock/qualification 未改。v16 整體1 FAIL／15.81秒，shared engine caller 仍讀 MA 專用 strategy_decision.source_decision_date；v17 改用同函式前方 strict date 已核 capture.decision_date，兩家族來源／官方參考日核驗保留。v17 整體1 FAIL／18.88秒，測試時鐘替身繼承 fromisoformat 回傳 datetime 子類，被共享引擎的 exact datetime 守衛拒絕；v18 僅改 QA helper 的解析回標準庫 datetime，不改原 ISO 值／naive/future 檢查、產品 guards 或 assert。v17 wrapper 印含繁中文字串另遇 cp1252 UnicodeEncodeError，child 原始終態 native1、pins/guard 與完整 raw receipt 已在列印前保存；v18 以 -X utf8 啟動 wrapper，不修改舊 runner。v18 整體1 FAIL／19.69秒，首次 KD seed 尚無成本帳本，policy 的 readonly open 正確拒絕；MA fixture 手工初始化曾隱藏此缺口。v19 daily 只在 exact typed、unconsumed seed 使用已選帳戶 route 的 public ledger writer 建空 schema，移除 MA 手工 bootstrap，讓兩家族都走真首次 writer。既有 checkpoint／consumed seed 不建立缺失帳本，政策／交易鎖／CAS與資金計算不變。v19 整體1 FAIL／27.06秒，MA/KD首次進場、兩家族 consumed seed／新PID讀回及原斷言已走過，10/15 KD blocked intent 被10/06+預設7日cache的到期守衛拒絕。v20只在跨10/06–10/23的fixture明示公 builder合法31日max_age，實際receipt/hash/expiry重算；捕捉日期、future／expired守衛與原assert不變。v20 整體1 FAIL／39.44秒，blocked intent已通過，下一daily prior validator只接受v1卻遇本版writer發布v2 receipt。v21只准原v1及唯一具名P08 v2，完整canonical bytes/hash/account/snapshot/qualification守衛不變；隨後public availability _verify_base_checkpoint逐schema核operation配對、ledger、來源／clock與p08 engine receipt，未知版本仍拒絕。v21 整體1 FAIL／39.94秒，KD blocked daily及exit writer已走過，KD讀回cutoff07:15但observer仍07:10，被未來cutoff守衛拒絕。v22只在該讀回前將mock observer設為既有SECOND_CHECKPOINT_READ_CLOCK，如原MA讀回；所有原cutoff、價格、成交與assert不變。v22 整體1 FAIL／104.45秒，MA/KD 首次進場、KD UNKNOWN／超限零成交、雙家族賣出與空倉日、KD新PID公 reader已返回；fixture仍把nested snapshot JSON取為flat欄位，於snapshot_id KeyError停止。v23只改九個斷言左側 API取用，snapshot_id/cash沿snapshot取值、positions投影原stock_code/quantity/market_value三欄；原所有右側值、比較運算與產品函式均不變。Fresh origin 實際匯入14候選／native0；完整 host 節點 **1 PASS／0 FAIL／native0**，1195 pins 起訖相同、source guard clean、7 個實際 PID 有載入來源證據。完整 MA／KD 同來源旅程通過。原始收據 `output/qa/baldr_completion_20261011/root/p08_seed_clock_integration_e423e5d81cc14f30a84d8a0df5e82eb2/receipt.json` SHA `0e16af3882157d7111d5ffc1a6b6b287a72aac58d985e26b380b23347a8b62fe`；stdout／JUnit／actual origins 全部保存，不授完整 Windows Job／資源清理或全部測試接受。
+
+v9 十四來源型態診斷 **54 errors／10 files**，收據 `root/p08_types_eebba157537444788e43df1ea3fa1e88/receipt.json` SHA `a0282b05669732a0802c7f5a0322ba64a67b3f403eb89c3fc20f087913334113`。此為 follow-imports=skip 診斷，尚非型態接受；需修 TypeAlias、JSON narrowing 與 typed fixtures，不可廣泛 ignore／Any 或放寬 runtime guards。
+
+接續依據：完整同版八檔回歸、typed fixtures／型態、績效／benchmark及正常 UI。P01 rolling scheduler／QA bridge、Calendar immutable live/historical clock 及 P08 performance v6 繼續準備；Health Main/Portfolio／新 PID 候選 freeze SHA 32bd32853d39283afc8bd0d0d7d7ad2deaac865fc8090905d5de53dbf6c440c5 已交 root 待審，未授 QA。原 Health Luna Max 接 P08 型態候選、performance owner 後接 public-prior 真 fixture；無新正式套用。所有 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保持開放。
+
+本輪 Coverage 限 Snapshot／本 QA／本機 shared state；正常 UI、正式 API、架構、Manual、Roadmap 方向及門檻未變，既有入口可到達。文檔／raw 前像封套 `output/qa/baldr_completion_20261011/root/p08_composition_handoff_12162713d1044b74a1353ce3b4251d1f`；上一純狀態輪為 no progress，本輪有候選接線修正與改變接續動作的真 QA 證據，分類 progress。
+
+本輪完整節點 JUnit 用時 **89.53秒**，controller 用時 **98.69秒**，兩者分列。
+
+### 同一 v23 八檔回歸終態
+
+Root 使用同一 manifest 與原八個完整測試檔，不改 selection/node/預期；**52 PASS／10 FAIL／1 skip／110.42秒／native1**。1209 pins 起訖相同、source guard clean、9 個實際 PID；原收據 `output/qa/baldr_completion_20261011/root/p08_seed_clock_integration_9f0ef88f3d95454b934fb95a61faf2c7/receipt.json` SHA `ac7242f5a16f1f4e9ab582e334fbe0f685e7717e7e50876b24d826a30ac3df00`。此回歸與前述完整節點不累加，金融／型態／績效與正常 UI 接受仍依各自證據。
+
+保留未通過節點：`test_kd_lifecycle_freezes_unknown_hold_and_caps_new_entries_per_entry_budget`；`test_unknown_and_held_quantities_stay_frozen_while_entry_uses_shared_builder`；`test_low_cash_does_not_rebalance_unknown_position_or_create_zero_share_order`；`test_death_cross_only_target_can_be_empty_without_recreating_cash_allocations`；`test_held_and_unknown_quantities_stay_frozen_after_price_move_and_zero_bp_value`；`test_entry_cap_is_fifteen_percent_of_entry_budget_with_multiple_new_symbols`；`test_strategy_card_states_entry_budget_cap_base_explicitly`；`test_availability_reader_accepts_only_hash_bound_nonqualified_p08_engine_receipt`；`test_kd_exact_intent_reader_rejects_database_not_used_at_write_time[recorded_file_id]`；`test_kd_exact_intent_reader_rejects_database_not_used_at_write_time[alternate_database]`。下一步核原始 traceback 與 fixture/產品契約，再另建 sibling，不能以單一旅程通過抵消全組失敗。
+
+Calendar v2 靜態核 **517 pins／485 module closure／83,246-byte 全文 diff** 重建一致；bridge 實際 SHA `3c09fef50eb50cac23e5611b323a5aaaa24684f55c1fcae34195ee8ec62d105f` 與 manifest 相符，owner 交接字串 e270… 已校正，不判為來源漂移。收據 `root/calendar_v2_static_review_0b49b0c112784fa6aac86fb55143e860/receipt.json` SHA `86e3d3489905d13e02be51b4cffc42e769b31a90b5fe13bb3fbce885d51dccde`；尚未完成整體語義審查、origin 或 QA。
+
+### P01 v4 靜態拒絕與 benchmark 版本裁決
+
+Root 重核 P01 rolling v4 manifest SHA `10f84f7e99e86a5dfdcf44fffde176abb0b8cbca994e2bf828390be3907f2fec`、403 unique pins、376 AST module closure 與完整21,626-byte diff。演算法保留最多8 unfinished futures／16 submitted unconsumed groups、順序 DTO／error、取消能力與 reader 守衛；沒有執行測試或新效能矩陣。Launcher 卻在 CREATE_SUSPENDED 的 Popen 後要求 `_thread`。實際 `C:/Program Files/Python311/Lib/subprocess.py` 中 Popen 的 AST 無 `_thread`，`_execute_child` 只保存 process handle 並 CloseHandle(ht)，因此新版一定在 Resume 前因 thread handle missing 失敗；QA 前拒絕。收據 `root/p01_rolling_v4_review_42f791a8baf44421bba6f205cf2aad73/receipt.json` SHA `7dd0494019b1d970caac39234346443522f15c0b8999c12224eadd443e8bb746`，實際stdlib／launcher原件與diff已保存。Owner先完成Calendar immutable clock v2，再另建v5保留真thread handle→Assign Job→Resume及錯誤收尾；原446.3604ms篩選與300ms門檻不變。
+
+P08 performance v6 尚未freeze/QA。新版名義台北13:30政策採獨立 `p08-source-cohort-equal-weight-eod-clock-v2-1`／2.1.0 與新版schema，舊 `p08-source-cohort-equal-weight`／2.0.0 reader 委派舊契約，不重解舊rows。正式binding依id/version/hash與account route固定；public ledger API驗兩ID不碰撞，各版本用合法獨立binding/route驗寫讀，不造雙binding共用route。舊ResearchRun prefix於later append後fresh PID不變、真writer與typed fixtures仍待驗。13:30明示為名義政策，不代表已取得官方close event或正式績效資格。
+
 ## 最新整合：Health 廣回歸通過與 P08 clock guard
 
 Root 核三檔 fixture 候選 manifest `2fd1467d2a2fb6ca3ad2e7ba1c8d6ba21d0d26f90a1cd3da6f14835e6837044b`、6940-byte full.diff、原 host 失敗收據及 JUnit；完整 diff 逐檔重建，所有原函式斷言 AST 相同。移除 degraded 正例的假 rows hash，另保留具名 malformed-hash 拒絕；scheduled double 明示其原預期 manual action；calendar fixture 只固定模組局部觀測時間，新增 future／expired 負例，不改正式 cache freshness、來源 hash 或決策 cutoff。保存三檔原始 bytes 與變更前回滾清單後套用，apply 收據 `root/health_fixture_apply_0818ce2a2dce4750ac324d693ea34d09/receipt.json` SHA `c3dd4f49c44188b5e1bed2567ab86a6e2b165711d546acdf2497039c1bd55693`。原五失敗收據保留。
@@ -825,3 +1188,381 @@ Manifest SHA `5f222a3fd38f40d6a59d588fe4e707929a05ce58eb7203305c8eca8927b8eb51`�
 #### 保存、文件與接續
 
 Root保存79份raw及Snapshot／本QA／目前架構／Manual四份前像至 `root/health_formal_seed_review_128321c02af048b683d4dfdfd932fb5e/receipt.json` SHA `b175dd7459fd03f540ad385a6236ef99e2084f3cd2d836fc3833a87078980503`。Coverage限定四份文件的本輪增量，Roadmap方向／驗收標準、target architecture、中央Index入口與UI來源未改。UI強制命令未因backend變更重跑；已執行Portfolio既有UI回歸，不能代完整Main。原始資料、main／push／發布未改；本輪所有root QA已終態，三代理續行Health五缺口／正常UI、P01 v4／完整效能、P08有界clock與績效。正式產品改動留WIP，完整目標active。
+
+## Health v6 URI 診斷接續
+
+原 full 4 PASS／1 FAIL 收據保留；root11 只補記拒絕 URI及callsite，固定 candidate、original guard、assertion與期限，結果仍為4 PASS／1 FAIL／25.07秒／native1，六actual PID origin clean、來源起訖相同。收據 `health_v6_full_8642e90e97b74e6f966c8eec08ce8774/receipt.json` SHA `26a06bdcaa4341d7c4818453198684568885b280e0975ea556ecb71a27e02ae7`；外 Job `single_owned_qa_af57ebb2c32d49bf80fc44376e73c9d3/receipt.json` SHA `fa9a6bbcd2447042c4a1698c1ba79c1c5db850065f3650adb7409ab4288b4b4b`、剩餘0、未強制清除。不能把這輪與原全組的通過數相加。
+
+診斷證據確認 callsite 為 `PositionHealthDailyRefreshService._read_snapshot` → candidate `ReadOnlySQLiteManager.connect/_uri`。原 URI `file:C:/Projects/.../paper_portfolio.sqlite?mode=ro` 的 scheme=file、netloc空、mode=ro、decoded絕對路徑正確；護欄允許的 Path.as_uri canonical 為 `file:///C:/Projects/.../paper_portfolio.sqlite?mode=ro`，project serializer canonical 則是 `file:C:%5CProjects%5C...?...mode=ro`。拒絕是共用 manager URI 拼法與 existing canonical contract不一致，沒有證據顯示要存取私人根以外資料。新候選應讓 manager沿既有 `connect_read_only_sqlite` 使用 `resolve().as_uri()`，query-only／原immutable suffix／cancel handler與輸入日期內容不變；不放寬F12 guard、不覆寫v6 freeze、尚未修改正式helper。
+
+診斷工具 root03 的child字串與 root04的prefix字串 SyntaxError 原始結果各自保留；它們沒有成功UI body，不能推翻已取得原v6 panel／TaskWorker定向證據。root05診斷driver與root11 runner在啟動child之前解析完整工具與child程式AST，取得上述真URI診斷。
+
+新的canonical reader候選尚待封裝、root審查、reader原回歸與full Main/fresh PID原旅程。所有本輪Job terminal／剩餘0；唯一Luna Max葉片只做P01 v11靜態封裝。完整scope及Gate開放狀態不變。
+
+## P01 v11 獨立核對與來源清冊 shape 缺口
+
+Root 審查 v11 manifest `28459b99cd5845ca1216966dbc2d7f12657045acc6fbedf9d46dec992b8b401c`：641 raw pins／884 checks、125 index files、30 v10 原像與八段 full diff 全文重建一致。完整原 normal_view_protocol／fixed_inputs／semantic_oracle／candidate_query_overlay／source_freeze／runtime_environment 相同；七份活動 Python AST 僅接受已審閱的 exact metadata 比較及路徑／SHA／診斷版本識別。原 query/test/bridge/380 closure 保持。收據 `root/p01_v11_static_5098873408544b9f89fd641a2aee2180/receipt.json` SHA `70108fde562f26137cbdf0218ec4b0fa21d5390c9afd2222816e014da04d4b2f`。Root 前三次工具拒絕為自身 AST 版本映射／full diff hunk 後空白分隔處理不足，原結果保留；沒有把工具錯誤當產品回歸或改動候選。
+
+Sandbox pure preflight native1，在 `Path(__file__).resolve(strict=True)` 遭 WinError5，尚未進入 store；收據 `root/p01_v11_preflight_6ef6dc7dbee94bbf91574d6ea76bfeba/receipt.json` SHA `98523bdf471e3455cfb3164bd4ee7ef2d36e015e938763e22d5ff1ff4a6b8e53`。同一固定候選／私人環境／Job 上限在 host 重驗，原路徑可解析；pure preflight native1 精確拒絕 `p01_v11_formal_query_preimage_not_preserved`，收據 `root/p01_v11_preflight_f6d5161bf4d44941a97bb316b53be644/receipt.json` SHA `948fb37c67852c9397b210d25f0a43e79ba8b9e3563c9ecd00402d88b9b8404a`。兩輪來源 pins 相同，沒有 origin probe 或完整矩陣，也沒有新 p95。
+
+確定根因：原 `runtime_product_module_paths_sha256` 是 repository relative PATH→SHA 清冊，但 preflight／supervisor／runner 以 MODULE 名查該表後與 PATH 相比。正式 query 的 module→SHA、relative path→SHA、實體 raw bytes 與 overlay replaced_formal_query 都一致；錯誤在三個新增 query-overlay 查核入口的表形狀假設。v12 新 sibling 同步修三處，以 exact relative path查原 path→SHA、另保留 module→SHA 與 overlay exact path／SHA；原清冊、51 modules、380 closure、query/test/bridge與所有門檻不變。原有效篩選 p95 446.3604 ms 仍未達 strict <300 ms，不以預檢修正授效能接受。
+
+所有本段 root Job 都 terminal、remaining0、未依賴強制回收，process／Job handles 關閉、mutex 釋放；讀回12程序與8 GiB記憶體限制。Host 唯讀盤點當時可用 RAM約23.87 GiB、22 Python共約1.15 GiB RSS，沒有命中本任務QA腳本；完整建立時間／父系／來源清冊省略所有 command line。此盤點不能代替 Job membership 作為所有權判斷。Sandbox CIM 拒絕所生成的 null欄位盤點不作證據，採 host fail-closed有效盤點 SHA `34dccc2e6feb1a48f19978ab0d6826aae777a0ccf7d462dbb5f0bb6bb4ee9c52`。
+
+Health v7 的 canonical readonly URI候選與P01 v12僅由兩位Luna Max靜態葉片續辦；葉片無Python／pytest／mypy／compile／import／背景程序。完整scope P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持開放。本段只新增 ignored raw／helper與四份狀態文件增量；Manual／Roadmap／架構／Index入口無行為變更。回滾限本次新增段落並參考packet內逐檔前像，不覆寫其他owner修改。
+
+## P01 v12 預檢通過與長路徑阻礙／Health v7 完整差異拒絕
+
+P01 v12 三個 QA 入口已改為 exact relative PATH→SHA 查核，module→SHA 與 overlay path／SHA 另行保留。Root 獨立核對 704 pins／1,022 checks／185 index files／45 v11 原像與八段完整差異；七份活動 Python 除精確三處清冊形狀修正、版本與路徑／SHA 身分外 AST 相同。原 protocol、fixed inputs、semantic oracle、source freeze、runtime environment、query／test／bridge 保持。靜態收據 `root/p01_v12_static_391cc4c68bd44edcaa3d70f62186ecea/receipt.json` SHA `02d5fbb040252c824019ded2cd52cec528c004080d6d3fef8825b8f426b05959`。Root 工具自身普通長路徑讀檔與過廣的 30→45 替換失敗原件保留；有效重建器只修 inventory 比較，不改原暖樣本30。
+
+同版 host pure preflight **native0**，8 formal／51 product／80 runtime／594 package／380 nested closure 核對通過；704 pins 起訖相同、pycache 空、store access0。收據 `root/p01_v12_preflight_b13ef2f1981641fcbbb490d84ddb962b/receipt.json` SHA `86807fbf4f848c197821e0fa7fcb9ebb9036a791abb25f79384748087377edbd`。fresh origin 階段 **native1**，在 `_execute_query_overlay_origin_preflight` 的 role directory mkdir 遭 WinError206，尚未啟動該 probe；實際目錄255字元。收據 `root/p01_v12_origin_27af544506804226a2d9d764f5903db2/receipt.json` SHA `48f69b9bb569ad57681d1e5cdff1a503268f0059940e9843579b96b888edd847`；inner SHA `4c4e18fb444d73a1b40f69b92181a1407f485d69ca91a4e0834bacb8d6d48944`。來源相同、無新完整矩陣／p95。短 sibling m13 正補 canonical QA output 與 private root aliases，原 role 識別、全部守衛及600秒期限維持；不修改 host 長路徑設定。
+
+Health v7 manifest SHA `ac736735948881f49ebb06850c31ffb72e2f6f241e31bfcb5278bc3a538b00dd` 靜態候選已凍結。Root 在完整 formal patch 重建時拒絕：journey 新增 module pin 四行後2520行，但 full patch 仍為 v6 的2516行。候選 URI／journey pins 兩檔 delta 不代表 full formal patch 相符；本輪未匯入產品／未執行 Qt。原失敗 Job 收據 `root/single_owned_qa_09d5b1aee23b4c75a10b7973b1714a6c/receipt.json` SHA `94c08ac66ec1f1d063b2427a82615f87189cb54267bdcddcf9403aa2e23e1ca6`。v7 保持原件，新短 sibling hv8 沿相同31候選 bytes 重建完整11-target diff及清冊；reader取消／URI／full Main與fresh PID旅程尚待。
+
+本段所有 root QA 使用單一 Job／mutex、8 GiB committed memory／12程序、啟動前至少8 GiB可用RAM；皆 terminal／剩餘0／無強制清除，process與Job handles關閉、mutex釋放。葉片只做靜態來源與候選封裝。原有效篩選p95 446.3604 ms仍未達 strict <300 ms；P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4完整scope保留，沒有完整工作包或Gate新接受。
+
+Coverage Pass：本段只新增 ignored raw/helper 與 Snapshot／接續QA／active task／handoff 四文件增量；正式產品、操作入口、Manual、Roadmap、Architecture及Index無行為改變。回滾只移除本次段落與Snapshot新列，使用 packet 的逐檔前像比較，不覆寫其他owner dirty內容。
+
+## P08 v31 原像／完整差異／原回歸與日曆 projection 終態
+
+v31 manifest SHA `a6b45b955969c2e9913db6bf95d6ebc63613bf6377d980ba8f92ffc983a9d93a`，276-entry fixed chain SHA `1e986ab8fc326ab5b12260bfe1f7902b9918c64c827b286665789ae7bf531d2a`。Root 獨立核對915 pins／418 AST closure／28活動來源、14 product＋2 package、33 formal pins，v29原98檔與v30原131檔及保存副本吻合；25活動 product／tests／fixture 除完整 namespace與projection檔名重綁外逐檔等同v30。完整formal-target proposal／fixture05全文16段、v30actual一段、v29rebound兩段均重建一致。原fixture05的393＋7 assertions AST完整保留，沒有刪除或鬆斷言。收據 `root/p08_v31_static_c4cd553ceb6e49689467c6bcd1d3c318/receipt.json` SHA `596cb3a27c6e23841dba262f2f553c2e7c0a2dafebb454e78d22b4aa0d5f3834`；root01自身未處理rebound舊測試檔名的失敗原件保留，root02只修正既定rebound身分映射。
+
+Host fresh origin **native0**，實際14 product sources符合固定path／SHA，922pins起訖相同、sourceguardclean；收據 `root/p08_v31_origin_4fb10e02155b41188ce718e7a13cd7ea/receipt.json` SHA `95b0ac232034c9769c868b1d632c7dd63370093d552e04ab1be618adca432082`。同版正常mypy **14 sources／0 issues／native0**，923pins與來源守衛正常；收據 `root/p08_v31_types_ab87b78d03a741f2bbbb0aa4cb66e490/receipt.json` SHA `fca80efe6d2a2549f7a8df9238f1185814871f367d3fd5cac9edf0afe0a61006`。
+
+新增projection＋原candidate-origin測試 **11 PASS／4 FAIL／5.71秒／native1**，923pins不變、origin clean，收據 `root/p08_v31_projection_72daf03b161949459bdd1308fdd68958/receipt.json` SHA `e3735f90dc8bb1ff72a4cdc6f41a52d7892467945991906f66db8ed2c20216b2`。兩案把Path傳給明訂exactstr的locator；一案只突變outer status而未同步source evidence，正確遭source_projection_mismatch；origin測試要求原exact v1五欄位，candidate metadata改v2而被判malformed。Hash-only的live mode搭cache shape與complete_year=false也僅證明序列化敏感性，不是合法producer eligibility；限制已在候選README與mode_shape_review明記。原負例與product guard保持。
+
+原八檔全組 **57 PASS／5 FAIL／1 skip／106.16秒／native1**，923pins起訖相同、9 actual PID origin clean、pycache空。收據 `root/p08_v31_suite_aa9538cf506146ca8dcc3042065e7a08/receipt.json` SHA `ef4c2831ca320419e4b19ba2032f671e394b95ad29c438c05843590a89eb7b4d`。JUnit確認真MA source→intent→共用engine→daily→fresh public read旅程通過（60.752秒）、KD lifecycle UNKNOWN／hold／entry-budget cap案例通過；真batch→daily writer→消費後seed-prior reopen與fresh public seed prior讀回也通過。五FAIL均為manual minimal MA／KD identity gate fixture缺schema4新增clock欄位而先拒絕，未達原確切database_identity_mismatch／replaced負例檢查入口；不能改expected error來當通過。短p32只補QA封套、exactstr輸入、合法內外一致hash vector與原v1 origin metadata；14product邏輯不變，原393＋7及所有負例assertions保持。p32仍待完整同版QA。
+
+本段所有Python均root序列執行，單一owned Job／mutex、8GiB committed memory／12程序、啟動前至少8GiB可用RAM；所有Job自然terminal／remaining0／無強制清除，handles關閉、mutex釋放。原失敗、fixture與私有診斷輸出完整保留；subagent無Python／pytest／mypy／compile／import／背景程序。沒有正式套用P08候選、沒有授P08／M3或其他完整Gate接受。
+
+Coverage Pass：只增加ignored raw/helper與Snapshot／接續QA／active task／handoff四文件增量。Manual／Roadmap／Architecture／Index沒有正式行為變更需同步；回滾限本次段落與Snapshot列，packet保存逐檔前像，不覆寫其他owner dirty內容。
+
+## Health hv8 與 P01 m13：精確失敗位置、資源終態與接續修正
+
+Health hv8 manifest `7402101d8269e1420acaedeba0662ca67d7a6485fd1a1145e748fc1d6b69cb95`，root 698pins／1355checks／11完整targets／2delta重建通過，保留原74assertions及process deadline。SQL僅改canonical `resolve().as_uri()`，另29檔與v6相同。完整閉包再納原conftest及其literal pytest_plugins，最終988pins／779modules／16embedded AST。首次reader因未列conftest被守衛拒絕，原件保留；完整閉包後原readonly＋URI測例 **10 PASS／1 FAIL／1.54秒**。六URI cases均通過；原TaskWorker取消真recursive SQL案例沒有cancelled訊號，屬SQLite取消例外與既有BacktestCancelledError接線缺口，不能把真SQL錯誤一律當cancel。收據SHA `fe8203b33b0a092fd9f26a0a50b3b5ba89d106e941087f0ee5386dd232031374`。
+
+同版原Health五旅程 **5 FAIL／17.96秒**，六actual PID、來源起訖相同、guard clean。全部停在helper載入後的blanket changed-module assertion：candidate app package已安裝，F12 helper正當載入新增SQLite candidate也遭拒絕，未進Main旅程。收據 `root/health_v8_full_ccdda60876814cad98400e5aa974f9dc/receipt.json` SHA `c8236ae8410c80c3cc440cd5ea4a9c5752140ecdf311670f17c1f7304970c12e`。hv9只補專用取消例外繼承與SQLITE_INTERRUPT＋callback明確確認，保留真錯誤；helper後改逐一exact canonical path／SHA核對已載入模組，overlay前禁載仍保留。hv9尚未runtime驗證，沒有正式套用或授Health完整接受。
+
+P01 m13 manifest `c55d3f80db8190d3118ef902736ebf229516854f46a56bc4668b6bfcc18b3af4`，root743pins／1065checks、17直接v12前像＋185歷史引用、八全文差異逐行重建＋raw source SHA，所有原protocol／inputs／oracle／query overlay七組核心欄位一致。463展開路徑最大199字元，僅允許具名來源身分與短run目錄、token／role檢查、path_length_inventory核對等精確AST改動；剩餘AST差異0。Root初版把特殊全文差異視為git-new-file格式，後續解析錯誤屬審查器問題；原失敗Job收據保留，不當產品FAIL。靜態收據 `root/p01_m13_static_59ab22185fd6451b8fcd58bca4ec108a/receipt.json` SHA `1edb917d78e9b41c7e056ad4107f75b378ccce2f4c28fe4199b262c4943bcfa0`。
+
+Host pure preflight **native0**、743來源pins不變、store讀取0、pycache空；origin已越過長路徑並啟動真probe，fresh PID37620 import event核candidate query與formal parent exact path／SHA，但fresh child **exit101**，原capture_output stderr尚未進失敗收據，不能推斷原因或聲稱origin通過。Root收據 `root/p01_m13_origin_8ce4b0a26166490186223a91ac8b3a90/receipt.json` SHA `bf9838e5f0806490e3aa75611afc62bc8611aea5e9138a5833542f1d97a1835a`。m14僅補具名fresh child失敗stdout／stderr／PID／原exit證據，m13封存不改；原sealed1457／1000rows20pages／5cold＋1warm／每操作30samples／600秒role／strict p95<300ms保持。此段尚未重跑全六角色矩陣，原446.3604ms FAIL仍有效。
+
+上述各QA皆root序列Job、8GiB committed memory／最多12程序、至少8GiB可用RAM才啟動；均自然terminal、remaining0、無強制清理，handles關閉與mutex釋放。Subagent只做靜態候選。Coverage Pass僅Snapshot／接續QA／active task／handoff四文件增量，沒有正式產品變更需更新Manual／Roadmap／Architecture／Index；整體P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍WIP。回滾只限新增段落與Snapshot列，逐檔前像與raw證據保存在具名ignored packet。
+
+## P08 v32 原始斷言、15 projection 與完整八檔結果
+
+v32 manifest `167630265d730dd3ae04a5061e8a20955899718a145d79642927dcbf66cf9b58`，42-entry chain `3be74b19d09fdf01609d67240ed3f661e45bbd7bc0bdc3f1380872b207cdac84`。Root961pins／418closure、16份v31→v32完整delta重建一致，原393＋7 assertions AST完整保留；14產品除namespace外逐bytes等同v31，原primary測試只改兩個minimal identity gate helper，其餘AST相同。靜態收據 `root/p08_v32_static_c39c3233afb24543b104d68aeab4abf0/receipt.json` SHA `c58f6c7c9711a0035c052044f58ecf14e03439dbd6f782927472f8ebc66fb4b1`。
+
+第一輪projection14PASS／1FAIL，原origin測試明列candidate.__init__載入同一固定initializer，root02守衛只接受canonical package name而拒絕。Root03由兩項固定package_files產生精確alias map，要求同路徑、同SHA、canonical＋.__init__且限定同candidate namespace；其他產品模組仍exact name/path/SHA。原失敗收據SHA `13fd6695a376d4051b1e6363300dd757be37436de6039624ad8000e3d24008b6`保留。
+
+同版新origin native0、14真產品、968pins起訖相同；projection＋原origin測例 **15 PASS／4.71秒／native0**，969pins不變、guard clean，收據SHA `955bf5dc6fa6702fd29e20ae1291e81a1cd8593506b86c86b880c677e28c7426`。原八檔 **60 PASS／2 FAIL／1 skip／104.69秒／native1**，9 actual PIDs、969pins不變、guard clean；收據 `root/p08_v32_suite_450c1f78ba4b45348c8e4df6823fbe13/receipt.json` SHA `1d1076b04a1a9406914af7b408171c9d761f6c15b2be7258b6de18a4767ecb66`。三MA identity mismatch／replaced負例已到原指定gate並通過；兩KD helper仍把saved_at／available_at datetime直接交canonical JSON而TypeError，未到DB gate。短p33僅補isoformat與namespace重綁，root先定點核兩KD＋三MA，再原全組／15projection／14mypy同版。正常mypy本版 **14 sources／0 issues／native0**，收據SHA `eb4476e557bcd52926caddb271eff990359723c3c3aed6d679a412a321698ec4`。
+
+上述Job均root序列、8GiB committed-memory／12程序、至少8GiB available RAM才啟動，自然terminal／remaining0／無強制清理、handles關閉／mutex釋放；沒有subagent啟Python。完整P08／M3與全產品Gate仍待。Coverage只增加四份狀態文件增量與ignored raw/helper，沒有正式產品變更需同步Manual／Roadmap／Architecture／Index。逐檔前像與原失敗原件保存，回滾僅本段與Snapshot列，不覆寫其他owner內容。
+
+### Health hv9 未完成封裝，不進 runtime
+
+Leaf停止後只讀核對：hv9/candidate-freeze-v9.json仍為hv8 manifest bytes，SHA `7402101d8269e1420acaedeba0662ca67d7a6485fd1a1145e748fc1d6b69cb95`，sidecar/schema/freeze_id/root仍指hv8；full patch早於callback ContextVar變更，不是有效hv9 freeze。Root未執行hv9。接續新hv10以已審hv8為權威基線，最後才產生同版manifest與全文patch；原callback進度處理器的瞬態throw後回True須保存first exception與SQLcause，不能誤分類cancel。hv9原像保留不修改。Root目前所有已報QA均Job0／handles關閉／mutex釋放，subagents只做靜態工作；完整產品／Gate仍WIP。
+
+## P08 p33 同版原八檔通過（仍未接受完整 P08／M3）
+
+候選 `output/qa/p33_calendar_projection/` manifest SHA `c64747ab0914369daf1e5904510b2edeeca702e47dbf0fc10ceb347ada8b83a6`；root static 收據 `root/p33_static_ab6a027fe0934803adc6ab459b1645ad/receipt.json` SHA `b008fb2c1adc954b7de0f172be08806e9879d4938b9d3023dccef2216ba81c17`。1004 pins／418 closure、15 段 delta 精確重建，原393＋7 assertions保留；14產品除namespace完全等同v32，唯一fixture payload差異是KD helper三處ISO時間序列化。第一版root reviewer錯把AST unparse末項沒有逗號當成missing field；原失敗保留，改用精確三項AST轉換後通過。
+
+真14產品 origin、五項原identity gate均通過。原八檔 **62 PASS／1環境skip／0 FAIL／105.65秒**，9 actual PIDs、1012 pins起訖相同、source guard clean；收據 `root/p33_suite_bb122be1bb2a48c19fb4f9f6a9ae3416/receipt.json` SHA `e3c1282ff7a080f47fe7c117dfab87627e32cddf22b93e98351c9161f08fcd8b`。skip仍為Windows建立reparse alias缺權限WinError1314，不能算產品pass。Projection **15 PASS／4.67秒**、正常mypy **14 source files／0 issues**，同版來源與斷言不變，各收據固定於本次handoff索引。
+
+本次報告的P08 Job均自然terminal／remaining0／無強制清理，handles關閉及mutex釋放；單一Job、8GiB／12程序、至少8GiB可用RAM才啟動。Health或後續Job之即時狀態另依具名收據，不以本段推定全部程序已結束。未修改正式產品或資料；完整P08尚缺正常多策略績效、benchmark、歷史比較與正常UI之同版驗收，M3／所有全產品Gate保持open。
+
+文檔Coverage：僅Snapshot／具名QA／active_task／handoff四檔狀態增量，沒有新使用者可見行為；Manual／Roadmap／Architecture無行為同步需求。回滾：保存四檔前像，只撤本段及Snapshot新增列，不覆寫其他owner變更；不可變候選、原失敗與raw不刪除。原收據不遞迴複製，以SHA固定引用。
+
+## Health hv10 取消通過、真 writer 缺口與 P01 m15 預檢終態
+
+hv10 manifest SHA `a4c56ac83f650fd54f3530617e09a7823c5cfaf7ca1e14c7ba6fcbf08faea0e7`。Root獨立754 pins／1446 checks／11全文＋2delta重建，29原候選bytes相同、原74 assertions與所有旅程／期限保留。URI取消案例依新專用例外增加原SQLITE_INTERRUPT cause查核，其餘URI原方法保持；SQL只改取消類型、精確interrupt翻譯、第一callback錯誤與ContextVar reset。原TaskWorker與readonly加URI負例 **66 PASS／2.14秒**；包含短暫callback拋錯後回True、巢狀範圍不外漏，原TaskWorker genuine error仍error。Static SHA `28878f29024883162bbcb108992ab996d42014561d9bbca8383fa06f1d2f7ce9`，reader SHA `8bbe9d045f0e5aa6b2444bb796bc7b199b9a1596536a784fde29339bc2f8e11d`。完整closure1046 pins／781 modules／16 embedded AST，含原conftest/plugins及兩份Task取消回歸。
+
+原五旅程依序跑三次，每次 **4 PASS／1 FAIL／六actual PID origins clean／pins起訖相同**：
+
+1. 22.28秒，writer witness路徑275字元，`os.open`報FileNotFoundError；父目錄存在。純stdlib create-only私有probe證258/259字元成功、260/275字元Errno2，SHA `5eeb34f30e0a1e9d4cbc7aa5712dac7f376be4d46271dcdf2b0b4de3447ce612`。
+2. 24.57秒，root私人目錄縮至h＋3hex／pytest p，witness通過，archive臨時檔用extended syscall開啟後，F12 canonical普通lstat在285字元誤判缺檔；原guard拒絕保留。
+3. 23.09秒，root driver僅以標準TmpPathFactory.mktemp('t')產生每test獨立短目錄，原候選／原旅程／F12守衛bytes不變。Witness及archive publish通過，真public reader才暴露 `position_health_saved_archive.py:391` `_required_text`多傳第二參數，helper只接受一參數，TypeError。收據 `root/health_hv10_full_eb67ba1f72214628abcae49440fa183c/receipt.json` SHA `72d2a8ee6212830179f8aa6d63a6cf8759dc6551d0e54b28b6b8240a21cb65ee`。hv11僅修八處caller arity及來源pin；正常Main／回訪與新PID仍未接受。
+
+長路徑是現存產品witness syscall／測試guard IO邊界缺口；短QA路徑只允許驗證後續流程，不能算長路徑已修。所有原失敗保留。
+
+P01 m14差異拒絕：preflight段hunk宣稱15行實際13，原source未改。m15新actual Git差異四段重建、796 pins、原m13→m14診斷argv/cwd/env/成功斷言及核心七項協定獨立核對；m14差異未追認。Root處理Git缺末尾newline標記的兩次自有parser錯誤保留，最終static SHA `8e3df1bf9e3044963fb668f44a6d1507c44ec2fec15a580e465ca22eddf677d0`。Host preflight native1、pins不變、未碰store：manifest status被改而入口嚴格要求原v13 status。收據SHA `55098508283e3cfee0b49d3b160c9dc6046ed6a006c20172f21077fde3765c65`，m16恢復原schema/status並靜態核所有入口metadata讀取。尚無fresh stderr／新矩陣／p95；原446.3604ms FAIL與strict<300ms保留。
+
+以上所有已執行Job自然terminal／remaining0／無forced cleanup／handles關閉／mutex釋放；root目前沒有活躍QA session，subagent僅靜態。單一root Job、8GiB／12程序、至少8GiB可用RAM政策維持，未全域kill其他Python。沒有正式產品／資料變更，未stage／commit。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍open；各綠燈只是具名窄範圍，沒有完整包或Gate接受。
+
+文件Coverage僅四份狀態增量；無使用者可見行為故Manual／Roadmap／架構無本輪行為同步。回滾只撤本段與Snapshot新列，四檔前像於具名handoff；候選、原失敗raw、原資料不刪除、不覆寫他人未提交改動。原raw以SHA固定引用，不遞迴複製歷史樹。
+
+### Health helper arity 與 P08 績效前像核對補記
+
+Root唯讀AST核對hv10 archive：40個頂層helper、181處直接同檔呼叫、0處star展開間接呼叫；唯一八處錯誤皆為_required_text多傳第二參數，其他173處arity符合。收據 `root/health_archive_arity_9df8cb2aea85487e82ee3f93f6385f6e/receipt.json` SHA `21aa167132a056191e98a62b460421b216030a1bcff22eea606d998af0e5efda`；owned收據SHA `ce40f2b1bd65df9da252d285f7da0e2316d3995c9244d0e17b6a8e7748354984`，自然Job0、無強制清理。hv11仍待封存／原旅程驗證，不以static核對宣稱功能通過。
+
+P08績效靜態盤點已封存：`output/qa/p33_perf_static_audit_20261011/audit_manifest.json` SHA `5c6c10e667368b05823bf73a01362998f6efe5be1e8dec745671dce0d65a73bd`；README SHA `ab1beaf9032ec8a0d962a2c9efb8a3b5eae775e85d005c1a883ecf1e9e328037`，root實際讀取並核SHA。最新perf03仍是未接受fixture04核心，不能覆蓋已通過p33；p34以p33核心另接六個績效模組與六份原focused tests，14-core origin契約仍固定，145個既有績效assert與400個core assert均須保留。帳戶獨立損益、benchmark、歷史比較與正常UI之完整P08／M3仍open。
+
+本補記僅四份狀態文件增量與先前root新增段的繁體用詞修正；四檔前像另存，回滾只撤本增量。未修改正式產品／原始資料、未stage或commit；root沒有活躍QA session，葉片靜態工作仍在進行。
+
+## P01 m16 真 launcher 根因與 Health hv11 真公開讀取
+
+P01 m16 manifest SHA `c10383a7e3371afb3ab2f17dbea6b7e382fa322f3824a6e3620fdbdda0170cd0`，index SHA `96d82c954a76d07af33693c9761bb9ac80997920a2f37f9711baaf4716e81d80`。Root824 pins／21封裝檔／六直接前像／四段完整差異、原七core與matrix_state及schema/status、必要artifact path/SHA相符。Root最初三次自有reviewer讀取旧欄位／未解析Git帶引號Windows header，原失敗保留；最終adapter按實際schema與Git quote解析，未改候選。預檢 **native0／pins不變／store內容0／pycache空**，SHA `cbfdf6f931ecea46460ee89a625c954f3f6b76eda2e19ab1590e8fc9f19ebd3f`。
+
+真正origin仍native1；此版首次保存fresh launcher原始stdout/stderr/PID/argv/exit，fresh childPID43840、probe CPython18408、exit101，stderr為venv redirector「Unable to create process using ...」，不是Python guard traceback。固定raw `m16/runs/o_a3abcc653dc6/roles/o/fresh_child_failure.json` SHA `8ff526b2f9ab0e333da92104fd05fd2bd3cdb99cd5938521953d9ea1e4050ad7`；root origin SHA `fadee81981ec2e08159ec8f02ef532a4e31451d0b1ead72d5db42643baf5582e`。
+
+Root純stdlib、無產品import、有界nested Job診斷證：內層cap3時第二venv chain的base Python無法建立而exit101；cap5時nested native0。兩案先assign suspended、自然排空0、handles關閉、無強制清理；收據 `root/nested_venv_job_limit_2dc1d418c9414d479f57dcb2d02f27fd/receipt.json` SHA `6d9337c571a2bb4a9de0893f8c9df80f1561ec479957485676a54b44250aac51`。普通matrix的Qt/ThreadPool reader為執行緒，非另一組OS程序；六角色仍序列。m17只調內層當前QA Job cap3→5（兩層venv/base共4＋console保留1），root外層12程序／8GiB與至少8GiB可用RAM才啟動不變。原1457 entries／1000 rows／20 pages／5 cold＋1 warm／30 samples／600sec／strict<300ms不變；原446.3604ms FAIL仍有效，完整matrix未啟動。
+
+Health hv11 manifest SHA `7be494bf40abac638944c3b32c0ec7ebe3b00f30cd9853d50925c2d24c72d073`。Root811 pins／1503 checks／11全文＋2delta、八caller精確AST轉換通過；其他29 candidate bytes相同、74原外層assert与URI方法保留。Delta最後payload行缺傳輸LF，root只對固定archive-pin末行补一個LF解析，原raw SHA不改、各hunk和完整source逐行相符、source raw SHA另行核驗；不宣稱原delta可直接自動apply。完整closure1103 pins／781 modules／16 embedded AST。原readonly／TaskWorker／URI回歸 **66 PASS／2.16秒／native0**，SHA `688909c39b267f51f7a578d60fb0221ec998f1d46f94b2e77f04ec273480fdbc`。
+
+原五旅程 **4 PASS／1 FAIL／23.38秒／六actual PID origins clean／pins不變**，SHA `cdb7589272e850ada0ffaf05bbe71178e164e8957d5f0d094445356b4be18766`。真writer已越過公開reader、snapshot／locator／hardlink負例，reparse reader也按原指定code拒絕；終於卡在負例finally的 `os.rmdir(junction)`，F12寫入守衛拒絕alias清理。hv12只把自建junction保留為QA證據，finally改三項唯讀檢查（reparse attribute／exact target／原receipt SHA），不繞過或放寬F12、不改產品。正常Main／返回／新PID完整旅程仍待。長路徑產品及F12 canonical-stat gap仍open。
+
+所有上述Job均自然terminal／remaining0／無forced cleanup、handles關閉／mutex釋放；root目前沒有活躍QA session，三葉片只做靜態封裝。所有source失敗與root自有adapter失敗保持原始不可變收據，原件不覆寫。P34依已封存績效盤點繼續；六績效模組不授qualified性能，來源event clock／官方session／共享fill cost policy三個eligibility blockers仍有待完整P08實作。
+
+Coverage僅Snapshot／具名QA／active_task／handoff四份狀態增量；無正式產品／原始資料變更，未stage／commit，無使用者可見變更需同步Manual／Roadmap／架構。四檔前像已保存，回滾只撤本段與Snapshot新列，不撤他人變更或刪除QA原件。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4維持原scope；沒有完整包或Gate接受。
+
+## P01 m17 真 fresh-child 環境問題與 P08 p34 首次績效執行
+
+P01 m17 manifest `d939acb90b52bf46918b99dfe1f1c039071fb2e4b9c6af54e7c6c9af856214a8`，root 靜態 843 pins、14 封裝檔、四完整 delta 通過；唯一執行限制變更為內層 Job cap3→5。預檢 native0、store內容0、pins不變。Origin已越過原 launcher101，但 native1：fresh child 啟動期 sitecustomize 拒絕 `PYSIDE6_OPTION_PYTHON_ENUM,QT_QPA_PLATFORM`；runner在import期明確設定Qt offscreen，probe import runner後使用 `os.environ.copy()` 傳給fresh child。Shiboken DLL含另一變數token，native setter尚未證明。m18僅在import runner前保存已通過 exact allowlist 的啟動環境快照，明確傳給helper；不放寬bridge/allowlist。原1457 entries、1000rows、20pages、5cold+1warm、30samples、600秒與strict<300ms保留；原446.3604ms FAIL仍有效，完整matrix未執行。
+
+Health hv12 manifest `976c3d064b48c99ac02ac50aad1fdc3613a697b0473cbb4317063dedf641a806` 已封存，但root拒絕其delta：context行缺 unified-diff marker前導空格。全文11target已重建；尚未完成候選後續審查，未執行hv12。新hv13只修封裝格式、31候選bytes維持hv12，不得改guard或測試意義。原hv11 reader66PASS/full4PASS1FAIL與長路徑gap仍有效。
+
+P08 p34 manifest `b6573fae4e6b5788a7273cbb71856cf926263361578d7347d2f3e8e34afb99e3`：root1092pins／447遞迴閉包／52完整新增patch逐行重建；p33核心14模組與原測試及六績效模組/測試均僅namespace替換。核心現有401assert與p33相同，原400保留；六focused原像143assert精確保留。root早期adapter誤把400/145當成目前count，兩次自身assert失敗原件保留；以固定原像實際count校正，未刪或弱化候選assert。核心v1 origin維持五鍵/2init/14，績效另六module-map。
+
+20實際候選模組origin native0，1099pins不變、guardclean。首次六focused＋獨立origin測試 **28 PASS／13 FAIL／10.30秒／native1**，1100pins不變、guardclean；raw收據 `p34_performance_9ed1bfeea0804871b4886cbc60954473` SHA `7a2d97db655c32f9c727be7904baedfb53f9d7c6460d0a5efad20ecec9871a5f`。錯誤包括四個tuple欄位fixture ValueError、三個writer回傳None當Path、manifest schema/canonical JSON及benchmark route identity；需先分辨fixture與產品契約，不改expected錯誤碼掩蓋。尚未跑p34核心全suite/projection/mypy；P08雙帳戶、資格、歷史比較、正常UI、返回與新程序仍未接受。
+
+上述九組root Python全部自然Job0、handles關閉、mutex釋放；沒有強制清理或並行Python。subagent只做靜態工作。最後p34性能組終態available memory為18,358,956,032 bytes（取自收據，非即時RAM）。外層12程序/8GiB及啟動至少8GiB RAM限制維持。
+
+四份狀態文件增量已保留前像及固定raw收據；無正式產品或原始資料變更、未stage/commit。無使用者可見變更需同步Manual/架構/Roadmap。完整P00–P14/M1–M3/F01–F23/UX01–UX24/G0–G4 scope保留，沒有完整包或Gate完成。
+
+## Health hv13 進入正常 Main 與 P08 p34 真正常型態檢查
+
+hv13 manifest `0a2a48b3e2dae86e48dfd44ad5a75e46c35906595d32f038b2baf26d4ebfa7b6`。root867pins／1561checks／11full+1delta逐行重建，30候選與hv11相同，旅程唯一刪除自建junction改三個唯讀檢查；74原外層assert及URI方法保留。Delta原raw有正確marker與末尾LF，沒有做transport修補。完整閉包1159pins／781modules／16embedded AST。原讀取／取消／URI回歸 **66 PASS／2.31秒／native0**。
+
+原五旅程 **4 PASS／1 FAIL／30.48秒／native1／七actual PID origins clean／pins不變**。writer已通過全部保存／locator／hardlink／reparse原負例，Main parent此次確實開始；現在 `_health_assert_candidate_loaded` 在 `from ui_qt.main import MainWindow` 後、建立Main並點Portfolio正常lazy載入之前就要求八個尚未載入模組，提前拒絕。需先核正常UI時序，再將完整required-set來源檢查放到正常Main/Portfolio載入後；禁止預先硬import冒充旅程、刪弱來源guard或原UI斷言。正常返回及fresh PID仍未接受。長路徑產品及F12 canonical-stat gap仍open；新候選的normal typing需canonical overlay以避免formal fallback混入，尚未執行。
+
+P34另一次root自有stage路由錯誤：原命名performance_types的raw收據實際command為pytest projection，**15 PASS／5.34秒**；不能算mypy。錯誤runner/raw保留，新root02精確修stage路由。真正正常mypy command核六績效來源、**32 errors／5 files／native1**，來源pins不變、guardclean；收據SHA `008b784e2535b2f1fa1137dbd767b362e506d7d505cab4a0a50af6cee3053e4e`。包含locator helper回None被當Path、兩個 `_parse_aware` 少field參數、Decimal exponent未做型別收窄、route使用object及JSON欄位窄化不足。不得以Any/cast/ignore/suppress或降低政策替代修復。P34原28PASS13FAIL仍有效，核心全suite與核心mypy尚未執行。
+
+所有本節六組root Python自然Job0、handles關閉、mutex釋放、無forced cleanup。目前沒有本節QA session在跑。機器唯讀盤點仍有IDE/MCP背景Python及graphify pair；本節未啟動這些程序，未有充分所有權證據前不整批終止。盤點時約17.8GiB可用RAM，非持續即時數值。Python QA仍由root序列執行、外層12程序/8GiB及啟動至少8GiB可用RAM，葉片無Python。
+
+四份狀態文件增量保存前像及固定raw收據；無正式產品或原始資料變更、未stage/commit。完整P00–P14/M1–M3/F01–F23/UX01–UX24/G0–G4 scope保留，完整包/Gate均未接受。
+
+## P01 m18 真 fresh-child 通過與原矩陣完整失敗證據
+
+Manifest `86486be4b84cc9362400bd7f5d632f1b367a76d0c9c9d75da1b5d11c31328f0f`。Root864pins／14封裝檔／六直接前像／五完整差異及原probe AST guard、fresh-child code保留通過。第一版root reviewer漏正規化更新probe SHA，原自身失敗保留，第二版補必要對照後通過；候選未改。預檢native0/store0/pins不變；真fresh-child origin native0、probePID35688／fresh CPython44604，startup bridge/query/formal父initializer實際path+SHA皆通過、sealed store內容存取0。origin root收據SHA `9a86cd7447ba271176f7aed0cea6c226ff6d3400d47cb854bdcaf426edaef766`。
+
+同版原六角色完整矩陣 **五cold passed/native0/cleanup errors0；warm_01第一筆page_flip失敗／native1**。warm完整DTO serial oracle及來源pin檢查先通過，後 `_assert_capability_claim` 拒絕 `read_page_capability_claim_count_mismatch`；postguard及finalization passed/source/store stable。這是取消能力觀察次數，未產出完整p95；1000rows/20pages/1457entries/5cold+1warm/每類30samples/600秒/strict<300ms與446.3604ms原FAIL保留。矩陣root收據SHA `53ebd6c407a439b41e5521b02ff264ad15c5c72095501d3306e7328a3d1e411e`，warm result SHA `751a29af2c2c8033c268a835c6e54e8872882d0df81943bf22c4123cdf63de6b`。
+
+Root與葉片唯讀交叉定位：warm record先 `_compare_full_dto`，其serial oracle一般callback也會claim並被observer保留，然後才查剛才一個TaskWorker的claim，使oracle的None-capability紀錄混入。Initial/page_walk先claim驗證再oracle。m19只把原完整claim assertion block搬至source-pins後、oracle前，不刪或弱化len/index/TaskWorker callback/owner thread/capability要求，不丟observer紀錄、不改產品query/cache/oracle/測時邊界。新同版完整六角色仍需重跑，不能拼m18cold及m19warm宣稱全部通過。
+
+全部上述五組root Python自然terminal/Job剩餘0、handles關閉、mutex釋放、無forced cleanup；matrix exec78150已terminal並關閉。root live-document helper觀察到矩陣已終態即安全拒絕，沒有發布過期live狀態。Health hv14僅移正常Portfolio載入後兩個完整source assertion；P35僅精準helper/type/canonical/header/fixture修正。葉片無Python，正式產品/原始資料均未變，無stage/commit。完整P00–P14/M1–M3/F01–F23/UX01–UX24/G0–G4原scope保留，完整P01/M2/包/Gate均未接受。
+
+## P01 m19 600秒終態、Health正常Main旅程與P36同版回歸
+
+P01 m19獨立靜態886pins、14封裝檔及原assert／oracle精確兩statement搬移通過；預檢與真fresh-child origin均native0、store0、來源不變。同版原矩陣cold01/cold02通過，cold03停在seq38 `strict_full_population_selection_started`，原600秒deadline到達。內層Job在清理前有3個owned PID、清理後0且handle關閉；外層自然native1／Job0。watchdog只有Python主線與自身堆疊，無Qt原生QThread堆疊，不能據此判定worker已死亡或已發出error。沒有新p95，原1000rows／1457entries／20pages／5cold+1warm／每類30samples／strict<300ms及446.3604ms FAIL仍保留；m20僅診斷訊號記錄候選待審，不重跑m19拼接成功。
+
+Health hv14獨立靜態922pins／1620checks、完整11targets及delta1target／四hunks通過；閉包1214pins／781modules／16embedded AST，66 PASS／1.71秒。原五旅程4 PASS／1 FAIL／34.17秒、7個actual-origin PID clean，正常Main的Portfolio開啟→Watchlist→Portfolio返回已產出成功收據；outer比較因writer QA收據漏列 `health_observed_at` KeyError失敗，尚未進fresh reader。hv15只加既有DTO映射 `opened.read_model.observed_at or opened.source.observed_at`，30其他candidate bytes完全相同。Root970pins／1677checks、完整11targets／delta1hunk、74outer原assert與所有內嵌assert／deadlines、URI方法保持；閉包1262pins／781modules，66 PASS／2.32秒。同版原五旅程結果見下方具名收據。長路徑product與F12 canonical-stat缺口仍未解，完整Health/P06/M3/Gate未接受。
+
+P35靜態發現兩個比較RHS漏 `_parse_aware` 必填field，未執行已知錯誤版本。P36補兩處RHS；root1215pins／447closure，實際p34→p35與p35→p36差異重建各39變更target／92及81hunks，所有刪除只在patch語義中核對、實際原包保存。40個活動Python完整授權差異、401core／143focused原assert保持、v2/v3全部10+15 helper calls arity通過；Decimal／PIT／qualification／reader guards未弱化。20個actual candidate modules origin通過。原績效41case為34 PASS／7 FAIL／12.09秒；同版core原八檔62 PASS／1 Windows privilege skip／104.85秒、9actual PIDs clean，projection15 PASS／5.07秒，六perf與十四core來源正常mypy均0 issues。全部來源pins起訖一致。仍缺完整績效、實際正常策略UI、comparison fail-closed與完整P08/M3。
+
+七個績效失敗已定位：日曆可解析但identity drift落generic碼；real_metrics fixture未建立observation root父目錄；Windows `DirEntry.stat().st_nlink`恆0被誤判alias；四SQL guard錯誤碼大小寫與原契約不符。Root純stdlib三案證普通檔DirEntry nlink0／Path.lstat1、真正hardlink pair為DirEntry0／Path.lstat2，首次sandbox WinError5原失敗保留，host受限Job通過。官方依據：[Python 3.11 DirEntry.stat](https://docs.python.org/3.11/library/os.html#os.DirEntry.stat)。P37只允許錯誤分類、fixture前置目錄、可靠metadata及兩個error字串窄修；保持nlink==1與原type/reparse/SQL順序，STATIC候選待審。
+
+Root審查器自身的README非Python列、Health predecessor重綁、delta/URI metadata形狀及scope review文字差異拒絕已保留raw failures；沒有為通過刪除產品guard或原測試assert。外層所有已完成Job自然remaining0、process/Job handles關閉、mutex釋放；P01 cold03內層確實使用deadline清理，不聲稱該角色自然成功。subagent只做靜態候選，沒有Python程序。正式產品與原始資料本增量未變、無stage/commit；完整P00–P14/M1–M3/F01–F23/UX01–UX24/G0–G4保持未接受。
+Health hv15同版原五旅程 **5 PASS／0 FAIL**；actual-origin PID數 8，來源守衛clean／pins不變；具名root收據 `C:\Projects\PythonProjects\technical_analysis\output\qa\baldr_completion_20261011\root\health_hv15_full_ec8294e1835943969cecdec769f7648a\receipt.json`，SHA `bd054e7fef36be30592f521e8a51422eff64566a0296c8c6a2e9ae277690db74`。這是具名正常UI返回與fresh PID旅程通過，不授完整產品/Gate。
+
+
+## P01 m20 同版完整矩陣與 P37 績效增量
+
+P01 m20 原六角色已跑完：五次冷啟動與一次暖操作均自然退出，所有初始 DTO／20頁與90筆完整壓縮 DTO oracle逐一一致，來源與 capability 守衛保持。Root按原 nearest-rank公式獨立重算各30筆 p95：翻頁 **356.6717 ms FAIL**、篩選 **382.4615 ms FAIL**、全域排序 **210.1654 ms PASS**；原 strict <300 ms Gate 未通過，冷啟動 p95 24.4537864秒。Supervisor native0只代表診斷矩陣完成，不能作為產品Gate通過。m19 cold03的600秒失敗保留；m20沒有重現該timeout，未證明根因已修復。後續需對實際正常Qt路徑定位效能；不能重跑同版、改門檻或縮母體湊成功。Main UI實際產製1000檔、real-N、超過256歷史版本selector、EXE及原完整P01驗收仍開放。
+
+P37修正四個既有失敗原因後，原41筆績效測試為 **40 PASS／1 FAIL／16.27秒**；四SQL guard後續斷言也通過，20 actual candidate modules origin乾淨，六績效來源正常mypy零問題，來源pins保持。剩餘失敗是fixture把seed reader clock固定在10/6後，10/7及10/9 cutoff被正確未來資料守衛拒絕；P38只允許fixture的clock context恢復及各階段clock綁定。P36 core62 PASS／1 Windows privilege skip、projection15 PASS及十四來源mypy是歷史同版證據，不冒充P37重跑。正式績效UI、兩帳戶正常產製／保存／新PID讀回、comparison qualification與完整P08/M3仍未接受。
+
+程序管理：root一次只執行一組Python，CREATE_SUSPENDED後加入Windows Job才resume；8 GiB committed、12程序上限、至少8 GiB可用RAM及執行鎖保持。以上已完成外層Job均自然排空，process／Job handles關閉、mutex釋放。subagent只做靜態候選，下一組不得在前組未退出時啟動。正式產品與原始資料本增量未改；未stage／commit。P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4整體仍未驗收。
+
+Health 八模組正常 mypy 的 v1 helper 在 preflight 讀取不存在的 metadata key 而 native1；root因缺 result 收據退出125。未建立 mirror、未執行 mypy，不能計為產品型態失敗。原失敗保存；v2僅修正 reader key，954來源 guard及清冊bytes保持。
+
+修正後同一 Health candidate 的正常八根 mypy已實際執行：native 1、mypy exit 1、module path proof fail，完整 mirror 3079 檔、核對 firstparty modules 1042；來源 pins 不變。原 mypy.ini 的 UI ignore_errors=True 保留，此結果不代表嚴格 UI 型態驗收。詳細原 stdout/stderr及mapped paths保存於具名收據。 原正常型態輸出為3 errors／3 files：SQLite read-only的exception型態、Health personal_paths參數型態、既有calendar private helper缺operation；需核對第三項未提交變更歸屬。module proof另有packaging外部套件名稱與本機同名目錄誤判、BuildSource根紀錄漏讀；均保持失敗，待精確靜態診斷，不能把path proof失敗忽略為通過。
+
+
+## P38 固定產品與 fixture2 同版回歸
+
+Root獨立核P38 1341 pins／447 closure，完整patch重建、401 core及143 performance assertions保持，產品僅namespace重綁。首次root審查器假設control path為package-relative而拒絕；新審查器依實際repo-relative path核對，前代patch的移除另由固定predecessor manifest與完整patch刪除語義確認，沒有實刪p37原包。20個actual candidate modules origin通過。原41績效為40 PASS／1 FAIL／10.19秒：seed writer建立seed時已自動保存可得時鐘，p38只包後續explicit record的context太晚，原時間assert正確拒絕。
+
+Fixture2僅把兩個既有context擴充至包含create_cash_seed及explicit record；P38全部產品bytes／namespace保持，沒有再重綁全包。Root1349pins獨立逆向兩個assignment移動後，完整測試module AST與原檔完全相同；143原assert／expectations保持。QA guard僅新增一個具名test path、兩個精確pytest/canonical module aliases，仍必須命中closure SHA；candidate module identity、全部舊scratch拒絕保持。新封套20actual modules origin通過，原41績效40 PASS／1 FAIL／12.00秒，兩個seed可得時鐘assert通過後，停在**V2第一個intent**的 `p08_intent_calendar_clock_not_causal`（fixture605→helper275→reader1356）。沒有完成metrics/save、later session或fresh PID；先前root口頭位置判讀過後已更正。
+
+同一固定P38產品／fixture2 QA封套，六個績效來源與十四個核心來源正常mypy均零問題，projection15 PASS／4.51秒。核心原八檔摘要見下方具名收據。來源pins起訖一致、實際origin守衛clean。本增量沒有正式產品或原始資料修改；未stage/commit。所有已完成外層Job均自然remaining0，process/Job handles關閉、mutex釋放；root序列、8GiB／12程序與8GiB可用RAM保留，subagent無Python。
+
+P01 legacy selector候選v1已封存，但root靜態查到第2頁返回第1頁使用cursor=None而漏校既有inventory，來源變更後可能誤換新first page；不執行已知缺口版本。V2候選只補expected_inventory_sha256與UI每次續頁固定inventory、兩個stale-return regressions，來源resolver/readback、tuple相容與既有上限保持。Health兩個型態修正及精確BuildSource／三個packaging module path/hash proof候選亦未正式套用；日曆dirty API ownership衝突保持開放。P01原翻頁356.6717／篩選382.4615ms FAIL、Main／realN／EXE；P08完整績效UI／qualification／comparison／M3；Health完整Gate等原要求均未接受。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 scope不縮減。
+
+P38 fixture2原八檔core：**62 passed, 1 skipped in 100.85s (0:01:40)**，native 0，actual origin PID數 9；root收據 `C:/Projects/PythonProjects/technical_analysis/output/qa/baldr_completion_20261011/root/p38_fixture2_suite_7aa0bae5da4342bba4a8b0a443eac330/receipt.json`，SHA `ccf9310b0d9f4d5da095a564706aa31a87c195befce12ec06e5367c38f4cb668`。
+
+
+## 日曆公共快取 API、Health 來源回放與 legacy selector v2 增量
+
+日曆 public `load_latest_verified_twse_calendar_cache_for_year` 候選保留原 validator、future/expiry/source/hash/schema 與離線契約；Phase3C CLI 每次擷取一個 aware UTC observation，跨年度共用，不依賴 dirty CalendarObservationClock。Root 3094 pins 獨立重建四個完整 patch targets，確認原 calendar 函式 AST、其餘 CLI 函式 AST、全部原斷言保持。完整 3076-source canonical mirror 的四個實際候選模組 origin 通過，原 Phase3C＋新增十個 selector cases **50 PASS／1.96 秒**；實際來源守衛 clean、mirror/pins 起訖一致。第一版 namespace 守衛遇 Windows .venv/Scripts 同名路徑拒絕，後以 mirror-only 第一方根修正；首輪 native50PASS 仍因三個精確 pytest plainmodule aliases 拒絕，不能當完整驗收。新的精確 aliases 與 canonical path/SHA 核對已通過，拒絕原始收據仍保留。
+
+Health typefix 的兩產品及一 QA pin-only 檔可完整逆向回 hv15；其他28候選 bytes、原 tests/deadlines 保持。首次完整 reconstruction 攔下 runner delta 漏列三處 symlink 硬化；control-only successor 保留原31檔與 runner bytes、不再複製 candidate tree，只重封完整 runner diff。Root3590 pins／完整11target／3delta／runner全diff重建通過。保存的 V2 mypy raw log 回放核3079鏡像、原myPy config、1042第一方/1176外部/957 BuildSource modules，path errors0，`source_path_proof_mapped`；原 mypy exit1與三個型態錯誤保留。**回放未執行myPy或產品，也不證明新型態通過**。Health31與Calendar4交集0；聯合 normal-only 八根型態候選規劃為35 overlay、25 products/10tests、fullmirror3080，原八根957/config不變，尚待封裝與root QA。
+
+P01 legacy selector v2 的原 resolver/readback AST與十二個原測試 AST保持；完整 v1兩產品 patch及v2五檔八hunks重建、3122 pins通過。`expected_inventory_sha256` 在cursor=None也先核對，UI下一頁/上一頁均綁定當頁inventory，明示refresh才重建。3077-source mirror 與四個實際候選模組 origin 通過；Qt虛擬檔案以既有精確ZIP/loader/bootstrap code hashes與七個runtime pins判讀，未廣泛豁免。API/Qt/257來源/取消/stale-return與原相容性終態見下方；僅widget/API切片，不代表正常Main、realN、EXE或整個P01通過。
+
+P08 fixture3只調公共日曆 observer及intent reader分階段時鐘，完整module bytes/AST可逆；原41為40PASS／1FAIL／15.30秒，已越過首個intent但停V2首個daily的execution close/EOD guard。fixture4只把V2 execution publication captured/written改成06:00Z/07:05Z，保留Oct5 pre-close baseline、所有原assert與P38產品bytes。原41仍40PASS／1FAIL／16.55秒，已完成V2首個daily和exact fill=1斷言，停V2 benchmark `benchmark_baseline_not_available_at_strategy_source`；尚未到V3 metrics/save/later/freshPID。精確根因是UpdateService自動publisher用live writer clock，再由測試explicit publisher用歷史clock雙寫；locator正確選live較晚副本。兩原JSON除writer clock與派生content hash外canonical完全相等，fixture5 scoped writer clock可使兩筆同body/hash/path而create-only冪等、不放寬tie guard，封裝及QA待完成。
+
+完整P08計畫仍缺canonical performance readmodel、每策略Paper/歷史兩卡、正常兩帳交易/保存重開比較。正式Registry committed/valid只證storage integrity；舊Comparator缺status預設completed與缺qualification/version等契約仍開放，原Comparator與既有測試保持唯讀。P01原翻頁356.6717／篩選382.4615ms FAIL仍保留；單warm thread-aware CPU profiling只作診斷，不能當Gate evidence。全部P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4原scope維持，沒有任何完整產品/Gate接受。本增量只改本節四份狀態文檔與隔離QA artifacts；未正式套用產品、未改原始資料、未stage/commit。root序列Python，8GiB/12程序Job與至少8GiB可用RAM保留；subagent STATIC ONLY。所有列入的Job自然remaining0、handles關閉、mutex釋放。
+
+Legacy v2終態：**17 passed, 1 skipped in 33.48s**；native 0、來源守衛clean=True、pins一致=True。root收據 `legacy_selector_v2_suite_7ffb1911a90f490ca336ca50d1a9a638/receipt.json`，SHA `2673ea24dd414359c0f05d6d3d31919915bb97069f370d3892a064e88af1f09e`。
+
+
+## P08 fixture5 實際終態與首次 benchmark writer 初始化缺陷
+
+Fixture5僅新增public publication alias及capture內scoped writer clock；root1384pins獨立逆向後原fixture4整個module bytes/AST相等，P38全部產品bytes/namespace、兩個publisher、全部143原assert保持。固定兩筆publication的writer clock後，它們生成同canonical body/hash/path並走既有create-only冪等；未放寬locator tie或來源cutoff。20個actual candidate modules origin通過。
+
+原41績效終態為**40 PASS／1 FAIL／18.08秒**，native1、1390pins起訖一致、actual來源守衛clean。V2 baseline可得時鐘拒絕已越過；最新失敗在V2 benchmark持久化 `_ensure_routed_entries_persisted`→`_account_store` 的 `benchmark_route_database_missing`（V2 candidate1681；V3 adapter283轉譯）。沒有到V3 metrics/save/later/freshPID。
+
+精確根因已靜態證明：cash-seed只建state snapshot，daily只寫state及cost ledger；它們不建立benchmark DB。候選 `_account_store` 先無條件要求benchmark DB存在，但真正能在合法exact route/custody下建立schema的正式 `EqualWeightBenchmarkLedger(read_only=False)` 在此檢查之後才初始化。這是writer共用reader前置條件的產品缺陷；下一步只允許合法首次writer進public ledger建庫，reader預設缺DB/schema拒絕、route/custody/sqlite alias/journal guards、金融計算、PIT/qualification與原assert保持。不得手建dummy DB/entry或改fixture繞過產品bug。
+
+本次root兩個型態回放與兩候選套件回歸的其他結果維持前節；legacy v2為17 PASS／1 SKIP／33.48秒且來源clean，日曆50 PASS／1.96秒。所有fixture5外層Job自然remaining0、handles關閉、mutex釋放，未累積Python。P01 profiling與Health＋Calendar35來源normal-only型態封套仍STATIC ONLY；P08 readmodel/UI/comparison完整流程未接受，P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 scope維持。沒有正式產品或原始資料修改、未stage/commit。
+
+## 兩個新 control 封套的前置 schema 守衛
+
+Health＋Calendar聯合control root3635pins、35個來源完全等於已審查Health31＋Calendar4、forward/inverse各18hunks、原來源parser/classifier整段bytes相等。受控執行在 `expected_inputs` line178 即因 `formal_source_inventory` KeyError拒絕：manifest artifacts用實體JSON檔名作key，helper查logical欄名。native1、pins一致；**未建立mirror、未執行myPy、沒有型態結果**。新的control-only v2只修三個artifact key映射，35個來源／3080mirror／957八根／原config與runner保存。
+
+P01單warm profiling封套root931pins、完整七段四十hunks重建通過；原timer、liveness、source/capability與Job函式AST保持。`normal_view_protocol`只有兩項明示profiler輸出與排除Gate的描述變動，實際protocol保持；首次root審查誤要求描述也不變的失敗保留。pure preflight native1，在line162 `p01_thread_profile_diagnostic_contract_changed` 拒絕：consumer查 `elapsed_is_gate_evidence`／`p95_gate_ns`，manifest生成 `profiled_elapsed_is_gate_evidence`／`original_p95_gate_ns`。**尚未origin、warm profile或重跑矩陣**。新control v2統一欄名和明確False/300000000，不以default繞檢查、不提高600秒或加第二warm；cProfile function stats是wall time，thread_time_ns另記CPU總量，必須明示且不作Gate證據。
+
+兩個前置失敗均自然Job remaining0、handles關閉、mutex釋放。P08下一P39 STATIC候選只修兩個benchmark產品：合法首次writer由正式public ledger初始化base schema；metadata/persistence、reader與readback保留缺DB預設拒絕；V3生效writer在companion/bundle讀取之前初始化base。原P38全部產品／401core／143perf assertions、fixture5 clocks及namespace重綁可逆；增加獨立回歸，不能手造dummy DB/entry，尚未宣稱P39通過。其餘actual回歸與完整scope維持前節，沒有正式產品／原始資料改動、未stage/commit，完整產品或Gate未接受。
+
+## P01 唯一 warm profiling 完成；P39 首次建庫後的回讀缺口
+
+P01 profile control v2 root961pins、完整5segments/7hunks重建；runner/supervisor/preflight僅身份與pin重綁，helper/probe/phase bytes完全沿v1，body review完成。純前置與fresh child actualquery/store0都通過。唯一warm診斷native0、90samples（三類各30）、591prof、UI/TaskWorker/querypool實際執行緒來源、原完整DTO oracle/capability/source/store/postguard均通過；內層600秒未逾時，外層209秒左右自然Job0、handles關閉、mutex釋放。沒有重跑五cold或第二warm。新profiling p95只作診斷：翻頁478.6875ms、篩選862.0179ms、排序394.8965ms；**原m20未加profiler的356.6717／382.4615／210.1654ms與strict<300ms FAIL保持**。
+
+唯讀分析90筆metadata/591prof核起訖SHA。querypool `nt.lstat` 254358calls/self wall88.0602秒為最大函式耗時；路徑 `633 artifact reads→repository _read_selected_exact_impl→10641 bounded reads→11907 link-component checks`。篩選artifact groups為1/4/6/26/27，各六樣本；翻頁固定四group。Querypool各類實際thread CPU總量約9.94／17.72／11.19秒。cProfile函式時間是wall elapsed，含排程/I/O等待；跨函式inclusive與跨執行緒wall不能相加當CPU或整體耗時。這是修正方向證據，尚無新效能接受。最初analysis工具錯把正常收據缺席的可選 `forced_descendant_cleanup` 當必有False欄；原失敗保留，依原wrapper schema檢查失敗欄位缺席後只讀分析成功，未重跑產品。
+
+P39 root538pins、65檔hash鏈/42 active sources、全patch27targets53hunks與另fixture5/兩product delta重建；兩product AST除三個writer-only require_existing=False與V3正式ledger初始化外，整份逆回P38。其他reader/persistence預設存在性保持，fixture5原module僅namespace重綁。20actual product origin通過。原41＋新unit合組**40 PASS／2 FAIL／19.56秒**，546pins起訖相同、actual sourceguard clean。原旅程通過V2合法首次建庫/持久化後，在V2 public reader line404報 `benchmark_calendar_source_changed_during_read`；尚未到V3、metrics保存、later append或fresh PID。新unit把readback替換為無欄位object，writer原hash check329因此AttributeError；這是fixture缺陷，不能宣稱public provenance roundtrip。
+
+P08靜態根因：V2與V3日曆來源hash混入外層 `calendar_observation` 每次live observer時鐘。不能在原2.0.0／2.1.0 schema下刪欄後重解舊hash，也不能覆寫immutable row。接續先以限V2 writer+緊接reader的同時刻fixture scope核legacy相容性（不折抵later/fresh），新版本另明示benchmark identity、contract/manifest schema與source-observation投影規則，保留raw hash、來源captured/available/expiry/status/date/PIT與reader拒絕。Unit fixture保持原writerhash assertions並誠實標示mock範圍。
+
+Health＋Calendar control v2 root3662pins/23artifacts/20index、原runner與35source不變；actual再次在建立mirror/mypy前被 `verify_origin_lineage` safe_relative_path拒絕：15個upstream references中11個path為Windows反斜線。**沒有新型態結果**，原v1 KeyError也保留。control-only v3僅轉同一11個引用的POSIX字串與描述身份/相應pins，runner/產品來源保持；全前置契約走查後另審執行。
+
+
+v3實際續驗：root3698pins核11個upstream path的POSIX化後source-origin整份dict相等、35來源及runner bytes不變；歷史失敗lineage與limitations新增說明已逐項核對，兩次root誤要求這些描述也完全不變的static失敗保留。正常八根mypy **native0／957來源no issues**，完整mirror3080、Health31＋Calendar4、source proof1042 firstparty／1176 external／0unknown path errors、status mapped。起訖formal/candidate/config pins一致，原mypy.ini保留ui_qt ignore_errors及既有script ignores，不能稱strictUItyping。收據health_calendar_v3_normal_types_febf5a4ecdab4b0f8cc50548774cb827 SHA e6c7c85da9d8b634dbdede1a39271f0623a47bff9a253c4c04aaf82da8c2d9f9；result SHA dda1897475599cb5eaa56dcc79dc4c63dd201032cd26ef20e3ea0db303486d9f，外Job自然0。
+
+本節所有owned Job自然terminal0；host最後唯讀盤點owned QA Python0、可用RAM15.58GiB，沒有終止其他服務。subagent只做靜態候選；正常Main full-N三個缺fixture的接線正在準備，尚未執行／接受。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍進行中，正式產品／原資料未改，完整工作包或Gate未接受。
+
+## Health 同版 runtime、P01 共用 SQLite 相容性與 P08 DTO 修正增量
+
+Health typefix 的31個來源與聯合正常型態957來源使用同版 bytes。Root3594pins重新封完整runtime閉包；reader組 **66 PASS／2.11秒**，完整Main返回／fresh PID等五案 **5 PASS／43.34秒**，分別1與8個actual來源PID、guard clean、pins一致，原deadline與assertions保持。reader收據 `health_typefix_reader_6657357c19654d1685e0bfc9349dafcb/receipt.json` SHA `e1f684949a66de6c8668f744edaf9dee55d70b0c6dba4db4b52cd645fdc16966`；full收據 `health_typefix_full_221a4f5065c940e78b1031d98009d82f/receipt.json` SHA `dbacc5ca143775cf7674d87b5837ba24dd942ab8ebf684cf6ef38fb7bba13832`。不是完整P06/M3、長路徑或F12接受。
+
+P01 v10 query與原query test整份bytes不變，僅共享SQLite reader改映Health typed來源；root4152pins、3075 canonical來源映像、Qt精確虛擬policy及來源守衛保持。三個actual模組origin通過，完整query組 **25 PASS／330.05秒**，actual來源2PID、pins/mirror一致。收據 `p01_sqlite_rebase_suite_eefb2d46f165464d9e2206f08c8d1825/receipt.json` SHA `cb6940d442a547895100d09da200326fd671cd05880cdd6ecac08d935b2383d7`；外Job `single_owned_qa_86482a4f008a499f8afd732866a385d4/receipt.json` SHA `0e08557cdac776c7d69b92a147347a19f66548809395c2422452fc6d4ecdeef2`，自然退出0。此為相容性驗證，沒有重跑p95；原翻頁356.6717／篩選382.4615ms FAIL保持。Directory lease與正常Main full-N harness另做static候選，未宣稱效能或整個P01通過。
+
+P39 fixture6僅V2 writer＋緊接reader共用一次live observer及修復unit mock欄位，root555pins／完整兩個module AST inverse核對，所有P39產品bytes保持。原41＋unit **40 PASS／2 FAIL／19.20秒**；已越過V2 calendar pair，停在V2 public reader `clock['schema_version']` KeyError。unit另因raw Path長度260無法觀察已由public writer建立的12288-byte DB；不是缺DB。未到V3、metrics保存、later或fresh。
+
+Clock DTO候選唯一產品delta是既有exact八欄／唯一列／型別長度守衛後增加固定in-memory schema marker；persisted SQL、rows、receipt SHA與原2.0.0身份不變。Root正逆patch及整份產品AST逆向相等，exact logical module仍是P39 V2、physical source只替換單檔、原physical檔拒絕。獨立decoder **5 PASS／1 deselected／6.71秒**；被deselect的是完整public tamper旅程，稍後全組仍執行，不能當已接受。第一次全48於sandbox有 **39 PASS／9 FAIL／11.66秒**，實際WinError5來自canonical path與atomic rename；原失敗保存。正式sourceguard與產品防線未放寬。
+
+後續私有QA outside-sandbox仍使用相同owned Job上限及完整來源守衛。原import-origin test整份bytes保持，控制清冊僅一個module path/SHA與source-manifest hash重綁，所有原來源hash assertions照常執行；short tmp_path adapter只是root `tmp_path_factory.mktemp('t')`，沒有改test source或手造DB。20actual模組origin通過，完整48 **46 PASS／2 FAIL／57.28秒**，586pins一致、actual來源守衛clean。V2 public writer/readback、receipt tamper拒絕、unit首次建庫與原import-origin通過；兩FAIL均到 `metrics_v2.write...` 的V3publicreader2120：decoded day payload沒有 `provenance_sha256`，卻取該key。收據 `p39_clock_dto_performance_0735939b005d4e16b61df993057fb381/receipt.json` SHA `276e7f841c1fd13ea76afd11b8b1a00eebf1bd502d4108ec32c1aac8050baf4b`。尚未完成metrics保存、later append或fresh PID。下一窄修保留已驗證raw day row的hash供manifest核對，不把hash塞進canonical payload；V4/2.2.0另有明示來源投影及read-observation契約，不重解舊V2/V3hash。
+
+root補強具名Job child launcher：只開既有Job、核parent/native child/venv redirector後actual Python均屬同一Job，suspended→membership→resume；readback仍8GiB committed／12程序、無nested Job。原root03動態字串SyntaxError在建立Job前拒絕；root04只修換行escaping。第一child probe在sandbox canonical path拒絕；outside-sandbox首次證明venv Popen PID與actual script PID不同而原probe拒絕。root02 launcher以SHA-bound bootstrap在candidate前核actualPID exact Job並保留native_launch_pid，正常probe0／bad pin啟動前拒絕／所有handles關閉；收據 `named_child_probe_dbd50ce97c9143d8baddabe93f60f1df/receipt.json` SHA `4728a1b6e9fec169b25495f9d0cd85e5e7a77f937c114f16ca70087019f90d94`。獨立timeout probe預期native124並已終止整個owned Job，自然剩餘0、外handle/鎖釋放；不是產品成功。外收據 `single_owned_qa_8eede188c39747519fc49337f4107cf7/receipt.json` SHA `848d961b2147673c3895ae7054dfac062ee9902bce678161d2ab69819f8b01f9`。
+
+最新唯讀host盤點：owned QA Python0、可用RAM17.19GiB；未終止其他服務。subagent全程STATIC ONLY，root每次確認前Job終態／remaining0／handles閉合／mutex釋放才開下一組。本增量仍未正式套用產品、未改原始資料、未stage/commit。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4維持，沒有新增完整產品包或Gate接受。所有原始收據、stdout/stderr、來源與失敗保留，結果不相加為整體接受。
+## V3 raw day hash 綁定實際續驗；P01 靜態接線缺口
+
+V3 public reader原先把canonical decoded day payload當作含SQL `provenance_sha256` 的row。新單模組 sibling僅在decoder核hash、canonical、identity及missing-day守衛後，以raw day row的hash比較manifest；不把hash加進payload、不改persisted SQL/schema/bytes/舊source projection。Root601pins、正逆各一target兩hunks、整份AST除新增窄helper與reader單一binding外逆回P39，兩個focused正／negative regression隨全組執行；原401core／143perf assertions來源保持。Import-origin原test bytes保持，控制清冊追加第二個exact module path/SHA，原V2 overlay與fixture6保持；20actual modules originPASS。
+
+合組原41＋unit＋clock六案＋V3兩案 **48 PASS／2 FAIL／47.47秒**，native1、609pins一致、actual來源1PID／guard clean。收據 `p39_v3_reader_hash_performance_13a15014bace48f684cf9410d69be3dc/receipt.json` SHA `74b346fa69ca31d0b39fea6469b9f1744c47d76add74e6e9f477017280f13905`。V3 hash KeyError已越過；兩FAIL均在initial metrics writer內，V3 exact public reader2171報 `benchmark_v3_calendar_source_changed`，由metrics167轉譯 `p08_metrics_exact_source_read_failed`。V2 public receipt tamper守衛已越過，但該獨立tamper案仍因重用整個旅程而FAIL，不能把它單獨算完整接受。尚未保存initial metrics、later append或fresh PID。已知舊calendar source projection混live observer時鐘，不再重跑相同未修完整旅程；接續明示V4/2.2.0 identity/schema/source projection/read-observation實作，不在舊V2/V3schema下重hash或覆寫immutable資料。
+
+P01 Main full-N harness封存manifest `4b1e11584d9154eeb5174e558e4db38a5f9479f8f35e7984d499265e88c4129f`，尚未runtime。Root靜態查到共用 `_click_result_stock` 仍讀Qt/QTest globals，但兩者已移至test local import；要求小sibling只在helper延後import，原assert/body與600秒保持，不由runner暗注入globals。Root另明示Main canonical mirror／actualROOT cwd／Qt exact virtual policy、typedSQLite與v10 query三個已驗overlay的composition，草案及新來源freeze待封裝。
+
+P01 lease封存manifest `b280a894690eec15609580f9868dbb00f2683cd8e6e0c26164d20caa51717c01`，candidate-root `7dbc4616b3ad73c233e276f62be4325182d6393eaab99a24bf304a807148ea9c`；是STATIC ONLY，未執行原strict、新lease或p95。Root靜態查到同lease重用FD未seek會在第二次讀取遇EOF，且native volume/file-index還未直接與fstat pair綁定。要求新窄sibling每次read前seek0、native identity不可證明時拒絕、首次及重用核fstat pair，新增同lease重複fresh bytes/SHA與zero/mismatch negatives。它仍每次讀fresh bytes、核原manifest/CAS/DTO/layout／取消，沒有byte/hash cache；原封包與v10/test bytes不改。修正封存後才執行QA，不用已知缺陷版本消耗重型驗證。
+
+本增量上述三個owned Job均終態、remaining0、handles關閉、mutex釋放；原資源上限8GiB／12程序與啟動前8GiB可用RAM保持。subagent只做靜態候選。沒有正式產品或原始資料修改、未stage/commit，沒有新增完整工作包或Gate接受；P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4全scope維持。
+## P01 strict／正常 Main 與 Health 可攜候選接續
+
+使用者恢復補完並再次要求避免 Python 吃滿 RAM。Root 維持一次一組 Python、named mutex、suspended assign 後 resume、全 Job 8 GiB／12程序、啟動前至少8 GiB可用RAM；subagent只做靜態檢查。所有本節已結束的引用Job均remaining0、process／Job handles關閉、mutex釋放。Main新增同pytest PID的60秒stack診斷與具名owned Job journal，沒有另開診斷Python。主機於04:01 UTC仍有約16.7 GiB可用RAM；這是觀測值，不是壓力測試。
+
+P01新版repository be8858fc：原strict25案 **25 PASS／337.59秒**，2actual PID來源guard clean、pins與mirror一致；收據 p01_lease_identity_strict_05e26e4b6e7a413cb60d22bf38371be0/receipt.json SHA 0445508ca08252a41059dd80b3bde7f84325edffc05f2febcfe943d6c0e59a90。前一版24PASS／1FAIL為mock不接受directory_lease=None keyword；新候選只在None分支恢復原兩位置呼叫，正逆兩hunk與整份AST逆還原已核。不改原mock、strict查核或新lease分支。
+
+Lease13案首輪 **6 PASS／6 FAIL／1 SKIP／57.08秒**，actual source與產品pins一致。成功案已含native identity/fstat綁定、DTO與取消；6FAIL的原始trace指向測試自身未渲染的長路徑read/stat/write/open/utime，hardlink也因此SKIP。新test-only封套manifest ad21b8c0cfae5449e37a8aaef2395925b60d98c9d8ce0ec2db876fb7a885ab52只在OS邊界使用既有to_internal_io_path，保留canonical路徑及原fixture。新版 lease test I/O boundary **13 PASS／0 FAIL／0 SKIP／55.61秒**，收據 SHA 0a3cd87a176a90a8dc5aeba1b88d6f0801b7eff7e7f237aa417e54a0614fda4a；actual來源guard clean、pins與mirror一致，原hardlink案實際通過。Root4248pins、正逆patch及僅逆轉OS邊界後整份AST相等，28原assert與12函式保留；strict映射未變、lease只更新test row。fixture provider預先import而無pytest rewrite的一項warning保留。 M20完整矩陣與原strict p95<300ms仍未接受；舊page356.6717／filter382.4615 FAIL保留。
+
+Main原完整旅程先在producer click不可見而等待600秒，再在Watchlist UserRole錯讀bookmark_identity_sha256而等待600秒。新測試封套只修真click可達性、讀bookmark_id與實際Watchlist導航／stateReady路由事件，原107個assert保留並增至121；Root4229pins、四patch正逆與17→18 QTest click核對。最新：Main旅程原assert1PASS，fresh-only別名與來源續驗通過（合成fixture；原guard99保留）。收據 p01_main_harness_suite_edf9a94e936346b69591f47a4c8738b4/receipt.json SHA e2e755458a0eb3bd4ea76a76a2752e37d05f1bd285eb3319eb6e7c57cd86818b。單次fresh-only續驗通過：Root核stdlib multiprocessing既有__mp_main__ alias assignment，只對同一腳本path/SHA新增精確alias；新actual PID來源guard clean、同Job attestation成立，完整fresh result除了runtime parent/child PID與前次相等、DB/settings/watchlist來源不變。收據 SHA 07795f7609f89ec0e0e82e8e9c2210b734c31134b9124712a77563ff075fce2a。原整個Main收據的guard false／99保持，不回寫成clean，也沒有重新跑producer1000；結果只合成fixture。第一次fresh-only因固定private checkpoint路徑拒絕保留；新版先在同私人根目錄保存前輪三個QA檔，再以原固定新檔路徑執行，未移動raw source／store／watchlist。 沒有實際Real-N／EXE／人工產品接受；原始失敗原件保留。
+
+Health正式提升候選10產品＋4操作/架構文件正逆重建、3079canonical source mapping已完成；origin通過。Portable panel **3 PASS／1.93秒**，來源guard clean、pins與mirror一致；第一次pytest importlib別名不在精確清冊的Root拒絕保留，成功版只改成正常test module aliases，不放寬unknown namespace。收據 health_formal_candidate_panel_f7dd0fa5bb4d4cb1a406e1ee501aff00/receipt.json SHA 550272eb46231b11be8e049865da61523290d770f5fd8afbdf5c3f823e58bfa2。這三案使用受控scope factory；新的public writer／Main返回／fresh PID候選仍待API、可達性與runtime審查，不能借用panel通過授全旅程接受。Portable候選把舊891pins closure描述為3075的metadata錯誤已辨識；Root沿正式提升候選3079映射，不採該數字。尚未正式套用10產品。
+
+P08另有distinct V4／2.2.0候選：stored calendar receipt/write observation與本次read receipt/read observation分開，公開execution/ranking資格保持false，fresh child改用root-owned launcher；獨立靜態核18artifact／18chain／34source／13baseline一致。完整patch、AST／runtime仍待。績效工作台候選尚缺trusted qualification來源與完整正常UI旅程，不能由storage valid／completed推成qualified，不能拼接Paper與Historical曲線。
+
+正式產品及原始資料本輪未改，未stage/commit，沒有新增完整工作包或Gate接受；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4範圍維持，goal active。四份SSOT以已核前像CAS附加，保存前像與引用收據/SHA到root handoff packet；rollback只在after SHA相同時還原本輪前像。
+## Health可攜Main與V4期限／矩陣來源守衛接續
+
+Health正式提升候選原六檔 **110 PASS／2 SKIP／13.23秒**，3actual來源PID、guard clean、pins/mirror一致；兩skip是Windows測試symlink建立權限，未轉成PASS。收據 health_formal_candidate_reader_ca22363667714088b47237414a8f44fe/receipt.json SHA993ddfcfa554a48e5e6b99b12d3ff99252346b575a6c035be406ab172201444a。Qt session cleanup的未載入Main提示保留；與先前portable panel3及舊typefix66的不同組合不相加。
+
+普通Main新source fixture經formal Paper snapshot/ledger writer、PositionHealthDailyRefreshService與evaluator/archive writer產生兩快照與一筆research-only fill，再用正常Main exact receipt selector/open/table保存position、Watchlist返回及fresh Main重開。Root供exact17-key私人環境、空ML根及正式schema的私人ML設定；未借F12私有adapter或正式資料根。Status JSON是synthetic contract input，market observations缺少時degraded／unknown、available_at維持null；不宣稱實際排程producer、日曆驗收、真實broker事件或可交易資格。
+
+本輪保留所有失敗：Root控制工具source變數碰撞（未跑pytest）、私人explicit ML config缺席（1FAIL9.12秒）、popup logical row507px／viewport440px的新增整列guard（1FAIL12.82秒）、fresh table整體捲動不能保證選列在外viewport（1FAIL28.95秒）。對後兩項修正只驗實際可見命中點與以cell content座標再次ensureVisible；父test/conftest不改、完整內外viewport predicate不變。Root3211pins、正逆兩hunk、整份fresh AST移除新增scroll並還原診斷文字後與前像相等；原38祖先assert／120秒wait與600秒child期限保留。
+
+最後actual Main：native 1，完整Main旅程尚未通過；原始junit/stdout/stderr保留。收據 SHA 21b1f14d61749aad59c57905e727abbcf83d6b535f4f8a5183e1dd5cb665e5a9。此次27.22秒FAIL的fresh PID診斷為visible_cell QRect(61,701,99,29)、Portfolio viewport QRect(0,0,700,729)：列底729超出viewport底728一個像素。原完整contains仍拒絕；接續只將ensureVisible半格邊距向上取整，不重跑未修候選。來源guard/pins/mirror與實際PID attestation仍以本收據原值為準；所有本節引用的owned Job自然終態0、process/Job handles關閉、mutex釋放，沒有同時開第二組Python，沒有subagent執行Python。主機恢復時唯讀盤點本任務QA Python零殘留、可用RAM約14.61GiB；其他MCP、IDE與risk lab程序保持。正式10產品與4操作/架構文件仍未套用；完整P06/M3／EXE／人工接受與後续正式UI QA未授通過。
+
+P08 V4產品正逆完整7段與V3完整module差異已由Root重建。8個財務／因果helper（含_build_entries、Decimal邊界、盤後出版與baseline/mark clock）僅版本名稱正規化後AST相同；review-fix僅四個既有定義變更，stored write receipt與本次read receipt分開，公開historical PIT／official event／execution／ranking均false。靜態收據 p08_v4_product_static_f04d13e81ddf418f869fb5044dee8ebe SHA5529f5a0cef78800feaf4ebc4f3798d7dd9f63a805666b8c533ae494be6eb430，不是runtime接受。Root另發現舊review漏標fresh60→600秒放寬；新deadline60封套manifest e73fa74f9d1a21d6345c4112a887ba311c757e07665e4b9a9023cd8f35f94335，只恢復timeout與錯誤文字兩個literal，raw逆回字節相等、child4347字節不變；caller context須固定60。Runtime composition／origin／完整public writer-reader/fresh及績效UI仍待。
+
+P01 M20/M21 lease矩陣封套已靜態封存，querya1f／repositorybe885／SQLite1280／lease test571與已實跑13案一致。獨立review在執行前發現supervisor的overlay manifest/sidecar/closure三個固定SHA過期，因此沒有啟動origin或重型矩陣。Runnable successor需明列三SHA修正、必要namespace/path及其SHA重綁，原六角色／20頁／30 samples／600秒與strict p95<300ms不變；sealed predecessor保留。
+
+Root為六角色600秒加前置/後置守衛，新增aggregate controller總批次cap3600→7200秒；與單角色／fresh接受期限分開，不默默放寬原測量。Root05 SHA267a881619cc3f6e7c062bc09edd1e888d446bfa1fc69c110c61aba8cd8c8d59，Root03 launcher SHA03d6ee383ae210ab55af3a0f976c7d928eda16906ffe3634879c647bd8ee169b僅改wrapper pin；Root AST/raw核證8GiB全Job／12程序、最低8GiB可用RAM、named mutex、suspended assign、kill-on-close與終態0規則保持。新controller/launcher尚未runtime；舊Root04/Root02原封。Original矩陣／p95 FAIL仍保持，沒有新完整Gate接受。
+
+本輪未改正式產品／原始資料，未stage/commit。P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4全scope與active goal維持；保存四文件CAS前像與具名raw收據，不把合成片段或不同版本PASS相加成完整包。
+
+## Health 完整可攜 Main 通過；P01 矩陣縮排前置拒絕
+
+Health 最新 full Main **1 PASS／25.47秒／native0**：public Paper snapshot/ledger、DailyRefresh與evaluator/archive writer在私人根產生來源，再以正常Main exact receipt selector/open、完整列可見QTest click、Watchlist返回、關閉及新PID正常Main重開。完整selection／clock／snapshot／typed rows／baseline／witness／result／receipt／來源DB與status／selection-store SHA核對保留。2actual來源PID guard clean、3226起訖pins與3079來源映像不變；fresh PID41588與root-owned launcher attestation一致，原600秒期限、正常關閉及native TaskWorker registry排空成立。收據 health_main_portable_suite_306c064413f94a6b84d41c3304e4feb7/receipt.json SHA42bafecd598e849ea2f2db2d45bdfb98b0fe79d5a6cff697cecc683784d3f09a；外Job SHA55040e68a52f353a998f391ec3711248db2eac39703586d4d28cc818a5a2219f，自然剩餘0、handles閉合、mutex釋放。
+
+測試接線新leaf只把ensureVisible的width/height半格margin向上取整；Root正逆patch與整份fresh AST僅逆回兩個margin後完全相等，parent/conftest bytes、inner/outer完整contains與原身份、120秒wait／600秒child期限均不變。Manifest99b42476b9ceabe05b97e5f930f330e1ba7ce8c20dd6aa052f7cf9bcf4a67ee2；靜態收據 d8508cb8e87ddf6d71d0ec8110a1610fb523d58d3597baa09c2f2d21bee6e1f5；origin收據 fd4bb33685dd3cf687e8cbfc8b32f23369edfcc2c708cb674bed1a79ba131fae。原27.22秒一像素裁切FAIL保留，不改contains或UI尺寸。
+
+接受範圍是同版私人synthetic contract input＋正式public writer/read與正常Main旅程；market資料缺席時degraded/unknown/available_at null仍成立。沒有實際排程producer、official calendar／broker事件／execution/ranking資格、Real-N／EXE／人工或整個P06/M3 Gate接受。正式10產品與4操作/架構文件尚未套用；正常正式UI85案、validator、八根mypy與compile仍待序列執行，不把reader110／2skip或panel3與本旅程相加。
+
+P01 M20 pinfix sibling的79封裝檔／17外部pins／97 hash-chain先由Root核對，Python AST在原runner343報IndentationError：source_module_hashes的overlay guard多8個空格；sealed前像有同一錯誤。收據 single_owned_qa_ccd9f34bf8944455aae435fc3913284c/receipt.json SHA08da1b41b8cfc2edfa911439421f91412d1506875881a4a5c3223292ad2a9053。沒有啟動origin或任一矩陣角色。另準備只修縮排及必要namespace/SHA重綁的sibling，六角色各600秒／20頁／30 samples／strict p95<300ms保持。Root05此靜態批次已實際讀回8GiB／12程序並自然Job0；Root03 launcher整合仍待runtime。
+
+所有本節Python由Root序列執行，subagent僅靜態編輯，沒有同時啟動第二組。正式產品／原始資料未改、未stage/commit；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍進行中。四SSOT保存CAS前像與收據/SHA；不覆寫封存失敗或其他未提交變更。
+
+
+## P08 V4 首次公開回讀與 M23 程序契約增量
+
+P08 V4 Root3180pins，正式3075＋26個exact執行來源＋2個regular initializer組成3103 canonical mapping；28個選定output.qa來源實際compile。唯一正式override是typed SQLite1280；P39 V2/V3保持原5a92／98a，不沿舊adapter的4749／72b3。Source composition收據2a20aafe4c1c8a64add4f6cb4bae7109a9736f060f40a45ac5d33beea356448b。Root plugin只橋接兩fixture並用pytest factory短tmp_path，未改候選或手造DB。
+
+首輪來源collect在implicit namespace動態重算後帶入host output.qa而被精確目錄守衛拒絕：native2／guard99，產品pins與mirror未變，原收據367f8d0d5f849fbd3b5932c541ebcedd79bb9cb6ade3c7cea677a32400224a77保留。新Root02只把清冊10個namespace的ModuleSpec search_locations固定為各自唯一mirror目錄；不存在initializer必須成立，unknown namespace與來源SHA照常拒絕，不略過namespace。四個actual module及五項test collect **native0／guard clean**，收據d0e6b12912068938d61c452ba812170d3f24e122bd303a06ff669293d7d12e6d。
+
+完整選定組 **4 PASS／1 FAIL／17.26秒**，1actual PID、source guard clean、pins與mirror一致；收據 p08_v4_public_suite_56b36382cc9c498fad424994c318ec0f/receipt.json SHAd7e170175f6fb6b6ff54b7a6a95219006a5b3da6d8ee25d61c41ed8afa64f353。四calendar guard通過；旅程已越過V4首次public write/read、stored write observation對本次read observation各自hash與read receipts變化、V2/V3拒絕V4資料。後續checkpoint在PaperExecutionProducerError拒絕「paper policy execution date is not an official trading day:2026-10-09」。這是原V4 fixture選錯交易日，不能強制calendar open或放寬產品規則。下一test-only sibling先按實際fixture/calendar API核next trading date及publication／intent／checkpoint／PIT時鐘。尚未完成later append／old-prefix reopen／fresh PID；沒有child，原child4347與60秒期限保持，不能宣告整旅程或P08接受。
+
+P01 M23 Root135pins、96package／18external／115chain與正逆raw完整重建、16個執行檔compile通過；原runner縮排的修正明示，其他AST只逆回namespace/derived SHA即相等。六角色600秒／20頁／30samples／strict p95<300ms與完整DTO/oracle保持。靜態收據53d7fd06b3a3752938d436a5c598e3b0a92808c816d11d2693412d7dfa0e1f66。Root05/Root03 plan實際native0、actual supervisor PID26088同named Job、suspended membership→resume與8GiB12 readback成立，child/process/Job handles閉合、自然剩餘0；收據af63dc0b012074f2856e87e8588d20502fc46266dcc1997292adc03f7ae4c780。
+
+M23 origin在任何role前由pre/post guard拒絕candidate_query_overlay_bridge_manifest_hash_mismatch：nested manifest的bridge row仍9d6/11449bytes，actual bridge與outer manifest/supervisor已4cc/12274bytes。Root收據9397089d25bba85375a8c4e88cb773d2b2e6b2187a6fcc4f03419ccbb80a8eee，source pins不變。新bridgepin sibling限nested row與相依SHA及namespace重綁；全399個candidate/closure/outer pin靜態對照只見該一row不一致，禁止改bridge本體／guard／產品／角色期限或p95。未啟動來源role或矩陣，不能由plan通過授矩陣接受。
+
+本節所有owned Job自然terminal、remaining0、handles閉合與mutex釋放；沒有同時第二組Python，subagent只做靜態。最新host唯讀盤點本任務QA Python零殘留、可用RAM約14.64GiB；其他專案／IDE／MCP保持。Health同版完整Main1PASS已保存，正式10產品與4文件尚未套用。未改正式產品／原始資料、未stage/commit；P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4全scope、active goal及完整Gate未接受保持。
+
+
+## M24 來源實證、Main lease 組合與 P08 天然時間界線
+
+M24 新封套只修 nested bridge row 與相依 SHA，Root 537 pins、16個檔案 compile、完整正逆重建及 nested382來源閉包核對通過（收據40661f7eb6703bfa991eb07b691d02dff6bbf41a54bf296f3c91c4dfd19b2797）。Actual origin native0，actual fresh PID35660 的 query a1f／repository be885／SQLite1280 路徑與 SHA一致，51 first-party／80 runtime／594 venv pins 與前後守衛一致，無 store access；收據c08c0901c8900cd83fac79e9dc617c0b608cb397da5d3034e4b196b0eb166ab7。
+
+M24 完整矩陣第一次 cold01 約9.10秒失敗，尚無 initial page 或 p95。TaskWorker error payload 明示 phase helper 在 seq23 strict_read_session_open_started 寫診斷檔的 os.replace 遭 WinError5，目標result.phase.json；並非已證明產品query讀取故障。後續同檔寫到seq43成功，現有檔案Archive且非唯讀，target157／temp177字元；無證據能指認具體 handle持有者。完整矩陣收據f12653058a2b2fbb4d939b91d5eb6d6927a32e34614fdfbfc1809d150a4a88bd，所有inner/outer Job自然0，無 timeout／cleanup error。新control-only successor限Windows replace的5／32／33錯誤最多5次，2／4／8／16ms退避；永久錯誤仍拋出，延遲算入原latency，600秒／角色／sample／p95／assert不變，待Root完整審查與回歸，不能重跑未修原包並當作接受。
+
+P01 Main lease composition Root4255pins通過，3075來源只替換query61c→a1f與repository正式1e49→be885，SQLite1280及其他3072列未變。Raw inverse逐byte還原962369bytes原mapping；原Main journey／conftest／fresh c3 bytes及600秒期限不變。清冊aggregate57e0按原PowerShell zh-TW排序精確重建；原metadata未聲明collation，Root核對實際七列順序，並未宣稱其為ordinal排序。Root靜態收據88c0d26b10f036a2224c7f300b0a01546334bbdb1e771d1c5879d467ecf7a973。精確same-path/SHA __main__＋__mp_main__ alias加入Root runner，actual origin native0／guard clean／pins及mirror一致（93025ac1076bd6f87e2d96b062221eb3bb650ad9159aa24dcd3d40c062d8c8ed）。同組合完整Main旅程已啟動一個Root owned Job，結果待回收；不以舊61c的1PASS644秒替代本次a1f實證。
+
+P08 新test-only交易日fixture將後段execution及四個clock對齊2026-10-12，私有calendar增加1151009閉市列與明示fixture ETag；Root3198pins／3103 mapping／完整正逆patch及整個AST逆回核對通過（28bc58936b598b7fc9bada25e787420346fc8353bb4e967d189d42c69c8df126）。原39 assert、fresh4347 bytes、10參數與60秒期限不變。兩個calendar authority已分清：intent fixture cache與producer calendar=None的正式日曆。獨立annual cache只是佐證，未宣稱suite讀取它；其-07偏移換算capture為Oct6 00:25Z、expires為Oct13 00:25Z。
+
+PIT靜態核對指出live EOD reader會拒future checkpoint，V4 write/read也檢查live available_at及required clocks；fixture envelope沒有替這些reader設時鐘。最新checkpoint為Oct12 07:10Z，整旅程最早須等實際UTC過此時間並再核其他required clocks。舊prefix及fresh只讀Oct7，但旅程須先完成latest append；目前不啟動這項suite、不修改future guards。正式產品／原始資料未變；Health同版完整Main1PASS仍已保存，正式提升及全scope Gate未接受。
+
+上述已terminal收據都確認Job0、process/Job handle關閉與mutex釋放。當前僅一個P01 Main Python群組，所有subagent STATIC ONLY；最新啟動前host可用RAM13.13GiB、owned QA0，其他MCP／IDE／risk-lab保留。
+
+
+## Main lease 完整旅程原生崩潰（原收據保留）
+
+同來源組合Main suite在producer期間遭Windows native access violation，native exit3221225477；收據f6f0d749530fbeb16a9e352801e17eb2e5c8c8ab26acf09bf819acc008f1f34d。Fatal stack的worker在snapshot repository read／rule JSON驗證，Main在原wait_for processEvents；不能由堆疊頂端推定JSON為根因。Pins與3075 mirror前後不變，但程序崩潰未產生atexit origin收據，source_guard_clean=false；未到fresh child，沒有Main接受。外Job自然0／handles關閉／mutex釋放、forced_cleanup=false（2422c79c7514821a13e0755012f6b953566d9f708056f1bb71afe96aed94cd78），不算OOM上限或timeout，靜態agent唯讀檢查Qt worker lifetime與lease差異，禁止盲重跑。
+
+後續host唯讀確認owned QA0、可用12.70GiB，其他程序保留。P08新Root03有latest checkpoint UTC07:10天然啟動gate；此刻只執行import/collect origin，未啟動future fixture旅程。正式產品／資料不變，完整工作包／Gate仍未接受。
+
+
+## P08 新交易日來源核對完成與 Main native 事件對應
+
+新Root03 origin只import及collect五項，native0／source guard clean／3198pins及3103 mirror不變，收據b3ee6e416969a41ab569f4cc1e82f7787b39911d56d80b007360893f4163e2eb；外Job自然0（5118b247ab8e16a1a5c06cc48d089f12187ef2372ba375d28f4833401fe5ff27）。尚未執行fixture旅程，Root suite入口已明確拒絕UTC07:10前啟動，產品future guards不變。
+
+Main native Windows事件1000／1001已保存XML：91546 SHA54079b57002c9f78fe0b6f3a37a864d631d150dc30149253503dd3119aff1965；91547 SHA4253b04ddff6e548008fe625262e5f22e2d2f43745a91f13afa24cb76953e117。fault PID0xAEC8=44744在外Job observed集合，時間22:45:06-07:00亦在22:44:03→22:45:19窗口；module python311.dll、exceptionc0000005、offset0x1aaaeb，未能由此認定根因。stacks.log的60秒是faulthandler觀測時點，並非600秒QA期限。兩位static agent分別核Qt lifetime與Win32 ABI，phase successor由第三位靜態封裝；所有Root Python當前terminal0。正式產品／資料與完整Gate判讀保持。
+
+
+## 使用者暫停：先進行文件治理（2026-10-12 06:00 UTC）
+
+使用者明確要求暫停補完工作並保存接手prompt。所有subagent已完成或中斷；所有Root Python Job terminal／自然0，process及Job handles關閉、mutex釋放。最後host唯讀盤點owned QA Python0、可用RAM14.96GiB。Goal應設paused，只有使用者授權才恢復。
+
+接手入口：[完整停點與新對話Prompt](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。Snapshot／shared_state中的相對路徑請依本文件實際目錄及現行導航定位該同名檔案。完整範圍仍P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4，沒有新增完整工作包或Gate接受。
+
+最新界線：Health完整Main1PASS已保存但正式提升未做；P01 M24 origin已通過、矩陣在QA phase replace失敗且無p95，M25重試successor封裝途中被中斷，完整檔案SHA inventory另存暫停封包，不能直接執行未封存候選。Main lease producer期間native access violation仍未確定根因；靜態Qt／ABI沒有找到具體錯誤。舊644秒Main的實際conftest／test／fresh bytes與本次相同，先前agent誤讀predecessor pins的說法已撤回，但舊query／repository及guard99不替代新lease接受。P08新origin collect5guard clean，完整latest append仍待天然UTC07:10及required clocks，原60秒期限保持。
+
+官方PDB純資料的GUID／age與DLL相符，沒有安裝或更換Python；DbgHelp exact lookup126、純PDB parser未找到fault RVA procedure，最後工具失敗／Job自然0，仍未定位原生函式，不可把它當根因實證。交接入口記明來源檔案及所有診斷停點。正式產品／原始資料未變，未stage／commit；文件治理後應依最新權威與路徑接手，保留其他未提交變更。

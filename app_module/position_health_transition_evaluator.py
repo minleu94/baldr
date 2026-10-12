@@ -869,6 +869,7 @@ def evaluate_baseline_file(
         from app_module.position_health_source_providers import (
             build_position_health_source_bundle,
         )
+        from data_module.official_trading_calendar import CalendarObservationClock
 
         observed_parsed = _parse_observed_at(observed_at, [])
         if observed_parsed is None:
@@ -907,6 +908,9 @@ def evaluate_baseline_file(
             temporary_closure_path=temporary_closure_path,
             calendar_db_path=calendar_db_path,
             calendar_start_date=calendar_start_date,
+            calendar_observation_clock=CalendarObservationClock.historical_as_of(
+                observed_parsed
+            ),
         )
         provenance.update(dict(source_bundle.provenance))
         request = DailyPositionHealthTransitionRequest(
@@ -1600,6 +1604,7 @@ def _verify_legacy_same_snapshot_reuse_strict(
     from app_module.position_health_source_providers import (
         build_position_health_source_bundle,
     )
+    from data_module.official_trading_calendar import CalendarObservationClock
 
     condition_path = source_paths["condition"]
     metrics_path = source_paths["metrics"]
@@ -1622,6 +1627,9 @@ def _verify_legacy_same_snapshot_reuse_strict(
         policy_source_path=policy_path,
         calendar_cache_path=calendar_path,
         calendar_start_date=calendar_start_date,
+        calendar_observation_clock=CalendarObservationClock.historical_as_of(
+            old_observed
+        ),
     )
     if old_bundle.blockers:
         return None
@@ -1645,6 +1653,9 @@ def _verify_legacy_same_snapshot_reuse_strict(
         calendar_cache_path=calendar_path,
         calendar_start_date=str(
             _mapping(current_provenance.get("official_calendar")).get("start_date") or decision_date
+        ),
+        calendar_observation_clock=CalendarObservationClock.historical_as_of(
+            current_observed
         ),
     )
     if current_bundle.blockers:

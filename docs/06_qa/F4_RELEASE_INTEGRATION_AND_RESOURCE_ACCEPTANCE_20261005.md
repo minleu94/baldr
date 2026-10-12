@@ -1,6 +1,6 @@
 # F4 跨頁整合、資源與手動部署終驗
 
-> **時點更新：** 下方 2026-10-05 的 120／250 sessions 阻塞是早期迭代快照。本文末段「schema-v3 隔離長留存驗證」已記錄 20／120／250 次受控發布與收藏通過（40 項統一路由案例亦有通過證據）；這只證明新隔離 v3 路徑。正式 v1／v2 COW converter 與 activation 尚未實作及核准，F4 仍不能全關閉。當前整體狀態請以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與最新 QA 索引為準。
+> **時點更新：** 下方 2026-10-05 的 120／250 sessions 阻塞與「converter 尚未實作」都是早期迭代快照。本文末段「schema-v3 隔離長留存驗證」已記錄 20／120／250 次受控發布與收藏通過；後續 [F4 項目 revision／COW 收據](F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md) 又記錄 v1／v2 converter 與 activation 的隔離工程驗證。這些都不代表正式舊庫切換或使用者遷移已獲准，F4 仍不能全關閉。當前整體狀態請以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與最新 QA 索引為準。
 
 2026-10-05，基線 `337b4ee06787259f2cd7c62cdfb4f40afcf04050`，沿唯一原計畫凍結終點。**接線／隔離流程通過；20-session量測有效；120／250 sessions長保留受既有儲存預算阻擋，不能宣告F4全部關閉或首版完成。** F2／F3的A／A不重開，F1仍18.62%／20%，差1.38pp。
 

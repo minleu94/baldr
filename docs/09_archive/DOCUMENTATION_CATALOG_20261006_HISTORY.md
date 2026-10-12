@@ -1,5 +1,7 @@
 # 全文件目錄（2026-10-06）
 
+> **歷史路徑快照：** 本清單及各目錄數量只截至 2026-10-06，不是目前 tracked files 全量或更新指示。現行導航看 [文件索引](../00_core/DOCUMENTATION_INDEX.md)，日期化目錄入口看 [Core catalog](../00_core/DOCUMENTATION_CATALOG_20261006.md)；本頁保留當時完整路徑原文。
+
 > tracked 文檔與本輪新增治理入口的路徑全清單；不是產品完成度表。此清單只含 repo 文件，排除 raw output、private／source DB、models、備份與大型 graph cache。依 [Scoped SSOT 索引](../00_core/DOCUMENTATION_INDEX.md) 判讀權威；歷史／QA／設計各自保留原日期。
 
 ## 分類摘要

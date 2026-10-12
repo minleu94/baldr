@@ -31,7 +31,11 @@ from app_module.position_thesis_contract import (
     PositionInvalidationRule,
     PositionThesisContract,
 )
-from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.official_trading_calendar import (
+    CalendarObservation,
+    CalendarObservationClock,
+    OfficialTradingCalendar,
+)
 
 
 SCHEMA_VERSION = "position-health-source-providers.v1"
@@ -1631,12 +1635,21 @@ class OfficialCalendarSourceProvider:
         end_date: str,
         decision_at: datetime,
         observed_at: datetime,
+        observation_clock: CalendarObservationClock | CalendarObservation,
     ) -> SourceProviderResult:
+        clock_evidence: dict[str, str] | None = None
         try:
             start = date.fromisoformat(start_date[:10])
             end = date.fromisoformat(end_date[:10])
             if start > end:
                 raise ValueError("official_calendar_range_invalid")
+            if not isinstance(
+                observation_clock,
+                (CalendarObservationClock, CalendarObservation),
+            ):
+                raise ValueError("official_calendar_observation_clock_required")
+            decision = _aware(decision_at)
+            requested_observed = _aware(observed_at)
             calendar = OfficialTradingCalendar(
                 # Supplying an explicit path avoids constructing TWStockConfig
                 # (which would initialise the D: log path) for this cache-only
@@ -1646,48 +1659,74 @@ class OfficialCalendarSourceProvider:
                 calendar_cache_path=self.calendar_cache_path,
                 temporary_closure_path=self.temporary_closure_path,
             )
-            rows = calendar.get_trading_days_in_range(
-                start,
-                end,
-                allow_online_probe=False,
-            )
-            if any(row.get("is_trading_day") is None for row in rows):
-                unknown = [
-                    str(row.get("date_str"))
-                    for row in rows
-                    if row.get("is_trading_day") is None
-                ]
-                raise ValueError("official_calendar_unknown:" + ",".join(unknown[:5]))
             evidence_by_year: dict[int, dict[str, Any]] = {}
-            for year in sorted({item.year for item in _date_range(start, end)}):
-                sample = next(
-                    (item for item in _date_range(start, end) if item.year == year and item.weekday() < 5),
-                    date(year, 1, 2) if date(year, 1, 2).weekday() < 5 else date(year, 1, 3),
-                )
-                evidence = dict(calendar.evidence_for(sample))
-                if evidence.get("mode") != "hash_bound_official_calendar_cache":
-                    raise ValueError(f"official_calendar_not_hash_bound:{year}")
-                available_at = _aware(evidence.get("available_at"))
-                captured_at = _aware(evidence.get("captured_at"))
-                expires_at = _aware(evidence.get("expires_at"))
-                if available_at > decision_at:
-                    raise ValueError(f"official_calendar_available_at_future:{year}")
-                if captured_at > observed_at:
-                    raise ValueError(f"official_calendar_capture_future:{year}")
-                if expires_at <= observed_at:
-                    raise ValueError(f"official_calendar_cache_expired:{year}")
-                cache_hash = _required_sha256(evidence.get("cache_file_sha256"))
-                source_hash = _required_sha256(evidence.get("source_hash"))
-                evidence_by_year[year] = {
-                    "calendar_year": year,
-                    "path": str(evidence.get("path") or ""),
-                    "cache_file_sha256": cache_hash,
-                    "source_hash": source_hash,
-                    "available_at": available_at.isoformat(),
-                    "captured_at": captured_at.isoformat(),
-                    "expires_at": expires_at.isoformat(),
-                    "coverage": evidence.get("coverage"),
-                }
+            with calendar.read_operation(
+                observation_clock=observation_clock,
+                allow_online_probe=False,
+            ) as operation:
+                clock_evidence = operation.observation.to_dict()
+                effective_observed = operation.observation.effective_at
+                if effective_observed != requested_observed:
+                    raise ValueError(
+                        "official_calendar_observation_clock_mismatch"
+                    )
+                rows = operation.get_trading_days_in_range(start, end)
+                if any(row.get("is_trading_day") is None for row in rows):
+                    unknown = [
+                        str(row.get("date_str"))
+                        for row in rows
+                        if row.get("is_trading_day") is None
+                    ]
+                    raise ValueError(
+                        "official_calendar_unknown:" + ",".join(unknown[:5])
+                    )
+                years = sorted({item.year for item in _date_range(start, end)})
+                for year in years:
+                    sample = next(
+                        (
+                            item
+                            for item in _date_range(start, end)
+                            if item.year == year and item.weekday() < 5
+                        ),
+                        date(year, 1, 2)
+                        if date(year, 1, 2).weekday() < 5
+                        else date(year, 1, 3),
+                    )
+                    evidence = dict(operation.evidence_for(sample))
+                    if evidence.get("mode") != "hash_bound_official_calendar_cache":
+                        raise ValueError(
+                            f"official_calendar_not_hash_bound:{year}"
+                        )
+                    available_at = _aware(evidence.get("available_at"))
+                    captured_at = _aware(evidence.get("captured_at"))
+                    expires_at = _aware(evidence.get("expires_at"))
+                    if available_at > decision:
+                        raise ValueError(
+                            f"official_calendar_available_at_future:{year}"
+                        )
+                    if captured_at > effective_observed:
+                        raise ValueError(
+                            f"official_calendar_capture_future:{year}"
+                        )
+                    if expires_at <= effective_observed:
+                        raise ValueError(
+                            f"official_calendar_cache_expired:{year}"
+                        )
+                    cache_hash = _required_sha256(
+                        evidence.get("cache_file_sha256")
+                    )
+                    source_hash = _required_sha256(evidence.get("source_hash"))
+                    evidence_by_year[year] = {
+                        "calendar_year": year,
+                        "path": str(evidence.get("path") or ""),
+                        "cache_file_sha256": cache_hash,
+                        "source_hash": source_hash,
+                        "available_at": available_at.isoformat(),
+                        "captured_at": captured_at.isoformat(),
+                        "expires_at": expires_at.isoformat(),
+                        "coverage": evidence.get("coverage"),
+                        "validated_at": effective_observed.isoformat(),
+                    }
             trading_dates = tuple(
                 str(row["date_str"])
                 for row in rows
@@ -1699,6 +1738,7 @@ class OfficialCalendarSourceProvider:
                 provenance={
                     "provider": type(self).__name__,
                     "calendar_cache_path": str(self.calendar_cache_path),
+                    "observation_clock": clock_evidence,
                     "status": "blocked",
                 },
                 blockers=(f"official_calendar_blocked:{type(exc).__name__}:{exc}",),
@@ -1710,6 +1750,7 @@ class OfficialCalendarSourceProvider:
                 None if self.temporary_closure_path is None else str(self.temporary_closure_path)
             ),
             "status": "verified",
+            "observation_clock": clock_evidence,
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
             "trading_dates_count": len(trading_dates),
@@ -1737,6 +1778,7 @@ def build_position_health_source_bundle(
     calendar_db_path: str | Path | None = None,
     calendar_start_date: str | None = None,
     forward_calendar: Any | None = None,
+    calendar_observation_clock: CalendarObservationClock | None = None,
 ) -> PositionHealthSourceBundle:
     """Load all explicitly configured sources for one evaluator request."""
 
@@ -1819,17 +1861,28 @@ def build_position_health_source_bundle(
         )
     )
     if calendar_cache_path is not None:
-        start = calendar_start_date or _earliest_entry_date(thesis_result.values) or decision_date
-        calendar_result = OfficialCalendarSourceProvider(
-            calendar_cache_path=calendar_cache_path,
-            temporary_closure_path=temporary_closure_path,
-            db_path=calendar_db_path,
-        ).read_range(
-            start_date=start,
-            end_date=decision_date,
-            decision_at=decision_at,
-            observed_at=observed_at,
-        )
+        if calendar_observation_clock is None:
+            calendar_result = SourceProviderResult(
+                values={},
+                provenance={
+                    "provider": "OfficialCalendarSourceProvider",
+                    "status": "blocked",
+                },
+                blockers=("official_calendar_observation_clock_required",),
+            )
+        else:
+            start = calendar_start_date or _earliest_entry_date(thesis_result.values) or decision_date
+            calendar_result = OfficialCalendarSourceProvider(
+                calendar_cache_path=calendar_cache_path,
+                temporary_closure_path=temporary_closure_path,
+                db_path=calendar_db_path,
+            ).read_range(
+                start_date=start,
+                end_date=decision_date,
+                decision_at=decision_at,
+                observed_at=observed_at,
+                observation_clock=calendar_observation_clock,
+            )
     else:
         calendar_result = SourceProviderResult(
             values={},

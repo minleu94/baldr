@@ -1,5 +1,7 @@
 # Post-V1 Historical Evidence Replay QA
 
+> **歷史 QA 範圍：** 下文 replay DB 路徑、artifact、`--confirm` 與 `--overwrite-replay-db` 是 2026-07-06 working-copy 驗證紀錄；不得直接對目前資料根重送。任何新 replay 需另核來源、隔離 working-copy、覆寫對象與當前授權。
+
 日期：2026-07-06
 
 ## Scope

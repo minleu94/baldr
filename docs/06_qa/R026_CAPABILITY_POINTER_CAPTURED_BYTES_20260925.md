@@ -49,3 +49,7 @@ git diff --check -- app_module/recommendation_calibration_consumer.py tests/test
 R015 以另一個 fresh short TEMP 重跑相同五檔路由，結果 **64 passed**，並完成 scoped mypy、py_compile；未發現 P1/P2。R015 未保存獨立 console log，因此本段只記錄其回報的測試結果與檢查，不提供未留存的 log 路徑或 SHA。Root 核對 source/test SHA 與 owner 保存的五檔路由收據均未漂移。
 
 以上僅是 experimental pointer handoff 的有界證據，不代表 R026 或 `TMP-ML-01` 結案，也未建立 durable source generation、完整 `ModelBinding` 或 `PreparedMLRuntimeInputV1`。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+本文的 `TMP-ML-01` 描述是 experimental pointer slice 的 2026-09-25 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 與 [R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，正常 `RecommendationService` 的 NP1／NP2 supported caller/profile 遷移條件後續已 `CLOSED`；這不代表本 pointer capability 證據已併入該路徑，也不完成 R026 其餘 source-evidence slices。

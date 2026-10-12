@@ -44,6 +44,14 @@
 - Look-ahead 自查至少確認：訊號日期、特徵窗口、標準化樣本、排序/篩選 universe、停損停利判斷、benchmark 對齊、交易價格與持倉更新，都只使用決策當下可取得的資料。
 - 無法證明無未來資料滲漏時，必須停止實作並標示「需要確認」。
 
+### Python 任務程序管理（2026-10-11 使用者確認）
+
+- 同一補完任務一次只執行一組 Python 重型驗證；subagent 只做靜態閱讀與候選編輯，pytest、mypy、compile、產品 import 與 QA 子程序由 root 序列執行。
+- Windows 驗證使用可讀回上限的 Job、kill-on-close 與同工作區執行鎖；目前補完預設全 Job committed memory 上限8 GiB、最多12程序，啟動前至少保留8 GiB可用 RAM。不得為了通過測試默默放寬資源上限或原驗收門檻。
+- 工具等待逾時或輸出中斷時，繼續追蹤同一 session／Job，禁止直接另開同一驗證。下一輪前須確認上一輪 terminal、Job剩餘0、process／Job handles關閉與執行鎖釋放。
+- 異常與取消須回收該次 Job 的整棵 owned process tree；正常 QA 如果依賴強制清除才排空，不算成功。subagent結束也須交付其自行啟動程序的終態，不能只報程式碼完成。
+- Host盤點依PID、建立時間、來源、父系與Job membership判斷所有權；PID可能重用，不得全機終止Python或清除其他專案／IDE／MCP服務。只有確認屬於本任務的殘留程序才可回收。
+
 ### 5. 語言規範（強制要求）
 - **所有 Agent 必須使用繁體中文**
 - **所有文檔、對話、回答、註解都必須使用繁體中文**

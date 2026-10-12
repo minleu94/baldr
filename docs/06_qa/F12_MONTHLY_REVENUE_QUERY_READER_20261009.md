@@ -1,5 +1,7 @@
 # F12 月營收全母體查詢 reader 驗收紀錄
 
+> 本頁只記錄 attempt 03 的合成 query reader 驗收；其中「尚無 exact-source reopen」是該次 reader 切片的狀態。後續 [F12 durable raw archive v2](BALDR_F12_DURABLE_RAW_ARCHIVE_V2_20261009.md) 已記錄 archived exact reopen 的獨立驗證，不能以本頁舊缺口否定後續結果，也不能反推本頁已驗完整 Main／正式資料。
+
 ## 範圍
 
 本紀錄只涵蓋月營收 YoY index 與 F17／四均線／月營收全母體查詢 reader 的合成來源驗收。它不代表一般 MainWindow、UI、觀察清單收藏、跨程序 exact reopen、更新入口或正式市場資料已完成驗收。

@@ -120,3 +120,7 @@ $env:OUTPUT_ROOT = Join-Path $taskTemp 'output'
 R027 獨立 fresh TEMP 重跑同一八檔路由，TEMP root 為 `C:\Users\archi\AppData\Local\Temp\r026_slice5b2_review_7d6140032770495bbd074ce3ce256443`，使用 `PROFILE=test` 並隔離 `DATA_ROOT`、`OUTPUT_ROOT` 與 pytest basetemp；結果 **109 passed／0 failed／0 skipped**（15.33 秒，exit 0）。該 reviewer run 未另保存 log hash，勿與 implementation pytest log 混為一筆。root 依此複核判 Slice5B2 bounded `ACCEPTED_SCOPE`，無 P1/P2。
 
 補充限制：nested market source manifest 的 role 使用該次 `plan.json` 來源清單位置 `source-{index:06d}`；role 對固定 plan 穩定，但跨來源清單重排不保留同一 role 名稱。此限制不影響目前單次 plan 的 bytes/hash 驗證；需要跨 plan 版本追蹤來源時，應採 data-root-relative path role。R026 維持 `IN_PROGRESS`，`TMP-ML-01` 維持 `ACTIVE`。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 是 2026-09-25 source-evidence checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 與 [R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 的遷移條件後續已 `CLOSED`。這不擴大 Slice 5A／5B 的 bounded acceptance：`full_source_validation=True`、跨檔原子性與 ABA 等本文列出的缺口仍在，R026 整體仍 `IN_PROGRESS`。

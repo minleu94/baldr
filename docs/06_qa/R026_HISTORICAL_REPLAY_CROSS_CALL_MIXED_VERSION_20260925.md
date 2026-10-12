@@ -94,3 +94,7 @@
 另以 fresh TEMP 單獨執行 `tests/test_daily_banktaiwan_learning_cost.py::test_replay_keeps_three_market_dates_in_one_cost_cohort`，結果 **1 passed**，log SHA-256 `88BD8DFDB7A94B6010BA5E505610DE7AF6F1C0243A48A0FDF1FE146C619A4FA4`；此測試確認既有 multi-date cost cohort 正常產生。
 
 排程相關證據由兩部分組成：whole-replay tests 驗證 lease RuntimeError 會拒絕 replay 結果；`test_preflight_failure_classifies_transient_and_integrity_faults` 驗證既有 scheduled classifier 將該錯誤分類為 source-integrity emergency rollback。這是「replay 呼叫路徑 + 分類器」證據，沒有在完整 scheduled job entrypoint 注入 WAL 更新並驗證整條排程執行。R026 仍 `IN_PROGRESS`、`TMP-ML-01` 仍 `ACTIVE`；跨資源 sidecar/SQLite 原子性、durable generation、ABA 與 postcheck 後競態仍未解。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 是 historical replay 收據的 2026-09-25 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，後續 `CLOSED` 的遷移條件限正常 `RecommendationService` NP1／NP2 supported caller/profile；該報告沒有把此 `RecommendationHistoricalReplayService` lease characterization 或其跨來源限制納入同一結論。本 note 的 bounded whole-replay observation lease 收據維持原範圍，R026 整體仍 `IN_PROGRESS`。

@@ -27,8 +27,9 @@ def _config(tmp_path: Path) -> TWStockConfig:
 
 
 class _FakeProvider:
-    def __init__(self, *_args, **_kwargs) -> None:
-        pass
+    def __init__(self, *args, **kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
 
 
 class _FakeRegimeResult:
@@ -160,10 +161,18 @@ def test_service_backed_builder_factory_wires_non_ui_decision_desk_services(
     monkeypatch.setattr(factory, "SQLiteSmartMoneyPriceProvider", _FakeProvider)
 
     generated_at = datetime(2026, 7, 3, 9, 0, 0)
+
+    def clock() -> datetime:
+        return generated_at
+
     builder = factory.build_service_backed_decision_desk_snapshot_builder(
         _config(tmp_path),
-        clock=lambda: generated_at,
+        clock=clock,
     )
+
+    assert builder.market_breadth_service is not None
+    diagnostics = builder.market_breadth_service.provider.kwargs["quote_diagnostics"]
+    assert diagnostics.clock is clock
 
     snapshot = builder.build_snapshot(date(2026, 7, 3))
 

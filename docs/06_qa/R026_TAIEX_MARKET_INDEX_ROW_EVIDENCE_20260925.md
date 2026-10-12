@@ -123,3 +123,7 @@ diagnostics；全檔 trailing-whitespace scan 亦通過。由於三個授權路�
 執行的結果；本次僅有註解變更，未重跑 66 項路由。
 
 - synthetic contract tests 更新後 SHA-256：`202F54082A5ACAB7B54B8EF8D83BA5549A73FD5B0CE58A9B6AE627235074F2F9`
+
+## 後續獨立複審狀態（2026-09-25）
+
+本文先前「等待獨立 review／root review」是複審完成前的歷史狀態，已由 [TAIEX row-evidence independent review](R026_TAIEX_MARKET_INDEX_ROW_EVIDENCE_INDEPENDENT_REVIEW_20260925.md) 及 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 的同日 bounded acceptance 更新：兩項 P2 已關閉，接受範圍僅為此合成 TAIEX row-evidence slice。該收據日期的狀態為 R026 `IN_PROGRESS`、R028 `BLOCKED`；此接受不代表完整 R026、正式資料、PIT 或 production qualification 通過。

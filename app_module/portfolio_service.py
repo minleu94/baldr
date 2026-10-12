@@ -110,10 +110,20 @@ class PortfolioService:
         # 只有呼叫者明確注入隔離 repository 才會啟用精確帳本；既有 JSONL
         # 相容路徑仍由既有測試與 UI 使用，避免偷偷切換正式 writer。
         self.ledger_repository = ledger_repository
-        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
-        self.market_session_cadence = market_session_cadence or MarketSessionCadence.for_config(
-            config, clock=self._now_provider
-        )
+        if now_provider is None:
+            self._now_provider = lambda: datetime.now(timezone.utc)
+        else:
+            self._now_provider = now_provider
+        if market_session_cadence is not None:
+            self.market_session_cadence = market_session_cadence
+        else:
+            # 明確注入的 now_provider 是 deterministic／歷史測試時鐘，沿用
+            # MarketSessionCadence 的 clock=historical_as_of 契約；default
+            # provider 只服務帳本時間戳，不得把正常執行誤標成 historical。
+            self.market_session_cadence = MarketSessionCadence.for_config(
+                config,
+                clock=now_provider,
+            )
 
     def record_trade(
         self,

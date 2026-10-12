@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import sqlite3
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from data_module.official_trading_calendar import (
+    CalendarObservationClock,
+    CalendarObservationClockError,
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
 )
@@ -31,6 +33,200 @@ def test_official_trading_calendar_missing_evidence_is_unknown(tmp_path):
 
     assert is_td is None
     assert reason == "lacks_official_evidence"
+
+
+def test_historical_calendar_clock_is_aware_finite_and_cannot_probe_or_use_db(
+    tmp_path,
+):
+    with pytest.raises(
+        CalendarObservationClockError,
+        match="requires_aware_datetime",
+    ):
+        CalendarObservationClock.historical_as_of(datetime(2026, 9, 8)).capture()
+
+    future = datetime.now(timezone.utc) + timedelta(minutes=1)
+    with pytest.raises(
+        CalendarObservationClockError,
+        match="future_rejected",
+    ):
+        CalendarObservationClock.historical_as_of(future).capture()
+
+    db_path = tmp_path / "market.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE market_indices (trade_date TEXT, index_name TEXT)")
+        conn.execute("INSERT INTO market_indices VALUES ('20240722', 'TAIEX')")
+    historical = CalendarObservationClock.historical_as_of(
+        datetime(2024, 7, 22, tzinfo=timezone.utc)
+    )
+    calendar = OfficialTradingCalendar(db_path)
+    observation = historical.capture()
+    with pytest.raises(AttributeError, match="calendar_observation_is_immutable"):
+        observation.mode = "live_now"
+    with pytest.raises(AttributeError, match="calendar_observation_is_immutable"):
+        observation.effective_at = datetime.now(timezone.utc)
+    assert observation.to_dict() == {
+        "mode": "historical_as_of",
+        "effective_at": "2024-07-22T00:00:00+00:00",
+    }
+    with patch(
+        "data_module.official_trading_calendar.safe_request",
+        side_effect=AssertionError("historical mode must stay offline"),
+    ) as request:
+        with pytest.raises(
+            CalendarObservationClockError,
+            match="cannot_probe_online",
+        ):
+            calendar.read_operation(
+                observation_clock=observation,
+                allow_online_probe=True,
+            )
+        result = calendar.is_official_trading_day(
+            date(2024, 7, 22),
+            allow_online_probe=False,
+            observation_clock=observation,
+        )
+    assert result == (None, "lacks_official_evidence")
+    request.assert_not_called()
+
+
+def test_captured_calendar_observation_is_single_use(tmp_path):
+    observation = CalendarObservationClock.historical_as_of(
+        datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+    ).capture()
+    calendar = OfficialTradingCalendar(tmp_path / "missing.db")
+
+    assert calendar.is_official_trading_day(
+        date(2026, 9, 8),
+        allow_online_probe=False,
+        observation_clock=observation,
+    ) == (None, "lacks_official_evidence")
+    with pytest.raises(
+        CalendarObservationClockError,
+        match="already_consumed",
+    ):
+        calendar.is_official_trading_day(
+            date(2026, 9, 8),
+            allow_online_probe=False,
+            observation_clock=observation,
+        )
+
+
+@pytest.mark.parametrize("mode", ["live_now", "historical_as_of"])
+def test_calendar_observation_clock_fields_are_read_only_and_one_use(
+    tmp_path,
+    mode,
+):
+    if mode == "live_now":
+        clock = CalendarObservationClock.live_now()
+    else:
+        clock = CalendarObservationClock.historical_as_of(
+            datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+        )
+    observation = clock.capture()
+    original = observation.to_dict()
+    calendar = OfficialTradingCalendar(tmp_path / "missing.db")
+
+    with pytest.raises(AttributeError):
+        clock.mode = mode
+    with pytest.raises(AttributeError):
+        clock.as_of = datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+    with pytest.raises(AttributeError, match="calendar_observation_is_immutable"):
+        observation.mode = "historical_as_of"
+    with pytest.raises(AttributeError, match="calendar_observation_is_immutable"):
+        observation.effective_at = datetime(2026, 9, 9, 13, 0, tzinfo=timezone.utc)
+
+    with calendar.read_operation(
+        observation_clock=observation,
+        allow_online_probe=False,
+    ) as operation:
+        assert operation.observation.to_dict() == original
+    with pytest.raises(
+        CalendarObservationClockError,
+        match="already_consumed",
+    ):
+        calendar.read_operation(
+            observation_clock=observation,
+            allow_online_probe=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "reason"),
+    [
+        ("_mode", "live_now", "calendar_observation_mutated"),
+        (
+            "_effective_at",
+            "future",
+            "calendar_observation_clock_future_rejected",
+        ),
+    ],
+)
+def test_calendar_observation_revalidates_private_clock_on_claim(
+    tmp_path,
+    field,
+    replacement,
+    reason,
+):
+    observation = CalendarObservationClock.historical_as_of(
+        datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+    ).capture()
+    if replacement == "future":
+        replacement = datetime.now(timezone.utc) + timedelta(minutes=1)
+    object.__setattr__(observation, field, replacement)
+
+    with pytest.raises(CalendarObservationClockError, match=reason):
+        OfficialTradingCalendar(tmp_path / "missing.db").read_operation(
+            observation_clock=observation,
+            allow_online_probe=False,
+        )
+
+
+def test_calendar_read_operation_rechecks_observation_before_each_public_read(
+    tmp_path,
+):
+    observation = CalendarObservationClock.historical_as_of(
+        datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+    ).capture()
+    calendar = OfficialTradingCalendar(tmp_path / "missing.db")
+
+    with calendar.read_operation(
+        observation_clock=observation,
+        allow_online_probe=False,
+    ) as operation:
+        object.__setattr__(
+            observation,
+            "_effective_at",
+            datetime(2026, 9, 7, 13, 0, tzinfo=timezone.utc),
+        )
+        with pytest.raises(
+            CalendarObservationClockError,
+            match="calendar_observation_mutated",
+        ):
+            operation.evidence_for(date(2026, 9, 8))
+
+
+def test_calendar_read_operation_rejects_future_clock_before_public_read(
+    tmp_path,
+):
+    observation = CalendarObservationClock.historical_as_of(
+        datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+    ).capture()
+    calendar = OfficialTradingCalendar(tmp_path / "missing.db")
+
+    with calendar.read_operation(
+        observation_clock=observation,
+        allow_online_probe=False,
+    ) as operation:
+        object.__setattr__(
+            observation,
+            "_effective_at",
+            datetime.now(timezone.utc) + timedelta(minutes=1),
+        )
+        with pytest.raises(
+            CalendarObservationClockError,
+            match="calendar_observation_clock_future_rejected",
+        ):
+            operation.evidence_for(date(2026, 9, 8))
 
 
 def _official_response(rows: list[dict[str, str]]) -> MagicMock:

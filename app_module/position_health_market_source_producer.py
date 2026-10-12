@@ -35,6 +35,7 @@ from app_module.position_health_source_providers import (
     METRICS_SOURCE_SCHEMA_VERSION,
     OfficialCalendarSourceProvider,
 )
+from data_module.official_trading_calendar import CalendarObservationClock
 
 
 UTC = timezone.utc
@@ -816,6 +817,9 @@ class PositionHealthMarketSourceProducer:
             ).read_range(
                 start_date=market_date.isoformat(), end_date=decision.isoformat(),
                 decision_at=receipt_cutoff, observed_at=receipt_observed,
+                observation_clock=CalendarObservationClock.historical_as_of(
+                    receipt_observed
+                ),
             )
             if calendar.blockers or calendar.values.get("trading_dates") != (market_date.isoformat(),):
                 raise PositionHealthMarketSourceError("market_date_not_latest_verified_session")

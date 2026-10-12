@@ -220,16 +220,26 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         self.service = service
         self.portfolio_service = portfolio_service
         self.portfolio_id = portfolio_id
-        self._now_provider = now_provider or getattr(service, "now", lambda: datetime.now(timezone.utc))
+        self._now_provider = (
+            now_provider
+            if now_provider is not None
+            else getattr(service, "now", lambda: datetime.now(timezone.utc))
+        )
         self.market_source = market_source or self._default_market_source()
         config = getattr(self.portfolio_service, "config", None)
-        quote_cadence = (
-            MarketSessionCadence.for_config(
-                config, clock=lambda: _safe_now(self._now_provider)
+        if config is None:
+            quote_cadence = None
+        elif now_provider is None:
+            # service.now 僅供 UI 的目前時間；它可能是預設即時鐘，也可能由
+            # service 注入測試鐘，不能靠方法或回傳值猜政策。沒有明確 widget
+            # now_provider 時，日曆 cadence 使用自己的 live_now 預設。
+            quote_cadence = MarketSessionCadence.for_config(config)
+        else:
+            # widget 明確注入的 now_provider 保留作 deterministic／歷史測試鐘。
+            quote_cadence = MarketSessionCadence.for_config(
+                config,
+                clock=lambda: _safe_now(now_provider),
             )
-            if config is not None
-            else None
-        )
         self.condition_source = condition_source or (
             PortfolioConditionResearchProvider(
                 self.market_source,

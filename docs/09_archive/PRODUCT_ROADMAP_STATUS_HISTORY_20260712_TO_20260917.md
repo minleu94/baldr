@@ -9,7 +9,7 @@
 
 > **建立日期**：2026-07-11
 > **最後更新**：2026-09-17；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不新增產品版號。
-> **定位**：本文件是安全重構完成後的產品方向權威，負責定義 baldr 為何存在、要協助哪些投資決策、能力演進順序與投資有效性 Gate。
+> **當時定位**：截至 2026-09-17，原頁是安全重構完成後的產品方向權威；這份封存摘錄只保存當時版本與狀態，現行產品方向依 [Product Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 判讀。
 > **工程落地**：未來六個月的交付物、依賴、測試與 Exit Criteria 以 [ROADMAP_6M_ENGINEERING.md](../00_core/ROADMAP_6M_ENGINEERING.md) 為準。
 > **現況邊界**：目前完成狀態以 [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md) 為準；本文件中的 Target capability 不代表已實作。
 > **安全邊界**：Investment Advice（投資建議）不等於 Broker Execution（券商執行）。本 Roadmap 不授權自動下單、保證獲利、production ML 或自動策略升降級。

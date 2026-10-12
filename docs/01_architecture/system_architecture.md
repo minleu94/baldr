@@ -4,7 +4,7 @@
 
 `PositionHealthDailyRefreshService` 的 v2 baseline 保存明示 paper-main snapshot、完整持倉／整數股數及來源觀測 witness；既有 forward thesis 與 market-source producers 分別核 v1／v2 日期、snapshot 與來源身分。`position_health_transition_evaluator` 在結果檔完整寫入並讀回後，交 `position_health_saved_archive.publish_saved_health_receipt()` 以 writer UTC clock 保存不可變 receipt 與 baseline 原件。重試保留第一次 available_at，來源缺件不補歷史資格；invalid witness 保持阻擋。
 
-`PositionHealthTransitionReadService.read_saved_exact()` 依 typed receipt selector、portfolio／snapshot／decision date／完整 position ID、股票與股數及 aware cutoff，核 result／receipt／baseline 的 hash、時鐘順序與相同來源範圍；不以可變 latest 指標補件。`read_latest()` 保留既有 current projection。正式六產品及七測試已取得原十一檔回歸 125 PASS／1 skip、四檔 focused 89 PASS／1 skip、六來源 mypy／十三檔語法通過證據。三檔 fixture 修正保留原斷言，正式來源驗證未放寬。正常 Portfolio／Main 保存來源操作入口、日曆明示 live／historical clock、策略帳戶 EOD adapter 與完整 P06／M3 仍待；詳見[接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+`PositionHealthTransitionReadService.read_saved_exact()` 依 typed receipt selector、portfolio／snapshot／decision date／完整 position ID、股票與股數及 aware cutoff，核 result／receipt／baseline 的 hash、時鐘順序與相同來源範圍；不以可變 latest 指標補件。`read_latest()` 保留既有 current projection。正式六產品及七測試已取得原十一檔回歸 125 PASS／1 skip、四檔 focused 89 PASS／1 skip、六來源 mypy／十三檔語法通過證據。三檔 fixture 修正保留原斷言，正式來源驗證未放寬。日曆已接明示 live／historical observation：單次 read operation capture 同一 clock，跨年查詢與 expiry 使用相同觀測；歷史觀測不授目前 freshness 或 PIT。日曆與 Health 二十檔正式廣回歸288 PASS／2環境skip，九來源型態與十四檔語法通過。正常 Portfolio／聲明持倉 caller 已分開預設即時與明示歷史 provider：預設 cadence 使用 live_now，只有明示注入 clock 才使用 historical_as_of，custom cadence identity優先。正式23檔322 PASS／2環境skip、工作台85／validator25與八模組954檔正常mypy、13syntax及同版來源核驗通過；正常 Portfolio／Main 保存來源操作入口、策略帳戶 EOD adapter 與完整 P06／M3 仍待；詳見[接續 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
 
 ## 前向技術規則來源觀察（2026-10-11）
 

@@ -58,3 +58,7 @@ R015 以 fresh short TEMP 對 frozen source/test 執行 68 passed，review log S
 早期 **67 passed／1 failed** 收據仍保留為 FAIL、不計通過。R015 確認該次失敗是舊斷言索引錯誤：每次 invocation 有三次 aggregate collect、總計六筆；舊測試以 `aggregate_calls[2]` 當第二次 invocation，實際仍是第一組第三筆。Frozen 測試改用 `[3]` 後，同一受控路由取得 68 passed；這不抹除早期失敗紀錄。
 
 此 acceptance 不涵蓋跨檔原子性或 ABA 防護、candidate JSON 以外的共同來源綁定、receipt 發布競態，亦不授權 live runtime handoff。R026 與 `TMP-ML-01` 仍開啟。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 狀態是本 experimental candidate-JSON slice 的 2026-09-25 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 與 [R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，正常 `RecommendationService` 的 NP1／NP2 supported caller/profile 遷移條件後續已 `CLOSED`。此狀態更新不表示本 candidate-JSON capability 已接入該 runtime handoff；R026 其他 source-evidence slices 仍未全部完成。

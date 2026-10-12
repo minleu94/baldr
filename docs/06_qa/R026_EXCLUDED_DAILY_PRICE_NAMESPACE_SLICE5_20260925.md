@@ -107,3 +107,7 @@ $env:OUTPUT_ROOT='C:\t\r26s5a_final_e35cd51d\output'
 結果 **51 passed／0 failed／0 skipped**；pytest log SHA-256 `0E424D9724896686B8534343F929F2DD753CCF4934708AB2D23DDF7ABC70E03F`。三個修改後 Python 檔案 scoped mypy **3 files／0 issues**，`py_compile` 通過，`git diff --check` 無 whitespace error（Git 僅提示 source 與既有 fixture 的 LF／CRLF 轉換）。既有 test path 已登錄 `service-oracle-recommendation`，本 follow-up 沒有改共享 inventory。凍結 SHA-256：`data_module/excluded_daily_price_revision.py` `5DBC116C9B3FF7E04B656AEA16FB283C9A275A1BED7DBF773CFA32F3A45A7035`；`tests/test_r026_excluded_daily_price_namespace_red.py` `5AA95EE057C1E3650AECB14A49D6DE027CCB97BF00FFC63248CEDECCD78CD9A9`；`tests/test_excluded_daily_price_revision.py` `A5071E47C0A563301FBF3B14BDB30E909C98A9C5177E919AC661CC25B640DB2A`。
 
 這只關閉 basename 特例導致的假空結果，不延伸為 nested market chain 驗證、跨 namespace identity、跨檔原子性或 ABA 保證。R026 仍 `IN_PROGRESS`，`TMP-ML-01` 仍 `ACTIVE`。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 是 2026-09-25 source-evidence checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 與 [R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，正常 `RecommendationService` NP1／NP2 supported caller/profile 的遷移條件後續已 `CLOSED`；本 excluded daily-price slice 的範圍與跨檔、ABA 限制不變，R026 其餘來源證據仍未全部完成。

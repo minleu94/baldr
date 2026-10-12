@@ -47,3 +47,7 @@ Receipt sidecar checker 與各 SQLite provider call 是分開觀察；本測試�
 R027 依凍結 test SHA-256 `CCE2CCC3C4856DB6B20746BE3B71E6A3BAFA48BAF8C758BE6CD21FE59A29FC88` 獨立複核，fresh TEMP route **18 passed**，未發現 P1/P2；root 判此 per-call characterization 為 bounded `ACCEPTED_SCOPE`。接受範圍只涵蓋本 note 列出的 synthetic 行為，不代表整輪 historical replay 已固定在同一 SQLite generation。
 
 限制作為 gate 明示：fixture 每個日曆日都有人造價格列，不能代表真實交易日曆；未注入 `load_forward_price_window()` 進行中的 commit；沒有證明整輪多次 provider calls 共用 durable generation，也沒有 sidecar／SQLite 原子性。R026 維持 `IN_PROGRESS`，`TMP-ML-01` 維持 `ACTIVE`。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列 `TMP-ML-01` 是本 per-call cutoff 收據的 2026-09-25 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md)，後續 `CLOSED` 的遷移條件限正常 `RecommendationService` NP1／NP2 supported caller/profile；本收據的 per-call cutoff 與鄰接文件記錄的 `RecommendationHistoricalReplayService` whole-replay lease 是不同證據，不因此宣稱 historical replay 共用 durable generation 或完成 R026。R026 整體仍 `IN_PROGRESS`。

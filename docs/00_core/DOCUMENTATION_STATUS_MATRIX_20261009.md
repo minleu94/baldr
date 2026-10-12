@@ -729,3 +729,5 @@ REFACTOR_REPORTS、QA 與 Archive 歷史總量仍是「具名增量＋不可還�
 **2026-10-11 R006–R008 報告增量（Coverage History Entry 336）：** 15 份 clean REFACTOR_REPORTS 具名全文核讀，25 個本機連結目標存在；R007 PASS 與 R008 舊回滾命令加上範圍／時點提示。其他報告與兩份 dirty WAVE 文件仍未由本批覆蓋，舊 82／23／119 aggregate 不因此換算為最新總數。
 
 **2026-10-11 Archive／QA 新批次（Coverage History Entries 337–338）：** Archive 根層 15 份、QA 內容頁 13 份 clean tracked 文件逐篇讀至 EOF；本機連結目標分別 17、96 個均存在。修正舊排程註冊、`--apply`、DB 備份回復與日期狀態的直開風險；QA 將 UX23「當時未採納」與後續唯讀切片接受分開，24UX 統計仍待母體調和。這兩個大型目錄的舊 aggregate 缺逐檔去重證據，不能以本批推算全域完成率。
+
+**2026-10-11 QA／Archive 增量（Coverage History Entries 339–340）：** QA 15 份 F02／F06／F12／F4 內容頁與 Archive 根層 15 份舊目錄／Post-V1／操作原文逐篇讀至 EOF；本機連結目標分別 5 與 1,069 個存在。F4 converter 工程進展與正式舊庫遷移分開，舊 catalog／SQLite／排錯指令的歷史性已標示。QA 依檔名篩後約 338 個候選與 Archive 根層約 65–85 份缺精確 EOF 證據都只是粗估，不能當作未讀數或完成率。

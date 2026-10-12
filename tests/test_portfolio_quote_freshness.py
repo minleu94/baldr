@@ -171,3 +171,60 @@ def test_sqlite_quote_observation_fingerprints_exact_row_and_keeps_read_only_pat
     assert observation.freshness_status == "current"
     assert observation.expected_date == date(2026, 10, 2)
     assert db_path.stat().st_mtime_ns == before
+
+
+def _portfolio_config(tmp_path: Path) -> SimpleNamespace:
+    daily_price_dir = tmp_path / "daily_price"
+    daily_price_dir.mkdir(parents=True, exist_ok=True)
+    return SimpleNamespace(
+        output_root=tmp_path / "output",
+        daily_price_dir=daily_price_dir,
+        use_sqlite=False,
+        db_file=tmp_path / "twstock.db",
+        official_calendar_cache_path=tmp_path / "calendar-cache",
+    )
+
+
+def test_default_portfolio_cadence_uses_live_now_without_a_clock_injection(
+    tmp_path: Path,
+) -> None:
+    service = PortfolioService(_portfolio_config(tmp_path))
+    future_date = date.max
+
+    # 未來日期在 read_range 前被拒絕，測試只檢政策 metadata，不讀日曆來源。
+    assessment = service.market_session_cadence.assess(future_date, future_date)
+
+    assert assessment.status == "future_rejected"
+    assert assessment.metadata["calendar_observation_clock"]["mode"] == "live_now"
+
+
+def test_explicit_portfolio_now_provider_is_the_historical_calendar_clock(
+    tmp_path: Path,
+) -> None:
+    as_of = datetime(2026, 10, 4, 8, tzinfo=TAIPEI)
+    service = PortfolioService(
+        _portfolio_config(tmp_path),
+        now_provider=lambda: as_of,
+    )
+    tomorrow = as_of.date() + timedelta(days=1)
+
+    assessment = service.market_session_cadence.assess(tomorrow, tomorrow)
+
+    assert assessment.status == "future_rejected"
+    assert assessment.metadata["calendar_observation_clock"] == {
+        "mode": "historical_as_of",
+        "effective_at": "2026-10-04T00:00:00+00:00",
+    }
+
+
+def test_explicit_custom_portfolio_cadence_keeps_precedence(tmp_path: Path) -> None:
+    config = _portfolio_config(tmp_path)
+    custom_cadence = _cadence(tmp_path, datetime(2026, 10, 4, 8, tzinfo=TAIPEI))
+
+    service = PortfolioService(
+        config,
+        market_session_cadence=custom_cadence,
+        now_provider=lambda: datetime(2026, 10, 5, 8, tzinfo=TAIPEI),
+    )
+
+    assert service.market_session_cadence is custom_cadence

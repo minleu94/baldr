@@ -82,6 +82,7 @@ def main() -> None:
     bookmark_id = os.environ["F12_BOOKMARK_ID"]
     expected_stock_code = os.environ["F12_EXPECTED_STOCK_CODE"]
     expected_query_identity = os.environ["F12_EXPECTED_QUERY_IDENTITY"]
+    expected_request_identity = os.environ["F12_EXPECTED_REQUEST_IDENTITY"]
     expected_bundle_identity = os.environ["F12_EXPECTED_BUNDLE_IDENTITY"]
     expected_monthly_reference = Path(os.environ["F12_EXPECTED_MONTHLY_REFERENCE"])
     expected_count = int(os.environ["F12_EXPECTED_COUNT"])
@@ -106,6 +107,12 @@ def main() -> None:
 
         from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
             DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+        )
+        from app_module.daily_market_technical_official_disposition_revenue_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1,
+        )
+        from app_module.daily_market_technical_official_disposition_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionQueryV1,
         )
         from app_module.personal_watchlist_service import PersonalWatchlistService
         from ui_qt.main import MainWindow, apply_app_theme
@@ -149,11 +156,33 @@ def main() -> None:
     assert type(bookmark) is DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
     assert bookmark.stock_code == expected_stock_code
     assert bookmark.selected_query_identity_sha256 == expected_query_identity
-    assert bookmark.saved_recipe.f17_query.bundle_identity_sha256 == expected_bundle_identity
-    assert bookmark.saved_recipe.monthly_source_reference_json == expected_monthly_reference.read_text(
+    saved_recipe = bookmark.saved_recipe
+    selected_page_request = DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1.from_json(
+        bookmark.selected_page_request_json
+    )
+    assert selected_page_request.to_json() == bookmark.selected_page_request_json
+    assert selected_page_request.request_identity_sha256 == expected_request_identity
+    assert selected_page_request.query.query_identity_sha256 == bookmark.selected_query_identity_sha256
+    assert selected_page_request.page_index == saved_recipe.page_index
+    assert selected_page_request.page_size == saved_recipe.page_size
+    selected_query = selected_page_request.query
+    saved_f17_query = DailyMarketTechnicalOfficialDispositionQueryV1.from_json(
+        saved_recipe.f17_query_json
+    )
+    assert saved_f17_query.to_json() == saved_recipe.f17_query_json
+    assert selected_query.ma_query.f17_query.to_json() == saved_f17_query.to_json()
+    assert selected_query.ma_query.ma_states == saved_recipe.ma_states
+    assert selected_query.minimum_yoy_percent == saved_recipe.minimum_yoy_percent
+    assert selected_query.condition_combine_mode == saved_recipe.condition_combine_mode
+    assert selected_query.unknown_policy == saved_recipe.unknown_policy
+    assert tuple(item.to_dict() for item in selected_query.sort_clauses) == tuple(
+        item.to_dict() for item in saved_recipe.sort_clauses
+    )
+    assert saved_f17_query.bundle_identity_sha256 == expected_bundle_identity
+    assert saved_recipe.monthly_source_reference_json == expected_monthly_reference.read_text(
         encoding="utf-8"
     )
-    assert bookmark.saved_recipe.declared_stock_count == expected_count
+    assert saved_recipe.declared_stock_count == expected_count
 
     revenue_view = window.technical_official_revenue_research_view
     assert revenue_view.set_operation_root_parent(operation_root)
@@ -214,11 +243,44 @@ def main() -> None:
     assert revenue_view.current_page is not None
     assert revenue_view.current_query is not None
     assert revenue_view.current_recipe is not None
-    assert revenue_view.current_page.page_index == bookmark.saved_recipe.page_index
-    assert revenue_view.current_recipe.to_json() == bookmark.saved_recipe.to_json()
-    assert revenue_view.current_query.query_identity_sha256 == expected_query_identity
-    assert revenue_view.current_page.query.query_identity_sha256 == expected_query_identity
-    assert revenue_view._page_request.to_json() == bookmark.selected_page_request_json
+    reopened_recipe = revenue_view.current_recipe
+    reopened_query = revenue_view.current_query
+    reopened_page = revenue_view.current_page
+    reopened_request = revenue_view._page_request
+    assert reopened_recipe is not None
+    assert reopened_query is not None
+    assert reopened_page is not None
+    assert type(reopened_request) is DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1
+    reopened_f17_query = DailyMarketTechnicalOfficialDispositionQueryV1.from_json(
+        reopened_recipe.f17_query_json
+    )
+    assert reopened_f17_query.bundle_identity_sha256 == expected_bundle_identity
+    assert reopened_f17_query.to_json() == saved_recipe.f17_query_json
+    assert reopened_f17_query.to_json() == reopened_query.ma_query.f17_query.to_json()
+    assert reopened_page.query.to_json() == reopened_query.to_json()
+    assert reopened_request.query.to_json() == reopened_query.to_json()
+    assert reopened_request.to_json() == DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1.from_json(
+        reopened_request.to_json()
+    ).to_json()
+    assert reopened_recipe.to_json() == saved_recipe.to_json()
+    assert reopened_query.query_identity_sha256 != bookmark.selected_query_identity_sha256
+    assert reopened_request.request_identity_sha256 != selected_page_request.request_identity_sha256
+    assert reopened_page.query.query_identity_sha256 == reopened_query.query_identity_sha256
+    assert reopened_request.query.query_identity_sha256 == reopened_query.query_identity_sha256
+    assert reopened_page.request_identity_sha256 == reopened_request.request_identity_sha256
+    assert reopened_page.page_index == reopened_request.page_index == saved_recipe.page_index
+    assert reopened_page.page_size == reopened_request.page_size == saved_recipe.page_size
+    assert reopened_request.page_index == selected_page_request.page_index
+    assert reopened_request.page_size == selected_page_request.page_size
+    assert reopened_query.ma_query.f17_query.to_json() == saved_recipe.f17_query_json
+    assert reopened_query.ma_query.ma_states == saved_recipe.ma_states
+    assert reopened_query.minimum_yoy_percent == saved_recipe.minimum_yoy_percent
+    assert reopened_query.condition_combine_mode == saved_recipe.condition_combine_mode
+    assert reopened_query.unknown_policy == saved_recipe.unknown_policy
+    assert tuple(item.to_dict() for item in reopened_query.sort_clauses) == tuple(
+        item.to_dict() for item in saved_recipe.sort_clauses
+    )
+    assert reopened_query.monthly_yoy_cutoff == saved_recipe.monthly_cutoff_utc
     assert revenue_view.current_result.counts.declared_count == expected_count
     assert revenue_view.current_result.counts.visible_count == expected_count
     assert revenue_view.current_result.availability_status == "unknown"
@@ -235,9 +297,57 @@ def main() -> None:
         "parent_pid": os.getppid(),
         "bookmark_id": bookmark.bookmark_id,
         "stock_code": bookmark.stock_code,
-        "query_identity": revenue_view.current_query.query_identity_sha256,
-        "bundle_identity": revenue_view.current_recipe.f17_query.bundle_identity_sha256,
-        "monthly_reference_identity": revenue_view.current_recipe.monthly_source_reference_identity_sha256,
+        "selected_query_identity": bookmark.selected_query_identity_sha256,
+        "selected_request_identity": selected_page_request.request_identity_sha256,
+        "selected_request_query_identity": selected_page_request.query.query_identity_sha256,
+        "selected_page_request_json_sha256": hashlib.sha256(
+            bookmark.selected_page_request_json.encode("utf-8")
+        ).hexdigest(),
+        "selected_recipe_identity": saved_recipe.recipe_identity_sha256,
+        "saved_recipe_json_sha256": hashlib.sha256(
+            bookmark.saved_recipe_json.encode("utf-8")
+        ).hexdigest(),
+        "saved_f17_query_identity": saved_f17_query.query_identity_sha256,
+        "saved_f17_query_json_sha256": hashlib.sha256(
+            saved_recipe.f17_query_json.encode("utf-8")
+        ).hexdigest(),
+        "selected_page_index": selected_page_request.page_index,
+        "selected_page_size": selected_page_request.page_size,
+        "reopened_query_identity": reopened_query.query_identity_sha256,
+        "reopened_page_query_identity": reopened_page.query.query_identity_sha256,
+        "reopened_request_identity": reopened_request.request_identity_sha256,
+        "reopened_request_query_identity": reopened_request.query.query_identity_sha256,
+        "reopened_page_request_identity": reopened_page.request_identity_sha256,
+        "reopened_page_index": reopened_page.page_index,
+        "reopened_page_size": reopened_page.page_size,
+        "reopened_request_page_index": reopened_request.page_index,
+        "reopened_request_page_size": reopened_request.page_size,
+        "reopened_recipe_identity": reopened_recipe.recipe_identity_sha256,
+        "reopened_recipe_json_sha256": hashlib.sha256(
+            reopened_recipe.to_json().encode("utf-8")
+        ).hexdigest(),
+        "reopened_f17_query_identity": reopened_f17_query.query_identity_sha256,
+        "reopened_f17_query_json_sha256": hashlib.sha256(
+            reopened_f17_query.to_json().encode("utf-8")
+        ).hexdigest(),
+        "reopened_query_ma_states": (
+            None if reopened_query.ma_query.ma_states is None
+            else list(reopened_query.ma_query.ma_states)
+        ),
+        "reopened_query_minimum_yoy_percent": reopened_query.to_dict()["minimum_yoy_percent"],
+        "reopened_query_condition_combine_mode": reopened_query.condition_combine_mode,
+        "reopened_query_unknown_policy": reopened_query.unknown_policy,
+        "reopened_query_sort_clauses": [
+            item.to_dict() for item in reopened_query.sort_clauses
+        ],
+        "reopened_monthly_cutoff_utc": reopened_query.monthly_yoy_cutoff,
+        "reopened_monthly_method_id": reopened_query.monthly_yoy_method_id,
+        "reopened_monthly_method_version": reopened_query.monthly_yoy_method_version,
+        "reopened_page_request_json_sha256": hashlib.sha256(
+            reopened_request.to_json().encode("utf-8")
+        ).hexdigest(),
+        "bundle_identity": reopened_f17_query.bundle_identity_sha256,
+        "monthly_reference_identity": reopened_recipe.monthly_source_reference_identity_sha256,
         "declared_count": revenue_view.current_result.counts.declared_count,
         "query_phase_budget_seconds": query_phase_budget,
         "query_phase_budget_ceiling_seconds": QUERY_PHASE_DEADLINE_SECONDS,

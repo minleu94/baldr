@@ -7,6 +7,7 @@ from pathlib import Path
 import threading
 import time
 import sys
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -342,3 +343,62 @@ def test_parent_destruction_drops_late_research_worker_callback(
         release_worker.set()
         worker.wait(5000)
         _app().processEvents()
+
+
+def _portfolio_service_with_calendar_config(tmp_path: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        config=SimpleNamespace(
+            output_root=tmp_path / "output",
+            db_file=tmp_path / "twstock.db",
+            daily_price_dir=tmp_path / "daily_price",
+            official_calendar_cache_path=tmp_path / "calendar-cache",
+        )
+    )
+
+
+def test_widget_service_now_fallback_keeps_calendar_cadence_live(tmp_path: Path) -> None:
+    _app()
+    service = _service(tmp_path, lambda: EARLY_NOW)
+    widget = UserDeclaredHoldingResearchWidget(
+        service,
+        portfolio_service=_portfolio_service_with_calendar_config(tmp_path),
+        market_source=_market,
+    )
+    try:
+        assert _wait_for_refresh(widget)
+        cadence = widget.condition_source.quote_cadence
+        future_date = date.max
+
+        assessment = cadence.assess(future_date, future_date)
+
+        assert assessment.status == "future_rejected"
+        assert assessment.metadata["calendar_observation_clock"]["mode"] == "live_now"
+    finally:
+        _close_widget(widget)
+
+
+def test_explicit_widget_now_provider_is_the_historical_calendar_clock(
+    tmp_path: Path,
+) -> None:
+    _app()
+    service = _service(tmp_path, lambda: EARLY_NOW)
+    widget = UserDeclaredHoldingResearchWidget(
+        service,
+        portfolio_service=_portfolio_service_with_calendar_config(tmp_path),
+        market_source=_market,
+        now_provider=lambda: EARLY_NOW,
+    )
+    try:
+        assert _wait_for_refresh(widget)
+        cadence = widget.condition_source.quote_cadence
+        tomorrow = EARLY_DATE + timedelta(days=1)
+
+        assessment = cadence.assess(tomorrow, tomorrow)
+
+        assert assessment.status == "future_rejected"
+        assert assessment.metadata["calendar_observation_clock"] == {
+            "mode": "historical_as_of",
+            "effective_at": "2026-09-14T10:00:00+00:00",
+        }
+    finally:
+        _close_widget(widget)

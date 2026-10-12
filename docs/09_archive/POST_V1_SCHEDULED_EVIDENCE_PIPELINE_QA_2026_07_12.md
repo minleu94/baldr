@@ -82,6 +82,8 @@ git diff --check
 
 ## Registration Result
 
+> 下列 `Next Run=2026/7/3` 早於本文件標題的 2026-07-12；原始 capture 時點未在本段證實，不能把這兩個值當成 7/12 或目前的下一次排程時間。實際 task 狀態須重新查詢。
+
 `scripts\scheduled\register_baldr_scheduled_tasks.cmd register` 已成功建立兩個 daily tasks：
 
 - `baldr-data-freshness-check-daily`：`Ready` / `Enabled`，下一次執行 `2026/7/3 上午 05:00:00`，Task To Run 為 `cmd.exe /c "C:\Projects\PythonProjects\technical_analysis\scripts\scheduled\run_daily_data_freshness_check.cmd"`。

@@ -38,7 +38,9 @@ mypy完整8目錄791檔通過；最後單點守衛後mypy該module通過。6個�
 
 首輪39-route 37P/2F保留：unknown marker普通reader錯誤碼不一致已修；crash case誤要求cold sidecar消失已改實際header與lastgood驗證。最早dry-run把atime當source變更的失敗保留，改比size/mtime/ino與SHA，無source寫入。中途readonly relative-path as_uri probe失敗無DB開啟，改resolve後續成功。producer實測固定production SHA；實測後只補current source_hash守衛，最終版唯讀重驗同一250庫及v3 App庫完整history/governance，DB SHA不變、不重發布；原實測收據的implementation pins不改成最後版。
 
-## 正式部署與 COW 遷移未做
+## 前一輪快照：正式部署與 COW 遷移未做
+
+> 本節保留 converter 實作前的缺口與當時待辦；下方「2026-10-05 F4 SQLite COW converter 與明示 activation（最新）」已記錄隔離工程完成。正式舊庫切換與使用者遷移是否獲准，仍須獨立核對。
 
 唯讀新版dry-run對舊20-session v2 DB實測1,302,528 B／21rows／20unique items，source SHA／size／mtime不變，migration_apply_authorized=false，沒有目的地DB。既有JSON→獨立新庫copy流程與本v2 SQLite遷移是不同功能，不能稱v2 converter已完成。
 

@@ -36,3 +36,7 @@
 - `app_module/recommendation/execute.py`：`401124F45A5E00302EF650F8BB501B48CA4474A81FA2C87AF0730095087E263F`
 - `tests/test_ml_postcalibration_handoff.py`：`DA8822BB2EA609883D7FB1EDFEE08DDB622A0D61F5D21EE38612A54522B9335C`
 - `tests/test_c1_execution_artifact_ab_interleave.py`：`CA1475488ECA057DCA9FFC20C0F507FA29464627CD8D8DF2567F280A366B2ABB`
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+本文件 `POSTCALIBRATION_HANDOFF_ACCEPTED_FOR_NOMODEL_NP1` 記錄本 consumer/producer integration slice 的接受；當時 NoModel／NP1 的後續狀態不是目前整體 handoff 狀態。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 與 [R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，正常 `RecommendationService` 的 NP1／NP2 supported caller/profile typed handoff 遷移條件後續已 `CLOSED`。此結論不代表所有 runtime profiles、R026 source-evidence slices、C1 或 Wave6 全體通過。

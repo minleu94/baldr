@@ -3749,7 +3749,7 @@ Health 已增加不可變結果封存與精確讀回服務；目前一般持倉�
 
 來源觀測、評估觀測與封存可得時間分開判讀。封存可得時間由 writer 在完整結果讀回後記錄，重試保留原時間；cutoff 早於可得時間、來源晚到、帳戶／股數不符、檔案損壞或重新封裝 hash 仍有身分不符時，精確讀回會拒絕。缺少原來源 witness 時保留 degraded／unknown，不以最新檔案補成 HEALTHY 或歷史 PIT 資格。這些研究結果不觸發 broker、平倉或自動配置。
 
-排錯時先核對所選帳戶、snapshot、完整持倉及含時區 cutoff，再查看具名來源與 clock blocker；不要修改原檔、回填時鐘或降低驗證。後端整合已通過具名廣回歸；正常 UI 的封存選取流程與正式日曆 live／historical 觀測時鐘仍在接線。歷史 cache 不能由使用者回填舊觀測時間而取得目前 freshness；目前進度與未驗界線見[補完 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
+排錯時先核對所選帳戶、snapshot、完整持倉及含時區 cutoff，再查看具名來源與 clock blocker；不要修改原檔、回填時鐘或降低驗證。後端日曆與 Health 整合已通過具名廣回歸；正常 UI 的封存選取流程仍待完成。日曆來源詳情的 live_now 表示以實際當下 UTC 核驗取得時間與有效期；historical_as_of 是明示歷史／重播觀測，必須含時區且不可晚於當下，不代表來源已具歷史 PIT。一次來源讀取的跨日／年度資料共用同一觀測，資料缺件、過期或晚到仍保持 unknown／blocked。這些 clock 是來源契約，沒有新增可切換模式的 UI 參數；一般 Portfolio／聲明持倉入口現在預設使用 live_now；只有應用組裝明示注入歷史 clock 時才使用 historical_as_of。請從持倉管理開啟原行情／聲明持倉研究，先核對行情資料日、日曆來源時間與有效期；即時模式本身不保證資料完整或新鮮，缺件／過期仍依原規則顯示 unknown／blocked。若模式或日期不符，先核對啟動設定與明示 clock，再查看來源 blocker，不回填原檔。歷史 cache 不能由使用者回填舊觀測時間而取得目前 freshness；目前進度與未驗界線見[補完 QA](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)。
 
 ### 10.9 籌碼監控
 

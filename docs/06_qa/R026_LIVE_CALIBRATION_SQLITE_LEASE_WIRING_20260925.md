@@ -75,3 +75,7 @@ R015 以 fresh TEMP 重跑本 note 所列三檔路由，結果 39 passed，未�
 Frozen source 與 integration test SHA 見「實作與來源」表；R015 獨立 route log SHA 為 `BE6B430002782267E2D19836F502744CC141919C8EB21892D42C8F36555BDB7D`。Root 的 39P 是另一份獨立執行結果，不與 R015 數字合併。
 
 此接受不關閉 R026 或 `TMP-ML-01`。`assert_unchanged()` 與 receipt persistence 間仍有 TOCTOU；sidecar aggregate 與 SQLite 不在共同交易，`data_version`／stat 不保證 durable generation 或排除 ABA；亦未驗證 historical replay 的多次 provider call 共用同一來源版本。
+
+## 後續 supported handoff 狀態（2026-10-10）
+
+上列「不關閉 `TMP-ML-01`」是本收據 2026-09-25 的 checkpoint。依 [R026 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R026_IMPLEMENTATION_REPORT.md) 的 2026-10-10 現況路由及 [R031 final closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，正常 `RecommendationService` 在 NP1／NP2 exact supported profile 與 allowlisted model graph 的 prepared-runtime／typed post-calibration handoff 遷移條件已 `CLOSED`。這只更新 supported caller/profile 的 `TMP-ML-01` 狀態；不代表所有 R026 source-evidence slices、profiles、custom models 或 production release 已完成，也不消除本收據列出的跨資源與 ABA 限制。

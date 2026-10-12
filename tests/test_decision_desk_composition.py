@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 from app_module.decision_desk_composition import (
@@ -81,3 +81,45 @@ def test_smart_money_composition_fails_closed_without_raising() -> None:
     assert result.service is None
     assert result.market_frame_loader is None
     assert errors and "db" in errors[0]
+
+
+def test_decision_desk_composition_preserves_cadence_clock_for_quote_diagnostics() -> None:
+    from app_module.decision_desk_composition import build_decision_desk_composition
+
+    class QuoteProvider:
+        def __init__(self, _db_file, *, market_frame_loader, quote_diagnostics):
+            self.market_frame_loader = market_frame_loader
+            self.quote_diagnostics = quote_diagnostics
+
+    class MarketBreadth:
+        def __init__(self, provider, *, cadence):
+            self.provider = provider
+            self.cadence = cadence
+
+    class SnapshotBuilder:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    errors: list[str] = []
+    result = build_decision_desk_composition(
+        config=SimpleNamespace(db_file="db.sqlite"),
+        regime_service=None,
+        portfolio_service=None,
+        watchlist_service=None,
+        market_frame_loader=object(),
+        dependencies={
+            "SQLiteDailyPriceMarketBreadthProvider": QuoteProvider,
+            "MarketBreadthService": MarketBreadth,
+            "DecisionDeskSnapshotBuilder": SnapshotBuilder,
+        },
+        report_error=errors.append,
+    )
+
+    service = result.builder.market_breadth_service
+    assert service is not None
+    assert service.provider.quote_diagnostics.clock is service.cadence.clock
+    assert callable(service.provider.quote_diagnostics.clock)
+    now = service.provider.quote_diagnostics.clock()
+    assert isinstance(now, datetime)
+    assert now.tzinfo is not None and now.utcoffset() == timedelta(0)
+    assert not any("MarketBreadthService initialization failed" in error for error in errors)

@@ -32,6 +32,7 @@ from app_module.position_thesis_contract import (
     PositionThesisContract,
 )
 from data_module import official_trading_calendar as official_trading_calendar_module
+from data_module.official_trading_calendar import CalendarObservationClock
 from data_module.official_trading_calendar_cache import (
     OfficialCalendarCacheError,
     OfficialCalendarCacheExpired,
@@ -176,6 +177,7 @@ def test_official_calendar_cache_rejects_future_and_expired_at_frozen_clock(
         end_date="2026-09-08",
         decision_at=DECISION_AT,
         observed_at=DECISION_AT,
+        observation_clock=CalendarObservationClock.historical_as_of(DECISION_AT),
     )
     assert result.values == {}
     assert result.blockers and "official_calendar_unknown" in result.blockers[0]
@@ -660,10 +662,16 @@ def test_official_calendar_provider_reads_verified_cache_without_network(
         end_date="2026-09-08",
         decision_at=DECISION_AT,
         observed_at=DECISION_AT,
+        observation_clock=CalendarObservationClock.historical_as_of(DECISION_AT),
     )
     assert result.blockers == ()
     assert result.values["trading_dates"] == ("2026-09-07", "2026-09-08")
     assert result.provenance["years"][2026]["cache_file_sha256"].startswith("sha256:")
+    assert result.provenance["observation_clock"] == {
+        "mode": "historical_as_of",
+        "effective_at": DECISION_AT.isoformat(),
+    }
+    assert result.provenance["years"][2026]["validated_at"] == DECISION_AT.isoformat()
 
 
 def test_bundle_reports_missing_human_sources_but_keeps_real_calendar(
@@ -677,11 +685,60 @@ def test_bundle_reports_missing_human_sources_but_keeps_real_calendar(
         decision_at=DECISION_AT,
         observed_at=DECISION_AT,
         calendar_cache_path=calendar_cache_path,
+        calendar_observation_clock=CalendarObservationClock.historical_as_of(
+            DECISION_AT
+        ),
     )
     assert bundle.blockers == ()
     assert bundle.trading_dates == ("2026-09-08",)
     assert bundle.thesis_by_position == {}
     assert "thesis_registry_not_configured" in bundle.warnings
+    assert bundle.provenance["official_calendar"]["observation_clock"] == {
+        "mode": "historical_as_of",
+        "effective_at": DECISION_AT.isoformat(),
+    }
+
+
+def test_calendar_bundle_requires_an_explicit_observation_clock(
+    tmp_path: Path,
+) -> None:
+    calendar_cache_path = _write_isolated_calendar_cache(tmp_path)
+    bundle = build_position_health_source_bundle(
+        positions=_positions(),
+        decision_date="2026-09-08",
+        decision_at=DECISION_AT,
+        observed_at=DECISION_AT,
+        calendar_cache_path=calendar_cache_path,
+    )
+
+    assert bundle.trading_dates is None
+    assert "official_calendar_observation_clock_required" in bundle.blockers
+    assert bundle.provenance["official_calendar"]["status"] == "blocked"
+
+
+def test_calendar_provider_rejects_mismatch_between_typed_and_health_clock(
+    tmp_path: Path,
+) -> None:
+    calendar_cache_path = _write_isolated_calendar_cache(tmp_path)
+    result = OfficialCalendarSourceProvider(
+        calendar_cache_path=calendar_cache_path
+    ).read_range(
+        start_date="2026-09-07",
+        end_date="2026-09-08",
+        decision_at=DECISION_AT,
+        observed_at=DECISION_AT,
+        observation_clock=CalendarObservationClock.historical_as_of(
+            DECISION_AT - timedelta(minutes=1)
+        ),
+    )
+
+    assert result.values == {}
+    assert result.blockers
+    assert "official_calendar_observation_clock_mismatch" in result.blockers[0]
+    assert result.provenance["observation_clock"] == {
+        "mode": "historical_as_of",
+        "effective_at": (DECISION_AT - timedelta(minutes=1)).isoformat(),
+    }
 
 
 def test_evaluator_end_to_end_consumes_verified_sources_and_persists_proposal(
@@ -778,6 +835,10 @@ def test_evaluator_end_to_end_consumes_verified_sources_and_persists_proposal(
     assert result["positions"][0]["transition_event"]["persistence"] == "written"
     assert result["provenance"]["thesis"]["status"] == "verified"
     assert result["provenance"]["official_calendar"]["status"] == "verified"
+    assert result["provenance"]["official_calendar"]["observation_clock"] == {
+        "mode": "historical_as_of",
+        "effective_at": DECISION_AT.isoformat(),
+    }
 
 
 def test_evaluator_blocks_before_persisting_when_condition_source_is_future(

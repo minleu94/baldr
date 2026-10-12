@@ -49,12 +49,12 @@
 | G02 | 自動化數量規格矛盾 | `docs/superpowers/specs/2026-07-11-safe-refactor-four-extra-cycles-design.md` 同一歷史設計列出 12 與 15；保留原文並標為歷史，不能拿來推定現行排程。 |
 | G03 | MOPS limited 數值待核 | `docs/09_archive/P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md` 的 `limited=0` 與另一接受清冊／矩陣有衝突；相關矩陣處於 dirty 狀態，本輪僅狀態列示，因此維持未解，待工作樹乾淨後核對。 |
 | G04 | Portfolio／Exit 兩個 raw caller cutover 未收斂 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R016_CONSUMER_CUTOVER_IMPLEMENTATION_REPORT.md` 指出 `user_declared_holding_research.py:774-807` 與 `portfolio_view.py:2947-3000` 尚有直接讀取；既有 R029/R031/REC02/05 未涵蓋這兩個 exact caller。 |
-| G05 | Phase 3.3B headline 與 checklist 狀態不一致 | `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/PHASE_3_3B_IMPLEMENTATION_PLAN.md` 的 10/10／三 Epic 100% headline 與 Epic 2 MVP2 pending、Epic 3/Epic 1 unchecked 的正文狀態衝突；未取得同一範圍收據前不宣稱完成。 |
+| G05 | Phase 3.3B headline 與 checklist 狀態不一致 | 實際文件是 `docs/09_archive/PHASE_3_3B_IMPLEMENTATION_PLAN.md`；歷史標題的三 Epic 100% headline 與 Epic 2 MVP2 pending、Epic 3/Epic 1 unchecked 清單狀態衝突。該文件已加「完成度待核」歷史 erratum；未取得同範圍收據前不宣稱完成。 |
 | G06 | R002 測試覆蓋類別總數不一致 | `docs/09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R002.md` 概述稱 8 tests、清單列 9 個覆蓋類別；保留為歷史審查證據，數字未裁定。 |
 | G07 | 補完計畫狀態未驗正文 | `docs/09_archive/README.md` 內嵌的補完計畫狀態聲明無法以受保護計畫正文核對；受保護路徑僅保留 Git status，矩陣不把該聲明當已驗證現況。 |
-| G08 | 外部參考藍圖中的未日期能力清單 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` §7 的「目前已具備」列表缺少逐項日期／receipt；其餘文字已導回 Product／6M／Snapshot 權威，該列表仍有過時風險。 |
+| G08 | 外部參考藍圖中的未日期能力清單 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` §7 已明示能力列表是研究比較摘要、未逐項核對目前 HEAD／runtime／QA，不可作現況或正式驗收證明。此界線已充分標註；逐項現況仍未核，應保留為研究／歷史內容，不因缺少逐項 receipt 而刪除。 |
 
-上述議題沒有以臆測消除；要解除需補上同範圍的現行權威或可核對 receipt。所有 dirty 文件（含正在同步的計畫）維持 status-only，待其工作樹乾淨後另行核對。
+尚未由同範圍現行權威或可核對 receipt 解決的議題均保留待核；G08 已以研究範圍警語限制，不視為現況主張。所有 dirty 文件（含正在同步的計畫）維持 status-only，待其工作樹乾淨後另行核對。
 
 ## 已完成的窄幅修訂
 

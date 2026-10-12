@@ -99,6 +99,7 @@ Gate 是交付與驗收邊界，線路則是會跨 Gate 演進的領域。因此
 | 2026-09-21 至 24 | [Scheduled Data Contract 修復](../06_qa/SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md)記錄 candidate DB 與月營收 1,841 列受控 apply；[Formal Data Repair](../06_qa/FORMAL_DATA_REPAIR_2026_09_23.md)記錄補回九個交易日 14,869 列、排除兩表各 2,942 列並完成該次 readback。 | 月營收當時仍 `current-observed-only`；修復收據不代表目前 DB 狀態、來源公告時間或 historical PIT。 |
 | 2026-09-30 至 10-01 | [Scheduled Operations Repair](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)記錄自然 Quick／Freshness／官方事件 readback；[Source Acceptance and Quarterly Catalog](../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md)記錄月營收候選及季度 capture。 | Quick／Freshness 缺精確 run/hash 綁定；月營收單位、owner acceptance、正式 apply 未接受；MOPS 7/27 `limited` 與 8/28 `accepted=0 limited=0` 仍待 reconciliation。 |
 | 2026-10-06 至 09 | [Storage Asset Register](../03_data/STORAGE_ASSET_REGISTER_20261006.md)記錄兩批冷封存共 34 個根目錄、158,712 檔、約 184.62 logical GiB。 | 日期化資產收據；終態對照未重算全量 SHA，容量數不是即時空間。 |
+| 2026-10-08 至 09 | [F17 Full-N fact bundle](../06_qa/F17_FULL_N_FACT_BUNDLE_20261008.md)固定 258 列含納入／排除的官方處置事實；[pinned SQLite read session](../06_qa/PINNED_SQLITE_READ_SESSION_20261008.md)驗證單次私有副本讀取；[F12 index](../06_qa/BALDR_F12_INDEX_INTEGRATION_REVIEW_20261009.md)與[Main integration](../06_qa/BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md)記錄營收查詢接線。 | F17 仍 current-only、official available-at 未知且未接完整 F17；SQLite 僅驗單次副本 reader，尚未接 provider／正常設定／UI。F12 收據不等於完整來源、完整 Main／收藏旅程、跨程序原版重開或真人接受。 |
 | 2026-10-09 至 11 | [F12 durable raw archive](../06_qa/BALDR_F12_DURABLE_RAW_ARCHIVE_V2_20261009.md)與[月營收來源 review](../06_qa/BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md)記錄 exact archive reopen、合成 query/readback 與有限路由更新。 | 仍 `current-observed-only`、availability unknown、PIT false；完整 Main／收藏、正常更新閉環及正式 PIT 尚未完成。 |
 
 資料更新權威描述官方 TWSE／TPEx 原始資料 → CSV → SQLite upsert → 指標更新，並保留來源日期、receipt、取消與錯誤邊界。只有精確且已驗證的官方 no-data 回應可作 warning 後繼續；傳輸、解析、日期或其他錯誤 fail closed。現有清潔指南說明了契約，但此次未找到專門的 no-data 實跑 closeout 收據，故該執行分支仍欠一份可核對 evidence。來源可得時間、coverage、授權、PIT 與正式下游資格必須獨立判讀。
@@ -112,6 +113,8 @@ Gate 是交付與驗收邊界，線路則是會跨 Gate 演進的領域。因此
 | 2026-09-21 | [Scheduled Data Contract Repair](../06_qa/SCHEDULED_DATA_CONTRACT_REPAIR_2026_09_21.md)修復五項晨間鏈路契約並核既有 task。 | Task exit 0 與 Evidence `degraded` 可同時成立；沒有 formal credit、Evidence confirm 或 broker action。 |
 | 2026-09-29 | [Scheduled Operations Repair](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260929.md)盤點 21 個 Windows task，21/21 registration 可用。 | `configuration_ready=true` 只證明排程接線；來源、容量、PIT、Paper 與中斷原因仍有 blocker。 |
 | 2026-09-30 至 10-01 | [Scheduled Operations Repair](../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)補入自然 Quick、Freshness、Official Events 等 readback。 | Quick／Freshness 缺精確 run/hash 綁定；Paper no-work、candidate receipt、部分 sidecar 不能合成全鏈成功。 |
+| 2026-10-03 | [剩餘排程診斷](../06_qa/SCHEDULER_REMAINING_DIAGNOSIS_20261003.md)記錄信用資料來源先回 no-data、後續網路失敗與受控 candidate 恢復／freshness readback。 | 這是特定日期的受控恢復，不代表自然排程後續輪次或其他來源全數健康。 |
+| 2026-10-05 | [Heartbeat chain repair](../06_qa/HEARTBEAT_CHAIN_REPAIR_20261005.md)修正每日鏈容量與接線。 | 收據明示屬工程／隔離驗證，不是新的自然排程或正式訓練。 |
 | 2026-10-06 | [BALDR Schedule Audit](../06_qa/BALDR_SCHEDULE_AUDIT_20261006.md)建立 21 個 Windows task 與 Codex automation 的日期化清冊。 | Windows 最近結果為 12 個 0、2 個 1、7 個 2；Codex automation、heartbeat metadata 與 Windows task execution 是不同證據。 |
 | 2026-10-07 | [Schedule Repair 10/07](../06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)修 Direct 時窗、來源與 Paper／Forward 流程。 | 受控研究鏈完成不等於自然排程、Paper terminal 或正式模型鏈驗收。 |
 | 2026-10-08 | [Schedule Repair 10/08](../06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)將四個固定 task action 改為背景 launcher，保存 stdout／stderr 與 started／terminal receipts。 | 262 passed、4 skipped 是工程回歸；當時 Operational log disabled，launcher 待自然 run。 |
@@ -127,9 +130,10 @@ Gate 是交付與驗收邊界，線路則是會跨 Gate 演進的領域。因此
 |---|---|---|
 | 2026-07 至 08 | Shadow 設計中的 150 features／8 packs 是 research union；62-feature reference 是另一個凍結參照。7/30 工程／8/30 checkpoint 當時記 Formal inputs 0/3、未評 calibration／OOS，alpha 0。 | 不把不同 registry／用途的特徵數相加；不推定 promotion 或投資有效性。 |
 | 2026-09-22 至 23 | Final ML compatibility contract 凍結既有 ABI，新增特徵需獨立 registry、dataset 與 model version；9/23 restated v2 研究重建合併 3,496,189 rows。 | Restated／current research data，不是 historical PIT、正式 OOS 或產品放行。 |
-| 2026-09-30 至 10-03 | raw source row hook 接線；raw collector 不產 features／labels。特定 Direct/B、CORE19 train/save/new-process inference 有收據。 | Hook 尚缺自然 Task 驗收；rebuild 仍 current-restated／non-PIT，alpha 0，未 promotion。 |
+| 2026-09-30 至 10-03 | [ML raw PIT repair](../06_qa/SCHEDULER_ML_RAW_REPAIR_20260930.md)與[daily source-row hook QA](../06_qa/SCHEDULER_ML_DAILY_SOURCE_ROW_HOOK_20261001.md)記錄 raw source-row hook 接線及特定 Direct/B、CORE19 train/save/new-process inference。 | Hook 收據只證明隔離工程接線，沒有觸發正式 `.cmd`／Task；rebuild 仍 current-restated／non-PIT，alpha 0，未 promotion。 |
 | 2026-10-07 至 08 | Fundamental snapshot 標示 current-observed-only、availability unknown、historical/formal PIT false；F02 收據只核到七個已保存特徵，MA10／MA60 不存在。 | 不把 current observation 升格為歷史可得資料；四均線排列仍待獨立版本與保存／UI／EXE 路徑驗證。 |
-| 2026-10-07（10/11 時序補記） | 個人 H20 integration receipt 記 revision 1 enabled、10 筆保存預測與產品 readback，10 pending／0 matured；Task 尚未實跑。 | 有界私人 current-observed 研究流程 evidence；不是全市場排序、正式 PIT 或 global promotion。 |
+| 2026-10-10 | [Product Completion Status](../06_qa/BALDR_PRODUCT_COMPLETION_STATUS_20261010.md)記錄固定來源 S4 的 bounded H20 Main：10 檔 cohort、2382 下鑽／返回及同一 capture 的 120 筆 OHLC／684 bp 對照通過。 | 一般報告仍 partial、完整四端點為 false；這項 UI／個人切片不等於自然 Task、已成熟 horizon outcome、EXE、PIT 或 global promotion。 |
+| 2026-10-11（回註 10/07 個人 H20） | 個人 H20 integration receipt 記 revision 1 enabled、10 筆保存預測與產品 readback，10 pending／0 matured；Task 尚未實跑。 | 有界私人 current-observed 研究流程 evidence；不是全市場排序、正式 PIT 或 global promotion。 |
 
 `docs/06_qa/SCHEDULER_ML_DAILY_SOURCE_ROW_PROJECTION_20261001.md` 原 line 60 的「hook 尚待實作」已由 2026-10-11 日期化 erratum 釐清為早期階段描述；後續 hook 與 rebuild receipt 證明程式 hook 已接線，自然 Task 驗收仍待。cutoff、PIT 與研究用途限制保留，沒有改寫成自然排程已通過。
 

@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> **更新基線：2026-10-12。** 本頁只記目前可支持的整體狀態；局部 PASS 不相加成完整工作包或產品 Gate。最新恢復收據見 [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)，先前紀錄見 [BALDR_COMPLETION_PROGRESS_20261011](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)；原始 receipts／source inventory 依各收據所列路徑與 SHA 追溯。
+> **更新基線：2026-10-13。** 本頁只記目前可支持的整體狀態；局部 PASS 不相加成完整工作包或產品 Gate。最新恢復收據見 [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)，先前紀錄見 [BALDR_COMPLETION_PROGRESS_20261011](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)；原始 receipts／source inventory 依各收據所列路徑與 SHA 追溯。
 
 ## 現在有哪些入口
 
@@ -18,17 +18,21 @@ baldr 已有九個本機工作區，主程式是 `ui_qt/main.py`。下表說明�
 
 ## 目前工程狀態與限制
 
-產品補完範圍仍為 P00–P14、M1–M3、F01–F23、UX01–UX24、G0–G4；2026-10-12 使用者再次要求停止並記錄進度、commit，goal 與本任務現已暫停，沒有活動 QA。恢復須先取得使用者明示接續指示，再核對最新停點與來源；沒有因單項 QA 通過而宣告整包或 Gate 完成。近期接手背景與資源約束見[2026-10-12 恢復交接](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。
+產品補完範圍仍為 P00–P14、M1–M3、F01–F23、UX01–UX24、G0–G4。使用者明示「繼續」後，已從暫停提交 `54f1e04d` 核對恢復；goal active／本task in_progress，完整產品 Gate 尚未接受。Health／ML 修補提交 `e0d76604` 保留；P01 各版效能候選仍在私有凍結來源中，未正式採入。
 
-前次暫停的修補與交接已保存於 `e0d76604`；本次停點保存其後的增量。P01 r04 唯一warm的90份完整DTO、813份profile與自然收尾已獨立核對；據此新增目錄anchor修補候選。Root04原契約QA通過後，新增反例發現WindowsPath大小寫折疊可能混用namespace，因此未提升；Root05只改anchor精確字串key，完整raw／AST正逆、66protected及3compile通過。同3078凍結候選actual origin、新反例27、原lease13／semantic13／currentquery23及另兩原rolling案例均已PASS，守衛乾淨且各Job自然閉鎖；原assert、8／16視窗及等待期限保持。query整組299.996秒不代表p95效能Gate，query23與rolling2分開執行也不宣稱舊25全檔同次PASS。Root05尚未提升formal，新版矩陣已有3,106檔精確副本及原五個完整控制函式／10compile證據，但manifest／SHA重綁、完整正逆審核與五cold＋一warm實際執行仍待；Root03 prototype 為 execution_ready=false，不可直接執行，Root04 封裝尚未建立。最後 Root Job dff0d3 已自然歸零、handles 關閉、mutex 釋放。M27原三p95FAIL／完整Main／Qt types／完整Gate不變。最新證據與再次暫停的恢復順序見[10/12補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)；歷史暫停／失敗及同封套warm唯一intent保留。
+P01 最新 Root11／Root12 tiny buffer 候選的原五 cold＋一 warm 矩陣與90份完整 DTO 已核對，但三類 p95 都超過原300ms門檻，因此不採入。後續診斷基線選 Root09 指定候選（篩選336.2761ms仍FAIL）；Root14新封套80fadf已完成資料／來源／原生profile綁定審查，唯一warm34bbae已native0。獨立保存資料核驗1b94通過90份完整DTO、813份profile、provenance及自然worker終態；篩選觀測熱點在檔案讀取與原生來源驗證路徑。Root15私有候選只合併快取layout pin的重複fstat，原一般reader保持；聚焦8反例1541、完整raw／AST逆回、新BIND9849、控制compile78f47、新origin3abb及原41契約b197已通過，全部按各自來源範圍判讀。同版原lease13、semantic13與currentquery23也已全數PASS／0SKIP，各組自然閉鎖；query23包含strict-focused唯一PASS，保存結果可直接追溯。獨立rolling2已以Root03修正版完成原兩項PASS／0SKIP，保持34斷言、8/16bounds和10/20/30秒等待；3,116 pins及3,078實際mirror另經Root讀回、outer a718自然閉鎖。新完整效能矩陣仍待。profile耗時不作效能Gate，沒有正式採入。詳細候選、失敗與收據見[10/12補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)。
+
+唯一warm outer9e87、資料核驗outer f2e6與Root15聚焦outer4f292皆native0、三組PID陣列空、process及Job handlesclosed、mutexreleased，已記錄安全接手點。先前資料工具的原FAIL收據保持；自然閉鎖只代表可安全開始下一組。所有原件及唯一intent保持，不重跑80fa／b3f5／8bec／9098／c19／e6f9。使用者明示由Root審查、Luna max協作，本輪沿用三位subagent做靜態實作與複核；Python與QA仍由Root串行，以原8GiB／12程序、來源／store／PIT守衛、斷言與期限執行。近期接手背景與資源約束見[2026-10-12恢復交接](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。
 
 | 主題 | 最新可支持的狀態 | 判讀依據 |
 |---|---|---|
-| P08 保存結果旅程 | 指定凍結候選版完整旅程 5 PASS／native 0。該證據只適用於指定合成來源與候選版本，不授予最新 formal 修補版本、正式來源資格、完整 P08 或產品 Gate 接受。 | [補完進度與最新收據](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md) |
+| P08 保存結果旅程 | 當版3113 composite candidate已經Root05單一reader transport、DATA896c／BINDfb22／compilea539／origin19ea，原suite b360實際5 PASS／0 SKIP、20.650秒，包含latest append／old-prefix／fresh；來源守衛與3172 pins／3113 source及mirror、實際同Job child由Root另核，outer2b656自然閉鎖。來源複核仍依3bcd保存範圍：active3085／support1互斥，不宣稱DATA重新擷取membership。原cb4f的4 PASS／1 FAIL及3e62、日期transport FAIL保持；原39assert／10args／60秒不變。尚未正式接線、正常Main／同版EXE／真來源或完整P08／產品Gate接受。 | [10/12補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md) |
 | P01 Main | 單次原生觀測仍為access violation／完整來源守衛終態FAIL，pins／mirror穩定。唯一348,191bytes dump經exact DLL／PDB及136bytes有界unwind，確認捕獲fault在faulthandler watchdog路徑；保存frame參數地址等於False singleton，fault為NULL code欄位讀取。指標形成與初始／次生因果仍未知；不授Main接受。 | [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md) |
-| P01 矩陣 | M27完整五cold＋一warm已自然返回，90份完整DTO相等；Root重算翻頁327.8650／篩選444.9752／排序934.8569ms，三類皆未達原嚴格低於300ms門檻。不接受P01／Gate。 | 同上 |
+| P01 矩陣 | 最新Root11／Root12 b3f5唯一原五cold＋一warm及90完整DTO核對完成；翻頁657.5572／篩選348.8925／排序760.6722ms三FAIL，效能候選不採入。前版Root09為216.3426／336.2761／172.8405ms，篩選仍FAIL；選其指定來源為後續診斷基線，不授formal／P01／產品Gate。全部既有原FAIL及唯一intent保持。 | 同上 |
 | M25／M26／M27 | M26六phase聚焦案例已有同helper證據；M27已經Root完整raw／AST／3497pins／18compile／382closure、純預檢及actual origin核對。完整矩陣完成診斷仍效能FAIL，來源版本明示保留舊SHA，不授最新版formal接受。 | 同上 |
 | Health／ML長路徑 | Health11path＋fixture及ML6來源＋helper／test精確採入；r03修正lineage暫存leaf263，新3085來源／17formal origin通過。新版ML159、incremental104、callers329PASS／2SKIP、UI85、governance51、validator與syntax20通過。原長路徑18案例16PASS／2FAIL收據保留；使用者授權一次UAC後，原兩項no-follow另組2PASS／0SKIP，來源及原守衛通過，沒有改永久權限設定。Qt保存raw九份完整欄位相等僅資料診斷，原types守衛FAIL保持；新同版Health正常／freshMain1PASS，P01完整Main與工作包／完整Gate仍待。 | 同上 |
+
+Root16 新完整矩陣資料封套 `0db89369` 已保存，包含 6,902 pins／17 payload／10 compile 證據。受控 reviewer Root02／Root03 的兩個精確投影 FAIL 保留；Root04 審核 `87512a1a` 已通過，Root另核 6,985 pins 與編譯產物。新 origin `374cef13` 實際通過，Root讀回 6,987 完整 pins、3,775 啟動 pins、51 file／3 namespace origins及 fresh PID 37624；outer `ad1b7a94` 三組 PID 陣列空、handles關閉、mutex釋放。完整矩陣尚未啟動：靜態審查發現 driver 將原矩陣的 `completed_diagnostic_candidate_only` 錯要求為 `passed`，且 stdout 僅為收據指標；正建立 matrix-only sibling，保留原 seal／origin／review鏈、完整協定與效能門檻，不重跑 origin。P08 單一 reader transport 的 Root05 DATA `896c5036`／新 BIND `fb22df69`、compile `a5392010` 與新 origin `19eac173` 已完成；同版原 suite `b360301c` 實際 5 PASS／0 SKIP、20.650秒，含 latest append／old-prefix／fresh。Root核 3,172 pins、3,113 source／mirror及 fresh 的同一 Job／十參數／60秒／兩個實際 PID；outer `2b656bae` 自然閉鎖。舊 `cb4f` 的 4 PASS／1 FAIL 不改寫。此為指定 composite candidate 旅程資格，正式接線、正常 Main／EXE、真來源與完整 Gate仍待。
 
 上述工作依賴目前一次一組受控驗證與來源封套規則；未封存、未經審查的候選不能當成可執行驗收來源。產品目前優先事項不換算為 6M Month N，工程 Gate 順序見 [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)。
 

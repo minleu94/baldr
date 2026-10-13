@@ -17,6 +17,7 @@
 - 現行模組邊界與資料流：`docs/01_architecture/system_architecture.md`；目標領域背景與目標實作設計依任務讀 `target_system_architecture.md` 及 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`。
 - UI、操作流程、參數、結果判讀或安全限制：依 `docs/07_guides/README.md` 的操作手冊章節地圖，讀取 `APPLICATION_MANUAL.md` 相關章節。
 - 外部專案或候選資料源研究：`docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`。
+- Obsidian vault 導覽、文件關聯圖、Canvas 或 Properties：讀取 [baldr-obsidian-workflow](.agents/skills/baldr-obsidian-workflow/SKILL.md)；產品狀態與契約仍以各自 Scoped SSOT 為準。
 
 ## 載入與文件責任
 

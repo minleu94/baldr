@@ -12,7 +12,7 @@
 - `/.tmp_*/`：repo 根目錄下以 `.tmp_` 開頭的隔離測試／pytest `--basetemp` 輸出；只排除根目錄此命名模式，不涵蓋其他目錄中的同名資料。
 - `/.tf_*/`、`/.tc1/`、`/.tc2/`：2026-09-27 R031 QA runner 產生的根目錄短 TEMP／C1 隔離輸出；這些精確前綴與目錄只供該次 QA 暫存，不涵蓋其他根目錄來源或一般新建 source files。
 - `/.t/`：repo 根目錄下的本機 QA 暫存（例如 capture、full-stack、OS temp 與 replay diagnostics）。只忽略此根目錄，不要刪除或提交其內容；來源不明時先保留並查明 owner。
-- `/.obsidian/`、`/Untitled.canvas`：本機 Obsidian 設定與目前這份根目錄草稿白板；不使用全域 `*.canvas` 規則，以免排除其他可能屬於專案的白板。
+- `/.obsidian/`、`/Untitled.canvas`：本機 Obsidian 設定與根目錄 Canvas 的單一本機排除項；不使用全域 `*.canvas` 規則，以免排除其他可供專案共用的白板。移機時先確認實際存在的設定與檔案，再決定是否另行備份。
 - `docs/agents/shared_state/active_task.yaml`：Agent 本機任務交接狀態；各工作階段可自行更新，不應提交。
 - `docs/agents/shared_state/handoff_log.md`：本機跨 Agent 交接紀錄；可能包含進行中工作資訊，不應提交。
 - `.pytest_cache/`、`.coverage`、`htmlcov/`、`.tox/`、`.cache/`：測試與 coverage 輸出。

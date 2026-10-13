@@ -1,0 +1,179 @@
+"""唯讀盤點 Git 追蹤檔案，不載入或執行被分析的專案程式。"""
+
+from __future__ import annotations
+
+import ast
+import copy
+import hashlib
+import json
+import subprocess
+import tokenize
+from collections import Counter, defaultdict
+from pathlib import Path
+
+
+TASK_ROOT = Path(__file__).resolve().parent
+CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".ps1", ".sh", ".cmd", ".bat", ".sql", ".css", ".html"}
+TEXT_SUFFIXES = CODE_SUFFIXES | {".md", ".rst", ".txt", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".csv", ".ipynb", ".canvas"}
+ROOT_TEXT_NAMES = {"LICENSE", "Makefile", ".gitignore", ".gitattributes"}
+
+
+def git_output(root: Path, *arguments: str) -> bytes:
+    result = subprocess.run(
+        ["git", "-c", "core.fsmonitor=false", "-C", str(root), *arguments],
+        capture_output=True,
+        check=True,
+    )
+    return result.stdout
+
+
+def category(relative: str, suffix: str) -> str:
+    parts = Path(relative).parts
+    first = parts[0]
+    if first in {"tests", "qa", "test_data"} or Path(relative).name.startswith("test_"):
+        return "tests_and_qa"
+    if relative.startswith("docs/09_archive/"):
+        return "documentation_archive"
+    if relative.startswith("docs/06_qa/"):
+        return "documentation_qa_records"
+    if first == "docs" or suffix in {".md", ".rst"}:
+        return "documentation_other"
+    if first in {"recommendation_module_legacy", "legacy_backup"}:
+        return "legacy_source"
+    if first in {"scripts", "packaging", "examples", "install_files"}:
+        return "scripts_and_examples"
+    if suffix == ".ipynb" or first in {"notebooks", "deep-learning", "agent", "simulation", "stacking"}:
+        return "research_examples"
+    if suffix in CODE_SUFFIXES and not first.startswith("."):
+        return "product_and_research_source"
+    return "configuration_assets_other"
+
+
+def physical_counts(path: Path) -> tuple[int, int]:
+    lines = nonblank = 0
+    with path.open("rb") as handle:
+        for line in handle:
+            lines += 1
+            nonblank += bool(line.strip())
+    return lines, nonblank
+
+
+def direct_functions(body: list[ast.stmt], prefix: str = ""):
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            yield prefix + node.name, node
+        elif isinstance(node, ast.ClassDef):
+            yield from direct_functions(node.body, prefix + node.name + ".")
+
+
+def scan(root: Path, label: str, analyze_functions: bool, manifest: dict | None = None) -> dict:
+    paths = manifest["paths"] if manifest else [item.decode("utf-8", "surrogateescape") for item in git_output(root, "ls-files", "-z").split(b"\0") if item]
+    rows = []
+    skipped = []
+    ast_errors = []
+    functions = []
+    duplicate_map = defaultdict(list)
+    for relative in paths:
+        path = root / relative
+        suffix = path.suffix.lower()
+        try:
+            stat = path.lstat()
+            if path.is_symlink() or getattr(stat, "st_file_attributes", 0) & 0x400:
+                skipped.append({"path": relative, "reason": "symlink_or_reparse_point"})
+                continue
+            row = {"path": relative, "category": category(relative, suffix), "suffix": suffix, "bytes": stat.st_size, "lines": 0, "nonblank": 0}
+            if suffix in TEXT_SUFFIXES or path.name in ROOT_TEXT_NAMES:
+                row["lines"], row["nonblank"] = physical_counts(path)
+            if suffix == ".ipynb" and stat.st_size <= 32 * 1024 * 1024:
+                notebook = json.loads(path.read_text(encoding="utf-8-sig"))
+                cell_text = "\n".join("".join(cell.get("source", [])) for cell in notebook.get("cells", []) if cell.get("cell_type") == "code")
+                row["notebook_code_lines"] = len(cell_text.splitlines())
+            rows.append(row)
+            if suffix != ".py" or not analyze_functions or row["category"] not in {"product_and_research_source", "scripts_and_examples", "legacy_source"}:
+                continue
+            if stat.st_size > 8 * 1024 * 1024:
+                ast_errors.append({"path": relative, "reason": "AST size limit: 8 MiB"})
+                continue
+            with tokenize.open(path) as handle:
+                source = handle.read()
+            try:
+                tree = ast.parse(source, filename=relative)
+            except (SyntaxError, ValueError, RecursionError) as exc:
+                ast_errors.append({"path": relative, "reason": str(exc)})
+                continue
+            source_lines = source.splitlines()
+            for name, node in direct_functions(tree.body):
+                span = node.end_lineno - node.lineno + 1
+                nonblank = sum(bool(line.strip()) for line in source_lines[node.lineno - 1:node.end_lineno])
+                info = {"path": relative, "name": name, "start": node.lineno, "end": node.end_lineno, "lines": span, "nonblank": nonblank, "category": row["category"]}
+                functions.append(info)
+                if nonblank < 30:
+                    continue
+                normalized = copy.deepcopy(node)
+                normalized.name = "__function__"
+                if normalized.body and isinstance(normalized.body[0], ast.Expr) and isinstance(normalized.body[0].value, ast.Constant) and isinstance(normalized.body[0].value.value, str):
+                    normalized.body = normalized.body[1:]
+                digest = hashlib.sha256(ast.dump(normalized, include_attributes=False).encode("utf-8")).hexdigest()
+                duplicate_map[digest].append(info)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            skipped.append({"path": relative, "reason": str(exc)})
+
+    by_category = defaultdict(Counter)
+    by_directory = defaultdict(Counter)
+    by_suffix = defaultdict(Counter)
+    for row in rows:
+        for group in (by_category[row["category"]], by_directory[row["path"].split("/")[0]], by_suffix[row["suffix"]]):
+            group.update({"files": 1, "bytes": row["bytes"], "lines": row["lines"], "nonblank": row["nonblank"]})
+        if row["suffix"] == ".py":
+            by_category[row["category"]].update({"python_files": 1, "python_lines": row["lines"]})
+        if row["suffix"] in CODE_SUFFIXES:
+            by_category[row["category"]].update({"code_files": 1, "code_lines": row["lines"]})
+    duplicates = []
+    for digest, occurrences in duplicate_map.items():
+        if len(occurrences) > 1 and len({item["path"] for item in occurrences}) > 1:
+            duplicates.append({"ast_sha256": digest, "occurrences": occurrences, "all_occurrence_lines": sum(item["lines"] for item in occurrences), "additional_occurrence_lines": sum(item["lines"] for item in occurrences) - max(item["lines"] for item in occurrences)})
+    duplicates.sort(key=lambda item: item["additional_occurrence_lines"], reverse=True)
+    tracked_first = {item.split("/")[0] for item in paths}
+    entries = list(root.iterdir())
+    runtime_py = [row for row in rows if row["suffix"] == ".py" and row["category"] == "product_and_research_source"]
+    return {
+        "label": label, "root": str(root), "head": manifest["head"] if manifest else git_output(root, "rev-parse", "HEAD").decode().strip(),
+        "measurement": "Git tracked working-tree physical lines; includes comments and blank lines; ignored files are excluded. AST duplicates keep signatures/identifiers/constants/decorators, ignore only function name, leading docstring and position metadata; minimum 30 nonblank lines; candidates are not proof of safely removable code or repeated execution.",
+        "tracked_paths": len(paths), "measured_files": len(rows), "categories": dict(by_category), "directories": dict(by_directory), "suffixes": dict(by_suffix),
+        "root_entries": len(entries), "root_directories": sum(item.is_dir() for item in entries),
+        "root_entries_without_tracked_descendants": [item.name for item in entries if item.name not in tracked_first],
+        "largest_runtime_python_files": sorted(runtime_py, key=lambda row: row["lines"], reverse=True)[:25],
+        "largest_python_files": sorted((row for row in rows if row["suffix"] == ".py"), key=lambda row: row["lines"], reverse=True)[:30],
+        "function_count_analyzed": len(functions), "functions_at_least_200_lines": sum(item["lines"] >= 200 for item in functions),
+        "largest_functions": sorted(functions, key=lambda item: item["lines"], reverse=True)[:30],
+        "duplicate_groups": duplicates, "ast_errors": ast_errors, "skipped_files": skipped,
+        "inventory": rows,
+    }
+
+
+def main() -> None:
+    roots = [
+        (Path("C:/Projects/PythonProjects/technical_analysis"), "baldr", True),
+        (Path("C:/Projects/PythonProjects/daily_stock_analysis"), "daily_stock_analysis_local", False),
+        (Path("C:/Projects/PythonProjects/technical_analysis/output/external_references/stock_prediction"), "stock_prediction_reference", False),
+    ]
+    summaries = []
+    for root, label, analyze in roots:
+        destination = TASK_ROOT / f"{label}_census.json"
+        if label == "baldr" and destination.is_file():
+            # 沿用已完成的同一基線盤點，不因外部 Git 路徑失敗重跑 AST。
+            result = json.loads(destination.read_text(encoding="utf-8"))
+        else:
+            manifest_path = TASK_ROOT / "daily_manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if label == "daily_stock_analysis_local" else None
+            result = scan(root, label, analyze, manifest=manifest)
+            destination.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        summary = {key: result[key] for key in ("label", "head", "tracked_paths", "measured_files", "categories", "root_entries", "root_directories", "function_count_analyzed", "functions_at_least_200_lines")}
+        summary.update({"python": result["suffixes"].get(".py", {}), "duplicate_groups": len(result["duplicate_groups"]), "duplicate_additional_lines": sum(item["additional_occurrence_lines"] for item in result["duplicate_groups"]), "skipped_files": len(result["skipped_files"]), "ast_errors": len(result["ast_errors"]), "root_entries_without_tracked_descendants": len(result["root_entries_without_tracked_descendants"]), "artifact": str(destination)})
+        summaries.append(summary)
+        print(json.dumps(summary, ensure_ascii=False), flush=True)
+    (TASK_ROOT / "summary.json").write_text(json.dumps(summaries, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()

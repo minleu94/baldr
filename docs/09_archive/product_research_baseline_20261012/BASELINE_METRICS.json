@@ -1,0 +1,1003 @@
+{
+  "schema_version": "baldr-research-baseline-metrics.v1",
+  "baseline_date": "2026-10-12",
+  "baldr_head": "54f1e04d51f4057b04c9288b3ff6a733d6946a01",
+  "scope": "既有盤點整理後的固定摘要；未重跑全庫；非效能、unused、正式資格或功能數",
+  "measurement": "Git tracked working-tree physical lines; includes comments and blank lines; ignored files are excluded. AST duplicates keep signatures/identifiers/constants/decorators, ignore only function name, leading docstring and position metadata; minimum 30 nonblank lines; candidates are not proof of safely removable code or repeated execution.",
+  "repositories": [
+    {
+      "label": "baldr",
+      "head": "54f1e04d51f4057b04c9288b3ff6a733d6946a01",
+      "tracked_paths": 4817,
+      "measured_files": 4817,
+      "categories": {
+        "documentation_other": {
+          "files": 553,
+          "bytes": 5386689,
+          "lines": 57615,
+          "nonblank": 41738
+        },
+        "configuration_assets_other": {
+          "files": 24,
+          "bytes": 2175166,
+          "lines": 1002,
+          "nonblank": 954
+        },
+        "product_and_research_source": {
+          "files": 1079,
+          "bytes": 31783059,
+          "lines": 724456,
+          "nonblank": 664757,
+          "python_files": 1079,
+          "python_lines": 724456,
+          "code_files": 1079,
+          "code_lines": 724456
+        },
+        "documentation_qa_records": {
+          "files": 578,
+          "bytes": 6077979,
+          "lines": 51520,
+          "nonblank": 38644,
+          "code_files": 1,
+          "code_lines": 15
+        },
+        "documentation_archive": {
+          "files": 471,
+          "bytes": 10875028,
+          "lines": 119552,
+          "nonblank": 90687,
+          "python_files": 1,
+          "python_lines": 164,
+          "code_files": 2,
+          "code_lines": 5102
+        },
+        "scripts_and_examples": {
+          "files": 533,
+          "bytes": 9283969,
+          "lines": 219463,
+          "nonblank": 201344,
+          "python_files": 478,
+          "python_lines": 216087,
+          "code_files": 519,
+          "code_lines": 218336
+        },
+        "research_examples": {
+          "files": 4,
+          "bytes": 249235,
+          "lines": 4258,
+          "nonblank": 4258
+        },
+        "tests_and_qa": {
+          "files": 1575,
+          "bytes": 21425042,
+          "lines": 543669,
+          "nonblank": 480898,
+          "python_files": 1521,
+          "python_lines": 542499,
+          "code_files": 1521,
+          "code_lines": 542499
+        }
+      },
+      "python": {
+        "files": 3079,
+        "bytes": 62265813,
+        "lines": 1483206,
+        "nonblank": 1342853
+      },
+      "root_entries": 205,
+      "root_directories": 163,
+      "root_entries_without_tracked_descendants": 154,
+      "skipped_files": 0
+    },
+    {
+      "label": "daily_stock_analysis_local",
+      "head": "ecf87ea0107f1394c7e7f2c0e21362a70c0244d1",
+      "tracked_paths": 936,
+      "measured_files": 936,
+      "categories": {
+        "documentation_other": {
+          "files": 137,
+          "bytes": 74699761,
+          "lines": 25655,
+          "nonblank": 20952,
+          "python_files": 1,
+          "python_lines": 35,
+          "code_files": 1,
+          "code_lines": 35
+        },
+        "configuration_assets_other": {
+          "files": 58,
+          "bytes": 4028163,
+          "lines": 47184,
+          "nonblank": 46672,
+          "python_files": 2,
+          "python_lines": 501,
+          "code_files": 2,
+          "code_lines": 501
+        },
+        "product_and_research_source": {
+          "files": 512,
+          "bytes": 7460139,
+          "lines": 194530,
+          "nonblank": 172513,
+          "python_files": 244,
+          "python_lines": 122461,
+          "code_files": 512,
+          "code_lines": 194530
+        },
+        "scripts_and_examples": {
+          "files": 22,
+          "bytes": 136354,
+          "lines": 4275,
+          "nonblank": 3476,
+          "code_files": 20,
+          "code_lines": 4253,
+          "python_files": 10,
+          "python_lines": 3060
+        },
+        "tests_and_qa": {
+          "files": 207,
+          "bytes": 3752352,
+          "lines": 92243,
+          "nonblank": 78930,
+          "python_files": 204,
+          "python_lines": 92187,
+          "code_files": 204,
+          "code_lines": 92187
+        }
+      },
+      "python": {
+        "files": 461,
+        "bytes": 8648016,
+        "lines": 218244,
+        "nonblank": 188953
+      },
+      "root_entries": 38,
+      "root_directories": 22,
+      "root_entries_without_tracked_descendants": 9,
+      "skipped_files": 0
+    },
+    {
+      "label": "stock_prediction_reference",
+      "head": "d463cdebb63eda0153d41bb9655a3cf48e8d3a8c",
+      "tracked_paths": 116,
+      "measured_files": 116,
+      "categories": {
+        "configuration_assets_other": {
+          "files": 23,
+          "bytes": 9621885,
+          "lines": 998,
+          "nonblank": 830
+        },
+        "documentation_other": {
+          "files": 19,
+          "bytes": 104504,
+          "lines": 1737,
+          "nonblank": 1354
+        },
+        "product_and_research_source": {
+          "files": 38,
+          "bytes": 348346,
+          "lines": 8358,
+          "nonblank": 7316,
+          "python_files": 38,
+          "python_lines": 8358,
+          "code_files": 38,
+          "code_lines": 8358
+        },
+        "tests_and_qa": {
+          "files": 13,
+          "bytes": 40299,
+          "lines": 1251,
+          "nonblank": 1013,
+          "python_files": 12,
+          "python_lines": 1014,
+          "code_files": 12,
+          "code_lines": 1014
+        },
+        "scripts_and_examples": {
+          "files": 11,
+          "bytes": 10507874,
+          "lines": 614,
+          "nonblank": 509,
+          "python_files": 8,
+          "python_lines": 588,
+          "code_files": 9,
+          "code_lines": 614
+        },
+        "legacy_source": {
+          "files": 12,
+          "bytes": 136909,
+          "lines": 3165,
+          "nonblank": 2812,
+          "python_files": 12,
+          "python_lines": 3165,
+          "code_files": 12,
+          "code_lines": 3165
+        }
+      },
+      "python": {
+        "files": 70,
+        "bytes": 539439,
+        "lines": 13125,
+        "nonblank": 11445
+      },
+      "root_entries": 27,
+      "root_directories": 12,
+      "root_entries_without_tracked_descendants": 1,
+      "skipped_files": 0
+    }
+  ],
+  "baldr_product_python_by_directory": {
+    "analysis_module": {
+      "files": 23,
+      "lines": 5618
+    },
+    "app_module": {
+      "files": 510,
+      "lines": 307601
+    },
+    "artifact_contracts": {
+      "files": 4,
+      "lines": 216
+    },
+    "backtest_module": {
+      "files": 6,
+      "lines": 2153
+    },
+    "baldr_launcher.py": {
+      "files": 1,
+      "lines": 127
+    },
+    "data_module": {
+      "files": 233,
+      "lines": 203480
+    },
+    "decision_module": {
+      "files": 51,
+      "lines": 18955
+    },
+    "development_module": {
+      "files": 16,
+      "lines": 4382
+    },
+    "financial_module": {
+      "files": 4,
+      "lines": 812
+    },
+    "mcp_servers": {
+      "files": 5,
+      "lines": 403
+    },
+    "ml_module": {
+      "files": 84,
+      "lines": 83375
+    },
+    "paper_event_source_capture.py": {
+      "files": 1,
+      "lines": 39
+    },
+    "portfolio_module": {
+      "files": 2,
+      "lines": 476
+    },
+    "runtime": {
+      "files": 12,
+      "lines": 1326
+    },
+    "ui_app": {
+      "files": 3,
+      "lines": 2245
+    },
+    "ui_qt": {
+      "files": 121,
+      "lines": 93049
+    },
+    "utils": {
+      "files": 3,
+      "lines": 199
+    }
+  },
+  "baldr_large_product_python": {
+    "at_least_1000_lines": 216,
+    "at_least_3000_lines": 37,
+    "at_least_5000_lines": 12
+  },
+  "baldr_largest_product_python_files": [
+    {
+      "path": "ui_qt/views/recommendation_view.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 405443,
+      "lines": 8755,
+      "nonblank": 8110
+    },
+    {
+      "path": "data_module/formal_daily_input_producer.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 310944,
+      "lines": 7229,
+      "nonblank": 6853
+    },
+    {
+      "path": "data_module/portfolio_ml_direct_numeric_store.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 244451,
+      "lines": 6049,
+      "nonblank": 5774
+    },
+    {
+      "path": "app_module/update_service.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 269498,
+      "lines": 5755,
+      "nonblank": 5319
+    },
+    {
+      "path": "ml_module/current_restated_research_bridge.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 280743,
+      "lines": 5652,
+      "nonblank": 5341
+    },
+    {
+      "path": "ui_qt/views/update_view.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 267847,
+      "lines": 5632,
+      "nonblank": 5173
+    },
+    {
+      "path": "data_module/pit_taxonomy_source_producer.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 249313,
+      "lines": 5376,
+      "nonblank": 5132
+    },
+    {
+      "path": "ml_module/recommendation_natural_outcome_service.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 263805,
+      "lines": 5309,
+      "nonblank": 5088
+    },
+    {
+      "path": "ml_module/allocation_out_of_core_training_service.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 202498,
+      "lines": 5288,
+      "nonblank": 5042
+    },
+    {
+      "path": "ui_qt/views/backtest_view.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 236138,
+      "lines": 5207,
+      "nonblank": 4507
+    },
+    {
+      "path": "data_module/portfolio_ml_dataset_assembler.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 206350,
+      "lines": 5119,
+      "nonblank": 4889
+    },
+    {
+      "path": "data_module/paper_daily_execution_producer.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 211102,
+      "lines": 5041,
+      "nonblank": 4774
+    },
+    {
+      "path": "ui_qt/views/stock_research_report_view.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 231795,
+      "lines": 4856,
+      "nonblank": 4565
+    },
+    {
+      "path": "app_module/ml_allocation_shadow_evidence.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 196693,
+      "lines": 4822,
+      "nonblank": 4629
+    },
+    {
+      "path": "decision_module/recommendation/evaluate.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 205253,
+      "lines": 4776,
+      "nonblank": 4376
+    },
+    {
+      "path": "ui_qt/views/portfolio_view.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 225684,
+      "lines": 4683,
+      "nonblank": 4266
+    },
+    {
+      "path": "app_module/stock_research_report_service.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 227078,
+      "lines": 4606,
+      "nonblank": 4424
+    },
+    {
+      "path": "app_module/recommendation_service.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 218993,
+      "lines": 4455,
+      "nonblank": 4268
+    },
+    {
+      "path": "ml_module/recommendation_calibration_evidence.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 231333,
+      "lines": 4412,
+      "nonblank": 4195
+    },
+    {
+      "path": "data_module/fundamental_read_snapshot.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 191582,
+      "lines": 4267,
+      "nonblank": 3989
+    },
+    {
+      "path": "app_module/recommendation_calibration_consumer.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 193381,
+      "lines": 4222,
+      "nonblank": 3973
+    },
+    {
+      "path": "app_module/daily_market_technical_official_disposition_query_reader_v1.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 209545,
+      "lines": 4179,
+      "nonblank": 3958
+    },
+    {
+      "path": "app_module/decision_outcome_journey.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 166725,
+      "lines": 4154,
+      "nonblank": 3843
+    },
+    {
+      "path": "app_module/personalization_read_service.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 189394,
+      "lines": 4132,
+      "nonblank": 3887
+    },
+    {
+      "path": "ui_qt/views/workbench_view.py",
+      "category": "product_and_research_source",
+      "suffix": ".py",
+      "bytes": 198181,
+      "lines": 4024,
+      "nonblank": 3729
+    }
+  ],
+  "baldr_largest_direct_functions": [
+    {
+      "path": "app_module/recommendation_service.py",
+      "name": "RecommendationService._run_recommendation_body_result",
+      "start": 2384,
+      "end": 4273,
+      "lines": 1890,
+      "nonblank": 1830,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/scheduled/run_daily_recommendation_learning.py",
+      "name": "main",
+      "start": 1547,
+      "end": 2861,
+      "lines": 1315,
+      "nonblank": 1307,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "data_module/portfolio_ml_direct_numeric_store.py",
+      "name": "PortfolioMLDirectNumericStoreBuilder.build",
+      "start": 351,
+      "end": 1579,
+      "lines": 1229,
+      "nonblank": 1220,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/run_daily_ml_allocation_orchestration.py",
+      "name": "run",
+      "start": 1502,
+      "end": 2694,
+      "lines": 1193,
+      "nonblank": 1181,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "app_module/recommendation_service.py",
+      "name": "RecommendationService._apply_recommendation_calibration",
+      "start": 835,
+      "end": 1915,
+      "lines": 1081,
+      "nonblank": 1066,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/scheduled/current_stock_research_cycle.py",
+      "name": "run_current_stock_research_cycle",
+      "start": 2563,
+      "end": 3559,
+      "lines": 997,
+      "nonblank": 976,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "scripts/build_mops_statement_pit_candidate.py",
+      "name": "build_candidate",
+      "start": 1953,
+      "end": 2893,
+      "lines": 941,
+      "nonblank": 930,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "app_module/stock_research_report_service.py",
+      "name": "StockResearchReportReadService.read_report",
+      "start": 198,
+      "end": 1135,
+      "lines": 938,
+      "nonblank": 918,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "app_module/recommendation/execute.py",
+      "name": "_capture_events",
+      "start": 1199,
+      "end": 2117,
+      "lines": 919,
+      "nonblank": 919,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "app_module/technical_indicator_job.py",
+      "name": "TechnicalIndicatorJob.run",
+      "start": 56,
+      "end": 925,
+      "lines": 870,
+      "nonblank": 800,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/experiments/r027/candidate_technical_indicator_job.py",
+      "name": "CandidateTechnicalIndicatorJob.run",
+      "start": 56,
+      "end": 925,
+      "lines": 870,
+      "nonblank": 800,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "scripts/experiments/r028/frozen_baseline/app_module/update_service.py",
+      "name": "UpdateService.calculate_technical_indicators",
+      "start": 4729,
+      "end": 5598,
+      "lines": 870,
+      "nonblank": 800,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "ui_qt/views/backtest/config_panel.py",
+      "name": "BacktestConfigPanel._setup_ui",
+      "start": 77,
+      "end": 894,
+      "lines": 818,
+      "nonblank": 719,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/scheduled/run_daily_data_update_quick.py",
+      "name": "main",
+      "start": 1082,
+      "end": 1881,
+      "lines": 800,
+      "nonblank": 786,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "data_module/pit_taxonomy_source_producer.py",
+      "name": "build_daily_pit_taxonomy_bundle",
+      "start": 2847,
+      "end": 3639,
+      "lines": 793,
+      "nonblank": 782,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/scheduled/run_ml_raw_pit_refresh.py",
+      "name": "main",
+      "start": 2223,
+      "end": 3001,
+      "lines": 779,
+      "nonblank": 774,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "ui_qt/views/recommendation_view.py",
+      "name": "RecommendationView._create_result_panel",
+      "start": 3595,
+      "end": 4339,
+      "lines": 745,
+      "nonblank": 709,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/scheduled/run_daily_recommendation_learning_pipeline.py",
+      "name": "main",
+      "start": 1431,
+      "end": 2172,
+      "lines": 742,
+      "nonblank": 731,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "data_module/ml_pit_year_shard_exporter.py",
+      "name": "PITYearShardExporter._stream_table",
+      "start": 1234,
+      "end": 1968,
+      "lines": 735,
+      "nonblank": 726,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "ui_qt/views/portfolio_view.py",
+      "name": "PortfolioView._setup_ui",
+      "start": 1111,
+      "end": 1838,
+      "lines": 728,
+      "nonblank": 648,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "ml_module/recommendation_calibration_learning_runner.py",
+      "name": "DailyRecommendationLearningRunner.run",
+      "start": 148,
+      "end": 830,
+      "lines": 683,
+      "nonblank": 671,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/qa_profile_startup.py",
+      "name": "_child_mode",
+      "start": 663,
+      "end": 1336,
+      "lines": 674,
+      "nonblank": 640,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "ml_module/allocation_out_of_core_training_service.py",
+      "name": "AllocationOutOfCoreTrainingService.train",
+      "start": 885,
+      "end": 1553,
+      "lines": 669,
+      "nonblank": 661,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "app_module/daily_market_snapshot_producer.py",
+      "name": "DailyMarketSnapshotProducer._produce_locked",
+      "start": 289,
+      "end": 937,
+      "lines": 649,
+      "nonblank": 630,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "data_module/ml_daily_price_revision_gate.py",
+      "name": "load_verified_current_restated_source_context",
+      "start": 482,
+      "end": 1126,
+      "lines": 645,
+      "nonblank": 632,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "ui_qt/views/recommendation_view.py",
+      "name": "RecommendationView._create_config_panel",
+      "start": 2951,
+      "end": 3593,
+      "lines": 643,
+      "nonblank": 575,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/run_daily_ml_allocation_derived_shadow.py",
+      "name": "_run_unlocked",
+      "start": 1185,
+      "end": 1819,
+      "lines": 635,
+      "nonblank": 627,
+      "category": "scripts_and_examples"
+    },
+    {
+      "path": "ml_module/current_restated_research_bridge.py",
+      "name": "prepare_verified_current_restated_core19_dataset",
+      "start": 473,
+      "end": 1106,
+      "lines": 634,
+      "nonblank": 616,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "data_module/pit_sector_membership_reader.py",
+      "name": "PITSectorMembershipReader._load_and_verify_taxonomy_v3",
+      "start": 2039,
+      "end": 2671,
+      "lines": 633,
+      "nonblank": 615,
+      "category": "product_and_research_source"
+    },
+    {
+      "path": "scripts/qa_validate_research_journey_qt.py",
+      "name": "_run_journey",
+      "start": 304,
+      "end": 936,
+      "lines": 633,
+      "nonblank": 596,
+      "category": "scripts_and_examples"
+    }
+  ],
+  "baldr_duplicate_candidates": {
+    "groups_total": 69,
+    "additional_physical_lines_total": 6745,
+    "product_internal_groups": [
+      {
+        "ast_sha256": "59e0867c63ae12b884c58eee9164410e59a5c0abf06d9ff6868ea95d9ad32528",
+        "occurrences": [
+          {
+            "path": "decision_module/strategies/baseline_score_executor.py",
+            "name": "BaselineScoreExecutor._generate_signals_with_cooldown",
+            "start": 163,
+            "end": 229,
+            "lines": 67,
+            "nonblank": 59,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "decision_module/strategies/momentum_aggressive_executor.py",
+            "name": "MomentumAggressiveExecutor._generate_signals",
+            "start": 146,
+            "end": 195,
+            "lines": 50,
+            "nonblank": 46,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "decision_module/strategies/stable_conservative_executor.py",
+            "name": "StableConservativeExecutor._generate_signals",
+            "start": 146,
+            "end": 195,
+            "lines": 50,
+            "nonblank": 46,
+            "category": "product_and_research_source"
+          }
+        ],
+        "additional_occurrence_lines": 100
+      },
+      {
+        "ast_sha256": "089c187b23c437f69626573b4455ad44ad23e8d38202f07a03e4035a03829604",
+        "occurrences": [
+          {
+            "path": "decision_module/strategies/momentum_aggressive_executor.py",
+            "name": "MomentumAggressiveExecutor.generate_signals",
+            "start": 78,
+            "end": 144,
+            "lines": 67,
+            "nonblank": 56,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "decision_module/strategies/stable_conservative_executor.py",
+            "name": "StableConservativeExecutor.generate_signals",
+            "start": 78,
+            "end": 144,
+            "lines": 67,
+            "nonblank": 56,
+            "category": "product_and_research_source"
+          }
+        ],
+        "additional_occurrence_lines": 67
+      },
+      {
+        "ast_sha256": "f2047850372229d80173606be6d7911a7767f584c33e16dc0e861dd5415d8449",
+        "occurrences": [
+          {
+            "path": "ui_qt/views/strong_stocks_view.py",
+            "name": "StrongStocksView._add_selected_to_watchlist",
+            "start": 373,
+            "end": 431,
+            "lines": 59,
+            "nonblank": 52,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "ui_qt/views/weak_stocks_view.py",
+            "name": "WeakStocksView._add_selected_to_watchlist",
+            "start": 355,
+            "end": 413,
+            "lines": 59,
+            "nonblank": 52,
+            "category": "product_and_research_source"
+          }
+        ],
+        "additional_occurrence_lines": 59
+      }
+    ],
+    "product_internal_additional_physical_lines": 226,
+    "largest_cross_category_examples": [
+      {
+        "ast_sha256": "154a5a44aa873b516d44b4a7a8598e45ae15561afba80daf04b7751c31d1d9e5",
+        "occurrences": [
+          {
+            "path": "app_module/technical_indicator_job.py",
+            "name": "TechnicalIndicatorJob.run",
+            "start": 56,
+            "end": 925,
+            "lines": 870,
+            "nonblank": 800,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "scripts/experiments/r027/candidate_technical_indicator_job.py",
+            "name": "CandidateTechnicalIndicatorJob.run",
+            "start": 56,
+            "end": 925,
+            "lines": 870,
+            "nonblank": 800,
+            "category": "scripts_and_examples"
+          }
+        ],
+        "all_occurrence_lines": 1740,
+        "additional_occurrence_lines": 870
+      },
+      {
+        "ast_sha256": "960409c8294e38220f76480e79bba3e5d4e0768e2c68b231903d28be6968779f",
+        "occurrences": [
+          {
+            "path": "app_module/update_service.py",
+            "name": "UpdateService.update_tpex_daily_price_range",
+            "start": 1455,
+            "end": 1803,
+            "lines": 349,
+            "nonblank": 333,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "scripts/experiments/r028/frozen_baseline/app_module/update_service.py",
+            "name": "UpdateService.update_tpex_daily_price_range",
+            "start": 1055,
+            "end": 1403,
+            "lines": 349,
+            "nonblank": 333,
+            "category": "scripts_and_examples"
+          }
+        ],
+        "all_occurrence_lines": 698,
+        "additional_occurrence_lines": 349
+      },
+      {
+        "ast_sha256": "c2251076e5863f55f9c165450e12e83b28f65eee2aabd1a6a588332dbf414c08",
+        "occurrences": [
+          {
+            "path": "app_module/update_service.py",
+            "name": "UpdateService.merge_daily_data",
+            "start": 4729,
+            "end": 5009,
+            "lines": 281,
+            "nonblank": 255,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "scripts/experiments/r028/frozen_baseline/app_module/update_service.py",
+            "name": "UpdateService.merge_daily_data",
+            "start": 4146,
+            "end": 4426,
+            "lines": 281,
+            "nonblank": 255,
+            "category": "scripts_and_examples"
+          }
+        ],
+        "all_occurrence_lines": 562,
+        "additional_occurrence_lines": 281
+      },
+      {
+        "ast_sha256": "44aad029bd9195c7e4a50fe9e4764d5bb8a83e651effc94cbd49e5c81103ee74",
+        "occurrences": [
+          {
+            "path": "scripts/experiments/r027/worker.py",
+            "name": "_snapshot_outputs",
+            "start": 625,
+            "end": 873,
+            "lines": 249,
+            "nonblank": 244,
+            "category": "scripts_and_examples"
+          },
+          {
+            "path": "scripts/experiments/r028/worker.py",
+            "name": "_snapshot_outputs",
+            "start": 1040,
+            "end": 1288,
+            "lines": 249,
+            "nonblank": 244,
+            "category": "scripts_and_examples"
+          }
+        ],
+        "all_occurrence_lines": 498,
+        "additional_occurrence_lines": 249
+      },
+      {
+        "ast_sha256": "5d13a2094d7c3d6a05eb94b555d6857fb6f75ddcf09a122a6b156d67fd5e74a3",
+        "occurrences": [
+          {
+            "path": "app_module/update_service.py",
+            "name": "UpdateService.update_daily",
+            "start": 2757,
+            "end": 2974,
+            "lines": 218,
+            "nonblank": 202,
+            "category": "product_and_research_source"
+          },
+          {
+            "path": "scripts/experiments/r028/frozen_baseline/app_module/update_service.py",
+            "name": "UpdateService.update_daily",
+            "start": 2357,
+            "end": 2574,
+            "lines": 218,
+            "nonblank": 202,
+            "category": "scripts_and_examples"
+          }
+        ],
+        "all_occurrence_lines": 436,
+        "additional_occurrence_lines": 218
+      }
+    ],
+    "limitation": "名稱／docstring 正規化後的精確 AST 候選；不量測近似複製或 runtime 重算。外部兩庫沒有做函式／重複分析，原摘要的 0 不作沒有重複的證據。"
+  },
+  "baldr_markdown_rst_lines": 200593,
+  "reference_caveat": "DSA 固定本機 2026-06-24 HEAD，工作樹 clean/dirty 未確認；KittenCN 固定先前唯讀 clone。",
+  "baldr_direct_function_analysis": {
+    "function_count_analyzed": 25140,
+    "functions_at_least_200_lines": 545,
+    "ast_errors": []
+  }
+}

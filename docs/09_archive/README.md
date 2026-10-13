@@ -1,7 +1,7 @@
 # 歸檔文檔目錄
 
 > **歷史記錄和總結文檔（歸檔）**
-> **最後整理**：2026-10-11
+> **最後整理**：2026-10-12
 
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
@@ -15,6 +15,7 @@
 | 目前操作方式 | [Application Manual](../07_guides/APPLICATION_MANUAL.md)。 |
 | 封存生命週期與目前文件權責 | [Documentation Structure](../00_core/DOCUMENTATION_STRUCTURE.md) 與 [DOC Coverage Map](../00_core/DOC_COVERAGE_MAP.md)。 |
 | 某份文件搬去哪裡、原件 hash、替代入口 | [Coverage History](DOC_COVERAGE_HISTORY_2026.md)。 |
+| 產品落差、程式規模、七庫比較與 Regime ML 研究 | [2026-10-12 研究基線](product_research_baseline_20261012/README.md)；固定來源版本，重構前沿用並做增量確認。 |
 | 架構與券商分點歷史原件 | [目標架構封存包](target_architecture_2026_09_22/README.md)、[券商分點封存包](broker_branch/README.md)。 |
 | 歷史 QA／完成收據 | [封存文件清單](#archive-document-catalog)；仍有待驗收或 Gate 的 QA 從[現行 QA 導覽](../06_qa/README.md)進入。 |
 | 舊 plan/spec 與執行脈絡 | [開發計畫與規格追溯](#archive-plans-and-specs)；目前明確進行中的 plan 看 [Superpowers README](../superpowers/README.md)。 |

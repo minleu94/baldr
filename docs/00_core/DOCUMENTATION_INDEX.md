@@ -24,6 +24,7 @@
 | 資料來源、保存與恢復 | [資料專區](../03_data/README.md)、[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md) |
 | 排程與搬機 | [操作／搬機](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)、[唯讀稽核](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)、[wrapper入口](../../scripts/scheduled/README.md) |
 | 測試與驗收證據 | [QA索引](../06_qa/README.md)、[測試指南](../07_guides/tests_readme.md) |
+| 程式規模、產品落差與外部專案比較 | [2026-10-12 研究基線](../09_archive/product_research_baseline_20261012/README.md)：重構前沿用，按影響增量確認 |
 | 文件同步與處置 | [Coverage](DOC_COVERAGE_MAP.md)、[生命週期](DOCUMENTATION_STRUCTURE.md) |
 
 <a id="必要調度與維運"></a>

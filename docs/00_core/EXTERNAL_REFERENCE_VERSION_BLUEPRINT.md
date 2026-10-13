@@ -1,12 +1,16 @@
 # 外部專案參考與歷史版本形狀
 
-> **研究基準日期**：2026-07-11
-> **最後整理**：2026-10-12（收窄 bounded shadow-acquisition 能力敘述；未重新查核外部 repo）
-> **時效性**：外部 repo 查核與基礎 Roadmap 研究以 2026-07-11 為基線；資料源章節另有截至 2026-08-14 的具名來源審查與決議，未重新查核其後的外部狀態或接受資格。本文件不定義現行來源優先序或交付順序：來源優先序看 [PRODUCT_ROADMAP_POST_REFACTOR §11](PRODUCT_ROADMAP_POST_REFACTOR.md#11-data-source-roadmap)，近期工程順序看 [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)，現況看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
+> **研究基準日期**：主文以 2026-07-11 為基線；2026-10-12 具名增量研究另見下方入口。
+> **最後整理**：2026-10-12（新增七庫比較與 Regime ML 歸檔入口；保留 bounded shadow-acquisition 能力界線，未全面更新舊研究）
+> **時效性**：主文原有的外部 repo 查核與基礎 Roadmap 研究以 2026-07-11 為基線；資料源章節另有截至 2026-08-14 的具名來源審查與決議，未全面更新其後的外部狀態或接受資格。2026-10-12 增量研究只對歸檔套件列出的 repo、版本與閱讀範圍有效。本文件不定義現行來源優先序或交付順序：來源優先序看 [PRODUCT_ROADMAP_POST_REFACTOR §11](PRODUCT_ROADMAP_POST_REFACTOR.md#11-data-source-roadmap)，近期工程順序看 [ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)，現況看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 > **狀態校正**：P0/P13 已接線 bounded shadow-acquisition routes；這只表示存在隔離的工程能力，不證明各來源 probe 可用或已接受。來源 license / quality / PIT 仍須逐源核對；candidate 不得進 ScoringEngine 或 formal Advice。
 > **定位**：本文件保存外部開源專案對照、候選資料源研究細節、可借鑑設計、Blueprint 衝突檢查，以及當時 V1.8 至 V2.0 的歷史版本形狀參考。候選分級不等於現行來源優先序；現行優先序以 Product Roadmap §11 為準。V1.1 至 V2.0 的已完成路線已移至 [歷史封存](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)；本文件不表示該版本節奏仍是目前交付順序，也不取代 Vision、Snapshot、6M Roadmap、長期版本階梯或 Architecture。
 
 ---
+
+## 已歸檔的增量研究
+
+[2026-10-12 產品與外部研究基線](../09_archive/product_research_baseline_20261012/README.md)保存七個 GitHub 專案比較、KittenCN Regime ML 靜態審查，以及 baldr 程式規模／產品落差診斷。各來源版本與未驗證範圍在套件內具名記錄；後續相關查詢先沿用，真正重構或準備採用不同來源版本時才按影響更新。這批研究沒有變更下方採用分級、Roadmap 或來源接受資格。
 
 ## 1. 文件邊界
 

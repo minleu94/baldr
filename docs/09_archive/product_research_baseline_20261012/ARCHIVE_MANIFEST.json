@@ -1,0 +1,153 @@
+{
+  "schema_version": "baldr-research-archive-manifest.v1",
+  "baseline_date": "2026-10-12",
+  "baldr_head": "54f1e04d51f4057b04c9288b3ff6a733d6946a01",
+  "archive_reason": "使用者要求保存研究與盤點供重構前重用，避免後續查找又重做",
+  "source_versions": {
+    "baldr": "54f1e04d51f4057b04c9288b3ff6a733d6946a01",
+    "stock_prediction": "d463cdebb63eda0153d41bb9655a3cf48e8d3a8c",
+    "daily_stock_analysis_local": "ecf87ea0107f1394c7e7f2c0e21362a70c0244d1",
+    "seven_public_repositories": "SOURCE_BASELINES.json"
+  },
+  "original_recovery": "未移動／刪除原件；本機可按 original_path 取得並核對 SHA-256。歸檔閱讀版保留研究結論，導航修訂依各筆 changes 判讀。",
+  "promoted_documents": [
+    {
+      "original_path": "output/tasks/repository_size_audit_20261012/REPORT.md",
+      "original_bytes": 8284,
+      "original_sha256": "0c922a2e2a57ea9b3b03954c01b90b390f6cfd0f3f80518b91c91ac65d08e87d",
+      "archived_path": "docs/09_archive/product_research_baseline_20261012/REPOSITORY_SIZE_AUDIT.md",
+      "archived_bytes": 8585,
+      "archived_sha256": "a06ed44d38e1d7ac73156af6454d7ce889653bfce27b4dfdbeb78c378c3f53dd",
+      "disposition": "可分享研究文件；原件留在 ignored output，未搬移或刪除",
+      "changes": [
+        "加入固定研究時點與歸檔入口說明；原結論和未驗證限制保留",
+        "本機原始診斷連結改為歸檔摘要／方法；四個 baldr 原碼連結改為 repo 相對路徑，保留原行號"
+      ]
+    },
+    {
+      "original_path": "output/tasks/external_repo_comparison_20261012/COMPARISON.md",
+      "original_bytes": 9485,
+      "original_sha256": "92a3a60c39a25b542206991bbccb20a20d74a551cced94c49a17179845a2d1af",
+      "archived_path": "docs/09_archive/product_research_baseline_20261012/EXTERNAL_REPO_COMPARISON.md",
+      "archived_bytes": 9778,
+      "archived_sha256": "d4a539433705fcae660b2d8326517fb04f908274e128fccca6e992e9ae08ef15",
+      "disposition": "可分享研究文件；原件留在 ignored output，未搬移或刪除",
+      "changes": [
+        "加入固定研究時點與歸檔入口說明；原結論和未驗證限制保留"
+      ]
+    },
+    {
+      "original_path": "output/tasks/external_stock_prediction_review_20261012/REVIEW.md",
+      "original_bytes": 9032,
+      "original_sha256": "7ce201881f324f64949074d142599653e8649512f83e4c5696cb6b45699629d7",
+      "archived_path": "docs/09_archive/product_research_baseline_20261012/STOCK_PREDICTION_REGIME_REVIEW.md",
+      "archived_bytes": 9325,
+      "archived_sha256": "c29391965b7898d2cf6125d60945115ed11de722987ce964896ab44d1defef29",
+      "disposition": "可分享研究文件；原件留在 ignored output，未搬移或刪除",
+      "changes": [
+        "加入固定研究時點與歸檔入口說明；原結論和未驗證限制保留"
+      ]
+    },
+    {
+      "original_path": "output/tasks/external_repo_comparison_20261012/SOURCE_BASELINES.json",
+      "original_bytes": 3751,
+      "original_sha256": "3bdde808a01ffe3699eb29fdbf8e4bf078dbc0c8f0dd4a86434b3ef5ee125e82",
+      "archived_path": "docs/09_archive/product_research_baseline_20261012/SOURCE_BASELINES.json",
+      "archived_bytes": 3751,
+      "archived_sha256": "3bdde808a01ffe3699eb29fdbf8e4bf078dbc0c8f0dd4a86434b3ef5ee125e82",
+      "disposition": "可分享研究文件；原件留在 ignored output，未搬移或刪除",
+      "changes": [
+        "逐位元組保存來源版本紀錄或量測方法；方法以 .txt 保存，不執行"
+      ]
+    },
+    {
+      "original_path": "output/tasks/repository_size_audit_20261012/census.py",
+      "original_bytes": 10556,
+      "original_sha256": "1bc04bacb9491a1bfcd3dad3c04d0eb6699d8b69b71e61a4aa78a4e648e34fac",
+      "archived_path": "docs/09_archive/product_research_baseline_20261012/CENSUS_METHOD.py.txt",
+      "archived_bytes": 10556,
+      "archived_sha256": "1bc04bacb9491a1bfcd3dad3c04d0eb6699d8b69b71e61a4aa78a4e648e34fac",
+      "disposition": "可分享研究文件；原件留在 ignored output，未搬移或刪除",
+      "changes": [
+        "逐位元組保存來源版本紀錄或量測方法；方法以 .txt 保存，不執行"
+      ]
+    }
+  ],
+  "curated_metrics": {
+    "path": "docs/09_archive/product_research_baseline_20261012/BASELINE_METRICS.json",
+    "sha256": "01db7f23aedd8b66bc26255798d2fe8900789a7f1d3624ff4569c69440e672ee",
+    "derived_from": [
+      {
+        "path": "output/tasks/repository_size_audit_20261012/summary.json",
+        "bytes": 6587,
+        "sha256": "61ca943726548ece85a701b12dfb2588e54c72f7220013369a53eb41df553a67",
+        "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+      },
+      {
+        "path": "output/tasks/repository_size_audit_20261012/baldr_census.json",
+        "bytes": 1137284,
+        "sha256": "60676a5dc7802ef53e174574be783b041acbe17684b5138cab1d6af8d43a7e39",
+        "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+      },
+      {
+        "path": "output/tasks/repository_size_audit_20261012/daily_stock_analysis_local_census.json",
+        "bytes": 211477,
+        "sha256": "8c18f70bebc66dc95f6be357731f83506ecfd36fcda1361ffde2eea5350a3845",
+        "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+      },
+      {
+        "path": "output/tasks/repository_size_audit_20261012/stock_prediction_reference_census.json",
+        "bytes": 40332,
+        "sha256": "17dab2db56b3f28cf7c92728639285eff1d48dd95b6de46de6aae8b5bf89d617",
+        "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+      }
+    ],
+    "scope": "摘要、長檔案／函式與具名重複候選；沒有完整 raw inventory 或工具終端輸出"
+  },
+  "local_raw_artifacts_retained": [
+    {
+      "path": "output/tasks/repository_size_audit_20261012/summary.json",
+      "bytes": 6587,
+      "sha256": "61ca943726548ece85a701b12dfb2588e54c72f7220013369a53eb41df553a67",
+      "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+    },
+    {
+      "path": "output/tasks/repository_size_audit_20261012/baldr_census.json",
+      "bytes": 1137284,
+      "sha256": "60676a5dc7802ef53e174574be783b041acbe17684b5138cab1d6af8d43a7e39",
+      "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+    },
+    {
+      "path": "output/tasks/repository_size_audit_20261012/daily_stock_analysis_local_census.json",
+      "bytes": 211477,
+      "sha256": "8c18f70bebc66dc95f6be357731f83506ecfd36fcda1361ffde2eea5350a3845",
+      "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+    },
+    {
+      "path": "output/tasks/repository_size_audit_20261012/stock_prediction_reference_census.json",
+      "bytes": 40332,
+      "sha256": "17dab2db56b3f28cf7c92728639285eff1d48dd95b6de46de6aae8b5bf89d617",
+      "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+    },
+    {
+      "path": "output/tasks/repository_size_audit_20261012/daily_manifest.json",
+      "bytes": 42254,
+      "sha256": "db01dd19ba1c8bc70fa40f42c5554eff44a9ca08e197f6268617feaa0a3923b9",
+      "disposition": "本機 ignored raw 診斷，保留未變；不作目前文件入口或提交候選"
+    }
+  ],
+  "excluded_from_archive": [
+    "task.json",
+    "__pycache__",
+    "Graphify graph/cache",
+    "external clone",
+    "正式資料、憑證與執行日誌"
+  ],
+  "not_run": [
+    "重新全庫 census",
+    "近似 clone 與 unused 判定",
+    "效能 profiling",
+    "產品 QA",
+    "外部模型訓練／回測"
+  ]
+}

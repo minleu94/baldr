@@ -3386,3 +3386,12 @@ F12 reader attempt 03 的 exact reopen 缺口已加導向後續 durable raw arch
 主要治理處置：整合 Codex／Gemini／Antigravity 共用入口及 `.agent/rules/` loader 說明；把四份 root 外部來源／MOPS 研究材料加到 `PROJECT_NAVIGATION.md`，保留其研究證據定位；將 MOPS packet 的本機 `file:///` scratch 引用改成明確的「作者本機、未入庫」文字；修正 Manual 中 MOPS 重試次數與解析器／測試不符的敘述；將舊 Phase 3.3B headline、舊 scheduler register 數量、Runtime MVP 能力清單、舊 UI／Notebook 範例的時效與操作界線明確化；更正 Tkinter／service／decision module 邊界；更新 QA 「374」歷史計數、R016 Portfolio caller 接線及補完計畫暫停／resume 授權文字。另將 249 個 Markdown 絕對連結改為指向 repo tracked 目標的相對路徑，將 14 個 Git-ignored 輸出與 10 個 Codex 本機可視化輸出連結改為明示未入庫來源，沒有搬移或刪除原始輸出。原始歷史文件保留；沒有將任何工程局部通過升格為產品接受。
 
 全治理分類為權威 98、導覽 278、證據 624、歷史 516。矩陣列出的 G01–G05、G04 caller-specific acceptance、MOPS reconciliation、正式 OOS custody、自然排程與產品接受等未解出口仍待同範圍收據；本條只證明文件治理覆核完成，不代表這些產品／資料／運維出口完成。逐檔證據索引見 `docs/00_core/DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv`，目錄與範圍彙總見 `docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md`；Graphify 僅在所有文件提交後依固定最終 HEAD 另行刷新與驗證，並將使用者同時編輯中的 `docs/superpowers/plans/baldr_product_completion_plan_20261006.md` 排除於圖譜輸入之外，不影響它在治理清冊中的分類與覆核紀錄。Graphify 文件來源必須同時包含 `docs/` 及清冊中的 26 份外部 tracked Markdown，排除兩份 self-reference 輸出與該受保護計畫後預期為 1,516 個文件節點。
+
+<a id="coverage-entry-342"></a>
+## 2026-10-12 外部研究、程式規模與產品落差基線保存
+
+以 baldr HEAD `54f1e04d51f4057b04c9288b3ff6a733d6946a01` 的既有研究產物為來源，新增[固定研究套件](product_research_baseline_20261012/README.md)：KittenCN Regime ML 靜態審查、七庫比較、程式規模報告、產品落差診斷，以及版本、量測摘要、量測方法原文、來源／歸檔 SHA-256 清冊與歸檔核對。三份報告閱讀版僅調整導航與固定時點語境，原研究結論保留；五份原報告／版本／方法與五份 raw 診斷仍在原 ignored output，沒有搬移或刪除，逐檔 bytes、SHA 及處置見 [Archive Manifest](product_research_baseline_20261012/ARCHIVE_MANIFEST.json)。未將完整 raw inventory、task 狀態、外部 clone 或快取移入文件庫。
+
+中央文件 Index、外部研究 Blueprint、QA 與 Archive 索引共同導向同一短入口。使用規則明確為重構前沿用，小幅變更按影響增量確認；核心流程／模組責任大改再新增日期基線，舊原件與結論保留。診斷區分現有證據、推論與未知，不把程式大小、局部測試或外部 README 當作完整產品／投資效果排名。本次只保存研究與文件關係，不改現況／架構／Roadmap／操作契約；兩份既有 dirty 文件未由本任務寫入。
+
+文件／hash／摘要一致性核對結果見[歸檔核對](product_research_baseline_20261012/ARCHIVE_CHECK.md)。本次沒有重跑全庫 census、Graphify、產品 QA、profiling、外部訓練／回測或清理；基線是固定研究證據，不作產品 Gate、重構授權或立即採用外部程式的依據。

@@ -23,6 +23,7 @@
 | 產品、個股研究與 UX | [產品與個股研究索引](PRODUCT_UX_QA_INDEX.md) | H20、BALDR B01–B14、功能驗收鏈、Watchlist、投資組合與圖表。 |
 | 資料、ML 與來源治理 | [資料與 ML 索引](DATA_ML_GOVERNANCE_QA_INDEX.md) | R026／R031、ML Shadow、前瞻證據、PIT、基本面與來源接受。 |
 | 跨工作流整合 | [整合索引](INTEGRATION_QA_INDEX.md) | WP1–WP5、Task Loop、Continuity／Decision Journey、LUNA 與跨工作流收據。 |
+| 程式規模與產品落差研究 | [2026-10-12 固定研究基線](../09_archive/product_research_baseline_20261012/README.md) | 行數、長檔案／函式、精確 AST 候選與產品交付診斷；重構前沿用，未做效能或完整產品驗收。 |
 | 營運與測試 | [營運與測試索引](OPERATIONS_TESTING_QA_INDEX.md) | 排程、資料更新效能、測試路由、固定路徑與維運證據。 |
 | 儲存與冷封存 | [C 槽冷封存狀態對照（2026-10-09）](C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) | 第一批 6/6、第二批 28/28 已按終態收據完成；摘要未重新計算全量 SHA，容量數字是時間點快照。 |
 

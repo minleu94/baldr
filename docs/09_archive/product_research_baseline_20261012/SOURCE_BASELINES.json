@@ -1,0 +1,98 @@
+{
+  "as_of": "2026-10-12",
+  "method": "GitHub README、架構文件與指定核心檔案的唯讀比較；未 clone 或執行七個專案。",
+  "sources": [
+    {
+      "repository": "huseinzol05/Stock-Prediction-Models",
+      "head_observed": {
+        "repo": "huseinzol05/Stock-Prediction-Models",
+        "commit": "33266732b0b16188b565e0aeb6b24efa71161f6a",
+        "date": "2021-01-05T10:31:50Z",
+        "subject": "update readme"
+      },
+      "readme_blob": null,
+      "url": "https://github.com/huseinzol05/Stock-Prediction-Models"
+    },
+    {
+      "repository": "microsoft/qlib",
+      "head_observed": {
+        "repo": "microsoft/qlib",
+        "commit": "54355232463878d2eebb91fe0ee5fa7fa1f5976c",
+        "date": "2026-10-08T10:15:27Z",
+        "subject": "fix(security): constrain config-driven code execution (#2340)"
+      },
+      "readme_blob": "a6963f6e40bd9ebee7dd2b5c88df94fe73a67dd4",
+      "url": "https://github.com/microsoft/qlib"
+    },
+    {
+      "repository": "vnpy/vnpy",
+      "head_observed": {
+        "repo": "vnpy/vnpy",
+        "commit": "c6e231caf32b7fc97e6459817fff66458cf7e7c4",
+        "date": "2026-10-06T09:38:50Z",
+        "subject": "[Fix] mypy related warning"
+      },
+      "readme_blob": "64eefd38fcb83a24b74ce6b1429b6ed6f58acc25",
+      "url": "https://github.com/vnpy/vnpy"
+    },
+    {
+      "repository": "HKUDS/Vibe-Trading",
+      "head_observed": {
+        "repo": "HKUDS/Vibe-Trading",
+        "commit": "c25fea2bc261a2d0ed971c989d194de9f04ec963",
+        "date": "2026-10-12T11:30:01Z",
+        "subject": "feat(providers): add claude-cli provider backed by local `claude -p` (#1804)"
+      },
+      "readme_blob": "f16c0f1e71806ff25e97e57bf6ab351d6e7c5ada",
+      "url": "https://github.com/HKUDS/Vibe-Trading"
+    },
+    {
+      "repository": "openbq-org/OpenBB",
+      "head_observed": {
+        "repo": "openbq-org/OpenBB",
+        "commit": "7c9d4221bdf66965e3f6c7f4dc6ee848073e5ae2",
+        "date": "2026-10-12T21:17:54Z",
+        "subject": "[BugFix] `openbb-cli`: Fix Detection of Sub-Routes of a Path (#7794)"
+      },
+      "readme_blob": "20a11786e8936c866511f18ed17f00e2619a2272",
+      "url": "https://github.com/openbq-org/OpenBB"
+    },
+    {
+      "repository": "ZhuLinsen/daily_stock_analysis",
+      "head_observed": {
+        "repo": "ZhuLinsen/daily_stock_analysis",
+        "commit": "c3349de46965a12d6b74ce8489eba0e39e03ba44",
+        "date": "2026-10-11T11:10:45Z",
+        "subject": "feat: persist authoritative chat discussion state (issue #1743) (#2397)"
+      },
+      "readme_blob": "230d26a7858ad28550d047f915f1cb3bb063b4aa",
+      "url": "https://github.com/ZhuLinsen/daily_stock_analysis"
+    },
+    {
+      "repository": "LastAncientOne/Deep_Learning_Machine_Learning_Stock",
+      "head_observed": {
+        "repo": "LastAncientOne/Deep_Learning_Machine_Learning_Stock",
+        "commit": "e31e9fc689cd2cb6d74a8f2694750afd6e13bcec",
+        "date": "2024-03-01T00:12:23Z",
+        "subject": "Update README.md"
+      },
+      "readme_blob": "d6a6aa9560a4affc0172d9b18437c596702e21ed",
+      "url": "https://github.com/LastAncientOne/Deep_Learning_Machine_Learning_Stock"
+    }
+  ],
+  "local_daily_stock_analysis": {
+    "path": "C:/Projects/PythonProjects/daily_stock_analysis",
+    "head": "ecf87ea0107f1394c7e7f2c0e21362a70c0244d1",
+    "head_date": "2026-06-24",
+    "working_tree_status": "未確認：git status 在目前受限環境拒絕 work tree 操作；沒有寫入或更新此副本。",
+    "read_paths": [
+      "AGENTS.md",
+      "docs/README_CHT.md",
+      "docs/market-support.md",
+      "docs/analysis-context-pack.md",
+      "src/schemas/analysis_context_pack.py",
+      "src/core/pipeline.py",
+      "src/analyzer.py"
+    ]
+  }
+}

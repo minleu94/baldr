@@ -704,9 +704,11 @@ def test_confirmed_run_writes_only_outcomes(
     release_heavy_chain_reservation(after_release)
 
 
+@pytest.mark.parametrize("wait_seconds", [5, 10500])
 def test_reservation_timeout_blocks_before_confirmed_writer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    wait_seconds: int,
 ) -> None:
     config = _config(tmp_path)
     before = config.db_file.read_bytes()
@@ -719,7 +721,7 @@ def test_reservation_timeout_blocks_before_confirmed_writer(
     monkeypatch.setattr(
         forward_runner,
         "wait_for_scheduled_writer_reservation",
-        lambda **_kwargs: ScheduledWriterReservationWait(None, timeout_receipt),
+        lambda **kwargs: ScheduledWriterReservationWait(None, timeout_receipt) if kwargs["timeout_seconds"] == wait_seconds else pytest.fail("等待上限未傳入鎖服務"),
     )
     monkeypatch.setattr(
         forward_runner,
@@ -736,6 +738,7 @@ def test_reservation_timeout_blocks_before_confirmed_writer(
         start_date="2026-09-01",
         end_date="2026-09-10",
         data_as_of_date="2026-09-10",
+        reservation_wait_seconds=wait_seconds,
     )
 
     assert result["status"] == "blocked"

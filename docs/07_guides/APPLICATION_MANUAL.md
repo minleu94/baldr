@@ -2,6 +2,8 @@
 
 本手冊提供日常使用順序及常見操作入口。安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
+人類授權重跑 Forward／Decision 時，可在原 Python producer 參數加 `--reservation-wait-seconds 5`，限定本次共用鎖等待；允許整數1..10500，排程預設仍10500秒。這個參數不跳過鎖、截止、資料日期、cohort 或正式 DB 寫入確認。逾時視為 blocked、沒有新證據，保留該次 receipt 再判讀重試條件；具名操作、重跑結果與未解除資格見[10/13排程修復報告](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
+
 baldr 是市場資料、個股研究、推薦回放、回測和持倉檢視工具。畫面輸出是研究資訊，不是券商委託或投資保證；目前沒有自動券商交易。Advice、Paper、模型投影、單次回測與排程狀態都不能單獨當成真實交易或自然成熟證據。
 
 ## 1. 日常使用旅程

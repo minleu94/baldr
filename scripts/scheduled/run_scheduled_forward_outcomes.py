@@ -17,6 +17,7 @@ from app_module.scheduled_forward_outcome_service import (  # noqa: E402
     DEFAULT_LOOKBACK_CALENDAR_DAYS,
     DEFAULT_MAX_EVENTS,
     DEFAULT_WINDOWS,
+    SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
     run_scheduled_forward_outcomes,
 )
 from data_module.config import TWStockConfig  # noqa: E402
@@ -30,6 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--db-path", type=Path, default=None)
     parser.add_argument("--confirm", action="store_true")
+    parser.add_argument("--reservation-wait-seconds", type=int, default=SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+                        help="手動重跑的共用鎖等待秒數，1..10500；不跳過鎖或寫入資格。")
     parser.add_argument(
         "--allow-production-db-confirm",
         action="store_true",
@@ -91,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         require_cohort_identity=args.require_cohort_identity,
         calendar_cache_path=args.calendar_cache_path,
         temporary_closure_path=args.temporary_closure_path,
+        reservation_wait_seconds=args.reservation_wait_seconds,
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return int(result.get("exit_code", 2))

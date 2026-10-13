@@ -80,3 +80,69 @@ host唯讀21-task inventory `inventory_1791917218772825400`，captured `2026-10-
 | formal-pit-sidecar-postcutoff-daily | 10/12/2026 18:00:01 | 0x00000002 (ready) | 10/13/2026 18:00:00 |
 | formal-input-producer-daily | 10/12/2026 21:25:01 | 0x00000002 (ready) | 10/13/2026 21:25:00 |
 | v2-2-weekly-collection | 10/11/2026 18:00:00 | 0x00000001 (ready) | 10/18/2026 18:00:00 |
+
+## 人類授權正式重跑與再分析（台北 2026-10-14 03:09–03:39）
+
+本節為修正後的人類授權操作，與晨間／晚間唯讀 automation 分開。America/Los_Angeles 05:30／06:20、target thread、啟用及通知設定未修改。使用自然時鐘，沒有改期、補造價格、回填歷史、promotion、交易或變更 Task。正式 writer 僅使用原 producer 與原證據範圍。
+
+**結論：官方事件與日曆、Sector 原始解析已恢復；自然證據累積尚未恢復。** 不是所有問題都能靠重跑解除。當前 Direct 正在持有共用 heavy-chain reservation，G6 中央 cycle、G9、Forward 與 Decision 因此沒有新的合格完成證據。不得以 G6 CLI exit0、既有10筆隔離試跑或旧 child 宣稱 live lane 成功。
+
+| Producer | 真實重跑結果、原因 | Owner／驗收条件 |
+|---|---|---|
+| Official market events | exit0，`20261013T191144298170Z-8ae61900fa50` 三個 child succeeded；舊 HTTP520 partial 已恢復 | Official：同次 wrapper／三個 child 保持一致 |
+| Sector | 10/14 archive `459a2842d77310ba-9f70d015fefe8c95` 已保存，原 invalid UTF-8 JSON 恢復；分母仍拒絕 `government license document fingerprint is not the registered version` | Source／PIT：核實原始授權文件版本與 hash，再提供同日 verified denominator；不得直接改 hash 放行 |
+| Recommendation | `rec_594a6349acd6416795f62f269f9fba13` 已保存；calendar 已選同次 verified refresh。10/14 decision 與 item 的10/13 eligible universe 不符，`paper_frozen_source_eligible_date_mismatch` | Recommendation／Paper：證明當次來源、universe 與 decision 的契約；不得任意重標 universe 日期或倒填決策日 |
+| Evidence pipeline | exit2，`scheduled_recommendation_status_not_passed:blocked`，pipeline 未啟動 | Evidence：上游同次 passed canonical result 通過後才驗 child |
+| G6 | 新 raw `raw-pit-20261013T192528568989Z-16856-2ba239dae64e4c8f8ca8a41eafba5c7b`，B `completed_research_only`；cycle `eb789eabf5970938457335720b86ef41` waiting_source，parent skipped_locked／direct_chain_maintenance_is_running | ML／Direct：合法 owner 自然釋放鎖後，以新當次 raw 完成完整中央 cycle、registry 與 terminal；未解鎖或停止其他作業 |
+| G9 | 修正依賴順序後 run `20261014-20261013T192746043795Z-4a944d93a612` exit1：`pinned_raw_run_terminal_status_not_eligible`、technical_source_refresh_blocked；1516 缺股 | Learning：同日開始的 eligible G6 terminal／hash，加完整 cohort 與四小時內 terminal，不借舊 run |
+| Bank | exit2，`2026-10-14-attempt-001-05bf62deafcd` failed_dependency：terminal_run_start_too_late，child not_started | Bank：恢復其實際 Task 時窗下 G9 proof；手動 run 不授予排程 proof |
+| Forward outcomes | run `20261013T193746199383Z`，exit2、heavy_chain_reservation_timeout；writer 未開啟 | Evidence／Direct：取得原共用鎖後在截止前完成，同次 outcome readback；尚未成熟保持 null |
+| Decision capture | run `20261013T193759039886Z-c2c4344a6b82`，exit1、blocked_reservation_timeout；snapshot／evidence child not_run | Evidence／Direct：原鎖與自然 clock guard 通過後才允許兩個原 writer |
+| Paper EOD | exit2，10/14 source CSV 尚未發布且 quick／freshness 非同日；未到當日 EOD，不能據此稱今日排程已失敗 | Paper／行情：待合法当日行情及同日 gate；1435／10/12 NULL open 的舊失敗保留，跨日不得補交易 |
+| Sidecar／Paper source capture | exit2；sidecar waiting_for_taipei_0830_cutoff，source capture waiting_for_paper_session_window | PIT／Paper：待08:30 cutoff／09:00–13:30 source window，再驗同日分母，不提前製造完成 |
+| Formal input | exit2，缺 verified current denominator，其他 source gates 尚未完整 | Formal：所有原 gate 及 source readback 通過才可授 formal qualification |
+| ML Forward | 原 wrapper **preflight** exit2：known_source_revision_quarantine；child_started=false、wait_started=false | ML source：恢復正式 revision／release qualification，再在08:30合法時窗執行；本次沒有執行 child 或借旧 child |
+
+Forward 已知缺價仍分別為1538的 H5（2026-09-17 close）、H10（2026-09-24 close）；不能用其他交易日替代。自然成熟、1516缺股、來源 revision quarantine、授權版本需審核與實際工程錯誤分開。週採集 partial／人工審查與 promotion qualification 未改，也未擴張為未授權重跑。
+
+### 有界手動 writer 與資料保護
+
+新增 Forward、Decision CLI `--reservation-wait-seconds`（整數1..10500），服務同樣驗證。排程預設仍10500秒，CMD／Task未改。本次各用5秒；逾時留下 producer blocked terminal，沒有跳過共用鎖、同日截止、clock／cohort／DB confirm gate。入口為 `scripts/scheduled/run_scheduled_forward_outcomes.py`（其餘參數照原 Forward CMD，包含confirm及production confirm），以及 `scripts/scheduled/run_scheduled_decision_evidence_capture.py`（原data-root/output-root）。依原receipt重試，不可為了取得passed改日期或移除鎖。
+
+前後皆以 readonly SQLite／query_only 查原120日、2500上限、完整身份的選定範圍：43 events、172 outcomes，內容逐列完全相同，沒有新增自然證據。1435／1538指定8筆原價列也完全相同。這是指定範圍比較，不外推為全DB零變更。
+
+- before `output/qa/scheduled_rerun_20261013/before/evidence_tables.json` SHA `dbe9aafc7340070f75890e1852d0668249f12aa26272df7c4b9659bb1793d716`。
+- after `output/qa/scheduled_rerun_20261013/after_evidence_tables.json` SHA `3d6de5017cd496a2781ce7d8b9d29ae3cc9db7b6f2d85b0f2ff6a27cc11dbb9c`；檔案包含不同capture時間，故檔案hash不同，tables相同。
+- G6 B terminal SHA `b7336ddb9af800f1183901ddc65d37be1c5ec425ac7b0a94e77b4cd14613d5a6`；cycle terminal SHA `84d0265a1b0b5b199b915110111bba474c0d67da05f11c392aac95c25ab99579`。
+- Forward immutable run SHA `7cbd2669c07adead36fd20b74fc79ba3f08afc25dfba1642dcbe4e8050843d9e`；Decision latest SHA `e1d6b6013a9457077917b005e7bf3cb05a76049a85e6ffe63cf2d627797c888a`（immutable receipt另沿該run/receipt.json）。
+
+第一次 G9 先於新日 G6 啟動是操作順序錯誤；它僅等待，尚無 learning／writer。依 exact PID57032／建立時間2026-10-13T19:18:13.609729Z／父系與來源核實後取消自有 waiting tree，保留 `g9_waiting_before_cancel.json`、`g9_operator_cancel.json`。**取消不是passed或自然terminal**。後續才先G6、再G9，以上表列後次真實terminal。所有 owned Job8GiB／12程序、自然或已註記取消排空後，remaining0、handlesclosed、mutexreleased；沒有停止Direct。
+
+### 修改驗證與 Scheduler 讀回
+
+Forward／Decision／共用鎖測試 **83 passed**，包含短等待及10500預設傳入，逾時無child／DB write；三個修改來源py_compile、mypy通過。QA收據與原始log位於 `output/qa/scheduled_rerun_20261013/`（本機產出不入Git），本節為可提交人類報告。前次27203e00的其他修正驗證見上文。
+
+Scheduler 於 UTC19:39:20／PDT12:39:20／台北03:39:20 唯讀重查：21項可查且action/cwd/schedule匹配，人工CMD重跑不改Task的Last／Result。仍需原排程自然事件驗收；不能把手動重跑當Task成功。
+| Task | Last（PDT） | Result | Next（PDT） |
+|---|---|---|---|
+| baldr-data-update-quick-daily | 10/13/2026 04:20:01 | 0x00000000 | 10/14/2026 04:20:00 |
+| baldr-official-market-events-daily | 10/13/2026 04:50:01 | 0x00000001 | 10/14/2026 04:50:00 |
+| baldr-data-freshness-check-daily | 10/13/2026 05:00:01 | 0x00000000 | 10/14/2026 05:00:00 |
+| baldr-ml-raw-pit-refresh-daily | 10/13/2026 05:05:01 | 0x00000000 | 10/14/2026 05:05:00 |
+| baldr-recommendation-snapshot-daily | 10/13/2026 05:10:01 | 0x00000002 | 10/14/2026 05:10:00 |
+| baldr-evidence-pipeline-dry-run-daily | 10/13/2026 05:15:01 | 0x00000002 | 10/14/2026 05:15:00 |
+| baldr-ml-promotion-evidence-daily | 10/13/2026 05:17:01 | 0x00000000 | 10/14/2026 05:17:00 |
+| baldr-ml-promotion-authority-daily | 10/13/2026 05:18:01 | 0x00000000 | 10/14/2026 05:18:00 |
+| baldr-ml-allocation-copilot-daily | 10/13/2026 05:20:01 | 0x00000000 | 10/14/2026 05:20:00 |
+| baldr-decision-evidence-capture-daily | 10/13/2026 05:25:01 | 0x00000000 | 10/14/2026 05:25:00 |
+| baldr-ml-direct-chain-maintainer | 10/13/2026 10:00:01 | 0x00041301 | 10/14/2026 10:00:00 |
+| baldr-forward-outcomes-daily | 10/13/2026 05:40:01 | 0x00000002 | 10/14/2026 05:40:00 |
+| baldr-recommendation-calibration-learning-daily | 10/13/2026 05:45:01 | 0x00000001 | 10/14/2026 05:45:00 |
+| baldr-recommendation-calibration-learning-banktaiwan-shadow-daily | 10/13/2026 05:50:01 | 0x00000002 | 10/14/2026 05:50:00 |
+| baldr-paper-execution-eod-replay-daily | 10/13/2026 06:00:01 | 0x00000002 | 10/14/2026 06:00:00 |
+| baldr-pit-sector-membership-preopen-capture-daily | 10/12/2026 16:00:01 | 0x00000002 | 10/13/2026 16:00:00 |
+| baldr-paper-portfolio-daily | 10/12/2026 17:25:01 | 0x00000000 | 10/13/2026 17:25:00 |
+| baldr-ml-allocation-forward-daily | 10/12/2026 17:25:01 | 0x00000002 | 10/13/2026 17:25:00 |
+| baldr-formal-pit-sidecar-postcutoff-daily | 10/12/2026 18:00:01 | 0x00000002 | 10/13/2026 18:00:00 |
+| baldr-formal-input-producer-daily | 10/12/2026 21:25:01 | 0x00000002 | 10/13/2026 21:25:00 |
+| baldr-v2-2-weekly-collection | 10/11/2026 18:00:00 | 0x00000001 | 10/18/2026 18:00:00 |

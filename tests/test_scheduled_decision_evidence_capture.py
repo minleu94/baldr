@@ -670,9 +670,11 @@ def test_unknown_calendar_persists_degraded_without_capture(
     assert payload["events_inserted"] == 0
 
 
+@pytest.mark.parametrize("wait_seconds", [5, 10500])
 def test_writer_reservation_timeout_blocks_without_launching_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    wait_seconds: int,
 ) -> None:
     timeout_receipt = {
         "schema_version": "scheduled-writer-reservation-wait.v1",
@@ -683,7 +685,7 @@ def test_writer_reservation_timeout_blocks_without_launching_children(
     monkeypatch.setattr(
         runner,
         "wait_for_scheduled_writer_reservation",
-        lambda **_kwargs: ScheduledWriterReservationWait(None, timeout_receipt),
+        lambda **kwargs: ScheduledWriterReservationWait(None, timeout_receipt) if kwargs["timeout_seconds"] == wait_seconds else pytest.fail("等待上限未傳入鎖服務"),
     )
     monkeypatch.setattr(
         runner,
@@ -696,6 +698,7 @@ def test_writer_reservation_timeout_blocks_without_launching_children(
         output_root=tmp_path / "output",
         now=datetime.fromisoformat("2026-07-30T09:00:00+08:00"),
         calendar=_OpenCalendar(),
+        reservation_wait_seconds=wait_seconds,
     )
 
     assert payload["status"] == "blocked_reservation_timeout"

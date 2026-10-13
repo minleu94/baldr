@@ -1523,6 +1523,7 @@ def run(
     python_executable: str | None = None,
     subprocess_timeout_seconds: int = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     calendar: OfficialTradingCalendar | None = None,
+    reservation_wait_seconds: int = SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     context = _create_run_context(Path(output_root))
     invocation_at = datetime.now(TAIPEI)
@@ -1539,6 +1540,8 @@ def run(
         context.steps["artifact_output_root"] = {"path": str(Path(output_root).resolve())}
         if subprocess_timeout_seconds <= 0:
             raise ValueError("subprocess_timeout_seconds must be positive")
+        if type(reservation_wait_seconds) is not int or not 1 <= reservation_wait_seconds <= SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS:
+            raise ValueError("reservation_wait_seconds 必須介於 1 與 10500")
         preflight_clock = _taipei_datetime(now or invocation_at, field_name="now")
         preflight_captured_at = _taipei_datetime(
             captured_at or preflight_clock,
@@ -1611,7 +1614,7 @@ def run(
             try:
                 wait_result = wait_for_scheduled_writer_reservation(
                     release_root=reservation_root / "release_v4",
-                    timeout_seconds=SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+                    timeout_seconds=reservation_wait_seconds,
                     latest_acquire_at=latest_acquire_at,
                     on_progress=publish_wait_progress,
                 )
@@ -1823,6 +1826,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     )
+    parser.add_argument("--reservation-wait-seconds", type=int, default=SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+                        help="手動重跑的共用鎖等待秒數，1..10500；不跳過鎖或寫入資格。")
     return parser
 
 
@@ -1840,6 +1845,7 @@ def main(argv: list[str] | None = None) -> int:
             capture_mode=args.capture_mode,
             calendar_decision_at=_parse_decision_at(args.calendar_decision_at),
             subprocess_timeout_seconds=args.subprocess_timeout_seconds,
+            reservation_wait_seconds=args.reservation_wait_seconds,
         )
     except Exception as exc:  # noqa: BLE001
         print(

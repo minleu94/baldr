@@ -75,6 +75,7 @@ def run_scheduled_forward_outcomes(
     require_cohort_identity: bool = False,
     calendar_cache_path: str | Path | None = None,
     temporary_closure_path: str | Path | None = None,
+    reservation_wait_seconds: int = SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """執行一次有界 outcome 更新並保存 machine-readable receipt。
 
@@ -85,6 +86,8 @@ def run_scheduled_forward_outcomes(
     的事件會在計算前跳過並統計，不會佔用 outcome 寫入額度。
     """
 
+    if type(reservation_wait_seconds) is not int or not 1 <= reservation_wait_seconds <= SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS:
+        raise ValueError("reservation_wait_seconds 必須介於 1 與 10500")
     invocation_at = datetime.now(TAIPEI)
     natural_clock = now is None
     checked_raw = now or invocation_at
@@ -193,7 +196,7 @@ def run_scheduled_forward_outcomes(
             try:
                 wait_result = wait_for_scheduled_writer_reservation(
                     release_root=reservation_root / "release_v4",
-                    timeout_seconds=SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+                    timeout_seconds=reservation_wait_seconds,
                     latest_acquire_at=latest_acquire_at,
                     on_progress=publish_wait_progress,
                 )

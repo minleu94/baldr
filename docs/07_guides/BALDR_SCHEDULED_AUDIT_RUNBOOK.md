@@ -1,5 +1,7 @@
 # baldr 全排程唯讀稽核 Runbook
 
+人類另行授權的修正重跑應獨立列 producer 收據與資料寫入範圍；手動執行不代表 Scheduler Last／Result 恢復。Forward／Decision 的手動 `--reservation-wait-seconds` 僅限定等待，不豁免鎖或來源资格；唯讀 audit 不使用它啟動 producer。台北10/14盤前具名重跑、恢复及未解除阻塞見[10/13修復報告](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
+
 本 Runbook 核對既有排程設定與同次執行證據；它不註冊、啟用、停用、手動觸發任務，不啟動 producer、訓練、重建資料或寫入 Task／Codex automation。完整 21-task 文件化時點見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)，新機接手見[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)。
 
 本機兩個 operational heartbeat 的文件化時間為 America/Los_Angeles 05:30 晨報與 06:20 晚間／Paper 報告。它們僅彙整已有證據，不等於 Windows producer trigger、完成期限或自然執行證據；實際 automation／thread 狀態需另行唯讀讀回。

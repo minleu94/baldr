@@ -39,6 +39,31 @@ def test_daily_true_clock_and_pending_are_usable(tmp_path):
     assert again["status"] == "completed" and again["captures"][0]["idempotent"]
 
 
+@pytest.mark.parametrize("change_at_terminal", [False, True])
+def test_public_daily_groups_only_same_operation_and_rejects_terminal_source_change(tmp_path, monkeypatch, change_at_terminal):
+    from scripts.scheduled import run_personal_current_observed_h20_daily as daily
+    args = setup(tmp_path)
+    source = args.pop("source_verifier")
+    contract = args.pop("contract_verifier")
+    calls = []
+    def public_source(binding, **kwargs):
+        calls.append(binding)
+        result = source(binding)
+        if change_at_terminal and len(calls) >= 3:
+            result["source_fingerprint"] = "sha256:" + "b" * 64
+        return result
+    monkeypatch.setattr(daily, "_source_port", public_source)
+    monkeypatch.setattr(daily, "_contract_port", contract)
+    receipt = daily.run_personal_current_observed_h20_daily(**args)
+    assert len(calls) <= 4
+    if change_at_terminal:
+        assert receipt["status"] == "failed"
+        assert "changed_during_read" in receipt["reason"]
+    else:
+        assert receipt["status"] == "completed"
+        assert receipt["formal_training_allowed"] is False
+
+
 @pytest.mark.parametrize("field", ["observed_at", "decision_date", "result_id", "predictions"])
 def test_backdate_or_fake_result_rejected(tmp_path, field):
     args = setup(tmp_path)

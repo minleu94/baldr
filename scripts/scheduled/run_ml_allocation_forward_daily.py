@@ -747,6 +747,13 @@ def _post_deadline_maturity(
     }
 
     daily_status = _child_daily_orchestration(child_payload)
+    if (child_payload is not None and daily_status is None
+            and child_payload.get("status") == "blocked_shared_heavy_chain_lock"
+            and child_payload.get("record_path") is None
+            and child_payload.get("writes_source_database") is False):
+        # 鎖 preflight 尚未開始 observation；保留 parent 失敗，不虛報 cutoff 缺件。
+        return {**base, "status": "not_started", "reason": "child_shared_lock_preflight_blocked",
+                "writes_shadow_sidecar": False}
     cutoff_date: date | None = None
     cutoff_reason: str | None = None
     child_cutoff_value = (

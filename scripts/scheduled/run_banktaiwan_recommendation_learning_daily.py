@@ -1022,6 +1022,7 @@ def _wait_for_exact_upstream_projection(
     poll_count = 0
     last_projection_run_id: str | None = None
     last_projection_date: str | None = None
+    last_task_observation: dict[str, object] | None = None
 
     def finish(
         *,
@@ -1043,6 +1044,7 @@ def _wait_for_exact_upstream_projection(
             "poll_count": poll_count,
             "last_projection_run_id": last_projection_run_id,
             "last_projection_decision_date": last_projection_date,
+            "last_task_observation": last_task_observation,
             "heartbeat_path": str(heartbeat_path),
             "reason": reason,
         }
@@ -1173,12 +1175,19 @@ def _wait_for_exact_upstream_projection(
                 return finish(status="blocked", reason=stale_error)
 
         observation = task_state_reader()
+        if observation is None:
+            last_task_observation = None
+            return finish(status="blocked", reason="recommendation_pipeline_task_query_unknown")
+        last_task_observation = {
+            "task_name": observation.task_name, "task_path": observation.task_path,
+            "state": observation.state, "last_run_time_utc": observation.last_run_time_utc.isoformat(),
+        }
         if (
-            observation is None
-            or observation.task_name != "baldr-recommendation-calibration-learning-daily"
+            observation.task_name != "baldr-recommendation-calibration-learning-daily"
             or observation.task_path != "\\"
-            or observation.state != "Running"
         ):
+            return finish(status="blocked", reason="recommendation_pipeline_task_identity_mismatch")
+        if observation.state != "Running":
             return finish(
                 status="upstream_stopped",
                 reason="recommendation_pipeline_stopped_without_current_projection",

@@ -31,6 +31,8 @@ Direct maintainer 文件化 trigger 是 Pacific 10:00；05:30 是舊預期。舊
 - Quick、weekly research acquisition 要同時核 parent／child、開始與 terminal、日期／hash及 artifacts；task exit 0 不能補齊缺少的 parent binding。
 - H20 natural lane 若由同次 G6／G9 research chain 生產，核母體與 source pin 一致、exact run／hash、activation lineage；`completed_with_pending` 代表仍有條件未到或缺件，不是成熟成功。唯讀 audit 不啟動該 producer。
 
+`refreshed` 日曆使用刷新終態而非preinspection；新檔缺件、hash錯誤或時鐘不合仍blocked。Evidence先區分身份與aggregate status未passed，不以persisted result替代passed gate。Paper NULL open同日retry與跨日missed分開；1435／10月12日舊缺價收據不能由audit改期。ML Forward lock preflight `not_started`不等於恢復，Bank task query unknown不等於upstream stopped；保留最後Task observation。G9 child timeout須核原期限與全母體manifest終態，不能拿部分predictions當完成。具名修正及未解除的來源見[10/13雙報告QA](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
+
 ## 3. 時鐘與 lane 依賴
 
 逐項列「文件基準 cadence」「主機實際 trigger」「查核時點」「Scheduler 結果」「producer／consumer 結果」。Pacific execution date、Asia/Taipei decision date、market session／`data_as_of` 可能不是同一天；日期字串需連時區一起記錄。

@@ -81,6 +81,8 @@ OOC `minimal_linear_shadow` 只接受單一 `ridge_logistic` 與明示 horizon�
 
 ## Recommendation 校準套件的 Windows 檔案接點
 
+排程consumer的同次身份邊界：日曆refresh `refreshed`只取刷新後終態並核決策年／path／hash／clock；Evidence要求canonical recommendation與passed狀態各自成立。個人H20每日推論與manifest發布使用既有 `PersonalH20ReadSession`，只在同一operation共用完整JSON binding，每份capture仍核原bytes，成功前重驗來源群組與完整manifest，變動或取消不發布成功reference。私人原frozen model、中央母體、20-session與formal資格不變；Paper NULL open僅同日retry，跨日不回填。驗收與來源限制見[10/13排程QA](../../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
+
 校準 runner、TrainingResult、lineage publisher、promotion authority、artifact loader 與 consumer 共用 `runtime/file_io_path.py` 的純 transport。只有可安全渲染的 Windows 長路徑在 OS 操作接點使用 extended 形式；對外 root、candidate ID、lineage path、相對 inventory、JSON 與 hash identity 保持原路徑。短路徑、relative、dotdot 與原特殊輸入保留既有 Path 操作及 strict resolve／exception 時點，transport 不授予 ownership 或 no-follow 資格。
 
 Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 tempfile.mkstemp 的自有 parent 明示 force_extended=True，避免短 parent 加上隨機暫存 leaf 後越過普通 Windows 路徑限制；helper 預設仍為 False，所有 strict lexical guards、descriptor 關閉、fsync、hard-link 與 finally cleanup 順序保持。

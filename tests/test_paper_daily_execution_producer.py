@@ -2281,8 +2281,10 @@ def test_same_day_retry_keeps_first_pending_recommendation_when_newer_source_arr
     assert retry["ledger"]["readback_verified"] is True
 
 
+@pytest.mark.parametrize("missing_open_only", [False, True])
 def test_retryable_missing_execution_source_is_pinned_until_market_row_arrives(
     tmp_path: Path,
+    missing_open_only: bool,
 ) -> None:
     """A 15:05 source miss remains a legal same-day retry at 21:00."""
 
@@ -2294,10 +2296,10 @@ def test_retryable_missing_execution_source_is_pinned_until_market_row_arrives(
     queued = recommendation_root / "queued.json"
     queued.write_bytes(input_paths.recommendation_json.read_bytes())
     with sqlite3.connect(input_paths.market_db) as connection:
-        connection.execute(
-            "DELETE FROM daily_prices WHERE 日期 = ? AND 證券代號 = ?",
-            ("20260907", "2330"),
-        )
+        if missing_open_only:
+            connection.execute("UPDATE daily_prices SET 開盤價 = NULL WHERE 日期 = ? AND 證券代號 = ?", ("20260907", "2330"))
+        else:
+            connection.execute("DELETE FROM daily_prices WHERE 日期 = ? AND 證券代號 = ?", ("20260907", "2330"))
     receipts = tmp_path / "receipts"
     queue_paths = PaperExecutionPaths(
         recommendation_json=tmp_path / "unused-placeholder.json",
@@ -2346,6 +2348,8 @@ def test_retryable_missing_execution_source_is_pinned_until_market_row_arrives(
     legacy_bytes_before_retry = failed_receipt_path.read_bytes()
 
     with sqlite3.connect(input_paths.market_db) as connection:
+        if missing_open_only:
+            connection.execute("DELETE FROM daily_prices WHERE 日期 = ? AND 證券代號 = ?", ("20260907", "2330"))
         connection.execute(
             "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?)",
             ("20260907", "2330", "測試公司", "10.20", "10.50", 100000),

@@ -61,13 +61,14 @@ def _scheduled_recommendation_binding(
         raise ValueError("scheduled_recommendation_status_not_object")
     if (
         payload.get("task") != "baldr-recommendation-snapshot-daily"
-        or payload.get("status") != "passed"
         or payload.get("decision_date") != decision_date
         or payload.get("writes_recommendation_result") is not True
         or payload.get("writes_evidence_db") is not False
         or Path(str(payload.get("output_root", ""))).resolve() != output_root.resolve()
     ):
         raise ValueError("scheduled_recommendation_status_identity_mismatch")
+    if payload.get("status") != "passed":
+        raise ValueError(f"scheduled_recommendation_status_not_passed:{payload.get('status')}")
     checked = datetime.fromisoformat(str(payload.get("checked_at", "")).replace("Z", "+00:00"))
     if checked.tzinfo is None or checked.utcoffset() is None or checked > observed_at:
         raise ValueError("scheduled_recommendation_clock_invalid")

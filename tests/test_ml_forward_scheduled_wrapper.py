@@ -521,6 +521,23 @@ def test_successful_child_missing_maturity_contract_is_blocked(
     assert post_deadline["blocker"] == "child_maturity_cutoff_contract_missing"
 
 
+def test_lock_preflight_failure_does_not_claim_missing_maturity_contract(tmp_path):
+    config_path = _write_config(tmp_path, source=_operational_source(tmp_path))
+    def child_runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 2, stdout=json.dumps({
+            "status": "blocked_shared_heavy_chain_lock", "record_path": None,
+            "writes_source_database": False}), stderr="")
+    payload, code = wrapper.run_once(config_path=config_path, observed=DECISION_AT,
+        status_root_override=tmp_path / "status", child_runner=child_runner,
+        now_fn=lambda: DECISION_AT, maturity_calendar=_CalendarFixture({RUN_DATE}))
+    assert code == 2
+    assert payload["status"] == "blocked_child_exit"
+    assert payload["child_status"] == "blocked_shared_heavy_chain_lock"
+    assert payload["post_deadline_maturity"]["status"] == "not_started"
+    assert payload["post_deadline_maturity"]["writes_shadow_sidecar"] is False
+    assert payload["forward_credit_granted"] is False
+
+
 def test_child_maturity_cutoff_must_be_official_strict_t_minus_one(
     tmp_path: Path,
 ) -> None:
@@ -1110,7 +1127,8 @@ def test_forward_calendar_uses_verified_cache_without_network(
             "weekend_closed",
         )
 
-    evidence = calendar.evidence_for(date(2026, 9, 9))
+        # public reader 每次重新觀測；證據核驗也必須留在同一受控時鐘。
+        evidence = calendar.evidence_for(date(2026, 9, 9))
     assert evidence["mode"] == "hash_bound_official_calendar_cache"
     source = cache_payload["source"]
     assert isinstance(source, dict)

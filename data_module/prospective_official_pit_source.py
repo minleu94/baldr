@@ -321,7 +321,9 @@ def _parse_official_source(
         value: Any = json.loads(decoded, object_pairs_hook=_reject_duplicate_keys)
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise ProspectiveOfficialPITSourceError(
-            f"{definition.dataset_id} raw payload is not valid UTF-8 JSON"
+            f"{definition.dataset_id} raw payload is not valid UTF-8 JSON; "
+            f"raw_sha256={_sha256_bytes(raw_payload)}; bytes={len(raw_payload)}; "
+            f"parse_error={type(error).__name__}"
         ) from error
     if not isinstance(value, list) or not value:
         raise ProspectiveOfficialPITSourceError(

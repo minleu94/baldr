@@ -4,6 +4,8 @@
 
 ## 近期營運與測試收據
 
+[10/13晨間／晚間排程查核與工程修正](BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)：日曆刷新終態、Evidence狀態診斷、Paper NULL open、Forward lock preflight、G9/H20逾時與Bank query unknown；原來源缺件、失敗及自然資格分開。
+
 | 要查的內容 | 證據入口 |
 |---|---|
 | 產品文件入口、角色路由、同步工具與移機計畫 | [10/12 文件產品化驗收](DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md)；只驗本次文件與維護工具，不代表產品 Gate 或自然排程接受。 |

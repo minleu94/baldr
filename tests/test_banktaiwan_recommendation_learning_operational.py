@@ -2625,7 +2625,7 @@ def test_current_projection_receipt_hash_mismatch_fails_without_waiting(
     assert sleeps == []
 
 
-@pytest.mark.parametrize("terminal_state", ["stopped", "run_changed"])
+@pytest.mark.parametrize("terminal_state", ["stopped", "run_changed", "query_unknown"])
 def test_wait_stops_immediately_when_task_stops_or_last_run_changes(
     tmp_path: Path,
     terminal_state: str,
@@ -2646,6 +2646,9 @@ def test_wait_stops_immediately_when_task_stops_or_last_run_changes(
             _producer_task_observation(last_run, state="Ready")
         ]
         expected_reason = "recommendation_pipeline_stopped_without_current_projection"
+    elif terminal_state == "query_unknown":
+        observations = [_producer_task_observation(last_run)] * 3 + [None]
+        expected_reason = "recommendation_pipeline_task_query_unknown"
     else:
         changed_last_run = last_run + timedelta(minutes=1)
         observations = [_producer_task_observation(last_run)] * 3 + [
@@ -2653,7 +2656,7 @@ def test_wait_stops_immediately_when_task_stops_or_last_run_changes(
         ]
         expected_reason = "recommendation_pipeline_task_last_run_changed"
 
-    def task_reader() -> operational.ScheduledTaskObservation:
+    def task_reader() -> operational.ScheduledTaskObservation | None:
         return observations.pop(0) if len(observations) > 1 else observations[0]
 
     now = datetime(2026, 9, 30, 17, 0, tzinfo=ZoneInfo("Asia/Taipei"))

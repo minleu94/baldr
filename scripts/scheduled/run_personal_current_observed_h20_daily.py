@@ -24,6 +24,7 @@ from app_module.recommendation.personal_current_observed_h20_outcome import (
     project_personal_current_observed_h20_outcome,
 )
 from app_module.recommendation.personal_h20_price_chart import RawCurrentObservedObserver
+from app_module.recommendation.personal_h20_read_session import PersonalH20ReadSession
 
 SQLiteReadSessionResolver = Callable[[Path, str], PinnedSQLiteReadSession]
 
@@ -231,6 +232,7 @@ def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], recei
         raise H20CaptureError("pinned_sqlite_read_operation_requires_public_source_verifier")
 
     operation: Any | None = None
+    read_session: PersonalH20ReadSession | None = None
     if configured_read_root is not None:
         from scripts.scheduled.personal_h20_sqlite_read_operation import (
             PersonalH20SQLiteReadOperation,
@@ -270,6 +272,12 @@ def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], recei
                     read_session_resolver=operation.session_for,
                 )
 
+        if source_verifier is None and contract_verifier is None:
+            # 共用同次完整 binding；每列仍核原 bytes，成功前重驗全部來源群組。
+            read_session = PersonalH20ReadSession(source_verifier=source_port,
+                contract_verifier=contract_port, cancel_callback=cancelled)
+            source_port = read_session.verify_source
+            contract_port = read_session.verify_contract
         source = dict(source_port({"cycle_id": pins["cycle_id"],
             "cycle_terminal_sha256": pins["cycle_terminal_sha256"], "pins": pins,
             "decision_date": observed.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat(),
@@ -305,6 +313,13 @@ def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], recei
             result.update(status="cancelled", reason=str(exc))
         except Exception as exc:
             result.update(status="failed", error_type=type(exc).__name__, reason=str(exc))
+        if read_session is not None and result["status"] == "completed":
+            try:
+                read_session.finish()
+            except InterruptedError as exc:
+                result.update(status="cancelled", reason=str(exc))
+            except Exception as exc:
+                result.update(status="failed", error_type=type(exc).__name__, reason=str(exc))
         if operation is not None:
             if result["status"] == "completed":
                 try:
@@ -317,6 +332,8 @@ def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], recei
                 operation.close()
         return result
     finally:
+        if read_session is not None:
+            read_session.close()
         if operation is not None:
             operation.close()
 

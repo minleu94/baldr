@@ -822,6 +822,7 @@ def run_personal_h20_for_current_cycle(
     """只在明示 enabled 時呼叫受驗 daily runner；它重驗原 terminal bytes。"""
     if config_path is None:
         return {"status": "not_configured", "effective_model_run": False}
+    publication_session: PersonalH20ReadSession | None = None
     try:
         activation = read_personal_h20_activation(config_path)
         if not activation.enabled:
@@ -882,6 +883,22 @@ def run_personal_h20_for_current_cycle(
                 publish_personal_h20_product_reference, save_personal_h20_daily_manifest,
             )
 
+            if prediction_reader is None and daily_reader is None:
+                ports = _personal_h20_read_ports()
+                publication_session = PersonalH20ReadSession(
+                    source_verifier=ports["source_verifier"], contract_verifier=ports["contract_verifier"])
+                def session_prediction_reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
+                    assert publication_session is not None
+                    return _read_personal_h20_prediction_with_verifiers(path, root=root,
+                        expected_sha256=expected_sha256, source_verifier=publication_session.verify_source,
+                        contract_verifier=publication_session.verify_contract)
+                from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_daily_manifest
+                def session_daily_reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
+                    return read_personal_h20_daily_manifest(path, root=root,
+                        expected_sha256=expected_sha256, prediction_reader=session_prediction_reader)
+                prediction_reader = session_prediction_reader
+                daily_reader = session_daily_reader
+
             receipt_path, receipt_pin, daily = save_personal_h20_daily_manifest(activation, result,
                 expected_symbols=sorted(symbols), prediction_reader=prediction_reader or read_personal_h20_prediction)
             if daily_reader is None:
@@ -892,6 +909,12 @@ def run_personal_h20_for_current_cycle(
                     or daily["cycle_id"] != pins["cycle_id"]
                     or sorted(pin["symbol"] for pin in daily["captures"]) != sorted(symbols)):
                 raise ValueError("personal_h20_completed_public_receipt_mismatch")
+            if publication_session is not None:
+                def finalizer() -> None:
+                    assert daily_reader is not None
+                    if daily_reader(receipt_path, root=Path(activation.personal_root), expected_sha256=receipt_pin) != daily:
+                        raise ValueError("personal_h20_daily_manifest_changed_before_publication")
+                publication_session.finish(finalizer=finalizer)
             publish_personal_h20_product_reference(activation, receipt_path=str(receipt_path),
                 receipt_sha256=receipt_pin, decision_date=daily["decision_date"], cycle_id=daily["cycle_id"])
             result.update(receipt_path=str(receipt_path), receipt_sha256=receipt_pin)
@@ -902,3 +925,6 @@ def run_personal_h20_for_current_cycle(
     except Exception as exc:
         # 不吞成成功，不提升原 formal/global 狀態；錯誤獨立留在 invocation 收據。
         return {"status": "blocked", "reason": str(exc)[:400], "effective_model_run": False}
+    finally:
+        if publication_session is not None:
+            publication_session.close()

@@ -451,6 +451,7 @@ def test_isolated_adapter_initializes_ledger_before_queue_or_no_fill_return(
         assert tables == {
             "paper_trade_ledger",
             "paper_trade_transitions",
+            "paper_trade_daily_operations",
         }
         observed["paths"] = paths
         observed.update(kwargs)

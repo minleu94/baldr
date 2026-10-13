@@ -88,6 +88,8 @@ Daily Decision Desk 是已保存來源的唯讀摘要入口。先確認資料日
 | 保存／讀回不一致 | 保留 result/run ID 和錯誤；不要手工改 hash、複製 artifact 或按最新檔名代替原來源。 |
 | Task Ready 或 exit 0 | 這只表示局部排程狀態，不代表產物與 consumer readback 已通過；按[排程唯讀稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)核對同一 run。 |
 
+排程排錯時先核 exact run／日期／root／hash，再核是否達到成功條件。Evidence 的 `scheduled_recommendation_status_not_passed:blocked` 表示推薦身分可辨但整體狀態未通過，pipeline仍不啟動；真正身分錯誤另列identity mismatch。日曆 `refreshed` 要讀同次刷新後終態，不能借刷新前inspection。Paper官方NULL open只允許原來源、原執行日內的有界retry；跨日仍保留missed session，不能用後日價格補成交。ML Forward shared-lock preflight尚未啟動時沒有maturity cutoff，但parent仍失敗；G9/H20終態核驗失敗或逾時不能當自然累積成功。操作與具名驗收見[雙報告修正QA](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)及[排程運維](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
+
 <details>
 <summary>舊手冊書籤與日期化工程補充（按需展開）</summary>
 

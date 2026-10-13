@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,16 @@ _CAPTURE_NOW = datetime.fromisoformat("2026-08-25T08:31:00+08:00")
 _AVAILABLE_AT = datetime.fromisoformat("2026-08-21T05:30:00+08:00")
 _PUBLICATION_AT = datetime.fromisoformat("2026-08-20T00:00:00+08:00")
 _EFFECTIVE_FROM = date(2026, 8, 25)
+
+
+@pytest.mark.parametrize("raw", [b"<html>upstream error</html>", b"\xff\xfe", b'{"k":1,"k":2}'])
+def test_invalid_raw_diagnostic_has_exact_hash_without_publishing_candidate(raw):
+    from data_module.prospective_official_pit_source import OFFICIAL_COMPANY_SOURCE_DEFINITIONS, _parse_official_source
+    with pytest.raises(ProspectiveOfficialPITSourceError) as caught:
+        _parse_official_source(OFFICIAL_COMPANY_SOURCE_DEFINITIONS["tpex"], raw)
+    assert "not valid UTF-8 JSON" in str(caught.value)
+    assert "sha256:" + hashlib.sha256(raw).hexdigest() in str(caught.value)
+    assert f"bytes={len(raw)}" in str(caught.value)
 
 
 def _clock(tmp_path: Path):

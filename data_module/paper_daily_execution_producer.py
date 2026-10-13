@@ -2388,6 +2388,9 @@ def _is_retryable_source_blocker_text(value: str) -> bool:
     lowered = value.casefold()
     if any(marker in lowered for marker in _NONRETRYABLE_SOURCE_MARKERS):
         return False
+    # 已存在交易日列但官方 open 尚未發布，與缺整列使用同一有界重試契約。
+    if re.fullmatch(r"daily_prices\.open:[0-9A-Z]{4,8} is missing", value):
+        return True
     return any(marker.casefold() in lowered for marker in _RETRYABLE_SOURCE_ERROR_MARKERS)
 
 

@@ -43,6 +43,8 @@ Prompt 文字寫著某模型不代表實際 execution model；heartbeat 對話 m
 
 Windows task 啟動順序不代表上游成功或來源已完成。`IgnoreNew` 僅限制同一 task；跨 task 需沿 immutable receipt、run／date、lock、source identity 及 consumer readback 確認依賴，不以時間間隔替代。
 
+排錯先核[10/13晨間／晚間查核](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)及[唯讀稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。現行consumer把刷新前inspection與刷新終態分開，Evidence把identity與not-passed分開；H20每日及manifest只在同一read operation共用完整binding，終態重驗後才發布reference，不跨operation保存快取。期限、Task配置與automation通知規則不因此改變。失敗來源與missed Paper session仍按原owner處理，不刪收據或重建歷史。
+
 ## Codex operational heartbeats
 
 文件化的兩個本機唯讀 heartbeat 為：

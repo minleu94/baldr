@@ -623,6 +623,26 @@ def _refresh_calendar_nodes(payload: Mapping[str, Any]) -> list[Mapping[str, Any
     """Collect the selected cache shape from either refresh terminal status."""
 
     nodes: list[Mapping[str, Any]] = []
+    # refreshed 的 inspection 是刷新前盤點，不能取代同次刷新終態。
+    if payload.get("status") == "refreshed":
+        verification = payload.get("refresh_verification")
+        if isinstance(verification, Mapping):
+            nodes.append(verification)
+        refreshes = payload.get("refreshes")
+        if isinstance(refreshes, Mapping):
+            for year, refresh in refreshes.items():
+                if not isinstance(refresh, Mapping):
+                    continue
+                verified = refresh.get("verified")
+                if isinstance(verified, Mapping):
+                    nodes.append(verified)
+                else:
+                    nodes.append({**refresh, "calendar_year": int(year)})
+        refresh = payload.get("refresh")
+        if isinstance(refresh, Mapping):
+            verified = refresh.get("verified")
+            nodes.append(verified if isinstance(verified, Mapping) else refresh)
+        return nodes
     inspection = payload.get("inspection")
     if isinstance(inspection, Mapping):
         selected = inspection.get("selected")
@@ -749,6 +769,8 @@ def _resolve_forward_calendar_cache(
 
         selected: Mapping[str, Any] | None = None
         for node in _refresh_calendar_nodes(payload):
+            if node.get("calendar_year", payload.get("calendar_year")) != decision_utc.astimezone(TAIPEI).year:
+                continue
             path_value = node.get("path") or node.get("capture_path")
             hash_value = node.get("file_sha256") or node.get("cache_file_sha256")
             if (

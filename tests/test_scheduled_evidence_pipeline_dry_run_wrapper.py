@@ -80,6 +80,15 @@ def test_binding_uses_exact_canonical_id_not_mixed_latest(tmp_path, monkeypatch)
     assert binding["status_sha256"].startswith("sha256:")
 
 
+def test_blocked_snapshot_has_status_diagnostic_without_lowering_binding_gate(tmp_path, monkeypatch):
+    now, path, payload, _ = _binding_fixture(tmp_path, monkeypatch)
+    payload["status"] = "blocked"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="scheduled_recommendation_status_not_passed:blocked"):
+        run_scheduled_evidence_pipeline_dry_run._scheduled_recommendation_binding(
+            tmp_path, decision_date="2026-09-29", observed_at=now)
+
+
 @pytest.mark.parametrize("changes", [
     {"decision_date": "2026-09-28"}, {"status": "running"},
     {"writes_recommendation_result": False}, {"output_root": "other-root"},

@@ -478,12 +478,15 @@ def _require_finite_nonnegative_decimal(name: str, value: object) -> None:
 
 class PaperPortfolioSnapshotRepository:
     def __init__(self, db_path: str | Path, *, route: PersonalStoreRoute | None = None,
-                 portfolio_id: str | None = None, personal_paths: PersonalDataPaths | None = None) -> None:
+                 portfolio_id: str | None = None, personal_paths: PersonalDataPaths | None = None,
+                 force_read_only: bool = False) -> None:
+        if force_read_only and route is None:
+            raise ValueError("paper forced read-only repository requires an explicit route")
         self.custody = PersonalStoreCustody(route, personal_paths)
         self._path = Path(db_path)
         self.route = route
         self.portfolio_id = portfolio_id
-        self.read_only = route is not None and route.write_target is None
+        self.read_only = bool(force_read_only) or (route is not None and route.write_target is None)
         if route is not None:
             paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id or "")
             paths.require_selected(db_path, paths.state_db)

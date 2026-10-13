@@ -1423,26 +1423,59 @@ class MainWindow(QMainWindow):
             PaperPortfolioReadinessService, DEFAULT_PORTFOLIO_ID, DEFAULT_BENCHMARK_ID,
         )
         from app_module.paper_portfolio_weekly_evidence_service import PaperPortfolioWeeklyEvidenceService
+        from app_module.personal_paper_store_paths import PersonalPaperStorePaths
+        from app_module.position_health_exact_paper_scope import PositionHealthExactPaperScopeFactory
+        from app_module.position_health_saved_selection import SavedHealthSelectionStore
+        from app_module.position_health_transition_read_service import PositionHealthTransitionReadService
 
         selection = resolve_personal_store_selection(self.config)
         self.personal_store_selection = selection
         self._personal_portfolio_view_kwargs: dict[str, Any] = {}
+        paper = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(DEFAULT_PORTFOLIO_ID))
+        paper_paths = PersonalPaperStorePaths.from_route(
+            paper, portfolio_id=DEFAULT_PORTFOLIO_ID
+        )
+        output_root = Path(self.config.output_root).expanduser().absolute()
+        health_reader = PositionHealthTransitionReadService(
+            output_root / "position_health_transition"
+        )
+        exact_scope_factory = PositionHealthExactPaperScopeFactory(
+            reader=health_reader,
+            route=paper,
+            personal_paths=selection.paths,
+            state_db_path=paper_paths.state_db,
+            status_path=paper_paths.status,
+            ledger_db_path=paper_paths.cost_ledger_db,
+            coverage_status_path=paper_paths.status,
+        )
+        selection_store = SavedHealthSelectionStore(
+            output_root / "portfolio" / "saved_position_health_selection.json",
+            allowed_root=output_root,
+        )
+        self._personal_portfolio_view_kwargs = {
+            "position_health_read_service": health_reader,
+            "position_health_exact_scope_factory": exact_scope_factory,
+            "saved_health_selection_store": selection_store,
+        }
         if selection.mode is PersonalStoreMode.LEGACY_COMPAT:
             self.portfolio_service = PortfolioService(self.config)
             return
         # These are the existing single-account UI and Paper service contracts.
         actual = selection.route(PersonalStoreDomain.TRADES, StoreIdentity("default"))
         declared = selection.route(PersonalStoreDomain.DECLARED_HOLDINGS, StoreIdentity("default"))
-        paper = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(DEFAULT_PORTFOLIO_ID))
         self.portfolio_service = PortfolioService(self.config, route=actual, personal_paths=selection.paths)
         shared = dict(output_root=self.config.output_root, route=paper, personal_paths=selection.paths,
                       config=self.config, portfolio_id=paper.identity.key, benchmark_id=DEFAULT_BENCHMARK_ID)
-        self._personal_portfolio_view_kwargs = {
-            "user_declared_store": UserDeclaredHoldingResearchStore.from_route(declared, personal_paths=selection.paths),
-            "user_declared_portfolio_id": declared.identity.key,
-            "paper_readiness_service": PaperPortfolioReadinessService(**shared),
-            "paper_weekly_evidence_service": PaperPortfolioWeeklyEvidenceService(**shared),
-        }
+        self._personal_portfolio_view_kwargs.update(
+            {
+                "user_declared_store": UserDeclaredHoldingResearchStore.from_route(
+                    declared, personal_paths=selection.paths
+                ),
+                "user_declared_portfolio_id": declared.identity.key,
+                "paper_readiness_service": PaperPortfolioReadinessService(**shared),
+                "paper_weekly_evidence_service": PaperPortfolioWeeklyEvidenceService(**shared),
+            }
+        )
 
     def __init__(
         self,

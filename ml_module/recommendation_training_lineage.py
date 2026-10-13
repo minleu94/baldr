@@ -15,6 +15,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from runtime.file_io_path import (
+    canonical_path_from_os_result as _canonical_io_result,
+    canonical_scandir_child as _canonical_io_child,
+    io_path as _io_path,
+    iterdir_canonical as _iterdir_io,
+    resolve_canonical_path as _resolve_io_path,
+    to_internal_io_path as _to_internal_io_path,
+)
 import tempfile
 from typing import Any, Mapping, Sequence
 
@@ -295,7 +303,7 @@ def training_lineage_path(
 ) -> Path:
     """回傳 deterministic lineage path；不建立檔案。"""
 
-    root = Path(learning_root).resolve()
+    root = _resolve_io_path(Path(learning_root))
     return (
         root
         / "training_lineage"
@@ -328,9 +336,9 @@ def persist_recommendation_training_lineage(
     encoded = (
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     ).encode("utf-8")
-    if path.is_file():
+    if _io_path(path).is_file():
         try:
-            existing = path.read_bytes()
+            existing = _io_path(path).read_bytes()
         except OSError as exc:
             raise RecommendationTrainingLineageError(
                 f"training lineage existing manifest unreadable: {path}"
@@ -341,17 +349,17 @@ def persist_recommendation_training_lineage(
             )
         read_recommendation_training_lineage(path, expected_manifest_hash=lineage.manifest_hash)
         return path
-    if path.exists():
+    if _io_path(path).exists():
         raise RecommendationTrainingLineageError(
             f"immutable training lineage destination is not a file: {path}"
         )
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _io_path(path.parent).mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.stem[:24]}-",
         suffix=".tmp",
-        dir=str(path.parent),
+        dir=_to_internal_io_path(path.parent, force_extended=True),
     )
-    temporary = Path(temporary_name)
+    temporary = _canonical_io_result(temporary_name)
     descriptor_open = True
     try:
         with os.fdopen(descriptor, "wb") as stream:
@@ -362,10 +370,10 @@ def persist_recommendation_training_lineage(
         try:
             # A hard-link publish is atomic and create-only: a concurrent
             # writer can never replace a completed immutable destination.
-            os.link(temporary, path)
+            os.link(_to_internal_io_path(temporary), _to_internal_io_path(path))
         except FileExistsError as exc:
             try:
-                existing = path.read_bytes()
+                existing = _io_path(path).read_bytes()
             except OSError as read_exc:
                 raise RecommendationTrainingLineageError(
                     f"training lineage existing manifest unreadable after race: {path}"
@@ -385,7 +393,7 @@ def persist_recommendation_training_lineage(
             except OSError:
                 pass
         try:
-            temporary.unlink()
+            _io_path(temporary).unlink()
         except FileNotFoundError:
             pass
         except OSError as exc:
@@ -405,9 +413,9 @@ def read_recommendation_training_lineage(
 ) -> RecommendationTrainingLineage:
     """讀回並驗證 lineage body hash、flags、PIT 與 expected identity。"""
 
-    manifest_path = Path(path).resolve()
+    manifest_path = _resolve_io_path(Path(path))
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = json.loads(_io_path(manifest_path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RecommendationTrainingLineageError(
             f"training lineage manifest unreadable: {manifest_path}"
@@ -544,13 +552,13 @@ def _replay_manifest_lineage(quality: Mapping[str, Any]) -> list[dict[str, Any]]
         collect(bootstrap)
     references: list[dict[str, Any]] = []
     for raw_path in sorted(paths):
-        path = Path(raw_path).resolve()
-        if not path.is_file():
+        path = _resolve_io_path(Path(raw_path))
+        if not _io_path(path).is_file():
             raise RecommendationTrainingLineageError(
                 f"declared replay manifest is missing: {path}"
             )
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = json.loads(_io_path(path).read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise RecommendationTrainingLineageError(
                 f"declared replay manifest is unreadable: {path}"
@@ -987,7 +995,7 @@ def _json_list(value: Any) -> list[Any]:
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with _io_path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return f"sha256:{digest.hexdigest()}"

@@ -84,6 +84,24 @@ class PositionHealthPositionScope:
 
 
 @dataclass(frozen=True)
+class PositionHealthAccountScope:
+    """呼叫端明示帳本種類與 namespace；不由股票代號或 receipt 猜測。"""
+
+    account_kind: str
+    namespace: str | None
+
+    def __post_init__(self) -> None:
+        if self.account_kind not in {"paper-main", "strategy"}:
+            raise ValueError("saved_health_account_kind_invalid")
+        if self.account_kind == "paper-main" and self.namespace is not None:
+            raise ValueError("saved_health_paper_main_namespace_must_be_none")
+        if self.account_kind == "strategy" and (
+            not isinstance(self.namespace, str) or not self.namespace.strip()
+        ):
+            raise ValueError("saved_health_strategy_namespace_required")
+
+
+@dataclass(frozen=True)
 class PositionHealthExactScope:
     """P06 exact account 範圍；cutoff 只是時間上限，不是來源證據。"""
 
@@ -92,6 +110,8 @@ class PositionHealthExactScope:
     decision_date: date
     decision_cutoff: datetime
     positions: tuple[PositionHealthPositionScope, ...]
+    expected_source_snapshot_rows_sha256: str | None = None
+    account_scope: PositionHealthAccountScope | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.portfolio_id, str) or not self.portfolio_id.strip():
@@ -109,6 +129,58 @@ class PositionHealthExactScope:
         keys = [item.position_id for item in self.positions]
         if len(keys) != len(set(keys)):
             raise ValueError("saved_health_scope_duplicate_position_id")
+        if self.expected_source_snapshot_rows_sha256 is not None and not _valid_hash(
+            self.expected_source_snapshot_rows_sha256
+        ):
+            raise ValueError("saved_health_scope_snapshot_rows_hash_invalid")
+        if self.account_scope is not None and not isinstance(
+            self.account_scope, PositionHealthAccountScope
+        ):
+            raise ValueError("saved_health_scope_account_type_invalid")
+
+
+@dataclass(frozen=True)
+class SavedHealthReceiptCandidate:
+    """Locator 的候選 metadata；不含路徑，選定後仍須 exact reread。"""
+
+    receipt_id: str
+    receipt_sha256: str
+    result_sha256: str
+    portfolio_id: str | None
+    snapshot_id: str | None
+    decision_date: date | None
+    source_snapshot_rows_sha256: str | None
+    status: str
+    observed_at: str | None
+    available_at: str
+
+
+@dataclass(frozen=True)
+class SavedHealthSourcePosition:
+    """由 evaluator baseline witness 保存的帳本 position identity。"""
+
+    position_id: str
+    stock_code: str
+    shares: int
+
+
+@dataclass(frozen=True)
+class SavedHealthReceiptSource:
+    """選定 receipt 的 exact immutable 關聯；來源 clocks 保持分欄。"""
+
+    receipt_id: str
+    receipt_sha256: str
+    result_sha256: str
+    portfolio_id: str
+    snapshot_id: str
+    decision_date: date
+    source_snapshot_rows_sha256: str
+    observed_at: str
+    available_at: str
+    source_observed_at: str
+    source_available_at: str | None
+    positions: tuple[SavedHealthSourcePosition, ...]
+    namespace: str | None
 
 
 @dataclass(frozen=True)
@@ -184,6 +256,196 @@ class SavedPositionHealthReadModel:
             "warnings": list(self.warnings),
             "blockers": list(self.blockers),
         }
+
+
+def list_saved_health_receipts(
+    *,
+    reader: "PositionHealthTransitionReadService",
+    cancel_callback: Any | None = None,
+    max_entries: int = 128,
+    max_total_bytes: int = 2 * 1024 * 1024,
+    max_directory_entries: int = 512,
+) -> tuple[SavedHealthReceiptCandidate, ...]:
+    """有界列出 receipt metadata；不回傳路徑，取消或超量時整體拒絕。"""
+
+    if not 1 <= max_entries <= 512 or not 1 <= max_total_bytes <= 16 * 1024 * 1024:
+        raise SavedHealthArchiveError("saved_health_locator_budget_invalid")
+    if not max_entries <= max_directory_entries <= 4096:
+        raise SavedHealthArchiveError("saved_health_locator_directory_budget_invalid")
+    root = Path(getattr(reader, "_requested_output_dir", reader.output_dir)).expanduser().absolute()
+    if cancel_callback is not None and cancel_callback():
+        raise SavedHealthArchiveError("saved_health_locator_cancelled")
+    if not _lexists(root):
+        return ()
+    if not stat.S_ISDIR(os.lstat(to_internal_io_path(root.absolute())).st_mode):
+        raise SavedHealthArchiveError("saved_health_locator_root_invalid")
+    _reject_reparse_components(root, root)
+    receipt_dir = root / "saved_health" / "receipts"
+    if not _lexists(receipt_dir):
+        return ()
+    _reject_reparse_components(root, receipt_dir)
+    dir_info = os.lstat(to_internal_io_path(receipt_dir.absolute()))
+    if not stat.S_ISDIR(dir_info.st_mode):
+        raise SavedHealthArchiveError("saved_health_locator_directory_invalid")
+
+    candidates: list[SavedHealthReceiptCandidate] = []
+    scanned = 0
+    total_bytes = 0
+    for entry in os.scandir(to_internal_io_path(receipt_dir.absolute())):
+        if cancel_callback is not None and cancel_callback():
+            raise SavedHealthArchiveError("saved_health_locator_cancelled")
+        scanned += 1
+        if scanned > max_directory_entries:
+            raise SavedHealthArchiveError("saved_health_locator_directory_entry_limit")
+        if not entry.name.startswith("phsr-v1-") or not entry.name.endswith(".json"):
+            continue
+        receipt_id = entry.name[:-5]
+        if not _RECEIPT_ID_RE.fullmatch(receipt_id):
+            raise SavedHealthArchiveError("saved_health_locator_filename_invalid")
+        path = receipt_dir / entry.name
+        info = os.lstat(to_internal_io_path(path.absolute()))
+        _require_regular_single_link(info, MAX_RECEIPT_BYTES)
+        total_bytes += int(info.st_size)
+        if len(candidates) >= max_entries or total_bytes > max_total_bytes:
+            raise SavedHealthArchiveError("saved_health_locator_budget_exceeded")
+        raw = _read_stable_regular(path, root=root, max_bytes=MAX_RECEIPT_BYTES)
+        receipt = _strict_json_object(raw, "saved_health_locator_receipt")
+        # 清單只以 paper-main portfolio id 篩候選；strategy namespace 仍由精確重讀封鎖。
+        if receipt.get("portfolio_id") != "paper-main":
+            continue
+        if _canonical_bytes(receipt) != raw:
+            raise SavedHealthArchiveError("saved_health_receipt_not_canonical")
+        result_sha = _required_hash(receipt.get("result_sha256"))
+        _validate_receipt(receipt, receipt_id=receipt_id, result_sha256=result_sha)
+        available = _parse_aware_text(receipt.get("available_at"), "available_at")
+        observed_text = _optional_text(receipt.get("observed_at"))
+        if observed_text is not None and _parse_aware_text(observed_text, "observed_at") > available:
+            raise SavedHealthArchiveError("saved_health_result_observed_after_archive")
+        if available > reader._read_now():
+            raise SavedHealthArchiveError("saved_health_receipt_available_at_future")
+        decision_text = _optional_text(receipt.get("decision_date"))
+        candidates.append(
+            SavedHealthReceiptCandidate(
+                receipt_id=receipt_id,
+                receipt_sha256=_sha256(raw),
+                result_sha256=result_sha,
+                portfolio_id=_optional_text(receipt.get("portfolio_id")),
+                snapshot_id=_optional_text(receipt.get("source_snapshot_id")),
+                decision_date=(None if decision_text is None else _parse_date_text(decision_text, "decision_date")),
+                source_snapshot_rows_sha256=_optional_text(receipt.get("source_snapshot_rows_sha256")),
+                status=str(receipt.get("status")),
+                observed_at=observed_text,
+                available_at=available.isoformat(),
+            )
+        )
+    if cancel_callback is not None and cancel_callback():
+        raise SavedHealthArchiveError("saved_health_locator_cancelled")
+    candidates.sort(key=lambda item: (item.available_at, item.receipt_id), reverse=True)
+    return tuple(candidates)
+
+
+def read_saved_health_receipt_source(
+    *,
+    reader: "PositionHealthTransitionReadService",
+    selector: SavedHealthReceiptSelector,
+    cancel_callback: Any | None = None,
+) -> SavedHealthReceiptSource:
+    """讀取選定 receipt/result/witness 並回傳 exact Paper identity source。"""
+
+    if not isinstance(selector, SavedHealthReceiptSelector):
+        raise SavedHealthArchiveError("saved_health_selector_type_invalid")
+    def check_cancel() -> None:
+        if cancel_callback is not None and cancel_callback():
+            raise SavedHealthArchiveError("saved_health_locator_cancelled")
+
+    check_cancel()
+    root = Path(getattr(reader, "_requested_output_dir", reader.output_dir)).expanduser().absolute()
+    receipt_path = root / "saved_health" / "receipts" / f"{selector.receipt_id}.json"
+    receipt_raw = _read_stable_regular(receipt_path, root=root, max_bytes=MAX_RECEIPT_BYTES)
+    receipt = _strict_json_object(receipt_raw, "saved_health_receipt")
+    if _canonical_bytes(receipt) != receipt_raw:
+        raise SavedHealthArchiveError("saved_health_receipt_not_canonical")
+    result_sha = _required_hash(receipt.get("result_sha256"))
+    _validate_receipt(receipt, receipt_id=selector.receipt_id, result_sha256=result_sha)
+    available = _parse_aware_text(receipt.get("available_at"), "available_at")
+    observed = _parse_aware_text(receipt.get("observed_at"), "observed_at")
+    if available > reader._read_now():
+        raise SavedHealthArchiveError("saved_health_receipt_available_at_future")
+    if observed > available:
+        raise SavedHealthArchiveError("saved_health_result_observed_after_archive")
+    check_cancel()
+    result_path = _path_from_receipt(root, receipt.get("result_path"), "result_path")
+    result_raw = _read_stable_regular(result_path, root=root, max_bytes=MAX_RESULT_BYTES)
+    if _sha256(result_raw) != result_sha:
+        raise SavedHealthArchiveError("saved_health_result_hash_mismatch")
+    result = _strict_json_object(result_raw, "saved_health_result")
+    if _canonical_bytes(result) != result_raw:
+        raise SavedHealthArchiveError("saved_health_result_not_canonical")
+    _validate_evaluator_result_shape(result)
+    _validate_result_archive_identity(result, receipt)
+    check_cancel()
+    witness_status, baseline, baseline_witness = _read_source_witness(root=root, receipt=receipt)
+    check_cancel()
+    if witness_status != "structurally_valid" or baseline is None or baseline_witness is None:
+        raise SavedHealthArchiveError("saved_health_source_witness_not_structurally_valid")
+    portfolio_id = _required_text(receipt.get("portfolio_id"))
+    snapshot_id = _required_text(receipt.get("source_snapshot_id"))
+    decision_text = _required_text(receipt.get("decision_date"))
+    rows_hash = _required_hash(receipt.get("source_snapshot_rows_sha256"))
+    baseline_positions = baseline.get("positions")
+    if not isinstance(baseline_positions, list):
+        raise SavedHealthArchiveError("saved_health_baseline_positions_invalid")
+    positions: list[SavedHealthSourcePosition] = []
+    seen: set[str] = set()
+    for row in baseline_positions:
+        if not isinstance(row, Mapping):
+            raise SavedHealthArchiveError("saved_health_baseline_position_invalid")
+        position_id = _required_text(row.get("position_id"))
+        stock_code = _required_text(row.get("stock_code"))
+        shares = row.get("paper_shares")
+        if isinstance(shares, bool) or not isinstance(shares, int) or shares <= 0:
+            raise SavedHealthArchiveError("saved_health_baseline_position_shares_invalid")
+        if position_id in seen:
+            raise SavedHealthArchiveError("saved_health_baseline_position_duplicate")
+        seen.add(position_id)
+        positions.append(SavedHealthSourcePosition(position_id, stock_code, shares))
+    result_positions = result.get("positions")
+    if not isinstance(result_positions, list):
+        raise SavedHealthArchiveError("saved_health_result_positions_invalid")
+    result_by_id: dict[str, Mapping[str, Any]] = {}
+    for row in result_positions:
+        if not isinstance(row, Mapping):
+            raise SavedHealthArchiveError("saved_health_result_position_invalid")
+        position_id = _required_text(row.get("position_id"))
+        if position_id in result_by_id:
+            raise SavedHealthArchiveError("saved_health_result_position_identity_duplicate")
+        result_by_id[position_id] = row
+    if set(result_by_id) != seen:
+        raise SavedHealthArchiveError("saved_health_result_source_position_identity_mismatch")
+    for source_position in positions:
+        if result_by_id[source_position.position_id].get("stock_code") != source_position.stock_code:
+            raise SavedHealthArchiveError("saved_health_result_source_stock_code_mismatch")
+    provenance = result.get("provenance")
+    namespace = None
+    if isinstance(provenance, Mapping):
+        namespace_value = provenance.get("account_namespace", provenance.get("namespace"))
+        if namespace_value is not None:
+            namespace = _required_text(namespace_value)
+    return SavedHealthReceiptSource(
+        receipt_id=selector.receipt_id,
+        receipt_sha256=_sha256(receipt_raw),
+        result_sha256=result_sha,
+        portfolio_id=portfolio_id,
+        snapshot_id=snapshot_id,
+        decision_date=_parse_date_text(decision_text, "decision_date"),
+        source_snapshot_rows_sha256=rows_hash,
+        observed_at=observed.isoformat(),
+        available_at=available.isoformat(),
+        source_observed_at=_parse_aware_text(baseline_witness.get("source_observed_at"), "source_observed_at").isoformat(),
+        source_available_at=_optional_text(baseline.get("source_available_at")),
+        positions=tuple(positions),
+        namespace=namespace,
+    )
 
 
 def publish_saved_health_receipt(
@@ -449,6 +711,15 @@ def read_saved_health_receipt(
         portfolio_identity_missing = not receipt_portfolio
         if receipt.get("source_snapshot_id") != scope.snapshot_id:
             raise SavedHealthArchiveError("saved_health_scope_snapshot_mismatch")
+        if scope.expected_source_snapshot_rows_sha256 is not None and receipt.get(
+            "source_snapshot_rows_sha256"
+        ) != scope.expected_source_snapshot_rows_sha256:
+            raise SavedHealthArchiveError("saved_health_scope_snapshot_rows_hash_mismatch")
+        _validate_account_scope_receipt(
+            receipt,
+            portfolio_id=scope.portfolio_id,
+            account_scope=scope.account_scope,
+        )
 
         result_path = _path_from_receipt(root, receipt.get("result_path"), "result_path")
         result_raw = _read_stable_regular(
@@ -465,6 +736,20 @@ def read_saved_health_receipt(
             root=root, receipt=receipt
         )
         _validate_result_archive_identity(result, receipt)
+        _validate_account_scope_mapping(
+            result.get("provenance"),
+            account_scope=scope.account_scope,
+        )
+        if scope.expected_source_snapshot_rows_sha256 is not None:
+            provenance = result.get("provenance")
+            result_rows_hash = None
+            if isinstance(provenance, Mapping):
+                result_rows_hash = _first_text(
+                    provenance.get("source_snapshot_rows_sha256"),
+                    provenance.get("snapshot_rows_sha256"),
+                )
+            if result_rows_hash != scope.expected_source_snapshot_rows_sha256:
+                raise SavedHealthArchiveError("saved_health_result_scope_rows_hash_mismatch")
         if portfolio_identity_missing and witness_status == "structurally_valid":
             witness_status = "unqualified"
         scope_witness_complete = _validate_scope_positions(
@@ -565,6 +850,61 @@ def read_saved_health_receipt(
             receipt_sha256=receipt_sha256,
             saved_available_at=saved_available_at,
         )
+
+
+def _validate_account_scope_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    portfolio_id: str,
+    account_scope: PositionHealthAccountScope | None,
+) -> None:
+    if account_scope is None:
+        return
+    if account_scope.account_kind == "strategy":
+        raise SavedHealthArchiveError("saved_health_strategy_namespace_v1_unsupported")
+    if account_scope.account_kind != "paper-main" or account_scope.namespace is not None:
+        raise SavedHealthArchiveError("saved_health_account_scope_invalid")
+    if portfolio_id != "paper-main" or receipt.get("portfolio_id") != "paper-main":
+        raise SavedHealthArchiveError("saved_health_paper_main_identity_mismatch")
+    for name in ("account_namespace", "namespace"):
+        value = receipt.get(name)
+        if name in receipt and value is not None:
+            raise SavedHealthArchiveError("saved_health_paper_main_namespace_mismatch")
+
+
+def _validate_account_scope_mapping(
+    value: object,
+    *,
+    account_scope: PositionHealthAccountScope | None,
+) -> None:
+    if account_scope is None:
+        return
+    if account_scope.account_kind == "strategy":
+        raise SavedHealthArchiveError("saved_health_strategy_namespace_v1_unsupported")
+    if not isinstance(value, Mapping):
+        raise SavedHealthArchiveError("saved_health_account_provenance_missing")
+    for name in ("account_namespace", "namespace"):
+        namespace = value.get(name)
+        if name in value and namespace is not None:
+            raise SavedHealthArchiveError("saved_health_paper_main_namespace_mismatch")
+    portfolio = _first_text(
+        value.get("portfolio_id"),
+        value.get("paper_portfolio_id"),
+        value.get("source_portfolio_id"),
+    )
+    if portfolio != "paper-main":
+        raise SavedHealthArchiveError("saved_health_paper_main_provenance_mismatch")
+
+
+def _parse_date_text(value: object, field_name: str) -> date:
+    text = _required_text(value)
+    try:
+        parsed = date.fromisoformat(text)
+    except ValueError as exc:
+        raise SavedHealthArchiveError(f"{field_name}_invalid") from exc
+    if parsed.isoformat() != text:
+        raise SavedHealthArchiveError(f"{field_name}_not_canonical")
+    return parsed
 
 
 def _blocked_model(

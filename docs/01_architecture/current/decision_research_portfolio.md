@@ -51,6 +51,12 @@
 - Portfolio research scenario 將 account kind、portfolio、snapshot、source hash、request 與 aware cutoff 綁成 exact context。`portfolio-research-scenarios.v3` 是 canonical JSON artifact payload，`portfolio-research-store.v1` 是獨立 SQL store schema，不能混為同一版本；reader 以原 bytes/hash 核版本、canonical encoding 與完整欄位，未知 schema、浮點／非有限金額或含糊 payload 一律拒絕。保存完整 cash、shares、mark、market value 與 NAV；以 Decimal／整數單位維持金額守恆，bp 僅供呈現、不反推金額，正股數即使呈現為 0 bp 仍是持倉。讀取只沿 `PORTFOLIO_RESEARCH` 明示 route，不 fallback 到其他帳戶或市場資料。
 - 新增或重播資料以不同 namespace／evidence tier 保存；不得以目前市場資料補回舊保存結果。
 
+### Saved Health 的 exact consumer 與回訪偏好
+
+`PositionHealthExactPaperScopeFactory` 從 receipt 指定的同 route Paper snapshot 重建完整持倉 scope；`PositionHealthSavedPanel` 由正常 Main 成對注入 scope factory 與 `SavedHealthSelectionStore`。`portfolio-saved-health-selection.v1` 只保存回訪偏好，包含 receipt／result／snapshot rows hashes、decision date、完整 Paper identity、選中 position id 與分開的時鐘。不能按股票代號、最新結果或檔案 mtime 推測缺件。使用者流程見[已保存健康評估與回訪](../../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)。
+
+Immutable archive reader 與 snapshot reader 保持 bounded、no-follow、regular-file／alias 與 read-only 契約。讀者重核 exact receipt、snapshot、positions、cutoffs、witness 與來源 SHA；缺件、未來時鐘、錯誤身份及晚到回呼保持拒絕／未知。Panel 只允許當前 generation 在 UI thread 提交選擇偏好，正常 close 先取消並等待 native TaskWorker 收尾；reader 不建立 schema、不產製 Health，也不操作帳本。偏好以 16 KiB 上限、精確欄位與 canonical bytes 讀回，不授來源、PIT、模型或交易資格。
+
 ## Evidence 與模型權限
 
 ```text

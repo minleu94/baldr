@@ -45,6 +45,8 @@ baldr 是市場資料、個股研究、推薦回放、回測和持倉檢視工�
 
 候選池、Universe、手動交易帳、聲明持倉與 Paper 帳用途不同。保存候選清單或匯入帳本前，核對目前選定資料、預覽、hash 和寫入範圍。所有帳本都不會自動連券商或送委託。詳見[推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[觀察清單與持倉](manuals/WATCHLIST_AND_PORTFOLIO.md)。
 
+在 Paper 區回看已保存健康評估時，先明確選取 receipt／snapshot，再開啟並核對來源與持倉身份；返回或正常關閉後可沿保存偏好重開同一評估。步驟、分開的時鐘、WATCH／未知與讀取失敗處理見[已保存健康評估與回訪](manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)。
+
 ## 4. 數據更新
 
 舊連結入口保留；目前更新流程與狀態判讀集中在[資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md#檢查與更新資料)。

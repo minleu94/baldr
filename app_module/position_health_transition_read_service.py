@@ -79,6 +79,45 @@ class PositionHealthTransitionReadService:
         self.status_path = self.output_dir / "latest_status.json"
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
 
+    def current_clock(self) -> datetime:
+        """公開唯讀 clock accessor，讓 caller 不讀取 service 私有 seam。"""
+
+        return self._read_now()
+
+    def list_saved_receipts(
+        self,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+        max_entries: int = 128,
+        max_total_bytes: int = 2 * 1024 * 1024,
+    ) -> tuple[Any, ...]:
+        """有界列出可選 receipt metadata；不讀取 mutable latest pointer。"""
+
+        from app_module.position_health_saved_archive import list_saved_health_receipts
+
+        return list_saved_health_receipts(
+            reader=self,
+            cancel_callback=cancel_callback,
+            max_entries=max_entries,
+            max_total_bytes=max_total_bytes,
+        )
+
+    def read_saved_source(
+        self,
+        selector: "SavedHealthReceiptSelector",
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> Any:
+        """讀取選定 immutable receipt 的公開來源 identity 摘要。"""
+
+        from app_module.position_health_saved_archive import (
+            read_saved_health_receipt_source,
+        )
+
+        return read_saved_health_receipt_source(
+            reader=self, selector=selector, cancel_callback=cancel_callback
+        )
+
     def read_saved_exact(
         self,
         selector: "SavedHealthReceiptSelector",

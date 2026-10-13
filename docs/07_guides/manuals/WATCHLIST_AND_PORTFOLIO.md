@@ -67,6 +67,16 @@ Paper Portfolio 分頁主要唯讀呈現 snapshot、現金、狀態、ledger、�
 
 Paper Health 只按 Paper 的完整持倉身份及原 receipt 核對。人工帳或聲明持倉與 Paper 即使股票代碼相同，也不是同一筆持倉；不要把 Paper action 顯示到人工帳上。整體 Health 正式整合和工作包驗收仍以[目前狀態快照](../../00_core/PROJECT_SNAPSHOT.md)為準；舊日期 QA、Task exit code 或單一存在的 status 檔都不能證明目前 read model 可用或自然成熟。
 
+### 已保存健康評估與回訪
+
+在 Paper 區的「已保存健康評估」按「載入已保存評估」，明確選一份日期、snapshot 與 receipt，再按「開啟所選評估」。清單第一份不會自動成為選擇；此入口目前只支援沒有額外 namespace 的 `paper-main`。
+
+開啟後閱讀狀態與持倉列；點選一列會保存該筆 position identity。返回持倉管理，或正常關閉程式後重新開啟，會依保存的 receipt 與 snapshot 回訪原評估。保存的是回訪偏好，不會新增持倉、成交或健康評估；相同股票代號也不會替代原持倉身份。
+
+「展開來源與驗證細節」分別列出保存結果可讀時間、Health 觀測、來源觀測與可得時間。缺來源、stale、blocked、hash／身份不符，或原評估無法安全讀回時，保留未知並顯示讀取失敗，不自動套用最新結果。未知／WATCH 不表示可續抱或應賣出；先按原來源與原因核對。
+
+載入與回訪只讀已保存的 result、receipt 及同 route 的 exact Paper snapshot，另寫保存選擇偏好。這些操作不執行 Health producer、evaluator、交易或更新行情。取消、切換評估或關閉視窗時，未完成或晚到結果不會覆蓋新選擇；重新選取前須等前一讀取收尾。完整工作包與來源資格依[Snapshot](../../00_core/PROJECT_SNAPSHOT.md)及具名 QA 判讀。
+
 Paper 排程狀態或 readiness 不是成交記錄。Windows Task 啟動、Task exit 0、status 檔案存在與同次 ledger／consumer readback 是不同證據；核對排程請看[全排程唯讀稽核 Runbook](../BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 遇到 producer／consumer 問題時，分別讀 producer 的 run status、來源／receipt 與 Paper UI 的 exact consumer readback。Producer 成功或排程回傳 0 只證明該層完成；若 UI 沒讀到同一 snapshot／ledger／identity，仍須保留 missing／partial／unknown 並交由 owner 查 Runbook。不要從 UI 刷新推定 producer 已重新執行，也不要由舊 consumer 結果推定本日來源已更新。

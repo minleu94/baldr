@@ -111,6 +111,7 @@ from app_module.user_declared_holding_research import (
     UserDeclaredHoldingResearchStore,
 )
 from ui_qt.models.workbench_table_models import PositionHealthTableModel
+from ui_qt.widgets.position_health_saved_panel import PositionHealthSavedPanel
 from ui_qt.widgets.user_declared_holding_research_widget import (
     UserDeclaredHoldingResearchWidget,
 )
@@ -989,6 +990,8 @@ class PortfolioView(QWidget):
         async_refresh: bool = False,
         presentation_service: DecisionPresentationService | None = None,
         position_health_read_service: PositionHealthTransitionReadService | None = None,
+        position_health_exact_scope_factory: Any | None = None,
+        saved_health_selection_store: Any | None = None,
         user_declared_research_service: UserDeclaredHoldingResearchService | None = None,
         user_declared_store: UserDeclaredHoldingResearchStore | None = None,
         user_declared_portfolio_id: str = "default",
@@ -1026,6 +1029,11 @@ class PortfolioView(QWidget):
         self.recommendation_service = recommendation_service
         self.condition_monitor = condition_monitor or PortfolioConditionMonitor()
         self.presentation_service = presentation_service or DecisionPresentationService()
+        self.position_health_exact_scope_factory = position_health_exact_scope_factory
+        self.saved_health_selection_store = saved_health_selection_store
+        if (position_health_exact_scope_factory is None) != (saved_health_selection_store is None):
+            raise ValueError("已保存 Health exact scope／selection store 必須成對注入")
+        self.position_health_saved_panel: PositionHealthSavedPanel | None = None
         self.position_health_read_service = (
             position_health_read_service
             or PositionHealthTransitionReadService(
@@ -1802,6 +1810,20 @@ class PortfolioView(QWidget):
         # QSplitter 自身的 handle 供使用者後續調整，不用 stretch factor 抵銷。
         main_splitter.setSizes([720, 480])
         main_layout.addWidget(paper_health_group)
+        if (
+            self.position_health_exact_scope_factory is not None
+            and self.saved_health_selection_store is not None
+        ):
+            self.position_health_saved_panel = PositionHealthSavedPanel(
+                reader=self.position_health_read_service,
+                scope_factory=self.position_health_exact_scope_factory,
+                selection_store=self.saved_health_selection_store,
+                parent=self,
+            )
+            self.position_health_saved_panel.setAccessibleName(
+                "已保存 Position Health exact 評估回訪面板"
+            )
+            main_layout.addWidget(self.position_health_saved_panel)
         main_layout.addWidget(main_splitter, 1)
         set_scroll_content_constraints(page_content)
         self._portfolio_advanced_widgets = (
@@ -1984,6 +2006,9 @@ class PortfolioView(QWidget):
     def refresh_all(self) -> None:
         """重新整理持倉資料；正式 UI 入口使用背景 worker。"""
 
+        saved_panel = getattr(self, "position_health_saved_panel", None)
+        if saved_panel is not None:
+            saved_panel.reload_persisted_selection()
         self._refresh_generation += 1
         if self.async_refresh:
             self._start_refresh_worker()
@@ -2604,6 +2629,9 @@ class PortfolioView(QWidget):
         research_widget = getattr(self, "user_declared_research_widget", None)
         if research_widget is not None:
             research_widget.begin_shutdown()
+        saved_panel = getattr(self, "position_health_saved_panel", None)
+        if saved_panel is not None:
+            saved_panel.begin_shutdown()
         worker = self._refresh_worker
         if worker is not None:
             try:
@@ -2619,6 +2647,9 @@ class PortfolioView(QWidget):
         self._closing = True
         self._refresh_generation += 1
         self._refresh_pending = False
+        saved_panel = getattr(self, "position_health_saved_panel", None)
+        if saved_panel is not None:
+            saved_panel.begin_shutdown()
         worker = self._refresh_worker
         if worker is not None and worker.isRunning():
             worker.cancel(cooperative=True, wait=False)

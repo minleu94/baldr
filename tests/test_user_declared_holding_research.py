@@ -51,10 +51,14 @@ EVALUATION_DATE = date(2026, 9, 15)
 
 
 @pytest.fixture
-def saved_recommendation_query_root(request: pytest.FixtureRequest) -> Path:
+def saved_recommendation_query_root(
+    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
     # Windows 驗證讀取器會逐層固定路徑且不跟隨 reparse point；
-    # 因此將隔離 query store 放在 repository root 下。
-    isolated = TemporaryDirectory(prefix=".tmp_srqr_", dir=Path.cwd())
+    # 使用 pytest 的私人短父根，保留 TemporaryDirectory 的原清理生命週期。
+    isolated = TemporaryDirectory(
+        prefix=".tmp_srqr_", dir=tmp_path_factory.getbasetemp().parent
+    )
     request.addfinalizer(isolated.cleanup)
     return Path(isolated.name).resolve()
 

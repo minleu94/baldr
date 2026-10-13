@@ -12,17 +12,21 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, Iterator, List
-from urllib.parse import quote
 
 import pandas as pd
 
+from app_module.exceptions import BacktestCancelledError
 
-class ReadOperationCancelled(RuntimeError):
+
+class ReadOperationCancelled(BacktestCancelledError):
     """唯讀服務操作收到合作式取消要求。"""
 
 
 _READ_CANCEL_CALLBACK: ContextVar[Callable[[], bool] | None] = ContextVar(
     "read_only_sqlite_cancel_callback", default=None
+)
+_READ_CANCEL_CALLBACK_ERROR: ContextVar[Exception | None] = ContextVar(
+    "read_only_sqlite_cancel_callback_error", default=None
 )
 
 
@@ -38,13 +42,33 @@ def cooperative_read_cancellation(
     effective_callback = (
         cancel_callback if cancel_callback is not None else _READ_CANCEL_CALLBACK.get()
     )
+    callback_error_token = _READ_CANCEL_CALLBACK_ERROR.set(None)
     token = _READ_CANCEL_CALLBACK.set(effective_callback)
     try:
         check_read_cancelled()
-        yield
+        try:
+            yield
+        except sqlite3.OperationalError as exc:
+            if (
+                getattr(exc, "sqlite_errorcode", None)
+                != sqlite3.SQLITE_INTERRUPT
+            ):
+                raise
+            callback_error = _READ_CANCEL_CALLBACK_ERROR.get()
+            if callback_error is not None:
+                _READ_CANCEL_CALLBACK_ERROR.set(None)
+                raise callback_error from exc
+            try:
+                check_read_cancelled()
+            except ReadOperationCancelled as cancelled:
+                raise cancelled from exc
+            except Exception as caught_callback_error:
+                raise caught_callback_error from exc
+            raise
         check_read_cancelled()
     finally:
         _READ_CANCEL_CALLBACK.reset(token)
+        _READ_CANCEL_CALLBACK_ERROR.reset(callback_error_token)
 
 
 def check_read_cancelled() -> None:
@@ -56,6 +80,7 @@ def check_read_cancelled() -> None:
 def configure_read_only_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
     """強制 query-only 模式，並安裝此範圍的取消處理器。"""
 
+    _READ_CANCEL_CALLBACK_ERROR.set(None)
     check_read_cancelled()
     conn.execute("PRAGMA query_only=ON")
     callback = _READ_CANCEL_CALLBACK.get()
@@ -63,9 +88,11 @@ def configure_read_only_connection(conn: sqlite3.Connection) -> sqlite3.Connecti
         def progress_handler() -> int:
             try:
                 return int(bool(callback()))
-            except Exception:
+            except Exception as exc:
                 # SQLite C callback 不可直接拋出 Python 例外；先中斷查詢，
-                # 外層錯誤處理再檢查回呼並轉成一般 Python 取消例外。
+                # 保留實際例外，外層確認 SQLITE_INTERRUPT 後再還原錯誤鏈。
+                if _READ_CANCEL_CALLBACK_ERROR.get() is None:
+                    _READ_CANCEL_CALLBACK_ERROR.set(exc)
                 return 1
 
         conn.set_progress_handler(progress_handler, 1000)
@@ -103,9 +130,8 @@ class ReadOnlySQLiteManager:
         self.last_read_mode = "normal"
 
     def _uri(self, *, immutable: bool = False) -> str:
-        path = str(self.db_path).replace("\\", "/")
         suffix = "mode=ro&immutable=1" if immutable else "mode=ro"
-        return f"file:{quote(path, safe='/:')}?{suffix}"
+        return f"{self.db_path.resolve().as_uri()}?{suffix}"
 
     @contextmanager
     def connect(self, *, immutable: bool = False) -> Iterator[sqlite3.Connection]:

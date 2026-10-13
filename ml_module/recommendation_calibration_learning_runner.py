@@ -15,6 +15,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from runtime.file_io_path import (
+    canonical_path_from_os_result as _canonical_io_result,
+    canonical_scandir_child as _canonical_io_child,
+    io_path as _io_path,
+    iterdir_canonical as _iterdir_io,
+    resolve_canonical_path as _resolve_io_path,
+    to_internal_io_path as _to_internal_io_path,
+)
 import stat
 from typing import Any, Mapping, Sequence
 
@@ -192,7 +200,7 @@ class DailyRecommendationLearningRunner:
                     dataset_quality=dataset_quality,
                     lineage_sources=lineage_sources,
                 )
-            elif receipt_path.is_file() or run_input_identity_path.exists():
+            elif _io_path(receipt_path).is_file() or _io_path(run_input_identity_path).exists():
                 frozen_run_input_identity = _build_frozen_run_input_identity(
                     run_id=run_id,
                     decision_date=day,
@@ -204,7 +212,7 @@ class DailyRecommendationLearningRunner:
                     frozen_candidate_root=Path(frozen_candidate_root),
                     fixed_round_trip_cost_bp=self.fixed_round_trip_cost_bp,
                 )
-            if run_input_identity is not None and run_input_identity_path.exists():
+            if run_input_identity is not None and _io_path(run_input_identity_path).exists():
                 _load_or_create_run_input_identity(
                     run_input_identity_path,
                     run_input_identity,
@@ -218,7 +226,7 @@ class DailyRecommendationLearningRunner:
                 )
             if run_input_identity is not None:
                 existing_candidate_directories = _candidate_directories(run_dir)
-                if existing_candidate_directories and not run_input_identity_path.exists():
+                if existing_candidate_directories and not _io_path(run_input_identity_path).exists():
                     raise _SameRunInputConflict(
                         "same_run_candidate_package_has_no_training_input_identity_use_new_run_scope"
                     )
@@ -235,7 +243,7 @@ class DailyRecommendationLearningRunner:
                         require_run_binding=True,
                     )
 
-        if receipt_path.is_file() and not emergency_rollback:
+        if _io_path(receipt_path).is_file() and not emergency_rollback:
             existing = _read_mapping(receipt_path)
             if existing.get("status") == "completed" and existing.get("finalized") is True:
                 candidate_id = _optional_text(existing.get("candidate_id"))
@@ -260,8 +268,8 @@ class DailyRecommendationLearningRunner:
                             cost_scenario=self.cost_scenario,
                         )
                     else:
-                        candidate_root = Path(str(existing.get("candidate_root") or "")).resolve()
-                        if candidate_root != Path(frozen_candidate_root).resolve():
+                        candidate_root = _resolve_io_path(Path(str(existing.get("candidate_root") or "")))
+                        if candidate_root != _resolve_io_path(Path(frozen_candidate_root)):
                             raise _SameRunInputConflict(
                                 "same_run_frozen_candidate_root_changed_use_new_run_scope"
                             )
@@ -475,7 +483,7 @@ class DailyRecommendationLearningRunner:
                 outcome_dependency_status=outcome_dependency_status,
                 drift_status=drift_status,
             )
-        frozen_root = frozen_input_root.resolve() if frozen_input_root is not None else None
+        frozen_root = _resolve_io_path(frozen_input_root) if frozen_input_root is not None else None
         frozen_metadata: dict[str, Any] | None = None
         if frozen_root is not None:
             try:
@@ -895,8 +903,8 @@ def _resolve_shadow_output_root(output_root: str | Path, *, data_root: str | Pat
     raw_output = Path(output_root)
     if not raw_output.is_absolute():
         raise ValueError("recommendation learning output root must be absolute")
-    formal_root = Path(data_root or os.environ.get("DATA_ROOT") or DEFAULT_DATA_ROOT).resolve()
-    resolved = raw_output.resolve()
+    formal_root = _resolve_io_path(Path(data_root or os.environ.get("DATA_ROOT") or DEFAULT_DATA_ROOT))
+    resolved = _resolve_io_path(raw_output)
     if resolved == formal_root or formal_root in resolved.parents:
         raise ValueError(
             "recommendation learning output root is unsafe: it must be outside DATA_ROOT"
@@ -909,11 +917,11 @@ def _persist_candidate_package(
     candidate_root: Path,
     candidate_payload: Mapping[str, Any],
 ) -> None:
-    root = candidate_root.resolve()
-    if root.exists() and any(root.iterdir()):
+    root = _resolve_io_path(candidate_root)
+    if _io_path(root).exists() and any(_iterdir_io(root)):
         raise FileExistsError(f"candidate directory already contains files: {root}")
-    root.mkdir(parents=True, exist_ok=True)
-    (root / result.manifest.artifact_filename).write_bytes(result.artifact_bytes)
+    _io_path(root).mkdir(parents=True, exist_ok=True)
+    _io_path(root / result.manifest.artifact_filename).write_bytes(result.artifact_bytes)
     _write_json_once(root / "manifest.json", result.manifest.to_dict())
     _write_json_once(root / "candidate.json", candidate_payload)
 
@@ -928,15 +936,15 @@ def _verify_persisted_candidate_package(
 ) -> None:
     """讀回並核對候選 bytes，成功後才允許記錄可用時間。"""
 
-    root = candidate_root.resolve()
+    root = _resolve_io_path(candidate_root)
     artifact_path = root / result.manifest.artifact_filename
     manifest_path = root / "manifest.json"
     candidate_path = root / "candidate.json"
     for path in (artifact_path, manifest_path, candidate_path):
-        if not path.is_file():
+        if not _io_path(path).is_file():
             raise RuntimeError(f"候選套件讀回缺少一般檔案: {path}")
 
-    artifact_bytes = artifact_path.read_bytes()
+    artifact_bytes = _io_path(artifact_path).read_bytes()
     artifact_hash = "sha256:" + hashlib.sha256(artifact_bytes).hexdigest()
     if artifact_bytes != result.artifact_bytes or artifact_hash != result.artifact_hash:
         raise RuntimeError("候選模型 bytes/hash 讀回不一致")
@@ -1109,7 +1117,7 @@ def _build_frozen_run_input_identity(
 ) -> dict[str, Any]:
     """為不重訓的凍結候選評估建立獨立的同 run 輸入身份。"""
 
-    root = frozen_candidate_root.resolve()
+    root = _resolve_io_path(frozen_candidate_root)
     if (
         not _is_plain_directory(frozen_candidate_root)
         or not _path_has_no_reparse_components(frozen_candidate_root)
@@ -1145,7 +1153,7 @@ def _build_frozen_run_input_identity(
 
     lineage_file_hash = None
     if lineage_path is not None:
-        resolved_lineage_path = Path(lineage_path).resolve()
+        resolved_lineage_path = _resolve_io_path(Path(lineage_path))
         if not _is_plain_file(resolved_lineage_path) or not _path_has_no_reparse_components(
             resolved_lineage_path
         ):
@@ -1227,7 +1235,7 @@ def _load_or_create_run_input_identity(
     *,
     allow_create: bool,
 ) -> dict[str, Any]:
-    if path.exists():
+    if _io_path(path).exists():
         actual = _read_run_input_identity(path)
         if _canonical_json(actual) != _canonical_json(expected):
             raise _SameRunInputConflict(
@@ -1257,7 +1265,7 @@ def _load_or_create_run_input_identity(
 def _candidate_directories(run_dir: Path) -> tuple[Path, ...]:
     candidates_root = run_dir / "candidates"
     try:
-        candidates_root.lstat()
+        _io_path(candidates_root).lstat()
     except FileNotFoundError:
         return ()
     except OSError as exc:
@@ -1270,9 +1278,9 @@ def _candidate_directories(run_dir: Path) -> tuple[Path, ...]:
         raise _SameRunInputConflict(
             "same_run_candidate_root_is_not_a_regular_directory_use_new_run_scope"
         )
-    resolved_candidates_root = candidates_root.resolve()
+    resolved_candidates_root = _resolve_io_path(candidates_root)
     try:
-        entries = tuple(sorted(candidates_root.iterdir(), key=lambda item: item.name))
+        entries = tuple(sorted(_iterdir_io(candidates_root), key=lambda item: item.name))
     except OSError as exc:
         raise _SameRunInputConflict(
             "same_run_candidate_root_cannot_be_listed_use_new_run_scope"
@@ -1281,7 +1289,7 @@ def _candidate_directories(run_dir: Path) -> tuple[Path, ...]:
         if (
             not _is_plain_directory(item)
             or not _path_has_no_reparse_components(item)
-            or item.resolve().parent != resolved_candidates_root
+            or _resolve_io_path(item).parent != resolved_candidates_root
         ):
             raise _SameRunInputConflict(
                 "same_run_candidate_root_contains_unrecognized_entry_use_new_run_scope"
@@ -1298,11 +1306,11 @@ def _candidate_package_file_inventory(root: Path) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     while pending:
         directory = pending.pop()
-        with os.scandir(directory) as iterator:
+        with os.scandir(_io_path(directory)) as iterator:
             entries = sorted(iterator, key=lambda item: item.name)
         for entry in entries:
-            path = Path(entry.path)
-            details = path.lstat()
+            path = _canonical_io_child(directory, entry.name, entry.path)
+            details = _io_path(path).lstat()
             if _is_reparse_point(path):
                 raise ValueError("candidate package contains a reparse point")
             if stat.S_ISDIR(details.st_mode):
@@ -1329,7 +1337,7 @@ def _path_has_no_reparse_components(path: Path) -> bool:
     for part in absolute.parts[1:]:
         current = current / part
         try:
-            details = current.lstat()
+            details = _io_path(current).lstat()
         except OSError:
             return False
         if stat.S_ISLNK(details.st_mode) or _is_reparse_point(current):
@@ -1385,8 +1393,8 @@ def _verify_candidate_run_package(
     expected_learning_root: Path,
     require_run_binding: bool,
 ) -> _VerifiedCandidatePackage:
-    root = candidate_root.resolve()
-    candidates_root = expected_candidates_root.resolve()
+    root = _resolve_io_path(candidate_root)
+    candidates_root = _resolve_io_path(expected_candidates_root)
     if (
         not _is_plain_directory(candidate_root)
         or not _path_has_no_reparse_components(candidate_root)
@@ -1508,9 +1516,9 @@ def _verify_candidate_run_package(
             "same_run_candidate_lineage_missing_or_legacy_unproven_use_new_run_scope"
         )
     supplied_lineage_path = Path(lineage_path_text)
-    lineage_path = supplied_lineage_path.resolve()
+    lineage_path = _resolve_io_path(supplied_lineage_path)
     expected_lineage_directory = (
-        Path(expected_learning_root).resolve()
+        _resolve_io_path(Path(expected_learning_root))
         / "training_lineage"
         / str(identity.get("decision_date") or "")
         / lineage_hash.split(":", 1)[-1]
@@ -1520,7 +1528,7 @@ def _verify_candidate_run_package(
         or lineage_path.name != "lineage.json"
         or not _path_has_no_reparse_components(supplied_lineage_path)
         or not _plain_path_chain(
-            Path(expected_learning_root).resolve(),
+            _resolve_io_path(Path(expected_learning_root)),
             lineage_path,
             final_file=True,
         )
@@ -1643,7 +1651,7 @@ def _training_quality_projection(quality: Mapping[str, Any]) -> dict[str, Any]:
 
 def _sha256_path(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with _io_path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return "sha256:" + digest.hexdigest()
@@ -1651,7 +1659,7 @@ def _sha256_path(path: Path) -> str:
 
 def _is_reparse_point(path: Path) -> bool:
     try:
-        details = path.lstat()
+        details = _io_path(path).lstat()
     except OSError:
         return False
     return bool(
@@ -1662,7 +1670,7 @@ def _is_reparse_point(path: Path) -> bool:
 
 def _is_plain_directory(path: Path) -> bool:
     try:
-        details = path.lstat()
+        details = _io_path(path).lstat()
     except OSError:
         return False
     return stat.S_ISDIR(details.st_mode) and not _is_reparse_point(path)
@@ -1670,7 +1678,7 @@ def _is_plain_directory(path: Path) -> bool:
 
 def _is_plain_file(path: Path) -> bool:
     try:
-        details = path.lstat()
+        details = _io_path(path).lstat()
     except OSError:
         return False
     return stat.S_ISREG(details.st_mode) and not _is_reparse_point(path)
@@ -1679,8 +1687,8 @@ def _is_plain_file(path: Path) -> bool:
 def _plain_path_chain(root: Path, path: Path, *, final_file: bool) -> bool:
     """拒絕沿 lineage store 的 reparse 點讀取未核准路徑。"""
 
-    resolved_root = root.resolve()
-    resolved_path = path.resolve()
+    resolved_root = _resolve_io_path(root)
+    resolved_path = _resolve_io_path(path)
     if resolved_root != resolved_path and resolved_root not in resolved_path.parents:
         return False
     relative = resolved_path.relative_to(resolved_root)
@@ -1721,7 +1729,7 @@ def _verify_completed_frozen_receipt_binding(
         == (body.get("training_context") or {}).get("semantics"),
         receipt.get("cost_scenario_hash")
         == (body.get("cost_scenario") or {}).get("scenario_hash"),
-        str(Path(str(receipt.get("candidate_root") or "")).resolve())
+        str(_resolve_io_path(Path(str(receipt.get("candidate_root") or ""))))
         == body.get("candidate_root"),
         receipt.get("candidate_id") == body.get("candidate_id"),
         receipt.get("candidate_dataset_hash") == body.get("candidate_dataset_hash"),
@@ -1751,7 +1759,7 @@ def _verify_completed_receipt_binding(
     training_as_of: str,
     cost_scenario: RecommendationCostScenario,
 ) -> None:
-    expected_candidate_root = str(candidate_root.resolve())
+    expected_candidate_root = str(_resolve_io_path(candidate_root))
     if (
         receipt.get("run_id")
         != f"daily-recommendation-learning:{decision_date}"
@@ -1761,7 +1769,7 @@ def _verify_completed_receipt_binding(
         or receipt.get("dataset_hash") != dataset_hash
         or receipt.get("training_as_of") != training_as_of
         or receipt.get("cost_scenario_hash") != cost_scenario.scenario_hash
-        or str(Path(str(receipt.get("candidate_root") or "")).resolve())
+        or str(_resolve_io_path(Path(str(receipt.get("candidate_root") or ""))))
         != expected_candidate_root
         or receipt.get("candidate_id") != candidate_metadata.get("candidate_id")
         or receipt.get("candidate_manifest_hash") != candidate_metadata.get("manifest_hash")
@@ -1882,7 +1890,7 @@ def _frozen_candidate_lineage(
         )
     lineage_path = Path(lineage_path_text)
     if not lineage_path.is_absolute():
-        lineage_path = (candidate_root / lineage_path).resolve()
+        lineage_path = _resolve_io_path(candidate_root / lineage_path)
     read_recommendation_training_lineage(
         lineage_path,
         expected_manifest_hash=lineage_hash,
@@ -1947,30 +1955,30 @@ def _scenario_receipt_metadata(scenario: RecommendationCostScenario) -> dict[str
 
 
 def _read_mapping(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(_io_path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError(f"JSON payload must be an object: {path}")
     return dict(payload)
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _io_path(path.parent).mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
+    _io_path(temporary).write_text(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
-    temporary.replace(path)
+    _io_path(temporary).replace(_io_path(path))
 
 
 def _write_json_once(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
+    _io_path(path.parent).mkdir(parents=True, exist_ok=True)
+    if _io_path(path).exists():
         existing = _read_mapping(path)
         if existing != dict(payload):
             raise RuntimeError(f"immutable daily recommendation receipt conflict: {path}")
         return
-    path.write_text(
+    _io_path(path).write_text(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )

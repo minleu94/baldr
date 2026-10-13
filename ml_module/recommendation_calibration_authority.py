@@ -21,6 +21,14 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
 import hashlib
 import json
 from pathlib import Path
+from runtime.file_io_path import (
+    canonical_path_from_os_result as _canonical_io_result,
+    canonical_scandir_child as _canonical_io_child,
+    io_path as _io_path,
+    iterdir_canonical as _iterdir_io,
+    resolve_canonical_path as _resolve_io_path,
+    to_internal_io_path as _to_internal_io_path,
+)
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
@@ -338,9 +346,9 @@ def verify_natural_evidence_read_only(
     receipt_path_text, _receipt_hash_expected = _natural_evidence_reference(evidence)
     if not receipt_path_text:
         raise ValueError("natural_forward_evidence_receipt_missing")
-    receipt_path = Path(receipt_path_text).resolve()
+    receipt_path = _resolve_io_path(Path(receipt_path_text))
     try:
-        receipt_bytes = receipt_path.read_bytes()
+        receipt_bytes = _io_path(receipt_path).read_bytes()
     except OSError as exc:
         raise ValueError("natural_evidence_receipt_invalid") from exc
     receipt_hash_from_same_read = "sha256:" + hashlib.sha256(receipt_bytes).hexdigest()
@@ -459,7 +467,7 @@ class RecommendationCalibrationPromotionAuthority:
         *,
         policy: RecommendationPromotionPolicy | None = None,
     ) -> None:
-        self.root = Path(output_root).resolve()
+        self.root = _resolve_io_path(Path(output_root))
         self.policy = policy or RecommendationPromotionPolicy()
         self.decisions_root = self.root / "decisions"
         self.pointer_path = self.root / "recommendation-calibration-active-pointer.json"
@@ -498,8 +506,8 @@ class RecommendationCalibrationPromotionAuthority:
         retry_token = ""
         if not emergency:
             self._reconcile_receipt(standard_path)
-            if standard_path.is_file():
-                existing_payload = json.loads(standard_path.read_text(encoding="utf-8"))
+            if _io_path(standard_path).is_file():
+                existing_payload = json.loads(_io_path(standard_path).read_text(encoding="utf-8"))
                 supplied_evidence_hash = _receipt_hash(natural_evidence)
                 existing_evidence_hash = existing_payload.get("natural_evidence_receipt_hash")
                 retryable_existing = (
@@ -517,9 +525,9 @@ class RecommendationCalibrationPromotionAuthority:
 
         suffix = "-emergency-rollback" if emergency else ""
         receipt_path = self.decisions_root / f"recommendation-calibration-{day}{suffix}{retry_token}.json"
-        if receipt_path.is_file():
+        if _io_path(receipt_path).is_file():
             self._reconcile_receipt(receipt_path)
-            return _decision_from_dict(json.loads(receipt_path.read_text(encoding="utf-8")))
+            return _decision_from_dict(json.loads(_io_path(receipt_path).read_text(encoding="utf-8")))
 
         pointer, pointer_error = self._read_pointer()
         previous = _pointer_identity(pointer) if pointer_error is None else None
@@ -869,10 +877,10 @@ class RecommendationCalibrationPromotionAuthority:
         return previous
 
     def _read_pointer(self) -> tuple[dict[str, Any] | None, str | None]:
-        if not self.pointer_path.is_file():
+        if not _io_path(self.pointer_path).is_file():
             return None, None
         try:
-            payload = json.loads(self.pointer_path.read_text(encoding="utf-8"))
+            payload = json.loads(_io_path(self.pointer_path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None, "active_pointer_invalid_json"
         if not isinstance(payload, Mapping):
@@ -906,17 +914,17 @@ class RecommendationCalibrationPromotionAuthority:
             return None, "active_pointer_probability_lineage_invalid"
         if pointer.get("decision_receipt_path"):
             receipt_path = Path(str(pointer["decision_receipt_path"]))
-            if not receipt_path.is_file() or pointer.get("decision_receipt_hash") != _sha256_file(receipt_path):
+            if not _io_path(receipt_path).is_file() or pointer.get("decision_receipt_hash") != _sha256_file(receipt_path):
                 return None, "active_pointer_receipt_mismatch"
             if pointer.get("decision_id") != _safe_json_field(receipt_path, "decision_id"):
                 return None, "active_pointer_receipt_decision_mismatch"
         return pointer, None
 
     def _reconcile_receipt(self, receipt_path: Path) -> None:
-        if not receipt_path.is_file():
+        if not _io_path(receipt_path).is_file():
             return
         try:
-            payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+            payload = json.loads(_io_path(receipt_path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return
         next_pointer = payload.get("next_pointer_base")
@@ -925,9 +933,9 @@ class RecommendationCalibrationPromotionAuthority:
         pointer = dict(next_pointer)
         pointer["decision_receipt_path"] = str(receipt_path)
         pointer["decision_receipt_hash"] = _sha256_file(receipt_path)
-        if self.pointer_path.is_file():
+        if _io_path(self.pointer_path).is_file():
             try:
-                existing = json.loads(self.pointer_path.read_text(encoding="utf-8"))
+                existing = json.loads(_io_path(self.pointer_path).read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 existing = None
             if isinstance(existing, Mapping):
@@ -954,19 +962,19 @@ def _verify_candidate_identity(
 ) -> str | None:
     if not candidate_id or not candidate_root:
         return "candidate_identity_missing"
-    root = Path(candidate_root).resolve()
+    root = _resolve_io_path(Path(candidate_root))
     manifest_path = root / "manifest.json"
     candidate_path = root / "candidate.json"
-    if not root.is_dir() or not manifest_path.is_file() or not candidate_path.is_file():
+    if not _io_path(root).is_dir() or not _io_path(manifest_path).is_file() or not _io_path(candidate_path).is_file():
         return "candidate_freeze_files_missing"
     try:
-        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_payload = json.loads(_io_path(manifest_path).read_text(encoding="utf-8"))
         manifest = ModelArtifactManifest.from_dict(manifest_payload)
-        candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+        candidate_payload = json.loads(_io_path(candidate_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         return "candidate_freeze_metadata_invalid"
     artifact_path = root / manifest.artifact_filename
-    if not artifact_path.is_file() or _sha256_file(artifact_path) != manifest.artifact_hash:
+    if not _io_path(artifact_path).is_file() or _sha256_file(artifact_path) != manifest.artifact_hash:
         return "candidate_artifact_hash_mismatch"
     if manifest.model_id != candidate_id or candidate_payload.get("candidate_id") != candidate_id:
         return "candidate_identity_mismatch"
@@ -1061,8 +1069,8 @@ def _verify_natural_evidence(
     if not receipt_path_text:
         result["error"] = "natural_forward_evidence_receipt_missing"
         return result
-    receipt_path = Path(str(receipt_path_text)).resolve()
-    if not receipt_path.is_file():
+    receipt_path = _resolve_io_path(Path(str(receipt_path_text)))
+    if not _io_path(receipt_path).is_file():
         result["error"] = "natural_forward_evidence_receipt_missing"
         return result
     receipt_hash = _sha256_file(receipt_path)
@@ -1070,7 +1078,7 @@ def _verify_natural_evidence(
         result["error"] = "natural_evidence_receipt_hash_mismatch"
         return result
     try:
-        receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt_payload = json.loads(_io_path(receipt_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         result["error"] = "natural_evidence_receipt_invalid"
         return result
@@ -1133,8 +1141,8 @@ def _verify_natural_evidence(
         result["error"] = "natural_evidence_source_not_trusted"
         return result
     capture_path_text = str(receipt_payload.get("capture_path") or "").strip()
-    capture_path = Path(capture_path_text).resolve() if capture_path_text else None
-    if capture_path is None or not capture_path.is_file():
+    capture_path = _resolve_io_path(Path(capture_path_text)) if capture_path_text else None
+    if capture_path is None or not _io_path(capture_path).is_file():
         result["error"] = "natural_evidence_capture_artifact_missing"
         return result
     expected_source_db_path: Path | None = None
@@ -1144,7 +1152,7 @@ def _verify_natural_evidence(
             _verify_capture_payload,
             verified_source_database_for_capture,
         )
-        capture_payload = json.loads(capture_path.read_text(encoding="utf-8"))
+        capture_payload = json.loads(_io_path(capture_path).read_text(encoding="utf-8"))
         if not isinstance(capture_payload, Mapping):
             raise ValueError
         if capture_payload.get("schema_version") == "recommendation-prediction-capture-bundle.v1":
@@ -1592,7 +1600,7 @@ def _verify_natural_evidence(
 def _candidate_identity_from_metadata(candidate_root: str | Path | None, metadata: Mapping[str, Any]) -> dict[str, Any]:
     identity = {
         "candidate_id": metadata.get("candidate_id") or metadata.get("model_id"),
-        "candidate_root": str(Path(candidate_root).resolve()) if candidate_root else None,
+        "candidate_root": str(_resolve_io_path(Path(candidate_root))) if candidate_root else None,
         "candidate_manifest_hash": metadata.get("manifest_hash"),
         "candidate_artifact_hash": metadata.get("artifact_hash"),
         "candidate_freeze_hash": metadata.get("candidate_freeze_hash"),
@@ -1999,7 +2007,7 @@ def _calibration_gap_bp(probabilities: list[int], labels: list[int]) -> int:
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with _io_path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return f"sha256:{digest.hexdigest()}"
@@ -2007,27 +2015,27 @@ def _sha256_file(path: Path) -> str:
 
 def _safe_json_field(path: Path, field: str) -> Any:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(_io_path(path).read_text(encoding="utf-8"))
         return payload.get(field) if isinstance(payload, Mapping) else None
     except (OSError, json.JSONDecodeError):
         return None
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _io_path(path.parent).mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    _io_path(temporary).write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    _io_path(temporary).replace(_io_path(path))
 
 
 def _write_json_once(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        existing = json.loads(path.read_text(encoding="utf-8"))
+    _io_path(path.parent).mkdir(parents=True, exist_ok=True)
+    if _io_path(path).exists():
+        existing = json.loads(_io_path(path).read_text(encoding="utf-8"))
         if existing != payload:
             raise RuntimeError("immutable recommendation decision receipt conflict")
         return
-    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    _io_path(path).write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
 def _decision_from_dict(payload: Mapping[str, Any]) -> RecommendationPromotionDecision:

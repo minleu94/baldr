@@ -100,8 +100,86 @@ class _PaperSnapshot:
     decision_date: date
     source_result_id: str
     positions: tuple[dict[str, Any], ...]
+    raw_positions: tuple[dict[str, Any], ...]
     rows_sha256: str
     data_version: int
+
+
+@dataclass(frozen=True)
+class PaperHealthSnapshotPosition:
+    """同一 SQLite transaction 讀到的持倉列；股票代號不作帳本 identity。"""
+
+    stock_code: str
+    shares: int
+    weight_bp: int
+
+
+@dataclass(frozen=True)
+class PaperHealthSnapshotBundle:
+    """公開 exact snapshot bundle；列 hash 沿用正式 daily writer canonicalization。"""
+
+    account_kind: str
+    account_namespace: str | None
+    portfolio_id: str
+    snapshot_id: str
+    decision_date: date
+    source_result_id: str
+    source_snapshot_rows_sha256: str
+    positions: tuple[PaperHealthSnapshotPosition, ...]
+    all_positions: tuple[PaperHealthSnapshotPosition, ...]
+    data_version: int
+
+
+def _snapshot_from_exact_rows(
+    *,
+    state_row: Any,
+    selected_date: date,
+    position_rows: Sequence[Any],
+    data_version: int,
+) -> _PaperSnapshot:
+    """共用 writer 與 public exact reader 的 canonical rows/hash 實作。"""
+
+    snapshot_id = str(state_row["snapshot_id"] or "").strip()
+    portfolio_id = str(state_row["portfolio_id"] or "")
+    source_result_id = str(state_row["source_result_id"] or "")
+    if not snapshot_id or not portfolio_id or not source_result_id:
+        raise ValueError("paper_snapshot_exact_identity_missing")
+    positions: list[dict[str, Any]] = []
+    raw_positions: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+    for item in position_rows:
+        code = str(item["stock_code"] or "").strip()
+        if not code or code in seen_codes:
+            raise ValueError("paper_snapshot_exact_stock_code_invalid_or_duplicate")
+        seen_codes.add(code)
+        quantity = _non_negative_int(item["quantity"], "paper position quantity")
+        position = {
+            "stock_code": code,
+            "executable_shares": quantity,
+            "constrained_weight_bp": _non_negative_int(
+                item["weight_bp"], "paper position weight_bp"
+            ),
+        }
+        raw_positions.append(position)
+        if quantity > 0:
+            positions.append(position)
+    canonical = {
+        "snapshot_id": snapshot_id,
+        "portfolio_id": portfolio_id,
+        "decision_date": selected_date.isoformat(),
+        "source_result_id": source_result_id,
+        "positions": raw_positions,
+    }
+    return _PaperSnapshot(
+        snapshot_id=snapshot_id,
+        portfolio_id=portfolio_id,
+        decision_date=selected_date,
+        source_result_id=source_result_id,
+        positions=tuple(positions),
+        raw_positions=tuple(raw_positions),
+        rows_sha256=_canonical_sha256(canonical),
+        data_version=data_version,
+    )
 
 
 def _sha256_bytes(raw: bytes) -> str:
@@ -802,6 +880,113 @@ class PositionHealthDailyRefreshService:
         if output in {self.state_db_path, self.status_path}:
             raise ValueError("health output overlaps a Paper source file")
 
+    def read_exact_snapshot_bundle(
+        self,
+        snapshot_id: str,
+        *,
+        route: Any,
+        personal_paths: Any | None = None,
+        maximum_positions: int = 10000,
+    ) -> PaperHealthSnapshotBundle:
+        """依明示 Paper route 讀 exact snapshot；永遠使用 read-only query_only。"""
+
+        from app_module.personal_paper_store_paths import (
+            PersonalPaperStorePaths,
+            PersonalStoreCustody,
+        )
+        from app_module.personal_store_routes import PersonalStoreDomain
+
+        requested_id = str(snapshot_id or "").strip()
+        if not requested_id or len(requested_id) > 256:
+            raise ValueError("paper_snapshot_exact_id_invalid")
+        if isinstance(maximum_positions, bool) or not isinstance(maximum_positions, int) or not 1 <= maximum_positions <= 10000:
+            raise ValueError("paper_snapshot_exact_position_limit_invalid")
+        if (
+            route is None
+            or route.domain is not PersonalStoreDomain.PAPER
+            or route.identity.key != self.portfolio_id
+            or route.identity.key != "paper-main"
+            or route.paper_account_namespace is not None
+        ):
+            raise ValueError("paper_snapshot_exact_route_not_unnamespaced_main")
+        paths = PersonalPaperStorePaths.from_route(
+            route, portfolio_id=route.identity.key
+        )
+        if paths.state_db.resolve() != self.state_db_path:
+            raise ValueError("paper_snapshot_exact_route_state_path_mismatch")
+        custody = PersonalStoreCustody(route, personal_paths)
+        with custody.read_sqlite(paths.state_db) as connection:
+            connection.execute("BEGIN")
+            state_columns = _table_columns(connection, "paper_portfolio_snapshots")
+            position_columns = _table_columns(connection, "paper_portfolio_positions")
+            if not _REQUIRED_STATE_COLUMNS.issubset(state_columns):
+                raise ValueError("paper_snapshot_schema_missing")
+            if not _REQUIRED_POSITION_COLUMNS.issubset(position_columns):
+                raise ValueError("paper_position_schema_missing")
+            matches = connection.execute(
+                """
+                SELECT snapshot_id, portfolio_id, decision_date, source_result_id
+                FROM paper_portfolio_snapshots
+                WHERE snapshot_id = ? AND portfolio_id = ?
+                """,
+                (requested_id, route.identity.key),
+            ).fetchall()
+            if len(matches) != 1:
+                raise ValueError("paper_snapshot_exact_identity_missing_or_ambiguous")
+            state_row = matches[0]
+            selected_date = _parse_date(
+                state_row["decision_date"], "paper snapshot decision_date"
+            )
+            position_rows = connection.execute(
+                """
+                SELECT stock_code, quantity, weight_bp
+                FROM paper_portfolio_positions
+                WHERE snapshot_id = ?
+                ORDER BY stock_code
+                LIMIT ?
+                """,
+                (requested_id, maximum_positions + 1),
+            ).fetchall()
+            if len(position_rows) > maximum_positions:
+                raise ValueError("paper_snapshot_exact_position_limit")
+            data_version = int(
+                connection.execute("PRAGMA data_version").fetchone()[0]
+            )
+            snapshot = _snapshot_from_exact_rows(
+                state_row=state_row,
+                selected_date=selected_date,
+                position_rows=position_rows,
+                data_version=data_version,
+            )
+        if snapshot.portfolio_id != route.identity.key:
+            raise ValueError("paper_snapshot_exact_portfolio_mismatch")
+        return PaperHealthSnapshotBundle(
+            account_kind="paper-main",
+            account_namespace=None,
+            portfolio_id=snapshot.portfolio_id,
+            snapshot_id=snapshot.snapshot_id,
+            decision_date=snapshot.decision_date,
+            source_result_id=snapshot.source_result_id,
+            source_snapshot_rows_sha256=snapshot.rows_sha256,
+            positions=tuple(
+                PaperHealthSnapshotPosition(
+                    stock_code=str(item["stock_code"]),
+                    shares=int(item["executable_shares"]),
+                    weight_bp=int(item["constrained_weight_bp"]),
+                )
+                for item in snapshot.positions
+            ),
+            all_positions=tuple(
+                PaperHealthSnapshotPosition(
+                    stock_code=str(item["stock_code"]),
+                    shares=int(item["executable_shares"]),
+                    weight_bp=int(item["constrained_weight_bp"]),
+                )
+                for item in snapshot.raw_positions
+            ),
+            data_version=snapshot.data_version,
+        )
+
     def _read_snapshot(self, as_of_date: date) -> _PaperSnapshot:
         manager = ReadOnlySQLiteManager(self.state_db_path)
         with manager.connect() as connection:
@@ -841,38 +1026,11 @@ class PositionHealthDailyRefreshService:
                 """,
                 (snapshot_id,),
             ).fetchall()
-            positions: list[dict[str, Any]] = []
-            raw_positions: list[dict[str, Any]] = []
-            for item in positions_rows:
-                code = str(item["stock_code"] or "").strip()
-                if not code:
-                    raise ValueError("paper_position_stock_code_missing")
-                quantity = _non_negative_int(item["quantity"], "paper position quantity")
-                position = {
-                    "stock_code": code,
-                    "executable_shares": quantity,
-                    "constrained_weight_bp": _non_negative_int(
-                        item["weight_bp"], "paper position weight_bp"
-                    ),
-                }
-                raw_positions.append(position)
-                if quantity > 0:
-                    positions.append(position)
-            canonical = {
-                "snapshot_id": snapshot_id,
-                "portfolio_id": str(row["portfolio_id"] or ""),
-                "decision_date": selected_date.isoformat(),
-                "source_result_id": str(row["source_result_id"] or ""),
-                "positions": raw_positions,
-            }
             data_version = int(connection.execute("PRAGMA data_version").fetchone()[0])
-            return _PaperSnapshot(
-                snapshot_id=snapshot_id,
-                portfolio_id=str(row["portfolio_id"] or ""),
-                decision_date=selected_date,
-                source_result_id=str(row["source_result_id"] or ""),
-                positions=tuple(positions),
-                rows_sha256=_canonical_sha256(canonical),
+            return _snapshot_from_exact_rows(
+                state_row=row,
+                selected_date=selected_date,
+                position_rows=positions_rows,
                 data_version=data_version,
             )
 

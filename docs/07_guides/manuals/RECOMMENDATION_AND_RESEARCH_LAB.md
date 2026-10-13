@@ -110,5 +110,6 @@ H20 是未扣成本的 20 交易日毛報酬估計，不是勝率或機率，也
 - 回測 0 交易：檢查日期、資金、整股 1,000 股限制、成交量及參與率；0 筆不必然表示策略沒有訊號。
 - 參數最佳化很好看但結果不穩：in-sample 排名不是驗證；做 OOS／Walk-forward 並確認樣本足夠。
 - 保存結果讀回失敗：保留 run ID 與狀態；不要刪除 artifact、複製舊檔或修改身份欄位。
+- 校準候選或 shadow 模型保存／讀回失敗：保留同輪 run ID、來源身份、完整錯誤與 lineage 狀態，交由 owner 依 [ML Shadow 維運 Runbook](../ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)核對。不要改 hash、改用另一輪 artifact 或手動啟用模型；校準套件的 Windows 長路徑修正不代表所有來源 root 或工作流程都已驗證。
 
 其他推薦回放、模型 shadow、natural maturity 與 Evidence 維運契約見 [全排程唯讀稽核 Runbook](../BALDR_SCHEDULED_AUDIT_RUNBOOK.md)及[目前狀態快照](../../00_core/PROJECT_SNAPSHOT.md)。

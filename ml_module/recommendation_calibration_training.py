@@ -23,6 +23,14 @@ from io import BytesIO
 import hashlib
 import json
 from pathlib import Path
+from runtime.file_io_path import (
+    canonical_path_from_os_result as _canonical_io_result,
+    canonical_scandir_child as _canonical_io_child,
+    io_path as _io_path,
+    iterdir_canonical as _iterdir_io,
+    resolve_canonical_path as _resolve_io_path,
+    to_internal_io_path as _to_internal_io_path,
+)
 from typing import Any, Iterable, Mapping, Sequence
 
 import joblib
@@ -725,11 +733,11 @@ class RecommendationCalibrationTrainingResult:
     def persist(self, candidate_root: str | Path) -> Path:
         """Create an immutable candidate directory and return its path."""
 
-        root = Path(candidate_root).resolve()
-        if root.exists() and any(root.iterdir()):
+        root = _resolve_io_path(Path(candidate_root))
+        if _io_path(root).exists() and any(_iterdir_io(root)):
             raise FileExistsError(f"candidate directory already contains files: {root}")
-        root.mkdir(parents=True, exist_ok=True)
-        (root / self.manifest.artifact_filename).write_bytes(self.artifact_bytes)
+        _io_path(root).mkdir(parents=True, exist_ok=True)
+        _io_path(root / self.manifest.artifact_filename).write_bytes(self.artifact_bytes)
         _write_json(root / "manifest.json", self.manifest.to_dict())
         _write_json(root / "candidate.json", self.to_dict())
         return root
@@ -1587,7 +1595,7 @@ def _decimal_text(value: str, field_name: str) -> Decimal:
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.write_text(
+    _io_path(path).write_text(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )

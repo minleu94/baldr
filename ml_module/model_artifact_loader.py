@@ -11,6 +11,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from runtime.file_io_path import (
+    canonical_path_from_os_result as _canonical_io_result,
+    canonical_scandir_child as _canonical_io_child,
+    io_path as _io_path,
+    iterdir_canonical as _iterdir_io,
+    resolve_canonical_path as _resolve_io_path,
+    to_internal_io_path as _to_internal_io_path,
+)
 from tempfile import SpooledTemporaryFile
 from typing import Any, Callable, Mapping, Protocol
 
@@ -199,9 +207,9 @@ class SafeShadowModelArtifactLoader:
         data_root: str | Path | None = None,
         deserializer: Callable[[Path], Any] = joblib.load,
     ) -> None:
-        self._data_root = Path(
+        self._data_root = _resolve_io_path(Path(
             data_root or os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
-        ).resolve()
+        ))
         self._deserializer = deserializer
 
     def load(
@@ -211,15 +219,15 @@ class SafeShadowModelArtifactLoader:
         expectation: ArtifactCompatibilityExpectation,
     ) -> ShadowModelArtifactLoadResult:
         raw_root = Path(artifact_root)
-        root = raw_root.resolve()
+        root = _resolve_io_path(raw_root)
         if not raw_root.is_absolute() or root == self._data_root or self._data_root in root.parents:
             return ShadowModelArtifactLoadResult.fallback("artifact_root_not_shadow_safe")
 
         manifest_path = root / "manifest.json"
-        if not manifest_path.is_file():
+        if not _io_path(manifest_path).is_file():
             return ShadowModelArtifactLoadResult.fallback("manifest_missing")
         try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            payload = json.loads(_io_path(manifest_path).read_text(encoding="utf-8"))
             manifest = ModelArtifactManifest.from_dict(payload)
         except OSError:
             return ShadowModelArtifactLoadResult.fallback("manifest_read_failed")
@@ -239,8 +247,8 @@ class SafeShadowModelArtifactLoader:
                 _compatibility_blocker(exc), manifest=manifest
             )
 
-        artifact_path = (root / manifest.artifact_filename).resolve()
-        if artifact_path.parent != root or not artifact_path.is_file():
+        artifact_path = _resolve_io_path(root / manifest.artifact_filename)
+        if artifact_path.parent != root or not _io_path(artifact_path).is_file():
             return ShadowModelArtifactLoadResult.fallback(
                 "artifact_missing_or_uncontrolled", manifest=manifest
             )
@@ -250,7 +258,7 @@ class SafeShadowModelArtifactLoader:
             )
 
         try:
-            model = self._deserializer(artifact_path)
+            model = self._deserializer(_io_path(artifact_path) if self._deserializer is _DEFAULT_JOBLIB_LOAD else artifact_path)
         except Exception:
             return ShadowModelArtifactLoadResult.fallback(
                 "artifact_deserialization_failed", manifest=manifest
@@ -282,7 +290,7 @@ class SafeShadowModelArtifactLoader:
 
         try:
             raw_root = Path(artifact_root)
-            root = raw_root.resolve()
+            root = _resolve_io_path(raw_root)
         except (OSError, RuntimeError, TypeError, ValueError):
             return _same_bytes_result(
                 ShadowModelArtifactLoadResult.fallback("artifact_root_invalid")
@@ -294,12 +302,12 @@ class SafeShadowModelArtifactLoader:
 
         manifest_path = root / "manifest.json"
         try:
-            manifest_exists = manifest_path.is_file()
+            manifest_exists = _io_path(manifest_path).is_file()
             if not manifest_exists:
                 return _same_bytes_result(
                     ShadowModelArtifactLoadResult.fallback("manifest_missing")
                 )
-            manifest_bytes_text = manifest_path.read_text(encoding="utf-8")
+            manifest_bytes_text = _io_path(manifest_path).read_text(encoding="utf-8")
         except (OSError, UnicodeError):
             return _same_bytes_result(
                 ShadowModelArtifactLoadResult.fallback("manifest_read_failed")
@@ -339,7 +347,7 @@ class SafeShadowModelArtifactLoader:
 
         try:
             raw_root = Path(artifact_root)
-            root = raw_root.resolve()
+            root = _resolve_io_path(raw_root)
         except (OSError, RuntimeError, TypeError, ValueError):
             return _same_bytes_with_manifest_result(
                 _same_bytes_result(
@@ -355,13 +363,13 @@ class SafeShadowModelArtifactLoader:
 
         manifest_path = root / "manifest.json"
         try:
-            if not manifest_path.is_file():
+            if not _io_path(manifest_path).is_file():
                 return _same_bytes_with_manifest_result(
                     _same_bytes_result(
                         ShadowModelArtifactLoadResult.fallback("manifest_missing")
                     )
                 )
-            manifest_bytes = manifest_path.read_bytes()
+            manifest_bytes = _io_path(manifest_path).read_bytes()
         except OSError:
             return _same_bytes_with_manifest_result(
                 _same_bytes_result(
@@ -417,9 +425,9 @@ class SafeShadowModelArtifactLoader:
             )
 
         try:
-            artifact_path = (root / manifest.artifact_filename).resolve()
+            artifact_path = _resolve_io_path(root / manifest.artifact_filename)
             artifact_is_controlled_file = (
-                artifact_path.parent == root and artifact_path.is_file()
+                artifact_path.parent == root and _io_path(artifact_path).is_file()
             )
         except (OSError, RuntimeError, ValueError):
             artifact_is_controlled_file = False
@@ -434,7 +442,7 @@ class SafeShadowModelArtifactLoader:
         captured_hash: str | None = None
         loaded_hash: str | None = None
         try:
-            with artifact_path.open("rb") as source, SpooledTemporaryFile(
+            with _io_path(artifact_path).open("rb") as source, SpooledTemporaryFile(
                 max_size=_SAME_BYTES_SPOOL_MEMORY_LIMIT, mode="w+b"
             ) as verified_buffer:
                 digest = hashlib.sha256()
@@ -452,9 +460,9 @@ class SafeShadowModelArtifactLoader:
                     )
 
                 try:
-                    artifact_path_after_capture = (
-                        root / manifest.artifact_filename
-                    ).resolve(strict=True)
+                    artifact_path_after_capture = _resolve_io_path(
+                        root / manifest.artifact_filename, strict=True
+                    )
                 except (OSError, RuntimeError, ValueError):
                     artifact_path_after_capture = None
                 if (
@@ -508,7 +516,7 @@ class SafeShadowModelArtifactLoader:
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with _io_path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return f"sha256:{digest.hexdigest()}"

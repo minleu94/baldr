@@ -14,6 +14,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from runtime.file_io_path import (
+    canonical_path_from_os_result as _canonical_io_result,
+    canonical_scandir_child as _canonical_io_child,
+    io_path as _io_path,
+    iterdir_canonical as _iterdir_io,
+    resolve_canonical_path as _resolve_io_path,
+    to_internal_io_path as _to_internal_io_path,
+)
 import sys
 from threading import Lock, get_ident
 from types import FunctionType
@@ -501,7 +509,7 @@ class RecommendationCalibrationConsumer:
         personal_use_policy: Any | None = None,
         personal_use_policy_bytes: bytes | None = None,
     ) -> None:
-        self.pointer_path = Path(pointer_path).resolve()
+        self.pointer_path = _resolve_io_path(Path(pointer_path))
         self.feature_schema = feature_schema
         self.feature_registry_hash = feature_registry_hash
         self.expected_model_family = expected_model_family
@@ -590,12 +598,12 @@ class RecommendationCalibrationConsumer:
         if (
             path is None
             or type(expected_bytes) is not bytes
-            or path.resolve() != self.pointer_path
-            or path.is_symlink()
+            or _resolve_io_path(path) != self.pointer_path
+            or _io_path(path).is_symlink()
         ):
             return False
         try:
-            return path.read_bytes() == expected_bytes
+            return _io_path(path).read_bytes() == expected_bytes
         except OSError:
             return False
 
@@ -644,7 +652,7 @@ class RecommendationCalibrationConsumer:
             pointer_bytes_before = (
                 self._personal_use_policy_bytes
                 if self._personal_use_policy is not None
-                else self.pointer_path.read_bytes()
+                else _io_path(self.pointer_path).read_bytes()
             )
             if type(pointer_bytes_before) is not bytes:
                 return None
@@ -677,7 +685,7 @@ class RecommendationCalibrationConsumer:
             pointer_bytes_after = (
                 self._personal_use_policy_bytes
                 if self._personal_use_policy is not None
-                else self.pointer_path.read_bytes()
+                else _io_path(self.pointer_path).read_bytes()
             )
             if pointer_bytes_after != pointer_bytes_before:
                 return None
@@ -832,8 +840,8 @@ class RecommendationCalibrationConsumer:
                 pointer_raw_bytes = self._personal_use_policy_bytes
             else:
                 pointer_raw_bytes = (
-                    self.pointer_path.read_bytes()
-                    if self.pointer_path.is_file()
+                    _io_path(self.pointer_path).read_bytes()
+                    if _io_path(self.pointer_path).is_file()
                     else None
                 )
             resolved = RecommendationCalibrationConsumer(
@@ -859,10 +867,10 @@ class RecommendationCalibrationConsumer:
                 if pointer_raw_bytes != self._personal_use_policy_bytes:
                     return None
             elif pointer_raw_bytes is None:
-                if self.pointer_path.is_file():
+                if _io_path(self.pointer_path).is_file():
                     return None
             else:
-                if self.pointer_path.read_bytes() != pointer_raw_bytes:
+                if _io_path(self.pointer_path).read_bytes() != pointer_raw_bytes:
                     return None
 
             pointer_status: str | None = None
@@ -951,7 +959,7 @@ class RecommendationCalibrationConsumer:
                 if type(self._personal_use_policy_bytes) is not bytes:
                     self._blocker = "personal_use_policy_snapshot_missing"
                     return "rule_only"
-            elif not self.pointer_path.is_file():
+            elif not _io_path(self.pointer_path).is_file():
                 return "rule_only"
         elif _captured_pointer_bytes is None:
             return "rule_only"
@@ -975,7 +983,7 @@ class RecommendationCalibrationConsumer:
                     )
                 pointer_text = self._personal_use_policy_bytes.decode("utf-8")
             elif captured_pointer_bytes is None:
-                pointer_text = self.pointer_path.read_text(encoding="utf-8")
+                pointer_text = _io_path(self.pointer_path).read_text(encoding="utf-8")
             else:
                 self._model_resolution_captured_pointer_bytes_sha256 = _sha256_bytes(
                     captured_pointer_bytes
@@ -1025,7 +1033,7 @@ class RecommendationCalibrationConsumer:
                 return "rule_only"
             if (
                 personal_policy.to_dict() != pointer
-                or personal_policy_path.resolve() != self.pointer_path
+                or _resolve_io_path(personal_policy_path) != self.pointer_path
             ):
                 self._blocker = "personal_use_policy_not_bound_to_consumer"
                 return "rule_only"
@@ -1051,9 +1059,9 @@ class RecommendationCalibrationConsumer:
             candidate_root = Path(candidate_ref.candidate_root)
             candidate_path = candidate_root / "candidate.json"
             try:
-                if candidate_root.is_symlink() or candidate_path.is_symlink():
+                if _io_path(candidate_root).is_symlink() or _io_path(candidate_path).is_symlink():
                     raise OSError("candidate identity path is a symlink")
-                personal_candidate_bytes = candidate_path.read_bytes()
+                personal_candidate_bytes = _io_path(candidate_path).read_bytes()
                 if _sha256_bytes(personal_candidate_bytes) != candidate_ref.candidate_json_sha256:
                     raise ValueError("candidate JSON raw bytes changed")
                 personal_candidate_payload = _read_json_object_bytes(
@@ -1102,7 +1110,7 @@ class RecommendationCalibrationConsumer:
             return "rule_only"
         candidate_root = Path(candidate_text)
         if not candidate_root.is_absolute():
-            candidate_root = (self.pointer_path.parent / candidate_root).resolve()
+            candidate_root = _resolve_io_path(self.pointer_path.parent / candidate_root)
         try:
             scenario = cost_scenario_from_metadata(
                 pointer,
@@ -1131,7 +1139,7 @@ class RecommendationCalibrationConsumer:
             if personal_candidate_payload is not None:
                 candidate_payload = personal_candidate_payload
             elif self._capture_model_resolution_evidence:
-                candidate_json_bytes = (candidate_root / "candidate.json").read_bytes()
+                candidate_json_bytes = _io_path(candidate_root / "candidate.json").read_bytes()
                 candidate_payload = _read_json_object_bytes(
                     candidate_json_bytes, candidate_root / "candidate.json"
                 )
@@ -1301,7 +1309,7 @@ class RecommendationCalibrationConsumer:
                 self._blocker = "personal_use_policy_candidate_missing"
                 return "rule_only"
             try:
-                if candidate_path.read_bytes() != personal_candidate_bytes:
+                if _io_path(candidate_path).read_bytes() != personal_candidate_bytes:
                     self._blocker = "personal_candidate_bytes_changed_during_load"
                     return "rule_only"
             except OSError:
@@ -1392,7 +1400,7 @@ class RecommendationCalibrationConsumer:
             self._model_resolution_captured_manifest_paths_and_bytes
         ):
             try:
-                if manifest_path.read_bytes() != captured_bytes:
+                if _io_path(manifest_path).read_bytes() != captured_bytes:
                     return False
             except OSError:
                 return False
@@ -1823,7 +1831,7 @@ class RecommendationCalibrationConsumer:
             return None
         root = Path(root_text)
         if not root.is_absolute():
-            root = (self.pointer_path.parent / root).resolve()
+            root = _resolve_io_path(self.pointer_path.parent / root)
         expectation = ArtifactCompatibilityExpectation(
             expected_model_family=self.expected_model_family,
             expected_feature_registry_hash=self.feature_registry_hash,
@@ -1855,7 +1863,7 @@ class RecommendationCalibrationConsumer:
             return None, None, None, None
         root = Path(root_text)
         if not root.is_absolute():
-            root = (self.pointer_path.parent / root).resolve()
+            root = _resolve_io_path(self.pointer_path.parent / root)
         expectation = ArtifactCompatibilityExpectation(
             expected_model_family=self.expected_model_family,
             expected_feature_registry_hash=self.feature_registry_hash,
@@ -1887,7 +1895,7 @@ class RecommendationCalibrationConsumer:
         )
         candidate_path = root / "candidate.json"
         try:
-            candidate_json_bytes = candidate_path.read_bytes()
+            candidate_json_bytes = _io_path(candidate_path).read_bytes()
             candidate_payload = _read_json_object_bytes(
                 candidate_json_bytes, candidate_path
             )
@@ -1897,7 +1905,7 @@ class RecommendationCalibrationConsumer:
             identity, root, loaded.manifest, candidate_payload
         ):
             return None, None, None, None
-        if candidate_path.read_bytes() != candidate_json_bytes:
+        if _io_path(candidate_path).read_bytes() != candidate_json_bytes:
             return None, None, None, None
         candidate_json_node = _candidate_json_evidence_node(
             position=position,
@@ -3292,8 +3300,8 @@ def _load_candidate_training_provenance(
         )
     lineage_path = Path(lineage_path_text)
     if not lineage_path.is_absolute():
-        lineage_path = (candidate_root / lineage_path).resolve()
-    if lineage_path.is_symlink() or not lineage_path.is_file():
+        lineage_path = _resolve_io_path(candidate_root / lineage_path)
+    if _io_path(lineage_path).is_symlink() or not _io_path(lineage_path).is_file():
         return _legacy_training_provenance("training_lineage_manifest_missing"), (
             "candidate_training_lineage_manifest_missing"
         )
@@ -3535,7 +3543,7 @@ def _after_cost_baseline_kind(baseline_id: str | None) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(_io_path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"JSON object required: {path}")
     return payload
@@ -3550,7 +3558,7 @@ def _read_json_object_bytes(raw_bytes: bytes, source_path: Path) -> dict[str, An
 
 def _candidate_json_path_matches_bytes(candidate_root: Path, expected_bytes: bytes) -> bool:
     try:
-        return (candidate_root / "candidate.json").read_bytes() == expected_bytes
+        return _io_path(candidate_root / "candidate.json").read_bytes() == expected_bytes
     except OSError:
         return False
 
@@ -3820,7 +3828,7 @@ def _normalize_candidate_root(value: Any, relative_to: Path) -> str | None:
         root = Path(value)
         if not root.is_absolute():
             root = relative_to / root
-        resolved = root.resolve(strict=True)
+        resolved = _resolve_io_path(root, strict=True)
     except (OSError, RuntimeError, TypeError, ValueError):
         return None
     return os.path.normcase(os.path.normpath(str(resolved)))
@@ -4034,7 +4042,7 @@ def _library_versions() -> dict[str, str]:
 
 def _path_stat(path: Path) -> tuple[int, int] | None:
     try:
-        stat = path.stat()
+        stat = _io_path(path).stat()
     except OSError:
         return None
     return stat.st_size, stat.st_mtime_ns
@@ -4066,7 +4074,7 @@ def build_default_recommendation_calibration_consumer(config: Any) -> Recommenda
 
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with _io_path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return f"sha256:{digest.hexdigest()}"
@@ -4085,7 +4093,7 @@ def _hash_payload(payload: Any) -> str:
 def _pointer_candidate_hashes_match(pointer: Mapping[str, Any], candidate_root: Path, manifest: Any) -> bool:
     candidate_path = candidate_root / "candidate.json"
     try:
-        payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+        payload = json.loads(_io_path(candidate_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
     if not isinstance(payload, Mapping):
@@ -4194,11 +4202,11 @@ def _pointer_receipt_error(pointer: Mapping[str, Any]) -> str | None:
     receipt_hash = str(pointer.get("decision_receipt_hash") or "")
     if not path_text or not receipt_hash:
         return "active_pointer_receipt_missing"
-    path = Path(path_text).resolve()
-    if not path.is_file() or _sha256_file(path) != receipt_hash:
+    path = _resolve_io_path(Path(path_text))
+    if not _io_path(path).is_file() or _sha256_file(path) != receipt_hash:
         return "active_pointer_receipt_mismatch"
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(_io_path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return "active_pointer_receipt_invalid"
     if not isinstance(payload, Mapping) or payload.get("decision_id") != pointer.get("decision_id"):

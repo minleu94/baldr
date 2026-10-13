@@ -80,6 +80,8 @@
 - artifact hash、schema、registry 或 library compatibility blocker：輸入與 frozen manifest 不一致；修正輸入或重新取得合規 artifact，不得略過驗證。
 - `lifecycle_disabled` 或 `lifecycle_superseded`：模型已被 lifecycle gate 阻擋，不得繼續 overlay。
 - 路徑錯誤：確認 prediction registry、lifecycle registry 與 output root 都是 shadow root 的子路徑，且 shadow root 不在 `DATA_ROOT` 內。
+- Windows 校準候選的資料夾較深時，模型套件與 lineage 的保存／讀回由相同檔案接點處理；保留原 root、candidate ID 和 receipt，不手動加路徑 prefix、搬移同 run 檔案或修改 hash。既有 same-run 恢復仍先核輸入 identity、完整套件與 binding，相符才重用；缺件或不符依原 blocker 處理。
+- 自訂 deserializer 仍收到原 Path，需自行支援其檔案位置；verified-buffer 入口仍只接受 default joblib。這項修正限於校準套件鏈，不能推定所有 producer 或任意超長 root 均支援。來源、日期、PIT、promotion 與交易資格維持原 Gate；實際驗證及未完成項目見[10/12 補完 QA](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)。
 
 ## 安全限制
 

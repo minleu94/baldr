@@ -79,6 +79,16 @@ Scheduled PIT／Direct wrapper 在啟動 worker 前做唯讀 capacity preflight�
 
 OOC `minimal_linear_shadow` 只接受單一 `ridge_logistic` 與明示 horizon，並在相同 frozen rows／cost 下對照 Rule／Equal Weight；`full_shadow` 保留多 horizon／HGB challenger。若 release root 有 `release_manifest.json`，`AllocationReleaseAdapter` 仍須核 artifact／sidecar hashes、feature order、missing policy、dataset lineage 與 calibration；frozen-row parity 失敗時退回 Rule-only。缺 attached calibration artifact 時，OOC diagnostic calibration 不能充當正式校準器。
 
+## Recommendation 校準套件的 Windows 檔案接點
+
+校準 runner、TrainingResult、lineage publisher、promotion authority、artifact loader 與 consumer 共用 `runtime/file_io_path.py` 的純 transport。只有可安全渲染的 Windows 長路徑在 OS 操作接點使用 extended 形式；對外 root、candidate ID、lineage path、相對 inventory、JSON 與 hash identity 保持原路徑。短路徑、relative、dotdot 與原特殊輸入保留既有 Path 操作及 strict resolve／exception 時點，transport 不授予 ownership 或 no-follow 資格。
+
+Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 tempfile.mkstemp 的自有 parent 明示 force_extended=True，避免短 parent 加上隨機暫存 leaf 後越過普通 Windows 路徑限制；helper 預設仍為 False，所有 strict lexical guards、descriptor 關閉、fsync、hard-link 與 finally cleanup 順序保持。
+
+原 lstat／reparse／一般檔案、parent／root、hash、PIT、same-run binding、pair reread 與 create-only hard-link 發布守衛仍由 caller 每次執行；不快取或合併讀取。列舉以原 parent／basename 重建，再精確比對該次 OS 回值。Default joblib 可取得內部 I/O 路徑；legacy custom deserializer 仍收到原 Path，verified-buffer 路徑仍拒絕 custom callback。
+
+此修正限於上述校準套件鏈，不代表其他 scheduler、UI、publication 或任意超長 root 全面支援。長 dotdot 維持原 OS 行為；安全長路徑 resolve 後若 OS 回傳特殊名稱，strict inverse 仍可能拒絕。OS exception 的 filename 是診斷字串，不作 identity。實際範圍與尚未接受的 no-follow／types／產品 Gate 見[10/12 補完 QA](../../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)。
+
 ## 保留、遷移與高風險邊界
 
 - 不刪除或覆寫正式 raw source；全量重建前須有備份、明確確認、可用 restore path 及完整來源核對。

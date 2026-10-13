@@ -389,7 +389,8 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - 交易歷史提供常駐的「刪除選取交易」操作；只有選取一筆原始交易時才可按，經確認後交由 `PortfolioService.delete_trade` 驗證剩餘交易仍可重算合法持倉。持倉彙總列不會直接刪除整檔歷史。
 - 保存 Recommendation / Backtest / Strategy Version 來源 metadata。
 - 顯示目前價格、未實現損益、停損 / 停利與條件監控。
-- 一般持倉／聲明持倉研究的日曆核驗預設使用即時 UTC（live_now）；只有明示注入歷史 clock 才用 historical_as_of。行情資料日、來源取得時間與有效期分開；歷史觀測不授 PIT，過期／缺件不補為新鮮。未新增模式切換控制項，Health封存選取UI仍待；操作與排錯見 Manual §10.8。
+- 一般持倉／聲明持倉研究的日曆核驗預設使用即時 UTC（live_now）；只有明示注入歷史 clock 才用 historical_as_of。行情資料日、來源取得時間與有效期分開；歷史觀測不授 PIT，過期／缺件不補為新鮮。未新增模式切換控制項；操作與排錯見[持倉手冊](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md)。
+- 已保存 Paper-main Health 提供明示選取、持倉列選擇與 exact receipt／snapshot 回訪；正常 Main 關閉後可在 fresh Main 重新核驗保存偏好。缺件與 WATCH 保留未知，不讀最新結果補件，也不由此入口執行 producer 或交易。操作依[已保存健康評估與回訪](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)，服務契約依[目前架構](../01_architecture/current/decision_research_portfolio.md#saved-health-的-exact-consumer-與回訪偏好)；最新 QA 與完整工作包未接受範圍依 Snapshot。
 - 頂端摘要只顯示有最新價格持倉的「持倉市值（未含現金）」；缺價格會顯示 N/A 與缺漏股票，不把投入金額／已實現損益冒充完整 NAV。
 - 情境壓力：由 `PortfolioStressLabService` 對已標記持倉套用固定、可重播的研究情境；缺價只做部分計算，輪動／來源中斷等缺少必要輸入時 fail-closed，不寫資料、不改持倉、不產生交易指令。
 - Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果；下方歷史表由 `PortfolioStressHistoryReadService` query-only 讀取，缺 DB 不初始化，固定揭露研究用途與 `writes_allowed=false`。

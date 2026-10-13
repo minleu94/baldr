@@ -13,6 +13,8 @@
 7. [10/10 補完進度](BALDR_PRODUCT_COMPLETION_STATUS_20261010.md)、[P08 行情證據](BALDR_P08_PRICE_EVIDENCE_SLICE_20261010.md)與[前向現金開戶](BALDR_P08_CASH_SEED_SLICE_20261010.md)：完整待辦範圍、同次唯讀取值及版本專屬空帳戶；不代表 daily／策略績效資格完成。
 8. 按下方主題地圖選擇索引；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
+- [10/12 補完恢復增量](BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)：治理後 M27 封套、Root 串行 QA、Main 原生診斷及 Health 來源重封；按具名收據判讀，不授完整工作包或 Gate 接受。
+
 <a id="主題地圖"></a>
 ## 主題地圖
 

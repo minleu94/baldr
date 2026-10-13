@@ -2,6 +2,8 @@
 
 本頁接續 [10/11 補完進度](BALDR_COMPLETION_PROGRESS_20261011.md)及[恢復交接](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。完整範圍仍為 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4；局部 PASS 不相加成完整工作包或 Gate 接受。
 
+目前狀態：2026-10-12 使用者再次要求停止並記錄進度、commit；goal 與本任務為 paused，沒有活動 QA。最新停點及安全恢復順序見本頁末尾「再次暫停與提交停點」；正文依時間保存歷史狀態，較早的「下一步」不構成新的執行授權。
+
 ## 接手與來源
 
 接手 HEAD 為 `b834f6116dff8316d45dae7c704f260738896325`。文件產品化 owner 正在修改入口、Snapshot、架構及手冊；本輪保留其未提交內容。`dc579133` 的 Paper 身分／G9 日曆修復與 `11589244` 的 H20 中央母體迴路已提交，舊 QA 不代表新版接受。
@@ -257,3 +259,103 @@ Qt新純靜態資料封套 `d1e53ad94cbebad5c5ee40dfc162ff0a523f75de4c9554272e80
 恢復後先核本task owner／HEAD／dirty與lastClosed e5b3及各source／receipt pins，再逐一核90個profile metadata、壓縮DTO oracle與binary stats；沿三domain及實際artifact groups分析counts／self及cumulative elapsed／thread CPU，**不新增同封套warm**。之後再依原交接處理P01效能與Main、Qt types來源／raw缺口、P08與完整補完計畫。QtA四phase原strict126及資料包d1e53保持，不自動執行B或重跑A，不改accepted policy／expected hashes／原守衛。
 
 本機 `output/`、`.t/`、`C:/t/`、task JSON、封套／收據／binary profiles依Git排除規則保留在原處，不提交或刪除；本頁記載其精確路徑與SHA，commit只保存程式／測試與可追溯摘要。另有AGENTS、skills、git_exclusions及目標架構的其他聊天dirty，維持原貌，不納入本任務commit。舊singleton active_task／handoff_log／resume prompt不覆寫。
+
+### Active goal接續：保存90份DTO／813份profile獨立核對
+
+前次暫停交付commit為 `e0d76604ce8ce89eccfb55d2a5b670e748c310a9`，31個本任務程式／測試／文件；没有push。Active goal接續時HEAD為 `a9bffa28d316bd2d72a744f2ecf49a6c8ea221c8`、工作樹乾淨。後一commit僅更新Obsidian工作流程入口，先前20個產品／測試Python raw SHA保持；原暫停與所有失敗收據留存。前一goal回合只回答使用者進度，屬no progress；本輪實際執行保存資料核對，不是重述狀態。
+
+Root data-only控制 `analyze_p01_r04_saved_profiles_root01.py` SHA `4d9c10924c6184990af7025f589c6fb3c42bae1f8c3aa611c5235a80bf01169f`，在Root04 named Job以8GiB／12程序及120秒資料分析期限執行；沒有產品import、產品操作、新的warm、模型或正式資料寫入，也沒有改原role600秒。新收據 [dd7251d9](../../output/qa/baldr_completion_20261011/root/p01_r04_saved_profile_analysis_f0c0e6d714d5478b91c6139647975568/receipt.json)，完整SHA `dd7251d9ed3f63e5effa5a7d5663f7cd87ec275466ae78a5c809492a61ad09b1`。
+
+- 三類各30份共90份壓縮DTO逐一核compressed／uncompressed大小与SHA，解壓後完整 `actual == serial_oracle`，共核166,759,492 bytes。每類原nearest-rank p95與嚴格300ms門檻重算保持；本profiled p95翻頁313.7414／篩選845.9328／排序411.8115ms只作診斷，不能取代原無profileFAIL或宣稱效能改善。
+- 90份metadata完整、原timer返回、worker自然釋放、active domains0、errors／overflow／observer restore／shutdown為空，813份binary逐一SHA且pstats純資料讀取通過。UI main與TaskWorker各90份、query pool84份；篩選六份明示 `actual_serial_group_read_no_submit`，不是漏收。
+- [完整analysis](../../output/qa/baldr_completion_20261011/root/p01_r04_saved_profile_analysis_f0c0e6d714d5478b91c6139647975568/analysis.json) SHA `86f5dfbac96d07f4ec6ec9ec733df3d93336cff0a978bffff9351bfd969661d6`；完整函式表 `16b2145f1412bc25065dcb8c2c6d9f72edf7bebe2dee7544c4e783901f0a9667`、逐樣本artifact groups `7aff26157969b0ae23e2bc1d054b8ae1236aa15571028c9b9a5f7c04bb888620`，皆保存全路徑与counts，没有只保留top摘要。
+- native open計directory11,502／file10,743；639次fresh group read。query pool self elapsed主要為native open、lstat／fstat、read與SHA；UI包含原等待polling與render，TaskWorker鎖等待與pool wall重疊，不能把cumulative或各thread wall相加，也不能把wall−thread CPU當disk wait。cProfile是elapsed wall，並無deferred Qt paint completion觀測。
+- outer [6db0fdf8](../../output/qa/baldr_completion_20261011/root/single_owned_qa_9c206bca473b4dd18499682ba6a4725d/receipt.json)，完整SHA `6db0fdf8a8ac8805d625010fabbe482f41d5e432c9e6e738c573599d1639bff4`：native0、remaining／final均0、process／Job handlesclosed、mutexreleased、forced_cleanup=false。起始available15,913,082,880bytes，Job上限readback通過。
+
+核對範圍仍為凍結M27來源：query `a1f929c32169cdf9b49bc6caba06538ae0818ce6ef8601f0323e937ee1c7a0aa`、repository `be8858fc470fa1ba2bb7aa9b9c0974e30e6429c4c97bd630d0ba31de6e9e5960`；不授今日3085formal資格。Root下一步檢查同page operation重複目錄lease及fresh read路徑，形成窄修補並保留原no-follow／hardlink／layout／全部bytehash／capability／取消與PIT；既有兩位已授權subagent只做靜態方案與formal差異盤點。尚未採入新P01程式或取得新的無profile矩陣、Main、Qt types、P08或完整Gate接受。
+
+### P01目錄anchor候選：原契約QA與新namespace缺口
+
+Root以單次operation的lazy RLock目錄anchor減少重複CreateFileW；file FD／lseek／raw／hash各worker私有，原fresh manifest及全部batch bytes、前後lstat/fstat/layout、capability與PIT不變。每次borrow仍以原GetFileType／InfoEx tag/device/directory／Info volume/nonzero ID/nlinks等完整native predicates重核held handle，不由sharing flags推定attributes固定。Root將原native驗證body全文因式分解，8inflight／16unconsumed／artifact錯誤順序及executor自然join後close保持。
+
+Root01 manifest `38671b52529a1e3b2c17d9e16a9d716844170bb616978aa113952465b07d2cd3`缺held屬性重核，未執行；Root02 `73115197abc3fb684f71d9af7769ec20624a0ba2130dddc3b8ef5f2125c49817`補全native predicates，資料審核 `620c4da51d6cd3cd8219b5bb2ad1b48ae6ccc2f795dc219cecd3d8f0405bd9fb`核33protected／5compile通過，但serialstrict與原lease spy衝突、cachehit取消點缺漏，未啟動產品QA。Root03 PS建包因empty-after逆回不唯一停下，partial原封保留；Root04另從sealed Root02重建，不重跑已知問題版本。準備QA控制的一次inline PS ParserError亦未啟動／寫檔；後以獨立PS來源建成控制，沒有Python盲重跑。
+
+Root04 manifest `91cace137d237cee6d8eeb8da03acf9a3dbc2a23686d233ccf04db20c772463c`：fastserial回真explicit lease；strict clone／missingcap使用新private full decoder backend，issuedproof與root在native handles前核對，完整constructor/read/callback隔離anchor並finally恢復，`p01_session_context=None`；public strict API未改。只在兩個支援資格錯誤於handles前拒絕可fallback原OS reader，sharing/tag/identity/hash/layout/cancel等拒絕不吞。fast fallback依封存source唯一emit位置的結構證明，不能說已有一般runtime零handlesattestation。四個QA instrumentation wrappers只接受kwargs並原樣forward，全部原assert／fixture／取消及預期error不改，但測試SHA是新版本。
+
+- Root完整raw／Module AST正逆、native wholebody、33protected、兩測試全部 **71＋219個原assert** 及9compile：[22d1982e](../../output/qa/baldr_completion_20261011/root/p01_page_directory_anchor_static_80f1f1f9aa3447ad828e324b3a1714ae/receipt.json)，完整SHA `22d1982eac203202bbccae8e3cf755c9f0a1f533bc6bfa29532fa21beda80c4b`；outer `f4cb0d764588295e517a7a23f271d9caaab17c2d688664fbd6d6c7ebf3bd28e5`自然0／handles／mutexclosed。
+- 两個實際STATIC ONLY review manifest：contract `ef233ae7760a9717dee36401ca5a520ea7faa32cdde34bc28345436cab5ce769`與independent `1ec88e87cab5e4308aa24c350b4da9d7c89aa3e7abe2ddfad777643a9875306d`。未發現指定原契約必然衝突，未授runtime/Gate。靜態資料捕捉launcher0972f9 error5未啟動的收據也保留。
+- QA binding `479065c45f18c29553029a1f69020175d4d4b42bead1616b1214262f41a8997c`，3077source只換兩產品＋兩QA檔；其餘24physical relocation逐SHA等既有原件。真HERE控制 `009e1347d44468edbfe9e7a09d1142045b2b98c23f966c8046035a4ca30afe32`，原source／Qt guard完整保留，只增已pin QA模組aliases。Root控制全raw／AST逆回／2compile及完整map核對 [165e6f08](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_control_static_8332099b0225482384b88ffedb17422a/receipt.json)通過。
+- Root04 actual origin [ffdff6dd](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_origin_f7fa95609ce94cba96d29f9a8d3339a8/receipt.json)，完整SHA `ffdff6dd374a58525ba45cd39696e2e0e4bf3f0de799b974070ae38e7ab1c1d9`：native0、guard clean、3077mirror／pins一致；outer `368e266db3905655be3c01744fc2106a80cbbb6bfb6f8e935c9b0345d992e600`閉合。
+- 原lease **13PASS／0SKIP／53.398秒** [7041685c](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_lease_4f3b8549359944728cc8b5e3e0b78720/receipt.json)，完整SHA `7041685c830248769d957c9e8a5e49a0ac6bc51d2c0b660aac50e7c505cb9c92`；一個fixture-provider已import的assert rewrite warning原樣留存。outer `098c0eb9139df247eb4229ef689e929bb7090ea457e62aac5422b42ceb44d75b`閉合。
+- 原semantic／strict clone **13PASS／0SKIP／15.079秒** [c57b2c0d](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_semantic_dd4f4308c97b4b87aa03e3b944792f1a/receipt.json)，完整SHA `c57b2c0da40b134017a9ac6df26d0d0e3ac207bf0d34c82640c2991d5110393d`；outer `d165e7d97ee49a61c850ffd1cdc360a5b00d17884ee9c310a6926fd6bd284d5e`閉合。
+- current query集合 **23PASS／0SKIP／299.591秒** [a8c3dd81](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_strict_53f4be58530c49378418489cae031416/receipt.json)，完整SHA `a8c3dd812b01df8f2ee3414667b4c95872fc7ee6e750d8ca7734f1a3de9d5fa0`：兩actual PID guard clean、pins/mirror保持；outer `9d39973963193a9b2e65777beeacf8801127e861d7bccf40736207367065bd82`閉合。這是原1d11 current集合，不是舊候選25案例；另兩rolling-window extras仍待，不能以23替代25。
+
+以上各組皆Root串行、8GiB／12程序readback、600秒原期限，remaining與final PID0、handlesclosed／mutexreleased、forced_cleanup=false後才下一組。全部只適用Root04凍結候選及私有合成資料，不授formal最新版本或任何效能／Main／產品Gate。
+
+新反例設計時Root發現sharedanchor以WindowsPath作key會casefold。本機CPython `pathlib.py` SHA `ba20da75d286788b5e68b110c9724e5c8fb4314e35fea013118e42249f947f9b`的Windows flavour／equality／hash直接支持此點；現行canonical/root/ref Path equality沒有排除case-sensitive NTFS namespace。cachehit只驗held HANDLE，不能證requested不同大小寫namespace是同一個；因此Root04不得提升。Root05新manifest `798d5c9fa21379d4a9fd13ccae8a77fa36f03e366d7588de50b6828164d67a35`只將anchor map type／get／publish改成保留大小寫 `str(path)`，child原local Path map及全部native predicates不變；新repository SHA `549c9a4eb295f811e03a106d886c464c07dc81002f2a10d4f228e4a165a79a31`，未改系統case設定。
+
+Root05與新增anchor私有FD／位置／closeonce、cachehit十種native拒絕、等待lock後取消、casevariants、closed/forged、真parallel完整DTO及精確fallback反例來源目前尚待Root AST/compile/actualorigin與QA。這些新增來源尚未執行，不能借Root04 PASS。原M27無profile三p95FAIL、Main崩潰、Qt/types守衛、P08最新版與全P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持未接受。
+
+### Root05精確namespace鍵與新增反例的Root資料審核
+
+上述待審狀態在本次Root資料階段更新：Root05 manifest `798d5c9fa21379d4a9fd13ccae8a77fa36f03e366d7588de50b6828164d67a35`保留，僅三個anchor map type／get／publish變換完整raw正逆及Module AST核對通過；66個其他完整definitions／anchor methods保持。query與原semantic／query QA候選bytes等於Root04，沒有取得新版runtime或完整Gate資格。
+
+獨立靜態review封套 `output/qa/p01_page_anchor_root05_tests_static_review_20261012_main_native_static/manifest.json` SHA `88ffe025542bf57f7a056d631150a280ff4f4fc6af790611bf0ccb35d40ac373`只審原tests_root01 `55dc72e43bad398b170313f9cb6b10e67c774908c2f903105877fc2dc7cab0ad`。其指出ready斷言失敗會跳過worker join、原六個fast fallback反例沒有覆蓋private strict資格／ContextVar guards；這些是靜態缺口，不是觀測到的runtime失敗。Root在新sibling `output/qa/p01_page_directory_anchor_tests_20261012_root02`修正，未改原sealed tests或review。新版manifest SHA `ad0cf91b33adfedd83132f2e4a393f3402cfb2764d7fdcb026e27c8a04f16ddb`，test SHA `5d40f81ae897779e5a886d42aa0782a761d4474a2a009f70c2c70e02ed538489`；失敗亦在lock釋放後自然join才close，另增四種strict fallback狀態及真constructor／callback隔離、context restoration。原37個assert全部保留；靜態9functions／預期27cases，**尚未pytest collection或執行**。
+
+Root控制 `review_p01_anchor_exact_keys_tests_root02.py` SHA `92e53f4b78affa578b7559cd0b66d85608f59c07ac3ee8dad0d48a3372a15c8f` 在8GiB／12程序named Job及120秒資料期限完成：新反例全文raw／AST正逆、全部原assert、來源pins保持及三檔compile通過；没有產品import或QA。收據 [e85b0320](../../output/qa/baldr_completion_20261011/root/p01_anchor_exact_keys_tests_static_713dcc917c0c480bab4a19c5b00e775b/receipt.json)，完整SHA `e85b032061568f980c39107ef1c7e5b1d77bbf002c8b5a39c5f2be952f9f328b`。outer [b2c53b9f](../../output/qa/baldr_completion_20261011/root/single_owned_qa_957878e054cc4a8b928f0e8294ae8bc0/receipt.json)，完整SHA `b2c53b9f7d7b8a56123ae70c87ae676da27e4862f8dcb0c9423ea59c565ff778`：native0、remaining／final均0、process／Job handlesclosed、mutexreleased、forced_cleanup=false；起始available17,284,935,680bytes，上限readback通過。task已記收據且active_qa=null。
+
+下一安全動作為新建Root05＋tests_root02的精確3078來源binding／受守衛QA控制，保留原3077來源其餘metadata／bytes、原aliases與guard predicates，先核全文raw／AST及compile，再執行新版actual origin與新增反例。Root0449PASS不借給Root05。原兩rolling extras、同版原契約／無profile效能矩陣、Main崩潰、Qt/types、P08最新版与真人Gate等完整範圍未接受；本次資料審核不改先前FAIL／期限／來源資格，也不新增相同e6f9封套warm。
+
+### Root05同來源契約QA：新anchor27與原lease／semantic／query／rolling
+
+本輪完成前述功能契約QA，formal產品／測試未修改。HEAD仍 `a9bffa28`，dirty只有本任務Snapshot與本頁；所有封套、failed reviewer、raw logs、task留在原本機位置，沒有push或追加UAC。
+
+新binding `output/qa/p01_page_directory_anchor_QA_binding_20261012_root02/receipt.json` SHA `00119ca030dcdb55f3c3c053cf49407f14ce53b0eec4903919372dcdecdb8fca`，mapping SHA `54aad73b0af588da0cb5c4aab9476d27861d1fb98801a70219a50b5cb1ffc7e6`：原3077只換repository為Root05、增tests_root02一列，其餘3076整列metadata／physical path／SHA相同，總3078。QA控制 `run_p01_page_anchor_QA_root02.py` SHA `07b00640d3285713a142b5bbc1db065ba8e90d00d9c9068b64bc38cfdd9b65de`，13個精確metadata／selector差異全文raw／AST逆回，guard僅新增具名QA alias。
+
+初次資料審核將verify內新增alias dictionary當作whole-function不等而FAIL：[1f73be42](../../output/qa/baldr_completion_20261011/root/single_owned_qa_f2614e2f1e8646b597478296c4cdafe0/receipt.json)，完整SHA `1f73be4297fa50d94a2f9d28e3ada7e56a458905111b5ecd2ca189fd7e2cebb5`；未產品import／QA，失敗保留。Root另建審核器，精確逆回三項alias metadata再核全文及每個守衛definition，不跳過verify或改拒絕條件。新control／mapping／derived guard raw／AST及兩compile通過：[9611ab12](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_control_static_303b28c696884cd587c092b46cd7b857/receipt.json)，完整SHA `9611ab12d4eec84683bc5a53678e82ad6e3b3c5d713be929d60d116316011347`，outer `6d478584467a660b6f60487ffe05ffa95e0580fa9bc3aea87f9fe5d5869d44dc`閉鎖。
+
+新actual origin [03a786f3](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_origin_f32c945fa7894c9390a259e088fb2a1a/receipt.json)，完整SHA `03a786f31c02a72289c3740d5e5e3664a264d0631f059ed4958aa299fda5f9cc`：actual1PID、guard clean、pins／mirror保持；outer `3d160d4e42f12d02603ed90dce30a0be30f83a135742bfe359785b1aa992ca25`閉鎖。同Root05凍結產品來源的實際QA如下：
+
+| 案例集合 | 結果／JUnit秒數 | 完整receipt SHA／原件 | 完整outer SHA |
+|---|---|---|---|
+| 新anchor反例 | 27 PASS／0 SKIP／49.466s | [7d2ef38e25f6f9a48628162d0d9068810e1fbf367571a870b6994336d482bc42](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_anchor_ae0c73ab2ee04dde9be753740ebd15cc/receipt.json) | `6200550874cee2a769a7be250f5674ad1b0c172f0ed91658f02bf49993efb106` |
+| 原lease | 13 PASS／0 SKIP／54.856s | [232ee8b75b69c138e0b4496db5116b5ede726cba5aa8a1b5ef9aa4c795ceb701](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_lease_7aa5fc91be264519bcbae0c7571fcd93/receipt.json) | `44da5563d0cb4c441045e53547523610991ba970b65b1872caaaad72a59841eb` |
+| 原semantic／strict clone | 13 PASS／0 SKIP／14.985s | [841bd09e576c45039bd0d30e4b1db54970f45cb820009238fa30b3094c0aaf48](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_semantic_9587ac141eaa47ef9b250ef8545cbe6c/receipt.json) | `eea7ec3817d349146ce683b514da0b08f04a8ccf17e70c5b4014d677c2207fc8` |
+| current query完整集合 | 23 PASS／0 SKIP／299.996s；actual2PID | [a06e6f9d56322cf7c5c8120f8eef3cf429f5e755c73d925160b6d2c8b7254798](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_strict_037e74baaa92473ab74215e1837de5ed/receipt.json) | `96fa56e82054debf8150bf389a0cef142cc04418daf30717c0cf5439b9b73079` |
+| 原rolling-window兩案例 | 2 PASS／23 deselected／0 SKIP／116.704s | [0fd3a2a94289cf1663299e57ee6705269359369d6ef01d15ffb9a751e4aa4375](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_rolling_1f07689d7a5141deb3745d9bdf79a5be/receipt.json) | `c3c6fb8e89fbdcfc0c2068f8d7825c9d311bec926af63df63e012c6026dbc556` |
+
+全部native0／guard clean／pins與mirror保持；各組terminal、remaining及final0、process／Job handlesclosed、mutexreleased、forced_cleanup=false後才下一組。原8GiB／12程序readback及角色600秒保持，資料審核120秒不取代原角色期限。anchor與lease各有一個fixture provider已import的assert rewrite warning，原樣留存。query299.996秒是整組QA elapsed，不能當p95值或嚴格300ms效能Gate接受。
+
+兩rolling原件SHA `f6c0a0809e21de5ce615608cefdb57bef4314a53803e4cf5c050f88424cc5673`已存在同map的 `tests/lease_fixture_provider.py`，全文bytes等凍結overlay原query25來源；兩函式13＋21個原assert、8／16視窗與10–30s原wait不變。Root控制 `run_p01_page_anchor_QA_root03.py` SHA `d1adbf2cc303bcd70bd30c1056c859afbcf47bc3122e0309c42e2cc19bb8ff69`僅四個stage／selector／真__file__ metadata差異，guard assembly全部bytes及mapping保持。全文raw／AST逆回、兩原函式全部34assert與兩compile收據 [4af6be0f](../../output/qa/baldr_completion_20261011/root/p01_anchor_rolling_control_static_0559cfb02c364a8084aaa509446f055a/receipt.json)，完整SHA `4af6be0f1d16d9765d7719235130d3d8dbe5cad9858b2a5c141e3399f75607e5`，outer `316c5c540d81de1801d45dbbefd5da808e7be6637c74d91b3ece783b0abfdb7a`閉鎖。該控制actual origin [1602a48e](../../output/qa/baldr_completion_20261011/root/p01_page_anchor_QA_origin_42164dc988874b05b267306ebcd7bfdc/receipt.json)，完整SHA `1602a48e51f5149ff55e260f7bd7be0895b5924cb33d1d6c23ae10dc0ec4fe6d`，outer `a3521591f099dba34214d6a48a931930713e775d99b6f8da7fe3c8551de15b93`閉鎖。
+
+此前另兩rolling extras缺口已以同產品來源／原案例實際QA補足，但query23與rolling2分組，不冒充舊25全檔同次run。Root05尚未formal採入，也沒有新版原五cold＋一warm無profile矩陣、三類各30完整DTO及嚴格p95<300ms結果；M27原三FAIL保留。下一步先核本輪文件結構，再建立Root05原完整protocol矩陣，保留PIT／來源守衛／期限，不新增相同e6f9封套warm。Main崩潰、Qt/types、最新版P08、真來源／EXE／真人G0–G4及完整補完範圍仍未接受。
+
+### Root05完整矩陣來源副本與原無profile控制前像
+
+本輪完成來源副本及原完整控制前像，尚未執行matrix，未更動formal產品。上一goal回合為progress：Root05功能契約QA已取得同3078來源與自然閉鎖證據；本輪不是重述狀態或重跑已知失敗。HEAD仍a9bffa28，dirty僅本任務Snapshot與本頁。舊singleton active_task／handoff及resume prompt保持原樣。
+
+新namespace在 `C:/Projects/PythonProjects/technical_analysis/.t/a28d025c5`，原3,106實體檔逐檔複製並核SHA／大小，只換Root05 repository `549c9a4eb295f811e03a106d886c464c07dc81002f2a10d4f228e4a165a79a31`與query `2e53dc32deb30da01eb1801a6c57c2b3be9c81ea966796e20efb593d8ac887e7`。另3,104 bytes原樣，3075 formal歷史來源亦原樣；不因此授今日最新版formal資格。兩完整M27前像be885／a1f保存在 `output/qa/p01_root05_full_matrix_candidate_20261012_root01/preimages/M27/app_module/`。
+
+初次PS封裝在physical_rows沒有logical欄位時，OrderedDictionary.Contains(null)停下；script SHA `1b9ed3409c3b5ff727ce24030c0a42aa66b2223c807469d8ad25a1e3417f485e`，session22123 terminal1，沒有產品或Python QA。Root01 partial／其已建副本全部保留，Root02不重抄寫或改副本，改用明示完整path逐檔核3,106列，再只更新兩個產品在四個active layer的八個SHA／size metadata列。失敗紀錄在新Root02 `root01_authoring_failure_preserved.json`，沒有刪除舊封套。
+
+Root02 namespace capture receipt [149050ca](../../output/qa/p01_root05_full_matrix_candidate_20261012_root02/namespace_capture_receipt.json)，完整SHA `149050ca2d4cffb62c716fc681eda0f9398a96aa89623f463cea19a584509e18`；descriptor SHA `d70851d3cb2b0e35d2af0bd3fb10abef595eb93ee34e77c7570cf86ead32f686`，完整capture inventory `51f56735f5fd1bd0c7d3627d4a9ed08a8f5984e3916ea3f5220a8b94f6c502d4`。Root data Job獨立核全文raw、3075歷史formal、3104未變檔、兩完整前像及descriptor僅精確path重綁＋八列metadata後相等：[fce38723](../../output/qa/baldr_completion_20261011/root/p01_root05_matrix_namespace_review_153d2836ae5a4ebebccf0566e27a40c7/receipt.json)，完整SHA `fce38723ad5d5b2223f1a5942ee77519e719e8c13fb397ef5c065a85a9211b50`。同組AST盤點保存M27原完整控制與r04 profile控制的每個changed definition全文；無產品import／compile／QA。outer `d2eb3118b91b125b9ea4afa08853cf0b25bbe6cda3d9a6695a2b8eebcfdf9c8b`自然閉鎖。
+
+新Root03 prototype `output/qa/p01_root05_full_matrix_candidate_20261012_root03/prototype_receipt.json` SHA `e88b4dd4972a5a44a8024e80cff12556fa04ca6d624e7cf4086bebd9e93f6d54`：完整恢復原M27 `_matrix_samples`、`run_role`、`_execute_role`、`_load_exact_manifest`與監督器`main`，完整AST僅namespace literal正常化後相同；五cold＋一warm及原時間／來源／PIT／serial oracle／worker join／finalization仍原碼。沒有profiler loader或callbacks；來源實體定位只沿已review的精確frozen namespace adapter。新fresh移除的是profile診斷獨有module觀測／輸出欄位，仍保留sealed store audit及實體來源guard；其相對M27全守衛的獨立正逆複核仍待，不授actual origin。
+
+Root建包／五個完整原AST／10compile收據 [d0f03889](../../output/qa/baldr_completion_20261011/root/p01_root05_unprofiled_controls_build_72787c3c73ff47e88c9ae505b1f67580/receipt.json)，完整SHA `d0f03889cecdf3352f3f17ef9d8bc77268ef2dfd0ca81969060d597a0ccc571d`；outer `ac9689ba094b6b1e0c81d1331536d71f62e22da4c0c2c8f485828dbda14cf1f3`，native0、remaining與final0、process／Job handlesclosed、mutexreleased、forced_cleanup=false。兩組Root Python均8GiB／12程序readback、120秒資料期限、前組自然閉鎖後才下一組，沒有產品import或QA，也不改原角色600秒。
+
+Prototype execution_ready=false，尚缺matrix／overlay manifest及sidecar、其餘Top SHA literals重綁與完整獨立raw正逆／AST／protocol／source closure review。不得直接執行。下一步以新Root04 sibling封存這些metadata，保留原normal_view_protocol、fixed_inputs、semantic_oracle、六角色、每角色600秒、1000列／20頁、三類各30完整DTO及strict p95<300ms，再Root plan／新actual origin，最後原完整無profile矩陣。沒有重跑e6f9唯一warm；M27原三p95FAIL／Main崩潰／Qt types／P08最新版與完整補完Gate保持未接受。
+
+### 再次暫停與提交停點
+
+2026-10-12（America/Los_Angeles），使用者要求「先停下來然後紀錄好我們的進度並commit」。Root 已將 goal 設為 paused；本任務 owner `root:01a13196-6991-79e2-b85b-1153aae4a269` 同步暫停 task，active_qa=null。兩位既有靜態 subagent 均已 completed。停止後只整理文件、核對已存收據與 Git，不啟動 Python／QA、產品操作或新的 matrix 封裝。
+
+最後 Root Job [dff0d3e9](../../output/qa/baldr_completion_20261011/root/single_owned_qa_6e1489d66bd44975a8974f838742d83a/receipt.json)，完整 SHA `dff0d3e93a6fea06b94bbcbebdc3a8ee14c9479a51b370036a2b1032b2c6443b` 已重新核對：native0、remaining／final PID 皆空、process／Job handlesclosed、mutexreleased，自然收尾。只讀 Get-Process 另確認原 root 59240 與已觀測 child 27168／50784／51080 均不在目前程序表，沒有強制終止任何程序。原 8GiB／12程序 readback 保留；本次停止不需要新 Job。
+
+停止前最後文件檢查 [c211fa1a](../../output/qa/baldr_completion_20261011/root/resume_docs_check_13418e5307084c18ba7eb69d4480bfde/receipt.json)，完整 SHA `c211fa1a1c4dd00c2ef1a8b87382845d58290f58d4195f56e48cd7a78e3ee5e3`：11 features／11 documents 結構與連結 PASS、pins 穩定，僅適用該次文件版本，不授內容語意或 Gate。此段及 Snapshot 的暫停文字在該檢查之後補入，只做靜態來源／連結與 Git diff 檢查；未重跑 Python 文件檢查，也沒有新增產品 QA。
+
+已完成的增量為 r04 保存90份DTO／813份profile獨立核對、Root05候選原契約QA及新反例27PASS、3106檔來源副本與原五個完整控制函式 prototype。Root05 manifest `798d5c9fa21379d4a9fd13ccae8a77fa36f03e366d7588de50b6828164d67a35`、Root02 capture `149050ca2d4cffb62c716fc681eda0f9398a96aa89623f463cea19a584509e18`、Root03 prototype `e88b4dd4972a5a44a8024e80cff12556fa04ca6d624e7cf4086bebd9e93f6d54` 保留原件；後兩 SHA 已於停止收尾再次核對。Root03 仍 execution_ready=false，Root04 matrix 封裝尚未建立，沒有五cold＋一warm新版效能結果或 formal 採入資格。原M27三p95FAIL、完整Main崩潰因果、Qt types來源守衛FAIL、最新版P08、真來源／同版EXE／真人G0–G4與其餘完整補完項目仍待；目前不能宣告接近完整驗收。
+
+收到使用者明示恢復指示後，安全順序為：先核 HEAD／dirty／本task owner／lastClosed dff0d3 與各來源SHA；以新 Root04 sibling 完成 descriptor aliases、helper／runner／bridge pins、382 closure 中兩候選SHA／size、overlay manifest及sidecar、原完整 matrix manifest與supervisor constants的精確重綁；保留歷史封套及原M27 normal_view_protocol／fixed_inputs／semantic_oracle。Root 獨立全文raw正逆／AST／compile、來源閉包與完整protocol審查通過後，才做 plan、新 actual origin與原五cold＋一warm矩陣。仍為六角色、每角色600秒、1000列／20頁、三類各30完整DTO、strict p95<300ms，原assert／來源守衛／PIT不變；禁止直接執行Root03或重跑e6f9唯一warm。前一組真正歸零、handles關閉、mutex釋放且至少8GiB可用RAM後，Root才可串行啟下一組8GiB／12程序Job，subagent僅靜態。
+
+本次提交範圍僅 `docs/00_core/PROJECT_SNAPSHOT.md` 與本頁；此前31檔修補提交 `e0d76604ce8ce89eccfb55d2a5b670e748c310a9` 保留，本次基線為dev的 `a9bffa28d316bd2d72a744f2ecf49a6c8ea221c8`。本任務 task.json 保存實際提交SHA與上述恢復點；output／.t／C:/t候選與raw receipts維持本機忽略，不清理、不提交。舊 active_task／handoff_log／resume prompt 不追加或搬移，沒有push；本次commit只保存進度，不改產品接受狀態。

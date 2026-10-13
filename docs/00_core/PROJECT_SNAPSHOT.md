@@ -18,9 +18,9 @@ baldr 已有九個本機工作區，主程式是 `ui_qt/main.py`。下表說明�
 
 ## 目前工程狀態與限制
 
-產品補完範圍仍為 P00–P14、M1–M3、F01–F23、UX01–UX24、G0–G4，工作持續中；沒有因單項 QA 通過而宣告整包或 Gate 完成。近期接手背景與資源約束見[2026-10-12 恢復交接](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。
+產品補完範圍仍為 P00–P14、M1–M3、F01–F23、UX01–UX24、G0–G4；2026-10-12 使用者再次要求停止並記錄進度、commit，goal 與本任務現已暫停，沒有活動 QA。恢復須先取得使用者明示接續指示，再核對最新停點與來源；沒有因單項 QA 通過而宣告整包或 Gate 完成。近期接手背景與資源約束見[2026-10-12 恢復交接](../agents/shared_state/BALDR_COMPLETION_RESUME_PROMPT_20261012.md)。
 
-使用者於本輪接續工作後要求暫停並保存 commit；補完 goal 已 paused，沒有 active QA／subagent。P01 r04 新 origin／fresh 通過，唯一 warm 診斷已自然完成90份取樣；Root獨立完整artifact核對與熱點分析尚待，原三p95FAIL／Main／Qt types／完整Gate不變。接手依[本輪暫停停點](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md#使用者要求暫停與-commit停點)，只有使用者要求恢復才繼續。
+前次暫停的修補與交接已保存於 `e0d76604`；本次停點保存其後的增量。P01 r04 唯一warm的90份完整DTO、813份profile與自然收尾已獨立核對；據此新增目錄anchor修補候選。Root04原契約QA通過後，新增反例發現WindowsPath大小寫折疊可能混用namespace，因此未提升；Root05只改anchor精確字串key，完整raw／AST正逆、66protected及3compile通過。同3078凍結候選actual origin、新反例27、原lease13／semantic13／currentquery23及另兩原rolling案例均已PASS，守衛乾淨且各Job自然閉鎖；原assert、8／16視窗及等待期限保持。query整組299.996秒不代表p95效能Gate，query23與rolling2分開執行也不宣稱舊25全檔同次PASS。Root05尚未提升formal，新版矩陣已有3,106檔精確副本及原五個完整控制函式／10compile證據，但manifest／SHA重綁、完整正逆審核與五cold＋一warm實際執行仍待；Root03 prototype 為 execution_ready=false，不可直接執行，Root04 封裝尚未建立。最後 Root Job dff0d3 已自然歸零、handles 關閉、mutex 釋放。M27原三p95FAIL／完整Main／Qt types／完整Gate不變。最新證據與再次暫停的恢復順序見[10/12補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)；歷史暫停／失敗及同封套warm唯一intent保留。
 
 | 主題 | 最新可支持的狀態 | 判讀依據 |
 |---|---|---|

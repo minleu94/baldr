@@ -1,0 +1,170 @@
+{
+  "schema_version": "baldr-governance-issues.v1",
+  "authority": "G01–G10處置／未解證據的結構化追蹤；source_commit是觀測來源，非產品接受commit；歷史矩陣原件不改寫。產品現況仍回Scoped SSOT及具名receipts。",
+  "issues": [
+    {
+      "id": "G01",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "ML/OOS",
+      "current_status": "policy_resolved_external_unknown",
+      "resolved_scope": "2025 永久development-only；legacy verifier不是授權",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "prospective holdout custody／owner／QA",
+      "resolution_criteria": "新holdout具名custody、owner決議及獨立QA"
+    },
+    {
+      "id": "G02",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "automation",
+      "current_status": "denominator_resolved_trigger_unknown",
+      "resolved_scope": "12／15／27配置分母已釐清",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "host trigger起源追溯",
+      "resolution_criteria": "host trigger audit對應配置與每次slice/run"
+    },
+    {
+      "id": "G03",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "data_source",
+      "current_status": "denominator_resolved_raw_unknown",
+      "resolved_scope": "P0與EZSearch不同分母，已核owner JSON",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "8/28、8/30 raw audit與current registry接受",
+      "resolution_criteria": "取得raw audits及現在registry exact revision/hash"
+    },
+    {
+      "id": "G04",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "portfolio_exit",
+      "current_status": "caller_fixed_qualification_unknown",
+      "resolved_scope": "保存caller工程修復已驗；38 passed/1環境skip不授完整Exit",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "Exit非退化效果及run_id獨立綁定",
+      "resolution_criteria": "非退化Exit rows／same run獨立attestation與正式效果接受"
+    },
+    {
+      "id": "G05",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "historical_acceptance",
+      "current_status": "wording_resolved_acceptance_unknown",
+      "resolved_scope": "三Epic完成已標歷史自述",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "Phase3.3B歷史完整接受",
+      "resolution_criteria": "取回同範圍兩份原始報告，bounded QA不可替代"
+    },
+    {
+      "id": "G06",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "qa_counts",
+      "current_status": "resolved",
+      "resolved_scope": "6 functions／8 collected cases／9 semantic labels不同單位",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "none",
+      "resolution_criteria": "已滿足；後續計數保留單位"
+    },
+    {
+      "id": "G07",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "state_authorization",
+      "current_status": "resolved",
+      "resolved_scope": "歷史pause／resume授權語句已校準；現況回Snapshot",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md",
+        "docs/06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md"
+      ],
+      "source_date": "2026-10-13",
+      "source_commit": "fbbc314b3197a3764e749eb1c7daece5f95394ff",
+      "blocking_scope": "none; 不代表產品Gate通過",
+      "resolution_criteria": "依接手時最新使用者指令及Snapshot，舊pause不得覆蓋新恢復"
+    },
+    {
+      "id": "G08",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "external_research",
+      "current_status": "scope_resolved_source_unknown",
+      "resolved_scope": "bounded shadow-acquisition工程與來源接受分開",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "逐來源資格",
+      "resolution_criteria": "各source revision／owner／QA接受；research不代替Product Roadmap來源順序"
+    },
+    {
+      "id": "G09",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "architecture_structure",
+      "current_status": "optional_nonblocking",
+      "resolved_scope": "主文日期增量有範圍限定，不是確認矛盾",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md",
+        "docs/01_architecture/system_architecture.md",
+        "docs/01_architecture/current/README.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "none; 與Scheduler G9不同",
+      "resolution_criteria": "可選整理僅保留穩定契約並連歷史原件，不以拆分宣稱Gate"
+    },
+    {
+      "id": "G10",
+      "owner": null,
+      "owner_evidence": "unknown; 不從作者或Git提交者推定issue owner",
+      "affected_domain": "calendar",
+      "current_status": "engineering_fixed_natural_unknown",
+      "resolved_scope": "Quick76／候選CLI40歷史工程回歸；offline API已修",
+      "supporting_evidence": [
+        "docs/00_core/DOCUMENT_GOVERNANCE_STATUS_MATRIX_20261011.md",
+        "docs/06_qa/DOCUMENT_GOVERNANCE_ISSUE_RESOLUTION_20261012.md"
+      ],
+      "source_date": "2026-10-12",
+      "source_commit": "5eba9bc30f3660c4b9f50efd1649309758a434fd",
+      "blocking_scope": "自然explicit no-data producer/consumer",
+      "resolution_criteria": "自然explicit no-data producer receipt及同run consumer binding，不能合成補證"
+    }
+  ]
+}

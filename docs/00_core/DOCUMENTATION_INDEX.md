@@ -19,6 +19,7 @@
 |---|---|
 | 修改功能該找哪裡 | [功能導航](../../PROJECT_NAVIGATION.md)、[功能關聯地圖](FEATURE_DOCUMENT_MAP.json) |
 | 任務如何選角色與交付 | [角色路由](../agents/skills_registry.md)、[產品變更流程](PRODUCT_CHANGE_WORKFLOW.md) |
+| 任務閱讀範圍、Context／程式追溯與現行清冊 | [任務上下文](PRODUCT_CHANGE_WORKFLOW.md#任務上下文與漸進閱讀)、[Issue register](DOCUMENT_GOVERNANCE_ISSUES.json) |
 | 各 Roadmap 的責任 | [Hub](DEVELOPMENT_ROADMAP.md)、[6M工程](ROADMAP_6M_ENGINEERING.md)、[長期maturity](VERSION_ROADMAP_V2_1_TO_V4_0.md) |
 | 目標package、契約與遷移設計 | [Target背景](../01_architecture/target_system_architecture.md)、[FINAL設計](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
 | 資料來源、保存與恢復 | [資料專區](../03_data/README.md)、[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md) |

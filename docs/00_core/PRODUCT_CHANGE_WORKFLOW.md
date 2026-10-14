@@ -38,6 +38,36 @@ Execution 完成授權範圍的程式變更、必要測試與文件同步；QA �
 
 ## 工具與例子
 
+### 任務上下文與漸進閱讀
+
+`context` 是依既有 Feature Map `reading_routes` 產生的暫時視圖，不是另一份產品摘要或索引資料庫。先以路徑、標題或 symbol 定位，再依需要擴大：Level 0 共用入口；1 領域路由；2 契約／狀態／已知問題；3 程式 AST 簽名與測試候選；4 明示歷史研究。十個閱讀領域為 `ui`、`bug`、`data_pipeline`、`technical_analysis`、`recommendation_research`、`portfolio_health`、`ml_model`、`scheduler_automation`、`architecture_refactor`、`documentation_qa`。它們選擇閱讀來源，不改變 `route --kind` 的履職、風險與授權規則。
+
+每個路由提供代表性章節；其他功能沿輸出的 `related_paths` 與實際搜尋深入，不以代表性 selector 代替全領域覆核。`--inspect-file` 是閱讀來源，`--changed-file` 才產生同步核對清單。Level 3 預設只讀 Git HEAD 已有的文字來源之工作樹版本；ignored/private receipt、未提交新檔、symlink 與大型來源不自動擷取，須由 owner 在安全範圍另行核驗。CSV／JSON 清冊由程式處理，不全文送入 Context。
+
+功能地圖與 Issue register 是本命令明示讀取的兩份治理 metadata，另列 HEAD blob、工作樹 SHA 與 XY；新 register 若尚未提交就明示 untracked/WIP，不作已提交事實。這個例外不允許自動閱讀其他 untracked 或 ignored evidence。同步影響使用同一次讀取的地圖，避免混入另一版 selector。
+
+`--max-chars` 限制來源摘錄字元，不含 JSON metadata／包裝；整個命中放不下便列 `budget_omitted`，不截去安全限制。成功產生視圖不等於問題已解；必須檢查 `unverified_unknown`、`headings_only`、原始上下文與正文語意。`contains` 只選命中行，不能證明附近沒有反例；需要完整章節時回原始來源。輸出含 Task、Docs／Code／Contracts／Status／Tests、Issues、Constraints、Source Version、Unknown。字元與 UTF-8 bytes 是實測；`ceil(UTF8 bytes/3)` 僅是粗估 Token，不是模型 tokenizer、實際花費或人工時間。
+
+```powershell
+# 下列 Python 命令仍須依 shared_context 的 owned Job／mutex 執行，不是豁免資源守衛。
+.\.venv\Scripts\python.exe scripts/document_control.py context --domain ui --level 3 --format text --request "找 Daily Decision Desk"
+.\.venv\Scripts\python.exe scripts/document_control.py context --domain architecture_refactor --level 3 --inspect-file app_module/decision_desk_dtos.py --changed-file app_module/decision_desk_dtos.py
+.\.venv\Scripts\python.exe scripts/document_control.py trace --inspect-file app_module/decision_desk_dtos.py --symbol DecisionDeskSnapshot
+.\.venv\Scripts\python.exe scripts/document_control.py inventory --base HEAD~1
+.\.venv\Scripts\python.exe scripts/document_control.py issues
+.\.venv\Scripts\python.exe scripts/document_control.py check --context-metadata
+```
+
+在自己 ignored task output 保存 Context 和命令，將實際閱讀路徑另記 `read_files`／`inspection_scope`，記錄來源 HEAD、工作樹 SHA、selector／行號與未讀部分；工具不自動改他人 task。接手時重建視圖並核差異，不永久貼一份完整摘要。查詢程式存在或簽名用 `trace`；它不執行測試、不 import 產品，也不證明文件與行為相等。測試及 Evidence 是候選入口，原 receipt 的 commit、source pins、run／資料／環境適用性必須另核。
+
+### 現況、Issue 與增量驗收
+
+`inventory` 動態取 Git HEAD tracked tree；預設給分類統計、工作樹 XY 狀態及可選 base→HEAD delta，`--details` 才給文件逐檔 HEAD blob／工作樹 hash。Archive、Target、QA/navigation 的路徑分類只是機械候選，不替代文本權威判斷。ignored DB／models／Graphify／秘密資產不掃描內容，untracked 另列；固定 1,520 路徑[歷史 Manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)保持原樣，不能把新分母或 hash 當成新全庫 EOF 覆核。
+
+G01–G10 的已解範圍與外部證據界線由[結構化 Issue register](DOCUMENT_GOVERNANCE_ISSUES.json)追蹤，正文判定回其原始矩陣／QA。沒有 owner 證據便保留 null；Git 作者不是 owner。治理 G09 與排程 G9／H20 不同。已解問題不重開；新的外部資格結果另核來源與 resolution criteria。
+
+閉環順序為：分類任務 → 最小 Context → 正文／程式／證據 → 授權工作 → 適用 QA → diff／Coverage → 需要時同步章節與狀態 → metadata／link／task check → Root review → scoped commit。實作看 Git／source；WIP 看工作樹與 owner task；QA 看原始 run；產品接受看 Gate。Snapshot 只摘要實質改變，不為每次測試重寫；README 保持穩定使用入口。Graphify 沿[現有指南](DOCUMENTATION_GRAPH_GUIDE.md)供導航，來源版本不符時回 Feature Map／Git，保護原圖及歷史原件。本輪固定五題與驗收見[治理 QA](../06_qa/DOCUMENT_CONTEXT_GOVERNANCE_ACCEPTANCE_20261013.md)。
+
 從 repository 根目錄執行。下面以新的 UI 任務示範；換成自己的 task ID、owner 與修改範圍，既有 ID 不會被覆寫：
 
 ```powershell

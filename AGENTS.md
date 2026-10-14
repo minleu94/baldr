@@ -10,6 +10,8 @@
 4. 產品方向、工程優先序、架構、目標設計與使用者操作依任務範圍讀取各自 Scoped SSOT。文件同步依 `docs/00_core/DOC_COVERAGE_MAP.md`、`docs/00_core/FEATURE_DOCUMENT_MAP.json` 與 `docs/00_core/PRODUCT_CHANGE_WORKFLOW.md`。
 5. Stage 或 commit 前閱讀 `docs/agents/git_exclusions.md`。
 
+閱讀時沿[任務上下文流程](docs/00_core/PRODUCT_CHANGE_WORKFLOW.md#任務上下文與漸進閱讀)使用既有 `document_control context`：先定位路徑／標題／symbol，依 Level 0–4 深入。Feature Map／Manifest 由工具處理，不全文載入；Context 不取代共用硬規則、正文與原始 QA。閱讀領域不等於履職 kind，`--inspect-file` 不等於修改範圍，Unknown／預算略過須明示。
+
 ## 條件式權威文件
 
 - 產品能力、產品 Gate、現行資料來源優先序：`docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`。

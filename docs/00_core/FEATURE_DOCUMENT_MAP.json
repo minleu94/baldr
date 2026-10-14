@@ -29,8 +29,7 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
-        "ui_qt/views/workbench_view.py",
-        "app_module/decision_desk*"
+        "ui_qt/views/workbench_view.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -52,10 +51,17 @@
         "docs/01_architecture/current/application_and_workspaces.md"
       ],
       "code": [
-        "ui_qt/views/market_regime_view.py"
+        "ui_qt/views/market_regime_view.py",
+        "ui_qt/views/decision_desk_view.py",
+        "app_module/decision_desk_dtos.py",
+        "app_module/daily_market_technical_universe_v4_query.py"
       ],
       "tests": [
-        "tests/test_ui_qt_market_regime_view.py"
+        "tests/test_ui_qt_market_regime_view.py",
+        "tests/test_ui_qt_decision_desk_view.py",
+        "tests/test_ui_qt_decision_desk_main_integration.py",
+        "tests/test_decision_desk_dto_contract.py",
+        "tests/test_daily_market_technical_universe_v4_read_session.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -70,7 +76,15 @@
       "change_patterns": [
         "ui_qt/views/market*",
         "app_module/regime_service.py",
-        "app_module/industry_strength*"
+        "app_module/industry_strength*",
+        "app_module/decision_desk*",
+        "ui_qt/views/decision_desk_view.py",
+        "app_module/daily_market_technical_universe_v4*",
+        "ui_qt/views/daily_market_technical_universe_v4_view.py",
+        "tests/test_ui_qt_decision_desk_view.py",
+        "tests/test_ui_qt_decision_desk_main_integration.py",
+        "tests/test_decision_desk_dto_contract.py",
+        "tests/test_daily_market_technical_universe_v4_read_session.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -93,10 +107,26 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
-        "ui_qt/views/recommendation_view.py"
+        "ui_qt/views/recommendation_view.py",
+        "ui_qt/views/daily_market_technical_official_disposition_composite_view.py",
+        "app_module/daily_market_technical_official_disposition_composite_query_v1.py",
+        "app_module/recommendation/contracts.py",
+        "app_module/advice_dtos.py",
+        "app_module/dtos/__init__.py",
+        "ml_module/recommendation_calibration_authority.py",
+        "ui_qt/technical_official_composite_research_presenter.py",
+        "app_module/recommendation/personal_h20_read_session.py"
       ],
       "tests": [
-        "tests/test_ui_qt_recommendation_execution.py"
+        "tests/test_ui_qt_recommendation_execution.py",
+        "tests/test_ui_qt_technical_official_composite_main_journey.py",
+        "tests/test_recommendation_contracts.py",
+        "tests/test_recommendation_dto_roundtrip.py",
+        "tests/test_recommendation_calibration_contract_guards.py",
+        "tests/test_personal_h20_read_session.py",
+        "tests/test_recommendation_calibration.py",
+        "tests/test_ui_qt_technical_official_composite_research_presenter.py",
+        "tests/test_personal_h20_natural_outcome_batch.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -112,7 +142,25 @@
         "ui_qt/views/recommendation*",
         "app_module/recommendation*",
         "decision_module/*",
-        "analysis_module/*"
+        "analysis_module/*",
+        "ui_qt/views/daily_market_technical_official_disposition_composite_view.py",
+        "app_module/daily_market_technical_official_disposition_composite_query_v1.py",
+        "app_module/recommendation/contracts.py",
+        "app_module/advice_dtos.py",
+        "app_module/dtos/__init__.py",
+        "ml_module/recommendation_calibration_authority.py",
+        "tests/test_ui_qt_technical_official_composite_main_journey.py",
+        "tests/test_recommendation_contracts.py",
+        "tests/test_recommendation_dto_roundtrip.py",
+        "tests/test_recommendation_calibration_contract_guards.py",
+        "tests/test_personal_h20_read_session.py",
+        "ml_module/recommendation_calibration*",
+        "ml_module/personal_h20*",
+        "app_module/recommendation/personal_h20*",
+        "tests/test_recommendation_calibration.py",
+        "ui_qt/technical_official_composite_research_presenter.py",
+        "tests/test_ui_qt_technical_official_composite_research_presenter.py",
+        "tests/test_personal_h20_natural_outcome_batch.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -259,10 +307,13 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
-        "ui_qt/views/portfolio_view.py"
+        "ui_qt/views/portfolio_view.py",
+        "ml_module/allocation_training_service.py",
+        "ml_module/allocation_promotion_reference.py"
       ],
       "tests": [
-        "tests/test_ui_qt_portfolio_view.py"
+        "tests/test_ui_qt_portfolio_view.py",
+        "tests/test_ml_allocation_shadow_evidence.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -278,7 +329,9 @@
         "ui_qt/views/portfolio*",
         "portfolio_module/*",
         "app_module/portfolio*",
-        "app_module/position_health*"
+        "app_module/position_health*",
+        "ml_module/allocation*",
+        "tests/test_ml_allocation_shadow_evidence.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -301,10 +354,14 @@
         "docs/01_architecture/current/data_storage_runtime.md"
       ],
       "code": [
-        "ui_qt/views/update_view.py"
+        "ui_qt/views/update_view.py",
+        "scripts/scheduled/run_daily_data_update_quick.py",
+        "scripts/update_phase3c_candidates.py"
       ],
       "tests": [
-        "tests/test_ui_qt_update_view_workbench.py"
+        "tests/test_ui_qt_update_view_workbench.py",
+        "tests/test_scheduled_data_update_runner.py",
+        "tests/test_phase3c_backfill_runner.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -319,7 +376,11 @@
       "change_patterns": [
         "ui_qt/views/update*",
         "app_module/update*",
-        "data_module/*"
+        "data_module/*",
+        "scripts/scheduled/run_daily_data_update_quick.py",
+        "scripts/update_phase3c_candidates.py",
+        "tests/test_scheduled_data_update_runner.py",
+        "tests/test_phase3c_backfill_runner.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -381,17 +442,20 @@
       ],
       "code": [
         "scripts/document_control.py",
-        "scripts/auto_state_sync.py"
+        "scripts/auto_state_sync.py",
+        "scripts/document_context.py"
       ],
       "tests": [
         "tests/test_document_control.py",
-        "tests/test_auto_state_task_json.py"
+        "tests/test_auto_state_task_json.py",
+        "tests/test_document_context.py"
       ],
       "manual": [
         "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md"
       ],
       "evidence": [
-        "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md"
+        "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md",
+        "docs/06_qa/DOCUMENT_CONTEXT_GOVERNANCE_ACCEPTANCE_20261013.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -417,7 +481,10 @@
         "tests/test_document_control.py",
         "tests/test_auto_state_task_json.py",
         ".agent/rules/*",
-        ".agents/skills/*"
+        ".agents/skills/*",
+        "scripts/document_context.py",
+        "tests/test_document_context.py",
+        "docs/00_core/DOCUMENT_GOVERNANCE_ISSUES.json"
       ],
       "sync_documents": [
         "docs/agents/skills_registry.md",
@@ -472,6 +539,477 @@
         "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md",
         "docs/07_guides/FIRST_INSTALL_PROMPT.md"
       ]
+    },
+    {
+      "id": "platform:application_shell",
+      "label": "跨工作區主程式接線；由diff再判實際功能範圍",
+      "requirements": [
+        "docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md"
+      ],
+      "contracts": [
+        "docs/01_architecture/current/application_and_workspaces.md"
+      ],
+      "code": [
+        "ui_qt/main.py"
+      ],
+      "tests": [
+        "tests/test_ui_qt_decision_desk_main_integration.py"
+      ],
+      "manual": [
+        "docs/07_guides/APPLICATION_MANUAL.md"
+      ],
+      "evidence": [
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+      ],
+      "status": [
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ],
+      "change_patterns": [
+        "ui_qt/main.py"
+      ],
+      "sync_documents": [
+        "docs/01_architecture/current/application_and_workspaces.md",
+        "PROJECT_NAVIGATION.md",
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/00_core/PROJECT_SNAPSHOT.md"
+      ]
     }
-  ]
+  ],
+  "context_entry": [
+    {
+      "path": "AGENTS.md",
+      "contains": [
+        "跨平台共用安全"
+      ]
+    },
+    {
+      "path": "docs/agents/shared_context.md",
+      "section": "工作邊界與資料保護"
+    }
+  ],
+  "reading_routes": {
+    "ui": {
+      "features": [
+        "workspace:market_explore",
+        "platform:application_shell"
+      ],
+      "entry": [
+        {
+          "path": "PROJECT_NAVIGATION.md",
+          "contains": [
+            "使用者",
+            "功能與模組"
+          ]
+        }
+      ],
+      "documents": [
+        {
+          "path": "ui_qt/README.md",
+          "contains": [
+            "市場探索",
+            "Daily Decision Desk"
+          ]
+        },
+        {
+          "path": "docs/07_guides/APPLICATION_MANUAL.md",
+          "section": "8. 每日決策"
+        },
+        {
+          "path": "docs/01_architecture/current/application_and_workspaces.md",
+          "section": "工作區責任"
+        }
+      ],
+      "code": [
+        {
+          "path": "ui_qt/main.py",
+          "contains": [
+            "市場總覽是 Decision Desk",
+            "decision_desk_view = DecisionDeskView(",
+            "market_tabs.insertTab(0, decision_desk_view"
+          ]
+        },
+        {
+          "path": "ui_qt/views/decision_desk_view.py",
+          "symbol": "DecisionDeskView.__init__"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_ui_qt_decision_desk_main_integration.py",
+          "symbol": "test_main_window_owns_one_decision_desk_as_market_overview_index_zero"
+        },
+        {
+          "path": "tests/test_decision_desk_dto_contract.py",
+          "symbol": "test_decision_desk_quality_values_and_section_serialization_are_stable"
+        }
+      ]
+    },
+    "bug": {
+      "features": [
+        "workspace:market_explore"
+      ],
+      "documents": [
+        {
+          "path": "docs/00_core/PROJECT_SNAPSHOT.md",
+          "contains": [
+            "| P01 Main",
+            "| P01 矩陣"
+          ]
+        },
+        {
+          "path": "docs/06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md",
+          "section": "Root16 保存矩陣完整核驗完成"
+        }
+      ],
+      "code": [
+        {
+          "path": "app_module/daily_market_technical_universe_v4_query.py",
+          "symbol": "DailyMarketTechnicalUniverseV4ReadSession.read_page"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_daily_market_technical_universe_v4_read_session.py",
+          "symbol": "test_session_full_index_matches_strict_filter_sort_and_global_paging"
+        }
+      ]
+    },
+    "data_pipeline": {
+      "features": [
+        "workspace:update"
+      ],
+      "documents": [
+        {
+          "path": "docs/01_architecture/current/data_storage_runtime.md",
+          "section": "讀寫與保存契約"
+        },
+        {
+          "path": "docs/03_data/daily_data_update_guide.md"
+        }
+      ],
+      "code": [
+        {
+          "path": "scripts/scheduled/run_daily_data_update_quick.py",
+          "symbol": "_calendar_for_run"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_scheduled_data_update_runner.py",
+          "contains": [
+            "def test_"
+          ]
+        }
+      ],
+      "issues": [
+        "G10"
+      ]
+    },
+    "technical_analysis": {
+      "features": [
+        "workspace:market_explore",
+        "workspace:recommendation",
+        "platform:application_shell"
+      ],
+      "documents": [
+        {
+          "path": "docs/01_architecture/current/application_and_workspaces.md",
+          "section": "市場觀察與推薦"
+        },
+        {
+          "path": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+          "section": "6.7 官方市場與技術條件研究"
+        }
+      ],
+      "code": [
+        {
+          "path": "app_module/daily_market_technical_official_disposition_composite_query_v1.py",
+          "symbol": "DailyMarketTechnicalOfficialDispositionCompositeQueryV1"
+        },
+        {
+          "path": "ui_qt/views/daily_market_technical_official_disposition_composite_view.py",
+          "symbol": "DailyMarketTechnicalOfficialDispositionCompositeView"
+        },
+        {
+          "path": "ui_qt/technical_official_composite_research_presenter.py",
+          "symbol": "present_composite_page_v1"
+        },
+        {
+          "path": "ui_qt/main.py",
+          "contains": [
+            "self.technical_official_composite_view =",
+            "DailyMarketTechnicalOfficialDispositionCompositeView("
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_ui_qt_technical_official_composite_main_journey.py",
+          "contains": [
+            "def test_"
+          ]
+        }
+      ]
+    },
+    "recommendation_research": {
+      "features": [
+        "workspace:recommendation",
+        "workspace:backtest"
+      ],
+      "documents": [
+        {
+          "path": "docs/01_architecture/current/decision_research_portfolio.md",
+          "section": "Recommendation 與 Decision"
+        },
+        {
+          "path": "docs/01_architecture/current/decision_research_portfolio.md",
+          "section": "回測與研究時間軸"
+        }
+      ],
+      "code": [
+        {
+          "path": "app_module/recommendation/contracts.py",
+          "symbol": "RecommendationExecution"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_recommendation_contracts.py",
+          "contains": [
+            "def test_"
+          ]
+        }
+      ],
+      "issues": [
+        "G03",
+        "G05",
+        "G08"
+      ]
+    },
+    "portfolio_health": {
+      "features": [
+        "workspace:portfolio"
+      ],
+      "documents": [
+        {
+          "path": "docs/01_architecture/current/decision_research_portfolio.md",
+          "section": "Portfolio、Paper 與持倉研究"
+        }
+      ],
+      "code": [
+        {
+          "path": "ml_module/allocation_promotion_reference.py"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_ml_allocation_shadow_evidence.py",
+          "contains": [
+            "def test_"
+          ]
+        }
+      ],
+      "issues": [
+        "G04"
+      ]
+    },
+    "ml_model": {
+      "features": [
+        "workspace:recommendation",
+        "workspace:portfolio"
+      ],
+      "documents": [
+        {
+          "path": "docs/00_core/PROJECT_SNAPSHOT.md",
+          "contains": [
+            "| Health／ML長路徑",
+            "Historical replay"
+          ]
+        },
+        {
+          "path": "docs/01_architecture/current/decision_research_portfolio.md",
+          "contains": [
+            "Recommendation ML Shadow",
+            "sealed label readiness"
+          ]
+        },
+        {
+          "path": "docs/00_core/ROADMAP_6M_ENGINEERING.md",
+          "section": "11. Gate 7"
+        },
+        {
+          "path": "docs/06_qa/GATE_7_ML_SHADOW_ENGINEERING.md",
+          "preamble": true
+        },
+        {
+          "path": "docs/06_qa/GATE_7_ML_SHADOW_ENGINEERING.md",
+          "section": "Purged walk-forward"
+        },
+        {
+          "path": "docs/06_qa/GATE_7_ML_SHADOW_ENGINEERING.md",
+          "contains": [
+            "Gate 7 使用隔離"
+          ]
+        }
+      ],
+      "code": [
+        {
+          "path": "ml_module/recommendation_calibration_authority.py",
+          "symbol": "RecommendationPromotionPolicy"
+        },
+        {
+          "path": "ml_module/allocation_training_service.py",
+          "contains": [
+            "class ",
+            "    def fit("
+          ]
+        },
+        {
+          "path": "app_module/recommendation/personal_h20_read_session.py",
+          "symbol": "PersonalH20ReadSession"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_recommendation_calibration.py",
+          "symbol": "test_predictions_keep_ranking_probability_action_and_evidence_separate"
+        },
+        {
+          "path": "tests/test_recommendation_calibration.py",
+          "symbol": "test_walk_forward_purges_matured_labels_before_calibration_and_test"
+        },
+        {
+          "path": "tests/test_ml_allocation_shadow_evidence.py",
+          "symbol": "test_missing_prior_paper_state_fails_closed"
+        },
+        {
+          "path": "tests/test_personal_h20_read_session.py",
+          "symbol": "test_hook_keeps_missing_capture_as_unknown_and_propagates_cancel"
+        }
+      ],
+      "issues": [
+        "G01"
+      ]
+    },
+    "scheduler_automation": {
+      "features": [
+        "platform:bootstrap",
+        "workspace:update"
+      ],
+      "documents": [
+        {
+          "path": "docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md"
+        },
+        {
+          "path": "docs/06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md"
+        }
+      ],
+      "code": [
+        {
+          "path": "scripts/inspect_scheduled_task_registration.py"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_scheduled_data_update_runner.py",
+          "contains": [
+            "def test_"
+          ]
+        }
+      ],
+      "issues": [
+        "G02",
+        "G10"
+      ]
+    },
+    "architecture_refactor": {
+      "features": [
+        "workspace:market_explore"
+      ],
+      "documents": [
+        {
+          "path": "docs/01_architecture/current/application_and_workspaces.md",
+          "section": "入口與分層"
+        },
+        {
+          "path": "docs/01_architecture/current/application_and_workspaces.md",
+          "section": "工作區責任"
+        },
+        {
+          "path": "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md",
+          "section": "執行與同步"
+        }
+      ],
+      "code": [
+        {
+          "path": "app_module/decision_desk_dtos.py",
+          "symbol": "DecisionDeskSnapshot"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_decision_desk_dto_contract.py",
+          "symbol": "test_decision_desk_quality_values_and_section_serialization_are_stable"
+        }
+      ],
+      "history": [
+        {
+          "path": "docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md"
+        }
+      ],
+      "issues": [
+        "G09"
+      ]
+    },
+    "documentation_qa": {
+      "features": [
+        "platform:document_workflow"
+      ],
+      "documents": [
+        {
+          "path": "docs/00_core/PROJECT_SNAPSHOT.md",
+          "contains": [
+            "使用者明示",
+            "| P01 Main",
+            "| P01 矩陣",
+            "| Health／ML長路徑",
+            "P08a唯讀帳戶卡片"
+          ]
+        },
+        {
+          "path": "docs/06_qa/README.md",
+          "contains": [
+            "原始",
+            "產品",
+            "Gate",
+            "完成"
+          ]
+        },
+        {
+          "path": "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md",
+          "section": "交付條件"
+        }
+      ],
+      "code": [
+        {
+          "path": "app_module/daily_market_technical_universe_v4_query.py",
+          "symbol": "DailyMarketTechnicalUniverseV4ReadSession.read_page"
+        }
+      ],
+      "tests": [
+        {
+          "path": "tests/test_daily_market_technical_universe_v4_read_session.py",
+          "symbol": "test_session_full_index_matches_strict_filter_sort_and_global_paging"
+        },
+        {
+          "path": "tests/test_document_control.py",
+          "symbol": "test_check_rejects_done_task_with_not_run_qa"
+        }
+      ],
+      "issues": [
+        "G07",
+        "G09"
+      ]
+    }
+  }
 }

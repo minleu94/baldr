@@ -1,6 +1,6 @@
 """baldr 文件關聯、角色分流與移機計畫的標準函式庫工具。
 
-route/check/bootstrap-plan 只讀來源；init-task 只建立獨立 ignored 任務紀錄。
+route/check/context/trace/inventory/issues/bootstrap-plan 只讀來源；init-task 建立獨立 ignored 任務紀錄。
 工具不啟動 Agent、排程、資料更新、模型訓練或產品 import。
 """
 
@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 from typing import Any
@@ -45,9 +46,20 @@ def match_paths(paths: list[str], patterns: list[str]) -> bool:
     return any(fnmatch(path, pattern) for path in paths for pattern in patterns)
 
 
+def read_config(root: Path, relative: str) -> dict[str, Any]:
+    """治理 config 必須是 repo 內普通檔，拒絕 lexical symlink／reparse。"""
+    target = confined(root, relative)
+    current = root / relative
+    while current != root:
+        if current.is_symlink() or getattr(current.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise ValueError(f"治理 config 不接受連結：{relative}")
+        current = current.parent
+    return read_json(target)
+
+
 def route(root: Path, *, kind: str | None = None, request: str = "", changed: list[str] | None = None) -> dict[str, Any]:
     explicit_kind = kind is not None
-    catalog = read_json(root / ROLE_CATALOG)
+    catalog = read_config(root, ROLE_CATALOG)
     paths = [(value.replace("\\", "/")) for value in (changed or [])]
     for path in paths:
         confined(root, path)
@@ -85,7 +97,7 @@ def route(root: Path, *, kind: str | None = None, request: str = "", changed: li
 
 
 def feature_impacts(root: Path, paths: list[str]) -> list[dict[str, Any]]:
-    mapping = read_json(root / FEATURE_MAP)
+    mapping = read_config(root, FEATURE_MAP)
     return [feature for feature in mapping["features"] if match_paths(paths, feature["change_patterns"])]
 
 
@@ -106,7 +118,7 @@ def init_task(root: Path, *, task_id: str, kind: str, owner: str, paths: list[st
     record = {
         "schema_version": "baldr-task.v1", "task_id": task_id, "owner": owner,
         "status": "planning", "baseline_commit": baseline or "unknown", "request": request,
-        "routing": classified, "scope_files": paths,
+        "routing": classified, "scope_files": paths, "read_files": [], "inspection_scope": [],
         "features": [item["id"] for item in feature_impacts(root, paths)],
         "coverage": [{"path": path, "status": "pending", "reason": ""} for path in required_documents(root, paths)],
         "verification": [], "remaining": [], "safe_resume_point": "",
@@ -176,6 +188,8 @@ def check_task(root: Path, task: dict[str, Any]) -> list[str]:
     if task.get("status") not in {"planning", "in_progress", "review", "verification", "documentation", "blocked", "paused", "done"}:
         errors.append("未知 task status")
     paths = task.get("scope_files", [])
+    for path in [*task.get("read_files", []), *task.get("inspection_scope", [])]:
+        confined(root, path)
     expected = route(root, kind=task.get("routing", {}).get("kind"), request=task.get("request", ""), changed=paths)
     if expected.get("status") != "classified":
         errors.append("任務尚未完成分類")
@@ -186,7 +200,7 @@ def check_task(root: Path, task: dict[str, Any]) -> list[str]:
         if path not in coverage:
             errors.append(f"漏列必要文件：{path}")
     if task.get("status") == "done":
-        patterns = [pattern for feature in read_json(root / FEATURE_MAP)["features"] for pattern in feature["change_patterns"]]
+        patterns = [pattern for feature in read_config(root, FEATURE_MAP)["features"] for pattern in feature["change_patterns"]]
         decisions = {item.get("path"): item for item in task.get("impact_decisions", [])}
         for path in paths:
             if not match_paths([path], patterns) and not decisions.get(path, {}).get("reason", "").strip():
@@ -224,7 +238,7 @@ def check_task(root: Path, task: dict[str, Any]) -> list[str]:
 
 def check(root: Path, *, paths: list[str] | None = None, task_path: str | None = None) -> dict[str, Any]:
     errors: list[str] = []
-    catalog = read_json(root / ROLE_CATALOG)
+    catalog = read_config(root, ROLE_CATALOG)
     if catalog.get("schema_version") != "baldr-role-routing.v1":
         errors.append("路由 schema_version 不符")
     for role, guide in catalog["roles"].items():
@@ -234,7 +248,7 @@ def check(root: Path, *, paths: list[str] | None = None, task_path: str | None =
         for role in [rule["primary"], *rule["required"]]:
             if role not in catalog["roles"]:
                 errors.append(f"路由引用未知角色：{kind} {role}")
-    mapping = read_json(root / FEATURE_MAP)
+    mapping = read_config(root, FEATURE_MAP)
     ids: set[str] = set()
     map_documents: set[str] = set()
     for feature in mapping["features"]:
@@ -434,11 +448,33 @@ def main(argv: list[str] | None = None) -> int:
     check_parser = commands.add_parser("check")
     check_parser.add_argument("--task")
     check_parser.add_argument("--path", action="append")
+    check_parser.add_argument("--context-metadata", action="store_true")
+    context_parser = commands.add_parser("context")
+    context_parser.add_argument("--domain", required=True)
+    context_parser.add_argument("--request", default="")
+    context_parser.add_argument("--level", type=int, default=2)
+    context_parser.add_argument("--max-chars", type=int, default=12000)
+    context_parser.add_argument("--inspect-file", action="append", default=[])
+    context_parser.add_argument("--changed-file", action="append", default=[])
+    context_parser.add_argument("--include-history", action="store_true")
+    context_parser.add_argument("--format", choices=["json", "text"], default="json")
+    inventory_parser = commands.add_parser("inventory")
+    inventory_parser.add_argument("--base")
+    inventory_parser.add_argument("--details", action="store_true")
+    trace_parser = commands.add_parser("trace")
+    trace_parser.add_argument("--inspect-file", action="append", required=True)
+    trace_parser.add_argument("--symbol")
+    commands.add_parser("issues")
     bootstrap_parser = commands.add_parser("bootstrap-plan")
     bootstrap_parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args(argv)
     root = args.repo_root.resolve()
     try:
+        if args.command in {"context", "inventory", "trace", "issues"} or (args.command == "check" and args.context_metadata):
+            # 直接執行 scripts/document_control.py 時仍只載入本 repo 的唯讀 helper。
+            if not __package__:
+                sys.path.insert(0, str(REPO_ROOT))
+            from scripts import document_context
         if args.command == "route":
             result = route(root, kind=args.kind, request=args.request, changed=args.changed_file)
             passed = result["status"] == "classified"
@@ -448,12 +484,31 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "bootstrap-plan":
             result = bootstrap_plan(root, read_json(args.manifest))
             passed = result["ready_for_configuration_review"]
+        elif args.command == "context":
+            result = document_context.context(root, domain=args.domain, request=args.request, level=args.level,
+                inspect=args.inspect_file, changed=args.changed_file, max_chars=args.max_chars, include_history=args.include_history)
+            passed = True
+        elif args.command == "inventory":
+            result = document_context.inventory(root, base=args.base, details=args.details)
+            passed = True
+        elif args.command == "trace":
+            result = document_context.trace(root, args.inspect_file, args.symbol)
+            passed = not any(item["unknown"] for item in result["records"])
+        elif args.command == "issues":
+            result = document_context.issue_view(root)
+            passed = True
         else:
             result = check(root, paths=args.path, task_path=args.task)
+            if args.context_metadata:
+                result["errors"].extend(document_context.check_metadata(root))
+                result["passed"] = not result["errors"]
             passed = result["passed"]
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.command == "context" and args.format == "text":
+            print(document_context.render_context(result), end="")
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if passed else 2
-    except (ValueError, OSError, KeyError, TypeError) as exc:
+    except (ValueError, OSError, KeyError, TypeError, SyntaxError, UnicodeError) as exc:
         print(json.dumps({"passed": False, "error": str(exc)}, ensure_ascii=False))
         return 2
 

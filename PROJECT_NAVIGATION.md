@@ -12,7 +12,7 @@
 | 修改使用者可操作流程 | [完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md) | [指南章節地圖](docs/07_guides/README.md)與對應功能文件 |
 | 理解 Windows／Codex 排程 | [排程運維與搬機指南](docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) | [全排程唯讀稽核 Runbook](docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)及 `scripts/scheduled/README.md` |
 | 理解專案目錄與 package 職責 | [PROJECT_INVENTORY](PROJECT_INVENTORY.md) | 本文件的分層與功能表 |
-| 變更程式或文件的治理流程 | [AGENTS.md](AGENTS.md) | [Documentation Coverage Map](docs/00_core/DOC_COVERAGE_MAP.md)與對應 Agent 文件 |
+| 變更程式或文件的治理流程 | [AGENTS.md](AGENTS.md) | [Coverage](docs/00_core/DOC_COVERAGE_MAP.md)、[任務上下文／Context CLI](docs/00_core/PRODUCT_CHANGE_WORKFLOW.md#任務上下文與漸進閱讀)與對應 Agent 文件 |
 
 ## 程式分層
 

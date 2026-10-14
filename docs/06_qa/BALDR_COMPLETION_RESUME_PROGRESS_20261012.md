@@ -817,3 +817,15 @@ P08a測試Root02 `98187817`另新增BLOCKED卡片完全不含部分帳戶資料�
 同工作區另一聊天「釐清待解決問題」正在修改Paper producer、Recommendation／Evidence／Forward排程及測試，並新增未tracked來源。這使fafbd原current live／Git membership封套不再代表最新工作區。Root沒有啟動已知stale的ef714 collect／suite，未覆寫、stage或整合另一owner的改動；原收據仍按其原版本與觀測時間保存。後續須待owner交接、核精確diff／SHA／membership與新QA，再建立具體新lineage；不能靠改expected SHA、忽略新來源或盲重跑宣稱source guard通過。此阻擋不影響已完成的固定guard DATA／compile，但不授最新formal或P08接受。
 
 P01另[完整30筆篩選靜態調查](../../output/qa/baldr_completion_20261011/root/p01_root16_filter_static_investigation_20261013.md) SHA `6c972992a1865f0e5480b77fc8149c47c889272b8ee5d321aaee5696c71b9814`／13,380 bytes。Root全文核對：12／30超300ms，集中兩類命中30–32列的案例；舊Root14對應26–27 groups只是結構關聯，不能當Root16直接遙測或外推舊profile耗時。不同segment的manifest／proof／完整raw SHA不可共用；合併即時讀後lstat與最終layout檢查仍可能改變瞬時替換／恢復、取消或錯誤觀察時點，尚無可批准的語義等價證明。維持原8／16邊界與全量refs守衛，沒有實作、probe或矩陣重跑；原效能FAIL與完整Gate未接受保持。
+
+### 2026-10-14 使用者暫停：P01 效能暫緩、P08 六組限定 PASS 與共同接線停點
+
+使用者同意暫緩P01篩選385.9978ms作為其他補完的前置，後續另討論優化；原strict300ms FAIL、90份DTO與原唯一矩陣收據保持，沒有重跑matrix／profile或修改門檻。隨後明示先停下、紀錄並commit。完整安全接手點、候選狀態與精確收據見[10/14暫停checkpoint](BALDR_COMPLETION_CHECKPOINT_20261014.md)；本節不覆寫前面依舊版source記錄的原始結果。
+
+P08後續已取得Paper reader10、Paper widget16、catalogue13、Historical reader7、Historical widget16、Historical Research Lab wiring13的六組指定候選限定PASS，各組另經Root全量收據／pins／mirror／自然閉鎖讀回。原catalogue／Historical／wiring FAIL保留；六組75個案例不是單一合併suite或完整P08接受。Root04雙卡共同接線候選16來源／原14tests、六份canonical回歸測試與八份文件預覽已存在；Root完整bytes正逆與來源pins已核，但共同接線origin／suite與正式採入皆NOT_RUN。Root03controller仍UNSEALED_NOT_EXECUTABLE，PSRoot02只是未重綁模板，不可直接執行。
+
+最新saved DATA收據 `a0a89fa7cc270a288452e4c315587dfa8292cd0a2ec99e0e10e2de9340d4aa5a` 綁暫停前HEAD `a04c3ba95d61696982a1c67d87921f3d595c4628`，full3089／active3088＋archive1／16inputs／8outputs。Root全量讀回 `a3e8ed8e78fa23e0dfa6e0f4d73b2eb829663502bbeed687eed8e67cca4565b3` 已核6206 SHA checks、6205 unique，僅new-current-test source刻意核兩次；原capture native2／八個module unknown與原historical FAIL保留。PSRoot04／05／06三次early拒絕保留，Root07只修正Git row陣列String[]型別，完整讀回成功；沒有重跑DATA reviewer或啟動產品QA。
+
+Root06 exception-context helper的mock11 PASS／0SKIP及完整Root讀回 `44072efa6a9e534520a4261e011282d594128df8131c834d718010f612c29305` 已完成，但GetThreadContext／MiniDumpWriteDump實測、實際ExceptionStream、新Main旅程與根因仍未驗。舊Main AV、Qt strict types FAIL／126、fresh未到達保持；不以mock PASS修產品或盲重跑Main。P05靜態正文／程式覆核支持已有projection與十區行為，不再造摘要；舊G來源阻擋與四端點仍partial，P02下一個保存方法缺口盤點在暫停時未完成。
+
+最後Python outer `a3820c918fb858cbcd9ba68cf502dea4e9eee3bd001af40b0daa86f282ef6aa8` native0／69.151251秒、三組終態PID陣列空、process／Job handlesclosed、mutexreleased；最後owned child6164已不存在。無liveRootQA／讀回session，三位既有Luna已中斷；其他程序與正式資料保持原狀。此次只保存文件checkpoint，不含產品、私有QA raw output或task JSON，不push。恢復時先核本次commit的新HEAD／index／dirty tree及完整來源lineage，再重綁未封存控制器；不將a04／fbbc舊pin原樣用於新HEAD。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未接受。

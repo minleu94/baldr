@@ -14,6 +14,7 @@
 8. 按下方主題地圖選擇索引；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
 - [10/12 補完恢復增量](BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)：治理後 M27 封套、Root 串行 QA、Main 原生診斷及 Health 來源重封；按具名收據判讀，不授完整工作包或 Gate 接受。
+- [10/14 補完暫停 checkpoint](BALDR_COMPLETION_CHECKPOINT_20261014.md)：P01 效能暫緩、P08 六組限定 PASS、未封存共同接線、Root 全量來源讀回與恢復順序；完整 Gate 尚未接受。
 
 <a id="主題地圖"></a>
 ## 主題地圖

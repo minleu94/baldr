@@ -1,5 +1,11 @@
 # Windows／Codex 排程運維與搬機指南
 
+## Direct 昂貴重跑暫停（2026-10-14）
+
+依 owner 明確授權，待10/13 10:00 PDT的Direct流程自然結束後，於10/14 01:07 PDT停用 `\baldr-ml-direct-chain-maintainer`，保留原每日10:00 trigger與action；目前 `Enabled=false`，不再每日自動建置／訓練。其他20個Windows Task與晨晚唯讀稽核automation保留。新機不得把這個owner停用狀態當成缺件而自行重新啟用。
+
+需要重跑時，先核上次失敗原因、正式teacher inputs與自然證據累積資格，再取得另行人類授權；不能僅因前次failed或有新receipt就重跑。資格不足不降低gate、不補造歷史，保留blocked收據。停用不是模型驗收或自然證據累積恢復；本輪完整結果、hash與核對界線見[具名QA報告](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
+
 本指南說明 baldr 排程的種類、日常核對入口與移機界線。它是操作文件，不是註冊、啟用、手動觸發、改帳戶或切換 portable executable 的授權。若目標是新機或 owner 移交，從[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)開始；唯讀查證看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 ## 排程種類與權威

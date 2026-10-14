@@ -146,3 +146,19 @@ Scheduler 於 UTC19:39:20／PDT12:39:20／台北03:39:20 唯讀重查：21項可
 | baldr-formal-pit-sidecar-postcutoff-daily | 10/12/2026 18:00:01 | 0x00000002 | 10/13/2026 18:00:00 |
 | baldr-formal-input-producer-daily | 10/12/2026 21:25:01 | 0x00000002 | 10/13/2026 21:25:00 |
 | baldr-v2-2-weekly-collection | 10/11/2026 18:00:00 | 0x00000001 | 10/18/2026 18:00:00 |
+
+## Direct 本輪自然失敗後停用（2026-10-14 01:07 PDT／16:07 台北）
+
+人類明確授權「讓這次跑完，暫停昂貴重跑，有需要且資格確認後才執行」。本次不修正／降低teacher gate，不啟動任何新的producer或訓練，不中斷本輪，不清理資料，也不重新觸發先前blocked證據writer。
+
+同次started_at `2026-10-13T17:00:02.142672Z`，numeric run `direct-ooc-a1e00e51c5144283b7dbe72f`。2014–2026年度建置及fold indexes完成，產出manifest logical hash `sha256:e3b85ac8f71f89cce699e28d0f60a48c19e82299d577a249cb6cdc642b5fc8d4`、file SHA `65bb7e99b27dd79fccaec318d4314f930938278c8d20b1885a050d15de022ef1`。實檔在 `D:/Min/Python/Project/FA_Data/output/release_v4/portfolio_ml_direct_numeric_production_v4_v2/runs/direct-ooc-a1e00e51c5144283b7dbe72f/manifest.json`。
+
+OOC training invocation回傳2：`allocation teacher eligibility gate blocked: blocked_missing_formal_teacher_inputs`；原因仍為正式Rule champion history、PIT sector membership、正式Portfolio ledger缺件。未獲成功fit terminal，不得說本輪重訓成功。release回傳2，`ooc_continuation_not_complete`。同次chain `blocked`；maintainer於UTC07:57:48記continuation_exited=2，07:59:48 restart_cap_reached=1；wrapper `failed`／returncode2，finished_at `2026-10-14T08:00:14.155872Z`（PDT01:00:14），全鏈約15小時。
+
+Owner40248、Direct launcher2728／worker34840、OOC launcher50484／worker28876、release launcher29844／worker7092均已退出；先前建立時間與父系已驗，並核同次chain與wrapper terminal。既有 `D:/Min/Python/Project/FA_Data/output/release_v4/.ml_heavy_chain.lock` 可用Read／FileShare.None開啟且立即關閉，證明查核當下無持有者；未寫入或刪除此鎖。這證明本輪退出及鎖釋放，不宣稱未重驗的自然證據已恢復。
+
+僅設定Windows Task `\baldr-ml-direct-chain-maintainer.Enabled=false`。前後XML原件保存 `output/qa/direct_pause_20261014/direct_before.xml`、`direct_after.xml`；原XML省略Enabled預設true，後XML明示false，移除該節點後其餘XML完全相同，action／args／cwd／daily10:00 trigger及其他settings保留。初次XML比較器未處理省略的預設節點而失敗，並非Task停用失敗；修正比較後通過，沒有重複變更。Task讀回State1 disabled、LastResult2；其他20個baldr Task仍enabled。只修改這一項Task；晨間05:30／晚間06:20automation、其thread與通知設定保留。
+
+操作收據 `output/qa/direct_pause_20261014/pause_receipt.json` SHA `336dba9f3ce9539fa0c31aefafd26011bfc1439c6fa80f5fc7cbd75b6ee27865`，原始產出不提交Git。未修改Python，無需新pytest／mypy／compile；本次QA為同次terminal、七個PID、鎖釋放及精確Task前後設定核對。最新AGENTS context以scheduler_automation／Level1有限定位；首次runtime領域為Unknown，改用工具列出的有效領域成功，有限索引不外推為完整產品驗收。
+
+今後Direct只在另行人類授權、上次阻塞解除、正式來源完整與自然證據資格核實後手動執行。原「前次失敗→每日checkpoint recovery→新來源檔案hash產生新numeric run→再次昂貴建置」工程行為未在本次改程式；以停用未來排程防止自動重複。現行自然成熟、來源revision、缺價與證據writer仍按各自同次收據判讀。主操作手冊正由其他任務修改，本次不混入其dirty內容，停用流程同步於排程運維指南與唯讀audit Runbook。

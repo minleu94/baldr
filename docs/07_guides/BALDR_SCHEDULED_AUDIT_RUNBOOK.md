@@ -1,5 +1,7 @@
 # baldr 全排程唯讀稽核 Runbook
 
+2026-10-14 owner已在本輪自然退出後停用Direct每日重跑：`\baldr-ml-direct-chain-maintainer` 預期 `Enabled=false`，原10:00 trigger/action保留。21項仍應查核；不要把這一項已授權停用判成意外缺件或自行重新啟用。其餘20項與晨晚automation不變。停用不等於本輪fit成功或自然累積恢復；詳見[排程運維指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
+
 人類另行授權的修正重跑應獨立列 producer 收據與資料寫入範圍；手動執行不代表 Scheduler Last／Result 恢復。Forward／Decision 的手動 `--reservation-wait-seconds` 僅限定等待，不豁免鎖或來源资格；唯讀 audit 不使用它啟動 producer。台北10/14盤前具名重跑、恢复及未解除阻塞見[10/13修復報告](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
 
 本 Runbook 核對既有排程設定與同次執行證據；它不註冊、啟用、停用、手動觸發任務，不啟動 producer、訓練、重建資料或寫入 Task／Codex automation。完整 21-task 文件化時點見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)，新機接手見[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)。

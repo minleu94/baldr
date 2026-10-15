@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口：50ddb640 candidate的真TPEx法人同pin／用途／返回／fresh，以及原合成P06保存情境明確登錄→Registry→個股實按返回→fresh，來源版與EXE均通過；共同啟動／完整archive／依賴鎖／原同版probe亦通過。候選、具名PID／收據與原限制見[Increment55 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。只解除這兩旅程缺Native／EXE證據的交付阻礙，不擴V1、來源或完整Gate；無新HTTP／正式資料／Task。接續原P12受控terminal／status reader正常UI出口，禁止重觸發正式maintainer。
+
 **Increment54：原P00/P03一次性來源用途已接正常法人讀回**。重用DailySourceUseAcceptance，固定四份真官方文件／schema／TPEx／shares／diagnostics，create-only＋外部SHA另存，逐批原件與可用小時獨立驗，不改generic P0 v1或其13來源分母。真CLI接受07:18:53，正常Main36096→fresh47452三證券／九原值／接受身份與顯名／返回一致，12檔不變、無HTTP或重寫；受改writer19PASS、原173PASS含Workbench85與原反例定向、mypy1032／validator25/0/4，FAIL保留。固定4b530不增前置；歷史PIT／完整F09／P0整桶不升格。下一葉補已完成流程的Native／打包驗收，見[同輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment54p00p03法人精確來源用途與每日驗證分離)。
 
 **Increment53：原P03明選TPEx法人OpenAPI已補候選接線**。沿資料集11856／既存Swagger與新單次完整898原列，不借T86 discovery或其他TPEx未授來源；新20欄／ROC日／三類aggregate整數及合計守衛接原capture／rebuild／daily／正常法人頁，舊TWSE ports仍限T86。199受改回歸含Workbench85＋原FAIL修正後定向1PASS、mypy1031／validator25/0/4；真成功保存台北06:45、07:00可用，提前拒讀，QA288真07:00後Main32628→fresh37900三證券原值／返回與重開一致，24來源／批次檔不變、socket0；另補CLI必填報告日5PASS，非Native／EXE。此第二階段不增4b530固定V1前置，P0來源用途／歷史PIT／完整F09不升格，詳[Increment53 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment53p03明選tpex法人openapi與每日版本)。
@@ -499,6 +501,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口：50ddb640 candidate的真TPEx法人同pin／用途／返回／fresh，以及原合成P06保存情境明確登錄→Registry→個股實按返回→fresh，來源版與EXE均通過；共同啟動／完整archive／依賴鎖／原同版probe亦通過。候選、具名PID／收據與原限制見[Increment55 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。只解除這兩旅程缺Native／EXE證據的交付阻礙，不擴V1、來源或完整Gate；無新HTTP／正式資料／Task。接續原P12受控terminal／status reader正常UI出口，禁止重觸發正式maintainer。
 
 Increment54已把指定TPEx diagnostics來源用途與每日品質小時分開，真文件／正常CLI／Main36096→fresh47452已限定驗；不修改formal P0／Task或增加V1前置。下一葉推原P13/P14的Native／打包驗收，保留來源歷史／真N／自然成熟各自缺件，不再加深此小點。
 

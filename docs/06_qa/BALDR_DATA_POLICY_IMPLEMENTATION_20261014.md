@@ -2,6 +2,32 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment55：P13/P14固定候選Native與同版出口
+
+**解除的交付阻礙**：第二階段法人用途與P06 Registry已有來源版正常Main證據，尚未確認實際固定EXE能走同一保存／讀回／返回流程。本輪不另造產品實作，只沿原build_windows／verify_same_version與兩個原旅程，固定commit另建候選並補Windows原生自動化。第一版4b530四流程包、原dist/baldr、active_delivery與原失敗／資料全部保留；這兩個出口不加入V1試用前置。
+
+固定來源為50ddb6401238850f4c782f0d99494341d28ffc66，archive SHA為17cec1bfce8dd8847bb89e167d59a09a5a6e4b769be8312b3d9d744c63d62324；候選dist/candidate_50ddb6401238_9dfeb5e8/baldr/baldr.exe為56,188,224 bytes，SHA為84a14003fa9f1de5ae2856c950b6b66c1d469856b4218b9005c983b9c768c033。owner另存increment55_candidate_build_pin.json，SHA 528b57a5bde03a4426899a3f2a87d09d6f93fbf6ef320cbefd128c436d5a991a，原build receipt的built_not_validated保持，後續驗證用獨立收據描述，不回寫建置原件。沒有產品Python變更，故不重跑未受影響的Workbench／mypy；兩份Root新QA協調腳本已各compile。
+
+Root履行QA／Tech Lead／Documentation，重用原Luna靜態核packaging與P06輸入，沒有新增agent（累計10/10）。Job均沿8GiB committed／12程序／kill-on-close／workspace mutex，每組啟動前至少8GiB可用，前組三PID陣列空、process／Job handles關閉、mutex釋放才續組。原15秒UI、120秒phase與270秒旅程driver未放寬，實際PID／creation time／named Job核驗及terminal等待保留；無跨owner程序終止。
+
+| QA | 限定結果 | outer receipt SHA-256 |
+|---|---|---|
+| 302 | release角色路由與固定來源獨立建置通過；只是built，不授Gate | 75f34cfceea66af2fcbef6b7c6f018ddf2ebbf06853bfc466ffb5d20efd829ba |
+| 303 | 真TPEx Native來源34120→44196，compile／三證券／返回／fresh通過 | a8cfe4504d0c3bd322dc5a60f786528ca5648f0bde9febaec1292d369a9a9b33 |
+| 304 | 同版真TPEx Native EXE45356→14056，同原件與接受身份通過 | 959f469cb4969b9198a56a808646e967f1a34723a7b29d5edc100a36e0fcd11d |
+| 305 | 原P06合成Native來源10664→42836，compile／明確登錄／exact Registry／個股返回／fresh通過 | 0a65d615a426b7695b991e94b2e4fa2393741bb5c5439a1fcd5734090fb50c65 |
+| 306 | 同版P06 Native EXE33288→9400，禁止重算及fresh寫入，原金融投影／身份重開通過 | 412da39c03389bd622385526f1529b9be1d1e7907a45eb196a56a0ad15caa2dc |
+| 307 | 原verify_same_version的完整archive／依賴鎖／根路徑／共同啟動與journey/model/H20隔離比較通過 | fc2ce14050e5e5a9d78a45c0e0ecd7c1c9b7c82b78e09ef9dc28896f7abe5b00 |
+
+QA303–306用實際windows Qt平台、可見曝光／祖先裁切／QApplication命中與Win32 WindowFromPoint的PID守衛，沿既有Qt滑鼠事件操作；EXE從實際candidate啟動，關鍵產品模組必須來自其_internal，來源版必須來自固定archive，移除checkout／tests import路徑。這是原生自動化，不是人工滑鼠、真人接受、完整啟動UX或其他解析度／主機驗收。法人控制仍明選路徑／SHA，P06部分輸入及tab／股票還原沿原QA控制器，未宣稱全操作皆真人逐鍵。
+
+法人使用原真898列及四文件接受，不新抓、不重seal或重寫接受；三證券6488／8069／00679B九原整數、來源版本／雙SHA、07:00資料小時與07:18:53接受時間／顯名跨source／EXE相同，12資料與用途檔bytes／SHA／mtime／ctime不變，Python socket零嘗試。只接受TPEx diagnostics，candidate_only仍true、P0整桶與歷史PIT false，連買／評分／交易保持不可用。
+
+P06重用Increment47原合成封存，不重算金融引擎或append情境；parent僅明確登錄且重試同一entry，fresh封鎖登錄／引用append。7份隔離副本與原receipt21來源分別核驗不變；每組parent/fresh的scenario DB、Registry DB、reference SHA相同，source／EXE的artifact／comparison／stock projection相同。不同runtime各自登錄時間不同，因此不要求跨runtime Registry DB／引用SHA相同。原現金399884.98、NAV501884.98、2330數量1000／mark102／估值102000.00等投影未改，手動帳fallback禁止；實按原個股返回按鈕。這不授真帳本或缺現金／同來源Health／行情的manual/user_declared初次來源。
+
+共同probe原收據output/qa/baldr_same_version_50ddb6401238_46214878/same_version_receipt.json，SHA 99e7feaee272e2ba37a2cbbc5f5f4ae5ff46cc49592f1777b5a80d43cf518b75，status passed_isolated_fixture；包含中文／空格設定與原錯設定拒絕，沿合成市場／模型，不證真模型與自然排程。空法人／P06隔離市場仍有companies.csv／SQLite缺件warning，沒有用正式DB補值。本輪無新HTTP、正式資料寫入、正式Task變更、maintainer啟用、push或發布。
+
+手冊與原計畫§0.3／§9.5同步；候選使用邊界見[可攜指南](../07_guides/PORTABLE_WINDOWS.md#後續開發候選的限定驗證)。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保留，限定Native不能抵銷真來源、PIT、真N、完整績效、真人與自然成熟。下一葉接原P12受控terminal→status reader→正常系統狀態出口，不觸發正式Task或maintainer。
 ## Increment54：P00/P03法人精確來源用途與每日驗證分離
 
 **解除的操作阻礙**：新TPEx每日原件已可檢視，但缺少能精確保存／重用指定端點用途的正常入口。Root沿既有DailySourceUseScope／DailySourceUseAcceptance及同daily-hour核心，另存固定文件版本的diagnostics用途artifact；正常法人頁明選path／外部SHA，原daily reader再驗每天的原件、schema、合計、股數及成功小時。不把此契約轉成generic institutional_flows的limited決議，不改P0 v1 payload／hash、13來源分母或既有機器maturity／coverage守衛；歷史PIT／真N與完整F09仍各自未完成。這是第二階段，不增加固定4b530四流程試用前置。

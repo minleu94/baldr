@@ -47,6 +47,13 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 - 首次無字或缺資料時，確認整個資料夾存在、JSON 為 UTF-8、roots 是程式包外的可寫絕對路徑。無 console 的 stdout／stderr 和 App 日誌依該交付版列出的實際位置核對。
 - 長路徑、主機上的 Qt／Windows 差異、私人模型與自然排程執行都要依具名 QA 範圍判讀；在別台 Windows 主機啟動成功不由這份文件推定。
 
+## 後續開發候選的限定驗證
+
+固定來源50ddb6401238850f4c782f0d99494341d28ffc66的開發候選位於本機dist/candidate_50ddb6401238_9dfeb5e8/baldr，EXE為56,188,224 bytes，SHA-256為84a14003fa9f1de5ae2856c950b6b66c1d469856b4218b9005c983b9c768c033。保留整個baldr資料夾；以本頁「首次設定」的外部設定檔解析資料／輸出／研究Registry根，再啟動該資料夾內baldr.exe。不要只搬EXE、套用測試fixture為正式資料，或把開發包寫進現有試用入口。
+
+這份包已通過固定archive／依賴鎖與共用啟動比較，另驗Windows原生畫面的兩條保存讀回流程：已保存TPEx法人批次加精確diagnostics用途接受，以及已保存Paper配置研究的明確登錄→Registry→個股→返回。各自在來源版與EXE關閉後用新程序重開；用途／資料缺件仍拒讀，沒有改正式資料或排程。步驟分見[法人用途](manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人用途接受與重開後續開發分支)、[配置登錄](manuals/WATCHLIST_AND_PORTFOLIO.md#登錄研究紀錄與跨頁重開)。
+
+這是本機開發驗收候選，未簽章、未經真人或跨機驗收；P06使用原合成帳戶，不能代替真實帳本或完整來源資格。TPEx只限所列diagnostics，歷史PIT、評分與交易用途維持不可用。完整來源、原生範圍及收據見[Increment55 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。既有4b530四流程試用包、原dist/baldr及active_delivery均保留。
 ## 2026-10-15 固定來源候選
 
 另有固定來源`675bea262f8d25a1d5a8ade2762b7285fd11451b`的隔離候選`dist/candidate_675bea262f8d_07965800/baldr`，EXE SHA `b05f96456f36dc44036ca0688399b0cb5a85262f4a073c74a879f5ea6c970e26`。它通過原同版隔離probe與新增年度日曆binding／原Registry雙run重開、比較、返回及新程序旅程；沒有替換下表原交付或更新active_delivery。該證據仍是合成offscreen，未簽章、未驗Native真人或真實市場完整績效，不據此認定安裝／其他主機／完整產品Gate通過。完整來源與收據依[Increment31 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment31固定來源候選exe與registry同版旅程)。

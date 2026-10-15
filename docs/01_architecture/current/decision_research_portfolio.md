@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+一般手動觀察股票的未連結研究，由 Watchlist 僅在無source ID、無result／決策日／snapshot且identity=unknown時明示選擇目前個股研究context；現有report reader讀目前行情，返回按原代號定位。已有來源或身份衝突仍保留保存來源路由；不將讀取失敗改成目前行情，也不授歷史PIT。儲存格式、public reader、金融計算與原收藏版本路徑均沿用，限定驗證見[Increment34 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)。
+
 | 模組 | 主要責任 |
 |---|---|
 | `decision_module/` | 策略與評分契約、推薦排序、理由、篩選、Regime、Factor 與純計算核心 |

@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QComboBox,
     QAbstractItemView,
     QGridLayout,
+    QBoxLayout,
+    QScrollArea,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -423,6 +425,9 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._catalog_page: DailyMarketTechnicalUniverseV4CatalogPage | None = None
         self._catalog_cursor: str | None = None
         self._rule_filters: dict[str, QComboBox] = {}
+        self._rule_filter_entries: list[tuple[QLabel, QComboBox]] = []
+        self._controls_narrow: bool | None = None
+        self._controls_viewport: QWidget | None = None
         self._basket: list[DailyMarketTechnicalUniversePriceSelectionV1] = []
         self._pending_bookmark_scroll_restore: _PendingBookmarkScrollRestore | None = None
         self._scroll_restore_filtered_widgets: tuple[QWidget, ...] = ()
@@ -449,6 +454,8 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         source_layout = QGridLayout(source_group)
         self.sources = QComboBox()
         self.sources.setObjectName("dailyMarketTechnicalPriceV1Sources")
+        self.sources.setMinimumContentsLength(12)
+        self.sources.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.refresh_sources_button = QPushButton("查詢版本")
         self.refresh_sources_button.setObjectName("dailyMarketTechnicalPriceV1RefreshSources")
         self.more_sources_button = QPushButton("更多版本")
@@ -522,29 +529,35 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             self.page_size.addItem(str(value), value)
         self.apply_query_button = QPushButton("套用條件")
         self.apply_query_button.setObjectName("dailyMarketTechnicalPriceV1ApplyQuery")
-        controls.addWidget(QLabel("技術規則組合"), 0, 0)
-        controls.addWidget(self.combine_mode, 0, 1)
-        controls.addWidget(QLabel("股票篩選"), 0, 2)
-        controls.addWidget(self.stock_filter, 0, 3, 1, 3)
-        controls.addWidget(QLabel("收盤價下限（TWD／股）"), 1, 0)
-        controls.addWidget(self.minimum, 1, 1)
-        controls.addWidget(self.minimum_inclusive, 1, 2)
-        controls.addWidget(QLabel("收盤價上限（TWD／股）"), 1, 3)
-        controls.addWidget(self.maximum, 1, 4)
-        controls.addWidget(self.maximum_inclusive, 1, 5)
-        controls.addWidget(QLabel("未知價格"), 2, 0)
-        controls.addWidget(self.unknown_policy, 2, 1)
-        controls.addWidget(self.descending, 2, 2)
-        controls.addWidget(QLabel("每頁"), 2, 3)
-        controls.addWidget(self.page_size, 2, 4)
-        controls.addWidget(self.apply_query_button, 2, 5)
-        controls.addWidget(QLabel("可查股票子集"), 3, 0)
-        controls.addWidget(self.eligible_stock_filter, 3, 1, 1, 4)
-        controls.addWidget(self.eligible_stock_filter_enabled, 3, 5)
         self.rule_filter_host = QWidget()
         self.rule_filter_layout = QGridLayout(self.rule_filter_host)
         self.rule_filter_layout.setContentsMargins(0, 0, 0, 0)
-        controls.addWidget(self.rule_filter_host, 4, 0, 1, 6)
+        self._query_controls_layout = controls
+        # 保留同一批輸入及signal，窄結果區改兩欄，操作按鈕獨立靠左。
+        self._query_control_items = (
+            (QLabel("技術規則組合"), (0, 0, 1, 1), (0, 0, 1, 1)),
+            (self.combine_mode, (0, 1, 1, 1), (0, 1, 1, 1)),
+            (QLabel("股票篩選"), (0, 2, 1, 1), (1, 0, 1, 1)),
+            (self.stock_filter, (0, 3, 1, 3), (1, 1, 1, 1)),
+            (QLabel("收盤價下限（TWD／股）"), (1, 0, 1, 1), (2, 0, 1, 1)),
+            (self.minimum, (1, 1, 1, 1), (2, 1, 1, 1)),
+            (self.minimum_inclusive, (1, 2, 1, 1), (3, 1, 1, 1)),
+            (QLabel("收盤價上限（TWD／股）"), (1, 3, 1, 1), (4, 0, 1, 1)),
+            (self.maximum, (1, 4, 1, 1), (4, 1, 1, 1)),
+            (self.maximum_inclusive, (1, 5, 1, 1), (5, 1, 1, 1)),
+            (QLabel("未知價格"), (2, 0, 1, 1), (6, 0, 1, 1)),
+            (self.unknown_policy, (2, 1, 1, 1), (6, 1, 1, 1)),
+            (self.descending, (2, 2, 1, 1), (7, 1, 1, 1)),
+            (QLabel("每頁"), (2, 3, 1, 1), (8, 0, 1, 1)),
+            (self.page_size, (2, 4, 1, 1), (8, 1, 1, 1)),
+            (self.apply_query_button, (2, 5, 1, 1), (11, 0, 1, 2)),
+            (QLabel("可查股票子集"), (3, 0, 1, 1), (9, 0, 1, 1)),
+            (self.eligible_stock_filter, (3, 1, 1, 4), (9, 1, 1, 1)),
+            (self.eligible_stock_filter_enabled, (3, 5, 1, 1), (10, 1, 1, 1)),
+            (self.rule_filter_host, (4, 0, 1, 6), (12, 0, 1, 2)),
+        )
+        for widget, wide, _narrow in self._query_control_items:
+            controls.addWidget(widget, *wide)
         root.addWidget(controls_group)
 
         page_controls = QHBoxLayout()
@@ -560,6 +573,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         root.addLayout(page_controls)
 
         basket_controls = QHBoxLayout()
+        self._basket_controls = basket_controls
         self.add_comparison_button = QPushButton("加入比較籃")
         self.add_comparison_button.setObjectName("dailyMarketTechnicalPriceV1AddComparison")
         self.run_comparison_button = QPushButton("重驗並比較")
@@ -1198,16 +1212,65 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             if widget is not None:
                 widget.deleteLater()
         self._rule_filters.clear()
-        for index, key in enumerate(keys):
+        self._rule_filter_entries.clear()
+        for key in keys:
             label = QLabel(_RULE_LABELS.get(key, key))
             combo = QComboBox()
             combo.setObjectName(f"dailyMarketTechnicalPriceV1Filter_{key}")
             for option_label, option in _FILTER_OPTIONS:
                 combo.addItem(option_label, option)
-            row, column = divmod(index, 3)
+            self._rule_filter_entries.append((label, combo))
+            self._rule_filters[key] = combo
+        self._arrange_rule_filters()
+
+    def _arrange_rule_filters(self) -> None:
+        while self.rule_filter_layout.count():
+            self.rule_filter_layout.takeAt(0)
+        columns = 1 if self._controls_narrow else 3
+        for index, (label, combo) in enumerate(self._rule_filter_entries):
+            row, column = divmod(index, columns)
             self.rule_filter_layout.addWidget(label, row, column * 2)
             self.rule_filter_layout.addWidget(combo, row, column * 2 + 1)
-            self._rule_filters[key] = combo
+
+    def _layout_price_controls(self) -> None:
+        if self._closing or not hasattr(self, "_basket_controls"):
+            return
+        ancestor = self.parentWidget()
+        viewport = None
+        while ancestor is not None:
+            if isinstance(ancestor, QScrollArea):
+                viewport = ancestor.viewport()
+                break
+            ancestor = ancestor.parentWidget()
+        if viewport is not self._controls_viewport:
+            if self._controls_viewport is not None:
+                self._controls_viewport.removeEventFilter(self)
+            self._controls_viewport = viewport
+            if viewport is not None:
+                viewport.installEventFilter(self)
+        available_width = self.width()
+        if viewport is not None and viewport.width() > 0:
+            available_width = min(available_width, viewport.width())
+        # 長式排列須有外層垂直捲動；獨立視圖保留原表格高度分配。
+        narrow = viewport is not None and available_width < 900
+        if narrow == self._controls_narrow:
+            return
+        self._controls_narrow = narrow
+        layout = self._query_controls_layout
+        while layout.count():
+            layout.takeAt(0)
+        for column in range(6):
+            layout.setColumnStretch(column, 1 if narrow and column == 1 else 0)
+        for widget, wide, compact in self._query_control_items:
+            position = compact if narrow else wide
+            layout.addWidget(widget, *position)
+            if narrow and widget is self.apply_query_button:
+                layout.setAlignment(widget, Qt.AlignmentFlag.AlignLeft)
+        self._basket_controls.setDirection(
+            QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
+        )
+        self._arrange_rule_filters()
+        self.updateGeometry()
 
     def _set_controls(self, query: DailyMarketTechnicalUniversePriceQueryV1) -> None:
         self.combine_mode.setCurrentIndex(self.combine_mode.findData(query.combine_mode))
@@ -1520,6 +1583,8 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._try_apply_bookmark_scroll_restore()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._controls_viewport and event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self._layout_price_controls)
         if self._pending_bookmark_scroll_restore is not None:
             event_type = event.type()
             if event_type in {
@@ -1540,11 +1605,13 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
 
     def showEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name.
         super().showEvent(event)  # type: ignore[arg-type]
+        self._layout_price_controls()
         if self._pending_bookmark_scroll_restore is not None:
             self._schedule_bookmark_scroll_restore()
 
     def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name.
         super().resizeEvent(event)  # type: ignore[arg-type]
+        self._layout_price_controls()
         if self._pending_bookmark_scroll_restore is not None:
             self._schedule_bookmark_scroll_restore()
 

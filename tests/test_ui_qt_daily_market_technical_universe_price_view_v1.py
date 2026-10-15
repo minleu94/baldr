@@ -32,6 +32,8 @@ from ui_qt.views.daily_market_technical_universe_price_view_v1 import (
     DailyMarketTechnicalUniversePriceV1View,
     _parse_stock_filter,
 )
+from ui_qt.views.recommendation_view import _CurrentPageSizeTabWidget
+from ui_qt.widgets.layout_helpers import create_scroll_area
 import ui_qt.views.daily_market_technical_universe_price_view_v1 as price_view_module
 
 
@@ -99,6 +101,58 @@ def _entry_index(view: DailyMarketTechnicalUniversePriceV1View, status: str) -> 
         if getattr(entry, "source_status", None) == status:
             return index
     return -1
+
+
+@pytest.mark.parametrize("width", (520, 760))
+def test_narrow_result_area_keeps_price_apply_reachable_and_inputs_on_resize(
+    app: QApplication, exact_price_store: dict[str, Any], width: int,
+) -> None:
+    """小結果區不得靠不可見的水平捲動才能套用，重排也不可重設原查詢。"""
+    view = DailyMarketTechnicalUniversePriceV1View(exact_price_store["store_root"])
+    tabs = _CurrentPageSizeTabWidget()
+    tabs.addTab(view, "價格研究")
+    host = create_scroll_area(tabs)
+    host.resize(width, 650)
+    host.show()
+    try:
+        app.processEvents()
+        view.refresh_sources()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        view.sources.setCurrentIndex(_entry_index(view, "complete"))
+        view.load_selected_source()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        assert view.current_query is not None
+        original_source = view.current_query.source
+        view.minimum.setText("101")
+        view.combine_mode.setCurrentIndex(view.combine_mode.findData("OR"))
+        for target_width in (1100, width):
+            host.resize(target_width, 650)
+            app.processEvents()
+            assert view.minimum.text() == "101" and view.combine_mode.currentData() == "OR"
+        viewport = host.viewport()
+        button = view.apply_query_button
+        def reachable() -> bool:
+            host.ensureWidgetVisible(button, 0, 12)
+            app.processEvents()
+            return (
+                viewport.rect().contains(button.mapTo(viewport, button.rect().topLeft()))
+                and viewport.rect().contains(button.mapTo(viewport, button.rect().bottomRight()))
+            )
+        _wait(app, reachable, timeout_seconds=15)
+        assert viewport.rect().contains(button.mapTo(viewport, button.rect().topLeft()))
+        assert viewport.rect().contains(button.mapTo(viewport, button.rect().bottomRight()))
+        assert host.horizontalScrollBar().value() == 0
+        assert button.isEnabled()
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        assert view.current_query is not None and view.current_query.min_close_price == Decimal("101")
+        assert view.current_query.combine_mode == "OR"
+        assert view.current_query.source == original_source
+    finally:
+        view.begin_shutdown()
+        _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)
+        host.close()
+        app.processEvents()
 
 
 def test_true_saved_source_catalog_query_comparison_bookmark_and_stock_signal(

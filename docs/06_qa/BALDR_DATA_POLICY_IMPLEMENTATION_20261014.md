@@ -795,3 +795,12 @@ QA125只讓owned測試Main暫時置頂，1440px沿原曝光／裁切／命中守
 
 QA126因Root拿LF Git blob裸bytes對比git archive依本機core.autocrlf輸出的CRLF而在修改前FAIL，outer SHA `12c1ea50060321653c19ecaa25f1f837d810a00e09de4864635ae19e9fb66288`。QA127改核archive原bytes／commit comment／Git path-filtered blob，保存505交付九原件後更新同一入口，--check與7093候選檔清冊及具名旅程核對通過；但Root將預期會更新的交付檔誤列入immutable pins，runner事後守衛正確拒絕，整組仍FAIL（outer SHA `c4dbbfa232bb37ffec6b9b2614f44e1f7ff968cee82930cb1ccd1ce763d5c1c4`），不改守衛、不重跑更新程序。舊505收據SHA `c472e1429363679a49373eaaa06e7d2a3482d95b0e5c22417815e844d9850432`原件已保存owner的v1_delivery_snapshot_increment33；目前新交付收據SHA `60d141c720a0bf7a3761d288f5ddde9d718c05e0854839901165fd900337092d`，待獨立只讀QA128結案。以上每組自然PID0、handles關閉、mutex釋放、無forced cleanup，沒有擴張V1範圍或正式寫入。
 QA128為獨立只讀結案：新收據SHA `60d141c720a0bf7a3761d288f5ddde9d718c05e0854839901165fd900337092d`、8交付檔案／33 QA pins、舊505九原件、普通清單及真價格條件雙程序身份均一致；8份文件治理12features、errors=[]。outer SHA `4506138c21e673786ff8ea978d4bb2ae9a7d09a706ff7982d1bd47c244655871`，自然PID0／handles關閉／mutex釋放，無forced cleanup。固定5d98187d已可從同一入口試用；無active Python／QA或pending worker writes。這解除V1-03實際阻礙及V1-02原條件驗收證據缺口，沒有新增第五條流程、正式寫入、push、發布或交易；原完整第二階段及全部FAIL保留。
+## Increment35：V1價格條件在窄結果區可操作
+
+本Increment只解除V1-02已存在的操作阻礙，不新增功能或視覺優化前置。QA129在已交5d98187d固定EXE、owned QA視窗置頂後，1024px的來源查詢及載入可點，但套用按鈕中心[1075,814]仍超出Main frame[24,24,1024,731]，原15秒命中FAIL。這與先前1440px外部遮蔽不同，確認六欄控制區水平溢出。原FAIL outer SHA `331339a718a639d10d088ebdd4bc75826932e92819d8a0ae50027dc32eaeb446`及自身視窗圖／診斷保留。
+
+修復只在既有外層可垂直捲動的結果頁，按可用寬度重排同一批條件widget、規則combo與比較操作；套用按鈕移到窄版獨立靠左列。來源combo以有限顯示寬度呈現，原完整來源文字／pins與信號連線不變。沒有修改query、金融核心、來源時間／精度、reader、bookmark格式或public API；獨立視圖沿原高度分配。Luna只讀複核三檔定位及候選diff，零寫入／Python／QA／network。
+
+QA130新520px幾何案與其他原案共10 PASS；760px在resize後立即捲動時幾何尚未穩定、獨立520×170收藏表格受長式排列擠壓，兩FAIL保留（outer SHA `2cc0c1b1f38ac831bdb97df2f2665f64b51fe3e96dbedaf130c00f08e2e464b0`）。修復限制到已有垂直scroll的結果頁；新幾何案在原15秒內以實際捲動等待整個按鈕可見，保留原收藏3秒期限與所有原斷言。
+
+QA131原10＋新2價格UI案、來源版Main1024px正常查詢／載入／套用3符合1排除0未知、必要Workbench85、validator25／0／4與mypy1016各自通過（UI既有ignore_errors不證強型別）。來源Main PID45684按鈕Win32 PID及Qt裁切守衛一致，未保存新收藏或重跑完整旅程；只是WIP來源證據，不冒充固定EXE接受。outer SHA `4e4cfabb7ae83a8ab0c8d3cd07af7c1fb983a3cfae322234d138c442d70c48d1`自然PID0、handles關閉／mutex釋放、無forced cleanup，沿8GiB／12程序Job與RAM≥8GiB。下一步只對新固定候選重驗受改價格比較／收藏／fresh；未受影響市場、普通清單、回測與Startup沿原收據。

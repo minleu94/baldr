@@ -676,3 +676,7 @@ Increment22原保存入口另保留本輪next-open執行輸入；None／0、subm
 Increment23原日曆控制新增「保存原件／每日批次」來源模式；daily固定雙SHA與獨立接受紀錄，缺接受時停用。背景仍用同一pair／public reader，結果顯示批次、原件與時鐘，來源欄或接受紀錄變更會取消並丟棄舊回覆。合成Main父33268→新17672重用17來源、開啟／比較／返回通過；正式Main未配置真接受紀錄，不宣稱真日曆用途接受或完整績效已完成。
 
 Increment29已有正常Main的外部接受binding配置接點，原daily表單不變；缺設定或錯SHA保留具名原因，錯誤跨來源模式維持，只停用日曆用途。年度合成Main2440→fresh36248沿正常配置重開／比較／返回通過，真用途接受與正式配置仍待。設定與排錯見[操作手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
+
+## 2026-10-15 第一版價格研究窄結果區
+
+每日研究頁的價格條件、規則篩選與比較操作在窄結果區直向排列；價格區和表格受可視寬度限制，不再依賴外層隱藏的水平捲軸才能選股。保留原widget／輸入／query／bookmark及來源資格；獨立視圖仍沿原高度配置。固定候選1024px套用→比較→個股返回→收藏→新程序exact重開已限定驗證，其他尺寸與真人未全驗；見[Increment35 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment35v1價格條件在窄結果區可操作)。

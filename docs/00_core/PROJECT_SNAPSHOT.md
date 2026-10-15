@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> **目前第一版候選（2026-10-15）**：原計畫§0.3凍結四條旅程；固定`5d98187d5d148076c8cc0204255b1cc291eea084`已可本機試用，入口`output/trial/Baldr-V1/Launch-Baldr.cmd`，GUIDE與DELIVERY_RECEIPT列步驟、SHA、範圍及已知問題。Increment34補核發現原QA94／106只有版本收藏，不足代表一般手動清單；原505下鑽行情空白FAIL保留，窄修後新EXE QA121完成新增2330→個股→返回→新PID37276→33956讀回，重複／無效代號不改寫。QA125另以實際價格下限341.5驗四股3符合1排除、比較、收藏及新PID39640→18796 exact讀回；僅owned QA視窗暫時置頂並另核按鈕Win32 PID，保留1024px裁切與未全尺寸真人界線。市場／個股與回測、Startup關閉沿原未受影響收據；金融核心、reader、ports及時間／精度守衛未改。真四股12390筆至2026/09/23、大盤至2026/10/14，不混日期或冒充全市場／歷史PIT；TPEx、基本面／籌碼、完整雙策略及自然成熟等原計畫第二階段全部保留，完整Gate未接受。
+> **目前第一版候選（2026-10-15）**：原計畫§0.3仍凍結四條旅程；固定`3d072ca44543ea5d834bbd4550febd4c4fefd56a`已可由`output/trial/Baldr-V1/Launch-Baldr.cmd`試用，指南與收據列SHA／步驟／已知問題。Increment34已修普通手動清單下鑽；Increment35再解除1024px價格條件與表格水平溢出，固定EXE父33052→fresh49920完成套用341.5→3符合1排除、選股／比較／個股返回／收藏及同query/page/basket讀回，外層hidden horizontal=0；來源bytes不變。其他三旅程與Startup關閉沿原未受影響具名收據，金融／reader／public ports／保存格式及時間精度守衛未改。舊候選、QA129／130／133／134等FAIL原件保留，不外推真人／所有尺寸／跨機或完整Gate。四股12390筆至2026/09/23、大盤至2026/10/14，PIT=false與缺件不可用不變；TPEx、歷史權威、真N、完整雙策略與自然成熟等原完整計畫保留第二階段。
 
 > **更新基線：2026-10-15 UTC（使用者時區10/14）。** 使用者已恢復補完並採納每日版本快照與台北小時可用性政策；本輪實作／隔離驗證見[每日快照政策 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，原安全接手點見 [10/14 暫停 checkpoint](../06_qa/BALDR_COMPLETION_CHECKPOINT_20261014.md)。本頁只記目前可支持的整體狀態；局部 PASS 不相加成完整工作包或產品 Gate。較早恢復歷程見 [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)，先前紀錄見 [BALDR_COMPLETION_PROGRESS_20261011](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)；原始 receipts／source inventory 依各收據所列路徑與 SHA 追溯。
 

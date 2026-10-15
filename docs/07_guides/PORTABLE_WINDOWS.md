@@ -64,6 +64,6 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 
 ## 第一版本機試用候選（2026-10-15）
 
-依原補完計畫§0.3凍結四條主要旅程；固定來源`5d98187d5d148076c8cc0204255b1cc291eea084`，候選`dist/candidate_5d98187d5d14_1ce8c3ee/baldr`，EXE SHA `8d8297ab71973f8cc7af8de9d0be2987c8c16d102c174d639c8eae5d3cc003da`。本機直接使用`output/trial/Baldr-V1/Launch-Baldr.cmd`，入口先以.NET SHA核EXE再以專用config啟動；`--check`只輸出launch-info，已驗隔離設定，不需Python。原dist/baldr與active_delivery未替換。
+依原補完計畫§0.3凍結四條主要旅程；固定來源`3d072ca44543ea5d834bbd4550febd4c4fefd56a`，候選`dist/candidate_3d072ca44543_36076963/baldr`，EXE SHA `c6510a0366ecded69dd7a8bc285f1b8f057000f854eed7223f492e89ae1a0ea3`。本機直接使用`output/trial/Baldr-V1/Launch-Baldr.cmd`，入口先以.NET SHA核EXE再以專用config啟動；`--check`只輸出launch-info，已驗隔離設定，不需Python。原dist/baldr與active_delivery未替換。
 
 四股試用副本、V4來源與個人狀態根位於本owner明示的BaldrTrial隔離根，實際絕對路徑在交付config.json；不要移動來源或套用正式資料根。TRIAL_GUIDE.md列四流程、來源日期／成本與問題，DELIVERY_RECEIPT.json、BUNDLE_INVENTORY.json及INPUT_INVENTORY.json保存固定身份。這是未簽章的本機候選；不是發布、其他主機安裝或真人接受。新機仍沿原安裝Runbook，不直接複製私人根／排程／帳戶。

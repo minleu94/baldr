@@ -491,6 +491,7 @@ class UpdateView(QWidget):
         self._tpex_cancel_requested = False
         self._tpex_process_exit_code: int | None = None
         self._shutdown_requested = False
+        self._institutional_daily_worker: TaskWorker | None = None
 
         self._setup_ui()
 
@@ -1637,8 +1638,55 @@ class UpdateView(QWidget):
 
         _set_update_status_tone(label, level if level in {"info", "success", "warning", "error"} else "info")
 
+    def _open_saved_institutional_daily(self, pin: object, stock_code: str, generation: int) -> None:
+        """原更新頁coordinator持有唯讀工作，依選取generation拒收舊回呼。"""
+        widget = self.institutional_daily_widget
+        if self._shutdown_requested or self._institutional_daily_worker is not None:
+            return
+        cutoff = datetime.now().astimezone()
+
+        def task(cancel_callback=None):
+            return self.update_service.read_saved_institutional_daily_batch(
+                pin, stock_code=stock_code, decision_cutoff=cutoff, cancel_callback=cancel_callback,
+            )
+
+        worker = self._start_worker(TaskWorker(task), operation_kind="read")
+        self._institutional_daily_worker = worker
+        widget.set_loading(True)
+
+        def current() -> bool:
+            return not self._shutdown_requested and widget.generation == generation
+
+        worker.finished.connect(
+            lambda value: widget.show_result(value) if current() else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        worker.error.connect(
+            lambda message: widget.show_error(message) if current() else None,
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        def released():
+            if self._institutional_daily_worker is worker:
+                self._institutional_daily_worker = None
+                if not self._shutdown_requested:
+                    widget.set_loading(False)
+        worker.native_thread_finished.connect(released, Qt.ConnectionType.QueuedConnection)
+        worker.start()
+
+    def _cancel_saved_institutional_daily(self) -> None:
+        worker = self._institutional_daily_worker
+        if worker is not None:
+            worker.cancel(cooperative=True, wait=False)
+
     def _add_source_tab_content(self, layout: QVBoxLayout, key: str):
         """為個別資料源維護分頁建立專屬操作與手動配置界面"""
+        if key == "institutional_flow":
+            from ui_qt.widgets.institutional_daily_snapshot_widget import InstitutionalDailySnapshotWidget
+            self.institutional_daily_widget = InstitutionalDailySnapshotWidget(self)
+            self.institutional_daily_widget.readRequested.connect(self._open_saved_institutional_daily)
+            self.institutional_daily_widget.cancelRequested.connect(self._cancel_saved_institutional_daily)
+            layout.addWidget(self.institutional_daily_widget)
         if key in {"institutional_flow", "credit_transaction", "tdcc_shareholding", "scheduler_status"}:
             info_group = QGroupBox("資料域狀態與治理說明")
             _set_update_group_tone(info_group)

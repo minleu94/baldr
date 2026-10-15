@@ -58,6 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--run-dir", required=True, help="既有 capture run 目錄")
     rebuild.add_argument("--manifest-name", default="manifest.json")
 
+    seal = subparsers.add_parser("seal", help="核原TWSE法人capture，保存新批次小時收據；不抓取／apply")
+    seal.add_argument("--run-dir", required=True, help="原twse_institutional capture的絕對目錄")
+    seal.add_argument("--capture-manifest-sha256", required=True)
+
     apply = subparsers.add_parser("apply", help="顯式匯入已審核 candidate manifest")
     apply.add_argument("--manifest", required=True, help="capture 產出的 manifest.json")
     apply.add_argument("--db-path", required=True, help="明確 SQLite 目標；不猜測")
@@ -94,6 +98,12 @@ def main(argv: list[str] | None = None) -> int:
             args.run_dir,
             manifest_name=args.manifest_name,
         )
+    elif args.command == "seal":
+        from app_module.institutional_daily_snapshot import seal_twse_institutional_capture
+        pin = seal_twse_institutional_capture(Path(args.run_dir), args.capture_manifest_sha256)
+        result = {"directory": str(pin.directory), "manifest_sha256": pin.manifest_sha256,
+                  "receipt_sha256": pin.receipt_sha256, "candidate_only": True,
+                  "source_use_accepted": False, "historical_pit_eligible": False}
     else:
         result = apply_flow_manifest(
             args.manifest,

@@ -90,6 +90,9 @@ class HttpResponse:
     payload: bytes
     url: str
     attempts: int
+    eof_observed: bool | None = None
+    declared_content_length: int | None = None
+    content_encoding: str = ""
 
 
 Transport = Callable[[str, Mapping[str, str], int], HttpResponse]
@@ -636,29 +639,34 @@ def _parse_tpex_credit(
 def _default_transport(url: str, params: Mapping[str, str], timeout_seconds: int) -> HttpResponse:
     """有界官方 GET；不把 secret header 或 response body 寫入 log。"""
 
-    response = requests.get(
-        url,
-        params=dict(params),
-        headers={"User-Agent": _USER_AGENT, "Accept": "application/json,text/plain,*/*"},
-        timeout=timeout_seconds,
-    )
-    payload = bytes(response.content)
-    if len(payload) > MAX_RESPONSE_BYTES:
-        raise FlowCaptureError(
-            f"官方 response 超過 bounded cap: {len(payload)} > {MAX_RESPONSE_BYTES}"
+    with requests.get(
+        url, params=dict(params),
+        headers={"User-Agent": _USER_AGENT, "Accept": "application/json,text/plain,*/*",
+                 "Accept-Encoding": "identity"},
+        timeout=timeout_seconds, stream=True,
+    ) as response:
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            # 保留原HTTP body，不讓requests靜默解壓或先無界載入content。
+            chunk = response.raw.read(min(65536, MAX_RESPONSE_BYTES + 1 - total), decode_content=False)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > MAX_RESPONSE_BYTES:
+                raise FlowCaptureError("官方 response 超過 bounded cap")
+        length_text = response.headers.get("Content-Length")
+        if length_text is not None and not re.fullmatch(r"[0-9]{1,12}", length_text):
+            raise FlowCaptureError("官方 Content-Length 無效")
+        length = int(length_text) if length_text is not None else None
+        safe_headers = {key.lower(): str(response.headers[key]) for key in _SAFE_HEADERS if key in response.headers}
+        return HttpResponse(
+            status_code=int(response.status_code), headers=safe_headers,
+            payload=b"".join(chunks), url=str(response.url), attempts=1,
+            eof_observed=True, declared_content_length=length,
+            content_encoding=response.headers.get("Content-Encoding", ""),
         )
-    safe_headers = {
-        key.lower(): str(response.headers[key])
-        for key in _SAFE_HEADERS
-        if key in response.headers
-    }
-    return HttpResponse(
-        status_code=int(response.status_code),
-        headers=safe_headers,
-        payload=payload,
-        url=str(response.url),
-        attempts=1,
-    )
 
 
 def _request_with_retries(
@@ -1264,6 +1272,13 @@ def capture_recent_flows(
                 "payload_sha256": payload_sha,
                 "payload_size_bytes": len(response.payload),
                 "quantity_unit": spec.quantity_unit,
+                "transport_evidence": {
+                    "schema_version": "flow-http-body.v1",
+                    "eof_observed": response.eof_observed,
+                    "body_size_bytes": len(response.payload),
+                    "declared_content_length": response.declared_content_length,
+                    "content_encoding": response.content_encoding,
+                },
             }
             metadata_path = run_dir / "raw" / date_str / (_raw_filename(spec) + ".metadata.json")
             _write_json_create_only(metadata_path, metadata)

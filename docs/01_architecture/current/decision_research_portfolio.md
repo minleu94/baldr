@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+個股研究另有獨立 typed `StockOfficialAttentionDTO`／row 與 `official_attention` 尾端欄位；正常 report service 透過 `OfficialAttentionReportProvider` 讀明選 snapshot。三個 `OFFICIAL_ATTENTION_*` 環境設定只識別固定版本，不是資格接受；錯設定隔離此區塊，當日報告用實際 clock，歷史報告截止該台北日末，不能看到後來保存版本。原價／本益比字串、公開來源、雙 SHA、資料日／可用小時與限制投影至正常個股頁，與 `attention_reasons`、market status 交易限制及 Advice 分離；不新增策略規則。持久化與時間守衛見[資料架構](data_storage_runtime.md)，操作見[指南](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
+
 一般手動觀察股票的未連結研究，由 Watchlist 僅在無source ID、無result／決策日／snapshot且identity=unknown時明示選擇目前個股研究context；現有report reader讀目前行情，返回按原代號定位。已有來源或身份衝突仍保留保存來源路由；不將讀取失敗改成目前行情，也不授歷史PIT。儲存格式、public reader、金融計算與原收藏版本路徑均沿用，限定驗證見[Increment34 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)。
 
 | 模組 | 主要責任 |

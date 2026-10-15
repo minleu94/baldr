@@ -4,6 +4,10 @@
 
 ## 資料路徑與來源
 
+官方注意公告沿 `selection_official_attention.py` 的有界單日 TWSE 報表解析；保留完整原列 SHA、官方原因 HTML 原文與純文字投影、收盤價／本益比原字串，不將注意當處置或轉成金融輸入。`official_attention_snapshot.py` 另存 self-contained 原 body、HTTP／worker 原收據、headers／request／cookie 側錄與三份固定官方查詢文件。外部 HTTP 收據 SHA、原件各 SHA、完整 EOF／正常 worker 回收、單日全證券查詢、宣告筆數及 schema 均重驗。原 HTTP receipt 未含 worker-result SHA；新 manifest 明示現在才綁已保存 bytes，不追補舊收據。
+
+注意版本使用獨立 `twse-attention-daily-manifest.v1`／`twse-attention-daily-receipt.v1`，不冒用 MOPS 或法人 schema。create-only／fsync／pending／批次實際時鐘沿既有每日政策，只有公告日故保留官方發布時刻 None，以成功批次小時 fallback。fixed reader 要明選目錄與雙 SHA，逐次重驗整鏈與 bytes／signature，拒 pending／failure、未來 cutoff、提前小時與中途變更；原 capture 不需仍在場，不掃 latest、不讀正式 SQL。改正另存；失敗只隔離該功能。操作與設定見[注意公告指南](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)，資格仍候選／用途未接受／PIT false。
+
 `data_module/config.py` 的 `TWStockConfig` 是資料路徑權威。`DATA_ROOT` 預設為 `D:/Min/Python/Project/FA_Data`，可用環境變數覆蓋；`OUTPUT_ROOT` 亦由同一設定管理。主要市場 SQLite 位於 `<DATA_ROOT>/sqlite/twstock.db`。程式不得另造正式資料根目錄或硬編路徑。
 
 每日市場更新的主要資料流是：

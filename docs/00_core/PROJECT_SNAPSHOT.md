@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment48 正補原 P03／F16 官方注意公告，已有 2026/10/15 單日真原件 4,931 bytes／18 筆有價證券、完整 EOF 與具日期查詢文件鏈；未將無日期佔位當無公告。原件另存 self-contained 固定版本，11 份來源 bytes／mtime／ctime 不變，真批次可用時間為台北 10/16 06:00；提前讀取如預期拒絕。解析／公告 UI 23 案、snapshot／provider 23案、受改個股報告與必要 Workbench 共213案、validator25/0/4及八roots mypy1027已限定通過；真正常Main／fresh待自然可用小時後驗。原價／PE保留字串，注意與處置／Advice分離。固定9fa不變，不等試用回饋；下一葉並行定位原 P06 手動帳初次來源。用途接受／TPEx／歷史PIT／Native／EXE與完整Gate均未升格，詳[Increment48 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment48p03單日官方注意公告與固定版本)。
+
 Increment47 已接通 P06 策略帳首次來源→比較→保存→個股返回→新程序：同一 exact checkpoint 綁完整帳戶、原 mark 證據與可證開倉身分，additive Health v2 保留 v1 的 strategy 拒絕守衛；原 scenario store／金融引擎不換版。正常 Main5668→fresh34132 同 artifact／帳戶／估值與情境，21來源檔 bytes／SHA／mtime／ctime 不變、socket0，fresh 禁止重算／append。另補沿原 evaluator 的策略 Health 明選命令，缺治理仍 degraded，不補 HEALTHY／0；原等權比較的 caller 低精度中斷已修。QA227–238 的型別、schema、精度、UI排序、adapter相容與fixture FAIL 均保留並定向復驗；最終 Workbench85、validator25/0/4、八roots mypy1024 通過。這是隔離合成工程出口，手動／聲明初次來源、未持有候選、Registry 交叉入口及完整 P06 仍待；固定9fa、真來源資格／Native／EXE與完整Gate不變。詳[Increment47 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment47p06初次策略帳來源與正常保存旅程)。
 
 Increment46 修復真 TWSE 處置英文 array 無法讀取，以及市場名錄 reader 錯用終止事件類型而拒絕 8183 原公文的兩個流程阻礙。新 source pin／parser v3 綁官方 Swagger 與十欄契約；v2 原身份與讀法不變。真 12 筆處置逐欄、原 258 列保存來源相容及正常 Main39920→fresh34548 已限定驗證，真市場名錄與處置原件 18 檔不變；四股行情明示合成，不能當真N／完整真市場研究。無新 HTTP、正式資料寫入或固定9fa改版；HTTP原件完整鏈、來源用途、歷史PIT與完整Gate仍待，詳[Increment46 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment46p03真twse處置與終止公文讀回)。

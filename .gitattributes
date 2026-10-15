@@ -1,4 +1,6 @@
 *.cmd text eol=crlf
+tests/fixtures/official_attention/twse_20261015.json -text
+tests/fixtures/official_attention/undated_placeholder.json -text
 tests/fixtures/c1_cross_boundary/ab_interleave_scenarios.json -text
 tests/fixtures/c1_consumer_readiness/r014_saved_execution.json -text
 tests/fixtures/c1_consumer_readiness/r016_legacy_run_zh.json -text

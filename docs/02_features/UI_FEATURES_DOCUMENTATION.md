@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+後續開發分支的個股研究報告在市場狀態旁顯示獨立 TWSE 官方注意公告，原字串以 PlainText 呈現，另列來源日期、可用小時／basis、雙 SHA（tooltip 完整值）及限制。未知與查無此代碼分開；換股／清空會清除舊公告身份。三值固定版本設定、保存、重開與排錯見[單日官方注意公告](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。原固定9fa候選不變；不授 TPEx、歷史 PIT、處置或交易建議資格。
+
 ## 2026-10-06 首頁直達與個股限制
 
 首頁「今日優先查看」四用途重用原工作區；4–6位股號搜尋與Enter是明示當下研究，原保存候選仍由原列下鑽並精確返回。大盤刷新保技術細節收合／展開，明示bool來源缺件為unknown、error不當預設Trend；匹配度不轉勝率。個股focus summary呈現原DTO最新一日漲跌／資料日與區塊可讀／缺件、ML限制；保存關注理由不授投資結論。更多來源／指標及六個子頁仍可下鑽。[操作手冊](../07_guides/APPLICATION_MANUAL.md)與[有限QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)分報Native／真人與工程。

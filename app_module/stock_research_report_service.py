@@ -88,6 +88,7 @@ from app_module.stock_research_report_provider_adapters import (
 from app_module.watchlist_analysis_service import WatchlistAnalysisDTO, WatchlistAnalysisService
 from app_module.research_session import ResearchRankContextDTO
 from data_module.current_market_status_observation import CurrentMarketStatusReader
+from app_module.official_attention_report_provider import OfficialAttentionReportProvider
 
 
 class StockResearchReportCancelled(RuntimeError):
@@ -143,6 +144,7 @@ class StockResearchReportReadService:
         ml_provider: Callable[..., object] | None = None,
         valuation_provider: object | None = None,
         market_status_provider: Callable[[str], object] | None = None,
+        official_attention_provider: OfficialAttentionReportProvider | None = None,
         clock: Callable[[], datetime] | None = None,
         freshness_status_path: Path | str | None = None,
         candidate_db_file: Path | None = None,
@@ -167,6 +169,7 @@ class StockResearchReportReadService:
             else None
         )
         self.market_status_provider = market_status_provider
+        self.official_attention_provider = official_attention_provider or OfficialAttentionReportProvider.from_environment()
         self.market_status_pointer_path = (
             Path(output_root) / "release_v4" / "current_market_status" / "current_market_status_pointer.json"
             if output_root is not None
@@ -294,6 +297,16 @@ class StockResearchReportReadService:
         industry = ""
 
         market_status, market_status_source = self._read_market_status(code, cutoff)
+        official_attention = self.official_attention_provider.read(
+            code, as_of_date=cutoff, observed_at=actual_clock, cancel_callback=cancel_callback,
+        )
+        if official_attention.status == "available":
+            self._register_source(sources, StockReportSourceDTO(
+                "twse.official_attention", "TWSE單日官方注意公告", data_as_of=official_attention.query_date,
+                available_at=official_attention.available_hour, version=official_attention.manifest_sha256,
+                row_count=len(official_attention.rows), limitations=official_attention.limitations,
+                candidate_only=True, historical_pit_eligible=False,
+            ))
         if market_status_source is not None:
             self._register_source(sources, market_status_source)
         limitations.extend(market_status.limitations)
@@ -1114,6 +1127,7 @@ class StockResearchReportReadService:
                 ("ownership", bool(institutional or credit or shareholding)),
                 ("industry_events", bool(events)),
                 ("history", bool(events)),
+                ("official_attention", official_attention.status == "available"),
                 ("position", portfolio_scenario is not None or (position is not None and position.is_holding)),
                 ("health", (portfolio_scenario is not None and portfolio_scenario.health_known)
                  or (position is not None and bool(position.health_status))),
@@ -1156,6 +1170,7 @@ class StockResearchReportReadService:
             technical_history=technical_history,
             saved_technical_chart_json=saved_chart_json,
             portfolio_scenario=portfolio_scenario,
+            official_attention=official_attention,
         )
 
     def _read_prices(

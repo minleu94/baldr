@@ -492,6 +492,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
 
+Increment48 接續 P03／F16 注意名單的功能缺口，沿原時間政策另存單日 TWSE 原件、固定雙 SHA reader及個股報告獨立欄位，不把 `attention_reasons` 或處置 reader 當注意資料。真18筆有價證券完整 EOF 已保存，真可用小時台北10/16 06:00之前保持阻擋；23新解析／UI及受改213回歸／必要UI防線已限定驗，reader與正常Main／fresh續驗。此葉屬第二階段，沒有增加第一版前置或更動固定9fa。用途／授權、歷史、TPEx與完整F16各自保留；接續原P06手動／聲明初次帳戶的同源Health／行情與正常保存，不重造scenario engine。詳同一[政策QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment48p03單日官方注意公告與固定版本)。
+
 Increment47 解除原 P06「只有已保存情境可讀、初次策略帳缺 Health namespace／同源價格證據與正常保存入口」的阻礙。沿原 exact account／ledger query-only prefix、Health baseline/evaluator、scenario service/store 加 additive v2，提供明選命令及正常頁面；缺件不補 HEALTHY／0，原等權比較固定獨立精度。Main5668→fresh34132 同 artifact／帳戶與情境、21來源不變、fresh禁止重算／append；命令、來源反例及必要UI防線另驗，原FAIL保留。這是策略帳完整來源的限定出口，不縮小P06：手動／聲明初次來源、未持有候選、原Registry交叉入口與真來源／Native／EXE仍待。固定9fa不變、不增加V1前置。接續原P03 F16注意名單的真來源與原capture/public reader接線；Swagger不是注意名單資料，通用attention_reasons也不算完成。
 
 Increment46 解除 P03 真 TWSE 處置英文原件 reader 不相容，並修正相鄰市場 reader 將 `listing_termination` 誤比 `terminated` 而拒絕 8183 的真公文；未放寬日期／hash／來源核驗。新 pin／parser v3、原 v2 身份與 258 列舊保存來源相容、真 12 列及正常Main39920→fresh34548已限定驗證，18來源檔不變；行情仍明示四股合成，原完整Gate不變。此葉使原真來源可沿既有保存／重開／返回路徑使用，不新增框架或 V1 前置。接續初次P06可核驗帳戶／Health／行情與P03功能必要來源；HTTP完整鏈／用途授權、F16注意名單、歷史PIT、真N與Native／EXE各自保留，未驗處不由unknown代替。固定9fa與原完整範圍不變，不等真人試用。

@@ -2,6 +2,22 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment48：P03單日官方注意公告與固定版本
+
+本葉解除原 F16 沒有可核驗官方注意原件、每日版本及正常個股投影的工程缺口，屬第二階段；固定9fa及四條第一版旅程不變。不是增加試用前置，也不將unknown卡片算完整功能。HEAD起點 `dbcbeae57fc251cad6b347117874a6db29d3f6a5`，Root Sol，重用 Luna Max，累計10/10不新建。原 task／singleton／原FAIL不變。
+
+Root先核689份舊／新HTTP收據；沒有重抓已耗完的月營收GET／Swagger或MOPS缺EOF文件。五次各一個有界GET依次為TWSE OpenAPI notice、官方notice HTML、頁面實際引用的web-report.js、main.js與依該契約構造的單日RWD查詢；沒有重試、全歷史或正式寫入。第一份132 bytes完整HTTP只得到無日期placeholder（SHA `4bd0ac94f01d8731e1e4407c90af24f3d16d4ff24e13e09b9247e92e5160e216`），保持不合格，不當沒有注意公告。第五份明示20261015單日全TWSE證券query，4,931 bytes／宣告18證券／18原列／完整EOF，raw SHA `1e6458ff3b5458707e4d1fec87bb7fdc1d6ef8db752f069e49b3eea7e22cc4c8`，HTTP原收據 SHA `48bf7add8d9838cbfc0df8c22115709f24a8d6d6efbe0f5b04d2bb1488999a55`。包括053040權證，不能稱18股票或真N。編號與原累計次數不拿來推論唯一事件或連續日數；原理由HTML／純文字、收盤價及PE各自保留。
+
+`selection_official_attention.py` 嚴格核schema、八欄、params／title／同日、唯一代碼、宣告筆數與JSON品質。`official_attention_snapshot.py` 另存完整raw與HTTP／worker／request／headers／cookie／三官方文件原bytes；MOPS／T86 schema不冒用。原receipt沒有worker-result SHA，新manifest明示現在才綁保存bytes。create-only／fsync／pending／實際批次時鐘與明選雙SHA reader沿原守衛，禁止讀未來cutoff；沒有official發布時分則保留None與成功批次小時fallback，不把HTTP Date當發布時間。正常report service＋獨立typed DTO／PlainText顯示，不回流交易限制、Advice或金融計算；環境三值錯誤僅隔離此區塊。操作與排錯已同步[指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
+
+QA240–244五個HTTP Job皆自然閉鎖，raw取得不授來源用途。QA245 runner新增env清除欄位不在舊白名單，未執行產品命令；QA246編譯通過，owner probe漏repository import路徑而失敗，尚未seal；兩個FAIL原件保留。新owner runner v3只增三個注意env清除名稱，probe b只補import路徑。QA247完成真時鐘seal：manifest SHA `77a8ecdae561cfe6dfcaab46adcd63b2349fec8691cfd8ec7ce1c3cdbdd05475`，receipt SHA `77a30154c67473dc2a1d6e120df896ca89fe0b1c626e667b0a221cad833c89f7`；11份原件bytes／mtime／ctime一致，首次保存台北05:26，最早06:00可用，before-hour正確拒讀。23 parser／UI測試通過；outer `single_owned_qa_3b6d3a74aabc4e9cb12cfdeda1a36759/receipt.json` SHA `6fee41cc9b8701bd28b35d5f9b1a266b24b361c8f32698b3bc90db40dcde484d`。
+
+QA248：新來源trace與可用公告限制修訂後，受改report service／provider contracts／舊個股UI／公告UI與Workbench合組213 PASS（含原Workbench85）；validator25 PASS／0 FAIL／4 protected skips；八roots mypy1027 PASS。既有 `ui_qt.* ignore_errors=True` 不證UI強型別。outer `single_owned_qa_5fbe9a013c754da48642921a6c911fe9/receipt.json` SHA `1c2b68c966dc645cf38fef3db6deec527b7a4ac53d25c4419cad8021a38331b8`。上述Job都8GiB／12程序／kill-on-close／mutex，三PID陣列空、handles關閉與mutex釋放、無強制清除。
+
+QA249：snapshot拒絕／self-contained／不可覆寫／取消／讀中變更及report provider日期／原字串／固定身份／失敗隔離與service接線，共23 PASS；compile、保存命令help及金融float邊界守衛通過。單測transport及三份小文件明示合成，文件pins與now在單測中替換，不授真時間旅程。outer `single_owned_qa_e9420224d4344d2b91a4cee2401a457e/receipt.json` SHA `5f09b91d05ce4b7d349718eb44570277c000d3c76e294422a409ee30a77dbf44`，同資源限制且自然閉鎖。
+
+仍待真可用小時之後的同版正常Main／返回／fresh，具名driver已compile，不以未來clock提前真旅程。官方文件只證查詢契約，未授來源用途／歷史PIT／TPEx或完整F16，Native／EXE與自然成熟仍各自保留；接續原P06手動／聲明初次來源，不以此等待阻擋整線。
+
 ## 接手核對
 
 HEAD `10eb154af9c553354c73e57fcb2fafa724b82b8a`，開工工作樹只有原計畫增量。暫停清冊 50 份資產及兩份恢復後產品／觀測收據，共 52 份完整 SHA／大小相符；另保存 3,165 tracked source 的本輪基線（範圍為程式／JSON／TOML，非全庫 EOF）。私有 task 為 `output/tasks/baldr-completion-policy-20261014-01a1390b/`；既有 `active_task.yaml`／`handoff_log.md` 及前 owner task 不修改。

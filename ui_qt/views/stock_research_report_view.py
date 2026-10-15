@@ -60,6 +60,8 @@ from app_module.stock_research_report_dtos import (
     StockFundamentalObservationDTO,
     StockMarketStatusEvidenceDTO,
     StockMarketStatusSnapshotDTO,
+    StockOfficialAttentionDTO,
+    StockOfficialAttentionRowDTO,
     StockMetricDTO,
     StockPositionSnapshotDTO,
     StockPricePointDTO,
@@ -881,6 +883,31 @@ class StockResearchReportView(QWidget):
         )
         market_status_layout.addWidget(self.market_status_evidence_label)
         layout.addWidget(self.market_status_group)
+
+        self.official_attention_group = QGroupBox("TWSE 官方注意公告（原文證據展示）")
+        self.official_attention_group.setObjectName("stockResearchOfficialAttentionGroup")
+        official_attention_layout = QVBoxLayout(self.official_attention_group)
+        self.official_attention_label = self._wrapped_label(
+            "TWSE 官方注意公告：尚未載入本股。"
+        )
+        self.official_attention_label.setObjectName("stockResearchOfficialAttention")
+        self.official_attention_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.official_attention_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        official_attention_layout.addWidget(self.official_attention_label)
+        self.official_attention_evidence_label = self._wrapped_label(
+            "尚未載入官方注意公告來源證據。"
+        )
+        self.official_attention_evidence_label.setObjectName(
+            "stockResearchOfficialAttentionEvidence"
+        )
+        self.official_attention_evidence_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.official_attention_evidence_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        official_attention_layout.addWidget(self.official_attention_evidence_label)
+        layout.addWidget(self.official_attention_group)
 
         self.summary_limitations_panel = self._label_panel(
             "資料、模型與等待狀態",
@@ -1811,6 +1838,9 @@ class StockResearchReportView(QWidget):
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self.market_status_label.setText("當下上市／交易狀態：尚未載入本股。")
         self.market_status_evidence_label.setText("尚未載入本股的狀態來源證據。")
+        self.official_attention_label.setText("TWSE 官方注意公告：尚未載入本股。")
+        self.official_attention_evidence_label.setText("尚未載入官方注意公告來源證據。")
+        self.official_attention_evidence_label.setToolTip("")
         for value in self._summary_values.values():
             value.setText("尚未載入。")
         self.summary_detail_toggle.setChecked(False)
@@ -2103,6 +2133,7 @@ class StockResearchReportView(QWidget):
             + (f"｜{report.industry}" if report.industry else "")
         )
         self._render_market_status(report.market_status)
+        self._render_official_attention(report.official_attention)
         self._summary_values["latest_price"].setText(_latest_price_text(report.price_points))
         self._summary_values["attention"].setText(
             _join_or_missing(
@@ -3384,6 +3415,93 @@ class StockResearchReportView(QWidget):
             evidence_lines.append("來源 ID：" + "、".join(status.source_ids))
         self.market_status_evidence_label.setText(
             "\n".join(evidence_lines) if evidence_lines else "來源證據明細未提供。"
+        )
+
+    @staticmethod
+    def _official_attention_value(value: str) -> str:
+        return value if value else "未提供"
+
+    @staticmethod
+    def _official_attention_short_sha(value: str) -> str:
+        if not value:
+            return "未提供"
+        if len(value) <= 32:
+            return value
+        return f"{value[:16]}…{value[-8:]}"
+
+    def _render_official_attention(
+        self, attention: StockOfficialAttentionDTO | None
+    ) -> None:
+        """逐字展示 TWSE 注意公告原文，不混入市場限制或研究理由。"""
+
+        if attention is None:
+            self.official_attention_label.setText("TWSE 官方注意公告：未提供。")
+            self.official_attention_evidence_label.setText(
+                "缺少官方注意公告快照；不據此推論無公告或其他市場狀態。"
+            )
+            self.official_attention_evidence_label.setToolTip("")
+            return
+
+        lines: list[str] = []
+        if attention.status == "available":
+            if not attention.rows:
+                lines.append("此TWSE公告日查無此代碼；未判定其他市場。")
+            else:
+                lines.append("TWSE 官方注意公告原文：")
+                for row in attention.rows:
+                    lines.extend(self._official_attention_row_lines(row))
+            lines.extend(f"來源限制：{item}" for item in attention.limitations if item)
+        elif attention.status == "unknown":
+            lines.append("TWSE 官方注意公告狀態：未知。")
+            limitations = tuple(item for item in attention.limitations if item)
+            lines.extend(
+                f"來源限制：{item}" for item in limitations
+            )
+            if not limitations:
+                lines.append("具名來源限制未提供；不得推論查無公告。")
+        else:
+            lines.append(
+                "TWSE 官方注意公告狀態："
+                f"{self._official_attention_value(attention.status)}。"
+            )
+            lines.extend(
+                f"來源限制：{item}"
+                for item in attention.limitations
+                if item
+            )
+        self.official_attention_label.setText("\n".join(lines))
+
+        manifest_sha = self._official_attention_short_sha(attention.manifest_sha256)
+        receipt_sha = self._official_attention_short_sha(attention.receipt_sha256)
+        evidence_lines = (
+            f"查詢日期：{self._official_attention_value(attention.query_date)}",
+            f"來源 URL：{self._official_attention_value(attention.source_url)}",
+            f"資料可用小時：{self._official_attention_value(attention.available_hour)}",
+            f"可用時間依據：{self._official_attention_value(attention.availability_basis)}",
+            f"Manifest SHA-256：{manifest_sha}",
+            f"Receipt SHA-256：{receipt_sha}",
+        )
+        self.official_attention_evidence_label.setText("\n".join(evidence_lines))
+        self.official_attention_evidence_label.setToolTip(
+            "完整 Manifest SHA-256："
+            f"{self._official_attention_value(attention.manifest_sha256)}\n"
+            "完整 Receipt SHA-256："
+            f"{self._official_attention_value(attention.receipt_sha256)}"
+        )
+
+    @classmethod
+    def _official_attention_row_lines(
+        cls, row: StockOfficialAttentionRowDTO
+    ) -> tuple[str, ...]:
+        return (
+            f"股票：{cls._official_attention_value(row.stock_code)} "
+            f"{cls._official_attention_value(row.stock_name)}",
+            f"公告日期（原文）：{cls._official_attention_value(row.official_date_original_text)}",
+            "原累計公告次數（原文；不代表連續日數）："
+            f"{cls._official_attention_value(row.announcement_count_original_text)}",
+            f"原因（原文）：{cls._official_attention_value(row.reason_text)}",
+            f"收盤價（原文）：{cls._official_attention_value(row.closing_price_original_text)}",
+            f"本益比（原文）：{cls._official_attention_value(row.pe_original_text)}",
         )
 
     @staticmethod

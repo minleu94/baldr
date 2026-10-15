@@ -2,6 +2,12 @@
 
 本契約落實使用者於 2026-10-13（台北 10/14）採納的每日固定抓取政策，適用 P00／P03 的新保存來源及已接受的指定研究用途。施工順序仍由[原產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md#95-資料阻塞分流與下一批交付2026-10-14-調整)管理，實際驗證看[本輪 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。本頁不授正式資料寫入、排程變更、歷史回補或交易。
 
+## TWSE單日注意公告候選（Increment48）
+
+`twse-attention-dated-report.v1` 限定官方 RWD `announcement/notice` 的 `querytype=1`、相同 startDate／endDate、sortKind=DATE、response=json；原 HTML、web-report.js 與 main.js 的固定 SHA 只證官方查詢契約。單日 JSON 須完整 EOF，stat=OK、八欄／params／title 精確相符，count／total 與完整唯一證券列各自相等。OpenAPI 無日期佔位拒作無公告證明；`編號` 不當唯一身份，`累計次數` 只保留原文，不推論連續日數。理由保留原 HTML 與限定紅色 font 的純文字投影；收盤價與 PE 不轉金融數值，市場資格不由列數推定。
+
+`twse-attention-daily-manifest.v1` 固定原 raw、HTTP receipt、request／headers／cookies／worker job與result及三份文件的 bytes／SHA，`twse-attention-daily-receipt.v1` 綁 manifest 與實際 first-persisted／successful-completion／available-hour。原 HTTP receipt 沒有 worker-result SHA，新版本明示綁保存的 bytes，不補造舊 hash。只有公告日，官方發布小時保留 None；依 `daily-hour.v1` 使用成功批次 guard 小時及 `successful_batch_completion_fallback`，不拿 HTTP Date 作官方發布時刻。更正新目錄、pending／failure 拒讀、讀前後完整核驗與取消，版本保留來源用途未接受／歷史 PIT false。公開 reader 拒未來 cutoff，正常 report provider 將截止限在觀測時刻與報告台北日末較早者。保存與參數見[指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
+
 ## TWSE法人候選成功批次（Increment42）
 
 此為原 `institutional-credit-flows-candidate-bundle.v1` 的獨立 JSON companion，限定 `twse_institutional`／原T86／1–30個排序唯一日期。原 parser／source version、整數股數與 candidate 不變，不借 MOPS record 或另一 revision reader namespace 的接受。`institutional-daily-manifest.v1` 綁原 capture manifest 外部SHA、完整raw／metadata／candidate／readback的絕對路徑、bytes及SHA、原始官方時間文字／台北時間、來源時鐘與原報表列總數；這個總數不是股票 universe 或真N。

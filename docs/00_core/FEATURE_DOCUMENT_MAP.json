@@ -331,7 +331,7 @@
         "app_module/recommendation_portfolio_period_precision_v2.py",
         "app_module/recommendation_portfolio_period_calendar_read_pin_v1.py",
         "app_module/recommendation_portfolio_result_artifact_v2.py",
-          "app_module/recommendation_portfolio_result_artifact_v3.py",
+        "app_module/recommendation_portfolio_result_artifact_v3.py",
         "app_module/recommendation/portfolio_result_reader.py",
         "app_module/recommendation/replay_lineage_service.py",
         "app_module/research_run_dated_equity.py",
@@ -370,17 +370,17 @@
         "tests/test_recommendation_portfolio_calendar_artifact_v1.py",
         "tests/test_recommendation_portfolio_calendar_evidence_v1.py",
         "tests/test_recommendation_portfolio_full_period_pair_v1.py",
-          "tests/test_recommendation_portfolio_daily_calendar_pair_v1.py",
+        "tests/test_recommendation_portfolio_daily_calendar_pair_v1.py",
         "tests/test_recommendation_portfolio_period_precision_v2.py",
         "tests/test_recommendation_portfolio_precision_capture.py",
         "tests/test_recommendation_portfolio_execution_inputs_v1.py",
-          "tests/test_recommendation_portfolio_execution_registry_v3.py",
-          "tests/test_recommendation_portfolio_result_artifact_v3.py",
+        "tests/test_recommendation_portfolio_execution_registry_v3.py",
+        "tests/test_recommendation_portfolio_result_artifact_v3.py",
         "tests/test_recommendation_portfolio_precision_registry_v2.py",
         "tests/test_recommendation_portfolio_result_artifact_v2.py",
         "tests/test_research_run_dated_equity.py",
         "tests/test_registry_period_pair_controller.py",
-          "tests/test_registry_period_pair_daily_controller.py",
+        "tests/test_registry_period_pair_daily_controller.py",
         "tests/test_run_registry_period_pair_widget.py",
         "tests/test_research_run_portfolio_finalize.py",
         "tests/test_r020_portfolio_result_readback_service.py",
@@ -503,23 +503,34 @@
       ],
       "contracts": [
         "docs/01_architecture/system_architecture.md",
-        "docs/01_architecture/current/decision_research_portfolio.md"
+        "docs/01_architecture/current/decision_research_portfolio.md",
+        "docs/01_architecture/current/data_storage_runtime.md",
+        "docs/03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md"
       ],
       "code": [
         "ui_qt/views/stock_research_report_view.py",
         "app_module/stock_research_report_service.py",
-        "app_module/portfolio_research_stock_projection.py"
+        "app_module/portfolio_research_stock_projection.py",
+        "app_module/official_attention_snapshot.py",
+        "app_module/official_attention_report_provider.py",
+        "data_module/selection_official_attention.py",
+        "scripts/save_official_attention_snapshot.py"
       ],
       "tests": [
         "tests/test_stock_research_report_service.py",
         "tests/test_portfolio_scenario_stock_report.py",
         "tests/test_portfolio_scenario_stock_report_integration.py",
-        "tests/test_ui_qt_portfolio_scenario_stock_report.py"
+        "tests/test_ui_qt_portfolio_scenario_stock_report.py",
+        "tests/test_official_attention_snapshot.py",
+        "tests/test_official_attention_report_provider.py",
+        "tests/test_selection_official_attention.py",
+        "tests/test_stock_research_official_attention_widget.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
         "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
-        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
@@ -529,7 +540,15 @@
       ],
       "change_patterns": [
         "ui_qt/views/stock_research*",
-        "app_module/stock_research*"
+        "app_module/stock_research*",
+        "app_module/official_attention_snapshot.py",
+        "app_module/official_attention_report_provider.py",
+        "data_module/selection_official_attention.py",
+        "scripts/save_official_attention_snapshot.py",
+        "tests/test_official_attention_snapshot.py",
+        "tests/test_official_attention_report_provider.py",
+        "tests/test_selection_official_attention.py",
+        "tests/test_stock_research_official_attention_widget.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -538,7 +557,10 @@
         "docs/00_core/PROJECT_SNAPSHOT.md",
         "docs/01_architecture/current/decision_research_portfolio.md",
         "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
-        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md"
+        "docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md",
+        "docs/01_architecture/current/data_storage_runtime.md",
+        "docs/03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md",
+        "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
       ]
     },
     {

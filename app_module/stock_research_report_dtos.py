@@ -357,6 +357,30 @@ class StockMarketStatusEvidenceDTO:
 
 
 @dataclass(frozen=True)
+class StockOfficialAttentionRowDTO:
+    stock_code: str = ""
+    stock_name: str = ""
+    official_date_original_text: str = ""
+    announcement_count_original_text: str = ""
+    reason_text: str = ""
+    closing_price_original_text: str = ""
+    pe_original_text: str = ""
+
+
+@dataclass(frozen=True)
+class StockOfficialAttentionDTO:
+    status: str = "unknown"
+    query_date: str = ""
+    source_url: str = ""
+    rows: tuple[StockOfficialAttentionRowDTO, ...] = ()
+    manifest_sha256: str = ""
+    receipt_sha256: str = ""
+    available_hour: str = ""
+    availability_basis: str = ""
+    limitations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class StockMarketStatusSnapshotDTO:
     status: str = "unknown"
     listing_status: str = "unknown"
@@ -540,6 +564,7 @@ class StockResearchReportDTO:
     technical_history: tuple[StockTechnicalHistoryRowDTO, ...] = ()
     saved_technical_chart_json: str = ""
     portfolio_scenario: PortfolioScenarioStockProjection | None = None
+    official_attention: StockOfficialAttentionDTO = field(default_factory=StockOfficialAttentionDTO)
 
     def __post_init__(self) -> None:
         if not self.stock_code.strip():

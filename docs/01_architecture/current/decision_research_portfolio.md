@@ -47,6 +47,8 @@ Research Lab 的保存績效由 `StrategyHistoricalPerformanceReadService` 沿Re
 
 一般單股與批次回測的Registry保存入口先以 `research_run_dated_equity_copy` 保留實際date／日期欄或DatetimeIndex，再交既有writer以index=False保存；原曲線、金額與attrs不改，拒缺日、重複、乱序與模糊日期。舊run缺日不由requested period補造；版本化期間損益、幣別／成本、同股雙策略完整比較仍待，日期保存不授績效資格。
 
+Research Lab雙run完整期間頁沿同一FullPeriodPairReadV1展示兩側capture.observations的原Decimal文字，以實際日期聯集與每頁100日排列現金／持倉估值／權益及原件可選P&L。UI不讀Registry附件、不補日或重算金融；分頁不觸發reader，返回／取消／選取變更沿原generation及clear清空。來源、幣別、日曆、成本缺件與performance/PIT資格維持原reader判定，原wire shape及金融引擎不變。
+
 P03正常Main由成對的外部binding path/hash解析固定cohort及既有接受錨點，經decision composition重驗全市場，注入同一reader至preparer/provider；session固定hash-bound pin及natural invocation clock，共用可用時間取較晚者，推薦context保存同pin與實際read outcomes。無配置保留原路由，部分配置／錯版本／任一必要快照失效拒絕，不fallback。合成Main父29512→新PID33656已限定驗證input/context，不代表完整推薦、官方接受或EXE；歷史/select-latest保持原版本路由。
 
 P08 `recommendation_portfolio_period_precision_v2` DTO/codec保存精確Decimal text；原next-session-open.v2 producer現於轉float前直接捕獲實際cash／position value／equity。僅全部來源／訂單／持倉／推薦為同一精確股票時發行captured_unqualified，取消只保留partial實際列，未入迴圈fallback不是觀察；多股／需正規化代碼／三元組不符拒絕。每日realized/unrealized P&L未提供仍為None，不新增算式。新tuple不加入V1 DTO／Registry wire shape；V2 sidecar／exact reader及期間比較仍待。缺currency、來源clock/raw、正式calendar與成本authority不授真來源／績效資格。

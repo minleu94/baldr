@@ -69,6 +69,8 @@ COMPARABILITY_TONES = {
 class RunRegistryCompareWidget(QWidget):
     """顯示 Research Run Registry 的比較入口。"""
 
+    _PERIOD_OBSERVATIONS_PAGE_SIZE = 100
+
     def __init__(
         self,
         research_run_service: Any,
@@ -248,6 +250,69 @@ class RunRegistryCompareWidget(QWidget):
         self.period_pair_result_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         period_pair_layout.addWidget(self.period_pair_status_label)
         period_pair_layout.addWidget(self.period_pair_result_label)
+        self.period_observations_summary_label = self._new_summary_label("")
+        self.period_observations_summary_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.period_observations_summary_label.hide()
+        period_pair_layout.addWidget(self.period_observations_summary_label)
+        self.period_observations_table = QTableWidget()
+        self.period_observations_table.setColumnCount(13)
+        self.period_observations_table.setHorizontalHeaderLabels(
+            [
+                "日期",
+                "左側股票",
+                "左側現金",
+                "左側持倉估值",
+                "左側權益",
+                "左側已實現 P&L",
+                "左側未實現 P&L",
+                "右側股票",
+                "右側現金",
+                "右側持倉估值",
+                "右側權益",
+                "右側已實現 P&L",
+                "右側未實現 P&L",
+            ]
+        )
+        self.period_observations_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.period_observations_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.period_observations_table.verticalHeader().setVisible(False)
+        self.period_observations_table.setAlternatingRowColors(True)
+        self.period_observations_table.setWordWrap(False)
+        self.period_observations_table.setMinimumHeight(180)
+        self.period_observations_table.setMaximumHeight(420)
+        self.period_observations_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        apply_financial_table_style(self.period_observations_table)
+        self.period_observations_table.hide()
+        period_pair_layout.addWidget(self.period_observations_table)
+        period_observations_actions = QHBoxLayout()
+        self.period_observations_prev_button = QPushButton("上一頁原觀測")
+        self.period_observations_prev_button.clicked.connect(
+            self._previous_period_observations_page
+        )
+        self.period_observations_prev_button.hide()
+        period_observations_actions.addWidget(self.period_observations_prev_button)
+        self.period_observations_page_label = QLabel("")
+        self.period_observations_page_label.setWordWrap(True)
+        self.period_observations_page_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.period_observations_page_label.hide()
+        period_observations_actions.addWidget(
+            self.period_observations_page_label, stretch=1
+        )
+        self.period_observations_next_button = QPushButton("下一頁原觀測")
+        self.period_observations_next_button.clicked.connect(
+            self._next_period_observations_page
+        )
+        self.period_observations_next_button.hide()
+        period_observations_actions.addWidget(self.period_observations_next_button)
+        period_pair_layout.addLayout(period_observations_actions)
+        self._period_observations_page = 0
+        self._period_observation_dates: tuple[str, ...] = ()
         period_pair_actions = QHBoxLayout()
         self.cancel_period_pair_button = QPushButton("取消完整期間讀取")
         self.cancel_period_pair_button.clicked.connect(self._request_period_pair_cancel)
@@ -717,7 +782,18 @@ class RunRegistryCompareWidget(QWidget):
 
     def clear_period_pair_result(self) -> None:
         self._period_pair_result = None
+        self._period_observations_page = 0
+        self._period_observation_dates = ()
         self.period_pair_result_label.clear()
+        self.period_observations_summary_label.clear()
+        self.period_observations_page_label.clear()
+        self.period_observations_table.clearContents()
+        self.period_observations_table.setRowCount(0)
+        self.period_observations_summary_label.hide()
+        self.period_observations_page_label.hide()
+        self.period_observations_table.hide()
+        self.period_observations_prev_button.hide()
+        self.period_observations_next_button.hide()
         self.return_to_selected_runs_button.hide()
         self._update_period_pair_result_panel()
 
@@ -788,7 +864,7 @@ class RunRegistryCompareWidget(QWidget):
             "具名阻擋原因：",
             *reason_lines,
             "",
-            "此頁只呈現來源身份與日期覆蓋，不建立可排名績效。",
+            "此頁呈現來源身份、日期覆蓋與已保存原觀測，不建立可排名績效。",
         ]
         daily = result.daily_calendar_source
         if daily is not None:
@@ -804,6 +880,132 @@ class RunRegistryCompareWidget(QWidget):
             ]
         self.period_pair_status_label.setText(f"完整期間診斷：{status}")
         self.period_pair_result_label.setText("\n".join(lines))
+        self._render_period_observations(result, page=0)
+
+    def _render_period_observations(
+        self, result: FullPeriodPairReadV1, *, page: int
+    ) -> None:
+        left_capture = result.left.capture
+        right_capture = result.right.capture
+        left_rows = (
+            {row.session_date: row for row in left_capture.observations}
+            if left_capture is not None
+            else {}
+        )
+        right_rows = (
+            {row.session_date: row for row in right_capture.observations}
+            if right_capture is not None
+            else {}
+        )
+        # 僅聯集兩個 capture 實際列出的日期，不使用 expected calendar 補觀測。
+        self._period_observation_dates = tuple(sorted(set(left_rows) | set(right_rows)))
+        total_dates = len(self._period_observation_dates)
+        total_pages = max(
+            1,
+            (total_dates + self._PERIOD_OBSERVATIONS_PAGE_SIZE - 1)
+            // self._PERIOD_OBSERVATIONS_PAGE_SIZE,
+        )
+        self._period_observations_page = min(max(page, 0), total_pages - 1)
+        start = self._period_observations_page * self._PERIOD_OBSERVATIONS_PAGE_SIZE
+        page_dates = self._period_observation_dates[
+            start : start + self._PERIOD_OBSERVATIONS_PAGE_SIZE
+        ]
+
+        def side_summary(label: str, run: Any, capture: Any) -> str:
+            currency = (
+                run.precision.currency_code
+                if run.precision is not None
+                else None
+            )
+            if capture is None:
+                return (
+                    f"{label}側：股票／本金／期間／完成未提供；"
+                    f"precision 幣別：{currency or '未提供'}"
+                )
+            return (
+                f"{label}側：股票 {capture.stock_code}；"
+                f"capture 本金 {capture.initial_capital_decimal}；"
+                f"期間 {capture.requested_start_date}–{capture.requested_end_date}；"
+                f"capture {capture.capture_status}／完成 {capture.completion_status}；"
+                f"{label}側 precision 幣別：{currency or '未提供'}"
+            )
+
+        self.period_observations_summary_label.setText(
+            "逐日已保存原觀測（研究用途；不重算、不填補，資格仍依上方狀態）。\n"
+            + side_summary("左", result.left, left_capture)
+            + "\n"
+            + side_summary("右", result.right, right_capture)
+        )
+        self.period_observations_table.setRowCount(len(page_dates))
+        for row_index, session_date in enumerate(page_dates):
+            self.period_observations_table.setItem(
+                row_index, 0, QTableWidgetItem(session_date)
+            )
+            for offset, observation in (
+                (1, left_rows.get(session_date)),
+                (7, right_rows.get(session_date)),
+            ):
+                if observation is None:
+                    values = ("無觀測",) * 6
+                else:
+                    values = (
+                        observation.stock_code,
+                        observation.cash_decimal,
+                        observation.position_value_decimal,
+                        observation.equity_decimal,
+                        (
+                            observation.realized_pnl_decimal
+                            if observation.realized_pnl_decimal is not None
+                            else "未提供"
+                        ),
+                        (
+                            observation.unrealized_pnl_decimal
+                            if observation.unrealized_pnl_decimal is not None
+                            else "未提供"
+                        ),
+                    )
+                for column_offset, value in enumerate(values):
+                    self.period_observations_table.setItem(
+                        row_index, offset + column_offset, QTableWidgetItem(value)
+                    )
+
+        if total_dates:
+            last_date_index = min(
+                start + len(page_dates), total_dates
+            )
+            page_text = (
+                f"第 {self._period_observations_page + 1} / {total_pages} 頁；"
+                f"本頁日期 {start + 1}–{last_date_index} / "
+                f"共 {total_dates} 個實際 observation 日期"
+            )
+        else:
+            page_text = f"第 1 / 1 頁；共 0 個實際 observation 日期"
+        self.period_observations_page_label.setText(page_text)
+        self.period_observations_prev_button.setEnabled(
+            self._period_observations_page > 0
+        )
+        self.period_observations_next_button.setEnabled(
+            self._period_observations_page + 1 < total_pages
+        )
+        self.period_observations_summary_label.show()
+        self.period_observations_table.show()
+        self.period_observations_prev_button.show()
+        self.period_observations_page_label.show()
+        self.period_observations_next_button.show()
+
+    def _change_period_observations_page(self, delta: int) -> None:
+        result = self._period_pair_result
+        if result is None:
+            return
+        self._render_period_observations(
+            result, page=self._period_observations_page + delta
+        )
+
+    def _previous_period_observations_page(self) -> None:
+        self._change_period_observations_page(-1)
+
+    def _next_period_observations_page(self) -> None:
+        self._change_period_observations_page(1)
 
     def _period_pair_dates_text(self, dates: tuple[str, ...]) -> str:
         return "、".join(dates) if dates else "無"

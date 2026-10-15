@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment45已在真可用小時後完成真T86同pin正常Main5752→fresh43792：2330／2317／2454／0050九整數欄、來源雙SHA／fallback時鐘、切頁返回及新程序一致，7來源不變，producer／seal／apply禁用、Python socket0，未新增HTTP。QA206只在preflight因絕對pin路徑拒絕，無Job／Python；另存207相對pin spec後成功，原件與失敗保留。用途／授權、連買、股票真N／歷史PIT與完整Gate仍未接受；只補真資料正常讀回出口，不改固定9fa。詳[Increment45 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment45p03真t86正常畫面與新程序)。
+
 Increment44 已補齊 P06 保存情境到個股的原帳戶投影：明確綁帳種／portfolio／artifact 與 account source hash，顯示原現金、NAV、股數、估值、Health 及 targets；未保存預覽先另存，失配拒絕，不查當前手動帳。QA203四失敗案例與受影響 UI 共18 PASS、Workbench85、validator25/0/4、mypy1022；QA204另補Mapping交叉綁定3反例及正常Main10288→fresh18608，同完整投影、scenario DB不變、Python socket零；原FAIL保留。只在後續開發分支，初次帳戶／Health／行情來源及原Registry交叉入口、完整P06仍待；固定9fa試用包不變。詳[Increment44 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment44p06封存帳戶個股投影)。
 
 Increment43 已以單日／單請求T86保存2026/10/15真原件2,709,038bytes、完整EOF，21,000報表列／0quarantine；獨立核原「單位：股」、各分類及官方自營／三大合計與candidate整數一致，15來源檔不變。原parser未核宣告合計的缺口已補，新增8反例與受影響原service／scope／daily／UI共50PASS、compile及兩來源mypy通過；共享合成fixture錯合計69修70，原斷言保留。成功保存台北10/16 03:23，最早04:00可用，提前真cutoff已拒讀。用途／授權、真來源正常Main／fresh、全股票真N、連買／歷史PIT及完整Gate仍待；固定9fa不變，詳[Increment43 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment43p03真t86單日原件與宣告合計守衛)。

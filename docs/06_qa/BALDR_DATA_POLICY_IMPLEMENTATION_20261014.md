@@ -1008,3 +1008,23 @@ Main 原收據位於 owner `increment44_scenario_main_fresh_a/parent.json` SHA `
 使用者操作與結果判讀已同步主手冊、Portfolio／Research Lab 分冊、功能、current 架構／總架構、Feature Map、Snapshot 及原計畫 §7.1／§9.5。初次 account／Health／quote source、獨立行情可得時間、Registry 交叉入口及原完整包繼續，不以 unknown 或本輪案例加總結案；正式資料／Task／maintainer、push、發布及交易均未變。
 
 QA205 十份本輪文件／12features 與 context metadata30sources errors=[]通過，outer `single_owned_qa_250e330a224448b2846ce88993a1fe01/receipt.json` SHA `55d611f187ca4f499578abcba165439ee2c26068811e00a6a4961c5d505fd183`。Root 另核五組原收據與自然閉鎖、11最終來源pin、真T86／舊capture、固定V1 EXE／20不可變輸入、舊task與其他owner檔案不變；`increment44_final_integrity.json` SHA `1986cd9c2044bd237f1c189961f9e88b417f5b8cee9064e7481122ef41c451f8`。文件檢查後只追加本段收據註記，不外推完整 Gate。
+
+## Increment45：P03真T86正常畫面與新程序
+
+本葉只解除 Increment43 真資料尚未到可用小時、正常 UI／fresh 未驗的出口。沿原取得→原件→品質→成功保存→public reader→正常 UI→新程序，同一批次及雙 SHA，沒有新金融公式、框架或固定 V1 前置。期間同步核 P07 與 P12 已有接點，初次 P06 來源及其餘原包不等待真人試用。
+
+Root 於 UTC2026/10/15 20:00:07（台北10/16 04:00:07）確認時間已到才啟動。QA206 的 pin 複製了絕對路徑，invoker 在 preflight 拼接失敗，沒有 Job／Python／HTTP，原 spec 與 `increment45_qa206_preflight_failure.json` 保存；另存207的 workspace 相對 pin，所有原 SHA／HEAD不變，未覆寫206或重抓。
+
+QA207 helper compile及正常 Main5752→fresh43792通過，原每phase120秒／UI15秒／driver270秒期限保持。兩程序各以真正當下cutoff（UTC20:00:33及20:00:42）開正常「數據更新 → 三大法人」固定批次，逐一讀2330、2317、2454、0050。四列九個買／賣／淨額整數與獨立raw quality原值一致，保留負淨額；2330外資買13,293,478、賣47,404,843、淨-34,111,365股，沒有轉張或浮點回流。每列是2026/10/15資料，母體明示21,000報表列，不能當股票真N。
+
+同manifest／receipt SHA、原件 SHA／twse-T86.v1、首次保存／成功完成、台北04:00與successful_batch_completion_fallback都在原正常widget讀回；官方發布時分缺件保持未提供。切至Watchlist再返回同值；fresh重新明選同pin，四列／identity／tooltip與父程序相同。capture／seal／apply／candidate update明確禁用、Python socket0，7個原capture／daily來源 bytes／SHA／mtime／ctime不變；兩程序正常關閉，沒有新HTTP或原件寫入。
+
+outer `single_owned_qa_d17cb06fb304476ca81d93a90248c100/receipt.json` SHA `b032e47f1cf7392dde5971e8eeb75fad55f735473653949347d1ab97f47b4500`。原父收據 `increment45_t86_main_fresh_a/parent.json` SHA `ee6be76fe743af92802b09683d9aab7261f88627d18bad17dc4204287689cb64`、fresh SHA `61e4dbafc5b071775cc356335882806b928caef07b77116c1f556cf7bd2420f4`。Job保持8GiB／12程序／KOC／同workspace mutex，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。此為source Main、真來源配隔離帳本／市場root；隔離fixture缺companies／market SQLite的原提示保留，不授其他市場頁或Native／EXE。未改UI／product Python，未受影響50案、Workbench／validator／mypy及其他旅程沿原具名證據，不重跑。
+
+本輪只做官方授權線索發現：[TWSE使用條款](https://wwwc.twse.com.tw/zh/terms/use.html)保留政府開放資料例外，但沒有據此自授T86用途。另[政府資料集11856](https://data.gov.tw/dataset/11856)明列上櫃法人資料及開放授權；這是該精確資源後續版本核驗線索，不是其他TPEx日曆、T86或正式來源的接受證據。線索另存 `increment45_official_license_discovery.json`，屬web頁面閱讀，沒有完整HTTP原件／EOF／raw hash，沒有更新正式registry。
+
+既有Luna Max窄讀確認 P07 原保存StrategySpec／rule pin及public rule reader已接歷史「開啟規則」與Registry比較；目前設定卡本來就標明目前設定，不另造接線。Root窄核P12既有bounded stage trace、timeout／unknown／failed terminal與共用frame取消／reset；無修改、無QA或真排程接受，不重觸發已停maintainer。詳owner `increment45_parallel_static_notes.md`，workers累計10/10、pending writes=false。
+
+正常真資料唯讀出口現已驗證；來源用途／授權、連買、歷史PIT／真N、初次帳本與完整雙策略、Native／EXE及原完整Gate仍分開未完成。指南、功能、current資料分冊、Snapshot及原§9.5同步；產品契約／模組／Feature Map／安裝／正式Task無變，不另立總計畫。固定9fa四旅程、原FAIL及所有舊task／原件保留。
+
+QA208 八份本輪文件／12features errors=[]，outer `single_owned_qa_ea9af9bb143d475eaf75c40a85ab1f71/receipt.json` SHA `4aa4afe7e13cf469993f75d5c231a59333ad10aa9bf9a25e1fd2f89b8484c132`。Root另核207／208自然閉鎖、31個tested來源pin、原capture／T86／舊task與其他owner保護檔、V1 EXE及20輸入不變；`increment45_final_integrity.json` SHA `47dc5f9ca7b8c65c677ba0a3b3701ced1988bdfff44feec18ad64f5844671207`。檢查後只追加本段原收據註記，不授來源或完整Gate。

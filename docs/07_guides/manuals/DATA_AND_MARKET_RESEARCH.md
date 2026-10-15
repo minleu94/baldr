@@ -90,7 +90,7 @@
 
 只有基準日期時採成功批次完成的小時依據，不能用舊列級 `available_at` 代替。保存與完整再核驗須在可用小時之前完成；尚未到可用小時、缺原件、SHA／版本錯誤、pending 或來源讀取中變動皆拒絕並清除舊結果。修改輸入或按「取消／清除結果」會清除畫面並合作取消，須等本輪 worker 安全返回才能再讀。切至其他工作區再返回可保留已載入結果；新程序仍需明選同一目錄與雙 SHA。
 
-產物仍為 candidate-only，`source_use_accepted=false`、`historical_pit_eligible=false`。Increment43已保存2026/10/15真官方單日原件並核單位／分類合計與全批candidate一致，但用途／授權接受及真來源正常Main／新程序仍待；不要從工程PASS推成來源已接受。該批台北10/16 03:23成功保存，最早04:00可用，在此之前開啟會正確拒絕；不要改電腦時間或cutoff繞過。連買、跨市場交易日及歷史指標繼續不可用；不要正式 apply、搬回正式資料或以此認證歷史 PIT。詳[本輪 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment43p03真t86單日原件與宣告合計守衛)。
+產物仍為 candidate-only，`source_use_accepted=false`、`historical_pit_eligible=false`。Increment43已保存2026/10/15真官方單日原件並核單位／分類合計與全批candidate一致；Increment45在實際台北10/16 04:00後，以同一批次驗過正常Main／新程序重開2330、2317、2454、0050與原整數相同。用途／授權接受仍待，不要從工程PASS推成來源已接受。該批台北03:23成功保存、最早04:00可用，之前開啟正確拒絕；不要改電腦時間或cutoff繞過，也不必為了重開再次抓取或seal。連買、跨市場交易日及歷史指標繼續不可用；不要正式 apply、搬回正式資料或以此認證歷史 PIT。詳[真來源讀回 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment45p03真t86正常畫面與新程序)。
 
 ### 每日快照的時間判讀
 

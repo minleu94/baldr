@@ -134,6 +134,8 @@ UI 更新工作具單一寫入互斥：快速／安全更新、個別來源下�
 
 Increment43真單日T86原件／完整EOF／21,000報表列與股數守恆已核；每日版本另強制raw原單位及獨立宣告合計，矛盾不進成功版本。缺官方發布小時採成功批次fallback，真批次可用前仍拒讀，不調整時鐘／自動重抓。這是候選品質證據，未授來源用途／授權、全股票母體、連買或歷史PIT。
 
+Increment45已在真正可用小時後，用同一目錄與雙SHA走正常法人唯讀頁→切頁返回→新程序明選重開，四個代碼的原買／賣／淨額一致，沒有新增HTTP或seal；無需為了查看已存版本重抓。這只解除真來源正常讀回未驗的缺口，來源授權與連買等限制仍依上方操作指南分開判定。
+
 UpdateService overview／detail 在 SQLite 缺失時會先停在 `unavailable`，存在時也只用共用 `mode=ro`／`PRAGMA query_only=ON` adapter，不會呼叫會初始化 schema 的可寫 DB manager；因此狀態檢查本身不改變資料根目錄，也不與寫入連線爭用 schema／WAL。若 Windows 外部鎖定使一般 read lock 不可用，adapter 會明確標記 `read_mode=immutable_fallback` 與提醒；這只代表最後已提交的唯讀快照，應停止其他寫入後再重查。
 
 ## TWSE 無資料日與排錯

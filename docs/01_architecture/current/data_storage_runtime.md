@@ -29,6 +29,8 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 原T86 parser另交叉核官方自營商／三大法人宣告合計與原分類，body單位若存在須為股；每日seal／exact reader還要求明示raw單位、唯一欄名與兩個宣告合計欄，不由metadata常數推定。legacy缺欄候選解析相容不授每日讀取資格，舊artifact不改寫；真單日原件與批次時鐘仍沿上述同一鏈。
 
+Increment45以真當下時鐘跨過原批次04:00邊界後，正常Main5752→fresh43792沿同pin核四代碼原整數與7來源檔不變；禁止producer／seal／apply／HTTP，沒有重抓或注入未來cutoff。這是原資料流的真來源限定證據，不新增契約／來源接受，詳[QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment45p03真t86正常畫面與新程序)。
+
 日曆JSON原件以獨立typed transport保存HTTP／EOF／hash，daily batch沿原兩市場parser發行create-only capture／manifest／receipt。Exact reader要求外部manifest及receipt SHA、各市場獨立用途接受錨點，讀前後拒pending／failure並重驗原件；更正另存，93 inclusive日限制與candidate資格保留。Registry原頁已接明示daily pin，合成Main／fresh重用已保存來源限定通過；獨立接受紀錄未配置時阻擋，不掃latest或從capture自授信任。真用途接受、正式Main配置與publisher／Task仍待，詳[日曆版本契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#日曆完整json批次increment21)。
 
 TPEx年度開休市頁的JSON內嵌HTML由`data_module/tpex_trading_date_html_v1.py`先核原bytes／外部SHA、baseline、兩表結構及rowspan，原`official_calendar_bundle`再處理股票開休市；三類債券保留為非股票列，不能關閉股票日期。這個候選來源與舊monthly boolean是不同schema，目前尚未接daily wire／用途錨點，不因年度基準日期或完整取得授PIT。詳[年度解析契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。

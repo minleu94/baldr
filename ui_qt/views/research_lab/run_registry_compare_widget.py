@@ -44,6 +44,8 @@ from ui_qt.widgets.table_style import apply_financial_table_style
 
 if TYPE_CHECKING:
     from ui_qt.workers.task_worker import TaskWorker
+    from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+    from ui_qt.widgets.portfolio_scenario_registry_widget import PortfolioScenarioRegistryWidget
 
 
 RUN_TYPE_LABELS = {
@@ -113,7 +115,19 @@ class RunRegistryCompareWidget(QWidget):
         self._period_pair_request_pending = False
         self._period_pair_result: FullPeriodPairReadV1 | None = None
         self._period_pair_selection_snapshot: tuple[tuple[str, str], ...] | None = None
+        self.scenario_registry_widget: PortfolioScenarioRegistryWidget | None = None
         self._setup_ui()
+
+    def configure_scenario_registry(self, workspace: PortfolioResearchScenarioWorkspace,
+                                    on_open: Callable[[object], None]) -> None:
+        """同一 Registry 的配置研究型別區；不送入回測比較或 promote。"""
+        if self.scenario_registry_widget is not None:
+            return
+        from ui_qt.widgets.portfolio_scenario_registry_widget import PortfolioScenarioRegistryWidget
+        widget = PortfolioScenarioRegistryWidget(workspace, parent=self)
+        widget.openRequested.connect(on_open)
+        self.scenario_registry_widget = widget
+        self.layout().insertWidget(1, widget)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -1135,6 +1149,11 @@ class RunRegistryCompareWidget(QWidget):
         self._update_compare_button_state()
 
     def closeEvent(self, event) -> None:
+        if self.scenario_registry_widget is not None:
+            self.scenario_registry_widget.begin_shutdown()
+            if self.scenario_registry_widget.has_running_worker():
+                event.ignore()
+                return
         self._rule_closed = True
         self._rule_request_id += 1
         if self._rule_worker is not None:

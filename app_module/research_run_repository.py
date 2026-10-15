@@ -7,7 +7,10 @@ from contextlib import closing, contextmanager
 import re
 import sqlite3
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app_module.portfolio_research_registry import ScenarioRegistryEntry
 
 from app_module.research_run_dtos import (
     ResearchRunMetadataDTO,
@@ -77,6 +80,112 @@ class ResearchRunRepository:
     def __init__(self, config: Any):
         self.config = config
         self.db_path = Path(config.research_run_db_file)
+
+    @staticmethod
+    def _scenario_reference_schema(conn: sqlite3.Connection, *, create: bool = False) -> bool:
+        """配置研究有獨立型別版本；查詢不補表、不遷移舊 Registry。"""
+        name = "portfolio_scenario_registry"
+        marker = conn.execute("SELECT version FROM schema_version WHERE name=?", (name,)).fetchone()
+        table = conn.execute("SELECT type FROM sqlite_master WHERE name=?", (name,)).fetchone()
+        if marker is None and table is None:
+            if not create:
+                return False
+            conn.execute("""CREATE TABLE portfolio_scenario_registry (
+                record_id TEXT NOT NULL PRIMARY KEY, account_kind TEXT NOT NULL,
+                portfolio_id TEXT NOT NULL, reference_sha256 TEXT NOT NULL, payload_json BLOB NOT NULL
+            )""")
+            conn.execute("INSERT INTO schema_version(name,version) VALUES (?,1)", (name,))
+        elif marker is None or type(marker[0]) is not int or marker[0] != 1 or table is None or table[0] != "table":
+            raise ResearchRunRepositoryError("配置研究 Registry schema version 不相容")
+        info = conn.execute("PRAGMA table_info(portfolio_scenario_registry)").fetchall()
+        expected = ("record_id", "account_kind", "portfolio_id", "reference_sha256", "payload_json")
+        if tuple(row[1] for row in info) != expected or any(
+            row[2] != ("BLOB" if row[1] == "payload_json" else "TEXT")
+            or row[3] != 1 or row[5] != int(row[1] == "record_id") for row in info
+        ):
+            raise ResearchRunRepositoryError("配置研究 Registry columns 不相容")
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='trigger' AND tbl_name=?", (name,)).fetchone():
+            raise ResearchRunRepositoryError("配置研究 Registry 不接受 trigger")
+        indices = conn.execute("PRAGMA index_list(portfolio_scenario_registry)").fetchall()
+        if len(indices) != 1 or indices[0][2:] != (1, "pk", 0):
+            raise ResearchRunRepositoryError("配置研究 Registry 主鍵索引不相容")
+        parts = conn.execute(f"PRAGMA index_xinfo('{indices[0][1]}')").fetchall()
+        if tuple((row[2], row[3], row[4]) for row in parts if row[5] == 1) != (("record_id", 0, "BINARY"),):
+            raise ResearchRunRepositoryError("配置研究 Registry 主鍵排序不相容")
+        return True
+
+    @staticmethod
+    def _load_scenario_reference(conn: sqlite3.Connection, record_id: str) -> ScenarioRegistryEntry | None:
+        from app_module.portfolio_research_registry import MAX_REFERENCE_BYTES, decode_reference
+        meta = conn.execute("""SELECT account_kind,portfolio_id,reference_sha256,typeof(payload_json),length(payload_json)
+                               FROM portfolio_scenario_registry WHERE record_id=?""", (record_id,)).fetchone()
+        if meta is None:
+            return None
+        if meta[3] != "blob" or type(meta[4]) is not int or not 0 < meta[4] <= MAX_REFERENCE_BYTES:
+            raise ResearchRunRepositoryError("配置研究 Registry payload size/type 不符")
+        row = conn.execute("SELECT payload_json FROM portfolio_scenario_registry WHERE record_id=?", (record_id,)).fetchone()
+        entry = decode_reference(row[0], meta[2])
+        if (entry.record_id, entry.account_kind, entry.portfolio_id) != (record_id, meta[0], meta[1]):
+            raise ResearchRunRepositoryError("配置研究 Registry index 與原件不符")
+        return entry
+
+    def get_portfolio_scenario_reference(self, record_id: str) -> ScenarioRegistryEntry | None:
+        if not self.db_path.exists():
+            return None
+        with self._read_connection() as conn:
+            conn.execute("BEGIN")
+            if not self._scenario_reference_schema(conn):
+                return None
+            return self._load_scenario_reference(conn, record_id)
+
+    def list_portfolio_scenario_references(self, *, account_kind: str, portfolio_id: str,
+                                          limit: int = 25) -> tuple[ScenarioRegistryEntry, ...]:
+        from app_module.portfolio_research_registry import _identity
+        _identity(account_kind, portfolio_id)
+        if type(limit) is not int or not 1 <= limit <= 200:
+            raise ValueError("Registry reference limit must be an integer in 1..200")
+        if not self.db_path.exists():
+            return ()
+        with self._read_connection() as conn:
+            conn.execute("BEGIN")
+            if not self._scenario_reference_schema(conn):
+                return ()
+            rows = conn.execute("""SELECT record_id FROM portfolio_scenario_registry
+                WHERE account_kind=? AND portfolio_id=? ORDER BY record_id ASC LIMIT ?""", (account_kind, portfolio_id, limit)).fetchall()
+            result = []
+            for row in rows:
+                check_read_cancelled()
+                entry = self._load_scenario_reference(conn, row[0])
+                if entry is None or (entry.account_kind, entry.portfolio_id) != (account_kind, portfolio_id):
+                    raise ResearchRunRepositoryError("配置研究 Registry selection 不符")
+                result.append(entry)
+            return tuple(result)
+
+    def append_portfolio_scenario_reference(self, entry: ScenarioRegistryEntry) -> ScenarioRegistryEntry:
+        from app_module.portfolio_research_registry import decode_reference, encode_reference, same_source
+        payload = encode_reference(entry)
+        decode_reference(payload, entry.reference_sha256)
+        # 既有 DB 必須已是 v2；新 DB 才由原 owner 建立原 run schema。
+        if self.db_path.exists():
+            with self._read_connection():
+                pass
+        else:
+            self.ensure_schema()
+        with self._write_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            version = conn.execute("SELECT version FROM schema_version WHERE name=?", (self.SCHEMA_NAME,)).fetchone()
+            if version is None or type(version[0]) is not int or version[0] != self.SCHEMA_VERSION:
+                raise ResearchRunRepositoryError("Registry schema version 不相容")
+            self._scenario_reference_schema(conn, create=True)
+            existing = self._load_scenario_reference(conn, entry.record_id)
+            if existing is not None:
+                if not same_source(existing, entry):
+                    raise ResearchRunConflictError("配置研究 Registry source conflict")
+                return existing
+            conn.execute("INSERT INTO portfolio_scenario_registry VALUES (?,?,?,?,?)", (
+                entry.record_id, entry.account_kind, entry.portfolio_id, entry.reference_sha256, payload,
+            ))
+        return entry
 
     @contextmanager
     def _read_connection(self) -> Iterator[sqlite3.Connection]:

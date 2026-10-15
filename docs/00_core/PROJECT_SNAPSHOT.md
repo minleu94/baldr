@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment52 接通原 P06「已保存配置研究 → 明確登錄 → 正常 Registry → 原情境／個股／返回 → 新程序」。同一 Registry 只追加有型別引用，不造回測績效或改原情境；重試保留首時間，錯帳／hash／版本／原件缺失拒絕。218定向及受改回歸含Workbench85、mypy1030／validator25/0/4通過；Main5648→fresh44328同引用與兩DB hash、原件不變、禁止重算／fresh寫入。合成offscreen證據不授真來源／Native／EXE或完整P06。指南與原§9.5同步；手動／聲明缺完整現金及同源Health／行情仍隔離，後續回P03必要資料。固定下列四流程試用包不增加前置，詳[Increment52 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment52p06配置研究登錄與正常registry重開)。
+
 **最新V1窄版修補候選：`4b530a7e929f31dc0f7d7edfba790d011aeb1bfc`**，啟動 `output/trial/Baldr-V1-PF/Launch-Baldr.cmd`，EXE SHA `68e92c92adf30e479a798052e812f0d965d0f40c2e2e841610ab628191330f37`。只從9fa回移PF金融修正，沒有49新歷史卡／策略登記等第二階段變更；四條流程及20原來源保持，新output／registry隔離，舊9fa包與保存結果保留。固定來源QA264 compile／mypy1016／162PASS含Workbench85／validator25/0/4／float通過；舊本機output超連結在export缺件FAIL保留，doc-only新commit所有3227 Python SHA一致，QA265六文件通過及建置。QA267固定EXE正常Native GUI／保存對話框／歷史／返回／fresh同run通過，419日／1買入5000股／0完成配對、成本176138分與現金／權益保持，PF正確None／no_closed_pairs。其他三流程沿未改路徑的原收據，非本EXE全部重跑／真人或完整Gate；指南及已知問題在同目錄，詳[Increment51 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment51v1獲利因子窄版候選)。
 
 Increment50 修正PF把無虧損金額當比率、零配對／全平假零及None展示中斷；原FIFO／分量化沿用，Decimal60隔離caller context。nullable／語意狀態接單股、批次、最佳化、新保存NULL與舊比較／升級隔離，不改舊列或遷移schema。QA260 compile12／八roots mypy1028／177PASS含Workbench85，1項缺值貨幣標籤FAIL保留，QA261定向1PASS／validator25/0/4／精度守衛；QA262正常Main17676→fresh48528兩run原引擎顯示／保存／歷史／返回通過，合成價格界線明示。**固定9fa EXE尚未含PF修正，V1-04窄版backport／新候選是下一交付阻擋項**。詳[Increment50 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment50p08獲利因子語意與金融錯誤修正)。

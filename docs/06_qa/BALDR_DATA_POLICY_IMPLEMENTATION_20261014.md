@@ -2,6 +2,26 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment52：P06配置研究登錄與正常Registry重開
+
+**解除的流程阻礙**：第二階段已有完整情境原件，卻無法從正常 Registry 找回。沿原 §7.1／§9.5 增加明確登錄及 exact 重開，不重造情境引擎。第一版四流程已固定交付，此增量不增加試用前置，也不混入 `4b530a7e` EXE。手動／聲明缺全帳現金聲明及同源 Health／行情仍歸 D；不以成本／預設零／Paper 證據補 NAV。
+
+Root 保留金融／共用 ports／整合／QA／文件；重用三名既有 Luna Max 靜態寫兩個 UI 葉及定向測試，累計仍 10/10、沒有新 agent／子代理。設計為同一原 Registry SQLite 的 additive typed context table，原 research_runs v2 與 scenario v3／store v1 不換版。引用 8KiB／正常清單25筆、有界 query-only、外部 selection SHA 與原件帳種／portfolio／artifact／snapshot／decision／保存時間／input hash 交叉綁定。登錄是 explicit create-only 動作，重試保留首時間；失敗不刪原件，不產生假本金／成本／空 equity/trades 或新績效。原 callback generation、取消與 native worker 終態保留。
+
+| QA | 實際限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 270 | route 為 execution／testing／documentation／tech lead／data audit；portfolio_health Level2 讀3來源6073字元，unknown=[]。只作定位。 | `single_owned_qa_b169cf9b0ab1479daf5f140ec24f93ab/receipt.json`；`81e4dbe578cb04bf6f8775e21602d0f586ee0a2e744df78fe1ca5da26eb7af77` |
+| 271 | core compile與原 reader 78案通過，但沿用清冊含仍由已知 worker 編輯的 UI，最後 source pin 檢查 FAIL；整組不作候選接受。原 log／receipt 保留。 | `single_owned_qa_1884d01be8e546569a23b50102539a47/receipt.json`；`65eb3a088d12e10a8f0073b580fb6c25ccf66398cf5cd01bef734bc1b7365e45` |
+| 272 | 全部葉片停止寫入後重綁 SHA：11個產品／測試檔與 helper compile；218 PASS含新登錄／兩個 UI、原 Registry service／repository、scenario／initial widget 與 Workbench85；八roots mypy1030、validator25 PASS／0 FAIL／4 protected skips通過。UI legacy ignore不證強型別。 | `single_owned_qa_01fb44dfecd446c18bdc149096d34bbe/receipt.json`；`71c6a2ee4f9509644f845e245bf945b7ba7782b41d3bc2ed4ae574fb27c1099c` |
+| 273 | helper誤要求1024px而offscreen只有800px，在原可用螢幕斷言 FAIL；尚未登錄。保留a與隔離輸出。 | `single_owned_qa_56cc414fd7ac4b7a9727082e083e0eb4/receipt.json`；`245409eceab664e5a9497d42fd4fcecc139c7e063eb751d19cb4ccb27674991c` |
+| 274 | b恢復原47的640px及全部曝光／裁切／15秒UI、120秒phase、270秒driver斷言。正常 Main5648→fresh44328，明確登錄／重試／Registry選取／P06 exact／個股／返回通過。 | `single_owned_qa_6151d5d764024ee4b9665d99be1500a4/receipt.json`；`0ce0478d4b2ca9b60752962d8e066bfeedc4234867dc6a5e86f5f598b9d7e181` |
+
+QA274只複製並重用47既存完整合成原件，不再造 account／Health 或重算情境；兩階段都禁止 `compare`／scenario `append`，fresh另禁 `register_saved`／Registry append。原 artifact `sha256:2818ab728bd6fe708ae4a6b6e80f116a01be25f467f6d4e73e8afa4f095cf9f0`、1000股／mark102、原現金／NAV／targets與個股投影一致；引用 SHA `sha256:3c507be3eaa12afbba0fdfeaee3dd3510c401051ed108a0ccfb02680cfec717e`。scenario DB原hash `8303d7ae64781335e19dacf2ad61a2fbe79942581f5e149330bac3f5ce7f277a`，新 Registry `ac1d1318e872eeeca4d983e8dbf8af929cebfbc42289eaaa0f0f24c679d6d6bf`，fresh相同；7副本來源及21舊來源 bytes／SHA／mtime／ctime不變，socket0。不是 Native／EXE 或真來源驗收。
+
+全部 Python 由 Root 串行受控 Job 執行，8GiB committed／12程序／kill-on-close／同workspace mutex；下組先查三PID陣列空、process／Job handles關閉與mutex釋放，沒有以強制清場當成功。正式資料、舊 task／收據、固定試用包與其他 owner 原件保留。操作指南、功能地圖與 current 架構同步；下一葉回原 P03 必要資料缺件及既有來源用途鏈，避免在此 Registry 限定出口持續增加前置。原完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、歷史 PIT／真 N／完整雙策略績效／自然成熟仍未接受，無新 HTTP、正式寫入、Task變更、maintainer重啟、push、發布或交易。
+
+Increment52文件閉鎖：QA275十份正文／12features及metadata30來源檢查 errors=[]，outer `single_owned_qa_ea331997ecea45f5a8f748345b75d760/receipt.json` SHA `aafbb819864813aef908e7cfa28e702febfdc5e851a470389511f7022e224490`。三PID陣列空、handles關閉與mutex釋放。之後僅補本收據註記與owner交接，不重跑未改runtime。
+
 ## Increment51：V1獲利因子窄版候選
 
 最後交付閉鎖：QA268已核7093候選檔，20輸入的Windows長路徑因helper未用extended-length讀法而FAIL，原件保留；新b沿原Native相同長路徑讀法、原bytes／SHA／root斷言，QA269全部通過，未改EXE或重跑原生旅程。outer `single_owned_qa_27601deec05d47319895b28578b2a938/receipt.json` SHA `a973cad5b22158836cf6b615a3601b0c18c99de10c909ed828ee5eb19b9dcb6a`（FAIL），QA269 `single_owned_qa_a2a0bcb95c244715a74f4133689f7163/receipt.json` SHA `c18f2a8f4e5bc1a05d25dc68f020f6a278062a5e388f4faf8c916dbbb394ff0d`。新交付 `FINAL_VERIFICATION.json` SHA `4fe9e0a010e9bf60e106e1a1de93f427c26ebfd58b8d3f71b42c6e9d3e1fa974`：7093檔、20輸入、原9fa EXE及保護檔、同入口--check與五文件／12features核對；Native真PID37704→32700，三PID清冊空、handles關閉、mutex釋放。僅追加本收據註記，不外推真人／所有流程同EXE重跑或完整Gate。

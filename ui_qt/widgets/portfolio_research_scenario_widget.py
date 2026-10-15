@@ -26,6 +26,7 @@ from app_module.portfolio_allocation_dtos import AllocationWeightContract
 from app_module.portfolio_research_scenario_repository import SavedPortfolioResearchScenario
 from app_module.portfolio_research_scenario_service import PortfolioResearchScenarioComparison
 from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+from app_module.portfolio_research_registry import ScenarioRegistryEntry, ScenarioRegistrySelection
 from app_module.portfolio_research_initial_source import (
     InitialPortfolioResearchCandidate,
     InitialPortfolioResearchCatalogue,
@@ -59,6 +60,8 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._current_saved: SavedPortfolioResearchScenario | None = None
         self._current_artifact_id = ""
         self._preview_comparison: PortfolioResearchScenarioComparison | None = None
+        self._registry_register_expected: SavedPortfolioResearchScenario | None = None
+        self._registry_open_selection: ScenarioRegistrySelection | None = None
         self._initial_catalogue: InitialPortfolioResearchCatalogue | None = None
         self._initial_preview: PortfolioResearchScenarioComparison | None = None
         self._initial_preview_selection: InitialPortfolioResearchSelection | None = None
@@ -94,6 +97,9 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.open_button = QPushButton("開啟所選", identity_group)
         self.open_button.clicked.connect(self.open_selected)
         saved_controls.addWidget(self.open_button)
+        self.register_button = QPushButton("登錄研究紀錄", identity_group)
+        self.register_button.clicked.connect(self.register_current_saved)
+        saved_controls.addWidget(self.register_button)
         identity_layout.addRow("已保存情境", saved_controls)
         layout.addWidget(identity_group)
 
@@ -371,6 +377,76 @@ class PortfolioResearchScenarioWidget(QWidget):
             return
         self._queue("open", (artifact_id, *identity))
 
+    def register_current_saved(self) -> None:
+        """明確登錄目前 exact saved artifact；不隨保存自動寫入 Registry。"""
+
+        if self._closing:
+            return
+        if self._is_save_action(self._worker_action):
+            return
+        identity = self._selected_identity()
+        saved = self._current_saved
+        if (
+            self.workspace is None
+            or not bool(getattr(self.workspace, "can_register", False))
+        ):
+            self.status_label.setText("目前 Registry 路由不可寫入；已保存情境仍可照常讀取。")
+            self._sync_enabled()
+            return
+        if (
+            saved is None
+            or identity != (saved.comparison.account.account_kind, saved.comparison.account.portfolio_id)
+            or self._current_artifact_id != saved.artifact_id
+            or self.saved_artifact_combo.currentData() != saved.artifact_id
+            or self._preview_comparison is not None
+            or self._initial_preview is not None
+        ):
+            self.status_label.setText("請先 exact 開啟已保存情境；預覽不能登錄。")
+            self._sync_enabled()
+            return
+        self._registry_register_expected = saved
+        self._queue(
+            "register",
+            (saved.artifact_id, identity[0], identity[1]),
+        )
+
+    def open_registered(self, selection: ScenarioRegistrySelection) -> None:
+        """沿 Registry 明確選取 exact 重開原 artifact，不建立或比較情境。"""
+
+        if self._closing:
+            self.status_label.setText("面板正在關閉；不再開啟 Registry 原件。")
+            return
+        if self._is_save_action(self._worker_action):
+            self.status_label.setText("Registry 寫入作業進行中；完成前不可切換來源。")
+            return
+        if not isinstance(selection, ScenarioRegistrySelection):
+            self.status_label.setText("Registry selection 型別不符；未開啟任何 artifact。")
+            return
+        if self.workspace is None or not callable(getattr(self.workspace, "open_registered", None)):
+            self.status_label.setText(self.disabled_reason or "Registry exact reader 尚未配置。")
+            return
+
+        self._invalidate_pending_work()
+        self._registry_open_selection = selection
+        blockers = (
+            QSignalBlocker(self.account_kind_combo),
+            QSignalBlocker(self.portfolio_id_edit),
+        )
+        self.account_kind_combo.setCurrentIndex(
+            self.account_kind_combo.findData(selection.account_kind)
+        )
+        self.portfolio_id_edit.setText(selection.portfolio_id)
+        del blockers
+        self._current_saved = None
+        self._current_artifact_id = ""
+        self._preview_comparison = None
+        self._clear_artifact_ids()
+        self._clear_display()
+        self.status_label.setText(
+            f"正在透過 Registry exact 重開明確選取的原件：{selection.record_id}……"
+        )
+        self._queue("registry_open", (selection,))
+
     def compare_target(self) -> None:
         identity = self._selected_identity()
         target = self._current_target_contract()
@@ -386,7 +462,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._queue("compare", (self._current_artifact_id, *identity, target))
 
     def save_target(self) -> None:
-        if self._worker_action in {"save", "initial_save"}:
+        if self._is_save_action(self._worker_action):
             return
         if self.workspace is None or not self.workspace.can_save:
             self.status_label.setText("目前資料路由為唯讀；可查看與比較，不能另存。")
@@ -427,6 +503,7 @@ class PortfolioResearchScenarioWidget(QWidget):
             return
         self._generation += 1
         self._pending = None
+        self._registry_open_selection = None
         try:
             worker.cancel(cooperative=True, wait=False)
         except RuntimeError:
@@ -439,6 +516,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._pending = None
         if self._worker is not None and not self._is_save_action(self._worker_action):
             self._generation += 1
+            self._registry_open_selection = None
             try:
                 self._worker.cancel(cooperative=True, wait=False)
             except RuntimeError:
@@ -494,7 +572,8 @@ class PortfolioResearchScenarioWidget(QWidget):
 
     @staticmethod
     def _is_save_action(action: str | None) -> bool:
-        return action in {"save", "initial_save"}
+        # 這些操作可能已提交持久化寫入；完成前不可切換身分或取消。
+        return action in {"save", "initial_save", "register"}
 
     def _clear_initial_preview(self) -> None:
         had_initial_display = self._initial_preview is not None and self._current_saved is None
@@ -619,6 +698,8 @@ class PortfolioResearchScenarioWidget(QWidget):
     def _invalidate_pending_work(self) -> None:
         self._generation += 1
         self._pending = None
+        self._registry_register_expected = None
+        self._registry_open_selection = None
         if self._worker is not None and not self._is_save_action(self._worker_action):
             try:
                 self._worker.cancel(cooperative=True, wait=False)
@@ -629,8 +710,12 @@ class PortfolioResearchScenarioWidget(QWidget):
         if self._closing or self.workspace is None:
             return
         if self._is_save_action(self._worker_action):
-            self.status_label.setText("另存作業進行中；完成前不可切換身分或啟動其他操作。")
+            self.status_label.setText("持久化寫入進行中；完成前不可切換身分或啟動其他操作。")
             return
+        if action != "register":
+            self._registry_register_expected = None
+        if action != "registry_open":
+            self._registry_open_selection = None
         self._generation += 1
         generation = self._generation
         if self._worker is not None:
@@ -668,6 +753,16 @@ class PortfolioResearchScenarioWidget(QWidget):
                 _save_target_task, self.workspace, artifact_id, comparison, account_kind, portfolio_id
             )
             self.status_label.setText("正在另存研究假設；寫入期間不可取消或切換帳本。")
+        elif action == "register":
+            artifact_id, account_kind, portfolio_id = args
+            task = TaskWorker(
+                _register_saved_task, self.workspace, artifact_id, account_kind, portfolio_id
+            )
+            self.status_label.setText("正在登錄已保存研究紀錄；寫入期間不可取消或切換帳本。")
+        elif action == "registry_open":
+            (selection,) = args
+            task = TaskWorker(_open_registered_task, self.workspace, selection)
+            self.status_label.setText("正在透過 Registry exact 重開指定原件；不比較、不另存。")
         elif action == "initial_list":
             strategy_id, strategy_version_id, account_namespace = args
             task = TaskWorker(
@@ -794,6 +889,29 @@ class PortfolioResearchScenarioWidget(QWidget):
                 return
             self._apply_saved(value)
             self.status_label.setText(f"已 exact 開啟已保存情境：{value.artifact_id}")
+        elif action == "registry_open":
+            selection = self._registry_open_selection
+            if not isinstance(value, SavedPortfolioResearchScenario) or selection is None:
+                self.status_label.setText("Registry exact read 回傳型別或 selection 不符；未套用。")
+                return
+            account = value.comparison.account
+            identity = self._selected_identity()
+            if (
+                selection != self._registry_open_selection
+                or identity != (selection.account_kind, selection.portfolio_id)
+                or value.artifact_id != selection.artifact_id
+                or (account.account_kind, account.portfolio_id)
+                != (selection.account_kind, selection.portfolio_id)
+                or PortfolioResearchScenarioWorkspace.artifact_id(value.comparison)
+                != selection.artifact_id
+            ):
+                self.status_label.setText("Registry selection、原 artifact 或帳本 identity 不一致；未套用。")
+                return
+            self._apply_saved(value)
+            self._replace_artifact_ids((value.artifact_id, *self._listed_artifact_ids()))
+            self.status_label.setText(
+                f"已由 Registry exact 重開原研究紀錄 {selection.record_id}；artifact 未變更。"
+            )
         elif action == "compare":
             if not isinstance(value, PortfolioResearchScenarioComparison):
                 self.status_label.setText("比較結果型別不符；未套用。")
@@ -890,6 +1008,37 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.initial_sources_status_label.setText(
                 f"初次研究已保存並選取新 artifact：{value.artifact_id}；可沿原保存流程重開、改 target 或選股。"
             )
+        elif action == "register":
+            expected = self._registry_register_expected
+            if type(value) is not ScenarioRegistryEntry or expected is None:
+                self.status_label.setText("Registry 登錄回傳型別或原件狀態不符；原 artifact 保留。")
+                return
+            account = expected.comparison.account
+            try:
+                value.selection()
+                verified = (
+                    self._current_saved == expected
+                    and self._current_artifact_id == expected.artifact_id
+                    and self.saved_artifact_combo.currentData() == expected.artifact_id
+                    and self._selected_identity() == (account.account_kind, account.portfolio_id)
+                    and self._preview_comparison is None
+                    and self._initial_preview is None
+                    and value.artifact_id == expected.artifact_id
+                    and value.account_kind == account.account_kind
+                    and value.portfolio_id == account.portfolio_id
+                    and value.snapshot_id == account.snapshot_id
+                    and value.decision_at == expected.comparison.decision_at
+                    and value.source_saved_at == expected.saved_at
+                    and value.input_hash == expected.comparison.input_hash
+                )
+            except (AttributeError, TypeError, ValueError):
+                verified = False
+            if not verified:
+                self.status_label.setText("Registry 引用與目前 exact saved identity／artifact 不符；原件未變更。")
+                return
+            self.status_label.setText(
+                f"已登錄 Registry 研究紀錄：{value.record_id}；原 artifact 保持 {value.artifact_id}。"
+            )
         self._sync_enabled()
 
     @Slot(str)
@@ -904,7 +1053,12 @@ class PortfolioResearchScenarioWidget(QWidget):
         )
         artifact_label = self._current_artifact_id or "未 exact 開啟"
         bounded_message = message.replace("\r", " ").replace("\n", " ")[:500]
-        operation = "另存失敗" if self._is_save_action(action) else "讀取或比較失敗"
+        operation = (
+            "Registry 登錄失敗" if action == "register"
+            else "Registry exact 重開失敗" if action == "registry_open"
+            else "另存失敗" if self._is_save_action(action)
+            else "讀取或比較失敗"
+        )
         message_text = (
             f"{operation}；帳本 {account_label}；artifact {artifact_label}；"
             f"原件仍保留，未套用未完成結果。原因：{bounded_message}"
@@ -930,9 +1084,14 @@ class PortfolioResearchScenarioWidget(QWidget):
         worker = self._worker
         if worker is None:
             return
+        action = self._worker_action
         worker.deleteLater()
         self._worker = None
         self._worker_action = None
+        if action == "register":
+            self._registry_register_expected = None
+        if action == "registry_open":
+            self._registry_open_selection = None
         pending = self._pending
         self._pending = None
         self._sync_enabled()
@@ -1139,6 +1298,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         if self.workspace is None:
             self.load_saved_button.setEnabled(False)
             self.open_button.setEnabled(False)
+            self.register_button.setEnabled(False)
             self.compare_button.setEnabled(False)
             self.save_button.setEnabled(False)
             self.cancel_button.setEnabled(False)
@@ -1162,6 +1322,21 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.saved_artifact_combo.setEnabled(not locked and not self._closing)
         self.open_button.setEnabled(selected_id and not busy and not self._closing)
         has_saved = self._current_saved is not None and bool(self._current_artifact_id)
+        current_saved_identity = (
+            (self._current_saved.comparison.account.account_kind,
+             self._current_saved.comparison.account.portfolio_id)
+            if self._current_saved is not None else None
+        )
+        self.register_button.setEnabled(
+            bool(getattr(self.workspace, "can_register", False))
+            and has_saved
+            and self._current_artifact_id == self.saved_artifact_combo.currentData()
+            and self._selected_identity() == current_saved_identity
+            and self._preview_comparison is None
+            and self._initial_preview is None
+            and not busy
+            and not self._closing
+        )
         self.target_table.setEnabled(has_saved and not locked and not self._closing)
         self.cash_weight_spin.setEnabled(has_saved and not locked and not self._closing)
         self.compare_button.setEnabled(
@@ -1236,6 +1411,28 @@ def _open_exact_task(
         portfolio_id=portfolio_id,
         cancel_callback=cancel_callback,
     )
+
+
+def _register_saved_task(
+    workspace: PortfolioResearchScenarioWorkspace,
+    artifact_id: str,
+    account_kind: str,
+    portfolio_id: str,
+) -> ScenarioRegistryEntry:
+    # Registry append cannot be cancelled after commit begins.
+    return workspace.register_saved(
+        artifact_id,
+        account_kind=account_kind,
+        portfolio_id=portfolio_id,
+    )
+
+
+def _open_registered_task(
+    workspace: PortfolioResearchScenarioWorkspace,
+    selection: ScenarioRegistrySelection,
+    cancel_callback=None,
+) -> SavedPortfolioResearchScenario:
+    return workspace.open_registered(selection, cancel_callback=cancel_callback)
 
 
 def _compare_target_task(

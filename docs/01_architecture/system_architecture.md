@@ -59,7 +59,7 @@ TWSE／TPEX 與其他明示來源
 
 更新、查詢、推薦、回測與持倉各走明示 application service。Recommendation 與市場 read model 先核對決策日、資料可得日、品質與來源，再交給領域計算；UI 呈現已形成的 DTO，不暗中補資料或重算。保存研究以 manifest、source identity 與原始 bytes 綁定，重讀指定版本，不以最新資料取代舊結果。
 
-配置研究封存的個股路徑共用 Main 注入的 scenario workspace，以帳種、portfolio、artifact 三項參照讀取原帳戶投影；不經目前手動持倉補值。canonical hash、來源及原時鐘守衛見[決策／研究／持倉分冊](current/decision_research_portfolio.md)。
+配置研究封存的個股路徑共用 Main 注入的 scenario workspace，以帳種、portfolio、artifact 三項參照讀取原帳戶投影；不經目前手動持倉補值。已保存情境可明確追加 typed reference 至既有 Registry SQLite 的獨立配置研究表，正常 Registry 選列以引用 SHA 及原件重新交叉核對再回 Portfolio；不假造回測 metadata 或改舊 run。canonical hash、來源及原時鐘守衛見[決策／研究／持倉分冊](current/decision_research_portfolio.md)。
 
 ## 儲存與排程
 

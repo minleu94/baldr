@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+後續開發分支的「配置研究封存」在 exact 已保存且沒有比較預覽時，可明確「登錄研究紀錄」。原研究 Registry 增加獨立配置研究區，輸入帳種／portfolio_id 並明選一筆後回 Portfolio 精確重開，再沿原個股與返回；不參與回測比較／升級、不假造績效。讀取換帳／關閉丟棄晚到結果，寫入等待收尾，原件或引用不符時拒絕。操作見[配置研究登錄指南](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#登錄研究紀錄與跨頁重開)；此第二階段增量不改固定四流程試用候選。
+
 後續source的PF摘要顯示有限無量綱值或具體不可用原因，None不再中斷格式化；批次／最佳化表附狀態／語意，舊比較不把未版本化值當有效PF。[PF指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)明列固定9fa EXE待窄版修補；QA262正常Main／fresh成功不等於新EXE交付。
 
 單股歷史卡現分新宣告版本與舊未版本化結果；新卡逐欄綁選定 metadata、原指標與摘要，顯示原實際期間、單位及已完成配對，不以0推論勝率／平均或無期間CAGR。qualification仍unknown、comparability未評估；不是完整雙策略績效或原精度升級。原查找／開啟結果／換頁返回與新程序沿同一run，操作見[歷史指標指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。固定第一版不改版。

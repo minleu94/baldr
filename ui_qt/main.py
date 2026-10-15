@@ -1540,6 +1540,33 @@ class MainWindow(QMainWindow):
             }
         )
 
+    def _configure_portfolio_scenario_registry(self, backtest) -> None:
+        """沿回測頁既有 Registry 與私人情境原件接線；建構不建表。"""
+        from app_module.portfolio_research_registry import PortfolioScenarioRegistryService
+        workspace = self._personal_portfolio_view_kwargs.get("portfolio_research_workspace")
+        run_service = getattr(backtest, "research_run_service", None)
+        registry_widget = getattr(backtest, "run_registry_compare_widget", None)
+        if workspace is None or run_service is None or registry_widget is None:
+            return
+        workspace.registry = PortfolioScenarioRegistryService(run_service.repository, workspace.repository)
+        registry_widget.configure_scenario_registry(workspace, self._open_registered_portfolio_scenario)
+
+    def _open_registered_portfolio_scenario(self, value: object) -> None:
+        from app_module.portfolio_research_registry import ScenarioRegistrySelection
+        if not isinstance(value, ScenarioRegistrySelection):
+            self.statusBar().showMessage("配置研究 Registry 選取型別不符；未開啟。")
+            return
+        panel = getattr(getattr(self, "portfolio_view", None), "portfolio_research_scenario_widget", None)
+        if panel is None:
+            self.statusBar().showMessage("配置研究頁尚未就緒；原登錄與情境仍保留。")
+            return
+        self._select_main_workspace("portfolio")
+        self.portfolio_view._toggle_advanced_portfolio(True)
+        tabs = getattr(self.portfolio_view, "portfolio_detail_tabs", None)
+        if tabs is not None:
+            tabs.setCurrentWidget(panel)
+        panel.open_registered(value)
+
     def __init__(
         self,
         *,
@@ -2185,6 +2212,7 @@ class MainWindow(QMainWindow):
                 parent=self,
             )
             self.backtest_view = backtest
+            self._configure_portfolio_scenario_registry(backtest)
             print("[MainWindow] 策略回測視圖創建成功")
 
             # 推薦分析標籤

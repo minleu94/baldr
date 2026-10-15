@@ -19,6 +19,9 @@ from app_module.portfolio_research_scenario_service import (
 from app_module.portfolio_research_initial_source import (
     PortfolioResearchInitialSourceProvider, InitialPortfolioResearchSelection, InitialPortfolioResearchCatalogue,
 )
+from app_module.portfolio_research_registry import (
+    PortfolioScenarioRegistryService, ScenarioRegistryEntry, ScenarioRegistrySelection,
+)
 
 
 def _check_cancel(callback: Callable[[], bool] | None) -> None:
@@ -42,9 +45,32 @@ class PortfolioResearchScenarioWorkspace:
     """只從既有完整封存取事實，研究新 target；首次來源建立另循原 reader。"""
 
     def __init__(self, repository: PortfolioResearchScenarioRepository, *,
-                 initial_source_provider: PortfolioResearchInitialSourceProvider | None = None) -> None:
+                 initial_source_provider: PortfolioResearchInitialSourceProvider | None = None,
+                 registry: PortfolioScenarioRegistryService | None = None) -> None:
         self.repository = repository
         self.initial_source_provider = initial_source_provider
+        self.registry = registry
+
+    @property
+    def can_register(self) -> bool:
+        return self.registry is not None and self.registry.can_register
+
+    def register_saved(self, artifact_id: str, *, account_kind: str, portfolio_id: str,
+                       cancel_callback=None) -> ScenarioRegistryEntry:
+        if self.registry is None:
+            raise ValueError("尚未配置研究 Registry")
+        return self.registry.register_saved(artifact_id, account_kind=account_kind, portfolio_id=portfolio_id,
+                                            cancel_callback=cancel_callback)
+
+    def list_registered(self, *, account_kind: str, portfolio_id: str, cancel_callback=None) -> tuple[ScenarioRegistryEntry, ...]:
+        if self.registry is None:
+            raise ValueError("尚未配置研究 Registry")
+        return self.registry.list_registered(account_kind=account_kind, portfolio_id=portfolio_id, cancel_callback=cancel_callback)
+
+    def open_registered(self, selection: ScenarioRegistrySelection, *, cancel_callback=None) -> SavedPortfolioResearchScenario:
+        if self.registry is None:
+            raise ValueError("尚未配置研究 Registry")
+        return self.registry.open_registered(selection, cancel_callback=cancel_callback)
 
     @property
     def can_create_initial(self) -> bool:

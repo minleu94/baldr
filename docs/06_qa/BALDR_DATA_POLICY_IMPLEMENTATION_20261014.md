@@ -930,3 +930,33 @@ Root先核歷史attempt資產：`output/data_completion_20260909/flows/runs/2026
 操作主手冊、資料分冊、每日更新指南、current資料架構、Feature Map、功能、Snapshot及原§9.5同步。未改模組邊界、正式schema、Task、排程或安裝依賴；主架構與固定V1指南不需改。下一段沿單一TWSE原件→品質／成功批次保存小時→固定版本public reader→正常UI/fresh。原candidate available_at只代表個別response／官方時間，尚非新daily-hour，不能回填歷史或直接送另一版本的revision reader；本選項不算完整F09，缺值不造零。
 
 Luna9最終只讀複核未見本次範圍內回歸或阻斷，確認TWSE-only、無未要求零值、scoped重播及舊版相容，pending writes=false。QA188文件終驗PASS：12 features／9本輪來源及context metadata30sources，errors=[]；outer `single_owned_qa_04e6435a7ba1469c981afb85c1c34281/receipt.json`，SHA `9bdc155f80f2f9caf370b569d6bb8a93a27db279cdfcc42d0dd0a79211231c22`。準備曾因Root誤用task欄位在PowerShell拒絕，當時無spec／Job／Python；改用現行scope_files才啟動，本機task保留紀錄。未執行真來源或UI/fresh，不以文件與案例通過授完整F09／Gate。
+
+## Increment42：P03法人成功批次與正常唯讀頁
+
+此增量解除原P03／F09候選只能capture／rebuild，缺成功保存小時、固定public reader與正常數值出口的交付阻礙。沿Increment41原T86／parser／candidate及既有create-only／時間policy，沒有另建取得引擎、金融公式或讓Scrapling成共同前置。屬第二階段；真人可繼續試用固定9fa，回饋不是其他補完工作的前置。
+
+Root凍結owner `p03_institutional_daily_api_42.md`，單寫transport／共用ports／金融裁決／整合／QA／文件。重用Luna9測試與Luna10純widget，無新代理、總10/10、無子代理／Python／network；Root收回ownership後補實際worker測試、整數／原件／時間及取消反例。widget最初交回SHA `7de9ac2a40fb04de879abe57182a5f9a865609b0e0d4a1b3cc99370e93ff65e2`，後由Root加載入清舊結果、資格守衛、時鐘文字與原件tooltip；最終來源pins另存owner spec與integrity。
+
+原transport改有界stream並保存EOF／宣告長度／encoding證據，上限與原retry／deadline保留；壓縮舊capture仍可讀decoded body，新seal拒壓縮而不冒稱原HTTP bytes。`institutional_daily_snapshot` 重播原parser、核原scope／單位／版本／全日期、quarantine=0、candidate全文及readback，拒舊件缺EOF、body或來源漂移。只在指定候選run旁create-only保存daily manifest／receipt，原capture不改；原件前後重讀bytes／SHA／完整signature，mtime還原也無法繞過。成功保存clock沿台北小時政策，最終完整再核驗後取clock且須早於可用小時；取消／跨界失敗保留pending／failure，雙外部SHA reader拒讀。批次完成欄位是檔案handle關閉／驗證後取樣，不宣稱另存最終unlink時間或OS crash原子性，詳來源契約。
+
+正常UpdateView法人區沿原TaskWorker → UpdateService → exact reader；widget無I/O／金融運算，只呈現選定代碼的11欄（日期／代碼＋三類9個整數股數）、雙SHA、時鐘／basis與來源tooltip。變更輸入／取消有世代守衛、清除舊結果並合作收尾；成功零匹配與未載入分開，無補零／latest fallback。報表列總數可含非股票證券，不是股票universe或真N；source_use_accepted=false／historical_pit_eligible=false／candidate-only保持。沒有日曆連買、正式apply或既有狀態卡升格。
+
+以下outer receipt均在 `output/tasks/baldr-completion-resume-20261014-01a13cf9/`，不改舊task／spec／結果：
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 189 | UI medium route／context通過，Execution／TestingQA／Documentation；Root另履行DataAudit／TechLead。context預算略過項明示，相關資料指南正文另讀。 | `single_owned_qa_39bc70439a7146b29a7c054117cb0e30/receipt.json`；`31a84367cf474ed3128c83780d75f64bd6bdf4dd212e62cb642908b47dd60938` |
+| 190 | compile5通過，核心21PASS／9FAIL保留。Root adapter誤把原分區品質定位在grouped source，實際在sessions.merged；失敗未抹除。 | `single_owned_qa_bdbab7848ae0412aa1b838c83c6a886b/receipt.json`；`9e5ca31f45e42f540db7a7095da4ecb8d379cd93e08c778482acb6347949558a` |
+| 191 | 修正到原schema品質位置，不降斷言；新核心19PASS、compile2。重驗原先被早期錯誤遮住的反例，另加pending、mtime還原但bytes變動、整點guard、大整數。原15舊scope／service回歸在190已PASS，未重跑。 | `single_owned_qa_bbd1c57ee1274a3c9f4746b2229200c2/receipt.json`；`3804d1f30d020f9c8e3816179f31470dbf7f43f8de5863bc0da7691dda7054ba` |
+| 192 | 90PASS＝新正常UpdateView4＋Workbench85＋壓縮舊transport相容1；compile、validator25PASS／0FAIL／4protected skips、八roots mypy1021通過。既有ui_qt.* ignore_errors=True不證UI強型別。 | `single_owned_qa_a9090a7d49f0410b8d28aa144235aab6/receipt.json`；`25990c61fd3f92352e7cee61afb2c020676c3961c4d5a3fca3ae5c2f1daae9a3` |
+| 193 | 正常Main父36272→fresh33544限定離線旅程通過；雙SHA、2日期／2330九項整數及時鐘一致，切Watchlist返回保留，再新程序只讀同pin。 | `single_owned_qa_5131cad75bc145979a3d46b1ebaa481e/receipt.json`；`96d938cd0c0c08a55eb19799690cf7db7a08be1fe14d62d9ddd3b20e67331a69` |
+| 194 | 最終檔讀取期間才取消的seal／reader兩反例，加完整再核驗跨可用小時1例，共3PASS；compile2／單來源mypy通過。 | `single_owned_qa_c2925ff7a57d492faed3e752fd3ab8f7/receipt.json`；`4ad38b97a0fe22f10ef0b13371daadb1e7f6b38ef5a379ae447afb381b4ec4a4` |
+
+QA193 owner `increment42_institutional_main_fresh_a/` 的parent／fresh SHA分別 `e5d496036150f0b7e099e469cbaeb3879166a540b6aaf13a552d6bcfd972867d`／`72ceea649fc7ffa93402a9f573e6424dc412f09387b32d474b54e1d2fe9cc8d0`。合成transport／時鐘／兩日期原件經真正capture及seal，正常Main實際法人tab／可見開啟按鈕與新程序走public reader，未以fake reader代替；10原件bytes／SHA／mtime／ctime不變，Python socket零嘗試、worker0且合作關閉。私有Main缺行情DB／company的warnings保留，不用其他資料fallback。固定15秒UI／120秒phase／270秒driver、實際PID／ctime與同named Job檢查不變。這是offscreen source版證據，不是Native／EXE、真HTTP、來源用途或PIT接受。其後只補最後取消與clock取樣順序，受影響三反例於QA194定向驗，沒有把QA193冒稱最終byte版完整Main重跑。
+
+本輪期間既有外部checkpoint `9a769a1294feec594ca4a371be5ae60885329709` 保存了部分WIP及其他owner歷史文件；Root不修改或revert其內容。QA194 spec已核該HEAD及當時11個實際byte pins，finalguard／UI／transport改良及兩測試檔另在本輪整合。保護的其他owner原件SHA仍為 `0e7c4314251277ac900afd4a0d2d5b575005af869af2d012ce865f989ba06983`。不把這筆commit當QA或完整Gate。
+
+各輪Job 8GiB committed／12程序／kill-on-close／workspace mutex，啟動RAM≥8GiB；三PID清冊自然空、process／Job handles關閉、mutex釋放，沒有forced cleanup。只驗受改路徑，不重跑未受影響F17／Backtest等既有PASS。來源契約、current架構、功能、Feature Map、導航、操作主冊／資料分冊／每日指南、Snapshot及原§9.5同步。
+
+尚缺真官方取得及指定用途／欄位單位接受、日常固定成功批次運轉、兩市場日曆／連買／歷史PIT、全市場真N、Native／EXE與完整產品Gate。既有舊月營收／TWSE Swagger／t187ap05_L scope不重抓；T86先核其自身attempt與官方證據，不能把別的scope耗盡或合成PASS當其資格。P06原snapshot實有cash／marks，但缺mark可得性及估值一致性證據，不從股數反推或混策略帳；其餘原包持續，不把unknown卡當功能交付。固定V1四旅程與收據／20不可變輸入不改，正式資料／Task／maintainer不碰。
+QA195文件終驗通過：12features／12本輪文件及context metadata30sources，errors=[]；transport最終版本compile通過。outer `single_owned_qa_1cea14067e4d4e76a6052e470cd5f02c/receipt.json`，SHA `8bfbbab0bcfa5ce577fab649dbb8b581f2607bfd929ccf1892a286c88837c864`。Root另核QA189–195七組收據與自然閉鎖、八個最終來源pin、固定V1 EXE／20不可變輸入、舊task／兩版capture及其他owner原件不變；owner `increment42_final_integrity.json` SHA `5e1bb8ebb453dc8ab341711892f805983e4f78025d8383dd19bab79458516455`。文件檢查後只追加本段收據／完整性記錄，不授產品Gate。

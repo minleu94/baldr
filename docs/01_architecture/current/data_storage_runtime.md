@@ -23,7 +23,9 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 ## 讀寫與保存契約
 
-法人候選仍沿 `institutional_credit_flows_service`／`complete_institutional_credit_flows.py` 的原 parser、create-only raw／metadata／candidate 保存。`capture_scope=twse_institutional` 僅選 T86；`legacy_all` 保留原兩市場法人與信用四來源。manifest／readback 明列選取與排除的 endpoint、市場及資料集；未要求的資料集不產生0筆總數。scoped rebuild 核 scope全文、endpoint的source／market／version／unit及逐日分區，不擴張原範圍；舊無scope封套相容。這不是新的來源接受或daily-hour snapshot；成功批次小時與public reader接線仍缺，原revision reader所要求版本及available_at也不能由此capture自授。正常更新、正式apply／schema與Task未變，詳[受控操作](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。
+法人候選沿 `institutional_credit_flows_service`／`complete_institutional_credit_flows.py` 的原 parser、create-only raw／metadata／candidate 保存。`capture_scope=twse_institutional` 僅選 T86；`legacy_all` 保留原四來源，未要求資料集不造零，scoped rebuild 核來源／單位／版本及逐日分區。`app_module/institutional_daily_snapshot.py` 對明選原run重驗完整EOF／identity body、全部原件與candidate，旁存create-only manifest／成功時鐘receipt及pending barrier；exact public reader要求目錄與雙外部SHA、同批全部byte／signature再核驗及可用小時。它沿原時間政策，沒有把MOPS record或另一revision namespace強cast成法人。
+
+正常 UpdateView 的法人區經 TaskWorker → UpdateService → 此exact reader，只讀指定代碼原整數股數；Qt widget不做I/O或金融計算，取消／輸入世代與shutdown沿原worker生命週期。報表列數不是股票universe或真N，candidate-only／用途未接受／PIT false保留，無日曆／連買新公式；正式apply／schema與Task未改。詳[受控操作](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)與[法人批次契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#twse法人候選成功批次increment42)。
 
 日曆JSON原件以獨立typed transport保存HTTP／EOF／hash，daily batch沿原兩市場parser發行create-only capture／manifest／receipt。Exact reader要求外部manifest及receipt SHA、各市場獨立用途接受錨點，讀前後拒pending／failure並重驗原件；更正另存，93 inclusive日限制與candidate資格保留。Registry原頁已接明示daily pin，合成Main／fresh重用已保存來源限定通過；獨立接受紀錄未配置時阻擋，不掃latest或從capture自授信任。真用途接受、正式Main配置與publisher／Task仍待，詳[日曆版本契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#日曆完整json批次increment21)。
 

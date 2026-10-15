@@ -130,7 +130,7 @@ UI 更新工作具單一寫入互斥：快速／安全更新、個別來源下�
 
 每日股價、大盤、產業、券商分點、技術指標、月營收，以及三個候選資料源（法人／信用／集保）分頁均有唯讀 inline 狀態摘要；全域檢查會同步更新這九份摘要，個別來源失敗時只標記該來源，全域檢查失敗時則清除九份舊摘要並保留共同錯誤原因。月營收摘要另外揭露已匯入期別、目前完整 PIT 可用期別與待生效起始日。候選資料源仍是 research-only，不會因此進入正式評分或交易流程。更新頁日期控件的「今日」以台灣市場日期為準，避免作業系統時區跨日造成查詢窗口偏移。
 
-後續開發分支另提供原CLI的 `capture --capture-scope twse_institutional`，讓TWSE法人候選不依賴TPEx／信用取得；這不是一般更新頁的新選項。選定範圍、lookback／attempt、原件重播與不可用界線見[資料操作指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。沒有改正式apply、排程或既有UI狀態資格。
+後續開發分支原CLI的 `capture --capture-scope twse_institutional` 讓TWSE法人候選不依賴TPEx／信用取得；`seal` 則在原run旁保存不可覆寫的成功批次時鐘與雙SHA。「數據更新 → 三大法人」新增固定批次唯讀區，經原件／品質／時間核驗後展示指定代碼的原整數股數；它與一般更新按鈕分開，不下載或apply。選定範圍、lookback／attempt、seal、重開及錯誤隔離見[資料操作指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。舊件缺EOF不補認、用途／歷史PIT未接受、連買不可用；正式apply、排程及既有狀態卡資格未改。
 
 UpdateService overview／detail 在 SQLite 缺失時會先停在 `unavailable`，存在時也只用共用 `mode=ro`／`PRAGMA query_only=ON` adapter，不會呼叫會初始化 schema 的可寫 DB manager；因此狀態檢查本身不改變資料根目錄，也不與寫入連線爭用 schema／WAL。若 Windows 外部鎖定使一般 read lock 不可用，adapter 會明確標記 `read_mode=immutable_fallback` 與提醒；這只代表最後已提交的唯讀快照，應停止其他寫入後再重查。
 

@@ -595,6 +595,8 @@
         "docs/03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md"
       ],
       "code": [
+        "app_module/institutional_daily_snapshot.py",
+        "ui_qt/widgets/institutional_daily_snapshot_widget.py",
         "data_module/institutional_credit_flows_service.py",
         "scripts/complete_institutional_credit_flows.py",
         "app_module/daily_market_monthly_revenue_archive_reference_artifact_v4.py",
@@ -625,6 +627,8 @@
         "ui_qt/views/update_view.py"
       ],
       "tests": [
+        "tests/test_institutional_daily_snapshot.py",
+        "tests/test_ui_qt_institutional_daily_snapshot.py",
         "tests/test_institutional_credit_flows_service.py",
         "tests/test_institutional_flow_capture_scope.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
@@ -668,6 +672,10 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "app_module/institutional_daily_snapshot.py",
+        "ui_qt/widgets/institutional_daily_snapshot_widget.py",
+        "tests/test_institutional_daily_snapshot.py",
+        "tests/test_ui_qt_institutional_daily_snapshot.py",
         "data_module/institutional_credit_flows_service.py",
         "scripts/complete_institutional_credit_flows.py",
         "tests/test_institutional_flow_capture_scope.py",

@@ -218,7 +218,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 
 - 市場總覽以 answer-first dashboard 顯示結論、焦點與來源可見性；Workbench「決策來源」只導向此唯一實例，不建立第二份 widget。
 - 月營收、三大法人、信用交易、TDCC 與券商分點卡片保留 status、row count、available date、coverage 與 warning。`row_count=0`／MISSING／DEGRADED 表示缺漏，不是中性分數或業務數值為零，且不參與 action、focus、Score 或品質聚合。
-- 原法人維運CLI另有 `--capture-scope twse_institutional`，取得候選不強制搭配TPEx／信用；未要求來源不列零總數。一般更新頁尚未接該範圍或新的每日成功小時／public reader，卡片資格不提升；[操作及缺件](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。
+- 原法人CLI可明選 `twse_institutional`，並以 `seal` 旁存成功批次小時／不可覆寫版本；正常「數據更新 → 三大法人」可用目錄、雙外部SHA與代碼唯讀重開。完整原件／品質／時間通過才呈現逐日三類整數股數與時鐘；錯誤／輸入變動清除舊結果，合作取消及新程序限定驗證。批次報表列數不是股票真N，無匹配不補零；仍candidate-only／用途未接受／PIT false，連買與原狀態卡資格不提升。固定9fa包未含；[操作及缺件](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。
 - 「資料更新 > 全部資料」的月營收狀態卡分開顯示已匯入期別與依該期全部資料 `available_date` 判定的目前完整 PIT 可用期別；只要同一期仍有公司尚未生效，該期就會顯示在待生效數與完整可用起始日中，不會誤標成更新失敗。
 - 市場 regime 判斷。
 - 強弱勢股票與產業篩選。

@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment42 已將原 P03 法人候選接至成功批次小時封存、雙SHA exact reader及正常「數據更新 → 三大法人」唯讀區；全批原件／品質／時鐘核驗後才展示指定代碼逐日整數股數，取消／錯誤清舊結果，報表筆數不充股票真N。QA191核心19、QA192新UI4＋Workbench85＋壓縮相容1、validator25/0/4、八roots mypy1021通過；QA193合成正常Main36272→fresh33544同pin、10原件不變／Python socket零；之後最終取消／跨小時守衛由QA194三項定向補驗通過，未重跑未受影響旅程。QA190的原schema定位FAIL保留。沒有本輪真HTTP、用途／單位接受、連買、歷史PIT、Native／EXE或完整F09／Gate；固定9fa試用版不變。操作與未驗邊界見[Increment42 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment42p03法人成功批次與正常唯讀頁)。
+
 Increment41 已為原 P03／F09 候選取得新增明選TWSE法人範圍，解除TPEx／信用強制綁定；保留原API、parser、整數股數守恆、create-only與候選資格。新scope／原回歸15PASS、compile及兩來源mypy通過；重播拒市場／單位篡改與缺／重複分區，舊無scope包仍可重播。只離線驗證，既有兩版歷史manifest SHA保持，沒有真抓取、正式apply／Task／UI或固定9fa變更。成功批次保存小時、用途／品質與固定public reader→正常UI/fresh仍待，scope選項不算完整F09，見[Increment41 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment41p03法人候選取得解除跨來源前置)。
 
 Increment40 修正後續開發分支的 P07／P08 策略版本錯標：單股／逐檔回測、規則卡、Walk-forward 與參數掃描沿 public Registry 真版本，缺版本拒絕，掃描整輪固定。核心69、UI及Workbench90、修正測試期待後3項、validator25/0/4、mypy1019各依原收據通過。正常Main42996→fresh22092已驗兩個1.0.0策略規則卡、保存／exact歷史返回與新程序同metadata/equity/trades，419日現金與成本守恆；20不可變試用輸入保持、Python socket零。QA180／182／183的測試期待／舊mutable fixture pins失敗保留；產品版本修正不改金融計算或舊run。固定9fa試用包不變，P06初次來源與原完整Gate繼續，詳[Increment40 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment40p07p08新實驗綁定真策略版本)。

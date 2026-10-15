@@ -126,7 +126,8 @@ def _finish(pins: list[dict[str, Any]], callback: Callable[[], bool] | None) -> 
     for pin in pins:
         _cancel(callback)
         path = _canonical_path(Path(pin["path"]), "institutional_source", allow_missing=False)
-        if _file_signature(path) != pin["signature"]:
+        raw, signature = _read_exact_file(path, maximum=min(_MAX_JSON, max(1, pin["bytes"])))
+        if signature != pin["signature"] or _hash(raw) != pin["sha256"]:
             raise InstitutionalDailySnapshotError("法人來源在讀取期間改變")
 
 
@@ -143,11 +144,15 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
     days = manifest.get("discovered_sessions")
     if (manifest.get("capture_scope") != scope or type(days) is not list or not 1 <= len(days) <= 30
             or any(type(day) is not str for day in days) or days != sorted(set(days))
-            or manifest.get("session_count") != len(days)):
+            or type(manifest.get("session_count")) is not int or manifest.get("session_count") != len(days)):
         raise InstitutionalDailySnapshotError("必須明選完整TWSE法人範圍與原日期")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or len(sources) != len(days):
         raise InstitutionalDailySnapshotError("法人日期分區缺件或重複")
+    sessions = manifest.get("sessions")
+    if (not isinstance(sessions, list) or len(sessions) != len(days)
+            or [item.get("decision_date") for item in sessions] != days):
+        raise InstitutionalDailySnapshotError("法人原始分區品質收據缺件")
     rows: list[InstitutionalDailyRow] = []
     partitions: list[dict[str, Any]] = []
     starts: list[datetime] = []
@@ -159,8 +164,10 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
         raw_relative = Path("raw") / day / "twse_T86.json"
         meta_relative = Path(str(raw_relative) + ".metadata.json")
         candidate_relative = Path("candidate") / "institutional_flows" / f"{day}.json"
+        quality = sessions[len(partitions)].get("merged", {}).get("institutional_flows", {})
         if (source.get("source_id") != "institutional_flows" or source.get("decision_date") != day
-                or source.get("quarantine_row_count") != 0 or len(source.get("raw_artifacts", [])) != 1):
+                or type(quality.get("quarantine_row_count")) is not int or quality.get("quarantine_row_count") != 0
+                or len(source.get("raw_artifacts", [])) != 1):
             raise InstitutionalDailySnapshotError("法人分區身分或品質失敗")
         artifact = source["raw_artifacts"][0]
         if (Path(artifact["path"]) != raw_relative or Path(artifact["metadata_path"]) != meta_relative
@@ -172,8 +179,8 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
         if (not isinstance(meta, dict) or any(meta.get(key) != getattr(spec, key) for key in
                 ("source_id", "market", "endpoint_id", "source_version", "quantity_unit"))
                 or meta.get("requested_date") != day or meta.get("request_parameters") != dict(spec.params)
-                or meta.get("http_status") != 200 or meta.get("payload_sha256") != raw_sha
-                or meta.get("payload_size_bytes") != len(raw)):
+                or type(meta.get("http_status")) is not int or meta.get("http_status") != 200 or meta.get("payload_sha256") != raw_sha
+                or type(meta.get("payload_size_bytes")) is not int or meta.get("payload_size_bytes") != len(raw)):
             raise InstitutionalDailySnapshotError("法人HTTP來源／單位／版本不符")
         actual_url, expected_url = urlsplit(meta.get("url", "")), urlsplit(spec.url)
         if (actual_url.scheme != "https" or actual_url.netloc != expected_url.netloc or actual_url.path != expected_url.path
@@ -182,7 +189,8 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
         evidence = meta.get("transport_evidence", {})
         declared = evidence.get("declared_content_length")
         if (evidence.get("schema_version") != "flow-http-body.v1" or evidence.get("eof_observed") is not True
-                or evidence.get("body_size_bytes") != len(raw) or evidence.get("content_encoding") not in ("", "identity")
+                or type(evidence.get("body_size_bytes")) is not int or evidence.get("body_size_bytes") != len(raw)
+                or evidence.get("content_encoding") not in ("", "identity")
                 or (declared is not None and (type(declared) is not int or declared != len(raw)))):
             raise InstitutionalDailySnapshotError("原HTTP缺完整EOF／長度證據，不能補認舊版本")
         capture_clock = datetime.fromisoformat(meta["completed_at"])
@@ -195,10 +203,16 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
                 or any(_local(item["completed_at"]) > completed for item in attempts)):
             raise InstitutionalDailySnapshotError("法人取得時鐘倒退或資料日超前")
         parsed = _parse_endpoint(spec, raw, requested_date=day, completed_at=capture_clock)
+        if any(type(row.get(key)) is not int or (not key.endswith("_net") and row[key] < 0)
+               for row in parsed.rows for key in _FLOWS):
+            raise InstitutionalDailySnapshotError("法人股數不是合法非負買賣／有號淨額整數")
         candidates = _json(_read(root / candidate_relative, source["candidate_rows_sha256"], _MAX_JSON, pins))
         expected_rows = sorted([_candidate_row(row, source_id="institutional_flows") for row in parsed.rows],
                                key=lambda row: row["values"]["stock_code"])
-        if parsed.quarantine or not expected_rows or candidates != expected_rows or source["accepted_row_count"] != len(expected_rows):
+        if (parsed.quarantine or not expected_rows
+                or json.dumps(candidates, sort_keys=True) != json.dumps(expected_rows, sort_keys=True)
+                or type(source["accepted_row_count"]) is not int or source["accepted_row_count"] != len(expected_rows)
+                or type(quality.get("accepted_row_count")) is not int or quality.get("accepted_row_count") != len(expected_rows)):
             raise InstitutionalDailySnapshotError("法人解析品質／原候選全文不一致")
         decoded_raw = _json(raw)
         original = decoded_raw.get("publicationTime")
@@ -221,8 +235,9 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
         completes.append(completed)
     readback = _json(_read(root / "readback.json", None, 512 * 1024, pins))
     totals = {"institutional_flows": len(rows)}
-    if (manifest.get("totals") != totals or readback.get("manifest_sha256") != capture_sha
-            or readback.get("capture_scope") != scope or readback.get("totals") != totals):
+    if (json.dumps(manifest.get("totals"), sort_keys=True) != json.dumps(totals, sort_keys=True)
+            or readback.get("manifest_sha256") != capture_sha or readback.get("capture_scope") != scope
+            or json.dumps(readback.get("totals"), sort_keys=True) != json.dumps(totals, sort_keys=True)):
         raise InstitutionalDailySnapshotError("原capture未完整保存讀回或總數不符")
     _finish(pins, callback)
     payload = {"schema_version": _MANIFEST, "capture_manifest_sha256": capture_sha,
@@ -232,6 +247,18 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
                "artifact_pins": [{key: item[key] for key in ("path", "sha256", "bytes")} for item in pins],
                "candidate_only": True, "source_use_accepted": False, "historical_pit_eligible": False}
     return payload, rows, pins
+
+
+def _write(path: Path, payload: object) -> str:
+    _canonical_path(path, "institutional_output", allow_missing=True)
+    if os.path.lexists(path):
+        raise InstitutionalDailySnapshotError("法人每日版本不可覆寫")
+    digest = _write_json_create_only(path, payload)
+    _canonical_path(path, "institutional_output", allow_missing=False)
+    raw, _ = _read_exact_file(path, maximum=512 * 1024)
+    if _hash(raw) != digest:
+        raise InstitutionalDailySnapshotError("法人收據寫入讀回不符")
+    return digest
 
 
 def _barrier(directory: Path) -> None:
@@ -247,7 +274,7 @@ def seal_twse_institutional_capture(
     """僅在原候選run旁寫新收據；原raw／manifest與正式DB不變。"""
     run = _canonical_path(run_directory, "institutional_capture", allow_missing=False)
     for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"),
-                 os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
+                 os.getenv("OUTPUT_ROOT"), os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text and run.is_relative_to(Path(text).absolute()):
             raise InstitutionalDailySnapshotError("不可在正式／私人資料根寫入法人候選收據")
     _cancel(check_cancel)
@@ -255,10 +282,11 @@ def seal_twse_institutional_capture(
     payload, _, inputs = _capture(run, capture_sha, check_cancel)
     target = run / "daily_snapshot"
     target.mkdir(exist_ok=False)
+    _canonical_path(target, "institutional_output", allow_missing=False)
     get_clock = clock or (lambda: datetime.now(_TAIPEI))
     try:
-        _write_json_create_only(target / ".pending.json", {"capture_manifest_sha256": capture_sha})
-        manifest_sha = _write_json_create_only(target / "manifest.json", payload)
+        _write(target / ".pending.json", {"capture_manifest_sha256": capture_sha})
+        manifest_sha = _write(target / "manifest.json", payload)
         first = _local(get_clock())
         if first < _local(payload["capture_completed_at"]):
             raise InstitutionalDailySnapshotError("首次成功版本保存早於取得完成")
@@ -278,16 +306,18 @@ def seal_twse_institutional_capture(
                    "completion_basis": "durable_raw_candidate_manifest_and_pending_closed",
                    "available_hour": available.isoformat(), "availability_basis": basis,
                    "time_basis_policy": DAILY_SOURCE_TIME_BASIS_POLICY}
-        receipt_sha = _write_json_create_only(target / "receipt.json", receipt)
+        receipt_sha = _write(target / "receipt.json", receipt)
+        _finish(inputs, check_cancel)
+        _cancel(check_cancel)
         persisted = _local(get_clock())
         if not completed <= persisted < available:
             raise InstitutionalDailySnapshotError("成功收據未在可用小時之前保存，保留pending")
-        _finish(inputs, check_cancel)
+        _cancel(check_cancel)
         (target / ".pending.json").unlink()
         return InstitutionalDailySnapshotPin(target, manifest_sha, receipt_sha)
     except Exception as exc:
         try:
-            _write_json_create_only(target / "failure.json", {"reason": str(exc)[:1024], "success": False})
+            _write(target / "failure.json", {"reason": str(exc)[:1024], "success": False})
         except Exception as preservation_error:
             exc.add_note("法人批次失敗封存另有錯誤：" + str(preservation_error))
         raise
@@ -308,7 +338,11 @@ def read_twse_institutional_daily_snapshot(
     pins: list[dict[str, Any]] = []
     manifest = _json(_read(directory / "manifest.json", pin.manifest_sha256, 512 * 1024, pins))
     receipt = _json(_read(directory / "receipt.json", pin.receipt_sha256, 128 * 1024, pins))
-    if receipt.get("schema_version") != _RECEIPT or receipt.get("manifest_sha256") != pin.manifest_sha256 or receipt.get("batch_status") != "success":
+    if (type(receipt) is not dict or set(receipt) != {
+            "schema_version", "manifest_sha256", "batch_status", "first_persisted_at",
+            "successful_batch_completed_at", "completion_basis", "available_hour", "availability_basis", "time_basis_policy"}
+            or receipt.get("schema_version") != _RECEIPT or receipt.get("manifest_sha256") != pin.manifest_sha256
+            or receipt.get("batch_status") != "success"):
         raise InstitutionalDailySnapshotError("法人成功收據不符")
     expected, rows, source_pins = _capture(directory.parent, manifest["capture_manifest_sha256"], check_cancel)
     if manifest != expected:
@@ -328,5 +362,6 @@ def read_twse_institutional_daily_snapshot(
         raise InstitutionalDailySnapshotError("尚未到此成功批次的台北可用小時：" + available.isoformat())
     _finish(pins + source_pins, check_cancel)
     _barrier(directory)
+    _cancel(check_cancel)
     return InstitutionalDailySnapshotRead(pin, stock_code, tuple(row for row in rows if row.stock_code == stock_code),
                                           len(rows), first, completed, available, basis)

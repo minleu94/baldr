@@ -2,6 +2,18 @@
 
 本契約落實使用者於 2026-10-13（台北 10/14）採納的每日固定抓取政策，適用 P00／P03 的新保存來源及已接受的指定研究用途。施工順序仍由[原產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md#95-資料阻塞分流與下一批交付2026-10-14-調整)管理，實際驗證看[本輪 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。本頁不授正式資料寫入、排程變更、歷史回補或交易。
 
+## TWSE法人候選成功批次（Increment42）
+
+此為原 `institutional-credit-flows-candidate-bundle.v1` 的獨立 JSON companion，限定 `twse_institutional`／原T86／1–30個排序唯一日期。原 parser／source version、整數股數與 candidate 不變，不借 MOPS record 或另一 revision reader namespace 的接受。`institutional-daily-manifest.v1` 綁原 capture manifest 外部SHA、完整raw／metadata／candidate／readback的絕對路徑、bytes及SHA、原始官方時間文字／台北時間、來源時鐘與原報表列總數；這個總數不是股票 universe 或真N。
+
+原transport以8MiB上限有界讀取，metadata的 `flow-http-body.v1` 保存EOF、body bytes、宣告Content-Length及encoding。新seal必須identity／完整EOF且宣告長度若存在須相等；壓縮回應只保留原capture相容，不冒稱原壓縮body的新seal證據。舊件缺EOF拒絕，不追補證據。逐分區核端點／市場／股數單位／版本／params、原parser重播、quarantine=0、accepted counts與candidate全文（含bool/int區別），不從SQL或目前資料補齊。
+
+`seal_twse_institutional_capture` 只在明選run旁建立 `daily_snapshot`；拒正式／私人資料根，原件不改。pending及manifest exclusive-create並fsync／讀回後取首次保存時間，全部原件再核驗後取批次完成時間，首次與完成不得跨小時／倒退。`institutional-daily-receipt.v1` 綁manifest SHA、兩時鐘、時間政策及可用小時；官方時間向上取整與成功批次guard取較晚者，缺官方小時明示 `successful_batch_completion_fallback`。整點完成沿原guard留下一可用小時，決策cutoff本身不取整。
+
+收據寫入讀回後再次核全部bytes／SHA／完整file signature，再取最終時鐘，確認仍早於可用小時並檢查取消，才移除pending。完成時鐘是上述批次驗證後的取樣，`completion_basis=durable_raw_candidate_manifest_and_pending_closed` 指檔案寫入handle已關閉，並非宣稱此刻已移除pending；不宣稱另存了最終unlink時間或OS crash原子持久性。失敗保留pending／failure並拒讀，更正另存，不覆寫版本。
+
+`read_twse_institutional_daily_snapshot` 要求 caller 的絕對目錄與manifest／receipt雙外部SHA；讀前後拒pending／failure、重驗原capture全批原件／品質與manifest全文、重算小時並要求 `available_hour <= decision_cutoff`。返回前再次重讀bytes／signature及檢查取消；不掃latest或回落其他來源。只回所選證券代碼原列，零匹配不造零值。正常UpdateService／法人頁為純讀取consumer；`candidate_only=true`、`source_use_accepted=false`、`historical_pit_eligible=false`固定，沒有日曆連買／來源用途或歷史資格。限定離線Main／fresh、失敗及修正證據見[Increment42 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment42p03法人成功批次與正常唯讀頁)。
+
 ## 時間與版本
 
 保存版本對應的官方發布／更新時間原文及解析結果，統一 `Asia/Taipei`。UTC 或其他 aware 時間可轉換；naive 時間須拒絕。會計期末、資料基準日期及其他版本的更新時間不能充當發布時間。

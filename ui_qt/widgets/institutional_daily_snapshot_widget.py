@@ -66,6 +66,7 @@ class InstitutionalDailySnapshotWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
+        layout.addWidget(self._new_label("固定 TWSE 法人批次（唯讀）"))
 
         self.directory_edit = QLineEdit(self)
         self.directory_edit.setPlaceholderText("輸入固定批次目錄")
@@ -179,6 +180,9 @@ class InstitutionalDailySnapshotWidget(QWidget):
     def set_loading(self, loading: bool) -> None:
         self._loading = bool(loading)
         self.open_button.setEnabled(not self._loading)
+        if self._loading:
+            self.clear_result()
+            self.status_label.setText("正在核驗同批原件、品質、時間與雙 SHA…")
 
     def show_result(self, result: InstitutionalDailySnapshotRead) -> None:
         self.clear_result()
@@ -208,6 +212,12 @@ class InstitutionalDailySnapshotWidget(QWidget):
                     self.rows_table.setItem(
                         row_index, column_index, QTableWidgetItem(value)
                     )
+                source = result.rows[row_index]
+                self.rows_table.item(row_index, 0).setToolTip(
+                    f"原件 SHA：{source.raw_sha256}\n來源版本：{source.source_version}\n"
+                    f"官方時間原文：{source.official_timestamp_original_text or '未提供，依成功批次時間'}\n"
+                    f"官方時間（台北）：{source.official_timestamp or '未提供'}"
+                )
             self.identity_label.setText(identity)
             if not display_rows:
                 self.status_label.setText(
@@ -240,6 +250,8 @@ class InstitutionalDailySnapshotWidget(QWidget):
             raise ValueError("availability_basis 必須是文字。")
         if len(result.rows) > result.total_records:
             raise ValueError("股票命中筆數大於批次母體筆數。")
+        if result.candidate_only is not True or result.source_use_accepted is not False or result.historical_pit_eligible is not False:
+            raise ValueError("這個入口只呈現未授來源／歷史 PIT 資格的候選批次。")
 
     @staticmethod
     def _require_aware_datetime(value: datetime, title: str) -> None:
@@ -261,10 +273,11 @@ class InstitutionalDailySnapshotWidget(QWidget):
             f"Receipt SHA-256：{pin.receipt_sha256}\n"
             f"股票代碼：{result.stock_code}；批次母體筆數：{result.total_records}；"
             f"該股命中：{len(result.rows)} 筆\n"
-            f"首次保存（台北）：{first_saved}\n"
+            f"本成功版本首次保存（台北）：{first_saved}\n"
             f"成功批次完成（台北）：{completed}\n"
             f"台北可用小時：{available}\n"
             f"可用性依據：{result.availability_basis}\n"
+            "每列資料日的提示保留該版官方時間原文、台北時間及原件 SHA。\n"
             "用途限制：候選資料；尚未接受為正式來源，不具歷史 PIT 資格；"
             "不得用於連買判斷、評分或交易。"
         )

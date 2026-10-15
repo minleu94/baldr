@@ -39,6 +39,7 @@
 - `backtest_module/performance_metrics.py`、`backtest_module/broker_simulator.py`
 - `decision_module/market_regime_detector.py`
 - `data_module/config.py`：`TWStockConfig` 是正式資料路徑的設定權威；不得由 repo 相對路徑猜測使用者資料位置。
+- 法人固定候選批次沿 `app_module/institutional_daily_snapshot.py` 重驗原capture／parser／成功小時，`UpdateService`接正常UpdateView與純展示widget；開啟、雙SHA及候選界線見[資料操作指南](docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。
 - Portfolio 配置研究封存沿 `app_module/portfolio_research_scenario_workspace.py` → 既有 scenario service／artifact／repository，正常入口是 `ui_qt/views/portfolio_view.py` 與 `ui_qt/widgets/portfolio_research_scenario_widget.py`；先讀[封存操作及來源界線](docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#配置研究封存與另存假設)。
 - 日曆接受配置沿`app_module/application_bootstrap.py`與`app_module/recommendation_portfolio_calendar_acceptance_binding_v1.py`定位，再看Main／Backtest結果面板的typed注入；來源接受與每日品質界線見[每日來源契約](docs/03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
 

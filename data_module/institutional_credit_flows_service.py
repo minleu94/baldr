@@ -647,9 +647,12 @@ def _default_transport(url: str, params: Mapping[str, str], timeout_seconds: int
     ) as response:
         chunks: list[bytes] = []
         total = 0
+        encoding = response.headers.get("Content-Encoding", "")
+        decoded_chunks = iter(response.iter_content(chunk_size=65536)) if encoding not in ("", "identity") else None
         while True:
-            # 保留原HTTP body，不讓requests靜默解壓或先無界載入content。
-            chunk = response.raw.read(min(65536, MAX_RESPONSE_BYTES + 1 - total), decode_content=False)
+            # identity保留完整body；壓縮回應沿舊requests解碼語意，但不能發每日原件收據。
+            chunk = (next(decoded_chunks, b"") if decoded_chunks is not None else
+                     response.raw.read(min(65536, MAX_RESPONSE_BYTES + 1 - total), decode_content=False))
             if not chunk:
                 break
             chunks.append(chunk)
@@ -665,7 +668,7 @@ def _default_transport(url: str, params: Mapping[str, str], timeout_seconds: int
             status_code=int(response.status_code), headers=safe_headers,
             payload=b"".join(chunks), url=str(response.url), attempts=1,
             eof_observed=True, declared_content_length=length,
-            content_encoding=response.headers.get("Content-Encoding", ""),
+            content_encoding=encoding,
         )
 
 

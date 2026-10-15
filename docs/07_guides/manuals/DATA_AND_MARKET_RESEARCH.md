@@ -65,7 +65,7 @@
 
 ### 單獨保存 TWSE 法人候選
 
-後續開發分支的維運 CLI 可明選 `twse_institutional`，僅取得 TWSE T86 法人資料，不把 TPEx 或信用資料設為同批前置。一般更新頁與固定 `9fa4518c` 試用包尚未接此選項。由 owner 先核既有 attempts、指定用途及有界取得範圍，再使用原入口，例如：
+後續開發分支的維運 CLI 可明選 `twse_institutional`，僅取得 TWSE T86 法人資料，不把 TPEx 或信用資料設為同批前置。固定 `9fa4518c` 試用包未包含此增量。由 owner 先核既有 attempts、指定用途及有界取得範圍，再使用原入口，例如：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\complete_institutional_credit_flows.py capture --capture-scope twse_institutional --sessions 1 --max-lookback-days 1 --max-attempts 1 --output-root output/flows/twse-only-candidate
@@ -75,7 +75,22 @@
 
 完成後核對 manifest／readback 的 `capture_scope`、`totals`、raw hash、解析與 quarantine；TWSE 單來源只列法人總數，未要求信用不是零筆。既有 `rebuild --run-dir <保存目錄>` 只重播原 raw，保留選定範圍與單位，缺分區、重複或範圍遭改會拒絕。失敗時保留該 run／錯誤，不刪原件或自動改抓其他來源。
 
-產物仍為 candidate-only，尚缺用途接受、成功批次保存後的台北小時收據與固定版本 public reader；其中舊列級 `available_at` 不可當作新的每日可用時間。不要呼叫正式 apply、搬回正式資料或用來計算歷史連買。此選項只解除來源互相綁定，不代表整個法人研究流程完成。
+新取得的完整候選可明確保存成功批次時鐘。先核原 capture 的 `manifest.json` 外部 SHA，再對其絕對 run 目錄使用：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\complete_institutional_credit_flows.py seal --run-dir C:\absolute\capture\run --capture-manifest-sha256 <原capture的64字元小寫SHA256>
+```
+
+`seal` 不連網或 apply；僅在指定 run 旁 create-only 建立 `daily_snapshot`，輸出其目錄、manifest SHA 與 receipt SHA。原件、原 manifest 與正式資料保持不變。需原 HTTP 完整 EOF、長度、來源／版本／股數單位、原 parser 品質與全部 candidate 讀回一致；舊 capture 缺 EOF 證據時拒絕，不能手補欄位認證。失敗保留 pending／failure，修正另存新版本，不覆寫原收據。
+
+1. 開啟「數據更新 → 三大法人」，找到「固定 TWSE 法人批次（唯讀）」。一般更新動作仍走原流程；此區不觸發下載。
+2. 輸入上述 `daily_snapshot` 絕對目錄、manifest／receipt 雙 SHA 及證券代碼，按「開啟指定批次」。每次開啟固定當下截止時間，不搜尋最新版本。
+3. 先看雙 SHA、首次保存／批次完成時間、台北可用小時與依據，再看所選代碼逐日的三類買進／賣出／買賣超整數股數。外陸資含外資自營；自營商為自行與避險合計，依原 parser 定義。日期提示保留官方時間原文、台北時間、raw SHA 與版本。
+4. 「批次母體筆數」是原報表各日期保存列數合計，可能含 ETF 等非股票證券，不是已核股票 universe、全市場真 N 或選股分母。成功但代碼無匹配列與尚未載入／失敗分開顯示，不補零。
+
+只有基準日期時採成功批次完成的小時依據，不能用舊列級 `available_at` 代替。保存與完整再核驗須在可用小時之前完成；尚未到可用小時、缺原件、SHA／版本錯誤、pending 或來源讀取中變動皆拒絕並清除舊結果。修改輸入或按「取消／清除結果」會清除畫面並合作取消，須等本輪 worker 安全返回才能再讀。切至其他工作區再返回可保留已載入結果；新程序仍需明選同一目錄與雙 SHA。
+
+產物仍為 candidate-only，`source_use_accepted=false`、`historical_pit_eligible=false`；已驗證的是離線保存／讀回工程，尚無本輪真官方取得與用途／單位接受。連買、跨市場交易日及歷史指標繼續不可用；不要正式 apply、搬回正式資料或以此認證歷史 PIT。詳[本輪 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment42p03法人成功批次與正常唯讀頁)。
 
 ### 每日快照的時間判讀
 

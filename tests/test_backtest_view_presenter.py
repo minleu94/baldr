@@ -42,3 +42,17 @@ def test_format_backtest_summary_preserves_sop_and_metric_order() -> None:
     assert "回測日期範圍: 2026-01-01 至 2026-01-31" in summary
     assert "總交易次數: 3" in summary
     assert "總報酬率: 10.00%" in summary
+
+
+def test_summary_zero_pairs_are_explicit_without_changing_trade_count() -> None:
+    report = BacktestReportDTO(
+        total_return=0, annual_return=0, sharpe_ratio=0, max_drawdown=0,
+        win_rate=0, total_trades=0, expectancy=0, details={},
+        validation_status=ValidationStatus.FAIL,
+    )
+
+    summary = format_backtest_summary(report)
+
+    assert '總交易次數: 0（已完成進出場配對）' in summary
+    assert '尚無已完成交易' in summary
+    assert report.total_trades == 0 and report.details == {}

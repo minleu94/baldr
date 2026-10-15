@@ -1060,16 +1060,55 @@ class BacktestView(QWidget):
         # 診斷指引與建議
         guides = []
 
-        # 1. 無交易
-        if report.total_trades == 0:
+        # 完成配對、實際成交與期末持股各讀原觀測；未知不能補成零。
+        execution = report.details.get('execution_summary')
+        fill_count = execution.get('trade_count') if isinstance(execution, dict) else None
+        if type(fill_count) is not int or fill_count < 0:
+            fill_count = None
+        terminal_position = report.details.get('terminal_position')
+        if type(terminal_position) is not int or terminal_position < 0:
+            terminal_position = None
+        observations = (
+            f"實際成交筆數：{fill_count if fill_count is not None else '未提供'}；"
+            f"期末持股：{str(terminal_position) + ' 股' if terminal_position is not None else '未提供'}。\n"
+        )
+        score_diagnostics = report.details.get('score_diagnostics')
+        try:
+            score_known = isinstance(score_diagnostics, dict) and Decimal(str(score_diagnostics.get('max_score'))).is_finite()
+            if score_known:
+                threshold_mode = score_diagnostics.get('threshold_mode')
+                if threshold_mode == 'fixed':
+                    score_known = Decimal(str(score_diagnostics.get('buy_score'))).is_finite()
+                elif threshold_mode == 'quantile':
+                    # 診斷使用的分位數與觀測數也必須由本次報告明示。
+                    fields = ('buy_quantile_bp', 'sell_quantile_bp', 'warmup_ready_days',
+                              'total_days', 'buy_hit_days', 'sell_hit_days', 'quantile_warmup_observations')
+                    score_known = all(type(score_diagnostics.get(key)) is int and score_diagnostics[key] >= 0 for key in fields)
+                    if score_known:
+                        score_known = all(score_diagnostics[key] <= 10000 for key in ('buy_quantile_bp', 'sell_quantile_bp'))
+                else:
+                    score_known = False
+        except (ValueError, ArithmeticError):
+            score_known = False
+        # 1. 尚無完成配對，不代表沒有買入；缺成交／分數觀測時不推論門檻原因。
+        if report.total_trades == 0 and (fill_count != 0 or terminal_position != 0 or not score_known):
+            guides.append(
+                "\n💡 === 診斷：尚無已完成交易 ===\n"
+                "已完成進出場配對數為 0，不能據此判定沒有成交。\n"
+                + observations
+                + "若仍有持股，期末權益包含未平倉估值，不是已實現損益。\n"
+                "請核對分數可用性與成交明細；配對樣本不足不能作為完整績效或升級依據。"
+            )
+        elif report.total_trades == 0:
             score_diag = report.details.get('score_diagnostics', {})
-            max_score = score_diag.get('max_score', 0.0)
-            buy_score = score_diag.get('buy_score', 60.0)
-            threshold_mode = score_diag.get('threshold_mode', 'fixed')
+            max_score = Decimal(str(score_diag['max_score']))
+            buy_score = Decimal(str(score_diag['buy_score'])) if score_diag['threshold_mode'] == 'fixed' else None
+            threshold_mode = score_diag['threshold_mode']
 
             no_trade_msg = (
-                "\n💡 === 診斷建議：無任何交易 ===\n"
-                "原因：單股回測交易次數為 0，無法記錄交易到 Portfolio。\n"
+                "\n💡 === 診斷建議：尚無已完成交易 ===\n"
+                "已完成進出場配對數為 0；本輪明示未有實際成交。\n"
+                + observations
             )
 
             if threshold_mode == 'quantile':
@@ -3002,8 +3041,10 @@ class BacktestView(QWidget):
             f"夏普比率: {saved_number('sharpe_ratio')}",
             f"最大回撤: {saved_number('max_drawdown', percent=True)}",
             f"勝率: {saved_number('win_rate', percent=True)}",
-            f"總交易次數: {run_data.get('total_trades') if run_data.get('total_trades') is not None else '未知'}",
+            f"總交易次數: {run_data.get('total_trades') if run_data.get('total_trades') is not None else '未知'}（已完成進出場配對）",
         ]
+        if run_data.get('total_trades') == 0:
+            summary_lines.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
 
         self.summary_text.setPlainText("\n".join(summary_lines))
 

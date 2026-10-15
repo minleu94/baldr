@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import pandas as pd
@@ -47,19 +48,29 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
             f"注意: 請求範圍 {requested_start}~{requested_end} 已調整為實際數據範圍"
         )
 
+    def score_text(value: Any) -> str:
+        try:
+            number = Decimal(str(value))
+            return f"{number:.1f}" if number.is_finite() else "未提供"
+        except (InvalidOperation, ValueError):
+            return "未提供"
+
     score_diag = details.get("score_diagnostics")
-    if score_diag:
+    if isinstance(score_diag, dict) and score_diag:
         lines.extend(
             [
                 "",
                 "--- 策略分數診斷 (Scoring Diagnostics) ---",
-                f"最高得分: {score_diag['max_score']:.1f} | 最低得分: {score_diag['min_score']:.1f} | 平均得分: {score_diag['avg_score']:.1f}",
+                f"最高得分: {score_text(score_diag.get('max_score'))} | 最低得分: {score_text(score_diag.get('min_score'))} | 平均得分: {score_text(score_diag.get('avg_score'))}",
             ]
         )
         total_days = score_diag.get("total_days", 0)
         buy_hit_days = score_diag.get("buy_hit_days", 0)
         sell_hit_days = score_diag.get("sell_hit_days", 0)
-        if score_diag.get("threshold_mode", "fixed") == "quantile":
+        if score_diag.get("threshold_mode") == "quantile" and all(
+            type(score_diag.get(key)) is int and score_diag[key] >= 0
+            for key in ("warmup_ready_days", "total_days", "buy_hit_days", "sell_hit_days", "buy_quantile_bp", "sell_quantile_bp")
+        ):
             ready_days = score_diag.get("warmup_ready_days", 0)
             buy_pct = buy_hit_days / ready_days * 100.0 if ready_days > 0 else 0.0
             sell_pct = sell_hit_days / ready_days * 100.0 if ready_days > 0 else 0.0
@@ -72,15 +83,17 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
                     f"動態賣出分位數 ({sell_bp/100:.1f}%) 命中天數: {sell_hit_days} 天 / 已暖機 {ready_days} 天 ({sell_pct:.1f}%)",
                 ]
             )
-        else:
+        elif score_diag.get("threshold_mode") == "fixed":
             buy_pct = buy_hit_days / total_days * 100.0 if total_days > 0 else 0.0
             sell_pct = sell_hit_days / total_days * 100.0 if total_days > 0 else 0.0
             lines.extend(
                 [
-                    f"買進門檻 ({score_diag.get('buy_score', 0.0):.1f}) 命中天數: {buy_hit_days} 天 / {total_days} 天 ({buy_pct:.1f}%)",
-                    f"賣出門檻 ({score_diag.get('sell_score', 0.0):.1f}) 命中天數: {sell_hit_days} 天 / {total_days} 天 ({sell_pct:.1f}%)",
+                    f"買進門檻 ({score_text(score_diag.get('buy_score'))}) 命中天數: {buy_hit_days} 天 / {total_days} 天 ({buy_pct:.1f}%)",
+                    f"賣出門檻 ({score_text(score_diag.get('sell_score'))}) 命中天數: {sell_hit_days} 天 / {total_days} 天 ({sell_pct:.1f}%)",
                 ]
             )
+        else:
+            lines.append("門檻模式或觀測資料未提供，無法判讀命中情形。")
 
     lines.extend(
         [
@@ -99,7 +112,9 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
     if report.validation_messages:
         lines.append("")
         lines.extend(report.validation_messages)
-    lines.extend(["", "--- Primary 指標（行為健康） ---", f"總交易次數: {report.total_trades}"])
+    lines.extend(["", "--- Primary 指標（行為健康） ---", f"總交易次數: {report.total_trades}（已完成進出場配對）"])
+    if report.total_trades == 0:
+        lines.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
     trade_list = details.get("trade_list")
     if isinstance(trade_list, pd.DataFrame) and len(trade_list) > 0 and "持有天數" in trade_list.columns:
         lines.append(f"平均持有天數: {trade_list['持有天數'].mean():.1f} 天")

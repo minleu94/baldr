@@ -662,39 +662,40 @@ class BrokerSimulator:
                     self.execution_diagnostics.append({**pending, **decision.to_dict()})
                     if decision.reason != "open_at_price_limit":
                         pending = None
-                    continue
-                size = decision.filled_shares
-                gross = quantize_money(open_price * size)
-                costs = exact_execution_costs(
-                    gross, side=side, fee_bps=self.config.fee_bps,
-                    slippage_bps=self.config.slippage_bps, tax_bps=30,
-                    minimum_fee=minimum,
-                )
-                if side == "buy":
-                    entry = (entry * qty + open_price * size) / (qty + size)
-                    qty += size
-                    cash = quantize_money(cash - gross - costs["total"])
                 else:
-                    cash = quantize_money(cash + gross - costs["total"])
-                    qty = 0
-                    entry = Decimal("0")
-                    last_exit = pd.Timestamp(session)
-                trades.append(Trade(
-                    date=pd.Timestamp(session), type=side,
-                    price=float(open_price), shares=size,  # numeric-boundary: dto
-                    value=float(gross), fee=float(costs["fee"] + costs["tax"]),  # numeric-boundary: dto
-                    slippage=float(costs["slippage"]),  # numeric-boundary: dto
-                    reason_tags=str(pending["reason"]), signal=1 if side == "buy" else -1,
-                ))
-                self.execution_diagnostics.append({
-                    **pending,
-                    **decision.to_dict(),
-                    "execution_time": pd.Timestamp(session).isoformat(),
-                })
-                pending = None
+                    size = decision.filled_shares
+                    gross = quantize_money(open_price * size)
+                    costs = exact_execution_costs(
+                        gross, side=side, fee_bps=self.config.fee_bps,
+                        slippage_bps=self.config.slippage_bps, tax_bps=30,
+                        minimum_fee=minimum,
+                    )
+                    if side == "buy":
+                        entry = (entry * qty + open_price * size) / (qty + size)
+                        qty += size
+                        cash = quantize_money(cash - gross - costs["total"])
+                    else:
+                        cash = quantize_money(cash + gross - costs["total"])
+                        qty = 0
+                        entry = Decimal("0")
+                        last_exit = pd.Timestamp(session)
+                    trades.append(Trade(
+                        date=pd.Timestamp(session), type=side,
+                        price=float(open_price), shares=size,  # numeric-boundary: dto
+                        value=float(gross), fee=float(costs["fee"] + costs["tax"]),  # numeric-boundary: dto
+                        slippage=float(costs["slippage"]),  # numeric-boundary: dto
+                        reason_tags=str(pending["reason"]), signal=1 if side == "buy" else -1,
+                    ))
+                    self.execution_diagnostics.append({
+                        **pending,
+                        **decision.to_dict(),
+                        "execution_time": pd.Timestamp(session).isoformat(),
+                    })
+                    pending = None
             elif pending is not None:
                 pending["last_reason"] = "missing_open_or_suspended"
 
+            # 未成交也必須處理本日收盤；不能漏掉估值、反向取消或下一開盤的基準。
             if pd.notna(row[price_col]) and to_decimal(row[price_col]) > 0:
                 mark = to_decimal(row[price_col])
             elif qty:

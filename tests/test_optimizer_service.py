@@ -104,7 +104,7 @@ def test_grid_search_cancellation_does_not_submit_entire_grid_or_log_empty_error
             stock_code="2330",
             start_date="2026-01-02",
             end_date="2026-01-02",
-            strategy_id="baseline_score_v1",
+            strategy_id="baseline_score_threshold",
             base_params={},
             param_ranges={
                 "param": ParamRange("param", "int", [], min=1, max=20, step=1),

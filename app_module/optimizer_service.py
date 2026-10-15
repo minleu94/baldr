@@ -5,13 +5,14 @@
 
 import itertools
 from typing import Dict, List, Any, Optional, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 import pandas as pd
 import os
 from concurrent.futures import CancelledError, ThreadPoolExecutor, wait, FIRST_COMPLETED
 from app_module.exceptions import BacktestCancelledError
+from app_module.registered_strategy_spec import registered_strategy_spec
 import logging
 
 logger = logging.getLogger(__name__)
@@ -171,8 +172,6 @@ class OptimizerService:
         Returns:
             最佳化結果列表（已排序）
         """
-        from decision_module.strategies.contracts import StrategySpec
-        from decision_module.strategies.registry import StrategyRegistry
 
         # 生成參數網格
         param_combinations = self.generate_param_grid(param_ranges)
@@ -182,6 +181,9 @@ class OptimizerService:
             progress_callback(0, total_combinations, f"開始掃描 {total_combinations} 組參數（使用 {self.max_workers} 個線程）...")
 
         logger.info(f"[OptimizerService] 開始 Grid Search，共 {total_combinations} 組參數，使用 {self.max_workers} 個並行線程")
+
+        # 在讀取行情與啟動組合前固定此輪登記版本，不能在不同組合間換版。
+        registered_spec = registered_strategy_spec(strategy_id, config={})
 
         # ✅ 優化：預先載入數據一次，所有參數組合共用
         logger.info(f"[OptimizerService] 預先載入數據（股票 {stock_code}，日期範圍 {start_date} 到 {end_date}）...")
@@ -213,19 +215,7 @@ class OptimizerService:
                 full_params = {**base_params, **param_combo}
 
                 # 創建策略規格
-                strategy_info = StrategyRegistry.list_strategies().get(strategy_id, {})
-                strategy_spec = StrategySpec(
-                    strategy_id=strategy_id,
-                    strategy_version="1.0",
-                    name=strategy_info.get('name', strategy_id),
-                    description=strategy_info.get('description', ''),
-                    regime=[],
-                    risk_level="medium",
-                    target_type="stock",
-                    config={
-                        'params': full_params
-                    }
-                )
+                strategy_spec = replace(registered_spec, config={'params': full_params})
 
                 # 執行回測（使用預載入的數據）
                 report = self.backtest_service.run_backtest(

@@ -890,3 +890,24 @@ Root helper `p06_scenario_main_fresh_39_a.py` 重用原隔離 root／socket guar
 文件已同步主手冊／持倉分冊的入口、明選帳本、bp參數、原證據判讀、另存／返回／重開、取消與空庫／唯讀／政策錯誤；更新current兩分冊、功能文件、Feature Map、Snapshot、開發導航與原計畫§7.1。無新增配置／store schema／安裝／Task變更，安裝移機文件及固定V1指南不需修改。下一段仍沿原計畫推進，不等真人試用回饋；沒有完整 Gate 接受。
 
 QA177文件終驗 PASS：12 features／10本輪來源，context metadata 30 links sources，errors=[]。outer `single_owned_qa_59641b01383143819c1db0c1ba0c0e47/receipt.json`，SHA `e8b0869ce4b0aa395a7dfc9c978da89d6ea6a357c72c31398eb732a2b4bf4bae`。Root另核QA169–177九組收據SHA／自然空PID／handles／mutex及8GiB／12上限，固定V1指南與收據、舊task及其他owner原件SHA一致；完整Gate仍未接受。
+
+## Increment40：P07／P08新實驗綁定真策略版本
+
+此增量解除新回測、規則卡、Walk-forward 與參數掃描把兩個實際登記 `1.0.0` 策略寫成 `1.0` 的版本錯誤；會造成規則卡失配及新保存 run 身分失真。沿原 P07／P08 修正，屬第二階段，與真人試用並行，不新增 V1 前置或重打固定9fa。原完整範圍、來源權威／PIT、完整雙策略績效與自然成熟仍各自保留。
+
+Root 共用 `registered_strategy_spec()` 只讀 public `StrategyRegistry.get_strategy_meta()`，核 id 與唯一明確版本，深複製原 config；不造 executor、fallback版本或新的金融邏輯。BacktestView 三個原 StrategySpec caller 共用；Optimizer 在讀行情及提交組合前凍結本輪版本。基準仍1.0，暴衝／穩健各1.0.0。舊 run 原樣；原 params、成本、風控與時序不變。Root金融／資料／整合與文件單寫；重用 Luna9 僅寫新UI測試，Luna10只讀P06來源，累計10/10，無新建或子代理。
+
+以下 outer 收據路徑均在 `output/tasks/baldr-completion-resume-20261014-01a13cf9/`：
+
+- QA178 route/context PASS，outer `single_owned_qa_2b3a779f910146ccab7095b97a5c3b03/receipt.json`，SHA `95a70cbd840a5613638ba925bca1df7fd4ac70dbc9194146bfee2adc03c5eadc`。
+- QA179 compile與核心69 PASS，涵蓋真版本、7類無效metadata、deep config隔離、Optimizer開始前凍結及取消、既有規則卡／執行協調與run metadata。outer `single_owned_qa_599700f41c504ec4bbba34ca8aafccc0/receipt.json`，SHA `5945d2b6391aef87e7e2ea5100ea491118646ef61f9a86a4c6c9d3f8388f9bfd`。既有取消fixture原策略id不存在，改為真登記基準id，原取消／in-flight斷言保留。
+- QA180 UI與Workbench 90 PASS／3 FAIL：新測試在改UI設定後，第二次請求卻仍誤期待第一次config。outer `single_owned_qa_29e2ba11ed52437c9624ea865dedf975/receipt.json`，SHA `831a63abfdca767ca7472b10c2f74fe178ce823cbb3ca869fb5d483f9b456608`。Root改成第二次使用當前設定且第一次spec維持不變，產品不變。QA181只重驗該3項PASS、補validator25/0/4及八roots mypy1019 PASS，outer `single_owned_qa_67577f89442a4acc94088b94e6cde933/receipt.json`，SHA `c44b80155b15434825cdf383bf2e06dcf274e4a4f3775768b912835f7bcff801`；沒有重跑已過69／90。既有ui_qt.* ignore_errors=True不證UI強型別。
+- QA182 FAIL於Main之前：QA誤用舊QA86對mutable runtime DB／指標cache的初始pins，bytes已非該版。outer `single_owned_qa_22e42aa31221452488317beabf80eee4/receipt.json`，SHA `afac0fa790b5d9da4a4dc71e8c59fe57020ccf9a4d31c09514beb7f13fd6e72e`；保留a helper／partial fixture，沒有重綁或覆寫舊spec。
+- QA183 改用當前固定交付收據SHA `0cc49abbf81d24981ba06841948f9ee7352699d22eb165a0f85a51d56feb804e` 所綁INPUT_INVENTORY SHA `172d65e241418963f16beffc76ea5e25b7f53247e512df054367e0f2ca0b175d` 的20不可變輸入。只複製四市場CSV與原source price.sqlite到b隔離副本，原DBManager建表前後逐列價量相同；不讀取／修改使用者試用mutable DB。正常回測並保存後，QA錯要求即時保存按鈕停用而FAIL，outer `single_owned_qa_8dc894f5a11a4ded91e361310bd41706/receipt.json`，SHA `0f7d7e2dcc83926dc47fd87487d476d7a4b8c73220274f8ee657ff55b7f4e52b`。原產品即時結果可另存，exact歷史才禁止重新保存；原b產物／FAIL保留。
+- QA184 獨立c helper只修保存等待為run存在；其後完整metadata/equity/trades、歷史停用保存、419日與整數分現金守恆、20來源及所有期限／裁切／PID守衛保留。正常Main父42996→fresh22092 PASS：兩策略規則卡版本1.0.0／無registry_version_mismatch，正常執行→保存→歷史精確重開→Watchlist返回，新程序禁止producer仍同完整內容。momentum run `single_backtest_20261015_114050_dd4e08d8` identity `39700a010f1a2c963714123ae13c73fde6303d835229a0d6162fc9348ef89a65`；stable run `single_backtest_20261015_114050_eea7ef2f` identity `33b30384f80459c9a923256c02d9562bbc21c95b9ae7a1ceba70b8f40aad65b2`。父receipt SHA `0f903f5ea39c0b4c367661a2632a837977a8553768cbce01558191fc01a7dc31`、fresh SHA `e027e992c7dee1ae5d43b105953df2bb9b195e09baa3f4c13897231f1ffc06b7`，位於owner `increment40_strategy_version_main_fresh_c/`；outer `single_owned_qa_7a713c3127884a1292c5ef6b6740f2a8/receipt.json`，SHA `194b1b1c45bbc76504e2ee20c74a3e515311178e8febe8dce3a4ace490d78b50`。
+
+QA184以2317、2025/01/02–2026/09/23、本金1000000、fee14.25bp／slippage5bp與固定0門檻作版本保存工程驗證；不是策略效果接受。四股原始行情衍生於私人副本，20來源及準備後副本DB hash不變、Python socket零嘗試、合作關閉且0受管worker。非OS網路稽核、Native／EXE、正式來源PIT或完整雙策略績效。各組8GiB committed／12程序／kill-on-close／同workspace mutex、RAM≥8GiB，三PID清冊自然空、process／Job handles閉鎖、mutex釋放，無forced cleanup。
+
+主手冊與回測分冊同步入口、版本判讀、另存與歷史重開、缺版本排錯；current架構分冊、功能、Feature Map、導航、Snapshot與原計畫同步。架構全貌仍沿原UI→app→Registry／executor，未新增資料schema、設定、正式Task或安裝依賴；固定V1指南不改，因9fa包未變。P06 Health exact reader只有paper-main identity／股數／Health，缺精確現金／NAV／marks，不能以bp反推或混策略帳；初次來源組合繼續沿原repository查核，不以unknown卡結案。
+
+QA185文件終驗PASS：12 features／9本輪來源與context metadata30 sources，errors=[]；outer `single_owned_qa_16e5a9f615b04122989b1fb433fefa84/receipt.json`，SHA `3c671cb76f6a3c2bf8bf02cda14fd297275b0329924a70dc52a6da5163c85722`。Root另核QA178–185八組完整收據SHA／自然閉鎖與固定V1收據／指南／20輸入清冊、舊task及其他owner原件不變，保存owner `increment40_final_integrity.json`，SHA `cddd4a3cd996d80aafaf417372899e302ebc8b40b9f3d011352aded2b9b78262`。這是限定交付證據，未授完整Gate。

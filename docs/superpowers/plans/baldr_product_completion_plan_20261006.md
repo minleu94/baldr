@@ -368,6 +368,8 @@ Increment39 接續原 P06 的正常使用出口：復用已存在的 scenario se
 
 既有歷史指標映射先凍結：`PerformanceMetrics.total_trades`是完成交易配對數、`expectancy`是配對報酬平均、`win_rate`以獲利配對數除全部配對、`annual_return`是原引擎CAGR、`max_drawdown`來自equity。各run若使用另一metrics schema，adapter要按schema明示轉譯；不得只看同名欄位。平均單筆需顯示原return_pct單位與成本口徑，已完成交易為0時顯示「尚無已完成交易」。股票數／候選數／訊號數另外計，不借total_trades當全部樣本數。
 
+Increment40 沿原 P07／P08 解除「1.0.0 策略的新回測／規則卡／Walk-forward／參數掃描被寫成1.0」的版本識別阻礙。共用 public Registry metadata 接點，掃描讀行情前凍結本輪版本，缺件拒絕；正常Main保存→歷史返回→fresh已驗兩策略真版本與完整保存內容，舊run不改寫。此為第二階段實作，不增加凍結V1前置或改動9fa試用包；完整策略定版、雙策略權威與績效、來源PIT及各原出口仍須各自驗收。P06初次來源缺件另處理，不因版本小修停止其他產品線，見[Increment40 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment40p07p08新實驗綁定真策略版本)。
+
 ### 7.3 自然結果與模型改善
 
 沿原 capture／forward store／outcome reader／label readiness／fair comparison／personalization reader，將「已保存預測、符合／不符／未知或控制組、待entry、待市場資料、到期未核、已成熟」分開。訓練資料凍結 feature／label／universe／source／clock；保留未入選與排除理由，避免只觀察贏家。Temporal split、purge／embargo、標準化只fit於訓練段；benchmark、停損／停利及成交只用當時可得資料。

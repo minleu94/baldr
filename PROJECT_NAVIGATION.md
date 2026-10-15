@@ -35,6 +35,7 @@
 
 - `decision_module/scoring_engine.py`、`decision_module/strategy_configurator.py`、`decision_module/stock_screener.py`
 - `app_module/recommendation_service.py`、`app_module/backtest_service.py`、`app_module/walkforward_service.py`
+- 回測、規則卡、Walk-forward 與參數掃描的新請求版本沿 `app_module/registered_strategy_spec.py` 讀 public Registry metadata；不改歷史 run。入口判讀見[回測指南](docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#選模式和研究範圍)。
 - `backtest_module/performance_metrics.py`、`backtest_module/broker_simulator.py`
 - `decision_module/market_regime_detector.py`
 - `data_module/config.py`：`TWStockConfig` 是正式資料路徑的設定權威；不得由 repo 相對路徑猜測使用者資料位置。

@@ -35,6 +35,7 @@ from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.backtest_service import BacktestService
+from app_module.registered_strategy_spec import registered_strategy_spec
 from app_module.backtest_analyst_diagnostics import build_backtest_analyst_diagnostics
 from app_module.backtest_optimization_stability import build_optimization_stability_summary
 from decision_module.strategies.contracts import StrategySpec
@@ -889,19 +890,11 @@ class BacktestView(QWidget):
         params = self._get_strategy_params()
 
         # 創建策略規格
-        strategy_spec = StrategySpec(
-            strategy_id=selected_strategy_id,
-            strategy_version="1.0",
-            name=self.strategy_combo.currentText(),
-            description=self.strategy_desc.text(),
-            regime=[],
-            risk_level="medium",
-            target_type="stock",
-            config={
-                **self._get_default_strategy_config(),
-                'params': params
-            }
-        )
+        try:
+            strategy_spec = BacktestView._selected_strategy_spec(self, params)
+        except ValueError as exc:
+            QMessageBox.warning(self, "策略版本不可用", str(exc))
+            return
 
         # 獲取 sizing 和市場限制設定
         sizing_mode_map = {
@@ -1764,6 +1757,18 @@ class BacktestView(QWidget):
             logger.error(traceback.format_exc())
             self.strategy_combo.addItem("載入策略失敗", None)
 
+    def _selected_strategy_spec(self, params: dict[str, Any] | None = None) -> StrategySpec:
+        """本次回測／規則卡／Walk-forward 共用同一登記版本與原參數。"""
+        strategy_id = self.strategy_combo.currentData()
+        if not isinstance(strategy_id, str) or not strategy_id:
+            raise ValueError("請先選擇已登記的策略")
+        return registered_strategy_spec(
+            strategy_id, name=self.strategy_combo.currentText(),
+            description=self.strategy_desc.text(),
+            config={**self._get_default_strategy_config(),
+                    "params": self._get_strategy_params() if params is None else params},
+        )
+
     def _show_strategy_rule_card(self):
         """只投影此次回測設定；不替既有 run 補來源身份。"""
         from app_module.strategy_rule_card_readmodel import read_strategy_rule_card
@@ -1772,13 +1777,11 @@ class BacktestView(QWidget):
         if not strategy_id:
             QMessageBox.warning(self, "規則說明", "請先選擇策略。")
             return
-        # 與本頁既有回測 StrategySpec 使用相同版本及設定；不借 registry 新版。
-        spec = StrategySpec(
-            strategy_id=strategy_id, strategy_version="1.0",
-            name=self.strategy_combo.currentText(), description=self.strategy_desc.text(),
-            regime=[], risk_level="medium", target_type="stock",
-            config={**self._get_default_strategy_config(), 'params': self._get_strategy_params()},
-        )
+        try:
+            spec = BacktestView._selected_strategy_spec(self)
+        except ValueError as exc:
+            QMessageBox.warning(self, "策略版本不可用", str(exc))
+            return
         card = read_strategy_rule_card(spec, result_kind="historical_backtest")
         StrategyRuleCardDialog(card, self).exec()
 
@@ -3945,20 +3948,11 @@ class BacktestView(QWidget):
         params = self._get_strategy_params()
 
         # 創建策略規格
-        strategy_info = StrategyRegistry.list_strategies().get(selected_strategy_id, {})
-        strategy_spec = StrategySpec(
-            strategy_id=selected_strategy_id,
-            strategy_version="1.0",
-            name=strategy_info.get('name', selected_strategy_id) or selected_strategy_id,
-            description=strategy_info.get('description', ''),
-            regime=[],
-            risk_level="medium",
-            target_type="stock",
-            config={
-                **self._get_default_strategy_config(),
-                'params': params
-            }
-        )
+        try:
+            strategy_spec = BacktestView._selected_strategy_spec(self, params)
+        except ValueError as exc:
+            QMessageBox.warning(self, "策略版本不可用", str(exc))
+            return
 
         # 獲取其他設定
         capital = self.capital_input.value()

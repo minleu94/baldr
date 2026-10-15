@@ -303,6 +303,8 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
+        "app_module/registered_strategy_spec.py",
+        "app_module/optimizer_service.py",
         "app_module/official_calendar_daily_snapshot_v1.py",
         "app_module/recommendation_portfolio_calendar_acceptance_binding_v1.py",
         "app_module/recommendation_portfolio_annual_calendar_evidence_v1.py",
@@ -339,6 +341,9 @@
         "ui_qt/widgets/strategy_performance_widget.py"
       ],
       "tests": [
+        "tests/test_registered_strategy_spec.py",
+        "tests/test_ui_qt_backtest_strategy_version_binding.py",
+        "tests/test_optimizer_service.py",
         "tests/test_official_calendar_daily_snapshot_v1.py",
         "tests/test_portfolio_calendar_acceptance_binding_v1.py",
         "tests/test_registry_calendar_acceptance_configuration.py",

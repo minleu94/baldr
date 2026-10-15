@@ -73,6 +73,8 @@ P08 雙 run 診斷沿既有 pair／public portfolio reader，固定兩筆 metada
 
 `PortfolioResearchScenarioWorkspace` 將既有 v3 artifact／v1 store 接到 Portfolio「配置研究封存」。正常 Main 沿中央 `PersonalStoreSelection` 組合 `PORTFOLIO_RESEARCH` route；未配置不回退 legacy，LEGACY_READ_ONLY 不可 append。背景 exact read 後只允許改 request 的 explicit target；account、完整 context、原 cutoff、candidate、turnover 與 source hash 不變，現行 allocation policy hash 與原 artifact 不同則拒絕重算。另存重新核原件及預覽，再交原 repository append，不產製 Health、不讀今日市場、不寫交易。UI 以 generation 拒收舊回呼，返回個股只恢復同 artifact，不能用手動帳同股選取取代；初次 account/context 生產及原 P06 Registry 交叉入口仍待。
 
+Increment40 的 `registered_strategy_spec()` 沿 public `StrategyRegistry.get_strategy_meta()` 解析同策略明確且無衝突的版本，複製原設定形成新請求。BacktestView 的一般／逐檔執行、規則卡與 Walk-forward 共用此接點；Optimizer 在行情讀取及執行組合前固定一次 metadata，每組只替換 params。缺件拒絕，不預設版本或重新標記歷史 run；原金融引擎、Registry 格式及 module boundaries 不變。版本正確不能取代 source／PIT／performance qualification，既有 UI mypy ignore 也不代表強型別。
+
 ### Saved Health 的 exact consumer 與回訪偏好
 
 `PositionHealthExactPaperScopeFactory` 從 receipt 指定的同 route Paper snapshot 重建完整持倉 scope；`PositionHealthSavedPanel` 由正常 Main 成對注入 scope factory 與 `SavedHealthSelectionStore`。`portfolio-saved-health-selection.v1` 只保存回訪偏好，包含 receipt／result／snapshot rows hashes、decision date、完整 Paper identity、選中 position id 與分開的時鐘。不能按股票代號、最新結果或檔案 mtime 推測缺件。使用者流程見[已保存健康評估與回訪](../../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)。

@@ -410,6 +410,8 @@ class BacktestService:
                     'comparison': baseline_comparison},
                 'final_equity': equity_curve['equity'].iloc[-1],
                 'profit_factor': metrics.profit_factor,
+                'profit_factor_status': getattr(metrics, 'profit_factor_status', 'legacy_unversioned'),
+                'profit_factor_semantics': 'closed-pair-net-pnl-ratio.v1' if isinstance(metrics, PerformanceMetrics) and metrics.profit_factor_status != 'legacy_unversioned' else None,
                 'avg_win': metrics.avg_win,
                 'avg_loss': metrics.avg_loss,
                 'largest_win': metrics.largest_win,

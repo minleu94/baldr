@@ -207,7 +207,10 @@ class PromotionService:
             'win_rate': run.win_rate,
             'total_trades': run.total_trades,
             'expectancy': run.expectancy,
-            'profit_factor': run.profit_factor
+            # 舊 runs 表沒有語意版本，不把原數字當作已核對的獲利因子。
+            'profit_factor': None,
+            'profit_factor_status': 'legacy_unversioned',
+            'profit_factor_semantics': None,
         }
         
         # 5. 推斷適用 Regime（從回測期間的市場狀態）

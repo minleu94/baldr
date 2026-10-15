@@ -13,6 +13,7 @@ import os
 from concurrent.futures import CancelledError, ThreadPoolExecutor, wait, FIRST_COMPLETED
 from app_module.exceptions import BacktestCancelledError
 from app_module.registered_strategy_spec import registered_strategy_spec
+from app_module.backtest_contracts import profit_factor_projection
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class ParamRange:
 class OptimizationResult:
     """最佳化結果"""
     params: Dict[str, Any]
-    metrics: Dict[str, float]
+    metrics: Dict[str, Any]
     rank: int = 0
     run_id: Optional[str] = None
 
@@ -255,7 +256,7 @@ class OptimizerService:
                         'win_rate': report.win_rate,
                         'total_trades': report.total_trades,
                         'expectancy': report.expectancy,
-                        'profit_factor': report.details.get('profit_factor', 0.0),
+                        **profit_factor_projection(report.details),
                         'score': score  # 目標分數
                     }
                 )
@@ -383,6 +384,7 @@ class OptimizerService:
         summary_data = []
 
         for result in results:
+            pf = profit_factor_projection(result.metrics)
             row = {
                 '排名': result.rank,
                 **{f'參數_{k}': v for k, v in result.params.items()},
@@ -393,7 +395,9 @@ class OptimizerService:
                 '勝率%': result.metrics.get('win_rate', 0) * 100,
                 '交易次數': result.metrics.get('total_trades', 0),
                 '期望值%': result.metrics.get('expectancy', 0) * 100,
-                '獲利因子': result.metrics.get('profit_factor', 0),
+                '獲利因子': pf['profit_factor'],
+                '獲利因子狀態': pf['profit_factor_status'],
+                '獲利因子語意': pf['profit_factor_semantics'],
                 '目標分數': result.metrics.get('score', 0)
             }
             summary_data.append(row)

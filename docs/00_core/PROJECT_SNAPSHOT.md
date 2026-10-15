@@ -1,5 +1,9 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment50 修正PF把無虧損金額當比率、零配對／全平假零及None展示中斷；原FIFO／分量化沿用，Decimal60隔離caller context。nullable／語意狀態接單股、批次、最佳化、新保存NULL與舊比較／升級隔離，不改舊列或遷移schema。QA260 compile12／八roots mypy1028／177PASS含Workbench85，1項缺值貨幣標籤FAIL保留，QA261定向1PASS／validator25/0/4／精度守衛；QA262正常Main17676→fresh48528兩run原引擎顯示／保存／歷史／返回通過，合成價格界線明示。**固定9fa EXE尚未含PF修正，V1-04窄版backport／新候選是下一交付阻擋項**。詳[Increment50 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment50p08獲利因子語意與金融錯誤修正)。
+
+Increment48後續QA259已在真台北10/16 06:00後通過正常Main44872→fresh33944：2308／053040／2330同pin讀回／返回、13快照檔內容與時間不變，無新HTTP／seal／未來時鐘。解除下列待驗Main步驟；來源用途／歷史PIT／TPEx／完整F16／Native／EXE與Gate仍未接受。
+
 Increment49 已把原單股引擎的新保存指標接入正常歷史卡：沿原公式另記有效性、指標與整node指紋、實際期間與原表；新Registry寫入保存日期並先核來源，舊無schema不升級。31定向案例通過，原140回歸含Workbench85及八roots mypy1028另通過，validator25/0/4；FAIL與修正分列。正常Main38288→fresh44116同兩run／原指標／原檔案與時間一致，fresh禁止重算或保存、socket0；市場I/O明示合成，其餘沿原producer與Main slot／保存／reader，非Native／真來源／完整績效。原P06手動／聲明來源缺全帳現金與同源Health／行情，不能用成本或default0補NAV；隔離該缺件後續推P08出口。固定9fa不變，完整P00–P14／G0–G4仍未接受，詳[Increment49 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment49p08新單股歷史指標版本與正常讀回)。
 
 Increment48 正補原 P03／F16 官方注意公告，已有 2026/10/15 單日真原件 4,931 bytes／18 筆有價證券、完整 EOF 與具日期查詢文件鏈；未將無日期佔位當無公告。原件另存 self-contained 固定版本，11 份來源 bytes／mtime／ctime 不變，真批次可用時間為台北 10/16 06:00；提前讀取如預期拒絕。解析／公告 UI 23 案、snapshot／provider 23案、受改個股報告與必要 Workbench 共213案、validator25/0/4及八roots mypy1027已限定通過；真正常Main／fresh待自然可用小時後驗。原價／PE保留字串，注意與處置／Advice分離。固定9fa不變，不等試用回饋；下一葉並行定位原 P06 手動帳初次來源。用途接受／TPEx／歷史PIT／Native／EXE與完整Gate均未升格，詳[Increment48 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment48p03單日官方注意公告與固定版本)。

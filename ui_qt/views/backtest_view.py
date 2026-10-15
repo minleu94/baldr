@@ -3234,7 +3234,8 @@ class BacktestView(QWidget):
                     '勝率%': run.win_rate * 100,
                     '交易次數': run.total_trades,
                     '期望值%': run.expectancy * 100,
-                    '獲利因子': run.profit_factor,
+                    '獲利因子': None,
+                    '獲利因子狀態': '舊保存欄位未附語意版本；未驗證',
                 })
 
         compare_df = pd.DataFrame(compare_data)

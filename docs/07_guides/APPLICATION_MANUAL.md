@@ -1,5 +1,7 @@
 # baldr 完整操作手冊
 
+獲利因子的有限比率／未定義狀態與舊保存值判讀見[PF指南](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。source候選已修正；固定9fa試用EXE的附加PF仍可能把無虧損金額當比率，待V1-04窄版修補，請勿把該欄當有效比率。
+
 本手冊提供日常使用順序及常見操作入口。安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 後續開發分支的「持倉管理 → 顯示進階 → 配置研究封存」已增加首次策略帳研究：以明示 checkpoint 及同來源 Health v2 選來源、輸入股票、比較後保存，再接回原個股與精確重開流程。先用 `run_strategy_position_health.py` 沿原評估器另存同源 Health；缺件維持不可用，不改交易或自啟排程。參數、操作、時鐘與排錯見[配置研究指南](manuals/WATCHLIST_AND_PORTFOLIO.md#配置研究封存與另存假設)。固定 `9fa4518c` 試用包仍保留四條凍結流程。

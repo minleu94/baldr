@@ -11,6 +11,45 @@ from app_module.dtos import BacktestReportDTO, ValidationStatus
 from ui_qt.status_vocabulary import status_detail
 
 
+_PROFIT_FACTOR_SEMANTICS = "closed-pair-net-pnl-ratio.v1"
+_PROFIT_FACTOR_STATUS_TEXT = {
+    "no_closed_pairs": "未提供（無已完成配對）",
+    "unbounded_no_gross_loss": "未提供（無虧損，沒有有限比率）",
+    "undefined_zero_over_zero": "未提供（總獲利與虧損皆為零）",
+    "unavailable_nonfinite": "未提供（非有限指標）",
+}
+
+
+def _profit_factor_line(details: dict[str, Any]) -> str | None:
+    """只呈現有版本的原始 PF 狀態，不從金額或交易明細回算。"""
+    has_profit_factor_data = any(
+        key in details
+        for key in ("profit_factor", "profit_factor_semantics", "profit_factor_status")
+    )
+    if not has_profit_factor_data:
+        return None
+
+    status = details.get("profit_factor_status")
+    if details.get("profit_factor_semantics") != _PROFIT_FACTOR_SEMANTICS:
+        return "獲利因子：未驗證（舊保存值或語意版本未知）"
+    if status == "observed":
+        value = details.get("profit_factor")
+        if type(value) is not float:
+            return "獲利因子：未提供（觀測值無效）"
+        try:
+            numeric = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return "獲利因子：未提供（觀測值無效）"
+        if not numeric.is_finite() or numeric < 0:
+            return "獲利因子：未提供（觀測值無效）"
+        return f"獲利因子: {value:.2f}（無量綱）"
+
+    status_text = _PROFIT_FACTOR_STATUS_TEXT.get(status) if type(status) is str else None
+    if status_text is None:
+        return "獲利因子：未驗證（舊保存值或狀態未知）"
+    return f"獲利因子：{status_text}"
+
+
 def build_portfolio_promotion_success_message(version_id: str, run_id: str) -> str:
     return (
         "推薦回放已升級為策略版本。\n\n"
@@ -160,16 +199,26 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
         ]
     )
     detail_formats = (
-        ("profit_factor", "獲利因子: {:.2f}"),
         ("avg_win", "平均獲利: ${:.2f}"),
         ("avg_loss", "平均虧損: ${:.2f}"),
         ("largest_win", "最大獲利: ${:.2f}"),
         ("largest_loss", "最大虧損: ${:.2f}"),
         ("final_equity", "最終權益: ${:,.2f}"),
     )
+    profit_factor_line = _profit_factor_line(details)
+    if profit_factor_line is not None:
+        lines.append(profit_factor_line)
     for key, template in detail_formats:
         if key in details:
-            lines.append(template.format(details[key]))
+            value = details[key]
+            label = template.partition("{")[0].removesuffix("$")
+            if value is None:
+                lines.append(f"{label}未提供")
+                continue
+            try:
+                lines.append(template.format(value))
+            except (TypeError, ValueError):
+                lines.append(f"{label}未提供")
     if "error" in details:
         lines.append(f"\n錯誤: {details['error']}")
     return "\n".join(lines)

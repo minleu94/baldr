@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from app_module.backtest_service import BacktestService
 from app_module.backtest_repository import BacktestRunRepository
+from app_module.backtest_contracts import profit_factor_projection
 from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import BacktestReportDTO
 from app_module.exceptions import BacktestCancelledError
@@ -102,6 +103,8 @@ class StockBacktestResult:
     profit_factor: Optional[float] = None
     # 原始報告（用於保存）
     report: Optional[BacktestReportDTO] = None
+    profit_factor_status: str = "legacy_unversioned"
+    profit_factor_semantics: Optional[str] = None
 
 
 @dataclass
@@ -275,7 +278,7 @@ class BatchBacktestService:
                         mdd=report.max_drawdown if report.max_drawdown is not None else None,
                         total_trades=report.total_trades,
                         win_rate=report.win_rate if report.win_rate is not None else None,
-                        profit_factor=report.details.get('profit_factor', 0.0) if report.details.get('profit_factor') is not None else None,
+                        **profit_factor_projection(report.details),
                         report=report
                     )
 
@@ -414,7 +417,7 @@ class BatchBacktestService:
                                     mdd=report.max_drawdown,
                                     total_trades=report.total_trades,
                                     win_rate=report.win_rate,
-                                    profit_factor=report.details.get('profit_factor', 0.0),
+                                    **profit_factor_projection(report.details),
                                     report=report
                                 )
 
@@ -611,7 +614,7 @@ class BatchBacktestService:
             "win_rate": report.win_rate,
             "total_trades": report.total_trades,
             "expectancy": report.expectancy,
-            "profit_factor": report.details.get("profit_factor", 0.0),
+            **profit_factor_projection(report.details),
         }
 
     def _factor_save_kwargs(self, details: dict[str, Any]) -> dict[str, Any]:
@@ -740,6 +743,10 @@ class BatchBacktestService:
         data = []
 
         for result in batch_result.stock_results:
+            pf = profit_factor_projection({
+                "profit_factor": result.profit_factor, "profit_factor_status": result.profit_factor_status,
+                "profit_factor_semantics": result.profit_factor_semantics,
+            })
             row = {
                 '股票代號': result.stock_code,
                 'CAGR%': result.cagr * 100 if result.cagr is not None else None,
@@ -747,7 +754,9 @@ class BatchBacktestService:
                 'MDD%': result.mdd * 100 if result.mdd is not None else None,
                 'Trades': result.total_trades if result.total_trades is not None else 0,
                 'WinRate%': result.win_rate * 100 if result.win_rate is not None else None,
-                'PF': result.profit_factor if result.profit_factor is not None else None,
+                'PF': pf['profit_factor'],
+                'PF狀態': pf['profit_factor_status'],
+                'PF語意': pf['profit_factor_semantics'],
                 '是否成交': '是' if result.total_trades and result.total_trades > 0 else '否',
                 '失敗原因': result.error_reason if not result.success else '',
                 'RunID': result.run_id if result.run_id else ''

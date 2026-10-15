@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from app_module.dtos import BacktestReportDTO
+from app_module.backtest_contracts import profit_factor_projection
 
 
 @dataclass
@@ -36,7 +37,7 @@ class BacktestRun:
     win_rate: float
     total_trades: int
     expectancy: float
-    profit_factor: float
+    profit_factor: Optional[float]
     # 額外資訊
     notes: str = ""
     tags: Optional[List[str]] = None
@@ -231,7 +232,7 @@ class BacktestRunRepository:
             capital, fee_bps, slippage_bps, stop_loss_pct, take_profit_pct,
             report.total_return, report.annual_return, report.sharpe_ratio,
             report.max_drawdown, report.win_rate, report.total_trades,
-            report.expectancy, report.details.get('profit_factor', 0.0),
+            report.expectancy, profit_factor_projection(report.details)['profit_factor'],
             notes, json.dumps(tags or [], ensure_ascii=False),
             datetime.now().isoformat(),
             str(equity_curve_path), str(trade_list_path), None

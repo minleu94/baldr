@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Context, Decimal, localcontext
 from backtest_module.broker_simulator import Trade
 from financial_module.units import quantize_money, to_decimal
 
@@ -22,13 +22,14 @@ class PerformanceMetrics:
     win_rate: float  # 勝率
     total_trades: int  # 總交易次數
     expectancy: float  # 期望值（平均報酬）
-    profit_factor: float  # 獲利因子（總獲利/總虧損）
+    profit_factor: Optional[float]  # 獲利因子；無有限比率時不可用
     avg_win: float  # 平均獲利
     avg_loss: float  # 平均虧損
     largest_win: float  # 最大獲利
     largest_loss: float  # 最大虧損
     # 原數值相容；保存者據此區分真零與舊 fallback 零，不授精度或 PIT 資格。
     metric_status: Dict[str, str] = field(default_factory=dict)
+    profit_factor_status: str = "legacy_unversioned"
 
 
 class PerformanceAnalyzer:
@@ -171,6 +172,7 @@ class PerformanceAnalyzer:
             largest_win=trade_stats['largest_win'],
             largest_loss=trade_stats['largest_loss'],
             metric_status=metric_status,
+            profit_factor_status=trade_stats['profit_factor_status'],
         )
     
     def _calculate_max_drawdown(self, equity: pd.Series) -> float:
@@ -197,6 +199,10 @@ class PerformanceAnalyzer:
     
     def _closed_trade_pairs(self, trades: List[Trade]) -> list[dict[str, Any]]:
         """FIFO 保留加碼與部分出場的成本；未平倉成本不混入已實現損益。"""
+        with localcontext(Context(prec=60)):
+            return self._closed_trade_pairs_in_context(trades)
+
+    def _closed_trade_pairs_in_context(self, trades: List[Trade]) -> list[dict[str, Any]]:
         lots: list[dict[str, Any]] = []
         pairs: list[dict[str, Any]] = []
         for trade in trades:
@@ -236,6 +242,11 @@ class PerformanceAnalyzer:
         return pairs
 
     def _analyze_trades(self, trades: List[Trade], initial_capital: float) -> Dict[str, Any]:
+        # 原分／FIFO 算法不變，避免呼叫端 Decimal context 改變淨損益與 PF。
+        with localcontext(Context(prec=60)):
+            return self._analyze_trades_in_context(trades, initial_capital)
+
+    def _analyze_trades_in_context(self, trades: List[Trade], initial_capital: float) -> Dict[str, Any]:
         """
         分析交易統計
         
@@ -251,7 +262,8 @@ class PerformanceAnalyzer:
                 'win_rate': 0.0,
                 'total_trades': 0,
                 'expectancy': 0.0,
-                'profit_factor': 0.0,
+                'profit_factor': None,
+                'profit_factor_status': 'no_closed_pairs',
                 'avg_win': 0.0,
                 'avg_loss': 0.0,
                 'largest_win': 0.0,
@@ -265,7 +277,8 @@ class PerformanceAnalyzer:
                 'win_rate': 0.0,
                 'total_trades': 0,
                 'expectancy': 0.0,
-                'profit_factor': 0.0,
+                'profit_factor': None,
+                'profit_factor_status': 'no_closed_pairs',
                 'avg_win': 0.0,
                 'avg_loss': 0.0,
                 'largest_win': 0.0,
@@ -284,7 +297,21 @@ class PerformanceAnalyzer:
         
         total_profit = self._sum_money(wins)
         total_loss = abs(self._sum_money(losses))
-        profit_factor = total_profit / total_loss if total_loss > 0 else (total_profit if total_profit > 0 else 0.0)
+        # 已完成配對的淨損益比率；零分母不能用獲利金額或假零代替。
+        profit_factor: Optional[float] = None
+        if total_loss > 0:
+            with localcontext(Context(prec=60)):
+                ratio = to_decimal(total_profit) / to_decimal(total_loss)
+            profit_factor = float(ratio)  # numeric-boundary: analytics
+            if np.isfinite(profit_factor):
+                profit_factor_status = 'observed'
+            else:
+                profit_factor = None
+                profit_factor_status = 'unavailable_nonfinite'
+        elif total_profit > 0:
+            profit_factor_status = 'unbounded_no_gross_loss'
+        else:
+            profit_factor_status = 'undefined_zero_over_zero'
         
         avg_win = self._mean_money(wins)
         avg_loss = self._mean_money(losses)
@@ -296,6 +323,7 @@ class PerformanceAnalyzer:
             'total_trades': len(trade_pairs),
             'expectancy': expectancy,
             'profit_factor': profit_factor,
+            'profit_factor_status': profit_factor_status,
             'avg_win': avg_win,
             'avg_loss': avg_loss,
             'largest_win': largest_win,

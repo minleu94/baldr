@@ -2,6 +2,25 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment50：P08獲利因子語意與金融錯誤修正
+
+**解除的交付阻礙**：原 analyzer 在沒有虧損時把獲利金額當獲利因子，零配對／全平也給假0；None沿摘要格式化會中斷。Root沿原已完成FIFO配對淨損益修正，沒有新增未來資料、策略、交易價格或配對算法。起點 `22831953eb6bc9ae23a52b830d76c00cfba3a303`。固定9fa也受此錯影響，但其EXE尚未修補；下一交付是V1-04窄版backport，不將第二階段新功能混回四條凍結流程。
+
+PF有總虧損才算無量綱有限比率，純虧損的0有效；無完成配對、無虧損而有獲利、全平分別None及具名狀態，不用inf或金額。原分量化／FIFO保留，以獨立Decimal Context60隔離caller prec／Inexact trap，再沿原analytics DTO數值邊界。新report附 `closed-pair-net-pnl-ratio.v1`／status；共用projection拒未版本化、bool、負值、非有限值及矛盾狀態。單股、batch兩路、最佳化與匯出保留可用性，新舊repository schema不變，未定義保存NULL；舊比較／promotion摘要不升格原值，舊保存列／舊run不重算或回填。歷史七指標schema仍不包含PF。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 259 | Increment48真可用小時後正常Main／fresh，見下段。 | `single_owned_qa_8f7fb463846b4ae3af51c770a8ade1ae/receipt.json`；`ba110c6a017c497abd76d37df39d3ee3962784210d290a0d07e18b650da280dc` |
+| 260 | compile12／八roots mypy1028通過；177PASS含Workbench85／1FAIL，缺值仍留$字元。原FAIL保留，validator／float守衛尚未執行。 | `single_owned_qa_4764cb6a9aa448d592af6c041f836a70/receipt.json`；`2a379a01cc9a6db57d273f9964b588ea93a958d6486e68755096c5047be9ab06` |
+| 261 | 缺值移除貨幣符號後定向1PASS及compile；validator25PASS／0FAIL／4protected skips、金融float邊界守衛通過。不重跑未受影響177案。 | `single_owned_qa_e47538ec831a4758af4c065adafdd3af/receipt.json`；`52a3b5273c278f26a60007a79864a7d6a81659b546b04e53d9fe9d9d4dc465bf` |
+| 262 | 原引擎正常Main17676→fresh48528兩run，正確None原因／保存／版本歷史卡／原結果／返回通過。 | `single_owned_qa_9716820406b04c469f1e0b0b27282738/receipt.json`；`3c4dc30f230732c4a3458dfaf6df17a51ee6f36b2719a804deaf07b842270662` |
+
+QA260涵蓋真Trade費用／滑價／部分FIFO、獲利與虧損、縮放不變、caller精度／trap、舊值投影、隔離SQLite新NULL／舊列不變／schema不變與optimizer摘要，另受影響原numeric／metadata／歷史UI／batch／optimizer／匯出。QA262延用49原Main harness另存50a，只注入30筆合成價格I/O，原策略、broker、analyzer及正常Main slot／保存命令不替換；非保存對話框點擊驗收。父原收據 `increment50_metrics_main_fresh_a/parent.json` SHA `8d6b6eabf7fb06776d7c0090b3ac9384cd497531e0c80dd774130e99799658c6`，fresh SHA `1e8b80d8f6350533d2f486d7c1eee57c256072f6e295cfd2f7360198c47ff4bb`。14完成配對全贏與0配對的PF各自不可用且正常摘要不中斷；保存後的七欄卡不反推PF。fresh禁止回測／保存，同兩run原檔／時間一致、socket0，非真市場績效或Native／EXE。
+
+**Increment48真時鐘補驗**：QA259父44872在真2026-10-15T22:00:05 UTC後讀入台北10/16 06:00才可用的既有版本，fresh33944同pin；2308原價1630.00／PE51.88、權證053040原價1.73／PE-----、2330當日查無各自保留原意，正常返回Watchlist。13快照原件bytes／SHA／mtime／ctime不變，沒有新HTTP／seal／未來時鐘或正式寫入。父／fresh SHA `521832aeafe543839d05125521f8303efc6d41c8b9070a1218647d4ecb9ea1cf`／`f60151f36960a11bd2f4a373690e125591e61efa0ccd7b8204b478209ed6c920`；owner `increment48_actual_main_acceptance.json` SHA `9e1c2e25d5f2d67770ae32a1ff9df77e0f8b69adb9ee768bdff8f528e304d350`。原48待驗Main步驟已解除，來源用途／歷史PIT／TPEx／完整F16仍各自未接受。
+
+各組8GiB committed／12程序／KOC／workspace mutex、啟動RAM≥8GiB，三PID清冊自然空、process／Job handles關閉與mutex釋放後才起下一組，無forced cleanup。累計10/10僅重用Luna Max靜態單寫測試／presenter，Root金融／共用ports／整合／QA／文件單寫；新worker pending writes=false。既有ui_qt ignore_errors不證UI強型別。操作／current架構／功能／Feature Map／Snapshot／原§9.5同步；固定V1／正式資料／Task／maintainer不改、未push／發布或交易，完整計畫繼續。
+
 ## Increment49：P08新單股歷史指標版本與正常讀回
 
 **解除的交付阻礙**：原單股引擎已有可定位的七指標，但新保存結果的歷史卡仍一律顯示未提供。本葉沿原 Backtest／Registry／歷史頁補保存契約與唯讀投影，不另建引擎，不改固定 V1 `9fa4518c2aca87beaddef75a2b29165722da6a6c`。起點 HEAD `538a873eed0b2c4ce84b5ff07f858bc780a620f1`。

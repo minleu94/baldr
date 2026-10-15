@@ -492,6 +492,10 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
 
+Increment50 解除P08 PF把無虧損獲利金額當比率、零分母假零與None中斷：原FIFO／分量化、Decimal60隔離context，nullable及語意接單股／batch／optimizer／新保存NULL／舊比較及升級隔離；QA260原177PASS／1顯示FAIL保留、261定向修正及validator、262正常Main17676→fresh48528兩run保存讀回。**V1-04固定9fa仍有同錯，下一交付須做窄版backport／EXE候選與受影響旅程**；不得整批帶回49等新功能或擴四流程凍結範圍。PF原欄未修前不可當有效比率。完整計畫與原FAIL保留，詳[Increment50 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment50p08獲利因子語意與金融錯誤修正)。
+
+Increment48真可用小時後的正常Main已由QA259補驗：父44872→fresh33944同pin三代碼／返回、13檔不變，無HTTP／seal／未來時鐘。僅解除該工程步驟，來源用途／TPEx／歷史PIT／完整F16／Native／EXE與Gate仍各自保留。
+
 Increment49 解除 P08 新單股保存結果在正常歷史卡仍一律未知的接線阻礙：沿原 analyzer 公式加有效性與版本 node，新 Registry 保留／核驗原實際日期及原表，歷史卡只投影已保存值；無完成配對、無期間與 fallback 不顯假0，舊 run 不補版本。正常Main38288→fresh44116兩run相同，原檔與時間不變、fresh禁重算保存，合成I/O與其餘原鏈各自明示；不授來源／精度／完整雙策略績效或Native。原P06手動／聲明帳缺完整現金來源，屬D具名缺件；不以default0或成本反推NAV，不混Paper。此葉仍第二階段，固定V1不變，完整範圍與原FAIL保留。下一葉核原profit_factor在無虧損配對時回金額的語意／消費者，先修錯誤金融結果，不擴前置工程；注意公告真可用小時後續驗正常Main。詳[同一QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment49p08新單股歷史指標版本與正常讀回)。
 
 Increment48 接續 P03／F16 注意名單的功能缺口，沿原時間政策另存單日 TWSE 原件、固定雙 SHA reader及個股報告獨立欄位，不把 `attention_reasons` 或處置 reader 當注意資料。真18筆有價證券完整 EOF 已保存，真可用小時台北10/16 06:00之前保持阻擋；23新解析／UI及受改213回歸／必要UI防線已限定驗，reader與正常Main／fresh續驗。此葉屬第二階段，沒有增加第一版前置或更動固定9fa。用途／授權、歷史、TPEx與完整F16各自保留；接續原P06手動／聲明初次帳戶的同源Health／行情與正常保存，不重造scenario engine。詳同一[政策QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment48p03單日官方注意公告與固定版本)。

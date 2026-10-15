@@ -58,6 +58,7 @@ from data_module.official_trading_calendar import (
 
 if TYPE_CHECKING:
     from app_module.institutional_daily_snapshot import InstitutionalDailySnapshotPin, InstitutionalDailySnapshotRead
+    from app_module.institutional_source_use import InstitutionalSourceUsePin
     from data_module.daily_source_snapshot import (
         DailySourceTransportCapture, DailySourceUseAcceptance, DailySourceUseScope,
     )
@@ -819,11 +820,13 @@ class UpdateService :
     def read_saved_institutional_daily_batch(
         self, pin: "InstitutionalDailySnapshotPin", *, stock_code: str,
         decision_cutoff: datetime, cancel_callback: Callable[[], bool] | None = None,
+        source_use_pin: "InstitutionalSourceUsePin | None" = None,
     ) -> "InstitutionalDailySnapshotRead":
         """明選原法人批次；不查latest、不抓取／寫SQLite或啟動排程。"""
         from app_module.institutional_daily_snapshot import read_institutional_daily_snapshot
         return read_institutional_daily_snapshot(
             pin, stock_code=stock_code, decision_cutoff=decision_cutoff, check_cancel=cancel_callback,
+            source_use_pin=source_use_pin,
         )
 
     def update_phase3c_candidate_range(

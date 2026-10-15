@@ -2,6 +2,30 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment54：P00/P03法人精確來源用途與每日驗證分離
+
+**解除的操作阻礙**：新TPEx每日原件已可檢視，但缺少能精確保存／重用指定端點用途的正常入口。Root沿既有DailySourceUseScope／DailySourceUseAcceptance及同daily-hour核心，另存固定文件版本的diagnostics用途artifact；正常法人頁明選path／外部SHA，原daily reader再驗每天的原件、schema、合計、股數及成功小時。不把此契約轉成generic institutional_flows的limited決議，不改P0 v1 payload／hash、13來源分母或既有機器maturity／coverage守衛；歷史PIT／真N與完整F09仍各自未完成。這是第二階段，不增加固定4b530四流程試用前置。
+
+Root依現行角色另履行Tech Lead／Data Audit／整合／QA／文件單寫，重用三既有Luna靜態工作，累計10/10，沒有新agent／子代理。peer定位曾提出clock可回填的條件風險，Root補真保存started_at下限並新增反例；同時仍不可早於必要metadata真收據。UI葉保留原三參數signal、immutable requested pin、generation／取消／shutdown，slot只在非None傳新kw，相容舊service stub；裸True、錯市場或scope拒絕，資格只由Root public reader返回。
+
+政府[授權條款第1版](https://data.gov.tw/license)已單次完整HTTP200／EOF，484470bytes／SHA `f36301ecb6ba3ac2cac5b820276e3fd2d4c7d12755afa1f49bf5379d6b3ce3f2`。官方[metadata11856](https://data.gov.tw/api/v2/rest/dataset/11856)本次4205bytes／SHA `b807cf7f19d04f19ff6e445463ac86e9380d85d0fadc880e482563dfd518fe5f`，完整EOF且Content-Length相等。metadata含先前web inaccessible累計第2次，本scope只增1次、總上限2，禁止盲重試。原資料集526503bytes及Swagger476923bytes沿Increment53，不重抓資料API或既耗月營收／TWSE／MOPS scope。metadata確認A45020000D-000309／上櫃股票三大法人買賣明細資訊、license1／free與官方OAS連結；原metadata的http授權連結與本次直取https條款分別保留，不改原文。CSV25欄／resourceAmount839與API20欄／真898列差異明示，不推真N或缺少自營分項。
+
+新精確scope固定TPEx／shares／tpex-openapi-3insti-daily.v1／diagnostics，官方GET operation＋resolved schema canonical SHA `efda72f09eeea74a135dd63afd9c8fbc926d3464e9ba658144c7ab7d58f4e3cc`，機器識別不虛構human reviewer或法律同意。四原件固定fingerprint、copy另存、canonical接受檔、外部SHA、pending／failure、fsync／讀回、reparse／hardlink／讀取中變更與取消守衛保持。讀取只用相同契約，不每日重寫接受；變版或用途不同才重核，原件不改。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 290／291 | 290誤把domain當kind，route未知而FAIL、context未執；291按現行registry用implementation，Root另DataAudit／TechLead。data_pipeline Level2讀4來源7050字元／11559bytes，daily guide headings_only；Root僅另核當前法人相關段，不宣告全舊指南已讀。 | 290 `single_owned_qa_807c5e9676db4e588c9cdbc032baf2c0/receipt.json`／`13494853605b48bc7f241b8fd84244da3993ca18ce8bde729c88fb4ca8335f86`；291 `single_owned_qa_2e24759bdf6d4508bc51b26aba2d60f8/receipt.json`／`ea1b1a7a3b5ddbb6ef30d93327c603cb19d20a8f23a92f488a5af10bbbdb7ade` |
+| 292 | 原有界HTTP工具，兩個指定官方文件各1次、20秒／8MiB／無retry／redirect，原件與worker／Job終態完整。 | `single_owned_qa_962ded89a3c5460c81959a77b2315394/receipt.json`／`09e14fb290846369cb340eb75a882e12dd4570b7ec4da16803d82ce224c522e5` |
+| 293／294 | 293 helper誤用Swagger2 response.schema而FAIL；294依真OpenAPI3 content.$ref解析同components，四文件與身分／版本／20字串schema／CSV25欄差異核驗通過，無HTTP。 | 293 `single_owned_qa_06bceada5ceb47a39de79d84a61d6628/receipt.json`／`906bd93052ea5d18187aa2678cf1b26c75a93cf8675fa0710acea08b201cc786`；294 `single_owned_qa_d44929fa9e054d80ba65f99f2a1c3200/receipt.json`／`cba05c724c4d8c55174ffb6d418e687ef330ddf90c21c117fa9470de8b7d71a4` |
+| 295／296 | 295 compile8，173PASS含Workbench85／受改daily／新舊UI，2FAIL保留：壞用途fixture先被共用DTO擋而未到reader、final recheck變更誤差型別。296直接損壞wire保留同斷言，公開錯誤轉接後兩反例PASS；mypy1032另3個object→int型別FAIL，validator未執。 | 295 `single_owned_qa_86c730ac8067431b967a60a4b9fc740a/receipt.json`／`ea881b6e27d83285f585b7c0c0484a9dcad08840abacf2c02bd5b5d93cba9e4f`；296 `single_owned_qa_e8700d42dcb74538bca63ea90b4dbc89/receipt.json`／`db6095801859a530252f6efefdeaf06189dbd21175567637003da13a614d55f1` |
+| 297 | DocumentPolicy改TypedDict，peer回填風險補真started_at下限；只重驗受改writer19PASS，mypy1032、validator25PASS／0FAIL／4protected skips通過，不重跑未改Workbench。既有ui_qt ignore不證UI強型別。 | `single_owned_qa_5275d805bb9948958cd0a747535fd5cc/receipt.json`／`f4ad89b4a3425319ead8a4dc4ec04680a3f70013f39eafad9fad8006f802a4ab` |
+| 298／299 | 298正常CLI真四文件create-only接受保存通過；Root read helper把socket class換function使ssl import FAIL。299沿既有connect／DNS／sendto guard修helper，只讀已存接受與原daily，同三證券九原值／接受前cutoff拒／舊TWSE拒TPEx，12檔不變；不重做成功producer。 | 298 `single_owned_qa_da9d76fd56c44d71a4bfd52f297490f5/receipt.json`／`8ef6885ad3e9201b9b275af00a620bb4a278a73d19c448a54a9b500ca02f834b`；299 `single_owned_qa_73d5a2c3db62439fadb4ff39f803aeee/receipt.json`／`497daa92cd74fd5d23475cd4ed7377cf423f3336a5712fdbc7393707049d321e` |
+| 300 | 正常Main36096→fresh47452明選原898批次＋同一用途pin；6488／8069／00679B九原整數、接受ID／SHA／07:18:53／顯名及切頁返回／重開一致。12檔bytes／SHA／mtime／ctime不變；禁止HTTP／capture／seal／接受重寫，無未來clock。 | `single_owned_qa_95234d74a4e345029c5e94f8318f4453/receipt.json`／`773b9fb763576b73d203056439cf87cbac1952288d12da6e5a3ba2fd5f3c1daa` |
+
+本次真接受時間為台北2026-10-16 **07:18:53.078273**，接受檔 SHA `b9dc0d4b99615a93c53aa9c6ad75f501786bac361d2294a28410f7cd6e3fff83`；早於它的cutoff拒絕，不回填資格。原每日可用時間仍07:00，原first-persisted／receipt及九數值不改，qualified只增typed source_use與source_use_accepted=True／diagnostics。candidate_only=True／historical_pit_eligible=False，未給formal來源／P0整桶／策略／Native／EXE或完整Gate。QA300沿原640px／可見控制器與15秒UI／120秒phase／270秒driver期限；空隔離market root的companies.csv／SQLite缺件警告保留，不冒充完整行情或真人接受。
+
+指南、來源契約、總／current架構、功能地圖／UI、Snapshot及原計畫同步；下一葉推既有Native／打包驗收，不再增加本來源前置。正式DB／Task／maintainer未改，無push／發布／交易。每組仍8GiB／12程序／kill-on-close／同workspace mutex、起前RAM≥8GiB；前組三PID陣列自然空、process／Job handles閉、mutex釋放後才下組，無強制清場成功。原完整範圍、FAIL、歷史缺件與自然成熟保留。
+
 ## Increment53：P03明選TPEx法人OpenAPI與每日版本
 
 **解除的流程阻礙**：原TPEx法人web parser不能讀政府資料集11856對應OpenAPI的完整三類aggregate，而原capture的T86 discovery又成為其他市場前置。此葉沿原P03/F09增量補明選最新單日、原件／品質／成功版本／public reader與正常頁；固定V1已交付，不增試用前置，不重造取得框架。Root金融／共用ports／整合／QA／文件單寫；重用三名既有Luna Max靜態葉片，累計10/10，無新agent或子代理。

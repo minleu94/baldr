@@ -1,5 +1,7 @@
 # 每日股票數據更新指南
 
+後續開發分支的TPEx法人可沿原命令另存精確diagnostics來源用途契約，並由正常法人頁明選同接受檔／SHA；同源契約一次接受與每日原件／品質／成功小時驗證分開。首次保存與排錯看[用途接受指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人用途接受與重開後續開發分支)。不改本機正式資料、既有排程或停用maintainer。
+
 後續開發分支的法人候選可明選 `tpex_openapi_institutional`，只取最新單日，三個sessions／lookback／attempts參數均為1；沿原seal與正常雙SHA唯讀頁，未到台北成功批次可用小時不得讀。此來源不替TPEx年度calendar或舊web授權，也不啟動正式排程／apply。日常操作及錯誤處理見[TPEx法人單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)；固定第一版不加前置。
 
 ## 📖 快速導航

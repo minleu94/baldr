@@ -23,6 +23,11 @@ from app_module.institutional_daily_snapshot import (
     InstitutionalDailySnapshotPin,
     InstitutionalDailySnapshotRead,
 )
+from app_module.institutional_source_use import (
+    InstitutionalSourceUsePin,
+    InstitutionalSourceUseRead,
+    TPEX_INSTITUTIONAL_USE_SCOPE,
+)
 
 
 _TAIPEI_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Taipei")
@@ -62,6 +67,7 @@ class InstitutionalDailySnapshotWidget(QWidget):
         super().__init__(parent)
         self.generation = 0
         self._loading = False
+        self.requested_source_use_pin: InstitutionalSourceUsePin | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -78,11 +84,28 @@ class InstitutionalDailySnapshotWidget(QWidget):
         self.receipt_sha_edit.setPlaceholderText("輸入 receipt SHA-256")
         self.stock_code_edit = QLineEdit("2330", self)
         self.stock_code_edit.setPlaceholderText("輸入股票代碼")
+        self.source_use_path_edit = QLineEdit(self)
+        self.source_use_path_edit.setPlaceholderText("source_use.json 絕對路徑")
+        self.source_use_path_edit.setAccessibleName("TPEx 用途接受檔絕對路徑（選填）")
+        self.source_use_path_edit.setToolTip(
+            "選填；僅明選 TPEx diagnostics 用途接受檔，不授其他用途。"
+        )
+        self.source_use_sha_edit = QLineEdit(self)
+        self.source_use_sha_edit.setPlaceholderText("外部 SHA-256（選填）")
+        self.source_use_sha_edit.setAccessibleName("TPEx 用途接受檔外部 SHA-256（選填）")
+        self.source_use_sha_edit.setToolTip(
+            "與 source_use.json 路徑一併提供，使用外部小寫 SHA-256。"
+        )
 
         self._add_labeled_edit(layout, "固定批次目錄", self.directory_edit)
         self._add_labeled_edit(layout, "Manifest SHA-256", self.manifest_sha_edit)
         self._add_labeled_edit(layout, "Receipt SHA-256", self.receipt_sha_edit)
         self._add_labeled_edit(layout, "股票代碼", self.stock_code_edit)
+        layout.addWidget(self._new_label("TPEx 用途接受檔（選填；僅 diagnostics）"))
+        source_use_inputs = QHBoxLayout()
+        source_use_inputs.addWidget(self.source_use_path_edit, 2)
+        source_use_inputs.addWidget(self.source_use_sha_edit, 1)
+        layout.addLayout(source_use_inputs)
 
         buttons = QHBoxLayout()
         self.open_button = QPushButton("開啟指定批次", self)
@@ -124,6 +147,8 @@ class InstitutionalDailySnapshotWidget(QWidget):
             self.manifest_sha_edit,
             self.receipt_sha_edit,
             self.stock_code_edit,
+            self.source_use_path_edit,
+            self.source_use_sha_edit,
         ):
             edit.textChanged.connect(self._on_input_changed)
 
@@ -143,12 +168,14 @@ class InstitutionalDailySnapshotWidget(QWidget):
 
     def _on_input_changed(self, _text: str) -> None:
         self.generation += 1
+        self.requested_source_use_pin = None
         self.clear_result()
         self.status_label.setText("輸入已變更；已送出取消舊讀取，請重新開啟指定批次。")
         self.cancelRequested.emit()
 
     def _on_cancel_clicked(self) -> None:
         self.generation += 1
+        self.requested_source_use_pin = None
         self.clear_result()
         self.status_label.setText("已送出取消請求；等待讀取端回報完成。")
         self.cancelRequested.emit()
@@ -156,14 +183,20 @@ class InstitutionalDailySnapshotWidget(QWidget):
     def _on_open_clicked(self) -> None:
         if self._loading:
             return
+        self.requested_source_use_pin = None
 
         directory_text = self.directory_edit.text()
         stock_code = self.stock_code_edit.text().strip()
+        source_use_path = self.source_use_path_edit.text().strip()
+        source_use_sha256 = self.source_use_sha_edit.text().strip()
         if not directory_text.strip():
             self.show_error("請輸入固定批次目錄。")
             return
         if not stock_code:
             self.show_error("請輸入股票代碼。")
+            return
+        if bool(source_use_path) != bool(source_use_sha256):
+            self.show_error("用途接受檔路徑與外部 SHA 必須一併提供，或都留白。")
             return
 
         try:
@@ -172,10 +205,18 @@ class InstitutionalDailySnapshotWidget(QWidget):
                 manifest_sha256=self.manifest_sha_edit.text().strip(),
                 receipt_sha256=self.receipt_sha_edit.text().strip(),
             )
+            source_use_pin = (
+                InstitutionalSourceUsePin(
+                    path=Path(source_use_path), sha256=source_use_sha256
+                )
+                if source_use_path
+                else None
+            )
         except Exception as exc:
             self.show_error(f"固定批次識別資料無效：{exc}")
             return
 
+        self.requested_source_use_pin = source_use_pin
         self.status_label.setText("已送出指定批次讀取要求。")
         self.readRequested.emit(pin, stock_code, self.generation)
 
@@ -239,10 +280,30 @@ class InstitutionalDailySnapshotWidget(QWidget):
             raise ValueError("市場只能是 TWSE 或 TPEx。")
         if result.candidate_only is not True:
             raise ValueError("candidate_only 必須為 True。")
-        if result.source_use_accepted is not False:
-            raise ValueError("source_use_accepted 必須為 False。")
         if result.historical_pit_eligible is not False:
             raise ValueError("historical_pit_eligible 必須為 False。")
+        source_use = getattr(result, "source_use", None)
+        if result.source_use_accepted is True:
+            if result.market != "TPEx":
+                raise ValueError("來源用途接受只可呈現於 TPEx 結果。")
+            if not isinstance(source_use, InstitutionalSourceUseRead):
+                raise ValueError("source_use_accepted=True 必須有 typed 用途接受讀回。")
+            if not isinstance(source_use.pin, InstitutionalSourceUsePin):
+                raise ValueError("用途接受讀回缺少 typed 外部 pin。")
+            acceptance = source_use.acceptance
+            scope = getattr(acceptance, "scope", None)
+            if scope != TPEX_INSTITUTIONAL_USE_SCOPE:
+                raise ValueError("用途接受 scope 必須精確符合 TPEx diagnostics。")
+            if scope.market != "TPEx" or scope.intended_use != "diagnostics":
+                raise ValueError("用途接受只授 TPEx diagnostics。")
+            if not isinstance(source_use.attribution, str) or not source_use.attribution.strip():
+                raise ValueError("用途接受讀回缺少來源顯名。")
+            self._require_aware_datetime(acceptance.accepted_at, "用途接受時間")
+        elif result.source_use_accepted is False:
+            if source_use is not None:
+                raise ValueError("source_use存在時，source_use_accepted必須為 True。")
+        else:
+            raise ValueError("source_use_accepted 必須是布林值。")
         if not isinstance(result.rows, tuple):
             raise ValueError("rows 必須是固定批次的 tuple。")
         if type(result.total_records) is not int or result.total_records < 0:
@@ -256,8 +317,8 @@ class InstitutionalDailySnapshotWidget(QWidget):
             raise ValueError("availability_basis 必須是文字。")
         if len(result.rows) > result.total_records:
             raise ValueError("股票命中筆數大於批次母體筆數。")
-        if result.candidate_only is not True or result.source_use_accepted is not False or result.historical_pit_eligible is not False:
-            raise ValueError("這個入口只呈現未授來源／歷史 PIT 資格的候選批次。")
+        if result.candidate_only is not True or result.historical_pit_eligible is not False:
+            raise ValueError("這個入口只呈現候選事實，且不授歷史 PIT 資格。")
 
     @staticmethod
     def _require_aware_datetime(value: datetime, title: str) -> None:
@@ -274,6 +335,28 @@ class InstitutionalDailySnapshotWidget(QWidget):
             _TAIPEI_TIMEZONE
         ).isoformat()
         available = result.available_hour.astimezone(_TAIPEI_TIMEZONE).isoformat()
+        source_use_text = ""
+        if result.source_use_accepted is True:
+            source_use = result.source_use
+            acceptance = source_use.acceptance
+            accepted_at = acceptance.accepted_at.astimezone(
+                _TAIPEI_TIMEZONE
+            ).isoformat()
+            source_use_text = (
+                f"TPEx diagnostics 用途接受 ID：{acceptance.acceptance_id}\n"
+                f"用途接受檔 SHA-256：{source_use.pin.sha256}\n"
+                f"用途接受時間（台北）：{accepted_at}\n"
+                f"接受來源：{source_use.attribution}\n"
+            )
+            usage_limits = (
+                "用途限制：候選資料；用途接受僅授 TPEx diagnostics，不代表正式來源接受或 P0 整桶接受；"
+                "不具歷史 PIT 資格，不得用於連買判斷、評分或交易。"
+            )
+        else:
+            usage_limits = (
+                "用途限制：候選資料；尚未載入合格用途接受，不具歷史 PIT 資格；"
+                "不得用於連買判斷、評分或交易。"
+            )
         return (
             f"市場：{result.market}\n"
             f"Manifest SHA-256：{pin.manifest_sha256}\n"
@@ -284,9 +367,9 @@ class InstitutionalDailySnapshotWidget(QWidget):
             f"成功批次完成（台北）：{completed}\n"
             f"台北可用小時：{available}\n"
             f"可用性依據：{result.availability_basis}\n"
+            f"{source_use_text}"
             "每列資料日的提示保留該版官方時間原文、台北時間及原件 SHA。\n"
-            "用途限制：候選資料；尚未接受為正式來源，不具歷史 PIT 資格；"
-            "不得用於連買判斷、評分或交易。"
+            f"{usage_limits}"
         )
 
     def show_error(self, message: str) -> None:

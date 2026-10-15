@@ -36,7 +36,7 @@ flowchart TD
 
 依賴方向由 UI 經 application 到領域與資料邊界。Qt 不成為 domain 計算 owner；資料 reader 不自行決定 Advice；Runtime 不持有推薦公式。`ui_qt/main.py` 是 Qt 主程式入口，Windows 啟動由 `baldr_launcher.py` 導入既有 composition。
 
-法人固定批次唯讀路徑沿 UpdateView → UpdateService → `institutional_daily_snapshot` → 原capture／parser，原件、時鐘及資格由application reader核驗，widget只呈現。具體保存／讀回界線見[資料架構](current/data_storage_runtime.md#讀寫與保存契約)。
+法人固定批次唯讀路徑沿 UpdateView → UpdateService → `institutional_daily_snapshot` → 原capture／parser，原件、時鐘及資格由application reader核驗，widget只呈現。TPEx可另明選`institutional_source_use`的外部SHA契約，重用DailySourceUseAcceptance，固定官方文件／市場／schema／股數／diagnostics；一次接受與逐批品質小時分離，generic P0 v1決議及其他來源資格不變。具體保存／讀回界線見[資料架構](current/data_storage_runtime.md#讀寫與保存契約)。
 
 ## 九個工作區與閱讀路徑
 

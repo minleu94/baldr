@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 from urllib.parse import parse_qsl, urlsplit
 from zoneinfo import ZoneInfo
 
@@ -24,6 +24,8 @@ from data_module.institutional_credit_flows_service import (
     PARSER_VERSION, MAX_RESPONSE_BYTES, _candidate_row, _capture_scope_metadata,
     _capture_scope_specs, _parse_endpoint, _write_json_create_only, _raw_filename,
 )
+if TYPE_CHECKING:
+    from app_module.institutional_source_use import InstitutionalSourceUsePin, InstitutionalSourceUseRead
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _MANIFEST = "institutional-daily-manifest.v1"
@@ -105,6 +107,7 @@ class InstitutionalDailySnapshotRead:
     source_use_accepted: bool = False
     historical_pit_eligible: bool = False
     market: str = "TWSE"
+    source_use: InstitutionalSourceUseRead | None = None
 
 
 def _read(path: Path, expected: str | None, maximum: int, pins: list[dict[str, Any]]) -> bytes:
@@ -347,6 +350,7 @@ def seal_institutional_capture(
 def read_institutional_daily_snapshot(
     pin: InstitutionalDailySnapshotPin, *, stock_code: str, decision_cutoff: datetime,
     check_cancel: Callable[[], bool] | None = None,
+    source_use_pin: InstitutionalSourceUsePin | None = None,
     _expected_scope: str | None = None,
 ) -> InstitutionalDailySnapshotRead:
     """重驗全部原件／品質，返回所選代號；不從最新DB補欄或授予連買／PIT。"""
@@ -385,9 +389,20 @@ def read_institutional_daily_snapshot(
     _finish(pins + source_pins, check_cancel)
     _barrier(directory)
     _cancel(check_cancel)
+    source_use = None
+    market = expected["capture_scope"]["markets"][0]
+    if source_use_pin is not None:
+        from app_module.institutional_source_use import read_tpex_institutional_source_use
+        from data_module.tpex_institutional_openapi import TPEX_OPENAPI_VERSION
+        if market != "TPEx" or any(row.source_version != TPEX_OPENAPI_VERSION for row in rows):
+            raise InstitutionalDailySnapshotError("指定用途接受不支援此市場／來源版本，不跨用")
+        source_use = read_tpex_institutional_source_use(source_use_pin, decision_cutoff=cutoff, check_cancel=check_cancel)
+        _finish(pins + source_pins, check_cancel)
+        _barrier(directory)
+        _cancel(check_cancel)
     return InstitutionalDailySnapshotRead(pin, stock_code, tuple(row for row in rows if row.stock_code == stock_code),
                                           len(rows), first, completed, available, basis,
-                                          market=expected["capture_scope"]["markets"][0])
+                                          market=market, source_use=source_use, source_use_accepted=source_use is not None)
 
 
 def seal_twse_institutional_capture(run_directory: Path, expected_capture_manifest_sha256: str, *,

@@ -27,6 +27,8 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 ## 讀寫與保存契約
 
+`institutional_source_use.py`把既有DailySourceUseAcceptance限定於資料集11856／精確TPEx OpenAPI、parser版本、官方operation＋resolved schema SHA、shares與diagnostics。四份Root已核官方文件按固定版本fingerprint另存，來源不變，接受檔canonical與外部SHA；pending／failure／reparse／hardlink／中途變更拒絕。真accepted_at不得早於必要metadata原件收據或本次真保存開始；讀者cutoff不得早於接受時間。原institutional_daily_snapshot另驗每天原件、合計、版本與成功批次小時，只有明選同源用途pin才附typed source_use／source_use_accepted=True，candidate_only／歷史PIT false不變。沒有SQL、generic P0 decision或Task寫入；原MOPS／日曆及TWSE無法跨用。正常頁面只新增可選接受檔／SHA輸入、接受ID／時間／顯名，無pin時舊行為相容。
+
 法人候選沿 `institutional_credit_flows_service`／`complete_institutional_credit_flows.py` 的原 parser、create-only raw／metadata／candidate 保存。`capture_scope=twse_institutional` 僅選 T86；`legacy_all` 保留原四來源，未要求資料集不造零，scoped rebuild 核來源／單位／版本及逐日分區。`app_module/institutional_daily_snapshot.py` 對明選原run重驗完整EOF／identity body、全部原件與candidate，旁存create-only manifest／成功時鐘receipt及pending barrier；exact public reader要求目錄與雙外部SHA、同批全部byte／signature再核驗及可用小時。它沿原時間政策，沒有把MOPS record或另一revision namespace強cast成法人。
 
 正常 UpdateView 的法人區經 TaskWorker → UpdateService → 此exact reader，只讀指定代碼原整數股數；Qt widget不做I/O或金融計算，取消／輸入世代與shutdown沿原worker生命週期。報表列數不是股票universe或真N，candidate-only／用途未接受／PIT false保留，無日曆／連買新公式；正式apply／schema與Task未改。Increment53新增明選TPEx OpenAPI最新單日scope與獨立20欄parser，拒T86 discovery／其他市場回退，沿同一capture／rebuild與generic daily seal/read。舊TWSE ports仍只接T86；原manifest明選市場傳至Read DTO與正常頁，不以metadata shares常數或TPEx日曆替用途接受。詳[TPEx單日操作](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)與[法人批次契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex法人openapi明確單日increment53)。

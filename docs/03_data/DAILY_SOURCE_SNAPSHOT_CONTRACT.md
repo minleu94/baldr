@@ -8,6 +8,16 @@
 
 `twse-attention-daily-manifest.v1` 固定原 raw、HTTP receipt、request／headers／cookies／worker job與result及三份文件的 bytes／SHA，`twse-attention-daily-receipt.v1` 綁 manifest 與實際 first-persisted／successful-completion／available-hour。原 HTTP receipt 沒有 worker-result SHA，新版本明示綁保存的 bytes，不補造舊 hash。只有公告日，官方發布小時保留 None；依 `daily-hour.v1` 使用成功批次 guard 小時及 `successful_batch_completion_fallback`，不拿 HTTP Date 作官方發布時刻。更正新目錄、pending／failure 拒讀、讀前後完整核驗與取消，版本保留來源用途未接受／歷史 PIT false。公開 reader 拒未來 cutoff，正常 report provider 將截止限在觀測時刻與報告台北日末較早者。保存與參數見[指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
 
+## TPEx法人精確diagnostics用途接受（Increment54）
+
+一次性來源用途重用`DailySourceUseScope`／`DailySourceUseAcceptance`，由`institutional_source_use`明選`source_use.json`絕對路徑＋外部SHA讀取。scope固定data.gov.tw:11856、tpex:openapi:3insti_daily_trading、TPEx、tpex-openapi-3insti-daily.v1、官方GET operation與resolved schema的canonical SHA `efda72f09eeea74a135dd63afd9c8fbc926d3464e9ba658144c7ab7d58f4e3cc`、shares與diagnostics；acquisition route明綁tpex.tpex_3insti_daily_trading。這是獨立精確契約，不輸出generic P0 limited，不改原v1決議hash或13來源分母。
+
+Root已核四份官方原件的固定完整fingerprint：政府條款第1版、metadata11856／A45020000D-000309、資料集HTML與既存OpenAPI3。metadata CSV25欄／resourceAmount839不等於API20欄或市場真N；新契約只授既有parser已核九aggregate股數的diagnostics，不推自營細項、不授跨市場、連買、評分或交易。顯名保留提供機關、名稱／版本、年份與官方授權連結。機器契約不虛構human owner/reviewer或法律同意。
+
+另存四文件及canonical接受檔，create-only／fsync／pending及failure隔離、原件與copy讀前後重核、取消及來源變更守衛沿既有檔案核心。正常CLI採真時間，接受不得早於最後必要metadata真收據2026-10-15T23:06:40.284879+00:00，也不得注入早於本次真保存開始的clock；不能回填接受資格。reader只讀同pin與文件版本，cutoff早於accepted_at拒絕。相同scope可跨每日批次重用，文件／parser／schema／市場／單位／用途改變須重核受影響來源契約；不每日重寫接受檔。
+
+原每日批次仍獨立重驗其原件／品質／合計／單位／成功小時。明選合格用途pin時Read附typed source_use與source_use_accepted=True，限定diagnostics；無pin仍False，candidate_only=True／historical_pit_eligible=False不變。接受時間不能提前原07:00資料可用小時，原批次收據不改。TWSE wrapper不借此接受，通用P0 family／正式DB／排程資格不提升。步驟與排錯見[用途接受指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人用途接受與重開後續開發分支)。
+
 ## TPEx法人OpenAPI明確單日（Increment53）
 
 原法人 capture 新增明選 `tpex_openapi_institutional`，只用資料集11856對應的 `https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading`；不借T86 discovery、不讀TPEx舊web／信用或年度日曆。API沒有歷史日期參數，caller須明示原回應report日，sessions／max_lookback_days／max_attempts皆須為整數1，其他值在transport與建立output前拒絕。原 `legacy_all`／`twse_institutional` 不變；rebuild沿同一選定scope及原raw，不發HTTP。

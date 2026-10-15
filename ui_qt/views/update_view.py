@@ -1641,13 +1641,27 @@ class UpdateView(QWidget):
     def _open_saved_institutional_daily(self, pin: object, stock_code: str, generation: int) -> None:
         """原更新頁coordinator持有唯讀工作，依選取generation拒收舊回呼。"""
         widget = self.institutional_daily_widget
+        requested_source_use_pin = widget.requested_source_use_pin
+        if generation != widget.generation:
+            return
         if self._shutdown_requested or self._institutional_daily_worker is not None:
             return
         cutoff = datetime.now().astimezone()
 
         def task(cancel_callback=None):
+            if requested_source_use_pin is None:
+                return self.update_service.read_saved_institutional_daily_batch(
+                    pin,
+                    stock_code=stock_code,
+                    decision_cutoff=cutoff,
+                    cancel_callback=cancel_callback,
+                )
             return self.update_service.read_saved_institutional_daily_batch(
-                pin, stock_code=stock_code, decision_cutoff=cutoff, cancel_callback=cancel_callback,
+                pin,
+                stock_code=stock_code,
+                decision_cutoff=cutoff,
+                cancel_callback=cancel_callback,
+                source_use_pin=requested_source_use_pin,
             )
 
         worker = self._start_worker(TaskWorker(task), operation_kind="read")

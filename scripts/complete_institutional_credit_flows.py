@@ -62,6 +62,13 @@ def build_parser() -> argparse.ArgumentParser:
     seal.add_argument("--run-dir", required=True, help="原明選法人capture的絕對目錄")
     seal.add_argument("--capture-manifest-sha256", required=True)
 
+    source_use = subparsers.add_parser(
+        "accept-tpex-source", help="明選四份已核官方文件，另存TPEx診斷用途契約；不寫正式P0或每日批次",
+    )
+    for role in ("license", "metadata", "dataset", "swagger"):
+        source_use.add_argument(f"--{role}-raw", type=Path, required=True, help="指定版本原件絕對路徑")
+    source_use.add_argument("--output-dir", type=Path, required=True, help="尚不存在的獨立用途保存目錄")
+
     apply = subparsers.add_parser("apply", help="顯式匯入已審核 candidate manifest")
     apply.add_argument("--manifest", required=True, help="capture 產出的 manifest.json")
     apply.add_argument("--db-path", required=True, help="明確 SQLite 目標；不猜測")
@@ -107,6 +114,16 @@ def main(argv: list[str] | None = None) -> int:
         result = {"directory": str(pin.directory), "manifest_sha256": pin.manifest_sha256,
                   "receipt_sha256": pin.receipt_sha256, "candidate_only": True,
                   "source_use_accepted": False, "historical_pit_eligible": False}
+    elif args.command == "accept-tpex-source":
+        from app_module.institutional_source_use import write_tpex_institutional_source_use
+        source_pin = write_tpex_institutional_source_use(
+            evidence_files={role: getattr(args, role + "_raw") for role in ("license", "metadata", "dataset", "swagger")},
+            output_directory=args.output_dir,
+        )
+        result = {"source_use_path": str(source_pin.path), "source_use_sha256": source_pin.sha256,
+                  "accepted_use_case": "diagnostics", "candidate_only": True,
+                  "p0_family_accepted": False, "historical_pit_eligible": False,
+                  "formal_data_write": False}
     else:
         result = apply_flow_manifest(
             args.manifest,

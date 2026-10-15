@@ -694,6 +694,7 @@
       ],
       "code": [
         "app_module/institutional_daily_snapshot.py",
+        "app_module/institutional_source_use.py",
         "ui_qt/widgets/institutional_daily_snapshot_widget.py",
         "data_module/institutional_credit_flows_service.py",
         "scripts/complete_institutional_credit_flows.py",
@@ -761,6 +762,8 @@
         "tests/test_watchlist_revenue_archived_bookmark_v3.py",
         "tests/test_tpex_institutional_openapi.py",
         "tests/test_tpex_institutional_daily_snapshot.py",
+        "tests/test_institutional_source_use.py",
+        "tests/test_ui_qt_institutional_source_use.py",
         "tests/test_ui_qt_tpex_institutional_daily_widget.py"
       ],
       "manual": [
@@ -775,6 +778,7 @@
       ],
       "change_patterns": [
         "app_module/institutional_daily_snapshot.py",
+        "app_module/institutional_source_use.py",
         "ui_qt/widgets/institutional_daily_snapshot_widget.py",
         "tests/test_institutional_daily_snapshot.py",
         "tests/test_ui_qt_institutional_daily_snapshot.py",
@@ -817,6 +821,8 @@
         "ui_qt/views/update*",
         "tests/test_tpex_institutional_openapi.py",
         "tests/test_tpex_institutional_daily_snapshot.py",
+        "tests/test_institutional_source_use.py",
+        "tests/test_ui_qt_institutional_source_use.py",
         "tests/test_ui_qt_tpex_institutional_daily_widget.py"
       ],
       "sync_documents": [

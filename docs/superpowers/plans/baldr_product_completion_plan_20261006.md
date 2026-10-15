@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+**Increment54：原P00/P03一次性來源用途已接正常法人讀回**。重用DailySourceUseAcceptance，固定四份真官方文件／schema／TPEx／shares／diagnostics，create-only＋外部SHA另存，逐批原件與可用小時獨立驗，不改generic P0 v1或其13來源分母。真CLI接受07:18:53，正常Main36096→fresh47452三證券／九原值／接受身份與顯名／返回一致，12檔不變、無HTTP或重寫；受改writer19PASS、原173PASS含Workbench85與原反例定向、mypy1032／validator25/0/4，FAIL保留。固定4b530不增前置；歷史PIT／完整F09／P0整桶不升格。下一葉補已完成流程的Native／打包驗收，見[同輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment54p00p03法人精確來源用途與每日驗證分離)。
+
 **Increment53：原P03明選TPEx法人OpenAPI已補候選接線**。沿資料集11856／既存Swagger與新單次完整898原列，不借T86 discovery或其他TPEx未授來源；新20欄／ROC日／三類aggregate整數及合計守衛接原capture／rebuild／daily／正常法人頁，舊TWSE ports仍限T86。199受改回歸含Workbench85＋原FAIL修正後定向1PASS、mypy1031／validator25/0/4；真成功保存台北06:45、07:00可用，提前拒讀，QA288真07:00後Main32628→fresh37900三證券原值／返回與重開一致，24來源／批次檔不變、socket0；另補CLI必填報告日5PASS，非Native／EXE。此第二階段不增4b530固定V1前置，P0來源用途／歷史PIT／完整F09不升格，詳[Increment53 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment53p03明選tpex法人openapi與每日版本)。
 
 **Increment52：原P06的正常找回出口已補入開發候選**。既有情境明確登錄至同一Registry的typed reference，正常Main5648→fresh44328沿Registry明選回P06／個股／返回，原artifact／帳戶投影與兩DB hash相同，不重算／不改原件。218定向及受改回歸含Workbench85、mypy1030與validator25/0/4通過；原FAIL保留。此為第二階段，未增第一版前置或改4b530a7e固定EXE；手動／聲明完整現金與同源Health／行情仍缺，完整P06及其餘原範圍不升格。操作指南已更新，見[Increment52 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment52p06配置研究登錄與正常registry重開)。
@@ -497,6 +499,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+Increment54已把指定TPEx diagnostics來源用途與每日品質小時分開，真文件／正常CLI／Main36096→fresh47452已限定驗；不修改formal P0／Task或增加V1前置。下一葉推原P13/P14的Native／打包驗收，保留來源歷史／真N／自然成熟各自缺件，不再加深此小點。
 
 Increment53沿同一P03補上已有官方開放資料鏈的TPEx法人明確單日，不借其他來源授權，candidate／P0用途與歷史資格仍分開。首次成功daily台北06:45、07:00可用，QA288在真07:00後已驗Main32628→fresh37900同批次三證券／返回，無HTTP／seal／未來clock。來源用途精確綁定為下一葉，財報缺官方完整件維持D，P12正常畫面已明示產物不代表Task啟用，未另造框架。
 

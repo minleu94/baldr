@@ -2,6 +2,25 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment51：V1獲利因子窄版候選
+
+最後交付閉鎖：QA268已核7093候選檔，20輸入的Windows長路徑因helper未用extended-length讀法而FAIL，原件保留；新b沿原Native相同長路徑讀法、原bytes／SHA／root斷言，QA269全部通過，未改EXE或重跑原生旅程。outer `single_owned_qa_27601deec05d47319895b28578b2a938/receipt.json` SHA `a973cad5b22158836cf6b615a3601b0c18c99de10c909ed828ee5eb19b9dcb6a`（FAIL），QA269 `single_owned_qa_a2a0bcb95c244715a74f4133689f7163/receipt.json` SHA `c18f2a8f4e5bc1a05d25dc68f020f6a278062a5e388f4faf8c916dbbb394ff0d`。新交付 `FINAL_VERIFICATION.json` SHA `4fe9e0a010e9bf60e106e1a1de93f427c26ebfd58b8d3f71b42c6e9d3e1fa974`：7093檔、20輸入、原9fa EXE及保護檔、同入口--check與五文件／12features核對；Native真PID37704→32700，三PID清冊空、handles關閉、mutex釋放。僅追加本收據註記，不外推真人／所有流程同EXE重跑或完整Gate。
+
+**解除的交付阻礙**：Increment50已修開發分支，但固定9fa EXE仍有相同金融誤讀；本輪只回移PF必要變更至9fa，不整批帶回49七欄schema／metrics狀態、策略登記或其他第二階段功能。受管理worktree由本chat擁有，原工作樹HEAD `0ef77a8d87eb643fc02dec999a25aeb0fc92b9dd`不切換。Root修四個不適用hunk、保全rej原件，補9fa的PerformanceMetrics匯入與PF專屬status；原FIFO／分量化不換法，Decimal60隔離是本輪PF精度所需，不改策略／撮合／訊號時序。Luna靜態原note另保留，金融裁決由Root負責。
+
+固定source候選 `ad606e7649bb531f5a4720f12c9ecbca8dae82ec` 的12個Python變更及必要六文件，QA264 compile／八roots mypy1016／162PASS含Workbench85、validator25/0/4與float守衛通過。3233 pins中3227份Python前後一致，產品import只准匯出source，禁止混用dev。最後文件檢查發現舊Snapshot超連結指向ignored本機output而在export缺件，保留FAIL；原件路徑改普通文字，doc-only commit `4b530a7e929f31dc0f7d7edfba790d011aeb1bfc`，所有Python與前候選相同，不重跑未受影響runtime。QA265六文件／12features通過，依原1800秒上限從該固定commit建獨立EXE，archive SHA `34c6122702a2220d1663c70d51758386b41e449570d040702a21255669fbf3ce`，EXE55,978,104bytes／SHA `68e92c92adf30e479a798052e812f0d965d0f40c2e2e841610ab628191330f37`。建置不是Gate。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 264 | 固定來源runtime全部通過，歷史output超連結缺件FAIL保留。 | `single_owned_qa_4cdbc7926841414ebdf01260f6eab763/receipt.json`；`585a2e1e4c25a4d37efd21d1fb41f80f83ac8a3e16f0b5eb92bd188ab5f32214` |
+| 265 | 只修portable docs、六正文檢查與固定source建置通過。 | `single_owned_qa_1d43d2ce43794305a79221e2dc943306/receipt.json`；`8f9ace3ddb92bacdf8f51690328fae89718e43bc0da28614ec31696d9fef5575` |
+| 266 | Native harness誤預期nested binding，讀Root flat buildpin前KeyError，未啟動EXE；FAIL保留。 | `single_owned_qa_e6396ccdea37453abef2a66a7b5c3967/receipt.json`；`7eabd37185a04899384fd9a57cbfe37e6ade3ffce06a6533ad7f4d2312ef364e` |
+| 267 | 新b按同外部固定SHA結構讀取，原Native GUI／保存對話框／exact歷史／返回／fresh通過；原15sUI／120sphase／270s driver不放寬。 | `single_owned_qa_e8a4f7e52dd7460f99442f08b09790ff/receipt.json`；`b36268b687211b366c210c4be39daba32d270b174b57708e44855c4aacbe868e` |
+
+QA267使用原四股來源的2317真行情，原419日／100萬元／手續費14.25bp／滑價5bp固定門檻操作，1筆買入5000股、0完成配對；成本176138分、期末現金83238.62／權益1363238.62與前版一致，PF None／no_closed_pairs／語意版本及正常摘要具體原因通過。fresh精確重開同run／metadata／equity／trades，20輸入與行情DB不變，Python socket零；Win32實際PID／曝光／裁切／click來源與frozen product origins原守衛保留。不是合成市場資料、真人或完整金融資格。
+
+新試用入口 `output/trial/Baldr-V1-PF/Launch-Baldr.cmd`，附config、指南、已知問題、BUILD_INFO、20輸入清冊及candidate檔案清冊；新output／registry／私人狀態獨立，唯讀沿用原四股資料／technical pin，原9fa包與舊結果保留。其他三流程沿未改路徑具名證據，不冒充本EXE全部重跑。舊schema缺PF語意仍不可用，不新增DB遷移；TPEx、來源用途／歷史PIT、真N、完整雙策略、Native真人／跨機與自然成熟及原完整計畫仍待。無新HTTP／正式資料／Task／maintainer／push／發布或交易。每組8GiB／12程序／KOC／workspace mutex／RAM≥8GiB，三PID清冊自然空、handles關閉及mutex釋放後才起下一組；累計10/10僅重用靜態Luna，沒有新子代理。
+
 ## Increment50：P08獲利因子語意與金融錯誤修正
 
 **解除的交付阻礙**：原 analyzer 在沒有虧損時把獲利金額當獲利因子，零配對／全平也給假0；None沿摘要格式化會中斷。Root沿原已完成FIFO配對淨損益修正，沒有新增未來資料、策略、交易價格或配對算法。起點 `22831953eb6bc9ae23a52b830d76c00cfba3a303`。固定9fa也受此錯影響，但其EXE尚未修補；下一交付是V1-04窄版backport，不將第二階段新功能混回四條凍結流程。

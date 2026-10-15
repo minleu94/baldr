@@ -1,5 +1,7 @@
 # baldr 完整操作手冊
 
+最新四流程試用版為PF窄版修補 `4b530a7e`，啟動 `output/trial/Baldr-V1-PF/Launch-Baldr.cmd`，同目錄有 `TRIAL_GUIDE.md`／`KNOWN_ISSUES.md`。它修正下述舊9fa的PF錯誤，沒有加入第二階段功能；沿用原四股資料，新研究輸出／私人狀態另存，舊包與舊結果不搬移。原生自動化已重驗受影響V1-04，其他未改流程沿原證據；不是全Gate或真人接受。
+
 獲利因子的有限比率／未定義狀態與舊保存值判讀見[PF指南](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。source候選已修正；固定9fa試用EXE的附加PF仍可能把無虧損金額當比率，待V1-04窄版修補，請勿把該欄當有效比率。
 
 本手冊提供日常使用順序及常見操作入口。安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。

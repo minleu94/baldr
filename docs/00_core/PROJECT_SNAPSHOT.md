@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> **目前第一版候選（2026-10-15）**：原計畫§0.3四流程凍結，固定`42b0d1dde8ec9569ae74b45120fd33ca6a83b5be`由`output/trial/Baldr-V1/Launch-Baldr.cmd`試用。Increment36只修V1-04未成交日漏收盤／權益及預存MACD重用別名；原419列真觀測接線後392有效分數，缺值／暖機未知保留。QA151低本金run正常保存後，QA152重用同run並接續有買入的高本金run，父44272→fresh16568讀回同metadata/equity/trades；各419日、成本／現金／估值及20來源／行情DB不變。其他三流程、窄版與Startup修復沿未受影響原證據，舊候選／run／FAIL保留。完成交易數為配對數，只有買入未平倉時「無任何交易」文字仍不精確，已列指南。四股至2026/09/23、大盤至2026/10/14；TPEx、歷史權威／PIT、真N、完整雙策略與自然成熟等保留第二階段，未授真人／跨機或完整Gate。
+> **目前第一版候選（2026-10-15）**：原計畫§0.3四流程凍結，固定`9fa4518c2aca87beaddef75a2b29165722da6a6c`由`output/trial/Baldr-V1/Launch-Baldr.cmd`試用。Increment37只解除V1-04零完成配對誤稱無交易與缺門檻摘要中斷；即時結果分列實際成交／期末持股，缺值為未提供，未平倉估值不是已實現損益。QA158共103 PASS及必要UI防線通過；QA161固定EXE父30640→fresh48700正常回測／保存／歷史返回／同metadata/equity/trades讀回，1筆買入5000股、0完成配對，419日曲線及成本／現金／權益與原42b一致。其他三流程與Startup沿未受影響原證據；舊候選／run／FAIL及20來源與行情DB保留。交付SHA `0cc49abbf81d24981ba06841948f9ee7352699d22eb165a0f85a51d56feb804e`。四股至2026/09/23、大盤至2026/10/14；TPEx、歷史權威／PIT、真N、完整雙策略、自然成熟等保留第二階段，未授真人／跨機或完整Gate。
 
 > **更新基線：2026-10-15 UTC（使用者時區10/14）。** 使用者已恢復補完並採納每日版本快照與台北小時可用性政策；本輪實作／隔離驗證見[每日快照政策 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，原安全接手點見 [10/14 暫停 checkpoint](../06_qa/BALDR_COMPLETION_CHECKPOINT_20261014.md)。本頁只記目前可支持的整體狀態；局部 PASS 不相加成完整工作包或產品 Gate。較早恢復歷程見 [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)，先前紀錄見 [BALDR_COMPLETION_PROGRESS_20261011](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)；原始 receipts／source inventory 依各收據所列路徑與 SHA 追溯。
 

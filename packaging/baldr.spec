@@ -19,6 +19,17 @@ for kernel_name in ('technical_indicators.py', 'indicator_kernels.py'):
     if not kernel.is_file():
         raise ValueError('研究kernel source缺件，拒絕建立無法核驗的candidate')
     datas.append((str(kernel), 'analysis_module/technical_analysis'))
+# 單股回測會封存實際執行來源SHA；frozen版須保留相同原始檔，不能省略來源守衛。
+for relative_source in (
+    'decision_module/strategies/baseline_score_executor.py',
+    'decision_module/score_threshold_policy.py',
+    'backtest_module/broker_simulator.py',
+    'app_module/backtest_service.py',
+):
+    source = root / relative_source
+    if not source.is_file():
+        raise ValueError('單股回測規則來源缺件，拒絕建立無法封存的candidate')
+    datas.append((str(source), str(source.parent.relative_to(root))))
 for package in packages:
     for path in (root / package).rglob('*.py'):
         if '__pycache__' in path.parts or 'tests' in path.parts:

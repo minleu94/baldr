@@ -136,6 +136,20 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in kernels
         })
+    # 與原回測封存讀取的來源相同；frozen啟動身份也必須拒絕缺件或遭改寫的原檔。
+    rule_sources = (
+        "decision_module/strategies/baseline_score_executor.py",
+        "decision_module/score_threshold_policy.py",
+        "backtest_module/broker_simulator.py",
+        "app_module/backtest_service.py",
+    )
+    if any((source / relative).exists() for relative in rule_sources):
+        if not all((source / relative).is_file() for relative in rule_sources):
+            raise ValueError("單股回測來源資料必須完整四檔")
+        resource_hashes.update({
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in rule_sources
+        })
     return {
         "schema": "baldr-application-build.v1",
         "version": f"2026.10.06+{commit[:12]}", "source_commit": commit,

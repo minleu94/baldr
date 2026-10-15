@@ -59,3 +59,32 @@ def test_frozen_build_identity_rejects_changed_kernel_bytes(tmp_path, change):
         kernel.unlink()
     identity = detect_build_identity(repository_root=tmp_path, metadata_path=metadata_path, frozen=True)
     assert identity.channel == "unverified"
+
+
+@pytest.mark.parametrize("change", ["tamper", "missing"])
+def test_frozen_single_backtest_sources_are_bound_and_rechecked(tmp_path, change):
+    icon = tmp_path / "ui_qt/app_icon.png"
+    icon.parent.mkdir()
+    icon.write_bytes(b"isolated-icon")
+    sources = (
+        "decision_module/strategies/baseline_score_executor.py",
+        "decision_module/score_threshold_policy.py",
+        "backtest_module/broker_simulator.py",
+        "app_module/backtest_service.py",
+    )
+    for relative in sources:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# 隔離回測來源\n", encoding="utf-8")
+    metadata = create_build_metadata(tmp_path, "a" * 40, _lock(tmp_path))
+    for relative in sources:
+        assert metadata["resource_sha256"][relative] == hashlib.sha256((tmp_path / relative).read_bytes()).hexdigest()
+    metadata_path = tmp_path / "application_build.json"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    assert detect_build_identity(repository_root=tmp_path, metadata_path=metadata_path, frozen=True).channel == "release"
+    changed = tmp_path / sources[0]
+    if change == "tamper":
+        changed.write_text("# 改寫過的來源\n", encoding="utf-8")
+    else:
+        changed.unlink()
+    assert detect_build_identity(repository_root=tmp_path, metadata_path=metadata_path, frozen=True).channel == "unverified"

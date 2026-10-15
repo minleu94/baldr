@@ -31,6 +31,7 @@ from data_module.recommendation_current_fundamental_provider import (
     CurrentObservedPEInput,
     RecommendationCurrentFundamentalProvider,
 )
+from data_module.daily_monthly_revenue_cohort import DailyMonthlyRevenueCohortReader
 from data_module.fundamental_data import MonthlyRevenueRecord
 from data_module.fundamental_sqlite_provider import FundamentalSQLiteProvider
 from data_module.pit_sector_membership_reader import PITMembershipReadResult
@@ -94,6 +95,8 @@ class RecommendationInputSession:
         pit_membership_provider: PITRecommendationMembershipProvider,
         fundamental_input_provider: RecommendationFundamentalInputProvider,
         current_fundamental_provider: RecommendationCurrentFundamentalProvider | None = None,
+        daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
+        daily_monthly_cohort_reader_factory: Callable[[datetime], DailyMonthlyRevenueCohortReader] | None = None,
         current_market_status_source_root: Path | None = None,
         market_session_cadence: MarketSessionCadence | None = None,
         invocation_frozen_at: datetime | None = None,
@@ -104,6 +107,27 @@ class RecommendationInputSession:
         self.pit_membership_provider = pit_membership_provider
         self.fundamental_input_provider = fundamental_input_provider
         self.current_fundamental_provider = current_fundamental_provider
+        if daily_monthly_cohort_reader_factory is not None and (
+            not callable(daily_monthly_cohort_reader_factory)
+            or daily_monthly_cohort_reader is not None
+            or current_fundamental_provider is None
+            or current_fundamental_provider.daily_source_snapshot_reader is not None
+        ):
+            raise ValueError("daily series factory requires an unbound current provider")
+        self._daily_monthly_cohort_reader_factory = daily_monthly_cohort_reader_factory
+        self._daily_monthly_series_selection_attempted = False
+        self._daily_monthly_series_selection_error: str | None = None
+        if daily_monthly_cohort_reader is not None and (
+            not isinstance(daily_monthly_cohort_reader, DailyMonthlyRevenueCohortReader)
+            or current_fundamental_provider is None
+            or current_fundamental_provider.daily_source_snapshot_reader is not daily_monthly_cohort_reader
+        ):
+            raise ValueError("daily monthly cohort reader must match the current provider port")
+        self._daily_monthly_cohort_reader = daily_monthly_cohort_reader
+        self._daily_monthly_cohort_pin = (
+            daily_monthly_cohort_reader.pin if daily_monthly_cohort_reader is not None else None
+        )
+        self._daily_monthly_read_outcomes: dict[str, str] = {}
         self.current_market_status_source_root = (
             current_market_status_source_root.resolve()
             if current_market_status_source_root is not None
@@ -476,6 +500,27 @@ class RecommendationInputSession:
         stock_code: str,
         cutoff_at: datetime,
     ) -> CurrentMonthlyRevenueReadResult:
+        if self._daily_monthly_cohort_reader_factory is not None:
+            # Historical/replay calls cannot select the live daily series.
+            if (
+                self.invocation_frozen_at is None
+                or cutoff_at.tzinfo is None
+                or cutoff_at.utcoffset() is None
+                or cutoff_at != self.invocation_frozen_at
+                or not self._current_market_status_scope
+            ):
+                return CurrentMonthlyRevenueReadResult(
+                    "unavailable", stock_code, cutoff_at, None,
+                    diagnostics=("daily_source_cohort_requires_frozen_natural_invocation",),
+                )
+            self._select_daily_monthly_series_once()
+            if self._daily_monthly_series_selection_error is not None:
+                result = CurrentMonthlyRevenueReadResult(
+                    "unavailable", stock_code, cutoff_at, None,
+                    diagnostics=(self._daily_monthly_series_selection_error,),
+                )
+                self._daily_monthly_read_outcomes[stock_code] = result.status
+                return result
         provider = self.current_fundamental_provider
         if provider is None:
             return CurrentMonthlyRevenueReadResult(
@@ -485,10 +530,75 @@ class RecommendationInputSession:
                 None,
                 diagnostics=("current_fundamental_provider_unavailable",),
             )
+        if self._daily_monthly_cohort_pin is not None:
+            if (
+                self.invocation_frozen_at is None
+                or cutoff_at.tzinfo is None
+                or cutoff_at.utcoffset() is None
+                or cutoff_at != self.invocation_frozen_at
+                or not self._current_market_status_scope
+            ):
+                return CurrentMonthlyRevenueReadResult(
+                    "unavailable", stock_code, cutoff_at, None,
+                    diagnostics=("daily_source_cohort_requires_frozen_natural_invocation",),
+                )
+            result = provider.load_monthly_revenues(
+                stock_code=stock_code, cutoff_at=cutoff_at,
+                pinned_daily_cohort=self._daily_monthly_cohort_pin,
+            )
+            self._daily_monthly_read_outcomes[stock_code] = result.status
+            return result
         return provider.load_monthly_revenues(
             stock_code=stock_code,
             cutoff_at=cutoff_at,
         )
+
+    def _select_daily_monthly_series_once(self) -> None:
+        if self._daily_monthly_series_selection_attempted:
+            return
+        self._daily_monthly_series_selection_attempted = True
+        factory = self._daily_monthly_cohort_reader_factory
+        provider = self.current_fundamental_provider
+        frozen_at = self.invocation_frozen_at
+        if factory is None or provider is None or frozen_at is None:
+            raise ValueError("daily series invocation binding missing")
+        try:
+            reader = factory(frozen_at)
+            if type(reader) is not DailyMonthlyRevenueCohortReader:
+                raise ValueError("daily_series_reader_type_invalid")
+            reader.verify_cohort()
+            pin = reader.pin
+            if pin.available_hour > frozen_at:
+                raise ValueError("daily_series_cohort_hour_after_cutoff")
+            self.current_fundamental_provider = provider.with_daily_source_snapshot_reader(reader)
+            self._daily_monthly_cohort_reader = reader
+            self._daily_monthly_cohort_pin = pin
+        except Exception as exc:
+            # A failed version is quarantined for this invocation; never fall
+            # back to the legacy/latest reader or retry after a pointer change.
+            self._daily_monthly_series_selection_error = (
+                f"daily_series_selection_failed:{type(exc).__name__}:{exc}"
+            )[:4096]
+
+    def daily_monthly_cohort_source_context(self) -> dict[str, object]:
+        """複製同次 current 讀取的 cohort provenance；不授歷史／正式資格。"""
+        if (
+            self._daily_monthly_cohort_pin is None
+            or self.invocation_frozen_at is None
+            or not self._current_market_status_scope
+            or not self._daily_monthly_read_outcomes
+        ):
+            return {}
+        return {
+            "schema_version": "recommendation-daily-monthly-cohort-context.v1",
+            "cohort_sha256": self._daily_monthly_cohort_pin.cohort_sha256,
+            "pin": self._daily_monthly_cohort_pin.to_dict(),
+            "invocation_frozen_at": self.invocation_frozen_at.isoformat(),
+            "read_outcome_by_stock": dict(sorted(self._daily_monthly_read_outcomes.items())),
+            "source_scope": "current_observed_only",
+            "historical_pit_eligible": False,
+            "formal_pit_eligible": False,
+        }
 
     def get_current_market_status(
         self,
@@ -547,6 +657,8 @@ class RecommendationInputPreparer:
         pit_membership_provider: PITRecommendationMembershipProvider,
         fundamental_input_provider: RecommendationFundamentalInputProvider,
         current_fundamental_provider: RecommendationCurrentFundamentalProvider | None = None,
+        daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
+        daily_monthly_cohort_reader_factory: Callable[[datetime], DailyMonthlyRevenueCohortReader] | None = None,
         current_market_status_source_root: Path | None = None,
         market_session_cadence_factory: Callable[..., MarketSessionCadence] | None = None,
     ) -> None:
@@ -555,6 +667,13 @@ class RecommendationInputPreparer:
         self.pit_membership_provider = pit_membership_provider
         self.fundamental_input_provider = fundamental_input_provider
         self.current_fundamental_provider = current_fundamental_provider
+        self.daily_monthly_cohort_reader = daily_monthly_cohort_reader
+        if daily_monthly_cohort_reader_factory is not None and (
+            not callable(daily_monthly_cohort_reader_factory)
+            or daily_monthly_cohort_reader is not None
+        ):
+            raise ValueError("daily monthly fixed reader and series factory are mutually exclusive")
+        self.daily_monthly_cohort_reader_factory = daily_monthly_cohort_reader_factory
         self.current_market_status_source_root = current_market_status_source_root
         self.market_session_cadence_factory = market_session_cadence_factory
 
@@ -588,6 +707,8 @@ class RecommendationInputPreparer:
             pit_membership_provider=self.pit_membership_provider,
             fundamental_input_provider=self.fundamental_input_provider,
             current_fundamental_provider=self.current_fundamental_provider,
+            daily_monthly_cohort_reader=self.daily_monthly_cohort_reader,
+            daily_monthly_cohort_reader_factory=self.daily_monthly_cohort_reader_factory,
             current_market_status_source_root=self.current_market_status_source_root,
             market_session_cadence=cadence,
             invocation_frozen_at=frozen_at,
@@ -601,6 +722,8 @@ def build_default_recommendation_input_preparer(
     pit_membership_reader: PITSectorMembershipReader | None = None,
     market_session_cadence_factory: Callable[..., MarketSessionCadence] | None = None,
     current_fundamental_source_root: Path | None = None,
+    daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
+    daily_monthly_cohort_reader_factory: Callable[[datetime], DailyMonthlyRevenueCohortReader] | None = None,
 ) -> RecommendationInputPreparer:
     """由 application composition 建立來源 providers。
 
@@ -650,6 +773,7 @@ def build_default_recommendation_input_preparer(
             db_file=db_file,
             output_root=Path(raw_current_fundamental_source_root),
             monthly_source_root=Path(raw_current_fundamental_source_root),
+            daily_source_snapshot_reader=daily_monthly_cohort_reader,
         )
         if isinstance(raw_current_fundamental_source_root, (str, Path))
         else None
@@ -673,6 +797,8 @@ def build_default_recommendation_input_preparer(
             monthly_revenue_provider_factory=monthly_revenue_provider_factory,
         ),
         current_fundamental_provider=current_fundamental_provider,
+        daily_monthly_cohort_reader=daily_monthly_cohort_reader,
+        daily_monthly_cohort_reader_factory=daily_monthly_cohort_reader_factory,
         current_market_status_source_root=current_market_status_source_root,
         market_session_cadence_factory=(
             market_session_cadence_factory or MarketSessionCadence.for_config

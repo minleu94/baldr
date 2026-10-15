@@ -7,11 +7,21 @@ from uuid import uuid4
 import pandas as pd
 
 from app_module.factor_service import FactorService
+from app_module.recommendation_portfolio_affordable_order import (
+    AffordableOrderCancelledError, max_affordable_lot_shares,
+)
 from app_module.recommendation_portfolio_dtos import (
+    PeriodPrecisionCaptureStatus,
+    PeriodPrecisionCostModelStatusV2,
     PeriodHoldingDTO,
+    RecommendationPortfolioPeriodPrecisionCaptureV2,
     RecommendationSnapshotDTO,
     RecommendationPortfolioBacktestResultDTO,
     StockContributionDTO,
+)
+from app_module.recommendation_portfolio_period_precision_v2 import (
+    RecommendationPortfolioPeriodObservationV2,
+    RecommendationPortfolioPeriodPrecisionV2Error,
 )
 from app_module.recommendation_portfolio_dates import parse_stock_dates
 from app_module.recommendation_portfolio_metrics import (
@@ -605,15 +615,46 @@ class RecommendationPortfolioBacktestService:
         data["日期"] = parse_stock_dates(data["日期"])
         if data["日期"].isna().any():
             raise ValueError("歷史日期不可解析")
+        raw_history_stock_codes = data["證券代號"].tolist()
         data["證券代號"] = data["證券代號"].astype(str)
         start, end = pd.Timestamp(start_date), pd.Timestamp(end_date)
         if end < start:
             raise ValueError("end_date 不得早於 start_date")
+        in_scope_raw_stock_codes = [
+            raw_code
+            for raw_code, raw_date in zip(
+                raw_history_stock_codes, data["日期"].tolist()
+            )
+            if raw_date <= end
+        ]
+        history_stock_codes_exact_text = bool(in_scope_raw_stock_codes) and all(
+            type(stock_code) is str
+            and bool(stock_code)
+            and stock_code == stock_code.strip()
+            for stock_code in in_scope_raw_stock_codes
+        )
         data = data[data["日期"] <= end].sort_values(["日期", "證券代號"])
         if data.duplicated(["日期", "證券代號"]).any():
             raise ValueError("每檔股票每日只能有一筆市場資料")
         rebalance_dates = set(self._get_rebalance_dates(data, start, end, rebalance_frequency))
         sessions = sorted(data.loc[data["日期"] >= start, "日期"].unique())
+        history_stock_codes = set(data["證券代號"].tolist())
+        period_precision_observations: list[
+            RecommendationPortfolioPeriodObservationV2
+        ] = []
+        period_precision_observation_rejection: str | None = None
+        period_precision_stock_code: str | None = None
+        period_precision_capture_status: PeriodPrecisionCaptureStatus = "rejected"
+        if len(history_stock_codes) > 1:
+            period_precision_capture_status = "not_single_stock"
+            period_precision_capture_reason = "history_contains_multiple_stock_codes"
+        elif not history_stock_codes:
+            period_precision_capture_reason = "history_has_no_stock_code"
+        elif not history_stock_codes_exact_text:
+            period_precision_capture_reason = "history_stock_code_not_exact_text"
+        else:
+            period_precision_stock_code = next(iter(history_stock_codes))
+            period_precision_capture_reason = "no_actual_observations"
         cash, cost_total = capital, Decimal("0")
         positions: dict[str, dict[str, Any]] = {}
         all_positions: list[dict[str, Any]] = []
@@ -658,7 +699,7 @@ class RecommendationPortfolioBacktestService:
                         buy_rate = (to_decimal(fee_bps or 0) + to_decimal(slippage_bps or 0)) / Decimal("10000")
                         shares = int(budget / (price * (Decimal("1") + buy_rate))) // effective_lot_size * effective_lot_size
                     else:
-                        # 先用毛成交金額求候選股數，再由下方 policy 成本迴圈
+                        # 先用毛成交金額求候選股數，再由原 policy 成本判定
                         # 驗證最低手續費；決策日只讀到當時的現金與 next-open。
                         raw_shares = int(budget / price)
                         max_order_shares = cost_policy.max_order_shares_for(
@@ -674,24 +715,37 @@ class RecommendationPortfolioBacktestService:
                 else:
                     budget = cash
                     shares = positions[code]["shares"]
-                while shares > 0:
-                    gross = quantize_money(price * shares)
-                    costs = self._next_open_execution_costs(
-                        price=price,
-                        shares=shares,
-                        session=session,
-                        side=side,
-                        order_id=order["order_id"],
-                        cost_policy=cost_policy,
+                if side == "buy" and shares > 0:
+                    def affordable(candidate_shares: int, candidate_price: Decimal = price) -> bool:
+                        candidate_gross = quantize_money(candidate_price * candidate_shares)
+                        candidate_costs = self._next_open_execution_costs(
+                            price=candidate_price, shares=candidate_shares, session=session, side=side,
+                            order_id=order["order_id"], cost_policy=cost_policy,
+                            cost_policy_lot_type=normalized_policy_lot_type,
+                            cost_policy_instrument_type=normalized_policy_instrument_type,
+                            fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps,
+                        )
+                        return candidate_gross + candidate_costs["total"] <= budget
+
+                    # 既有非負成本＋最低手續費模型隨整手股數單調；每次判定仍呼叫
+                    # 同政策／日期／Decimal 捨入，不以近似費率代替原成本。
+                    try:
+                        shares = max_affordable_lot_shares(
+                            requested_shares=shares, lot_size=effective_lot_size,
+                            is_affordable=affordable, check_cancel=check_cancel,
+                        )
+                    except AffordableOrderCancelledError:
+                        cancelled = True
+                        break
+                elif side == "sell" and shares > 0:
+                    # 保留賣單在 fill policy 之前的原政策有效期限驗證。
+                    self._next_open_execution_costs(
+                        price=price, shares=shares, session=session, side=side,
+                        order_id=order["order_id"], cost_policy=cost_policy,
                         cost_policy_lot_type=normalized_policy_lot_type,
                         cost_policy_instrument_type=normalized_policy_instrument_type,
-                        fee_bps=fee_bps,
-                        slippage_bps=slippage_bps,
-                        tax_bps=tax_bps,
+                        fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps,
                     )
-                    if side == "sell" or gross + costs["total"] <= budget:
-                        break
-                    shares -= effective_lot_size
                 decision = fill_policy.decide(
                     side=side,
                     requested_shares=shares,
@@ -787,6 +841,8 @@ class RecommendationPortfolioBacktestService:
                 cash_ledger.append(ledger_row)
                 del pending[code]
 
+            if cancelled:
+                break
             for code, position in positions.items():
                 row = day.get(code)
                 if row is not None and pd.notna(row["收盤價"]) and to_decimal(row["收盤價"]) > 0:
@@ -810,7 +866,27 @@ class RecommendationPortfolioBacktestService:
             final_equity = quantize_money(cash + value)
             peak = max(peak, final_equity)
             max_drawdown = min(max_drawdown, final_equity / peak - Decimal("1"))
-            curve_rows.append({"date": session.strftime("%Y-%m-%d"), "equity": float(final_equity), "cash": float(cash), "position_value": float(quantize_money(value))})  # numeric-boundary: dto
+            position_value = quantize_money(value)
+            if (
+                period_precision_stock_code is not None
+                and period_precision_observation_rejection is None
+            ):
+                try:
+                    period_precision_observations.append(
+                        RecommendationPortfolioPeriodObservationV2(
+                            session_date=session.strftime("%Y-%m-%d"),
+                            stock_code=period_precision_stock_code,
+                            cash_decimal=format(cash, "f"),
+                            position_value_decimal=format(position_value, "f"),
+                            equity_decimal=format(final_equity, "f"),
+                        )
+                    )
+                except RecommendationPortfolioPeriodPrecisionV2Error:
+                    period_precision_observations.clear()
+                    period_precision_observation_rejection = (
+                        "producer_decimal_row_rejected_by_v2_observation_contract"
+                    )
+            curve_rows.append({"date": session.strftime("%Y-%m-%d"), "equity": float(final_equity), "cash": float(cash), "position_value": float(position_value)})  # numeric-boundary: dto
             if session in rebalance_dates:
                 snapshot = self.replay_service.run_snapshot(as_of_date=session.strftime("%Y-%m-%d"), profile_id=profile_id,
                     config=dict(config), history=data, universe=None, top_n=top_n,
@@ -834,8 +910,98 @@ class RecommendationPortfolioBacktestService:
             unfilled.append({"stock_code": code, "signal_date": order["signal_date"], "side": order["side"],
                              "rebalance_date": order["signal_date"], "allocation_weight": float(order.get("weight", 0)) if order["side"] == "buy" else 0,  # numeric-boundary: dto
                              "reason": "cancelled" if cancelled else order.get("last_reason", "end_of_data")})
+        if period_precision_stock_code is not None:
+            period_precision_evidence_codes = set(history_stock_codes)
+            period_precision_evidence_codes.update(
+                str(row.get("stock_code", "")) for row in trade_rows
+            )
+            period_precision_evidence_codes.update(
+                str(position.get("stock_code", "")) for position in all_positions
+            )
+            period_precision_evidence_codes.update(
+                str(position.get("stock_code", ""))
+                for position in positions.values()
+            )
+            period_precision_evidence_codes.update(str(code) for code in pending)
+            period_precision_evidence_codes.update(
+                str(order.get("stock_code", "")) for order in unfilled
+            )
+            period_precision_evidence_codes.update(
+                str(recommendation.get("stock_code", ""))
+                for snapshot in snapshots
+                for recommendation in snapshot.recommendations
+            )
+            if any(
+                code != period_precision_stock_code
+                for code in period_precision_evidence_codes
+            ):
+                period_precision_observations.clear()
+                period_precision_capture_status = "not_single_stock"
+                period_precision_capture_reason = (
+                    "producer_source_order_or_holding_stock_mismatch"
+                )
+            elif period_precision_observation_rejection is not None:
+                period_precision_observations.clear()
+                period_precision_capture_status = "rejected"
+                period_precision_capture_reason = (
+                    period_precision_observation_rejection
+                )
+            elif not period_precision_observations:
+                period_precision_capture_status = "rejected"
+                period_precision_capture_reason = "no_actual_observations"
+            elif cancelled:
+                period_precision_capture_status = "partial"
+                period_precision_capture_reason = "cancelled_before_all_sessions"
+            else:
+                period_precision_capture_status = "captured_unqualified"
+                period_precision_capture_reason = (
+                    "decimal_observations_only; no source_currency_calendar_or_cost_qualification"
+                )
         if not curve_rows:
             curve_rows = [{"date": start.strftime("%Y-%m-%d"), "equity": float(capital), "cash": float(capital), "position_value": 0}]  # numeric-boundary: dto
+        period_precision_capture: RecommendationPortfolioPeriodPrecisionCaptureV2 | None = None
+        if (
+            period_precision_capture_status in ("partial", "captured_unqualified")
+            and period_precision_stock_code is not None
+            and period_precision_observations
+        ):
+            execution_contract_id, contract_separator, execution_contract_version = (
+                NEXT_OPEN_CONTRACT.rpartition(".")
+            )
+            if not contract_separator or not execution_contract_id or not execution_contract_version:
+                raise ValueError("next-open execution contract 必須含原始 ID 與版本")
+            cost_model_status: PeriodPrecisionCostModelStatusV2
+            if cost_policy is None:
+                cost_model_status = "unknown"
+                cost_model_id = None
+                cost_model_version = None
+            else:
+                cost_model_status = "identified"
+                cost_model_id = cost_policy.policy_id
+                cost_model_version = cost_policy.policy_version
+            period_precision_capture = RecommendationPortfolioPeriodPrecisionCaptureV2(
+                stock_code=period_precision_stock_code,
+                stock_scope_status="exact_single_stock",
+                capture_status=(
+                    "partial"
+                    if period_precision_capture_status == "partial"
+                    else "complete"
+                ),
+                initial_capital_decimal=format(capital, "f"),
+                requested_start_date=start.date().isoformat(),
+                requested_end_date=end.date().isoformat(),
+                observed_session_dates=tuple(
+                    observation.session_date
+                    for observation in period_precision_observations
+                ),
+                completion_status="cancelled" if cancelled else "completed",
+                execution_contract_id=execution_contract_id,
+                execution_contract_version=execution_contract_version,
+                cost_model_status=cost_model_status,
+                cost_model_id=cost_model_id,
+                cost_model_version=cost_model_version,
+                observations=tuple(period_precision_observations),
+            )
         holdings: list[PeriodHoldingDTO] = []
         contribution_groups: dict[str, list[tuple[dict[str, Any], Decimal, Decimal]]] = {}
         realized = Decimal("0")
@@ -967,7 +1133,11 @@ class RecommendationPortfolioBacktestService:
             summary["unallocated_allocation_count"] = len(unallocated_allocations)
         result = RecommendationPortfolioBacktestResultDTO(summary=summary, equity_curve=equity_curve, trades=pd.DataFrame(trade_rows), snapshots=snapshots,
             period_holdings=holdings, stock_contribution=contributions, selection_diagnostics=diagnostics + [str(o["reason"]) for o in unfilled],
-            details=details)
+            details=details,
+            period_precision_observations=tuple(period_precision_observations),
+            period_precision_capture_status=period_precision_capture_status,
+            period_precision_capture_reason=period_precision_capture_reason,
+            period_precision_capture=period_precision_capture)
         result.attach_replay_parent_id(parent_result_id)
         return result
 

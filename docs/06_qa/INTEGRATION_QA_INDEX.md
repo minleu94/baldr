@@ -2,6 +2,8 @@
 
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。
 
+- [10/14補完最新交接：Increment18已驗證／Increment19未QA](BALDR_COMPLETION_HANDOFF_20261014_INCREMENT19.md)：checkpoint提交保存進度；P08候選等待至少8GiB可用RAM，不能當完整Gate。
+
 ## 整合主題地圖
 
 | 主題 | 建議閱讀順序 | 範圍提示 |
@@ -25,6 +27,8 @@
 | WP5 | [Current checkpoint](WP5_CHECKPOINT_CURRENT_20260928.md) · [Integration checklist](WP5_INTEGRATION_CHECKLIST_20260928.md) · [HEAD gap and pending diagnosis](WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md) · [Commit handoff](WP5_COMMIT_HANDOFF_20260929.md) · [Official daily capture validator](WP5_OFFICIAL_DAILY_CAPTURE_VALIDATOR_20260929.md) · [Personal current observed activity qualification](WP5_PERSONAL_CURRENT_OBSERVED_ACTIVITY_QUALIFICATION.md) |
 
 ## 近期與跨主題收據
+
+- [每日快照小時政策與 P03 隔離驗證（10/14 UTC）](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)：恢復來源核對、隔離 Scrapling、契約／consumer 施工與受影響 QA；原 P08 四個 FAIL 及完整 Gate 未接受保持。
 
 | 要查的內容 | 證據入口 |
 |---|---|

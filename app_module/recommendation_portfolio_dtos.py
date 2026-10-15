@@ -1,12 +1,164 @@
+import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List
+from datetime import date
+from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING, Any, Dict, List, Literal
 
 import pandas as pd
 
+from app_module.recommendation_portfolio_period_precision_v2 import (
+    RecommendationPortfolioPeriodObservationV2,
+)
 from financial_module.units import quantize_money, to_decimal
 
 if TYPE_CHECKING:
     from app_module.recommendation.contracts import RecommendationExecution
+
+
+PeriodPrecisionCaptureStatus = Literal[
+    "not_applicable",
+    "captured_unqualified",
+    "partial",
+    "not_single_stock",
+    "rejected",
+]
+
+PeriodPrecisionDescriptorCaptureStatusV2 = Literal["complete", "partial"]
+PeriodPrecisionDescriptorCompletionStatusV2 = Literal["completed", "cancelled"]
+PeriodPrecisionCostModelStatusV2 = Literal["identified", "unknown"]
+_CAPTURE_DECIMAL_PATTERN = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\Z")
+
+
+def _is_nonempty_descriptor_text(value: object) -> bool:
+    return (
+        type(value) is str
+        and bool(value)
+        and len(value) <= 256
+        and value == value.strip()
+        and all(ord(character) >= 32 for character in value)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class RecommendationPortfolioPeriodPrecisionCaptureV2:
+    """原 next-open Decimal 迴圈建立的單股期間捕獲描述。
+
+    ``complete`` 只表示 producer loop 正常走完；``observed_session_dates``
+    僅列實際產生的觀察日，不代表官方交易日曆完整。此描述不宣稱來源、幣別、
+    成本權威或任何績效資格。
+    """
+
+    stock_code: str
+    stock_scope_status: Literal["exact_single_stock"]
+    capture_status: PeriodPrecisionDescriptorCaptureStatusV2
+    initial_capital_decimal: str
+    requested_start_date: str
+    requested_end_date: str
+    observed_session_dates: tuple[str, ...]
+    completion_status: PeriodPrecisionDescriptorCompletionStatusV2
+    execution_contract_id: str
+    execution_contract_version: str
+    cost_model_status: PeriodPrecisionCostModelStatusV2
+    cost_model_id: str | None
+    cost_model_version: str | None
+    observations: tuple[RecommendationPortfolioPeriodObservationV2, ...]
+
+    def __post_init__(self) -> None:
+        if self.stock_scope_status != "exact_single_stock":
+            raise ValueError("期間捕獲描述只接受 exact_single_stock")
+        if self.capture_status not in ("complete", "partial"):
+            raise ValueError("期間捕獲描述狀態無效")
+        if self.completion_status not in ("completed", "cancelled"):
+            raise ValueError("期間捕獲完成狀態無效")
+        if (self.capture_status, self.completion_status) not in (
+            ("complete", "completed"),
+            ("partial", "cancelled"),
+        ):
+            raise ValueError("期間捕獲狀態與 producer completion 不一致")
+        if (
+            type(self.initial_capital_decimal) is not str
+            or not self.initial_capital_decimal
+            or len(self.initial_capital_decimal) > 128
+            or _CAPTURE_DECIMAL_PATTERN.fullmatch(self.initial_capital_decimal) is None
+        ):
+            raise ValueError("initial_capital_decimal 必須是有界原始 Decimal 文字")
+        try:
+            initial_capital = Decimal(self.initial_capital_decimal)
+        except InvalidOperation as exc:
+            raise ValueError("initial_capital_decimal 不是有效 Decimal") from exc
+        if (
+            not initial_capital.is_finite()
+            or initial_capital <= 0
+            or format(initial_capital, "f") != self.initial_capital_decimal
+            or len(initial_capital.as_tuple().digits) > 80
+        ):
+            raise ValueError(
+                "initial_capital_decimal 必須是正數 canonical Decimal 文字"
+            )
+
+        requested_dates: list[date] = []
+        for field_name, value in (
+            ("requested_start_date", self.requested_start_date),
+            ("requested_end_date", self.requested_end_date),
+        ):
+            if type(value) is not str:
+                raise ValueError(f"{field_name} 必須是 YYYY-MM-DD 日期文字")
+            try:
+                parsed = date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError(f"{field_name} 不是有效日期") from exc
+            if parsed.isoformat() != value:
+                raise ValueError(f"{field_name} 必須是 canonical YYYY-MM-DD")
+            requested_dates.append(parsed)
+        if requested_dates[1] < requested_dates[0]:
+            raise ValueError("requested_end_date 不得早於 requested_start_date")
+
+        if type(self.observations) is not tuple or not self.observations:
+            raise ValueError("期間捕獲描述必須綁定非空實際 observation tuple")
+        if type(self.observed_session_dates) is not tuple:
+            raise ValueError("observed_session_dates 必須是 tuple")
+        if any(
+            type(row) is not RecommendationPortfolioPeriodObservationV2
+            for row in self.observations
+        ):
+            raise ValueError("期間 observations 必須是 typed V2 observation")
+        observation_dates = tuple(row.session_date for row in self.observations)
+        if self.observed_session_dates != observation_dates:
+            raise ValueError("observed_session_dates 必須逐列對應實際 observations")
+        if any(row.stock_code != self.stock_code for row in self.observations):
+            raise ValueError("期間 observations 必須全屬於同一精確股票代號")
+        parsed_observed_dates = [
+            date.fromisoformat(value) for value in observation_dates
+        ]
+        if any(
+            current <= previous
+            for previous, current in zip(
+                parsed_observed_dates, parsed_observed_dates[1:]
+            )
+        ):
+            raise ValueError("observed_session_dates 必須唯一且遞增")
+        if any(
+            observed < requested_dates[0] or observed > requested_dates[1]
+            for observed in parsed_observed_dates
+        ):
+            raise ValueError("實際 observation 日期超出 requested 範圍")
+
+        if self.cost_model_status == "unknown":
+            if self.cost_model_id is not None or self.cost_model_version is not None:
+                raise ValueError("unknown cost model 不得附帶猜測的 ID 或版本")
+        elif self.cost_model_status == "identified":
+            if (
+                not _is_nonempty_descriptor_text(self.cost_model_id)
+                or not _is_nonempty_descriptor_text(self.cost_model_version)
+            ):
+                raise ValueError("identified cost model 必須提供原始 ID 與版本")
+        else:
+            raise ValueError("cost_model_status 必須明示 identified 或 unknown")
+        if (
+            not _is_nonempty_descriptor_text(self.execution_contract_id)
+            or not _is_nonempty_descriptor_text(self.execution_contract_version)
+        ):
+            raise ValueError("execution contract ID 與版本不得為空")
 
 
 @dataclass
@@ -103,6 +255,14 @@ class RecommendationPortfolioBacktestResultDTO:
     selection_diagnostics: List[str] = field(default_factory=list)
     improvement_hints: List[str] = field(default_factory=list)
     details: Dict[str, Any] = field(default_factory=dict)
+    period_precision_observations: tuple[
+        RecommendationPortfolioPeriodObservationV2, ...
+    ] = ()
+    period_precision_capture_status: PeriodPrecisionCaptureStatus = "not_applicable"
+    period_precision_capture_reason: str | None = None
+    period_precision_capture: (
+        RecommendationPortfolioPeriodPrecisionCaptureV2 | None
+    ) = None
 
     @property
     def replay_parent_id(self) -> str | None:

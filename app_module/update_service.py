@@ -9,7 +9,7 @@ import sys
 import sqlite3
 import hashlib
 from pathlib import Path
-from typing import Dict ,Any ,Optional ,List ,Callable, Sequence
+from typing import Dict ,Any ,Optional ,List ,Callable, Sequence, TYPE_CHECKING
 from datetime import date, datetime, timedelta, timezone
 
 import app_module.update_data_normalization as update_data_normalization
@@ -55,6 +55,14 @@ from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
 )
+
+if TYPE_CHECKING:
+    from data_module.daily_source_snapshot import (
+        DailySourceTransportCapture, DailySourceUseAcceptance, DailySourceUseScope,
+    )
+    from app_module.monthly_revenue_daily_snapshot_update import (
+        DailyMonthlyRevenueSnapshotReadStatus, DailyMonthlyRevenueSnapshotUpdateResult,
+    )
 
 
 _TPEX_FAILURE_MESSAGE_MAX_CHARS = 512
@@ -599,6 +607,52 @@ class UpdateService :
             'inserted_count':0 ,
             'message':f"MOPS 月營收寫入失敗: {exc}",
             }
+
+    def save_daily_monthly_revenue_capture(
+        self,
+        *,
+        snapshot_root: Path | str,
+        capture: "DailySourceTransportCapture",
+        period: str,
+        batch_id: str,
+        source_batch_started_at: datetime,
+        trusted_acceptance: "DailySourceUseAcceptance",
+        scope: "DailySourceUseScope",
+        clock: Callable[[], datetime],
+        cancel_callback: Callable[[], bool],
+    ) -> "DailyMonthlyRevenueSnapshotUpdateResult":
+        """將明確保存的完整 response 交给每日 producer；不選來源或授權用途。
+
+        snapshot root、scope、接受錨點及 batch 均由 caller 固定。此端口
+        不沿用文字 harvester、CSV apply 或正式 SQLite／歷史 PIT 流程。
+        """
+        from app_module.monthly_revenue_daily_snapshot_update import (
+            publish_daily_monthly_revenue_snapshot,
+        )
+        return publish_daily_monthly_revenue_snapshot(
+            root=snapshot_root, capture=capture, period=period, batch_id=batch_id,
+            source_batch_started_at=source_batch_started_at,
+            use_acceptance=trusted_acceptance, scope=scope, clock=clock,
+            check_cancel=cancel_callback,
+        )
+
+    def read_daily_monthly_revenue_status(
+        self,
+        *,
+        snapshot_root: Path | str,
+        batch_id: str,
+        period: str,
+        scope: "DailySourceUseScope",
+        trusted_acceptance: "DailySourceUseAcceptance",
+    ) -> "DailyMonthlyRevenueSnapshotReadStatus":
+        """唯讀 caller 指定的批次；與 CSV 候選及正式 PIT 狀態分開。"""
+        from app_module.monthly_revenue_daily_snapshot_update import (
+            read_daily_monthly_revenue_snapshot_status,
+        )
+        return read_daily_monthly_revenue_snapshot_status(
+            snapshot_root, batch_id=batch_id, period=period,
+            expected_scope=scope, trusted_acceptance=trusted_acceptance,
+        )
 
     def materialize_current_monthly_revenue(
         self,

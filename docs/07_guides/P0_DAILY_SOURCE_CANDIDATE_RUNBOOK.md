@@ -62,6 +62,8 @@
 
 ## 判讀
 
+上述既有 probe 的 `degraded`／missing-publication 與歷史收據保持。使用者已採納[每日版本快照小時政策](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)：新的成功保存批次若只缺官方發布小時，可沿具名批次時間建立首次保存後的前瞻研究可用性；仍須完成來源／指定用途接受及該批品質驗證。這不提升本工具既有候選的 downstream eligibility、不改寫舊 FAIL，也不把觀測時間填成歷史官方發布時間。隔離 Scrapling／取得鏈與 consumer 接線結果见[10/14 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
+
 - `observed_candidate`：本次官方端點可連線且解析契約相符；不是正式接受。
 - `degraded` 與 `official_publication_timestamp_missing`：只保存本次實際觀測時間，不能主張已取得正式公告時間或 PIT 完整性。
 - `not_started_no_candidate_adapter`：尚未建立來源端點與解析契約；不補值、不猜測品質。

@@ -23,6 +23,14 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 ## 讀寫與保存契約
 
+P00／P03 新保存來源採[每日快照小時契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)：對應版本官方時間與成功批次完成時間各向上取整到台北小時，再取較晚者；缺官方小時採具名批次依據。批次包含成功保存與品質驗證，reader 釘同一批次與版本，decision cutoff 不向上取整。此規則只建立首次成功保存後的前瞻可用性，不把 `persisted_at` 改寫為官方發布時間、歷史 PIT 或 Paper writer availability。來源／用途一次接受與每日批次自動驗證分開，舊 FAIL 及未驗範圍保留。
+
+MOPS saved-capture producer 已沿 `UpdateService` 的明確 root／scope／accepted anchor／batch port 接上 preparation、Decimal正規化、immutable writer及新reader。Quarantine v2分存HTTP/canonical原件與hash；成功public reader拒pending publication barrier，发布後clock／隔離搬移失敗仍不授成功。Scalar pin仍不足以代表雙市場cohort，正常UI／session及真來源接受尚待；晚本機materialization的可用時間不早於原觀測。
+
+雙市場cohort有hash-bound pin及create-only封套／外部expected hash reader，固定root／acceptance副本並重驗所有必要市場；common hour取較晚者。外部binding v1由既有accepted anchors與精確pin/readers序列化，application settings成對提供path／原件SHA；64KiB有界loader拒別名／包內root／缺市場／錯版本，經正常Main composition注入同一preparer/provider。合成Main／新PID及18來源檔案不變已有限定QA；更新批次組自動發行、正式配置與真來源接受仍待。舊Selection source clock v1的unknown／current-only契約不重標為verified，正式資料與Task不擴權。
+
+TWSE 月營收 JSON preparation 是獨立 source／parser／schema，保留官方原件與單股／期別 target；date-only 可計具名批次小時，單位缺官方強錨時只出 shadow／diagnostics 原值、不借 MOPS 千元轉換或接受資格。既有完整原件可唯讀重用驗 parser，但原候選收據／時間政策不能覆寫；跨程序一致與新線上取得完整度各自判定。
+
 | 資料類型 | 讀取／寫入責任 | 身份與安全邊界 |
 |---|---|---|
 | 市場資料 SQLite | `data_module/` reader／provider 與受控更新服務 | 唯讀查詢採 SQLite `mode=ro`、`query_only`；正式 writer 走明示更新／migration path |

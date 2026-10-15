@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class ResearchHistoryLookupWidget(QWidget):
     """三個既有 store 的共同查找入口；選取失效或取消不套舊 callback。"""
 
-    def __init__(self, lookup, on_open, parent=None):
+    def __init__(self, lookup, on_open, parent=None, *, performance_reader=None, performance_card=None):
         super().__init__(parent)
         self.lookup = lookup
         self.on_open = on_open
@@ -42,6 +42,10 @@ class ResearchHistoryLookupWidget(QWidget):
         self._request_id = 0
         self._closed = False
         self._entries = ()
+        from app_module.research_history_lookup import REGISTRY_RESULT_TYPES
+        self.performance_reader = performance_reader
+        self.performance_card = performance_card
+        self._registry_result_types = REGISTRY_RESULT_TYPES
         layout = QVBoxLayout(self)
         controls = QHBoxLayout()
         self.search = QLineEdit()
@@ -71,10 +75,14 @@ class ResearchHistoryLookupWidget(QWidget):
         self.open_rule = QPushButton("查看保存規則")
         self.open_rule.setEnabled(False)
         self.open_rule.clicked.connect(lambda: self.open_selected(rule=True))
+        self.show_history_card_button = QPushButton("查看歷史卡")
+        self.show_history_card_button.setEnabled(False)
+        self.show_history_card_button.clicked.connect(self.show_history_card)
         self.metadata_button = QPushButton("查看保存 metadata 與原因")
         self.metadata_button.clicked.connect(self.show_metadata)
         actions.addWidget(self.open_result)
         actions.addWidget(self.open_rule)
+        actions.addWidget(self.show_history_card_button)
         actions.addWidget(self.metadata_button)
         layout.addLayout(actions)
 
@@ -105,6 +113,11 @@ class ResearchHistoryLookupWidget(QWidget):
         self.open_result.setEnabled(bool(entry and entry.result_supported))
         self.open_rule.setEnabled(bool(entry and entry.source_kind == "registry" and entry.run_type in
                                       {"single_backtest", "batch_backtest_stock", "fixed_basket_stock"}))
+        self.show_history_card_button.setEnabled(bool(
+            entry and entry.source_kind == "registry" and entry.result_supported is True
+            and type(entry.run_type) is str and entry.run_type in self._registry_result_types
+            and self.performance_reader is not None and self.performance_card is not None
+        ))
         if entry:
             self.status.setText(f"{entry.source_kind}／{entry.run_type}｜{entry.start_date}～{entry.end_date}｜"
                                 + (entry.unsupported_reason or "按開啟核對原結果；比較資格仍由原比較入口決定。"))
@@ -114,7 +127,13 @@ class ResearchHistoryLookupWidget(QWidget):
         self._request_id += 1
         if self._worker is not None:
             self._worker.cancel(cooperative=True, wait=False)
+        if self.performance_card is not None:
+            self.performance_card.clear_selection()
         self.status.setText("查找／開啟已取消；原結果保持。")
+
+    def invalidate_and_clear(self):
+        """新研究開始時取消歷史讀取並立即清卡。"""
+        self.cancel_pending()
 
     def _filter(self, *_):
         self.entries.clear()
@@ -128,12 +147,19 @@ class ResearchHistoryLookupWidget(QWidget):
             item.setToolTip(entry.run_id + "\n" + entry.unsupported_reason)
             self.entries.addItem(item)
 
-    def _start(self, task, apply):
+    def _start(self, task, apply, *, on_error=None):
         from ui_qt.workers.task_worker import TaskWorker
-        if self._worker is not None:
+        if self._closed or self._worker is not None:
             return
         self._request_id += 1
         token = self._request_id
+        def failed(message, *, presentation=False):
+            if on_error is not None:
+                on_error(message)
+            elif presentation:
+                self.status.setText("原結果呈現失敗：" + message)
+            else:
+                self.status.setText("來源讀取失敗；沒有套用部分結果：" + message)
         worker = TaskWorker(task)
         self._worker = worker
         self.refresh.setEnabled(False)
@@ -142,10 +168,10 @@ class ResearchHistoryLookupWidget(QWidget):
                 try:
                     apply(value)
                 except Exception as exc:
-                    self.status.setText("原結果呈現失敗：" + str(exc))
+                    failed(str(exc), presentation=True)
         def error(message):
             if not self._closed and token == self._request_id:
-                self.status.setText("來源讀取失敗；沒有套用部分結果：" + message)
+                failed(message)
         def cleanup():
             self._worker = None
             self.refresh.setEnabled(True)
@@ -156,6 +182,9 @@ class ResearchHistoryLookupWidget(QWidget):
         worker.start()
 
     def refresh_entries(self):
+        if self._closed or self._worker is not None:
+            return
+        self.invalidate_and_clear()
         self.status.setText("查找既有來源中…")
         def apply(page):
             self._entries = page.entries
@@ -164,7 +193,61 @@ class ResearchHistoryLookupWidget(QWidget):
                                 + ("缺件／無法讀取：" + "；".join(page.diagnostics) if page.diagnostics else ""))
         self._start(self.lookup.list_entries, apply)
 
+    def _history_card_failed(self, _message):
+        if self.performance_card is not None:
+            self.performance_card.clear_selection()
+        self.status.setText("歷史卡讀取失敗；沒有套用部分結果。")
+
+    def show_history_card(self):
+        if self._closed:
+            return
+        item = self.entries.currentItem()
+        if item is None or self._worker is not None:
+            if self.performance_card is not None:
+                self.performance_card.clear_selection()
+            return
+        expected = item.data(Qt.ItemDataRole.UserRole)
+        if (
+            getattr(expected, "source_kind", None) != "registry"
+            or getattr(expected, "result_supported", None) is not True
+            or type(getattr(expected, "run_type", None)) is not str
+            or expected.run_type not in self._registry_result_types
+            or self.performance_reader is None
+            or self.performance_card is None
+        ):
+            if self.performance_card is not None:
+                self.performance_card.clear_selection()
+            return
+
+        owner = self._owner
+        owner_generation = getattr(owner, "_execution_generation", None)
+        card_generation = self.performance_card.begin_selection(expected)
+
+        def task(cancel_callback):
+            def check_cancel():
+                return (
+                    bool(cancel_callback())
+                    or self._closed
+                    or owner_generation != getattr(owner, "_execution_generation", None)
+                )
+            return self.performance_reader.read_selected(
+                expected,
+                check_cancel=check_cancel,
+            )
+
+        def apply(card):
+            if self._closed or owner_generation != getattr(owner, "_execution_generation", None):
+                if getattr(self.performance_card, "generation", None) == card_generation:
+                    self.performance_card.clear_selection()
+                return
+            self.performance_card.present_card(card_generation, expected, card)
+
+        self.status.setText("核對所選 Registry 歷史結果中…")
+        self._start(task, apply, on_error=self._history_card_failed)
+
     def open_selected(self, *, rule=False):
+        if self._closed:
+            return
         item = self.entries.currentItem()
         if item is None or self._worker is not None:
             return
@@ -429,6 +512,8 @@ class BacktestResultPanel(QWidget):
         context_row.addWidget(self.result_purpose_label, stretch=1)
         layout.addLayout(context_row)
         from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
+        from app_module.strategy_historical_performance_read_service import StrategyHistoricalPerformanceReadService
+        from ui_qt.widgets.historical_performance_widget import HistoricalPerformanceWidget
         legacy = getattr(self.parent_view, "run_repository", None)
         portfolio = getattr(self.parent_view, "portfolio_run_repository", None)
         lookup = ResearchHistoryLookup(registry=getattr(self.parent_view, "research_run_service", None),
@@ -439,12 +524,56 @@ class BacktestResultPanel(QWidget):
         history_group = QGroupBox("研究歷史查找（legacy／Registry／推薦回放）")
         history_group.setCheckable(True)
         history_group.setChecked(False)
+        self.research_history_group = history_group
         history_layout = QVBoxLayout(history_group)
-        self.research_history_lookup = ResearchHistoryLookupWidget(lookup, self.parent_view._open_research_history_result, self.parent_view)
+        self.history_performance_reader = StrategyHistoricalPerformanceReadService(lookup)
+        self.history_performance_card = HistoricalPerformanceWidget(history_group)
+        self.research_history_lookup = ResearchHistoryLookupWidget(
+            lookup, self.parent_view._open_research_history_result, self.parent_view,
+            performance_reader=self.history_performance_reader,
+            performance_card=self.history_performance_card,
+        )
         history_layout.addWidget(self.research_history_lookup)
+        history_layout.addWidget(self.history_performance_card)
         self.research_history_lookup.setVisible(False)
+        self.history_performance_card.setVisible(False)
         history_group.toggled.connect(self.research_history_lookup.setVisible)
+        history_group.toggled.connect(self.history_performance_card.setVisible)
         layout.addWidget(history_group)
+
+        from app_module.strategy_performance_read_service import StrategyPerformanceReadService
+        from ui_qt.widgets.strategy_performance_widget import StrategyPerformanceWidget
+        from ui_qt.widgets.paper_checkpoint_catalogue_lookup import (
+            PaperCheckpointCatalogueLookupWidget,
+        )
+
+        paper_group = QGroupBox("Paper 帳戶保存快照（明示帳戶／截止時間）")
+        paper_group.setCheckable(True)
+        paper_group.setChecked(False)
+        self.paper_checkpoint_group = paper_group
+        paper_layout = QVBoxLayout(paper_group)
+        self.paper_performance_reader = (
+            StrategyPerformanceReadService(
+                account_service=self.parent_view.paper_checkpoint_account_service
+            )
+            if self.parent_view.paper_checkpoint_account_service is not None
+            else None
+        )
+        self.paper_performance_card = StrategyPerformanceWidget(paper_group)
+        self.paper_checkpoint_lookup = PaperCheckpointCatalogueLookupWidget(
+            account_service=self.parent_view.paper_checkpoint_account_service,
+            performance_reader=self.paper_performance_reader,
+            performance_card=self.paper_performance_card,
+            disabled_reason=self.parent_view.paper_checkpoint_disabled_reason,
+            parent=paper_group,
+        )
+        paper_layout.addWidget(self.paper_checkpoint_lookup)
+        paper_layout.addWidget(self.paper_performance_card)
+        self.paper_performance_card.setVisible(False)
+        paper_group.toggled.connect(self.paper_checkpoint_lookup.setVisible)
+        paper_group.toggled.connect(self.paper_checkpoint_lookup.on_group_toggled)
+        paper_group.toggled.connect(self.paper_performance_card.setVisible)
+        layout.addWidget(paper_group)
         
         self.result_tabs = QTabWidget()
         self.result_tabs.setAccessibleName("回測結果工作區")

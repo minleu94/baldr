@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from contextlib import closing, contextmanager
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 from data_module.current_fundamental_snapshots import (
     MONTHLY_SNAPSHOT_SOURCE,
+    MONTHLY_NORMALIZER_VERSION,
     MONTHLY_YOY_COMPARATOR_ITEM_CODE,
     TABLE as CURRENT_FUNDAMENTAL_TABLE,
     _derived_monthly_yoy_comparator_version,
@@ -28,6 +29,17 @@ from data_module.current_fundamental_snapshots import (
     _monthly_source_available_at,
     _monthly_source_version_parts,
     normalize_current_observation,
+)
+from data_module.daily_source_snapshot import (
+    DAILY_SOURCE_SNAPSHOT_DATASET_ID,
+    DAILY_SOURCE_SNAPSHOT_SOURCE_ID,
+    DailySourceSnapshot,
+    DailySourceSnapshotRecord,
+    DailySourceSnapshotReadPort,
+    DailySourceUseScope,
+)
+from data_module.daily_monthly_revenue_cohort import (
+    DailyMonthlyRevenueCohortPin, DailyMonthlyRevenueCohortReader,
 )
 from data_module.current_official_valuation import (
     CurrentOfficialValuationReadProvider,
@@ -106,6 +118,8 @@ class CurrentObservedMonthlyRevenueInput:
     availability_basis: str = "local_verified_observation"
     input_role: str = "reported_period_value"
     parent_report_period: str | None = None
+    availability_snapshot_batch_id: str | None = None
+    availability_first_persisted_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,12 +157,14 @@ class RecommendationCurrentFundamentalProvider:
         official_calendar_factory: Callable[..., Any] | None = None,
         calendar_cache_path: Path | str | None = None,
         temporary_closure_path: Path | str | None = None,
+        daily_source_snapshot_reader: DailySourceSnapshotReadPort | None = None,
     ) -> None:
         self.db_file = Path(db_file).expanduser().resolve(strict=False)
         self.output_root = Path(output_root).expanduser().resolve(strict=False)
         self.monthly_source_root = Path(
             monthly_source_root if monthly_source_root is not None else output_root
         ).expanduser().resolve(strict=False)
+        self.daily_source_snapshot_reader = daily_source_snapshot_reader
         self._verified_monthly_capture_cache: dict[
             tuple[str, str, str],
             tuple[dict[str, dict[str, str]], str, tuple[str, ...]],
@@ -173,6 +189,21 @@ class RecommendationCurrentFundamentalProvider:
             database,
             calendar_cache_path=self.calendar_cache_path,
             temporary_closure_path=self.temporary_closure_path,
+        )
+
+    def with_daily_source_snapshot_reader(
+        self, reader: DailySourceSnapshotReadPort,
+    ) -> RecommendationCurrentFundamentalProvider:
+        """建立同來源設定的新 provider，將每日 port 鎖在單次決策。"""
+        return RecommendationCurrentFundamentalProvider(
+            db_file=self.db_file,
+            output_root=self.output_root,
+            monthly_source_root=self.monthly_source_root,
+            valuation_provider_factory=self._valuation_provider_factory,
+            official_calendar_factory=self._official_calendar_factory,
+            calendar_cache_path=self.calendar_cache_path,
+            temporary_closure_path=self.temporary_closure_path,
+            daily_source_snapshot_reader=reader,
         )
 
     def load_pe(
@@ -284,9 +315,61 @@ class RecommendationCurrentFundamentalProvider:
         stock_code: str,
         cutoff_at: datetime,
         read_session_connection: sqlite3.Connection | None = None,
+        pinned_daily_batch_id: str | None = None,
+        pinned_daily_cohort: DailyMonthlyRevenueCohortPin | None = None,
     ) -> CurrentMonthlyRevenueReadResult:
         cutoff = _require_aware_utc(cutoff_at, "cutoff_at")
         code = _validate_stock_code(stock_code)
+        if pinned_daily_cohort is not None:
+            cohort_reader = self.daily_source_snapshot_reader
+            if (
+                not isinstance(pinned_daily_cohort, DailyMonthlyRevenueCohortPin)
+                or pinned_daily_batch_id is not None
+                or not isinstance(cohort_reader, DailyMonthlyRevenueCohortReader)
+            ):
+                return CurrentMonthlyRevenueReadResult(
+                    "unavailable", code, cutoff, None,
+                    diagnostics=("daily_source_cohort_pin_or_port_invalid",),
+                )
+            try:
+                if cohort_reader.pin != pinned_daily_cohort:
+                    raise ValueError("daily_source_cohort_does_not_match_reader_binding")
+                cohort_reader.verify_cohort()
+            except (OSError, TypeError, ValueError) as exc:
+                return CurrentMonthlyRevenueReadResult(
+                    "unavailable", code, cutoff, None,
+                    diagnostics=(f"daily_source_cohort_rejected:{type(exc).__name__}:{exc}",),
+                )
+            if pinned_daily_cohort.available_hour > cutoff:
+                return CurrentMonthlyRevenueReadResult(
+                    "missing", code, cutoff, None,
+                    diagnostics=("daily_source_cohort_not_available_at_cutoff",),
+                )
+        elif pinned_daily_batch_id is not None and isinstance(
+            self.daily_source_snapshot_reader, DailyMonthlyRevenueCohortReader
+        ):
+            return CurrentMonthlyRevenueReadResult(
+                "unavailable", code, cutoff, None,
+                diagnostics=("daily_source_cohort_requires_complete_cohort_pin",),
+            )
+        if pinned_daily_batch_id is not None and (
+            not isinstance(pinned_daily_batch_id, str) or not pinned_daily_batch_id.strip()
+        ):
+            return CurrentMonthlyRevenueReadResult(
+                "unavailable",
+                code,
+                cutoff,
+                None,
+                diagnostics=("daily_source_snapshot_batch_id_invalid",),
+            )
+        if pinned_daily_batch_id is not None and self.daily_source_snapshot_reader is None:
+            return CurrentMonthlyRevenueReadResult(
+                "unavailable",
+                code,
+                cutoff,
+                None,
+                diagnostics=("daily_source_snapshot_port_missing_for_pinned_batch",),
+            )
         if not self.db_file.is_file():
             return CurrentMonthlyRevenueReadResult(
                 "unavailable",
@@ -340,6 +423,7 @@ class RecommendationCurrentFundamentalProvider:
 
         cutoff_date = cutoff.astimezone(_TAIPEI).date()
         diagnostics: list[str] = []
+        snapshot_by_market: dict[str, DailySourceSnapshot | None] = {}
         eligible_by_period: dict[str, list[CurrentObservedMonthlyRevenueInput]] = {}
         invalid_by_period: dict[str, list[tuple[datetime | None, str]]] = {}
         for row in rows:
@@ -367,11 +451,183 @@ class RecommendationCurrentFundamentalProvider:
                 or (source_clock is not None and source_clock > cutoff)
             ):
                 continue
+            pinned_snapshot: DailySourceSnapshot | None = None
+            pinned_snapshot_record: DailySourceSnapshotRecord | None = None
+            selected_batch_id = pinned_daily_batch_id
+            if pinned_daily_cohort is not None:
+                raw_market = str(raw.get("market") or "").strip()
+                try:
+                    selected_batch_id = pinned_daily_cohort.for_market(raw_market).batch_id
+                except (TypeError, ValueError):
+                    diagnostics.append(f"daily_source_cohort_market_not_in_pin:{raw_market}")
+                    continue
+            if selected_batch_id is not None:
+                snapshot_reader = self.daily_source_snapshot_reader
+                if snapshot_reader is None:
+                    return CurrentMonthlyRevenueReadResult(
+                        "unavailable",
+                        code,
+                        cutoff,
+                        None,
+                        diagnostics=("daily_source_snapshot_port_missing_for_pinned_batch",),
+                        diagnostic_source_row_count=diagnostic_source_row_count,
+                    )
+                # 先以原始版本、雜湊與身份對 pinned manifest 篩選，避免批次外壞列污染同期間。
+                raw_market = str(raw.get("market") or "").strip()
+                derived_version = _DERIVED_MONTHLY_VERSION.fullmatch(
+                    str(raw.get("source_version") or "")
+                )
+                if (
+                    raw_market not in {"twse", "tpex"}
+                    or derived_version is None
+                    or derived_version.group(1) != raw_market
+                    or derived_version.group(2) != period
+                ):
+                    diagnostics.append(
+                        "daily_source_snapshot_record_not_in_pinned_batch:"
+                        f"{period}:{raw.get('source_version') or ''}"
+                    )
+                    continue
+                if raw_market not in snapshot_by_market:
+                    expected_scope = DailySourceUseScope(
+                        dataset_id=DAILY_SOURCE_SNAPSHOT_DATASET_ID,
+                        source_id=DAILY_SOURCE_SNAPSHOT_SOURCE_ID,
+                        market=raw_market,
+                        parser_version=MONTHLY_NORMALIZER_VERSION,
+                        source_schema_version="mops-static-snapshot.v2",
+                        unit="TWD",
+                        intended_use="recommendation_current_fundamental",
+                    )
+                    try:
+                        candidate_snapshot = snapshot_reader.read_snapshot(
+                            selected_batch_id,
+                            expected_scope=expected_scope,
+                        )
+                    except ValueError as exc:
+                        if str(exc) == "快照來源用途範圍與呼叫端預期不符":
+                            snapshot_by_market[raw_market] = None
+                            diagnostics.append(
+                                "daily_source_snapshot_market_not_in_pinned_batch:"
+                                f"{raw_market}"
+                            )
+                            continue
+                        return CurrentMonthlyRevenueReadResult(
+                            "unavailable",
+                            code,
+                            cutoff,
+                            None,
+                            diagnostics=(
+                                "daily_source_snapshot_rejected:"
+                                f"{type(exc).__name__}:{exc}",
+                            ),
+                            diagnostic_source_row_count=diagnostic_source_row_count,
+                        )
+                    except (OSError, TypeError) as exc:
+                        return CurrentMonthlyRevenueReadResult(
+                            "unavailable",
+                            code,
+                            cutoff,
+                            None,
+                            diagnostics=(
+                                "daily_source_snapshot_rejected:"
+                                f"{type(exc).__name__}:{exc}",
+                            ),
+                            diagnostic_source_row_count=diagnostic_source_row_count,
+                        )
+                    if not isinstance(candidate_snapshot, DailySourceSnapshot):
+                        return CurrentMonthlyRevenueReadResult(
+                            "unavailable",
+                            code,
+                            cutoff,
+                            None,
+                            diagnostics=(
+                                "daily_source_snapshot_reader_result_invalid:"
+                                f"{type(candidate_snapshot).__name__}",
+                            ),
+                            diagnostic_source_row_count=diagnostic_source_row_count,
+                        )
+                    if candidate_snapshot.batch_id != selected_batch_id:
+                        return CurrentMonthlyRevenueReadResult(
+                            "unavailable",
+                            code,
+                            cutoff,
+                            None,
+                            diagnostics=(
+                                "daily_source_snapshot_batch_id_mismatch:"
+                                f"expected={selected_batch_id}:"
+                                f"actual={candidate_snapshot.batch_id}",
+                            ),
+                            diagnostic_source_row_count=diagnostic_source_row_count,
+                        )
+                    snapshot_by_market[raw_market] = candidate_snapshot
+                pinned_snapshot = snapshot_by_market[raw_market]
+                if pinned_snapshot is None:
+                    continue
+                try:
+                    raw_version_parts = _monthly_source_version_parts(
+                        derived_version.group(3)
+                    )
+                except ValueError:
+                    raw_version_parts = None
+                if raw_version_parts is not None and raw_version_parts[:2] == (
+                    raw_market,
+                    period,
+                ):
+                    pinned_snapshot_record = pinned_snapshot.find_record(
+                        stock_code=str(raw.get("stock_code") or ""),
+                        market=raw_market,
+                        period=period,
+                        source_version=derived_version.group(3),
+                        raw_source_sha256=raw_version_parts[2],
+                        unit=str(raw.get("unit") or ""),
+                    )
+                if pinned_snapshot_record is None:
+                    diagnostics.append(
+                        "daily_source_snapshot_record_not_in_pinned_batch:"
+                        f"{period}:{derived_version.group(3)}"
+                    )
+                    continue
             try:
                 normalized = normalize_current_observation(raw)
                 if normalized.get("stock_code") != code:
                     raise ValueError("current monthly source returned a different stock")
                 observation = _monthly_input_from_normalized(normalized, cutoff)
+                if selected_batch_id is not None:
+                    if (
+                        pinned_snapshot is None
+                        or pinned_snapshot_record is None
+                        or observation.stock_code != pinned_snapshot_record.stock_code
+                        or observation.market != pinned_snapshot_record.market
+                        or observation.period != pinned_snapshot_record.period
+                        or observation.raw_source_version
+                        != pinned_snapshot_record.source_version
+                        or observation.raw_source_sha256
+                        != pinned_snapshot_record.raw_source_sha256
+                        or observation.unit != pinned_snapshot_record.unit
+                    ):
+                        diagnostics.append(
+                            "daily_source_snapshot_normalized_identity_mismatch:"
+                            f"{period}"
+                        )
+                        continue
+                    if not pinned_snapshot.is_available_by(pinned_snapshot_record, cutoff):
+                        diagnostics.append(
+                            "daily_source_snapshot_not_available_at_cutoff:"
+                            f"{observation.period}"
+                        )
+                        continue
+                    available_hour, availability_basis = pinned_snapshot.availability_for(
+                        pinned_snapshot_record
+                    )
+                    if pinned_daily_cohort is not None:
+                        available_hour = max(available_hour, pinned_daily_cohort.available_hour)
+                    observation = replace(
+                        observation,
+                        available_at=max(observation.available_at, available_hour),
+                        availability_basis=availability_basis,
+                        availability_snapshot_batch_id=pinned_snapshot.batch_id,
+                        availability_first_persisted_at=pinned_snapshot.first_persisted_at,
+                    )
             except (InvalidOperation, TypeError, ValueError) as exc:
                 # Unknown-clock invalid rows remain blockers unless a
                 # hash-bound verified revision supersedes them below.  When a
@@ -593,6 +849,9 @@ class RecommendationCurrentFundamentalProvider:
                 if source_available_at != current.source_available_at:
                     raise ValueError("comparator and current row source clocks differ")
                 available_at = max(observed_at, source_available_at or observed_at)
+                if current.availability_snapshot_batch_id is not None:
+                    # 同份 pinned 報表的前期比較也必須等成功批次的小時 gate。
+                    available_at = max(available_at, current.available_at)
                 if available_at > cutoff or observed_at > cutoff:
                     diagnostics.append(
                         "current_monthly_revenue_yoy_comparator_observed_after_invocation_freeze"
@@ -622,6 +881,12 @@ class RecommendationCurrentFundamentalProvider:
                         availability_basis=current.availability_basis,
                         input_role="same_report_prior_year_comparison_baseline",
                         parent_report_period=current.period,
+                        availability_snapshot_batch_id=(
+                            current.availability_snapshot_batch_id
+                        ),
+                        availability_first_persisted_at=(
+                            current.availability_first_persisted_at
+                        ),
                     )
                 )
             except (InvalidOperation, TypeError, ValueError) as exc:
@@ -788,6 +1053,8 @@ class RecommendationCurrentFundamentalProvider:
                 availability_basis=current.availability_basis,
                 input_role="same_report_prior_year_comparison_baseline",
                 parent_report_period=current.period,
+                availability_snapshot_batch_id=current.availability_snapshot_batch_id,
+                availability_first_persisted_at=current.availability_first_persisted_at,
             ),
             snapshot_csv_sha256,
             (),

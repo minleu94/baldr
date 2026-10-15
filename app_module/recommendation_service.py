@@ -2249,6 +2249,30 @@ class RecommendationService:
             decision_date=decision_date,
         )
 
+    @staticmethod
+    def _record_daily_monthly_revenue_cohort_context(
+        *,
+        input_session: RecommendationInputSession,
+        target_context: dict[str, Any],
+    ) -> None:
+        """只保存 current monthly reader 提供的 cohort lineage metadata。
+
+        這個 context 是來源追溯資料，不是 acceptance、品質或推薦資格判定。
+        沒有 pin 的舊 session 保持原 context 欄位不變。
+        """
+
+        source_context_reader = getattr(
+            input_session, "daily_monthly_cohort_source_context", None
+        )
+        if not callable(source_context_reader):
+            return
+        source_context = source_context_reader()
+        if type(source_context) is not dict:
+            raise TypeError("daily monthly cohort source context must be a dict")
+        if not source_context:
+            return
+        target_context["daily_monthly_revenue_cohort"] = deepcopy(source_context)
+
     def _get_fundamental_sqlite_provider(self) -> FundamentalSQLiteProvider | None:
         lock = getattr(self, "_r011_last_state_lock", None)
         if lock is None:
@@ -3592,6 +3616,16 @@ class RecommendationService:
                                             "current monthly revenue read failed: %s",
                                             exc,
                                         )
+                                        try:
+                                            self._record_daily_monthly_revenue_cohort_context(
+                                                input_session=input_session,
+                                                target_context=self.last_run_context,
+                                            )
+                                        except Exception as context_exc:
+                                            logger.error(
+                                                "daily monthly cohort context read failed: %s",
+                                                context_exc,
+                                            )
                                         raise
                                     monthly_diagnostics = tuple(current_result.diagnostics)
                                     source_row_count = getattr(
@@ -3693,6 +3727,10 @@ class RecommendationService:
                                     monthly_diagnostics = (
                                         "current_monthly_revenue_reader_unavailable",
                                     )
+                                self._record_daily_monthly_revenue_cohort_context(
+                                    input_session=input_session,
+                                    target_context=self.last_run_context,
+                                )
                                 self.last_run_context[
                                     "fundamental_input_diagnostics"
                                 ].extend(monthly_diagnostics)

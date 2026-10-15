@@ -4,6 +4,22 @@
 """
 
 from collections.abc import Mapping
+from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
+    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
+)
+from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+)
+from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V2,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2,
+    DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2,
+)
+from app_module.daily_market_technical_official_disposition_revenue_archived_bookmark_v3 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SCHEMA_V3,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SOURCE_V3,
+    DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3,
+)
 from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1,
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
@@ -86,6 +102,28 @@ class _WatchlistRowWithGet(Protocol):
     """描述 DataFrame 列與 mapping row 共用的唯讀 get 介面。"""
 
     def get(self, key: str, default: object = ...) -> object: ...
+
+
+def _decode_composite_envelope(
+    value: object,
+) -> DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+    """依保存schema精確解碼，不開啟來源或改用最新研究。"""
+    if not isinstance(value, Mapping):
+        raise ValueError("composite_bookmark_mapping_required")
+    schema = value.get("schema_version")
+    if schema == "daily-market-technical-official-disposition-composite-view-state.v1":
+        return DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(value)
+    if schema == "daily-market-technical-official-disposition-composite-view-state.v2":
+        return DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2.from_dict(value)
+    raise ValueError("composite_bookmark_schema_unsupported")
+
+
+def _composite_envelope_identity(
+    value: DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+) -> str:
+    if isinstance(value, DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1):
+        return value.envelope_identity_sha256
+    return value.view_bookmark_identity_sha256
 
 
 def _watchlist_row_with_get(value: object) -> _WatchlistRowWithGet | None:
@@ -996,7 +1034,7 @@ class WatchlistView(QWidget):
                     (
                         "均線／月營收／官方對照研究收藏"
                         if str(value or "").strip()
-                        == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+                        in (DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE, DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2)
                         else
                         "完整母體技術研究收藏"
                         if str(value or "").strip()
@@ -1774,10 +1812,7 @@ class WatchlistView(QWidget):
             if row_values is None:
                 return ""
             try:
-                from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
-                    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
-                )
-                envelope = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(
+                envelope = _decode_composite_envelope(
                     row_values.get("research_bookmark")
                 )
                 code = str(
@@ -1785,8 +1820,8 @@ class WatchlistView(QWidget):
                 ).strip()
                 if (envelope.stock_code == code
                         and row_values.get("source") == envelope.source
-                        and row_values.get("source_id") == envelope.envelope_identity_sha256):
-                    return envelope.envelope_identity_sha256
+                        and row_values.get("source_id") == _composite_envelope_identity(envelope)):
+                    return _composite_envelope_identity(envelope)
             except (TypeError, ValueError):
                 pass
             return ""
@@ -1865,7 +1900,10 @@ class WatchlistView(QWidget):
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SOURCE_V3,
             "technical_official_disposition_composite_research_bookmark",
+            "technical_official_disposition_composite_research_bookmark_v2",
         }
 
     @staticmethod
@@ -1876,8 +1914,14 @@ class WatchlistView(QWidget):
         raw = row_values.get("research_bookmark")
         schema = raw.get("schema_version") if isinstance(raw, Mapping) else None
         return (
-            row_values.get("source") == "technical_official_disposition_composite_research_bookmark"
-            or schema == "daily-market-technical-official-disposition-composite-view-state.v1"
+            row_values.get("source") in {
+                "technical_official_disposition_composite_research_bookmark",
+                "technical_official_disposition_composite_research_bookmark_v2",
+            }
+            or schema in {
+                "daily-market-technical-official-disposition-composite-view-state.v1",
+                "daily-market-technical-official-disposition-composite-view-state.v2",
+            }
         )
 
     @staticmethod
@@ -1886,18 +1930,29 @@ class WatchlistView(QWidget):
             return False
         raw = row.get("research_bookmark")
         return (
-            row.get("source") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+            row.get("source") in (
+                DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
+                DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2,
+                DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SOURCE_V3,
+            )
             or isinstance(raw, Mapping)
             and isinstance(raw.get("schema_version"), str)
-            and raw.get("schema_version").startswith("daily-market-technical-official-disposition-revenue-bookmark.")
+            and (
+                raw.get("schema_version").startswith("daily-market-technical-official-disposition-revenue-bookmark.")
+                or raw.get("schema_version").startswith("daily-market-technical-official-disposition-revenue-archived-bookmark.")
+            )
         )
 
     @staticmethod
-    def _decode_revenue_bookmark_row(row) -> DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1:
+    def _decode_revenue_bookmark_row(row) -> DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3:
         from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
         bookmark = decode_saved(row.get("research_bookmark"))
         if (
-            type(bookmark) is not DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
+            type(bookmark) not in (
+                DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+                DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2,
+                DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3,
+            )
             or bookmark.stock_code != str(row.get("證券代號", row.get("stock_code", ""))).strip()
             or row.get("source") != bookmark.source
             or row.get("source_id") != bookmark.bookmark_id
@@ -1944,6 +1999,18 @@ class WatchlistView(QWidget):
         if (WatchlistView._row_is_composite_bookmark(row)
                 and not WatchlistView._has_research_bookmark(value)):
             return "官方市場條件研究收藏內容缺失；原來源不可核驗"
+        if cls._row_is_composite_bookmark(row) and not cls._exact_research_bookmark_id_for_row(row):
+            return "官方條件研究收藏與股票或來源身份不符；不可核驗"
+        if (
+            cls._row_is_technical_official_revenue_bookmark(row)
+            and isinstance(value, Mapping)
+            and isinstance(value.get("schema_version"), str)
+            and value.get("schema_version").startswith(
+                "daily-market-technical-official-disposition-revenue-archived-bookmark."
+            )
+            and not cls._exact_research_bookmark_id_for_row(row)
+        ):
+            return "封存月營收收藏與觀察清單股票或來源身份不符；不可核驗"
         if not cls._has_research_bookmark(value) and cls._row_declares_research_bookmark(row):
             if cls._row_is_technical_universe_bookmark(row):
                 return "完整母體書籤內容缺失；來源不可核驗"
@@ -1957,18 +2024,33 @@ class WatchlistView(QWidget):
         if not isinstance(value, Mapping):
             return "書籤格式錯誤；來源不可核驗"
         schema = str(value.get("schema_version", "") or "").strip()
-        if schema == "daily-market-technical-official-disposition-composite-view-state.v1":
+        if schema in {
+            "daily-market-technical-official-disposition-composite-view-state.v1",
+            "daily-market-technical-official-disposition-composite-view-state.v2",
+        }:
             try:
-                from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
-                    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
-                )
-                envelope = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(value)
+                envelope = _decode_composite_envelope(value)
+                if isinstance(envelope, DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2):
+                    return f"已收藏官方條件與價格研究｜股票 {envelope.stock_code}｜固定原來源"
                 return f"已收藏官方市場條件研究｜股票 {envelope.stock_code}｜固定原來源"
             except (TypeError, ValueError):
                 return "官方市場條件研究收藏無效；來源不可核驗"
-        if schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1:
+        if schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SCHEMA_V3:
             try:
-                bookmark = DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_dict(value)
+                bookmark = DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3.from_dict(value)
+                return (
+                    f"已保存封存月營收收藏｜股票 {bookmark.stock_code}｜"
+                    f"範圍 {bookmark.source_scope}｜整體 {bookmark.availability_status}｜"
+                    f"月營收 {bookmark.monthly_availability_status}｜"
+                    f"歷史 PIT {'是' if bookmark.historical_pit_eligible else '否'}"
+                )
+            except (TypeError, ValueError):
+                return "封存月營收研究收藏無效；來源不可核驗"
+        if schema.startswith("daily-market-technical-official-disposition-revenue-archived-bookmark."):
+            return f"封存月營收研究收藏版本不支援：{schema}；來源不可核驗"
+        if schema in (DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1, DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V2):
+            try:
+                bookmark = (DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2.from_dict(value) if schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V2 else DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_dict(value))
                 return f"已收藏均線／月營收／官方對照研究｜股票 {bookmark.stock_code}｜固定原來源"
             except (TypeError, ValueError):
                 return "月營收研究收藏無效；來源不可核驗"
@@ -2070,6 +2152,19 @@ class WatchlistView(QWidget):
         if not isinstance(bookmark, Mapping):
             fail(
                 "每日研究書籤內容缺失或格式錯誤；已拒絕下鑽，請勿改用手動來源。",
+            )
+            return None
+        schema = bookmark.get("schema_version")
+        if (
+            schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SCHEMA_V3
+            or isinstance(schema, str)
+            and schema.startswith(
+                "daily-market-technical-official-disposition-revenue-archived-bookmark."
+            )
+        ):
+            fail(
+                "封存月營收收藏須沿專用封存 recipe／固定來源重開；不轉入一般研究或最新來源路徑。",
+                level="warning",
             )
             return None
         bookmark_id = str(bookmark.get("bookmark_id", "") or "").strip()
@@ -2623,15 +2718,12 @@ class WatchlistView(QWidget):
                 self._set_status_label("官方市場條件研究收藏列格式無法核驗。", level="warning")
                 return
             try:
-                from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
-                    DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
-                )
-                envelope = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_dict(
+                envelope = _decode_composite_envelope(
                     row_values.get("research_bookmark")
                 )
                 if (envelope.stock_code != code
                         or row_values.get("source") != envelope.source
-                        or row_values.get("source_id") != envelope.envelope_identity_sha256):
+                        or row_values.get("source_id") != _composite_envelope_identity(envelope)):
                     raise ValueError("複合收藏 envelope 與 Watchlist 列身份不符")
             except (TypeError, ValueError) as exc:
                 self._set_status_label(f"官方市場條件研究收藏無法核驗：{exc}", level="warning")

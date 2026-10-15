@@ -223,6 +223,8 @@ Recommendation、Portfolio Advice、Alert 與 Exit 是否被持續、可比較�
 5. Corporate action / restriction 對 execution、Why Not、Health 的 candidate impact report。
 6. source outage / stale / revision / duplicate / future-data quarantine。
 
+每日新保存來源依[小時快照契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)分開履行來源／指定用途一次性接受與每日批次自動驗證。首次成功保存後已驗證的新快照可供已接受的日常研究；完整歷史 PIT 仍是相應歷史用途的證據要求。重用同版本 batch receipt 可簡化重複核驗，不省略錯來源／版本／未來資料／單位／缺值／完整性拒絕、正常 UI／新程序或同版交付。Scrapling 是 P03 限縮工具選項，不新增其他包的全面前置，也不變更本頁 Month 1–6 語意。
+
 ### Testing
 
 - `available_date <= decision_date`、修訂 / late arrival、timezone / market-day boundary。

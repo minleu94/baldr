@@ -46,6 +46,7 @@ from app_module.backtest_repository import BacktestRunRepository
 from app_module.recommendation_portfolio_run_repository import RecommendationPortfolioRunRepository
 from app_module.recommendation_portfolio_promotion_service import RecommendationPortfolioPromotionService
 from app_module.research_run_service import ResearchRunService
+from app_module.research_run_dated_equity import research_run_dated_equity_copy
 from app_module.chart_data_service import ChartDataService
 from app_module.promotion_service import PromotionService
 from app_module.strategy_version_service import StrategyVersionService
@@ -121,7 +122,10 @@ class BacktestView(QWidget):
         config=None,
         batch_backtest_service=None,
         watchlist_service=None,
-        parent=None
+        parent=None,
+        strategy_version_service=None,
+        paper_checkpoint_account_service=None,
+        paper_checkpoint_disabled_reason=None,
     ):
         """初始化回測視圖
 
@@ -137,6 +141,8 @@ class BacktestView(QWidget):
         self.config = config
         self.batch_backtest_service = batch_backtest_service
         self.watchlist_service = watchlist_service
+        self.paper_checkpoint_account_service = paper_checkpoint_account_service
+        self.paper_checkpoint_disabled_reason = paper_checkpoint_disabled_reason
         self.research_run_service_error: str | None = None
         self._backtest_narrow = False
 
@@ -170,7 +176,9 @@ class BacktestView(QWidget):
                     research_run_service=self.research_run_service,
                 )
             # 初始化 Promote 相關服務
-            self.strategy_version_service = StrategyVersionService(config)
+            self.strategy_version_service = (
+                strategy_version_service or StrategyVersionService(config)
+            )
             self.promotion_service = PromotionService(
                 config=config,
                 backtest_repository=self.run_repository,
@@ -784,6 +792,9 @@ class BacktestView(QWidget):
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None and hasattr(result_panel, "clear_analyst_diagnostics"):
             result_panel.clear_analyst_diagnostics()
+        history = getattr(result_panel, "research_history_lookup", None)
+        if history is not None and hasattr(history, "invalidate_and_clear"):
+            history.invalidate_and_clear()
 
     def _execute_backtest(self):
         """執行回測（支援單檔和批次模式）"""
@@ -2457,7 +2468,12 @@ class BacktestView(QWidget):
             created_at=datetime.now().isoformat(),
         )
         save_kwargs = self._factor_save_kwargs(details)
-        self.research_run_service.save_run(metadata, equity, trades, **save_kwargs)
+        self.research_run_service.save_run(
+            metadata,
+            research_run_dated_equity_copy(equity),
+            trades,
+            **save_kwargs,
+        )
         self.current_run_id = metadata.run_id
         return metadata.run_id
 
@@ -5191,6 +5207,12 @@ class BacktestView(QWidget):
             history._closed = True
             history.cancel_pending()
             workers.append(history._worker)
+        paper_lookup = getattr(
+            getattr(self, "result_panel", None), "paper_checkpoint_lookup", None
+        )
+        if paper_lookup is not None:
+            paper_lookup.begin_shutdown()
+            workers.append(paper_lookup.worker)
         for worker in workers:
             if worker is not None and worker.isRunning():
                 worker.cancel(cooperative=True, wait=False)
@@ -5198,6 +5220,11 @@ class BacktestView(QWidget):
             worker is not None and worker.isRunning()
             for worker in workers
         )
+
+    def begin_shutdown(self) -> None:
+        """凍結回測子頁，讓 Main 的合作式關閉等待其唯讀 worker。"""
+
+        self.request_cooperative_shutdown()
 
     def closeEvent(self, event):
         if not self.request_cooperative_shutdown():

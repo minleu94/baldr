@@ -28,12 +28,18 @@ from app_module.recommendation.replay_lineage import (
 )
 from app_module.recommendation_portfolio_dtos import (
     RecommendationPortfolioBacktestResultDTO,
+    RecommendationPortfolioPeriodPrecisionCaptureV2,
 )
 from app_module.recommendation_portfolio_result_artifact import (
     PortfolioResultArtifactCodecError,
     RecommendationPortfolioResultArtifactV1,
     decode_portfolio_result_artifact,
     encode_portfolio_result_artifact,
+)
+from app_module.recommendation_portfolio_result_artifact_v2 import (
+    RecommendationPortfolioResultArtifactV2,
+    decode_portfolio_result_artifact_v2,
+    encode_portfolio_result_artifact_v2,
 )
 from app_module.research_run_dtos import (
     ResearchRunMetadataDTO,
@@ -70,7 +76,9 @@ class ResearchRunData:
     equity: pd.DataFrame
     trades: pd.DataFrame
     replay_lineage: ReplayLineageReadEnvelope | None = None
-    portfolio_result_artifact: RecommendationPortfolioResultArtifactV1 | None = None
+    portfolio_result_artifact: (
+        RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | None
+    ) = None
 
 
 class _ArtifactReadRound:
@@ -97,10 +105,12 @@ class _ArtifactReadRound:
         if self.check_cancel is not None and self.check_cancel():
             raise ResearchRunIntegrityError("read_cancelled")
 
-    def read(self, path: Path, expected_hash: str) -> bytes:
+    def read(self, path: Path, expected_hash: str, *, hard_limit_bytes: int | None = None) -> bytes:
         self.cancelled()
         try:
             before = self.stamp(path.stat())
+            if hard_limit_bytes is not None and before[0] > hard_limit_bytes:
+                raise ResearchRunIntegrityError("artifact_contract_byte_limit_exceeded:" + str(path))
             if path in self.sources and self.sources[path] != before:
                 raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
             if self.max_artifact_bytes is not None and before[0] > self.max_artifact_bytes:
@@ -316,6 +326,7 @@ class ResearchRunService:
         if portfolio_result is not None:
             artifact = self._encode_portfolio_result(
                 portfolio_result,
+                metadata=metadata,
                 registry_run_id=metadata.run_id,
                 portfolio_parent_id=self._portfolio_parent_id(portfolio_result),
                 equity_parquet_sha256=equity_hash,
@@ -326,8 +337,10 @@ class ResearchRunService:
             )
             self._fail_if_requested(fail_at, "after_portfolio_result_temp_write")
             try:
-                decoded_temp = decode_portfolio_result_artifact(
-                    paths["portfolio_result_temp"].read_bytes()
+                decoded_temp = self._decode_portfolio_result(
+                    paths["portfolio_result_temp"].read_bytes(),
+                    schema_version=artifact.schema_version,
+                    schema_revision=artifact.schema_revision,
                 )
             except (OSError, PortfolioResultArtifactCodecError, TypeError, ValueError) as exc:
                 raise ResearchRunIntegrityError(
@@ -490,6 +503,15 @@ class ResearchRunService:
                 "portfolio result DTO equity/trades 與 Registry Parquet inputs 不一致"
             )
         self._portfolio_parent_id(result)
+        if result.period_precision_capture is None and (
+            result.period_precision_observations
+            or result.period_precision_capture_status in {"captured_unqualified", "partial"}
+        ):
+            raise ResearchRunIntegrityError(
+                "精確 observation 缺少 producer capture descriptor，不得退回 V1 保存"
+            )
+        if result.period_precision_capture is not None:
+            self._validate_precision_capture_metadata(metadata, result.period_precision_capture)
         manifest = dict(metadata.data_manifest)
         manifest[self.PORTFOLIO_RESULT_REQUIRED_MARKER] = True
         marked = replace(metadata, data_manifest=manifest)
@@ -499,6 +521,29 @@ class ResearchRunService:
             marked,
             payload_hash=self._recommendation_portfolio_payload_hash(marked),
         )
+
+    @staticmethod
+    def _validate_precision_capture_metadata(
+        metadata: ResearchRunMetadataDTO, capture: RecommendationPortfolioPeriodPrecisionCaptureV2,
+    ) -> None:
+        if type(capture) is not RecommendationPortfolioPeriodPrecisionCaptureV2:
+            raise ResearchRunIntegrityError("precision capture 必須是 exact producer V2 DTO")
+        for name, expected in (
+            ("start_date", capture.requested_start_date), ("end_date", capture.requested_end_date),
+        ):
+            declared = getattr(metadata, name)
+            if declared != expected:
+                raise ResearchRunIntegrityError("precision capture 與 Registry requested 日期不一致")
+        # 新 V2 必須明示初始資金；用 tuple 建構 Decimal，不受 ambient context 捨入。
+        if type(metadata.capital_cents) is not int or metadata.capital_cents <= 0:
+            raise ResearchRunIntegrityError("Registry capital_cents 必須是明示正 exact int")
+        digits = tuple(int(digit) for digit in str(metadata.capital_cents))
+        declared_capital = Decimal((0, digits, -2))
+        if Decimal(capture.initial_capital_decimal) != declared_capital:
+            raise ResearchRunIntegrityError("precision capture initial capital 與 Registry cents 不一致")
+        execution = f"{capture.execution_contract_id}.{capture.execution_contract_version}"
+        if metadata.execution_contract != execution:
+            raise ResearchRunIntegrityError("precision capture execution contract 與 Registry 不一致")
 
     @staticmethod
     def _validate_portfolio_lineage_status(
@@ -540,12 +585,23 @@ class ResearchRunService:
         self,
         result: RecommendationPortfolioBacktestResultDTO,
         *,
+        metadata: ResearchRunMetadataDTO,
         registry_run_id: str,
         portfolio_parent_id: str,
         equity_parquet_sha256: str,
         trades_parquet_sha256: str,
-    ) -> RecommendationPortfolioResultArtifactV1:
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
         try:
+            if result.period_precision_capture is not None:
+                return encode_portfolio_result_artifact_v2(
+                    result,
+                    metadata_strategy_id=(None if metadata.strategy_id == "" else metadata.strategy_id),
+                    metadata_strategy_version=(None if metadata.strategy_version == "" else metadata.strategy_version),
+                    registry_run_id=registry_run_id,
+                    portfolio_parent_id=portfolio_parent_id,
+                    equity_parquet_sha256=equity_parquet_sha256,
+                    trades_parquet_sha256=trades_parquet_sha256,
+                )
             return encode_portfolio_result_artifact(
                 result,
                 registry_run_id=registry_run_id,
@@ -558,10 +614,21 @@ class ResearchRunService:
                 "portfolio result sidecar contract 無效"
             ) from exc
 
+    @staticmethod
+    def _decode_portfolio_result(
+        raw_payload: bytes, *, schema_version: str, schema_revision: int,
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
+        # 明確版本路由；V1 decoder 不忽略 V2 欄位，也不嘗試降格解碼。
+        if (schema_version, schema_revision) == ("recommendation-portfolio-result.v1", 1):
+            return decode_portfolio_result_artifact(raw_payload)
+        if (schema_version, schema_revision) == ("recommendation-portfolio-result.v2", 2):
+            return decode_portfolio_result_artifact_v2(raw_payload)
+        raise PortfolioResultArtifactCodecError("portfolio result schema/version 配對不支援")
+
     def _metadata_with_portfolio_descriptor(
         self,
         metadata: ResearchRunMetadataDTO,
-        artifact: RecommendationPortfolioResultArtifactV1,
+        artifact: RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2,
         paths: dict[str, Path],
     ) -> ResearchRunMetadataDTO:
         if metadata.run_type != "recommendation_portfolio":
@@ -607,11 +674,10 @@ class ResearchRunService:
                 "portfolio result manifest marker/descriptor 無效"
             )
         if (
-            descriptor.get("schema_version")
-            != ResearchRunRepository.PORTFOLIO_RESULT_SCHEMA_VERSION
+            type(descriptor.get("schema_version")) is not str
             or type(descriptor.get("schema_revision")) is not int
-            or descriptor.get("schema_revision")
-            != ResearchRunRepository.PORTFOLIO_RESULT_SCHEMA_REVISION
+            or (descriptor.get("schema_version"), descriptor.get("schema_revision"))
+            not in ResearchRunRepository.PORTFOLIO_RESULT_SUPPORTED_SCHEMAS
         ):
             raise ResearchRunIntegrityError(
                 "portfolio result descriptor schema 不支援"
@@ -677,7 +743,7 @@ class ResearchRunService:
         *,
         expected_path: Path,
         reading: _ArtifactReadRound | None = None,
-    ) -> RecommendationPortfolioResultArtifactV1:
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
         if path != expected_path:
             raise ResearchRunIntegrityError(
                 "portfolio result sidecar path 不符合預期"
@@ -689,17 +755,28 @@ class ResearchRunService:
         paths = self._paths_for(metadata.run_id)
         descriptor = self._validate_portfolio_result_descriptor(metadata, paths)
         try:
-            raw_payload = (path.read_bytes() if reading is None else
-                           reading.read(path, descriptor["raw_payload_sha256"]))
+            if descriptor["schema_version"] == "recommendation-portfolio-result.v2":
+                bounded_read = reading or _ArtifactReadRound(None, None, None)
+                raw_payload = bounded_read.read(
+                    path, descriptor["raw_payload_sha256"], hard_limit_bytes=16 * 1024 * 1024
+                )
+            else:
+                raw_payload = (path.read_bytes() if reading is None else
+                               reading.read(path, descriptor["raw_payload_sha256"]))
             if reading is not None:
                 reading.cancelled()
-            artifact = decode_portfolio_result_artifact(raw_payload)
+            artifact = self._decode_portfolio_result(
+                raw_payload, schema_version=descriptor["schema_version"],
+                schema_revision=descriptor["schema_revision"],
+            )
         except (OSError, PortfolioResultArtifactCodecError, TypeError, ValueError) as exc:
             raise ResearchRunIntegrityError(
                 "portfolio result sidecar bytes 無法驗證"
             ) from exc
         if (
-            artifact.registry_run_id != descriptor["registry_run_id"]
+            artifact.schema_version != descriptor["schema_version"]
+            or artifact.schema_revision != descriptor["schema_revision"]
+            or artifact.registry_run_id != descriptor["registry_run_id"]
             or artifact.portfolio_parent_id != descriptor["portfolio_parent_id"]
             or artifact.raw_payload_sha256 != descriptor["raw_payload_sha256"]
             or artifact.payload_hash != descriptor["payload_hash"]
@@ -709,6 +786,14 @@ class ResearchRunService:
             raise ResearchRunIntegrityError(
                 "portfolio result sidecar bytes 與 Registry descriptor 不一致"
             )
+        if type(artifact) is RecommendationPortfolioResultArtifactV2 and (
+            artifact.metadata_strategy_id != (None if metadata.strategy_id == "" else metadata.strategy_id)
+            or artifact.metadata_strategy_version
+            != (None if metadata.strategy_version == "" else metadata.strategy_version)
+        ):
+            raise ResearchRunIntegrityError("precision V2 strategy identity 與 Registry metadata 不一致")
+        if type(artifact) is RecommendationPortfolioResultArtifactV2:
+            self._validate_precision_capture_metadata(metadata, artifact.period_precision_capture)
         return artifact
 
     def _validate_portfolio_result_file(
@@ -717,7 +802,7 @@ class ResearchRunService:
         path: Path,
         *,
         expected_path: Path,
-    ) -> RecommendationPortfolioResultArtifactV1:
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
         return self._read_portfolio_result_file(
             metadata, path, expected_path=expected_path
         )
@@ -750,6 +835,7 @@ class ResearchRunService:
         paths = self._paths_for(run_id)
         artifact = self._encode_portfolio_result(
             result,
+            metadata=base_metadata,
             registry_run_id=run_id,
             portfolio_parent_id=self._portfolio_parent_id(result),
             equity_parquet_sha256=existing.equity_parquet_hash,
@@ -1168,7 +1254,9 @@ class ResearchRunService:
 
             sidecar_temp = paths["portfolio_result_temp"]
             sidecar_final = paths["portfolio_result_final"]
-            sidecar_artifacts: list[RecommendationPortfolioResultArtifactV1] = []
+            sidecar_artifacts: list[
+                RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2
+            ] = []
             if sidecar_temp.exists():
                 sidecar_artifacts.append(
                     self._read_portfolio_result_file(

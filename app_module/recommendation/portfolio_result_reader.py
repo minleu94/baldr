@@ -23,6 +23,9 @@ from app_module.recommendation_portfolio_dtos import (
 from app_module.recommendation_portfolio_result_artifact import (
     RecommendationPortfolioResultArtifactV1,
 )
+from app_module.recommendation_portfolio_result_artifact_v2 import (
+    RecommendationPortfolioResultArtifactV2,
+)
 from app_module.research_run_service import ResearchRunData, ResearchRunService
 
 
@@ -67,7 +70,14 @@ class RecommendationPortfolioResultReader:
         self._research_run_service = research_run_service
         self._execution_persistence = execution_persistence
 
-    def read(self, registry_run_id: str) -> PortfolioResultReadback:
+    def read(
+        self,
+        registry_run_id: str,
+        *,
+        expected_metadata_sha256: str | None = None,
+        max_artifact_bytes: int | None = None,
+        max_total_bytes: int | None = None,
+    ) -> PortfolioResultReadback:
         """從已驗證的 Registry envelope 組回 DTO，舊格式明示 unavailable。"""
 
         if (
@@ -78,14 +88,36 @@ class RecommendationPortfolioResultReader:
             raise RecommendationPortfolioResultReadbackError(
                 "registry_run_id 必須是非空白且無首尾空白的字串"
             )
+        if expected_metadata_sha256 is not None and (
+            type(expected_metadata_sha256) is not str
+            or len(expected_metadata_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in expected_metadata_sha256)
+        ):
+            raise RecommendationPortfolioResultReadbackError("外部 metadata SHA 必須是 canonical 64hex")
         try:
-            loaded = self._research_run_service.load_run_data(registry_run_id)
+            if max_artifact_bytes is None and max_total_bytes is None:
+                loaded = self._research_run_service.load_run_data(registry_run_id)
+            else:
+                loaded = self._research_run_service.load_run_data(
+                    registry_run_id, max_artifact_bytes=max_artifact_bytes,
+                    max_total_bytes=max_total_bytes,
+                )
         except Exception as exc:
             raise RecommendationPortfolioResultReadbackError(
                 "Research Run 已保存資料未通過完整性讀取"
             ) from exc
         try:
-            return self._read_verified_data(registry_run_id, loaded)
+            if expected_metadata_sha256 is not None:
+                from app_module.saved_strategy_rule_card import metadata_sha256
+
+                if metadata_sha256(loaded.metadata) != expected_metadata_sha256:
+                    raise RecommendationPortfolioResultReadbackError("所選 metadata 與 exact reader 來源不符")
+            result = self._read_verified_data(registry_run_id, loaded)
+            if expected_metadata_sha256 is not None:
+                after = self._research_run_service.repository.get_metadata(registry_run_id)
+                if after is None or metadata_sha256(after) != expected_metadata_sha256:
+                    raise RecommendationPortfolioResultReadbackError("exact 讀取期間 metadata 已變更")
+            return result
         except RecommendationPortfolioResultReadbackError:
             raise
         except Exception as exc:
@@ -128,7 +160,9 @@ class RecommendationPortfolioResultReader:
             )
 
         artifact = loaded.portfolio_result_artifact
-        if type(artifact) is not RecommendationPortfolioResultArtifactV1:
+        if type(artifact) not in (
+            RecommendationPortfolioResultArtifactV1, RecommendationPortfolioResultArtifactV2
+        ) or artifact is None:
             raise RecommendationPortfolioResultReadbackError(
                 "marked Registry run 缺少已驗證 portfolio result envelope"
             )
@@ -227,10 +261,12 @@ class RecommendationPortfolioResultReader:
     def _validate_artifact_binding(
         loaded: ResearchRunData,
         descriptor: dict[object, object],
-        artifact: RecommendationPortfolioResultArtifactV1,
+        artifact: RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2,
     ) -> None:
         metadata = loaded.metadata
         expected = {
+            "schema_version": artifact.schema_version,
+            "schema_revision": artifact.schema_revision,
             "registry_run_id": metadata.run_id,
             "portfolio_parent_id": artifact.portfolio_parent_id,
             "raw_payload_sha256": artifact.raw_payload_sha256,

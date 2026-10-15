@@ -18,6 +18,10 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 
 操作及排錯以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準；執行與 Registry 的歷史驗收細節見 [TASK-04](../09_archive/TASK_LOOP_04_HANDOFF.md)／[TASK-05](../09_archive/TASK_LOOP_05_HANDOFF.md)，跨卡整合與仍未完成的外部 Gate 見 [TASK-08](../06_qa/TASK_LOOP_08_HANDOFF.md)。離線研究不等於真實 fills、有效投資證據或 V4 closeout。
 
+### 2026-10-14 Research Lab Paper 保存快照檢視契約
+
+Paper 保存快照查找可選擇外部 artifacts root；缺少或無效的設定只停用 Paper 查找，不應阻斷其他 Research Lab 功能。版本來源沿用 Research Lab 的策略版本選取，不自動改選最新版本；查找仍須明示策略、版本、帳戶命名空間及含時區截止時間。結果最多列出 200 筆候選，截斷時須明示；使用者選取一筆保存快照後，才讀回對應卡片。此路徑唯讀，不自動選最新項目、不建立或更新保存資料。清單候選本身尚未核對；即使 exact 讀回成功，也不代表底層來源可得性或績效資格已驗證。工作區關閉時合作式取消未完成查找並拒收過期回覆。
+
 ## 已實作功能（優先級 1-4）
 
 ### 參數與評分治理
@@ -548,5 +552,17 @@ Legacy 已保存的推薦組合 research run 可透過 Backtest「推薦組合�
 
 ## 更新記錄
 
+- 2026-10-14：一般單股及批次回測的 Registry 保存入口保留 producer 已有的日期欄或 DatetimeIndex，避免 `index=False` 丟失曲線日期；拒絕缺日、重複、亂序及模糊／epoch 日期，原金額與圖形資料不改。較早已保存且缺日期的曲線不補造；本修正不提供版本化損益、幣別／成本資格或完整 P08 接受。
+
 - 2026-10-10：核對原優先級 8 待辦與市場限制；成本模型可切換仍列為待另行核實，操作與完整 Gate 以 Application Manual 為準。
 - 2026-09-06：同步 next-session-open.v2、取消／末端持倉、Registry 版本與顯式恢復；校正 legacy 強制平倉不等於真實 fills。
+
+### P08 精確觀察的版本化 Registry 附件（2026-10-14）
+
+新的單股 next-open 結果由原 Decimal loop 產生 frozen capture，保留初始本金、requested period、實際 observation 日期、完成／取消狀態、execution及既有具名 cost policy。完整走完 producer 不代表官方日曆完整；每日實現／未實現盈虧仍未推算。
+
+`recommendation-portfolio-result.v2` 包含原 V1 canonical document、capture、原 status/reason、明示策略身份與可選 period precision。Registry 必須明示且精確比對本金 cents、requested 日期與 execution；附件和原 Parquet bytes 在同一 staging／CAS 綁定，create-only發布、reconcile、同id重送及strict public reader均沿原契約。V1 codec與DTO序列化不變；無capture仍讀V1，有觀察卻無capture拒絕保存。V2 full JSON最多16MiB，讀取受aggregate／cancel／來源stamp守衛約束。
+
+策略版本或具名成本缺件仍保存capture及具體缺鍵，但precision為None；可建立的precision也明示currency/source/calendar及內容hash缺件，money_comparable及三項資格均false。它不是供應者簽章。具體QA見[本輪QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)；正常Main與新PID只驗合成已保存附件讀回，完整期間、兩策略同股損益、UI保存／列表點擊、Native／EXE仍待。
+
+超大整手股數的成本檢查以整數有界搜尋取代逐手遞減；每次仍呼原成本政策／最低費用／有效期限／Decimal捨入，先保留最大及相鄰一手原判定順序，取消不發completed結果。此項不改原P01效能FAIL或撮合契約。

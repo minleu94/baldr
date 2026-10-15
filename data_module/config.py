@@ -7,6 +7,68 @@ import os
 import argparse
 import sys
 import re
+import stat
+
+
+def _paper_path_lstat(path: Path):
+    """以 no-follow lstat 檢查單一路徑元件；提供可替換的窄測試接點。"""
+
+    return os.lstat(path)
+
+
+def _paper_contract_artifacts_root_path_error(
+    value: str | Path | None,
+    *,
+    require_existing_directory: bool = False,
+) -> str | None:
+    """檢查 Paper 根的原始絕對路徑，不追蹤符號連結或 Windows reparse point。"""
+
+    name = "PAPER_CONTRACT_ARTIFACTS_ROOT"
+    if value is None:
+        return f"未提供 {name}；Paper 快照查找已停用。"
+    if isinstance(value, str):
+        raw = value.strip()
+    else:
+        raw = str(value)
+    if not raw:
+        return f"{name} 未設定或為空；Paper 快照查找已停用。"
+    if "\x00" in raw:
+        return f"{name} 含 NUL 字元；Paper 快照查找已停用。"
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        return f"{name} 必須是明示絕對路徑；Paper 快照查找已停用。"
+
+    parts = candidate.parts
+    if ".." in parts:
+        return f"{name} 路徑不得包含 '..'；Paper 快照查找已停用。"
+    current = Path(parts[0])
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    for index, part in enumerate(parts):
+        if index:
+            current = current / part
+        try:
+            info = _paper_path_lstat(current)
+        except FileNotFoundError:
+            if require_existing_directory:
+                return f"{name} 必須是已存在的一般資料目錄；Paper 快照查找已停用。"
+            return None
+        except OSError:
+            return f"{name} 無法安全檢查路徑；Paper 快照查找已停用。"
+        attributes = getattr(info, "st_file_attributes", 0)
+        if stat.S_ISLNK(info.st_mode) or attributes & reparse_attribute:
+            return (
+                f"{name} 不得經過符號連結或 Windows reparse point；"
+                "Paper 快照查找已停用。"
+            )
+        if index < len(parts) - 1 and not stat.S_ISDIR(info.st_mode):
+            return f"{name} 路徑祖先必須是一般資料目錄；Paper 快照查找已停用。"
+        if (
+            require_existing_directory
+            and index == len(parts) - 1
+            and not stat.S_ISDIR(info.st_mode)
+        ):
+            return f"{name} 必須是已存在的一般資料目錄；Paper 快照查找已停用。"
+    return None
 
 
 def _optional_env_path(name: str) -> Path | None:
@@ -52,6 +114,27 @@ def _personal_h20_sqlite_read_root_from_environment() -> Path | None:
     if not value:
         raise ValueError("PERSONAL_H20_SQLITE_READ_ROOT 必須是非空絕對路徑")
     return Path(value)
+
+
+def _paper_contract_artifacts_root_from_environment() -> Path | None:
+    """Paper 選用根無效時停用 picker，不中止其他 Main 設定。"""
+
+    name = "PAPER_CONTRACT_ARTIFACTS_ROOT"
+    value = os.environ.get(name, "").strip()
+    if _paper_contract_artifacts_root_path_error(value) is not None:
+        return None
+    return Path(value)
+
+
+def _paper_contract_artifacts_root_error_from_environment() -> str | None:
+    """回報選用 Paper 根的具名停用原因。"""
+
+    blocker = os.environ.get("_BALDR_PAPER_CONTRACT_ARTIFACTS_ROOT_BLOCKER")
+    if blocker:
+        return blocker
+    return _paper_contract_artifacts_root_path_error(
+        os.environ.get("PAPER_CONTRACT_ARTIFACTS_ROOT")
+    )
 
 
 @dataclass
@@ -137,6 +220,15 @@ class TWStockConfig:
     personal_h20_sqlite_read_root: Path | None = field(
         default_factory=_personal_h20_sqlite_read_root_from_environment,
         kw_only=True,
+    )
+    # Paper exact-read 的外部合約根；未設定時不掃描、不建立、不回退。
+    paper_contract_artifacts_root: Path | None = field(
+        default_factory=_paper_contract_artifacts_root_from_environment,
+        kw_only=True,
+    )
+    paper_contract_artifacts_root_error: str | None = field(
+        default_factory=_paper_contract_artifacts_root_error_from_environment,
+        init=False,
     )
 
     # PIT sector membership 是 opt-in 的唯讀輸入；未設定時不做目錄掃描。
@@ -225,6 +317,15 @@ class TWStockConfig:
                 raise ValueError("PERSONAL_H20_SQLITE_READ_ROOT 必須是明示絕對路徑")
             # 來源隔離與檔案系統安全由實際 pinned source session 驗證；設定層不推測親緣。
             self.personal_h20_sqlite_read_root = h20_read_root
+        if self.paper_contract_artifacts_root is not None:
+            contract_root = Path(self.paper_contract_artifacts_root)
+            blocker = _paper_contract_artifacts_root_path_error(contract_root)
+            if blocker is not None:
+                self.paper_contract_artifacts_root = None
+                self.paper_contract_artifacts_root_error = blocker
+            else:
+                self.paper_contract_artifacts_root = contract_root
+                self.paper_contract_artifacts_root_error = None
         if self.personal_model_policy_path is not None:
             requested_policy = Path(self.personal_model_policy_path).expanduser()
             if not requested_policy.is_absolute():

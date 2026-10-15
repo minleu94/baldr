@@ -14,6 +14,9 @@ if TYPE_CHECKING:
     from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
         DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
     )
+    from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+        DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+    )
 from datetime import date, datetime
 from contextlib import closing
 import sqlite3
@@ -71,6 +74,16 @@ from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 
     DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
     DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1Error,
 )
+from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V2,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2,
+    DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2,
+)
+from app_module.daily_market_technical_official_disposition_revenue_archived_bookmark_v3 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SCHEMA_V3,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SOURCE_V3,
+    DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3,
+)
 from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_BOOKMARK_V1_SCHEMA,
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
@@ -91,6 +104,12 @@ COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1 = (
 COMPOSITE_VIEW_BOOKMARK_SOURCE = (
     "technical_official_disposition_composite_research_bookmark"
 )
+COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2 = (
+    "daily-market-technical-official-disposition-composite-view-state.v2"
+)
+COMPOSITE_VIEW_BOOKMARK_SOURCE_V2 = (
+    "technical_official_disposition_composite_research_bookmark_v2"
+)
 
 
 _RESEARCH_BOOKMARK_SOURCES = frozenset(
@@ -99,15 +118,39 @@ _RESEARCH_BOOKMARK_SOURCES = frozenset(
      DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
      DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
      DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
+     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2,
+     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SOURCE_V3,
      PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE, TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE,
-     COMPOSITE_VIEW_BOOKMARK_SOURCE}
+     COMPOSITE_VIEW_BOOKMARK_SOURCE, COMPOSITE_VIEW_BOOKMARK_SOURCE_V2}
 )
 
 
 def decode_daily_market_research_bookmark(
     value: Any,
-) -> "DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1":
+) -> "DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2":
     """依固定 schema 分派；複合收藏保留專用 typed reopen 路由。"""
+    if isinstance(value, Mapping) and value.get("schema_version") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SCHEMA_V3:
+        try:
+            return DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3.from_dict(value)
+        except (TypeError, ValueError) as exc:
+            code = str(getattr(exc, "code", "revenue_archived_bookmark_v3_invalid") or "revenue_archived_bookmark_v3_invalid")
+            raise DailyMarketResearchBookmarkError(code, str(exc)) from exc
+    if isinstance(value, Mapping) and value.get("schema_version") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V2:
+        try:
+            return DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2.from_dict(value)
+        except (TypeError, ValueError) as exc:
+            raise DailyMarketResearchBookmarkError(str(getattr(exc, "code", "revenue_bookmark_v2_invalid")), str(exc)) from exc
+    if isinstance(value, Mapping) and value.get("schema_version") == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+        )
+        try:
+            return DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2.from_dict(
+                dict(value)
+            )
+        except (TypeError, ValueError) as exc:
+            code = str(getattr(exc, "code", "composite_bookmark_v2_invalid") or "composite_bookmark_v2_invalid")
+            raise DailyMarketResearchBookmarkError(code, str(exc)) from exc
     if isinstance(value, Mapping) and value.get("schema_version") == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
         from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
             DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
@@ -157,6 +200,8 @@ def decode_daily_market_research_bookmark(
 def _bookmark_payload_id(value: Any) -> Any:
     if not isinstance(value, dict):
         return None
+    if value.get("schema_version") == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+        return value.get("view_bookmark_identity_sha256")
     if value.get("schema_version") == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
         return value.get("envelope_identity_sha256")
     if "bookmark_identity_sha256" in value:
@@ -165,8 +210,14 @@ def _bookmark_payload_id(value: Any) -> Any:
 
 
 def _bookmark_source(bookmark: Any) -> str:
+    if getattr(bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+        return COMPOSITE_VIEW_BOOKMARK_SOURCE_V2 if getattr(bookmark, "source", None) == COMPOSITE_VIEW_BOOKMARK_SOURCE_V2 else ""
     if getattr(bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
         return COMPOSITE_VIEW_BOOKMARK_SOURCE if getattr(bookmark, "source", None) == COMPOSITE_VIEW_BOOKMARK_SOURCE else ""
+    if type(bookmark) is DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2:
+        return DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2
+    if type(bookmark) is DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3:
+        return DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_ARCHIVED_BOOKMARK_SOURCE_V3
     if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1):
         return DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
     if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionMaBookmarkV1):
@@ -186,12 +237,17 @@ def _bookmark_source(bookmark: Any) -> str:
 
 def _bookmark_item_name(bookmark: Any) -> str:
     """沒有獨立名稱的 typed 收藏以股票代碼作清單標籤。"""
+    if getattr(bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+        stock_code = getattr(bookmark, "stock_code", None)
+        if type(stock_code) is str and stock_code:
+            return stock_code
+        raise ValueError("V2 複合收藏缺少精確股票代碼")
     if getattr(bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
         stock_code = getattr(bookmark, "stock_code", None)
         if type(stock_code) is str and stock_code:
             return stock_code
         raise ValueError("複合收藏缺少精確股票代碼")
-    if isinstance(bookmark, (DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
+    if isinstance(bookmark, (DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
         return bookmark.stock_code
     return str(bookmark.stock_name)
 
@@ -262,11 +318,17 @@ class WatchlistItem:
                 else None
             )
             source = (
-                COMPOSITE_VIEW_BOOKMARK_SOURCE
+                COMPOSITE_VIEW_BOOKMARK_SOURCE_V2
+                if bookmark_schema == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2
+                or bookmark_source == COMPOSITE_VIEW_BOOKMARK_SOURCE_V2
+                else COMPOSITE_VIEW_BOOKMARK_SOURCE
                 if bookmark_schema == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1
                 or bookmark_source == COMPOSITE_VIEW_BOOKMARK_SOURCE
                 else ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
                 if bookmark_schema == "daily-market-research-bookmark.v2"
+                else DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2
+                if bookmark_schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V2
+                or bookmark_source == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE_V2
                 else DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
                 if isinstance(bookmark_schema, str)
                 and bookmark_schema.startswith("daily-market-technical-official-disposition-revenue-bookmark.")
@@ -833,15 +895,23 @@ class WatchlistService:
                     )
                 except DailyMarketResearchBookmarkError as exc:
                     raise ValueError("研究收藏 payload 無法驗證；未升級 JSON") from exc
+                bookmark_storage_identity = (
+                    getattr(bookmark, "view_bookmark_identity_sha256", None)
+                    if getattr(bookmark, "schema_version", None)
+                    == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2
+                    else getattr(bookmark, "bookmark_id", None)
+                )
                 if (
                     item.get("source") != _bookmark_source(bookmark)
-                    or bookmark.bookmark_id != item.get("source_id")
+                    or bookmark_storage_identity != item.get("source_id")
                     or bookmark.stock_code != code
                     or _bookmark_item_name(bookmark) != item.get("stock_name")
-                    or bookmark.bookmark_id in bookmark_ids
+                    or bookmark_storage_identity in bookmark_ids
                 ):
                     raise ValueError("研究收藏身份重複或與項目不符；未升級 JSON")
-                bookmark_ids.add(bookmark.bookmark_id)
+                if not isinstance(bookmark_storage_identity, str):
+                    raise ValueError("研究收藏 storage identity 缺失；未升級 JSON")
+                bookmark_ids.add(bookmark_storage_identity)
                 continue
             if code in non_bookmark_codes:
                 raise ValueError("候選池存在重複股票身份")
@@ -1754,7 +1824,7 @@ class WatchlistService:
 
     def add_research_bookmark(
         self,
-        bookmark: "DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | Dict[str, Any]",
+        bookmark: "DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2 | Dict[str, Any]",
         watchlist_id: str = "default",
         *,
         revision_id: str | None = None,
@@ -1763,7 +1833,16 @@ class WatchlistService:
         """保存一筆不可變研究收藏，不按股票代號去重。"""
 
         composite_schema = getattr(bookmark, "schema_version", None)
-        if composite_schema == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
+        if composite_schema == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+            from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+                DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+            )
+            if type(bookmark) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+                raise DailyMarketResearchBookmarkError(
+                    "composite_bookmark_v2_type_invalid", "V2 複合收藏必須使用正式 typed envelope。"
+                )
+            bookmark_payload: Any = bookmark.to_dict()
+        elif composite_schema == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
             from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
                 DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
             )
@@ -1771,13 +1850,22 @@ class WatchlistService:
                 raise DailyMarketResearchBookmarkError(
                     "composite_bookmark_type_invalid", "複合收藏必須使用正式 typed envelope。"
                 )
-            bookmark_payload: Any = bookmark.to_dict()
-        elif isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
+            bookmark_payload = bookmark.to_dict()
+        elif isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
             bookmark_payload = bookmark.to_dict()
         else:
             bookmark_payload = bookmark
         verified_bookmark = decode_daily_market_research_bookmark(bookmark_payload)
-        if getattr(verified_bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
+        if getattr(verified_bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+            from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+                DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+            )
+            if type(verified_bookmark) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+                raise DailyMarketResearchBookmarkError(
+                    "composite_bookmark_v2_type_invalid", "V2 複合收藏解碼結果型別不符。"
+                )
+            storage_identity = verified_bookmark.view_bookmark_identity_sha256
+        elif getattr(verified_bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
             from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
                 DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
             )
@@ -1786,7 +1874,7 @@ class WatchlistService:
                     "composite_bookmark_type_invalid", "複合收藏解碼結果型別不符。"
                 )
             storage_identity = verified_bookmark.envelope_identity_sha256
-        elif isinstance(verified_bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
+        elif isinstance(verified_bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
             storage_identity = verified_bookmark.bookmark_id
         else:
             raise DailyMarketResearchBookmarkError(
@@ -1874,6 +1962,8 @@ class WatchlistService:
             message=(
                 "已保存個人 H20 研究收藏。"
                 if isinstance(verified_bookmark, PersonalH20ResearchBookmark)
+                else "已保存封存月營收研究收藏。"
+                if type(verified_bookmark) is DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3
                 else "已保存每日市場研究收藏。"
             ),
             bookmark_id=storage_identity,
@@ -1898,6 +1988,30 @@ class WatchlistService:
                 "composite_bookmark_type_invalid", "複合收藏必須使用 typed envelope。"
             )
         checked = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1.from_json(
+            envelope.to_json()
+        )
+        return self.add_research_bookmark(
+            checked, watchlist_id, revision_id=revision_id,
+            continuity_event_id=continuity_event_id,
+        )
+
+    def add_composite_research_bookmark_v2(
+        self,
+        envelope: "DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2",
+        watchlist_id: str = "default",
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
+    ) -> DailyMarketResearchBookmarkMutationResult:
+        """沿既有 watchlist writer 保存已驗證的 V2 複合 UI 狀態。"""
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+        )
+        if type(envelope) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+            raise DailyMarketResearchBookmarkError(
+                "composite_bookmark_v2_type_invalid", "V2 複合收藏必須使用 typed envelope。"
+            )
+        checked = DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2.from_json(
             envelope.to_json()
         )
         return self.add_research_bookmark(
@@ -1933,7 +2047,7 @@ class WatchlistService:
         self,
         bookmark_id: str,
         watchlist_id: str = "default",
-    ) -> "DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | None":
+    ) -> "DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1 | DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2 | None":
         """讀取指定收藏身份；符合 ID 但格式錯誤的 payload 會拒絕讀取。"""
 
         identity = str(bookmark_id or "").strip()
@@ -1986,6 +2100,22 @@ class WatchlistService:
         if type(bookmark) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
             raise DailyMarketResearchBookmarkError(
                 "composite_bookmark_required", "指定身份不是官方市場條件研究收藏。"
+            )
+        return bookmark
+
+    def read_composite_research_bookmark_v2(
+        self, view_bookmark_identity_sha256: str, watchlist_id: str = "default"
+    ) -> "DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2 | None":
+        """依精確 V2 envelope identity 讀回 typed 複合收藏。"""
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+        )
+        bookmark = self.get_research_bookmark(view_bookmark_identity_sha256, watchlist_id)
+        if bookmark is None:
+            return None
+        if type(bookmark) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+            raise DailyMarketResearchBookmarkError(
+                "composite_bookmark_v2_required", "指定身份不是 V2 官方市場條件複合研究收藏。"
             )
         return bookmark
 
@@ -2080,6 +2210,18 @@ class WatchlistService:
         """以 watchlist 來源重建 pinned context，不建立 Advice 身份。"""
 
         bookmark = self.get_research_bookmark(bookmark_id, watchlist_id)
+        if getattr(bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2:
+            from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+                DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+            )
+            if type(bookmark) is DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+                raise DailyMarketResearchBookmarkError(
+                    "composite_bookmark_v2_typed_reopen_required",
+                    "V2 官方市場條件複合收藏須沿專用 view/session 路徑重開，不轉成一般 context。",
+                )
+            raise DailyMarketResearchBookmarkError(
+                "composite_bookmark_v2_type_invalid", "V2 複合收藏解碼結果型別不符。"
+            )
         if getattr(bookmark, "schema_version", None) == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V1:
             from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
                 DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
@@ -2092,7 +2234,7 @@ class WatchlistService:
             raise DailyMarketResearchBookmarkError(
                 "composite_bookmark_type_invalid", "複合收藏解碼結果型別不符。"
             )
-        if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1):
+        if isinstance(bookmark, (DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3)):
             raise DailyMarketResearchBookmarkError(
                 "technical_official_revenue_bookmark_typed_reopen_required",
                 "月營收收藏須沿原查詢與固定來源核驗重開，不能轉成一般研究 context。",
@@ -2208,7 +2350,7 @@ class WatchlistService:
                 bookmark_id=identity,
                 watchlist_id=watchlist_id,
             )
-        matches: list[tuple[int, WatchlistItem, Union[DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1, "DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1"]]] = []
+        matches: list[tuple[int, WatchlistItem, Union[DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1, "DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1", "DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2"]]] = []
         for index, item in enumerate(current.items):
             raw = item.research_bookmark
             if not isinstance(raw, dict) or _bookmark_payload_id(raw) != identity:
@@ -2307,8 +2449,14 @@ class WatchlistService:
             )
         bookmark_payload = payload.get("research_bookmark")
         bookmark = decode_daily_market_research_bookmark(bookmark_payload)
+        restored_identity = (
+            getattr(bookmark, "view_bookmark_identity_sha256", None)
+            if getattr(bookmark, "schema_version", None)
+            == COMPOSITE_VIEW_BOOKMARK_ENVELOPE_SCHEMA_V2
+            else getattr(bookmark, "bookmark_id", None)
+        )
         if (
-            bookmark.bookmark_id != token.bookmark_id
+            restored_identity != token.bookmark_id
             or payload.get("source") != _bookmark_source(bookmark)
             or payload.get("source_id") != token.bookmark_id
             or payload.get("stock_code") != bookmark.stock_code

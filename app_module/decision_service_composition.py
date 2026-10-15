@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Callable, Mapping
 
 import pandas as pd
@@ -18,6 +19,7 @@ from app_module.decision_data_providers import (
     stock_screen_fallback_provider,
 )
 from app_module.application_ports import MarketFrameProvider
+from data_module.daily_monthly_revenue_cohort import DailyMonthlyRevenueCohortReader
 from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
@@ -109,8 +111,21 @@ def build_decision_service_composition(
     industry_index_provider: MarketFrameProvider | None = None,
     market_index_provider: MarketFrameProvider | None = None,
     pit_membership_reader: PITSectorMembershipReader | None = None,
+    daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
+    daily_monthly_cohort_reader_factory: Callable[[datetime], DailyMonthlyRevenueCohortReader] | None = None,
 ) -> DecisionServiceComposition:
     """建立共享 mapper、app-side regime provider 與各領域服務。"""
+    if daily_monthly_cohort_reader_factory is not None and (
+        not callable(daily_monthly_cohort_reader_factory)
+        or daily_monthly_cohort_reader is not None
+    ):
+        raise ValueError("daily monthly fixed reader and series factory are mutually exclusive")
+    if daily_monthly_cohort_reader is not None:
+        if not isinstance(daily_monthly_cohort_reader, DailyMonthlyRevenueCohortReader):
+            raise TypeError("daily_monthly_cohort_reader_type_invalid")
+        # 在建立 provider、mapper 或任何服務前重驗整組 pinned batches。
+        daily_monthly_cohort_reader.verify_cohort()
+
     constructors = dict(dependencies or _default_dependencies())
     industry_provider = (
         industry_index_provider
@@ -175,10 +190,19 @@ def build_decision_service_composition(
         build_default_recommendation_input_preparer,
     )
 
+    input_preparer_kwargs: dict[str, Any] = {
+        "pit_membership_reader": active_pit_reader,
+    }
+    if daily_monthly_cohort_reader is not None:
+        input_preparer_kwargs["daily_monthly_cohort_reader"] = (
+            daily_monthly_cohort_reader
+        )
+    if daily_monthly_cohort_reader_factory is not None:
+        input_preparer_kwargs["daily_monthly_cohort_reader_factory"] = daily_monthly_cohort_reader_factory
     recommendation_kwargs["input_preparer"] = (
         build_default_recommendation_input_preparer(
             config,
-            pit_membership_reader=active_pit_reader,
+            **input_preparer_kwargs,
         )
     )
     if active_pit_reader is not None:

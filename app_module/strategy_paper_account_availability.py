@@ -1686,3 +1686,430 @@ __all__ = [
     "read_exact_strategy_paper_account_availability",
     "read_exact_strategy_paper_account_checkpoint",
 ]
+
+# P08a 候選清單只支援尋找 exact reader 的輸入，不是 checkpoint 驗證結果。
+CHECKPOINT_CATALOGUE_SCHEMA = "strategy-paper-account-checkpoint-catalogue.v1"
+_MAX_CHECKPOINT_CATALOGUE_ROWS = 200
+_CHECKPOINT_CATALOGUE_LOOKAHEAD = _MAX_CHECKPOINT_CATALOGUE_ROWS + 1
+_MAX_CHECKPOINT_CATALOGUE_TEXT_BYTES = 512
+_CATALOGUE_TEXT_FIELDS = (
+    "schema_version",
+    "snapshot_id",
+    "operation_id",
+    "portfolio_id",
+    "account_namespace",
+    "binding_sha256",
+    "snapshot_sha256",
+    "base_receipt_sha256",
+    "persisted_at_utc",
+    "available_at_utc",
+    "receipt_sha256",
+)
+_CATALOGUE_NULLABLE_TEXT_FIELDS = frozenset({"persisted_at_utc", "available_at_utc"})
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyPaperAccountCheckpointCandidate:
+    """供呼叫端送入既有 exact reader 的未驗證 identity 與 clock 摘要。"""
+
+    operation_id: str
+    snapshot_id: str
+    observed_schema_version: str
+    observed_portfolio_id: str
+    observed_account_namespace: str
+    observed_binding_sha256: str
+    observed_snapshot_sha256: str
+    observed_base_receipt_sha256: str
+    observed_availability_receipt_sha256: str
+    persisted_at_text: str | None
+    available_at_text: str | None
+    persisted_at: datetime | None
+    available_at: datetime | None
+    row_state: str
+    blockers: tuple[str, ...]
+    exact_reader_required: bool = True
+    checkpoint_verified: bool = False
+    performance_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        _require_text(self.operation_id, "checkpoint_catalogue_operation_id")
+        _require_text(self.snapshot_id, "checkpoint_catalogue_snapshot_id")
+        if self.row_state not in {
+            "candidate_pending_exact_reader",
+            "blocked",
+        }:
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_row_state_invalid"
+            )
+        for field_name in (
+            "observed_schema_version", "observed_portfolio_id",
+            "observed_account_namespace", "observed_binding_sha256",
+            "observed_snapshot_sha256", "observed_base_receipt_sha256",
+            "observed_availability_receipt_sha256",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                raise StrategyPaperAccountAvailabilityError(
+                    f"checkpoint_catalogue_{field_name}_invalid"
+                )
+            if self.row_state == "candidate_pending_exact_reader":
+                _require_text(value, f"checkpoint_catalogue_{field_name}")
+        for field_name in ("persisted_at_text", "available_at_text"):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, str):
+                raise StrategyPaperAccountAvailabilityError(
+                    f"checkpoint_catalogue_{field_name}_invalid"
+                )
+            if value is not None and self.row_state == "candidate_pending_exact_reader":
+                _require_text(value, f"checkpoint_catalogue_{field_name}")
+        if self.row_state == "candidate_pending_exact_reader" and self.blockers:
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_candidate_has_blockers"
+            )
+        if self.row_state == "candidate_pending_exact_reader":
+            if self.observed_schema_version != AVAILABILITY_SCHEMA:
+                raise StrategyPaperAccountAvailabilityError(
+                    "checkpoint_catalogue_candidate_schema_invalid"
+                )
+            for field_name in (
+                "observed_binding_sha256", "observed_snapshot_sha256",
+                "observed_base_receipt_sha256", "observed_availability_receipt_sha256",
+            ):
+                _require_hash(
+                    getattr(self, field_name), f"checkpoint_catalogue_{field_name}"
+                )
+        if self.row_state == "blocked" and not self.blockers:
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_blocked_reason_missing"
+            )
+        if (
+            self.exact_reader_required is not True
+            or self.checkpoint_verified is not False
+            or self.performance_eligible is not False
+        ):
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_qualification_forbidden"
+            )
+        for field_name in ("persisted_at", "available_at"):
+            value = getattr(self, field_name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    field_name,
+                    _parse_aware_utc(value, f"checkpoint_catalogue_{field_name}"),
+                )
+        if self.row_state == "candidate_pending_exact_reader":
+            if self.persisted_at is None or self.available_at is None:
+                raise StrategyPaperAccountAvailabilityError(
+                    "checkpoint_catalogue_candidate_clock_missing"
+                )
+            if self.available_at < self.persisted_at:
+                raise StrategyPaperAccountAvailabilityError(
+                    "checkpoint_catalogue_candidate_clock_order_invalid"
+                )
+
+
+@dataclass(frozen=True, slots=True)
+class StrategyPaperAccountCheckpointCatalogue:
+    """固定 exact query 的有限候選列；不代表 complete history 或績效資格。"""
+
+    schema_version: str
+    strategy_id: str
+    strategy_version_id: str
+    account_namespace: str
+    portfolio_id: str
+    binding_sha256: str
+    decision_cutoff: datetime
+    rows: tuple[StrategyPaperAccountCheckpointCandidate, ...]
+    truncated: bool
+    complete: bool
+    checkpoint_verified: bool = False
+    performance_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        if self.schema_version != CHECKPOINT_CATALOGUE_SCHEMA:
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_schema_invalid"
+            )
+        for field_name in (
+            "strategy_id", "strategy_version_id", "account_namespace", "portfolio_id"
+        ):
+            _require_text(getattr(self, field_name), f"checkpoint_catalogue_{field_name}")
+        _require_hash(self.binding_sha256, "checkpoint_catalogue_binding_sha256")
+        object.__setattr__(
+            self,
+            "decision_cutoff",
+            _parse_aware_utc(self.decision_cutoff, "checkpoint_catalogue_decision_cutoff"),
+        )
+        if len(self.rows) > _MAX_CHECKPOINT_CATALOGUE_ROWS:
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_row_limit_exceeded"
+            )
+        if self.complete is not (not self.truncated):
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_completeness_mismatch"
+            )
+        if self.checkpoint_verified is not False or self.performance_eligible is not False:
+            raise StrategyPaperAccountAvailabilityError(
+                "checkpoint_catalogue_qualification_forbidden"
+            )
+
+
+def _checkpoint_catalogue_read_text(
+    row: sqlite3.Row,
+    field_name: str,
+    *,
+    nullable: bool,
+) -> str | None:
+    storage_type = row[f"_type_{field_name}"]
+    byte_length = row[f"_length_{field_name}"]
+    raw = row[f"_raw_{field_name}"]
+    if nullable and storage_type == "null" and byte_length is None and raw is None:
+        return None
+    if storage_type != "text" or type(byte_length) is not int:
+        raise StrategyPaperAccountAvailabilityError(
+            f"checkpoint_catalogue_sql_type_invalid:{field_name}"
+        )
+    if byte_length > _MAX_CHECKPOINT_CATALOGUE_TEXT_BYTES:
+        raise StrategyPaperAccountAvailabilityError(
+            f"checkpoint_catalogue_text_size_invalid:{field_name}"
+        )
+    if not isinstance(raw, bytes):
+        raise StrategyPaperAccountAvailabilityError(
+            f"checkpoint_catalogue_sql_type_invalid:{field_name}"
+        )
+    if len(raw) != byte_length:
+        raise StrategyPaperAccountAvailabilityError(
+            f"checkpoint_catalogue_text_size_invalid:{field_name}"
+        )
+    try:
+        return raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise StrategyPaperAccountAvailabilityError(
+            f"checkpoint_catalogue_text_utf8_invalid:{field_name}"
+        ) from exc
+
+
+def _checkpoint_catalogue_row(
+    row: sqlite3.Row,
+    *,
+    binding: StrategyPaperAccountBinding,
+    cutoff: datetime,
+    observed_at: datetime,
+) -> StrategyPaperAccountCheckpointCandidate:
+    values = {
+        name: _checkpoint_catalogue_read_text(
+            row,
+            name,
+            nullable=name in _CATALOGUE_NULLABLE_TEXT_FIELDS,
+        )
+        for name in _CATALOGUE_TEXT_FIELDS
+    }
+
+    def required_text(field_name: str) -> str:
+        value = values[field_name]
+        if value is None:
+            raise StrategyPaperAccountAvailabilityError(
+                f"checkpoint_catalogue_sql_type_invalid:{field_name}"
+            )
+        return value
+
+    operation_id = _require_text(
+        values["operation_id"], "checkpoint_catalogue_operation_id"
+    )
+    snapshot_id = _require_text(
+        values["snapshot_id"], "checkpoint_catalogue_snapshot_id"
+    )
+    blockers: list[str] = []
+    if values["schema_version"] != AVAILABILITY_SCHEMA:
+        blockers.append("availability_schema_version_mismatch")
+    for field_name, expected in (
+        ("portfolio_id", binding.portfolio_id),
+        ("account_namespace", binding.account_namespace),
+        ("binding_sha256", binding.binding_sha256),
+    ):
+        if values[field_name] != expected:
+            blockers.append(f"{field_name}_binding_mismatch")
+    for field_name in (
+        "binding_sha256", "snapshot_sha256", "base_receipt_sha256", "receipt_sha256"
+    ):
+        try:
+            _require_hash(values[field_name], f"checkpoint_catalogue_{field_name}")
+        except StrategyPaperAccountAvailabilityError:
+            blockers.append(f"{field_name}_invalid")
+
+    persisted_raw = values["persisted_at_utc"]
+    available_raw = values["available_at_utc"]
+    persisted_at: datetime | None = None
+    available_at: datetime | None = None
+    if persisted_raw is None or available_raw is None:
+        blockers.append("availability_clock_unknown")
+    else:
+        try:
+            persisted_at = _parse_aware_utc(
+                persisted_raw, "checkpoint_catalogue_persisted_clock"
+            )
+            available_at = _parse_aware_utc(
+                available_raw, "checkpoint_catalogue_available_clock"
+            )
+        except StrategyPaperAccountAvailabilityError:
+            blockers.append("availability_clock_invalid_or_timezone_unknown")
+        if persisted_at is not None and available_at is not None:
+            if available_at < persisted_at:
+                blockers.append("availability_clock_order_invalid")
+            if persisted_at > observed_at or available_at > observed_at:
+                blockers.append("availability_clock_in_future")
+            if available_at > cutoff:
+                blockers.append("availability_after_decision_cutoff")
+
+    unique_blockers = tuple(dict.fromkeys(blockers))
+    return StrategyPaperAccountCheckpointCandidate(
+        operation_id=operation_id,
+        snapshot_id=snapshot_id,
+        observed_schema_version=required_text("schema_version"),
+        observed_portfolio_id=required_text("portfolio_id"),
+        observed_account_namespace=required_text("account_namespace"),
+        observed_binding_sha256=required_text("binding_sha256"),
+        observed_snapshot_sha256=required_text("snapshot_sha256"),
+        observed_base_receipt_sha256=required_text("base_receipt_sha256"),
+        observed_availability_receipt_sha256=required_text("receipt_sha256"),
+        persisted_at_text=persisted_raw,
+        available_at_text=available_raw,
+        persisted_at=persisted_at,
+        available_at=available_at,
+        row_state=("blocked" if unique_blockers else "candidate_pending_exact_reader"),
+        blockers=unique_blockers,
+    )
+
+
+def list_strategy_paper_account_checkpoint_candidates(
+    account_service: StrategyPaperAccountService,
+    *,
+    strategy_id: str,
+    strategy_version_id: str,
+    account_namespace: str,
+    decision_cutoff: datetime,
+) -> StrategyPaperAccountCheckpointCatalogue:
+    """列出 exact account 的至多 200 個未驗證 checkpoint 候選與截斷標記。"""
+
+    query_strategy_id = _require_text(strategy_id, "checkpoint_catalogue_strategy_id")
+    query_version_id = _require_text(
+        strategy_version_id, "checkpoint_catalogue_strategy_version_id"
+    )
+    query_namespace = _require_text(
+        account_namespace, "checkpoint_catalogue_account_namespace"
+    )
+    cutoff = _parse_aware_utc(decision_cutoff, "checkpoint_catalogue_decision_cutoff")
+    observed_at = _parse_aware_utc(
+        _utc_now(), "checkpoint_catalogue_observation_clock"
+    )
+    if cutoff > observed_at:
+        raise StrategyPaperAccountAvailabilityError(
+            "checkpoint_catalogue_decision_cutoff_in_future"
+        )
+
+    selected = account_service.select_exact_version(
+        strategy_id=query_strategy_id,
+        strategy_version_id=query_version_id,
+        account_namespace=query_namespace,
+    )
+    if (
+        selected.status is not AccountBindingStatus.READY
+        or selected.binding is None
+        or selected.route is None
+    ):
+        reason = ",".join(selected.blockers) or "strategy_account_exact_binding_unavailable"
+        raise StrategyPaperAccountAvailabilityError(
+            f"checkpoint_catalogue_exact_binding_unavailable:{reason}"
+        )
+    binding = selected.binding
+    route = selected.route
+    if (
+        binding.strategy_id != query_strategy_id
+        or binding.strategy_version_id != query_version_id
+        or binding.account_namespace != query_namespace
+        or route.identity.key != binding.portfolio_id
+        or route.paper_account_namespace != binding.account_namespace
+    ):
+        raise StrategyPaperAccountAvailabilityError(
+            "checkpoint_catalogue_exact_binding_mismatch"
+        )
+    state_paths = PersonalPaperStorePaths.from_route(
+        route, portfolio_id=binding.portfolio_id
+    )
+    identity = {
+        "portfolio_id": binding.portfolio_id,
+        "account_namespace": binding.account_namespace,
+    }
+    custody = PersonalStoreCustody(route, account_service.personal_paths)
+    _require_exact_account_custody(custody, state_paths.state_db, identity)
+
+    projection: list[str] = []
+    for field_name in _CATALOGUE_TEXT_FIELDS:
+        escaped = field_name.replace('"', '""')
+        projection.extend(
+            (
+                f'typeof("{escaped}") AS "_type_{field_name}"',
+                f'length(CAST("{escaped}" AS BLOB)) AS "_length_{field_name}"',
+                f'''CASE WHEN typeof("{escaped}") = 'text' AND length(CAST("{escaped}" AS BLOB)) <= {_MAX_CHECKPOINT_CATALOGUE_TEXT_BYTES} THEN CAST("{escaped}" AS BLOB) ELSE NULL END AS "_raw_{field_name}"''',
+            )
+        )
+    query = (
+        "SELECT " + ", ".join(projection)
+        + f' FROM "{_TABLE}" WHERE "portfolio_id" = ? '
+        + 'AND "account_namespace" = ? ORDER BY "snapshot_id" COLLATE BINARY, '
+        + '"operation_id" COLLATE BINARY LIMIT '
+        + str(_CHECKPOINT_CATALOGUE_LOOKAHEAD)
+    )
+    try:
+        with custody.read_sqlite(state_paths.state_db) as connection:
+            try:
+                query_only = connection.execute("PRAGMA query_only").fetchone()
+                if query_only is None or int(query_only[0]) != 1:
+                    raise StrategyPaperAccountAvailabilityError(
+                        "checkpoint_catalogue_reader_not_read_only"
+                    )
+                connection.execute("BEGIN")
+                _ensure_readable_table(connection)
+                raw_rows = connection.execute(
+                    query,
+                    (binding.portfolio_id, binding.account_namespace),
+                ).fetchmany(_CHECKPOINT_CATALOGUE_LOOKAHEAD)
+                truncated = len(raw_rows) > _MAX_CHECKPOINT_CATALOGUE_ROWS
+                rows = tuple(
+                    _checkpoint_catalogue_row(
+                        row,
+                        binding=binding,
+                        cutoff=cutoff,
+                        observed_at=observed_at,
+                    )
+                    for row in raw_rows[:_MAX_CHECKPOINT_CATALOGUE_ROWS]
+                )
+            finally:
+                if connection.in_transaction:
+                    connection.rollback()
+    except sqlite3.Error as exc:
+        raise StrategyPaperAccountAvailabilityError(
+            "checkpoint_catalogue_reader_failed"
+        ) from exc
+
+    return StrategyPaperAccountCheckpointCatalogue(
+        schema_version=CHECKPOINT_CATALOGUE_SCHEMA,
+        strategy_id=query_strategy_id,
+        strategy_version_id=query_version_id,
+        account_namespace=query_namespace,
+        portfolio_id=binding.portfolio_id,
+        binding_sha256=binding.binding_sha256,
+        decision_cutoff=cutoff,
+        rows=rows,
+        truncated=truncated,
+        complete=not truncated,
+    )
+
+
+__all__ += [
+    "CHECKPOINT_CATALOGUE_SCHEMA",
+    "StrategyPaperAccountCheckpointCandidate",
+    "StrategyPaperAccountCheckpointCatalogue",
+    "list_strategy_paper_account_checkpoint_candidates",
+]

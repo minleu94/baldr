@@ -14,6 +14,8 @@
 
 ### 私人儲存位置與收藏讀回
 
+「官方條件與價格研究」收藏由來源頁選列後保存；回到候選池選取對應收藏列，按「查看選中個股研究報告」，會沿原保存版本重開條件、價格範圍、排序、頁列及比較籃。股票、來源或收藏身分不符時顯示不可核驗，不開一般最新研究。既有官方市場條件收藏仍沿原頁讀取，兩種收藏不按同股票代碼互換。操作見[官方條件與價格研究](RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)，候選驗證及新程序限制見[本輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
+
 觀察清單、研究收藏及個人筆記使用設定所指定的私人 store route。若選擇 `PERSONAL` 模式，私人 root 與 mode 必須成對設定；只設其中一項會拒絕讀寫。缺少的 PERSONAL store 會顯示為空，不會偷偷回退到舊清單。尚未設定私人模式時，系統依目前相容路由讀取既有來源；啟動或打開頁面不會複製資料、初始化 store、遷移或切換 writer。
 
 因此，空清單可能表示所選 store 尚無項目，不能立刻推定舊資料已刪除。搬機、切換私人 root 或升級 JSON／SQLite 時，先用[首次安裝／移機流程](../MACHINE_BOOTSTRAP_RUNBOOK.md)核對現行與舊來源、備份和 reader/writer 路由；依受控 preview、備份與驗證流程處理，不手動搬 DB、marker、receipt 或 WAL／SHM，也不要刪舊來源來消除空清單。精確 root/mode、fallback 與 rollback 契約見[資料儲存架構](../../01_architecture/current/data_storage_runtime.md#讀寫與保存契約)。
@@ -89,3 +91,15 @@ Paper 排程狀態或 readiness 不是成交記錄。Windows Task 啟動、Task 
 - 畫面刷新只讀取已保存來源時，不會重跑策略、修復資料或啟用排程。遇到寫入或資料轉換操作，先查看本輪範圍、備份、確認按鈕和回滾方式。
 
 其他帳本 schema、受控 migration、Paper producer 與跨機設定依[機器啟動 Runbook](../MACHINE_BOOTSTRAP_RUNBOOK.md)、[排程運維與搬機指南](../SCHEDULE_OPERATIONS_AND_MIGRATION.md)及[目前資料儲存架構](../../01_architecture/current/data_storage_runtime.md)處理。Immutable ML retention 目前只有唯讀 metadata inventory，沒有 destructive runbook；一般使用者不得自行刪除模型 artifact。細節見[架構中的保留與核准邊界](../../01_architecture/current/data_storage_runtime.md#immutable-ml-retention-的目前檢視與核准邊界)，不要把歷史 Supplements 當成現行命令。
+
+### 每日月營收研究收藏（2026-10-14）
+
+已設定每日快照接受時，原月營收研究頁保存 V2 收藏。觀察清單仍用「個股分析」重開原研究，保留原 F17、月營收完整 cohort、條件、頁碼與選股；重開不是新的今日推薦。需提供原版本參照保存資料夾及固定來源接受，缺檔、錯 hash、來源不符或失敗批次會拒絕重開並保留原收藏。月營收小時可用性不授整體官方資料或歷史 PIT 資格；合成限定 QA 不等於真來源與完整產品驗收。
+
+### 封存月營收研究收藏（2026-10-14）
+
+正常 Main 設定固定每日 binding 後，原 F17／月營收研究頁可使用封存來源（`use_archived_sources=True`）。按「選擇研究保存資料夾」選定此次研究位置；它與正式 `DATA_ROOT`／`OUTPUT_ROOT`、F17／來源 provider 根及 operation 暫存根分開。完成查詢後，在候選池選取該封存收藏並按「個股分析」，沿原收藏重開指定股票與原研究，不會另選最新版本。
+
+收藏保留完整來源 pin、原條件、頁碼、選股，以及四個外部核對值：原月營收參照與描述（Ref3／Desc3）、封存資料與封存描述（Archive2／V4）。新修正另存新版本，舊收藏不覆寫。若原資料庫、原始來源檔、舊快照或原參照附件已漂移，封存副本可供精確重開；仍須保留可重驗的封存資料／封存包、全部每日市場根、固定來源信任及 binding。缺檔、錯 SHA、未來截止時間、缺市場、股票代碼別名衝突、reparse／連結或與正式來源根重疊時，原畫面會保留具名拒絕原因，不改用最新來源。取消可能留下空的或未完成的自有資料夾，不會自動清除或授予資格。舊 V1／V2 收藏仍走原嚴格即時來源路徑，不自動退回封存模式。
+
+目前限定驗證：storage 27 PASS／1 預期保護性 SKIP、封存收藏 9 PASS、Watchlist 5 PASS；archived UI 漂移重開1 PASS（44.49秒），正常 Main 父54640→fresh32420保存1128／頁1與 Watchlist typed 精確重開通過；父關閉後私有 DB/raw、舊snapshot/reference及mutable pointer漂移，26固定來源及原320 F17資產仍核對一致。這些限定結果不代表官方來源接受、完整歷史 PIT 或完整官方覆蓋。

@@ -300,6 +300,7 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 - 策略回測日期欄與 Research Lab 證據覆盤日期篩選採受控日曆 popup；回測日期開啟時定位今天，未設定的 evidence 日期篩選也定位今天，不落到 sentinel 年份。
 - Research Lab「證據覆盤 > 排程狀態」會分開顯示 freshness warnings、pipeline warning 與 advisory 的 occurrences / unique types、pipeline overall status、推薦結果 research-only write 與 production evidence / trading write risk；pipeline degraded 時不會只因 exit code 0 顯示為 passed，`ready_with_advisories` 也不會被誤標 degraded。
 - Research Lab「覆盤歷史」dashboard 採 query-only history repository；缺少 history DB／table 時顯示明確唯讀診斷與建立指引，不會因打開畫面而初始化空 schema。
+- Research Lab 的 Paper 保存快照查找可選擇外部 artifacts root，沿用 Research Lab 策略版本來源，並要求明示策略、版本、帳戶命名空間與含時區截止時間，再列出最多 200 筆候選供使用者選取讀回；截斷時會明示。未設定或無效的 root 只停用 Paper 查找；不自動選取候選、不建立／更新資料。候選清單本身尚未核對；即使 exact 讀回成功，也不代表底層來源可得性或績效資格已驗證。關閉工作區時取消未完成查找並拒收過期回覆。
 
 回測防線：
 
@@ -660,3 +661,7 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 
 
 2026-10-07 dev個股研究新增「保存的個人 H20 研究預測」首屏卡：active context獨立核驗原保存cohort，報告失敗仍可呈現gross／三日期／尚無已核驗實際結果；「重新核驗保存預測」沿原pins，不切latest。返回pointer漂移保留原名單／排序／選取，不換新來源；H20收藏尚未接。操作見[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-07-dev-修正h20-摘要獨立於一般個股報告)，中央96案例與合成contract／Native限制見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+### 10/14 官方條件與價格研究候選
+
+推薦結果來源分頁新增價格範圍與四組條件共用完整母體的研究頁：Decimal上下限／inclusive／獨立未知價格政策、四組結果後共通AND、全域價排序與跨頁比較，並有V2 typed Watchlist保存／指定pins重開。首次view恢復等待range穩定並重核generation/result/page/選列後才發成功終態；不能用原payload或latest替代來源核驗。既有V1收藏保留。指定合成257股／雙parent的Main→新PID有限旅程、受影響UI與必要回歸已通過，真N／Native／同版EXE、來源或完整產品Gate未接受；詳見[操作說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)與[本輪QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -93,6 +94,74 @@ from ui_qt.technical_official_revenue_research_presenter import (
     revenue_row_cells_v1,
 )
 from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.workers.revenue_source_actor_v2 import RevenueSourceActorV2, ClosableHandle
+from data_module.daily_monthly_revenue_cohort import DailyMonthlyRevenueCohortPin, DailyMonthlyRevenueCohortReader
+from data_module.recommendation_current_fundamental_provider import RecommendationCurrentFundamentalProvider
+from app_module.daily_market_technical_official_disposition_revenue_query_v2 import (
+    DailyMarketTechnicalOfficialDispositionRevenueQueryV2,
+    DailyMarketTechnicalOfficialDispositionRevenuePageRequestV2,
+    DailyMarketTechnicalOfficialDispositionRevenueQueryPageV2,
+    DailyMarketTechnicalOfficialDispositionRevenueResultRowV2,
+    DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV2,
+    DailyMarketTechnicalOfficialDispositionRevenueSortClauseV2,
+)
+from app_module.daily_market_technical_official_disposition_revenue_source_v2 import (
+    DailyMarketTechnicalOfficialDispositionRevenueExactReadV2,
+    DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2,
+    open_daily_market_technical_official_disposition_revenue_bundle_source_v2,
+    reopen_daily_market_technical_official_disposition_revenue_from_recipe_v2,
+)
+from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 import DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2
+from app_module.daily_market_technical_official_disposition_revenue_archived_recipe_v3 import (
+    DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3,
+)
+from app_module.daily_market_technical_official_disposition_revenue_archived_source_v3 import (
+    DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3,
+    open_daily_market_technical_official_disposition_revenue_archived_bundle_source_v3,
+    reopen_daily_market_technical_official_disposition_revenue_archived_from_recipe_v3,
+)
+from app_module.daily_market_technical_official_disposition_revenue_archived_bookmark_v3 import (
+    DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3,
+    archived_revenue_query_matches_recipe_v3,
+)
+from app_module.daily_market_technical_official_disposition_revenue_archived_storage_v3 import (
+    ArchivedRevenueResearchStorageV3,
+    prepare_archived_revenue_research_storage_v3,
+)
+from ui_qt.technical_official_revenue_research_presenter_v2 import (
+    format_technical_official_revenue_research_row_v2,
+    format_technical_official_revenue_counts_v2,
+    revenue_row_cells_v2,
+)
+
+_RecipeBase = DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1 | DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2
+_Recipe = _RecipeBase | DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3
+_ExactDaily = DailyMarketTechnicalOfficialDispositionRevenueExactReadV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3
+_Query = DailyMarketTechnicalOfficialDispositionRevenueQueryV1 | DailyMarketTechnicalOfficialDispositionRevenueQueryV2
+_Result = DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1 | DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV2
+_PageRequest = DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1 | DailyMarketTechnicalOfficialDispositionRevenuePageRequestV2
+_Page = DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1 | DailyMarketTechnicalOfficialDispositionRevenueQueryPageV2
+_Row = DailyMarketTechnicalOfficialDispositionRevenueResultRowV1 | DailyMarketTechnicalOfficialDispositionRevenueResultRowV2
+
+
+@dataclass(frozen=True, slots=True)
+class DailyRevenueSourceConfigV2:
+    """正常組裝注入固定接受與 reader，開啟前不讀取每日 catalog。"""
+
+    provider: RecommendationCurrentFundamentalProvider
+    protected_roots: tuple[Path, ...]
+    reader: DailyMonthlyRevenueCohortReader | None = None
+    reader_factory: Callable[[datetime], DailyMonthlyRevenueCohortReader] | None = None
+    exact_reader_factory: Callable[[DailyMonthlyRevenueCohortPin, datetime], DailyMonthlyRevenueCohortReader] | None = None
+    use_archived_sources: bool = False
+    source_roots: tuple[Path, ...] = ()
+    source_roots_provider: Callable[[], tuple[Path, ...]] | None = None
+
+
+def _row_detail(row: _Row) -> str:
+    if type(row) is DailyMarketTechnicalOfficialDispositionRevenueResultRowV2:
+        return format_technical_official_revenue_research_row_v2(row)
+    return format_technical_official_revenue_research_row_v1(row)
 
 
 _STATES: tuple[MaState, ...] = ("match", "no_match", "unknown")
@@ -201,6 +270,7 @@ class _SourceChoice:
     bundle_identity_sha256: str
     manifest_sha256: str
     monthly_reference_json: str
+    mode: Literal["legacy_v1", "daily_v2", "daily_archived_v3"] = "legacy_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,29 +292,29 @@ class _Conditions:
 @dataclass(frozen=True, slots=True)
 class _OpenedQuery:
     source: _SourceChoice
-    recipe: DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1
-    query: DailyMarketTechnicalOfficialDispositionRevenueQueryV1
-    result: DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1
-    page_request: DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1
-    page: DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1
+    recipe: _Recipe
+    query: _Query
+    result: _Result
+    page_request: _PageRequest
+    page: _Page
     selected_stock_code: str | None = None
 
 
 def _project_revenue_page_table_rows(
-    rows: tuple[DailyMarketTechnicalOfficialDispositionRevenueResultRowV1, ...] | None,
-) -> tuple[SavedResearchTableRow[DailyMarketTechnicalOfficialDispositionRevenueResultRowV1], ...]:
+    rows: tuple[_Row, ...] | None,
+) -> tuple[SavedResearchTableRow[_Row], ...]:
     """先完成一頁的文字投影，讓表格驗證失敗不會改動目前研究狀態。"""
 
     if rows is None:
         return ()
     if type(rows) is not tuple or len(rows) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_MAX_PAGE_SIZE_V1:
         raise ValueError("technical_official_revenue_view_page_limit_exceeded")
-    projected: list[SavedResearchTableRow[DailyMarketTechnicalOfficialDispositionRevenueResultRowV1]] = []
+    projected: list[SavedResearchTableRow[_Row]] = []
     for row in rows:
-        cells = revenue_row_cells_v1(row)
+        cells = revenue_row_cells_v2(row) if type(row) is DailyMarketTechnicalOfficialDispositionRevenueResultRowV2 else revenue_row_cells_v1(row)
         if type(cells) is not tuple or len(cells) != len(_REVENUE_TABLE_HEADERS):
             raise ValueError("technical_official_revenue_view_table_projection_invalid")
-        details = format_technical_official_revenue_research_row_v1(row)
+        details = _row_detail(row)
         tooltips = tuple(
             f"{header}：{cell}\n\n雙擊查看完整已保存事實。\n{details}"
             for header, cell in zip(_REVENUE_TABLE_HEADERS, cells)
@@ -260,22 +330,42 @@ class _BasketItem:
     scope_identity_sha256: str
 
 
-def _scope_identity(recipe: DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1) -> str:
-    payload = recipe.to_dict()
+def _scope_identity(recipe: _Recipe) -> str:
+    payload = _recipe_base(recipe).to_dict()
     payload.pop("page_index")
     payload.pop("page_size")
     payload.pop("recipe_identity_sha256")
+    payload.pop("page_request_json", None)
+    if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3:
+        payload["archive_descriptor_sha256"] = recipe.archive_artifact_descriptor_external_sha256
+        payload["archive_reference_sha256"] = recipe.archive_reference_external_sha256
     return hashlib.sha256(json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
 
 
+def _recipe_base(recipe: _Recipe) -> _RecipeBase:
+    if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3:
+        return recipe.base_recipe
+    return recipe
+
+
 def _recipe_for_page(
-    recipe: DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1,
+    recipe: _Recipe,
     *,
     page_index: int,
     page_size: int | None = None,
-) -> DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1:
+) -> _Recipe:
+    if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3:
+        return recipe.with_page(page_index=page_index, page_size=recipe.base_recipe.page_size if page_size is None else page_size)
+    if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2:
+        query = DailyMarketTechnicalOfficialDispositionRevenueQueryV2.from_json(recipe.revenue_query_json)
+        request = DailyMarketTechnicalOfficialDispositionRevenuePageRequestV2.create(query, page_index=page_index, page_size=recipe.page_size if page_size is None else page_size)
+        payload = recipe.to_dict()
+        payload.update(page_index=request.page_index, page_size=request.page_size, page_request_json=request.to_json())
+        payload.pop("recipe_identity_sha256")
+        payload["recipe_identity_sha256"] = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        return DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2.from_dict(payload)
     return recipe.with_conditions(
         ma_states=recipe.ma_states,
         minimum_yoy_percent=recipe.minimum_yoy_percent,
@@ -288,9 +378,15 @@ def _recipe_for_page(
 
 
 def _query_matches_recipe(
-    query: DailyMarketTechnicalOfficialDispositionRevenueQueryV1,
-    recipe: DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1,
+    query: _Query,
+    recipe: _Recipe,
 ) -> bool:
+    if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3:
+        return type(query) is DailyMarketTechnicalOfficialDispositionRevenueQueryV2 and archived_revenue_query_matches_recipe_v3(query, recipe)
+    if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2:
+        return type(query) is DailyMarketTechnicalOfficialDispositionRevenueQueryV2 and query.to_json() == recipe.revenue_query_json
+    if type(query) is not DailyMarketTechnicalOfficialDispositionRevenueQueryV1:
+        return False
     return (
         query.ma_query.f17_query.to_json() == recipe.f17_query_json
         and query.ma_query.ma_states == recipe.ma_states
@@ -542,6 +638,87 @@ class _RevenueStockCodeLineEdit(_StockCodeLineEdit):
     pass
 
 
+def _exact_v2(handle: ClosableHandle) -> _ExactDaily:
+    if type(handle) is DailyMarketTechnicalOfficialDispositionRevenueExactReadV2:
+        return handle
+    if type(handle) is DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3:
+        return handle
+    raise ValueError("technical_official_revenue_view_v2_handle_invalid")
+
+
+def _project_exact_v2(handle: ClosableHandle, cancel: Callable[[], bool], selected: str | None = None) -> _OpenedQuery:
+    exact = _exact_v2(handle)
+    page = exact.page
+    # 候選提交前完成投影驗證，失敗時 actor 仍保留原來源。
+    _project_revenue_page_table_rows(page.rows)
+    if cancel():
+        raise ValueError("technical_official_revenue_view_cancelled")
+    return _OpenedQuery(
+        _SourceChoice(exact.f17_query.bundle_output_root, exact.f17_query.bundle_identity_sha256,
+                      exact.f17_query.expected_manifest_sha256, exact.monthly_reference.to_json(),
+                      "daily_archived_v3" if type(exact) is DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3 else "daily_v2"),
+        exact.saved_recipe, exact.query, exact.result, exact.request, page, selected,
+    )
+
+
+def _open_daily_v2(
+    source: _SourceChoice, conditions: _Conditions, config: DailyRevenueSourceConfigV2,
+    operation_parent: Path, artifact_root: Path, page_size: int,
+    cancel: Callable[[], bool], *, reader: DailyMonthlyRevenueCohortReader | None = None,
+) -> _ExactDaily:
+    fixed_reader = config.reader if reader is None else reader
+    provider = config.provider if fixed_reader is None else _provider_with_exact_reader(config.provider, fixed_reader)
+    factory: Callable[..., _ExactDaily] = open_daily_market_technical_official_disposition_revenue_bundle_source_v2
+    extra: dict[str, object] = {}
+    if config.use_archived_sources:
+        storage = _archived_storage(config, artifact_root, source, operation_parent)
+        artifact_root = storage.monthly_reference_artifact_root
+        factory = open_daily_market_technical_official_disposition_revenue_archived_bundle_source_v3
+        extra = dict(archive_parent=storage.raw_archive_parent,
+                     archived_reference_artifact_root=storage.archived_reference_artifact_root,
+                     archived_artifact_id=f"ui-archive-{uuid4().hex}")
+    return factory(
+        **extra,
+        bundle_output_root=source.bundle_output_root, bundle_identity_sha256=source.bundle_identity_sha256,
+        expected_manifest_sha256=source.manifest_sha256, row_scope_filter=conditions.row_scope_filter,
+        operation_root=_new_operation_root(operation_parent, cancel), monthly_provider=provider,
+        monthly_reference_artifact_root=artifact_root, artifact_id=f"ui-{uuid4().hex}",
+        protected_roots=config.protected_roots, daily_monthly_cohort_reader=fixed_reader,
+        daily_monthly_cohort_reader_factory=config.reader_factory if fixed_reader is None else None,
+        rule_state_filters=conditions.rule_state_filters, combine_mode=conditions.combine_mode,
+        market_assignment_states=conditions.market_assignment_states, official_disposal_states=conditions.official_disposal_states,
+        outer_stock_filter_mode=conditions.outer_stock_filter_mode, outer_stock_codes=conditions.outer_stock_codes,
+        f17_sort_clauses=(DailyMarketTechnicalOfficialDispositionSortClauseV1("stock_code", "asc"),),
+        ma_states=conditions.ma_states, minimum_yoy_percent=conditions.minimum_yoy_percent,
+        condition_combine_mode=conditions.condition_combine_mode, unknown_policy=conditions.unknown_policy,
+        sort_clauses=tuple(DailyMarketTechnicalOfficialDispositionRevenueSortClauseV2(item.field, item.direction) for item in conditions.sort_clauses),
+        page_index=0, page_size=page_size, cancel_callback=cancel,
+    )
+
+
+def _archived_storage(
+    config: DailyRevenueSourceConfigV2, root: Path, source: _SourceChoice, operation_parent: Path,
+) -> ArchivedRevenueResearchStorageV3:
+    """固定 binding 只提供保護目錄；來源資格仍由 application exact reader 核驗。"""
+    extra = config.source_roots_provider() if config.source_roots_provider is not None else ()
+    return prepare_archived_revenue_research_storage_v3(
+        root, protected_roots=config.protected_roots,
+        source_roots=(*config.source_roots, *extra, config.provider.db_file.parent,
+                      config.provider.output_root, config.provider.monthly_source_root,
+                      Path(source.bundle_output_root)),
+        operation_root_parent=operation_parent,
+    )
+
+
+def _provider_with_exact_reader(provider: RecommendationCurrentFundamentalProvider, reader: DailyMonthlyRevenueCohortReader) -> RecommendationCurrentFundamentalProvider:
+    if provider.daily_source_snapshot_reader is reader:
+        return provider
+    paired = provider.with_daily_source_snapshot_reader(reader)
+    if type(paired) is not RecommendationCurrentFundamentalProvider or paired.daily_source_snapshot_reader is not reader:
+        raise ValueError("technical_official_revenue_view_provider_reader_mismatch")
+    return paired
+
+
 class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
     """以明示保存 F17 bundle 與月營收 V2 封存來源進行全母體 YoY 研究。"""
 
@@ -556,20 +733,27 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         monthly_reference_path: str | Path | None = None,
         operation_root_parent: str | Path | None = None,
         parent: QWidget | None = None,
+        *,
+        daily_source_config_v2: DailyRevenueSourceConfigV2 | None = None,
+        monthly_artifact_root: str | Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.bundle_output_root = Path(bundle_output_root) if bundle_output_root is not None else None
         self.monthly_reference_path = Path(monthly_reference_path) if monthly_reference_path is not None else None
         self.operation_root_parent = Path(operation_root_parent) if operation_root_parent is not None else None
+        self.daily_source_config_v2 = daily_source_config_v2
+        self.monthly_artifact_root = Path(monthly_artifact_root) if monthly_artifact_root is not None else None
+        self._source_actor_v2: RevenueSourceActorV2 | None = None
+        self._v2_busy = False
         self._catalog_cursor: str | None = None
         self._catalog_entries: tuple[DailyMarketTechnicalOfficialDispositionBundleCatalogEntryV1, ...] = ()
         self._source: _SourceChoice | None = None
-        self._recipe: DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1 | None = None
-        self._query: DailyMarketTechnicalOfficialDispositionRevenueQueryV1 | None = None
-        self._result: DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1 | None = None
-        self._page_request: DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1 | None = None
-        self._page: DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1 | None = None
-        self._selected_row: DailyMarketTechnicalOfficialDispositionRevenueResultRowV1 | None = None
+        self._recipe: _Recipe | None = None
+        self._query: _Query | None = None
+        self._result: _Result | None = None
+        self._page_request: _PageRequest | None = None
+        self._page: _Page | None = None
+        self._selected_row: _Row | None = None
         self._basket: list[_BasketItem] = []
         self._busy_worker: TaskWorker | None = None
         self._live_workers: set[TaskWorker] = set()
@@ -580,25 +764,27 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self._closing = False
         self._build_ui()
         self._set_status(
+            "每日來源設定已載入；請明示 F17 保存資料夾、版本參照保存資料夾與 operation 暫存資料夾，再選保存版本核驗。"
+            if self.daily_source_config_v2 is not None else
             "候選清單只讀保存來源 manifest，尚未核驗。請選擇保存資料夾與月營收 V2 參照。"
             if self.bundle_output_root is None or self.monthly_reference_path is None
             else "來源僅為明示路徑；按更新清單並選取保存版本後才進行核驗。"
         )
 
     @property
-    def current_result(self) -> DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1 | None:
+    def current_result(self) -> _Result | None:
         return self._result
 
     @property
-    def current_query(self) -> DailyMarketTechnicalOfficialDispositionRevenueQueryV1 | None:
+    def current_query(self) -> _Query | None:
         return self._query
 
     @property
-    def current_page(self) -> DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1 | None:
+    def current_page(self) -> _Page | None:
         return self._page
 
     @property
-    def current_recipe(self) -> DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1 | None:
+    def current_recipe(self) -> _Recipe | None:
         return self._recipe
 
     @property
@@ -629,6 +815,8 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             "每次查詢、翻頁或收藏重開都使用明示保存版本，不自動尋找 latest，也不執行 producer。"
         )
         self.qualification_label.setWordWrap(True)
+        if self.daily_source_config_v2 is not None:
+            self.qualification_label.setText("每日快照沿固定接受選定：月營收 cohort 小時可用；官方／整體 F17 可用時間仍未知，current-only、非歷史 PIT。翻頁與收藏重開沿原版本，不重新選批次。")
         body.addWidget(self.qualification_label)
 
         source_box = QGroupBox("明示保存來源")
@@ -645,6 +833,12 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         source_layout.addWidget(self.root_label)
         source_layout.addWidget(self.monthly_reference_label)
         source_layout.addWidget(self.operation_root_label)
+        archive_mode = self.daily_source_config_v2 is not None and self.daily_source_config_v2.use_archived_sources
+        self.monthly_artifact_label = QLabel(str(self.monthly_artifact_root) if self.monthly_artifact_root else
+            "需選擇研究保存資料夾；原件與版本一併保存，供收藏精確重開。" if archive_mode else
+            "每日快照需選擇已存在的版本參照保存資料夾")
+        self.monthly_artifact_label.setWordWrap(True)
+        source_layout.addWidget(self.monthly_artifact_label)
         source_actions = QGridLayout()
         self.choose_root_button = QPushButton("選擇 F17 保存來源資料夾")
         self.choose_root_button.clicked.connect(self.choose_bundle_output_root)
@@ -652,6 +846,13 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.choose_reference_button.clicked.connect(self.choose_monthly_reference)
         self.choose_operation_root_button = QPushButton("選擇 operation 暫存資料夾")
         self.choose_operation_root_button.clicked.connect(self.choose_operation_root_parent)
+        self.choose_artifact_root_button = QPushButton("選擇研究保存資料夾" if archive_mode else "選擇每日快照參照保存資料夾")
+        self.choose_artifact_root_button.clicked.connect(self.choose_monthly_artifact_root)
+        self.choose_artifact_root_button.setVisible(self.daily_source_config_v2 is not None)
+        self.monthly_artifact_label.setVisible(self.daily_source_config_v2 is not None)
+        if self.daily_source_config_v2 is not None:
+            self.monthly_reference_label.setText("使用已驗證的每日快照接受；按所選 F17 cutoff 選定完整 cohort。")
+            self.choose_reference_button.setVisible(False)
         self.refresh_catalog_button = QPushButton("更新保存來源清單")
         self.refresh_catalog_button.clicked.connect(self.refresh_catalog)
         self.next_catalog_button = QPushButton("下一頁候選")
@@ -660,6 +861,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             self.choose_root_button,
             self.choose_reference_button,
             self.choose_operation_root_button,
+            self.choose_artifact_root_button,
             self.refresh_catalog_button,
             self.next_catalog_button,
         )):
@@ -704,7 +906,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.results_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.results_table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
         self.results_table.setAlternatingRowColors(True)
-        self.table_model: SavedResearchPageTableModel[DailyMarketTechnicalOfficialDispositionRevenueResultRowV1] = SavedResearchPageTableModel(
+        self.table_model: SavedResearchPageTableModel[_Row] = SavedResearchPageTableModel(
             _REVENUE_TABLE_HEADERS,
             maximum_page_size=DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_MAX_PAGE_SIZE_V1,
             parent=self,
@@ -1046,6 +1248,23 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.operation_root_label.setText(str(candidate))
         return True
 
+    def choose_monthly_artifact_root(self) -> None:
+        if not self._can_start():
+            return
+        title = "選擇已存在的研究保存資料夾" if self.daily_source_config_v2 is not None and self.daily_source_config_v2.use_archived_sources else "選擇已存在的每日快照參照保存資料夾"
+        selected = QFileDialog.getExistingDirectory(self, title, str(self.monthly_artifact_root or ""))
+        if selected:
+            self.set_monthly_artifact_root(selected)
+
+    def set_monthly_artifact_root(self, path: str | Path) -> bool:
+        candidate = Path(path)
+        if not self._can_start() or not candidate.is_absolute() or not candidate.is_dir():
+            self._set_status("版本參照保存資料夾必須是已存在的絕對路徑。")
+            return False
+        self.monthly_artifact_root = candidate
+        self.monthly_artifact_label.setText(str(candidate))
+        return True
+
     def refresh_catalog(self) -> None:
         if self.bundle_output_root is None:
             self._set_status("尚未選擇保存來源資料夾；不會自動掃描或建立資料夾。")
@@ -1128,7 +1347,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         if not 0 <= index < len(self._catalog_entries):
             self._set_status("請明確選取一個可嘗試核驗的 F17 保存版本。")
             return
-        if self.bundle_output_root is None or self.monthly_reference_path is None:
+        if self.bundle_output_root is None or (self.daily_source_config_v2 is None and self.monthly_reference_path is None):
             self._set_status("需明示 F17 資料夾與月營收 V2 參照。")
             return
         if self.operation_root_parent is None:
@@ -1152,6 +1371,16 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         reference_path = str(self.monthly_reference_path)
         operation_parent = self.operation_root_parent
         page_size = self.page_size_box.value()
+
+        if self.daily_source_config_v2 is not None:
+            config, artifact_root = self.daily_source_config_v2, self.monthly_artifact_root
+            if artifact_root is None:
+                self._set_status("需選擇每日版本參照保存資料夾，且須與來源及 operation 資料夾分開。")
+                return
+            self._start_v2_open("核驗每日快照並執行全母體查詢", lambda cancel: _open_daily_v2(
+                source, conditions, config, operation_parent, artifact_root, page_size, cancel,
+            ))
+            return
 
         def task(cancel_callback: Callable[[], object] | None = None) -> _OpenedQuery:
             reference = _read_reference_file(reference_path)
@@ -1273,6 +1502,21 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         parent = self.operation_root_parent
         page_size = self.page_size_box.value()
 
+        if source.mode in ("daily_v2", "daily_archived_v3"):
+            recipe, config, artifact_root = self._recipe, self.daily_source_config_v2, self.monthly_artifact_root
+            if type(recipe) not in (DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3) or config is None or artifact_root is None:
+                self._set_status("每日來源設定或已核驗 recipe 不完整。")
+                return
+            def open_filtered(cancel: Callable[[], bool]) -> _ExactDaily:
+                if cancel():
+                    raise ValueError("technical_official_revenue_view_cancelled")
+                reader = self._exact_daily_reader(config, recipe)
+                if cancel():
+                    raise ValueError("technical_official_revenue_view_cancelled")
+                return _open_daily_v2(source, conditions, config, parent, artifact_root, page_size, cancel, reader=reader)
+            self._start_v2_open("沿同一每日 cohort 重新查詢", open_filtered)
+            return
+
         def task(cancel_callback: Callable[[], object] | None = None) -> _OpenedQuery:
             return _open_from_bundle(
                 source,
@@ -1331,6 +1575,23 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         result = self._result
         page_size = self.page_size_box.value()
 
+        if type(recipe) in (DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3):
+            def read_daily_page(handle: ClosableHandle, cancel: Callable[[], bool]) -> _OpenedQuery:
+                exact = _exact_v2(handle)
+                if exact.result is not result or not _query_matches_recipe(exact.query, recipe):
+                    raise ValueError("technical_official_revenue_view_v2_result_changed")
+                request = DailyMarketTechnicalOfficialDispositionRevenuePageRequestV2.create(exact.query, page_index=page_index, page_size=page_size)
+                page = exact.result.read_page_request(request, cancel_callback=cancel)
+                projected_recipe = _recipe_for_page(recipe, page_index=page_index, page_size=page_size)
+                _project_revenue_page_table_rows(page.rows)
+                if cancel():
+                    raise ValueError("technical_official_revenue_view_cancelled")
+                return _OpenedQuery(source, projected_recipe, exact.query, exact.result, request, page)
+            self._start_v2_task("讀取同一每日來源已核驗結果頁", read_daily_page, self._apply_page_change)
+            return
+        if type(result) is not DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1:
+            return
+
         def task(cancel_callback: Callable[[], object] | None = None) -> _OpenedQuery:
             return _read_page_from_result(
                 source,
@@ -1388,17 +1649,18 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self._selected_row = None
         self._clear_basket()
         self._apply_query_controls(value.query, value.page_request)
-        self.summary_label.setText(format_technical_official_revenue_counts_v1(
-            value.result.counts,
-            result_status=value.result.result_status,
-            official_coverage_status=value.result.official_source_coverage_status,
-        ))
+        if type(value.result) is DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV2:
+            summary = format_technical_official_revenue_counts_v2(value.result.counts, result_status=value.result.result_status, official_coverage_status=value.result.official_source_coverage_status)
+        else:
+            summary = format_technical_official_revenue_counts_v1(value.result.counts, result_status=value.result.result_status, official_coverage_status=value.result.official_source_coverage_status)
+        self.summary_label.setText(summary)
         self.results_stack.setCurrentIndex(0)
         self._render_page(replace_table=False)
         if value.selected_stock_code:
             self.select_stock_code(value.selected_stock_code)
         self._set_status(
-            "來源已 exact 核驗；官方／月營收可用時間仍未知、current-only、非歷史 PIT。"
+            "每日 cohort 小時已核驗；官方與整體 F17 可用時間仍未知、current-only、非歷史 PIT。"
+            if value.source.mode in ("daily_v2", "daily_archived_v3") else "來源已 exact 核驗；官方／月營收可用時間仍未知、current-only、非歷史 PIT。"
         )
 
     def _render_page(self, *, replace_table: bool = True) -> None:
@@ -1416,8 +1678,8 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
 
     def _apply_query_controls(
         self,
-        query: DailyMarketTechnicalOfficialDispositionRevenueQueryV1,
-        request: DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1,
+        query: _Query,
+        request: _PageRequest,
     ) -> None:
         f17 = query.ma_query.f17_query
         for scope, check in self.scope_checks.items():
@@ -1480,7 +1742,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         if row is None:
             self._set_status("請先選取目前頁面的一檔股票。")
             return
-        self.detail_text.setPlainText(format_technical_official_revenue_research_row_v1(row))
+        self.detail_text.setPlainText(_row_detail(row))
         self.audit_text.setPlainText(json.dumps(row.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
         self.audit_toggle.setChecked(False)
         self.results_stack.setCurrentIndex(1)
@@ -1536,6 +1798,26 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         result = self._result
         basket = tuple(self._basket)
 
+        if type(recipe) in (DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3):
+            def compare_daily(handle: ClosableHandle, cancel: Callable[[], bool]) -> tuple[_Row, ...]:
+                exact = _exact_v2(handle)
+                if exact.result is not result or not _query_matches_recipe(exact.query, recipe):
+                    raise ValueError("technical_official_revenue_view_v2_comparison_changed")
+                if any(item.scope_identity_sha256 != _scope_identity(recipe) for item in basket):
+                    raise ValueError("technical_official_revenue_view_v2_comparison_scope_mismatch")
+                found: list[_Row] = []
+                for item in basket:
+                    page = exact.result.read_page(item.page_index, _recipe_base(recipe).page_size, cancel_callback=cancel)
+                    row = next((row for row in page.rows if row.stock_code == item.stock_code), None)
+                    if row is None:
+                        raise ValueError("technical_official_revenue_view_comparison_stock_missing")
+                    found.append(row)
+                return tuple(found)
+            self._start_v2_task("比較同一每日來源跨頁結果", compare_daily, self._show_comparison)
+            return
+        if type(result) is not DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1:
+            return
+
         def task(cancel_callback: Callable[[], object] | None = None) -> tuple[DailyMarketTechnicalOfficialDispositionRevenueResultRowV1, ...]:
             return _read_comparison_rows(
                 result, recipe, basket, cancel_callback=cancel_callback,
@@ -1545,7 +1827,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
 
     def _show_comparison(self, value: object) -> None:
         if not isinstance(value, tuple) or not all(
-            type(row) is DailyMarketTechnicalOfficialDispositionRevenueResultRowV1 for row in value
+            type(row) in (DailyMarketTechnicalOfficialDispositionRevenueResultRowV1, DailyMarketTechnicalOfficialDispositionRevenueResultRowV2) for row in value
         ):
             raise ValueError("technical_official_revenue_view_comparison_invalid")
         dialog = QDialog(self)
@@ -1559,7 +1841,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             card_layout.addWidget(QLabel(row.stock_code))
             text = QPlainTextEdit(card)
             text.setReadOnly(True)
-            text.setPlainText(format_technical_official_revenue_research_row_v1(row))
+            text.setPlainText(_row_detail(row))
             card_layout.addWidget(text, 1)
             split.addWidget(card)
         layout.addWidget(split, 1)
@@ -1572,6 +1854,29 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
     def prepare_bookmark(self) -> None:
         if self._selected_row is None or self._page is None or self._recipe is None or self._page_request is None:
             self._set_status("請先選取目前頁面的一檔股票。")
+            return
+        if type(self._recipe) in (DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3):
+            stock_code = self._selected_row.stock_code
+            recipe, page, request, result = self._recipe, self._page, self._page_request, self._result
+            if type(page) is not DailyMarketTechnicalOfficialDispositionRevenueQueryPageV2 or type(request) is not DailyMarketTechnicalOfficialDispositionRevenuePageRequestV2:
+                return
+            def prepare_daily(handle: ClosableHandle, cancel: Callable[[], bool]) -> DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3:
+                if cancel():
+                    raise ValueError("technical_official_revenue_view_cancelled")
+                exact = _exact_v2(handle)
+                if exact.result is not result or not _query_matches_recipe(exact.query, recipe):
+                    raise ValueError("technical_official_revenue_view_v2_bookmark_result_changed")
+                if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3:
+                    if type(exact) is not DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3:
+                        raise ValueError("technical_official_revenue_view_archived_bookmark_source_invalid")
+                    exact.read_page_request(request, cancel_callback=cancel)
+                    return DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3.from_exact_read(exact, stock_code=stock_code, cancel_callback=cancel)
+                if type(recipe) is not DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2:
+                    raise ValueError("technical_official_revenue_view_v2_bookmark_recipe_invalid")
+                return DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2.from_issued_result_page(recipe=recipe, page_request=request, page=page, stock_code=stock_code)
+            self._start_v2_task("保存原每日快照研究收藏", prepare_daily, self.bookmarkPrepared.emit)
+            return
+        if type(self._page) is not DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1 or type(self._page_request) is not DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1:
             return
         try:
             bookmark = DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_issued_result_page(
@@ -1586,10 +1891,27 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.bookmarkPrepared.emit(bookmark)
         self._set_status("已準備原月營收研究收藏；儲存不代表重新核驗，重開時會依固定原版本 exact 核驗。")
 
-    def restore_bookmark(self, value: DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | str | bytes) -> bool:
+    def restore_bookmark(self, value: DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3 | str | bytes) -> bool:
         if not self._can_start() or self.operation_root_parent is None:
             self._set_status("目前忙碌／關閉中，或尚未設定 operation 暫存資料夾。")
             return False
+        if type(value) is DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3:
+            return self._restore_archived_bookmark(value)
+        if type(value) is DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2:
+            return self._restore_daily_bookmark(value)
+        if isinstance(value, (str, bytes)):
+            try:
+                archived_bookmark = DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3.from_json(value)
+            except (TypeError, ValueError):
+                pass
+            else:
+                return self._restore_archived_bookmark(archived_bookmark)
+            try:
+                daily_bookmark = DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2.from_json(value)
+            except (TypeError, ValueError):
+                pass
+            else:
+                return self._restore_daily_bookmark(daily_bookmark)
         try:
             bookmark = value if type(value) is DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 else DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_json(value)
         except (TypeError, ValueError) as exc:
@@ -1602,6 +1924,79 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
 
         self._start_task("依收藏固定雙來源重新核驗", task, self._apply_opened_query)
         return True
+
+    @staticmethod
+    def _exact_daily_reader(config: DailyRevenueSourceConfigV2, recipe: DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2 | DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3) -> DailyMonthlyRevenueCohortReader:
+        base = recipe.base_recipe if type(recipe) is DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3 else recipe
+        pin = DailyMonthlyRevenueCohortPin.from_json(base.monthly_cohort_pin_json)
+        cutoff = DailyMarketTechnicalOfficialDispositionQueryV1.from_json(base.f17_query_json).decision_cutoff
+        if config.exact_reader_factory is not None:
+            reader = config.exact_reader_factory(pin, cutoff)
+        elif config.reader is not None:
+            reader = config.reader
+        else:
+            raise ValueError("technical_official_revenue_view_exact_daily_reader_unavailable")
+        if reader.pin != pin:
+            raise ValueError("technical_official_revenue_view_saved_daily_pin_mismatch")
+        return reader
+
+    def _restore_daily_bookmark(self, bookmark: DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2) -> bool:
+        config, artifact_root, parent = self.daily_source_config_v2, self.monthly_artifact_root, self.operation_root_parent
+        if config is None or artifact_root is None or parent is None:
+            self._set_status("每日收藏需原版本參照保存資料夾、operation 資料夾與固定接受設定。")
+            return False
+        recipe = bookmark.saved_recipe
+        def open_saved(cancel: Callable[[], bool]) -> DailyMarketTechnicalOfficialDispositionRevenueExactReadV2:
+            if cancel():
+                raise ValueError("technical_official_revenue_view_cancelled")
+            reader = self._exact_daily_reader(config, recipe)
+            if cancel():
+                raise ValueError("technical_official_revenue_view_cancelled")
+            return reopen_daily_market_technical_official_disposition_revenue_from_recipe_v2(
+                recipe, operation_root=_new_operation_root(parent, cancel), monthly_provider=_provider_with_exact_reader(config.provider, reader),
+                daily_monthly_cohort_reader=reader, monthly_reference_artifact_root=artifact_root,
+                artifact_id=f"ui-{uuid4().hex}", protected_roots=config.protected_roots,
+                expected_descriptor_sha256=bookmark.artifact_descriptor_external_sha256,
+                expected_monthly_source_reference_sha256=bookmark.monthly_source_reference_external_sha256,
+                cancel_callback=cancel,
+            )
+        def project_saved(handle: ClosableHandle, cancel: Callable[[], bool]) -> _OpenedQuery:
+            exact = _exact_v2(handle)
+            bookmark.verify_exact_row(exact, cancel_callback=cancel)
+            return _project_exact_v2(exact, cancel, bookmark.stock_code)
+        return self._start_v2_open("核驗收藏原每日快照與固定雙 SHA", open_saved, project_saved)
+
+    def _restore_archived_bookmark(self, bookmark: DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3) -> bool:
+        config, root, parent = self.daily_source_config_v2, self.monthly_artifact_root, self.operation_root_parent
+        if config is None or root is None or parent is None:
+            self._set_status("封存收藏需原研究保存資料夾、operation 資料夾與固定接受設定。")
+            return False
+        recipe = bookmark.saved_recipe
+        f17 = DailyMarketTechnicalOfficialDispositionQueryV1.from_json(recipe.base_recipe.f17_query_json)
+        source = _SourceChoice(f17.bundle_output_root, f17.bundle_identity_sha256,
+                               f17.expected_manifest_sha256, recipe.base_recipe.monthly_source_reference_json, "daily_archived_v3")
+        def open_saved(cancel: Callable[[], bool]) -> DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3:
+            if cancel():
+                raise ValueError("technical_official_revenue_view_cancelled")
+            reader = self._exact_daily_reader(config, recipe)
+            storage = _archived_storage(config, root, source, parent)
+            return reopen_daily_market_technical_official_disposition_revenue_archived_from_recipe_v3(
+                recipe, operation_root=_new_operation_root(parent, cancel),
+                monthly_provider=_provider_with_exact_reader(config.provider, reader), daily_monthly_cohort_reader=reader,
+                monthly_reference_artifact_root=storage.monthly_reference_artifact_root, artifact_id=f"ui-{uuid4().hex}",
+                archived_reference_artifact_root=storage.archived_reference_artifact_root,
+                expected_archive_descriptor_sha256=bookmark.archive_artifact_descriptor_external_sha256,
+                expected_archive_reference_sha256=bookmark.archive_reference_external_sha256,
+                expected_monthly_source_reference_sha256=bookmark.original_monthly_source_reference_external_sha256,
+                protected_roots=config.protected_roots, cancel_callback=cancel,
+            )
+        def project_saved(handle: ClosableHandle, cancel: Callable[[], bool]) -> _OpenedQuery:
+            exact = _exact_v2(handle)
+            if type(exact) is not DailyMarketTechnicalOfficialDispositionRevenueArchivedExactReadV3:
+                raise ValueError("technical_official_revenue_view_archived_bookmark_source_invalid")
+            bookmark.verify_exact_row(exact, cancel_callback=cancel)
+            return _project_exact_v2(exact, cancel, bookmark.stock_code)
+        return self._start_v2_open("核驗收藏原封存快照與固定版本", open_saved, project_saved)
 
     def _page_size_changed(self, _value: int) -> None:
         if self._basket:
@@ -1639,9 +2034,11 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.status_label.setText(message)
 
     def _can_start(self) -> bool:
-        return not self._closing and self._busy_worker is None and not self._has_running_worker()
+        return not self._closing and self._busy_worker is None and not self._v2_busy and not self._has_running_worker()
 
     def _has_running_worker(self) -> bool:
+        if self._source_actor_v2 is not None and self._source_actor_v2.busy:
+            return True
         for worker in tuple(self._live_workers):
             try:
                 if worker.isRunning():
@@ -1649,6 +2046,50 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             except RuntimeError:
                 self._live_workers.discard(worker)
         return False
+
+    def _ensure_source_actor_v2(self) -> RevenueSourceActorV2:
+        if self._source_actor_v2 is None:
+            actor = RevenueSourceActorV2()
+            self._source_actor_v2 = actor
+            actor.succeeded.connect(self._task_finished)
+            actor.failed.connect(self._task_error)
+            actor.cancelled.connect(self._task_cancelled)
+            actor.finished.connect(self._source_actor_finished_v2)
+        return self._source_actor_v2
+
+    def _source_actor_finished_v2(self) -> None:
+        if self._closing:
+            self.close()
+
+    def _reserve_v2_ui(self, kind: str, apply: Callable[[object], None]) -> int | None:
+        if not self._can_start():
+            self._set_status("已有背景工作；請等待或合作取消後再操作。")
+            return None
+        self._revision += 1
+        self._busy_token = self._revision
+        self._worker_kind, self._worker_apply = kind, apply
+        self._v2_busy = True
+        self._set_controls_busy(True)
+        self._set_status(f"背景工作中：{kind}…")
+        return self._revision
+
+    def _start_v2_open(self, kind: str, opener: Callable[[Callable[[], bool]], ClosableHandle], project: Callable[[ClosableHandle, Callable[[], bool]], object] = _project_exact_v2) -> bool:
+        token = self._reserve_v2_ui(kind, self._apply_opened_query)
+        if token is None:
+            return False
+        if not self._ensure_source_actor_v2().submit_open(token, opener, project):
+            self._task_error(token, "來源 actor 拒絕重疊或停止中的請求")
+            return False
+        return True
+
+    def _start_v2_task(self, kind: str, task: Callable[[ClosableHandle, Callable[[], bool]], object], apply: Callable[[object], None]) -> bool:
+        token = self._reserve_v2_ui(kind, apply)
+        if token is None:
+            return False
+        if not self._ensure_source_actor_v2().submit_task(token, task):
+            self._task_error(token, "來源 actor 尚無可用來源或已停止")
+            return False
+        return True
 
     def _start_task(self, kind: str, task: Callable[..., object], apply: Callable[[object], None]) -> None:
         if not self._can_start():
@@ -1677,6 +2118,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
     def _set_controls_busy(self, busy: bool) -> None:
         for widget in (
             self.choose_root_button, self.choose_reference_button, self.choose_operation_root_button,
+            self.choose_artifact_root_button,
             self.refresh_catalog_button, self.next_catalog_button, self.catalog_list,
             self.open_candidate_button, self.filter_panel, self.apply_query_button,
             self.clear_filters_button, self.results_table, self.cancel_button,
@@ -1700,6 +2142,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         current = token == self._busy_token
         if current:
             self._busy_worker = None
+            self._v2_busy = False
             self._worker_apply = None
             self._set_controls_busy(False)
         return current and token == self._revision and not self._closing
@@ -1731,10 +2174,14 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.operationSettled.emit(kind, False)
 
     def cancel_current_operation(self) -> None:
-        if self._busy_worker is None:
+        if self._busy_worker is None and not self._v2_busy:
             return
-        self._revision += 1
-        self._busy_worker.cancel()
+        if not self._v2_busy:
+            self._revision += 1
+        if self._busy_worker is not None:
+            self._busy_worker.cancel()
+        if self._v2_busy and self._source_actor_v2 is not None:
+            self._source_actor_v2.cancel_current()
         self._set_status("已送出合作式取消；目前已核結果維持不變。")
 
     def begin_shutdown(self) -> bool:
@@ -1742,6 +2189,9 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
             self._closing = True
             self._revision += 1
         running = False
+        if self._source_actor_v2 is not None:
+            self._source_actor_v2.request_shutdown()
+            running = self._source_actor_v2.isRunning()
         for worker in tuple(self._live_workers):
             try:
                 worker.cancel(cooperative=True, wait=False)

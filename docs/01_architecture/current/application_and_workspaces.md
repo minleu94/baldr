@@ -16,6 +16,8 @@ Windows 由 `baldr_launcher.py` 啟動；source 與 frozen 執行都交給既有
 
 ## 九個頂層工作區
 
+市場探索的保存來源 backend 提供明確 opt-in 的 Projection Group V3 opener：同一次 verified-parent callback 產生 MA／KDJ／volatility／F07 Decimal price facts，完整 exact cohort 核對後才發行 session，price digest 進入 group identity。V2 opener 與既有價格分類沿原契約；V3 不另讀價格母體，也不自行接 UI、query predicate 或 bookmark。實際驗證與未完成範圍見[本輪補完 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
+
 1. 決策工作台
 2. 市場探索
 3. 推薦分析
@@ -71,6 +73,8 @@ View 只把已驗證的 application 結果投影到畫面。來源、時間、�
 
 回測、批次、最佳化、Walk-forward 與推薦組合回放由 application service 協調 `backtest_module/` 與既有策略；UI 呈現結果或提交保存請求。持倉管理把手動帳務、使用者聲明研究持倉與 paper research lane 分開；名稱相似不代表來源身份可互換。見[決策、研究與 Portfolio 分冊](decision_research_portfolio.md)。
 
+Research Lab 的 Paper 保存快照查找使用可選的外部 artifacts root；根目錄未設定或無效時，只停用 Paper 查找，不阻斷其他研究工作。版本來源沿用 Research Lab 的策略版本選取，查找仍需明示策略、版本、帳戶命名空間及含時區的截止時間，不自動改選最新版本。查找先列出最多 200 筆有限候選並明示截斷，再由使用者選取保存快照讀回卡片；不自動挑選最新項目、不建立或更新保存資料，也不授予候選驗證或績效資格。關閉工作區時會合作式取消未完成查找，並拒收過期回覆。
+
 ## 研究畫面與保存身份
 
 市場研究畫面消費具來源版本、日期、母體、方法與 hash 的 snapshot／manifest。Daily Research、候選摘要、研究書籤與跨頁投影沿同一已核驗來源和 query；readback 按保存的 source identity 重開，不搜尋 latest、不在 UI 重算指標或重新執行 producer。來源缺件、修訂、方法不相容或日期不可判定時保留 unknown／拒絕，不能套用舊投影或改讀一般即時行情。
@@ -89,3 +93,5 @@ View 只把已驗證的 application 結果投影到畫面。來源、時間、�
 - 保存後重新開啟結果時，應按保存 identity、版本與 source pins 讀回，不隱式改讀最新資料。
 - 產品操作與安全限制以 Manual 為準；架構契約不代表按鈕已開啟、資料來源已接受或 Gate 已通過。
 - 舊相容錨點 `system_architecture.md#4-daily-decision-desk` 仍由目前架構首頁導向本節。
+
+P02補完候選在推薦結果來源分頁新增「官方條件與價格研究」，保留既有官方市場條件頁與V1收藏。新頁使用同一sealed V3 group的四組與價格facts，價格作共通AND、全域排序後分頁；Main按V1/V2 typed envelope選相對應的Watchlist writer／reader與頁面，拒絕restore時保持目前workspace。指定合成257股／雙parent的Main父→新PID已有限驗證，來源／歷史PIT／真N／Native／EXE及完整Gate另判。操作見[官方條件與價格研究](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)，證據見[本輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。

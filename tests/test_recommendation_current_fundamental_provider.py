@@ -25,7 +25,19 @@ from data_module.current_fundamental_snapshots import (
     ensure_current_observation_schema,
     insert_observations,
     monthly_snapshot_rows,
+    normalize_current_observation,
 )
+from data_module.daily_source_snapshot import (
+    DAILY_SOURCE_TIME_BASIS_POLICY,
+    DailySourceBatchValidation,
+    DailySourceSnapshotFileReader,
+    DailySourceSnapshotRecord,
+    DailySourceUseAcceptance,
+    DailySourceUseScope,
+    DailySourceValidationCheck,
+    write_daily_source_snapshot,
+)
+from data_module.official_trading_calendar import CalendarObservation
 from data_module.recommendation_current_fundamental_provider import (
     DEFAULT_OFFICIAL_CALENDAR_CACHE_ROOT,
     RecommendationCurrentFundamentalProvider,
@@ -107,6 +119,99 @@ def _official_monthly_row(
     return next(row for row in rows if row["item_code"] == "revenue")
 
 
+def _write_daily_availability_snapshot(
+    root: Path,
+    *,
+    raw_bytes: bytes,
+    raw_source_version: str,
+    source_available_at: datetime,
+    period: str = "2026-04",
+    batch_id: str = "provider-batch-2026-10-02",
+) -> DailySourceUseAcceptance:
+    scope = DailySourceUseScope(
+        dataset_id="fundamental_current_observations.monthly_revenue",
+        source_id="mops.monthly_revenue_static_snapshot",
+        market="twse",
+        parser_version="mops-current-revenue-normalizer.v2",
+        source_schema_version="mops-static-snapshot.v2",
+        unit="TWD",
+        intended_use="recommendation_current_fundamental",
+    )
+    acceptance = DailySourceUseAcceptance(
+        scope=scope,
+        acceptance_id="provider-test-mops-monthly-acceptance",
+        accepted_at=datetime(2026, 10, 2, 8, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+        official_source_endpoint="https://mops.twse.com.tw/mops/web/t05st10_ifrs",
+        document_chain=("mops-monthly-revenue", "recommendation-current-fundamental"),
+        acceptance_evidence_ref="test-fixture:accepted-source-use",
+        authorization_scope="recommendation_current_fundamental only",
+        time_basis_policy=DAILY_SOURCE_TIME_BASIS_POLICY,
+    )
+    record = DailySourceSnapshotRecord(
+        stock_code="2330",
+        market="twse",
+        period=period,
+        source_version=raw_source_version,
+        raw_source_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        unit="TWD",
+        official_timestamp=source_available_at,
+        official_timestamp_original_text=source_available_at.isoformat(),
+        official_timestamp_original_timezone=(
+            source_available_at.strftime("%z")[:3]
+            + ":"
+            + source_available_at.strftime("%z")[3:]
+        ),
+    )
+
+    def passed(check_id: str) -> DailySourceValidationCheck:
+        return DailySourceValidationCheck(check_id, "pass", f"{check_id}_verified")
+
+    validation = DailySourceBatchValidation(
+        validation_id=f"provider-validation-{batch_id}",
+        expected_partition_ids=("twse-monthly-revenue",),
+        successful_partition_ids=("twse-monthly-revenue",),
+        failed_partition_ids=(),
+        expected_record_count=1,
+        actual_record_count=1,
+        source_status_check=passed("source_status"),
+        raw_source_hash_check=passed("raw_source_hash"),
+        schema_check=passed("schema"),
+        unit_check=passed("unit"),
+        finite_values_check=passed("finite_values"),
+        missing_values_check=passed("missing_values"),
+        prior_period_required_check=DailySourceValidationCheck(
+            "prior_period_required", "not_required", "prior_period_not_required"
+        ),
+        official_timestamp_parse_check=DailySourceValidationCheck(
+            "official_timestamp_parse",
+            "pass",
+            "official_timestamp_parsed_by:mops-current-revenue-normalizer.v2",
+        ),
+    )
+    clock_values = iter(
+        (
+            datetime(2026, 10, 2, 10, 10, tzinfo=ZoneInfo("Asia/Taipei")),
+            datetime(2026, 10, 2, 10, 20, tzinfo=ZoneInfo("Asia/Taipei")),
+            datetime(2026, 10, 2, 10, 25, tzinfo=ZoneInfo("Asia/Taipei")),
+            datetime(2026, 10, 2, 10, 30, tzinfo=ZoneInfo("Asia/Taipei")),
+        )
+    )
+    write_daily_source_snapshot(
+        root,
+        batch_id=batch_id,
+        scope=scope,
+        use_acceptance=acceptance,
+        source_batch_started_at=datetime(
+            2026, 10, 2, 9, 55, tzinfo=ZoneInfo("Asia/Taipei")
+        ),
+        raw_source_bytes=raw_bytes,
+        records=(record,),
+        validation=validation,
+        clock=lambda: next(clock_values),
+    )
+    return acceptance
+
+
 def test_monthly_reader_uses_verified_local_observation_and_is_read_only(tmp_path: Path) -> None:
     database = tmp_path / "fundamentals.db"
     _insert_verified_monthly_row(database, OBSERVED)
@@ -145,6 +250,297 @@ def test_monthly_reader_uses_verified_local_observation_and_is_read_only(tmp_pat
     assert result.comparison_baseline.input_role == "same_report_prior_year_comparison_baseline"
     assert result.comparison_baseline.parent_report_period == "2026-04"
     assert result.comparison_baseline.observed_at == record.observed_at
+
+
+def test_pinned_daily_batch_is_the_only_source_of_new_hourly_eligibility(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "fundamentals.db"
+    taipei = ZoneInfo("Asia/Taipei")
+    batch_clock = datetime(2026, 10, 2, 10, 5, tzinfo=taipei)
+    selected_raw = b"selected exact MOPS body"
+    selected_hash = hashlib.sha256(selected_raw).hexdigest()
+    selected_version = (
+        "mops-static-snapshot.v2:twse:2026-04:body_completed_at:"
+        f"{batch_clock.isoformat()}:sha256:{selected_hash}"
+    )
+    selected_row = _official_monthly_row(
+        tmp_path,
+        period="2026-04",
+        source_available_at=batch_clock,
+        observed_at=datetime(2026, 10, 2, 10, 25, tzinfo=taipei),
+        source_hash=selected_hash,
+        revenue_thousands=150,
+    )
+    wrong_same_period = _official_monthly_row(
+        tmp_path,
+        period="2026-04",
+        source_available_at=datetime(2026, 10, 2, 10, 15, tzinfo=taipei),
+        observed_at=datetime(2026, 10, 2, 10, 26, tzinfo=taipei),
+        source_hash="c" * 64,
+        revenue_thousands=999,
+    )
+    wrong_other_period = _official_monthly_row(
+        tmp_path,
+        period="2026-03",
+        source_available_at=datetime(2026, 10, 2, 9, 45, tzinfo=taipei),
+        observed_at=datetime(2026, 10, 2, 10, 24, tzinfo=taipei),
+        source_hash="d" * 64,
+        revenue_thousands=888,
+    )
+    with sqlite3.connect(database) as connection:
+        ensure_current_observation_schema(connection)
+        assert insert_observations(
+            connection,
+            [selected_row, wrong_same_period, wrong_other_period],
+        ) == 3
+        connection.execute(
+            f"UPDATE {TABLE} SET value='NaN' WHERE source_version=?",
+            (wrong_same_period["source_version"],),
+        )
+    with pytest.raises(ValueError):
+        normalize_current_observation({**wrong_same_period, "value": "NaN"})
+
+    snapshot_root = tmp_path / "hourly-source-snapshots"
+    trusted_acceptance = _write_daily_availability_snapshot(
+        snapshot_root,
+        raw_bytes=selected_raw,
+        raw_source_version=selected_version,
+        source_available_at=batch_clock,
+    )
+    provider = RecommendationCurrentFundamentalProvider(
+        db_file=database,
+        output_root=tmp_path / "output",
+        daily_source_snapshot_reader=DailySourceSnapshotFileReader(
+            snapshot_root,
+            trusted_acceptance=trusted_acceptance,
+        ),
+    )
+    too_early = provider.load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=datetime(2026, 10, 2, 10, 30, tzinfo=taipei),
+        pinned_daily_batch_id="provider-batch-2026-10-02",
+    )
+    available = provider.load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=datetime(2026, 10, 2, 11, 0, tzinfo=taipei),
+        pinned_daily_batch_id="provider-batch-2026-10-02",
+    )
+
+    assert too_early.status == "missing"
+    assert any(
+        "daily_source_snapshot_not_available_at_cutoff:2026-04" in item
+        for item in too_early.diagnostics
+    )
+    assert any(
+        "daily_source_snapshot_record_not_in_pinned_batch:2026-04" in item
+        for item in too_early.diagnostics
+    )
+    assert available.status == "ready"
+    assert tuple(item.period for item in available.observations) == ("2026-04",)
+    record = available.observations[0]
+    assert record.revenue == Decimal("150000")
+    assert record.raw_source_version == selected_version
+    assert record.raw_source_sha256 == selected_hash
+    assert record.available_at == datetime(2026, 10, 2, 11, 0, tzinfo=taipei)
+    assert record.availability_basis == "official_timestamp_and_successful_batch_completion"
+    assert record.availability_snapshot_batch_id == "provider-batch-2026-10-02"
+    assert record.availability_first_persisted_at == datetime(
+        2026, 10, 2, 10, 10, tzinfo=taipei
+    )
+    assert any(
+        "daily_source_snapshot_record_not_in_pinned_batch:2026-03" in item
+        for item in available.diagnostics
+    )
+
+
+def test_pinned_materialized_comparator_preserves_hour_gate_and_its_later_observation(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "fundamentals.db"
+    taipei = ZoneInfo("Asia/Taipei")
+    captured = datetime(2026, 10, 2, 10, 5, tzinfo=taipei)
+    observed = datetime(2026, 10, 2, 10, 25, tzinfo=taipei)
+    raw = b"selected report with materialized prior-year comparator"
+    digest = hashlib.sha256(raw).hexdigest()
+    main = _official_monthly_row(
+        tmp_path, source_available_at=captured, observed_at=observed,
+        source_hash=digest, revenue_thousands=150,
+    )
+    csv_path = tmp_path / f"monthly-{digest[:8]}.csv"
+    raw_version = f"mops-static-snapshot.v2:twse:2026-04:body_completed_at:{captured.isoformat()}:sha256:{digest}"
+    rows = monthly_snapshot_rows(csv_path, verified_source_versions={raw_version})
+    for row in rows:
+        row["observed_at"] = observed.isoformat()
+    assert rows[0]["source_version"] == main["source_version"]
+    with sqlite3.connect(database) as connection:
+        assert insert_observations(connection, rows) == 2
+    snapshot_root = tmp_path / "snapshots"
+    acceptance = _write_daily_availability_snapshot(
+        snapshot_root, raw_bytes=raw, raw_source_version=raw_version, source_available_at=captured,
+    )
+    provider = RecommendationCurrentFundamentalProvider(
+        db_file=database, output_root=tmp_path / "unused",
+        daily_source_snapshot_reader=DailySourceSnapshotFileReader(snapshot_root, trusted_acceptance=acceptance),
+    )
+    gate = datetime(2026, 10, 2, 11, 0, tzinfo=taipei)
+    result = provider.load_monthly_revenues(stock_code="2330", cutoff_at=gate, pinned_daily_batch_id="provider-batch-2026-10-02")
+    assert result.comparison_baseline is not None
+    assert result.comparison_baseline.revenue == Decimal("900000")
+    assert result.comparison_baseline.available_at == result.observations[0].available_at == gate
+    assert result.comparison_baseline.source_available_at == captured
+    assert result.comparison_baseline.observed_at == observed
+    assert result.comparison_baseline.availability_snapshot_batch_id == "provider-batch-2026-10-02"
+    assert not result.comparison_baseline.formal_pit_eligible
+    assert provider.load_monthly_revenues(stock_code="2330", cutoff_at=gate-timedelta(microseconds=1), pinned_daily_batch_id="provider-batch-2026-10-02").comparison_baseline is None
+    later = gate + timedelta(minutes=5)
+    with sqlite3.connect(database) as connection:
+        connection.execute(f"UPDATE {TABLE} SET observed_at=? WHERE item_code='revenue_yoy_comparator'", (later.isoformat(),))
+    assert provider.load_monthly_revenues(stock_code="2330", cutoff_at=gate, pinned_daily_batch_id="provider-batch-2026-10-02").comparison_baseline is None
+    later_result = provider.load_monthly_revenues(stock_code="2330", cutoff_at=later, pinned_daily_batch_id="provider-batch-2026-10-02")
+    assert later_result.comparison_baseline is not None
+    assert later_result.comparison_baseline.available_at == later
+
+
+def test_pinned_batch_never_backdates_late_current_or_comparator_materialization(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "fundamentals.db"
+    taipei = ZoneInfo("Asia/Taipei")
+    batch_clock = datetime(2026, 10, 2, 10, 5, tzinfo=taipei)
+    current_observed = datetime(2026, 10, 2, 12, 15, tzinfo=taipei)
+    comparator_observed = datetime(2026, 10, 2, 14, 15, tzinfo=taipei)
+    raw = b"selected report materialized after its availability batch"
+    digest = hashlib.sha256(raw).hexdigest()
+    raw_version = (
+        "mops-static-snapshot.v2:twse:2026-04:body_completed_at:"
+        f"{batch_clock.isoformat()}:sha256:{digest}"
+    )
+    current = _official_monthly_row(
+        tmp_path,
+        period="2026-04",
+        source_available_at=batch_clock,
+        observed_at=current_observed,
+        source_hash=digest,
+        revenue_thousands=150,
+    )
+    csv_path = tmp_path / f"monthly-{digest[:8]}.csv"
+    rows = monthly_snapshot_rows(
+        csv_path,
+        verified_source_versions=frozenset({raw_version}),
+    )
+    current_rows = [row for row in rows if row["item_code"] == "revenue"]
+    comparator_rows = [
+        row for row in rows if row["item_code"] == "revenue_yoy_comparator"
+    ]
+    assert len(current_rows) == 1
+    assert len(comparator_rows) == 1
+    assert current_rows[0]["source_version"] == current["source_version"]
+    current_rows[0]["observed_at"] = current_observed.isoformat()
+    comparator_rows[0]["observed_at"] = comparator_observed.isoformat()
+    with sqlite3.connect(database) as connection:
+        ensure_current_observation_schema(connection)
+        assert insert_observations(connection, rows) == 2
+
+    snapshot_root = tmp_path / "snapshots"
+    acceptance = _write_daily_availability_snapshot(
+        snapshot_root,
+        raw_bytes=raw,
+        raw_source_version=raw_version,
+        source_available_at=batch_clock,
+    )
+    provider = RecommendationCurrentFundamentalProvider(
+        db_file=database,
+        output_root=tmp_path / "unused",
+        daily_source_snapshot_reader=DailySourceSnapshotFileReader(
+            snapshot_root,
+            trusted_acceptance=acceptance,
+        ),
+    )
+    before = hashlib.sha256(database.read_bytes()).hexdigest()
+
+    before_current_materialization = provider.load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=current_observed - timedelta(microseconds=1),
+        pinned_daily_batch_id="provider-batch-2026-10-02",
+    )
+    at_current_materialization = provider.load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=current_observed,
+        pinned_daily_batch_id="provider-batch-2026-10-02",
+    )
+    before_comparator_materialization = provider.load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=comparator_observed - timedelta(microseconds=1),
+        pinned_daily_batch_id="provider-batch-2026-10-02",
+    )
+    at_comparator_materialization = provider.load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=comparator_observed,
+        pinned_daily_batch_id="provider-batch-2026-10-02",
+    )
+    after = hashlib.sha256(database.read_bytes()).hexdigest()
+
+    assert before == after
+    assert before_current_materialization.status == "missing"
+    assert at_current_materialization.status == "ready"
+    assert at_current_materialization.comparison_baseline is None
+    current_record = at_current_materialization.observations[0]
+    assert current_record.revenue == Decimal("150000")
+    assert current_record.available_at == current_observed
+    assert current_record.available_at >= current_record.observed_at
+    assert current_record.available_at >= datetime(
+        2026, 10, 2, 11, 0, tzinfo=taipei
+    )
+    assert current_record.availability_snapshot_batch_id == "provider-batch-2026-10-02"
+    assert current_record.availability_first_persisted_at == datetime(
+        2026, 10, 2, 10, 10, tzinfo=taipei
+    )
+    assert before_comparator_materialization.status == "ready"
+    assert before_comparator_materialization.comparison_baseline is None
+    assert at_comparator_materialization.status == "ready"
+    assert at_comparator_materialization.comparison_baseline is not None
+    baseline = at_comparator_materialization.comparison_baseline
+    assert baseline.revenue == Decimal("900000")
+    assert baseline.observed_at == comparator_observed
+    assert baseline.available_at == comparator_observed
+    assert baseline.available_at >= current_record.available_at
+    assert baseline.availability_snapshot_batch_id == "provider-batch-2026-10-02"
+    assert not baseline.formal_pit_eligible
+
+
+def test_pinned_batch_without_reader_fails_closed_and_unpinned_reader_is_not_guessed(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "fundamentals.db"
+    _insert_verified_monthly_row(database, OBSERVED)
+
+    pinned_without_reader = RecommendationCurrentFundamentalProvider(
+        db_file=database,
+        output_root=tmp_path / "output",
+    ).load_monthly_revenues(
+        stock_code="2330",
+        cutoff_at=FROZEN,
+        pinned_daily_batch_id="caller-pinned-batch",
+    )
+    assert pinned_without_reader.status == "unavailable"
+    assert pinned_without_reader.diagnostics == (
+        "daily_source_snapshot_port_missing_for_pinned_batch",
+    )
+
+    class _ReaderThatMustNotBeSelected:
+        def read_snapshot(self, *_args: object, **_kwargs: object) -> object:
+            raise AssertionError("un-pinned legacy calls must not guess a daily batch")
+
+    unpinned = RecommendationCurrentFundamentalProvider(
+        db_file=database,
+        output_root=tmp_path / "output",
+        daily_source_snapshot_reader=_ReaderThatMustNotBeSelected(),  # type: ignore[arg-type]
+    ).load_monthly_revenues(stock_code="2330", cutoff_at=FROZEN)
+
+    assert unpinned.status == "ready"
+    assert unpinned.observations[0].availability_basis == "local_verified_observation"
+    assert unpinned.observations[0].availability_snapshot_batch_id is None
 
 
 def test_raw_pair_yoy_fallback_projects_negative_current_observed_growth(
@@ -558,7 +954,11 @@ class _AppOfficialCalendar:
         end_date: str,
         decision_at: datetime,
         observed_at: datetime,
+        observation_clock: CalendarObservation,
     ):
+        assert isinstance(observation_clock, CalendarObservation)
+        assert observation_clock.effective_at == observed_at
+        assert observed_at.utcoffset() is not None
         start = date.fromisoformat(start_date)
         end = date.fromisoformat(end_date)
         dates = tuple(

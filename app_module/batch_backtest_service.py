@@ -21,6 +21,7 @@ from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import BacktestReportDTO
 from app_module.exceptions import BacktestCancelledError
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
+from app_module.research_run_dated_equity import research_run_dated_equity_copy
 
 logger = logging.getLogger(__name__)
 
@@ -596,7 +597,7 @@ class BatchBacktestService:
         )
         self.research_run_service.save_run(
             metadata,
-            equity,
+            research_run_dated_equity_copy(equity),
             trades,
             **self._factor_save_kwargs(details),
         )

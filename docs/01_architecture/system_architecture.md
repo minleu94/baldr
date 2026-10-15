@@ -34,6 +34,8 @@ flowchart TD
 
 ## 九個工作區與閱讀路徑
 
+保存母體的四路同 callback Projection Group V3 是 application backend 的 opt-in seam；MA／KDJ／volatility 與 F07 facts 共用 exact verified parent，來源 ledger、population 及 canonical digest 綁同 session。既有 V2、UI／query／bookmark 仍依各自入口，未由新增 backend 宣稱完整比較工作流完成。責任邊界見[UI 與應用流程](current/application_and_workspaces.md)。
+
 目前 UI 有決策工作台、市場探索、推薦分析、策略回測／Research Lab、觀察清單、個股研究、持倉管理、數據更新及 Runtime Observatory。Daily Decision Desk 位於「市場探索 > 市場總覽」；決策工作台的來源導覽回到同一畫面。
 
 依問題閱讀：[UI 與應用流程](current/application_and_workspaces.md)、[決策、研究與 Portfolio](current/decision_research_portfolio.md)、[資料、保存與 Runtime](current/data_storage_runtime.md)。使用者操作流程以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
@@ -58,6 +60,8 @@ TWSE／TPEX 與其他明示來源
 Windows Scheduler 與受控 CLI wrappers 分別執行資料更新、Evidence dry-run 或經批准的工作。Runtime Observatory 只讀 Runtime 與排程狀態，不啟動任務。正式市場資料寫入、Evidence write-mode、策略 lifecycle 與 broker execution 使用分離權限；排程狀態或零錯誤碼不授予產品接受。
 
 儲存、source cutoff、snapshot identity、SQLite 讀寫與 runtime custody 的穩定細節見[資料、保存與 Runtime 分冊](current/data_storage_runtime.md)。
+
+每日新來源保存的小時可用性、批次／版本釘定與來源用途接受依[每日快照契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)；接入沿既有 data reader／更新服務邊界，隔離抓取成功不等同正常 UI、正式排程或完整產品接受。
 
 ## 重要不變條件
 

@@ -446,7 +446,9 @@ def test_natural_market_warmup_uses_expected_session_and_separate_availability_d
             end_date: str,
             decision_at: datetime,
             observed_at: datetime,
+            observation_clock,
         ):
+            assert observation_clock.effective_at == observed_at == frozen_at
             start = date.fromisoformat(start_date)
             end = date.fromisoformat(end_date)
             return SimpleNamespace(
@@ -544,7 +546,9 @@ def test_natural_availability_cutoff_is_invocation_date_not_caller_or_market_dat
             end_date: str,
             decision_at: datetime,
             observed_at: datetime,
+            observation_clock,
         ):
+            assert observation_clock.effective_at == observed_at == frozen_at
             start = date.fromisoformat(start_date)
             end = date.fromisoformat(end_date)
             return SimpleNamespace(

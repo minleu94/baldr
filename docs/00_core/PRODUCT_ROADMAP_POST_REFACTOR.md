@@ -268,6 +268,8 @@ Diagnostics → Shadow Layer → Evidence Review → Accepted Feature → Formal
 
 ### 11.2 優先序
 
+日常研究的新保存来源采用[每日版本快照與小時可用性契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)：來源／用途一次接受、成功批次每日自動驗證，對應版本官方時間與批次完成時間取不提前的台北小時。缺官方小時採具名成功批次依據；缺完整歷史 PIT 不永久阻擋首次保存後已驗證的指定研究用途。歷史版本、單位／完整性、forward／paper 自然成熟及 formal downstream eligibility 仍各自履行。本次補完先依功能需要取得法人、營收、財報／前期及注意／處置公告；下表的長期 P0 登錄不擴張成信用／TDCC 全市場全歷史回補。
+
 | Priority | 來源 | 主要用途 | 初始資格 | 正式接受 Gate |
 |---|---|---|---|---|
 | P0 | Corporate Action：除權息、減資、分割、面額變更 | 價格、回測、持倉可信度 | official / licensed / candidate | PIT timeline、調整政策、raw/adjusted 可追溯 |

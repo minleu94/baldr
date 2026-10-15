@@ -183,8 +183,30 @@ def _parse_json(raw: bytes | str, *, maximum: int, code: str) -> object:
         def parse_constant(_value: str) -> NoReturn:
             _fail("technical_universe_price_json_constant_invalid")
 
+        text = encoded.decode("utf-8")
+        # 原 tree 守衛從根的 depth=0 開始；33 層空容器仍交原守衛裁決。
+        # 在 json.loads 前先擋更深容器，避免 parser 先拋 RecursionError。
+        depth = 0
+        in_string = False
+        escaped = False
+        for character in text:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    in_string = False
+            elif character == '"':
+                in_string = True
+            elif character in "[{":
+                depth += 1
+                if depth > 33:
+                    _fail("technical_universe_price_json_depth_limit")
+            elif character in "]}":
+                depth -= 1
         value = json.loads(
-            encoded.decode("utf-8"),
+            text,
             object_pairs_hook=pairs,
             parse_float=parse_float,
             parse_constant=parse_constant,
@@ -195,7 +217,7 @@ def _parse_json(raw: bytes | str, *, maximum: int, code: str) -> object:
         return value
     except DailyMarketTechnicalUniversePriceQueryV1Error:
         raise
-    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError) as exc:
         raise DailyMarketTechnicalUniversePriceQueryV1Error(code) from exc
 
 
@@ -609,6 +631,16 @@ class DailyMarketTechnicalUniversePriceFactV1:
         return _sha256_json(self.to_dict())
 
 
+def _canonical_price_fact_bytes_v1(
+    fact: DailyMarketTechnicalUniversePriceFactV1,
+) -> bytes:
+    """輸出與 F07 index digest 相同的單筆 canonical UTF-8 payload。"""
+
+    if type(fact) is not DailyMarketTechnicalUniversePriceFactV1:
+        _fail("technical_universe_price_fact_serialization_input_invalid")
+    return _canonical_json(fact.to_dict()).encode("utf-8")
+
+
 def _unknown_fact(
     snapshot: DailyMarketTechnicalFeatureSnapshotV4,
     *,
@@ -719,6 +751,49 @@ def _price_fact_from_snapshot(
         source_identity=snapshot.source_identity,
         reason_codes=(),
     )
+
+
+def build_daily_market_technical_universe_price_fact_from_verified_parent_v1(
+    snapshot: DailyMarketTechnicalFeatureSnapshotV4,
+    parent_row: DailyMarketTechnicalParentV4Row,
+    *,
+    decision_date: date,
+) -> DailyMarketTechnicalUniversePriceFactV1:
+    """沿 exact verified-parent callback 的單列建立原 F07 Decimal fact。
+
+    此 helper 不自行核驗或讀取來源；呼叫端必須持有 StoreReader callback
+    交付的 snapshot/parent row，並由其 reader-issued group 負責完整來源證明。
+    價格分類與 unknown reason 完全沿用 F07 V1 builder。
+    """
+
+    if (
+        type(snapshot) is not DailyMarketTechnicalFeatureSnapshotV4
+        or type(parent_row) is not DailyMarketTechnicalParentV4Row
+        or type(decision_date) is not date
+        or isinstance(decision_date, datetime)
+    ):
+        _fail("technical_universe_price_verified_parent_input_invalid")
+    current = snapshot.current_session
+    expected_latest_date = current.feature_date if current is not None else None
+    if (
+        snapshot.decision_date != decision_date
+        or parent_row.decision_date != decision_date
+        or parent_row.stock_code != snapshot.stock_code
+        or parent_row.snapshot_identity_sha256 != snapshot.snapshot_identity_sha256
+        or parent_row.source_identity != snapshot.source_identity
+        or parent_row.latest_feature_date != expected_latest_date
+    ):
+        _fail("technical_universe_price_verified_parent_identity_mismatch")
+    fact = _price_fact_from_snapshot(snapshot, decision_date=decision_date)
+    if (
+        fact.stock_code != parent_row.stock_code
+        or fact.snapshot_identity_sha256 != parent_row.snapshot_identity_sha256
+        or fact.source_identity != parent_row.source_identity
+        or fact.observation_date != parent_row.latest_feature_date
+        or (fact.observation_date is not None and fact.observation_date > decision_date)
+    ):
+        _fail("technical_universe_price_verified_parent_fact_mismatch")
+    return fact
 
 
 @dataclass(frozen=True, slots=True)
@@ -1256,6 +1331,39 @@ def _stream_digest(
         digest.update(encoded)
     digest.update(b"]")
     return digest.hexdigest(), size
+
+
+def digest_daily_market_technical_universe_price_facts_v1(
+    facts: tuple[DailyMarketTechnicalUniversePriceFactV1, ...],
+    *,
+    maximum_bytes: int = DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_MAX_INDEX_BYTES,
+    cancel_callback: Callable[[], object] | None = None,
+) -> tuple[str, int]:
+    """以 F07 V1 canonical array 格式計算排序後 price facts 的 digest/bytes。"""
+
+    _check_cancel(cancel_callback)
+    if (
+        type(facts) is not tuple
+        or type(maximum_bytes) is not int
+        or not 1 <= maximum_bytes <= DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_MAX_INDEX_BYTES
+        or len(facts) > DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_MAX_STOCKS
+    ):
+        _fail("technical_universe_price_fact_index_input_invalid")
+    previous_code: str | None = None
+    for index, fact in enumerate(facts):
+        if index % 256 == 0:
+            _check_cancel(cancel_callback)
+        if type(fact) is not DailyMarketTechnicalUniversePriceFactV1:
+            _fail("technical_universe_price_fact_index_input_invalid")
+        fact.__post_init__()
+        if previous_code is not None and fact.stock_code <= previous_code:
+            _fail("technical_universe_price_fact_index_order_invalid")
+        previous_code = fact.stock_code
+    return _stream_digest(
+        (fact.to_dict() for fact in facts),
+        maximum_bytes=maximum_bytes,
+        cancel_callback=cancel_callback,
+    )
 
 
 def _classify_price(

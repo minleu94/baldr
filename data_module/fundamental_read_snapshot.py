@@ -14,10 +14,11 @@ import stat
 import struct
 import sys
 from threading import Event, Lock, get_ident
-from typing import Callable, Literal, Sequence, cast
+from typing import TYPE_CHECKING, Callable, Literal, Sequence, cast
 from uuid import uuid4
 
 from data_module.config import TWStockConfig
+from data_module.daily_monthly_revenue_cohort import DailyMonthlyRevenueCohortReader
 from app_module.personal_data_paths import to_internal_io_path
 
 from data_module.recommendation_current_fundamental_provider import (
@@ -35,6 +36,8 @@ from data_module.fundamental_read_copy_contract import (
     _issue_archived_copy_binding,
 )
 from data_module.selection_fact_readers import (
+    FinishedFundamentalReadCohort,
+    FinishedFundamentalReadCohortV2,
     FundamentalFilePin,
     FundamentalReadBatchCandidate,
     FundamentalReadSessionCancelled,
@@ -42,6 +45,14 @@ from data_module.selection_fact_readers import (
     FundamentalSourceClock,
     SelectionFundamentalReadSession,
 )
+
+if TYPE_CHECKING:
+    from data_module.fundamental_read_snapshot_cohort_v2 import (
+        FinishedFundamentalSnapshotReadCohortV2, FundamentalSnapshotSourceClockV2,
+    )
+    from data_module.fundamental_read_snapshot_daily_v2 import _VerifiedSnapshotReferenceV2
+    from data_module.fundamental_read_snapshot_raw_archive_io_v2 import _VerifiedArchivedSnapshotReferenceV2
+    from data_module.fundamental_read_archived_copy_contract_v2 import FundamentalReadArchivedCopyBindingV2
 
 
 FUNDAMENTAL_READ_SNAPSHOT_SCHEMA: Literal["selection-fundamental-read-snapshot.v1"] = (
@@ -750,8 +761,9 @@ class FundamentalReadSnapshotSession:
         read_session: SelectionFundamentalReadSession,
         cancel_callback: Callable[[], bool] | None,
         cancel_event: Event,
-        expected_reference: _VerifiedSnapshotReference | None = None,
-        expected_archived_reference: _VerifiedArchivedSnapshotReference | None = None,
+        expected_reference: _VerifiedSnapshotReference | _VerifiedSnapshotReferenceV2 | None = None,
+        expected_archived_reference: _VerifiedArchivedSnapshotReference | _VerifiedArchivedSnapshotReferenceV2 | None = None,
+        daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
     ) -> None:
         self._provider = provider
         self._attempt = attempt
@@ -760,10 +772,11 @@ class FundamentalReadSnapshotSession:
         self._cancel_event = cancel_event
         self._publication_gate = Lock()
         self._state: Literal["open", "finished", "cancelled", "failed"] = "open"
-        self._finished: FinishedFundamentalSnapshotReadCohort | None = None
+        self._finished: FinishedFundamentalSnapshotReadCohort | FinishedFundamentalSnapshotReadCohortV2 | None = None
         self._owner_thread_id = get_ident()
         self._expected_reference = expected_reference
         self._expected_archived_reference = expected_archived_reference
+        self._daily_monthly_cohort_reader = daily_monthly_cohort_reader
 
     @classmethod
     def open_from_config(
@@ -1010,8 +1023,9 @@ class FundamentalReadSnapshotSession:
         cutoff_at: datetime,
         cancel_callback: Callable[[], bool] | None,
         cancel_event: Event,
-        expected_reference: _VerifiedSnapshotReference | None,
-        expected_archived_reference: _VerifiedArchivedSnapshotReference | None = None,
+        expected_reference: _VerifiedSnapshotReference | _VerifiedSnapshotReferenceV2 | None,
+        expected_archived_reference: _VerifiedArchivedSnapshotReference | _VerifiedArchivedSnapshotReferenceV2 | None = None,
+        daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
     ) -> FundamentalReadSnapshotSession:
         def session_cancelled() -> bool:
             if cancel_event.is_set():
@@ -1035,6 +1049,11 @@ class FundamentalReadSnapshotSession:
                     else None
                 ),
             )
+            if daily_monthly_cohort_reader is not None:
+                if (type(daily_monthly_cohort_reader) is not DailyMonthlyRevenueCohortReader
+                        or provider.daily_source_snapshot_reader is not daily_monthly_cohort_reader):
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_reader_identity_mismatch")
+                reader_provider.daily_source_snapshot_reader = daily_monthly_cohort_reader
             if attempt.sqlite_journal_mode == "wal" and attempt.wal_sidecar_state == "absent":
                 primer_binding = _make_copy_binding(
                     attempt,
@@ -1049,26 +1068,39 @@ class FundamentalReadSnapshotSession:
                     attempt.reader_database_path,
                     cancel_callback=session_cancelled,
                 )
-            copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding
+            copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding | FundamentalReadArchivedCopyBindingV2
             if expected_archived_reference is None:
                 copy_binding = _make_copy_binding(
                     attempt,
                     cancel_callback=session_cancelled,
                 )
             else:
-                copy_binding = _make_archived_copy_binding(
-                    attempt,
-                    verified_reference=expected_archived_reference,
-                    cancel_callback=session_cancelled,
+                from data_module.fundamental_read_snapshot_raw_archive_io_v2 import (
+                    _VerifiedArchivedSnapshotReferenceV2, make_archived_copy_binding_v2,
                 )
-            read_session = SelectionFundamentalReadSession.open(
-                reader_provider,
-                database_path=attempt.reader_database_path,
-                copy_binding=copy_binding,
-                stock_codes=stock_codes,
-                cutoff_at=cutoff_at,
-                cancel_callback=session_cancelled,
-            )
+                if type(expected_archived_reference) is _VerifiedArchivedSnapshotReferenceV2:
+                    if daily_monthly_cohort_reader is None:
+                        raise FundamentalReadSnapshotError("fundamental_snapshot_v2_archive_missing_daily_reader")
+                    copy_binding = make_archived_copy_binding_v2(attempt,
+                        verified=expected_archived_reference, cancel_callback=session_cancelled)
+                elif type(expected_archived_reference) is _VerifiedArchivedSnapshotReference:
+                    copy_binding = _make_archived_copy_binding(attempt,
+                        verified_reference=expected_archived_reference, cancel_callback=session_cancelled)
+                else:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_archived_reference_kind_mismatch")
+            if daily_monthly_cohort_reader is None:
+                read_session = SelectionFundamentalReadSession.open(
+                    reader_provider, database_path=attempt.reader_database_path,
+                    copy_binding=copy_binding, stock_codes=stock_codes,
+                    cutoff_at=cutoff_at, cancel_callback=session_cancelled,
+                )
+            else:
+                read_session = SelectionFundamentalReadSession.open(
+                    reader_provider, database_path=attempt.reader_database_path,
+                    copy_binding=copy_binding, stock_codes=stock_codes,
+                    cutoff_at=cutoff_at, cancel_callback=session_cancelled,
+                    daily_monthly_cohort_reader=daily_monthly_cohort_reader,
+                )
         except FundamentalReadSessionCancelled as exc:
             _write_attempt_status(
                 attempt.snapshot_root,
@@ -1093,6 +1125,7 @@ class FundamentalReadSnapshotSession:
             cancel_event=cancel_event,
             expected_reference=expected_reference,
             expected_archived_reference=expected_archived_reference,
+            daily_monthly_cohort_reader=daily_monthly_cohort_reader,
         )
 
     @property
@@ -1122,6 +1155,8 @@ class FundamentalReadSnapshotSession:
         self._require_owner_thread()
         if self._finished is None or self._state != "finished":
             raise FundamentalReadSnapshotError("fundamental_snapshot_reference_requires_finished_session")
+        if type(self._finished) is not FinishedFundamentalSnapshotReadCohort:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_v1_refuses_v2_reference")
         return _reference_from_finished_snapshot(self._attempt.snapshot_root)
 
     @property
@@ -1131,6 +1166,8 @@ class FundamentalReadSnapshotSession:
         self._require_owner_thread()
         if self._expected_archived_reference is None:
             return None
+        if type(self._expected_archived_reference) is not _VerifiedArchivedSnapshotReference:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_v1_refuses_v2_raw_archive")
         return self._expected_archived_reference.archive_reference
 
     def resolve_archived_capture_pin(
@@ -1145,13 +1182,20 @@ class FundamentalReadSnapshotSession:
             raise FundamentalReadSnapshotError(
                 "fundamental_snapshot_archived_capture_resolution_unavailable"
             )
-        for archived_file, archive_pin in zip(
-            verified.archive_reference.files,
+        from data_module.fundamental_read_snapshot_raw_archive_io_v2 import _VerifiedArchivedSnapshotReferenceV2
+        if type(verified) is _VerifiedArchivedSnapshotReferenceV2:
+            historical_pins = tuple(item.historical_pin for item in verified.archive_reference.files)
+        elif type(verified) is _VerifiedArchivedSnapshotReference:
+            historical_pins = tuple(item.historical_pin for item in verified.archive_reference.files)
+        else:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_archived_reference_kind_mismatch")
+        for archived_pin, archive_pin in zip(
+            historical_pins,
             verified.archive_file_pins,
             strict=True,
         ):
             _poll_cancel(self._effective_cancel_callback)
-            if archived_file.historical_pin == historical_pin:
+            if archived_pin == historical_pin:
                 if (
                     archive_pin.role != historical_pin.role
                     or archive_pin.size_bytes != historical_pin.size_bytes
@@ -1178,6 +1222,8 @@ class FundamentalReadSnapshotSession:
             raise FundamentalReadSnapshotError(
                 "fundamental_snapshot_raw_archive_requires_finished_session"
             )
+        if type(self._finished) is not FinishedFundamentalSnapshotReadCohort:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_v1_refuses_v2_raw_archive")
         callback = self._effective_cancel_callback if cancel_callback is None else cancel_callback
         if not callable(callback):
             raise TypeError("cancel_callback 必須可呼叫")
@@ -1197,10 +1243,24 @@ class FundamentalReadSnapshotSession:
     def load_batch(self, stock_codes: Sequence[str]) -> FundamentalReadBatchCandidate:
         self._require_owner_thread()
         self._require_open()
-        return self._read_session.load_batch(stock_codes)
+        batch = self._read_session.load_batch(stock_codes)
+        if type(batch) is not FundamentalReadBatchCandidate:
+            self.close()
+            raise FundamentalReadSnapshotError("fundamental_snapshot_v1_refuses_v2_batch")
+        return batch
 
     def finish(self) -> FinishedFundamentalSnapshotReadCohort:
+        finished = self._finish_core(daily_v2=False)
+        if type(finished) is not FinishedFundamentalSnapshotReadCohort:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_v1_refuses_v2_finished")
+        return finished
+
+    def _finish_core(
+        self, *, daily_v2: bool,
+    ) -> FinishedFundamentalSnapshotReadCohort | FinishedFundamentalSnapshotReadCohortV2:
         self._require_owner_thread()
+        if type(daily_v2) is not bool:
+            raise TypeError("snapshot version mode 必須是 exact bool")
         if self._finished is not None:
             return self._finished
         self._require_open()
@@ -1208,6 +1268,12 @@ class FundamentalReadSnapshotSession:
         try:
             _poll_cancel(self._effective_cancel_callback)
             reader_finished = self._read_session.finish()
+            if daily_v2:
+                if (type(reader_finished) is not FinishedFundamentalReadCohortV2
+                        or self._daily_monthly_cohort_reader is None):
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_requires_v2_finished")
+            elif type(reader_finished) is not FinishedFundamentalReadCohort:
+                raise FundamentalReadSnapshotError("fundamental_snapshot_v1_refuses_v2_finished")
             if not self._read_session.closed:
                 raise FundamentalReadSnapshotError(
                     "fundamental_snapshot_reader_connection_not_closed_after_finish"
@@ -1226,16 +1292,8 @@ class FundamentalReadSnapshotSession:
                 source_pins_finish = (
                     self._expected_archived_reference.snapshot.source_clock.database_file_pins_finish
                 )
-                archived_ref = self._expected_archived_reference.archive_reference
-                archive_roots = _RawArchiveVerificationRoots(
-                    output_root=self._provider.output_root,
-                    monthly_source_root=Path(archived_ref.original_monthly_source_root),
-                )
-                final_archive = _verify_raw_archive_reference(
-                    archived_ref,
-                    provider=archive_roots,
-                    cancel_callback=self._effective_cancel_callback,
-                )
+                final_archive = _reverify_archived_subject(self._expected_archived_reference,
+                    provider=self._provider, cancel_callback=self._effective_cancel_callback)
                 reader_capture_pins = reader_finished.source_clock.capture_file_pins_start
                 if reader_capture_pins != reader_finished.source_clock.capture_file_pins_finish:
                     raise FundamentalReadSnapshotError(
@@ -1266,11 +1324,27 @@ class FundamentalReadSnapshotSession:
                         self._expected_reference.source_clock.database_path
                     ),
                 )
-                _verify_finished_snapshot_reference(
-                    self._expected_reference.reference,
-                    provider=origin_provider,
-                    cancel_callback=self._effective_cancel_callback,
-                )
+                if daily_v2:
+                    from data_module.fundamental_read_snapshot_daily_v2 import (
+                        _VerifiedSnapshotReferenceV2, _verify_finished_snapshot_reference_v2,
+                    )
+                    if type(self._expected_reference) is not _VerifiedSnapshotReferenceV2:
+                        raise FundamentalReadSnapshotError("fundamental_snapshot_v2_expected_reference_kind_mismatch")
+                    if self._daily_monthly_cohort_reader is None:
+                        raise FundamentalReadSnapshotError("fundamental_snapshot_v2_missing_reader")
+                    origin_provider.daily_source_snapshot_reader = self._daily_monthly_cohort_reader
+                    _verify_finished_snapshot_reference_v2(
+                        self._expected_reference.reference, provider=origin_provider,
+                        daily_monthly_cohort_reader=self._daily_monthly_cohort_reader,
+                        cancel_callback=self._effective_cancel_callback,
+                    )
+                else:
+                    if type(self._expected_reference) is not _VerifiedSnapshotReference:
+                        raise FundamentalReadSnapshotError("fundamental_snapshot_v1_expected_reference_kind_mismatch")
+                    _verify_finished_snapshot_reference(
+                        self._expected_reference.reference, provider=origin_provider,
+                        cancel_callback=self._effective_cancel_callback,
+                    )
             _poll_cancel(self._effective_cancel_callback)
             binding = FundamentalReadSnapshotBinding(
                 snapshot_id=self._attempt.snapshot_id,
@@ -1304,7 +1378,7 @@ class FundamentalReadSnapshotSession:
                 ),
             )
             reader_clock = reader_finished.source_clock
-            source_clock = FundamentalSnapshotSourceClock(
+            base_source_clock = FundamentalSnapshotSourceClock(
                 database_path=str(self._attempt.source_database_path),
                 decision_cutoff=reader_clock.decision_cutoff,
                 declared_stock_codes=reader_clock.declared_stock_codes,
@@ -1324,20 +1398,33 @@ class FundamentalReadSnapshotSession:
                 ),
                 snapshot_binding=binding,
             )
+            source_clock: FundamentalSnapshotSourceClock | FundamentalSnapshotSourceClockV2 = base_source_clock
+            if daily_v2:
+                from data_module.fundamental_read_snapshot_cohort_v2 import FundamentalSnapshotSourceClockV2
+                if type(reader_finished) is not FinishedFundamentalReadCohortV2:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_lost_finished_reader")
+                source_clock = FundamentalSnapshotSourceClockV2.from_base_clock(
+                    base_source_clock, cohort_pin=reader_finished.source_clock.cohort_pin,
+                    verified_markets=reader_finished.source_clock.verified_markets,
+                )
             session_id = _canonical_sha256(
                 {
-                    "schema_version": "selection-fundamental-snapshot-session.v1",
+                    "schema_version": ("selection-fundamental-snapshot-session.v2" if daily_v2
+                                       else "selection-fundamental-snapshot-session.v1"),
                     "reader_session_id": reader_finished.session_id,
                     "source_clock_sha256": source_clock.identity_sha256,
                 }
             )
-            finished = FinishedFundamentalSnapshotReadCohort(
-                session_id=session_id,
-                source_clock=source_clock,
-                processed_stock_codes=reader_finished.processed_stock_codes,
-                result_identity_by_stock=reader_finished.result_identity_by_stock,
-                result_status_counts=reader_finished.result_status_counts,
-            )
+            finished: FinishedFundamentalSnapshotReadCohort | FinishedFundamentalSnapshotReadCohortV2 | None = None
+            if not daily_v2:
+                if type(source_clock) is not FundamentalSnapshotSourceClock:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v1_clock_kind_mismatch")
+                finished = FinishedFundamentalSnapshotReadCohort(
+                    session_id=session_id, source_clock=source_clock,
+                    processed_stock_codes=reader_finished.processed_stock_codes,
+                    result_identity_by_stock=reader_finished.result_identity_by_stock,
+                    result_status_counts=reader_finished.result_status_counts,
+                )
             expected_ledger = (
                 self._expected_archived_reference.snapshot
                 if self._expected_archived_reference is not None
@@ -1356,7 +1443,24 @@ class FundamentalReadSnapshotSession:
                         "fundamental_snapshot_exact_reopen_result_ledger_mismatch"
                     )
             _poll_cancel(self._effective_cancel_callback)
-            finished_manifest: dict[str, object] = {
+            if daily_v2:
+                from data_module.fundamental_read_snapshot_cohort_v2 import (
+                    make_finished_snapshot_manifest_v2, parse_finished_snapshot_cohort_v2,
+                )
+                if type(source_clock) is not FundamentalSnapshotSourceClockV2:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_clock_kind_mismatch")
+                finished_manifest = make_finished_snapshot_manifest_v2(
+                    session_id=session_id, reader_session_id=reader_finished.session_id,
+                    source_clock=source_clock,
+                    processed_stock_codes=reader_finished.processed_stock_codes,
+                    result_identity_by_stock=reader_finished.result_identity_by_stock,
+                    result_status_counts=reader_finished.result_status_counts,
+                    manifest_state="candidate_pending_publication",
+                )
+            else:
+                if finished is None:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v1_missing_finished")
+                finished_manifest = {
                 "schema_version": FUNDAMENTAL_READ_SNAPSHOT_SCHEMA,
                 "manifest_state": "candidate_pending_publication",
                 "snapshot_binding": binding.to_dict(),
@@ -1374,13 +1478,23 @@ class FundamentalReadSnapshotSession:
                     "complete": True,
                     "identity_sha256": finished.identity_sha256,
                 },
-            }
+                }
+            finished_manifest.pop("manifest_sha256", None)
             finished_manifest["manifest_sha256"] = _canonical_sha256(finished_manifest)
             _write_atomic_json(
                 self._attempt.snapshot_root / "finished_source_clock.json",
                 finished_manifest,
             )
             _poll_cancel(self._effective_cancel_callback)
+            if daily_v2:
+                reader = self._daily_monthly_cohort_reader
+                if reader is None or self._provider.daily_source_snapshot_reader is not reader:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_reader_changed_before_publication")
+                reader.verify_cohort()
+                if (type(source_clock) is not FundamentalSnapshotSourceClockV2
+                        or reader.pin != source_clock.cohort_pin):
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_pin_changed_before_publication")
+                _poll_cancel(self._effective_cancel_callback)
             with self._publication_gate:
                 if self._state != "open":
                     raise FundamentalReadSnapshotCancelled(
@@ -1395,6 +1509,18 @@ class FundamentalReadSnapshotSession:
                     self._attempt.snapshot_root / "finished_source_clock.json",
                     finished_manifest,
                 )
+                if daily_v2:
+                    if type(source_clock) is not FundamentalSnapshotSourceClockV2:
+                        raise FundamentalReadSnapshotError("fundamental_snapshot_v2_clock_kind_mismatch")
+                    actual_manifest, actual_raw = _read_canonical_json_file(
+                        self._attempt.snapshot_root / "finished_source_clock.json",
+                        max_bytes=MAX_FINISHED_SNAPSHOT_MANIFEST_BYTES,
+                    )
+                    if actual_manifest != finished_manifest or actual_raw != _canonical_json_bytes(finished_manifest):
+                        raise FundamentalReadSnapshotError("fundamental_snapshot_v2_publication_bytes_mismatch")
+                    finished = parse_finished_snapshot_cohort_v2(actual_manifest, source_clock)
+                if finished is None:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_missing_finished")
                 self._state = "finished"
                 self._finished = finished
                 published = True
@@ -1538,7 +1664,7 @@ class FundamentalReadSnapshotSession:
 def _capture_snapshot_from_reference(
     provider: RecommendationCurrentFundamentalProvider,
     *,
-    source_reference: _VerifiedSnapshotReference,
+    source_reference: _VerifiedSnapshotReference | _VerifiedSnapshotReferenceV2,
     snapshot_root: Path | str,
     cancel_callback: Callable[[], bool] | None,
 ) -> _SnapshotAttempt:
@@ -1734,21 +1860,45 @@ def _capture_snapshot_from_reference(
         raise
 
 
+def _reverify_archived_subject(
+    verified: _VerifiedArchivedSnapshotReference | _VerifiedArchivedSnapshotReferenceV2,
+    *, provider: RecommendationCurrentFundamentalProvider,
+    cancel_callback: Callable[[], bool] | None,
+) -> _VerifiedArchivedSnapshotReference | _VerifiedArchivedSnapshotReferenceV2:
+    from data_module.fundamental_read_snapshot_raw_archive_io_v2 import (
+        _VerifiedArchivedSnapshotReferenceV2, reverify_raw_archive_reference_v2,
+    )
+    if type(verified) is _VerifiedArchivedSnapshotReferenceV2:
+        original = _clone_provider_for_reader(provider,
+            reader_database_path=Path(verified.snapshot.source_clock.database_path),
+            monthly_source_root=Path(verified.archive_reference.original_monthly_source_root))
+        reader = provider.daily_source_snapshot_reader
+        if type(reader) is not DailyMonthlyRevenueCohortReader:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_v2_archive_missing_daily_reader")
+        original.daily_source_snapshot_reader = reader
+        return reverify_raw_archive_reference_v2(verified, provider=original,
+            daily_monthly_cohort_reader=reader, cancel_callback=cancel_callback)
+    if type(verified) is not _VerifiedArchivedSnapshotReference:
+        raise FundamentalReadSnapshotError("fundamental_snapshot_archived_reference_kind_mismatch")
+    roots = _RawArchiveVerificationRoots(output_root=provider.output_root,
+        monthly_source_root=Path(verified.archive_reference.original_monthly_source_root))
+    return _verify_raw_archive_reference(verified.archive_reference, provider=roots,
+                                       cancel_callback=cancel_callback)
+
+
 def _capture_snapshot_from_archived_reference(
     provider: RecommendationCurrentFundamentalProvider,
     *,
-    verified_reference: _VerifiedArchivedSnapshotReference,
+    verified_reference: _VerifiedArchivedSnapshotReference | _VerifiedArchivedSnapshotReferenceV2,
     snapshot_root: Path | str,
     cancel_callback: Callable[[], bool] | None,
 ) -> _SnapshotAttempt:
     """由 saved captured DB/WAL/SHM bytes 建新 operation，不讀任何 live source。"""
 
     _poll_cancel(cancel_callback)
-    verified = _verify_raw_archive_reference(
-        verified_reference.archive_reference,
-        provider=provider,
-        cancel_callback=cancel_callback,
-    )
+    from data_module.fundamental_read_snapshot_raw_archive_io_v2 import _VerifiedArchivedSnapshotReferenceV2
+    verified = _reverify_archived_subject(verified_reference, provider=provider,
+                                        cancel_callback=cancel_callback)
     source_database_path = Path(verified.snapshot.source_clock.database_path)
     original_binding = verified.snapshot.binding
     root = _validate_snapshot_root(
@@ -1756,7 +1906,12 @@ def _capture_snapshot_from_archived_reference(
         source_database_path=source_database_path,
         provider=provider,
     )
-    archive_root = Path(verified.archive_reference.raw_archive_root)
+    if type(verified) is _VerifiedArchivedSnapshotReferenceV2:
+        archive_root = Path(verified.archive_reference.archive_root)
+    elif type(verified) is _VerifiedArchivedSnapshotReference:
+        archive_root = Path(verified.archive_reference.raw_archive_root)
+    else:
+        raise FundamentalReadSnapshotError("fundamental_snapshot_archived_reference_kind_mismatch")
     if _paths_overlap(root, archive_root) or _paths_overlap(
         root, Path(verified.archive_reference.snapshot_reference.snapshot_root)
     ):
@@ -1783,9 +1938,9 @@ def _capture_snapshot_from_archived_reference(
             or source_copy_bytes != sum(pin.size_bytes or 0 for pin in source_pins if pin.present)
         ):
             raise FundamentalReadSnapshotError("fundamental_snapshot_archived_database_pins_inconsistent")
-        source_captured_root = Path(
-            verified.archive_reference.snapshot_reference.snapshot_root
-        )
+        source_captured_root = Path(verified.archive_reference.archived_snapshot_root
+            if type(verified) is _VerifiedArchivedSnapshotReferenceV2
+            else verified.archive_reference.snapshot_reference.snapshot_root)
         captured_refs: list[FundamentalReadSnapshotFileReference] = []
         captured_pins: list[FundamentalFilePin] = []
         for source_ref, expected_pin in zip(
@@ -1798,8 +1953,17 @@ def _capture_snapshot_from_archived_reference(
             source_pin = _pin_file(
                 source_ref.role, source_path, required=True, cancel_callback=cancel_callback
             )
+            expected_physical = expected_pin
+            if type(verified) is _VerifiedArchivedSnapshotReferenceV2:
+                matching = tuple((entry, pin) for entry, pin in zip(
+                    verified.archive_reference.snapshot_files,
+                    verified.archive_all_file_pins[:len(verified.archive_reference.snapshot_files)], strict=True)
+                    if entry.historical_pin == expected_pin)
+                if len(matching) != 1:
+                    raise FundamentalReadSnapshotError("fundamental_snapshot_v2_archived_saved_pin_missing")
+                expected_physical = matching[0][1]
             if (
-                source_pin != expected_pin
+                source_pin != expected_physical
                 or source_pin.sha256 != source_ref.sha256
                 or source_pin.size_bytes != source_ref.size_bytes
             ):
@@ -1878,15 +2042,13 @@ def _capture_snapshot_from_archived_reference(
             required=True,
             cancel_callback=cancel_callback,
         )
-        final_verified = _verify_raw_archive_reference(
-            verified.archive_reference,
-            provider=provider,
-            cancel_callback=cancel_callback,
-        )
+        final_verified = _reverify_archived_subject(verified, provider=provider,
+                                                  cancel_callback=cancel_callback)
         if (
             final_verified.snapshot_manifest_pin != verified.snapshot_manifest_pin
             or final_verified.archive_manifest_pin != verified.archive_manifest_pin
             or final_verified.archive_file_pins != verified.archive_file_pins
+            or final_verified != verified
         ):
             raise FundamentalReadSnapshotError("fundamental_snapshot_archived_source_changed_during_copy")
         _poll_cancel(cancel_callback)
@@ -4026,7 +4188,7 @@ def _verify_raw_archive_inventory(
 
 
 def _verify_reference_capture_pins(
-    source_clock: FundamentalSnapshotSourceClock,
+    source_clock: FundamentalSnapshotSourceClock | FundamentalSnapshotSourceClockV2,
     *,
     monthly_source_root: Path,
     cancel_callback: Callable[[], bool] | None,
@@ -4187,7 +4349,7 @@ def _verify_snapshot_capture_manifest(
 
 def _verify_finished_snapshot_status(
     snapshot_root: Path,
-    source_clock: FundamentalSnapshotSourceClock,
+    source_clock: FundamentalSnapshotSourceClock | FundamentalSnapshotSourceClockV2,
     manifest: dict[str, object],
     cancel_callback: Callable[[], bool] | None,
 ) -> None:

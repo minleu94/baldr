@@ -32,9 +32,18 @@ from data_module.recommendation_current_fundamental_provider import (
     CurrentObservedMonthlyRevenueInput,
     RecommendationCurrentFundamentalProvider,
 )
+from data_module.daily_monthly_revenue_cohort import (
+    DailyMonthlyRevenueCohortPin,
+    DailyMonthlyRevenueCohortReader,
+)
+from data_module.daily_source_snapshot import DailySourceSnapshot
+from data_module.fundamental_read_archived_copy_contract_v2 import FundamentalReadArchivedCopyBindingV2
 
 
 FUNDAMENTAL_READ_CLOCK_SCHEMA = "selection-fundamental-source-clock.v1"
+FUNDAMENTAL_READ_CLOCK_V2_SCHEMA = "selection-fundamental-source-clock.v2"
+FUNDAMENTAL_READ_BATCH_V2_SCHEMA = "selection-fundamental-read-batch.v2"
+FUNDAMENTAL_READ_FINISHED_V2_SCHEMA = "selection-fundamental-finished-cohort.v2"
 FUNDAMENTAL_READ_SOURCE_ID = "sqlite.fundamental_current_observations"
 FUNDAMENTAL_READ_SCOPE = "current_observed_only"
 MAX_STOCK_CODES = 100_000
@@ -165,6 +174,125 @@ class FundamentalSourceClock:
 
 
 @dataclass(frozen=True, slots=True)
+class FundamentalSourceClockV2:
+    """固定 current-only DB pins 與明示每日 cohort 時間依據的 V2 clock。"""
+
+    database_path: str
+    decision_cutoff: datetime
+    declared_stock_codes: tuple[str, ...]
+    schema_identity_sha256: str
+    schema_descriptor: tuple[_SchemaColumn, ...]
+    database_file_pins_start: tuple[FundamentalFilePin, ...]
+    database_file_pins_finish: tuple[FundamentalFilePin, ...]
+    capture_file_pins_start: tuple[FundamentalFilePin, ...]
+    capture_file_pins_finish: tuple[FundamentalFilePin, ...]
+    cohort_pin: DailyMonthlyRevenueCohortPin
+    verified_markets: tuple[str, ...]
+    cohort_validation_status: Literal["pass"] = "pass"
+    schema_version: Literal["selection-fundamental-source-clock.v2"] = (
+        "selection-fundamental-source-clock.v2"
+    )
+    source_id: Literal["sqlite.fundamental_current_observations"] = (
+        "sqlite.fundamental_current_observations"
+    )
+    source_scope: Literal["current_observed_only"] = "current_observed_only"
+    # 固定批次小時依據不等於逐列 ready，也不代表來源已取得資格。
+    availability_status: Literal["cohort_hour_bound"] = "cohort_hour_bound"
+    historical_pit_eligible: Literal[False] = False
+    formal_pit_eligible: Literal[False] = False
+
+    def __post_init__(self) -> None:
+        if type(self.cohort_pin) is not DailyMonthlyRevenueCohortPin:
+            raise ValueError("V2 cohort_pin 型別錯誤")
+        for name in (
+            "declared_stock_codes",
+            "schema_descriptor",
+            "database_file_pins_start",
+            "database_file_pins_finish",
+            "capture_file_pins_start",
+            "capture_file_pins_finish",
+            "verified_markets",
+        ):
+            if type(getattr(self, name)) is not tuple:
+                raise ValueError(f"V2 {name} 必須是不可變 tuple")
+        FundamentalSourceClock(
+            database_path=self.database_path,
+            decision_cutoff=self.decision_cutoff,
+            declared_stock_codes=self.declared_stock_codes,
+            schema_identity_sha256=self.schema_identity_sha256,
+            schema_descriptor=self.schema_descriptor,
+            database_file_pins_start=self.database_file_pins_start,
+            database_file_pins_finish=self.database_file_pins_finish,
+            capture_file_pins_start=self.capture_file_pins_start,
+            capture_file_pins_finish=self.capture_file_pins_finish,
+        )
+        if (any(type(market) is not str for market in self.verified_markets)
+                or self.verified_markets != self.cohort_pin.required_markets):
+            raise ValueError("V2 verified_markets 必須完整符合 cohort required markets")
+        if type(self.schema_version) is not str or self.schema_version != FUNDAMENTAL_READ_CLOCK_V2_SCHEMA:
+            raise ValueError("V2 source clock schema 不支援")
+        if type(self.source_id) is not str or self.source_id != FUNDAMENTAL_READ_SOURCE_ID:
+            raise ValueError("V2 source id 不支援")
+        if type(self.source_scope) is not str or self.source_scope != FUNDAMENTAL_READ_SCOPE:
+            raise ValueError("V2 source scope 必須保持 current-only")
+        if type(self.availability_status) is not str or self.availability_status != "cohort_hour_bound":
+            raise ValueError("V2 availability status 必須表達 cohort 小時依據")
+        if type(self.cohort_validation_status) is not str or self.cohort_validation_status != "pass":
+            raise ValueError("V2 cohort 必須通過全市場驗證")
+        if self.historical_pit_eligible is not False or self.formal_pit_eligible is not False:
+            raise ValueError("V2 current-only cohort 不可標記為 PIT eligible")
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "source_id": self.source_id,
+            "source_scope": self.source_scope,
+            "availability_status": self.availability_status,
+            "historical_pit_eligible": False,
+            "formal_pit_eligible": False,
+            "database_path": self.database_path,
+            "decision_cutoff": _datetime_text(self.decision_cutoff),
+            "declared_stock_codes": list(self.declared_stock_codes),
+            "declared_stock_codes_sha256": _canonical_sha256(
+                list(self.declared_stock_codes)
+            ),
+            "schema_identity_sha256": self.schema_identity_sha256,
+            "schema_descriptor": [list(item) for item in self.schema_descriptor],
+            "database_file_pins_start": [
+                pin.to_dict() for pin in self.database_file_pins_start
+            ],
+            "database_file_pins_finish": [
+                pin.to_dict() for pin in self.database_file_pins_finish
+            ],
+            "capture_file_pins_start": [
+                pin.to_dict() for pin in self.capture_file_pins_start
+            ],
+            "capture_file_pins_finish": [
+                pin.to_dict() for pin in self.capture_file_pins_finish
+            ],
+            "cohort_pin": self.cohort_pin.to_dict(),
+            "cohort_sha256": self.cohort_pin.cohort_sha256,
+            "cohort_available_hour": _datetime_text(self.cohort_pin.available_hour),
+            "cohort_validation_status": self.cohort_validation_status,
+            "verified_markets": list(self.verified_markets),
+        }
+
+    @property
+    def source_pin_sha256(self) -> str:
+        return _canonical_sha256(self._identity_payload())
+
+    @property
+    def identity_sha256(self) -> str:
+        return self.source_pin_sha256
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self._identity_payload()
+        payload["source_pin_sha256"] = self.source_pin_sha256
+        payload["identity_sha256"] = self.identity_sha256
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
 class FundamentalReadBatchCandidate:
     """一批已讀 provider 結果；finish 前仍是 provisional candidate。"""
 
@@ -192,6 +320,44 @@ class FundamentalReadBatchCandidate:
                 raise ValueError("batch result 股票代碼不符")
             if not _SHA256_RE.fullmatch(identity):
                 raise ValueError("batch result identity 格式錯誤")
+
+
+@dataclass(frozen=True, slots=True)
+class FundamentalReadBatchCandidateV2:
+    """帶完整每日 cohort identity 的 provisional V2 batch。"""
+
+    session_id: str
+    batch_index: int
+    stock_codes: tuple[str, ...]
+    results: tuple[CurrentMonthlyRevenueReadResult, ...]
+    result_identity_sha256: tuple[str, ...]
+    cohort_sha256: str
+
+    def __post_init__(self) -> None:
+        if not _SHA256_RE.fullmatch(self.session_id):
+            raise ValueError("V2 session_id 格式錯誤")
+        if type(self.batch_index) is not int or self.batch_index < 0:
+            raise ValueError("V2 batch_index 必須是非負整數")
+        if any(
+            type(value) is not tuple
+            for value in (self.stock_codes, self.results, self.result_identity_sha256)
+        ):
+            raise ValueError("V2 batch collections 必須是不可變 tuple")
+        if not self.stock_codes or len(self.stock_codes) > MAX_CODES_PER_BATCH:
+            raise ValueError("V2 batch 股票數必須介於 1 與 16")
+        if len(self.results) != len(self.stock_codes):
+            raise ValueError("V2 batch results 與股票清冊長度不一致")
+        if len(self.result_identity_sha256) != len(self.stock_codes):
+            raise ValueError("V2 batch result identity 數量不一致")
+        if not _SHA256_RE.fullmatch(self.cohort_sha256):
+            raise ValueError("V2 cohort SHA-256 格式錯誤")
+        for code, result, identity in zip(
+            self.stock_codes, self.results, self.result_identity_sha256, strict=True
+        ):
+            if result.stock_code != code:
+                raise ValueError("V2 batch result 股票代碼不符")
+            if not _SHA256_RE.fullmatch(identity):
+                raise ValueError("V2 batch result identity 格式錯誤")
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,6 +398,91 @@ class FinishedFundamentalReadCohort:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FinishedFundamentalReadCohortV2:
+    """僅完成全清冊與全市場 cohort 起訖重驗後發布的 V2 finished token。"""
+
+    session_id: str
+    source_clock: FundamentalSourceClockV2
+    processed_stock_codes: tuple[str, ...]
+    result_identity_by_stock: tuple[tuple[str, str], ...]
+    result_status_counts: tuple[tuple[str, int], ...]
+    complete: Literal[True] = True
+
+    def __post_init__(self) -> None:
+        if not _SHA256_RE.fullmatch(self.session_id):
+            raise ValueError("V2 session_id 格式錯誤")
+        if type(self.source_clock) is not FundamentalSourceClockV2:
+            raise ValueError("V2 finished token 必須使用 V2 source clock")
+        if any(
+            type(value) is not tuple
+            for value in (
+                self.processed_stock_codes,
+                self.result_identity_by_stock,
+                self.result_status_counts,
+            )
+        ):
+            raise ValueError("V2 finished collections 必須是不可變 tuple")
+        if any(
+            type(item) is not tuple or len(item) != 2
+            for item in self.result_identity_by_stock
+        ):
+            raise ValueError("V2 result identity entries 必須是二元 tuple")
+        if any(
+            type(item) is not tuple
+            or len(item) != 2
+            or type(item[0]) is not str
+            or type(item[1]) is not int
+            or item[1] < 0
+            for item in self.result_status_counts
+        ):
+            raise ValueError("V2 result status counts 格式錯誤")
+        if self.processed_stock_codes != self.source_clock.declared_stock_codes:
+            raise ValueError("V2 finished cohort 未完整涵蓋 declared 清冊")
+        if tuple(code for code, _ in self.result_identity_by_stock) != self.processed_stock_codes:
+            raise ValueError("V2 result identities 未按 declared 清冊排序")
+        if any(not _SHA256_RE.fullmatch(value) for _, value in self.result_identity_by_stock):
+            raise ValueError("V2 result identity SHA-256 格式錯誤")
+        if self.complete is not True:
+            raise ValueError("FinishedFundamentalReadCohortV2 必須是完整結果")
+
+    @property
+    def identity_sha256(self) -> str:
+        return _canonical_sha256(
+            {
+                "schema_version": FUNDAMENTAL_READ_FINISHED_V2_SCHEMA,
+                "session_id": self.session_id,
+                "source_clock_sha256": self.source_clock.identity_sha256,
+                "cohort_pin": self.source_clock.cohort_pin.to_dict(),
+                "processed_stock_codes": list(self.processed_stock_codes),
+                "result_identity_by_stock": [
+                    list(item) for item in self.result_identity_by_stock
+                ],
+                "result_status_counts": [list(item) for item in self.result_status_counts],
+                "availability_status": self.source_clock.availability_status,
+                "complete": True,
+            }
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": FUNDAMENTAL_READ_FINISHED_V2_SCHEMA,
+            "session_id": self.session_id,
+            "source_clock": self.source_clock.to_dict(),
+            "processed_stock_codes": list(self.processed_stock_codes),
+            "result_identity_by_stock": [
+                list(item) for item in self.result_identity_by_stock
+            ],
+            "result_status_counts": [list(item) for item in self.result_status_counts],
+            "availability_status": self.source_clock.availability_status,
+            "source_scope": self.source_clock.source_scope,
+            "historical_pit_eligible": False,
+            "formal_pit_eligible": False,
+            "complete": True,
+            "identity_sha256": self.identity_sha256,
+        }
+
+
 class SelectionFundamentalReadSession:
     """在一個唯讀 SQLite snapshot 內分批讀完 declared 股票清冊。"""
 
@@ -246,8 +497,10 @@ class SelectionFundamentalReadSession:
         schema_descriptor: tuple[_SchemaColumn, ...],
         schema_identity_sha256: str,
         database_file_pins_start: tuple[FundamentalFilePin, ...],
-        copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding,
+        copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding | FundamentalReadArchivedCopyBindingV2,
         cancel_callback: Callable[[], bool] | None,
+        daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
+        daily_monthly_cohort_pin: DailyMonthlyRevenueCohortPin | None = None,
     ) -> None:
         self._provider = provider
         self._database_path = database_path
@@ -259,6 +512,8 @@ class SelectionFundamentalReadSession:
         self._database_file_pins_start = database_file_pins_start
         self._copy_binding = copy_binding
         self._cancel_callback = cancel_callback
+        self._daily_monthly_cohort_reader = daily_monthly_cohort_reader
+        self._daily_monthly_cohort_pin = daily_monthly_cohort_pin
         self._cancel_event = Event()
         self._publication_gate = Lock()
         self._operation_lock = Lock()
@@ -282,6 +537,22 @@ class SelectionFundamentalReadSession:
                 ],
             }
         )
+        if (daily_monthly_cohort_reader is None) != (daily_monthly_cohort_pin is None):
+            raise FundamentalReadSessionError(
+                "daily cohort reader and captured pin must be supplied together"
+            )
+        self._session_id_v2 = (
+            _canonical_sha256(
+                {
+                    "schema_version": "selection-fundamental-read-session.v2",
+                    "base_session_id": self._session_id,
+                    "cohort_pin": daily_monthly_cohort_pin.to_dict(),
+                    "cohort_sha256": daily_monthly_cohort_pin.cohort_sha256,
+                }
+            )
+            if daily_monthly_cohort_pin is not None
+            else None
+        )
 
     @classmethod
     def open(
@@ -289,10 +560,11 @@ class SelectionFundamentalReadSession:
         provider: RecommendationCurrentFundamentalProvider,
         *,
         database_path: Path | str,
-        copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding,
+        copy_binding: FundamentalReadCopyBinding | FundamentalReadArchivedCopyBinding | FundamentalReadArchivedCopyBindingV2,
         stock_codes: Sequence[str],
         cutoff_at: datetime,
         cancel_callback: Callable[[], bool] | None = None,
+        daily_monthly_cohort_reader: DailyMonthlyRevenueCohortReader | None = None,
     ) -> SelectionFundamentalReadSession:
         """驗證 typed copy binding 後，只在 reader 副本開單一 query-only BEGIN。"""
 
@@ -303,6 +575,14 @@ class SelectionFundamentalReadSession:
         if cancel_callback is not None and not callable(cancel_callback):
             raise TypeError("cancel_callback 必須可呼叫")
         _poll_cancel_callback(cancel_callback)
+        daily_monthly_cohort_pin: DailyMonthlyRevenueCohortPin | None = None
+        if daily_monthly_cohort_reader is not None:
+            _poll_cancel_callback(cancel_callback)
+            daily_monthly_cohort_pin = _verify_daily_monthly_cohort_binding(
+                provider,
+                daily_monthly_cohort_reader,
+            )
+            _poll_cancel_callback(cancel_callback)
         original_database_path = _canonical_unreparsed_path(database_path)
         provider_database_path = _canonical_unreparsed_path(provider.db_file)
         if original_database_path != provider_database_path:
@@ -312,6 +592,7 @@ class SelectionFundamentalReadSession:
         if type(copy_binding) not in {
             FundamentalReadCopyBinding,
             FundamentalReadArchivedCopyBinding,
+            FundamentalReadArchivedCopyBindingV2,
         }:
             raise FundamentalReadSessionError("typed copy binding is required")
         protected_roots = (
@@ -326,7 +607,10 @@ class SelectionFundamentalReadSession:
                     protected_roots=(*protected_roots, provider.monthly_source_root),
                     cancel_callback=cancel_callback,
                 )
-            elif type(copy_binding) is FundamentalReadArchivedCopyBinding:
+            elif isinstance(copy_binding, (FundamentalReadArchivedCopyBinding, FundamentalReadArchivedCopyBindingV2)):
+                if type(copy_binding) is FundamentalReadArchivedCopyBindingV2:
+                    if daily_monthly_cohort_pin is None or daily_monthly_cohort_pin != copy_binding.daily_cohort_pin:
+                        raise FundamentalReadSessionError("V2 archive binding requires its exact full daily pin")
                 pins_start = copy_binding.verify_before_open(
                     database_path=original_database_path,
                     provider_database_path=provider_database_path,
@@ -377,6 +661,8 @@ class SelectionFundamentalReadSession:
                 database_file_pins_start=pins_start,
                 copy_binding=copy_binding,
                 cancel_callback=cancel_callback,
+                daily_monthly_cohort_reader=daily_monthly_cohort_reader,
+                daily_monthly_cohort_pin=daily_monthly_cohort_pin,
             )
         except BaseException:
             if connection is not None:
@@ -385,7 +671,7 @@ class SelectionFundamentalReadSession:
 
     @property
     def session_id(self) -> str:
-        return self._session_id
+        return self._session_id_v2 or self._session_id
 
     @property
     def declared_stock_codes(self) -> tuple[str, ...]:
@@ -403,7 +689,10 @@ class SelectionFundamentalReadSession:
     def closed(self) -> bool:
         return self._connection is None
 
-    def load_batch(self, stock_codes: Sequence[str]) -> FundamentalReadBatchCandidate:
+    def load_batch(
+        self,
+        stock_codes: Sequence[str],
+    ) -> FundamentalReadBatchCandidate | FundamentalReadBatchCandidateV2:
         """讀下一段至多 16 檔，回傳仍未完成最終 pin 的候選批次。"""
 
         codes = tuple(stock_codes)
@@ -425,26 +714,62 @@ class SelectionFundamentalReadSession:
             try:
                 for code in codes:
                     self._check_cancelled()
-                    result = self._provider.load_monthly_revenues(
-                        stock_code=code,
-                        cutoff_at=self._cutoff,
-                        read_session_connection=connection,
-                    )
+                    if self._daily_monthly_cohort_reader is None:
+                        result = self._provider.load_monthly_revenues(
+                            stock_code=code,
+                            cutoff_at=self._cutoff,
+                            read_session_connection=connection,
+                        )
+                    else:
+                        bound_cohort_pin = self._require_bound_daily_cohort_reader()
+                        result = self._provider.load_monthly_revenues(
+                            stock_code=code,
+                            cutoff_at=self._cutoff,
+                            read_session_connection=connection,
+                            pinned_daily_cohort=bound_cohort_pin,
+                        )
                     self._validate_result(result, code)
+                    cohort_pin = self._daily_monthly_cohort_pin
+                    if cohort_pin is not None:
+                        self._validate_result_cohort_rows(result, cohort_pin)
                     self._capture_result_sources(result)
-                    identity = _result_identity_sha256(result)
+                    identity = (
+                        _result_identity_sha256_v2(
+                            result,
+                            cohort_pin=cohort_pin,
+                        )
+                        if cohort_pin is not None
+                        else _result_identity_sha256(result)
+                    )
                     self._result_identity_by_stock[code] = identity
                     self._result_status_by_stock[code] = result.status
                     results.append(result)
                     identities.append(identity)
                     self._check_cancelled()
-                batch = FundamentalReadBatchCandidate(
-                    session_id=self._session_id,
-                    batch_index=self._batch_count,
-                    stock_codes=codes,
-                    results=tuple(results),
-                    result_identity_sha256=tuple(identities),
-                )
+                if self._daily_monthly_cohort_pin is None:
+                    batch: FundamentalReadBatchCandidate | FundamentalReadBatchCandidateV2 = (
+                        FundamentalReadBatchCandidate(
+                            session_id=self._session_id,
+                            batch_index=self._batch_count,
+                            stock_codes=codes,
+                            results=tuple(results),
+                            result_identity_sha256=tuple(identities),
+                        )
+                    )
+                else:
+                    cohort_pin = self._daily_monthly_cohort_pin
+                    if cohort_pin is None:
+                        raise FundamentalReadSessionError(
+                            "V2 batch lacks captured daily cohort pin"
+                        )
+                    batch = FundamentalReadBatchCandidateV2(
+                        session_id=self.session_id,
+                        batch_index=self._batch_count,
+                        stock_codes=codes,
+                        results=tuple(results),
+                        result_identity_sha256=tuple(identities),
+                        cohort_sha256=cohort_pin.cohort_sha256,
+                    )
                 self._next_stock_index += len(codes)
                 self._batch_count += 1
                 return batch
@@ -452,7 +777,9 @@ class SelectionFundamentalReadSession:
                 self._fail_and_close()
                 raise
 
-    def finish(self) -> FinishedFundamentalReadCohort:
+    def finish(
+        self,
+    ) -> FinishedFundamentalReadCohort | FinishedFundamentalReadCohortV2:
         """重驗 capture bytes 與 DB/WAL pins，僅完整清冊時發布完成 token。"""
 
         with self._operation_lock:
@@ -520,6 +847,23 @@ class SelectionFundamentalReadSession:
                 ):
                     raise FundamentalReadSessionError("fundamental DB/WAL source pin changed")
 
+                cohort_pin = self._daily_monthly_cohort_pin
+                if cohort_pin is not None:
+                    cohort_reader = self._daily_monthly_cohort_reader
+                    if cohort_reader is None:
+                        raise FundamentalReadSessionError(
+                            "V2 finish lacks its captured daily cohort reader"
+                        )
+                    self._check_cancelled()
+                    self._require_bound_daily_cohort_reader()
+                    verified_snapshots = cohort_reader.verify_cohort()
+                    _validate_verified_daily_cohort_snapshots(
+                        cohort_pin,
+                        verified_snapshots,
+                    )
+                    self._require_bound_daily_cohort_reader()
+                    self._check_cancelled()
+
                 clock = FundamentalSourceClock(
                     database_path=str(self._database_path),
                     decision_cutoff=self._cutoff,
@@ -534,16 +878,43 @@ class SelectionFundamentalReadSession:
                 statuses: dict[str, int] = {}
                 for status in self._result_status_by_stock.values():
                     statuses[status] = statuses.get(status, 0) + 1
-                candidate = FinishedFundamentalReadCohort(
-                    session_id=self._session_id,
-                    source_clock=clock,
-                    processed_stock_codes=self._stock_codes,
-                    result_identity_by_stock=tuple(
-                        (code, self._result_identity_by_stock[code])
-                        for code in self._stock_codes
-                    ),
-                    result_status_counts=tuple(sorted(statuses.items())),
-                )
+                if cohort_pin is None:
+                    candidate: FinishedFundamentalReadCohort | FinishedFundamentalReadCohortV2 = (
+                        FinishedFundamentalReadCohort(
+                            session_id=self._session_id,
+                            source_clock=clock,
+                            processed_stock_codes=self._stock_codes,
+                            result_identity_by_stock=tuple(
+                                (code, self._result_identity_by_stock[code])
+                                for code in self._stock_codes
+                            ),
+                            result_status_counts=tuple(sorted(statuses.items())),
+                        )
+                    )
+                else:
+                    v2_clock = FundamentalSourceClockV2(
+                        database_path=clock.database_path,
+                        decision_cutoff=clock.decision_cutoff,
+                        declared_stock_codes=clock.declared_stock_codes,
+                        schema_identity_sha256=clock.schema_identity_sha256,
+                        schema_descriptor=clock.schema_descriptor,
+                        database_file_pins_start=clock.database_file_pins_start,
+                        database_file_pins_finish=clock.database_file_pins_finish,
+                        capture_file_pins_start=clock.capture_file_pins_start,
+                        capture_file_pins_finish=clock.capture_file_pins_finish,
+                        cohort_pin=cohort_pin,
+                        verified_markets=cohort_pin.required_markets,
+                    )
+                    candidate = FinishedFundamentalReadCohortV2(
+                        session_id=self.session_id,
+                        source_clock=v2_clock,
+                        processed_stock_codes=self._stock_codes,
+                        result_identity_by_stock=tuple(
+                            (code, self._result_identity_by_stock[code])
+                            for code in self._stock_codes
+                        ),
+                        result_status_counts=tuple(sorted(statuses.items())),
+                    )
                 self._check_cancelled()
                 with self._publication_gate:
                     if self._cancel_event.is_set():
@@ -609,6 +980,77 @@ class SelectionFundamentalReadSession:
             raise FundamentalReadSessionError("provider result stock code mismatch")
         if _require_aware_utc(result.cutoff_at) != self._cutoff:
             raise FundamentalReadSessionError("provider result cutoff mismatch")
+
+    def _require_bound_daily_cohort_reader(self) -> DailyMonthlyRevenueCohortPin:
+        reader = self._daily_monthly_cohort_reader
+        pin = self._daily_monthly_cohort_pin
+        if type(reader) is not DailyMonthlyRevenueCohortReader or pin is None:
+            raise FundamentalReadSessionError("V2 session daily cohort binding is incomplete")
+        if self._provider.daily_source_snapshot_reader is not reader:
+            raise FundamentalReadSessionError(
+                "provider daily cohort port is not the captured reader"
+            )
+        if reader.pin != pin:
+            raise FundamentalReadSessionError("provider daily cohort pin changed during session")
+        return pin
+
+    def _validate_result_cohort_rows(
+        self,
+        result: CurrentMonthlyRevenueReadResult,
+        cohort_pin: DailyMonthlyRevenueCohortPin,
+    ) -> None:
+        current = next(
+            (
+                row
+                for row in result.observations
+                if row.period == result.latest_period
+                and row.stock_code == result.stock_code
+                and row.input_role == "reported_period_value"
+            ),
+            None,
+        )
+        if current is not None and current.period != cohort_pin.period:
+            raise FundamentalReadSessionError(
+                "V2 current observation period does not match pinned cohort"
+            )
+        if result.status == "ready" and current is None:
+            raise FundamentalReadSessionError(
+                "V2 ready provider result lacks its pinned current observation"
+            )
+        records = tuple(result.observations) + (
+            (result.comparison_baseline,)
+            if result.comparison_baseline is not None
+            else ()
+        )
+        for record in records:
+            batch_id = record.availability_snapshot_batch_id
+            first_persisted_at = record.availability_first_persisted_at
+            if batch_id is None and first_persisted_at is None:
+                if record is current:
+                    raise FundamentalReadSessionError(
+                        "V2 current observation lacks daily batch identity"
+                    )
+                continue
+            if not isinstance(batch_id, str) or not batch_id or first_persisted_at is None:
+                raise FundamentalReadSessionError(
+                    "V2 observation has incomplete daily batch metadata"
+                )
+            try:
+                market_pin = cohort_pin.for_market(record.market)
+            except (TypeError, ValueError) as exc:
+                raise FundamentalReadSessionError(
+                    "V2 observation market is absent from pinned cohort"
+                ) from exc
+            if batch_id != market_pin.batch_id:
+                raise FundamentalReadSessionError(
+                    "V2 observation daily batch does not match pinned market"
+                )
+            if _require_aware_utc(first_persisted_at) != _require_aware_utc(
+                market_pin.first_persisted_at
+            ):
+                raise FundamentalReadSessionError(
+                    "V2 observation first-persisted clock does not match pinned market"
+                )
 
     def _require_connection(self) -> sqlite3.Connection:
         connection = self._connection
@@ -699,8 +1141,8 @@ class SelectionFundamentalReadSession:
             )
         self._validate_capture_hashes(expected_file_pins, expected_raw_sha256, csv_sha256)
 
-    @staticmethod
     def _validate_capture_hashes(
+        self,
         pins: tuple[FundamentalFilePin, ...],
         expected_raw_sha256: str,
         selected_csv_sha256: str,
@@ -708,9 +1150,51 @@ class SelectionFundamentalReadSession:
         html_hashes = {pin.sha256 for pin in pins if pin.role == "monthly_html"}
         csv_hashes = {pin.sha256 for pin in pins if pin.role == "monthly_csv"}
         if html_hashes != {expected_raw_sha256}:
-            raise FundamentalReadSessionError("captured HTML bytes do not match source identity")
+            if self._daily_monthly_cohort_reader is None:
+                raise FundamentalReadSessionError("captured HTML bytes do not match source identity")
+            self._validate_daily_bom_html_identity(pins, expected_raw_sha256)
         if selected_csv_sha256 not in csv_hashes:
             raise FundamentalReadSessionError("captured CSV bytes do not match source pins")
+
+    def _validate_daily_bom_html_identity(
+        self, pins: tuple[FundamentalFilePin, ...], expected_raw_sha256: str,
+    ) -> None:
+        """V2 只接受一次 BOM 編碼封裝；原件 bytes/stat/hash 全部保留。"""
+        cohort = self._require_bound_daily_cohort_reader()
+        html_pins = tuple(pin for pin in pins if pin.role == "monthly_html")
+        if not html_pins:
+            raise FundamentalReadSessionError("daily HTML original pin missing")
+        for pin in html_pins:
+            self._check_cancelled()
+            path = Path(pin.path)
+            match = re.fullmatch(r"(twse|tpex)_(\d{4}-\d{2})\.html", path.name)
+            if match is None or match.group(2) != cohort.period:
+                raise FundamentalReadSessionError("daily HTML original period or market mismatch")
+            market_pin = cohort.for_market(match.group(1))
+            if market_pin.raw_source_sha256 != expected_raw_sha256:
+                raise FundamentalReadSessionError("daily HTML canonical identity differs from cohort")
+            before = _pin_file("monthly_html", path, required=True,
+                max_bytes=MAX_CAPTURE_FILE_BYTES,
+                cancel_callback=self._cancel_callback, cancel_event=self._cancel_event)
+            if before != pin:
+                raise FundamentalReadSessionError("daily HTML original pin changed")
+            with path.open("rb") as handle:
+                raw = handle.read(MAX_CAPTURE_FILE_BYTES + 1)
+            self._check_cancelled()
+            if (
+                len(raw) > MAX_CAPTURE_FILE_BYTES
+                or len(raw) != pin.size_bytes
+                or sha256(raw).hexdigest() != pin.sha256
+                or not raw.startswith(b"\xef\xbb\xbf")
+                or sha256(raw[3:]).hexdigest() != expected_raw_sha256
+            ):
+                raise FundamentalReadSessionError("daily HTML BOM canonical identity invalid")
+            after = _pin_file("monthly_html", path, required=True,
+                max_bytes=MAX_CAPTURE_FILE_BYTES,
+                cancel_callback=self._cancel_callback, cancel_event=self._cancel_event)
+            if after != before:
+                raise FundamentalReadSessionError("daily HTML original changed during canonical check")
+        self._require_bound_daily_cohort_reader()
 
     def _fail_and_close(self) -> None:
         with self._publication_gate:
@@ -1091,6 +1575,39 @@ def _result_identity_sha256(result: CurrentMonthlyRevenueReadResult) -> str:
     return _canonical_sha256(payload)
 
 
+def _result_identity_sha256_v2(
+    result: CurrentMonthlyRevenueReadResult,
+    *,
+    cohort_pin: DailyMonthlyRevenueCohortPin,
+) -> str:
+    """將 exact 每日 cohort 與逐列保存批次時鐘綁入獨立 V2 result hash。"""
+
+    if type(cohort_pin) is not DailyMonthlyRevenueCohortPin:
+        raise FundamentalReadSessionError("V2 result identity requires a typed cohort pin")
+    payload = {
+        "schema_version": FUNDAMENTAL_READ_BATCH_V2_SCHEMA,
+        "status": result.status,
+        "stock_code": result.stock_code,
+        "cutoff_at": _datetime_text(_require_aware_utc(result.cutoff_at)),
+        "latest_period": result.latest_period,
+        "cohort_sha256": cohort_pin.cohort_sha256,
+        "observations": [
+            _monthly_input_payload_v2(row) for row in result.observations
+        ],
+        "diagnostics": list(result.diagnostics),
+        "blocked_periods": list(result.blocked_periods),
+        "comparison_baseline": (
+            _monthly_input_payload_v2(result.comparison_baseline)
+            if result.comparison_baseline is not None
+            else None
+        ),
+        "comparison_snapshot_sha256": result.comparison_snapshot_sha256,
+        "diagnostic_source_row_count": result.diagnostic_source_row_count,
+        "diagnostic_comparator_row_count": result.diagnostic_comparator_row_count,
+    }
+    return _canonical_sha256(payload)
+
+
 def _monthly_input_payload(
     record: CurrentObservedMonthlyRevenueInput,
 ) -> dict[str, object]:
@@ -1119,6 +1636,74 @@ def _monthly_input_payload(
         "input_role": record.input_role,
         "parent_report_period": record.parent_report_period,
     }
+
+
+def _monthly_input_payload_v2(
+    record: CurrentObservedMonthlyRevenueInput,
+) -> dict[str, object]:
+    payload = _monthly_input_payload(record)
+    payload.update(
+        {
+            "availability_snapshot_batch_id": record.availability_snapshot_batch_id,
+            "availability_first_persisted_at": (
+                _datetime_text(_require_aware_utc(record.availability_first_persisted_at))
+                if record.availability_first_persisted_at is not None
+                else None
+            ),
+        }
+    )
+    return payload
+
+
+def _verify_daily_monthly_cohort_binding(
+    provider: RecommendationCurrentFundamentalProvider,
+    reader: DailyMonthlyRevenueCohortReader,
+) -> DailyMonthlyRevenueCohortPin:
+    """在 SQLite connect 前確認 provider 與 caller 傳入同一個 exact reader。"""
+
+    if type(reader) is not DailyMonthlyRevenueCohortReader:
+        raise FundamentalReadSessionError("typed daily monthly cohort reader is required")
+    if provider.daily_source_snapshot_reader is not reader:
+        raise FundamentalReadSessionError(
+            "provider daily cohort port must be the exact supplied reader"
+        )
+    pin = reader.pin
+    if type(pin) is not DailyMonthlyRevenueCohortPin:
+        raise FundamentalReadSessionError("daily cohort reader returned an invalid pin")
+    snapshots = reader.verify_cohort()
+    _validate_verified_daily_cohort_snapshots(pin, snapshots)
+    if provider.daily_source_snapshot_reader is not reader or reader.pin != pin:
+        raise FundamentalReadSessionError("daily cohort binding changed during open verification")
+    return pin
+
+
+def _validate_verified_daily_cohort_snapshots(
+    pin: DailyMonthlyRevenueCohortPin,
+    snapshots: tuple[DailySourceSnapshot, ...],
+) -> None:
+    """確認 typed reader 回來的是 pin 所列的完整、有序市場批次。"""
+
+    if type(pin) is not DailyMonthlyRevenueCohortPin:
+        raise FundamentalReadSessionError("daily cohort snapshot validation pin type invalid")
+    if type(snapshots) is not tuple or len(snapshots) != len(pin.required_markets):
+        raise FundamentalReadSessionError("daily cohort verification omitted a required market")
+    for market, snapshot in zip(pin.required_markets, snapshots, strict=True):
+        market_pin = pin.for_market(market)
+        if type(snapshot) is not DailySourceSnapshot:
+            raise FundamentalReadSessionError("daily cohort reader returned an invalid snapshot")
+        if (
+            snapshot.batch_id != market_pin.batch_id
+            or snapshot.scope != market_pin.scope
+            or snapshot.first_persisted_at != market_pin.first_persisted_at
+            or not snapshot.records
+            or any(
+                record.market != market or record.period != pin.period
+                for record in snapshot.records
+            )
+        ):
+            raise FundamentalReadSessionError(
+                f"daily cohort verified snapshot identity mismatch:{market}"
+            )
 
 
 def _normalize_stock_codes(stock_codes: Sequence[str]) -> tuple[str, ...]:

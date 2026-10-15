@@ -44,6 +44,10 @@ class ResearchRunRepository:
     PORTFOLIO_RESULT_DESCRIPTOR_KEY = "portfolio_result_sidecar"
     PORTFOLIO_RESULT_SCHEMA_VERSION = "recommendation-portfolio-result.v1"
     PORTFOLIO_RESULT_SCHEMA_REVISION = 1
+    PORTFOLIO_RESULT_SUPPORTED_SCHEMAS = frozenset({
+        ("recommendation-portfolio-result.v1", 1),
+        ("recommendation-portfolio-result.v2", 2),
+    })
     PORTFOLIO_RESULT_DESCRIPTOR_KEYS = frozenset(
         {
             "schema_version",
@@ -391,11 +395,11 @@ class ResearchRunRepository:
             raise ResearchRunRepositoryError(
                 "portfolio result descriptor 欄位不完整或含未知欄位"
             )
-        if descriptor.get("schema_version") != self.PORTFOLIO_RESULT_SCHEMA_VERSION:
-            raise ResearchRunRepositoryError("portfolio result schema_version 不支援")
         revision = descriptor.get("schema_revision")
-        if type(revision) is not int or revision != self.PORTFOLIO_RESULT_SCHEMA_REVISION:
-            raise ResearchRunRepositoryError("portfolio result schema_revision 不支援")
+        version = descriptor.get("schema_version")
+        if (type(version) is not str or type(revision) is not int
+                or (version, revision) not in self.PORTFOLIO_RESULT_SUPPORTED_SCHEMAS):
+            raise ResearchRunRepositoryError("portfolio result schema/version 配對不支援")
         if descriptor.get("registry_run_id") != run_id:
             raise ResearchRunRepositoryError("portfolio result Registry identity 不相符")
         parent_id = descriptor.get("portfolio_parent_id")

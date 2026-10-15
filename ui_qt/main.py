@@ -15,7 +15,12 @@ if __name__ == "__main__":
     from baldr_launcher import main as launch_application
     raise SystemExit(launch_application())
 
-from app_module.application_bootstrap import ApplicationSettings, resolve_application_settings
+from app_module.application_bootstrap import (
+    ApplicationSettings, configured_daily_monthly_revenue_cohort_reader,
+    configured_daily_monthly_revenue_series_reader_factory,
+    configured_daily_monthly_revenue_exact_pin_reader_factory,
+    resolve_application_settings,
+)
 from app_module.build_identity import BuildIdentity, detect_build_identity
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
 
@@ -1430,6 +1435,40 @@ class MainWindow(QMainWindow):
 
         selection = resolve_personal_store_selection(self.config)
         self.personal_store_selection = selection
+        from app_module.strategy_version_service import StrategyVersionService
+        from app_module.paper_checkpoint_ui_composition import PaperCheckpointAccountInputs
+
+        settings_paper_error = getattr(
+            self.application_settings, "paper_contract_artifacts_root_error", None
+        )
+        config_paper_error = getattr(
+            self.config, "paper_contract_artifacts_root_error", None
+        )
+        if (
+            settings_paper_error
+            and settings_paper_error.startswith("未提供 PAPER_CONTRACT_ARTIFACTS_ROOT")
+        ):
+            settings_paper_error = config_paper_error or settings_paper_error
+
+        # Main、回測版本服務與 Paper exact reader 共用同一個版本根。
+        self.strategy_version_service = StrategyVersionService(self.config)
+        (
+            self.paper_checkpoint_account_inputs,
+            self.paper_checkpoint_disabled_reason,
+        ) = PaperCheckpointAccountInputs.from_selection(
+            selection,
+            contract_artifacts_root=getattr(
+                self.config, "paper_contract_artifacts_root", None
+            ),
+            disabled_reason=settings_paper_error or config_paper_error,
+        )
+        self.paper_checkpoint_account_service = (
+            self.paper_checkpoint_account_inputs.build_account_service(
+                self.strategy_version_service
+            )
+            if self.paper_checkpoint_account_inputs is not None
+            else None
+        )
         self._personal_portfolio_view_kwargs: dict[str, Any] = {}
         paper = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(DEFAULT_PORTFOLIO_ID))
         paper_paths = PersonalPaperStorePaths.from_route(
@@ -1565,7 +1604,25 @@ class MainWindow(QMainWindow):
             )
 
             _startup_step("正在建立分析服務")
-            decision_services = build_decision_service_composition(config=self.config)
+            monthly_cohort_reader = configured_daily_monthly_revenue_cohort_reader(
+                self.application_settings
+            )
+            monthly_series_factory = configured_daily_monthly_revenue_series_reader_factory(
+                self.application_settings
+            )
+            self.daily_monthly_revenue_research_reader = monthly_cohort_reader if monthly_series_factory is None else None
+            self.daily_monthly_revenue_research_reader_factory = monthly_series_factory
+            self.daily_monthly_revenue_research_exact_reader_factory = configured_daily_monthly_revenue_exact_pin_reader_factory(self.application_settings)
+            if monthly_series_factory is not None:
+                decision_services = build_decision_service_composition(
+                    config=self.config, daily_monthly_cohort_reader_factory=monthly_series_factory,
+                )
+            elif monthly_cohort_reader is None:
+                decision_services = build_decision_service_composition(config=self.config)
+            else:
+                decision_services = build_decision_service_composition(
+                    config=self.config, daily_monthly_cohort_reader=monthly_cohort_reader,
+                )
             self.screening_service = decision_services.screening_service
             self.industry_strength_service = decision_services.industry_strength_service
             self.regime_service = decision_services.regime_service
@@ -2078,6 +2135,9 @@ class MainWindow(QMainWindow):
                 backtest_service=self.backtest_service,
                 config=self.config,
                 watchlist_service=self.watchlist_service,
+                strategy_version_service=self.strategy_version_service,
+                paper_checkpoint_account_service=self.paper_checkpoint_account_service,
+                paper_checkpoint_disabled_reason=self.paper_checkpoint_disabled_reason,
                 parent=self,
             )
             self.backtest_view = backtest
@@ -2543,8 +2603,38 @@ class MainWindow(QMainWindow):
         ma_view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
         from ui_qt.views.daily_market_technical_official_disposition_revenue_view import (
             DailyMarketTechnicalOfficialDispositionRevenueView,
+            DailyRevenueSourceConfigV2,
         )
-        revenue_view = DailyMarketTechnicalOfficialDispositionRevenueView(parent=recommendation)
+        from data_module.recommendation_current_fundamental_provider import RecommendationCurrentFundamentalProvider
+        provider = getattr(getattr(getattr(self, "recommendation_service", None), "recommendation_input_preparer", None), "current_fundamental_provider", None)
+        daily_reader = getattr(self, "daily_monthly_revenue_research_reader", None)
+        daily_factory = getattr(self, "daily_monthly_revenue_research_reader_factory", None)
+        daily_config = None
+        if type(provider) is RecommendationCurrentFundamentalProvider and (daily_reader is not None or daily_factory is not None):
+            from app_module.daily_market_technical_official_disposition_revenue_archived_storage_v3 import read_archived_revenue_binding_source_roots_v3
+            frozen_binding_environment = dict(self.application_settings.environment)
+            def source_roots_for_archived_research() -> tuple[Path, ...]:
+                for path_key, hash_key in (
+                    ("MONTHLY_REVENUE_COHORT_BINDING_PATH", "MONTHLY_REVENUE_COHORT_BINDING_SHA256"),
+                    ("MONTHLY_REVENUE_SERIES_BINDING_PATH", "MONTHLY_REVENUE_SERIES_BINDING_SHA256"),
+                ):
+                    if path_key in frozen_binding_environment or hash_key in frozen_binding_environment:
+                        if path_key not in frozen_binding_environment or hash_key not in frozen_binding_environment:
+                            raise ValueError("月營收來源目錄需要完整固定 binding 與外部 SHA")
+                        return read_archived_revenue_binding_source_roots_v3(
+                            Path(frozen_binding_environment[path_key]),
+                            expected_binding_sha256=frozen_binding_environment[hash_key],
+                        )
+                raise ValueError("月營收來源目錄沒有明示固定 binding")
+            daily_config = DailyRevenueSourceConfigV2(
+                provider=provider, protected_roots=(Path(self.config.data_root), Path(self.config.output_root)), reader=daily_reader,
+                reader_factory=daily_factory, exact_reader_factory=getattr(self, "daily_monthly_revenue_research_exact_reader_factory", None),
+                use_archived_sources=True, source_roots_provider=source_roots_for_archived_research,
+            )
+        revenue_view = DailyMarketTechnicalOfficialDispositionRevenueView(
+            getattr(self.config, "technical_official_disposition_read_root", None),
+            parent=recommendation, daily_source_config_v2=daily_config,
+        )
         self.technical_official_revenue_research_view = revenue_view
         recommendation.result_source_tabs.addTab(revenue_view, "均線／月營收／官方對照研究")
         revenue_view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
@@ -2558,6 +2648,16 @@ class MainWindow(QMainWindow):
         self.technical_official_composite_research_view = composite_view
         recommendation.result_source_tabs.addTab(composite_view, "官方市場與技術條件研究")
         composite_view.bookmarkPrepared.connect(self._save_composite_research_bookmark)
+        from ui_qt.views.daily_market_technical_official_disposition_composite_view_v2 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewV2,
+        )
+        composite_price_view = DailyMarketTechnicalOfficialDispositionCompositeViewV2(
+            getattr(self.config, "technical_official_disposition_read_root", None),
+            parent=recommendation,
+        )
+        self.technical_official_composite_price_research_view = composite_price_view
+        recommendation.result_source_tabs.addTab(composite_price_view, "官方條件與價格研究")
+        composite_price_view.bookmarkPrepared.connect(self._save_composite_research_bookmark)
 
     def _show_technical_official_comparison(self, value: object) -> None:
         """並列同來源已核事實，保留原結果頁與各股獨立捲動。"""
@@ -2617,10 +2717,14 @@ class MainWindow(QMainWindow):
         from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
             DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
         )
+        from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 import DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2
+        from app_module.daily_market_technical_official_disposition_revenue_archived_bookmark_v3 import DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3
         if type(value) not in (
             DailyMarketTechnicalOfficialDispositionBookmarkV1,
             DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
             DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+            DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2,
+            DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3,
         ):
             return
         service = getattr(self, "watchlist_service", None)
@@ -2628,7 +2732,7 @@ class MainWindow(QMainWindow):
             return
         view = (
             self.technical_official_revenue_research_view
-            if type(value) is DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
+            if type(value) in (DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3)
             else
             self.technical_official_ma_research_view
             if type(value) is DailyMarketTechnicalOfficialDispositionMaBookmarkV1
@@ -2716,15 +2820,26 @@ class MainWindow(QMainWindow):
         from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
             DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
         )
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+        )
         from ui_qt.workers.task_worker import TaskWorker
-        if type(value) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
+        if type(value) is DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+            writer_name = "add_composite_research_bookmark_v2"
+            reader_name = "read_composite_research_bookmark_v2"
+            view_name = "technical_official_composite_price_research_view"
+        elif type(value) is DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
+            writer_name = "add_composite_research_bookmark"
+            reader_name = "read_composite_research_bookmark"
+            view_name = "technical_official_composite_research_view"
+        else:
             return
         service = getattr(self, "watchlist_service", None)
         watchlist = getattr(self, "watchlist_view", None)
-        writer = getattr(service, "add_composite_research_bookmark", None)
-        reader = getattr(service, "read_composite_research_bookmark", None)
+        writer = getattr(service, writer_name, None)
+        reader = getattr(service, reader_name, None)
         signal = getattr(watchlist, "technicalCompositeBookmarkReady", None)
-        view = getattr(self, "technical_official_composite_research_view", None)
+        view = getattr(self, view_name, None)
         if (not callable(writer) or not callable(reader)
                 or not callable(getattr(signal, "connect", None))
                 or view is None or getattr(self, "_shutdown_close_requested", False)):
@@ -2764,29 +2879,50 @@ class MainWindow(QMainWindow):
         from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v1 import (
             DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1,
         )
-        if type(value) is not DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
+        from app_module.daily_market_technical_official_disposition_composite_bookmark_storage_v2 import (
+            DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2,
+        )
+        if type(value) is DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV2:
+            view_name = "technical_official_composite_price_research_view"
+        elif type(value) is DailyMarketTechnicalOfficialDispositionCompositeViewBookmarkEnvelopeV1:
+            view_name = "technical_official_composite_research_view"
+        else:
             return
-        view = getattr(self, "technical_official_composite_research_view", None)
+        view = getattr(self, view_name, None)
         if view is None or getattr(self, "_shutdown_close_requested", False):
+            return
+        if not view.restore_bookmark(value):
             return
         recommendation = getattr(self, "workspace_widgets", {}).get("recommendation")
         tabs = getattr(recommendation, "result_source_tabs", None)
         if tabs is not None:
             tabs.setCurrentWidget(view)
         self._select_main_workspace("recommendation")
-        view.restore_bookmark(value)
 
     def _open_technical_official_revenue_bookmark(self, value: object) -> None:
         """沿原月營收收藏核驗，保留來源、篩選與原結果頁。"""
         from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
             DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
         )
-        if (type(value) is not DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
+        from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 import DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2
+        from app_module.daily_market_technical_official_disposition_revenue_archived_bookmark_v3 import DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3
+        if (type(value) not in (DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3)
                 or getattr(self, "_shutdown_close_requested", False)):
             return
         view = getattr(self, "technical_official_revenue_research_view", None)
         if view is None:
             return
+        if isinstance(value, (DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3)):
+            service = getattr(self, "watchlist_service", None)
+            if service is None:
+                return
+            try:
+                saved = service.get_research_bookmark(value.bookmark_id)
+                if not isinstance(saved, (DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2, DailyMarketTechnicalOfficialDispositionRevenueArchivedBookmarkV3)) or type(saved) is not type(value) or saved.to_dict() != value.to_dict():
+                    raise ValueError("每日月營收收藏與實際保存內容不符")
+            except (TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"每日月營收收藏無法核驗：{exc}")
+                return
         if not view.restore_bookmark(value):
             self.statusBar().showMessage("月營收研究頁尚忙；原研究保留，請稍後重開收藏。")
             return
@@ -3493,7 +3629,7 @@ class MainWindow(QMainWindow):
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view", "technical_official_research_view", "technical_official_ma_research_view", "technical_official_revenue_research_view", "technical_official_composite_research_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "backtest_view", "recommendation_view", "watchlist_view", "technical_official_research_view", "technical_official_ma_research_view", "technical_official_revenue_research_view", "technical_official_composite_research_view", "technical_official_composite_price_research_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):

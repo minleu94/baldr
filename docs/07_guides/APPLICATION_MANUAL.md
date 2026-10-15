@@ -41,9 +41,17 @@ baldr 是市場資料、個股研究、推薦回放、回測和持倉檢視工�
 
 詳細步驟、參數、狀態解讀與資料修復安全界線見[資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md)。
 
+新來源每日快照的官方時間／成功批次小時、固定版本重開、缺前期與失敗批次判讀，見[每日快照時間判讀](manuals/DATA_AND_MARKET_RESEARCH.md#每日快照的時間判讀)。正式更新與排程是否已接入仍以具名 QA 為準。
+
+正常Main可在既有設定成對明示固定月營收binding路徑及外部SHA；配置／市場／版本不符時拒絕，不轉用latest。步驟與限制見[固定月營收快照配置](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#選擇已接受範圍的固定月營收快照)。目前有合成Main／新程序輸入讀回，完整推薦、官方來源與EXE仍按QA判讀。
+
+如需保存並重開原 F17 月營收研究，正常 Main 已設定固定每日 binding 時，在原研究頁使用封存來源（`use_archived_sources=True`），再按「選擇研究保存資料夾」。此資料夾須與正式 `DATA_ROOT`／`OUTPUT_ROOT`、F17／來源 provider 根及 operation 暫存根分開；原 F17 入口與 operation 設定照常保留。保存後可從 Watchlist 的「個股分析」沿原收藏重開，不會另查最新版本。這段操作已有以下限定合成證據：storage 27 PASS／1 預期保護性 SKIP、封存收藏 9 PASS、Watchlist 5 PASS；archived UI 漂移重開1 PASS（44.49秒），正常 Main 父54640→fresh32420保存1128／頁1與 Watchlist typed 精確重開通過；父關閉後私有 DB/raw、舊snapshot/reference及mutable pointer漂移，26固定來源及原320 F17資產仍核對一致。詳見[封存 F17 來源保存與重開](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#f17-封存來源保存與精確重開2026-10-14)及[封存月營收收藏](manuals/WATCHLIST_AND_PORTFOLIO.md#封存月營收研究收藏2026-10-14)。
+
 ## 3. 推薦、回測、候選與持倉
 
 建立推薦前核對資料日、母體、Profile、門檻及已啟用指標；結果先看 result ID、決策日、資料日、quality、warnings、Why／Why Not 和 screening matrix。保存後只沿同一 result ID 讀回。Research Lab 需確認日期、股票母體、策略版本、成本、滑價、成交假設與 benchmark；最佳化結果是候選，仍需 OOS 或 Walk-forward 等證據。
+
+Research Lab 的 Paper 保存快照查找需先由管理員在啟動環境明示設定外部保存根 `PAPER_CONTRACT_ARTIFACTS_ROOT`。未設定或設定無效時，Paper 查找會停用，其他 Research Lab 功能仍可使用。版本 ID 須與目前 Research Lab 所選策略版本一致；查找時還要明示策略、帳戶命名空間與含時區的截止時間，按「列出此帳戶的保存快照」查看最多 200 列的清單及截斷提示，再選取一列並按「讀取所選 exact 快照」。不會自動選最新版本或快照，也不會建立或修改保存資料；候選清單本身不代表 exact 讀回已驗證，即使所選快照讀回成功，也不代表來源可得性或績效資格已核定。關閉工作區會取消未完成查找，已開始的讀取會安全收尾，過期結果不會取代目前畫面。
 
 候選池、Universe、手動交易帳、聲明持倉與 Paper 帳用途不同。保存候選清單或匯入帳本前，核對目前選定資料、預覽、hash 和寫入範圍。所有帳本都不會自動連券商或送委託。詳見[推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[觀察清單與持倉](manuals/WATCHLIST_AND_PORTFOLIO.md)。
 
@@ -69,7 +77,7 @@ baldr 是市場資料、個股研究、推薦回放、回測和持倉檢視工�
 
 <a id="67-官方市場與技術條件研究"></a>
 
-舊錨點保留；目前入口、來源核驗和條件設定見[官方市場與技術條件研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#67-官方市場與技術條件研究)。來源 coverage 不完整、`current_only` 或 available time unknown 時，結果只供當下研究，不能提升為歷史 PIT 證據。
+舊錨點保留；入口、來源核驗和條件設定見[官方市場與技術條件研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#67-官方市場與技術條件研究)。新增[官方條件與價格研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)把獨立價格範圍作為四組條件後的共通AND，提供全域排序、跨頁比較及指定來源收藏；候選驗證依本輪QA。來源 coverage 不完整、`current_only` 或 available time unknown 時，結果只供當下研究，不能提升為歷史 PIT 證據。
 
 ## 8. 每日決策（Daily Decision Desk）
 

@@ -3,6 +3,7 @@
 > 調查基準：2026-10-06，實際 Git 複核時間 22:36 UTC（台北 10/07 06:36）。
 > 狀態：**使用者已授權啟動開發與 Luna Max 分工；先保護工作區，再分包實作**。2026-10-06 本機 checkpoint 為 `bf9207fb72cd3acebac17f4b7816994efa601226`；第 14 節追加 exe／Python 一致性要求與首波分工。第 13 節保留上一輪「只調查與規劃」的歷史驗證，不代表當前工作狀態。正式資料、私人持倉、Task、模型訓練／啟用、交易、push 與發布仍不在授權範圍。
 > 唯一原始需求：[Danny Quant 原產品計畫](../../../output/plans/baldr_product_experience_plan_20261004.md)。本文件是它的差距對照、分工與驗收補件，不另建產品 Roadmap，不覆寫原文或原驗收收據。
+> **2026-10-14 最新決議**：使用者已採納每日固定抓取、不可覆寫的版本快照及台北小時可用性政策，並將 Scrapling 納入 P03 的限縮取得工具。現行執行順序依 §0.2、§4.1–4.2、§9.5；早期施工紀錄與原 FAIL 保留。這是原計畫的增量，不另立總計畫；正式資料寫入、全量回補、正式 Task 變更、push、發布與交易仍須各自的精確授權。
 
 ## 0. 一頁接續摘要（開發已開始）
 
@@ -28,6 +29,14 @@
 - 真人驗收先精確分來源：H20名單選2382→「研究選取股票」→個股「摘要」上方「第一眼先看五個問題」→「返回來源清單」。H20目前沒有已驗收藏入口，不能要求使用者找原排名或每日規則的收藏按鈕替代。現成M1呈現fixture不能從正常reader開H20，Native啟動／布局與canonical來源旅程分列。
 - 使用者回報三個預設策略同時被官方日曆阻擋，及個人推薦歷史版本欄在窄視窗擠壓。固定來源 `2b6fda42` 已修外部日曆接線、失敗說明與窄欄布局；候選 `2026.10.06+2b6fda426b6f` 同版隔離比較通過，原exe保留。實際reader及推薦交易日邊界在相同外部synthetic cache下逐值一致，既有原官方cache唯讀核驗通過；未放寬hash／expiry／available-at，未執行真人三策略。H20缺摘要仍待版號／來源核對與保存旅程驗證，報告讀取失敗會阻止H20啟動的限制仍保留。詳見[真人回饋QA](../../06_qa/BALDR_RECOMMENDATION_HUMAN_FEEDBACK_20261007.md)。
 - 其他排程／Paper／Snapshot／Manual未提交變更由別的工作保留，不順手納入本包；原exe、main、原計畫、失敗QA及正式Task均保持原邊界。
+
+### 0.2 每日快照與資料補完決議（2026-10-14，已採納、實作及隔離驗證進行中）
+
+恢復前核對 HEAD `10eb154af9c553354c73e57fcb2fafa724b82b8a`、乾淨工作樹及 raw Git index `67b1525cdf38b92baee3511d169425b9b6b84e1a0f7f06d4c58229d2cd556df9`；[最新 checkpoint](../../06_qa/BALDR_COMPLETION_CHECKPOINT_20261014.md)、原候選與收據原件均保留。P08 同版組合實際為 **10 PASS／4 FAIL／0 SKIP**，來源預檢及收據讀回不折抵該 FAIL；被動觀測只定位兩個 catalogue worker 在原 10 秒等待後仍執行，不授予 P08／Gate。P01 p95 原 FAIL 與使用者同意暫緩前置的決議不變。
+
+資料工作以 P00 時間／用途契約、P03 限縮真來源鏈及每日版本快照為當前可交付增量；P02 同母體跨方法保存、P08 接線修正及其他可推進包並行。Scrapling 全面完成不是任何其他工作包的新前置。Root 為唯一 Python／QA 執行者，一次一個 8 GiB／12 程序受控 Job，啟動前至少 8 GiB 可用 RAM，前組自然 PID0、handles 關閉及 mutex 釋放；最多同時 3 個 Luna Max、本任務新建最多 10 個，worker 只做靜態工作且不得再產生子代理。
+
+新政策已決定，不再把小時精度當成待使用者選項。以下實作與 Gate 仍須真實證據；工期未知不給虛構估算，未執行的隔離抓取、consumer、正常 UI／新程序及同版 EXE 不寫成通過。
 
 ## 1. 先回答：現在能做什麼，真正還缺什麼
 
@@ -194,6 +203,24 @@ flowchart LR
 | 台北交易日期 | 由 Asia/Taipei 及已核官方交易日曆判定；不以美西系統日期當交易日。 |
 
 首頁以卡片資料日為主，個股以該研究來源日期列為主；台北今天僅作頁面環境資訊。跨域日期不同時說明影響，不能把股票價格日期貼給營收或法人。
+
+### 4.1 每日固定批次與小時可用性契約（使用者已採納）
+
+策略時間精度到小時，統一 `Asia/Taipei`；原始時間仍完整保存。先取對應**該版本**的官方發布／更新 timestamp，不用會計期末、資料基準日、最新頁面時間或其他版本替代。官方時間有完整日期與小時才作發布依據；只有資料基準日期時使用成功抓取批次的時間，明示 `successful_batch_hour_no_official_hour` 等具名 basis，不能永久停在 unknown，也不能倒填成歷史發布時間。
+
+小時界線一律不提前：`ceil_hour(14:45)=15:00`，整點維持原整點。版本的 `available_hour` 採 `max(ceil_hour(official_version_timestamp), ceil_hour(successful_batch_completed_at))`；缺官方小時時只取後者。批次未成功完成或版本未保存、品質未通過時不可供決策使用；consumer 不得把 decision cutoff 向上取整以偷用下一小時資料。每日實際決策釘同一固定批次成功保存的快照，跨頁、比較、返回及新程序不換成 latest。
+
+每個版本保存 source／資料集／股票與市場身分、官方時間原文與解析時區、資料基準期、batch id／開始與成功完成時間、原件 hash、解析／schema 版本、snapshot id／hash、可用小時與時間 basis。更正資料是新版本及新可用時間，不覆寫舊原件／快照，不重算舊研究。來源只給日期、晚取得、更正、UTC／台北跨日、整點與 14:45、批次失敗、錯身分／版本／單位、缺前期／缺值及半批均須具名反例。
+
+從首次成功保存日起建立前瞻可用性。已通過指定來源／用途與該批驗證的新快照可供日常研究；缺完整歷史 PIT 不再作其永久前置。歷史回測仍只用當時可證明的版本與時間；首次取得日前無版本證據的期間明示缺件，不把本次抓到的舊財報日期偽造成舊日可用。Forward label、Paper 成交／估值、交易日與自然成熟沿各自原契約，不由此政策提前。
+
+### 4.2 來源與用途接受一次，批次自動驗證每日執行
+
+P00／P03 建立可追溯的來源與用途接受紀錄：官方 domain／endpoint 或文件鏈、資料集、市場、schema／parser 版本、單位、時間 basis 政策、授權／使用限制、指定用途及首次接受證據。日常研究、歷史回測及績效資格分開；接受其中一個用途不授其他用途。來源或 parser／schema／用途契約改變才重做受影響的一次性接受，沒有變更的成功批次不反覆走同一套人工審查。
+
+每日批次自動核 source／版本／snapshot 身分及 hash、批次完整性／成功終態、可用小時因果、股票／市場／期間、單位／有限值／缺值、需要的前期與連續性、授權 scope。通過者沿已接受 scope 提供 reader／consumer；失敗者保存原件及具體原因，隔離於失敗批次，不能發布部分成功為完整母體、默認為安全或補 0。舊 FAIL、人工接受收據及歷史未驗範圍不刪除。
+
+重複的相同 immutable raw／snapshot 核驗可合併成一次帶版本的 batch validation receipt，由 public reader、UI 與新程序核同一份身分和接受 scope；仍保留各邊界的錯來源、錯版本、未來資料與內容完整性拒絕，不加入任意 skip_verify。G2 操作旅程、G3 Native、G4 同版交付與自然成熟仍分別履行。
 
 ## 5. 選股條件與策略的完整盤點
 
@@ -435,6 +462,107 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
+### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+#### Increment 18 最新進度與下一步（2026-10-14）
+
+P03 已新增月營收 Archived V2／Index V2 精確封存重開、self-contained 兩檔 Artifact V4 及 F17 archived Recipe V3：V4 envelope 保留原 Artifact V3 descriptor、SourceReference V3 與 RawArchiveReference V2 的原始 canonical bytes；Recipe V3 綁定原 V2 recipe、原 V3 descriptor／reference 外部 SHA、V4 descriptor SHA 與 archive reference SHA。翻頁只更新原 V2 page request／頁碼／大小並重算 recipe identities，不換原來源參照。Source V3 以新 operation 從封存重新發行 Reference V3 SHA，維持相同 full cohort、stable source identity、原 recipe 三個外部錨點與雙 ledger；DB、raw、原 snapshot、Artifact V3 漂移後的第一個 Source V3 exact-reopen 案例已通過。
+
+獨立結果分列：Monthly V2 8 PASS、Artifact V4 8 PASS、Archived Recipe V3 5 PASS、Source V3 8 PASS、mypy 1001 sources PASS；Source V3 的三種錯 SHA、竄改、跨 thread 與提交後兩種 cancel 反例亦通過。Source V3 另經 native 新程序父 PID 55252→fresh PID 9188：full 258 母體、頁 1、Decimal `22.006875`、雙 ledger、full pin、stable source identity 與 origin Recipe V3 維持，fresh Reference V3 SHA 重新發行；14 份封存來源、V4 pair、每日固定來源檔案的 bytes／SHA／mtime／inode 未變，原 320 份 F17 資產保留。actual PID／named Job 與 phase terminal 已核，outer `e374c5f50182443ca75050b6c29b4e23`、SHA `9b5c822c03b1eecad1ca45079bf96ba974d9a1f7057d26cfb1c7056df037f578` 完整閉鎖。這是受限 backend／archive-lane 證據；來源未獲官方用途接受或 PIT 資格。
+
+正常 F17 頁面已接明示 Source V3／Recipe V3／Bookmark V3，沿原 owner-thread actor、Main typed saver 與 Watchlist「個股分析」路由。四個外部 SHA 固定原 Reference V3、原 Artifact V3 descriptor、ArchiveReference V2 及 Artifact V4 descriptor；完整來源根與正式／operation 根先檢核，再建立三個獨立 sibling 保存目錄。Binding metadata 提供完整 roots，不讀 mutable pointer，也不以 Unverified DTO 授來源資格。V1／V2 舊收藏維持原 strict-live 行為。
+
+新增獨立證據：Bookmark V3 9 PASS、storage 27 PASS／1 protected-reparse SKIP、Watchlist V3 5 PASS、archived UI 漂移重開 1 PASS（44.49 秒）。正常 Main 父54640→fresh32420 通過保存1128／頁1、typed Watchlist 重開；父關閉後改私有 DB／raw、移開原 snapshot／Artifact V3、改壞 mutable series pointer，fresh 仍保留 full258、origin Recipe V3、四錨點與頁面 codes。26固定來源的 bytes／SHA／mtime 在父／fresh 一致，原320 F17資產不變；outer `523ae360503c4b538f7eec39f3f87279`／SHA `a9fd1398409b0c14f8510c4ed6e7e0ba3f20a3417f24dbc859b8a5c7d2fc063d` 已完整閉鎖。八roots mypy1003 PASS，但既有 `ui_qt.* ignore_errors=True` 不證 UI 強型別；實際 UI 與舊路由回歸另驗。這解除本段正常封存保存／重開工程缺口，不接受官方來源用途、完整 Recommendation、PIT、EXE或完整Gate。
+
+下一批推進 P08 expected sessions／官方日曆 provenance、同股完整期間雙策略 pair reader、正常歷史保存／重開，先依[Increment 17 P08 靜態缺口](../../../output/tasks/baldr-completion-policy-20261014-01a1390b/p08_full_period_next_static_increment17.md)定位原 ports。MOPS 財報清單→該版文件→官方時間、TWSE exact 單位／版本品質與正式 publisher 授權、歷史 PIT、真 N、Native／EXE、自然成熟仍各自阻塞；既有 FAIL／timeout／權限 SKIP 保留，不重跑已耗來源取得 scope。工期未知。
+
+#### Increment19交接：P08靜態候選，未執行QA
+
+沿本節下一步新增日曆raw evidence／create-only artifact、明示雙Registry run的full-period reader及測試，Root增量綁public reader外部metadata SHA／byte budget、策略身分與原capture。現V2來源／幣別／日曆／成本仍unknown，日期完整亦不授績效。三個worker均凍結，RAM低於8GiB所以compile／mypy／pytest全未啟動。使用者要求本地commit並由新對話接手；首次先重核source pins及資源，再按原30／180／120／120／180秒case期限串行驗證，之後補受影響Reader回歸與正常UI。完整缺口、私有證據與分工見[最新交接](../../06_qa/BALDR_COMPLETION_HANDOFF_20261014_INCREMENT19.md)，不另立總計畫。
+
+#### 本批 consumer 與每日設定接線（同日後續，沿原計畫）
+
+P00／P03 已增加獨立 YoY FactV2／IndexV2，保留原 method、28 位 Decimal 算式與門檻，改依完整 daily cohort 小時證據驗可用時間。來源與投影各有 ledger／分母，來源 observed 也可因期間、derived version 或可得時間不一致而投影 unknown。SourceReferenceV3 精確重開須由 caller 提供外部原件 SHA；沒有降格為 V1。Daily V2 snapshot 接受既有 harvester 的一次 UTF-8 BOM 封裝時，另核原件 bytes／stat／SHA、剝除 BOM 後 SHA 等於完整 cohort 的市場 raw SHA；V1 的原嚴格拒絕保留。
+
+每日配置沿原 bootstrap／composition／Main：`MONTHLY_REVENUE_SERIES_BINDING_PATH` 與 `MONTHLY_REVENUE_SERIES_BINDING_SHA256` 成對指定穩定外部設定，和固定 cohort pair 互斥。每次自然決策首次使用才讀 pointer→raw-SHA catalog→最多64個 exact pins，按未取整 cutoff 選版；同 session 固定 reader／pin，失敗具名隔離且不退回 legacy，後續 invocation 可讀新 catalog。一次來源／用途接受仍在固定 trust；每日檢查仍逐項驗原件、版本、全部市場、單位、完整性及時間。正式 daily publisher／Task 沒有在本批啟用。
+
+| 類別／工作包 | 本批解除或簡化 | 保留阻塞與下一份成果 |
+|---|---|---|
+| B／P00、P03、P07 | 小時版本可進 public YoY 投影，不再被舊 V1 時間語意永久判 unknown；原公式不改。 | 來源品質與用途一次性接受、錯版本／原件／單位／缺值／future guards 仍獨立；合成資料不授真來源資格。 |
+| C／P03、P12 | 穩定 trust／binding 與每日 bounded catalog 分開；同決策只選一次，失敗版本隔離。 | 正式 publisher／來源保存排程與 UI 批次終態仍依精確授權接線，不每批重做人工接受。 |
+| P13 | 首輪152PASS／1FAIL／1SKIP後只重受影響36案；BOM相關50PASS／1FAIL後只重該V1無發行案。989來源型別、金融精度、Workbench85及validator25/0/4通過。正常Main37740→fresh45128、30來源／full pin／V3清冊相等。 | 所有原FAIL／權限SKIP保留；此為推薦input/context與public Index精確重開，不是完整Recommendation執行或F17原頁面全流程。 |
+| B/C／P00、P03、P07、P12、P13 | 獨立F17／月營收QueryV2、SourceV2、ReferenceV3 create-only artifact與固定pin重開已限定驗證；完整258母體、雙外部SHA及小時pin保留。重用已釘定320來源省去重複producer，原180秒timeout保留。 | source/use一次性接受及每日validator仍分開。正常選版只在取得exact F17 cutoff後呼factory；保存recipe重開必須沿外部trust的原pin及外層descriptor/ref SHA，不讀mutable catalog、不換latest。失敗隔離，不提升官方coverage或歷史PIT。 |
+| D／P03、P07、P13、P14 | Increment17 backend archive lane 原證據保留；Increment18 正常F17／Bookmark3／Main／Watchlist封存收藏與新PID54640→32420已限定驗證。四錨點／full258／頁1／1128／origin Recipe3、26固定來源及320 F17資產核對；父關閉後原DB/raw更正、舊snapshot/reference移開、pointer改壞仍精確重開。Bookmark9、storage27／1protected SKIP、Watchlist5與UI1各自PASS，沒有把總和冒充合併suite。 | 官方來源／用途一次性接受、正式publisher／Task、歷史PIT、完整Recommendation、真N與Native／EXE未授。下一批P08需official expected sessions／日曆provenance、同股雙策略全期間pair reader、正常歷史保存／重開；A/D真來源完整鏈、TWSE單位版本／品質及自然成熟仍獨立。mypy1003 PASS的UI legacy ignore限制明示，工期未知。 |
+| A／P03 | 已驗取得工具仍是限縮選項，既有官方API優先。 | MOPS財報PDF完整鏈、官方TWSE本期單位／版本及其他功能必要來源按既有A/D缺口推進；已耗GET不重抓，不新增全市場歷史回補。 |
+
+收據與新候選來源SHA見本輪QA及task.latest_source_readback。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未接受；工期未知，不編造估算。P08、P02等其餘已授權增量繼續按原順序並行安排，Python／QA仍只由Root串行。
+
+本批續交 P00/P03 的完整 V2 保存／exact 重開：`FundamentalReadSnapshotSessionV2` 沿原 SQLite copy owner 保存 full cohort pin、外部 reference SHA、實際 complete manifest 原件 SHA 與全股票結果清冊；發布前重驗全部必要市場，發布後原操作取消不撤回已完成 token，但來源漂移仍拒收。Root 原首輪 99PASS／9FAIL／1SKIP 保留；8 個 Windows 過長隔離路徑及 1 個 clock 反例輸入修正後只重驗原 9 項，9PASS、983mypy 與精度守衛通過，原斷言／期限不變。父24716→真新PID9700已從固定外部 binding/reference hash 重建 reader 並 exact 重開，15個來源 bytes／SHA／stat 相同，native同Job及前phase真正退出已核。這解除 B/C 的完整 pin 保存／新程序工程缺口，仍不授來源接受、歷史PIT、正常月營收 UI、Native／EXE或完整Gate。
+
+本批再交 P03 月營收 public consumer V2／SourceReferenceV3及有界每日選版：前者真走V2 copy／reader，保持 missing／unavailable 全分母、原 Decimal／比較基期、完整 upstream pin及外部SHA；舊 archive ReferenceV2不挪用。後者用固定source/use錨點與明示月別、最多64個exact候選及cutoff或完整batch IDs，選一次並凍結同reader，不掃latest、不讓舊session改版。全missing也須批次available_hour不晚於cutoff；只有空逐列capture可保留，原DB／全市場raw與接受pin仍強制。首輪100PASS／7FAIL保留；原7項精確7PASS後3typing窄修、986mypy與精度守衛通過，未重跑100項。新PID51228重用先前已保存parent並讀回同15來源／全ledger，不重產製來源。這解除B/C工程缺口，不接受真來源、正常月營收UI、每日配置已運作、PIT／Native／EXE或完整Gate。
+
+下一批沿同一計畫接V2月營收投影／正常UI及每日固定配置→本次選版→同reader注入Main，再驗保存／返回與新程序；Source/use一次性接受與daily validator分開，失敗保留具名隔離，不重走同一人工接受。三位既有Luna仍只靜態，Root串行QA。P07/P12接已接受範圍成功快照及具名隔離原因，P13只重驗影響範圍，P14待同版固定候選。A/D的MOPS完整文件、TWSE exact單位、品質／歷史缺件、規則與自然成熟仍獨立；已耗GET不盲重跑，Scrapling不成為其他補完包前置。工期未知，原P00–P14／M1–M3出口維持。
+
+本批續交 P03 正常Main的固定版本配置：binding v1把明示pin roots/hash與既有typed acceptance錨點交給外部設定path/SHA，64KiB有界loader拒錯來源scope／版本／缺市場／別名／包內root，正常decision composition注入同一reader。合成實際Main父29512→新PID33656已從config重建雙市input/context，18來源原件／DB／pin／配置bytes/SHA/mtime一致、真junction拒絕；native actual PID建立時間／named Job及退出順序核對，原phase120秒不延長。原10套件118PASS及兩新fixture錯DTO欄位FAIL保留，兩案分別精確PASS；新增bounded stat-growth後46PASS／1原生symlink權限SKIP，979mypy／Workbench85／validator25/0/4／精度守衛通過。這解除設定→實際Main→新程序的限定工程缺口，不授完整推薦執行／結果保存、真來源、Native／EXE或完整Gate。
+
+本批續交 P00/P08：原 producer frozen capture 含原本金、requested/observed日期、completion、execution及明示cost identity；V2附件包原V1 canonical document與capture／可選precision，綁Registry／parent／真Parquet SHA，沿同一create-only staging／CAS／reconcile精確讀回。Main父56200→新PID40264已由正常Registry opener復原同capture／來源五檔不變；UI保存按鈕、雙策略盈虧／全期間／貨幣與來源日曆資格仍待。原超大整手迴圈120秒timeout促成C/D執行缺口修正：整數有界搜尋仍呼原費率／最低費用／日期／Decimal成本，保留原相鄰[200,199,50]斷言。P03 opt-in Selection V2已完成全pin身份與open/finish雙市重驗、batch/first-persist hash及缺件／取消守衛；V1 wrapper拒V2防降格，後續接平行V2 snapshot manifest／finished reference／decoder，再接每日批次新版本自動配置。策略或具名成本缺件不建立precision，來源／currency／calendar unknown與current-only/PITfalse保留。P07/P12只消費已受信範圍的成功版本／隔離原因，P13只重驗受影響來源，P14仍待固定來源版與Native／EXE；A/D官方單位、財報完整文件鏈、歷史缺件與自然成熟獨立推進，不把Scrapling設全計畫前置，工期未知。以下段落保留前批增量，當前已完成範圍與下一步以本段及最新QA為準。
+
+本批再完成 P03 保存雙市場 pin 的新程序輸入鏈：合成父程序41848保存 hash-addressed pin、原件及正常 input context，新程序48188以外部預期hash及各市場明示 trusted acceptance 重建 reader；兩市金額、共同13:00台北可用時間、批次／原件身分與context一致，11個來源檔案bytes／SHA／mtime未改。Root獨立actual native Job讀回通過；原QA01錯誤狀態預期及QA02 venv launcher PID比較的整組FAIL均保留，沒有重跑成功的保存／讀取。這只解除已保存合成cohort的跨程序工程缺口，尚未接受正常Main、完整推薦執行、官方來源或Gate；見本輪QA。
+
+下一批先在原application composition加入明示cohort reader，串至正常Main推薦preparer與provider，保存／重開沿固定外部hash及接受錨點；未設定時保留舊路徑，缺半市場／錯hash或錨點時拒絕，不掃latest。Selection的V1 source clock、snapshot wrapper與finished decoder精確型別不能攜帶新pin，須以additive V2保留全鏈identity及finish全市場重驗，原V1 unknown與bytes不改。P08下一批可在原Decimal loop轉float前保真捕獲cash／position value／equity；每日實現／未實現損益、行情currency authority、raw／clock、正式calendar與成本內容hash仍缺，不補猜金額或時間，不授money_comparable。Main接線、Selection V2與P08保真capture是可推進的工程範圍；A/D真來源／單位、歷史缺件與自然成熟仍獨立，Scrapling不增加全計畫前置。工期未知。
+
+本批追加 P03 hash-bound雙市場cohort pin／外部hash讀回、固定root與接受錨點、共同較晚小時、完整必要市場重驗；current provider與正常推薦session／context已接explicit composition port。首次整合97PASS／4FAIL後只修fixture/API參數（原斷言保留），原四案另4PASS；P08獨立Decimal精度契約的6typing錯誤窄修後22原案PASS、八roots mypy978與精度守衛PASS。Workbench85及validator25／0／4protected skips依同source先前QA重用，原兩份FAIL保留，沒有加總為包級Gate。
+
+P08精度V2目前是pure typed contract，保存producer原Decimal text及可精確表示的minor units，不從V1 float猜金額、不重算損益；幣別語法／authority與來源metadata尚不代表實際ISO成員／官方資料證明，qualification一律False。下一個P08交付沿原next-session-open.v2 Decimal loop接typed observation／currency-source-clock-completion authority，再codec/Registry exact reader與同股雙策略／UI；Paper帳戶觀察鏈保持獨立。
+
+P03 cohort保存→新PID→正常input source context已有上方合成限定讀回；下一批續正常Main明示選批次及SelectionFundamentalReadSession的cohort identity／finish重驗新版契約，v1 unknown不改為綠燈。取得／官方單位的A/D缺件仍獨立推進，不重耗既有GET，已完成的cohort工程不等待Scrapling全面完成。真來源／正常UI／Native／EXE及完整P00–P14／M1–M3範圍保持；工期未知。
+
+本批依原順序交付 P03 MOPS saved-capture／UpdateService 明確 scope、root、接受錨點及 batch port：76受影響案例通過，父15480→新PID20956精確讀回保存原件、同manifest／receipt及pinned provider；只屬合成隔離鏈，沒有新來源接受或正式寫入。失敗quarantine保存HTTP原件，pending barrier拒絕發布後時鐘／隔離失敗，晚materialization不倒退可用時間。TWSE仍需exact官方單位／版本證據，再接其獨立snapshot分支；MOPS ports不以TWSE強錨點為前置。
+
+並行 P08 已修一般单股／批次Registry保存時丟棄日期index的缺口，保留實際producer日期，不补造舊保存曲線。相關與provider83PASS、必要Workbench85、validator25／0／4protected skips、八roots mypy976檔與精度守衛通過。這解除D類「新run保存失去日期」工程阻塞；舊run歷史缺日、versioned金額／幣別／成本／completion、兩策略同股全期間／真樣本及績效資格仍為D，不能由日期修正折抵。
+
+下一批沿本計畫接 P03雙市場明確cohort pin／正常更新與推薦session，具備完整原件的已接受範圍再驗正常UI／新程序；缺完整MOPS或TWSE單位的資料隔離、原已耗GET不重抓。P08先定版可追溯期間／貨幣及成本契約，再接既有Registry／Paper producer，資料工作與其餘補完包並行。P12只呈現實際批次成功或具名拒絕，P13只重驗受影響部分，P14待固定來源版與Native證據；無工期估算，完整Gate仍未接受。
+
+本節 A–D 是**資料阻塞處置分類**，不同於 §5 的功能 A／B／C 與 §9.4 的波次名稱。
+
+A＝缺來源／原件／文件鏈，可由限縮取得工具處理；B＝缺發布小時或晚取得，以新成功批次小時及前瞻用途契約處理；C＝同一不可變版本的重複原件／schema／人工審查，可合併成帶版本的自動批次收據；D＝品質／前期／歷史版本缺件、規則未定、執行故障或自然成熟，保留獨立阻塞。B／C／D 本身不觸發擴大抓取或回補。
+
+| 資料／功能 | 包與具體缺口 | 取得方式與分流 |
+|---|---|---|
+| 三大法人；F09、F19／F20 | P03→P07／P04；市場／法人範圍、逐官方交易日連續性與可用時間 | 優先既有 TWSE／TPEx 官方 API／ports。A：缺來源鏈才補取得；B：日期資料使用新成功批次小時；D：缺開市日與法人分類仍不可假連買。 |
+| 月營收；F11／F12、F19／F20 | P03→P07；當月、同比基期、連月與單位；修訂版本 | 沿既有官方 API；MOPS 必要頁／文件以限縮 Scrapling 補鏈。A：原件與前期取得；B：缺發布小時依批次；D：缺同比／完整三個曆月／前史仍具名缺件，不造動能門檻。 |
+| 財報／EPS／營業利益及前期比較；F11 | P03→P07／P08；MOPS 清單、該期文件、官方時間、會計期間與修訂、單位及前期 | 先驗 **清單→對應文件→對應官方 timestamp**。可用官方 API 繼續用；需要 browser／session／動態載入時才用 [Scrapling](https://github.com/d4vinci/Scrapling)。A＋B 可解除取得／缺小時阻塞；D：缺前期或歷史版本不靠本次抓取補假 PIT。 |
+| 重大訊息與注意／處置；F16／F17／F19 | P03→P07／P05；公司公告與交易所事件分來源，發布／生效／到期及市場 coverage | MOPS 公告清單／文件／時間與 TWSE／TPEx 注意／處置官方來源分別取得，沿現有 current status／event ports。A＋B 補當下版本；D：完整事件史、F18 規則史料與未知市場仍獨立阻塞。 |
+| 分點、權證關係、族群／資金代理；F08／F10／F13–F15／F18 | P03／P07；各自來源、關係／成分時點、定義與授權 | 先重用現有 reader／ports，按明確策略功能逐項取得；Scrapling 不自動解決授權、關係缺件或規則未定。D 項由資料／規則 owner 處理。 |
+| 信用交易、TDCC 或其他補充資料 | 只在已定版功能／StrategySpec 確有依賴時列 P03 | 本批不擴成全市場全歷史回補，不用補充資料代替法人／分點或掩蓋缺件。 |
+
+Scrapling 是 P03 的**工具選項**，不全面改寫抓取系統，也不假定能突破 MOPS WAF。Root 在 task-owned 隔離環境釘套件版本，限制股票／期別／請求數、總期限及程序樹；只保存隔離原件與版本快照。取得鏈成功後才沿既有 data ports／更新服務接上「抓取→原件／版本快照→解析與品質檢查→保存→public reader→正常 UI→新程序重開」。HTTP／WAF／解析／時間／文件連結任一失敗均留原件與原因，未驗 browser/session 不宣稱可用。
+
+下一批順序：P00 小時與用途契約／因果反例 → P03 小範圍官方 API 對照及 MOPS 真取得鏈 → immutable 快照、一次性接受與批次驗證 → public reader／更新服務與正常 UI／新程序。P07 只接已齊資料及已定版規則；P12 接 batch 成功／失敗／隔離／重試狀態，正式 Task 不變；P13 收受影響回歸／真來源／Native；P14 在固定來源版上收同版 EXE。P02／P05／P08／P09 等其他增量可平行，Python／QA 仍由 Root 串行。
+
+能簡化的 C 項是同版本重複原件／schema／snapshot 核验與反覆人工來源審查，依 §4.2 自動化及共用具名收據；不能合併掉跨程序、正常 UI／返回、Native、錯來源／版本／未來資料／單位／缺值／完整性反例。D 項保留品質／歷史缺件、規則未定、執行故障（含 P08 原 4 FAIL）、同版交付、真人及 forward／paper 自然成熟；不由新政策改成 PASS。
+
+本輪 MOPS 隔離白名單限既有 `mopsov.twse.com.tw/mops/web/ezsearch_query` 財報清單、`doc.twse.com.tw/server-java/t57sb01` 文件清單，以及由精確列實際導出的同官方 host 附件。先以 2330／2026Q1、最多六個請求驗證，禁止猜附件 URL、無界 crawling、重試 WAF 或將文件名視為已下載原件；需要的 browser 模式若無法保證請求／程序預算就記未驗。其它股票／期別或來源須依功能缺口再界定。
+
+月營收獨立隔離 scope 限 TWSE／2026-09 一份報表、2330 為 consumer 目標，沿既有官方 API 的 POST redirect→返回 popup GET→頁內明示 static GET，最多三個請求、20秒接受限制／全鏈120秒，無重試／browser／猜 URL。財報六次預算仍按原收據管理；資料只存本 task。保留各步 HTTP 原件／headers／EOF或長度／完成時鐘，再以 manifest v2 的傳輸 SHA 與既有 canonical SHA 橋接；quality、用途一次性接受、單股隔離 DB、public reader及正常 UI 分別判定。實際redirect／popup成功，最後static僅262144／448751bytes、24.547秒超限制而FAIL；阻塞read不能即時按20秒中斷的執行缺口另列D，不擅自加長或重試。
+
+目前小時／原件橋同組 QA09為82 PASS／0 SKIP，三來源 mypy及新 PID 的 Big5→parser→Decimal normalizer→隔離 DB→pinned consumer旅程通過，單位及前期比較 gate 在實際旅程核對；其後巢狀來源表反例的preparation套件單獨12PASS。原 QA06篡改診斷、QA07 WinError5及QA08比較 gate失敗均保留；WinError5另作零retry handle觀測成功，原瞬間拒絕來源仍未知，不將診斷PASS抹去失敗。財報完整PDF鏈仍FAIL。P02正常bundle V3 opener已通過保存257股／雙parent的三個原consumer函式直接重播，正向、poison及取消均核對；V2 composite把F07 Decimal範圍作既有四組AND／OR後的共通AND gate，11個原consumer案例及四個重算digest的issuer-anchor反例通過。Presenter三案／bookmark十案另通過，bookmark受影響十案重驗及八roots mypy972檔PASS；價格JSON四反例通過。這些不替代原producer suite：原300秒／60秒FAIL保留，不缩256分段契約或257股母體，也不授正常Main／watchlist／新程序／完整P02資格。
+
+TWSE JSON獨立preparation契約已完成44案例、真partial拒絕及保存完整原件的2330／11509父→新PID解析一致。只重用10/13既有原件，不新增GET、不改owner舊時間政策；新驗證批次另記台北20:00可用小時候選，沒有倒填舊PIT。出表日缺小時的B阻塞已能用具名批次basis處理，官方金額單位仍是D品質缺件；不轉換金額、不發行daily snapshot、不提高shadow用途。當輪Swagger／API兩GET預算已用完，API未EOF的A／D FAIL保持。
+
+P02後續已接入正常Main的「官方條件與價格研究」、V2 typed Watchlist與指定合成來源新程序重開；父54060→fresh34696同envelope/pins/page/row/basket/價格條件及scroll1962一致。首次view的range恢復缺口已用有界guard窄修，當版974mypy、受影響UI案例及必要Workbench／validator／精度守衛通過；Parent按原SHA重用，原各FAIL保留。這不授真N、原producer、來源/PIT、Native／EXE或完整P02。下一個可交付段並行安排：P02先完成當版治理與來源綁定，再收真N／Native及固定來源版交付證據；P03補同版本官方單位強證據，通過後才沿既有ports／更新服務接immutable snapshot及public reader；P08繼續原完整期間／雙策略同股／qualification缺件。P12只承接實際成功或隔離狀態，P13重驗改動影響的正常UI／跨程序與必要回歸，P14待固定來源版同版EXE；不把Scrapling全功能或每批人工審查列為上述三路共同前置。工期仍未知。
+
+本輪可追溯增量見[每日快照契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)及[實作與隔離 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。恢復時52份保存資產／收據SHA核對完成；Scrapling0.4.15已在私有venv釘版安裝，原沙箱DNS FAIL保留。EZSearch原一次探針因20.781秒超原20秒而FAIL，保存1000列原件的coverage未知；另一次t57 session通過2330／2026Q1清單匹配。已依明確 `readfile2`／fm2 的step9 POST取得官方href，但PDF GET在原20秒僅收925696／5271067bytes、完整鏈FAIL且沒有完整PDF。這些觀測不授來源／用途、P00／P03或完整Gate；consumer／測試與真來源結果逐項更新同一QA，不盲重跑或提高期限。
+
+P02目前另以原300秒失敗留下的完整保存來源重開公開reader，原257股／兩parent／Decimal／digest、錯身分poison及取消清空三個原consumer test function逐一通過，來源bytes前後不變；未重產fixture，也不冒稱原producer suite或完整P02已PASS。已修內部byte counter誤觸immutable守衛與V3錯誤原因傳遞，原producer逾時與所有早期FAIL保留。P08已精確forward-port到正式工作樹，原14整合測試與六套canonical回歸共同驗證，修Qt test pump飢餓（原10秒不變）及帳戶／ledger操作hash域誤比；QA04同七套件102PASS、Workbench85PASS、update validator25PASS／0FAIL／4protected skips、八roots mypy968檔PASS。這是正式樹限定接線證據，正常Main／fresh與同版EXE、兩策略完整期間績效及產品Gate仍待，不能由此接受。
+
+資料A／D取得阻塞的下一個窄範圍為 `monthly_single_http_hard_deadline_01`：有界getter的loopback10案例已通過後，以前次popup原件中保存的同一官方明示static href，**只執行一個GET、20秒worker絕對期限包含啟動、16MiB上限、零retry／redirect／browser**，create-only保存完整或partial原件與實際Job／PID／handles證據。此為針對原阻塞read無法即時停止的新實作診斷；原月營收三請求scope已消耗且FAIL不重寫，財報六次預算及四次結果也保持。失敗立即隔離、不再自動重抓；只有真正HTTP200／EOF／實長／限額完整，才進入layout、數值／千元單位、2330前期與版本品質審查，不自動簽發正式來源用途接受。Getter在Windows改用具hash的實際base interpreter及明示隔離venv，避免只kill venv launcher；整组PID0仍由Root收據驗，20秒不包含後續hash／收據IO。
+
+本批P08正常Main共享版本→兩個合成帳戶真writer→正常Paper查找／public exact card→新PID重開A的限定旅程已通過（父26532／fresh43032、11來源bytes與stat相同），不含真行情、同股盈虧／完整期間、Native／EXE或绩效资格。P03上述單GET已消耗：HTTP200／294912bytes／未EOF，20秒截止後真正worker17132回收閉鎖（含kill／reap20.015秒），取得仍FAIL；原件隔離、不追加retry，不將其接consumer。
+
+下一批依序為P02正常query／bookmark接線與producer執行成本；P03已存在的官方TWSE API先核單位強錨點與獨立JSON source／schema／parser／version（只TWSE本期／2330與必要前期），保留research-shadow／diagnostics範圍，不借MOPS契約或升格為正式推薦。MOPS／財報傳輸限制仍為D執行阻塞，其他來源功能缺口依§4.2逐項處理；有完整合格原件後才接daily producer／更新服務／P12狀態與正常UI。資料與其餘補完包維持並行，Scrapling不成為共同前置；partial不得接consumer或接受scope。原QA失敗、P08原四FAIL與P01 p95原FAIL全數保留，Paper／Forward不提前成熟；工期未知，不編造估算。其他owner於HEAD `5cedd657`保存Direct自然失敗後精確停用的授權狀態，P12不自行重新啟用或觸發昂貴重跑，見[排程運維指南](../../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
+
+官方 API 下一個隔離 scope 為 `twse_t187ap05_L_2330_11509_schema_metadata_01`：既有 TWSE endpoint 與官方 Swagger metadata 各一次 GET，最多兩請求，每次20秒含 worker 啟動、API 8MiB／metadata 2MiB、零 retry／redirect／browser。完整原件只做來源與 schema 診斷，目標限2330／11509；不以返回全表宣稱全市場接受。出表日期不當發布小時，成功批次小時的前瞻政策保持；單位未核時不乘1000、原件隔離、不發行用途接受。此為既有官方 API 的獨立新 scope，不重抓任何已消耗 MOPS scope。
+
 ## 10. 九個保留檔案的逐檔接續方案（已於 checkpoint 提交）
 
 九檔已完整提交於 `bf9207fb`，下表是功能接續判定及原調查hash，不再表示未提交狀態。其後修改由中央按實際ownership與驗收逐包提交，不能reset回更早HEAD覆蓋成果。
@@ -476,7 +604,7 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 | G0 契約與因果自查 | 記明method／strategy／source／query／account版本與owner；逐項核訊號、篩選、feature、標準化、停損／停利、benchmark、entry、label的決策當時可得性。新財務計算不得裸float。 |
 | G1 有效的定向測試 | 執行包內真正行為測試與受影響回歸；不能只assert dataclass欄位／mock返回值；錯股、錯來源、缺件及邊界有反例。失敗原紀錄保留，修正後以精確node重驗，不累加重複案例當更多證據。 |
 | G2 保存→讀回→UI→操作→返回→獨立程序 | 隔離資料根用**真正writer**寫artifact／ledger／run，關閉writer；正常public reader重讀並核內容identity；完整MainWindow或實際composition的consumer呈現，操作、返回，再退出並用另一程序／PID重開。backend沒有自己的UI也必須走接收它的頁面。 |
-| G3 真來源核對與Native | 對已授權原保存資料做唯讀驗證，記來源與clock、資料coverage、原件前後穩定；同版Native核可讀性／實際點擊。新模型不需要fit來證明UI；合成fixture不可算自然maturity。無該來源則如實列data blocker，不能把G2當真來源功能完成。 |
+| G3 真來源核對與Native | 來源與指定用途依 §4.2 一次接受，成功批次自動核身分／品質／小時可用性；從首次成功保存日起可供已接受的日常研究用途，完整歷史 PIT 不作其永久前置。歷史用途仍須該期間版本證據。記來源與 clock、coverage、原件穩定及同版 Native 實際點擊；合成 fixture 不算真來源或自然成熟。未取得來源、缺品質／歷史證據或 Native 未驗各自列 blocker，不由 G2 或新政策代為通過。 |
 | G4 交付整合 | Manual實際入口、參數、結果、限制與排錯同步；source與candidate exe相同root與來源讀回；預設空root／缺件可理解；真人操作、資源、worker收尾均有證據。未做的項目保留「未驗」，不因package build成功而勾掉。 |
 
 每份包收據保存：code SHA＋dirty hashes、fixture／真來源分類、source/manifest/query/account pins、writer與reader PID、操作序列、畫面／事件證據、預期與實際、異常分支、worker／子程序退出、資料前後變化及未驗事項。使用單一任務output根與一份正式QA摘要，不另生成互相競爭的總計畫。
@@ -739,7 +867,7 @@ H20 返回跨推薦結果分頁會排兩次完整重讀，中央實際Qt signal�
 
 ### 2026-10-08 讀取核心審核與 UI 接線
 
-P01 固定版本 ReadSession／selection 已存本機 dev `3b899160`，中央新測試14通過、最新相鄰query／stock／bookmark回歸13通過（320.09秒含fixture產製）、四檔mypy通過。同操作分頁切已排序selection；fresh收藏重新strict核驗。UI快取接線仍在實作，中央已要求明示load完整fresh核驗與成功零結果清空舊股票；不能用底層通過宣稱實際N效能或新版畫面通過。
+P01 固定版本 ReadSession／selection 已存本機 dev `3b899160`，中央新測試14通過、最新相鄰query／stock／bookmark回歸13通過（320.09秒含fixture產製）、四檔mypy通過。同操作分頁切已排序selection；fresh收藏重新strict核驗。UI快取接線仍在實作，中央已要求明示load完整fresh核驗與成功零結結清空舊股票；不能用底層通過宣稱實際N效能或新版畫面通過。
 
 F17 canonical query／membership-truth／多欄排序純層已存本機 dev `d4cdb500`，中央37測試、兩檔mypy與compile通過；補上technical row與rule決策日期、cutoff、feature及missing flag一致性。完整reader join、全部角色計數、來源回讀、正常更新、比較／收藏／UI仍未完成。H20 stage2a私有副本resolver的daily／capture／outcome中央46測試通過，四產品source型態檢查通過；UI名單、selected、收藏接線與多來源總容量限制仍施工，原4GB資料保護、2382下鑽速度、新程序與Native均未接受。
 

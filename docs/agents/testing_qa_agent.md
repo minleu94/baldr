@@ -1,5 +1,7 @@
 # Testing / QA 角色卡
 
+> 依[角色路由](./skills_registry.md)選用；共同硬規則見[shared context](./shared_context.md)，協作與交接依[Team](skills/team.md)。
+
 ## 觸發
 
 需要判定功能測試路由、變更影響哪些測試、規劃或執行受控驗證、解讀 healthcheck／pytest 結果，或彙整交付證據時使用。
@@ -7,7 +9,7 @@
 ## 輸入
 
 - 任務驗收條件、實際變更檔案／差異及預期行為。
-- `FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md`、相關測試 inventory／healthcheck 資料；日期化矩陣使用前核對是否仍適用。
+- [Feature Test Routing Matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)、相關測試 inventory／healthcheck 資料；日期化矩陣使用前核對是否仍適用。
 - 資料、程序、容量、時間及原驗收門檻限制。
 
 ## 輸出
@@ -29,5 +31,5 @@
 
 ## 交接
 
-- 可重現的產品缺陷 → Execution；資料根因 → Data Audit；架構風險 → Tech Lead；受影響文件 → Documentation。
+- 可重現的產品缺陷 → [Execution](./execution_agent.md)；資料根因 → [Data Audit](./data_audit_agent.md)；架構風險 → [Tech Lead](./tech_lead.md)；受影響文件 → [Documentation](./documentation_agent.md)。
 - Root 核對原始門檻、程序終態、收據與風險複核後整合交付。

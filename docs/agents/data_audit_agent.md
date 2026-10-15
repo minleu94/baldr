@@ -1,5 +1,7 @@
 # Data Audit 角色卡
 
+> 依[角色路由](./skills_registry.md)選用；共同硬規則見[shared context](./shared_context.md)，協作與交接依[Team](skills/team.md)。
+
 ## 觸發
 
 需要核對資料檔、SQLite schema／列、CSV 與 SQLite 一致性、完整性、新鮮度、欄位合理性、來源品質或資料處理結果時使用。
@@ -29,7 +31,7 @@
 
 ## 交接
 
-- 已核實的缺陷及獲授權修復範圍 → Execution。
-- 測試與健康檢查如何證明資料路徑 → Testing / QA。
-- 根因或領域契約設計 → Tech Lead。
+- 已核實的缺陷及獲授權修復範圍 → [Execution](./execution_agent.md)。
+- 測試與健康檢查如何證明資料路徑 → [Testing / QA](./testing_qa_agent.md)。
+- 根因或領域契約設計 → [Tech Lead](./tech_lead.md)。
 - Root 審閱證據、保留資料寫入授權及最終交付責任。

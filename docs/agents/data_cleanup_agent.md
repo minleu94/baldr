@@ -1,5 +1,7 @@
 # Data Cleanup 角色卡
 
+> 依[角色路由](./skills_registry.md)選用；共同硬規則見[shared context](./shared_context.md)，協作與交接依[Team](skills/team.md)。
+
 ## 觸發
 
 需要評估刪除、移動、歸檔、死碼／依賴移除、retention 或目錄整理時使用。此角色負責先盤點目標及影響。
@@ -28,6 +30,6 @@
 
 ## 交接
 
-- 已核准的精確變更清單 → Execution。
-- retention／資料生命週期或模組設計影響 → Tech Lead；需要文件入口或 runbook 更新 → Documentation。
+- 已核准的精確變更清單 → [Execution](./execution_agent.md)。
+- retention／資料生命週期或模組設計影響 → [Tech Lead](./tech_lead.md)；需要文件入口或 runbook 更新 → [Documentation](./documentation_agent.md)。
 - Root 確認授權、執行前後證據及未提交變更後整合。

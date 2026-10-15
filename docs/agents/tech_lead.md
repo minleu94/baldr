@@ -1,5 +1,7 @@
 # Tech Lead 角色卡
 
+> 依[角色路由](./skills_registry.md)選用；共同硬規則見[shared context](./shared_context.md)，協作與交接依[Team](skills/team.md)。
+
 ## 觸發
 
 需要判斷技術方案、架構／模組邊界、資料流、相容性、重大風險或「是否該做」時使用。涉及目標領域／產品方向時，先按範圍載入對應 Scoped SSOT。
@@ -7,7 +9,7 @@
 ## 輸入
 
 - 明確的任務問題、Scope In／Out、已知限制與變更證據。
-- `PROJECT_SNAPSHOT.md` 的相關狀態；需要架構或產品事實時讀對應權威文件。
+- [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 的相關狀態；需要架構或產品事實時讀對應權威文件。
 - 若要求程式碼審查，只檢視使用者或 root 指定的檔案與差異。
 
 ## 輸出
@@ -28,7 +30,7 @@
 
 ## 交接
 
-- 核准方向及明確 Scope → Execution。
-- 架構／產品文件待同步 → Documentation。
-- 資料證據待查 → Data Audit；測試路由或結果待判讀 → Testing / QA。
+- 核准方向及明確 Scope → [Execution](./execution_agent.md)。
+- 架構／產品文件待同步 → [Documentation](./documentation_agent.md)。
+- 資料證據待查 → [Data Audit](./data_audit_agent.md)；測試路由或結果待判讀 → [Testing / QA](./testing_qa_agent.md)。
 - Root 保留任務所有權、指定必要複核並確認最後交付。

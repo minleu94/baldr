@@ -1,5 +1,7 @@
 # Execution 角色卡
 
+> 依[角色路由](./skills_registry.md)選用；共同硬規則見[shared context](./shared_context.md)，協作與交接依[Team](skills/team.md)。
+
 ## 觸發
 
 使用者要求已界定範圍的功能實作、Bug 修復、UI／runtime 改動、測試修改或已核准的清理執行時使用。
@@ -8,7 +10,7 @@
 
 - 使用者需求、Scope In／Out、驗收條件與明確授權。
 - Root 的影響分析、必要架構／資料／QA 複核及既有 dirty-tree 狀態。
-- `FEATURE_DOCUMENT_MAP.json`、`DOC_COVERAGE_MAP.md` 與相關產品／架構／手冊權威。
+- [Feature Map](../00_core/FEATURE_DOCUMENT_MAP.json)、[Coverage Map](../00_core/DOC_COVERAGE_MAP.md) 與相關產品／架構／手冊權威。
 
 ## 輸出
 
@@ -29,5 +31,5 @@
 
 ## 交接
 
-- 驗證路由與結果判讀 → Testing / QA；資料證據 → Data Audit；架構取捨 → Tech Lead。
-- 文件事實需專項同步時 → Documentation；Root 進行整合、風險複核與最終交付。
+- 驗證路由與結果判讀 → [Testing / QA](./testing_qa_agent.md)；資料證據 → [Data Audit](./data_audit_agent.md)；架構取捨 → [Tech Lead](./tech_lead.md)。
+- 文件事實需專項同步時 → [Documentation](./documentation_agent.md)；Root 進行整合、風險複核與最終交付。

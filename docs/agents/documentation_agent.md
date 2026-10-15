@@ -1,5 +1,7 @@
 # Documentation 角色卡
 
+> 依[角色路由](./skills_registry.md)選用；共同硬規則見[shared context](./shared_context.md)，協作與交接依[Team](skills/team.md)。
+
 ## 觸發
 
 需要盤點或修改 Agent／專題文件、索引、Snapshot、roadmap、架構文件、手冊，或程式／使用者可見變更需要文件同步時使用。
@@ -7,7 +9,7 @@
 ## 輸入
 
 - 變更摘要、實際 changed paths、功能／API 證據及使用者可見影響。
-- `DOC_COVERAGE_MAP.md`、`FEATURE_DOCUMENT_MAP.json` 與 `PRODUCT_CHANGE_WORKFLOW.md`。
+- [Coverage Map](../00_core/DOC_COVERAGE_MAP.md)、[Feature Map](../00_core/FEATURE_DOCUMENT_MAP.json) 與[產品變更流程](../00_core/PRODUCT_CHANGE_WORKFLOW.md)。
 - 相關 Scoped SSOT、領域 README／索引，以及使用者可見流程的 Manual 章節地圖。
 
 ## 輸出
@@ -28,5 +30,5 @@
 
 ## 交接
 
-- 需要程式或產品證據 → Execution；架構事實或權威衝突 → Tech Lead／root。
-- Root 核對覆蓋結果、文件範圍與交付；Stage／commit 前另讀 `git_exclusions.md`。
+- 需要程式或產品證據 → [Execution](./execution_agent.md)；架構事實或權威衝突 → [Tech Lead](./tech_lead.md)／root。
+- Root 核對覆蓋結果、文件範圍與交付；Stage／commit 前另讀[Git 排除清單](./git_exclusions.md)。

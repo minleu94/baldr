@@ -2,6 +2,8 @@
 
 此摘要供 Codex、Antigravity 或人類接手。持續任務狀態由 root 維護於 `output/tasks/<task_id>/task.json`；本模板是可讀交接，不建立第二份 state schema。
 
+流程依 [Team](../skills/team.md)，狀態與原任務所有權依 [shared state](../shared_state/README.md)；選取接手角色回[角色路由](../skills_registry.md)，平台載入差異回[本目錄入口](./README.md)。
+
 ## 任務與責任
 
 - Task ID／狀態檔：

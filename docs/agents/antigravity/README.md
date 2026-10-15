@@ -1,6 +1,6 @@
 # Antigravity 平台適配入口
 
-本目錄只保存 Antigravity 適配及交接格式。共同安全規則在根目錄 `AGENTS.md` 引入的 `docs/agents/shared_context.md`；唯一人類角色路由在 `docs/agents/skills_registry.md`；六份 `docs/agents/*.md` 是角色權威卡。
+本目錄只保存 Antigravity 適配及交接格式。共同安全規則在根目錄 [AGENTS.md](../../../AGENTS.md) 引入的 [shared context](../shared_context.md)；唯一人類角色路由在[角色路由](../skills_registry.md)，六份[共用角色卡](../README.md#六份角色權威卡)是行為權威。適配卡是通往共用角色的按需入口，不是獨立角色或另一套授權。
 
 ## 平台規則
 
@@ -10,15 +10,15 @@
 
 ## 角色入口
 
-由 `docs/agents/skills_registry.md` 選取本次需要的角色，再閱讀對應的共同權威卡與此目錄同名的輕量適配卡：
+由[角色路由](../skills_registry.md)選取本次需要的角色，再閱讀對應的共同權威卡與下列輕量適配卡：
 
-- `tech_lead_agent.md` → `../tech_lead.md`
-- `data_audit_agent.md` → `../data_audit_agent.md`
-- `data_cleanup_agent.md` → `../data_cleanup_agent.md`
-- `execution_agent.md` → `../execution_agent.md`
-- `documentation_agent.md` → `../documentation_agent.md`
-- `testing_qa_agent.md` → `../testing_qa_agent.md`
+- [Tech Lead 適配](./tech_lead_agent.md) → [共用 Tech Lead](../tech_lead.md)
+- [Data Audit 適配](./data_audit_agent.md) → [共用 Data Audit](../data_audit_agent.md)
+- [Data Cleanup 適配](./data_cleanup_agent.md) → [共用 Data Cleanup](../data_cleanup_agent.md)
+- [Execution 適配](./execution_agent.md) → [共用 Execution](../execution_agent.md)
+- [Documentation 適配](./documentation_agent.md) → [共用 Documentation](../documentation_agent.md)
+- [Testing / QA 適配](./testing_qa_agent.md) → [共用 Testing / QA](../testing_qa_agent.md)
 
 ## 任務交接
 
-多階段或需交接的任務按 `../skills/team.md` 完成 Intake、影響／QA 計畫、實作、驗證、文件與 root 整合。交接摘要格式見 [`handoff_template.md`](handoff_template.md)；task-ID 狀態與 legacy singleton 所有權見 [`../shared_state/README.md`](../shared_state/README.md)。
+多階段或需交接的任務按 [Team](../skills/team.md) 完成 Intake、影響／QA 計畫、實作、驗證、文件與 root 整合。交接摘要格式見 [`handoff_template.md`](./handoff_template.md)；task-ID 狀態與 legacy singleton 所有權見 [`../shared_state/README.md`](../shared_state/README.md)。

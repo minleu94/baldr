@@ -1,6 +1,6 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> **目前第一版候選（2026-10-15）**：依使用者兩階段決議，原計畫§0.3凍結四條旅程；固定`4cfddca1d4b1e25e958b2b3dd988035a4d233b67`候選已可本機試用。入口`output/trial/Baldr-V1/Launch-Baldr.cmd`，指南／已知問題／SHA見同目錄TRIAL_GUIDE.md與DELIVERY_RECEIPT.json。真實四股行情12390筆、2014/01/02–2026/09/23，大盤副本至2026/10/14，日期不混用；unknown／historical PIT=false保留。已解除比較按鈕及EXE規則來源缺件；QA108市場／個股圖表／返回，QA94＋106比較收藏與最終EXE新程序重開，QA104執行保存＋QA105同run新程序歷史讀回各按限定範圍驗證。窄視窗查歷史先收合設定；1440px Native命中與真人／跨機仍未全驗。完整計畫、原FAIL與第二階段待辦保留，不是P00–P14或完整Gate接受。
+> **目前第一版候選（2026-10-15）**：依使用者兩階段決議，原計畫§0.3凍結四條旅程；固定`505d56f1c1178323f8184e291b718966431c7b07`候選已可本機試用。入口`output/trial/Baldr-V1/Launch-Baldr.cmd`，指南／已知問題／SHA見同目錄TRIAL_GUIDE.md與DELIVERY_RECEIPT.json。真實四股行情12390筆、2014/01/02–2026/09/23，大盤副本至2026/10/14，日期不混用；unknown／historical PIT=false保留。已解除比較按鈕及EXE規則來源缺件；Increment33另修啟動畫面重複清理，實際無參數cmd開窗PID2000與最終exit0已驗，四旅程／金融碼未變沿原收據；QA108市場／個股圖表／返回，QA94＋106比較收藏與最終EXE新程序重開，QA104執行保存＋QA105同run新程序歷史讀回各按限定範圍驗證。窄視窗查歷史先收合設定；1440px原命中失敗已定位其他程序遮蔽，非按鈕／DPI錯位；真人／跨機仍未全驗。完整計畫、原FAIL與第二階段待辦保留，不是P00–P14或完整Gate接受。
 
 > **更新基線：2026-10-15 UTC（使用者時區10/14）。** 使用者已恢復補完並採納每日版本快照與台北小時可用性政策；本輪實作／隔離驗證見[每日快照政策 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，原安全接手點見 [10/14 暫停 checkpoint](../06_qa/BALDR_COMPLETION_CHECKPOINT_20261014.md)。本頁只記目前可支持的整體狀態；局部 PASS 不相加成完整工作包或產品 Gate。較早恢復歷程見 [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)，先前紀錄見 [BALDR_COMPLETION_PROGRESS_20261011](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)；原始 receipts／source inventory 依各收據所列路徑與 SHA 追溯。
 

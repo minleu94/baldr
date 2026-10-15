@@ -2809,6 +2809,7 @@ class WatchlistView(QWidget):
                 str(row.get("證券名稱", "") or "").strip(),
                 source_id,
                 decision_identity=decision_identity,
+                allow_current_stock_research=row.get("source") == "manual",
             )
         )
 
@@ -3149,6 +3150,7 @@ class WatchlistView(QWidget):
         source_id: str = "",
         *,
         decision_identity: DecisionIdentity | Mapping[str, object] | None = None,
+        allow_current_stock_research: bool = False,
     ) -> ResearchStockContextDTO:
         """從觀察清單的保存來源建立唯讀上下文，不重新計算。"""
 
@@ -3158,6 +3160,24 @@ class WatchlistView(QWidget):
             {"decision_identity": decision_identity} if decision_identity is not None else {},
             code,
         )
+        # 手動觀察股票尚未連結研究來源；以目前既有行情研究，不冒充保存推薦。
+        # 任何保存身份、日期或衝突都沿原路由處理，不能因讀取失敗而退回最新行情。
+        if (
+            allow_current_stock_research
+            and not source
+            and identity.identity_status == "unknown"
+            and not any((identity.result_id, identity.decision_date,
+                         identity.source_snapshot_id, identity.source_snapshot_hash))
+        ):
+            return ResearchStockContextDTO(
+                stock_code=code,
+                stock_name=stock_name,
+                identity_status=identity.identity_status,
+                source_kind="watchlist_current_stock_research",
+                source_label="手動觀察股票；目前既有行情研究（未連結保存來源）",
+                source_workspace="watchlist",
+                ml_scope_mode="current_stock_research",
+            )
         result = None
         explicit_result_id = identity.result_id if identity.is_linked else ""
         lookup_source = explicit_result_id or source

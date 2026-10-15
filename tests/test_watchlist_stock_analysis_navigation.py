@@ -66,6 +66,29 @@ def test_unranked_stock_loads_detail_through_service(monkeypatch):
     view.close()
 
 
+@pytest.mark.parametrize("source_id,identity", [
+    ("missing-saved-run", {}),
+    ("", {"result_id": "saved-1", "stock_code": "2330"}),
+    ("", {"stock_code": "2330", "decision_date": "2026-09-04"}),
+    ("", {"stock_code": "2330", "source_snapshot_id": "saved-snapshot"}),
+    ("", {"stock_code": "2330", "source_snapshot_hash": "a" * 64}),
+    ("", {"stock_code": "2330", "identity_status": "conflict"}),
+])
+def test_manual_origin_never_downgrades_saved_or_conflicting_identity(source_id, identity):
+    app = QApplication.instance() or QApplication([])
+    view = WatchlistView(WatchlistStub())
+    try:
+        context = view._build_stock_research_context(
+            "2330", "台積電", source_id,
+            decision_identity=identity, allow_current_stock_research=True,
+        )
+        assert context.source_kind == "recommendation"
+        assert context.ml_scope_mode != "current_stock_research"
+    finally:
+        view.close()
+        app.processEvents()
+
+
 def test_saved_analysis_reads_exact_source_and_rejects_future_without_writing(
     tmp_path, monkeypatch
 ):

@@ -778,3 +778,11 @@ Increment33交付更新：固定`505d56f1c1178323f8184e291b718966431c7b07`，候
 
 指南已將1440px命中失敗改述為已證外部程序遮蔽，而非未解產品按鈕／DPI問題。維持原螢幕命中斷言、原FAIL、未全尺寸真人與跨機界線，不操作其他owner視窗。完整第二階段與原計畫待辦未擴成V1前置；目前同一入口可試用505修復版。
 QA116最後核原4cf交付snapshot與新505收據、18具名QA pins、8交付檔案及runtime單檔差異一致，實際GUI exit0證據已綁新候選；交付收據SHA `c472e1429363679a49373eaaa06e7d2a3482d95b0e5c22417815e844d9850432`。此次5份文件治理12features／errors=[]，不外推產品Gate。outer SHA `84da0aa0b317640b156f5a18506c0da4a1258450825a0465bc0a9a3a40b22330` 自然閉鎖，無active Python／QA；原完整計畫保持未完成、第一版四流程凍結，下一步以實際試用問題為優先。
+
+## Increment34：V1一般觀察股票下鑽與回訪
+
+本Increment解除原凍結V1-03交付阻礙。QA94／106證明的是版本研究收藏重開，不能代表一般股票手動新增→個股→返回→新程序讀回。QA117在505固定EXE實際新增2330並保存，但下鑽後價格／技術歷史為空而FAIL；手動列被預設為recommendation，reader正確要求已保存圖表來源，因而沒有讀取現有行情。原FAIL outer SHA `0e6d6e7e77c35f04b3c18c137b66e18a0111b78a120fab70061fad2f96e7d9e2`保留，不能把舊收藏PASS當此流程接受。
+
+最小修正只在手動列明示opt-in、source_id空白、identity=unknown且無result／決策日／snapshot身份時建立目前個股研究context；任何連結、衝突或保存來源仍走原路由，沒有失敗後改讀最新的fallback。未改金融核心、reader、保存格式、來源時間／精度或收藏守衛。Luna僅靜態核對；普通手動返回按代號定位，與同股其他來源並存時不宣稱精確列級返回。
+
+QA118只準備未執行，靜態核對DTO後將新增測試價格斷言改為Decimal再釘選QA119。QA119 compile、手動列→真SQLite reader與保存／衝突反例、舊導航及保存圖表守衛、必要Workbench共186 PASS；validator25／0／4與mypy1016通過（UI既有ignore_errors不證UI強型別），outer SHA `857f398c68031625c06fd894e2bb4868adf10273f8d4d7da7d836a121191ecfb`。每組仍8GiB／12程序、workspace mutex與RAM≥8GiB，三PID陣列自然空、handles關閉、mutex釋放，無forced cleanup。新版固定EXE的正常GUI／fresh旅程及交付更新待下一具名收據；原505候選與原FAIL保留，未升格完整Gate。

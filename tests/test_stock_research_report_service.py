@@ -245,6 +245,41 @@ def _write_verified_calendar_cache(cache_root: Path) -> Path:
     return cache_path
 
 
+def test_manual_watchlist_drilldown_reads_existing_prices_without_a_saved_capture(tmp_path: Path) -> None:
+    """未連結的手動股票可讀現況；附近有保存推薦也不能冒認其身份。"""
+    from PySide6.QtWidgets import QApplication
+    from app_module.watchlist_service import WatchlistService
+    from ui_qt.views.watchlist_view import WatchlistView
+
+    app = QApplication.instance() or QApplication([])
+    config = _config(tmp_path)
+    _seed_normal(config)
+    watchlist = WatchlistService(config)
+    assert watchlist.add_stocks([{"stock_code": "2330", "stock_name": "台積電"}], source="manual") == 1
+    view = WatchlistView(watchlist, config=config)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+    original = watchlist.default_watchlist_file.read_bytes()
+    try:
+        view.stocks_table.selectRow(0)
+        view.stock_analysis_btn.click()
+        assert len(contexts) == 1
+        context = contexts[0]
+        assert context.source_kind == "watchlist_current_stock_research"
+        assert context.ml_scope_mode == "current_stock_research"
+        assert context.source_workspace == "watchlist" and not context.result_id
+        report = StockResearchReportReadService(config).read_report(
+            "2330", as_of_date=date(2026, 9, 8), context=context,
+        )
+        assert [point.data_date for point in report.price_points] == ["2026-09-08"]
+        assert report.price_points[0].close_price == Decimal("100")
+        assert report.technical_history and report.saved_technical_chart_json == ""
+        assert watchlist.default_watchlist_file.read_bytes() == original
+    finally:
+        view.close()
+        app.processEvents()
+
+
 def test_normal_readback_is_pit_bounded_and_uses_existing_advice(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _seed_normal(config)

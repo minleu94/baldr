@@ -6,7 +6,7 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from backtest_module.broker_simulator import Trade
 from financial_module.units import quantize_money, to_decimal
@@ -27,6 +27,8 @@ class PerformanceMetrics:
     avg_loss: float  # 平均虧損
     largest_win: float  # 最大獲利
     largest_loss: float  # 最大虧損
+    # 原數值相容；保存者據此區分真零與舊 fallback 零，不授精度或 PIT 資格。
+    metric_status: Dict[str, str] = field(default_factory=dict)
 
 
 class PerformanceAnalyzer:
@@ -87,11 +89,16 @@ class PerformanceAnalyzer:
         Returns:
             PerformanceMetrics 對象
         """
+        metric_status = {name: "unavailable" for name in (
+            "total_return", "annual_return", "sharpe_ratio", "max_drawdown", "win_rate", "total_trades", "expectancy"
+        )}
         # 計算總報酬率（確保是數值類型）
         try:
             final_equity = float(equity_curve['equity'].iloc[-1])  # numeric-boundary: analytics
             initial_capital_float = float(initial_capital)  # numeric-boundary: analytics
             total_return = (final_equity - initial_capital_float) / initial_capital_float if initial_capital_float > 0 else 0.0
+            if initial_capital_float > 0 and np.isfinite(final_equity) and np.isfinite(total_return):
+                metric_status["total_return"] = "observed"
             total_return = float(total_return) if not pd.isna(total_return) else 0.0  # numeric-boundary: analytics
         except (ValueError, TypeError, IndexError):
             total_return = 0.0
@@ -102,6 +109,8 @@ class PerformanceAnalyzer:
             years = days / 365.25
             if years > 0:
                 annual_return = (final_equity / initial_capital_float) ** (1 / years) - 1
+                if initial_capital_float > 0 and final_equity > 0 and np.isfinite(annual_return):
+                    metric_status["annual_return"] = "observed"
                 annual_return = float(annual_return) if not pd.isna(annual_return) else 0.0  # numeric-boundary: analytics
             else:
                 annual_return = 0.0
@@ -119,6 +128,8 @@ class PerformanceAnalyzer:
             if len(returns) > 0 and returns.std() > 0:
                 excess_returns = returns - (self.risk_free_rate / 252)  # 日無風險利率
                 sharpe_ratio = np.sqrt(252) * excess_returns.mean() / returns.std()
+                if np.isfinite(sharpe_ratio):
+                    metric_status["sharpe_ratio"] = "observed"
                 sharpe_ratio = float(sharpe_ratio) if not pd.isna(sharpe_ratio) else 0.0  # numeric-boundary: analytics
             else:
                 sharpe_ratio = 0.0
@@ -130,6 +141,8 @@ class PerformanceAnalyzer:
             equity_series = pd.to_numeric(equity_curve['equity'], errors='coerce').dropna()
             if len(equity_series) > 0:
                 max_drawdown = self._calculate_max_drawdown(equity_series)
+                if np.isfinite(max_drawdown):
+                    metric_status["max_drawdown"] = "observed"
                 max_drawdown = float(max_drawdown) if not pd.isna(max_drawdown) else 0.0  # numeric-boundary: analytics
             else:
                 max_drawdown = 0.0
@@ -138,6 +151,10 @@ class PerformanceAnalyzer:
         
         # 計算交易統計
         trade_stats = self._analyze_trades(trades, initial_capital)
+        metric_status["total_trades"] = "observed"
+        if trade_stats["total_trades"] > 0:
+            metric_status["win_rate"] = "observed"
+            metric_status["expectancy"] = "observed"
         
         # ✅ 確保所有返回值都是數值類型
         return PerformanceMetrics(
@@ -152,7 +169,8 @@ class PerformanceAnalyzer:
             avg_win=trade_stats['avg_win'],
             avg_loss=trade_stats['avg_loss'],
             largest_win=trade_stats['largest_win'],
-            largest_loss=trade_stats['largest_loss']
+            largest_loss=trade_stats['largest_loss'],
+            metric_status=metric_status,
         )
     
     def _calculate_max_drawdown(self, equity: pd.Series) -> float:

@@ -25,6 +25,10 @@ from app_module.strategy_historical_performance_read_service import (
     HistoricalRunProvenance,
     HistoricalTableReference,
 )
+from app_module.single_backtest_metrics_contract import (
+    SINGLE_BACKTEST_METRICS_KEY,
+    decode_single_backtest_metrics_contract,
+)
 
 
 _SUMMARY_LABELS = (
@@ -46,6 +50,7 @@ _MAX_PREVIEW_ROWS = 20
 _MAX_PREVIEW_COLUMNS = 32
 _MAX_TEXT = 512
 _METRICS_REASON = "historical_metrics_schema_unversioned"
+_DECLARED_METRICS_REASON = "saved_original_analytics_not_performance_qualification"
 _METADATA_KEYS = frozenset(
     {
         "run_id",
@@ -417,17 +422,24 @@ def _validate_card(entry: ResearchHistoryEntry, card: object) -> str | None:
         or entry.run_type not in REGISTRY_RESULT_TYPES
     ):
         return "historical_entry_not_supported"
-    if card.metrics_state is not HistoricalMetricsState.UNVERSIONED:
+    if card.metrics_state is HistoricalMetricsState.UNVERSIONED:
+        if card.metrics_reason != _METRICS_REASON:
+            return "historical_metrics_reason_changed"
+    elif card.metrics_state is HistoricalMetricsState.DECLARED:
+        if card.metrics_reason != _DECLARED_METRICS_REASON:
+            return "historical_metrics_reason_changed"
+    else:
         return "historical_metrics_state_unsupported"
-    if card.metrics_reason != _METRICS_REASON:
-        return "historical_metrics_reason_changed"
     if card.comparability_state is not HistoricalComparabilityState.NOT_ASSESSED:
         return "historical_comparability_state_unsupported"
     if card.qualification_state is not HistoricalQualificationState.UNKNOWN:
         return "historical_qualification_state_unsupported"
     if type(card.summary) is not HistoricalPerformanceSummary:
         return "historical_summary_type_invalid"
-    if any(getattr(card.summary, item.name) is not None for item in fields(card.summary)):
+    if (
+        card.metrics_state is HistoricalMetricsState.UNVERSIONED
+        and any(getattr(card.summary, item.name) is not None for item in fields(card.summary))
+    ):
         return "historical_summary_contains_unversioned_values"
     if card.reason is not None:
         return "historical_verified_card_has_error_reason"
@@ -440,6 +452,35 @@ def _validate_card(entry: ResearchHistoryEntry, card: object) -> str | None:
     metadata = _parse_selected_metadata(entry)
     if metadata is None:
         return "historical_selected_metadata_invalid_or_hash_changed"
+    if card.metrics_state is HistoricalMetricsState.UNVERSIONED:
+        manifest = metadata.get("data_manifest")
+        if type(manifest) is not dict or SINGLE_BACKTEST_METRICS_KEY in manifest:
+            return "historical_metrics_state_not_bound_to_selected_metadata"
+    if card.metrics_state is HistoricalMetricsState.DECLARED:
+        manifest = metadata.get("data_manifest")
+        metrics = metadata.get("metrics")
+        if type(manifest) is not dict or type(metrics) is not dict:
+            return "historical_declared_metrics_metadata_invalid"
+        try:
+            declared_summary = decode_single_backtest_metrics_contract(
+                manifest,
+                metrics,
+                run_type=entry.run_type,
+                universe=metadata.get("universe"),
+            )
+        except (AttributeError, KeyError, RecursionError, TypeError, ValueError):
+            return "historical_declared_metrics_contract_invalid"
+        if declared_summary is None:
+            return "historical_declared_metrics_contract_missing"
+        if set(declared_summary) != {item.name for item in fields(card.summary)}:
+            return "historical_declared_metrics_summary_shape_invalid"
+        # DTO 必須逐欄保持 decoder 的型別和值，避免 bool/int 相等或卡片被單獨改寫。
+        if any(
+            type(getattr(card.summary, name)) is not type(value)
+            or getattr(card.summary, name) != value
+            for name, value in declared_summary.items()
+        ):
+            return "historical_summary_not_bound_to_saved_metrics"
 
     identity = card.identity
     identity_entry_fields = (
@@ -666,8 +707,14 @@ class HistoricalPerformanceWidget(QWidget):
             _bounded_display_line("來源種類：", identity.source_kind),
             _bounded_display_line("股票代碼：", entry.stock_code),
             _bounded_display_line("Universe JSON：", universe),
-            _bounded_display_line("開始日期：", identity.start_date),
-            _bounded_display_line("結束日期：", identity.end_date),
+            _bounded_display_line(
+                "回測請求開始日期：" if card.metrics_state is HistoricalMetricsState.DECLARED else "開始日期：",
+                identity.start_date,
+            ),
+            _bounded_display_line(
+                "回測請求結束日期：" if card.metrics_state is HistoricalMetricsState.DECLARED else "結束日期：",
+                identity.end_date,
+            ),
             _bounded_display_line("資料 cutoff：", identity.data_cutoff_date),
             _bounded_display_line("資料指紋：", identity.data_fingerprint),
             _bounded_display_line("指紋演算法：", identity.fingerprint_algorithm),
@@ -686,14 +733,74 @@ class HistoricalPerformanceWidget(QWidget):
             _bounded_display_line("成交契約：", identity.execution_contract),
             _bounded_display_line("Sizing：", identity.sizing_mode),
         )
-        metrics_lines = [
-            "績效指標未提供：原保存 metrics 沒有可驗證的共同 schema。",
-            _bounded_display_line("指標狀態：", card.metrics_state.value),
-            _bounded_display_line("指標原因：", card.metrics_reason),
-            _bounded_display_line("資格：", card.qualification_state.value),
-            _bounded_display_line("可比較性：", card.comparability_state.value),
-        ]
-        metrics_lines.extend(f"{label}：未提供" for _, label in _SUMMARY_LABELS)
+        if card.metrics_state is HistoricalMetricsState.UNVERSIONED:
+            metrics_lines = [
+                "績效指標未提供：原保存 metrics 沒有可驗證的共同 schema。",
+                _bounded_display_line("指標狀態：", card.metrics_state.value),
+                _bounded_display_line("指標原因：", card.metrics_reason),
+                _bounded_display_line("資格：", card.qualification_state.value),
+                _bounded_display_line("可比較性：", card.comparability_state.value),
+            ]
+            metrics_lines.extend(f"{label}：未提供" for _, label in _SUMMARY_LABELS)
+        else:
+            summary = card.summary
+            saved_metadata = _parse_selected_metadata(entry)
+            assert saved_metadata is not None
+            saved_manifest = saved_metadata["data_manifest"]
+            assert type(saved_manifest) is dict
+            metrics_contract = saved_manifest[SINGLE_BACKTEST_METRICS_KEY]
+            assert type(metrics_contract) is dict
+            period_start = metrics_contract["period_start"]
+            period_end = metrics_contract["period_end"]
+            metrics_lines = [
+                "以下為依已保存 schema 核對的原始 analytics；不是 Decimal 精度核心、合格績效或排名，不重算。",
+                _bounded_display_line("原指標計算期間（manifest，不同於回測請求期間）：", (
+                    f"{period_start or '未提供（原保存欄位為空）'} 至 "
+                    f"{period_end or '未提供（原保存欄位為空）'}"
+                )),
+                _bounded_display_line("指標狀態：", card.metrics_state.value),
+                _bounded_display_line("指標原因：", card.metrics_reason),
+                _bounded_display_line("資格：", card.qualification_state.value),
+                _bounded_display_line("可比較性：", card.comparability_state.value),
+            ]
+            completed_pairs = summary.completed_trades
+            declared_metrics = (
+                ("stock_count", "股票數（stocks）", "stocks"),
+                ("signal_count", "訊號數（signals）", "signals"),
+                ("completed_trades", "已完成交易配對（completed pairs）", "pairs"),
+                ("average_trade_return", "平均單筆報酬", "ratio"),
+                ("total_return", "總報酬", "ratio"),
+                ("annual_return", "年化報酬", "ratio"),
+                ("cagr", "CAGR", "ratio"),
+                ("max_drawdown", "最大回撤", "ratio"),
+                ("win_rate", "勝率", "ratio"),
+                ("sharpe_ratio", "Sharpe", "sharpe"),
+                ("expectancy", "期望值", "ratio"),
+                ("profit_factor", "獲利因子", "multiple"),
+            )
+            for field_name, label, unit in declared_metrics:
+                value = getattr(summary, field_name)
+                if completed_pairs == 0 and field_name in {
+                    "average_trade_return", "win_rate", "expectancy",
+                }:
+                    rendered_value = "未提供（尚無已完成交易）"
+                elif value is None:
+                    rendered_value = "未提供"
+                elif unit == "ratio":
+                    rendered_value = f"{value} ratio（轉為 % 數值需乘 100）"
+                elif unit == "sharpe":
+                    rendered_value = f"{value}（Sharpe ratio；非百分比）"
+                elif unit == "multiple":
+                    rendered_value = f"{value} 倍"
+                elif unit == "stocks":
+                    rendered_value = f"{value} 檔"
+                elif unit == "signals":
+                    rendered_value = f"{value} 個"
+                elif unit == "pairs":
+                    rendered_value = f"{value} 對"
+                else:
+                    rendered_value = f"{value}"
+                metrics_lines.append(_bounded_display_line(f"{label}：", rendered_value))
         details_lines = [
             _bounded_display_line("Entry 建立時間：", entry.created_at),
             _bounded_display_line("Metadata SHA-256：", provenance.metadata_sha256),
@@ -717,5 +824,8 @@ class HistoricalPerformanceWidget(QWidget):
         self._metrics_label.setText("\n".join(metrics_lines))
         self._details_label.setText("\n\n".join(details_lines))
         self._details_button.setVisible(True)
-        self._status_label.setText("已讀回此筆保存結果；績效指標仍未版本化。")
+        if card.metrics_state is HistoricalMetricsState.DECLARED:
+            self._status_label.setText("已讀回此筆保存結果；原始 analytics schema 已核對，績效資格仍未知。")
+        else:
+            self._status_label.setText("已讀回此筆保存結果；績效指標仍未版本化。")
 

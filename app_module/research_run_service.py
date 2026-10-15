@@ -222,6 +222,16 @@ class ResearchRunService:
             factor_contributions=factor_contributions,
         )
         metadata = self._metadata_with_execution_contract(metadata)
+        # 新宣告指標先核原值／表格，舊 run 沒有此欄則保留原保存契約。
+        from app_module.single_backtest_metrics_contract import (
+            SINGLE_BACKTEST_METRICS_KEY, decode_single_backtest_metrics_contract, validate_single_backtest_metrics_tables,
+        )
+        if SINGLE_BACKTEST_METRICS_KEY in metadata.data_manifest:
+            from app_module.research_run_dated_equity import research_run_dated_equity_copy
+            equity = research_run_dated_equity_copy(equity)
+            decode_single_backtest_metrics_contract(metadata.data_manifest, metadata.metrics,
+                run_type=metadata.run_type, universe=metadata.universe)
+            validate_single_backtest_metrics_tables(metadata.data_manifest, equity=equity, trades=trades)
         if portfolio_execution_inputs is not None:
             if (portfolio_result is None
                     or type(portfolio_execution_inputs) is not RecommendationPortfolioExecutionInputsV1

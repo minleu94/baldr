@@ -2,6 +2,28 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment49：P08新單股歷史指標版本與正常讀回
+
+**解除的交付阻礙**：原單股引擎已有可定位的七指標，但新保存結果的歷史卡仍一律顯示未提供。本葉沿原 Backtest／Registry／歷史頁補保存契約與唯讀投影，不另建引擎，不改固定 V1 `9fa4518c2aca87beaddef75a2b29165722da6a6c`。起點 HEAD `538a873eed0b2c4ce84b5ff07f858bc780a620f1`。
+
+原 analyzer 只新增 observed／unavailable 狀態；原公式與數值不重算。新 `single-backtest-performance.v1` 綁七原值、狀態、代碼、實際計算期間、完成配對數、equity 列數與雙層 SHA。新 schema 保存前保留真正日期並核原表；public exact reader 與 UI 各自重核契約。舊 run 缺版本仍不可用，不回填；零完成配對的勝率／期望值、零變異 Sharpe、安全條件不足的指標維持未提供。原浮點 analytics 是既有分析邊界，不代表 Decimal 核心、投資資格、可比較性或排名；獲利因子不在七欄保存資料內，仍未提供。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 251 | compile4／mypy、原 numeric／metadata／reader14PASS及精度邊界守衛。 | `single_owned_qa_e7724c9818c94345a567f8660f25745b/receipt.json`；`34dfe15c912594c2a4ad768fc1e1b1e4f76897d00ca7953b82c2ba3e9734419d` |
+| 252 | 新 codec15PASS／2FAIL為錯誤文字比對，保留原FAIL後修測試的精確原因，數值拒絕守衛不放寬。 | `single_owned_qa_76726d00f8664c2183090ea25aecaf8e/receipt.json`；`a662a54ff0574b68e9a3443f1b3808c473a06f2de9904d908dc66f54f7b85b11` |
+| 253 | 八roots mypy1028通過；140PASS（含Workbench85）／7FAIL，float與Decimal同值hash、原DatetimeIndex保存及一項舊狀態預期不符均保留。validator尚未執行。 | `single_owned_qa_61d977e7d6ab470e822b1e2727aef624/receipt.json`；`1acf8fc86bc6eb89e98576e91f8955ce7cae0f9bee78bc5093e00b50ad0edbc9` |
+| 254 | 以canonical decimal文字核同值、新schema保存日期，定向codec17／reader6／UI4／原接線4共31PASS，compile／型別及validator25/0/4通過；未重跑未受影響140案。 | `single_owned_qa_3a7d53baaddf493ab7024dd277504477/receipt.json`；`1e530949eac278ac1e5a6eb04d40ce72415b9a64d5910143e4275eddd43dbbed` |
+| 255 | harness PERSONAL誤放package內被原路徑守衛拒絕，FAIL保留；新b移至明示Temp隔離根。 | `single_owned_qa_c7eeba06c9bb495eaa5fba4ec6875d8a/receipt.json`；`c210763b6442201f450ff127b98d736e3bd590bf63473a44ad18676ceb8e07df` |
+| 256 | 正常Main啟動；harness1440寬超過實際offscreen800螢幕，實體可見性斷言拒絕，FAIL保留。新c使用640及原收合控制，無假幾何或放寬期限。 | `single_owned_qa_d07f990219f5425c923b139570585285/receipt.json`；`8a890471a2e54e7e32d4b734fa6b20959ab5ee07e63c4495207619c0630c9a87` |
+| 257 | 正常Main38288→fresh44116兩run保存／歷史卡／原結果開啟／Watchlist返回及精度守衛通過。 | `single_owned_qa_4f054f154f53454aaa053adf8d6dd2c7/receipt.json`；`5613fe56e1486e308446af1bf8620cbf4d64e3d48d5f9f4bfb679fc79e7d80ee` |
+
+QA257只注入30筆合成OHLCV，策略／broker／原analyzer／版本capture不替換；父程序以程式呼叫正常Main完成slot與保存命令，非保存對話框點擊驗收。歷史finder與原按鈕有實際座標／祖先／hit檢查。兩種baseline參數產生14完成配對與0配對結果；fresh禁止回測及保存，原metadata／parquet／DB／合成輸入bytes、SHA與時間一致，Python socket0。父／fresh原收據在owner `increment49_metrics_main_fresh_c/parent.json` SHA `2d0e70b8060ba6d365ca98577975f7284029f27ad263912eba359b5fe7e080c5`、fresh SHA `dc841bd0afd3570d49f474670aa769ffb71a6c0be53f6470633a6259e32a3af9`。這是source Main的合成工程旅程，非Native／EXE、真市場績效或完整Gate。
+
+每組仍8GiB committed／12程序／KOC／workspace mutex與啟動RAM≥8GiB；前組三PID陣列自然空、handles關閉及mutex釋放後才起下一組，無強制清場。只重用三名Luna Max靜態單寫葉片，無Python／network／子代理；pending writes=false，累計10/10。既有ui_qt ignore_errors=True不證UI強型別。
+
+同步操作主冊／Research Lab分冊、current／總架構、功能／Feature Map、Snapshot與原§9.5。原手動帳交易缺完整現金及同源Health／行情，不能取default initial_cash=0、成本推NAV或借Paper來源，保持D缺件。P03注意原件待真可用小時後正常Main；舊獲利因子無虧損時誤回金額的金融問題另沿原引擎處理。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、來源用途／歷史PIT／真N／完整雙策略／Native／EXE與自然成熟保留；未新增HTTP、正式資料／Task／maintainer、push、發布或交易。
+
 ## Increment48：P03單日官方注意公告與固定版本
 
 本葉解除原 F16 沒有可核驗官方注意原件、每日版本及正常個股投影的工程缺口，屬第二階段；固定9fa及四條第一版旅程不變。不是增加試用前置，也不將unknown卡片算完整功能。HEAD起點 `dbcbeae57fc251cad6b347117874a6db29d3f6a5`，Root Sol，重用 Luna Max，累計10/10不新建。原 task／singleton／原FAIL不變。

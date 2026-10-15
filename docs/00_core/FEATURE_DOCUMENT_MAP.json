@@ -346,7 +346,10 @@
         "ui_qt/views/research_lab/run_registry_compare_widget.py",
         "ui_qt/widgets/historical_performance_widget.py",
         "ui_qt/widgets/paper_checkpoint_catalogue_lookup.py",
-        "ui_qt/widgets/strategy_performance_widget.py"
+        "ui_qt/widgets/strategy_performance_widget.py",
+        "app_module/single_backtest_metrics_contract.py",
+        "app_module/backtest_service.py",
+        "backtest_module/performance_metrics.py"
       ],
       "tests": [
         "tests/test_registered_strategy_spec.py",
@@ -387,7 +390,10 @@
         "tests/test_r020_ui_replay_lineage_save.py",
         "tests/test_strategy_historical_performance_read_service.py",
         "tests/test_strategy_performance_widget.py",
-        "tests/test_ui_qt_historical_card_wiring.py"
+        "tests/test_ui_qt_historical_card_wiring.py",
+        "tests/test_single_backtest_metrics_contract.py",
+        "tests/test_strategy_historical_versioned_read_service.py",
+        "tests/test_historical_performance_versioned_widget.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -425,7 +431,11 @@
         "app_module/recommendation_portfolio_backtest_service.py",
         "app_module/recommendation_portfolio_execution_inputs_v1.py",
         "app_module/recommendation_portfolio_dtos.py",
-        "tests/test_recommendation_portfolio_precision_capture.py"
+        "tests/test_recommendation_portfolio_precision_capture.py",
+        "app_module/single_backtest_metrics_contract.py",
+        "tests/test_single_backtest_metrics_contract.py",
+        "tests/test_strategy_historical_versioned_read_service.py",
+        "tests/test_historical_performance_versioned_widget.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

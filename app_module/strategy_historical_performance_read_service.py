@@ -30,6 +30,7 @@ from app_module.research_run_service import (
     ResearchRunServiceError,
 )
 from app_module.saved_strategy_rule_card import metadata_sha256
+from app_module.single_backtest_metrics_contract import decode_single_backtest_metrics_contract, validate_single_backtest_metrics_tables
 
 
 ARTIFACT_BUDGET_BYTES = 64 * 1024 * 1024
@@ -48,6 +49,7 @@ class HistoricalReadState(str, Enum):
 class HistoricalMetricsState(str, Enum):
     NOT_READ = "not_read"
     UNVERSIONED = "metrics_unversioned"
+    DECLARED = "saved_metrics_schema_observed"
 
 
 class HistoricalComparabilityState(str, Enum):
@@ -391,13 +393,19 @@ class StrategyHistoricalPerformanceReadService:
                 trades_parquet_sha256=metadata.trades_parquet_hash,
                 integrity_state="verified_by_exact_registry_read",
             )
+            summary_values = decode_single_backtest_metrics_contract(
+                metadata.data_manifest, metadata.metrics, run_type=metadata.run_type, universe=metadata.universe,
+            )
+            if summary_values is not None:
+                validate_single_backtest_metrics_tables(metadata.data_manifest, equity=data.equity, trades=data.trades)
             return HistoricalRunCard(
                 read_state=HistoricalReadState.VERIFIED,
-                metrics_state=HistoricalMetricsState.UNVERSIONED,
-                metrics_reason="historical_metrics_schema_unversioned",
+                metrics_state=HistoricalMetricsState.UNVERSIONED if summary_values is None else HistoricalMetricsState.DECLARED,
+                metrics_reason=("historical_metrics_schema_unversioned" if summary_values is None
+                                else "saved_original_analytics_not_performance_qualification"),
                 comparability_state=HistoricalComparabilityState.NOT_ASSESSED,
                 qualification_state=HistoricalQualificationState.UNKNOWN,
-                summary=_summary_without_schema(),
+                summary=_summary_without_schema() if summary_values is None else HistoricalPerformanceSummary(**summary_values),
                 identity=_identity(selected, data),
                 provenance=provenance,
                 details=detail,

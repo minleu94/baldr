@@ -146,7 +146,10 @@ def test_selected_registry_card_uses_real_writer_taskworker_and_keeps_sources_un
     QTest.mouseClick(history.show_history_card_button, Qt.MouseButton.LeftButton)
     wait_until(lambda: history._worker is None)
 
-    assert card._status_label.text() == "已讀回此筆保存結果；績效指標仍未版本化。"
+    # 此 fixture 每次執行原新版 producer；舊無 schema 的隔離 fixture 另有不升級斷言。
+    assert "single_backtest_metrics_contract" in metadata.data_manifest
+    assert card._status_label.text() == "已讀回此筆保存結果；原始 analytics schema 已核對，績效資格仍未知。"
+    assert f"已完成交易配對（completed pairs）：{metadata.metrics['total_trades']} 對" in card._metrics_label.text()
     assert "資格：unknown" in card._metrics_label.text()
     assert "可比較性：not_assessed" in card._metrics_label.text()
     assert card._details_button.isVisible()

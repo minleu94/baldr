@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+單股歷史卡現分新宣告版本與舊未版本化結果；新卡逐欄綁選定 metadata、原指標與摘要，顯示原實際期間、單位及已完成配對，不以0推論勝率／平均或無期間CAGR。qualification仍unknown、comparability未評估；不是完整雙策略績效或原精度升級。原查找／開啟結果／換頁返回與新程序沿同一run，操作見[歷史指標指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。固定第一版不改版。
+
 後續開發分支的個股研究報告在市場狀態旁顯示獨立 TWSE 官方注意公告，原字串以 PlainText 呈現，另列來源日期、可用小時／basis、雙 SHA（tooltip 完整值）及限制。未知與查無此代碼分開；換股／清空會清除舊公告身份。三值固定版本設定、保存、重開與排錯見[單日官方注意公告](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。原固定9fa候選不變；不授 TPEx、歷史 PIT、處置或交易建議資格。
 
 ## 2026-10-06 首頁直達與個股限制

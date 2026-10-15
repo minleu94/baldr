@@ -22,7 +22,8 @@ from decision_module.strategies.contracts import DailySignalFrame
 from app_module.dtos import BacktestReportDTO, ValidationStatus
 from app_module.sop_validator import SOPValidator
 from backtest_module.broker_simulator import BrokerSimulator, BrokerConfig, NEXT_OPEN_CONTRACT, LEGACY_CLOSE_CONTRACT
-from backtest_module.performance_metrics import PerformanceAnalyzer
+from backtest_module.performance_metrics import PerformanceAnalyzer, PerformanceMetrics
+from app_module.single_backtest_metrics_contract import SINGLE_BACKTEST_METRICS_KEY, capture_single_backtest_metrics_contract
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 from decision_module.factors.factor_dtos import FactorRecord
 from app_module.backtest_report_support import create_empty_report, date_from_index, factor_decision_date, score_factor_records
@@ -259,6 +260,11 @@ class BacktestService:
             trade_list = analyzer.create_trade_list(trades, capital)
         except Exception as e:
             return self._create_empty_report(f"績效計算失敗: {str(e)}")
+
+        metrics_contract = (
+            capture_single_backtest_metrics_contract(metrics, equity=equity_curve, trades=trade_list, stock_code=stock_code)
+            if type(metrics) is PerformanceMetrics and metrics.metric_status else None
+        )
         
         # 5. 計算 Baseline 對比（Buy & Hold）
         baseline_comparison = None
@@ -395,7 +401,8 @@ class BacktestService:
                 'initial_capital': capital,
                 'execution_price': execution_price,
                 'execution_contract': NEXT_OPEN_CONTRACT if execution_price == "next_open" else LEGACY_CLOSE_CONTRACT,
-                'data_manifest': {'execution_contract': NEXT_OPEN_CONTRACT if execution_price == "next_open" else LEGACY_CLOSE_CONTRACT},
+                'data_manifest': {'execution_contract': NEXT_OPEN_CONTRACT if execution_price == "next_open" else LEGACY_CLOSE_CONTRACT,
+                                  **({SINGLE_BACKTEST_METRICS_KEY: metrics_contract} if metrics_contract is not None else {})},
                 'execution_diagnostics': broker.execution_diagnostics,
                 'terminal_position': int(equity_curve['position'].iloc[-1]) if 'position' in equity_curve else 0,
                 'benchmark_results': {'execution_contract': NEXT_OPEN_CONTRACT if execution_price == "next_open" else LEGACY_CLOSE_CONTRACT,

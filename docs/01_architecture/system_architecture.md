@@ -4,6 +4,8 @@
 
 ## 系統用途
 
+新單股研究結果沿原 analyzer、Registry 保存與歷史卡讀回；七項原指標以 `single-backtest-performance.v1` 綁原值、狀態、實際計算期間與表格證據。舊資料缺版本不回填，新版本不授績效資格或 Decimal 核心精度；詳見[決策與研究 current 分冊](current/decision_research_portfolio.md)。
+
 baldr 是台股研究與投資決策系統。它收集與治理市場資料，提供市場觀察、推薦、回測、研究證據與持倉檢視。Advice、Paper、Live 與 broker execution 是不同權限；架構中有研究或 shadow 模組不等於產品 Gate 已通過。
 
 ## 分層與實際模組

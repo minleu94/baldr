@@ -707,3 +707,37 @@ TPEx中文[使用條款](https://www.tpex.org.tw/zh-tw/gtsm_disclaimer.html?l=zh
 因此不發TPEx接受或雙市場binding，不重抓年度POST、不發布雙市日批；此項歸D官方用途／文件缺件。觀測紀錄 `calendar_source_use_observation_03.json` SHA `17089e7327497f713a2b8fb15b3406c12223f3e33d4f77d53a1100a70d75dc6f`；[完整複核](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/calendar_source_use_review_increment30.md)綁原Swagger、QA27／49原件與收據，舊scope額度不重置。Luna9重用唯讀核候選證據缺件，pending writes=false，累計9/10。
 
 本輪無產品Python修改。QA75已通過新單市場接受canonical codec／原annual scope／review外部SHA與時間政策核對；只有TWSE接受時，原雙市場mode依原原因碼拒絕。文件治理12features／15link sources／errors=[]，只支持結構與紀錄檢查。outer `ce02714f845549a59069667e4b92a94a`／SHA `cc70dbc6a23c63a3d0dc5856cad1e66afd3f3a0f739ba0c09a968d9c93221398`，149pins前後一致，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。接續原雙策略source／currency／execution／cost authority的可做工程葉片，金融及來源裁決保留Root；完整P00–P14／G0–G4、真N、Native／EXE及自然成熟仍未完成。
+
+## Increment31：固定來源候選EXE與Registry同版旅程
+
+Root將已限定驗證的本任務67檔保存為本機checkpoint `675bea262f8d25a1d5a8ade2762b7285fd11451b`，父HEAD `dfae21c5fec0b384f4295afa84ce5d86a6f97a80`。stage初次誤用autocrlf=false造成CRLF整檔差異，檢查中止；只重建本任務index、沿原autocrlf=true重stage後通過diff check，工作檔未重寫。另一owner封存文件未stage、未改；沒有push。checkpoint不接受完整Gate。
+
+沿既有`packaging/build_windows.py --commit`／`baldr.spec`／依賴鎖建唯一候選`dist/candidate_675bea262f8d_07965800/baldr`，沒有安裝／下載依賴或另造打包系統。固定archive SHA `23e35b1788e559a4f067580bd865dc535887f5789c24c8330346f86783c05006`，EXE 55968248bytes／SHA `b05f96456f36dc44036ca0688399b0cb5a85262f4a073c74a879f5ea6c970e26`。沿原version規則顯示`2026.10.06+675bea262f8d`；metadata channel不是產品或交付接受。working lock與Git archive的換行bytes不同，各自SHA固定，內容版本全量比對通過；build metadata綁archive lock SHA `b1a3bb4bd03246c025f09bca3658104aff6c676983c878f46d118cec992df743`。
+
+| 收據 | 實際結果與限制 | outer SHA-256 |
+|---|---|---|
+| QA76 | 原完整依賴鎖核對、固定commit建置成功；`built_not_validated`，不改舊包 | f29e419db8192f22cb710f000fea9bcb819e544f76f0795d24eceace6a924fbe |
+| QA77 | 原同版harness的Python／EXE launch、journey、model、H20、直接Qt入口及錯設定拒絕通過；原180秒subcase期限保持，合成隔離用途 | b9d89b8cfe5ca6a7345a861548a5d72c192d7f0256d64711f4531899770ce9f2 |
+| QA78 | 靜態預檢發現舊QA72整份test imports依賴未打包的pytest／QtTest且重插checkout path，規格及候選保留，沒有啟動Python或生成Job收據 | 不適用：未執行 |
+| QA79 | 抽出原三個geometry／visible helper，改用候選內Qt滑鼠press／release事件；Root漏列QScrollArea匯入，固定來源parent在比較前FAIL；原輸出與收據不改 | fd668898a31afc55e9ae1c2a6c2b236011f082a44896af2c4a07487cfe31e918 |
+| QA80 | 只補QA helper該匯入；全部原斷言及120秒phase／270秒driver／15秒UI保持。固定來源Main14068→11644、EXE38052→17332重用QA41兩run與QA71年度合成版本，正常binding→重開／雙run比較／返回→新程序；兩形態結果identity相同、13來源不變 | 829e62fb25b5665fdee60887b74165dfaf9d7fdfc72af876208802ab7200dff5 |
+
+QA80四phase各核683個產品module origin，Python須來自固定archive、EXE須來自_MEIPASS，另核EXE路徑／SHA與build identity；沒有借checkout產品碼、venv測試工具或重產producer。原幾何helper正文逐字複用，保留祖先／viewport裁切、widgetAt命中、可見／active與頁籤捲動守衛。完整archive前後重驗；7272pins（含7089候選檔）前後一致。來源／成本／PIT仍blocked的原診斷按原值相同，不補精度或績效；取得原件與新用途接受亦未被合成錨點取代。
+
+原同版收據`output/qa/baldr_same_version_675bea262f8d_5a3fcff1/same_version_receipt.json` SHA `200befbeba50de48c3d44f51b008dbb3793f2c1caa7389b6b67edac1308ffa6f`。新四phase收據在owner task `increment31_registry_fixed_phases_qa80_python`／`..._exe`；Python parent/fresh SHA各`136106acfb870ceea766fac2b9b6f0edb4c2d1192df2bc5fa363921cf1d5571f`／`4318431c0e73ee0191692fdc524fbbbd3086f21af5e6eb81f4973a53b6d013dd`，EXE各`9cc70b2a99873fc646bbae3e102bb49167fc177960c082029eeffd0048884dfb`／`35e6112fed6a399c5acc4529cf4c1e65c7f8d96fdd7aa82ee2f9916b96e6b9c6`，均經實際檔案SHA讀回核對。
+
+各Job維持8GiB committed／12程序、kill-on-close與workspace mutex，三PID陣列自然空、process／Job handles關閉／mutex釋放；QA79失敗亦合作關窗自然終止，無forced cleanup。原交付五檔與active_delivery保持。QA81已核四phase／四Job實際SHA與文件一致，7275pins前後不變，文件治理12features／15link sources／errors=[]；outer `aefa837b1c2a46fdadd226e954ede551`／SHA `d2f83573aaf774e703ad684e8b4b4fb6b7b8ac49f536a5c7c8fb4619c54c33e6` 自然閉鎖。新增Python只有owner QA helpers，產品碼未再修改，因此不重跑已通過且來源未變的Workbench／validator／mypy。Luna9只做靜態複核、pending writes=false，沒有新增agent。
+
+這完成指定候選的限定EXE同版與本輪新ports旅程，不是Native真人、正式安裝或其他主機資格。P03官方完整用途與單位／版本、TPEx指定授權、P08來源／幣別／執行／成本權威、完整跨年／長期分段、真N、完整雙策略績效、其他四用途完整保存及自然成熟仍各自開放；不改正式資料、Task、maintainer或交付，不授交易／發布或完整P00–P14／G0–G4。
+
+## Increment32：先交可試用V1，解除真實資料與比較按鈕阻斷
+
+使用者新決議已直接寫入原補完計畫§0.3：四條第一版旅程與出口凍結，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項保留第二階段；新增需求與非阻斷優化不再擴大V1前置。此Increment目的只在解除V1啟動、資料及正常操作阻礙。
+
+Root只讀既有正式stock_data_whole.csv、companies.csv與四份指標檔，在全新隔離根建立2317／2330／2382／2454四檔上市普通股副本，逐行核原CSV，12,390筆、2014/01/02–2026/09/23；四檔不是全市場。沿原V4 producer保存明示子集並由public catalog strict reader重驗。所有來源時間unknown、historical PIT=false；企業行動／還原價格未核，回測僅未調整日價研究假設，不授績效排名、Paper／Forward或交易資格。原正式DB未開啟／寫入，無新網路抓取。原件／hash／日期／rows與副本清冊保存在本owner `v1_real_trial_qa86.json`，外部隔離根另存data_provenance.json。
+
+Native QA82第一點擊未命中原FAIL保留；QA83在原15秒期限觀察125ms曝光後命中，屬啟動診斷，不是旅程PASS。QA84 canonical path FAIL、QA85最後清冊長路徑FAIL（producer已完成）、QA86接續已保存來源與原CSV逐行核對PASS；QA87清冊長路徑FAIL、QA88 QA字串compile FAIL、QA89設定檔unsupported-key FAIL、QA90 test profile附加_test的空根FAIL均保存，未變產品守衛。QA91使用普通prod profile與明示隔離根，真正Native按鈕發現第二股加入後比較按鈕仍停用：舊test直接呼叫slot掩蓋enabled狀態，不能當正常操作完成。
+
+最小修正只在價格研究view加入／清空比較籃後呼叫原_set_enabled_state；busy／closing、unknown、來源pin與精度邏輯不變。原test改用按鈕並檢查0／1／2欄與清空後enabled狀態。QA92 compile、受影響10案例與Workbench85共95 PASS，validator 25 PASS／0 FAIL／4 SKIP、原mypy1016檔PASS（既有UI ignore_errors=True仍不證UI強型別）；outer `single_owned_qa_18a7c06e87a8461c8f4ee2c482c82dfb/receipt.json` SHA `1b3a850274b3137236451714f5bfde3d55083c5aa671abe902563e22029edd43`，三PID陣列自然空、handles關閉、mutex釋放，無forced cleanup。Luna9僅靜態複核，pending writes=false；累計仍9/10，無新增agent。
+
+目前為修復後固定候選建置前checkpoint；V1四旅程、直接啟動入口及最終已知問題仍待本輪完成，不用上述局部PASS宣稱第一版已交付。各原FAIL與外部隔離副本保留，不重觸發maintainer、不改正式Task、不push／發布。

@@ -803,6 +803,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             return
         self._basket.append(selection)
         self._render_basket_label()
+        self._set_enabled_state()
         self.status.setText(
             f"已保留 {selection.stock_code} 的原價格查詢與頁面來源；切換查詢不會改寫此選取。"
         )
@@ -810,6 +811,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
     def clear_comparison(self) -> None:
         self._basket.clear()
         self._render_basket_label()
+        self._set_enabled_state()
         self.status.setText("比較籃已清空。")
 
     def run_comparison(self) -> None:

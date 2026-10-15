@@ -167,10 +167,15 @@ def test_true_saved_source_catalog_query_comparison_bookmark_and_stock_signal(
     assert stock_events[0][1].page_identity_sha256 == view.current_page.page_identity_sha256
 
     assert view.select_stock_code("S0002")
-    view.add_selected_to_comparison()
+    QTest.mouseClick(view.add_comparison_button, Qt.MouseButton.LeftButton)
+    assert not view.run_comparison_button.isEnabled()
+    assert view.clear_comparison_button.isEnabled()
+    assert not view.bookmark_button.isEnabled()
     assert view.select_stock_code("S0003")
-    view.add_selected_to_comparison()
-    view.run_comparison()
+    QTest.mouseClick(view.add_comparison_button, Qt.MouseButton.LeftButton)
+    assert view.run_comparison_button.isEnabled()
+    assert view.bookmark_button.isEnabled()
+    QTest.mouseClick(view.run_comparison_button, Qt.MouseButton.LeftButton)
     _wait(app, lambda: not view.busy)
     assert len(comparison_events) == 1
     comparison = comparison_events[0]
@@ -194,6 +199,11 @@ def test_true_saved_source_catalog_query_comparison_bookmark_and_stock_signal(
     assert view.current_page is not None
     assert view.select_stock_code("S0001")
     assert tuple(item.stock_code for item in view._basket) == ("S0002", "S0003")
+    QTest.mouseClick(view.clear_comparison_button, Qt.MouseButton.LeftButton)
+    assert view._basket == []
+    assert not view.run_comparison_button.isEnabled()
+    assert not view.clear_comparison_button.isEnabled()
+    assert view.bookmark_button.isEnabled()
 
     selection = DailyMarketTechnicalUniversePriceSelectionV1.from_page(
         view.current_query,

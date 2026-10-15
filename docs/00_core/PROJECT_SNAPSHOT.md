@@ -8,7 +8,12 @@ Increment22已把原next-open執行輸入接入additive V3附件、原Registry s
 
 Increment23已把明示daily日曆版本接到原Registry雙run診斷，共用原public reader及缺日比對；外部雙SHA、獨立兩市場用途接受與actual cutoff完整固定，前後重驗不掃latest。新backend首輪12PASS／1個Root測試atime核對FAIL保留，該案修正後PASS；原pair33／controller9、新controller16、widget5、Workbench85／validator25-0-4／mypy1012／精度守衛各自PASS。父33268→fresh17672重用既有run／原日曆原版及更正共17來源，不重產，版本／非clock診斷及bytes／SHA／stat一致。只有隔離QA注入合成接受紀錄，正式Main尚未配置真接受錨點，daily預設保持阻擋；真來源、長期分段與完整績效等缺口不變，見[Increment23 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment23每日日曆版本接原registry診斷)。
 
+
+> **第一版交付優先（使用者新決議）**：原計畫§0.3已凍結四條主要流程，完整補完保留第二階段。Increment32只解除V1試用阻礙：準備四檔上市普通股真實行情隔離副本（2014/01/02–2026/09/23、12,390筆），沿原V4 producer建立明示子集，unknown／歷史PIT=false不變；Native QA91找到比較籃加入後按鈕未更新，已補加入／清空狀態接線。QA92受影響UI與Workbench共95 PASS，validator 25/0/4、mypy1016檔通過（既有ui_qt ignore_errors不證強型別）。新候選與四旅程交付驗證仍進行中，未宣稱V1或完整Gate已接受。
+
 ## 現在有哪些入口
+Increment31已把本任務67檔保存為本機checkpoint `675bea262f8d25a1d5a8ade2762b7285fd11451b`，沿原P14建成獨立candidate，EXE SHA `b05f96456f36dc44036ca0688399b0cb5a85262f4a073c74a879f5ea6c970e26`，未替換既有交付。原同版隔離probe及新增Registry年度binding旅程均通過：固定來源Main14068→11644、EXE38052→17332重用原兩run／13來源，重開／比較／返回與683模組origin逐一核對；7272pins、完整source archive及7089候選檔案前後不變。QA78靜態未啟與QA79 helper漏匯入FAIL保留，QA80只補該匯入後通過。這是指定候選的合成offscreen證據，Native真人、其他四用途完整保存、真來源／完整雙策略績效與完整Gate仍待，詳[Increment31 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment31固定來源候選exe與registry同版旅程)。
+
 Increment30已核既存完整TWSE Swagger與政府資料集11761、官方條款／授權鏈，Root僅接受TWSE年度股票日曆的前瞻每日研究用途，接受紀錄SHA `7f120b20e261d6173f2536ab206ddb4576b258954fc7839259ceb5adf84bf697`。不接受未文件化的任意歷史年度查詢；內部schema不是官方版本號。TPEx年度POST的自動取得／用途授權仍缺證據，已由官方中文條款實際頁面確認不能借其他開放資料集授權。沒有發行TPEx接受、雙市場binding、日批或正式Main配置；下一葉接續原雙策略其他權威缺件，完整Gate不變。詳[Increment30複核](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment30年度日曆用途複核與具名缺件)。
 
 Increment29正常Main已有明示外部SHA固定的日曆用途接受binding接點；使用原有界／單link／reparse／stat守衛，Main持有設定副本，錯binding只阻擋日曆用途。新binding／設定30PASS／1平台SKIP、UI注入8PASS、受影響舊145PASS／1平台SKIP及必要UI／mypy1016各自通過。父2440→fresh36248透過正常配置載入年度合成錨點，重用原兩run完成重開／比較／返回，13來源不變；錯SHA Main34496仍建立其他工作區。這是offscreen正常Main限定證據，真用途接受、正式配置、Native／EXE與完整Gate仍待；詳[Increment29 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment29明示接受binding接正常main)。

@@ -29,7 +29,7 @@
 
 可攜版使用 `app_icon.png`，並在建立視窗前設定 `Baldr.TechnicalAnalysis` AppUserModelID，不修改 registry。Windows 釘選或圖示快取可能暫時保留舊圖；先核對交付包本身，不要把快取外觀當成程式版本證據。完整歷史行為說明見[原手冊封存章節](../09_archive/documentation_productization_20261012/originals/docs/07_guides/PORTABLE_WINDOWS.md#啟動載入畫面與圖示)。
 
-進階日曆用途接受亦可在上述config.json或同名環境變數成對指定`CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH`／`CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256`，配置檔須在程式包、正式資料與輸出之外。缺設定時保持停用；來源owner先核官方用途，外部SHA只固定該接受檔。此接點有source版合成Main／fresh證據，目前EXE尚未據此重驗；詳[Registry手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
+進階日曆用途接受亦可在上述config.json或同名環境變數成對指定`CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH`／`CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256`，配置檔須在程式包、正式資料與輸出之外。缺設定時保持停用；來源owner先核官方用途，外部SHA只固定該接受檔。此接點已有source及固定`675bea26`候選EXE的合成Main／fresh同版證據；真雙市場接受與正式配置仍未成立。詳[Registry手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)與[具名候選QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment31固定來源候選exe與registry同版旅程)。
 
 ## 個人資料與模型
 
@@ -46,6 +46,10 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 - 若 Windows 顯示 SmartScreen 或簽章警告，先核對交付來源與簽章資訊；本指南不要求繞過系統保護。
 - 首次無字或缺資料時，確認整個資料夾存在、JSON 為 UTF-8、roots 是程式包外的可寫絕對路徑。無 console 的 stdout／stderr 和 App 日誌依該交付版列出的實際位置核對。
 - 長路徑、主機上的 Qt／Windows 差異、私人模型與自然排程執行都要依具名 QA 範圍判讀；在別台 Windows 主機啟動成功不由這份文件推定。
+
+## 2026-10-15 固定來源候選
+
+另有固定來源`675bea262f8d25a1d5a8ade2762b7285fd11451b`的隔離候選`dist/candidate_675bea262f8d_07965800/baldr`，EXE SHA `b05f96456f36dc44036ca0688399b0cb5a85262f4a073c74a879f5ea6c970e26`。它通過原同版隔離probe與新增年度日曆binding／原Registry雙run重開、比較、返回及新程序旅程；沒有替換下表原交付或更新active_delivery。該證據仍是合成offscreen，未簽章、未驗Native真人或真實市場完整績效，不據此認定安裝／其他主機／完整產品Gate通過。完整來源與收據依[Increment31 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment31固定來源候選exe與registry同版旅程)。
 
 ## 2026-10-06 交付與驗收歷史
 

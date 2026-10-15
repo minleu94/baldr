@@ -22,6 +22,8 @@
 
 由已核驗composition明示使用每日cohort時，上市／上櫃各自綁批次與原件；所有必要市場都成功後，以較晚小時判定整組可用。同次推薦來源追溯會帶cohort hash/pin及各股實際讀取狀態；missing／unknown仍是缺件，不是通過。正常Main成對配置及新程序的合成輸入重開已有限定QA，但完整推薦執行／結果保存／真人與EXE旅程仍待；不能以打開月營收篩選checkbox推定已選每日cohort，原歷史模式仍依其版本證據。
 
+Registry年度binding與上述重開／比較／返回操作已有固定`675bea26`來源／候選EXE同版的合成Main／新程序證據；其他交付仍各自依版本與收據核對。這不授真雙市場來源、PIT、完整績效或Native真人資格，詳[Increment31 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment31固定來源候選exe與registry同版旅程)。
+
 ### 選擇已接受範圍的固定月營收快照
 
 1. 先保留既有一次性來源／用途接受紀錄與完整批次pin。由受信服務產生binding配置原件；來源接受、批次品質與版本選擇分開判定，切換下一個成功日批次不代表重新人工接受來源。

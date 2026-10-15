@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+> **目前第一版候選（2026-10-15）**：依使用者兩階段決議，原計畫§0.3凍結四條旅程；固定`4cfddca1d4b1e25e958b2b3dd988035a4d233b67`候選已可本機試用。入口`output/trial/Baldr-V1/Launch-Baldr.cmd`，指南／已知問題／SHA見同目錄TRIAL_GUIDE.md與DELIVERY_RECEIPT.json。真實四股行情12390筆、2014/01/02–2026/09/23，大盤副本至2026/10/14，日期不混用；unknown／historical PIT=false保留。已解除比較按鈕及EXE規則來源缺件；QA108市場／個股圖表／返回，QA94＋106比較收藏與最終EXE新程序重開，QA104執行保存＋QA105同run新程序歷史讀回各按限定範圍驗證。窄視窗查歷史先收合設定；1440px Native命中與真人／跨機仍未全驗。完整計畫、原FAIL與第二階段待辦保留，不是P00–P14或完整Gate接受。
+
 > **更新基線：2026-10-15 UTC（使用者時區10/14）。** 使用者已恢復補完並採納每日版本快照與台北小時可用性政策；本輪實作／隔離驗證見[每日快照政策 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，原安全接手點見 [10/14 暫停 checkpoint](../06_qa/BALDR_COMPLETION_CHECKPOINT_20261014.md)。本頁只記目前可支持的整體狀態；局部 PASS 不相加成完整工作包或產品 Gate。較早恢復歷程見 [10/12 補完增量](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)，先前紀錄見 [BALDR_COMPLETION_PROGRESS_20261011](../06_qa/BALDR_COMPLETION_PROGRESS_20261011.md)；原始 receipts／source inventory 依各收據所列路徑與 SHA 追溯。
 
 > **最新狀態（使用者時區2026-10-14）**：使用者已恢復，RAM達標，新owner task為in_progress。Increment20原候選／Reader與正常Registry旅程已限定驗證；Increment21日曆完整transport／create-only批次沿原兩市場解析器與93日上限。Increment22原執行輸入已接V3保存／public reader；Increment23明示daily批次已接原Registry診斷並完成合成Main／fresh讀回。正式Main尚未配置真日曆用途接受，來源／幣別／成本unknown仍阻擋完整績效。詳[本輪QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。原FAIL、舊task與其他owner變更保留，Native／EXE與完整P00–P14／G0–G4未接受。
@@ -9,7 +11,6 @@ Increment22已把原next-open執行輸入接入additive V3附件、原Registry s
 Increment23已把明示daily日曆版本接到原Registry雙run診斷，共用原public reader及缺日比對；外部雙SHA、獨立兩市場用途接受與actual cutoff完整固定，前後重驗不掃latest。新backend首輪12PASS／1個Root測試atime核對FAIL保留，該案修正後PASS；原pair33／controller9、新controller16、widget5、Workbench85／validator25-0-4／mypy1012／精度守衛各自PASS。父33268→fresh17672重用既有run／原日曆原版及更正共17來源，不重產，版本／非clock診斷及bytes／SHA／stat一致。只有隔離QA注入合成接受紀錄，正式Main尚未配置真接受錨點，daily預設保持阻擋；真來源、長期分段與完整績效等缺口不變，見[Increment23 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment23每日日曆版本接原registry診斷)。
 
 
-> **第一版交付優先（使用者新決議）**：原計畫§0.3已凍結四條主要流程，完整補完保留第二階段。Increment32只解除V1試用阻礙：準備四檔上市普通股真實行情隔離副本（2014/01/02–2026/09/23、12,390筆），沿原V4 producer建立明示子集，unknown／歷史PIT=false不變；Native QA91找到比較籃加入後按鈕未更新，已補加入／清空狀態接線。QA92受影響UI與Workbench共95 PASS，validator 25/0/4、mypy1016檔通過（既有ui_qt ignore_errors不證強型別）。新候選與四旅程交付驗證仍進行中，未宣稱V1或完整Gate已接受。
 
 ## 現在有哪些入口
 Increment31已把本任務67檔保存為本機checkpoint `675bea262f8d25a1d5a8ade2762b7285fd11451b`，沿原P14建成獨立candidate，EXE SHA `b05f96456f36dc44036ca0688399b0cb5a85262f4a073c74a879f5ea6c970e26`，未替換既有交付。原同版隔離probe及新增Registry年度binding旅程均通過：固定來源Main14068→11644、EXE38052→17332重用原兩run／13來源，重開／比較／返回與683模組origin逐一核對；7272pins、完整source archive及7089候選檔案前後不變。QA78靜態未啟與QA79 helper漏匯入FAIL保留，QA80只補該匯入後通過。這是指定候選的合成offscreen證據，Native真人、其他四用途完整保存、真來源／完整雙策略績效與完整Gate仍待，詳[Increment31 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment31固定來源候選exe與registry同版旅程)。

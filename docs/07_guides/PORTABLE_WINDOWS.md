@@ -61,3 +61,9 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 | 首波候選 `dist/candidate_4b40788bea9e_dd7335f7/baldr/baldr.exe` | source commit `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6`；52,413,416 bytes；SHA-256 `6015311ff93286fa045ff04ed2a82284f812ed009cd48db79db435a2ef344410` | 固定來源候選的相同版本比較記錄見[首波 QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)。 |
 
 當時具名隔離 QA 記錄了空資料設定提示、九工作區、Unicode／空格工作目錄、multiprocessing、取消與重新執行等項目；也明列 canonical 推薦保存結果重開受 no-follow guard 阻擋。Native 真人操作、真實私人模型、正式 Task 自然 run 與其他 Windows 機器未由該包驗收。該次 PASS 僅對應原 QA 指定的版本、來源和 fixture，不可外推為目前 exe、正式安裝或其他主機已通過。
+
+## 第一版本機試用候選（2026-10-15）
+
+依原補完計畫§0.3凍結四條主要旅程；固定來源`4cfddca1d4b1e25e958b2b3dd988035a4d233b67`，候選`dist/candidate_4cfddca1d4b1_cb518ff9/baldr`，EXE SHA `e430c5c932ff028102548f15e934a4f0ec054d815c10e3c88681c452b380cb06`。本機直接使用`output/trial/Baldr-V1/Launch-Baldr.cmd`，入口先以.NET SHA核EXE再以專用config啟動；`--check`只輸出launch-info，已驗隔離設定，不需Python。原dist/baldr與active_delivery未替換。
+
+四股試用副本、V4來源與個人狀態根位於本owner明示的BaldrTrial隔離根，實際絕對路徑在交付config.json；不要移動來源或套用正式資料根。TRIAL_GUIDE.md列四流程、來源日期／成本與問題，DELIVERY_RECEIPT.json、BUNDLE_INVENTORY.json及INPUT_INVENTORY.json保存固定身份。這是未簽章的本機候選；不是發布、其他主機安裝或真人接受。新機仍沿原安裝Runbook，不直接複製私人根／排程／帳戶。

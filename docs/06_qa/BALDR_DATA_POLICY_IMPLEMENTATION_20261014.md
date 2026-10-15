@@ -744,3 +744,21 @@ Native QA82第一點擊未命中原FAIL保留；QA83在原15秒期限觀察125ms
 Increment32接續：修復後c8fcc8a3候選由QA94以真實四股完成Native比較、個股返回、版本收藏及新PID 1968→30468 Watchlist exact重開，來源清冊不變；outer SHA `cf8abe7dc5e119491432f46d83046143f755c56407880bffe9a456b8ab13f98c`。QA95–96為QA市場子頁定位失敗，QA97–99為1440px Native螢幕命中診斷FAIL；Qt active與childAt可見但topLevelAt=None，沒有降低命中守衛。QA100在既有640px完整命中下大盤與個股真行情／技術歷史讀取成功，之後正常回測揭露真正V1-04 frozen阻斷：規則封存要讀取baseline executor原始檔，但包內沒有.py原件，執行以FileNotFoundError中斷；原FAIL保留。
 
 必要修正限原封裝：納入baseline_score_executor、score_threshold_policy、broker_simulator、backtest_service四個原檔，build resource manifest綁四檔SHA並由既有frozen identity檢查拒絕缺件／改寫；沒有以假hash、跳過來源驗證或回落checkout解除錯誤。QA101原封裝與金融next-open對齊、交易成本整數分、損益分量化、Decimal保存共24 PASS；兩個新增frozen測試漏建立必需icon fixture而FAIL，未跑mypy。QA102只補該fixture，兩例缺件／篡改拒絕PASS，compile與單檔mypy通過；outer SHA `bb265e94bfac562a455b0b324fecf7bc1040f4dea74cd75bbebae062f6fe112c`。UI碼不再變更，不重跑QA92已通過的Workbench／validator／整庫mypy。下一步只重建固定候選並接續V1-04保存／重開，V1尚未宣告交付。
+### Increment32最終V1候選交付（2026-10-15）
+
+固定來源`4cfddca1d4b1e25e958b2b3dd988035a4d233b67`；候選`dist/candidate_4cfddca1d4b1_cb518ff9/baldr/baldr.exe`，55,968,569 bytes，SHA `e430c5c932ff028102548f15e934a4f0ec054d815c10e3c88681c452b380cb06`。QA103沿原建置管線與依賴鎖納入四份回測來源，原dist/baldr／active_delivery及舊候選不變。未簽章，不是發布或原完整Gate接受。
+
+| 第一版出口 | 實際限定證據 |
+|---|---|
+| V1-01市場／個股／技術圖表／返回 | QA108獨立最終EXE Native PID47168，2330價格120筆、技術歷史120筆、末日2026-09-23，正常大盤子頁／載入／價格圖表／返回；outer SHA `f410270433260613c3de4066720f6c8b73d54b93d3bf251a3f0ded0cb4359f44`。 |
+| V1-02價格條件／比較／個股返回／版本收藏 | QA94 c8候選真實四股Native閉環已PASS；封裝修復未改這些UI／ports，QA106最終4cf候選PID17552只重開原QA94收藏，query／page／選取／比較籃／原件不變，不重產producer。 |
+| V1-03觀察清單／新程序回訪 | QA94 1968→30468原exact收藏重開，QA106最終候選新程序同版讀回；沒有搬移正式清單。QA106該子命令PASS，後續舊入口hash命令FAIL不能把整組記PASS。 |
+| V1-04正常回測保存／歷史／返回／新程序 | QA104市場／個股及正常2330執行、保存與no-trade本金守恆完成後，因未收合設定導致history控制項height=0 FAIL。QA105不重跑producer，沿原「收合左側設定」接續同一run `single_backtest_20261015_000644_36de48c0`，PID41080→35336正常查找／開啟／返回／新程序，metadata／equity／trades身份一致；outer SHA `a5ca6ebf91470011f6c32e8e7fbd0f435a6ff14f3bfabcd90e9ea0e27fa613c9`。QA105 driver摘要繼承了V1-01標籤，但該組實際只驗Registry讀回；V1-01以獨立QA108為準。 |
+
+入口QA106的Windows PowerShell無Get-FileHash命令，舊入口原件保留；QA107新`Launch-Baldr.cmd`改用內建.NET SHA，不繞過hash，實際`--check`讀回最終build／專用config／隔離DATA_ROOT、OUTPUT_ROOT與RESEARCH_STATE_ROOT通過。完整7093候選檔、20不可變輸入與103前組Job閉鎖清冊保存；outer SHA `19ab587bd693374b2c637eb4a6377f66ef42384373d4a02e115dcada9615b66c`。所有當輪Job維持8GiB／12程序與mutex，三PID陣列自然空、handles閉鎖、無forced cleanup；不終止其他owner程序。Luna只靜態複核，累計9/10、pending writes=false。
+
+交付入口`output/trial/Baldr-V1/Launch-Baldr.cmd`，TRIAL_GUIDE.md／DELIVERY_RECEIPT.json列四旅程、SHA、來源及已知問題；BUNDLE_INVENTORY.json／INPUT_INVENTORY.json是完整檔案清冊。四股原價12390筆至2026-09-23，大盤副本至2026-10-14，沒有把兩域日期混用。企業行動／價格還原／來源發布時間仍未核，historical PIT=false與缺資料指標維持不可用。回測成本／next-open／Decimal保存沿QA101已過的金融案例，不反覆重跑。窄視窗查歷史先收合設定；1440px Native topLevelAt異常、真人與跨機未全驗，列已知限制而非隱藏。
+
+第一版是可本機試用的固定候選；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項、來源權威、TPEx、歷史PIT、真N、完整雙策略績效及自然成熟全部保留第二階段。後續先依這四條旅程的實際問題修正，新增需求與非阻斷優化不進V1。正式資料、Task、maintainer、push／發布與交易未變更或啟用。
+
+QA109最後讀回交付8文件與11具名收據SHA、四旅程獨立scope及原計畫第二階段保留均通過；交付收據SHA 2037e135996423edb7ddb633a479443ffe3bf71f25bb1c593128a51b2dd7e0b2。此次5文件治理12features／errors=[]，不是產品完整Gate；outer SHA 1f4a7dd3bd2c9eb55366a2dfe6583a3bc526e35364a71df8e1095e594ee5abf3，自然閉鎖，無待執行Python／QA或worker writes。

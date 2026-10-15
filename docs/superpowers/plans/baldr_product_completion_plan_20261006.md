@@ -479,6 +479,8 @@ P03 已新增月營收 Archived V2／Index V2 精確封存重開、self-containe
 
 沿本節下一步新增日曆raw evidence／create-only artifact、明示雙Registry run的full-period reader及測試，Root增量綁public reader外部metadata SHA／byte budget、策略身分與原capture。現V2來源／幣別／日曆／成本仍unknown，日期完整亦不授績效。三個worker均凍結，RAM低於8GiB所以compile／mypy／pytest全未啟動。使用者要求本地commit並由新對話接手；首次先重核source pins及資源，再按原30／180／120／120／180秒case期限串行驗證，之後補受影響Reader回歸與正常UI。完整缺口、私有證據與分工見[最新交接](../../06_qa/BALDR_COMPLETION_HANDOFF_20261014_INCREMENT19.md)，不另立總計畫。
 
+Increment20已從checkpoint `789f82565ce4c95d1ee7fe8b585382b2d2e60811`恢復：七來源／12pins／52保護資產與142閉鎖收據重核，新owner runner／spec／隔離env另存並重綁SHA。跨交接新建Luna累計6／10，三路僅靜態複核；目前RAM仍低於8GiB，Python task初始化及原候選QA未啟動，詳[接手核驗與資源界線](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment20接手核驗與資源等待)。先完成原候選QA與Reader回歸，再接正常Backtest雙exact run保存／重開／比較／返回；舊task、來源bytes、FAIL、已耗GET及正式Task權限均不變。
+
 #### 本批 consumer 與每日設定接線（同日後續，沿原計畫）
 
 P00／P03 已增加獨立 YoY FactV2／IndexV2，保留原 method、28 位 Decimal 算式與門檻，改依完整 daily cohort 小時證據驗可用時間。來源與投影各有 ledger／分母，來源 observed 也可因期間、derived version 或可得時間不一致而投影 unknown。SourceReferenceV3 精確重開須由 caller 提供外部原件 SHA；沒有降格為 V1。Daily V2 snapshot 接受既有 harvester 的一次 UTF-8 BOM 封裝時，另核原件 bytes／stat／SHA、剝除 BOM 後 SHA 等於完整 cohort 的市場 raw SHA；V1 的原嚴格拒絕保留。

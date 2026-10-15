@@ -441,3 +441,15 @@ Increment18治理第二輪：12features／37link sources errors=[]、compile aud
 使用者要求commit後轉新對話。三模組／三測試與public portfolio reader增量均已保存；Root靜態補策略metadata/precision交叉綁定及initial capital差異，沒有從float重算PnL。compile／mypy／三組pytest未啟動，可用RAM低於8GiB；最後只有Context L2三文件／3768字元／6862bytes，outer8f8ed3d0cf0546319f9c6d64ffe14512 SHA`8e2a365c23db27e135360a216f2a737d14b42f1c3994ab2e6c739830e570883c`已閉鎖，不是產品QA。未啟動QA02 spec SHA`471bbfcea0c2bd304fe78f3d3e741059b03596b9e5ffb7a02ab071e658113f4f`及完整七來源SHA、下一批Root串行與Luna靜態分工見[最新交接](BALDR_COMPLETION_HANDOFF_20261014_INCREMENT19.md)。交接新增文件／Feature Map的Python治理亦未執行；checkpoint不是PASS、正式來源接受或完整Gate。
 
 交接stage核對：161份精確own files，outside-own未stage，ignored收據／資料／singleton未stage；tracked diff check為0，stage後含新增檔的whitespace check回2（17 EOF空行＋1註解尾空白），保持原source bytes與歷史QA pins，未將此項標PASS。輸出保留本機handoff_staged_diff_check.log；checkpoint不代表release接受。
+
+### Increment20接手核驗與資源等待
+
+使用者於 America/Los_Angeles 2026-10-14 恢復原補完工作，新Root接手HEAD為 `789f82565ce4c95d1ee7fe8b585382b2d2e60811`。起始工作樹僅有其他owner的 `docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md`；其SHA及兩份singleton均符合交接原件，不修改／stage／revert。舊task、所有原FAIL及output原件保留。
+
+新owner目錄為 `output/tasks/baldr-completion-resume-20261014-01a13cf9/`，不替代原計畫或舊task。Root以唯讀PowerShell核七個候選來源、QA02的12個pins、52份保護資產與142份outer收據的bytes／SHA；141個native Job的三PID清冊均空、process／Job handles closed且mutex released，另1份為歷史低RAM未起child。核驗收據 `resume_custody_01.json` SHA256 `11b041e86458ca400c73e0ef0b8d75ea1d20cf6f6fc8a428d2bc1c2ed17e7d99`，僅證保存資產與閉鎖，不是產品QA。
+
+已將原commands v5 runner的TASK、外層wrapper路徑、spec HEAD／隔離env／create-only result directory另存到新owner並重綁SHA；原QA02 spec保持原件。新 `p08_increment19_initial_qa01_spec.json` SHA256 `81bf03919e98ba8e0ff4fcee3b5d23a1b2db6607de042d0f003c6537e0a20909`，七檔compile30秒、八roots mypy180秒及三組pytest120／120／180秒原命令未改。啟動前再次檢查來源、HEAD、前組閉鎖、結果目錄不存在與至少8GiB可用RAM；全Job仍8GiB committed／12程序、kill-on-close及同workspace mutex。
+
+本session無可重用代理，按使用者授權新建三名Luna Max，跨交接累計6／10、同時3名；禁止再生子代理及執行Python／QA／network。單寫範圍各限新owner目錄內的日曆、Registry與Backtest接線報告，產品／測試均唯讀；Root保留金融判斷、共用ports、整合、QA與文件。日曆raw／hash鏈可證內部一致性，caller宣告的capture mode／時間不構成官方來源、發布或PIT資格；固定false eligibility保留。Registry複核指出V1 pair遺失已知parent，以及public Reader新metadata SHA／budget參數缺直接反例，待原候選QA後才作最小修正與補測。
+
+首次可用RAM為6,679,724,032bytes；重綁後preflight為6,066,806,784bytes，均低於8,589,934,592bytes。沒有啟動Python／Job／compile／mypy／pytest，`document_control init-task`與Context重建亦尚未執行，沒有把手工intake當作工具建立的task.json。這是資源等待，並非QA FAIL或PASS。新文件治理未執行；待資源達標先初始化自己的task／Context，再完成原候選QA、受影響Reader回歸與正常Backtest保存／重開／比較／返回。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未接受。

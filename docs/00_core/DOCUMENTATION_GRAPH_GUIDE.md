@@ -4,6 +4,8 @@
 
 > 2026-10-09 本機重驗：`graphify-out/.graphify_python` 指向的 Python 可載入 `graphifyy 0.9.11`；但 `graphify --version` 回報 `uv trampoline failed to canonicalize script path`，`uv tool list` 因工具鎖檔存取遭拒而失敗。因此套件版本已由該 interpreter 確認，CLI 啟動器與工具清單仍未能驗證。執行 recipe 前仍須依安全範圍重新檢查工具與路徑。
 
+> 2026-10-14 本機修復：uv 0.11.26 產生的 Graphify `.exe` 在使用者 bin 與工具環境內都回報上述路徑錯誤；其 shebang 指向的 Python 檔案存在，直接執行該環境的 `python.exe -m graphify --version` 則回報 `graphify 0.9.11`。已把使用者 bin 的故障 `.exe` 保留為 `graphify.exe.uv-broken-20261014`，並以 `graphify.cmd` 將原參數轉交給同一 Python 模組入口；PowerShell 的 `graphify --version` 現已通過。本修復只替換本機命令 shim，未升級 uv 或 Graphify，也不代表 uv trampoline 原始原因已修正。
+
 目前文件導航以 [文檔索引](DOCUMENTATION_INDEX.md) 與各專區 README 為準；[2026-10-06 全文件目錄快照](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) 僅供追溯。圖譜用於跨文件／程式結構關係，來源事實仍應回讀原頁／原 code，不能把推論 edge 當完成證據。
 
 ## 安全範圍
@@ -25,9 +27,17 @@
 
 2026-10-06 的整理結果、當時限制與精確命令見[歷史驗收原文](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)；它只代表該次 fixed HEAD snapshot。每輪仍須重新核對當前輸入、依賴與輸出。圖譜若未完成，必須明列 blocker，不能用另一份自製圖冒稱完整 Graphify semantic build。
 
-## 本機受控方法（Graphify 0.9.11；CLI 啟動器不可用）
+## 本機受控方法（Graphify 0.9.11；Windows CLI shim 已修復）
 
-目前記錄的 interpreter 可載入 `graphifyy 0.9.11`；CLI 啟動器本次無法執行，工具來源清單也因本機鎖檔權限無法讀取，不自動安裝。repo ignore 規則會排除 `output/` 下的 snapshot，普通 CLI 探測得到零輸入，不能當成功。因此本輪對複製到受控 input 的 Python 白名單使用正式本機 API：
+本機 `graphify` 命令由使用者 bin 的 `graphify.cmd` 轉交給已安裝工具環境的 Python 模組入口；需要不依賴該 shim 時，也可從 repo 根目錄明確使用記錄的 interpreter：
+
+```powershell
+$python = (Get-Content graphify-out/.graphify_python -Raw).Trim()
+& $python -m graphify --version
+& $python -m graphify query "<question>"
+```
+
+版本 smoke check 已回報 `graphify 0.9.11`。原 uv 產生的 `.exe` 備份保存在使用者 bin；如需回復，先移除本機 `graphify.cmd`，再將 `graphify.exe.uv-broken-20261014` 改回 `graphify.exe`。這會回復原故障入口。`uv tool list` 仍受本機工具鎖檔權限限制；沒有安裝套件或更改 uv。repo ignore 規則會排除 `output/` 下的 snapshot，普通 CLI 探測得到零輸入，不能當成功。因此建圖仍對複製到受控 input 的 Python 白名單使用正式本機 API：
 
 ```python
 from graphify.extract import extract

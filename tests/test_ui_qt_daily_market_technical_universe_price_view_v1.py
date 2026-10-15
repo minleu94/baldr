@@ -12,7 +12,7 @@ from typing import Any, cast
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QTabWidget, QTableView, QWidget
+from PySide6.QtWidgets import QApplication, QTabWidget, QTableView, QVBoxLayout, QWidget
 
 from app_module.daily_market_technical_universe_price_bookmark_v1 import (
     DailyMarketTechnicalUniversePriceBookmarkStateV1,
@@ -148,6 +148,52 @@ def test_narrow_result_area_keeps_price_apply_reachable_and_inputs_on_resize(
         assert view.current_query is not None and view.current_query.min_close_price == Decimal("101")
         assert view.current_query.combine_mode == "OR"
         assert view.current_query.source == original_source
+    finally:
+        view.begin_shutdown()
+        _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)
+        host.close()
+        app.processEvents()
+
+
+def test_price_table_remains_selectable_beside_a_wide_sibling(
+    app: QApplication, exact_price_store: dict[str, Any],
+) -> None:
+    """同頁其他研究有大最小寬度，不能使價格股票列躲在隱藏水平捲軸外。"""
+    page = QWidget()
+    layout = QVBoxLayout(page)
+    sibling = QWidget()
+    sibling.setMinimumSize(1200, 20)
+    layout.addWidget(sibling)
+    view = DailyMarketTechnicalUniversePriceV1View(exact_price_store["store_root"])
+    layout.addWidget(view)
+    tabs = _CurrentPageSizeTabWidget()
+    tabs.addTab(page, "每日研究")
+    host = create_scroll_area(tabs)
+    host.resize(760, 650)
+    host.show()
+    try:
+        app.processEvents()
+        view.refresh_sources()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        view.sources.setCurrentIndex(_entry_index(view, "complete"))
+        view.load_selected_source()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        index = view.results_model.index_for_stock("S0001")
+        assert index.isValid()
+        def reachable() -> bool:
+            view.table.scrollTo(index)
+            host.ensureWidgetVisible(view.table)
+            app.processEvents()
+            rect = view.table.visualRect(index)
+            return rect.isValid() and host.viewport().rect().contains(
+                view.table.viewport().mapTo(host.viewport(), rect.center())
+            )
+        _wait(app, reachable, timeout_seconds=15)
+        assert host.horizontalScrollBar().value() == 0
+        rect = view.table.visualRect(index)
+        QTest.mouseClick(view.table.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+        selected = view._selected_row()
+        assert selected is not None and selected.technical_row.stock_code == "S0001"
     finally:
         view.begin_shutdown()
         _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)

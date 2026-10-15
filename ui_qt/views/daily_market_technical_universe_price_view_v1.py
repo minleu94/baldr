@@ -428,6 +428,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._rule_filter_entries: list[tuple[QLabel, QComboBox]] = []
         self._controls_narrow: bool | None = None
         self._controls_viewport: QWidget | None = None
+        self._uncapped_maximum_width: int | None = None
         self._basket: list[DailyMarketTechnicalUniversePriceSelectionV1] = []
         self._pending_bookmark_scroll_restore: _PendingBookmarkScrollRestore | None = None
         self._scroll_restore_filtered_widgets: tuple[QWidget, ...] = ()
@@ -1250,7 +1251,28 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
                 viewport.installEventFilter(self)
         available_width = self.width()
         if viewport is not None and viewport.width() > 0:
-            available_width = min(available_width, viewport.width())
+            # 同頁其他研究區塊仍可能有較大的最小寬度；價格區本身須留在
+            # viewport內，不能靠外層已隱藏的水平捲軸才能選取股票列。
+            available_width = viewport.width()
+            ancestor = self.parentWidget()
+            while ancestor is not None and ancestor is not viewport:
+                parent_layout = ancestor.layout()
+                if parent_layout is not None:
+                    margins = parent_layout.contentsMargins()
+                    available_width -= margins.left() + margins.right()
+                ancestor = ancestor.parentWidget()
+            available_width = max(1, available_width)
+            if self._uncapped_maximum_width is None:
+                self._uncapped_maximum_width = self.maximumWidth()
+            limit = min(self._uncapped_maximum_width, available_width)
+            if self.maximumWidth() != limit:
+                self.setMaximumWidth(limit)
+            parent = self.parentWidget()
+            if parent is not None and parent.layout() is not None:
+                parent.layout().setAlignment(self, Qt.AlignmentFlag.AlignLeft)
+        elif self._uncapped_maximum_width is not None:
+            self.setMaximumWidth(self._uncapped_maximum_width)
+            self._uncapped_maximum_width = None
         # 長式排列須有外層垂直捲動；獨立視圖保留原表格高度分配。
         narrow = viewport is not None and available_width < 900
         if narrow == self._controls_narrow:

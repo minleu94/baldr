@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+**Increment53：原P03明選TPEx法人OpenAPI已補候選接線**。沿資料集11856／既存Swagger與新單次完整898原列，不借T86 discovery或其他TPEx未授來源；新20欄／ROC日／三類aggregate整數及合計守衛接原capture／rebuild／daily／正常法人頁，舊TWSE ports仍限T86。199受改回歸含Workbench85＋原FAIL修正後定向1PASS、mypy1031／validator25/0/4；真成功保存台北06:45、07:00可用，提前拒讀，QA288真07:00後Main32628→fresh37900三證券原值／返回與重開一致，24來源／批次檔不變、socket0；另補CLI必填報告日5PASS，非Native／EXE。此第二階段不增4b530固定V1前置，P0來源用途／歷史PIT／完整F09不升格，詳[Increment53 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment53p03明選tpex法人openapi與每日版本)。
+
 **Increment52：原P06的正常找回出口已補入開發候選**。既有情境明確登錄至同一Registry的typed reference，正常Main5648→fresh44328沿Registry明選回P06／個股／返回，原artifact／帳戶投影與兩DB hash相同，不重算／不改原件。218定向及受改回歸含Workbench85、mypy1030與validator25/0/4通過；原FAIL保留。此為第二階段，未增第一版前置或改4b530a7e固定EXE；手動／聲明完整現金與同源Health／行情仍缺，完整P06及其餘原範圍不升格。操作指南已更新，見[Increment52 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment52p06配置研究登錄與正常registry重開)。
 
 **Increment51：V1-04金融阻擋已交窄版候選**。固定 `4b530a7e929f31dc0f7d7edfba790d011aeb1bfc` 以9fa為基底，只回移PF nullable／語意及必要消費端／測試／指南，不帶49新歷史卡或其他第二階段功能。新啟動 `output/trial/Baldr-V1-PF/Launch-Baldr.cmd`、EXE SHA `68e92c92adf30e479a798052e812f0d965d0f40c2e2e841610ab628191330f37`；舊包／20輸入保留，新寫入隔離。QA264固定來源162PASS及必要防線、265 portable docs及固定建置，267原生GUI／保存對話框／歷史返回／fresh同run、419日原成本／現金／權益及PF不可用原因通過。其他三未改流程沿原收據，不當本EXE全部重跑或真人接受；四流程凍結與完整第二階段範圍不變。原輸出連結與harness binding的FAIL保留，見[Increment51 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment51v1獲利因子窄版候選)。
@@ -495,6 +497,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+Increment53沿同一P03補上已有官方開放資料鏈的TPEx法人明確單日，不借其他來源授權，candidate／P0用途與歷史資格仍分開。首次成功daily台北06:45、07:00可用，QA288在真07:00後已驗Main32628→fresh37900同批次三證券／返回，無HTTP／seal／未來clock。來源用途精確綁定為下一葉，財報缺官方完整件維持D，P12正常畫面已明示產物不代表Task啟用，未另造框架。
 
 Increment52已把原P06完整封存登錄、正常Registry／P06／個股返回及fresh重開接通；限定證據與缺件見上方同輪QA。第一版四流程固定4b530a7e不擴張，回原P03功能必要資料／原用途鏈推進，手動帳缺現金聲明等D項保留，不以unknown卡片算完成、不等待試用回饋才工作。沒有新HTTP或正式寫入授權。
 

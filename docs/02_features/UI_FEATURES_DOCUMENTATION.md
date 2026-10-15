@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+後續開發分支的固定法人唯讀區支持TWSE與明選TPEx OpenAPI批次，身份列顯示已核市場；九個股數值仍原int投影，無market猜配、資料取得或金融重算。來源錯誤、未到可用小時／pending或輸入換版清除舊結果，candidate與P0資格邊界保留。操作見[TPEx單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)。
+
 後續開發分支的「配置研究封存」在 exact 已保存且沒有比較預覽時，可明確「登錄研究紀錄」。原研究 Registry 增加獨立配置研究區，輸入帳種／portfolio_id 並明選一筆後回 Portfolio 精確重開，再沿原個股與返回；不參與回測比較／升級、不假造績效。讀取換帳／關閉丟棄晚到結果，寫入等待收尾，原件或引用不符時拒絕。操作見[配置研究登錄指南](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#登錄研究紀錄與跨頁重開)；此第二階段增量不改固定四流程試用候選。
 
 後續source的PF摘要顯示有限無量綱值或具體不可用原因，None不再中斷格式化；批次／最佳化表附狀態／語意，舊比較不把未版本化值當有效PF。[PF指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)明列固定9fa EXE待窄版修補；QA262正常Main／fresh成功不等於新EXE交付。

@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     capture = subparsers.add_parser("capture", help="只捕捉 raw/candidate，不寫 SQLite")
     capture.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
-    capture.add_argument("--as-of-date", default=None, help="YYYY-MM-DD；預設台北今日")
+    capture.add_argument("--as-of-date", default=None, help="YYYY-MM-DD；TPEx OpenAPI必填，其餘預設台北今日")
     capture.add_argument("--sessions", type=int, default=10)
     capture.add_argument("--max-lookback-days", type=int, default=45)
     capture.add_argument("--timeout-seconds", type=int, default=30)
@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--rate-limit-seconds", type=float, default=0.25)
     capture.add_argument(
         "--capture-scope", choices=FLOW_CAPTURE_SCOPES, default="legacy_all",
-        help="twse_institutional 僅保存 TWSE 法人候選；legacy_all 保留原四來源行為",
+        help="twse_institutional為TWSE；tpex_openapi_institutional只接受明示最新單日且sessions/lookback/attempts均1；legacy_all保留原四來源",
     )
 
     rebuild = subparsers.add_parser(
@@ -58,8 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
     rebuild.add_argument("--run-dir", required=True, help="既有 capture run 目錄")
     rebuild.add_argument("--manifest-name", default="manifest.json")
 
-    seal = subparsers.add_parser("seal", help="核原TWSE法人capture，保存新批次小時收據；不抓取／apply")
-    seal.add_argument("--run-dir", required=True, help="原twse_institutional capture的絕對目錄")
+    seal = subparsers.add_parser("seal", help="核明選TWSE/TPEx OpenAPI法人capture，保存新批次小時收據；不抓取／apply")
+    seal.add_argument("--run-dir", required=True, help="原明選法人capture的絕對目錄")
     seal.add_argument("--capture-manifest-sha256", required=True)
 
     apply = subparsers.add_parser("apply", help="顯式匯入已審核 candidate manifest")
@@ -80,8 +80,11 @@ def main(argv: list[str] | None = None) -> int:
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
             reconfigure(encoding="utf-8", errors="replace")
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     if args.command == "capture":
+        if args.capture_scope == "tpex_openapi_institutional" and not args.as_of_date:
+            parser.error("tpex_openapi_institutional 須明示 --as-of-date，不以台北今日猜報告日")
         target_date = date.fromisoformat(args.as_of_date) if args.as_of_date else _today_taipei()
         result = capture_recent_flows(
             output_root=args.output_root,
@@ -99,8 +102,8 @@ def main(argv: list[str] | None = None) -> int:
             manifest_name=args.manifest_name,
         )
     elif args.command == "seal":
-        from app_module.institutional_daily_snapshot import seal_twse_institutional_capture
-        pin = seal_twse_institutional_capture(Path(args.run_dir), args.capture_manifest_sha256)
+        from app_module.institutional_daily_snapshot import seal_institutional_capture
+        pin = seal_institutional_capture(Path(args.run_dir), args.capture_manifest_sha256)
         result = {"directory": str(pin.directory), "manifest_sha256": pin.manifest_sha256,
                   "receipt_sha256": pin.receipt_sha256, "candidate_only": True,
                   "source_use_accepted": False, "historical_pit_eligible": False}

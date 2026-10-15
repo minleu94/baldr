@@ -8,6 +8,16 @@
 
 `twse-attention-daily-manifest.v1` 固定原 raw、HTTP receipt、request／headers／cookies／worker job與result及三份文件的 bytes／SHA，`twse-attention-daily-receipt.v1` 綁 manifest 與實際 first-persisted／successful-completion／available-hour。原 HTTP receipt 沒有 worker-result SHA，新版本明示綁保存的 bytes，不補造舊 hash。只有公告日，官方發布小時保留 None；依 `daily-hour.v1` 使用成功批次 guard 小時及 `successful_batch_completion_fallback`，不拿 HTTP Date 作官方發布時刻。更正新目錄、pending／failure 拒讀、讀前後完整核驗與取消，版本保留來源用途未接受／歷史 PIT false。公開 reader 拒未來 cutoff，正常 report provider 將截止限在觀測時刻與報告台北日末較早者。保存與參數見[指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
 
+## TPEx法人OpenAPI明確單日（Increment53）
+
+原法人 capture 新增明選 `tpex_openapi_institutional`，只用資料集11856對應的 `https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading`；不借T86 discovery、不讀TPEx舊web／信用或年度日曆。API沒有歷史日期參數，caller須明示原回應report日，sessions／max_lookback_days／max_attempts皆須為整數1，其他值在transport與建立output前拒絕。原 `legacy_all`／`twse_institutional` 不變；rebuild沿同一選定scope及原raw，不發HTTP。
+
+`tpex-openapi-3insti-daily.v1` 是內部解析契約，非官方發布版本號。依既存Swagger與實際完整array的20個字串欄名（含原前置空白與拼字）逐欄核對；7位民國日明示3+2+2解析，全列同日、代碼唯一，拒重複JSON key、非字串數字、float／bool／缺欄或模糊suffix。原外陸資兩子群各核buy−sell=net及加總，再核三類aggregate與官方三大合計；只提供九個有證據的整數股數，不反推缺少的自營商自行／避險細項。股數意義來自資料集與Swagger欄位描述，不能借用TWSE的hints常數。完整原件與該版本欄位／來源／單位／合計不符時整包拒絕，原件仍保留。
+
+新generic `seal_institutional_capture`／`read_institutional_daily_snapshot` 復用原create-only／完整EOF／雙SHA／原件重播／pending／failure／signature／取消與台北小時守衛，依原manifest明確scope驗市場；舊 `seal_twse_institutional_capture`／`read_twse_institutional_daily_snapshot` 仍只接受T86，不因新增市場擴權。Read DTO末尾 `market` 舊預設TWSE，TPEx固定為TPEx；正常UpdateService／原法人頁使用generic reader，未選市場或latest作fallback。
+
+本次政府資料集HTML完整526503bytes與舊Swagger476923bytes、真API898原列／1151015，各自原件／SHA／HTTP EOF獨立保存。新版本重播已保存HTTP，capture metadata時鐘是本次重播完成，上游真HTTP時鐘另保留；首次daily成功保存使用真當下台北10/16 06:45:15，07:00才可用。沒有官方發布小時，basis仍為successful_batch_completion_fallback，不補歷史PIT。政府開放資料證據不代授整個institutional_flows來源桶、舊web或TPEx年度calendar；正式P0用途決策／排程／SQLite不變，candidate-only／source_use_accepted=false／historical_pit=false。正常操作見[TPEx單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)。
+
 ## TWSE法人候選成功批次（Increment42）
 
 此為原 `institutional-credit-flows-candidate-bundle.v1` 的獨立 JSON companion，限定 `twse_institutional`／原T86／1–30個排序唯一日期。原 parser／source version、整數股數與 candidate 不變，不借 MOPS record 或另一 revision reader namespace 的接受。`institutional-daily-manifest.v1` 綁原 capture manifest 外部SHA、完整raw／metadata／candidate／readback的絕對路徑、bytes及SHA、原始官方時間文字／台北時間、來源時鐘與原報表列總數；這個總數不是股票 universe 或真N。

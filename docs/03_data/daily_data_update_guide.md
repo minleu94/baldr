@@ -1,5 +1,7 @@
 # 每日股票數據更新指南
 
+後續開發分支的法人候選可明選 `tpex_openapi_institutional`，只取最新單日，三個sessions／lookback／attempts參數均為1；沿原seal與正常雙SHA唯讀頁，未到台北成功批次可用小時不得讀。此來源不替TPEx年度calendar或舊web授權，也不啟動正式排程／apply。日常操作及錯誤處理見[TPEx法人單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)；固定第一版不加前置。
+
 ## 📖 快速導航
 
 - **快速開始** → 查看 [HOW_TO_UPDATE_DAILY_DATA.md](HOW_TO_UPDATE_DAILY_DATA.md) ⭐ 快速指南

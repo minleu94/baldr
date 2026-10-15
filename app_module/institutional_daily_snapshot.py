@@ -1,4 +1,4 @@
-"""沿原TWSE法人capture保存成功批次時鐘，精確讀回候選事實；不授來源或PIT資格。"""
+"""沿明示法人capture保存成功批次時鐘，精確讀回候選事實；不授來源或PIT資格。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from data_module.daily_source_snapshot import (
 )
 from data_module.institutional_credit_flows_service import (
     PARSER_VERSION, MAX_RESPONSE_BYTES, _candidate_row, _capture_scope_metadata,
-    _capture_scope_specs, _parse_endpoint, _write_json_create_only,
+    _capture_scope_specs, _parse_endpoint, _write_json_create_only, _raw_filename,
 )
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -104,6 +104,7 @@ class InstitutionalDailySnapshotRead:
     candidate_only: bool = True
     source_use_accepted: bool = False
     historical_pit_eligible: bool = False
+    market: str = "TWSE"
 
 
 def _read(path: Path, expected: str | None, maximum: int, pins: list[dict[str, Any]]) -> bytes:
@@ -131,7 +132,8 @@ def _finish(pins: list[dict[str, Any]], callback: Callable[[], bool] | None) -> 
             raise InstitutionalDailySnapshotError("法人來源在讀取期間改變")
 
 
-def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -> tuple[dict[str, Any], list[InstitutionalDailyRow], list[dict[str, Any]]]:
+def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None, *,
+             expected_scope: str | None = None) -> tuple[dict[str, Any], list[InstitutionalDailyRow], list[dict[str, Any]]]:
     """重驗同一原capture/parser/candidate，不查SQL、不重算或擴大來源範圍。"""
     root = _canonical_path(run, "institutional_capture", allow_missing=False)
     pins: list[dict[str, Any]] = []
@@ -140,12 +142,17 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
             or manifest.get("parser_version") != PARSER_VERSION or manifest.get("candidate_only") is not True
             or manifest.get("formal_apply_allowed") is not False or manifest.get("downstream_eligibility") != "none"):
         raise InstitutionalDailySnapshotError("只接受原法人候選capture，不提升用途")
-    scope = _capture_scope_metadata(date.fromisoformat(manifest["as_of_date"]), "twse_institutional")
+    scope_name = manifest.get("capture_scope", {}).get("name")
+    if scope_name not in {"twse_institutional", "tpex_openapi_institutional"} or (expected_scope is not None and scope_name != expected_scope):
+        raise InstitutionalDailySnapshotError("法人批次不在明選支援範圍，不改用其他市場")
+    scope = _capture_scope_metadata(date.fromisoformat(manifest["as_of_date"]), scope_name)
     days = manifest.get("discovered_sessions")
     if (manifest.get("capture_scope") != scope or type(days) is not list or not 1 <= len(days) <= 30
             or any(type(day) is not str for day in days) or days != sorted(set(days))
             or type(manifest.get("session_count")) is not int or manifest.get("session_count") != len(days)):
-        raise InstitutionalDailySnapshotError("必須明選完整TWSE法人範圍與原日期")
+        raise InstitutionalDailySnapshotError("必須明選完整法人範圍與原日期")
+    if scope_name == "tpex_openapi_institutional" and days != [manifest["as_of_date"]]:
+        raise InstitutionalDailySnapshotError("TPEx OpenAPI只支援明確最新單日，不接受歷史discovery")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or len(sources) != len(days):
         raise InstitutionalDailySnapshotError("法人日期分區缺件或重複")
@@ -160,8 +167,8 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
     for day, source in zip(days, sources):
         _cancel(callback)
         session = date.fromisoformat(day)
-        spec = _capture_scope_specs(session, "twse_institutional")[0]
-        raw_relative = Path("raw") / day / "twse_T86.json"
+        spec = _capture_scope_specs(session, scope_name)[0]
+        raw_relative = Path("raw") / day / _raw_filename(spec)
         meta_relative = Path(str(raw_relative) + ".metadata.json")
         candidate_relative = Path("candidate") / "institutional_flows" / f"{day}.json"
         quality = sessions[len(partitions)].get("merged", {}).get("institutional_flows", {})
@@ -215,13 +222,20 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
                 or type(quality.get("accepted_row_count")) is not int or quality.get("accepted_row_count") != len(expected_rows)):
             raise InstitutionalDailySnapshotError("法人解析品質／原候選全文不一致")
         decoded_raw = _json(raw)
-        fields = decoded_raw.get("fields")
-        if (decoded_raw.get("hints") != "單位：股" or type(fields) is not list
-                or any(type(field) is not str for field in fields)
-                or len(fields) != len(set(fields))
-                or not {"自營商買賣超股數", "三大法人買賣超股數"}.issubset(fields)):
-            raise InstitutionalDailySnapshotError("原件缺股數單位或獨立宣告合計欄位，不能補認")
-        original = decoded_raw.get("publicationTime")
+        if scope_name == "twse_institutional":
+            fields = decoded_raw.get("fields")
+            if (decoded_raw.get("hints") != "單位：股" or type(fields) is not list
+                    or any(type(field) is not str for field in fields)
+                    or len(fields) != len(set(fields))
+                    or not {"自營商買賣超股數", "三大法人買賣超股數"}.issubset(fields)):
+                raise InstitutionalDailySnapshotError("原件缺股數單位或獨立宣告合計欄位，不能補認")
+            original = decoded_raw.get("publicationTime")
+        else:
+            # 此端點無hints/time欄；單位依明確Swagger/資料集11856契約，不從metadata shares常數自證。
+            from data_module.tpex_institutional_openapi import FIELDS
+            if type(decoded_raw) is not list or not decoded_raw or any(set(row) != FIELDS for row in decoded_raw):
+                raise InstitutionalDailySnapshotError("TPEx OpenAPI原欄位版本不符")
+            original = None
         original = "" if original is None else original
         if type(original) is not str:
             raise InstitutionalDailySnapshotError("官方時間原文必須是字串")
@@ -272,10 +286,11 @@ def _barrier(directory: Path) -> None:
         raise InstitutionalDailySnapshotError("法人批次仍pending或已失敗")
 
 
-def seal_twse_institutional_capture(
+def seal_institutional_capture(
     run_directory: Path, expected_capture_manifest_sha256: str, *,
     clock: Callable[[], datetime] | None = None,
     check_cancel: Callable[[], bool] | None = None,
+    _expected_scope: str | None = None,
 ) -> InstitutionalDailySnapshotPin:
     """僅在原候選run旁寫新收據；原raw／manifest與正式DB不變。"""
     run = _canonical_path(run_directory, "institutional_capture", allow_missing=False)
@@ -285,7 +300,7 @@ def seal_twse_institutional_capture(
             raise InstitutionalDailySnapshotError("不可在正式／私人資料根寫入法人候選收據")
     _cancel(check_cancel)
     capture_sha = _sha(expected_capture_manifest_sha256)
-    payload, _, inputs = _capture(run, capture_sha, check_cancel)
+    payload, _, inputs = _capture(run, capture_sha, check_cancel, expected_scope=_expected_scope)
     target = run / "daily_snapshot"
     target.mkdir(exist_ok=False)
     _canonical_path(target, "institutional_output", allow_missing=False)
@@ -329,9 +344,10 @@ def seal_twse_institutional_capture(
         raise
 
 
-def read_twse_institutional_daily_snapshot(
+def read_institutional_daily_snapshot(
     pin: InstitutionalDailySnapshotPin, *, stock_code: str, decision_cutoff: datetime,
     check_cancel: Callable[[], bool] | None = None,
+    _expected_scope: str | None = None,
 ) -> InstitutionalDailySnapshotRead:
     """重驗全部原件／品質，返回所選代號；不從最新DB補欄或授予連買／PIT。"""
     if type(pin) is not InstitutionalDailySnapshotPin or type(stock_code) is not str or not re.fullmatch(r"[A-Za-z0-9]{4,12}", stock_code):
@@ -350,7 +366,7 @@ def read_twse_institutional_daily_snapshot(
             or receipt.get("schema_version") != _RECEIPT or receipt.get("manifest_sha256") != pin.manifest_sha256
             or receipt.get("batch_status") != "success"):
         raise InstitutionalDailySnapshotError("法人成功收據不符")
-    expected, rows, source_pins = _capture(directory.parent, manifest["capture_manifest_sha256"], check_cancel)
+    expected, rows, source_pins = _capture(directory.parent, manifest["capture_manifest_sha256"], check_cancel, expected_scope=_expected_scope)
     if manifest != expected:
         raise InstitutionalDailySnapshotError("法人daily manifest與全部原件／解析結果不符")
     first, completed = _local(receipt["first_persisted_at"]), _local(receipt["successful_batch_completed_at"])
@@ -370,4 +386,21 @@ def read_twse_institutional_daily_snapshot(
     _barrier(directory)
     _cancel(check_cancel)
     return InstitutionalDailySnapshotRead(pin, stock_code, tuple(row for row in rows if row.stock_code == stock_code),
-                                          len(rows), first, completed, available, basis)
+                                          len(rows), first, completed, available, basis,
+                                          market=expected["capture_scope"]["markets"][0])
+
+
+def seal_twse_institutional_capture(run_directory: Path, expected_capture_manifest_sha256: str, *,
+                                    clock: Callable[[], datetime] | None = None,
+                                    check_cancel: Callable[[], bool] | None = None) -> InstitutionalDailySnapshotPin:
+    """舊TWSE public port不因新增市場擴大來源範圍。"""
+    return seal_institutional_capture(run_directory, expected_capture_manifest_sha256, clock=clock,
+                                       check_cancel=check_cancel, _expected_scope="twse_institutional")
+
+
+def read_twse_institutional_daily_snapshot(pin: InstitutionalDailySnapshotPin, *, stock_code: str,
+                                           decision_cutoff: datetime,
+                                           check_cancel: Callable[[], bool] | None = None) -> InstitutionalDailySnapshotRead:
+    """舊TWSE public port仍只接受原T86批次。"""
+    return read_institutional_daily_snapshot(pin, stock_code=stock_code, decision_cutoff=decision_cutoff,
+                                             check_cancel=check_cancel, _expected_scope="twse_institutional")

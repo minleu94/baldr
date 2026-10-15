@@ -32,7 +32,7 @@ APPLY_CONFIRM_TOKEN = "apply-institutional-credit-flows"
 DEFAULT_OUTPUT_ROOT = Path("output/data_completion_20260909/flows")
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_LOOKBACK_DAYS = 45
-FLOW_CAPTURE_SCOPES = ("legacy_all", "twse_institutional")
+FLOW_CAPTURE_SCOPES = ("legacy_all", "twse_institutional", "tpex_openapi_institutional")
 
 INSTITUTIONAL_TABLE = "institutional_flows"
 CREDIT_TABLE = "credit_transactions"
@@ -759,7 +759,11 @@ def _endpoint_specs(target_date: date) -> tuple[EndpointSpec, ...]:
 def _capture_scope_specs(target_date: date, capture_scope: str) -> tuple[EndpointSpec, ...]:
     """明選本輪來源；單一法人來源不以信用或另一市場為前置。"""
     if not isinstance(capture_scope, str) or capture_scope not in FLOW_CAPTURE_SCOPES:
-        raise ValueError("capture_scope 必須為 legacy_all 或 twse_institutional")
+        raise ValueError("capture_scope 必須為 legacy_all、twse_institutional 或 tpex_openapi_institutional")
+    if capture_scope == "tpex_openapi_institutional":
+        from data_module.tpex_institutional_openapi import TPEX_OPENAPI_URL, TPEX_OPENAPI_VERSION, TPEX_OPENAPI_ENDPOINT
+        return (EndpointSpec("institutional_flows", "TPEx", TPEX_OPENAPI_ENDPOINT, TPEX_OPENAPI_VERSION,
+                             TPEX_OPENAPI_URL, {}, "tpex_openapi_institutional", "shares"),)
     specs = _endpoint_specs(target_date)
     if capture_scope == "twse_institutional":
         return tuple(spec for spec in specs if spec.endpoint_id == "twse:T86")
@@ -791,6 +795,10 @@ def _parse_endpoint(
     completed_at: datetime,
 ) -> ParsedSource:
     payload_sha256 = _sha256(payload)
+    if spec.parser_kind == "tpex_openapi_institutional":
+        from data_module.tpex_institutional_openapi import parse_tpex_institutional_openapi
+        return parse_tpex_institutional_openapi(payload, requested_date=requested_date, completed_at=completed_at,
+                                                spec=spec, payload_sha256=payload_sha256)
     if spec.parser_kind == "twse_institutional":
         return _parse_twse_institutional(payload, requested_date=requested_date, completed_at=completed_at, spec=spec, payload_sha256=payload_sha256)
     if spec.parser_kind == "tpex_institutional":
@@ -1209,6 +1217,11 @@ def capture_recent_flows(
     if max_lookback_days < sessions:
         raise ValueError("max_lookback_days 必須足以涵蓋 sessions")
     scope_metadata = _capture_scope_metadata(as_of_date, capture_scope)
+    if capture_scope == "tpex_openapi_institutional" and (
+        type(sessions) is not int or sessions != 1 or type(max_lookback_days) is not int or max_lookback_days != 1
+        or type(max_attempts) is not int or max_attempts != 1
+    ):
+        raise ValueError("tpex_openapi_institutional 僅接受明示單日 sessions=1 / max_lookback_days=1 / max_attempts=1")
     source_ids = scope_metadata["source_ids"]
     transport_fn = transport or _default_transport
     output_path = Path(output_root).expanduser().resolve()
@@ -1227,7 +1240,13 @@ def capture_recent_flows(
     # 先用 TWSE T86 找最近官方 sessions，避免把週末／休市日寫成 0 rows。
     discovered: list[date] = []
     discovery_responses: dict[str, tuple[HttpResponse, list[dict[str, Any]], datetime, EndpointSpec]] = {}
-    for offset in range(max_lookback_days + 1):
+    if capture_scope == "tpex_openapi_institutional":
+        # 此API沒有歷史日期參數，絕不借T86找日期或假裝可回補。
+        spec = _capture_scope_specs(as_of_date, capture_scope)[0]
+        response, attempts, completed_at = fetch_spec(spec)
+        discovered.append(as_of_date)
+        discovery_responses[as_of_date.isoformat()] = (response, attempts, completed_at, spec)
+    for offset in range(0 if capture_scope == "tpex_openapi_institutional" else max_lookback_days + 1):
         candidate_date = as_of_date - timedelta(days=offset)
         spec = _endpoint_specs(candidate_date)[0]
         try:
@@ -1504,6 +1523,7 @@ def rebuild_flow_manifest_from_raw(
                 )) or source_id != selected_spec.source_id:
                     raise FlowCaptureError("原始 endpoint 身分／單位與選定 capture_scope 不符")
             parser_kind = {
+                "tpex:openapi:3insti_daily_trading": "tpex_openapi_institutional",
                 "twse:T86": "twse_institutional",
                 "tpex:3itrade": "tpex_institutional",
                 "twse:MI_MARGN": "twse_credit",

@@ -2,6 +2,32 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment53：P03明選TPEx法人OpenAPI與每日版本
+
+**解除的流程阻礙**：原TPEx法人web parser不能讀政府資料集11856對應OpenAPI的完整三類aggregate，而原capture的T86 discovery又成為其他市場前置。此葉沿原P03/F09增量補明選最新單日、原件／品質／成功版本／public reader與正常頁；固定V1已交付，不增試用前置，不重造取得框架。Root金融／共用ports／整合／QA／文件單寫；重用三名既有Luna Max靜態葉片，累計10/10，無新agent或子代理。
+
+Root先核原attempt與Increment45既存11856線索，重用 `output/pit_registry_probe_20260908/tpex_swagger.raw` 476923bytes／SHA `05af7755d0d528626c104f7a8ccd7b00c6a0cf228d30bcb4669020e514eb0c7e`，不重抓。政府[資料集11856](https://data.gov.tw/dataset/11856)明列每日股數與政府資料開放授權第1版、指向TPEx OpenAPI／Swagger；本輪完整HTML526503bytes／SHA `4bb3a58a6dd708cf7d49a2cb3943feb85896184ca3a3748702db559ffef771c5`。這是指定資料集的證據，不能授TPEx年度calendar、T86或舊web整個來源桶。metadata API透過web工具未成功，另保留為無raw EOF觀測，不以搜尋摘要代原件。
+
+新scope只允許 `https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading` GET一次、無query／redirect／retry、20秒含worker啟動／8MiB。真原件851715bytes／SHA `62c079377da617bee40ef62614530085fcd61961233d3178a046cc169aab529a`、898列／1151015、HTTP200／EOF。原HTTP收據SHA `8c8f3d3b1090bac7cfa9d8c980ea63f2438e1578a1d8afda49a1f803ea8b3f4a`；資料集文件與API共兩個新request，舊月營收／TWSE Swagger及t187ap05_L已耗額度、MOPS partial缺EOF及TPEx年度calendar授權缺件均未重置。
+
+新parser按原20個字串欄名核schema，含原空白／拼字，不suffix猜欄；明示ROC3+2+2、同日唯一代碼，拒float／bool／數字token／null／缺欄與重複JSON key。外陸資不含自營＋外資自營逐項加總核aggregate，三類各核buy−sell=net與官方三大合計，只顯示有來源的九原整數股數；未提供的自營商自行／避險分項不反推，ETF等原證券列保留，不算真N。新scope只接受明示report日、sessions／lookback／attempts整數1，不查歷史、不T86 discovery或其他來源fallback。原TWSE與legacy_all不變；新增generic daily ports沿原全部守衛，舊TWSE wrappers仍拒TPEx，Read DTO末尾market有相容預設。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 276 | route通過，Root另履行DataAudit／TechLead；政府資料集原件單次GET完整保存。 | `single_owned_qa_9d89792ce541468bb4e8921bfc91947f/receipt.json`；`c7ec58325ebf0209221915ba5853e634f5d327930bfbe2f3113896e44f836c5c` |
+| 277 | 指定TPEx OpenAPI單次GET／898列完整保存，尚不授品質／用途。 | `single_owned_qa_a960ce311bfe4ad8bc7ab5d4c0df834b/receipt.json`；`0ab26b37b0475dccc4cad922e79f996e68c910678d3dd9bd5161082cca772b17` |
+| 278 | compile通過，原generic日期helper把7位民國日誤當較短西元格式而FAIL，未成功seal；原件／a保留。 | `single_owned_qa_5a3379f02ac54abdbc572f6a54d90d92/receipt.json`；`bb396ab35d4bb1d9f9217d924bf4b36ab5c7760630b5a25829c898d016189986` |
+| 279 | 新parser只改明示民國日解析，不改全庫舊helper；真898列品質、同原件重播／成功seal／真提前小時拒讀通過，無HTTP。 | `single_owned_qa_43c832242a1542fbb5c0701e1177e2d2/receipt.json`；`78d1e55379d6b26e524541bdf2d5c5136fd5b1eec165b1982fb3de74749333f8` |
+| 280 | 全部葉片凍結後compile9檔＋Main helper；199PASS含新舊capture／rebuild／daily／兩UI與Workbench85，1新測試誤讀grouped source端點欄而FAIL；原斷言保留。data_pipeline Level2讀4來源7050字元，daily guide為headings_only，Root另核現行法人段，非全篇覆核。 | `single_owned_qa_22e7473df39c47eaadddae2c73320def/receipt.json`；`626083f161a049176bebb1d22b2781e9769886b453f8c05bac60b18d3a012957` |
+| 281 | 只將新測試的端點／版本／單位斷言移至原raw metadata位置，定向1PASS／compile；八roots mypy1031、validator25PASS／0FAIL／4protected skips通過。未重跑199已過項，UI legacy ignore不證強型別。 | `single_owned_qa_2a4a149df07e47f2840942efc2e98cfa/receipt.json`；`00d139625c82e0d87b2f3e6fb3fa453446f706d201b751145894b18d2f6624ca` |
+
+本次daily重播已保存且核過EOF的原HTTP，capture metadata時鐘是重播讀回完成，真正上游HTTP時鐘仍留原receipt；沒有假裝新增網路或回填首次保存。新成功版本以真台北10/16 **06:45:15** 保存，完成同小時，**07:00**才可用／successful_batch_completion_fallback；提前真cutoff已正確拒讀。manifest SHA `9772e459b8d9b9bdf88f792cdbae7c458e094aa6ec9dff9ff891aeb6bec44435`，receipt SHA `7bfdf0c416a59a3326d29ee57b5f2dc3ae98b862c00c8f9d81baedf3406aefb7`；不改原HTTP／文件／Swagger內容與時間。**QA288真07:00後正常Main32628→fresh37900已通過**：沿原左側導航→數據更新→三大法人，明選同pin的6488／8069／00679B，九原int／898母體／版本／原SHA／時間依據、切至Watchlist再返回及新程序重開一致。7批次檔與17上游HTTP／文件／Swagger的bytes／SHA／mtime／ctime不變，socket0，capture／transport／apply／seal均禁止；沒有未來clock。空隔離market root的companies.csv／SQLite缺件警告原樣保留，不冒充完整行情。保留原15秒UI／120秒phase／270秒driver期限與native Job membership終態；這是正常Qt offscreen旅程，不授Native／EXE或完整F09。
+
+
+QA282已驗10同步正文／12features、context metadata30來源，errors=[]；outer `single_owned_qa_78d22314243c45ada80568ce76f0993d/receipt.json`／SHA `2f20e84e32bc5038fd105f26cf86a5c7c3f445c5c20c4424bbd764de4f913ed1`。Root指南複核另將新TPEx CLI的報告日改為必填，缺值在capture／今日猜測前拒絕，其他scope原今日預設不變。QA283、287僅備妥未執行，spec保留；QA284因本owner可變task.json在spec後補註記，preflight SHA拒絕，Python／Job未起，新spec僅移除本owner可變state pin、舊task與來源守衛保留。QA285 compile通過，但五新CLI案例的basetemp指向未執行284的父目錄，collect後setup五ERROR，案例未開始；outer `single_owned_qa_0ca6c29963d24bd182790adf273cafdb/receipt.json`／SHA `909f8982afeafaeb85314dd24495608c9e28b07849238a50b2e07b6efcebf11e`。QA286只改新有界temp後定向5PASS／36 deselected，outer `single_owned_qa_1f7eda0ed3f04f2393b45737f92b2b7b/receipt.json`／SHA `006f1c226c7ee15e9c8b2f68a00dead4c406da4e03eae0ee7bf5fb9d2beabab3`，未重跑199已過路徑。QA288 compile現轉接與真Main／fresh通過，outer `single_owned_qa_f8f845a20f1246528b5f0ffd745e654f/receipt.json`／SHA `369f59164c662b1374f6c8385a5527f593a4d392803e3f5cd9b1eb17577e2be1`。
+
+操作指南、來源契約／current資料架構、功能地圖／UI文件及原計畫同步。source_use_accepted=false／historical_pit=false維持P0邊界，未寫正式來源決策或SQL、未啟Task／maintainer、未push／發布／交易；不限期將TPEx所有資料當同一授權，也不把candidate facts當完整F09或Gate。各Job固定8GiB／12程序／kill-on-close／同workspace mutex、啟動RAM≥8GiB，下組先查三PID陣列自然空、process／Job handles關閉及mutex釋放，沒有強制清場成功。原完整範圍與原FAIL繼續保留。
+
 ## Increment52：P06配置研究登錄與正常Registry重開
 
 **解除的流程阻礙**：第二階段已有完整情境原件，卻無法從正常 Registry 找回。沿原 §7.1／§9.5 增加明確登錄及 exact 重開，不重造情境引擎。第一版四流程已固定交付，此增量不增加試用前置，也不混入 `4b530a7e` EXE。手動／聲明缺全帳現金聲明及同源 Health／行情仍歸 D；不以成本／預設零／Paper 證據補 NAV。

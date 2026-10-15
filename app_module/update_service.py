@@ -821,8 +821,8 @@ class UpdateService :
         decision_cutoff: datetime, cancel_callback: Callable[[], bool] | None = None,
     ) -> "InstitutionalDailySnapshotRead":
         """明選原法人批次；不查latest、不抓取／寫SQLite或啟動排程。"""
-        from app_module.institutional_daily_snapshot import read_twse_institutional_daily_snapshot
-        return read_twse_institutional_daily_snapshot(
+        from app_module.institutional_daily_snapshot import read_institutional_daily_snapshot
+        return read_institutional_daily_snapshot(
             pin, stock_code=stock_code, decision_cutoff=decision_cutoff, check_cancel=cancel_callback,
         )
 

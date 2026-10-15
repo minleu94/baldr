@@ -66,7 +66,9 @@ class InstitutionalDailySnapshotWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        layout.addWidget(self._new_label("固定 TWSE 法人批次（唯讀）"))
+        layout.addWidget(
+            self._new_label("固定法人批次（TWSE／TPEx OpenAPI，唯讀）")
+        )
 
         self.directory_edit = QLineEdit(self)
         self.directory_edit.setPlaceholderText("輸入固定批次目錄")
@@ -231,6 +233,10 @@ class InstitutionalDailySnapshotWidget(QWidget):
             self.show_error(f"批次結果不符合唯讀顯示契約：{exc}")
 
     def _validate_result(self, result: InstitutionalDailySnapshotRead) -> None:
+        if not isinstance(result, InstitutionalDailySnapshotRead):
+            raise ValueError("結果型別不是固定法人批次讀取 DTO。")
+        if result.market not in {"TWSE", "TPEx"}:
+            raise ValueError("市場只能是 TWSE 或 TPEx。")
         if result.candidate_only is not True:
             raise ValueError("candidate_only 必須為 True。")
         if result.source_use_accepted is not False:
@@ -269,6 +275,7 @@ class InstitutionalDailySnapshotWidget(QWidget):
         ).isoformat()
         available = result.available_hour.astimezone(_TAIPEI_TIMEZONE).isoformat()
         return (
+            f"市場：{result.market}\n"
             f"Manifest SHA-256：{pin.manifest_sha256}\n"
             f"Receipt SHA-256：{pin.receipt_sha256}\n"
             f"股票代碼：{result.stock_code}；批次母體筆數：{result.total_records}；"

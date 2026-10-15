@@ -34,6 +34,7 @@
 `app_module/backtest_service.py`、`batch_backtest_service.py`、`optimizer_service.py`、`walkforward_service.py` 與推薦組合回放服務組合 `backtest_module/`。服務負責資料讀取、策略執行、結果保存與交接；UI 不自行計算訊號、撮合、權重或績效。
 
 - `next-session-open.v2` 在 T 日收盤形成委託，於下一個有效且可交易 session 開盤撮合；停牌、零量或缺開盤時不回退到收盤價。
+- 單股撮合未成交仍進入當日收盤處理，保留逐session權益、原反向取消及下一開盤使用的最近完成收盤；限價／量能／費稅／整手公式不改。預存MACD重用沿重算相同的MACD_Signal別名，原NaN及既有欄位優先保留，scorer觀測守衛不變。
 - 明確標記的舊同日收盤路徑保留其舊語意；未版本化舊 run 不會被改寫成新契約。
 - benchmark、特徵、標準化、篩選、停損停利與交易價格只使用決策當時可取得的資料。
 - Walk-forward 的 OOS 交易狀態在測試窗起點重設；訓練窗口可提供 T-1 歷史特徵，不能把訓練期持倉或交易混進 OOS 績效。

@@ -6,13 +6,15 @@
 
 此為原 `institutional-credit-flows-candidate-bundle.v1` 的獨立 JSON companion，限定 `twse_institutional`／原T86／1–30個排序唯一日期。原 parser／source version、整數股數與 candidate 不變，不借 MOPS record 或另一 revision reader namespace 的接受。`institutional-daily-manifest.v1` 綁原 capture manifest 外部SHA、完整raw／metadata／candidate／readback的絕對路徑、bytes及SHA、原始官方時間文字／台北時間、來源時鐘與原報表列總數；這個總數不是股票 universe 或真N。
 
-原transport以8MiB上限有界讀取，metadata的 `flow-http-body.v1` 保存EOF、body bytes、宣告Content-Length及encoding。新seal必須identity／完整EOF且宣告長度若存在須相等；壓縮回應只保留原capture相容，不冒稱原壓縮body的新seal證據。舊件缺EOF拒絕，不追補證據。逐分區核端點／市場／股數單位／版本／params、原parser重播、quarantine=0、accepted counts與candidate全文（含bool/int區別），不從SQL或目前資料補齊。
+原transport以8MiB上限有界讀取，metadata的 `flow-http-body.v1` 保存EOF、body bytes、宣告Content-Length及encoding。新seal必須identity／完整EOF且宣告長度若存在須相等；壓縮回應只保留原capture相容，不冒稱原壓縮body的新seal證據。舊件缺EOF拒絕，不追補證據。逐分區核端點／市場／股數單位／版本／params、原parser重播、quarantine=0、accepted counts與candidate全文（含bool/int區別），不從SQL或目前資料補齊。Increment43另核原body的 `hints=單位：股`、唯一欄名與自營商／三大法人獨立宣告合計欄；metadata的常數shares不能代替原件單位證據。原parser有單位文字卻不符時拒絕，列內宣告合計與各分類重組不符時隔離；legacy缺欄候選仍保留原解析語意，但不可新seal／exact-open每日版本。
 
 `seal_twse_institutional_capture` 只在明選run旁建立 `daily_snapshot`；拒正式／私人資料根，原件不改。pending及manifest exclusive-create並fsync／讀回後取首次保存時間，全部原件再核驗後取批次完成時間，首次與完成不得跨小時／倒退。`institutional-daily-receipt.v1` 綁manifest SHA、兩時鐘、時間政策及可用小時；官方時間向上取整與成功批次guard取較晚者，缺官方小時明示 `successful_batch_completion_fallback`。整點完成沿原guard留下一可用小時，決策cutoff本身不取整。
 
 收據寫入讀回後再次核全部bytes／SHA／完整file signature，再取最終時鐘，確認仍早於可用小時並檢查取消，才移除pending。完成時鐘是上述批次驗證後的取樣，`completion_basis=durable_raw_candidate_manifest_and_pending_closed` 指檔案寫入handle已關閉，並非宣稱此刻已移除pending；不宣稱另存了最終unlink時間或OS crash原子持久性。失敗保留pending／failure並拒讀，更正另存，不覆寫版本。
 
 `read_twse_institutional_daily_snapshot` 要求 caller 的絕對目錄與manifest／receipt雙外部SHA；讀前後拒pending／failure、重驗原capture全批原件／品質與manifest全文、重算小時並要求 `available_hour <= decision_cutoff`。返回前再次重讀bytes／signature及檢查取消；不掃latest或回落其他來源。只回所選證券代碼原列，零匹配不造零值。正常UpdateService／法人頁為純讀取consumer；`candidate_only=true`、`source_use_accepted=false`、`historical_pit_eligible=false`固定，沒有日曆連買／來源用途或歷史資格。限定離線Main／fresh、失敗及修正證據見[Increment42 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment42p03法人成功批次與正常唯讀頁)。
+
+Increment43取得2026/10/15單日真T86原件、EOF及21,000列品質，保存批次於台北10/16 03:23，最早可用04:00；原件無官方發布小時，basis保留批次fallback。這不是21,000檔股票接受或歷史版本認證，不能為立即顯示而注入未來cutoff。真來源取得、單位／品質、用途／授權接受及正常Main／fresh是不同證據，進度見[Increment43 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment43p03真t86單日原件與宣告合計守衛)。
 
 ## 時間與版本
 

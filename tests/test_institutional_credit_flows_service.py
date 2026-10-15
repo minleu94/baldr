@@ -40,11 +40,12 @@ def _twse_institutional_payload(day: str) -> bytes:
     ]
     row = [
         "2330", "台積電", "100", "50", "50", "10", "5", "5", "30", "20",
-        "10", "5", "4", "3", "1", "6", "2", "4", "69",
+        "10", "5", "4", "3", "1", "6", "2", "4", "70",
     ]
     payload = {
         "stat": "OK",
         "date": compact,
+        "hints": "單位：股",
         "publicationTime": f"{day}T17:30:00+08:00",
         "fields": fields,
         "data": [row],

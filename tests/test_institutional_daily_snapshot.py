@@ -34,6 +34,63 @@ _FIXED_CAPTURE_CLOCK = datetime(2026, 9, 8, 10, 0, tzinfo=timezone.utc)
 _CUTOFF = datetime(2026, 9, 8, 20, 0, tzinfo=_TAIPEI)
 
 
+@pytest.mark.parametrize("column", [11, 18])
+def test_capture_rejects_official_totals_that_disagree_with_components(tmp_path, monkeypatch, column):
+    original = _fake_transport
+
+    def inconsistent(url, params, timeout):
+        response = original(url, params, timeout)
+        decoded = json.loads(response.payload)
+        decoded["data"][0][column] = "999"
+        return replace(response, payload=json.dumps(decoded, ensure_ascii=False).encode())
+
+    monkeypatch.setitem(globals(), "_fake_transport", inconsistent)
+    with pytest.raises(FlowCaptureError, match="沒有可接受資料列"):
+        _capture_twse(tmp_path, monkeypatch)
+    # 失敗仍留下真正收到的原件，不將本機算出的合計覆蓋官方值。
+    saved = list((tmp_path / "flows").glob("runs/*/raw/*/twse_T86.json"))
+    assert saved and json.loads(saved[0].read_bytes())["data"][0][column] == "999"
+    assert not list((tmp_path / "flows").glob("runs/*/manifest.json"))
+
+
+@pytest.mark.parametrize("unit", ["單位：張", "單位：千股", None])
+def test_capture_rejects_conflicting_official_quantity_unit(tmp_path, monkeypatch, unit):
+    original = _fake_transport
+
+    def wrong_unit(url, params, timeout):
+        response = original(url, params, timeout)
+        decoded = json.loads(response.payload)
+        decoded["hints"] = unit
+        return replace(response, payload=json.dumps(decoded, ensure_ascii=False).encode())
+
+    monkeypatch.setitem(globals(), "_fake_transport", wrong_unit)
+    with pytest.raises(FlowCaptureError, match="原件股數單位不符"):
+        _capture_twse(tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize("missing", ["unit", "dealer_total", "three_total"])
+def test_daily_seal_requires_raw_unit_and_declared_total_evidence(tmp_path, monkeypatch, missing):
+    original = _fake_transport
+
+    def old_evidence(url, params, timeout):
+        response = original(url, params, timeout)
+        decoded = json.loads(response.payload)
+        if missing == "unit":
+            decoded.pop("hints")
+        else:
+            column = 11 if missing == "dealer_total" else 18
+            decoded["fields"].pop(column)
+            for row in decoded["data"]:
+                row.pop(column)
+        return replace(response, payload=json.dumps(decoded, ensure_ascii=False).encode())
+
+    monkeypatch.setitem(globals(), "_fake_transport", old_evidence)
+    run, captured = _capture_twse(tmp_path, monkeypatch)
+    with pytest.raises(InstitutionalDailySnapshotError, match="股數單位或獨立宣告合計"):
+        _seal(run, captured["manifest_sha256"])
+    assert not (run / "daily_snapshot").exists()
+
+
 def test_reader_rejects_pending_barrier_after_valid_publication(tmp_path, monkeypatch):
     run, captured = _capture_twse(tmp_path, monkeypatch)
     pin = _seal(run, captured["manifest_sha256"])

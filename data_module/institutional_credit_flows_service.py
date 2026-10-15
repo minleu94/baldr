@@ -348,6 +348,8 @@ def _parse_twse_institutional(
         raise FlowCaptureError(f"TWSE T86 官方狀態: {decoded.get('stat')!r}")
     observation_date = _require_date(decoded, requested_date)
     publication_at = _parse_publication_at(decoded)
+    if "hints" in decoded and decoded["hints"] != "單位：股":
+        raise FlowCaptureError("TWSE T86 原件股數單位不符")
     parsed_rows: list[dict[str, Any]] = []
     quarantine: list[dict[str, Any]] = []
     for index, raw in enumerate(_twse_rows(decoded, table=False)):
@@ -373,6 +375,13 @@ def _parse_twse_institutional(
             _validate_flow_quantities(raw, prefix="foreign", buy=foreign_buy, sell=foreign_sell, net=foreign_net)
             _validate_flow_quantities(raw, prefix="trust", buy=trust_buy, sell=trust_sell, net=trust_net)
             _validate_flow_quantities(raw, prefix="dealer", buy=dealer_buy, sell=dealer_sell, net=dealer_net)
+            # 官方宣告合計獨立核對，不能只驗本機重組後的買賣差額。
+            if ("自營商買賣超股數" in raw and
+                    _as_int(raw["自營商買賣超股數"], field_name="自營商宣告合計") != dealer_net):
+                raise FlowCaptureError("TWSE T86 自營商宣告合計不守恆")
+            if ("三大法人買賣超股數" in raw and
+                    _as_int(raw["三大法人買賣超股數"], field_name="三大法人宣告合計") != foreign_net + trust_net + dealer_net):
+                raise FlowCaptureError("TWSE T86 三大法人宣告合計不守恆")
             item = _base_row(
                 symbol=raw.get("證券代號"), requested_date=requested_date,
                 source_version=spec.source_version, completed_at=completed_at,

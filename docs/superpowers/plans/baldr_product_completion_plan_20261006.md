@@ -589,6 +589,8 @@ Increment41 沿原法人capture增加明選TWSE T86範圍，解除舊入口強�
 
 Increment42 已解除上述成功批次時鐘／固定public reader／正常數值出口缺口：沿原capture／parser核EOF、全批原件、整數品質及時間，旁存不可覆寫版本，正常法人頁以目錄與雙SHA唯讀開啟；合成Main／fresh同pin及最終取消／跨小時定向反例通過，原FAIL保留。屬第二階段，不改固定V1或新增其前置；此為候選事實檢視，無真HTTP／用途接受／歷史PIT或連買資格，報表列數不當股票真N。下一P03出口先核T86既有attempt、官方用途／欄位單位證據與精確取得scope；已耗TWSE Swagger／t187ap05_L及月營收GET不重抓。P06原snapshot雖有cash／marks，來源時間與估值一致性尚缺，沿原repository補核而不混帳或補值；P07／P08正常實驗與其餘原包持續推進，不等真人試用、不以unknown卡結案。
 
+Increment43解除本葉只有合成原件的阻礙：核T86自身舊attempt後只取2026/10/15一次，保存真body／EOF並沿原capture／parser／seal，21,000報表列／0quarantine、股單位與全部分類／官方合計／candidate一致。並修原parser漏核宣告合計，daily reader不再只信metadata單位；缺原證據拒絕，不回填舊artifact。8新反例及受影響路徑共50PASS，原合成fixture錯69修70且原斷言保留。真成功批次最早台北10/16 04:00可用，之前不以未來cutoff或改clock取巧；到時沿同一pin做正常讀回／Main／fresh，不再抓取或重跑未影響QA。用途／授權仍獨立補齊，前瞻用途不要求虛構完整歷史PIT；不新增V1前置，原完整包與P06等其餘缺口繼續。
+
 Scrapling 是 P03 的**工具選項**，不全面改寫抓取系統，也不假定能突破 MOPS WAF。Root 在 task-owned 隔離環境釘套件版本，限制股票／期別／請求數、總期限及程序樹；只保存隔離原件與版本快照。取得鏈成功後才沿既有 data ports／更新服務接上「抓取→原件／版本快照→解析與品質檢查→保存→public reader→正常 UI→新程序重開」。HTTP／WAF／解析／時間／文件連結任一失敗均留原件與原因，未驗 browser/session 不宣稱可用。
 
 下一批順序：P00 小時與用途契約／因果反例 → P03 小範圍官方 API 對照及 MOPS 真取得鏈 → immutable 快照、一次性接受與批次驗證 → public reader／更新服務與正常 UI／新程序。P07 只接已齊資料及已定版規則；P12 接 batch 成功／失敗／隔離／重試狀態，正式 Task 不變；P13 收受影響回歸／真來源／Native；P14 在固定來源版上收同版 EXE。P02／P05／P08／P09 等其他增量可平行，Python／QA 仍由 Root 串行。

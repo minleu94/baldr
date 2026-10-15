@@ -81,7 +81,7 @@
 .\.venv\Scripts\python.exe scripts\complete_institutional_credit_flows.py seal --run-dir C:\absolute\capture\run --capture-manifest-sha256 <原capture的64字元小寫SHA256>
 ```
 
-`seal` 不連網或 apply；僅在指定 run 旁 create-only 建立 `daily_snapshot`，輸出其目錄、manifest SHA 與 receipt SHA。原件、原 manifest 與正式資料保持不變。需原 HTTP 完整 EOF、長度、來源／版本／股數單位、原 parser 品質與全部 candidate 讀回一致；舊 capture 缺 EOF 證據時拒絕，不能手補欄位認證。失敗保留 pending／failure，修正另存新版本，不覆寫原收據。
+`seal` 不連網或 apply；僅在指定 run 旁 create-only 建立 `daily_snapshot`，輸出其目錄、manifest SHA 與 receipt SHA。原件、原 manifest 與正式資料保持不變。需原 HTTP 完整 EOF、長度、來源／版本、原件明示「單位：股」、官方獨立宣告合計、原 parser 品質與全部 candidate 讀回一致；舊 capture 缺 EOF／原單位／合計欄證據時拒絕，不能手補欄位認證。原件宣告自營商或三大法人合計與分類數字矛盾，會保留原件並拒絕／隔離，不重算後覆寫官方值。失敗保留 pending／failure，修正另存新版本，不覆寫原收據。
 
 1. 開啟「數據更新 → 三大法人」，找到「固定 TWSE 法人批次（唯讀）」。一般更新動作仍走原流程；此區不觸發下載。
 2. 輸入上述 `daily_snapshot` 絕對目錄、manifest／receipt 雙 SHA 及證券代碼，按「開啟指定批次」。每次開啟固定當下截止時間，不搜尋最新版本。
@@ -90,7 +90,7 @@
 
 只有基準日期時採成功批次完成的小時依據，不能用舊列級 `available_at` 代替。保存與完整再核驗須在可用小時之前完成；尚未到可用小時、缺原件、SHA／版本錯誤、pending 或來源讀取中變動皆拒絕並清除舊結果。修改輸入或按「取消／清除結果」會清除畫面並合作取消，須等本輪 worker 安全返回才能再讀。切至其他工作區再返回可保留已載入結果；新程序仍需明選同一目錄與雙 SHA。
 
-產物仍為 candidate-only，`source_use_accepted=false`、`historical_pit_eligible=false`；已驗證的是離線保存／讀回工程，尚無本輪真官方取得與用途／單位接受。連買、跨市場交易日及歷史指標繼續不可用；不要正式 apply、搬回正式資料或以此認證歷史 PIT。詳[本輪 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment42p03法人成功批次與正常唯讀頁)。
+產物仍為 candidate-only，`source_use_accepted=false`、`historical_pit_eligible=false`。Increment43已保存2026/10/15真官方單日原件並核單位／分類合計與全批candidate一致，但用途／授權接受及真來源正常Main／新程序仍待；不要從工程PASS推成來源已接受。該批台北10/16 03:23成功保存，最早04:00可用，在此之前開啟會正確拒絕；不要改電腦時間或cutoff繞過。連買、跨市場交易日及歷史指標繼續不可用；不要正式 apply、搬回正式資料或以此認證歷史 PIT。詳[本輪 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment43p03真t86單日原件與宣告合計守衛)。
 
 ### 每日快照的時間判讀
 

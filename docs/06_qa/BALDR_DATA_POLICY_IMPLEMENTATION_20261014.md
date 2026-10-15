@@ -960,3 +960,30 @@ QA193 owner `increment42_institutional_main_fresh_a/` 的parent／fresh SHA分�
 
 尚缺真官方取得及指定用途／欄位單位接受、日常固定成功批次運轉、兩市場日曆／連買／歷史PIT、全市場真N、Native／EXE與完整產品Gate。既有舊月營收／TWSE Swagger／t187ap05_L scope不重抓；T86先核其自身attempt與官方證據，不能把別的scope耗盡或合成PASS當其資格。P06原snapshot實有cash／marks，但缺mark可得性及估值一致性證據，不從股數反推或混策略帳；其餘原包持續，不把unknown卡當功能交付。固定V1四旅程與收據／20不可變輸入不改，正式資料／Task／maintainer不碰。
 QA195文件終驗通過：12features／12本輪文件及context metadata30sources，errors=[]；transport最終版本compile通過。outer `single_owned_qa_1cea14067e4d4e76a6052e470cd5f02c/receipt.json`，SHA `8bfbbab0bcfa5ce577fab649dbb8b581f2607bfd929ccf1892a286c88837c864`。Root另核QA189–195七組收據與自然閉鎖、八個最終來源pin、固定V1 EXE／20不可變輸入、舊task／兩版capture及其他owner原件不變；owner `increment42_final_integrity.json` SHA `5e1bb8ebb453dc8ab341711892f805983e4f78025d8383dd19bab79458516455`。文件檢查後只追加本段收據／完整性記錄，不授產品Gate。
+
+## Increment43：P03真T86單日原件與宣告合計守衛
+
+本葉解除Increment42只驗合成資料、未有本輪真T86原件的阻礙，同時修原parser未核官方獨立宣告合計／raw單位的金融品質缺口。沿原P03／F09取得→原件→品質→seal／public reader，不另造框架、不擴TPEx／信用、不新增固定V1前置。固定9fa四旅程及原完整計畫仍保留。
+
+Root先核208個具名attempt／scope／acquisition／ledger檔，未找到本次T86精確scope；原兩run共11份T86 metadata日期為2026/08/26–09/08，沒有本次10/15。清冊 `increment43_t86_legacy_attempts.json` 另存於owner，不改舊原件；月營收GET、TWSE Swagger／t187ap05_L已耗scope與MOPS partial／缺EOF保持，不重置。新 `increment43_t86_scope_a.json` SHA `cda78ba64b892c17d84f223af35e7865b7323c527e7a67107e7d553b3e75d598` 限原 `/fund/T86?response=json&date=20261015&selectType=ALL` 一次GET、8MiB、包含worker啟動20秒、零retry／redirect。原discovery可能迭代前日，owner transport在第二次呼叫前硬拒絕，沒有第二次網路請求。QA196只準備未啟動；Root靜態補HttpResponse必填attempts後另存QA197，不覆寫原spec或消耗額度。
+
+QA197真取得於本機10/15 12:23:44–12:23:48（UTC19:23、台北10/16 03:23），3.718秒完成：HTTP200、identity body、2,709,038bytes、完整EOF、無Content-Length（以EOF為完整性證據）。原受控helper的實際worker／named Job membership、PID退出／handle關閉均核；沒有browser／cookie延伸／WAF重試。HTTP收據 `increment43_t86_official_a/attempt01/receipt.json` SHA `ecd98a422fe9862dfe29af5e56c63ab24c60ca70d2ba5a7e845cfebc22a853c9`，raw SHA `32742e7c2e4d70ff9c79449dd6259a8e9564b06a13932d1a6d50adc16b28edcb`。本輪所有相對產物均位於owner `output/tasks/baldr-completion-resume-20261014-01a13cf9/`。
+
+原 `capture_recent_flows` 重用該同一回應，保存run `increment43_t86_official_a/candidate/runs/20261015T192344979347Z/`；capture manifest SHA `fb63e56af7ae3af00878cb36ac712257839ee82c0f7d4ec81126f153543f9b6f`，21,000 accepted／0 quarantine。daily pin為該run的 `daily_snapshot`，manifest SHA `75684454b233dd6e0f05f142007774b0660b233053b154f7c995231d1ed7d582`、receipt SHA `f882fb50339ece3288b8f519513be7cbcfdd1841755a0f3c0ef80ecdd3901c8b`。首次保存台北03:23:50.596781、完成03:23:50.614531，無官方publicationTime，明示successful_batch_completion_fallback，最早04:00可用。QA197以真正當下cutoff得到正確提前拒讀，不注入未來時鐘；保存不等於立即可用或歷史PIT。
+
+QA198獨立只讀核原全部21,000列：19唯一欄、股單位、唯一證券代號、每類買減賣、外資自營／自營自行及避險、官方自營合計及三大合計、全candidate九個整數值皆一致；2330／2317／2454／0050留原數值，15個來源／取得檔bytes／SHA／mtime／ctime不變。原body含ETF等證券，這是報表列總數，不是股票universe或真N。原notes的統計範圍及未按錯帳更正調整限制保留，單日買超不推連買。
+
+原parser只驗重組後買賣差額，可能忽略另列合計矛盾；本次加獨立宣告自營／三大合計交叉核驗，原body有hints卻非「單位：股」即拒絕。每日seal／exact reader還要求原body單位、唯一欄名與兩個合計欄，metadata的shares常數不能自證單位。legacy缺欄候選原解析相容，但不能新seal或exact-open每日版本，舊artifact不改寫。新8反例涵蓋2錯合計、3錯單位及3缺原證據；錯誤原件保留，無成功manifest／daily產生。共享合成fixture原三大合計69與55+10+5矛盾，修70並加原件股單位；所有原斷言及9007199254740993精度案不變，不降低守恆。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 197 | 單次真取得、原capture／品質／seal及提前真clock拒讀，helper compile通過；未授用途接受。 | `single_owned_qa_97e32ab56c554c949a5493e82761d81c/receipt.json`；`678d4f3a732ae4b9608acbb6ed2cfec8c1d4106fe9df78d1e97db69b7dab2c68` |
+| 198 | 全21,000列獨立原始分類／合計／candidate核對與15來源不變通過，無HTTP。 | `single_owned_qa_fa0ef899b14749c4981e3fb010230997/receipt.json`；`b5207ad7a1ef6cb26e7c370814e930df0022427984e66550fd99e4bd17659254` |
+| 199 | 新8反例＋受影響原service／scope／daily／UpdateView讀回共50PASS、compile5、兩來源mypy通過。 | `single_owned_qa_6606cc5cbc6d41889f06e92bdecca001/receipt.json`；`b780b6f1d20ecdf85b4116985527263b1f57d657948f1740a60d67f2767afe12` |
+
+本增量無UI程式／共用ports／金融公式變更；已過且未受影響的Workbench85、validator25/0/4、八roots mypy沿QA192，不反覆重跑；ui_qt.*既有ignore_errors仍不證UI強型別。QA199有關Qt session未載Main的teardown提示保留，該組僅UpdateView，不能當Main驗收。真來源新Main／fresh需到真可用小時後沿同pin做，不能拿42合成旅程代替，也不重抓同一scope。各Job仍8GiB／12程序／kill-on-close／同workspace mutex、RAM≥8GiB，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。
+
+來源用途接受由Root保留裁決；Luna9只讀核既有SourceAcceptanceDossier／Governance／decision registry／intake，無寫入、Python或網路，pending writes=false，總worker10/10不新增。人工limited需要license／quality／PIT evidence IDs及intake綁定；PIT ID只代表需實質審查的證據引用，程式沒有全歷史年限要求，不能因欄位名永久阻擋前瞻研究，也不能填字串冒稱歷史已合格。現registry來源級決議沒有T86 source version強綁定，現有machine scope不含T86，不能借月營收接受或偽造human actor；本次不append正式registry或自授accepted。下一步沿原dossier準備真單位／品質／前瞻時間與獨立授權證據，來源／用途／schema版本一次接受及每日自動validator分開，不把一次接受誤解為單batch只能用一次。
+
+用途／授權、真來源正常UI／fresh、真股票母體、日曆連買與完整歷史PIT、Native／EXE及完整Gate仍待。沒有正式資料／DB apply／Task／maintainer變更、push、發布或交易；固定V1不改。原資料契約、current分冊、功能、操作主冊／分冊／每日指南、Snapshot與原§9.5同步；模組邊界、安裝、排程與Feature Map關聯未變，無需新增入口或測試清冊關聯。
+QA200新版public reader以真cutoff台北03:30:46核同批，正確拒絕04:00前使用，7個capture／daily原件不變，無網路；governance原dossier診斷為deferred，程式證據清單無缺，authority具體缺license owner／status／redistribution policy，沒有append registry或把歷史PIT設永久前置。helper compile及9份文件／12features、metadata30sources errors=[]通過。outer `single_owned_qa_8b777a7d909f4f1b93c2ce232f7e777d/receipt.json` SHA `9c0d61636459fe13f89188317af09c0474c4a02bb0fd6766730f5c66f5999934`。準備階段曾因PowerShell陣列錯pin路徑拒絕，無Job／Python／HTTP；修正後才啟動。Root核四組收據／自然閉鎖、tested source pins及真capture／daily雙pin、V1 EXE／20輸入、舊task／capture與其他owner原件不變；owner `increment43_final_integrity.json` SHA `628071a5780a23b0be265429105ec4ad7f3e499f9607e39cda99bba98e113c64`。此為限定進度，真來源正常Main／fresh與用途接受仍待，不授完整Gate。

@@ -215,6 +215,12 @@ def _capture(run: Path, capture_sha: str, callback: Callable[[], bool] | None) -
                 or type(quality.get("accepted_row_count")) is not int or quality.get("accepted_row_count") != len(expected_rows)):
             raise InstitutionalDailySnapshotError("法人解析品質／原候選全文不一致")
         decoded_raw = _json(raw)
+        fields = decoded_raw.get("fields")
+        if (decoded_raw.get("hints") != "單位：股" or type(fields) is not list
+                or any(type(field) is not str for field in fields)
+                or len(fields) != len(set(fields))
+                or not {"自營商買賣超股數", "三大法人買賣超股數"}.issubset(fields)):
+            raise InstitutionalDailySnapshotError("原件缺股數單位或獨立宣告合計欄位，不能補認")
         original = decoded_raw.get("publicationTime")
         original = "" if original is None else original
         if type(original) is not str:

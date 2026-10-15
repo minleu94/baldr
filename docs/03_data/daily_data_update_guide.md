@@ -132,6 +132,8 @@ UI 更新工作具單一寫入互斥：快速／安全更新、個別來源下�
 
 後續開發分支原CLI的 `capture --capture-scope twse_institutional` 讓TWSE法人候選不依賴TPEx／信用取得；`seal` 則在原run旁保存不可覆寫的成功批次時鐘與雙SHA。「數據更新 → 三大法人」新增固定批次唯讀區，經原件／品質／時間核驗後展示指定代碼的原整數股數；它與一般更新按鈕分開，不下載或apply。選定範圍、lookback／attempt、seal、重開及錯誤隔離見[資料操作指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單獨保存-twse-法人候選)。舊件缺EOF不補認、用途／歷史PIT未接受、連買不可用；正式apply、排程及既有狀態卡資格未改。
 
+Increment43真單日T86原件／完整EOF／21,000報表列與股數守恆已核；每日版本另強制raw原單位及獨立宣告合計，矛盾不進成功版本。缺官方發布小時採成功批次fallback，真批次可用前仍拒讀，不調整時鐘／自動重抓。這是候選品質證據，未授來源用途／授權、全股票母體、連買或歷史PIT。
+
 UpdateService overview／detail 在 SQLite 缺失時會先停在 `unavailable`，存在時也只用共用 `mode=ro`／`PRAGMA query_only=ON` adapter，不會呼叫會初始化 schema 的可寫 DB manager；因此狀態檢查本身不改變資料根目錄，也不與寫入連線爭用 schema／WAL。若 Windows 外部鎖定使一般 read lock 不可用，adapter 會明確標記 `read_mode=immutable_fallback` 與提醒；這只代表最後已提交的唯讀快照，應停止其他寫入後再重查。
 
 ## TWSE 無資料日與排錯

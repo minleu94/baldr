@@ -16,6 +16,12 @@
 
 Increment43取得2026/10/15單日真T86原件、EOF及21,000列品質，保存批次於台北10/16 03:23，最早可用04:00；原件無官方發布小時，basis保留批次fallback。這不是21,000檔股票接受或歷史版本認證，不能為立即顯示而注入未來cutoff。真來源取得、單位／品質、用途／授權接受及正常Main／fresh是不同證據，進度見[Increment43 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment43p03真t86單日原件與宣告合計守衛)。
 
+## 已存官方處置來源的版本相容（Increment46）
+
+`selection-official-disposal-source-pin.v3` 與 `selection-official-disposal-parser.v3` 成對使用，新增 `twse-punish-openapi-row-contract.v1` 與原官方 Swagger SHA `06e1cea82448361e733a0ad1ae16e52f5d5d6b71905acd078472f852c32c0eb0`，兩者均入 identity。`/announcement/punish` 英文 JSON array 的 Number／Date／Code／Name／NumberOfAnnouncement／ReasonsOfDisposition／DispositionPeriod／DispositionMeasures／Detail／LinkInformation 十欄必須齊全且為字串；原 raw 與 canonical 原列分別留 SHA。公告晚於觀測、非法期間、缺欄／錯型別、重複事件拒收或隔離；空列與未命中仍 unknown，不發安全證書。
+
+舊 v2 pin／parser 配對、keys、canonical identity 及英文 array 未確認的解讀保留；直接建構 v2 省略新增欄位亦相容。不把保存來源改寫成 v3；需要新版解析時以原 immutable run 另產新 pin／研究來源。新 pin 仍 current_only、official_available_at=None、historical_pit_eligible=false，來源 pin 不能補證原 HTTP EOF 或把日期當發布時分。來源用途／每日 validator 與前瞻可用小時依本契約原規則獨立核驗。
+
 ## 時間與版本
 
 保存版本對應的官方發布／更新時間原文及解析結果，統一 `Asia/Taipei`。UTC 或其他 aware 時間可轉換；naive 時間須拒絕。會計期末、資料基準日期及其他版本的更新時間不能充當發布時間。

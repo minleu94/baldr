@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment46 修復真 TWSE 處置英文 array 無法讀取，以及市場名錄 reader 錯用終止事件類型而拒絕 8183 原公文的兩個流程阻礙。新 source pin／parser v3 綁官方 Swagger 與十欄契約；v2 原身份與讀法不變。真 12 筆處置逐欄、原 258 列保存來源相容及正常 Main39920→fresh34548 已限定驗證，真市場名錄與處置原件 18 檔不變；四股行情明示合成，不能當真N／完整真市場研究。無新 HTTP、正式資料寫入或固定9fa改版；HTTP原件完整鏈、來源用途、歷史PIT與完整Gate仍待，詳[Increment46 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment46p03真twse處置與終止公文讀回)。
+
 Increment45已在真可用小時後完成真T86同pin正常Main5752→fresh43792：2330／2317／2454／0050九整數欄、來源雙SHA／fallback時鐘、切頁返回及新程序一致，7來源不變，producer／seal／apply禁用、Python socket0，未新增HTTP。QA206只在preflight因絕對pin路徑拒絕，無Job／Python；另存207相對pin spec後成功，原件與失敗保留。用途／授權、連買、股票真N／歷史PIT與完整Gate仍未接受；只補真資料正常讀回出口，不改固定9fa。詳[Increment45 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment45p03真t86正常畫面與新程序)。
 
 Increment44 已補齊 P06 保存情境到個股的原帳戶投影：明確綁帳種／portfolio／artifact 與 account source hash，顯示原現金、NAV、股數、估值、Health 及 targets；未保存預覽先另存，失配拒絕，不查當前手動帳。QA203四失敗案例與受影響 UI 共18 PASS、Workbench85、validator25/0/4、mypy1022；QA204另補Mapping交叉綁定3反例及正常Main10288→fresh18608，同完整投影、scenario DB不變、Python socket零；原FAIL保留。只在後續開發分支，初次帳戶／Health／行情來源及原Registry交叉入口、完整P06仍待；固定9fa試用包不變。詳[Increment44 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment44p06封存帳戶個股投影)。

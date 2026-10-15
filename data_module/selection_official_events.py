@@ -10,7 +10,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 from data_module.current_market_status_observation import (
@@ -21,13 +21,21 @@ from data_module.current_market_status_observation import (
 from data_module.p0_official_source_parsers import RawFetchEnvelope, parse_twse_disposition
 
 
-OFFICIAL_DISPOSAL_PIN_SCHEMA: Literal["selection-official-disposal-source-pin.v2"] = (
-    "selection-official-disposal-source-pin.v2"
+OFFICIAL_DISPOSAL_PIN_SCHEMA: Literal["selection-official-disposal-source-pin.v3"] = (
+    "selection-official-disposal-source-pin.v3"
 )
 OFFICIAL_DISPOSAL_SCOPE: Literal["current_only"] = "current_only"
 OFFICIAL_DISPOSAL_PIT_ELIGIBLE: Literal[False] = False
-OFFICIAL_DISPOSAL_PARSER_VERSION: Literal["selection-official-disposal-parser.v2"] = (
-    "selection-official-disposal-parser.v2"
+OFFICIAL_DISPOSAL_PARSER_VERSION: Literal["selection-official-disposal-parser.v3"] = (
+    "selection-official-disposal-parser.v3"
+)
+_LEGACY_PIN_SCHEMA = "selection-official-disposal-source-pin.v2"
+_LEGACY_PARSER_VERSION = "selection-official-disposal-parser.v2"
+TWSE_ROW_SCHEMA_VERSION = "twse-punish-openapi-row-contract.v1"
+TWSE_OPENAPI_SWAGGER_SHA256 = "sha256:06e1cea82448361e733a0ad1ae16e52f5d5d6b71905acd078472f852c32c0eb0"
+TWSE_ROW_FIELDS = (
+    "Number", "Date", "Code", "Name", "NumberOfAnnouncement", "ReasonsOfDisposition",
+    "DispositionPeriod", "DispositionMeasures", "Detail", "LinkInformation",
 )
 TPEX_ROW_SCHEMA_VERSION: Literal["tpex-disposal-openapi-row-contract.v2"] = (
     "tpex-disposal-openapi-row-contract.v2"
@@ -135,7 +143,7 @@ class CurrentOfficialDisposalSourcePinV1:
     snapshot_observed_at: str
     snapshot_partial_failure: bool
     captures: tuple[OfficialDisposalCaptureReferenceV1, ...]
-    reader_parser_version: Literal["selection-official-disposal-parser.v2"] = (
+    reader_parser_version: Literal["selection-official-disposal-parser.v2", "selection-official-disposal-parser.v3"] = (
         OFFICIAL_DISPOSAL_PARSER_VERSION
     )
     tpex_source_schema_version: Literal["tpex-disposal-openapi-row-contract.v2"] = (
@@ -151,14 +159,16 @@ class CurrentOfficialDisposalSourcePinV1:
         TPEX_OPENAPI_SWAGGER_COMPLETED_AT
     )
     tpex_endpoint_evidence_date: Literal["2026-10-04"] = TPEX_ENDPOINT_EVIDENCE_DATE
-    schema_version: Literal["selection-official-disposal-source-pin.v2"] = (
+    schema_version: Literal["selection-official-disposal-source-pin.v2", "selection-official-disposal-source-pin.v3"] = (
         OFFICIAL_DISPOSAL_PIN_SCHEMA
     )
     scope: Literal["current_only"] = OFFICIAL_DISPOSAL_SCOPE
     historical_pit_eligible: Literal[False] = OFFICIAL_DISPOSAL_PIT_ELIGIBLE
+    twse_source_schema_version: str | None = None
+    twse_openapi_swagger_sha256: str | None = None
 
     def _identity_payload(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "schema_version": self.schema_version,
             "scope": self.scope,
             "historical_pit_eligible": self.historical_pit_eligible,
@@ -180,6 +190,10 @@ class CurrentOfficialDisposalSourcePinV1:
             "tpex_openapi_swagger_completed_at": self.tpex_openapi_swagger_completed_at,
             "tpex_endpoint_evidence_date": self.tpex_endpoint_evidence_date,
         }
+        if self.schema_version == OFFICIAL_DISPOSAL_PIN_SCHEMA:
+            result.update(twse_source_schema_version=self.twse_source_schema_version,
+                          twse_openapi_swagger_sha256=self.twse_openapi_swagger_sha256)
+        return result
 
     @property
     def identity_sha256(self) -> str:
@@ -231,6 +245,13 @@ class CurrentOfficialDisposalSourcePinV1:
             "tpex_endpoint_evidence_date",
             "identity_sha256",
         }
+        schema = payload.get("schema_version")
+        parser = payload.get("reader_parser_version")
+        if (schema, parser) not in ((_LEGACY_PIN_SCHEMA, _LEGACY_PARSER_VERSION),
+                                   (OFFICIAL_DISPOSAL_PIN_SCHEMA, OFFICIAL_DISPOSAL_PARSER_VERSION)):
+            raise SelectionOfficialEventError("source_pin_identity_invalid")
+        if schema == OFFICIAL_DISPOSAL_PIN_SCHEMA:
+            required |= {"twse_source_schema_version", "twse_openapi_swagger_sha256"}
         if set(payload) != required:
             raise SelectionOfficialEventError("source_pin_keys_invalid")
         raw_captures = payload.get("captures")
@@ -249,12 +270,14 @@ class CurrentOfficialDisposalSourcePinV1:
             snapshot_observed_at=_required_aware_timestamp(payload, "snapshot_observed_at"),
             snapshot_partial_failure=_required_bool(payload, "snapshot_partial_failure"),
             captures=captures,
+            schema_version=cast(Literal["selection-official-disposal-source-pin.v2", "selection-official-disposal-source-pin.v3"], schema),
+            reader_parser_version=cast(Literal["selection-official-disposal-parser.v2", "selection-official-disposal-parser.v3"], parser),
+            twse_source_schema_version=_optional_text(payload.get("twse_source_schema_version")),
+            twse_openapi_swagger_sha256=_optional_text(payload.get("twse_openapi_swagger_sha256")),
         )
         if (
-            payload.get("schema_version") != OFFICIAL_DISPOSAL_PIN_SCHEMA
-            or payload.get("scope") != OFFICIAL_DISPOSAL_SCOPE
+            payload.get("scope") != OFFICIAL_DISPOSAL_SCOPE
             or payload.get("historical_pit_eligible") is not False
-            or payload.get("reader_parser_version") != OFFICIAL_DISPOSAL_PARSER_VERSION
             or payload.get("tpex_source_schema_version") != TPEX_ROW_SCHEMA_VERSION
             or payload.get("tpex_response_envelope_version")
             != TPEX_RESPONSE_ENVELOPE_VERSION
@@ -460,7 +483,8 @@ class CurrentOfficialDisposalReader:
             if capture.status != "captured":
                 feeds[capture.source_id] = _ParsedFeed({}, (f"source_status_{capture.status}",), {}, OFFICIAL_DISPOSAL_PARSER_VERSION)
                 continue
-            feeds[capture.source_id] = _parse_source_feed(capture, raw, captured_at)
+            feeds[capture.source_id] = _parse_source_feed(capture, raw, captured_at,
+                allow_twse_openapi=pin.reader_parser_version == OFFICIAL_DISPOSAL_PARSER_VERSION)
         return cls(pin, feeds)
 
     def get(self, symbol: str, *, market: Literal["twse", "tpex"]) -> CurrentOfficialDisposalObservationV1:
@@ -581,6 +605,8 @@ def _build_pin(
         snapshot_observed_at=_required_aware_timestamp(snapshot_payload, "observed_at"),
         snapshot_partial_failure=_required_bool(snapshot_payload, "partial_failure"),
         captures=captures,
+        twse_source_schema_version=TWSE_ROW_SCHEMA_VERSION,
+        twse_openapi_swagger_sha256=TWSE_OPENAPI_SWAGGER_SHA256,
     )
     _validate_pin_shape(pin)
     _verify_exact_references(pin, pointer_payload=pointer_payload, loaded=(snapshot_payload, manifest_payload, snapshot_raw, manifest_raw))
@@ -810,8 +836,11 @@ def _parse_source_feed(
     capture: OfficialDisposalCaptureReferenceV1,
     raw: bytes,
     captured_at: datetime,
+    *, allow_twse_openapi: bool = False,
 ) -> _ParsedFeed:
     if capture.source_id == "twse.disposition_current":
+        if allow_twse_openapi and isinstance(_load_json(raw, "twse_disposal_json_invalid"), list):
+            return _parse_twse_openapi_feed(capture, raw, captured_at)
         return _parse_twse_feed(capture, raw, captured_at)
     if capture.source_id == "tpex.disposition_current":
         return _parse_tpex_feed(capture, raw, captured_at)
@@ -904,6 +933,65 @@ def _parse_twse_feed(
     if parsed.quarantine:
         issues.append("twse_disposition_rows_quarantined")
     return _freeze_feed(events, issues, symbol_issues, OFFICIAL_DISPOSAL_PARSER_VERSION)
+
+
+def _parse_twse_openapi_feed(
+    capture: OfficialDisposalCaptureReferenceV1, raw: bytes, captured_at: datetime,
+) -> _ParsedFeed:
+    """只接受已核官方 Swagger 的英文 row；不改原 bytes 或偽造中間回應。"""
+    payload = _load_json(raw, "twse_disposal_json_invalid")
+    if not isinstance(payload, list) or len(payload) > MAX_DISPOSAL_ROWS:
+        return _ParsedFeed({}, ("twse_disposal_openapi_schema_unconfirmed",), {}, TWSE_ROW_SCHEMA_VERSION)
+    events: dict[str, list[OfficialDisposalEventV1]] = {}
+    symbol_issues: dict[str, list[str]] = {}
+    issues: list[str] = []
+    observed_date = captured_at.astimezone(_TAIPEI).date()
+    seen: set[tuple[str, date, date, date]] = set()
+    for row in payload:
+        if (not isinstance(row, Mapping) or set(row) != set(TWSE_ROW_FIELDS)
+                or any(type(row[key]) is not str for key in TWSE_ROW_FIELDS)):
+            issues.append("twse_disposal_openapi_schema_unconfirmed")
+            continue
+        symbol = _normalize_symbol(row["Code"])
+        if symbol is None:
+            issues.append("twse_disposal_symbol_invalid")
+            continue
+        try:
+            announcement = _parse_date(row["Date"], "twse_announcement_date_invalid")
+            if announcement > observed_date:
+                raise SelectionOfficialEventError("future_announcement_after_observation")
+            match = _TPEx_DATE_RANGE_RE.fullmatch(row["DispositionPeriod"])
+            if match is None:
+                raise SelectionOfficialEventError("twse_effective_period_unrecognized")
+            effective_from = _parse_date(match.group(1), "twse_effective_from_invalid")
+            effective_to = _parse_date(match.group(2), "twse_effective_to_invalid")
+            if not re.fullmatch(r"[0-9]+", row["NumberOfAnnouncement"]):
+                raise SelectionOfficialEventError("twse_announcement_count_invalid")
+        except SelectionOfficialEventError as error:
+            if error.reason_code == "future_announcement_after_observation":
+                raise
+            symbol_issues.setdefault(symbol, []).append(error.reason_code)
+            continue
+        if effective_to < effective_from:
+            symbol_issues.setdefault(symbol, []).append("effective_period_invalid")
+            continue
+        identity = (symbol, announcement, effective_from, effective_to)
+        if identity in seen:
+            symbol_issues.setdefault(symbol, []).append("duplicate_disposal_event")
+            continue
+        seen.add(identity)
+        event = _make_event(
+            symbol=symbol, market="twse", source_id=capture.source_id,
+            announcement_date=announcement, effective_from=effective_from, effective_to=effective_to,
+            observed_at=captured_at, name=_optional_text(row["Name"]),
+            reason=_optional_text(row["ReasonsOfDisposition"]), measure=_optional_text(row["DispositionMeasures"]),
+            details=_optional_text(row["Detail"]), source_data_dates=capture.source_data_dates,
+            raw_sha256=capture.raw_sha256 or "", raw_row_sha256=_canonical_sha256(row),
+        )
+        events.setdefault(symbol, []).append(event)
+    if not payload:
+        issues.append("twse_empty_feed_has_no_absence_certificate")
+    return _freeze_feed(events, issues, symbol_issues, TWSE_ROW_SCHEMA_VERSION)
 
 
 def _parse_tpex_feed(
@@ -1124,10 +1212,16 @@ def _validate_pointer_payload(payload: Mapping[str, object], output_root: Path) 
 
 def _validate_pin_shape(pin: CurrentOfficialDisposalSourcePinV1) -> None:
     if (
-        pin.schema_version != OFFICIAL_DISPOSAL_PIN_SCHEMA
+        (pin.schema_version, pin.reader_parser_version) not in (
+            (_LEGACY_PIN_SCHEMA, _LEGACY_PARSER_VERSION),
+            (OFFICIAL_DISPOSAL_PIN_SCHEMA, OFFICIAL_DISPOSAL_PARSER_VERSION))
+        or (pin.schema_version == OFFICIAL_DISPOSAL_PIN_SCHEMA and (
+            pin.twse_source_schema_version != TWSE_ROW_SCHEMA_VERSION
+            or pin.twse_openapi_swagger_sha256 != TWSE_OPENAPI_SWAGGER_SHA256))
+        or (pin.schema_version == _LEGACY_PIN_SCHEMA and (
+            pin.twse_source_schema_version is not None or pin.twse_openapi_swagger_sha256 is not None))
         or pin.scope != OFFICIAL_DISPOSAL_SCOPE
         or pin.historical_pit_eligible is not False
-        or pin.reader_parser_version != OFFICIAL_DISPOSAL_PARSER_VERSION
         or pin.tpex_source_schema_version != TPEX_ROW_SCHEMA_VERSION
         or pin.tpex_response_envelope_version != TPEX_RESPONSE_ENVELOPE_VERSION
         or pin.tpex_openapi_swagger_sha256 != TPEX_OPENAPI_SWAGGER_SHA256

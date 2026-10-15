@@ -61,6 +61,8 @@ Saved snapshot、benchmark、圖表與研究成果須在原保存 bytes 上驗�
 
 ## 市場資料、研究母體與報告
 
+原 F17 `CurrentOfficialDisposalReader` 新 pin／parser v3 可直接解析既存 TWSE `/announcement/punish` 十欄英文 array，identity 綁內部 row contract 與官方 Swagger SHA；v2 原 wire／identity／讀法不變，舊保存來源不遷移。原 raw／原列 SHA、公告與生效期間、觀測日及 current_only／PIT false 保留，空列仍 unknown。`CurrentMarketAssignmentReader` 以 parser 原 `listing_termination` 型別核公文的正向終止日期，停止交易不作終止；snapshot 與 raw 不合仍拒絕，無缺列推論。版本與守衛見[資料契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#已存官方處置來源的版本相容increment46)，限定真原件／正常 Main 與未驗邊界見[Increment46 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment46p03真twse處置與終止公文讀回)。
+
 市場資料表包括 `daily_prices`、`market_indices`、`industry_indices`、`technical_indicators` 與 `broker_flows`。Fundamental tables 透過受治理 provider／Factor service 讀取；UI 與策略核心不直接讀 raw fundamental CSV。表的現存數量與日期覆蓋屬動態資料狀態，需另讀當期 QA，不在架構文件保存計數。
 
 Broker Flow 的買賣榜資料各自保存；缺欄位保留 NULL／品質標記，不以零值補缺。更新前先核對交易日證據；來源 HTTP path 失敗時才使用既有 fallback，更新仍按既有序列流程。

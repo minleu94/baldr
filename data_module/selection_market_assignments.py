@@ -1230,7 +1230,7 @@ def _parse_termination_source_facts(
         return frozenset(
             (statement.symbol, statement.effective_date)
             for statement in statements
-            if statement.statement_type == "terminated" and statement.market == expected_market
+            if statement.statement_type == "listing_termination" and statement.market == expected_market
         )
     _fail("market_assignment_termination_source_unsupported")
 

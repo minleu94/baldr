@@ -1028,3 +1028,37 @@ outer `single_owned_qa_d17cb06fb304476ca81d93a90248c100/receipt.json` SHA `b032e
 正常真資料唯讀出口現已驗證；來源用途／授權、連買、歷史PIT／真N、初次帳本與完整雙策略、Native／EXE及原完整Gate仍分開未完成。指南、功能、current資料分冊、Snapshot及原§9.5同步；產品契約／模組／Feature Map／安裝／正式Task無變，不另立總計畫。固定9fa四旅程、原FAIL及所有舊task／原件保留。
 
 QA208 八份本輪文件／12features errors=[]，outer `single_owned_qa_ea9af9bb143d475eaf75c40a85ab1f71/receipt.json` SHA `4aa4afe7e13cf469993f75d5c231a59333ad10aa9bf9a25e1fd2f89b8484c132`。Root另核207／208自然閉鎖、31個tested來源pin、原capture／T86／舊task與其他owner保護檔、V1 EXE及20輸入不變；`increment45_final_integrity.json` SHA `47dc5f9ca7b8c65c677ba0a3b3701ced1988bdfff44feec18ad64f5844671207`。檢查後只追加本段原收據註記，不授來源或完整Gate。
+
+## Increment46：P03真TWSE處置與終止公文讀回
+
+本葉解除原 F17 真 TWSE 英文 JSON array 全變 unknown，及同一保存鏈的市場 reader 錯比終止事件型別兩個實際阻礙；沿既有 reader／bundle writer／正常 Main，不另造系統或新增 V1 前置。固定9fa四旅程繼續可試用，第二階段與真人試用並行。
+
+Root 唯讀既存 CMS run `20261015T115218380271Z-a6499c4c0d`，pointer SHA `2207b8f0708204aa3aef1a7599e1fd4f8d7d4f92dcb3c31445b388da0524a491`、snapshot SHA `df78b7efbb2d58e4e20dfebceb7213eb99e57937426d169d3f78e560f3857035`、manifest SHA `bde0615786b0480214259005a20d5768e53f17eeb5481ac988615f644f98e69e`。TWSE原raw 16,203bytes／12列，SHA `f6dd9e71b1ceed83259e5eee4cd49bfcc90092004e3722aaab4e324d41af150f`；重用舊task完整官方 Swagger 309,960bytes，SHA `06e1cea82448361e733a0ad1ae16e52f5d5d6b71905acd078472f852c32c0eb0`。沒有新HTTP、重置耗盡scope或改正式capture。原保存capture的HTTP EOF無法由本pin證明，`http_original_eof_proven=false`；CMS自報parsed／partial=false不作完整官方文件鏈接受。
+
+新 source pin／parser v3 成對，identity 加 TWSE row contract 與 Swagger SHA；十欄字串、民國公告日／生效期間、原列SHA／raw SHA分開核。原v2 wire keys／identity／英文array未知語意保留；Luna靜態複核另指出直接v2 constructor的新增欄位預設相容缺口，Root改預設None、僅v3 builder填證據，guard不放寬。舊258列bundle identity `5f66f62f7ea2608ec67bac8d633918e7a31d1c19b328a3fc7919e77b513bc838`、manifest SHA `f8551ac1cd794cf7b09bcc96d5bb826204487079319f0df20dd68d68ebced4c1` exact讀回相同，未重產原全producer。真12列的名稱／理由／措施／內容／期間與raw逐欄一致；同代碼不同公告期間保留，未命中／空列不發安全證書，官方發布時分仍None、current_only／PIT false。
+
+QA214揭露 `market_assignment_termination_source_evidence_mismatch`，QA218定位272筆正向終止證據中只有8183不合。Root查同一原公文，明載9/23停止、10/1終止，raw SHA `ea077acc6b05a8d4e61985d06e1ffe25894e7bf2d38db51c75e47722e03ef1e6`；原因是consumer誤比 `terminated`，原parser實際回 `listing_termination`，不是原件日期矛盾。本葉修單一型別接線；仍逐筆核raw／source／symbol／date，純停止不算終止、改snapshot日期並重綁hash亦拒絕。原QA214／218失敗及診斷不改寫。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 209 | data_pipeline context通過但budget略過正文由Root補讀；helper誤對Observation呼to_dict失敗，先保存的v2 pin有效。 | `single_owned_qa_b452b72d3bd9498c8d2641053a07e757/receipt.json`；`a1af48d2b22b25d9e666ca56f90ed39e4a945fd21d9d7bc74f049a913b5eb58d` |
+| 210 | 原public reader真1709/2466/2492均unknown，18來源不變，基線確認。 | `single_owned_qa_0a359881239540dd8fc69ba0140348ab/receipt.json`；`9f706a87a986fefd43c33c7ee8b2285dd1bd172ff9bc9c3d3cba3d60f05fa4dc` |
+| 211 | compile通過；原來源加全bundle suite於原140秒逾時，沒有final PASS；後續mypy/helper未執行。 | `single_owned_qa_7e858ad9ac004c5ebf44738d68e5339c/receipt.json`；`83449bb7423007217d630f8edfb406a24f13f914a394dd5395c62bffac15f15b` |
+| 212 | 38PASS／1既有受保護TPEx精確環境SKIP、單來源mypy與compile；真12列、v2及舊258列相容。 | `single_owned_qa_c0d01dd4759147b192af2d253e66d03e/receipt.json`；`3728b78ef5a9d7d4d6c170c110897ca5f4d4f8f072c6ead418d1ee4a70a36c03` |
+| 213 | helper當日04:00技術cutoff被原收盤守衛拒絕，保留FAIL。 | `single_owned_qa_ebe17ab6a7d24c3c9578b8a0f359bf90/receipt.json`；`ab7631ae1a735156d663505a04ad19453a3d70ca42f3de5f81c70ffb963d79fc` |
+| 214 | 有效技術cutoff後被真8183終止證據型別接線拒絕，保留FAIL。 | `single_owned_qa_1dd7ee804ec34e468fc76caef7c96ad0/receipt.json`；`2b21d9d65243ba5c4290b1ae8d1a83d8fc964206d2f5dbe5ecc762eaedbef478` |
+| 215 | 改明示合成market隔離驗TWSE，但helper漏research_snapshots層，scope守衛拒絕。 | `single_owned_qa_4a0de3259bd74731b6a9c987db557318/receipt.json`；`54c9d0606f09166236c1bdbf04b2b9065671de10c7d2df952a42630fb2f7ada6` |
+| 216 | Main已載入；helper誤對QLabel用toPlainText失敗，另存正確text讀法。 | `single_owned_qa_4c67f5ff688f472aa3b955238349bbc8/receipt.json`；`8afce679d3f013245544f7bd20bfed1997da062f5f9a679953a39bb9c869a775` |
+| 217 | 真TWSE配明示合成名錄／行情，Main9944→fresh48140限定通過，不是真名錄接受。 | `single_owned_qa_f6a0c778c74d405d82bf3db9188b5cd6/receipt.json`；`13d8d11dd8a3eea719396b54c412b4f172f4b84e76d696fd4f1eaa95dabae507` |
+| 218 | 唯讀定位272筆終止證據、1筆8183衝突，18來源不變，不修寫snapshot。 | `single_owned_qa_dd5d7f8c3f8e4f038706d67d24dd9af9/receipt.json`；`10cda88e3dc048b3dabb5f5b080220be93ffd383d9c6f13bd8ec4fcfb225c2db` |
+| 219 | 修直接v2建構相容及終止型別；38PASS／1原SKIP、兩來源mypy／compile通過。 | `single_owned_qa_9fa2bbe268ff493d8de8fa1ac0481b06/receipt.json`；`5f8d776a8132a1d8a4385e97318fe0e7ffd0c0425f6e43c45eec2047ad32bd20` |
+| 220 | 真名錄及真TWSE配四股合成行情，原writer保存、正常Main39920→fresh34548同pin／明細／返回通過。 | `single_owned_qa_6d099579a3c84d8693b5d459300a411f/receipt.json`；`e2b6d4d157ab6e01c002435c32ff6953dafde19abac0f11e068b0d3f4e1dc11c` |
+| 221 | 新增三公文反例及受影響原市場reader共15PASS，compile通過。 | `single_owned_qa_f5554dbfb594484c874c38cb4469ece4/receipt.json`；`e936bd2f5bbec2ce081308724b95e832a77173c9ac25dcccf6e98833f32363c2` |
+
+QA220原父／fresh收據為owner `increment46_f17_main_fresh_f/parent.json` SHA `54419d5528955ece965aa8c34f71c8ce1ac79bc648c36737d1960a8b1036a968`、fresh SHA `b716be31dee3d678efcd6c4c3581c298836c055159e60d9656965bcdbd22756c`。使用原immutable真市場pin及v3處置pin，四股行情明示合成、不是全市場真N；1709／2466／2492原raw與明細一致，8183保持正向終止衝突排除。原bundle writer只寫owner隔離root；fresh禁止重產與保存，正常頁選來源／三股明細／返回及Watchlist往返後保持同值。18正式來源bytes／SHA不變，Python socket0；隔離fixture缺companies／market DB原提示保留，非Native／EXE或其他頁接受。
+
+各組仍8GiB committed／12程序／kill-on-close／同workspace mutex、RAM≥8GiB，三PID清冊空、process／Job handles關閉、mutex釋放後才起下一組。QA211逾時不能當成功或完整suite PASS；成功組自然關閉，沒有全機kill。未改UI程式／金融公式／共用ports，未受影響Workbench85／validator25/0/4／八roots mypy沿原具名證據，不反覆重跑；既有ui_qt ignore_errors不證UI強型別。單名既有Luna只靜態單寫兩個測試與窄複核，無Python／network／子代理、pending writes=false，累計10/10不新增。
+
+版本契約、current資料分冊、功能／Feature Map、操作主冊／資料分冊、Snapshot及原§9.5同步。真HTTP完整鏈、來源用途／授權、F16注意名單、歷史PIT／真N、初次P06來源／完整雙策略、Native／EXE與原完整Gate繼續；已驗新快照的前瞻研究不以缺舊歷史永久阻擋。沒有正式資料／Task／maintainer、push、發布或交易變更，固定V1不改。
+
+QA222九份本輪文件／12features與context metadata30sources errors=[]通過，outer `single_owned_qa_f49a3f451329405daea514a2d7f72a03/receipt.json` SHA `d048c6e9e0131ccc6a9478d84401818028710890e6f0d6e7b1edec302fe5c4c3`。Root核14組原收據／閉鎖、28最終來源pin、18正式原件bytes／SHA／mtime／ctime、320舊F17資產、V1 EXE及20輸入、舊task／capture與其他owner保護檔不變；owner `increment46_final_integrity.json` SHA `bc72ea692cd4c17afdd9a8c243018b92316cb871c1766ccaffe7f0c9fc4463a9`。文件檢查後僅追加本收據註記，不授完整Gate。

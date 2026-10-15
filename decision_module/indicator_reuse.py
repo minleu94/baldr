@@ -33,7 +33,8 @@ _INDICATOR_COLUMNS: dict[
     tuple[tuple[str, ...], dict[str, str]],
 ] = {
     "rsi": (("RSI",), {}),
-    "macd": (("MACD", "MACD_signal", "MACD_hist"), {}),
+    # 重用與重新計算必須提供同一計分器別名，原缺值與既有別名優先序不變。
+    "macd": (("MACD", "MACD_signal", "MACD_hist"), {"MACD_Signal": "MACD_signal"}),
     "kd": (("slowk", "slowd"), {"SlowK": "slowk", "SlowD": "slowd"}),
     "bollinger": (
         ("upperband", "middleband", "lowerband"),

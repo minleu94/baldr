@@ -241,6 +241,11 @@ class StrategyPaperAccountCheckpointRead:
     ledger_operation: PaperTradeDailyOperationMarker
     ordered_fills: tuple[PaperTradeFill, ...]
     transition: PaperTradeTransition | None
+    mark_price_evidence_json: tuple[str, ...] = ()
+    allocation_decision_date: str | None = None
+    allocation_prefix_fills: tuple[PaperTradeFill, ...] = ()
+    allocation_prefix_transitions: tuple[PaperTradeTransition, ...] = ()
+    allocation_prefix_rowset_hash: str | None = None
 
     def __post_init__(self) -> None:
         if self.snapshot.snapshot_id != self.availability.snapshot_id:
@@ -285,14 +290,20 @@ def _read_exact_ledger_operation(
     operation_id: str,
     portfolio_id: str,
     event_date: str,
+    allocation_decision_date: str | None = None,
 ) -> PaperTradeDailyOperationRead:
     """透過 ledger 公開 API 讀回 route-bound exact append。"""
 
     try:
+        if allocation_decision_date is None:
+            return ledger.read_exact_daily_operation(
+                operation_id, portfolio_id=portfolio_id, event_date=event_date,
+            )
         return ledger.read_exact_daily_operation(
             operation_id,
             portfolio_id=portfolio_id,
             event_date=event_date,
+            allocation_decision_date=allocation_decision_date,
         )
     except ValueError as exc:
         message = str(exc)
@@ -1164,6 +1175,7 @@ def read_exact_strategy_paper_account_checkpoint(
     operation_id: str,
     snapshot_id: str,
     decision_cutoff: datetime,
+    allocation_decision_date: str | None = None,
 ) -> StrategyPaperAccountCheckpointRead:
     """從 exact account 讀回同份 snapshot/clock，並核對實際 ledger append。"""
 
@@ -1425,6 +1437,7 @@ def read_exact_strategy_paper_account_checkpoint(
         operation_id=operation_id,
         portfolio_id=binding.portfolio_id,
         event_date=execution_date,
+        allocation_decision_date=allocation_decision_date,
     )
     marker = ledger_read.marker
     day_fills = ledger_read.ordered_fills
@@ -1479,6 +1492,9 @@ def read_exact_strategy_paper_account_checkpoint(
         raise StrategyPaperAccountAvailabilityError(
             "checkpoint_read_ledger_transition_mismatch"
         )
+    mark_prices = operation_payload.get("mark_prices")
+    if not isinstance(mark_prices, list):
+        raise StrategyPaperAccountAvailabilityError("checkpoint_read_mark_evidence_invalid")
     return StrategyPaperAccountCheckpointRead(
         binding=binding,
         snapshot=snapshot,
@@ -1489,6 +1505,11 @@ def read_exact_strategy_paper_account_checkpoint(
         ledger_operation=marker,
         ordered_fills=ordered_fills,
         transition=transition,
+        mark_price_evidence_json=tuple(_canonical_json(row) for row in mark_prices),
+        allocation_decision_date=ledger_read.allocation_decision_date,
+        allocation_prefix_fills=ledger_read.allocation_prefix_fills,
+        allocation_prefix_transitions=ledger_read.allocation_prefix_transitions,
+        allocation_prefix_rowset_hash=ledger_read.allocation_prefix_rowset_hash,
     )
 
 

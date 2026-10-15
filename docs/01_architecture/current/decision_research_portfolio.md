@@ -61,6 +61,12 @@ P08 雙 run 診斷沿既有 pair／public portfolio reader，固定兩筆 metada
 
 ## Portfolio、Paper 與持倉研究
 
+Increment47 為首次策略帳研究加入 `PortfolioResearchInitialSourceProvider`，由正常 Main 以原 `PaperCheckpointAccountInputs` 的 PERSONAL／合約根及同一版本服務組裝，workspace 保持可選注入，原 v3 artifact／v1 scenario store 不換版。公開策略 checkpoint DTO 增帶原 mark 證據及可選 allocation prefix；ledger 在同一 query-only transaction 驗證決策日前完整前綴與所選 operation hash，若有後續 operation（包括零成交）則拒用舊 checkpoint。週換手沿原 common-price weights／canonical turnover 及 rolling 7 日排除決策日，不加總 fill gross、不把缺件填零；舊不要求 prefix 的 reader 呼叫契約保留。
+
+`position_health_strategy_archive` additive v2 只接同 namespace／checkpoint／原行情／可證開倉 lineage，保留原 Health baseline、evaluator、custody 與 projector。v1 策略 namespace 拒絕規則不動。prepare、原評估、publish 可由 `run_strategy_position_health.py` 明示五項身分串接；只寫衍生版本、不改交易或排程。收據固定來源／baseline／result SHA、實際 writer clock 及 Health 決策日期，重開沿原日期重核，不能以今天時間替舊版本取得 PIT。缺治理來源仍是 degraded WATCH，initial provider 拒將其當已知 Health；流動性／cooldown 未提供，沿原配置守衛。
+
+首次比較與保存接回原 scenario service/repository；保存以原 preview decision_at 重核來源及 canonical bytes，取消只在提交前生效。UI 明選成對來源與股票、保存後同步原帳戶身分，未保存不得借舊 artifact 下鑽。原等權 construction／配置由 scenario service 外層固定 Decimal 60 精度，避免 caller prec/traps 改變結果。此為策略帳已有完整來源的限定出口；手動／聲明初次來源、未持有候選與 Registry 交叉入口等原 P06 範圍仍待。
+
 手動 Portfolio 既有帳務、使用者聲明持倉、虛擬 execution trace 與 Paper Trade Ledger 是不同來源。它們的 identity、保存位置、寫入者與證據資格不能因共用股票代碼或畫面而合併。
 
 - 手動交易不會由 backtest 或 recommendation 自動匯入；回測 run 不是實際 fill。
@@ -71,7 +77,7 @@ P08 雙 run 診斷沿既有 pair／public portfolio reader，固定兩筆 metada
 - Portfolio research scenario 將 account kind、portfolio、snapshot、source hash、request 與 aware cutoff 綁成 exact context。`portfolio-research-scenarios.v3` 是 canonical JSON artifact payload，`portfolio-research-store.v1` 是獨立 SQL store schema，不能混為同一版本；reader 以原 bytes/hash 核版本、canonical encoding 與完整欄位，未知 schema、浮點／非有限金額或含糊 payload 一律拒絕。保存完整 cash、shares、mark、market value 與 NAV；以 Decimal／整數單位維持金額守恆，bp 僅供呈現、不反推金額，正股數即使呈現為 0 bp 仍是持倉。讀取只沿 `PORTFOLIO_RESEARCH` 明示 route，不 fallback 到其他帳戶或市場資料。
 - 新增或重播資料以不同 namespace／evidence tier 保存；不得以目前市場資料補回舊保存結果。
 
-`PortfolioResearchScenarioWorkspace` 將既有 v3 artifact／v1 store 接到 Portfolio「配置研究封存」。正常 Main 沿中央 `PersonalStoreSelection` 組合 `PORTFOLIO_RESEARCH` route；未配置不回退 legacy，LEGACY_READ_ONLY 不可 append。背景 exact read 後只允許改 request 的 explicit target；account、完整 context、原 cutoff、candidate、turnover 與 source hash 不變，現行 allocation policy hash 與原 artifact 不同則拒絕重算。另存重新核原件及預覽，再交原 repository append，不產製 Health、不讀今日市場、不寫交易。UI 以 generation 拒收舊回呼，返回個股只恢復同 artifact，不能用手動帳同股選取取代；初次 account/context 生產及原 P06 Registry 交叉入口仍待。
+`PortfolioResearchScenarioWorkspace` 將既有 v3 artifact／v1 store 接到 Portfolio「配置研究封存」。正常 Main 沿中央 `PersonalStoreSelection` 組合 `PORTFOLIO_RESEARCH` route；未配置不回退 legacy，LEGACY_READ_ONLY 不可 append。背景 exact read 後只允許改 request 的 explicit target；account、完整 context、原 cutoff、candidate、turnover 與 source hash 不變，現行 allocation policy hash 與原 artifact 不同則拒絕重算。另存重新核原件及預覽，再交原 repository append，不產製 Health、不讀今日市場、不寫交易。UI 以 generation 拒收舊回呼，返回個股只恢復同 artifact，不能用手動帳同股選取取代；其他帳種的初次 account/context、未持有候選與原 P06 Registry 交叉入口仍待；策略帳限定初次來源見本節 Increment47。
 
 Increment40 的 `registered_strategy_spec()` 沿 public `StrategyRegistry.get_strategy_meta()` 解析同策略明確且無衝突的版本，複製原設定形成新請求。BacktestView 的一般／逐檔執行、規則卡與 Walk-forward 共用此接點；Optimizer 在行情讀取及執行組合前固定一次 metadata，每組只替換 params。缺件拒絕，不預設版本或重新標記歷史 run；原金融引擎、Registry 格式及 module boundaries 不變。版本正確不能取代 source／PIT／performance qualification，既有 UI mypy ignore 也不代表強型別。
 

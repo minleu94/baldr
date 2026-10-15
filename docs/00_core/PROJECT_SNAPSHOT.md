@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment47 已接通 P06 策略帳首次來源→比較→保存→個股返回→新程序：同一 exact checkpoint 綁完整帳戶、原 mark 證據與可證開倉身分，additive Health v2 保留 v1 的 strategy 拒絕守衛；原 scenario store／金融引擎不換版。正常 Main5668→fresh34132 同 artifact／帳戶／估值與情境，21來源檔 bytes／SHA／mtime／ctime 不變、socket0，fresh 禁止重算／append。另補沿原 evaluator 的策略 Health 明選命令，缺治理仍 degraded，不補 HEALTHY／0；原等權比較的 caller 低精度中斷已修。QA227–238 的型別、schema、精度、UI排序、adapter相容與fixture FAIL 均保留並定向復驗；最終 Workbench85、validator25/0/4、八roots mypy1024 通過。這是隔離合成工程出口，手動／聲明初次來源、未持有候選、Registry 交叉入口及完整 P06 仍待；固定9fa、真來源資格／Native／EXE與完整Gate不變。詳[Increment47 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment47p06初次策略帳來源與正常保存旅程)。
+
 Increment46 修復真 TWSE 處置英文 array 無法讀取，以及市場名錄 reader 錯用終止事件類型而拒絕 8183 原公文的兩個流程阻礙。新 source pin／parser v3 綁官方 Swagger 與十欄契約；v2 原身份與讀法不變。真 12 筆處置逐欄、原 258 列保存來源相容及正常 Main39920→fresh34548 已限定驗證，真市場名錄與處置原件 18 檔不變；四股行情明示合成，不能當真N／完整真市場研究。無新 HTTP、正式資料寫入或固定9fa改版；HTTP原件完整鏈、來源用途、歷史PIT與完整Gate仍待，詳[Increment46 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment46p03真twse處置與終止公文讀回)。
 
 Increment45已在真可用小時後完成真T86同pin正常Main5752→fresh43792：2330／2317／2454／0050九整數欄、來源雙SHA／fallback時鐘、切頁返回及新程序一致，7來源不變，producer／seal／apply禁用、Python socket0，未新增HTTP。QA206只在preflight因絕對pin路徑拒絕，無Job／Python；另存207相對pin spec後成功，原件與失敗保留。用途／授權、連買、股票真N／歷史PIT與完整Gate仍未接受；只補真資料正常讀回出口，不改固定9fa。詳[Increment45 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment45p03真t86正常畫面與新程序)。

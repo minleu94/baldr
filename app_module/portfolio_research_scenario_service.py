@@ -431,6 +431,11 @@ class PortfolioResearchScenarioService:
         self._construction = construction or PortfolioConstructionService()
 
     def compare(self, request: PortfolioResearchScenarioRequest) -> PortfolioResearchScenarioComparison:
+        # 人選等權 construction 與後續配置共用獨立精度，不繼承 caller 的 traps／prec。
+        with localcontext(Context(prec=60)):
+            return self._compare_in_context(request)
+
+    def _compare_in_context(self, request: PortfolioResearchScenarioRequest) -> PortfolioResearchScenarioComparison:
         account = self._reader.read_exact(
             account_kind=request.account_kind, portfolio_id=request.portfolio_id,
             snapshot_id=request.snapshot_id,

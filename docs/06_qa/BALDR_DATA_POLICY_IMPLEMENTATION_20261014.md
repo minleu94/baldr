@@ -1062,3 +1062,33 @@ QA220原父／fresh收據為owner `increment46_f17_main_fresh_f/parent.json` SHA
 版本契約、current資料分冊、功能／Feature Map、操作主冊／資料分冊、Snapshot及原§9.5同步。真HTTP完整鏈、來源用途／授權、F16注意名單、歷史PIT／真N、初次P06來源／完整雙策略、Native／EXE與原完整Gate繼續；已驗新快照的前瞻研究不以缺舊歷史永久阻擋。沒有正式資料／Task／maintainer、push、發布或交易變更，固定V1不改。
 
 QA222九份本輪文件／12features與context metadata30sources errors=[]通過，outer `single_owned_qa_f49a3f451329405daea514a2d7f72a03/receipt.json` SHA `d048c6e9e0131ccc6a9478d84401818028710890e6f0d6e7b1edec302fe5c4c3`。Root核14組原收據／閉鎖、28最終來源pin、18正式原件bytes／SHA／mtime／ctime、320舊F17資產、V1 EXE及20輸入、舊task／capture與其他owner保護檔不變；owner `increment46_final_integrity.json` SHA `bc72ea692cd4c17afdd9a8c243018b92316cb871c1766ccaffe7f0c9fc4463a9`。文件檢查後僅追加本收據註記，不授完整Gate。
+
+## Increment47：P06初次策略帳來源與正常保存旅程
+
+**解除的交付阻礙**：原 P06 只有完整封存的重研究入口；strategy namespace 尚無可配對的 Health 保存鏈，也沒有首次來源→比較→保存的正常畫面。本增量沿原帳戶／Health／金融引擎與 scenario store 增接這條限定出口，不增加固定 V1 的前置或另立總計畫。固定 `9fa4518c2aca87beaddef75a2b29165722da6a6c`、20 試用輸入與原完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 範圍保留。
+
+- 同次 public exact checkpoint 投影完整現金／NAV／股數／權重、原 mark 的資料日／來源 hashes／獨立寫入時鐘，以及可證開倉 lineage。原 Health rows hash 只抽為共用函數，bytes 契約不換版；seed 舊持倉無可證 lineage 仍不可用。
+- ledger 公開 exact reader 可選要求 allocation prefix；在同一 route-bound query-only transaction 核完整前綴與原 operation rowset SHA，決策前有後續 operation（包括零成交）拒絕沿舊 checkpoint 研究。週換手沿原 common-price weights／canonical turnover、rolling 7 日且排除決策日；fill gross 欄位不充政策週換手。未知 liquidity／cooldown 沿原配置守衛，不補 0。
+- additive strategy Health v2 核 namespace／帳戶／snapshot／rows／行情／baseline／evaluator result 與實際時鐘，來源日期固定在 receipt，另存 create-only 版本及原 canonical bytes，receipt 最後寫。原 v1 strategy 拒絕守衛不放寬。缺 thesis／condition／metrics 等仍 degraded WATCH，provider 不當已知健康；官方資料小時政策、歷史 PIT 與來源資格不由此授予。
+- `run_strategy_position_health.py` 明選五項身分，沿既有 PERSONAL／版本根／合約根與原 evaluator 生成 v2，補足可操作的來源建立入口；缺件結束碼 2 並保留具體原因，不改帳本、不自啟 Task。正常 Main 只在既有條件齊備時注入同 provider。
+- 原 workspace 增首次候選／比較／保存；保存以原 preview cutoff 重核來源及 canonical 內容再交原 append。UI 明選來源及代碼、generation 拒過期回呼、未保存不能借舊 artifact 下鑽，保存期間不可取消／切帳。首次保存同步原帳種／portfolio，回原 target／個股／返回／重開。原 scenario service 的等權 construction 外層改獨立 Decimal 60 精度，不繼承 caller prec/traps。
+
+### QA 與原 FAIL
+
+來源 HEAD `e7d11124fecb4dfef1212335f40b3055b1bcc505`；本任務 QA223–238 的完整 outer receipts／SHA 位於 `output/tasks/baldr-completion-resume-20261014-01a13cf9/increment47_qa_receipts.json`，manifest SHA `a8a8123d969b5e098d2b3d888364078e44e34eed84546ec88fa185de6b61d975`。各 spec／runner／隔離 env／result directory 均另存自己 owner；不覆寫舊 task 或 spec。
+
+| 檢查 | 真正結果與界線 |
+|---|---|
+| QA223–224 | 原帳戶／daily Health 21、新 source 6 PASS；這是初始來源葉片，非正常旅程完成。 |
+| QA225–226 | mark JSON iterable 型別 FAIL 保留；明確 list 守衛後 compile／mypy3、原帳戶＋新 source＋availability 37 PASS。 |
+| QA227–231 | 新 provider Decimal union 型別 FAIL、借舊 shadow gross 定義 FAIL、source bundle 覆蓋 provenance schema FAIL、等權 construction 繼承 caller prec3 FAIL 各保留。依序窄修；QA228 原 ledger／workspace 等35 PASS，QA229 source／v2 11 PASS，QA230 prefix／取消／外SHA等11 PASS，QA231 定向精度及原情境／workspace32 PASS。案例不加總為完整 Gate。 |
+| QA232–234 | 初次 preview 非 canonical 候選順序導致保存回呼拒絕：原2 FAIL保留，沿原codec正規化後兩案PASS；原UI／個股等15 PASS保留。再補首次保存同步同帳戶，該鎖定案PASS。QA234 Main 已至個股；harness 誤限 Decimal 字面尾零的 FAIL 保留。 |
+| QA235 | b harness 保留 Decimal 真值斷言，另逐字核原 snapshot canonical 文字，不改金融值或期限；正常 Main／fresh 通過，金融 float 邊界守衛通過。 |
+| QA236–238 | 原 public checkpoint reader 30 PASS／1 concurrent adapter FAIL保留；未要求 prefix 時維持原呼叫，不附新 None kwarg，該 concurrency 案定向PASS。新CLI1 PASS／1 fixture PROFILE=test路徑FAIL保留，明示 fixture 自身隔離prod後該案PASS。最終 Workbench85／validator25 PASS、0 FAIL、4 protected skips／八roots mypy1024及CLI mypy1各通過。既有 ui_qt ignore_errors=True 不證 UI 強型別。 |
+
+正常 Main 父 **5668 → fresh34132** 以原 account writer／實際 checkpoint、原 evaluator 與明示合成 QA thesis／condition／metric／calendar 建立來源；從正常頁面選來源／2330／比較／保存，開個股再返回。artifact `sha256:2818ab728bd6fe708ae4a6b6e80f116a01be25f467f6d4e73e8afa4f095cf9f0`，來源原 mark 日仍 **2026-08-03**，不改成 Health 或 snapshot 日期；1000 股、原 Decimal mark 102 與完整現金／NAV 一致。fresh 禁止 `compare`／`append`，重用同原 artifact／帳戶／情境／個股投影；21 來源檔 bytes／SHA／mtime／ctime 一致、scenario DB hash 一致、Python socket 0。各 UI 階段15秒、phase120秒／driver270秒原期限不放寬。這是合成 offscreen 工程驗證，不是 Native、真來源或 EXE 交付。
+
+QA235 outer `single_owned_qa_d2db78c266024c0589a6ab3c36eeaa2a/receipt.json` SHA `e2d8e13cd9da71092f5bb4a40e4266b79524e78f74d1807f478396d427124b69`；QA238 outer `single_owned_qa_2de9741a8e7846cc9514ea35ad668b21/receipt.json` SHA `d6b398d40259c9cc413e6ee451c159593c6892bb1e5301c3424ccfd87b2b5829`。各組8GiB committed／12程序／kill-on-close與workspace mutex固定；下一組前均查三PID陣列空、process／Job handles關閉與mutex釋放，沒有強制清場成功。QA238 啟動前可用 RAM 21,248,950,272 bytes；沒有終止其他 owner 程序。Workers仍累計10/10，只有重用靜態Luna，無新子代理。
+
+**仍未完成**：手動／聲明帳本初次來源、未持有候選完整 Health／行情、原 Registry 交叉入口及完整 P06；官方來源用途接受／歷史 PIT、真 N、完整雙策略績效、Native／EXE與自然成熟各自保留。沒有正式資料寫入、新 HTTP、Task變更、maintainer重啟、push、發布或交易。下一葉沿原 P03 F16 注意名單：已有 Swagger 契約而無 endpoint 資料原件，通用 attention_reasons 不算官方注意名單；靜態筆記 `increment48_f16_static.md` SHA `06a4027dd7f5cfb0fa566d2ecdd87646ff7612a7dcc6915c282da98b2f1c613f`，只作定位，不授抓取或功能完成。
+Increment47 文件閉鎖：QA239 八份正文／12features 與 metadata30sources 檢查 errors=[]；portfolio_health Level2 實讀3來源6073字元、unverified_unknown=[]，不取代原正文／QA／金融判斷。outer `single_owned_qa_34e962a874b8447a90da5d6df3e2b1ab/receipt.json` SHA `506cbbae71985650b611f1e26ba5c4fba3bc3594f8711122e14bc2eeda4774e5`，三PID陣列空／handles關閉／mutex釋放。之後僅追加本收據註記及 owner 交接狀態，未重跑未受影響runtime。

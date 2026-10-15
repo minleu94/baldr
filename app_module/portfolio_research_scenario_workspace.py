@@ -16,6 +16,9 @@ from app_module.portfolio_research_scenario_service import (
     PortfolioResearchAccountState, PortfolioResearchScenarioComparison,
     PortfolioResearchScenarioService,
 )
+from app_module.portfolio_research_initial_source import (
+    PortfolioResearchInitialSourceProvider, InitialPortfolioResearchSelection, InitialPortfolioResearchCatalogue,
+)
 
 
 def _check_cancel(callback: Callable[[], bool] | None) -> None:
@@ -38,8 +41,42 @@ class _FrozenAccountReader:
 class PortfolioResearchScenarioWorkspace:
     """只從既有完整封存取事實，研究新 target；首次來源建立另循原 reader。"""
 
-    def __init__(self, repository: PortfolioResearchScenarioRepository) -> None:
+    def __init__(self, repository: PortfolioResearchScenarioRepository, *,
+                 initial_source_provider: PortfolioResearchInitialSourceProvider | None = None) -> None:
         self.repository = repository
+        self.initial_source_provider = initial_source_provider
+
+    @property
+    def can_create_initial(self) -> bool:
+        return self.initial_source_provider is not None
+
+    def list_initial_sources(self, *, strategy_id: str, strategy_version_id: str, account_namespace: str,
+                             cancel_callback=None) -> InitialPortfolioResearchCatalogue:
+        if self.initial_source_provider is None:
+            raise ValueError("尚未配置策略帳與 Health 來源 reader")
+        return self.initial_source_provider.list_sources(strategy_id=strategy_id, strategy_version_id=strategy_version_id,
+                                                         account_namespace=account_namespace, cancel_callback=cancel_callback)
+
+    def compare_initial(self, selection: InitialPortfolioResearchSelection, *, candidate_symbols: tuple[str, ...],
+                        explicit_weights: AllocationWeightContract | None = None, cancel_callback=None) -> PortfolioResearchScenarioComparison:
+        if self.initial_source_provider is None:
+            raise ValueError("尚未配置策略帳與 Health 來源 reader")
+        return self.initial_source_provider.compare(selection, candidate_symbols=candidate_symbols,
+                                                   explicit_weights=explicit_weights, cancel_callback=cancel_callback)
+
+    def save_initial(self, selection: InitialPortfolioResearchSelection, comparison: PortfolioResearchScenarioComparison, *,
+                     cancel_callback=None) -> SavedPortfolioResearchScenario:
+        if self.initial_source_provider is None:
+            raise ValueError("尚未配置策略帳與 Health 來源 reader")
+        verified = self.initial_source_provider.compare(
+            selection, candidate_symbols=comparison.request.candidate_symbols,
+            explicit_weights=comparison.request.explicit_weights, decision_at=comparison.request.decision_at,
+            cancel_callback=cancel_callback,
+        )
+        if encode_scenario_artifact(verified) != encode_scenario_artifact(comparison):
+            raise ValueError("待保存內容與原始來源重新比較不符")
+        _check_cancel(cancel_callback)
+        return self.repository.append(verified, saved_at=datetime.now(timezone.utc))
 
     @property
     def can_save(self) -> bool:

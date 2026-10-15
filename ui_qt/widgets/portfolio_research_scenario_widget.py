@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal, Slot
@@ -25,6 +26,11 @@ from app_module.portfolio_allocation_dtos import AllocationWeightContract
 from app_module.portfolio_research_scenario_repository import SavedPortfolioResearchScenario
 from app_module.portfolio_research_scenario_service import PortfolioResearchScenarioComparison
 from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+from app_module.portfolio_research_initial_source import (
+    InitialPortfolioResearchCandidate,
+    InitialPortfolioResearchCatalogue,
+    InitialPortfolioResearchSelection,
+)
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -49,9 +55,14 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._pending: tuple[int, str, tuple[Any, ...]] | None = None
         self._closing = False
         self._updating_artifact_combo = False
+        self._updating_initial_source_combo = False
         self._current_saved: SavedPortfolioResearchScenario | None = None
         self._current_artifact_id = ""
         self._preview_comparison: PortfolioResearchScenarioComparison | None = None
+        self._initial_catalogue: InitialPortfolioResearchCatalogue | None = None
+        self._initial_preview: PortfolioResearchScenarioComparison | None = None
+        self._initial_preview_selection: InitialPortfolioResearchSelection | None = None
+        self._initial_preview_symbols: tuple[str, ...] = ()
         self._target_symbols: tuple[str, ...] = ()
         self.target_spinboxes: dict[str, QSpinBox] = {}
 
@@ -85,6 +96,53 @@ class PortfolioResearchScenarioWidget(QWidget):
         saved_controls.addWidget(self.open_button)
         identity_layout.addRow("已保存情境", saved_controls)
         layout.addWidget(identity_group)
+
+        initial_group = QGroupBox("初次策略／Health 成對來源研究", self)
+        initial_layout = QFormLayout(initial_group)
+        self.initial_strategy_id_edit = QLineEdit(initial_group)
+        self.initial_strategy_id_edit.setPlaceholderText("請明確輸入 strategy_id")
+        self.initial_strategy_id_edit.textChanged.connect(self._on_initial_identity_changed)
+        initial_layout.addRow("Strategy ID", self.initial_strategy_id_edit)
+        self.initial_strategy_version_edit = QLineEdit(initial_group)
+        self.initial_strategy_version_edit.setPlaceholderText("請明確輸入 strategy_version_id")
+        self.initial_strategy_version_edit.textChanged.connect(self._on_initial_identity_changed)
+        initial_layout.addRow("Strategy version", self.initial_strategy_version_edit)
+        self.initial_namespace_edit = QLineEdit(initial_group)
+        self.initial_namespace_edit.setPlaceholderText("請明確輸入 paper account namespace")
+        self.initial_namespace_edit.textChanged.connect(self._on_initial_identity_changed)
+        initial_layout.addRow("Paper namespace", self.initial_namespace_edit)
+
+        self.load_initial_sources_button = QPushButton("載入成對來源候選", initial_group)
+        self.load_initial_sources_button.clicked.connect(self.load_initial_sources)
+        initial_layout.addRow(self.load_initial_sources_button)
+        self.initial_source_combo = QComboBox(initial_group)
+        self.initial_source_combo.setAccessibleName("初次研究成對來源選擇")
+        self.initial_source_combo.addItem("請先載入並明確選擇來源", None)
+        self.initial_source_combo.currentIndexChanged.connect(self._on_initial_source_changed)
+        initial_layout.addRow("成對來源候選", self.initial_source_combo)
+
+        self.initial_candidate_symbols_edit = QLineEdit(initial_group)
+        self.initial_candidate_symbols_edit.setPlaceholderText("明確輸入股票代碼，以逗號或空白分隔")
+        self.initial_candidate_symbols_edit.textChanged.connect(self._on_initial_candidates_changed)
+        initial_layout.addRow("候選股票代碼", self.initial_candidate_symbols_edit)
+        initial_buttons = QHBoxLayout()
+        self.initial_compare_button = QPushButton("比較初次研究情境", initial_group)
+        self.initial_compare_button.clicked.connect(self.compare_initial)
+        initial_buttons.addWidget(self.initial_compare_button)
+        self.initial_save_button = QPushButton("另存初次研究結果", initial_group)
+        self.initial_save_button.clicked.connect(self.save_initial)
+        initial_buttons.addWidget(self.initial_save_button)
+        initial_layout.addRow(initial_buttons)
+        self.initial_sources_status_label = QLabel(
+            "未載入成對來源；請明確選擇策略、版本、帳本 namespace 與股票代碼。",
+            initial_group,
+        )
+        self.initial_sources_status_label.setWordWrap(True)
+        self.initial_sources_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.initial_sources_status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.initial_sources_status_label.setAccessibleName("初次來源選擇與比較狀態")
+        initial_layout.addRow(self.initial_sources_status_label)
+        layout.addWidget(initial_group)
 
         self.status_label = QLabel(
             disabled_reason or "尚未載入情境；不會自動選取或套用 latest。", self
@@ -179,12 +237,22 @@ class PortfolioResearchScenarioWidget(QWidget):
         if disabled_reason and workspace is None:
             self.account_kind_combo.setEnabled(False)
             self.portfolio_id_edit.setEnabled(False)
+        if workspace is None or not bool(getattr(workspace, "can_create_initial", False)):
+            self.initial_sources_status_label.setText(
+                disabled_reason or "初次策略／Health 來源尚未配置。"
+            )
+        elif not bool(getattr(workspace, "can_save", False)):
+            self.initial_sources_status_label.setText(
+                "初次來源可讀取與比較；目前資料路由唯讀，不能保存。"
+            )
         self._sync_enabled()
 
     @property
     def current_comparison(self) -> PortfolioResearchScenarioComparison | None:
         """回傳目前預覽或原始 saved comparison，不暴露可變設定。"""
 
+        if self._initial_preview is not None:
+            return self._initial_preview
         if self._preview_comparison is not None:
             return self._preview_comparison
         return self._current_saved.comparison if self._current_saved is not None else None
@@ -204,6 +272,93 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.status_label.setText(self.disabled_reason or "研究情境 workspace 尚未配置。")
             return
         self._queue("list", identity)
+
+    def load_initial_sources(self) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        identity = self._selected_initial_identity()
+        if identity is None:
+            self.initial_sources_status_label.setText(
+                "請明確輸入 strategy_id、strategy_version_id 與 paper account namespace。"
+            )
+            return
+        if self.workspace is None or not bool(getattr(self.workspace, "can_create_initial", False)):
+            self.initial_sources_status_label.setText(
+                self.disabled_reason or "初次策略／Health 來源尚未配置。"
+            )
+            self._sync_enabled()
+            return
+        self._initial_catalogue = None
+        self._clear_initial_preview()
+        self._updating_initial_source_combo = True
+        blocker = QSignalBlocker(self.initial_source_combo)
+        self.initial_source_combo.clear()
+        self.initial_source_combo.addItem("請明確選擇成對來源", None)
+        del blocker
+        self._updating_initial_source_combo = False
+        self._queue("initial_list", identity)
+
+    def compare_initial(self) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        selection = self._selected_initial_selection()
+        symbols = self._initial_candidate_symbols()
+        if selection is None:
+            self.initial_sources_status_label.setText(
+                "請先載入候選並明確選取同策略、同版本、同 namespace 的來源對。"
+            )
+            return
+        if symbols is None:
+            self.initial_sources_status_label.setText(
+                "請輸入至少一個不重複的股票代碼；多檔以逗號分隔。"
+            )
+            return
+        if self.workspace is None or not bool(getattr(self.workspace, "can_create_initial", False)):
+            self.initial_sources_status_label.setText(
+                self.disabled_reason or "初次策略／Health 來源尚未配置。"
+            )
+            self._sync_enabled()
+            return
+
+        # 共用結果表若仍顯示舊 artifact，不能讓新初次比較沿用該 artifact 身分下鑽。
+        self._current_saved = None
+        self._current_artifact_id = ""
+        self._preview_comparison = None
+        self._initial_preview = None
+        self._initial_preview_selection = None
+        self._initial_preview_symbols = ()
+        self._clear_artifact_ids()
+        self._clear_display()
+        self._queue("initial_compare", (selection, symbols))
+
+    def save_initial(self) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        if (
+            self.workspace is None
+            or not bool(getattr(self.workspace, "can_create_initial", False))
+            or not bool(getattr(self.workspace, "can_save", False))
+        ):
+            self.initial_sources_status_label.setText(
+                self.disabled_reason or "目前來源路由不可另存初次研究結果。"
+            )
+            self._sync_enabled()
+            return
+        selection = self._selected_initial_selection()
+        symbols = self._initial_candidate_symbols()
+        comparison = self._initial_preview
+        if (
+            selection is None
+            or comparison is None
+            or self._initial_preview_selection != selection
+            or self._initial_preview_symbols != symbols
+        ):
+            self.initial_sources_status_label.setText(
+                "來源或候選股票已變更；請重新比較後才能另存。"
+            )
+            self._sync_enabled()
+            return
+        self._queue("initial_save", (selection, comparison))
 
     def open_selected(self) -> None:
         identity = self._selected_identity()
@@ -231,6 +386,8 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._queue("compare", (self._current_artifact_id, *identity, target))
 
     def save_target(self) -> None:
+        if self._worker_action in {"save", "initial_save"}:
+            return
         if self.workspace is None or not self.workspace.can_save:
             self.status_label.setText("目前資料路由為唯讀；可查看與比較，不能另存。")
             self._sync_enabled()
@@ -266,7 +423,7 @@ class PortfolioResearchScenarioWidget(QWidget):
 
     def cancel_current_operation(self) -> None:
         worker = self._worker
-        if worker is None or self._worker_action == "save":
+        if worker is None or self._is_save_action(self._worker_action):
             return
         self._generation += 1
         self._pending = None
@@ -280,7 +437,7 @@ class PortfolioResearchScenarioWidget(QWidget):
     def begin_shutdown(self) -> None:
         self._closing = True
         self._pending = None
-        if self._worker is not None and self._worker_action != "save":
+        if self._worker is not None and not self._is_save_action(self._worker_action):
             self._generation += 1
             try:
                 self._worker.cancel(cooperative=True, wait=False)
@@ -310,8 +467,45 @@ class PortfolioResearchScenarioWidget(QWidget):
             return None
         return account_kind, portfolio_id
 
+    def _selected_initial_identity(self) -> tuple[str, str, str] | None:
+        values = (
+            self.initial_strategy_id_edit.text().strip(),
+            self.initial_strategy_version_edit.text().strip(),
+            self.initial_namespace_edit.text().strip(),
+        )
+        return values if all(values) else None
+
+    def _selected_initial_selection(self) -> InitialPortfolioResearchSelection | None:
+        selection = self.initial_source_combo.currentData()
+        identity = self._selected_initial_identity()
+        if not isinstance(selection, InitialPortfolioResearchSelection) or identity is None:
+            return None
+        checkpoint = selection.checkpoint
+        if (checkpoint.strategy_id, checkpoint.strategy_version_id, checkpoint.account_namespace) != identity:
+            return None
+        return selection
+
+    def _initial_candidate_symbols(self) -> tuple[str, ...] | None:
+        text = self.initial_candidate_symbols_edit.text().strip()
+        symbols = tuple(item for item in re.split(r"[,，;；\s]+", text) if item)
+        if not symbols or len(set(symbols)) != len(symbols):
+            return None
+        return symbols
+
+    @staticmethod
+    def _is_save_action(action: str | None) -> bool:
+        return action in {"save", "initial_save"}
+
+    def _clear_initial_preview(self) -> None:
+        had_initial_display = self._initial_preview is not None and self._current_saved is None
+        self._initial_preview = None
+        self._initial_preview_selection = None
+        self._initial_preview_symbols = ()
+        if had_initial_display:
+            self._clear_display()
+
     def _on_identity_changed(self, *_args: Any) -> None:
-        if self._worker_action == "save":
+        if self._is_save_action(self._worker_action):
             return
         self._invalidate_pending_work()
         self._current_saved = None
@@ -322,14 +516,57 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.status_label.setText("帳種或 portfolio_id 已變更；請重新載入並明確選取。")
         self._sync_enabled()
 
+    @Slot(str)
+    def _on_initial_identity_changed(self, *_args: Any) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        self._invalidate_pending_work()
+        self._initial_catalogue = None
+        self._clear_initial_preview()
+        self._updating_initial_source_combo = True
+        blocker = QSignalBlocker(self.initial_source_combo)
+        self.initial_source_combo.clear()
+        self.initial_source_combo.addItem("請先載入並明確選擇來源", None)
+        del blocker
+        self._updating_initial_source_combo = False
+        self.initial_sources_status_label.setText(
+            "策略、版本或 namespace 已變更；請重新載入成對來源候選。"
+        )
+        self._sync_enabled()
+
+    @Slot(str)
+    def _on_initial_candidates_changed(self, *_args: Any) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        self._invalidate_pending_work()
+        self._clear_initial_preview()
+        self.initial_sources_status_label.setText(
+            "候選股票已變更；請重新比較初次研究情境。"
+        )
+        self._sync_enabled()
+
+    @Slot(int)
+    def _on_initial_source_changed(self, *_args: Any) -> None:
+        if self._updating_initial_source_combo or self._is_save_action(self._worker_action):
+            return
+        self._invalidate_pending_work()
+        self._clear_initial_preview()
+        self.initial_sources_status_label.setText(
+            "成對來源選擇已變更；請重新比較初次研究情境。"
+            if isinstance(self.initial_source_combo.currentData(), InitialPortfolioResearchSelection)
+            else "尚未明確選取成對來源。"
+        )
+        self._sync_enabled()
+
     @Slot(int)
     def _on_artifact_selection_changed(self, *_args: Any) -> None:
-        if self._updating_artifact_combo or self._worker_action == "save":
+        if self._updating_artifact_combo or self._is_save_action(self._worker_action):
             return
         self._invalidate_pending_work()
         self._current_saved = None
         self._current_artifact_id = ""
         self._preview_comparison = None
+        self._clear_initial_preview()
         self._clear_display()
         selected = self.saved_artifact_combo.currentData()
         self.status_label.setText(
@@ -341,11 +578,11 @@ class PortfolioResearchScenarioWidget(QWidget):
 
     @Slot(int)
     def _on_target_changed(self, _value: int) -> None:
-        if self._worker_action == "save":
+        if self._is_save_action(self._worker_action):
             return
         self._generation += 1
         self._pending = None
-        if self._worker is not None and self._worker_action != "save":
+        if self._worker is not None and not self._is_save_action(self._worker_action):
             try:
                 self._worker.cancel(cooperative=True, wait=False)
             except RuntimeError:
@@ -360,12 +597,15 @@ class PortfolioResearchScenarioWidget(QWidget):
     def _on_scenario_selection_changed(self) -> None:
         selected = self.scenario_table.currentRow() >= 0
         self.stock_research_button.setEnabled(
-            selected and self._worker is None and not self._closing
+            selected
+            and bool(self._current_artifact_id)
+            and self._worker is None
+            and not self._closing
         )
 
     @Slot()
     def _open_selected_stock_research(self) -> None:
-        if self._worker is not None or self._closing:
+        if self._worker is not None or self._closing or not self._current_artifact_id:
             return
         row = self.scenario_table.currentRow()
         if row < 0:
@@ -379,7 +619,7 @@ class PortfolioResearchScenarioWidget(QWidget):
     def _invalidate_pending_work(self) -> None:
         self._generation += 1
         self._pending = None
-        if self._worker is not None and self._worker_action != "save":
+        if self._worker is not None and not self._is_save_action(self._worker_action):
             try:
                 self._worker.cancel(cooperative=True, wait=False)
             except RuntimeError:
@@ -388,11 +628,14 @@ class PortfolioResearchScenarioWidget(QWidget):
     def _queue(self, action: str, args: tuple[Any, ...]) -> None:
         if self._closing or self.workspace is None:
             return
+        if self._is_save_action(self._worker_action):
+            self.status_label.setText("另存作業進行中；完成前不可切換身分或啟動其他操作。")
+            return
         self._generation += 1
         generation = self._generation
         if self._worker is not None:
             self._pending = (generation, action, args)
-            if self._worker_action != "save":
+            if not self._is_save_action(self._worker_action):
                 try:
                     self._worker.cancel(cooperative=True, wait=False)
                 except RuntimeError:
@@ -425,6 +668,29 @@ class PortfolioResearchScenarioWidget(QWidget):
                 _save_target_task, self.workspace, artifact_id, comparison, account_kind, portfolio_id
             )
             self.status_label.setText("正在另存研究假設；寫入期間不可取消或切換帳本。")
+        elif action == "initial_list":
+            strategy_id, strategy_version_id, account_namespace = args
+            task = TaskWorker(
+                _list_initial_sources_task,
+                self.workspace,
+                strategy_id,
+                strategy_version_id,
+                account_namespace,
+            )
+            self.initial_sources_status_label.setText("正在載入同策略、同版本、同 namespace 的成對來源……")
+        elif action == "initial_compare":
+            selection, candidate_symbols = args
+            task = TaskWorker(
+                _compare_initial_task,
+                self.workspace,
+                selection,
+                candidate_symbols,
+            )
+            self.initial_sources_status_label.setText("正在依選定的策略與 Health 原件進行初次比較……")
+        elif action == "initial_save":
+            selection, comparison = args
+            task = TaskWorker(_save_initial_task, self.workspace, selection, comparison)
+            self.initial_sources_status_label.setText("正在保存初次研究結果；寫入期間不可取消或切換來源。")
         else:
             raise ValueError("portfolio_research_scenario_action_invalid")
         self._worker = task
@@ -445,7 +711,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         generation = self._worker_generation
         if action is None:
             return
-        if action != "save" and (self._closing or generation != self._generation):
+        if not self._is_save_action(action) and (self._closing or generation != self._generation):
             return
         if action == "list":
             if not isinstance(value, tuple) or any(not isinstance(item, str) for item in value):
@@ -455,6 +721,63 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.status_label.setText(
                 f"已載入 {len(value)} 份有界清單；請明確選擇 artifact 後開啟。"
                 if value else "目前沒有已保存情境；未查詢或套用 latest。"
+            )
+        elif action == "initial_list":
+            identity = self._selected_initial_identity()
+            if (
+                not isinstance(value, InitialPortfolioResearchCatalogue)
+                or type(value.truncated) is not bool
+                or not isinstance(value.candidates, tuple)
+                or identity is None
+            ):
+                self.initial_sources_status_label.setText("成對來源清單回傳格式不符；未套用。")
+                return
+            candidates = value.candidates
+            if any(
+                not isinstance(candidate, InitialPortfolioResearchCandidate)
+                or not isinstance(candidate.label, str)
+                or not candidate.label
+                or not isinstance(candidate.selection, InitialPortfolioResearchSelection)
+                or (
+                    candidate.selection.checkpoint.strategy_id,
+                    candidate.selection.checkpoint.strategy_version_id,
+                    candidate.selection.checkpoint.account_namespace,
+                ) != identity
+                for candidate in candidates
+            ):
+                self._initial_catalogue = None
+                self.initial_sources_status_label.setText(
+                    "候選來源與明示策略、版本或 namespace 不一致；未套用。"
+                )
+                return
+            self._initial_catalogue = value
+            self._updating_initial_source_combo = True
+            blocker = QSignalBlocker(self.initial_source_combo)
+            self.initial_source_combo.clear()
+            self.initial_source_combo.addItem("請明確選擇成對來源", None)
+            for candidate in candidates:
+                checkpoint = candidate.selection.checkpoint
+                health_reference = candidate.selection.health_reference
+                label = (
+                    f"{candidate.label}｜operation {checkpoint.operation_id}｜"
+                    f"snapshot {checkpoint.snapshot_id}｜Health {health_reference.receipt_id}"
+                )
+                self.initial_source_combo.addItem(label, candidate.selection)
+                index = self.initial_source_combo.count() - 1
+                self.initial_source_combo.setItemData(
+                    index,
+                    f"strategy={checkpoint.strategy_id}; version={checkpoint.strategy_version_id}; "
+                    f"namespace={checkpoint.account_namespace}; operation={checkpoint.operation_id}; "
+                    f"snapshot={checkpoint.snapshot_id}; Health receipt={health_reference.receipt_id}; "
+                    f"Health SHA={health_reference.receipt_sha256}",
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+            del blocker
+            self._updating_initial_source_combo = False
+            truncation = "；清單已截斷" if value.truncated else ""
+            self.initial_sources_status_label.setText(
+                f"已載入 {len(candidates)} 組同來源候選{truncation}；請明確選取一組。"
+                if candidates else "沒有可用的成對來源候選；未選取或套用其他來源。"
             )
         elif action == "open":
             if not isinstance(value, SavedPortfolioResearchScenario):
@@ -482,6 +805,40 @@ class PortfolioResearchScenarioWidget(QWidget):
             self._render_comparison(value)
             self.target_status_label.setText("預覽尚未保存；原始 artifact 與原時鐘仍保留。")
             self.status_label.setText("已完成明示 target 比較；尚未另存。")
+        elif action == "initial_compare":
+            if not isinstance(value, PortfolioResearchScenarioComparison):
+                self.initial_sources_status_label.setText("初次比較回傳型別不符；未套用。")
+                return
+            # 原 artifact 會排序候選代碼；預覽先沿同一 codec 正規化，保存讀回才能逐值核對。
+            from app_module.portfolio_research_scenario_artifact import decode_scenario_artifact, encode_scenario_artifact
+            value = decode_scenario_artifact(encode_scenario_artifact(value))
+            selection = self._selected_initial_selection()
+            symbols = self._initial_candidate_symbols()
+            checkpoint = selection.checkpoint if selection is not None else None
+            if (
+                selection is None
+                or symbols is None
+                or checkpoint is None
+                or value.account.account_kind != "paper"
+                or value.account.portfolio_id != checkpoint.account_namespace
+                or value.account.snapshot_id != checkpoint.snapshot_id
+                or value.request.account_kind != "paper"
+                or value.request.portfolio_id != checkpoint.account_namespace
+                or value.request.snapshot_id != checkpoint.snapshot_id
+                or set(value.request.candidate_symbols) != set(symbols)
+                or len(value.request.candidate_symbols) != len(symbols)
+            ):
+                self.initial_sources_status_label.setText(
+                    "初次比較結果與目前來源 namespace 或候選股票不一致；未套用。"
+                )
+                return
+            self._initial_preview = value
+            self._initial_preview_selection = selection
+            self._initial_preview_symbols = symbols
+            self._render_comparison(value)
+            self.initial_sources_status_label.setText(
+                "初次比較已完成，尚未保存；未綁定舊 artifact，保存前不能從此預覽下鑽。"
+            )
         elif action == "save":
             if not isinstance(value, SavedPortfolioResearchScenario):
                 self.status_label.setText("另存結果型別不符；請以清單 exact 重讀。")
@@ -500,13 +857,46 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.status_label.setText(
                 f"研究假設已另存並選取新 artifact：{value.artifact_id}；來源帳本與時鐘未改寫。"
             )
+        elif action == "initial_save":
+            if not isinstance(value, SavedPortfolioResearchScenario):
+                self.initial_sources_status_label.setText("初次研究另存結果型別不符；請重新載入來源。")
+                return
+            selection = self._selected_initial_selection()
+            comparison = self._initial_preview
+            if (
+                selection is None
+                or comparison is None
+                or self._initial_preview_selection != selection
+                or value.comparison != comparison
+                or value.comparison.account.account_kind != "paper"
+                or value.comparison.account.portfolio_id != selection.checkpoint.account_namespace
+                or value.comparison.account.snapshot_id != selection.checkpoint.snapshot_id
+                or value.comparison.request.account_kind != "paper"
+                or value.comparison.request.portfolio_id != selection.checkpoint.account_namespace
+                or value.comparison.request.snapshot_id != selection.checkpoint.snapshot_id
+                or PortfolioResearchScenarioWorkspace.artifact_id(value.comparison) != value.artifact_id
+            ):
+                self.initial_sources_status_label.setText(
+                    "初次另存回傳內容與目前來源、比較或 canonical artifact ID 不符。"
+                )
+                return
+            # 首次保存回原封存流程時同步同一帳種／帳戶，避免借用先前手動帳欄位。
+            identity_blockers = (QSignalBlocker(self.account_kind_combo), QSignalBlocker(self.portfolio_id_edit))
+            self.account_kind_combo.setCurrentIndex(self.account_kind_combo.findData(value.comparison.account.account_kind))
+            self.portfolio_id_edit.setText(value.comparison.account.portfolio_id)
+            del identity_blockers
+            self._apply_saved(value)
+            self._replace_artifact_ids((value.artifact_id, *self._listed_artifact_ids()))
+            self.initial_sources_status_label.setText(
+                f"初次研究已保存並選取新 artifact：{value.artifact_id}；可沿原保存流程重開、改 target 或選股。"
+            )
         self._sync_enabled()
 
     @Slot(str)
     def _on_worker_error(self, message: str) -> None:
         action = self._worker_action
         generation = self._worker_generation
-        if action != "save" and (self._closing or generation != self._generation):
+        if not self._is_save_action(action) and (self._closing or generation != self._generation):
             return
         identity = self._selected_identity()
         account_label = (
@@ -514,17 +904,26 @@ class PortfolioResearchScenarioWidget(QWidget):
         )
         artifact_label = self._current_artifact_id or "未 exact 開啟"
         bounded_message = message.replace("\r", " ").replace("\n", " ")[:500]
-        operation = "另存失敗" if action == "save" else "讀取或比較失敗"
-        self.status_label.setText(
+        operation = "另存失敗" if self._is_save_action(action) else "讀取或比較失敗"
+        message_text = (
             f"{operation}；帳本 {account_label}；artifact {artifact_label}；"
             f"原件仍保留，未套用未完成結果。原因：{bounded_message}"
         )
+        self.status_label.setText(message_text)
+        if isinstance(action, str) and action.startswith("initial_"):
+            self.initial_sources_status_label.setText(message_text)
         self._sync_enabled()
 
     @Slot()
     def _on_worker_cancelled(self) -> None:
-        if self._worker_action != "save" and not self._closing and self._worker_generation == self._generation:
+        if (
+            not self._is_save_action(self._worker_action)
+            and not self._closing
+            and self._worker_generation == self._generation
+        ):
             self.status_label.setText("操作已取消；未套用未完成結果。")
+            if isinstance(self._worker_action, str) and self._worker_action.startswith("initial_"):
+                self.initial_sources_status_label.setText("初次來源操作已取消；未套用未完成結果。")
 
     @Slot()
     def _on_worker_native_finished(self) -> None:
@@ -548,6 +947,9 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._current_saved = saved
         self._current_artifact_id = saved.artifact_id
         self._preview_comparison = None
+        self._initial_preview = None
+        self._initial_preview_selection = None
+        self._initial_preview_symbols = ()
         self._initialize_target_controls(saved.comparison)
         self._render_comparison(saved.comparison)
         self._select_artifact_id(saved.artifact_id)
@@ -716,6 +1118,9 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._updating_artifact_combo = False
 
     def _clear_display(self) -> None:
+        self._initial_preview = None
+        self._initial_preview_selection = None
+        self._initial_preview_symbols = ()
         self.account_summary_label.setText("尚無已開啟帳本。")
         self.valuation_summary_label.setText("精確現金與 NAV 尚未載入。")
         self.positions_table.setRowCount(0)
@@ -738,8 +1143,16 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.save_button.setEnabled(False)
             self.cancel_button.setEnabled(False)
             self.stock_research_button.setEnabled(False)
+            self.initial_strategy_id_edit.setEnabled(False)
+            self.initial_strategy_version_edit.setEnabled(False)
+            self.initial_namespace_edit.setEnabled(False)
+            self.load_initial_sources_button.setEnabled(False)
+            self.initial_source_combo.setEnabled(False)
+            self.initial_candidate_symbols_edit.setEnabled(False)
+            self.initial_compare_button.setEnabled(False)
+            self.initial_save_button.setEnabled(False)
             return
-        locked = self._worker_action == "save"
+        locked = self._is_save_action(self._worker_action)
         identity = self._selected_identity() is not None
         selected_id = isinstance(self.saved_artifact_combo.currentData(), str)
         busy = self._worker is not None
@@ -759,11 +1172,40 @@ class PortfolioResearchScenarioWidget(QWidget):
             can_save and self._preview_comparison is not None and has_saved and not busy and not self._closing
         )
         self.cancel_button.setEnabled(
-            busy and self._worker_action != "save" and not self._closing
+            busy and not locked and not self._closing
         )
         self.stock_research_button.setEnabled(
             self.scenario_table.currentRow() >= 0
+            and bool(self._current_artifact_id)
             and self._worker is None
+            and not self._closing
+        )
+        can_create_initial = bool(getattr(self.workspace, "can_create_initial", False))
+        initial_identity = self._selected_initial_identity() is not None
+        initial_selection = self._selected_initial_selection() is not None
+        initial_symbols = self._initial_candidate_symbols() is not None
+        self.initial_strategy_id_edit.setEnabled(not locked and not self._closing)
+        self.initial_strategy_version_edit.setEnabled(not locked and not self._closing)
+        self.initial_namespace_edit.setEnabled(not locked and not self._closing)
+        self.load_initial_sources_button.setEnabled(
+            can_create_initial and initial_identity and not busy and not locked and not self._closing
+        )
+        self.initial_source_combo.setEnabled(
+            can_create_initial and not locked and not self._closing
+        )
+        self.initial_candidate_symbols_edit.setEnabled(
+            can_create_initial and initial_selection and not locked and not self._closing
+        )
+        self.initial_compare_button.setEnabled(
+            can_create_initial and initial_selection and initial_symbols and not busy and not self._closing
+        )
+        self.initial_save_button.setEnabled(
+            can_create_initial
+            and bool(getattr(self.workspace, "can_save", False))
+            and self._initial_preview is not None
+            and self._initial_preview_selection == self._selected_initial_selection()
+            and self._initial_preview_symbols == self._initial_candidate_symbols()
+            and not busy
             and not self._closing
         )
 
@@ -826,3 +1268,41 @@ def _save_target_task(
         account_kind=account_kind,
         portfolio_id=portfolio_id,
     )
+
+
+def _list_initial_sources_task(
+    workspace: PortfolioResearchScenarioWorkspace,
+    strategy_id: str,
+    strategy_version_id: str,
+    account_namespace: str,
+    cancel_callback=None,
+) -> InitialPortfolioResearchCatalogue:
+    return workspace.list_initial_sources(
+        strategy_id=strategy_id,
+        strategy_version_id=strategy_version_id,
+        account_namespace=account_namespace,
+        cancel_callback=cancel_callback,
+    )
+
+
+def _compare_initial_task(
+    workspace: PortfolioResearchScenarioWorkspace,
+    selection: InitialPortfolioResearchSelection,
+    candidate_symbols: tuple[str, ...],
+    cancel_callback=None,
+) -> PortfolioResearchScenarioComparison:
+    return workspace.compare_initial(
+        selection,
+        candidate_symbols=candidate_symbols,
+        explicit_weights=None,
+        cancel_callback=cancel_callback,
+    )
+
+
+def _save_initial_task(
+    workspace: PortfolioResearchScenarioWorkspace,
+    selection: InitialPortfolioResearchSelection,
+    comparison: PortfolioResearchScenarioComparison,
+) -> SavedPortfolioResearchScenario:
+    # 寫入可能已提交，因此不把合作取消 callback 傳入保存路徑。
+    return workspace.save_initial(selection, comparison)

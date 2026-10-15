@@ -1501,6 +1501,7 @@ class MainWindow(QMainWindow):
         # 情境封存沿既有中央私人路由；建構 reader 不建立資料庫或回退別帳。
         from app_module.portfolio_research_scenario_repository import PortfolioResearchScenarioRepository
         from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+        from app_module.portfolio_research_initial_source import PortfolioResearchInitialSourceProvider
 
         scenario_workspace = None
         scenario_disabled = "配置研究需明示 PERSONAL 或 LEGACY_READ_ONLY 私人 store；未自動建立或搬移來源。"
@@ -1509,7 +1510,10 @@ class MainWindow(QMainWindow):
                 PortfolioResearchScenarioRepository(
                     route=selection.route(PersonalStoreDomain.PORTFOLIO_RESEARCH, StoreIdentity("portfolio-research")),
                     personal_paths=selection.paths,
-                )
+                ),
+                initial_source_provider=(PortfolioResearchInitialSourceProvider(
+                    self.paper_checkpoint_account_service, health_reader,
+                ) if self.paper_checkpoint_account_service is not None else None),
             )
             scenario_disabled = ""
         self._personal_portfolio_view_kwargs.update(

@@ -61,6 +61,14 @@
 
 此入口位於後續開發分支「持倉管理 → 顯示進階 → 配置研究封存」，尚未納入固定 `9fa4518c` 試用包。使用已設定的 PERSONAL 私人 store；LEGACY_READ_ONLY 可讀回但不能另存，未配置時明示停用，不自動搬資料。
 
+**初次策略帳研究（Increment47）**：先確認 Research Lab 的策略帳已有完整 checkpoint，並保留其 Strategy ID、Strategy version ID、Paper namespace、operation ID 與 snapshot ID。Main 必須同時有明示 PERSONAL store 與既有 `PAPER_CONTRACT_ARTIFACTS_ROOT`；未配置時初次入口停用，舊封存仍沿原路讀回。
+
+1. 先以同一套私人設定執行 `scripts/run_strategy_position_health.py`，明選上述五項身分（參數依序為 `--strategy-id`、`--strategy-version-id`、`--account-namespace`、`--operation-id`、`--snapshot-id`）。命令預設只另存至 `OUTPUT_ROOT/position_health_transition`，不改帳戶／成交帳本、不建立正式 Task；不會自動啟用每日排程。
+2. 原有 thesis／條件／指標／日曆來源，分別以 `--thesis-registry`、`--condition-source`、`--metrics-source`、`--calendar-cache` 指定；其餘選項可用 `--help` 查閱。命令只用實際目前時間，核同帳戶／開倉身分與原價格證據；缺件會保存 degraded 評估並以結束碼 2 明示，不能把它當完整 Health。舊 paper-main v1 評估不可冒作策略帳 v2。
+3. 回此分頁，在「初次策略／Health 成對來源研究」輸入明確的策略、版本及 namespace，載入候選後明選一份來源。候選清單只作定位，比較時會精確重核；若清單截斷，畫面會明示。Health 評估日期須與本次台北研究日期一致。
+4. 輸入候選股票代碼，以逗號或空白分隔，按「比較初次研究情境」。目前這條來源只支援同 checkpoint 已有原行情與完整 Health 的持股；未持有候選、無法證明開倉連續性或缺 Health 時直接說明不可用。流動性／冷卻期缺件沿原配置守衛顯示，週換手由同一完整帳本前綴與原七日權重換手計算取得，不預設 0。
+5. 核對原現金、NAV、股數、價格資料日與情境原因，再按「另存初次研究結果」。未保存預覽不可進個股；保存後同步為同一 Paper 帳戶及新 hash，接回下列既有重開、target、個股及返回流程。讀取／比較可取消；保存提交期間等待完成。換來源、股票或帳戶都須重新比較。
+
 1. 在此分頁明確選帳種（手動／聲明研究／Paper），填原 `portfolio_id`，載入已保存情境。這個帳本選擇獨立於頁首的分帳導覽；不會把手動帳資料帶入 Paper。
 2. 明選一個封存 hash 後開啟，核對帳種、帳本、snapshot、原資料日、決策時鐘、精確現金／NAV、完整股數與標記價格。每次最多列出 25 份；開啟會核原 canonical 內容及 hash，不會選 latest 或讀今日行情。
 3. 比較「維持／候選等權／明示 target」的原配置、差額、風控後股數、金額、成本和原因。未知欄位保持未提供；投影股數是研究結果，不是成交。金額沿原 Decimal 文字，bp 不用來反推現金。
@@ -69,7 +77,7 @@
 6. 比較預覽尚未另存時，開啟個股會提示先保存，避免把新 target 當成舊封存內容。保存後選股票並開啟個股研究，在「持倉／Health／Exit」讀原帳種、portfolio、snapshot、現金、NAV、股數、mark／市值、Health 與各情境 target。這些是封存值，不讀當前手動帳；沒有獨立 mark 發布時間就明示未提供，不用帳戶時鐘冒充行情時鐘。完整帳本中未持有的候選股顯示原股數 0，mark／市值仍可未提供。
 7. 來源、帳本、hash 或日期不符時不回退其他帳戶；讀取失敗、取消或換股會清除封存投影。返回會核原封存 identity。正常關閉後重開程式，再以相同帳種、帳本及保存 hash 明選讀回；不自動選最新結果。
 
-空庫表示沒有這個帳本的完整封存。此增量沒有替缺現金、Health、行情權威或時間證據建立初始情境；不要手工修改 hash／日期、加入示例資料或把缺件填零。損毀／版本不符保留原錯誤及 hash 交 owner 核對。初次帳本來源整合及完整 P06 驗收仍待原計畫後續，其他功能可繼續使用。
+空庫表示沒有這個帳本的完整封存；初次來源空清單則表示沒有可配對的策略 checkpoint／v2 Health，或來源尚未通過原時鐘及身分核驗。不要手工修改 hash／日期、加入示例資料或把缺件填零。損毀／版本不符保留原錯誤及 hash 交 owner 核對。手動／聲明帳本的初次來源、未持有候選來源、Registry 交叉入口與完整 P06 驗收仍待原計畫後續；正常 Main／新程序的本輪證據為隔離合成來源，不授真來源、Native／EXE 或完整 Gate。
 
 ### Paper Portfolio
 

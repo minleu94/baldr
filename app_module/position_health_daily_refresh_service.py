@@ -130,6 +130,42 @@ class PaperHealthSnapshotBundle:
     data_version: int
 
 
+def paper_health_snapshot_rows_sha256(
+    *,
+    snapshot_id: str,
+    portfolio_id: str,
+    decision_date: str,
+    source_result_id: str,
+    positions: tuple[PaperHealthSnapshotPosition, ...],
+) -> str:
+    """共用 Health 原列身份；不把完整帳戶 hash 或 DB 版本當成列 hash。"""
+    for value in (snapshot_id, portfolio_id, source_result_id):
+        if not isinstance(value, str) or not value:
+            raise ValueError("paper_snapshot_exact_identity_missing")
+    if not isinstance(positions, tuple) or any(
+        not isinstance(row, PaperHealthSnapshotPosition) for row in positions
+    ):
+        raise ValueError("paper_snapshot_exact_positions_invalid")
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in positions:
+        if not isinstance(row.stock_code, str) or not row.stock_code or row.stock_code in seen:
+            raise ValueError("paper_snapshot_exact_stock_code_invalid_or_duplicate")
+        seen.add(row.stock_code)
+        rows.append({
+            "stock_code": row.stock_code,
+            "executable_shares": _non_negative_int(row.shares, "paper position quantity"),
+            "constrained_weight_bp": _non_negative_int(row.weight_bp, "paper position weight_bp"),
+        })
+    return _canonical_sha256({
+        "snapshot_id": snapshot_id,
+        "portfolio_id": portfolio_id,
+        "decision_date": _parse_date(decision_date, "paper snapshot decision_date").isoformat(),
+        "source_result_id": source_result_id,
+        "positions": rows,
+    })
+
+
 def _snapshot_from_exact_rows(
     *,
     state_row: Any,
@@ -163,13 +199,6 @@ def _snapshot_from_exact_rows(
         raw_positions.append(position)
         if quantity > 0:
             positions.append(position)
-    canonical = {
-        "snapshot_id": snapshot_id,
-        "portfolio_id": portfolio_id,
-        "decision_date": selected_date.isoformat(),
-        "source_result_id": source_result_id,
-        "positions": raw_positions,
-    }
     return _PaperSnapshot(
         snapshot_id=snapshot_id,
         portfolio_id=portfolio_id,
@@ -177,7 +206,16 @@ def _snapshot_from_exact_rows(
         source_result_id=source_result_id,
         positions=tuple(positions),
         raw_positions=tuple(raw_positions),
-        rows_sha256=_canonical_sha256(canonical),
+        rows_sha256=paper_health_snapshot_rows_sha256(
+            snapshot_id=snapshot_id,
+            portfolio_id=portfolio_id,
+            decision_date=selected_date.isoformat(),
+            source_result_id=source_result_id,
+            positions=tuple(PaperHealthSnapshotPosition(
+                stock_code=row["stock_code"], shares=row["executable_shares"],
+                weight_bp=row["constrained_weight_bp"],
+            ) for row in raw_positions),
+        ),
         data_version=data_version,
     )
 

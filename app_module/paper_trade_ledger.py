@@ -500,6 +500,10 @@ class PaperTradeDailyOperationRead:
     transition: PaperTradeTransition | None
     rowset_hash_before: str
     rowset_hash_after: str
+    allocation_decision_date: str | None = None
+    allocation_prefix_fills: tuple[PaperTradeFill, ...] = ()
+    allocation_prefix_transitions: tuple[PaperTradeTransition, ...] = ()
+    allocation_prefix_rowset_hash: str | None = None
 
 
 def _validate_transition_prices(value: Mapping[str, Decimal]) -> None:
@@ -1198,6 +1202,7 @@ class PaperTradeLedgerRepository:
         *,
         portfolio_id: str,
         event_date: str,
+        allocation_decision_date: str | None = None,
     ) -> PaperTradeDailyOperationRead:
         """在同一 route-bound BEGIN snapshot 精確讀回 daily append。"""
 
@@ -1205,6 +1210,12 @@ class PaperTradeLedgerRepository:
             raise ValueError("operation_id is required")
         self._require_identity(portfolio_id)
         event_date = _require_canonical_event_date(event_date, "event_date")
+        if allocation_decision_date is not None:
+            allocation_decision_date = _require_canonical_event_date(
+                allocation_decision_date, "allocation_decision_date"
+            )
+            if allocation_decision_date <= event_date:
+                raise ValueError("paper allocation decision must follow checkpoint execution")
 
         connection = self._connect(read_only=True)
         try:
@@ -1388,12 +1399,62 @@ class PaperTradeLedgerRepository:
             ):
                 raise ValueError("paper daily operation historical rowset mismatch")
 
+            prefix_fills: tuple[PaperTradeFill, ...] = ()
+            prefix_transitions: tuple[PaperTradeTransition, ...] = ()
+            allocation_hash: str | None = None
+            if allocation_decision_date is not None:
+                allocation_hash = _ledger_rowset_hash_prefix(
+                    connection, event_date=allocation_decision_date, inclusive=False
+                )
+                if allocation_hash != prefix_after or connection.execute(
+                    "SELECT 1 FROM paper_trade_daily_operations "
+                    "WHERE event_date > ? AND event_date < ? LIMIT 1",
+                    (event_date, allocation_decision_date),
+                ).fetchone() is not None:
+                    raise ValueError("paper allocation checkpoint has later ledger operations")
+                fills_by_identity: dict[str, PaperTradeFill] = {}
+                for batch_row in connection.execute(
+                    "SELECT * FROM paper_trade_ledger WHERE event_date < ? ORDER BY fill_id",
+                    (allocation_decision_date,),
+                ):
+                    fill = _validate_raw_fill_row(batch_row)
+                    if (fill.portfolio_id != portfolio_id or fill.fill_id in fills_by_identity
+                            or len(fills_by_identity) >= _MAX_EXACT_READ_PREFIX_ROWS):
+                        raise ValueError("paper allocation prefix fill identity/limit invalid")
+                    fills_by_identity[fill.fill_id] = fill
+                ordered_prefix: list[PaperTradeFill] = []
+                transitions: list[PaperTradeTransition] = []
+                seen: set[str] = set()
+                previous_date: str | None = None
+                for batch_row in connection.execute(
+                    "SELECT * FROM paper_trade_transitions WHERE event_date < ? "
+                    "ORDER BY event_date, transition_id", (allocation_decision_date,),
+                ):
+                    item = _validate_raw_transition_row(batch_row)
+                    if (item.portfolio_id != portfolio_id or item.event_date == previous_date
+                            or len(transitions) >= _MAX_EXACT_READ_PREFIX_OPERATIONS):
+                        raise ValueError("paper allocation prefix transition identity/limit invalid")
+                    for fill_id in item.fill_ids:
+                        linked = fills_by_identity.get(fill_id)
+                        if linked is None or fill_id in seen or linked.event_date != item.event_date:
+                            raise ValueError("paper allocation prefix fill order incomplete")
+                        seen.add(fill_id)
+                        ordered_prefix.append(linked)
+                    transitions.append(item)
+                    previous_date = item.event_date
+                if seen != set(fills_by_identity):
+                    raise ValueError("paper allocation prefix does not cover every fill")
+                prefix_fills, prefix_transitions = tuple(ordered_prefix), tuple(transitions)
             return PaperTradeDailyOperationRead(
                 marker=marker,
                 ordered_fills=ordered_fills,
                 transition=transition,
                 rowset_hash_before=prefix_before,
                 rowset_hash_after=prefix_after,
+                allocation_decision_date=allocation_decision_date,
+                allocation_prefix_fills=prefix_fills,
+                allocation_prefix_transitions=prefix_transitions,
+                allocation_prefix_rowset_hash=allocation_hash,
             )
         finally:
             if connection.in_transaction:

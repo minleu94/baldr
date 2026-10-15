@@ -61,6 +61,29 @@ def test_repeat_launch_and_monotonic_stages(app):
             controller.step(STAGES[1])
         controller.dismiss()
 
+
+@pytest.mark.parametrize("outcome", ["ready", "cancel"])
+def test_finally_dismiss_after_qt_has_deleted_startup_view(app, outcome):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from shiboken6 import isValid
+
+    controller = StartupController(app, ASSETS)
+    window = QWidget()
+    if outcome == "ready":
+        controller.ready(window)
+        assert window.isVisible()
+    else:
+        controller.view.close()
+        with pytest.raises(StartupCancelled):
+            controller.ready(window)
+        controller.dismiss()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not isValid(controller.view)
+    # 重現main正常drain或取消cleanup後，launcher finally的第二次dismiss。
+    controller.dismiss()
+    window.close()
+    window.deleteLater()
+
 def test_cancel_background_import_drains_thread(app, monkeypatch):
     import importlib
     import threading

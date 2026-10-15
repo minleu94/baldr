@@ -762,3 +762,13 @@ Increment32接續：修復後c8fcc8a3候選由QA94以真實四股完成Native比
 第一版是可本機試用的固定候選；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項、來源權威、TPEx、歷史PIT、真N、完整雙策略績效及自然成熟全部保留第二階段。後續先依這四條旅程的實際問題修正，新增需求與非阻斷優化不進V1。正式資料、Task、maintainer、push／發布與交易未變更或啟用。
 
 QA109最後讀回交付8文件與11具名收據SHA、四旅程獨立scope及原計畫第二階段保留均通過；交付收據SHA 2037e135996423edb7ddb633a479443ffe3bf71f25bb1c593128a51b2dd7e0b2。此次5文件治理12features／errors=[]，不是產品完整Gate；outer SHA 1f4a7dd3bd2c9eb55366a2dfe6583a3bc526e35364a71df8e1095e594ee5abf3，自然閉鎖，無待執行Python／QA或worker writes。
+
+## Increment33：V1實際啟動入口的關閉生命週期
+
+本Increment只解除第一版共通交付風險：原QA107驗cmd --check、各旅程以EXE腳本入口建Main，尚未覆蓋無參數GUI的StartupController生命週期。QA110從已交Launch-Baldr.cmd無參數真正啟動、同Job Main可見，送WM_CLOSE後Qt event loop正常回0，但launcher finally再次dismiss已DeferredDelete的StartupView而RuntimeError，實際程序退出碼1。原FAIL outer SHA `ff124c36d30982aeabf750dfa59cb5d2f3e998abda0e09fd6190ce5d8c9b0629`；實際stdout／stderr另保存owner qa110_original_stdout.log／qa110_original_stderr.log，不以正常Qt返回0掩蓋最終錯誤。
+
+最小修正僅StartupController.dismiss的重複清理狀態；ready／取消第一次仍hide＋deleteLater，finally再次進來不再碰已刪除的C++ wrapper。新增兩個真Qt DeferredDelete後重複dismiss回歸；QA111 compile、startup／launcher／必需Workbench共100 PASS，validator25／0／4、原mypy1016檔通過（UI既有ignore_errors不證強型別），outer SHA `dc510ceb633e00bcfe4017b21eaec1c89e4c307d18d159f6a5edd1a7671c109c`。無金融、資料、策略或來源守衛變更，不重跑已通過金融案例。
+
+QA112只診斷既有1440px命中風險，沒有重跑旅程或放寬守衛。固定4cf候選同PID29956在640／1024／1440px比對Qt與Win32實際client、frame與WindowFromPoint；1920×1080、DPR1一致，640／1024控制項命中本Main，1440的[1318,133]命中其他程序HWND，Native前景亦非本Main。這證明當次螢幕點被其他程序覆蓋，不是按鈕尺寸或DPI錯位；未讀取其他程序視窗內容、未操控它或強搶前景。outer SHA `291fa0616fdfec9f55ba34cb38ec3153134d550d2395a9ffdc4ab65cf5492362`。不因此宣稱1440px整旅程或真人全驗；指南改列自動化遮蔽界線。
+
+QA110–112各組都在8GiB／12程序Job與workspace mutex內，前組三PID陣列自然空、handles關閉／mutex釋放，無forced cleanup；QA110開始可用RAM約22.4GiB。當前交付4cf原候選／收據保留；待重建只含此修復的新固定候選並驗無參數GUI退出碼0後，再更新試用入口，不更動正式資料、Windows Task、maintainer或完整第二階段範圍。

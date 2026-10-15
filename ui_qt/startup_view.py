@@ -107,6 +107,7 @@ class StartupController:
         self.app = app
         self.window: QWidget | None = None
         self.completed = 0
+        self._dismissed = False
         self.view = StartupView(asset_root)
         self.app.setQuitOnLastWindowClosed(False)
         self.view.show()
@@ -167,5 +168,9 @@ class StartupController:
         self.app.setQuitOnLastWindowClosed(True)
 
     def dismiss(self) -> None:
+        # ready已排程刪除啟動畫面；launcher的finally可再次清理，不再碰失效wrapper。
+        if self._dismissed:
+            return
+        self._dismissed = True
         self.view.hide()
         self.view.deleteLater()

@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment41 已為原 P03／F09 候選取得新增明選TWSE法人範圍，解除TPEx／信用強制綁定；保留原API、parser、整數股數守恆、create-only與候選資格。新scope／原回歸15PASS、compile及兩來源mypy通過；重播拒市場／單位篡改與缺／重複分區，舊無scope包仍可重播。只離線驗證，既有兩版歷史manifest SHA保持，沒有真抓取、正式apply／Task／UI或固定9fa變更。成功批次保存小時、用途／品質與固定public reader→正常UI/fresh仍待，scope選項不算完整F09，見[Increment41 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment41p03法人候選取得解除跨來源前置)。
+
 Increment40 修正後續開發分支的 P07／P08 策略版本錯標：單股／逐檔回測、規則卡、Walk-forward 與參數掃描沿 public Registry 真版本，缺版本拒絕，掃描整輪固定。核心69、UI及Workbench90、修正測試期待後3項、validator25/0/4、mypy1019各依原收據通過。正常Main42996→fresh22092已驗兩個1.0.0策略規則卡、保存／exact歷史返回與新程序同metadata/equity/trades，419日現金與成本守恆；20不可變試用輸入保持、Python socket零。QA180／182／183的測試期待／舊mutable fixture pins失敗保留；產品版本修正不改金融計算或舊run。固定9fa試用包不變，P06初次來源與原完整Gate繼續，詳[Increment40 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment40p07p08新實驗綁定真策略版本)。
 
 > **目前第一版候選（2026-10-15）**：原計畫§0.3四流程凍結，固定`9fa4518c2aca87beaddef75a2b29165722da6a6c`由`output/trial/Baldr-V1/Launch-Baldr.cmd`試用。Increment37只解除V1-04零完成配對誤稱無交易與缺門檻摘要中斷；即時結果分列實際成交／期末持股，缺值為未提供，未平倉估值不是已實現損益。QA158共103 PASS及必要UI防線通過；QA161固定EXE父30640→fresh48700正常回測／保存／歷史返回／同metadata/equity/trades讀回，1筆買入5000股、0完成配對，419日曲線及成本／現金／權益與原42b一致。其他三流程與Startup沿未受影響原證據；舊候選／run／FAIL及20來源與行情DB保留。交付SHA `0cc49abbf81d24981ba06841948f9ee7352699d22eb165a0f85a51d56feb804e`。四股至2026/09/23、大盤至2026/10/14；TPEx、歷史權威／PIT、真N、完整雙策略、自然成熟等保留第二階段，未授真人／跨機或完整Gate。

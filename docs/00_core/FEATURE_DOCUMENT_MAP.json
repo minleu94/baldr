@@ -595,6 +595,8 @@
         "docs/03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md"
       ],
       "code": [
+        "data_module/institutional_credit_flows_service.py",
+        "scripts/complete_institutional_credit_flows.py",
         "app_module/daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "app_module/daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
         "app_module/daily_market_technical_official_disposition_revenue_archived_recipe_v3.py",
@@ -623,6 +625,8 @@
         "ui_qt/views/update_view.py"
       ],
       "tests": [
+        "tests/test_institutional_credit_flows_service.py",
+        "tests/test_institutional_flow_capture_scope.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "tests/test_daily_market_monthly_revenue_archived_v2.py",
         "tests/test_daily_market_monthly_revenue_cohort_v2.py",
@@ -664,6 +668,9 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "data_module/institutional_credit_flows_service.py",
+        "scripts/complete_institutional_credit_flows.py",
+        "tests/test_institutional_flow_capture_scope.py",
         "app_module/daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "app_module/daily_market_technical_official_disposition_revenue_archived_recipe_v3.py",
         "app_module/daily_market_technical_official_disposition_revenue_archived_source_v3.py",

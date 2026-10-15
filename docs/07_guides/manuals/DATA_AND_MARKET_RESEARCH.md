@@ -63,6 +63,20 @@
 
 ## 常見問題
 
+### 單獨保存 TWSE 法人候選
+
+後續開發分支的維運 CLI 可明選 `twse_institutional`，僅取得 TWSE T86 法人資料，不把 TPEx 或信用資料設為同批前置。一般更新頁與固定 `9fa4518c` 試用包尚未接此選項。由 owner 先核既有 attempts、指定用途及有界取得範圍，再使用原入口，例如：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\complete_institutional_credit_flows.py capture --capture-scope twse_institutional --sessions 1 --max-lookback-days 1 --max-attempts 1 --output-root output/flows/twse-only-candidate
+```
+
+此命令會連網；本輪只做離線測試，沒有執行真取得。未指定 `--capture-scope` 仍沿原 `legacy_all` 四來源行為。`--sessions` 是要求的 T86 有資料日期數，查找範圍由 `--max-lookback-days` 限制，不能當作兩市場共同交易日或法人連買證據。
+
+完成後核對 manifest／readback 的 `capture_scope`、`totals`、raw hash、解析與 quarantine；TWSE 單來源只列法人總數，未要求信用不是零筆。既有 `rebuild --run-dir <保存目錄>` 只重播原 raw，保留選定範圍與單位，缺分區、重複或範圍遭改會拒絕。失敗時保留該 run／錯誤，不刪原件或自動改抓其他來源。
+
+產物仍為 candidate-only，尚缺用途接受、成功批次保存後的台北小時收據與固定版本 public reader；其中舊列級 `available_at` 不可當作新的每日可用時間。不要呼叫正式 apply、搬回正式資料或用來計算歷史連買。此選項只解除來源互相綁定，不代表整個法人研究流程完成。
+
 ### 每日快照的時間判讀
 
 日曆原件下載完整與日曆已通過指定用途驗證是兩件事。本次TWSE年度／TPEx月曆已有完整候選原件與解析紀錄，新的批次保存／重開仍在隔離驗證階段；一般更新頁不會因此自動發布或切換日曆。遇到日曆unknown或期間缺件，保留來源與原因；不可把HTTP日期當官方發布時間，或把新抓版本套回較早的歷史決策。

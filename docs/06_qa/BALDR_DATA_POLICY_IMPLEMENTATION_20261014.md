@@ -911,3 +911,22 @@ QA184以2317、2025/01/02–2026/09/23、本金1000000、fee14.25bp／slippage5b
 主手冊與回測分冊同步入口、版本判讀、另存與歷史重開、缺版本排錯；current架構分冊、功能、Feature Map、導航、Snapshot與原計畫同步。架構全貌仍沿原UI→app→Registry／executor，未新增資料schema、設定、正式Task或安裝依賴；固定V1指南不改，因9fa包未變。P06 Health exact reader只有paper-main identity／股數／Health，缺精確現金／NAV／marks，不能以bp反推或混策略帳；初次來源組合繼續沿原repository查核，不以unknown卡結案。
 
 QA185文件終驗PASS：12 features／9本輪來源與context metadata30 sources，errors=[]；outer `single_owned_qa_16e5a9f615b04122989b1fb433fefa84/receipt.json`，SHA `3c671cb76f6a3c2bf8bf02cda14fd297275b0329924a70dc52a6da5163c85722`。Root另核QA178–185八組完整收據SHA／自然閉鎖與固定V1收據／指南／20輸入清冊、舊task及其他owner原件不變，保存owner `increment40_final_integrity.json`，SHA `cddd4a3cd996d80aafaf417372899e302ebc8b40b9f3d011352aded2b9b78262`。這是限定交付證據，未授完整Gate。
+
+## Increment41：P03法人候選取得解除跨來源前置
+
+原 `capture_recent_flows` 必須在同輪取得 TWSE／TPEx法人與兩個信用來源，讓TPEx授權／回應及非必要信用缺件拖住單一TWSE法人來源。此增量沿原P03／F09解除這個取得阻礙，新增明選 `capture_scope=twse_institutional`／CLI `--capture-scope`，只用既有T86與parser／create-only保存，不另建資料框架或getter。未指定仍保留原 `legacy_all` 四來源。屬第二階段，與試用並行，不增加V1前置；固定9fa／交付清冊不變。
+
+Root API凍結於owner `p03_institutional_scope_api_41.md`，Root單寫service／CLI／資料與金融裁決／整合／文件；重用Luna10只寫新測試，交回SHA `95c2c26d7367469c512e84d423a4cf691dc6c5fe5ee196540b55cfdd18a76337`。Root接手後補5個篡改／分區反例及舊無scope相容，未改原測試。Luna9只讀定位，已指出候選與revision reader之來源版本不一致、欄位available_at與正式schema差距，以及原daily snapshot限MOPS／HTML，不能拿來硬cast法人JSON。總新建10/10，無新代理、worker無Python或網路。
+
+manifest／readback新增具名scope，明列markets、source_ids、endpoint_ids、excluded_endpoint_ids與selected_endpoints_only；未要求信用不產生0筆資料集。TWSE-only discovery沿原T86，實際抓取重用該回應，每日期一次；不呼TPEx／信用。scoped rebuild核scope全文、endpoint source／market／version／unit與各日期完整分區，缺件／重複／擴市場拒絕，原raw及manifest不改。舊無scope封套保留原重播語意。無金融公式、數量單位換算、正式apply或downstream資格變更。
+
+Root先核歷史attempt資產：`output/data_completion_20260909/flows/runs/20260909T051132394061Z/manifest.json` SHA `2c25065e529e38a23dc6e773a236a05bd7a681cc37fafbeeb239d4cfdfba548a`、`manifest_with_observed_at.json` SHA `308169e7b42b65b0614bf08dd74942d925b1caeed380a67eadc9bb97625a4e41`；原10日、candidate-only及需用途接受保持。guard另存owner `increment41_legacy_capture_guard.json`；沒有重抓、改舊件、重置月營收或TWSE舊GET已耗scope。這輪全部注入離線fixture，不是新官方HTTP成功證據。
+
+- QA186 route／data_pipeline context PASS：medium risk Execution／TestingQA／Documentation，Root另履行DataAudit／TechLead。context只摘錄部份正文與代表入口，未讀項不當已核；Root另外讀現行資料指南相關正文。outer `single_owned_qa_836217e07acd40c8b370997d986eb626/receipt.json`，SHA `51d75e04fc4845b9fd2182c475992b5997dd009a7155248a31edf42b9718355c`。
+- QA187 三個修改Python compile、新scope／CLI／rebuild及原service共15PASS、兩來源mypy PASS。涵蓋每日期一次T86、原bytes/hash、整數買賣超守恆、非法scope在output／transport前拒絕、無TPEx／信用、原件保持、重播範圍、舊default與無scope相容，以及市場／單位篡改、缺／重複分區／多報日期在新保存前拒絕。outer `single_owned_qa_ba1bcc8e56e849cfac7994a632743d65/receipt.json`，SHA `73e389bc6a651751c4c6161901488457032d1657203a860ccf812ff6cbfe5ebc`。原4案未修改，沒有UI變更，不重跑已過Workbench／八roots UI防線。
+
+各組8GiB committed／12程序／kill-on-close／workspace mutex、起始RAM≥8GiB，三PID清冊自然空、process／Job handles閉鎖、mutex釋放、無forced cleanup。只證明選定候選取得／重播工程，不授來源單位或用途接受、完整市場、當期資料、自然更新、歷史PIT、Native／EXE與完整Gate。
+
+操作主手冊、資料分冊、每日更新指南、current資料架構、Feature Map、功能、Snapshot及原§9.5同步。未改模組邊界、正式schema、Task、排程或安裝依賴；主架構與固定V1指南不需改。下一段沿單一TWSE原件→品質／成功批次保存小時→固定版本public reader→正常UI/fresh。原candidate available_at只代表個別response／官方時間，尚非新daily-hour，不能回填歷史或直接送另一版本的revision reader；本選項不算完整F09，缺值不造零。
+
+Luna9最終只讀複核未見本次範圍內回歸或阻斷，確認TWSE-only、無未要求零值、scoped重播及舊版相容，pending writes=false。QA188文件終驗PASS：12 features／9本輪來源及context metadata30sources，errors=[]；outer `single_owned_qa_04e6435a7ba1469c981afb85c1c34281/receipt.json`，SHA `9bdc155f80f2f9caf370b569d6bb8a93a27db279cdfcc42d0dd0a79211231c22`。準備曾因Root誤用task欄位在PowerShell拒絕，當時無spec／Job／Python；改用現行scope_files才啟動，本機task保留紀錄。未執行真來源或UI/fresh，不以文件與案例通過授完整F09／Gate。

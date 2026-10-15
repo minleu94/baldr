@@ -22,6 +22,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from data_module.institutional_credit_flows_service import (
     APPLY_CONFIRM_TOKEN,
     DEFAULT_OUTPUT_ROOT,
+    FLOW_CAPTURE_SCOPES,
     apply_flow_manifest,
     capture_recent_flows,
     rebuild_flow_manifest_from_raw,
@@ -46,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--timeout-seconds", type=int, default=30)
     capture.add_argument("--max-attempts", type=int, default=2)
     capture.add_argument("--rate-limit-seconds", type=float, default=0.25)
+    capture.add_argument(
+        "--capture-scope", choices=FLOW_CAPTURE_SCOPES, default="legacy_all",
+        help="twse_institutional 僅保存 TWSE 法人候選；legacy_all 保留原四來源行為",
+    )
 
     rebuild = subparsers.add_parser(
         "rebuild", help="從既有 raw/metadata 重播 candidate，不重新發 HTTP"
@@ -82,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout_seconds=args.timeout_seconds,
             max_attempts=args.max_attempts,
             rate_limit_seconds=args.rate_limit_seconds,
+            capture_scope=args.capture_scope,
         )
     elif args.command == "rebuild":
         result = rebuild_flow_manifest_from_raw(

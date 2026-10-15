@@ -32,6 +32,7 @@ APPLY_CONFIRM_TOKEN = "apply-institutional-credit-flows"
 DEFAULT_OUTPUT_ROOT = Path("output/data_completion_20260909/flows")
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_LOOKBACK_DAYS = 45
+FLOW_CAPTURE_SCOPES = ("legacy_all", "twse_institutional")
 
 INSTITUTIONAL_TABLE = "institutional_flows"
 CREDIT_TABLE = "credit_transactions"
@@ -735,6 +736,33 @@ def _endpoint_specs(target_date: date) -> tuple[EndpointSpec, ...]:
     )
 
 
+def _capture_scope_specs(target_date: date, capture_scope: str) -> tuple[EndpointSpec, ...]:
+    """明選本輪來源；單一法人來源不以信用或另一市場為前置。"""
+    if not isinstance(capture_scope, str) or capture_scope not in FLOW_CAPTURE_SCOPES:
+        raise ValueError("capture_scope 必須為 legacy_all 或 twse_institutional")
+    specs = _endpoint_specs(target_date)
+    if capture_scope == "twse_institutional":
+        return tuple(spec for spec in specs if spec.endpoint_id == "twse:T86")
+    return specs
+
+
+def _capture_scope_metadata(target_date: date, capture_scope: str) -> dict[str, Any]:
+    specs = _capture_scope_specs(target_date, capture_scope)
+    endpoint_ids = [spec.endpoint_id for spec in specs]
+    return {
+        "schema_version": "flow-capture-scope.v1",
+        "name": capture_scope,
+        "markets": list(dict.fromkeys(spec.market for spec in specs)),
+        "source_ids": list(dict.fromkeys(spec.source_id for spec in specs)),
+        "endpoint_ids": endpoint_ids,
+        "excluded_endpoint_ids": [
+            spec.endpoint_id for spec in _endpoint_specs(target_date)
+            if spec.endpoint_id not in endpoint_ids
+        ],
+        "coverage_basis": "selected_endpoints_only",
+    }
+
+
 def _parse_endpoint(
     spec: EndpointSpec,
     payload: bytes,
@@ -1152,6 +1180,7 @@ def capture_recent_flows(
     timeout_seconds: int = 30,
     max_attempts: int = 2,
     rate_limit_seconds: float = 0.25,
+    capture_scope: str = "legacy_all",
 ) -> dict[str, Any]:
     """捕捉最近官方交易 sessions 並保存 candidate-only bundle。"""
 
@@ -1159,6 +1188,8 @@ def capture_recent_flows(
         raise ValueError("sessions 必須介於 1 與 30")
     if max_lookback_days < sessions:
         raise ValueError("max_lookback_days 必須足以涵蓋 sessions")
+    scope_metadata = _capture_scope_metadata(as_of_date, capture_scope)
+    source_ids = scope_metadata["source_ids"]
     transport_fn = transport or _default_transport
     output_path = Path(output_root).expanduser().resolve()
     run_id = _utc_now().strftime("%Y%m%dT%H%M%S%fZ")
@@ -1201,13 +1232,13 @@ def capture_recent_flows(
     discovered = sorted(discovered, reverse=True)[:sessions]
 
     manifest_sources: list[dict[str, Any]] = []
-    source_rows: dict[str, list[dict[str, Any]]] = {INSTITUTIONAL_TABLE: [], CREDIT_TABLE: []}
+    source_rows: dict[str, list[dict[str, Any]]] = {source_id: [] for source_id in source_ids}
     session_statuses: list[dict[str, Any]] = []
     for session_date in sorted(discovered):
         date_str = session_date.isoformat()
         per_session: dict[str, Any] = {"decision_date": date_str, "sources": []}
-        parsed_by_source: dict[str, list[ParsedSource]] = {INSTITUTIONAL_TABLE: [], CREDIT_TABLE: []}
-        for spec_index, spec in enumerate(_endpoint_specs(session_date)):
+        parsed_by_source: dict[str, list[ParsedSource]] = {source_id: [] for source_id in source_ids}
+        for spec_index, spec in enumerate(_capture_scope_specs(session_date, capture_scope)):
             if spec_index == 0 and date_str in discovery_responses:
                 response, attempts, completed_at, _ = discovery_responses[date_str]
             else:
@@ -1332,6 +1363,7 @@ def capture_recent_flows(
     manifest = {
         "schema_version": "institutional-credit-flows-candidate-bundle.v1",
         "parser_version": PARSER_VERSION,
+        "capture_scope": scope_metadata,
         "run_id": run_id,
         "created_at": _utc_now().isoformat(),
         "as_of_date": as_of_date.isoformat(),
@@ -1363,6 +1395,7 @@ def capture_recent_flows(
         "as_of_date": as_of_date.isoformat(),
         "sessions": manifest["discovered_sessions"],
         "totals": manifest["totals"],
+        "capture_scope": scope_metadata,
         "candidate_only": True,
         "formal_apply_allowed": False,
     }
@@ -1387,6 +1420,22 @@ def rebuild_flow_manifest_from_raw(
     if not isinstance(entries, list) or not entries:
         raise FlowCaptureError("原始 manifest 缺少 sources")
 
+    scope_metadata = original.get("capture_scope")
+    scoped_endpoints: list[str] | None = None
+    scoped_sources = [INSTITUTIONAL_TABLE, CREDIT_TABLE]
+    if scope_metadata is not None:
+        try:
+            expected_scope = _capture_scope_metadata(
+                date.fromisoformat(original["as_of_date"]), scope_metadata["name"]
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise FlowCaptureError("原始 capture_scope 無效") from exc
+        if scope_metadata != expected_scope:
+            raise FlowCaptureError("原始 capture_scope 與具名來源範圍不符")
+        scoped_endpoints = expected_scope["endpoint_ids"]
+        scoped_sources = expected_scope["source_ids"]
+    captured_partitions: list[tuple[str, str]] = []
+
     parsed_by_key: dict[tuple[str, str], list[ParsedSource]] = {}
     raw_by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for entry in entries:
@@ -1397,6 +1446,8 @@ def rebuild_flow_manifest_from_raw(
         raw_entries = entry.get("raw_artifacts")
         if source_id not in {INSTITUTIONAL_TABLE, CREDIT_TABLE} or not isinstance(raw_entries, list):
             raise FlowCaptureError("原始 source identity／raw_artifacts 不符")
+        if scoped_endpoints is not None and source_id not in scoped_sources:
+            raise FlowCaptureError("原始 source 不在選定 capture_scope")
         key = (source_id, requested_date)
         for raw_entry in raw_entries:
             if not isinstance(raw_entry, Mapping):
@@ -1414,6 +1465,17 @@ def rebuild_flow_manifest_from_raw(
             if not isinstance(metadata, Mapping) or str(metadata.get("payload_sha256")) != expected_sha:
                 raise FlowCaptureError(f"原始 metadata hash 不符: {metadata_path}")
             endpoint_id = str(metadata.get("endpoint_id", ""))
+            if scoped_endpoints is not None and endpoint_id not in scoped_endpoints:
+                raise FlowCaptureError("原始 raw endpoint 不在選定 capture_scope")
+            if scoped_endpoints is not None:
+                selected_spec = next(
+                    spec for spec in _capture_scope_specs(date.fromisoformat(requested_date), scope_metadata["name"])
+                    if spec.endpoint_id == endpoint_id
+                )
+                if any(metadata.get(field) != getattr(selected_spec, field) for field in (
+                    "source_id", "market", "source_version", "quantity_unit"
+                )) or source_id != selected_spec.source_id:
+                    raise FlowCaptureError("原始 endpoint 身分／單位與選定 capture_scope 不符")
             parser_kind = {
                 "twse:T86": "twse_institutional",
                 "tpex:3itrade": "tpex_institutional",
@@ -1441,9 +1503,18 @@ def rebuild_flow_manifest_from_raw(
             )
             parsed_by_key.setdefault(key, []).append(parsed)
             raw_by_key.setdefault(key, []).append(dict(raw_entry))
+            captured_partitions.append((requested_date, endpoint_id))
+
+    if scoped_endpoints is not None:
+        expected_partitions = [
+            (day, endpoint_id) for day in original.get("discovered_sessions", [])
+            for endpoint_id in scoped_endpoints
+        ]
+        if not expected_partitions or sorted(captured_partitions) != sorted(expected_partitions):
+            raise FlowCaptureError("原始 raw 分區與選定 capture_scope／sessions 不符")
 
     replayed_sources: list[dict[str, Any]] = []
-    source_rows: dict[str, list[dict[str, Any]]] = {INSTITUTIONAL_TABLE: [], CREDIT_TABLE: []}
+    source_rows: dict[str, list[dict[str, Any]]] = {source_id: [] for source_id in scoped_sources}
     for key in sorted(parsed_by_key):
         source_id, date_str = key
         merged, quarantine = _merge_rows(source_id, parsed_by_key[key])
@@ -1484,6 +1555,8 @@ def rebuild_flow_manifest_from_raw(
         "sources": replayed_sources,
         "totals": {source_id: len(rows) for source_id, rows in source_rows.items()},
     }
+    if scope_metadata is not None:
+        replay_manifest["capture_scope"] = scope_metadata
     replay_manifest_path = root / "manifest_with_observed_at.json"
     replay_hash = _write_json_create_only(replay_manifest_path, replay_manifest)
     readback = {
@@ -1496,6 +1569,8 @@ def rebuild_flow_manifest_from_raw(
         "candidate_only": True,
         "formal_apply_allowed": False,
     }
+    if scope_metadata is not None:
+        readback["capture_scope"] = scope_metadata
     _write_json_create_only(root / "readback_with_observed_at.json", readback)
     return readback
 
@@ -1504,6 +1579,7 @@ __all__ = [
     "APPLY_CONFIRM_TOKEN",
     "CREDIT_TABLE",
     "DEFAULT_OUTPUT_ROOT",
+    "FLOW_CAPTURE_SCOPES",
     "FlowApplyError",
     "FlowCaptureError",
     "HttpResponse",

@@ -57,6 +57,19 @@
 
 聲明持倉的入口目前只支援研究假設，不代表有實際成交 lineage；`可檢視` 不表示持倉安全，`待確認` 不表示已無風險。這條路徑由 `app_module/user_declared_holding_research.py` 和 `ui_qt/widgets/user_declared_holding_research_widget.py` 提供；read model 的日期、來源、身份與資料資格契約見[決策、研究與 Portfolio 架構](../../01_architecture/current/decision_research_portfolio.md)。
 
+### 配置研究封存與另存假設
+
+此入口位於後續開發分支「持倉管理 → 顯示進階 → 配置研究封存」，尚未納入固定 `9fa4518c` 試用包。使用已設定的 PERSONAL 私人 store；LEGACY_READ_ONLY 可讀回但不能另存，未配置時明示停用，不自動搬資料。
+
+1. 在此分頁明確選帳種（手動／聲明研究／Paper），填原 `portfolio_id`，載入已保存情境。這個帳本選擇獨立於頁首的分帳導覽；不會把手動帳資料帶入 Paper。
+2. 明選一個封存 hash 後開啟，核對帳種、帳本、snapshot、原資料日、決策時鐘、精確現金／NAV、完整股數與標記價格。每次最多列出 25 份；開啟會核原 canonical 內容及 hash，不會選 latest 或讀今日行情。
+3. 比較「維持／候選等權／明示 target」的原配置、差額、風控後股數、金額、成本和原因。未知欄位保持未提供；投影股數是研究結果，不是成交。金額沿原 Decimal 文字，bp 不用來反推現金。
+4. 若要研究另一個 target，只能改原候選及完整持倉範圍內的整數 bp，含現金總和必須是 10000。按比較後沿原現金、股數、Health、行情、cutoff 和既有配置政策重算；原政策 hash 與現行不同時仍可讀舊結果，但拒絕重算。這是原時點舊證據的假設，不表示目前持倉或新的歷史 PIT 資格。
+5. 確認比較後再另存研究假設。原件保留，新內容另存新 hash；更改帳本、封存或 target 後須重新比較。保存中等待完成；讀取或比較可取消，取消不會寫交易或部分研究。關閉時等待背景工作安全收尾。
+6. 開啟個股研究後，返回會核原封存 identity，不拿手動帳同股替代。正常關閉後重開程式，再以相同帳種、帳本及保存 hash 明選讀回；不自動選最新結果。
+
+空庫表示沒有這個帳本的完整封存。此增量沒有替缺現金、Health、行情權威或時間證據建立初始情境；不要手工修改 hash／日期、加入示例資料或把缺件填零。損毀／版本不符保留原錯誤及 hash 交 owner 核對。初次帳本來源整合及完整 P06 驗收仍待原計畫後續，其他功能可繼續使用。
+
 ### Paper Portfolio
 
 Paper Portfolio 分頁主要唯讀呈現 snapshot、現金、狀態、ledger、成本、benchmark、weekly report、blockers 與 warnings。資料缺少時顯示 partial／not computable，不能把未知成本、缺成交或空快照補成零。

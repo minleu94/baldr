@@ -536,11 +536,16 @@
       ],
       "code": [
         "ui_qt/views/portfolio_view.py",
+        "ui_qt/widgets/portfolio_research_scenario_widget.py",
+        "app_module/portfolio_research_scenario_workspace.py",
+        "app_module/portfolio_research_scenario_repository.py",
         "ml_module/allocation_training_service.py",
         "ml_module/allocation_promotion_reference.py"
       ],
       "tests": [
         "tests/test_ui_qt_portfolio_view.py",
+        "tests/test_portfolio_research_scenario_widget.py",
+        "tests/test_portfolio_research_scenario_workspace.py",
         "tests/test_ml_allocation_shadow_evidence.py"
       ],
       "manual": [
@@ -555,6 +560,8 @@
       ],
       "change_patterns": [
         "ui_qt/views/portfolio*",
+        "ui_qt/widgets/portfolio_research_scenario*",
+        "tests/test_portfolio_research_scenario*",
         "portfolio_module/*",
         "app_module/portfolio*",
         "app_module/position_health*",

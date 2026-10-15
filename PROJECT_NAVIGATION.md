@@ -38,6 +38,7 @@
 - `backtest_module/performance_metrics.py`、`backtest_module/broker_simulator.py`
 - `decision_module/market_regime_detector.py`
 - `data_module/config.py`：`TWStockConfig` 是正式資料路徑的設定權威；不得由 repo 相對路徑猜測使用者資料位置。
+- Portfolio 配置研究封存沿 `app_module/portfolio_research_scenario_workspace.py` → 既有 scenario service／artifact／repository，正常入口是 `ui_qt/views/portfolio_view.py` 與 `ui_qt/widgets/portfolio_research_scenario_widget.py`；先讀[封存操作及來源界線](docs/07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#配置研究封存與另存假設)。
 - 日曆接受配置沿`app_module/application_bootstrap.py`與`app_module/recommendation_portfolio_calendar_acceptance_binding_v1.py`定位，再看Main／Backtest結果面板的typed注入；來源接受與每日品質界線見[每日來源契約](docs/03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
 
 策略、回測、推薦、資金、倉位、風控、費用與績效等金融核心數值使用 `Decimal` 或有明確單位的整數格式。任何決策日期運算都只可使用當時已取得的資料。完整防線見 [AGENTS.md](AGENTS.md) 與 `docs/agents/skills/quant_defense_guard.md`。

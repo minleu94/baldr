@@ -73,6 +73,8 @@ View 只把已驗證的 application 結果投影到畫面。來源、時間、�
 
 回測、批次、最佳化、Walk-forward 與推薦組合回放由 application service 協調 `backtest_module/` 與既有策略；UI 呈現結果或提交保存請求。持倉管理把手動帳務、使用者聲明研究持倉與 paper research lane 分開；名稱相似不代表來源身份可互換。見[決策、研究與 Portfolio 分冊](decision_research_portfolio.md)。
 
+Portfolio 的「配置研究封存」沿 Main 中央私人 store route 注入既有情境 repository；明選帳種／帳本／artifact 後可重開、研究新 target 及另存。這條舊證據研究路徑與當前手動帳刷新獨立，返回個股核同 artifact，worker 於 native finished 後才釋放；操作與未完成界線見[手冊](../../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#配置研究封存與另存假設)。
+
 Research Lab 的 Paper 保存快照查找使用可選的外部 artifacts root；根目錄未設定或無效時，只停用 Paper 查找，不阻斷其他研究工作。版本來源沿用 Research Lab 的策略版本選取，查找仍需明示策略、版本、帳戶命名空間及含時區的截止時間，不自動改選最新版本。查找先列出最多 200 筆有限候選並明示截斷，再由使用者選取保存快照讀回卡片；不自動挑選最新項目、不建立或更新保存資料，也不授予候選驗證或績效資格。關閉工作區時會合作式取消未完成查找，並拒收過期回覆。
 
 ## 研究畫面與保存身份

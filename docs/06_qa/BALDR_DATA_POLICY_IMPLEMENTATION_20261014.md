@@ -857,3 +857,36 @@ QA164角色／context核對通過，outer SHA `54cd8a22160f7215652a212ab1efefe65
 QA167正常來源版Main父15212→fresh39456，重用QA41兩個原V3 run與QA72年度合成binding，不呼producer、不再保存或抓取。正常Registry單筆重開→雙選／固定原年度批次→public pair→新逐日明細→返回→新程序同身份完成；13份config／Registry／附件／年度來源的bytes／SHA／stat一致。3日×13欄父子完全一致；原本金9007199254740993.01與9007199254740994.01、期末現金5.16／6.16及各自權益按原capture文字讀回，P&L缺值未補。來源／幣別／日曆／績效資格仍blocked，沒有宣稱兩策略獨立盈虧、完整成本／PIT、Native／EXE或真來源已接受。原15秒UI／120秒phase／270秒driver及actual PID建立時間／named Job membership／自然terminal守衛保留，outer SHA `51ddb405690681053126ff8d7b91551f19c5c0c01ffd70426963353eab312e11`。以上每組8GiB／12程序、RAM≥8GiB，三PID陣列自然空、handles關閉、mutex釋放、無forced cleanup。
 
 操作主手冊、Registry指南、功能、current架構與原計畫同步，明示此為後續開發分支，固定9fa試用包不含新明細。另一路P06靜態複核已定位既有project_rule_only、精確估值、帳本identity與現金／Health／quote時間缺口；先核來源路由，不能將分帳selector當作已載入snapshot、缺Health當HEALTHY或缺cash當0。這是下一段正常帳本→研究情境→真保存／重開的實作輸入，並非已完成P06。Luna累計10/10、兩名本輪worker均無pending writes，後續優先重用，禁止新建。正式資料、交易、Task、maintainer、push／發布及原完整Gate均未變。
+
+## Increment39：P06 封存情境接正常 Portfolio 與 target 另存
+
+本增量解除原 P06「完整情境已有計算／精確估值／canonical 封存，但正常 Portfolio 無入口」的使用阻礙。屬第二階段原產品出口，與真人試用並行，不新增 V1 前置；固定 9fa 試用包及交付 SHA `0cc49abbf81d24981ba06841948f9ee7352699d22eb165a0f85a51d56feb804e` 保留。
+
+沿既有 `PortfolioResearchScenarioService`、`PortfolioResearchValuation`、v3 artifact／v1 private store；新 workspace 只組合 exact 開啟、原事實的明示 target 比較、原 append 另存。只改 explicit_weights，原 account、完整 context、candidate universe、cutoff、source hash 與 turnover 不變；所有原情境 allocation_policy_hash 必須等於現行，否則可讀但拒絕重算。保存再核原件及預覽 canonical bytes，不寫交易、Paper、Health、正式市場或 Task。不建立另一套 Registry。
+
+Root 實作／金融、時間、Data Audit 與文件單寫；復用 Luna9 只寫新 UI 葉片及其測試，Luna10 只讀 workspace。累計 worker 10/10、無再新建，worker 無 Python/import/compile/QA/network。Luna10 實讀後未見 blocker，確認同政策與 preview 全文守衛；hash 證明封存內部一致，不是重新核外部 Paper receipt、Health 或行情權威。SQLite append 開始後不可取消，UI 等待保存終態；read/compare 取消不寫入。
+
+- QA169 route/context：high risk；Execution、TestingQA、Documentation、TechLead、DataAudit 及四防線。首個 shell 因前組收據誤填 output/qa 路徑在 Get-FileHash 即拒絕，未啟動 Python/Job；核原件在 owner task 後沿同 spec 真啟動 PASS。outer `single_owned_qa_ee7d809a174d4ab888e17dea125dbf0d/receipt.json`，SHA `b8c4539d5b7ce99d2aaef87fbdaf195ca2373831d641229e5ff74adf73d90824`。
+- QA170 backend：修改三檔 compile、workspace／既有 artifact-store／P06 scenario 101 PASS。覆蓋原件保持、new target／新 hash exact 重開、錯帳／未選股票拒絕、取消不保存、偽造 preview 拒絕及 policy 改版只讀。outer `single_owned_qa_a990cb29414e4c2692ec488be9dd62f6/receipt.json`，SHA `a754bd0ed7d27284267a14101b6265550ee2150595193b93090d1b32634e3e3d`；preflight 27,331,739,648 bytes available。
+
+以上 outer 路徑均在 `output/tasks/baldr-completion-resume-20261014-01a13cf9/`。兩組沿原 8GiB committed／12 processes／kill-on-close／workspace mutex，三 PID 陣列自然空、process／Job handles 關閉且 mutex 釋放，無 forced cleanup。正常 UI／Main-fresh 及文件終驗仍在此增量後續收據；尚未執行的項目不當 PASS。
+
+界線：此輪從既有完整封存重研究，空庫不造樣本；初次帳本／Health／行情可得性 public reader 組合與原 Registry 交叉入口仍未完成。TPEx、歷史 PIT、真 N、完整雙策略、正式資料、自然成熟、Native／EXE 與全 P00–P14／G0–G4 各自未接受。
+
+Increment39 UI 收據補充：
+
+- QA171 compile 通過；UI 兩個新案例停在等待，其餘 123 PASS（含原 Portfolio 與 Workbench85）。整組 FAIL 保留，validator／mypy尚未執行。outer `single_owned_qa_6c2acb77c62940608eb2eac763666b00/receipt.json`，SHA `8fd93abd4f43546ffd6adee2ddebf3d0595c4723d0dd26070ac21266a1f066de`。
+- QA172 有界直接 Qt 診斷：同 workspace 載入／tuple result／native finished／清單都正常，PASS。outer `single_owned_qa_93dcbce5678c4378a4052cafabd87c98/receipt.json`，SHA `fb0faf5a05b6a40fd62c6364bb1b960870ea02ce9a74e93aa599349c4ed3c385`。
+- QA173 保留原 pytest 斷言及 8 秒，只在失敗時輸出狀態，FAIL：worker 仍在等待，無錯誤回呼。outer `single_owned_qa_ac6f93e1fa6948cea9596f35db65d374/receipt.json`，SHA `db6c61e0233c4054a148c1d98529d205a28abd1c6043b17bdc169f4aa5241dfd`。Root 定位新測試 QTest.qWait 的 GIL 排程問題，改成 time.sleep(0.005) 讓真 TaskWorker 執行；原 8 秒期限與斷言保留，產品程式不變。
+- QA174 新 UI 三項 PASS、一項 FAIL；原件 mark_price 由既有估值 canonical 化為 `100`，測試誤期待 `100.00`。未改 UI 補尾零；Root 改測試同時核原 DTO 與畫面為 `100`，保留其餘精確現金／NAV／市值及回訪斷言。outer `single_owned_qa_af014811e7034adf8a452a65b1f00b8b/receipt.json`，SHA `c3a0135b9dc12914aeae910c2d83f97974a813b5a0054cf1e81a886a4b834eac`。
+- QA175 只重驗該案例 1 PASS，未重跑既過 123／3；validator 25 PASS／0 FAIL／4 SKIP，八 roots mypy 1018 檔通過。原 ui_qt.* ignore_errors=True 不證 UI 強型別。outer `single_owned_qa_d3b8969706ec47d69f107e32c5d2ec79/receipt.json`，SHA `8e30952faf4e1e438ba3962af06b9b98771eb5b08cbfabe89abc3ba858593622`。
+
+上述診斷／失敗／恢復均保留原輸出，沒有放寬資料、斷言或期限；五組三 PID 清冊自然空、handles 關閉及 mutex 釋放，無 forced cleanup。未以案例加總授完整產品 Gate。
+
+QA176 正常 Main／fresh 已限定通過：父 actual PID42420 以正常 Portfolio 分頁明選原 paper/account-a 封存，調 2330=1200bp／2382=800bp／cash=8000bp，比較並按另存，再由實際個股入口返回同 artifact；正常關閉後 fresh actual PID38196 以同帳與 hash 明選重開，原／新 comparison canonical 內容、精確現金900000.00／NAV1000000.00、股數、原時鐘一致。fresh 將 compare／append 改為拒絕以證只讀，scenario DB hash 起訖不變；錯 artifact restore 拒絕。640px 主視窗及真可見按鈕座標命中、合作關閉與0受管worker通過，Python socket 零嘗試；沒有 OS 網路稽核或 Native／EXE接受。初始完整情境由隔離fixture寫入，不冒充已完成正常UI首次建立來源。
+
+Root helper `p06_scenario_main_fresh_39_a.py` 重用原隔離 root／socket guard 與 exact native Job membership／PID建立時間／程序退出核驗；parent→fresh 前核 actual process terminal。同 named Job、原8GiB／12程序與mutex。outer `single_owned_qa_2955d34bb69149f48fd2710dcb3e29bf/receipt.json`，SHA `a709434c4d086fa8abecb856b5c2dc9195ee69a6bf8a1484ca2b1d5886f9507f`；三PID陣列自然空、handles閉鎖、mutex釋放，無forced cleanup。原始 parent/fresh 在 owner `increment39_scenario_main_fresh_a/`；parent SHA `1a6fe9f0ed5a1c4ab0075e0a7710614f25032ef829473fd86245bcc1f9a3220e`、fresh SHA `9f619be0b8c7d2d8a5cada86624f144a40e70614038c77028c1ea1144c2d22f3`。
+
+文件已同步主手冊／持倉分冊的入口、明選帳本、bp參數、原證據判讀、另存／返回／重開、取消與空庫／唯讀／政策錯誤；更新current兩分冊、功能文件、Feature Map、Snapshot、開發導航與原計畫§7.1。無新增配置／store schema／安裝／Task變更，安裝移機文件及固定V1指南不需修改。下一段仍沿原計畫推進，不等真人試用回饋；沒有完整 Gate 接受。
+
+QA177文件終驗 PASS：12 features／10本輪來源，context metadata 30 links sources，errors=[]。outer `single_owned_qa_59641b01383143819c1db0c1ba0c0e47/receipt.json`，SHA `e8b0869ce4b0aa395a7dfc9c978da89d6ea6a357c72c31398eb732a2b4bf4bae`。Root另核QA169–177九組收據SHA／自然空PID／handles／mutex及8GiB／12上限，固定V1指南與收據、舊task及其他owner原件SHA一致；完整Gate仍未接受。

@@ -1498,6 +1498,24 @@ class MainWindow(QMainWindow):
             "position_health_exact_scope_factory": exact_scope_factory,
             "saved_health_selection_store": selection_store,
         }
+        # 情境封存沿既有中央私人路由；建構 reader 不建立資料庫或回退別帳。
+        from app_module.portfolio_research_scenario_repository import PortfolioResearchScenarioRepository
+        from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+
+        scenario_workspace = None
+        scenario_disabled = "配置研究需明示 PERSONAL 或 LEGACY_READ_ONLY 私人 store；未自動建立或搬移來源。"
+        if selection.mode in (PersonalStoreMode.PERSONAL, PersonalStoreMode.LEGACY_READ_ONLY):
+            scenario_workspace = PortfolioResearchScenarioWorkspace(
+                PortfolioResearchScenarioRepository(
+                    route=selection.route(PersonalStoreDomain.PORTFOLIO_RESEARCH, StoreIdentity("portfolio-research")),
+                    personal_paths=selection.paths,
+                )
+            )
+            scenario_disabled = ""
+        self._personal_portfolio_view_kwargs.update(
+            portfolio_research_workspace=scenario_workspace,
+            portfolio_research_disabled_reason=scenario_disabled,
+        )
         if selection.mode is PersonalStoreMode.LEGACY_COMPAT:
             self.portfolio_service = PortfolioService(self.config)
             return
@@ -3548,6 +3566,12 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(
                     "原每日研究快照已變動或股票不在目前清單；請核對來源，不能用同股替代原結果。"
                 )
+            return
+        if context.source_kind == "portfolio_research_scenario":
+            panel = getattr(view, "portfolio_research_scenario_widget", None)
+            restore = getattr(panel, "restore_artifact", None)
+            if not callable(restore) or not restore(context.source_snapshot_id, context.stock_code):
+                self.statusBar().showMessage("原配置研究封存已更換或無法定位；未以其他帳本同股替代。")
             return
         selector = getattr(view, "select_stock", None)
         if callable(selector):

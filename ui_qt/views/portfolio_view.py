@@ -31,6 +31,8 @@ from ui_qt.widgets.layout_helpers import (
     set_scroll_content_constraints,
 )
 from app_module.portfolio_service import PortfolioService
+from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+from ui_qt.widgets.portfolio_research_scenario_widget import PortfolioResearchScenarioWidget
 from app_module.dtos.portfolio_dtos import PortfolioDTO
 from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 from app_module.portfolio_source_adapter import (
@@ -999,11 +1001,15 @@ class PortfolioView(QWidget):
         paper_weekly_evidence_service: PaperPortfolioWeeklyEvidenceService | None = None,
         user_declared_market_source: Any | None = None,
         user_declared_condition_source: Any | None = None,
+        portfolio_research_workspace: PortfolioResearchScenarioWorkspace | None = None,
+        portfolio_research_disabled_reason: str = "",
     ):
         super().__init__(parent)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.portfolio_service = portfolio_service
+        self.portfolio_research_workspace = portfolio_research_workspace
+        self.portfolio_research_disabled_reason = portfolio_research_disabled_reason
         if (
             getattr(portfolio_service.config, "personal_store_mode", None) is not None
             or getattr(portfolio_service.config, "personal_store_root", None) is not None
@@ -1609,6 +1615,14 @@ class PortfolioView(QWidget):
         self.paper_snapshot_table.horizontalHeader().setStretchLastSection(True)
         paper_layout.addWidget(self.paper_snapshot_table, 1)
         right_widget.addTab(paper_tab, "Paper Portfolio")
+
+        self.portfolio_research_scenario_widget = PortfolioResearchScenarioWidget(
+            workspace=self.portfolio_research_workspace,
+            disabled_reason=self.portfolio_research_disabled_reason,
+            parent=self,
+        )
+        self.portfolio_research_scenario_widget.stockResearchRequested.connect(self._open_scenario_stock_research)
+        right_widget.addTab(self.portfolio_research_scenario_widget, "配置研究封存")
 
         # Right Tab 4: 情境與壓力測試（唯讀研究投影）
         stress_tab = QWidget()
@@ -2624,6 +2638,9 @@ class PortfolioView(QWidget):
         """鎖住新的 refresh，並撤銷完成後重啟的 pending generation。"""
 
         self._closing = True
+        scenario_panel = getattr(self, "portfolio_research_scenario_widget", None)
+        if scenario_panel is not None:
+            scenario_panel.begin_shutdown()
         self._refresh_generation += 1
         self._refresh_pending = False
         research_widget = getattr(self, "user_declared_research_widget", None)
@@ -2645,6 +2662,12 @@ class PortfolioView(QWidget):
         """關閉前合作式取消 worker，避免回呼在 widget 銷毀後套用。"""
 
         self._closing = True
+        scenario_panel = getattr(self, "portfolio_research_scenario_widget", None)
+        if scenario_panel is not None:
+            scenario_panel.begin_shutdown()
+        if scenario_panel is not None and scenario_panel.has_running_worker():
+            event.ignore()
+            return
         self._refresh_generation += 1
         self._refresh_pending = False
         saved_panel = getattr(self, "position_health_saved_panel", None)
@@ -3947,6 +3970,25 @@ class PortfolioView(QWidget):
             if str(getattr(position, "stock_code", "") or "").strip() == code
         ]
         return candidates[0] if len(candidates) == 1 else None
+
+    def _open_scenario_stock_research(self, code: str) -> None:
+        """進個股時保留封存頁本身，返回不取新帳本或當前持倉。"""
+        panel = self.portfolio_research_scenario_widget
+        comparison = panel.current_comparison
+        if comparison is None or not panel.current_artifact_id:
+            return
+        universe = set(comparison.request.candidate_symbols) | {row.stock_code for row in comparison.account.positions}
+        if code not in universe:
+            return
+        self.stockResearchRequested.emit(ResearchStockContextDTO(
+            stock_code=code, identity_status="unlinked",
+            decision_date=comparison.scenarios[0].result.decision_date,
+            data_date=comparison.account.as_of_date,
+            source_snapshot_id=panel.current_artifact_id,
+            source_snapshot_hash=comparison.account.source_hash,
+            source_kind="portfolio_research_scenario", source_label="配置研究封存（舊證據假設）",
+            source_workspace="portfolio",
+        ))
 
     def _open_selected_stock_research(self, index=None) -> None:
         """持倉雙擊／明確按鈕共用的個股研究報告入口。"""

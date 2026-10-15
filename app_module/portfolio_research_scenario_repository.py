@@ -39,6 +39,10 @@ class PortfolioResearchScenarioRepository:
         self._custody = PersonalStoreCustody(route, personal_paths)
         self.db_path = route.read_source
 
+    @property
+    def writable(self) -> bool:
+        return self._route.mode is PersonalStoreMode.PERSONAL and self._route.write_target == self.db_path
+
     @staticmethod
     def _validate_schema(conn: sqlite3.Connection) -> None:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}

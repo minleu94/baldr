@@ -331,6 +331,8 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 
 ### 7.1 Advice／Portfolio／Health 復用邊界
 
+Increment39 接續原 P06 的正常使用出口：復用已存在的 scenario service／精確 valuation／v3 artifact 與 private v1 store，補 Portfolio 明選封存、改 target、比較、另存與新程序重開。每次重研究僅改 explicit target，保留完整原 account/context/cutoff/source，政策 hash 不同拒絕重算；不另建金融引擎或另一個 Registry。它解除「完整封存只有後端無正常頁面」的阻礙，不新增 V1 前置；初次 account／Health／行情 source 組合與原 Registry 交叉入口仍依本節及 P06 出口繼續，不將空庫／unknown 卡視為完整功能。試用與第二階段工作並行，固定候選不因這個增量重打包。
+
 | 既有入口 | 可以復用 | 還必須補的接線 |
 |---|---|---|
 | `AdvicePolicy.decide` | mode、promoted/candidate、品質、可執行性、risk budget、持倉數、cash、target、locked／disclosure | 它不讀 H20 gross。維持原資格；PROFESSIONAL candidate仍是RESEARCH，不因顯示模型而升權。 |

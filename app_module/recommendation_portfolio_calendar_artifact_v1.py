@@ -217,10 +217,10 @@ def _protected_roots(values: Sequence[Path]) -> tuple[Path, ...]:
     roots.append(_canonical_path(data_root_path, "configured_data_root", allow_missing=True))
     roots.append(_canonical_path(output_root_path, "configured_output_root", allow_missing=True))
     for key in ("PERSONAL_DATA_ROOT", "PERSONAL_STORE_ROOT"):
-        value = os.environ.get(key)
-        if value:
+        configured_text = os.environ.get(key)
+        if configured_text:
             try:
-                configured = Path(value)
+                configured = Path(configured_text)
             except (TypeError, ValueError) as exc:
                 raise _fail(f"configured_{key.lower()}_invalid") from exc
             roots.append(_canonical_path(configured, f"configured_{key.lower()}", allow_missing=True))
@@ -271,8 +271,14 @@ def _file_signature(path: Path) -> tuple[int, ...]:
     return _stat_signature(info)
 
 
-def _read_exact_file(path: Path) -> tuple[bytes, tuple[int, ...]]:
+def _read_exact_file(
+    path: Path, *, maximum: int = _MAX_ARTIFACT_BYTES,
+) -> tuple[bytes, tuple[int, ...]]:
+    if type(maximum) is not int or not 1 <= maximum <= _MAX_ARTIFACT_BYTES:
+        raise _fail("artifact_read_limit_invalid")
     before = _file_signature(path)
+    if before[3] > maximum:
+        raise _fail("artifact_size_exceeded")
     try:
         descriptor = os.open(
             path,
@@ -290,12 +296,12 @@ def _read_exact_file(path: Path) -> tuple[bytes, tuple[int, ...]]:
         if int(getattr(opened, "st_nlink", 1)) != 1 or _stat_signature(opened) != before:
             raise _fail("artifact_changed_before_read")
         while True:
-            chunk = os.read(descriptor, min(1024 * 1024, _MAX_ARTIFACT_BYTES + 1 - total))
+            chunk = os.read(descriptor, min(1024 * 1024, maximum + 1 - total))
             if not chunk:
                 break
             chunks.append(chunk)
             total += len(chunk)
-            if total > _MAX_ARTIFACT_BYTES:
+            if total > maximum:
                 raise _fail("artifact_size_exceeded")
         after_handle = os.fstat(descriptor)
     finally:
@@ -344,7 +350,17 @@ def write_portfolio_period_calendar_evidence_create_only_v1(
     raw = _canonical_json_bytes(
         {"schema_version": RECOMMENDATION_PORTFOLIO_CALENDAR_ARTIFACT_V1_SCHEMA, "evidence": evidence_payload}
     )
-    if len(raw) > _MAX_ARTIFACT_BYTES:
+    return write_calendar_version_bytes_create_only_v1(
+        target, raw, protected_roots=protected_roots,
+    )
+
+
+def write_calendar_version_bytes_create_only_v1(
+    path: Path, raw: bytes, *, protected_roots: Sequence[Path],
+) -> str:
+    """共用既有日曆版本檔案守衛；bytes 本身不構成日曆或用途資格。"""
+    target = _validate_target(path, protected_roots, reading=False)
+    if type(raw) is not bytes or not raw or len(raw) > _MAX_ARTIFACT_BYTES:
         raise _fail("artifact_size_exceeded")
     if target.exists():
         raise _fail("artifact_create_only_collision")
@@ -393,6 +409,26 @@ def write_portfolio_period_calendar_evidence_create_only_v1(
     return _sha256(readback)
 
 
+def read_calendar_version_bytes_exact_v1(
+    path: Path, *, expected_sha256: str, protected_roots: Sequence[Path],
+    max_bytes: int = _MAX_ARTIFACT_BYTES,
+) -> bytes:
+    """共用有界、單link、無reparse及外部SHA核對，不解讀或升格版本內容。"""
+    if type(expected_sha256) is not str or _SHA256_RE.fullmatch(expected_sha256) is None:
+        raise _fail("expected_sha256_invalid")
+    target = _validate_target(path, protected_roots, reading=True)
+    raw, signature = (
+        _read_exact_file(target) if max_bytes == _MAX_ARTIFACT_BYTES and type(max_bytes) is int
+        else _read_exact_file(target, maximum=max_bytes)
+    )
+    if _sha256(raw) != expected_sha256:
+        raise _fail("external_sha256_mismatch")
+    _validate_target(target, protected_roots, reading=True)
+    if _file_signature(target) != signature:
+        raise _fail("artifact_changed_after_read")
+    return raw
+
+
 def read_portfolio_period_calendar_evidence_v1(
     path: Path,
     *,
@@ -435,6 +471,8 @@ def read_portfolio_period_calendar_evidence_v1(
 
 
 __all__ = [
+    "write_calendar_version_bytes_create_only_v1",
+    "read_calendar_version_bytes_exact_v1",
     "RECOMMENDATION_PORTFOLIO_CALENDAR_ARTIFACT_V1_SCHEMA",
     "RecommendationPortfolioCalendarArtifactV1Error",
     "read_portfolio_period_calendar_evidence_v1",

@@ -29,6 +29,8 @@
 
 可攜版使用 `app_icon.png`，並在建立視窗前設定 `Baldr.TechnicalAnalysis` AppUserModelID，不修改 registry。Windows 釘選或圖示快取可能暫時保留舊圖；先核對交付包本身，不要把快取外觀當成程式版本證據。完整歷史行為說明見[原手冊封存章節](../09_archive/documentation_productization_20261012/originals/docs/07_guides/PORTABLE_WINDOWS.md#啟動載入畫面與圖示)。
 
+進階日曆用途接受亦可在上述config.json或同名環境變數成對指定`CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH`／`CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256`，配置檔須在程式包、正式資料與輸出之外。缺設定時保持停用；來源owner先核官方用途，外部SHA只固定該接受檔。此接點有source版合成Main／fresh證據，目前EXE尚未據此重驗；詳[Registry手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
+
 ## 個人資料與模型
 
 新使用者先保持私人資料和模型設定未啟用。既有使用者只能沿用已驗證的資料來源與身份：`PERSONAL_DATA_ROOT` 與 `PERSONAL_WATCHLIST_SOURCE`、`PERSONAL_JOURNAL_ROOT` 與 `PERSONAL_JOURNAL_MODE`、`PERSONAL_STORE_ROOT` 與 `PERSONAL_STORE_MODE` 要按其原契約成對設定。模型 policy 與 H20 activation 是不同設定空間，指定路徑不會自動訓練或啟用模型。

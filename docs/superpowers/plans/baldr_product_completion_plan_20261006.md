@@ -479,7 +479,27 @@ P03 已新增月營收 Archived V2／Index V2 精確封存重開、self-containe
 
 沿本節下一步新增日曆raw evidence／create-only artifact、明示雙Registry run的full-period reader及測試，Root增量綁public reader外部metadata SHA／byte budget、策略身分與原capture。現V2來源／幣別／日曆／成本仍unknown，日期完整亦不授績效。三個worker均凍結，RAM低於8GiB所以compile／mypy／pytest全未啟動。使用者要求本地commit並由新對話接手；首次先重核source pins及資源，再按原30／180／120／120／180秒case期限串行驗證，之後補受影響Reader回歸與正常UI。完整缺口、私有證據與分工見[最新交接](../../06_qa/BALDR_COMPLETION_HANDOFF_20261014_INCREMENT19.md)，不另立總計畫。
 
-Increment20已從checkpoint `789f82565ce4c95d1ee7fe8b585382b2d2e60811`恢復：七來源／12pins／52保護資產與142閉鎖收據重核，新owner runner／spec／隔離env另存並重綁SHA。跨交接新建Luna累計6／10，三路僅靜態複核；目前RAM仍低於8GiB，Python task初始化及原候選QA未啟動，詳[接手核驗與資源界線](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment20接手核驗與資源等待)。先完成原候選QA與Reader回歸，再接正常Backtest雙exact run保存／重開／比較／返回；舊task、來源bytes、FAIL、已耗GET及正式Task權限均不變。
+Increment20沿checkpoint `789f82565ce4c95d1ee7fe8b585382b2d2e60811`接手，新owner保留舊task、七來源／52保護原件及原FAIL。資源達標後已驗原候選、受影響Reader與取消／雙metadata pins；正常Main父30060→fresh38780以合成資料驗保存按鈕／Registry重開／雙run診斷／返回，9固定來源不變。Decimal JSON finalize窄修保留CAS，來源／幣別／成本與候選日曆不授績效；原計畫完整範圍及A/B/C/D阻塞維持。累計新建Luna8／10、同時最多3，不因重開或換對話重置；見[Increment20 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment20恢復後reader與正常registry旅程)。
+
+Increment21沿同一§9.5補完整JSON transport、create-only日曆批次／雙外部SHA與用途錨點exact reader。19案及父6316→fresh13156原版／更正8來源不變已限定驗證；pending讀回取消空窗窄修後2反例／mypy1010通過。新批次尚未接正常UI或真來源接受，不授PIT／績效；長期分段與source／currency／cost authority仍待。累計Luna9/10，優先重用；完整範圍、原FAIL與正式授權維持，詳[Increment21 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment21日曆完整傳輸與每日批次)。
+
+Increment22沿原producer保真捕獲執行輸入，以additive V3接同一Registry／正常保存與public reader；舊V1／V2不改、不補舊run。新codec17／Registry11、必要UI與受影響Reader回歸各自PASS；Main保存後焦點FAIL保留，父24812→fresh28756重用同兩run完成重開／雙run診斷／返回，9來源不變。超限反例先FAIL，V3沿原V2讀前16MiB上限修正後PASS。下一葉接明示exact daily calendar batch與獨立接受錨點到原Registry頁，不掃latest；source／currency／execution／cost權威、長期分段、完整雙策略績效與Native／EXE仍各自待。9/10 Luna與完整範圍不重置，詳[Increment22 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment22原producer執行輸入捕獲進行中)。
+
+Increment23已把明示daily pin／雙外部SHA／獨立兩市場接受與actual cutoff接入原pair reader與Registry頁；原artifact路由不變。新backend12PASS／1個Root atime測試FAIL保留，該案修正後PASS；原pair／新舊controller與必要UI各自通過。Main父33268→fresh17672重用17來源，無producer或calendar重產，原版本／非clock診斷及bytes／stat一致。只有QA注入合成接受，正式Main缺真接受紀錄仍阻擋，尚未取得真日常成功版或自動配置；下一葉核官方用途鏈與配置，再沿原producer權威／長期分段／完整績效推進。原完整範圍、9/10代理與A–D／歷史缺件／自然成熟、正式授權限制不變，見[Increment23 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment23每日日曆版本接原registry診斷)。
+
+Increment24重用已保存TPEx年度原件，補有界HTML結構與原calendar模組的股票語義；債券不關閉股票、合法optional cell結尾保留說明，異日重複節日與93日邊界已有反例。新41案、受影響舊116PASS／1平台連結SKIP、mypy1013與精度守衛各自通過；下一葉沿原transport／daily增具名年度版本，來源用途／明示配置仍待，不把annual HTML cast舊monthly schema。原完整範圍、A–D與各獨立資格維持，見[Increment24 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment24tpex年度原件的股票日曆解析)。
+
+Increment25具名年度POST transport與獨立codec已補，原完整body validator共用，舊monthly V1 wire／getter不變。新39案、Root超長test ID原ERROR保留，縮短ID後該案／尚未跑舊53案、mypy1014及精度守衛通過。下一葉接年度期間evidence與原daily生命周期，再核真用途接受及明示配置；完整Gate仍未接受，見[Increment25 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment25具名年度post完整原件transport)。
+
+Increment26年度雙市場evidence／Root逐年股票衍生已補，新23／舊74案各自PASS；mypy兩處混合tuple FAIL保留，明確型別修正後兩讀回／mypy1015／精度守衛通過。年度wire尚未接原daily生命周期／pair ports，真用途接受與完整跨年成功原件仍待；下一葉沿原pipeline整合，不另建publisher或放寬Gate，見[Increment26 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment26年度雙市場期間證據)。
+
+Increment27年度具名daily沿原核心接回writer／reader及Registry pair，舊月別契約保持。新20案、真控制器1、舊80與daily controller16、Workbench85／validator25-0-4／mypy1015／精度守衛各自通過；等待FAIL與測試命令ERROR原樣保留。下一葉核真取得收據→typed transport的保守完成觀測basis，再核真用途接受／明示配置及年度正常Main／fresh；正向完整跨年、任意長期間與完整績效仍待。完整範圍、9/10 Luna、各資格及正式授權限制不變，見[Increment27 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment27年度日曆沿原daily與registry接線)。
+
+Increment28已沿13份外部pins重用QA27／49真原件，兩程序20552→32736重算保守完成觀測年度候選一致；原worker-result缺receipt SHA不事後補造，採原controller完成上界，原輸出不動。沒有再抓取或發布daily／授用途。下一葉核既有官方文件鏈的一次性用途接受精確範圍及正常Main接點，沿同一daily lifecycle推進；PIT、長期分段、完整雙策略績效、Native／EXE及自然成熟仍獨立，詳[Increment28 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment28真取得原件的保守完成觀測與custody)。
+
+Increment29正常Main的明示外部接受binding接點已補，沿原Reader守衛／原Registry表單；錯SHA只隔離日曆用途，Main持有caller設定副本。新30／UI8、舊145及必要回歸各自PASS，平台連結SKIP保留；Main2440→fresh36248從正常配置讀年度合成接受、重用原兩run及13來源完成重開／比較／返回。真用途接受與正式配置仍未成立，下一葉核官方完整用途鏈及受限接受，再沿真原件成功保存／public reader／正常UI／新程序，不另造publisher或借合成時鐘倒填歷史。原完整範圍、9/10 Luna與所有Gate維持，見[Increment29 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment29明示接受binding接正常main)。
+
+Increment30沿§4.2核既存Swagger及官方資料集11761／條款／授權鏈，僅發TWSE年度股票日曆前瞻研究用途接受（SHA `7f120b20e261d6173f2536ab206ddb4576b258954fc7839259ceb5adf84bf697`）；不授任意歷史年度query。TPEx年度POST尚缺指定資料及取得方式的授權證據，歸D具名缺件，不重抓或以瀏覽器取得代用途接受。未發雙市場binding／日批／正式配置。接續既有雙策略source／currency／execution／cost authority接點，金融判斷仍由Root，不重造實作；完整範圍與各Gate不變，見[Increment30複核](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment30年度日曆用途複核與具名缺件)。
 
 #### 本批 consumer 與每日設定接線（同日後續，沿原計畫）
 

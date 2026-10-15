@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -23,6 +24,7 @@ from app_module.recommendation.persistence import RecommendationExecutionPersist
 from app_module.recommendation.portfolio_result_reader import (
     PortfolioResultReadbackUnavailable,
     PortfolioResultUnavailableReason,
+    RecommendationPortfolioResultReadCancelledError,
     RecommendationPortfolioResultReadbackError,
     RecommendationPortfolioResultReader,
 )
@@ -414,6 +416,50 @@ def test_corrupt_child_fails_before_any_snapshot_is_attached(
     monkeypatch.setattr(RecommendationSnapshotDTO, "attach_canonical_execution", track_attach)
     with pytest.raises(RecommendationPortfolioResultReadbackError):
         reader.read(saved.run_id)
+    assert attached == []
+
+
+def test_cancel_between_child_reads_stops_second_child_without_partial_dto_or_attach(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, persistence, reader = _services(tmp_path)
+    result = _portfolio_result()
+    saved = _save_result(
+        service,
+        persistence,
+        "stage-c-cancel-between-children",
+        result,
+    )
+    cancelled = False
+    child_reads: list[str] = []
+    attached: list[str] = []
+    original_read_verified_envelope = persistence.read_verified_envelope
+    original_attach = RecommendationSnapshotDTO.attach_canonical_execution
+
+    def read_first_then_cancel(result_id: str) -> Any:
+        nonlocal cancelled
+        envelope = original_read_verified_envelope(result_id)
+        child_reads.append(result_id)
+        if len(child_reads) == 1:
+            cancelled = True
+        return envelope
+
+    def track_attach(
+        snapshot: RecommendationSnapshotDTO,
+        execution: RecommendationExecution,
+    ) -> None:
+        attached.append(snapshot.as_of_date)
+        original_attach(snapshot, execution)
+
+    monkeypatch.setattr(persistence, "read_verified_envelope", read_first_then_cancel)
+    monkeypatch.setattr(RecommendationSnapshotDTO, "attach_canonical_execution", track_attach)
+
+    with pytest.raises(RecommendationPortfolioResultReadCancelledError) as exc_info:
+        reader.read(saved.run_id, check_cancel=lambda: cancelled)
+
+    assert type(exc_info.value) is RecommendationPortfolioResultReadCancelledError
+    assert child_reads == ["stage-c-child-20260915"]
     assert attached == []
 
 

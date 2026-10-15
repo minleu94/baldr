@@ -6,6 +6,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import replace
+from decimal import Decimal
 from threading import Barrier
 from typing import Any
 
@@ -145,6 +146,41 @@ def test_portfolio_finalize_atomically_updates_descriptor_and_parquet_bindings(t
     assert row is not None
     assert row["storage_state"] == "staging"
     assert row["integrity_status"] == "pending"
+
+
+@pytest.mark.parametrize("field", [
+    "original_input", "normalized_params", "fallback_reason", "metrics",
+    "regime_breakdown", "benchmark_results",
+])
+@pytest.mark.parametrize("mutate", [False, True])
+def test_portfolio_finalize_preserves_exact_json_decimal_and_rejects_changed_cent(
+    tmp_path, field, mutate,
+):
+    repository = _repository(tmp_path)
+    capital = Decimal("9007199254740993.01")
+    value = {"capital": capital, "nested": (Decimal("0.01"),)}
+    base = replace(_base_metadata(), **{field: value})
+    repository.insert_metadata(base, staging=True)
+    before = repository.get_raw_metadata_row(base.run_id)
+    finalized = _final_metadata(base, repository)
+    if mutate:
+        finalized = replace(finalized, **{field: dict(value, capital=capital + Decimal("0.01"))})
+        with pytest.raises(ResearchRunRepositoryError, match=field):
+            repository.finalize_portfolio_result_staging(
+                base.run_id, expected_payload_hash=base.payload_hash,
+                finalized_metadata=finalized,
+            )
+        assert repository.get_raw_metadata_row(base.run_id) == before
+    else:
+        repository.finalize_portfolio_result_staging(
+            base.run_id, expected_payload_hash=base.payload_hash,
+            finalized_metadata=finalized,
+        )
+        loaded = repository.get_metadata(base.run_id)
+        assert loaded is not None
+        assert getattr(loaded, field) == {
+            "capital": "9007199254740993.01", "nested": ["0.01"],
+        }
 
 
 def test_portfolio_finalize_rejects_stale_hash_and_preserves_row(tmp_path):

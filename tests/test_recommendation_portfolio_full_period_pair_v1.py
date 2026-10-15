@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Literal, cast
+from typing import Any, Callable, Literal, cast
 
 import pandas as pd
 import pytest
 
 from app_module.recommendation.composition import build_recommendation_composition
-from app_module.recommendation.portfolio_result_reader import RecommendationPortfolioResultReader
+from app_module.recommendation.portfolio_result_reader import (
+    RecommendationPortfolioResultReadCancelledError,
+    RecommendationPortfolioResultReadbackError,
+    RecommendationPortfolioResultReader,
+)
 from app_module.recommendation_portfolio_backtest_service import RecommendationPortfolioBacktestService
 from app_module.recommendation_portfolio_calendar_artifact_v1 import (
     write_portfolio_period_calendar_evidence_create_only_v1,
@@ -23,13 +28,22 @@ from app_module.recommendation_portfolio_calendar_evidence_v1 import (
     PortfolioPeriodCalendarEvidenceV1,
 )
 from app_module.recommendation_portfolio_full_period_pair_v1 import (
+    FullPeriodPairReadCancelledV1,
     FullPeriodPairReadErrorV1,
     FullPeriodPairReadV1,
     RecommendationPortfolioFullPeriodPairReadServiceV1,
 )
+from app_module.recommendation_portfolio_period_calendar_read_pin_v1 import (
+    PortfolioPeriodCalendarReadPinV1,
+)
 from app_module.recommendation_portfolio_dtos import RecommendationPortfolioBacktestResultDTO
 from app_module.research_run_dtos import ResearchRunMetadataDTO
-from app_module.research_run_service import ResearchRunService
+from app_module.research_run_service import (
+    ResearchRunIntegrityError,
+    ResearchRunReadCancelledError,
+    ResearchRunService,
+)
+from app_module.saved_strategy_rule_card import metadata_sha256
 from data_module.config import TWStockConfig
 from data_module.official_calendar_bundle import (
     CapturedCalendarResponse,
@@ -249,6 +263,9 @@ def _pair_read(
     calendar: tuple[Path, str, tuple[Path, ...]],
     *,
     market: Literal["twse", "tpex"] = "twse",
+    expected_left_metadata_sha256: str | None = None,
+    expected_right_metadata_sha256: str | None = None,
+    check_cancel: Callable[[], bool] | None = None,
 ) -> FullPeriodPairReadV1:
     calendar_path, calendar_sha256, protected_roots = calendar
     return RecommendationPortfolioFullPeriodPairReadServiceV1(
@@ -261,6 +278,9 @@ def _pair_read(
         expected_calendar_sha256=calendar_sha256,
         market=market,
         protected_roots=protected_roots,
+        expected_left_metadata_sha256=expected_left_metadata_sha256,
+        expected_right_metadata_sha256=expected_right_metadata_sha256,
+        check_cancel=check_cancel,
     )
 
 
@@ -353,6 +373,12 @@ def test_actual_registry_full_period_pair_preserves_capture_bytes_and_decimal_va
     assert result.left.parent_id == "pair-parent-left"
     assert result.right.parent_id == "pair-parent-right"
     assert (result.left.strategy_id, result.right.strategy_id) == ("strategy-left", "strategy-right")
+    assert (result.left.strategy_version, result.right.strategy_version) == ("fixture-v1", "fixture-v2")
+    left_metadata = service.repository.get_metadata(left_saved.run_id)
+    right_metadata = service.repository.get_metadata(right_saved.run_id)
+    assert left_metadata is not None and right_metadata is not None
+    assert result.left.metadata_identity_sha256 == metadata_sha256(left_metadata)
+    assert result.right.metadata_identity_sha256 == metadata_sha256(right_metadata)
     assert result.expected_session_dates == _DATES
     assert result.left_actual_session_dates == _DATES
     assert result.right_actual_session_dates == _DATES
@@ -382,6 +408,408 @@ def test_actual_registry_full_period_pair_preserves_capture_bytes_and_decimal_va
     assert result.left.precision is None
     assert result.right.precision is None
     assert _persisted_bytes(service, (left_saved.run_id, right_saved.run_id), calendar_path) == before
+
+
+def test_portfolio_reader_accepts_expected_metadata_sha_and_forwards_budgets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, _, left_saved, _, _, _ = _saved_pair(tmp_path)
+    metadata = service.repository.get_metadata(left_saved.run_id)
+    assert metadata is not None
+    expected_sha256 = metadata_sha256(metadata)
+    max_artifact_bytes = 16 * 1024**2
+    max_total_bytes = 32 * 1024**2
+    original_load_run_data = service.load_run_data
+    load_calls: list[tuple[str, dict[str, int]]] = []
+
+    def record_load_run_data(run_id: str, **kwargs: int) -> Any:
+        load_calls.append((run_id, dict(kwargs)))
+        return original_load_run_data(run_id, **kwargs)
+
+    monkeypatch.setattr(service, "load_run_data", record_load_run_data)
+
+    result = reader.read(
+        left_saved.run_id,
+        expected_metadata_sha256=expected_sha256,
+        max_artifact_bytes=max_artifact_bytes,
+        max_total_bytes=max_total_bytes,
+    )
+
+    assert type(result) is RecommendationPortfolioBacktestResultDTO
+    assert load_calls == [(
+        left_saved.run_id,
+        {"max_artifact_bytes": max_artifact_bytes, "max_total_bytes": max_total_bytes},
+    )]
+
+
+def test_portfolio_reader_rejects_wrong_metadata_sha_before_dto_decode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, _, left_saved, _, _, _ = _saved_pair(tmp_path)
+    metadata = service.repository.get_metadata(left_saved.run_id)
+    assert metadata is not None
+    expected_sha256 = metadata_sha256(metadata)
+    wrong_sha256 = ("0" if expected_sha256[0] != "0" else "1") + expected_sha256[1:]
+    decode_calls = 0
+    original_read_verified_data = reader._read_verified_data
+
+    def record_decode(registry_run_id: str, loaded: Any) -> Any:
+        nonlocal decode_calls
+        decode_calls += 1
+        return original_read_verified_data(registry_run_id, loaded)
+
+    monkeypatch.setattr(reader, "_read_verified_data", record_decode)
+
+    with pytest.raises(
+        RecommendationPortfolioResultReadbackError,
+        match="所選 metadata 與 exact reader 來源不符",
+    ):
+        reader.read(left_saved.run_id, expected_metadata_sha256=wrong_sha256)
+
+    assert decode_calls == 0
+
+
+def test_portfolio_reader_rejects_metadata_changed_after_verified_decode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, _, left_saved, _, _, _ = _saved_pair(tmp_path)
+    metadata = service.repository.get_metadata(left_saved.run_id)
+    assert metadata is not None
+    expected_sha256 = metadata_sha256(metadata)
+    original_read_verified_data = reader._read_verified_data
+    decode_completed = False
+
+    def decode_then_change_metadata(registry_run_id: str, loaded: Any) -> Any:
+        nonlocal decode_completed
+        result = original_read_verified_data(registry_run_id, loaded)
+        decode_completed = True
+        with sqlite3.connect(service.repository.db_path) as connection:
+            connection.execute(
+                "UPDATE research_runs SET strategy_version = ? WHERE run_id = ?",
+                ("post-decode-mutated-version", left_saved.run_id),
+            )
+        return result
+
+    monkeypatch.setattr(reader, "_read_verified_data", decode_then_change_metadata)
+
+    with pytest.raises(
+        RecommendationPortfolioResultReadbackError,
+        match="exact 讀取期間 metadata 已變更",
+    ):
+        reader.read(left_saved.run_id, expected_metadata_sha256=expected_sha256)
+
+    assert decode_completed is True
+
+
+def test_portfolio_reader_fails_closed_when_sidecar_exceeds_artifact_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, _, left_saved, _, _, _ = _saved_pair(tmp_path)
+    paths = service._paths_for(left_saved.run_id)
+    parquet_budget = max(
+        paths["equity_final"].stat().st_size,
+        paths["trades_final"].stat().st_size,
+    )
+    sidecar_path = paths["portfolio_result_final"]
+    assert sidecar_path.stat().st_size > parquet_budget
+    decode_calls = 0
+    original_read_verified_data = reader._read_verified_data
+
+    def record_decode(registry_run_id: str, loaded: Any) -> Any:
+        nonlocal decode_calls
+        decode_calls += 1
+        return original_read_verified_data(registry_run_id, loaded)
+
+    monkeypatch.setattr(reader, "_read_verified_data", record_decode)
+
+    with pytest.raises(RecommendationPortfolioResultReadbackError) as exc_info:
+        reader.read(
+            left_saved.run_id,
+            max_artifact_bytes=parquet_budget,
+            max_total_bytes=128 * 1024**2,
+        )
+
+    assert "artifact_byte_budget_exceeded" in str(exc_info.value.__cause__)
+    assert str(sidecar_path) in str(exc_info.value.__cause__)
+    assert decode_calls == 0
+
+
+def test_full_pair_reads_with_both_selection_metadata_pins(tmp_path: Path) -> None:
+    _, service, reader, calendar, left_saved, right_saved, _, _ = _saved_pair(tmp_path)
+    left_metadata = service.repository.get_metadata(left_saved.run_id)
+    right_metadata = service.repository.get_metadata(right_saved.run_id)
+    assert left_metadata is not None and right_metadata is not None
+    left_pin = metadata_sha256(left_metadata)
+    right_pin = metadata_sha256(right_metadata)
+
+    result = _pair_read(
+        service,
+        reader,
+        left_saved.run_id,
+        right_saved.run_id,
+        calendar,
+        expected_left_metadata_sha256=left_pin,
+        expected_right_metadata_sha256=right_pin,
+    )
+
+    assert result.left.metadata_identity_sha256 == left_pin
+    assert result.right.metadata_identity_sha256 == right_pin
+    assert result.left.registry_run_id == left_saved.run_id
+    assert result.right.registry_run_id == right_saved.run_id
+
+
+@pytest.mark.parametrize(
+    ("side", "pin_kind"),
+    [("left", "stale"), ("right", "stale"), ("left", "invalid"), ("right", "invalid")],
+)
+def test_full_pair_rejects_stale_or_invalid_selection_pin_before_artifact_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    side: Literal["left", "right"],
+    pin_kind: Literal["stale", "invalid"],
+) -> None:
+    _, service, reader, calendar, left_saved, right_saved, _, _ = _saved_pair(tmp_path)
+    left_metadata = service.repository.get_metadata(left_saved.run_id)
+    right_metadata = service.repository.get_metadata(right_saved.run_id)
+    assert left_metadata is not None and right_metadata is not None
+    left_pin = metadata_sha256(left_metadata)
+    right_pin = metadata_sha256(right_metadata)
+    if pin_kind == "stale":
+        current_pin = left_pin if side == "left" else right_pin
+        bad_pin = ("0" if current_pin[0] != "0" else "1") + current_pin[1:]
+    else:
+        bad_pin = "not-a-canonical-sha"
+    if side == "left":
+        left_pin = bad_pin
+    else:
+        right_pin = bad_pin
+
+    load_calls: list[str] = []
+    original_load_run_data = service.load_run_data
+
+    def record_load_run_data(run_id: str, **kwargs: Any) -> Any:
+        load_calls.append(run_id)
+        return original_load_run_data(run_id, **kwargs)
+
+    monkeypatch.setattr(service, "load_run_data", record_load_run_data)
+
+    with pytest.raises(FullPeriodPairReadErrorV1, match=side):
+        _pair_read(
+            service,
+            reader,
+            left_saved.run_id,
+            right_saved.run_id,
+            calendar,
+            expected_left_metadata_sha256=left_pin,
+            expected_right_metadata_sha256=right_pin,
+        )
+
+    assert load_calls == []
+
+
+def test_full_pair_immediate_cancellation_does_not_load_either_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, calendar, left_saved, right_saved, _, _ = _saved_pair(tmp_path)
+    load_calls: list[str] = []
+    original_load_run_data = service.load_run_data
+
+    def record_load_run_data(run_id: str, **kwargs: Any) -> Any:
+        load_calls.append(run_id)
+        return original_load_run_data(run_id, **kwargs)
+
+    monkeypatch.setattr(service, "load_run_data", record_load_run_data)
+
+    with pytest.raises(FullPeriodPairReadCancelledV1):
+        _pair_read(
+            service,
+            reader,
+            left_saved.run_id,
+            right_saved.run_id,
+            calendar,
+            check_cancel=lambda: True,
+        )
+
+    assert load_calls == []
+
+
+def test_full_pair_cancellation_after_left_read_does_not_read_right_or_return_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, calendar, left_saved, right_saved, _, _ = _saved_pair(tmp_path)
+    cancelled = False
+    load_calls: list[str] = []
+    reader_calls: list[str] = []
+    original_load_run_data = service.load_run_data
+    original_reader_read = reader.read
+
+    def record_load_run_data(run_id: str, **kwargs: Any) -> Any:
+        load_calls.append(run_id)
+        return original_load_run_data(run_id, **kwargs)
+
+    def read_then_cancel_after_left(registry_run_id: str, *args: Any, **kwargs: Any) -> Any:
+        nonlocal cancelled
+        reader_calls.append(registry_run_id)
+        result = original_reader_read(registry_run_id, *args, **kwargs)
+        if registry_run_id == left_saved.run_id:
+            cancelled = True
+        return result
+
+    monkeypatch.setattr(service, "load_run_data", record_load_run_data)
+    monkeypatch.setattr(reader, "read", read_then_cancel_after_left)
+
+    with pytest.raises(FullPeriodPairReadCancelledV1):
+        _pair_read(
+            service,
+            reader,
+            left_saved.run_id,
+            right_saved.run_id,
+            calendar,
+            check_cancel=lambda: cancelled,
+        )
+
+    assert reader_calls == [left_saved.run_id]
+    assert load_calls == [left_saved.run_id, left_saved.run_id]
+
+
+def test_portfolio_reader_integrity_failure_remains_error_when_cancel_flag_is_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, _, left_saved, _, _, _ = _saved_pair(tmp_path)
+    sidecar = service._paths_for(left_saved.run_id)["portfolio_result_final"]
+    sidecar.write_bytes(sidecar.read_bytes() + b"tamper")
+    cancelled = False
+    original_load_run_data = service.load_run_data
+
+    def load_and_set_cancel_after_integrity_error(run_id: str, **kwargs: Any) -> Any:
+        nonlocal cancelled
+        try:
+            return original_load_run_data(run_id, **kwargs)
+        except ResearchRunIntegrityError:
+            cancelled = True
+            raise
+
+    monkeypatch.setattr(service, "load_run_data", load_and_set_cancel_after_integrity_error)
+
+    with pytest.raises(RecommendationPortfolioResultReadbackError) as exc_info:
+        reader.read(left_saved.run_id, check_cancel=lambda: cancelled)
+
+    assert type(exc_info.value) is RecommendationPortfolioResultReadbackError
+    assert isinstance(exc_info.value.__cause__, ResearchRunIntegrityError)
+    assert cancelled is True
+
+
+def test_full_pair_integrity_failure_remains_error_when_cancel_flag_is_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, service, reader, calendar, left_saved, right_saved, _, _ = _saved_pair(tmp_path)
+    sidecar = service._paths_for(left_saved.run_id)["portfolio_result_final"]
+    sidecar.write_bytes(sidecar.read_bytes() + b"tamper")
+    cancelled = False
+    original_load_run_data = service.load_run_data
+
+    def load_and_set_cancel_after_integrity_error(run_id: str, **kwargs: Any) -> Any:
+        nonlocal cancelled
+        try:
+            return original_load_run_data(run_id, **kwargs)
+        except ResearchRunIntegrityError:
+            cancelled = True
+            raise
+
+    monkeypatch.setattr(service, "load_run_data", load_and_set_cancel_after_integrity_error)
+
+    with pytest.raises(FullPeriodPairReadErrorV1) as exc_info:
+        _pair_read(
+            service,
+            reader,
+            left_saved.run_id,
+            right_saved.run_id,
+            calendar,
+            check_cancel=lambda: cancelled,
+        )
+
+    assert type(exc_info.value) is FullPeriodPairReadErrorV1
+    assert isinstance(exc_info.value.__cause__, ResearchRunIntegrityError)
+    assert cancelled is True
+
+
+def test_registry_read_cancellation_remains_compatible_with_integrity_error(
+    tmp_path: Path,
+) -> None:
+    _, service, _, _, left_saved, _, _, _ = _saved_pair(tmp_path)
+
+    with pytest.raises(ResearchRunIntegrityError) as exc_info:
+        service.load_run_data(left_saved.run_id, check_cancel=lambda: True)
+
+    assert type(exc_info.value) is ResearchRunReadCancelledError
+    assert str(exc_info.value) == "read_cancelled"
+
+
+def test_calendar_read_pin_is_immutable_and_uses_explicit_sha_without_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_io(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("calendar read pin construction must not access the filesystem or hash bytes")
+
+    monkeypatch.setattr(Path, "open", unexpected_io)
+    monkeypatch.setattr(Path, "read_bytes", unexpected_io)
+    monkeypatch.setattr(Path, "stat", unexpected_io)
+    monkeypatch.setattr(Path, "resolve", unexpected_io)
+    monkeypatch.setattr(hashlib, "sha256", unexpected_io)
+
+    pin = PortfolioPeriodCalendarReadPinV1(
+        artifact_path=tmp_path / "not-created-calendar.json",
+        expected_sha256="a" * 64,
+        market="twse",
+        protected_roots=(tmp_path,),
+    )
+
+    assert pin.expected_sha256 == "a" * 64
+    assert pin.market == "twse"
+    assert pin.protected_roots == (tmp_path,)
+    with pytest.raises(FrozenInstanceError):
+        setattr(pin, "market", "tpex")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("expected_sha256", "A" * 64),
+        ("market", None),
+        ("protected_roots", ()),
+        ("artifact_path", Path("relative-calendar.json")),
+        ("protected_roots", (Path("relative-root"),)),
+    ],
+)
+def test_calendar_read_pin_rejects_invalid_sha_market_roots_or_relative_path(
+    tmp_path: Path,
+    field: str,
+    value: Any,
+) -> None:
+    pin_values: dict[str, Any] = {
+        "artifact_path": tmp_path / "not-created-calendar.json",
+        "expected_sha256": "a" * 64,
+        "market": "twse",
+        "protected_roots": (tmp_path,),
+    }
+    pin_values[field] = value
+
+    with pytest.raises(ValueError):
+        PortfolioPeriodCalendarReadPinV1(
+            artifact_path=pin_values["artifact_path"],
+            expected_sha256=pin_values["expected_sha256"],
+            market=pin_values["market"],
+            protected_roots=pin_values["protected_roots"],
+        )
 
 
 def test_full_pair_reports_missing_session_for_completed_partial_input(tmp_path: Path) -> None:
@@ -471,6 +899,25 @@ def test_full_pair_blocks_same_parent_or_strategy_version(
     assert result.coverage_complete is True
     assert result.status == "blocked"
     assert reason in result.reasons
+    assert result.performance_eligible is False
+
+
+def test_full_pair_preserves_legacy_v1_parent_and_blocks_same_parent(tmp_path: Path) -> None:
+    _, service, reader, calendar, left_saved, right_saved, _, _ = _saved_pair(
+        tmp_path,
+        left_legacy_v1=True,
+        right_parent_id="pair-parent-left",
+    )
+
+    result = _pair_read(service, reader, left_saved.run_id, right_saved.run_id, calendar)
+
+    assert result.left.parent_id == "pair-parent-left"
+    assert result.right.parent_id == "pair-parent-left"
+    assert result.left.capture is None
+    assert result.left.precision is None
+    assert result.status == "blocked"
+    assert "same_portfolio_parent" in result.reasons
+    assert "left_precision_capture_missing" in result.reasons
     assert result.performance_eligible is False
 
 

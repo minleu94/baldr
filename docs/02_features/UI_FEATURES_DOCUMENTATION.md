@@ -665,3 +665,12 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ### 10/14 官方條件與價格研究候選
 
 推薦結果來源分頁新增價格範圍與四組條件共用完整母體的研究頁：Decimal上下限／inclusive／獨立未知價格政策、四組結果後共通AND、全域價排序與跨頁比較，並有V2 typed Watchlist保存／指定pins重開。首次view恢復等待range穩定並重核generation/result/page/選列後才發成功終態；不能用原payload或latest替代來源核驗。既有V1收藏保留。指定合成257股／雙parent的Main→新PID有限旅程、受影響UI與必要回歸已通過，真N／Native／同版EXE、來源或完整產品Gate未接受；詳見[操作說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)與[本輪QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
+### 10/14 Registry 雙 run 完整期間診斷
+
+Backtest既有Registry新增恰好兩筆推薦回放的期間診斷，沿原保存／public reader，不重算策略。固定日曆原件、保存收據SHA與市場後比較，分列完整run／parent／策略版本、預期與實際日期、缺日及具名阻擋；返回保留選取。取消、來源／選取／研究世代變更與關閉拒收舊結果。候選日曆及unknown來源／幣別／成本不授績效，操作見[手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)，限定驗證見[本輪QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment20恢復後reader與正常registry旅程)。
+
+Increment22原保存入口另保留本輪next-open執行輸入；None／0、submitted／effective lot與policy內容在Registry V3精確讀回，舊V1／V2不補值。合成Main保存階段後的焦點FAIL保留，重用兩筆run於父24812→新28756完成重開／比較／返回，9來源不變；這不授完整績效、Native或EXE資格。
+
+Increment23原日曆控制新增「保存原件／每日批次」來源模式；daily固定雙SHA與獨立接受紀錄，缺接受時停用。背景仍用同一pair／public reader，結果顯示批次、原件與時鐘，來源欄或接受紀錄變更會取消並丟棄舊回覆。合成Main父33268→新17672重用17來源、開啟／比較／返回通過；正式Main未配置真接受紀錄，不宣稱真日曆用途接受或完整績效已完成。
+
+Increment29已有正常Main的外部接受binding配置接點，原daily表單不變；缺設定或錯SHA保留具名原因，錯誤跨來源模式維持，只停用日曆用途。年度合成Main2440→fresh36248沿正常配置重開／比較／返回通過，真用途接受與正式配置仍待。設定與排錯見[操作手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。

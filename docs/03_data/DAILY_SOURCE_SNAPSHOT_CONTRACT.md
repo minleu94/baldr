@@ -32,7 +32,51 @@
 
 ## 取得與接入
 
+### 日曆完整JSON批次（Increment21）
+
+`official_calendar_transport_v1` 保存TWSE年／TPEx月別的完整JSON body、原URL、HTTP狀態與有界標頭、EOF／長度、開始及body完成時鐘、raw SHA；不重編碼原件，不套月營收HTML transport或MOPS Record。HTTP Date／Last-Modified保留為傳輸證據，不借作官方版本發布時間。直接capture函式的10秒為socket／合作檢查，阻塞I/O內的絕對期限仍需Root受控取得程序，不宣稱可在函式內硬中斷。
+
+`app_module/official_calendar_daily_snapshot_v1.py` 先fsync並關閉含原件的capture，再沿原evidence parser核兩市場必要年／月分區、schema與session dates；93日為inclusive上限，較長期間組合仍待。manifest綁capture及衍生日曆SHA，receipt保存首次持久化／成功批次完成與向上取整小時。無經接受官方timestamp欄位時明示僅用batch hour；整點採既有具名下一小時發布guard。跨小時、超guard、取消或pending解除失敗，保留原件／failure及barrier，不發可讀成功版本。合作取消在pending讀回後再檢查；取消與unlink之間仍無原子保證。只驗檔案fsync／關閉及新程序，不宣稱OS斷電目錄metadata durability。
+
+Caller提供各市場獨立的 `DailySourceUseAcceptance`，scope明列calendar dataset／endpoint／parser／schema／session-date單位／prospective用途；來源封套的自述不授接受。Public reader要求指定批次的外部manifest及receipt SHA，重算原件／分區／日曆／時間，並於完成前重驗三檔及barrier；decision cutoff不取整、改正另存新batch。合成父6316→fresh13156讀回同原版與更正版的8檔不變，fresh不重跑producer；這不授真來源、歷史PIT、performance、formal clock或正常UI。既有V1日曆candidate資格保持false，原JSON codec、Registry與UI不自動切換新批次；詳[Increment21 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment21日曆完整傳輸與每日批次)。
+
+Increment23另把daily exact reader接到原Registry雙run診斷：typed pin明列batch directory、manifest／receipt外部SHA、兩市場獨立接受tuple、市場／保護根及aware cutoff。固定版本時取一次當下UTC時鐘；同一pair operation前後各重驗完整批次與identity，不先轉存成另一個candidate artifact。結果保留batch ID、三檔SHA、first persist／successful completion／available hour與basis及本次cutoff。換來源、錨點或欄位會取消並清舊結果；原artifact路由不變。合成Main父33268→fresh17672讀回17來源不變已限定驗證，只有QA注入的合成接受紀錄；正式Main缺真接受錨點時仍阻擋，不能推定真日常批次或歷史PIT已接受。
+
+### TPEx年度股票日曆候選解析
+
+TPEx年度`bulletin/tradingDate`的`data.html`已有獨立有界結構解碼器及原`official_calendar_bundle`中的股票語義parser。它保留原件／HTML兩SHA、年度基準日期、跨列與說明文字；基準日期不提供發布或可用時間。合法省略cell end tag仍保存內容，EOF未閉合、錯欄位／跨度、未知名稱、日期／星期不合、異日重複節日或股票開休市衝突拒絕。僅股票最後交易列的明示日期可產生僅結算休市，三類債券列不得關閉股票市場。93日含首尾、candidate／歷史PIT／績效界線保持。這是新年度來源的候選解析，後續具名daily接線見本節末段；不得cast成舊月份boolean、共用舊用途錨點或以取得成功授權日常使用。詳[Increment24 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment24tpex年度原件的股票日曆解析)。
+
+年度來源另有`OfficialCalendarTpexAnnualJsonTransportV1`：固定官方年度URL、POST及原ASCII form body，保存原response bytes／SHA與完整性／時鐘，codec使用獨立schema與有界canonical base64。它與舊monthly V1共用原完整body validator，舊V1 URL／kind／key／wire解讀不變；不提供monthly `to_response`或getter。後續年度evidence及具名daily接線見下段；transport不自授用途接受、批次成功或可用時間。
+
+`PortfolioPeriodAnnualCalendarEvidenceV1`另保存年度雙市場原transport及各自session dates，使用獨立wire、32MiB上限與canonical SHA；缺年、重複／多餘分區拒絕，93 inclusive仍保留。Root衍生沿已驗TPEx股票parser，TWSE新年度用途另核exact四欄、ROC年份／日期順序、weekday、已知股票開休市／連續假日與春節僅結算缺日；舊TWSE／monthly解析器原義不改。公開日期保持ISO字串以相容原pair比較，captured_at只取完整body完成時鐘較晚者，四資格flags不可由wire提升。讀回重建原transports、重算日期／clock／hash，不信任自述expected dates。年度evidence本身不授daily成功，後續同一核心接線見下段；目前沒有真用途接受或新成功批次；正向完整跨年雙原件尚未驗，缺年拒絕已驗。
+
+新年度用途另核兩份獨立表的同名國定假日日期集合一致；不一致以具名品質原因拒絕，不借另一市場填值。各市場股票最後交易／僅結算仍各自推導，不要求完整sessions相等。這是該年度schema用途的品質契約；未來官方版本若有差異，保留原件並另核用途，不靜默放行。缺補假列先實證FAIL，再沿原斷言修復；詳[Increment26 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment26年度雙市場期間證據)。
+
+Increment27新增具名年度daily writer／reader與三個`official-calendar-annual-daily-*.v1` schema；原月別V1 public API、wire與scope保留。兩者使用同一私有read/write核心，原件先create-only／fsync／關閉，再衍生、manifest、pending、completion、receipt、發布guard、rename、pending exact reread／取消及解除、exact成功讀回；沒有第二套publisher。年度只收原TWSE年transport及新TPEx年度POST transport，分區為`twse:YYYY`／`tpex-annual:YYYY`，每年各一份、最多4份及93 inclusive；年度manifest重新核年度evidence schema及雙市場日期，不轉舊monthly codec。
+
+年度用途scope明列`{market}.official_calendar.annual`、annual parser及各自stock_annual schema，沿原session-date單位與prospective用途。Public writer／reader仍要求caller提供兩市場Mapping接受錨點；pin保留原constructor與ordered tuple，由同一家族的scope／endpoint明選monthly或annual具名reader。混搭、順序、錯endpoint拒絕；來源封套不能自授信任，不以reader失敗切換來源。Pair沿最小唯讀Protocol及同一daily identity前後重驗，原Registry控制器表單沿用。已驗明示合成錨點的保存、public run reader與真控制器；真取得收據的保守完成觀測basis、一次性真用途接受、正式Main配置及年度Main／fresh仍待，既有PIT／performance／formal clock均false。詳[Increment27 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment27年度日曆沿原daily與registry接線)。
+
+年度真取得的Root custody候選另保留原receipt、request／headers／worker job／worker result與raw的外部pins。原worker result雖有EOF、raw fsync／關閉及hash後的完成觀測，但原receipt沒有其SHA，不能事後補寫成當時已綁定。新候選以原receipt的controller `ended_at` 作保守完成觀測上界，另列worker原文／SHA佐證；`started_at`明示controller attempt-start，兩者均非socket精確時鐘或官方發布。TWSE原transport保持，保守觀測版另存，raw與其餘欄位不變。兩個程序已從同13外部pins重算年度codec／evidence一致；owner output只是custody候選，沒有解除public artifact保護根、發布成功daily或授用途。下一個真正daily成功版仍須獨立接受與實際首次保存／完成小時，不能回填本次取得前的歷史可得性。詳[Increment28 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment28真取得原件的保守完成觀測與custody)。
+
+日曆一次性接受可由caller明示的`portfolio-calendar-acceptance-binding.v1`保存兩個ordered typed接受，再以獨立外部SHA載入。64KiB canonical UTF-8只含schema及接受清單，不含batch或自授資格欄位；整組monthly／annual scope與endpoint須一致。Reader沿原calendar單link／reparse／protected roots／handle與讀前後stat／外部SHA守衛，另限64KiB讀取上限，成長超界拒絕；原reader預設上限及既有呼叫保留。Public接受decoder重用原欄位解析並核canonical內容，不以時區正規化掩蓋配置漂移。
+
+正常Main只從`ApplicationSettings`明示成對的`CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH`／`CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256`讀取；resolve／apply不讀接受或batch，loader才exact讀檔，配置不得位於frozen包或受保護來源／輸出根。Main入口複製caller設定，再將接受tuple或具名短錯誤傳原BacktestView／Registry controller。畫面仍由使用者指定batch雙SHA及市場，不掃latest，不加可手填授權欄位。設定失敗跨來源模式保留原因，daily pin／比較保持停用，其他工作區仍啟動；來源或設定變更沿原取消與丟棄過期結果。真接受決策與每日批次validator仍各自獨立，單憑外部SHA、配置成功或合成Main／fresh不授官方用途／PIT／績效。詳[Increment29 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment29明示接受binding接正常main)。
+
+### 年度日曆用途複核（Increment30）
+
+Root已沿既存完整TWSE Swagger、[政府資料集11761](https://data.gov.tw/dataset/11761)、官方OpenAPI條款與政府資料開放授權鏈，接受 `twse.official_calendar.annual` 的 `prospective_daily_calendar_research` 用途；parser／內部schema／交易日單位與 `daily-hour.v1` 保持原契約。顯名、原件SHA版本與衍生解析標示須保留，metadata更新時間不借作內容發布時間；Swagger沒有宣告 `queryYear`，實際2026年度成功不授任意歷史年度查詢。
+
+TPEx指定年度POST仍缺可核對的資料／自動取得方式授權；官方中文條款第5／7節實際頁面不能解讀為所有公開網頁均可自動下載。僅有原件、前端動作或其他TPEx開放資料集不足以發行此用途接受。雙市場原writer／reader仍須兩份獨立接受，故本輪不發binding、不發布日批、不改正式Main配置。新接受只存owner task，SHA `7f120b20e261d6173f2536ab206ddb4576b258954fc7839259ceb5adf84bf697`；[具名複核](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/calendar_source_use_review_increment30.md)分列來源、schema差異、授權與時間限制。歷史PIT、績效及正式writer資格均未接受。
+
 ### 雙市場 cohort 與正常 invocation
+
+
+
+
+
+
+
+
 
 `daily_monthly_revenue_cohort.py` 把 caller 明列的必要市場、同報告期／source／parser／schema／單位／用途及時間政策封成 immutable pin。每市場綁 batch、manifest／receipt／canonical／transport SHA、接受錨點 identity/hash、record count及時間依據；共用可用小時取所有必要市場的較晚者。Builder只讀指定 batch，不掃描或選 latest；缺任一必要市場不可發行整組。保存 pin 為有界 canonical/create-only 格式，讀回要求外部預期 cohort hash；self-hash 不授信任。
 

@@ -27,6 +27,8 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 
 建構設定與開啟程式會建立必要的資料夾並初始化日誌。第一次啟動後到「數據更新」查看來源狀態，再依所需官方資料來源補齊缺件。不要刪除既有 DB、WAL、SHM 或手動修表來處理空畫面。
 
+日曆研究的進階用途接受可另由資料owner提供外部配置檔及獨立SHA，成對設定`CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH`／`CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256`。配置檔不放正式資料、輸出或程式包內；一般首次安裝保持未設定即可。這不會取得資料、發布daily batch或授來源資格，使用與排錯見[Registry手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
+
 ## 排程不屬於 GUI 安裝步驟
 
 安裝 source 或 portable GUI 不會註冊、啟用或替換 Task Scheduler action。新機排程需先依[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)完成清冊和唯讀核對，再依[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)處理各平台與專用 lane。

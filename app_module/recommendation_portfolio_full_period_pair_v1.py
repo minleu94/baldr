@@ -5,14 +5,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Callable, Literal, Sequence
 
 from app_module.recommendation.portfolio_result_reader import (
     PortfolioResultReadbackUnavailable,
+    RecommendationPortfolioResultReadCancelledError,
     RecommendationPortfolioResultReader,
 )
 from app_module.recommendation_portfolio_calendar_artifact_v1 import (
     read_portfolio_period_calendar_evidence_v1,
+)
+from app_module.recommendation_portfolio_calendar_evidence_v1 import PortfolioPeriodCalendarEvidenceReadV1
+from app_module.official_calendar_daily_snapshot_v1 import (
+    OfficialCalendarDailySnapshotCancelled, read_official_calendar_daily_snapshot_v1,
+    read_official_calendar_annual_daily_snapshot_v1,
+)
+from app_module.recommendation_portfolio_period_calendar_read_pin_v1 import (
+    PortfolioPeriodCalendarDailyReadPinV1, PortfolioPeriodDailyCalendarIdentityV1,
 )
 from app_module.recommendation_portfolio_dtos import (
     RecommendationPortfolioBacktestResultDTO,
@@ -21,16 +30,24 @@ from app_module.recommendation_portfolio_dtos import (
 from app_module.recommendation_portfolio_period_precision_v2 import (
     RecommendationPortfolioPeriodPrecisionV2,
 )
+from app_module.recommendation_portfolio_result_artifact import (
+    RecommendationPortfolioResultArtifactV1,
+)
 from app_module.recommendation_portfolio_result_artifact_v2 import (
     RecommendationPortfolioResultArtifactV2,
 )
+from app_module.recommendation_portfolio_result_artifact_v3 import RecommendationPortfolioResultArtifactV3
 from app_module.research_run_dtos import ResearchRunMetadataDTO
-from app_module.research_run_service import ResearchRunService
+from app_module.research_run_service import ResearchRunReadCancelledError, ResearchRunService
 from app_module.saved_strategy_rule_card import metadata_sha256
 
 
 class FullPeriodPairReadErrorV1(RuntimeError):
     """所選版本缺件、完整性或讀取期間身分變動；不發行部分配對。"""
+
+
+class FullPeriodPairReadCancelledV1(FullPeriodPairReadErrorV1):
+    """明示 callback 取消整次配對，不發行已讀的單邊結果。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +84,7 @@ class FullPeriodPairReadV1:
     coverage_complete: bool
     status: Literal["blocked", "structure_comparable"]
     reasons: tuple[str, ...]
+    daily_calendar_source: PortfolioPeriodDailyCalendarIdentityV1 | None = None
 
     @property
     def left_actual_session_dates(self) -> tuple[str, ...]:
@@ -99,6 +117,19 @@ def _run_identity(value: str) -> str:
     return value
 
 
+def _check_cancel(check_cancel: Callable[[], bool] | None) -> None:
+    if check_cancel is not None and check_cancel():
+        raise FullPeriodPairReadCancelledV1("read_cancelled")
+
+
+def _check_metadata_pin(value: str | None, label: str) -> None:
+    if value is not None and (
+        type(value) is not str or len(value) != 64
+        or any(char not in "0123456789abcdef" for char in value)
+    ):
+        raise FullPeriodPairReadErrorV1(f"{label} metadata SHA 必須是 canonical 64hex")
+
+
 class RecommendationPortfolioFullPeriodPairReadServiceV1:
     """重用 public exact reader；不選 latest、不計算交易或從摘要造曲線。"""
 
@@ -120,17 +151,33 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
 
     def _read_run(
         self, run_id: str, before: ResearchRunMetadataDTO,
+        *, check_cancel: Callable[[], bool] | None = None,
     ) -> FullPeriodRunReadV1:
         # 第一次有界讀回取得原 sidecar；public reader 另核 replay child lineage。
-        loaded = self._service.load_run_data(
-            run_id, max_artifact_bytes=64 * 1024**2, max_total_bytes=128 * 1024**2,
-        )
+        _check_cancel(check_cancel)
+        if check_cancel is None:
+            loaded = self._service.load_run_data(
+                run_id, max_artifact_bytes=64 * 1024**2, max_total_bytes=128 * 1024**2,
+            )
+        else:
+            loaded = self._service.load_run_data(
+                run_id, max_artifact_bytes=64 * 1024**2, max_total_bytes=128 * 1024**2,
+                check_cancel=check_cancel,
+            )
         if metadata_sha256(loaded.metadata) != metadata_sha256(before):
             raise FullPeriodPairReadErrorV1("讀取期間 Registry metadata 已變更")
-        result = self._reader.read(
-            run_id, expected_metadata_sha256=metadata_sha256(before),
-            max_artifact_bytes=64 * 1024**2, max_total_bytes=128 * 1024**2,
-        )
+        _check_cancel(check_cancel)
+        if check_cancel is None:
+            result = self._reader.read(
+                run_id, expected_metadata_sha256=metadata_sha256(before),
+                max_artifact_bytes=64 * 1024**2, max_total_bytes=128 * 1024**2,
+            )
+        else:
+            result = self._reader.read(
+                run_id, expected_metadata_sha256=metadata_sha256(before),
+                max_artifact_bytes=64 * 1024**2, max_total_bytes=128 * 1024**2,
+                check_cancel=check_cancel,
+            )
         artifact = loaded.portfolio_result_artifact
         if isinstance(result, PortfolioResultReadbackUnavailable):
             if artifact is not None:
@@ -139,6 +186,10 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
             precision = None
             parent_id = None
         elif type(result) is RecommendationPortfolioBacktestResultDTO:
+            if type(artifact) is RecommendationPortfolioResultArtifactV3:
+                if result.execution_input_capture != artifact.execution_inputs:
+                    raise FullPeriodPairReadErrorV1("兩次exact讀回的execution inputs不一致")
+                artifact = artifact.base_artifact
             if type(artifact) is RecommendationPortfolioResultArtifactV2:
                 if (
                     artifact.metadata_strategy_id, artifact.metadata_strategy_version,
@@ -157,10 +208,12 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
                     or precision.strategy_version != before.strategy_version
                 ):
                     raise FullPeriodPairReadErrorV1("precision 與原 run／parent／capture 不一致")
-            else:
+            elif type(artifact) is RecommendationPortfolioResultArtifactV1:
                 capture = None
                 precision = None
-                parent_id = None
+                parent_id = artifact.portfolio_parent_id
+            else:
+                raise FullPeriodPairReadErrorV1("public reader 結果缺少支援的已核 artifact")
         else:
             raise FullPeriodPairReadErrorV1("public reader 未回傳已保存完整結果")
         return FullPeriodRunReadV1(
@@ -180,6 +233,70 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
         expected_calendar_sha256: str,
         market: Literal["twse", "tpex"],
         protected_roots: Sequence[Path],
+        expected_left_metadata_sha256: str | None = None,
+        expected_right_metadata_sha256: str | None = None,
+        check_cancel: Callable[[], bool] | None = None,
+    ) -> FullPeriodPairReadV1:
+        def load_calendar() -> tuple[PortfolioPeriodCalendarEvidenceReadV1, PortfolioPeriodDailyCalendarIdentityV1 | None]:
+            return read_portfolio_period_calendar_evidence_v1(
+                calendar_path, expected_sha256=expected_calendar_sha256,
+                protected_roots=protected_roots,
+            ), None
+
+        return self._read_exact_calendar(
+            left_registry_run_id, right_registry_run_id, market=market,
+            expected_calendar_sha256=expected_calendar_sha256, load_calendar=load_calendar,
+            expected_left_metadata_sha256=expected_left_metadata_sha256,
+            expected_right_metadata_sha256=expected_right_metadata_sha256, check_cancel=check_cancel,
+        )
+
+    def read_daily(
+        self, left_registry_run_id: str, right_registry_run_id: str, *,
+        calendar_pin: PortfolioPeriodCalendarDailyReadPinV1,
+        expected_left_metadata_sha256: str | None = None,
+        expected_right_metadata_sha256: str | None = None,
+        check_cancel: Callable[[], bool] | None = None,
+    ) -> FullPeriodPairReadV1:
+        if type(calendar_pin) is not PortfolioPeriodCalendarDailyReadPinV1:
+            raise FullPeriodPairReadErrorV1("daily calendar 必須是精確 typed pin")
+
+        def load_calendar() -> tuple[PortfolioPeriodCalendarEvidenceReadV1, PortfolioPeriodDailyCalendarIdentityV1 | None]:
+            reader = (read_official_calendar_annual_daily_snapshot_v1
+                      if calendar_pin.source_version == "annual_v1" else read_official_calendar_daily_snapshot_v1)
+            snapshot = reader(
+                calendar_pin.batch_directory,
+                expected_manifest_sha256=calendar_pin.expected_manifest_sha256,
+                expected_receipt_sha256=calendar_pin.expected_receipt_sha256,
+                trusted_acceptances={item.scope.market: item for item in calendar_pin.trusted_acceptances},
+                protected_roots=calendar_pin.protected_roots,
+                decision_cutoff=calendar_pin.decision_cutoff, check_cancel=check_cancel,
+            )
+            identity = PortfolioPeriodDailyCalendarIdentityV1(
+                batch_id=snapshot.batch_id, manifest_sha256=snapshot.manifest_sha256,
+                receipt_sha256=snapshot.receipt_sha256, capture_sha256=snapshot.capture_sha256,
+                first_persisted_at=snapshot.first_persisted_at.isoformat(),
+                successful_batch_completed_at=snapshot.successful_batch_completed_at.isoformat(),
+                available_hour=snapshot.available_hour.isoformat(), availability_basis=snapshot.availability_basis,
+                decision_cutoff=calendar_pin.decision_cutoff.isoformat(),
+                acceptance_ids=(calendar_pin.trusted_acceptances[0].acceptance_id,
+                                calendar_pin.trusted_acceptances[1].acceptance_id),
+            )
+            return snapshot.evidence, identity
+
+        return self._read_exact_calendar(
+            left_registry_run_id, right_registry_run_id, market=calendar_pin.market,
+            expected_calendar_sha256=calendar_pin.expected_manifest_sha256, load_calendar=load_calendar,
+            expected_left_metadata_sha256=expected_left_metadata_sha256,
+            expected_right_metadata_sha256=expected_right_metadata_sha256, check_cancel=check_cancel,
+        )
+
+    def _read_exact_calendar(
+        self, left_registry_run_id: str, right_registry_run_id: str, *,
+        market: Literal["twse", "tpex"], expected_calendar_sha256: str,
+        load_calendar: Callable[[], tuple[PortfolioPeriodCalendarEvidenceReadV1, PortfolioPeriodDailyCalendarIdentityV1 | None]],
+        expected_left_metadata_sha256: str | None,
+        expected_right_metadata_sha256: str | None,
+        check_cancel: Callable[[], bool] | None,
     ) -> FullPeriodPairReadV1:
         left_id = _run_identity(left_registry_run_id)
         right_id = _run_identity(right_registry_run_id)
@@ -187,27 +304,39 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
             raise FullPeriodPairReadErrorV1("必須選取兩個不同的 exact Registry run")
         if type(market) is not str or market not in ("twse", "tpex"):
             raise FullPeriodPairReadErrorV1("market 必須是 twse 或 tpex")
+        _check_metadata_pin(expected_left_metadata_sha256, "left")
+        _check_metadata_pin(expected_right_metadata_sha256, "right")
+        if check_cancel is not None and not callable(check_cancel):
+            raise FullPeriodPairReadErrorV1("check_cancel 必須可呼叫")
         try:
-            calendar = read_portfolio_period_calendar_evidence_v1(
-                calendar_path, expected_sha256=expected_calendar_sha256,
-                protected_roots=protected_roots,
-            )
-            # 先固定兩邊，再逐一讀回；最後同時重核避免跨 run 混用修订版本。
+            _check_cancel(check_cancel)
+            # 對使用者選取的 metadata pin 先核對，再開啟任何保存 artifact。
             left_before = self._metadata(left_id)
             right_before = self._metadata(right_id)
-            left = self._read_run(left_id, left_before)
-            right = self._read_run(right_id, right_before)
+            for label, before, expected_sha in (
+                ("left", left_before, expected_left_metadata_sha256),
+                ("right", right_before, expected_right_metadata_sha256),
+            ):
+                if expected_sha is not None and metadata_sha256(before) != expected_sha:
+                    raise FullPeriodPairReadErrorV1(f"{label} 所選 metadata 與 exact pair 來源不符")
+            _check_cancel(check_cancel)
+            calendar, daily_source = load_calendar()
+            # 先固定兩邊，再逐一讀回；最後同時重核避免跨 run 混用修订版本。
+            left = self._read_run(left_id, left_before, check_cancel=check_cancel)
+            _check_cancel(check_cancel)
+            right = self._read_run(right_id, right_before, check_cancel=check_cancel)
             for run in (left, right):
                 after = self._metadata(run.registry_run_id)
                 if metadata_sha256(after) != run.metadata_identity_sha256:
                     raise FullPeriodPairReadErrorV1("配對期間 Registry metadata 已變更")
-            # 同一檔日曆重核 external bytes，拒絕配對期間的修訂。
-            after_calendar = read_portfolio_period_calendar_evidence_v1(
-                calendar_path, expected_sha256=expected_calendar_sha256,
-                protected_roots=protected_roots,
-            )
-            if after_calendar.to_json() != calendar.to_json():
+            # 同一來源重核外部 bytes 與完整 identity，拒絕配對期間修訂。
+            after_calendar, after_daily_source = load_calendar()
+            if after_calendar.to_json() != calendar.to_json() or after_daily_source != daily_source:
                 raise FullPeriodPairReadErrorV1("配對期間日曆來源已變更")
+            _check_cancel(check_cancel)
+        except (ResearchRunReadCancelledError, RecommendationPortfolioResultReadCancelledError,
+                OfficialCalendarDailySnapshotCancelled) as exc:
+            raise FullPeriodPairReadCancelledV1("read_cancelled") from exc
         except FullPeriodPairReadErrorV1:
             raise
         except Exception as exc:
@@ -314,6 +443,7 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
             return tuple(day for day in run.actual_session_dates if day not in expected_set)
 
         unique_reasons = tuple(dict.fromkeys(reasons))
+        _check_cancel(check_cancel)
         return FullPeriodPairReadV1(
             left=left, right=right, market=market,
             calendar_external_sha256=expected_calendar_sha256,
@@ -323,4 +453,5 @@ class RecommendationPortfolioFullPeriodPairReadServiceV1:
             left_unexpected_session_dates=unexpected(left), right_unexpected_session_dates=unexpected(right),
             coverage_complete=all(coverage) and len(coverage) == 2,
             status="blocked" if unique_reasons else "structure_comparable", reasons=unique_reasons,
+            daily_calendar_source=daily_source,
         )

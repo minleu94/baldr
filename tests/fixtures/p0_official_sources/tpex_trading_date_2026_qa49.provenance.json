@@ -1,0 +1,11 @@
+{
+  "fixture": "tpex_trading_date_2026_qa49.json",
+  "bytes": 8792,
+  "sha256": "c5cea6bd3a10bc7cd3e577d9ad78e600ae7d64508a1bc9b09be32fb396d0dc41",
+  "source_url": "https://www.tpex.org.tw/www/zh-tw/bulletin/tradingDate",
+  "method": "POST",
+  "request_body": "date=2026&id=",
+  "original": "output/tasks/baldr-completion-resume-20261014-01a13cf9/calendar_official_tradingdate_01/year2026-post-attempt01/response.raw",
+  "original_transport_receipt_sha256": "5bf7984c6a2bd5e69a7034287457bfbb72fe5ae477b50657b6b13011aa4cf3af",
+  "qualification": "完整原件僅供解析回歸；source_baseline_date非發布時間，不授來源用途、歷史PIT或績效接受"
+}

@@ -1093,6 +1093,18 @@ class BacktestResultPanel(QWidget):
                 self.parent_view._open_recommendation_registry_run
             ),
         )
+        from ui_qt.views.research_lab.registry_period_pair_controller import (
+            RegistryPeriodPairController,
+        )
+        self.period_pair_controller = RegistryPeriodPairController(
+            service, self.parent_view.config, self.run_registry_compare_widget,
+            lambda: self.parent_view._execution_generation, parent=self.parent_view,
+        )
+        # 僅轉交Main已載入的快照或明示失敗；這裡不讀來源、不產生信任錨點。
+        self.period_pair_controller.set_daily_acceptances(
+            getattr(self.parent_view, "calendar_daily_acceptances", None),
+            configuration_error=getattr(self.parent_view, "calendar_daily_acceptance_error", ""),
+        )
         registry_banner = QLabel(
             "研究 Registry：正式研究 run 比較與 promotion evidence 入口；"
             "比較不等於可 promote，仍需通過既有驗證與升級條件。"
@@ -1107,6 +1119,7 @@ class BacktestResultPanel(QWidget):
         registry_container = QWidget()
         registry_layout = QVBoxLayout(registry_container)
         registry_layout.addWidget(registry_banner)
+        registry_layout.addWidget(self.period_pair_controller.calendar_controls)
         registry_layout.addWidget(self.run_registry_compare_widget)
         self._register_result_tab("registry", registry_container, "研究 Registry")
         self.set_research_mode(self._research_mode_id)

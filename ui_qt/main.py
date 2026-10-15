@@ -5,6 +5,7 @@ PySide6 主應用程式
 import os
 import sys
 import time
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
 # 添加項目根目錄到系統路徑
@@ -19,6 +20,7 @@ from app_module.application_bootstrap import (
     ApplicationSettings, configured_daily_monthly_revenue_cohort_reader,
     configured_daily_monthly_revenue_series_reader_factory,
     configured_daily_monthly_revenue_exact_pin_reader_factory,
+    configured_portfolio_calendar_acceptance_binding,
     resolve_application_settings,
 )
 from app_module.build_identity import BuildIdentity, detect_build_identity
@@ -1544,7 +1546,8 @@ class MainWindow(QMainWindow):
                 "original_stock_ranking_root 必須搭配明示每日研究快照 root／cohort"
             )
         super().__init__()
-        self.application_settings = application_settings or resolve_application_settings()
+        # Main持有自己的設定副本，呼叫端之後改原dict不會替換已選來源錨點。
+        self.application_settings = dataclass_replace(application_settings or resolve_application_settings())
         self.build_identity = build_identity or detect_build_identity(repository_root=project_root)
         self.setWindowTitle(f"baldr · {self.build_identity.display_text}")
         self.build_identity_label = QLabel(self.build_identity.display_text)
@@ -1602,6 +1605,22 @@ class MainWindow(QMainWindow):
                 policy_config_path,
                 configured_path=getattr(self.config, "personal_model_policy_path", None),
             )
+            self.calendar_daily_acceptances = None
+            self.calendar_daily_acceptance_error = ""
+            try:
+                calendar_roots = tuple(
+                    Path(value) for name in (
+                        "data_root", "output_root", "personal_data_root", "personal_store_root", "personal_journal_root",
+                    ) if (value := getattr(self.config, name, None)) is not None
+                )
+                calendar_binding = configured_portfolio_calendar_acceptance_binding(
+                    self.application_settings, protected_roots=calendar_roots,
+                )
+                if calendar_binding is not None:
+                    self.calendar_daily_acceptances = calendar_binding.trusted_acceptances
+            except (OSError, TypeError, ValueError) as exc:
+                self.calendar_daily_acceptance_error = str(exc).splitlines()[0][:512] or type(exc).__name__
+                logger.warning("日曆用途接受設定未載入：%s", self.calendar_daily_acceptance_error)
 
             _startup_step("正在建立分析服務")
             monthly_cohort_reader = configured_daily_monthly_revenue_cohort_reader(
@@ -2138,6 +2157,8 @@ class MainWindow(QMainWindow):
                 strategy_version_service=self.strategy_version_service,
                 paper_checkpoint_account_service=self.paper_checkpoint_account_service,
                 paper_checkpoint_disabled_reason=self.paper_checkpoint_disabled_reason,
+                calendar_daily_acceptances=self.calendar_daily_acceptances,
+                calendar_daily_acceptance_error=self.calendar_daily_acceptance_error,
                 parent=self,
             )
             self.backtest_view = backtest

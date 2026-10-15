@@ -41,6 +41,11 @@ from app_module.recommendation_portfolio_result_artifact_v2 import (
     decode_portfolio_result_artifact_v2,
     encode_portfolio_result_artifact_v2,
 )
+from app_module.recommendation_portfolio_execution_inputs_v1 import RecommendationPortfolioExecutionInputsV1
+from app_module.recommendation_portfolio_result_artifact_v3 import (
+    RecommendationPortfolioResultArtifactV3, decode_portfolio_result_artifact_v3,
+    encode_portfolio_result_artifact_v3,
+)
 from app_module.research_run_dtos import (
     ResearchRunMetadataDTO,
     canonical_json,
@@ -62,6 +67,10 @@ class ResearchRunIntegrityError(ResearchRunServiceError):
     """Research Run payload hash、sidecar 或 registry metadata 不一致。"""
 
 
+class ResearchRunReadCancelledError(ResearchRunIntegrityError):
+    """明示 callback 請求取消；仍相容既有完整性例外處理。"""
+
+
 class PromotedResearchRunArchiveError(ResearchRunServiceError):
     """已升級策略版本的 run 不可封存。"""
 
@@ -77,7 +86,7 @@ class ResearchRunData:
     trades: pd.DataFrame
     replay_lineage: ReplayLineageReadEnvelope | None = None
     portfolio_result_artifact: (
-        RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | None
+        RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3 | None
     ) = None
 
 
@@ -103,7 +112,7 @@ class _ArtifactReadRound:
 
     def cancelled(self) -> None:
         if self.check_cancel is not None and self.check_cancel():
-            raise ResearchRunIntegrityError("read_cancelled")
+            raise ResearchRunReadCancelledError("read_cancelled")
 
     def read(self, path: Path, expected_hash: str, *, hard_limit_bytes: int | None = None) -> bytes:
         self.cancelled()
@@ -199,6 +208,7 @@ class ResearchRunService:
         factor_contributions: dict[str, Any] | None = None,
         replay_lineage_sidecar: ReplayLineageSidecarV1 | None = None,
         portfolio_result: RecommendationPortfolioBacktestResultDTO | None = None,
+        portfolio_execution_inputs: RecommendationPortfolioExecutionInputsV1 | None = None,
         fail_at: str | None = None,
     ) -> ResearchRunMetadataDTO:
         metadata = deepcopy(metadata)
@@ -212,6 +222,13 @@ class ResearchRunService:
             factor_contributions=factor_contributions,
         )
         metadata = self._metadata_with_execution_contract(metadata)
+        if portfolio_execution_inputs is not None:
+            if (portfolio_result is None
+                    or type(portfolio_execution_inputs) is not RecommendationPortfolioExecutionInputsV1
+                    or portfolio_result.execution_input_capture != portfolio_execution_inputs):
+                raise ResearchRunIntegrityError("V3 opt-in必須提供同一原producer execution inputs")
+            if metadata.execution_contract != portfolio_execution_inputs.execution_contract:
+                raise ResearchRunIntegrityError("execution inputs與Registry execution contract不一致")
         paths = self._paths_for(metadata.run_id)
         replay_lineage_bytes: bytes | None = None
         if replay_lineage_sidecar is not None:
@@ -261,6 +278,7 @@ class ResearchRunService:
                     equity=equity,
                     trades=trades,
                     replay_lineage_bytes=replay_lineage_bytes,
+                    portfolio_execution_inputs=portfolio_execution_inputs,
                 )
             if existing and existing.payload_hash != metadata.payload_hash:
                 raise ResearchRunConflictError(
@@ -331,6 +349,7 @@ class ResearchRunService:
                 portfolio_parent_id=self._portfolio_parent_id(portfolio_result),
                 equity_parquet_sha256=equity_hash,
                 trades_parquet_sha256=trades_hash,
+                execution_inputs=portfolio_execution_inputs,
             )
             self._write_bytes_create_only(
                 paths["portfolio_result_temp"], artifact.raw_payload
@@ -590,8 +609,17 @@ class ResearchRunService:
         portfolio_parent_id: str,
         equity_parquet_sha256: str,
         trades_parquet_sha256: str,
-    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
+        execution_inputs: RecommendationPortfolioExecutionInputsV1 | None = None,
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3:
         try:
+            if execution_inputs is not None:
+                return encode_portfolio_result_artifact_v3(
+                    result, execution_inputs=execution_inputs,
+                    metadata_strategy_id=(None if metadata.strategy_id == "" else metadata.strategy_id),
+                    metadata_strategy_version=(None if metadata.strategy_version == "" else metadata.strategy_version),
+                    registry_run_id=registry_run_id, portfolio_parent_id=portfolio_parent_id,
+                    equity_parquet_sha256=equity_parquet_sha256, trades_parquet_sha256=trades_parquet_sha256,
+                )
             if result.period_precision_capture is not None:
                 return encode_portfolio_result_artifact_v2(
                     result,
@@ -617,18 +645,20 @@ class ResearchRunService:
     @staticmethod
     def _decode_portfolio_result(
         raw_payload: bytes, *, schema_version: str, schema_revision: int,
-    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3:
         # 明確版本路由；V1 decoder 不忽略 V2 欄位，也不嘗試降格解碼。
         if (schema_version, schema_revision) == ("recommendation-portfolio-result.v1", 1):
             return decode_portfolio_result_artifact(raw_payload)
         if (schema_version, schema_revision) == ("recommendation-portfolio-result.v2", 2):
             return decode_portfolio_result_artifact_v2(raw_payload)
+        if (schema_version, schema_revision) == ("recommendation-portfolio-result.v3", 3):
+            return decode_portfolio_result_artifact_v3(raw_payload)
         raise PortfolioResultArtifactCodecError("portfolio result schema/version 配對不支援")
 
     def _metadata_with_portfolio_descriptor(
         self,
         metadata: ResearchRunMetadataDTO,
-        artifact: RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2,
+        artifact: RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3,
         paths: dict[str, Path],
     ) -> ResearchRunMetadataDTO:
         if metadata.run_type != "recommendation_portfolio":
@@ -743,7 +773,7 @@ class ResearchRunService:
         *,
         expected_path: Path,
         reading: _ArtifactReadRound | None = None,
-    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3:
         if path != expected_path:
             raise ResearchRunIntegrityError(
                 "portfolio result sidecar path 不符合預期"
@@ -755,7 +785,9 @@ class ResearchRunService:
         paths = self._paths_for(metadata.run_id)
         descriptor = self._validate_portfolio_result_descriptor(metadata, paths)
         try:
-            if descriptor["schema_version"] == "recommendation-portfolio-result.v2":
+            if descriptor["schema_version"] in (
+                "recommendation-portfolio-result.v2", "recommendation-portfolio-result.v3"
+            ):
                 bounded_read = reading or _ArtifactReadRound(None, None, None)
                 raw_payload = bounded_read.read(
                     path, descriptor["raw_payload_sha256"], hard_limit_bytes=16 * 1024 * 1024
@@ -786,14 +818,25 @@ class ResearchRunService:
             raise ResearchRunIntegrityError(
                 "portfolio result sidecar bytes 與 Registry descriptor 不一致"
             )
-        if type(artifact) is RecommendationPortfolioResultArtifactV2 and (
+        if (type(artifact) is RecommendationPortfolioResultArtifactV2
+                or type(artifact) is RecommendationPortfolioResultArtifactV3) and (
             artifact.metadata_strategy_id != (None if metadata.strategy_id == "" else metadata.strategy_id)
             or artifact.metadata_strategy_version
             != (None if metadata.strategy_version == "" else metadata.strategy_version)
         ):
-            raise ResearchRunIntegrityError("precision V2 strategy identity 與 Registry metadata 不一致")
-        if type(artifact) is RecommendationPortfolioResultArtifactV2:
-            self._validate_precision_capture_metadata(metadata, artifact.period_precision_capture)
+            raise ResearchRunIntegrityError("precision strategy identity 與 Registry metadata 不一致")
+        if type(artifact) is RecommendationPortfolioResultArtifactV3:
+            if artifact.execution_inputs.execution_contract != metadata.execution_contract:
+                raise ResearchRunIntegrityError("V3 execution inputs與Registry metadata不一致")
+            precision_artifact = artifact.base_artifact
+        elif type(artifact) is RecommendationPortfolioResultArtifactV2:
+            precision_artifact = artifact
+        elif type(artifact) is RecommendationPortfolioResultArtifactV1:
+            precision_artifact = artifact
+        else:
+            raise ResearchRunIntegrityError("不支援的portfolio artifact型別")
+        if type(precision_artifact) is RecommendationPortfolioResultArtifactV2:
+            self._validate_precision_capture_metadata(metadata, precision_artifact.period_precision_capture)
         return artifact
 
     def _validate_portfolio_result_file(
@@ -802,7 +845,7 @@ class ResearchRunService:
         path: Path,
         *,
         expected_path: Path,
-    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2:
+    ) -> RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3:
         return self._read_portfolio_result_file(
             metadata, path, expected_path=expected_path
         )
@@ -817,6 +860,7 @@ class ResearchRunService:
         equity: pd.DataFrame,
         trades: pd.DataFrame,
         replay_lineage_bytes: bytes | None,
+        portfolio_execution_inputs: RecommendationPortfolioExecutionInputsV1 | None = None,
     ) -> ResearchRunMetadataDTO:
         run_id = base_metadata.run_id
         if existing is None or existing_raw["storage_state"] != "committed":
@@ -840,6 +884,7 @@ class ResearchRunService:
             portfolio_parent_id=self._portfolio_parent_id(result),
             equity_parquet_sha256=existing.equity_parquet_hash,
             trades_parquet_sha256=existing.trades_parquet_hash,
+            execution_inputs=portfolio_execution_inputs,
         )
         expected_metadata = replace(
             base_metadata,
@@ -1255,7 +1300,7 @@ class ResearchRunService:
             sidecar_temp = paths["portfolio_result_temp"]
             sidecar_final = paths["portfolio_result_final"]
             sidecar_artifacts: list[
-                RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2
+                RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3
             ] = []
             if sidecar_temp.exists():
                 sidecar_artifacts.append(

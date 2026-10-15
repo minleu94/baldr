@@ -63,6 +63,14 @@ Windows Scheduler 與受控 CLI wrappers 分別執行資料更新、Evidence dry
 
 每日新來源保存的小時可用性、批次／版本釘定與來源用途接受依[每日快照契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)；接入沿既有 data reader／更新服務邊界，隔離抓取成功不等同正常 UI、正式排程或完整產品接受。
 
+Research Lab Registry的雙run期間診斷由application exact reader負責metadata／附件／日曆版本核對，Qt controller只固定選取與背景讀回世代，不擁有PnL計算或來源資格；詳[研究與Portfolio邊界](current/decision_research_portfolio.md)。
+
+日曆用途接受可由正常Main明示的外部SHA固定binding注入；配置只固定既有typed錨點，仍由原表單選exact batch，失敗只隔離daily用途。Main設定副本與worker生命週期見[主程式邊界](current/application_and_workspaces.md#研究畫面與保存身份)。
+
+原next-open執行輸入沿正常保存入口明示寫入additive V3附件，內嵌原V1／V2文件並重用同一Registry staging／CAS／恢復流程；public reader讀回原None／0、有效成本與lot，pair沿原capture比對。V3預設讀前16MiB上限與取消／完整性守衛保留；輸入hash不授金融來源或implementation資格。
+
+日曆完整JSON transport與daily batch沿原calendar parser分層：data保存HTTP完整原件識別，application提供create-only批次與外部manifest／receipt SHA、獨立用途接受錨點的exact reader。原Registry頁可明示artifact或daily source；daily pin固定雙SHA、兩個typed接受錨點與aware cutoff，沿同一pair reader前後讀回。正常Main／fresh已用隔離合成錨點限定驗證，真來源接受與正式Main配置仍缺；批次小時不授歷史PIT／績效資格，詳[每日版本契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#日曆完整json批次increment21)。
+
 ## 重要不變條件
 
 - 不破壞正式 raw source；資料遷移或全量重建走備份、確認及可復原流程。

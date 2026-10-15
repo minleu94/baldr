@@ -34,6 +34,8 @@ from app_module.research_run_comparison_service import (
 )
 from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_run_service import ResearchRunRepositoryError, ResearchRunServiceError
+from app_module.recommendation_portfolio_full_period_pair_v1 import FullPeriodPairReadV1
+from app_module.saved_strategy_rule_card import metadata_sha256
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.layout_helpers import ensure_visible_rows
@@ -73,6 +75,11 @@ class RunRegistryCompareWidget(QWidget):
         *,
         comparison_service: ResearchRunComparisonService | None = None,
         on_open_recommendation_run: Callable[[ResearchRunMetadataDTO], object] | None = None,
+        on_compare_period_pair: Callable[
+            [ResearchRunMetadataDTO, ResearchRunMetadataDTO], None
+        ] | None = None,
+        on_period_pair_selection_changed: Callable[[], None] | None = None,
+        on_cancel_period_pair: Callable[[], None] | None = None,
         page_size: int = 25,
         parent=None,
     ):
@@ -80,6 +87,9 @@ class RunRegistryCompareWidget(QWidget):
         self.research_run_service = research_run_service
         self.comparison_service = comparison_service or ResearchRunComparisonService()
         self.on_open_recommendation_run = on_open_recommendation_run
+        self.on_compare_period_pair = on_compare_period_pair
+        self.on_period_pair_selection_changed = on_period_pair_selection_changed
+        self.on_cancel_period_pair = on_cancel_period_pair
         self.page_size = page_size
         self.current_page = 1
         self._loaded_once = False
@@ -94,6 +104,13 @@ class RunRegistryCompareWidget(QWidget):
         self._rule_active_run_id = ""
         self._rule_request_id = 0
         self._rule_closed = False
+        self._period_pair_available = False
+        self._period_pair_availability_reason = "尚未確認完整期間來源。"
+        self._period_pair_busy = False
+        self._period_pair_cancel_requested = False
+        self._period_pair_request_pending = False
+        self._period_pair_result: FullPeriodPairReadV1 | None = None
+        self._period_pair_selection_snapshot: tuple[tuple[str, str], ...] | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -206,10 +223,44 @@ class RunRegistryCompareWidget(QWidget):
         self.rule_result_button.setEnabled(False)
         page_row.addWidget(self.rule_result_button)
         list_layout.addLayout(page_row)
+        period_pair_row = QHBoxLayout()
+        self.compare_period_pair_button = QPushButton("比較完整期間")
+        self.compare_period_pair_button.setToolTip("只讀取兩筆已選取推薦回放的完整期間診斷。")
+        self.compare_period_pair_button.clicked.connect(self.compare_selected_period_pair)
+        self.compare_period_pair_button.setEnabled(False)
+        period_pair_row.addWidget(self.compare_period_pair_button)
+        self.period_pair_selection_status_label = QLabel("請選取兩筆不同的推薦回放。")
+        self.period_pair_selection_status_label.setWordWrap(True)
+        self.period_pair_selection_status_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        period_pair_row.addWidget(self.period_pair_selection_status_label, stretch=1)
+        list_layout.addLayout(period_pair_row)
         self.rule_result_status = QLabel("")
         self.rule_result_status.setWordWrap(True)
         list_layout.addWidget(self.rule_result_status)
         layout.addWidget(list_group, stretch=1)
+
+        self.period_pair_result_group = QGroupBox("完整期間比較結果")
+        period_pair_layout = QVBoxLayout(self.period_pair_result_group)
+        self.period_pair_status_label = self._new_summary_label("")
+        self.period_pair_result_label = self._new_summary_label("")
+        self.period_pair_result_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        period_pair_layout.addWidget(self.period_pair_status_label)
+        period_pair_layout.addWidget(self.period_pair_result_label)
+        period_pair_actions = QHBoxLayout()
+        self.cancel_period_pair_button = QPushButton("取消完整期間讀取")
+        self.cancel_period_pair_button.clicked.connect(self._request_period_pair_cancel)
+        self.cancel_period_pair_button.setEnabled(False)
+        period_pair_actions.addWidget(self.cancel_period_pair_button)
+        period_pair_actions.addStretch()
+        self.return_to_selected_runs_button = QPushButton("返回所選 run")
+        self.return_to_selected_runs_button.clicked.connect(self._return_to_selected_runs)
+        self.return_to_selected_runs_button.hide()
+        period_pair_actions.addWidget(self.return_to_selected_runs_button)
+        period_pair_layout.addLayout(period_pair_actions)
+        self.period_pair_result_group.hide()
+        layout.addWidget(self.period_pair_result_group)
 
         self.comparability_badge = QLabel("尚未比較")
         self.comparability_badge.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -344,6 +395,7 @@ class RunRegistryCompareWidget(QWidget):
             self.run_list.clearSelection()
         finally:
             del blocker
+        self._sync_period_pair_selection()
         self._update_compare_button_state()
 
     def _on_visible_selection_changed(self) -> None:
@@ -375,6 +427,7 @@ class RunRegistryCompareWidget(QWidget):
         self._rule_request_id += 1
         if self._rule_worker is not None:
             self._rule_worker.cancel()
+        self._sync_period_pair_selection()
         self._update_compare_button_state()
 
     def compare_selected_runs(self) -> None:
@@ -475,6 +528,7 @@ class RunRegistryCompareWidget(QWidget):
             run_id for run_id in self._selected_run_ids if run_id in filtered_ids
         ]
         self._render_run_list()
+        self._sync_period_pair_selection()
 
     def _render_run_list(self) -> None:
         selected_ids = set(self._selected_run_ids)
@@ -526,6 +580,272 @@ class RunRegistryCompareWidget(QWidget):
             f"已選 {selected_count} / 5；可跨頁多選，至少 2 筆才能比較。"
             + (" 已達上限。" if selected_count >= 5 else "")
         )
+        self._update_period_pair_controls()
+
+    def _selected_period_pair(self) -> tuple[ResearchRunMetadataDTO, ResearchRunMetadataDTO] | None:
+        selected_ids = self.selected_run_ids()
+        if len(selected_ids) != 2 or selected_ids[0] == selected_ids[1]:
+            return None
+        selected_runs = {
+            run.run_id: run for run in self._filtered_runs if run.run_id in selected_ids
+        }
+        if len(selected_runs) != 2:
+            return None
+        left = selected_runs.get(selected_ids[0])
+        right = selected_runs.get(selected_ids[1])
+        if (
+            left is None
+            or right is None
+            or left.run_type != "recommendation_portfolio"
+            or right.run_type != "recommendation_portfolio"
+        ):
+            return None
+        return left, right
+
+    def _period_pair_fingerprint(
+        self,
+    ) -> tuple[tuple[str, str], ...] | None:
+        selected = self._selected_period_pair()
+        if selected is None:
+            return None
+        return tuple(
+            (run.run_id, metadata_sha256(run)) for run in selected
+        )
+
+    def _sync_period_pair_selection(self) -> None:
+        current = self._period_pair_fingerprint()
+        if current == self._period_pair_selection_snapshot:
+            return
+        self._period_pair_selection_snapshot = current
+        self._period_pair_available = False
+        self._period_pair_availability_reason = "所選 run 已變更，等待來源能力重新核對。"
+        self._period_pair_request_pending = False
+        self.clear_period_pair_result()
+        if self.on_period_pair_selection_changed is not None:
+            self.on_period_pair_selection_changed()
+        self._update_period_pair_controls()
+
+    def _update_period_pair_controls(self) -> None:
+        selected_count = len(self.selected_run_ids())
+        selected_pair = self._selected_period_pair()
+        if self._period_pair_busy:
+            status = "完整期間讀取進行中；可要求 Root 合作式取消。"
+        elif self._period_pair_request_pending:
+            status = "已送交 Root；等待背景讀取狀態。"
+        elif selected_pair is None:
+            if selected_count == 2:
+                status = "完整期間比較只接受兩筆不同的推薦回放。"
+            else:
+                status = "請恰好選取兩筆不同的推薦回放。"
+        elif self.on_compare_period_pair is None:
+            status = "完整期間比較尚未接線。"
+        elif not self._period_pair_available:
+            status = self._period_pair_availability_reason or "完整期間來源尚未就緒。"
+        else:
+            status = "已選兩筆推薦回放，可比較完整期間。"
+        self.period_pair_selection_status_label.setText(status)
+        self.compare_period_pair_button.setToolTip(status)
+        self.compare_period_pair_button.setEnabled(
+            selected_pair is not None
+            and self._period_pair_available
+            and self.on_compare_period_pair is not None
+            and not self._period_pair_busy
+            and not self._period_pair_request_pending
+        )
+        self.cancel_period_pair_button.setEnabled(
+            self._period_pair_busy
+            and not self._period_pair_cancel_requested
+            and self.on_cancel_period_pair is not None
+        )
+
+    def compare_selected_period_pair(self) -> None:
+        selected = self._selected_period_pair()
+        if (
+            selected is None
+            or not self._period_pair_available
+            or self._period_pair_busy
+            or self.on_compare_period_pair is None
+        ):
+            return
+        self.clear_period_pair_result()
+        self._period_pair_request_pending = True
+        self._update_period_pair_controls()
+        self._update_period_pair_result_panel()
+        self.on_compare_period_pair(deepcopy(selected[0]), deepcopy(selected[1]))
+
+    def set_period_pair_availability(self, enabled: bool, reason: str = "") -> None:
+        if type(enabled) is not bool:
+            raise TypeError("enabled 必須是 bool")
+        if not isinstance(reason, str):
+            raise TypeError("reason 必須是字串")
+        self._period_pair_available = enabled
+        self._period_pair_availability_reason = reason.strip()
+        self._update_period_pair_controls()
+
+    def set_period_pair_busy(self, busy: bool) -> None:
+        if type(busy) is not bool:
+            raise TypeError("busy 必須是 bool")
+        self._period_pair_busy = busy
+        self._period_pair_cancel_requested = False
+        self._period_pair_request_pending = False
+        self._update_period_pair_controls()
+        self._update_period_pair_result_panel()
+
+    def set_period_pair_result(self, result: FullPeriodPairReadV1) -> None:
+        if type(result) is not FullPeriodPairReadV1:
+            raise TypeError("result 必須是 FullPeriodPairReadV1")
+        selected = self._selected_period_pair()
+        if selected is None:
+            raise ValueError("目前選取必須是兩筆不同的推薦回放")
+        left, right = selected
+        if (result.left.registry_run_id, result.right.registry_run_id) != (
+            left.run_id, right.run_id,
+        ):
+            raise ValueError("完整期間結果的 run ID 與目前選取不一致")
+        if (
+            result.left.metadata_identity_sha256 != metadata_sha256(left)
+            or result.right.metadata_identity_sha256 != metadata_sha256(right)
+        ):
+            raise ValueError("完整期間結果的 metadata 身分與目前選取不一致")
+        self._period_pair_result = result
+        self._period_pair_busy = False
+        self._period_pair_cancel_requested = False
+        self._period_pair_request_pending = False
+        self._render_period_pair_result(result)
+        self._update_period_pair_controls()
+        self._update_period_pair_result_panel()
+
+    def clear_period_pair_result(self) -> None:
+        self._period_pair_result = None
+        self.period_pair_result_label.clear()
+        self.return_to_selected_runs_button.hide()
+        self._update_period_pair_result_panel()
+
+    def _request_period_pair_cancel(self) -> None:
+        if (
+            not self._period_pair_busy
+            or self._period_pair_cancel_requested
+            or self.on_cancel_period_pair is None
+        ):
+            return
+        self._period_pair_cancel_requested = True
+        self.period_pair_status_label.setText("已通知 Root 合作式取消；等待讀取自然結束。")
+        self._update_period_pair_controls()
+        self.on_cancel_period_pair()
+
+    def _update_period_pair_result_panel(self) -> None:
+        if self._period_pair_busy:
+            self.period_pair_status_label.setText("正在核對兩筆已保存 run 與完整期間來源…")
+            self.cancel_period_pair_button.show()
+            self.return_to_selected_runs_button.hide()
+            self.period_pair_result_group.show()
+        elif self._period_pair_result is not None:
+            self.cancel_period_pair_button.hide()
+            self.return_to_selected_runs_button.show()
+            self.period_pair_result_group.show()
+        elif self._period_pair_request_pending:
+            self.period_pair_status_label.setText("已送交 Root；等待背景讀取狀態。")
+            self.cancel_period_pair_button.hide()
+            self.return_to_selected_runs_button.hide()
+            self.period_pair_result_group.show()
+        else:
+            self.period_pair_status_label.clear()
+            self.cancel_period_pair_button.hide()
+            self.return_to_selected_runs_button.hide()
+            self.period_pair_result_group.hide()
+
+    def _render_period_pair_result(self, result: FullPeriodPairReadV1) -> None:
+        status = "結構可比較" if result.status == "structure_comparable" else "已阻擋"
+        reason_lines = [
+            f"• {self._period_pair_reason_label(reason)}（{reason}）"
+            for reason in result.reasons
+        ]
+        if not reason_lines:
+            reason_lines = ["• 無具名阻擋原因。"]
+        lines = [
+            f"狀態：{status}；日期覆蓋完整：{'是' if result.coverage_complete else '否'}",
+            f"市場：{result.market}",
+            f"日曆外部 SHA-256：{result.calendar_external_sha256}",
+            f"日曆證據 SHA-256：{result.calendar_evidence_sha256}",
+            "",
+            f"左側 Registry run ID：{result.left.registry_run_id}",
+            f"左側 Parent ID：{result.left.parent_id or '未保存'}",
+            f"左側策略：{result.left.strategy_id or '未保存'}｜版本：{result.left.strategy_version or '未保存'}",
+            f"左側 metadata SHA-256：{result.left.metadata_identity_sha256}",
+            f"右側 Registry run ID：{result.right.registry_run_id}",
+            f"右側 Parent ID：{result.right.parent_id or '未保存'}",
+            f"右側策略：{result.right.strategy_id or '未保存'}｜版本：{result.right.strategy_version or '未保存'}",
+            f"右側 metadata SHA-256：{result.right.metadata_identity_sha256}",
+            "",
+            f"預期交易日：{self._period_pair_dates_text(result.expected_session_dates)}",
+            f"左側實際交易日：{self._period_pair_dates_text(result.left_actual_session_dates)}",
+            f"右側實際交易日：{self._period_pair_dates_text(result.right_actual_session_dates)}",
+            f"左側缺少日期：{self._period_pair_dates_text(result.left_missing_session_dates)}",
+            f"右側缺少日期：{self._period_pair_dates_text(result.right_missing_session_dates)}",
+            f"左側非預期日期：{self._period_pair_dates_text(result.left_unexpected_session_dates)}",
+            f"右側非預期日期：{self._period_pair_dates_text(result.right_unexpected_session_dates)}",
+            "",
+            "具名阻擋原因：",
+            *reason_lines,
+            "",
+            "此頁只呈現來源身份與日期覆蓋，不建立可排名績效。",
+        ]
+        daily = result.daily_calendar_source
+        if daily is not None:
+            lines[4:4] = [
+                f"每日日曆批次：{daily.batch_id}",
+                f"批次 manifest SHA-256：{daily.manifest_sha256}",
+                f"成功收據 SHA-256：{daily.receipt_sha256}",
+                f"原件 capture SHA-256：{daily.capture_sha256}",
+                f"首次保存：{daily.first_persisted_at}；成功完成：{daily.successful_batch_completed_at}",
+                f"本版可用小時：{daily.available_hour}（{daily.availability_basis}）",
+                f"本次讀取截止：{daily.decision_cutoff}",
+                f"獨立來源用途接受：{'、'.join(daily.acceptance_ids)}",
+            ]
+        self.period_pair_status_label.setText(f"完整期間診斷：{status}")
+        self.period_pair_result_label.setText("\n".join(lines))
+
+    def _period_pair_dates_text(self, dates: tuple[str, ...]) -> str:
+        return "、".join(dates) if dates else "無"
+
+    def _period_pair_reason_label(self, reason: str) -> str:
+        labels = {
+            "calendar_candidate_only": "日曆仍是候選來源",
+            "expected_sessions_empty": "預期交易日清單為空",
+            "same_portfolio_parent": "兩筆 run 使用相同組合 parent",
+            "same_strategy_version": "兩筆 run 使用相同策略版本",
+            "precision_capture_missing": "缺少精確期間 capture",
+            "capture_cancelled": "期間 capture 已取消",
+            "capture_incomplete": "期間 capture 未完整完成",
+            "calendar_period_mismatch": "capture 期間與日曆期間不一致",
+            "session_coverage_mismatch": "capture 交易日與預期清單不一致",
+            "precision_evidence_missing": "缺少精度證據",
+            "source_evidence_unknown": "來源資格未知",
+            "currency_evidence_unknown": "幣別依據未知",
+            "calendar_evidence_mismatch": "capture 日曆證據不一致",
+            "execution_evidence_unknown": "撮合依據未知",
+            "cost_evidence_unknown": "成本依據未知",
+            "money_not_comparable": "金額不具可比資格",
+            "initial_capital_mismatch": "初始資金不同",
+            "stock_code_mismatch": "股票代碼不同",
+            "requested_period_mismatch": "請求期間不同",
+            "source_identity_mismatch": "來源身分不同",
+            "currency_identity_mismatch": "幣別身分不同",
+            "execution_identity_mismatch": "撮合契約身分不同",
+            "cost_identity_mismatch": "成本模型身分不同",
+        }
+        for side in ("left", "right"):
+            prefix = f"{side}_"
+            if reason.startswith(prefix):
+                suffix = reason[len(prefix):]
+                return labels.get(suffix, reason)
+        return labels.get(reason, reason)
+
+    def _return_to_selected_runs(self) -> None:
+        if self._period_pair_busy:
+            return
+        self.clear_period_pair_result()
+        self.run_list.setFocus()
 
     def _single_selected_recommendation_run(
         self,
@@ -617,6 +937,12 @@ class RunRegistryCompareWidget(QWidget):
         self._rule_request_id += 1
         if self._rule_worker is not None:
             self._rule_worker.cancel()
+        if (
+            (self._period_pair_busy or self._period_pair_request_pending)
+            and self.on_cancel_period_pair is not None
+        ):
+            self._period_pair_cancel_requested = True
+            self.on_cancel_period_pair()
         super().closeEvent(event)
 
     def _total_pages(self) -> int:

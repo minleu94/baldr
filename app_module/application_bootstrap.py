@@ -9,11 +9,12 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Any, Callable, Mapping, TYPE_CHECKING
+from typing import Any, Callable, Mapping, Sequence, TYPE_CHECKING
 from data_module.config import _paper_contract_artifacts_root_path_error
 
 if TYPE_CHECKING:
     from data_module.daily_monthly_revenue_cohort import DailyMonthlyRevenueCohortReader, DailyMonthlyRevenueCohortPin
+    from app_module.recommendation_portfolio_calendar_acceptance_binding_v1 import PortfolioCalendarAcceptanceBindingV1
 
 
 _PORTABLE_KEYS = frozenset(
@@ -27,6 +28,8 @@ _PORTABLE_KEYS = frozenset(
         "MONTHLY_REVENUE_COHORT_BINDING_SHA256",
         "MONTHLY_REVENUE_SERIES_BINDING_PATH",
         "MONTHLY_REVENUE_SERIES_BINDING_SHA256",
+        "CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH",
+        "CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256",
         "PERSONAL_H20_SQLITE_READ_ROOT",
         "PAPER_CONTRACT_ARTIFACTS_ROOT",
         "RESEARCH_STATE_ROOT",
@@ -152,6 +155,8 @@ def resolve_application_settings(
             "MONTHLY_REVENUE_COHORT_BINDING_SHA256",
             "MONTHLY_REVENUE_SERIES_BINDING_PATH",
             "MONTHLY_REVENUE_SERIES_BINDING_SHA256",
+            "CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH",
+            "CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256",
             "PERSONAL_H20_SQLITE_READ_ROOT",
         } and key in source and value is None:
             if key.endswith("BINDING_SHA256"):
@@ -167,6 +172,7 @@ def resolve_application_settings(
     effective.update(environment_values)
     _daily_monthly_cohort_binding_selection(effective)
     _daily_monthly_series_binding_selection(effective)
+    _portfolio_calendar_acceptance_binding_selection(effective)
     configured_by_environment = all(
         key in environment_values for key in ("DATA_ROOT", "OUTPUT_ROOT")
     )
@@ -241,6 +247,11 @@ def resolve_application_settings(
             _is_same_or_child(Path(series_binding), bundle) for bundle in bundle_roots
         ):
             raise ValueError("MONTHLY_REVENUE_SERIES_BINDING_PATH 必須位於 frozen 程式包之外")
+        calendar_binding = effective.get("CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH")
+        if calendar_binding is not None and any(
+            _is_same_or_child(Path(calendar_binding), bundle) for bundle in bundle_roots
+        ):
+            raise ValueError("CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH 必須位於 frozen 程式包之外")
         h20_read_root = effective.get("PERSONAL_H20_SQLITE_READ_ROOT")
         if h20_read_root is not None and any(
             _is_same_or_child(Path(h20_read_root), bundle) for bundle in bundle_roots
@@ -310,6 +321,7 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
         raise ValueError("environment 必須包含 DATA_ROOT 與 OUTPUT_ROOT")
     monthly_selection = _daily_monthly_cohort_binding_selection(environment)
     series_selection = _daily_monthly_series_binding_selection(environment)
+    calendar_selection = _portfolio_calendar_acceptance_binding_selection(environment)
 
     data_root = _absolute_environment_path("DATA_ROOT", environment["DATA_ROOT"])
     output_root = _absolute_environment_path("OUTPUT_ROOT", environment["OUTPUT_ROOT"])
@@ -358,6 +370,10 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
             _is_same_or_child(Path(series_selection[0]), bundle) for bundle in bundles
         ):
             raise ValueError("MONTHLY_REVENUE_SERIES_BINDING_PATH 必須位於 frozen 程式包之外")
+        if calendar_selection is not None and any(
+            _is_same_or_child(Path(calendar_selection[0]), bundle) for bundle in bundles
+        ):
+            raise ValueError("CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH 必須位於 frozen 程式包之外")
         if official_path is not None and any(
             _is_same_or_child(official_path, bundle) for bundle in bundles
         ):
@@ -443,7 +459,7 @@ def _validate_setting(key: str, value: str, *, origin: str) -> None:
         raise ValueError(f"{origin} 的 {key} 必須是非空字串")
     if key.endswith(("ROOT", "PATH", "SOURCE")) and not Path(value).is_absolute():
         raise ValueError(f"{origin} 的 {key} 必須是絕對路徑")
-    if key in {"MONTHLY_REVENUE_COHORT_BINDING_SHA256", "MONTHLY_REVENUE_SERIES_BINDING_SHA256"} and re.fullmatch(r"[0-9a-f]{64}", value) is None:
+    if key in {"MONTHLY_REVENUE_COHORT_BINDING_SHA256", "MONTHLY_REVENUE_SERIES_BINDING_SHA256", "CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256"} and re.fullmatch(r"[0-9a-f]{64}", value) is None:
         raise ValueError(f"{origin} 的 {key} 必須是64位小寫SHA-256")
 
 
@@ -461,6 +477,43 @@ def _daily_monthly_cohort_binding_selection(values: Mapping[str, str]) -> tuple[
     _validate_setting(path_key, path, origin="設定快照")
     _validate_setting(hash_key, digest, origin="設定快照")
     return path, digest
+
+
+def _portfolio_calendar_acceptance_binding_selection(values: Mapping[str, str]) -> tuple[str, str] | None:
+    """只核caller設定快照；此階段不讀接受或批次。"""
+    path_key = "CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH"
+    hash_key = "CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256"
+    if path_key not in values and hash_key not in values:
+        return None
+    if path_key not in values or hash_key not in values:
+        raise ValueError(f"{path_key} 與 {hash_key} 必須一起明示")
+    path, digest = values[path_key], values[hash_key]
+    if type(path) is not str or type(digest) is not str:
+        raise ValueError("日曆用途接受設定必須是字串")
+    _validate_setting(path_key, path, origin="設定快照")
+    _validate_setting(hash_key, digest, origin="設定快照")
+    return path, digest
+
+
+def configured_portfolio_calendar_acceptance_binding(
+    settings: ApplicationSettings, *, protected_roots: Sequence[Path],
+) -> PortfolioCalendarAcceptanceBindingV1 | None:
+    """正常Main明示載入外部接受設定；不讀批次、不建立接受或選latest。"""
+    if not isinstance(settings, ApplicationSettings):
+        raise TypeError("settings 必須是ApplicationSettings")
+    selected = _portfolio_calendar_acceptance_binding_selection(settings.environment)
+    if selected is None:
+        return None
+    from app_module.recommendation_portfolio_calendar_acceptance_binding_v1 import read_portfolio_calendar_acceptance_binding_v1
+
+    forbidden = (
+        _frozen_bundle_roots(_canonical_path(settings.resource_root))
+        if bool(getattr(sys, "frozen", False)) else ()
+    )
+    return read_portfolio_calendar_acceptance_binding_v1(
+        Path(selected[0]), expected_sha256=selected[1],
+        protected_roots=tuple(protected_roots) + forbidden,
+    )
 
 
 def configured_daily_monthly_revenue_cohort_reader(
@@ -559,7 +612,7 @@ def configured_daily_monthly_revenue_exact_pin_reader_factory(
 
 
 def _normalize_configured_path(key: str, value: str) -> str:
-    if key in {"MONTHLY_REVENUE_COHORT_BINDING_PATH", "MONTHLY_REVENUE_SERIES_BINDING_PATH"}:
+    if key in {"MONTHLY_REVENUE_COHORT_BINDING_PATH", "MONTHLY_REVENUE_SERIES_BINDING_PATH", "CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH"}:
         # 保留caller明示的路徑，loader仍須看見並拒絕symlink／reparse alias。
         return str(Path(value))
     if key.endswith(("ROOT", "PATH", "SOURCE")):

@@ -10,7 +10,7 @@ writes market data.
 from __future__ import annotations
 
 import base64
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import hashlib
@@ -18,10 +18,15 @@ import json
 from pathlib import Path
 import re
 import tempfile
-from typing import Any, Callable
+import unicodedata
+from typing import TYPE_CHECKING, Any, Callable
 
 from data_module.official_phase3c_fetcher import safe_request
 from data_module.prospective_formal_clock import payload_hash
+if TYPE_CHECKING:
+    from data_module.tpex_trading_date_html_v1 import TpexTradingDateRowV1
+    from data_module.official_calendar_transport_v1 import OfficialCalendarJsonTransportV1
+    from data_module.tpex_annual_calendar_transport_v1 import OfficialCalendarTpexAnnualJsonTransportV1
 
 
 OFFICIAL_CALENDAR_BUNDLE_SCHEMA_VERSION = "official-trading-calendar-bundle.v1"
@@ -29,6 +34,7 @@ TWSE_HOLIDAY_SCHEDULE_URL = (
     "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
 )
 TPEX_MARKET_CALENDAR_URL = "https://info.tpex.org.tw/api/mktCalendar"
+TPEX_ANNUAL_TRADING_DATE_URL = "https://www.tpex.org.tw/www/zh-tw/bulletin/tradingDate"
 MAX_CAPTURE_DAYS = 93
 MAX_FIXTURE_BYTES = 4 * 1024 * 1024
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -758,3 +764,301 @@ def _response_metadata(
         "response_headers": selected_headers,
         "captured_at_utc": captured_at,
     }
+
+
+@dataclass(frozen=True, slots=True)
+class TpexAnnualStockScheduleV1:
+    """年度表的股票市場解析結果；原件／來源用途與歷史資格各自核對。"""
+
+    year: int
+    raw_sha256: str
+    html_sha256: str
+    source_baseline_date: str
+    holiday_dates: tuple[str, ...]
+    stock_settlement_only_dates: tuple[str, ...]
+    open_marker_dates: tuple[str, ...]
+    rows: tuple[TpexTradingDateRowV1, ...]
+    ignored_non_stock_rows: tuple[TpexTradingDateRowV1, ...]
+    parser_version: str = "tpex-annual-stock-schedule.v1"
+
+    def expected_session_dates(self, start_date: date, end_date: date) -> tuple[str, ...]:
+        if type(start_date) is not date or type(end_date) is not date:
+            raise OfficialCalendarBundleError("tpex_annual_exact_date_required")
+        _validate_date_range(start_date, end_date)
+        if start_date.year != self.year or end_date.year != self.year:
+            raise OfficialCalendarBundleError("tpex_annual_period_year_mismatch")
+        closed = frozenset(self.holiday_dates + self.stock_settlement_only_dates)
+        result: list[str] = []
+        current = start_date
+        while current <= end_date:
+            if current.weekday() < 5 and current.isoformat() not in closed:
+                result.append(current.isoformat())
+            current += timedelta(days=1)
+        return tuple(result)
+
+    @property
+    def candidate_only(self) -> bool:
+        return True
+
+    @property
+    def historical_pit_eligible(self) -> bool:
+        return False
+
+    @property
+    def performance_eligible(self) -> bool:
+        return False
+
+
+def _tpex_annual_text(value: str) -> str:
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value))
+
+
+_TPEX_ANNUAL_HOLIDAYS = frozenset(_tpex_annual_text(value) for value in (
+    "中華民國開國紀念日", "農曆除夕及春節", "和平紀念日", "兒童節及民族掃墓節",
+    "勞動節", "端午節", "中秋節", "孔子誕辰紀念日/教師節", "國慶日",
+    "臺灣光復暨金門古寧頭大捷紀念日", "行憲紀念日",
+))
+_TPEX_ANNUAL_OPEN_ROWS = frozenset((
+    "國曆新年開始交易日", "農曆春節後開始交易日", "農曆春節前股票交易系統最後交易日",
+))
+_TPEX_ANNUAL_NON_STOCK_ROWS = frozenset(_tpex_annual_text(value) for value in (
+    "農曆春節前國際債券交易系統最後交易日",
+    "農曆春節前債券等殖成交系統（含比對系統）最後交易日",
+    "農曆春節前債券處所議價最後交易日",
+))
+_TPEX_ANNUAL_REPEATED_HOLIDAY_ROWS = {
+    "和平紀念日": 2, "兒童節及民族掃墓節": 4, "國慶日": 2,
+    "臺灣光復暨金門古寧頭大捷紀念日": 2,
+}
+_TPEX_ANNUAL_DATE = re.compile(r"([0-9]{1,2})月([0-9]{1,2})日")
+
+
+def _tpex_annual_dates(value: str, year: int) -> tuple[date, ...]:
+    text = _tpex_annual_text(value)
+    matches = list(_TPEX_ANNUAL_DATE.finditer(text))
+    remainder = _TPEX_ANNUAL_DATE.sub("", text).replace("、", "").replace("及", "")
+    if not matches or remainder or len(matches) > 31:
+        raise OfficialCalendarBundleError("tpex_annual_date_cell_invalid")
+    try:
+        result = tuple(date(year, int(item[1]), int(item[2])) for item in matches)
+    except ValueError as exc:
+        raise OfficialCalendarBundleError("tpex_annual_date_invalid") from exc
+    if len(set(result)) != len(result):
+        raise OfficialCalendarBundleError("tpex_annual_duplicate_date_in_row")
+    return result
+
+
+def parse_tpex_annual_stock_schedule_v1(
+    raw: bytes, *, expected_year: int, expected_sha256: str,
+) -> TpexAnnualStockScheduleV1:
+    """沿原日曆模組解析新年度來源；不cast舊monthly格式或發行接受錨點。"""
+    # transport沿用本模組的既有常數；執行時才載入葉片以避免循環import。
+    from data_module.tpex_trading_date_html_v1 import (
+        TpexTradingDateHtmlError, decode_tpex_trading_date_rows_v1,
+    )
+
+    try:
+        source = decode_tpex_trading_date_rows_v1(
+            raw, expected_year=expected_year, expected_sha256=expected_sha256,
+        )
+    except TpexTradingDateHtmlError as exc:
+        raise OfficialCalendarBundleError("tpex_annual_html_structure_invalid:" + str(exc)) from exc
+    holidays: set[date] = set()
+    settlement: set[date] = set()
+    open_rows: dict[str, date] = {}
+    holiday_names: set[str] = set()
+    holiday_rows: dict[str, int] = {}
+    holiday_groups: dict[str, list[date]] = {}
+    previous_name: str | None = None
+    ignored: dict[str, TpexTradingDateRowV1] = {}
+    weekday_names = "一二三四五六日"
+    for row in source.rows:
+        name = _tpex_annual_text(row.name)
+        days = _tpex_annual_dates(row.date_text, source.year)
+        weekdays = _tpex_annual_text(row.weekday_text)
+        if len(weekdays) != len(days) or any(
+            label != weekday_names[day.weekday()] for day, label in zip(days, weekdays)
+        ):
+            raise OfficialCalendarBundleError("tpex_annual_date_weekday_mismatch")
+        if name in _TPEX_ANNUAL_NON_STOCK_ROWS:
+            if name in ignored or len(days) != 1:
+                raise OfficialCalendarBundleError("tpex_annual_non_stock_row_duplicate")
+            ignored[name] = row
+        elif name in _TPEX_ANNUAL_OPEN_ROWS:
+            if name in open_rows or len(days) != 1 or days[0].weekday() >= 5:
+                raise OfficialCalendarBundleError("tpex_annual_open_marker_invalid")
+            open_rows[name] = days[0]
+            if name == "農曆春節前股票交易系統最後交易日":
+                description = _tpex_annual_text(row.description or "")
+                match = re.fullmatch(
+                    r"(?P<dates>[0-9]{1,2}月[0-9]{1,2}日(?:[、及][0-9]{1,2}月[0-9]{1,2}日)*)"
+                    r"市場無交易[,，]僅辦理給付結算[。.]?", description,
+                )
+                if match is None:
+                    raise OfficialCalendarBundleError("tpex_annual_stock_settlement_description_invalid")
+                declared = _tpex_annual_dates(match["dates"], source.year)
+                if any(day <= days[0] or day.weekday() >= 5 for day in declared):
+                    raise OfficialCalendarBundleError("tpex_annual_stock_settlement_order_invalid")
+                settlement.update(declared)
+        elif name in _TPEX_ANNUAL_HOLIDAYS:
+            if row.description is None or not _tpex_annual_text(row.description):
+                raise OfficialCalendarBundleError("tpex_annual_holiday_description_missing")
+            count = holiday_rows.get(name, 0) + 1
+            if (count > _TPEX_ANNUAL_REPEATED_HOLIDAY_ROWS.get(name, 1)
+                    or (name in holiday_names and previous_name != name)
+                    or (name != "農曆除夕及春節" and len(days) != 1)):
+                raise OfficialCalendarBundleError("tpex_annual_duplicate_holiday_row")
+            holiday_rows[name] = count
+            holiday_groups.setdefault(name, []).extend(days)
+            holiday_names.add(name)
+            if holidays.intersection(days):
+                raise OfficialCalendarBundleError("tpex_annual_duplicate_holiday_date")
+            holidays.update(days)
+        else:
+            raise OfficialCalendarBundleError("tpex_annual_unknown_row_name:" + name)
+        previous_name = name
+    if (holiday_names != _TPEX_ANNUAL_HOLIDAYS or set(open_rows) != _TPEX_ANNUAL_OPEN_ROWS
+            or set(ignored) != _TPEX_ANNUAL_NON_STOCK_ROWS):
+        raise OfficialCalendarBundleError("tpex_annual_required_rows_missing")
+    if any(any(right - left != timedelta(days=1) for left, right in zip(days, days[1:]))
+           for days in holiday_groups.values()):
+        raise OfficialCalendarBundleError("tpex_annual_holiday_group_nonconsecutive")
+    opened = frozenset(open_rows.values())
+    if opened.intersection(holidays | settlement) or holidays.intersection(settlement):
+        raise OfficialCalendarBundleError("tpex_annual_conflicting_stock_state")
+    last = open_rows["農曆春節前股票交易系統最後交易日"]
+    resumed = open_rows["農曆春節後開始交易日"]
+    if not last < resumed or any(day >= resumed for day in settlement):
+        raise OfficialCalendarBundleError("tpex_annual_spring_order_invalid")
+    current = last + timedelta(days=1)
+    while current < resumed:
+        if current.weekday() < 5 and current not in holidays | settlement:
+            raise OfficialCalendarBundleError("tpex_annual_spring_stock_gap_missing")
+        current += timedelta(days=1)
+    return TpexAnnualStockScheduleV1(
+        year=source.year, raw_sha256=source.raw_sha256, html_sha256=source.html_sha256,
+        source_baseline_date=source.source_baseline_date,
+        holiday_dates=tuple(day.isoformat() for day in sorted(holidays)),
+        stock_settlement_only_dates=tuple(day.isoformat() for day in sorted(settlement)),
+        open_marker_dates=tuple(day.isoformat() for day in sorted(opened)), rows=source.rows,
+        ignored_non_stock_rows=tuple(ignored[name] for name in sorted(ignored)),
+    )
+
+
+def _parse_twse_stock_annual_v1(
+    payload: object, year: int,
+) -> tuple[dict[date, bool], dict[str, frozenset[date]]]:
+    """新年度用途的欄位／股票語義核對；舊TWSE parser契約不變。"""
+    if type(payload) is not list or not 1 <= len(payload) <= 256:
+        raise OfficialCalendarBundleError("twse_annual_rows_invalid")
+    open_names = frozenset(("國曆新年開始交易日", "農曆春節前最後交易日", "農曆春節後開始交易日"))
+    opens: dict[str, date] = {}
+    holidays: dict[str, list[date]] = {}
+    settlement: set[date] = set()
+    schedule: dict[date, bool] = {}
+    previous: date | None = None
+    for index, row in enumerate(payload):
+        if (type(row) is not dict or set(row) != {"Name", "Date", "Weekday", "Description"}
+                or any(type(row[field]) is not str for field in row)):
+            raise OfficialCalendarBundleError("twse_annual_row_schema_invalid")
+        day = _parse_roc_date(row["Date"], index=index)
+        if day.year != year or (previous is not None and day <= previous):
+            raise OfficialCalendarBundleError("twse_annual_year_duplicate_or_order_invalid")
+        previous = day
+        if row["Weekday"].strip() != "一二三四五六日"[day.weekday()]:
+            raise OfficialCalendarBundleError("twse_annual_weekday_mismatch")
+        name = _tpex_annual_text(row["Name"])
+        description = re.sub(r"<br\s*/?>", "", row["Description"], flags=re.IGNORECASE)
+        if "<" in description or ">" in description:
+            raise OfficialCalendarBundleError("twse_annual_description_markup_unknown")
+        if name in open_names:
+            if name in opens or day.weekday() >= 5 or not description.strip():
+                raise OfficialCalendarBundleError("twse_annual_open_marker_invalid")
+            opens[name] = day
+            schedule[day] = True
+        elif name in _TPEX_ANNUAL_HOLIDAYS:
+            group = holidays.setdefault(name, [])
+            limit = 31 if name == "農曆除夕及春節" else _TPEX_ANNUAL_REPEATED_HOLIDAY_ROWS.get(name, 1)
+            if (len(group) >= limit or not description.strip()
+                    or (group and day - group[-1] != timedelta(days=1))):
+                raise OfficialCalendarBundleError("twse_annual_holiday_group_invalid")
+            group.append(day)
+            schedule[day] = False
+        elif name == "市場無交易,僅辦理結算交割作業":
+            if day.weekday() >= 5 or len(settlement) >= 5:
+                raise OfficialCalendarBundleError("twse_annual_settlement_invalid")
+            settlement.add(day)
+            schedule[day] = False
+        else:
+            raise OfficialCalendarBundleError("twse_annual_unknown_row_name:" + name)
+    if set(opens) != open_names or set(holidays) != _TPEX_ANNUAL_HOLIDAYS or not settlement:
+        raise OfficialCalendarBundleError("twse_annual_required_rows_missing")
+    last, resumed = opens["農曆春節前最後交易日"], opens["農曆春節後開始交易日"]
+    if not last < resumed or any(not last < day < resumed for day in settlement):
+        raise OfficialCalendarBundleError("twse_annual_settlement_order_invalid")
+    current = last + timedelta(days=1)
+    while current < resumed:
+        if current.weekday() < 5 and schedule.get(current) is not False:
+            raise OfficialCalendarBundleError("twse_annual_spring_gap_missing")
+        current += timedelta(days=1)
+    return schedule, {name: frozenset(days) for name, days in holidays.items()}
+
+
+def derive_annual_calendar_sessions_v1(
+    *, start_date: date, end_date: date,
+    twse_transports: Sequence[OfficialCalendarJsonTransportV1],
+    tpex_transports: Sequence[OfficialCalendarTpexAnnualJsonTransportV1],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """雙市場逐年完整原件衍生，與原monthly response／資格分開。"""
+    from data_module.official_calendar_transport_v1 import OfficialCalendarJsonTransportV1
+    from data_module.tpex_annual_calendar_transport_v1 import OfficialCalendarTpexAnnualJsonTransportV1
+
+    _validate_date_range(start_date, end_date)
+    if (not isinstance(twse_transports, Sequence) or not isinstance(tpex_transports, Sequence)
+            or not 1 <= len(twse_transports) <= 2 or not 1 <= len(tpex_transports) <= 2):
+        raise OfficialCalendarBundleError("annual_calendar_bounded_transports_required")
+    years = set(range(start_date.year, end_date.year + 1))
+    twse: dict[int, dict[date, bool]] = {}
+    twse_holidays: dict[int, dict[str, frozenset[date]]] = {}
+    tpex: dict[int, TpexAnnualStockScheduleV1] = {}
+    for item in twse_transports:
+        if type(item) is not OfficialCalendarJsonTransportV1 or item.kind != "twse":
+            raise OfficialCalendarBundleError("annual_calendar_twse_transport_required")
+        verified = OfficialCalendarJsonTransportV1.from_dict(item.to_dict())
+        year = int(verified.key)
+        if year not in years or year in twse:
+            raise OfficialCalendarBundleError("annual_calendar_twse_partition_invalid")
+        twse[year], twse_holidays[year] = _parse_twse_stock_annual_v1(verified.to_response().payload, year)
+    for annual in tpex_transports:
+        if type(annual) is not OfficialCalendarTpexAnnualJsonTransportV1:
+            raise OfficialCalendarBundleError("annual_calendar_tpex_transport_required")
+        verified_annual = OfficialCalendarTpexAnnualJsonTransportV1.from_dict(annual.to_dict())
+        if verified_annual.year not in years or verified_annual.year in tpex:
+            raise OfficialCalendarBundleError("annual_calendar_tpex_partition_invalid")
+        tpex[verified_annual.year] = parse_tpex_annual_stock_schedule_v1(
+            verified_annual.raw_bytes, expected_year=verified_annual.year,
+            expected_sha256=verified_annual.raw_sha256,
+        )
+    if set(twse) != years or set(tpex) != years:
+        raise OfficialCalendarBundleError("annual_calendar_both_markets_years_required")
+    # 此年度用途以兩份獨立表互證同名國定假日；不一致僅拒絕，不能借另一市場補值。
+    for year in years:
+        tpex_holidays: dict[str, set[date]] = {}
+        for row in tpex[year].rows:
+            name = _tpex_annual_text(row.name)
+            if name in _TPEX_ANNUAL_HOLIDAYS:
+                tpex_holidays.setdefault(name, set()).update(_tpex_annual_dates(row.date_text, year))
+        if twse_holidays[year] != {name: frozenset(days) for name, days in tpex_holidays.items()}:
+            raise OfficialCalendarBundleError("annual_calendar_holiday_dates_disagree")
+    twse_dates: list[str] = []
+    tpex_dates: list[str] = []
+    for year in sorted(years):
+        first = max(start_date, date(year, 1, 1))
+        last = min(end_date, date(year, 12, 31))
+        current = first
+        while current <= last:
+            if current.weekday() < 5 and twse[year].get(current, True):
+                twse_dates.append(current.isoformat())
+            current += timedelta(days=1)
+        tpex_dates.extend(tpex[year].expected_session_dates(first, last))
+    return tuple(twse_dates), tuple(tpex_dates)

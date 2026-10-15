@@ -47,6 +47,7 @@ class ResearchRunRepository:
     PORTFOLIO_RESULT_SUPPORTED_SCHEMAS = frozenset({
         ("recommendation-portfolio-result.v1", 1),
         ("recommendation-portfolio-result.v2", 2),
+        ("recommendation-portfolio-result.v3", 3),
     })
     PORTFOLIO_RESULT_DESCRIPTOR_KEYS = frozenset(
         {
@@ -506,9 +507,14 @@ class ResearchRunRepository:
                     )
             for field_info in fields(ResearchRunMetadataDTO):
                 name = field_info.name
+                finalized_value = getattr(finalized_metadata, name)
+                if name in self.JSON_FIELD_MAP:
+                    # staging 已按同一 codec 保存 Decimal text／tuple；CAS 比對
+                    # 持久化表示，仍拒絕任一既有 JSON 值或純量欄位變更。
+                    finalized_value = normalize_research_run_json_value(finalized_value)
                 if (
                     name not in unchanged_fields
-                    and getattr(current_metadata, name) != getattr(finalized_metadata, name)
+                    and getattr(current_metadata, name) != finalized_value
                 ):
                     raise ResearchRunRepositoryError(
                         f"portfolio finalize 不得變更既有 metadata 欄位: {name}"

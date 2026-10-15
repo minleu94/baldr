@@ -448,8 +448,262 @@ Increment18治理第二輪：12features／37link sources errors=[]、compile aud
 
 新owner目錄為 `output/tasks/baldr-completion-resume-20261014-01a13cf9/`，不替代原計畫或舊task。Root以唯讀PowerShell核七個候選來源、QA02的12個pins、52份保護資產與142份outer收據的bytes／SHA；141個native Job的三PID清冊均空、process／Job handles closed且mutex released，另1份為歷史低RAM未起child。核驗收據 `resume_custody_01.json` SHA256 `11b041e86458ca400c73e0ef0b8d75ea1d20cf6f6fc8a428d2bc1c2ed17e7d99`，僅證保存資產與閉鎖，不是產品QA。
 
+另重核原320份F17資產，以及正常Main父54640／fresh32420的26份固定來源bytes／SHA／mtime；兩份原parent／fresh收據SHA亦符合交接值，未重跑producer。`f17_saved_assets_custody_01.json` SHA256 `10595cb1dbb094decefc0e67e0a24cdb03c20c3db9d2e2eb240b5e5f2db368fd`只證保存資產仍一致，不替代當版產品旅程。
+
 已將原commands v5 runner的TASK、外層wrapper路徑、spec HEAD／隔離env／create-only result directory另存到新owner並重綁SHA；原QA02 spec保持原件。新 `p08_increment19_initial_qa01_spec.json` SHA256 `81bf03919e98ba8e0ff4fcee3b5d23a1b2db6607de042d0f003c6537e0a20909`，七檔compile30秒、八roots mypy180秒及三組pytest120／120／180秒原命令未改。啟動前再次檢查來源、HEAD、前組閉鎖、結果目錄不存在與至少8GiB可用RAM；全Job仍8GiB committed／12程序、kill-on-close及同workspace mutex。
 
 本session無可重用代理，按使用者授權新建三名Luna Max，跨交接累計6／10、同時3名；禁止再生子代理及執行Python／QA／network。單寫範圍各限新owner目錄內的日曆、Registry與Backtest接線報告，產品／測試均唯讀；Root保留金融判斷、共用ports、整合、QA與文件。日曆raw／hash鏈可證內部一致性，caller宣告的capture mode／時間不構成官方來源、發布或PIT資格；固定false eligibility保留。Registry複核指出V1 pair遺失已知parent，以及public Reader新metadata SHA／budget參數缺直接反例，待原候選QA後才作最小修正與補測。
 
+三路報告均已完成、無pending writes，可在本session繼續重用。Backtest定位確認既有Registry widget可提供真run ID的雙選取，通用2–5筆比較仍未接P08 typed pair consumer；單筆opener接線不算正常保存按鈕旅程。後續需由Root先定版取消傳遞及明示calendar path／外部SHA／market注入，再分派單寫UI葉片；不重造歷史清單、不讓UI猜來源或從float摘要造績效。
+
 首次可用RAM為6,679,724,032bytes；重綁後preflight為6,066,806,784bytes，均低於8,589,934,592bytes。沒有啟動Python／Job／compile／mypy／pytest，`document_control init-task`與Context重建亦尚未執行，沒有把手工intake當作工具建立的task.json。這是資源等待，並非QA FAIL或PASS。新文件治理未執行；待資源達標先初始化自己的task／Context，再完成原候選QA、受影響Reader回歸與正常Backtest保存／重開／比較／返回。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未接受。
+
+接手期間另一owner提交 `9e2c51dbc88d6eead2a235a1e5c382d770c3bd2e`，包含Graphify指南與本輪部分接手文件；本Root沒有操作該提交或修改指南。原HEAD守衛正確拒絕啟動，沒有Python child。Root核對checkpoint至新HEAD僅四份文件差異、Python／mypy設定無差異，12pins仍符；角色卡的新未提交變更只增加連結與導覽，全部保留。原01版spec／manifest不覆寫，另存綁新HEAD的02版及 `head_transition_01.json`。02版preflight於UTC 2026-10-15T00:41:33可用5,930,401,792bytes，仍未起Python或Job；現行runner入口是新owner的 `invoke_owned_qa02.ps1`，先執行 `bootstrap_context_qa02_spec.json`，完成閉鎖後才接 `p08_increment19_initial_qa02_spec.json`。
+
+### Increment20使用者重開程式前暫停
+
+使用者明示暫停，Root已停止新QA及程序清理，Worker B中斷、A/C完成。自己的task已由受控document_control建立；Context L2三文件／3768字元，bootstrap outer13c85b14fb8a495ea6902576b2534ea4 SHA `6b0ae61b3f413c9445331dca46bf08b460e33638f4c4ca82ea5e410d3ed96f0c`完整閉鎖。原七檔compile PASS後mypy1006兩個變數重用型別錯誤，原FAIL保留；只改TPEx month_key與configured_text，兩檔compile／mypy1006 PASS，日曆12PASS、artifact17PASS／2protected skips。Pair沙箱第一案os.link WinError5原FAIL保留；正常Windows權限、新owner temp、原180秒suite另12PASS／6.41秒，outer4853dd3315b547598ea9248ce501dedb SHA `ec8197b77c817f6bcc92052d1f754c8bf2f9fa2cec1e0e1ef3d5ce90817e0c1a`三PID清冊空、handles closed、mutex released，沒有待輪詢QA。
+
+其後Root已窄修pair的V1已知parent保留／非支援artifact拒絕，尚未compile／測試；Worker B的直接Reader反例編輯在使用者暫停時中斷，保存現有bytes，不能宣稱完整或通過。原Reader回歸、共用取消／selection SHA／calendar pin注入、正常保存／重開／比較／返回及fresh仍待。程序唯讀盤點為43個Python、約7.59GiB私有記憶體，均有存活IDE父系，沒有確認為孤兒，終止數0；沒有因CPU低終止服務。Root未stage／commit／push，其他owner文件及舊task保持。精確HEAD、pins、未驗項目與恢復順序見自己task同目錄 `pause_for_restart_01.json`；完整產品Gate未接受。
+### Increment20恢復後Reader與正常Registry旅程
+
+重開後使用者明示繼續，RAM恢復約21GiB，沒有終止其他程序。HEAD為其他owner文件提交後的 `dfae21c5fec0b384f4295afa84ce5d86a6f97a80`；Root未stage／commit／push。原暫停記錄與FAIL保留。原session三路不可重用，按既有上限再建兩名Luna Max，跨交接累計8／10；後續同session重用，worker只做白名單靜態編輯／複核、無Python／network／子代理。Root單寫ports、整合、金融裁決與文件。
+
+V1 pair保留已知parent並拒不支援artifact。既有public reader新增雙metadata SHA選取固定與typed取消，逐child取消不attach部分結果；真正integrity error不被取消旗標掩蓋。明示日曆path／外部SHA／market／protected roots的immutable pin只作結構驗證，不自行hash當前檔案。原93日inclusive、4MiB raw及最多8responses限制、來源/PITfalse及Decimal capture皆保留。
+
+Root沿原Backtest／Registry加入完整期間診斷controller與葉片，不另造回測或結果writer。兩筆metadata deepcopy，背景worker持有至native finished，套用前重核token／generation／選取／日曆pin與兩筆metadata。換選取、來源或新研究清舊結果，關閉合作取消並納入Main等待；返回保留選取。正常保存揭露既有JSON finalize用Decimal與持久化字串直接比較的缺口；僅JSON_FIELD_MAP沿同staging codec比對，CAS／hash／manifest／純量守衛不改，原值保留、改一分拒絕。
+
+| 收據組 | 限定結果 | outer收據SHA-256 |
+|---|---|---|
+| reader original QA06 | precision Registry19、artifact19、R020 Reader14 PASS | e5c18b2fec60b4cf74217d2c58dd2dc985860441be7a0d768ada4bd1b94b01a3 |
+| reader／pair QA07 | compile、mypy1006、Pair17 PASS | b78249e7f3f87150a9510529f9fe3e0c257c98c7cd10802cfa1768cca734701e |
+| ports QA08 | compile5、mypy1007 PASS | 819cf27dc517f667553eeb1dcbd790f5b05b0b6d78a46e0cc3c4372d3bbc8ade |
+| Reader QA09 | Pair33、R020 Reader15、read budget33、lineage7 PASS | 254915782746d319c3d149b77a29ea8ec28677afc00415e70af87d95fb779784 |
+| UI QA10 | compile、mypy1008、新葉片5／原Registry12／R020 UI12 PASS | b677655762e2ef0b955034f7b4426e3a4c55d79bd2bdedc6c0b3883efaf77a2e |
+| Main QA11 | FAIL：隔離800px螢幕不符新harness 1366px要求，保存未開始；後改回原模板640px，不授1366／Native資格 | e9c4b3dcdc022c4e8670cee2e53c0f41bb71594eaf49347b0fb218247bf1c18d |
+| Main QA12 | FAIL：正常保存Decimal JSON finalize表示誤比；原收據／私有staging保留 | d4406890fb97798141cc628c12c79130faf224c4fbadfe9c326c320ffaeb511b |
+| CAS QA13 | 原suite加12個精確值／改一分反例共42 PASS；原V2 writer19 PASS | d3819f12b89df48d91f817dcf2db48ed4d88a8976fc9c0a59de8a384672d5b5c |
+| Main QA14 | FAIL：harness以JSON list對原tuple比較；產品與精確值不改，兩邊同JSON表示後再驗 | cc9fa1852e91476366fcd16d5d429353b17df915de2a32758696f00ee7d4a91d |
+| controller QA15 | 8PASS／1FAIL：Root新增metadata反例試改frozen DTO；改由repository回傳新的immutable DTO，Main未執行 | 5ec1743b5c58069de12e305df04dfde3096d896e0bb4987889a831db4d3c3384 |
+| controller／Main QA16 | 真TaskWorker9 PASS；父30060→fresh38780正常保存按鈕／對話框／Registry重開／pair／返回，9來源不變 | e94729c6afeb71ac6e7a9e89c17b254977d1f41ef199b104b6eb644df1fbe469 |
+
+以上不是合併suite或產品Gate。每組均自然結束，三PID陣列空、process／Job handles關閉、mutex釋放，無forced cleanup；下一組才啟動。每組全Job8GiB committed／12程序及至少8GiB available RAM門檻，原case／phase期限保持。pytest需要正常Windows hardlink權限，沒有削弱create-only或保護根斷言。UI mypy仍有既有ignore_errors=True，不證UI強型別。
+
+QA16使用新owner原QA15尚未啟動的固定Main script，私有root `C:/Users/archi/AppData/Local/Temp/baldr_p08_pair_main_01a13cf9_qa15/fixture/`；parent.json SHA `eca9b69f44f101fdb62e47adb8c6e067f522c6f59f733a9a5bfd44bdfa6b8ccd`，fresh.json SHA `a628ae642789f9dae98f819517526c87e026b7d15606b6ea737a0e0227d19907`。兩次保存真writer、完整DTO/capture、雙run與日曆SHA一致；超過2^53的原本金與小數原樣保留。父程序結束後才啟fresh，同一named Job核實actual PID，9份設定／SQLite／Parquet／附件／日曆bytes、SHA及mtime一致。Python socket attempts0、OS network audit未執行；原資料缺companies／indices的合成fallback訊息保留。這輪按鈕為真Qt操作但部分以click()觸發，另補可見Registry頁籤與座標命中的讀回，不重產已保存來源。
+
+完整官方文件鏈、單位版本／來源用途接受、historical PIT、source／currency／cost authority、完整雙策略績效、真N、Native／EXE及自然成熟各自仍待；日曆候選flags false、metrics None，unknown診斷不是完整功能接受。正式資料／全量回補／publisher／Task權限、已耗TWSE GET／partial MOPS、停用maintainer均未改。下一步沿原§9.5完成受影響UI必要QA／文件治理與可見讀回，再推來源資格及完整期間缺件；不另立競爭總計畫。
+Increment20 QA17：compile本輪所有改動Python、Workbench85 PASS、validator25 PASS／0 FAIL／4 protected skips、八roots mypy1008 PASS及金融float邊界守衛PASS。另重用QA16原9份保存來源，正常Main新PID29356以可見Registry頁籤、ensureWidgetVisible及原座標命中helper操作單筆重開、固定日曆、pair與返回；`fresh-visible.json` SHA `ca66e451896338a22720c7c218d0b496b43e84e9ea25523289cba1c38f5df5d0`。原9來源bytes／SHA／mtime及parent／fresh原收據均不變，未重產producer。outer793c97e63d90433ba92984c598edd66c SHA `c44d21980ed952c6be3ab70235f3947f0d54c4e8fb0673765a5380351e5aafa7`自然閉鎖；隔離offscreen 640px讀回不授Native／1366px／EXE。文件治理與最後source讀回另驗，不把上述局部結果當完整Gate。
+Increment20文件治理QA18原FAIL保留：四份治理必要Coverage漏列。補逐份not_required理由，未改角色／政策／中央索引或產品門檻；QA19核12features／8link sources errors=[]，outera9be039a6f00455c8e7e7c41dae7691c SHA `2ea5e794611a5292dd842af6009d3d3161ebea1984b4620a0f52051a0c75cc0a`自然閉鎖。這是文件結構／紀錄檢查，不代表完整Gate。後續沿原§9.5定位calendar實際capture／版本／批次時間與source／currency／cost資格缺件；仍維持候選資格與正式授權邊界。
+### Increment21日曆完整傳輸與每日批次
+
+沿原§9.5推進，不另立總計畫。新owner已保留Increment20的26來源鏡像及Increment21取消修正前5來源鏡像；後者manifest SHA `48d138ad64aaba18a95535c936074ab75e7cde4a2a00e99aab61ea3a1c7fccc6`。同session重用第9名Luna作靜態測試／複核，累計9/10，不產生子代理。Root保留shared ports、金融判斷、QA與文件單寫。
+
+新增 `data_module/official_calendar_transport_v1.py` 的JSON原件／URL／EOF／Content-Length／hash收據，明示4MiB、identity encoding、aware開始／body完成時間；原字節保留，不借HTTP標頭授官方timestamp。直接capture的10秒是socket／合作檢查，不是阻塞I/O硬中斷。`official_calendar_daily_snapshot_v1` 沿原兩市場解析器與93日限制，把raw內嵌capture→manifest→pending→receipt→create-only發布；外部雙SHA與獨立用途接受錨點固定讀回，改正另存。共用artifact bytes helper抽取未改原V1 schema與保護根／reparse／hardlink／大小守衛。
+
+| 組別 | 實際結果與限制 | outer receipt SHA256 |
+|---|---|---|
+| QA20 | compile3 PASS；mypy HTTP status `Any\|None`型別FAIL，pytest未跑。Root加明確int檢查，bool拒絕保留 | 60bc106ee1559116952da02d7e5b57606fca452d4ac37c59c48a17929d06c73c |
+| QA21 | compile／mypy1009／transport24 PASS；原artifact17 PASS／2 protected skips；原bundle6 PASS／3 sandbox TEMP守衛FAIL | 8b9ae7550221d99da6168686562f1d2861332706cd77fb3c7d9fcb6c64f282af |
+| QA22 | 正常Windows只驗原bundle9 PASS，保留原TEMP與protected-root守衛 | fe5e6c45f894d41d4d514f80c8ebd9b6f995057e4e81d8c8c73a26ab4b462da4 |
+| QA23 | 新batch module compile、八roots mypy1010 PASS；當時行為未驗 | 487a95b1c4cd4896e711f30308f2e51863795012b712b70ca6bfe8e556a953fc |
+| QA24 | 新batch測試compile／19 PASS：兩市場缺漏／重複／意外分區、93／94日、外部pin、來源／receipt漂移、取消／pending／時間與更正原件 | 923512b0d0dcbc7a85fe425e485d3b1a9f175d22191e69a286ca3ef789364d13 |
+| QA25 | 合成父6316→fresh13156：同named Job、前phase退出後才啟fresh，原版與更正版8檔bytes／SHA／stat不變，外部pins／精確cutoff拒絕正確，fresh未重產producer | 346803366cb08bef97ce282d12d2de4084413dea3009d27f425b1eb26cc0fbf8 |
+| QA26 | 靜態複核找到pending讀回期間取消空窗；Root於解除barrier前補查，新增與既有取消反例2 PASS、compile及mypy1010 PASS | a07d432c557f3899758a060988727a58c3680d9487c1ba4037634358d005cc5b |
+
+QA25 private root `C:/Users/archi/AppData/Local/Temp/baldr_calendar_daily_01a13cf9_qa25/fixture/`，parent SHA `f7e40ad702dc615a42a554d217b7793f5a866de190868cad320f0393263bdf7f`／fresh SHA `a2a8068cd08b6e9a4f497d7a1edca3463602b08d061a5ec382d19cd91a0714ab`。synthetic錨點與歷史注入時鐘只驗機制；兩market holidays可不同，沒有把一市場日曆複製另一市場。PIT／performance／formal clock flags保持false，available hour只指明示用途的前瞻批次時間。新daily batch尚未接正常UI／真來源接受／正式publisher或Task；原Increment20 V1日曆UI不自動改版。
+
+各組收據都保留原FAIL，三PID陣列空、process／Job handles關閉及mutex釋放，無forced cleanup；全Job8GiB／12程序、啟動至少8GiB available及原case期限不變。檔案fsync與新程序讀回不證OS crash目錄metadata durability；合作取消與最後unlink不具原子承諾。mypy legacy UI ignore限制仍在。此處沒有新網路request；舊Swagger原件讀回可定位官方年曆schema，但未宣稱queryYear參數獲該schema背書。月營收／TWSE既有已耗GET及MOPS partial缺EOF均未重觸發。
+
+下一步先核日曆具名attempt與官方文件鏈，再以有界scope取得與解析真原件；沿原producer建立source／currency／cost／calendar authority，長期分段及完整雙策略績效、Native／EXE／真N與自然成熟仍各自待。unknown卡、局部PASS與案例加總均不代表P00–P14或任何完整Gate。
+
+Increment21 QA27另依create-only具名scope `calendar_official_attempt_scope_01.json`（SHA `c75752f9b711c9fe8b4005dd211e916d90e09af010b59659daa851cf702d6c63`）取得TWSE2026年曆／TPEx202610各一次。新owner複製原hard-lifecycle helper，只改owner root並增加選定原header arrays及EOF/hash後body觀測時鐘；原helper SHA `6509eb7543c5a475e9926dd68a071e40469642f12b656c31f6c826f08cfd990c`保留。10秒／4MiB／無redirect／無retry／identity及named Job worker守衛維持，不重設月營收、Swagger、t187ap05_L或MOPS舊額度。
+
+| 真原件 | 實際傳輸與品質 | raw SHA256／單次receipt SHA256 |
+|---|---|---|
+| TWSE `holidaySchedule?queryYear=115` | 3774bytes，200 JSON，1.031秒、EOF／Content-Length3774一致，實際Date為115年度；helper不是證明任意歷史queryYear支援 | raw `7644c1a8af784c09f54670fd7413f536b13eb76c54d658058e8873d1aee32117`；receipt `06db8144b1c92cc4e28cd4ac11b06a8aabf54b7d15ad1887887b0b63f99590b3` |
+| TPEx `mktCalendar?ym=202610&lang=zh-tw` | 8760bytes，200 JSON，1.265秒、無Content-Length但EOF完整，calendar.status=success／total24；原parser驗必要weekday與月份 | raw `1fe745d5bef0c67d174f7fe4a2e2835154cd3f065cc94f116dfd2bea26ad8e73`；receipt `80a5b4f5a9b4541d35d35e543961638b5039226cdfd7f9dc1b0bdc30ba2c7890` |
+
+兩完整typed transport及10月candidate evidence已另存 `calendar_official_attempts_01/`；parser結果兩市各20 sessions，evidence body SHA `c043051f94afb03dbfdea3ffb2e08936a35977940ccef5840945fe40e68c5587`。TPEx資料含4筆holiday及必要交易weekday，沒有因省略一般週末而補造交易日。HTTP Date／Last-Modified保留但不升格官方版本timestamp。來源scope結果receipt SHA `efc6ff6f1deb23059175c3c3587ed5b0115deedf3ac908fded19d3a8e92708b5`；outer `single_owned_qa_3614140e595d45cda0b4d19fd5ed5371` SHA `36cd437fd21ef29fc2e8280e86ae319fc859985d0be814a1195244faa5153f9f`。兩worker各自reaped／handle關閉／named Job清冊無該PID後才下一request，整組自然閉鎖、三PID陣列空，無forced cleanup。
+
+這是本scope真傳輸／parser候選接受，不授官方完整文件鏈／一次性來源用途接受、daily發布或UI。TWSE既有Swagger完整原件可佐schema；TPEx用途文件鏈及兩市場schema／版本維持性仍需獨立裁決。`source_use_accepted=false`、`daily_batch_published=false`、PIT／performance／formal clock=false；不能用自造acceptance來發布真daily成功版。下一步優先沿已有producer定位真source／currency／execution／cost固定點，不從現在設定或新日曆替舊run補造權威。
+
+Increment21文件治理QA28原FAIL保留：日曆daily新變更觸及storage／資料手冊責任，漏列兩份必要coverage。Root同步兩正文與task，未改治理規則或產品門檻；outer0d47a04e38c145ffb31f0882b1592e95 SHA a765ef3fca77d863620f1f21405b6e47b16a19db2ecffd46119d36f7a4162776自然閉鎖，後續只重文件治理。
+
+### Increment22原producer執行輸入捕獲（進行中）
+
+QA29文件治理12features／11link sources errors=[]，outer53008ee0dce34c049aabc5f49107eacb SHA `d2981c82575ab084ec85caab625e88cbc5ed5d0bbe74d444cbe51dfafca7136b`自然閉鎖；Increment21 readback SHA `4b0465b0b9ef3821a7e404f2092ff8b2a20c361c5f93b5954241578ebe494b92`記33本任務來源、408保護資產（62＋346 F17）、28閉鎖Job與20真日曆候選檔。保護資產bytes／SHA／當時mtime ticks逐一不變；原26份歷史mtime仍以原具名收據為準。
+
+Root沿原§9.5與Luna五檔唯讀定位確認，BacktestService history loader只有唯讀SQLite／CSV及DataFrame切片，沒有raw／manifest／來源clock或currency權威，不能從股票／市場／cents猜造。原next-open producer具備actual fee/slippage/tax輸入、normalized lot及BankTaiwan policy.metadata；先以獨立 `RecommendationPortfolioExecutionInputsV1` 捕獲submitted與effective差異，None與明示0分列、policy metadata深層凍結、input SHA只識別輸入。原DTO多一個transient可選欄，V1／V2 wire與既有費率／撮合／算法不改；未保存此新欄到Registry前不宣稱新程序可還原。
+
+QA30 compile3／mypy1011限定PASS，outer97fcdbb299864c439f92758da25b83c3 SHA `25397e785622cf7ecaa17439bd56fab78b3a4475df291078fafe9a24c618b38c`；來源三檔鏡像manifest SHA `b5214c7715818735d008b6f8597313da3f7aefb8b36dddc481ded206d2fd60ec`保留。其後Root另補policy/effective lot crossbind，尚待行為與最新typing；第9名Luna只寫新測試，未啟動QA。input identity不是execution/cost implementation digest，source／currency／calendar／cost authority與完整績效均仍待；additive artifact／Registry接線為下一葉，不能往舊V2補值。
+
+Increment22 QA31：Root凍結第9名Luna測試（SHA d47005842c5a90994c2b31084aca73ecab0e6b12c96ef3453ec86cef3d29759c）後，compile4／mypy1011 PASS；新execution inputs14、原precision capture9、原BankTaiwan consumer7、V2 codec19與V2 Registry19各自PASS，金融float邊界守衛PASS。policy lot/effective lot交叉守衛及None／0不同identity、policy metadata深拷貝、原producer值與V1 DTO wire不變均有限定反例。outer123516426e5942caab0744e2737c12ce SHA 70e70187025115ca8ccf7b22051b9a24519b53e67af5a2ef022a8a063376690c自然閉鎖，三PID清冊空、process／Job handles關閉與mutex釋放，無forced cleanup；每suite原120／180秒期限保留。這是同一producer的記憶體增量，不證新欄已保存、新程序讀回、成本implementation authority或完整績效。下一葉沿原Registry staging／CAS使用additive artifact schema保存，不改舊V2或往舊run補值。
+
+Increment22後續已接additive `recommendation-portfolio-result.v3`：封套保留原V1／V2 canonical文件及execution inputs，綁策略、run／parent／Parquet hash及原cost／lot；同一Registry staging／CAS／reconcile保存與public reader還原。UI原保存入口只在producer有新capture時明示opt-in；未提供時原V1／V2不變，舊run不補值。同ID不同None／0輸入拒絕，新增schema不授來源、幣別或implementation資格。
+
+| 組別 | 實際結果與限制 | outer receipt SHA256 |
+|---|---|---|
+| QA32 | 文件治理12features／11link sources errors=[]；37來源鏡像與408保護資產readback另存 | f4327ebaa37a99b0bdd01ebbb5bc5828015f9e4052f412aeac14ae7cc03b59ad |
+| QA33 | compile5 PASS；mypy1012一項union assignment FAIL；原service封存後以明確型別分支窄修 | 7b4fb9a6e17a7c7a749693616dd377477f739e410780b38f5bb055ac5f6afe5b |
+| QA34 | service compile／mypy1012、原V2 Registry19／finalize42／public reader15／pair33／readbudget33各自PASS | a7d2512cda54ee2207a3d69adea8043362f22cc0a8c91d1703a6c82726a88c49 |
+| QA35 | 新codec測試縮排FAIL，pytest未跑；Root凍結前漏看，原測試鏡像保留，原assert移回原block | 8c3b4956f6402b3dfba13b0075ee71431b0997171aedb3ce1ee5b8266f1d39b1 |
+| QA36 | compile4、V3 codec17／Registry10各自PASS；含原V1多股base、None／0、crossbind、三個crash點恢復與壞staging隔離 | 4e87926838ea1097c7b72b563b9457d2699396e8458f490b36cdd9a2d04becd9 |
+| QA37 | Workbench85／validator25-0-4 protected skips／mypy1012／金融守衛／R020 UI12／Registry UI12各自PASS；legacy UI ignore不證強型別 | 995f9b192fa5f60a7e3cd3f59288c37377b6fef28f33895c53e233a92fe0462b |
+| QA38 | spec已保存但未執行；靜態複核發現V3預設sidecar讀取未設16MiB上限，保留原spec並另起修正QA | 未執行，無收據 |
+| QA39 | 新public reader預設超大sidecar反例FAIL，證明會嘗試open；原service鏡像SHA `df9396f1a675de396bc8d1f59991e0c65b788e8edd01225e71fe31d12468d363` | 6add92e2e46539c0802cf4d652b51115f5a8123d3acc78b9eede387340c12e89 |
+| QA40 | V3沿原V2讀前上限後compile2／mypy1012、V3 Registry11／原V2 Registry19／readbudget33／public reader15各自PASS，原反例斷言保留 | e6f5010599c625872378d87c264c9ae8d0fbd1a2b7da22f5566a106d34c13f5a |
+| QA41 | Main正常保存兩run後，切Registry時active-window斷言FAIL；fresh未啟動，保存來源保留，未降低可見命中斷言 | 194d9cb3869de66e5133ab6b5716fe1901f66703c103d251fed28c0fd139b1a9 |
+| QA42 | 父24812→fresh28756重用QA41兩筆run及9來源，禁producer／calendar重產；正常Registry開啟V3、同輸入／capture、配對／返回與新程序PASS | 011c1b1ee80e0e136d54b8af94e0246f4cf7ed6b2fe404b682ed4e22b3503b6c |
+
+QA32來源readback SHA `65afaa5c8292f30acb0784d6af4d8e8dec50dbc47b470dc3f1cfe534495abc48`保留當版37來源鏡像、408保護資產、20真日曆候選檔與31閉鎖Job；不冒充後續V3來源。QA33 service鏡像SHA `a7f54050ad6edbda8013d52fadbf9c3a9b2b8fa921def02c7ce66c00ab2ac98e`、QA35原測試鏡像SHA `b2d5c1ccf28e1d00df451796a704d23894784d938edaf1e407e3304f3cb9f314`各自保留。
+
+QA42收據另存本owner `increment22_main_reuse_phases_qa42/`，不寫QA41原fixture收據；parent SHA `b14f47d2eb4d7e8f06e1070a43336c511cf2814dbe65de3eb967e3b8c6dd0c7c`／fresh SHA `123e8cabfb85a8d8f8ffec1fbbac3c886f9e0bc5c3a17d53edc2a7119592e17c`。原9來源先獨立bytes／SHA／mtime ticks封存，兩phase再核bytes／完整stat一致。離開原對話框後以正常activate／raise恢復Main焦點，原visible／hit-test／兩run／返回及120秒phase／270秒driver斷言不變；原保存階段仍屬QA41整組FAIL，QA42沒有宣稱重驗保存按鈕。正常public opener還原同execution inputs與precision capture；calendar coverage完整時仍blocked／metrics=None、來源／currency／cost unknown，未提升績效或PIT。全組8GiB／12程序、至少8GiB available、三PID陣列自然空、handles關閉／mutex釋放，無forced cleanup。
+
+這解除本葉「原執行輸入保存／精確重開」的限定工程缺口；Native／EXE、真來源用途接受、歷史PIT、真N、完整雙策略績效及P00–P14／M1–M3完整Gate仍待，不加總案例接受。下一葉沿原§9.5把明示daily batch及獨立acceptance anchors接原Registry期間診斷，不掃latest、不從manifest自授接受。
+
+Increment22 QA43文件治理12features／11link sources errors=[]，outer21f043bb65a24a14a1ca867211a03a8a SHA `ecaa4200ffc26c533cc4bd700b04e27d4fa5d03c8ec6c6a37c36c249663ccb14`自然閉鎖。當版40來源鏡像、417保護資產（原408＋QA41保存9來源）、20真日曆候選檔與41閉鎖Job另存readback02 SHA `41fe9302acb72a3ca97db7d55cef08d3386bfc9633b23b50b748443df198fa0c`；原37來源鏡像與全部保護bytes／SHA／mtime ticks不變，原歷史收據的mtime權威仍保留。
+
+### Increment23每日日曆版本接原Registry診斷
+
+沿原§9.5與既有第9名Luna，無新建代理。Root凍結 `p08_daily_pair_api_06.md` 後單寫shared pin／pair／widget／金融判斷／QA／文件；Luna只靜態修改原controller與新daily controller測試，交回pending writes=false後Root接手。兩原始交付鏡像SHA為controller `0e6b9883372ffdb1517cc70764c16ae48e3c8318b895a20113a06b64dfce77fd`、測試 `7dde1e6d01a961c60b991f254b1a108dce1a1542694b0673c080c069c9b8d5eb`。Root只另修畫面文案與重複show，不改worker測試斷言；之後Luna唯讀複核Root shared ports／pair未發現具體可重現缺口。
+
+新增typed daily pin固定批次目錄、外部manifest／receipt SHA、市場／保護根、兩市場獨立接受tuple及aware cutoff；新增pair `.read_daily`，仍沿同一metadata pins、public reader與缺日診斷。前後各讀同一daily batch並比完整identity，不建立臨時artifact、不掃latest。原 `.read(...)` 簽名與artifact路由保留。原Registry控制增加明示來源模式與receipt SHA；owner只可注入typed獨立接受，預設None使daily阻擋，不能從capture／manifest自授信任。每次固定使用當下UTC aware cutoff，不提供時間改寫欄位。換錨點／模式／欄位、市場、選取、研究世代或關閉會合作取消並拒收舊結果。
+
+| 組別 | 實際結果與限制 | outer receipt SHA256 |
+|---|---|---|
+| QA44 | Root backend compile3 PASS；新daily pair12 PASS／1 FAIL：Root測試誤把讀取可更新的atime放入不變inventory；原pair尚未執行，原FAIL保留 | 855d615a92c04fc6755ca9776ec01df3e685da2742276b54bf64fd9f3bff97d1 |
+| QA45 | compile7；原FAIL的TWSE一案PASS；原pair33／controller9、新daily controller16、widget5、Workbench85／validator25-0-4 protected skips／mypy1012／金融守衛各自PASS | 68495300aca6284cec2a6bb5ec8d2995c0e484f86f05a746629ca67d14436555 |
+| QA46 | Main父33268→fresh17672，同named Job且前phase真正退出後才啟fresh；重用QA41兩run、QA25原版／更正日曆8檔，共17來源，原件及版本／非clock診斷不變，正常開啟／比較／返回PASS | f1678398a053e72d6ea409204a7a9e3bd82309dba1e3b83d47a9613b4a045cf8 |
+
+QA44原測試鏡像SHA `7c45de7086769a4fe4b586f241962407f36ede404d604333f8502de525f74253`保留；修正只改inventory核對dev／inode／nlink／bytes／mtime_ns／ctime_ns／SHA，沿原來源守衛，不以可變access time當寫入事實。原12 PASS不重跑，原FAIL一案及尚未跑的舊pair各自執行；沒有降低原斷言、原120／180秒suite、120秒phase或270秒driver期限。
+
+QA46收據另存 `increment23_daily_main_reuse_phases_qa46/`；parent SHA `98715709a69866728f2ef56aaa638f14686a0dd3652aeb99d31826c3b86003c7`／fresh SHA `d05de600c1357b2973b60c46b870686bba890bacd5258f713bd2dad45f3c0713`。QA25原parent外部SHA `f7e40ad702dc615a42a554d217b7793f5a866de190868cad320f0393263bdf7f`及其8來源先獨立核對，QA41原9來源另核原custody；兩phase再核17檔bytes／完整stat相同。禁止producer／calendar writer重產、socket guard無attempt。兩次固定版本各自保留真實當下cutoff，只有這項request clock不同；manifest／receipt／capture／接受IDs、日期與全部其他診斷相同。結果顯示同批次及收據，仍blocked／metrics=None、PIT／performance／broker false，未重驗已保存按鈕或生產新資料。
+
+本葉只有隔離QA由Root注入合成接受紀錄；正式Main尚未配置真來源用途接受，沒有新官方接受、真日常成功批次、自動配置、正式publisher／Task或新network request。舊artifact入口與所有原FAIL、來源／幣別／implementation成本缺件維持。各Job8GiB／12程序、啟動至少8GiB available，三PID陣列自然空、handles關閉／mutex釋放，無forced cleanup；legacy UI ignore仍不證強型別。下一步仍沿原計畫處理官方完整用途鏈與明示配置、長期分段、原producer來源／currency／execution／cost權威、完整雙策略績效、真N、Native／EXE與自然成熟，不把unknown卡或局部案例加總為完整功能或Gate。
+
+Increment23文件治理QA47核12features／11link sources errors=[]，outer64323a6758154d419b58ab0ec5ebf06a SHA `f4a179643398c3640ce03c56424fe38e58ed7e0f48f9aa00902337731bde115c`自然閉鎖。當版42來源鏡像、429保護資產、20真日曆候選與45閉鎖Job readback SHA `8c672a58b86496214010735e5a1b1b5bd112d90bd47ceb647fb953ec69565954`；這是下述官方文件取得之前的版本，原件與歷史FAIL不改。
+
+後續Root核官方用途鏈：web工具直接開啟TPEx年度公告、PDF與開休市索引各403，service頁internal_error，原lookup SHA `e2a72f5abecf4265aec939a1e067a6cba7d1bc3fef798fdb88efd051781eaf07`保存。相同官方[開休市頁](https://www.tpex.org.tw/zh-tw/announce/market/holiday.html)改用既有browser session後可正常顯示115年度完整表；DOM宣告action `bulletin/tradingDate`，實際載入同官方host `/www/zh-tw/bulletin/tradingDate` 與 `tables.js`。這說明web工具403不能外推全部取得工具皆不可用，也不證任何WAF可突破；未解登入、captcha或安全警告。DOM觀測屬rendered證據，不冒充原HTTP bytes。
+
+| 具名新scope | 實際取得與限制 | outer receipt SHA256 |
+|---|---|---|
+| QA48 `calendar_official_frontend_scope_01.json` | 只GET已觀測官方tables.js一次，10秒／1MiB／無redirect或retry；2.562秒、200、168139bytes、EOF完整，raw SHA `085fd65b4e15e2af4f3adb3f256f0058d0176dd2d98ce53217ede16667a04a90`。只靜態閱讀另存script，未在Root執行下載內容 | d4b01b874d16086a21cce3c5b0430658836892093d50cf66cf7c435d555c9abb |
+| QA49 `calendar_official_tradingdate_scope_01.json` | 官方前端已保存的format-Y與POST契約定位後，只POST新端點一次，`date=2026&id=`、10秒／1MiB；200、8792bytes、EOF完整、stat=ok，raw SHA `c5cea6bd3a10bc7cd3e577d9ad78e600ae7d64508a1bc9b09be32fb396d0dc41`，data.html包含115年度表與閉合table | 7ffd28b046f55909d65af164d6e71fb5690d3c5e397fdba2b49ed0ad9df14d29 |
+
+QA48／49各自沿原hard-lifecycle helper，不複製新取得機制或改原GET scope；worker reaped、process handle關閉、同named Job清冊無該worker後才下一組，outer三PID陣列自然空、handles／mutex閉鎖。原日曆兩GET與月營收／TWSE舊GET額度維持已用完，MOPS partial／缺EOF原FAIL保留。新scope原件／收據各自create-only保存，候選用途未接受；這兩次取得不代表parser、新daily成功版、正常UI、自動配置、歷史PIT或Gate已通過。
+
+新TPEx回應是 `{stat,data.html,endDate}` 年度HTML JSON，HTML UTF-8 SHA `b7c0ae6990f4e14aff19decf1932243a0d867f1abbad51d5ebc28eb7c05d7432`；現有 `mktCalendar?ym=202610` 是另一個按日boolean月曆格式，不能cast、共用原source/use錨點或借endDate／HTTP Date作官方發布時間。下一葉沿原calendar parser／typed transport擴具名來源分支與必要反例，先核年度表的市場別、跨列／多日期／股票最後交易日與僅結算差異，再建立明示用途接受及配置；不重抓已保存候選、不補造歷史PIT。
+
+### Increment24TPEx年度原件的股票日曆解析
+
+沿原§9.5重用同一Luna9，累計9/10；單寫新`data_module/tpex_trading_date_html_v1.py`，交付SHA `7426e57c8b74bbaf6140945f647aa1597843f2ab370214c3b55e3a966603ab81`且pending writes=false。Root保留原`official_calendar_bundle.py`金融分類、測試、QA、文件及ports單寫。API07與amendment01均保存在本owner task，不覆寫舊API或原件。Root最初以要求完整`</td>`的靜態擷取誤判端午節缺說明；原件實有「依規定放假1日。」且只省略cell結尾，依[HTML標準](https://html.spec.whatwg.org/multipage/tables.html#the-td-element)於合法下一cell或`</tr>`邊界保留原文，未放寬HTTP EOF／JSON／未閉合table或row。
+
+結構解碼重用原transport嚴格JSON decoder；exact fields／年／baseline、raw及HTML雙SHA、兩表標題／表頭、跨列與最多256列有界。Root分類核日期／星期、已知節日與連續補假組、股票最後交易及明示僅結算日期，三類債券另列ignored；unknown、缺必要列／說明、重複異日節日及股票開休市衝突拒絕。Luna唯讀複核發現異日重複節日可多關一天，Root於首次QA前補分組／計數守衛與反例。透過TYPE_CHECKING及函式內decoder import保留原transport→bundle依賴，沒有新增網路或改V1 monthly wire。
+
+QA51b使用新spec／invoker／manifest與`qa_isolation_increment24_51`，先前51未啟動草案因隔離根字串未換完整而另存保留。compile3、新年度41案各自PASS；6份受影響舊suite共116PASS／1平台連結SKIP，mypy1013來源與金融精度守衛PASS。來源81pins前後一致。實際2026股票2/11開市、2/12–13僅結算、2/23復市，10月20 sessions；端午節原說明、跨列與多日期保留，第93日允許／第94日拒絕。原件8792bytes逐byte複製成fixture並保存獨立provenance，非合成重編碼或來源接受。
+
+outer `single_owned_qa_1460680fff3840b3b76aa43ff569a855/receipt.json` SHA `f46ae834fc36d6b0d10f021cffdb1751a1db17cd366a1f76f157224281eb6356`，三PID陣列自然空、process／Job handles關閉、mutex釋放、無forced cleanup；原8GiB／12程序、啟動至少8GiB available及30／180／60秒期限維持。這只解除年度原件解析工程缺口，不授來源用途、日常成功batch、正式Main配置、歷史PIT、完整雙策略績效或產品Gate。下一葉沿原transport／daily具名版本接線，不能將annual HTML冒充舊monthly boolean或共用舊錨點。
+
+Increment24文件QA52核12features／11link sources、errors=[]，outer SHA `d2953a5bc655e1b56c459fb58c73a1569d0cd1ce7e7d880b5007cbd593a21e46`。48來源create-only鏡像、429保護資產、原20份日曆capture／18份新文件capture／6控制與50已閉鎖Job全量讀回，readback SHA `f3e88057af20d5d87b6ed8c85327bd3f3e22a5fc6ddbfc919c8b458407bac8c1`；所有前版鏡像與原失敗不改。
+
+### Increment25具名年度POST完整原件transport
+
+沿原§9.5重用Luna9，API08限單寫`data_module/tpex_annual_calendar_transport_v1.py`，交付SHA `80cecc030bebed9e6d257b5068c9538b69ca4509b6a364579d7edd0c79a638a2`、pending writes=false。新frozen slots DTO固定年度URL／POST／ASCII `date={year}&id=`，response保留raw bytes／SHA、HTTP完整性與aware時鐘，獨立schema與有界canonical base64／exact fields codec；沒有getter、monthly `to_response`或舊V1 fallback。
+
+Root將原transport V1的HTTP status、4MiB、byte count／EOF、SHA、headers／encoding／Content-Length、時鐘因果與嚴格JSON校驗抽成同一body helper。原V1仍先驗原URL，再保存同樣UTC時鐘及headers；舊kind／key／wire不改。Luna只唯讀對照Increment24原source mirror，未發現守衛遺漏。新完整transport不授application schema、用途接受或daily成功；只可沿已保存原件進入API07 parser，不重POST已耗scope。
+
+| 組別 | 實際結果 | outer SHA256 |
+|---|---|---|
+| QA53 | compile3 PASS、新39PASS；另1個超大base64參數案例於pytest setup／teardown發生2 ERROR，測試值被自動放入PYTEST_CURRENT_TEST而超Windows32767字元；舊回歸／mypy／float未執行，原FAIL保留 | ce1e0939b914d58bb10627d91b0b82c97d62859a550d893f288dd98a708157e2 |
+| QA54 | 只改該參數的短ID，6MiB原值及拒絕斷言保持；compile測試、該案1PASS、尚未跑的舊transport／bundle／daily共53PASS，mypy1014來源與精度守衛PASS；39已通過案例未重跑 | a700bafffdc038be06b450fcd07ed0ed84fb75fe292b7bda2a4990e5bf822da9 |
+
+兩組85來源pins前後相同；原ERROR測試鏡像SHA `10b9365de1822196d99dd531693cec554bf79e9d886da993502f581349817f56`、原stdout及全部收據保存。兩組均自然PID清冊空、process／Job handles關閉、mutex釋放且無forced cleanup；原8GiB／12程序／至少8GiB available與期限不改。UI未變，不重跑已保存的UI資格；legacy UI ignore仍不證強型別。下一葉將年度雙市場原件衍生為具名期間證據，再沿原daily生命周期接writer／reader及明示配置；來源用途、首次成功版／小時、歷史PIT、完整雙策略績效、Native／EXE與完整Gate仍各自未接受。
+
+Increment25文件QA55核12features／11links、errors=[]，outer SHA `bcb05abd67cfce3ee45a225040b826d09be3ee46dc737b9294dbeffb52496944`。50來源鏡像、429保護資產、原日曆／官方文件capture與53閉鎖Job（含原FAIL）完整讀回，readback SHA `9f810412f07910a2cb6d21f11e142722c55552d4291a35bd42473543ca0340d5`；未改原始資產或其他owner變更。
+
+### Increment26年度雙市場期間證據
+
+API09與amendment01沿原§9.5凍結，重用Luna9單寫新`recommendation_portfolio_annual_calendar_evidence_v1.py`，初版SHA `8eeeff5e399ad91ec9f59fd7d68c96cee990ca15ff3a099c265245885dd2812e`、pending writes=false。Root單寫原bundle金融衍生／測試／QA／文件，未改daily或pair ports。新evidence為獨立年度wire，保留兩市場typed transport，exact-bool資格、canonical bytes比較、32MiB及逐年完整分區；ISO公開日期與原pair相容，captured_at只從完整body clocks衍生，讀取再核日期／hash／transport凍結後漂移。
+
+Root新年度TWSE用途核四個exact欄、ROC年份／嚴格日期順序、weekday、已知名稱／連續假日／春節最後及復市與僅結算缺日；TPEx沿Increment24股票parser。原TWSE marker與TPEx monthly路由不變，不把annual HTML轉monthly。QA27 TWSE3774bytes逐byte複製fixture並保留原raw SHA `7644c1a8af784c09f54670fd7413f536b13eb76c54d658058e8873d1aee32117`及原收據；測試中transport clock為合成，並非真取得或成功批次時間，不授來源用途。
+
+| 組別 | 實際結果 | outer SHA256 |
+|---|---|---|
+| QA56 | Root已在首次compile前修一處sorted generator括號，保留worker原鏡像；compile3、新23／舊bundle-evidence-daily-pair74各自PASS；mypy1015檔兩處object.body_completed_at FAIL，float未跑，原FAIL保留 | 4cb86bfcf00549ce9e2a09c3047c29a52281e27d4b19708b1b607239fef30088 |
+| QA57 | 只將兩市場完成時鐘各取typed tuple再相加，不cast或ignore；compile1、受影響正常codec／篡改讀回2案、完整8roots mypy1015及未跑金融精度守衛PASS；未重跑已PASS的23／74整組 | 2426f575e30b2a9ded1e5078566d863668e04861807463e7b1ec042dbb5e1ec1 |
+
+92pins各組前後一致，QA56型別FAIL版鏡像SHA `6e236037306cf1997cc3c74f9ebf2e092693b9ce1a102c78c5ee9485aaef43b6`保留。每組8GiB／12程序、至少8GiB available與30／180／60秒期限，三PID陣列自然空、handles閉鎖、mutex釋放、無forced cleanup。正向完整跨年雙年度來源尚未驗；跨年缺年、缺市場／重複分區、93／94日、年度schema／weekday及範圍外未知列、bool/int旗標／自述clock／日期／hash／JSON漂移已限定驗證。
+
+本葉尚未將新年度wire接daily writer／reader、原Registry ports或真用途接受；沒有新GET／POST、正式資料／Task變更或Native／EXE接受。下一葉沿原daily create-only／fsync／pending／clock／publish／exact reread生命周期及原pair共用診斷接線，不複製publisher或以舊V1失敗fallback年度。完整雙策略績效、source／currency／execution／cost authority、歷史PIT、自然成熟及整體Gate各自維持未接受。
+
+Luna後續靜態複核找到TWSE少掉補假一列仍可被當開市的品質缺口。Root核真QA27的2/28說明只有放假1日，沒有2/27文字，不能由剩餘描述猜補；QA58刪1150227但保留1150228，更新合成變體hash／長度後，原候選得到DID NOT RAISE。outer `4f9332eeaf4f4fd586eefb0b30b67905` SHA `b480c5f6641e5457d8c5d41807da5c338eea72f6d1d1a51495797f1fed0fc74c`，原FAIL／bundle鏡像不改。
+
+API09 amendment02由Root裁決：只在新年度用途，兩份獨立原件的同名國定假日日期集合必須一致，差異報`annual_calendar_holiday_dates_disagree`，不補任何市場值。各市場股票最後交易／僅結算仍獨立，未來版本若官方確有同名假日差異則隔離另核用途。QA59 compile2、原反例／正常codec／合成股票結算差異3案各自PASS，後者確認2/11可以只在TPEx出現；mypy1015及金融守衛PASS，93pins前後一致。outer `12cce6ec9aba41c2bb7e2e152f0f70df` SHA `56ae444af620a51ebdd87652d0e1f4cf30199d3c1a36f5ddf72db275e397fd32`，兩組均自然閉鎖、無forced cleanup。Luna唯讀複核確認未借另一市場填值／未強制整份sessions相等，pending writes=false。
+
+### Increment27年度日曆沿原daily與Registry接線
+
+API10由Root凍結；Root單寫原daily核心、最小evidence唯讀Protocol、原pin／pair、整合測試與文件。重用Luna9只新增年度保存測試，原交付SHA `273c5f998239ad52fead2d1312060d3080c7585386b790d0a5e432d86c2e8e36`鏡像保留；Root僅將兩個public helper呼叫的ordered接受tuple轉原API要求的Mapping，classifier tuple及原斷言保持。Worker後續唯讀對照Increment26四個相關baseline，未發現具體可重現守衛缺口，pending writes=false；本補完累計9/10，不新建代理。
+
+新年度三檔schema／parser與月別V1分開；原public簽名、scope、wire與生命週期順序保留。私有固定codec及泛型snapshot共享原create-only／fsync／pending／completion／receipt／publish guard／rename／pending讀回取消／unlink／exact讀回；不複製publisher。年度保存兩市場原transport codec dict，原件不重編碼，逐年分區完整、93含首尾。Pin原constructor不變，以兩個外部typed用途接受的整組scope／endpoint決定具名reader，混搭／wrong order拒絕，不以V1失敗fallback。Pair沿同一public run reader與前後版本／identity重驗；新真控制器案使用實際保存兩run與daily三檔，只注入明示合成接受與時鐘，未stub composition／public reader。
+
+| 組別 | 實際結果 | outer SHA256 |
+|---|---|---|
+| QA61 | compile6 PASS、新20PASS；真Registry控制器原5秒QTest輪詢等native finished FAIL，後續舊回歸／mypy未跑。新測試與產品候選原鏡像保留 | e860e766c1d9baf58f96e75bdd1295ba66187e750900e62d5c96dfed8abcd211 |
+| QA62 | 原FAIL單案加4秒faulthandler，仍在原5秒內FAIL；stack顯示背景位於原exact reader的path lstat，主執行緒QTest.qWait輪詢；不作接受 | 9dbc4e6c286967c7875038cfcecb67e88c7ec3818fec77dac4d0e483ae2944fa |
+| QA63 | Root新test改真正Qt event loop，仍5000ms；讀最終widget結果而非完成後清空的controller transient。compile1、原案1PASS／1.93秒；舊80PASS，另16案因同次選原controller又以plugin載入而fixture缺失ERROR；後續未跑 | 5110fbb79baa65782c77097ad7f14afbd13697703e02cc1c1dbfddfca66a64da |
+| QA64 | Root嘗試預載-p，但tests路徑尚未建立而ImportError；未跑案例，原啟動命令與錯誤保存 | 5f7d518add606ed854ae5d147bd223918ae79336bd71a0056bb5f43fcc4e5a01 |
+| QA65 | 完全沿原QA45已通過的daily-controller獨立命令，16PASS；Workbench85／validator25-0-4、8roots mypy1015與金融精度守衛各自PASS。沒有改原測試、產品守衛或期限；已PASS的20／80案不重跑 | bead936d306b99cea5649ad3ea31a321d9cc36efc9351771a6a6fff97365c27e |
+
+每組110pins前後一致、8GiB committed／12程序、至少8GiB available及原30／180／60秒期限保持；三PID陣列自然空、process／Job handles關閉、mutex釋放，均無forced cleanup。QA61啟動available約21.08GiB。既有`ui_qt.* ignore_errors=True`仍不證UI強型別。各新案例涵蓋年度三檔／原raw、scope／schema隔離、兩市場／缺重複分區、93日、未來cutoff、exact hour、取消與pending、篡改／錯外部SHA、更正另存及pair讀後漂移／無monthly fallback。
+
+這只完成年度工程接線的限定驗證，沒有新network、真來源用途接受、正式Main配置或年度Main／fresh證據；真收據`ended_at`只可作controller完成觀測上界，不偽稱socket EOF精確時間。下一葉先核原收據與全sidecars的來源custody／保守時間basis，再沿原pipeline推進一次性用途接受、明示配置與正常新程序。完整跨年成功原件、長期分段、來源／幣別／execution／cost authority、歷史PIT、真N、完整雙策略績效、Native／EXE、自然成熟與完整Gate各自未接受；不重觸已耗抓取scope、正式資料或停用maintainer。
+
+Increment27文件QA66為12features／11link sources、errors=[]，outer SHA `4be645d2549f0e09a45b6629ffc6471bffb7bc29342077ae55ed1e4cfe9389f3`。56來源鏡像、429保護資產、20原日曆capture／18新官方capture／6控制及64閉鎖Job均讀回不變，readback SHA `8b6cc64b33a4548cfa3b052703f838b3277b0da6e0eb3122767c37a9ad6fdb99`。
+
+### Increment28真取得原件的保守完成觀測與custody
+
+沿原§9.5重用QA27 TWSE3774bytes與QA49 TPEx年度8792bytes原件，不新GET／POST。Root從Increment27已釘選readback取13份原receipt、request／headers／worker job／worker result、raw及原TWSE transport的外部SHA，另存`calendar_annual_observation_source_pins_01.json`，SHA `eee155ba38986fc9c643969665918c1ee1091a2573da370805e71328864d2b64`。沒有修改或補寫原收據、重置attempt額度、重新執行取得helper或公開資料發布。
+
+重用Luna9唯讀複核原JSON，指出receipt雖記worker result路徑卻沒有其SHA。Root另讀原取得程式，確認worker觀測在EOF、raw flush／fsync／關閉及hash後，但不能把稍後釘選改稱當時receipt已綁定。新typed transports採原receipt的controller `ended_at`完成觀測上界，`started_at`明示controller attempt-start；custody分開保存兩原文、worker原文與SHA佐證、basis，沒有官方發布timestamp。TWSE原transport不動，新保守版僅完成觀測欄位不同；原bytes、headers、URL、method及payload仍按原codec核對。
+
+| 組別 | 實際結果 | outer SHA256 |
+|---|---|---|
+| QA67 | 新Root harness compile PASS；讀原worker_job時誤取不存在的aggregate membership key而KeyError，未建立候選輸出，原harness鏡像SHA `575b10baafe4374643b5d65cbf6af427d41220e52eda975402749f97f6727de4`保存 | 579b9ddf224aa8c2c88de1f7a4287aba633db80fd209b2c4dcb3721cf87af346 |
+| QA68 | 改逐項核原schema的query成功／membership／PID清冊／job name hash／handle閉鎖，保留原10秒取得與4MiB／1MiB上限；compile與build20552→fresh32736獨立程序各自PASS，原13來源bytes／SHA／stat不變；每phase重算相同16個記憶體反例，不把兩phase加總案例 | 0ee209202027d97bcaca669f70016b7bf10ff749065d474a8c0f0e0c52061b28 |
+
+年度evidence SHA `005f8df9c0a4df2c5e0c8436baddb25e5f5b64bbcde6304cffa4a318069029d4`，custody SHA `130388c38e5a1f360355fde9b49a79d54537dc796114532e7570630a191ff75c`；10月兩市場各20 sessions，candidate=true／三資格false。Fresh依原外部source pins重算後逐byte核相同新檔，沒有從自填hash建立信任，也未重跑producer。反例涵蓋method、EOF、raw SHA、未來worker時計、未reap、bool status、錯payload及重複header；只改記憶體副本。
+
+兩組123pins前後相同，原8GiB／12程序、至少8GiB available及30／60秒Root命令期限不變，三PID陣列自然空、handles關閉、mutex釋放、無forced cleanup。此葉只有owner output的來源custody與codec／evidence讀回，沒有繞過public artifact保護根、建立daily成功版、真用途接受或年度Main／fresh；原Main正常保存／新程序證據仍屬Increment22／23的合成範圍。下一葉核官方用途鏈與受限一次性接受、明示配置及原Main接點；所有歷史PIT、完整績效、Native／EXE、自然成熟及完整Gate界線保持。
+
+Increment28文件QA69為12features／11link sources、errors=[]，outer SHA `bb056a157d908c0b2981253b7c96a0535dea9c14aaf536f87000dd564643d980`；56來源、429保護資產、67閉鎖Jobs及6份新增custody檔的readback SHA `e5a65b5eecb5f0ba33d0e203b9898334bcbceca7ab84e28f1abe64d579766106`。舊原件／收據／鏡像不改。
+
+### Increment29明示接受binding接正常Main
+
+Root凍結API12並單寫binding／共用接受codec／有界檔案reader／application bootstrap／Main／QA／文件；重用Luna9只改BacktestView、result_panel、原Registry controller及新UI測試，初版四檔鏡像保存，pending writes=false。沒有新建代理，累計9/10。
+
+新`portfolio-calendar-acceptance-binding.v1`只序列化caller明示的ordered兩市場用途接受，canonical UTF-8上限64KiB；外部SHA先於解碼，原單link／reparse／handle／stat前後／protected roots守衛共用。原calendar reader新增optional小上限，預設64MiB與既有呼叫不變；原接受decoder被public classmethod重用並核canonical內容，沒有複製來源接受邏輯。Bootstrap只在明示成對設定中選path／hash，resolve／apply不讀接受或batch；Main才讀設定並將tuple或短錯誤沿原result_panel setter注入，畫面仍指定exact批次與雙SHA，不新增自授欄位或掃latest。
+
+Luna唯讀未找到具體SHA／canonical／路徑／family繞過，另指出caller可改`ApplicationSettings.environment`原dict。Root局部處理：Main入口`dataclass_replace`持有自己的副本，不全域改舊settings契約；正常Main／fresh另改caller原dict，確認本視窗binding仍固定。共用檔案guard讀os.environ只增加保護根，未據此換binding。所有真來源用途接受仍為獨立裁決；本葉配置與時鐘都是明示合成fixture，不能當真接受或實際每日成功時間。
+
+| 組別 | 實際結果 | outer SHA256 |
+|---|---|---|
+| QA70 | compile13、新binding／settings30PASS／1平台symlink SKIP；UI注入8PASS；舊snapshot／artifact／daily／bootstrap等145PASS／1平台連結SKIP；舊controller9／daily controller16、Workbench85／validator25-0-4、8roots mypy1016與金融精度守衛各自PASS | 6b24f945b69c65bc4fdc63d1cd931818636c47c87f06d34bb02d88468e1ad9cf |
+| QA71 | 只建一次年度Main合成fixture，原annual writer保存3檔與獨立acceptance binding共4來源；不產生run。外部fixture parent SHA `0eabd3eea45772150642922cbcff4e05f5666b42283fca76cd31ec25b0bfb834`另存owner鏡像 | 2589a96c1faa16f76ad33859111c99ebeb50b82c529ae3af364b75f3200721eb |
+| QA72 | 沿QA46 harness、原QA41兩個V3 run及原9保存來源，加入4年度合成來源；正常Main2440→fresh36248由外部binding載入接受，沒有呼controller setter作QA注入。重開／比較／返回、版本／非clock診斷與13來源bytes／SHA／stat相同，actual cutoff各自保留；Main局部副本驗證、Workbench85／validator25-0-4／mypy1016 PASS | be87efaceb684eeb7810bc0430fcf51754d8bb1ecd1f66d82fe3b17e4af3d7cb |
+| QA73 | 正常Main34496以明示錯外部SHA啟動；其他工作區仍建立，日曆接受缺席且具名錯誤跨模式保持，不能固定daily pin或比較；同13來源不變，合作關閉無worker／無network | 03462c3d0c5c5dd998e4f631719c67f4c6b722c59c2c5ed9a7c5143630e218d8 |
+
+QA72沿原offscreen Main的120秒phase／270秒driver／15秒UI期限；actual phase退出後才啟fresh，同named Job，原8GiB／12程序與至少8GiB available不變。各組三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。QA70為135pins，QA72為137、QA73為138，前後均一致；新runner v2只增加兩個可清除的calendar配置env鍵，原runner／三控制SHA、spec及收據保留。`ui_qt.* ignore_errors=True`仍不證UI強型別。
+
+這解除正常Main明示接受配置與年度合成新程序的工程缺口，不代表已接受真官方用途或將本機正式Main配置到候選。沒有新抓取、正式資料／Task／排程寫入、重產既有run或發布。下一葉依原§9.5核官方完整用途鏈與受限一次性接受，再沿真原件版本→解析品質→實際成功保存→public reader→正常UI→新程序。歷史PIT、完整跨年與長期分段、source／currency／execution／cost authority、真N、完整雙策略績效、Native／EXE及自然成熟仍各自未接受，完整Gate維持未完成。
+
+## Increment30：年度日曆用途複核與具名缺件
+
+Root重讀舊task的完整Swagger原件，309960bytes／SHA `06e1cea82448361e733a0ad1ae16e52f5d5d6b71905acd078472f852c32c0eb0`，未重新下載。GET日曆path／四欄位及官方授權鏈已對上[政府資料集11761](https://data.gov.tw/dataset/11761)、[TWSE條款](https://www.twse.com.tw/zh/page/terms/use.html)與[政府資料開放條款](https://data.gov.tw/license)。保留Swagger response寫object、實際原件array的差異；`queryYear`未文件化、內部schema不是官方版本、metadata更新時間不是內容timestamp，未授任意歷史年度查詢或PIT。
+
+Root發行單一TWSE年度股票日曆前瞻每日研究用途接受，原parser／schema／`trading_session_date`及`daily-hour.v1`不變；日常仍須完整validator與實際首次保存／完成時鐘，不每日重做人工用途審批。接受只存owner task `calendar_twse_annual_use_acceptance_01.json`，SHA `7f120b20e261d6173f2536ab206ddb4576b258954fc7839259ceb5adf84bf697`。這是Root的工程來源用途裁決，沒有對外簽約、購買、第三方聯絡或寫入正式配置。
+
+TPEx中文[使用條款](https://www.tpex.org.tw/zh-tw/gtsm_disclaimer.html?l=zh-tw)已由瀏覽器DOM／AX實際讀到，第5節限制未經同意方式的自動下載，第7節例外限其授權政府開放平臺提供的資料。web工具同頁403、較早猜測terms路徑internal error分別保留；瀏覽器觀測沒有假報為完整HTTP原件。年度POST已有頁面動作與QA49原件，仍未找到覆蓋指定資料／取得方式的開放授權或同意證據；搜尋未找到不證不存在。其他TPEx開放資料集或「供研究參考」文字不能代授權。
+
+因此不發TPEx接受或雙市場binding，不重抓年度POST、不發布雙市日批；此項歸D官方用途／文件缺件。觀測紀錄 `calendar_source_use_observation_03.json` SHA `17089e7327497f713a2b8fb15b3406c12223f3e33d4f77d53a1100a70d75dc6f`；[完整複核](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/calendar_source_use_review_increment30.md)綁原Swagger、QA27／49原件與收據，舊scope額度不重置。Luna9重用唯讀核候選證據缺件，pending writes=false，累計9/10。
+
+本輪無產品Python修改。QA75已通過新單市場接受canonical codec／原annual scope／review外部SHA與時間政策核對；只有TWSE接受時，原雙市場mode依原原因碼拒絕。文件治理12features／15link sources／errors=[]，只支持結構與紀錄檢查。outer `ce02714f845549a59069667e4b92a94a`／SHA `cc70dbc6a23c63a3d0dc5856cad1e66afd3f3a0f739ba0c09a968d9c93221398`，149pins前後一致，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。接續原雙策略source／currency／execution／cost authority的可做工程葉片，金融及來源裁決保留Root；完整P00–P14／G0–G4、真N、Native／EXE及自然成熟仍未完成。

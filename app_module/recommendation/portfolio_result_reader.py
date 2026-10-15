@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Literal, TypeAlias
+from typing import Callable, Literal, TypeAlias
 
 from app_module.recommendation.contracts import RecommendationExecution
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
@@ -14,6 +14,7 @@ from app_module.recommendation.replay_lineage import (
     ReplayLineageSidecarV1,
 )
 from app_module.recommendation.replay_lineage_service import (
+    ReplayLineageReadCancelledError,
     verify_replay_lineage_children,
 )
 from app_module.recommendation_portfolio_dtos import (
@@ -26,11 +27,20 @@ from app_module.recommendation_portfolio_result_artifact import (
 from app_module.recommendation_portfolio_result_artifact_v2 import (
     RecommendationPortfolioResultArtifactV2,
 )
-from app_module.research_run_service import ResearchRunData, ResearchRunService
+from app_module.recommendation_portfolio_result_artifact_v3 import RecommendationPortfolioResultArtifactV3
+from app_module.research_run_service import (
+    ResearchRunData,
+    ResearchRunReadCancelledError,
+    ResearchRunService,
+)
 
 
 class RecommendationPortfolioResultReadbackError(RuntimeError):
     """Registry 完整 portfolio DTO 或其 child lineage 無法安全讀回。"""
+
+
+class RecommendationPortfolioResultReadCancelledError(RecommendationPortfolioResultReadbackError):
+    """只表達已確認的讀取取消；不將完整性或 I/O 異常改寫為取消。"""
 
 
 class PortfolioResultUnavailableReason(str, Enum):
@@ -77,6 +87,7 @@ class RecommendationPortfolioResultReader:
         expected_metadata_sha256: str | None = None,
         max_artifact_bytes: int | None = None,
         max_total_bytes: int | None = None,
+        check_cancel: Callable[[], bool] | None = None,
     ) -> PortfolioResultReadback:
         """從已驗證的 Registry envelope 組回 DTO，舊格式明示 unavailable。"""
 
@@ -94,14 +105,24 @@ class RecommendationPortfolioResultReader:
             or any(char not in "0123456789abcdef" for char in expected_metadata_sha256)
         ):
             raise RecommendationPortfolioResultReadbackError("外部 metadata SHA 必須是 canonical 64hex")
+        if check_cancel is not None and not callable(check_cancel):
+            raise RecommendationPortfolioResultReadbackError("check_cancel 必須可呼叫")
         try:
-            if max_artifact_bytes is None and max_total_bytes is None:
+            self._check_cancel(check_cancel)
+            if check_cancel is not None:
+                loaded = self._research_run_service.load_run_data(
+                    registry_run_id, max_artifact_bytes=max_artifact_bytes,
+                    max_total_bytes=max_total_bytes, check_cancel=check_cancel,
+                )
+            elif max_artifact_bytes is None and max_total_bytes is None:
                 loaded = self._research_run_service.load_run_data(registry_run_id)
             else:
                 loaded = self._research_run_service.load_run_data(
                     registry_run_id, max_artifact_bytes=max_artifact_bytes,
                     max_total_bytes=max_total_bytes,
                 )
+        except (RecommendationPortfolioResultReadCancelledError, ResearchRunReadCancelledError) as exc:
+            raise RecommendationPortfolioResultReadCancelledError("read_cancelled") from exc
         except Exception as exc:
             raise RecommendationPortfolioResultReadbackError(
                 "Research Run 已保存資料未通過完整性讀取"
@@ -112,12 +133,19 @@ class RecommendationPortfolioResultReader:
 
                 if metadata_sha256(loaded.metadata) != expected_metadata_sha256:
                     raise RecommendationPortfolioResultReadbackError("所選 metadata 與 exact reader 來源不符")
-            result = self._read_verified_data(registry_run_id, loaded)
+            self._check_cancel(check_cancel)
+            if check_cancel is None:
+                result = self._read_verified_data(registry_run_id, loaded)
+            else:
+                result = self._read_verified_data(registry_run_id, loaded, check_cancel=check_cancel)
             if expected_metadata_sha256 is not None:
                 after = self._research_run_service.repository.get_metadata(registry_run_id)
                 if after is None or metadata_sha256(after) != expected_metadata_sha256:
                     raise RecommendationPortfolioResultReadbackError("exact 讀取期間 metadata 已變更")
+            self._check_cancel(check_cancel)
             return result
+        except ReplayLineageReadCancelledError as exc:
+            raise RecommendationPortfolioResultReadCancelledError("read_cancelled") from exc
         except RecommendationPortfolioResultReadbackError:
             raise
         except Exception as exc:
@@ -125,10 +153,17 @@ class RecommendationPortfolioResultReader:
                 "完整 portfolio DTO 或 replay child 驗證失敗"
             ) from exc
 
+    @staticmethod
+    def _check_cancel(check_cancel: Callable[[], bool] | None) -> None:
+        if check_cancel is not None and check_cancel():
+            raise RecommendationPortfolioResultReadCancelledError("read_cancelled")
+
     def _read_verified_data(
         self,
         registry_run_id: str,
         loaded: ResearchRunData,
+        *,
+        check_cancel: Callable[[], bool] | None = None,
     ) -> PortfolioResultReadback:
         metadata = loaded.metadata
         if metadata.run_id != registry_run_id:
@@ -161,7 +196,8 @@ class RecommendationPortfolioResultReader:
 
         artifact = loaded.portfolio_result_artifact
         if type(artifact) not in (
-            RecommendationPortfolioResultArtifactV1, RecommendationPortfolioResultArtifactV2
+            RecommendationPortfolioResultArtifactV1, RecommendationPortfolioResultArtifactV2,
+            RecommendationPortfolioResultArtifactV3,
         ) or artifact is None:
             raise RecommendationPortfolioResultReadbackError(
                 "marked Registry run 缺少已驗證 portfolio result envelope"
@@ -214,10 +250,12 @@ class RecommendationPortfolioResultReader:
             lineage,
             portfolio_parent_id=artifact.portfolio_parent_id,
             snapshots_by_date=snapshots_by_date,
+            check_cancel=check_cancel,
         )
 
         # 僅在全批次 bytes/hash/日期/parent 均驗證後，依日期映射再附加 child。
         for snapshot_date, snapshot in snapshots_by_date.items():
+            self._check_cancel(check_cancel)
             snapshot.attach_canonical_execution(executions_by_date[snapshot_date])
         return result
 
@@ -261,7 +299,7 @@ class RecommendationPortfolioResultReader:
     def _validate_artifact_binding(
         loaded: ResearchRunData,
         descriptor: dict[object, object],
-        artifact: RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2,
+        artifact: RecommendationPortfolioResultArtifactV1 | RecommendationPortfolioResultArtifactV2 | RecommendationPortfolioResultArtifactV3,
     ) -> None:
         metadata = loaded.metadata
         expected = {
@@ -342,6 +380,7 @@ class RecommendationPortfolioResultReader:
         *,
         portfolio_parent_id: str,
         snapshots_by_date: dict[date, RecommendationSnapshotDTO],
+        check_cancel: Callable[[], bool] | None = None,
     ) -> dict[date, RecommendationExecution]:
         if type(envelope) is not ReplayLineageReadEnvelope:
             raise RecommendationPortfolioResultReadbackError(
@@ -373,7 +412,13 @@ class RecommendationPortfolioResultReader:
                 "replay lineage child 日期集合必須精確符合 portfolio snapshots"
             )
 
-        verified = verify_replay_lineage_children(envelope, self._execution_persistence)
+        self._check_cancel(check_cancel)
+        if check_cancel is None:
+            verified = verify_replay_lineage_children(envelope, self._execution_persistence)
+        else:
+            verified = verify_replay_lineage_children(
+                envelope, self._execution_persistence, check_cancel=check_cancel,
+            )
         if len(verified) != len(sidecar.children):
             raise RecommendationPortfolioResultReadbackError(
                 "已驗證 child 數量與 replay lineage 不一致"

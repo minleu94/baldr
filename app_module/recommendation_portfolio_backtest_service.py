@@ -24,6 +24,7 @@ from app_module.recommendation_portfolio_period_precision_v2 import (
     RecommendationPortfolioPeriodPrecisionV2Error,
 )
 from app_module.recommendation_portfolio_dates import parse_stock_dates
+from app_module.recommendation_portfolio_execution_inputs_v1 import RecommendationPortfolioExecutionInputsV1
 from app_module.recommendation_portfolio_metrics import (
     calculate_robustness_metrics,
     calculate_rolling_risk_metrics,
@@ -609,6 +610,15 @@ class RecommendationPortfolioBacktestService:
                 slippage_bps=slippage_bps,
                 tax_bps=tax_bps,
             )
+        execution_input_capture = RecommendationPortfolioExecutionInputsV1.capture(
+            execution_contract=NEXT_OPEN_CONTRACT,
+            fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps,
+            submitted_lot_size=lot_size, effective_lot_size=effective_lot_size,
+            cost_policy_metadata=cost_policy.metadata(
+                lot_type=normalized_policy_lot_type,
+                instrument_type=normalized_policy_instrument_type,
+            ) if cost_policy is not None else None,
+        )
         data = history.copy()
         if not {"日期", "證券代號", "收盤價"}.issubset(data.columns):
             raise ValueError("歷史資料缺少日期、證券代號或收盤價")
@@ -1137,7 +1147,8 @@ class RecommendationPortfolioBacktestService:
             period_precision_observations=tuple(period_precision_observations),
             period_precision_capture_status=period_precision_capture_status,
             period_precision_capture_reason=period_precision_capture_reason,
-            period_precision_capture=period_precision_capture)
+            period_precision_capture=period_precision_capture,
+            execution_input_capture=execution_input_capture)
         result.attach_replay_parent_id(parent_result_id)
         return result
 

@@ -10,6 +10,7 @@ from app_module.recommendation_portfolio_period_precision_v2 import (
     RecommendationPortfolioPeriodObservationV2,
 )
 from financial_module.units import quantize_money, to_decimal
+from app_module.recommendation_portfolio_execution_inputs_v1 import RecommendationPortfolioExecutionInputsV1
 
 if TYPE_CHECKING:
     from app_module.recommendation.contracts import RecommendationExecution
@@ -263,6 +264,7 @@ class RecommendationPortfolioBacktestResultDTO:
     period_precision_capture: (
         RecommendationPortfolioPeriodPrecisionCaptureV2 | None
     ) = None
+    execution_input_capture: RecommendationPortfolioExecutionInputsV1 | None = None
 
     @property
     def replay_parent_id(self) -> str | None:

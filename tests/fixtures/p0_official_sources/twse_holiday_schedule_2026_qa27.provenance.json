@@ -1,0 +1,9 @@
+{
+  "fixture": "twse_holiday_schedule_2026_qa27.json",
+  "bytes": 3774,
+  "sha256": "7644c1a8af784c09f54670fd7413f536b13eb76c54d658058e8873d1aee32117",
+  "source_url": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule?queryYear=115",
+  "original": "output/tasks/baldr-completion-resume-20261014-01a13cf9/calendar_official_attempts_01/twse-attempt01/response.raw",
+  "original_transport_receipt_sha256": "06db8144b1c92cc4e28cd4ac11b06a8aabf54b7d15ad1887887b0b63f99590b3",
+  "qualification": "完整原件只作年度解析回歸；fixture中的原件不授來源用途或歷史PIT"
+}

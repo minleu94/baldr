@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Callable
 
 from app_module.recommendation.contracts import (
     IndexStatus,
@@ -21,6 +22,10 @@ from app_module.recommendation_portfolio_dtos import (
 
 class ReplayLineagePersistenceError(RuntimeError):
     """Child artifact 未達可驗證的 indexed 保存狀態。"""
+
+
+class ReplayLineageReadCancelledError(ReplayLineagePersistenceError):
+    """逐筆 child 讀回收到明示取消；不發行部分驗證結果。"""
 
 
 def persist_replay_lineage_children(
@@ -69,6 +74,8 @@ def persist_replay_lineage_children(
 def verify_replay_lineage_children(
     envelope: ReplayLineageReadEnvelope,
     persistence: RecommendationExecutionPersistence,
+    *,
+    check_cancel: Callable[[], bool] | None = None,
 ) -> tuple[RecommendationExecution, ...]:
     """對 Registry sidecar 列出的每個 child 讀取實際 bytes 並驗身份/hash。"""
 
@@ -76,15 +83,24 @@ def verify_replay_lineage_children(
         raise TypeError("envelope 必須是 ReplayLineageReadEnvelope")
     if type(persistence) is not RecommendationExecutionPersistence:
         raise TypeError("persistence 必須是 RecommendationExecutionPersistence")
+    if check_cancel is not None and not callable(check_cancel):
+        raise TypeError("check_cancel 必須可呼叫")
+    if check_cancel is not None and check_cancel():
+        raise ReplayLineageReadCancelledError("read_cancelled")
     verified: list[RecommendationExecution] = []
     for child in envelope.sidecar.children:
+        if check_cancel is not None and check_cancel():
+            raise ReplayLineageReadCancelledError("read_cancelled")
         _, execution_envelope = persistence.read_verified_envelope(child.result_id)
         verified.append(child.verify_execution_artifact(execution_envelope.raw_payload))
+        if check_cancel is not None and check_cancel():
+            raise ReplayLineageReadCancelledError("read_cancelled")
     return tuple(verified)
 
 
 __all__ = (
     "ReplayLineagePersistenceError",
+    "ReplayLineageReadCancelledError",
     "persist_replay_lineage_children",
     "verify_replay_lineage_children",
 )

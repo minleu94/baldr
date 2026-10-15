@@ -144,6 +144,14 @@ class DailySourceUseAcceptance:
             "time_basis_policy": self.time_basis_policy,
         }
 
+    @classmethod
+    def from_dict(cls, value: object) -> DailySourceUseAcceptance:
+        """重用原接受decoder；canonical內容不能以正規化掩蓋來源漂移。"""
+        result = _acceptance_from_dict(value)
+        if result.to_dict() != value:
+            raise DailySourceSnapshotError("一次性用途接受紀錄不是canonical內容")
+        return result
+
 
 @dataclass(frozen=True, slots=True)
 class DailySourceSnapshotRecord:

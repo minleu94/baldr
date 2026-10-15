@@ -77,6 +77,8 @@ Research Lab 的 Paper 保存快照查找使用可選的外部 artifacts root；
 
 ## 研究畫面與保存身份
 
+Main的日曆接受配置沿原`ApplicationSettings`→BacktestView→result_panel→Registry controller。明示外部path／SHA只載入已有的兩市場typed用途接受，來源家族在binding與pin分別核對；不讀batch、不自建接受或選latest。Main複製caller設定並固定本視窗接受tuple；缺設定或讀取失敗只停用daily用途，錯誤跨模式保留。原worker native-finished、世代／pin／metadata重驗及關閉取消流程不變。配置與時間契約見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
+
 市場研究畫面消費具來源版本、日期、母體、方法與 hash 的 snapshot／manifest。Daily Research、候選摘要、研究書籤與跨頁投影沿同一已核驗來源和 query；readback 按保存的 source identity 重開，不搜尋 latest、不在 UI 重算指標或重新執行 producer。來源缺件、修訂、方法不相容或日期不可判定時保留 unknown／拒絕，不能套用舊投影或改讀一般即時行情。
 
 原生個股排名是獨立研究來源，須以已驗證的 feature snapshot 與明示母體作 parent。原排名發布者、reader、每日研究 consumer 與 pinned 個股 context 保留同一 manifest／artifact 身份；版本化收藏保存方法、比較窗、母體、排序與所選股票。舊 v1 收藏維持原 bytes／identity 語意，rank context 走明示 v2。另開 latest 個股研究是不同路由，不改寫原收藏；收藏也不造新的 Recommendation `result_id` 或持倉 ledger。

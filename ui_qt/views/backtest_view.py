@@ -57,6 +57,7 @@ from app_module.recommendation_portfolio_backtest_service import RecommendationP
 from app_module.recommendation_portfolio_dtos import RecommendationPortfolioBacktestResultDTO
 from app_module.recommendation_portfolio_dates import parse_stock_dates
 from app_module.research_run_dtos import ResearchRunMetadataDTO
+from data_module.daily_source_snapshot import DailySourceUseAcceptance
 from app_module.research_result_presentation import (
     build_recommendation_replay_sections,
     build_train_test_reliability_notice,
@@ -126,6 +127,8 @@ class BacktestView(QWidget):
         strategy_version_service=None,
         paper_checkpoint_account_service=None,
         paper_checkpoint_disabled_reason=None,
+        calendar_daily_acceptances: tuple[DailySourceUseAcceptance, DailySourceUseAcceptance] | None = None,
+        calendar_daily_acceptance_error: str = "",
     ):
         """初始化回測視圖
 
@@ -135,10 +138,30 @@ class BacktestView(QWidget):
             batch_backtest_service: 批次回測服務實例（可選）
             watchlist_service: 觀察清單服務實例（可選，用於跨 Tab 共用）
             parent: 父窗口
+            calendar_daily_acceptances: Main 已讀取的每日日曆用途接受快照
+            calendar_daily_acceptance_error: 明示配置讀取失敗原因
         """
+        if calendar_daily_acceptances is not None and (
+            type(calendar_daily_acceptances) is not tuple
+            or len(calendar_daily_acceptances) != 2
+            or any(
+                type(item) is not DailySourceUseAcceptance
+                for item in calendar_daily_acceptances
+            )
+        ):
+            raise TypeError("每日日曆接受配置必須是兩個明示的 typed acceptance")
+        if type(calendar_daily_acceptance_error) is not str:
+            raise TypeError("每日日曆接受配置錯誤原因必須是字串")
+        if len(calendar_daily_acceptance_error) > 512:
+            raise ValueError("每日日曆接受配置錯誤原因必須是512字內字串")
+        if calendar_daily_acceptances is not None and calendar_daily_acceptance_error:
+            raise ValueError("每日日曆接受配置與錯誤原因不可同時提供")
         super().__init__(parent)
         self.backtest_service = backtest_service
         self.config = config
+        # 只保留呼叫端已載入的不可變快照；設定解析與來源讀取留在 Main。
+        self.calendar_daily_acceptances = calendar_daily_acceptances
+        self.calendar_daily_acceptance_error = calendar_daily_acceptance_error
         self.batch_backtest_service = batch_backtest_service
         self.watchlist_service = watchlist_service
         self.paper_checkpoint_account_service = paper_checkpoint_account_service
@@ -795,6 +818,9 @@ class BacktestView(QWidget):
         history = getattr(result_panel, "research_history_lookup", None)
         if history is not None and hasattr(history, "invalidate_and_clear"):
             history.invalidate_and_clear()
+        pair_controller = getattr(result_panel, "period_pair_controller", None)
+        if pair_controller is not None:
+            pair_controller.invalidate_execution()
 
     def _execute_backtest(self):
         """執行回測（支援單檔和批次模式）"""
@@ -2537,6 +2563,8 @@ class BacktestView(QWidget):
             else {}
         )
         save_kwargs["portfolio_result"] = result
+        if result.execution_input_capture is not None:
+            save_kwargs["portfolio_execution_inputs"] = result.execution_input_capture
         self.research_run_service.save_run(metadata, equity, trades, **save_kwargs)
         self.current_portfolio_run_id = None
         self.current_recommendation_registry_run_id = metadata.run_id
@@ -5202,6 +5230,12 @@ class BacktestView(QWidget):
 
     def request_cooperative_shutdown(self) -> bool:
         workers = [self.worker, *self._report_export_workers]
+        pair_controller = getattr(
+            getattr(self, "result_panel", None), "period_pair_controller", None
+        )
+        if pair_controller is not None:
+            pair_controller.begin_shutdown()
+            workers.append(pair_controller.worker)
         history = getattr(getattr(self, "result_panel", None), "research_history_lookup", None)
         if history is not None:
             history._closed = True

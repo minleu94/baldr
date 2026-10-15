@@ -23,6 +23,10 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 ## 讀寫與保存契約
 
+日曆JSON原件以獨立typed transport保存HTTP／EOF／hash，daily batch沿原兩市場parser發行create-only capture／manifest／receipt。Exact reader要求外部manifest及receipt SHA、各市場獨立用途接受錨點，讀前後拒pending／failure並重驗原件；更正另存，93 inclusive日限制與candidate資格保留。Registry原頁已接明示daily pin，合成Main／fresh重用已保存來源限定通過；獨立接受紀錄未配置時阻擋，不掃latest或從capture自授信任。真用途接受、正式Main配置與publisher／Task仍待，詳[日曆版本契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#日曆完整json批次increment21)。
+
+TPEx年度開休市頁的JSON內嵌HTML由`data_module/tpex_trading_date_html_v1.py`先核原bytes／外部SHA、baseline、兩表結構及rowspan，原`official_calendar_bundle`再處理股票開休市；三類債券保留為非股票列，不能關閉股票日期。這個候選來源與舊monthly boolean是不同schema，目前尚未接daily wire／用途錨點，不因年度基準日期或完整取得授PIT。詳[年度解析契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
+
 P00／P03 新保存來源採[每日快照小時契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)：對應版本官方時間與成功批次完成時間各向上取整到台北小時，再取較晚者；缺官方小時採具名批次依據。批次包含成功保存與品質驗證，reader 釘同一批次與版本，decision cutoff 不向上取整。此規則只建立首次成功保存後的前瞻可用性，不把 `persisted_at` 改寫為官方發布時間、歷史 PIT 或 Paper writer availability。來源／用途一次接受與每日批次自動驗證分開，舊 FAIL 及未驗範圍保留。
 
 MOPS saved-capture producer 已沿 `UpdateService` 的明確 root／scope／accepted anchor／batch port 接上 preparation、Decimal正規化、immutable writer及新reader。Quarantine v2分存HTTP/canonical原件與hash；成功public reader拒pending publication barrier，发布後clock／隔離搬移失敗仍不授成功。Scalar pin仍不足以代表雙市場cohort，正常UI／session及真來源接受尚待；晚本機materialization的可用時間不早於原觀測。
@@ -87,7 +91,19 @@ Scheduled PIT／Direct wrapper 在啟動 worker 前做唯讀 capacity preflight�
 
 OOC `minimal_linear_shadow` 只接受單一 `ridge_logistic` 與明示 horizon，並在相同 frozen rows／cost 下對照 Rule／Equal Weight；`full_shadow` 保留多 horizon／HGB challenger。若 release root 有 `release_manifest.json`，`AllocationReleaseAdapter` 仍須核 artifact／sidecar hashes、feature order、missing policy、dataset lineage 與 calibration；frozen-row parity 失敗時退回 Rule-only。缺 attached calibration artifact 時，OOC diagnostic calibration 不能充當正式校準器。
 
+年度POST原件另以`data_module/tpex_annual_calendar_transport_v1.py`的具名DTO／codec保留；共用原V1完整body校驗但不冒充舊monthly response，亦不新增getter。年度evidence及具名daily保存／reader已沿同一核心接入，舊月別wire原義保持；真source／schema用途接受與正式配置仍待。
+
+年度期間證據使用`recommendation_portfolio_annual_calendar_evidence_v1`的獨立canonical wire，保存兩市場年度原transport並沿Root金融衍生逐年重驗，公開日期保留原pair使用的ISO字串。它不經舊monthly evidence codec、不重編碼raw；具名年度daily與月別共用同一create-only／pending／clock／exact read核心，最小唯讀Protocol保留原pair診斷。原三檔schema與新年度三檔各自獨立，兩份可信用途錨點固定來源家族；合成測試不授真用途或成功批次，詳[年度候選契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
+
+年度真取得custody候選以外部pins另存原receipt／sidecars與保守controller完成觀測版，原worker時計不補造receipt綁定；兩程序可重算同年度evidence。此owner output沒有發布daily或繞過public artifact的output／formal roots守衛，真用途接受與正常Main配置仍各自待核，見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
+
 ## Recommendation 校準套件的 Windows 檔案接點
+
+
+
+
+
+
 
 排程consumer的同次身份邊界：日曆refresh `refreshed`只取刷新後終態並核決策年／path／hash／clock；Evidence要求canonical recommendation與passed狀態各自成立。個人H20每日推論與manifest發布使用既有 `PersonalH20ReadSession`，只在同一operation共用完整JSON binding，每份capture仍核原bytes，成功前重驗來源群組與完整manifest，變動或取消不發布成功reference。私人原frozen model、中央母體、20-session與formal資格不變；Paper NULL open僅同日retry，跨日不回填。驗收與來源限制見[10/13排程QA](../../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
 

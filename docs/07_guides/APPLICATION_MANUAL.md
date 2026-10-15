@@ -57,6 +57,16 @@ Research Lab 的 Paper 保存快照查找需先由管理員在啟動環境明示
 
 在 Paper 區回看已保存健康評估時，先明確選取 receipt／snapshot，再開啟並核對來源與持倉身份；返回或正常關閉後可沿保存偏好重開同一評估。步驟、分開的時鐘、WATCH／未知與讀取失敗處理見[已保存健康評估與回訪](manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)。
 
+Research Lab 的「研究 Registry」新增兩筆推薦回放的完整期間診斷：先保存本輪結果，再選原 run；輸入既有日曆原件、保存收據 SHA-256 與市場後，恰選兩筆推薦回放並按「比較完整期間」。預期／實際／缺日與資格阻擋分列；「返回已選 run」保留選取。步驟與重開、取消及限制見[Registry 雙 run 完整期間診斷](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
+
+日曆來源也可明選「每日批次」，填指定批次目錄、manifest 與成功收據兩份 SHA；畫面須先有兩市場獨立用途接受紀錄，缺件時會停用比較。目前正式 Main 尚未配置真接受紀錄；合成 QA 的保存讀回不代表此缺口已解除。不要自行用批次內容建立接受紀錄，或以新版本替較早決策補造歷史可得時間。
+
+同一表單可沿已配置的兩市場接受紀錄讀年度來源批次；年度與月別的接受紀錄、批次與收據須整組一致，混搭會拒絕。這不新增可手填授權的欄位；年度正常控制器與Main／新程序已用隔離合成錨點驗證，真接受與正式配置仍待。
+
+進階日曆用途配置由資料owner提供已核接受檔與獨立SHA，以`CALENDAR_DAILY_ACCEPTANCE_BINDING_PATH`／`CALENDAR_DAILY_ACCEPTANCE_BINDING_SHA256`成對設定後重開程式。Main固定本視窗接受，原表單再指定批次；讀取失敗顯示「來源用途接受設定無法讀取」，不影響其他工作區。正常Main／新程序已驗合成年度binding；真接受與正式資料配置仍未授予，詳[Registry步驟](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
+
+新的next-open保存亦保留本輪提交的成本與lot、實際採用值；未填成本與明示0分開記錄。重開沿已保存值，較早run不會由目前設定補值；缺來源、幣別或成本權威仍不可作績效排名。損毀或超限附件會拒讀，保留錯誤與run ID交owner處理。
+
 ## 4. 數據更新
 
 舊連結入口保留；目前更新流程與狀態判讀集中在[資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md#檢查與更新資料)。

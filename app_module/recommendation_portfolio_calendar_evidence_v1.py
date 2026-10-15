@@ -11,7 +11,7 @@ import hashlib
 import json
 import math
 import re
-from typing import Literal, NoReturn, cast
+from typing import Literal, NoReturn, Protocol, cast
 
 from data_module.official_calendar_bundle import (
     MAX_CAPTURE_DAYS,
@@ -41,6 +41,30 @@ _EVIDENCE_FIELDS = {
 
 class PortfolioPeriodCalendarEvidenceV1Error(ValueError):
     """候選行事曆證據或其原始回應不符合有界 canonical 契約。"""
+
+
+class PortfolioPeriodCalendarEvidenceReadV1(Protocol):
+    """原pair共用的唯讀證據介面；具名來源wire與接受資格仍各自核對。"""
+
+    @property
+    def start_date(self) -> str: ...
+    @property
+    def end_date(self) -> str: ...
+    @property
+    def captured_at(self) -> str: ...
+    @property
+    def evidence_sha256(self) -> str: ...
+    @property
+    def candidate_only(self) -> bool: ...
+    @property
+    def historical_pit_eligible(self) -> bool: ...
+    @property
+    def performance_eligible(self) -> bool: ...
+    @property
+    def formal_clock_eligible(self) -> bool: ...
+
+    def expected_session_dates(self, market: Literal["twse", "tpex"]) -> tuple[str, ...]: ...
+    def to_json(self) -> str: ...
 
 
 def _fail(reason: str) -> NoReturn:
@@ -341,11 +365,11 @@ def _response_records_from_mappings(
             _fail("twse_response_mapping_key_invalid")
         twse_records.append(_CalendarResponseEvidenceV1.from_response(
             response, expected_kind="twse", expected_key=str(key)))
-    for key, response in tpex_items:
-        if type(key) is not str:
+    for month_key, response in tpex_items:
+        if type(month_key) is not str:
             _fail("tpex_response_mapping_key_invalid")
         tpex_records.append(_CalendarResponseEvidenceV1.from_response(
-            response, expected_kind="tpex", expected_key=key))
+            response, expected_kind="tpex", expected_key=month_key))
     twse_records.sort(key=lambda item: int(item.key))
     tpex_records.sort(key=lambda item: item.key)
     identities = [(item.kind, item.key) for item in (*twse_records, *tpex_records)]

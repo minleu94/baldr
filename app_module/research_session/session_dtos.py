@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Mapping, Optional
+from app_module.portfolio_research_stock_projection import PortfolioScenarioStockReference
 
 
 RESEARCH_WORKFLOW_PATH = (
@@ -266,6 +267,7 @@ class ResearchStockContextDTO:
     daily_snapshot_combine_mode: str = ""
     # 原始排名研究內容來自 immutable publisher manifest，不由目前排名或價格回填。
     rank_context: Optional[ResearchRankContextDTO] = None
+    portfolio_scenario_ref: PortfolioScenarioStockReference | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -316,6 +318,14 @@ class ResearchStockContextDTO:
             "selected_saved_decision",
         }:
             raise ValueError("ml_scope_mode 僅接受明確支援的個股研究範圍")
+        scenario_ref = self.portfolio_scenario_ref
+        if scenario_ref is not None:
+            if type(scenario_ref) is not PortfolioScenarioStockReference:
+                scenario_ref = PortfolioScenarioStockReference.from_mapping(scenario_ref)
+                object.__setattr__(self, "portfolio_scenario_ref", scenario_ref)
+            if (self.source_kind != "portfolio_research_scenario"
+                    or self.source_snapshot_id != scenario_ref.artifact_id):
+                raise ValueError("portfolio scenario參照與研究來源不一致")
         rank_context = self.rank_context
         if rank_context is not None and not isinstance(rank_context, ResearchRankContextDTO):
             if not isinstance(rank_context, Mapping):

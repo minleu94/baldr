@@ -37,6 +37,10 @@ from app_module.price_change_direction import (
     resolve_signed_change as _resolve_signed_change,
 )
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
+from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+from app_module.portfolio_research_stock_projection import (
+    PortfolioScenarioStockProjection, PortfolioScenarioStockReference, project_saved_scenario_stock,
+)
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
     DailyMarketFeatureSnapshotService,
@@ -131,6 +135,7 @@ class StockResearchReportReadService:
         config: object,
         *,
         portfolio_service: object | None = None,
+        portfolio_research_workspace: PortfolioResearchScenarioWorkspace | None = None,
         watchlist_analysis_service: WatchlistAnalysisService | None = None,
         condition_monitor: PortfolioConditionMonitor | None = None,
         position_health_service: PositionHealthService | None = None,
@@ -147,6 +152,7 @@ class StockResearchReportReadService:
     ) -> None:
         self.config = config
         self.portfolio_service = portfolio_service
+        self.portfolio_research_workspace = portfolio_research_workspace
         self.watchlist_analysis_service = watchlist_analysis_service
         if self.watchlist_analysis_service is None and getattr(config, "output_root", None) is not None:
             self.watchlist_analysis_service = WatchlistAnalysisService(config)
@@ -207,6 +213,11 @@ class StockResearchReportReadService:
 
         code = _normalize_stock_code(stock_code)
         context_map = _context_map(context)
+        scenario_ref = context.get("portfolio_scenario_ref") if isinstance(context, Mapping) else getattr(context, "portfolio_scenario_ref", None)
+        if scenario_ref is not None:
+            exact_ref = scenario_ref if type(scenario_ref) is PortfolioScenarioStockReference else PortfolioScenarioStockReference.from_mapping(scenario_ref)
+            if context_map.get("source_kind") != "portfolio_research_scenario" or context_map.get("source_snapshot_id") != exact_ref.artifact_id:
+                raise ValueError("配置封存參照與來源種類或artifact不符，不讀其他帳本")
         rank_context = _rank_context_from(context)
         is_rank_research_context = (
             context_map.get("source_kind")
@@ -230,10 +241,11 @@ class StockResearchReportReadService:
             )
             if is_rank_research_context
             else _coerce_date(context_map.get("decision_date"))
-            if is_daily_research_snapshot
+            if is_daily_research_snapshot or context_map.get("source_kind") == "portfolio_research_scenario"
             else None
         )
-        has_pinned_research_context = is_daily_research_snapshot or is_rank_research_context
+        has_pinned_research_context = (is_daily_research_snapshot or is_rank_research_context
+                                       or context_map.get("source_kind") == "portfolio_research_scenario")
         pinned_context_date_invalid = has_pinned_research_context and context_cutoff is None
         pinned_context_date_mismatch = (
             has_pinned_research_context
@@ -929,16 +941,26 @@ class StockResearchReportReadService:
                 industry = _first_non_empty(*(event.event_family for event in events))
 
         position: StockPositionSnapshotDTO | None = None
+        portfolio_scenario: PortfolioScenarioStockProjection | None = None
         position_source: StockReportSourceDTO | None = None
         try:
             self._check_cancel(cancel_callback)
-            position, position_source = self._read_position(
-                code,
-                cutoff,
-                context_map,
-                price_points=price_points,
-                price_source=price_source,
-            )
+            if context_map.get("source_kind") == "portfolio_research_scenario":
+                if pinned_context_date_invalid or pinned_context_date_mismatch:
+                    raise ValueError("配置封存日期與明示查詢範圍不符")
+                portfolio_scenario = self._read_scenario_position(code, cutoff, context, context_map, cancel_callback)
+                position_source = self._source(
+                    "portfolio.scenario." + portfolio_scenario.reference.artifact_id,
+                    "已保存配置研究（舊證據假設）", row_count=1,
+                    data_as_of=portfolio_scenario.account_as_of_date,
+                    available_at=portfolio_scenario.account_available_at,
+                    quality=ReportQuality.OBSERVED.value, cutoff=cutoff,
+                    limitations=("原封存事實與假設，不是今日帳本或新核行情；不授交易或歷史PIT。",),
+                )
+            else:
+                position, position_source = self._read_position(
+                    code, cutoff, context_map, price_points=price_points, price_source=price_source,
+                )
         except StockResearchReportCancelled:
             raise
         except Exception as exc:
@@ -953,7 +975,7 @@ class StockResearchReportReadService:
                 self._data_section(
                     "position",
                     "持倉／Health／Exit",
-                    1 if position is not None and position.is_holding else 0,
+                    1 if portfolio_scenario is not None or (position is not None and position.is_holding) else 0,
                     position_source,
                     missing_reason="此股票目前不在持倉；Health／Exit 只對現有持倉提供判讀。",
                 )
@@ -1092,8 +1114,9 @@ class StockResearchReportReadService:
                 ("ownership", bool(institutional or credit or shareholding)),
                 ("industry_events", bool(events)),
                 ("history", bool(events)),
-                ("position", position is not None and position.is_holding),
-                ("health", position is not None and bool(position.health_status)),
+                ("position", portfolio_scenario is not None or (position is not None and position.is_holding)),
+                ("health", (portfolio_scenario is not None and portfolio_scenario.health_known)
+                 or (position is not None and bool(position.health_status))),
                 ("advice", advice.recommendation is not None),
                 ("ml", ml.status not in {ReportQuality.UNAVAILABLE.value, ReportQuality.MISSING.value}),
             )
@@ -1132,6 +1155,7 @@ class StockResearchReportReadService:
             original_ranking=original_ranking,
             technical_history=technical_history,
             saved_technical_chart_json=saved_chart_json,
+            portfolio_scenario=portfolio_scenario,
         )
 
     def _read_prices(
@@ -2732,6 +2756,31 @@ class StockResearchReportReadService:
             read_only=True,
         )
 
+    def _read_scenario_position(
+        self, code: str, cutoff: date, context: object | None,
+        context_map: Mapping[str, str], cancel_callback: Callable[[], bool] | None,
+    ) -> PortfolioScenarioStockProjection:
+        raw_ref = context.get("portfolio_scenario_ref") if isinstance(context, Mapping) else getattr(context, "portfolio_scenario_ref", None)
+        ref = raw_ref if type(raw_ref) is PortfolioScenarioStockReference else PortfolioScenarioStockReference.from_mapping(raw_ref)
+        if context_map.get("source_snapshot_id") != ref.artifact_id or self.portfolio_research_workspace is None:
+            raise ValueError("原配置研究參照不符或workspace未配置，不讀其他帳本")
+        self._check_cancel(cancel_callback)
+        saved = self.portfolio_research_workspace.open_exact(
+            ref.artifact_id, account_kind=ref.account_kind, portfolio_id=ref.portfolio_id,
+            cancel_callback=cancel_callback,
+        )
+        now = self.clock()
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("report clock must include a timezone")
+        if saved.comparison.decision_at > now or saved.comparison.decision_at.astimezone(_TAIPEI).date() != cutoff:
+            raise ValueError("原配置研究決策時鐘與本次個股範圍不符")
+        projected = project_saved_scenario_stock(
+            saved, reference=ref, stock_code=code,
+            expected_account_source_hash=context_map.get("source_snapshot_hash", ""),
+        )
+        self._check_cancel(cancel_callback)
+        return projected
+
     def _read_position(
         self,
         code: str,
@@ -2741,6 +2790,8 @@ class StockResearchReportReadService:
         price_points: Sequence[StockPricePointDTO] = (),
         price_source: StockReportSourceDTO | None = None,
     ) -> tuple[StockPositionSnapshotDTO | None, StockReportSourceDTO | None]:
+        if context.get("source_kind") == "portfolio_research_scenario":
+            raise ValueError("配置封存禁止以目前同股持倉替代")
         if self.portfolio_service is None:
             return None, None
         getter = getattr(self.portfolio_service, "get_position_detail", None)

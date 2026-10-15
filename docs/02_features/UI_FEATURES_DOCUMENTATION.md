@@ -373,6 +373,8 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 
 ### 6. 持倉管理
 
+Increment44 補齊封存情境到個股的實際內容：保存後鑽取顯示原帳戶現金／NAV、股數、mark／市值、Health 及三情境 targets，保留 hash／時鐘與未知；預覽未保存會提示先另存。帳戶或來源不符拒絕，失敗／取消／換股清舊投影；完整帳本未持有候選股顯示 0 股，不用今日手動帳代替。正常 Main 與新程序同封存讀回已限定驗證；初次來源與完整 P06 仍待，固定試用包不變。
+
 後續開發分支新增「配置研究封存」進階分頁，沿既有私人 scenario store 明選帳種／portfolio／artifact，讀回完整現金、NAV、股數與維持／等權／明示配置；可改原股票範圍內的整數 bp target，沿原事實、時鐘與同 policy hash 比較，再另存不可變研究假設。不是當前帳本或交易，缺初始 Health／現金／行情不補值。返回個股核同 artifact，新程序以保存 hash 明選重開；未配置／唯讀／空庫及版本錯誤各自顯示。固定 `9fa4518c` 試用包不變，完整 P06 尚待；詳[操作指南](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#配置研究封存與另存假設)。
 
 後續 Increment40 使回測／規則卡／Walk-forward／參數掃描保留真實登記版本，暴衝與穩健策略不再被新 run 錯標 `1.0`。未知或衝突版本在啟動前提示並拒絕；掃描整輪固定同一版本。正常 Main 保存／歷史返回／新程序 exact 重開兩策略已驗，舊 run 原樣保留；固定試用包與來源資格不變。詳[回測指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#選模式和研究範圍)。

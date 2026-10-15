@@ -55,6 +55,8 @@ TWSE／TPEX 與其他明示來源
 
 更新、查詢、推薦、回測與持倉各走明示 application service。Recommendation 與市場 read model 先核對決策日、資料可得日、品質與來源，再交給領域計算；UI 呈現已形成的 DTO，不暗中補資料或重算。保存研究以 manifest、source identity 與原始 bytes 綁定，重讀指定版本，不以最新資料取代舊結果。
 
+配置研究封存的個股路徑共用 Main 注入的 scenario workspace，以帳種、portfolio、artifact 三項參照讀取原帳戶投影；不經目前手動持倉補值。canonical hash、來源及原時鐘守衛見[決策／研究／持倉分冊](current/decision_research_portfolio.md)。
+
 ## 儲存與排程
 
 正式資料路徑以 `data_module/config.py` 的 `TWStockConfig` 為準。`DATA_ROOT` 預設 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋；主要市場資料庫是 `<DATA_ROOT>/sqlite/twstock.db`。`OUTPUT_ROOT` 也由同一設定管理。SQLite-first 是一般讀取優先序，raw CSV 保留來源、備份及明示 fallback。

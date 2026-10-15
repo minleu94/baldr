@@ -498,10 +498,15 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
-        "ui_qt/views/stock_research_report_view.py"
+        "ui_qt/views/stock_research_report_view.py",
+        "app_module/stock_research_report_service.py",
+        "app_module/portfolio_research_stock_projection.py"
       ],
       "tests": [
-        "tests/test_stock_research_report_service.py"
+        "tests/test_stock_research_report_service.py",
+        "tests/test_portfolio_scenario_stock_report.py",
+        "tests/test_portfolio_scenario_stock_report_integration.py",
+        "tests/test_ui_qt_portfolio_scenario_stock_report.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -544,6 +549,7 @@
         "ui_qt/widgets/portfolio_research_scenario_widget.py",
         "app_module/portfolio_research_scenario_workspace.py",
         "app_module/portfolio_research_scenario_repository.py",
+        "app_module/portfolio_research_stock_projection.py",
         "ml_module/allocation_training_service.py",
         "ml_module/allocation_promotion_reference.py"
       ],
@@ -551,6 +557,9 @@
         "tests/test_ui_qt_portfolio_view.py",
         "tests/test_portfolio_research_scenario_widget.py",
         "tests/test_portfolio_research_scenario_workspace.py",
+        "tests/test_portfolio_scenario_stock_report.py",
+        "tests/test_portfolio_scenario_stock_report_integration.py",
+        "tests/test_ui_qt_portfolio_scenario_stock_report.py",
         "tests/test_ml_allocation_shadow_evidence.py"
       ],
       "manual": [

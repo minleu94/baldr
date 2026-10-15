@@ -82,6 +82,7 @@ from app_module.research_result_presentation import (
     build_stock_research_event_table,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.portfolio_research_stock_projection import PortfolioScenarioStockProjection
 from app_module.stock_research_chart_payload import (
     StockChartTechnicalLineDTO,
     StockChartPayloadDTO,
@@ -1716,13 +1717,22 @@ class StockResearchReportView(QWidget):
         message = str(error).splitlines()[0].strip() or "未知讀取錯誤"
         previous_report = self._loaded_report
         if previous_report is not None and str(previous_report.stock_code).strip() == code:
+            last_good_report = replace(previous_report, portfolio_scenario=None) if previous_report.portfolio_scenario is not None else previous_report
+            self._loaded_report = last_good_report
+            self._render_position(last_good_report.position)
+            self._rendered_report_tabs.add("position")
             self._show_last_good_state(
-                previous_report,
+                last_good_report,
                 conclusion="重新讀取失敗；畫面仍保留同一檔股票的上次可用資料。",
                 reason=f"本次讀取失敗：{message}",
                 next_step="確認資料來源狀態後按「重新載入」再試一次。",
             )
         else:
+            layout = self._reset_page("position")
+            layout.addWidget(
+                self._wrapped_label("報告讀取失敗；已清除封存情境投影，尚無本次可讀的持倉內容。")
+            )
+            layout.addStretch()
             self._show_unavailable_state(
                 code,
                 conclusion="目前沒有可閱讀的個股報告。",
@@ -1736,13 +1746,22 @@ class StockResearchReportView(QWidget):
         if request_id == self._request_id and code == self._active_code and not self._closing:
             previous_report = self._loaded_report
             if previous_report is not None and str(previous_report.stock_code).strip() == code:
+                last_good_report = replace(previous_report, portfolio_scenario=None) if previous_report.portfolio_scenario is not None else previous_report
+                self._loaded_report = last_good_report
+                self._render_position(last_good_report.position)
+                self._rendered_report_tabs.add("position")
                 self._show_last_good_state(
-                    previous_report,
+                    last_good_report,
                     conclusion="讀取已取消；畫面仍保留同一檔股票的上次可用資料。",
                     reason="本次讀取未完成，未以不完整內容覆蓋上次資料。",
                     next_step="需要最新內容時按「重新載入」再試一次。",
                 )
             else:
+                layout = self._reset_page("position")
+                layout.addWidget(
+                    self._wrapped_label("讀取已取消；已清除封存情境投影，尚無本次可讀的持倉內容。")
+                )
+                layout.addStretch()
                 self._show_unavailable_state(
                     code,
                     conclusion="讀取已取消，尚無可閱讀的個股報告。",
@@ -2061,6 +2080,11 @@ class StockResearchReportView(QWidget):
         self._personal_h20_evidence = None
         self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
         self._rendered_report_tabs = {"summary"}
+        position_layout = self._reset_page("position")
+        position_layout.addWidget(
+            self._wrapped_label("尚未載入本次報告的持倉或封存情境投影。")
+        )
+        position_layout.addStretch()
         context = self.context
         if context is not None and context.ml_scope_mode == "current_stock_research":
             advice_identity = (
@@ -2519,7 +2543,7 @@ class StockResearchReportView(QWidget):
         elif page_id == "flows":
             self._render_flows(report)
         elif page_id == "position":
-            self._render_position(report.position)
+            self._render_position(report.position, report.portfolio_scenario)
         elif page_id == "decision":
             self._render_decision(report)
         self._rendered_report_tabs.add(page_id)
@@ -3142,9 +3166,21 @@ class StockResearchReportView(QWidget):
         group_layout.addWidget(tier_group)
         return group
 
-    def _render_position(self, position: StockPositionSnapshotDTO | None) -> None:
+    def _render_position(
+        self,
+        position: StockPositionSnapshotDTO | None,
+        portfolio_scenario: PortfolioScenarioStockProjection | None = None,
+    ) -> None:
         layout = self._reset_page("position")
-        layout.addWidget(QLabel("此區只顯示既有 PortfolioService、Health／Exit read contract 的內容。"))
+        layout.addWidget(
+            QLabel(
+                "封存配置投影優先呈現原保存證據；無封存投影時才顯示既有 "
+                "PortfolioService、Health／Exit read contract。"
+            )
+        )
+        if portfolio_scenario is not None:
+            self._render_portfolio_scenario_position(layout, portfolio_scenario)
+            return
         if position is None:
             layout.addWidget(self._missing_panel("沒有此股票的持倉 row；Health／Exit 不對非持倉股票推導動作。"))
             layout.addStretch()
@@ -3181,6 +3217,120 @@ class StockResearchReportView(QWidget):
         if position.limitations:
             layout.addWidget(self._missing_panel(_join_or_missing(position.limitations, "")))
         layout.addStretch()
+
+    def _render_portfolio_scenario_position(
+        self,
+        layout: QVBoxLayout,
+        projection: PortfolioScenarioStockProjection,
+    ) -> None:
+        layout.addWidget(
+            self._scenario_label(
+                "這是原封存情境對單股的唯讀投影，屬於舊保存證據與假設；"
+                "不代表今日帳本、目前行情或已成交交易，也不建立新 Advice 或 Exit。"
+            )
+        )
+
+        reference = projection.reference
+        identity_lines = (
+            f"原帳種：{reference.account_kind}",
+            f"原 portfolio_id：{reference.portfolio_id}",
+            f"原 snapshot_id：{projection.snapshot_id}",
+            f"原 artifact_id：{reference.artifact_id}",
+            f"帳戶來源 hash：{projection.account_source_hash}",
+            f"研究來源 hash：{projection.research_source_hash}",
+            f"context 來源 hash：{projection.context_source_hash}",
+            f"帳戶資料日：{projection.account_as_of_date or '未提供'}",
+            f"帳戶可得時間：{projection.account_available_at or '未提供'}",
+            f"決策時間：{projection.decision_at or '未提供'}",
+            f"context 可得時間：{projection.context_available_at or '未提供'}",
+        )
+        layout.addWidget(self._scenario_label("\n".join(identity_lines)))
+
+        account_group = QGroupBox("原完整帳本與此股估值欄位")
+        account_layout = QVBoxLayout(account_group)
+        account_rows = (
+            ("股票代碼", projection.stock_code),
+            ("原帳戶現金", str(projection.cash_amount)),
+            ("原帳戶 NAV", str(projection.total_value)),
+            ("原 snapshot 持有股數", str(projection.quantity)),
+            ("原 mark_price", self._scenario_value_text(projection.mark_price)),
+            ("原 market_value", self._scenario_value_text(projection.market_value)),
+            ("原 current_weight", f"{projection.current_weight_bp} bp"),
+            ("原 Health 狀態", self._scenario_value_text(projection.health_state)),
+            ("原 Health known", "是" if projection.health_known else "否"),
+        )
+        self._add_table(account_layout, ("欄位", "封存值"), account_rows, 330)
+        account_layout.addWidget(
+            self._scenario_label(
+                "原 mark_price 的發布／可得時間沒有單獨欄位；帳戶及 context 時鐘不等於 mark 發布時間。"
+            )
+        )
+        if projection.quantity == 0:
+            account_layout.addWidget(
+                self._scenario_label(
+                    "原完整帳戶投影已提供，此股在該 snapshot 的數量為 0；"
+                    "這與沒有載入封存來源不同。"
+                )
+            )
+        layout.addWidget(account_group)
+
+        targets_group = QGroupBox("原封存情境 targets（研究投影，不是交易指令）")
+        targets_layout = QVBoxLayout(targets_group)
+        target_rows = tuple(
+            (
+                target.scenario_kind,
+                self._scenario_value_text(target.rule_requested_weight_bp),
+                self._scenario_value_text(target.target_weight_bp),
+                self._scenario_value_text(target.current_weight_bp),
+                self._scenario_value_text(target.gap_weight_bp),
+                self._scenario_value_text(target.executable_shares),
+                self._scenario_value_text(target.executable_amount),
+                self._scenario_value_text(target.estimated_cost),
+            )
+            for target in projection.targets
+        )
+        if target_rows:
+            self._add_table(
+                targets_layout,
+                (
+                    "原情境",
+                    "requested bp",
+                    "target bp",
+                    "current bp",
+                    "gap bp",
+                    "數量（股）",
+                    "金額",
+                    "估計成本",
+                ),
+                target_rows,
+                360,
+                max_visible_rows=None,
+            )
+            for target in projection.targets:
+                diagnostics = "；".join(target.diagnostics) or "無診斷列"
+                targets_layout.addWidget(
+                    self._scenario_label(
+                        f"{target.scenario_kind} 原診斷：{diagnostics}"
+                    )
+                )
+        else:
+            targets_layout.addWidget(
+                self._scenario_label("封存 target：未提供。")
+            )
+        layout.addWidget(targets_group)
+        layout.addStretch()
+
+    @classmethod
+    def _scenario_label(cls, text: str) -> QLabel:
+        label = cls._wrapped_label(text)
+        label.setTextFormat(Qt.TextFormat.PlainText)
+        return label
+
+    @staticmethod
+    def _scenario_value_text(value: object) -> str:
+        if value is None or value == "":
+            return "未提供"
+        return str(value)
 
     def _render_market_status(
         self, status: StockMarketStatusSnapshotDTO | None

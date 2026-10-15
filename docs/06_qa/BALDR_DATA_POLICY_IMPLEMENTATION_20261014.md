@@ -987,3 +987,24 @@ QA198獨立只讀核原全部21,000列：19唯一欄、股單位、唯一證券�
 
 用途／授權、真來源正常UI／fresh、真股票母體、日曆連買與完整歷史PIT、Native／EXE及完整Gate仍待。沒有正式資料／DB apply／Task／maintainer變更、push、發布或交易；固定V1不改。原資料契約、current分冊、功能、操作主冊／分冊／每日指南、Snapshot與原§9.5同步；模組邊界、安裝、排程與Feature Map關聯未變，無需新增入口或測試清冊關聯。
 QA200新版public reader以真cutoff台北03:30:46核同批，正確拒絕04:00前使用，7個capture／daily原件不變，無網路；governance原dossier診斷為deferred，程式證據清單無缺，authority具體缺license owner／status／redistribution policy，沒有append registry或把歷史PIT設永久前置。helper compile及9份文件／12features、metadata30sources errors=[]通過。outer `single_owned_qa_8b777a7d909f4f1b93c2ce232f7e777d/receipt.json` SHA `9c0d61636459fe13f89188317af09c0474c4a02bb0fd6766730f5c66f5999934`。準備階段曾因PowerShell陣列錯pin路徑拒絕，無Job／Python／HTTP；修正後才啟動。Root核四組收據／自然閉鎖、tested source pins及真capture／daily雙pin、V1 EXE／20輸入、舊task／capture與其他owner原件不變；owner `increment43_final_integrity.json` SHA `628071a5780a23b0be265429105ec4ad7f3e499f9607e39cda99bba98e113c64`。此為限定進度，真來源正常Main／fresh與用途接受仍待，不授完整Gate。
+
+## Increment44：P06封存帳戶個股投影
+
+本葉解除原 P06 完整封存雖可比較／另存，但進個股只有 artifact 標籤、沒有原帳戶內容的操作阻礙。沿既有 scenario workspace／repository，不造新帳本或金融引擎；固定 V1 四旅程不變，第二階段與真人試用並行。
+
+Root 先核原 Paper daily producer：`source_result_id` 沿 baseline ID 重用，不能證明每天所選價格的原件、時間或 hash；不從 ID、latest_status 或 receipt 時間虛構行情證據，初次來源仍獨立保留。此輪先交可修的已保存來源 consumer：新增 typed 帳種／portfolio／artifact 參照，正常 Main 注入同一 private workspace，exact 重讀再核 canonical bytes hash、外層 account source hash、原決策日期與現在時鐘。投影原 cash／NAV／quantity／mark／market value／Health／targets，沒有重算、今日手動帳 fallback、新 Advice 或 Exit；完整帳本未持有候選股的 0 股與缺件分開，mark 時間缺欄仍未提供。未保存 target 預覽須先另存，避免冒用舊 artifact。失敗／取消／換股清除舊投影；普通持倉與 H20 沿原路徑。
+
+兩名既有 Luna Max 各單寫一個新測試及 UI 葉片，無 Python／QA／network／子代理，回報後 pending writes=false；Root 整合共用 DTO／ports、金融守衛與 QA。另一輪靜態複核找到 Mapping 可繞過 DTO source_kind 綁定，Root 已補入口拒絕及三反例；累計仍 10/10，沒有新建代理。
+
+| QA | 限定結果 | outer receipt／SHA256 |
+|---|---|---|
+| 201 | route 通過；context domain 誤寫 portfolio，失敗保存。 | `single_owned_qa_6508a9d12eb245cdbec5e167f8823d14/receipt.json`；`c10ef9b75b0bcb85ca91d492a720992ae9a79667ce2f96f79e75f44b0c234b30` |
+| 202 | 正確 portfolio_health context、compile9通過；62PASS／4FAIL，canonical hash 函式誤留 TYPE_CHECKING 導致 NameError。 | `single_owned_qa_6f0245b803df491ba7dc77b9081cdde6/receipt.json`；`35c60c723e62584290a96a70a55f82acd44a6161636a09deee95e5b489e2dc00` |
+| 203 | 移至執行期匯入後，四失敗案例＋新 UI 六案及受影響原持倉／取消／換股／summary 共18PASS；compile11、Workbench85、validator25/0/4、八roots mypy1022通過。未重跑未受影響62PASS。 | `single_owned_qa_9d9ba32d6a784670b2fc61f8d3a970cc/receipt.json`；`f0352fc3ef3a8b48d43a312554fee97c5566b8a4d869c53307905172b396ebb6` |
+| 204 | Mapping跨綁定3PASS、受改service mypy／compile；正常Main10288保存新target→個股原投影→返回，fresh18608明選同版重開，完整投影及scenario DB hash一致。fresh禁止 compare／append，當前手動帳查詢0、Python socket0，自然關閉。 | `single_owned_qa_166e2a60046b46799e7fca36815caa74/receipt.json`；`bd11997b294f64e327e4d4ca15524f3cad885ee7a9a262bf856f61f44cfd14b7` |
+
+Main 原收據位於 owner `increment44_scenario_main_fresh_a/parent.json` SHA `0b1a20c124bad5b162270dfc3a5e1f14c01f22a98c62b2943564d2120eb9160c`、`fresh.json` SHA `4273bbe91b000a7d182ae66ee1b313a087249a636985cc15a81f5f7e4d0e37f8`，均為隔離合成來源、source Main，沒有 Native／EXE 或完整 P06／Gate 接受。既有 ui_qt ignore_errors 不證 UI 強型別。各組 8GiB／12程序／KOC／workspace mutex、RAM≥8GiB，三 PID 陣列自然空、process／Job handles 關閉、mutex 釋放，無 forced cleanup。
+
+使用者操作與結果判讀已同步主手冊、Portfolio／Research Lab 分冊、功能、current 架構／總架構、Feature Map、Snapshot 及原計畫 §7.1／§9.5。初次 account／Health／quote source、獨立行情可得時間、Registry 交叉入口及原完整包繼續，不以 unknown 或本輪案例加總結案；正式資料／Task／maintainer、push、發布及交易均未變。
+
+QA205 十份本輪文件／12features 與 context metadata30sources errors=[]通過，outer `single_owned_qa_250e330a224448b2846ce88993a1fe01/receipt.json` SHA `55d611f187ca4f499578abcba165439ee2c26068811e00a6a4961c5d505fd183`。Root 另核五組原收據與自然閉鎖、11最終來源pin、真T86／舊capture、固定V1 EXE／20不可變輸入、舊task與其他owner檔案不變；`increment44_final_integrity.json` SHA `1986cd9c2044bd237f1c189961f9e88b417f5b8cee9064e7481122ef41c451f8`。文件檢查後只追加本段收據註記，不外推完整 Gate。

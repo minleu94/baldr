@@ -331,6 +331,8 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 
 ### 7.1 Advice／Portfolio／Health 復用邊界
 
+Increment44 接續修補原封存個股鑽取缺帳戶參照：沿既有 workspace 精確讀回原帳種／portfolio／artifact，報告投影原現金、NAV、股數、估值、Health 及 targets；未保存預覽先另存，來源失配拒絕且不查當前手動帳。正常 Main 保存→個股→返回→新程序同版讀回通過，僅增加此交付出口，未造初次帳戶／行情來源。這是第二階段原 P06 的可操作增量；固定 V1、原 FAIL 及完整出口繼續保留。
+
 Increment39 接續原 P06 的正常使用出口：復用已存在的 scenario service／精確 valuation／v3 artifact 與 private v1 store，補 Portfolio 明選封存、改 target、比較、另存與新程序重開。每次重研究僅改 explicit target，保留完整原 account/context/cutoff/source，政策 hash 不同拒絕重算；不另建金融引擎或另一個 Registry。它解除「完整封存只有後端無正常頁面」的阻礙，不新增 V1 前置；初次 account／Health／行情 source 組合與原 Registry 交叉入口仍依本節及 P06 出口繼續，不將空庫／unknown 卡視為完整功能。試用與第二階段工作並行，固定候選不因這個增量重打包。
 
 | 既有入口 | 可以復用 | 還必須補的接線 |
@@ -489,6 +491,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+Increment44 已解除 P06 已存完整情境進個股無法保留原帳戶內容的實作阻礙；服務／UI／正常 Main10288→fresh18608 同原 Decimal、targets、hash，fresh 禁止重算與 append，沒有當前手動帳查詢。QA201 context 名稱及 QA202 runtime 匯入失敗保留，只定向復驗失敗與受影響路徑。下一步仍按各包真缺口推進；初次 account／Health／行情原件與獨立可得時間、Registry 交叉入口不由這次讀回冒充完成，也不等待真人試用或將它升格為新 V1 前置。
 #### Increment 18 最新進度與下一步（2026-10-14）
 
 P03 已新增月營收 Archived V2／Index V2 精確封存重開、self-contained 兩檔 Artifact V4 及 F17 archived Recipe V3：V4 envelope 保留原 Artifact V3 descriptor、SourceReference V3 與 RawArchiveReference V2 的原始 canonical bytes；Recipe V3 綁定原 V2 recipe、原 V3 descriptor／reference 外部 SHA、V4 descriptor SHA 與 archive reference SHA。翻頁只更新原 V2 page request／頁碼／大小並重算 recipe identities，不換原來源參照。Source V3 以新 operation 從封存重新發行 Reference V3 SHA，維持相同 full cohort、stable source identity、原 recipe 三個外部錨點與雙 ledger；DB、raw、原 snapshot、Artifact V3 漂移後的第一個 Source V3 exact-reopen 案例已通過。

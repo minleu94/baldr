@@ -32,6 +32,7 @@ from ui_qt.widgets.layout_helpers import (
 )
 from app_module.portfolio_service import PortfolioService
 from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
+from app_module.portfolio_research_stock_projection import PortfolioScenarioStockReference
 from ui_qt.widgets.portfolio_research_scenario_widget import PortfolioResearchScenarioWidget
 from app_module.dtos.portfolio_dtos import PortfolioDTO
 from app_module.recommendation.legacy_dtos import RecommendationResultDTO
@@ -3977,6 +3978,10 @@ class PortfolioView(QWidget):
         comparison = panel.current_comparison
         if comparison is None or not panel.current_artifact_id:
             return
+        from app_module.portfolio_research_scenario_artifact import encode_scenario_artifact, scenario_artifact_id
+        if scenario_artifact_id(encode_scenario_artifact(comparison)) != panel.current_artifact_id:
+            panel.status_label.setText("目前是尚未保存的比較預覽；請先另存研究假設，再開啟所選股票研究。")
+            return
         universe = set(comparison.request.candidate_symbols) | {row.stock_code for row in comparison.account.positions}
         if code not in universe:
             return
@@ -3988,6 +3993,9 @@ class PortfolioView(QWidget):
             source_snapshot_hash=comparison.account.source_hash,
             source_kind="portfolio_research_scenario", source_label="配置研究封存（舊證據假設）",
             source_workspace="portfolio",
+            portfolio_scenario_ref=PortfolioScenarioStockReference(
+                comparison.account.account_kind, comparison.account.portfolio_id, panel.current_artifact_id,
+            ),
         ))
 
     def _open_selected_stock_research(self, index=None) -> None:

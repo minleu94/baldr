@@ -6,6 +6,7 @@ visualisation boundary 才能轉成 ``float``。
 """
 
 from __future__ import annotations
+from app_module.portfolio_research_stock_projection import PortfolioScenarioStockProjection
 
 from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
@@ -538,12 +539,18 @@ class StockResearchReportDTO:
     # 保留在欄位尾端以維持既有位置參數呼叫相容。
     technical_history: tuple[StockTechnicalHistoryRowDTO, ...] = ()
     saved_technical_chart_json: str = ""
+    portfolio_scenario: PortfolioScenarioStockProjection | None = None
 
     def __post_init__(self) -> None:
         if not self.stock_code.strip():
             raise ValueError("stock_code is required")
         if not self.read_only:
             raise ValueError("stock research report must remain read-only")
+        if self.portfolio_scenario is not None and (
+            type(self.portfolio_scenario) is not PortfolioScenarioStockProjection
+            or self.portfolio_scenario.stock_code != self.stock_code
+        ):
+            raise ValueError("portfolio scenario與個股報告代碼不符")
     def to_dict(self) -> dict[str, Any]:
         return _serialize(asdict(self))
 

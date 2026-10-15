@@ -1737,6 +1737,7 @@ class MainWindow(QMainWindow):
             self.stock_research_report_service = StockResearchReportReadService(
                 self.config,
                 portfolio_service=self.portfolio_service,
+                portfolio_research_workspace=getattr(self, "_personal_portfolio_view_kwargs", {}).get("portfolio_research_workspace"),
                 condition_monitor=PortfolioConditionMonitor(),
                 ml_provider=self.stock_research_ml_registry,
                 freshness_status_path=self._data_freshness_status_path(),

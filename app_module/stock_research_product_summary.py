@@ -207,6 +207,11 @@ def _risks(
 
 
 def _holding_relation(report: StockResearchReportDTO) -> str:
+    scenario = report.portfolio_scenario
+    if scenario is not None:
+        holding = f"持有 {scenario.quantity} 股" if scenario.quantity else "完整原帳本未持有此股"
+        return (f"原 {scenario.reference.account_kind}／{scenario.reference.portfolio_id}：{holding}；"
+                f"封存日 {scenario.account_as_of_date}，不是今日帳本。")
     position = report.position
     if position is None:
         return "持倉資料尚未載入；未知不等於沒有持倉。"

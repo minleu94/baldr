@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from app_module.backtest_service import BacktestService
-from app_module.basic_strategy_saved_pair import BasicStrategySavedPairReader
+from app_module.basic_strategy_saved_pair import BasicStrategySavedPairReader, _preflight
 from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
 from app_module.research_run_service import ResearchRunService
 from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card, metadata_sha256
@@ -90,6 +90,40 @@ def test_two_basic_strategies_compare_saved_originals_and_reject_incomplete_cond
     stale = reader.read_selected((replace(stable, run_name="已更動的選取"), momentum))
     assert stale.state == "blocked" and "所選保存來源已變動" in stale.reasons
     assert not stale.cards
+
+
+def test_two_basic_strategies_reject_matching_but_internally_inconsistent_saved_inputs(
+    tmp_path, monkeypatch,
+):
+    _, _, stable, _, _, _ = executed_v2_case(
+        tmp_path, monkeypatch, "stable_conservative_v1",
+    )
+    _, _, momentum, _, _, _ = executed_v2_case(
+        tmp_path, monkeypatch, "momentum_aggressive_v1",
+    )
+    assert _preflight((stable, momentum)) == ()
+
+    for source, key, value in (
+        ("raw", "capital", 2_000_000),
+        ("raw", "capital", "NaN"),
+        ("raw", "fee_bps", Decimal("15")),
+        ("raw", "max_participation", Decimal("0.10")),
+        ("raw", "enable_limit", False),
+        ("broker", "slippage_bps", 6),
+        ("broker", "max_positions", 2),
+        ("broker", "allow_reentry", False),
+    ):
+        changed = []
+        for original in (stable, momentum):
+            if source == "raw":
+                original_input = deepcopy(original.original_input)
+                original_input["raw_params"][key] = value
+                changed.append(replace(original, original_input=original_input))
+            else:
+                manifest = deepcopy(original.data_manifest)
+                manifest["single_backtest_rule_execution"]["broker_config"][key] = value
+                changed.append(replace(original, data_manifest=manifest))
+        assert "原執行輸入、保存金額或撮合設定不符" in _preflight(tuple(changed))
 
 
 def _raw_ohlcv() -> pd.DataFrame:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, DecimalException
 from typing import Callable
 
 from app_module.research_history_lookup import (
@@ -65,6 +66,78 @@ def _same(left: object, right: object) -> bool:
     )
 
 
+def _same_number(left: object, right: object) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    if isinstance(left, bool) or isinstance(right, bool):
+        return False
+    try:
+        first, second = Decimal(str(left)), Decimal(str(right))
+    except (DecimalException, TypeError, ValueError):
+        return False
+    return first.is_finite() and second.is_finite() and first == second
+
+
+def _original_execution_matches(run: ResearchRunMetadataDTO, raw: dict[str, object],
+                                execution: dict[str, object]) -> bool:
+    """核原提交與原撮合設定；只比較已保存值，不取目前預設或重算結果。"""
+    broker = execution.get("broker_config")
+    if not isinstance(broker, dict):
+        return False
+    capital = raw.get("capital")
+    if (type(run.capital_cents) is not int or run.capital_cents <= 0
+            or isinstance(capital, bool)):
+        return False
+    try:
+        cents = Decimal(str(capital)) * Decimal("100")
+    except (DecimalException, TypeError, ValueError):
+        return False
+    if not cents.is_finite() or cents != run.capital_cents:
+        return False
+    for raw_key, saved in (("fee_bps", run.fee_bp_x100),
+                           ("slippage_bps", run.slippage_bp_x100)):
+        value = raw.get(raw_key)
+        if (type(saved) is not int or saved < 0 or isinstance(value, bool)
+                or raw_key not in broker or not _same_number(value, broker[raw_key])):
+            return False
+        try:
+            scaled = Decimal(str(value)) * Decimal("100")
+        except (DecimalException, TypeError, ValueError):
+            return False
+        if not scaled.is_finite() or scaled != saved:
+            return False
+    for raw_key, broker_key in (
+        ("stop_loss_pct", "stop_loss_pct"),
+        ("take_profit_pct", "take_profit_pct"),
+        ("stop_loss_atr_mult", "stop_loss_atr_mult"),
+        ("take_profit_atr_mult", "take_profit_atr_mult"),
+        ("fixed_amount", "fixed_amount"),
+        ("risk_pct", "risk_pct"),
+        ("max_positions", "max_positions"),
+        ("reentry_cooldown_days", "reentry_cooldown_days"),
+        ("max_participation", "max_participation_rate"),
+    ):
+        if broker_key not in broker or not _same_number(raw.get(raw_key), broker[broker_key]):
+            return False
+    for raw_key, broker_key in (
+        ("execution_price", "execution_price"),
+        ("sizing_mode", "sizing_mode"),
+        ("position_sizing", "position_sizing"),
+    ):
+        if broker_key not in broker or raw.get(raw_key) != broker[broker_key]:
+            return False
+    for raw_key, broker_key in (
+        ("allow_pyramid", "allow_pyramid"),
+        ("allow_reentry", "allow_reentry"),
+        ("enable_limit", "enable_limit_up_down"),
+        ("enable_volume", "enable_volume_constraint"),
+    ):
+        if (broker_key not in broker or type(raw.get(raw_key)) is not bool
+                or raw[raw_key] is not broker[broker_key]):
+            return False
+    return True
+
+
 def _preflight(runs: tuple[ResearchRunMetadataDTO, ...]) -> tuple[str, ...]:
     if len(runs) != 2 or runs[0].run_id == runs[1].run_id:
         return ("必須恰選兩筆不同的已保存 run",)
@@ -112,6 +185,8 @@ def _preflight(runs: tuple[ResearchRunMetadataDTO, ...]) -> tuple[str, ...]:
             if (not isinstance(source_hashes, dict)
                     or any(not source_hashes.get(key) for key in _SHARED_SOURCES)):
                 reasons.append("共用執行程式來源缺失")
+            if raw_values[-1] and not _original_execution_matches(run, raw_values[-1], execution):
+                reasons.append("原執行輸入、保存金額或撮合設定不符")
         metrics_contract = run.data_manifest.get("single_backtest_metrics_contract")
         if (not isinstance(metrics_contract, dict)
                 or type(metrics_contract.get("period_start")) is not str

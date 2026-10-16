@@ -137,6 +137,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **第四列的可試用子集（Increment80）**：原 `stable_conservative_v1` 與 `momentum_aggressive_v1` 各自正常執行並保存 `1.0.0` run、精確成對核對、開原明細／返回與新程序重開，已在 Windows Native 與固定 `37231290e3bf` EXE 對四股原來源副本限定通過；獨立[試用版 80](../../output/trial/Baldr-Daily-Research-80/TRIAL_GUIDE.md)可操作此路，原試用71和預覽73不替換。這解除「只能看局部 source／offscreen，沒有可供真人試的固定 EXE」阻礙，不是第四列完整出口：來源／幣別／成本權威、可比較的完整期間績效、獨立帳本、歷史 PIT 與真人回報仍逐項待證。QA509 的同版模型 probe PID 暫存名稱碰撞原 FAIL 保留，改以形態＋PID 命名後重建並取得同版／EXE 旅程成功；詳[Increment80 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。不新增第一階段第五條流程，也不降低 G0–G4。
 
+**第四列的保存條件防線（Increment81，開發來源）**：兩筆原 run 即使彼此記錄相同本金／費率與撮合設定，若每筆原提交、保存整數單位或原撮合設定內部不一致，現在於基本策略對照前阻擋，不能顯示「保存條件相同」。只核原保存值，不取目前預設、重算績效或更動試用版80；QA518 的定向25例與 scoped mypy 通過。這解除錯誤金融比較的一個具體阻礙，不提供來源／幣別／成本權威、完整期間獨立績效、歷史 PIT 或第四列完整出口；詳[Increment81 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment81p08-兩策略原保存輸入與撮合設定交叉核對)。
+
 #### 日常研究候選的四項明確工作
 
 | 使用者回報 | 具體修正方案 | 可判定的出口與目前狀態 |

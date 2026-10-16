@@ -27,6 +27,28 @@ _BOLLINGER_RULE_COUNT_LABELS = (
     ("exit_condition_sessions", "出場條件日數"),
     ("confirmation_sessions", "進場確認日數"),
 )
+_W_BOTTOM_RULE_DIAGNOSTICS_SCHEMA = "baldr-w-bottom-basic-diagnostics.v1"
+_W_BOTTOM_RULE_DIAGNOSTICS_FIELDS = frozenset(
+    {
+        "schema",
+        "strategy_id",
+        "strategy_version",
+        "total_sessions",
+        "ready_sessions",
+        "unavailable_sessions",
+        "entry_signal_sessions",
+        "exit_condition_sessions",
+        "max_wait_sessions",
+        "state_basis",
+    }
+)
+_W_BOTTOM_RULE_COUNT_LABELS = (
+    ("total_sessions", "總觀測列數"),
+    ("ready_sessions", "規則可判讀列數"),
+    ("unavailable_sessions", "不可判讀列數（含暖機、缺件與重啟）"),
+    ("entry_signal_sessions", "進場意圖列數"),
+    ("exit_condition_sessions", "出場意圖列數"),
+)
 
 
 def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
@@ -55,6 +77,57 @@ def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | No
             f"進場條件: {description_text('entry_description')}",
             f"出場條件: {description_text('exit_description')}",
             "以上日數表示條件或意圖，不代表成交或已完成進出場配對。",
+        ]
+    )
+    return lines
+
+
+def _w_bottom_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
+    """只呈現凍結版本的 W 底診斷；意圖狀態不代表成交或完成配對。"""
+    diagnostics = details.get("rule_diagnostics")
+    if (
+        not isinstance(diagnostics, dict)
+        or diagnostics.get("schema") != _W_BOTTOM_RULE_DIAGNOSTICS_SCHEMA
+    ):
+        return None
+
+    identity_valid = (
+        diagnostics.get("strategy_id") == "baldr_w_bottom_basic_v1"
+        and diagnostics.get("strategy_version") == "1.0.0"
+    )
+    contract_shape_valid = set(diagnostics) == _W_BOTTOM_RULE_DIAGNOSTICS_FIELDS
+    state_basis_valid = (
+        diagnostics.get("state_basis") == "order_intent_episode_not_assumed_fills"
+    )
+    contract_valid = identity_valid and contract_shape_valid and state_basis_valid
+
+    def count_text(key: str) -> str:
+        value = diagnostics.get(key)
+        if contract_valid and type(value) is int and value >= 0:
+            return str(value)
+        return "未提供"
+
+    wait_value = diagnostics.get("max_wait_sessions")
+    wait_text = (
+        str(wait_value)
+        if contract_valid and type(wait_value) is int and wait_value in (5, 10, 20)
+        else "未提供"
+    )
+
+    lines = ["", "--- W 底規則診斷 ---"]
+    if not contract_valid:
+        lines.append("規則診斷不可用（欄位、身份或狀態基礎不符）。")
+    lines.extend(
+        f"{label}: {count_text(key)} 列"
+        for key, label in _W_BOTTOM_RULE_COUNT_LABELS
+    )
+    lines.extend(
+        [
+            f"頸線突破等待上限: {wait_text} 列",
+            "狀態基礎: 訊號意圖；不假設成交。"
+            if contract_valid
+            else "狀態基礎: 未提供。",
+            "進出場意圖不代表成交，也不代表已完成配對。",
         ]
     )
     return lines
@@ -128,6 +201,8 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
         )
 
     rule_diagnostics_lines = _bollinger_rule_diagnostics_lines(details)
+    if rule_diagnostics_lines is None:
+        rule_diagnostics_lines = _w_bottom_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is not None:
         lines.extend(rule_diagnostics_lines)
 

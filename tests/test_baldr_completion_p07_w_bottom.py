@@ -39,8 +39,11 @@ def run(frame=None, *, wait=20, start=None):
     return BaldrWBottomExecutor(spec).generate_signals(market() if frame is None else frame, spec, start)
 
 
-def test_frozen_rule_contract_is_independent_research_and_not_publicly_registered():
-    assert not StrategyRegistry.is_registered(STRATEGY_ID)
+def test_frozen_rule_contract_has_explicit_research_registry_identity():
+    assert StrategyRegistry.is_registered(STRATEGY_ID)
+    executor = StrategyRegistry.get_executor(selected())
+    assert type(executor) is BaldrWBottomExecutor
+    assert executor.get_meta()["strategy_version"] == STRATEGY_VERSION
     rules = rule_definition({})
     assert rules["schema"] == PARAMETER_CONTRACT
     assert rules["historical_pit_eligible"] is rules["performance_evaluable"] is False

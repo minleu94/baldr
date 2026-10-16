@@ -23,6 +23,7 @@
 | Recommendation、個股研究與 Research Lab | [推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md) |
 | 已保存策略版本、原規則與來源結果（開發分支） | [保存策略版本與來源研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#已保存策略版本與來源研究後續開發分支) |
 | 布林基礎研究、確認日數與訊號保存（開發分支） | [布林基礎突破研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林基礎突破研究後續開發分支) |
+| W底確認、頸線突破與當次訊號保存（開發分支） | [W底頸線突破研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#w底頸線突破研究後續開發分支) |
 | 觀察清單、個股報告與持倉 | [觀察清單與持倉](manuals/WATCHLIST_AND_PORTFOLIO.md) |
 | 已保存 Paper 健康評估的明示選取與回訪 | [已保存健康評估與回訪](manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪) |
 | Daily Decision Desk、結果品質與共通排錯 | [APPLICATION_MANUAL §8–12](APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk) |

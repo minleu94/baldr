@@ -111,6 +111,10 @@ class BacktestService:
             if (execution_price != "next_open" or allow_pyramid
                     or stop_loss_atr_mult is not None or take_profit_atr_mult is not None):
                 raise ValueError("布林基礎研究僅支持 next_open、不加碼及百分比風控；未核路由不可忽略設定")
+        if strategy_spec.strategy_id == "baldr_w_bottom_basic_v1":
+            if (execution_price != "next_open" or allow_pyramid
+                    or stop_loss_atr_mult is not None or take_profit_atr_mult is not None):
+                raise ValueError("W底基礎研究僅支持 next_open、不加碼及百分比風控；未核路由不可忽略設定")
         # 1. 載入股票數據和技術指標（自動調整日期範圍）
         # ✅ 優化：如果提供了預載入的數據，直接使用
         if preloaded_data is not None:
@@ -335,8 +339,7 @@ class BacktestService:
         
         rule_diagnostics = None
         rule_signal_observations = None
-        if strategy_spec.strategy_id == "baldr_bollinger_basic_v1":
-            from decision_module.strategies.baldr_bollinger_contract import confirmation_sessions
+        if strategy_spec.strategy_id in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1"):
             rule_diagnostics = dict(signal_frame.attrs["rule_diagnostics"])
             ready = signal_frame["rule_observation_ready"]
             rule_diagnostics.update(
@@ -344,8 +347,11 @@ class BacktestService:
                 unavailable_sessions=int((~ready).sum()),
                 entry_signal_sessions=int(signal_frame["entry_rule_match"].sum()),
                 exit_condition_sessions=int(signal_frame["exit_rule_match"].sum()),
-                confirmation_sessions=confirmation_sessions(strategy_spec.config.get("params", {})),
             )
+            is_w_bottom = strategy_spec.strategy_id == "baldr_w_bottom_basic_v1"
+            if not is_w_bottom:
+                from decision_module.strategies.baldr_bollinger_contract import confirmation_sessions
+                rule_diagnostics["confirmation_sessions"] = confirmation_sessions(strategy_spec.config.get("params", {}))
             close_key = next(key for key in ("收盤價", "Close", "close") if key in signal_frame)
             rule_signal_observations = []
             for when, row in signal_frame.iterrows():
@@ -355,13 +361,24 @@ class BacktestService:
                         return str(value) if value.is_finite() and value > 0 else None
                     except (InvalidOperation, TypeError, ValueError):
                         return None
-                rule_signal_observations.append({
+                observation = {
                     "date": when.strftime("%Y-%m-%d"), "close": observed_price(close_key),
-                    "upper": observed_price("upperband"), "middle": observed_price("middleband"),
                     "ready": bool(row["rule_observation_ready"]), "signal": int(row["signal"]),
                     "entry": bool(row["entry_rule_match"]), "exit": bool(row["exit_rule_match"]),
                     "reason": str(row["reason_tags"]),
-                })
+                }
+                if is_w_bottom:
+                    evidence = None
+                    if row["pattern_confirmed_at"] is not None:
+                        evidence = {}
+                        for key in ("first_trough_at", "second_trough_at", "neckline_at", "confirmed_at",
+                                    "first_trough", "second_trough", "neckline", "floor"):
+                            value = row["pattern_" + key]
+                            evidence[key] = value.isoformat() if isinstance(value, date) else str(value)
+                    observation.update(state=str(row["pattern_state"]), evidence=evidence)
+                else:
+                    observation.update(upper=observed_price("upperband"), middle=observed_price("middleband"))
+                rule_signal_observations.append(observation)
             score_diagnostics, factor_records, factor_decision_date = {}, [], None
         else:
             # 計算策略分數診斷
@@ -457,9 +474,11 @@ class BacktestService:
                 'execution_summary': execution_summary,
                 'factor_records': factor_records,
                 'factor_decision_date': factor_decision_date,
-                'can_promote': validation_result['can_promote'] and strategy_spec.strategy_id != "baldr_bollinger_basic_v1",
+                'can_promote': validation_result['can_promote'] and strategy_spec.strategy_id not in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1"),
                 **({'promotion_blocker': '布林基礎為研究假說，來源／PIT與績效資格尚未接受'}
                    if strategy_spec.strategy_id == "baldr_bollinger_basic_v1" else {}),
+                **({'promotion_blocker': 'W底基礎為研究假說，來源／PIT與績效資格尚未接受'}
+                   if strategy_spec.strategy_id == "baldr_w_bottom_basic_v1" else {}),
                 **({'rule_diagnostics': rule_diagnostics, 'rule_signal_observations': rule_signal_observations} if rule_diagnostics is not None else {}),
                 'score_diagnostics': score_diagnostics
             }

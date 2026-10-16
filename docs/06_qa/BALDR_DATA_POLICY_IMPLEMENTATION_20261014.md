@@ -2,6 +2,28 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment64：P07W底正常回測與當次訊號保存
+
+**解除的交付阻礙**：Increment63只有可執行核心，正常清單無入口，也沒有當次訊號保存／pure規則讀回。本輪沿原StrategyRegistry、BacktestService、ResearchRun／VersionService接回原單股／歷史／返回／fresh；不另造撮合、金融公式或儲存。原§5.3幾何／進出場假說不改，新增明示numeric metadata與獨立`single-backtest-w-bottom-execution.v1`。起始HEAD `ad05644841b73533ae5cf4f63a060a8f074fcd12`，固定0f644faa預覽與V1四旅程不替換。
+
+- 原selector與規則卡呈現W底1.0.0、等待5／10／20列；當次frame只讀測試窗一次，`prior_rows=0`且不帶訓練段幾何／episode。保存原spec／effective rules、逐日close／ready／signal／state／兩谷與頸線證據、runtime、Broker config、input fingerprint及9個source-file hash，不套BB上下軌／180日指標context或generic50分。
+- pure reader核known schema、strategy／version／params／fingerprint／來源集合、兩谷／頸線原值、右一列確認日、意圖episode、實際窗與qualification；不借current Registry或executor重建。來源hash識別檔案，未對照目前工作樹作歷史資格，也不是官方權威／PIT證明。原baseline v1、兩策略v2與布林schema保持；目前1.0.0 reader在未來改版前仍須保留具名版本分支。
+- service／wrapper在載入前拒close、加碼與ATR停損停利；service與reconciliation均不授研究版正式晉升，即使SOP回true或樣本達10亦拒絕。原Broker的next-open、股數／成本、零量／停牌／漲跌停／未成交守衛維持，W意圖episode不是已成交持倉；無固定持有期限或虛構期末平倉。
+- peer指出metadata builder可接受獨立錯params及source finalize取消空窗，Root另核requested/actual期間。以原11FAIL重現後，新增W專屬比對：identity／股票／策略參數、原本金、所有Broker輸入與requested/actual bounds，錯配拒存；metadata按實際窗、原請求留raw_params，缺費率不補0。來源回填report前再查取消。其他schema的metadata口徑不在此改寫，舊run原件不遷移。
+
+| QA | 限定結果與原FAIL | outer SHA-256 |
+|---|---|---|
+| 379 | 路由／context：6來源7628字／12232bytes；新reader未自動擷取、部分heading-only由Root讀正文，無關推薦tests仍unknown | `bc06756c8503c4e4910e24cf08c41936a62717824471afa04b785b59ab15c712` |
+| 380 | compile12；因果／新保存與受改舊schema／promotion217PASS；UI102含Workbench85、八roots mypy1042／validator25 PASS、0 FAIL、4 protected skips及原float guard | `102756fab351a3ae5d844eff32a07763862fff7ae55a9ab75d1ff32fb785d4f7` |
+| 381 | peer收尾修正前Main33856→fresh29472正常保存／原規則／返回限定PASS，原證據保留，不代替後續最終source | `a931fb883a4a981bed4a7d45fd73b937c349a4a8723dd1a1d10949d029e37cc0` |
+| 382 | 9項獨立錯輸入、1項最後source讀取後取消、1項實際窗被請求窗覆蓋，共11個原FAIL保留；未降低斷言 | `15ef8d39f1ca383a0fd97908e55135d12570796055d33c60512caa2cebdd6a71` |
+| 383 | 修後compile、受改核心／保存／舊schema及原promotion228PASS；UI102含85、八roots mypy1042與validator25/0/4，原11案恢復PASS | `97492a7c33f8f560394d200bc370fc0fbfd790fb3df8adfd310181bda51bf02e` |
+| 384 | 最終Main39460→fresh45296，保存前畫面等待20→5仍讀當次20；獨立query-only SQLite核419列原訊號／指標，來源及20試用輸入不變 | `6f57fe2319a8c763589d65119189eee4ed7a344fc0a19f88ca14529078b761fa` |
+
+最終Main使用原四股副本的2317／2025-01-02至2026-09-23，正常選策略／規則／執行／原保存對話框，再明選pending保存版本1.0.1的來源run（執行器仍1.0.0），開規則／原結果／Watchlist返回及fresh。fresh禁止create/update版本、save run、目前Registry metadata／executor及重算，仍同run／規則／419日原結果；原Registry、附件、JSON bytes／SHA／mtime／ctime不變，Python socket零。實際保存419觀測／346可判讀／73不可判讀、10個進場意圖／10出場意圖與10組完成配對；不是勝率／策略有效性或歷史PIT接受，原metrics只原樣保存。獨立收據SHA `be201de219d29a15b2861fad96a29fb4bc4ca111298f1befff9c3dced06685d7`。
+
+以上各組單一Job8GiB／12程序／kill-on-close／workspace mutex串行，啟動RAM至少8GiB，三PID清冊自然空且handles／鎖關閉；15秒UI／120秒phase／270秒driver不改。mypy既有UI ignore不證強型別。這是source正常單股旅程，不授批次／參數研究／Walk-forward、完整形態家族／雙策略績效、來源用途／歷史PIT、Native／EXE、真人或自然成熟，完整P00–P14／G0–G4仍未接受。指南同步實際入口、參數、保存前改設定、期間與排錯；下一葉沿原P03必要財報／前期比較，先核既有capture／reader及attempt帳本，不盲重抓MOPS／重設舊額度。
+
 ## Increment63：P07W底因果可執行核心與確認日
 
 **解除的交付阻礙**：原P07形態家族只有全段圖形原料，整段極值／平均ATR與缺值填補不能直接作逐日可知策略；第二谷`end_idx`也不是可觀測確認日。本輪Root在原計畫§5.3定版自有`baldr_w_bottom_basic_v1@1.0.0`完整入出場假說，實作固定契約、純Decimal因果核心與StrategyExecutor；原圖形辨識不改。這是通往正常入口的必要核心，尚未登記selector、接保存／Main／fresh，不能列成已完成的使用者功能或P07 Gate。起始HEAD `76a4359068fe5b7c1a1e23d34f6bee4df67c99d7`，固定0f644faa預覽與V1四旅程不改。

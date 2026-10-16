@@ -5,6 +5,7 @@ from typing import Any
 STRATEGY_ID = "baldr_w_bottom_basic_v1"
 STRATEGY_VERSION = "1.0.0"
 PARAMETER_CONTRACT = "baldr-w-bottom-basic.v1"
+EXECUTION_SCHEMA = "single-backtest-w-bottom-execution.v1"
 DIAGNOSTICS_SCHEMA = "baldr-w-bottom-basic-diagnostics.v1"
 
 
@@ -23,6 +24,9 @@ def rule_definition(params: Any) -> dict[str, Any]:
     return {
         "schema": PARAMETER_CONTRACT, "strategy_id": STRATEGY_ID,
         "strategy_version": STRATEGY_VERSION,
+        "numeric": {"price_digits": 28, "decimal_places": 12, "precision": 60,
+                    "rounding": "ROUND_HALF_EVEN", "Emin": -999999, "Emax": 999999,
+                    "traps": ["InvalidOperation", "DivisionByZero", "Overflow"]},
         "trough": {"method": "strict_three_close_local_minimum", "right_confirmation_rows": 1,
                    "separation_rows": [3, 20], "consecutive_confirmed_troughs_only": True,
                    "predecline": "first_trough_prior_3_sum * 2 > next_2_sum * 3",

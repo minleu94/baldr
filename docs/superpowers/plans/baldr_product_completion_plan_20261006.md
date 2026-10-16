@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+Increment64將§5.3的W底核心接回原正常單股／當次訊號保存與歷史／返回／fresh，研究不可晉升、原Broker與資料守衛不改。原11個保存輸入／日期／取消FAIL保留並修正，最終Main39460→45296限定通過，固定0f644faa預覽不替換；只接受具名研究旅程，不接受完整家族／PIT／績效／Native或EXE。下一葉回原P03必要財報／前期比較的既有capture與reader缺件，不在策略變體增加競爭前置，詳[Increment64 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment64p07w底正常回測與當次訊號保存)。
+
 Increment62回原P07策略家族，按§5.2自有研究假說接完整布林基礎executor與原selector／規則／正常執行／訊號保存／歷史／返回／fresh；不以舊上軌filter或unknown卡片代替策略。原四條V1與0f644faa預覽保持，研究資格、進階家族及原完整範圍各自保留，詳[Increment62 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment62p07布林基礎研究策略正常執行與訊號保存)。
 
 Increment61沿原P07/P08解除新建策略版本可能覆寫／補償刪掉前版的保存阻礙，已完成新ID、create-only發布與失敗斷鏈修復的隔離及Main／fresh驗證。此為後續source增量，固定預覽與四條V1範圍保持；原FAIL、金融／來源與完整策略家族接受不由此授予，詳[Increment61 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment61p07p08版本新建保留前版與失敗補償)。
@@ -348,7 +350,7 @@ Root在原形態家族內凍結自有研究假說`baldr_w_bottom_basic_v1@1.0.0`
 | 保存／資格 | 每列須保留有效性、狀態、原因、谷日／谷價、頸線日／價、第二谷確認日、實際訊號日；來源／規則／參數與輸入指紋仍須沿原Registry當次捕獲。來源權威、歷史PIT、績效有效性、OOS／Paper／自然成熟及完整P07各自未合格。 |
 | 驗收反例 | 每個prefix及未來追加不變；第二谷未確認／只有幾何而未突破／同價平台不進場；5%及1%邊界；同日失效優先、候選不替換、期限邊界、缺件前後、測試窗清狀態、Decimal caller context不改訊號；原Broker下一有效開盤／未成交守衛及原輸入不變。等待5／10／20只保存訊號敏感度，不以最高報酬選參數。 |
 
-本葉已完成核心與原Broker的76項限定合成反例及型別核對，包含每個prefix、確認時間、幾何／期限與價格精度邊界；獨立peer指出的終端持倉及最細價格端點已補。未接正常selector、當次訊號／規則保存、返回／fresh與研究晉升拒絕，不把可執行核心當已交付策略旅程；後續沿原Registry／Backtest ports完成，不另造儲存或撮合。
+Increment63完成核心與原Broker的76項限定合成反例；Increment64再沿原ports接正常selector、當次W schema訊號／規則、原歷史／保存版本、返回及fresh，service與reconciliation皆拒研究晉升。metadata存實際窗、原請求保留，逐項核當次輸入，收尾取消不回填完整來源；peer原11FAIL保留後修至228PASS／UI102含85／mypy1042／validator25/0/4。最終Main39460→45296核保存前改目前參數仍讀原20、419日／10意圖／10完成配對，樣本數不授有效性或SOP以外資格。只接受正常單股source旅程，其他模式、進階家族、PIT／完整績效、Native／EXE與完整P07仍待，不另造儲存或撮合。
 
 ## 6. 完整母體：移除產品上限，保留資源邊界
 

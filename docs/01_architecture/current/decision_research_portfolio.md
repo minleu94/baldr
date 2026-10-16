@@ -4,7 +4,9 @@
 
 ## 模組責任
 
-W底基礎研究`baldr_w_bottom_basic_v1@1.0.0`目前只實作因果核心，未加入StrategyRegistry／selector。`causal_w_bottom`以Decimal逐列確認嚴格三點收盤谷，只保留27列；相鄰雙谷／5列前置跌勢／第一谷5%差／頸線高1%／突破等待與失效按原計畫§5.3，沒有全段find_peaks／ATR均值／補值。獨立executor沿原日期轉換邊界核日OHLCV，深拷貝spec與frame，輸出逐列確認證據、狀態與原Broker可消費的進出場意圖；episode只固定原頸線，不是已成交部位。缺行情清幾何但保留已發意圖的歷史頸線，交易仍須原Broker另判；unavailable包含暖機／失效重啟，不等於原始缺資料列數。正常producer／當次保存收據及pure reader尚未接通，不授目前UI或完整策略功能；來源精度、日曆／歷史可得性與績效各自未接受。
+W底基礎研究`baldr_w_bottom_basic_v1@1.0.0`已接原StrategyRegistry／正常單股producer與保存出口。`causal_w_bottom`以獨立Decimal Context60逐列確認嚴格三點收盤谷，只保留27列；相鄰雙谷／5列前置跌勢／第一谷5%差／頸線高1%／等待與失效按原計畫§5.3，不使用全段find_peaks／ATR均值／補值。executor深拷貝spec與frame，輸出逐列確認證據及意圖；episode只固定原頸線，不是已成交部位。缺行情清幾何但保留既有意圖的歷史頸線；unavailable含暖機／缺件／重啟，不等於原始缺資料列數。
+
+新`single-backtest-w-bottom-execution.v1`沿原manifest保存同次spec／effective rules、9個source-file hash、日期／狀態／意圖／兩谷與頸線證據、原Broker config、runtime及`prior_rows=0`的測試窗全狀態重設政策；不套布林band／暖機。專用pure reader只核已保存規則、原值／日期與episode交叉一致性，不讀current Registry或重跑訊號。metadata builder另核獨立傳入的identity、params、原capital／所有Broker輸入及requested/actual bounds；metadata存實際窗，原請求窗保留raw_params。缺成本不補0，來源收尾取消不回填完整manifest。原baseline／兩策略v2／布林schema不改，原Broker撮合／金融公式不變，研究資格在service與reconciliation明確拒絕；source hash只識別檔案，不授來源／PIT或績效權威。限定正常Main／fresh已驗，其他模式及Native／EXE仍待。
 
 `baldr_bollinger_basic_v1@1.0.0`以獨立純契約／executor接原StrategyRegistry，固定既有causal BBANDS30/2/SMA分析邊界；決策只以Decimal比較當列／前列原值，不走ScoringEngine、補值或自認成交。正常producer同次有界讀取前180曆日、最多31個prior觀測，fingerprint綁實用完整frame；原service按test_start重設確認並裁切後才撮合／計績效。新`single-backtest-bollinger-execution.v1`沿既有Registry保存spec、effective rules、逐日訊號、input_context、分析runtime版本及十個源碼hash，原baseline v1／兩策略v2不換版。專用pure reader核schema／identity／規則／成本／來源集合／qualification及訊號日期與型別，再交原規則卡與結果出口，不查當前Registry或重跑。指標float仍在分析邊界，來源hash不是權威／PIT證明；缺日曆完整性保持unknown，研究版不能由SOP或直接Registry晉升取得正式資格。本輪只驗正常單股研究，其他模式與完整家族仍各自待。
 

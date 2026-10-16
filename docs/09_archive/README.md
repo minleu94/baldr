@@ -1,7 +1,7 @@
 # 歸檔文檔目錄
 
 > **歷史記錄和總結文檔（歸檔）**
-> **最後整理**：2026-10-12
+> **最後整理**：2026-10-15
 
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
@@ -20,6 +20,7 @@
 | 歷史 QA／完成收據 | [封存文件清單](#archive-document-catalog)；仍有待驗收或 Gate 的 QA 從[現行 QA 導覽](../06_qa/README.md)進入。 |
 | 舊 plan/spec 與執行脈絡 | [開發計畫與規格追溯](#archive-plans-and-specs)；目前明確進行中的 plan 看 [Superpowers README](../superpowers/README.md)。 |
 | 舊提示詞、重建命令與日期化快照 | [Archive 根層直開風險導覽](#2026-10-10-archive-root-direct-open-review)。 |
+| 2026-10-15 交付重規劃前的狀態與逐輪紀錄 | [Snapshot 歷史](PROJECT_SNAPSHOT_20261015_BEFORE_DELIVERY_REPLAN.md)；現況與交付順序回 Snapshot／原補完計畫。 |
 | 2026-10-06 文件入口整理前的快照 | [治理入口原文快照](#governance-entry-snapshots)。 |
 | 舊版 Multi-Agent workflow（2026-10-09 前） | [Agent 工作流歷史快照](#2026-10-09-agent-workflow-pre-dev-history)。 |
 | Task Loop 01–07 歷史 handoff | [Task Loop 歷史入口](#task-loop-handoffs)。 |

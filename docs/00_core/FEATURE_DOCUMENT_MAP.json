@@ -1178,10 +1178,7 @@
       "documents": [
         {
           "path": "docs/00_core/PROJECT_SNAPSHOT.md",
-          "contains": [
-            "| P01 Main",
-            "| P01 矩陣"
-          ]
+          "section": "目前工程狀態與限制"
         },
         {
           "path": "docs/06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md",
@@ -1348,10 +1345,7 @@
       "documents": [
         {
           "path": "docs/00_core/PROJECT_SNAPSHOT.md",
-          "contains": [
-            "| Health／ML長路徑",
-            "Historical replay"
-          ]
+          "section": "重要限制"
         },
         {
           "path": "docs/01_architecture/current/decision_research_portfolio.md",
@@ -1495,13 +1489,7 @@
       "documents": [
         {
           "path": "docs/00_core/PROJECT_SNAPSHOT.md",
-          "contains": [
-            "使用者明示",
-            "| P01 Main",
-            "| P01 矩陣",
-            "| Health／ML長路徑",
-            "P08a唯讀帳戶卡片"
-          ]
+          "section": "目前工程狀態與限制"
         },
         {
           "path": "docs/06_qa/README.md",

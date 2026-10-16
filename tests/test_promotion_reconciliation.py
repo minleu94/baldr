@@ -173,6 +173,152 @@ def test_promote_registry_run_deletes_strategy_json_when_registry_update_fails(t
     assert raw["promoted_version_id"] is None
 
 
+def test_evidence_failure_preserves_committed_version_and_reports_reconciliation(tmp_path):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    evidence = MagicMock()
+    evidence.record_decision.side_effect = RuntimeError("isolated evidence failure")
+    reconciliation.lifecycle_evidence_repository = evidence
+
+    with pytest.raises(RuntimeError, match="isolated evidence failure"):
+        reconciliation.promote_registry_run(saved.run_id)
+
+    current = research_service.repository.get_metadata(saved.run_id)
+    version = version_service.get_version(current.promoted_version_id)
+    assert version is not None
+    assert version.source_run_id == saved.run_id
+    assert version.validation_status == "pending"
+    assert current.promotion_reconciliation_status == "reconciliation_required"
+    assert [(issue.issue_type, issue.run_id, issue.version_id)
+            for issue in reconciliation.scan_reconciliation_issues()] == [
+        ("registry_reconciliation_required", saved.run_id, version.version_id)]
+
+
+def test_mark_commit_then_error_does_not_delete_referenced_json(tmp_path, monkeypatch):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    mark = research_service.repository.mark_promoted
+    def committed_then_failed(run_id, version_id):
+        assert mark(run_id, version_id)
+        raise RuntimeError("isolated error after commit")
+    monkeypatch.setattr(research_service.repository, "mark_promoted", committed_then_failed)
+
+    with pytest.raises(RuntimeError, match="isolated error after commit"):
+        reconciliation.promote_registry_run(saved.run_id)
+
+    current = research_service.repository.get_metadata(saved.run_id)
+    version = version_service.get_version(current.promoted_version_id)
+    assert version is not None
+    assert version.source_run_id == saved.run_id
+    assert current.promotion_reconciliation_status == "reconciliation_required"
+
+
+def test_failed_mark_preserves_preexisting_same_second_version(tmp_path, monkeypatch):
+    from datetime import datetime
+    from app_module import strategy_version_service as version_module
+    class Clock:
+        @staticmethod
+        def now():
+            return datetime(2026, 10, 15, 18, 0, 0)
+    monkeypatch.setattr(version_module, "datetime", Clock)
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    old_id = version_service.create_version(
+        strategy_id="baseline_score", source_run_id="previous-source",
+        version_id="version_20261015_180000")
+    old = version_service.versions_dir / f"{old_id}.json"
+    before = old.read_bytes(), old.stat().st_mtime_ns, old.stat().st_ctime_ns
+    def failed_mark(*_args):
+        raise RuntimeError("isolated mark failure")
+    monkeypatch.setattr(research_service.repository, "mark_promoted", failed_mark)
+    with pytest.raises(RuntimeError, match="isolated mark failure"):
+        reconciliation.promote_registry_run(saved.run_id)
+    assert (old.read_bytes(), old.stat().st_mtime_ns, old.stat().st_ctime_ns) == before
+    assert [row["version_id"] for row in version_service.list_versions()] == [old_id]
+    assert research_service.repository.get_metadata(saved.run_id).promoted_version_id is None
+
+
+def test_create_collision_never_enters_registry_mark_or_compensation(tmp_path, monkeypatch):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    create = version_service.create_version
+    create(strategy_id="baseline_score", version_id="existing", source_run_id="previous")
+    original = (version_service.versions_dir / "existing.json").read_bytes()
+    monkeypatch.setattr(version_service, "create_version", lambda **kw: create(version_id="existing", **kw))
+    delete = MagicMock(wraps=version_service.delete_version_file)
+    mark = MagicMock(wraps=research_service.repository.mark_promoted)
+    monkeypatch.setattr(version_service, "delete_version_file", delete)
+    monkeypatch.setattr(research_service.repository, "mark_promoted", mark)
+    with pytest.raises(FileExistsError):
+        reconciliation.promote_registry_run(saved.run_id)
+    delete.assert_not_called()
+    mark.assert_not_called()
+    assert (version_service.versions_dir / "existing.json").read_bytes() == original
+
+
+def test_mark_false_rolls_back_only_new_version(tmp_path, monkeypatch):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    monkeypatch.setattr(research_service.repository, "mark_promoted", lambda *_args: False)
+    with pytest.raises(RuntimeError, match="回填失敗"):
+        reconciliation.promote_registry_run(saved.run_id)
+    assert version_service.list_versions() == []
+    assert research_service.repository.get_metadata(saved.run_id).promoted_version_id is None
+
+
+def test_unknown_commit_state_preserves_json_and_original_error(tmp_path, monkeypatch):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    read = research_service.repository.get_metadata
+    def failed_read(*_args):
+        raise RuntimeError("isolated readback failure")
+    def failed_mark(*_args):
+        monkeypatch.setattr(research_service.repository, "get_metadata", failed_read)
+        raise RuntimeError("isolated mark failure")
+    monkeypatch.setattr(research_service.repository, "mark_promoted", failed_mark)
+    with pytest.raises(RuntimeError, match="isolated mark failure"):
+        reconciliation.promote_registry_run(saved.run_id)
+    monkeypatch.setattr(research_service.repository, "get_metadata", read)
+    versions = version_service.list_versions()
+    assert len(versions) == 1
+    assert versions[0]["source_run_id"] == saved.run_id
+    assert read(saved.run_id).promoted_version_id is None
+    assert [issue.issue_type for issue in reconciliation.scan_reconciliation_issues()] == [
+        "json_missing_registry_backfill"]
+
+
+def test_failed_reconciliation_status_keeps_json_and_original_error(tmp_path, monkeypatch, caplog):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    evidence = MagicMock()
+    evidence.record_decision.side_effect = RuntimeError("isolated evidence failure")
+    reconciliation.lifecycle_evidence_repository = evidence
+    def failed_status(*_args):
+        raise RuntimeError("isolated status failure")
+    monkeypatch.setattr(research_service.repository, "mark_promotion_reconciliation_required", failed_status)
+    with pytest.raises(RuntimeError, match="isolated evidence failure"):
+        reconciliation.promote_registry_run(saved.run_id)
+    current = research_service.repository.get_metadata(saved.run_id)
+    assert version_service.get_version(current.promoted_version_id) is not None
+    assert "待核對狀態寫入失敗" in caplog.text
+
+
+def test_rollback_delete_failure_is_reported_without_losing_json(tmp_path, monkeypatch):
+    research_service, version_service, reconciliation = _service(tmp_path)
+    saved = research_service.save_run(_metadata(), _equity(), _trades())
+    def failed_mark(*_args):
+        raise RuntimeError("isolated mark failure")
+    monkeypatch.setattr(research_service.repository, "mark_promoted", failed_mark)
+    monkeypatch.setattr(version_service, "delete_version_file", lambda *_args: False)
+    with pytest.raises(RuntimeError, match="isolated mark failure"):
+        reconciliation.promote_registry_run(saved.run_id)
+    current = research_service.repository.get_metadata(saved.run_id)
+    assert version_service.get_version(current.promoted_version_id) is not None
+    assert current.promotion_reconciliation_status == "reconciliation_required"
+    assert [issue.issue_type for issue in reconciliation.scan_reconciliation_issues()] == [
+        "registry_reconciliation_required"]
+
+
 def test_reconciliation_reports_json_registry_mismatches(tmp_path):
     research_service, version_service, reconciliation = _service(tmp_path)
     saved = research_service.save_run(_metadata(), _equity(), _trades())

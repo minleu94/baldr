@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+`StrategyVersionService.create_version`的新建身份採時間前綴加UUID，explicit ID沿既有reader的安全basename限制；同目錄獨立exclusive `.tmp`完整flush/fsync後，Windows rename／其他平台hard-link以create-only發布，目標存在必須失敗。只有本次確實建立的暫存可清理，清理錯誤記錄而不遮蔽原例外或已發布成功。catalog僅接受檔名與payload ID一致的JSON，舊暫存原件不刪；明確`update_version`仍是既有可變聲明，不宣稱不可變版本庫。promotion回填失敗先讀回exact backlink，已回填或未知保留版本；僅確認未引用才補償本次新建。生命週期紀錄失敗不刪已回填JSON，標示`reconciliation_required`並由原掃描列出；狀態寫入也失敗時保留原錯誤與log，不授晉升成功。這不是跨store transaction或自動修復，亦不改原preflight／金融／lifecycle門檻。
+
 `SavedStrategyVersionReader`唯讀消費現有VersionService與ResearchHistoryLookup。清單保存canonical版本聲明及exact來源entry，開啟前後重讀版本，核策略／params、source config、data fingerprint、成交／sizing及已存在backlink；版本號是生命週期標籤，不與原run執行器版號強制相等。新`select_registry_run`只按明示ID建metadata/context選取，原resolve再核完整性／預算；不掃latest或建立來源。SavedRuleCard新增可選預算／取消透傳，舊呼叫契約不變。Qt元件只接回原結果／dialog，generation與合作關閉拒晚到；catalog分頁不改run身份。版本JSON摘要只證本次選取一致，沒有跨程序不可變／來源權威效力；legacy缺執行來源及績效未知仍沿原reader，不用目前設定補章。
 
 持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究增三步引導及名稱，UI parser在格式／重複守衛後把代碼集合排序才呼叫原query；不改catalog／strict source session／核心篩選／收藏契約，舊後端仍拒非canonical順序。個股漲跌沿原價差方向守衛，說明缺件不代表0。

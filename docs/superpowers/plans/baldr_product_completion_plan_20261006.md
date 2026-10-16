@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+Increment61沿原P07/P08解除新建策略版本可能覆寫／補償刪掉前版的保存阻礙，已完成新ID、create-only發布與失敗斷鏈修復的隔離及Main／fresh驗證。此為後續source增量，固定預覽與四條V1範圍保持；原FAIL、金融／來源與完整策略家族接受不由此授予，詳[Increment61 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment61p07p08版本新建保留前版與失敗補償)。
+
 Increment60回原P07：保存StrategyVersion正常明選、原run規則／結果、返回與fresh已在source候選限定驗證；生命週期版號不冒充來源執行版，原件／時間保持。此補可操作出口，仍不接受完整策略家族或績效；沒有改固定0f644faa／4b530或新增V1第五旅程，詳[Increment60 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment60p07保存策略版本明選與來源研究)。
 
 Increment59解除試用回報的實際篩選中斷及57／58尚無同版包的阻礙：固定`0f644faa0d48`另交`output/trial/Baldr-Feedback-Preview-59/Launch-Baldr.cmd`，不替換4b530窄版。價格研究任意順序代碼在UI正規化，核心守衛不變；兩策略v2所需三份原始來源加入包及metadata，舊四來源契約保留。Native來源／EXE各保存→歷史／規則→返回→fresh及金融投影一致已限定驗證，詳[Increment59 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment59試用回報固定候選與同版出口)。此為後續開發預覽，持倉排版不新增第五旅程；四條V1範圍與完整第二階段維持，下一步回原產品包，不反覆重跑未受影響流程。
@@ -512,7 +514,7 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
 
-Increment60已接原版本服務→exact來源metadata／完整性reader→正常選單／規則／結果→fresh，不掃最新run、不改金融或升級條件。保存版本只為目前聲明，來源收據與績效資格分開；舊缺件／不支持來源保留原因。下一個同包交付阻礙為既有create_version秒級ID與replace可能覆寫前版，先用隔離fixture證實與修復；既有正式版本不遷移、不重新promote。原P03完整文件／單位版本、來源用途／歷史PIT、真N、完整雙策略與自然成熟等仍按A/B/C/D分流，完整範圍不縮成這個selector。
+Increment60已接原版本服務→exact來源metadata／完整性reader→正常選單／規則／結果→fresh；Increment61再以原失敗反例修復create_version同秒／explicit碰撞覆寫、未發布暫存誤列及已回填版本被失敗補償刪除。兩者只解除保存／重開阻礙，正式版本不遷移、不重新promote，不改金融或升級條件。下一葉回原P07策略家族的具名規格／訊號出口，先核現有原料與缺的出場／風控／時間／精度定義，不再把保存小修當完整策略。原P03完整文件／單位版本、來源用途／歷史PIT、真N、完整雙策略與自然成熟等仍按A/B/C/D分流，完整範圍不縮成selector或保存器。
 
 Increment59已交57／58同版預覽出口，原生來源與EXE均能依使用者四碼輸入查詢並完成兩策略保存／規則／歷史返回／fresh；修掉的是UI集合順序與EXE來源檔缺件，沒有更動金融公式或把6配對SOPFAIL改PASS。漲跌方向缺件仍屬D品質，歷史PIT／權威資料／真N／完整雙策略及自然成熟分流保留；推薦長頁重排列後續，現有固定候選供試用，Root續原P00–P14工作，新增Increment須再指出解除的具體交付阻礙。
 

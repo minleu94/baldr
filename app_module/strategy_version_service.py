@@ -6,6 +6,8 @@
 import json
 import logging
 import os
+import re
+from uuid import uuid4
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -174,7 +176,9 @@ class StrategyVersionService:
             版本 ID
         """
         if version_id is None:
-            version_id = f"version_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            version_id = f"version_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex}"
+        if re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}", version_id) is None:
+            raise ValueError("策略版本 ID 必須是安全檔名（英數、底線、連字號或點，最多 200 字元）")
         
         if strategy_version is None:
             strategy_version = self._generate_version_number(strategy_id)
@@ -222,19 +226,31 @@ class StrategyVersionService:
             return False
 
     def _write_version_json_atomic(self, version_id: str, version_data: Dict[str, Any]) -> None:
-        """以 temporary JSON + atomic replace 寫入策略版本。"""
+        """完整寫入專屬暫存後才發布新版本；已存在的版本不可覆寫。"""
         final_path = self.versions_dir / f"{version_id}.json"
-        temp_path = self.versions_dir / f"{version_id}.tmp.json"
+        temp_path = self.versions_dir / f".{uuid4().hex}.tmp"
         payload = json.dumps(version_data, ensure_ascii=False, indent=2)
-
-        with temp_path.open("w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            try:
+        temp_created = False
+        try:
+            with temp_path.open("x", encoding="utf-8") as handle:
+                temp_created = True
+                handle.write(payload)
+                handle.flush()
                 os.fsync(handle.fileno())
-            except OSError:
-                pass
-        os.replace(temp_path, final_path)
+            # Windows rename 拒絕既存目標；其他平台以同目錄 hard link 原子發布。
+            if os.name == "nt":
+                os.rename(temp_path, final_path)
+            else:
+                os.link(temp_path, final_path)
+        finally:
+            if temp_created:
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    # 清理失敗不遮蔽原錯誤，也不將已發布版本誤報為建立失敗。
+                    logger.warning("專屬版本暫存無法清理，保留供核對：%s", temp_path, exc_info=True)
     
     def get_version(self, version_id: str) -> Optional[StrategyVersion]:
         """
@@ -277,6 +293,9 @@ class StrategyVersionService:
             try:
                 data = json.loads(version_file.read_text(encoding='utf-8'))
                 version_data = StrategyVersion.from_dict(data)
+                if version_file.name != f"{version_data.version_id}.json":
+                    # 保留舊暫存原件，但不可將尚未發布的來源列為保存版本。
+                    continue
                 
                 # 篩選
                 if strategy_id and version_data.strategy_id != strategy_id:

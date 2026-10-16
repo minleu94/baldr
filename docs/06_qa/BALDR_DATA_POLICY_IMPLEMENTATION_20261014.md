@@ -2,6 +2,30 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment61：P07/P08版本新建保留前版與失敗補償
+
+**解除的交付阻礙**：原版本建立器的秒級ID與`os.replace`可覆寫前版，固定`.tmp.json`會互相截斷且被catalog讀取；Registry回填成功後若evidence失敗，原補償還會刪掉已引用版本。這些會破壞原保存／重開旅程，沿原服務窄修，不另造儲存層、策略或V1前置。來源HEAD `caf82ce01e51e045a2edf8de9d650c5c7be71137`；所有QA只寫本owner隔離目錄，正式版本、舊task／原spec與固定0f644faa預覽保留。
+
+- 新建ID保留時間前綴並加UUID；explicit ID核安全basename，碰撞拒絕且原bytes／mtime／ctime不變。私有exclusive `.tmp`完整flush/fsync後採Windows rename／其他平台hard-link create-only發布；不吞flush錯誤、不overwrite fallback。只清本次成功建立暫存，清理OSError記log而不遮蔽原錯誤／已發布結果。Windows分支實測，其他平台分支只靜態核對既有專案模式，未宣稱跨平台QA。
+- catalog只列檔名與payload ID一致的JSON；舊暫存原件保留，明確update仍是既有可變聲明。不是不可變歷史版本庫，不遷移或自動修復舊檔。
+- promotion回填／evidence失敗時讀回exact backlink：已回填或狀態未知保留版本，僅確認未引用才補償本次新建；待核對狀態由既有掃描列出。狀態寫入也失敗時保留原錯誤／JSON與log，不能僅靠`synced`判evidence完整。沒有跨store transaction、自動重試／修復或門檻放寬。舊fallback callers在mark失敗後的孤兒行為未擴修。
+
+| QA | 原結果與限定驗證 | outer SHA-256 |
+|---|---|---|
+| 359 | 原建立器四個反例全FAIL：同秒碰撞、explicit覆寫、未發布誤列、flush失敗仍發布；原失敗保留 | `e60dfddb63b1cdbe15d70b0afbeb6fce325d3766e97ebdaf063795ed5a6e8488` |
+| 360 | 新建完整性16PASS；原caller的evidence失敗／commit後拋錯兩案FAIL，均留下backlink指缺檔；保留原斷言後修產品 | `c116799d9c453db3bc5b2d57c2f5e0d44032cf11e36f2ed0f60966bcfa312416` |
+| 361 | compile、受影響核心／保存roundtrip／promotion／原規則reader79PASS；八roots mypy1035通過，既有UI ignore不證強型別 | `f5cb0e4a00eea9391025e931c14e6ed68352870657648d4f63f957e59d883307` |
+| 362 | 原Main38168→fresh45408兩既有策略新自動ID明選、原規則／原結果與返回；原15秒UI／120秒phase／270秒driver不變 | `3e72970dc74e57f02bc6e480c6c979230442f93053a86572d9bb49ce25d50edb` |
+| 363 | peer清理例外三案與受影響lifecycle守衛47PASS、compile與兩服務mypy通過；不重跑未受影響UI | `d997d147bfc425734cefac543502adf933eeb30a325ea22248723e7fbff07cab` |
+
+QA362沿原四股只讀副本正常執行／保存兩個1.0.0策略，QA版本聲明僅pending的1.9.3／2.7.1，不走promotion、不用低門檻fixture取得資格。新程序禁止目前Registry／executor、回測、save_run及版本create/update；同run、規則卡、原419日曲線、JSON／DB／Parquet bytes／SHA／mtime／ctime一致，市場副本與20試用輸入不變，Python socket0。其後peer只補清理錯誤分支，QA363定向驗證；正常旅程不外推為金融權威、Native／EXE或真人接受。
+
+文件閉鎖QA364核七份正文／12features、context metadata31來源，errors=[]；outer `single_owned_qa_1507bea8fd7740aabf5e518df9c57518/receipt.json` SHA `d93efa46c2ca012f9cf4b410c32331b707aea9f2f89c5749b289d4db6448b5d7`，三PID陣列空、handles關閉／mutex釋放。其後只加本收據註記與owner交接，不重跑未受影響runtime；原始stdout／收據與當次SHA另留本owner，結構核驗不替代Root正文複核。
+
+Root單寫產品、測試、QA與文件，重用同一Luna靜態peer（累計10/10、無新agent／children）；原note與採納處置保存於owner。QA361 Context實讀4來源6592字元11196bytes，預算略過兩服務的AST與無關推薦測試；兩服務另直接讀完整正文，無關推薦測試不宣稱已重驗。每組8GiB committed／12程序／KOC／同workspace mutex、啟動RAM≥8GiB，前組三PID陣列空／handles關閉／mutex釋放才起下組；各組自然關閉、無強制清場成功。
+
+指南同步保存碰撞／失敗與待核對狀態，feature map補回兩原服務與測試關聯；UI、金融公式、來源／PIT／成本／lifecycle資格與V1四條旅程不改。原P03完整文件／單位版本、來源用途與歷史PIT、真N、完整策略家族／雙策略績效、同版Native／EXE及自然成熟仍各自待；下一葉回原P07具名策略規則與訊號出口，不再擴張保存前置。未寫正式資料、無新HTTP、正式Task／maintainer變更、push、發布或交易；完整Gate保持未接受。
+
 ## Increment60：P07保存策略版本明選與來源研究
 
 **解除的交付阻礙**：原VersionService有保存／exact讀回，正常回測畫面卻只能選目前Registry策略，沒有明選保存版本並回原run的出口。本輪沿原service／歷史reader／SavedRuleCard與結果dialog接通，不新增策略、writer、promotion、金融公式或第一版前置。固定0f644faa預覽、4b530窄版與舊結果保留；本增量尚未建Native／EXE。

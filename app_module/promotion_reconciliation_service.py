@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+import logging
 from typing import Any
 
 from app_module.research_run_repository import ResearchRunRepository
@@ -16,6 +17,8 @@ from app_module.strategy_lifecycle_repository import (
     LifecycleEvidenceRepository,
     LifecycleEvidenceStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PromotionPreflightError(Exception):
@@ -87,10 +90,12 @@ class PromotionReconciliationService:
             notes=notes,
         )
 
+        registry_marked = False
         try:
             marked = self.research_repository.mark_promoted(run_id, version_id)
             if not marked:
                 raise RuntimeError(f"registry run 回填失敗: {run_id}")
+            registry_marked = True
             if self.lifecycle_evidence_repository is not None:
                 self.lifecycle_evidence_repository.record_decision(
                     run=metadata,
@@ -100,14 +105,38 @@ class PromotionReconciliationService:
                     decision=lifecycle_decision,
                 )
         except Exception:
-            deleted = self.strategy_version_service.delete_version_file(version_id)
-            if not deleted:
-                self.research_repository.mark_promotion_reconciliation_required(
-                    run_id, version_id
-                )
+            self._compensate_failed_promotion(run_id, version_id, registry_marked=registry_marked)
             raise
 
         return version_id
+
+    def _compensate_failed_promotion(
+        self, run_id: str, version_id: str, *, registry_marked: bool
+    ) -> None:
+        """已回填或無法確認 backlink 時保留版本，原錯誤仍交由呼叫端處理。"""
+        try:
+            current = self.research_repository.get_metadata(run_id)
+        except Exception:
+            logger.exception("無法確認 Registry 回填狀態，保留新版本供核對：%s", version_id)
+            return
+
+        referenced = current is not None and current.promoted_version_id == version_id
+        if not registry_marked and not referenced:
+            if self.strategy_version_service.delete_version_file(version_id):
+                return
+            # 不覆寫另一個已回填版本；孤兒 JSON 由既有掃描列出。
+            if current is None or current.promoted_version_id:
+                logger.error("版本補償刪除失敗，保留原 Registry 關聯：%s", version_id)
+                return
+        elif not referenced:
+            logger.error("回填後來源關聯已變更，保留新版本供核對：%s", version_id)
+            return
+
+        try:
+            if not self.research_repository.mark_promotion_reconciliation_required(run_id, version_id):
+                logger.error("無法標示待核對版本：%s", version_id)
+        except Exception:
+            logger.exception("待核對狀態寫入失敗，保留新版本與原錯誤：%s", version_id)
 
     def scan_reconciliation_issues(self) -> list[PromotionReconciliationIssue]:
         issues: list[PromotionReconciliationIssue] = []
@@ -138,6 +167,15 @@ class PromotionReconciliationService:
             if not promoted_version_id:
                 continue
             version_id = str(promoted_version_id)
+            if metadata.promotion_reconciliation_status == "reconciliation_required":
+                issues.append(
+                    PromotionReconciliationIssue(
+                        issue_type="registry_reconciliation_required",
+                        run_id=metadata.run_id,
+                        version_id=version_id,
+                        details="版本保留供核對；Registry 回填或生命週期紀錄未完整完成，不可視為晉升成功。",
+                    )
+                )
             registry_version = version_by_id.get(version_id)
             if registry_version is None:
                 issues.append(

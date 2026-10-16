@@ -51,6 +51,57 @@ _W_BOTTOM_RULE_COUNT_LABELS = (
 )
 
 
+def saved_backtest_number(value: object) -> Decimal | None:
+    """舊保存欄位只在有有限數值時顯示；缺件不代入零。"""
+    if type(value) not in (int, float, Decimal):
+        return None
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return number if number.is_finite() else None
+
+
+def saved_backtest_percent(value: object) -> Decimal | None:
+    number = saved_backtest_number(value)
+    return number * 100 if number is not None else None
+
+
+def format_saved_backtest_summary(run_data: dict[str, Any]) -> str:
+    """原 run 的缺欄、無法讀取明細及完成配對分別明示。"""
+    def numeric_text(key: str, *, percent: bool = False) -> str:
+        number = (
+            saved_backtest_percent(run_data.get(key))
+            if percent else saved_backtest_number(run_data.get(key))
+        )
+        return f"{number:.2f}{'%' if percent else ''}" if number is not None else "未提供"
+
+    pair_count = run_data.get("total_trades")
+    pair_count = pair_count if type(pair_count) is int and pair_count >= 0 else None
+    trades = run_data.get("trade_list")
+    detail_rows = len(trades) if isinstance(trades, pd.DataFrame) else None
+    lines = [
+        f"執行名稱: {run_data.get('run_name') or '未提供'}",
+        f"股票代號: {run_data.get('stock_code') or '未提供'}",
+        f"日期範圍: {run_data.get('start_date') or '未提供'} ~ {run_data.get('end_date') or '未提供'}",
+        f"策略: {run_data.get('strategy_id') or '未提供'}",
+        "",
+        "=== 績效摘要 ===",
+        f"總報酬率: {numeric_text('total_return', percent=True)}",
+        f"年化報酬率: {numeric_text('annual_return', percent=True)}",
+        f"夏普比率: {numeric_text('sharpe_ratio')}",
+        f"最大回撤: {numeric_text('max_drawdown', percent=True)}",
+        f"勝率: {numeric_text('win_rate', percent=True)}",
+        f"總交易次數: {pair_count if pair_count is not None else '未提供'}（已完成進出場配對）",
+        f"交易明細列數: {detail_rows if detail_rows is not None else '未提供（明細檔缺失或無法讀取）'}",
+    ]
+    if pair_count is not None and detail_rows is None and pair_count > 0:
+        lines.append("⚠ 保存摘要有完成配對，但明細無法讀取；請核對原 run，勿把空表視為零交易。")
+    elif pair_count is not None and detail_rows is not None and detail_rows != pair_count:
+        lines.append("⚠ 保存摘要的完成配對數與明細列數不同；請核對原 run 與明細語意。")
+    return "\n".join(lines)
+
+
 def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
     """只呈現已知版本的布林規則診斷；天數不代表成交或完成配對。"""
     diagnostics = details.get("rule_diagnostics")

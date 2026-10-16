@@ -1,6 +1,7 @@
 """零完成交易對不得被呈現為零成交，缺少觀測也不得補零。"""
 from copy import deepcopy
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -130,6 +131,7 @@ def test_history_zero_pairs_are_labelled_without_inferring_fills(view):
     assert '總交易次數: 0（已完成進出場配對）' in text
     assert '尚無已完成交易' in text and '不代表沒有成交' in text
     assert payload == before and view.current_report is None
+    assert all(view.current_run_params[key] is None for key in ('capital', 'fee_bps', 'slippage_bps'))
 
 
 def test_six_completed_pairs_show_same_run_fills_and_detail_rows(view):
@@ -172,3 +174,75 @@ def test_saved_six_pairs_keep_missing_fill_metadata_explicit(view):
     assert '實際成交筆數：此歷史紀錄未提供' in text
     assert view.trades_table.model() is not None
     assert view.trades_table.model().rowCount() == 6
+
+
+def test_legacy_saved_detail_keeps_missing_metrics_and_six_pairs_visible(view):
+    payload = {
+        'run_name': '舊回測', 'stock_code': '2330', 'strategy_id': 'stable_conservative_v1',
+        'start_date': '2025-10-15', 'end_date': '2026-09-22',
+        'total_return': None, 'annual_return': None, 'sharpe_ratio': None,
+        'max_drawdown': None, 'win_rate': None, 'total_trades': 6,
+        'trade_list_path': '已遺失的原明細.csv',
+    }
+    before = deepcopy(payload)
+    view.run_repository = SimpleNamespace(load_run_data=lambda run_id: payload if run_id == 'old-six' else None)
+    view.chart_data_service = None
+
+    view._load_run_and_switch_tab('old-six')
+
+    text = view.summary_text.toPlainText()
+    assert '總交易次數: 6（已完成進出場配對）' in text
+    assert '交易明細列數: 未提供' in text
+    assert '勿把空表視為零交易' in text
+    assert '總報酬率: 未提供' in text and '勝率: 未提供' in text
+    assert view.trades_table.model() is None
+    assert payload == before
+    assert all(view.current_run_params[key] is None for key in ('capital', 'fee_bps', 'slippage_bps'))
+
+
+def test_legacy_saved_detail_preserves_real_zero_and_matching_detail(view):
+    payload = {
+        'run_name': '真零配對', 'stock_code': '2317', 'strategy_id': 'stable_conservative_v1',
+        'total_return': 0.0, 'annual_return': 0.0, 'sharpe_ratio': 0.0,
+        'max_drawdown': 0.0, 'win_rate': 0.0, 'total_trades': 0,
+        'capital': 2000000, 'fee_bps': 14.25, 'slippage_bps': 5.0,
+        'trade_list': pd.DataFrame(),
+    }
+    view.run_repository = SimpleNamespace(load_run_data=lambda _run_id: payload)
+    view.chart_data_service = None
+
+    view._load_run_and_switch_tab('real-zero')
+
+    text = view.summary_text.toPlainText()
+    assert '總交易次數: 0（已完成進出場配對）' in text
+    assert '交易明細列數: 0' in text
+    assert '總報酬率: 0.00%' in text
+    assert '勿把空表視為零交易' not in text
+    assert view.current_run_params['capital'] == 2000000
+    assert view.current_run_params['fee_bps'] == 14.25
+    assert view.current_run_params['slippage_bps'] == 5.0
+
+
+def test_legacy_saved_compare_does_not_crash_or_invent_missing_metrics(view):
+    view.history_list.clear()
+    for run_id in ('old-left', 'old-right'):
+        item = QListWidgetItem(run_id)
+        item.setData(Qt.ItemDataRole.UserRole, run_id)
+        view.history_list.addItem(item)
+        item.setSelected(True)
+
+    def load_run(run_id):
+        return SimpleNamespace(
+            run_name=run_id, stock_code='2330', strategy_id=run_id,
+            total_return=None, annual_return=None, sharpe_ratio=None,
+            max_drawdown=None, win_rate=None, total_trades=None, expectancy=None,
+        )
+
+    view.run_repository = SimpleNamespace(load_run=load_run)
+    view._compare_runs()
+
+    assert view.compare_table.model() is not None
+    assert view.compare_table.model().rowCount() == 2
+    assert view.compare_runs_data[0]['run_id'] == 'old-left'
+    assert view.compare_table.model().data(view.compare_table.model().index(0, 3)) == '未知'
+    assert view.compare_table.model().data(view.compare_table.model().index(0, 8)) == '未知'

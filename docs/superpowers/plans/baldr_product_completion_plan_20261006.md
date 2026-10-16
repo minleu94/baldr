@@ -156,6 +156,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **Increment71 第一版候選出口**：固定 `f9b4e7d1214967f86d9ae90b1e462bde11b73f3f`，本機入口 `output/trial/Baldr-Daily-Research-71/Launch-Baldr.cmd`，同目錄有新版 `TRIAL_GUIDE.md`、`KNOWN_ISSUES.md` 與 `DELIVERY_RECEIPT.json`（SHA-256 `524eaa0038d5c15f9241bfb7e66d8094c777601b0fa4207b1b2278aac7e85dca`）。QA444 確認原保存批次四股，QA445 正常 Main／新程序、QA448 同版封存／EXE、QA456 原生 EXE 父／新程序的四股篩選恢復、比較收藏、持倉訊號下鑽價量重載、兩原策略保存與精確讀回、QA458 試用 launcher 與五份複本 hash 已限定通過；詳[Increment71 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment71真人試用回報的四流程可用性修正)。QA447 建成 EXE 後因另一 owner 文件 post-pin 變動失敗、QA449–455 受執行沙箱及測試雙擊驅動所限的原 FAIL 保留。真人滑鼠雙擊、真私人帳與先前六配對原 run 尚未接受，價格／財報來源權威、完整績效及 G0–G4 仍沿第二階段逐列完成；固定候選的交付不是整個補完計畫完成。
 
+**第一列回測判讀補洞（Increment72，開發來源）**：舊歷史比較與雙擊原結果遇保存績效缺欄時原會補零或中斷，六組完成配對若交易明細檔遺失只剩空表。現在缺件顯示未知／未提供、真零保留；缺本金／費率不以目前預設值代入，摘要明示完成配對與明細列數及無法讀取原因；不重算原 run。這解除第一版回測流程的錯誤金融呈現阻礙；補正後 QA463 定向23PASS、Workbench85、validator25/0/4、mypy1043及四份文件結構檢查限定通過，前輪 QA460–462 保留，詳[Increment72 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment72舊回測歷史缺件與空交易表的金融判讀)。固定 `f9b4e7d12149` EXE 未納入此開發增量，原使用者六配對 run 尚未取得；來源、PIT、完整雙策略績效及第二至五列出口不因本項升格。下一次候選整合時再做受影響 Native／EXE 與指南版本標註，不為此單點反覆重包第一版。
+
 #### 用較少切換完成工作
 
 1. **同時只施工一個主要流程。** Root 負責共享契約、金融判斷、整合、QA、文件與交付；最多重用一名無待寫、無檔案衝突的 Luna，處理該流程的獨立 UI 葉片或下一項有限靜態盤點。新建額度已 10/10，不再新建；worker 仍禁止 Python／QA／網路／子代理。

@@ -80,6 +80,9 @@ from ui_qt.views.backtest.presenter import (
     build_portfolio_promotion_success_message,
     choice_display_text,
     format_backtest_summary,
+    format_saved_backtest_summary,
+    saved_backtest_number,
+    saved_backtest_percent,
 )
 from ui_qt.views.backtest.execution_coordinator import (
     BacktestExecutionRequest,
@@ -3021,9 +3024,9 @@ class BacktestView(QWidget):
             "end_date": run_data.get("end_date", ""),
             "strategy_id": run_data.get("strategy_id", ""),
             "strategy_params": run_data.get("strategy_params", {}),
-            "capital": run_data.get("capital", 1000000),
-            "fee_bps": run_data.get("fee_bps", 14.25),
-            "slippage_bps": run_data.get("slippage_bps", 5.0),
+            "capital": run_data.get("capital"),
+            "fee_bps": run_data.get("fee_bps"),
+            "slippage_bps": run_data.get("slippage_bps"),
             "stop_loss_pct": run_data.get("stop_loss_pct"),
             "take_profit_pct": run_data.get("take_profit_pct"),
             "run_name": run_data.get("run_name", ""),
@@ -3254,19 +3257,22 @@ class BacktestView(QWidget):
                     '執行名稱': run.run_name,
                     '股票代號': run.stock_code,
                     '策略': run.strategy_id,
-                    '總報酬率%': run.total_return * 100,
-                    '年化報酬率%': run.annual_return * 100,
-                    '夏普比率': run.sharpe_ratio,
-                    '最大回撤%': run.max_drawdown * 100,
-                    '勝率%': run.win_rate * 100,
-                    '交易次數': run.total_trades,
-                    '期望值%': run.expectancy * 100,
+                    '總報酬率%': saved_backtest_percent(run.total_return),
+                    '年化報酬率%': saved_backtest_percent(run.annual_return),
+                    '夏普比率': saved_backtest_number(run.sharpe_ratio),
+                    '最大回撤%': saved_backtest_percent(run.max_drawdown),
+                    '勝率%': saved_backtest_percent(run.win_rate),
+                    '交易次數': Decimal(run.total_trades) if type(run.total_trades) is int and run.total_trades >= 0 else None,
+                    '期望值%': saved_backtest_percent(run.expectancy),
                     '獲利因子': None,
                     '獲利因子狀態': '舊保存欄位未附語意版本；未驗證',
                 })
 
         compare_df = pd.DataFrame(compare_data)
-        self.compare_model = PandasTableModel(compare_df)
+        self.compare_model = PandasTableModel(compare_df, decimal_places_by_column={
+            '總報酬率%': 2, '年化報酬率%': 2, '夏普比率': 2,
+            '最大回撤%': 2, '勝率%': 2, '交易次數': 0, '期望值%': 2,
+        })
         self.compare_table.setModel(self.compare_model)
         self.compare_table.resizeColumnsToContents()
 
@@ -4689,9 +4695,9 @@ class BacktestView(QWidget):
             "end_date": run_data.get("end_date", ""),
             "strategy_id": run_data.get("strategy_id", ""),
             "strategy_params": run_data.get("strategy_params", {}),
-            "capital": run_data.get("capital", 1000000),
-            "fee_bps": run_data.get("fee_bps", 14.25),
-            "slippage_bps": run_data.get("slippage_bps", 5.0),
+            "capital": run_data.get("capital"),
+            "fee_bps": run_data.get("fee_bps"),
+            "slippage_bps": run_data.get("slippage_bps"),
             "stop_loss_pct": run_data.get("stop_loss_pct"),
             "take_profit_pct": run_data.get("take_profit_pct"),
             "run_name": run_data.get("run_name", ""),
@@ -4702,23 +4708,7 @@ class BacktestView(QWidget):
             # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。
             result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
-        # 顯示摘要
-        summary_lines = [
-            f"執行名稱: {run_data.get('run_name', '')}",
-            f"股票代號: {run_data.get('stock_code', '')}",
-            f"日期範圍: {run_data.get('start_date', '')} ~ {run_data.get('end_date', '')}",
-            f"策略: {run_data.get('strategy_id', '')}",
-            "",
-            "=== 績效摘要 ===",
-            f"總報酬率: {run_data.get('total_return', 0) * 100:.2f}%",
-            f"年化報酬率: {run_data.get('annual_return', 0) * 100:.2f}%",
-            f"夏普比率: {run_data.get('sharpe_ratio', 0):.2f}",
-            f"最大回撤: {run_data.get('max_drawdown', 0) * 100:.2f}%",
-            f"勝率: {run_data.get('win_rate', 0) * 100:.2f}%",
-            f"總交易次數: {run_data.get('total_trades', 0)}",
-        ]
-
-        self.summary_text.setPlainText("\n".join(summary_lines))
+        self.summary_text.setPlainText(format_saved_backtest_summary(run_data))
 
         # 顯示交易明細
         if 'trade_list' in run_data and isinstance(run_data['trade_list'], pd.DataFrame):

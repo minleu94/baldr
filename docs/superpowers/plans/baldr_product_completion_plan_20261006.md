@@ -28,6 +28,8 @@
 
 **Increment104／第二階段 P01／P02／M2 的真規則選股出口**：沿102已固定的 1,951 檔隔離來源，public reader 逐股核五條原規則與公開篩選計數，MA／KD／MACD／兩條量能分別有 39／338／52／287／80 檔符合；UNKNOWN 分列保留。原102只驗指定 `2317,2330` 比較／收藏，這輪同一固定 EXE 在正常 Main 選「MA5／MA20 金叉＝符合」、排除未知價格，得到39檔，選 `8933／2506` 比較、收藏 `2506`，另一 EXE 程序從觀察清單精確重開原查詢與比較籃。這解除試用66單列後「實際條件能否選出多股並保存」的操作未知，[補充步驟](../../../output/trial/Baldr-Daily-Research-102/MA_RULE_WALKTHROUGH.md)另存，102原交付原件不動；[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment104-current-rule-journey)保留沙箱長路徑 FAIL 與正常 Windows 受控 PASS。此為既有 V1-02 的補證和第二階段 M2 進展，**不新增 V1 前置**；來源用途／可得時刻、歷史 PIT、正式真 N、真人／不同 DPI、完整 Gate 不升格。現在依 §0.4 轉第三列持倉情境或第四列完整雙策略結果，第二列財報權威缺件繼續隔離。
 
+**10/16 P12 自然續查（非新增 Increment）**：固定102試用根缺明選的策略 Paper 合約／私人 store 與同帳本 Health，不拿手動持倉湊第三列真情境。轉核正式當日自然收據：原 run `20261016T122502248437Z-a5267185b4ee` 的 status／receipt exact reader 通過，snapshot 已保存且原 `passed`；但等 `release_v4` 共用鎖 **4,679.109 秒**後才以 `eod_research` 完成，`research_only=true`、preopen／natural authority 均 false。與10/15的4,203秒等待構成兩筆獨立執行阻礙證據，不能把保存成功或腳本退出0算自然成熟；未查明持鎖唯一來源前不修改鎖或正式 Task，不重觸發已停用 maintainer。[同頁具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#p12-natural-20261016-readonly)保存雙 SHA、受控 Job 與未改來源界線。第四列完整雙策略來源／成本／幣別與第二列財報權威仍各自續進。
+
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；102 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。
 
 <details>

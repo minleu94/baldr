@@ -807,6 +807,22 @@ def test_real_main_full257_price_query_bookmark_and_fresh_pid_restore(
             deadline=deadline,
             stage="Main full-N 價格查詢完成",
         )
+        _wait_for(
+            app,
+            lambda: (
+                not view.controls_group.isVisible()
+                and view.result_guidance.isVisible()
+                and recommendation.result_scroll.viewport().rect().contains(
+                    view.result_guidance.mapTo(
+                        recommendation.result_scroll.viewport(),
+                        view.result_guidance.rect().topLeft(),
+                    )
+                )
+            ),
+            deadline=deadline,
+            stage="Main 載入後結果入口進入可視範圍",
+        )
+        assert not view.summary.isVisible()
         result = view.current_result
         page = view.current_page
         query = view.current_query

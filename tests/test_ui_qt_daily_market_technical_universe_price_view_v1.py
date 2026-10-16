@@ -209,6 +209,10 @@ def test_narrow_result_area_keeps_price_apply_reachable_and_inputs_on_resize(
         _wait(app, lambda: not view.busy, timeout_seconds=15)
         assert view.current_query is not None
         original_source = view.current_query.source
+        assert not view.controls_group.isVisible()
+        host.ensureWidgetVisible(view.query_controls_toggle, 0, 12)
+        QTest.mouseClick(view.query_controls_toggle, Qt.MouseButton.LeftButton)
+        assert view.controls_group.isVisible()
         view.minimum.setText("101")
         view.combine_mode.setCurrentIndex(view.combine_mode.findData("OR"))
         for target_width in (1100, width):
@@ -234,6 +238,71 @@ def test_narrow_result_area_keeps_price_apply_reachable_and_inputs_on_resize(
         assert view.current_query is not None and view.current_query.min_close_price == Decimal("101")
         assert view.current_query.combine_mode == "OR"
         assert view.current_query.source == original_source
+    finally:
+        view.begin_shutdown()
+        _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)
+        host.close()
+        app.processEvents()
+
+
+def test_loaded_price_result_is_visible_and_editable_in_narrow_recommendation_area(
+    app: QApplication, exact_price_store: dict[str, Any],
+) -> None:
+    view = DailyMarketTechnicalUniversePriceV1View(exact_price_store["store_root"])
+    tabs = _CurrentPageSizeTabWidget()
+    tabs.addTab(view, "價格選股")
+    host = create_scroll_area(tabs)
+    host.resize(620, 540)
+    host.show()
+    try:
+        app.processEvents()
+        view.refresh_sources()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        view.sources.setCurrentIndex(_entry_index(view, "complete"))
+        view.stock_filter.setText("S0003,S0001,S0002")
+        view.load_selected_source()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        app.processEvents()
+
+        assert view.current_query is not None
+        original_query = view.current_query
+        assert original_query.technical_stock_filter == ("S0001", "S0002", "S0003")
+        assert not view.controls_group.isVisible()
+        assert not view.summary.isVisible()
+        assert view.query_controls_toggle.text() == "修改篩選條件"
+        assert "找到 3 筆結果" in view.result_guidance.text()
+        assert host.verticalScrollBar().value() > 0
+        guidance_top = view.result_guidance.mapTo(
+            host.viewport(), view.result_guidance.rect().topLeft()
+        )
+        assert 0 <= guidance_top.y() < host.viewport().height()
+
+        index = view.results_model.index_for_stock("S0001")
+        assert index.isValid()
+        view.table.scrollTo(index)
+        app.processEvents()
+        row_center = view.table.viewport().mapTo(
+            host.viewport(), view.table.visualRect(index).center()
+        )
+        assert host.viewport().rect().contains(row_center)
+        QTest.mouseClick(
+            view.table.viewport(), Qt.MouseButton.LeftButton,
+            pos=view.table.visualRect(index).center(),
+        )
+        assert view.add_comparison_button.isEnabled()
+        host.ensureWidgetVisible(view.add_comparison_button, 0, 12)
+        QTest.mouseClick(view.add_comparison_button, Qt.MouseButton.LeftButton)
+        assert len(view._basket) == 1
+
+        host.ensureWidgetVisible(view.query_controls_toggle, 0, 12)
+        QTest.mouseClick(view.query_controls_toggle, Qt.MouseButton.LeftButton)
+        assert view.controls_group.isVisible()
+        assert view.stock_filter.text() == "S0001, S0002, S0003"
+        view.stock_filter.setText("S0001,S0001")
+        view.apply_query()
+        assert "重複" in view.status.text()
+        assert view.controls_group.isVisible()
+        assert view.current_query == original_query
     finally:
         view.begin_shutdown()
         _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)

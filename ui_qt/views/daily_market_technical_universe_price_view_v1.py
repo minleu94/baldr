@@ -445,10 +445,10 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         title.setObjectName("dailyMarketTechnicalPriceV1Title")
         root.addWidget(title)
         self.workflow_help = QLabel(
-            "① 按「查詢版本」，選一份保存批次，再按「嚴格核驗並載入」。\n"
-            "② 在「股票代碼篩選」輸入代碼（例如 2330,2317,2382,2454），設定條件後按「套用條件」。\n"
-            "③ 選取結果查看詳情；逐股加入比較籃，或準備價格研究收藏。\n"
-            "來源批次一次選一份；四股是該批次內的股票，不是四份來源。空白代碼代表查整個保存母體。"
+            "① 查詢版本，只選一份保存資料，再按「嚴格核驗並載入」。\n"
+            "② 可先填股票代碼（例如 2330,2317,2382,2454）；留空會顯示該份資料的全部股票。\n"
+            "③ 結果出現後逐股選取並加入比較籃；要改價格或規則，按「修改篩選條件」。\n"
+            "四股是同一份資料內的股票，不需要選四份來源。"
         )
         self.workflow_help.setObjectName("dailyMarketTechnicalPriceV1WorkflowHelp")
         self.workflow_help.setWordWrap(True)
@@ -526,8 +526,14 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         root.addWidget(self.source_details_toggle)
         root.addWidget(self.source_details)
 
-        controls_group = QGroupBox("步驟 2：篩選股票與價格條件")
-        controls = QGridLayout(controls_group)
+        self.query_controls_toggle = QToolButton()
+        self.query_controls_toggle.setObjectName("dailyMarketTechnicalPriceV1QueryControlsToggle")
+        self.query_controls_toggle.setCheckable(True)
+        self.query_controls_toggle.setChecked(True)
+        self.query_controls_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        root.addWidget(self.query_controls_toggle)
+        self.controls_group = QGroupBox("步驟 2：篩選股票與價格條件")
+        controls = QGridLayout(self.controls_group)
         self.combine_mode = QComboBox()
         self.combine_mode.setObjectName("dailyMarketTechnicalPriceV1CombineMode")
         self.combine_mode.addItem("全部符合（AND）", "AND")
@@ -599,7 +605,15 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         )
         for widget, wide, _narrow in self._query_control_items:
             controls.addWidget(widget, *wide)
-        root.addWidget(controls_group)
+        root.addWidget(self.controls_group)
+
+        self.result_guidance = QLabel(
+            "步驟 3：載入來源後在下表點選股票；逐股按「加入比較籃」，至少兩股才能比較。"
+        )
+        self.result_guidance.setObjectName("dailyMarketTechnicalPriceV1ResultGuidance")
+        self.result_guidance.setWordWrap(True)
+        self.result_guidance.setTextFormat(Qt.TextFormat.PlainText)
+        root.addWidget(self.result_guidance)
 
         page_controls = QHBoxLayout()
         self.previous_page_button = QPushButton("上一頁")
@@ -632,6 +646,14 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         basket_controls.addWidget(self.basket_label, 1)
         root.addLayout(basket_controls)
 
+        self.result_details_toggle = QToolButton()
+        self.result_details_toggle.setObjectName("dailyMarketTechnicalPriceV1ResultDetailsToggle")
+        self.result_details_toggle.setText("結果與母體計數詳情")
+        self.result_details_toggle.setAccessibleName("展開或收合結果與母體計數詳情")
+        self.result_details_toggle.setCheckable(True)
+        self.result_details_toggle.setChecked(False)
+        self.result_details_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        root.addWidget(self.result_details_toggle)
         self.summary = QLabel("尚未載入已保存來源。")
         self.summary.setObjectName("dailyMarketTechnicalPriceV1Summary")
         self.summary.setWordWrap(True)
@@ -665,6 +687,10 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.refresh_sources_button.clicked.connect(self.refresh_sources)
         self.more_sources_button.clicked.connect(self.load_more_sources)
         self.load_source_button.clicked.connect(self.load_selected_source)
+        self.query_controls_toggle.toggled.connect(self._set_query_controls_expanded)
+        self._set_query_controls_expanded(True)
+        self.result_details_toggle.toggled.connect(self._set_result_details_expanded)
+        self._set_result_details_expanded(False)
         self.apply_query_button.clicked.connect(self.apply_query)
         self.previous_page_button.clicked.connect(self.previous_page)
         self.next_page_button.clicked.connect(self.next_page)
@@ -784,7 +810,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
                 page_size,
                 cancel_callback,
             ),
-            self._apply_state,
+            self._apply_interactive_state,
             kind="source_read",
         )
 
@@ -807,7 +833,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
                 page_size,
                 cancel_callback,
             ),
-            self._apply_state,
+            self._apply_interactive_state,
             kind="query",
         )
 
@@ -1137,6 +1163,56 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
         )
 
+    def _set_query_controls_expanded(self, expanded: bool) -> None:
+        self.controls_group.setVisible(expanded)
+        self.query_controls_toggle.setText(
+            "收合篩選條件" if expanded else "修改篩選條件"
+        )
+        self.query_controls_toggle.setAccessibleName(
+            "收合價格選股條件" if expanded else "展開並修改價格選股條件"
+        )
+        self.query_controls_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+
+    def _set_result_details_expanded(self, expanded: bool) -> None:
+        self.summary.setVisible(expanded)
+        self.result_details_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+
+    def _apply_interactive_state(self, value: object) -> None:
+        if not self._apply_state(value):
+            return
+        self.query_controls_toggle.setChecked(False)
+        self.result_details_toggle.setChecked(False)
+        state = self._state
+        generation = self._generation
+        QTimer.singleShot(0, lambda: self._reveal_interactive_results(state, generation))
+
+    def _reveal_interactive_results(
+        self, state: _PriceViewState | None, generation: int
+    ) -> None:
+        if (
+            self._closing
+            or self._generation != generation
+            or self._state is not state
+            or not self.result_guidance.isVisible()
+        ):
+            return
+        ancestor = self.parentWidget()
+        while ancestor is not None and not isinstance(ancestor, QScrollArea):
+            ancestor = ancestor.parentWidget()
+        if not isinstance(ancestor, QScrollArea) or not ancestor.isVisible():
+            return
+        content = ancestor.widget()
+        if content is None or not content.isAncestorOf(self.result_guidance):
+            return
+        result_top = self.result_guidance.mapTo(
+            content, self.result_guidance.rect().topLeft()
+        ).y()
+        ancestor.verticalScrollBar().setValue(max(0, result_top - 12))
+
     @staticmethod
     def _population_label(population_state: str | None) -> str:
         return {
@@ -1243,6 +1319,15 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._show_verified_pins(value.query)
         self._update_source_summary()
         self._set_enabled_state()
+        if value.page.matching_count == 0:
+            self.result_guidance.setText(
+                "步驟 3：目前沒有符合條件的股票；按「修改篩選條件」調整，或更換保存來源。"
+            )
+        else:
+            self.result_guidance.setText(
+                f"步驟 3：找到 {value.page.matching_count} 筆結果。點下表一檔可看個股；"
+                "逐股按「加入比較籃」，至少兩股才能重驗並比較。"
+            )
         population_state = "完整" if value.page.full_population_complete else "未完整"
         self.status.setText(
             f"來源與價格索引已 strict 核驗；完整母體狀態：{population_state}。"

@@ -133,6 +133,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **第五列 P12 判讀修正（Increment91，開發來源）**：10/15 正式自然 run 的同收據讀回證明 snapshot／Evidence 已保存，但 05:25 起等同一 `release_v4` 鎖約70分鐘，06:35 才以 `eod_research` 完成；內嵌 current-stock research cycle 佔用共用鎖，Raw/PIT 父 run 隨後仍被 2014 年起的歷史來源版本守衛阻擋。原正常「系統狀態」現在投影已驗收據的研究用途與等待時間，解除 `passed／已保存` 被誤讀為開盤前或自然資格的阻礙。這只到受影響 UI 測試與正式原件唯讀 reader；固定90包不變，正常 Main／EXE、正式排程時序或共用鎖修改、真正自然資格與完整 P12 仍待。排程改動須另有精確授權，時間調整本身也不提升現行時間政策；下一葉轉可獨立交付的 P03／P06／P08 缺口，證據見[Increment91 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
 
+**第二列 P03 文件鏈接續（Increment98）**：台積電官方 2026 Q2 四頁英文財報已在獨立有界取得中保存完整 PDF 原件與 SHA；PDF 明列合併、未經查核、新臺幣百萬元，且**Q2 單季與上半年累計分頁**。已存 TWSE OpenAPI 2330 三個原值只與上半年營收／淨利及6/30資產在假設千元後按顯示精度相符，不能因此替 OpenAPI 通用欄位核定單位或把上半年誤當單季。來源／用途與2330身分鏈、逐欄 parser、保存版本、public reader、正常個股頁及新程序仍未完成；本輪不改固定97、原 PIT／Gate。精確原件與失敗收據見[Increment98 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment98p03-單一發行人完整財報原件與期間分流)。
+
 **第五列 P12 正常接線核對（Increment92）**：沿原 writer helpers 產生隔離合成研究用途終態，開發來源正常 Main 明選詳情、切頁返回，關閉後 fresh PID 重讀同 run；兩邊都顯示「收盤後研究」與 70 分 03 秒，原件不變。這解除 Increment91 的 Main／fresh 接線未知，但正式原件只在先前獨立 reader 唯讀核對，沒有把兩筆證據拼成正式 Main／自然資格。QA581–583 的測試腳本 FAIL 保留，QA584 限定通過；固定90 EXE、正式時序、真來源與完整 P12 仍待。後續轉 §0.4 可獨立交付的 P03／P06／P08，不反覆做同一畫面案例；見[Increment92 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment92p12-研究用途終態沿正常-main-與新程序讀回)。
 
 **目前第三列限定進度（Increment77–78）**：正常 Main 已可從既有已核 Paper 帳清單明選策略／版本／namespace，接同日 Health，完成隔離合成來源的比較、保存、個股返回及新程序同原件重開。這解除手抄內部 ID 的操作阻礙；真私人帳、未持有候選的同源 Health／行情與固定 EXE 仍各自待證，不把此子集當第三列完整交付。下一步依上表轉第四列可比較策略研究；第二列財報／前期缺 MOPS 完整 EOF 與單位權威時維持不可用，不重抓已耗舊 scope。

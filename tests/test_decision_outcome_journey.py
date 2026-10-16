@@ -785,6 +785,32 @@ def test_missing_result_key_is_unknown_without_fabricating_payload() -> None:
     assert any(item.code == "recommendation_result_key_missing" for item in journey.diagnostics)
 
 
+def test_exact_outcome_maturity_preserves_source_quality_and_acceptance_limits() -> None:
+    outcome = _outcome()
+    outcome["data_quality"] = "degraded"
+    outcome["warnings"] = ["source_not_ingested", "source_not_ingested"]
+    outcome["metadata"] = {
+        "is_execution_pnl": False,
+        "planned_official_calendar": {"status": "annual_plan_only"},
+        "evidence_lineage": {"formal_credit_granted": False},
+    }
+    journey = _service(events=[_event()], outcomes=[outcome]).build(RESULT_ID)
+
+    maturity = next(item for item in journey.outcome_maturity if item.window_days == 5)
+    assert maturity.status is JourneyLinkStatus.LINKED
+    assert maturity.outcome_status == "ready"
+    assert maturity.source_data_quality == "degraded"
+    assert maturity.source_warning_codes == ("source_not_ingested",) * 2
+    assert maturity.planned_official_calendar_status == "annual_plan_only"
+    assert maturity.formal_credit_granted is False
+    assert maturity.to_dict()["source_warning_codes"] == ["source_not_ingested"] * 2
+    assert next(item for item in journey.outcomes if item.window_days == 5).forward_return_bp == 120
+    assert all(
+        item.source_data_quality is None and item.formal_credit_granted is None
+        for item in journey.outcome_maturity if item.window_days != 5
+    )
+
+
 def test_conflicting_duplicate_outcome_fails_closed() -> None:
     outcomes = [
         _outcome(outcome_id="outcome-a", window_days=5, forward_return_bp=100),

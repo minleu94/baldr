@@ -525,6 +525,10 @@ class OutcomeMaturityRecord:
     outcome_id: str | None = None
     outcome_status: str | None = None
     reason: str = ""
+    source_data_quality: str | None = None
+    source_warning_codes: tuple[str, ...] = ()
+    planned_official_calendar_status: str | None = None
+    formal_credit_granted: bool | None = None
 
     @property
     def maturity_key(self) -> tuple[str | None, int]:
@@ -539,6 +543,10 @@ class OutcomeMaturityRecord:
             "outcome_id": self.outcome_id,
             "outcome_status": self.outcome_status,
             "reason": self.reason,
+            "source_data_quality": self.source_data_quality,
+            "source_warning_codes": list(self.source_warning_codes),
+            "planned_official_calendar_status": self.planned_official_calendar_status,
+            "formal_credit_granted": self.formal_credit_granted,
         }
 
 
@@ -2475,6 +2483,18 @@ class DecisionOutcomeJourneyService:
                         )
                     continue
                 outcome = key_outcomes[0]
+                outcome_payload = outcome.original_payload
+                raw_warnings = outcome_payload.get("warnings")
+                source_warning_codes = (
+                    tuple(item for item in raw_warnings if isinstance(item, str))
+                    if isinstance(raw_warnings, (list, tuple))
+                    else ()
+                )
+                outcome_metadata = _mapping(outcome_payload.get("metadata"))
+                calendar = _mapping(outcome_metadata.get("planned_official_calendar"))
+                calendar_status = calendar.get("status")
+                lineage = _mapping(outcome_metadata.get("evidence_lineage"))
+                formal_credit = lineage.get("formal_credit_granted")
                 records.append(
                     OutcomeMaturityRecord(
                         candidate_key=candidate.candidate_key,
@@ -2487,6 +2507,14 @@ class DecisionOutcomeJourneyService:
                             "outcome_available_at_query_boundary"
                             if boundary is None
                             else "outcome_visible_at_query_boundary"
+                        ),
+                        source_data_quality=outcome.data_quality or None,
+                        source_warning_codes=source_warning_codes,
+                        planned_official_calendar_status=(
+                            calendar_status if isinstance(calendar_status, str) else None
+                        ),
+                        formal_credit_granted=(
+                            formal_credit if isinstance(formal_credit, bool) else None
                         ),
                     )
                 )

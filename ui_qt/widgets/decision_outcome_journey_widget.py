@@ -766,7 +766,7 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 f"{item.window_days}個交易日",
                 _link_status_text(item.status),
                 _outcome_status_text(item.outcome_status),
-                _maturity_reason_text(item.reason),
+                _maturity_reason_with_source_limits(item),
             )
             for item in maturity
         )
@@ -1024,6 +1024,27 @@ def _maturity_reason_text(reason: str) -> str:
     }.get(reason, reason or "—")
 
 
+def _maturity_source_limits(item: OutcomeMaturityRecord) -> tuple[str, ...]:
+    limits: list[str] = []
+    if item.source_data_quality == "degraded":
+        limits.append("結果資料品質：降級")
+    if "source_not_ingested" in item.source_warning_codes:
+        limits.append("結果引用來源尚未完成納入")
+    if item.planned_official_calendar_status == "annual_plan_only":
+        limits.append("交易日曆僅有年度計畫，臨時休市未核")
+    if item.formal_credit_granted is False:
+        limits.append("此期限結果未獲正式採認")
+    return tuple(limits)
+
+
+def _maturity_reason_with_source_limits(item: OutcomeMaturityRecord) -> str:
+    reason = _maturity_reason_text(item.reason)
+    limits = _maturity_source_limits(item)
+    if not limits:
+        return reason
+    return f"{reason} {'；'.join(limits)}。"
+
+
 def _status_label(value: str) -> str:
     return {
         "linked": "已連結",
@@ -1060,6 +1081,8 @@ def _journey_quality(
         for item in maturity
     ):
         return "partial"
+    if any(_maturity_source_limits(item) for item in maturity):
+        return "warning"
     return "linked"
 
 
@@ -1096,6 +1119,8 @@ def _journey_summary(
         parts.append(f"{windows(other)} 個交易日結果狀態請看下表")
     if unlinked:
         parts.append(f"{windows(unlinked)} 個交易日連結未核實或衝突，請看下表")
+    if any(_maturity_source_limits(item) for item in maturity):
+        parts.append("部分期限的來源品質或採認有限，請看逐期原因")
     if not maturity:
         parts.append("尚無期限結果")
     return "；".join(parts) + "。此處不是實際成交損益。"

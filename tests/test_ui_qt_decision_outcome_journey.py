@@ -424,6 +424,38 @@ def test_maturity_reason_is_plain_language_without_changing_source_status() -> N
     widget.close()
 
 
+def test_ready_outcome_shows_exact_source_limits_without_promoting_it() -> None:
+    original = _journey(outcome_status="ready")
+    journey = replace(
+        original,
+        outcome_maturity=tuple(
+            replace(
+                item,
+                source_data_quality="degraded",
+                source_warning_codes=("source_not_ingested", "source_not_ingested"),
+                planned_official_calendar_status="annual_plan_only",
+                formal_credit_granted=False,
+            ) if item.window_days == 5 else item
+            for item in original.outcome_maturity
+        ),
+    )
+    widget = DecisionOutcomeJourneyWidget(JourneyServiceStub({"result-1": journey}), _context())
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+
+    model = widget.maturity_table.model()
+    assert model.index(0, 2).data() == "來源已標示 ready"
+    reason = model.index(0, 3).data()
+    assert "結果資料品質：降級" in reason
+    assert "結果引用來源尚未完成納入" in reason
+    assert "交易日曆僅有年度計畫，臨時休市未核" in reason
+    assert "此期限結果未獲正式採認" in reason
+    assert widget.status_badge.text() == "注意"
+    assert "來源品質或採認有限" in widget.status_label.text()
+    assert next(item for item in widget.journey.outcome_maturity if item.window_days == 5).outcome_status == "ready"
+    widget.close()
+
+
 def test_mixed_horizons_show_available_source_and_pending_separately() -> None:
     base = _journey()
     mixed = replace(

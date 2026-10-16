@@ -62,14 +62,20 @@ class PaperCheckpointAccountInputs:
         if blocker is not None:
             return None, blocker
         package_root = Path(__file__).resolve().parents[1]
-        resolved_root = root.resolve(strict=True)
+        try:
+            resolved_root = root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return None, "PAPER_CONTRACT_ARTIFACTS_ROOT 無法安全解析；Paper 快照查找已停用。"
         if (
             resolved_root == package_root
             or resolved_root.is_relative_to(package_root)
             or package_root.is_relative_to(resolved_root)
         ):
             return None, "PAPER_CONTRACT_ARTIFACTS_ROOT 必須位於應用程式套件外部。"
-        return cls(personal_paths, resolved_root), None
+        try:
+            return cls(personal_paths, resolved_root), None
+        except ValueError as exc:
+            return None, str(exc)
 
     def build_account_service(self, strategy_version_service: Any) -> Any:
         """沿用 BacktestView 同一個 StrategyVersionService 的版本根。"""

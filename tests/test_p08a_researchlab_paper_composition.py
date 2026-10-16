@@ -128,6 +128,26 @@ def test_personal_external_root_is_explicit_and_versions_root_is_shared(tmp_path
     assert composed.contract_artifacts_root == inputs.contract_artifacts_root
 
 
+def test_unreadable_optional_paper_root_disables_only_paper(tmp_path, monkeypatch):
+    original_service, paths, _manifest = _create_account(tmp_path)
+    paper_root = original_service.contract_artifacts_root
+    personal = SimpleNamespace(mode=PersonalStoreMode.PERSONAL, paths=paths)
+    path_type = type(paper_root)
+    original_resolve = path_type.resolve
+
+    def unreadable_resolve(self, *args, **kwargs):
+        if self == paper_root:
+            raise PermissionError(5, "Access is denied", str(self))
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(path_type, "resolve", unreadable_resolve)
+    inputs, reason = PaperCheckpointAccountInputs.from_selection(
+        personal, contract_artifacts_root=paper_root,
+    )
+    assert inputs is None
+    assert reason == "PAPER_CONTRACT_ARTIFACTS_ROOT 無法安全解析；Paper 快照查找已停用。"
+
+
 def test_cutoff_requires_user_supplied_timezone_offset():
     assert parse_explicit_aware_cutoff("2026-08-05T09:00:00+00:00") == _CUTOFF
     with pytest.raises(ValueError, match="明示時區感知"):
@@ -810,7 +830,6 @@ def test_backtest_view_paper_picker_clicks_catalogue_then_reads_exact_card_read_
 ):
     import time
 
-    from PySide6.QtCore import QPoint
     from PySide6.QtTest import QTest
 
     from ui_qt.views.backtest_view import BacktestView
@@ -863,13 +882,12 @@ def test_backtest_view_paper_picker_clicks_catalogue_then_reads_exact_card_read_
         QTest.qWait(50)
 
         paper_group = view.result_panel.paper_checkpoint_group
-        assert paper_group.isVisible()
         QTest.mouseClick(
-            paper_group,
+            view.result_panel.paper_checkpoint_button,
             Qt.MouseButton.LeftButton,
-            pos=QPoint(14, 10),
         )
         app.processEvents()
+        assert paper_group.isVisible()
         assert paper_group.isChecked()
 
         lookup = view.result_panel.paper_checkpoint_lookup
@@ -1045,15 +1063,12 @@ def test_backtest_view_parent_close_invalidates_pending_paper_read_until_native_
         QTest.qWait(50)
 
         paper_group = view.result_panel.paper_checkpoint_group
-        assert paper_group.isVisible()
-        from PySide6.QtCore import QPoint
-
         QTest.mouseClick(
-            paper_group,
+            view.result_panel.paper_checkpoint_button,
             Qt.MouseButton.LeftButton,
-            pos=QPoint(14, 10),
         )
         app.processEvents()
+        assert paper_group.isVisible()
         assert paper_group.isChecked()
 
         lookup = view.result_panel.paper_checkpoint_lookup

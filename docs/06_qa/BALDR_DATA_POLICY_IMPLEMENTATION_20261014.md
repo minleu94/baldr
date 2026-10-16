@@ -1631,3 +1631,11 @@ QA490 在 8 GiB committed／12 程序／kill-on-close 的同 workspace Job 下�
 QA493 在相同隔離來源、同一受控 Job 規格及較完整檔案權限下只重驗上述六個 setup 失敗案例，**6 PASS**；outer `single_owned_qa_8133b5fdb8874fbf9c0dfed35e20ee69/receipt.json` SHA-256 `e2635152bb6f62b4c11af7df11bb27585a3b874cc41d77ac172915c3715d9547`。各次實際 Job 前組三 PID 陣列空且 process／Job handles 與 mutex 關閉才啟動，終態亦自然空、無 forced cleanup；啟動 RAM 守衛 ≥8 GiB。15／2／6 的局部結果不能相加成完整 P06 Gate；沒有正常 Main／fresh、固定 EXE、真私人帳或未持有候選同源 Health／行情的本輪驗證。原固定日常研究71、P07預覽73、正式資料／Task／maintainer、歷史 PIT 與 G0–G4 不變。
 
 補充真 reader 接線：QA494 在原已通過的精確來源旅程增加 `list_initial_accounts()` 斷言，確認既有真策略帳 binding 經 `list_accounts()` 產生同一策略／版本／namespace，再沿原 Health 比較、保存與 exact 重開，**1 PASS**。outer `single_owned_qa_0d253c313fb742db92e716970186b8cc/receipt.json` SHA-256 `6e017f19fd771a7873b3f361ba1d0717844e41f1d7501ae50a59a0e6750501d8`；前組閉鎖及本組自然 PID0／handles／mutex 關閉，無 forced cleanup。此為隔離來源與 Qt offscreen 的工程驗證，尚非正常 Main／EXE 或真人入口接受。
+
+## Increment78：P06 明選帳戶的正常 Main／新程序讀回
+
+**解除的第二階段第三列阻礙**：Increment77 的帳戶入口已有精確 reader 與元件驗證，尚缺正常主視窗下的完整操作。QA495 首次 Main 測試把隔離個人根目錄放在應用套件內，既有 `personal_root_overlaps_application_package` 保護於視窗初始化前拒絕；這是測試根目錄錯置，不是帳戶／情境業務斷言失敗。失敗原件 `single_owned_qa_7d090b621fd24bb2b043117dbfb3cc43/receipt.json` SHA-256 `2e20ddc55425b091409d8c341d9ee2f0fac4dd97cf663b5ad44d14c85d0d6a4d` 保留，未重用 result directory。
+
+QA496 改在套件外的獨立 Temp 根目錄建立同一隔離合成策略帳／Health／行情，固定 16 份程式與測試來源 SHA、21 份來源原件 bytes／SHA／mtime／ctime。正常 Main **34688** 由「找出已核策略帳」實按載入、有界清單不自選、明選既有策略／版本／namespace，再明選成對 Health、比較、保存、開個股並返回；新程序 **23784** 不重算或再保存，以同一 artifact ID、comparison、scenario DB SHA 與個股投影精確讀回。腳本 compile 與整條旅程退出碼均 0，`increment78_qa496/receipt.json` 及 outer `single_owned_qa_5490bbbde8f54a9d88068036bca53b63/receipt.json`（SHA-256 `4aab357b453842b2d84ffa73abdabdf920d148d8a2fc4ebdbea7674b76520eb7`）；前組與本組三 PID 陣列自然空、process／Job handles 關閉、mutex 釋放，8 GiB committed／12 程序／kill-on-close，無 forced cleanup。原 `parent.json` SHA-256 `884c77b4382ceee638693968152591ec07b983df58e0bc68e8bbd8ce09621739`、`fresh.json` SHA-256 `bca8e63a8faf79e6353685b7014548b1390fe9dc00b81d456c4452592e8e43e0`。
+
+此出口只接受合成 offscreen Main／fresh，不代表固定 EXE、真私人帳、未持有候選 Health／行情、來源用途、歷史 PIT、績效或完整 P06/Gate。固定試用71與預覽73未改；正式資料、Task、maintainer、push、發布與交易均未觸及。

@@ -53,6 +53,12 @@ class DecisionCaptureRunStatus:
     snapshot_saved: bool | None = None
     snapshot_duplicate: bool | None = None
     snapshot_execution_status: str = "not_started"
+    capture_mode: str = ""
+    temporal_status: str = ""
+    research_only: bool | None = None
+    preopen_authority: bool | None = None
+    natural_authority: bool | None = None
+    reservation_wait_seconds: Decimal | None = None
     failure_reasons: tuple[str, ...] = ()
     last_stage: str = ""
     unfinished_stages: tuple[str, ...] = ()
@@ -251,12 +257,49 @@ def _verified(reader: _Read, path: Path, payload: dict[str, Any], now: datetime)
     )
     snapshot_status = snapshot.get("status", "unknown")
     _require(type(snapshot_status) is str and _CODE.fullmatch(snapshot_status) is not None, "snapshot_status_invalid")
+    temporal_keys = ("capture_mode", "temporal_status", "research_only",
+                     "preopen_authority", "natural_authority")
+    temporal: dict[str, Any] = {}
+    if any(key in payload for key in temporal_keys):
+        _require(all(key in payload for key in temporal_keys), "temporal_fields_incomplete")
+        mode, status = payload["capture_mode"], payload["temporal_status"]
+        _require(type(mode) is str and _CODE.fullmatch(mode) is not None
+                 and not any(token in mode.lower() for token in ("preopen", "pre-open", "natural"))
+                 and type(status) is str and _CODE.fullmatch(status) is not None,
+                 "temporal_fields_invalid")
+        _require(all(type(payload[key]) is bool for key in temporal_keys[2:]),
+                 "temporal_fields_invalid")
+        _require(payload["research_only"] is True
+                 and payload["preopen_authority"] is False
+                 and payload["natural_authority"] is False,
+                 "temporal_authority_unproven")
+        for child in (snapshot, payload.get("evidence")):
+            if type(child) is dict and any(key in child for key in temporal_keys):
+                _require(all(key in child and _same(child[key], payload[key]) for key in temporal_keys),
+                         "temporal_child_mismatch")
+        temporal = {key: payload[key] for key in temporal_keys}
+    wait_seconds: Decimal | None = None
+    reservation_wait = payload.get("reservation_wait")
+    if reservation_wait is not None:
+        _require(type(reservation_wait) is dict, "reservation_wait_invalid")
+        raw_wait = reservation_wait.get("elapsed_seconds")
+        if raw_wait is not None:
+            _require(type(raw_wait) in (int, Decimal) and Decimal(raw_wait).is_finite()
+                     and Decimal(0) <= Decimal(raw_wait) <= Decimal(86400),
+                     "reservation_wait_invalid")
+            wait_seconds = Decimal(raw_wait)
     reader.finish()
     return DecisionCaptureRunStatus(
         path, "verified", raw_status=payload["status"], run_id=run_id,
         decision_date=decision_date, completed_at=payload["completed_at"],
         receipt_path=str(receipt_path), receipt_sha256=digest, snapshot_status=snapshot_status,
         snapshot_saved=saved, snapshot_duplicate=duplicate, snapshot_execution_status=snapshot_execution,
+        capture_mode=temporal.get("capture_mode", ""),
+        temporal_status=temporal.get("temporal_status", ""),
+        research_only=temporal.get("research_only"),
+        preopen_authority=temporal.get("preopen_authority"),
+        natural_authority=temporal.get("natural_authority"),
+        reservation_wait_seconds=wait_seconds,
         failure_reasons=safe_reasons, last_stage=summary["last_stage"] or "",
         unfinished_stages=tuple(summary["unfinished_stages"]), stages=stages,
     )

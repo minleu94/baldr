@@ -131,6 +131,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 先後次序以可交付證據調整：目前正在做的一列若只剩外部授權／歷史原件／自然時間，寫出精確解除條件後轉下一個無依賴流程；不讓該阻礙成為所有列的新前置。可獨立解除啟動、資料破壞或錯誤金融結果的缺陷優先插入；其他新需求排在現行交付範圍之外。
 
+**第五列 P12 判讀修正（Increment91，開發來源）**：10/15 正式自然 run 的同收據讀回證明 snapshot／Evidence 已保存，但 05:25 起等同一 `release_v4` 鎖約70分鐘，06:35 才以 `eod_research` 完成；內嵌 current-stock research cycle 佔用共用鎖，Raw/PIT 父 run 隨後仍被 2014 年起的歷史來源版本守衛阻擋。原正常「系統狀態」現在投影已驗收據的研究用途與等待時間，解除 `passed／已保存` 被誤讀為開盤前或自然資格的阻礙。這只到受影響 UI 測試與正式原件唯讀 reader；固定90包不變，正常 Main／EXE、正式排程時序或共用鎖修改、真正自然資格與完整 P12 仍待。排程改動須另有精確授權，時間調整本身也不提升現行時間政策；下一葉轉可獨立交付的 P03／P06／P08 缺口，證據見[Increment91 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
+
 **目前第三列限定進度（Increment77–78）**：正常 Main 已可從既有已核 Paper 帳清單明選策略／版本／namespace，接同日 Health，完成隔離合成來源的比較、保存、個股返回及新程序同原件重開。這解除手抄內部 ID 的操作阻礙；真私人帳、未持有候選的同源 Health／行情與固定 EXE 仍各自待證，不把此子集當第三列完整交付。下一步依上表轉第四列可比較策略研究；第二列財報／前期缺 MOPS 完整 EOF 與單位權威時維持不可用，不重抓已耗舊 scope。
 
 **第三列續進（Increment85，開發來源）**：已選 exact 策略帳與同日 Health 後，可勾選原帳本全部持股，省去手抄股號；父 Main 比較／保存／個股返回與新程序同 artifact 重開已在隔離合成帳本限定通過。它解除初次研究的輸入斷點，沒有增加 V1 前置，也沒有替真私人帳、未持有候選或固定 EXE 授資格。下一個第三列實質出口是有同來源完整現金、Health 與行情的實際帳本／候選；缺該證據時按本表轉第四／第五列可獨立完成的使用流程，不擴張前置工程。具名證據見[Increment85 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment85p06-已選策略帳全部持股的初次配置研究)。
@@ -686,6 +688,8 @@ Increment58真人回報解除操作阻礙而不擴資料前置：缺方向屬D�
 Increment57只補既有穩健／暴衝執行後的不可變規則來源，沿原執行→保存→public reader→歷史／返回→fresh；實際門檻取原policy，風控核精確原比例與舊整數投影，不改交易。原prefix有限完整行情測試不消除executor缺值bfill與歷史PIT限制；完整家族規則、雙策略權威／績效、來源缺件及自然成熟各自保留。最新試用缺陷另按第一版阻礙修復，不擴成新的資料或架構前置；下一葉以原產品包的可操作出口繼續。
 
 Increment56沿P12既有producer／stage診斷補共用終態reader及原正常系統狀態出口，原件身分與保存未知不再由通用passed字串覆蓋。正常Main／新程序同run讀回已限定驗證；受改反例、UI必跑與型別結果及原FAIL逐項見[Increment56 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment56p12決策擷取終態與正常系統狀態)。實際120秒執行／依賴與效能原因、自然排程與重試尚未關閉；本輪不修改或重觸發正式Task。P03來源缺件、P07規則／P08完整績效與其餘正常旅程繼續各自推進，不能以此讀回增量冒充全產品或新V1前置。
+
+2026-10-16 依原 A/B/C/D 分流補核 P12：10/15 同 run snapshot／Evidence 成功，但 70 分鐘的共用鎖等待與 `eod_research` 限定了其用途；Raw/PIT 並行的 current-stock cycle 完成後，父 run 仍是 `blocked_source_revision`。Increment91 只修已保存結果的用途判讀，不把排程 exit 0、被擋 raw、局部 QA 或研究快照當完整 Gate；原 120 秒執行／正式時序與自然成熟仍待。可獨立交付的產品流程照 §0.4 推進，不為此重觸發 maintainer、重抓已耗 scope 或改正式 Task。
 
 Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口：50ddb640 candidate的真TPEx法人同pin／用途／返回／fresh，以及原合成P06保存情境明確登錄→Registry→個股實按返回→fresh，來源版與EXE均通過；共同啟動／完整archive／依賴鎖／原同版probe亦通過。候選、具名PID／收據與原限制見[Increment55 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。只解除這兩旅程缺Native／EXE證據的交付阻礙，不擴V1、來源或完整Gate；無新HTTP／正式資料／Task。接續原P12受控terminal／status reader正常UI出口，禁止重觸發正式maintainer。
 

@@ -2,6 +2,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -326,6 +327,43 @@ def test_runtime_view_renders_typed_capture_and_updates_the_preserved_selection(
     assert "private stderr" not in detail
     assert "≥86400000 ms（已截限）" in detail
     assert "capture-run-001" not in detail
+
+
+def test_runtime_capture_separates_saved_result_from_research_use():
+    app()
+    view = RuntimeView()
+    capture = replace(
+        _decision_capture_status(),
+        capture_mode="eod_research",
+        temporal_status="verified",
+        research_only=True,
+        preopen_authority=False,
+        natural_authority=False,
+        reservation_wait_seconds=Decimal("4203.062"),
+    )
+    operation = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture",
+        label="決策證據擷取",
+        raw_status="passed",
+        state="operational",
+        updated_at=datetime(2026, 10, 14, 0, 30, tzinfo=timezone.utc),
+        lane="core",
+        capture=capture,
+    )
+
+    detail = view._render_decision_capture_status(operation)
+    assert "已保存：是" in detail
+    assert "收盤後研究；不具開盤前或自然證據資格" in detail
+    assert "共用資源等待：70 分 03 秒" in detail
+    unverified = view._render_decision_capture_status(
+        replace(operation, capture=replace(capture, read_state="unverified"))
+    )
+    assert "時間用途：未證明" in unverified
+    assert "共用資源等待：未知" in unverified
+    unproven_clock = view._render_decision_capture_status(
+        replace(operation, capture=replace(capture, temporal_status="temporal_precision_unproven"))
+    )
+    assert "時間用途：未證明" in unproven_clock
 
 
 def test_runtime_view_keeps_legacy_or_untyped_capture_unknown():

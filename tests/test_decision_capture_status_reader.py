@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from hashlib import sha256
 import json
 
@@ -31,6 +32,60 @@ def _payload(path):
 
 def _write_payload(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+
+
+def _reseal_temporal_fixture(fixture, *, child_mode="eod_research", natural_authority=False):
+    payload = _payload(fixture.status_path)
+    temporal = {
+        "capture_mode": "eod_research",
+        "temporal_status": "verified",
+        "research_only": True,
+        "preopen_authority": False,
+        "natural_authority": natural_authority,
+    }
+    payload.update(temporal)
+    payload["snapshot"].update(temporal)
+    payload["evidence"].update(temporal)
+    payload["evidence"]["capture_mode"] = child_mode
+    payload["reservation_wait"] = {"elapsed_seconds": 4203.062}
+    payload.pop("receipt_sha256")
+    _write_payload(fixture.receipt_path, payload)
+    payload["receipt_sha256"] = sha256(fixture.receipt_path.read_bytes()).hexdigest()
+    _write_payload(fixture.status_path, payload)
+
+
+def test_reader_projects_only_verified_research_use_and_reservation_wait(tmp_path):
+    fixture = create_decision_capture_fixture(tmp_path / "temporal", producer_now=BASE_TIME)
+    _reseal_temporal_fixture(fixture)
+
+    result = _read(fixture)
+
+    assert result.read_state == "verified"
+    assert result.capture_mode == "eod_research"
+    assert result.temporal_status == "verified"
+    assert result.research_only is True
+    assert result.preopen_authority is False
+    assert result.natural_authority is False
+    assert result.reservation_wait_seconds == Decimal("4203.062")
+
+
+@pytest.mark.parametrize("change", ("child_mismatch", "unsupported_authority"))
+def test_reader_rejects_inconsistent_temporal_use_even_with_resealed_receipt(tmp_path, change):
+    fixture = create_decision_capture_fixture(tmp_path / change, producer_now=BASE_TIME)
+    _reseal_temporal_fixture(
+        fixture,
+        child_mode="research_only" if change == "child_mismatch" else "eod_research",
+        natural_authority=change == "unsupported_authority",
+    )
+
+    result = _read(fixture)
+
+    assert result.read_state == "unverified"
+    assert result.diagnostic == (
+        "decision_capture_temporal_child_mismatch"
+        if change == "child_mismatch"
+        else "decision_capture_temporal_authority_unproven"
+    )
 
 
 def test_reader_verifies_original_receipt_artifacts_and_safe_stage_summary(tmp_path):

@@ -6,6 +6,7 @@
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from dataclasses import replace
+from decimal import Decimal
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import (
     ensure_visible_rows,
@@ -508,12 +509,26 @@ class RuntimeView(QWidget):
         execution_status = (
             cls._safe_capture_code(capture.snapshot_execution_status) or "未知"
         )
+        usage = "未證明；不可據此宣稱開盤前或自然證據資格"
+        if (capture.read_state == "verified" and capture.temporal_status == "verified"
+                and capture.research_only is True):
+            if capture.capture_mode == "eod_research":
+                usage = "收盤後研究；不具開盤前或自然證據資格"
+            else:
+                usage = "研究用途；不具開盤前或自然證據資格"
+        wait = capture.reservation_wait_seconds
+        wait_text = "未知"
+        if (capture.read_state == "verified" and type(wait) is Decimal
+                and wait.is_finite() and Decimal(0) <= wait <= Decimal(86400)):
+            elapsed = int(wait)
+            wait_text = f"{elapsed // 60} 分 {elapsed % 60:02d} 秒"
         return "\n".join(
             (
                 f"決策擷取終態讀回：{read_state_label}（{read_state or 'unknown'}）",
                 f"核驗診斷：{diagnostic or '未提供'}",
                 f"run ID：{run_id}｜決策日：{decision_date}｜完成時間：{completed_at}",
                 f"receipt SHA-256：{receipt_sha256}",
+                f"時間用途：{usage}｜共用資源等待：{wait_text}",
                 "snapshot 狀態："
                 f"{snapshot_status}｜已保存："
                 f"{cls._capture_optional_bool_text(capture.snapshot_saved)}",

@@ -106,7 +106,9 @@ Manifest 公版欄位與範例見 [`examples/machine_bootstrap_manifest.example.
 
 每次驗收沿同一 identity 建立 `task → producer → status → immutable terminal/receipt → artifact → consumer readback` 路徑。latest status 只用來定位；核 exact run/date、parent/hash、terminal 和下游 readback。`Task Ready`、`LastResult=0`、exit 0、heartbeat 回報、status receipt 存在或檔案時間更新都不足以單獨宣稱自然成功。
 
-後續開發來源版可在「系統狀態」明選「決策證據擷取」展開詳細；Runtime 與 Workbench 共用同 run 收據／原件核驗，缺件或孤立 passed 不計成功。逾時的保存結果若未知，須先核原 DB／receipt，不能由狀態文字推定沒有寫入而重跑。操作與診斷見[手冊§11](APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。目前只有隔離終態、模擬逾時事件與正常畫面新程序讀回證據；未實跑120秒超時，未觸發或驗收正式自然 Task。原期限、重試授權、共用鎖與已停用 maintainer 狀態保留。
+後續開發來源版可在「系統狀態」明選「決策證據擷取」展開詳細；Runtime 與 Workbench 共用同 run 收據／原件核驗，缺件或孤立 passed 不計成功。逾時的保存結果若未知，須先核原 DB／receipt，不能由狀態文字推定沒有寫入而重跑。操作與診斷見[手冊§11](APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。Increment56 當時只驗隔離終態、模擬逾時事件與正常畫面新程序讀回；迄今未實跑120秒超時，也尚未驗收正式自然 Task 的完整出口。原期限、重試授權、共用鎖與已停用 maintainer 狀態保留。
+
+開發來源的詳細欄位另會顯示「時間用途」與「共用資源等待」。即使同次 `passed`、snapshot 已保存、Evidence 已寫入，若顯示「收盤後研究；不具開盤前或自然證據資格」，這份結果只能依研究用途閱讀；等候時間用來定位排程衝突，不能改寫結果的可得時間或成熟資格。10/15 的唯讀核對正是此情形：05:25 啟動的擷取等鎖約70分鐘，06:35 以 `eod_research` 完成；同時段 Raw/PIT 的 current-stock cycle 用相同共用鎖，Raw/PIT 父 run 最終仍被歷史來源版本守衛擋下。兩個 Task 的 LastResult=0 均不取代各自終態。具名來源 SHA、收據與受影響驗證見[Increment91 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)；固定試用版90尚未包含此開發來源畫面，正式 Task 未更動。
 
 對 Paper／Forward，保留其共同 08:25 wakeup 與 08:30 readiness/cutoff 的不同角色；未到 cutoff、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 不能結案成成功或自然成熟。對 recommendation learning、Forward outcome、promotion 與 model shadow，source／樣本不完整或未到 maturity 保持 pending，不從工程試跑、舊 latest 或離線 replay 增授自然 credit。
 

@@ -8,7 +8,7 @@
 
 | 要查的內容 | 證據入口 |
 |---|---|
-| 產品文件入口、角色路由、同步工具與移機計畫 | [10/12 文件產品化驗收](DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md)；只驗本次文件與維護工具，不代表產品 Gate 或自然排程接受。 |
+| 產品文件入口、角色路由、同步工具與移機計畫 | [10/15 文件理解負擔修復](DOCUMENTATION_CLARITY_REPAIR_20261015.md)：冷封存登記、責任同步、現行入口與圖譜；前輪見 [10/12 文件產品化驗收](DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md)。只驗各輪文件與維護工具，不代表產品 Gate 或自然排程接受。 |
 | 個人 H20 中央母體接線與完整自然迴路試跑 | [10/12 自然迴路 QA](BALDR_NATURAL_LOOP_TRIAL_20261012.md)；真來源隔離試跑、歷史缺日及自然成熟分開判讀。 |
 | Paper 身分延續與 G9 官方日曆 operation 契約修正 | [10/12 排程契約修正](BALDR_SCHEDULE_CONTRACT_REPAIR_20261012.md)；工程回歸與自然排程／來源資格分開，原失敗收據保留。 |
 | 指定時點的排程修復、失敗與後續補充 | [10/09 排程與 Codex automation 修正](BALDR_SCHEDULE_REMEDIATION_20261009.md) → [全排程共用唯讀稽核 Runbook](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md) → [10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [9/30 bounded repair](SCHEDULED_OPERATIONS_REPAIR_20260930.md) → [9/29 完整 21-task inventory](SCHEDULED_OPERATIONS_REPAIR_20260929.md) → [9/17 A 線狀態審查歷史](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) → [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史)；日期化收據不代表目前 scheduler readiness。 |

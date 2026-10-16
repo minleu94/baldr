@@ -1,0 +1,262 @@
+{
+  "schema_version": "baldr-cold-archive-registry.v1",
+  "recorded_on": "2026-10-15",
+  "timezone": "America/Los_Angeles",
+  "authority": "docs/03_data/STORAGE_ASSET_REGISTER_20261006.md",
+  "scope": "既有兩批34個冷封存根的路徑登記；不授權新搬移、刪除、重建或正式資料操作",
+  "verification_boundary": "舊全檔SHA依逐批原收據；本登記只核Junction及路徑metadata，不證明每份外部證據內容可讀或產品Gate通過",
+  "batches": [
+    {
+      "id": "batch1",
+      "archive_root": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009",
+      "scope_document": "docs/03_data/C_DRIVE_QA_COLD_ARCHIVE_20261009.md",
+      "reconciliation": "docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md"
+    },
+    {
+      "id": "batch2",
+      "archive_root": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain",
+      "scope_document": "docs/03_data/C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md",
+      "reconciliation": "docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md"
+    }
+  ],
+  "entries": [
+    {
+      "source_prefix": "output/qa/personal_daily_product_20261006",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009/output/qa/personal_daily_product_20261006",
+      "batch_id": "batch1",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/astra_engineering_20261003",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009/output/qa/astra_engineering_20261003",
+      "batch_id": "batch1",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/closeout_commit_20261003",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009/output/qa/closeout_commit_20261003",
+      "batch_id": "batch1",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/data_completion_20260909/backups",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009/output/data_completion_20260909/backups",
+      "batch_id": "batch1",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/ml_research/current_stock_cycles/2026-10-02",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009/output/ml_research/current_stock_cycles/2026-10-02",
+      "batch_id": "batch1",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/tp20_20260920T061923Z",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009/output/qa/tp20_20260920T061923Z",
+      "batch_id": "batch1",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/ml_research/integration_20261002",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/ml_research/integration_20261002",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/wp5_verified_snapshot_seed_20260929_01",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/qa/wp5_verified_snapshot_seed_20260929_01",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/technical_source_contract_20260919",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/qa/technical_source_contract_20260919",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/ui_layout_20260929",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/qa/ui_layout_20260929",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/fundamental_current_backups",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/fundamental_current_backups",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/qa/price_repair_20260921",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/qa/price_repair_20260921",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "output/v4_ml_research_shadow_union_bounded_20260907/.tmp",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/output/v4_ml_research_shadow_union_bounded_20260907/.tmp",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_0f25b8c6ee51_44e24c54",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_0f25b8c6ee51_44e24c54",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_20261006",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_20261006",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_290a93d7135a_fb67ad60",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_290a93d7135a_fb67ad60",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_2b6fda426b6f_3ed9cb87",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_2b6fda426b6f_3ed9cb87",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_330b98f416f7_afa55c15",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_330b98f416f7_afa55c15",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_421bc973a891_ca7c9022",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_421bc973a891_ca7c9022",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_4b40788bea9e_dd7335f7",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_4b40788bea9e_dd7335f7",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_58f8420ccae6_a2954bef",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_58f8420ccae6_a2954bef",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_7b21e0d4076b_98fff903",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_7b21e0d4076b_98fff903",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_93f9c57d7995_5ffdbdd4",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_93f9c57d7995_5ffdbdd4",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_96ecf00121d8_ce6aeecb",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_96ecf00121d8_ce6aeecb",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_9bc1cbfb67b2_d502d017",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_9bc1cbfb67b2_d502d017",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_9d542bdb705f_7499370d",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_9d542bdb705f_7499370d",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_acd18a1efcc0_56943844",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_acd18a1efcc0_56943844",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_b61e978fac97_91bfa999",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_b61e978fac97_91bfa999",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_bd5d2f86367a_3b730f86",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_bd5d2f86367a_3b730f86",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_c589bc71e8f1_8e967bc9",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_c589bc71e8f1_8e967bc9",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_c611ed515ca0_1cc2db97",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_c611ed515ca0_1cc2db97",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_e5026b3a5afa_abeea6de",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_e5026b3a5afa_abeea6de",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_e97f01466f29_728b3cf2",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_e97f01466f29_728b3cf2",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    },
+    {
+      "source_prefix": "dist/candidate_f2fba4c735ac_844ab7ab",
+      "archive_path": "E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain/dist/candidate_f2fba4c735ac_844ab7ab",
+      "batch_id": "batch2",
+      "classification": "historical_qa_or_backup",
+      "tracking": "registered_external_evidence"
+    }
+  ]
+}

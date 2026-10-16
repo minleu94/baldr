@@ -1,6 +1,21 @@
 # 產品與個股研究 QA 索引
 
+
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。
+
+## 依功能、交付與 Increment 查找
+
+下表只提供入口，不重述驗收狀態。原收據是 append-only；請在原段落判讀日期、scope、結果與限制。此索引不改變收據原結果或接受範圍。
+
+| 功能 | 原收據錨點 |
+|---|---|
+| 個股研究下鑽與來源回訪 | [Increment34](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)、[Increment71](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment71真人試用回報的四流程可用性修正) |
+| 價格選股、窄結果區與套用後可見性 | [Increment35](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment35v1價格條件在窄結果區可操作)、[Increment66](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment66日常研究修正版候選依原計畫04)、[Increment70](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment70價格選股載入後顯示結果)、[Increment71](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment71真人試用回報的四流程可用性修正) |
+| 單股回測結果與完成配對 | [Increment36](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment36v1單股回測未成交日的金融正確性)、[Increment37](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment37v1回測零完成配對的正確判讀) |
+| Research Lab 雙策略逐日明細與版本 | [Increment38](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment38p08雙策略逐日原觀測明細)、[Increment40](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment40p07p08新實驗綁定真策略版本)、[Increment49](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment49p08新單股歷史指標版本與正常讀回)、[Increment50](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment50p08獲利因子語意與金融錯誤修正)、[Increment57](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment57p07p08原兩策略的當次規則封存) |
+| Portfolio、Health 與配置研究 | [Increment44](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment44p06封存帳戶個股投影)、[Increment47](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment47p06初次策略帳來源與正常保存旅程)、[Increment52](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment52p06配置研究登錄與正常registry重開)、[Increment68](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment68p06-同日-health-收據的初次情境旅程) |
+| 推薦回放金融判讀與基本策略比較 | [Increment67](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment67p08-推薦回放通用比較的金融判讀阻斷)、[Increment69](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment69p07p08-兩基本策略原保存對照與明細往返) |
+| 固定試用交付與入口 | [Increment32](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment32先交可試用v1解除真實資料與比較按鈕阻斷)、[Increment55](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)、[Increment59](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment59試用回報固定候選與同版出口)、[Increment66](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment66日常研究修正版候選依原計畫04)、[Increment71](BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment71真人試用回報的四流程可用性修正) |
 
 ## 個股研究與產品 UX
 

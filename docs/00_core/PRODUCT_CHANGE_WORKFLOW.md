@@ -26,6 +26,8 @@ Execution 完成授權範圍的程式變更、必要測試與文件同步；QA �
 
 每個 Coverage 項目必須標 `updated`，或標 `not_required` 並寫具體理由。不要求每次重寫所有權威；需要同步的章節不能以「程式已完成」略過。更新現行章節並連具名證據，日期化過程放 QA／歷史，不堆在概覽前面。
 
+功能地圖中每個功能自己列出的 code／tests 代表入口，都必須命中自己的 `change_patterns`；別的功能有命中不代替本功能同步責任。`check` 會核對這項完整性。
+
 ## 交付條件
 
 - 適用 QA 有真正的命令、結果與證據位置；`not_run`、失敗、未完成不得標 done。
@@ -55,6 +57,7 @@ Execution 完成授權範圍的程式變更、必要測試與文件同步；QA �
 .\.venv\Scripts\python.exe scripts/document_control.py trace --inspect-file app_module/decision_desk_dtos.py --symbol DecisionDeskSnapshot
 .\.venv\Scripts\python.exe scripts/document_control.py inventory --base HEAD~1
 .\.venv\Scripts\python.exe scripts/document_control.py issues
+.\.venv\Scripts\python.exe scripts/document_control.py archives --path output/qa/personal_daily_product_20261006
 .\.venv\Scripts\python.exe scripts/document_control.py check --context-metadata
 ```
 
@@ -65,6 +68,10 @@ Execution 完成授權範圍的程式變更、必要測試與文件同步；QA �
 `inventory` 動態取 Git HEAD tracked tree；預設給分類統計、工作樹 XY 狀態及可選 base→HEAD delta，`--details` 才給文件逐檔 HEAD blob／工作樹 hash。Archive、Target、QA/navigation 的路徑分類只是機械候選，不替代文本權威判斷。ignored DB／models／Graphify／秘密資產不掃描內容，untracked 另列；固定 1,520 路徑[歷史 Manifest](DOCUMENT_GOVERNANCE_PATH_MANIFEST_20261011.csv)保持原樣，不能把新分母或 hash 當成新全庫 EOF 覆核。
 
 G01–G10 的已解範圍與外部證據界線由[結構化 Issue register](DOCUMENT_GOVERNANCE_ISSUES.json)追蹤，正文判定回其原始矩陣／QA。沒有 owner 證據便保留 null；Git 作者不是 owner。治理 G09 與排程 G9／H20 不同。已解問題不重開；新的外部資格結果另核來源與 resolution criteria。
+
+冷封存先查[既有資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md#查詢已登記的冷封存)與 `archives`。已登記的外部證據仍要區分目前是否可讀，以及內容是否另有核驗；不能當成新發現的未追蹤資料。
+
+`check` 將精確登記且 Junction 目標相符的引用另列為 `registered_external_references`，保留 `availability` 與 `content_verified=false`。未登記越界、目標漂移及內部跳脫仍拒絕；登記不等於內容驗證通過。
 
 閉環順序為：分類任務 → 最小 Context → 正文／程式／證據 → 授權工作 → 適用 QA → diff／Coverage → 需要時同步章節與狀態 → metadata／link／task check → Root review → scoped commit。實作看 Git／source；WIP 看工作樹與 owner task；QA 看原始 run；產品接受看 Gate。Snapshot 只摘要實質改變，不為每次測試重寫；README 保持穩定使用入口。Graphify 沿[現有指南](DOCUMENTATION_GRAPH_GUIDE.md)供導航，來源版本不符時回 Feature Map／Git，保護原圖及歷史原件。本輪固定五題與驗收見[治理 QA](../06_qa/DOCUMENT_CONTEXT_GOVERNANCE_ACCEPTANCE_20261013.md)。
 

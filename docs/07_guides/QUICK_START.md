@@ -1,5 +1,7 @@
 # 快速開始
 
+若你要使用目前指定的本機試用包，先讀[目前試用版指南](TRIAL_VERSION_GUIDE.md)並由指南指定的 `Launch-Baldr.cmd` 啟動。它使用本機固定路徑與隔離狀態，不能當作新電腦安裝或移機套件。
+
 第一次使用前，先選擇執行方式：
 
 - source 版需要 Windows x64／Python 3.11 和新的虛擬環境，依[安裝指南](INSTALL_GUIDE.md)設定。

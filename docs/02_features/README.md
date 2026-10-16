@@ -4,6 +4,22 @@
 
 本目錄包含系統的功能說明和使用指南。
 
+## 依工作區查找 UI 契約
+
+[UI 功能文件](UI_FEATURES_DOCUMENTATION.md)先按目前九個工作區列出互動契約、搜尋詞與手冊入口；操作步驟與安全限制以手冊為準，模組責任見[目前架構分冊](../01_architecture/current/README.md)，目前狀態與 QA 範圍分別見 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與[產品 UX QA 索引](../06_qa/PRODUCT_UX_QA_INDEX.md)。
+
+| 工作區 | UI 契約 |
+|---|---|
+| 決策工作台 | [決策工作台](UI_FEATURES_DOCUMENTATION.md#workspace-decision-workbench) |
+| 市場探索 | [市場探索](UI_FEATURES_DOCUMENTATION.md#workspace-market-exploration) |
+| 推薦分析 | [推薦分析](UI_FEATURES_DOCUMENTATION.md#workspace-recommendation) |
+| 策略回測／Research Lab | [策略回測](UI_FEATURES_DOCUMENTATION.md#workspace-backtest-research-lab) |
+| 觀察清單 | [觀察清單](UI_FEATURES_DOCUMENTATION.md#workspace-watchlist) |
+| 個股研究 | [個股研究](UI_FEATURES_DOCUMENTATION.md#workspace-stock-research) |
+| 持倉管理 | [持倉管理](UI_FEATURES_DOCUMENTATION.md#workspace-portfolio-management) |
+| 數據更新 | [數據更新](UI_FEATURES_DOCUMENTATION.md#workspace-data-update) |
+| Runtime Observatory | [Runtime Observatory](UI_FEATURES_DOCUMENTATION.md#workspace-runtime-observatory) |
+
 ## 📄 文檔列表
 
 - **`UI_FEATURES_DOCUMENTATION.md`**

@@ -1,5 +1,16 @@
 # 資料資產用途與恢復登記
 
+## 查詢已登記的冷封存
+
+兩批34個歷史QA／備份／舊候選根的原位置、E槽位置與逐批權威文件，集中在[冷封存引用登記](COLD_ARCHIVE_REFERENCE_REGISTRY.json)。這些仍是ignored的外部證據，不是遺失的Git來源或可清理項目。後續查詢或文件檢查應先核登記，不把相同路徑反覆列為新發現。
+
+```powershell
+.\.venv\Scripts\python.exe scripts/document_control.py archives
+.\.venv\Scripts\python.exe scripts/document_control.py archives --path output/qa/personal_daily_product_20261006
+```
+
+命令唯讀查Junction目標及存在性metadata，不讀raw內容。`metadata_available`只代表位置可見；磁碟離線／來源連結缺件會明示unavailable，不撤銷既有登記。目標漂移、未登記外部連結與封存內部跳脫仍屬錯誤；不因登記放寬嚴格reader的普通目錄要求。作為 Windows 驗證執行時，依[共用驗證規則](../agents/shared_context.md#python-驗證程序與資源)使用 Job／mutex。全檔SHA與搬移完成只引用各批原收據，詳[終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)。
+
 ## 2026-10-09 C 槽歷史封存更新
 
 第一批（6 個來源目錄）經使用者明確授權後，將歷史 QA／備份／2026-10-02 研究快照搬至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009`，12,862 檔、148.06 logical GiB；執行收據記錄逐檔 SHA-256 核驗通過，原位置改為 Junction。該批操作期間 C 可用空間觀測增加約 90.67 GiB，當時 postflight 約剩 204.06 GiB；E 約剩 205.86 GiB。所列「近期候選、dist 及排程未改」只描述第一批範圍；第二批另搬移 28 個列名目錄，終態見下方與 [冷封存狀態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)。下方 10/06 容量與原地保留狀態是歷史盤點，不作為目前位置或容量；嚴格拒絕 reparse point 的歷史重跑需先還原普通目錄。補完計畫在該時點仍暫停。

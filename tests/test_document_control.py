@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+from typing import Any
 
 import pytest
 
@@ -19,7 +20,7 @@ BOOTSTRAP_EXAMPLE_PATH = REPO_ROOT / "examples/machine_bootstrap_manifest.exampl
 SCHEDULE_REGISTRATION_PATH = REPO_ROOT / "scripts/inspect_scheduled_task_registration.py"
 
 
-def _read_json(path: Path) -> dict[str, object]:
+def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
@@ -75,6 +76,7 @@ def _canonical_schedule_constants() -> tuple[tuple[dict[str, str], ...], dict[st
     for node in tree.body:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             if node.target.id in {"EXPECTED_TASKS", "TASK_WRAPPER_PATHS"}:
+                assert node.value is not None
                 values[node.target.id] = ast.literal_eval(node.value)
     expected = values["EXPECTED_TASKS"]
     wrappers = values["TASK_WRAPPER_PATHS"]
@@ -118,7 +120,7 @@ def _schedule_row(
     }
 
 
-def _fresh_manifest(tmp_path: Path, repo_root: Path) -> dict[str, object]:
+def _fresh_manifest(tmp_path: Path, repo_root: Path) -> dict[str, Any]:
     manifest = _read_json(BOOTSTRAP_EXAMPLE_PATH)
     manifest.update(
         {
@@ -155,7 +157,7 @@ def _valid_source_inventory(repo_root: Path, schedules: list[dict[str, object]])
     return {"path": str(inventory_path.resolve()), "sha256": digest}
 
 
-def _rewrite_inventory(manifest: dict[str, object], inventory: dict[str, object]) -> None:
+def _rewrite_inventory(manifest: dict[str, Any], inventory: dict[str, Any]) -> None:
     source = manifest["source_inventory"]
     inventory_path = Path(source["path"])
     _write_json(inventory_path, inventory)
@@ -167,7 +169,7 @@ def _owner_migration_manifest(
     repo_root: Path,
     expected_tasks: tuple[dict[str, str], ...],
     wrappers: dict[str, str],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     manifest = _fresh_manifest(tmp_path, repo_root)
     schedules = [_schedule_row(repo_root, item, wrappers) for item in expected_tasks]
     manifest.update(
@@ -182,7 +184,7 @@ def _owner_migration_manifest(
     return manifest
 
 
-def _valid_done_ui_task(root: Path) -> dict[str, object]:
+def _valid_done_ui_task(root: Path) -> dict[str, Any]:
     feature_map = _read_json(root / FEATURE_MAP_PATH)
     feature = next(item for item in feature_map["features"] if item["id"] == "workspace:workbench")
     required_documents = sorted({reference.split("#", 1)[0] for reference in feature["sync_documents"]})
@@ -204,7 +206,7 @@ def _valid_done_ui_task(root: Path) -> dict[str, object]:
     }
 
 
-def _check_task(root: Path, task: dict[str, object]) -> dict[str, object]:
+def _check_task(root: Path, task: dict[str, Any]) -> dict[str, Any]:
     task_path = root / "output/tasks/workbench-change/task.json"
     _write_json(task_path, task)
     return document_control.check(root, paths=[], task_path="output/tasks/workbench-change/task.json")
@@ -388,6 +390,50 @@ def test_ui_feature_coverage_includes_manual_and_user_visible_feature_docs(tmp_p
     assert "docs/07_guides/APPLICATION_MANUAL.md" in required
     assert "docs/02_features/UI_FEATURES_DOCUMENTATION.md" in required
     assert "docs/00_core/PROJECT_SNAPSHOT.md" in required
+
+
+def test_feature_entrypoints_route_to_their_own_and_shared_documents(tmp_path: Path) -> None:
+    root = _seed_document_repo(tmp_path)
+
+    backtest_path = "app_module/basic_strategy_saved_pair.py"
+    backtest_impacts = document_control.feature_impacts(root, [backtest_path])
+    assert [feature["id"] for feature in backtest_impacts] == ["workspace:backtest"]
+    backtest_required = document_control.required_documents(root, [backtest_path])
+    assert backtest_required
+    assert "docs/01_architecture/system_architecture.md" in backtest_required
+
+    shared_path = (
+        "app_module/daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py"
+    )
+    shared_impacts = document_control.feature_impacts(root, [shared_path])
+    assert {feature["id"] for feature in shared_impacts} == {
+        "workspace:recommendation",
+        "workspace:watchlist",
+        "workspace:update",
+    }
+    expected_documents = {
+        reference.split("#", 1)[0]
+        for feature in shared_impacts
+        for reference in feature["sync_documents"]
+    }
+    assert document_control.required_documents(root, [shared_path]) == sorted(expected_documents)
+
+
+def test_check_rejects_representative_path_missing_its_own_change_pattern(tmp_path: Path) -> None:
+    root = _seed_document_repo(tmp_path)
+    feature_map = _read_json(root / FEATURE_MAP_PATH)
+    path = "app_module/daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py"
+    feature = next(item for item in feature_map["features"] if item["id"] == "workspace:recommendation")
+    feature["change_patterns"] = [pattern for pattern in feature["change_patterns"] if pattern != path]
+    _write_json(root / FEATURE_MAP_PATH, feature_map)
+
+    result = document_control.check(root, paths=[])
+
+    expected_error = (
+        f"功能代表入口未命中自身 change_patterns：workspace:recommendation code {path}"
+    )
+    assert result["passed"] is False
+    assert expected_error in result["errors"]
 
 
 def test_check_rejects_done_task_missing_manual_coverage(tmp_path: Path) -> None:

@@ -22,7 +22,7 @@
 | 任務閱讀範圍、Context／程式追溯與現行清冊 | [任務上下文](PRODUCT_CHANGE_WORKFLOW.md#任務上下文與漸進閱讀)、[Issue register](DOCUMENT_GOVERNANCE_ISSUES.json) |
 | 各 Roadmap 的責任 | [Hub](DEVELOPMENT_ROADMAP.md)、[6M工程](ROADMAP_6M_ENGINEERING.md)、[長期maturity](VERSION_ROADMAP_V2_1_TO_V4_0.md) |
 | 目標package、契約與遷移設計 | [Target背景](../01_architecture/target_system_architecture.md)、[FINAL設計](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
-| 資料來源、保存與恢復 | [資料專區](../03_data/README.md)、[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md) |
+| 資料來源、保存與恢復 | [資料專區](../03_data/README.md)、[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)、[冷封存引用登記](../03_data/COLD_ARCHIVE_REFERENCE_REGISTRY.json) |
 | 排程與搬機 | [操作／搬機](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)、[唯讀稽核](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)、[wrapper入口](../../scripts/scheduled/README.md) |
 | 測試與驗收證據 | [QA索引](../06_qa/README.md)、[測試指南](../07_guides/tests_readme.md) |
 | 程式規模、產品落差與外部專案比較 | [2026-10-12 研究基線](../09_archive/product_research_baseline_20261012/README.md)：重構前沿用，按影響增量確認 |

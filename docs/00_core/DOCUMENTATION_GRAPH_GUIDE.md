@@ -1,16 +1,28 @@
 # 文件知識圖與維護入口
 
-> 2026-10-06。Graphify 是導航輔助；文件內容正確性、原驗收與 Scoped SSOT 不由圖譜成功決定。
-
-> 2026-10-09 本機重驗：`graphify-out/.graphify_python` 指向的 Python 可載入 `graphifyy 0.9.11`；但 `graphify --version` 回報 `uv trampoline failed to canonicalize script path`，`uv tool list` 因工具鎖檔存取遭拒而失敗。因此套件版本已由該 interpreter 確認，CLI 啟動器與工具清單仍未能驗證。執行 recipe 前仍須依安全範圍重新檢查工具與路徑。
-
-> 2026-10-14 本機修復：uv 0.11.26 產生的 Graphify `.exe` 在使用者 bin 與工具環境內都回報上述路徑錯誤；其 shebang 指向的 Python 檔案存在，直接執行該環境的 `python.exe -m graphify --version` 則回報 `graphify 0.9.11`。已把使用者 bin 的故障 `.exe` 保留為 `graphify.exe.uv-broken-20261014`，並以 `graphify.cmd` 將原參數轉交給同一 Python 模組入口；PowerShell 的 `graphify --version` 現已通過。本修復只替換本機命令 shim，未升級 uv 或 Graphify，也不代表 uv trampoline 原始原因已修正。
+Graphify 是導航輔助；文件內容正確性、原驗收與 Scoped SSOT 不由圖譜成功決定。
 
 目前文件導航以 [文檔索引](DOCUMENTATION_INDEX.md) 與各專區 README 為準；[2026-10-06 全文件目錄快照](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md) 僅供追溯。圖譜用於跨文件／程式結構關係，來源事實仍應回讀原頁／原 code，不能把推論 edge 當完成證據。
 
+## 本輪文件整理的圖譜入口
+
+2026-10-15 文件整理使用隔離目錄 `output/qa/doc_clarity_graph_20261015/`。先看其中的 `graphify_final_verification.json`：只有 `passed=true` 才代表該輪建圖與來源核對完成；缺件或失敗時回到功能地圖與原文。完整圖在同目錄 `graphify-out/graph.json`，HTML 只顯示社群摘要。這些是 ignored 本機產物，換機缺件時依 manifest／recipe 重建，不作必要產品依賴。
+
+這輪將固定 HEAD 的正式 Python 與明確雜湊的文件工作樹版本合成導航快照。Manifest 逐檔區分來源，不能稱為純提交快照，也不讀其他開發中的產品程式。新增試用入口、冷封存登記與 Feature Map 關聯納入；本輪 QA 摘要只設導航節點，正文為避免自我指紋循環另由最後文件檢查核對。來源變更後須重驗適用性。
+
+查詢時明示這輪的圖，避免默認讀到根目錄歷史圖：
+
+```powershell
+# 重型建圖與 Windows 驗證仍依 shared_context 的 Job／mutex 規則。
+$graphPython = (Get-Content graphify-out/.graphify_python -Raw).Trim()
+& $graphPython -m graphify query "冷封存" --graph output/qa/doc_clarity_graph_20261015/graphify-out/graph.json
+```
+
+只抽取本機 AST、Markdown 明示連結與 Feature Map 明示責任；未做 semantic extraction 或跨分塊 import 全清單 reconcile。無法解析的關係保留診斷，不視為不存在。原 `graphify-out` 及 query memory 保留。處置與驗收見[本輪 QA](../06_qa/DOCUMENTATION_CLARITY_REPAIR_20261015.md)。
+
 ## 安全範圍
 
-2026-10-12 的文件產品化修改尚未反映於下方歷史 Graphify snapshot。本次關聯以[功能地圖](FEATURE_DOCUMENT_MAP.json)、[文件索引](DOCUMENTATION_INDEX.md)與[處置映射](../09_archive/documentation_productization_20261012/README.md)查找；沒有覆寫 root `graphify-out`，也不宣稱前次 snapshot 已驗證本次正文。後續刷新需另用固定提交來源與隔離輸出，依本頁安全範圍執行。
+下方各日期區段是歷史 snapshot；只有各輪 manifest 與收據所固定的來源適用，不宣稱歷史圖已驗證後續正文。文件產品化的原處置保留於[處置映射](../09_archive/documentation_productization_20261012/README.md)。
 
 只處理受控的 repo 文件與程式結構；exclude 私人／來源 DB、模型 bytes、備份、資料 roots、大型 output、raw QA 與安裝環境。既有 `{REPO}/graphify-out` 含 query memory／reflections／learning，不刪除、不覆蓋。每輪新結果與工具核驗放在日期化的 `output/qa/baldr_documentation_reorganization_YYYYMMDD/` 專用分區，維持 ignored，不 commit 巨型 graph/cache。
 
@@ -28,6 +40,8 @@
 2026-10-06 的整理結果、當時限制與精確命令見[歷史驗收原文](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)；它只代表該次 fixed HEAD snapshot。每輪仍須重新核對當前輸入、依賴與輸出。圖譜若未完成，必須明列 blocker，不能用另一份自製圖冒稱完整 Graphify semantic build。
 
 ## 本機受控方法（Graphify 0.9.11；Windows CLI shim 已修復）
+
+2026-10-09 曾確認 `graphify-out/.graphify_python` 可載入 `graphifyy 0.9.11`，但 uv 產生的 `.exe` 回報 `uv trampoline failed to canonicalize script path`，`uv tool list` 也受工具鎖檔存取限制。2026-10-14 保留故障 `.exe` 為 `graphify.exe.uv-broken-20261014`，以 `graphify.cmd` 轉交同一 Python 模組後版本命令通過。只修復本機命令 shim，未升級 uv／Graphify，也未確認 trampoline 原始原因。每輪仍須重新核對工具。
 
 本機 `graphify` 命令由使用者 bin 的 `graphify.cmd` 轉交給已安裝工具環境的 Python 模組入口；需要不依賴該 shim 時，也可從 repo 根目錄明確使用記錄的 interpreter：
 

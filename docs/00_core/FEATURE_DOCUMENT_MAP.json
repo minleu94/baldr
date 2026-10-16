@@ -29,7 +29,8 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
-        "ui_qt/views/workbench_view.py"
+        "ui_qt/views/workbench_view.py",
+        "tests/test_ui_qt_workbench_view.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -98,7 +99,9 @@
         "tests/test_decision_desk_dto_contract.py",
         "tests/test_daily_market_technical_universe_v4_read_session.py",
         "tests/test_daily_market_technical_universe_projection_group_v3_normal.py",
-        "tests/test_daily_market_technical_universe_price_json_bounds.py"
+        "tests/test_daily_market_technical_universe_price_json_bounds.py",
+        "app_module/daily_market_technical_official_disposition_composite_query_v2.py",
+        "tests/test_ui_qt_market_regime_view.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -289,7 +292,47 @@
         "ui_qt/technical_official_composite_research_presenter.py",
         "ui_qt/views/daily_market_technical_official_disposition_composite_view_v2.py",
         "ui_qt/views/daily_market_technical_official_disposition_composite_view.py",
-        "ui_qt/views/recommendation*"
+        "ui_qt/views/recommendation*",
+        "app_module/daily_market_monthly_revenue_reference_artifact_v3.py",
+        "app_module/daily_market_monthly_revenue_yoy_index_v2.py",
+        "app_module/daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
+        "app_module/daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
+        "app_module/daily_market_technical_official_disposition_revenue_bookmark_v2.py",
+        "app_module/daily_market_technical_official_disposition_revenue_query_v2.py",
+        "app_module/daily_market_technical_official_disposition_revenue_source_v2.py",
+        "data_module/daily_monthly_revenue_series_binding.py",
+        "data_module/fundamental_read_archived_copy_contract_v2.py",
+        "data_module/fundamental_read_snapshot_raw_archive_io_v2.py",
+        "data_module/fundamental_read_snapshot_raw_archive_v2.py",
+        "data_module/fundamental_read_snapshot.py",
+        "data_module/selection_fact_readers.py",
+        "tests/test_daily_market_monthly_revenue_reference_artifact_v3.py",
+        "tests/test_daily_market_monthly_revenue_yoy_index_v2.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_bookmark_v2.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_query_v2.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_source_v2.py",
+        "tests/test_daily_monthly_revenue_series_binding.py",
+        "tests/test_daily_snapshot_html_bom_identity_v2.py",
+        "tests/test_fundamental_read_archived_copy_contract_v2.py",
+        "tests/test_fundamental_read_snapshot_archived_v2.py",
+        "tests/test_fundamental_read_snapshot_raw_archive_v2.py",
+        "tests/test_monthly_revenue_series_application_settings.py",
+        "tests/test_recommendation_monthly_revenue_series_factory.py",
+        "tests/test_selection_fundamental_daily_cohort_v2.py",
+        "tests/test_selection_monthly_revenue_yoy_v2.py",
+        "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
+        "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_v2.py",
+        "tests/test_ui_qt_daily_market_technical_universe_price_view_v1.py",
+        "tests/test_ui_qt_recommendation_execution.py",
+        "tests/test_ui_qt_revenue_source_actor_v2.py",
+        "tests/test_ui_qt_technical_official_revenue_research_presenter_v2.py",
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "ui_qt/technical_official_revenue_research_presenter_v2.py",
+        "ui_qt/views/daily_market_technical_official_disposition_revenue_view.py",
+        "ui_qt/views/daily_market_technical_universe_price_view_v1.py",
+        "ui_qt/workers/revenue_source_actor_v2.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -510,7 +553,69 @@
         "tests/test_backtest_profit_factor_presenter.py",
         "ui_qt/widgets/portfolio_scenario_registry_widget.py",
         "tests/test_portfolio_scenario_registry_widget.py",
-        "tests/test_portfolio_research_registry*"
+        "tests/test_portfolio_research_registry*",
+        "app_module/basic_strategy_saved_pair.py",
+        "app_module/official_calendar_daily_snapshot_v1.py",
+        "app_module/optimizer_service.py",
+        "app_module/portfolio_research_registry.py",
+        "app_module/recommendation_portfolio_affordable_order.py",
+        "app_module/recommendation_portfolio_annual_calendar_evidence_v1.py",
+        "app_module/recommendation_portfolio_calendar_acceptance_binding_v1.py",
+        "app_module/recommendation_portfolio_calendar_artifact_v1.py",
+        "app_module/recommendation_portfolio_calendar_evidence_v1.py",
+        "app_module/recommendation_portfolio_full_period_pair_v1.py",
+        "app_module/recommendation_portfolio_period_calendar_read_pin_v1.py",
+        "app_module/recommendation_portfolio_result_artifact_v2.py",
+        "app_module/recommendation_portfolio_result_artifact_v3.py",
+        "app_module/recommendation/portfolio_result_reader.py",
+        "app_module/recommendation/replay_lineage_service.py",
+        "app_module/registered_strategy_spec.py",
+        "app_module/research_history_lookup.py",
+        "app_module/research_run_repository.py",
+        "app_module/research_run_service.py",
+        "app_module/saved_strategy_version_reader.py",
+        "data_module/official_calendar_bundle.py",
+        "data_module/official_calendar_transport_v1.py",
+        "data_module/tpex_annual_calendar_transport_v1.py",
+        "data_module/tpex_trading_date_html_v1.py",
+        "tests/test_backtest_view_presenter.py",
+        "tests/test_official_calendar_annual_daily_snapshot_v1.py",
+        "tests/test_official_calendar_daily_snapshot_v1.py",
+        "tests/test_official_calendar_transport_v1.py",
+        "tests/test_optimizer_service.py",
+        "tests/test_portfolio_calendar_acceptance_binding_v1.py",
+        "tests/test_r020_portfolio_result_readback_service.py",
+        "tests/test_r020_ui_replay_lineage_save.py",
+        "tests/test_recommendation_portfolio_affordable_order.py",
+        "tests/test_recommendation_portfolio_annual_calendar_evidence_v1.py",
+        "tests/test_recommendation_portfolio_annual_daily_pair_v1.py",
+        "tests/test_recommendation_portfolio_calendar_artifact_v1.py",
+        "tests/test_recommendation_portfolio_calendar_evidence_v1.py",
+        "tests/test_recommendation_portfolio_daily_calendar_pair_v1.py",
+        "tests/test_recommendation_portfolio_execution_inputs_v1.py",
+        "tests/test_recommendation_portfolio_execution_registry_v3.py",
+        "tests/test_recommendation_portfolio_full_period_pair_v1.py",
+        "tests/test_recommendation_portfolio_precision_registry_v2.py",
+        "tests/test_recommendation_portfolio_result_artifact_v2.py",
+        "tests/test_recommendation_portfolio_result_artifact_v3.py",
+        "tests/test_registered_strategy_spec.py",
+        "tests/test_registry_calendar_acceptance_configuration.py",
+        "tests/test_registry_period_pair_controller.py",
+        "tests/test_registry_period_pair_daily_controller.py",
+        "tests/test_research_run_portfolio_finalize.py",
+        "tests/test_run_registry_period_pair_widget.py",
+        "tests/test_saved_strategy_version_lookup_widget.py",
+        "tests/test_saved_strategy_version_reader.py",
+        "tests/test_single_backtest_rule_execution_v2.py",
+        "tests/test_tpex_annual_calendar_transport_v1.py",
+        "tests/test_tpex_annual_stock_schedule_v1.py",
+        "tests/test_ui_qt_backtest_strategy_version_binding.py",
+        "tests/test_ui_qt_saved_strategy_rule_card_v2.py",
+        "tests/test_ui_qt_saved_strategy_rule_card.py",
+        "tests/test_ui_qt_strategy_rule_card.py",
+        "ui_qt/views/research_lab/registry_period_pair_controller.py",
+        "ui_qt/views/research_lab/run_registry_compare_widget.py",
+        "ui_qt/widgets/saved_strategy_version_lookup.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -568,7 +673,17 @@
         "tests/test_watchlist_composite_bookmark_v2.py",
         "app_module/daily_market_technical_official_disposition_composite_bookmark_storage_v2.py",
         "tests/test_daily_market_technical_official_disposition_composite_bookmark_storage_v2.py",
-        "tests/test_ui_qt_watchlist_composite_bookmark_v2.py"
+        "tests/test_ui_qt_watchlist_composite_bookmark_v2.py",
+        "app_module/daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
+        "app_module/daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
+        "app_module/daily_market_technical_official_disposition_revenue_bookmark_v2.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_bookmark_v2.py",
+        "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
+        "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_v2.py",
+        "tests/test_ui_qt_watchlist_layout.py",
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -633,7 +748,12 @@
         "tests/test_official_attention_snapshot.py",
         "tests/test_official_attention_report_provider.py",
         "tests/test_selection_official_attention.py",
-        "tests/test_stock_research_official_attention_widget.py"
+        "tests/test_stock_research_official_attention_widget.py",
+        "app_module/portfolio_research_stock_projection.py",
+        "tests/test_portfolio_scenario_stock_report_integration.py",
+        "tests/test_portfolio_scenario_stock_report.py",
+        "tests/test_stock_research_report_service.py",
+        "tests/test_ui_qt_portfolio_scenario_stock_report.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -720,7 +840,12 @@
         "tests/test_ml_allocation_shadow_evidence.py",
         "ui_qt/widgets/portfolio_scenario_registry_widget.py",
         "tests/test_portfolio_scenario_registry_widget.py",
-        "tests/test_portfolio_research_registry*"
+        "tests/test_portfolio_research_registry*",
+        "tests/test_portfolio_scenario_stock_report_integration.py",
+        "tests/test_portfolio_scenario_stock_report.py",
+        "tests/test_position_health_strategy_archive.py",
+        "tests/test_ui_qt_portfolio_scenario_stock_report.py",
+        "tests/test_ui_qt_portfolio_view.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -874,7 +999,21 @@
         "tests/test_tpex_institutional_daily_snapshot.py",
         "tests/test_institutional_source_use.py",
         "tests/test_ui_qt_institutional_source_use.py",
-        "tests/test_ui_qt_tpex_institutional_daily_widget.py"
+        "tests/test_ui_qt_tpex_institutional_daily_widget.py",
+        "app_module/daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
+        "app_module/daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_archived_bookmark_v3.py",
+        "tests/test_daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
+        "tests/test_daily_monthly_revenue_series_binding.py",
+        "tests/test_daily_snapshot_html_bom_identity_v2.py",
+        "tests/test_fundamental_read_archived_copy_contract_v2.py",
+        "tests/test_fundamental_read_snapshot_archived_v2.py",
+        "tests/test_fundamental_read_snapshot_raw_archive_v2.py",
+        "tests/test_institutional_credit_flows_service.py",
+        "tests/test_selection_fundamental_daily_cohort_v2.py",
+        "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
+        "tests/test_ui_qt_update_view_workbench.py",
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -929,7 +1068,8 @@
         "tests/test_decision_capture_status_reader.py",
         "tests/decision_capture_status_fixture.py",
         "tests/test_scheduled_operations_service.py",
-        "tests/test_decision_date_semantics_regression.py"
+        "tests/test_decision_date_semantics_regression.py",
+        "tests/test_ui_qt_runtime_view.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -952,19 +1092,22 @@
       "code": [
         "scripts/document_control.py",
         "scripts/auto_state_sync.py",
-        "scripts/document_context.py"
+        "scripts/document_context.py",
+        "scripts/document_external_references.py"
       ],
       "tests": [
         "tests/test_document_control.py",
         "tests/test_auto_state_task_json.py",
-        "tests/test_document_context.py"
+        "tests/test_document_context.py",
+        "tests/test_document_external_references.py"
       ],
       "manual": [
         "docs/00_core/PRODUCT_CHANGE_WORKFLOW.md"
       ],
       "evidence": [
         "docs/06_qa/DOCUMENTATION_PRODUCTIZATION_ACCEPTANCE_20261012.md",
-        "docs/06_qa/DOCUMENT_CONTEXT_GOVERNANCE_ACCEPTANCE_20261013.md"
+        "docs/06_qa/DOCUMENT_CONTEXT_GOVERNANCE_ACCEPTANCE_20261013.md",
+        "docs/06_qa/DOCUMENTATION_CLARITY_REPAIR_20261015.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -993,7 +1136,11 @@
         ".agents/skills/*",
         "scripts/document_context.py",
         "tests/test_document_context.py",
-        "docs/00_core/DOCUMENT_GOVERNANCE_ISSUES.json"
+        "docs/00_core/DOCUMENT_GOVERNANCE_ISSUES.json",
+        "scripts/document_external_references.py",
+        "tests/test_document_external_references.py",
+        "docs/03_data/COLD_ARCHIVE_REFERENCE_REGISTRY.json",
+        "docs/06_qa/DOCUMENTATION_CLARITY_REPAIR_20261015.md"
       ],
       "sync_documents": [
         "docs/agents/skills_registry.md",
@@ -1041,7 +1188,10 @@
         "docs/07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md",
         "scripts/scheduled/*",
         "scripts/inspect_scheduled_task_registration.py",
-        "examples/machine_bootstrap*"
+        "examples/machine_bootstrap*",
+        "scripts/document_control.py",
+        "tests/test_document_control.py",
+        "tests/test_monthly_revenue_series_application_settings.py"
       ],
       "sync_documents": [
         "docs/07_guides/README.md",
@@ -1077,7 +1227,8 @@
         "tests/test_decision_service_composition.py"
       ],
       "manual": [
-        "docs/07_guides/APPLICATION_MANUAL.md"
+        "docs/07_guides/APPLICATION_MANUAL.md",
+        "docs/07_guides/TRIAL_VERSION_GUIDE.md"
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
@@ -1092,7 +1243,14 @@
         "data_module/daily_monthly_revenue_cohort_binding.py",
         "tests/test_monthly_revenue_cohort_application_settings.py",
         "tests/test_daily_monthly_revenue_cohort_binding.py",
-        "tests/test_decision_service_composition.py"
+        "tests/test_decision_service_composition.py",
+        "app_module/packaging_provenance.py",
+        "packaging/baldr.spec",
+        "tests/test_calendar_acceptance_application_settings.py",
+        "tests/test_packaging_kernel_provenance.py",
+        "tests/test_packaging_provenance.py",
+        "tests/test_ui_qt_decision_desk_main_integration.py",
+        "docs/07_guides/TRIAL_VERSION_GUIDE.md"
       ],
       "sync_documents": [
         "docs/01_architecture/current/application_and_workspaces.md",

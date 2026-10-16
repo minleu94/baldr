@@ -1,6 +1,6 @@
 """baldr 文件關聯、角色分流與移機計畫的標準函式庫工具。
 
-route/check/context/trace/inventory/issues/bootstrap-plan 只讀來源；init-task 建立獨立 ignored 任務紀錄。
+route/check/context/trace/inventory/issues/archives/bootstrap-plan 只讀來源；init-task 建立獨立 ignored 任務紀錄。
 工具不啟動 Agent、排程、資料更新、模型訓練或產品 import。
 """
 
@@ -19,6 +19,10 @@ import subprocess
 import sys
 from typing import Any
 from urllib.parse import unquote
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import document_external_references as external_references
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROLE_CATALOG = "docs/agents/ROLE_ROUTING.json"
@@ -147,8 +151,17 @@ def heading_anchors(content: str) -> set[str]:
     return anchors
 
 
-def check_links(root: Path, paths: list[str]) -> list[str]:
+def link_report(root: Path, paths: list[str]) -> dict[str, Any]:
+    """驗證本地連結，並將精確登記的冷封存另列為外部證據。"""
     errors: list[str] = []
+    registered: list[dict[str, Any]] = []
+    try:
+        registry = external_references.load_registry(root)
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        return {"errors": [f"冷封存登記無效：{exc}"], "registered_external_references": []}
+    content_cache: dict[Path, str] = {}
+    anchor_cache: dict[Path, set[str]] = {}
+    root = root.resolve()
     pattern = re.compile(r"\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+\"[^\"]*\")?\)")
     for relative in paths:
         source = confined(root, relative)
@@ -163,22 +176,44 @@ def check_links(root: Path, paths: list[str]) -> list[str]:
             if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target):
                 continue
             location, _, anchor = target.partition("#")
-            candidate = (source.parent / location).resolve() if location else source
-            if not candidate.is_relative_to(root.resolve()):
+            lexical = Path(os.path.abspath(source.parent / location)) if location else source
+            if not lexical.is_relative_to(root):
+                errors.append(f"{relative}: 連結越界 {target}")
+                continue
+            candidate = lexical.resolve()
+            try:
+                archived = external_references.registered_reference(root, lexical, candidate, registry)
+            except (ValueError, OSError) as exc:
+                errors.append(f"{relative}: 冷封存連結無效 {target}：{exc}")
+                continue
+            if archived:
+                registered.append({"source": relative, "link": target, **archived})
+                continue
+            if not candidate.is_relative_to(root):
                 errors.append(f"{relative}: 連結越界 {target}")
             elif not candidate.exists():
                 errors.append(f"{relative}: 連結缺件 {target}")
             elif anchor and candidate.is_file() and candidate.suffix == ".md":
-                target_content = candidate.read_text(encoding="utf-8-sig")
+                if candidate not in content_cache:
+                    content_cache[candidate] = candidate.read_text(encoding="utf-8-sig")
+                target_content = content_cache[candidate]
                 line_reference = re.fullmatch(r"L([1-9][0-9]*)(?:-L([1-9][0-9]*))?", anchor)
                 if line_reference:
                     first = int(line_reference.group(1))
                     last = int(line_reference.group(2) or first)
                     if not first <= last <= len(target_content.splitlines()):
                         errors.append(f"{relative}: 行號範圍缺件 {target}")
-                elif anchor not in heading_anchors(target_content):
-                    errors.append(f"{relative}: 錨點缺件 {target}")
-    return errors
+                else:
+                    if candidate not in anchor_cache:
+                        anchor_cache[candidate] = heading_anchors(target_content)
+                    if anchor not in anchor_cache[candidate]:
+                        errors.append(f"{relative}: 錨點缺件 {target}")
+    return {"errors": errors, "registered_external_references": registered,
+            "external_content_verification": "not_run; 只核登記、Junction目標及存在性metadata"}
+
+
+def check_links(root: Path, paths: list[str]) -> list[str]:
+    return list(link_report(root, paths)["errors"])
 
 
 def check_task(root: Path, task: dict[str, Any]) -> list[str]:
@@ -236,6 +271,20 @@ def check_task(root: Path, task: dict[str, Any]) -> list[str]:
     return errors
 
 
+def feature_map_coverage_errors(mapping: dict[str, Any]) -> list[str]:
+    """確保每個明示的程式與測試代表入口都映射回所屬功能。"""
+    errors: list[str] = []
+    for feature in mapping.get("features", []):
+        patterns = feature.get("change_patterns", [])
+        for kind in ("code", "tests"):
+            for relative in feature.get(kind, []):
+                if not match_paths([relative], patterns):
+                    errors.append(
+                        f"功能代表入口未命中自身 change_patterns：{feature.get('id', 'unknown')} {kind} {relative}"
+                    )
+    return errors
+
+
 def check(root: Path, *, paths: list[str] | None = None, task_path: str | None = None) -> dict[str, Any]:
     errors: list[str] = []
     catalog = read_config(root, ROLE_CATALOG)
@@ -249,6 +298,7 @@ def check(root: Path, *, paths: list[str] | None = None, task_path: str | None =
             if role not in catalog["roles"]:
                 errors.append(f"路由引用未知角色：{kind} {role}")
     mapping = read_config(root, FEATURE_MAP)
+    errors.extend(feature_map_coverage_errors(mapping))
     ids: set[str] = set()
     map_documents: set[str] = set()
     for feature in mapping["features"]:
@@ -274,10 +324,11 @@ def check(root: Path, *, paths: list[str] | None = None, task_path: str | None =
                 if not confined(root, relative).is_file():
                     errors.append(f"功能{key}缺件：{feature['id']} {relative}")
     link_scope = sorted(set(paths if paths is not None else ["README.md", "AGENTS.md", "docs/agents/skills_registry.md", *map_documents]))
-    errors.extend(check_links(root, link_scope))
+    links = link_report(root, link_scope)
+    errors.extend(links["errors"])
     if task_path:
         errors.extend(check_task(root, read_json(confined(root, task_path))))
-    return {"schema_version": "baldr-document-check.v1", "passed": not errors, "errors": errors, "checked_features": len(ids), "checked_link_sources": len(link_scope), "limitation": "結構與紀錄核對；不證明文件語意、產品 Gate、真安裝或自然排程成功。"}
+    return {"schema_version": "baldr-document-check.v1", "passed": not errors, "errors": errors, "checked_features": len(ids), "checked_link_sources": len(link_scope), "registered_external_references": links["registered_external_references"], "limitation": "結構與紀錄核對；已登記冷封存另列且不讀raw bytes，不證明外部內容、文件語意、產品Gate、真安裝或自然排程成功。"}
 
 
 def windows_schedule_catalog(root: Path) -> dict[str, str]:
@@ -465,6 +516,8 @@ def main(argv: list[str] | None = None) -> int:
     trace_parser.add_argument("--inspect-file", action="append", required=True)
     trace_parser.add_argument("--symbol")
     commands.add_parser("issues")
+    archives_parser = commands.add_parser("archives")
+    archives_parser.add_argument("--path")
     bootstrap_parser = commands.add_parser("bootstrap-plan")
     bootstrap_parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -497,6 +550,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "issues":
             result = document_context.issue_view(root)
             passed = True
+        elif args.command == "archives":
+            result = external_references.archive_view(root, path=args.path)
+            passed = result["registry_available"] and (not args.path or bool(result["entries"]))
         else:
             result = check(root, paths=args.path, task_path=args.task)
             if args.context_metadata:

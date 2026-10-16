@@ -19,6 +19,7 @@
 - [基本面來源盤點入口](FUNDAMENTAL_SOURCE_INVENTORY.md)：短導引連到目前狀態、現行架構及來源 QA；Month 5 詳細盤點已封存。
 - [備份保留稽核（歷史快照）](../09_archive/BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)：保存 2026-07-06 的來源與容量盤點；現行保留行為看每日更新指南，資產用途／恢復看較新的資產登記。舊路徑保留導引。
 - [資料資產用途與恢復登記](STORAGE_ASSET_REGISTER_20261006.md)：以 2026-10-06 盤點為基線，頂部另有 2026-10-09 C 槽封存更新；不是即時容量清單。
+- [冷封存引用登記](COLD_ARCHIVE_REFERENCE_REGISTRY.json)：兩批34個歷史根的精確原位置／封存位置；用 `document_control archives --path <repo相對路徑>` 查詢。已登記外部證據與Git來源、內容可讀性分開，不重複報成新發現的未追蹤資料。
 - [C 槽歷史 QA 與研究副本冷封存說明](C_DRIVE_QA_COLD_ARCHIVE_20261009.md)：記錄第一批 6 個來源目錄的精確範圍、封存位置、核驗與回滾；不代表正式資料或生產流程變更。
 - [C 槽歷史封存第二批清單](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)：記錄第二批 28 個來源目錄的精確範圍、收據與還原方式；終態已依授權完成，細節見下方對照。
 - [C 槽歷史 QA 冷封存終態對照（2026-10-09）](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)：兩批共 34 個根、158,712 個檔案；依終態收據與 Junction metadata 對照，未重新計算全量 SHA。容量數字為收據時點快照，不是即時值。

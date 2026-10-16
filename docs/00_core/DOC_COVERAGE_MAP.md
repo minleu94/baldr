@@ -46,6 +46,8 @@ README只在產品用途、主要流程或開始方式改變時修訂；Roadmap 
 
 check可核路由、關聯、連結／anchor、task Coverage及驗證紀錄，不能證明正文語意或某測試真通過。Root另閱diff、正文與receipt，必要時獨立review。共同強制QA與資源限制依shared context，本頁不維護第二套命令。
 
+Feature Map列出的每個code／tests入口須命中所屬feature的同步pattern；共用檔案逐feature核對，不能由其他feature的pattern遮蔽。已登記冷封存由[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md#查詢已登記的冷封存)與機器清冊追蹤，check另列外部引用及可用性，不把ignored證據重報為新失管檔案；這不替代原內容SHA或產品驗收。
+
 閱讀範圍使用既有工具的 `context`／`trace`，HEAD／工作樹增量用 `inventory`；新增或更改閱讀 selector／Issue metadata 時執行 `check --context-metadata`。用法與 Level 0–4 的界線集中於[任務上下文](PRODUCT_CHANGE_WORKFLOW.md#任務上下文與漸進閱讀)，不將閱讀清單當成必要同步清單。
 
 ### Manual完整性

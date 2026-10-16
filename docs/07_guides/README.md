@@ -7,6 +7,7 @@
 | 情境 | 入口 |
 |---|---|
 | 全新安裝或第一次設定 | [首次安裝 Prompt](FIRST_INSTALL_PROMPT.md) → [安裝指南](INSTALL_GUIDE.md) → [快速開始](QUICK_START.md) |
+| 使用目前指定本機試用版 | [目前試用版指南](TRIAL_VERSION_GUIDE.md) → [完整操作手冊](APPLICATION_MANUAL.md) |
 | 使用整包 Windows 可攜版 | [可攜版指南](PORTABLE_WINDOWS.md) |
 | 新電腦接手舊環境、資料或排程 | [機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md) → [排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md) |
 | 查一般 UI 日常操作 | [完整操作手冊](APPLICATION_MANUAL.md) → [主題手冊地圖](manuals/README.md) |
@@ -18,6 +19,7 @@
 
 | 工作 | 手冊章節 |
 |---|---|
+| 目前指定試用版入口、資料範圍、限制與 Increment71 狀態 | [目前試用版指南](TRIAL_VERSION_GUIDE.md) |
 | 安裝、啟動及四種日常情境 | [APPLICATION_MANUAL §1–3](APPLICATION_MANUAL.md#1-日常使用旅程) |
 | 資料狀態、快速／安全更新與市場探索 | [資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md) |
 | Recommendation、個股研究與 Research Lab | [推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md) |

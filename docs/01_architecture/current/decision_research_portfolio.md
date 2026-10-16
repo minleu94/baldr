@@ -4,41 +4,35 @@
 
 ## 模組責任
 
-W底基礎研究`baldr_w_bottom_basic_v1@1.0.0`已接原StrategyRegistry／正常單股producer與保存出口。`causal_w_bottom`以獨立Decimal Context60逐列確認嚴格三點收盤谷，只保留27列；相鄰雙谷／5列前置跌勢／第一谷5%差／頸線高1%／等待與失效按原計畫§5.3，不使用全段find_peaks／ATR均值／補值。executor深拷貝spec與frame，輸出逐列確認證據及意圖；episode只固定原頸線，不是已成交部位。缺行情清幾何但保留既有意圖的歷史頸線；unavailable含暖機／缺件／重啟，不等於原始缺資料列數。
-
-新`single-backtest-w-bottom-execution.v1`沿原manifest保存同次spec／effective rules、9個source-file hash、日期／狀態／意圖／兩谷與頸線證據、原Broker config、runtime及`prior_rows=0`的測試窗全狀態重設政策；不套布林band／暖機。專用pure reader只核已保存規則、原值／日期與episode交叉一致性，不讀current Registry或重跑訊號。metadata builder另核獨立傳入的identity、params、原capital／所有Broker輸入及requested/actual bounds；metadata存實際窗，原請求窗保留raw_params。缺成本不補0，來源收尾取消不回填完整manifest。原baseline／兩策略v2／布林schema不改，原Broker撮合／金融公式不變，研究資格在service與reconciliation明確拒絕；source hash只識別檔案，不授來源／PIT或績效權威。限定正常Main／fresh已驗，其他模式及Native／EXE仍待。
-
-`baldr_bollinger_basic_v1@1.0.0`以獨立純契約／executor接原StrategyRegistry，固定既有causal BBANDS30/2/SMA分析邊界；決策只以Decimal比較當列／前列原值，不走ScoringEngine、補值或自認成交。正常producer同次有界讀取前180曆日、最多31個prior觀測，fingerprint綁實用完整frame；原service按test_start重設確認並裁切後才撮合／計績效。新`single-backtest-bollinger-execution.v1`沿既有Registry保存spec、effective rules、逐日訊號、input_context、分析runtime版本及十個源碼hash，原baseline v1／兩策略v2不換版。專用pure reader核schema／identity／規則／成本／來源集合／qualification及訊號日期與型別，再交原規則卡與結果出口，不查當前Registry或重跑。指標float仍在分析邊界，來源hash不是權威／PIT證明；缺日曆完整性保持unknown，研究版不能由SOP或直接Registry晉升取得正式資格。本輪只驗正常單股研究，其他模式與完整家族仍各自待。
-
-`StrategyVersionService.create_version`的新建身份採時間前綴加UUID，explicit ID沿既有reader的安全basename限制；同目錄獨立exclusive `.tmp`完整flush/fsync後，Windows rename／其他平台hard-link以create-only發布，目標存在必須失敗。只有本次確實建立的暫存可清理，清理錯誤記錄而不遮蔽原例外或已發布成功。catalog僅接受檔名與payload ID一致的JSON，舊暫存原件不刪；明確`update_version`仍是既有可變聲明，不宣稱不可變版本庫。promotion回填失敗先讀回exact backlink，已回填或未知保留版本；僅確認未引用才補償本次新建。生命週期紀錄失敗不刪已回填JSON，標示`reconciliation_required`並由原掃描列出；狀態寫入也失敗時保留原錯誤與log，不授晉升成功。這不是跨store transaction或自動修復，亦不改原preflight／金融／lifecycle門檻。
-
-`SavedStrategyVersionReader`唯讀消費現有VersionService與ResearchHistoryLookup。清單保存canonical版本聲明及exact來源entry，開啟前後重讀版本，核策略／params、source config、data fingerprint、成交／sizing及已存在backlink；版本號是生命週期標籤，不與原run執行器版號強制相等。新`select_registry_run`只按明示ID建metadata/context選取，原resolve再核完整性／預算；不掃latest或建立來源。SavedRuleCard新增可選預算／取消透傳，舊呼叫契約不變。Qt元件只接回原結果／dialog，generation與合作關閉拒晚到；catalog分頁不改run身份。版本JSON摘要只證本次選取一致，沒有跨程序不可變／來源權威效力；legacy缺執行來源及績效未知仍沿原reader，不用目前設定補章。
-
-持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究增三步引導及名稱，UI parser在格式／重複守衛後把代碼集合排序才呼叫原query；不改catalog／strict source session／核心篩選／收藏契約，舊後端仍拒非canonical順序。個股漲跌沿原價差方向守衛，說明缺件不代表0。
-
-Increment71 的價格頁只在 UI 層清除既有篩選並對同一 exact read session 重查，不改來源、價格事實、query／comparison／bookmark DTO 或 PIT 資格。單檔收藏把比較選取留空，不把不足兩檔的籃子冒充比較。手動交易表單的代碼／名稱互補只讀本機公司名冊，唯一且精確匹配才自動填；不改 Portfolio 交易 writer。未連結保存 result 的手動持倉下鑽傳 `current_stock_research`，一般個股 reader 因而可讀目前行情與技術；已有 validated result 的持倉仍傳原保存 scope。回測頁只調 splitter 與選用查找呈現，原結果 reader／金融資料不重算。
-
-價格選股後續可見性修正只在互動式 `source_read`／`query` 成功且 `_PriceViewState` 核驗後收合條件與詳情，依當次 generation／state 在外層結果捲動區定位結果；失敗、取消、翻頁、原來源返回與收藏還原不觸發定位。來源及結果計數仍可展開，原查詢、strict session、basket、bookmark、Decimal／PIT守衛和儲存契約未改。固定 `ec5c95733608` EXE 尚未含此後續來源修正。
-
-Increment59固定來源包為兩個既有策略的v2規則收據加三份raw source datas（兩executor與metadata wrapper）；原四份執行來源及兩technical kernels保留。build metadata以AST讀取spec明示literal來源清單，不執行spec；完整三份才加對應hash，partial／缺檔拒絕，舊spec及僅註解含路徑不冒稱v2。runtime仍對實際原檔取hash，metadata不能替代缺檔或來源權威；固定export與EXE各自正常保存／fresh再比金融內容，沒有修改已固定export來補件。
-
-原analyzer的PF改nullable，附 `closed-pair-net-pnl-ratio.v1`／status；Decimal60內計算及既有analytics輸出分開。`backtest_contracts.profit_factor_projection`讓單股／batch／optimizer／新repository只傳有效有限值；缺版本舊值不升格。原runs schema不遷移，未定義保存NULL、舊比較與promotion摘要PF不可用；歷史七欄不增欄或重算。固定9fa尚未backport，見[PF指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。
-
-原 `PerformanceAnalyzer` 增補逐指標有效性，保持原計算／數值出口；新 `single-backtest-performance.v1` node 由原 `BacktestService` 發行，固定七個保存欄位、單位、實際期間／列數、完成配對與股票身份。十進位值文字指紋使原 float analytics 與 UI 的 Decimal JSON 解碼一致；整 node SHA 綁有效性與期間，原 Registry metadata／Parquet 外部身份仍各自核驗，不把 checksum 當來源授權。原 `ResearchRunService` 只對新宣告另保留實際日期欄並在寫入前核對原表；舊無 node 保存／hash 不變。公開歷史 reader 與被動卡片重驗 node／摘要，顯示原已知值，fallback／零配對／無期間維持 None；不重算或推進 qualification／comparability。操作見[指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。
-
-個股研究另有獨立 typed `StockOfficialAttentionDTO`／row 與 `official_attention` 尾端欄位；正常 report service 透過 `OfficialAttentionReportProvider` 讀明選 snapshot。三個 `OFFICIAL_ATTENTION_*` 環境設定只識別固定版本，不是資格接受；錯設定隔離此區塊，當日報告用實際 clock，歷史報告截止該台北日末，不能看到後來保存版本。原價／本益比字串、公開來源、雙 SHA、資料日／可用小時與限制投影至正常個股頁，與 `attention_reasons`、market status 交易限制及 Advice 分離；不新增策略規則。持久化與時間守衛見[資料架構](data_storage_runtime.md)，操作見[指南](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
-
-一般手動觀察股票的未連結研究，由 Watchlist 僅在無source ID、無result／決策日／snapshot且identity=unknown時明示選擇目前個股研究context；現有report reader讀目前行情，返回按原代號定位。已有來源或身份衝突仍保留保存來源路由；不將讀取失敗改成目前行情，也不授歷史PIT。儲存格式、public reader、金融計算與原收藏版本路徑均沿用，限定驗證見[Increment34 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)。
+表內先列 UI、application 與資料存取入口，再列領域責任。九個工作區與 UI／application 邊界見[UI 與應用流程](application_and_workspaces.md)；產品能力與 Gate 仍依本冊開頭所列的 Product Roadmap、6M Roadmap 與 Snapshot。
 
 | 模組 | 主要責任 |
 |---|---|
+| ui_qt/ | 收集使用者輸入、呈現 DTO／圖表／狀態、工作區導航與 worker lifecycle；不負責領域計算或直接維護正式資料 |
+| app_module/ | 組合 Recommendation、Backtest、Research Run、Evidence、Portfolio、Position Health 等 use case、service、DTO 與 repository |
+| data_module/ | 管理資料來源、reader／writer 與市場資料保存；由 application 明示注入及呼叫 |
+| runtime/ | Runtime 狀態與事件服務；UI 經 application／Runtime DTO 消費，不直接讀取 Runtime store |
 | `decision_module/` | 策略與評分契約、推薦排序、理由、篩選、Regime、Factor 與純計算核心 |
 | `analysis_module/` | 技術指標、型態、訊號及其他分析計算 |
 | `backtest_module/` | 策略模擬、台股撮合限制、成本、部位與績效分析 |
 | `portfolio_module/` | Portfolio 領域帳務投影；服務組合、研究 read model 與 UI orchestration 位於 `app_module/` |
-| `app_module/` | Recommendation、Backtest、Research Run、Evidence、Portfolio、Position Health 等 use case 與 DTO 組合 |
 | `financial_module/` | 金額、比例、股數等核心數值單位 |
 | `ml_module/` | 受治理的模型研究、校準與 shadow 路徑；不因 package 存在而取得正式推薦權限 |
+
+<a id="entry-and-dataflow"></a>
+## 入口與上下游
+
+Windows 啟動入口為 baldr_launcher.py；桌面主程式入口為 ui_qt/main.py。UI 收集條件並顯示結果，經 app_module/ 的 composition／use case 發送明確請求。Application 組合來源與服務，經注入的 data_module/ reader 取得資料，呼叫領域模組計算，再把 DTO 交回 UI。需要保存時走對應的 application／data writer；View 不直接讀寫資料根或重算領域數值。
+
+| 工作階段 | 責任 | 上游與下游 |
+|---|---|---|
+| UI／工作區 | 收集參數、導航與呈現 DTO，管理 worker 取消及過期回覆 | 使用者 → ui_qt/ → app_module/ |
+| Use case／composition | 選來源、組合服務、驗證身份與保存流程、組裝 DTO | app_module/ → data_module/ reader／writer 與領域模組 |
+| 資料存取 | 依明示來源提供 reader／writer 與保存資料 | 由 application 注入；市場及研究資料流向 application use case |
+| 領域計算 | Recommendation、策略／回測、Portfolio、分析與金融數值各由其模組負責 | 收到 application 傳入的契約資料；結果回到 application |
+| Runtime 狀態 | Runtime subsystem 持有事件與健康狀態 | application 封裝為 Runtime DTO，再呈現在 Runtime Observatory |
+
+此圖描述目前責任方向，不表示所有資料路徑均已接線或通過產品 Gate。特定流程的實際開啟範圍仍依 Snapshot 與具名 QA 收據。
 
 ## Recommendation 與 Decision
 
@@ -188,3 +182,37 @@ Data層的typed JSON transport固定raw bytes／HTTP完整性，application的da
 19案與合成父6316→新13156已讀回相同8份保存來源，取消空窗修正後限定2案／mypy1010通過；檔案及新程序證據不證斷電目錄耐久。Increment23已新增明示daily read pin及同一pair reader路由：Registry controller只固定批次目錄、外部雙SHA、由owner提供的獨立typed接受錨點與當下UTC aware cutoff，不從封套重建信任；前後以同一daily reader核對版本，結果保留批次／capture／兩SHA與可用小時。原artifact簽名與候選資格不變。
 
 新backend與原pair／新舊controller、widget及必要UI檢查已各自限定驗證；Main父33268→新17672重用17來源，沒有重產run或calendar。兩次操作的actual cutoff各自保留，其餘版本與診斷一致，來源bytes／完整stat不變。這只有隔離QA的合成接受錨點，正式Main尚未配置真用途接受，daily預設阻擋；不授自動更新、正式publisher或Task。來源／幣別／成本、歷史PIT與完整績效不能由批次小時或完整日期推得。規格見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#日曆完整json批次increment21)，原FAIL與收據見[Increment23 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment23每日日曆版本接原registry診斷)。
+
+
+## 日期化接線細節
+
+以下保留原始細節段落，改按策略／回測與跨頁研究責任查找。段落中的驗收、版本及限制只適用原記錄所述範圍；目前狀態看本頁 Snapshot 引用及具名 QA。
+
+### 策略、版本與回測結果
+W底基礎研究`baldr_w_bottom_basic_v1@1.0.0`已接原StrategyRegistry／正常單股producer與保存出口。`causal_w_bottom`以獨立Decimal Context60逐列確認嚴格三點收盤谷，只保留27列；相鄰雙谷／5列前置跌勢／第一谷5%差／頸線高1%／等待與失效按原計畫§5.3，不使用全段find_peaks／ATR均值／補值。executor深拷貝spec與frame，輸出逐列確認證據及意圖；episode只固定原頸線，不是已成交部位。缺行情清幾何但保留既有意圖的歷史頸線；unavailable含暖機／缺件／重啟，不等於原始缺資料列數。
+
+新`single-backtest-w-bottom-execution.v1`沿原manifest保存同次spec／effective rules、9個source-file hash、日期／狀態／意圖／兩谷與頸線證據、原Broker config、runtime及`prior_rows=0`的測試窗全狀態重設政策；不套布林band／暖機。專用pure reader只核已保存規則、原值／日期與episode交叉一致性，不讀current Registry或重跑訊號。metadata builder另核獨立傳入的identity、params、原capital／所有Broker輸入及requested/actual bounds；metadata存實際窗，原請求窗保留raw_params。缺成本不補0，來源收尾取消不回填完整manifest。原baseline／兩策略v2／布林schema不改，原Broker撮合／金融公式不變，研究資格在service與reconciliation明確拒絕；source hash只識別檔案，不授來源／PIT或績效權威。限定正常Main／fresh已驗，其他模式及Native／EXE仍待。
+
+`baldr_bollinger_basic_v1@1.0.0`以獨立純契約／executor接原StrategyRegistry，固定既有causal BBANDS30/2/SMA分析邊界；決策只以Decimal比較當列／前列原值，不走ScoringEngine、補值或自認成交。正常producer同次有界讀取前180曆日、最多31個prior觀測，fingerprint綁實用完整frame；原service按test_start重設確認並裁切後才撮合／計績效。新`single-backtest-bollinger-execution.v1`沿既有Registry保存spec、effective rules、逐日訊號、input_context、分析runtime版本及十個源碼hash，原baseline v1／兩策略v2不換版。專用pure reader核schema／identity／規則／成本／來源集合／qualification及訊號日期與型別，再交原規則卡與結果出口，不查當前Registry或重跑。指標float仍在分析邊界，來源hash不是權威／PIT證明；缺日曆完整性保持unknown，研究版不能由SOP或直接Registry晉升取得正式資格。本輪只驗正常單股研究，其他模式與完整家族仍各自待。
+
+`StrategyVersionService.create_version`的新建身份採時間前綴加UUID，explicit ID沿既有reader的安全basename限制；同目錄獨立exclusive `.tmp`完整flush/fsync後，Windows rename／其他平台hard-link以create-only發布，目標存在必須失敗。只有本次確實建立的暫存可清理，清理錯誤記錄而不遮蔽原例外或已發布成功。catalog僅接受檔名與payload ID一致的JSON，舊暫存原件不刪；明確`update_version`仍是既有可變聲明，不宣稱不可變版本庫。promotion回填失敗先讀回exact backlink，已回填或未知保留版本；僅確認未引用才補償本次新建。生命週期紀錄失敗不刪已回填JSON，標示`reconciliation_required`並由原掃描列出；狀態寫入也失敗時保留原錯誤與log，不授晉升成功。這不是跨store transaction或自動修復，亦不改原preflight／金融／lifecycle門檻。
+
+`SavedStrategyVersionReader`唯讀消費現有VersionService與ResearchHistoryLookup。清單保存canonical版本聲明及exact來源entry，開啟前後重讀版本，核策略／params、source config、data fingerprint、成交／sizing及已存在backlink；版本號是生命週期標籤，不與原run執行器版號強制相等。新`select_registry_run`只按明示ID建metadata/context選取，原resolve再核完整性／預算；不掃latest或建立來源。SavedRuleCard新增可選預算／取消透傳，舊呼叫契約不變。Qt元件只接回原結果／dialog，generation與合作關閉拒晚到；catalog分頁不改run身份。版本JSON摘要只證本次選取一致，沒有跨程序不可變／來源權威效力；legacy缺執行來源及績效未知仍沿原reader，不用目前設定補章。
+
+Increment59固定來源包為兩個既有策略的v2規則收據加三份raw source datas（兩executor與metadata wrapper）；原四份執行來源及兩technical kernels保留。build metadata以AST讀取spec明示literal來源清單，不執行spec；完整三份才加對應hash，partial／缺檔拒絕，舊spec及僅註解含路徑不冒稱v2。runtime仍對實際原檔取hash，metadata不能替代缺檔或來源權威；固定export與EXE各自正常保存／fresh再比金融內容，沒有修改已固定export來補件。
+
+原analyzer的PF改nullable，附 `closed-pair-net-pnl-ratio.v1`／status；Decimal60內計算及既有analytics輸出分開。`backtest_contracts.profit_factor_projection`讓單股／batch／optimizer／新repository只傳有效有限值；缺版本舊值不升格。原runs schema不遷移，未定義保存NULL、舊比較與promotion摘要PF不可用；歷史七欄不增欄或重算。固定9fa尚未backport，見[PF指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。
+
+原 `PerformanceAnalyzer` 增補逐指標有效性，保持原計算／數值出口；新 `single-backtest-performance.v1` node 由原 `BacktestService` 發行，固定七個保存欄位、單位、實際期間／列數、完成配對與股票身份。十進位值文字指紋使原 float analytics 與 UI 的 Decimal JSON 解碼一致；整 node SHA 綁有效性與期間，原 Registry metadata／Parquet 外部身份仍各自核驗，不把 checksum 當來源授權。原 `ResearchRunService` 只對新宣告另保留實際日期欄並在寫入前核對原表；舊無 node 保存／hash 不變。公開歷史 reader 與被動卡片重驗 node／摘要，顯示原已知值，fallback／零配對／無期間維持 None；不重算或推進 qualification／comparability。操作見[指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。
+
+### 價格研究、個股與 Portfolio 跨頁接線
+
+持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究增三步引導及名稱，UI parser在格式／重複守衛後把代碼集合排序才呼叫原query；不改catalog／strict source session／核心篩選／收藏契約，舊後端仍拒非canonical順序。個股漲跌沿原價差方向守衛，說明缺件不代表0。
+
+Increment71 的價格頁只在 UI 層清除既有篩選並對同一 exact read session 重查，不改來源、價格事實、query／comparison／bookmark DTO 或 PIT 資格。單檔收藏把比較選取留空，不把不足兩檔的籃子冒充比較。手動交易表單的代碼／名稱互補只讀本機公司名冊，唯一且精確匹配才自動填；不改 Portfolio 交易 writer。未連結保存 result 的手動持倉下鑽傳 `current_stock_research`，一般個股 reader 因而可讀目前行情與技術；已有 validated result 的持倉仍傳原保存 scope。回測頁只調 splitter 與選用查找呈現，原結果 reader／金融資料不重算。
+
+價格選股後續可見性修正只在互動式 `source_read`／`query` 成功且 `_PriceViewState` 核驗後收合條件與詳情，依當次 generation／state 在外層結果捲動區定位結果；失敗、取消、翻頁、原來源返回與收藏還原不觸發定位。來源及結果計數仍可展開，原查詢、strict session、basket、bookmark、Decimal／PIT守衛和儲存契約未改。固定 `ec5c95733608` EXE 尚未含此後續來源修正。
+
+個股研究另有獨立 typed `StockOfficialAttentionDTO`／row 與 `official_attention` 尾端欄位；正常 report service 透過 `OfficialAttentionReportProvider` 讀明選 snapshot。三個 `OFFICIAL_ATTENTION_*` 環境設定只識別固定版本，不是資格接受；錯設定隔離此區塊，當日報告用實際 clock，歷史報告截止該台北日末，不能看到後來保存版本。原價／本益比字串、公開來源、雙 SHA、資料日／可用小時與限制投影至正常個股頁，與 `attention_reasons`、market status 交易限制及 Advice 分離；不新增策略規則。持久化與時間守衛見[資料架構](data_storage_runtime.md)，操作見[指南](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
+
+一般手動觀察股票的未連結研究，由 Watchlist 僅在無source ID、無result／決策日／snapshot且identity=unknown時明示選擇目前個股研究context；現有report reader讀目前行情，返回按原代號定位。已有來源或身份衝突仍保留保存來源路由；不將讀取失敗改成目前行情，也不授歷史PIT。儲存格式、public reader、金融計算與原收藏版本路徑均沿用，限定驗證見[Increment34 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)。

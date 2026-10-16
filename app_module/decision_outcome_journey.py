@@ -1450,7 +1450,7 @@ class EvidenceRepositoryReadAdapter:
     ) -> None:
         if isinstance(max_events, bool) or max_events <= 0:
             raise ValueError("max_events must be positive")
-        self.repository = EvidenceEventRepository(object(), db_path=db_path)
+        self.repository = EvidenceEventRepository(object(), db_path=db_path, read_only=True)
         self.max_events = max_events
         self.last_has_more = False
         self.last_read_count = 0

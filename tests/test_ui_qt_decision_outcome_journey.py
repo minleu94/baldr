@@ -404,6 +404,26 @@ def test_valid_context_renders_candidate_maturity_and_separates_personal_records
     widget.close()
 
 
+def test_maturity_reason_is_plain_language_without_changing_source_status() -> None:
+    original = _journey(outcome_status="ready")
+    journey = replace(
+        original,
+        outcome_maturity=tuple(
+            replace(item, reason="outcome_available_at_query_boundary")
+            if item.window_days == 5 else item
+            for item in original.outcome_maturity
+        ),
+    )
+    widget = DecisionOutcomeJourneyWidget(JourneyServiceStub({"result-1": journey}), _context())
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+    model = widget.maturity_table.model()
+    assert model.index(0, 2).data() == "來源已標示 ready"
+    assert model.index(0, 3).data() == "已取得該期限的來源結果；是否成熟請看結果狀態。"
+    assert next(item for item in widget.journey.outcome_maturity if item.window_days == 5).reason == "outcome_available_at_query_boundary"
+    widget.close()
+
+
 def test_personal_choice_history_is_read_only_ordered_and_keeps_pending_visible() -> None:
     context = replace(
         _context(),
@@ -801,6 +821,8 @@ def test_official_scheduled_result_renders_cjk_journey_screenshot_when_available
         journal_path=output_root / "portfolio" / "journal_entries.jsonl",
         portfolio_trades_path=output_root / "portfolio" / "trades.jsonl",
     )
+    assert service.evidence_reader is not None
+    assert service.evidence_reader.repository.read_only is True
     widget = DecisionOutcomeJourneyWidget(
         service,
         ResearchStockContextDTO(

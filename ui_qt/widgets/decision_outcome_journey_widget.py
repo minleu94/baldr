@@ -766,7 +766,7 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 f"{item.window_days}個交易日",
                 _link_status_text(item.status),
                 _outcome_status_text(item.outcome_status),
-                item.reason or "—",
+                _maturity_reason_text(item.reason),
             )
             for item in maturity
         )
@@ -1012,6 +1012,21 @@ def _outcome_status_text(status: str | None) -> str:
         "deferred": "待可得",
         "error": "讀取失敗",
     }.get(token, token)
+
+
+def _maturity_reason_text(reason: str) -> str:
+    return {
+        "outcome_available_at_query_boundary": "已取得該期限的來源結果；是否成熟請看結果狀態。",
+        "outcome_visible_at_query_boundary": "在指定查詢時點可見；是否成熟請看結果狀態。",
+        "outcome_not_available_at_query_boundary": "指定查詢時點尚不可得。",
+        "outcome_return_basis_mismatch": "結果計算基準與原推薦不同。",
+        "outcome_key_missing": "找不到該期限的精確結果。",
+        "conflicting_duplicate_outcome": "該期限有重複且衝突的結果。",
+        "evidence_event_key_ambiguous": "原推薦對應多個證據事件，無法唯一連結。",
+        "evidence_event_key_missing": "找不到原推薦的精確證據事件。",
+        "evidence_read_failure": "證據讀取失敗。",
+        "evidence_reader_not_configured": "未設定證據讀取來源。",
+    }.get(reason, reason or "—")
 
 
 def _status_label(value: str) -> str:

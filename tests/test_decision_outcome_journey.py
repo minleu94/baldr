@@ -20,6 +20,7 @@ import pytest
 
 from app_module.decision_outcome_journey import (
     DecisionOutcomeJourneyService,
+    EvidenceRepositoryReadAdapter,
     JsonRecommendationReadAdapter,
     RecommendationCandidateRecord,
     RecommendationResultRecord,
@@ -1028,6 +1029,16 @@ def test_timeline_sort_normalizes_aware_offsets_and_puts_unknown_last() -> None:
         "b",
         "unknown",
     ]
+
+
+def test_evidence_journey_adapter_refuses_writes_and_missing_database(tmp_path: Path) -> None:
+    evidence_db = tmp_path / "missing-evidence.sqlite"
+    adapter = EvidenceRepositoryReadAdapter(evidence_db)
+    assert adapter.repository.read_only is True
+    assert adapter.list_events(decision_date="2026-01-03") == ()
+    with pytest.raises(RuntimeError, match="read-only"):
+        adapter.repository.ensure_schema()
+    assert not evidence_db.exists()
 
 
 def test_read_only_adapters_do_not_change_source_files(tmp_path: Path) -> None:

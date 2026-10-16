@@ -933,14 +933,9 @@ class DecisionOutcomeJourneyWidget(QWidget):
         quality = _journey_quality(journey.status, maturity)
         summary = _journey_summary(journey.status, maturity)
         if quality == "conflict":
-            if pending:
-                summary += "；部分期限尚待結果成熟。"
             self._set_status(summary, "conflict")
         elif pending:
-            self._set_status(
-                "已連結；尚待結果成熟（未有足夠未來資料），不是實際成交損益。",
-                "warning",
-            )
+            self._set_status(summary, "warning")
         else:
             self._set_status(summary, quality)
         self._set_navigation_state()
@@ -1072,9 +1067,38 @@ def _journey_summary(
     status: JourneyStatus,
     maturity: Sequence[OutcomeMaturityRecord],
 ) -> str:
-    if any(item.outcome_status in {None, "", "unknown"} for item in maturity):
-        return f"Journey identity {_status_label(status.value)}；部分後續 outcome 未知。"
-    return f"Journey identity {_status_label(status.value)}；結果狀態依每個 horizon 的 outcome_status 判讀。"
+    def windows(items: Sequence[OutcomeMaturityRecord]) -> str:
+        ordered = sorted(items, key=lambda item: item.window_days)
+        return "／".join(str(item.window_days) for item in ordered)
+
+    linked = tuple(item for item in maturity if item.status is JourneyLinkStatus.LINKED)
+    ready = tuple(item for item in linked if item.outcome_status == "ready")
+    observed = tuple(item for item in linked if item.outcome_status == "observed")
+    pending = tuple(
+        item for item in linked if item.outcome_status == "insufficient_future_data"
+    )
+    other = tuple(
+        item
+        for item in linked
+        if item.outcome_status not in {"ready", "observed", "insufficient_future_data"}
+    )
+    unlinked = tuple(
+        item for item in maturity if item.status is not JourneyLinkStatus.LINKED
+    )
+    parts = [f"推薦結果身分：{_status_label(status.value)}"]
+    if ready:
+        parts.append(f"{windows(ready)} 個交易日來源已標示 ready，仍須核對成熟與來源")
+    if observed:
+        parts.append(f"{windows(observed)} 個交易日來源已標示已觀測")
+    if pending:
+        parts.append(f"{windows(pending)} 個交易日尚待結果成熟（未有足夠未來資料）")
+    if other:
+        parts.append(f"{windows(other)} 個交易日結果狀態請看下表")
+    if unlinked:
+        parts.append(f"{windows(unlinked)} 個交易日連結未核實或衝突，請看下表")
+    if not maturity:
+        parts.append("尚無期限結果")
+    return "；".join(parts) + "。此處不是實際成交損益。"
 
 
 def _event_outcome_text(event: EvidenceEventRecord) -> str:

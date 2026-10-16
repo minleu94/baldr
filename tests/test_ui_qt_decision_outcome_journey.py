@@ -424,6 +424,31 @@ def test_maturity_reason_is_plain_language_without_changing_source_status() -> N
     widget.close()
 
 
+def test_mixed_horizons_show_available_source_and_pending_separately() -> None:
+    base = _journey()
+    mixed = replace(
+        base,
+        outcome_maturity=tuple(
+            replace(item, outcome_status="ready")
+            if item.window_days in {5, 10, 20} else item
+            for item in base.outcome_maturity
+        ),
+    )
+    widget = DecisionOutcomeJourneyWidget(
+        JourneyServiceStub({"result-1": mixed}), _context()
+    )
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+
+    summary = widget.status_label.text()
+    assert widget.status_badge.text() == "注意"
+    assert "5／10／20 個交易日來源已標示 ready" in summary
+    assert "仍須核對成熟與來源" in summary
+    assert "60 個交易日尚待結果成熟" in summary
+    assert "不是實際成交損益" in summary
+    widget.close()
+
+
 def test_personal_choice_history_is_read_only_ordered_and_keeps_pending_visible() -> None:
     context = replace(
         _context(),
@@ -577,6 +602,7 @@ def test_horizon_conflict_takes_precedence_over_pending_status() -> None:
         replace(
             item,
             status=JourneyLinkStatus.CONFLICT,
+            outcome_status="ready",
             reason="duplicate outcome fixture",
         )
         if item.window_days == 5
@@ -592,7 +618,8 @@ def test_horizon_conflict_takes_precedence_over_pending_status() -> None:
 
     assert widget.status_badge.text() == "衝突"
     assert "尚待結果成熟" in widget.status_label.text()
-    assert "Journey identity" in widget.status_label.text()
+    assert "5 個交易日連結未核實或衝突" in widget.status_label.text()
+    assert "來源已標示 ready" not in widget.status_label.text()
     widget.close()
 
 

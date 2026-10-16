@@ -75,6 +75,8 @@ baldr 是市場資料、個股研究、推薦回放、回測和持倉檢視工�
 
 建立推薦前核對資料日、母體、Profile、門檻及已啟用指標；結果先看 result ID、決策日、資料日、quality、warnings、Why／Why Not 和 screening matrix。保存後只沿同一 result ID 讀回。Research Lab 需確認日期、股票母體、策略版本、成本、滑價、成交假設與 benchmark；最佳化結果是候選，仍需 OOS 或 Walk-forward 等證據。
 
+在後續開發來源的「個股研究 → 決策 → 結果」，頁首按 5／10／20／60 個交易日分列來源標示 `ready`、待成熟及連結異常；再查看下表的逐期狀態與原因。`ready` 只是來源狀態，不代表已核准績效或實際成交損益。固定82試用 EXE 尚未包含此顯示；操作與缺件判讀見[決策到結果的回訪](manuals/WATCHLIST_AND_PORTFOLIO.md#決策到結果的回訪後續開發分支)。
+
 Research Lab 的 Paper 保存快照查找需先由管理員在啟動環境明示設定外部保存根 `PAPER_CONTRACT_ARTIFACTS_ROOT`。未設定或設定無效時，Paper 查找會停用，其他 Research Lab 功能仍可使用。版本 ID 須與目前 Research Lab 所選策略版本一致；查找時還要明示策略、帳戶命名空間與含時區的截止時間，按「列出此帳戶的保存快照」查看最多 200 列的清單及截斷提示，再選取一列並按「讀取所選 exact 快照」。不會自動選最新版本或快照，也不會建立或修改保存資料；候選清單本身不代表 exact 讀回已驗證，即使所選快照讀回成功，也不代表來源可得性或績效資格已核定。關閉工作區會取消未完成查找，已開始的讀取會安全收尾，過期結果不會取代目前畫面。
 
 候選池、Universe、手動交易帳、聲明持倉與 Paper 帳用途不同。保存候選清單或匯入帳本前，核對目前選定資料、預覽、hash 和寫入範圍。所有帳本都不會自動連券商或送委託。詳見[推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[觀察清單與持倉](manuals/WATCHLIST_AND_PORTFOLIO.md)。

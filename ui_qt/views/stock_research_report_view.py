@@ -3035,7 +3035,8 @@ class StockResearchReportView(QWidget):
         )
         layout.addWidget(
             self._wrapped_label(
-                "原始值如實呈現；值欄提示說明期間基礎、基礎核實與特徵彙總資格。"
+                "已核單位的金額才顯示為 TWD；來源單位未核或金額無法解析時，值欄明示不可用，原件仍保留。"
+                "值欄提示說明期間基礎、基礎核實與特徵彙總資格。"
                 "未核實或不具彙總資格時，不推算累計或比率。"
                 "目前查閱含已實際觀測的官方快照；歷史日期查詢只使用符合可得日限制的資料。"
                 "現況快照沒有原公告日，不作歷史回測證據；各項資料日期可能不同。"
@@ -4646,7 +4647,7 @@ def _fundamental_basis_tooltip(metric: StockFundamentalObservationDTO) -> str:
     )
     pit = "符合正式 PIT" if metric.formal_pit_eligible else "不具正式 PIT 資格"
     return (
-        f"原始值保留：{_metric_text(metric)}\n"
+        f"報告顯示值：{_metric_text(metric)}\n"
         f"期間基礎：{basis}（{basis_verified}）\n"
         f"特徵聚合資格：{aggregate}\n"
         f"歷史資格：{pit}\n{basis_note}"

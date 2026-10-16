@@ -511,6 +511,43 @@ def test_weekend_periodic_data_without_receipt_remains_unknown(tmp_path: Path) -
     assert sources["sqlite.fundamental_monthly_revenues"].freshness == "unknown"
 
 
+def test_monthly_revenue_report_does_not_label_unverified_raw_amount_as_twd(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    with sqlite3.connect(config.db_file) as conn:
+        conn.executemany(
+            "INSERT INTO fundamental_monthly_revenues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2330", "2026-07", "2026-07-31", "2026-08-10", "2026-08-11", "442679969", "twse.open_api.monthly_revenue", "raw-v1", "observed"),
+                ("2330", "2026-06", "2026-06-30", "2026-07-10", "2026-07-11", "300", "mops.monthly_revenue_static_snapshot", "mops-v1", "observed"),
+                ("2330", "2026-05", "2026-05-31", "2026-06-10", "2026-06-11", "invalid", "mops.monthly_revenue_static_snapshot", "mops-v1", "observed"),
+                ("2330", "2026-08", "2026-08-31", "2026-09-10", "2026-09-11", "999", "mops.monthly_revenue_static_snapshot", "mops-v2", "observed"),
+            ],
+        )
+
+    report = StockResearchReportReadService(config).read_report("2330", as_of_date="2026-09-08")
+    monthly = {item.period: item for item in report.fundamentals if item.kind == "monthly_revenue"}
+    assert set(monthly) == {"2026-05", "2026-06", "2026-07"}
+    assert monthly["2026-07"].value is None
+    assert monthly["2026-07"].unit == ""
+    assert "單位未核實" in monthly["2026-07"].value_text
+    assert monthly["2026-07"].aggregate_feature_eligible is False
+    assert monthly["2026-07"].formal_pit_eligible is False
+    assert monthly["2026-06"].value == Decimal("300000")
+    assert monthly["2026-06"].unit == "TWD"
+    assert monthly["2026-05"].value is None
+    assert "無法解析" in monthly["2026-05"].value_text
+    source = next(
+        item for item in report.sources
+        if item.source_id == "sqlite.fundamental_monthly_revenues"
+    )
+    assert source.quality == "degraded"
+    assert "2 列月營收" in "；".join(source.limitations)
+    section = next(item for item in report.sections if item.section_id == "fundamental")
+    assert section.status == ReportSectionStatus.PARTIAL.value
+
+
 def test_global_current_receipt_does_not_make_lagging_stock_fresh(tmp_path: Path) -> None:
     config = _config(tmp_path)
     with sqlite3.connect(config.db_file) as conn:

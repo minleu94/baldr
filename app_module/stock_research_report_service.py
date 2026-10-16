@@ -1585,14 +1585,34 @@ class StockResearchReportReadService:
             """
             rows = self._query(sql, (code, _date_key(cutoff), limit))
             source_id = f"sqlite.{table}"
+            unusable_monthly_amount_rows = 0
             for row in rows:
                 available_at = _iso_date(row["available_at"])
                 data_as_of = _iso_date(row["as_of_date"]) or _iso_date(row["period"])
                 quality = _quality(row["quality"])
-                value = _decimal(row["value"])
-                if kind == "monthly_revenue" and str(row["source"]) == "mops.monthly_revenue_static_snapshot" and value is not None:
-                    # 舊 MOPS backfill 保存原始千元；報告 DTO 明定 TWD。
-                    value *= Decimal(1000)
+                raw_value = _decimal(row["value"])
+                value = raw_value
+                value_text = "" if raw_value is not None else str(row["value"] or "")
+                unit = ""
+                aggregate_eligible = _db_bool(row["aggregate_feature_eligible"])
+                formal_pit_eligible = _db_bool(row["formal_pit_eligible"])
+                if kind == "monthly_revenue":
+                    if str(row["source"]) == "mops.monthly_revenue_static_snapshot" and raw_value is not None:
+                        # 既有 MOPS 契約的原件單位為千元，報告 DTO 才換成 TWD。
+                        value = raw_value * Decimal(1000)
+                        unit = "TWD"
+                    else:
+                        # 其他來源未在此讀取契約證明金額單位；不把原值標成 TWD。
+                        unusable_monthly_amount_rows += 1
+                        value = None
+                        value_text = (
+                            "來源單位未核實；金額不可用，原件保留。"
+                            if str(row["source"]) != "mops.monthly_revenue_static_snapshot"
+                            else "來源金額無法解析；金額不可用，原件保留。"
+                        )
+                        quality = _worst_quality((quality, ReportQuality.DEGRADED.value))
+                        aggregate_eligible = False
+                        formal_pit_eligible = False
                 observations.append(
                     StockFundamentalObservationDTO(
                         kind=kind,
@@ -1602,8 +1622,8 @@ class StockResearchReportReadService:
                         announced_date=_iso_date(row["announced_date"]),
                         available_at=available_at,
                         value=value,
-                        value_text="" if _decimal(row["value"]) is not None else str(row["value"] or ""),
-                        unit="TWD" if kind == "monthly_revenue" else "",
+                        value_text=value_text,
+                        unit=unit,
                         source_id=source_id,
                         source_version=str(row["source_version"] or ""),
                         metric_name=str(row["metric_name"] or row["item_label"] or ""),
@@ -1612,8 +1632,8 @@ class StockResearchReportReadService:
                         quality=quality,
                         period_basis=str(row["period_basis"] or "unknown"),
                         basis_verified=_db_bool(row["basis_verified"]),
-                        aggregate_feature_eligible=_db_bool(row["aggregate_feature_eligible"]),
-                        formal_pit_eligible=_db_bool(row["formal_pit_eligible"]),
+                        aggregate_feature_eligible=aggregate_eligible,
+                        formal_pit_eligible=formal_pit_eligible,
                     )
                 )
                 industry = industry or str(row["industry"] or "").strip()
@@ -1627,9 +1647,17 @@ class StockResearchReportReadService:
                 period=_latest_text(str(row["period"] or "") for row in rows),
                 available_at=_latest_text(_iso_date(row["available_at"]) for row in rows),
                 version=_latest_text(str(row["source_version"] or "") for row in rows),
-                quality=_worst_quality(_quality(row["quality"]) for row in rows),
+                quality=_worst_quality(
+                    [_quality(row["quality"]) for row in rows]
+                    + ([ReportQuality.DEGRADED.value] if unusable_monthly_amount_rows else [])
+                ),
                 cutoff=cutoff,
-                limitations=("只接受 available_date 不晚於查詢日的 row。",),
+                limitations=(
+                    "只接受 available_date 不晚於查詢日的 row。",
+                    *((
+                        f"{unusable_monthly_amount_rows} 列月營收來源單位未核實或金額無法解析；值欄不可用，原件未改。",
+                    ) if unusable_monthly_amount_rows else ()),
+                ),
             )
             sources.append(source)
         # 即時研究使用已實際觀測的官方快照；它沒有歷史公告日，不能回流 PIT。

@@ -2,6 +2,26 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment63：P07W底因果可執行核心與確認日
+
+**解除的交付阻礙**：原P07形態家族只有全段圖形原料，整段極值／平均ATR與缺值填補不能直接作逐日可知策略；第二谷`end_idx`也不是可觀測確認日。本輪Root在原計畫§5.3定版自有`baldr_w_bottom_basic_v1@1.0.0`完整入出場假說，實作固定契約、純Decimal因果核心與StrategyExecutor；原圖形辨識不改。這是通往正常入口的必要核心，尚未登記selector、接保存／Main／fresh，不能列成已完成的使用者功能或P07 Gate。起始HEAD `76a4359068fe5b7c1a1e23d34f6bee4df67c99d7`，固定0f644faa預覽與V1四旅程不改。
+
+- 三點收盤谷於右一列確認，只取相鄰兩谷、3–20列間距、第一谷前5列跌勢；兩谷差以第一谷5%為基準，頸線取中間最高收盤且須嚴格高兩谷1%。候選保留首組，前後收盤跨過凍結頸線才發一次意圖；5／10／20列等待含期限邊界，低於floor／超期先失效，當列不重建進場。
+- 進場意圖episode固定頸線，後日跌回才發出場意圖，不自認成交或持倉；原Broker零量、漲跌停、下一有效開盤、資金／lot與未成交政策保持。缺OHLC清候選／暖機，已有episode保留原頸線但不造當日訊號；測試窗前不帶入幾何、候選或episode。無固定持有期或強制期末平倉。
+- 原價轉Decimal後只用整數乘法／比較，60位context隔離呼叫者精度；28位價格／小數12位邊界有正指數反例。內核只保留27列，不使用全段`find_peaks`、`bfill`、ATR或未來極值。逐列證據含兩谷日／價、頸線日／價、第二谷確認日、原因／狀態與當日訊號；這些目前尚未沿正常Registry保存，不冒稱immutable證據。
+- 重用同一Luna靜態peer，核心未發現阻斷；其提醒`unavailable`含暖機／重啟及上游float精度不可還原，Root記入架構與後續producer驗收。來源單位／availability、歷史PIT與績效資格仍未接受；沒有正式資料／版本、Task、maintainer或網路操作。
+
+| QA | 限定結果 | outer SHA-256 |
+|---|---|---|
+| 374 | 原kind路由及context；4來源6592字／11196bytes，pattern/contracts簽名超預算由Root讀原正文，未相關推薦tests仍unknown，不宣稱重跑 | `0868702af13b106db545a1fa36b84f859cfcfdc2e5b025b81e6d54f3f73a8dcf` |
+| 375 | compile四檔；新因果／原Broker共72PASS，八roots mypy1041及原金融float邊界檢查；後者白名單不單獨證新核心 | `8676706bfedcaa7d134fd5082087c315111b0f121d81e9f191061e3e2c7833ec` |
+| 376 | 明確修正正指數表達邊界後，compile及核心／原Broker74PASS，新增三來源裸float AST反例與1E27／1E28，三來源mypy通過 | `2f45a3f70bcc7e95176aa26ab6e06d5ee7d93c4a10daf88a754b3f5d2964014a` |
+| 377 | 補peer已成交持倉延續至期末不強制賣出、1E-12接受端點；Root另將Decimal rounding／exponent／traps改為固定獨立context，受改核心／原Broker76PASS、compile及三來源mypy通過 | `d5c6ad2e263ee547f0d5bd75052698ea07c5c3be858b338e769fb47924cfecb2` |
+
+反例包括每個prefix／未來追加、確認日不回標、幾何無突破、平台／同價頸線、谷距2／3／20／21、不可略過中間谷、5%與1%邊界、首候選不替換、期限／floor、OHLC缺值、episode不等於成交、測試窗清狀態、日期及OHLC拒絕、spec漂移、輸入與caller precision／rounding／exponent limits／flags不變。已成交未平倉只估值，不虛構期末出售；與末列待執行訊號無成交是兩個案例。等待敏感度只保存合成訊號數0／1／1，不選最高績效。所有組均由Root單一Job8GiB／12程序／mutex串行執行，三PID陣列自然空且handles／mutex關閉。
+
+未改UI／原註冊及shared ports，本輪不重跑未受影響Workbench／validator／Main，也不借舊PASS授本W底正常旅程。下一步在原P07接當次producer／規則與訊號source binding、selector、保存／返回／fresh及研究資格拒絕；Native／EXE、完整家族／雙策略績效、來源權威／PIT與自然成熟仍各自保留。指南明列未開放狀態，原完整範圍與舊FAIL原件維持。
+
 ## Increment62：P07布林基礎研究策略正常執行與訊號保存
 
 **解除的交付阻礙**：P07布林家族只有當日「收盤高於上軌」filter，沒有具名進出場、可執行StrategySpec與正常保存訊號出口。本輪由Root在原計畫§5.2定版自有`baldr_bollinger_basic_v1@1.0.0`研究假說，沿原Registry／selector／Broker／保存與歷史規則卡完成基礎版，不把filter-only或unknown卡片當完整策略，也不冒稱進階壓縮／VCP／共振。起始HEAD `9a473df66a8280db0c131a7cb6cfae40dec1f166`；固定0f644faa預覽與四條V1範圍不改。

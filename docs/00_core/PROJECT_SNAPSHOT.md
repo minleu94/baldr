@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment63沿原P07補W底的因果可執行核心：新三點谷於右一列收盤確認，再突破凍結頸線才發進場意圖；失效、期限、缺件、出場與測試窗重設依原計畫§5.3定版，舊全段形態辨識不改。最終合成因果／原Broker反例76PASS、八roots mypy1041及最後三來源定向mypy通過；只證核心，不代表資料權威或有效性。策略尚未登記正常選單，當次規則／訊號保存、Main／fresh、Native／EXE與完整P07仍待，不能把核心當完整功能；固定0f644faa預覽保持。詳[Increment63 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment63p07w底因果可執行核心與確認日)。
+
 Increment62沿原P07定版並實作「布林基礎突破（研究）」1.0.0：新突破／連續確認、跌破中軌出場、原next_open撮合及缺件重暖機，原綜合分數策略不改。正常selector／規則卡→回測→原Registry保存逐日訊號與十個來源hash→歷史／原結果／返回／fresh已驗；最終Main13180→33308使用原四股副本，419日與最多31筆前置觀測分開，原件與20試用輸入不變。最終核心102PASS、UI96含Workbench85、mypy1038／validator25/0/4；新增研究資格／原promotion定向54PASS。原fixture FAIL及前置暖機修正前收據保留，SOP滿足也不授正式晉升。這是自有研究假說與source功能，固定0f644faa預覽尚未包含，進階壓縮／VCP／形態／共振、來源PIT、完整績效、Native／EXE與完整P07/Gate仍待；詳[Increment62 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment62p07布林基礎研究策略正常執行與訊號保存)及[操作指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林基礎突破研究後續開發分支)。
 
 Increment61解除原P07/P08版本建立可能覆寫前版的保存阻礙：同秒新建使用獨立ID，explicit ID碰撞拒絕，完整flush/fsync後才create-only發布；未完成暫存不列為保存版本。Registry已回填或狀態無法確認時保留新版本，失敗不冒稱晉升成功；可寫入的待核對狀態由原掃描列出。QA359四個原缺陷FAIL、QA360兩個補償FAIL保留；修後核心79PASS／八roots mypy1035，清理例外與lifecycle定向47PASS。正常Main38168→fresh45408驗新自動ID、原規則／419日結果與返回，兩策略原件及時間不變；後補僅清理錯誤分支，不重跑未受影響UI。此為source增量，固定0f644faa預覽不替換，無正式版本寫入或舊檔修補，完整Gate仍待；詳[Increment61 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment61p07p08版本新建保留前版與失敗補償)。下一葉回原P07策略家族的具名規則／訊號出口，先核現有原料與完整規格，保存修補不代表策略補完。

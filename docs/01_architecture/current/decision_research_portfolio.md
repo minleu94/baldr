@@ -4,7 +4,9 @@
 
 ## 模組責任
 
-持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究僅改三步引導及名稱，不改catalog／strict source session／篩選／收藏契約；個股漲跌沿原價差方向守衛，說明缺件不代表0。
+持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究增三步引導及名稱，UI parser在格式／重複守衛後把代碼集合排序才呼叫原query；不改catalog／strict source session／核心篩選／收藏契約，舊後端仍拒非canonical順序。個股漲跌沿原價差方向守衛，說明缺件不代表0。
+
+Increment59固定來源包為兩個既有策略的v2規則收據加三份raw source datas（兩executor與metadata wrapper）；原四份執行來源及兩technical kernels保留。build metadata以AST讀取spec明示literal來源清單，不執行spec；完整三份才加對應hash，partial／缺檔拒絕，舊spec及僅註解含路徑不冒稱v2。runtime仍對實際原檔取hash，metadata不能替代缺檔或來源權威；固定export與EXE各自正常保存／fresh再比金融內容，沒有修改已固定export來補件。
 
 原analyzer的PF改nullable，附 `closed-pair-net-pnl-ratio.v1`／status；Decimal60內計算及既有analytics輸出分開。`backtest_contracts.profit_factor_projection`讓單股／batch／optimizer／新repository只傳有效有限值；缺版本舊值不升格。原runs schema不遷移，未定義保存NULL、舊比較與promotion摘要PF不可用；歷史七欄不增欄或重算。固定9fa尚未backport，見[PF指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。
 

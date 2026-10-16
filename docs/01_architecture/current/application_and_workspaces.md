@@ -14,6 +14,8 @@
 
 Windows 由 `baldr_launcher.py` 啟動；source 與 frozen 執行都交給既有 Qt composition。`ui_qt/main.py` 建立視窗與 widget，`app_module/` 的 composition factory 建立服務並以 DTO／明示 provider 注入 UI。Domain 與 Runtime 不反向依賴 Qt。
 
+固定Windows候選由commit archive建置，不與工作目錄拼接來源；執行收據需讀的raw sources由spec明示datas，metadata逐檔核資源身份。兩原策略v2另帶executor／wrapper三檔，AST只解析literal宣告而不執行spec；缺檔／partial拒建metadata，舊四來源版本不追補hash。包與固定export、正常Native保存／fresh及金融投影各別核驗，細節見[研究邊界](decision_research_portfolio.md#模組責任)與[候選指南](../../07_guides/PORTABLE_WINDOWS.md#試用回報修正預覽increment59)。
+
 ## 九個頂層工作區
 
 市場探索的保存來源 backend 提供明確 opt-in 的 Projection Group V3 opener：同一次 verified-parent callback 產生 MA／KDJ／volatility／F07 Decimal price facts，完整 exact cohort 核對後才發行 session，price digest 進入 group identity。V2 opener 與既有價格分類沿原契約；V3 不另讀價格母體，也不自行接 UI、query predicate 或 bookmark。實際驗證與未完成範圍見[本輪補完 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。

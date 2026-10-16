@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment59已把57／58接成獨立試用回報修正候選：固定來源`0f644faa0d48417fa21d7c05c59b965cd06fc884`，EXE SHA `d88d9ee9e6097bb0cdcb77bc8f9d209848ab3d1e0a32a05c80adaf4ababc5b99`，入口`output/trial/Baldr-Feedback-Preview-59/Launch-Baldr.cmd`。正常Native來源6260→5452與同版EXE47952→42772已驗四股價格查詢、持倉表順序、兩策略保存／原規則／歷史返回及fresh；兩版金融內容與規則投影一致，共同archive／依賴鎖／啟動probe通過。另發現並修正股票輸入順序被核心拒絕：UI送查詢前排序，重複／格式／來源守衛保留，99PASS及必要mypy1033／validator25/0/4通過。舊9fa／4b530與使用者狀態保留，新候選使用獨立空白私人狀態；試用指南與驗證界線見[Increment59 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment59試用回報固定候選與同版出口)。此包含第二階段增量，沒有新增V1第五旅程；空QA持倉不代表使用者帳本已接受，整頁推薦整理、原0交易位置、來源／PIT／完整雙策略與完整Gate仍待。
+
 Increment58接收9fa真人試用回報，重用一名Luna完成持倉表前移，Root補價格研究三步引導及個股漲跌缺件說明。原試用四股副本12,390列中11,378列無可證方向，最近六列方向空白而價差仍有值；不補造正負或改原件。原指南漏「查詢版本」已補，來源一次選一批、再篩四碼。相關UI193PASS／1可達性FAIL保留；Root修進階切換未更新操作列後定向88PASS含Workbench85，八roots mypy1033及validator25/0/4通過。使用者貼的回測摘要是6組完成配對，0交易位置仍未確認，不改金融結果或放寬SOP。這是source候選，尚未新增Native／EXE，固定9fa／4b530及50ddb包不變；持倉排版不新增V1第五流程，整頁推薦tab整理列後續，詳[Increment58 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment58試用回報與持倉表前移)。
 
 Increment57補原P07/P08穩健／暴衝策略的當次規則封存：原執行器／撮合／金融公式不改，新的fixed next_open實驗保存v2規則、實際門檻與成本／來源；舊baseline v1及舊run保留。正常Main38512→fresh36480兩run保存規則／原結果／返回通過，fresh禁止目前Registry／重算／保存，原件內容與時間一致；127PASS及兩個序列化比較修正後定向2PASS，peer發現非零風控舊單位還原錯誤，保留舊DTO改核精確原輸入後44PASS。mypy1033與validator25/0/4；不授PIT、完整雙策略績效或Native/EXE。固定4b530 V1及50ddb開發包尚未含本增量，使用者9fa試用回報另由重用Luna處理，詳[Increment57 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment57p07p08原兩策略的當次規則封存)。

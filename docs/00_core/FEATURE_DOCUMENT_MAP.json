@@ -1020,11 +1020,15 @@
       "code": [
         "ui_qt/main.py",
         "app_module/application_bootstrap.py",
+        "app_module/packaging_provenance.py",
+        "packaging/baldr.spec",
         "app_module/decision_service_composition.py",
         "data_module/daily_monthly_revenue_cohort_binding.py"
       ],
       "tests": [
         "tests/test_ui_qt_decision_desk_main_integration.py",
+        "tests/test_packaging_kernel_provenance.py",
+        "tests/test_packaging_provenance.py",
         "tests/test_calendar_acceptance_application_settings.py",
         "tests/test_monthly_revenue_cohort_application_settings.py",
         "tests/test_daily_monthly_revenue_cohort_binding.py",
@@ -1050,6 +1054,7 @@
       ],
       "sync_documents": [
         "docs/01_architecture/current/application_and_workspaces.md",
+        "docs/07_guides/PORTABLE_WINDOWS.md",
         "PROJECT_NAVIGATION.md",
         "docs/07_guides/APPLICATION_MANUAL.md",
         "docs/00_core/PROJECT_SNAPSHOT.md"

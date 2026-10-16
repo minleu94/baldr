@@ -2,6 +2,30 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment59：試用回報固定候選與同版出口
+
+**解除的交付阻礙**：58只有source，且正常視窗查出四股按使用者順序輸入會被核心拒絕；57兩策略v2規則封存還缺EXE可讀的原始來源。本輪只補原UI集合正規化與打包來源，交獨立後續開發預覽，不新增V1旅程或資料前置，不修改策略、費率、風控或SOP。Root履行Execution／Tech Lead／QA／Documentation，重用既有Luna靜態複核，累計10/10、pending writes=false。
+
+固定來源`0f644faa0d48417fa21d7c05c59b965cd06fc884`，archive SHA `2881c025a91886cbea32b1e96299873f26876fbc64c76b1f5f9d248b49eb42c8`。候選`dist/candidate_0f644faa0d48_5a011727/baldr/baldr.exe`為56,210,840 bytes，SHA `d88d9ee9e6097bb0cdcb77bc8f9d209848ab3d1e0a32a05c80adaf4ababc5b99`；入口`output/trial/Baldr-Feedback-Preview-59/Launch-Baldr.cmd`。此包包含先前第二階段增量，原4b530窄版、9fa、50ddb、ed422中間候選及active_delivery不覆寫，build receipt的built_not_validated不回填為PASS；驗證另存收據。
+
+- 原spec四份執行來源新增兩executor與metadata wrapper，metadata按AST literal宣告完整加入三hash；舊spec與註解路徑不冒稱。實際包中七份回測來源及原兩份technical kernels逐一核對export／resource hash，固定export未修改。
+- `_parse_stock_filter`通過原格式／重複檢查後排序才送既有query；後端仍拒未排序集合，沒有放寬來源／時間／精度守衛。新回歸以真保存來源驗任意順序、同來源結果及重複拒絕；舊9fa／4b530手動輸入須用`2317,2330,2382,2454`，原指南未發現這項缺陷的紀錄保留。
+- 正常Windows Native來源 **6260→5452**、同版EXE **47952→42772**：原四股來源查詢／strict載入／使用者四碼套用、2330原價格／缺方向說明、空QA帳持倉表位置／進階切換／返回，兩原1.0.0策略正常執行／保存對話框／歷史規則卡／原結果／Watchlist返回／fresh。每策略419日，5.5%停損／15%停利核原精確比例與舊整數投影；保存後改目前門檻，fresh禁止目前Registry／executor／回測／保存，仍讀原run。每runtime內原件bytes／hash／mtime／ctime不變，兩runtime的金融內容hash與規則投影一致；不跨不同run偽比全metadata身份。
+- UI操作沿15秒、phase120秒／driver270秒；實際windows平台、曝光／祖先裁切／Qt命中／Win32點位PID與named Job／creation-time守衛。QA窗口明示置頂以避免其他程式遮蔽，只擷取該窗口；沒有終止其他owner程序。這是原生自動化，非真人／跨機接受。
+
+| QA | 真正結果與原FAIL |
+|---|---|
+| 338–340 | 338原相關63PASS／六個新fixture漏mandatory icon FAIL保留；補fixture後六案PASS及mypy1033。peer的文字搜尋誤認宣告問題改AST後compile／packaging27PASS與mypy1；舊四來源行為保留。 |
+| 341–345 | ed422中間包建成，342／343按鈕被其他前景窗口遮住FAIL；344證實點位PID屬其他程式，未kill。345只置頂QA窗口後持倉順序通過，catalog因harness將extended-prefix路徑交config而FAIL。原helpers／specs／收據保留，每次有具體修因而非盲重跑。 |
+| 346–348 | plain技術root恢復catalog及四股strict載入，346暴露真UI未排序filter FAIL；347真來源回歸RED保留。修UI排序後348 compile2、價格widget＋必跑Workbench共99PASS、八roots mypy1033、validator25PASS／0FAIL／4protected skips。既有UI ignore_errors不證UI強型別。 |
+| 349 | 新commit另建固定候選，不在ed422 export補檔或覆寫舊包。outer SHA `3c2c867d6d47f5300dd16ca46db8551f8460819425e47d0e290dcdc330d13593`。 |
+| 350 | 固定來源Native正常旅程／保存／返回／fresh通過；outer SHA `3dc976cd5c4a3a0073d2b26be05e8fc486db7464f67e5dac9c96f695b816d5fc`。 |
+| 351 | 同版EXE上述旅程及原verify_same_version的archive／依賴鎖／共同啟動與journey/model/H20隔離probe通過；outer SHA `9cc71e012249cdf1a9990b382d378b0d91e0aaf8742a4a5ac23338f647d8e640`。共同probe不等於所有UI／金融功能接受。 |
+
+新入口六份行情副本另存，7,098檔bundle清冊保留；技術研究仍唯讀引用20原輸入的原身份根。新output／Registry／LOCALAPPDATA空白，沒有搬使用者持倉或研究紀錄。交付準備曾誤把全部Python resources當七份（另有兩原technical kernels），該assert失敗另存，保留已產清冊、改以七回測＋二技術明確分組核對，未重建包或降低原來源守衛。
+
+各組起前RAM≥8GiB、8GiB committed／12程序／KOC／workspace mutex，三PID清冊自然空、process／Job handles關閉及mutex釋放才續組。338起全部原FAIL與收據在本owner task具名保留；未重跑未改市場／觀察清單journey，也不加總案例當Gate。個股漲跌缺方向屬D品質仍不可用，使用者0交易所在區塊／run尚未證實，原摘要六配對SOPFAIL保留；原完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、官方權威／用途／歷史PIT、真N、完整雙策略績效與自然成熟繼續。沒有正式資料／Task／maintainer、新HTTP、push、發布或交易，後續回原產品包，不把長tab重排擴成第一版前置。
+
 ## Increment58：試用回報與持倉表前移
 
 **解除的操作阻礙**：9fa試用指南省略「查詢版本」，使用者無法選價格研究來源；持倉表被健康區塊推至下方。本輪Root保留原補完工作，僅重用一名Luna做有限靜態定位及Portfolio單寫，Root接回金融裁定、整合、QA與文件；累計10/10，沒有新建agent。持倉新要求不擴V1四流程，source修補尚未打入固定9fa／4b530／50ddb包。

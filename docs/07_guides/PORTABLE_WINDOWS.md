@@ -47,6 +47,14 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 - 首次無字或缺資料時，確認整個資料夾存在、JSON 為 UTF-8、roots 是程式包外的可寫絕對路徑。無 console 的 stdout／stderr 和 App 日誌依該交付版列出的實際位置核對。
 - 長路徑、主機上的 Qt／Windows 差異、私人模型與自然排程執行都要依具名 QA 範圍判讀；在別台 Windows 主機啟動成功不由這份文件推定。
 
+## 試用回報修正預覽（Increment59）
+
+本機直接使用`output/trial/Baldr-Feedback-Preview-59/Launch-Baldr.cmd`；`--check`只核對固定EXE及輸出啟動設定，不開GUI。固定來源`0f644faa0d48417fa21d7c05c59b965cd06fc884`，候選`dist/candidate_0f644faa0d48_5a011727/baldr`，EXE 56,210,840 bytes、SHA-256 `d88d9ee9e6097bb0cdcb77bc8f9d209848ab3d1e0a32a05c80adaf4ababc5b99`；應保留整個資料夾。入口同目錄的`TRIAL_GUIDE.md`、`KNOWN_ISSUES.md`與交付收據列實際操作及範圍。
+
+這份後續開發預覽含價格研究三步引導／股票順序修正、持倉表前移、兩原策略的當次規則封存及先前第二階段增量；不是只回移UI的窄版。新輸出、Registry與私人狀態在入口`state/`，不搬舊清單、持倉或run；技術來源仍唯讀引用原固定根，請勿移動／重簽。四股行情截至2026/09/23，大盤截至10/14，價格方向缺件仍未提供。
+
+Windows原生自動化已在固定來源與EXE各完成四股查詢、持倉空QA帳版面、兩策略正常保存／歷史／規則／返回及新程序重開；原件／金融投影一致，archive／依賴鎖／共同啟動probe另通過。未改市場／觀察清單旅程沿原證據，未宣稱本EXE全部功能重跑、使用者真帳、真人、跨機、簽章、歷史PIT或完整Gate。原4b530窄版、9fa與active_delivery保持，詳[Increment59 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment59試用回報固定候選與同版出口)。
+
 ## 後續開發候選的限定驗證
 
 固定來源50ddb6401238850f4c782f0d99494341d28ffc66的開發候選位於本機dist/candidate_50ddb6401238_9dfeb5e8/baldr，EXE為56,188,224 bytes，SHA-256為84a14003fa9f1de5ae2856c950b6b66c1d469856b4218b9005c983b9c768c033。保留整個baldr資料夾；以本頁「首次設定」的外部設定檔解析資料／輸出／研究Registry根，再啟動該資料夾內baldr.exe。不要只搬EXE、套用測試fixture為正式資料，或把開發包寫進現有試用入口。

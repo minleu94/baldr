@@ -26,6 +26,10 @@
   - UI 行為、各 Tab 功能與參數的參考文件
   - 不作逐步操作權威；使用步驟、結果判讀、安全限制與排錯以 Application Manual 為準
 
+- **[`INDUSTRY_THEME_MAP_DESIGN.md`](INDUSTRY_THEME_MAP_DESIGN.md)**
+  - 台股 L2 產業鏈（25 大鏈）與題材萃取、四階股票對應分配規則與三大 CSV 檔案（`industry_chains_catalog.csv`、`industry_themes_catalog.csv`、`industry_theme_stock_map.csv`）規格說明
+  - 對應獨立模組 [`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py)
+
 - **`USER_GUIDE.md`**
   - 推薦、回測與資料治理的進階專題教程
   - 數據更新工作台、推薦分析、策略參數最佳化、Walk-forward 驗證等；不取代目前操作手冊

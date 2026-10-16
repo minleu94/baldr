@@ -49,7 +49,8 @@
       ],
       "contracts": [
         "docs/01_architecture/system_architecture.md",
-        "docs/01_architecture/current/application_and_workspaces.md"
+        "docs/01_architecture/current/application_and_workspaces.md",
+        "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md"
       ],
       "code": [
         "ui_qt/views/market_regime_view.py",
@@ -60,7 +61,8 @@
         "app_module/daily_market_technical_official_disposition_query_reader_v1.py",
         "app_module/daily_market_technical_universe_projection_group_v3.py",
         "app_module/daily_market_technical_universe_projection_group_session_v3.py",
-        "app_module/daily_market_technical_official_disposition_composite_query_v2.py"
+        "app_module/daily_market_technical_official_disposition_composite_query_v2.py",
+        "decision_module/industry_theme_map.py"
       ],
       "tests": [
         "tests/test_ui_qt_market_regime_view.py",
@@ -70,14 +72,16 @@
         "tests/test_daily_market_technical_universe_v4_read_session.py",
         "tests/test_daily_market_technical_universe_projection_group_v3.py",
         "tests/test_daily_market_technical_universe_projection_group_v3_normal.py",
-        "tests/test_daily_market_technical_universe_price_json_bounds.py"
+        "tests/test_daily_market_technical_universe_price_json_bounds.py",
+        "tests/test_industry_theme_map.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
         "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"
       ],
       "evidence": [
-        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -101,12 +105,17 @@
         "tests/test_daily_market_technical_universe_projection_group_v3_normal.py",
         "tests/test_daily_market_technical_universe_price_json_bounds.py",
         "app_module/daily_market_technical_official_disposition_composite_query_v2.py",
-        "tests/test_ui_qt_market_regime_view.py"
+        "tests/test_ui_qt_market_regime_view.py",
+        "decision_module/industry_theme_map.py",
+        "tests/test_industry_theme_map.py",
+        "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md",
+        "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
         "docs/07_guides/APPLICATION_MANUAL.md",
         "docs/02_features/UI_FEATURES_DOCUMENTATION.md",
+        "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md",
         "docs/00_core/PROJECT_SNAPSHOT.md",
         "docs/01_architecture/current/application_and_workspaces.md",
         "docs/07_guides/manuals/DATA_AND_MARKET_RESEARCH.md"

@@ -19,6 +19,7 @@
 
 ## 目前工程狀態與限制
 
+來源分支已修正正常主視窗建立推薦頁時的跨視窗 TabOrder 警告、Qt model 連線清理與 pandas 相容性警告；鍵盤／版面、共同 UI 防線及 13 個隔離 MainWindow 旅程已限定通過。公司名冊缺來源憑證的提示仍保留，固定試用 EXE 尚未納入本組修復；詳[啟動警告修復 QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)。
 
 **目前71固定候選來源為 `f9b4e7d1214967f86d9ae90b1e462bde11b73f3f`；後續工作樹不會改變該 EXE。** 原66來源為 `ec5c9573360891595bb395fa7bbb934077c6d4c0`。 Increment60–64 的保存版本、布林基礎與 W 底程式碼已納入這份來源／EXE；但本次 Native／EXE 驗證只接受指定日常研究和兩個原 `1.0.0` 單股策略，不把其餘家族視為已交付能力。詳 [Increment60–64 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment64p07w底正常回測與當次訊號保存)。
 
@@ -39,6 +40,7 @@
 - **實際操作**：[APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)；首次設定看[快速開始](../07_guides/QUICK_START.md)，移機看[首次安裝／移機 Prompt](../07_guides/FIRST_INSTALL_PROMPT.md)。
 - **現行與目標架構**：[system_architecture](../01_architecture/system_architecture.md)／[current 分冊](../01_architecture/current/README.md)；[FINAL](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 是目標設計，不作已實作證據。
 - **主程式與資料**：`ui_qt/main.py`，九個頂層工作區；資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理，預設 `DATA_ROOT=D:/Min/Python/Project/FA_Data`，不能以 repo 相對路徑推定正式資料位置。
+- **L2 產業鏈與題材萃取對應（獨立模組）**：[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py) 提供季度／手動之 25 條產業鏈、L2 題材與股票對應三檔建置（未介入既有選股／UI 流程）；規格與檔案欄位見[設計文件](../02_features/INDUSTRY_THEME_MAP_DESIGN.md)，驗證收據見[QA](../06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md)。
 
 ## 重要限制
 

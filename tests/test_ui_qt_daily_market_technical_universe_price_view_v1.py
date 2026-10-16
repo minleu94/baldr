@@ -103,6 +103,37 @@ def _entry_index(view: DailyMarketTechnicalUniversePriceV1View, status: str) -> 
     return -1
 
 
+def test_stock_codes_in_user_order_query_same_saved_source_and_reject_duplicates(
+    app: QApplication, exact_price_store: dict[str, Any],
+) -> None:
+    view = DailyMarketTechnicalUniversePriceV1View(exact_price_store["store_root"])
+    try:
+        view.refresh_sources()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        view.sources.setCurrentIndex(_entry_index(view, "complete"))
+        view.load_selected_source()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        assert view.current_query is not None
+        source = view.current_query.source
+        view.stock_filter.setText("S0003,S0001,S0002")
+        view.apply_query()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        assert view.current_query.technical_stock_filter == ("S0001", "S0002", "S0003"), view.status.text()
+        assert view.current_query.source == source
+        assert {row.technical_row.stock_code for row in view.current_page.rows} == {"S0001", "S0002", "S0003"}
+        query = view.current_query
+        view.stock_filter.setText("S0001,S0001")
+        view.apply_query()
+        assert "重複" in view.status.text()
+        assert view.current_query == query
+        with pytest.raises(ValueError, match="technical_stock_filter_invalid"):
+            _open_session(exact_price_store).create_query(technical_stock_filter=("S0003", "S0001"))
+    finally:
+        view.begin_shutdown()
+        _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)
+        view.close()
+
+
 @pytest.mark.parametrize("width", (520, 760))
 def test_narrow_result_area_keeps_price_apply_reachable_and_inputs_on_resize(
     app: QApplication, exact_price_store: dict[str, Any], width: int,

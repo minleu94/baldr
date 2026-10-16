@@ -201,7 +201,8 @@ def _parse_stock_filter(value: str) -> tuple[str, ...]:
             raise ValueError(f"股票代碼重複：{code}。")
         seen.add(code)
         result.append(code)
-    return tuple(result)
+    # 代碼是篩選集合；保留原輸入文字，送查詢前轉成核心要求的固定順序。
+    return tuple(sorted(result))
 
 
 def _read_catalog_page(

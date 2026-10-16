@@ -5290,12 +5290,13 @@ class BacktestView(QWidget):
 
     def request_cooperative_shutdown(self) -> bool:
         workers = [self.worker, *self._report_export_workers]
-        scenario_registry = getattr(
-            getattr(getattr(self, "result_panel", None), "run_registry_compare_widget", None),
-            "scenario_registry_widget", None,
-        )
+        compare_widget = getattr(getattr(self, "result_panel", None), "run_registry_compare_widget", None)
+        scenario_registry = getattr(compare_widget, "scenario_registry_widget", None)
         if scenario_registry is not None:
             scenario_registry.begin_shutdown()
+        if compare_widget is not None:
+            compare_widget.begin_basic_pair_shutdown()
+            workers.extend((compare_widget._basic_pair_worker, compare_widget._rule_worker))
         pair_controller = getattr(
             getattr(self, "result_panel", None), "period_pair_controller", None
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, TYPE_CHECKING
 from copy import deepcopy
+from decimal import Decimal
 
 import pandas as pd
 from PySide6.QtCore import QSize, QSignalBlocker, Qt
@@ -44,6 +45,8 @@ from ui_qt.widgets.table_style import apply_financial_table_style
 
 if TYPE_CHECKING:
     from ui_qt.workers.task_worker import TaskWorker
+    from app_module.basic_strategy_saved_pair import BasicStrategySavedPair, BasicStrategySavedPairReader
+    from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryResult
     from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
     from ui_qt.widgets.portfolio_scenario_registry_widget import PortfolioScenarioRegistryWidget
 
@@ -56,7 +59,7 @@ RUN_TYPE_LABELS = {
 }
 
 COMPARABILITY_LABELS = {
-    ComparabilityStatus.COMPARABLE: "可直接比較",
+    ComparabilityStatus.COMPARABLE: "保存條件相同（績效資格另核）",
     ComparabilityStatus.CAUTION: "需謹慎比較",
     ComparabilityStatus.INCOMPATIBLE: "不可直接比較",
 }
@@ -108,6 +111,14 @@ class RunRegistryCompareWidget(QWidget):
         self._rule_active_run_id = ""
         self._rule_request_id = 0
         self._rule_closed = False
+        self._basic_pair_reader: BasicStrategySavedPairReader | None = None
+        self._basic_pair_lookup: ResearchHistoryLookup | None = None
+        self._on_open_basic_detail: Callable[[ResearchHistoryResult], None] | None = None
+        self._on_basic_pair_invalidated: Callable[[], None] | None = None
+        self._basic_pair_worker: TaskWorker | None = None
+        self._basic_pair_request_id = 0
+        self._basic_pair_selection: tuple[tuple[str, str], ...] | None = None
+        self._basic_pair_result: BasicStrategySavedPair | None = None
         self._period_pair_available = False
         self._period_pair_availability_reason = "尚未確認完整期間來源。"
         self._period_pair_busy = False
@@ -129,6 +140,20 @@ class RunRegistryCompareWidget(QWidget):
         self.scenario_registry_widget = widget
         self.layout().insertWidget(1, widget)
 
+    def configure_basic_pair(
+        self,
+        reader: BasicStrategySavedPairReader,
+        lookup: ResearchHistoryLookup,
+        on_open_detail: Callable[[ResearchHistoryResult], None],
+        on_invalidated: Callable[[], None],
+    ) -> None:
+        """接入原歷史 reader；只用所選兩筆保存來源。"""
+        self._basic_pair_reader = reader
+        self._basic_pair_lookup = lookup
+        self._on_open_basic_detail = on_open_detail
+        self._on_basic_pair_invalidated = on_invalidated
+        self._update_compare_button_state()
+
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -136,7 +161,7 @@ class RunRegistryCompareWidget(QWidget):
 
         self.purpose_banner = QLabel(
             "研究 Registry：正式研究 run 比較與 promotion evidence 入口；"
-            "比較不等於可 promote，也不會自動替歷史資料補算或遷移。"
+            "比較只讀原保存數值；資料條件相同不代表歷史績效／PIT 可評，也不會補算或遷移。"
         )
         self.purpose_banner.setWordWrap(True)
         self.purpose_banner.setAccessibleName("研究 Registry 目的說明")
@@ -146,6 +171,35 @@ class RunRegistryCompareWidget(QWidget):
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-left: 4px solid {MIDNIGHT_ANALYST.info};"
         )
         layout.addWidget(self.purpose_banner)
+
+        self.compare_basic_pair_button = QPushButton("對照兩個基本策略")
+        self.compare_basic_pair_button.setToolTip(
+            "各選一筆已保存的穩健與積極策略；先核對相同股票、期間、資料、撮合與成本。"
+        )
+        self.compare_basic_pair_button.clicked.connect(self.compare_selected_basic_pair)
+        self.compare_basic_pair_button.setEnabled(False)
+        self.compare_basic_pair_button.setMaximumWidth(220)
+        basic_pair_row = QVBoxLayout()
+        basic_pair_row.addWidget(self.compare_basic_pair_button)
+        basic_pair_hint = QLabel("穩健與積極各一筆 → 核對原來源 → 看保存數值與原明細")
+        basic_pair_hint.setWordWrap(True)
+        basic_pair_hint.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        basic_pair_row.addWidget(basic_pair_hint)
+        self.open_basic_stable_button = QPushButton("查看穩健原明細")
+        self.open_basic_stable_button.setMaximumWidth(220)
+        self.open_basic_stable_button.clicked.connect(
+            lambda: self.open_basic_pair_detail("stable_conservative_v1")
+        )
+        self.open_basic_stable_button.setEnabled(False)
+        basic_pair_row.addWidget(self.open_basic_stable_button)
+        self.open_basic_momentum_button = QPushButton("查看積極原明細")
+        self.open_basic_momentum_button.setMaximumWidth(220)
+        self.open_basic_momentum_button.clicked.connect(
+            lambda: self.open_basic_pair_detail("momentum_aggressive_v1")
+        )
+        self.open_basic_momentum_button.setEnabled(False)
+        basic_pair_row.addWidget(self.open_basic_momentum_button)
+        layout.addLayout(basic_pair_row)
 
         filter_row = QHBoxLayout()
         filter_row.addWidget(QLabel("類型"))
@@ -256,6 +310,22 @@ class RunRegistryCompareWidget(QWidget):
         self.rule_result_status.setWordWrap(True)
         list_layout.addWidget(self.rule_result_status)
         layout.addWidget(list_group, stretch=1)
+
+        self.basic_pair_group = QGroupBox("兩個基本策略：原保存研究對照")
+        basic_layout = QVBoxLayout(self.basic_pair_group)
+        self.basic_pair_status = QLabel("各選一筆穩健與積極策略，按「對照兩個基本策略」。")
+        self.basic_pair_status.setWordWrap(True)
+        self.basic_pair_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        basic_layout.addWidget(self.basic_pair_status)
+        self.basic_pair_metrics = QTableWidget()
+        self.basic_pair_metrics.setColumnCount(3)
+        self.basic_pair_metrics.setHorizontalHeaderLabels(["原保存欄位", "穩健", "積極"])
+        self.basic_pair_metrics.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.basic_pair_metrics.setMinimumHeight(180)
+        apply_financial_table_style(self.basic_pair_metrics)
+        self.basic_pair_metrics.hide()
+        basic_layout.addWidget(self.basic_pair_metrics)
+        layout.addWidget(self.basic_pair_group)
 
         self.period_pair_result_group = QGroupBox("完整期間比較結果")
         period_pair_layout = QVBoxLayout(self.period_pair_result_group)
@@ -469,6 +539,7 @@ class RunRegistryCompareWidget(QWidget):
     def clear_selection(self) -> None:
         self._selected_run_ids = []
         self._rule_request_id += 1
+        self._clear_basic_pair_result()
         blocker = QSignalBlocker(self.run_list)
         try:
             self.run_list.clearSelection()
@@ -504,6 +575,7 @@ class RunRegistryCompareWidget(QWidget):
                 del blocker
         self._selected_run_ids = ordered
         self._rule_request_id += 1
+        self._clear_basic_pair_if_selection_changed()
         if self._rule_worker is not None:
             self._rule_worker.cancel()
         self._sync_period_pair_selection()
@@ -535,13 +607,21 @@ class RunRegistryCompareWidget(QWidget):
         comparability = self.comparison_service.evaluate_comparability(metadata)
         self._render_comparability_badge(comparability.status, comparability.reasons)
 
-        if comparability.status == ComparabilityStatus.INCOMPATIBLE:
+        single_condition_differs = (
+            any(run.run_type == "single_backtest" for run in metadata)
+            and any(reason in {"日期區間不同", "交易成本模型不同", "Universe 股票池不同"}
+                    for reason in comparability.reasons)
+        )
+        if comparability.status == ComparabilityStatus.INCOMPATIBLE or single_condition_differs:
             for table in (self.metrics_table, self.regime_table, self.benchmark_table,
                           self.normalized_equity_table):
                 self._set_table_model(table, pd.DataFrame())
             self._render_metrics_summary_table(pd.DataFrame())
             self._set_table_model(self.params_diff_table, self._build_params_diff(metadata))
-            self.normalized_equity_empty_label.setText("研究契約不相容或未完整完成，已停止績效混排與權益標準化。")
+            self.normalized_equity_empty_label.setText(
+                "研究契約不相容、未完整完成，或單股期間／股票／成本不同；"
+                "已停止績效混排與權益標準化。"
+            )
             self.normalized_equity_table.hide()
             self.regime_summary_label.setText("比較已阻擋")
             self.benchmark_summary_label.setText("比較已阻擋")
@@ -606,6 +686,7 @@ class RunRegistryCompareWidget(QWidget):
         self._selected_run_ids = [
             run_id for run_id in self._selected_run_ids if run_id in filtered_ids
         ]
+        self._clear_basic_pair_if_selection_changed()
         self._render_run_list()
         self._sync_period_pair_selection()
 
@@ -659,6 +740,11 @@ class RunRegistryCompareWidget(QWidget):
         )
         self.rule_result_button.setEnabled(selected_count == 1 and self._rule_worker is None)
         self.compare_button.setEnabled(2 <= selected_count <= 5 and not has_replay)
+        basic_pair = self._selected_basic_pair()
+        self.compare_basic_pair_button.setEnabled(
+            basic_pair is not None and self._basic_pair_reader is not None
+            and self._basic_pair_worker is None
+        )
         selected_run = self._single_selected_recommendation_run()
         self.open_recommendation_button.setEnabled(
             selected_run is not None and self.on_open_recommendation_run is not None
@@ -677,6 +763,181 @@ class RunRegistryCompareWidget(QWidget):
             )
         self.selection_hint_label.setText(hint)
         self._update_period_pair_controls()
+
+    def _selected_basic_pair(self) -> tuple[ResearchRunMetadataDTO, ResearchRunMetadataDTO] | None:
+        ids = self.selected_run_ids()
+        if len(ids) != 2:
+            return None
+        selected = {run.run_id: run for run in self._filtered_runs if run.run_id in ids}
+        if len(selected) != 2:
+            return None
+        runs = selected[ids[0]], selected[ids[1]]
+        if (any(run.run_type != "single_backtest" for run in runs)
+                or {run.strategy_id for run in runs}
+                != {"stable_conservative_v1", "momentum_aggressive_v1"}):
+            return None
+        return runs
+
+    def _basic_pair_fingerprint(self) -> tuple[tuple[str, str], ...] | None:
+        selected = self._selected_basic_pair()
+        if selected is None:
+            return None
+        return tuple((run.run_id, metadata_sha256(run)) for run in selected)
+
+    def _clear_basic_pair_result(self) -> None:
+        self._basic_pair_request_id += 1
+        if self._basic_pair_worker is not None:
+            self._basic_pair_worker.cancel()
+        self._basic_pair_result = None
+        self._basic_pair_selection = None
+        self.basic_pair_metrics.setRowCount(0)
+        self.basic_pair_metrics.hide()
+        self.open_basic_stable_button.setEnabled(False)
+        self.open_basic_momentum_button.setEnabled(False)
+        self.basic_pair_status.setText("各選一筆穩健與積極策略，按「對照兩個基本策略」。")
+        if self._on_basic_pair_invalidated is not None:
+            self._on_basic_pair_invalidated()
+
+    def _clear_basic_pair_if_selection_changed(self) -> None:
+        if (self._basic_pair_selection is not None
+                and self._basic_pair_fingerprint() != self._basic_pair_selection):
+            self._clear_basic_pair_result()
+
+    def compare_selected_basic_pair(self) -> None:
+        from ui_qt.workers.task_worker import TaskWorker
+
+        selected = self._selected_basic_pair()
+        reader = self._basic_pair_reader
+        if selected is None or reader is None or self._basic_pair_worker is not None:
+            return
+        self._clear_basic_pair_result()
+        expected = (deepcopy(selected[0]), deepcopy(selected[1]))
+        self._basic_pair_selection = tuple((run.run_id, metadata_sha256(run)) for run in expected)
+        request_id = self._basic_pair_request_id
+
+        def read(cancel_callback: Callable[[], bool] | None = None) -> object:
+            return reader.read_selected(expected, check_cancel=cancel_callback)
+
+        worker = TaskWorker(read)
+        self._basic_pair_worker = worker
+        worker.finished.connect(lambda result: self._on_basic_pair_loaded(request_id, result))
+        worker.error.connect(lambda message: self._on_basic_pair_error(request_id, message))
+        worker.native_thread_finished.connect(self._on_basic_pair_worker_finished)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        self.basic_pair_status.setText("核對兩筆原保存結果與規則來源中…")
+        self._update_compare_button_state()
+        worker.start()
+
+    def _on_basic_pair_loaded(self, request_id: int, result: object) -> None:
+        from app_module.basic_strategy_saved_pair import BasicStrategySavedPair
+
+        if (self._rule_closed or request_id != self._basic_pair_request_id
+                or self._basic_pair_selection != self._basic_pair_fingerprint()
+                or not isinstance(result, BasicStrategySavedPair)):
+            return
+        if result.state != "saved_conditions_match":
+            self.basic_pair_status.setText("不能並列保存數值：" + "；".join(result.reasons))
+            return
+        self._basic_pair_result = result
+        by_strategy = {card.identity.strategy_id: card for card in result.cards if card.identity is not None}
+        if set(by_strategy) != {"stable_conservative_v1", "momentum_aggressive_v1"}:
+            self._basic_pair_result = None
+            self.basic_pair_status.setText("保存結果策略身分不符，已停止並列。")
+            return
+        stable = by_strategy["stable_conservative_v1"].summary
+        momentum = by_strategy["momentum_aggressive_v1"].summary
+        fields = (
+            ("已完成進出場配對", "completed_trades", False),
+            ("總報酬率", "total_return", True),
+            ("年化報酬率", "cagr", True),
+            ("最大回撤", "max_drawdown", True),
+            ("夏普比率", "sharpe_ratio", False),
+            ("勝率", "win_rate", True),
+            ("單筆期望值", "expectancy", True),
+        )
+        self.basic_pair_metrics.setRowCount(len(fields))
+        for row, (title, key, percent) in enumerate(fields):
+            self.basic_pair_metrics.setItem(row, 0, QTableWidgetItem(title))
+            for column, summary in ((1, stable), (2, momentum)):
+                value = getattr(summary, key)
+                if value is None:
+                    display = "不可用"
+                elif percent and isinstance(value, Decimal):
+                    display = f"{value * Decimal('100'):.2f}%"
+                else:
+                    display = str(value)
+                self.basic_pair_metrics.setItem(row, column, QTableWidgetItem(display))
+        self.basic_pair_metrics.show()
+        self.open_basic_stable_button.setEnabled(True)
+        self.open_basic_momentum_button.setEnabled(True)
+        identities = {card.identity.strategy_id: card.identity for card in result.cards if card.identity}
+        reference = identities["stable_conservative_v1"]
+        self.basic_pair_status.setText(
+            "保存條件相同；僅並列原保存研究輸出，兩筆歷史績效／PIT 資格均不可評，不作排名或升級證據。\n"
+            f"股票：{', '.join(reference.universe or ())}；期間：{reference.start_date} 至 {reference.end_date}。\n"
+            + "\n".join(f"{entry.run_name}：{entry.run_id}／metadata SHA {entry.metadata_sha256}"
+                        for entry in result.entries)
+        )
+
+    def _on_basic_pair_error(self, request_id: int, message: str) -> None:
+        if request_id == self._basic_pair_request_id and not self._rule_closed:
+            self._basic_pair_result = None
+            self.basic_pair_metrics.setRowCount(0)
+            self.basic_pair_metrics.hide()
+            self.open_basic_stable_button.setEnabled(False)
+            self.open_basic_momentum_button.setEnabled(False)
+            self.basic_pair_status.setText("兩筆原來源讀取失敗；未顯示數值。" + message)
+
+    def _on_basic_pair_worker_finished(self) -> None:
+        self._basic_pair_worker = None
+        self._update_compare_button_state()
+
+    def open_basic_pair_detail(self, strategy_id: str) -> None:
+        from ui_qt.workers.task_worker import TaskWorker
+
+        result = self._basic_pair_result
+        lookup = self._basic_pair_lookup
+        if (result is None or lookup is None or self._on_open_basic_detail is None
+                or self._basic_pair_worker is not None
+                or self._basic_pair_selection != self._basic_pair_fingerprint()):
+            return
+        entry = next((item for item in result.entries if item.run_id in {
+            card.identity.run_id for card in result.cards
+            if card.identity is not None and card.identity.strategy_id == strategy_id
+        }), None)
+        if entry is None:
+            return
+        request_id = self._basic_pair_request_id
+
+        def read(cancel_callback: Callable[[], bool] | None = None) -> object:
+            return lookup.resolve(entry, check_cancel=cancel_callback)
+
+        worker = TaskWorker(read)
+        self._basic_pair_worker = worker
+        worker.finished.connect(
+            lambda loaded: self._on_basic_detail_loaded(request_id, entry, loaded)
+        )
+        worker.error.connect(lambda message: self._on_basic_pair_error(request_id, message))
+        worker.native_thread_finished.connect(self._on_basic_pair_worker_finished)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        self.basic_pair_status.setText("精確讀取所選原 run 明細中…")
+        self.open_basic_stable_button.setEnabled(False)
+        self.open_basic_momentum_button.setEnabled(False)
+        worker.start()
+
+    def _on_basic_detail_loaded(self, request_id: int, entry: ResearchHistoryEntry,
+                                loaded: object) -> None:
+        from app_module.research_history_lookup import ResearchHistoryResult
+
+        if (self._rule_closed or request_id != self._basic_pair_request_id
+                or self._basic_pair_selection != self._basic_pair_fingerprint()
+                or not isinstance(loaded, ResearchHistoryResult)
+                or loaded.entry != entry or self._on_open_basic_detail is None):
+            return
+        self._on_open_basic_detail(loaded)
+        self.basic_pair_status.setText("原 run 明細已開啟；在摘要頁按「返回兩策略對照」回到同一對選取。")
+        self.open_basic_stable_button.setEnabled(True)
+        self.open_basic_momentum_button.setEnabled(True)
 
     def _selected_period_pair(self) -> tuple[ResearchRunMetadataDTO, ResearchRunMetadataDTO] | None:
         selected_ids = self.selected_run_ids()
@@ -1175,6 +1436,9 @@ class RunRegistryCompareWidget(QWidget):
         self._rule_request_id += 1
         if self._rule_worker is not None:
             self._rule_worker.cancel()
+        self._basic_pair_request_id += 1
+        if self._basic_pair_worker is not None:
+            self._basic_pair_worker.cancel(cooperative=True, wait=False)
         if (
             (self._period_pair_busy or self._period_pair_request_pending)
             and self.on_cancel_period_pair is not None
@@ -1182,6 +1446,12 @@ class RunRegistryCompareWidget(QWidget):
             self._period_pair_cancel_requested = True
             self.on_cancel_period_pair()
         super().closeEvent(event)
+
+    def begin_basic_pair_shutdown(self) -> None:
+        self._rule_closed = True
+        self._basic_pair_request_id += 1
+        if self._basic_pair_worker is not None:
+            self._basic_pair_worker.cancel(cooperative=True, wait=False)
 
     def _total_pages(self) -> int:
         if not self._filtered_runs:

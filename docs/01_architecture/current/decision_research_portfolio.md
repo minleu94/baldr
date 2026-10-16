@@ -73,6 +73,8 @@ Research Lab雙run完整期間頁沿同一FullPeriodPairReadV1展示兩側captur
 
 通用Registry metadata comparator 遇到任一 recommendation_portfolio run 即回 incompatible，UI停用一般「比較選中」並指向兩筆exact run的完整期間診斷；直接呼叫服務也不可輸出通用績效混排或標準化權益。其他run仍沿原比較規則。這只阻止錯誤金融判讀，不補足pair的來源、日曆、貨幣、成本權威或完整績效資格。
 
+兩個原 `1.0.0` 單股基本策略的對照另走 `BasicStrategySavedPairReader`，不從通用metadata comparability授績效。它以所選兩個 exact run 核原執行輸入、實際權益期間、共同來源hash、成本／成交設定及版本化指標，再走原 `ResearchHistoryLookup`、`StrategyHistoricalPerformanceReadService` 與保存規則卡讀回；任一缺件不並列數值。UI只投影原保存摘要，可逐側開原明細並返回同一選取，沒有新增保存格式、重算或排名資格。原規則卡的 `performance_status=not_evaluable` 必須保留；歷史PIT、成本／來源權威及完整雙策略帳本仍分開驗收。
+
 P03正常Main由成對的外部binding path/hash解析固定cohort及既有接受錨點，經decision composition重驗全市場，注入同一reader至preparer/provider；session固定hash-bound pin及natural invocation clock，共用可用時間取較晚者，推薦context保存同pin與實際read outcomes。無配置保留原路由，部分配置／錯版本／任一必要快照失效拒絕，不fallback。合成Main父29512→新PID33656已限定驗證input/context，不代表完整推薦、官方接受或EXE；歷史/select-latest保持原版本路由。
 
 P08 `recommendation_portfolio_period_precision_v2` DTO/codec保存精確Decimal text；原next-session-open.v2 producer現於轉float前直接捕獲實際cash／position value／equity。僅全部來源／訂單／持倉／推薦為同一精確股票時發行captured_unqualified，取消只保留partial實際列，未入迴圈fallback不是觀察；多股／需正規化代碼／三元組不符拒絕。每日realized/unrealized P&L未提供仍為None，不新增算式。新tuple不加入V1 DTO／Registry wire shape；V2 sidecar／exact reader及期間比較仍待。缺currency、來源clock/raw、正式calendar與成本authority不授真來源／績效資格。

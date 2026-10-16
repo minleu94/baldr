@@ -92,6 +92,28 @@ def test_backtest_view_mounts_registry_compare_subtab(qt_app):
     assert widget is view.run_registry_compare_widget
 
 
+def test_basic_pair_return_disappears_when_registry_selection_changes(qt_app):
+    from dataclasses import replace
+
+    view = BacktestView(backtest_service=None, config=None)
+    service = FakeResearchRunService()
+    service.runs[0] = replace(service.runs[0], strategy_id="stable_conservative_v1")
+    service.runs[1] = replace(service.runs[1], strategy_id="momentum_aggressive_v1")
+    view.research_run_service = service
+    widget = view.result_panel.add_registry_compare_tab()
+    widget.refresh_runs()
+    widget.run_list.item(0).setSelected(True)
+    widget.run_list.item(1).setSelected(True)
+    widget._basic_pair_selection = widget._basic_pair_fingerprint()
+    assert widget._basic_pair_selection is not None
+
+    view.result_panel.return_basic_pair_button.show()
+    assert not view.result_panel.return_basic_pair_button.isHidden()
+    widget.run_list.item(1).setSelected(False)
+    assert widget._basic_pair_selection is None
+    assert view.result_panel.return_basic_pair_button.isHidden()
+
+
 def test_backtest_view_can_collapse_config_panel_for_registry_compare_space(qt_app):
     view = BacktestView(backtest_service=None, config=None)
 
@@ -211,7 +233,7 @@ def test_registry_compare_widget_renders_badge_diff_metrics_and_saved_benchmark(
 
     widget.compare_selected_runs()
 
-    assert "可直接比較" in widget.comparability_badge.text()
+    assert "保存條件相同（績效資格另核）" in widget.comparability_badge.text()
     assert widget.params_diff_table.model().rowCount() >= 1
     assert widget.metrics_table.model().rowCount() == 2
     assert widget.regime_table.model().rowCount() == 2
@@ -285,6 +307,29 @@ def test_registry_compare_widget_shows_empty_normalized_equity_message(qt_app):
     widget.compare_selected_runs()
 
     assert "沒有共同日期可標準化比較" in widget.normalized_equity_empty_label.text()
+
+
+def test_registry_single_stock_cost_or_period_difference_hides_saved_metrics(qt_app):
+    from dataclasses import replace
+
+    service = FakeResearchRunService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    widget.run_list.item(0).setSelected(True)
+    widget.run_list.item(1).setSelected(True)
+    widget.compare_selected_runs()
+    assert widget.metrics_summary_table.isHidden() is False
+
+    service.runs[1] = replace(service.runs[1], fee_bp_x100=service.runs[1].fee_bp_x100 + 1)
+    widget.compare_selected_runs()
+    assert "交易成本模型不同" in widget.comparability_badge.text()
+    assert widget.metrics_summary_table.isHidden()
+    assert widget.normalized_equity_table.model().rowCount() == 0
+
+    service.runs[1] = replace(service.runs[0], run_id="run-b", end_date="2026-01-09")
+    widget.compare_selected_runs()
+    assert "日期區間不同" in widget.comparability_badge.text()
+    assert widget.metrics_summary_table.isHidden()
 
 
 def test_registry_compare_widget_refreshes_on_first_show(qt_app):

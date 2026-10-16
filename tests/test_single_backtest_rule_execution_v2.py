@@ -10,6 +10,8 @@ import pandas as pd
 import pytest
 
 from app_module.backtest_service import BacktestService
+from app_module.basic_strategy_saved_pair import BasicStrategySavedPairReader
+from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
 from app_module.research_run_service import ResearchRunService
 from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card, metadata_sha256
 from app_module.strategy_rule_card_readmodel import read_single_backtest_execution_rule_card
@@ -37,6 +39,57 @@ _EXECUTOR_TYPES = {
         "MomentumAggressiveExecutor"
     ),
 }
+
+
+def test_two_basic_strategies_compare_saved_originals_and_reject_incomplete_conditions(
+    tmp_path, monkeypatch,
+):
+    _, registry, stable, _, _, _ = executed_v2_case(
+        tmp_path, monkeypatch, "stable_conservative_v1",
+    )
+    _, _, momentum, _, _, _ = executed_v2_case(
+        tmp_path, monkeypatch, "momentum_aggressive_v1",
+    )
+    lookup = ResearchHistoryLookup(
+        registry=registry,
+        read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024),
+    )
+    reader = BasicStrategySavedPairReader(registry, lookup)
+    original_stable_hash = metadata_sha256(stable)
+    original_momentum_hash = metadata_sha256(momentum)
+
+    pair = reader.read_selected((stable, momentum))
+    assert pair.state == "saved_conditions_match", pair.reasons
+    assert [entry.run_id for entry in pair.entries] == [stable.run_id, momentum.run_id]
+    assert all(card.read_state.value == "read_verified" for card in pair.cards)
+    assert all(card.metrics_state.value == "saved_metrics_schema_observed" for card in pair.cards)
+    assert all(rule.performance_status == "not_evaluable" for rule in pair.rules)
+    assert all(rule.rule_card.field("qualification").value["historical_pit_eligible"] is False
+               for rule in pair.rules)
+    assert lookup.resolve(pair.entries[0]).result.metadata.run_id == stable.run_id
+    assert lookup.resolve(pair.entries[1]).result.metadata.run_id == momentum.run_id
+    assert metadata_sha256(registry.repository.get_metadata(stable.run_id)) == original_stable_hash
+    assert metadata_sha256(registry.repository.get_metadata(momentum.run_id)) == original_momentum_hash
+
+    missing_fee = deepcopy(momentum.original_input)
+    del missing_fee["raw_params"]["fee_bps"]
+    other_actual_period = deepcopy(momentum.data_manifest)
+    other_actual_period["single_backtest_metrics_contract"]["period_end"] = "2026-05-02"
+    cases = (
+        (replace(momentum, end_date="2026-05-01"), "研究期間不同"),
+        (replace(momentum, fee_bp_x100=momentum.fee_bp_x100 + 1), "執行與成本條件不同"),
+        (replace(momentum, original_input=missing_fee), "原執行輸入不完整"),
+        (replace(momentum, data_manifest=other_actual_period), "保存權益實際期間不同"),
+        (replace(momentum, strategy_id="stable_conservative_v1"), "請各選一筆穩健策略與積極策略"),
+    )
+    for changed, reason in cases:
+        blocked = reader.read_selected((stable, changed))
+        assert blocked.state == "blocked" and reason in blocked.reasons
+        assert not blocked.cards and not blocked.entries
+
+    stale = reader.read_selected((replace(stable, run_name="已更動的選取"), momentum))
+    assert stale.state == "blocked" and "所選保存來源已變動" in stale.reasons
+    assert not stale.cards
 
 
 def _raw_ohlcv() -> pd.DataFrame:

@@ -613,6 +613,11 @@ class BacktestResultPanel(QWidget):
         # 績效摘要
         summary_group = QGroupBox("實驗摘要")
         summary_layout = QVBoxLayout()
+        self.return_basic_pair_button = QPushButton("返回兩策略對照")
+        self.return_basic_pair_button.setToolTip("回到剛才選取的兩筆原保存 run；不重跑或重選策略。")
+        self.return_basic_pair_button.clicked.connect(self._return_to_basic_pair)
+        self.return_basic_pair_button.hide()
+        summary_layout.addWidget(self.return_basic_pair_button)
         
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
@@ -1108,6 +1113,13 @@ class BacktestResultPanel(QWidget):
                 self.parent_view._open_recommendation_registry_run
             ),
         )
+        from app_module.basic_strategy_saved_pair import BasicStrategySavedPairReader
+        self.run_registry_compare_widget.configure_basic_pair(
+            BasicStrategySavedPairReader(service, self.research_history_lookup.lookup),
+            self.research_history_lookup.lookup,
+            self._open_basic_pair_detail,
+            self.return_basic_pair_button.hide,
+        )
         from ui_qt.views.research_lab.registry_period_pair_controller import (
             RegistryPeriodPairController,
         )
@@ -1139,6 +1151,15 @@ class BacktestResultPanel(QWidget):
         self._register_result_tab("registry", registry_container, "研究 Registry")
         self.set_research_mode(self._research_mode_id)
         return self.run_registry_compare_widget
+
+    def _open_basic_pair_detail(self, selected: object) -> None:
+        self.parent_view._open_research_history_result(selected)
+        self.return_basic_pair_button.show()
+
+    def _return_to_basic_pair(self) -> None:
+        self.set_research_mode("single_stock")
+        self.focus_result_tab("registry")
+        self.return_basic_pair_button.hide()
 
     def add_forward_performance_tab(self):
         """Mount the read-only evidence review pages in Research Lab."""

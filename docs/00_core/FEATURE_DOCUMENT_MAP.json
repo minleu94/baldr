@@ -352,6 +352,7 @@
         "app_module/research_run_dated_equity.py",
         "app_module/research_run_repository.py",
         "app_module/research_run_service.py",
+        "app_module/basic_strategy_saved_pair.py",
         "app_module/strategy_historical_performance_read_service.py",
         "app_module/strategy_paper_account_availability.py",
         "app_module/strategy_performance_read_service.py",

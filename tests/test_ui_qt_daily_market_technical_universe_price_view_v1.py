@@ -153,6 +153,8 @@ def test_source_details_default_collapsed_and_preserve_pins_and_actions(
             assert getattr(view, attribute).objectName() == object_name
         assert "可得時間未知" in view.disclaimer.text()
         assert "PIT" in view.disclaimer.text()
+        assert "研究基準日與各股實際價格日須分開判讀" in view.workflow_help.text()
+        assert "來源名冊不保證涵蓋當日全市場" in view.disclaimer.text()
     finally:
         assert view.begin_shutdown() is True
         view.close()
@@ -200,6 +202,11 @@ def test_show_source_all_clears_filters_but_keeps_exact_loaded_source(
         view.sources.setCurrentIndex(_entry_index(view, "complete"))
         view.load_selected_source()
         _wait(app, lambda: not view.busy, timeout_seconds=15)
+        counts = view.current_page.source_counts
+        assert counts.declared_count == counts.included_count + counts.excluded_count
+        assert "研究基準日" in view.source_summary.text()
+        assert f"排除 {counts.excluded_count}" in view.source_summary.text()
+        assert "各股實際價格日見結果列" in view.source_summary.text()
         source = view.current_query.source
         view.stock_filter.setText("S0001")
         view.apply_query()

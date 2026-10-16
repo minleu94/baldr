@@ -1781,3 +1781,15 @@ QA574 先以正式原件唯讀 reader 確認收據鏈與原件 size／mtime／ct
 QA581 的合成測試頂層用途與 child 舊值不一致，被正式 reader 拒絕；QA582 修正同次用途後，測試腳本仍沿舊 `runtime-state` 路徑斷言而 FAIL；QA583 改到現行 `output/application_state`，但 offscreen 僅 800px 螢幕，舊 1024px 操作腳本前置斷言 FAIL。三筆原 FAIL 與原件保留，不視為產品失敗或 PASS。QA584 改用仍可命中真控制項的 720px 主視窗，script compile 與父 PID `38964`、fresh PID `29028` 的同 run 完整流程通過；父／fresh 收據 SHA-256 `ee60c7035831af20218185c1a96702095272e688e37d072471b5133d617df2ff`／`475f76815bafd8f46a86002137f4a6733d23b7543aae1c225803836a3d824a59`，runner SHA-256 `0e450be7b61cdc2d29a86969f5b2fd2fb0cb71df0df84218062cd4cd0381b46e`，outer SHA-256 `b203fcfa0266ef852b7eb43ead67e0bb03b8c8963b54f91e0d8352e18340ec9c`。各輪源碼 12 pins 與 HEAD 綁定，RAM 起跑約21 GiB、Job 8 GiB committed／12程序／kill-on-close／workspace mutex；每組三 PID 清冊自然空、handles 關閉、mutex 釋放且無強制清理。QA584 不重跑已通過的 Workbench、validator 或整庫 mypy。
 
 這是**開發來源、隔離合成終態、offscreen Main／fresh** 的接線證據；Increment91 對正式原件的唯讀 reader 證據另存，兩者不拼接成正式 Main 或自然成熟。固定90 EXE 尚未包含此變更；正式 Task 的 70 分鐘共用鎖等待、`eod_research` 限定、Raw/PIT 歷史版本阻擋、120秒自然逾時、真來源用途、Native／EXE、真人及完整 P12／G0–G4 Gate 均未解除。未改產品程式、正式資料、Task、maintainer、交易或發布；原主手冊正有其他 owner 未提交重構，沒有覆寫它。
+
+## Increment93：P01 當期多股來源批次（進行中）
+
+**欲解除的第一列阻礙**：現有可試用價格研究只有四股，無法核對大於樣本的當期處理分母與兩股比較。Root 將正式 SQLite 價量資料唯讀複製到本 task 的隔離 DB，連同既有 2026-08-11 兩市場名冊保存原件與 SHA；正式主檔／WAL／名冊前後未改。隔離庫涵蓋 2026-04-15 至 2026-10-15 的價格及技術各 245,859 列；1,984 個名冊代碼中，1,949 個在 10/15 有報價、35 個無當日報價，另外 16 個有報價代碼不在這份舊名冊。來源收據 `output/tasks/baldr-completion-resume-20261014-01a13cf9/real_cohort_source_a/receipt.json` SHA-256 `743ad57802dfd7458a3c4d21a861614398299adc4aeaa003632e79afeeb1cbf8`，隔離 DB SHA-256 `676a9ffb0b4b539b648ea6c0c0c1297d9d5ce01046728b4aab44b95a3fa719be`。名冊日期與排除原因明列；這不是今日完整真 N、來源用途接受或歷史 PIT。
+
+依既定每日成功批次小時政策，這份隔離副本最早於 **2026-10-16 20:00 台北時間**供前瞻研究。已準備綁定來源 SHA、HEAD、隔離環境與 create-only 根的 v4 producer → public catalog → price reader 同批驗證；到達可用時間並完成受控 Job 前，不稱產製或 reader 通過。原正式資料、正式 Task、maintainer及固定試用版94不因這份準備而改動。
+
+## Increment94：一般視窗回測可完整閱讀與固定試用候選
+
+**解除的第一列／V1-04 試用阻礙**：使用者在66回報非全螢幕回測設定擠到上方、補充查找像破損疊字、摘要無法捲讀。固定來源 `ef703ad725a2549039bcd2c539f582f6359f5b08` 於中等寬度先給設定完整寬度，完成實驗或明選「查看實驗結果」才切到完整結果，並可按「編輯回測設定」返回；較寬畫面仍可並排。模式用途文字改為換行，保留原策略、撮合、成本、保存與金融守衛。900／1024／1280px 的來源與打包 EXE 設定／結果幾何、摘要捲動已定向驗證；受影響布局 3 PASS、成交診斷 19 PASS、Workbench 85 PASS、validator 25 PASS／0 FAIL／4 SKIP、八根 mypy 1043 files success。`ui_qt.* ignore_errors=True` 不證 UI 強型別；早期 sandbox QtWebEngine native crash、測試隱藏頁捲動斷言錯置及 validator 的 `WinError 5` 收據保留，最後在相同來源的正常 Windows 權限重驗該 validator，沒有把原失敗改成 PASS。
+
+由此來源建立未簽章、不可攜的[試用版94](../../output/trial/Baldr-Daily-Research-94/TRIAL_GUIDE.md)；EXE SHA-256 `18561f3b74e2c9d285b2e596cc37350bd9eaf8a258fcb2b5e8780111f20796d8`，固定來源 Python／EXE 同版隔離比較、啟動器 `--check` 與上述 EXE 版面核對通過。從90複製17份隔離狀態檔，每份 SHA 一致而兩版後續寫入獨立；原90未覆寫。完整 pins 與具名 QA 見[交付收據](../../output/trial/Baldr-Daily-Research-94/DELIVERY_RECEIPT.json)，該收據 SHA-256 `1846b99b0ef59b2a1ee5f6f1f0665424a351de4c871395fb012b2f4bd4a36e5d`。各 Job 啟動前可用 RAM 約21 GiB，8 GiB committed／12程序／kill-on-close／workspace mutex；前後三 PID 清冊自然空、handles 關閉、mutex 釋放，無 forced cleanup。真人滑鼠、不同 DPI、真私人帳、`1528` 的缺行情、歷史 PIT／來源權威／成熟、完整雙策略績效與 G0–G4 仍獨立待驗；局部 QA 與固定 EXE 不授完整 Gate，沒有正式資料、正式 Task、maintainer、push、發布或交易寫入。

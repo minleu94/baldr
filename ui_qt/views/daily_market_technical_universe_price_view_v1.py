@@ -446,17 +446,18 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         root.addWidget(title)
         self.workflow_help = QLabel(
             "① 查詢版本，只選一份保存資料，再按「嚴格核驗並載入」。\n"
-            "② 可先填股票代碼（例如 2330,2317,2382,2454）；留空會顯示該份資料的全部股票。\n"
+            "② 可填股票代碼（例如 2330,2317）；留空會顯示該批次已處理的全部股票。\n"
             "③ 結果出現後逐股選取並加入比較籃；要改價格或規則，按「修改篩選條件」。\n"
-            "四股是同一份資料內的股票，不需要選四份來源。"
+            "同批股票只需選一份來源；研究基準日與各股實際價格日須分開判讀。"
         )
         self.workflow_help.setObjectName("dailyMarketTechnicalPriceV1WorkflowHelp")
         self.workflow_help.setWordWrap(True)
         self.workflow_help.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self.workflow_help)
         self.disclaimer = QLabel(
-            "只讀已保存 full-N v4 來源中的收盤價；不查最新行情。資料可得時間未知，"
-            "僅供當下重述研究，不授歷史 PIT／可交易資格；未知價格與排除、待處理分開顯示。"
+            "只讀已保存 v4 批次中的收盤價；不查最新行情。來源名冊不保證涵蓋當日全市場，"
+            "批次研究基準日也不是每股實際價格日。此來源契約的可得時間未知，"
+            "僅供當下重述研究，不授歷史 PIT／可交易資格；未知價格、排除與待處理分開顯示。"
         )
         self.disclaimer.setObjectName("dailyMarketTechnicalPriceV1Disclaimer")
         self.disclaimer.setWordWrap(True)
@@ -541,7 +542,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.stock_filter = QLineEdit()
         self.stock_filter.setObjectName("dailyMarketTechnicalPriceV1StockFilter")
         self.stock_filter.setMaxLength(_MAX_STOCK_FILTER_CHARS)
-        self.stock_filter.setPlaceholderText("例如 2330,2317,2382,2454；留空查整個保存母體")
+        self.stock_filter.setPlaceholderText("例如 2330,2317；留空查此批已處理股票")
         self.stock_filter.setAccessibleName("股票代碼篩選")
         self.eligible_stock_filter = QLineEdit()
         self.eligible_stock_filter.setObjectName("dailyMarketTechnicalPriceV1EligibleStockFilter")
@@ -1248,6 +1249,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             return "處理數未提供"
         return (
             f"宣告 {getattr(counts, 'declared_count', '未提供')}／"
+            f"排除 {getattr(counts, 'excluded_count', '未提供')}／"
             f"已處理 {getattr(counts, 'processed_count', '未提供')}／"
             f"待處理 {getattr(counts, 'pending_count', '未提供')}"
         )
@@ -1258,12 +1260,13 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             return "目前表格：尚未載入已嚴格核驗的保存來源。"
         source = state.query.source
         counts = state.page.source_counts
-        completion = "母體完整" if state.page.full_population_complete else "母體未完整"
+        completion = "此批處理完成" if state.page.full_population_complete else "此批處理未完成"
         return (
-            f"目前表格：資料日 {source.decision_date.isoformat()}｜{completion}｜"
+            f"目前表格：研究基準日 {source.decision_date.isoformat()}｜{completion}｜"
             f"宣告 {counts.declared_count}／納入 {counts.included_count}／"
+            f"排除 {counts.excluded_count}／"
             f"已處理 {counts.processed_count}／待處理 {counts.pending_count}｜"
-            "嚴格核驗已通過；可得時間未知，PIT=false。"
+            "各股實際價格日見結果列；嚴格核驗已通過，可得時間在來源契約未知，PIT=false。"
         )
 
     def _update_source_summary(self) -> None:
@@ -1306,7 +1309,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             "failed": "批次失敗",
         }.get(entry.source_status, "批次狀態未提供")
         message = (
-            f"所選批次：資料日 {decision_date}｜{self._population_label(entry.population_state)}｜"
+            f"所選批次：研究基準日 {decision_date}｜{self._population_label(entry.population_state)}｜"
             f"{self._catalog_counts_label(entry.counts)}｜{source_status_label}｜尚未嚴格核驗。"
         )
         if self._state is not None:

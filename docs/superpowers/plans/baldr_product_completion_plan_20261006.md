@@ -133,6 +133,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **第五列 P12 判讀修正（Increment91，開發來源）**：10/15 正式自然 run 的同收據讀回證明 snapshot／Evidence 已保存，但 05:25 起等同一 `release_v4` 鎖約70分鐘，06:35 才以 `eod_research` 完成；內嵌 current-stock research cycle 佔用共用鎖，Raw/PIT 父 run 隨後仍被 2014 年起的歷史來源版本守衛阻擋。原正常「系統狀態」現在投影已驗收據的研究用途與等待時間，解除 `passed／已保存` 被誤讀為開盤前或自然資格的阻礙。這只到受影響 UI 測試與正式原件唯讀 reader；固定90包不變，正常 Main／EXE、正式排程時序或共用鎖修改、真正自然資格與完整 P12 仍待。排程改動須另有精確授權，時間調整本身也不提升現行時間政策；下一葉轉可獨立交付的 P03／P06／P08 缺口，證據見[Increment91 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
 
+**第五列 P12 正常接線核對（Increment92）**：沿原 writer helpers 產生隔離合成研究用途終態，開發來源正常 Main 明選詳情、切頁返回，關閉後 fresh PID 重讀同 run；兩邊都顯示「收盤後研究」與 70 分 03 秒，原件不變。這解除 Increment91 的 Main／fresh 接線未知，但正式原件只在先前獨立 reader 唯讀核對，沒有把兩筆證據拼成正式 Main／自然資格。QA581–583 的測試腳本 FAIL 保留，QA584 限定通過；固定90 EXE、正式時序、真來源與完整 P12 仍待。後續轉 §0.4 可獨立交付的 P03／P06／P08，不反覆做同一畫面案例；見[Increment92 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment92p12-研究用途終態沿正常-main-與新程序讀回)。
+
 **目前第三列限定進度（Increment77–78）**：正常 Main 已可從既有已核 Paper 帳清單明選策略／版本／namespace，接同日 Health，完成隔離合成來源的比較、保存、個股返回及新程序同原件重開。這解除手抄內部 ID 的操作阻礙；真私人帳、未持有候選的同源 Health／行情與固定 EXE 仍各自待證，不把此子集當第三列完整交付。下一步依上表轉第四列可比較策略研究；第二列財報／前期缺 MOPS 完整 EOF 與單位權威時維持不可用，不重抓已耗舊 scope。
 
 **第三列續進（Increment85，開發來源）**：已選 exact 策略帳與同日 Health 後，可勾選原帳本全部持股，省去手抄股號；父 Main 比較／保存／個股返回與新程序同 artifact 重開已在隔離合成帳本限定通過。它解除初次研究的輸入斷點，沒有增加 V1 前置，也沒有替真私人帳、未持有候選或固定 EXE 授資格。下一個第三列實質出口是有同來源完整現金、Health 與行情的實際帳本／候選；缺該證據時按本表轉第四／第五列可獨立完成的使用流程，不擴張前置工程。具名證據見[Increment85 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment85p06-已選策略帳全部持股的初次配置研究)。

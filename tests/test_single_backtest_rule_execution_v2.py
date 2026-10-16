@@ -126,6 +126,27 @@ def test_two_basic_strategies_reject_matching_but_internally_inconsistent_saved_
         assert "原執行輸入、保存金額或撮合設定不符" in _preflight(tuple(changed))
 
 
+def test_two_basic_strategies_reject_different_saved_daily_calendars(
+    tmp_path, monkeypatch,
+):
+    _, registry, stable, _, _, _ = executed_v2_case(
+        tmp_path, monkeypatch, "stable_conservative_v1",
+    )
+    _, _, momentum, _, _, _ = executed_v2_case(
+        tmp_path, monkeypatch, "momentum_aggressive_v1",
+        shift_equity_calendar=True,
+    )
+    assert _preflight((stable, momentum)) == ()
+    lookup = ResearchHistoryLookup(
+        registry=registry,
+        read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024),
+    )
+    result = BasicStrategySavedPairReader(registry, lookup).read_selected((stable, momentum))
+    assert result.state == "blocked"
+    assert result.reasons == ("兩筆原保存權益逐日日期不同，不能並列績效",)
+    assert not result.cards and not result.entries
+
+
 def _raw_ohlcv() -> pd.DataFrame:
     index = pd.bdate_range("2026-01-02", periods=90)
     close = [100.0 + i * 0.35 + (i % 7) * 0.8 for i in range(len(index))]
@@ -144,7 +165,8 @@ def _raw_ohlcv() -> pd.DataFrame:
     return frame
 
 
-def executed_v2_case(tmp_path, monkeypatch, strategy_id, *, strategy_params=None, risk_limits=None):
+def executed_v2_case(tmp_path, monkeypatch, strategy_id, *, strategy_params=None,
+                     risk_limits=None, shift_equity_calendar=False):
     """只替換行情載入；策略 registry、typed executor、broker 與保存均用原實作。"""
     if strategy_id not in _STRATEGIES:
         raise ValueError("只接受本輪兩個 fixed 策略")
@@ -220,6 +242,17 @@ def executed_v2_case(tmp_path, monkeypatch, strategy_id, *, strategy_params=None
     )
     report = execute_single_backtest_with_rule_source(request, service)
     assert len(loads) == 1
+    if shift_equity_calendar:
+        # 保留起訖與列數，只改中間某個週五為週六，模擬兩曲線日期集合不同。
+        curve = report.details["equity_curve"].copy(deep=True)
+        friday = next(i for i in range(1, len(curve) - 1) if curve.index[i].weekday() == 4)
+        shifted = curve.index.tolist()
+        shifted[friday] = shifted[friday] + pd.Timedelta(days=1)
+        curve.index = pd.DatetimeIndex(shifted)
+        for column in ("date", "日期"):
+            if column in curve:
+                curve.loc[curve.index[friday], column] = curve.index[friday]
+        report.details["equity_curve"] = curve
     metadata = build_single_backtest_metadata(
         run_id=f"executed-{strategy_id}",
         run_name="固定策略 typed 合成執行",

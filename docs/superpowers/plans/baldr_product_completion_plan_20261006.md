@@ -30,6 +30,10 @@
 
 **10/16 P12 自然續查（非新增 Increment）**：固定102試用根缺明選的策略 Paper 合約／私人 store 與同帳本 Health，不拿手動持倉湊第三列真情境。轉核正式當日自然收據：原 run `20261016T122502248437Z-a5267185b4ee` 的 status／receipt exact reader 通過，snapshot 已保存且原 `passed`；但等 `release_v4` 共用鎖 **4,679.109 秒**後才以 `eod_research` 完成，`research_only=true`、preopen／natural authority 均 false。與10/15的4,203秒等待構成兩筆獨立執行阻礙證據，不能把保存成功或腳本退出0算自然成熟；未查明持鎖唯一來源前不修改鎖或正式 Task，不重觸發已停用 maintainer。[同頁具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#p12-natural-20261016-readonly)保存雙 SHA、受控 Job 與未改來源界線。第四列完整雙策略來源／成本／幣別與第二列財報權威仍各自續進。
 
+**Increment105／第四列雙策略逐日對齊守衛（來源候選）**：原兩個基本策略的保存比較只核相同起訖與列數，可能把中間交易日不同的原曲線並列。現在沿原 exact Registry reader 重核兩份逐日日期；不同日集合就具名拒比，不重算績效或改原 run。原相同來源對照與中間一日不同的反例同輪 26 PASS、單檔 mypy 通過；[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment105-basic-pair-calendar)記錄受控 Job 與界線。這解除第四列一項錯誤金融比較風險，但固定102 EXE 未納入、真來源／幣別／成本、歷史 PIT 與完整雙策略績效仍待。P03 單一發行人 PDF 的產品展示用途須再核官方條款；政府開放資料頁雖列授權，通用金額欄沒有可直接綁定此 API 版本的單位，故不把隔離候選數值接到正常個股頁。
+
+10/16 P12 收據續查：同日 Raw/PIT 父 run 的內嵌 current-stock cycle 到 06:43:00 才完成，與 decision capture 約 06:43:01 取得共用鎖的時間相接；原父 run 仍因 2014 年起的來源修訂守衛停在 `blocked_source_revision`。已核精確 child 收據與共用鎖程式路徑；未改正式鎖或 Task，也不因此提升 EOD 保存的自然用途。詳[非 Increment QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#p12-natural-20261016-readonly)。
+
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；102 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。
 
 <details>

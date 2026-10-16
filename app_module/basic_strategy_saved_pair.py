@@ -9,7 +9,12 @@ from typing import Callable
 from app_module.research_history_lookup import (
     ResearchHistoryEntry,
     ResearchHistoryLookup,
+    ResearchHistoryResult,
     ResearchHistoryUnavailable,
+)
+from app_module.research_run_dated_equity import (
+    _validated_daily_date_keys,
+    research_run_dated_equity_copy,
 )
 from app_module.research_run_dtos import (
     ResearchRunMetadataDTO,
@@ -17,7 +22,7 @@ from app_module.research_run_dtos import (
     normalize_research_run_json_value,
 )
 from app_module.research_run_repository import ResearchRunRepositoryError
-from app_module.research_run_service import ResearchRunService, ResearchRunServiceError
+from app_module.research_run_service import ResearchRunData, ResearchRunService, ResearchRunServiceError
 from app_module.saved_strategy_rule_card import (
     SavedStrategyRuleCard,
     load_saved_strategy_rule_card,
@@ -261,6 +266,7 @@ class BasicStrategySavedPairReader:
         entries: list[ResearchHistoryEntry] = []
         cards: list[HistoricalRunCard] = []
         rules: list[SavedStrategyRuleCard] = []
+        calendars: list[tuple[tuple[int, int, int], ...]] = []
         try:
             for run in expected:
                 entry = self._lookup.select_registry_run(run.run_id, check_cancel=check_cancel)
@@ -271,6 +277,18 @@ class BasicStrategySavedPairReader:
                     return BasicStrategySavedPair("blocked", ("原結果讀回失敗：" + str(card.reason),))
                 if card.metrics_state != HistoricalMetricsState.DECLARED:
                     return BasicStrategySavedPair("blocked", ("保存績效欄位無版本契約",))
+                # 期間首尾與列數相同仍可能缺不同的交易日；從原保存表逐日核對。
+                resolved = self._lookup.resolve(entry, check_cancel=check_cancel)
+                if (not isinstance(resolved, ResearchHistoryResult)
+                        or resolved.entry != entry
+                        or not isinstance(resolved.result, ResearchRunData)
+                        or metadata_sha256(resolved.result.metadata) != entry.metadata_sha256):
+                    return BasicStrategySavedPair("blocked", ("原保存權益日期來源已變動",))
+                dated = research_run_dated_equity_copy(resolved.result.equity)
+                date_column = "date" if "date" in dated else "日期"
+                calendars.append(_validated_daily_date_keys(
+                    dated[date_column].tolist(), source="兩策略原保存權益日期",
+                ))
                 rule = load_saved_strategy_rule_card(
                     self._registry, run,
                     max_artifact_bytes=64 * 1024 * 1024,
@@ -285,6 +303,8 @@ class BasicStrategySavedPairReader:
                 entries.append(entry)
                 cards.append(card)
                 rules.append(rule)
+            if calendars[0] != calendars[1]:
+                return BasicStrategySavedPair("blocked", ("兩筆原保存權益逐日日期不同，不能並列績效",))
             for entry in entries:
                 if self._lookup.select_registry_run(entry.run_id, check_cancel=check_cancel) != entry:
                     return BasicStrategySavedPair("blocked", ("讀取期間保存來源已變動",))

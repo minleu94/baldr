@@ -19,13 +19,13 @@
 
 **固定產品來源 commit 為 `ec5c9573360891595bb395fa7bbb934077c6d4c0`。** Increment60–64 的保存版本、布林基礎與 W 底程式碼已納入這份來源／EXE；但本次 Native／EXE 驗證只接受指定日常研究和兩個原 `1.0.0` 單股策略，不把其餘家族視為已交付能力。詳 [Increment60–64 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment64p07w底正常回測與當次訊號保存)。
 
-依[原計畫 §0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)，第一列「日常研究修正版」已形成固定可試用候選。受改測試、共同 UI 防線、兩筆隔離持倉、來源與 EXE 的正常 Main／新程序及同版檢查已限定通過；EXE SHA-256 為 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`，交付收據 SHA-256 為 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`。這只關閉本列工程交付出口，真人試用及完整產品 Gate 仍待。
+依[原計畫 §0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)，第一列「日常研究修正版」已形成固定可試用候選。受改測試、共同 UI 防線、兩筆隔離持倉、來源與 EXE 的正常 Main／新程序及同版檢查已限定通過；EXE SHA-256 為 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`。交付收據最初記錄 SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`，目前檔案 SHA-256 為 `16bb4f511e5ecb21dff6667a5a38fa7aa73d298bf951ea69c0ce85b42e128eb1`；原因未裁決，兩者不混稱同一位元原件，詳[Increment67 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment67p08-推薦回放通用比較的金融判讀阻斷)。這只關閉本列工程交付出口，真人試用及完整產品 Gate 仍待。
 
 | 接續順序 | 使用者會拿到的成果 | 目前位置 |
 |---|---|---|
 | 1. 日常研究修正版 | 選資料、設條件、看結果、保存回訪連貫；回測交易數說清楚 | 固定 `ec5c95733608` 本機候選已交，正常 Main／新程序、兩筆隔離持倉與同版 Native／EXE 限定通過；真人試用與原 Gate 未通過。 |
 | 2. 有來源的基本面研究 | 讀得到已接受的財報與前期比較，缺件能說明是哪一段，合格新快照可用於日常研究 | 法人、注意公告有具名限定進展；財報 capture／parser／正常 reader 仍有斷點，Increment65 只有靜態筆記。 |
-| 3. 持倉情境、策略比較及後續完整能力 | 先完成同帳本的研究情境，再完成兩策略的獨立結果與比較；後續接其餘方法及成熟結果 | 部分保存／讀回已有證據；推薦回放通用比較的錯誤績效顯示已在開發來源阻擋，完整同帳本候選來源、雙策略全期間績效與自然成熟仍各自待驗。 |
+| 3. 持倉情境、策略比較及後續完整能力 | 先完成同帳本的研究情境，再完成兩策略的獨立結果與比較；後續接其餘方法及成熟結果 | 開發來源已阻擋推薦回放的通用錯誤績效顯示；策略 Paper 帳同日 Health 收據的初次情境已沿正常 Main→新程序完成保存／重開／返回。真私人帳、未持有候選、雙策略全期間績效與自然成熟仍各自待驗。 |
 
 外部缺件只隔離受影響用途：TPEx 年度日曆授權不等於 TPEx 法人 OpenAPI 的授權狀態；MOPS 文件 partial／缺 EOF、月營收與 TWSE 舊 GET 額度、單位版本、歷史 PIT 和完整真 N 繼續各自追蹤。首次成功保存後的合格新快照按已決定的台北小時政策供前瞻研究；不得倒填歷史可得性。原 P01 效能 FAIL、原 Native FAIL、Paper／Forward 未成熟與已停用 maintainer 仍保留，詳[原 QA](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)、[資料政策 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)及[排程指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
 

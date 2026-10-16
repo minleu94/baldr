@@ -128,7 +128,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         initial_layout.addRow("成對來源候選", self.initial_source_combo)
 
         self.initial_candidate_symbols_edit = QLineEdit(initial_group)
-        self.initial_candidate_symbols_edit.setPlaceholderText("明確輸入股票代碼，以逗號或空白分隔")
+        self.initial_candidate_symbols_edit.setPlaceholderText("輸入原帳本已持有且有同源 Health／行情的股票")
         self.initial_candidate_symbols_edit.textChanged.connect(self._on_initial_candidates_changed)
         initial_layout.addRow("候選股票代碼", self.initial_candidate_symbols_edit)
         initial_buttons = QHBoxLayout()
@@ -823,6 +823,8 @@ class PortfolioResearchScenarioWidget(QWidget):
                 not isinstance(value, InitialPortfolioResearchCatalogue)
                 or type(value.truncated) is not bool
                 or not isinstance(value.candidates, tuple)
+                or type(value.later_day_receipts) is not int
+                or value.later_day_receipts < 0
                 or identity is None
             ):
                 self.initial_sources_status_label.setText("成對來源清單回傳格式不符；未套用。")
@@ -870,9 +872,15 @@ class PortfolioResearchScenarioWidget(QWidget):
             del blocker
             self._updating_initial_source_combo = False
             truncation = "；清單已截斷" if value.truncated else ""
+            late = (
+                f"；另有 {value.later_day_receipts} 份 Health 在評估日後才保存，不能倒填原日可得時間"
+                if value.later_day_receipts else ""
+            )
             self.initial_sources_status_label.setText(
-                f"已載入 {len(candidates)} 組同來源候選{truncation}；請明確選取一組。"
-                if candidates else "沒有可用的成對來源候選；未選取或套用其他來源。"
+                f"已載入 {len(candidates)} 組同來源候選{truncation}{late}；"
+                "請明選一組，並輸入原帳本已持有且有同源 Health／行情的股票。"
+                if candidates else
+                f"沒有可用的成對來源候選{truncation}{late}；未選取或套用其他來源。"
             )
         elif action == "open":
             if not isinstance(value, SavedPortfolioResearchScenario):

@@ -91,6 +91,8 @@ Increment47 為首次策略帳研究加入 `PortfolioResearchInitialSourceProvid
 
 首次比較與保存接回原 scenario service/repository；保存以原 preview decision_at 重核來源及 canonical bytes，取消只在提交前生效。UI 明選成對來源與股票、保存後同步原帳戶身分，未保存不得借舊 artifact 下鑽。原等權 construction／配置由 scenario service 外層固定 Decimal 60 精度，避免 caller prec/traps 改變結果。此為策略帳已有完整來源的限定出口；手動／聲明初次來源、未持有候選等原 P06 範圍仍待；Registry 引用路徑見下述 Increment52。
 
+Increment68 將 P06 初次來源的研究時鐘接回原 v2 Health 收據：清單只提供 `available_at` 台北日期與 `decision_date` 相同的 checkpoint／Health 對，另計跨日才保存的收據；比較先從同 namespace 有界收據清單核精確 reference／SHA 與實際 `available_at`，再以該原時刻重建 exact account reader 與 Health reader。這避免先以今日帳本核舊 checkpoint 而混入後續 operation；任何帳本、原 mark、Health 或收據晚於原 cutoff 仍沿原 guard 拒絕，保存也用同一 preview 時鐘與 canonical artifact 重核。這是同日已保存證據的研究快照，不補歷史 PIT、未持有候選 Health／行情或正式交易資格。
+
 手動 Portfolio 既有帳務、使用者聲明持倉、虛擬 execution trace 與 Paper Trade Ledger 是不同來源。它們的 identity、保存位置、寫入者與證據資格不能因共用股票代碼或畫面而合併。
 
 - 手動交易不會由 backtest 或 recommendation 自動匯入；回測 run 不是實際 fill。

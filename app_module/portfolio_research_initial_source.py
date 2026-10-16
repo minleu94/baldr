@@ -20,6 +20,7 @@ from app_module.position_health_strategy_archive import (
     StrategyHealthArchiveReference, list_strategy_saved_health_receipts,
     read_strategy_saved_health_exact,
 )
+from app_module.position_health_saved_archive import SavedHealthArchiveError
 from app_module.position_health_transition_read_service import PositionHealthTransitionReadService
 from app_module.strategy_paper_account_availability import list_strategy_paper_account_checkpoint_candidates
 from app_module.strategy_paper_account_service import StrategyPaperAccountService
@@ -52,6 +53,7 @@ class InitialPortfolioResearchCandidate:
 class InitialPortfolioResearchCatalogue:
     candidates: tuple[InitialPortfolioResearchCandidate, ...]
     truncated: bool
+    later_day_receipts: int = 0
 
 
 class PortfolioResearchInitialSourceProvider:
@@ -77,12 +79,24 @@ class PortfolioResearchInitialSourceProvider:
         )
         keys = {(row.operation_id, row.snapshot_id) for row in checkpoints.rows
                 if row.row_state == "candidate_pending_exact_reader"}
-        candidates = tuple(InitialPortfolioResearchCandidate(
-            InitialPortfolioResearchSelection(row.selection, row.reference),
-            f"{row.decision_date}｜{row.selection.snapshot_id}｜{row.reference.receipt_id[-12:]}（待精確重核）",
-        ) for row in health if (row.selection.operation_id, row.selection.snapshot_id) in keys)
+        candidates: list[InitialPortfolioResearchCandidate] = []
+        later_day_receipts = 0
+        for row in health:
+            if (row.selection.operation_id, row.selection.snapshot_id) not in keys:
+                continue
+            available = datetime.fromisoformat(row.available_at)
+            if available.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat() != row.decision_date:
+                later_day_receipts += 1
+                continue
+            candidates.append(InitialPortfolioResearchCandidate(
+                InitialPortfolioResearchSelection(row.selection, row.reference),
+                f"{row.decision_date}｜可得 {available.astimezone(ZoneInfo('Asia/Taipei')):%H:%M}｜"
+                f"{row.selection.snapshot_id}｜{row.reference.receipt_id[-12:]}（待精確重核）",
+            ))
         _cancel(cancel_callback)
-        return InitialPortfolioResearchCatalogue(candidates, truncated or checkpoints.truncated)
+        return InitialPortfolioResearchCatalogue(
+            tuple(candidates), truncated or checkpoints.truncated, later_day_receipts,
+        )
 
     def compare(self, selection: InitialPortfolioResearchSelection, *, candidate_symbols: tuple[str, ...],
                 explicit_weights: AllocationWeightContract | None = None,
@@ -90,10 +104,33 @@ class PortfolioResearchInitialSourceProvider:
                 cancel_callback: Callable[[], bool] | None = None) -> PortfolioResearchScenarioComparison:
         _cancel(cancel_callback)
         now = datetime.now(timezone.utc)
-        decision = now if decision_at is None else decision_at
+        checkpoint = selection.checkpoint
+        if decision_at is None:
+            # 先只核收據 metadata，避免用現在帳本讀取阻擋原時刻仍有效的舊 checkpoint。
+            receipts, _truncated = list_strategy_saved_health_receipts(
+                reader=self.health_reader, strategy_id=checkpoint.strategy_id,
+                strategy_version_id=checkpoint.strategy_version_id,
+                account_namespace=checkpoint.account_namespace, decision_cutoff=now,
+                cancel_callback=cancel_callback,
+            )
+            matching = tuple(row for row in receipts if row.selection == checkpoint
+                             and row.reference == selection.health_reference)
+            if len(matching) != 1:
+                same_receipt = tuple(row for row in receipts if row.selection == checkpoint
+                                     and row.reference.receipt_id == selection.health_reference.receipt_id)
+                if len(same_receipt) == 1 and (
+                    same_receipt[0].reference.receipt_sha256 != selection.health_reference.receipt_sha256
+                ):
+                    raise SavedHealthArchiveError("strategy_health_external_receipt_hash_mismatch")
+                raise ValueError("所選 Health 收據已不在同帳戶有界清單，請重新載入來源")
+            receipt = matching[0]
+            decision = datetime.fromisoformat(receipt.available_at)
+            if decision.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat() != receipt.decision_date:
+                raise ValueError("Health 收據在評估日後才保存，不能倒填原日研究決策時間")
+        else:
+            decision = decision_at
         if decision.tzinfo is None or decision.utcoffset() is None or decision > now:
             raise ValueError("研究決策時間無時區或晚於目前時間")
-        checkpoint = selection.checkpoint
         account_reader = StrategyPaperPortfolioResearchAccountReader(
             self.account_service, checkpoint, decision_cutoff=decision,
         )

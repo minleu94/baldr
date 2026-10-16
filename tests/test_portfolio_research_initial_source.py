@@ -1,15 +1,20 @@
 """首次配置研究沿真 writer 來源、原 evaluator 與原 store 的旅程。"""
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Context, Decimal, localcontext
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from app_module.portfolio_allocation_dtos import AllocationWeightContract
-from app_module.portfolio_research_account_reader import _weekly_turnover
+from app_module.portfolio_research_account_reader import StrategyPaperPortfolioResearchAccountReader, _weekly_turnover
 from app_module.portfolio_research_initial_source import (
     InitialPortfolioResearchSelection, PortfolioResearchInitialSourceProvider,
+)
+from app_module.position_health_strategy_archive import (
+    StrategyHealthArchiveCandidate, read_strategy_saved_health_exact,
 )
 from app_module.portfolio_research_scenario_repository import PortfolioResearchScenarioRepository
 from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
@@ -49,10 +54,28 @@ def test_initial_compare_save_and_exact_reopen_preserve_original_account(tmp_pat
         strategy_version_id=selection.checkpoint.strategy_version_id, account_namespace=selection.checkpoint.account_namespace)
     assert [row.selection for row in candidates.candidates] == [selection]
     assert not candidates.truncated
+    import app_module.portfolio_research_initial_source as initial_module
+    exact_read = initial_module.read_strategy_saved_health_exact
+    exact_cutoffs = []
+
+    def record_exact_cutoff(**kwargs):
+        exact_cutoffs.append(kwargs["decision_cutoff"])
+        return exact_read(**kwargs)
+
+    monkeypatch.setattr(initial_module, "read_strategy_saved_health_exact", record_exact_cutoff)
     with localcontext(Context(prec=3)):
         comparison = workspace.compare_initial(selection, candidate_symbols=("2330",))
         saved = workspace.save_initial(selection, comparison)
+    assert exact_cutoffs == [comparison.decision_at, comparison.decision_at]
+    exact_health = read_strategy_saved_health_exact(
+        reader=case["transition_reader"], reference=selection.health_reference,
+        account_reader=StrategyPaperPortfolioResearchAccountReader(
+            case["service"], selection.checkpoint, decision_cutoff=datetime.now(timezone.utc),
+        ), portfolio_id=selection.checkpoint.account_namespace,
+        snapshot_id=selection.checkpoint.snapshot_id, decision_cutoff=datetime.now(timezone.utc),
+    )
     assert comparison.account.positions[0].quantity == 1000
+    assert comparison.decision_at == exact_health.available_at
     assert comparison.account.valuation.positions[0].mark_price == Decimal("102.00")
     assert comparison.request.contexts[0].context.market_data_as_of_date == "2026-08-03"
     assert comparison.request.contexts[0].context.health_state == "EXIT_CANDIDATE"
@@ -61,6 +84,51 @@ def test_initial_compare_save_and_exact_reopen_preserve_original_account(tmp_pat
     assert workspace.open_exact(saved.artifact_id, account_kind="paper",
         portfolio_id=selection.checkpoint.account_namespace).comparison == comparison
     assert {path: path.read_bytes() for path in originals} == originals
+
+
+def test_initial_list_excludes_health_saved_after_its_decision_day(tmp_path, monkeypatch):
+    _case, selection, workspace = _initial_case(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    taipei_today = now.astimezone(ZoneInfo("Asia/Taipei")).date()
+    import app_module.portfolio_research_initial_source as initial_module
+
+    monkeypatch.setattr(initial_module, "list_strategy_paper_account_checkpoint_candidates",
+                        lambda *_args, **_kwargs: SimpleNamespace(rows=(SimpleNamespace(
+                            row_state="candidate_pending_exact_reader", operation_id=selection.checkpoint.operation_id,
+                            snapshot_id=selection.checkpoint.snapshot_id,
+                        ),), truncated=False))
+    monkeypatch.setattr(initial_module, "list_strategy_saved_health_receipts",
+                        lambda **_kwargs: ((
+                            StrategyHealthArchiveCandidate(selection.checkpoint, selection.health_reference,
+                                                           taipei_today.isoformat(), now.isoformat()),
+                            StrategyHealthArchiveCandidate(selection.checkpoint, selection.health_reference,
+                                                           (taipei_today - timedelta(days=1)).isoformat(), now.isoformat()),
+                        ), False))
+    catalogue = workspace.list_initial_sources(
+        strategy_id=selection.checkpoint.strategy_id,
+        strategy_version_id=selection.checkpoint.strategy_version_id,
+        account_namespace=selection.checkpoint.account_namespace,
+    )
+    assert len(catalogue.candidates) == 1
+    assert catalogue.later_day_receipts == 1
+    assert "可得" in catalogue.candidates[0].label
+
+
+def test_initial_compare_rejects_receipt_outside_health_decision_day(tmp_path, monkeypatch):
+    _case, selection, workspace = _initial_case(tmp_path, monkeypatch)
+    import app_module.portfolio_research_initial_source as initial_module
+    list_receipts = initial_module.list_strategy_saved_health_receipts
+
+    def late_health(**kwargs):
+        rows, truncated = list_receipts(**kwargs)
+        return tuple(replace(row, decision_date=(
+            datetime.fromisoformat(row.decision_date).date() - timedelta(days=1)
+        ).isoformat()) for row in rows), truncated
+
+    monkeypatch.setattr(initial_module, "list_strategy_saved_health_receipts", late_health)
+    with pytest.raises(ValueError, match="不能倒填原日研究決策時間"):
+        workspace.compare_initial(selection, candidate_symbols=("2330",))
+    assert workspace.list_saved(account_kind="paper", portfolio_id=selection.checkpoint.account_namespace) == ()
 
 
 def test_initial_missing_health_stays_unavailable_and_unheld_candidate_not_fabricated(tmp_path, monkeypatch):

@@ -22,6 +22,8 @@
 
 **Increment101／第二階段 P01 當期母體資料出口（隔離研究候選）**：沿原 v4 分段保存鏈，以已封存的 TWSE／TPEx 當期公司名錄候選及正式價庫的唯讀隔離副本，完成 1,989 檔宣告、1,951 檔有同日價格納入、38 檔缺價排除的八段批次；public reader 嚴格讀回 1,951 檔、精確查回 `2317`／`2330`，價格判定 1,946 PASS／5 UNKNOWN／0 FAIL。這解除舊試用名冊難以核對**當期多股研究母體**的後端斷點，但尚未接正常 UI 或固定 EXE；來源用途、歷史 PIT、正式真 N／效能 Gate 均未接受。最新版試用仍是100，不要求使用者重驗已通過且未變的四流程；原 timeout 與 QA 腳本失敗、最終受控 Job 收據見[Increment101 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment101-p01-current-cohort)。後續按 §0.4 轉可交付的財報正常頁／雙策略結果，不把此影子來源變成新 V1 前置。
 
+**Increment102／固定 EXE 讀取阻礙（未交付）**：同一隔離當期快照在固定 EXE 正常 Main 可見並可明選，但嚴格載入完整來源超過原 300 秒界線，尚未進兩股比較或新程序。原 FAIL、11 個來源 pin 與 Job 收束見[Increment102 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment102-current-cohort-fixed-exe-read)。不把101的 public reader PASS 當成正常頁成功，不換試用100來源，也不放寬完整性守衛；下一步對原嚴格核驗鏈做有界階段計時，同時依 §0.4 推進其他可交付流程。
+
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；100 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-100/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。
 
 <details>

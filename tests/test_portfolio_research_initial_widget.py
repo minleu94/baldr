@@ -11,6 +11,8 @@ import pytest
 
 from app_module.portfolio_research_account_reader import StrategyPaperResearchCheckpointSelection
 from app_module.portfolio_research_initial_source import (
+    InitialPortfolioAccountCatalogue,
+    InitialPortfolioAccountIdentity,
     InitialPortfolioResearchCandidate,
     InitialPortfolioResearchCatalogue,
     InitialPortfolioResearchSelection,
@@ -69,6 +71,7 @@ class _InitialWorkspace:
         self.save_started = threading.Event()
         self.save_release = threading.Event()
         self.list_calls: list[tuple[str, str, str]] = []
+        self.account_list_calls = 0
         self.compare_calls: list[tuple[InitialPortfolioResearchSelection, tuple[str, ...], object]] = []
 
     @property
@@ -81,6 +84,19 @@ class _InitialWorkspace:
 
     def __getattr__(self, name: str):
         return getattr(self.base, name)
+
+    def list_initial_accounts(self, *, cancel_callback=None) -> InitialPortfolioAccountCatalogue:
+        self.account_list_calls += 1
+        if cancel_callback is not None and cancel_callback():
+            raise InterruptedError("策略帳清單已取消")
+        return InitialPortfolioAccountCatalogue((
+            InitialPortfolioAccountIdentity("other", "1.0.0", "account-b"),
+            InitialPortfolioAccountIdentity(
+                self.selection.checkpoint.strategy_id,
+                self.selection.checkpoint.strategy_version_id,
+                self.selection.checkpoint.account_namespace,
+            ),
+        ), truncated=False, unavailable_count=1)
 
     def list_initial_sources(
         self,
@@ -151,6 +167,38 @@ def _fill_initial_controls(
     _wait_until(app, lambda: not widget.has_running_worker() and widget.initial_source_combo.count() == 2)
     widget.initial_source_combo.setCurrentIndex(1)
     widget.initial_candidate_symbols_edit.setText("2382,2330")
+
+
+def test_initial_account_discovery_requires_selection_then_fills_exact_identity(tmp_path) -> None:
+    app = _app()
+    _, _, base, _saved = _seed_workspace(tmp_path)
+    selection = _initial_selection()
+    workspace = _InitialWorkspace(base, selection)
+    widget = PortfolioResearchScenarioWidget(workspace)
+
+    widget.load_initial_accounts_button.click()
+    _wait_until(app, lambda: not widget.has_running_worker() and widget.initial_account_combo.count() == 3)
+    assert workspace.account_list_calls == 1
+    assert widget.initial_account_combo.currentData() is None
+    assert widget.initial_strategy_id_edit.text() == ""
+    assert widget.load_initial_sources_button.isEnabled() is False
+    assert "1 筆帳戶未通過" in widget.initial_sources_status_label.text()
+
+    widget.initial_account_combo.setCurrentIndex(2)
+    assert widget._selected_initial_identity() == (
+        selection.checkpoint.strategy_id,
+        selection.checkpoint.strategy_version_id,
+        selection.checkpoint.account_namespace,
+    )
+    assert widget.load_initial_sources_button.isEnabled()
+    widget.load_initial_sources_button.click()
+    _wait_until(app, lambda: not widget.has_running_worker() and widget.initial_source_combo.count() == 2)
+    assert workspace.list_calls == [widget._selected_initial_identity()]
+    widget.initial_strategy_version_edit.setText("2.0.0")
+    assert widget.initial_account_combo.currentData() is None
+    assert widget.initial_source_combo.count() == 1
+    assert widget.initial_compare_button.isEnabled() is False
+    widget.close()
 
 
 def test_initial_compare_save_returns_to_exact_saved_target_and_stock_flow(tmp_path) -> None:

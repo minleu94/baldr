@@ -23,7 +23,7 @@ from app_module.position_health_strategy_archive import (
 from app_module.position_health_saved_archive import SavedHealthArchiveError
 from app_module.position_health_transition_read_service import PositionHealthTransitionReadService
 from app_module.strategy_paper_account_availability import list_strategy_paper_account_checkpoint_candidates
-from app_module.strategy_paper_account_service import StrategyPaperAccountService
+from app_module.strategy_paper_account_service import AccountBindingStatus, StrategyPaperAccountService
 
 
 def _cancel(callback: Callable[[], bool] | None) -> None:
@@ -56,6 +56,21 @@ class InitialPortfolioResearchCatalogue:
     later_day_receipts: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class InitialPortfolioAccountIdentity:
+    strategy_id: str
+    strategy_version_id: str
+    account_namespace: str
+
+
+@dataclass(frozen=True, slots=True)
+class InitialPortfolioAccountCatalogue:
+    accounts: tuple[InitialPortfolioAccountIdentity, ...]
+    truncated: bool
+    unavailable_count: int
+    blockers: tuple[str, ...] = ()
+
+
 class PortfolioResearchInitialSourceProvider:
     """只讀明示帳戶及成對收據；不建立來源、不查全域 latest。"""
 
@@ -63,6 +78,29 @@ class PortfolioResearchInitialSourceProvider:
                  health_reader: PositionHealthTransitionReadService) -> None:
         self.account_service = account_service
         self.health_reader = health_reader
+
+    def list_account_identities(self, *, cancel_callback: Callable[[], bool] | None = None,
+                                limit: int = 25) -> InitialPortfolioAccountCatalogue:
+        """列出已核策略帳供人明選；尚未宣稱有同日 Health 或可比較來源。"""
+
+        if type(limit) is not int or limit < 1 or limit > 100:
+            raise ValueError("初次研究帳戶清單上限必須在 1 至 100 之間")
+        _cancel(cancel_callback)
+        mapped = self.account_service.list_accounts()
+        _cancel(cancel_callback)
+        ready = tuple(sorted((
+            InitialPortfolioAccountIdentity(
+                row.binding.strategy_id, row.binding.strategy_version_id,
+                row.binding.account_namespace,
+            )
+            for row in mapped.entries
+            if row.status is AccountBindingStatus.READY and row.binding is not None
+        ), key=lambda row: (row.strategy_id, row.strategy_version_id, row.account_namespace)))
+        unavailable = len(mapped.entries) - len(ready)
+        return InitialPortfolioAccountCatalogue(
+            accounts=ready[:limit], truncated=len(ready) > limit,
+            unavailable_count=unavailable, blockers=mapped.blockers,
+        )
 
     def list_sources(self, *, strategy_id: str, strategy_version_id: str, account_namespace: str,
                      cancel_callback: Callable[[], bool] | None = None) -> InitialPortfolioResearchCatalogue:

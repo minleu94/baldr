@@ -162,6 +162,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **第五列 P12 終態的固定 EXE 讀回（Increment74）**：Increment56 已在來源版正常 Main／fresh 顯示決策擷取終態，尚缺固定程式證據；沿現成 `90e9a4f7adcb` EXE，QA470 以原 producer helpers 生成隔離合成成功／timeout 終態，再用固定 EXE 父程序與 fresh 程序沿正常「系統狀態 → 日常排程 → 決策證據擷取 → 詳細」讀回同一 run／收據、保存未知及階段原因。這解除第五列「開發來源可讀、EXE 是否同樣可讀未知」的窄工程阻礙；原件保存後未被兩程序改動，也未啟動正式 Task。原 120 秒真超時、慢依賴、完整快照、自然排程與真人判讀仍待，**不**以合成終態或局部 EXE PASS 接受完整 P12／G0–G4。固定 66／71 試用包與 P07 預覽73 均未替換；詳[Increment74 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment74p12-決策擷取終態的固定-exe-讀回)。
 
+**第三列 P06 首次情境入口（Increment77，開發來源）**：初次研究原已能精確比較與另存成對策略帳／Health，卻要求使用者預先找到策略 ID、版本 ID 與 Paper namespace。現在沿既有 `StrategyPaperAccountService.list_accounts()` 唯讀列出最多 25 筆已核帳戶，明選後只帶入三個識別碼；使用者仍須選同日 Health 來源、比較並保存。這解除第三列「有來源卻無法從畫面找到同帳本起點」的操作阻礙，不改帳本、Health、金融公式、可得時間或 Registry。定向 QA 與原沙箱權限失敗均記於[Increment77 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment77p06-初次配置研究的已核策略帳明選入口)。此為開發來源候選，尚缺正常 Main／fresh 與固定 EXE、真私人帳、未持有候選同源 Health／行情及完整 P06；固定日常研究71與 P07預覽73不變。
+
 #### 用較少切換完成工作
 
 1. **同時只施工一個主要流程。** Root 負責共享契約、金融判斷、整合、QA、文件與交付；最多重用一名無待寫、無檔案衝突的 Luna，處理該流程的獨立 UI 葉片或下一項有限靜態盤點。新建額度已 10/10，不再新建；worker 仍禁止 Python／QA／網路／子代理。

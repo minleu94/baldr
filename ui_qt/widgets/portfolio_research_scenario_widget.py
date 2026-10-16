@@ -31,6 +31,8 @@ from app_module.portfolio_research_initial_source import (
     InitialPortfolioResearchCandidate,
     InitialPortfolioResearchCatalogue,
     InitialPortfolioResearchSelection,
+    InitialPortfolioAccountCatalogue,
+    InitialPortfolioAccountIdentity,
 )
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -63,6 +65,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._registry_register_expected: SavedPortfolioResearchScenario | None = None
         self._registry_open_selection: ScenarioRegistrySelection | None = None
         self._initial_catalogue: InitialPortfolioResearchCatalogue | None = None
+        self._applying_initial_account = False
         self._initial_preview: PortfolioResearchScenarioComparison | None = None
         self._initial_preview_selection: InitialPortfolioResearchSelection | None = None
         self._initial_preview_symbols: tuple[str, ...] = ()
@@ -103,8 +106,24 @@ class PortfolioResearchScenarioWidget(QWidget):
         identity_layout.addRow("已保存情境", saved_controls)
         layout.addWidget(identity_group)
 
-        initial_group = QGroupBox("初次策略／Health 成對來源研究", self)
+        initial_group = QGroupBox("第一次建立配置研究｜策略帳與 Health", self)
         initial_layout = QFormLayout(initial_group)
+        account_controls = QHBoxLayout()
+        self.load_initial_accounts_button = QPushButton("找出已核策略帳", initial_group)
+        self.load_initial_accounts_button.clicked.connect(self.load_initial_accounts)
+        account_controls.addWidget(self.load_initial_accounts_button)
+        self.initial_account_combo = QComboBox(initial_group)
+        self.initial_account_combo.setAccessibleName("初次研究已核策略帳選擇")
+        self.initial_account_combo.addItem("請先找出帳戶，再明確選一筆", None)
+        self.initial_account_combo.currentIndexChanged.connect(self._on_initial_account_changed)
+        account_controls.addWidget(self.initial_account_combo, 1)
+        initial_layout.addRow("步驟 1｜選策略帳", account_controls)
+        account_hint = QLabel(
+            "選帳戶只會帶入下面三個識別碼；仍須選同日 Health 收據並完成精確重核。"
+            "沒有帳戶時可手動輸入完整識別碼。", initial_group,
+        )
+        account_hint.setWordWrap(True)
+        initial_layout.addRow(account_hint)
         self.initial_strategy_id_edit = QLineEdit(initial_group)
         self.initial_strategy_id_edit.setPlaceholderText("請明確輸入 strategy_id")
         self.initial_strategy_id_edit.textChanged.connect(self._on_initial_identity_changed)
@@ -120,7 +139,7 @@ class PortfolioResearchScenarioWidget(QWidget):
 
         self.load_initial_sources_button = QPushButton("載入成對來源候選", initial_group)
         self.load_initial_sources_button.clicked.connect(self.load_initial_sources)
-        initial_layout.addRow(self.load_initial_sources_button)
+        initial_layout.addRow("步驟 2｜核成對來源", self.load_initial_sources_button)
         self.initial_source_combo = QComboBox(initial_group)
         self.initial_source_combo.setAccessibleName("初次研究成對來源選擇")
         self.initial_source_combo.addItem("請先載入並明確選擇來源", None)
@@ -130,7 +149,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.initial_candidate_symbols_edit = QLineEdit(initial_group)
         self.initial_candidate_symbols_edit.setPlaceholderText("輸入原帳本已持有且有同源 Health／行情的股票")
         self.initial_candidate_symbols_edit.textChanged.connect(self._on_initial_candidates_changed)
-        initial_layout.addRow("候選股票代碼", self.initial_candidate_symbols_edit)
+        initial_layout.addRow("步驟 3｜候選股票代碼", self.initial_candidate_symbols_edit)
         initial_buttons = QHBoxLayout()
         self.initial_compare_button = QPushButton("比較初次研究情境", initial_group)
         self.initial_compare_button.clicked.connect(self.compare_initial)
@@ -138,7 +157,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.initial_save_button = QPushButton("另存初次研究結果", initial_group)
         self.initial_save_button.clicked.connect(self.save_initial)
         initial_buttons.addWidget(self.initial_save_button)
-        initial_layout.addRow(initial_buttons)
+        initial_layout.addRow("步驟 4／5｜比較、保存", initial_buttons)
         self.initial_sources_status_label = QLabel(
             "未載入成對來源；請明確選擇策略、版本、帳本 namespace 與股票代碼。",
             initial_group,
@@ -303,6 +322,16 @@ class PortfolioResearchScenarioWidget(QWidget):
         del blocker
         self._updating_initial_source_combo = False
         self._queue("initial_list", identity)
+
+    def load_initial_accounts(self) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        if self.workspace is None or not bool(getattr(self.workspace, "can_create_initial", False)):
+            self.initial_sources_status_label.setText(
+                self.disabled_reason or "初次策略帳來源尚未配置。"
+            )
+            return
+        self._queue("initial_accounts", ())
 
     def compare_initial(self) -> None:
         if self._is_save_action(self._worker_action):
@@ -599,6 +628,10 @@ class PortfolioResearchScenarioWidget(QWidget):
     def _on_initial_identity_changed(self, *_args: Any) -> None:
         if self._is_save_action(self._worker_action):
             return
+        if not self._applying_initial_account:
+            blocker = QSignalBlocker(self.initial_account_combo)
+            self.initial_account_combo.setCurrentIndex(0)
+            del blocker
         self._invalidate_pending_work()
         self._initial_catalogue = None
         self._clear_initial_preview()
@@ -612,6 +645,31 @@ class PortfolioResearchScenarioWidget(QWidget):
             "策略、版本或 namespace 已變更；請重新載入成對來源候選。"
         )
         self._sync_enabled()
+
+    @Slot(int)
+    def _on_initial_account_changed(self, *_args: Any) -> None:
+        if self._is_save_action(self._worker_action):
+            return
+        account = self.initial_account_combo.currentData()
+        if not isinstance(account, InitialPortfolioAccountIdentity):
+            return
+        self._applying_initial_account = True
+        try:
+            blockers = (
+                QSignalBlocker(self.initial_strategy_id_edit),
+                QSignalBlocker(self.initial_strategy_version_edit),
+                QSignalBlocker(self.initial_namespace_edit),
+            )
+            self.initial_strategy_id_edit.setText(account.strategy_id)
+            self.initial_strategy_version_edit.setText(account.strategy_version_id)
+            self.initial_namespace_edit.setText(account.account_namespace)
+            del blockers
+            self._on_initial_identity_changed()
+        finally:
+            self._applying_initial_account = False
+        self.initial_sources_status_label.setText(
+            "已選策略帳；請按步驟 2 載入同帳本、同日 Health 成對來源。"
+        )
 
     @Slot(str)
     def _on_initial_candidates_changed(self, *_args: Any) -> None:
@@ -773,6 +831,9 @@ class PortfolioResearchScenarioWidget(QWidget):
                 account_namespace,
             )
             self.initial_sources_status_label.setText("正在載入同策略、同版本、同 namespace 的成對來源……")
+        elif action == "initial_accounts":
+            task = TaskWorker(_list_initial_accounts_task, self.workspace)
+            self.initial_sources_status_label.setText("正在只讀找出已核策略帳……")
         elif action == "initial_compare":
             selection, candidate_symbols = args
             task = TaskWorker(
@@ -816,6 +877,51 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.status_label.setText(
                 f"已載入 {len(value)} 份有界清單；請明確選擇 artifact 後開啟。"
                 if value else "目前沒有已保存情境；未查詢或套用 latest。"
+            )
+        elif action == "initial_accounts":
+            if (
+                not isinstance(value, InitialPortfolioAccountCatalogue)
+                or not isinstance(value.accounts, tuple)
+                or len(value.accounts) > 25
+                or type(value.truncated) is not bool
+                or type(value.unavailable_count) is not int
+                or value.unavailable_count < 0
+                or not isinstance(value.blockers, tuple)
+                or any(not isinstance(item, str) for item in value.blockers)
+                or any(
+                    not isinstance(item, InitialPortfolioAccountIdentity)
+                    or not item.strategy_id or not item.strategy_version_id or not item.account_namespace
+                    for item in value.accounts
+                )
+                or len({
+                    (item.strategy_id, item.strategy_version_id, item.account_namespace)
+                    for item in value.accounts
+                }) != len(value.accounts)
+            ):
+                self.initial_sources_status_label.setText("策略帳清單回傳格式不符；未套用。")
+                return
+            blocker = QSignalBlocker(self.initial_account_combo)
+            self.initial_account_combo.clear()
+            self.initial_account_combo.addItem("請明確選一筆已核策略帳", None)
+            for item in value.accounts:
+                self.initial_account_combo.addItem(
+                    f"{item.strategy_id}｜{item.strategy_version_id}｜{item.account_namespace[-12:]}", item,
+                )
+                self.initial_account_combo.setItemData(
+                    self.initial_account_combo.count() - 1,
+                    f"strategy={item.strategy_id}; version={item.strategy_version_id}; "
+                    f"namespace={item.account_namespace}; 帳戶已核，Health／行情仍待精確核對",
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+            del blocker
+            more = "；清單已截斷" if value.truncated else ""
+            unavailable = f"；另有 {value.unavailable_count} 筆帳戶未通過身分讀取" if value.unavailable_count else ""
+            blockers = f"；來源狀態：{', '.join(value.blockers)}" if value.blockers else ""
+            self.initial_sources_status_label.setText(
+                f"找到 {len(value.accounts)} 筆已核策略帳{more}{unavailable}{blockers}；"
+                "請明選一筆，再載入成對來源。帳戶已核不代表 Health 或行情可用。"
+                if value.accounts else
+                f"目前沒有可選的已核策略帳{unavailable}{blockers}；可保留手動輸入，但不會猜選其他帳戶。"
             )
         elif action == "initial_list":
             identity = self._selected_initial_identity()
@@ -1311,6 +1417,8 @@ class PortfolioResearchScenarioWidget(QWidget):
             self.save_button.setEnabled(False)
             self.cancel_button.setEnabled(False)
             self.stock_research_button.setEnabled(False)
+            self.load_initial_accounts_button.setEnabled(False)
+            self.initial_account_combo.setEnabled(False)
             self.initial_strategy_id_edit.setEnabled(False)
             self.initial_strategy_version_edit.setEnabled(False)
             self.initial_namespace_edit.setEnabled(False)
@@ -1367,6 +1475,10 @@ class PortfolioResearchScenarioWidget(QWidget):
         initial_identity = self._selected_initial_identity() is not None
         initial_selection = self._selected_initial_selection() is not None
         initial_symbols = self._initial_candidate_symbols() is not None
+        self.load_initial_accounts_button.setEnabled(
+            can_create_initial and not busy and not locked and not self._closing
+        )
+        self.initial_account_combo.setEnabled(can_create_initial and not locked and not self._closing)
         self.initial_strategy_id_edit.setEnabled(not locked and not self._closing)
         self.initial_strategy_version_edit.setEnabled(not locked and not self._closing)
         self.initial_namespace_edit.setEnabled(not locked and not self._closing)
@@ -1488,6 +1600,13 @@ def _list_initial_sources_task(
         account_namespace=account_namespace,
         cancel_callback=cancel_callback,
     )
+
+
+def _list_initial_accounts_task(
+    workspace: PortfolioResearchScenarioWorkspace,
+    cancel_callback=None,
+) -> InitialPortfolioAccountCatalogue:
+    return workspace.list_initial_accounts(cancel_callback=cancel_callback)
 
 
 def _compare_initial_task(

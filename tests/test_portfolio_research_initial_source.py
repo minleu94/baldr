@@ -11,7 +11,8 @@ import pytest
 from app_module.portfolio_allocation_dtos import AllocationWeightContract
 from app_module.portfolio_research_account_reader import StrategyPaperPortfolioResearchAccountReader, _weekly_turnover
 from app_module.portfolio_research_initial_source import (
-    InitialPortfolioResearchSelection, PortfolioResearchInitialSourceProvider,
+    InitialPortfolioAccountIdentity, InitialPortfolioResearchSelection,
+    PortfolioResearchInitialSourceProvider,
 )
 from app_module.position_health_strategy_archive import (
     StrategyHealthArchiveCandidate, read_strategy_saved_health_exact,
@@ -21,6 +22,7 @@ from app_module.portfolio_research_scenario_workspace import PortfolioResearchSc
 from app_module.portfolio_research_scenario_service import PortfolioResearchScenarioService
 from app_module.position_health_transition_evaluator import evaluate_baseline_file
 from app_module.strategy_paper_account_availability import read_exact_strategy_paper_account_checkpoint
+from app_module.strategy_paper_account_service import AccountBindingStatus
 from test_portfolio_research_scenario_repository import _route
 from test_position_health_strategy_archive import (
     _prepared_pipeline, _write_strategy_governed_sources, _publish,
@@ -47,9 +49,40 @@ def _initial_case(tmp_path, monkeypatch, *, governed=True):
     return case, selection, PortfolioResearchScenarioWorkspace(repository, initial_source_provider=provider)
 
 
+def test_initial_account_discovery_lists_only_verified_identities_without_selecting_source():
+    def row(status, strategy, version, namespace):
+        binding = (SimpleNamespace(strategy_id=strategy, strategy_version_id=version,
+                                   account_namespace=namespace) if strategy else None)
+        return SimpleNamespace(status=status, binding=binding)
+
+    mapped = SimpleNamespace(entries=(
+        row(AccountBindingStatus.READY, "value", "1.0.0", "acct-b"),
+        row(AccountBindingStatus.UNKNOWN, None, None, None),
+        row(AccountBindingStatus.READY, "momentum", "1.0.0", "acct-a"),
+    ), blockers=())
+    provider = PortfolioResearchInitialSourceProvider(
+        SimpleNamespace(list_accounts=lambda: mapped), None,
+    )
+    catalogue = provider.list_account_identities(limit=1)
+    assert catalogue.accounts == (InitialPortfolioAccountIdentity("momentum", "1.0.0", "acct-a"),)
+    assert catalogue.truncated is True
+    assert catalogue.unavailable_count == 1
+    with pytest.raises(InterruptedError):
+        provider.list_account_identities(cancel_callback=lambda: True)
+    with pytest.raises(ValueError, match="上限"):
+        provider.list_account_identities(limit=0)
+
+
 def test_initial_compare_save_and_exact_reopen_preserve_original_account(tmp_path, monkeypatch):
     case, selection, workspace = _initial_case(tmp_path, monkeypatch)
     originals = {path: path.read_bytes() for path in (case["stores"].state_db, case["stores"].cost_ledger_db)}
+    accounts = workspace.list_initial_accounts()
+    assert accounts.accounts == (InitialPortfolioAccountIdentity(
+        selection.checkpoint.strategy_id,
+        selection.checkpoint.strategy_version_id,
+        selection.checkpoint.account_namespace,
+    ),)
+    assert accounts.truncated is False
     candidates = workspace.list_initial_sources(strategy_id=selection.checkpoint.strategy_id,
         strategy_version_id=selection.checkpoint.strategy_version_id, account_namespace=selection.checkpoint.account_namespace)
     assert [row.selection for row in candidates.candidates] == [selection]

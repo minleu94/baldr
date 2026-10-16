@@ -18,6 +18,7 @@ from app_module.portfolio_research_scenario_service import (
 )
 from app_module.portfolio_research_initial_source import (
     PortfolioResearchInitialSourceProvider, InitialPortfolioResearchSelection, InitialPortfolioResearchCatalogue,
+    InitialPortfolioAccountCatalogue,
 )
 from app_module.portfolio_research_registry import (
     PortfolioScenarioRegistryService, ScenarioRegistryEntry, ScenarioRegistrySelection,
@@ -75,6 +76,11 @@ class PortfolioResearchScenarioWorkspace:
     @property
     def can_create_initial(self) -> bool:
         return self.initial_source_provider is not None
+
+    def list_initial_accounts(self, *, cancel_callback=None) -> InitialPortfolioAccountCatalogue:
+        if self.initial_source_provider is None:
+            raise ValueError("尚未配置策略帳與 Health 來源 reader")
+        return self.initial_source_provider.list_account_identities(cancel_callback=cancel_callback)
 
     def list_initial_sources(self, *, strategy_id: str, strategy_version_id: str, account_namespace: str,
                              cancel_callback=None) -> InitialPortfolioResearchCatalogue:

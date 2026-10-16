@@ -69,13 +69,13 @@
 
 ### 配置研究封存與另存假設
 
-此入口位於後續開發分支「持倉管理 → 顯示進階 → 配置研究封存」，尚未納入固定 `4b530a7e` 試用包。使用已設定的 PERSONAL 私人 store；LEGACY_READ_ONLY 可讀回但不能另存或登錄，未配置時明示停用，不自動搬資料。
+此入口位於後續開發分支「持倉管理 → 顯示進階 → 配置研究封存」，尚未納入固定日常研究 71 或 P07 預覽 73。使用已設定的 PERSONAL 私人 store；LEGACY_READ_ONLY 可讀回但不能另存或登錄，未配置時明示停用，不自動搬資料。
 
 **初次策略帳研究（Increment47）**：先確認 Research Lab 的策略帳已有完整 checkpoint，並保留其 Strategy ID、Strategy version ID、Paper namespace、operation ID 與 snapshot ID。Main 必須同時有明示 PERSONAL store 與既有 `PAPER_CONTRACT_ARTIFACTS_ROOT`；未配置時初次入口停用，舊封存仍沿原路讀回。
 
 1. 先以同一套私人設定執行 `scripts/run_strategy_position_health.py`，明選上述五項身分（參數依序為 `--strategy-id`、`--strategy-version-id`、`--account-namespace`、`--operation-id`、`--snapshot-id`）。命令預設只另存至 `OUTPUT_ROOT/position_health_transition`，不改帳戶／成交帳本、不建立正式 Task；不會自動啟用每日排程。
 2. 原有 thesis／條件／指標／日曆來源，分別以 `--thesis-registry`、`--condition-source`、`--metrics-source`、`--calendar-cache` 指定；其餘選項可用 `--help` 查閱。命令只用實際目前時間，核同帳戶／開倉身分與原價格證據；缺件會保存 degraded 評估並以結束碼 2 明示，不能把它當完整 Health。舊 paper-main v1 評估不可冒作策略帳 v2。
-3. 回此分頁，在「初次策略／Health 成對來源研究」輸入明確的策略、版本及 namespace，載入候選後明選一份來源。清單只列 Health 收據在**評估日台北當天**已保存的成對來源，標出原收據可得時刻；跨日才保存的筆數另列，不能倒填原日可得時間。清單只作定位，按比較時會以所選原收據的 `available_at` 為研究 cutoff，再精確重核帳本、Health 及來源；不把舊評估當成今日帳本。清單截斷會明示。
+3. 回此分頁，在「第一次建立配置研究｜策略帳與 Health」按「找出已核策略帳」，再**明選**一筆；畫面只把該帳的策略、版本與 namespace 帶入欄位，不自動選最新或推定 Health 已可用。沒有可選帳戶時可手動輸入三個完整識別碼。接著按「載入成對來源候選」並明選一份。清單只列 Health 收據在**評估日台北當天**已保存的成對來源，標出原收據可得時刻；跨日才保存的筆數另列，不能倒填原日可得時間。清單只作定位，按比較時會以所選原收據的 `available_at` 為研究 cutoff，再精確重核帳本、Health 及來源；不把舊評估當成今日帳本。清單截斷會明示。
 4. 輸入**原帳本已持有**且同 checkpoint 有原行情與完整 Health 的股票代碼，以逗號或空白分隔，按「比較初次研究情境」。未持有候選、無法證明開倉連續性或缺 Health 時會說明不可用；不能填零股、借其他來源行情或補造 Health。流動性／冷卻期缺件沿原配置守衛顯示，週換手由同一完整帳本前綴與原七日權重換手計算取得，不預設 0。
 5. 核對原現金、NAV、股數、價格資料日與情境原因，再按「另存初次研究結果」。未保存預覽不可進個股；保存後同步為同一 Paper 帳戶及新 hash，接回下列既有重開、target、個股及返回流程。讀取／比較可取消；保存提交期間等待完成。換來源、股票或帳戶都須重新比較。
 

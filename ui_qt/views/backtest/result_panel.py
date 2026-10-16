@@ -654,6 +654,18 @@ class BacktestResultPanel(QWidget):
         self.return_basic_pair_button.clicked.connect(self._return_to_basic_pair)
         self.return_basic_pair_button.hide()
         summary_layout.addWidget(self.return_basic_pair_button)
+
+        save_row = QHBoxLayout()
+        self.save_current_result_button = QPushButton("保存這次回測")
+        self.save_current_result_button.setAccessibleName("保存目前單股回測結果")
+        self.save_current_result_button.setEnabled(False)
+        self.save_current_result_button.clicked.connect(self.parent_view._save_backtest_result)
+        self.save_current_result_status = QLabel("尚無可保存的當次回測結果。")
+        self.save_current_result_status.setAccessibleName("目前回測保存狀態")
+        self.save_current_result_status.setWordWrap(True)
+        save_row.addWidget(self.save_current_result_button)
+        save_row.addWidget(self.save_current_result_status, stretch=1)
+        summary_layout.addLayout(save_row)
         
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)

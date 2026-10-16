@@ -848,6 +848,20 @@ class BacktestView(QWidget):
         if self.RESPONSIVE_BREAKPOINT <= self.width() < self.SINGLE_PANE_BREAKPOINT:
             self._set_config_panel_collapsed(True)
 
+    def _set_single_backtest_save_state(
+        self, *, enabled: bool, status: str, tooltip: str
+    ) -> None:
+        """讓設定與結果兩個保存入口顯示同一筆 run 的狀態。"""
+        result_panel = self.__dict__.get("result_panel")
+        result_button = getattr(result_panel, "save_current_result_button", None)
+        for button in (self.save_result_btn, result_button):
+            if button is not None:
+                button.setEnabled(enabled)
+                button.setToolTip(tooltip)
+        status_label = getattr(result_panel, "save_current_result_status", None)
+        if status_label is not None:
+            status_label.setText(status)
+
     def _mark_research_execution_started(self) -> None:
         """標記新一輪研究執行已開始，用於阻擋舊結果保存。"""
         self._execution_generation += 1
@@ -860,6 +874,11 @@ class BacktestView(QWidget):
         self._recommendation_portfolio_result_source = None
         self._single_backtest_result_generation = None
         self._recommendation_portfolio_result_generation = None
+        self._set_single_backtest_save_state(
+            enabled=False,
+            status="正在執行新研究；完成後才能保存當次結果。",
+            tooltip="執行中或尚無當次單股結果。",
+        )
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None and hasattr(result_panel, "clear_analyst_diagnostics"):
             result_panel.clear_analyst_diagnostics()
@@ -1240,30 +1259,22 @@ class BacktestView(QWidget):
         # 直接從當前結果繪製圖表（不需要保存）
         self._plot_charts_from_report(report)
 
-        # 啟用保存按鈕（確保有 ResearchRunService 和 current_report）
-        save_btn = getattr(self, 'save_result_btn', None)
-        if save_btn is not None:
-            if self.research_run_service and self.current_report and self.current_run_params:
-                save_btn.setEnabled(True)
-                save_btn.setToolTip("保存此回測結果為 Registry run，供歷史比較與升級檢查使用。")
-                logger.info("[BacktestView] 保存按鈕已啟用 (research_run_service={self.research_run_service is not None}, report={self.current_report is not None}, params={self.current_run_params is not None})")
-            else:
-                # 如果沒有 registry service，禁用按鈕並顯示提示
-                save_btn.setEnabled(False)
-                registry_error = getattr(self, "research_run_service_error", None)
-                if registry_error:
-                    save_btn.setToolTip(
-                        "Research Run Registry 目前不可用，回測仍可執行但不會保存研究 run。"
-                        f"原因：{registry_error}"
-                    )
-                else:
-                    save_btn.setToolTip("需要完成回測且 ResearchRunService 可用後才能保存結果。")
-                if not self.research_run_service:
-                    logger.warning("[BacktestView] 警告: research_run_service 未初始化，無法保存結果")
-                if not self.current_report:
-                    logger.warning("[BacktestView] 警告: current_report 為空，無法保存結果")
-                if not self.current_run_params:
-                    logger.warning("[BacktestView] 警告: current_run_params 為空，無法保存結果")
+        # 一般視窗會隱藏設定欄；摘要旁仍須能保存這次結果。
+        if self.research_run_service and self.current_report and self.current_run_params:
+            self._set_single_backtest_save_state(
+                enabled=True,
+                status="本次結果尚未保存；按「保存這次回測」後再到歷史查找。",
+                tooltip="保存此回測結果為 Registry run，供歷史讀回與比較使用。",
+            )
+        else:
+            registry_error = getattr(self, "research_run_service_error", None)
+            reason = (
+                f"Research Run Registry 不可用：{registry_error}"
+                if registry_error else "目前沒有可保存的當次單股結果。"
+            )
+            self._set_single_backtest_save_state(
+                enabled=False, status=reason, tooltip=reason
+            )
 
         # ========== Phase 3.5 SOP 護欄：啟用 Promote 按鈕 ==========
         promote_btn = getattr(self, 'promote_btn', None)
@@ -1300,6 +1311,11 @@ class BacktestView(QWidget):
         result_source: str = "execution",
     ):
         """顯示推薦組合回測結果。"""
+        self._set_single_backtest_save_state(
+            enabled=False,
+            status="目前顯示推薦回放；單股結果須重新執行後保存。",
+            tooltip="此入口只保存當次單股回測。",
+        )
         self.current_recommendation_portfolio_result = result
         self._recommendation_portfolio_result_source = result_source
         if hasattr(self, "portfolio_period_table"):
@@ -2893,12 +2909,27 @@ class BacktestView(QWidget):
 
             try:
                 run_id = self._save_single_backtest_to_research_registry(run_name, notes)
-                QMessageBox.information(
-                    self,
-                    "成功",
-                    f"結果已保存: {run_name}\nRegistry run：{run_id}\n\n"
-                    "若驗證狀態允許，現在可按「升級為策略版本」進入升級條件檢查。",
+            except Exception as e:
+                self._set_single_backtest_save_state(
+                    enabled=True,
+                    status="保存失敗；本次結果仍在畫面上，可核對錯誤後重試。",
+                    tooltip="上次保存失敗；重試會再次核對同一當次結果。",
                 )
+                run_params = self.current_run_params or {}
+                logger.exception(
+                    "[BacktestView] Research Run 保存失敗 stock_code=%s strategy_id=%s",
+                    run_params.get("stock_code"),
+                    run_params.get("strategy_id"),
+                )
+                QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
+                return
+
+            self._set_single_backtest_save_state(
+                enabled=False,
+                status=f"已保存 Registry run：{run_id}。可到「找已保存結果」重開。",
+                tooltip="本次結果已保存；要建立新 run，請重新執行回測。",
+            )
+            try:
                 self._on_research_run_saved(run_id)
                 # 自動選中剛保存的結果
                 index = self.chart_run_combo.findData(run_id)
@@ -2919,14 +2950,20 @@ class BacktestView(QWidget):
                     else:
                         self.promote_btn.setToolTip("驗證狀態為 FAIL，需先修正樣本或資料問題後才能升級。")
                     logger.info("[BacktestView] Registry run 已保存: %s, promote_enabled=%s", run_id, can_promote)
-            except Exception as e:
-                run_params = self.current_run_params or {}
+            except Exception:
                 logger.exception(
-                    "[BacktestView] Research Run 保存失敗 stock_code=%s strategy_id=%s",
-                    run_params.get("stock_code"),
-                    run_params.get("strategy_id"),
+                    "[BacktestView] Research Run %s 已保存，但畫面刷新失敗", run_id
                 )
-                QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
+                QMessageBox.warning(
+                    self, "結果已保存，畫面未刷新",
+                    f"Registry run：{run_id}\n請從「找已保存結果」重新查找；不要重複保存。",
+                )
+            else:
+                QMessageBox.information(
+                    self, "成功",
+                    f"結果已保存: {run_name}\nRegistry run：{run_id}\n\n"
+                    "若驗證狀態允許，現在可按「升級為策略版本」進入升級條件檢查。",
+                )
 
     def _promote_backtest_result(self):
         """將回測結果升級為策略版本"""
@@ -3077,6 +3114,11 @@ class BacktestView(QWidget):
             "run_name": run_data.get("run_name", ""),
         }
         self.current_report = None
+        self._set_single_backtest_save_state(
+            enabled=False,
+            status=f"已開啟歷史 run：{run_id}；此頁只讀。",
+            tooltip="歷史結果不可再次保存；請執行新的回測。",
+        )
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
             # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。
@@ -4750,6 +4792,11 @@ class BacktestView(QWidget):
             "run_name": run_data.get("run_name", ""),
         }
         self.current_report = None
+        self._set_single_backtest_save_state(
+            enabled=False,
+            status=f"已開啟歷史 run：{run_id}；此頁只讀。",
+            tooltip="歷史結果不可再次保存；請執行新的回測。",
+        )
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
             # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。

@@ -419,6 +419,7 @@ def test_backtest_view_degrades_when_research_registry_is_unavailable(
     assert "保存／歷史比較暫停" in view.config_panel.research_registry_status_label.text()
     assert view.config_panel.save_result_btn is not None
     assert not view.config_panel.save_result_btn.isEnabled()
+    assert not view.result_panel.save_current_result_button.isEnabled()
 
 
 def test_portfolio_promotion_success_message_points_to_follow_up_entrypoint(qt_app):

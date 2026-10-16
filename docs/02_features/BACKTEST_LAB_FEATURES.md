@@ -118,6 +118,7 @@ Paper 保存快照查找可選擇外部 artifacts root；缺少或無效的設�
 
 **UI 位置**：
 - 執行按鈕旁「保存結果」按鈕（回測完成後啟用）
+- 「實驗摘要」旁「保存這次回測」共用同一保存流程；一般視窗切到結果頁時仍可操作，並顯示未保存／原 Registry run ID／不可用原因
 - 右側「比較」Tab → 回測歷史列表
 
 **後端實作**：
@@ -138,13 +139,14 @@ Paper 保存快照查找可選擇外部 artifacts root；缺少或無效的設�
 
 **使用方式**：
 1. 執行回測
-2. 回測完成後，點擊「保存結果」
+2. 回測完成後，在設定或結果頁按保存；結果頁的入口只接受當次單股執行，不接受歷史讀回或推薦回放
 3. 輸入執行名稱和備註
 4. 系統寫入 Research Run Registry。後續可在「Registry 比較」子頁選取 2 至 5 個 registry run 進行 comparability 與結果並列檢視。
 
 安全限制：
 
 - 新一輪回測開始後，舊 pending result 不可保存。
+- 已成功寫入 run 但畫面清單刷新失敗時，原 run ID 仍明示且保存入口停用，避免將 UI 刷新錯誤當成保存失敗再寫一份。
 - hash 不符或 parquet 檔案不完整時，registry 載入會失敗並標示 integrity 問題。
 - 已 promoted 的 run 不可 archive。Registry-based promotion 會先檢查 run 的 integrity、archive/promoted 狀態、參數合約版本與最低 validation gate；保存成功不代表一定可升級策略版本。
 

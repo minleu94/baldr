@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 import pandas as pd
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
-from PySide6.QtWidgets import QApplication, QListWidgetItem
+from PySide6.QtWidgets import QApplication, QDialog, QListWidgetItem, QMessageBox
 
 from app_module.dtos import BacktestReportDTO, ValidationStatus
 from ui_qt.views.backtest_view import BacktestView
@@ -155,6 +155,60 @@ def test_six_completed_pairs_show_same_run_fills_and_detail_rows(view):
     assert view.trades_table.model() is not None
     assert view.trades_table.model().rowCount() == 6
     assert not view.promote_btn.isEnabled()
+
+
+def test_windowed_result_can_save_from_visible_summary_and_history_stays_read_only(
+    view, monkeypatch
+):
+    view.resize(900, 768)
+    view.show()
+    QApplication.processEvents()
+    view.current_run_params = {"stock_code": "2330", "strategy_id": "stable_conservative_v1"}
+    view._on_backtest_finished(_report({"execution_summary": {"trade_count": 0}}))
+    QApplication.processEvents()
+
+    button = view.result_panel.save_current_result_button
+    assert not view.config_scroll.isVisible()
+    assert button.isVisible() and button.isEnabled()
+    assert "尚未保存" in view.result_panel.save_current_result_status.text()
+
+    saved = []
+    monkeypatch.setattr(QDialog, "exec", lambda _dialog: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
+    monkeypatch.setattr(view, "_save_single_backtest_to_research_registry",
+                        lambda name, notes: saved.append((name, notes)) or "exact-run-2330")
+    monkeypatch.setattr(view, "_on_research_run_saved", lambda _run_id: None)
+    button.click()
+
+    assert len(saved) == 1 and saved[0][0].startswith("2330_stable_conservative_v1_")
+    assert not button.isEnabled() and not view.save_result_btn.isEnabled()
+    assert "exact-run-2330" in view.result_panel.save_current_result_status.text()
+
+    item = QListWidgetItem("歷史結果")
+    item.setData(Qt.ItemDataRole.UserRole, "old-run")
+    view._load_history_run(item, run_data={"run_name": "歷史結果", "stock_code": "2330"})
+    assert not button.isEnabled()
+    assert "old-run" in view.result_panel.save_current_result_status.text()
+
+
+def test_saved_run_is_not_reported_as_failed_when_history_refresh_breaks(view, monkeypatch):
+    view.current_run_params = {"stock_code": "2330", "strategy_id": "stable_conservative_v1"}
+    view._on_backtest_finished(_report({}))
+    warnings = []
+    critical = []
+    monkeypatch.setattr(QDialog, "exec", lambda _dialog: QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args))
+    monkeypatch.setattr(QMessageBox, "critical", lambda *args: critical.append(args))
+    monkeypatch.setattr(view, "_save_single_backtest_to_research_registry",
+                        lambda _name, _notes: "committed-run")
+    monkeypatch.setattr(view, "_on_research_run_saved",
+                        lambda _run_id: (_ for _ in ()).throw(RuntimeError("refresh failed")))
+
+    view.result_panel.save_current_result_button.click()
+
+    assert not critical and len(warnings) == 1
+    assert "committed-run" in view.result_panel.save_current_result_status.text()
+    assert not view.result_panel.save_current_result_button.isEnabled()
 
 
 def test_saved_six_pairs_keep_missing_fill_metadata_explicit(view):

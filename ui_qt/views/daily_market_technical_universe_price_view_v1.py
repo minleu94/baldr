@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QTableView,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -487,18 +488,43 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         source_layout.addWidget(self.cancel_button, 1, 1)
         root.addWidget(source_group)
 
+        self.source_summary = QLabel(
+            "尚未選擇保存來源；先查詢版本、明選一份，再按「嚴格核驗並載入」。"
+        )
+        self.source_summary.setObjectName("dailyMarketTechnicalPriceV1SourceSummary")
+        self.source_summary.setWordWrap(True)
+        self.source_summary.setTextFormat(Qt.TextFormat.PlainText)
+        root.addWidget(self.source_summary)
+
+        self.source_details_toggle = QToolButton()
+        self.source_details_toggle.setObjectName("dailyMarketTechnicalPriceV1SourceDetailsToggle")
+        self.source_details_toggle.setText("來源與核驗詳情")
+        self.source_details_toggle.setAccessibleName("展開或收合來源與核驗詳情")
+        self.source_details_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.source_details_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.source_details_toggle.setCheckable(True)
+        self.source_details_toggle.setChecked(False)
+        self.source_details = QWidget()
+        self.source_details.setObjectName("dailyMarketTechnicalPriceV1SourceDetails")
+        self.source_details_layout = QVBoxLayout(self.source_details)
+        self.source_details_layout.setContentsMargins(12, 0, 0, 0)
+        self.source_details_layout.setSpacing(5)
         self.source_pins = QLabel("尚未選取保存來源。")
         self.source_pins.setObjectName("dailyMarketTechnicalPriceV1SourcePins")
         self.source_pins.setWordWrap(True)
         self.source_pins.setTextFormat(Qt.TextFormat.PlainText)
         self.source_pins.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        root.addWidget(self.source_pins)
+        self.source_details_layout.addWidget(self.source_pins)
         self.verified_pins = QLabel("尚未嚴格核驗價格來源。")
         self.verified_pins.setObjectName("dailyMarketTechnicalPriceV1VerifiedPins")
         self.verified_pins.setWordWrap(True)
         self.verified_pins.setTextFormat(Qt.TextFormat.PlainText)
         self.verified_pins.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        root.addWidget(self.verified_pins)
+        self.source_details_layout.addWidget(self.verified_pins)
+        self.source_details.setVisible(False)
+        self.source_details_toggle.toggled.connect(self._set_source_details_expanded)
+        root.addWidget(self.source_details_toggle)
+        root.addWidget(self.source_details)
 
         controls_group = QGroupBox("步驟 2：篩選股票與價格條件")
         controls = QGridLayout(controls_group)
@@ -1050,27 +1076,49 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
 
     @staticmethod
     def _catalog_label(entry: DailyMarketTechnicalUniverseV4CatalogEntry) -> str:
-        if entry.metadata_state == "diagnostic":
-            return f"診斷｜{entry.relative_path}｜{entry.diagnostic_code or 'metadata_invalid'}"
+        decision_date = (
+            entry.decision_date.isoformat() if entry.decision_date is not None else "日期未提供"
+        )
+        if entry.metadata_state == "diagnostic" or not entry.is_selectable:
+            return (
+                f"不可選｜{decision_date}｜{entry.diagnostic_code or 'metadata_unverified_or_invalid'}"
+                f"｜{entry.relative_path}"
+            )
         counts = entry.counts
-        declared = counts.declared_count if counts is not None else 0
-        processed = counts.processed_count if counts is not None else 0
-        pending = counts.pending_count if counts is not None else 0
+        if counts is None:
+            count_label = "處理數未提供"
+        else:
+            count_label = (
+                f"已處理 {counts.processed_count}/{counts.declared_count}"
+                f"｜待處理 {counts.pending_count}"
+            )
+        population_label = {
+            "included": "含納入股票",
+            "all_excluded": "全數排除",
+            "empty": "空母體",
+        }.get(entry.population_state, "母體狀態未提供")
+        source_status_label = {
+            "complete": "批次完成",
+            "cancelled": "批次已取消",
+            "failed": "批次失敗",
+        }.get(entry.source_status, "批次狀態未提供")
         return (
-            f"{entry.decision_date}｜{entry.universe_id}｜{entry.population_version}｜"
-            f"宣告 {declared}／已處理 {processed}／待處理 {pending}｜metadata 未核"
+            f"{decision_date}｜{population_label}｜{count_label}｜{source_status_label}｜待嚴格核驗"
         )
 
     def _show_selected_metadata(self, *_args: object) -> None:
         entry = self.selected_source
         if entry is None:
             self.source_pins.setText("尚未選取 catalog metadata；目前表格來源另列於下方。")
+            self._update_source_summary()
             self._set_enabled_state()
             return
         if entry.metadata_state == "diagnostic" or not entry.is_selectable:
             self.source_pins.setText(
                 f"所選列不能作為 strict 價格來源：{entry.diagnostic_code or 'metadata_unverified_or_invalid'}。"
+                f" relative_path={entry.relative_path}"
             )
+            self._update_source_summary()
             self._set_enabled_state()
             return
         self.source_pins.setText(
@@ -1080,7 +1128,93 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             f"plan identity／bytes：{entry.plan_identity_sha256}／{entry.plan_bytes_sha256}\n"
             f"receipt identity／bytes：{entry.receipt_identity_sha256}／{entry.receipt_bytes_sha256}"
         )
+        self._update_source_summary()
         self._set_enabled_state()
+
+    def _set_source_details_expanded(self, expanded: bool) -> None:
+        self.source_details.setVisible(expanded)
+        self.source_details_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+
+    @staticmethod
+    def _population_label(population_state: str | None) -> str:
+        return {
+            "included": "含納入股票",
+            "all_excluded": "全數排除",
+            "empty": "空母體",
+        }.get(population_state, "母體狀態未提供")
+
+    @staticmethod
+    def _catalog_counts_label(counts: object | None) -> str:
+        if counts is None:
+            return "處理數未提供"
+        return (
+            f"宣告 {getattr(counts, 'declared_count', '未提供')}／"
+            f"已處理 {getattr(counts, 'processed_count', '未提供')}／"
+            f"待處理 {getattr(counts, 'pending_count', '未提供')}"
+        )
+
+    def _loaded_source_summary(self) -> str:
+        state = self._state
+        if state is None:
+            return "目前表格：尚未載入已嚴格核驗的保存來源。"
+        source = state.query.source
+        counts = state.page.source_counts
+        completion = "母體完整" if state.page.full_population_complete else "母體未完整"
+        return (
+            f"目前表格：資料日 {source.decision_date.isoformat()}｜{completion}｜"
+            f"宣告 {counts.declared_count}／納入 {counts.included_count}／"
+            f"已處理 {counts.processed_count}／待處理 {counts.pending_count}｜"
+            "嚴格核驗已通過；可得時間未知，PIT=false。"
+        )
+
+    def _update_source_summary(self) -> None:
+        entry = self.selected_source
+        loaded_summary = self._loaded_source_summary()
+        if entry is None:
+            if self._state is None:
+                self.source_summary.setText(
+                    "尚未選擇保存來源；先查詢版本、明選一份，再按「嚴格核驗並載入」。"
+                )
+            else:
+                self.source_summary.setText(
+                    f"{loaded_summary}｜目前未選取新的來源批次。"
+                )
+            return
+
+        if entry.metadata_state == "diagnostic" or not entry.is_selectable:
+            decision_date = (
+                entry.decision_date.isoformat() if entry.decision_date is not None else "日期未提供"
+            )
+            message = (
+                f"所選來源不可選｜{decision_date}｜"
+                f"{entry.diagnostic_code or 'metadata_unverified_or_invalid'}。"
+            )
+            if self._state is not None:
+                message += f"目前表格仍屬原已核驗來源。{loaded_summary}"
+            self.source_summary.setText(message)
+            return
+
+        if self._state is not None and _source_matches_entry(self._state.query, entry):
+            self.source_summary.setText(loaded_summary)
+            return
+
+        decision_date = (
+            entry.decision_date.isoformat() if entry.decision_date is not None else "日期未提供"
+        )
+        source_status_label = {
+            "complete": "批次完成",
+            "cancelled": "批次已取消",
+            "failed": "批次失敗",
+        }.get(entry.source_status, "批次狀態未提供")
+        message = (
+            f"所選批次：資料日 {decision_date}｜{self._population_label(entry.population_state)}｜"
+            f"{self._catalog_counts_label(entry.counts)}｜{source_status_label}｜尚未嚴格核驗。"
+        )
+        if self._state is not None:
+            message += f"目前表格仍屬原已核驗來源。{loaded_summary}"
+        self.source_summary.setText(message)
 
     def _apply_state(self, value: object, *, selected_code: str | None = None) -> bool:
         self._clear_pending_bookmark_scroll_restore()
@@ -1107,6 +1241,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._set_controls(value.query)
         self._render_page(value.page, selected_code=selected_code)
         self._show_verified_pins(value.query)
+        self._update_source_summary()
         self._set_enabled_state()
         population_state = "完整" if value.page.full_population_complete else "未完整"
         self.status.setText(

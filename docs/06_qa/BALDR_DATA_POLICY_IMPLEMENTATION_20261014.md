@@ -1466,3 +1466,16 @@ QA235 outer `single_owned_qa_d2db78c266024c0589a6ab3c36eeaa2a/receipt.json` SHA 
 
 **仍未完成**：手動／聲明帳本初次來源、未持有候選完整 Health／行情、原 Registry 交叉入口及完整 P06；官方來源用途接受／歷史 PIT、真 N、完整雙策略績效、Native／EXE與自然成熟各自保留。沒有正式資料寫入、新 HTTP、Task變更、maintainer重啟、push、發布或交易。下一葉沿原 P03 F16 注意名單：已有 Swagger 契約而無 endpoint 資料原件，通用 attention_reasons 不算官方注意名單；靜態筆記 `increment48_f16_static.md` SHA `06a4027dd7f5cfb0fa566d2ecdd87646ff7612a7dcc6915c282da98b2f1c613f`，只作定位，不授抓取或功能完成。
 Increment47 文件閉鎖：QA239 八份正文／12features 與 metadata30sources 檢查 errors=[]；portfolio_health Level2 實讀3來源6073字元、unverified_unknown=[]，不取代原正文／QA／金融判斷。outer `single_owned_qa_34e962a874b8447a90da5d6df3e2b1ab/receipt.json` SHA `506cbbae71985650b611f1e26ba5c4fba3bc3594f8711122e14bc2eeda4774e5`，三PID陣列空／handles關閉／mutex釋放。之後僅追加本收據註記及 owner 交接狀態，未重跑未受影響runtime。
+
+## Increment66：日常研究修正版候選（依原計畫§0.4）
+
+**解除的交付阻礙**：0f固定預覽的價格研究入口埋在長頁，四股保存價差多缺方向，回測貼文六組配對卻容易被別區塊的零交易說法混淆；Increment60–64的已驗保存修正尚無同版試用包。此輪仍只處理第一列完整使用流程，不加第五條V1旅程、不重造來源或金融公式。
+
+- 日常研究頁以「價格選股」為預設子頁，舊每日快照／兩個進階母體另分頁；價格來源的日期、母體、已處理／待處理及不可選原因顯示在首屏，原路徑／metadata／核驗SHA收在可展開詳情。原catalog明選、嚴格載入、PIT、條件、比較、收藏及返回守衛不放寬。
+- 單股回測當次摘要明列完成配對、實際成交、明細列與期末持股；保存歷史顯示精確run ID，舊件沒有的成交／持股欄位標未提供。六配對測試保留樣本不足與Walk-forward原FAIL；使用者原run尚未取得，不宣稱已重現。
+- 原0f試用價庫四股12,390列只在新隔離副本補正負號：與正式資料唯讀的同股同日收盤價及無號價差Decimal精確相等，且正式欄位明示`+/-`才補。正式12,442列原rowset SHA `866241ff90af9e8a38ca336788389129bf4ffaa76b78e164c934cb468c2da391`；新副本SHA `5bc5b40de16078713af51cc4994fda5287fa522e4232d59095987e29dbc179fd`，補11,378、原有35、缺明確方向977，錯配／衝突0。四股末日2026-09-23皆精確對上，public reader回`2317 +3`、`2330 +40`、`2382 -0.5`、`2454 +5`；舊試用原件／正式資料不寫，歷史PIT仍false。詳owner `increment66_trial_market_overlay/receipt.json`。
+- QA391 audit腳本import路徑FAIL、QA392／393 sandbox `Path.resolve`拒訪FAIL各保留；原讀回已成功，未當產品FAIL或PASS。QA394在同規格受控Job下：changed Python compile、四股public reader、受影響pytest **77 PASS**、Workbench **85 PASS**、validator **25 PASS／0 FAIL／4保護SKIP**、八roots mypy **1042 files success**；ui_qt既有ignore_errors=True，不視為UI強型別證據。原收據 `output/tasks/baldr-completion-resume-20261014-01a13cf9/single_owned_qa_0030af84a6bf4d64ac5ce4cb5ebde069/receipt.json` SHA `e5616a600a5e2036837a0236e5031abca549cd973e3adafdcfeebbeb37faf268`，三PID清冊空、handles關閉、mutex釋放。
+
+**尚待交付驗證**：隔離多持倉正常頁、價格選股→比較／個股→保存／回訪→返回的正常Main／fresh、同版Native／EXE及新固定入口與指南收據。QA394只是來源候選，未通過這些出口前目前可試用版本仍是0f。原TPEx／來源權威／歷史PIT／真N／雙策略完整績效／Paper與Forward自然成熟和P00–P14／G0–G4各自保留；無正式資料寫入、maintainer啟動、push、發布或交易。
+
+文件核對QA395誤帶原Increment59 create-only launch check，因既有收據而FAIL，保留 `single_owned_qa_a1a6c75cfcce40d09d61ae3219ce78ea/receipt.json` SHA `5470f989552950a7862de5de2092a5085a38715b6ba25fe216853caac7f3f9aa`。QA396只跑本輪task／11文件／12features與context metadata31來源，兩項 `errors=[]`；outer `single_owned_qa_fddc6603ef74442f9a92a621d9994d1b/receipt.json` SHA `f4028ea438231c1e6d26d443ae4048c4c9580afef9fc0002f9484e4789f75a7d`，自然三PID清冊空、handles關閉、mutex釋放。結構檢查不代替本段語意、Native或產品Gate驗收。

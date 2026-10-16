@@ -182,6 +182,14 @@ def test_daily_research_parent_opens_returns_compares_and_guards_bookmark_confir
     assert price is not None
     price_views.append(price)
     assert daily.isVisible() and price.isVisible()
+    assert daily.research_sections.currentWidget() is price
+    assert daily.research_sections.tabText(0).startswith("價格選股")
+    daily.research_sections.setCurrentWidget(daily.snapshot_page)
+    app.processEvents()
+    assert daily.source_selector is not None and daily.source_selector.isVisible()
+    daily.research_sections.setCurrentWidget(price)
+    app.processEvents()
+    assert price.isVisible()
 
     hosts: list[_PriceBookmarkRouteHost] = []
 

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTimeEdit,
@@ -200,8 +201,17 @@ class DailyMarketResearchView(QWidget):
         self._parent_receipt_dialog.show()
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(8)
+        self.research_sections = QTabWidget(self)
+        self.research_sections.setObjectName("dailyMarketResearchSections")
+        self.research_sections.setDocumentMode(True)
+        self.research_sections.setUsesScrollButtons(True)
+        outer.addWidget(self.research_sections)
+        self.snapshot_page = QWidget(self)
+        root = QVBoxLayout(self.snapshot_page)
+        root.setContentsMargins(0, 8, 0, 0)
         root.setSpacing(8)
         config = getattr(self.service, "config", None)
         if config is not None:
@@ -213,7 +223,7 @@ class DailyMarketResearchView(QWidget):
                     Path(output_root) / "research_snapshots" / "daily_universe", self)
                 self.universe_view.childSnapshotRequested.connect(self._accept_universe_stock)
                 self.universe_view.cancelRequested.connect(self.cancel_active_operation)
-                root.addWidget(self.universe_view)
+                self.research_sections.addTab(self.universe_view, "進階：每日母體")
                 from data_module.config import TWStockConfig
                 from ui_qt.widgets.daily_market_technical_v4_production_setup import (
                     make_daily_market_technical_v4_deferred_setup_factory,
@@ -240,16 +250,20 @@ class DailyMarketResearchView(QWidget):
                 self.technical_universe_view.stockSelected.connect(self._accept_technical_stock)
                 self.technical_universe_view.comparisonReady.connect(self._accept_technical_comparison)
                 self.technical_universe_view.bookmarkPrepared.connect(self._save_technical_bookmark)
-                root.addWidget(self.technical_universe_view)
+                self.research_sections.addTab(self.technical_universe_view, "進階：技術母體")
                 self.technical_price_view = DailyMarketTechnicalUniversePriceV1View(store_root, self)
                 self.technical_price_view.stockSelected.connect(self._accept_price_stock)
                 self.technical_price_view.comparisonReady.connect(self._accept_price_comparison)
                 self.technical_price_view.bookmarkPrepared.connect(self._save_price_bookmark)
-                root.addWidget(self.technical_price_view)
+                self.research_sections.insertTab(0, self.technical_price_view, "價格選股")
             self.source_selector = DailyResearchSourceSelector(config,
                 snapshot_root=getattr(self.service, "snapshot_root", None), parent=self)
             self.source_selector.sourceLoaded.connect(self._accept_selected_source)
             root.addWidget(self.source_selector)
+
+        self.research_sections.insertTab(1, self.snapshot_page, "每日快照條件")
+        if self.technical_price_view is not None:
+            self.research_sections.setCurrentWidget(self.technical_price_view)
 
         title_layout = QHBoxLayout()
         title = QLabel("每日研究條件")
@@ -2565,6 +2579,7 @@ class DailyMarketResearchView(QWidget):
                 or not isinstance(selection, DailyMarketTechnicalUniversePriceSelectionV1)):
             return
         if view.restore_origin(selection):
+            self.research_sections.setCurrentWidget(view)
             dialog.close()
 
     def _clear_price_dialog(self, dialog: QDialog, *, comparison: bool) -> None:
@@ -2702,6 +2717,7 @@ class DailyMarketResearchView(QWidget):
                 or not isinstance(origin[1], str)):
             return
         self.technical_universe_view.restore_origin(origin[0], origin[1])
+        self.research_sections.setCurrentWidget(self.technical_universe_view)
         dialog.close()
 
     def _clear_technical_dialog(self, dialog: QDialog) -> None:
@@ -2714,6 +2730,7 @@ class DailyMarketResearchView(QWidget):
             self.status_label.setText("原五規則查詢已改變；請回到名單確認來源。")
             return
         dialog.close()
+        self.research_sections.setCurrentWidget(view)
         view.table.setFocus()
 
     def _accept_universe_stock(self, value: object) -> None:
@@ -3544,6 +3561,7 @@ class DailyMarketResearchView(QWidget):
                 and self._universe_origin[:2] == (requested, expected_hash)
                 and self.universe_view is not None
                 and self.universe_view.current_query == self._universe_origin[2]):
+            self.research_sections.setCurrentWidget(self.universe_view)
             self.universe_view.table.setFocus()
             self.status_label.setText("已返回原完整母體；來源、全域查詢、頁碼與選取保留。")
             return True
@@ -3571,6 +3589,7 @@ class DailyMarketResearchView(QWidget):
         for row_number in range(self.results_table.rowCount()):
             item = self.results_table.item(row_number, 0)
             if item is not None and item.text().strip() == requested:
+                self.research_sections.setCurrentWidget(self.snapshot_page)
                 self.results_table.selectRow(row_number)
                 self._selected_stock_code = requested
                 return True

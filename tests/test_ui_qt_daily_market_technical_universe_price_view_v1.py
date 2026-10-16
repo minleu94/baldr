@@ -103,6 +103,61 @@ def _entry_index(view: DailyMarketTechnicalUniversePriceV1View, status: str) -> 
     return -1
 
 
+def test_source_details_default_collapsed_and_preserve_pins_and_actions(
+    app: QApplication, tmp_path: Path,
+) -> None:
+    view = DailyMarketTechnicalUniversePriceV1View(tmp_path / "unused-source-details-store")
+    view.resize(760, 640)
+    view.show()
+    app.processEvents()
+    try:
+        source_pin_text = "generation: 0123456789abcdef\nplan identity／bytes: plan-id／plan-bytes"
+        verified_pin_text = "receipt identity／bytes: receipt-id／receipt-bytes\ncohort／clock／methods: c／t／m"
+        view.source_pins.setText(source_pin_text)
+        view.verified_pins.setText(verified_pin_text)
+
+        assert view.source_summary.isVisible()
+        assert view.source_details_toggle.text() == "來源與核驗詳情"
+        assert not view.source_details_toggle.isChecked()
+        assert view.source_details.isHidden()
+        assert view.source_pins.text() == source_pin_text
+        assert view.verified_pins.text() == verified_pin_text
+
+        QTest.mouseClick(view.source_details_toggle, Qt.MouseButton.LeftButton)
+        app.processEvents()
+        assert view.source_details_toggle.isChecked()
+        assert view.source_details.isVisible()
+        assert view.source_pins.isVisible()
+        assert view.verified_pins.isVisible()
+        assert view.source_pins.text() == source_pin_text
+        assert view.verified_pins.text() == verified_pin_text
+
+        QTest.mouseClick(view.source_details_toggle, Qt.MouseButton.LeftButton)
+        app.processEvents()
+        assert view.source_details.isHidden()
+
+        expected_actions = {
+            "refresh_sources_button": "dailyMarketTechnicalPriceV1RefreshSources",
+            "load_source_button": "dailyMarketTechnicalPriceV1LoadSource",
+            "cancel_button": "dailyMarketTechnicalPriceV1Cancel",
+            "apply_query_button": "dailyMarketTechnicalPriceV1ApplyQuery",
+            "previous_page_button": "dailyMarketTechnicalPriceV1PreviousPage",
+            "next_page_button": "dailyMarketTechnicalPriceV1NextPage",
+            "add_comparison_button": "dailyMarketTechnicalPriceV1AddComparison",
+            "run_comparison_button": "dailyMarketTechnicalPriceV1RunComparison",
+            "clear_comparison_button": "dailyMarketTechnicalPriceV1ClearComparison",
+            "bookmark_button": "dailyMarketTechnicalPriceV1Bookmark",
+        }
+        for attribute, object_name in expected_actions.items():
+            assert getattr(view, attribute).objectName() == object_name
+        assert "可得時間未知" in view.disclaimer.text()
+        assert "PIT" in view.disclaimer.text()
+    finally:
+        assert view.begin_shutdown() is True
+        view.close()
+        app.processEvents()
+
+
 def test_stock_codes_in_user_order_query_same_saved_source_and_reject_duplicates(
     app: QApplication, exact_price_store: dict[str, Any],
 ) -> None:

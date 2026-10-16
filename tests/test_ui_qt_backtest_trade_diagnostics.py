@@ -4,6 +4,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
+import pandas as pd
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import QApplication, QListWidgetItem
 
@@ -129,3 +130,45 @@ def test_history_zero_pairs_are_labelled_without_inferring_fills(view):
     assert '總交易次數: 0（已完成進出場配對）' in text
     assert '尚無已完成交易' in text and '不代表沒有成交' in text
     assert payload == before and view.current_report is None
+
+
+def test_six_completed_pairs_show_same_run_fills_and_detail_rows(view):
+    details = pd.DataFrame({'買進日': [f'2026-09-{day:02d}' for day in range(1, 7)]})
+    report = _report({
+        'execution_summary': {'trade_count': 12},
+        'terminal_position': 0,
+        'trade_list': details,
+    })
+    report.total_trades = 6
+
+    view._on_backtest_finished(report)
+
+    text = view.summary_text.toPlainText()
+    assert '完成進出場配對數：6' in text
+    assert '實際成交筆數：12' in text
+    assert '交易明細列數：6' in text
+    assert '期末持股：0 股' in text
+    assert '樣本數不足' in text and 'Walk-forward 驗證未執行' in text
+    assert '當次完成配對數與交易明細列數不一致' not in text
+    assert view.trades_table.model() is not None
+    assert view.trades_table.model().rowCount() == 6
+    assert not view.promote_btn.isEnabled()
+
+
+def test_saved_six_pairs_keep_missing_fill_metadata_explicit(view):
+    item = QListWidgetItem('六組配對')
+    item.setData(Qt.ItemDataRole.UserRole, 'saved-six-pairs')
+    payload = {
+        'run_name': '六組配對', 'stock_code': '2317', 'total_trades': 6,
+        'trade_list': pd.DataFrame({'買進日': [f'2026-09-{day:02d}' for day in range(1, 7)]}),
+    }
+
+    view._load_history_run(item, run_data=payload)
+
+    text = view.summary_text.toPlainText()
+    assert 'Registry run：saved-six-pairs' in text
+    assert '完成進出場配對數：6' in text
+    assert '交易明細列數：6' in text
+    assert '實際成交筆數：此歷史紀錄未提供' in text
+    assert view.trades_table.model() is not None
+    assert view.trades_table.model().rowCount() == 6

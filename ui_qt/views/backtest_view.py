@@ -1064,10 +1064,20 @@ class BacktestView(QWidget):
         terminal_position = report.details.get('terminal_position')
         if type(terminal_position) is not int or terminal_position < 0:
             terminal_position = None
+        trade_list_for_observation = report.details.get('trade_list')
+        detail_rows = len(trade_list_for_observation) if isinstance(trade_list_for_observation, pd.DataFrame) else None
         observations = (
+            f"當次執行｜完成進出場配對數：{report.total_trades}；"
             f"實際成交筆數：{fill_count if fill_count is not None else '未提供'}；"
+            f"交易明細列數：{detail_rows if detail_rows is not None else '未提供'}；"
             f"期末持股：{str(terminal_position) + ' 股' if terminal_position is not None else '未提供'}。\n"
         )
+        summary = observations + "\n" + summary
+        if detail_rows is not None and detail_rows != report.total_trades:
+            summary = (
+                "⚠ 當次完成配對數與交易明細列數不一致；請核對同一份 run，暫勿依明細判讀。\n"
+                + summary
+            )
         score_diagnostics = report.details.get('score_diagnostics')
         try:
             score_known = isinstance(score_diagnostics, dict) and Decimal(str(score_diagnostics.get('max_score'))).is_finite()
@@ -1091,8 +1101,7 @@ class BacktestView(QWidget):
             guides.append(
                 "\n💡 === 診斷：尚無已完成交易 ===\n"
                 "已完成進出場配對數為 0，不能據此判定沒有成交。\n"
-                + observations
-                + "若仍有持股，期末權益包含未平倉估值，不是已實現損益。\n"
+                "若仍有持股，期末權益包含未平倉估值，不是已實現損益。\n"
                 "請核對分數可用性與成交明細；配對樣本不足不能作為完整績效或升級依據。"
             )
         elif report.total_trades == 0:
@@ -1104,7 +1113,6 @@ class BacktestView(QWidget):
             no_trade_msg = (
                 "\n💡 === 診斷建議：尚無已完成交易 ===\n"
                 "已完成進出場配對數為 0；本輪明示未有實際成交。\n"
-                + observations
             )
 
             if threshold_mode == 'quantile':
@@ -3037,6 +3045,7 @@ class BacktestView(QWidget):
                 return "未知"
         summary_lines = [
             f"執行名稱: {run_data.get('run_name', '')}",
+            f"Registry run：{run_id}",
             f"股票代號: {run_data.get('stock_code', '')}",
             f"日期範圍: {run_data.get('start_date', '')} ~ {run_data.get('end_date', '')}",
             f"策略: {run_data.get('strategy_id', '')}",
@@ -3049,6 +3058,18 @@ class BacktestView(QWidget):
             f"勝率: {saved_number('win_rate', percent=True)}",
             f"總交易次數: {run_data.get('total_trades') if run_data.get('total_trades') is not None else '未知'}（已完成進出場配對）",
         ]
+        saved_trades = run_data.get('trade_list')
+        saved_detail_rows = len(saved_trades) if isinstance(saved_trades, pd.DataFrame) else None
+        summary_lines.append(
+            "同一保存 run｜完成進出場配對數："
+            f"{run_data.get('total_trades') if run_data.get('total_trades') is not None else '未提供'}；"
+            "實際成交筆數：此歷史紀錄未提供；"
+            f"交易明細列數：{saved_detail_rows if saved_detail_rows is not None else '未提供'}；"
+            "期末持股：此歷史紀錄未提供。"
+        )
+        if (saved_detail_rows is not None and type(run_data.get('total_trades')) is int
+                and saved_detail_rows != run_data['total_trades']):
+            summary_lines.append("⚠ 保存的完成配對數與交易明細列數不一致；暫勿依明細判讀。")
         if run_data.get('total_trades') == 0:
             summary_lines.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
 

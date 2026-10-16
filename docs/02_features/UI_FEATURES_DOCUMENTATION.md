@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+後續source分支在策略回測結果區新增「已保存策略版本（版本聲明／來源研究）」：手動刷新、翻頁、明選後查看原規則或開原結果，保存版號與來源執行版號分列；缺件／metadata-only不開啟，取消、換選、新研究及關閉拒過期結果。沒有新增promotion／執行舊版本／調參動作，保存狀態不代表資格。Main與fresh限定證據、空清單及舊版本排錯見[保存版本指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#已保存策略版本與來源研究後續開發分支)；固定0f644faa預覽尚未含本增量。
+
 上述試用回報修補現已另交固定`0f644faa0d48`預覽入口`output/trial/Baldr-Feedback-Preview-59/Launch-Baldr.cmd`；價格研究還修正合法代碼輸入順序導致查詢中斷，UI送query前排序，核心拒錯／重複／來源守衛保留。正常Native來源及EXE各驗四股篩選、空QA帳持倉表前移、兩原策略保存／歷史／規則／返回／fresh；完整推薦長頁重排與使用者真帳未驗。原9fa／4b530不替換，四條V1範圍不擴。
 
 試用回報修補候選把手動帳的當前持倉表全寬接在四卡／活躍持倉摘要後，上方手動帳持倉重點與原交易操作保留；健康／詳細頁留進階區，分帳與金融服務不改。價格研究增三步指引及來源批次／股票篩選區分，個股價格表說明缺價差或方向不補值。固定9fa／4b530尚未含此修補；長tab整頁整理仍是後續版本，操作見[價格研究指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)及[持倉指南](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#手動帳)。

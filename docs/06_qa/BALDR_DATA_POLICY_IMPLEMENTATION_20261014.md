@@ -2,6 +2,30 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment60：P07保存策略版本明選與來源研究
+
+**解除的交付阻礙**：原VersionService有保存／exact讀回，正常回測畫面卻只能選目前Registry策略，沒有明選保存版本並回原run的出口。本輪沿原service／歷史reader／SavedRuleCard與結果dialog接通，不新增策略、writer、promotion、金融公式或第一版前置。固定0f644faa預覽、4b530窄版與舊結果保留；本增量尚未建Native／EXE。
+
+Root保留新reader、public exact metadata selector、取消／預算透傳、Backtest整合、QA與文件單寫；只重用同一Luna靜態定位／兩個widget葉片與peer。原handoff兩檔SHA及pending=false另存`increment60_worker_handoff.json`，Root接回後補分頁；累計10/10，沒有新agent／子代理或worker Python。
+
+- 保存生命週期版本與source run執行器版本分開；promotion config是來源摘要，不作原StrategySpec。只核原策略／params、來源種類／run、parameter contract／data fingerprint／execution／sizing及既有backlink，不把當前Registry或版本聲明當資格。
+- `ResearchHistoryLookup.select_registry_run`按單run選取，原resolve保持metadata／context／artifact守衛。版本canonical聲明在列出、開啟及讀回後重核，漂移拒絕；不掃latest、不重寫版本或來源。此hash非歷史不可變／權威接受證明。
+- 清單沿原service排序分頁，每頁200，可正常到較早版本；沒有要求使用者挑原檔。peer指出research_forward屬metadata-only卻會先啟用按鈕，Root已在列表階段保留診斷／source=None，反例通過。
+- widget與Main共享原source reader、原結果callback及規則dialog；換選、取消、owner execution generation及關閉不套舊回覆，原窗口等待native worker收尾。
+
+| QA | 限定結果與原FAIL | outer SHA-256 |
+|---|---|---|
+| 353 | 角色路由與context3來源5853字元／10457bytes，unverified_unknown=[]；不作功能或來源接受 | `7bdfb77f8b12118688c2dab187379e73e594b5859a498e1a4c35fd16e83fd70c` |
+| 354 | compile、真版本服務／Registry與受改原reader100PASS，mypy3；兩原策略v2無current Registry／executor讀回 | `9446f8dfb594c566b73e0bcbf3d4c82c5455117baacabf552ad226e5f97e38ce` |
+| 355 | widget／原規則UI／版本binding及Workbench123PASS含85；八roots mypy1035／validator25PASS、0FAIL、4protected skips | `45a85fbcd0c0a3c7d0c128915ccf29d2c108c181d655597a82c3d1ed52293a18` |
+| 356–357 | 分頁／metadata-only與UI109PASS／1新fixture FAIL保留：兩個promoted_at實際皆2026-10-15T18:05:29.175351，測試誤認先後create必不同。保留原排序斷言，明示fixture下一秒後該案PASS；未重跑已PASS109案。mypy1035／validator25/0/4及原Main旅程另通過 | 356 `d7af8758cdd3d6be9534f1b40037357bcf5322d203615261c9aa8bd77653d376`；357 `d8f241751a79d31f7a03a6c292b8ca774be4c0409622639ef72343f04287e64b` |
+
+正常Main父 **34996→fresh9400**：以原四股私人副本，兩個原策略真正執行／保存後，沿原writer另存明示pending QA版本1.9.3／2.7.1，來源執行版仍1.0.0。正常明選→原規則→419日原結果→Watchlist返回→新程序重開，完整版本聲明SHA、run／card身份、Registry／Parquet／版本JSON的bytes／SHA／mtime／ctime相同；20原V1輸入與原行情不變，socket0。fresh禁止回測、save、create/update version及目前Registry／executor；沒有執行promotion，QA pending不能當真人策略或完整雙策略績效。UI15秒／phase120秒／driver270秒保持。
+
+各組8GiB committed／12程序／KOC／workspace mutex，起前RAM≥8GiB，前組三PID陣列自然空、handles關閉／mutex釋放才續組；原FAIL與原spec留在本owner。既有UI mypy ignore不證強型別。靜態peer原件及Root處置在`increment60_peer_disposition.json`，新直接取消回歸與文件核驗結果以owner最新具名收據／integrity核對，不加總成Gate。
+
+原完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、策略家族定義／逐日prefix、來源權威／歷史PIT、真N、完整雙策略／自然成熟／Native／EXE與真人接受仍待。下一葉優先隔離證實既有秒級version_id及replace的覆寫風險，沒有改正式版本、Task、maintainer、HTTP scope、push／發布或交易；unknown卡片仍不算完整功能。
+
 ## Increment59：試用回報固定候選與同版出口
 
 **解除的交付阻礙**：58只有source，且正常視窗查出四股按使用者順序輸入會被核心拒絕；57兩策略v2規則封存還缺EXE可讀的原始來源。本輪只補原UI集合正規化與打包來源，交獨立後續開發預覽，不新增V1旅程或資料前置，不修改策略、費率、風控或SOP。Root履行Execution／Tech Lead／QA／Documentation，重用既有Luna靜態複核，累計10/10、pending writes=false。

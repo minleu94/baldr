@@ -6,7 +6,7 @@ from decimal import Decimal, DecimalException, InvalidOperation, ROUND_HALF_UP, 
 import hashlib
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json, normalize_research_run_json_value
 from app_module.research_run_service import ResearchRunService
 from app_module.strategy_rule_card_readmodel import (RuleCardIdentity, RuleCardResultReference, StrategyRuleCard, bind_result_reference, read_strategy_rule_card, read_single_backtest_execution_rule_card)
@@ -79,9 +79,19 @@ class SavedStrategyRuleCard:
                 "performance_status": self.performance_status, "rule_card": self.rule_card.to_dict()}
 
 
-def load_saved_strategy_rule_card(service: ResearchRunService, expected: ResearchRunMetadataDTO) -> SavedStrategyRuleCard:
+def load_saved_strategy_rule_card(service: ResearchRunService, expected: ResearchRunMetadataDTO, *,
+                                 max_artifact_bytes: int | None = None,
+                                 max_total_bytes: int | None = None,
+                                 check_cancel: Callable[[], bool] | None = None) -> SavedStrategyRuleCard:
     """使用既有完整性 reader；不建立 service、回抓、save 或替舊來源補章。"""
-    loaded = service.load_run_data(expected.run_id)
+    options: dict[str, Any] = {}
+    if max_artifact_bytes is not None:
+        options["max_artifact_bytes"] = max_artifact_bytes
+    if max_total_bytes is not None:
+        options["max_total_bytes"] = max_total_bytes
+    if check_cancel is not None:
+        options["check_cancel"] = check_cancel
+    loaded = service.load_run_data(expected.run_id, **options)
     metadata = loaded.metadata
     errors: list[str] = []
     if metadata_sha256(metadata) != metadata_sha256(expected):

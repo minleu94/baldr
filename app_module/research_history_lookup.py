@@ -305,6 +305,21 @@ class ResearchHistoryLookup:
         return ResearchHistoryPage(tuple(sorted(entries, key=lambda e: (e.created_at, e.source_kind, e.run_id), reverse=True)),
                                    tuple(diagnostics), limit)
 
+    def select_registry_run(self, run_id: str, *,
+                            check_cancel: Callable[[], bool] | None = None) -> ResearchHistoryEntry:
+        """按明示run建立當次唯讀選取；不掃latest、不讀結果或建立來源。"""
+        if type(run_id) is not str or not run_id.strip() or run_id != run_id.strip() or len(run_id) > 512:
+            raise ResearchHistoryUnavailable("registry:run_id_invalid")
+        reading = _ReadRound(self.read_budget, check_cancel)
+        reading.cancelled()
+        if self.registry is None:
+            raise ResearchHistoryUnavailable("registry:source_missing")
+        metadata = self.registry.repository.get_metadata(run_id)
+        reading.cancelled()
+        if metadata is None or metadata.run_id != run_id:
+            raise ResearchHistoryUnavailable("registry:run_missing")
+        return self._registry_entry(metadata)
+
     def resolve(self, expected: ResearchHistoryEntry, *,
                 read_budget: ResearchHistoryReadBudget | None = None,
                 check_cancel: Callable[[], bool] | None = None) -> ResearchHistoryResult:

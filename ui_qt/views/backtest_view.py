@@ -819,6 +819,9 @@ class BacktestView(QWidget):
         history = getattr(result_panel, "research_history_lookup", None)
         if history is not None and hasattr(history, "invalidate_and_clear"):
             history.invalidate_and_clear()
+        saved_versions = getattr(result_panel, "saved_strategy_version_lookup", None)
+        if saved_versions is not None:
+            saved_versions.invalidate_and_clear()
         pair_controller = getattr(result_panel, "period_pair_controller", None)
         if pair_controller is not None:
             pair_controller.invalidate_execution()
@@ -5289,6 +5292,10 @@ class BacktestView(QWidget):
         if paper_lookup is not None:
             paper_lookup.begin_shutdown()
             workers.append(paper_lookup.worker)
+        saved_versions = getattr(getattr(self, "result_panel", None), "saved_strategy_version_lookup", None)
+        if saved_versions is not None:
+            saved_versions.begin_shutdown()
+            workers.append(saved_versions.worker)
         for worker in workers:
             if worker is not None and worker.isRunning():
                 worker.cancel(cooperative=True, wait=False)

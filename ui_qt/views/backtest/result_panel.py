@@ -521,6 +521,21 @@ class BacktestResultPanel(QWidget):
             legacy_portfolio_db=getattr(portfolio, "db_path", None),
             # UI serialized read budget; does not change saved artifact capacity policy.
             read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024))
+        from app_module.saved_strategy_version_reader import SavedStrategyVersionReader
+        from ui_qt.widgets.saved_strategy_version_lookup import SavedStrategyVersionLookupWidget
+        version_group = QGroupBox("已保存策略版本（版本聲明／來源研究）")
+        version_group.setCheckable(True)
+        version_group.setChecked(False)
+        self.saved_strategy_version_group = version_group
+        version_layout = QVBoxLayout(version_group)
+        self.saved_strategy_version_lookup = SavedStrategyVersionLookupWidget(
+            SavedStrategyVersionReader(getattr(self.parent_view, "strategy_version_service", None), lookup),
+            self.parent_view._open_research_history_result, version_group, owner=self.parent_view)
+        version_layout.addWidget(self.saved_strategy_version_lookup)
+        self.saved_strategy_version_lookup.setVisible(False)
+        version_group.toggled.connect(self.saved_strategy_version_lookup.setVisible)
+        layout.addWidget(version_group)
+
         history_group = QGroupBox("研究歷史查找（legacy／Registry／推薦回放）")
         history_group.setCheckable(True)
         history_group.setChecked(False)

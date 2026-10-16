@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+`SavedStrategyVersionReader`唯讀消費現有VersionService與ResearchHistoryLookup。清單保存canonical版本聲明及exact來源entry，開啟前後重讀版本，核策略／params、source config、data fingerprint、成交／sizing及已存在backlink；版本號是生命週期標籤，不與原run執行器版號強制相等。新`select_registry_run`只按明示ID建metadata/context選取，原resolve再核完整性／預算；不掃latest或建立來源。SavedRuleCard新增可選預算／取消透傳，舊呼叫契約不變。Qt元件只接回原結果／dialog，generation與合作關閉拒晚到；catalog分頁不改run身份。版本JSON摘要只證本次選取一致，沒有跨程序不可變／來源權威效力；legacy缺執行來源及績效未知仍沿原reader，不用目前設定補章。
+
 持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究增三步引導及名稱，UI parser在格式／重複守衛後把代碼集合排序才呼叫原query；不改catalog／strict source session／核心篩選／收藏契約，舊後端仍拒非canonical順序。個股漲跌沿原價差方向守衛，說明缺件不代表0。
 
 Increment59固定來源包為兩個既有策略的v2規則收據加三份raw source datas（兩executor與metadata wrapper）；原四份執行來源及兩technical kernels保留。build metadata以AST讀取spec明示literal來源清單，不執行spec；完整三份才加對應hash，partial／缺檔拒絕，舊spec及僅註解含路徑不冒稱v2。runtime仍對實際原檔取hash，metadata不能替代缺檔或來源權威；固定export與EXE各自正常保存／fresh再比金融內容，沒有修改已固定export來補件。

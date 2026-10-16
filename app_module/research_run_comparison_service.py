@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from app_module.research_run_dtos import ResearchRunMetadataDTO
+from app_module.research_run_dated_equity import research_run_dated_equity_copy
 
 
 class ComparabilityStatus(str, Enum):
@@ -192,15 +193,27 @@ class ResearchRunComparisonService:
         return reasons
 
     def _prepare_equity_frame(self, equity: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(equity, pd.DataFrame):
+            raise ValueError("已保存權益曲線必須是 DataFrame")
         date_column = "日期" if "日期" in equity.columns else "date"
         if date_column not in equity.columns:
             raise ValueError("equity curve 必須包含 date 或 日期 欄位")
         if "portfolio_value" not in equity.columns:
             raise ValueError("equity curve 必須包含 portfolio_value 欄位")
 
-        frame = equity[[date_column, "portfolio_value"]].copy()
+        # 原件即使通過檔案 hash，也可能帶重複／倒序日期或無效金額；
+        # 在交集與績效展示之前驗證全列，不修補保存結果。
+        verified = research_run_dated_equity_copy(equity) if not equity.empty else equity
+        frame = verified[[date_column, "portfolio_value"]].copy()
         frame.columns = ["date", "portfolio_value"]
         frame["date"] = frame["date"].map(str)
+        for value in frame["portfolio_value"]:
+            try:
+                amount = Decimal(str(value))
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                raise ValueError("已保存權益曲線含無法解析的權益值") from exc
+            if not amount.is_finite():
+                raise ValueError("已保存權益曲線含非有限權益值")
         return frame
 
     def _normalize_intersected_equity(self, frame: pd.DataFrame) -> pd.DataFrame:

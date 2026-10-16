@@ -24,6 +24,8 @@
 
 **Increment102／當期來源的固定 EXE 試用出口**：原 QA02 報出的 300 秒逾時來自沙箱內 strict `realpath` 權限拒絕後測試腳本仍等待結果；QA03／04 已更正錯誤歸因，原 FAIL 保留。正常 Windows 權限下，固定 EXE 父／新程序正常 Main 載入完整1,951檔、`2317／2330` 比較一致；父 Main 保存價格研究收藏後，另一程序從觀察清單恢復原 query／page／比較籃。試用102獨立複製100的狀態、改綁當期研究根，啟動器 `--check` 與18份狀態不變已驗；[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment102-current-cohort-fixed-exe-read)及[交付收據](../../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)固定 SHA。來源 `availability_status=unknown`／`source_available_at=null`、名錄用途、歷史 PIT、正式真 N、真人與完整 Gate 仍未接受；接下來沿 §0.4 轉財報正常頁或完整雙策略結果，不以更多同來源包裝工程延後其他產品線。
 
+**Increment103／第四列保存回測比較的拒錯修補（來源候選）**：第二列財報已存官方 OpenAPI 的授權資料集可查，但一般金額欄仍缺可直接綁定該 API 版本的幣別／倍率契約；單一 2330 MOPS HTML 表頭與值相符，不推廣為兩市場完整單位接受。依 §0.4 轉第四列，修正一般 Registry 比較在已顯示保存績效後才核權益曲線的斷點：重複日期、倒序日期、非有限權益現在拒比並清空前次績效；正常保存曲線原值不變。這解除第一版 V1-04 延伸「重開後比較」的錯誤金融呈現／中斷風險，未新增策略或重算舊 run。[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment103-saved-equity-reject)限定通過受改 25 例、Workbench85、正常 Windows validator25/0/4 及八根 mypy1044；先前沙箱 validator21/3/4原 FAIL 保留。固定試用102仍是可試候選；本項尚未進固定 EXE／真人，不取代第四列完整雙策略期間、來源／成本／幣別、PIT 與績效出口。
+
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；102 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。
 
 <details>

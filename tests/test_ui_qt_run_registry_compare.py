@@ -372,3 +372,27 @@ def test_registry_compare_reports_corruption_without_implicit_repair(qt_app):
     widget.compare_selected_runs()
     assert "未進行修復或重算" in widget.normalized_equity_empty_label.text()
     assert widget.metrics_table.model().rowCount() == 0
+
+
+def test_registry_compare_clears_prior_metrics_when_saved_equity_has_duplicate_date(qt_app):
+    service = FakeResearchRunService()
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    widget.run_list.item(0).setSelected(True)
+    widget.run_list.item(1).setSelected(True)
+    widget.compare_selected_runs()
+    assert widget.metrics_table.model().rowCount() == 2
+
+    original = pd.DataFrame({
+        "日期": ["2026-01-02", "2026-01-02"],
+        "portfolio_value": [2000, 2100],
+    })
+    service.data["run-b"] = original.copy(deep=True)
+    widget.compare_selected_runs()
+
+    assert "不可直接比較" in widget.comparability_badge.text()
+    assert "重複日期" in widget.normalized_equity_empty_label.text()
+    assert widget.metrics_table.model().rowCount() == 0
+    assert widget.metrics_summary_table.isHidden()
+    assert widget.normalized_equity_table.model().rowCount() == 0
+    pd.testing.assert_frame_equal(service.data["run-b"], original)

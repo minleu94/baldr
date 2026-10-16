@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_run_comparison_service import (
@@ -144,6 +145,25 @@ def test_normalized_equity_uses_explicit_date_intersection_without_forward_fill(
         {"date": "2026-01-05", "normalized_value": 10000},
         {"date": "2026-01-06", "normalized_value": 9000},
     ]
+
+
+@pytest.mark.parametrize(
+    ("dates", "values", "reason"),
+    [
+        (["2026-01-02", "2026-01-02"], [1000, 1100], "重複日期"),
+        (["2026-01-02", "2026-01-05"], [1000, float("nan")], "非有限權益值"),
+    ],
+)
+def test_normalized_equity_rejects_invalid_saved_rows_before_comparison(
+    dates, values, reason
+):
+    service = ResearchRunComparisonService()
+    equity = pd.DataFrame({"日期": dates, "portfolio_value": values})
+
+    with pytest.raises(ValueError, match=reason):
+        service.build_normalized_equity({"saved-run": equity})
+
+    assert equity["日期"].tolist() == dates
 
 
 def test_benchmark_attribution_reads_saved_benchmark_results_only():

@@ -627,6 +627,28 @@ class RunRegistryCompareWidget(QWidget):
             self.benchmark_summary_label.setText("比較已阻擋")
             return
 
+        try:
+            normalized = self.comparison_service.build_normalized_equity(
+                {item.metadata.run_id: item.equity for item in run_data}
+            )
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            self._render_comparability_badge(
+                ComparabilityStatus.INCOMPATIBLE, [f"原保存權益曲線不可比較：{exc}"]
+            )
+            for table in (self.metrics_table, self.regime_table, self.benchmark_table,
+                          self.normalized_equity_table):
+                self._set_table_model(table, pd.DataFrame())
+            self._render_metrics_summary_table(pd.DataFrame())
+            self._set_table_model(self.params_diff_table, self._build_params_diff(metadata))
+            self.params_summary_label.setText("已保存條件仍可查看；績效比較已阻擋")
+            self.regime_summary_label.setText("比較已阻擋")
+            self.benchmark_summary_label.setText("比較已阻擋")
+            self.normalized_equity_empty_label.setText(
+                f"原保存權益曲線不可比較；未修復或重算原 run：{exc}"
+            )
+            self.normalized_equity_table.hide()
+            return
+
         params_diff = self._build_params_diff(metadata)
         metrics = self._flatten_run_dicts(metadata, "metrics")
         regime = self._flatten_run_dicts(metadata, "regime_breakdown")
@@ -643,9 +665,6 @@ class RunRegistryCompareWidget(QWidget):
             self._run_mapping_summary_text(benchmark_frame, "尚無 Benchmark 基準資料")
         )
 
-        normalized = self.comparison_service.build_normalized_equity(
-            {item.metadata.run_id: item.equity for item in run_data}
-        )
         normalized_frame = self._normalized_equity_frame(normalized.normalized)
         if normalized_frame.empty:
             self.normalized_equity_empty_label.setText(

@@ -1896,3 +1896,19 @@ QA05 在正常 Windows 權限、同樣 8 GiB Job／12 程序／互斥鎖下，�
 試用102另以試用100逐檔 pin 的 **18** 份狀態建獨立副本，只重綁舊推薦索引的本包路徑，將新價格研究根指向當期 `rc101`；100 原件未覆寫。狀態收據 SHA-256 `07285add39faf186251455d1016577a36f415ffddb994b4f262590c629f7752f`。QA08 對啟動器 `--check`、固定 EXE 身分及 18 份狀態前後 SHA 定向通過，結果收據 SHA-256 `c466a4b84160e48f2cd1e0b4f19ac50311d8c7b37446f0e656ef802f9da9632f`、outer SHA-256 `32f4d4aedfc9e6613397494be0d2687b4f69de840bd508a3076ea884d42163c9`。QA05／07／08 前組三 PID 陣列已空才啟下組；各組可用 RAM ≥8 GiB，Job 限額讀回、自然收束、process／Job handles 關閉及 mutex 釋放，無強制清場。修改的是本 task QA、隔離試用狀態與指南，未改產品程式；受影響 Python 腳本 `py_compile` 通過，既有未受影響的 Workbench／validator／mypy 不反覆跑。
 
 **出口判定**：本機[試用102指南](../../output/trial/Baldr-Daily-Research-102/TRIAL_GUIDE.md)與[交付收據](../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)已固定，交付收據 SHA-256 `00ca468c8a146495d963ece5ce95b4d340d1900979eac29f988f88a9d8adc029`。它解除「新版當期來源尚未經固定 EXE 正常頁雙股比較／收藏新程序讀回」的**操作試用**阻礙。來源 clock 仍 `availability_status=unknown`／`source_available_at=null`；台北 23:00 僅為成功保存批次的前瞻推算，名錄用途未接受，38 缺價與 5 UNKNOWN 隔離，歷史 PIT、正式真 N、全市場效能、真人／不同 DPI、完整 Gate 仍未接受。既有100可繼續試用；原 QA01–04 FAIL 不被後續定向 PASS 改寫。下一輪按 §0.4 推進已保存財報正常頁或完整雙策略結果，不再把此來源的更多包裝工程設成前置。
+
+<a id="increment103-saved-equity-reject"></a>
+## Increment103：已保存回測比較的權益曲線拒錯
+
+**解除的第一版 V1-04 延伸阻礙**：一般研究 Registry 的比較頁原本先列兩筆已保存績效，再標準化權益曲線。若某筆曲線的原保存日期重複或權益含非有限值，前者可生成失真的日期對照，後者可能在畫面已有績效後拋出未捕捉例外。本輪只改一般比較的讀取與呈現：以既有逐日日期契約檢查原列，逐值核有限 Decimal；任何不合格曲線都標示不可直接比較、清空舊績效／圖表，保留可查的保存條件與具體原因，不修復、補值或重算原 run。推薦完整期間 pair 與基本策略 exact pair 的來源守衛、金融公式及保存原件均未更動；此修補不授完整雙策略績效資格。
+
+進場先分流第二列：政府資料平台將[上市一般業綜合損益表](https://data.gov.tw/dataset/91998)與[資產負債表](https://data.gov.tw/dataset/94831)列為[政府資料開放授權條款第1版](https://data.gov.tw/license)資料集；已存 10/12 `twse_income_ci` HTTP receipt SHA-256 `d00038a40cdc05f2f618ae515f76a20b8be56dee8c99997d34f513f3ad0f28b9` 指向精確 `/v1/opendata/t187ap06_L_ci`。保存的 Swagger 只對 EPS 標「元」，一般金額欄沒有倍率。舊 2330／115Q2 MOPS HTML `ajax_t164sb04` SHA-256 `96635923e9b7a07baec5c45fffc8da59f1751510baa0daf47eeaeefad907badb` 表頭明示新台幣仟元且同列 H1 營收 `2,404,483,690`，可作單一原件交叉檢查，不能自動推廣成 OpenAPI 兩市場／六業別單位、完整文件鏈、歷史 PIT 或產品數值用途。故本輪沒有把財報接進正常個股數值頁，而轉向可獨立修復的第四列。
+
+| QA | 定向結果與限制 | 外層 Job 收據 SHA-256 |
+|---|---|---|
+| 01 | 改動 Python compile；比較服務與 UI **25 PASS**，Workbench **85 PASS**。沙箱的更新頁 validator 對隔離日價 fixture 目錄遭 `WinError 5`，原 **21 PASS／3 FAIL／4 SKIP** 保留，mypy 當組未啟動。原 validator 報告副本 SHA-256 `7c1b47abc745e40490f7af91df926a12a59f94029d50e2d2d92d80f8b88d7663`。 | `a954d212b75cccacb12a59e0ec2d02385354e98b435048a3da19f2f99dc563bf` |
+| 02 | 未重跑已通過的測試；正常 Windows 權限、相同受管 Job 限制及新隔離根下，validator **25 PASS／0 FAIL／4 保護性 SKIP**，八 roots mypy **1044 source files success**。通過報告副本 SHA-256 `0d308cf40e252b77e9f95674754a3b069542b779af11c998a8d028da3e7f1511`。`ui_qt.* ignore_errors=True` 不證 UI 強型別。 | `d8e4c47c272144e2070dc818946949da92fce4a5ba380ed3b8cc99f7a3717306` |
+
+兩組啟動前分別核前組三 PID 陣列為空、process／Job handles 關閉、mutex 釋放及可用 RAM≥8 GiB；Job 8 GiB committed／12 程序、kill-on-close／同 workspace mutex，終態皆自然歸零，未終止其他 owner 程序。源碼與 102 EXE 尚非同版；102 仍是固定試用包，本輪只是已驗來源候選，尚無正常 Main／fresh、固定 EXE／真人證據。正式資料、正式 Task、maintainer、push、發布或交易未動。下一步沿原 §0.4 完成第四列實際可比較的完整期間來源與保存重開；來源／幣別／成本或歷史 PIT 缺件維持具名拒比，不用單一合成案例或本次 25 PASS 當完整 Gate。
+
+文件結構檢查 QA03 在上述正文與 owner task 追加結果前，核 9 個來源 pin、12 features／33 link sources、`errors=[]`；spec SHA-256 `af7219d2d236a13a2d940136d64d725a22c0a1aa8fefceb9097b265be2d61de8`、runner 收據 SHA-256 `8bc0a216b7eab73161044e4d0d7cc28b9c54313f211140d122c87a43cfdc0b56`、outer Job SHA-256 `4f8b917e16676dcab2cb7ac29d808528aeb8b475268734bcc0807ad4680d42fe`。檢查後僅補登這些收據欄與文字；結構通過不證正文語意或產品 Gate。

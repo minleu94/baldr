@@ -493,9 +493,10 @@ class BacktestResultPanel(QWidget):
         self._result_tab_titles: dict[str, str] = {}
         self._research_mode_id = "single_stock"
 
-        context_row = QHBoxLayout()
+        context_row = QVBoxLayout()
         self.mode_context_label = QLabel()
         self.mode_context_label.setAccessibleName("目前研究模式")
+        self.mode_context_label.setWordWrap(True)
         self.mode_context_label.setToolTip("結果頁會依研究模式只保留相關工作區；不代表資料被刪除")
         self.mode_context_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_2}; "
@@ -504,12 +505,13 @@ class BacktestResultPanel(QWidget):
         )
         self.result_purpose_label = QLabel("結果目的：先看模式主結果，再用分析診斷與證據頁複核。")
         self.result_purpose_label.setAccessibleName("結果工作區目的")
+        self.result_purpose_label.setWordWrap(True)
         self.result_purpose_label.setToolTip("提示目前結果工作區的閱讀順序")
         self.result_purpose_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 12px;"
         )
         context_row.addWidget(self.mode_context_label)
-        context_row.addWidget(self.result_purpose_label, stretch=1)
+        context_row.addWidget(self.result_purpose_label)
         layout.addLayout(context_row)
         from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
         from app_module.strategy_historical_performance_read_service import StrategyHistoricalPerformanceReadService

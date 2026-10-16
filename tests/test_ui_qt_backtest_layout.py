@@ -407,12 +407,12 @@ def test_backtest_shell_keeps_controls_and_results_usable(
     qt_app.processEvents()
 
 @pytest.mark.parametrize("window_width", [900, 1024, 1280])
-def test_windowed_backtest_keeps_summary_beside_settings(
+def test_windowed_backtest_switches_full_width_settings_and_summary(
     qt_app: QApplication,
     test_config,
     window_width: int,
 ) -> None:
-    """一般視窗不把設定堆到摘要上方，設定收合後摘要仍可捲動。"""
+    """一般視窗只顯示一個完整面板，摘要與設定可往返且可捲動。"""
     host = QMainWindow()
     shell = QWidget()
     layout = QHBoxLayout(shell)
@@ -434,24 +434,30 @@ def test_windowed_backtest_keeps_summary_beside_settings(
 
     assert isinstance(view.backtest_splitter, QSplitter)
     assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
-    assert view.config_scroll.width() >= 260
-    assert view.result_panel.width() >= 400
+    assert view.config_scroll.isVisible()
+    assert not view.result_panel.isVisible()
+    assert view.config_scroll.width() >= view.width() - 30
+    assert view.config_scroll.horizontalScrollBar().maximum() == 0
+    assert view.config_panel_collapse_btn.text() == "查看實驗結果"
     assert view.result_panel.focus_result_tab("summary") is True
     summary_scroll = view.result_panel._result_tab_widgets["summary"]
     view.summary_text.setPlainText("\n".join(f"摘要第 {row} 行" for row in range(80)))
     qt_app.processEvents()
     assert summary_scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    assert view.summary_text.verticalScrollBar().maximum() > 0
 
     view._set_config_panel_collapsed(True)
     qt_app.processEvents()
     assert not view.config_scroll.isVisible()
+    assert view.result_panel.isVisible()
     assert view.result_panel.width() >= view.width() - 30
+    assert view.config_panel_expand_btn.text() == "編輯回測設定"
+    assert view.summary_text.verticalScrollBar().maximum() > 0
     view._set_config_panel_collapsed(False)
     qt_app.processEvents()
     assert view.config_scroll.isVisible()
+    assert not view.result_panel.isVisible()
     assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
-    assert view.result_panel.width() >= 400
+    assert view.config_scroll.width() >= view.width() - 30
 
     host.close()
     host.deleteLater()

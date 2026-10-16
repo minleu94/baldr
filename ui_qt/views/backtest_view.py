@@ -97,8 +97,9 @@ from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionReq
 class BacktestView(QWidget):
     """回測視圖"""
 
-    # 一般視窗寬度仍讓設定與結果並列；只有手機等極窄內容改上下流。
+    # 一般寬度並列；中等視窗一次顯示一個完整面板，極窄內容改上下流。
     RESPONSIVE_BREAKPOINT = 680
+    SINGLE_PANE_BREAKPOINT = 1150
 
     preset_service: Optional[PresetService]
     universe_service: Optional[UniverseService]
@@ -172,6 +173,7 @@ class BacktestView(QWidget):
         self.paper_checkpoint_disabled_reason = paper_checkpoint_disabled_reason
         self.research_run_service_error: str | None = None
         self._backtest_narrow: bool | None = None
+        self._backtest_single_pane: bool | None = None
 
         # 初始化新服務
         if config:
@@ -738,11 +740,12 @@ class BacktestView(QWidget):
         self._apply_responsive_layout()
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
-        """極窄內容改為上下流，一般視窗保留可收合的左右兩欄。"""
+        """中等視窗切換完整設定／結果，極窄與寬版沿既有布局。"""
         if not hasattr(self, "backtest_splitter"):
             return
         narrow = self.width() < self.RESPONSIVE_BREAKPOINT
-        if not force and narrow == self._backtest_narrow:
+        single_pane = self.RESPONSIVE_BREAKPOINT <= self.width() < self.SINGLE_PANE_BREAKPOINT
+        if not force and (narrow, single_pane) == (self._backtest_narrow, self._backtest_single_pane):
             # 同一寬度下父視窗仍可能改變高度（例如 QMainWindow fixed-size
             # 或 docking resize）；窄版要重新按當前可用高度分配，不能只靠
             # 第一次 resize 的 splitter sizes。
@@ -750,11 +753,17 @@ class BacktestView(QWidget):
                 self._set_narrow_splitter_sizes()
             return
         self._backtest_narrow = narrow
+        self._backtest_single_pane = single_pane
         self.backtest_splitter.setOrientation(
             Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
         )
         self.config_scroll.setMinimumWidth(0)
-        self.config_scroll.setMaximumWidth(16777215 if narrow else 560)
+        self.config_scroll.setMaximumWidth(16777215 if narrow or single_pane else 560)
+        self.config_scroll.setVisible(not self._config_panel_collapsed)
+        self.result_panel.setVisible(not single_pane or self._config_panel_collapsed)
+        self.config_panel_expand_btn.setVisible(self._config_panel_collapsed)
+        self.config_panel_expand_btn.setText("編輯回測設定" if single_pane else "展開左側設定")
+        self.config_panel_collapse_btn.setText("查看實驗結果" if single_pane else "收合左側設定")
         self.result_panel.setMinimumWidth(0)
         result_policy = self.result_panel.sizePolicy()
         result_policy.setHorizontalPolicy(
@@ -766,7 +775,12 @@ class BacktestView(QWidget):
             QSizePolicy.Policy.Ignored if narrow else self._result_panel_vertical_policy
         )
         self.result_panel.setSizePolicy(result_policy)
-        if self._config_panel_collapsed:
+        if single_pane:
+            self.backtest_splitter.setSizes(
+                [0, max(self.backtest_splitter.width(), 1)]
+                if self._config_panel_collapsed else [max(self.backtest_splitter.width(), 1), 0]
+            )
+        elif self._config_panel_collapsed:
             self.backtest_splitter.setSizes([0, max(self.backtest_splitter.width(), 1)])
         elif narrow:
             self._set_narrow_splitter_sizes()
@@ -808,9 +822,18 @@ class BacktestView(QWidget):
 
     def _set_config_panel_collapsed(self, collapsed: bool) -> None:
         self._config_panel_collapsed = bool(collapsed)
+        single_pane = self.RESPONSIVE_BREAKPOINT <= self.width() < self.SINGLE_PANE_BREAKPOINT
         self.config_scroll.setVisible(not self._config_panel_collapsed)
+        self.result_panel.setVisible(not single_pane or self._config_panel_collapsed)
         self.config_panel_expand_btn.setVisible(self._config_panel_collapsed)
-        if self._config_panel_collapsed:
+        self.config_panel_expand_btn.setText("編輯回測設定" if single_pane else "展開左側設定")
+        self.config_panel_collapse_btn.setText("查看實驗結果" if single_pane else "收合左側設定")
+        if single_pane:
+            self.backtest_splitter.setSizes(
+                [0, max(self.backtest_splitter.width(), 1)]
+                if self._config_panel_collapsed else [max(self.backtest_splitter.width(), 1), 0]
+            )
+        elif self._config_panel_collapsed:
             self.backtest_splitter.setSizes([0, max(self.backtest_splitter.width(), 1)])
         elif self.width() < self.RESPONSIVE_BREAKPOINT:
             result_policy = self.result_panel.sizePolicy()
@@ -819,6 +842,11 @@ class BacktestView(QWidget):
             self._set_narrow_splitter_sizes()
         else:
             self._set_horizontal_splitter_sizes()
+
+    def _show_finished_result_in_windowed_mode(self) -> None:
+        """新結果完成後，在中等視窗直接呈現摘要；設定仍可一鍵返回。"""
+        if self.RESPONSIVE_BREAKPOINT <= self.width() < self.SINGLE_PANE_BREAKPOINT:
+            self._set_config_panel_collapsed(True)
 
     def _mark_research_execution_started(self) -> None:
         """標記新一輪研究執行已開始，用於阻擋舊結果保存。"""
@@ -1263,6 +1291,7 @@ class BacktestView(QWidget):
 
         if hasattr(self, 'export_report_btn'):
             self.export_report_btn.setEnabled(True)
+        self._show_finished_result_in_windowed_mode()
 
     def _show_recommendation_portfolio_result(
         self,
@@ -1314,6 +1343,9 @@ class BacktestView(QWidget):
                 f"{child_status}\n"
                 "Benchmark 圖層不可用；讀回未重新抓取目前基準資料。"
             )
+        if hasattr(self, "result_panel"):
+            self.result_panel.focus_result_tab("recommendation")
+        self._show_finished_result_in_windowed_mode()
 
     def _plot_recommendation_portfolio_charts(
         self,
@@ -1477,7 +1509,7 @@ class BacktestView(QWidget):
         self.current_recommendation_registry_run_id = None
         self._recommendation_portfolio_result_source = "execution"
 
-        QMessageBox.information(self, "完成", "推薦組合回測完成，請查看右側「推薦組合」結果頁。")
+        QMessageBox.information(self, "完成", "推薦組合回測完成，請查看「推薦組合」結果頁。")
 
     def _on_recommendation_portfolio_error(self, error_msg: str):
         self.execute_btn.setEnabled(True)
@@ -3110,6 +3142,7 @@ class BacktestView(QWidget):
             mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
             result_panel.set_research_mode(mode, reveal_single_detail=True)
             result_panel.focus_result_tab("summary")
+        self._show_finished_result_in_windowed_mode()
 
     def _open_research_history_result(self, selected: Any) -> None:
         """lookup 已核對 exact 來源；回到既有結果呈現，不重跑或借另一份結果。"""
@@ -4509,6 +4542,7 @@ class BacktestView(QWidget):
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None and hasattr(result_panel, "focus_result_tab"):
             result_panel.focus_result_tab("batch")
+        self._show_finished_result_in_windowed_mode()
 
         if hasattr(self, 'export_batch_report_btn'):
             self.export_batch_report_btn.setEnabled(True)
@@ -4746,6 +4780,7 @@ class BacktestView(QWidget):
             mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
             result_panel.set_research_mode(mode, reveal_single_detail=True)
             result_panel.focus_result_tab("summary")
+        self._show_finished_result_in_windowed_mode()
 
     def _show_trades_table_context_menu(self, pos):
         """顯示交易明細表格的右鍵選單"""

@@ -176,6 +176,24 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in v2_rule_sources
         })
+    p07_rule_sources = (
+        "decision_module/strategies/baldr_bollinger_executor.py",
+        "decision_module/strategies/baldr_bollinger_contract.py",
+        "decision_module/strategies/baldr_w_bottom_executor.py",
+        "decision_module/strategies/baldr_w_bottom_contract.py",
+        "analysis_module/pattern_analysis/causal_w_bottom.py",
+        "analysis_module/technical_analysis/technical_date_support.py",
+        "backtest_module/conservative_fill_policy.py",
+        "financial_module/units.py",
+    )
+    declared_p07 = [relative in declared_sources for relative in p07_rule_sources]
+    if any(declared_p07):
+        if not all(declared_p07) or not all((source / relative).is_file() for relative in p07_rule_sources):
+            raise ValueError("P07 研究策略原始來源宣告與檔案必須完整八檔")
+        resource_hashes.update({
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in p07_rule_sources
+        })
     return {
         "schema": "baldr-application-build.v1",
         "version": f"2026.10.06+{commit[:12]}", "source_commit": commit,

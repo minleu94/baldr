@@ -65,6 +65,40 @@ def test_metadata_binds_source_dependency_and_resources(tmp_path):
     assert value["resource_sha256"] == {"ui_qt/app_icon.png": hashlib.sha256(b"known-fixture").hexdigest()}
 
 
+def test_p07_packaged_source_manifest_is_complete_and_bound(tmp_path):
+    sources = (
+        "decision_module/strategies/baldr_bollinger_executor.py",
+        "decision_module/strategies/baldr_bollinger_contract.py",
+        "decision_module/strategies/baldr_w_bottom_executor.py",
+        "decision_module/strategies/baldr_w_bottom_contract.py",
+        "analysis_module/pattern_analysis/causal_w_bottom.py",
+        "analysis_module/technical_analysis/technical_date_support.py",
+        "backtest_module/conservative_fill_policy.py",
+        "financial_module/units.py",
+    )
+    spec = tmp_path / "packaging" / "baldr.spec"
+    spec.parent.mkdir()
+    spec.write_text("for relative_source in " + repr(sources) + ":\n    pass\n", encoding="utf-8")
+    for relative in sources:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(relative.encode("utf-8"))
+
+    metadata = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    assert {relative: hashlib.sha256(relative.encode("utf-8")).hexdigest() for relative in sources} == {
+        relative: metadata["resource_sha256"][relative] for relative in sources
+    }
+
+    missing = tmp_path / sources[-1]
+    missing.unlink()
+    with pytest.raises(ValueError, match="P07.*完整八檔"):
+        provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    missing.write_bytes(b"restored")
+    spec.write_text("for relative_source in " + repr(sources[:-1]) + ":\n    pass\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="P07.*完整八檔"):
+        provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+
+
 def test_modified_or_extra_python_source_cannot_pass_fixed_archive_verification(tmp_path):
     archive = tmp_path / "source.zip"
     with zipfile.ZipFile(archive, "w") as stream:

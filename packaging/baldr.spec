@@ -28,6 +28,14 @@ for relative_source in (
     'decision_module/strategies/stable_conservative_executor.py',
     'decision_module/strategies/momentum_aggressive_executor.py',
     'ui_qt/views/backtest/research_run_metadata.py',
+    'decision_module/strategies/baldr_bollinger_executor.py',
+    'decision_module/strategies/baldr_bollinger_contract.py',
+    'decision_module/strategies/baldr_w_bottom_executor.py',
+    'decision_module/strategies/baldr_w_bottom_contract.py',
+    'analysis_module/pattern_analysis/causal_w_bottom.py',
+    'analysis_module/technical_analysis/technical_date_support.py',
+    'backtest_module/conservative_fill_policy.py',
+    'financial_module/units.py',
 ):
     source = root / relative_source
     if not source.is_file():

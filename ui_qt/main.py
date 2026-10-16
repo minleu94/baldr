@@ -1,4 +1,4 @@
-﻿"""
+"""
 PySide6 主應用程式
 """
 
@@ -62,7 +62,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QMainWindow,
-    QStatusBar,
     QTabWidget,
     QMessageBox,
     QLabel,
@@ -100,8 +99,6 @@ from app_module.portfolio_condition_monitor import PortfolioConditionMonitor
 from app_module.portfolio_chip_service import PortfolioChipService
 from app_module.update_service import UpdateService
 from app_module.backtest_service import BacktestService
-from app_module.batch_backtest_service import BatchBacktestService
-from app_module.watchlist_service import WatchlistService
 from app_module.universe_service import UniverseService
 from app_module.research_session import (
     ResearchSessionStore,

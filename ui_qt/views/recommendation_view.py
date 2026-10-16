@@ -4121,6 +4121,8 @@ class RecommendationView(QWidget):
         self.personal_policy_history_combo.currentTextChanged.connect(
             self._update_personal_policy_history_accessibility
         )
+        # 兩個 host 掛入同一個 group 後才能建立跨 host 的 Tab 順序。
+        personal_policy_layout.addLayout(history_row)
         QWidget.setTabOrder(
             self.personal_policy_history_combo,
             self.personal_policy_history_refresh_button,
@@ -4129,7 +4131,6 @@ class RecommendationView(QWidget):
             self.personal_policy_history_refresh_button,
             self.personal_policy_rollback_button,
         )
-        personal_policy_layout.addLayout(history_row)
         self.personal_policy_history_status_label = QLabel(
             "歷史設定只會由已知封存目錄逐筆驗證；回退會建立新版本。"
         )

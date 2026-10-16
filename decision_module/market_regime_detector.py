@@ -302,7 +302,8 @@ class MarketRegimeDetector:
                 ], axis=1).max(axis=1)
                 atr = tr.rolling(window=14, min_periods=1).mean()
             else:
-                price_change = abs(close.pct_change())
+                # close 已在上方填補；明示不依賴 pandas 已棄用的隱式 pad。
+                price_change = abs(close.pct_change(fill_method=None))
                 atr = price_change.rolling(window=14, min_periods=1).mean() * close
             
             # 計算 MA20 斜率（使用線性回歸）

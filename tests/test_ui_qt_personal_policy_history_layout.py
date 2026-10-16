@@ -7,7 +7,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt, qInstallMessageHandler
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QBoxLayout
 
@@ -49,6 +49,27 @@ def _new_view() -> RecommendationView:
     )
 
 
+def test_history_controls_initialize_without_cross_window_tab_order_warning() -> None:
+    app = _app()
+    messages: list[str] = []
+    previous = qInstallMessageHandler(lambda _kind, _context, message: messages.append(message))
+    view = None
+    try:
+        view = _new_view()
+        app.processEvents()
+        assert view.personal_policy_history_combo.window() is view
+        assert view.personal_policy_history_refresh_button.window() is view
+        assert view.personal_policy_rollback_button.window() is view
+    finally:
+        if view is not None:
+            view.close()
+            view.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
+        qInstallMessageHandler(previous)
+    assert not [message for message in messages if "setTabOrder" in message]
+
+
 def _assert_history_controls_fit(view: RecommendationView) -> None:
     controls = (
         view.personal_policy_history_label,
@@ -72,7 +93,7 @@ def _assert_history_controls_fit(view: RecommendationView) -> None:
     )
 
 
-def test_personal_policy_history_row_responds_to_left_pane_geometry() -> None:
+def test_personal_policy_history_row_responds_to_its_result_pane_geometry() -> None:
     app = _app()
     view = _new_view()
     full_version_label = (
@@ -87,15 +108,16 @@ def test_personal_policy_history_row_responds_to_left_pane_geometry() -> None:
 
     try:
         app.processEvents()
-        view.main_splitter.setSizes([420, 1200])
+        assert view.result_scroll.isAncestorOf(view.personal_policy_group)
+        view.main_splitter.setSizes([1400, 420])
         view._apply_responsive_layout(force=True)
         app.processEvents()
-        view.config_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
+        view.result_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
         app.processEvents()
 
-        # 右側很寬、左側設定欄仍窄時，歷史選擇與按鈕不得沿用右側寬度。
-        assert view.result_scroll.viewport().width() >= 900
-        assert view.config_scroll.viewport().width() < 560
+        # 歷史控制項位於右側；左側很寬時仍須按自己的窄 viewport 排列。
+        assert view.config_scroll.viewport().width() >= 900
+        assert view.result_scroll.viewport().width() < 560
         assert view.personal_policy_history_row.direction() == (
             QBoxLayout.Direction.TopToBottom
         )
@@ -111,7 +133,8 @@ def test_personal_policy_history_row_responds_to_left_pane_geometry() -> None:
         rollback_rect = view.personal_policy_rollback_button.geometry()
         assert refresh_rect.bottom() < rollback_rect.top()
         assert not refresh_rect.intersects(rollback_rect)
-        history_parent = view.personal_policy_history_combo.parentWidget()
+        # mapTo 的目標須為各控制項的共同祖先，不能使用 selector 的兄弟 host。
+        history_parent = view.personal_policy_group
         label_top = view.personal_policy_history_label.mapTo(
             history_parent, QPoint(0, 0)
         ).y()
@@ -136,11 +159,12 @@ def test_personal_policy_history_row_responds_to_left_pane_geometry() -> None:
         QTest.keyClick(view.personal_policy_history_refresh_button, Qt.Key.Key_Tab)
         assert app.focusWidget() is view.personal_policy_rollback_button
 
-        # 左側使用者拖寬後恢復原本同行配置。
-        view.main_splitter.setSizes([760, 1150])
+        # 使用者拖寬結果欄後恢復同行配置，左側維持窄版以驗證來源正確。
+        view.main_splitter.setSizes([420, 1400])
         view._apply_responsive_layout(force=True)
         app.processEvents()
-        assert view.config_scroll.viewport().width() >= 560
+        assert view.result_scroll.viewport().width() >= 900
+        assert view.config_scroll.viewport().width() < 560
         assert view.personal_policy_history_row.direction() == (
             QBoxLayout.Direction.LeftToRight
         )
@@ -164,7 +188,7 @@ def test_personal_policy_history_row_responds_to_left_pane_geometry() -> None:
 
         view.resize(390, 844)
         app.processEvents()
-        view.config_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
+        view.result_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
         app.processEvents()
         assert view.personal_policy_history_row.direction() == (
             QBoxLayout.Direction.TopToBottom

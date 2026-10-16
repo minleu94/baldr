@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from weakref import ReferenceType, ref
 
-from PySide6.QtCore import QEvent, QObject, QRect, QTimer, Qt, Slot
+from PySide6.QtCore import QEvent, QMetaObject, QObject, QRect, QTimer, Qt, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -237,10 +237,8 @@ class _VisibleRowsState:
         self._last_hscroll_visible: bool | None = None
         self._connected_model_ref: ReferenceType[QObject] | None = None
         self._connected_model_key: int | None = None
-        self._model_connections: list[tuple[str, object]] = []
-        self._view_signal_connections: list[
-            tuple[ReferenceType[QObject], str, object]
-        ] = []
+        self._model_connections: list[QMetaObject.Connection] = []
+        self._view_signal_connections: list[QMetaObject.Connection] = []
         self._layout_callback = self._weak_callback("_on_layout_metrics_changed")
         self._horizontal_range_callback = self._weak_callback(
             "_on_horizontal_range_changed"
@@ -340,59 +338,25 @@ class _VisibleRowsState:
             signal = getattr(owner, signal_name, None)
             if signal is None:
                 return
-            signal.connect(callback, connection_type)
-            self._view_signal_connections.append((ref(owner), signal_name, callback))
+            connection = signal.connect(callback, connection_type)
+            self._view_signal_connections.append(connection)
         except (RuntimeError, TypeError):
             return
 
-    def _disconnect_signals(
-        self,
-        connections: list[tuple[ReferenceType[QObject], str, object]],
-        view: QAbstractItemView | None = None,
-    ) -> None:
-        fallback_owners: list[QObject] = []
-        if view is not None:
-            fallback_owners.append(view)
-            for owner_name in (
-                "horizontalScrollBar",
-                "verticalHeader",
-                "horizontalHeader",
-            ):
-                try:
-                    getter = getattr(view, owner_name, None)
-                    owner = getter() if callable(getter) else None
-                    if owner is not None:
-                        fallback_owners.append(owner)
-                except (AttributeError, RuntimeError):
-                    continue
-        for owner_ref, signal_name, callback in connections:
-            owner = owner_ref()
-            if owner is not None:
-                try:
-                    getattr(owner, signal_name, None)
-                except RuntimeError:
-                    owner = None
-            owners = (owner,) if owner is not None else tuple(fallback_owners)
-            for candidate in owners:
-                try:
-                    signal = getattr(candidate, signal_name, None)
-                    if signal is not None:
-                        signal.disconnect(callback)
-                except (RuntimeError, TypeError):
-                    continue
+    @staticmethod
+    def _disconnect_signals(connections: list[QMetaObject.Connection]) -> None:
+        # 精確清理自己的連線；Qt 已移除的 handle 會回 False，不重找 callable。
+        pending = tuple(connections)
         connections.clear()
+        for connection in pending:
+            try:
+                QObject.disconnect(connection)
+            except (RuntimeError, TypeError):
+                # QApplication 或 sender 可能已完成 C++ 端銷毀。
+                continue
 
     def _disconnect_model_signals(self) -> None:
-        model = self._connected_model
-        if model is not None:
-            for signal_name, callback in self._model_connections:
-                try:
-                    signal = getattr(model, signal_name, None)
-                    if signal is not None:
-                        signal.disconnect(callback)
-                except (RuntimeError, TypeError):
-                    continue
-        self._model_connections.clear()
+        self._disconnect_signals(self._model_connections)
         self._connected_model_ref = None
         self._connected_model_key = None
 
@@ -424,17 +388,16 @@ class _VisibleRowsState:
             try:
                 signal = getattr(model, signal_name, None)
                 if signal is not None:
-                    signal.connect(model_callback)
-                    self._model_connections.append((signal_name, model_callback))
+                    self._model_connections.append(signal.connect(model_callback))
             except (RuntimeError, TypeError):
                 # Qt 可能在 UI 正切換 model 時銷毀上一個 C++ model。
                 continue
         destroyed_callback = self._weak_model_destroyed_callback(model_key)
         try:
-            model.destroyed.connect(
+            connection = model.destroyed.connect(
                 destroyed_callback, Qt.ConnectionType.DirectConnection
             )
-            self._model_connections.append(("destroyed", destroyed_callback))
+            self._model_connections.append(connection)
         except (RuntimeError, TypeError):
             pass
         return True
@@ -543,16 +506,6 @@ class _VisibleRowsState:
             self.dispose()
 
     def _on_view_destroyed(self, *_args: object) -> None:
-        # 此時 sender 正發送 destroyed；Qt 可能已移除該連線，勿在清理時再斷一次。
-        destroyed_callback = self._destroyed_callback
-        self._view_signal_connections = [
-            connection
-            for connection in self._view_signal_connections
-            if not (
-                connection[1] == "destroyed"
-                and connection[2] is destroyed_callback
-            )
-        ]
         self.dispose()
 
     def dispose(self, view_hint: QObject | None = None) -> None:
@@ -577,7 +530,7 @@ class _VisibleRowsState:
                 pass
 
         self._disconnect_model_signals()
-        self._disconnect_signals(self._view_signal_connections, view)
+        self._disconnect_signals(self._view_signal_connections)
         self._view_ref = None
         self._dispatcher_ref = None
         self._layout_callback = lambda *_args: None

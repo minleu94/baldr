@@ -316,6 +316,34 @@ def test_model_replacement_disconnects_old_model_and_keeps_new_model_resize_reac
         app.processEvents()
 
 
+def test_model_cleanup_handles_removed_connection_and_preserves_other_receivers():
+    app = _app()
+    view = QTableView()
+    model = QStandardItemModel(6, 2, app)
+    inserted: list[int] = []
+    model.rowsInserted.connect(lambda *_args: inserted.append(1))
+    try:
+        view.setModel(model)
+        ensure_visible_rows(view, 5)
+        state = getattr(view, "_layout_helpers_visible_rows_controller")
+        # Qt 或其他 owner 可能已移除部分連線；helper 清理仍須精確且可重複。
+        model.modelReset.disconnect()
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always", RuntimeWarning)
+            state.dispose()
+            state.dispose()
+            app.processEvents()
+        assert state.disposed
+        assert not [warning for warning in captured if issubclass(warning.category, RuntimeWarning)]
+        model.insertRow(0)
+        assert inserted == [1]
+    finally:
+        view.deleteLater()
+        model.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+
+
 def test_scroll_area_preserves_content_minimum_without_freezing_large_viewport_growth():
     app = _app()
     content = QWidget()

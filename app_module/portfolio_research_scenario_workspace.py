@@ -90,10 +90,12 @@ class PortfolioResearchScenarioWorkspace:
                                                          account_namespace=account_namespace, cancel_callback=cancel_callback)
 
     def compare_initial(self, selection: InitialPortfolioResearchSelection, *, candidate_symbols: tuple[str, ...],
+                        use_all_account_positions: bool = False,
                         explicit_weights: AllocationWeightContract | None = None, cancel_callback=None) -> PortfolioResearchScenarioComparison:
         if self.initial_source_provider is None:
             raise ValueError("尚未配置策略帳與 Health 來源 reader")
         return self.initial_source_provider.compare(selection, candidate_symbols=candidate_symbols,
+                                                   use_all_account_positions=use_all_account_positions,
                                                    explicit_weights=explicit_weights, cancel_callback=cancel_callback)
 
     def save_initial(self, selection: InitialPortfolioResearchSelection, comparison: PortfolioResearchScenarioComparison, *,

@@ -137,9 +137,12 @@ class PortfolioResearchInitialSourceProvider:
         )
 
     def compare(self, selection: InitialPortfolioResearchSelection, *, candidate_symbols: tuple[str, ...],
+                use_all_account_positions: bool = False,
                 explicit_weights: AllocationWeightContract | None = None,
                 decision_at: datetime | None = None,
                 cancel_callback: Callable[[], bool] | None = None) -> PortfolioResearchScenarioComparison:
+        if type(use_all_account_positions) is not bool or (use_all_account_positions and candidate_symbols):
+            raise ValueError("全部持股模式不可同時指定手動候選股票")
         _cancel(cancel_callback)
         now = datetime.now(timezone.utc)
         checkpoint = selection.checkpoint
@@ -182,6 +185,11 @@ class PortfolioResearchInitialSourceProvider:
         source = saved.source
         if source.weekly_turnover_used_bp > 10000:
             raise ValueError("已核週換手超過目前配置契約上限，未裁切數值")
+        if use_all_account_positions:
+            # 只由本次 exact checkpoint 取股號；不從目前手動帳或全域最新清單補來源。
+            candidate_symbols = tuple(sorted(row.stock_code for row in source.account.positions))
+            if not candidate_symbols:
+                raise ValueError("所選帳本沒有持股，不能建立全部持股研究情境")
         required = set(candidate_symbols) | {row.stock_code for row in source.account.positions}
         marks = {row.stock_code: row for row in source.mark_prices}
         entries = dict(source.entry_lineage_ids)

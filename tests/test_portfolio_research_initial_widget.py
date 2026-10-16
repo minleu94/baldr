@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+from dataclasses import replace
 from datetime import timedelta
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -23,6 +24,7 @@ from app_module.portfolio_research_scenario_repository import (
     SavedPortfolioResearchScenario,
 )
 from app_module.portfolio_research_scenario_service import PortfolioResearchScenarioComparison
+from app_module.portfolio_research_scenario_service import PortfolioResearchScenarioService
 from app_module.portfolio_research_scenario_workspace import PortfolioResearchScenarioWorkspace
 from test_portfolio_research_scenario_repository import _comparison
 from test_portfolio_research_scenario_widget import _SAVED_AT, _app, _open_exact, _seed_workspace, _wait_until
@@ -121,10 +123,11 @@ class _InitialWorkspace:
         selection: InitialPortfolioResearchSelection,
         *,
         candidate_symbols: tuple[str, ...],
+        use_all_account_positions: bool = False,
         explicit_weights=None,
         cancel_callback=None,
     ) -> PortfolioResearchScenarioComparison:
-        self.compare_calls.append((selection, candidate_symbols, explicit_weights))
+        self.compare_calls.append((selection, candidate_symbols, use_all_account_positions, explicit_weights))
         if selection != self.selection or explicit_weights is not None:
             raise ValueError("初次比較輸入身分不符")
         if self.delay_compare:
@@ -134,11 +137,22 @@ class _InitialWorkspace:
                     raise InterruptedError("初次比較已取消")
         if cancel_callback is not None and cancel_callback():
             raise InterruptedError("初次比較已取消")
-        return _comparison(
+        comparison = _comparison(
             kind="paper",
             account_id=selection.checkpoint.account_namespace,
             explicit=False,
         )
+        if not use_all_account_positions:
+            return comparison
+        assert candidate_symbols == ()
+        class ExactAccount:
+            def read_exact(self, **_kwargs):
+                return comparison.account
+        request = replace(
+            comparison.request, candidate_symbols=("2330",),
+            contexts=tuple(row for row in comparison.request.contexts if row.context.stock_code == "2330"),
+        )
+        return PortfolioResearchScenarioService(ExactAccount()).compare(request)
 
     def save_initial(
         self,
@@ -223,7 +237,7 @@ def test_initial_compare_save_returns_to_exact_saved_target_and_stock_flow(tmp_p
     initial_preview = widget.current_comparison
     assert initial_preview is not None
     assert widget.current_artifact_id == ""
-    assert workspace.compare_calls == [(selection, ("2382", "2330"), None)]
+    assert workspace.compare_calls == [(selection, ("2382", "2330"), False, None)]
     assert widget.restore_artifact(old_saved.artifact_id, "2330") is False
     widget.scenario_table.selectRow(0)
     assert widget.stock_research_button.isEnabled() is False
@@ -289,6 +303,35 @@ def test_initial_compare_save_returns_to_exact_saved_target_and_stock_flow(tmp_p
         lambda: not widget.has_running_worker() and widget.current_artifact_id == target_artifact_id,
     )
     assert widget.current_comparison == target_preview
+    widget.close()
+
+
+def test_initial_all_held_choice_saves_exact_account_positions_without_typed_code(tmp_path) -> None:
+    app = _app()
+    _, repository, base, _saved = _seed_workspace(tmp_path)
+    selection = _initial_selection()
+    workspace = _InitialWorkspace(base, selection)
+    widget = PortfolioResearchScenarioWidget(workspace)
+    _fill_initial_controls(app, widget, selection)
+    widget.initial_candidate_symbols_edit.clear()
+    assert widget.initial_compare_button.isEnabled() is False
+    widget.initial_use_account_positions_check.setChecked(True)
+    assert widget.initial_candidate_symbols_edit.isEnabled() is False
+    assert widget.initial_compare_button.isEnabled()
+    widget.initial_compare_button.click()
+    _wait_until(app, lambda: not widget.has_running_worker() and widget.current_comparison is not None)
+    assert workspace.compare_calls == [(selection, (), True, None)]
+    comparison = widget.current_comparison
+    assert comparison is not None
+    assert comparison.request.candidate_symbols == ("2330",)
+    assert widget.initial_save_button.isEnabled()
+    widget.initial_save_button.click()
+    _wait_until(app, lambda: not widget.has_running_worker() and bool(widget.current_artifact_id))
+    saved = repository.get_exact(
+        widget.current_artifact_id, account_kind="paper", portfolio_id="account-a",
+    )
+    assert saved is not None
+    assert saved.comparison == comparison
     widget.close()
 
 

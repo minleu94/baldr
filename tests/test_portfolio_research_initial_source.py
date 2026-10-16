@@ -119,6 +119,24 @@ def test_initial_compare_save_and_exact_reopen_preserve_original_account(tmp_pat
     assert {path: path.read_bytes() for path in originals} == originals
 
 
+def test_initial_all_account_positions_uses_only_exact_held_symbols(tmp_path, monkeypatch):
+    _case, selection, workspace = _initial_case(tmp_path, monkeypatch)
+    comparison = workspace.compare_initial(
+        selection, candidate_symbols=(), use_all_account_positions=True,
+    )
+    assert comparison.request.candidate_symbols == ("2330",)
+    assert {row.context.stock_code for row in comparison.request.contexts} == {"2330"}
+    saved = workspace.save_initial(selection, comparison)
+    assert workspace.open_exact(
+        saved.artifact_id, account_kind="paper",
+        portfolio_id=selection.checkpoint.account_namespace,
+    ).comparison == comparison
+    with pytest.raises(ValueError, match="不可同時指定"):
+        workspace.compare_initial(
+            selection, candidate_symbols=("2330",), use_all_account_positions=True,
+        )
+
+
 def test_initial_list_excludes_health_saved_after_its_decision_day(tmp_path, monkeypatch):
     _case, selection, workspace = _initial_case(tmp_path, monkeypatch)
     now = datetime.now(timezone.utc)
@@ -171,6 +189,8 @@ def test_initial_missing_health_stays_unavailable_and_unheld_candidate_not_fabri
     assert workspace.list_saved(account_kind="paper", portfolio_id=selection.checkpoint.account_namespace) == ()
     with pytest.raises(ValueError, match="不能補造未持有候選"):
         workspace.compare_initial(selection, candidate_symbols=("1111",))
+    with pytest.raises(ValueError, match="Health 來源缺件"):
+        workspace.compare_initial(selection, candidate_symbols=(), use_all_account_positions=True)
 
 
 def test_initial_cancel_and_forged_preview_do_not_append(tmp_path, monkeypatch):

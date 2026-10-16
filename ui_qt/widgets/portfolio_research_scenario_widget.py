@@ -8,6 +8,7 @@ from typing import Any
 from PySide6.QtCore import QSignalBlocker, Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -149,7 +150,15 @@ class PortfolioResearchScenarioWidget(QWidget):
         self.initial_candidate_symbols_edit = QLineEdit(initial_group)
         self.initial_candidate_symbols_edit.setPlaceholderText("輸入原帳本已持有且有同源 Health／行情的股票")
         self.initial_candidate_symbols_edit.textChanged.connect(self._on_initial_candidates_changed)
-        initial_layout.addRow("步驟 3｜候選股票代碼", self.initial_candidate_symbols_edit)
+        candidate_controls = QHBoxLayout()
+        self.initial_use_account_positions_check = QCheckBox("使用所選帳本全部持股", initial_group)
+        self.initial_use_account_positions_check.setToolTip(
+            "比較時從所選 exact checkpoint 帶入持股；每檔仍須通過同日 Health 與行情核驗。"
+        )
+        self.initial_use_account_positions_check.toggled.connect(self._on_initial_use_account_positions_changed)
+        candidate_controls.addWidget(self.initial_use_account_positions_check)
+        candidate_controls.addWidget(self.initial_candidate_symbols_edit, 1)
+        initial_layout.addRow("步驟 3｜候選股票", candidate_controls)
         initial_buttons = QHBoxLayout()
         self.initial_compare_button = QPushButton("比較初次研究情境", initial_group)
         self.initial_compare_button.clicked.connect(self.compare_initial)
@@ -159,7 +168,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         initial_buttons.addWidget(self.initial_save_button)
         initial_layout.addRow("步驟 4／5｜比較、保存", initial_buttons)
         self.initial_sources_status_label = QLabel(
-            "未載入成對來源；請明確選擇策略、版本、帳本 namespace 與股票代碼。",
+            "未載入成對來源；請明確選擇策略、版本與帳本 namespace，再選全部持股或輸入股票代碼。",
             initial_group,
         )
         self.initial_sources_status_label.setWordWrap(True)
@@ -345,7 +354,7 @@ class PortfolioResearchScenarioWidget(QWidget):
             return
         if symbols is None:
             self.initial_sources_status_label.setText(
-                "請輸入至少一個不重複的股票代碼；多檔以逗號分隔。"
+                "請勾選所選帳本全部持股，或輸入至少一個不重複的股票代碼；多檔以逗號分隔。"
             )
             return
         if self.workspace is None or not bool(getattr(self.workspace, "can_create_initial", False)):
@@ -364,7 +373,7 @@ class PortfolioResearchScenarioWidget(QWidget):
         self._initial_preview_symbols = ()
         self._clear_artifact_ids()
         self._clear_display()
-        self._queue("initial_compare", (selection, symbols))
+        self._queue("initial_compare", (selection, symbols, self.initial_use_account_positions_check.isChecked()))
 
     def save_initial(self) -> None:
         if self._is_save_action(self._worker_action):
@@ -593,6 +602,8 @@ class PortfolioResearchScenarioWidget(QWidget):
         return selection
 
     def _initial_candidate_symbols(self) -> tuple[str, ...] | None:
+        if self.initial_use_account_positions_check.isChecked():
+            return ()
         text = self.initial_candidate_symbols_edit.text().strip()
         symbols = tuple(item for item in re.split(r"[,，;；\s]+", text) if item)
         if not symbols or len(set(symbols)) != len(symbols):
@@ -681,6 +692,10 @@ class PortfolioResearchScenarioWidget(QWidget):
             "候選股票已變更；請重新比較初次研究情境。"
         )
         self._sync_enabled()
+
+    @Slot(bool)
+    def _on_initial_use_account_positions_changed(self, _checked: bool) -> None:
+        self._on_initial_candidates_changed()
 
     @Slot(int)
     def _on_initial_source_changed(self, *_args: Any) -> None:
@@ -835,12 +850,13 @@ class PortfolioResearchScenarioWidget(QWidget):
             task = TaskWorker(_list_initial_accounts_task, self.workspace)
             self.initial_sources_status_label.setText("正在只讀找出已核策略帳……")
         elif action == "initial_compare":
-            selection, candidate_symbols = args
+            selection, candidate_symbols, use_all_account_positions = args
             task = TaskWorker(
                 _compare_initial_task,
                 self.workspace,
                 selection,
                 candidate_symbols,
+                use_all_account_positions,
             )
             self.initial_sources_status_label.setText("正在依選定的策略與 Health 原件進行初次比較……")
         elif action == "initial_save":
@@ -984,7 +1000,7 @@ class PortfolioResearchScenarioWidget(QWidget):
             )
             self.initial_sources_status_label.setText(
                 f"已載入 {len(candidates)} 組同來源候選{truncation}{late}；"
-                "請明選一組，並輸入原帳本已持有且有同源 Health／行情的股票。"
+                "請明選一組，再勾選所選帳本全部持股，或輸入有同源 Health／行情的持股代碼。"
                 if candidates else
                 f"沒有可用的成對來源候選{truncation}{late}；未選取或套用其他來源。"
             )
@@ -1047,6 +1063,10 @@ class PortfolioResearchScenarioWidget(QWidget):
             selection = self._selected_initial_selection()
             symbols = self._initial_candidate_symbols()
             checkpoint = selection.checkpoint if selection is not None else None
+            expected_symbols = (
+                tuple(sorted(position.stock_code for position in value.account.positions))
+                if symbols == () else symbols
+            )
             if (
                 selection is None
                 or symbols is None
@@ -1057,8 +1077,9 @@ class PortfolioResearchScenarioWidget(QWidget):
                 or value.request.account_kind != "paper"
                 or value.request.portfolio_id != checkpoint.account_namespace
                 or value.request.snapshot_id != checkpoint.snapshot_id
-                or set(value.request.candidate_symbols) != set(symbols)
-                or len(value.request.candidate_symbols) != len(symbols)
+                or not expected_symbols
+                or set(value.request.candidate_symbols) != set(expected_symbols)
+                or len(value.request.candidate_symbols) != len(expected_symbols)
             ):
                 self.initial_sources_status_label.setText(
                     "初次比較結果與目前來源 namespace 或候選股票不一致；未套用。"
@@ -1489,6 +1510,11 @@ class PortfolioResearchScenarioWidget(QWidget):
             can_create_initial and not locked and not self._closing
         )
         self.initial_candidate_symbols_edit.setEnabled(
+            can_create_initial and initial_selection
+            and not self.initial_use_account_positions_check.isChecked()
+            and not locked and not self._closing
+        )
+        self.initial_use_account_positions_check.setEnabled(
             can_create_initial and initial_selection and not locked and not self._closing
         )
         self.initial_compare_button.setEnabled(
@@ -1613,11 +1639,13 @@ def _compare_initial_task(
     workspace: PortfolioResearchScenarioWorkspace,
     selection: InitialPortfolioResearchSelection,
     candidate_symbols: tuple[str, ...],
+    use_all_account_positions: bool,
     cancel_callback=None,
 ) -> PortfolioResearchScenarioComparison:
     return workspace.compare_initial(
         selection,
         candidate_symbols=candidate_symbols,
+        use_all_account_positions=use_all_account_positions,
         explicit_weights=None,
         cancel_callback=cancel_callback,
     )

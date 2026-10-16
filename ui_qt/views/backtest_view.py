@@ -97,8 +97,8 @@ from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionReq
 class BacktestView(QWidget):
     """回測視圖"""
 
-    # 1366px 視窗扣除導覽仍可左右並列；更窄時才改上下流。
-    RESPONSIVE_BREAKPOINT = 1150
+    # 一般視窗寬度仍讓設定與結果並列；只有手機等極窄內容改上下流。
+    RESPONSIVE_BREAKPOINT = 680
 
     preset_service: Optional[PresetService]
     universe_service: Optional[UniverseService]
@@ -705,6 +705,7 @@ class BacktestView(QWidget):
         # 流時若仍採 Preferred，QSplitter 會把可捲動的設定區壓到幾十像素。
         # 垂直方向交由 splitter 分配，避免 child sizeHint 霸佔 viewport。
         self._result_panel_vertical_policy = self.result_panel.sizePolicy().verticalPolicy()
+        self._result_panel_horizontal_policy = self.result_panel.sizePolicy().horizontalPolicy()
         splitter.addWidget(self.result_panel)
 
         # 設置 Splitter 比例：左側預設吃下完整設定表單，額外空間優先給結果區。
@@ -737,7 +738,7 @@ class BacktestView(QWidget):
         self._apply_responsive_layout()
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
-        """窄版將設定與結果改為上下流，維持 Research Lab context 可見。"""
+        """極窄內容改為上下流，一般視窗保留可收合的左右兩欄。"""
         if not hasattr(self, "backtest_splitter"):
             return
         narrow = self.width() < self.RESPONSIVE_BREAKPOINT
@@ -756,6 +757,11 @@ class BacktestView(QWidget):
         self.config_scroll.setMaximumWidth(16777215 if narrow else 560)
         self.result_panel.setMinimumWidth(0)
         result_policy = self.result_panel.sizePolicy()
+        result_policy.setHorizontalPolicy(
+            QSizePolicy.Policy.Ignored
+            if not narrow and self.width() < 1150
+            else self._result_panel_horizontal_policy
+        )
         result_policy.setVerticalPolicy(
             QSizePolicy.Policy.Ignored if narrow else self._result_panel_vertical_policy
         )
@@ -765,9 +771,16 @@ class BacktestView(QWidget):
         elif narrow:
             self._set_narrow_splitter_sizes()
         else:
-            available = max(self.backtest_splitter.width() - self.backtest_splitter.handleWidth(), 1)
+            self._set_horizontal_splitter_sizes()
+
+    def _set_horizontal_splitter_sizes(self) -> None:
+        """中等寬度先保住結果；設定欄可水平捲動或由使用者收合。"""
+        available = max(self.backtest_splitter.width() - self.backtest_splitter.handleWidth(), 1)
+        if available < 1150:
+            config_width = min(400, max(260, int(available * 0.39)))
+        else:
             config_width = min(560, max(520, int(available * 0.46)))
-            self.backtest_splitter.setSizes([config_width, max(available - config_width, 1)])
+        self.backtest_splitter.setSizes([config_width, max(available - config_width, 1)])
 
     def _set_narrow_splitter_sizes(self) -> None:
         """依目前 viewport 高度分配窄版上下區，保留兩邊可操作的最低空間。"""
@@ -805,7 +818,7 @@ class BacktestView(QWidget):
             self.result_panel.setSizePolicy(result_policy)
             self._set_narrow_splitter_sizes()
         else:
-            self.backtest_splitter.setSizes([560, max(self.backtest_splitter.width() - 560, 780)])
+            self._set_horizontal_splitter_sizes()
 
     def _mark_research_execution_started(self) -> None:
         """標記新一輪研究執行已開始，用於阻擋舊結果保存。"""

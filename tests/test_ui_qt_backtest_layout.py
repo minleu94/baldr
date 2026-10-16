@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QScrollArea,
+    QSplitter,
     QTableView,
     QTableWidget,
     QTabWidget,
@@ -279,6 +280,7 @@ def test_backtest_shell_keeps_controls_and_results_usable(
     host.show()
     qt_app.processEvents()
 
+
     assert host.size().width() == window_size[0]
     assert host.size().height() == window_size[1]
     assert view.width() == window_size[0] - navigation_width
@@ -403,6 +405,59 @@ def test_backtest_shell_keeps_controls_and_results_usable(
     host.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qt_app.processEvents()
+
+@pytest.mark.parametrize("window_width", [900, 1024, 1280])
+def test_windowed_backtest_keeps_summary_beside_settings(
+    qt_app: QApplication,
+    test_config,
+    window_width: int,
+) -> None:
+    """一般視窗不把設定堆到摘要上方，設定收合後摘要仍可捲動。"""
+    host = QMainWindow()
+    shell = QWidget()
+    layout = QHBoxLayout(shell)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    navigation = QWidget()
+    navigation.setFixedWidth(184)
+    layout.addWidget(navigation)
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    layout.addWidget(view, stretch=1)
+    host.setCentralWidget(shell)
+    host.setFixedSize(window_width, 768)
+    host.show()
+    qt_app.processEvents()
+
+    assert isinstance(view.backtest_splitter, QSplitter)
+    assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
+    assert view.config_scroll.width() >= 260
+    assert view.result_panel.width() >= 400
+    assert view.result_panel.focus_result_tab("summary") is True
+    summary_scroll = view.result_panel._result_tab_widgets["summary"]
+    view.summary_text.setPlainText("\n".join(f"摘要第 {row} 行" for row in range(80)))
+    qt_app.processEvents()
+    assert summary_scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    assert view.summary_text.verticalScrollBar().maximum() > 0
+
+    view._set_config_panel_collapsed(True)
+    qt_app.processEvents()
+    assert not view.config_scroll.isVisible()
+    assert view.result_panel.width() >= view.width() - 30
+    view._set_config_panel_collapsed(False)
+    qt_app.processEvents()
+    assert view.config_scroll.isVisible()
+    assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
+    assert view.result_panel.width() >= 400
+
+    host.close()
+    host.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
+
 
 def test_backtest_charts_load_on_first_result_use_and_replay_pending_reports(
     qt_app: QApplication,

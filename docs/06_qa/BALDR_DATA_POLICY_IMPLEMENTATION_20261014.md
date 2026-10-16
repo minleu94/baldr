@@ -1476,6 +1476,26 @@ Increment47 文件閉鎖：QA239 八份正文／12features 與 metadata30sources
 - 原0f試用價庫四股12,390列只在新隔離副本補正負號：與正式資料唯讀的同股同日收盤價及無號價差Decimal精確相等，且正式欄位明示`+/-`才補。正式12,442列原rowset SHA `866241ff90af9e8a38ca336788389129bf4ffaa76b78e164c934cb468c2da391`；新副本SHA `5bc5b40de16078713af51cc4994fda5287fa522e4232d59095987e29dbc179fd`，補11,378、原有35、缺明確方向977，錯配／衝突0。四股末日2026-09-23皆精確對上，public reader回`2317 +3`、`2330 +40`、`2382 -0.5`、`2454 +5`；舊試用原件／正式資料不寫，歷史PIT仍false。詳owner `increment66_trial_market_overlay/receipt.json`。
 - QA391 audit腳本import路徑FAIL、QA392／393 sandbox `Path.resolve`拒訪FAIL各保留；原讀回已成功，未當產品FAIL或PASS。QA394在同規格受控Job下：changed Python compile、四股public reader、受影響pytest **77 PASS**、Workbench **85 PASS**、validator **25 PASS／0 FAIL／4保護SKIP**、八roots mypy **1042 files success**；ui_qt既有ignore_errors=True，不視為UI強型別證據。原收據 `output/tasks/baldr-completion-resume-20261014-01a13cf9/single_owned_qa_0030af84a6bf4d64ac5ce4cb5ebde069/receipt.json` SHA `e5616a600a5e2036837a0236e5031abca549cd973e3adafdcfeebbeb37faf268`，三PID清冊空、handles關閉、mutex釋放。
 
-**尚待交付驗證**：隔離多持倉正常頁、價格選股→比較／個股→保存／回訪→返回的正常Main／fresh、同版Native／EXE及新固定入口與指南收據。QA394只是來源候選，未通過這些出口前目前可試用版本仍是0f。原TPEx／來源權威／歷史PIT／真N／雙策略完整績效／Paper與Forward自然成熟和P00–P14／G0–G4各自保留；無正式資料寫入、maintainer啟動、push、發布或交易。
+**QA394 當時尚待交付驗證**：隔離多持倉正常頁、價格選股→比較／個股→保存／回訪→返回的正常 Main／fresh、同版 Native／EXE 及新固定入口與指南收據。QA394 只證來源候選；後續 QA400／402／403 與本節末的交付收據才解除這項工程阻礙。原 TPEx／來源權威／歷史 PIT／真 N／雙策略完整績效／Paper 與 Forward 自然成熟和 P00–P14／G0–G4 各自保留；無正式資料寫入、maintainer 啟動、push、發布或交易。
 
 文件核對QA395誤帶原Increment59 create-only launch check，因既有收據而FAIL，保留 `single_owned_qa_a1a6c75cfcce40d09d61ae3219ce78ea/receipt.json` SHA `5470f989552950a7862de5de2092a5085a38715b6ba25fe216853caac7f3f9aa`。QA396只跑本輪task／11文件／12features與context metadata31來源，兩項 `errors=[]`；outer `single_owned_qa_fddc6603ef74442f9a92a621d9994d1b/receipt.json` SHA `f4028ea438231c1e6d26d443ae4048c4c9580afef9fc0002f9484e4789f75a7d`，自然三PID清冊空、handles關閉、mutex釋放。結構檢查不代替本段語意、Native或產品Gate驗收。
+
+### Increment66 固定本機候選、Native／EXE 與試用入口
+
+固定來源 commit 為 `ec5c9573360891595bb395fa7bbb934077c6d4c0`，版本 `2026.10.06+ec5c95733608`。EXE 位於 `dist/candidate_ec5c95733608_44024cd5/baldr/baldr.exe`，SHA-256 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`，56,285,502 bytes；來源封存 SHA-256 `1f892a7b30b337b26afb2620d05b2fdd1953023216d64fe8da565b84c6b2efcb`。build pin 位於 owner task `increment66_candidate_build_pin.json`，SHA-256 `858dfd5b7205d24a05751bcf02fd04d2b8d3323474aa949ade2fdeda80af3712`。原 `9fa`、`4b530`、`0f644faa` 試用包保留；本輪試用副本 `output/trial/Baldr-Daily-Research-66/` 使用獨立 `state/`，沒有搬入使用者真帳。原技術封存仍需本機絕對路徑作嚴格身份核對，這份入口不是移機包。
+
+| QA | 實際結果 | outer receipt／SHA-256 |
+|---|---|---|
+| 397 | 準備規格仍綁舊 HEAD，preflight 拒絕；無 Python／Job 執行，保存失敗。重綁固定來源後才執行建包。 | 原 preflight 原件保存在 owner task；不算 PASS。 |
+| 398 | 固定 ec5 來源建立 EXE，候選本身未由 build 動作授 Native 接受。 | `single_owned_qa_4f30445db323477fafaa7a7b908bec78/receipt.json`；`ee3ae1b2ae16c00b62561cb264c63673a99381031bf9b107db42a347f86740cc` |
+| 399 | 來源 Main 已保存；驗證腳本等到查詢後過早讀收藏，比非同步籃子恢復早，該輪 FAIL 保留。 | `single_owned_qa_7018d960b63d49f0835011569a152bca/receipt.json`；`4b1a6caa06c0356598809ccf11f9a34ecc9789a341555205b489e3b781aed476` |
+| 400 | 修驗證等待條件後，來源 Windows Main → fresh 的四股篩選、兩股比較、收藏／觀察清單同來源重開、個股返回、兩筆隔離測試持倉及兩原 `1.0.0` 策略保存／歷史／返回通過。 | `single_owned_qa_030835226b654a329aac2769041eb158/receipt.json`；`2613b5b8a57baf67c2badcf392e13700bc549b260ad9863e1027b7a43e9d6aca` |
+| 401 | EXE 驗證腳本直接 import 包內未收的 `PySide6.QtTest`，在產品啟動前 FAIL；改用已驗證的原生 UI helper，不以此宣稱產品失敗或成功。 | `single_owned_qa_a2ddc6029220410b803a1e9790803dae/receipt.json`；`cb17855489453139549503892c9f9bb5b66757449e44d3614703556bb7a3701a` |
+| 402 | 同版 EXE Windows Main → fresh 上述旅程通過；`verify_same_version.py` 的隔離 fixture 身份／載入檢查通過，receipt SHA-256 `5b4434834df74de3ee7ee001e8327de6814a6ab3c83ad3ddb8fc581619ada1f4`。 | `single_owned_qa_b002e61be41a48d982c72d0f4d2d5c60/receipt.json`；`e6e5ae833e570892025f679a17998faf89e1659403c36b048ed6997fa9b25ce1` |
+| 403 | 新試用包 `Launch-Baldr.cmd --check`、五份隔離輸入、價庫副本、環境根與 build 身份核對通過；這一步未另開 GUI。 | `single_owned_qa_451e43e560a742c9abd829af84b2b290/receipt.json`；`0cc78ec16656275bf1c3189bad51f90e8d2310e945bec0fce8fdc4f55a1b9654` |
+
+QA400 原始 parent／fresh SHA-256 `371ecaf7910430c51e228ee7d1926765113d9f786cd820d268e3700883159986`／`b79463d581e910a174e840f27489da29769fc5001855fb20f2bae5ba0036a2db`；QA402 EXE parent／fresh SHA-256 `87d47ca3b83e1c381348dd81daccb944b759fbec4d7afccad6757a7e87daaa43`／`51d90be959665f562921ecf875ab51857c64b9f7b8bb7b6b11265e7756743ccf`。各組均在 8 GiB committed／12 程序、kill-on-close、同 workspace mutex 下啟動，起跑 RAM 大於 8 GiB；成功組三 PID 陣列空、process／Job handles 關閉、mutex 釋放，無強制清理。原 QA399／401 失敗保存，不覆寫成通過；QA400／402 有獨立新 script、spec、隔離狀態及收據。
+
+交付入口為 `output/trial/Baldr-Daily-Research-66/Launch-Baldr.cmd`，操作見同目錄 `TRIAL_GUIDE.md`，限制見 `KNOWN_ISSUES.md`，create-only `DELIVERY_RECEIPT.json` SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`。它只接受指定四股日常研究、同源收藏回訪、隔離兩持倉版面與兩原策略正常回測保存／讀回的工程出口；原四股資料截至 2026-09-23，大盤截至 2026-10-14，977 列漲跌方向仍缺正式明確符號。使用者貼的六配對原 run 未取得；原 SOP 樣本不足、Baseline FAIL、Walk-forward 缺件不變。真人試用、TPEx/MOPS 權威、來源用途、歷史 PIT、真 N、完整雙策略績效、Paper／Forward 自然成熟及原完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 仍各自待驗；未改正式資料、正式 Task、maintainer、push、發布或交易。
+
+交付文件閉鎖 QA404：本輪 task／11 文件／12 features 與 context metadata 31 來源檢查各 `passed=true`、`errors=[]`；outer `single_owned_qa_8f2d14c390e94caab12065ca34fb04c1/receipt.json` SHA-256 `4257b0ac5b9bde31994114cab72150a4e7dc78fb527ca38a5de4063f32d4ecf7`，自然三 PID 陣列空、process／Job handles 關閉及 mutex 釋放。結構與連結檢查不代替 Root 對文字語意、使用者試用或完整 Gate 的判斷；本句為該檢查後追加的收據定位。

@@ -1586,6 +1586,7 @@ class StockResearchReportReadService:
             rows = self._query(sql, (code, _date_key(cutoff), limit))
             source_id = f"sqlite.{table}"
             unusable_monthly_amount_rows = 0
+            unverified_legacy_unit_rows = 0
             for row in rows:
                 available_at = _iso_date(row["available_at"])
                 data_as_of = _iso_date(row["as_of_date"]) or _iso_date(row["period"])
@@ -1613,6 +1614,15 @@ class StockResearchReportReadService:
                         quality = _worst_quality((quality, ReportQuality.DEGRADED.value))
                         aggregate_eligible = False
                         formal_pit_eligible = False
+                elif kind in {"statement_item", "valuation"}:
+                    # 舊表沒有單位／欄位基準欄，也無法由來源名稱推定金額、
+                    # 每股值或比率。原 row 留在庫內；報告只保留來源與期間。
+                    unverified_legacy_unit_rows += 1
+                    value = None
+                    value_text = "舊來源未保存可核對的單位與欄位基準；數值不可用，原件保留。"
+                    quality = _worst_quality((quality, ReportQuality.DEGRADED.value))
+                    aggregate_eligible = False
+                    formal_pit_eligible = False
                 observations.append(
                     StockFundamentalObservationDTO(
                         kind=kind,
@@ -1649,7 +1659,7 @@ class StockResearchReportReadService:
                 version=_latest_text(str(row["source_version"] or "") for row in rows),
                 quality=_worst_quality(
                     [_quality(row["quality"]) for row in rows]
-                    + ([ReportQuality.DEGRADED.value] if unusable_monthly_amount_rows else [])
+                    + ([ReportQuality.DEGRADED.value] if unusable_monthly_amount_rows or unverified_legacy_unit_rows else [])
                 ),
                 cutoff=cutoff,
                 limitations=(
@@ -1657,6 +1667,9 @@ class StockResearchReportReadService:
                     *((
                         f"{unusable_monthly_amount_rows} 列月營收來源單位未核實或金額無法解析；值欄不可用，原件未改。",
                     ) if unusable_monthly_amount_rows else ()),
+                    *((
+                        f"{unverified_legacy_unit_rows} 列舊財報／估值缺可核對的單位與欄位基準；值欄不可用，原件未改。",
+                    ) if unverified_legacy_unit_rows else ()),
                 ),
             )
             sources.append(source)

@@ -548,6 +548,41 @@ def test_monthly_revenue_report_does_not_label_unverified_raw_amount_as_twd(
     assert section.status == ReportSectionStatus.PARTIAL.value
 
 
+def test_legacy_statement_and_valuation_values_require_verified_units(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    with sqlite3.connect(config.db_file) as conn:
+        conn.executemany(
+            "INSERT INTO fundamental_statement_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2330", "income", "2026-Q2", "2026-06-30", "2026-08-12", "2026-08-13", "revenue", "營收", "900", "mops.financial_statement.raw", "v1", "observed"),
+                ("2330", "income", "2026-Q3", "2026-09-30", "2026-10-12", "2026-10-13", "revenue", "營收", "999", "mops.financial_statement.raw", "v2", "observed"),
+            ],
+        )
+        conn.execute(
+            "INSERT INTO fundamental_valuation_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("2330", "2026-08-06", "2026-08-07", "PE", "31.8", "半導體業", 4937, "unverified.valuation", "v1", "observed"),
+        )
+
+    report = StockResearchReportReadService(config).read_report("2330", as_of_date="2026-09-08")
+    rows = {item.kind: item for item in report.fundamentals}
+    assert set(rows) == {"statement_item", "valuation"}
+    for row in rows.values():
+        assert row.value is None and row.unit == ""
+        assert "單位與欄位基準" in row.value_text
+        assert row.quality == "degraded"
+        assert row.aggregate_feature_eligible is False
+        assert row.formal_pit_eligible is False
+    assert rows["statement_item"].period == "2026-Q2"
+    assert rows["valuation"].period == ""
+    sources = {item.source_id: item for item in report.sources}
+    for table in ("fundamental_statement_items", "fundamental_valuation_metrics"):
+        source = sources[f"sqlite.{table}"]
+        assert source.quality == "degraded"
+        assert "1 列舊財報／估值" in "；".join(source.limitations)
+
+
 def test_global_current_receipt_does_not_make_lagging_stock_fresh(tmp_path: Path) -> None:
     config = _config(tmp_path)
     with sqlite3.connect(config.db_file) as conn:

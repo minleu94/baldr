@@ -26,6 +26,8 @@
 
 **Increment103／第四列保存回測比較的拒錯修補（來源候選）**：第二列財報已存官方 OpenAPI 的授權資料集可查，但一般金額欄仍缺可直接綁定該 API 版本的幣別／倍率契約；單一 2330 MOPS HTML 表頭與值相符，不推廣為兩市場完整單位接受。依 §0.4 轉第四列，修正一般 Registry 比較在已顯示保存績效後才核權益曲線的斷點：重複日期、倒序日期、非有限權益現在拒比並清空前次績效；正常保存曲線原值不變。這解除第一版 V1-04 延伸「重開後比較」的錯誤金融呈現／中斷風險，未新增策略或重算舊 run。[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment103-saved-equity-reject)限定通過受改 25 例、Workbench85、正常 Windows validator25/0/4 及八根 mypy1044；先前沙箱 validator21/3/4原 FAIL 保留。固定試用102仍是可試候選；本項尚未進固定 EXE／真人，不取代第四列完整雙策略期間、來源／成本／幣別、PIT 與績效出口。
 
+**Increment104／第二階段 P01／P02／M2 的真規則選股出口**：沿102已固定的 1,951 檔隔離來源，public reader 逐股核五條原規則與公開篩選計數，MA／KD／MACD／兩條量能分別有 39／338／52／287／80 檔符合；UNKNOWN 分列保留。原102只驗指定 `2317,2330` 比較／收藏，這輪同一固定 EXE 在正常 Main 選「MA5／MA20 金叉＝符合」、排除未知價格，得到39檔，選 `8933／2506` 比較、收藏 `2506`，另一 EXE 程序從觀察清單精確重開原查詢與比較籃。這解除試用66單列後「實際條件能否選出多股並保存」的操作未知，[補充步驟](../../../output/trial/Baldr-Daily-Research-102/MA_RULE_WALKTHROUGH.md)另存，102原交付原件不動；[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment104-current-rule-journey)保留沙箱長路徑 FAIL 與正常 Windows 受控 PASS。此為既有 V1-02 的補證和第二階段 M2 進展，**不新增 V1 前置**；來源用途／可得時刻、歷史 PIT、正式真 N、真人／不同 DPI、完整 Gate 不升格。現在依 §0.4 轉第三列持倉情境或第四列完整雙策略結果，第二列財報權威缺件繼續隔離。
+
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；102 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。
 
 <details>

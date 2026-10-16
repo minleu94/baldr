@@ -1912,3 +1912,24 @@ QA05 在正常 Windows 權限、同樣 8 GiB Job／12 程序／互斥鎖下，�
 兩組啟動前分別核前組三 PID 陣列為空、process／Job handles 關閉、mutex 釋放及可用 RAM≥8 GiB；Job 8 GiB committed／12 程序、kill-on-close／同 workspace mutex，終態皆自然歸零，未終止其他 owner 程序。源碼與 102 EXE 尚非同版；102 仍是固定試用包，本輪只是已驗來源候選，尚無正常 Main／fresh、固定 EXE／真人證據。正式資料、正式 Task、maintainer、push、發布或交易未動。下一步沿原 §0.4 完成第四列實際可比較的完整期間來源與保存重開；來源／幣別／成本或歷史 PIT 缺件維持具名拒比，不用單一合成案例或本次 25 PASS 當完整 Gate。
 
 文件結構檢查 QA03 在上述正文與 owner task 追加結果前，核 9 個來源 pin、12 features／33 link sources、`errors=[]`；spec SHA-256 `af7219d2d236a13a2d940136d64d725a22c0a1aa8fefceb9097b265be2d61de8`、runner 收據 SHA-256 `8bc0a216b7eab73161044e4d0d7cc28b9c54313f211140d122c87a43cfdc0b56`、outer Job SHA-256 `4f8b917e16676dcab2cb7ac29d808528aeb8b475268734bcc0807ad4680d42fe`。檢查後僅補登這些收據欄與文字；結構通過不證正文語意或產品 Gate。
+
+<a id="increment104-current-rule-journey"></a>
+## Increment104：固定102候選的實際條件選股與收藏回訪
+
+**解除的交付阻礙**：試用66曾在四股範圍只見一列，無法確認「推薦分析 → 價格研究」的既有 MA／KD／MACD／量能條件能否在當期多股來源選出可比較的股票。102 先前已驗兩個指定股號的比較與收藏，尚未驗一條實際**規則**從結果到收藏、另一程序重開的旅程。本輪不改產品程式或原102固定檔，只讀盤點102既有的 1,951 檔隔離來源，然後用同一固定 EXE 完成「MA5／MA20 金叉＝符合 → 排除未知價格 → 選兩股比較 → 收藏 → 新程序回訪」。這是第二階段 P01／P02／M2 的可操作證據，不新增 V1 前置或宣稱正式真 N。
+
+public reader 對 exact generation `2907316fbb8e43ed41f2075f2fb0f4e928c804a5dafe359ffb36475aac76871a`、plan SHA-256 `49117f47fa6b12c285eefa869563a4a429173c6386fce89a8100b6168a14387c`、complete receipt SHA-256 `00c89ca1eccc1c754dedad10bbc27263f7f8df0f529b19aae2e14e5a91a57ef5` 嚴格核驗後，遍歷八頁全部 1,951 列；逐股原規則與公開 `match` filter 計數一致。原來源 DB SHA-256 `731cbeebb18d3c3ffa555a3d9ec2e95ffbb76ae7f363c1c0d6f5edb9592bcc42`、名冊 `e364fb430a23b5a747d5409d70134ded3ba00203b2a3f84a9f3c4621b4427b63`，前後檔案身分／bytes／mtime／SHA 均相同。價格本身 1,946 PASS／5 UNKNOWN；規則狀態是另一個分母：
+
+| 規則 | 符合 | 不符 | 未知 |
+|---|---:|---:|---:|
+| MA5／MA20 金叉 | 39 | 1,883 | 29 |
+| K／D 金叉 | 338 | 1,596 | 17 |
+| MACD 金叉 | 52 | 1,860 | 39 |
+| 量能比20（含當日） | 287 | 1,637 | 27 |
+| 量能比5（含當日） | 80 | 1,861 | 10 |
+
+原 QA01 在沙箱的 strict `realpath` 讀已存子批次長路徑時 `PermissionError(WinError 5)`，原 FAIL outer SHA-256 `6cce78ff5ecfc09203d7b3308787db8a5051f2bb9833bf57a9e0708994fe7914` 保留。QA02 在一般 Windows 路徑、相同受控 Job 限制下完成只讀盤點；規則收據 SHA-256 `3d6e162b84520ff9fb08691d2c72447f9956e9c920a97df3801edbb9c059864a`、spec `16cf547cf633f4339f6dcede78b508bdb897659aa08092463a77171b1738c135`、outer `032927bed6b448d93d186185e461b64d8566d46d45e94c1ba79fa28f2639cf29`。沒有改來源、正式資料、私人帳或舊失敗。
+
+QA03 pin 15 份來源／腳本／固定 EXE 前後相同，`py_compile` 通過。固定102 EXE SHA-256 `1303d844f7e6b5cd87f6ac9911ba684b25f66f15dec6ab309cb43d23283a8f84` 的正常 Main 在來源 1,951 檔中設定 MA 金叉符合、未知價格排除及空白股號篩選，得到 **39 檔**；表列 `8933／2506` 被加入比較籃並由同源比較通過，選 `2506` 保存價格研究收藏。另一個 EXE PID 從觀察清單雙擊收藏列後，原 query、page、選股與兩股比較籃均精確相同，規則與未知價格選項也還原；產品模組均來自固定 EXE bundle。具名結果 SHA-256 `d7412d0b41e2116c1a1bda658487a3f88710b5d873d07a8dde168884cc15438e`、spec `868a338ec0faa8519b65431fcd176f273b08c933280f33a34e4f10478cc6b5d4`、runner `04708f9afa5302cf5c32d7d716fcef9f4327f64275239dbcf88632b02a15e40b`、outer `87c66328b1085834ca6dc0d472d55f2f3cbb28e47fc4431ad57f2d730f57b0e5`。三組各自在啟動前有 ≥8 GiB 可用 RAM，Job 8 GiB committed／12 程序、kill-on-close、同 workspace mutex；前後三 PID 清單為空、process／Job handles 關閉、mutex 釋放，無強制清場。
+
+操作例子另存[102 條件選股補充指南](../../output/trial/Baldr-Daily-Research-102/MA_RULE_WALKTHROUGH.md)，原102 EXE／啟動器／交付清單不變。此組 QA 是 offscreen 定向驗收，不是人手雙擊、不同 DPI、來源用途、歷史 PIT、正式完整分母、全市場效能或完整 Gate；`source_available_at=null`、`availability_status=unknown` 及規則／價格 UNKNOWN 均不補值。一般個股與回測仍沿102的舊四股價庫，不能把新來源自動補進舊結果。下一步按 §0.4 轉第三列實際持倉情境或第四列完整來源／成本雙策略結果；第二列財報用途及單位缺件獨立保留。

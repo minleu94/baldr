@@ -71,6 +71,42 @@ class BacktestExecutionRequest:
         )
 
 
+def execute_batch_stock_with_rule_source(backtest_service: Any, **kwargs: Any) -> Any:
+    """讓批次每股沿用單股同次輸入的規則來源封存器。"""
+    from ui_qt.views.backtest.research_run_metadata import execute_single_backtest_with_rule_source
+
+    check_cancel = kwargs.pop("check_cancel", None)
+    spec = kwargs["strategy_spec"]
+    request = BacktestExecutionRequest(
+        stock_code=kwargs["stock_code"],
+        start_date=kwargs["start_date"],
+        end_date=kwargs["end_date"],
+        strategy_id=spec.strategy_id,
+        strategy_spec=spec,
+        strategy_params=dict(spec.config.get("params", {}) or {}),
+        capital=kwargs["capital"],
+        fee_bps=kwargs["fee_bps"],
+        slippage_bps=kwargs["slippage_bps"],
+        execution_price=kwargs["execution_price"],
+        stop_loss_pct=kwargs["stop_loss_pct"],
+        take_profit_pct=kwargs["take_profit_pct"],
+        stop_loss_atr_mult=kwargs["stop_loss_atr_mult"],
+        take_profit_atr_mult=kwargs["take_profit_atr_mult"],
+        sizing_mode=kwargs["sizing_mode"],
+        fixed_amount=kwargs["fixed_amount"],
+        risk_pct=kwargs["risk_pct"],
+        max_positions=kwargs["max_positions"],
+        position_sizing=kwargs["position_sizing"],
+        allow_pyramid=kwargs["allow_pyramid"],
+        allow_reentry=kwargs["allow_reentry"],
+        reentry_cooldown_days=kwargs["reentry_cooldown_days"],
+        enable_limit=kwargs["enable_limit_up_down"],
+        enable_volume=kwargs["enable_volume_constraint"],
+        max_participation=kwargs["max_participation_rate"],
+    )
+    return execute_single_backtest_with_rule_source(request, backtest_service, check_cancel=check_cancel)
+
+
 @dataclass(frozen=True)
 class BatchBacktestExecutionRequest:
     stock_codes: tuple[str, ...]
@@ -135,4 +171,5 @@ class BatchBacktestExecutionRequest:
             check_cancel=check_cancel,
             parallel_threshold=self.parallel_threshold,
             research_mode=self.research_mode,
+            single_execution_callable=execute_batch_stock_with_rule_source,
         )

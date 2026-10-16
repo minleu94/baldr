@@ -10,7 +10,7 @@ import numpy as np
 import hashlib
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Any, Optional, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
 from uuid import uuid4
@@ -51,7 +51,8 @@ def _run_batch_backtest_worker(
     reentry_cooldown_days: int,
     enable_limit_up_down: bool,
     enable_volume_constraint: bool,
-    max_participation_rate: float
+    max_participation_rate: float,
+    single_execution_callable: Optional[Callable] = None,
 ) -> BacktestReportDTO:
     """在子進程中執行單檔回測的 Worker 函數 (Windows spawn 相容)"""
 
@@ -59,7 +60,7 @@ def _run_batch_backtest_worker(
     from app_module.backtest_service import BacktestService
     # 為防止多行程連線衝突，每個子行程重新實例化
     service = BacktestService(config)
-    report = service.run_backtest(
+    run_kwargs: Dict[str, Any] = dict(
         stock_code=stock_code,
         start_date=start_date,
         end_date=end_date,
@@ -82,8 +83,10 @@ def _run_batch_backtest_worker(
         reentry_cooldown_days=reentry_cooldown_days,
         enable_limit_up_down=enable_limit_up_down,
         enable_volume_constraint=enable_volume_constraint,
-        max_participation_rate=max_participation_rate
+        max_participation_rate=max_participation_rate,
     )
+    report = (single_execution_callable(service, **run_kwargs)
+              if single_execution_callable is not None else service.run_backtest(**run_kwargs))
     return report
 
 
@@ -172,6 +175,7 @@ class BatchBacktestService:
         parallel_threshold: Optional[int] = None,
         max_workers: Optional[int] = None,
         research_mode: str = "batch_stock",
+        single_execution_callable: Optional[Callable] = None,
     ) -> BatchBacktestResultDTO:
         """
         執行批次回測
@@ -212,6 +216,19 @@ class BatchBacktestService:
 
         stock_results = []
         total = len(stock_codes)
+        batch_run_inputs: Dict[str, Any] = dict(
+            start_date=start_date, end_date=end_date, strategy_spec=strategy_spec,
+            capital=capital, fee_bps=fee_bps, slippage_bps=slippage_bps,
+            execution_price=execution_price, stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct, stop_loss_atr_mult=stop_loss_atr_mult,
+            take_profit_atr_mult=take_profit_atr_mult, sizing_mode=sizing_mode,
+            fixed_amount=fixed_amount, risk_pct=risk_pct, max_positions=max_positions,
+            position_sizing=position_sizing, allow_pyramid=allow_pyramid,
+            allow_reentry=allow_reentry, reentry_cooldown_days=reentry_cooldown_days,
+            enable_limit_up_down=enable_limit_up_down,
+            enable_volume_constraint=enable_volume_constraint,
+            max_participation_rate=max_participation_rate,
+        )
 
         # 判斷是否需要啟用並行
         should_parallel = False
@@ -230,31 +247,11 @@ class BatchBacktestService:
 
                 try:
 
-                    report = self.backtest_service.run_backtest(
-                        stock_code=stock_code,
-                        start_date=start_date,
-                        end_date=end_date,
-                        strategy_spec=strategy_spec,
-                        capital=capital,
-                        fee_bps=fee_bps,
-                        slippage_bps=slippage_bps,
-                        execution_price=execution_price,
-                        stop_loss_pct=stop_loss_pct,
-                        take_profit_pct=take_profit_pct,
-                        stop_loss_atr_mult=stop_loss_atr_mult,
-                        take_profit_atr_mult=take_profit_atr_mult,
-                        sizing_mode=sizing_mode,
-                        fixed_amount=fixed_amount,
-                        risk_pct=risk_pct,
-                        max_positions=max_positions,
-                        position_sizing=position_sizing,
-                        allow_pyramid=allow_pyramid,
-                        allow_reentry=allow_reentry,
-                        reentry_cooldown_days=reentry_cooldown_days,
-                        enable_limit_up_down=enable_limit_up_down,
-                        enable_volume_constraint=enable_volume_constraint,
-                        max_participation_rate=max_participation_rate
-                    )
+                    run_kwargs: Dict[str, Any] = dict(batch_run_inputs, stock_code=stock_code)
+                    report = (single_execution_callable(
+                        self.backtest_service, **run_kwargs, check_cancel=check_cancel)
+                        if single_execution_callable is not None
+                        else self.backtest_service.run_backtest(**run_kwargs))
 
                     success = True
                     error_reason = None
@@ -321,6 +318,7 @@ class BatchBacktestService:
                                 report=report,
                                 notes=f"批次回測：{batch_name}" + (f" ({error_reason})" if error_reason else ""),
                                 research_mode=research_mode,
+                                raw_run_params=run_kwargs,
                             )
                             result.run_id = run_id
                             logger.info(f"[BatchBacktestService] 已保存 {stock_code} 的回測結果 (run_id: {run_id})")
@@ -365,7 +363,8 @@ class BatchBacktestService:
                     sizing_mode, fixed_amount, risk_pct, max_positions,
                     position_sizing, allow_pyramid, allow_reentry,
                     reentry_cooldown_days, enable_limit_up_down,
-                    enable_volume_constraint, max_participation_rate
+                    enable_volume_constraint, max_participation_rate,
+                    *((single_execution_callable,) if single_execution_callable is not None else ()),
                 )
                 futures[fut] = code
                 submitted_idx += 1
@@ -461,6 +460,7 @@ class BatchBacktestService:
                                             report=report,
                                             notes=f"批次回測：{batch_name}" + (f" ({error_reason})" if error_reason else ""),
                                             research_mode=research_mode,
+                                            raw_run_params=dict(batch_run_inputs, stock_code=code),
                                         )
                                         result.run_id = run_id
                                     except Exception as e:
@@ -491,7 +491,8 @@ class BatchBacktestService:
                                 sizing_mode, fixed_amount, risk_pct, max_positions,
                                 position_sizing, allow_pyramid, allow_reentry,
                                 reentry_cooldown_days, enable_limit_up_down,
-                                enable_volume_constraint, max_participation_rate
+                                enable_volume_constraint, max_participation_rate,
+                                *((single_execution_callable,) if single_execution_callable is not None else ()),
                             )
                             futures[fut] = code
                             pending.add(fut)
@@ -538,11 +539,26 @@ class BatchBacktestService:
         report: BacktestReportDTO,
         notes: str,
         research_mode: str = "batch_stock",
+        raw_run_params: Optional[dict[str, Any]] = None,
     ) -> None:
         if self.research_run_service is None:
             return
 
         details = dict(report.details or {})
+        manifest = dict(details.get("data_manifest", {}) or {})
+        execution = manifest.get("single_backtest_rule_execution")
+        if execution is not None:
+            if not isinstance(execution, dict):
+                raise ValueError("批次單股規則來源格式錯誤")
+            if (execution.get("stock_code") != stock_code
+                    or execution.get("strategy_spec") != manifest.get("strategy_spec")
+                    or not isinstance(execution.get("start_date"), str)
+                    or not isinstance(execution.get("end_date"), str)
+                    or not start_date <= execution["start_date"] <= execution["end_date"] <= end_date
+                    or details.get("data_version") != execution.get("input_fingerprint")
+                    or details.get("data_as_of_date") != execution.get("end_date")
+                    or details.get("strategy_version") != strategy_spec.strategy_version):
+                raise ValueError("批次單股規則來源與原執行身分不符")
         equity = details.get("equity_curve")
         trades = details.get("trade_list")
         if not isinstance(equity, pd.DataFrame):
@@ -553,6 +569,13 @@ class BatchBacktestService:
         metrics = self._report_metrics(report)
         normalized_params = dict(strategy_spec.config.get("params", {}) or {})
         run_type = "fixed_basket_stock" if research_mode == "fixed_basket" else "batch_backtest_stock"
+        raw_params = {key: value for key, value in (raw_run_params or {}).items()
+                      if key != "strategy_spec"}
+        raw_params.update(stock_code=stock_code, start_date=start_date, end_date=end_date,
+                          strategy_id=strategy_spec.strategy_id, strategy_params=normalized_params,
+                          capital=capital, fee_bps=fee_bps, slippage_bps=slippage_bps,
+                          stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
+                          execution_price=execution_price, sizing_mode=sizing_mode)
         metadata = ResearchRunMetadataDTO(
             run_id=f"batch-backtest:{legacy_run_id}",
             run_name=f"{batch_name}_{stock_code}",
@@ -567,16 +590,17 @@ class BatchBacktestService:
                 "batch_name": batch_name,
                 "research_mode": research_mode,
                 "notes": notes,
+                "raw_params": raw_params,
             },
             normalized_params=normalized_params,
             fallback_reason=dict(details.get("fallback_reason", {}) or {}),
             universe=[stock_code],
-            start_date=start_date,
-            end_date=end_date,
+            start_date=execution["start_date"] if isinstance(execution, dict) else start_date,
+            end_date=execution["end_date"] if isinstance(execution, dict) else end_date,
             data_cutoff_date=str(details.get("data_as_of_date", "")),
             data_fingerprint=str(details.get("data_version", "")),
             fingerprint_algorithm="sha256" if str(details.get("data_version", "")).startswith("sha256") else "",
-            data_manifest=dict(details.get("data_manifest", {}) or {}),
+            data_manifest=manifest,
             capital_cents=self._money_to_cents(capital),
             fee_bp_x100=self._bps_to_bp_x100(fee_bps),
             slippage_bp_x100=self._bps_to_bp_x100(slippage_bps),
@@ -600,6 +624,20 @@ class BatchBacktestService:
             ),
             created_at=datetime.now().isoformat(),
         )
+        if isinstance(execution, dict):
+            from app_module.saved_strategy_rule_card import result_context_sha256
+            from app_module.strategy_rule_card_readmodel import read_single_backtest_execution_rule_card
+
+            execution_spec = StrategySpec.from_dict(manifest["strategy_spec"])
+            if (execution_spec.strategy_id != strategy_spec.strategy_id
+                    or execution_spec.strategy_version != strategy_spec.strategy_version
+                    or execution_spec.config.get("params") != normalized_params):
+                raise ValueError("批次單股規則來源與提交策略不符")
+            card = read_single_backtest_execution_rule_card(execution_spec, execution)
+            if card.reasons:
+                raise ValueError("批次單股規則來源核對失敗：" + ",".join(card.reasons))
+            metadata.data_manifest["rule_card_identity"] = asdict(replace(
+                card.identity, context_sha256=result_context_sha256(metadata)))
         self.research_run_service.save_run(
             metadata,
             research_run_dated_equity_copy(equity),

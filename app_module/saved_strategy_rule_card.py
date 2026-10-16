@@ -13,6 +13,15 @@ from app_module.strategy_rule_card_readmodel import (RuleCardIdentity, RuleCardR
 from decision_module.strategies.contracts import StrategySpec
 
 _KINDS = {"single_backtest": "historical_backtest", "batch_backtest_stock": "historical_backtest", "fixed_basket_stock": "historical_backtest", "research_forward": "research_forward"}
+_SINGLE_STOCK_RUN_TYPES = frozenset(("single_backtest", "batch_backtest_stock", "fixed_basket_stock"))
+_BATCH_STOCK_RUN_TYPES = frozenset(("batch_backtest_stock", "fixed_basket_stock"))
+_BATCH_BROKER_INPUTS = (
+    "fee_bps", "slippage_bps", "stop_loss_pct", "take_profit_pct",
+    "stop_loss_atr_mult", "take_profit_atr_mult", "execution_price",
+    "enable_limit_up_down", "enable_volume_constraint", "max_participation_rate",
+    "sizing_mode", "fixed_amount", "risk_pct", "max_positions", "position_sizing",
+    "allow_pyramid", "allow_reentry", "reentry_cooldown_days",
+)
 
 
 def metadata_sha256(metadata: ResearchRunMetadataDTO) -> str:
@@ -21,6 +30,20 @@ def metadata_sha256(metadata: ResearchRunMetadataDTO) -> str:
 
 def _sha(value: str) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", value))
+
+
+def _same_saved_input(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is None and right is None
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is bool and type(right) is bool and left == right
+    if isinstance(left, str) and not re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", left):
+        return type(right) is str and left == right
+    try:
+        first, second = Decimal(str(left)), Decimal(str(right))
+        return first.is_finite() and second.is_finite() and first == second
+    except (DecimalException, TypeError, ValueError):
+        return False
 
 
 def _costs(metadata: ResearchRunMetadataDTO) -> tuple[dict[str, int] | None, str | None]:
@@ -136,15 +159,37 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
         errors.append(cost_error)
     execution = metadata.data_manifest.get("single_backtest_rule_execution")
     card = (read_single_backtest_execution_rule_card(spec, execution)
-            if isinstance(execution, dict) and metadata.run_type == "single_backtest"
+            if isinstance(execution, dict) and metadata.run_type in _SINGLE_STOCK_RUN_TYPES
             else read_strategy_rule_card(spec, result_kind=kind))
     if isinstance(execution, dict):
-        if (metadata.run_type != "single_backtest" or execution.get("stock_code") not in metadata.universe
+        raw_params = metadata.original_input.get("raw_params")
+        if (metadata.run_type not in _SINGLE_STOCK_RUN_TYPES
+                or len(metadata.universe) != 1 or execution.get("stock_code") != metadata.universe[0]
+                or not isinstance(raw_params, dict) or raw_params.get("stock_code") != metadata.universe[0]
                 or not isinstance(execution.get("start_date"), str) or not isinstance(execution.get("end_date"), str)
                 or str(execution.get("start_date")) < metadata.start_date or str(execution.get("end_date")) > metadata.end_date
                 or execution.get("execution_contract") != metadata.execution_contract
                 or execution.get("benchmark") != (metadata.benchmark_results or None)):
             errors.append("execution_rule_result_context_mismatch")
+        if metadata.run_type in _BATCH_STOCK_RUN_TYPES:
+            broker = execution.get("broker_config")
+            if (not isinstance(raw_params, dict) or not isinstance(broker, dict)
+                    or raw_params.get("strategy_id") != metadata.strategy_id
+                    or raw_params.get("strategy_params") != metadata.normalized_params
+                    or not isinstance(raw_params.get("start_date"), str)
+                    or not isinstance(raw_params.get("end_date"), str)
+                    or raw_params["start_date"] > metadata.start_date
+                    or raw_params["end_date"] < metadata.end_date
+                    or any(key not in raw_params or key not in broker
+                           or not _same_saved_input(raw_params[key], broker[key])
+                           for key in _BATCH_BROKER_INPUTS)):
+                errors.append("execution_rule_input_mismatch")
+            try:
+                raw_capital = Decimal(str(raw_params["capital"])) if isinstance(raw_params, dict) else Decimal("NaN")
+                if (not raw_capital.is_finite() or raw_capital * Decimal("100") != metadata.capital_cents):
+                    errors.append("execution_rule_capital_mismatch")
+            except (KeyError, DecimalException, TypeError, ValueError):
+                errors.append("execution_rule_capital_mismatch")
         if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-bollinger-execution.v1", "single-backtest-w-bottom-execution.v1"):
             broker = execution.get("broker_config")
             if not isinstance(broker, dict):

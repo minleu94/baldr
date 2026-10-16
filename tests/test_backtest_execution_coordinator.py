@@ -124,3 +124,4 @@ def test_batch_request_preserves_research_parallel_progress_and_cancel_contract(
     assert kwargs["check_cancel"] is cancel
     assert kwargs["parallel_threshold"] == 2
     assert kwargs["research_mode"] == "batch_stock"
+    assert callable(kwargs["single_execution_callable"])

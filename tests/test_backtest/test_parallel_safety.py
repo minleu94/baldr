@@ -1,6 +1,9 @@
 import os
 import sys
 import time
+from copy import deepcopy
+from dataclasses import replace
+from types import SimpleNamespace
 import pytest
 from pathlib import Path
 from uuid import uuid4
@@ -17,7 +20,9 @@ from app_module.backtest_service import BacktestService
 from app_module.batch_backtest_service import BatchBacktestService
 from app_module.backtest_repository import BacktestRunRepository
 from app_module.research_run_service import ResearchRunService
+from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card
 from app_module.exceptions import BacktestCancelledError
+from ui_qt.views.backtest.execution_coordinator import execute_batch_stock_with_rule_source
 
 
 # ==========================================
@@ -180,6 +185,69 @@ def test_parallel_registry_save_has_exact_readable_per_stock_run(tmp_path):
         saved = research.load_run_data("batch-backtest:" + row.run_id)
         assert saved.metadata.universe == [row.stock_code]
         assert saved.metadata.metrics["total_trades"] == len(saved.trades)
+
+
+@pytest.mark.parametrize("parallel_threshold", [None, 2])
+@pytest.mark.parametrize("research_mode", ["batch_stock", "fixed_basket"])
+def test_batch_stock_fixed_rule_source_reopens_per_stock(tmp_path, parallel_threshold, research_mode):
+    config = create_test_env(tmp_path)
+    research = ResearchRunService(config)
+    batch_service = BatchBacktestService(
+        BacktestService(config), BacktestRunRepository(config), research_run_service=research,
+    )
+
+    result = batch_service.run_batch_backtest(
+        stock_codes=["2330", "2317"], start_date="2026-01-01", end_date="2026-06-30",
+        strategy_spec=get_test_strategy_spec(), save_runs=True,
+        parallel_threshold=parallel_threshold, max_workers=2,
+        single_execution_callable=execute_batch_stock_with_rule_source,
+        research_mode=research_mode,
+    )
+
+    assert len(result.stock_results) == 2
+    for row in result.stock_results:
+        assert row.run_id is not None, (row.stock_code, row.error_reason)
+        saved = research.load_run_data("batch-backtest:" + row.run_id)
+        metadata = saved.metadata
+        execution = metadata.data_manifest["single_backtest_rule_execution"]
+        assert metadata.run_type == ("fixed_basket_stock" if research_mode == "fixed_basket"
+                                     else "batch_backtest_stock")
+        assert metadata.universe == [row.stock_code]
+        assert metadata.data_fingerprint == execution["input_fingerprint"]
+        assert metadata.parameter_contract_version == "stable-conservative-fixed.v1"
+        card = load_saved_strategy_rule_card(research, metadata)
+        assert card.source_status == "source_ref_only", card.reasons
+        assert card.rule_card.rule_status == "execution_contract_bound"
+        assert card.performance_status == "not_evaluable"
+
+
+def test_batch_stock_rule_reader_rejects_input_and_capital_mismatch(tmp_path, monkeypatch):
+    config = create_test_env(tmp_path)
+    research = ResearchRunService(config)
+    batch_service = BatchBacktestService(
+        BacktestService(config), BacktestRunRepository(config), research_run_service=research,
+    )
+    result = batch_service.run_batch_backtest(
+        stock_codes=["2330"], start_date="2026-01-01", end_date="2026-06-30",
+        strategy_spec=get_test_strategy_spec(), save_runs=True,
+        single_execution_callable=execute_batch_stock_with_rule_source,
+    )
+    row = result.stock_results[0]
+    assert row.run_id is not None, row.error_reason
+    metadata = research.load_run_data("batch-backtest:" + row.run_id).metadata
+
+    changed_input = deepcopy(metadata.original_input)
+    changed_input["raw_params"]["max_participation_rate"] = 0.5
+    tampered = replace(metadata, original_input=changed_input)
+    monkeypatch.setattr(research, "load_run_data", lambda _run_id: SimpleNamespace(metadata=tampered))
+    card = load_saved_strategy_rule_card(research, tampered)
+    assert "execution_rule_input_mismatch" in card.reasons
+    assert card.source_status == "not_evaluable"
+
+    tampered = replace(metadata, capital_cents=metadata.capital_cents + 1)
+    card = load_saved_strategy_rule_card(research, tampered)
+    assert "execution_rule_capital_mismatch" in card.reasons
+    assert card.source_status == "not_evaluable"
 
 
 # ==========================================

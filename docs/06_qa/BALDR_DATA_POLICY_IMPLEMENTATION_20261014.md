@@ -1593,3 +1593,11 @@ QA467 先通過固定 Python／EXE 的 launch／journey／model／H20 同版隔�
 獨立預覽 `output/trial/Baldr-P07-Research-73/Launch-Baldr.cmd` 使用全新 `state/` 與五份已核四股市場副本，不搬移日常研究71或正式持倉。QA468 對實際啟動器 `--check` 核來源 commit／EXE、隔離設定及市場副本 SHA 前後相同；outer SHA-256 `92f60a1cdceace131b46ca2ade53736c4503f29765ba848d4d121f5e9d30f0bc`。預覽 `DELIVERY_RECEIPT.json` SHA-256 `9fa1fe061748b80d6b946e11a8004b27ed6b40191ccebf96f097dff40f1809a4`，同目錄有試用步驟與已知問題。QA464–468 各組均以前組三 PID 陣列自然空、process／Job handles 關閉與 mutex 釋放才啟動，Job 為 8 GiB committed／12 程序／kill-on-close，沒有以強制回收當 PASS。
 
 本增量只解除 P07 兩條研究策略在 Windows EXE 不能執行的工程阻礙。未接受四股以外真 N、歷史 PIT、來源用途、完整雙策略績效、Walk-forward／OOS、真 Paper／Forward 成熟或 P07／G0–G4 全 Gate；原六配對使用者 run 仍無 exact 身分。固定第一版71 EXE／收據保持原樣；Increment72 的舊歷史顯示修正雖隨新來源進此預覽，不改寫71包或原失敗。未寫正式資料、正式 Task，未重觸發 maintainer、push、發布或交易。
+
+## Increment74：P12 決策擷取終態的固定 EXE 讀回
+
+**解除的第二階段交付阻礙**：Increment56 已讓來源版正常主視窗顯示決策證據擷取的具名失敗原因、保存未知與最後階段，但同一流程在固定 Windows EXE 與新程序仍缺證據。本輪不修改產品程式、不啟動正式排程，也不重跑使用者已驗的日常研究71；以 Increment73 已建固定來源 `90e9a4f7adcb65cab4c5842b13cb6f2586d85e1f`、EXE SHA-256 `53138a905415af76d6046bb5d055b8af6bc6f1d97d91f8c50718e7c6f8535e62` 驗原 P12 的唯一新增出口。
+
+QA470 先用原 producer context／artifact／finalizer helpers 在隔離目錄建立一筆合成成功與一筆合成 snapshot timeout 終態，來源程序確認成功件的收據可讀；父 PID `46484` 與 fresh PID `16132` 再各由固定 EXE 啟動正常 Main，沿「系統狀態 → 日常排程 → 決策證據擷取 → 詳細」讀出同一 run ID／收據 SHA、`snapshot_cli_timeout`、未完成 `snapshot` 與「已保存：未知」，切到觀察清單後返回仍是同一終態。兩個 EXE 程序均唯讀，原九件以上的隔離原件內容與時間在建立後、父程序、fresh 程序前後一致，Python socket 嘗試 0；未呼正式 producer、另存、Task 或 maintainer。受控 spec 固定 11 個來源／候選 pin，QA Python 語法檢查與同版 EXE 主頁／fresh 命令均 exit 0。父／fresh 收據 SHA-256 `23d6a94e8bd8b1a0ddabf563fe971afe1f8c1bcdb0a71d095faaf5e57407bc4c`／`450546fb1ea4e79967485c35d50cc95c2345882137e1dcd6ebc4bb5b195c1962`；外層 `single_owned_qa_645fe9da3c1542f0affc1e8515b2a307/receipt.json` SHA-256 `1ba2f3c041e4a0b77a583032a8e60237eef306831c69fded2ac23b941de2350e`。啟動前可用 RAM 21.10 GB；同 workspace mutex、8 GiB committed／12 程序／kill-on-close，三 PID 陣列自然空、process／Job handles 關閉、mutex 釋放，無強制清理。
+
+隔離測試目錄沒有公司名冊及市場 SQLite，主頁在其他工作區顯示缺件降級訊息；本案例只驗 P12 終態讀回，不以此核市場功能。timeout 是**合成事件**，未實跑原 120 秒超時、慢依賴、完整 DB snapshot 或自然排程，也未證正式資料來源與真人操作。原正式快照 Task 逾時與 P12 全出口仍 open；不因這筆固定 EXE 的局部 PASS 改成完整 Gate。固定日常研究66／71與 P07 預覽73 均未修改，沒有正式資料寫入、全量回補、正式 Task 變更、push、發布或交易。

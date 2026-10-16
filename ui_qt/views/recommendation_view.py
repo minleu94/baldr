@@ -53,6 +53,7 @@ from app_module.recommendation.negative_evidence_projection import (
     project_canonical_negative_evidence,
 )
 from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.scheduled_recommendation_status import (
     ScheduledRecommendationPointer,
     read_latest_scheduled_recommendation_pointer,
@@ -6551,6 +6552,68 @@ class RecommendationView(QWidget):
             persisted_at.isoformat(timespec="microseconds"),
         )
 
+    @staticmethod
+    def _legacy_loaded_result_identity(
+        read_model: RecommendationExecutionReadModel | None,
+        requested_result_id: str,
+    ) -> tuple[str, ...]:
+        """舊格式只綁定原件的唯讀身份，不給 canonical 保存資格。"""
+
+        if type(read_model) is not RecommendationExecutionReadModel:
+            raise ValueError("查詢沒有回傳保存推薦 read model。")
+        result = read_model.legacy_result
+        if (
+            read_model.execution is not None
+            or type(result) is not RecommendationResultDTO
+            or read_model.integrity_basis not in {
+                "legacy_trusted_hash_verified", "legacy_read_time_hash_only"
+            }
+            or read_model.payload_hash is not None
+            or read_model.schema_version is not None
+            or read_model.schema_revision is not None
+            or result.result_id != requested_result_id
+            or any(type(item) is not RecommendationDTO for item in result.recommendations)
+        ):
+            raise ValueError("此結果不是可唯讀核對的舊格式保存推薦。")
+        raw_hash = read_model.raw_artifact_sha256
+        location = read_model.artifact_location
+        persisted_at = read_model.persisted_at
+        if (
+            type(raw_hash) is not str
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", raw_hash) is None
+            or type(location) is not str
+            or not location.strip()
+            or (persisted_at is not None and (
+                type(persisted_at) is not datetime
+                or persisted_at.tzinfo is None
+                or persisted_at.utcoffset() is None
+            ))
+        ):
+            raise ValueError("舊格式結果缺少可核對的原件身份。")
+        return (
+            read_model.integrity_basis,
+            "legacy_read_only",
+            "0",
+            requested_result_id,
+            "",
+            raw_hash,
+            location,
+            persisted_at.isoformat(timespec="microseconds") if persisted_at else "",
+        )
+
+    @staticmethod
+    def _legacy_saved_decision_date(result: RecommendationResultDTO) -> date | None:
+        """舊結果只讀原保存欄位；日期不代表獨立 PIT 核准。"""
+
+        raw = result.run_context.get("as_of_date")
+        if type(raw) is not str:
+            return None
+        try:
+            parsed = date.fromisoformat(raw)
+        except ValueError:
+            return None
+        return parsed if parsed.isoformat() == raw else None
+
     def _select_saved_source(self, _index: int) -> None:
         value = self.saved_source_combo.currentData()
         # QVariant 會把 Python tuple 轉成 list；核對形狀後還原 immutable 身份。
@@ -6601,14 +6664,34 @@ class RecommendationView(QWidget):
         try:
             for value in values:
                 try:
-                    identity = self._canonical_loaded_result_identity(value, value.result_id)
+                    if type(value) is not RecommendationExecutionReadModel:
+                        raise ValueError("保存來源型別錯誤")
+                    identity = (
+                        self._legacy_loaded_result_identity(value, value.result_id)
+                        if value.execution is None
+                        else self._canonical_loaded_result_identity(value, value.result_id)
+                    )
                 except (AttributeError, TypeError, ValueError):
                     refused += 1
                     continue
                 label = str(value.label or "未命名結果")
-                decision_date = value.execution.context.as_of_date.isoformat()
-                source_label = "保存推薦" if value.execution.items else "保存篩選／空結果（非推薦）"
-                options.append((f"{source_label}｜{label}｜決策日 {decision_date}｜保存於 {identity[7][:10]}｜{identity[3]}", identity))
+                if value.execution is None:
+                    assert value.legacy_result is not None
+                    saved_date = self._legacy_saved_decision_date(value.legacy_result)
+                    basis = (
+                        "獨立雜湊已核"
+                        if value.integrity_basis == "legacy_trusted_hash_verified"
+                        else "僅當次原件雜湊"
+                    )
+                    options.append((
+                        f"舊格式推薦／唯讀｜{label}｜原保存決策日 "
+                        f"{saved_date.isoformat() if saved_date else '未知'}｜{basis}｜{identity[3]}",
+                        identity,
+                    ))
+                else:
+                    decision_date = value.execution.context.as_of_date.isoformat()
+                    source_label = "保存推薦" if value.execution.items else "保存篩選／空結果（非推薦）"
+                    options.append((f"{source_label}｜{label}｜決策日 {decision_date}｜保存於 {identity[7][:10]}｜{identity[3]}", identity))
         except Exception as exc:
             self._on_saved_sources_error(str(exc), generation)
             return
@@ -6675,7 +6758,7 @@ class RecommendationView(QWidget):
         self._load_saved_recommendation_result()
 
     def _load_saved_recommendation_result(self) -> None:
-        """Read one explicitly named canonical saved result on a background worker."""
+        """以精確 result_id 唯讀取回 canonical 或舊格式保存結果。"""
 
         requested_result_id = self.saved_result_id_input.text().strip()
         if not requested_result_id:
@@ -6702,7 +6785,7 @@ class RecommendationView(QWidget):
             composition = self._get_recommendation_composition()
         except Exception as exc:
             self.result_status_label.setText(
-                f"無法建立單筆 canonical reader：{type(exc).__name__}: {exc}"
+                f"無法建立單筆保存結果 reader：{type(exc).__name__}: {exc}"
             )
             return
 
@@ -6738,13 +6821,18 @@ class RecommendationView(QWidget):
             read_model = composition.queries.get(requested_result_id)
             if scheduled_pointer is not None:
                 execution = getattr(read_model, "execution", None)
-                context = getattr(execution, "context", None)
-                as_of = getattr(context, "as_of_date", None)
+                legacy_result = getattr(read_model, "legacy_result", None)
+                if execution is not None:
+                    as_of = execution.context.as_of_date
+                    count = len(execution.items)
+                elif type(legacy_result) is RecommendationResultDTO:
+                    as_of = self._legacy_saved_decision_date(legacy_result)
+                    count = len(legacy_result.recommendations)
+                else:
+                    raise ValueError("每日快照沒有可核對的保存結果")
                 if as_of != scheduled_pointer.decision_date:
                     raise ValueError("每日快照決策日期與保存結果不一致")
-                if len(getattr(execution, "items", ())) != (
-                    scheduled_pointer.recommendations_count
-                ):
+                if count != scheduled_pointer.recommendations_count:
                     raise ValueError("每日快照候選筆數與保存結果不一致")
             return read_model
 
@@ -6785,8 +6873,11 @@ class RecommendationView(QWidget):
         if generation != getattr(self, "_saved_result_load_generation", None):
             return
         try:
-            identity = self._canonical_loaded_result_identity(
-                read_model, requested_result_id
+            identity = (
+                self._legacy_loaded_result_identity(read_model, requested_result_id)
+                if type(read_model) is RecommendationExecutionReadModel
+                and read_model.execution is None
+                else self._canonical_loaded_result_identity(read_model, requested_result_id)
             )
             if expected_identity is not None and identity != expected_identity:
                 raise ValueError("保存來源已變動；未替換原結果，請重讀可用來源。")
@@ -6794,6 +6885,9 @@ class RecommendationView(QWidget):
             self._on_saved_result_load_error(
                 f"{type(exc).__name__}: {exc}", requested_result_id, generation
             )
+            return
+        if read_model is not None and read_model.execution is None:
+            self._apply_legacy_saved_result(read_model, requested_result_id, identity)
             return
         assert read_model is not None and read_model.execution is not None
         execution = read_model.execution
@@ -6879,6 +6973,80 @@ class RecommendationView(QWidget):
             )
             self._pending_scheduled_recommendation = None
         self._update_watchlist_action_state()
+        self._update_detail_text()
+        self._refresh_personal_choice_controls()
+        self._refresh_personal_prediction_capture_controls()
+
+    def _apply_legacy_saved_result(
+        self,
+        read_model: RecommendationExecutionReadModel,
+        requested_result_id: str,
+        identity: tuple[str, ...],
+    ) -> None:
+        """呈現舊版原保存列；所有 canonical 寫入／採用入口維持關閉。"""
+
+        result = read_model.legacy_result
+        assert result is not None
+        rows = [
+            {
+                "證券代號": item.stock_code,
+                "證券名稱": item.stock_name,
+                "原保存收盤價": str(item.close_price),
+                "原保存總分": str(item.total_score),
+                "推薦理由": item.recommendation_reasons,
+            }
+            for item in result.recommendations
+        ]
+        self.current_execution = None
+        self.current_read_model = read_model
+        self.current_save_receipt = None
+        self._loaded_saved_result_identity = identity
+        self._pending_save_receipt = None
+        self._pending_save_metadata = None
+        self.current_result_id = requested_result_id
+        self.current_config = {}
+        self.current_profile = None
+        self.current_regime = None
+        self._update_company_source_snapshot_display(None)
+        self.company_source_snapshot_label.setText(
+            "分類來源：舊格式結果沒有可核對的封存分類事件；不會用目前名冊補填。"
+        )
+        self.result_title_label.setText("舊格式保存推薦（唯讀研究）")
+        self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
+        self.results_table.setModel(self.recommendations_model)
+        self._reserve_recommendation_table_rows()
+        self._connect_result_table_interactions()
+        self.saved_result_id_input.setText(requested_result_id)
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        self.save_result_btn.setVisible(False)
+        self.send_to_backtest_btn.setVisible(False)
+        self.send_profile_to_portfolio_backtest_btn.setVisible(False)
+        self.export_report_btn.setVisible(False)
+        self.research_actions_toggle.setVisible(False)
+        self.research_actions_toggle.setChecked(False)
+        self.research_actions_widget.setVisible(False)
+        self.stock_research_btn.setVisible(bool(rows))
+        self.stock_research_btn.setEnabled(False)
+        basis = (
+            "原件 SHA-256 有獨立可信值核對"
+            if read_model.integrity_basis == "legacy_trusted_hash_verified"
+            else "原件 SHA-256 僅在讀取當次計算，沒有獨立可信值"
+        )
+        self.result_status_label.setText(
+            f"已唯讀開啟舊格式保存結果 {requested_result_id}（{len(rows)} 檔）；{basis}。"
+            "可選股查看個股與結果追蹤；不可據此保存新推薦、採用、交易或推定歷史 PIT。"
+        )
+        pointer = getattr(self, "_pending_scheduled_recommendation", None)
+        if pointer is not None and pointer.result_id == requested_result_id:
+            self.result_status_label.setText(
+                f"每日排程保存欄位｜決策日 {pointer.decision_date.isoformat()}｜"
+                f"候選 {pointer.recommendations_count} 檔；原件資格仍依下方說明。\n"
+                + self.result_status_label.text()
+            )
+            self._pending_scheduled_recommendation = None
+        self._update_watchlist_action_state()
+        self._update_research_context_banner()
         self._update_detail_text()
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
@@ -8083,6 +8251,18 @@ class RecommendationView(QWidget):
         code = str(row.get("證券代號", "")).strip()
         if not code:
             return
+        legacy_result_id = self._verified_legacy_result_id()
+        if self.current_read_model is not None and self.current_read_model.execution is None:
+            result = self.current_read_model.legacy_result
+            matches = (
+                [item for item in result.recommendations if item.stock_code == code]
+                if legacy_result_id and result is not None else []
+            )
+            if len(matches) != 1 or matches[0].stock_name != str(row.get("證券名稱", "") or "").strip():
+                self.result_status_label.setText(
+                    "舊格式結果的選取股票無法與原保存列唯一核對；未開啟個股研究。"
+                )
+                return
         recommendation = self._find_unique_current_recommendation(code)
         stock_name = str(row.get("證券名稱", "") or "").strip()
         if recommendation is not None and not stock_name:
@@ -8098,6 +8278,24 @@ class RecommendationView(QWidget):
         recommendation: RecommendationItem | None = None,
     ) -> ResearchStockContextDTO:
         """由目前畫面結果建立唯讀 context；不補抓行情也不重算。"""
+        legacy_result_id = self._verified_legacy_result_id()
+        if legacy_result_id:
+            read_model = self.current_read_model
+            assert read_model is not None and read_model.legacy_result is not None
+            result = read_model.legacy_result
+            saved_date = self._legacy_saved_decision_date(result)
+            return ResearchStockContextDTO(
+                stock_code=stock_code,
+                stock_name=stock_name,
+                decision_date=saved_date.isoformat() if saved_date else "",
+                data_date="",
+                result_id=legacy_result_id,
+                identity_status="linked",
+                source_id=legacy_result_id,
+                source_kind="recommendation",
+                source_label="舊格式保存推薦（唯讀；原保存日期與歷史可得性未獨立驗證）",
+                source_workspace="recommendation",
+            )
         execution = self.current_execution
         context = execution.context if execution is not None else None
         request_profile = execution.request.profile_ref if execution is not None else None
@@ -8179,6 +8377,29 @@ class RecommendationView(QWidget):
         """在結果頂端重述同一份研究 context；不補抓資料、不重算日期。"""
         label = getattr(self, "research_context_label", None)
         if label is None:
+            return
+        legacy_result_id = self._verified_legacy_result_id()
+        if legacy_result_id:
+            read_model = self.current_read_model
+            assert read_model is not None and read_model.legacy_result is not None
+            saved_date = self._legacy_saved_decision_date(read_model.legacy_result)
+            basis = (
+                "獨立可信 SHA 已核"
+                if read_model.integrity_basis == "legacy_trusted_hash_verified"
+                else "僅當次 SHA"
+            )
+            summary_label = getattr(self, "research_context_summary_label", None)
+            if summary_label is not None:
+                summary_label.setText(
+                    "舊格式保存列只供唯讀回訪；行情資料日、歷史 PIT 與績效資格未核准。"
+                )
+            label.setText(
+                "研究上下文\n"
+                f"標的：{stock_code or '尚未選取'}｜原保存決策日："
+                f"{saved_date.isoformat() if saved_date else '未知'}\n"
+                f"來源：舊格式唯讀推薦｜結果：{legacy_result_id}｜完整性：{basis}\n"
+                "原保存日期不等於歷史可得性；不可由舊分數推定勝率或交易資格。"
+            )
             return
         execution = self.current_execution
         context = execution.context if execution is not None else None
@@ -8284,7 +8505,9 @@ class RecommendationView(QWidget):
             )
         else:
             button.setToolTip(
-                "選取一檔結果股票後，帶著原決策／資料日期查看個股研究。"
+                "選取一檔舊格式保存股票，唯讀查看個股與結果追蹤；原保存日期不代表 PIT 資格。"
+                if self._verified_legacy_result_id()
+                else "選取一檔結果股票後，帶著原決策／資料日期查看個股研究。"
             )
         selected_rows = selection.selectedRows() if selection is not None else []
         button.setEnabled(bool(self.recommendations_model and len(selected_rows) == 1))
@@ -8324,14 +8547,43 @@ class RecommendationView(QWidget):
             return ""
         return read_model.result_id
 
+    def _verified_legacy_result_id(self) -> str:
+        """只供唯讀下鑽／返回；不代替 canonical 採用或寫入資格。"""
+
+        read_model = self.current_read_model
+        if (
+            read_model is None
+            or self.current_execution is not None
+            or self.current_save_receipt is not None
+        ):
+            return ""
+        try:
+            identity = self._legacy_loaded_result_identity(
+                read_model, read_model.result_id
+            )
+        except (AttributeError, TypeError, ValueError):
+            return ""
+        if (
+            identity == self._loaded_saved_result_identity
+            and self.current_result_id == read_model.result_id
+        ):
+            return read_model.result_id
+        return ""
+
     def select_stock(self, stock_code: str, result_id: str | None = None) -> bool:
         """回到推薦頁時定位既有結果列，不執行新的推薦。"""
 
         if self.recommendations_model is None:
             return False
-        if result_id and result_id != self._verified_saved_result_id():
+        if result_id and result_id != (
+            self._verified_saved_result_id() or self._verified_legacy_result_id()
+        ):
             return False
         code = str(stock_code).strip()
+        if self._verified_legacy_result_id():
+            result = self.current_read_model.legacy_result
+            if result is None or sum(item.stock_code == code for item in result.recommendations) != 1:
+                return False
         frame = self.recommendations_model.getDataFrame()
         for row_number, value in enumerate(frame.get("證券代號", ())):
             if str(value).strip() == code:
@@ -8386,8 +8638,17 @@ class RecommendationView(QWidget):
         df = self.recommendations_model.getDataFrame()
 
         if row < len(df):
-            # 只用同一 sealed execution 的 item 產生解釋。
             stock_code = df.iloc[row].get('證券代號', '')
+            if self._verified_legacy_result_id():
+                self._update_research_context_banner(stock_code=str(stock_code))
+                self.detail_text.setPlainText(
+                    "舊格式原保存推薦（唯讀）\n"
+                    f"標的：{stock_code} {df.iloc[row].get('證券名稱', '')}\n"
+                    f"原保存理由：{df.iloc[row].get('推薦理由', '') or '未提供'}\n"
+                    "收盤價與分數只是原保存欄位；未核准歷史 PIT、來源用途或績效資格。"
+                )
+                return
+            # 只用同一 sealed execution 的 item 產生 canonical 解釋。
             recommendation = self._find_unique_current_recommendation(str(stock_code))
 
             self._update_research_context_banner(

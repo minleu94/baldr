@@ -106,6 +106,8 @@ Manifest 公版欄位與範例見 [`examples/machine_bootstrap_manifest.example.
 
 每次驗收沿同一 identity 建立 `task → producer → status → immutable terminal/receipt → artifact → consumer readback` 路徑。latest status 只用來定位；核 exact run/date、parent/hash、terminal 和下游 readback。`Task Ready`、`LastResult=0`、exit 0、heartbeat 回報、status receipt 存在或檔案時間更新都不足以單獨宣稱自然成功。
 
+後續開發來源版可在「系統狀態」明選「決策證據擷取」展開詳細；Runtime 與 Workbench 共用同 run 收據／原件核驗，缺件或孤立 passed 不計成功。逾時的保存結果若未知，須先核原 DB／receipt，不能由狀態文字推定沒有寫入而重跑。操作與診斷見[手冊§11](APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。目前只有隔離終態、模擬逾時事件與正常畫面新程序讀回證據；未實跑120秒超時，未觸發或驗收正式自然 Task。原期限、重試授權、共用鎖與已停用 maintainer 狀態保留。
+
 對 Paper／Forward，保留其共同 08:25 wakeup 與 08:30 readiness/cutoff 的不同角色；未到 cutoff、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 不能結案成成功或自然成熟。對 recommendation learning、Forward outcome、promotion 與 model shadow，source／樣本不完整或未到 maturity 保持 pending，不從工程試跑、舊 latest 或離線 replay 增授自然 credit。
 
 ## lane 操作入口

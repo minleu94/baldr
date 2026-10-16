@@ -2,6 +2,28 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment56：P12決策擷取終態與正常系統狀態
+
+解除原P12「通用passed字串被視為成功、原終態／階段診斷未接回正常頁」的操作阻礙。沿既有 `run_scheduled_decision_evidence_capture` 寫入契約與 `decision_snapshot_diagnostics`，新增application唯讀adapter，供原Runtime排程service與Workbench共同消費；原producer、正式Task、120秒child期限與30秒狀態輪詢未改。固定4b530四流程V1與50ddb開發EXE均不改版，不新增試用前置。
+
+latest／receipt各1MiB、子stream各64KiB，核同run／schema／完整payload／canonical路徑／SHA／bytes及start≤complete≤觀測時鐘，沿regular-file／no-follow／hardlink／reparse與取消、讀後重驗。只有完整已核passed才計正常；已知child啟動前失敗可核其失敗終態，啟動後原件pending拒驗。snapshot保存或duplicate未知保留None；Workbench與正常「系統狀態→日常排程→決策證據擷取→詳細」保留失敗／timeout語意，只顯安全原因碼、固定階段、整數耗時與例外類型，私訊不進DTO。receipt不穩定綁data_root，故核驗只證執行原件一致，不證DB寫入、資料來源／歷史PIT／金融結果或自然成熟。
+
+Root凍結共用API並整合，重用三名既有Luna靜態協作，累計10/10、無新增agent／子代理或worker Python。peer發現Runtime先通用無界read與Workbench遺漏prelaunch None失敗，Root已改成lane先分流有界reader及保留失敗／未知，超限反例與原prelaunch案例定向驗證。service無新cancel參數，reader保留ambient與顯式callback檢查；不能宣稱新增整個Runtime取消UI。
+
+| QA | 實際限定結果與處置 | 具名outer receipt／SHA256 |
+|---|---|---|
+| 309–313 | 309只context／原producer trace；310 compile11通過，22 fixture因Windows長路徑發布失敗／33PASS。311短owner根30PASS／7FAIL：固定producer時鐘未同步reservation時鐘，原截止守衛阻擋。312單元時鐘同步後2PASS／5FAIL；313中性路徑仍5FAIL，定位新增test誤把安全例外類型當私訊。保留原金融／來源／期限守衛，修新test核固定reason:type且排除原例外訊息，所有FAIL原件不覆寫。 | 各原spec、log、receipt保存在本owner task，另存`increment56_qa_ledger.json`逐組SHA；不把這些失敗算通過。 |
+| 314 | 五prelaunch反例PASS；Runtime／Workbench／composition共100PASS含必跑Workbench85；原13Main整合fixture缺現行初始化依賴FAIL。 | `single_owned_qa_018e5c2515bb4f38a774d34eabb1b1f6/receipt.json`／`ada8d457fe7ea16183f14cef56d4b3a0f87af571135a045075882b1bd8934985` |
+| 315／316 | 315新reader12型別錯FAIL；316以顯式同型守衛收斂，原拒絕碼不改，compile／八roots mypy1033／validator25PASS、0FAIL、4protected skips通過。Main helper錯認bootstrap root而FAIL；未重跑已PASS UI，既有ui_qt ignore不證UI強型別。 | 316 `single_owned_qa_a3c3be71d90644f59de405e48bb1843b/receipt.json`／`328053143134cdba68c007a053f92e653129973a99e84ce79727974d6485fc9a` |
+| 317／318 | 317受改reader16PASS；舊Main dummy缺現行推薦/cohort掛載13FAIL。318正常Main helper自設1024寬超過offscreen800螢幕而FAIL；原件保留，沒有冒稱1024／Native成功。 | 317 `single_owned_qa_d0af046eaaa34a6d90c758492a206dcc/receipt.json`／`b834086c717d8e9fe4e36b5833fe10a3cb5a1ff40a0189b35d7153a2017ce9a6` |
+| 319 | 新隔離c沿既有640px可見座標命中、15秒UI／120秒phase／270秒driver，正常Main48720→fresh30816同run終態／詳細／切頁返回／重開通過；9原件內容與時間一致、Python socket0。 | `single_owned_qa_0608235c7ec546ae9a7d1717fa084a0a/receipt.json`／`fc61b9632ca82b3923e039cff2e121cdc1a6c7053ce9b812ca393b7a0a9ad1a2` |
+| 320／321 | 320原Main dummy仍缺cohort reload／四signal協定13FAIL；321補完整fixture協定後compile與13PASS。原七頁順序及lazy loading守衛保留，expected新增現行第八研究母體盤勢及widget identity斷言，未改產品或遮蔽cohort接線。 | 321 `single_owned_qa_dcf9ad4fcf37495881decf1906919731/receipt.json`／`3a7c8291b5a27da1df8a23f86692851ad3f53caefb31b4e2e7b9c14151eb0ae0` |
+| 322／323 | 322十文件／context metadata治理通過；Root最後複核把terminal限原producer十種值，避免published／completed借其他lane成功分類。323 compile2、reader／兩consumer40PASS含三個雙檔改hash反例及原timeout／prelaunch／取消／損毀／未知守衛，八roots mypy1033通過；未改UI／validator／Main沿前述收據。 | 323 `single_owned_qa_2b1f91b82ee648d6a6164b8912d4af80/receipt.json`／`39dbd8e5b93b16663c453f62a3aa6b643a43be03613daeb98c814c4e3f635719` |
+
+QA319使用原context／artifact／finalizer保存合成成功與timeout事件，writer採真時鐘；保存舊run收據不變，fresh禁止run／create／persist／finalize。latest run為`20261015T235732260100Z-02765e88148e`，immutable receipt SHA為`892e5de85690c03257bea8daf0bb357569f8f7ebcf091b66fc55d2429aa3a71b`；parent收據SHA `93e94b57d42caa4877b710762b3974c6b1d7e6a59c41b4ff3af46bf1bf0f7f41`、fresh `68965d60f631ae2826263fa259d8ea088530bc0d1d46951d30fa8898ed024333`。這是隔離來源版offscreen自動化，未實跑120秒timeout、完整DB snapshot、依賴慢／效能原因、Native／EXE、真人、正式Task或自然run；P12原關閉條件仍保留。
+
+原計畫§0.3／§9.5、Snapshot、架構、Feature Map／UI、手冊§11、指南章節地圖與排程運維同步。每組仍起前RAM≥8GiB、8GiB committed／12程序／KOC／同workspace mutex，三PID陣列自然空且handles／mutex閉鎖後才續組，沒有強制清場成功。無HTTP、正式資料／Task寫入、maintainer觸發、push／發布或交易；未受影響QA沿原收據，不相加宣稱Gate。
+
 ## Increment55：P13/P14固定候選Native與同版出口
 
 **解除的交付阻礙**：第二階段法人用途與P06 Registry已有來源版正常Main證據，尚未確認實際固定EXE能走同一保存／讀回／返回流程。本輪不另造產品實作，只沿原build_windows／verify_same_version與兩個原旅程，固定commit另建候選並補Windows原生自動化。第一版4b530四流程包、原dist/baldr、active_delivery與原失敗／資料全部保留；這兩個出口不加入V1試用前置。

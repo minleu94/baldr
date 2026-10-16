@@ -17,8 +17,13 @@ from app_module.dtos.runtime_dtos import (
     RuntimeStateSnapshotDTO,
     RuntimeHealthSnapshotDTO,
     RuntimeEventDTO,
+    ScheduledOperationStatusDTO,
     ScheduledOperationsSnapshotDTO,
     EnvironmentReadinessSnapshotDTO,
+)
+from app_module.decision_capture_status_reader import (
+    DecisionCaptureRunStatus,
+    DecisionCaptureStage,
 )
 
 STATE_LABELS = {
@@ -223,6 +228,15 @@ class RuntimeView(QWidget):
         self.operations_detail_label.setSizePolicy(
             QSizePolicy.Ignored, QSizePolicy.Preferred
         )
+        self.operations_capture_detail_label = QLabel(
+            "選取排程列以查看其唯讀終態；未提供終端讀回時狀態未知。"
+        )
+        self.operations_capture_detail_label.setTextFormat(Qt.PlainText)
+        self.operations_capture_detail_label.setWordWrap(True)
+        self.operations_capture_detail_label.setMinimumWidth(0)
+        self.operations_capture_detail_label.setSizePolicy(
+            QSizePolicy.Ignored, QSizePolicy.Preferred
+        )
         self.operations_list = QListWidget()
         self.operations_list.setMinimumWidth(0)
         self.operations_list.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -235,11 +249,16 @@ class RuntimeView(QWidget):
         operations_details_layout = QVBoxLayout(self.operations_details)
         operations_details_layout.addWidget(self.scope_label)
         operations_details_layout.addWidget(self.operations_detail_label)
+        operations_details_layout.addWidget(self.operations_capture_detail_label)
         self.operations_raw_text = QTextEdit()
         self.operations_raw_text.setReadOnly(True)
         operations_details_layout.addWidget(self.operations_raw_text)
         self.operations_details_button = self._add_details(
             operations_layout, self.operations_details, "排程來源與原始診斷"
+        )
+        self._scheduled_operations_by_job_id = {}
+        self.operations_list.currentItemChanged.connect(
+            self._on_scheduled_operation_selection_changed
         )
         main_layout.addWidget(self.operations_group)
 
@@ -369,6 +388,158 @@ class RuntimeView(QWidget):
             + "本頁不啟動更新或修復；需要更新時到「數據更新」檢查。"
         )
 
+    @staticmethod
+    def _safe_capture_code(value: object) -> str | None:
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > 96
+            or not value.isascii()
+        ):
+            return None
+        if all(character.isalnum() or character in "_.:-" for character in value):
+            return value
+        return None
+
+    @staticmethod
+    def _capture_elapsed_text(value: object) -> str:
+        max_elapsed_ms = 86_400_000
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return "未知"
+        if value > max_elapsed_ms:
+            return f"≥{max_elapsed_ms} ms（已截限）"
+        return f"{value} ms"
+
+    @staticmethod
+    def _capture_optional_bool_text(value: object) -> str:
+        if value is True:
+            return "是"
+        if value is False:
+            return "否"
+        return "未知"
+
+    @classmethod
+    def _render_decision_capture_status(
+        cls,
+        operation: ScheduledOperationStatusDTO,
+    ) -> str:
+        if operation.job_id != "decision_evidence_capture":
+            return "此工作沒有決策擷取終態資料。"
+
+        capture = getattr(operation, "capture", None)
+        if not isinstance(capture, DecisionCaptureRunStatus):
+            return "決策擷取終態：未知（未提供 typed capture）。"
+
+        read_state_labels = {
+            "verified": "已驗證",
+            "missing": "來源缺失",
+            "unverified": "未驗證",
+            "not_finalized": "尚未終結",
+        }
+        read_state = cls._safe_capture_code(capture.read_state)
+        read_state_label = read_state_labels.get(read_state, "未知")
+        run_id = cls._safe_capture_code(capture.run_id) or "未知"
+        decision_date = capture.decision_date
+        if (
+            not isinstance(decision_date, str)
+            or len(decision_date) != 10
+            or decision_date[4] != "-"
+            or decision_date[7] != "-"
+            or any(character not in "0123456789" for character in decision_date[:4])
+            or any(character not in "0123456789" for character in decision_date[5:7])
+            or any(character not in "0123456789" for character in decision_date[8:])
+        ):
+            decision_date = "未知"
+        completed_at = capture.completed_at
+        if (
+            not isinstance(completed_at, str)
+            or not completed_at
+            or len(completed_at) > 64
+            or not all(
+                character.isascii() and character in "0123456789TZ:+-."
+                for character in completed_at
+            )
+        ):
+            completed_at = "未知"
+        receipt_sha256 = capture.receipt_sha256
+        if (
+            not isinstance(receipt_sha256, str)
+            or len(receipt_sha256) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in receipt_sha256)
+        ):
+            receipt_sha256 = "未知"
+
+        reasons = []
+        if isinstance(capture.failure_reasons, tuple):
+            for reason in capture.failure_reasons[:32]:
+                reasons.append(cls._safe_capture_code(reason) or "未知代碼")
+        reason_text = "、".join(reasons) if reasons else "未提供"
+
+        last_stage = cls._safe_capture_code(capture.last_stage) or "未知"
+        unfinished_stages = []
+        if isinstance(capture.unfinished_stages, tuple):
+            unfinished_stages = [
+                cls._safe_capture_code(stage) or "未知代碼"
+                for stage in capture.unfinished_stages[:32]
+            ]
+        unfinished_text = "、".join(unfinished_stages) if unfinished_stages else "無"
+
+        stage_lines = []
+        if isinstance(capture.stages, tuple):
+            for stage in capture.stages[:32]:
+                if not isinstance(stage, DecisionCaptureStage):
+                    continue
+                stage_name = cls._safe_capture_code(stage.stage) or "未知"
+                stage_state = cls._safe_capture_code(stage.state) or "未知"
+                stage_lines.append(
+                    f"{stage_name}｜{stage_state}｜耗時 "
+                    f"{cls._capture_elapsed_text(stage.elapsed_ms)}"
+                )
+        stage_text = "\n".join(stage_lines) if stage_lines else "未提供"
+        if isinstance(capture.stages, tuple) and len(capture.stages) > 32:
+            stage_text += f"\n僅顯示前32筆；此終態共有{len(capture.stages)}筆已保存階段。"
+        diagnostic = (
+            cls._safe_capture_code(capture.diagnostic)
+            if isinstance(capture.diagnostic, str) and capture.diagnostic.startswith("decision_capture_")
+            else ""
+        )
+
+        snapshot_status = cls._safe_capture_code(capture.snapshot_status) or "未知"
+        execution_status = (
+            cls._safe_capture_code(capture.snapshot_execution_status) or "未知"
+        )
+        return "\n".join(
+            (
+                f"決策擷取終態讀回：{read_state_label}（{read_state or 'unknown'}）",
+                f"核驗診斷：{diagnostic or '未提供'}",
+                f"run ID：{run_id}｜決策日：{decision_date}｜完成時間：{completed_at}",
+                f"receipt SHA-256：{receipt_sha256}",
+                "snapshot 狀態："
+                f"{snapshot_status}｜已保存："
+                f"{cls._capture_optional_bool_text(capture.snapshot_saved)}",
+                f"snapshot 執行狀態：{execution_status}",
+                f"安全原因碼：{reason_text}｜最後階段：{last_stage}｜未完成階段：{unfinished_text}",
+                f"階段耗時：\n{stage_text}",
+            )
+        )
+
+    def _on_scheduled_operation_selection_changed(self, current, _previous) -> None:
+        if current is None:
+            self.operations_capture_detail_label.setText(
+                "選取排程列以查看其唯讀終態；未提供終端讀回時狀態未知。"
+            )
+            return
+        job_id = current.data(Qt.UserRole)
+        operation = self._scheduled_operations_by_job_id.get(job_id)
+        if operation is None:
+            self.operations_capture_detail_label.setText(
+                "此排程列的唯讀終態尚未取得。"
+            )
+            return
+        self.operations_capture_detail_label.setText(
+            self._render_decision_capture_status(operation)
+        )
+
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         """窄版把治理雙欄改成單欄，避免文字被切在 viewport 外。"""
 
@@ -478,6 +649,9 @@ class RuntimeView(QWidget):
         )
         selected = self.operations_list.currentItem()
         selected_id = selected.data(Qt.UserRole) if selected is not None else None
+        self._scheduled_operations_by_job_id = {
+            operation.job_id: operation for operation in dto.operations
+        }
         self.operations_list.clear()
         for operation in dto.operations:
             state_label = (

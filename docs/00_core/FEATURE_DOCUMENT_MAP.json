@@ -846,10 +846,18 @@
         "docs/01_architecture/current/data_storage_runtime.md"
       ],
       "code": [
-        "ui_qt/views/runtime_view.py"
+        "ui_qt/views/runtime_view.py",
+        "app_module/decision_capture_status_reader.py",
+        "app_module/dtos/runtime_dtos.py",
+        "app_module/runtime_services/scheduled_operations_service.py",
+        "app_module/workbench_source_service.py"
       ],
       "tests": [
-        "tests/test_ui_qt_runtime_view.py"
+        "tests/test_ui_qt_runtime_view.py",
+        "tests/test_decision_capture_status_reader.py",
+        "tests/decision_capture_status_fixture.py",
+        "tests/test_scheduled_operations_service.py",
+        "tests/test_decision_date_semantics_regression.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md"
@@ -863,7 +871,14 @@
       "change_patterns": [
         "ui_qt/views/runtime*",
         "runtime/*",
-        "app_module/runtime_services/*"
+        "app_module/runtime_services/*",
+        "app_module/decision_capture_status_reader.py",
+        "app_module/dtos/runtime_dtos.py",
+        "app_module/workbench_source_service.py",
+        "tests/test_decision_capture_status_reader.py",
+        "tests/decision_capture_status_fixture.py",
+        "tests/test_scheduled_operations_service.py",
+        "tests/test_decision_date_semantics_regression.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

@@ -13,6 +13,7 @@ import time
 from typing import Any, Callable
 
 from app_module.decision_desk_dtos import DecisionDeskSnapshot, DecisionDeskQuality, RecommendationDeskSummary
+from app_module.decision_capture_status_reader import read_decision_capture_status
 from app_module.decision_desk_snapshot_storage_dtos import StoredDecisionDeskSnapshot
 from app_module.pre_v2_readiness_service import (
     DEFAULT_MIN_DRY_RUN_DAYS,
@@ -193,7 +194,8 @@ class WorkbenchSourceService:
         recommendation_learning_status_json: str | Path | None = None,
         continuity_as_of: datetime | str | None = None,
     ) -> WorkbenchDashboardDTO:
-        evaluation_at = _as_taipei_datetime(self._clock())
+        observed_at = self._clock()
+        evaluation_at = _as_taipei_datetime(observed_at)
         evaluation_date = evaluation_at.date()
         recommendation_read_session = _WorkbenchRecommendationReadSession(
             self.recommendation_queries
@@ -205,7 +207,7 @@ class WorkbenchSourceService:
         market_data_as_of_date, market_index_as_of_date = self._load_market_data_as_of_dates(
             evaluation_date
         )
-        latest_capture_status = self._load_latest_capture_status(evaluation_date)
+        latest_capture_status = self._load_latest_capture_status(evaluation_date, observed_at=observed_at)
         check_read_cancelled()
         readiness_report = self.readiness_service.inspect(
             decision_date=decision_date,
@@ -438,89 +440,32 @@ class WorkbenchSourceService:
         return stock_price_date, market_index_date
 
     def _load_latest_capture_status(
-        self,
-        evaluation_date: date,
+        self, evaluation_date: date, *, observed_at: datetime | None = None,
     ) -> WorkbenchLatestCaptureStatus:
-        """Read a bounded allow-listed summary; never surface payloads or process output."""
-
-        path = (
-            Path(self.config.output_root)
-            / "scheduled"
-            / "decision_evidence_capture"
-            / "latest_status.json"
-        )
-        if not path.is_file():
+        """沿共同receipt reader取安全摘要；不借latest字串宣稱已保存。"""
+        path = (Path(self.config.output_root) / "scheduled" /
+                "decision_evidence_capture" / "latest_status.json")
+        cutoff = observed_at if observed_at is not None else datetime.now(TAIWAN_MARKET_TIMEZONE)
+        capture = read_decision_capture_status(path, observed_at=cutoff)
+        if capture.read_state != "verified":
             return WorkbenchLatestCaptureStatus()
-        try:
-            if path.stat().st_size > _CAPTURE_STATUS_MAX_BYTES:
-                return WorkbenchLatestCaptureStatus()
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
-            return WorkbenchLatestCaptureStatus()
-        if not isinstance(payload, dict):
-            return WorkbenchLatestCaptureStatus()
-        raw_status = payload.get("status")
-        if (
-            payload.get("schema_version") != _CAPTURE_STATUS_SCHEMA
-            or payload.get("task") != _CAPTURE_STATUS_TASK
-            or payload.get("finalized") is not True
-            or not isinstance(raw_status, str)
-            or raw_status not in {"passed", "failed", "degraded"}
-        ):
-            return WorkbenchLatestCaptureStatus()
-
-        raw_run_id = payload.get("run_id")
-        if not isinstance(raw_run_id, str) or not _CAPTURE_RUN_ID_RE.fullmatch(raw_run_id):
-            return WorkbenchLatestCaptureStatus()
-        decision_date = _canonical_iso_date(payload.get("decision_date"))
+        decision_date = _canonical_iso_date(capture.decision_date)
         if decision_date is None or decision_date > evaluation_date:
             return WorkbenchLatestCaptureStatus()
-
-        raw_saved = payload.get("snapshot_saved")
-        snapshot_saved = raw_saved if type(raw_saved) is bool else None
-        raw_duplicate = payload.get("snapshot_duplicate")
-        snapshot_duplicate = raw_duplicate if type(raw_duplicate) is bool else None
-        raw_failures = payload.get("failure_reasons")
-        failures = (
-            tuple(item for item in raw_failures if isinstance(item, str))
-            if isinstance(raw_failures, list)
-            else ()
-        )
-        snapshot_failures = tuple(
-            reason
-            for reason in failures
-            if reason.startswith(
-                (
-                    "snapshot_cli_",
-                    "snapshot_json_",
-                    "snapshot_not_saved",
-                    "snapshot_confirm_",
-                    "snapshot_persisted_",
-                )
-            )
-        )
-        if any("timeout" in reason.lower() for reason in snapshot_failures):
+        if capture.snapshot_status == "timeout" or capture.snapshot_execution_status == "timed_out":
             return WorkbenchLatestCaptureStatus(
-                status="timeout",
-                run_id=raw_run_id,
-                decision_date=decision_date,
-                failure_reason="snapshot_cli_timeout",
-                snapshot_saved=snapshot_saved,
+                status="timeout", run_id=capture.run_id, decision_date=decision_date,
+                failure_reason="snapshot_cli_timeout", snapshot_saved=capture.snapshot_saved,
             )
-        if snapshot_saved is True or snapshot_duplicate is True:
+        if capture.snapshot_saved is True or capture.snapshot_duplicate is True:
             return WorkbenchLatestCaptureStatus(
-                status="saved",
-                run_id=raw_run_id,
-                decision_date=decision_date,
-                snapshot_saved=snapshot_saved,
+                status="saved", run_id=capture.run_id, decision_date=decision_date,
+                snapshot_saved=capture.snapshot_saved,
             )
-        if snapshot_saved is False and snapshot_failures:
+        if capture.raw_status == "failed" and any(reason.startswith("snapshot_") for reason in capture.failure_reasons):
             return WorkbenchLatestCaptureStatus(
-                status="failed",
-                run_id=raw_run_id,
-                decision_date=decision_date,
-                failure_reason="snapshot_capture_failed",
-                snapshot_saved=False,
+                status="failed", run_id=capture.run_id, decision_date=decision_date,
+                failure_reason="snapshot_capture_failed", snapshot_saved=capture.snapshot_saved,
             )
         return WorkbenchLatestCaptureStatus()
 

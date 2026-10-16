@@ -5,7 +5,7 @@ from datetime import date
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QTabWidget
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskSnapshot,
@@ -41,12 +41,32 @@ class _DummyView(QWidget):
         self.load_data_if_needed_calls += 1
 
 
+class _DummyDailyMarketResearchView(_DummyView):
+    """提供原cohort掛載所需協定，不建立或重讀研究資料。"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bookmarkSaved = _DummySignal()
+        self.snapshotAccepted = _DummySignal()
+        self.snapshotCleared = _DummySignal()
+        self.originalRankingAccepted = _DummySignal()
+        self.originalRankingCleared = _DummySignal()
+
+    def reload_published_snapshot(self):
+        pass
+
+    def on_first_open(self):
+        pass
+
+
 class _DummyRecommendationView(_DummyView):
     instances = []
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.kwargs = kwargs
+        self.result_source_tabs = QTabWidget(self)
+        self.daily_market_research_view = _DummyDailyMarketResearchView(parent=self)
         self.sendToBacktestRequested = _DummySignal()
         type(self).instances.append(self)
 
@@ -224,6 +244,17 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
     main_window.decision_continuity_controller = object()
     main_window.portfolio_service = portfolio_service or object()
     main_window.journal_service = object()
+    main_window.journal_storage_selection = types.SimpleNamespace(
+        paths=None,
+        legacy_read_only=False,
+    )
+    main_window.strategy_version_service = object()
+    main_window.paper_checkpoint_account_service = None
+    main_window.paper_checkpoint_disabled_reason = ""
+    main_window.calendar_daily_acceptances = None
+    main_window.calendar_daily_acceptance_error = ""
+    main_window.daily_market_research_screener_service = object()
+    main_window._personal_portfolio_view_kwargs = {}
     main_window.broker_flow_service = object()
     return main_window
 
@@ -281,11 +312,15 @@ def test_market_exploration_lazy_loading_uses_widget_identity_after_overview_ins
         "強勢產業",
         "弱勢產業",
         "主力流向",
+        "研究母體盤勢",
     )
     assert tuple(
         target_window.market_tabs.tabText(index)
         for index in range(target_window.market_tabs.count())
     ) == expected_tabs
+    assert target_window.market_tabs.widget(expected_tabs.index("研究母體盤勢")) is (
+        target_window.daily_market_cohort_view
+    )
 
     for label in expected_tabs:
         index = expected_tabs.index(label)

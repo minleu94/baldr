@@ -6,6 +6,10 @@ from pathlib import Path
 from app_module.runtime_services.scheduled_operations_service import (
     ScheduledOperationsStatusService,
 )
+from tests.decision_capture_status_fixture import (
+    create_decision_capture_fixture,
+    create_no_child_skipped_fixture,
+)
 
 
 NOW = datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc)
@@ -89,15 +93,16 @@ def _warning_update_with_producer_skips() -> dict[str, object]:
 
 
 def test_snapshot_distinguishes_operational_core_from_guarded_safety_boundaries(tmp_path):
-    root = tmp_path / "scheduled"
+    output_root = tmp_path / "output"
+    root = output_root / "scheduled"
     for job_id in (
         "data_update_quick",
         "data_freshness",
         "recommendation_snapshot",
-        "decision_evidence_capture",
         "paper_portfolio_daily",
     ):
         _write_status(root, job_id, {"status": "passed", "checked_at": NOW.isoformat()})
+    create_decision_capture_fixture(output_root, producer_now=NOW)
     _write_status(root, "evidence_pipeline_dry_run", _expected_evidence_payload())
     _write_status(
         root,
@@ -129,15 +134,16 @@ def test_snapshot_distinguishes_operational_core_from_guarded_safety_boundaries(
 
 
 def test_warning_success_is_guarded_and_counts_as_ready_core_operation(tmp_path):
-    root = tmp_path / "scheduled"
+    output_root = tmp_path / "output"
+    root = output_root / "scheduled"
     for job_id in (
         "data_freshness",
         "recommendation_snapshot",
         "evidence_pipeline_dry_run",
-        "decision_evidence_capture",
         "paper_portfolio_daily",
     ):
         _write_status(root, job_id, {"status": "passed", "checked_at": NOW.isoformat()})
+    create_decision_capture_fixture(output_root, producer_now=NOW)
     _write_status(root, "data_update_quick", _warning_update_payload())
 
     snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
@@ -148,6 +154,54 @@ def test_warning_success_is_guarded_and_counts_as_ready_core_operation(tmp_path)
     assert operation.raw_status == "passed_with_warnings"
     assert operation.state == "guarded"
     assert operation.diagnostic == "scheduled_job_completed_with_warnings"
+
+
+def test_bare_passed_decision_capture_is_not_an_operational_core_job(tmp_path):
+    root = tmp_path / "scheduled"
+    _write_status(
+        root,
+        "decision_evidence_capture",
+        {"status": "passed", "checked_at": NOW.isoformat()},
+    )
+
+    snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+    operation = next(
+        item for item in snapshot.operations if item.job_id == "decision_evidence_capture"
+    )
+
+    assert operation.raw_status == "passed"
+    assert operation.state == "attention"
+    assert operation.capture is not None
+    assert operation.capture.read_state != "verified"
+
+
+def test_verified_no_child_calendar_skip_is_not_operational_core_success(
+    tmp_path,
+    monkeypatch,
+):
+    output_root = tmp_path / "output"
+    fixture = create_no_child_skipped_fixture(
+        output_root,
+        producer_now=NOW,
+        monkeypatch=monkeypatch,
+    )
+
+    snapshot = ScheduledOperationsStatusService(
+        output_root / "scheduled",
+        now_provider=lambda: NOW,
+    ).get_snapshot()
+    operation = next(
+        item for item in snapshot.operations if item.job_id == "decision_evidence_capture"
+    )
+
+    assert fixture.status_path.exists()
+    assert operation.capture is not None
+    assert operation.capture.read_state == "verified"
+    assert operation.capture.raw_status == "skipped_non_trading_day"
+    assert operation.capture.snapshot_execution_status == "not_started"
+    assert operation.state == "attention"
+    assert operation.diagnostic == "unexpected_core_status:skipped_non_trading_day"
+    assert snapshot.overall_state == "attention"
 
 
 def test_warning_success_accepts_only_named_producer_skips(tmp_path):
@@ -365,3 +419,25 @@ def test_failed_safety_job_keeps_specific_failure_diagnostic(tmp_path):
 
     assert operation.state == "attention"
     assert operation.diagnostic == "scheduled_job_failed"
+
+
+def test_oversized_capture_is_rejected_before_generic_status_read(tmp_path, monkeypatch):
+    root = tmp_path / "scheduled"
+    path = root / "decision_evidence_capture" / "latest_status.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b" " * (1024 * 1024 + 1))
+    original_read_text = Path.read_text
+
+    def forbid_unbounded_capture_read(self, *args, **kwargs):
+        if self == path:
+            raise AssertionError("決策擷取不得先由通用read_text無界讀入")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", forbid_unbounded_capture_read)
+    snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+    operation = next(item for item in snapshot.operations if item.job_id == "decision_evidence_capture")
+
+    assert operation.state == "attention"
+    assert operation.read_state == "unverified"
+    assert operation.capture is not None
+    assert operation.capture.diagnostic == "decision_capture_file_unavailable"

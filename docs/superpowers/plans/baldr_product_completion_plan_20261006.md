@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+Increment56推進原P12的決策擷取終態讀回：共用有界reader核同run收據／CLI原件／時鐘，接回原Runtime與Workbench；正常Main48720→fresh30816已驗明選診斷／切頁返回／同run重開，9原件內容與時間不變。這解除使用者無法辨認「孤立成功字串、逾時保存未知、缺收據」的操作阻礙，指南同步[手冊§11](../../07_guides/APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。僅隔離終態及模擬逾時事件，原120秒實跑／自然Task／重試方案及完整P12仍待；不觸發maintainer、不改固定V1或50ddb開發包。原完整計畫與試用並行，下一葉仍按原包推進，不新增V1前置。
+
 Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口：50ddb640 candidate的真TPEx法人同pin／用途／返回／fresh，以及原合成P06保存情境明確登錄→Registry→個股實按返回→fresh，來源版與EXE均通過；共同啟動／完整archive／依賴鎖／原同版probe亦通過。候選、具名PID／收據與原限制見[Increment55 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。只解除這兩旅程缺Native／EXE證據的交付阻礙，不擴V1、來源或完整Gate；無新HTTP／正式資料／Task。接續原P12受控terminal／status reader正常UI出口，禁止重觸發正式maintainer。
 
 **Increment54：原P00/P03一次性來源用途已接正常法人讀回**。重用DailySourceUseAcceptance，固定四份真官方文件／schema／TPEx／shares／diagnostics，create-only＋外部SHA另存，逐批原件與可用小時獨立驗，不改generic P0 v1或其13來源分母。真CLI接受07:18:53，正常Main36096→fresh47452三證券／九原值／接受身份與顯名／返回一致，12檔不變、無HTTP或重寫；受改writer19PASS、原173PASS含Workbench85與原反例定向、mypy1032／validator25/0/4，FAIL保留。固定4b530不增前置；歷史PIT／完整F09／P0整桶不升格。下一葉補已完成流程的Native／打包驗收，見[同輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment54p00p03法人精確來源用途與每日驗證分離)。
@@ -501,6 +503,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+Increment56沿P12既有producer／stage診斷補共用終態reader及原正常系統狀態出口，原件身分與保存未知不再由通用passed字串覆蓋。正常Main／新程序同run讀回已限定驗證；受改反例、UI必跑與型別結果及原FAIL逐項見[Increment56 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment56p12決策擷取終態與正常系統狀態)。實際120秒執行／依賴與效能原因、自然排程與重試尚未關閉；本輪不修改或重觸發正式Task。P03來源缺件、P07規則／P08完整績效與其餘正常旅程繼續各自推進，不能以此讀回增量冒充全產品或新V1前置。
 
 Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口：50ddb640 candidate的真TPEx法人同pin／用途／返回／fresh，以及原合成P06保存情境明確登錄→Registry→個股實按返回→fresh，來源版與EXE均通過；共同啟動／完整archive／依賴鎖／原同版probe亦通過。候選、具名PID／收據與原限制見[Increment55 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。只解除這兩旅程缺Native／EXE證據的交付阻礙，不擴V1、來源或完整Gate；無新HTTP／正式資料／Task。接續原P12受控terminal／status reader正常UI出口，禁止重觸發正式maintainer。
 

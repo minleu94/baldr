@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from enum import Enum
+from app_module.decision_capture_status_reader import DecisionCaptureRunStatus
 
 class GovernanceSeverity(Enum):
     INFO = "INFO"
@@ -76,6 +77,7 @@ class ScheduledOperationStatusDTO:
     source_path: str = ""
     read_state: str = "observed"
     diagnostic: str = ""
+    capture: Optional[DecisionCaptureRunStatus] = None
 
 
 @dataclass(frozen=True)

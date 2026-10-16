@@ -12,6 +12,8 @@ baldr 是台股研究與投資決策系統。它收集與治理市場資料，�
 
 ## 分層與實際模組
 
+決策擷取的終態 reader 位於 application 層，重用原 producer receipt／artifact 與檔案守衛，供 Runtime 營運狀態及 Workbench 共用；Qt 不自行讀檔或根據 passed 字串授成功。原件、時鐘、讀取預算、取消及保存未知的契約見[Runtime 與排程](current/data_storage_runtime.md#runtime-與排程)，不改正式 Task 或資料根。
+
 ```mermaid
 flowchart TD
     User[使用者]

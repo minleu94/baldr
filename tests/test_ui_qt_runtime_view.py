@@ -1,9 +1,13 @@
 import os
 import sys
 from datetime import datetime, timezone
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QSizePolicy
 
 from app_module.dtos.runtime_dtos import (
@@ -16,6 +20,10 @@ from app_module.dtos.runtime_dtos import (
     ScheduledOperationsSnapshotDTO,
     EnvironmentPathReadinessDTO,
     EnvironmentReadinessSnapshotDTO,
+)
+from app_module.decision_capture_status_reader import (
+    DecisionCaptureRunStatus,
+    DecisionCaptureStage,
 )
 from ui_qt.views.runtime_view import MAX_RENDERED_RUNTIME_EVENTS, RuntimeView
 
@@ -213,6 +221,141 @@ def test_runtime_view_renders_operation_status_without_claiming_scheduler_state(
     assert "raw_status: passed" in view.operations_list.item(0).toolTip()
     assert "raw_status: passed_rule_only" in view.operations_list.item(1).toolTip()
     assert "timestamp_source: checked_at" in view.operations_list.item(0).toolTip()
+
+
+def _decision_capture_status(
+    *,
+    read_state="verified",
+    run_id="capture-run-001",
+    snapshot_saved=True,
+    failure_reasons=(),
+    elapsed_ms=125,
+    completed_at="2026-10-14T08:30:00+08:00",
+    snapshot_execution_status="completed",
+):
+    return DecisionCaptureRunStatus(
+        status_path=Path("C:/output/scheduled/decision_evidence_capture/latest_status.json"),
+        read_state=read_state,
+        diagnostic="PRIVATE_EXCEPTION_TEXT_MUST_NOT_RENDER",
+        raw_status="passed",
+        run_id=run_id,
+        decision_date="2026-10-14",
+        completed_at=completed_at,
+        receipt_path="C:/output/decision_evidence_capture/receipt.json",
+        receipt_sha256="a" * 64,
+        snapshot_status="saved" if snapshot_saved is True else "unknown",
+        snapshot_saved=snapshot_saved,
+        snapshot_duplicate=False,
+        snapshot_execution_status=snapshot_execution_status,
+        failure_reasons=failure_reasons,
+        last_stage="receipt_published",
+        unfinished_stages=(),
+        stages=(DecisionCaptureStage("snapshot", "completed", elapsed_ms),),
+    )
+
+
+def _decision_capture_snapshot(operation):
+    return ScheduledOperationsSnapshotDTO(
+        overall_state="operational",
+        core_ready_count=1,
+        core_job_count=1,
+        operations=(operation,),
+        observed_at=datetime(2026, 10, 14, 0, 30, tzinfo=timezone.utc),
+    )
+
+
+def test_runtime_view_renders_typed_capture_and_updates_the_preserved_selection():
+    app()
+    view = RuntimeView()
+    first = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture",
+        label="決策證據擷取",
+        raw_status="passed",
+        state="operational",
+        updated_at=datetime(2026, 10, 14, 0, 30, tzinfo=timezone.utc),
+        lane="core",
+        capture=_decision_capture_status(),
+    )
+
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(first))
+    view.operations_list.setCurrentRow(0)
+
+    detail = view.operations_capture_detail_label.text()
+    assert "已驗證（verified）" in detail
+    assert "capture-run-001" in detail
+    assert "2026-10-14" in detail
+    assert "receipt SHA-256：" + "a" * 64 in detail
+    assert "snapshot 狀態：saved｜已保存：是" in detail
+    assert "snapshot 執行狀態：completed" in detail
+    assert "125 ms" in detail
+    assert "PRIVATE_EXCEPTION_TEXT_MUST_NOT_RENDER" not in detail
+    assert "PRIVATE_EXCEPTION_TEXT_MUST_NOT_RENDER" not in view.operations_raw_text.toPlainText()
+    failed_chain = replace(first.capture, read_state="unverified", diagnostic="decision_capture_receipt_hash_mismatch")
+    assert "decision_capture_receipt_hash_mismatch" in view._render_decision_capture_status(
+        replace(first, state="attention", capture=failed_chain)
+    )
+
+    next_operation = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture",
+        label="決策證據擷取",
+        raw_status="timeout",
+        state="unavailable",
+        updated_at=None,
+        lane="core",
+        capture=_decision_capture_status(
+            read_state="not_finalized",
+            run_id="capture-run-002",
+            snapshot_saved=None,
+            failure_reasons=("capture_timeout", "OSError: private stderr"),
+            elapsed_ms=90_000_000,
+            completed_at="",
+            snapshot_execution_status="timeout",
+        ),
+    )
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(next_operation))
+
+    assert view.operations_list.currentItem().data(Qt.UserRole) == "decision_evidence_capture"
+    detail = view.operations_capture_detail_label.text()
+    assert "尚未終結（not_finalized）" in detail
+    assert "capture-run-002" in detail
+    assert "完成時間：未知" in detail
+    assert "已保存：未知" in detail
+    assert "已保存：否" not in detail
+    assert "snapshot 執行狀態：timeout" in detail
+    assert "capture_timeout" in detail
+    assert "private stderr" not in detail
+    assert "≥86400000 ms（已截限）" in detail
+    assert "capture-run-001" not in detail
+
+
+def test_runtime_view_keeps_legacy_or_untyped_capture_unknown():
+    app()
+    view = RuntimeView()
+    legacy_operation = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture",
+        label="決策證據擷取",
+        raw_status="passed",
+        state="operational",
+        updated_at=None,
+        lane="core",
+    )
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(legacy_operation))
+    view.operations_list.setCurrentRow(0)
+    assert "終態：未知" in view.operations_capture_detail_label.text()
+
+    untyped_operation = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture",
+        label="決策證據擷取",
+        raw_status="passed",
+        state="operational",
+        updated_at=None,
+        lane="core",
+        capture=SimpleNamespace(read_state="verified", run_id="forged-run"),
+    )
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(untyped_operation))
+    detail = view.operations_capture_detail_label.text()
+    assert "終態：未知" in detail
+    assert "forged-run" not in detail
 
 
 def test_runtime_view_renders_environment_write_boundary_without_claiming_probe_success():

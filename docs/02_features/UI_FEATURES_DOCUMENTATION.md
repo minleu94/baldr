@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+後續開發分支在「系統狀態 → 日常排程 → 決策證據擷取 → 詳細」呈現同次 run 的核驗狀態、收據 SHA、完成時間、保存未知值、安全原因及未完成階段。切頁返回與被動刷新保留明選工作；換選其他工作或無型別舊結果清除舊診斷。逾時不顯假「未保存」，孤立 passed 不計已核成功；沒有新增啟動／重試控制。步驟及排錯見[終態指南](../07_guides/APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。此功能尚未放入固定四流程 V1 或 50ddb 開發 EXE。
+
 固定法人區新增可選用途接受檔與SHA；成對明選後沿原三參數signal／不可變request pin／owner worker與generation／取消路由，僅TPEx typed diagnostics結果顯示接受ID、SHA、時間與來源顯名。裸True／錯市場／scope拒絕；無pin維持原candidate讀取，讀取不重寫來源／接受或觸發抓取。操作見[用途接受指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人用途接受與重開後續開發分支)。
 
 後續開發分支的固定法人唯讀區支持TWSE與明選TPEx OpenAPI批次，身份列顯示已核市場；九個股數值仍原int投影，無market猜配、資料取得或金融重算。來源錯誤、未到可用小時／pending或輸入換版清除舊結果，candidate與P0資格邊界保留。操作見[TPEx單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)。

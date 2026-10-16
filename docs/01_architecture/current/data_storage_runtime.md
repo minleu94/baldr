@@ -85,6 +85,10 @@ Evidence Event／Outcome append-only 保存決策來源與後續觀測。Forward
 
 ## Runtime 與排程
 
+決策擷取狀態由 `app_module/decision_capture_status_reader.py` 共用唯讀 adapter 核驗既有 producer 的 wire；ScheduledOperationsStatusService 與 WorkbenchSourceService 消費同一型別結果，RuntimeView 只呈現 DTO。`latest_status.json` 必須綁相同 run 的 immutable receipt、完整 payload、各 stdout／stderr 原件 bytes／SHA 與實際完成時鐘；孤立的 passed、未finalize、缺件、換版或讀取中變動不能當已驗成功。此 receipt 未穩定綁定 data_root，僅代表該次執行原件一致，不授來源、DB、PIT、績效或自然成熟資格。
+
+此 reader 的 latest／receipt 各限 1 MiB、子程序 stream 各限原 producer 的 64 KiB，只讀指定 run，不掃描歷史補值。regular-file／no-follow／hardlink／reparse、JSON 深度與重複鍵、取消及讀後重驗沿既有檔案防線；Runtime 在通用 JSON 讀取前即分流此 lane。已知 child 啟動前失敗與啟動後 artifact pending 分開，後者不可驗證；逾時的 snapshot_saved／duplicate 保留 None。只有安全原因碼、固定階段、整數毫秒與例外類型可進 UI，原 stderr／例外訊息留在原件。原 producer、120 秒 child 期限、30 秒被動狀態輪詢與正式 Task 均不因此變動。
+
 `runtime/` 管理 Runtime 的狀態、事件、保存介面與驗證；`app_module/runtime_services/` 提供 application orchestration；`ui_qt/runtime_composition.py` 將唯讀 controller、bridge、view 與 Qt lifecycle 組合。Runtime Observatory 讀取治理 DTO／排程狀態，不直接啟動資料更新、模型訓練、task 或 evidence producer。
 
 Windows Scheduler 與受控 CLI wrapper 依各自任務執行資料更新、dry-run 或已獲批准的工作。市場更新寫入、Evidence dry-run、批准後 Evidence write mode 與 broker execution 是分離權限；排程成功碼或 readiness 不代表人工批准、資料接受、promotion 或交易。

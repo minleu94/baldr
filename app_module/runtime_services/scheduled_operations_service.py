@@ -12,6 +12,7 @@ from app_module.dtos.runtime_dtos import (
     ScheduledOperationsSnapshotDTO,
 )
 from app_module.runtime_services.event_time import parse_runtime_event_timestamp
+from app_module.decision_capture_status_reader import read_decision_capture_status
 
 
 _CORE_JOBS: tuple[tuple[str, str], ...] = (
@@ -118,6 +119,8 @@ class ScheduledOperationsStatusService:
         lane = _lane_for_job(job_id)
         is_core_job = lane == "core"
         label = _JOB_LABELS.get(job_id, job_id)
+        if job_id == "decision_evidence_capture":
+            return self._read_decision_capture(status_path, now, label, lane)
         if not status_path.is_file():
             return ScheduledOperationStatusDTO(
                 job_id=job_id,
@@ -206,6 +209,29 @@ class ScheduledOperationsStatusService:
             source_path=str(status_path),
             read_state="observed",
             diagnostic=diagnostic,
+        )
+
+    def _read_decision_capture(
+        self, path: Path, now: datetime, label: str, lane: str,
+    ) -> ScheduledOperationStatusDTO:
+        """此lane先經有界reader，不能先無界載入latest再檢查大小。"""
+        capture = read_decision_capture_status(path, observed_at=now)
+        updated_at = None
+        diagnostic = capture.diagnostic
+        state = "attention"
+        if capture.read_state == "verified":
+            updated_at = datetime.fromisoformat(capture.completed_at)
+            state, diagnostic = self._classify("decision_evidence_capture", capture.raw_status, {}, True)
+            if now - updated_at > self._freshness_window:
+                state = "attention"
+                diagnostic = (diagnostic + ";" if diagnostic else "") + "latest_status_stale"
+        return ScheduledOperationStatusDTO(
+            job_id="decision_evidence_capture", label=label, raw_status=capture.raw_status,
+            state=state, updated_at=updated_at, lane=lane,
+            observed_at_raw=capture.completed_at or None,
+            observed_at_source="run_completed_at" if updated_at is not None else "none",
+            source_path=str(path), read_state="observed" if capture.read_state == "verified" else capture.read_state,
+            diagnostic=diagnostic, capture=capture,
         )
 
     @staticmethod

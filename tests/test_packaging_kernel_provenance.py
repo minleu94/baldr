@@ -9,6 +9,74 @@ from app_module.build_identity import detect_build_identity
 from tests.test_build_identity import _lock
 
 
+_V2_RULE_SOURCES = (
+    "decision_module/strategies/stable_conservative_executor.py",
+    "decision_module/strategies/momentum_aggressive_executor.py",
+    "ui_qt/views/backtest/research_run_metadata.py",
+)
+
+
+def _v2_source_fixture(root, *, declarations=_V2_RULE_SOURCES):
+    (root / "ui_qt").mkdir()
+    (root / "ui_qt/app_icon.png").write_bytes(b"isolated-icon")
+    for relative in _V2_RULE_SOURCES:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# 隔離 v2 規則原件\n", encoding="utf-8")
+    spec = root / "packaging/baldr.spec"
+    spec.parent.mkdir(parents=True, exist_ok=True)
+    spec.write_text("for relative_source in " + repr(tuple(declarations)) + ":\n    pass\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("relative", _V2_RULE_SOURCES)
+@pytest.mark.parametrize("change", ["tamper", "missing"])
+def test_frozen_v2_rule_sources_must_match_original_bytes(tmp_path, relative, change):
+    _v2_source_fixture(tmp_path)
+    metadata = create_build_metadata(tmp_path, "a" * 40, _lock(tmp_path))
+    for name in _V2_RULE_SOURCES:
+        assert metadata["resource_sha256"][name] == hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+    metadata_path = tmp_path / "application_build.json"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    assert detect_build_identity(repository_root=tmp_path, metadata_path=metadata_path, frozen=True).channel == "release"
+    changed = tmp_path / relative
+    if change == "tamper":
+        changed.write_text("# 不同的 v2 原件\n", encoding="utf-8")
+    else:
+        changed.unlink()
+    assert detect_build_identity(repository_root=tmp_path, metadata_path=metadata_path, frozen=True).channel == "unverified"
+
+
+@pytest.mark.parametrize("missing", _V2_RULE_SOURCES)
+def test_declared_v2_bundle_rejects_missing_source_before_build(tmp_path, missing):
+    _v2_source_fixture(tmp_path)
+    (tmp_path / missing).unlink()
+    with pytest.raises(ValueError, match="完整三檔"):
+        create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+
+
+def test_partial_v2_bundle_declaration_is_rejected(tmp_path):
+    _v2_source_fixture(tmp_path, declarations=_V2_RULE_SOURCES[:2])
+    with pytest.raises(ValueError, match="完整三檔"):
+        create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+
+
+def test_legacy_spec_does_not_claim_new_v2_resources(tmp_path):
+    _v2_source_fixture(tmp_path, declarations=("app_module/backtest_service.py",))
+    # 舊 spec 不打包新原件，即使舊專案也已有這些程式，不得新加不存在的資源身份。
+    metadata = create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    assert not set(_V2_RULE_SOURCES).intersection(metadata["resource_sha256"])
+
+
+def test_v2_source_names_in_comments_or_description_are_not_bundle_declarations(tmp_path):
+    _v2_source_fixture(tmp_path, declarations=("app_module/backtest_service.py",))
+    spec = tmp_path / "packaging/baldr.spec"
+    with spec.open("a", encoding="utf-8") as stream:
+        stream.write("\n# 舊版說明：" + repr(_V2_RULE_SOURCES) + "\n")
+        stream.write("description = " + repr(str(_V2_RULE_SOURCES)) + "\n")
+    metadata = create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    assert not set(_V2_RULE_SOURCES).intersection(metadata["resource_sha256"])
+
+
 def test_kernel_source_bytes_are_bound_to_build_resources(tmp_path):
     icon = tmp_path / "ui_qt/app_icon.png"
     icon.parent.mkdir()

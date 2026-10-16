@@ -1,6 +1,7 @@
 """固定來源與依賴的建置證據；不安裝依賴、不碰正式資料或現有交付。"""
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.metadata
 import json
@@ -149,6 +150,31 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
         resource_hashes.update({
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in rule_sources
+        })
+    # 舊固定 commit 的 spec 只收原四檔；僅對明示打包 v2 原件的 spec 加入新資源身份。
+    v2_rule_sources = (
+        "decision_module/strategies/stable_conservative_executor.py",
+        "decision_module/strategies/momentum_aggressive_executor.py",
+        "ui_qt/views/backtest/research_run_metadata.py",
+    )
+    spec = source / "packaging/baldr.spec"
+    declared_sources: set[str] = set()
+    if spec.is_file():
+        # 只讀原 spec 的明示來源 tuple；不執行 spec，也不把註解或字串說明當打包宣告。
+        tree = ast.parse(spec.read_text(encoding="utf-8"), filename=str(spec))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "relative_source":
+                declared = ast.literal_eval(node.iter)
+                if not isinstance(declared, (tuple, list)) or any(not isinstance(item, str) for item in declared):
+                    raise ValueError("單股回測原始來源宣告必須是明示路徑清單")
+                declared_sources.update(declared)
+    declared_v2 = [relative in declared_sources for relative in v2_rule_sources]
+    if any(declared_v2):
+        if not all(declared_v2) or not all((source / relative).is_file() for relative in v2_rule_sources):
+            raise ValueError("單股回測 v2 原始來源宣告與檔案必須完整三檔")
+        resource_hashes.update({
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in v2_rule_sources
         })
     return {
         "schema": "baldr-application-build.v1",

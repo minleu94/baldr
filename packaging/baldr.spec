@@ -25,6 +25,9 @@ for relative_source in (
     'decision_module/score_threshold_policy.py',
     'backtest_module/broker_simulator.py',
     'app_module/backtest_service.py',
+    'decision_module/strategies/stable_conservative_executor.py',
+    'decision_module/strategies/momentum_aggressive_executor.py',
+    'ui_qt/views/backtest/research_run_metadata.py',
 ):
     source = root / relative_source
     if not source.is_file():

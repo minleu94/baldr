@@ -614,6 +614,12 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.result_guidance.setWordWrap(True)
         self.result_guidance.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self.result_guidance)
+        self.show_source_all_button = QPushButton("顯示此來源全部股票")
+        self.show_source_all_button.setObjectName("dailyMarketTechnicalPriceV1ShowSourceAll")
+        self.show_source_all_button.setToolTip(
+            "清除代碼、價格、規則及可查子集條件，只重查目前已嚴格核驗的保存來源；比較籃不會清空。"
+        )
+        root.addWidget(self.show_source_all_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
         page_controls = QHBoxLayout()
         self.previous_page_button = QPushButton("上一頁")
@@ -699,6 +705,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.run_comparison_button.clicked.connect(self.run_comparison)
         self.clear_comparison_button.clicked.connect(self.clear_comparison)
         self.bookmark_button.clicked.connect(self.prepare_bookmark)
+        self.show_source_all_button.clicked.connect(self.show_source_all)
         self.sources.currentIndexChanged.connect(self._show_selected_metadata)
 
         # 只在穩定的表格視窗與捲軸安裝一次 event filter；Qt 內部的暫存子元件
@@ -837,6 +844,22 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             kind="query",
         )
 
+    def show_source_all(self) -> None:
+        """回到目前保存來源的全部已處理股票，不跨來源補資料。"""
+        if self._state is None or self._worker is not None:
+            self.status.setText("請先嚴格核驗並載入一份保存來源。")
+            return
+        self.stock_filter.clear()
+        self.eligible_stock_filter.clear()
+        self.eligible_stock_filter_enabled.setChecked(False)
+        self.minimum.clear()
+        self.maximum.clear()
+        self.unknown_policy.setCurrentIndex(self.unknown_policy.findData("include"))
+        self.combine_mode.setCurrentIndex(self.combine_mode.findData("AND"))
+        for combo in self._rule_filters.values():
+            combo.setCurrentIndex(combo.findData("all"))
+        self.apply_query()
+
     def previous_page(self) -> None:
         self._move_page(-1)
 
@@ -916,13 +939,11 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         if state is None or row is None:
             self.status.setText("請先選取目前已核驗頁面中的股票，再準備收藏。")
             return
-        if len(self._basket) == 1:
-            self.status.setText("比較籃只有 1 檔；請清空或補足至少 2 檔後再收藏。")
-            return
         current_state = state
         code = row.technical_row.stock_code
         scroll_position = int(self.table.verticalScrollBar().value())
-        selections = tuple(self._basket)
+        # 一檔比較籃不是可保存的比較；仍允許單股收藏，原籃保留供補第二檔。
+        selections = tuple(self._basket) if len(self._basket) >= 2 else ()
         self._start(
             "準備價格研究收藏",
             lambda cancel_callback=None: (
@@ -1319,14 +1340,16 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._show_verified_pins(value.query)
         self._update_source_summary()
         self._set_enabled_state()
+        source_count = value.page.source_counts.processed_count
         if value.page.matching_count == 0:
             self.result_guidance.setText(
-                "步驟 3：目前沒有符合條件的股票；按「修改篩選條件」調整，或更換保存來源。"
+                f"步驟 3：來源已處理 {source_count} 檔，目前條件留下 0 檔。"
+                "按「顯示此來源全部股票」清除篩選，再從結果選股。"
             )
         else:
             self.result_guidance.setText(
-                f"步驟 3：找到 {value.page.matching_count} 筆結果。點下表一檔可看個股；"
-                "逐股按「加入比較籃」，至少兩股才能重驗並比較。"
+                f"步驟 3：來源已處理 {source_count} 檔，目前條件留下 {value.page.matching_count} 檔。"
+                "雙擊結果會開原保存價格研究；單擊逐股加入比較籃，至少兩股才能比較。"
             )
         population_state = "完整" if value.page.full_population_complete else "未完整"
         self.status.setText(
@@ -1887,7 +1910,11 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.add_comparison_button.setEnabled(idle and has_page and self._selected_row() is not None)
         self.run_comparison_button.setEnabled(idle and len(self._basket) >= 2)
         self.clear_comparison_button.setEnabled(idle and bool(self._basket))
-        self.bookmark_button.setEnabled(idle and has_page and self._selected_row() is not None and len(self._basket) != 1)
+        self.show_source_all_button.setEnabled(idle and has_page)
+        self.bookmark_button.setEnabled(idle and has_page and self._selected_row() is not None)
+        self.bookmark_button.setText(
+            "收藏所選股票與比較" if len(self._basket) >= 2 else "收藏所選股票"
+        )
 
     def _start(
         self,

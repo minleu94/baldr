@@ -86,7 +86,42 @@ def test_add_trade_dialog_autofills_stock_name_and_rejects_unknown_code():
 
     dialog.name_input.clear()
     dialog.code_input.setText("999999")
-    assert "找不到正式股票代號" in dialog.code_error_label.text()
+    assert "本機名冊沒有唯一名稱" in dialog.code_error_label.text()
+
+
+def test_add_trade_dialog_resolves_exact_unique_company_name_in_both_directions(monkeypatch):
+    app()
+
+    class CompanyFrame:
+        def to_dict(self, orient):
+            assert orient == "records"
+            return [
+                {"stock_id": "2330", "stock_name": "台積電"},
+                {"stock_id": "2317", "stock_name": "鴻海"},
+                {"stock_id": "1111", "stock_name": "重名"},
+                {"stock_id": "2222", "stock_name": "重名"},
+            ]
+
+    service = SimpleNamespace(industry_mapper=SimpleNamespace(companies_df=CompanyFrame()))
+    dialog = AddTradeDialog(recommendation_service=service)
+    dialog.name_input.setText("台積電")
+    assert dialog.code_input.text() == "2330"
+    dialog.name_input.setText("鴻海")
+    assert dialog.code_input.text() == "2317"
+    dialog.name_input.setText("重名")
+    assert dialog.code_input.text() == ""
+    dialog.name_input.clear()
+    dialog.code_input.setText("2330")
+    assert dialog.name_input.text() == "台積電"
+    dialog.code_input.setText("2317")
+    assert dialog.name_input.text() == "鴻海"
+    dialog.name_input.setText("台積電")
+    assert dialog.code_input.text() == "2317"
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: warnings.append(_args[-1]))
+    dialog._validate_and_accept()
+    assert any("代號與名稱不符" in message for message in warnings)
+    dialog.close()
 
 
 def test_add_trade_dialog_prefills_taiwan_fee_and_sell_tax():
@@ -1116,6 +1151,7 @@ def test_manual_position_research_uses_same_row_quote_date_without_requery(
     assert context.decision_date == ""
     assert context.result_id == ""
     assert context.identity_status == "unlinked"
+    assert context.ml_scope_mode == "current_stock_research"
     assert context.data_date != "2026-07-31"
     view.close()
 
@@ -1196,6 +1232,7 @@ def test_linked_position_research_keeps_canonical_saved_dates(tmp_path, monkeypa
     assert contexts[0].data_date == "2026-10-01"
     assert contexts[0].result_id == "saved-2382"
     assert contexts[0].identity_status == "linked"
+    assert contexts[0].ml_scope_mode == ""
     view.close()
 
 

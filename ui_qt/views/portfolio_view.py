@@ -754,9 +754,36 @@ class AddTradeDialog(QDialog):
     def __init__(self, recommendation_service: Optional[RecommendationService] = None, parent=None):
         super().__init__(parent)
         self.recommendation_service = recommendation_service
+        self._code_to_names: dict[str, set[str]] = {}
+        self._name_to_codes: dict[str, set[str]] = {}
+        self._autofilled_code: str | None = None
+        self._autofilled_name: str | None = None
+        self._load_company_name_pairs()
         self.setWindowTitle("手動記錄交易")
         self.setMinimumWidth(420)
         self._setup_ui()
+
+    def _load_company_name_pairs(self) -> None:
+        """只使用已載入的本機公司名冊協助輸入；重名不猜代號。"""
+        mapper = getattr(self.recommendation_service, "industry_mapper", None)
+        frame = getattr(mapper, "companies_df", None)
+        records = getattr(frame, "to_dict", None)
+        if not callable(records):
+            return
+        try:
+            rows = records("records")
+        except Exception as exc:  # noqa: BLE001 - 名稱協助不能阻斷手動記錄
+            logger.debug("Could not read company name pairs: %s", exc)
+            return
+        for row in rows:
+            if not isinstance(row, Mapping):
+                continue
+            code = str(row.get("stock_id", "") or "").strip()
+            name = str(row.get("stock_name", "") or "").strip()
+            if not code or not name or code.lower() == "nan" or name.lower() == "nan":
+                continue
+            self._code_to_names.setdefault(code, set()).add(name)
+            self._name_to_codes.setdefault(name, set()).add(code)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -776,7 +803,8 @@ class AddTradeDialog(QDialog):
 
         # 證券名稱
         self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("自動查詢或手動輸入")
+        self.name_input.setPlaceholderText("輸入完整名稱可從本機名冊帶入代號")
+        self.name_input.textChanged.connect(self._auto_query_stock_code)
         form_layout.addRow("證券名稱 *:", self.name_input)
 
         # 交易別
@@ -848,25 +876,45 @@ class AddTradeDialog(QDialog):
         layout.addWidget(buttons)
 
     def _auto_query_stock_name(self):
-        """輸入證券代號時，若有 recommendation_service，嘗試解析或帶入股名"""
+        """代號精確且名稱唯一時帶入；使用者手填的名稱不被覆蓋。"""
         code = self.code_input.text().strip()
         self.code_error_label.setText("")
-        if not code or not self.recommendation_service:
-            return
-
-        # 嘗試從 config 的數據庫或已加載的名稱對照中搜尋（如果可用）
+        if code != self._autofilled_code:
+            self._autofilled_code = None
+        names = self._code_to_names.get(code, set())
+        name = next(iter(names)) if len(names) == 1 else ""
+        mapper = getattr(self.recommendation_service, "industry_mapper", None)
         try:
-            # 這裡提供一個極簡的靜態映射，或是動態查詢 fallback
-            mapper = getattr(self.recommendation_service, 'industry_mapper', None)
-            if mapper and hasattr(mapper, 'get_stock_name'):
-                name = mapper.get_stock_name(code)
-                if name and name != code:
-                    self.name_input.setText(name)
-                    self.code_error_label.setText("")
-                elif len(code) >= 4:
-                    self.code_error_label.setText("找不到正式股票代號，請確認代號或手動補入名稱。")
-        except Exception as e:
-            logger.debug("Auto query stock name failed: %s", e)
+            getter = getattr(mapper, "get_stock_name", None)
+            if not names and not name and callable(getter):
+                candidate = getter(code)
+                if candidate and str(candidate).strip() != code:
+                    name = str(candidate).strip()
+        except Exception as exc:  # noqa: BLE001 - 名稱協助失敗仍可手填
+            logger.debug("Auto query stock name failed: %s", exc)
+        if not self.name_input.text().strip() or self.name_input.text() == self._autofilled_name:
+            self.name_input.blockSignals(True)
+            self.name_input.setText(name)
+            self.name_input.blockSignals(False)
+            self._autofilled_name = name or None
+        if code and not name and len(code) >= 4:
+            self.code_error_label.setText("本機名冊沒有唯一名稱，請核對代號並手動補入名稱。")
+
+    def _auto_query_stock_code(self):
+        """名稱必須完整且只對應一個代號；不覆蓋使用者手填代號。"""
+        name = self.name_input.text().strip()
+        if name != self._autofilled_name:
+            self._autofilled_name = None
+        codes = self._name_to_codes.get(name, set())
+        code = next(iter(codes)) if len(codes) == 1 else ""
+        if not self.code_input.text().strip() or self.code_input.text() == self._autofilled_code:
+            self.code_input.blockSignals(True)
+            self.code_input.setText(code)
+            self.code_input.blockSignals(False)
+            self._autofilled_code = code or None
+            self.code_error_label.setText("")
+        elif name and len(codes) > 1:
+            self.code_error_label.setText("本機名冊有同名股票，請自行核對並輸入代號。")
 
     def _money_to_spin_value(self, value: Decimal) -> float:
         rounded = value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
@@ -888,6 +936,13 @@ class AddTradeDialog(QDialog):
     def _validate_and_accept(self):
         if not self.code_input.text().strip():
             QMessageBox.warning(self, "驗證失敗", "請輸入證券代號")
+            return
+        code = self.code_input.text().strip()
+        name = self.name_input.text().strip()
+        known_names = self._code_to_names.get(code, set())
+        known_codes = self._name_to_codes.get(name, set())
+        if (known_names and name not in known_names) or (known_codes and code not in known_codes):
+            QMessageBox.warning(self, "驗證失敗", "股票代號與名稱不符本機名冊，請核對後再記錄。")
             return
         if self.code_error_label.text() and not self.name_input.text().strip():
             QMessageBox.warning(self, "驗證失敗", self.code_error_label.text())
@@ -4041,6 +4096,7 @@ class PortfolioView(QWidget):
                 source_label="持倉管理／共用證據詳情",
                 source_kind=str(getattr(position, "source_type", "") or "portfolio"),
                 source_workspace="portfolio",
+                ml_scope_mode="" if validated_result_id else "current_stock_research",
             )
         )
 

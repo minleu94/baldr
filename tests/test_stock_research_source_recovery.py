@@ -104,6 +104,38 @@ def test_unlinked_portfolio_quote_date_is_shown_without_last_trade_substitution(
     view.close()
 
 
+def test_manual_portfolio_context_loads_current_price_after_drilldown_and_reload(tmp_path):
+    from datetime import datetime, timezone
+
+    config = _config(tmp_path)
+    _seed_normal(config)
+    service = StockResearchReportReadService(
+        config, clock=lambda: datetime(2026, 9, 8, 9, tzinfo=timezone.utc)
+    )
+    app = QApplication.instance() or QApplication([])
+    view = StockResearchReportView(service)
+    view.show()
+    view.set_context(ResearchStockContextDTO(
+        stock_code="2330",
+        stock_name="台積電",
+        decision_date="2026-07-31",
+        source_kind="portfolio",
+        source_workspace="portfolio",
+        ml_scope_mode="current_stock_research",
+        identity_status="unlinked",
+    ))
+    wait_idle(app, view)
+    assert view._loaded_report is not None
+    assert view._loaded_report.price_points
+    assert view._loaded_report.technical is not None
+    assert view._loaded_report.as_of == "2026-09-08"
+    view.load_button.click()
+    wait_idle(app, view)
+    assert view._loaded_report is not None and view._loaded_report.price_points
+    view.close()
+    app.processEvents()
+
+
 def test_unverified_old_openapi_units_are_not_numeric_research(tmp_path):
     import sqlite3
     from datetime import datetime, timezone

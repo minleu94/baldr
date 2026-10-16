@@ -94,8 +94,8 @@ from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionReq
 class BacktestView(QWidget):
     """回測視圖"""
 
-    # 1366px 桌面仍可左右並列；1024px 需要上下流，避免設定欄被壓成不可操作的窄欄。
-    RESPONSIVE_BREAKPOINT = 1200
+    # 1366px 視窗扣除導覽仍可左右並列；更窄時才改上下流。
+    RESPONSIVE_BREAKPOINT = 1150
 
     preset_service: Optional[PresetService]
     universe_service: Optional[UniverseService]
@@ -168,7 +168,7 @@ class BacktestView(QWidget):
         self.paper_checkpoint_account_service = paper_checkpoint_account_service
         self.paper_checkpoint_disabled_reason = paper_checkpoint_disabled_reason
         self.research_run_service_error: str | None = None
-        self._backtest_narrow = False
+        self._backtest_narrow: bool | None = None
 
         # 初始化新服務
         if config:
@@ -750,6 +750,7 @@ class BacktestView(QWidget):
             Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
         )
         self.config_scroll.setMinimumWidth(0)
+        self.config_scroll.setMaximumWidth(16777215 if narrow else 560)
         self.result_panel.setMinimumWidth(0)
         result_policy = self.result_panel.sizePolicy()
         result_policy.setVerticalPolicy(
@@ -761,7 +762,9 @@ class BacktestView(QWidget):
         elif narrow:
             self._set_narrow_splitter_sizes()
         else:
-            self.backtest_splitter.setSizes([560, 780])
+            available = max(self.backtest_splitter.width() - self.backtest_splitter.handleWidth(), 1)
+            config_width = min(560, max(520, int(available * 0.46)))
+            self.backtest_splitter.setSizes([config_width, max(available - config_width, 1)])
 
     def _set_narrow_splitter_sizes(self) -> None:
         """依目前 viewport 高度分配窄版上下區，保留兩邊可操作的最低空間。"""

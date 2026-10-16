@@ -523,6 +523,27 @@ class BacktestResultPanel(QWidget):
             read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024))
         from app_module.saved_strategy_version_reader import SavedStrategyVersionReader
         from ui_qt.widgets.saved_strategy_version_lookup import SavedStrategyVersionLookupWidget
+        lookup_row = QHBoxLayout()
+        lookup_label = QLabel("補充查找（選用）")
+        lookup_row.addWidget(lookup_label)
+        self.saved_strategy_version_button = QPushButton("策略版本")
+        self.saved_strategy_version_button.setCheckable(True)
+        self.saved_strategy_version_button.setToolTip("查看保存的策略版本聲明與來源；不改變目前回測結果。")
+        self.research_history_button = QPushButton("找已保存結果")
+        self.research_history_button.setCheckable(True)
+        self.research_history_button.setToolTip("按股票、名稱或 run ID 找原保存回測，再開啟同一筆結果。")
+        self.paper_checkpoint_button = QPushButton("Paper 快照")
+        self.paper_checkpoint_button.setCheckable(True)
+        self.paper_checkpoint_button.setToolTip("查看 Paper 帳戶的原保存快照；與此頁的單股回測分開。")
+        for button in (
+            self.saved_strategy_version_button,
+            self.research_history_button,
+            self.paper_checkpoint_button,
+        ):
+            lookup_row.addWidget(button)
+        lookup_row.addStretch(1)
+        layout.addLayout(lookup_row)
+
         version_group = QGroupBox("已保存策略版本（版本聲明／來源研究）")
         version_group.setCheckable(True)
         version_group.setChecked(False)
@@ -589,6 +610,19 @@ class BacktestResultPanel(QWidget):
         paper_group.toggled.connect(self.paper_checkpoint_lookup.on_group_toggled)
         paper_group.toggled.connect(self.paper_performance_card.setVisible)
         layout.addWidget(paper_group)
+
+        lookup_pairs = (
+            (self.saved_strategy_version_button, version_group),
+            (self.research_history_button, history_group),
+            (self.paper_checkpoint_button, paper_group),
+        )
+        for button, group in lookup_pairs:
+            button.toggled.connect(group.setChecked)
+            group.toggled.connect(
+                lambda checked, active_button=button, active_group=group:
+                self._toggle_lookup_group(active_button, active_group, checked)
+            )
+            group.setVisible(False)
         
         self.result_tabs = QTabWidget()
         self.result_tabs.setAccessibleName("回測結果工作區")
@@ -987,6 +1021,24 @@ class BacktestResultPanel(QWidget):
             self.add_registry_compare_tab()
 
         self.set_research_mode("single_stock")
+
+    def _toggle_lookup_group(
+        self, active_button: QPushButton, active_group: QGroupBox, checked: bool
+    ) -> None:
+        """一次只展開一種補充查找，讓結果摘要維持可讀。"""
+        active_group.setVisible(checked)
+        active_button.blockSignals(True)
+        active_button.setChecked(checked)
+        active_button.blockSignals(False)
+        if not checked:
+            return
+        for button, group in (
+            (self.saved_strategy_version_button, self.saved_strategy_version_group),
+            (self.research_history_button, self.research_history_group),
+            (self.paper_checkpoint_button, self.paper_checkpoint_group),
+        ):
+            if group is not active_group and group.isChecked():
+                group.setChecked(False)
 
     def _register_result_tab(self, key: str, widget: QWidget, title: str) -> None:
         """以 semantic key 註冊可捲動結果頁，保留原始頁面供內容查找。"""

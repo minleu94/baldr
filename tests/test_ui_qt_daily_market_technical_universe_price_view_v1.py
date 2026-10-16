@@ -147,6 +147,7 @@ def test_source_details_default_collapsed_and_preserve_pins_and_actions(
             "run_comparison_button": "dailyMarketTechnicalPriceV1RunComparison",
             "clear_comparison_button": "dailyMarketTechnicalPriceV1ClearComparison",
             "bookmark_button": "dailyMarketTechnicalPriceV1Bookmark",
+            "show_source_all_button": "dailyMarketTechnicalPriceV1ShowSourceAll",
         }
         for attribute, object_name in expected_actions.items():
             assert getattr(view, attribute).objectName() == object_name
@@ -183,6 +184,34 @@ def test_stock_codes_in_user_order_query_same_saved_source_and_reject_duplicates
         assert view.current_query == query
         with pytest.raises(ValueError, match="technical_stock_filter_invalid"):
             _open_session(exact_price_store).create_query(technical_stock_filter=("S0003", "S0001"))
+    finally:
+        view.begin_shutdown()
+        _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)
+        view.close()
+
+
+def test_show_source_all_clears_filters_but_keeps_exact_loaded_source(
+    app: QApplication, exact_price_store: dict[str, Any],
+) -> None:
+    view = DailyMarketTechnicalUniversePriceV1View(exact_price_store["store_root"])
+    try:
+        view.refresh_sources()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        view.sources.setCurrentIndex(_entry_index(view, "complete"))
+        view.load_selected_source()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        source = view.current_query.source
+        view.stock_filter.setText("S0001")
+        view.apply_query()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        assert view.current_page.matching_count == 1
+        assert "來源已處理 4 檔，目前條件留下 1 檔" in view.result_guidance.text()
+        view.show_source_all_button.click()
+        _wait(app, lambda: not view.busy, timeout_seconds=15)
+        assert view.current_query.source == source
+        assert view.current_query.technical_stock_filter == ()
+        assert view.current_page.matching_count == 4
+        assert len(view.current_page.rows) == 4
     finally:
         view.begin_shutdown()
         _wait(app, lambda: view.workers_remaining == 0, timeout_seconds=15)
@@ -270,7 +299,7 @@ def test_loaded_price_result_is_visible_and_editable_in_narrow_recommendation_ar
         assert not view.controls_group.isVisible()
         assert not view.summary.isVisible()
         assert view.query_controls_toggle.text() == "修改篩選條件"
-        assert "找到 3 筆結果" in view.result_guidance.text()
+        assert "來源已處理 4 檔，目前條件留下 3 檔" in view.result_guidance.text()
         assert host.verticalScrollBar().value() > 0
         guidance_top = view.result_guidance.mapTo(
             host.viewport(), view.result_guidance.rect().topLeft()
@@ -425,7 +454,13 @@ def test_true_saved_source_catalog_query_comparison_bookmark_and_stock_signal(
     QTest.mouseClick(view.add_comparison_button, Qt.MouseButton.LeftButton)
     assert not view.run_comparison_button.isEnabled()
     assert view.clear_comparison_button.isEnabled()
-    assert not view.bookmark_button.isEnabled()
+    assert view.bookmark_button.isEnabled()
+    assert view.bookmark_button.text() == "收藏所選股票"
+    view.prepare_bookmark()
+    _wait(app, lambda: not view.busy)
+    assert len(bookmark_events) == 1
+    assert bookmark_events[0].comparison_selections == ()
+    bookmark_events.clear()
     assert view.select_stock_code("S0003")
     QTest.mouseClick(view.add_comparison_button, Qt.MouseButton.LeftButton)
     assert view.run_comparison_button.isEnabled()

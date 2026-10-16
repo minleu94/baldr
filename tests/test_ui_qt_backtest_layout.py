@@ -234,7 +234,7 @@ def _assert_first_five_rows_and_scroll_to_sixth(
     [
         ((390, 844), Qt.Orientation.Vertical, 58),
         ((600, 900), Qt.Orientation.Vertical, 58),
-        ((1366, 768), Qt.Orientation.Vertical, 184),
+        ((1366, 768), Qt.Orientation.Horizontal, 184),
         ((1400, 800), Qt.Orientation.Horizontal, 184),
         ((1920, 1080), Qt.Orientation.Horizontal, 184),
         ((2293, 912), Qt.Orientation.Horizontal, 184),
@@ -587,3 +587,45 @@ def test_backtest_chart_plot_failure_is_visible_isolated_and_retryable(
     view.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qt_app.processEvents()
+
+
+def test_windowed_backtest_keeps_summary_scrollable_and_optional_lookups_exclusive(
+    qt_app: QApplication, test_config
+) -> None:
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    view.resize(1182, 720)
+    view.show()
+    qt_app.processEvents()
+    panel = view.result_panel
+    assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
+    assert panel.result_tabs.isVisible()
+    assert all(group.isHidden() for group in (
+        panel.saved_strategy_version_group,
+        panel.research_history_group,
+        panel.paper_checkpoint_group,
+    ))
+
+    panel.summary_text.setPlainText("\n".join(f"實驗摘要第 {index} 行" for index in range(200)))
+    qt_app.processEvents()
+    scrollbar = panel.summary_text.verticalScrollBar()
+    assert scrollbar.maximum() > 0
+    scrollbar.setValue(scrollbar.maximum())
+    assert scrollbar.value() == scrollbar.maximum()
+
+    panel.research_history_button.click()
+    qt_app.processEvents()
+    assert panel.research_history_group.isVisible()
+    panel.paper_checkpoint_button.click()
+    qt_app.processEvents()
+    assert panel.paper_checkpoint_group.isVisible()
+    assert panel.research_history_group.isHidden()
+    assert not panel.research_history_button.isChecked()
+    panel.paper_checkpoint_button.click()
+    qt_app.processEvents()
+    assert panel.paper_checkpoint_group.isHidden()
+    assert panel.result_tabs.isVisible()
+    view.close()

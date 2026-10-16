@@ -135,6 +135,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **第五列的獨立安全修正（Increment79）**：既有 P11 個股「決策 → 結果」adapter 已強制唯讀，期限原因改為中文顯示；正式根既存推薦與 Evidence DB 的同次讀取／畫面、原件不變及受影響 QA 已限定驗證。它解除可寫 repository 誤接唯讀頁面的風險，不把 `ready`、局部 UI PASS 或既存結果當自然成熟／完整 P11；正常 Main／新程序、Native／EXE 仍待。第四列兩個基本策略的合成保存與比較已有局部證據，來源／幣別／成本權威、歷史 PIT 與完整雙策略績效缺件繼續精確隔離，不因這筆安全修正移除該列。
 
+**第四列的可試用子集（Increment80）**：原 `stable_conservative_v1` 與 `momentum_aggressive_v1` 各自正常執行並保存 `1.0.0` run、精確成對核對、開原明細／返回與新程序重開，已在 Windows Native 與固定 `37231290e3bf` EXE 對四股原來源副本限定通過；獨立[試用版 80](../../output/trial/Baldr-Daily-Research-80/TRIAL_GUIDE.md)可操作此路，原試用71和預覽73不替換。這解除「只能看局部 source／offscreen，沒有可供真人試的固定 EXE」阻礙，不是第四列完整出口：來源／幣別／成本權威、可比較的完整期間績效、獨立帳本、歷史 PIT 與真人回報仍逐項待證。QA509 的同版模型 probe PID 暫存名稱碰撞原 FAIL 保留，改以形態＋PID 命名後重建並取得同版／EXE 旅程成功；詳[Increment80 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。不新增第一階段第五條流程，也不降低 G0–G4。
+
 #### 日常研究候選的四項明確工作
 
 | 使用者回報 | 具體修正方案 | 可判定的出口與目前狀態 |

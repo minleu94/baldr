@@ -21,6 +21,8 @@ TWSE／TPEX 明示來源
 
 SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、明確 fallback／migration 與研究匯出用途。沒有行情或 provider 不可用時，讀取路徑回傳 missing／diagnostics，不把空結果當成零值，也不因讀取而建立空資料庫或 schema。
 
+單股回測的 `BacktestService` 讀取 `daily_prices` 與 `technical_indicators` 時，沿 `TWStockConfig.db_file` 使用共用 `ReadOnlySQLiteManager` 的 `mode=ro`／`query_only` 短連線；讀不到指定表或列時才沿原 CSV fallback。這條讀取路徑不呼叫會初始化 schema／切換 journal mode 的 `DBManager`。研究結果另寫入隔離的 Registry／輸出根，不能因此改動市場來源 DB；實際真價副本與來源 hash 核對見[Increment106 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment106-backtest-source-readonly-real-pair)。
+
 新來源需保留來源識別、版本、`as_of_date`、`available_date`、quality、missing policy、授權與下游資格。正式決策只消費決策當下可取得且通過來源 gate 的資料；來源候選依 Diagnostics → Shadow → Evidence Review → Accepted Feature 逐步判定。Raw data 不因補算、格式整理或 UI 操作被覆寫。
 
 決策日、資料觀測日、來源可得時間、writer 可得時間、保存時間與預期官方交易日是不同時鐘。`available_at` 由來源或特定 writer contract 定義，後者通常在 artifact／receipt 發布並讀回後才簽發；`persisted_at` 只是保存／排序事實，不能代替官方來源 availability、writer availability 或 PIT 證明。跨日 freshness 應由共用的 market-session cadence／已驗證日曆依同次 operation 明示的 aware cutoff 判斷；歷史 clock 不賦予 current freshness。實際行情日要隨 DTO、snapshot 與 evidence lineage 保存。日曆缺失、未發布、hash 不符或來源日期晚於 cutoff 時保留 unknown／degraded，不借鄰近資料、日曆常識或另一個 provider 補出來源資格。來源 custody／corporate-action 診斷須綁 raw bytes、日期、availability 與行情欄位；方向未知就 fail closed。各 API 欄位語意仍以其 owner contract 為準，不得互換時鐘。

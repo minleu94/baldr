@@ -32,6 +32,8 @@
 
 **Increment105／第四列雙策略逐日對齊守衛（來源候選）**：原兩個基本策略的保存比較只核相同起訖與列數，可能把中間交易日不同的原曲線並列。現在沿原 exact Registry reader 重核兩份逐日日期；不同日集合就具名拒比，不重算績效或改原 run。原相同來源對照與中間一日不同的反例同輪 26 PASS、單檔 mypy 通過；[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment105-basic-pair-calendar)記錄受控 Job 與界線。這解除第四列一項錯誤金融比較風險，但固定102 EXE 未納入、真來源／幣別／成本、歷史 PIT 與完整雙策略績效仍待。P03 單一發行人 PDF 的產品展示用途須再核官方條款；政府開放資料頁雖列授權，通用金額欄沒有可直接綁定此 API 版本的單位，故不把隔離候選數值接到正常個股頁。
 
+**Increment106／第四列回測來源保護與有區別的真價保存結果（來源候選）**：正常單股回測讀價格／指標時曾初始化 SQLite，前次隔離探測實際改動來源 DB；本輪改接既有 query-only reader，讀後原 DB SHA 不變，缺檔不建立來源。受影響保存回歸 28 PASS、單檔 mypy 通過；另以正常回測頁原技術／評分設定、四股真價副本中的 `2330`、同期間及成本跑兩個原 `1.0.0` 基本策略，保存 1,627 日原曲線，原交易列分別 42／5，曲線不同且 exact pair reader 通過。先前只給策略 `params` 的探測造成兩條 0 交易相同曲線，是探測輸入缺件，原收據保留。這解除第四列「讀取會改壞來源」與「只有相同合成／零交易結果」兩項核驗阻礙；[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment106-backtest-source-readonly-real-pair)區分原 FAIL、修復與正常設定。試用102仍固定於較早 EXE；本輪尚無新版正常 GUI／EXE 交付，積極策略 validation FAIL，來源用途／歷史 PIT／成本權威／正式績效排名和完整 Gate 均未接受。下一步沿 §0.4 完成正常同版保存／重開與來源權威分流，不加第五條 V1 前置。
+
 10/16 P12 收據續查：同日 Raw/PIT 父 run 的內嵌 current-stock cycle 到 06:43:00 才完成，與 decision capture 約 06:43:01 取得共用鎖的時間相接；原父 run 仍因 2014 年起的來源修訂守衛停在 `blocked_source_revision`。已核精確 child 收據與共用鎖程式路徑；未改正式鎖或 Task，也不因此提升 EOD 保存的自然用途。詳[非 Increment QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#p12-natural-20261016-readonly)。
 
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；102 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-102/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。

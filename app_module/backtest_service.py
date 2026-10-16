@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from dataclasses import replace
 import sqlite3
 from app_module.recommendation_portfolio_dates import parse_stock_dates
+from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
 logger = logging.getLogger(__name__)
 
@@ -641,8 +642,8 @@ class BacktestService:
             # ✅ 新增：如果使用 SQLite，直接從 daily_prices 庫表讀取，提速 270 倍！
             if getattr(self.config, 'use_sqlite', False):
                 try:
-                    from data_module.db_manager import DBManager
-                    db = DBManager(self.config)
+                    # 回測讀取不得初始化 schema 或切換來源資料庫的 journal mode。
+                    db = ReadOnlySQLiteManager(self.config.db_file)
                     
                     # 標準化日期格式為 YYYYMMDD 字串以配合 SQLite 主鍵
                     start_date_str = start_date.replace('-', '').replace('/', '')
@@ -773,8 +774,7 @@ class BacktestService:
             # ✅ 新增：如果使用 SQLite，直接從 technical_indicators 庫表讀取，提速 270 倍！
             if getattr(self.config, 'use_sqlite', False):
                 try:
-                    from data_module.db_manager import DBManager
-                    db = DBManager(self.config)
+                    db = ReadOnlySQLiteManager(self.config.db_file)
                     
                     start_date_str = start_date.replace('-', '').replace('/', '')
                     end_date_str = end_date.replace('-', '').replace('/', '')

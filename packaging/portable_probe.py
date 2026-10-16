@@ -58,7 +58,8 @@ def main() -> None:
         (case/'model_reopen.json').write_text(json.dumps({'status':loaded.status,
             'artifact_sha256':hashlib.sha256((model_root/'model.joblib').read_bytes()).hexdigest()}),encoding='utf-8')
     else:
-        spawn_path = case / f'spawn_{os.getpid()}'
+        runtime = 'exe' if getattr(sys, 'frozen', False) else 'python'
+        spawn_path = case / f'spawn_{runtime}_{os.getpid()}'
         child = multiprocessing.Process(target=os.mkdir,args=(str(spawn_path),))
         child.start(); child.join(20)
         assert child.exitcode == 0 and spawn_path.is_dir()

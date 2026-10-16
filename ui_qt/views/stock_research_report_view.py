@@ -2932,6 +2932,10 @@ class StockResearchReportView(QWidget):
                 tooltips=row_tooltips,
                 object_name="stockResearchPriceHistoryTable",
             )
+            layout.addWidget(self._wrapped_label(
+                "「漲跌」須有價差與可確認方向；原資料缺件時顯示未提供，不代表 0。"
+                "無號價差不直接當上漲，也不由相鄰收盤價補成官方漲跌。"
+            ))
         else:
             layout.addWidget(
                 self._missing_panel("沒有可顯示的價格資料；每日行情欄位未提供。")

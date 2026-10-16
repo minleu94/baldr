@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+試用回報修補候選把手動帳的當前持倉表全寬接在四卡／活躍持倉摘要後，上方手動帳持倉重點與原交易操作保留；健康／詳細頁留進階區，分帳與金融服務不改。價格研究增三步指引及來源批次／股票篩選區分，個股價格表說明缺價差或方向不補值。固定9fa／4b530尚未含此修補；長tab整頁整理仍是後續版本，操作見[價格研究指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)及[持倉指南](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#手動帳)。
+
 後續開發分支在「系統狀態 → 日常排程 → 決策證據擷取 → 詳細」呈現同次 run 的核驗狀態、收據 SHA、完成時間、保存未知值、安全原因及未完成階段。切頁返回與被動刷新保留明選工作；換選其他工作或無型別舊結果清除舊診斷。逾時不顯假「未保存」，孤立 passed 不計已核成功；沒有新增啟動／重試控制。步驟及排錯見[終態指南](../07_guides/APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。此功能尚未放入固定四流程 V1 或 50ddb 開發 EXE。
 
 固定法人區新增可選用途接受檔與SHA；成對明選後沿原三參數signal／不可變request pin／owner worker與generation／取消路由，僅TPEx typed diagnostics結果顯示接受ID、SHA、時間與來源顯名。裸True／錯市場／scope拒絕；無pin維持原candidate讀取，讀取不重寫來源／接受或觸發抓取。操作見[用途接受指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人用途接受與重開後續開發分支)。
@@ -396,6 +398,8 @@ Increment44 補齊封存情境到個股的實際內容：保存後鑽取顯示�
 後續開發分支新增「配置研究封存」進階分頁，沿既有私人 scenario store 明選帳種／portfolio／artifact，讀回完整現金、NAV、股數與維持／等權／明示配置；可改原股票範圍內的整數 bp target，沿原事實、時鐘與同 policy hash 比較，再另存不可變研究假設。不是當前帳本或交易，缺初始 Health／現金／行情不補值。返回個股核同 artifact，新程序以保存 hash 明選重開；未配置／唯讀／空庫及版本錯誤各自顯示。固定 `9fa4518c` 試用包不變，完整 P06 尚待；詳[操作指南](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#配置研究封存與另存假設)。
 
 後續 Increment40 使回測／規則卡／Walk-forward／參數掃描保留真實登記版本，暴衝與穩健策略不再被新 run 錯標 `1.0`。未知或衝突版本在啟動前提示並拒絕；掃描整輪固定同一版本。正常 Main 保存／歷史返回／新程序 exact 重開兩策略已驗，舊 run 原樣保留；固定試用包與來源資格不變。詳[回測指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#選模式和研究範圍)。
+
+Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新實驗的當次規則來源：顯示實際門檻、成本、風控及來源，改目前設定後仍讀同一保存run。錯來源／版本／成本拒絕，歷史只讀；正常Main及fresh已限定驗證。舊baseline v1與舊run不改，來源核對不授PIT／績效／正式資格，固定試用EXE尚未含此增量。
 
 主要 view：
 

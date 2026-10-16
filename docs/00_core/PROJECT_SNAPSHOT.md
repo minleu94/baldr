@@ -1,5 +1,9 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+Increment58接收9fa真人試用回報，重用一名Luna完成持倉表前移，Root補價格研究三步引導及個股漲跌缺件說明。原試用四股副本12,390列中11,378列無可證方向，最近六列方向空白而價差仍有值；不補造正負或改原件。原指南漏「查詢版本」已補，來源一次選一批、再篩四碼。相關UI193PASS／1可達性FAIL保留；Root修進階切換未更新操作列後定向88PASS含Workbench85，八roots mypy1033及validator25/0/4通過。使用者貼的回測摘要是6組完成配對，0交易位置仍未確認，不改金融結果或放寬SOP。這是source候選，尚未新增Native／EXE，固定9fa／4b530及50ddb包不變；持倉排版不新增V1第五流程，整頁推薦tab整理列後續，詳[Increment58 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment58試用回報與持倉表前移)。
+
+Increment57補原P07/P08穩健／暴衝策略的當次規則封存：原執行器／撮合／金融公式不改，新的fixed next_open實驗保存v2規則、實際門檻與成本／來源；舊baseline v1及舊run保留。正常Main38512→fresh36480兩run保存規則／原結果／返回通過，fresh禁止目前Registry／重算／保存，原件內容與時間一致；127PASS及兩個序列化比較修正後定向2PASS，peer發現非零風控舊單位還原錯誤，保留舊DTO改核精確原輸入後44PASS。mypy1033與validator25/0/4；不授PIT、完整雙策略績效或Native/EXE。固定4b530 V1及50ddb開發包尚未含本增量，使用者9fa試用回報另由重用Luna處理，詳[Increment57 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment57p07p08原兩策略的當次規則封存)。
+
 Increment56接通原P12決策擷取終態的共用reader→Runtime／Workbench→正常系統狀態。只有同run收據／CLI原件／hash／時鐘核驗後才投影已驗狀態，孤立passed不計成功，逾時保存維持None；正常Main48720→fresh30816同run診斷／切頁返回／重開通過，9原件內容與時間不變、socket0。最終受改reader／consumer40PASS含其他lane成功字串拒絕、Runtime與必要Workbench100PASS含85、原Main整合fixture修復後13PASS、八roots mypy1033及validator25/0/4，原FAIL逐組保留。指南新增系統狀態§11；僅隔離終態及模擬逾時事件，沒有實跑120秒或觸發正式Task／maintainer，不授自然成熟、DB／來源／PIT或完整Gate。固定4b530 V1與50ddb開發包不變，後續原產品包繼續推進，詳[Increment56 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment56p12決策擷取終態與正常系統狀態)。
 
 Increment55補原P13/P14的後續開發包出口：固定50ddb640另建candidate，沒有替換4b530 V1。真TPEx同批次／用途／三證券在Windows Native來源34120→44196與EXE45356→14056一致、12原件內容與時間不變；原P06合成情境從明確登錄→Registry exact→個股實按返回→fresh，來源10664→42836與EXE33288→9400金融投影一致，每組兩DB／引用重開不變，7副本與21原來源各自核驗。QA302–306通過，307原共同啟動／archive／依賴鎖／同版probe另通過；沒有新HTTP或正式Task／資料變更。限上述兩旅程的原生自動化與合成共同probe，不授真人、其他主機、真P06、歷史PIT或完整Gate；手冊同步詳[Increment55 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。接續原P12受控terminal→status reader→正常系統狀態出口，不觸發正式Task或maintainer。

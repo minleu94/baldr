@@ -164,6 +164,7 @@
         "ui_qt/views/daily_market_technical_official_disposition_composite_view.py",
         "ui_qt/views/daily_market_technical_official_disposition_revenue_view.py",
         "ui_qt/views/recommendation_view.py",
+        "ui_qt/views/daily_market_technical_universe_price_view_v1.py",
         "ui_qt/workers/revenue_source_actor_v2.py"
       ],
       "tests": [
@@ -212,6 +213,7 @@
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_v2.py",
         "tests/test_ui_qt_recommendation_execution.py",
+        "tests/test_ui_qt_daily_market_technical_universe_price_view_v1.py",
         "tests/test_ui_qt_revenue_source_actor_v2.py",
         "tests/test_ui_qt_technical_official_composite_main_journey.py",
         "tests/test_ui_qt_technical_official_composite_research_presenter_v2.py",
@@ -349,6 +351,9 @@
         "ui_qt/widgets/strategy_performance_widget.py",
         "app_module/single_backtest_metrics_contract.py",
         "app_module/backtest_service.py",
+        "app_module/strategy_rule_card_readmodel.py",
+        "app_module/saved_strategy_rule_card.py",
+        "ui_qt/views/backtest/research_run_metadata.py",
         "backtest_module/performance_metrics.py",
         "app_module/backtest_contracts.py",
         "app_module/backtest_repository.py",
@@ -360,6 +365,10 @@
       ],
       "tests": [
         "tests/test_registered_strategy_spec.py",
+        "tests/test_single_backtest_rule_execution_v2.py",
+        "tests/test_ui_qt_saved_strategy_rule_card.py",
+        "tests/test_ui_qt_saved_strategy_rule_card_v2.py",
+        "tests/test_ui_qt_strategy_rule_card.py",
         "tests/test_ui_qt_backtest_strategy_version_binding.py",
         "tests/test_optimizer_service.py",
         "tests/test_official_calendar_daily_snapshot_v1.py",

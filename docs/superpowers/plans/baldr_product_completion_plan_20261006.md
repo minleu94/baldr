@@ -41,6 +41,10 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+Increment58處理使用者9fa試用回報：價格研究補原指南漏掉的「查詢版本」與單一來源批次→股票篩選→結果三步，Root已完成source候選；當前持倉表按明確新要求前移至四卡後，手動帳持倉重點保留原位，屬後續產品改良，不新增V1第五流程。四股原保存價差缺方向及0／6交易說法分流核對，不能為填滿畫面補數或改SOP；相關UI／必要防線已限定驗證，Native／EXE未新增。大tab「選資料→設條件→看結果」及研究入口分開列後續版本；原其餘包繼續，不停在單一UI點，見[Increment58 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment58試用回報與持倉表前移)。
+
+Increment57沿原P07/P08補兩個既有1.0.0策略fixed next_open新實驗的當次規則封存及正常歷史卡，不換金融引擎或新增策略；正常Main38512→fresh36480同run保存／規則／原結果／返回通過。舊baseline v1與舊run不補章，來源一致仍不授PIT／績效或完整Gate，詳[Increment57 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment57p07p08原兩策略的當次規則封存)。此解除第二階段的保存後無完整規則來源阻礙；固定V1不新增前置。使用者9fa試用回報已由一名重用Luna並行定位漲跌缺值、價格研究選取與持倉排版，Root續原計畫／金融複核／QA，不等試用才推進其他包。
+
 Increment56推進原P12的決策擷取終態讀回：共用有界reader核同run收據／CLI原件／時鐘，接回原Runtime與Workbench；正常Main48720→fresh30816已驗明選診斷／切頁返回／同run重開，9原件內容與時間不變。這解除使用者無法辨認「孤立成功字串、逾時保存未知、缺收據」的操作阻礙，指南同步[手冊§11](../../07_guides/APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。僅隔離終態及模擬逾時事件，原120秒實跑／自然Task／重試方案及完整P12仍待；不觸發maintainer、不改固定V1或50ddb開發包。原完整計畫與試用並行，下一葉仍按原包推進，不新增V1前置。
 
 Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口：50ddb640 candidate的真TPEx法人同pin／用途／返回／fresh，以及原合成P06保存情境明確登錄→Registry→個股實按返回→fresh，來源版與EXE均通過；共同啟動／完整archive／依賴鎖／原同版probe亦通過。候選、具名PID／收據與原限制見[Increment55 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment55p13p14固定候選native與同版出口)。只解除這兩旅程缺Native／EXE證據的交付阻礙，不擴V1、來源或完整Gate；無新HTTP／正式資料／Task。接續原P12受控terminal／status reader正常UI出口，禁止重觸發正式maintainer。
@@ -503,6 +507,10 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+Increment58真人回報解除操作阻礙而不擴資料前置：缺方向屬D品質／原件缺值，保持不可用並記明確欄位；查詢版本缺步驟屬UI引導，直接修指南與source文字；6pairs／SOPFAIL與未WF按原結果保留，0位置未證不推論。持倉新排版沿原服務，完整tab分流列後續。source修補的Native／同版包出口仍須各自處理，原P00–P14與自然成熟未完成項目繼續，未受影響QA不重跑。
+
+Increment57只補既有穩健／暴衝執行後的不可變規則來源，沿原執行→保存→public reader→歷史／返回→fresh；實際門檻取原policy，風控核精確原比例與舊整數投影，不改交易。原prefix有限完整行情測試不消除executor缺值bfill與歷史PIT限制；完整家族規則、雙策略權威／績效、來源缺件及自然成熟各自保留。最新試用缺陷另按第一版阻礙修復，不擴成新的資料或架構前置；下一葉以原產品包的可操作出口繼續。
 
 Increment56沿P12既有producer／stage診斷補共用終態reader及原正常系統狀態出口，原件身分與保存未知不再由通用passed字串覆蓋。正常Main／新程序同run讀回已限定驗證；受改反例、UI必跑與型別結果及原FAIL逐項見[Increment56 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment56p12決策擷取終態與正常系統狀態)。實際120秒執行／依賴與效能原因、自然排程與重試尚未關閉；本輪不修改或重觸發正式Task。P03來源缺件、P07規則／P08完整績效與其餘正常旅程繼續各自推進，不能以此讀回增量冒充全產品或新V1前置。
 

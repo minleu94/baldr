@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation, ROUND_HALF_UP, localcontext
 import hashlib
 import json
 import re
@@ -135,6 +135,51 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
                 or execution.get("execution_contract") != metadata.execution_contract
                 or execution.get("benchmark") != (metadata.benchmark_results or None)):
             errors.append("execution_rule_result_context_mismatch")
+        if execution.get("schema") == "single-backtest-rule-execution.v2":
+            broker = execution.get("broker_config")
+            if not isinstance(broker, dict):
+                errors.append("execution_rule_saved_cost_mismatch")
+            else:
+                # 由保存的整數單位構造精確Decimal，不用caller context乘除或補目前費率。
+                for key, recorded, exponent in (
+                    ("fee_bps", metadata.fee_bp_x100, -2),
+                    ("slippage_bps", metadata.slippage_bp_x100, -2),
+                ):
+                    raw = broker.get(key)
+                    try:
+                        matches = (key in broker and (raw is None if recorded is None else type(recorded) is int
+                                   and not isinstance(raw, bool)
+                                   and Decimal(str(raw)).is_finite()
+                                   and Decimal(str(raw)) == Decimal(str(recorded) + "E" + str(exponent))))
+                    except (DecimalException, TypeError, ValueError):
+                        matches = False
+                    if not matches:
+                        errors.append("execution_rule_saved_cost_mismatch")
+                        break
+                # 舊 pct_to_bp 實為 ratio*100 的整數百分比；不能當真 bp 反推精確原 ratio。
+                # 精確值交叉核原輸入，再核舊整數投影，避免拒絕 0.055 等原合法值。
+                original = metadata.original_input.get("raw_params", {})
+                for key, risk_recorded in (("stop_loss_pct", metadata.stop_loss_bp),
+                                      ("take_profit_pct", metadata.take_profit_bp)):
+                    raw = broker.get(key)
+                    expected_raw = original.get(key) if isinstance(original, dict) else None
+                    try:
+                        matches = (key in broker and isinstance(original, dict) and key in original
+                                   and not isinstance(raw, bool) and not isinstance(expected_raw, bool))
+                        if raw is None or expected_raw is None:
+                            matches = matches and raw is None and expected_raw is None and risk_recorded is None
+                        else:
+                            value, expected_value = Decimal(str(raw)), Decimal(str(expected_raw))
+                            with localcontext() as context:
+                                context.prec = 60
+                                matches = (matches and type(risk_recorded) is int and value.is_finite()
+                                           and expected_value.is_finite() and value == expected_value
+                                           and int((value * Decimal("100")).to_integral_value(rounding=ROUND_HALF_UP)) == risk_recorded)
+                    except (DecimalException, TypeError, ValueError, OverflowError):
+                        matches = False
+                    if not matches:
+                        errors.append("execution_rule_saved_cost_mismatch")
+                        break
     card = replace(card, identity=replace(card.identity, context_sha256=result_context_sha256(metadata)))
     pin = metadata.data_manifest.get("rule_card_identity")
     saved_identity = None

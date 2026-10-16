@@ -2,6 +2,41 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment58：試用回報與持倉表前移
+
+**解除的操作阻礙**：9fa試用指南省略「查詢版本」，使用者無法選價格研究來源；持倉表被健康區塊推至下方。本輪Root保留原補完工作，僅重用一名Luna做有限靜態定位及Portfolio單寫，Root接回金融裁定、整合、QA與文件；累計10/10，沒有新建agent。持倉新要求不擴V1四流程，source修補尚未打入固定9fa／4b530／50ddb包。
+
+- 真正 `manual_account_panel` 全寬接四卡／活躍摘要後；上方 `portfolio_focus_summary`、原手動交易操作列及分帳可見性不改。健康與詳細頁保留進階，Root修切換時操作列須主動刷新方向；不是搬摘要冒充表格。
+- 價格研究改人類可辨標題、單一來源批次與股票代碼篩選；三步指引仍要求原strict核驗，不自動產製或下載。舊版立即操作是「查詢版本→選四股保存批次→嚴格核驗並載入→篩代碼／套用條件→選結果」，指南原漏步驟已補。整個長tab重排明列後續具體方案，未聲稱已重做。
+- QA331唯讀原四股行情私人副本：方向欄 `漲跌(+/-)` 存在，12,390列中11,378列為 `missing_change_direction`；最近六列均空白，2330在2026/09/23價差40而無方向。原prepare85逐行原bytes→文字SQLite，沒有從收盤推算或修寫方向。本輪只補表格下方缺件說明；沒有宣稱正式DB或使用者目前執行output已全面查核。
+- 貼出的回測摘要明列6完成配對，1–9樣本不足及無WF均符合原守衛。使用者所見0屬哪個區塊／run仍未證實，不改原結果或門檻；高損益金額也未擅自判為本金錯誤。Worker舊guide混版推論由Root disposition拒收，不能當現況事實。
+
+| QA | 真正結果與原FAIL | owner outer receipt／SHA |
+|---|---|---|
+| 331 | compile audit、四股唯讀原值及完整性；v2正向saved source status四案PASS。文件因Root誤列不存在test失敗保留，移除錯關聯，未改測試強度；metadata檢查當組未執行。 | `single_owned_qa_d00db7583db3405b9e46e6a1dc8040a3/receipt.json`／`56ec906888af5680e6f019763601cab913955ae72b4f1c77c8e5b576480ce5bc` |
+| 332–333 | compile5、Portfolio／price widget／stock report／Workbench193PASS含85，原1280進階動作列方向1FAIL保留。333改寬度判斷仍同1FAIL、87PASS，未放寬斷言或重造測試。 | 332 `single_owned_qa_44400952b7dc440094ec9bbb95f8f584/receipt.json`／`75d142329bbd4beb16c747c0efda4b18d3bf19151206c0b1a1aa1160c54852e1`；333 `single_owned_qa_223e862d48dd41a59e9d5b2809b7b901/receipt.json`／`65d9a85f25e15b35b0b99d6fc5650bd547c6223df162e5eafbdb776c6fd6e059` |
+| 334–335 | 334測得window1280、view1072、持倉表1034，切進階未更新方向，force才變直列；Root改切換顯式刷新。335原可達性／寬窄／順序及Workbench共88PASS；mypy因v2成本兩loop同名int／optional變數FAIL，保留後只改局部名稱。 | 334 `single_owned_qa_250b13e560604467bbb846324b209110/receipt.json`／`39cae5a2a09a05e9cdfd7d27fd3dd0f57fbab233e0ff6ddad6b20de86765f32a`；335 `single_owned_qa_c68078ebb1034aafacdef3f3dd4160b7/receipt.json`／`df878f971ac1decc6f6b65530c5ff9f2968a629edbf6abd20ddb4f32429d20a2` |
+| 336 | compile1、八roots mypy1033與先前跳過的validator25PASS／0FAIL／4protected skips通過；不重跑未受影響的股票／價格結果。既有UI ignore_errors不證UI強型別。 | `single_owned_qa_2c2122ede3e14a6b93d28570e48c33a5/receipt.json`／`7481e77c2568d6695d8bee29c22c9619f5729c1a97acdef41ff4b37ed62435a0` |
+
+Root disposition `increment58_peer_disposition.json` SHA `cb783b397042078aaab0d57a1e46d0308822ebf0270a696edf85b93d4ef57700`；原audit `increment58_price_change_audit.json` 留own task。QA331只排除正由Luna寫且與該audit／v2／文件無關的兩個Portfolio pins，332重新綁回當前完整source及結果隔離目錄，沒有以舊spec覆寫或當新QA。每組仍8GiB／12程序／KOC／mutex、起前RAM≥8GiB，三PID陣列自然空、handles及mutex閉鎖才續組。沒有正式資料／Task／maintainer／HTTP／push／發布／交易，也沒有本增量Native／EXE或完整Gate。
+
+## Increment57：P07/P08原兩策略的當次規則封存
+
+**解除的交付阻礙**：原穩健／暴衝策略已能執行保存，歷史規則卡尚缺當次完整執行來源。本輪沿原typed執行器／service／broker／Registry新增fixed next_open的v2捕獲與讀回，不造新策略、撮合器或金融結果；baseline v1及舊run不改、不補章。原完整範圍與固定4b530 V1／50ddb開發EXE保留，這兩個包均尚未含本增量。
+
+來源HEAD `e06a6e6f32ca1c5e550e5866b9365c163a108ddc`。producer只載一次行情，保留原request與equity/trades；metadata一次捕獲，門檻沿ScoreThresholdPolicy真值，另綁五具名來源hash。reader交叉核spec／metadata／資料／執行／成本，qualification兩個False不得被True／1／None替換。Luna靜態複核發現舊pct_to_bp其實ratio*100 HALF_UP而非真bp，Root保留DTO，改核精確broker/raw_params與舊整數投影；非整百分比不能用舊整數反推。未改原金融計算、參數或風控。
+
+| QA | 結果與界線 | owner outer receipt／SHA |
+|---|---|---|
+| 325–326 | context三來源無budget unknown；trace因FeatureMap缺關聯exit2，保留並補原工作區關聯。原v1／B07／saved讀回105PASS、mypy1033。 | 326 `single_owned_qa_a64785f1eeb745e6aac8dff96e647275/receipt.json`／`0c8b3cb33e44eb63b2666fb6c16e5de1d78d60d07451cb44532a396e522e11ad` |
+| 327–328 | compile5；127PASS含Workbench85、兩個完整DTO比較FAIL保留。原Registry把Decimal JSON葉轉精確字串，沿原metadata_sha256契約核完整DTO後定向兩案PASS；八roots mypy1033、validator25/0/4。 | 327 `single_owned_qa_18037be6086f4399930cb6ae8800e643/receipt.json`／`2aeeef9b5189032c722305ed5bd7b943c2277ca0f9bb54141570f8d86829109c`；328 `single_owned_qa_ceb053ad4a034400a9bfb9a4ac216aaf/receipt.json`／`3a91404cfa58ad49176f431d39dd78824a3c9b4c8a443e533c61fa9173a0ba28` |
+| 329 | 正常Main38512→fresh36480兩策略各原419日、正常保存對話框／歷史規則卡／原結果／Watchlist返回；保存後改目前門檻99仍讀原0，fresh禁止目前Registry／executor／回測／save。DB／Parquet內容、bytes／mtime／ctime一致，20原V1輸入及私人原行情不變，socket0。 | `single_owned_qa_5d5acb64252342d59f0c891a31d28b90/receipt.json`／`1e1e56172eabd3b0fcd54704c18ad4c859c46692e51f81ccbc4a641e3c78c427` |
+| 330 | peer非零風控單位阻礙窄修後compile2、受改core／saved／v2 UI44PASS，含None／0／0.05／0.055、錯整數與錯原比例反例；原FAIL與前收據不覆寫。 | `single_owned_qa_0144705dc64447d78c43684604ee958d/receipt.json`／`636d7986eba094c00609a2325f50b8077b6b5a83375ba863fbcd06ca76bd27b3` |
+
+QA329父收據SHA `a28716a8a2ef9fa507cf20961f2aede32b66fe3e4f15283354fb8ce1dbb8621a`、fresh `75053166d5024d6882b0afd127b3326ea02328f9345d12b1cac4f041c3f80029`，路徑在owner `increment57_fixed_rule_main_fresh_a/`。原15秒UI／120秒phase／270秒driver、8GiB committed／12程序／KOC／mutex均保持，各組三PID陣列自然空、handles與mutex閉鎖。QA330後可用RAM22.19GiB。靜態Luna重用，累計10/10，沒有新建子代理。
+
+**限制**：Main使用原四股私人副本，未授官方來源／歷史PIT、完整雙策略績效、Native／EXE或真人接受；原executor準備缺值有bfill／fill0，有限完整OHLCV的prefix不代表所有缺值因果安全。quantile／其他版本與非next_open不偽造v2，舊run保持原資格。沒有正式資料／Task／maintainer、新HTTP、push、發布或交易。使用者同時回報的9fa試用操作缺陷另由一名Luna處理，不阻擋原產品線推進；各有限PASS不加總成完整Gate。
+
 ## Increment56：P12決策擷取終態與正常系統狀態
 
 解除原P12「通用passed字串被視為成功、原終態／階段診斷未接回正常頁」的操作阻礙。沿既有 `run_scheduled_decision_evidence_capture` 寫入契約與 `decision_snapshot_diagnostics`，新增application唯讀adapter，供原Runtime排程service與Workbench共同消費；原producer、正式Task、120秒child期限與30秒狀態輪詢未改。固定4b530四流程V1與50ddb開發EXE均不改版，不新增試用前置。

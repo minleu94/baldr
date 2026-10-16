@@ -439,9 +439,19 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(7)
-        title = QLabel("保存技術研究的收盤價範圍（F07 v1）")
+        title = QLabel("價格研究：從保存資料篩選股票")
         title.setObjectName("dailyMarketTechnicalPriceV1Title")
         root.addWidget(title)
+        self.workflow_help = QLabel(
+            "① 按「查詢版本」，選一份保存批次，再按「嚴格核驗並載入」。\n"
+            "② 在「股票代碼篩選」輸入代碼（例如 2330,2317,2382,2454），設定條件後按「套用條件」。\n"
+            "③ 選取結果查看詳情；逐股加入比較籃，或準備價格研究收藏。\n"
+            "來源批次一次選一份；四股是該批次內的股票，不是四份來源。空白代碼代表查整個保存母體。"
+        )
+        self.workflow_help.setObjectName("dailyMarketTechnicalPriceV1WorkflowHelp")
+        self.workflow_help.setWordWrap(True)
+        self.workflow_help.setTextFormat(Qt.TextFormat.PlainText)
+        root.addWidget(self.workflow_help)
         self.disclaimer = QLabel(
             "只讀已保存 full-N v4 來源中的收盤價；不查最新行情。資料可得時間未知，"
             "僅供當下重述研究，不授歷史 PIT／可交易資格；未知價格與排除、待處理分開顯示。"
@@ -451,10 +461,12 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.disclaimer.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self.disclaimer)
 
-        source_group = QGroupBox("已保存的 full-N 技術來源")
+        source_group = QGroupBox("步驟 1：選擇來源批次（一次一份）")
         source_layout = QGridLayout(source_group)
         self.sources = QComboBox()
         self.sources.setObjectName("dailyMarketTechnicalPriceV1Sources")
+        self.sources.setAccessibleName("價格研究來源批次")
+        self.sources.setToolTip("先按查詢版本取得保存批次；選批次後仍須嚴格核驗，才能篩選其中的股票。")
         self.sources.setMinimumContentsLength(12)
         self.sources.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.refresh_sources_button = QPushButton("查詢版本")
@@ -487,7 +499,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.verified_pins.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.verified_pins)
 
-        controls_group = QGroupBox("全母體條件與價格範圍")
+        controls_group = QGroupBox("步驟 2：篩選股票與價格條件")
         controls = QGridLayout(controls_group)
         self.combine_mode = QComboBox()
         self.combine_mode.setObjectName("dailyMarketTechnicalPriceV1CombineMode")
@@ -496,7 +508,8 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.stock_filter = QLineEdit()
         self.stock_filter.setObjectName("dailyMarketTechnicalPriceV1StockFilter")
         self.stock_filter.setMaxLength(_MAX_STOCK_FILTER_CHARS)
-        self.stock_filter.setPlaceholderText("股票代碼，可逗號分隔；完整母體，不限 segment")
+        self.stock_filter.setPlaceholderText("例如 2330,2317,2382,2454；留空查整個保存母體")
+        self.stock_filter.setAccessibleName("股票代碼篩選")
         self.eligible_stock_filter = QLineEdit()
         self.eligible_stock_filter.setObjectName("dailyMarketTechnicalPriceV1EligibleStockFilter")
         self.eligible_stock_filter.setMaxLength(_MAX_STOCK_FILTER_CHARS)
@@ -538,7 +551,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._query_control_items = (
             (QLabel("技術規則組合"), (0, 0, 1, 1), (0, 0, 1, 1)),
             (self.combine_mode, (0, 1, 1, 1), (0, 1, 1, 1)),
-            (QLabel("股票篩選"), (0, 2, 1, 1), (1, 0, 1, 1)),
+            (QLabel("股票代碼篩選"), (0, 2, 1, 1), (1, 0, 1, 1)),
             (self.stock_filter, (0, 3, 1, 3), (1, 1, 1, 1)),
             (QLabel("收盤價下限（TWD／股）"), (1, 0, 1, 1), (2, 0, 1, 1)),
             (self.minimum, (1, 1, 1, 1), (2, 1, 1, 1)),

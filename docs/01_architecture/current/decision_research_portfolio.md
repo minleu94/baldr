@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究僅改三步引導及名稱，不改catalog／strict source session／篩選／收藏契約；個股漲跌沿原價差方向守衛，說明缺件不代表0。
+
 原analyzer的PF改nullable，附 `closed-pair-net-pnl-ratio.v1`／status；Decimal60內計算及既有analytics輸出分開。`backtest_contracts.profit_factor_projection`讓單股／batch／optimizer／新repository只傳有效有限值；缺版本舊值不升格。原runs schema不遷移，未定義保存NULL、舊比較與promotion摘要PF不可用；歷史七欄不增欄或重算。固定9fa尚未backport，見[PF指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。
 
 原 `PerformanceAnalyzer` 增補逐指標有效性，保持原計算／數值出口；新 `single-backtest-performance.v1` node 由原 `BacktestService` 發行，固定七個保存欄位、單位、實際期間／列數、完成配對與股票身份。十進位值文字指紋使原 float analytics 與 UI 的 Decimal JSON 解碼一致；整 node SHA 綁有效性與期間，原 Registry metadata／Parquet 外部身份仍各自核驗，不把 checksum 當來源授權。原 `ResearchRunService` 只對新宣告另保留實際日期欄並在寫入前核對原表；舊無 node 保存／hash 不變。公開歷史 reader 與被動卡片重驗 node／摘要，顯示原已知值，fallback／零配對／無期間維持 None；不重算或推進 qualification／comparability。操作見[指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。
@@ -36,6 +38,8 @@
 - Regime 的 `date`／effective date 表示請求的判斷日；`details.source_data_date` 表示實際可用行情日，兩者不得混用。此來源日期隨 DTO／snapshot lineage 傳遞；缺日期或超過 cutoff 時，不得借另一個資料集補值，也不改變分類或 PIT 資格。
 
 ## 回測與研究時間軸
+
+`execute_single_backtest_with_rule_source` 對原穩健／暴衝1.0.0的fixed next_open增存 `single-backtest-rule-execution.v2`，沿同一載入／typed executor／BacktestService／BrokerSimulator，不改交易與權益。producer一次捕獲StrategyMeta，保存ScoreThresholdPolicy實際門檻與五個具名來源hash；pure identity resolver只按明示schema/id/version分流。原baseline v1、其他模式及舊run保持原契約。saved reader只讀原Registry與來源，交叉綁spec／metadata／data／execution／broker；費率核原整數單位，風控先核精確raw_params再核舊ratio*100 HALF_UP投影，不能把歷史欄名誤當真bp。正常歷史規則卡共用原dialog，fresh不查當前Registry／executor、不重算或保存。原executor缺值準備有bfill限制，完整有限行情的prefix測試與來源hash不授歷史PIT；績效仍not_evaluable。
 
 `app_module/backtest_service.py`、`batch_backtest_service.py`、`optimizer_service.py`、`walkforward_service.py` 與推薦組合回放服務組合 `backtest_module/`。服務負責資料讀取、策略執行、結果保存與交接；UI 不自行計算訊號、撮合、權重或績效。
 

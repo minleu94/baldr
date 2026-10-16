@@ -1312,7 +1312,7 @@ class PortfolioView(QWidget):
         paper_health_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.paper_health_group = paper_health_group
 
-        # ========== 2. 中部核心分割區 (Splitter) ==========
+        # 進階證據區仍以 splitter 排列；日常持倉表會在下方完整建立後，插入四卡摘要之後。
         main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter = main_splitter
         main_splitter.setObjectName("portfolioMainSplitter")
@@ -1323,12 +1323,11 @@ class PortfolioView(QWidget):
         self._portfolio_programmatic_splitter_update = False
         main_splitter.splitterMoved.connect(self._on_portfolio_splitter_moved)
 
-        # Left Panel: 持倉列表與操作
+        # 日常持倉列表與操作；完成建構後全寬放在狀態卡下方。
         left_widget = QWidget()
         self.manual_account_panel = left_widget
-        # 寬版 splitter 的左 pane 仍需保留可讀操作文字與持倉欄位；不足寬度時
-        # 由表格水平捲動承接欄位，而不是把操作按鈕壓成半個字。窄版 390px
-        # 仍可容納此 responsive lower bound，不以固定高度撐大視窗。
+        # 全寬日常區仍保留窄版 lower bound；不足寬度時由表格水平捲動承接欄位，
+        # 不把操作按鈕壓成半個字，也不以固定高度撐大視窗。
         left_widget.setMinimumWidth(360)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setSpacing(8)
@@ -1430,8 +1429,6 @@ class PortfolioView(QWidget):
 
         btn_layout.addStretch()
         left_layout.addLayout(btn_layout)
-
-        main_splitter.addWidget(left_widget)
 
         # Right Panel: 歷史明細與日記
         right_widget = QTabWidget()
@@ -1819,12 +1816,16 @@ class PortfolioView(QWidget):
 
         right_widget.addTab(chip_tab, "籌碼監控")
 
+        main_splitter.addWidget(paper_health_group)
         main_splitter.addWidget(right_widget)
 
         # 初始比例由 _apply_responsive_layout 依實際 pane 寬度設定；保留
-        # QSplitter 自身的 handle 供使用者後續調整，不用 stretch factor 抵銷。
+        # QSplitter 自身的 handle 供使用者調整進階證據區，不用 stretch factor 抵銷。
         main_splitter.setSizes([720, 480])
-        main_layout.addWidget(paper_health_group)
+        positions_index = main_layout.indexOf(self.active_positions_summary_label)
+        if positions_index < 0:
+            raise RuntimeError("portfolio_active_positions_summary_missing")
+        main_layout.insertWidget(positions_index + 1, left_widget)
         if (
             self.position_health_exact_scope_factory is not None
             and self.saved_health_selection_store is not None
@@ -1917,6 +1918,8 @@ class PortfolioView(QWidget):
         if hasattr(self, "portfolio_advanced_scroll"):
             self.portfolio_advanced_scroll.updateGeometry()
             self.portfolio_advanced_scroll.widget().adjustSize()
+            # 持倉操作列已獨立於 splitter；進階切換也須立即更新操作列方向。
+            self._apply_responsive_layout(force=True)
             if self.width() > 0 and not self._portfolio_splitter_user_resized:
                 QTimer.singleShot(
                     0, self, self._restore_portfolio_splitter_default_sizes
@@ -1927,15 +1930,15 @@ class PortfolioView(QWidget):
         self._apply_responsive_layout()
 
     def _on_portfolio_splitter_moved(self, _position: int, _index: int) -> None:
-        """記住使用者調整過的比例，後續 resize 不覆寫該選擇。"""
+        """記住使用者調整進階證據區的比例，後續 resize 不覆寫該選擇。"""
 
         if not self._portfolio_programmatic_splitter_update:
             self._portfolio_splitter_user_resized = True
-            # 拖曳跨過 action pane 寬度門檻時只更新按鈕方向；不重設拖曳比例。
+            # 拖曳後保留整頁響應式配置，不重設進階區比例。
             self._apply_responsive_layout(force=True)
 
     def _restore_portfolio_splitter_default_sizes(self) -> None:
-        """進階正文完成 layout 後補套一次初始比例，避免 sizeHint 抢走左 pane。"""
+        """進階正文完成 layout 後補套一次健康與詳細頁籤的初始比例。"""
 
         if (
             self._portfolio_splitter_user_resized
@@ -1970,7 +1973,7 @@ class PortfolioView(QWidget):
             self._portfolio_programmatic_splitter_update = False
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
-        """依整頁與左側 pane 寬度調整方向，避免操作文字被切掉。"""
+        """依整頁寬度調整區塊與按鈕方向，避免窄版操作文字被切掉。"""
         if not hasattr(self, "main_splitter"):
             return
         narrow = self.width() < 900
@@ -1985,11 +1988,10 @@ class PortfolioView(QWidget):
         if initialize_splitter and not self._portfolio_splitter_user_resized:
             self._set_portfolio_splitter_default_sizes()
         self._portfolio_splitter_initialized = True
-        splitter_sizes = self.main_splitter.sizes()
-        left_pane_width = splitter_sizes[0] if splitter_sizes else 0
+        # 持倉區是全寬直列；展開進階後操作較多，中等寬度仍直列，避免按鈕文字被擠壓。
         action_narrow = narrow or (
-            self.main_splitter.orientation() == Qt.Horizontal
-            and left_pane_width < 680
+            bool(getattr(self, "_advanced_details_visible", False))
+            and self.manual_account_panel.width() < 1100
         )
         if (
             not force
@@ -2011,11 +2013,10 @@ class PortfolioView(QWidget):
         ):
             layout.setDirection(QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight)
         if initialize_splitter and not self._portfolio_splitter_user_resized:
-            # action row 的方向改變會影響左 pane sizeHint；再套一次初始比例，
-            # 讓 1280 shell 仍維持合理 60/40，而不是被 sizeHint 壓成窄條。
+            # 讓進階健康與詳細頁籤在寬版仍維持合理初始比例。
             self._set_portfolio_splitter_default_sizes()
-        # 持倉表欄位包含來源、快照與 identity 欄；寬版 splitter 仍可能不足以
-        # 顯示最後欄位。保留水平捲動讓末欄可達，避免 AlwaysOff 造成資料被裁切。
+        # 持倉表欄位包含來源、快照與 identity 欄；全寬仍可能不足以顯示末欄。
+        # 保留水平捲動讓欄位可達，避免 AlwaysOff 造成資料被裁切。
         self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
     def refresh_all(self) -> None:

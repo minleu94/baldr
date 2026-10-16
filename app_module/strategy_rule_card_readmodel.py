@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 import hashlib
 import json
 import re
@@ -184,17 +184,52 @@ def read_strategy_rule_card(spec: StrategySpec, *,
     return _card(identity, values, tuple(errors))
 
 
+def fixed_single_backtest_rule_identity(spec: StrategySpec) -> tuple[str, str] | None:
+    """明示既有fixed執行器的保存版本；不建立executor或補目前預設值。"""
+    if (type(spec) is not StrategySpec or not isinstance(spec.config, dict)
+            or type(spec.strategy_id) is not str or type(spec.strategy_version) is not str):
+        return None
+    params = spec.config.get("params", {})
+    if not isinstance(params, dict) or params.get("threshold_mode", "fixed") != "fixed":
+        return None
+    identities = {
+        ("baseline_score_threshold", "1.0"): (
+            "single-backtest-rule-execution.v1",
+            "decision_module.strategies.baseline_score_executor.BaselineScoreExecutor"),
+        ("stable_conservative_v1", "1.0.0"): (
+            "single-backtest-rule-execution.v2",
+            "decision_module.strategies.stable_conservative_executor.StableConservativeExecutor"),
+        ("momentum_aggressive_v1", "1.0.0"): (
+            "single-backtest-rule-execution.v2",
+            "decision_module.strategies.momentum_aggressive_executor.MomentumAggressiveExecutor"),
+    }
+    return identities.get((spec.strategy_id, spec.strategy_version))
+
+
+def _same_rule_number(left: Any, right: Any) -> bool:
+    """只核對保存數字，不以浮點或caller Decimal context重算門檻。"""
+    if isinstance(left, bool) or isinstance(right, bool):
+        return False
+    try:
+        first, second = Decimal(str(left)), Decimal(str(right))
+        return first.is_finite() and second.is_finite() and first == second
+    except (DecimalException, TypeError, ValueError):
+        return False
+
+
 def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapping[str, Any]) -> StrategyRuleCard:
-    """只投影 producer 已封存的 baseline fixed 契約，不借現在 registry 或重跑 executor。"""
-    source = "single-backtest-rule-execution.v1"
+    """只投影同次producer已封存的fixed契約，不借現在registry或重跑executor。"""
+    source = ("single-backtest-rule-execution.v2"
+              if execution.get("schema") == "single-backtest-rule-execution.v2"
+              else "single-backtest-rule-execution.v1")
+    supported = fixed_single_backtest_rule_identity(spec)
     errors: list[str] = []
     required = {"schema", "strategy_spec", "registry_metadata", "source_hashes", "input_fingerprint",
                 "executor", "broker_config", "execution_contract", "stock_code", "start_date", "end_date",
                 "required_features", "benchmark", "qualification"}
     if set(execution) != required or execution.get("schema") != source:
         errors.append("execution_rule_schema_invalid")
-    if (spec.strategy_id != "baseline_score_threshold" or spec.strategy_version != "1.0"
-            or spec.config.get("params", {}).get("threshold_mode", "fixed") != "fixed"
+    if (supported is None or supported[0] != source
             or _json(execution.get("strategy_spec")) != _json(spec.to_dict())
             or execution.get("input_fingerprint") != spec.data_version):
         errors.append("execution_rule_spec_mismatch")
@@ -205,19 +240,39 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
     if not all(isinstance(item, dict) for item in (meta, executor, broker, hashes)):
         return _card(RuleCardIdentity(spec.strategy_id, spec.strategy_version, source, "", "", "historical_backtest"), {},
                      ("execution_rule_fields_invalid",))
-    if (meta.get("strategy_id") != spec.strategy_id or meta.get("version") != spec.strategy_version
+    versions = [meta[key] for key in ("version", "strategy_version") if key in meta]
+    metadata_version_matches = (meta.get("version") == spec.strategy_version
+                                if source == "single-backtest-rule-execution.v1"
+                                else bool(versions) and all(value == spec.strategy_version for value in versions))
+    if (meta.get("strategy_id") != spec.strategy_id or not metadata_version_matches
             or executor.get("threshold_mode") != "fixed"
             or execution.get("execution_contract") != "next-session-open.v2"
             or broker.get("execution_price") != "next_open"):
         errors.append("execution_rule_contract_mismatch")
-    expected_sources = {"decision_module.strategies.baseline_score_executor.BaselineScoreExecutor",
+    expected_sources = {supported[1] if supported else "unsupported_executor",
                         "backtest_module.broker_simulator.BrokerSimulator",
                         "decision_module.score_threshold_policy.ScoreThresholdPolicy",
                         "app_module.backtest_service.BacktestService"}
+    if source == "single-backtest-rule-execution.v2":
+        expected_sources.add("ui_qt.views.backtest.research_run_metadata.execute_single_backtest_with_rule_source")
     if set(hashes) != expected_sources or any(not isinstance(value, str) or not _valid_hash(value) for value in hashes.values()):
         errors.append("execution_rule_source_hash_missing")
     if any(key not in executor for key in ("buy_score", "sell_score", "buy_confirm_days", "sell_confirm_days", "cooldown_days")):
         errors.append("execution_rule_threshold_missing")
+    if source == "single-backtest-rule-execution.v2":
+        qualification = execution.get("qualification")
+        if (not isinstance(qualification, dict)
+                or qualification.get("historical_pit_eligible") is not False
+                or qualification.get("performance_evaluable") is not False):
+            errors.append("execution_rule_qualification_invalid")
+        params = spec.config.get("params", {}) if isinstance(spec.config, dict) else {}
+        if not isinstance(params, dict):
+            params = {}
+        parameter_keys = ("buy_score", "sell_score", "buy_confirm_days", "sell_confirm_days", "cooldown_days")
+        if (executor.get("threshold_value_source") != "ScoreThresholdPolicy.fixed"
+                or any(not _same_rule_number(executor.get(key), executor.get(key)) for key in parameter_keys)
+                or any(key in params and not _same_rule_number(executor.get(key), params[key]) for key in parameter_keys)):
+            errors.append("execution_rule_parameter_mismatch")
     if not execution.get("stock_code") or not execution.get("required_features"):
         errors.append("execution_rule_input_missing")
     # 已執行的原公式只作說明，沒有在 reader 算分／評績效／授予 PIT。
@@ -232,7 +287,8 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
         "universe": ({"stock_code": execution.get("stock_code"), "membership": "explicit_single_stock"}, source + ".stock_code"),
         "period": ({"start_date": execution.get("start_date"), "end_date": execution.get("end_date")}, source + ".start_date/end_date"),
         "parameters": (spec.config, source + ".strategy_spec.config"),
-        "parameter_schema": (meta.get("params"), source + ".registry_metadata.params"),
+        "parameter_schema": (meta.get("params", meta.get("default_params")) if source.endswith(".v2") else meta.get("params"),
+                             source + (".registry_metadata.params" if "params" in meta or source.endswith(".v1") else ".registry_metadata.default_params")),
         "cost": ({"fee_bps": broker.get("fee_bps"), "slippage_bps": broker.get("slippage_bps"),
                   "sell_tax_bps": "30", "minimum_fee_currency": "20", "tax_policy": "原 BrokerSimulator next-open 的賣出稅與最低手續費"}, source + ".broker_config/source_hashes"),
         "required_features": (execution.get("required_features"), source + ".required_features"),

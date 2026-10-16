@@ -519,6 +519,24 @@ def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_w
     )
 
 
+def test_daily_positions_panel_is_full_width_immediately_after_status_summary(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    content = view.portfolio_advanced_scroll.widget()
+    assert content is not None
+    layout = content.layout()
+    assert layout is not None
+
+    positions_index = layout.indexOf(view.manual_account_panel)
+    active_summary_index = layout.indexOf(view.active_positions_summary_label)
+    assert positions_index == active_summary_index + 1
+    assert positions_index < layout.indexOf(view.portfolio_refresh_status_label)
+    assert positions_index < layout.indexOf(view.toggle_advanced_portfolio_btn)
+    assert view.main_splitter.indexOf(view.manual_account_panel) == -1
+    assert view.main_splitter.indexOf(view.paper_health_group) >= 0
+    assert view.main_splitter.indexOf(view.portfolio_detail_tabs) >= 0
+    assert view.position_action_layout.indexOf(view.btn_record_trade) >= 0
+
+
 def test_portfolio_blocked_health_summary_keeps_rows_and_raw_timestamp(tmp_path):
     view = make_portfolio_view(
         tmp_path,

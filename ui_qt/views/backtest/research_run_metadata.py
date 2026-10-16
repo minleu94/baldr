@@ -17,8 +17,8 @@ import pandas as pd
 
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
 from app_module.saved_strategy_rule_card import result_context_sha256
-from app_module.strategy_rule_card_readmodel import read_single_backtest_execution_rule_card
-from decision_module.strategies.contracts import StrategySpec
+from app_module.strategy_rule_card_readmodel import fixed_single_backtest_rule_identity, read_single_backtest_execution_rule_card
+from decision_module.strategies.contracts import StrategyMeta, StrategySpec
 
 
 def factor_save_kwargs(details: dict[str, Any]) -> dict[str, Any]:
@@ -108,19 +108,19 @@ def ratio_to_bp(value: Any) -> int | None:
 def execute_single_backtest_with_rule_source(request: Any, service: Any, *, check_cancel: Any = None) -> Any:
     """沿既有 request 執行；同次載入資料／typed executor 的契約在 producer 封存。
 
-    訊號與撮合仍由原 service 執行，輸入只載入一次。只支援既有 baseline fixed v1／next-open；
-    其他模式仍走原 execution，沒有替缺件推論規則。此 hash 只代表本次資料 bytes，不授 PIT。
+    訊號與撮合仍由原service執行，輸入只載入一次。baseline固定版保留v1，
+    穩健／暴衝固定版另存v2；其他模式走原execution，不替缺件推論規則或授PIT。
     """
-    if (type(request.strategy_spec) is not StrategySpec
-            or request.strategy_spec.strategy_id != "baseline_score_threshold"
-            or request.strategy_spec.strategy_version != "1.0"
-            or request.strategy_spec.config.get("params", {}).get("threshold_mode", "fixed") != "fixed"
-            or request.execution_price != "next_open"):
+    identity = fixed_single_backtest_rule_identity(request.strategy_spec)
+    if identity is None or request.execution_price != "next_open":
         return request.execute(service, check_cancel=check_cancel)
+    schema, executor_ref = identity
 
     class BoundExecution:
         def run_backtest(self, **kwargs: Any) -> Any:
             from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
+            from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
+            from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
             from decision_module.strategies.registry import StrategyRegistry
             from backtest_module.broker_simulator import BrokerConfig, BrokerSimulator, NEXT_OPEN_CONTRACT
             if check_cancel is not None and check_cancel():
@@ -141,25 +141,46 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 raise ValueError("StrategySpec 的宣告資料版本與本次輸入不同")
             spec.data_version = fingerprint
             executor = StrategyRegistry.get_executor(spec)
-            if type(executor) is not BaselineScoreExecutor:
-                raise ValueError("baseline typed executor 不一致")
+            executor_types = {
+                "baseline_score_threshold": BaselineScoreExecutor,
+                "stable_conservative_v1": StableConservativeExecutor,
+                "momentum_aggressive_v1": MomentumAggressiveExecutor,
+            }
+            if (type(executor) is not executor_types.get(spec.strategy_id)
+                    or type(executor).__module__ + "." + type(executor).__name__ != executor_ref):
+                raise ValueError("fixed typed executor 不一致")
+            registry_metadata = None
+            if schema == "single-backtest-rule-execution.v2":
+                raw_meta = StrategyRegistry.get_strategy_meta(spec.strategy_id)
+                registry_metadata = deepcopy(raw_meta.to_dict() if isinstance(raw_meta, StrategyMeta) else raw_meta)
+                if not isinstance(registry_metadata, dict):
+                    raise ValueError("fixed策略來源metadata缺失")
+                versions = [registry_metadata[key] for key in ("version", "strategy_version") if key in registry_metadata]
+                if (registry_metadata.get("strategy_id") != spec.strategy_id or not versions
+                        or any(version != spec.strategy_version for version in versions)):
+                    raise ValueError("fixed策略來源metadata版本不一致")
             kwargs.update(strategy_spec=spec, strategy_executor=executor, preloaded_data=frame,
                           actual_start_date=actual_start, actual_end_date=actual_end)
             report = service.run_backtest(**kwargs)
+            if schema == "single-backtest-rule-execution.v2" and check_cancel is not None and check_cancel():
+                raise InterruptedError("回測已取消，不發布完整規則來源")
             details = dict(report.details or {})
             if details.get("execution_contract") != NEXT_OPEN_CONTRACT:
                 return report
             broker_kwargs = {key: kwargs[key] for key in inspect.signature(BrokerConfig).parameters if key in kwargs}
             broker_config = BrokerConfig(**broker_kwargs)
             sources = {}
-            for source in (BaselineScoreExecutor, BrokerSimulator, type(executor.threshold_policy), type(service)):
+            source_objects = [type(executor), BrokerSimulator, type(executor.threshold_policy), type(service)]
+            if schema == "single-backtest-rule-execution.v2":
+                source_objects.append(execute_single_backtest_with_rule_source)
+            for source in source_objects:
                 filename = inspect.getsourcefile(source)
                 if filename is None:
                     raise ValueError("執行契約缺程式來源")
                 sources[source.__module__ + "." + source.__name__] = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
             execution = json_safe({
-                "schema": "single-backtest-rule-execution.v1", "strategy_spec": spec.to_dict(),
-                "registry_metadata": StrategyRegistry.get_strategy_meta(spec.strategy_id),
+                "schema": schema, "strategy_spec": spec.to_dict(),
+                "registry_metadata": registry_metadata if schema == "single-backtest-rule-execution.v2" else StrategyRegistry.get_strategy_meta(spec.strategy_id),
                 "source_hashes": sources, "input_fingerprint": fingerprint,
                 "executor": {"buy_score": executor.buy_score, "sell_score": executor.sell_score,
                              "buy_confirm_days": executor.buy_confirm_days, "sell_confirm_days": executor.sell_confirm_days,
@@ -170,7 +191,19 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "qualification": {"validation_status": getattr(report.validation_status, "value", "unknown"),
                                   "historical_pit_eligible": False, "performance_evaluable": False},
             })
-            details.update(strategy_version=spec.strategy_version, parameter_contract_version="baseline-score-fixed.v1",
+            if schema == "single-backtest-rule-execution.v2":
+                # 原兩executor的attribute defaults與policy defaults可能不同；保存真正用來比較的值。
+                execution["executor"].update(
+                    buy_score=json_safe(executor.threshold_policy.buy_score),
+                    sell_score=json_safe(executor.threshold_policy.sell_score),
+                    threshold_value_source="ScoreThresholdPolicy.fixed",
+                )
+            parameter_contract = {
+                "baseline_score_threshold": "baseline-score-fixed.v1",
+                "stable_conservative_v1": "stable-conservative-fixed.v1",
+                "momentum_aggressive_v1": "momentum-aggressive-fixed.v1",
+            }[spec.strategy_id]
+            details.update(strategy_version=spec.strategy_version, parameter_contract_version=parameter_contract,
                            data_version=fingerprint, data_as_of_date=actual_end)
             manifest = dict(details.get("data_manifest") or {})
             manifest.update(strategy_spec=json_safe(spec.to_dict()), single_backtest_rule_execution=execution)

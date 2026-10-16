@@ -69,6 +69,20 @@ def test_recommendation_replay_never_inherits_generic_metadata_comparability():
         assert "成本" in result.reasons[0]
 
 
+@pytest.mark.parametrize("run_type", ["batch_backtest_stock", "fixed_basket_stock"])
+def test_batch_stock_runs_do_not_inherit_generic_performance_comparability(run_type):
+    from dataclasses import replace
+
+    service = ResearchRunComparisonService()
+    batch = replace(_metadata("batch", universe=["2330"]), run_type=run_type)
+    peer = replace(_metadata("peer", universe=["2330"]), run_type=run_type)
+
+    for runs in ([batch, peer], [batch, _metadata("single", universe=["2330"])]):
+        result = service.evaluate_comparability(runs)
+        assert result.status == ComparabilityStatus.INCOMPATIBLE
+        assert "歷史 PIT" in result.reasons[0]
+
+
 def test_comparability_marks_period_universe_or_cost_differences_caution():
     service = ResearchRunComparisonService()
 

@@ -55,6 +55,11 @@ class ResearchRunComparisonService:
                 ComparabilityStatus.INCOMPATIBLE,
                 ["推薦回放請選兩筆已保存的原 run，按「比較完整期間」；一般比較無法核定來源、日曆、幣別與成本"],
             )
+        if any(run.run_type in {"batch_backtest_stock", "fixed_basket_stock"} for run in runs):
+            return ComparabilityResult(
+                ComparabilityStatus.INCOMPATIBLE,
+                ["批次逐股原 run 目前只有規則與輸入來源核對，尚缺可比較的來源、幣別、成本與歷史 PIT 資格；請從研究歷史分別查看原結果"],
+            )
         if any(run.execution_contract not in {
             "next-session-open.v2", "legacy-same-day-close.v1", "unversioned"
         } for run in runs):

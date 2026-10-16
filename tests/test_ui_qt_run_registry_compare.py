@@ -114,6 +114,29 @@ def test_basic_pair_return_disappears_when_registry_selection_changes(qt_app):
     assert view.result_panel.return_basic_pair_button.isHidden()
 
 
+def test_batch_stock_generic_comparison_clears_saved_performance(qt_app):
+    from dataclasses import replace
+
+    service = FakeResearchRunService()
+    service.runs[0] = replace(
+        service.runs[0], run_type="batch_backtest_stock", universe=["2330"]
+    )
+    service.runs[1] = replace(
+        service.runs[1], run_type="fixed_basket_stock", universe=["2330"]
+    )
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    widget.run_list.item(0).setSelected(True)
+    widget.run_list.item(1).setSelected(True)
+
+    widget.compare_selected_runs()
+
+    assert "不可直接比較" in widget.comparability_badge.text()
+    assert "歷史 PIT" in widget.comparability_badge.text()
+    assert widget.metrics_table.model().rowCount() == 0
+    assert widget.normalized_equity_table.isHidden()
+
+
 def test_backtest_view_can_collapse_config_panel_for_registry_compare_space(qt_app):
     view = BacktestView(backtest_service=None, config=None)
 

@@ -16,6 +16,7 @@ from decision_module.strategies.contracts import StrategySpec
 from app_module.backtest_service import BacktestService
 from app_module.batch_backtest_service import BatchBacktestService
 from app_module.backtest_repository import BacktestRunRepository
+from app_module.research_run_service import ResearchRunService
 from app_module.exceptions import BacktestCancelledError
 
 
@@ -138,6 +139,47 @@ def test_uuid_run_id_and_db_uniqueness(tmp_path):
 
     for rid in run_ids:
         assert rid in db_run_ids
+
+
+def test_parallel_registry_save_failure_does_not_offer_legacy_only_run_id(tmp_path):
+    config = create_test_env(tmp_path)
+    run_repo = BacktestRunRepository(config)
+    research = MagicMock()
+    research.save_run.side_effect = ValueError("研究保存拒收")
+    batch_service = BatchBacktestService(BacktestService(config), run_repo, research_run_service=research)
+
+    result = batch_service.run_batch_backtest(
+        stock_codes=["2330", "2317"], start_date="2026-01-01", end_date="2026-06-30",
+        strategy_spec=get_test_strategy_spec(), save_runs=True,
+        parallel_threshold=2, max_workers=2,
+    )
+
+    assert len(run_repo.list_runs()) == 2  # 舊式原件保留，不假稱 Registry 已完成
+    assert len(result.stock_results) == 2
+    assert all(row.success is True for row in result.stock_results)
+    assert all(row.run_id is None for row in result.stock_results)
+    assert all(row.error_reason == "保存未完成：ValueError: 研究保存拒收" for row in result.stock_results)
+
+
+def test_parallel_registry_save_has_exact_readable_per_stock_run(tmp_path):
+    config = create_test_env(tmp_path)
+    research = ResearchRunService(config)
+    batch_service = BatchBacktestService(
+        BacktestService(config), BacktestRunRepository(config), research_run_service=research,
+    )
+
+    result = batch_service.run_batch_backtest(
+        stock_codes=["2330", "2317"], start_date="2026-01-01", end_date="2026-06-30",
+        strategy_spec=get_test_strategy_spec(), save_runs=True,
+        parallel_threshold=2, max_workers=2,
+    )
+
+    assert len(result.stock_results) == 2
+    for row in result.stock_results:
+        assert row.run_id is not None, (row.stock_code, row.error_reason)
+        saved = research.load_run_data("batch-backtest:" + row.run_id)
+        assert saved.metadata.universe == [row.stock_code]
+        assert saved.metadata.metrics["total_trades"] == len(saved.trades)
 
 
 # ==========================================

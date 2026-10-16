@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+`baldr_bollinger_basic_v1@1.0.0`以獨立純契約／executor接原StrategyRegistry，固定既有causal BBANDS30/2/SMA分析邊界；決策只以Decimal比較當列／前列原值，不走ScoringEngine、補值或自認成交。正常producer同次有界讀取前180曆日、最多31個prior觀測，fingerprint綁實用完整frame；原service按test_start重設確認並裁切後才撮合／計績效。新`single-backtest-bollinger-execution.v1`沿既有Registry保存spec、effective rules、逐日訊號、input_context、分析runtime版本及十個源碼hash，原baseline v1／兩策略v2不換版。專用pure reader核schema／identity／規則／成本／來源集合／qualification及訊號日期與型別，再交原規則卡與結果出口，不查當前Registry或重跑。指標float仍在分析邊界，來源hash不是權威／PIT證明；缺日曆完整性保持unknown，研究版不能由SOP或直接Registry晉升取得正式資格。本輪只驗正常單股研究，其他模式與完整家族仍各自待。
+
 `StrategyVersionService.create_version`的新建身份採時間前綴加UUID，explicit ID沿既有reader的安全basename限制；同目錄獨立exclusive `.tmp`完整flush/fsync後，Windows rename／其他平台hard-link以create-only發布，目標存在必須失敗。只有本次確實建立的暫存可清理，清理錯誤記錄而不遮蔽原例外或已發布成功。catalog僅接受檔名與payload ID一致的JSON，舊暫存原件不刪；明確`update_version`仍是既有可變聲明，不宣稱不可變版本庫。promotion回填失敗先讀回exact backlink，已回填或未知保留版本；僅確認未引用才補償本次新建。生命週期紀錄失敗不刪已回填JSON，標示`reconciliation_required`並由原掃描列出；狀態寫入也失敗時保留原錯誤與log，不授晉升成功。這不是跨store transaction或自動修復，亦不改原preflight／金融／lifecycle門檻。
 
 `SavedStrategyVersionReader`唯讀消費現有VersionService與ResearchHistoryLookup。清單保存canonical版本聲明及exact來源entry，開啟前後重讀版本，核策略／params、source config、data fingerprint、成交／sizing及已存在backlink；版本號是生命週期標籤，不與原run執行器版號強制相等。新`select_registry_run`只按明示ID建metadata/context選取，原resolve再核完整性／預算；不掃latest或建立來源。SavedRuleCard新增可選預算／取消透傳，舊呼叫契約不變。Qt元件只接回原結果／dialog，generation與合作關閉拒晚到；catalog分頁不改run身份。版本JSON摘要只證本次選取一致，沒有跨程序不可變／來源權威效力；legacy缺執行來源及績效未知仍沿原reader，不用目前設定補章。

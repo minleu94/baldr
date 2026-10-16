@@ -18,6 +18,46 @@ _PROFIT_FACTOR_STATUS_TEXT = {
     "undefined_zero_over_zero": "未提供（總獲利與虧損皆為零）",
     "unavailable_nonfinite": "未提供（非有限指標）",
 }
+_BOLLINGER_RULE_DIAGNOSTICS_SCHEMA = "baldr-bollinger-basic-diagnostics.v1"
+_BOLLINGER_RULE_COUNT_LABELS = (
+    ("total_sessions", "總觀測日數"),
+    ("ready_sessions", "指標可用日數"),
+    ("unavailable_sessions", "指標不可用日數"),
+    ("entry_signal_sessions", "進場訊號日數"),
+    ("exit_condition_sessions", "出場條件日數"),
+    ("confirmation_sessions", "進場確認日數"),
+)
+
+
+def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
+    """只呈現已知版本的布林規則診斷；天數不代表成交或完成配對。"""
+    diagnostics = details.get("rule_diagnostics")
+    if (
+        not isinstance(diagnostics, dict)
+        or diagnostics.get("schema") != _BOLLINGER_RULE_DIAGNOSTICS_SCHEMA
+    ):
+        return None
+
+    def count_text(key: str) -> str:
+        value = diagnostics.get(key)
+        return str(value) if type(value) is int and value >= 0 else "未提供"
+
+    def description_text(key: str) -> str:
+        value = diagnostics.get(key)
+        return value if type(value) is str and value.strip() else "未提供"
+
+    lines = ["", "--- 布林規則診斷 ---"]
+    lines.extend(
+        f"{label}: {count_text(key)} 天" for key, label in _BOLLINGER_RULE_COUNT_LABELS
+    )
+    lines.extend(
+        [
+            f"進場條件: {description_text('entry_description')}",
+            f"出場條件: {description_text('exit_description')}",
+            "以上日數表示條件或意圖，不代表成交或已完成進出場配對。",
+        ]
+    )
+    return lines
 
 
 def _profit_factor_line(details: dict[str, Any]) -> str | None:
@@ -87,6 +127,10 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
             f"注意: 請求範圍 {requested_start}~{requested_end} 已調整為實際數據範圍"
         )
 
+    rule_diagnostics_lines = _bollinger_rule_diagnostics_lines(details)
+    if rule_diagnostics_lines is not None:
+        lines.extend(rule_diagnostics_lines)
+
     def score_text(value: Any) -> str:
         try:
             number = Decimal(str(value))
@@ -95,7 +139,7 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
             return "未提供"
 
     score_diag = details.get("score_diagnostics")
-    if isinstance(score_diag, dict) and score_diag:
+    if rule_diagnostics_lines is None and isinstance(score_diag, dict) and score_diag:
         lines.extend(
             [
                 "",

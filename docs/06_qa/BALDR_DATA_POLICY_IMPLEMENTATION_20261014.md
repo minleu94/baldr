@@ -2,6 +2,37 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+## Increment62：P07布林基礎研究策略正常執行與訊號保存
+
+**解除的交付阻礙**：P07布林家族只有當日「收盤高於上軌」filter，沒有具名進出場、可執行StrategySpec與正常保存訊號出口。本輪由Root在原計畫§5.2定版自有`baldr_bollinger_basic_v1@1.0.0`研究假說，沿原Registry／selector／Broker／保存與歷史規則卡完成基礎版，不把filter-only或unknown卡片當完整策略，也不冒稱進階壓縮／VCP／共振。起始HEAD `9a473df66a8280db0c131a7cb6cfae40dec1f166`；固定0f644faa預覽與四條V1範圍不改。
+
+- 固定沿既有causal BBANDS30/2/SMA分析邊界，Decimal比較首次由前列<=上軌至當列>上軌；連續1／2／3列確認日才發一次進場意圖，收盤<中軌發出場意圖。缺OHLC不補值、重新暖機；拒重複／逆序／盤中／含時區日期及缺成交股數。executor不自認成交、買賣成本與股數不另造公式，訊號與完成配對分開。
+- 首輪peer指出直接executor有prefix，正常producer卻只載測試窗。Root補通單次只讀前180曆日、最多31筆prior觀測，實際trim後完整frame納入fingerprint；test_start重設確認／持倉，裁切後才撮合、計績效與保存訊號。缺少足夠prior仍重暖機，不把觀測列當完整官方日曆。
+- 新`single-backtest-bollinger-execution.v1`保存原spec／effective rules、每個測試日的close／bands／ready／signal／意圖理由、input_context與分析套件版本；十個源碼hash包括原指標、executor、producer、Broker、fill policy與金融units。原baseline v1／兩策略v2不換版；pure reader只核保存來源，不查現在Registry或重跑。SHA是識別，不是來源權威或歷史availability接受。
+- 原next_open、漲跌停／零量／資金／lot／cost與原風控保留；close／加碼／ATR等未核路由在載入前拒絕。UI只顯可用／不可用與進出場意圖日數，不製造分數／門檻。研究版另阻擋SOP單項或直接Registry正式晉升；PIT／performance資格旗標變True的反例均拒絕。
+
+| QA | 限定結果與原FAIL | outer SHA-256 |
+|---|---|---|
+| 365 | compile成功，22PASS／2fixture FAIL保留：未來樣本close1生成Low0被原OHLC守衛拒、trade-list實用中文欄；修fixture，不放寬原守衛 | `4cb4e08f6899ad390d39a3077a9be7a4fc5a6f7653ff264fa1a265ef871cd9d5` |
+| 366 | 92PASS／1fixture FAIL保留：誤把進場意圖後第一開盤當必成交；原嚴格漲停拒前兩開盤，第三有效開盤才成交。原守衛保留，另加明示無limit的相反例 | `eb109f6ca46f2aae0122813e4f092505a5d822b890f996772cfb15a653a47661` |
+| 367 | 因果／保存及舊策略規則94PASS；UI96含Workbench85、八roots mypy1038／validator25 PASS、0 FAIL、4 protected skips | `c9d3a76578188dc82e86154b0afd4b9bec2ad6aa49d205baea991bb225bea1c0` |
+| 368 | prefix修正前Main／fresh有限旅程PASS，原收據保留，不能替代後續正常窗前暖機驗證 | `7d97423e99353c64bdee22f12986ab99f3df9c56c9996450da6fb80ca154c064` |
+| 369 | peer prefix修正後核心102PASS、UI96含85／mypy1038／validator25/0/4；Main21024→25548原419日保存／規則／結果／返回／fresh | `44d9427da6513be73ba9866f49bdf4665454abd03416f78aea1c0f4423933cf5` |
+| 370 | 研究資格與原promotion補償54PASS，五個受改核心mypy通過；SOP can_promote=true仍不授新研究策略晉升 | `2ef26997dd93774c38f8eaadc84e35d0ebef4dbe92454ef8a278ee609ba5f07a` |
+| 371 | 最終來源Main13180→fresh33308，再核禁用晉升；performance／input-context兩案PASS，獨立query-only SQLite讀回實際保存訊號／原metrics | `8fa8c0ee51135b3f37cb3f0756f8ad2cc7e1541ca407238c43560736615ca0dd` |
+
+最終Main沿原四股副本正常選新策略／看原規則／執行／保存，改目前確認日數後明選原run與pending保存聲明1.0.1，重開原1.0.0規則／419日結果、Watchlist返回及fresh。新程序禁止現在Registry metadata／executor、回測、save_run和版本create/update；同run、版本／規則卡、JSON／DB／Parquet bytes／SHA／mtime／ctime一致，原20試用輸入及市場副本不變、Python socket0。每UI階段15秒、phase120秒／driver270秒，真PID／named Job守衛保留；這是offscreen工程QA，不是Native真人或同版EXE。
+
+獨立保存讀回 `increment62_actual_signal_readback.json` SHA `7b0f4ef30cda37725126f2438091932d2105dcfa618dd36e1ce0fd1d195146a1` 以本次private DB的原hash與`mode=ro/query_only`核實419列、31筆窗前觀測、十個來源hash、原訊號日期及metrics，DB原bytes不變。這些是該固定副本／期間的實際研究結果，不授策略有效性、成本權威或historical PIT。1／2／3確認對一次假突破的敏感度fixture分別1／0／0進場意圖；原樣保存於pytest隔離根，不挑最好績效或以此要求調低門檻。
+
+該份實際保存為389列指標可用、30列未達可用條件（含重暖機）、15個進場意圖及6組已完成配對；原returns等metrics照存，不重算或與其他策略合計。意圖／成交限制／完成配對及研究資格仍分開，缺件沒有補0。
+
+Root單寫金融規格、共用ports、整合／QA／文件；只重用同一Luna做presenter＋新測試葉片及靜態peer，原handoff SHA／三份note和採納處置保存本owner，累計10/10、無新agent／children或worker Python。每組啟動RAM≥8GiB、8GiB committed／12程序／KOC／workspace mutex；前組三PID陣列空、handles關閉／mutex釋放才續組，未終止他人程序或用強制清場當成功。UI mypy既有ignore仍不證強型別；新核心未新增ignore。
+
+文件閉鎖QA372核九份正文／12features及metadata31來源，errors=[]；outer SHA `03bb3b26aafded8a1fac5576d072ef0d00eb7f6d9576f67906441915ccdb2c4f`。Context實讀4來源6592字元11196bytes，無關推薦測試預算略過、兩個新檔因未提交不自動擷取；Root另直接讀完新executor／reader並由Luna靜態peer核對，不把Context略過算已讀或重跑無關測試。
+
+完整策略家族、進階壓縮／形態／VCP／族群／共振、其他回測模式／OOS／Walk-forward、來源完整文件／單位版本／用途與歷史PIT、真N、完整雙策略績效、Native／EXE與自然成熟仍各自待。無正式資料／版本寫入、無新增行情或官方資料抓取（僅唯讀官方概念文件查證）、正式Task／maintainer變更、push、發布或交易。下一葉回原P07形態的確認時間與完整規格；固定試用入口不變，完整Gate保持未接受。
+
 ## Increment61：P07/P08版本新建保留前版與失敗補償
 
 **解除的交付阻礙**：原版本建立器的秒級ID與`os.replace`可覆寫前版，固定`.tmp.json`會互相截斷且被catalog讀取；Registry回填成功後若evidence失敗，原補償還會刪掉已引用版本。這些會破壞原保存／重開旅程，沿原服務窄修，不另造儲存層、策略或V1前置。來源HEAD `caf82ce01e51e045a2edf8de9d650c5c7be71137`；所有QA只寫本owner隔離目錄，正式版本、舊task／原spec與固定0f644faa預覽保留。

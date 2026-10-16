@@ -181,6 +181,9 @@ def read_strategy_rule_card(spec: StrategySpec, *,
                          "StrategySpec/StrategyVersion"),
     }
     # config 是原始設定，不把參數名／description 推論為完整出場或執行合約。
+    if spec.strategy_id == "baldr_bollinger_basic_v1":
+        from app_module.bollinger_rule_card import read_bollinger_spec_card
+        return read_bollinger_spec_card(spec, meta, identity, tuple(errors))
     return _card(identity, values, tuple(errors))
 
 
@@ -193,6 +196,9 @@ def fixed_single_backtest_rule_identity(spec: StrategySpec) -> tuple[str, str] |
     if not isinstance(params, dict) or params.get("threshold_mode", "fixed") != "fixed":
         return None
     identities = {
+        ("baldr_bollinger_basic_v1", "1.0.0"): (
+            "single-backtest-bollinger-execution.v1",
+            "decision_module.strategies.baldr_bollinger_executor.BaldrBollingerExecutor"),
         ("baseline_score_threshold", "1.0"): (
             "single-backtest-rule-execution.v1",
             "decision_module.strategies.baseline_score_executor.BaselineScoreExecutor"),
@@ -219,6 +225,9 @@ def _same_rule_number(left: Any, right: Any) -> bool:
 
 def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapping[str, Any]) -> StrategyRuleCard:
     """只投影同次producer已封存的fixed契約，不借現在registry或重跑executor。"""
+    if execution.get("schema") == "single-backtest-bollinger-execution.v1":
+        from app_module.bollinger_rule_card import read_bollinger_execution_card
+        return read_bollinger_execution_card(spec, execution)
     source = ("single-backtest-rule-execution.v2"
               if execution.get("schema") == "single-backtest-rule-execution.v2"
               else "single-backtest-rule-execution.v1")

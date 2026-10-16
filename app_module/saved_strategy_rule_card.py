@@ -145,7 +145,7 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
                 or execution.get("execution_contract") != metadata.execution_contract
                 or execution.get("benchmark") != (metadata.benchmark_results or None)):
             errors.append("execution_rule_result_context_mismatch")
-        if execution.get("schema") == "single-backtest-rule-execution.v2":
+        if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-bollinger-execution.v1"):
             broker = execution.get("broker_config")
             if not isinstance(broker, dict):
                 errors.append("execution_rule_saved_cost_mismatch")

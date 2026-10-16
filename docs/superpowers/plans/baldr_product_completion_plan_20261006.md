@@ -41,6 +41,8 @@
 
 ### 0.3 兩階段交付與V1範圍凍結
 
+Increment62回原P07策略家族，按§5.2自有研究假說接完整布林基礎executor與原selector／規則／正常執行／訊號保存／歷史／返回／fresh；不以舊上軌filter或unknown卡片代替策略。原四條V1與0f644faa預覽保持，研究資格、進階家族及原完整範圍各自保留，詳[Increment62 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment62p07布林基礎研究策略正常執行與訊號保存)。
+
 Increment61沿原P07/P08解除新建策略版本可能覆寫／補償刪掉前版的保存阻礙，已完成新ID、create-only發布與失敗斷鏈修復的隔離及Main／fresh驗證。此為後續source增量，固定預覽與四條V1範圍保持；原FAIL、金融／來源與完整策略家族接受不由此授予，詳[Increment61 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment61p07p08版本新建保留前版與失敗補償)。
 
 Increment60回原P07：保存StrategyVersion正常明選、原run規則／結果、返回與fresh已在source候選限定驗證；生命週期版號不冒充來源執行版，原件／時間保持。此補可操作出口，仍不接受完整策略家族或績效；沒有改固定0f644faa／4b530或新增V1第五旅程，詳[Increment60 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment60p07保存策略版本明選與來源研究)。
@@ -311,6 +313,24 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 沿用既有predicate但收緊暖機、固定alias或補因果確認時，必須有新的研究方法revision及差異測試；不能偷偷改舊scorer或把結果變化說成純UI接線。新技術方法由分析邊界提供已核指標值，再以Decimal／具名整數單位比較。
 
 策略若要進 Paper／Backtest，還必須補齊進場時點、出場／失效、持有期、同時持倉、資金、成本、再平衡及缺件政策。單純篩選 preset 可以收藏研究，但不能憑空顯示 CAGR。
+
+### 5.2 布林基礎研究策略 1.0.0（Increment62 限定實作與驗證）
+
+本葉交付可執行的 `baldr_bollinger_basic_v1@1.0.0`，名稱「布林基礎突破（研究）」；不是既有「收盤高於上軌」v3 filter 的改版，也不是壓縮／VCP／三面向共振。以下為Root定版的研究假說，不是已驗有效或官方推薦策略。官方[布林規則](https://www.bollingerbands.com/bollinger-band-rules)指出觸帶本身不足以決定買賣、帶外收盤可呈趨勢延續；本案採既有30期／2倍SMA原料以保持可核實驗基準，不冒稱其為官方20期預設或最優參數，中軌出場是本案自有假說。
+
+| 契約 | 凍結定義 |
+|---|---|
+| 輸入與暖機 | 單股依日遞增、日期唯一、有效正OHLC；沿既有`calculate_causal_indicators`分段重算BBANDS30/2/SMA，不信任預存同名band欄、不填補缺行情。至少30連續有效列才有上／中軌；判突破另需前一列有效軌值。正常入口同次只讀前180曆日，最多保留測試窗前31列供指標／前日比較，來源不足繼續暖機／不可用，不冒稱完整官方日曆。不帶訓練持倉或確認狀態進測試窗；原requested期間不算入暖機成交／績效。 |
+| 進場意圖 | 前列close<=前列upper，當列close>當列upper，為首次向上突破。`entry_confirm_sessions`只允1/2/3，預設1；2/3須從該突破連續收盤高於各自當日上軌至指定列才發一次意圖，跌回或缺件即失效，不回標突破日。 |
+| 出場／持有 | 當列有效close<當列middle發出賣出意圖；等於中軌保持。無固定持有天數，直到出場／原Broker風控；期末未平倉只估值，不虛構平倉。executor不自認成交或維護假持倉，原Broker只對實際部位執行。 |
+| 交易與資金 | 限`next_open`，沿原next-session-open.v2、當次明示本金／費率／滑價、lot／稅費、部位方式、停損停利與原成交限制；單股、不加碼、不新增槓桿／再平衡。close／ATR風控等未核路由先拒絕，不能默默忽略設定。這些是輸入假設，不自授成本權威。 |
+| 缺件與取消 | 缺OHLC／未暖機不發新進出場訊號，清除未完成確認；撮合仍按原缺開盤／停牌／零量政策，不補收盤。來源／日期／版本錯誤拒絕；取消不發布完整規則收據。缺正式日曆／availability保持歷史PIT未合格，不假裝每個交易列間無缺日。 |
+| 版本與出口 | 新參數契約`baldr-bollinger-basic.v1`，原Registry登記→selector／原規則卡→正常回測→原Registry保存→原歷史卡／結果→返回／新程序。保存同次spec／effective rules、指標與executor等來源SHA、訊號列與日期；fresh不借目前Registry／executor。 |
+| 診斷與驗收 | 只顯示已暖機／不可用列、進場意圖與中軌出場條件列數，不造綜合得分；成交／完成配對沿原報告。逐日prefix、未來append、等於軌／已在軌外／缺件／測試窗重設／取消及保存錯配反例；1/2/3確認的訊號數敏感度原樣保存，不挑最高績效宣稱有效。原SOP、OOS／Walk-forward、Paper／自然成熟與完整P07接受仍獨立。 |
+
+原完整家族範圍保留；先完成此基礎版的執行與保存出口，進階收斂、量能、失效、族群與三域共振仍依各自版本和來源證據，不因一套可跑而合計成P07完成。
+
+正常單股入口已完成本節因果／反例、原next_open撮合與Main／fresh保存訊號出口的限定驗證；研究版即使SOP滿足也不能正式晉升。原固定候選與正式資料不改，批次／參數研究／Walk-forward、同版Native／EXE及完整P07仍待。下一葉依原形態家族核rolling確認日與完整入出場規格，不將舊find_peaks的end_idx回標成當天可知訊號。
 
 ## 6. 完整母體：移除產品上限，保留資源邊界
 

@@ -112,6 +112,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
     穩健／暴衝固定版另存v2；其他模式走原execution，不替缺件推論規則或授PIT。
     """
     identity = fixed_single_backtest_rule_identity(request.strategy_spec)
+    if request.strategy_spec.strategy_id == "baldr_bollinger_basic_v1" and (
+            request.execution_price != "next_open" or request.allow_pyramid
+            or request.stop_loss_atr_mult is not None or request.take_profit_atr_mult is not None):
+        raise ValueError("布林基礎研究僅支持 next_open、不加碼及百分比風控")
     if identity is None or request.execution_price != "next_open":
         return request.execute(service, check_cancel=check_cancel)
     schema, executor_ref = identity
@@ -121,18 +125,31 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
             from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
             from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
+            from decision_module.strategies.baldr_bollinger_executor import BaldrBollingerExecutor
+            from decision_module.strategies.baldr_bollinger_contract import rule_definition, confirmation_sessions, EXECUTION_SCHEMA
             from decision_module.strategies.registry import StrategyRegistry
             from backtest_module.broker_simulator import BrokerConfig, BrokerSimulator, NEXT_OPEN_CONTRACT
             if check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消")
+            context_start = (pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(days=180)).strftime("%Y-%m-%d") if schema == EXECUTION_SCHEMA else kwargs["start_date"]
             frame, actual_start, actual_end = service._load_stock_data(
-                kwargs["stock_code"], kwargs["start_date"], kwargs["end_date"])
+                kwargs["stock_code"], context_start, kwargs["end_date"])
             if frame is None or frame.empty:
                 return service.run_backtest(**kwargs)
             if (not isinstance(frame.index, pd.DatetimeIndex) or frame.index.hasnans
                     or frame.index.max() > pd.Timestamp(kwargs["end_date"])
-                    or frame.index.min() < pd.Timestamp(kwargs["start_date"])):
+                    or frame.index.min() < pd.Timestamp(context_start)):
                 raise ValueError("single_backtest 保存來源不在本次決策期間內")
+            input_context = None
+            if schema == EXECUTION_SCHEMA:
+                before_start = frame.index < pd.Timestamp(kwargs["start_date"])
+                frame = pd.concat([frame.loc[before_start].tail(31), frame.loc[~before_start]])
+                input_context = {"lookback_calendar_days": 180, "max_prior_rows": 31,
+                                 "start_date": frame.index.min().strftime("%Y-%m-%d"),
+                                 "end_date": frame.index.max().strftime("%Y-%m-%d"),
+                                 "prior_rows": int((frame.index < pd.Timestamp(kwargs["start_date"])).sum()),
+                                 "state_policy": "prefix_indicators_only_reset_confirmation_at_test_start"}
+                kwargs["signal_context_start_date"] = context_start
             raw = BytesIO()
             frame.to_parquet(raw, index=True)
             fingerprint = "sha256:" + hashlib.sha256(raw.getvalue()).hexdigest()
@@ -145,12 +162,13 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "baseline_score_threshold": BaselineScoreExecutor,
                 "stable_conservative_v1": StableConservativeExecutor,
                 "momentum_aggressive_v1": MomentumAggressiveExecutor,
+                "baldr_bollinger_basic_v1": BaldrBollingerExecutor,
             }
             if (type(executor) is not executor_types.get(spec.strategy_id)
                     or type(executor).__module__ + "." + type(executor).__name__ != executor_ref):
                 raise ValueError("fixed typed executor 不一致")
             registry_metadata = None
-            if schema == "single-backtest-rule-execution.v2":
+            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA):
                 raw_meta = StrategyRegistry.get_strategy_meta(spec.strategy_id)
                 registry_metadata = deepcopy(raw_meta.to_dict() if isinstance(raw_meta, StrategyMeta) else raw_meta)
                 if not isinstance(registry_metadata, dict):
@@ -162,7 +180,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             kwargs.update(strategy_spec=spec, strategy_executor=executor, preloaded_data=frame,
                           actual_start_date=actual_start, actual_end_date=actual_end)
             report = service.run_backtest(**kwargs)
-            if schema == "single-backtest-rule-execution.v2" and check_cancel is not None and check_cancel():
+            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA) and check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消，不發布完整規則來源")
             details = dict(report.details or {})
             if details.get("execution_contract") != NEXT_OPEN_CONTRACT:
@@ -170,7 +188,21 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             broker_kwargs = {key: kwargs[key] for key in inspect.signature(BrokerConfig).parameters if key in kwargs}
             broker_config = BrokerConfig(**broker_kwargs)
             sources = {}
-            source_objects = [type(executor), BrokerSimulator, type(executor.threshold_policy), type(service)]
+            if schema == EXECUTION_SCHEMA:
+                from analysis_module.technical_analysis.technical_indicators import calculate_causal_indicators
+                from analysis_module.technical_analysis.indicator_kernels import clean_price_values
+                from analysis_module.technical_analysis.technical_date_support import safe_convert_technical_dates
+                from backtest_module.conservative_fill_policy import ConservativeFillPolicy
+                from financial_module.units import to_decimal
+                source_objects = [type(executor), BrokerSimulator, type(service), calculate_causal_indicators,
+                                  clean_price_values, safe_convert_technical_dates, rule_definition,
+                                  execute_single_backtest_with_rule_source, ConservativeFillPolicy, to_decimal]
+                effective_executor = {"entry_confirm_sessions": confirmation_sessions(spec.config.get("params", {}))}
+            else:
+                source_objects = [type(executor), BrokerSimulator, type(executor.threshold_policy), type(service)]
+                effective_executor = {"buy_score": executor.buy_score, "sell_score": executor.sell_score,
+                                      "buy_confirm_days": executor.buy_confirm_days, "sell_confirm_days": executor.sell_confirm_days,
+                                      "cooldown_days": executor.cooldown_days, "threshold_mode": "fixed"}
             if schema == "single-backtest-rule-execution.v2":
                 source_objects.append(execute_single_backtest_with_rule_source)
             for source in source_objects:
@@ -180,11 +212,9 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 sources[source.__module__ + "." + source.__name__] = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
             execution = json_safe({
                 "schema": schema, "strategy_spec": spec.to_dict(),
-                "registry_metadata": registry_metadata if schema == "single-backtest-rule-execution.v2" else StrategyRegistry.get_strategy_meta(spec.strategy_id),
+                "registry_metadata": registry_metadata if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA) else StrategyRegistry.get_strategy_meta(spec.strategy_id),
                 "source_hashes": sources, "input_fingerprint": fingerprint,
-                "executor": {"buy_score": executor.buy_score, "sell_score": executor.sell_score,
-                             "buy_confirm_days": executor.buy_confirm_days, "sell_confirm_days": executor.sell_confirm_days,
-                             "cooldown_days": executor.cooldown_days, "threshold_mode": "fixed"},
+                "executor": effective_executor,
                 "broker_config": asdict(broker_config), "execution_contract": NEXT_OPEN_CONTRACT,
                 "stock_code": kwargs["stock_code"], "start_date": actual_start, "end_date": actual_end,
                 "required_features": list(frame.columns), "benchmark": details.get("benchmark_results") or None,
@@ -198,10 +228,20 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                     sell_score=json_safe(executor.threshold_policy.sell_score),
                     threshold_value_source="ScoreThresholdPolicy.fixed",
                 )
+            if schema == EXECUTION_SCHEMA:
+                import talib
+                import numpy as np
+                execution.update(rules=rule_definition(spec.config.get("params", {})),
+                                 signals=details.get("rule_signal_observations"),
+                                 input_context=input_context,
+                                 analysis_runtime={"talib": talib.__version__, "numpy": np.__version__, "pandas": pd.__version__})
+                execution["start_date"] = details["start_date"]
+                execution["end_date"] = details["end_date"]
             parameter_contract = {
                 "baseline_score_threshold": "baseline-score-fixed.v1",
                 "stable_conservative_v1": "stable-conservative-fixed.v1",
                 "momentum_aggressive_v1": "momentum-aggressive-fixed.v1",
+                "baldr_bollinger_basic_v1": "baldr-bollinger-basic.v1",
             }[spec.strategy_id]
             details.update(strategy_version=spec.strategy_version, parameter_contract_version=parameter_contract,
                            data_version=fingerprint, data_as_of_date=actual_end)

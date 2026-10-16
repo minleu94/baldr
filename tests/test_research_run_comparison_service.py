@@ -54,6 +54,20 @@ def test_comparability_marks_identical_contracts_comparable():
     assert result.reasons == []
 
 
+def test_recommendation_replay_never_inherits_generic_metadata_comparability():
+    from dataclasses import replace
+
+    service = ResearchRunComparisonService()
+    replay = replace(_metadata("replay"), run_type="recommendation_portfolio")
+
+    for runs in ([replay, replace(replay, run_id="replay-b")],
+                 [_metadata("single"), replay]):
+        result = service.evaluate_comparability(runs)
+        assert result.status == ComparabilityStatus.INCOMPATIBLE
+        assert "比較完整期間" in result.reasons[0]
+        assert "成本" in result.reasons[0]
+
+
 def test_comparability_marks_period_universe_or_cost_differences_caution():
     service = ResearchRunComparisonService()
 

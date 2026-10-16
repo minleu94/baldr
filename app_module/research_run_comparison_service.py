@@ -49,6 +49,11 @@ class ResearchRunComparisonService:
     def evaluate_comparability(
         self, runs: list[ResearchRunMetadataDTO]
     ) -> ComparabilityResult:
+        if any(run.run_type == "recommendation_portfolio" for run in runs):
+            return ComparabilityResult(
+                ComparabilityStatus.INCOMPATIBLE,
+                ["推薦回放請選兩筆已保存的原 run，按「比較完整期間」；一般比較無法核定來源、日曆、幣別與成本"],
+            )
         if any(run.execution_contract not in {
             "next-session-open.v2", "legacy-same-day-close.v1", "unversioned"
         } for run in runs):

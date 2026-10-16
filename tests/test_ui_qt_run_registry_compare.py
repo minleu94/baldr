@@ -230,6 +230,36 @@ def test_registry_compare_widget_renders_badge_diff_metrics_and_saved_benchmark(
     assert "已產生標準化權益" in widget.normalized_equity_empty_label.text()
 
 
+def test_registry_compare_replay_does_not_show_generic_performance_comparison(qt_app):
+    service = FakeResearchRunService()
+    service.runs = [
+        _metadata("replay-a", run_type="recommendation_portfolio"),
+        _metadata("replay-b", run_type="recommendation_portfolio"),
+    ]
+    service.data = {
+        run.run_id: pd.DataFrame({
+            "日期": ["2026-01-02", "2026-01-05"],
+            "portfolio_value": [1000, 1100],
+        }) for run in service.runs
+    }
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+    widget.run_list.selectAll()
+
+    assert widget.compare_button.isEnabled() is False
+    assert "固定日曆版本" in widget.selection_hint_label.text()
+
+    widget.compare_selected_runs()
+
+    assert "不可直接比較" in widget.comparability_badge.text()
+    assert "比較完整期間" in widget.comparability_badge.text()
+    assert widget.params_diff_table.model().rowCount() >= 1
+    assert widget.metrics_table.model().rowCount() == 0
+    assert widget.metrics_summary_table.isHidden()
+    assert widget.normalized_equity_table.model().rowCount() == 0
+    assert "停止績效混排" in widget.normalized_equity_empty_label.text()
+
+
 def test_registry_compare_widget_discards_stale_run_list_response(qt_app):
     widget = RunRegistryCompareWidget(FakeResearchRunService(), page_size=10)
 

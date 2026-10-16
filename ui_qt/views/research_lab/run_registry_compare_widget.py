@@ -648,17 +648,34 @@ class RunRegistryCompareWidget(QWidget):
         self._update_compare_button_state()
 
     def _update_compare_button_state(self) -> None:
-        selected_count = len(self.selected_run_ids())
+        selected_ids = self.selected_run_ids()
+        selected_count = len(selected_ids)
+        selected_runs = {
+            run.run_id: run for run in self._filtered_runs if run.run_id in selected_ids
+        }
+        has_replay = any(
+            run.run_type == "recommendation_portfolio"
+            for run in selected_runs.values()
+        )
         self.rule_result_button.setEnabled(selected_count == 1 and self._rule_worker is None)
-        self.compare_button.setEnabled(2 <= selected_count <= 5)
+        self.compare_button.setEnabled(2 <= selected_count <= 5 and not has_replay)
         selected_run = self._single_selected_recommendation_run()
         self.open_recommendation_button.setEnabled(
             selected_run is not None and self.on_open_recommendation_run is not None
         )
-        self.selection_hint_label.setText(
-            f"已選 {selected_count} / 5；可跨頁多選，至少 2 筆才能比較。"
-            + (" 已達上限。" if selected_count >= 5 else "")
-        )
+        if has_replay:
+            hint = f"已選 {selected_count} / 5；" + (
+                "兩筆推薦回放先固定日曆版本，再按「比較完整期間」。"
+                if selected_count == 2 and len(selected_runs) == 2
+                and all(run.run_type == "recommendation_portfolio" for run in selected_runs.values())
+                else "含推薦回放時不可使用「比較選中」；完整期間只接受兩筆推薦回放。"
+            )
+        else:
+            hint = (
+                f"已選 {selected_count} / 5；可跨頁多選，至少 2 筆才能比較。"
+                + (" 已達上限。" if selected_count >= 5 else "")
+            )
+        self.selection_hint_label.setText(hint)
         self._update_period_pair_controls()
 
     def _selected_period_pair(self) -> tuple[ResearchRunMetadataDTO, ResearchRunMetadataDTO] | None:

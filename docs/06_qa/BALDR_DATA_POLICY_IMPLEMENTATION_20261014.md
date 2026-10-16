@@ -1499,3 +1499,15 @@ QA400 原始 parent／fresh SHA-256 `371ecaf7910430c51e228ee7d1926765113d9f786cd
 交付入口為 `output/trial/Baldr-Daily-Research-66/Launch-Baldr.cmd`，操作見同目錄 `TRIAL_GUIDE.md`，限制見 `KNOWN_ISSUES.md`，create-only `DELIVERY_RECEIPT.json` SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`。它只接受指定四股日常研究、同源收藏回訪、隔離兩持倉版面與兩原策略正常回測保存／讀回的工程出口；原四股資料截至 2026-09-23，大盤截至 2026-10-14，977 列漲跌方向仍缺正式明確符號。使用者貼的六配對原 run 未取得；原 SOP 樣本不足、Baseline FAIL、Walk-forward 缺件不變。真人試用、TPEx/MOPS 權威、來源用途、歷史 PIT、真 N、完整雙策略績效、Paper／Forward 自然成熟及原完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 仍各自待驗；未改正式資料、正式 Task、maintainer、push、發布或交易。
 
 交付文件閉鎖 QA404：本輪 task／11 文件／12 features 與 context metadata 31 來源檢查各 `passed=true`、`errors=[]`；outer `single_owned_qa_8f2d14c390e94caab12065ca34fb04c1/receipt.json` SHA-256 `4257b0ac5b9bde31994114cab72150a4e7dc78fb527ca38a5de4063f32d4ecf7`，自然三 PID 陣列空、process／Job handles 關閉及 mutex 釋放。結構與連結檢查不代替 Root 對文字語意、使用者試用或完整 Gate 的判斷；本句為該檢查後追加的收據定位。
+
+## Increment67：P08 推薦回放通用比較的金融判讀阻斷
+
+**解除的交付阻礙**：原計畫§0.4第四列的同頁一般「比較選中」只核舊 Registry metadata，可將兩筆推薦回放標為「可直接比較」，並排 metrics／benchmark 與標準化權益；嚴格雙 run 期間 reader 同時因來源、日曆、幣別或成本未知而阻擋。使用者可能將未核數值當成可排名策略結果。此輪在原 `ResearchRunComparisonService` 對任一推薦回放回 incompatible，UI 停用通用比較並明示「固定日曆版本→比較完整期間」；服務直接呼叫亦阻擋。其他 run 的原規則與兩筆 exact reader／原觀測保留，不補造金融值、PIT 或資格。
+
+QA405 對四個受改 Python 檔 compile 通過；服務及 Registry widget 直接回歸 19 PASS／1 FAIL。FAIL 是既有跨頁選取提示預期以「已選 2 / 5」開頭，新提示覆蓋該前綴；原斷言及 `single_owned_qa_f5b8a1ceff6a415bbcfaaf32f4d24e14/receipt.json` SHA-256 `80e607ab5e114de393d4100fe8a385c65c1db19a3be29fdb083bc08c576c8aed` 保留。只修 UI 提示，維持原已選數和推薦回放下一步；QA406 重驗兩個受影響案例 2 PASS、Workbench 85 PASS、validator 25 PASS／0 FAIL／4保護SKIP、八roots mypy 1042 files success，`ui_qt.* ignore_errors=True` 仍不證 UI 強型別。outer `single_owned_qa_e2ebb31690eb4488876de218d70143c7/receipt.json` SHA-256 `f5859e23e9a163d9d017137c4b3c5146920f6dd02a82e1055db5ec73fdab46a6`；兩組 8 GiB／12 程序、kill-on-close、RAM≥8 GiB，三PID清冊空、handles關閉、mutex釋放，無forced cleanup。
+
+這是開發來源的防錯修復，未更新固定 `ec5c95733608` 試用包；完整雙策略期間成本／source authority／PIT／績效及 Native／EXE 仍待，不能由 19＋2 案加總當 Gate。正式資料與私人原件未寫入，無 maintainer／Task、push、發布或交易。
+
+文件閉鎖 QA407：本 task 與七份受改正文的連結／結構檢查 `passed=true`、`errors=[]`、12 features；outer `single_owned_qa_8cc5dfebfe434db492acf29d159ec613/receipt.json` SHA-256 `9d64806727edc8987013d2552917272c42f0274459e8f618c0df5cb50586167e`。原收據三 PID 陣列自然空、handles 關閉且 mutex 釋放；檢查不證文義或完整產品 Gate，本句為檢查後的收據定位。
+
+QA408 啟動前發現固定試用目錄的 `TRIAL_GUIDE.md` 暫時缺失，來源 pin 檢查即停止，沒有啟動 Python／Job；不列為通過。下一次核對時指南已在原路徑，10,413 bytes／SHA-256 `d5f814f34c5afc16cf95f84d26965fc31f0d880baac45d4733fa4b344f4a6739`，與當時讀到的交付收據 guide 欄位一致，因此未執行 create-only 恢復腳本、未寫恢復副本。交付收據檔自身由先前記錄的 6,274 bytes／SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2` 變為 6,275 bytes／SHA-256 `16bb4f511e5ecb21dff6667a5a38fa7aa73d298bf951ea69c0ce85b42e128eb1`；改寫原因與原始位元差異未裁決，原歷史 pin 不改寫。QA409 另建 spec／隔離根並重新綁定現況，受影響測試檔 compile 與兩個 UI 案例 **2 PASS**；outer `single_owned_qa_8935d7b0c6cb4223ae8c74da306ec835/receipt.json` SHA-256 `1d24d29a5ea4668f10ca3beb6ead7b3a2940be884bd4199de4ca7b731a497224`，三 PID 清冊自然空、handles 關閉且 mutex 釋放。此結果僅證現況 pin 下的開發來源回歸，不證試用包原收據位元不變或完整 Gate。

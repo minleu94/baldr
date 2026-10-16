@@ -144,6 +144,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **Increment66交付狀態**：`ec5c9573360891595bb395fa7bbb934077c6d4c0` 已固定為本機候選；價格選股為預設子頁，來源摘要與可展開核驗詳情接原 catalog，回測同 run 數量分列，四股漲跌僅在隔離價庫對正式唯讀明確方向精確補接。QA394 的受改 77、Workbench85、validator25/0/4、mypy1042 及 QA400／402 的來源／同版 EXE Native Main／fresh、兩筆隔離持倉與正常保存重開已限定通過；QA403 核啟動與輸入身份。固定入口與交付界線見 `output/trial/Baldr-Daily-Research-66/TRIAL_GUIDE.md`、`KNOWN_ISSUES.md`，`DELIVERY_RECEIPT.json` SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`。舊試用包不變；真人與原完整 V1／G0–G4 Gate 不由此成立。
 
+**第二階段 P08 金融判讀修正（Increment67）**：一般 Registry 比較只看 metadata，先前可把來源／日曆／幣別／成本未核的推薦回放顯為「可直接比較」並列標準化權益。現在只要選取含推薦回放的 run，就停用一般比較並指向兩筆原 run 的完整期間診斷；服務層同樣拒絕通用比較。QA405 原19 PASS／1提示斷言FAIL保留，QA406 只修復提示計數並完成適用共同防線。這解除錯誤金融結果的呈現風險，不是完整雙策略績效的交付；來源、成本、PIT與真人流程仍依本列出口驗收。
+
 #### 用較少切換完成工作
 
 1. **同時只施工一個主要流程。** Root 負責共享契約、金融判斷、整合、QA、文件與交付；最多重用一名無待寫、無檔案衝突的 Luna，處理該流程的獨立 UI 葉片或下一項有限靜態盤點。新建額度已 10/10，不再新建；worker 仍禁止 Python／QA／網路／子代理。

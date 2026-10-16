@@ -1,0 +1,10 @@
+{
+  "candidate": "Baldr Daily Research 71 / f9b4e7d12149",
+  "source_commit": "f9b4e7d1214967f86d9ae90b1e462bde11b73f3f",
+  "exe_sha256": "df10c0404863e255e317e02adfd872348510618d966432bf1a1999ad43568a90",
+  "signature_status": "NotSigned",
+  "signer_present": false,
+  "gui_launched": false,
+  "smartscreen_observed": false,
+  "checked_date": "2026-10-15"
+}

@@ -163,6 +163,33 @@ def test_decoder_rejects_cross_run_kind_or_stock_universe(run_type, universe):
         _decode(node, _metric_values(metrics), run_type=run_type, universe=universe)
 
 
+@pytest.mark.parametrize("run_type", ["batch_backtest_stock", "fixed_basket_stock"])
+def test_per_stock_batch_run_preserves_exact_source_metrics_with_separate_profit_factor_projection(run_type):
+    metrics, _, _, node = _flat_case()
+    saved = {
+        **_metric_values(metrics),
+        "profit_factor": None,
+        "profit_factor_status": "no_closed_pairs",
+        "profit_factor_semantics": "closed-pair-net-pnl-ratio.v1",
+    }
+
+    decoded = _decode(node, saved, run_type=run_type)
+
+    assert decoded is not None
+    assert decoded["completed_trades"] == 0
+    assert decoded["profit_factor"] is None
+    changed = dict(saved, total_return=Decimal("999"))
+    with pytest.raises(ValueError, match="版本／原值／單股身份不符"):
+        _decode(node, changed, run_type=run_type)
+
+
+def test_per_stock_batch_run_rejects_unknown_metric_projection_field():
+    metrics, _, _, node = _flat_case()
+    saved = {**_metric_values(metrics), "unsupported_metric": 123}
+    with pytest.raises(ValueError, match="保存指標欄位不符"):
+        _decode(node, saved, run_type="batch_backtest_stock")
+
+
 def test_decoder_rejects_status_tampering_that_promotes_a_fallback_zero():
     empty_curve = pd.DataFrame({"equity": pd.Series(dtype="float64")}, index=pd.DatetimeIndex([]))
     trades = pd.DataFrame(columns=["進場日期", "出場日期", "報酬率%"])

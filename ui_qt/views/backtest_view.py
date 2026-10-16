@@ -80,6 +80,7 @@ from ui_qt.views.backtest.presenter import (
     build_portfolio_promotion_success_message,
     choice_display_text,
     format_backtest_summary,
+    format_batch_backtest_completion,
     format_saved_backtest_summary,
     saved_backtest_number,
     saved_backtest_percent,
@@ -4589,11 +4590,7 @@ class BacktestView(QWidget):
         if hasattr(self, 'export_batch_report_btn'):
             self.export_batch_report_btn.setEnabled(True)
 
-        QMessageBox.information(
-            self,
-            "完成",
-            f"批次回測完成！\n共回測 {len(batch_result.stock_results)} 檔股票。\n已保存的結果可在「比較」和「圖表」Tab 中查看。"
-        )
+        QMessageBox.information(self, "完成", format_batch_backtest_completion(batch_result))
 
     def _on_batch_backtest_error(self, error_msg: str):
         """批次回測錯誤"""

@@ -303,7 +303,6 @@ class BatchBacktestService:
                                 notes=f"批次回測：{batch_name}" + (f" ({error_reason})" if error_reason else ""),
                                 run_id=unique_run_id
                             )
-                            result.run_id = run_id
                             self._save_batch_research_run(
                                 legacy_run_id=run_id,
                                 batch_id=batch_id,
@@ -323,9 +322,11 @@ class BatchBacktestService:
                                 notes=f"批次回測：{batch_name}" + (f" ({error_reason})" if error_reason else ""),
                                 research_mode=research_mode,
                             )
+                            result.run_id = run_id
                             logger.info(f"[BatchBacktestService] 已保存 {stock_code} 的回測結果 (run_id: {run_id})")
                         except Exception as e:
                             logger.error(f"[BatchBacktestService] 保存 {stock_code} 失敗: {e}")
+                            result.error_reason = f"保存未完成：{type(e).__name__}: {(str(e).splitlines() or ['未知錯誤'])[0][:100]}"
 
                     stock_results.append(result)
 
@@ -442,7 +443,6 @@ class BatchBacktestService:
                                             notes=f"批次回測：{batch_name}" + (f" ({error_reason})" if error_reason else ""),
                                             run_id=unique_run_id
                                         )
-                                        result.run_id = run_id
                                         self._save_batch_research_run(
                                             legacy_run_id=run_id,
                                             batch_id=batch_id,
@@ -462,8 +462,10 @@ class BatchBacktestService:
                                             notes=f"批次回測：{batch_name}" + (f" ({error_reason})" if error_reason else ""),
                                             research_mode=research_mode,
                                         )
+                                        result.run_id = run_id
                                     except Exception as e:
                                         logger.error(f"[BatchBacktestService] 保存 {code} 失敗: {e}")
+                                        result.error_reason = f"保存未完成：{type(e).__name__}: {(str(e).splitlines() or ['未知錯誤'])[0][:100]}"
                                 stock_results.append(result)
                         except Exception as e:
                             logger.error(f"{code} 並行回測異常: {e}")
@@ -758,7 +760,7 @@ class BatchBacktestService:
                 'PF狀態': pf['profit_factor_status'],
                 'PF語意': pf['profit_factor_semantics'],
                 '是否成交': '是' if result.total_trades and result.total_trades > 0 else '否',
-                '失敗原因': result.error_reason if not result.success else '',
+                '失敗原因': result.error_reason or '',
                 'RunID': result.run_id if result.run_id else ''
             }
             data.append(row)

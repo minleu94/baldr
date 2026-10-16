@@ -57,6 +57,8 @@
 
 10/16 P12 收據續查：同日 Raw/PIT 父 run 的內嵌 current-stock cycle 到 06:43:00 才完成，與 decision capture 約 06:43:01 取得共用鎖的時間相接；原父 run 仍因 2014 年起的來源修訂守衛停在 `blocked_source_revision`。已核精確 child 收據與共用鎖程式路徑；未改正式鎖或 Task，也不因此提升 EOD 保存的自然用途。詳[非 Increment QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#p12-natural-20261016-readonly)。
 
+**Increment110／第四列批次逐檔保存回訪（開發來源候選）**：原批次模式保存舊式 run 後，研究 Registry 會因單股指標契約限定 `single_backtest` 而拒收；畫面仍給無法重開的 run ID。現在原七項引擎指標契約可核三種逐檔 run type，保存失敗時 RunID 留空並顯示錯誤／實際保存檔數。隔離真價兩策略各兩股的四筆 Registry 原結果與歷史卡均精確讀回；受改與共同 UI 防線見[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment110-p07-batch-stock-save-read)。這解除保存／重開錯誤，**不**把批次 run 當完整 P07：規則執行原件、參數契約與資料指紋仍缺，舊式 Decimal→CSV 警告也未作來源採認。按 §0.4 接續原批次輸入／規則證據與正常 Main／EXE，並與財報權威、真同帳本、自然成熟分開處理；固定109與V1四流程不變，不要求使用者重驗未改的109旅程。
+
 目前狀態的權威仍為 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；本頁只列使用流程的交付順序、當前候選入口與驗收出口。Snapshot 正由其他 owner 編輯，本 task 不覆寫；107 的固定身份與限制以包內[交付收據](../../../output/trial/Baldr-Daily-Research-107/DELIVERY_RECEIPT.json)為準。逐輪命令、SHA、FAIL 和收據回[具名 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，不以 Increment 或案例數表示產品完成度。
 
 <details>

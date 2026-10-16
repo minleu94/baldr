@@ -18,6 +18,8 @@ SINGLE_BACKTEST_METRICS_SCHEMA = "single-backtest-performance.v1"
 SINGLE_BACKTEST_METRIC_NAMES = (
     "total_return", "annual_return", "sharpe_ratio", "max_drawdown", "win_rate", "total_trades", "expectancy",
 )
+_PER_STOCK_RUN_TYPES = frozenset({"single_backtest", "batch_backtest_stock", "fixed_basket_stock"})
+_BATCH_PROJECTION_NAMES = frozenset({"profit_factor", "profit_factor_status", "profit_factor_semantics"})
 _PRODUCER = "backtest_module.performance_metrics.PerformanceAnalyzer.summarize"
 _PRECISION = "original_analytics_numeric_boundary_not_decimal_core_or_performance_qualification"
 _KEYS = {"schema_version", "producer", "precision_basis", "metrics_sha256", "metric_status", "stock_code", "contract_sha256",
@@ -115,12 +117,17 @@ def decode_single_backtest_metrics_contract(
     if SINGLE_BACKTEST_METRICS_KEY not in manifest:
         return None
     source = manifest[SINGLE_BACKTEST_METRICS_KEY]
-    if (not isinstance(source, dict) or set(source) != _KEYS or run_type != "single_backtest"
+    metric_keys = set(metrics)
+    core_keys = set(SINGLE_BACKTEST_METRIC_NAMES)
+    if metric_keys not in (core_keys, core_keys | _BATCH_PROJECTION_NAMES):
+        raise ValueError("保存指標欄位不符")
+    core_metrics = {name: metrics[name] for name in SINGLE_BACKTEST_METRIC_NAMES}
+    if (not isinstance(source, dict) or set(source) != _KEYS or run_type not in _PER_STOCK_RUN_TYPES
             or source.get("schema_version") != SINGLE_BACKTEST_METRICS_SCHEMA or source.get("producer") != _PRODUCER
-            or source.get("precision_basis") != _PRECISION or source.get("metrics_sha256") != _metrics_hash(metrics)
+            or source.get("precision_basis") != _PRECISION or source.get("metrics_sha256") != _metrics_hash(core_metrics)
             or source.get("unit") != "ratio_except_total_trades_count_and_sharpe_ratio"
             or type(source.get("equity_rows")) is not int or source["equity_rows"] < 0
-            or type(source.get("closed_pairs")) is not int or source["closed_pairs"] != metrics["total_trades"]
+            or type(source.get("closed_pairs")) is not int or source["closed_pairs"] != core_metrics["total_trades"]
             or type(source.get("stock_code")) is not str or not 1 <= len(source["stock_code"]) <= 20
             or source["stock_code"] != source["stock_code"].strip() or universe != [source["stock_code"]]):
         raise ValueError("保存指標版本／原值／單股身份不符")
@@ -144,12 +151,12 @@ def decode_single_backtest_metrics_contract(
         raise ValueError("未提供權益期間不能宣告曲線指標")
     if start == end and status["annual_return"] == "observed":
         raise ValueError("沒有正期間不能宣告CAGR")
-    values = {key: _decimal(value) if status[key] == "observed" else None for key, value in metrics.items() if key != "total_trades"}
-    if metrics["total_trades"] == 0 and any(values[key] is not None for key in ("win_rate", "expectancy")):
+    values = {key: _decimal(value) if status[key] == "observed" else None for key, value in core_metrics.items() if key != "total_trades"}
+    if core_metrics["total_trades"] == 0 and any(values[key] is not None for key in ("win_rate", "expectancy")):
         raise ValueError("零完成配對不能宣告勝率或平均配對報酬")
     if values["win_rate"] is not None and not Decimal("0") <= values["win_rate"] <= Decimal("1"):
         raise ValueError("勝率ratio範圍不符")
-    return {"stock_count": 1, "signal_count": None, "completed_trades": metrics["total_trades"],
+    return {"stock_count": 1, "signal_count": None, "completed_trades": core_metrics["total_trades"],
             "average_trade_return": values["expectancy"], "total_return": values["total_return"],
             "annual_return": values["annual_return"], "cagr": values["annual_return"],
             "max_drawdown": values["max_drawdown"], "win_rate": values["win_rate"],

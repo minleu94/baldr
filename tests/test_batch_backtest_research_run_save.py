@@ -141,6 +141,34 @@ def test_fixed_basket_save_marks_run_type_and_forwards_factor_records():
     assert kwargs["factor_decision_date"] == date(2026, 1, 7)
 
 
+def test_batch_save_failure_does_not_offer_unopenable_run_id():
+    report = _report_with_factor_records(None)
+    research_run_service = MagicMock()
+    research_run_service.save_run.side_effect = ValueError("保存指標契約拒收")
+    batch_service = BatchBacktestService(
+        _FakeBacktestService(report),
+        _FakeRunRepository(),
+        research_run_service=research_run_service,
+    )
+
+    result = batch_service.run_batch_backtest(
+        stock_codes=["2330"],
+        start_date="2026-01-05",
+        end_date="2026-01-07",
+        strategy_spec=_strategy_spec(),
+        save_runs=True,
+        parallel_threshold=5,
+    )
+
+    row = result.stock_results[0]
+    assert row.success is True  # 計算與保存是兩種狀態
+    assert row.run_id is None
+    assert row.error_reason == "保存未完成：ValueError: 保存指標契約拒收"
+    leaderboard = batch_service.create_leaderboard_dataframe(result)
+    assert leaderboard.iloc[0]["RunID"] == ""
+    assert leaderboard.iloc[0]["失敗原因"] == row.error_reason
+
+
 def test_batch_leaderboard_mdd_sort_prefers_smaller_absolute_drawdown():
     service = BatchBacktestService(_FakeBacktestService(_report_with_factor_records(None)))
     result = BatchBacktestResultDTO(

@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from app_module.dtos import BacktestReportDTO, ValidationStatus
+from app_module.batch_backtest_service import BatchBacktestResultDTO
 from ui_qt.status_vocabulary import status_detail
 
 
@@ -49,6 +50,22 @@ _W_BOTTOM_RULE_COUNT_LABELS = (
     ("entry_signal_sessions", "進場意圖列數"),
     ("exit_condition_sessions", "出場意圖列數"),
 )
+
+
+def format_batch_backtest_completion(result: BatchBacktestResultDTO) -> str:
+    """批次計算完成與逐檔保存完成分開陳述。"""
+    total = len(result.stock_results)
+    saved = sum(row.run_id is not None for row in result.stock_results)
+    save_failed = sum(
+        str(row.error_reason or "").startswith("保存未完成：")
+        for row in result.stock_results
+    )
+    lines = [f"批次回測完成，共回測 {total} 檔股票；已保存 {saved} 檔。"]
+    if saved:
+        lines.append("已保存的結果可在「比較」和「圖表」Tab 中查看。")
+    if save_failed:
+        lines.append(f"另有 {save_failed} 檔保存未完成；請看排行榜「失敗原因」。沒有 RunID 的列不能重開。")
+    return "\n".join(lines)
 
 
 def saved_backtest_number(value: object) -> Decimal | None:

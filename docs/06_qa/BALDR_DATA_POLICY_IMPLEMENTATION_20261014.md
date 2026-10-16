@@ -1984,6 +1984,13 @@ QA09 使用新 spec／七份來源 SHA、隔離 `PROFILE=test` 與全新結果�
 
 文件結構初查：12 features／33 link sources／`errors=[]`，spec SHA-256 `5db57db3dd907c9584eb4d2b241a979832e5e34112a52d070c7f262e21e70921`、runner SHA-256 `9c3010f467efea80ea0941c56e58ac62826b9fa57042ce131274e4981de483a3`、outer SHA-256 `88dc67300a851c5473a5a0314ba70472b21616cec4a5faa20bdc6a04cec1fd4c`；本句與task收據欄於初查後補入，需以最後一組final pin檢查為本輪文件閉鎖。此檢查只證結構與連結，不代替來源語意、UI真人或完整Gate。
 
+<a id="trial66-feedback-trial107-readout"></a>
+### 固定66真人回饋與107現況對照（非新增 Increment）
+
+使用者在 `ec5c95733608` 確認 A／B／C／E 可用；D 的結果只見一檔、不能比較或收藏，價格列雙擊開獨立原條件視窗，另有手動持倉雙擊後一般個股價量空白、代號／名稱需雙填，以及視窗模式回測設定擠到上方、三個查找難辨、長摘要無法讀完。這是**66 的真人回報**，不是107真人接受。Increment71已將同源「顯示此來源全部股票」、單檔收藏、唯一精確名冊互補、未連結持倉到一般個股目前scope、回測中寬左右配置／選用查找收合／摘要自捲動納入固定EXE；固定107保留這些入口，另在內容寬680–1149px改為「編輯回測設定／查看實驗結果」單頁切換，完成後直見結果，僅低於680px才上下排列。107指南明示價格列雙擊仍開原保存來源的獨立研究視窗。需一般個股報告時走左側「個股研究」；這是66指南 D 的勘誤，不以文案假稱雙擊已改路由。107另有1,951檔當期價格研究來源，四股舊價庫與當期研究分層，兩股比較須同一已核來源各選一列；按「顯示此來源全部股票」可解除殘留條件造成的單列，不能在真正單檔來源虛構第二檔。
+
+本輪唯讀核107原隔離價庫 `state/market/sqlite/twstock.db`，SHA-256 前後均為 `f1e54436603737df47e089fa353dedef91121bec8d265ac7c500950372643191`。四股各最近300列的原 `漲跌(+/-)` 與價差可精確解析方向；正常 `StockResearchReportReadService.read_report` 各120/120價格點有 signed change，展示 formatter 末日分別為 `2317 +3`、`2330 +40`、`2382 -0.5`、`2454 +5` TWD，沒有「未提供」。[原欄稽核](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/trial107_change_direction_audit_result.json) SHA-256 `a6578d2dce214073a8f73b085d4e3304b9bfe8690d5ff3aa8cabc3b6c588e01e`，[正常報告讀取](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/trial107_normal_price_report_readonly_result.json) SHA-256 `4c9327c70f97d1655d23c600fc06d626d5362b2dd58e94d21d85d5fdd91809c6`；兩組Job收據分別為 `single_owned_qa_b453b8b7ffc841aeb234146f995f50ec`／`single_owned_qa_c3481ad7fd6c48489435219b6f1c4943`，均為8 GiB／12程序、kill-on-close、三PID清空、handles關閉與mutex釋放。這只證固定107資料與同版來源碼的正常reader／文字投影；**未用真人手勢核107打包UI**，舊歷史缺方向的列仍未知，沒有來源用途或歷史PIT資格提升。
+
 <a id="increment108-p11-ready-source-limits"></a>
 ## Increment108：P11 後續結果逐期顯示原來源品質與正式採認限制
 

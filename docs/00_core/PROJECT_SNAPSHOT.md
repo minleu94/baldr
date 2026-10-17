@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+原P07三段轉折收縮另有已驗核心及預宣告36組敏感度，尚未註冊或接正常Backtest／保存／UI，不能列為新增可用策略。固定121保持；下一步接原producer與reader，詳[Increment123 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment123-vcp-core)。基本面前期仍缺已接受用途來源，維持不可用。
+
 開發來源另修保存回訪的路徑誤讀：Research Registry 索引複製後，不再沿其舊絕對路徑讀原根，也拒其他 run 檔名及根內連結替換。原件不改寫，固定121與其交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
 
 121固定來源`c62a3eca221b3a360f812973bf558061004a3315`，EXE SHA `c9bc1e3025ecd283711cd623613b18a3a97d7f300b070bc384adadf93dbcc9f7`，交付SHA `628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`。來源Main28164→32412、EXE35832→48656皆驗2317同窗419列／2進場意圖／2完成配對及保存回訪，金融輸出一致；62項／public66項／UI91項等定向證據不加總為Gate。原大整數成交量／前列串接紅測及其他FAIL保留。完整Native、真人、F06全功能、家族與有效績效仍待；P14完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。

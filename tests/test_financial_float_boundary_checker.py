@@ -31,6 +31,8 @@ def test_financial_float_boundary_files_are_exact() -> None:
         "app_module/portfolio_condition_monitor.py",
         "app_module/recommendation_portfolio_backtest_service.py",
         "app_module/recommendation_portfolio_dtos.py",
+        "decision_module/strategies/baldr_vcp_contract.py",
+        "decision_module/strategies/baldr_vcp_executor.py",
     )
 
 

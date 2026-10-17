@@ -1,5 +1,7 @@
 # 推薦與 Research Lab
 
+三段轉折收縮仍在核心整合階段，尚無正常操作入口；勿把敏感度訊號數當成交或策略有效性。可用選項維持[固定121](../TRIAL_VERSION_GUIDE.md)，原規格及尚待接線的出口見[原計畫§5.7](../../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
+
 ## 布林帶寬低點突破研究（開發分支）
 
 原P07／F06進階研究已納入[固定121候選](../../../output/trial/Baldr-Daily-Research-121/TRIAL_GUIDE.md)，120原包保持。到「策略回測」選正常單股模式，再選「布林帶寬低點突破（研究）」1.0.0；先查看原規則，指定股票、日期、本金、費率／滑價，使用next_open、不加碼與百分比風控。規則固定，無可調參數；其他套用此策略的模式會在讀行情前提示尚未開放，獨立推薦回放仍使用原Profile。

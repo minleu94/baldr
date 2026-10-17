@@ -4,6 +4,8 @@
 
 ## 概述
 
+原P07自有「三段轉折收縮」已有固定研究核心、確認日因果與敏感度證據，尚未接正常Backtest／保存／UI，也未出現在固定121選單。這不增加可用策略／家族完成數，不提供績效卡或晉升；規格與接續出口見[原計畫§5.7](../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
+
 原P07布林進階`baldr_bollinger_squeeze_v1@1.0.0`已交固定121工程候選：前列20列帶寬低點＋當列真突破＋20日含當日量比嚴格>1.5，中軌出場；沿原單股producer／Broker／Registry保存與規則卡，來源／EXE正常Main及fresh有具名證據。120原包不改，Native與完整家族資格另待；凍結規格見[原補完計畫§5.6](../superpowers/plans/baldr_product_completion_plan_20261006.md#56-bollinger-squeeze)，操作見[專節](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林帶寬低點突破研究開發分支)。
 
 「策略回測」標籤已升級為完整的「實驗室/策略工作台」，支援反覆研究、知識累積、快速迭代。

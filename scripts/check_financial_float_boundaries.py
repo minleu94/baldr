@@ -22,6 +22,8 @@ FINANCIAL_FLOAT_BOUNDARY_FILES = (
     "app_module/portfolio_condition_monitor.py",
     "app_module/recommendation_portfolio_backtest_service.py",
     "app_module/recommendation_portfolio_dtos.py",
+    "decision_module/strategies/baldr_vcp_contract.py",
+    "decision_module/strategies/baldr_vcp_executor.py",
 )
 BOUNDARY_MARKER_INTENT = re.compile(r"^#\s*numeric-boundary")
 BOUNDARY_MARKER = re.compile(r"^#\s*numeric-boundary:\s*(\S+)\s*$")

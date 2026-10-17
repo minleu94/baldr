@@ -2,6 +2,32 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+<a id="increment123-vcp-core"></a>
+## Increment123：原P07三段轉折收縮核心與敏感度（2026-10-17，未接正常操作）
+
+本輪解除原§5.1自有VCP缺規格／因果核心／敏感度的施工阻礙；不是新V1需求或完整策略接受。原財報營益CSV仍只有當期，具名前期PDF的用途未接受，故前期／成長率保持不可用，未重抓耗盡scope。接續原P07實作`baldr_vcp_three_contractions_v1@1.0.0`；規格在[原計畫§5.7](../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)，尚未註冊、接BacktestService、保存producer／reader或UI，不提供實際績效卡／晉升。固定121、其原件及四條旅程不變。
+
+原凍結`increment123_vcp_rule_freeze_qa00.json` SHA `eb51f5e1fd6ec890379c782b30bf78a970e2706a44038420c5f50550354bd145`，先宣告span2／base60、最少15列／80暖機、首段30%／末段8%上限及volume>1.5，並宣告span1／2／3與base40／60／80的36組觀察。參數來自Root研究假說，不是外部私有公式、績效選優或通用VCP資格。轉折只在右2列齊全才確認；等極值／同列高低歧義拒採，三高不升、低點抬高、跌幅遞減、末段均量低於首段，首次突破三峰且高於SMA50，跌破SMA20失效；只輸出意圖。
+
+| 證據 | 實際結果及原失敗 |
+|---|---|
+| QA01 | compile、65個核心＋既有精度checker案例PASS；mypy在volume_sum可空型別未縮窄FAIL，後續guard命令未到達。原stdout／stderr及outer SHA `59e4642f87bfc5b518f0e2ae86c621e5fd8e6c12866e64ca15dc9d2b246a78bd`保留。 |
+| QA02 | 補型別縮窄及成交股數原整數／Decimal／字串守衛，拒有限浮點數量；66案例、compile、mypy1057與精度guard通過。來源觀察在官方`--`缺價記號中止，沒有完成結果；outer SHA `ca24f917659531176999caf2d3d7f4c978d438fddd76e96360ed9a7734bf0a70`。三份當輪核心／測試source已另存`increment123_source_revisions/qa02`並核當輪SHA。 |
+| QA03 | 按既有缺件政策將`--`／空值視為未知並重暖機，千分位先嚴格分組再Decimal解析，不填價或改數值；31核心案例、compile、mypy1057與精度guardPASS。36組來源觀察及每股固定版三個真prefix一致性完成，原來源SHA不變。outer SHA `fb8275a12dc24187180fb2799a142414d49b932debc11c670812dbc94234c8ba`。 |
+| QA04 | 只補驗首段30%／末段8%包含相等、下一個Decimal超限即拒及盤整過期五例，PASS並compile；未重跑未改核心或36組。outer SHA `33f61253978dec2c195a0ccb09d1c6be29f137754eb436dd1bed4bb125a71c2b`。 |
+
+型別與精度、來源格式修訂另存binding，原凍結不覆寫；最終binding SHA `fac45ade6b9be5b8b301a3b4a9eb9137deafb066304ac8e044da5f5ae10abf9d`在首個完整來源結果前核綁實作SHA，固定規則參數未變。精度checker白名單新增兩個VCP核心檔並保留原七檔與全部原斷言；沒有新增裸float計算。有效價格／原量與Decimal SMA、跌幅／均量跨乘比較留在同次輸入；NaN／缺件清轉折與窗口，80個有效觀測列不等於已驗官方開市日。
+
+來源是121包內四股固定CSV，1,253,083bytes，SHA `1dc59966c64a35838c67ad5e64375a55a77c2736146ebe6b3f8ae01728b9028a`，2014-01-02至2026-09-23。結果`increment123_vcp_sensitivity_result_qa03.json` SHA `a96ba6cabd07784d3554bccc6550ef1452e19a7d9c59be57d6c9b8e0a5af446f`；預設2317／2330各1個進場意圖（2021-03-17／2025-01-06），2382／2454為0；可評估列2854／3020／3020／2940。這些不是成交配對、報酬、歷史PIT或有效績效，沒有按結果改參數。
+
+各組沿前組SHA及三PID／handles／mutex閉鎖核對，啟動RAM至少8GiB（QA01實測27,355,803,648bytes），Job8GiB／12程序／kill-on-close且limits readback通過，全部自然收尾、無forced cleanup。Root串行、無新代理（額度10/10、無可重用worker）；無HTTP、正式資料、Task、私人帳、回補或排程寫入。UI／producer未改，未重跑Workbench／validator或未改四旅程。原mypy未typed提示與ui_qt ignore範圍保留，不證UI強型別。
+
+Context QA01將新未提交兩檔列not_committed_text及一份未改presenter列budget_omitted；Root直接讀寫本次核心／契約／測試，不宣稱全庫EOF。Graphify只讀既有圖、query預算900，舊pattern／Registry導航不證新實作；沒有重建或LLM抽取。文件覆蓋原計畫、current架構、功能、Manual／分冊、Snapshot及本QA；總入口與UI功能總覽因入口未改不另修。
+
+尚待沿原正常Backtest／Broker接一次producer捕捉、原規則／訊號／來源SHA、保存及public reader、正常頁面／返回／fresh與同版EXE／Native。核心與實驗不授F06全功能、八家族、完整雙策略、真N、來源／成本權威、歷史PIT或自然成熟；原完整目標及所有FAIL保留。
+
+QA05核12 features／7份文件、owner task及連結，errors=[]；outer SHA `c78c0e6f0ea6dc8dd653971e73d1dd363cab2b249b45a0f9ced5cc42773aa117`。三PID陣列自然空、process／Job handles關閉、mutex釋放、無forced cleanup；之後只記錄本結果與scoped commit，不重建固定121。
+
 <a id="increment122-registry-root-binding"></a>
 ## Increment122：保存回訪拒絕錯根與別檔（2026-10-17，開發來源）
 

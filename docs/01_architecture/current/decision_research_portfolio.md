@@ -4,6 +4,10 @@
 
 ## 模組責任
 
+### 三段轉折收縮的因果核心（尚未接產品流程）
+
+`baldr_vcp_contract.py`保存Root預宣告的自有研究規格，`BaldrVCPExecutor.generate_signals()`只在右方觀測齊全時確認轉折，使用原欄位scalar、Decimal SMA及跨乘輸出逐列觀測／意圖。敏感度變體明標未註冊，不冒用固定策略版號。此核心尚未加入StrategyRegistry或BacktestService／保存producer；現有source／EXE入口不變。後續沿原Broker與Research Registry接線，不另設金融writer，凍結規格與待交出口見[原計畫§5.7](../../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
+
 ### 保存結果的根路徑綁定（開發分支）
 
 `ResearchRunService.load_run_data()` 對未宣告 portfolio result marker 的 Registry run，先核 metadata 的兩個絕對路徑等於目前 `research_run_parquet_dir` 下該 run 的 final path，拒絕根內檔案／目錄連結或 reparse，然後交原 `_ArtifactReadRound` 核同份 bytes 的 SHA、預算及取消。只複製索引後仍可讀舊根不構成搬移；沒有 root alias、metadata 改寫或來源資格變更。marked portfolio sidecar 沿原獨立路徑契約；legacy repository 不在此變更範圍。驗證與未完成可攜出口見[Increment122 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。

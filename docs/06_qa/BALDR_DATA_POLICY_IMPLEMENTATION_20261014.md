@@ -3004,3 +3004,26 @@ launcher --check另驗啟動身分，與Main旅程分列；postQA初態與交付
 740啟動可用RAM約22.96GiB，仍採全Job committed8GiB／12程序／kill-on-close／同workspace mutex；每組須前組三PID陣列空、process／Job handles關閉及mutex釋放才啟動，本輪自然歸零、無強制清理。UI與正常推薦／ScoringEngine沒有此pack caller，沒有UI變更，故未重跑Workbench／validator、四旅程或EXE；134固定GUI與原收據保持。current架構、CLI判讀、Manual、Feature Map、原計畫及Snapshot同步，正式每日時間政策、publisher／provider資料寫入、根路徑與移機契約未改。
 
 這是後端修復的限定工程出口。完整來源／單位、歷史新高母體、正常UI／排序、正式評分及完整F12未接受；不清舊FAIL、不授PIT、策略有效、自然成熟、Native／真人或完整Gate。116外部報告沿現行[判讀表](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)，未重跑貼文命令。下一步回原其他可交付產品列，不把135變成所有流程的新前置。沒有網路取得、正式資料／Task／maintainer、push、發布或交易變更。
+
+<a id="post134-native-saved-strategy-comparison"></a>
+## 固定134補證：原生策略選取、對照、規則與返回
+
+這是既有134的限定Native補證，未另建產品Increment或EXE。來源提交仍`cd8dbe30f90a53ef75ddd0c9a193a8fa3c3efc15`，EXE與交付SHA保持；工作樹HEAD為135後端修復`4b358b63b96498c9f11b569c98491ca0ce58f5f0`，EXE不借工作樹程式。Root於Windows平台、正常主題、1280×760，以Computer Use實際滑鼠／鍵盤從「策略回測→查看實驗結果→研究Registry」捲動並選三筆原示範，開逐日訊號、只看進場意圖、原保存規則、關閉返回；正常關閉後新程序再走同一路徑。
+
+742僅在134研究store的檔案集合與封存postQA初態逐件SHA完全相符時，沿原公開copy工具建立自有副本；行情與財報固定版本也核SHA另複製，不匯入任何私人新增內容。743已走到對照／篩選／規則／返回，但observer的`isAncestorOf`未跨QDialog邊界，只記到5次主視窗點擊，原≥6事件斷言FAIL保留。744新helper只修觀測的typed視窗集合：本Main、其原對照QDialog及其規則子視窗；仍逐次核spontaneous、曝光、enabled、原生hit及所有祖先／viewport裁切，不降低事件數或改產品。
+
+745固定EXE父 **24192→fresh5684**完成，分別8／7次原生滑鼠事件全部通過幾何守衛，另有原生Ctrl+A及Escape操作。三筆2330研究仍為419觀測日、布林／W底／四均線18／4／16進場意圖，篩選為38日，共同進場0；父與fresh整份`SavedSignalComparison`一致。來源檔與研究store逐件SHA保持；正式根、其他trial私人狀態I/O及socket嘗試0。Computer Use畫面已檢視，結果區可切換、Registry可捲動、多選與子視窗表格／原規則可讀；事件與狀態逐行保存在本輪case，不以截圖代替資料一致性。
+
+本輪只驗原保存研究的讀回路徑，沒有執行或保存新回測，沒有核已載入實驗摘要的全文捲動、價格研究、其他尺寸／DPI、真人或完整Native；舊120日期輸入未完成的FAIL不改。未改產品Python，不重跑Workbench／validator／mypy或全部四旅程。UI入口與參數不變，現行指南與Snapshot只同步此限定證據，原完整範圍與Gates繼續；無正式資料／Task／maintainer、來源抓取、push、發布或交易變更。
+
+| 原始收據／結果（owner task內） | SHA-256 |
+|---|---|
+| 742 outer `single_owned_qa_b17c872dc3504e9493b2a506ca117659/receipt.json` | `d2452c0754da5f4fbb3f13cc3a9dc14ae21ae88a6215406a8737e25de3f37b98` |
+| 743 FAIL outer `single_owned_qa_ee278dc4b79942a1960db4528b7c751a/receipt.json` | `44a4067a3665dd9d7646cf6654c8ff0e9b058c3404d00ce2e21a0a53f3785082` |
+| 744 outer `single_owned_qa_9a143c1cef6b4063a2c52b9fba5dce74/receipt.json` | `06cab0ef421a18719a3eac47433c56472e6875f4e762d9fa50befec218de078f` |
+| 745 spec `post134_native_compare_qa03b_spec.json` | `a5f0d96ecb309750d35b7ce5012f930e408684c138e19cf92b0d5e46491f1404` |
+| 745 outer `single_owned_qa_e68ec355f5084585a51dc14d52d1ad6c/receipt.json` | `f59bc3aa242c17bfe6e5e1fc9c6685ecdc269f73daa9e2b300dfdaa71a058da7` |
+| `post134_native_compare_qa00b/inputs.json` | `2d658771dc308a94d6864a7c30ac4726d98306312cfd3807a89f29df31c01389` |
+| `post134_native_compare_qa00b/result.json` | `d86058f3dda8e373b2251d2fd1a60060a87f52c5fb623f291da17308baa4e0d8` |
+
+745啟動RAM約24.01GiB；每組仍8GiB committed／12程序／kill-on-close／同workspace mutex，前組三PID陣列空、process／Job handles關閉及mutex釋放才接續，本輪自然排空、無強制清理。沒有新建代理，累計仍10/10。

@@ -45,6 +45,8 @@
 
 本次1280×760 Main期限日期offscreen圖已核表格與中文字可讀；它不授真人、其他DPI或完整Native，120的[限定原生證據](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post120-native-stock-fundamental)不外推134，原FAIL保留。Paper外部帳未配置，不能用持倉成本造NAV；來源、歷史PIT、有效績效與自然成熟各自處理。正式資料／Task／maintainer、push、發布與交易沒有新授權；原完整計畫保持。
 
+134另有[已保存策略的限定原生回訪證據](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post134-native-saved-strategy-comparison)：1280×760視窗可切「查看實驗結果」，捲動Registry並多選三筆，讀訊號對照、篩選進場日、查看原規則及返回，新程序同值。沒有新增EXE或改試用state；這次未驗新回測保存、價格研究、其他尺寸／DPI或真人，完整Native仍待。
+
 ## 如何判讀116外部檢查
 
 116原包與收據保留。外部報告的命令紀錄供核對，不代替原始stdout、收據或真人操作；SHA及`--check`不能推論四旅程已驗收。以下按現行134判讀：

@@ -39,7 +39,7 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 ## 2. 數據更新與市場探索
 
-後續分支的2330基本面固定版本、半年累計與前期缺件判讀，見[具名營益研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)。這不改116原包或為其他公司補值。
+另有[117基本面預覽](../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)可讀2330的固定半年營益版本；範圍、重開與前期缺件判讀見[具名營益研究](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)。116原包保留，不為其他公司補值，Qt功能驗證不替代原生螢幕命中。
 
 更新前先確認 `DATA_ROOT` 和 `OUTPUT_ROOT` 各自指向預期位置，再檢查來源日期、quality 和 warnings。快速更新適用近期日常補檔，並增量同步 SQLite；安全更新會依選定範圍重建每日合併檔後同步 SQLite。快速更新不等於全量 CSV 重建。
 

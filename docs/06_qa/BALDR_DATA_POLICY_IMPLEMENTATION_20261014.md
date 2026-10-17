@@ -2202,3 +2202,23 @@ QA04原五份raw／receipt／用途文件篡改均被SHA拒絕；第六個缺件
 以上每組Root Job維持8GiB／12程序、kill-on-close、workspace mutex及啟動前RAM守衛；三PID陣列自然空、process／Job handles關閉、鎖釋放，無forced cleanup。新建代理額度10/10，平台無可重用代理，未再spawn。正式／私人資料、Task、maintainer、網路attempt、push、發布與交易未動。
 
 **尚待出口**：真實14:00後正常Main→基本面五欄→價格頁／返回→另一程序同版本，以及固定EXE同版讀回。工程PASS與保存成功不代替此出口；前期比較與整份P03／原完整Gate繼續保留。
+#### Increment117同輪固定預覽交付與真人回報判讀
+
+固定來源 `8109709a07219bbcb1cbe119199295607e9f3df5` 已另建 [117基本面預覽](../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)。EXE SHA `80b23a7f421355034f153837608ce49dcc7fe9eef03ec51647e212d5348479ef`，archive `4e6a2854f5be79fcea45c79925cc4dfe4dba4b8f43633a0baa86496c4fae3c20`，build receipt `6f90c2967d5216073e64f5bf2a3ae10e031e91a118089904d700537ff48bfdaa`；[交付收據](../../output/trial/Baldr-Daily-Research-117/DELIVERY_RECEIPT.json) SHA `33191d90cde946685d031acb4a57b8ed041c5134e9200d5d3f7a2bbc717d6fe6`。116及其主入口保留，117只是第二階段選用工程預覽。
+
+QA07 build outer `4863b9becd2dba06e295defbd350b66cd122c630a8191d6afce225c44b3cf52f`；QA09將109原18狀態核SHA另複製，只改綁本次推薦索引，另將營益7檔按原SHA複製而非重seal，原manifest／receipt及14:00可用小時不變。QA10啟動器--check PASS、18狀態不變；outer `fde35a81d3cafd1f3c9208d59c7c6abba661a51a32626596245e55e27840d64a`，新狀態收據 `cb0759ebd5084a6a4f8a36ad1673450dcfc91f0b656599bf52222b0ba776728d`、launcher收據 `8a7b0340c64c97caa6468d9c55b8cbba608d7adc24d12829844b864a7670aeeb`。這不是提前讀取數值或完成GUI。
+
+**原生驗收未通過，不能改判**：QA11誤把私人隔離根放在repo內，被`personal_root_overlaps_application_package`拒絕，outer `c9816fdfbd031a400ecb7f8d65b5760ad2f832488e4f99e94029d8c5d6de18d2`；QA12按原契約改用具名Temp後，Main建起但螢幕命中為None，outer `b47bddef34c3706002a7679956ae988dbadea52fd897958324fac455b93b2a9d`。QA13保留原命中守衛並等實際曝光，在15秒內仍未命中，outer `81888b7a3e3a88aa7f918130d1289fd2948ef16fda5dbbd1db197e4905363f8a`。原因未裁決，不假定為遮擋、DPI或產品故障；未啟動EXE同類原生驗收，不繼續盲重跑。
+
+**另列Qt功能接線，沒有用它替代Native**：QA14由原Main的Qt元件事件驗真13:54時基本面提前隔離、明示14:00原因，而四股價格與返回仍可用；[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment117_early_source_qa14/result.json) `166d99d3cbee28c589ec29bfb190a2086b6d4c0c0568bcbf9f99ebfd7d7b0c3a`，outer `fcc370fcb322e5126f37fa1bc433ec4a1f7338ea839ea8db6fc8b371fb372c09`。所有該類收據明列`native_coordinate_accepted=false`。
+
+跨過**真實14:00**後，QA15來源Windows Main PID48232→fresh36300：正常個股載入→基本面五原值→價格頁→觀察清單／個股返回→重新載入同版→歷史查詢拒用，7來源檔與6行情輸入SHA不變。原營收Decimal換算及四百分比逐值相同；[來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment117_functional_source_qa14/result.json) `6daa93252310169d4eb9bfe3a1575b86aaa7300904a1b5d5db3b3e53656b044c`。同組下一個EXE harness因產品未打包測試套件`PySide6.QtTest`而在Main操作前退出，outer exit1 `1133e9da35f2c39a05f9e84b569883f50b8416ce5060de7406de68ab2c408a36`保留；未重跑來源版或為此重建產品。
+
+QA17僅接續EXE功能：用既有Qt元件接口，固定bundle模組路徑驗在frozen根，PID26748→fresh18228核同五原值、原價格／返回／重載、歷史拒用與來源清冊。[EXE結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment117_functional_exe_qa17/result.json) `897625ff0c18bcb748b2c64c92dc59e39452356c7153128b664f2242445f370e`，outer `336b32a5bfbbd78bb1a4db170334bf87dfd322beb2b810e6fc9d992f519b30c1`。保留父／fresh畫面及實際clock；這是Windows Qt功能／reader出口，**不是原生螢幕座標、真人、不同DPI或完整Gate接受**。
+
+QA18再以目前真clock從實際117試用目錄的public reader核五值、用途與雙SHA，核18＋7檔及EXE，create-only保存交付／索引，更新本owner task；outer `cb6831700b3e839f2eb5e689a96ad629cc38c3f0997867e15cdd1ecb6cf20309`。每組均自然PID0、handles／mutex關閉，沒有forced cleanup。原件／PDF候選reader、舊task、正式／私人資料及Task不變；未新增代理或來源capture。
+
+使用者另貼116核對報告，原文以[外部回報](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/external_116_verification_report_20261016.txt)保存，SHA `1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`；不執行其中貼出的命令。該報告的身分／靜態佐證不提升為四流程GUI接受；「2330零筆一定非引擎問題」「名冊警告不影響任何功能」「1,951是全市場」均不採作已驗結論。零筆需原run／參數／日期，名錄與分類用途、真N、兩種來源及本機固定路徑限制另列到117與中央指南；116固定原指南不覆寫。
+
+此葉已移除「合格單一財報數值無正常讀回出口」的工程阻礙，並有固定工程預覽；前期比較、其他發行人與每日新版用途、歷史PIT、P07／P12、原生／真人及完整P03仍待。原四條V1、其他包與全部P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持，下一葉依原§0.4繼續，不把本輪FAIL藏成全Gate PASS。
+117最終文件QA19：自有task、12個feature與8份本輪文件／包內指南結構及連結PASS，errors=[]；outer SHA `be37a56e4c2c5a3b2b1b1378e7c0247050462783564cd7ab77daf582a6e7cdce`，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後只記錄此結果及提交接手點，不修改117固定候選或把Native FAIL改判。

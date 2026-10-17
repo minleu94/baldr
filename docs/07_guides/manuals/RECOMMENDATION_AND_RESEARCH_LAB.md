@@ -2,7 +2,7 @@
 
 ## 具名營益固定版本研究
 
-此為第二階段後續分支；116原包不會自動取得這筆資料。由具名交付另存固定版本，啟動環境須成組指定`OPERATING_SUMMARY_SNAPSHOT_DIRECTORY`、`OPERATING_SUMMARY_MANIFEST_SHA256`及`OPERATING_SUMMARY_RECEIPT_SHA256`，不手改收據或選latest。這三項只選取已驗證原件，不觸發抓取、匯入或正式庫寫入。
+可用[117基本面預覽](../../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)啟動；116原包保留。啟動器已成組指定`OPERATING_SUMMARY_SNAPSHOT_DIRECTORY`、`OPERATING_SUMMARY_MANIFEST_SHA256`及`OPERATING_SUMMARY_RECEIPT_SHA256`，一般使用不用設定。它們只明選固定版本，不觸發抓取、匯入或正式庫寫入；管理者不可手改收據或選latest。
 
 在「個股研究」輸入2330→「載入個股報告」→「基本面／營收財報」。此版本只提供2026上半年累計營收、毛利率、營業利益率、稅前與稅後純益率；金額以TWD顯示，百分比沿原值。期間2026-H1不是Q2單季，出表日期也不是歷史公告時間。頁面直接列來源／授權與限制，價格頁仍沿它自己的資料日期，不能與財報期末混稱同日。
 

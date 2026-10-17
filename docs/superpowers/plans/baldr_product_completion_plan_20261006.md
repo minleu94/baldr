@@ -156,7 +156,7 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 ### 0.4 依使用流程重排交付（2026-10-15）
 
-**Increment117接續第二列的正常數值出口**：已用保存的官方半年PDF獨立勾稽開放CSV之2330／2026-H1營收及四項比率，接受範圍綁單一原件，不推廣其他1054列。另存不可覆寫版本、原用途／成功批次小時與原個股DTO／基本面頁已接線；工程防線通過，正常Main／fresh及同版EXE待驗。前期、成長率、歷史PIT、P07／P12消費與完整P03仍未接受，116和四條V1不增前置。詳[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment117-operating-summary)。
+**Increment117接續第二列的正常數值出口**：[117基本面預覽](../../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)固定`8109709a0721`，以既存官方半年PDF獨立勾稽開放CSV之2330／2026-H1五欄，只接受這一原件目前研究。原件→用途／批次小時→原report／基本面頁→重載／返回→新程序已由來源版與EXE在真14:00後限定驗證；Qt元件功能不替代原生螢幕命中，本輪該項仍FAIL。前期、其他公司、歷史PIT、P07／P12及完整P03保留；116與四條V1不增前置，不重跑未改旅程。詳[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment117-operating-summary)。
 
 #### 為什麼改
 

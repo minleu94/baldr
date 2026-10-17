@@ -1271,7 +1271,8 @@
         "tests/test_price_bookmark_copy.py",
         "tests/test_price_bookmark_copy_limits.py",
         "tests/test_trial_first_setup.py",
-        "tests/test_technical_source_verification_io.py"
+        "tests/test_technical_source_verification_io.py",
+        "tests/test_technical_source_archive_reuse.py"
       ],
       "manual": [
         "docs/07_guides/FIRST_INSTALL_PROMPT.md",
@@ -1311,7 +1312,8 @@
         "tests/test_price_bookmark_copy.py",
         "tests/test_price_bookmark_copy_limits.py",
         "tests/test_trial_first_setup.py",
-        "tests/test_technical_source_verification_io.py"
+        "tests/test_technical_source_verification_io.py",
+        "tests/test_technical_source_archive_reuse.py"
       ],
       "sync_documents": [
         "docs/07_guides/README.md",

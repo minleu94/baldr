@@ -3156,3 +3156,22 @@ Root兼TechLead／DataAudit後沿既有DailySourceUseAcceptance及基本面DTO�
 具名outer：803 `single_owned_qa_ac8579ec51014d4aa6efb41fc5031030/receipt.json` SHA `fa822317155778ea2629d13a765b56232391b4a593837997b128e704cff66b0e`；804 `single_owned_qa_e9c0bdd0a3154167b0faaf08b3c4cc2c/receipt.json` SHA `2cdf558c358d6eb4aef6d46bcfbc1f3ba7bdbf5083a746028ac98a5a4a3ac1e2`；805 `single_owned_qa_48924d1b95a6483d888520080364815a/receipt.json` SHA `3b1d2a50803d1420ce2970b84a9cc99fe6ee0c094b33caee601cf666d78e050b`；806 `single_owned_qa_d13a9e0d70fd41ec949401412fb06b54/receipt.json` SHA `b607a5a100dcca2a8d618ced59268351badf788469dda8021fbccd5595e360ff`；807 `single_owned_qa_edb48cf4a4a247d99ef8888e395ef16e/receipt.json` SHA `52fd0ffba7d6bbe3243fe0dcf33a098468ffb4737cc4222eefc80de32cabfdf0`。各8GiB／12程序及起前RAM≥8GiB保持，三PID空、handles／mutex自然閉鎖才進下一組。Root獨自履職，沒有新增agent或把mypy UI ignore當強型別。
 
 139交付文件收尾：qa23因沿舊來源HEAD285而在Python啟動前被文件HEAD705守衛拒絕，另存23b；808文件check漏開發者導航Coverage而FAIL（outer `single_owned_qa_83140a40f3794f7e8648907a40585d33/receipt.json` SHA `9ddb414ff25f3897a601b773b6cb8d17bb385d512987ca1c7d43aa1f77c30046`）。核該導航不保存完成度、仍走同一Snapshot／Manual入口後補明確not_required；809只重驗七份交付文件／task，12features、7連結來源、0errors，outer `single_owned_qa_4e220415a9f44fc1b7922999788b2c91/receipt.json` SHA `5823fdad5d85919dd68ccc507a3c0ca1eef56f4f7f7789bc8cf8a76a285a33cf`。兩組自然閉鎖；產品及交付原件SHA保持，驗後只補本段原結果，不重跑既過旅程或提高接受範圍。
+
+<a id="increment140-archive-byte-reuse"></a>
+## Increment140：首次設定的有界原件重用（2026-10-17）
+
+**交付阻礙**：138原EXE與修後Source整包首次設定均未在600秒內完成；139已可試用，仍沿本機路徑。此輪只改既有封存恢復的中途重讀，不增V1範圍、不換指定候選。Root依Tech Lead／Execution／QA／Documentation分階段履職，無新增或獨立代理複核；10/10新建額度保持。
+
+`technical_source_copy._Archive`只在兩個恢復port的初次完整SHA核驗時保留原件bytes；每檔256KiB、合計384MiB且不超過原預算，串行先分配名單後交原四件唯讀I/O。`_Files.read`重用不可變bytes仍核原預期SHA／closed映射／原身分／取消。寫入前及發布成功收據前的完整來源、目的、layout實體重驗維持；一般複製與收藏前後Archive預設不保留buffer，原reader-issued session／六pins守衛不變。不改來源值、精度、時間、用途、金融計算、正式根或600秒期限。
+
+- 810：compile通過、44PASS／1新增fixture因Windows長路徑讀取FAIL，尚未達原篡改斷言。原結果保留，僅改新測試沿既有long-path helper。outer `single_owned_qa_3f618f86ff754e98a07f3f93755d28b0/receipt.json` SHA `750b6bb4f8dc75bbba549c62e4da7eb66547b9686c826398c7ba4a3dc5cd3ba2`。
+- 811：compile、45項原件容量／實體前後篡改拒絕／恢復與收藏／首次設定保護及mypy1069通過。outer `single_owned_qa_8bdccab071344652b9322c45d10f4ffa/receipt.json` SHA `396497cb13e322ce651212ee2926806a234aa4e205ad27556afe6900d627739c`。兩組三PID空、process／Job handles與mutex閉鎖，未依賴強制清除。
+- 812：使用新helper/spec/result與全新隔離移位目錄，沿138原完整資產驗當前Source CLI，原600秒／舊根與正式根禁讀／無網路／前後完整hash斷言保持。Source CLI於原600秒內exit0，連事後原包再核513.953秒；9,864份原包檔案不變，設定PID39872，舊根／網路0。result SHA `faf153f2ae90e71b45ea4d08389477c6dba557360123b3f6f23fa82a1cbd7ece`；outer `single_owned_qa_53e9a135f3064ebd8a7b75073d48321b/receipt.json` SHA `bcc002ab6eff8bef35d45ae85c0f67882ccae746813a4293c6cf7bbb94dd5026`，三PID空、handles／mutex閉鎖、無forced cleanup。此為當前Source與138原資產的整合出口；舊EXE僅固定資產，不算新EXE或正常Main證據，139新增月營收亦未在此舊清冊。
+
+使用者再貼116外部檢查沿既有八項複核處理，不重跑其裸Python／launcher命令：118主個股同源入口、124零配對判讀、128漲跌方向及139現況與116不同；缺公司來源憑證仍限制用途，hash／`--check`不證完整旅程，1–3秒啟動延遲未量測。原116及外部報告保持。原計畫及主手冊的現行入口由134同步139，歷史段保持，P14及其餘完整計畫仍未完成。
+
+813沿另存的138正常頁模板改為當前Source runtime，不修改原template／spec／結果。新根Main36964→5456核四股價格／重載、三公司半年比較／2382缺件、原推薦原件、F07原查詢／頁碼／8933與2506比較籃／39檔／120價格列／主個股與返回、三筆原Registry金融值及原規則／原結果／返回；明禁重算與新保存。父程序新增手動2330，fresh先沿原首次設定port同根重核，成功收據與手動清單hash保持，再核Main原值一致。兩程序舊trial／rc101／assets／正式根讀取與網路嘗試皆0，native TaskWorker關閉後為空。result SHA `fb3d2043701407f61034516eb9b7b6b1db8659a613417a8aa3ff0edd18cc35bd`；outer `single_owned_qa_5492458055384049a88b285126d464f6/receipt.json` SHA `0bc81a546d600e4963e0045226bf8fe4ba9a243668bda7ea7de5322af6696144`，三PID空、handles／mutex閉鎖、無forced cleanup。Root已檢視1280×760主視窗截圖；此為Qt API操作，非原生座標／其他DPI／真人接受。
+
+Root複核：重用範圍為同次初驗的不可變原件，容量先串行分配，四件核驗皆join後返回；中途來源變動仍由寫前／收據發布前的完整實體核對拒絕，新測試確認不得發布成功收據。無來源、時間、schema、策略／成本／幣別、金融公式或正式／私人資料變更；UI檔未改，未重跑未受影響Workbench／validator及139旅程。140解除第二階段P14的Source整包600秒斷點；V1已交139，不把搬移新增為V1前置。新固定EXE、保留139月營收的完整包與完整P14仍待，既有兩次FAIL不刪除，指定139與共用131保持。
+814文件核對發現新測試只登記在bootstrap代表入口，未同步同功能change_patterns；已補齊兩側，僅重驗文件。原FAIL outer `single_owned_qa_de47dc2089c44ac984c3a3684bedea38/receipt.json` SHA `c8f9046f9033890668d4a16391e4bd1401bb4d18b4a401029b2fde14b2b2dfc1`，自然閉鎖；不重跑已過產品旅程。
+815文件核對12features／6個連結來源／0errors，outer `single_owned_qa_804f4254816a4bc19b2ef5412174e83c/receipt.json` SHA `d8d1c34130d32131a72e965e8b1a4592ad8bacb86532ced15652052f254ee4d4`，自然排空、handles／mutex閉鎖。此為文件結構結果，不升格Source／EXE或任何產品Gate。

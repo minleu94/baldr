@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import stat
+from threading import Lock
 from typing import Any, Callable, Iterable, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -36,6 +37,8 @@ from app_module.rule_research_technical_parent_capture_v4 import (
 SCHEMA = "technical-source-copy.v1"
 BOOKMARK_COPY_SCHEMA = "technical-price-bookmark-copy.v1"
 _HASH = re.compile(r"^[0-9a-f]{64}$")
+_ARCHIVE_REUSE_FILE_BYTES = 256 * 1024
+_ARCHIVE_REUSE_TOTAL_BYTES = 384 * 1024 * 1024
 
 
 def _tree_layout(root: Path, maximum: int, cancel=None) -> dict[str, int]:
@@ -110,7 +113,10 @@ class _UnverifiedLogicalPin(TechnicalSourcePin):
 
 
 class _Archive:
-    def __init__(self, directory: Path, receipt_sha256: str, budget: ResearchOutputCopyBudget, cancel):
+    def __init__(self, directory: Path, receipt_sha256: str, budget: ResearchOutputCopyBudget, cancel,
+                 *, retain_verified_bytes: bool = False):
+        if type(retain_verified_bytes) is not bool:
+            raise TechnicalSourceCopyError("technical_copy_archive_reuse_option_invalid")
         self.directory = _canonical_directory(directory, must_exist=True)
         if type(receipt_sha256) is not str or not _HASH.fullmatch(receipt_sha256):
             raise TechnicalSourceCopyError("technical_copy_archive_sha_required")
@@ -146,6 +152,17 @@ class _Archive:
         layout = _tree_layout(self.directory, budget.max_entries, cancel)
         if layout != {**{name: size for name, (size, _) in self.entries.items()}, "TECHNICAL_COPY_RECEIPT.json": len(self.raw)}:
             raise TechnicalSourceCopyError("technical_copy_archive_members_changed_or_pending")
+        # 只在恢復期間重用初次完整SHA已驗原件；預先串行分配預算，結尾仍重讀全部來源。
+        retained_names: set[str] = set()
+        remaining = min(_ARCHIVE_REUSE_TOTAL_BYTES, budget.max_total_bytes)
+        if retain_verified_bytes:
+            for name, (size, _) in self.entries.items():
+                if size <= _ARCHIVE_REUSE_FILE_BYTES and size <= remaining:
+                    retained_names.add(name)
+                    remaining -= size
+        self._retained_names = frozenset(retained_names)
+        self._verified_bytes: dict[str, bytes] = {}
+        self._retain_lock = Lock()
         _run_io((partial(self._verify_member, name, expected, budget.max_file_bytes)
                  for name, expected in self.entries.items()), cancel, workers=4)
 
@@ -153,6 +170,14 @@ class _Archive:
         raw = _read_bounded_file(self.directory / name, maximum)
         if (len(raw), sha256(raw).hexdigest()) != expected:
             raise TechnicalSourceCopyError("technical_copy_archive_member_sha_mismatch")
+        if name in self._retained_names:
+            with self._retain_lock:
+                self._verified_bytes[name] = raw
+
+    def retained_bytes(self, logical: Path) -> bytes | None:
+        """只回傳closed映射內的已驗不可變bytes；沒有保留的原件照常讀取。"""
+        self.resolve(logical)
+        return self._verified_bytes.get(logical.relative_to(self.logical_root).as_posix())
 
     def resolve(self, logical: Path) -> tuple[Path, str | None]:
         if logical == self.logical_root:
@@ -225,7 +250,9 @@ class _Files:
     def read(self, path: Path, expected: str | None = None) -> bytes:
         _cancel(self.cancel)
         physical, pinned = self.resolve(path)
-        raw = _read_bounded_file(physical, self.budget.max_file_bytes)
+        raw = self.archive.retained_bytes(path) if self.archive is not None else None
+        if raw is None:
+            raw = _read_bounded_file(physical, self.budget.max_file_bytes)
         identity = (len(raw), sha256(raw).hexdigest())
         if (expected is not None and identity[1] != expected) or (pinned is not None and identity[1] != pinned):
             raise TechnicalSourceCopyError("technical_copy_source_sha_mismatch")
@@ -338,7 +365,8 @@ def restore_technical_source(archive_directory: Path, archive_receipt_sha256: st
     """封存包可移至新位置；外部SHA＋完整closed files先驗，再由原reader驗新鏈。"""
     if type(budget) is not ResearchOutputCopyBudget:
         raise TechnicalSourceCopyError("請明選具型別複製預算")
-    archive = _Archive(archive_directory, archive_receipt_sha256, budget, cancel_callback)
+    archive = _Archive(archive_directory, archive_receipt_sha256, budget, cancel_callback,
+                       retain_verified_bytes=True)
     return _copy_technical_source(archive.pin, destination_root, budget=budget,
         cancel_callback=cancel_callback, archive=archive)
 
@@ -350,7 +378,8 @@ def restore_technical_source_with_price_session(archive_directory: Path, archive
     """同一strict graph驗證同時收集原F07 session；不重讀或跳過來源守衛。"""
     if type(budget) is not ResearchOutputCopyBudget:
         raise TechnicalSourceCopyError("請明選具型別複製預算")
-    archive = _Archive(archive_directory, archive_receipt_sha256, budget, cancel_callback)
+    archive = _Archive(archive_directory, archive_receipt_sha256, budget, cancel_callback,
+                       retain_verified_bytes=True)
     sessions: list[DailyMarketTechnicalUniversePriceReadSessionV1] = []
     pin = _copy_technical_source(archive.pin, destination_root, budget=budget,
         cancel_callback=cancel_callback, archive=archive, price_sessions=sessions)

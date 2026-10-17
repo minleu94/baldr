@@ -23,7 +23,9 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 
 同根重開只核設定與位置，保留使用者後續保存，不重新恢復初態。既有state移位、partial／failure、設定漂移或來源SHA不符均拒絕，不刪除或重設；需搬已使用狀態時回完整owner-migration清冊。成功收據為 `state/TRIAL_SETUP_RECEIPT.json` 的 `prepared_and_readers_verified`，config與原恢復收據SHA另記。失敗保留 `TRIAL_SETUP_PENDING.json`／`TRIAL_SETUP_FAILURE.json`，不得覆寫重試。
 
-目前僅10項拒錯／保存保護測試、compile與mypy1067通過；全包初次移位、正常Main／新EXE／fresh尚待，不能把此段當已交可攜版。固定134入口保持，進度及原件見[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)。來源CLI供受控整合；Agent執行依原Root Job／mutex限制。
+目前指定139仍沿既有本機配置，不能把此段當已交可攜版。整合候選原EXE與修後Source兩次600秒FAIL及partial原件保留於[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)；有界原件重用修正與實際移位設定結果見[140 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment140-archive-byte-reuse)。來源CLI供受控整合，正常Main／新EXE／fresh依各自證據判定；Agent執行依原Root Job／mutex限制。
+
+140當前Source CLI已在原600秒內完成138原完整資產的新位置設定，Source Main／fresh可讀回原收藏、研究及金融值；同根重跑設定保留新手動觀察項目。仍依賴repository來源環境，不能當成包內EXE已通過；此舊清冊也尚未包含139新增月營收版本，不能取代指定139或用於私人帳搬移。
 
 ## 保存研究的新副本（來源工具）
 
@@ -70,7 +72,9 @@ owner 核准新 `OUTPUT_ROOT` 後，到「推薦分析」按「讀取可用來�
 
 已限定驗明選1,951檔來源的完整匯出、整包移位恢復、公開查詢，以及既存125 EXE從新根開同源個股、比較、保存收藏與新程序重開；原600秒期限及舊FAIL保留。價格消費程式自125未改，Source Main本輪不重跑。這個來源工具不自動改125入口、既存收藏或整個環境；下列命令仍須明選來源及全新目的根。
 
-複製與不可變metadata寫入最多兩件獨立I/O，待完成佇列亦最多兩件；預算與清冊由呼叫端串行登記，metadata亦沿原fsync／不可覆寫codec。封存及來源／目的完整核對的開發修正最多四件唯讀I/O，逐檔bytes／SHA、closed集合與來源前後重驗皆保留。預設每檔256MiB時，複製原件buffer上限為512MiB，唯讀核對為1GiB；各階段不重疊，另受Root全Job committed8GiB／12程序限制。取消或失敗返回前均等本次自有工作結束。首次設定另可沿同一次strict graph所發的價格session接收藏，session須原reader發行且六來源pins匹配；收藏前後兩次完整封存核對仍執行，不把session當來源免驗。修後Source完整首次設定仍在600秒FAIL；新EXE出口未執行，138不得當可移位試用包使用。原逾時及partial原件保留，見[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)。
+複製與不可變metadata寫入最多兩件獨立I/O，待完成佇列亦最多兩件；預算與清冊由呼叫端串行登記，metadata亦沿原fsync／不可覆寫codec。封存及來源／目的完整核對最多四件唯讀I/O，逐檔bytes／SHA、closed集合與來源前後重驗皆保留。預設每檔256MiB時，複製原件buffer上限為512MiB，唯讀核對為1GiB；兩階段不重疊。封存恢復另在初次全量SHA驗證時限額保留原始bytes：每檔至多256KiB、合計至多384MiB且不超過原複製預算；不是只保存小型metadata，也可能包含payload JSON。中途可重用這些不可變bytes，寫入前與發布完成收據前仍從實體檔重核完整來源／目的與closed清冊；一般收藏的前後封存檢查不保留此buffer。所有buffer與原strict reader同受Root全Job committed8GiB／12程序限制，取消或失敗返回前均等本次自有工作結束。
+
+首次設定可沿同一次strict graph所發的價格session接收藏，session須原reader發行且六來源pins匹配；收藏前後兩次完整封存核對仍執行，不把session當來源免驗。原600秒期限不延長，138不得當可移位試用包使用；最新整合結果沿[140 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment140-archive-byte-reuse)判讀。
 
 價格選股的technical v4來源含snapshot、batch manifest、parent及universe定位鏈。只搬資料夾或改`TECHNICAL_UNIVERSE_READ_ROOT`不足以恢復；原收據仍綁舊絕對路徑。來源工具`scripts/copy_technical_source.py`可為**明選的完整來源**建立新定位鏈，或從已移位的完整封存包恢復；不抓取、不重算指標，也不修改原快照或原收據。
 

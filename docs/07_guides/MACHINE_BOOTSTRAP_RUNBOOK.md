@@ -23,11 +23,13 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 
 同根重開只核設定與位置，保留使用者後續保存，不重新恢復初態。既有state移位、partial／failure、設定漂移或來源SHA不符均拒絕，不刪除或重設；需搬已使用狀態時回完整owner-migration清冊。成功收據為 `state/TRIAL_SETUP_RECEIPT.json` 的 `prepared_and_readers_verified`，config與原恢復收據SHA另記。失敗保留 `TRIAL_SETUP_PENDING.json`／`TRIAL_SETUP_FAILURE.json`，不得覆寫重試。
 
-目前指定139仍沿既有本機配置，不能把此段當已交可攜版。整合候選原EXE與修後Source兩次600秒FAIL及partial原件保留於[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)；有界原件重用修正與實際移位設定結果見[140 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment140-archive-byte-reuse)。來源CLI供受控整合，正常Main／新EXE／fresh依各自證據判定；Agent執行依原Root Job／mutex限制。
+目前指定141c含自有runtime與139原件，已驗全新包在本機含空白新位置的固定EXE首次設定513.532秒／600秒、受改Main26016→32764與啟動器正反SHA。首次啟動前放妥完整資料夾，雙擊包內`Launch-Baldr.cmd`並保留命令視窗；完成後同根保存不重建。只設定用`--prepare`，設定後核啟動資訊用`--check`。這是全新包的本機出口，完整跨機、已用state及私人owner-migration仍須各自驗證，不能刪state重設。舊139及131保持供回訪。
+
+原EXE與修後Source兩次600秒FAIL及partial原件保留於[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)；有界原件重用見[140 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment140-archive-byte-reuse)，新固定包與診斷FAIL見[141 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment141-full-trial-exe)。Agent執行依原Root Job／mutex限制。
 
 140當前Source CLI已在原600秒內完成138原完整資產的新位置設定，Source Main／fresh可讀回原收藏、研究及金融值；同根重跑設定保留新手動觀察項目。仍依賴repository來源環境，不能當成包內EXE已通過；此舊清冊也尚未包含139新增月營收版本，不能取代指定139或用於私人帳搬移。
 
-141來源候選增加 `baldr-trial-first-setup.v2`，原v1仍可讀且不自動改寫。v2可明選 `quanta_monthly_sales`（`files`、manifest／receipt雙SHA），從 `assets/quanta-monthly` 逐bytes複製到 `state/monthly-sales-version` ，由啟動器明選新根及雙SHA；市場狀態原件另以 `market_regime_files` 明選 `assets/market-regime/regime_history.json`，只複製到研究輸出根，不接受其他私人輸出。v1不得夾帶這兩個新家族，舊EXE亦會拒絕v2。新來源在設定發布前重核來源及資料副本SHA；DATA_ROOT空白或改指隔離庫，預設正式根仍禁止寫入。月營收只記原件複製核對，不授來源接受或提前可用；正常頁沿原public reader的小時／用途／精度守衛。新固定EXE／整包出口待[141 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment141-full-trial-exe)，不能用此來源候選取代139。
+141的 `baldr-trial-first-setup.v2` 保留v1讀取且不自動改寫。v2可明選 `quanta_monthly_sales`（`files`、manifest／receipt雙SHA），從 `assets/quanta-monthly` 逐bytes複製到 `state/monthly-sales-version` ，由啟動器明選新根及雙SHA；市場狀態原件另以 `market_regime_files` 明選 `assets/market-regime/regime_history.json`，只複製到研究輸出根，不接受其他私人輸出。v1不得夾帶這兩個新家族，舊EXE亦會拒絕v2。新來源在設定發布前重核來源及資料副本SHA；DATA_ROOT空白或改指隔離庫，預設正式根仍禁止寫入。月營收只記原件複製核對，不授來源接受或提前可用；正常頁沿原public reader的小時／用途／精度守衛。141c生成config只含共同portable keys，provider專用key沿啟動器環境明選。啟動器改用.NET SHA256核同一固定EXE，避免依賴本機缺失的Get-FileHash cmdlet，錯SHA仍拒絕。
 
 ## 保存研究的新副本（來源工具）
 

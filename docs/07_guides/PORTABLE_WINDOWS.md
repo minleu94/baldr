@@ -2,7 +2,7 @@
 
 可攜版供不安裝 Python 的 Windows 使用者啟動桌面 UI。使用與下載時一併提供的完整 `baldr` 資料夾，內含 `baldr.exe` 與 `_internal`；不要只複製 exe。版本、commit 與候選／發布狀態須看該份交付隨附的 metadata 和驗收收據，本指南不指定目前最新 exe。
 
-目前[本機134候選](TRIAL_VERSION_GUIDE.md)另存行情、12件比較版本與研究狀態，保留封存SHA相符的133策略示範，另有1538／1528具名原結果；不匯入私人帳或複製正式全庫。**技術來源明選共用131的`state/technical-source`，須保留131資料夾**。134已驗期限／取價日／缺價、原結果返回及fresh，其他旅程沿原具名證據。這仍是本機固定路徑與另存dist的候選，完整私人帳、其他收藏家族、任意整包移動及跨主機未接受；舊原件保持。
+目前[141c試用包](TRIAL_VERSION_GUIDE.md)含自有`app/`runtime、技術原件與139研究資料。首次啟動前放妥完整資料夾，雙擊`Launch-Baldr.cmd`建立自有state，本機實測約8分34秒；後續同根保存保持。已驗含空白新位置的固定EXE設定、受改Main／新程序及啟動器正反SHA，舊139及131保持供回訪。私人帳不自動匯入；已用state直接移動、其他收藏家族與跨主機仍未接受，完整限制見指南及[141 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment141-full-trial-exe)。
 
 ## 已保存研究更換輸出根
 
@@ -19,6 +19,8 @@ technical v4另有[完整來源複製與封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.
 已移位的研究副本另可依[研究封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#已移位研究封存的恢復)使用外部固定收據SHA建立新根；只重綁已知SQLite路徑，金融原件不重編。來源Main與新程序已限定驗原規則／結果及返回，詳[137 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment137-research-archive-restore)。這解除研究store搬動後仍綁舊根的工程缺口，固定134與整包可攜的未驗邊界保持。
 
 ## 首次設定
+
+141c沿上方試用指南使用包內啟動器首次設定；以下步驟供一般可攜版自訂外部資料根。
 
 1. 將完整資料夾放在你有寫入權限的位置，保留來源包的所有檔案。
 2. 若是新使用者，先建立自己專用且位於程式包外的行情與輸出目錄；不要複製別人的 DB、私人持倉或模型。

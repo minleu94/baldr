@@ -2636,3 +2636,47 @@ QA11另複製109原18份狀態與117原7份具名基本面，只重綁121自己�
 ### 交付與未驗範圍
 
 本輪交來源修復與相容測試，固定125／舊候選／既存行情原件不變。真人、不同DPI、此 parser 的新真官方下載、正式用途／小時配置、歷史缺方向修復與P03完整來源仍未接受；不重置舊GET額度或回補正式庫。指南已分清開發分支與固定包；原 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、舊 FAIL、雙策略完整績效、來源權威與自然成熟各自保留。
+
+<a id="increment129-recommendation-output-copy"></a>
+## Increment129：一般保存推薦加入原研究複製工具（2026-10-17）
+
+本輪接續原 P14，解除一般保存推薦尚未納入搬移工具、legacy索引仍綁舊絕對路徑的工程缺口。基線 `f3b29f5167911e1628f87af336f1a3b973df0a9a`；不另造搬移系統、不只改launcher冒稱可攜，也不等待真人試用才繼續其他交付列。Root兼任Execution／Tech Lead／Data Audit／QA／Documentation，沒有獨立reviewer；Luna累計10/10，不新增。
+
+### 最終實作與相容
+
+- 沿原 `research_output_copy.py`／`copy_research_output.py`，新增明示 `include_recommendations=True`／`--include-recommendations`，另選 `recommendation/runs`。原命令與API預設仍只處理原三store，未選一般推薦的ML／journal缺件不影響原scope。
+- 支援legacy、canonical以及並存，沿原 `RecommendationExecutionQueries` 核身分。一般legacy以 `result_id` 重綁新索引的 `data_path`；canonical使用原hashed artifact檔名、原index／metadata，金融JSON、未知extension、排名、原時間與來源資格不重編碼。
+- 新收據明列 `selected_store_kinds`。所有選定結果共享原byte／entry／run預算，拒外部路徑、錯ID、journal、trigger、artifact漂移、來源變更及部分成功；原create-only、pending／failure與取消守衛維持。
+- canonical若有外部ML收據，先由verified envelope看見依賴，在query嘗試讀該收據與建立目的根前具名拒絕；沒有location-only搬移契約就不沿舊根補件，也不暗省略已選結果。其他原scope仍可明選另建新副本。
+- 無UI程式變更、正式資料／私人帳／Task／maintainer操作或網路抓取；125 EXE、舊候選與原件保留。這是來源工具增量，不是全環境／其他主機或完整P14 Gate接受。
+
+### 驗證與原失敗
+
+| 證據 | 結果與界線 |
+|---|---|
+| QA00／group675 | 既有graph唯讀查詢、route與Context完成。圖版本僅供導航；Context 4014字／5318bytes。decision_research_portfolio與contracts測試因預算略過，copy只列標題、queries摘錄略過；相關實際copy／query／store程式與根綁定正文另讀，不宣稱全庫EOF。 |
+| QA01／group676 | 新3案例原產品紅測：legacy與canonical副本缺件2項確定失敗；並存案例先遇Windows fixture暫存連線未關的rename拒絕，該項不當作產品紅測證據。原輸出保留。 |
+| QA02／group677 | 76 PASS：原copy回歸、一般推薦三種來源與反例、原R016 query守衛；changed compile、full-roots mypy1063及financial guard通過。尚未加入最後明示flag的scope相容補強。 |
+| QA03／group678 | 固定109的18原件先核SHA；當輪新副本由既存125 EXE **42312→47196** 正常來源選取／載入／返回／fresh。原推薦1528共1列、原JSON與來源不變。此輪為明示flag之前版本，不能代替最終scope證據。 |
+| QA04／group679 | Root將新來源加入改成明示flag後，copy 27 PASS／1 FAIL；唯一失敗是原三store測試fixture的兩個sqlite3 connection只用with提交、未close，Windows rename被拒。原斷言與輸出保留，不放寬權限或以GC掩蓋。 |
+| QA05／group680 | fixture兩個writer顯式close後，僅重驗原失敗1項，1 PASS；27已PASS不重跑。compile、尚未完成的mypy1063與financial guard通過。最終明示flag真副本由既存125 EXE **32564→25128** 正常「讀取可用來源 → 選原結果 → 讀取」、返回與fresh，原根I/O／SQLite與網路0，保存禁止、行情6檔及原金融檔SHA不變，product origins全在既存bundle。 |
+
+一般推薦的外部ML拒絕反例從verified envelope接點注入依賴，明確斷言query.list未被呼叫，並非真私人ML搬移接受。canonical合成案例不含外部ML收據。正常Main真原件旅程只覆蓋legacy1528保存結果，不宣稱其缺失歷史行情已補、整個舊推薦績效有效或真人接受。UI消費程式未改，既存125 EXE作原consumer；未重建EXE或將Source Main另寫PASS。UI code未改，不重跑無關Workbench／更新頁validator；mypy原UI ignore_errors限制仍在。
+
+### 可核原件與閉鎖
+
+收據均在 owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`；新spec各自釘HEAD／來源SHA、隔離env與新result directory，舊task／spec／失敗不覆寫。
+
+| 收據 | SHA-256 |
+|---|---|
+| QA01 outer `single_owned_qa_1e637a56009a43929d038b0a3f2973a8/receipt.json` | `7116e7f90c502eaf0b6c7f864984a79a7d8eacc1bb1693ba380c488e19915812` |
+| QA02 outer `single_owned_qa_e1f26b25d46648de9d4fd1aa911af83c/receipt.json` | `c0d2b212592ea84a94cdf16a3f0323f2e3241c044659d602a0b5729615753cd5` |
+| QA03 outer `single_owned_qa_267667f851ec47b7b010aab6eba01bc4/receipt.json` | `74613d45c9d6ced62f70485ee1e02d5b2319f64c5b2cdfeeb28d00deb590d3ef` |
+| QA04 outer `single_owned_qa_780f5612ed534abc9d83ab83670e420f/receipt.json` | `9c718f91426fbc5200598348939d2862726320aed900ea05bf4cf665cfece1d4` |
+| QA05 outer `single_owned_qa_d814cc7941644b04926c1d2d93e0af98/receipt.json` | `1063dcbae1bf6e1f189bd8e7eaaaff3a5df8655e7cedee322bc7cd8591ef014d` |
+| 最終scope／Main spec `increment129_scope_closed_qa05_spec.json` | `3477dcb516700b7a6020c6a544d43b56c216842fd1a91905a80242484a4b455b` |
+| 最終Main結果 `increment129_recommendation_main_qa05/result.json` | `5f98ecc12f0c57b85e522042e8ecb6b7551b669f54196863bf05b2b3fbb4905b` |
+
+每組Root串行，8GiB committed／12程序／kill-on-close及workspace mutex讀回，啟動前RAM至少8GiB；每次前組三PID陣列空、process／Job handles與mutex閉鎖才開下一組，以上皆無強制回收。這些定向結果不加總為Gate。
+
+Runbook、Manual、可攜指南、current架構與原計畫§9.5已同步。未完成範圍仍包括完整行情／既存收藏／私人帳／外部ML的完整來源映射、跨主機、Native／真人與完整P14；固定125仍依原入口。原P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、歷史PIT、來源權威、真N、完整雙策略績效及自然成熟保持。

@@ -806,6 +806,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
 
+**原P14保存推薦新副本（Increment129）**解除一般推薦尚未納入搬移工具、索引綁舊絕對路徑的阻礙。沿126同一工具新增明示 `--include-recommendations`，原三store預設不變；legacy／canonical原件與資格不重寫，新副本由原query核身分。固定原推薦在既存125 EXE正常Main／fresh已限定驗載入與返回、原根I/O／網路0；外部ML收據缺搬移契約時拒絕所選批次，其他原scope可各自繼續。這不是完整行情／收藏／私人帳、跨主機或Native／P14 Gate接受，也沒有替換125。原完整範圍、時間／金融守衛及其餘交付列保持，詳[129 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。
+
 **原P03方向修復（Increment128）**解除「原明確正負號在下載時丟失，個股漲跌不可判讀」的工程阻礙。新 parser v2 以文字而非顏色定方向，四狀態保存並逐列回綁 raw，舊 v1 原件／時間／讀法保留；沿原 CSV／SQLite／公開報告及合成正常 Main／fresh 完成定向驗證。沒有新 GET、歷史回補、正式資料或 maintainer 變更，也未替換固定125；本次不授真來源用途、歷史PIT、完整Native或任何完整Gate。接續仍按§0.4跨交付列處理可交付缺口，金融／來源／自然成熟分流不變，詳[128 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 
 **原P14技術來源新副本（Increment127）**：原snapshot／manifest、plan／receipt與封存歷史保留，另建定位鏈。原600秒FAIL不改；有界雙I/O修正後，完整1,951檔匯出／移位恢復／public查詢均在原期限PASS，既存125 EXE **19188→49708**完成兩股主頁／比較／收藏／fresh，原根檔案讀取0。價格消費程式與UI／data code自125未改，具名Git證據支持本輪Source Main不重跑；這不是Source UI已passed或完整Native／P14接受。沒有新EXE或替換125，既存收藏仍綁原來源；全環境與其他主機另核。接續回原P03純文字正負號會被舊HTML顏色解析丟失的入口，沿原件／版本／publication契約定向驗證，不重置TWSE舊GET或MOPS額度、不重抓或回補正式庫。完整範圍與各Gate保持，詳[127 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)。

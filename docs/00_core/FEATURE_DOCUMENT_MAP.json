@@ -179,7 +179,9 @@
         "ui_qt/views/daily_market_technical_official_disposition_revenue_view.py",
         "ui_qt/views/recommendation_view.py",
         "ui_qt/views/daily_market_technical_universe_price_view_v1.py",
-        "ui_qt/workers/revenue_source_actor_v2.py"
+        "ui_qt/workers/revenue_source_actor_v2.py",
+        "app_module/research_output_copy.py",
+        "scripts/copy_research_output.py"
       ],
       "tests": [
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
@@ -234,7 +236,8 @@
         "tests/test_ui_qt_technical_official_composite_research_presenter.py",
         "tests/test_ui_qt_technical_official_composite_view_v2.py",
         "tests/test_ui_qt_technical_official_revenue_research_presenter_v2.py",
-        "tests/test_watchlist_revenue_archived_bookmark_v3.py"
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "tests/test_research_output_copy.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -343,7 +346,10 @@
         "ui_qt/technical_official_revenue_research_presenter_v2.py",
         "ui_qt/views/daily_market_technical_official_disposition_revenue_view.py",
         "ui_qt/views/daily_market_technical_universe_price_view_v1.py",
-        "ui_qt/workers/revenue_source_actor_v2.py"
+        "ui_qt/workers/revenue_source_actor_v2.py",
+        "app_module/research_output_copy.py",
+        "scripts/copy_research_output.py",
+        "tests/test_research_output_copy.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

@@ -15,6 +15,9 @@ from typing import Any, Callable
 from app_module.recommendation_portfolio_calendar_artifact_v1 import _canonical_path
 from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
 from app_module.research_run_service import ResearchRunService
+from app_module.recommendation.persistence import RecommendationExecutionPersistence
+from app_module.recommendation.queries import RecommendationExecutionQueries
+from data_module.result_artifact_store import ResultArtifactStore
 
 SCHEMA = "research-output-copy.v1"
 # 只重綁既有reader實際使用的SQLite欄位，不對JSON／文字做全域取代。
@@ -22,7 +25,9 @@ _STORES: dict[str, tuple[str, str, str, tuple[str, ...]]] = {
     "registry": ("research_runs", "research_runs.db", "research_runs", ("equity_path", "trades_path")),
     "legacy_backtest": ("backtest/runs", "backtest_runs.db", "runs", ("equity_curve_path", "trade_list_path")),
     "legacy_recommendation_portfolio": ("recommendation_portfolio/runs", "recommendation_portfolio_runs.db", "runs", ("data_path",)),
+    "recommendation": ("recommendation/runs", "recommendation_runs.db", "runs", ("data_path",)),
 }
+_STORE_KEYS = {kind: "result_id" if kind == "recommendation" else "run_id" for kind in _STORES}
 
 
 class ResearchOutputCopyError(ValueError):
@@ -88,9 +93,11 @@ def _digest(path: Path, check: Callable[[], bool] | None, destination: Path | No
     return digest.hexdigest()
 
 
-def _inventory(root: Path, budget: ResearchOutputCopyBudget, check: Callable[[], bool] | None) -> dict[str, tuple[tuple[int, int, int, int], str]]:
+def _inventory(root: Path, budget: ResearchOutputCopyBudget, check: Callable[[], bool] | None,
+               *, store_kinds: tuple[str, ...] | None = None) -> dict[str, tuple[tuple[int, int, int, int], str]]:
     result = {}
-    stack = [root / item[0] for item in _STORES.values() if (root / item[0]).exists()]
+    selected = store_kinds if store_kinds is not None else tuple(kind for kind in _STORES if kind != "recommendation")
+    stack = [root / _STORES[kind][0] for kind in selected if (root / _STORES[kind][0]).exists()]
     entries = 0
     total = 0
     while stack:
@@ -126,7 +133,8 @@ def _connection(path: Path) -> sqlite3.Connection:
     return connection
 
 
-def _rows(path: Path, table: str, maximum: int, check: Callable[[], bool] | None) -> list[dict[str, Any]]:
+def _rows(path: Path, table: str, maximum: int, check: Callable[[], bool] | None,
+          *, key: str = "run_id", optional_table: bool = False) -> list[dict[str, Any]]:
     # table只能來自本模組常數。
     connection = _connection(path)
     try:
@@ -135,11 +143,15 @@ def _rows(path: Path, table: str, maximum: int, check: Callable[[], bool] | None
             raise ResearchOutputCopyError("研究索引含非標準trigger／view，不能安全重綁")
         if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise ResearchOutputCopyError("來源SQLite integrity_check失敗")
+        if optional_table and not connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        ).fetchone():
+            return []
         if table == "research_runs":
             extra = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='portfolio_scenario_registry'").fetchone()
             if extra and connection.execute("SELECT 1 FROM portfolio_scenario_registry LIMIT 1").fetchone():
                 raise ResearchOutputCopyError("配置情境含外部帳本引用，需另核搬移，不能省略")
-        rows = [dict(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY run_id LIMIT ?", (maximum + 1,))]
+        rows = [dict(row) for row in connection.execute(f"SELECT * FROM {table} ORDER BY {key} LIMIT ?", (maximum + 1,))]
         if len(rows) > maximum:
             raise ResearchOutputCopyError("research_copy_run_budget_exceeded")
         return rows
@@ -163,6 +175,44 @@ def _entry(lookup: ResearchHistoryLookup, kind: str, run_id: str, check: Callabl
     return selected
 
 
+@dataclass(frozen=True)
+class _RecommendationIdentity:
+    metadata_sha256: str
+    context_sha256: str
+
+
+def _recommendation_entries(root: Path, budget: ResearchOutputCopyBudget,
+                            check: Callable[[], bool] | None) -> dict[str, _RecommendationIdentity]:
+    """沿正常推薦query核原JSON；先拒絕尚無搬移契約的外部ML收據。"""
+    runs = root / "recommendation/runs"
+    database = runs / "recommendation_runs.db"
+    store = ResultArtifactStore(runs / "execution_artifacts", database)
+    persistence = RecommendationExecutionPersistence(store)
+    canonical = _rows(database, "result_artifact_index", budget.max_runs, check,
+                      key="result_id", optional_table=True)
+    for row in canonical:
+        _cancel(check)
+        _record, envelope = persistence.read_verified_envelope(row["result_id"])
+        if envelope.execution.ml_receipt_refs:
+            raise ResearchOutputCopyError("推薦含外部ML收據，須另核依賴搬移，不能沿舊根補件")
+    query = RecommendationExecutionQueries(persistence)
+    views = query.list()
+    if len(views) > budget.max_runs:
+        raise ResearchOutputCopyError("research_copy_run_budget_exceeded")
+    result = {}
+    for view in views:
+        _cancel(check)
+        metadata = {"result_id": view.result_id, "label": view.label, "notes": view.notes,
+            "persisted_at": view.persisted_at.isoformat() if view.persisted_at else None,
+            "payload_hash": view.payload_hash, "schema_version": view.schema_version,
+            "schema_revision": view.schema_revision, "integrity_basis": view.integrity_basis,
+            "ml_read_status": view.ml_read_status, "diagnostics": view.diagnostics}
+        result[view.result_id] = _RecommendationIdentity(
+            sha256(json.dumps(metadata, ensure_ascii=False, sort_keys=True).encode()).hexdigest(),
+            view.raw_artifact_sha256)
+    return result
+
+
 def _emit(path: Path, payload: Any) -> None:
     with path.open("x", encoding="utf-8", newline="\n") as stream:
         json.dump(payload, stream, ensure_ascii=False, sort_keys=True, indent=2)
@@ -173,10 +223,14 @@ def _emit(path: Path, payload: Any) -> None:
 
 def copy_research_output(source_output_root: Path, destination_output_root: Path, *,
                          budget: ResearchOutputCopyBudget,
+                         include_recommendations: bool = False,
                          check_cancel: Callable[[], bool] | None = None) -> Path:
-    """只建立明選三個研究store的新副本；不啟用新根、不改原件或正式設定。"""
+    """建立明選保存研究與一般推薦的新副本；不啟用新根或修改原件。"""
     if type(budget) is not ResearchOutputCopyBudget:
         raise ResearchOutputCopyError("請明示具型別的複製預算")
+    if type(include_recommendations) is not bool:
+        raise ResearchOutputCopyError("一般推薦搬移必須明示布林選項")
+    store_kinds = tuple(kind for kind in _STORES if include_recommendations or kind != "recommendation")
     _cancel(check_cancel)
     source = _canonical_path(source_output_root, "research_copy_source", allow_missing=False)
     target = _canonical_path(destination_output_root, "research_copy_target", allow_missing=True)
@@ -188,19 +242,23 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
             protected = Path(text).absolute()
             if target.is_relative_to(protected) or protected.is_relative_to(target):
                 raise ResearchOutputCopyError("目的根不得包含正式／私人根或位於其下")
-    before = _inventory(source, budget, check_cancel)
+    before = _inventory(source, budget, check_cancel, store_kinds=store_kinds)
     stores: dict[str, list[dict[str, Any]]] = {}
     rewrites: dict[str, dict[str, dict[str, str]]] = {}
     source_entries = {}
     lookup = _lookup(source, budget)
     count = 0
     for kind, (directory, filename, table, fields) in _STORES.items():
+        if kind not in store_kinds:
+            continue
         db_relative = directory + "/" + filename
         if db_relative not in before:
             if any(name.startswith(directory + "/") for name in before):
                 raise ResearchOutputCopyError("研究檔案缺所屬索引：" + directory)
             continue
-        rows = _rows(source / db_relative, table, budget.max_runs - count, check_cancel)
+        key = _STORE_KEYS[kind]
+        rows = _rows(source / db_relative, table, budget.max_runs - count, check_cancel,
+                     key=key, optional_table=(kind == "recommendation"))
         count += len(rows)
         if count > budget.max_runs:
             raise ResearchOutputCopyError("research_copy_run_budget_exceeded")
@@ -208,7 +266,7 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
         rewrites[kind] = {}
         for row in rows:
             _cancel(check_cancel)
-            run_id = row["run_id"]
+            run_id = row[key]
             mapped = {}
             for field in fields:
                 value = row.get(field)
@@ -225,10 +283,17 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
                 mapped[field] = str(target / relative)
             rewrites[kind][run_id] = mapped
             # 先核明選來源邊界，不能讓舊reader先讀到索引指向的外部檔案。
-            source_entries[(kind, run_id)] = _entry(lookup, kind, run_id, check_cancel)
+            if kind != "recommendation":
+                source_entries[(kind, run_id)] = _entry(lookup, kind, run_id, check_cancel)
+        if kind == "recommendation":
+            entries = _recommendation_entries(source, budget, check_cancel)
+            count += len(entries) - len(rows)
+            if count > budget.max_runs:
+                raise ResearchOutputCopyError("research_copy_run_budget_exceeded")
+            source_entries.update({(kind, identity): value for identity, value in entries.items()})
     if not stores:
         raise ResearchOutputCopyError("明選根沒有受支援的研究索引")
-    if _inventory(source, budget, check_cancel) != before:
+    if _inventory(source, budget, check_cancel, store_kinds=store_kinds) != before:
         raise ResearchOutputCopyError("來源在驗證期間已變更")
     target.mkdir(parents=True, exist_ok=False)
     pending = target / ".research_copy_pending.json"
@@ -242,6 +307,7 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
                 raise ResearchOutputCopyError("複製時來源SHA變更")
         for kind, rows in stores.items():
             directory, filename, table, _ = _STORES[kind]
+            key = _STORE_KEYS[kind]
             database = target / directory / filename
             connection = sqlite3.connect(database)
             try:
@@ -249,37 +315,44 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
                 connection.execute("PRAGMA journal_mode=DELETE")
                 connection.execute("BEGIN IMMEDIATE")
                 for row in rows:
-                    mapped = rewrites[kind][row["run_id"]]
+                    mapped = rewrites[kind][row[key]]
                     if mapped:
                         columns = ",".join(field + "=?" for field in mapped)
-                        connection.execute(f"UPDATE {table} SET {columns} WHERE run_id=?", (*mapped.values(), row["run_id"]))
+                        connection.execute(f"UPDATE {table} SET {columns} WHERE {key}=?", (*mapped.values(), row[key]))
                 connection.commit()
             finally:
                 connection.close()
-            expected = [dict(row, **rewrites[kind][row["run_id"]]) for row in rows]
-            if _rows(database, table, len(expected), check_cancel) != expected:
+            expected = [dict(row, **rewrites[kind][row[key]]) for row in rows]
+            if _rows(database, table, len(expected), check_cancel, key=key,
+                     optional_table=(kind == "recommendation")) != expected:
                 raise ResearchOutputCopyError("新索引有路徑以外的metadata變更")
-        destination_before = _inventory(target, budget, check_cancel)
+        destination_before = _inventory(target, budget, check_cancel, store_kinds=store_kinds)
         if destination_before.keys() != before.keys():
             raise ResearchOutputCopyError("新副本檔案集合不符")
         copied_lookup = _lookup(target, budget)
+        copied_recommendations = (_recommendation_entries(target, budget, check_cancel)
+                                  if "recommendation" in stores else {})
         identities = []
         for (kind, run_id), original in source_entries.items():
-            selected = _entry(copied_lookup, kind, run_id, check_cancel)
+            selected = (copied_recommendations[run_id] if kind == "recommendation"
+                        else _entry(copied_lookup, kind, run_id, check_cancel))
+            if kind == "recommendation" and selected != original:
+                raise ResearchOutputCopyError("新推薦副本的原值／metadata／資格不符")
             identities.append({"kind": kind, "run_id": run_id, "source_metadata_sha256": original.metadata_sha256,
                 "source_context_sha256": original.context_sha256, "destination_metadata_sha256": selected.metadata_sha256,
-                "destination_context_sha256": selected.context_sha256, "rewritten_fields": rewrites[kind][run_id]})
+                "destination_context_sha256": selected.context_sha256, "rewritten_fields": rewrites[kind].get(run_id, {})})
         changed_db = {directory + "/" + filename for kind, (directory, filename, _, _) in _STORES.items() if kind in stores}
         for relative, (_, digest) in before.items():
             if relative not in changed_db and _digest(target / relative, check_cancel) != digest:
                 raise ResearchOutputCopyError("新副本金融原件SHA不符")
-        if _inventory(source, budget, check_cancel) != before:
+        if _inventory(source, budget, check_cancel, store_kinds=store_kinds) != before:
             raise ResearchOutputCopyError("來源在建立新副本期間已變更")
-        if _inventory(target, budget, check_cancel) != destination_before:
+        if _inventory(target, budget, check_cancel, store_kinds=store_kinds) != destination_before:
             raise ResearchOutputCopyError("新副本在reader驗證期間已變更")
         receipt = target / "RESEARCH_COPY_RECEIPT.json"
         _emit(receipt, {"schema": SCHEMA, "status": "copied_and_public_readers_verified",
             "created_at_utc": datetime.now(timezone.utc).isoformat(), "source_output_root": str(source),
+            "selected_store_kinds": list(store_kinds),
             "destination_output_root": str(target), "runs": identities,
             "source_files": [{"path": name, "bytes": stamp[0], "sha256": digest} for name, (stamp, digest) in before.items()],
             "destination_files": [{"path": name, "bytes": stamp[0], "sha256": digest} for name, (stamp, digest) in destination_before.items()],

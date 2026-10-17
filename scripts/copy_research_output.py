@@ -15,13 +15,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="建立離線保存研究的新副本，原件唯讀；非完整資料環境移機。")
     parser.add_argument("--source-output-root", type=Path, required=True)
     parser.add_argument("--destination-output-root", type=Path, required=True)
+    parser.add_argument("--include-recommendations", action="store_true", help="另明選一般保存推薦（legacy與canonical）；外部ML收據依賴未核時拒絕此批")
     parser.add_argument("--max-file-bytes", type=int, default=256 * 1024**2)
     parser.add_argument("--max-total-bytes", type=int, default=4 * 1024**3)
     parser.add_argument("--max-entries", type=int, default=100000)
     parser.add_argument("--max-runs", type=int, default=10000)
     args = parser.parse_args()
     budget = ResearchOutputCopyBudget(args.max_file_bytes, args.max_total_bytes, args.max_entries, args.max_runs)
-    receipt = copy_research_output(args.source_output_root, args.destination_output_root, budget=budget)
+    receipt = copy_research_output(args.source_output_root, args.destination_output_root, budget=budget,
+                                   include_recommendations=args.include_recommendations)
     print("新副本已由原reader核對；未啟用新根。收據：" + str(receipt))
     return 0
 

@@ -38,6 +38,125 @@ def inventory(root):
     return {p.relative_to(root).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
 
 
+def _add_recommendations(root, *, canonical=True, legacy=True):
+    from app_module.recommendation.codec import decode_execution_envelope
+    from app_module.recommendation.contracts import MLAvailability
+    from app_module.recommendation.persistence import RecommendationExecutionPersistence
+    from data_module.result_artifact_store import ResultArtifactStore
+    runs = root / "recommendation/runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    if legacy:
+        payload = {"result_id": "saved_selection", "result_name": "原推薦", "created_at": "2026-09-22T12:00:00+00:00",
+            "config": {"decision_date": "2026-09-22"}, "recommendations": [{"證券代號": "2330", "證券名稱": "台積電", "收盤價": "600.50"}],
+            "opaque_original": {"original_uri": "original://do-not-rewrite", "large_integer": 2**60 + 7}}
+        path = runs / "saved_selection.json"
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        with sqlite3.connect(runs / "recommendation_runs.db") as db:
+            db.execute("CREATE TABLE runs(result_id TEXT PRIMARY KEY,result_name TEXT,notes TEXT,created_at TEXT,data_path TEXT)")
+            db.execute("INSERT INTO runs VALUES(?,?,?,?,?)", ("saved_selection", "原推薦", "原註記", payload["created_at"], str(path)))
+        db.close()
+    if canonical:
+        source = decode_execution_envelope((Path(__file__).parent / "fixtures/c1_consumer_readiness/r016_execution_rev2.json").read_bytes()).execution
+        execution = replace(source, result_id="exact:canonical", ml_availability=MLAvailability(), ml_projection_refs=(), ml_receipt_refs=())
+        RecommendationExecutionPersistence(ResultArtifactStore(runs / "execution_artifacts", runs / "recommendation_runs.db")).save(execution)
+    return runs
+
+
+@pytest.mark.parametrize(("canonical", "legacy"), [(False, True), (True, False), (True, True)])
+def test_recommendation_copy_reopens_original_query_without_old_root(source, tmp_path, canonical, legacy):
+    from app_module.recommendation.queries import RecommendationExecutionQueries
+    from app_module.recommendation.persistence import RecommendationExecutionPersistence
+    from data_module.result_artifact_store import ResultArtifactStore
+
+    runs = _add_recommendations(source, canonical=canonical, legacy=legacy)
+    query = RecommendationExecutionQueries(RecommendationExecutionPersistence(ResultArtifactStore(runs / "execution_artifacts", runs / "recommendation_runs.db")))
+    original = {view.result_id: (view.raw_artifact_sha256, view.payload_hash, view.label, view.notes, view.result) for view in query.list()}
+    before = inventory(source)
+    target = tmp_path / "new"
+    receipt = copy.copy_research_output(source, target, budget=BUDGET, include_recommendations=True)
+    assert inventory(source) == before
+    # 原根移開，重開仍使用正常query，不允許用舊絕對位置補件。
+    assert source.resolve().is_relative_to(tmp_path.resolve())
+    source.rename(tmp_path / "old_unavailable")
+    copied_runs = target / "recommendation/runs"
+    copied = RecommendationExecutionQueries(RecommendationExecutionPersistence(ResultArtifactStore(copied_runs / "execution_artifacts", copied_runs / "recommendation_runs.db")))
+    actual = {view.result_id: (view.raw_artifact_sha256, view.payload_hash, view.label, view.notes, view.result) for view in copied.list()}
+    assert actual == original and actual
+    proof = json.loads(receipt.read_bytes())
+    assert sum(item["kind"] == "recommendation" for item in proof["runs"]) == len(actual)
+    for name, (raw, _stamp) in before.items():
+        if name.startswith("recommendation/") and not name.endswith(".db"):
+            assert (target / name).read_bytes() == raw
+
+
+@pytest.mark.parametrize("kind", ["outside_path", "wrong_identity", "journal", "trigger", "canonical_drift"])
+def test_recommendation_invalid_source_is_not_partially_copied(source, tmp_path, monkeypatch, kind):
+    runs = _add_recommendations(source)
+    if kind == "outside_path":
+        outside = tmp_path / "outside.json"
+        outside.write_bytes((runs / "saved_selection.json").read_bytes())
+        with sqlite3.connect(runs / "recommendation_runs.db") as db:
+            db.execute("UPDATE runs SET data_path=?", (str(outside),))
+        db.close()
+        original_open = Path.open
+        def reject_outside(path, *args, **kwargs):
+            assert path != outside, "檢查來源邊界前不可讀外部JSON"
+            return original_open(path, *args, **kwargs)
+        monkeypatch.setattr(Path, "open", reject_outside)
+    elif kind == "wrong_identity":
+        path = runs / "saved_selection.json"
+        payload = json.loads(path.read_bytes())
+        payload["result_id"] = "another_identity"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    elif kind == "journal":
+        (runs / "recommendation_runs.db-wal").write_bytes(b"active")
+    elif kind == "trigger":
+        with sqlite3.connect(runs / "recommendation_runs.db") as db:
+            db.execute("CREATE TRIGGER bad AFTER UPDATE ON runs BEGIN UPDATE runs SET notes='changed'; END")
+        db.close()
+    else:
+        path = next((runs / "execution_artifacts").glob("*.json"))
+        path.write_bytes(path.read_bytes() + b"tampered")
+    before = inventory(source)
+    target = tmp_path / "new"
+    with pytest.raises((ValueError, RuntimeError)):
+        copy.copy_research_output(source, target, budget=BUDGET, include_recommendations=True)
+    assert not target.exists() and inventory(source) == before
+
+
+def test_recommendation_external_ml_receipt_is_rejected_before_query_io(source, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    _add_recommendations(source)
+    # 由原verified envelope接點觀察到外部依賴時，必須在query讀receipt前拒絕。
+    original = copy.RecommendationExecutionPersistence.read_verified_envelope
+    def bound(self, result_id):
+        record, envelope = original(self, result_id)
+        return record, SimpleNamespace(execution=SimpleNamespace(ml_receipt_refs=(object(),)))
+    monkeypatch.setattr(copy.RecommendationExecutionPersistence, "read_verified_envelope", bound)
+    monkeypatch.setattr(copy.RecommendationExecutionQueries, "list", lambda *a: pytest.fail("不能先讀外部ML收據"))
+    target = tmp_path / "new"
+    with pytest.raises(copy.ResearchOutputCopyError, match="外部ML"):
+        copy.copy_research_output(source, target, budget=BUDGET, include_recommendations=True)
+    assert not target.exists()
+
+
+def test_recommendation_canonical_and_legacy_share_the_original_run_budget(source, tmp_path):
+    _add_recommendations(source)
+    with pytest.raises(copy.ResearchOutputCopyError, match="budget"):
+        copy.copy_research_output(source, tmp_path / "new", budget=replace(BUDGET, max_runs=4), include_recommendations=True)
+    assert not (tmp_path / "new").exists()
+
+
+def test_existing_copy_scope_does_not_implicitly_add_general_recommendations(source, tmp_path):
+    runs = _add_recommendations(source)
+    (runs / "recommendation_runs.db-wal").write_bytes(b"outside_selected_scope")
+    receipt = copy.copy_research_output(source, tmp_path / "new", budget=BUDGET)
+    proof = json.loads(receipt.read_bytes())
+    assert len(proof["runs"]) == 3
+    assert "recommendation" not in proof["selected_store_kinds"]
+    assert not (tmp_path / "new/recommendation").exists()
+
+
 @pytest.fixture
 def source(tmp_path):
     root = tmp_path / "original"
@@ -56,6 +175,7 @@ def source(tmp_path):
     with sqlite3.connect(legacy.db_path) as db:
         db.execute("INSERT INTO runs(run_id,run_name,stock_code,created_at,equity_curve_path,trade_list_path) VALUES(?,?,?,?,?,?)",
                    ("old", "原單股", "2330", "2026-01-03", str(equity_path), str(trades_path)))
+    db.close()
     portfolio = RecommendationPortfolioRunRepository(config)
     data_path = portfolio.runs_dir / "basket.json"
     data_path.write_text(json.dumps({"run_id": "basket", "result": {"summary": {"total_trades": 0},
@@ -64,6 +184,7 @@ def source(tmp_path):
     with sqlite3.connect(portfolio.db_path) as db:
         db.execute("INSERT INTO runs(run_id,run_name,created_at,data_path) VALUES(?,?,?,?)",
                    ("basket", "原組合", "2026-01-03", str(data_path)))
+    db.close()
     return root
 
 

@@ -19,6 +19,16 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 
 若只要把已保存回測放到新的`OUTPUT_ROOT`，可使用來源工具`scripts/copy_research_output.py`。它處理研究Registry、舊單股回測與舊推薦組合三個store；不複製行情、價格選股來源、一般推薦、收藏、Paper帳或模型，亦不自動啟用新設定。這是完整移機中的一個步驟，原完整清冊仍須逐項處理。
 
+Increment129 另提供明示選項 `--include-recommendations`，納入同一來源根 `recommendation/runs` 的已保存一般推薦，包括 legacy 與 canonical execution；不加此選項仍維持上段三個 store。依相同授權與全新目的根執行，例如：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/copy_research_output.py --source-output-root 'C:\BaldrResearch\old-output' --destination-output-root 'C:\BaldrResearch\copied-output' --include-recommendations
+```
+
+一般推薦只重綁新索引的 `data_path`，原 JSON、排名、數值、未知欄位與 canonical artifact／metadata 不重寫；新收據列 `selected_store_kinds`。原 query 在來源與副本核對整批身分，外部路徑、錯 ID、journal、trigger、破損 artifact 或原根漂移會拒絕。canonical 的外部 ML 收據尚無完整搬移契約，會在 query 讀該收據與建立目的根前具名拒絕；不偷偷略過已選結果。若只搬回測，沿原命令建立另一全新目的根，不選一般推薦。
+
+owner 核准新 `OUTPUT_ROOT` 後，到「推薦分析」按「讀取可用來源」，選原完整結果 ID，再按「讀取」；返回及重啟仍讀原保存值，不重算推薦或更新日期。固定109原推薦的新副本已由既存125 EXE正常Main／fresh限定驗證，原根I/O與網路0；125未打入此來源工具，也未自動更改試用設定。這不補舊推薦缺行情或授歷史PIT，詳[129 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。
+
 1. 先取得owner對來源與**全新目的根**的精確授權，關閉使用該來源的保存程序。來源仍有SQLite journal／WAL、未完成staging、非標準trigger／view或配置情境外部帳本引用時，工具會拒絕，不省略那些內容。Agent驗證仍須使用受控Job，不可在正式根試跑。
 2. 以下為人工操作範例，須換成已授權的實際路徑；目的根必須不存在，不得位於正式資料或私人根內，也不得與來源重疊：
 
@@ -30,7 +40,7 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 4. 必須看到`copied_and_public_readers_verified`收據，且沒有`.research_copy_pending.json`或`RESEARCH_COPY_FAILURE.json`，才把此步列為完成。超限、取消或來源／新副本讀中修訂都不能當成功；失敗副本保留供核對，不直接重跑覆寫。預設每檔256MiB、全來源4GiB、100,000檔／目錄項與10,000runs，是明示資源預算，超限會整批拒絕，不截短來源。
 5. owner另行核准設定時，再讓GUI使用新`OUTPUT_ROOT`，保留原`DATA_ROOT`及其他已核根，從「策略回測 → 找已保存結果」明選原run、查原規則／結果、返回，關閉後重開。不重新回測或按目前策略重建保存值；舊根可保留作還原。這個複製命令不改Task、maintainer、模型、私人帳或正式writer。
 
-來源正常Main與既存125 EXE已限定驗新根讀回及fresh，原根I/O與重算為0；125 EXE本身未打入這個新來源工具，執行複製須使用對應來源環境。完整行情／technical v4／一般推薦／收藏／私人帳、其他主機與全環境移機仍待，詳[Increment126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。
+來源正常Main與既存125 EXE已限定驗新根讀回及fresh，原根I/O與重算為0；125 EXE本身未打入這個新來源工具，執行複製須使用對應來源環境。完整行情／technical v4／一般推薦外部ML依賴／收藏／私人帳、其他主機與全環境移機仍待，詳[Increment126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。
 
 ## 技術來源的新副本與封存恢復（來源工具）
 

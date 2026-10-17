@@ -31,6 +31,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ## 讀寫與保存契約
 
+`research_output_copy.py` 原三store預設不變；caller 以 `include_recommendations=True`（CLI `--include-recommendations`）另明選 `recommendation/runs`。Legacy `runs.result_id` 與 canonical index／metadata 共用原 `RecommendationExecutionQueries` 驗身分，新索引僅改既知 `data_path`，原 JSON／artifact bytes不動。canonical 先由 verified envelope 核外部ML收據依賴，缺完整搬移契約時在任何該收據I/O與目的根建立前拒絕；來源邊界、全量預算、取消、journal／trigger、讀前後SHA與失敗隔離沿原工具。新收據明列選定store，不啟用設定或更動來源時間／用途資格。操作與驗證見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)及[129 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。
+
 ### 具名營益目前研究版本
 
 原`twse_operating_summary_snapshot.py`的v1仍只接受資料集20762固定CSV、2330及2026-H1，不改原政策或7份原件。貨幣／期間由同發行人官方半年報與營收、四項比率在顯示精度內交叉核對，不外推1055列或未來版本。雙外部SHA、完整原件、一次性用途及每批實際保存時鐘獨立重驗；官方只有出表日，依成功批次台北小時，不借HTTP Date或財報期末倒填可得性。

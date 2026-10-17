@@ -174,6 +174,8 @@ class OptimizerService:
             最佳化結果列表（已排序）
         """
 
+        if strategy_id == "baldr_vcp_three_contractions_v1":
+            raise ValueError("三段轉折收縮目前僅支持正常單股研究，參數掃描保存契約尚未接受")
         if strategy_id == "baldr_bollinger_squeeze_v1":
             raise ValueError("布林帶寬低點突破目前僅支持正常單股研究，參數掃描契約尚未接受")
         # 生成參數網格

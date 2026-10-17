@@ -150,6 +150,30 @@ def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | No
     return lines
 
 
+def _vcp_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
+    """只列同次收縮觀測與意圖，不借預設分數或交易數推論策略有效。"""
+    diagnostics = details.get("rule_diagnostics")
+    if not isinstance(diagnostics, dict) or diagnostics.get("schema") != "baldr-vcp-three-contractions-diagnostics.v1":
+        return None
+    labels = (("total_sessions", "總觀測列"), ("ready_sessions", "可評估列"),
+              ("unavailable_sessions", "暖機或資料不足列"), ("entry_signal_sessions", "三段收縮突破進場意圖"),
+              ("exit_condition_sessions", "SMA20出場條件"))
+    valid = (diagnostics.get("strategy_id") == "baldr_vcp_three_contractions_v1"
+             and diagnostics.get("strategy_version") == "1.0.0" and diagnostics.get("fixed_version_compatible") is True
+             and diagnostics.get("pivot_span") == 2 and diagnostics.get("max_base_rows") == 60
+             and all(type(diagnostics.get(key)) is int and diagnostics[key] >= 0 for key, _ in labels))
+    if valid:
+        valid = (diagnostics["ready_sessions"] + diagnostics["unavailable_sessions"] == diagnostics["total_sessions"]
+                 and diagnostics["entry_signal_sessions"] <= diagnostics["ready_sessions"]
+                 and diagnostics["exit_condition_sessions"] <= diagnostics["ready_sessions"])
+    lines = ["", "--- 三段轉折收縮診斷 ---"]
+    if not valid:
+        return lines + ["規則診斷不可用（版本、欄位或計數不符），不以預設分數代替。"]
+    lines.extend(f"{label}: {diagnostics[key]} 列" for key, label in labels)
+    return lines + ["轉折在右2列後才確認；三段跌幅遞減、末段量縮，再放量突破三峰且高於SMA50。",
+                    "已知收盤跌破SMA20才出場；未知不補價。意圖不代表成交或已完成配對，研究假說未授有效績效。"]
+
+
 def _squeeze_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
     """明示帶寬與量能條件；不借綜合分數、條件列數或零交易判策略有效。"""
     diagnostics = details.get("rule_diagnostics")
@@ -325,7 +349,9 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
             f"注意: 請求範圍 {requested_start}~{requested_end} 已調整為實際數據範圍"
         )
 
-    rule_diagnostics_lines = _bollinger_rule_diagnostics_lines(details)
+    rule_diagnostics_lines = _vcp_rule_diagnostics_lines(details)
+    if rule_diagnostics_lines is None:
+        rule_diagnostics_lines = _bollinger_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is None:
         rule_diagnostics_lines = _squeeze_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is None:

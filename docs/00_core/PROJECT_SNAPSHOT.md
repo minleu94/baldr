@@ -19,7 +19,7 @@
 
 ## 目前工程狀態與限制
 
-原P07三段轉折收縮另有已驗核心及預宣告36組敏感度，尚未註冊或接正常Backtest／保存／UI，不能列為新增可用策略。固定121保持；下一步接原producer與reader，詳[Increment123 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment123-vcp-core)。基本面前期仍缺已接受用途來源，維持不可用。
+開發來源已把原P07三段轉折收縮1.0.0接入原單股Backtest／Broker／Registry與規則卡，完成正常保存、返回及新程序讀回；固定121尚未包含。整合同時查到SQLite合法千分位被轉成NaN的缺陷，已修正讀取格式並在新run保存`historical-price-numeric-text.v1`，不改原資料或舊結果。修正後2330／2025-01-02至2026-09-23為419已知列、1意圖／1配對；這不是有效策略或歷史PIT接受。下一出口為固定EXE及同版核對，詳[Increment124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。基本面前期用途缺件仍維持不可用。
 
 開發來源另修保存回訪的路徑誤讀：Research Registry 索引複製後，不再沿其舊絕對路徑讀原根，也拒其他 run 檔名及根內連結替換。原件不改寫，固定121與其交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
 

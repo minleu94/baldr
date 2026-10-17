@@ -193,6 +193,39 @@ def test_squeeze_packaged_source_requires_both_files_and_shared_group(tmp_path, 
 
 
 @pytest.mark.parametrize("omission", [None, "file", "declaration", "shared"])
+def test_vcp_packaged_sources_are_complete_without_squeeze_sources(tmp_path, omission):
+    shared = ("analysis_module/technical_analysis/technical_date_support.py", "backtest_module/broker_simulator.py",
+              "backtest_module/conservative_fill_policy.py", "financial_module/units.py",
+              "app_module/backtest_service.py", "ui_qt/views/backtest/research_run_metadata.py")
+    own = ("decision_module/strategies/baldr_vcp_contract.py", "decision_module/strategies/baldr_vcp_executor.py",
+           "app_module/vcp_rule_card.py", "ui_qt/views/backtest/vcp_execution_source.py")
+    # 保留既有整包的baseline／v2防線；VCP不替舊布林帶寬包新增前置。
+    baseline = ("decision_module/strategies/baseline_score_executor.py", "decision_module/score_threshold_policy.py")
+    v2 = ("decision_module/strategies/stable_conservative_executor.py", "decision_module/strategies/momentum_aggressive_executor.py")
+    original_p07 = ("decision_module/strategies/baldr_bollinger_executor.py", "decision_module/strategies/baldr_bollinger_contract.py",
+                    "decision_module/strategies/baldr_w_bottom_executor.py", "decision_module/strategies/baldr_w_bottom_contract.py",
+                    "analysis_module/pattern_analysis/causal_w_bottom.py", "analysis_module/technical_analysis/technical_date_support.py",
+                    "backtest_module/conservative_fill_policy.py", "financial_module/units.py")
+    declared = own if omission == "shared" else shared + own[:-1] if omission == "declaration" else shared + own
+    declared += v2 + original_p07 if omission != "shared" else ()
+    spec = tmp_path / "packaging/baldr.spec"
+    spec.parent.mkdir()
+    spec.write_text("for relative_source in " + repr(declared) + ":\n    pass\n", encoding="utf-8")
+    for relative in shared + own + baseline + v2 + original_p07:
+        if omission == "file" and relative == own[-1]:
+            continue
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(relative.encode())
+    if omission:
+        with pytest.raises(ValueError, match="三段收縮.*完整四檔"):
+            provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    else:
+        value = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+        assert all(value["resource_sha256"][relative] == hashlib.sha256(relative.encode()).hexdigest() for relative in shared + own)
+
+
+@pytest.mark.parametrize("omission", [None, "file", "declaration", "shared"])
 def test_causal_score_packaged_source_requires_declared_inputs_and_original_shared_group(tmp_path, omission):
     shared = ("decision_module/strategies/stable_conservative_executor.py",
               "decision_module/strategies/momentum_aggressive_executor.py",

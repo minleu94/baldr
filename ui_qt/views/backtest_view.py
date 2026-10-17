@@ -899,8 +899,11 @@ class BacktestView(QWidget):
     def _reject_squeeze_other_mode(self, mode: str) -> bool:
         """尚未具保存契約的研究模式，在讀行情或建立worker前明確停止。"""
         combo = getattr(self, "strategy_combo", None)
-        if combo is None or combo.currentData() != "baldr_bollinger_squeeze_v1" or mode == "single_stock":
+        if combo is None or combo.currentData() not in ("baldr_bollinger_squeeze_v1", "baldr_vcp_three_contractions_v1") or mode == "single_stock":
             return False
+        if combo.currentData() == "baldr_vcp_three_contractions_v1":
+            QMessageBox.warning(self, "研究模式尚未開放", "三段轉折收縮目前僅支持正常單股研究；請選單股模式。批次、參數掃描與Walk-forward尚未驗收。")
+            return True
         QMessageBox.warning(self, "研究模式尚未開放", "布林帶寬低點突破目前僅支持正常單股研究；請選單股模式。批次、參數掃描與Walk-forward尚未驗收。")
         return True
 

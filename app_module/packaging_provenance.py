@@ -221,6 +221,21 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in squeeze_sources
         })
+    vcp_sources = (
+        "decision_module/strategies/baldr_vcp_contract.py", "decision_module/strategies/baldr_vcp_executor.py",
+        "app_module/vcp_rule_card.py", "ui_qt/views/backtest/vcp_execution_source.py",
+    )
+    vcp_shared = (
+        "analysis_module/technical_analysis/technical_date_support.py", "backtest_module/broker_simulator.py",
+        "backtest_module/conservative_fill_policy.py", "financial_module/units.py",
+        "app_module/backtest_service.py", "ui_qt/views/backtest/research_run_metadata.py",
+    )
+    if any(relative in declared_sources for relative in vcp_sources):
+        if (not all(relative in declared_sources for relative in vcp_sources + vcp_shared)
+                or not all((source / relative).is_file() for relative in vcp_sources + vcp_shared)):
+            raise ValueError("三段收縮原始來源須完整四檔及同次共用來源")
+        resource_hashes.update({relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+                                for relative in vcp_sources + vcp_shared})
     ma_rule_sources = (
         "decision_module/strategies/baldr_ma_alignment_executor.py",
         "decision_module/strategies/baldr_ma_alignment_contract.py",

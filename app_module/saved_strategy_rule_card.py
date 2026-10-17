@@ -190,7 +190,7 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
                     errors.append("execution_rule_capital_mismatch")
             except (KeyError, DecimalException, TypeError, ValueError):
                 errors.append("execution_rule_capital_mismatch")
-        if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", "single-backtest-bollinger-execution.v1", "single-backtest-w-bottom-execution.v1", "single-backtest-ma-alignment-execution.v1", "single-backtest-bollinger-squeeze-execution.v1"):
+        if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", "single-backtest-bollinger-execution.v1", "single-backtest-w-bottom-execution.v1", "single-backtest-ma-alignment-execution.v1", "single-backtest-bollinger-squeeze-execution.v1", "single-backtest-vcp-three-contractions-execution.v1"):
             broker = execution.get("broker_config")
             if not isinstance(broker, dict):
                 errors.append("execution_rule_saved_cost_mismatch")
@@ -264,4 +264,6 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
               "data_fingerprint": metadata.data_fingerprint, "equity_sha256": metadata.equity_parquet_hash,
               "trades_sha256": metadata.trades_parquet_hash,
               "equity_path": metadata.equity_path, "trades_path": metadata.trades_path}
+    if "price_input_preparation" in metadata.data_manifest:
+        origin["price_input_preparation"] = metadata.data_manifest["price_input_preparation"]
     return SavedStrategyRuleCard(card, status, kind, reference, tuple(errors), canonical_json(normalize_research_run_json_value(origin)))

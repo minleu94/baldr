@@ -91,12 +91,12 @@ def _base(pivots: deque[_Pivot], bars: deque[_Bar], position: int, max_base_rows
         return False, evidence
     first = [bar.volume for bar in bars if highs[0].position <= bar.position <= lows[0].position]
     last = [bar.volume for bar in bars if highs[2].position <= bar.position <= lows[2].position]
-    if not first or not last or sum(first) <= 0 or sum(last) <= 0:
+    if not first or not last:
         return False, evidence
     evidence.update(first_pullback_volume_sum=sum(first), first_pullback_rows=len(first),
                     last_pullback_volume_sum=sum(last), last_pullback_rows=len(last),
                     pivot_price=max(high.price for high in highs))
-    return sum(last) * len(first) < sum(first) * len(last), evidence
+    return sum(first) > 0 and sum(last) > 0 and sum(last) * len(first) < sum(first) * len(last), evidence
 
 
 def _observe_frame(df: pd.DataFrame, *, execution_start_date: str | None = None,
@@ -200,6 +200,8 @@ def _observe_frame(df: pd.DataFrame, *, execution_start_date: str | None = None,
                 "entry_rule_match": entry, "exit_rule_match": exit_match, "reason_tags": reason,
                 "setup_match": setup, "pattern_already_consumed": already_consumed,
                 "valid_observed_rows": valid_rows, "previous_close": previous_close,
+                "observation_position": position, "observed_open": open_value,
+                "observed_high": high, "observed_low": low,
                 "observed_close": close, "observed_volume": None if volume is None else int(volume),
                 "vcp_ma20": ma20, "vcp_ma50": ma50, "volume_sum20": volume_sum,
                 "contraction_evidence": evidence,
@@ -209,7 +211,9 @@ def _observe_frame(df: pd.DataFrame, *, execution_start_date: str | None = None,
     fields = (tuple(observations[0]) if observations else
               ("signal", "rule_observation_ready", "entry_rule_match", "exit_rule_match", "reason_tags"))
     for field in fields:
-        result[field] = pd.Series([row[field] for row in observations], index=source.index, dtype=object)
+        scalar = field in {"signal", "rule_observation_ready", "entry_rule_match", "exit_rule_match",
+                           "valid_observed_rows", "observation_position", "pattern_already_consumed"}
+        result[field] = pd.Series([row[field] for row in observations], index=source.index, dtype=None if scalar else object)
     result["regime_match"] = False
     fixed = (pivot_span, max_base_rows) == (PIVOT_SPAN, MAX_BASE_ROWS)
     result.attrs["rule_diagnostics"] = {

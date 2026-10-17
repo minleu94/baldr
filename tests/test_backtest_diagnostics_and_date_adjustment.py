@@ -318,6 +318,9 @@ def test_scoring_engine_behavior_difference():
     dates = pd.date_range("2026-06-01", "2026-06-01")
     df = pd.DataFrame({
         '收盤價': [100.0],
+        # 聚合測試明確提供可得指標；mock分數不能代替原值可得性。
+        'RSI': [40], 'MACD': [0], 'MACD_Signal': [0],
+        'slowk': [50], 'slowd': [50], 'upperband': [110], 'lowerband': [90],
     }, index=dates)
     
     # Mock 四個指標打分 Series
@@ -359,6 +362,7 @@ def test_scoring_engine_behavior_difference():
          # 權重 W_rsi = 10^1.5 ≈ 31.62，其餘 W_i = 0.0。
          # 加權平均為 50 + (-10.0 * 31.62) / 31.62 = 40.0
          assert abs(score_weighted.iloc[0] - 40.0) < 1e-5
+         assert engine.calculate_indicator_score(df.drop(columns=['RSI']), config_default).isna().all()
 
 def test_pattern_score_confirm_logic_no_look_ahead():
     """驗證 PatternScore 的突破確認邏輯，確保無未來函數 (Look-ahead bias)"""

@@ -2,6 +2,37 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+<a id="increment124-vcp-integration"></a>
+## Increment124：原P07正常回測／保存接線與合法千分位修復（2026-10-17，開發來源）
+
+本輪解除三段轉折收縮只有核心、缺正常操作／同次保存的交付阻礙，沿原BacktestService、Broker、Registry與歷史頁完成，不新增撮合或保存系統。原123固定規則與敏感度不變、四條V1不擴；Root依序履行Tech Lead／Execution／Data Audit／QA／Documentation，沒有獨立reviewer或新代理，累計10/10保持。來源HEAD基底`96d60ada9e3d7993cc16112ce5256804c5327eb8`，本節記工作樹增量；固定121保持原身分，同版EXE尚待。
+
+### 同次來源與安全讀回
+
+原Registry註冊`baldr_vcp_three_contractions_v1@1.0.0`；pure producer只讀一次，向前365日、最多160前置觀測列，不在測試前下單。新execution schema／parameter contract綁12來源SHA、runtime、原輸入與成本、OHLCV／均線／已確認轉折／收縮量能／一次性意圖；摘要不顯假分數。reader只核保存資料，窗口完整時核五列極值及回落原量和，不查目前executor或Registry，不補抓邊界外資料。批次／最佳化／Walk-forward於行情I/O前拒絕此策略，獨立推薦回放沿原Profile；晉升保持禁止。四個VCP raw檔與共享來源另成打包群，不綁成原Squeeze新前置。
+
+QA01先84PASS／3個created_at fixture FAIL；補必要欄後QA02為187PASS／1個打包群錯綁FAIL，Workbench85在該輪通過。QA03c拆回獨立VCP群後8個打包案例PASS，validator25/0/4、mypy1059及精度守衛PASS；outer SHA `dd873d8f799ea1cff1a5518692b4f1a3f2c35cf8bc601d8c9d1bc9d1984d6f28`。QA05以保留原OHLCV卻改pivot price／pullback volume，兩個紅測證明reader漏綁；修正後QA06c的26個VCP來源／UI案例、compile、mypy1059／精度守衛PASS，outer `5766c8d14122278c2645929109e1a8ef69550018d59a5b98ba01067c6cb2ccfd`。原紅測outer `f567b669d9ff7a285330def345573bbb72f6e1339aa88671e4cca0b86cb04fce`及QA04 reader原碼另存，不刪失敗。
+
+### 真缺值與格式錯判分開
+
+QA04／QA07曾分別以正常Main／fresh驗2330短窗0配對及2317長窗1配對；它們是**修解析前的原件**，不能當最終金融結果。QA07只掃NULL所得`differences=[]`不足以證明讀取一致。QA08依實際schema查原列，發現2330在2024-12-12前仍有`1,045.00`等合法TEXT；SQLite原`pd.to_numeric(errors='coerce')`將它們變成NaN，造成測試前暖機假缺件。QA08 outer `84299c764334445441d3db154d1c0ea5c6d407f0d4b59977062dfd41be7d032f`，原查詢／輸出保留。不是原庫NULL，也沒有把缺價日稱停牌。
+
+QA09兩個SQL／CSV紅測真FAIL：前者合法價變NaN，後者字串直接Decimal失敗；outer `97f53f82cf2261635450d22a35909b049a9bc3da02209c21edd6fbb78cda43d6`。修復只辨識正確分組、trim及既有缺值記號；SQL沿原數值展示／分析邊界，整數量與缺量不先經float，CSV明讀原文字。錯誤分組與真缺件不補數值。新manifest與保存規則來源列出`historical-price-numeric-text.v1`，原行情與舊run不改，不授原float DTO完整精度。
+
+QA10為181PASS／1個舊計分fixture FAIL，含格式、原檔SHA、大整數與缺量、唯讀來源、舊策略producer及保存reader回歸；outer `a9bf4680f0667b283994687252cbf83dd01254a6de3aa71333967d5b5824e233`。該fixture原先只mock分數、未給現行可得性守衛的原指標；補齊欄位，保留47.5／40原斷言並增加缺RSI仍未知。QA11僅重驗受改fixture及未執行防線：9PASS、compile、mypy1059／精度守衛PASS，outer `a4656eaa29359c45e2b38f560cb7b2f91868eda6a7c2e7c0c99d549ed044a1f2`。沒有反覆重跑未改Workbench或放寬金融守衛。
+
+### 最終開發來源正常Main與fresh
+
+QA12 Main **19780→48096**，2330／2025-01-02至2026-09-23、本金10,000,000、費率14.25bp、滑價5bp、停損停利0，其餘原預設。正常選策略／原規則、執行、保存、歷史明選同一run、查原規則／原結果、返回及fresh只讀皆通過；**419列皆ready、2025-01-06有1個進場意圖、1組完成配對**，新manifest及保存卡均讀回解析版本。這是工程核對例，不是按交易數調參或有效策略。fresh禁止目前Registry／executor／重新執行／保存，原run身分相同，六行情SHA不變、socket attempt0。
+
+[最終來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment124_vcp_main_source_qa12/result.json) SHA `2a543ad3dcea63f5edb14696f690fd608eef300706e44ae5125e8f56152bf91f`；outer `037595314bd772148323967df0b8012527fd1043fca8bfab40fc62843d7aa735`。開始可用RAM27,279,851,520 bytes，結束27,296,841,728；Job可讀回8GiB／12程序／kill-on-close，三PID陣列自然空、process／Job handles關閉、mutex釋放、無forced cleanup。offscreen元件與抓圖不授Native、中文字型可讀性或真人接受。
+
+### 116核對報告的適用範圍與Coverage
+
+使用者重貼116報告屬外部核對內容，其內Python命令與PASS不是本輪執行紀錄。--check／SHA只證身分與啟動資訊；18初始狀態hash相符不等於四旅程重跑。116價格選股另開視窗的限制已由118改為同源主個股頁，不能套121；固定路徑與完整搬移限制仍在。啟動延遲未測量，不接受1–3秒為實測。公司名冊缺來源憑證不能泛稱不影響用途。2330的布林／W底0交易須各自核原來源／版本／可判讀日／成交，不能據原摘要接受「真實數學無訊號」；本輪三段收縮1配對也不能代替那兩個策略驗收。
+
+Snapshot、原計畫、主手冊／專節、試用入口提醒、功能說明及current架構已同步。Product／6M／目標架構、正式排程、資料來源用途與安裝契約沒有新改判，not_required；中央README／Index未改主要權威或文件位置，沿原入口。UI_FEATURES_DOCUMENTATION的工作區／導航責任未變，not_required，選項操作由本次手冊承接。QA13補全部受改Python compile、context及owner task／12features／9份文件連結，errors=[]，outer `162fe7e4990cfa6d1f691da2e146839e219c560c8b473ece64b3b0575e553fdf`；context Level2摘錄1671字／3143bytes、Unknown=[]，僅導航，全文語意由Root核正文。原圖與前輪budget略過不當EOF，QA原件／unused specs保留。下一出口為固定EXE、同版金融核對及明確指南；來源、歷史PIT、真N、成本權威、完整雙策略績效、Native／真人、自然成熟與完整P00–P14／G0–G4繼續分流，不加總案例或commit成Gate。
+
 <a id="increment123-vcp-core"></a>
 ## Increment123：原P07三段轉折收縮核心與敏感度（2026-10-17，未接正常操作）
 

@@ -12,6 +12,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 from dataclasses import replace
 import sqlite3
+import re
 from app_module.recommendation_portfolio_dates import parse_stock_dates
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
@@ -34,6 +35,41 @@ from app_module.exceptions import BacktestCancelledError
 
 class BacktestService:
     """回測服務類"""
+
+    PRICE_INPUT_PREPARATION = "historical-price-numeric-text.v1"
+    PRICE_NUMERIC_COLUMNS = ("成交股數", "成交筆數", "成交金額", "開盤價", "最高價", "最低價", "收盤價", "漲跌價差",
+                             "最後揭示買價", "最後揭示買量", "最後揭示賣價", "最後揭示賣量", "本益比")
+
+    @staticmethod
+    def _prepare_price_text(frame: pd.DataFrame, *, coerce_numeric: bool) -> pd.DataFrame:
+        """只辨識來源合法格式；不填價、不把錯誤千分位變成其他數字。"""
+        result = frame.copy(deep=True)
+        def normalize(value: Any) -> Any:
+            if not isinstance(value, str):
+                return value
+            text = value.strip()
+            if text in ("", "--"):
+                return None
+            if "," in text and re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?", text):
+                return text.replace(",", "")
+            return text
+        for column in BacktestService.PRICE_NUMERIC_COLUMNS:
+            if column in result:
+                values = result[column].map(normalize)
+                if coerce_numeric and column in ("成交股數", "成交筆數", "最後揭示買量", "最後揭示賣量"):
+                    # 缺量不可使同欄其他大整數先經float而失去原股數。
+                    quantities = []
+                    for value in values:
+                        try:
+                            number = Decimal(str(value))
+                            quantities.append(int(number) if number.is_finite() and number == number.to_integral_value() else None)
+                        except (InvalidOperation, TypeError, ValueError):
+                            quantities.append(None)
+                    result[column] = pd.Series(quantities, index=result.index, dtype=object)
+                else:
+                    result[column] = pd.to_numeric(values, errors="coerce") if coerce_numeric else values
+        result.attrs["price_input_preparation"] = BacktestService.PRICE_INPUT_PREPARATION
+        return result
     
     def __init__(self, config):
         """
@@ -109,6 +145,12 @@ class BacktestService:
             BacktestReportDTO: 回測報告
         """
         is_causal_score = strategy_spec.strategy_id in ("baseline_score_threshold", "stable_conservative_v1", "momentum_aggressive_v1") and strategy_spec.strategy_version == "1.1.0"
+        if strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1":
+            from decision_module.strategies.baldr_vcp_contract import rule_definition as vcp_rules
+            if (strategy_spec.strategy_version != "1.0.0" or execution_price != "next_open" or allow_pyramid
+                    or stop_loss_atr_mult is not None or take_profit_atr_mult is not None):
+                raise ValueError("三段轉折收縮研究僅支持1.0.0、next_open、不加碼及百分比風控")
+            vcp_rules(strategy_spec.config.get("params", {}))
         if strategy_spec.strategy_id == "baldr_bollinger_squeeze_v1":
             from decision_module.strategies.baldr_bollinger_squeeze_contract import rule_definition
             if strategy_spec.strategy_version != "1.0.0":
@@ -178,6 +220,10 @@ class BacktestService:
                 # 否則從 registry 獲取
                 executor = StrategyRegistry.get_executor(strategy_spec)
             
+            if strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1":
+                from decision_module.strategies.baldr_vcp_executor import BaldrVCPExecutor
+                if type(executor) is not BaldrVCPExecutor:
+                    raise ValueError("三段收縮執行器身分不符")
             signal_frame = executor.generate_signals(
                 df,
                 strategy_spec,
@@ -354,7 +400,7 @@ class BacktestService:
         
         rule_diagnostics = None
         rule_signal_observations = None
-        if strategy_spec.strategy_id in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1", "baldr_ma_alignment_basic_v1", "baldr_bollinger_squeeze_v1"):
+        if strategy_spec.strategy_id in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1", "baldr_ma_alignment_basic_v1", "baldr_bollinger_squeeze_v1", "baldr_vcp_three_contractions_v1"):
             rule_diagnostics = dict(signal_frame.attrs["rule_diagnostics"])
             ready = signal_frame["rule_observation_ready"]
             rule_diagnostics.update(
@@ -366,7 +412,8 @@ class BacktestService:
             is_w_bottom = strategy_spec.strategy_id == "baldr_w_bottom_basic_v1"
             is_ma_alignment = strategy_spec.strategy_id == "baldr_ma_alignment_basic_v1"
             is_squeeze = strategy_spec.strategy_id == "baldr_bollinger_squeeze_v1"
-            if not is_w_bottom and not is_ma_alignment and not is_squeeze:
+            is_vcp = strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1"
+            if not is_w_bottom and not is_ma_alignment and not is_squeeze and not is_vcp:
                 from decision_module.strategies.baldr_bollinger_contract import confirmation_sessions
                 rule_diagnostics["confirmation_sessions"] = confirmation_sessions(strategy_spec.config.get("params", {}))
             close_key = next(key for key in ("收盤價", "Close", "close") if key in signal_frame)
@@ -384,7 +431,10 @@ class BacktestService:
                     "entry": bool(row["entry_rule_match"]), "exit": bool(row["exit_rule_match"]),
                     "reason": str(row["reason_tags"]),
                 }
-                if is_squeeze:
+                if is_vcp:
+                    from app_module.vcp_rule_card import capture_vcp_observation
+                    observation = capture_vcp_observation(when, row)
+                elif is_squeeze:
                     def observed_number(key):
                         value = row[key]
                         if value is None:
@@ -495,6 +545,7 @@ class BacktestService:
                 'execution_price': execution_price,
                 'execution_contract': NEXT_OPEN_CONTRACT if execution_price == "next_open" else LEGACY_CLOSE_CONTRACT,
                 'data_manifest': {'execution_contract': NEXT_OPEN_CONTRACT if execution_price == "next_open" else LEGACY_CLOSE_CONTRACT,
+                                  **({'price_input_preparation': df.attrs['price_input_preparation']} if 'price_input_preparation' in df.attrs else {}),
                                   **({SINGLE_BACKTEST_METRICS_KEY: metrics_contract} if metrics_contract is not None else {})},
                 'execution_diagnostics': broker.execution_diagnostics,
                 'terminal_position': int(equity_curve['position'].iloc[-1]) if 'position' in equity_curve else 0,
@@ -532,6 +583,8 @@ class BacktestService:
                    if strategy_spec.strategy_id == "baldr_ma_alignment_basic_v1" else {}),
                 **({'promotion_blocker': '布林帶寬低點突破為研究假說，來源／PIT與績效資格尚未接受'}
                    if strategy_spec.strategy_id == "baldr_bollinger_squeeze_v1" else {}),
+                **({'promotion_blocker': '三段轉折收縮為研究假說，來源／PIT與績效資格尚未接受', 'can_promote': False}
+                   if strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1" else {}),
                 **({'rule_diagnostics': rule_diagnostics, 'rule_signal_observations': rule_signal_observations} if rule_diagnostics is not None else {}),
                 'score_diagnostics': score_diagnostics
             }
@@ -637,6 +690,9 @@ class BacktestService:
             if len(df) == 0:
                 logger.warning(f"[BacktestService] 合併後數據為空（股票 {stock_code}）")
                 return None, start_date, end_date
+
+            if "price_input_preparation" in price_df.attrs:
+                df.attrs["price_input_preparation"] = price_df.attrs["price_input_preparation"]
             
             # 4. ✅ 自動調整日期範圍到實際數據範圍
             actual_start = df.index.min()
@@ -711,11 +767,7 @@ class BacktestService:
                     
                     if not df.empty:
                         # 欄位型態轉換以相容原有業務 DTO
-                        numeric_cols = ['成交股數', '成交筆數', '成交金額', '開盤價', '最高價', '最低價', '收盤價', '漲跌價差',
-                                        '最後揭示買價', '最後揭示買量', '最後揭示賣價', '最後揭示賣量', '本益比']
-                        for col in numeric_cols:
-                            if col in df.columns:
-                                df[col] = pd.to_numeric(df[col], errors='coerce')
+                        df = self._prepare_price_text(df, coerce_numeric=True)
                         
                         # 處理日期索引
                         df['日期'] = pd.to_datetime(df['日期'].astype(str), format='%Y%m%d', errors='coerce')
@@ -738,7 +790,7 @@ class BacktestService:
             # 讀取數據
             df = pd.read_csv(
                 stock_data_file,
-                dtype={'證券代號': str},
+                dtype={'證券代號': str, **{column: str for column in self.PRICE_NUMERIC_COLUMNS}},
                 low_memory=False
             )
             
@@ -799,7 +851,7 @@ class BacktestService:
                 logger.warning(f"[BacktestService] 這可能是因為日期範圍過小或數據文件不完整")
                 return None
             
-            return df
+            return self._prepare_price_text(df, coerce_numeric=False)
             
         except Exception as e:
             logger.error(f"[BacktestService] 載入價格數據失敗: {e}")

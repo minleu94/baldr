@@ -68,6 +68,8 @@ class WalkForwardService:
         Returns:
             (train_report, test_report)
         """
+        if strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1":
+            raise ValueError("三段轉折收縮目前僅支持正常單股研究，Walk-forward保存契約尚未接受")
         if strategy_spec.strategy_id == "baldr_bollinger_squeeze_v1":
             raise ValueError("布林帶寬低點突破目前僅支持正常單股研究，Train-Test契約尚未接受")
         # 計算分割點
@@ -154,6 +156,8 @@ class WalkForwardService:
         Returns:
             Walk-forward 結果列表
         """
+        if strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1":
+            raise ValueError("三段轉折收縮目前僅支持正常單股研究，Walk-forward保存契約尚未接受")
         if strategy_spec.strategy_id == "baldr_bollinger_squeeze_v1":
             raise ValueError("布林帶寬低點突破目前僅支持正常單股研究，Walk-forward契約尚未接受")
         start_dt = pd.to_datetime(start_date)

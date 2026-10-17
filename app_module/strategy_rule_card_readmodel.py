@@ -183,6 +183,9 @@ def read_strategy_rule_card(spec: StrategySpec, *,
                          "StrategySpec/StrategyVersion"),
     }
     # config 是原始設定，不把參數名／description 推論為完整出場或執行合約。
+    if spec.strategy_id == "baldr_vcp_three_contractions_v1":
+        from app_module.vcp_rule_card import read_vcp_spec_card
+        return read_vcp_spec_card(spec, meta, identity, tuple(errors))
     if spec.strategy_id == "baldr_bollinger_squeeze_v1":
         from app_module.bollinger_squeeze_rule_card import read_squeeze_spec_card
         return read_squeeze_spec_card(spec, meta, identity, tuple(errors))
@@ -207,6 +210,9 @@ def fixed_single_backtest_rule_identity(spec: StrategySpec) -> tuple[str, str] |
     if not isinstance(params, dict) or params.get("threshold_mode", "fixed") != "fixed":
         return None
     identities = {
+        ("baldr_vcp_three_contractions_v1", "1.0.0"): (
+            "single-backtest-vcp-three-contractions-execution.v1",
+            "decision_module.strategies.baldr_vcp_executor.BaldrVCPExecutor"),
         ("baldr_bollinger_squeeze_v1", "1.0.0"): (
             "single-backtest-bollinger-squeeze-execution.v1",
             "decision_module.strategies.baldr_bollinger_squeeze_executor.BaldrBollingerSqueezeExecutor"),
@@ -254,6 +260,9 @@ def _same_rule_number(left: Any, right: Any) -> bool:
 
 def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapping[str, Any]) -> StrategyRuleCard:
     """只投影同次producer已封存的fixed契約，不借現在registry或重跑executor。"""
+    if execution.get("schema") == "single-backtest-vcp-three-contractions-execution.v1":
+        from app_module.vcp_rule_card import read_vcp_execution_card
+        return read_vcp_execution_card(spec, execution)
     if execution.get("schema") == "single-backtest-bollinger-squeeze-execution.v1":
         from app_module.bollinger_squeeze_rule_card import read_squeeze_execution_card
         return read_squeeze_execution_card(spec, execution)

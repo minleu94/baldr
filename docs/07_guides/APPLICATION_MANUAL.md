@@ -138,7 +138,7 @@ Daily Decision Desk 是已保存來源的唯讀摘要入口。先確認資料日
 
 ## 12. 常見問題
 
-開發中的「三段轉折收縮（研究）」目前只有核心與敏感度證據，尚未在選單開放，不能手改策略ID強行執行。請沿[目前固定候選](TRIAL_VERSION_GUIDE.md)使用已交付策略；此核心尚無保存／重開或績效接受，詳[原計畫§5.7](../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
+開發來源的「三段轉折收縮（研究）」1.0.0已可走正常單股回測、保存、原規則／結果、返回及新程序重開；固定121尚未包含。操作與限制見[專節](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#三段轉折收縮研究開發來源)。SQLite合法千分位解析修復只適用新來源執行，新保存會列解析版本；舊候選的零交易不能僅憑摘要判為無訊號。實際可試版本仍依[固定候選指南](TRIAL_VERSION_GUIDE.md)，規則與完整待交項見[原計畫§5.7](../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
 
 <a id="12-常見問題"></a>
 

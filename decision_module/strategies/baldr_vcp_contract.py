@@ -5,6 +5,10 @@ from typing import Any
 STRATEGY_ID = "baldr_vcp_three_contractions_v1"
 STRATEGY_VERSION = "1.0.0"
 PARAMETER_CONTRACT = "baldr-vcp-three-contractions.v1"
+EXECUTION_SCHEMA = "single-backtest-vcp-three-contractions-execution.v1"
+MAX_PRIOR_ROWS = 160
+LOOKBACK_CALENDAR_DAYS = 365
+CONTEXT_POLICY = "prefix_vcp_pivots_and_consumed_events_no_orders_before_test_start"
 DIAGNOSTICS_SCHEMA = "baldr-vcp-three-contractions-diagnostics.v1"
 PIVOT_SPAN = 2
 MAX_BASE_ROWS = 60

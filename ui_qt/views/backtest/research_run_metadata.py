@@ -111,6 +111,9 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
     訊號與撮合仍由原service執行，輸入只載入一次。baseline固定版保留v1，
     穩健／暴衝固定版另存v2；其他模式走原execution，不替缺件推論規則或授PIT。
     """
+    if request.strategy_spec.strategy_id == "baldr_vcp_three_contractions_v1":
+        from ui_qt.views.backtest.vcp_execution_source import execute_vcp_backtest_with_rule_source
+        return execute_vcp_backtest_with_rule_source(request, service, check_cancel=check_cancel)
     identity = fixed_single_backtest_rule_identity(request.strategy_spec)
     if request.strategy_spec.strategy_id in ("baseline_score_threshold", "stable_conservative_v1", "momentum_aggressive_v1") and request.strategy_spec.strategy_version == "1.1.0":
         if identity is None or request.execution_price != "next_open":
@@ -400,6 +403,11 @@ def build_single_backtest_metadata(
         _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
                                           parameter_contract=MA_PARAMETER_CONTRACT, strategy_label="四均線")
     is_causal_score = isinstance(execution, dict) and execution.get("schema") == "single-backtest-rule-execution.v3"
+    is_vcp = isinstance(execution, dict) and execution.get("schema") == "single-backtest-vcp-three-contractions-execution.v1"
+    if is_vcp:
+        from decision_module.strategies.baldr_vcp_contract import PARAMETER_CONTRACT as VCP_CONTRACT
+        _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
+                                          parameter_contract=VCP_CONTRACT, strategy_label="三段轉折收縮")
     is_squeeze = isinstance(execution, dict) and execution.get("schema") == "single-backtest-bollinger-squeeze-execution.v1"
     if is_squeeze:
         from decision_module.strategies.baldr_bollinger_squeeze_contract import PARAMETER_CONTRACT as SQUEEZE_CONTRACT
@@ -433,8 +441,8 @@ def build_single_backtest_metadata(
         normalized_params=dict(params.get("strategy_params", {}) or {}),
         fallback_reason=dict(details.get("fallback_reason", {}) or {}),
         universe=[str(params.get("stock_code", ""))] if params.get("stock_code") else [],
-        start_date=str(execution["start_date"] if is_w_bottom or is_causal_score or is_squeeze else params.get("start_date", "")),
-        end_date=str(execution["end_date"] if is_w_bottom or is_causal_score or is_squeeze else params.get("end_date", "")),
+        start_date=str(execution["start_date"] if is_w_bottom or is_causal_score or is_squeeze or is_vcp else params.get("start_date", "")),
+        end_date=str(execution["end_date"] if is_w_bottom or is_causal_score or is_squeeze or is_vcp else params.get("end_date", "")),
         data_cutoff_date=str(details.get("data_as_of_date", "")),
         data_fingerprint=str(details.get("data_version", "")),
         fingerprint_algorithm=(

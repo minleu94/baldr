@@ -4,6 +4,8 @@
 
 ## 系統用途
 
+三段轉折收縮沿原單股producer／Broker／Research Registry接線，同次保存12來源SHA、轉折與原量能證據；reader只核原件，不查目前executor補舊規則。歷史價格合法千分位解析版另隨新run保存，不修改來源資料或舊run；責任見[current決策分冊](current/decision_research_portfolio.md#三段轉折收縮的同次保存)。
+
 計分策略另以1.1.0分版修正缺指標回填，保留舊executor與保存件；沿原producer／Broker／Registry保存v3逐日證據，不另造撮合或儲存。版本metadata查詢、分析邊界及唯讀比較見[current決策分冊](current/decision_research_portfolio.md#計分策略的版本化因果輸入)；交付與金融資格各依具名QA。
 
 四均線基礎研究沿原策略Registry、單股producer、Broker、保存與歷史reader接線；新schema綁同次四MA與前後排列，不查目前executor補舊規則，不新增儲存或金融公式。責任與61列前置窗見[current決策分冊](current/decision_research_portfolio.md#四均線研究的同次來源與唯讀回訪)。

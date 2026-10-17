@@ -123,6 +123,7 @@ def _write_source(
     payload: dict[str, object] | None = None,
     captured_at: datetime | None = None,
     source_id: str | None = None,
+    parser_override: str | None = None,
 ) -> tuple[Path, Path]:
     observed = captured_at or datetime.now(timezone.utc) - timedelta(minutes=5)
     if venue == "twse":
@@ -174,7 +175,7 @@ def _write_source(
         captured_at=observed,
         row_count=1,
         source_columns=columns,
-        parser_id=parser_id,
+        parser_id=parser_override or parser_id,
         historical_backfill_claimed=False,
     )
     return Path(str(result["receipt_path"])), Path(str(result["raw_response_path"]))
@@ -333,6 +334,23 @@ def test_preview_and_capture_copy_exact_bytes_with_nonformal_claims(tmp_path: Pa
     assert again["status"] == "already_captured"
     assert again["candidate_available_at"] == captured["candidate_available_at"]
     assert sorted(path.name for path in candidate_dir.rglob("*")) == names
+
+
+@pytest.mark.parametrize("parser_id", ["twse.mi_index.v1", "twse.mi_index.direction_text.v2"])
+def test_prospective_capture_preserves_exact_supported_twse_parser(tmp_path: Path, parser_id: str) -> None:
+    captured, _, _, _, pairs = _run_capture(
+        tmp_path, preview_only=False, source_kwargs={"twse": {"parser_override": parser_id}},
+    )
+    assert captured["status"] == "captured" and captured["historical_pit_eligible"] is False
+    source = next(item for item in captured["sources"] if item["venue"] == "twse")
+    assert source["parser_id"] == parser_id
+    candidate = Path(str(captured["candidate_directory"])) / "sources/twse/source_receipt.json"
+    assert candidate.read_bytes() == pairs[0][0].read_bytes()
+
+
+def test_prospective_capture_rejects_unrecognized_twse_parser(tmp_path: Path) -> None:
+    with pytest.raises(ProspectiveDailyPriceCaptureError, match="identity mismatch"):
+        _run_capture(tmp_path, source_kwargs={"twse": {"parser_override": "twse.mi_index.fake.v9"}})
 
 
 def test_candidate_root_cannot_be_ancestor_of_protected_roots(tmp_path: Path) -> None:

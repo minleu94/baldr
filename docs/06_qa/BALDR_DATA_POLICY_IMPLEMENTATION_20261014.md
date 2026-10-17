@@ -2590,3 +2590,49 @@ QA11另複製109原18份狀態與117原7份具名基本面，只重綁121自己�
 上述出口齊備後，QA13才create-only保存[121指南](../../output/trial/Baldr-Daily-Research-121/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-121/KNOWN_ISSUES.md)與[交付收據](../../output/trial/Baldr-Daily-Research-121/DELIVERY_RECEIPT.json)，交付SHA **`628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`**，outer `03d1e0c6aa33d7b8c5ef30da65c22abfd604c983a1d93e8245d6171affbb8920`。116–120交付原SHA均核不變，舊原失敗保持；四條V1未改旅程沿各自證據，沒有全數重跑。來源、歷史PIT、真N、成本權威、有效績效、完整家族、Native／真人及自然成熟仍各自待，完整目標不改判。各組三PID陣列自然空、handles關閉、mutex釋放、無forced cleanup。
 
 最終QA14補全本次所有changed Python的compile並核12features／11份中央及包內文件、owner task與連結，errors=[]；outer `78468b491b7f76659ccf8b474a23ef9a711111b7000e8bc8ed15b3d6cbdc3436`。三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後只記錄結果與文件提交，固定121 EXE／交付原件不再變動；完整補完goal保持進行中。
+
+<a id="increment128-twse-direction-text"></a>
+## Increment128：TWSE 明確漲跌方向保存與讀回（2026-10-17）
+
+本輪解除原 P03 的具體交付阻礙：下載器僅以 `color:red`／`color:green` 字串辨向，會丟失原純文字正負號，也會把紅色容器中的負號誤作上漲。這不是所有歷史「未提供」的根因裁決，不新增功能或競爭總計畫。基線 `3e10baf5c2c76743c078d1e5813d60b2398577c1`，Root Sol 兼任 Execution／Tech Lead／Data Audit／QA／Documentation，沒有獨立 reviewer；Luna 累計 10/10，不再新增。
+
+### 實作與相容
+
+- 共用純文字規則下沉到 `data_module/price_change_direction.py`，原 application import 與 Decimal resolver 不變。TWSE v2 只認明確文字，HTML/entity 解碼一次；不由顏色、相鄰收盤或零價差猜方向。非空未知保存 `unknown`，空白維持缺值。
+- 新觀測採 `twse.mi_index.direction_text.v2`；首份 raw/custody 不覆寫。同 raw 的 v1 首收據可與新 v2 observation 並存，projection 精確綁本次 observation；v2 發行／重開逐列核原 body，parser 換標及自算 hash 不能代替原方向。
+- 舊 v1 投影保留原身分／讀法；CSV 變動仍拒讀。既有前瞻快照 reader 接受明列的 v1／v2 並保留實際 parser，TPEx 與來源、URL、修訂、時間守衛不變。
+- 無新 GET、正式資料／歷史回補、Task 或 maintainer 操作；沒有 UI 程式變更、重建 EXE 或替換固定125。首見與觀測時間不當作官方發布時刻、每日用途接受或歷史 PIT。
+
+### 原失敗與定向驗證
+
+各組結果獨立判讀，不加總成產品 Gate。原件均在 owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`。
+
+| 證據 | 實際結果與限制 |
+|---|---|
+| QA00／group667 | 初稿測試入口把 `StockResearchReportReadService` 誤寫成不存在類別；9 FAIL 不作產品紅測證據，原輸出保留。 |
+| QA00b／group668 | 修正入口後，產品仍原版：7 FAIL／2 PASS／18 deselected，確認純符號、HTML 空白、全形符號、顏色矛盾與空容器問題。 |
+| QA01／group669 | changed Python compile 通過；131 PASS／15 FAIL。15項均在 Windows 長暫存路徑的 custody 建檔階段失敗，尚未到原斷言，沒有放寬產品守衛。 |
+| QA02／group670 | 不改產品、斷言或期限，僅用新的短 basetemp 重驗原15項，15 PASS；full-roots mypy 1063 sources、financial float guard 通過。QA01 的131已通過項不重跑。 |
+| QA03／group671 | 隔離 private root 誤放 repo，產品路徑守衛拒絕；未啟動 Main，不算產品功能失敗或通過。 |
+| QA03b／group672 | 改獨立使用者 temp 後，正常 Main 的方向 DTO 已正確；測試 `findChild` 選到重繪後待銷毀的隱藏表，顯示斷言失敗。原輸出保留。 |
+| QA03c／group673 | 沿既有 Main 測法選唯一可見表，沒有降低顯示斷言；來源 Main **35400 → 42756** 正負／未知／空白、價格表、返回與重載一致。合成4列經原 DataLoader／CSV／SQLite 同步，兩程序 public evidence 都是 v2；行情檔 SHA 不變、網路0。這是 offscreen Qt 功能證據，非完整 Native 或真人接受。 |
+
+新測試另含未知零值不冒平盤、HTML 單次解碼、隱藏／script 文字拒收、v1 首收據不變、v1／v2並存、parser換標與重算錯方向 hash 拒收。既有下載、custody、multi-manifest、report、ML 前瞻 reader 回歸在上述各自收據內，原 timeout、來源與時序斷言保留。UI 程式未改，未重跑無關 Workbench／更新頁 validator；原 full-roots mypy 有 `ui_qt.* ignore_errors=True`，不證 UI 強型別。
+
+### 固定身分與資源閉鎖
+
+| 收據 | SHA-256 |
+|---|---|
+| QA00b outer `single_owned_qa_ab24c2d159d04c09b6b6de1bcaf2f594/receipt.json` | `f106ab576672e9b9d6a9d31289d82475a29fa3ef4b2910014dd99fb2c6a32790` |
+| QA01 outer `single_owned_qa_118dadd62c744e38a9b92ecc1a50d35d/receipt.json` | `e60911033b8a10e327dc5e26a269a961748b592ecaab658b66c15d795ed9bc9c` |
+| QA02 outer `single_owned_qa_75c340d5f69f4bd885fb795d756064d4/receipt.json` | `fbc449022be7fd980a9aa9e2f48151244397ff325722f6cc58125762403f5655` |
+| QA03 outer `single_owned_qa_0dd4229342494bbabe4867f4e97e3393/receipt.json` | `89472246767b9a78b8e9bc6003e7d31ced18cdfb69b6da1092d38a12bc7a38f8` |
+| QA03b outer `single_owned_qa_4fb48b77c732417fadaac9dc52de4acc/receipt.json` | `c9f8a51705ff5b438e1c058090e03282d82c4e7721f4a2cddafb0b468f6ad7fa` |
+| QA03c outer `single_owned_qa_d352ea2c84814422af929fbc7c02601e/receipt.json` | `ebbd33019eb0167d8231ea93e6d74eb9edef74d244463dac27290cedc2911231` |
+| Main／fresh `increment128_direction_main_qa03c/result.json` | `86aefa421280ea028652936a9f56d0f23f57b805c4346a9d400864d37aa37fb9` |
+
+每組均由 Root 串行、可讀回的8GiB／12程序／kill-on-close Job與workspace mutex；啟動前RAM至少8GiB，下一組核前組三PID陣列空、process／Job handles關閉、mutex釋放。上述正常終態皆無強制回收；測試入口與暫存錯誤不刪除原件或盲重跑。
+
+### 交付與未驗範圍
+
+本輪交來源修復與相容測試，固定125／舊候選／既存行情原件不變。真人、不同DPI、此 parser 的新真官方下載、正式用途／小時配置、歷史缺方向修復與P03完整來源仍未接受；不重置舊GET額度或回補正式庫。指南已分清開發分支與固定包；原 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、舊 FAIL、雙策略完整績效、來源權威與自然成熟各自保留。

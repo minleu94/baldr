@@ -4,26 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
-
-
-CHANGE_SIGN_COLUMNS = ("漲跌(+/-)", "漲跌", "涨跌")
+from data_module.price_change_direction import (
+    CHANGE_SIGN_COLUMNS as CHANGE_SIGN_COLUMNS,
+    normalize_change_sign as normalize_change_sign,
+)
 
 
 def change_sign_columns(columns: Sequence[str]) -> tuple[str, ...]:
     """依既有優先序列出來源提供的方向欄。"""
 
     return tuple(name for name in CHANGE_SIGN_COLUMNS if name in columns)
-
-
-def normalize_change_sign(value: object) -> str | None:
-    """將已知繁中方向標記正規化；未知標記回傳 None。"""
-
-    text = str(value or "").strip()
-    if text in {"-", "−", "－", "跌", "▼"}:
-        return "-"
-    if text in {"+", "＋", "漲", "▲"}:
-        return "+"
-    return None
 
 
 def resolve_signed_change(

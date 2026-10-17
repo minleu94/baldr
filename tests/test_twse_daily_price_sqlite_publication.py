@@ -157,6 +157,98 @@ def _read_row(
     )
 
 
+@pytest.mark.parametrize(("raw_sign", "expected"), [
+    ("+", Decimal("5")),
+    ("-", Decimal("-5")),
+    ('<p style="color: red">+</p>', Decimal("5")),
+    ('<p style="color: green">-</p>', Decimal("-5")),
+    ("<span>－</span>", Decimal("-5")),
+    ("<p style=color:red>-</p>", Decimal("-5")),
+    ("<p style=color:red></p>", None),
+    ("X", None),
+    ("", None),
+])
+def test_twse_explicit_direction_survives_csv_sqlite_and_public_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw_sign: str, expected: Decimal | None,
+) -> None:
+    """原回應的文字方向經保存與public report仍一致，不由顏色補方向。"""
+    from app_module.stock_research_report_service import StockResearchReportReadService
+
+    row = _row("2330", "台積電")
+    row[9] = raw_sign
+    case_root = tmp_path.parent / ("d" + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:8])
+    assert not case_root.exists() and case_root.resolve().parent == tmp_path.parent.resolve()
+    config, synced, _service = _download_and_sync(case_root, monkeypatch, rows=[row])
+    assert synced["success"] is True and synced["synced_records"] == 1
+    attested = _read_row(config, synced, symbol="2330")
+    assert attested.status == "attested" and attested.row is not None
+    assert attested.row.parser_id == "twse.mi_index.direction_text.v2"
+    report = StockResearchReportReadService(config).read_report("2330")
+    assert len(report.price_points) == 1
+    assert report.price_points[0].change == expected
+
+
+def test_new_direction_observation_preserves_v1_first_custody_and_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from data_module import data_loader
+
+    case_root = tmp_path.parent / ("u" + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:8])
+    assert not case_root.exists() and case_root.resolve().parent == tmp_path.parent.resolve()
+    with monkeypatch.context() as legacy:
+        legacy.setattr(data_loader, "TWSE_DIRECTION_PARSER_ID", "twse.mi_index.v1")
+        legacy.setattr(data_loader, "normalize_twse_change_sign", lambda value: "+" if "color:red" in str(value) else "")
+        config, old_sync, _ = _download_and_sync(case_root, legacy, rows=[_row("2330", "台積電")])
+        old_row = _read_row(config, old_sync, symbol="2330")
+        assert old_row.status == "attested" and old_row.row.parser_id == "twse.mi_index.v1"
+    first_receipt = next(config.output_root.rglob("receipt.json"))
+    first_bytes = first_receipt.read_bytes()
+    assert json.loads(first_bytes)["parser_id"] == "twse.mi_index.v1"
+    _, new_sync, _ = _download_and_sync(case_root, monkeypatch, rows=[_row("2330", "台積電")])
+    assert first_receipt.read_bytes() == first_bytes
+    current = _read_row(config, new_sync, symbol="2330")
+    assert current.status == "attested" and current.row.parser_id == "twse.mi_index.direction_text.v2"
+    assert current.row.first_observed_at == old_row.row.first_observed_at
+    assert _read_row(config, old_sync, symbol="2330").row.parser_id == "twse.mi_index.v1"
+
+
+def test_projection_rejects_rehashed_wrong_direction_and_parser_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from data_module import twse_daily_price_publication as publication
+
+    case_root = tmp_path.parent / ("x" + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:8])
+    assert not case_root.exists() and case_root.resolve().parent == tmp_path.parent.resolve()
+    config, synced, _ = _download_and_sync(case_root, monkeypatch, rows=[_row("2330", "台積電")])
+    descriptor = synced["row_evidence"]
+    stored = json.loads((config.output_root / descriptor["relative_path"]).read_bytes())
+    projected = stored["projection_manifests"][0]
+    manifest_path = config.output_root / projected["relative_path"]
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["parser_id"] = "twse.mi_index.v1"
+    body = {key: value for key, value in manifest.items() if key != "content_sha256"}
+    encoded = publication._payload_bytes(body)
+    manifest_path.write_bytes(encoded)
+    altered = dict(projected, sha256=publication._sha256(encoded))
+    with pytest.raises(publication.DailyPriceEvidenceError, match="identity differs"):
+        publication._load_projection_manifest(output_root=config.output_root, data_root=config.data_root, descriptor=altered)
+    # 改寫 CSV 與所有自算 hash 仍不能把與 raw 相反的方向宣稱成 v2。
+    manifest["parser_id"] = "twse.mi_index.direction_text.v2"
+    csv_path = config.data_root / manifest["csv_relative_path"]
+    import pandas as pd
+    frame = pd.read_csv(csv_path, dtype={"證券代號": str})
+    frame["漲跌(+/-)"] = "-"
+    frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
+    csv_bytes, columns, rows = publication._read_csv_projection(csv_path, "20260702")
+    manifest["csv_sha256"] = publication._sha256(csv_bytes)
+    manifest["observed_response_rows"][0]["projection_row_sha256"] = publication._row_hash(rows[0], columns)
+    encoded = publication._payload_bytes({key: value for key, value in manifest.items() if key != "content_sha256"})
+    manifest_path.write_bytes(encoded)
+    altered["sha256"] = publication._sha256(encoded)
+    with pytest.raises(publication.DailyPriceEvidenceError, match="direction projection differs"):
+        publication._load_projection_manifest(output_root=config.output_root, data_root=config.data_root, descriptor=altered)
+
+
 def test_twse_response_projects_observed_rows_only_after_sqlite_readback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

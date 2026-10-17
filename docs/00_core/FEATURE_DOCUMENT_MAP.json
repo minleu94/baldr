@@ -732,7 +732,10 @@
         "app_module/twse_operating_summary_reviewed.py",
         "app_module/twse_operating_summary_report_provider.py",
         "data_module/selection_official_attention.py",
-        "scripts/save_official_attention_snapshot.py"
+        "scripts/save_official_attention_snapshot.py",
+        "app_module/price_change_direction.py",
+        "data_module/price_change_direction.py",
+        "data_module/twse_daily_price_publication.py"
       ],
       "tests": [
         "tests/test_stock_research_report_service.py",
@@ -744,7 +747,9 @@
         "tests/test_selection_official_attention.py",
         "tests/test_stock_research_official_attention_widget.py",
         "tests/test_twse_operating_summary_report.py",
-        "tests/test_twse_operating_summary_reviewed.py"
+        "tests/test_twse_operating_summary_reviewed.py",
+        "tests/test_twse_price_change_direction.py",
+        "tests/test_twse_daily_price_sqlite_publication.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -775,7 +780,12 @@
         "tests/test_portfolio_scenario_stock_report_integration.py",
         "tests/test_portfolio_scenario_stock_report.py",
         "tests/test_stock_research_report_service.py",
-        "tests/test_ui_qt_portfolio_scenario_stock_report.py"
+        "tests/test_ui_qt_portfolio_scenario_stock_report.py",
+        "app_module/price_change_direction.py",
+        "data_module/price_change_direction.py",
+        "data_module/twse_daily_price_publication.py",
+        "tests/test_twse_price_change_direction.py",
+        "tests/test_twse_daily_price_sqlite_publication.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -1035,7 +1045,11 @@
         "tests/test_selection_fundamental_daily_cohort_v2.py",
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
         "tests/test_ui_qt_update_view_workbench.py",
-        "tests/test_watchlist_revenue_archived_bookmark_v3.py"
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "app_module/price_change_direction.py",
+        "tests/test_twse_price_change_direction.py",
+        "tests/test_twse_daily_price_sqlite_publication.py",
+        "tests/test_ml_prospective_daily_price_capture.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

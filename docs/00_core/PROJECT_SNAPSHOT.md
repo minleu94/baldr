@@ -4,6 +4,8 @@
 
 ## 現在有哪些入口
 
+後續來源分支的 [Increment128](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text) 已修復 TWSE 新下載丟失明確漲跌符號：原 CSV／SQLite／public report 與合成正常 Main／新程序顯示、返回、重載已定向驗證，v1 原件與未知守衛保留。固定125及歷史資料未更新；沒有新抓取、回補或來源／PIT資格接受。原完整範圍與其餘交付列繼續。
+
 **目前指定本機試用候選為日常研究125（`147e80d35fa2`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-125/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)，版本與限制由包內收據固定。125在原個股頁提供2317／2330／2454的2026-H1五欄目前研究，來源與固定EXE正常Main／fresh、返回／重載及原值比對通過；2382文件缺件隔離。未改的價格研究、清單／持倉與回測沿124及原收據，不全數重跑或擴V1，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
 
 115、112、109、71、66及更早候選與各自狀態保留，不自動匯入個人內容。66原回報及指南D勘誤沿原身分保留；後續修復不冒充新版真人接受。116沒有重跑未改的四條全部旅程：單股雙策略保存／比較沿用112具名證據，價格選股、收藏與舊推薦回訪按109及相應原QA判讀。

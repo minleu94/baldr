@@ -29,6 +29,11 @@ from .official_daily_price_custody import (
 )
 from .official_market_daily import fetch_official_market_daily, update_market_index_csv
 from .daily_price_source_revision_overlay import load_daily_price_source_revisions
+from .price_change_direction import (
+    CHANGE_SIGN_COLUMNS,
+    TWSE_DIRECTION_PARSER_ID,
+    normalize_twse_change_sign,
+)
 
 
 def _is_explicit_twse_no_data_status(status: object) -> bool:
@@ -617,12 +622,10 @@ class DataLoader:
                     df[col] = df[col].apply(lambda x: str(x).replace(',', '') if pd.notnull(x) else x)
                     df[col] = pd.to_numeric(df[col], errors='coerce')
             
-            # 處理漲跌符號（從 HTML 標籤中提取）
-            if '漲跌(+/-)' in df.columns:
-                df['漲跌(+/-)'] = df['漲跌(+/-)'].apply(
-                    lambda x: '+' if 'color:red' in str(x) else 
-                             '-' if 'color:green' in str(x) else ''
-                )
+            # 以原欄位的明確文字決定方向；非空未知標記不得退成缺值或零。
+            for sign_column in CHANGE_SIGN_COLUMNS:
+                if sign_column in df.columns:
+                    df[sign_column] = df[sign_column].apply(normalize_twse_change_sign)
 
             source_custody = persist_official_daily_price_response(
                 output_root=self.config.output_root,
@@ -638,7 +641,7 @@ class DataLoader:
                 captured_at=response_completed_at,
                 row_count=len(df),
                 source_columns=stock_data.get("fields", []),
-                parser_id="twse.mi_index.v1",
+                parser_id=TWSE_DIRECTION_PARSER_ID,
                 historical_backfill_claimed=False,
             )
             

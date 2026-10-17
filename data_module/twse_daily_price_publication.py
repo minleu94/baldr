@@ -19,12 +19,17 @@ from pathlib import Path, PurePosixPath
 import sqlite3
 from typing import Any, Mapping, Sequence, cast
 from uuid import uuid4
+from data_module.price_change_direction import (
+    CHANGE_SIGN_COLUMNS,
+    TWSE_DIRECTION_PARSER_ID,
+    TWSE_PRICE_PARSER_IDS,
+    normalize_twse_change_sign,
+)
 
 
 PROJECTION_SCHEMA_V1 = "twse-daily-price-download-projection.v1"
 PUBLICATION_SCHEMA_V1 = "twse-daily-price-sqlite-publication.v1"
 _DAILY_PRICE_SOURCE_ID = "twse.mi_index.daily_price"
-_DAILY_PRICE_PARSER_ID = "twse.mi_index.v1"
 _HASH_PREFIX = "sha256:"
 _MAX_JSON_BYTES = 32 * 1024 * 1024
 _CSV_DTYPES = {
@@ -391,7 +396,7 @@ def _validated_custody(
         if (
             payload.get("source_id") != _DAILY_PRICE_SOURCE_ID
             or payload.get("source_date") != expected_date
-            or payload.get("parser_id") != _DAILY_PRICE_PARSER_ID
+            or payload.get("parser_id") not in TWSE_PRICE_PARSER_IDS
             or payload.get("raw_response_sha256") != raw_hash
             or payload.get("formal_source_contract_eligible") is not False
         ):
@@ -412,9 +417,50 @@ def _validated_custody(
         "first_observed_at": first_observed_at,
         "observed_at": observed_at,
         "source_id": _DAILY_PRICE_SOURCE_ID,
-        "parser_id": _DAILY_PRICE_PARSER_ID,
+        # 首次原件可能由舊 parser 保存；本次投影綁本次 observation 的版本。
+        "parser_id": str(observation_payload["parser_id"]),
         "source_date": _date_key(source_custody["source_date"]),
     }
+
+
+def _verify_direction_projection(
+    source_payload: Mapping[str, object],
+    rows: Sequence[Mapping[str, object]],
+    parser_id: object,
+) -> None:
+    """v2 方向逐列回綁原回應；v1 依原身分讀取，不重新解釋舊值。"""
+
+    if parser_id not in TWSE_PRICE_PARSER_IDS:
+        raise DailyPriceEvidenceError("projection parser is unsupported")
+    if parser_id != TWSE_DIRECTION_PARSER_ID:
+        return
+    tables = source_payload.get("tables")
+    if not isinstance(tables, list):
+        raise DailyPriceEvidenceError("direction source tables are missing")
+    table = next((item for item in tables if isinstance(item, Mapping)
+                  and isinstance(item.get("fields"), list)
+                  and {"證券代號", "收盤價"}.issubset(item["fields"])), None)
+    if table is None:
+        raise DailyPriceEvidenceError("direction source price table is missing")
+    fields, raw_rows = table["fields"], table.get("data")
+    if len(set(fields)) != len(fields) or not isinstance(raw_rows, list):
+        raise DailyPriceEvidenceError("direction source table is ambiguous")
+    sign_columns = tuple(name for name in CHANGE_SIGN_COLUMNS if name in fields)
+    expected: list[tuple[object, tuple[str, ...]]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, list) or len(raw_row) != len(fields):
+            raise DailyPriceEvidenceError("direction source row shape differs")
+        source_row = dict(zip(fields, raw_row))
+        code = source_row["證券代號"]
+        if isinstance(code, str) and len(code) == 4:
+            expected.append((code, tuple(normalize_twse_change_sign(source_row[name])
+                                         for name in sign_columns)))
+    actual = [(row.get("證券代號"), tuple(
+        "" if _is_missing_scalar(row.get(name)) else str(row.get(name))
+        for name in sign_columns
+    )) for row in rows]
+    if actual != expected:
+        raise DailyPriceEvidenceError("direction projection differs from raw response")
 
 
 def create_download_projection_manifest(
@@ -461,6 +507,7 @@ def create_download_projection_manifest(
         raise DailyPriceEvidenceError(
             "written CSV differs from the current TWSE parser frame"
         )
+    _verify_direction_projection(source_payload, rows, custody["parser_id"])
 
     observed_rows: list[dict[str, object]] = []
     for row in rows:
@@ -483,7 +530,7 @@ def create_download_projection_manifest(
     body: dict[str, object] = {
         "schema_version": PROJECTION_SCHEMA_V1,
         "source_id": _DAILY_PRICE_SOURCE_ID,
-        "parser_id": _DAILY_PRICE_PARSER_ID,
+        "parser_id": custody["parser_id"],
         "venue": "twse",
         "source_date": normalized_date,
         "source_published_at": None,
@@ -534,6 +581,8 @@ def _load_projection_manifest(
     if _sha256(raw) != descriptor.get("sha256"):
         raise DailyPriceEvidenceError("projection descriptor hash mismatch")
     payload = _parse_payload(raw, schema_version=PROJECTION_SCHEMA_V1)
+    if payload.get("source_id") != _DAILY_PRICE_SOURCE_ID or payload.get("parser_id") not in TWSE_PRICE_PARSER_IDS:
+        raise DailyPriceEvidenceError("projection source/parser identity differs")
     if payload.get("source_published_at") is not None:
         raise DailyPriceEvidenceError("source publication time must remain unknown")
     source_date = _date_key(payload.get("source_date"))
@@ -581,12 +630,22 @@ def _load_projection_manifest(
             receipt_value.get("source_id") != _DAILY_PRICE_SOURCE_ID
             or receipt_value.get("source_date") != datetime.strptime(source_date, "%Y%m%d").date().isoformat()
             or receipt_value.get("raw_response_sha256") != payload.get("raw_response_sha256")
-            or receipt_value.get("parser_id") != _DAILY_PRICE_PARSER_ID
+            or receipt_value.get("parser_id") not in TWSE_PRICE_PARSER_IDS
+            or (path_field == "observation_receipt_relative_path"
+                and receipt_value.get("parser_id") != payload.get("parser_id"))
         ):
             raise DailyPriceEvidenceError("custody receipt identity differs")
         receipt_captured_at[path_field] = _aware_timestamp(
             receipt_value.get("captured_at"), field="captured_at"
         )
+    raw_source_path = _resolve_relative_file(output_root, payload.get("raw_response_relative_path"))
+    try:
+        raw_source = json.loads(raw_source_path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise DailyPriceEvidenceError("direction raw response cannot be parsed") from exc
+    if not isinstance(raw_source, Mapping):
+        raise DailyPriceEvidenceError("direction raw response is not an object")
+    _verify_direction_projection(raw_source, parsed_rows, payload.get("parser_id"))
     first_observed_at = _aware_timestamp(
         payload.get("first_observed_at"), field="first_observed_at"
     )
@@ -1029,7 +1088,7 @@ def _read_sqlite_daily_price_evidence(
             raise DailyPriceEvidenceError("publication written before source available")
         if (
             row.get("source_id") != _DAILY_PRICE_SOURCE_ID
-            or row.get("parser_id") != _DAILY_PRICE_PARSER_ID
+            or row.get("parser_id") != projected_manifest.get("parser_id")
             or row.get("raw_response_sha256") != projected_manifest.get("raw_response_sha256")
             or row.get("custody_receipt_sha256") != projected_manifest.get("custody_receipt_sha256")
             or row.get("observation_receipt_sha256") != projected_manifest.get("observation_receipt_sha256")
@@ -1042,7 +1101,7 @@ def _read_sqlite_daily_price_evidence(
             source_date=wanted_date,
             stock_code=wanted_code,
             source_id=_DAILY_PRICE_SOURCE_ID,
-            parser_id=_DAILY_PRICE_PARSER_ID,
+            parser_id=str(projected_manifest["parser_id"]),
             first_observed_at=row_first_observed_at,
             written_at=written_at,
             source_published_at=None,

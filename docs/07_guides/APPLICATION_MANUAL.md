@@ -2,6 +2,8 @@
 
 本手冊說明日常UI操作、結果判讀與安全界線。**目前指定候選、固定來源與啟動入口以[目前試用版指南](TRIAL_VERSION_GUIDE.md)為準**，資料範圍與各版驗證界線也集中於該入口；一般操作從下方「日常使用旅程」開始。
 
+後續來源分支已修復 TWSE 下載丟失明確漲跌符號的問題；原「個股研究 → 價格／技術」入口、返回與重載不變。新資料按原文字方向顯示，缺方向或未知仍未提供；固定125與歷史資料未更新。操作及排錯見[個股指南](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)，限定證據見[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
+
 首次安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 若只要將已保存回測放到新的輸出目錄，先看[保存研究新副本](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，不要只複製索引或手改原收據。這是來源工具的明選複製，不自動改設定或移整個環境；目前125試用包與私人內容保持原樣。

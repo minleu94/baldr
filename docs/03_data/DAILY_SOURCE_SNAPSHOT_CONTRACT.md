@@ -2,6 +2,14 @@
 
 本契約落實使用者於 2026-10-13（台北 10/14）採納的每日固定抓取政策，適用 P00／P03 的新保存來源及已接受的指定研究用途。施工順序仍由[原產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md#95-資料阻塞分流與下一批交付2026-10-14-調整)管理，實際驗證看[本輪 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。本頁不授正式資料寫入、排程變更、歷史回補或交易。
 
+## TWSE 日價方向文字版本（Increment128）
+
+既有 `DataLoader.download_from_api` 的新下載採 `twse.mi_index.direction_text.v2`：三個既有方向欄別名共用文字正規化，接受明確正負符號及單次 HTML/entity 解碼，顏色不作方向證據。保存狀態為 `+`、`-`、空缺或非空 `unknown`；未知不能被 CSV 的 NA 轉換抹成空值，連價差為零也不自授平盤。金額仍由既有 Decimal reader 與矛盾方向守衛判讀，不由相鄰收盤補官方漲跌。
+
+原始 body、首份 custody 收據及每次 observation 仍 create-only。同一 raw SHA 若早已由 `twse.mi_index.v1` 保存，首份 v1 原件與首見時間不變；新觀測另存 v2，projection／publication／列級 public reader 精確綁本次 observation 的 parser。v2 在發行與重開時逐列回綁原 body 的方向，不能只重算 CSV／manifest hash 或改 parser 標籤就冒用。v1 原投影按原版本讀取，不重新解釋或修改其數值；CSV 漂移仍拒讀。前瞻原件快照 reader 可讀這兩個明示版本，保留實際版本與時間，其餘來源／URL／單位／修訂守衛維持。
+
+這是既有下載鏈的工程修復，不補抓或回寫歷史資料、不啟動 maintainer；首見與批次觀測不冒充官方發布時刻、歷史 PIT、每日用途接受或較早可用小時。原試用包、缺方向舊列及原失敗保留。受限驗證與未驗邊界見 [128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
+
 ## 具名營益固定版本（Increment117）
 
 此接受僅涵蓋[政府開放資料20762](https://data.gov.tw/dataset/20762)之`d9778530…b609`原CSV、2330／2026-H1的營收與四個利潤率；不是全資料集單位契約。Root以既存完整官方發行人PDF獨立核對幣別、半年累計基礎與顯示精度，產品數值只取開放CSV。營收原值`2404483.69`百萬元以Decimal轉TWD，四比率保留原百分比，不以PDF較低精度替換。其他公司、前期及PDF重展示用途未接受。

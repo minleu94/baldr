@@ -26,6 +26,7 @@ from data_module.market_data_integrity import official_twse_price_table
 from data_module.tpex_daily_price_backfill import normalize_tpex_daily_price_rows
 from data_module.tpex_daily_price_source import _date_key as _tpex_date_key
 from data_module.tpex_daily_price_source import _rows_from_after_trading_response
+from data_module.price_change_direction import TWSE_PRICE_PARSER_IDS
 
 
 SCHEMA_VERSION = "ml-prospective-daily-price-candidate.v1"
@@ -40,13 +41,13 @@ MAX_CUSTODY_DATE_DIRECTORY_ENTRIES = 256
 _REQUIRED_SOURCES: dict[str, dict[str, Any]] = {
     "twse": {
         "source_id": "twse.mi_index.daily_price",
-        "parser_id": "twse.mi_index.v1",
+        "parser_ids": TWSE_PRICE_PARSER_IDS,
         "host": "www.twse.com.tw",
         "paths": {"/rwd/zh/afterTrading/MI_INDEX"},
     },
     "tpex": {
         "source_id": "tpex.daily_close_quotes",
-        "parser_id": "tpex.daily_close_quotes.v1",
+        "parser_ids": frozenset({"tpex.daily_close_quotes.v1"}),
         "host": "www.tpex.org.tw",
         "paths": {"/www/zh-tw/afterTrading/otc"},
     },
@@ -360,7 +361,7 @@ def _read_verified_source(
     if (
         payload.get("source_authority") != venue
         or payload.get("source_id") != contract["source_id"]
-        or payload.get("parser_id") != contract["parser_id"]
+        or payload.get("parser_id") not in contract["parser_ids"]
         or payload.get("source_date") != expected_date
     ):
         raise ProspectiveDailyPriceCaptureError("custody receipt venue/date/source identity mismatch")

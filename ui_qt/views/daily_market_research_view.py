@@ -124,6 +124,7 @@ class DailyMarketResearchView(QWidget):
     """只讀呈現已發布快照，並由使用者明示啟動有界更新。"""
 
     stockResearchRequested = Signal(object)
+    priceStockResearchRequested = Signal(object, object)
     snapshotAccepted = Signal(object)
     snapshotCleared = Signal()
     originalRankingAccepted = Signal(object)
@@ -176,6 +177,7 @@ class DailyMarketResearchView(QWidget):
         self._operation_generation = 0
         self._initial_read_started = False
         self._shutting_down = False
+        self.price_stock_workspace_available = False
         self._selected_stock_code = ""
         self._return_query: tuple[str, DailyResearchQuery] | None = None
         self._last_emitted_query: DailyResearchQuery | None = None
@@ -2538,6 +2540,10 @@ class DailyMarketResearchView(QWidget):
             return
         if self._price_stock_dialog is not None:
             self._price_stock_dialog.close()
+        if self.price_stock_workspace_available:
+            details.deleteLater()
+            self.priceStockResearchRequested.emit(stock, origin)
+            return
         dialog = QDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.setWindowTitle(f"{origin.stock_code} 原價格條件研究")
@@ -2574,13 +2580,18 @@ class DailyMarketResearchView(QWidget):
         dialog.show()
 
     def _return_price_origin(self, selection: object, dialog: QDialog) -> None:
+        if self.restore_price_research_origin(selection):
+            dialog.close()
+
+    def restore_price_research_origin(self, selection: object) -> bool:
         view = self.technical_price_view
         if (self._shutting_down or view is None
                 or not isinstance(selection, DailyMarketTechnicalUniversePriceSelectionV1)):
-            return
+            return False
         if view.restore_origin(selection):
             self.research_sections.setCurrentWidget(view)
-            dialog.close()
+            return True
+        return False
 
     def _clear_price_dialog(self, dialog: QDialog, *, comparison: bool) -> None:
         name = "_price_comparison_dialog" if comparison else "_price_stock_dialog"

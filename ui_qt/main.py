@@ -2235,6 +2235,9 @@ class MainWindow(QMainWindow):
                     self._open_stock_research_context
                 )
             self.recommendation_view = recommendation
+            daily_price = recommendation.daily_market_research_view
+            daily_price.priceStockResearchRequested.connect(self._open_price_stock_research)
+            daily_price.price_stock_workspace_available = True
             self._mount_technical_official_research(recommendation)
             self._mount_personal_h20_research(recommendation)
             self._connect_daily_market_cohort_view(recommendation, market_tabs)
@@ -2372,6 +2375,12 @@ class MainWindow(QMainWindow):
             )
             self.stock_research_workspace.returnRequested.connect(
                 self._return_from_stock_research_report
+            )
+            self.stock_research_workspace.priceResearchReturnRequested.connect(
+                self._return_from_price_stock_research
+            )
+            self.stock_research_workspace.sourceContextShown.connect(
+                lambda context: self.research_session_store.set_stock_context(context, source="stock_workspace")
             )
             self.stock_research_workspace.report_view.createAnalysisRequested.connect(self._prepare_stock_research_analysis)
             self.stock_research_workspace.report_view.research_bookmark_context_resolver = (
@@ -2585,6 +2594,31 @@ class MainWindow(QMainWindow):
         scope.setText(code)
         self._select_main_workspace("recommendation")
         self.statusBar().showMessage(f"已指定研究股票 {code}；檢查策略後執行並保存，再返回個股研究明確選取來源。")
+
+    def _open_price_stock_research(self, stock: object, selection: object) -> None:
+        """同源價格選股下鑽，不使用一般價庫或覆寫研究來源身份。"""
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None:
+            return
+        try:
+            workspace.show_price_research(stock, selection)
+        except (TypeError, ValueError) as exc:
+            self.statusBar().showMessage(f"原價格研究來源不一致，未切換個股：{exc}")
+            return
+        self._select_main_workspace("stock_research")
+
+    def _return_from_price_stock_research(self, selection: object) -> None:
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        recommendation = getattr(self, "recommendation_view", None)
+        daily = getattr(recommendation, "daily_market_research_view", None)
+        if daily is not None and daily.restore_price_research_origin(selection):
+            recommendation.result_source_tabs.setCurrentWidget(daily)
+            self._select_main_workspace("recommendation")
+        else:
+            self.statusBar().showMessage("原價格研究頁尚忙或來源已變動，請重新讀取原收藏；未切換其他來源。")
 
     def _open_stock_research_context(self, value: object) -> None:
         """接收保存結果／觀察清單的下鑽 context 並開啟單股研究頁。"""
@@ -3510,6 +3544,15 @@ class MainWindow(QMainWindow):
         else:
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
+            return
+        if context.source_kind == "technical_price_saved_source":
+            workspace = getattr(self, "stock_research_workspace", None)
+            detail = getattr(workspace, "price_research_view", None)
+            if (detail is not None and workspace.price_research_context == context
+                    and detail._origin_selection is not None):
+                self._return_from_price_stock_research(detail._origin_selection)
+            else:
+                self.statusBar().showMessage("原價格來源身份不可用；請重新核驗原收藏，未改用其他股票來源。")
             return
         if context.source_kind == "personal_h20_research_bookmark":
             origin = self._personal_h20_bookmark_origin_for_context(context)

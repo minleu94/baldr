@@ -5,7 +5,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QLabel, QPushButton, QTextBrowser, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView, QHeaderView, QLabel, QPushButton, QTableWidget,
+    QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
+)
 
 from app_module.daily_market_technical_universe_price_comparison_v1 import (
     DailyMarketTechnicalUniversePriceSelectionV1,
@@ -13,6 +16,8 @@ from app_module.daily_market_technical_universe_price_comparison_v1 import (
 from app_module.daily_market_technical_universe_price_query_v1 import (
     DailyMarketTechnicalUniversePriceStockV1,
 )
+from app_module.stock_research_report_dtos import StockPricePointDTO
+from ui_qt.views.stock_research_report_view import StockPriceChartWidget
 
 
 _RULE_LABELS: dict[str, str] = {
@@ -131,7 +136,26 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self.evidence = QTextBrowser()
         self.evidence.setOpenExternalLinks(False)
         self.evidence.setAccessibleName("個股價格與五條技術規則理由、反證及未知原因")
-        layout.addWidget(self.evidence, 1)
+        self.detail_tabs = QTabWidget(self)
+        price_page = QWidget(self.detail_tabs)
+        price_layout = QVBoxLayout(price_page)
+        self.price_scope = QLabel()
+        self.price_scope.setWordWrap(True)
+        self.price_scope.setTextFormat(Qt.TextFormat.PlainText)
+        price_layout.addWidget(self.price_scope)
+        self.price_chart = StockPriceChartWidget(price_page)
+        price_layout.addWidget(self.price_chart)
+        self.price_table = QTableWidget(0, 7, price_page)
+        self.price_table.setAccessibleName("原價格研究保存價量明細")
+        self.price_table.setHorizontalHeaderLabels(["日期", "開盤", "最高", "最低", "收盤", "成交股數", "品質"])
+        self.price_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.price_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.price_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.price_table.horizontalHeader().setStretchLastSection(True)
+        price_layout.addWidget(self.price_table, 1)
+        self.detail_tabs.addTab(price_page, "價格／技術")
+        self.detail_tabs.addTab(self.evidence, "原選股規則")
+        layout.addWidget(self.detail_tabs, 1)
 
         self.audit_toggle = QPushButton("顯示來源識別與核驗版本")
         self.audit_toggle.setCheckable(True)
@@ -156,6 +180,7 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         origin_selection: DailyMarketTechnicalUniversePriceSelectionV1,
     ) -> None:
         _validate_origin_pair(stock, origin_selection)
+        points = self._price_points(stock)
         snapshot = stock.snapshot
         fact = stock.row.price_fact
         query = origin_selection.query
@@ -174,6 +199,27 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
             f"價格未知原因：{reason_text}"
         )
         self.conditions.setText("原查詢條件\n" + _query_conditions(origin_selection))
+        self.price_chart.set_points(points)
+        self.price_scope.setText(
+            f"原來源保存 {len(snapshot.rows)} 列價量；圖表可定位 {len(points)} 個日期。"
+            "均線等訊號見「原選股規則」；未保存的歷史指標不繪製。"
+            "缺值維持未知，可得時間未知，不作歷史可交易證據。"
+        )
+        self.price_table.setRowCount(len(snapshot.rows))
+        for index, row in enumerate(reversed(snapshot.rows)):
+            values = (
+                row.feature_date.isoformat() if row.feature_date else row.raw_date,
+                *(_price_text(value) if row.ohlc_valid else "未知" for value in (
+                    row.open_price, row.high_price, row.low_price, row.close_price,
+                )),
+                _price_text(row.volume_shares) if row.volume_valid else "未知",
+                "；".join(row.invalid_reasons) or "原列有效；可得時間未知",
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(f"原列 SHA-256：{row.row_fingerprint_sha256}")
+                self.price_table.setItem(index, column, item)
+        self.detail_tabs.setCurrentIndex(0)
 
         parts: list[str] = [
             "價格來源事實",
@@ -225,6 +271,38 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self._stock = stock
         self._origin_selection = origin_selection
         self.return_button.setEnabled(True)
+
+    @staticmethod
+    def _price_points(stock: DailyMarketTechnicalUniversePriceStockV1) -> tuple[StockPricePointDTO, ...]:
+        """只投影核驗原列；不補漲跌、不重算指標或宣稱歷史可得。"""
+        rows = stock.snapshot.rows
+        if len(rows) > 120:
+            raise ValueError("technical_price_chart_row_limit")
+        points: list[StockPricePointDTO] = []
+        previous = ""
+        for row in rows:
+            if row.stock_code != stock.stock_code:
+                raise ValueError("technical_price_chart_stock_mismatch")
+            if row.feature_date is None:
+                continue
+            day = row.feature_date.isoformat()
+            if day <= previous or row.feature_date > stock.snapshot.decision_date:
+                raise ValueError("technical_price_chart_date_mismatch")
+            previous = day
+            volume = row.volume_shares
+            points.append(StockPricePointDTO(
+                data_date=day,
+                open_price=row.open_price if row.ohlc_valid else None,
+                high_price=row.high_price if row.ohlc_valid else None,
+                low_price=row.low_price if row.ohlc_valid else None,
+                close_price=row.close_price if row.ohlc_valid else None,
+                volume=(int(volume) if row.volume_valid and volume is not None
+                        and volume.is_finite() and volume >= 0 and volume == volume.to_integral_value() else None),
+                source_id=stock.snapshot.source_id,
+                source_snapshot_hash=row.row_fingerprint_sha256,
+                quality="unknown",
+            ))
+        return tuple(points)
 
     def _set_audit_visible(self, visible: bool) -> None:
         self.audit.setVisible(visible)

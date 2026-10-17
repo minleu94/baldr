@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+價格選股同源個股工作區的後續開發來源（Increment118）已完成正常Main／收藏／新程序的定向驗證：雙擊結果在主「個股研究」呈現原120列價量與五規則，返回原查詢與比較籃，不改讀一般四股庫。固定EXE尚待建置及同版驗證，116／117入口保持；見[QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment118-price-stock-workspace)。
+
 115已納入跨視窗TabOrder、Qt model自有連線清理及pandas相容性修復；原受影響回歸、共同UI防線與13個隔離MainWindow旅程見[啟動警告修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)。115該次同版EXE父／新程序未收到Qt警告；公司名冊缺來源憑證的提示仍保留。
 
 116已修舊回測因Decimal附註而降級CSV、讀回再失精度的缺陷；33個受影響測試、compile、mypy／精度守衛與正常Python Main四筆保存→新程序通過，同輪固定EXE另驗高精度原值新保存及重開。原producer的float DTO按原位元身分核，不授完整精度；舊CSV／SQLite摘要不遷移。前段來源階段、失敗與補證原樣見[Increment116 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment116-legacy-parquet-precision)。

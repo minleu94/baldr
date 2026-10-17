@@ -2222,3 +2222,19 @@ QA18再以目前真clock從實際117試用目錄的public reader核五值、用�
 
 此葉已移除「合格單一財報數值無正常讀回出口」的工程阻礙，並有固定工程預覽；前期比較、其他發行人與每日新版用途、歷史PIT、P07／P12、原生／真人及完整P03仍待。原四條V1、其他包與全部P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保持，下一葉依原§0.4繼續，不把本輪FAIL藏成全Gate PASS。
 117最終文件QA19：自有task、12個feature與8份本輪文件／包內指南結構及連結PASS，errors=[]；outer SHA `be37a56e4c2c5a3b2b1b1378e7c0247050462783564cd7ab77daf582a6e7cdce`，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後只記錄此結果及提交接手點，不修改117固定候選或把Native FAIL改判。
+<a id="increment118-price-stock-workspace"></a>
+## Increment118：價格選股接正常個股工作區與同源返回
+
+本輪解除第一版的連貫性阻礙：價格選股使用2026-10-16保存來源，但一般個股價庫只有四股，先前雙擊只開文字詳情，選出的8933／2506在一般頁無價格。Main現在沿原reader-issued stock／selection直接在「個股研究｜價格選股原來源」顯示原最多120列OHLCV、K線、成交量與五規則；返回仍核原query／page／stock及比較籃。一般報告／H20與選股來源分開顯示，明按「改用一般個股查詢」才離開來源；非Main宿主保留dialog。既有bookmark、reader、缺值與來源守衛不改，沒有重算指標、策略或金融結果。
+
+Root依Execution／Tech Lead／Data Audit／QA／Documentation履職，同task owner及舊原件保留，新增代理0（累計10/10）。QA01重建ui Level2 context，Unknown=[]；outer SHA `0c69629b70bd58df099859f433c0ed1faf5ddf7a4c6ec0bce88b7d7f405145e3`。檢查表達層Decimal原值與整數股數轉型，圖表float限既有繪圖邊界；所有圖點available_at空、quality unknown、change不補值，只列原decision_date以前資料，未取得歷史PIT。沒有新增來源用途接受或正式資料寫入。
+
+QA02：[定向收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment118_scoped_qa02/receipt.json)與原stdout保留。changed Python compile、價格詳情／篩選視圖、工作區、Main routing及Workbench共111 passed，validator25／0／4，mypy1047通過（既有UI ignore不證強型別）；outer SHA `7e9304ba179d046074b37c9ca507409c86c615669d986421a01156f904f103dc`。
+
+QA03：既有257納入／258宣告合成來源的正常Main價格查詢、比較籃、收藏、另一程序精確重開，加入主個股工作區價量與返回核對，1 passed／161.18秒；[定向收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment118_main_fresh_qa03/receipt.json)，outer SHA `87bb850c67a4e6e2385938161e4d1aa2d311de0d1f9ec3eb90185975895243d1`。未以合成母體或案例數授正式真N。
+
+各組啟動前RAM>=8GiB，Job可讀回8GiB committed／12程序／kill-on-close及同workspace mutex；三PID陣列自然空，process／Job handles關閉、mutex釋放、forced_cleanup=false。前組閉鎖後才起下組，沒有終止其他Python或改正式Task。
+
+目前為待固定EXE的來源候選；同版8933／2506實際來源、收藏及fresh接續驗證，未執行項目不記PASS。116／117固定包、四條V1與原完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保留；117 Native螢幕命中FAIL、名錄用途、來源clock、歷史PIT、完整財報及金融資格與自然成熟均未解除。
+
+凍結前複核另發現底部研究上下文可能保留上一股；沿既有ResearchStockContextDTO只同步原選取的股票、日期、snapshot與來源身份，狀態列返回也核目前同一選取；一般查詢明切後恢復原一般context。QA04b因此重驗受影響視圖／工作區／路由及強制UI防線：112 passed、compile、validator25/0/4、mypy1047；outer SHA `aa59553ca219eeeb1a129beb31614bd2a78c8e737f6aedba455a0ca57c1ff386`。未重跑未改的完整257母體產製。QA04文件檢查12features／7docs、errors=[]，outer `a5fac0d55b61eccaea07918386491201197f9c74ea7fbb25962c57d520569db8`。

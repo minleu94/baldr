@@ -83,3 +83,30 @@ def test_embedded_shutdown_cancels_report_and_journey_even_when_report_busy():
     )
     assert StockResearchWorkspace.request_close(workspace) is False
     assert calls == ["report", "journey"]
+
+
+def test_status_strip_returns_only_the_exact_saved_price_context():
+    context = ResearchStockContextDTO(
+        stock_code="8933", source_kind="technical_price_saved_source",
+        source_workspace="recommendation", source_snapshot_hash="a" * 64,
+    )
+    origin = object()
+    returned = []
+    messages = []
+    host = SimpleNamespace(
+        _coerce_stock_research_context=lambda value: value,
+        stock_research_workspace=SimpleNamespace(
+            price_research_context=context,
+            price_research_view=SimpleNamespace(_origin_selection=origin),
+        ),
+        _return_from_price_stock_research=returned.append,
+        statusBar=lambda: SimpleNamespace(showMessage=messages.append),
+    )
+    MainWindow._return_to_research_source(host, context)
+    assert returned == [origin] and not messages
+    stale = ResearchStockContextDTO(
+        stock_code="8933", source_kind="technical_price_saved_source",
+        source_workspace="recommendation", source_snapshot_hash="b" * 64,
+    )
+    MainWindow._return_to_research_source(host, stale)
+    assert returned == [origin] and "原價格來源身份不可用" in messages[-1]

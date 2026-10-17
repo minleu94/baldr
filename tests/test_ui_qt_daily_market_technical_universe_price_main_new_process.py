@@ -548,6 +548,25 @@ def _child_main(payload_path: Path) -> int:
                 f"expected={expected_scroll}; actual={actual_scroll}; "
                 f"geometry={scroll_geometry}; restore_trace={phases}"
             )
+        _double_click_price_row(app, price_view, expected_stock_code)
+        _wait_for(
+            app,
+            lambda: window.stock_research_workspace.price_research_view is not None
+            and window.stock_research_workspace.price_research_view.isVisible()
+            and _view_idle(price_view),
+            deadline=deadline, stage="fresh Main 原收藏進同源個股研究", cancel_marker=cancel_marker,
+        )
+        fresh_detail = window.stock_research_workspace.price_research_view
+        assert fresh_detail is not None
+        assert fresh_detail._origin_selection.to_dict() == state.selected.selection.to_dict()
+        assert fresh_detail.price_table.rowCount() == len(fresh_detail._stock.snapshot.rows)
+        fresh_detail.return_button.click()
+        _wait_for(
+            app, restored_exactly, deadline=deadline,
+            stage="fresh Main 同源個股返回原收藏頁", cancel_marker=cancel_marker,
+        )
+        assert window.workspace_stack.currentWidget() is window.recommendation_view
+        mark("fresh_embedded_price_stock_and_exact_return", stock_code=expected_stock_code)
         if price_view.current_query.to_json() != expected_query_json:
             raise AssertionError("Main 還原後 query canonical JSON 不符")
         mark(
@@ -896,8 +915,8 @@ def test_real_main_full257_price_query_bookmark_and_fresh_pid_restore(
         _double_click_price_row(app, view, second_code)
         _wait_for(
             app,
-            lambda: daily._price_stock_dialog is not None
-            and daily._price_stock_dialog.isVisible()
+            lambda: window.stock_research_workspace.price_research_view is not None
+            and window.stock_research_workspace.price_research_view.isVisible()
             and _view_idle(view),
             deadline=deadline,
             stage="Main 真正雙擊 F07 股票並開啟原股詳情",
@@ -909,15 +928,24 @@ def test_real_main_full257_price_query_bookmark_and_fresh_pid_restore(
         assert detail_stock.stock_code == detail_origin.stock_code == second_code
         assert detail_origin.query.to_json() == original_query_json
         assert detail_origin.page_identity_sha256 == last_page.page_identity_sha256
-        details = daily._price_stock_dialog.findChild(DailyMarketTechnicalPriceStockV1View)
+        details = window.stock_research_workspace.price_research_view
         assert details is not None and details.isVisible()
+        assert isinstance(details, DailyMarketTechnicalPriceStockV1View)
+        assert window.workspace_stack.currentWidget() is window.stock_research_workspace
+        assert not details.isWindow() and details.window() is window
+        assert daily._price_stock_dialog is None
+        assert details.price_table.rowCount() == len(detail_stock.snapshot.rows)
+        assert tuple(point.close_price for point in details.price_chart._points) == tuple(
+            row.close_price if row.ohlc_valid else None
+            for row in detail_stock.snapshot.rows if row.feature_date is not None
+        )
         assert second_code in details.summary.text()
         assert details.return_button.isEnabled()
         QTest.mouseClick(details.return_button, Qt.MouseButton.LeftButton)
         _wait_for(
             app,
             lambda: _view_idle(view)
-            and daily._price_stock_dialog is None
+            and window.workspace_stack.currentWidget() is window.recommendation_view
             and view.current_page is not None
             and view.current_page.page_identity_sha256 == last_page.page_identity_sha256,
             deadline=deadline,

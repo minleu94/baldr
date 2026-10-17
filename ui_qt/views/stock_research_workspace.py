@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSize, Signal, Qt
 from PySide6.QtWidgets import (
-    QGroupBox, QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QGroupBox, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from app_module.decision_continuity_controller import DecisionContinuityController
@@ -23,6 +23,8 @@ class StockResearchWorkspace(QWidget):
 
     returnRequested = Signal()
     personalH20SavedRecheckRequested = Signal()
+    priceResearchReturnRequested = Signal(object)
+    sourceContextShown = Signal(object)
 
     def __init__(
         self,
@@ -37,10 +39,20 @@ class StockResearchWorkspace(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         title_layout = QHBoxLayout()
-        title_layout.addWidget(QLabel("個股研究"))
+        self.workspace_title = QLabel("個股研究")
+        title_layout.addWidget(self.workspace_title)
         title_layout.addStretch()
         title_layout.addWidget(InfoButton("stock_research", self))
+        self.general_lookup_button = QPushButton("改用一般個股查詢", self)
+        self.general_lookup_button.setToolTip("離開原選股來源，使用一般個股頁已配置的價庫；不會把兩份資料合併。")
+        self.general_lookup_button.clicked.connect(self._open_general_lookup)
+        self.general_lookup_button.hide()
+        title_layout.addWidget(self.general_lookup_button)
         layout.addLayout(title_layout)
+        self.content_stack = QStackedWidget(self)
+        self.general_report_page = QWidget(self.content_stack)
+        general_layout = QVBoxLayout(self.general_report_page)
+        general_layout.setContentsMargins(0, 0, 0, 0)
         self.personal_h20_saved_group = QGroupBox("保存的個人 H20 研究預測", self)
         self.personal_h20_saved_group.setObjectName("stockResearchSavedH20Summary")
         self.personal_h20_saved_group.setAccessibleName("已保存個人 H20 預測摘要")
@@ -70,7 +82,7 @@ class StockResearchWorkspace(QWidget):
         self.personal_h20_saved_busy = False
         self.personal_h20_saved_retry_allowed = False
         self.personal_h20_saved_group.setVisible(False)
-        layout.addWidget(self.personal_h20_saved_group)
+        general_layout.addWidget(self.personal_h20_saved_group)
         self.report_tabs = QTabWidget(self)
         self.report_tabs.setDocumentMode(True)
         self.report_view = StockResearchReportView(service, parent=self)
@@ -85,7 +97,58 @@ class StockResearchWorkspace(QWidget):
             )
             self.report_view.activeContextChanged.connect(self.journey_view.set_context)
             self.report_tabs.addTab(self.journey_view, "決策 → 結果")
-        layout.addWidget(self.report_tabs)
+        general_layout.addWidget(self.report_tabs)
+        self.content_stack.addWidget(self.general_report_page)
+        self.price_research_view = None
+        self.price_research_context: ResearchStockContextDTO | None = None
+        layout.addWidget(self.content_stack)
+
+    def show_price_research(self, stock: object, selection: object) -> None:
+        """原 reader 發出的同源選取在正常工作區顯示，不轉一般報告 context。"""
+        from ui_qt.views.daily_market_technical_price_stock_v1_view import DailyMarketTechnicalPriceStockV1View
+
+        candidate = DailyMarketTechnicalPriceStockV1View(self)
+        try:
+            candidate.show_stock(stock, selection)
+        except (TypeError, ValueError):
+            candidate.deleteLater()
+            raise
+        candidate.returnRequested.connect(self.priceResearchReturnRequested.emit)
+        previous = self.price_research_view
+        self.content_stack.addWidget(candidate)
+        self.content_stack.setCurrentWidget(candidate)
+        self.price_research_view = candidate
+        self.workspace_title.setText("個股研究｜價格選股原來源")
+        self.general_lookup_button.show()
+        self.clear_personal_h20_saved_summary()
+        source = selection.query.source
+        self.price_research_context = ResearchStockContextDTO(
+            stock_code=stock.stock_code,
+            decision_date=source.decision_date.isoformat(),
+            data_date=selection.observation_date or "",
+            result_id=selection.result_identity_sha256,
+            identity_status="exact_saved_selection",
+            source_snapshot_id=stock.snapshot.snapshot_identity_sha256,
+            source_snapshot_hash=stock.snapshot.snapshot_identity_sha256,
+            source_id=stock.snapshot.source_id,
+            source_version=source.source_identity_sha256,
+            source_kind="technical_price_saved_source",
+            source_label="價格選股原來源（可得時間未知）",
+            source_workspace="recommendation",
+        )
+        self.sourceContextShown.emit(self.price_research_context)
+        if previous is not None:
+            self.content_stack.removeWidget(previous)
+            previous.deleteLater()
+
+    def _show_general_report(self) -> None:
+        self.content_stack.setCurrentWidget(self.general_report_page)
+        self.workspace_title.setText("個股研究")
+        self.general_lookup_button.hide()
+
+    def _open_general_lookup(self) -> None:
+        self._show_general_report()
+        self.sourceContextShown.emit(self.report_view.context)
 
     def clear_personal_h20_saved_summary(self) -> None:
         self.personal_h20_saved_evidence = None
@@ -212,6 +275,7 @@ class StockResearchWorkspace(QWidget):
         stock_codes: Sequence[str] = (),
     ) -> None:
         self.report_view.set_stock_codes(stock_codes)
+        self._show_general_report()
         self.report_tabs.setCurrentWidget(self.report_view)
         self.report_view.set_context(context)
 

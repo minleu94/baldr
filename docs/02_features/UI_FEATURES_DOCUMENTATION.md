@@ -273,6 +273,8 @@ Increment71 將策略回測視窗整理為 1366px 下左設定、右結果；三
 
 ### 價格選股、來源回訪與結果篩選
 
+Increment118把正常Main價格結果的已核驗stock／selection直接交給既有個股工作區，以獨立來源頁展示保存價量與原五規則；一般報告與H20頁留在另一容器，不把舊四股報告當成目前選股內容。原來源返回、比較籃及bookmark schema沿用，Main以外宿主保持原dialog；值只作展示投影，不補資料、重算指標或升格來源用途。操作見[同源個股研究](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)，實際接受範圍見[QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment118-price-stock-workspace)。
+
 固定 ec5c95733608 本機候選將每日研究長頁拆成預設「價格選股」及每日快照／兩個進階母體子頁。價格選股保留原 catalog、嚴格來源核驗、query、比較、收藏及返回契約；首屏顯示資料日、母體、處理數和不可選原因，原路徑／SHA 可展開。單股回測同 run 摘要並列完成配對、成交、明細及期末持股；歷史缺欄維持未知。四股漲跌方向只在隔離試用價庫中，從同股同日、同收盤與同價差的正式唯讀列精確補接；舊包和正式資料不變，不授歷史 PIT 或完整績效。固定入口為 output/trial/Baldr-Daily-Research-66/Launch-Baldr.cmd；同目錄指南與已知問題列出四股及原技術來源路徑限制。受改 source 測試與 UI 共同防線、正常來源／同版 EXE Native Main 與新程序的限定旅程、真人試用及未接受範圍見[Increment66 原 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment66日常研究修正版候選依原計畫04)。
 
 成功載入／套用後，價格選股收合條件表並將它移到結果區；表格上方保留修改條件、符合數、翻頁、逐股比較與收藏入口，完整分母／排除原因可展開。錯誤或取消保留原已核結果，翻頁、來源返回與收藏重開不套新的自動捲動；操作見[價格選股指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)及[Increment70 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment70價格選股載入後顯示結果)。

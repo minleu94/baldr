@@ -165,7 +165,8 @@ def _add_monthly(package):
     return root, sha256(manifest.read_bytes()).hexdigest(), originals
 
 
-def test_optional_monthly_copies_all_original_bytes_and_binds_new_root(package, monkeypatch):
+@pytest.mark.parametrize("frozen", [False, True])
+def test_optional_monthly_copies_all_original_bytes_and_allows_normal_boot(package, monkeypatch, frozen):
     root, digest, originals = _add_monthly(package)
     calls = _fake_copiers(monkeypatch)
     receipt = setup.prepare_trial_package(root, digest)
@@ -173,9 +174,14 @@ def test_optional_monthly_copies_all_original_bytes_and_binds_new_root(package, 
     copied = root / "state/monthly-sales-version"
     assert {path.name: path.read_bytes() for path in copied.iterdir()} == originals
     config = json.loads((root / "state/config.json").read_bytes())
-    assert config["QUANTA_MONTHLY_SALES_DIRECTORY"] == str(copied)
-    assert config["QUANTA_MONTHLY_SALES_MANIFEST_SHA256"] == sha256(originals["manifest.json"]).hexdigest()
-    assert config["QUANTA_MONTHLY_SALES_RECEIPT_SHA256"] == sha256(originals["receipt.json"]).hexdigest()
+    assert not any(key.startswith("QUANTA_MONTHLY_SALES_") for key in config)
+    # 專用provider由啟動器明選環境；config只保留共同啟動器接受的契約。
+    from app_module.application_bootstrap import resolve_application_settings
+    (root / "state/technical-source/live/universe").mkdir(parents=True)
+    resolved = resolve_application_settings(environ={"LOCALAPPDATA": str(root / "local"),
+        "BALDR_CONFIG": str(root / "state/config.json")}, resource_root=root / "app/_internal", frozen=frozen)
+    assert resolved.configured and resolved.environment["DATA_ROOT"] == str(root / "state/market")
+    assert resolved.environment["OUTPUT_ROOT"] == str(root / "state/output")
     proof = json.loads(receipt.read_bytes())
     assert proof["quanta_monthly_sales_verification"] == "copied_bytes_verified_not_source_acceptance"
     before = receipt.read_bytes()

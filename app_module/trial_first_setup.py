@@ -206,10 +206,6 @@ def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
             "RESEARCH_STATE_ROOT": str(state / "registry"),
             "OFFICIAL_CALENDAR_CACHE_PATH": str(state / "calendar"),
             "TECHNICAL_UNIVERSE_READ_ROOT": str(pin.store_output_root)}
-        if monthly_binding is not None:
-            settings.update(QUANTA_MONTHLY_SALES_DIRECTORY=str(state / "monthly-sales-version"),
-                QUANTA_MONTHLY_SALES_MANIFEST_SHA256=monthly_binding["manifest_sha256"],
-                QUANTA_MONTHLY_SALES_RECEIPT_SHA256=monthly_binding["receipt_sha256"])
         # 只在所有封存／原值reader通過後發行設定；原清冊與只讀資料再核一次。
         _json(manifest_path, manifest_sha256)
         for files in (runtime_files, market, fundamental, monthly, regime):

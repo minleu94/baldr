@@ -2,6 +2,14 @@
 
 本契約落實使用者於 2026-10-13（台北 10/14）採納的每日固定抓取政策，適用 P00／P03 的新保存來源及已接受的指定研究用途。施工順序仍由[原產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md#95-資料阻塞分流與下一批交付2026-10-14-調整)管理，實際驗證看[本輪 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。本頁不授正式資料寫入、排程變更、歷史回補或交易。
 
+## 具名營益固定版本（Increment117）
+
+此接受僅涵蓋[政府開放資料20762](https://data.gov.tw/dataset/20762)之`d9778530…b609`原CSV、2330／2026-H1的營收與四個利潤率；不是全資料集單位契約。Root以既存完整官方發行人PDF獨立核對幣別、半年累計基礎與顯示精度，產品數值只取開放CSV。營收原值`2404483.69`百萬元以Decimal轉TWD，四比率保留原百分比，不以PDF較低精度替換。其他公司、前期及PDF重展示用途未接受。
+
+`twse-operating-summary-2330-2026h1.v1`沿既有DailySourceUseAcceptance保存精確source／schema／單位／current_research用途。批次另外保存原CSV、HTTP receipt、資料集頁、license及machine metadata的bytes／SHA；manifest與receipt各由caller提供外部SHA。Reader重驗具名原件及用途、pending／failure與讀取期間的檔案signature；不得只改外部SHA將其他公司、幣別或提前時鐘授資格。只有出表日期，官方發布timestamp仍未知，`successful_batch_completion_fallback`明示以本次成功保存小時為準；新版本另存，原attempt與正式庫不改。
+
+目前僅供原個股基本面頁查閱及固定版本重開，P00/P03的這一葉不授P07/P12消費資格。前期比較不可用、歷史PIT／特徵聚合／交易flags為false；正常Main、新程序及固定EXE的實際狀態分別見[Increment117 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment117-operating-summary)。
+
 ## TWSE單日注意公告候選（Increment48）
 
 `twse-attention-dated-report.v1` 限定官方 RWD `announcement/notice` 的 `querytype=1`、相同 startDate／endDate、sortKind=DATE、response=json；原 HTML、web-report.js 與 main.js 的固定 SHA 只證官方查詢契約。單日 JSON 須完整 EOF，stat=OK、八欄／params／title 精確相符，count／total 與完整唯一證券列各自相等。OpenAPI 無日期佔位拒作無公告證明；`編號` 不當唯一身份，`累計次數` 只保留原文，不推論連續日數。理由保留原 HTML 與限定紅色 font 的純文字投影；收盤價與 PE 不轉金融數值，市場資格不由列數推定。

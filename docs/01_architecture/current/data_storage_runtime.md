@@ -29,6 +29,12 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 ## 讀寫與保存契約
 
+### 具名營益目前研究版本
+
+`twse_operating_summary_snapshot.py`只接受資料集20762的固定CSV、2330及2026-H1。貨幣／期間由同發行人官方半年報與營收、四項比率在顯示精度內交叉核對；不外推1055列或未來版本。原CSV、HTTP收據及三份用途文件另存，沿既有immutable I/O與`DailySourceUseAcceptance`，不轉入正式SQLite。雙外部SHA、完整原件、一次性用途及每批實際保存時鐘獨立重驗，pending／failure／重寫拒絕。官方只有出表日，依成功批次台北小時使用，不借HTTP Date或過去財報期末倒填可得性。
+
+`OperatingSummaryReportProvider`只投影至目前個股報告；幣值以Decimal乘百萬、百分比保留原值。前期、歷史PIT、聚合篩選、策略、ML、Paper與交易資格均未授；PDF不隨產品快照複製或重展示。配置與失敗隔離見[操作手冊](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)。此葉不改月營收、generic daily record或其他已接受來源。
+
 `institutional_source_use.py`把既有DailySourceUseAcceptance限定於資料集11856／精確TPEx OpenAPI、parser版本、官方operation＋resolved schema SHA、shares與diagnostics。四份Root已核官方文件按固定版本fingerprint另存，來源不變，接受檔canonical與外部SHA；pending／failure／reparse／hardlink／中途變更拒絕。真accepted_at不得早於必要metadata原件收據或本次真保存開始；讀者cutoff不得早於接受時間。原institutional_daily_snapshot另驗每天原件、合計、版本與成功批次小時，只有明選同源用途pin才附typed source_use／source_use_accepted=True，candidate_only／歷史PIT false不變。沒有SQL、generic P0 decision或Task寫入；原MOPS／日曆及TWSE無法跨用。正常頁面只新增可選接受檔／SHA輸入、接受ID／時間／顯名，無pin時舊行為相容。
 
 法人候選沿 `institutional_credit_flows_service`／`complete_institutional_credit_flows.py` 的原 parser、create-only raw／metadata／candidate 保存。`capture_scope=twse_institutional` 僅選 T86；`legacy_all` 保留原四來源，未要求資料集不造零，scoped rebuild 核來源／單位／版本及逐日分區。`app_module/institutional_daily_snapshot.py` 對明選原run重驗完整EOF／identity body、全部原件與candidate，旁存create-only manifest／成功時鐘receipt及pending barrier；exact public reader要求目錄與雙外部SHA、同批全部byte／signature再核驗及可用小時。它沿原時間政策，沒有把MOPS record或另一revision namespace強cast成法人。

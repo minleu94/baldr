@@ -2181,3 +2181,24 @@ QA11重新核該成功父程序的SHA與完整來源清冊，**只續跑尚未�
 現在主要入口、Snapshot、Manual及批次／研究指南統一指向116；包內指南與已知問題固定。未改的單股雙策略旅程沿112、價格選股／收藏及舊推薦沿既有109等具名證據，不冒充116新驗整條。舊CSV與SQLite REAL摘要、原float DTO、來源／幣別／成本／PIT、完整績效、真人／不同DPI／跨機及自然成熟限制保留；四條V1不擴張，正式資料／Task、maintainer、私人帳、交易、push及發布未動。
 
 116固定交付文件QA13：12個feature／10份主要及包內指南和自有task檢查PASS，errors=[]；outer SHA `adc6bac89f46db8841a77e19a4eb161bc12b8e30d648f4134f5cbe3c2ffca19a`，三PID陣列自然空、process／Job handles關閉、mutex釋放。之後僅回填此結果與接手點，不修改固定包或連結。
+
+<a id="increment117-operating-summary"></a>
+### Increment117：具名2330半年營益接回原個股基本面
+
+**解除的產品阻礙**：第二階段P03原有完整原件卻未有任何合格財報數值可從正常個股頁讀取。本葉只將政府開放CSV的2330／2026-H1五項數值接回原service／DTO／分頁，不新增V1流程或競爭計畫。原固定116不改；前期與其他公司缺件仍隔離。
+
+來源判斷：資料集[20762](https://data.gov.tw/dataset/20762)及其已保存machine metadata明示百萬元、四種比率公式、CSV路由與[政府資料開放授權第1版](https://data.gov.tw/license)。它們沒有通用幣別或季度基礎聲明。本輪用既存[台積電2026Q2官方報告](https://investor.tsmc.com/english/quarterly-results/2026/q2)的半年累計NTD欄獨立核對：CSV營收2404483.69百萬元與PDF的整數顯示精度一致，四種百分比在該表數字的顯示精度內可勾稽，單季值不同。這是Root對**這一發行人／期間／原件**的具名判斷，不授整張表或未來版本通用語義。產品只取開放CSV數值；PDF原件與前期值不複製進新產品快照、不授重展示或歷史PIT。原PDF candidate reader及舊來源FAIL不改。
+
+- 原CSV：84302 bytes，SHA `d9778530ceae60920d75d9eb1d27ba380be8589fc12eccf2aef352932c79b609`；HTTP收據 `a026b3d22357776d1781cec2a708a1da16bcbbab6287736b0210e22a00508579`。1055原列、5列缺值不當真N，也不把未接受列補值。
+- 新manifest `67caacec359548fecdd28a5cdd8d0cb951f6ace3248a3e466df1f478cd708d0f`，receipt `3630af40a0d045a31ea278d70b0fa7b2aa257d1467ff0e005706f33983d895b8`；保存於自有task的`increment117_operating_summary_snapshot01`。首次保存台北2026-10-17 13:40:18.861064，成功完成13:40:18.865262，**14:00起可用**；僅出表日，basis為`successful_batch_completion_fallback`，不沿舊capture小時回填新用途／批次可用性。
+- `DailySourceUseAcceptance`綁資料集／原件SHA／發行人／H1／TWD與percent／current_research；每天品質與批次小時另驗。營收以Decimal乘百萬，百分比保留67.03／59.29／64.47／53.22，原件不改。`basis_verified=true`只限該列；aggregate／historical PIT仍false，P07／P12、選股、ML與交易不消費此值。
+
+QA01的來源勾稽／另存及真當下提前拒讀通過，[proof](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment117_source_acceptance_qa01/proof.json)。其第二命令誤用不存在的context domain `stock_research`，outer exit1原樣保留（`b3999e6f561a1f603fde8b0a9b15dbd06908f6f56baaae110e841f9170dda184`）；QA02只更正context，不重抓或重seal。Context Level2的`daily_data_update_guide.md`仍僅headings，Unknown明列；不是聲稱全文重讀。
+
+QA02：原report／attention受影響服務及新增測試63 passed、compile與mypy1047 source files PASS；outer `098d178bd6041b72135e68fd8227a362c18e3e1f9e93f35c80d9a0e1d64202a4`。之後頁面直接補顯名／來源／前期限制並強化保存後原件再核，QA03新增解析與原個股畫面、Workbench共157 passed，validator25/0/4、compile、mypy1047與financial float guard PASS；outer `639ffe6c392b821831ddb476c2c61f7e4ee10a4906d5009cc2fc7ab3f88f2710`。UI既有ignore_errors仍不證強型別，測試加總不作完整Gate。
+
+QA04原五份raw／receipt／用途文件篡改均被SHA拒絕；第六個缺件也正確拒絕，但harness誤期望`unavailable`而實際為`component_missing`，原FAIL outer `d47fb5d460beefe5340b79b0a37dccc14e9b6d2e6b944ad411f46682b57ea593`保留。QA05僅接續尚未完成的八例：缺件、pending、failure、偽造發行人、偽造幣別、倒填接受時間、提前receipt與create-only均拒絕，[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment117_custody_remaining_qa05/result.json)，outer `5d00b701a82c5071a804bc18d7ec708ec363b4b192c3aa28a7c8beb0ee4eada1`。原7檔SHA不變；沒有降低產品斷言或重跑先前五例。
+
+以上每組Root Job維持8GiB／12程序、kill-on-close、workspace mutex及啟動前RAM守衛；三PID陣列自然空、process／Job handles關閉、鎖釋放，無forced cleanup。新建代理額度10/10，平台無可重用代理，未再spawn。正式／私人資料、Task、maintainer、網路attempt、push、發布與交易未動。
+
+**尚待出口**：真實14:00後正常Main→基本面五欄→價格頁／返回→另一程序同版本，以及固定EXE同版讀回。工程PASS與保存成功不代替此出口；前期比較與整份P03／原完整Gate繼續保留。

@@ -25,6 +25,7 @@ from app_module.advice_composer import AdviceComposer
 from app_module.advice_dtos import AdviceMode
 from app_module.advice_policy import AdvicePolicy
 from app_module.position_health_service import PositionHealthService
+from app_module.twse_operating_summary_report_provider import OperatingSummaryReportProvider
 from app_module.research_result_presentation import is_research_data_limitation
 from app_module.portfolio_condition_monitor import (
     PortfolioConditionMonitor,
@@ -151,6 +152,7 @@ class StockResearchReportReadService:
         current_ownership_capture_root: Path | str | None = None,
         daily_market_snapshot_root: Path | str | None = None,
         daily_market_snapshot_cohort_id: str | None = None,
+        operating_summary_provider: OperatingSummaryReportProvider | None = None,
     ) -> None:
         self.config = config
         self.portfolio_service = portfolio_service
@@ -170,6 +172,7 @@ class StockResearchReportReadService:
         )
         self.market_status_provider = market_status_provider
         self.official_attention_provider = official_attention_provider or OfficialAttentionReportProvider.from_environment()
+        self.operating_summary_provider = operating_summary_provider or OperatingSummaryReportProvider.from_environment()
         self.market_status_pointer_path = (
             Path(output_root) / "release_v4" / "current_market_status" / "current_market_status_pointer.json"
             if output_root is not None
@@ -1793,6 +1796,10 @@ class StockResearchReportReadService:
                     cutoff=cutoff,
                     limitations=(reason,),
                 ))
+        if include_current and cutoff == now.astimezone(_TAIPEI).date():
+            summary_rows, summary_sources = self.operating_summary_provider.read(code, observed_at=now)
+            observations.extend(summary_rows)
+            sources.extend(summary_sources)
         observations.sort(key=lambda item: item.period, reverse=True)
         observations.sort(key=lambda item: {"monthly_revenue": 0, "statement_item": 1, "valuation": 2}.get(item.kind, 3))
         return tuple(observations), tuple(sources), industry

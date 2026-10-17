@@ -3001,6 +3001,9 @@ class StockResearchReportView(QWidget):
     def _render_fundamental(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("fundamental")
         layout.addWidget(self._section_heading("基本面／營收財報", report, "fundamental"))
+        for source in report.sources:
+            if source.source_id.startswith("official.twse.operating_summary."):
+                layout.addWidget(self._wrapped_label("\n".join((source.source_label, *source.limitations))))
         if not report.fundamentals:
             layout.addWidget(self._missing_panel("沒有可用的公告／可得日基本面 row；不補零。"))
             layout.addStretch()

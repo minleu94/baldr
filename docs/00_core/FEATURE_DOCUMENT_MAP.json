@@ -722,6 +722,8 @@
         "app_module/portfolio_research_stock_projection.py",
         "app_module/official_attention_snapshot.py",
         "app_module/official_attention_report_provider.py",
+        "app_module/twse_operating_summary_snapshot.py",
+        "app_module/twse_operating_summary_report_provider.py",
         "data_module/selection_official_attention.py",
         "scripts/save_official_attention_snapshot.py"
       ],
@@ -733,7 +735,8 @@
         "tests/test_official_attention_snapshot.py",
         "tests/test_official_attention_report_provider.py",
         "tests/test_selection_official_attention.py",
-        "tests/test_stock_research_official_attention_widget.py"
+        "tests/test_stock_research_official_attention_widget.py",
+        "tests/test_twse_operating_summary_report.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -750,6 +753,8 @@
       "change_patterns": [
         "ui_qt/views/stock_research*",
         "app_module/stock_research*",
+        "app_module/twse_operating_summary*.py",
+        "tests/test_twse_operating_summary_report.py",
         "app_module/official_attention_snapshot.py",
         "app_module/official_attention_report_provider.py",
         "data_module/selection_official_attention.py",

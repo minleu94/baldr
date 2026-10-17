@@ -407,6 +407,8 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 <a id="workspace-stock-research"></a>
 ## 個股研究（共用工作區）
 
+後續分支的基本面頁可沿原report port讀明選的2330／2026-H1營益固定版本，顯示五項原數值、來源／授權及前期缺件。只有這個發行人與版本接受目前研究；未明選、不完整、錯版或未到成功批次小時只隔離此來源。原價格／技術、返回與歷史來源守衛保持。配置與步驟見[具名營益固定版本](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)，各平台驗證範圍見[Increment117 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment117-operating-summary)。
+
 個股研究是 Recommendation、觀察清單、Portfolio 等流程共用的同一工作區，保存結果與當下市場研究的來源身份不可互換。操作步驟看[推薦與 Research Lab 手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)。
 
 ### 保存來源、當下研究與返回守衛

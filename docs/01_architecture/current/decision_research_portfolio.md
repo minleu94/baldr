@@ -4,6 +4,8 @@
 
 ## 模組責任
 
+個股目前基本面另可消費明選的`OperatingSummaryReportProvider`，沿原`StockFundamentalObservationDTO`保留H1累計、TWD／percent、來源SHA、成功批次可用小時及basis核實。該版本只供2330目前查閱；`aggregate_feature_eligible`與`formal_pit_eligible`為false，不流入P07策略、P12決策擷取或績效比較。前期與成長率缺件保留，詳[具名營益資料契約](data_storage_runtime.md#具名營益目前研究版本)。
+
 表內先列 UI、application 與資料存取入口，再列領域責任。九個工作區與 UI／application 邊界見[UI 與應用流程](application_and_workspaces.md)；產品能力與 Gate 仍依本冊開頭所列的 Product Roadmap、6M Roadmap 與 Snapshot。
 
 | 模組 | 主要責任 |

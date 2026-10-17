@@ -4,6 +4,8 @@
 
 ## 系統用途
 
+具名營益版本沿原個股 report service／DTO／基本面分頁讀取；原件、用途及小時守衛在 application reader，UI只呈現。精確範圍與非歷史用途見[current資料分冊](current/data_storage_runtime.md#具名營益目前研究版本)。
+
 原回測PF以有語意版本的nullable分析值傳遞，零分母／無配對不顯假零或金額；batch／optimizer／保存與舊比較隔離沿[current分冊](current/decision_research_portfolio.md)，不遷移正式資料或升級舊值。
 
 新單股研究結果沿原 analyzer、Registry 保存與歷史卡讀回；七項原指標以 `single-backtest-performance.v1` 綁原值、狀態、實際計算期間與表格證據。舊資料缺版本不回填，新版本不授績效資格或 Decimal 核心精度；詳見[決策與研究 current 分冊](current/decision_research_portfolio.md)。

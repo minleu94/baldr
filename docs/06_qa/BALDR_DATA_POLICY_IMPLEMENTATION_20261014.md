@@ -3093,3 +3093,13 @@ launcher --check另驗啟動身分，與Main旅程分列；postQA初態與交付
 
 760 outer `single_owned_qa_16023ddfb5da4e9492725a81af524807/receipt.json` SHA `de7026359646190dab51deb80d7ac78b107ba3524352ac4bd1ac83b6193315b8`；761 outer `single_owned_qa_8f7c7035a8cc40a69e58b313a926fdf6/receipt.json` SHA `87af708df95f597c5e9212f8f4f3a4da5b856b05a84ab0151c058c09bcd2d468`。取得命令exit0只表示失敗／成功回應已記錄，不等於來源用途PASS。來源表單位與跨期修訂不得自行混用；解除條件是完整官方公司身分原件及同版本／單位／成功批次時鐘的用途複核，不阻擋其他已合格流程。
 137收尾：769的8檔compile及既有精度防線通過；文件check因漏列四份治理Coverage而FAIL，原收據保留（outer `single_owned_qa_3e7a5883f15841058b175109dc5cdedf/receipt.json`，SHA `f193586984fe9fa2866eb6ec028658c94b57b1720b8dd9f619af2f2b08834ce1`）。四份正文無契約變動，補具體not_required後，770只重驗文件／task：12features、8個連結來源、0errors，outer `single_owned_qa_2f26939a412d47b0897b711f965d0d7d/receipt.json` SHA `7f1b36e2b320a309c7e903959b31068fa63bdfbfea86b573f37d3e81431948d3`。兩組均自然排空、handles與mutex閉鎖。驗後僅補本段原結果及Feature Map測試列縮排，程式／測試bytes保持；不再重跑既過驗證。固定134與完整goal界線不變。
+<a id="increment138-first-trial-setup"></a>
+
+## Increment138：全新試用包首次設定整合（2026-10-17，固定候選待驗）
+
+解除原P14固定134仍依賴dist與131絕對根的交付阻礙，凍結owner task `increment138_scope_freeze.json`；沿137研究封存恢復、127technical恢復及130明選收藏工具，不新增抓取、金融計算或來源用途。新增來源API與CLI，完整包以外部SHA固定清冊；runtime／行情／基本面逐檔及完整集合驗證，封存沿原public readers。只建立不存在的state，成功後才發config與收據；同根重開不重設後續保存，已有state移位或partial／failure明確拒絕，原件保持。這是全新試用包整合，不授私人環境或所有收藏家族搬移。
+
+771既有Context定位後回原技術工具正文；context實測3,568字元／5,770 UTF-8 bytes，技術正文budget略過，不當已讀，API與原恢復／收藏段落另核。路由bootstrap由Root履Execution／QA／Documentation，另做架構／資料判斷，沒有新增代理（累計10/10）。772 compile三個新增Python檔、9項拒錯／保存保護測試（1.08秒）及八根mypy1067通過；ui ignore與既有未註記函式提示仍不證UI強型別。單元的恢復依賴採替身，只證整合控制與資料保護；完整1,951檔、真封存、Source／新EXE Main及fresh仍須另驗，固定134不變。
+
+771 outer `single_owned_qa_7c3ae948c4a24a4aaf196948fd1de0d1/receipt.json` SHA `c70447972c0b346a44e28baa07ac8d2a25c81dc81c0e1b807f50aa34b83531c4`；772 spec `increment138_contract_qa01_spec.json` SHA `17af993a352051db73ee0bbf633e50189ecfa12dfa4e745ef956a3555d1c419b`，outer `single_owned_qa_83581b02e62c49b4a61fdca93a59dbab/receipt.json` SHA `fecf9ca4f740c488b400caa1a7dd1ed69246f4fd77d8dd3121208f9c521f6679`。均位owner task，8GiB／12程序／kill-on-close／workspace mutex、啟動RAM≥8GiB與前組閉鎖保持，自然排空。全包及完整P14尚未接受；沒有正式資料、Task、maintainer、push、發布或交易。
+138來源checkpoint複核：773文件／task檢查12features／6連結來源／0errors，outer `single_owned_qa_086aa055a7374608bcaaeb871b0d8383/receipt.json` SHA `452557e75fbebe63310d28ac87061afedfb784002b70d5f5845b2bcfcf0a0e12`。Root另補基本面入口SHA與包內原件的交叉核對及反例；774 compile、10項測試（1.12秒）與八根mypy1067通過，outer `single_owned_qa_088bc99710a948cfa9a7b054a769c38a/receipt.json` SHA `26625276eef7078f3fe5f2c37e6443f47273c589e082f80bc7afd4d8756e75a1`。原772九項結果保持；驗後只更新本段收據與指南測試數。完整包與新EXE仍待，這個checkpoint供固定來源建置，不當第一版完整交付。

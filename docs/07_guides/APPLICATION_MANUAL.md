@@ -8,6 +8,8 @@
 
 首次安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
+全新試用包的[首次設定整合候選](MACHINE_BOOTSTRAP_RUNBOOK.md#全新試用包首次設定整合候選)尚待全包／新EXE驗證，固定134不變。此來源工具只建立全新state；同根重開保留保存內容，既有state移位拒絕，不自動清空或恢復初態。
+
 若只要將已保存回測放到新的輸出目錄，先看[保存研究新副本](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，不要只複製索引或手改原收據。副本已移位時，依[封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#已移位研究封存的恢復)明選完整封存、搬動前另存的收據SHA及全新目的根；成功後才核准設定，從原頁讀回／返回／重開。缺件、錯SHA或失敗標記維持拒絕，不沿舊根補件。這是來源工具的明選複製／恢復，不自動改設定或移整個環境；固定134與私人內容保持原樣。
 
 同一工具新增 `--include-recommendations`，明選已保存一般推薦；原命令範圍不變。owner 核准新根後，在「推薦分析」按「讀取可用來源」、選原來源再「讀取」，返回及重啟保留原結果。遇到外部ML收據或來源缺損時保留失敗，不沿舊根補件、不重算或補零；步驟與排錯沿上述Runbook，限定證據見[129 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。

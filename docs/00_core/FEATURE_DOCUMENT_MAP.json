@@ -1253,7 +1253,9 @@
         "scripts/copy_research_output.py",
         "app_module/technical_source_copy.py",
         "scripts/copy_technical_source.py",
-        "scripts/copy_price_bookmarks.py"
+        "scripts/copy_price_bookmarks.py",
+        "app_module/trial_first_setup.py",
+        "scripts/prepare_trial_package.py"
       ],
       "tests": [
         "tests/test_document_control.py",
@@ -1262,7 +1264,8 @@
         "tests/test_research_output_restore.py",
         "tests/test_daily_market_technical_universe_v4_read_session.py",
         "tests/test_price_bookmark_copy.py",
-        "tests/test_price_bookmark_copy_limits.py"
+        "tests/test_price_bookmark_copy_limits.py",
+        "tests/test_trial_first_setup.py"
       ],
       "manual": [
         "docs/07_guides/FIRST_INSTALL_PROMPT.md",
@@ -1297,8 +1300,11 @@
         "scripts/copy_technical_source.py",
         "tests/test_daily_market_technical_universe_v4_read_session.py",
         "scripts/copy_price_bookmarks.py",
+        "app_module/trial_first_setup.py",
+        "scripts/prepare_trial_package.py",
         "tests/test_price_bookmark_copy.py",
-        "tests/test_price_bookmark_copy_limits.py"
+        "tests/test_price_bookmark_copy_limits.py",
+        "tests/test_trial_first_setup.py"
       ],
       "sync_documents": [
         "docs/07_guides/README.md",

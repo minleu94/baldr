@@ -17,6 +17,14 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 - 模型不只是一個權重檔：需要核對 model lineage、source/account、feature／資料版本、cutoff、pins、manifest/hash 和使用資格。材料不齊列為 pending，不可僅按檔名啟用。
 - 在舊機 writer 確認停用前，不得在新機啟用相同正式 writer。兩邊同時寫入可產生重複、互相覆蓋或來源身份混淆。
 
+## 全新試用包首次設定（整合候選）
+
+來源已新增 `scripts/prepare_trial_package.py --package-directory '<完整包目錄>' --manifest-sha256 '<另存的TRIAL_PACKAGE.json SHA>'`，以原研究恢復、技術來源恢復及明選F07收藏工具整合首次設定。包內須有完整 `app/`、`assets/market`、`assets/fundamental`、`assets/research`、`assets/technical` 與原收藏；外部固定清冊逐檔核runtime／行情／基本面，其他封存沿各自原收據及public reader。只在不存在的 `state/` 建立新根，原金融值、來源時間與用途資格不變；不取得新資料或匯入私人帳。
+
+同根重開只核設定與位置，保留使用者後續保存，不重新恢復初態。既有state移位、partial／failure、設定漂移或來源SHA不符均拒絕，不刪除或重設；需搬已使用狀態時回完整owner-migration清冊。成功收據為 `state/TRIAL_SETUP_RECEIPT.json` 的 `prepared_and_readers_verified`，config與原恢復收據SHA另記。失敗保留 `TRIAL_SETUP_PENDING.json`／`TRIAL_SETUP_FAILURE.json`，不得覆寫重試。
+
+目前僅10項拒錯／保存保護測試、compile與mypy1067通過；全包初次移位、正常Main／新EXE／fresh尚待，不能把此段當已交可攜版。固定134入口保持，進度及原件見[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)。來源CLI供受控整合；Agent執行依原Root Job／mutex限制。
+
 ## 保存研究的新副本（來源工具）
 
 若只要把已保存回測放到新的`OUTPUT_ROOT`，可使用來源工具`scripts/copy_research_output.py`。它處理研究Registry、舊單股回測與舊推薦組合三個store；不複製行情、價格選股來源、一般推薦、收藏、Paper帳或模型，亦不自動啟用新設定。這是完整移機中的一個步驟，原完整清冊仍須逐項處理。

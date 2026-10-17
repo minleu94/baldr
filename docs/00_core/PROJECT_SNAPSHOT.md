@@ -21,6 +21,8 @@
 
 115已納入跨視窗TabOrder、Qt model自有連線清理及pandas相容性修復；原受影響回歸、共同UI防線與13個隔離MainWindow旅程見[啟動警告修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)。本輪同版EXE父／新程序未收到Qt警告；公司名冊缺來源憑證的提示仍保留。
 
+後續開發來源116修正舊回測儲存庫因Decimal附註而降級CSV、讀回再失去精度的保存缺陷。33個受影響測試、compile、mypy／精度守衛，以及正常Python Main四筆保存→原歷史→新程序讀回已限定通過；有限Decimal輸入可精確讀回，正常引擎既有float DTO則核位元身分不變，不自授完整精度資格。**尚未納入115固定EXE**，原CSV及115已知問題保持；見[Increment116 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment116-legacy-parquet-precision)。
+
 **115固定來源為 `4f3d495130f06d3e49efa86436f96060767569a2`，EXE SHA-256為 `4ca8b66399e6b21f05fd3e86ca4babfc83e3861990971a1dce60fb787c96fb8e`。** 後續工作樹不改該EXE。18份固定狀態由109核SHA另複製，詳[交付收據](../../output/trial/Baldr-Daily-Research-115/DELIVERY_RECEIPT.json)；程式碼包含某家族不表示其金融或完整產品資格已接受。
 
 原66候選的交付歷史：依[原計畫 §0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)，第一列「日常研究修正版」已形成固定可試用候選。受改測試、共同 UI 防線、兩筆隔離持倉、來源與 EXE 的正常 Main／新程序及同版檢查已限定通過；EXE SHA-256 為 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`。交付收據最初記錄 SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`，目前檔案 SHA-256 為 `16bb4f511e5ecb21dff6667a5a38fa7aa73d298bf951ea69c0ce85b42e128eb1`；原因未裁決，兩者不混稱同一位元原件，詳[Increment67 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment67p08-推薦回放通用比較的金融判讀阻斷)。這只關閉本列工程交付出口，真人試用及完整產品 Gate 仍待。

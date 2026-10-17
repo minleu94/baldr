@@ -1,6 +1,6 @@
 # UI 功能文件（Qt）
 
-後續來源版修正推薦頁初始化時跨視窗設定 Tab 順序的警告，並讓可視列 helper 以 Qt 連線代號精確清理自己的 callbacks；不影響其他接收者，model 替換及視窗關閉仍會安全收尾。收盤價模式的大盤相容性警告與主入口 BOM／未使用匯入也一併整理。這是來源版修復，未替換固定 EXE，驗證範圍與來源憑證提示的界線見[啟動警告修復 QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)。
+推薦頁初始化的跨視窗Tab順序、Qt自有連線清理及pandas相容性修復已納入115固定候選；原受影響回歸見[啟動修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)，固定EXE與具名限制見[Increment115 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment115-fixed-trial-delivery)。後續來源116只修舊回測保存的Decimal附註序列化，沒有改UI控制項或導航，尚未打入115；操作與精度界線見[保存格式說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。
 
 ## 按九個工作區查找
 

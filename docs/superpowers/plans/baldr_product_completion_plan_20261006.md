@@ -176,6 +176,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **本輪固定交付（Increment115）**：從乾淨`4f3d495130f0`建立獨立EXE及115試用根，包含114拒錯與已整合啟動修正。正常Main的批次保存、原規則卡、返回與新程序讀回通過；另只讀既存run，經「查看實驗結果」和捲軸證明拒比原因確實位於可視區。沒有為補證重算已保存run。18份狀態、啟動器與固定收據已核，Snapshot／主要指南改指同一115入口；未改單股及其他V1旅程沿用既有證據，完整資格與原FAIL不變。[Increment115 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment115-fixed-trial-delivery)。接續第二列精確財報用途／期間，若仍缺外部權威則隔離並轉第三／四／五列可執行出口，不反覆同一案例或另增V1前置。
 
+**第四列保存精度修復（Increment116，開發來源）**：115實際批次仍因Decimal附註轉存CSV；合成反例證實舊reader可將不同分位金額讀成相同float。沿Registry既有序列化規則，只轉副本attrs、不改原金額／日期；33個受影響測試、compile、mypy1045與精度守衛及正常Main→新程序四筆原結果／規則／返回已限定通過。正常引擎既有float DTO按原位元身分核，不轉Decimal升格。原CSV／SQLite摘要不遷移，115固定包未含此修復；[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment116-legacy-parquet-precision)保留兩項工具／假設失敗及基線。這解除保存新增精度流失，不把更多來源／效能／視覺或同一案例重驗加為V1前置；完整金融資格與其餘五列缺件各自續推。
+
 **第四列批次績效判讀修正（Increment114，開發來源）**：112已能逐股保存布林／W底原 run，但通用比較只靠相同資料指紋、成交與 sizing 可能標「保存條件相同」並列指標。現在兩種批次逐股 run 先拒絕通用績效比較，仍可從歷史逐筆查看原值；需來源、幣別、成本及歷史 PIT 的可比較資格後，才接正式雙策略績效出口。定向 service／Registry 畫面28例與全指定 mypy 已通過，固定112 EXE 尚未包含此修正，待與下一個有意義的第四列交付同版打包；不為單一提示另造候選或計入完整 Gate。證據與界線見[Increment114 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment114批次逐股通用比較拒錯)。
 
 **第五列 P12 判讀修正（Increment91，開發來源）**：10/15 正式自然 run 的同收據讀回證明 snapshot／Evidence 已保存，但 05:25 起等同一 `release_v4` 鎖約70分鐘，06:35 才以 `eod_research` 完成；內嵌 current-stock research cycle 佔用共用鎖，Raw/PIT 父 run 隨後仍被 2014 年起的歷史來源版本守衛阻擋。原正常「系統狀態」現在投影已驗收據的研究用途與等待時間，解除 `passed／已保存` 被誤讀為開盤前或自然資格的阻礙。這只到受影響 UI 測試與正式原件唯讀 reader；固定90包不變，正常 Main／EXE、正式排程時序或共用鎖修改、真正自然資格與完整 P12 仍待。排程改動須另有精確授權，時間調整本身也不提升現行時間政策；下一葉轉可獨立交付的 P03／P06／P08 缺口，證據見[Increment91 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。

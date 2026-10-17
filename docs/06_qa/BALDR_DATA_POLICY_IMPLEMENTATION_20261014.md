@@ -2146,3 +2146,23 @@ P03 具名2330財報的 PDF 原件、期間、單位與前瞻成功小時可核�
 文件首輪QA09只失敗於舊task漏列docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md的Coverage（共用Snapshot pattern命中）；原failed outer SHA 849d939a4bcdc5f317219e91f38cc34822383833846eaef99f8eff81fd90585e保留。根據該獨立模組未接UI、API／格式／規則均未改，補具名not_required理由後再驗，沒有降低工具檢查或修改該功能。
 
 文件QA10對12個feature與本輪9份文件／指南的連結及自有task結構檢查PASS，errors=[]；outer SHA `1fc1db74195ebec1e364d2e89e9e39fd649e3432ea546771d5342d578b3c0900`，三PID陣列自然空、handles關閉、mutex釋放。此後僅回填本結果，不更動連結或產品來源。
+
+<a id="increment116-legacy-parquet-precision"></a>
+## Increment116：舊回測保存降級與精度流失修復（開發來源）
+
+**解除的第二階段第四列阻礙**：115正常批次執行仍印出舊BacktestRunRepository因Decimal attrs無法JSON序列化而改存CSV；原reader重開CSV會推斷為float，可能再丟精度。合成原反例的兩個金額`1000000000000000000.01／1000000000000000000.03`讀回均為`1e+18`，成交價`123.456789012345678901`變成`123.45678901234568`。[只讀探測](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment116_old_csv_precision_qa03.json) SHA `ba750d6b4576237db842e0d1a95e1bef68c423843fddcbcdb68646f91b339748`保存原CSV／DB的SHA與未改證據；不把此合成大額例子當真人已發生的金額損失。
+
+本輪只讓舊Parquet writer沿用研究Registry的既有`normalize_research_run_json_value`：複製DataFrame，將attrs內有限Decimal轉成精確文字，曲線／成交欄、index與原producer attrs均保持。新有限Decimal輸入可用Parquet精確讀回，不新增裸float金融計算。舊CSV reader、SQLite REAL摘要、真正Parquet失敗的原降級、來源／精度資格與歷史原件不改；不遷移舊檔、不從float或CSV補造已失精度。Look-ahead自查只序列化已產生的結果，不把未來資料回流訊號或改可用時鐘。原source SHA `cd3e139662b26ca0952b60148bd35a990dfbf7da0ee27acffda088da9501f72b`。
+
+| 驗證 | 實際結果 |
+|---|---|
+| QA01原缺陷基線 | 新精度讀回兩例FAILED，舊CSV不改寫例PASS，pytest退出1；outer `8c546f1583eea8789824da7794d8996f7951c01cb8d02191d0d8501c6ceef565`。命令runner為基線保存預期失敗，不把兩例宣稱通過。 |
+| QA02／03受影響檢查 | QA02受改兩檔compile PASS，隨後探測腳本未加repo import路徑而ModuleNotFoundError，後續pytest／mypy未開始，原failed outer `0ce7d59313b8ef18d646d6247f06f1fcf29e0f0a82518223f887b844593dcf6e`保留。QA03另存腳本與SHA，不重跑已過compile；新Parquet／舊CSV、Registry Decimal保存、批次保存及PF消費者共33PASS，八roots mypy1045 source files無錯、金融float守衛PASS；outer `b51ce20309ede507b3143cd051177469bd57947d0a9458aca84d1539d462d21e`。原producer資料與attrs不變、Decimal高精度／日期可回讀，舊CSV／DB schema及原列未改。UI既有mypy ignore仍不證強型別。 |
+| QA04正常Main初驗 | 四筆已保存為Parquet且沒有CSV降級，但腳本把既有Broker DTO float列誤認為必須全是Decimal而失敗；原failed outer `c556d8befe431d39a86654141408eb699b01b69ae4a95e5ac18b30ade2c8831a`保留。原broker第729列有明示numeric-boundary: dto，不能為了讓QA通過而把float轉回Decimal冒充完整精度。 |
+| QA05正常Main→fresh | 新隔離根的正常Windows Python Main兩股兩策略保存，封存前捕獲原producer逐值型別／float.hex位元身分與attrs，保存後核caller未變、舊Parquet與Registry逐列相同；四筆各419列、原規則卡／歷史／返回及新PID唯讀重開一致，檔案及metadata SHA不變，stdout無「改用CSV」、無socket嘗試。父48276→新42704；[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment116_legacy_main_fresh_qa05/result.json) SHA `d8a438864bfb6af2dd076071aae63ab03bb5c104b2de4f79c010b4835dbde9c4`，outer `3b3c992115cabbf58bb681dbdc3c93685082e295e43da98adf0cf42258b87076`。這核原DTO保存不新增流失，不是金融核心全面Decimal資格。 |
+
+各組仍由root串行執行，先核前組三PID陣列空、handles關閉與mutex釋放；起跑RAM≥8GiB，讀回8GiB committed／12程序／kill-on-close及同workspace mutex，結束自然清空，無forced cleanup。沒有改UI控制項或導航，因此未重跑無關Workbench／validator；受影響正常Main另核。沒有新代理、HTTP資料抓取、正式資料／Task／maintainer、私人帳或交易變更。
+
+**本輪交付為已驗開發來源，115固定EXE與包內原收據保持不變，尚未納入此修復。** [保存操作與精度界線](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)、Manual／current架構／Snapshot已同步。財報官方metadata復查仍未補上幣別／單季或累計基礎，原PDF展示用途亦未另授；第二列數值頁保持隔離，第三列真帳與第四列來源／成本／幣別／PIT、完整績效及第五列自然成熟各自保留。33PASS、source Main或commit不等於完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4。
+
+116文件QA06的12個feature／8份正文與task結構檢查PASS，errors=[]；outer SHA `d2f6abdb415af2061a81e4b9118bb68ec2d8e7034e6b678ffbbb88e3a42837e7`，自然閉鎖且無forced cleanup。此後只回填結果；本段來源階段不宣稱固定EXE接受。

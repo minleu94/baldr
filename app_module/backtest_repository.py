@@ -12,6 +12,7 @@ from datetime import datetime
 from dataclasses import dataclass, asdict
 from app_module.dtos import BacktestReportDTO
 from app_module.backtest_contracts import profit_factor_projection
+from app_module.research_run_dtos import normalize_research_run_json_value
 
 
 @dataclass
@@ -55,6 +56,13 @@ class BacktestRun:
 
 class BacktestRunRepository:
     """回測結果儲存庫"""
+
+    @staticmethod
+    def _parquet_frame_copy(frame: pd.DataFrame) -> pd.DataFrame:
+        """沿研究 Registry 的序列化規則保留數值欄，僅轉換副本 attrs。"""
+        copied = frame.copy(deep=True)
+        copied.attrs = normalize_research_run_json_value(copied.attrs)
+        return copied
     
     def __init__(self, config):
         """
@@ -186,7 +194,9 @@ class BacktestRunRepository:
                     except ImportError:
                         raise ImportError("需要安裝 pyarrow 或 fastparquet: pip install pyarrow")
                 
-                report.details['equity_curve'].to_parquet(equity_curve_path, engine=engine)
+                self._parquet_frame_copy(report.details['equity_curve']).to_parquet(
+                    equity_curve_path, engine=engine
+                )
             except Exception as e:
                 # 如果 parquet 失敗，使用 CSV
                 print(f"[BacktestRepository] 警告: 無法使用 parquet 保存 equity_curve，改用 CSV: {e}")
@@ -206,7 +216,9 @@ class BacktestRunRepository:
                     except ImportError:
                         raise ImportError("需要安裝 pyarrow 或 fastparquet: pip install pyarrow")
                 
-                report.details['trade_list'].to_parquet(trade_list_path, engine=engine)
+                self._parquet_frame_copy(report.details['trade_list']).to_parquet(
+                    trade_list_path, engine=engine
+                )
             except Exception as e:
                 # 如果 parquet 失敗，使用 CSV
                 print(f"[BacktestRepository] 警告: 無法使用 parquet 保存 trade_list，改用 CSV: {e}")

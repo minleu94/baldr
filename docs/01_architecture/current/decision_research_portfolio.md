@@ -67,6 +67,8 @@ Research Lab 的保存績效由 `StrategyHistoricalPerformanceReadService` 沿Re
 
 一般單股與批次回測的Registry保存入口先以 `research_run_dated_equity_copy` 保留實際date／日期欄或DatetimeIndex，再交既有writer以index=False保存；原曲線、金額與attrs不改，拒缺日、重複、乱序與模糊日期。舊run缺日不由requested period補造；版本化期間損益、幣別／成本、同股雙策略完整比較仍待，日期保存不授績效資格。
 
+舊`BacktestRunRepository`的新Parquet保存沿用Registry的`normalize_research_run_json_value`：先複製DataFrame，只將attrs內有限Decimal轉成精確文字；列值、index與producer原attrs不改。這避免原曲線／交易因附註JSON序列化失敗而降級CSV，再由舊CSV reader推斷為float。既有CSV reader、SQLite REAL摘要與真正Parquet失敗時的降級行為保留；不遷移歷史、不把既有float DTO升格為精確Decimal權威。來源版保存／fresh證據與固定EXE界線見[Increment116 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment116-legacy-parquet-precision)。
+
 Research Lab雙run完整期間頁沿同一FullPeriodPairReadV1展示兩側capture.observations的原Decimal文字，以實際日期聯集與每頁100日排列現金／持倉估值／權益及原件可選P&L。UI不讀Registry附件、不補日或重算金融；分頁不觸發reader，返回／取消／選取變更沿原generation及clear清空。來源、幣別、日曆、成本缺件與performance/PIT資格維持原reader判定，原wire shape及金融引擎不變。
 
 通用Registry metadata comparator 遇到任一 recommendation_portfolio run 即回 incompatible，UI停用一般「比較選中」並指向兩筆exact run的完整期間診斷；直接呼叫服務也不可輸出通用績效混排或標準化權益。其他run仍沿原比較規則。這只阻止錯誤金融判讀，不補足pair的來源、日曆、貨幣、成本權威或完整績效資格。

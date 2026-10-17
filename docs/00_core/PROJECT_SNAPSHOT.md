@@ -4,7 +4,7 @@
 
 ## 現在有哪些入口
 
-**目前指定本機試用候選為日常研究120（`aad10ca40a37`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-120/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)，版本、原件與限制由包內收據固定。120將原三個計分策略另立1.1.0，修正未來指標回填過去分數／訊號；正常保存、原規則／結果、雙策略對照返回及新程序在來源／EXE均有證據，金融輸出一致。這不擴V1、歷史PIT或有效策略資格，詳[120 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。沿119四均線及118同源個股；未改旅程依原收據，不全數重跑。
+**目前指定本機試用候選為日常研究121（`c62a3eca221b`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-121/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)，版本與限制由包內收據固定。121新增原P07「布林帶寬低點突破」1.0.0，來源／固定EXE正常執行、保存、原規則／結果／返回與新程序已驗，金融輸出一致；同輪修正建置長路徑。沿120計分1.1.0、119四均線及118同源個股，未改旅程依原收據，不全數重跑。這不擴四條V1、歷史PIT、有效策略或完整Gate，詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
 
 115、112、109、71、66及更早候選與各自狀態保留，不自動匯入個人內容。66原回報及指南D勘誤沿原身分保留；後續修復不冒充新版真人接受。116沒有重跑未改的四條全部旅程：單股雙策略保存／比較沿用112具名證據，價格選股、收藏與舊推薦回訪按109及相應原QA判讀。
 
@@ -19,7 +19,7 @@
 
 ## 目前工程狀態與限制
 
-開發分支Increment121補原P07布林進階「帶寬低點突破」1.0.0，沿原單股／Broker／Registry保存；固定120尚未替換。最終來源Main28164→32412已驗同窗419列／2進場意圖／2完成配對、原規則／結果與fresh；大整數成交量及保存前列串接的原3個紅測已修，定向62項與public模式66項、最後UI91項及原共同回歸分開記錄，不加總為Gate。固定EXE／Native、F06全功能、完整家族與有效績效仍待。同期修正固定來源ZIP的Windows長路徑解壓，保留canonical身分與原來源守衛；完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
+121固定來源`c62a3eca221b3a360f812973bf558061004a3315`，EXE SHA `c9bc1e3025ecd283711cd623613b18a3a97d7f300b070bc384adadf93dbcc9f7`，交付SHA `628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`。來源Main28164→32412、EXE35832→48656皆驗2317同窗419列／2進場意圖／2完成配對及保存回訪，金融輸出一致；62項／public66項／UI91項等定向證據不加總為Gate。原大整數成交量／前列串接紅測及其他FAIL保留。完整Native、真人、F06全功能、家族與有效績效仍待；P14完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
 
 120固定來源`aad10ca40a374f3d4e7406981580ce3d8c2efc1b`，EXE SHA-256 `43c0d50bdabc966e784b435a2b99a6166b4076a461d5a282ae93c76818749491`，交付SHA `0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`。來源Main35632→48176、EXE51132→23412，各三策略419列／332已知分數／87未知日，baseline／穩健／暴衝8／9／2配對。89項定向因果／保存測試、前輪268PASS、失敗修正後38＋17PASS及必要防線分開記錄，不加總成Gate。原2317在2025-07-30四價全缺、量0，原因未核，不補價或稱停牌；保留未知後有效區段可繼續。舊版本、119固定包及歷史FAIL保留，見[120 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。
 

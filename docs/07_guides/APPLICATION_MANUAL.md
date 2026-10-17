@@ -1,6 +1,6 @@
 # baldr 完整操作手冊
 
-本手冊說明日常UI操作、結果判讀與安全界線。**目前指定本機候選為日常研究120（`aad10ca40a37`）**，入口、資料範圍與各版驗證界線集中在[目前試用版指南](TRIAL_VERSION_GUIDE.md)；一般操作從下方「日常使用旅程」開始。
+本手冊說明日常UI操作、結果判讀與安全界線。**目前指定本機候選為日常研究121（`c62a3eca221b`）**，入口、資料範圍與各版驗證界線集中在[目前試用版指南](TRIAL_VERSION_GUIDE.md)；一般操作從下方「日常使用旅程」開始。
 
 首次安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
@@ -8,7 +8,7 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 ## 1. 日常使用旅程
 
-開發分支另有「布林帶寬低點突破」單股研究：操作及保存界線見[專節](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林帶寬低點突破研究開發分支)。來源Main／fresh已限定驗保存回訪；它尚未納入固定120，不應在120選單尋找，固定EXE與完整策略資格依後續具名QA。
+121另有「布林帶寬低點突破」單股研究，操作見[專節](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林帶寬低點突破研究開發分支)。來源與固定EXE的Main／fresh已限定驗保存回訪及金融輸出一致；120原包不會更新此選單，完整策略資格仍另待。
 
 120含計分策略因果缺值修正1.1.0。正常單股入口、未知日數、保存／原規則／歷史／返回、同版雙策略對照及失敗排錯見[計分策略指南](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#計分策略110的缺值與保存後續候選)。舊119與原版本不改；執行失敗不能解讀或保存成零交易，來源／歷史PIT與績效資格不因數值修正而接受。
 

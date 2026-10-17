@@ -2337,7 +2337,7 @@ Outer `cc078fb440c9055fb7037ff4831a3f81938ac7912bff5e9f8be5c6064a33f5e3`記exit1
 收尾QA02只核本QA文件、12features與owner task，errors=[]，outer `f256db2406d340076e3fbb904a79d1f68f66aae79ac50c582d7f7ecb582f1ab5`。三PID陣列空、handles關閉、mutex釋放且無forced cleanup；未重跑產品測試或新增候選，回測Native未完成與原完整計畫保持。
 
 <a id="increment121-bollinger-squeeze"></a>
-## Increment121：原P07布林帶寬低點突破研究與P14長路徑修正（施工）
+## Increment121：原P07布林帶寬低點突破研究、P14長路徑與固定121交付
 
 **解除的第二階段阻礙**：原F06／P07只有帶寬原料與布林基礎，尚無可執行、保存及回訪的收斂突破研究；原V1四旅程不擴張。Root凍結自有`baldr_bollinger_squeeze_v1@1.0.0`，規格見[原計畫§5.6](../superpowers/plans/baldr_product_completion_plan_20261006.md#56-bollinger-squeeze)。前列含自身20列最低帶寬＋當列真突破＋原20日含當日均量比嚴格>1.5，中軌出場；不是VCP或已驗有效策略。沿原因果分析、Broker、Registry與規則卡，不造撮合或儲存。Root依Tech Lead／Execution／QA／Data Audit／Documentation履職，未另稱獨立複核；新建代理0，累計10/10。
 
@@ -2364,3 +2364,15 @@ QA07先完成來源Main25824→fresh，原419列／2意圖／2完成配對及保
 QA09d另核public Optimizer／Train-Test／Walk-forward亦在讀行情或建參數網格前拒絕，原服務回歸與新方法66PASS、compile、mypy1055／float guard PASS，outer `af70f561fd9cb82658a8766ff5a26abc169422f7c6557ebc2b6d1dc9c7f3fd30`。研究版不可晉升；source已接原Registry／規則卡、單次輸入與最多50前置列、10來源SHA／逐日證據與保存錯配拒絕，同版EXE與固定交付尚待。120原EXE及舊收據不改，歷史PIT、來源／成本權威、完整績效、Native、真人、自然成熟及P00–P14全範圍各自保持未完成。
 
 最後Root複核將獨立Recommendation replay保持原Profile路由，不因左側新單股策略限制它；新增回歸並重跑必要UI防線，QA09f為91PASS（含Workbench85）、compile、validator25/0/4、mypy1055，outer `725a4d986d441d5bb7b79ef842d0d72ec9bd79eb5f601744e0733446ccb52ebb`。最後UI來源Main **28164→32412**的QA09g再核正常保存、規則／結果／返回與fresh，原419／2／2不變，六行情SHA一致、network0；[凍結前來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment121_squeeze_main_source_qa09g/result.json) SHA `5f8ae3805e03887c51dd9679052aef20c1a7e96613f5a7a54036f41906f52ed2`，outer `e188d6ac7d01c08b6b4355b398beb6bb104fb5d0605fd97bd65060836bd27207`。這是後續固定EXE的來源比對基準，前次QA07／09b原件保持。各完成組RAM先核≥8GiB、Job可讀回8GiB committed／12程序／kill-on-close，三PID陣列自然空、process／Job handles閉合、mutex釋放，無forced cleanup。
+
+### 固定來源與121交付
+
+QA09h核12features／8份受影響文件、owner task及連結，errors=[]，outer `05a2226fe08f2c30026a3809820f873390d21c8cd5cbdd6a160f078196817657`。來源提交固定`c62a3eca221b3a360f812973bf558061004a3315`；QA10依原依賴鎖建置EXE **`c9bc1e3025ecd283711cd623613b18a3a97d7f300b070bc384adadf93dbcc9f7`**（56,476,052 bytes）、build receipt `8bda1b0cfb30d78bfecb7bfa9e7c771acd4c3f23c6baedcbec4a108a127397a4`、source archive `5031c80fb625ad97b71a41a33393578cabbcb5db21c746eaa8ca3c323d089852`，outer `24fbad6d61a7f44a513804bd2ff3fb8dcad35ccc85910fee01d15caf6351d580`。這是本機未簽章候選，不是發布。
+
+QA11另複製109原18份狀態與117原7份具名基本面，只重綁121自己的推薦索引；原available hour不改，沒有私人內容匯入。狀態SHA `e840110677131d72f4c5812f3d84a11c90298ae32ff64a7582d382a147d44dfa`，啟動器--check `70827758166a110a4d2b07f04fe66edab85c64bd7015271d80d5bf135a8f71f2`，outer `536d3a0667dfeb8a8533ce3a258726acc4a75e87b25ccca366f3ae58f1b254ea`。
+
+固定EXE QA12正常Main **35832→48656**，419列／2意圖／2完成配對、正常保存／原規則／原結果／返回及fresh均通過；[EXE結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment121_squeeze_main_exe_qa09g/result.json) SHA `cb786ef49801767b862fbc6eddb3ebe2112b54f56f7a340908efef774f73a8bc`。唯讀比對兩筆原run，spec／規則／同次參數、逐日訊號、Broker、equity／trades與metrics全同，金融core SHA `439922562a1cf42a722f74508b1ce42c20e2515c57b8966cec5f80372dfe8880`；10個原碼SHA各按runtime原bytes保存，僅CRLF正規化後核內容相同。[比對收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment121_source_exe_parity_qa12.json) SHA `1b9848a9a209226bb7a9094f0a264a544698309df92cfad1925b593c63756fc6`，outer `c96b2de835e5743179dbde9bd0e07b83458db33fe50d4491b7c53163803d9f2c`。Registry／六行情原件不變、network0；offscreen抓圖不具中文字型可讀性證據，不能當Native或真人接受。
+
+上述出口齊備後，QA13才create-only保存[121指南](../../output/trial/Baldr-Daily-Research-121/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-121/KNOWN_ISSUES.md)與[交付收據](../../output/trial/Baldr-Daily-Research-121/DELIVERY_RECEIPT.json)，交付SHA **`628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`**，outer `03d1e0c6aa33d7b8c5ef30da65c22abfd604c983a1d93e8245d6171affbb8920`。116–120交付原SHA均核不變，舊原失敗保持；四條V1未改旅程沿各自證據，沒有全數重跑。來源、歷史PIT、真N、成本權威、有效績效、完整家族、Native／真人及自然成熟仍各自待，完整目標不改判。各組三PID陣列自然空、handles關閉、mutex釋放、無forced cleanup。
+
+最終QA14補全本次所有changed Python的compile並核12features／11份中央及包內文件、owner task與連結，errors=[]；outer `78468b491b7f76659ccf8b474a23ef9a711111b7000e8bc8ed15b3d6cbdc3436`。三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後只記錄結果與文件提交，固定121 EXE／交付原件不再變動；完整補完goal保持進行中。

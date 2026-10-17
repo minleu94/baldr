@@ -3015,7 +3015,7 @@ class StockResearchReportView(QWidget):
             self._add_table(layout, ("項目", first.current_period, first.prior_period, "同比變化"), comparison_rows, 220, tooltips=comparison_tips)
             represented = {(item.current_source_id, item.current_source_version, item.metric_name, item.current_period) for item in comparisons}
         for source in report.sources:
-            if source.source_id.startswith(("official.twse.operating_summary.", "official.issuer.financial_comparison.")):
+            if source.source_id.startswith(("official.twse.operating_summary.", "official.issuer.financial_comparison.", "official.issuer.quanta.monthly_sales.")):
                 layout.addWidget(self._wrapped_label("\n".join((source.source_label, *source.limitations))))
         if not report.fundamentals:
             layout.addWidget(self._missing_panel("沒有可用的公告／可得日基本面 row；不補零。"))
@@ -3048,7 +3048,7 @@ class StockResearchReportView(QWidget):
                 rows, 420, tooltips=value_tooltips)
         layout.addWidget(
             self._wrapped_label(
-                "已核單位的金額才顯示為 TWD；來源單位未核或金額無法解析時，值欄明示不可用，原件仍保留。"
+                "已核單位的金額才顯示幣別及原披露單位；百萬元整數不表示個位元精度。來源單位未核或金額無法解析時，值欄明示不可用，原件仍保留。"
                 "值欄提示說明期間基礎、基礎核實與特徵彙總資格。"
                 + ("具名比較只依其已核來源方法計算，不授其他累計、策略或聚合特徵資格。" if report.fundamental_comparisons
                    else "未核實或不具彙總資格時，不推算累計或比率。") +
@@ -4646,7 +4646,13 @@ def _comparison_value_text(value: Decimal | None, unit: str) -> str:
 def _metric_text(metric: StockMetricDTO | StockFundamentalObservationDTO) -> str:
     note = str(metric.value_text or "").strip()
     if metric.value is not None:
-        value = _decimal_text(metric.value) + (f" {metric.unit}" if metric.unit else "")
+        number = _decimal_text(metric.value)
+        if isinstance(metric, StockFundamentalObservationDTO) and metric.source_id.startswith("official.issuer.quanta.monthly_sales."):
+            if metric.unit == "百萬元（TWD）":
+                number = f"{metric.value:,.0f}"
+            elif metric.unit == "%":
+                number = f"{metric.value:,.1f}"
+        value = number + (f" {metric.unit}" if metric.unit else "")
         return f"{value}（{note}）" if note else value
     return note or "—"
 

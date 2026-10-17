@@ -1,83 +1,31 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> 更新：2026-10-17（使用者時區）。本頁只回答現在能用什麼、下一次交什麼、哪些仍受限制。逐輪過程見[具名 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)；重規劃前全文見[歷史快照](../09_archive/PROJECT_SNAPSHOT_20261015_BEFORE_DELIVERY_REPLAN.md)。
+> 更新：2026-10-17（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
 
 ## 現在有哪些入口
 
-131已納入[Increment128](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)的TWSE新下載方向解析修復；歷史資料未重抓或回補，缺方向仍未提供，來源／PIT資格不因打包提升。
+**指定試用版仍是日常研究134（`cd8dbe30f90a`）**。雙擊[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-134/Launch-Baldr.cmd)，步驟見[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md)。須保留共用131技術元件；狀態各自獨立，不自動匯入私人資料。EXE SHA `d5695f002f589d47c2c613acfbaf1f1d9dbe62a12ddbf493e642d06e3d660362`，交付SHA `63616688bbdc63f7e5f080551d9a940b1d92df6c1e024879c5cb235878495466`。
 
-**目前指定本機試用候選為日常研究134（`cd8dbe30f90a`）**，雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-134/Launch-Baldr.cmd)，操作看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)。134補原推薦結果的計畫目標日、實際取價日及缺價原因；新EXE15312→28164已驗兩個具名原推薦／股票的結果、返回與fresh，與來源版同原值。保留133三筆策略示範及既有四流程；未改基本面／價格／收藏沿原證據，不重跑全部旅程。狀態另存，技術來源明選共用131元件，請保留131；不匯入私人帳，詳[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
+116與更早候選保留，不能把其外部檢查當目前版本驗收。三個判讀已在指南更正：0完成配對不等於沒有訊號；公司名錄缺來源憑證仍限制用途資格；118起價格選股雙擊會進主個股頁。一般四股行情與1,951檔同源價格研究仍是不同範圍及日期。
 
-115、112、109、71、66及更早候選與各自狀態保留，不自動匯入個人內容。66原回報及指南D勘誤沿原身分保留；後續修復不冒充新版真人接受。116沒有重跑未改的四條全部旅程：單股雙策略保存／比較沿用112具名證據，價格選股、收藏與舊推薦回訪按109及相應原QA判讀。
-
-[Increment135](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment135-revenue-calendar-history)修正月營收後端因子的缺月、無前史新高及比較可得日／品質傳遞；80項受改測試與原服務／CLI／Registry保存→fresh通過，原5項紅測保留。此輪為合成工程驗證，沒有正常UI／正式評分接線或新EXE，固定試用仍為134；完整F12、官方來源與歷史PIT仍待。
-
-134已有兩組限定原生證據：[1280×760保存策略回訪](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post134-native-saved-strategy-comparison)，以及[1500×900新回測保存與重開](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post134-native-backtest-save-reopen)。後者以2317同窗執行穩健／暴衝策略，9／2組完成配對保存後，由新程序讀原規則、兩側明細及返回；金融輸出與原參考一致，來源及保存store保持。原FAIL保留；價格研究、摘要全文最底、其他DPI、真人及完整Native仍待。EXE與交付原SHA不改。
-
-| 使用流程 | 已知可用範圍 | 還要處理什麼 |
+| 使用流程 | 已有成果 | 下一個出口／尚有限制 |
 |---|---|---|
-| 看市場、查個股 | 市場狀態與四股一般價格／技術；2317／2330／2454有2026-H1對2025-H1五列基本面比較 | 一般個股仍是四股隔離價庫，截至2026-09-23；2382基本面缺件，舊列缺方向維持未提供。 |
-| 設條件、選股、保存研究 | 沿131技術元件：2026-10-16宣告1,989／處理1,951／排除38，可設MA條件、同源個股／比較、收藏及重開；132附2506示範收藏 | 5筆價格UNKNOWN、名錄用途與來源clock未接受；需保留131元件，不能稱正式真N或歷史PIT。 |
-| 觀察清單與持倉回訪 | 持倉位於四卡下方；唯一精確代號／名稱互補，未綁來源部位可回一般個股價量重載 | 真私人帳與真人手勢待驗；保存來源部位沿原exact守衛，Paper外部根未在試用配置。 |
-| 單股回測、保存與歷史 | 133可從Registry讀2至5個同股同窗策略的逐日意圖與原規則，附四均線／W底／布林三筆示範；保存、原結果、返回及新程序已驗。原策略與窄視窗捲動保持 | 0配對不等於無訊號；舊run缺context只隔離新對照。原六配對run、SOP／Baseline FAIL、Walk-forward、來源／成本／PIT與完整績效仍保留。 |
+| 市場與個股 | 市場狀態、四股價格／技術；2317／2330／2454五列半年基本面及去年同期比較 | 一般行情截至2026-09-23；歷史缺方向不補造。2382半年財報缺件隔離。 |
+| 價格選股與收藏 | 2026-10-16來源：宣告1,989／處理1,951／排除38，可設條件、同源個股、2–5股比較、收藏及重開 | 5筆UNKNOWN；名錄用途與來源clock未接受，不稱正式真N或歷史PIT。 |
+| 清單、持倉與情境 | 持倉在四卡下方，唯一精確代號／名稱互補，回個股可重載；初次情境有隔離證據 | 私人帳／真人及真策略Paper同日原件仍待，不以手動成本造NAV。 |
+| 回測、保存與比較 | 原單股規則、結果、返回及新程序重開；2–5個同股同窗保存策略可看逐日意圖，附三筆示範 | 研究樣本不等於策略有效。SOP／Baseline FAIL、Walk-forward、成本／來源權威、PIT及完整雙策略績效分別保留。 |
+| 推薦結果追蹤 | 134補計畫目標日、實際取價日與缺價原因；5／10／20日受限結果可回訪 | 1538缺價、60日未成熟與P12正式時序／修訂限制保持。 |
+| 首次設定與搬移 | 已保存研究、完整技術來源與明選F07收藏各有副本／恢復工具及限定Main證據 | 138原EXE及修後Source整包首次設定均在600秒FAIL；不能當整包可攜／跨機或私人帳搬移。 |
 
-原 V1 四條流程與出口維持[計畫 §0.3](../superpowers/plans/baldr_product_completion_plan_20261006.md#03-兩階段交付與v1範圍凍結)。以上是已交付及回報狀態，不是全部 P00–P14 或 G0–G4 接受。
+V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_completion_plan_20261006.md#03-兩階段交付與v1範圍凍結)，後續增量不擴V1範圍。134已有1280×760保存策略回訪及1500×900新回測保存／新程序的限定原生證據；完整Native、其他DPI及真人接受仍待。
 
 ## 目前工程狀態與限制
 
-[Increment138整合候選](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)已組含程式、行情、基本面、研究／推薦與完整技術來源的全新包；原EXE及修後Source首次移位設定均在原600秒期限FAIL，沒有替換指定134。有界I/O及同次reader-issued session重用已有定向回歸，前後SHA、精度、來源用途與期限保持。兩次完整失敗原件保留，暫不繼續整包重跑；完整修後EXE、Main／fresh及初次搬移出口仍待，局部成果不當交付完成。
+**現在推進第二列基本面研究。** [139](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment139-quanta-monthly-sales)已從既存TWSE公司原件補廣達／2382與官方網站綁定，另存八檔月營收版本並接原基本面頁。只保留同表百萬元整數及0.1%披露率，不混年度表、推算累計或接評分。來源／時間／精度反例、舊reader、Workbench85、validator25/0/4及mypy1069有分輪證據。真可用小時為台北10/18 04:00，Main26468已驗此前等待、價格／返回／重載及歷史隔離；到時後Main／fresh與新EXE尚待，未替換134。
 
-[Increment137](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment137-research-archive-restore)已解除已保存研究封存移位後仍綁舊根的來源工具缺口：外部收據SHA固定所選store完整原件，只重綁新SQLite路徑，不重編金融值。15項新測試、原複製／推薦定向回歸、mypy1066及來源Main47012→37788的原規則／結果／返回與fresh有分輪證據，原失敗保留。沒有新EXE；固定134不變，整包可攜／私人帳／跨主機仍待。月營收136候選雖取得完整官方表，但公司代碼綁定原件缺失，未授用途、未進UI；精確缺件見同QA，不重抓耗盡scope。
+[138](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)保留整包兩次600秒FAIL及partial原件；有界I/O／同次issued session修正已提交checkpoint，不略過前後SHA或延長期限，也不再盲重跑整包。135月營收因子的缺月／前史修正只屬後端工程驗證，尚未進134正式評分。這些局部成果不授完整F12或P14。
 
-**Increment134已交本機固定候選**，回第五列P11補原計畫目標日／實際取價日／資料截止與中文缺價原因。59核心、17UI（另1正式smoke未啟用）、Workbench85／validator25/0/4、mypy1066及精度防線通過；Source Main36184→48864與EXE15312→28164同原結果，日期欄首屏、原清單返回及fresh已驗。EXE SHA `d5695f002f589d47c2c613acfbaf1f1d9dbe62a12ddbf493e642d06e3d660362`，交付SHA `63616688bbdc63f7e5f080551d9a940b1d92df6c1e024879c5cb235878495466`。1538缺價、60日待成熟、原FAIL與來源／年度日曆／PIT／完整績效限制保持，見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
-
-**Increment133已交本機固定候選**，回原第四列補保存策略逐日訊號對照：同股／研究窗／全部價量與解析政策核對後，原Registry可讀2至5個不同策略的進場／出場／未知與原規則。來源Main44552→44732已驗正常保存；24904→3112只補摘要；新EXE9076→15412再驗同版保存與重開，來源／EXE金融輸出一致。EXE SHA `b3cd7a19c49f407576123eb83f169f2e3b4dbf0ab90e6b835ec7044c134656db`，交付SHA `5eecbefd11f19c9a492e0a328356bf171d32e95bc852043a6c821fa62e5746d7`。原FAIL、完整績效、PIT及Native／真人界線保持，見[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
-
-**Increment132已交本機固定候選**，回原§0.4第二列補三公司去年同期比較。原CSV五值及19:00時間保持，新比較依22:47保存、23:00才可用。94項受改／舊reader／service、Workbench85、validator25/0/4、mypy1063與精度守衛通過，文案後5項另驗；來源及EXE正常Main／fresh金融輸出一致。EXE SHA `c0b7e873697635e1237bdcf8f9df714ec35bb1ad6d01ed9b29d4f63534805345`，交付SHA `67ee490d30b588fe206a2614891c1eaa0bc3f30777e7efa848c84b4cba93d151`。原FAIL保留；2382／其他公司、歷史PIT、金融用途、真帳、完整Native／真人與Gate仍待，見[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。
-
-131已完成整合交付，EXE SHA `8f2d5342e80a3b9249168fdbb18ca464043aab9bcd420e99601bfac597285b0b`，交付SHA `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d`。啟動器身分與受改Main／fresh分開核對；原Context、helper回傳型別與legacy欄位錯誤FAIL保留，沒有重複來源複製或放寬期限。125及原件不改。此為本機固定候選，完整跨主機／私人帳／其他收藏家族與Native／真人仍待；接續回原§0.4的其餘可交付列，不再擴搬移前置，詳[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。
-
-原P14的[Increment130](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment130-price-bookmark-copy)已補明選F07價格收藏的新來源副本：原清單完整保留，新收藏另記ID與來源沿革；原118收藏在已驗127技術副本上，由既存125 EXE正常Main **39772→42976**驗同源個股、返回及fresh，原根I/O／網路0。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)。原600秒組合FAIL保留，其他收藏家族、私人帳與完整搬移仍待。接續整合126–130已驗成果成獨立V1試用候選；本輪尚未替換固定125，不另加搬移前置工程。
-
-原P14的 [Increment129](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy) 已讓一般保存推薦可明選加入同一研究複製工具，legacy／canonical 原件保留；固定109原推薦的新根已由既存125 EXE正常Main／fresh讀回，原根I/O與網路0。原三store命令範圍維持，外部ML收據缺件在副本建立前拒絕。這解除一般推薦索引仍綁舊根的工程缺口；完整行情、既存收藏、外部ML與私人帳搬移仍待，沒有新EXE或替換125入口。
-
-原P14的[127技術來源副本工具](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)已驗完整1,951檔匯出、整包移位恢復、公開查詢及既存125 EXE **19188→49708**的主個股／比較／收藏／fresh；原件、來源clock及UNKNOWN保留，原600秒FAIL不改。原根檔案讀取為0，未替換125入口或自動改簽既存收藏；操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)。完整行情、一般推薦外部依賴／既存收藏、私人帳與其他主機仍待；接續回P03已定位的純文字漲跌方向解析丟失，先驗版本與方向，不回補舊列或觸發maintainer。116報告的現行差異見[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)。
-
-原P14另完成保存研究的新副本工具：三種研究store逐bytes複製，僅重綁新索引路徑，原金融值／來源manifest不改。來源Main與既存125 EXE已從新根開原規則／結果、返回及fresh，並禁止原根I/O與重算；125候選本身不替換。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，證據見[126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。行情、technical v4、一般推薦／收藏、私人帳及其他主機的完整搬移仍待，不把此步當全環境可攜。
-
-第二列已交具名三公司固定版本：原CSV的2317／2454經完整官方半年報勾稽，沿2330原reader保留7件，新外層共9件；真保存台北19:00後才讀值。來源Main46452→35928、EXE19012→34276的五欄、版本、時間及顯示一致，四股價格／返回／重載可用，2382驗證頁缺件隔離。116項受改／Workbench、validator25/0/4、mypy1060及精度守衛通過；不授歷史PIT、前期或策略輸入。交付SHA `670e489253748b0bd3e2513413f6fbc1bcd6a55d6ff8ce8467a8af983d0f55b4`，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
-
-124已把原P07三段轉折收縮1.0.0接入原單股Backtest／Broker／Registry與規則卡，完成來源及EXE正常保存、返回及新程序讀回。整合同時修SQLite合法千分位被轉成NaN，新run保存`historical-price-numeric-text.v1`，不改原資料或舊結果。2330／2025-01-02至2026-09-23、千萬元核對例為419已知列、1意圖／1配對；EXE9988→38812與來源一致。EXE SHA `a8b840d383b6d6a9918c074bf27ab462da3145d6f5dcd16d3b37fcf111fbeb12`，交付SHA `a012cfcfce0a49717b97db19135a4e7aa65d9c646223caf3c4826e935d792963`。百萬元同窗2330布林／W底仍0配對但有18／4意圖，不能叫無訊號；原完整計分配置的2317仍8／9／2配對。以上不是有效策略、完整雙策略績效或歷史PIT接受，詳[Increment124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。基本面前期用途缺件仍維持不可用。
-
-124另包含保存回訪的錯根拒讀：Research Registry索引複製後不再沿舊絕對路徑讀原根，也拒其他run檔名及根內連結替換。原件不改寫、121交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
-
-121固定來源`c62a3eca221b3a360f812973bf558061004a3315`，EXE SHA `c9bc1e3025ecd283711cd623613b18a3a97d7f300b070bc384adadf93dbcc9f7`，交付SHA `628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`。來源Main28164→32412、EXE35832→48656皆驗2317同窗419列／2進場意圖／2完成配對及保存回訪，金融輸出一致；62項／public66項／UI91項等定向證據不加總為Gate。原大整數成交量／前列串接紅測及其他FAIL保留。完整Native、真人、F06全功能、家族與有效績效仍待；P14完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
-
-120固定來源`aad10ca40a374f3d4e7406981580ce3d8c2efc1b`，EXE SHA-256 `43c0d50bdabc966e784b435a2b99a6166b4076a461d5a282ae93c76818749491`，交付SHA `0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`。來源Main35632→48176、EXE51132→23412，各三策略419列／332已知分數／87未知日，baseline／穩健／暴衝8／9／2配對。89項定向因果／保存測試、前輪268PASS、失敗修正後38＋17PASS及必要防線分開記錄，不加總成Gate。原2317在2025-07-30四價全缺、量0，原因未核，不補價或稱停牌；保留未知後有效區段可繼續。舊版本、119固定包及歷史FAIL保留，見[120 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。
-
-交付後另以同一120 EXE原生滑鼠／鍵盤驗2330基本面五值、價格圖、觀察清單切頁返回及重載，父52368→fresh32196各8次原生點擊的曝光／命中／裁切守衛通過；13輸入與交付原SHA不變。這只補該目前研究旅程的限定Native證據，沒有重建或改舊FAIL；其他尺寸／DPI、真人及策略回測Native仍待，詳[原生補證](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post120-native-stock-fundamental)。
-
-119固定來源`332ff92925433baee5f6ea9f7c4dc76a206c9d64`，EXE SHA-256 `272f07ed847a74da24645a904f3091236983f5d6ed4fa48e2fdbbf3f0b7189a6`，交付SHA `f83cc8d528f1b33c4713966b00045b4f48a62f45cbea4363826971d2ca6d11a5`。新四均線用2317／2025-01-02至2026-09-23驗419列、8個進場意圖、6組完成配對；來源Main38416→2744、固定EXE6808→34096精確讀回。320項受改／共同回歸、取消與打包缺件、compile、validator25/0/4、mypy1050與精度守衛有具名結果；歷史測試失敗保留。它只交正常單股研究，其他模式／歷史PIT／來源／成本權威／有效績效／Native／真人仍待。三個原研究策略與完整P07不能按數量合計完成。
-
-118固定來源`1444b5d298d676cedd0147ac342eaf77ff141a18`，EXE SHA-256 `1ee22609eb6beeefce56e977adaf1ad101d4365dfb07b35a13ac9fa2278298df`，交付SHA `71e127853fd7731ba9f5f40f55224c4f5399932321b8169b74b8fb9d50417d51`。來源Main及固定EXE的同源個股、原頁返回、收藏及fresh均有定向收據；112項受改／共同UI防線通過。Windows Qt功能不授Native／真人／完整Gate；沿117的五項基本面與116保存修正，不重驗未改旅程。
-
-115已納入跨視窗TabOrder、Qt model自有連線清理及pandas相容性修復；原受影響回歸、共同UI防線與13個隔離MainWindow旅程見[啟動警告修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)。115該次同版EXE父／新程序未收到Qt警告；公司名冊缺來源憑證的提示仍保留。
-
-116已修舊回測因Decimal附註而降級CSV、讀回再失精度的缺陷；33個受影響測試、compile、mypy／精度守衛與正常Python Main四筆保存→新程序通過，同輪固定EXE另驗高精度原值新保存及重開。原producer的float DTO按原位元身分核，不授完整精度；舊CSV／SQLite摘要不遷移。前段來源階段、失敗與補證原樣見[Increment116 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment116-legacy-parquet-precision)。
-
-**116固定來源為 `1cf80e32b4c229177152d364fce06ec4e63ec948`，EXE SHA-256為 `ba38c46e72a880b7c1016210c748c826c026a18ffec8631c7a1cb14223830ca1`。** 後續工作樹不改該EXE。18份固定狀態由109核SHA另複製，詳[交付收據](../../output/trial/Baldr-Daily-Research-116/DELIVERY_RECEIPT.json)；程式碼包含某家族不表示其金融或完整產品資格已接受。
-
-原66候選的交付歷史：依[原計畫 §0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)，第一列「日常研究修正版」已形成固定可試用候選。受改測試、共同 UI 防線、兩筆隔離持倉、來源與 EXE 的正常 Main／新程序及同版檢查已限定通過；EXE SHA-256 為 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`。交付收據最初記錄 SHA-256 `1f8df5505c892af87a1a0dc288e79d8bd2f21a4744dd58783eb28b8ce5d989a2`，目前檔案 SHA-256 為 `16bb4f511e5ecb21dff6667a5a38fa7aa73d298bf951ea69c0ce85b42e128eb1`；原因未裁決，兩者不混稱同一位元原件，詳[Increment67 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment67p08-推薦回放通用比較的金融判讀阻斷)。這只關閉本列工程交付出口，真人試用及完整產品 Gate 仍待。
-
-| 接續順序 | 使用者會拿到的成果 | 目前位置 |
-|---|---|---|
-| 1. 日常研究修正版 | 四流程及受改缺陷的固定候選 | 118已交同源個股／返回／收藏／fresh修正；真人與不同DPI待試，不重跑未改流程。 |
-| 2. 有來源的基本面研究 | 正常個股頁的當期／前期與保存重開 | [132固定候選](../../output/trial/Baldr-Daily-Research-132/TRIAL_GUIDE.md)已交2317／2330／2454五列同半年比較，來源／EXE正常Main／fresh同值。2382、其他公司、歷史PIT及完整Native仍待；原117 FAIL保留。 |
-| 3. 持倉與研究情境 | 同帳本現金／行情／Health的初次情境、保存及返回 | 隔離合成來源已有定向證據；缺真人策略Paper帳與同日原件，不以手動成本造NAV。 |
-| 4. 可比較策略研究 | 原規則、獨立結果、保存／比較／明細返回 | 120交三計分1.1.0因果缺值與同版研究對照，沿119四均線；來源、幣別、成本權威、歷史PIT及完整雙策略績效仍各自待。 |
-| 5. 結果追蹤與其餘範圍 | 到期、品質與執行原因分列 | 舊推薦5／10／20日受限結果可回訪，60日待成熟；P12自然原件仍研究用途，正式時序與來源修訂限制未解除。 |
-
-外部缺件只隔離受影響用途：TPEx 年度日曆授權不等於 TPEx 法人 OpenAPI 的授權狀態；MOPS 文件 partial／缺 EOF、月營收與 TWSE 舊 GET 額度、單位版本、歷史 PIT 和完整真 N 繼續各自追蹤。首次成功保存後的合格新快照按已決定的台北小時政策供前瞻研究；不得倒填歷史可得性。原 P01 效能 FAIL、原 Native FAIL、Paper／Forward 未成熟與已停用 maintainer 仍保留，詳[原 QA](../06_qa/BALDR_COMPLETION_RESUME_PROGRESS_20261012.md)、[資料政策 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)及[排程指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
+外部缺件各自隔離：TPEx年度日曆授權、TPEx法人API、官方文件／單位／用途、歷史PIT、真N、完整績效、Native／EXE及Paper／forward自然成熟分別判定。MOPS partial／缺EOF及舊月營收／TWSE GET耗盡scope保持，不重抓、不把一處缺件變成全產品新前置。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項仍在原計畫，不以commit或案例加總計完成率。
 
 ## 產品與系統入口
 

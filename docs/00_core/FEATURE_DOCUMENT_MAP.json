@@ -779,7 +779,9 @@
         "data_module/price_change_direction.py",
         "data_module/twse_daily_price_publication.py",
         "app_module/decision_outcome_journey.py",
-        "ui_qt/widgets/decision_outcome_journey_widget.py"
+        "ui_qt/widgets/decision_outcome_journey_widget.py",
+        "app_module/quanta_monthly_sales_snapshot.py",
+        "app_module/quanta_monthly_sales_report_provider.py"
       ],
       "tests": [
         "tests/test_stock_research_report_service.py",
@@ -796,7 +798,8 @@
         "tests/test_twse_price_change_direction.py",
         "tests/test_twse_daily_price_sqlite_publication.py",
         "tests/test_decision_outcome_journey.py",
-        "tests/test_ui_qt_decision_outcome_journey.py"
+        "tests/test_ui_qt_decision_outcome_journey.py",
+        "tests/test_quanta_monthly_sales.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -836,7 +839,9 @@
         "app_module/decision_outcome_journey.py",
         "ui_qt/widgets/decision_outcome_journey_widget.py",
         "tests/test_decision_outcome_journey.py",
-        "tests/test_ui_qt_decision_outcome_journey.py"
+        "tests/test_ui_qt_decision_outcome_journey.py",
+        "app_module/quanta_monthly_sales*.py",
+        "tests/test_quanta_monthly_sales.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

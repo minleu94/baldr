@@ -41,6 +41,10 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 `trial_first_setup.prepare_trial_package` 是既有研究／technical／F07收藏工具的首次設定整合，不新增來源或金融計算。外部SHA固定 `baldr-trial-first-setup.v1` 清冊；runtime、行情與基本面核完整相對檔案集合，研究與technical各沿外部收據恢復，收藏沿新technical鏈另記ID。只建不存在的固定 `state/`，成功才發config與setup收據；原件再核，partial／失敗留標記。同根重開不重算、不重設已保存內容；已有state換根拒絕且保留。該API的單元證據不授全包可攜／EXE／私人環境搬移，操作及現行驗證界線見[首次設定](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#全新試用包首次設定整合候選)。
 
+### 具名廣達月營收目前研究
+
+`quanta_monthly_sales_snapshot`以已保存完整官方HTML與TWSE公司原件綁定2382／官方網站、同表兩年調整後合併口徑及NT$百萬元單位。只保存明選六件原件的新目錄，另發manifest、用途接受與批次receipt；雙外部SHA、完整集合、前後原件、EOF、版本／身分及台北可得小時皆重驗。`QuantaMonthlySalesReportProvider`以三項明選環境設定投影至原個股基本面DTO，欄位保留披露百萬元整數／0.1%及版本，沒有新的金融決策計算。未設來源時不開檔，缺件只隔離本來源；不改SQLite、原F17或每日月營收provider。`StockResearchReportReadService`只在目前日期／非保存歷史context讀此增量，未到時、未來cutoff及來源錯配皆不可用。根據真批次，此份可用小時為台北10/18 04:00；目前只有到時前Main、價格／返回／重載證據，成熟Main／fresh及新EXE仍待。完整契約見[每日來源版本](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#具名廣達月營收目前研究increment139)，操作見[具名月營收](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#廣達月營收固定版本來源分支139)。
+
 ### 具名營益目前研究版本
 
 

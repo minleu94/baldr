@@ -2,6 +2,14 @@
 
 本契約落實使用者於 2026-10-13（台北 10/14）採納的每日固定抓取政策，適用 P00／P03 的新保存來源及已接受的指定研究用途。施工順序仍由[原產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md#95-資料阻塞分流與下一批交付2026-10-14-調整)管理，實際驗證看[本輪 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。本頁不授正式資料寫入、排程變更、歷史回補或交易。
 
+## 具名廣達月營收目前研究（Increment139）
+
+`quanta-monthly-sales-2382-2026.v1`以既存TWSE公司原件的`2382／廣達電腦股份有限公司／www.quantatw.com`，綁完整HTTP 200／EOF的官方月營收HTML。TWSE原件只作`research_shadow`公司身分審核，不擴原名錄正式或散布資格；新用途接受僅涵蓋本機目前個股研究，與每日批次品質獨立。六件原件及manifest／receipt雙外部SHA重驗，完整HTTP、TWSE封存鏈、公司唯一性、網站網域、表頭、月序及同表比較基期均須吻合；原136驗證頁／缺件與正式資料保持。
+
+產品只呈現2026同表調整後合併的最新月、前月、去年同月整數百萬元，以及官方0.1%月增／年增率。Decimal區間只核原披露率是否與同表基期相容，不取代披露值、提升金額精度、混另一年度表或推算累計。原件數值2026-09為325300／423971／184109百萬元、-23.3%／76.7%，不是回填歷史版。
+
+新保存批次發八檔版本，pending／failure與集合不符拒讀，原件前後SHA保持；更正另存，不啟用正式writer或maintainer。沒有官方發布／更新timestamp，以`successful_batch_completion_fallback`保存批次及台北guard小時；本份為`2026-10-18T04:00:00+08:00`。Reader拒未來cutoff及未到小時，報告service只在目前日期且未指定舊context時投影，歷史PIT／特徵聚合／評分／策略／ML／交易維持false。來源用途與封存證據、成熟Main／fresh及EXE界線分列於[139 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment139-quanta-monthly-sales)，配置見[操作手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#廣達月營收固定版本來源分支139)。
+
 ## TWSE 日價方向文字版本（Increment128）
 
 既有 `DataLoader.download_from_api` 的新下載採 `twse.mi_index.direction_text.v2`：三個既有方向欄別名共用文字正規化，接受明確正負符號及單次 HTML/entity 解碼，顏色不作方向證據。保存狀態為 `+`、`-`、空缺或非空 `unknown`；未知不能被 CSV 的 NA 轉換抹成空值，連價差為零也不自授平盤。金額仍由既有 Decimal reader 與矛盾方向守衛判讀，不由相鄰收盤補官方漲跌。

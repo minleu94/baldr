@@ -2325,3 +2325,13 @@ QA01已實際操作父程序，但host把正常關閉後`isExposed=False`誤判�
 本次只接受這條**固定120／2330目前研究的原生旅程**；117歷史Native FAIL不改判，三計分策略Native、其他來源／尺寸／DPI、真人、歷史PIT、前期財報、完整P03與全產品Gate仍待。來源及真帳缺件不因本次原生成功解除；沒有重跑已驗的回測、P11或其他四流程。P06缺既有真策略Paper帳的問題已向使用者詢問，未獲資料前不以合成帳或成本假造NAV。
 
 QA03核自有task、12features／4份補證文件與連結，errors=[]；outer `444fe5c685df178eaee8b72f6a50dd2e15bee1550837ccc6799e26a11c6646c4`，三PID陣列自然空、handles關閉、mutex釋放。產品程式與操作未變，沒有因此重跑既有pytest／mypy或重建候選；限定證據與剩餘範圍各自保留。
+
+### 原生回測補證未完成與116報告重貼
+
+`post120_native_backtest_qa01`嘗試同一120 EXE的穩健／暴衝保存與新程序對照；Root在穩健階段未完成原生日期分段輸入，即以Alt+F4正常關閉。最後狀態為2317、2025-01-17至2026-10-17、仍選baseline，尚未執行或保存，原`len(runs)==1`斷言FAIL。[原失敗](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/post120_native_backtest_qa01/stable_failure.json) SHA `738eccd3cdb67c78f7f15159b41fe550bfe3b0a81a677f1571df0e07af4a958d`；spec SHA `8b629b0aaec26821fc135a1a32f5fdba3456d68a01a7ae8454cf0c2f95fca2ca`、host SHA `70873570a0f9900fc26edaa5bd2b878bfeebbc3b9d2dfd274e23b3aab24bd35a`及原輸出保留。這是未完成的操作驗證，不能據此判定產品回測失敗或接受Native；momentum／fresh未執行，不調高期限或改原金融預期來重跑。
+
+Outer `cc078fb440c9055fb7037ff4831a3f81938ac7912bff5e9f8be5c6064a33f5e3`記exit1；三PID陣列空、process／Job handles關閉、mutex釋放且無forced cleanup。開始可用RAM約24.40GiB、結束24.51GiB，原8GiB／12程序上限保持。120原EXE及交付收據重新核SHA不變，既有Qt保存／重開結果不改判，也不把此輪列為產品Increment。
+
+使用者再次貼上的116報告為15,151bytes，逐位元等於既存原件，SHA仍`1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`。沿上文[外部116分流](#外部116核對報告與原生環境診斷)，不執行貼文命令、不重驗舊包、不當120真人接受。現行試用仍120；價格選股主個股接線已由118處理，缺方向、零交易、名冊來源與Paper限制按各自原證據判讀。
+
+收尾QA02只核本QA文件、12features與owner task，errors=[]，outer `f256db2406d340076e3fbb904a79d1f68f66aae79ac50c582d7f7ecb582f1ab5`。三PID陣列空、handles關閉、mutex釋放且無forced cleanup；未重跑產品測試或新增候選，回測Native未完成與原完整計畫保持。

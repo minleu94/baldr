@@ -69,6 +69,19 @@ owner 核准新 `OUTPUT_ROOT` 後，到「推薦分析」按「讀取可用來�
 
 新parent的`observed_at`是副本組裝時間；原snapshot的來源時間、首次可得性、缺值與用途資格保持，不能把複製時間當官方發布或歷史PIT證據。此來源工具未打入固定125 EXE；執行複製須用對應來源環境，既有EXE僅沿原reader消費已驗證的新定位鏈。它不自動改launcher、設定、正式資料、私人帳、Task或maintainer，也不代表整包試用版／跨主機移機完成。具名證據見[Increment127 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)。
 
+## 明選價格研究收藏的新副本（來源工具）
+
+價格研究收藏的來源路徑參與身分hash，不能手改原JSON換根。先沿上一節完成技術來源複製／封存恢復，保留外部固定的 `TECHNICAL_COPY_RECEIPT.json` SHA；其目前目錄必須與已恢復的 `live/universe` 定位相符。再使用同一來源工具模組的 `scripts/copy_price_bookmarks.py`，明選原legacy JSON清單、其SHA與收藏ID，建立**另一全新輸出根**：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/copy_price_bookmarks.py --source-watchlist 'C:\BaldrResearch\old-output\watchlist\default.json' --source-watchlist-sha256 '<原清單SHA256>' --technical-copy-directory 'C:\BaldrResearch\restored-technical' --technical-copy-receipt-sha256 '<完整複製收據SHA256>' --bookmark-id '<原價格收藏ID>' --destination-output-root 'C:\BaldrResearch\copied-bookmarks'
+```
+
+`--bookmark-id`可重複指定；本工具目前只接受F07價格研究收藏，不是整個私人帳或所有收藏家族搬移。只選的收藏會進入新 `watchlist/default.json`，原清單全份bytes留在 `original/source_watchlist.json`，未選項目只在該原件保留。條件、價格上下限及精度、未知政策、排序、頁碼、捲動與比較籃保持；新來源定位產生新query／收藏ID，`BOOKMARK_COPY_RECEIPT.json`記錄原→新ID及封存內收據鏈，不冒稱原ID未變。
+
+必須看到 `derived_bookmarks_and_source_verified`，並確認沒有 `.bookmark_copy_pending.json`／`BOOKMARK_COPY_FAILURE.json` 才能使用新清單。原件／收據SHA、來源鏈、價格、stock身份或來源時鐘不合，以及保存中修訂、取消、超限或新ID碰撞都不授成功；失敗副本保留，不覆寫重跑。預設單檔256MiB、完整輸出（含必要收據與pending）總4GiB、100,000項、391個明選收藏／沿革節點，另受Root Job限制。先恢復已移位來源，不使用舊根fallback；缺失的中間複製沿革需補具名原件，不能自行改簽。
+
+owner核准新設定後，讓GUI使用新 `OUTPUT_ROOT` 與同一已核 `TECHNICAL_UNIVERSE_READ_ROOT`，到「觀察清單」選新收藏，雙擊回原條件與比較，再開同源個股及返回；重啟仍從同一新清單重開。工具不改啟動器、正式行情、私人store、Task或maintainer，也不授來源用途／歷史PIT。驗證及尚未涵蓋的範圍見[130 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment130-price-bookmark-copy)。
 ## Fresh：全新環境
 
 1. **選環境與根目錄**：決定 `source` 或 `portable-gui`、repository／portable 位置、Windows 帳戶和資料磁碟。依[快速開始](QUICK_START.md)、[安裝指南](INSTALL_GUIDE.md)或[可攜版指南](PORTABLE_WINDOWS.md)建立新機環境。

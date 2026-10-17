@@ -4,6 +4,8 @@
 
 ## 已保存研究更換輸出根
 
+F07價格收藏可在完整技術來源恢復後，明選原清單、兩個外部SHA與原ID另建新副本；原清單完整bytes保留，新來源產生新ID並記映射。新清單只含明選價格收藏，其他家族與私人帳不自動搬移。操作見[收藏新副本](MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)，原125啟動器及完整環境仍沒有自動改設定。
+
 一般已保存推薦現在可用同一來源複製工具的 `--include-recommendations` 明選加入，legacy／canonical 原件不重新編碼；不加選項仍是原三個store。副本在原「推薦分析 → 讀取可用來源 → 選來源 → 讀取」回訪，既存125 EXE已限定驗正常Main與新程序；外部ML收據依賴未核時拒絕所選批次，回測仍可依原scope另作新副本。操作與已知限制見[Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)與[129 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。這是來源工具的增量，沒有替換125 EXE或搬整個試用環境。
 
 來源工具已可為研究Registry、舊單股回測與舊推薦組合建立新副本，只重綁新索引的結果檔路徑，原金融檔不重寫。操作、預算、授權與失敗隔離見[Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)。來源Main及既存125 EXE已驗新根原規則／結果、返回及新程序；125沒有打入這個新來源工具，不應直接以舊EXE呼叫該腳本。

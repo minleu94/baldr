@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from functools import partial
 from hashlib import sha256
@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import re
 import stat
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Sequence
 
 from app_module.research_output_copy import ResearchOutputCopyBudget
 from app_module.daily_market_technical_snapshot_v4_repository import (
@@ -31,6 +31,7 @@ from app_module.rule_research_technical_parent_capture_v4 import (
 )
 
 SCHEMA = "technical-source-copy.v1"
+BOOKMARK_COPY_SCHEMA = "technical-price-bookmark-copy.v1"
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -537,4 +538,205 @@ def _copy_technical_source(pin: TechnicalSourcePin, destination_root: Path, *,
         return copied_pin
     except Exception as error:
         _write_immutable(target / "TECHNICAL_COPY_FAILURE.json", json.dumps({"schema": SCHEMA, "reason": str(error)[:2048]}, ensure_ascii=False).encode(), maximum=8192)
+        raise
+
+
+def _bookmark_source_in_copy_chain(archive: _Archive, source: Any, budget: ResearchOutputCopyBudget,
+                                   cancel: Callable[[], bool] | None) -> list[str]:
+    """只沿封存內已有的外部SHA歷史鏈定位；不碰舊root或搜尋其他副本。"""
+    keys = tuple(TechnicalSourcePin.__dataclass_fields__)
+    wanted = {key: getattr(source, key) for key in keys}
+    body, prefix, digest = archive.body, Path(), archive.sha256
+    chain: list[str] = []
+    for _ in range(budget.max_runs):
+        _cancel(cancel)
+        if digest in chain or body.get("schema") != SCHEMA or body.get("status") != "copied_and_strict_readers_verified":
+            raise TechnicalSourceCopyError("bookmark_copy_lineage_invalid")
+        chain.append(digest)
+        if body.get("source_pin") == wanted:
+            return chain
+        previous = body.get("restored_from_copy_receipt_sha256")
+        if type(previous) is not str or not _HASH.fullmatch(previous):
+            break
+        prefix = prefix / "original/history" / previous
+        name = (prefix / "source_copy_receipt.json").as_posix()
+        declared = archive.entries.get(name)
+        if declared is None or declared[1] != previous:
+            raise TechnicalSourceCopyError("bookmark_copy_lineage_not_declared")
+        raw = _read_bounded_file(archive.directory / name, budget.max_file_bytes)
+        if (len(raw), sha256(raw).hexdigest()) != declared:
+            raise TechnicalSourceCopyError("bookmark_copy_lineage_changed")
+        prior = json.loads(raw)
+        if prior.get("copied_pin") != body.get("source_pin"):
+            raise TechnicalSourceCopyError("bookmark_copy_lineage_pin_conflict")
+        body, digest = prior, previous
+    raise TechnicalSourceCopyError("bookmark_copy_original_source_not_in_lineage")
+
+
+def copy_price_bookmarks(source_watchlist: Path, source_watchlist_sha256: str,
+                         technical_copy_directory: Path, technical_copy_receipt_sha256: str,
+                         destination_output_root: Path, *, bookmark_ids: Sequence[str],
+                         budget: ResearchOutputCopyBudget,
+                         cancel_callback: Callable[[], bool] | None = None) -> Path:
+    """為明選F07收藏建立新清單；原清單逐bytes封存，新ID與完整位置沿革另記。"""
+    from app_module.daily_market_technical_universe_price_bookmark_v1 import DailyMarketTechnicalUniversePriceBookmarkV1
+    from app_module.daily_market_technical_universe_price_comparison_v1 import DailyMarketTechnicalUniversePriceSelectionV1
+    from app_module.daily_market_technical_universe_price_query_v1 import (
+        DailyMarketTechnicalUniversePriceQueryV1, open_daily_market_technical_universe_price_read_session_v1,
+    )
+    from app_module.watchlist_service import WatchlistItem, TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE, _bookmark_item_name
+
+    if type(budget) is not ResearchOutputCopyBudget:
+        raise TechnicalSourceCopyError("bookmark_copy_explicit_budget_required")
+    _cancel(cancel_callback)
+    if (isinstance(bookmark_ids, (str, bytes)) or not isinstance(bookmark_ids, Sequence)
+            or not bookmark_ids or len(bookmark_ids) > budget.max_runs
+            or any(type(value) is not str or not _HASH.fullmatch(value) for value in bookmark_ids)
+            or len(set(bookmark_ids)) != len(bookmark_ids)):
+        raise TechnicalSourceCopyError("bookmark_copy_explicit_ids_required")
+    source = _canonical_directory(source_watchlist.parent, must_exist=True) / source_watchlist.name
+    stamp = _lstat_optional(source)
+    if stamp is None or stamp.st_nlink != 1:
+        raise TechnicalSourceCopyError("bookmark_copy_source_not_regular")
+    raw = _read_bounded_file(source, budget.max_file_bytes)
+    if type(source_watchlist_sha256) is not str or not _HASH.fullmatch(source_watchlist_sha256) or sha256(raw).hexdigest() != source_watchlist_sha256:
+        raise TechnicalSourceCopyError("bookmark_copy_source_sha_mismatch")
+    source_stamp = (stamp.st_size, stamp.st_mtime_ns, stamp.st_dev, stamp.st_ino, stamp.st_nlink)
+    def verify_watchlist_source():
+        _canonical_directory(source.parent, must_exist=True)
+        current = _lstat_optional(source)
+        if (current is None or (current.st_size, current.st_mtime_ns, current.st_dev, current.st_ino, current.st_nlink) != source_stamp
+                or _read_bounded_file(source, budget.max_file_bytes) != raw):
+            raise TechnicalSourceCopyError("bookmark_copy_source_changed")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise TechnicalSourceCopyError("bookmark_copy_duplicate_json_key")
+            result[key] = value
+        return result
+    def invalid_constant(value):
+        raise TechnicalSourceCopyError("bookmark_copy_json_constant_invalid:" + value)
+    payload = json.loads(raw, object_pairs_hook=unique, parse_constant=invalid_constant)
+    if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("items"), list):
+        raise TechnicalSourceCopyError("bookmark_copy_legacy_json_watchlist_required")
+    if len(payload["items"]) > budget.max_entries:
+        raise TechnicalSourceCopyError("bookmark_copy_entry_budget_exceeded")
+    selected: dict[str, tuple[dict[str, Any], DailyMarketTechnicalUniversePriceBookmarkV1]] = {}
+    for item in payload["items"]:
+        _cancel(cancel_callback)
+        if not isinstance(item, dict):
+            raise TechnicalSourceCopyError("bookmark_copy_watchlist_item_invalid")
+        if item.get("source_id") not in bookmark_ids:
+            continue
+        original = DailyMarketTechnicalUniversePriceBookmarkV1.from_dict(item.get("research_bookmark"))
+        if (item.get("source_id") != original.bookmark_id or item.get("stock_code") != original.stock_code
+                or item.get("stock_name") != _bookmark_item_name(original)
+                or item.get("source") != TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE or original.bookmark_id in selected):
+            raise TechnicalSourceCopyError("bookmark_copy_watchlist_identity_conflict")
+        selected[original.bookmark_id] = (item, original)
+    if set(selected) != set(bookmark_ids):
+        raise TechnicalSourceCopyError("bookmark_copy_selected_id_missing_or_unsupported")
+    target = _canonical_directory(destination_output_root, must_exist=False)
+    if _lstat_optional(target) is not None:
+        raise TechnicalSourceCopyError("bookmark_copy_destination_exists")
+    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+                 os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT"), os.getenv("PERSONAL_JOURNAL_ROOT")):
+        if text:
+            protected = Path(text).absolute()
+            if target.is_relative_to(protected) or protected.is_relative_to(target):
+                raise TechnicalSourceCopyError("bookmark_copy_protected_root")
+    archive = _Archive(technical_copy_directory, technical_copy_receipt_sha256, budget, cancel_callback)
+    for root in (source.parent, archive.directory):
+        if target.is_relative_to(root) or root.is_relative_to(target):
+            raise TechnicalSourceCopyError("bookmark_copy_source_destination_overlap")
+    if archive.pin.store_output_root != archive.directory / "live/universe":
+        raise TechnicalSourceCopyError("bookmark_copy_restore_source_first")
+    session = open_daily_market_technical_universe_price_read_session_v1(
+        store_output_root=archive.pin.store_output_root, generation_identity_sha256=archive.pin.generation_identity_sha256,
+        plan_identity_sha256=archive.pin.plan_identity_sha256, plan_sha256=archive.pin.plan_sha256,
+        receipt_identity_sha256=archive.pin.receipt_identity_sha256, receipt_sha256=archive.pin.receipt_sha256,
+        cancel_callback=cancel_callback)
+    derived = []
+    derived_ids: set[str] = set()
+    mapping = []
+    queries: dict[str, Any] = {}
+    changed_source_fields = {"store_output_root", "receipt_identity_sha256", "receipt_sha256", "p01_read_session_identity_sha256"}
+    changed_selection_fields = {"query_json", "page_request_json", "result_identity_sha256", "page_identity_sha256", "source_identity_sha256", "selection_identity_sha256"}
+    for identity in bookmark_ids:
+        item, original = selected[identity]
+        chains = []
+        new_selections = []
+        for selection in (original.selected, *original.comparison_selections):
+            _cancel(cancel_callback)
+            old_query = selection.query
+            chains.append(_bookmark_source_in_copy_chain(archive, old_query.source, budget, cancel_callback))
+            if ({key: value for key, value in old_query.source.to_dict().items() if key not in changed_source_fields}
+                    != {key: value for key, value in session.source.to_dict().items() if key not in changed_source_fields}):
+                raise TechnicalSourceCopyError("bookmark_copy_source_semantics_changed")
+            if old_query.query_identity_sha256 not in queries:
+                parameters = {field.name: getattr(old_query, field.name) for field in fields(old_query)
+                              if field.name not in {"source", "schema_version", "query_identity_sha256"}}
+                new_query = DailyMarketTechnicalUniversePriceQueryV1.create(source=session.source, **parameters)
+                result = session.execute(new_query, cancel_callback=cancel_callback)
+                queries[old_query.query_identity_sha256] = (new_query, result)
+            new_query, result = queries[old_query.query_identity_sha256]
+            request = selection.page_request
+            new_request = result.create_page_request(request.page_index, page_size=request.page_size)
+            page = result.read_page(new_request, cancel_callback=cancel_callback)
+            new_selection = DailyMarketTechnicalUniversePriceSelectionV1.from_page(new_query, page, selection.stock_code)
+            if ({key: value for key, value in selection.to_dict().items() if key not in changed_selection_fields}
+                    != {key: value for key, value in new_selection.to_dict().items() if key not in changed_selection_fields}):
+                raise TechnicalSourceCopyError("bookmark_copy_selected_values_or_order_changed")
+            new_selections.append(new_selection)
+        new_bookmark = DailyMarketTechnicalUniversePriceBookmarkV1.create(
+            selected=new_selections[0], scroll_position=original.scroll_position,
+            comparison_selections=tuple(new_selections[1:]))
+        if new_bookmark.bookmark_id in derived_ids:
+            raise TechnicalSourceCopyError("bookmark_copy_derived_identity_collision")
+        derived_ids.add(new_bookmark.bookmark_id)
+        new_item = dict(item, source_id=new_bookmark.bookmark_id, research_bookmark=new_bookmark.to_dict())
+        decoded = WatchlistItem.from_mapping(new_item)
+        if decoded.stock_code != new_bookmark.stock_code or decoded.source_id != new_bookmark.bookmark_id:
+            raise TechnicalSourceCopyError("bookmark_copy_new_watchlist_identity_invalid")
+        derived.append(new_item)
+        mapping.append({"original_bookmark_id": original.bookmark_id, "derived_bookmark_id": new_bookmark.bookmark_id,
+            "original_bookmark_sha256": sha256(original.to_json().encode()).hexdigest(),
+            "derived_bookmark_sha256": sha256(new_bookmark.to_json().encode()).hexdigest(), "copy_receipt_chains": chains})
+    _cancel(cancel_callback)
+    verify_watchlist_source()
+    now = datetime.now(timezone.utc).isoformat()
+    new_payload = dict(payload, items=derived, updated_at=now)
+    encoded = (json.dumps(new_payload, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode()
+    receipt = {"schema": BOOKMARK_COPY_SCHEMA, "status": "derived_bookmarks_and_source_verified",
+        "created_at_utc": now, "source_watchlist_sha256": source_watchlist_sha256,
+        "technical_copy_receipt_sha256": technical_copy_receipt_sha256,
+        "original_item_count": len(payload["items"]), "selected_item_count": len(derived), "bookmarks": mapping,
+        "derived_watchlist_sha256": sha256(encoded).hexdigest(), "original_bytes_preserved": True,
+        "unselected_items_in_original_archive_only": True, "configuration_activated": False,
+        "source_available_at_unchanged": True, "historical_pit_eligible": False, "full_gate_accepted": False}
+    receipt_bytes = json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2).encode()
+    if (len(raw) + len(encoded) + len(receipt_bytes) + 2 > budget.max_total_bytes
+            or max(len(encoded), len(receipt_bytes)) > budget.max_file_bytes):
+        raise TechnicalSourceCopyError("bookmark_copy_byte_budget_exceeded")
+    target.mkdir(parents=True, exist_ok=False)
+    pending = target / ".bookmark_copy_pending.json"
+    _write_immutable(pending, b'{}', maximum=2)
+    try:
+        _write_immutable(target / "original/source_watchlist.json", raw, maximum=budget.max_file_bytes)
+        _write_immutable(target / "watchlist/default.json", encoded, maximum=budget.max_file_bytes)
+        if (_read_bounded_file(source, budget.max_file_bytes) != raw
+                or _read_bounded_file(target / "watchlist/default.json", budget.max_file_bytes) != encoded):
+            raise TechnicalSourceCopyError("bookmark_copy_source_or_destination_changed")
+        # 全來源與歷史閉集在成功返回前再核；不沿舊根補讀任何原件。
+        _Archive(technical_copy_directory, technical_copy_receipt_sha256, budget, cancel_callback)
+        verify_watchlist_source()
+        _cancel(cancel_callback)
+        path = target / "BOOKMARK_COPY_RECEIPT.json"
+        _write_immutable(path, receipt_bytes, maximum=budget.max_file_bytes)
+        pending.unlink()
+        return path
+    except Exception as error:
+        _write_immutable(target / "BOOKMARK_COPY_FAILURE.json", json.dumps({"schema": BOOKMARK_COPY_SCHEMA,
+            "reason": str(error)[:2048]}, ensure_ascii=False).encode(), maximum=8192)
         raise

@@ -31,6 +31,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ## 讀寫與保存契約
 
+`technical_source_copy.copy_price_bookmarks` 沿同模組已完成的closed technical copy收據及封存歷史鏈，將明選F07價格收藏另存新legacy清單。原清單逐bytes封存，來源pin先匹配沿革，再用原PriceReadSession／query／page／selection／bookmark codecs重建新定位的錨點；價格、snapshot／raw row hash、來源時計、所有查詢政策、頁碼與比較順序保持。新ID另記映射，不改原serializer／reader，不以root alias繞過exact守衛。CLI只寫全新根，不啟用設定；原清單／完整來源在發行前後重驗，失敗保留pending與具名原因。其他家族、COW及外部來源未自授搬移，詳[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)。
+
 `research_output_copy.py` 原三store預設不變；caller 以 `include_recommendations=True`（CLI `--include-recommendations`）另明選 `recommendation/runs`。Legacy `runs.result_id` 與 canonical index／metadata 共用原 `RecommendationExecutionQueries` 驗身分，新索引僅改既知 `data_path`，原 JSON／artifact bytes不動。canonical 先由 verified envelope 核外部ML收據依賴，缺完整搬移契約時在任何該收據I/O與目的根建立前拒絕；來源邊界、全量預算、取消、journal／trigger、讀前後SHA與失敗隔離沿原工具。新收據明列選定store，不啟用設定或更動來源時間／用途資格。操作與驗證見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)及[129 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。
 
 ### 具名營益目前研究版本

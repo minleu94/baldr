@@ -21,6 +21,8 @@
 
 ## 目前工程狀態與限制
 
+原P14的[Increment130](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment130-price-bookmark-copy)已補明選F07價格收藏的新來源副本：原清單完整保留，新收藏另記ID與來源沿革；原118收藏在已驗127技術副本上，由既存125 EXE正常Main **39772→42976**驗同源個股、返回及fresh，原根I/O／網路0。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)。原600秒組合FAIL保留，其他收藏家族、私人帳與完整搬移仍待。接續整合126–130已驗成果成獨立V1試用候選；本輪尚未替換固定125，不另加搬移前置工程。
+
 原P14的 [Increment129](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy) 已讓一般保存推薦可明選加入同一研究複製工具，legacy／canonical 原件保留；固定109原推薦的新根已由既存125 EXE正常Main／fresh讀回，原根I/O與網路0。原三store命令範圍維持，外部ML收據缺件在副本建立前拒絕。這解除一般推薦索引仍綁舊根的工程缺口；完整行情、既存收藏、外部ML與私人帳搬移仍待，沒有新EXE或替換125入口。
 
 原P14的[127技術來源副本工具](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)已驗完整1,951檔匯出、整包移位恢復、公開查詢及既存125 EXE **19188→49708**的主個股／比較／收藏／fresh；原件、來源clock及UNKNOWN保留，原600秒FAIL不改。原根檔案讀取為0，未替換125入口或自動改簽既存收藏；操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)。完整行情、一般推薦外部依賴／既存收藏、私人帳與其他主機仍待；接續回P03已定位的純文字漲跌方向解析丟失，先驗版本與方向，不回補舊列或觸發maintainer。116報告的現行差異見[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)。

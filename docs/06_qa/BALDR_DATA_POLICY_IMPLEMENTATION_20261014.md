@@ -2680,3 +2680,58 @@ QA11另複製109原18份狀態與117原7份具名基本面，只重綁121自己�
 每組Root串行，8GiB committed／12程序／kill-on-close及workspace mutex讀回，啟動前RAM至少8GiB；每次前組三PID陣列空、process／Job handles與mutex閉鎖才開下一組，以上皆無強制回收。這些定向結果不加總為Gate。
 
 Runbook、Manual、可攜指南、current架構與原計畫§9.5已同步。未完成範圍仍包括完整行情／既存收藏／私人帳／外部ML的完整來源映射、跨主機、Native／真人與完整P14；固定125仍依原入口。原P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、歷史PIT、來源權威、真N、完整雙策略績效及自然成熟保持。
+
+<a id="increment130-price-bookmark-copy"></a>
+## Increment130：明選價格收藏的新來源副本（2026-10-17）
+
+接續原P14，解除F07價格收藏仍綁原技術來源絕對位置、不能在恢復後完整重開的缺口。基線 `a7b097fb41be2c856880611472eca4eed6d6eb6b`；沿原 `technical_source_copy.py`、query／page／selection／bookmark codecs與Watchlist reader，不建立替代儲存格式或改簽原收藏。Root兼任Execution／Tech Lead／Data Audit／QA／Documentation，沒有獨立reviewer；Luna累計10/10，不新增。
+
+### 已實作範圍
+
+- 新來源CLI `scripts/copy_price_bookmarks.py` 要求原legacy JSON清單與SHA、完整技術複製收據SHA、明選原收藏ID及全新目的根。本輪只處理F07價格收藏，其他家族／COW／私人帳未自授搬移。
+- 原清單全份bytes封存於 `original/source_watchlist.json`，新 `watchlist/default.json` 只含明選收藏；未選內容留在完整原件。原→新ID與經驗證的封存內收據鏈記在 `BOOKMARK_COPY_RECEIPT.json`，新root會產生新query／收藏ID，不冒稱原ID未變。
+- 沿外部SHA與closed copy的歷史鏈找原六pins，不開原來源root或掃其他副本。完整目前來源再由原PriceReadSession核；所有非定位來源語意、原查詢參數、頁碼／頁長、價格與raw row／snapshot hash、未知、比較順序及捲動保持。來源時計、current-only／PIT false、bookmark不作reader certification的限制不改。
+- 原清單stock名稱／代碼／source／ID須符合既有Watchlist reader契約；原件SHA／mtime／inode／link狀態在保存前後再核。新ID碰撞在目的根建立前拒絕，不暗中合併筆記或發布歧義清單。完整輸出預算含原件、新清單、必要收據與pending bytes。
+- target create-only，完整來源／歷史閉集在發行前後重驗；取消、修訂、超限或不明來源保留pending／failure，不啟用設定。沒有新GET、正式行情、Task／maintainer或私人store寫入；固定125及原件保持。
+
+### 定向驗證與保留失敗
+
+| 證據 | 實際結果與界線 |
+|---|---|
+| QA00／group682 | 唯讀graph、route及Context；2258字／3562bytes。decision_research_portfolio、contracts測試、price_bookmark／watchlist摘錄因預算略過，相關原始bookmarks／query／copy／Watchlist契約另做具名bounded source閱讀，不宣稱全庫EOF。 |
+| QA01／group683 | 8 PASS／2 FAIL；正向fixture自填「原名稱」不符合原reader以股票代碼命名的契約，重開被拒。原輸出保留；修正fixture並在產品copy前加入同一原名稱守衛，沒有放寬reader。 |
+| QA02／group684 | 13 PASS；含封存移位後的歷史鏈、跨頁比較、精確Decimal／未知、原根I/O禁止、來源／pin／身份反例，以及保存中取消／修訂隔離。changed compile、full-roots mypy1063及financial guard通過。 |
+| QA03／group685 | 將來源再次複製與收藏映射合在同一prepare命令，原600秒到期exit124，owned child由命令timeout回收；不是PASS。已保存來源副本收據2,023,767bytes，mtime `2026-10-17T13:38:30.9074014Z`，但沒有收藏成功收據，Main／fresh未跑；收據存在不能外推完整組合成功。原輸出與產物保留，不重跑或提高期限。 |
+| QA04／group686 | 新ID碰撞有真RED；總預算反例先遇測試rglob的Windows長路徑，該項不作產品RED。原輸出保留。 |
+| QA04b／group687 | 改由既存完整收據清冊計算同一來源bytes，只重驗預算反例，確認漏計必要收據的真RED：1 FAIL／1 deselected。 |
+| QA05／group688 | 修正發布前總bytes與新ID碰撞拒絕，兩反例＋受改正向路徑4 PASS／11 deselected；compile、mypy1063與financial guard通過。其他已通過守衛不反覆跑。 |
+| QA06／group689 | 使用原118收藏與已驗127完整副本，六來源pins由封存歷史鏈對齊；不再次複製1,951檔。既存125 EXE正常Main39772→42976通過觀察清單雙擊、同源個股120列、返回及fresh；原query／page、比較順序、39匹配與原價量一致，原根I/O／網路0，原件及6行情輸入SHA不變。 |
+| QA07b／group690 | 文件與task結構檢查通過，12 features／9 link sources；正文由Root另核，不算產品Gate。先前QA07空spec僅為PowerShell序列化失敗產物，未啟動Python或執行該spec，原檔保留。 |
+
+QA03是原600秒組合命令FAIL，不以後續不同scope的成功洗掉。QA06改用既存已核完整副本，只驗本次變更的收藏映射與consumer；原來源複製／移位接受仍回127收據。合成案例與offscreen Qt功能證據不作Native、真人、其他DPI／主機、完整P14或產品Gate。
+
+### 可核原件
+
+原件均在 owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`，各spec另存並釘HEAD／來源SHA、隔離環境與新result directory，未覆寫舊task／spec。
+
+| 收據 | SHA-256 |
+|---|---|
+| QA02 outer `single_owned_qa_c15b38cdd7cb4cba86e23ba5427d6ed4/receipt.json` | `c3bfdd2da11eefae762fd2d484b497af964c1ae50a414dd06cdfe5953e6cc37a` |
+| QA03 outer `single_owned_qa_6ffedd5b9434428aaaf8fd76e429158d/receipt.json` | `89349ce889e6d67b20ac26e186cd75a9a91d2b081e4121bdde4f931d12d2746a` |
+| QA04 outer `single_owned_qa_069b3a46dd71401ba5c17ce4b539bc89/receipt.json` | `3ffd1dff1766614c535a6e8e667780850e6d07b0dc781cc3c09c322dd80c99f7` |
+| QA04b outer `single_owned_qa_0c2972a145424ae88bfe4e458d743dd2/receipt.json` | `cdeef4c03f56c48bd98973800a6769126d57130f0ed8770cff58a5e76413a218` |
+| QA05 outer `single_owned_qa_a7ba92fa423b4c13b11a2f40d0354d03/receipt.json` | `71a9d5f38b87382f55713fea8a827a8498d5b0d9210ecf641f0a072c28261ade` |
+| 最終scope Main spec `increment130_qualified_main_qa06_spec.json` | `77e219577f594f4e5740aab9a1200e3defa2cb861b449de8768df9b21d58a1aa` |
+| QA06 outer `single_owned_qa_07a94fd48d664bb8ba31a114c3f4b438/receipt.json` | `1e6a17a05c7a863daf632662fcfae8331521f58511d347d010418cc0ce0ea604` |
+| QA06 正常Main／fresh `increment130_bookmark_main_qa06/result.json` | `d4dedfa948b06b72e27669e277afa8cc9d00df3852741e51fc0f9038af3d54a0` |
+| 新收藏 `BOOKMARK_COPY_RECEIPT.json` | `a1b04f577801022bba7d246f6c1f2072f2f508114b623867dc57832fa6b7afbe` |
+| Consumer Git差異 `increment130_consumer_delta.json` | `d13e698466f4543f21a945a79eb272de7314067f3a24743ed5190052e81f115f` |
+| QA07b outer `single_owned_qa_1eb584c471194edcaa2320dd6230b260/receipt.json` | `5250ce1148fe8f4f6080ad563121a3d01ca24f758ecaf1133a19a23f209ce8a9` |
+| 原118清單 | `0775c0f9540e8c081bce6d2722411be1f46d8c03f3888601ebd4b973bd8b6118` |
+| 已核127技術副本／其上一份封存收據 | `b84c716db57ce345b5c9208cc615c800b69d2ba7300057e940c39abafd95ebcc`／`20a26673818f5dcc3e8ac1fee6449f919b97fbdf24c60f9c7462468ccc69c004` |
+
+原收藏ID `5ee84c16e8f6c86b99a660fefa2f9452af452a92bc2f5de8efea15326d03a6bf` 對應新ID `2edb0138716e243ce3bc95ae81b4b2c8259938cc9cf14ff762aa110e64b05de4`；不是重寫舊ID。六個consumer檔案相對125固定來源無Git差異，故本輪Source Main判not_required，沒有寫成另一次PASS；新增producer與拒絕守衛由QA02／05覆蓋。mypy既有UI ignore不作UI強型別接受。
+
+每組Root串行，以可讀回8GiB committed／12程序／kill-on-close Job及workspace mutex，啟動前RAM至少8GiB；下一組核前組三PID陣列空、process／Job handles與mutex閉鎖。QA06自然結束，三PID陣列空且handles／mutex關閉；正常PASS無強制回收。QA03命令timeout強制owned child的欄位原樣保留，沒有把outer forced_cleanup=false誤當自然成功。
+
+Runbook、Manual、Watchlist與可攜指南及current架構同步明選ID、原件保留、新ID、quota與failure出口。完整行情、所有收藏家族／COW、私人帳、外部ML及整包／其他主機仍待；本輪不改固定125入口。原P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、歷史PIT、來源權威、真N、完整雙策略績效及自然成熟繼續分列，不用案例加總為Gate。

@@ -664,7 +664,9 @@
         "app_module/daily_market_technical_official_disposition_revenue_archived_storage_v3.py",
         "app_module/daily_market_technical_official_disposition_revenue_bookmark_v2.py",
         "app_module/watchlist_service.py",
-        "ui_qt/views/watchlist_view.py"
+        "ui_qt/views/watchlist_view.py",
+        "app_module/technical_source_copy.py",
+        "scripts/copy_price_bookmarks.py"
       ],
       "tests": [
         "tests/test_daily_market_technical_official_disposition_composite_bookmark_storage_v2.py",
@@ -676,7 +678,9 @@
         "tests/test_ui_qt_watchlist_composite_bookmark_v2.py",
         "tests/test_ui_qt_watchlist_layout.py",
         "tests/test_watchlist_composite_bookmark_v2.py",
-        "tests/test_watchlist_revenue_archived_bookmark_v3.py"
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "tests/test_price_bookmark_copy.py",
+        "tests/test_price_bookmark_copy_limits.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -704,7 +708,11 @@
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_archived_v3.py",
         "tests/test_ui_qt_daily_market_technical_official_disposition_revenue_view_v2.py",
         "tests/test_ui_qt_watchlist_layout.py",
-        "tests/test_watchlist_revenue_archived_bookmark_v3.py"
+        "tests/test_watchlist_revenue_archived_bookmark_v3.py",
+        "app_module/technical_source_copy.py",
+        "scripts/copy_price_bookmarks.py",
+        "tests/test_price_bookmark_copy.py",
+        "tests/test_price_bookmark_copy_limits.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -1207,13 +1215,16 @@
         "app_module/research_output_copy.py",
         "scripts/copy_research_output.py",
         "app_module/technical_source_copy.py",
-        "scripts/copy_technical_source.py"
+        "scripts/copy_technical_source.py",
+        "scripts/copy_price_bookmarks.py"
       ],
       "tests": [
         "tests/test_document_control.py",
         "tests/test_monthly_revenue_series_application_settings.py",
         "tests/test_research_output_copy.py",
-        "tests/test_daily_market_technical_universe_v4_read_session.py"
+        "tests/test_daily_market_technical_universe_v4_read_session.py",
+        "tests/test_price_bookmark_copy.py",
+        "tests/test_price_bookmark_copy_limits.py"
       ],
       "manual": [
         "docs/07_guides/FIRST_INSTALL_PROMPT.md",
@@ -1245,7 +1256,10 @@
         "tests/test_research_output_copy.py",
         "app_module/technical_source_copy.py",
         "scripts/copy_technical_source.py",
-        "tests/test_daily_market_technical_universe_v4_read_session.py"
+        "tests/test_daily_market_technical_universe_v4_read_session.py",
+        "scripts/copy_price_bookmarks.py",
+        "tests/test_price_bookmark_copy.py",
+        "tests/test_price_bookmark_copy_limits.py"
       ],
       "sync_documents": [
         "docs/07_guides/README.md",

@@ -2123,3 +2123,26 @@ P03 具名2330財報的 PDF 原件、期間、單位與前瞻成功小時可核�
 ### 2026-10-16 暫停交接
 
 使用者要求先暫停、記錄進度並 commit。Increment114 程式、測試、計畫與補充指南已在本機 commit `f3e0fd50bb2c9791b008230c8a095b3173a94f63`；本段是暫停紀錄，不追加產品功能。原打算由該乾淨 commit 建另一固定 EXE，已另存尚未執行的具名腳本 `output/tasks/baldr-completion-resume-20261014-01a13cf9/increment115_fixed_build_qa01.py`，SHA-256 `7ebdae644ab8f4b1c9af67de3dd7cb2eb16d3b8a383ad43a5c4fd600bb57409c`。在使用者暫停後，自動核准審查拒絕啟動該建置，理由是不得繼續已暫停的 EXE 流程；沒有建置 QA output 或 `build_f3e0fd50bb2c_*` 產物，因此**沒有**新 EXE、試用115、同版 QA 或交付收據。未改112包、正式資料／Task、maintainer或其他 owner 工作樹。恢復時先核 HEAD、dirty tree、來源 pin、Job／RAM 與既有收據，再決定是否執行此腳本；不把尚未執行事項寫成通過。
+
+<a id="increment115-fixed-trial-delivery"></a>
+## Increment115：批次金融判讀與啟動修正的固定試用交付
+
+**解除的交付阻礙**：114的批次逐股通用比較防護，以及另一owner已提交的啟動TabOrder／Qt清理修復，尚未進可供試用的同版EXE；Snapshot／主要指南又停在71，與原計畫112入口矛盾。本輪從乾淨HEAD `4f3d495130f06d3e49efa86436f96060767569a2`建立獨立115候選，統一主要入口。四條V1及原五列交付順序維持，沒有新增金融計算、策略、來源接受或前置工程。
+
+[115操作指南](../../output/trial/Baldr-Daily-Research-115/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-115/KNOWN_ISSUES.md)、[交付收據](../../output/trial/Baldr-Daily-Research-115/DELIVERY_RECEIPT.json)另存；啟動用同目錄`Launch-Baldr.cmd`。EXE SHA-256 `4ca8b66399e6b21f05fd3e86ca4babfc83e3861990971a1dce60fb787c96fb8e`，來源archive `b77000e88317ba46409e7f3ecf4313ddda2d60b44229a132d5629d4b760b37be`，原candidate receipt `4495db5f63a18291b82ec5d3accb013d2feca346d1a3eddd5b58795683016493`，交付收據 `e1dd7ad6dbf15d44371fe01ac5a04b673e9aad249e31657d651bcc71235d7956`。原未啟動QA01腳本與暫停拒絕紀錄保留；QA02重新綁定當前HEAD及12來源pins，沒有覆寫原spec。
+
+| 定向驗證 | 實際結果與原件 |
+|---|---|
+| QA02固定建置 | 從完整commit建置、核archive／EXE／依賴與candidate receipt；[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment115_fixed_build_qa02/result.json) SHA `2b6d3496ac7c1a2f9a56994004d5cb8d5904e2e0e11bcdc34ee6e788e18d1fd8`。原建置只標built_not_validated，不修改原收據。 |
+| QA03正常Main保存／歷史／fresh | 正常Windows EXE在隔離副本跑2317／2330的布林與W底原版本，四筆Registry原run、規則卡、返回與另一EXE PID唯讀重開一致；2317配對列6／10，2330為0／0，權益各419列。metadata、Registry原DB／Parquet與原價列SHA在父／fresh相同，無socket嘗試、Qt訊息空。[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment115_fixed_exe_main_fresh_qa03/result.json) SHA `13ede890d32f8b3c3be3d2c6988ea680f68ac2127cdaacd19db2e3de03874546`。此輪比較斷言只到隱藏控制項，截圖停在設定頁，不把它外推為可見結果接受。 |
+| QA06／07可視區補證 | 沿QA03已保存run複製到新私有根，禁止執行／保存，不重算四筆策略。QA06經原按鈕切到結果頁，但isVisible仍不證明訊息在捲軸可視區；QA07再以原捲軸露出拒比原因，核badge完整落在各祖先viewport內，父／fresh均可見。績效、benchmark及標準化權益為空，原歷史／規則／返回仍可讀，原QA03副本檔案不變。[QA07結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment115_fixed_exe_viewport_fresh_qa07/result.json) SHA `a7e2bd280afaa8f910cda944c660df512c9bb29c30cfdce53262249c8247f79f`，並另存父／fresh截圖。這是程式驅動正常GUI，不冒充真人滑鼠。 |
+| QA04／05獨立試用與啟動器 | 從109逐檔核SHA複製18份固定狀態到115，只改綁新索引；不接私人或舊試用狀態。[狀態收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment115_trial_state_receipt.json) SHA `eb601260e584912a62a001cc1f02b1963fe1b1725e88fe95de4b6a3c5f6ecc82`；啟動器--check PASS，18份狀態不變，[收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment115_launcher_check_receipt.json) SHA `3a7e2fe43f129217ee696b52d7f2cd997243eb6fd7e20c30fa2c819fb814449e`。 |
+| 未改旅程與既有防線 | 114受改service／Registry測試28PASS、指定mypy1044及compile沿原SHA收據；啟動修復的共同UI／13個隔離MainWindow旅程沿[具名QA](BALDR_STARTUP_WARNINGS_FIX_20261015.md)。單股雙策略保存／明細往返沿112，價格／收藏與舊推薦按原107／109等定向證據，不在115重跑四條全部旅程。 |
+
+所有Job均先核前組三PID陣列空、process／Job handles關閉與mutex釋放，啟動前≥8GiB可用RAM，讀回8GiB committed／12程序／kill-on-close及同workspace mutex。建置／保存與啟動／可視區／交付索引的outer SHA分別 `bc46801c450707908ffdc9d03fdc1ab141daf92f61696b0ab2e87aca10457a07`／`f95540a598a2a4f02f5af6dd5af7e5e8d7d40805de093f3a56137196d0551d36`／`8900069cfa90857f8f418ce9135666fc3eff7fadffeb1d91aed328f9739642d1`／`8ac9a2d6dc0a5f3ad0ab1bab6d3d567fae49b059aa204eb79c4b82b58cd851e4`；均自然結束，無forced cleanup。沒有新增代理，新建額度仍10/10。
+
+**保留限制與後續**：舊式BacktestRepository仍印Decimal equity改存CSV警告，115的研究Registry原件與讀回另核，沒有把CSV採認為權威。來源／幣別／成本／期間／歷史PIT、真N、真人／不同DPI、完整雙策略績效、自然成熟及完整G0–G4未接受；財報缺件仍隔離，Paper真帳未配置，原SOP／Baseline FAIL與未WF不改判。正式資料、原112及更早包、正式Task、停用maintainer、push、發布與交易未動。接續原§0.4其他可交付旅程，不把更多同一案例或視覺修飾加成V1前置。
+
+文件首輪QA09只失敗於舊task漏列docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md的Coverage（共用Snapshot pattern命中）；原failed outer SHA 849d939a4bcdc5f317219e91f38cc34822383833846eaef99f8eff81fd90585e保留。根據該獨立模組未接UI、API／格式／規則均未改，補具名not_required理由後再驗，沒有降低工具檢查或修改該功能。
+
+文件QA10對12個feature與本輪9份文件／指南的連結及自有task結構檢查PASS，errors=[]；outer SHA `1fc1db74195ebec1e364d2e89e9e39fd649e3432ea546771d5342d578b3c0900`，三PID陣列自然空、handles關閉、mutex釋放。此後僅回填本結果，不更動連結或產品來源。

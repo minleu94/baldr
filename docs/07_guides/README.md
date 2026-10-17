@@ -19,7 +19,7 @@
 
 | 工作 | 手冊章節 |
 |---|---|
-| 目前指定試用版入口、資料範圍、限制與 Increment71 狀態 | [目前試用版指南](TRIAL_VERSION_GUIDE.md) |
+| 目前指定試用版入口、資料範圍、操作與驗證限制 | [目前試用版指南](TRIAL_VERSION_GUIDE.md) |
 | 安裝、啟動及四種日常情境 | [APPLICATION_MANUAL §1–3](APPLICATION_MANUAL.md#1-日常使用旅程) |
 | 資料狀態、快速／安全更新與市場探索 | [資料與市場研究](manuals/DATA_AND_MARKET_RESEARCH.md) |
 | Recommendation、個股研究與 Research Lab | [推薦與 Research Lab](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md) |

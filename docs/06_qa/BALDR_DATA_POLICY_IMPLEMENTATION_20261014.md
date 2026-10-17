@@ -2,6 +2,37 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+<a id="increment127-technical-source-copy"></a>
+## Increment127：原P14技術來源的新定位鏈與封存恢復（2026-10-17，WIP／全量出口FAIL）
+
+本輪針對原P14中v4 snapshot／parent／universe仍綁舊絕對路徑的搬移阻礙，不擴四條V1、不替換固定125或另立計畫。接手HEAD `75dc1ead6de2e56c14a5913b18ade9dad67cfadd`；Root沿Tech Lead／Execution／Data Audit／QA／Documentation履職，沒有獨立reviewer或新代理，累計10/10保持。原圖只作有界導航，context Level2為1740字／3694bytes、Unknown=[]，不授全庫EOF；QA00 outer SHA `1cd6a114171342cbd6666a628026643a600b0eca5b139789560f9f4808808a2b`。API／單寫範圍先凍結SHA `a7b10cbfe8f707cd0a81db9a9e81753c771d8df64fdb13d2c5ceed445b9c7df1`；封存必須可移位後恢復的原P14補充SHA `ad0b4516a2125c0b8e2e8087b3156b2908c70076e70929cb4ba70a3147135e60`。
+
+### 原件、時鐘與讀取邊界
+
+新來源工具先由原strict reader核具名完整來源，逐bytes保存snapshot／batch manifest，原plan／receipt另存`original`；使用既有codec只建立新的parent／universe定位鏈，再由原strict reader核新閉包。新parent的`observed_at`是副本組裝時間，原snapshot／規則／價格／來源clock、缺值與資格不改，不能當官方發布或歷史PIT。工具不開原DB、不呼叫producer、不重算技術值、不自動改設定。
+
+封存恢復由外部SHA固定複製收據與完整closed file list，先核全檔bytes／SHA、清冊、連結與預算；舊URI只作封存內映射，不回查舊根。原封存及更早原件歷史保留，新定位鏈仍須通過原strict reader。新目的根create-only、protected／重疊、完整來源、取消與讀前後修訂守衛維持；失敗保留pending／failure，不把半成品掛進正常UI。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)。
+
+### 具名定向結果與保留失敗
+
+QA01誤用只接受batch layout的既有列舉器於plan／receipt目錄，4FAIL／5PASS，outer SHA `9dfeec09628fa75f281d830b275bc6ed136eb3fe5aedf557d17497a10d2635af`。改用本工具的一般有界列舉，既有strict batch reader不改；QA02為9PASS／22deselected，再於mypy出6項型別錯誤，outer SHA `ff268b5b1b15f9fb9d2fc682660aa4e90536f1b4c6d0b34f6e0ed57861df565c`。只修型別後QA03 compile／mypy1062／金融float守衛PASS，outer SHA `626e39ee2299116449017954c8e7db6cc5de590b09adb2483fd417dd444594bd`。9項含完整／全排除／空來源、移開第一份副本後恢復、原列與clock不變、禁止原DB／原根讀取、partial／錯SHA／預算／取消／重疊、封存pending與tamper拒絕；不是把案例數合計成Gate。
+
+QA04的immutable runner在helper開始前讀長路徑pin失敗，原FAIL及spec保留，outer SHA `73cd481080c4d616f7e733572b4f2b77321514bb48c8922adabd9765378151e9`。QA04b以短路徑綁定**原URI／bytes／SHA**，由原v4長路徑I/O先逐一核對，不改runner、來源pin或期限。真來源為8分段、122 manifests、1,951 snapshots，原snapshot共291,144,036 bytes；宣告1,989／排除38沿原pin，不改母體。匯出子程序在原600秒逾時，未發成功收據；`.technical_copy_pending.json`及原FAIL保留，不能拿來掛UI或恢復。Job659 outer SHA `c5cbf9bd41acb887547c81f6292fe0fba391c180a49e0f36a65fd7907dd63ae2`，exit1、三PID陣列空、process／Job handles關閉與mutex釋放。啟動前可用RAM28,036,710,400 bytes，8GiB／12程序與kill-on-close維持；逾時不是成功，也不是已完成正常Main／fresh。
+
+Root另補成功發布前的整個目的樹清冊與目錄項預算，避免副本含額外檔或在同預算下不能恢復卻發成功收據；不重跑全量。QA06定向11PASS／22deselected，含兩個新目的端反例，compile／mypy1062／金融float守衛PASS，outer SHA `3a0a33511d5fac23bf1201a1b4b593b780f051abeedef9d76d186be2efae1e26`。它不消除QA04b逾時；既有strict reader、金融值與UI碼未改，未改22項及Workbench／validator不重跑。QA05正常Main／source與既存125EXE／fresh僅有測試草稿，**not_run**，不作交付證據。
+
+此輪保存可接手WIP及現行報告勘誤，不宣稱技術來源全量搬移可交付。執行出口需先有耗時階段證據，才能做有針對性的修復；不盲跑、縮來源或延長原期限。固定125保持可試用，其他原計畫旅程及外部缺件按原範圍繼續，不把此工具變成V1新前置。
+
+QA07核owner task、12 features及10份文件連結，errors=[]，outer SHA `b8e60fbd8ac2e7147a842a5277f13f926f280c101eaddd9590ac36ddee4aa9da`；三PID陣列空、handles關閉與mutex釋放。Feature Map、Snapshot、原計畫§9.5、current資料保存、主手冊／Runbook及現行試用指南同步WIP／FAIL邊界。Product／6M／目標設計、UI碼、排程與首次安裝模式未改，對應Coverage維持not_required；正文語意由Root另核，沒有獨立reviewer。
+
+### 116外部報告的判讀
+
+Root另以PowerShell唯讀重核116固定EXE（56,396,011 bytes）、build receipt與source archive，三件bytes／SHA均與原DELIVERY_RECEIPT相符；沒有啟動EXE、開state DB或重跑旅程。核對收據SHA `5a88be0f9b28061fa21809573a8a15ea90f3bcbfbe355c38e4301d97cfab5414`，原始輸出保存在owner task。這只確認三件固定身分，不授報告其餘PASS。
+
+使用者提供的116外部報告只作調查輸入，不依貼上的命令重跑、開庫或改原包。現行125指南補核六項差異：SHA／--check不當旅程接受；1–3秒未測；118起同源個股已接主頁；124合法千分位解析後0配對仍可能有意圖；名冊缺憑證不能泛稱不影響用途；兩份價格來源、空初始state與Paper缺根仍分別說明。116／125原交付及原FAIL不改，沒有重跑未受影響四旅程。
+
+完整行情、一般推薦／既存收藏、私人帳、其他主機與全環境搬移仍待；來源用途、真N、歷史PIT、完整績效、Native／真人與自然成熟各自保留。正式資料／Task／maintainer、push、發布與交易沒有新變更。
+
 <a id="increment126-research-output-copy"></a>
 ## Increment126：原P14保存研究的新輸出副本（2026-10-17，來源工具／125候選保持）
 

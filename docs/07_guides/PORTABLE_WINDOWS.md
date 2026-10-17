@@ -6,7 +6,9 @@
 
 來源工具已可為研究Registry、舊單股回測與舊推薦組合建立新副本，只重綁新索引的結果檔路徑，原金融檔不重寫。操作、預算、授權與失敗隔離見[Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)。來源Main及既存125 EXE已驗新根原規則／結果、返回及新程序；125沒有打入這個新來源工具，不應直接以舊EXE呼叫該腳本。
 
-這只處理保存研究輸出，不使整個試用包變成可攜。行情、technical v4原件、一般推薦與收藏的來源映射、私人帳及其他主機仍依完整清冊；不手改原收據或只換launcher冒稱完成移機。
+technical v4另有[完整來源複製與封存恢復候選](MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)，逐bytes保留原snapshot／manifest與原plan／receipt，另建新定位鏈。隔離小來源已驗，但真1,951檔匯出在600秒FAIL，仍為WIP，尚不能替換125來源。封存移位後的設計出口須以外部固定收據SHA恢復，不能只改根或手改原JSON。
+
+這兩項來源工具不使整個試用包變成可攜。行情、一般推薦與既存收藏的來源映射、私人帳及其他主機仍依完整清冊；不只換launcher冒稱完成移機。目前本機試用入口統一看[目前指定試用版](TRIAL_VERSION_GUIDE.md)，下方日期化候選留作歷史。
 
 ## 首次設定
 
@@ -55,7 +57,7 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 - 首次無字或缺資料時，確認整個資料夾存在、JSON 為 UTF-8、roots 是程式包外的可寫絕對路徑。無 console 的 stdout／stderr 和 App 日誌依該交付版列出的實際位置核對。
 - 長路徑、主機上的 Qt／Windows 差異、私人模型與自然排程執行都要依具名 QA 範圍判讀；在別台 Windows 主機啟動成功不由這份文件推定。
 
-## 日常研究修正版試用（Increment66）
+## 歷史日常研究修正版試用（Increment66）
 
 本機試用入口為 `output/trial/Baldr-Daily-Research-66/Launch-Baldr.cmd`。雙擊啟動；在命令列加 `--check` 只核 EXE SHA、版本和隔離設定，不開 GUI。固定來源 `ec5c9573360891595bb395fa7bbb934077c6d4c0`，版本 `2026.10.06+ec5c95733608`；候選完整目錄 `dist/candidate_ec5c95733608_44024cd5/baldr`，EXE SHA-256 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`。請從本次入口啟動並保留完整候選資料夾與 `state/`，不要只複製 EXE。逐步操作、已知問題與證據分見試用入口同目錄 `TRIAL_GUIDE.md`、`KNOWN_ISSUES.md`、`DELIVERY_RECEIPT.json`。
 

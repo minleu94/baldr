@@ -2099,3 +2099,139 @@ def test_selected_rows_materializer_empty_and_bounded_input_validation(
             reverse_selection, explicit_stock_codes=(reverse_selection.stock_codes[0],)
         )
     assert wrong_base_order.value.code == "technical_universe_v4_selected_rows_base_order_invalid"
+
+
+@pytest.mark.parametrize("kind", ["main", "excluded_only", "empty"])
+def test_technical_source_copy_detached_restore_preserves_rows_and_clocks(
+    synthetic_read_session_source, tmp_path, monkeypatch, kind,
+):
+    """新定位鏈仍走原reader，舊DB及第一份bundle的絕對位置都不需要。"""
+    import builtins
+    from app_module.technical_source_copy import TechnicalSourcePin, copy_technical_source, restore_technical_source
+    from app_module.research_output_copy import ResearchOutputCopyBudget
+    from app_module.daily_market_technical_snapshot_v4_repository import _read_bounded_file
+
+    fixture = synthetic_read_session_source
+    case = fixture if kind == "main" else fixture[kind]
+    assert not fixture["database"].exists()
+    original_session = _open_case_session(case)
+    original_page = original_session.read_page(original_session.create_query(page_size=256))
+    pin = TechnicalSourcePin(case["store_root"], case["plan"].generation_identity_sha256,
+        case["plan"].identity_sha256, case["plan_sha256"], case["complete"].identity_sha256,
+        case["complete"].content_sha256)
+    budget = ResearchOutputCopyBudget(16 * 1024**2, 256 * 1024**2, 10000, 32)
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **kw: pytest.fail("複製／恢復不可讀原行情DB"))
+    target = tmp_path / "first-copy"
+    copied_pin = copy_technical_source(pin, target, budget=budget)
+    raw = _read_bounded_file(target / "TECHNICAL_COPY_RECEIPT.json", budget.max_file_bytes)
+    receipt = json.loads(raw)
+    assert receipt["source_clock_unchanged"] and not receipt["source_database_opened"]
+    assert not receipt["snapshot_bytes_reencoded"] and not receipt["full_gate_accepted"]
+    for item in receipt["source_files"]:
+        assert hashlib.sha256(_read_bounded_file(Path(item["path"]), budget.max_file_bytes)).hexdigest() == item["sha256"]
+    # 測試自有暫存根，目的literal亦在tmp_path內；不移動共享fixture原件。
+    detached = tmp_path / "detached-bundle"
+    assert target.resolve().is_relative_to(tmp_path.resolve()) and detached.resolve().is_relative_to(tmp_path.resolve())
+    target.rename(detached)
+    assert not target.exists()
+    original_open = builtins.open
+    def no_original_io(path, *args, **kwargs):
+        if isinstance(path, (str, Path)):
+            normalized = str(path).removeprefix("\\\\?\\")
+            if Path(normalized).absolute().is_relative_to(fixture["root"]):
+                pytest.fail("恢復不可fallback到原source根")
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(builtins, "open", no_original_io)
+    restored = restore_technical_source(detached, hashlib.sha256(raw).hexdigest(), tmp_path / "restored", budget=budget)
+    session = open_daily_market_technical_universe_v4_read_session(**restored.to_dict())
+    page = session.read_page(session.create_query(page_size=256))
+    assert [row.to_dict() for row in page.rows] == [row.to_dict() for row in original_page.rows]
+    assert session.index_stock_count == original_session.index_stock_count
+    proof = json.loads((tmp_path / "restored/TECHNICAL_COPY_RECEIPT.json").read_bytes())
+    assert proof["restored_from_copy_receipt_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert proof["source_pin"] == copied_pin.to_dict()
+    assert any("source_copy_receipt.json" in row["path"] for row in proof["destination_files"])
+
+
+@pytest.mark.parametrize("failure", ["partial", "sha", "budget", "cancel", "overlap"])
+def test_technical_source_copy_refuses_before_creating_destination(
+    synthetic_read_session_source, tmp_path, failure,
+):
+    from app_module.technical_source_copy import TechnicalSourcePin, copy_technical_source
+    from app_module.research_output_copy import ResearchOutputCopyBudget
+    case = synthetic_read_session_source
+    if failure == "partial":
+        case = case["partial"]
+    receipt = case.get("complete", case.get("cancelled"))
+    pin = TechnicalSourcePin(case["store_root"], case["plan"].generation_identity_sha256,
+        case["plan"].identity_sha256, case["plan_sha256"], receipt.identity_sha256,
+        "0" * 64 if failure == "sha" else receipt.content_sha256)
+    budget = ResearchOutputCopyBudget(16 * 1024**2, 1 if failure == "budget" else 256 * 1024**2, 10000, 32)
+    destination = case["store_root"] / "must-not-create" if failure == "overlap" else tmp_path / "new"
+    with pytest.raises(ValueError):
+        copy_technical_source(pin, destination, budget=budget,
+            cancel_callback=(lambda: True) if failure == "cancel" else None)
+    assert not destination.exists()
+
+
+def test_technical_source_copy_archive_tamper_pending_and_external_sha_are_rejected(
+    synthetic_read_session_source, tmp_path,
+):
+    from app_module.technical_source_copy import TechnicalSourcePin, copy_technical_source, restore_technical_source
+    from app_module.research_output_copy import ResearchOutputCopyBudget
+    case = synthetic_read_session_source["empty"]
+    pin = TechnicalSourcePin(case["store_root"], case["plan"].generation_identity_sha256,
+        case["plan"].identity_sha256, case["plan_sha256"], case["complete"].identity_sha256,
+        case["complete"].content_sha256)
+    budget = ResearchOutputCopyBudget(16 * 1024**2, 256 * 1024**2, 10000, 32)
+    bundle = tmp_path / "bundle"
+    copy_technical_source(pin, bundle, budget=budget)
+    raw = (bundle / "TECHNICAL_COPY_RECEIPT.json").read_bytes()
+    with pytest.raises(ValueError, match="sha"):
+        restore_technical_source(bundle, "0" * 64, tmp_path / "bad-sha", budget=budget)
+    pending = bundle / ".technical_copy_pending.json"
+    pending.write_text("{}")
+    with pytest.raises(ValueError, match="pending"):
+        restore_technical_source(bundle, hashlib.sha256(raw).hexdigest(), tmp_path / "pending", budget=budget)
+    pending.unlink()
+    payload = json.loads(raw)
+    asset = bundle / payload["destination_files"][0]["path"]
+    asset.write_bytes(asset.read_bytes() + b"changed")
+    with pytest.raises(ValueError, match="sha|changed"):
+        restore_technical_source(bundle, hashlib.sha256(raw).hexdigest(), tmp_path / "tampered", budget=budget)
+    assert not (tmp_path / "bad-sha").exists() and not (tmp_path / "pending").exists() and not (tmp_path / "tampered").exists()
+
+
+@pytest.mark.parametrize("failure", ["output_budget", "unexpected_file"])
+def test_technical_source_copy_does_not_publish_unrestorable_output(
+    synthetic_read_session_source, tmp_path, monkeypatch, failure,
+):
+    """成功副本亦須滿足整包清冊／目錄預算，不能產出同預算無法恢復的包。"""
+    import app_module.technical_source_copy as copy_module
+    from app_module.research_output_copy import ResearchOutputCopyBudget
+
+    case = synthetic_read_session_source["empty"]
+    pin = copy_module.TechnicalSourcePin(case["store_root"], case["plan"].generation_identity_sha256,
+        case["plan"].identity_sha256, case["plan_sha256"], case["complete"].identity_sha256,
+        case["complete"].content_sha256)
+    budget = ResearchOutputCopyBudget(16 * 1024**2, 256 * 1024**2, 10000, 32)
+    target = tmp_path / "must-remain-unpublished"
+    if failure == "output_budget":
+        probe = tmp_path / "budget-probe"
+        copy_module.copy_technical_source(pin, probe, budget=budget)
+        receipt = json.loads((probe / "TECHNICAL_COPY_RECEIPT.json").read_bytes())
+        budget = ResearchOutputCopyBudget(16 * 1024**2, 256 * 1024**2,
+            len(receipt["destination_files"]) + 1, 32)
+    else:
+        original_read = copy_module._read_state
+        def add_unexpected_file(read_pin, *args, **kwargs):
+            value = original_read(read_pin, *args, **kwargs)
+            if read_pin.store_output_root.is_relative_to(target):
+                (target / "unexpected.bin").write_bytes(b"unexpected")
+            return value
+        monkeypatch.setattr(copy_module, "_read_state", add_unexpected_file)
+    with pytest.raises(ValueError, match="layout_budget|destination_layout"):
+        copy_module.copy_technical_source(pin, target, budget=budget)
+    assert not (target / "TECHNICAL_COPY_RECEIPT.json").exists()
+    assert (target / ".technical_copy_pending.json").exists()
+    assert (target / "TECHNICAL_COPY_FAILURE.json").exists()

@@ -147,6 +147,10 @@ Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 te
 
 ## 保留、遷移與高風險邊界
 
+`technical_source_copy.py`目前為WIP定位候選，隔離小來源已驗；真1,951檔匯出在600秒FAIL，正常Main／fresh未跑，不使125來源可搬移。它處理具名完整v4來源的定位，不修改既有reader契約。原strict reader先驗snapshot／batch manifest／parent／universe閉包；新根逐bytes保存snapshot及manifest，原plan／receipt另存`original`，以既有receipt codec建立新parent與universe鏈，再由原strict reader驗完整新閉包。source clock、原規則／價格、qualification與unknown不變；新parent `observed_at`只表示副本組裝時間，不授來源首存或歷史PIT。
+
+封存恢復以外部SHA固定完整複製收據，再核closed檔案清冊、全檔bytes／SHA與預算。舊絕對URI僅作封存內明示映射，不能直接交給原reader或回查舊根；重綁後才由原strict reader授予新定位鏈的讀取資格。原副本／更早歷史收據保留，新receipt／path identity另記；缺件、額外檔、連結、修訂、取消或超限不發成功收據。操作與限制見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)及[127 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)。一般推薦／既存收藏、私人帳與全環境搬移仍另行核對，不自動啟用設定。
+
 `research_output_copy.py`只建立明選三種研究store的新輸出副本：`research_runs`、`backtest/runs`、`recommendation_portfolio/runs`。來源全程離線唯讀、逐run經原Registry／legacy public reader；`ResearchHistoryLookup.select_legacy_run`以exact ID沿原身分、讀取預算與取消建立選取，不依清單頁長截短。複製原檔後只修改新SQLite的已知path欄位，逐欄確認其他metadata未變；Parquet／JSON與sidecar原SHA保持，原、新metadata／context與索引SHA分別記錄，不重寫原收據。
 
 來源／目的根canonical與protected-root、無journal／staging／非標準trigger／view、明示檔／bytes／entries／runs預算、取消及來源／目的讀前後完整身分核對先於成功收據。失敗保留pending／failure，不啟用新設定、不刪來源、不遷移正式根；配置情境外部帳本引用尚不支援，須整批拒絕而非省略。新副本可沿既有嚴格reader開啟，錯根拒讀守衛不放寬。這不搬行情、technical v4、一般推薦／收藏或私人帳；限定正常Main／fresh及既存125消費證據見[126 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)，操作見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)。

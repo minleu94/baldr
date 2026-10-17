@@ -32,6 +32,31 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 
 來源正常Main與既存125 EXE已限定驗新根讀回及fresh，原根I/O與重算為0；125 EXE本身未打入這個新來源工具，執行複製須使用對應來源環境。完整行情／technical v4／一般推薦／收藏／私人帳、其他主機與全環境移機仍待，詳[Increment126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。
 
+## 技術來源的新副本與封存恢復（來源工具）
+
+**目前為WIP來源候選，尚不可取代固定125來源。** 隔離小來源的複製／移位恢復已驗；真1,951檔匯出在原600秒期限FAIL，沒有成功收據，也未執行正常Main／新程序。以下保留候選介面及完成出口，供後續修復核對；不是全量來源已可搬移的操作承諾。
+
+價格選股的technical v4來源含snapshot、batch manifest、parent及universe定位鏈。只搬資料夾或改`TECHNICAL_UNIVERSE_READ_ROOT`不足以恢復；原收據仍綁舊絕對路徑。來源工具`scripts/copy_technical_source.py`可為**明選的完整來源**建立新定位鏈，或從已移位的完整封存包恢復；不抓取、不重算指標，也不修改原快照或原收據。
+
+1. 取得owner對具名來源及全新目的根的精確授權，停止該來源writer。先保存六欄JSON pin：`store_output_root`、`generation_identity_sha256`、`plan_identity_sha256`、`plan_sha256`、`receipt_identity_sha256`、`receipt_sha256`，另在外部固定這份pin檔的SHA-256。來源必須經原strict reader完整驗證；partial、pending或缺件不會略過。
+2. 下列為人工範例，路徑與SHA須換成已核內容；目的根必須不存在，不能與來源重疊或位於正式／私人根內。Agent執行仍須遵守Root受控Job及資源規則。
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts/copy_technical_source.py --source-pin 'C:\BaldrResearch\v4-source-pin.json' --source-sha256 '<已核pin檔SHA-256>' --destination-root 'C:\BaldrResearch\technical-copy'
+   ```
+
+3. 成功出口為新根的`TECHNICAL_COPY_RECEIPT.json`，status須為`copied_and_strict_readers_verified`，且沒有`.technical_copy_pending.json`或`TECHNICAL_COPY_FAILURE.json`。外部保存此收據SHA及完整副本；不要只搬`live/universe`。`live/repositories`保留原snapshot／manifest bytes，`live/parents`與`live/universe`是新定位鏈，`original`保留原plan／receipt與前次封存歷史。原、新receipt SHA不同，不能冒充同一原件。
+4. 封存包移到另一位置後，使用外部已核的**原複製收據SHA**恢復至另一個不存在的目的根：
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts/copy_technical_source.py --archive-directory 'D:\BaldrArchive\technical-copy' --source-sha256 '<外部保存的複製收據SHA-256>' --destination-root 'D:\BaldrResearch\technical-restored'
+   ```
+
+   恢復先核整包清冊、每檔bytes／SHA與外部收據，再以封存內的明示映射重綁另一份定位鏈；不沿舊URI找原根補件。少檔、多檔、連結替換、錯SHA、超限或取消都拒絕。預設每檔256MiB、全來源4GiB、100,000檔／目錄項、391個parent分段；超限不截短來源。失敗副本保留，不以同路徑覆寫重試。
+5. 新strict reader通過後，owner另行核准配置時才指定新收據`copied_pin.store_output_root`（`<目的根>/live/universe`）。從價格選股明選來源，核宣告／處理／排除及unknown，開同源個股、比較、保存收藏並在新程序重開。既有收藏仍綁原來源，不自動改簽；私人收藏搬移須另列清冊。
+
+新parent的`observed_at`是副本組裝時間；原snapshot的來源時間、首次可得性、缺值與用途資格保持，不能把複製時間當官方發布或歷史PIT證據。此來源工具未打入固定125 EXE；執行複製須用對應來源環境，既有EXE僅沿原reader消費已驗證的新定位鏈。它不自動改launcher、設定、正式資料、私人帳、Task或maintainer，也不代表整包試用版／跨主機移機完成。具名證據見[Increment127 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)。
+
 ## Fresh：全新環境
 
 1. **選環境與根目錄**：決定 `source` 或 `portable-gui`、repository／portable 位置、Windows 帳戶和資料磁碟。依[快速開始](QUICK_START.md)、[安裝指南](INSTALL_GUIDE.md)或[可攜版指南](PORTABLE_WINDOWS.md)建立新機環境。

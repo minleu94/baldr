@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+原P14的technical v4搬移另有[127 WIP候選](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)：原snapshot／manifest與原收據保留，另建新定位鏈；隔離來源的移位恢復及反例已驗，但真1,951檔匯出在原600秒出口FAIL，沒有成功收據，正常Main／fresh未跑。此未通過出口隔離，不改125來源、不擴V1或放寬期限。116外部報告的現行差異亦已列入[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)。
+
 原P14另完成保存研究的新副本工具：三種研究store逐bytes複製，僅重綁新索引路徑，原金融值／來源manifest不改。來源Main與既存125 EXE已從新根開原規則／結果、返回及fresh，並禁止原根I/O與重算；125候選本身不替換。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，證據見[126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。行情、technical v4、一般推薦／收藏、私人帳及其他主機的完整搬移仍待，不把此步當全環境可攜。
 
 第二列已交具名三公司固定版本：原CSV的2317／2454經完整官方半年報勾稽，沿2330原reader保留7件，新外層共9件；真保存台北19:00後才讀值。來源Main46452→35928、EXE19012→34276的五欄、版本、時間及顯示一致，四股價格／返回／重載可用，2382驗證頁缺件隔離。116項受改／Workbench、validator25/0/4、mypy1060及精度守衛通過；不授歷史PIT、前期或策略輸入。交付SHA `670e489253748b0bd3e2513413f6fbc1bcd6a55d6ff8ce8467a8af983d0f55b4`，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。

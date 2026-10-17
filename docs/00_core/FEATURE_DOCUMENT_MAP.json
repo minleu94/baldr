@@ -62,7 +62,8 @@
         "app_module/daily_market_technical_universe_projection_group_v3.py",
         "app_module/daily_market_technical_universe_projection_group_session_v3.py",
         "app_module/daily_market_technical_official_disposition_composite_query_v2.py",
-        "decision_module/industry_theme_map.py"
+        "decision_module/industry_theme_map.py",
+        "app_module/technical_source_copy.py"
       ],
       "tests": [
         "tests/test_ui_qt_market_regime_view.py",
@@ -109,7 +110,8 @@
         "decision_module/industry_theme_map.py",
         "tests/test_industry_theme_map.py",
         "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md",
-        "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md"
+        "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
+        "app_module/technical_source_copy.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -1183,12 +1185,15 @@
         "scripts/scheduled/register_baldr_scheduled_tasks.ps1",
         "scripts/inspect_scheduled_task_registration.py",
         "app_module/research_output_copy.py",
-        "scripts/copy_research_output.py"
+        "scripts/copy_research_output.py",
+        "app_module/technical_source_copy.py",
+        "scripts/copy_technical_source.py"
       ],
       "tests": [
         "tests/test_document_control.py",
         "tests/test_monthly_revenue_series_application_settings.py",
-        "tests/test_research_output_copy.py"
+        "tests/test_research_output_copy.py",
+        "tests/test_daily_market_technical_universe_v4_read_session.py"
       ],
       "manual": [
         "docs/07_guides/FIRST_INSTALL_PROMPT.md",
@@ -1217,7 +1222,10 @@
         "tests/test_monthly_revenue_series_application_settings.py",
         "app_module/research_output_copy.py",
         "scripts/copy_research_output.py",
-        "tests/test_research_output_copy.py"
+        "tests/test_research_output_copy.py",
+        "app_module/technical_source_copy.py",
+        "scripts/copy_technical_source.py",
+        "tests/test_daily_market_technical_universe_v4_read_session.py"
       ],
       "sync_documents": [
         "docs/07_guides/README.md",

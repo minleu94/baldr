@@ -2235,6 +2235,16 @@ QA03：既有257納入／258宣告合成來源的正常Main價格查詢、比較
 
 各組啟動前RAM>=8GiB，Job可讀回8GiB committed／12程序／kill-on-close及同workspace mutex；三PID陣列自然空，process／Job handles關閉、mutex釋放、forced_cleanup=false。前組閉鎖後才起下組，沒有終止其他Python或改正式Task。
 
-目前為待固定EXE的來源候選；同版8933／2506實際來源、收藏及fresh接續驗證，未執行項目不記PASS。116／117固定包、四條V1與原完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保留；117 Native螢幕命中FAIL、名錄用途、來源clock、歷史PIT、完整財報及金融資格與自然成熟均未解除。
+來源凍結時尚待固定EXE；當時同版8933／2506實際來源、收藏及fresh未執行，不記PASS；後續結果見下方。116／117固定包、四條V1與原完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4保留；117 Native螢幕命中FAIL、名錄用途、來源clock、歷史PIT、完整財報及金融資格與自然成熟均未解除。
 
 凍結前複核另發現底部研究上下文可能保留上一股；沿既有ResearchStockContextDTO只同步原選取的股票、日期、snapshot與來源身份，狀態列返回也核目前同一選取；一般查詢明切後恢復原一般context。QA04b因此重驗受影響視圖／工作區／路由及強制UI防線：112 passed、compile、validator25/0/4、mypy1047；outer SHA `aa59553ca219eeeb1a129beb31614bd2a78c8e737f6aedba455a0ca57c1ff386`。未重跑未改的完整257母體產製。QA04文件檢查12features／7docs、errors=[]，outer `a5fac0d55b61eccaea07918386491201197f9c74ea7fbb25962c57d520569db8`。
+
+**118固定交付**：QA05從乾淨來源`1444b5d298d676cedd0147ac342eaf77ff141a18`建立`dist/candidate_1444b5d298d6_c8c25f03/baldr/baldr.exe`，SHA `1ee22609eb6beeefce56e977adaf1ad101d4365dfb07b35a13ac9fa2278298df`；build receipt `abfcc9b888dcddb639b4450f7035258a7e9bd220d41fa8ac3ce0954762f3ea4e`、source archive `005908a5cc473b9597ff9b3603f1feefb1b4a90c73e5355a9a911a0712ab4e70`，outer `9953fb87d27da8fe747167e121bc38f15ad0a9429f10e66b2d04495b7f9a10db`。QA06只從固定109逐SHA複製18狀態、重綁自有推薦索引，另把117營益7檔按原SHA複製，原可用小時及版本不變；啟動器--check PASS。狀態收據 `61914f4bc55d134cfeea940c02399f820cc4ec8893ee9cd6a9e5640f8a6b55e2`，launcher check `fc432cf8c2041ec0472dd62b0a382673de89f2224b4910967524e30573056b1e`，outer `e7d351f90330562ddfb58142dbd93ce5fca2ce97ff012ce92ac0f34cd02622df`。
+
+QA07以固定EXE正常Windows Main PID45496→fresh24928，明選原2026-10-16來源、MA5／MA20金叉39檔，8933／2506各核同一原120列、原收盤及snapshot／source／selection；雙擊切入主個股頁，狀態列對同股，圖表及可捲動明細、返回按鈕可見。返回核原query／頁／選股／比較籃，兩股比較及正常bookmark保存後，另一EXE程序由Watchlist雙擊原收藏，核39檔條件、2506選取及8933／2506比較籃，再進同源個股／返回。[EXE收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment118_real_exe_qa07_receipt.json) SHA `b95759328d69574f264271009852abf91ab891211c545c9bc941d152108c1fb1`，outer `5f85731670d15f0368089fe091030cf206e71b6dc558a09d53f2c40a7db85e8d`。Root檢視兩股Main抓圖，未見重疊，圖表、明細及返回完整；frozen產品模組均核在bundle內，6行情原件SHA不變、無socket attempt。這是Qt元件功能接線，**本輪原生座標未執行**；117原Native FAIL保留，未授真人、不同DPI、任意快速切頁或完整Gate。
+
+QA08以真實clock由實際118試用目錄public reader核117原五值，核18＋7檔及EXE，create-only保存[118指南](../../output/trial/Baldr-Daily-Research-118/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-118/KNOWN_ISSUES.md)、[交付收據](../../output/trial/Baldr-Daily-Research-118/DELIVERY_RECEIPT.json)，收據SHA `71e127853fd7731ba9f5f40f55224c4f5399932321b8169b74b8fb9d50417d51`；outer `9afb0efc167c4724a171ced56b7c308d936056fa4ffa8d59ba05ce06c6442ca4`。自有task已同步，舊116／117交付收據SHA保持；所有組自然PID0、handles關閉、mutex釋放且forced_cleanup=false。
+
+118現為中央指定本機工程候選，整合116修正與117限定基本面；未改四條V1不全部重跑、不把原FAIL改判。這一Increment解除「選出的股票無法在正常個股頁看同份價量並接續收藏回訪」的交付阻礙；完整P03、真帳、來源／成本／幣別／歷史PIT、有效策略、Native／真人與自然成熟沿原§0.4繼續分流，非競爭總計畫或新增共同前置。
+
+QA09最終文件／task核對12features、8份中央／包內指南，errors=[]；outer SHA `dc3a8cc12d9f7ba96ffc6e5c08ebc4532018034d80492e906c93af5d8b45a781`，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後僅記此結果與提交接手點，118固定EXE及交付原件不再變動。

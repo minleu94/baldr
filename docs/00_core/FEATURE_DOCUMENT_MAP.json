@@ -436,7 +436,10 @@
         "ui_qt/views/backtest/presenter.py",
         "app_module/portfolio_research_registry.py",
         "ui_qt/widgets/portfolio_scenario_registry_widget.py",
-        "app_module/research_output_copy.py"
+        "app_module/research_output_copy.py",
+        "app_module/strategy_signal_context.py",
+        "app_module/saved_strategy_signal_comparison.py",
+        "ui_qt/widgets/saved_strategy_signal_compare_widget.py"
       ],
       "tests": [
         "tests/test_registered_strategy_spec.py",
@@ -501,7 +504,9 @@
         "tests/test_portfolio_research_registry.py",
         "tests/test_portfolio_scenario_registry_widget.py",
         "tests/test_portfolio_research_registry_open_widget.py",
-        "tests/test_research_output_copy.py"
+        "tests/test_research_output_copy.py",
+        "tests/test_saved_strategy_signal_comparison.py",
+        "tests/test_ui_qt_saved_strategy_signal_comparison.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -636,7 +641,12 @@
         "ui_qt/views/research_lab/run_registry_compare_widget.py",
         "ui_qt/widgets/saved_strategy_version_lookup.py",
         "app_module/research_output_copy.py",
-        "tests/test_research_output_copy.py"
+        "tests/test_research_output_copy.py",
+        "app_module/strategy_signal_context.py",
+        "app_module/saved_strategy_signal_comparison.py",
+        "ui_qt/widgets/saved_strategy_signal_compare_widget.py",
+        "tests/test_saved_strategy_signal_comparison.py",
+        "tests/test_ui_qt_saved_strategy_signal_comparison.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

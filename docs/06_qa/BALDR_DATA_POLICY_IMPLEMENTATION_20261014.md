@@ -2841,3 +2841,50 @@ Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mute
 | 新版本 manifest／receipt | `b5c0dbc6123edfca1d6779225ba138d231f126e8252e74c7612426a4abd4a6ea`／`c739b6ea5d353e093c28969fe81302fb4363f7b5db1630ad4b06c453fd628c88` |
 
 Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動RAM≥8GiB；699–710皆自然閉鎖，三PID陣列空、handles與mutex釋放後才接下一組。原計畫、Snapshot、current架構、Manual／試用／可攜／Runbook及Feature Map同步，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未結案。接續回原第三至五列的獨立可交付出口，不把額外搬移或同來源重驗加成共同前置；TPEx、歷史原件、真N、完整績效、自然成熟及私人帳各自續推。沒有正式資料／Task／maintainer、push、發布或交易變更。
+
+<a id="increment133-saved-signal-comparison"></a>
+## Increment133：保存策略逐日進場意圖對照（2026-10-17，來源候選）
+
+本葉回原§0.4第四列及F22，解除原Registry只能比績效／查單筆規則、無法對照同股同日各策略原訊號的缺口，也直接處理零配對被誤讀為無訊號的操作問題。基線`f482a30465b90f5bc2e2f25df90c699c1471f1f9`；不新增策略、改原門檻／撮合／金融計算或擴四條V1。Root Sol兼Tech Lead／Data Audit／Execution／QA／Documentation，無獨立reviewer；代理額度10/10、無可重用agent，未新增。固定132保持，新EXE與交付尚待。
+
+### 保存與公開讀取契約
+
+新正常單股producer在同次載入frame中保存研究窗OHLCV、全部日期、解析政策及canonical十進位文字SHA，schema為`saved-strategy-signal-price-window.v1`。各策略不同的暖機段不納共同窗，避免用整段frame指紋誤拒同源研究；原完整指紋仍各自保留，不改寫或換指紋。中文／英文／小寫欄名沿原typed策略及next-open順序辨認，多別名值不同拒絕，不用另一欄補未知。有限數值、canonical ISO、20,000列界線及caller Decimal context獨立性均有反例。
+
+共同SHA另綁原execution qualification，透過原rule card／metadata／artifact身分核驗；外層context重算SHA不能替代execution原pin。`SavedStrategyRuleCard`只新增內部execution／context JSON，原`to_dict()`保持。新公開reader每筆只沿原完整性port載入一次，單件16MiB、每run合計32MiB、最多5筆；舊run缺新context只隔離此功能，不補寫、不借目前行情，不由交易數反推訊號。
+
+對照限2至5不同策略ID的具名單股run，提交窗／股票／每列價量及日期／解析政策必須完整一致。只讀已支援版本；batch逐股、推薦回放及缺來源仍沿原入口。原ready且signal1才計進場，signal−1是出場，ready的0是未發進場，未就緒仍未知。共同進場為三態AND；已知不命中可否定，否則有未知不成立。策略數、家族數分列，三計分同族，不能用重複配置增加策略數，也不由run數反推方法數或勝率。`historical_pit_eligible`與`performance_evaluable`維持false。
+
+正常Registry沿原結果頁捲動區接compact入口，另開100列分頁表格，可只看有進場意圖日期、查所選原規則、關閉回列表及開已讀對照；從原歷史開原結果後仍保留選取與對照。改選／metadata變更、關閉、取消與晚到清舊結果。摘要直接列各策略原意圖數，明示共同判定未知不是各策略未知列總和；訊號不是成交／完成配對。這是研究輸入及可讀性出口，不授來源權威、完整交易日、歷史PIT、有效績效、完整F22／三面向或promotion。
+
+### 原始QA、失敗與修復
+
+- 712只作導航／路由：Graphify既有詞彙6詞，BFS736節點，約1000token預算略去717，舊圖不作現況；Context5912字元／7216bytes，三項預算略過另回原正文／程式。未建圖或連網；啟動前可用RAM25,757,134,848bytes。
+- 713初輪compile、139項受改／原保存／producer及mypy1066通過。Root再補execution的context SHA交叉綁定、canonical ISO、分離對照視窗及新UI反例，不把初輪PASS外推新變更。
+- 714：237核心／各producer／原card、44Registry及新UI、Workbench85、validator25PASS／0FAIL／4SKIP、mypy1066、compile與精度守衛通過。UI既有ignore／untyped提示不授強型別；未載Main的Qt teardown提示不當正常session驗收。
+- 715正常Main在第一筆執行前失敗：QA腳本讀尚未建立的`current_run_id`。原FAIL保留，03b只將首次未保存狀態讀為None，未改產品或期限。
+- 716正常Main已保存三run，但實際價庫使用中文欄，最初擷取只認英文而缺新context。這是產品整合缺口；改為原typed／next-open欄序並拒矛盾別名，未改撮合或回填這三個原run。
+- 717：中文／英文與各支援producer、相同／衝突別名、重算SHA仍錯綁、錯股／缺日／解析政策、舊件與取消等33項通過；compile、mypy1066與精度守衛通過。未重跑未改的132或所有UI。
+- 718三個新run的context及逐日419列已相符，但QA未捲原`backtestResultScrollArea_registry`就驗按鈕曝光，原FAIL保留。03d補原頁正常捲動，保留可視範圍斷言；沒有新增捲動元件、改產品版面或放寬15秒UI／300秒子程序期限。
+- 719正常來源Main **44552→44732**：三策略正常執行／保存→Registry多選→逐日表／分頁／篩選→原規則→原結果→返回及fresh通過。每run原整段指紋不同，而共同研究窗SHA同為`bbbb583c2e222de064f329fe6f5fa310c72228866e70853e5b8ebf018992adee`；6行情原bytes、保存DB／Parquet及新程序觀測一致，舊包／正式根I/O與網路0。fresh禁止再執行／保存，程序自然閉鎖。
+- 720僅補摘要歧義：共同判定與各策略意圖數明列。91項（新UI6＋必要Workbench85）、validator25/0/4、mypy1066與compile通過；Main **24904→3112**從719同三run唯讀補驗原規則／結果／返回及fresh，記`read_only_caption_recheck=true`與原producer參照，沒有重算或重存策略。正常主題截圖已核文字／表格，仍不授Native、其他尺寸／DPI或真人。
+
+正常來源2330、2025-01-02至2026-09-23、1,000,000元及原14.25bp／5bp示範：419觀測列，布林18意圖／0完成配對、W底4／0、四均線16／1；三策略同日共同進場0。這不是無訊號、有效策略或原使用者六配對run的重現；不同暖機與原資料品質／來源限制保持，意圖也不保證有足夠資金成交。
+
+原始結果均在owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`：
+
+| 收據 | SHA-256 |
+|---|---|
+| 712 outer `single_owned_qa_ca95aff422204415b61732e206060389/receipt.json` | `6626d13eb06a3642791095927403799259cab620c309c9936b8b249c80603649` |
+| 713 outer `single_owned_qa_fc4230c357ae49ff9cdaf16bbea52193/receipt.json` | `a2e0ebc2ca54affbcc10618a8eb0d5db1c24794658904807cb23d466c25b033d` |
+| 714 outer `single_owned_qa_8e5028886cc44c18afdec7119c5130f7/receipt.json` | `b2a6b16b33693123628ed1d47e3813096315a635944c8a334e3943de37a9882c` |
+| 715 outer `single_owned_qa_f9997811cae84750b1aa58cb56efdd4c/receipt.json` | `4ef95c059fc3a7582a4f3600bd648f60d073f796d8b8c1c2fa39e89579bbeaeb` |
+| 716 outer `single_owned_qa_c9e59b3344ff4d838fd9d517a37ff266/receipt.json` | `c1b924cf1c4d012ec8fa0142630ca9641121f93ce836b651540535c8c065242c` |
+| 717 outer `single_owned_qa_662809e061504bb9814594c864d0de42/receipt.json` | `9246bcd65c73e7ddca52ea689f779bf50b34877ca6e3ff0bc86c82307079ee52` |
+| 718 outer `single_owned_qa_b013f393732842ee8247e1f0d3f0f68d/receipt.json` | `c386ed455ee028d79f93ef5220f165b23d610394c35daa640b064e25655cebf9` |
+| 719 outer `single_owned_qa_f68c53a8de8e4e32b7dc71c1ad3aaf18/receipt.json` | `ad751cfcb9102886129266337d3f29da730f5d95014ad52431038f22c364e83c` |
+| 原正常保存／Main `increment133_signal_main_source_qa03d/result.json` | `4bdde801f760dbfcf3f003020b830c5221bab2db6b328d4b2cdd325deb54473d` |
+| 720 outer `single_owned_qa_daedd3588ac04c9eb66a17d225eca197/receipt.json` | `4a5ac38d07d0342532eb5cf7ba976733af06af17d704b997f80785aad4aedd5f` |
+| 摘要唯讀補核 `increment133_signal_main_source_qa03e/result.json` | `eee432555ecafc0a1d082b9d8d3dda7b0d63fdeccb543a603391d85d9849aa05` |
+
+712–720各Job都沿8GiB committed／12程序／kill-on-close／同workspace mutex，前組三PID陣列空、handles及mutex自然閉鎖後才接下一組，未放寬資源或原期限。原計畫§5.8、Scoped current架構、Feature Map、功能／手冊與Snapshot同步；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、P06真同帳本、來源權威／幣別／成本、歷史PIT、真N、完整績效、Native／真人及自然成熟仍待。沒有新抓取、正式資料／Task／maintainer、push、發布或交易變更。

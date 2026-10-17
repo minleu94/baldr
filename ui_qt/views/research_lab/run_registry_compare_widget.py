@@ -310,6 +310,9 @@ class RunRegistryCompareWidget(QWidget):
         self.rule_result_status.setWordWrap(True)
         list_layout.addWidget(self.rule_result_status)
         layout.addWidget(list_group, stretch=1)
+        from ui_qt.widgets.saved_strategy_signal_compare_widget import SavedStrategySignalCompareWidget
+        self.signal_comparison = SavedStrategySignalCompareWidget(self.research_run_service, self)
+        layout.addWidget(self.signal_comparison)
 
         self.basic_pair_group = QGroupBox("兩個基本策略：原保存研究對照")
         basic_layout = QVBoxLayout(self.basic_pair_group)
@@ -753,6 +756,7 @@ class RunRegistryCompareWidget(QWidget):
         selected_runs = {
             run.run_id: run for run in self._filtered_runs if run.run_id in selected_ids
         }
+        self.signal_comparison.set_selection(tuple(selected_runs[run_id] for run_id in selected_ids if run_id in selected_runs))
         has_replay = any(
             run.run_type == "recommendation_portfolio"
             for run in selected_runs.values()
@@ -1446,6 +1450,7 @@ class RunRegistryCompareWidget(QWidget):
         self._update_compare_button_state()
 
     def closeEvent(self, event) -> None:
+        self.signal_comparison.begin_shutdown()
         if self.scenario_registry_widget is not None:
             self.scenario_registry_widget.begin_shutdown()
             if self.scenario_registry_widget.has_running_worker():
@@ -1467,6 +1472,7 @@ class RunRegistryCompareWidget(QWidget):
         super().closeEvent(event)
 
     def begin_basic_pair_shutdown(self) -> None:
+        self.signal_comparison.begin_shutdown()
         self._rule_closed = True
         self._basic_pair_request_id += 1
         if self._basic_pair_worker is not None:

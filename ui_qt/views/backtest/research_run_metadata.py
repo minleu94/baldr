@@ -182,6 +182,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             raw = BytesIO()
             frame.to_parquet(raw, index=True)
             fingerprint = "sha256:" + hashlib.sha256(raw.getvalue()).hexdigest()
+            from app_module.strategy_signal_context import capture_strategy_signal_context, has_strategy_signal_prices
+            signal_comparison_context = (capture_strategy_signal_context(frame, stock_code=kwargs["stock_code"],
+                start_date=kwargs["start_date"], end_date=kwargs["end_date"])
+                if has_strategy_signal_prices(frame) else None)
             spec = deepcopy(kwargs["strategy_spec"])
             if spec.data_version is not None and spec.data_version != fingerprint:
                 raise ValueError("StrategySpec 的宣告資料版本與本次輸入不同")
@@ -320,6 +324,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                            data_version=fingerprint, data_as_of_date=actual_end)
             manifest = dict(details.get("data_manifest") or {})
             manifest.update(strategy_spec=json_safe(spec.to_dict()), single_backtest_rule_execution=execution)
+            if signal_comparison_context is not None:
+                execution["qualification"]["signal_context_schema"] = signal_comparison_context["schema"]
+                execution["qualification"]["signal_context_sha256"] = signal_comparison_context["sha256"]
+                manifest["signal_comparison_context"] = signal_comparison_context
             details["data_manifest"] = manifest
             if check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消，不發布完整規則來源")

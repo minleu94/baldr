@@ -835,6 +835,10 @@ Increment29已有正常Main的外部接受binding配置接點，原daily表單�
 
 單股 next-open、未成交日收盤估值、完成配對、即時與歷史摘要的未知值契約已收斂至[策略回測](#workspace-backtest-research-lab)；原 Increment36／37 QA 錨點保留於該契約。
 
+## 第二階段：保存策略逐日訊號對照（Increment133候選）
+
+Increment133候選在原Registry明選2至5具名單股策略，比較同一實際研究窗的原保存訊號；新的canonical價量證據另綁execution／rule card，暖機不同不以整段指紋誤拒，缺舊證據不補造。新介面列各策略意圖數、逐日三態、策略／家族數、分頁與原保存規則，選取／metadata改變、取消或晚到清舊結果。沿原頁捲動到入口，對照視窗關閉回原列表；不重算／重存或用意圖當成交。來源Main保存／規則／原結果／返回／fresh已限定驗證，新EXE仍待；操作及非績效用途見[手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存策略逐日進場意圖對照)與[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
+
 ## 第二階段：雙策略逐日原觀測
 
 研究Registry的完整期間頁沿同一public exact pair結果，另以100個實際日期／頁展示左右兩run原capture的股票、現金、持倉估值、權益與可選已實現／未實現損益；日期採實際聯集，缺該日為無觀測，原欄位None為未提供，不補0。金額保留原Decimal文字，分開列各側本金、期間、完成狀態與幣別，不加總或重算；來源／日期覆蓋／資格阻擋保持。返回、取消、換選取或重試清空舊明細。這是後續開發分支的P08可讀流程，不追加為固定9fa第一版的前置，也不代表完整雙策略績效、歷史PIT或Native／EXE已接受。操作見[Registry指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。

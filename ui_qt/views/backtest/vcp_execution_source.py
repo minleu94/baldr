@@ -54,6 +54,9 @@ def execute_vcp_backtest_with_rule_source(request: Any, service: Any, *, check_c
             raw = BytesIO()
             frame.to_parquet(raw, index=True)
             fingerprint = "sha256:" + hashlib.sha256(raw.getvalue()).hexdigest()
+            from app_module.strategy_signal_context import capture_strategy_signal_context
+            signal_comparison_context = capture_strategy_signal_context(frame, stock_code=kwargs["stock_code"],
+                start_date=kwargs["start_date"], end_date=kwargs["end_date"])
             spec = deepcopy(kwargs["strategy_spec"])
             if spec.data_version is not None and spec.data_version != fingerprint:
                 raise ValueError("三段收縮宣告輸入版本與同次原輸入不符")
@@ -102,6 +105,9 @@ def execute_vcp_backtest_with_rule_source(request: Any, service: Any, *, check_c
             })
             manifest = dict(details.get("data_manifest") or {})
             manifest.update(strategy_spec=json_safe(spec.to_dict()), single_backtest_rule_execution=execution)
+            manifest["signal_comparison_context"] = signal_comparison_context
+            execution["qualification"]["signal_context_schema"] = signal_comparison_context["schema"]
+            execution["qualification"]["signal_context_sha256"] = signal_comparison_context["sha256"]
             details.update(strategy_version=STRATEGY_VERSION, parameter_contract_version=PARAMETER_CONTRACT,
                            data_version=fingerprint, data_as_of_date=details["end_date"], data_manifest=manifest,
                            can_promote=False, promotion_blocker="三段收縮為研究假說，來源／PIT與績效資格尚未接受")

@@ -21,6 +21,8 @@
 
 ## 目前工程狀態與限制
 
+**Increment133開發候選**回原第四列補保存策略逐日訊號對照：同股票／研究窗／全部價量與解析政策核對後，在原Registry看2至5具名策略的進場／出場／未知與原規則；不以零配對推無訊號，也不把共振計數當績效。237項核心、44項UI與必要共同防線通過；中文真價庫差異修正後33項另驗，最後摘要91項UI與唯讀Main補核。正常來源Main44552→44732驗三策略保存、對照、原規則／結果、返回／fresh；24904→3112只補摘要及同原件讀回，不重算。固定新EXE及交付尚待，132入口不變；原FAIL與完整Gate界線見[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
+
 **Increment132已交本機固定候選**，回原§0.4第二列補三公司去年同期比較。原CSV五值及19:00時間保持，新比較依22:47保存、23:00才可用。94項受改／舊reader／service、Workbench85、validator25/0/4、mypy1063與精度守衛通過，文案後5項另驗；來源及EXE正常Main／fresh金融輸出一致。EXE SHA `c0b7e873697635e1237bdcf8f9df714ec35bb1ad6d01ed9b29d4f63534805345`，交付SHA `67ee490d30b588fe206a2614891c1eaa0bc3f30777e7efa848c84b4cba93d151`。原FAIL保留；2382／其他公司、歷史PIT、金融用途、真帳、完整Native／真人與Gate仍待，見[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。
 
 131已完成整合交付，EXE SHA `8f2d5342e80a3b9249168fdbb18ca464043aab9bcd420e99601bfac597285b0b`，交付SHA `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d`。啟動器身分與受改Main／fresh分開核對；原Context、helper回傳型別與legacy欄位錯誤FAIL保留，沒有重複來源複製或放寬期限。125及原件不改。此為本機固定候選，完整跨主機／私人帳／其他收藏家族與Native／真人仍待；接續回原§0.4的其餘可交付列，不再擴搬移前置，詳[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。

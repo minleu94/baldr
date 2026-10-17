@@ -4,6 +4,14 @@
 
 ## 模組責任
 
+### 保存策略的逐日訊號對照
+
+`strategy_signal_context.py`從正常單股同次executor輸入擷取研究窗OHLCV、日期與解析政策，以canonical十進位文字及SHA保存；原策略各自的暖機列不納共同窗。沿typed策略／next-open欄名優先序辨認中文及英文，同時存在而值不同的別名拒絕，不任選或補未知。原execution qualification另綁context schema／SHA，再沿既有rule card與結果身分核對；不改撮合、金融計算或舊run。
+
+`saved_strategy_signal_comparison.py`讓原完整性port每筆只載入一次，從`SavedStrategyRuleCard`新增的內部execution／context JSON投影2至5筆不同具名單股策略；原`to_dict()`與規則dialog契約保持。整個股票、提交窗、逐列價量／日期及解析政策須相同，不能用日期交集、原整段暖機指紋或目前行情代替。三態AND比較原ready與signal，分列策略／家族計數；缺上下文舊run、來源漂移或取消不發布對照，績效與歷史PIT旗標保持false。
+
+正常Registry沿原結果頁捲動區連接`SavedStrategySignalCompareWidget`，背景讀、100列分頁與原規則dialog；選取／metadata變更清舊結果並取消，晚到／關閉不重貼。對照用獨立可捲動表格視窗，關閉回原選取；「開啟已讀對照」只開同一讀取DTO。來源Main正常保存／返回／fresh及同版交付狀態見[133 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)，操作見[策略訊號對照](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存策略逐日進場意圖對照)。這是原P07/P08的研究可讀性出口，不接受來源權威、日曆完整、有效績效、完整F22或三面向共振。
+
 ### 三段轉折收縮的同次保存
 
 `baldr_vcp_contract.py`保存Root預宣告的自有研究規格，`BaldrVCPExecutor.generate_signals()`只在右方觀測齊全時確認轉折，使用原欄位scalar、Decimal SMA及跨乘輸出逐列觀測／意圖。固定策略已加入原StrategyRegistry；`vcp_execution_source.py`只載入一次行情，最多保留160前置列、向前365日，不在測試前下單。沿原BacktestService／Broker產報告與Research Registry保存，不另設撮合或金融writer。敏感度變體不註冊、不冒用固定策略版號。

@@ -91,6 +91,8 @@ class SavedStrategyRuleCard:
     reasons: tuple[str, ...]
     origin_json: str
     performance_status: str = "not_evaluable"
+    execution_json: str = ""
+    signal_context_json: str = ""
 
     @property
     def origin(self) -> dict[str, Any]:
@@ -266,4 +268,6 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
               "equity_path": metadata.equity_path, "trades_path": metadata.trades_path}
     if "price_input_preparation" in metadata.data_manifest:
         origin["price_input_preparation"] = metadata.data_manifest["price_input_preparation"]
-    return SavedStrategyRuleCard(card, status, kind, reference, tuple(errors), canonical_json(normalize_research_run_json_value(origin)))
+    return SavedStrategyRuleCard(card, status, kind, reference, tuple(errors), canonical_json(normalize_research_run_json_value(origin)),
+        execution_json=canonical_json(normalize_research_run_json_value(execution)) if not errors and isinstance(execution, dict) else "",
+        signal_context_json=canonical_json(normalize_research_run_json_value(metadata.data_manifest.get("signal_comparison_context"))) if not errors else "")

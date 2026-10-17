@@ -51,6 +51,12 @@ Windows 啟動入口為 baldr_launcher.py；桌面主程式入口為 ui_qt/main.
 
 ## 回測與研究時間軸
 
+### 計分策略的版本化因果輸入
+
+三個原計分ID以1.1.0另立缺值方法，legacy baseline1.0及穩健／暴衝1.0.0保持。`StrategyRegistry.get_strategy_meta(..., version=...)`可唯讀查明示版本的原metadata，不建立executor；未知版本回None，不借目前預設值。分析邊界`prepare_causal_score_input`核日期／OHLCV及別名，保存缺指標；`calculate_causal_score_frame`只分析連續有報價區段並清內部ATR快取，既有indicator reuse的明示因果政策不以未來非空值決定重算。原四價全缺且量明示0的列不計分、不發新單，部分缺件或矛盾仍拒絕；不在此處補價或改Broker。
+
+原單股producer對1.1.0 fixed／next_open保存`single-backtest-rule-execution.v3`：spec、各`*-fixed.v2`契約、政策、runtime、11個來源SHA與逐日score／score_bp／ready／signal共同綁定。原saved reader純核原件、成本與版本，不查目前Registry／executor或重算。BasicStrategySavedPairReader只比較同一方法版的穩健／暴衝，核共同10份來源與runtime／政策，混版拒絕；legacy v1／v2原保存契約不遷移。service、reconciliation及UI都保留研究不可晉升；數值因果不授歷史PIT。候選狀態與原失敗見[120 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。
+
 ### 四均線研究的同次來源與唯讀回訪
 
 `baldr_ma_alignment_basic_v1@1.0.0`沿原StrategyRegistry／BacktestService／Broker及ResearchRunService；executor由同份OHLCV經既有因果SMA分析邊界取5／10／20／60期，再以Decimal比較排列及轉折。正常producer只取前180曆日最多61列供均線／前列排列，窗前不發委託、不帶部位；缺件清前列狀態並重暖機。`single-backtest-ma-alignment-execution.v1`保存同次spec、規則、10個來源檔案SHA、分析runtime、原Broker設定、輸入指紋／前置窗與逐列四MA、前後排列、訊號及原因。專用pure reader核版本、規則、排列／轉折、日期及metadata成本綁定，不查目前Registry／executor、不重算行情；原schema與共用撮合公式不改。打包新增兩份策略原始檔供同版SHA核對，宣告缺件拒絕。研究策略在service及promotion reconciliation均拒晉升；來源hash不授來源用途、歷史PIT、成本權威或績效資格。操作與平台證據見[四均線指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#四均線多頭排列研究)及[119 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment119-ma-alignment)。

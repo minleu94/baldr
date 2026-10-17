@@ -56,3 +56,13 @@ def test_summary_zero_pairs_are_explicit_without_changing_trade_count() -> None:
     assert '總交易次數: 0（已完成進出場配對）' in summary
     assert '尚無已完成交易' in summary
     assert report.total_trades == 0 and report.details == {}
+
+
+def test_failed_report_is_not_presented_as_zero_trade_performance() -> None:
+    report = BacktestReportDTO(total_return=0, annual_return=0, sharpe_ratio=0, max_drawdown=0,
+        win_rate=0, total_trades=0, expectancy=0, validation_status=ValidationStatus.FAIL,
+        details={"error": "原OHLCV矛盾，不可回測"})
+    summary = format_backtest_summary(report)
+    assert "回測未完成" in summary and "原OHLCV矛盾" in summary
+    assert "空明細不代表零交易" in summary
+    assert "總報酬率" not in summary and "總交易次數: 0" not in summary

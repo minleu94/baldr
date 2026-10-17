@@ -42,6 +42,34 @@ def _report(extra):
     )
 
 
+def test_failed_report_cannot_save_export_promote_or_reuse_previous_chart(view):
+    view.current_run_params = {"stock_code": "2317", "strategy_id": "baseline_score_threshold"}
+    view.research_run_service = MagicMock()
+    old_chart = MagicMock()
+    view.result_panel._chart_widgets["equity_chart"] = old_chart
+    view.result_panel._pending_chart_plots["equity_chart"] = (("stale-result",), {})
+    view._on_backtest_finished(_report({"error": "生成信號失敗：原OHLCV矛盾"}))
+    assert "回測未完成" in view.summary_text.toPlainText()
+    assert "總交易次數: 0" not in view.summary_text.toPlainText()
+    assert not view.result_panel.save_current_result_button.isEnabled()
+    assert not view.promote_btn.isEnabled()
+    assert view.result_panel._pending_chart_plots == {}
+    old_chart.hide.assert_called_once()
+    with pytest.raises(ValueError, match="回測未完成"):
+        view._ensure_current_single_backtest_is_saveable()
+    view.research_run_service.save_run.assert_not_called()
+
+
+def test_passed_sop_does_not_override_explicit_research_promotion_blocker(view):
+    report = _report({"can_promote": False, "promotion_blocker": "研究PIT與來源尚未接受"})
+    report.validation_status = ValidationStatus.PASS
+    view.current_run_id = "saved-research"
+    view.promotion_service = MagicMock()
+    view._on_backtest_finished(report)
+    assert not view.promote_btn.isEnabled()
+    assert "研究PIT與來源尚未接受" in view.promote_btn.toolTip()
+
+
 @pytest.mark.parametrize('extra,fill,holding', [
     ({'execution_summary': {'trade_count': 1}, 'terminal_position': 5000}, '1', '5000 股'),
     ({'execution_summary': {'trade_count': 1}}, '1', '未提供'),

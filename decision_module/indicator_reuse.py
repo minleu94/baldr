@@ -71,12 +71,12 @@ def _indicator_params(section_config: dict[str, Any], indicator_name: str) -> di
     return {}
 
 
-def _columns_are_reusable(frame: pd.DataFrame, required_columns: tuple[str, ...]) -> bool:
+def _columns_are_reusable(frame: pd.DataFrame, required_columns: tuple[str, ...], *, preserve_unknown: bool = False) -> bool:
     for column in required_columns:
         if column not in frame.columns:
             return False
         numeric = pd.to_numeric(frame[column], errors="coerce")
-        if not bool(numeric.notna().any()):
+        if not preserve_unknown and not bool(numeric.notna().any()):
             return False
     return True
 
@@ -122,7 +122,9 @@ def prepare_indicator_reuse(
         required_columns, aliases = _INDICATOR_COLUMNS[indicator_name]
         if sanitized != defaults[indicator_name]:
             continue
-        if not _columns_are_reusable(result_frame, required_columns):
+        # 因果缺值版不能因「後日才出現首個值」而改變整段的重算／重用選擇。
+        preserve_unknown = isinstance(full_config, dict) and full_config.get("input_preparation_policy") == "causal-score-input.v1"
+        if not _columns_are_reusable(result_frame, required_columns, preserve_unknown=preserve_unknown):
             continue
 
         for alias, source in aliases.items():

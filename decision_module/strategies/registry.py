@@ -88,14 +88,29 @@ class StrategyRegistry:
 
     @classmethod
     def get_strategy_meta(
-        cls, strategy_id: str
+        cls, strategy_id: str, *, version: str | None = None,
     ) -> Optional[Union[StrategyMeta, Dict[str, Any]]]:
-        """透過公開查詢取得策略類別提供的原始 metadata。"""
+        """唯讀查目前或明示版本metadata；指定版不存在時不借目前版預設。"""
         executor_cls = cls._registry.get(strategy_id)
         if executor_cls is None:
             return None
         get_meta = getattr(executor_cls, 'get_meta', None)
         if not callable(get_meta):
             return None
-        return get_meta()
+        if version is None:
+            return get_meta()
+        if not isinstance(version, str) or not version or version != version.strip():
+            return None
+        version_reader = getattr(executor_cls, "get_meta_for_version", None)
+        if callable(version_reader):
+            try:
+                return version_reader(version)
+            except ValueError:
+                return None
+        raw = get_meta()
+        meta = raw.to_dict() if isinstance(raw, StrategyMeta) else raw
+        if not isinstance(meta, dict):
+            return None
+        versions = [meta[key] for key in ("version", "strategy_version") if key in meta]
+        return raw if versions and all(value == version for value in versions) else None
 

@@ -394,6 +394,7 @@ class BacktestResultPanel(QWidget):
     def _replay_pending_chart_plots(self) -> None:
         for name, (args, kwargs) in tuple(self._pending_chart_plots.items()):
             try:
+                self._chart_widgets[name].show()
                 self._chart_widgets[name].plot(*args, **kwargs)
             except Exception:
                 logger.exception(
@@ -414,9 +415,21 @@ class BacktestResultPanel(QWidget):
         if name not in {"equity_chart", "drawdown_chart", "return_hist", "holding_hist"}:
             raise KeyError(name)
         if self._chart_widgets_initialized:
+            self._chart_widgets[name].show()
             self._chart_widgets[name].plot(*args, **kwargs)
+            self._chart_error_labels[name].clear()
+            self._chart_error_labels[name].hide()
             return
         self._pending_chart_plots[name] = deepcopy((args, kwargs))
+
+    def invalidate_current_chart_result(self, message: str) -> None:
+        """新執行／失敗時不沿用上筆圖表；保存的歷史原件不變。"""
+        self._pending_chart_plots.clear()
+        for widget in self._chart_widgets.values():
+            widget.hide()
+        for label in self._chart_error_labels.values():
+            label.setText(message)
+            label.show()
 
     def _portfolio_chart_widget(self, name: str):
         if name not in {"portfolio_equity_chart", "portfolio_drawdown_chart"}:

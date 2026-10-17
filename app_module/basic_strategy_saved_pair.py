@@ -37,8 +37,10 @@ from app_module.strategy_historical_performance_read_service import (
 
 
 _EXPECTED = {
-    "stable_conservative_v1": ("1.0.0", "stable-conservative-fixed.v1"),
-    "momentum_aggressive_v1": ("1.0.0", "momentum-aggressive-fixed.v1"),
+    "stable_conservative_v1": {"1.0.0": ("stable-conservative-fixed.v1", "single-backtest-rule-execution.v2"),
+                               "1.1.0": ("stable-conservative-fixed.v2", "single-backtest-rule-execution.v3")},
+    "momentum_aggressive_v1": {"1.0.0": ("momentum-aggressive-fixed.v1", "single-backtest-rule-execution.v2"),
+                               "1.1.0": ("momentum-aggressive-fixed.v2", "single-backtest-rule-execution.v3")},
 }
 _COMMON_RAW = (
     "stock_code", "start_date", "end_date", "capital", "fee_bps",
@@ -149,14 +151,15 @@ def _preflight(runs: tuple[ResearchRunMetadataDTO, ...]) -> tuple[str, ...]:
     if {run.strategy_id for run in runs} != set(_EXPECTED):
         return ("請各選一筆穩健策略與積極策略",)
     reasons: list[str] = []
+    if runs[0].strategy_version != runs[1].strategy_version:
+        reasons.append("缺值方法版本不同；不可把原1.0與因果1.1當同一比較基準")
     raw_values: list[dict[str, object]] = []
     executions: list[dict[str, object]] = []
     metric_periods: list[tuple[str, str] | None] = []
     for run in runs:
-        expected = _EXPECTED[run.strategy_id]
+        expected = _EXPECTED[run.strategy_id].get(run.strategy_version)
         if (run.run_type != "single_backtest"
-                or run.strategy_version != expected[0]
-                or run.parameter_contract_version != expected[1]):
+                or expected is None or run.parameter_contract_version != expected[0]):
             reasons.append("策略版本或保存種類不符")
         if (run.execution_contract != "next-session-open.v2"
                 or run.data_manifest.get("run_status", "completed") != "completed"
@@ -177,7 +180,7 @@ def _preflight(runs: tuple[ResearchRunMetadataDTO, ...]) -> tuple[str, ...]:
                     or raw.get("execution_price") != "next_open"):
                 reasons.append("原執行輸入與保存身分不符")
         execution = run.data_manifest.get("single_backtest_rule_execution")
-        if not isinstance(execution, dict) or execution.get("schema") != "single-backtest-rule-execution.v2":
+        if not isinstance(execution, dict) or expected is None or execution.get("schema") != expected[1]:
             reasons.append("固定策略的原執行來源缺失")
             executions.append({})
         else:
@@ -237,8 +240,20 @@ def _preflight(runs: tuple[ResearchRunMetadataDTO, ...]) -> tuple[str, ...]:
                 reasons.append(reason)
         left_sources = executions[0].get("source_hashes")
         right_sources = executions[1].get("source_hashes")
+        shared_sources: tuple[str, ...] = _SHARED_SOURCES
+        if all(execution.get("schema") == "single-backtest-rule-execution.v3" for execution in executions):
+            shared_sources += (
+                "analysis_module.technical_analysis.causal_score_input.prepare_causal_score_input",
+                "decision_module.indicator_reuse.prepare_indicator_reuse",
+                "decision_module.strategy_configurator.StrategyConfigurator",
+                "decision_module.scoring_engine.ScoringEngine",
+                "analysis_module.technical_analysis.technical_date_support.safe_convert_technical_dates",
+                "decision_module.causal_score_pipeline.calculate_causal_score_frame",
+            )
+            if any(not _same(executions[0].get(key), executions[1].get(key)) for key in ("input_preparation", "analysis_runtime")):
+                reasons.append("原缺值政策或分析runtime不同")
         if isinstance(left_sources, dict) and isinstance(right_sources, dict) and any(
-            left_sources.get(key) != right_sources.get(key) for key in _SHARED_SOURCES
+            left_sources.get(key) != right_sources.get(key) for key in shared_sources
         ):
             reasons.append("共用執行程式版本不同")
     return tuple(dict.fromkeys(reasons))

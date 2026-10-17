@@ -176,7 +176,12 @@ def executed_v2_case(tmp_path, monkeypatch, strategy_id, *, strategy_params=None
         output_root=tmp_path / "output",
         profile="test",
     )
-    raw_meta = StrategyRegistry.get_strategy_meta(strategy_id)
+    # 這組是舊1.0.0／v2原件回歸；目前登記已是1.1.0，明取原executor舊版metadata。
+    from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
+    from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
+    executor_type = {"stable_conservative_v1": StableConservativeExecutor,
+                     "momentum_aggressive_v1": MomentumAggressiveExecutor}[strategy_id]
+    raw_meta = executor_type.get_meta("1.0.0")
     meta = raw_meta.to_dict() if isinstance(raw_meta, StrategyMeta) else raw_meta
     assert meta["strategy_version"] == "1.0.0"
     if strategy_params is None:

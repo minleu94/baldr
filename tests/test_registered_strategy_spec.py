@@ -13,9 +13,9 @@ from decision_module.strategies.registry import StrategyRegistry
 
 
 @pytest.mark.parametrize("strategy_id,version", [
-    ("baseline_score_threshold", "1.0"),
-    ("momentum_aggressive_v1", "1.0.0"),
-    ("stable_conservative_v1", "1.0.0"),
+    ("baseline_score_threshold", "1.1.0"),
+    ("momentum_aggressive_v1", "1.1.0"),
+    ("stable_conservative_v1", "1.1.0"),
 ])
 def test_real_registry_version_and_config_are_preserved(strategy_id, version):
     config = {"params": {"buy_score": 65}, "technical": {"windows": [5, 20]}}

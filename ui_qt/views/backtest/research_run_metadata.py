@@ -112,6 +112,9 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
     穩健／暴衝固定版另存v2；其他模式走原execution，不替缺件推論規則或授PIT。
     """
     identity = fixed_single_backtest_rule_identity(request.strategy_spec)
+    if request.strategy_spec.strategy_id in ("baseline_score_threshold", "stable_conservative_v1", "momentum_aggressive_v1") and request.strategy_spec.strategy_version == "1.1.0":
+        if identity is None or request.execution_price != "next_open":
+            raise ValueError("因果缺值1.1.0研究目前僅支持fixed門檻與next_open")
     if request.strategy_spec.strategy_id == "baldr_bollinger_basic_v1" and (
             request.execution_price != "next_open" or request.allow_pyramid
             or request.stop_loss_atr_mult is not None or request.take_profit_atr_mult is not None):
@@ -188,8 +191,8 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                     or type(executor).__module__ + "." + type(executor).__name__ != executor_ref):
                 raise ValueError("fixed typed executor 不一致")
             registry_metadata = None
-            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA):
-                raw_meta = StrategyRegistry.get_strategy_meta(spec.strategy_id)
+            if schema in ("single-backtest-rule-execution.v1", "single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA):
+                raw_meta = StrategyRegistry.get_strategy_meta(spec.strategy_id, version=spec.strategy_version)
                 registry_metadata = deepcopy(raw_meta.to_dict() if isinstance(raw_meta, StrategyMeta) else raw_meta)
                 if not isinstance(registry_metadata, dict):
                     raise ValueError("fixed策略來源metadata缺失")
@@ -200,7 +203,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             kwargs.update(strategy_spec=spec, strategy_executor=executor, preloaded_data=frame,
                           actual_start_date=actual_start, actual_end_date=actual_end)
             report = service.run_backtest(**kwargs)
-            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA) and check_cancel is not None and check_cancel():
+            if schema in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA) and check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消，不發布完整規則來源")
             details = dict(report.details or {})
             if details.get("execution_contract") != NEXT_OPEN_CONTRACT:
@@ -233,8 +236,17 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 effective_executor = {"buy_score": executor.buy_score, "sell_score": executor.sell_score,
                                       "buy_confirm_days": executor.buy_confirm_days, "sell_confirm_days": executor.sell_confirm_days,
                                       "cooldown_days": executor.cooldown_days, "threshold_mode": "fixed"}
-            if schema == "single-backtest-rule-execution.v2":
+            if schema in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3"):
                 source_objects.append(execute_single_backtest_with_rule_source)
+            if schema == "single-backtest-rule-execution.v3":
+                from analysis_module.technical_analysis.causal_score_input import prepare_causal_score_input
+                from analysis_module.technical_analysis.technical_date_support import safe_convert_technical_dates
+                from decision_module.indicator_reuse import prepare_indicator_reuse
+                from decision_module.strategy_configurator import StrategyConfigurator
+                from decision_module.scoring_engine import ScoringEngine
+                from decision_module.causal_score_pipeline import calculate_causal_score_frame
+                source_objects.extend((prepare_causal_score_input, prepare_indicator_reuse, StrategyConfigurator,
+                                       ScoringEngine, safe_convert_technical_dates, calculate_causal_score_frame))
             for source in source_objects:
                 filename = inspect.getsourcefile(source)
                 if filename is None:
@@ -242,7 +254,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 sources[source.__module__ + "." + source.__name__] = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
             execution = json_safe({
                 "schema": schema, "strategy_spec": spec.to_dict(),
-                "registry_metadata": registry_metadata if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA) else StrategyRegistry.get_strategy_meta(spec.strategy_id),
+                "registry_metadata": registry_metadata,
                 "source_hashes": sources, "input_fingerprint": fingerprint,
                 "executor": effective_executor,
                 "broker_config": asdict(broker_config), "execution_contract": NEXT_OPEN_CONTRACT,
@@ -251,13 +263,19 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "qualification": {"validation_status": getattr(report.validation_status, "value", "unknown"),
                                   "historical_pit_eligible": False, "performance_evaluable": False},
             })
-            if schema == "single-backtest-rule-execution.v2":
+            if schema in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3"):
                 # 原兩executor的attribute defaults與policy defaults可能不同；保存真正用來比較的值。
                 execution["executor"].update(
                     buy_score=json_safe(executor.threshold_policy.buy_score),
                     sell_score=json_safe(executor.threshold_policy.sell_score),
                     threshold_value_source="ScoreThresholdPolicy.fixed",
                 )
+            if schema == "single-backtest-rule-execution.v3":
+                from analysis_module.technical_analysis.causal_score_input import INPUT_POLICY
+                import talib
+                import numpy as np
+                execution.update(input_preparation=dict(INPUT_POLICY), score_observations=details.get("score_signal_observations"),
+                                 analysis_runtime={"talib": talib.__version__, "numpy": np.__version__, "pandas": pd.__version__})
             if schema in (EXECUTION_SCHEMA, MA_SCHEMA):
                 import talib
                 import numpy as np
@@ -284,6 +302,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "baldr_w_bottom_basic_v1": "baldr-w-bottom-basic.v1",
                 "baldr_ma_alignment_basic_v1": "baldr-ma-alignment-basic.v1",
             }[spec.strategy_id]
+            if schema == "single-backtest-rule-execution.v3":
+                parameter_contract = {"baseline_score_threshold": "baseline-score-fixed.v2",
+                                      "stable_conservative_v1": "stable-conservative-fixed.v2",
+                                      "momentum_aggressive_v1": "momentum-aggressive-fixed.v2"}[spec.strategy_id]
             details.update(strategy_version=spec.strategy_version, parameter_contract_version=parameter_contract,
                            data_version=fingerprint, data_as_of_date=actual_end)
             manifest = dict(details.get("data_manifest") or {})
@@ -370,6 +392,13 @@ def build_single_backtest_metadata(
         from decision_module.strategies.baldr_ma_alignment_contract import PARAMETER_CONTRACT as MA_PARAMETER_CONTRACT
         _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
                                           parameter_contract=MA_PARAMETER_CONTRACT, strategy_label="四均線")
+    is_causal_score = isinstance(execution, dict) and execution.get("schema") == "single-backtest-rule-execution.v3"
+    if is_causal_score:
+        expected_contract = {"baseline_score_threshold": "baseline-score-fixed.v2",
+                             "stable_conservative_v1": "stable-conservative-fixed.v2",
+                             "momentum_aggressive_v1": "momentum-aggressive-fixed.v2"}[params["strategy_id"]]
+        _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
+                                          parameter_contract=expected_contract, strategy_label="因果計分1.1.0")
     payload = {
         "run_type": "single_backtest",
         "params": params,
@@ -392,8 +421,8 @@ def build_single_backtest_metadata(
         normalized_params=dict(params.get("strategy_params", {}) or {}),
         fallback_reason=dict(details.get("fallback_reason", {}) or {}),
         universe=[str(params.get("stock_code", ""))] if params.get("stock_code") else [],
-        start_date=str(execution["start_date"] if is_w_bottom else params.get("start_date", "")),
-        end_date=str(execution["end_date"] if is_w_bottom else params.get("end_date", "")),
+        start_date=str(execution["start_date"] if is_w_bottom or is_causal_score else params.get("start_date", "")),
+        end_date=str(execution["end_date"] if is_w_bottom or is_causal_score else params.get("end_date", "")),
         data_cutoff_date=str(details.get("data_as_of_date", "")),
         data_fingerprint=str(details.get("data_version", "")),
         fingerprint_algorithm=(

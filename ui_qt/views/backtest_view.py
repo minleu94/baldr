@@ -791,7 +791,8 @@ class BacktestView(QWidget):
     def _set_horizontal_splitter_sizes(self) -> None:
         """中等寬度先保住結果；設定欄可水平捲動或由使用者收合。"""
         available = max(self.backtest_splitter.width() - self.backtest_splitter.handleWidth(), 1)
-        if available < 1150:
+        # 1366px shell 扣除導覽、邊界及 handle 後仍可容納原520／600px兩欄。
+        if available < 1120:
             config_width = min(400, max(260, int(available * 0.39)))
         else:
             config_width = min(560, max(520, int(available * 0.46)))
@@ -883,6 +884,8 @@ class BacktestView(QWidget):
         result_panel = self.__dict__.get("result_panel")
         if result_panel is not None and hasattr(result_panel, "clear_analyst_diagnostics"):
             result_panel.clear_analyst_diagnostics()
+        if result_panel is not None and hasattr(result_panel, "invalidate_current_chart_result"):
+            result_panel.invalidate_current_chart_result("本輪尚無此圖表；不沿用上一筆結果。")
         history = getattr(result_panel, "research_history_lookup", None)
         if history is not None and hasattr(history, "invalidate_and_clear"):
             history.invalidate_and_clear()
@@ -1105,6 +1108,19 @@ class BacktestView(QWidget):
         self.current_report = report
         self._single_backtest_result_generation = self._execution_generation
         result_panel = self.__dict__.get("result_panel")
+        if details.get("error"):
+            self._single_backtest_result_generation = None
+            self.summary_text.setPlainText(self._format_summary(report))
+            self.trades_table.setModel(None)
+            self._set_single_backtest_save_state(enabled=False, status="回測未完成，不能保存空報告。", tooltip=str(details["error"]))
+            self.promote_btn.setEnabled(False)
+            if result_panel is not None:
+                result_panel.clear_analyst_diagnostics()
+                result_panel.invalidate_current_chart_result("回測未完成；沒有當次圖表，不沿用上一筆結果。")
+            if hasattr(self, "export_report_btn"):
+                self.export_report_btn.setEnabled(False)
+            self._show_finished_result_in_windowed_mode()
+            return
         if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
             result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(report))
 
@@ -1289,14 +1305,14 @@ class BacktestView(QWidget):
 
             # Phase 3.5 SOP 護欄：檢查 validation_status
             from app_module.dtos import ValidationStatus
-            can_promote_sop = (report.validation_status != ValidationStatus.FAIL)
+            can_promote_sop = (report.validation_status != ValidationStatus.FAIL and details.get("can_promote") is not False)
 
             if can_promote_basic and can_promote_sop:
                 promote_btn.setEnabled(True)
                 promote_btn.setToolTip("目前回測結果已保存且驗證狀態允許，可進入升級條件檢查。")
             else:
                 promote_btn.setEnabled(False)
-                promote_btn.setToolTip("先保存回測結果，且驗證狀態不得為 FAIL，才能升級為策略版本。")
+                promote_btn.setToolTip(details.get("promotion_blocker") or "先保存回測結果，且驗證狀態不得為 FAIL，才能升級為策略版本。")
                 # 如果因為 SOP 護欄無法 Promote，顯示提示
                 if can_promote_basic and not can_promote_sop:
                     logger.warning("[BacktestView] SOP 護欄：驗證狀態為 {report.validation_status.value}，無法 Promote")
@@ -2578,6 +2594,8 @@ class BacktestView(QWidget):
     def _ensure_current_single_backtest_is_saveable(self) -> None:
         if not self.research_run_service or not self.current_report or not self.current_run_params:
             raise ValueError("沒有可保存的結果")
+        if (getattr(self.current_report, "details", {}) or {}).get("error"):
+            raise ValueError("回測未完成，不能把空報告保存成零交易結果")
         if self._single_backtest_result_generation != self._execution_generation:
             raise ValueError("stale backtest result cannot be saved")
 
@@ -2877,6 +2895,11 @@ class BacktestView(QWidget):
         if not self.research_run_service or not self.current_report or not self.current_run_params:
             QMessageBox.warning(self, "錯誤", "沒有可保存的結果")
             return
+        try:
+            self._ensure_current_single_backtest_is_saveable()
+        except ValueError as error:
+            QMessageBox.warning(self, "不能保存", str(error))
+            return
 
         # 生成預設名稱
         stock_code = self.current_run_params.get('stock_code', 'UNKNOWN')
@@ -2942,14 +2965,15 @@ class BacktestView(QWidget):
                     validation_status = getattr(getattr(self.current_report, "validation_status", None), "value", None)
                     if validation_status is None:
                         validation_status = str(getattr(self.current_report, "validation_status", ""))
-                    can_promote = validation_status != "FAIL"
+                    details = getattr(self.current_report, "details", {}) or {}
+                    can_promote = validation_status != "FAIL" and details.get("can_promote") is not False and not details.get("error")
                     self.promote_btn.setEnabled(can_promote)
                     if can_promote:
                         self.promote_btn.setToolTip(
                             f"已保存為 Registry run：{run_id}\n可進入升級條件檢查。"
                         )
                     else:
-                        self.promote_btn.setToolTip("驗證狀態為 FAIL，需先修正樣本或資料問題後才能升級。")
+                        self.promote_btn.setToolTip(details.get("promotion_blocker") or "驗證狀態為 FAIL，需先修正樣本或資料問題後才能升級。")
                     logger.info("[BacktestView] Registry run 已保存: %s, promote_enabled=%s", run_id, can_promote)
             except Exception:
                 logger.exception(

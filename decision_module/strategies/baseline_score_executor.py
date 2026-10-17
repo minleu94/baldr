@@ -29,12 +29,14 @@ class BaselineScoreExecutor(StrategyExecutor):
     """
     
     @staticmethod
-    def get_meta():
+    def get_meta(version: str = "1.1.0"):
         """獲取策略元數據"""
+        if version not in ("1.0", "1.1.0"):
+            raise ValueError("未支援的基準計分版本")
         return {
             'strategy_id': 'baseline_score_threshold',
-            'name': '基準分數門檻策略',
-            'version': '1.0',
+            'name': '基準分數門檻策略' if version == '1.0' else '基準分數門檻（因果缺值版）',
+            'version': version,
             'description': '總分閾值策略（帶 cooldown 防護），用於回歸測試',
             'category': 'baseline',
             'params': {
@@ -51,6 +53,11 @@ class BaselineScoreExecutor(StrategyExecutor):
             }
         }
     
+    @classmethod
+    def get_meta_for_version(cls, version: str):
+        """唯讀取明示版本metadata，不建立executor或改寫歷史身分。"""
+        return cls.get_meta(version)
+
     def __init__(self, spec: StrategySpec):
         """
         初始化策略執行器
@@ -58,7 +65,9 @@ class BaselineScoreExecutor(StrategyExecutor):
         Args:
             spec: 策略規格
         """
-        self.spec = spec
+        from copy import deepcopy
+        self.spec = deepcopy(spec) if spec.strategy_version == "1.1.0" else spec
+        self._preparation_version = spec.strategy_version
         self.configurator = StrategyConfigurator()
         self.scoring_engine = ScoringEngine()
         self.reason_engine = ReasonEngine()
@@ -91,6 +100,11 @@ class BaselineScoreExecutor(StrategyExecutor):
             DailySignalFrame
         """
         # 確保日期索引
+        if self._preparation_version == "1.1.0" or spec.strategy_version == "1.1.0":
+            if self._preparation_version != spec.strategy_version or spec.to_dict() != self.spec.to_dict():
+                raise ValueError("因果計分執行規格已變動")
+            from analysis_module.technical_analysis.causal_score_input import prepare_causal_score_input
+            df = prepare_causal_score_input(df)
         if '日期' in df.columns:
             df = df.set_index('日期')
         elif not isinstance(df.index, pd.DatetimeIndex):
@@ -99,20 +113,20 @@ class BaselineScoreExecutor(StrategyExecutor):
         df = df.sort_index()
         
         # 數據清理和類型轉換
-        df = self._prepare_dataframe(df)
+        if spec.strategy_version != "1.1.0":
+            df = self._prepare_dataframe(df)
         
         # 獲取策略配置
         config = spec.config
         
-        # 1. 配置技術指標
-        df = self.configurator.configure_technical_indicators(df, config.get('technical', {}))
-        
-        # 2. 圖形模式由 ScoringEngine 的 rolling detector 統一識別；
-        # 不在這裡重做未使用的全歷史掃描，並由同一路徑產出確認 evidence。
-        
-        # 3. 計算分數
-        regime = config.get('regime', None)
-        df = self.scoring_engine.calculate_total_score(df, config, regime=regime)
+        # 新版按連續有報價區段計分，無價零量日不補行情或圖形內部ATR。
+        if spec.strategy_version == "1.1.0":
+            from decision_module.causal_score_pipeline import calculate_causal_score_frame
+            df = calculate_causal_score_frame(df, config, self.configurator, self.scoring_engine)
+        else:
+            df = self.configurator.configure_technical_indicators(df, config.get('technical', {}))
+            regime = config.get('regime', None)
+            df = self.scoring_engine.calculate_total_score(df, config, regime=regime)
         
         # 4. 門檻評估與信號生成
         thresholds = self.threshold_policy.evaluate(df['TotalScore'])
@@ -133,6 +147,9 @@ class BaselineScoreExecutor(StrategyExecutor):
         # 5. 生成理由標籤
         reason_tags_list = []
         for idx, row in df.iterrows():
+            if spec.strategy_version == "1.1.0" and not row["_causal_quote_available"]:
+                reason_tags_list.append(["input_quote_unavailable"])
+                continue
             reasons = self.reason_engine.generate_reasons(row, config)
             tags = ReasonTagGenerator.generate_tags(reasons)
             reason_tags_list.append(tags)

@@ -145,3 +145,28 @@ def test_ma_packaged_source_rejects_partial_or_missing_custody(tmp_path, omissio
         metadata = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
         assert {relative: metadata["resource_sha256"][relative] for relative in sources} == {
             relative: hashlib.sha256(relative.encode()).hexdigest() for relative in sources}
+
+
+@pytest.mark.parametrize("omission", [None, "file", "declaration", "shared"])
+def test_causal_score_packaged_source_requires_declared_inputs_and_original_shared_group(tmp_path, omission):
+    shared = ("decision_module/strategies/stable_conservative_executor.py",
+              "decision_module/strategies/momentum_aggressive_executor.py",
+              "ui_qt/views/backtest/research_run_metadata.py")
+    causal = ("analysis_module/technical_analysis/causal_score_input.py", "decision_module/indicator_reuse.py",
+              "decision_module/strategy_configurator.py", "decision_module/scoring_engine.py", "decision_module/causal_score_pipeline.py")
+    spec = tmp_path / "packaging/baldr.spec"
+    spec.parent.mkdir()
+    declared = causal if omission == "shared" else shared + causal[:-1] if omission == "declaration" else shared + causal
+    spec.write_text("for relative_source in " + repr(declared) + ":\n    pass\n", encoding="utf-8")
+    for relative in shared + causal:
+        if omission == "file" and relative == causal[-1]:
+            continue
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(relative.encode())
+    if omission:
+        with pytest.raises(ValueError, match="因果計分.*完整五檔"):
+            provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    else:
+        value = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+        assert all(value["resource_sha256"][relative] == hashlib.sha256(relative.encode()).hexdigest() for relative in causal)

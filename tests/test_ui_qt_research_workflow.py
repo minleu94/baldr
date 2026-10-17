@@ -179,7 +179,7 @@ def test_backtest_view_preserves_provenance_on_portfolio_recording(qt_app):
 
 
 def test_backtest_view_explains_empty_trade_list(qt_app):
-    """回測沒有完成交易時，摘要要明確告知交易明細不可記錄到 Portfolio。"""
+    """沒有完成配對但缺成交觀測時，不把未知稱為沒有交易。"""
     mock_backtest_service = MagicMock()
     view = BacktestView(backtest_service=mock_backtest_service, config=None)
 
@@ -203,7 +203,10 @@ def test_backtest_view_explains_empty_trade_list(qt_app):
 
     view._on_backtest_finished(report)
 
-    assert "單股回測交易次數為 0，無法記錄交易" in view.summary_text.toPlainText()
+    summary = view.summary_text.toPlainText()
+    assert "已完成進出場配對數為 0，不能據此判定沒有成交" in summary
+    assert "實際成交筆數：未提供" in summary
+    assert "降低「buy_score」" not in summary
     assert view.trades_table.model() is None
 
 
@@ -228,6 +231,8 @@ def test_backtest_view_zero_trade_diagnostics_modes(qt_app):
             "strategy_id": "momentum_aggressive_v1",
             "trade_list": pd.DataFrame(),
             "equity_curve": pd.DataFrame(),
+            "execution_summary": {"trade_count": 0},
+            "terminal_position": 0,
             "score_diagnostics": {
                 "threshold_mode": "quantile",
                 "buy_quantile_bp": 8000,
@@ -270,6 +275,8 @@ def test_backtest_view_zero_trade_diagnostics_modes(qt_app):
             "strategy_id": "momentum_aggressive_v1",
             "trade_list": pd.DataFrame(),
             "equity_curve": pd.DataFrame(),
+            "execution_summary": {"trade_count": 0},
+            "terminal_position": 0,
             "score_diagnostics": {
                 "threshold_mode": "fixed",
                 "buy_score": 60.0,

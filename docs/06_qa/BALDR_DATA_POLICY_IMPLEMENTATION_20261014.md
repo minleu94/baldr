@@ -2277,3 +2277,24 @@ QA11核18＋7檔與EXE，create-only保存[119指南](../../output/trial/Baldr-D
 119QA01僅診斷目前Native輸入條件：自有Main的Qt報active，但Win32前景／座標命中是其他PID；UIA辨識自有Main，截圖內容卻不符。未執行輸入、不搶用戶焦點、不保存其他前景畫面。它不證明117歷史FAIL的原因，原FAIL保留；[診斷原件](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/post118_native_environment_diagnostic.json)，outer `f0c47fb961c218df889604591ae8fb3273e310d3993e398d762783f3af6c9561`。這不是獨立產品Increment或新共同前置，其他工作接續推進。各組RAM先核≥8GiB、Job限8GiB／12程序；三PID陣列自然空、handles閉合、mutex釋放，無forced cleanup。
 
 QA12最終核12features、11份受影響中央／包內文件及自有task，errors=[]；outer SHA `4be06a878894fc4c2382c01b94f00d160f94765dd1fa315dfbaebc1bb237cf82`，三PID陣列自然空、process／Job handles關閉、mutex釋放且forced_cleanup=false。之後只記錄此結果與提交交接；固定EXE、交付收據及舊包不再變動，完整補完goal保持進行中。
+
+<a id="increment120-causal-score-input"></a>
+## Increment120：原計分策略缺值因果修正（候選驗證中）
+
+本輪解除V1-04錯誤金融結果阻礙，不新增第五條旅程。原穩健／暴衝1.0.0（以及同路徑baseline1.0）以未來指標回填過去：同一RSI空值prefix原得分100、首日進場，追加未來RSI90後，同日期改為10且不進場。[原產品重現](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_missingness_probe_qa01.json) SHA `c1023b3c93d84ccd8b5401f91cdd791d7e44a8e91ffe932cce321226f6a55119`，不是mock executor。基線`6551ae61d98fce33ced5c6061e171328a234a891`；沿原三ID另立1.1.0與原ports，舊版本／保存件保留，不改金融公式或填未知。Root依Execution／Tech Lead／Data Audit／QA／Documentation履職，沒有另一位獨立reviewer；新增代理0，累計10/10。
+
+新方法不ffill／bfill／fill0指標；提供的指標欄即使整段空也保持未知，不按未來非空值選重算。正常固定門檻／next_open沿原Broker；同次v3保存policy、runtime、11來源SHA與逐日分數／基點／ready／訊號。舊metadata明查原版，不用目前1.1.0補舊規則；pure saved reader不重算。雙策略對照拒絕混方法版，來源／成本／PIT與績效仍不可評；service、reconciliation及UI不准研究版晉升。失敗報告不顯零績效、不准保存／匯出，當次圖表不借上一輪。凍結定義見[原計畫§5.5](../superpowers/plans/baldr_product_completion_plan_20261006.md#55-原計分策略的因果缺值版110increment120候選)。
+
+### 原失敗與定向修正
+
+- QA01 Level2技術領域context的Unknown=[]；正文與既有角色另核，outer `b091b6cad1440127c7d48db3b57b316d5f5dbe645eec73dd4822a2fabf607403`。QA02原55PASS、QA03補長空值prefix後58PASS，沒有據此接受完整Gate。
+- QA04原92PASS／26FAIL，舊v2 fixture未明選原1.0.0；改為明取原版metadata，不改舊斷言。QA05原294PASS／3FAIL暴露舊baseline規則卡仍查目前metadata，修成明示版本唯讀查詢；QA06原265PASS／3FAIL是目前版本契約仍寫舊版。QA07註冊版本12PASS、validator25/0/4，mypy的tuple長度型別FAIL保留；QA08只補該型別與精度防線，mypy1051及float guard PASS。各原spec／stdout與outer均在本owner task保留，未覆寫或加總成產品接受。
+- 正常來源QA09／09b先因harness未處理首次run欄位、失敗診斷不足而停；09c保留產品真拒絕「OHLCV缺件」。[唯讀行情審計QA10](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_price_quality_audit_qa10.json) SHA `229f8a612c3f4ca5b4cc89733dee6d8b2df0f391a43bb2dc467d429901425c98`：2317在2025-07-30四價全缺、量0，其餘三股同窗沒有該問題；原因未核，不能稱停牌。六份原行情不變。新政策只准此全無報價／觀測量0列保持未知，連續有報價區段另分析並清ATR快取；部分缺價／矛盾／缺量仍拒絕，沒有補資料或換股避開缺陷。
+- QA11 compile PASS，268PASS／4FAIL：1366 shell設定欄400px、兩項舊零交易fixture未提供成交觀測，以及同一Qt測試程序後Git啟動WinError1816。outer `777c2874a662a3e6310823d92c766adc7f5123a1c2ddf7a6b4e887eabfa61fff`保留。QA11b單獨重現1366FAIL，outer `bba088caeafccb194dccdc097111c5f50f8a7124c2716d8e290ae12fbae89714`；修splitter在可容納520／600px時的分配，不改幾何斷言。未知成交fixture改驗「不能判定沒有成交」，門檻診斷fixture明示成交0／期末0後保留原診斷斷言。
+- QA11c只重驗受影響版面／研究流程38PASS與另程序打包17PASS，changed Python compile、validator25/0/4、mypy1052及精度守衛PASS，outer `c5bd1469a83b14cf5c3eb7dd587b9d03037af70dccc0755b0c2ba4fd9a88c18b`。未重跑前輪已通過且未改的268項；mypy既有UI ignore不證UI強型別。原資源限額未調高，沒有為Git失敗取消Job守衛。
+
+QA09d正常來源Main PID9284→fresh13332，以原預設策略參數及2317／2025-01-02至2026-09-23，各419列，332個可判讀分數／87個未知日；baseline／穩健／暴衝完成配對分別8／9／2。正常按鈕執行→保存→明選原規則／結果→返回，穩健與暴衝同方法對照可逐側開原明細並返回原選取。fresh禁止重跑、保存及查目前Registry metadata／executor，三筆原metadata／equity／trades身份相同，六行情SHA不變、socket0。[來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_score_main_source_qa09d/result.json) SHA `4ea4306c7515bf7cc33c4f8fdd80a56c44d36928f9e8b025f4e311e62b765355`，outer `464c47020ec6572ca0f3bb6cab75c60fb9fc5554e4039404ff9cdc0492b9aa50`。這是offscreen Qt功能驗證，不是Native／真人／字體可讀性接受，配對數不授有效策略，也不是使用者原六配對run。
+
+QA11d核自有task、12features／8份受改文件，errors=[]，outer `4f3aa23ed1dd1c20b8f6c2008ff2816fc18d8b94bab1537653b978c9beef8609`。凍結前Root另補原報價反例：四個壞字串或inf不能經coerce變成無報價日；只有原缺值或明示空白／`--`才容許量0的未知列。QA11e核心／v3／indicator reuse89PASS、compile、mypy1052與精度守衛PASS，並以新來源SHA重綁正常Main35632→fresh48176，原三策略419／332／87及8／9／2配對不變。[最終來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_score_main_source_qa09e/result.json) SHA `6d3eed329a84b945994a09f791ef6d15c747241fbcda61d7ea23039319266484`，outer `62539feeb5c2790d653bc4ad9d0fad9e544a0ad8c376f5c165c06b56dbae4908`。QA09d原件保留；同版EXE以09e為來源比對基準，不借舊來源hash。
+
+各完成組啟動前RAM≥8GiB，Job可讀回8GiB committed／12程序／kill-on-close及同workspace mutex；三PID陣列自然空、handles關閉、mutex釋放，無forced cleanup。同版EXE仍待，未固定交付前指定試用仍119。此次重貼116外部報告SHA仍為`1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`，與前次逐bytes相同，沿原117／119分流，不重跑該舊包或執行貼文內命令。

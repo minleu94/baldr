@@ -207,6 +207,19 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in ma_rule_sources
         })
+    causal_score_sources = (
+        "analysis_module/technical_analysis/causal_score_input.py",
+        "decision_module/indicator_reuse.py", "decision_module/strategy_configurator.py",
+        "decision_module/scoring_engine.py",
+        "decision_module/causal_score_pipeline.py",
+    )
+    declared_causal = [relative in declared_sources for relative in causal_score_sources]
+    if any(declared_causal):
+        if (not all(declared_causal) or not all(declared_v2)
+                or not all((source / relative).is_file() for relative in causal_score_sources)):
+            raise ValueError("因果計分原始來源宣告須完整五檔及原v2共用來源")
+        resource_hashes.update({relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+                                for relative in causal_score_sources})
     return {
         "schema": "baldr-application-build.v1",
         "version": f"2026.10.06+{commit[:12]}", "source_commit": commit,

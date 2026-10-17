@@ -44,6 +44,17 @@ def test_default_kd_reuse_adds_legacy_analysis_aliases() -> None:
     assert plan.frame["SlowD"].tolist() == [30]
 
 
+def test_causal_policy_keeps_provided_unknown_indicators_without_future_presence_choice() -> None:
+    frame = pd.DataFrame({"RSI": [None, None]})
+    config = {"momentum": {"enabled": True, "rsi": {"enabled": True}}}
+    original = prepare_indicator_reuse(frame, config, None)
+    causal = prepare_indicator_reuse(frame, config, {"input_preparation_policy": "causal-score-input.v1"})
+    assert "rsi" not in original.reused_indicators
+    assert causal.reused_indicators == frozenset({"rsi"})
+    assert causal.frame["RSI"].isna().all()
+    assert causal.technical_config["momentum"]["rsi"]["enabled"] is False
+
+
 def test_custom_rsi_period_is_not_reused() -> None:
     frame = pd.DataFrame({"RSI": [50]})
     config = {

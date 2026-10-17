@@ -140,13 +140,15 @@ def read_strategy_rule_card(spec: StrategySpec, *,
                             version: StrategyVersion | None = None,
                             result_kind: str = "historical_backtest") -> StrategyRuleCard:
     """只讀公開 registry 與傳入 DTO；不建立 VersionService 或 executor。"""
-    raw = StrategyRegistry.get_strategy_meta(spec.strategy_id)
+    raw = StrategyRegistry.get_strategy_meta(spec.strategy_id, version=spec.strategy_version)
     meta = raw.to_dict() if isinstance(raw, StrategyMeta) else raw
     meta = meta if isinstance(meta, dict) else {}
     source = "decision_module.strategies.registry.StrategyRegistry.get_strategy_meta"
     errors: list[str] = []
     if not meta:
         errors.append("registry_metadata_missing")
+        if StrategyRegistry.is_registered(spec.strategy_id):
+            errors.append("registry_version_mismatch")
     if meta and (meta.get("strategy_id") != spec.strategy_id or
                  meta.get("strategy_version", meta.get("version")) != spec.strategy_version):
         errors.append("registry_version_mismatch")
@@ -202,6 +204,15 @@ def fixed_single_backtest_rule_identity(spec: StrategySpec) -> tuple[str, str] |
     if not isinstance(params, dict) or params.get("threshold_mode", "fixed") != "fixed":
         return None
     identities = {
+        ("baseline_score_threshold", "1.1.0"): (
+            "single-backtest-rule-execution.v3",
+            "decision_module.strategies.baseline_score_executor.BaselineScoreExecutor"),
+        ("stable_conservative_v1", "1.1.0"): (
+            "single-backtest-rule-execution.v3",
+            "decision_module.strategies.stable_conservative_executor.StableConservativeExecutor"),
+        ("momentum_aggressive_v1", "1.1.0"): (
+            "single-backtest-rule-execution.v3",
+            "decision_module.strategies.momentum_aggressive_executor.MomentumAggressiveExecutor"),
         ("baldr_ma_alignment_basic_v1", "1.0.0"): (
             "single-backtest-ma-alignment-execution.v1",
             "decision_module.strategies.baldr_ma_alignment_executor.BaldrMAAlignmentExecutor"),
@@ -246,14 +257,16 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
     if execution.get("schema") == "single-backtest-bollinger-execution.v1":
         from app_module.bollinger_rule_card import read_bollinger_execution_card
         return read_bollinger_execution_card(spec, execution)
-    source = ("single-backtest-rule-execution.v2"
-              if execution.get("schema") == "single-backtest-rule-execution.v2"
+    source = (execution["schema"]
+              if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3")
               else "single-backtest-rule-execution.v1")
     supported = fixed_single_backtest_rule_identity(spec)
     errors: list[str] = []
     required = {"schema", "strategy_spec", "registry_metadata", "source_hashes", "input_fingerprint",
                 "executor", "broker_config", "execution_contract", "stock_code", "start_date", "end_date",
                 "required_features", "benchmark", "qualification"}
+    if source == "single-backtest-rule-execution.v3":
+        required.update(("input_preparation", "analysis_runtime", "score_observations"))
     if set(execution) != required or execution.get("schema") != source:
         errors.append("execution_rule_schema_invalid")
     if (supported is None or supported[0] != source
@@ -280,13 +293,22 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
                         "backtest_module.broker_simulator.BrokerSimulator",
                         "decision_module.score_threshold_policy.ScoreThresholdPolicy",
                         "app_module.backtest_service.BacktestService"}
-    if source == "single-backtest-rule-execution.v2":
+    if source in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3"):
         expected_sources.add("ui_qt.views.backtest.research_run_metadata.execute_single_backtest_with_rule_source")
+    if source == "single-backtest-rule-execution.v3":
+        expected_sources.update((
+            "analysis_module.technical_analysis.causal_score_input.prepare_causal_score_input",
+            "decision_module.indicator_reuse.prepare_indicator_reuse",
+            "decision_module.strategy_configurator.StrategyConfigurator",
+            "decision_module.scoring_engine.ScoringEngine",
+            "analysis_module.technical_analysis.technical_date_support.safe_convert_technical_dates",
+            "decision_module.causal_score_pipeline.calculate_causal_score_frame",
+        ))
     if set(hashes) != expected_sources or any(not isinstance(value, str) or not _valid_hash(value) for value in hashes.values()):
         errors.append("execution_rule_source_hash_missing")
     if any(key not in executor for key in ("buy_score", "sell_score", "buy_confirm_days", "sell_confirm_days", "cooldown_days")):
         errors.append("execution_rule_threshold_missing")
-    if source == "single-backtest-rule-execution.v2":
+    if source in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3"):
         qualification = execution.get("qualification")
         if (not isinstance(qualification, dict)
                 or qualification.get("historical_pit_eligible") is not False
@@ -300,6 +322,39 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
                 or any(not _same_rule_number(executor.get(key), executor.get(key)) for key in parameter_keys)
                 or any(key in params and not _same_rule_number(executor.get(key), params[key]) for key in parameter_keys)):
             errors.append("execution_rule_parameter_mismatch")
+    if source == "single-backtest-rule-execution.v3":
+        from analysis_module.technical_analysis.causal_score_input import INPUT_POLICY
+        if _json(execution.get("input_preparation")) != _json(INPUT_POLICY):
+            errors.append("execution_rule_input_preparation_mismatch")
+        runtime = execution.get("analysis_runtime")
+        if (not isinstance(runtime, dict) or set(runtime) != {"talib", "numpy", "pandas"}
+                or any(not isinstance(value, str) or not value.strip() for value in runtime.values())):
+            errors.append("execution_rule_analysis_runtime_missing")
+        rows = execution.get("score_observations")
+        previous = None
+        try:
+            if not isinstance(rows, list) or not rows:
+                raise ValueError("missing")
+            for row in rows:
+                if (not isinstance(row, dict) or set(row) != {"date", "score", "score_bp", "ready", "signal"}
+                        or type(row["ready"]) is not bool or type(row["signal"]) is not int
+                        or row["signal"] not in (-1, 0, 1)):
+                    raise ValueError("fields")
+                when = date.fromisoformat(row["date"])
+                if (previous is not None and when <= previous
+                        or not execution["start_date"] <= row["date"] <= execution["end_date"]):
+                    raise ValueError("date")
+                if not row["ready"]:
+                    if row["score"] is not None or row["score_bp"] is not None or row["signal"] != 0:
+                        raise ValueError("unknown")
+                elif (not isinstance(row["score"], str) or not Decimal(row["score"]).is_finite()
+                      or not Decimal(0) <= Decimal(row["score"]) <= Decimal(100)
+                      or type(row["score_bp"]) is not int or not 0 <= row["score_bp"] <= 10000
+                      or Decimal(row["score"]) != Decimal(f"{row['score_bp'] // 100}.{row['score_bp'] % 100:02d}")):
+                    raise ValueError("score")
+                previous = when
+        except (KeyError, TypeError, ValueError, DecimalException):
+            errors.append("execution_rule_score_observations_invalid")
     if not execution.get("stock_code") or not execution.get("required_features"):
         errors.append("execution_rule_input_missing")
     # 已執行的原公式只作說明，沒有在 reader 算分／評績效／授予 PIT。
@@ -314,7 +369,7 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
         "universe": ({"stock_code": execution.get("stock_code"), "membership": "explicit_single_stock"}, source + ".stock_code"),
         "period": ({"start_date": execution.get("start_date"), "end_date": execution.get("end_date")}, source + ".start_date/end_date"),
         "parameters": (spec.config, source + ".strategy_spec.config"),
-        "parameter_schema": (meta.get("params", meta.get("default_params")) if source.endswith(".v2") else meta.get("params"),
+        "parameter_schema": (meta.get("params", meta.get("default_params")) if source.endswith((".v2", ".v3")) else meta.get("params"),
                              source + (".registry_metadata.params" if "params" in meta or source.endswith(".v1") else ".registry_metadata.default_params")),
         "cost": ({"fee_bps": broker.get("fee_bps"), "slippage_bps": broker.get("slippage_bps"),
                   "sell_tax_bps": "30", "minimum_fee_currency": "20", "tax_policy": "原 BrokerSimulator next-open 的賣出稅與最低手續費"}, source + ".broker_config/source_hashes"),
@@ -333,6 +388,8 @@ def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapp
         "qualification": (execution.get("qualification"), source + ".qualification"),
         "source_trace": ({"input_fingerprint": execution.get("input_fingerprint"), "source_hashes": hashes}, source + ".source_hashes/input_fingerprint"),
     }
+    if source == "single-backtest-rule-execution.v3":
+        values["data_insufficiency"] = ({"historical_availability": "unknown", "policy": execution.get("input_preparation")}, source + ".input_preparation")
     identity = RuleCardIdentity(spec.strategy_id, spec.strategy_version, source, _hash(dict(execution)),
                                 _hash(spec.to_dict()), "historical_backtest")
     card = _card(identity, values, tuple(errors))

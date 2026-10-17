@@ -4,6 +4,8 @@
 
 ## 按九個工作區查找
 
+後續Increment120候選將原三個計分策略另立1.1.0：正常單股fixed／next_open保留未知分數、另列已知／未知日數，成功才可保存。失敗報告停用保存／匯出／晉升並隱藏上次圖表，不把空交易表當零績效；明示`can_promote=False`即使SOP PASS仍停用晉升。兩策略對照須同一缺值方法版本；原版本與保存reader保留。1366px shell沿原520／600px兩欄驗收，不放寬既有幾何斷言。操作與資格邊界見[計分指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#計分策略110的缺值與保存後續候選)，未固定交付前不能視為119已含。
+
 | 工作區 | UI 功能契約 | 手冊／操作權威 | 可搜尋詞 |
 |---|---|---|---|
 | 決策工作台 | [決策工作台](#workspace-decision-workbench) | [每日決策](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk) | Daily Decision Desk、Advice、決策來源、來源追溯、唯讀 |

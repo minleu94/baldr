@@ -284,6 +284,8 @@ def choice_display_text(param_name: str, value: Any) -> str:
 def format_backtest_summary(report: BacktestReportDTO) -> str:
     """格式化績效摘要，維持 Primary/SOP 指標優先順序。"""
     details = report.details
+    if details.get("error"):
+        return "回測未完成\n原因：" + str(details["error"]) + "\n本次沒有有效績效結果；空明細不代表零交易，請保留原錯誤與輸入。"
     actual_start = details.get("start_date", "未知")
     actual_end = details.get("end_date", "未知")
     requested_start = details.get("requested_start_date", actual_start)
@@ -318,6 +320,13 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
                 f"最高得分: {score_text(score_diag.get('max_score'))} | 最低得分: {score_text(score_diag.get('min_score'))} | 平均得分: {score_text(score_diag.get('avg_score'))}",
             ]
         )
+        if score_diag.get("score_input_policy") == "causal-score-input.v1":
+            counts = tuple(score_diag.get(key) for key in ("known_score_days", "unknown_score_days", "total_days"))
+            if all(type(value) is int and value >= 0 for value in counts) and counts[0] + counts[1] == counts[2]:
+                lines.append(f"可判讀得分: {counts[0]} / {counts[2]} 天；缺值或暖機未知: {counts[1]} 天。")
+                lines.append("未知日不補中性分、不產生買賣意圖，也不當成合格樣本；訊號不等於成交。")
+            else:
+                lines.append("因果缺值觀測計數不可用，請核對原結果。")
         total_days = score_diag.get("total_days", 0)
         buy_hit_days = score_diag.get("buy_hit_days", 0)
         sell_hit_days = score_diag.get("sell_hit_days", 0)

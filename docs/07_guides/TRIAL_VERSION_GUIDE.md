@@ -1,10 +1,10 @@
 # 目前指定的本機日常研究入口
 
-**目前指定日常研究118，固定來源 `1444b5d298d6`。** 雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-118/Launch-Baldr.cmd)；先看包內[試用指南](../../output/trial/Baldr-Daily-Research-118/TRIAL_GUIDE.md)與[已知問題](../../output/trial/Baldr-Daily-Research-118/KNOWN_ISSUES.md)。完整EXE、來源與狀態SHA見[交付收據](../../output/trial/Baldr-Daily-Research-118/DELIVERY_RECEIPT.json)，工程範圍見[118 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment118-price-stock-workspace)。一般操作看[完整手冊](APPLICATION_MANUAL.md)，目前進度看[Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+**目前指定日常研究119，固定來源 `332ff9292543`。** 雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-119/Launch-Baldr.cmd)；先看包內[試用指南](../../output/trial/Baldr-Daily-Research-119/TRIAL_GUIDE.md)與[已知問題](../../output/trial/Baldr-Daily-Research-119/KNOWN_ISSUES.md)。完整EXE、來源與狀態SHA見[交付收據](../../output/trial/Baldr-Daily-Research-119/DELIVERY_RECEIPT.json)，工程範圍見[119 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment119-ma-alignment)。一般操作看[完整手冊](APPLICATION_MANUAL.md)，目前進度看[Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
 
 ## 這版先試什麼
 
-本輪解除價格選股後無法在主個股頁查看同份價量的斷點。建議直接試「選股 → 同源個股 → 返回 → 比較 → 收藏 → 重開」，不必重驗未改的全部功能。
+本輪新增第二階段「四均線多頭排列（研究）」正常單股旅程。到「策略回測」選該策略1.0.0，可用2317／2025-01-02至2026-09-23，本金1,000,000、費率14.25bp、滑價5bp、next_open、不加碼、百分比風控；執行、保存後，從「找已保存結果」明選同run核原規則／結果並重開。四期固定，8個進場意圖與6組完成配對是本組輸入的工程結果，不是策略有效性；完整步驟及限制見包內指南末節。原四條V1不擴張，未改流程沿原證據。
 
 | 主要任務 | 入口與可用範圍 |
 |---|---|
@@ -19,15 +19,17 @@
 
 ## 驗證到哪裡
 
+119的四均線來源版及固定EXE均完成正常單股執行、保存、原規則／結果、返回及新程序；同輸入訊號、撮合與金融輸出一致。受影響／共同回歸320項及必要型別／精度防線有具名結果，取消與打包缺件另核。這些是Qt offscreen功能證據，不接受抓圖中文字體、Native手勢或真人可讀性；原FAIL保留，其他旅程沿各自原收據。
+
 118來源版受改／共同UI檢查112項通過；正常Main的原收藏與fresh也有定向證據。固定EXE另以Windows Qt元件驗8933／2506兩股原120列、狀態列、原頁返回、比較、收藏，另一EXE程序精確重開。這不是真人滑鼠、原生螢幕座標或不同DPI接受，117原Native命中FAIL仍保留。
 
 116的保存精度、批次比較及啟動修正已整合；未改的單股雙策略旅程沿112，其他流程沿各自原QA，不將繼承程式碼寫成118全數重跑。四條第一版範圍保持，完整P00–P14及G0–G4仍有未完項。
 
 ## 版本、保存與限制
 
-118使用自己的 `state/`：18份隔離輸入從109逐SHA複製，只重綁本次推薦索引；另複製117原7份基本面版本檔。初始清單／持倉為空，不自動匯入其他版本的個人內容。116、117及更早包與原收據均保留，回報只歸屬原版本；66原指南D勘誤及尚未定位的六配對run不被新版測試覆蓋。
+119使用自己的 `state/`：18份隔離輸入從109逐SHA複製，只重綁本次推薦索引；另複製117原7份基本面版本檔。初始清單／持倉為空，不自動匯入其他版本的個人內容。116、117、118及更早包與原收據均保留，回報只歸屬原版本；66原指南D勘誤及尚未定位的六配對run不被新版測試覆蓋。
 
-保留本包、`dist/candidate_1444b5d298d6_c8c25f03/baldr`與`output/rc101/research_snapshots/technical-store`的本機路徑；這還不是移機可攜包。啟動器核EXE，`--check`僅查版本；後續程式碼不會更新固定EXE。舊CSV／SQLite摘要不遷移，Decimal與舊float的界線見[保存格式說明](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。
+保留119本包、`dist/candidate_332ff9292543_cad74c52/baldr`與`output/rc101/research_snapshots/technical-store`的本機路徑；這還不是移機可攜包。啟動器核EXE，`--check`僅查版本；後續程式碼不會更新固定EXE。舊CSV／SQLite摘要不遷移，Decimal與舊float的界線見[保存格式說明](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。
 
 1,951是已處理數，名錄用途、來源clock、5筆價格UNKNOWN、38檔缺價排除、歷史PIT與正式真N仍各自判讀。公司名冊缺來源憑證不能泛稱不影響用途；零交易需同run／策略／參數／日期，不證明引擎完全正常或策略有效。
 

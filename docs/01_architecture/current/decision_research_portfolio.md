@@ -51,6 +51,10 @@ Windows 啟動入口為 baldr_launcher.py；桌面主程式入口為 ui_qt/main.
 
 ## 回測與研究時間軸
 
+### 四均線研究的同次來源與唯讀回訪
+
+`baldr_ma_alignment_basic_v1@1.0.0`沿原StrategyRegistry／BacktestService／Broker及ResearchRunService；executor由同份OHLCV經既有因果SMA分析邊界取5／10／20／60期，再以Decimal比較排列及轉折。正常producer只取前180曆日最多61列供均線／前列排列，窗前不發委託、不帶部位；缺件清前列狀態並重暖機。`single-backtest-ma-alignment-execution.v1`保存同次spec、規則、10個來源檔案SHA、分析runtime、原Broker設定、輸入指紋／前置窗與逐列四MA、前後排列、訊號及原因。專用pure reader核版本、規則、排列／轉折、日期及metadata成本綁定，不查目前Registry／executor、不重算行情；原schema與共用撮合公式不改。打包新增兩份策略原始檔供同版SHA核對，宣告缺件拒絕。研究策略在service及promotion reconciliation均拒晉升；來源hash不授來源用途、歷史PIT、成本權威或績效資格。操作與平台證據見[四均線指南](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#四均線多頭排列研究)及[119 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment119-ma-alignment)。
+
 `execute_single_backtest_with_rule_source` 對原穩健／暴衝1.0.0的fixed next_open增存 `single-backtest-rule-execution.v2`，沿同一載入／typed executor／BacktestService／BrokerSimulator，不改交易與權益。producer一次捕獲StrategyMeta，保存ScoreThresholdPolicy實際門檻與五個具名來源hash；pure identity resolver只按明示schema/id/version分流。原baseline v1、其他模式及舊run保持原契約。saved reader只讀原Registry與來源，交叉綁spec／metadata／data／execution／broker；費率核原整數單位，風控先核精確raw_params再核舊ratio*100 HALF_UP投影，不能把歷史欄名誤當真bp。正常歷史規則卡共用原dialog，fresh不查當前Registry／executor、不重算或保存。原executor缺值準備有bfill限制，完整有限行情的prefix測試與來源hash不授歷史PIT；績效仍not_evaluable。
 
 `app_module/backtest_service.py`、`batch_backtest_service.py`、`optimizer_service.py`、`walkforward_service.py` 與推薦組合回放服務組合 `backtest_module/`。服務負責資料讀取、策略執行、結果保存與交接；UI 不自行計算訊號、撮合、權重或績效。

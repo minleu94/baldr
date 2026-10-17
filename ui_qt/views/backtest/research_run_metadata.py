@@ -120,6 +120,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             request.execution_price != "next_open" or request.allow_pyramid
             or request.stop_loss_atr_mult is not None or request.take_profit_atr_mult is not None):
         raise ValueError("W底基礎研究僅支持 next_open、不加碼及百分比風控")
+    if request.strategy_spec.strategy_id == "baldr_ma_alignment_basic_v1" and (
+            request.execution_price != "next_open" or request.allow_pyramid
+            or request.stop_loss_atr_mult is not None or request.take_profit_atr_mult is not None):
+        raise ValueError("四均線基礎研究僅支持 next_open、不加碼及百分比風控")
     if identity is None or request.execution_price != "next_open":
         return request.execute(service, check_cancel=check_cancel)
     schema, executor_ref = identity
@@ -135,11 +139,15 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             from decision_module.strategies.baldr_w_bottom_contract import (
                 EXECUTION_SCHEMA as W_SCHEMA, rule_definition as w_rules, wait_sessions,
             )
+            from decision_module.strategies.baldr_ma_alignment_executor import BaldrMAAlignmentExecutor
+            from decision_module.strategies.baldr_ma_alignment_contract import (
+                EXECUTION_SCHEMA as MA_SCHEMA, rule_definition as ma_rules, MAX_PRIOR_ROWS, PERIODS,
+            )
             from decision_module.strategies.registry import StrategyRegistry
             from backtest_module.broker_simulator import BrokerConfig, BrokerSimulator, NEXT_OPEN_CONTRACT
             if check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消")
-            context_start = (pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(days=180)).strftime("%Y-%m-%d") if schema == EXECUTION_SCHEMA else kwargs["start_date"]
+            context_start = (pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(days=180)).strftime("%Y-%m-%d") if schema in (EXECUTION_SCHEMA, MA_SCHEMA) else kwargs["start_date"]
             frame, actual_start, actual_end = service._load_stock_data(
                 kwargs["stock_code"], context_start, kwargs["end_date"])
             if frame is None or frame.empty:
@@ -149,14 +157,16 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                     or frame.index.min() < pd.Timestamp(context_start)):
                 raise ValueError("single_backtest 保存來源不在本次決策期間內")
             input_context = None
-            if schema == EXECUTION_SCHEMA:
+            if schema in (EXECUTION_SCHEMA, MA_SCHEMA):
                 before_start = frame.index < pd.Timestamp(kwargs["start_date"])
-                frame = pd.concat([frame.loc[before_start].tail(31), frame.loc[~before_start]])
-                input_context = {"lookback_calendar_days": 180, "max_prior_rows": 31,
+                prior_limit = MAX_PRIOR_ROWS if schema == MA_SCHEMA else 31
+                frame = pd.concat([frame.loc[before_start].tail(prior_limit), frame.loc[~before_start]])
+                input_context = {"lookback_calendar_days": 180, "max_prior_rows": prior_limit,
                                  "start_date": frame.index.min().strftime("%Y-%m-%d"),
                                  "end_date": frame.index.max().strftime("%Y-%m-%d"),
                                  "prior_rows": int((frame.index < pd.Timestamp(kwargs["start_date"])).sum()),
-                                 "state_policy": "prefix_indicators_only_reset_confirmation_at_test_start"}
+                                 "state_policy": ("prefix_indicators_and_previous_alignment_no_orders_before_test_start" if schema == MA_SCHEMA
+                                                  else "prefix_indicators_only_reset_confirmation_at_test_start")}
                 kwargs["signal_context_start_date"] = context_start
             raw = BytesIO()
             frame.to_parquet(raw, index=True)
@@ -172,12 +182,13 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "momentum_aggressive_v1": MomentumAggressiveExecutor,
                 "baldr_bollinger_basic_v1": BaldrBollingerExecutor,
                 "baldr_w_bottom_basic_v1": BaldrWBottomExecutor,
+                "baldr_ma_alignment_basic_v1": BaldrMAAlignmentExecutor,
             }
             if (type(executor) is not executor_types.get(spec.strategy_id)
                     or type(executor).__module__ + "." + type(executor).__name__ != executor_ref):
                 raise ValueError("fixed typed executor 不一致")
             registry_metadata = None
-            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA):
+            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA):
                 raw_meta = StrategyRegistry.get_strategy_meta(spec.strategy_id)
                 registry_metadata = deepcopy(raw_meta.to_dict() if isinstance(raw_meta, StrategyMeta) else raw_meta)
                 if not isinstance(registry_metadata, dict):
@@ -189,7 +200,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             kwargs.update(strategy_spec=spec, strategy_executor=executor, preloaded_data=frame,
                           actual_start_date=actual_start, actual_end_date=actual_end)
             report = service.run_backtest(**kwargs)
-            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA) and check_cancel is not None and check_cancel():
+            if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA) and check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消，不發布完整規則來源")
             details = dict(report.details or {})
             if details.get("execution_contract") != NEXT_OPEN_CONTRACT:
@@ -206,16 +217,17 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                                   safe_convert_technical_dates, w_rules,
                                   execute_single_backtest_with_rule_source, ConservativeFillPolicy, to_decimal]
                 effective_executor = {"max_wait_sessions": wait_sessions(spec.config.get("params", {}))}
-            elif schema == EXECUTION_SCHEMA:
+            elif schema in (EXECUTION_SCHEMA, MA_SCHEMA):
                 from analysis_module.technical_analysis.technical_indicators import calculate_causal_indicators
                 from analysis_module.technical_analysis.indicator_kernels import clean_price_values
                 from analysis_module.technical_analysis.technical_date_support import safe_convert_technical_dates
                 from backtest_module.conservative_fill_policy import ConservativeFillPolicy
                 from financial_module.units import to_decimal
                 source_objects = [type(executor), BrokerSimulator, type(service), calculate_causal_indicators,
-                                  clean_price_values, safe_convert_technical_dates, rule_definition,
+                                  clean_price_values, safe_convert_technical_dates, ma_rules if schema == MA_SCHEMA else rule_definition,
                                   execute_single_backtest_with_rule_source, ConservativeFillPolicy, to_decimal]
-                effective_executor = {"entry_confirm_sessions": confirmation_sessions(spec.config.get("params", {}))}
+                effective_executor = ({"periods": list(PERIODS)} if schema == MA_SCHEMA else
+                                      {"entry_confirm_sessions": confirmation_sessions(spec.config.get("params", {}))})
             else:
                 source_objects = [type(executor), BrokerSimulator, type(executor.threshold_policy), type(service)]
                 effective_executor = {"buy_score": executor.buy_score, "sell_score": executor.sell_score,
@@ -230,7 +242,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 sources[source.__module__ + "." + source.__name__] = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
             execution = json_safe({
                 "schema": schema, "strategy_spec": spec.to_dict(),
-                "registry_metadata": registry_metadata if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA) else StrategyRegistry.get_strategy_meta(spec.strategy_id),
+                "registry_metadata": registry_metadata if schema in ("single-backtest-rule-execution.v2", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA) else StrategyRegistry.get_strategy_meta(spec.strategy_id),
                 "source_hashes": sources, "input_fingerprint": fingerprint,
                 "executor": effective_executor,
                 "broker_config": asdict(broker_config), "execution_contract": NEXT_OPEN_CONTRACT,
@@ -246,10 +258,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                     sell_score=json_safe(executor.threshold_policy.sell_score),
                     threshold_value_source="ScoreThresholdPolicy.fixed",
                 )
-            if schema == EXECUTION_SCHEMA:
+            if schema in (EXECUTION_SCHEMA, MA_SCHEMA):
                 import talib
                 import numpy as np
-                execution.update(rules=rule_definition(spec.config.get("params", {})),
+                execution.update(rules=(ma_rules if schema == MA_SCHEMA else rule_definition)(spec.config.get("params", {})),
                                  signals=details.get("rule_signal_observations"),
                                  input_context=input_context,
                                  analysis_runtime={"talib": talib.__version__, "numpy": np.__version__, "pandas": pd.__version__})
@@ -270,6 +282,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "momentum_aggressive_v1": "momentum-aggressive-fixed.v1",
                 "baldr_bollinger_basic_v1": "baldr-bollinger-basic.v1",
                 "baldr_w_bottom_basic_v1": "baldr-w-bottom-basic.v1",
+                "baldr_ma_alignment_basic_v1": "baldr-ma-alignment-basic.v1",
             }[spec.strategy_id]
             details.update(strategy_version=spec.strategy_version, parameter_contract_version=parameter_contract,
                            data_version=fingerprint, data_as_of_date=actual_end)
@@ -285,9 +298,11 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
 
 
 def _validate_w_bottom_metadata_input(params: dict[str, Any], details: dict[str, Any],
-                                     execution: dict[str, Any], spec: StrategySpec) -> None:
+                                     execution: dict[str, Any], spec: StrategySpec, *,
+                                     parameter_contract: str | None = None, strategy_label: str = "W底") -> None:
     """只比對原提交與同次執行，不另算金融結果或從目前設定補值。"""
     from decision_module.strategies.baldr_w_bottom_contract import PARAMETER_CONTRACT
+    expected_contract = PARAMETER_CONTRACT if parameter_contract is None else parameter_contract
 
     def same_number(left: Any, right: Any) -> bool:
         if left is None or right is None:
@@ -305,7 +320,7 @@ def _validate_w_bottom_metadata_input(params: dict[str, Any], details: dict[str,
         if (any(params.get(key) is None for key in ("capital", "fee_bps", "slippage_bps"))
                 or params["strategy_id"] != spec.strategy_id or params["stock_code"] != execution["stock_code"]
                 or details["strategy_id"] != spec.strategy_id or details["strategy_version"] != spec.strategy_version
-                or details["parameter_contract_version"] != PARAMETER_CONTRACT
+                or details["parameter_contract_version"] != expected_contract
                 or details["data_version"] != execution["input_fingerprint"]
                 or details["data_as_of_date"] != execution["end_date"]
                 or canonical_json(json_safe(params["strategy_params"])) != canonical_json(json_safe(spec.config.get("params", {})))
@@ -332,7 +347,7 @@ def _validate_w_bottom_metadata_input(params: dict[str, Any], details: dict[str,
             if not same_number(params[original], broker[effective]):
                 raise ValueError("broker_inputs")
     except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("W底研究來源輸入不一致，不能保存不同股票、參數、期間或金融假設") from exc
+        raise ValueError(f"{strategy_label}研究來源輸入不一致，不能保存不同股票、參數、期間或金融假設") from exc
 
 
 def build_single_backtest_metadata(
@@ -351,6 +366,10 @@ def build_single_backtest_metadata(
     is_w_bottom = isinstance(execution, dict) and execution.get("schema") == "single-backtest-w-bottom-execution.v1"
     if is_w_bottom:
         _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]))
+    if isinstance(execution, dict) and execution.get("schema") == "single-backtest-ma-alignment-execution.v1":
+        from decision_module.strategies.baldr_ma_alignment_contract import PARAMETER_CONTRACT as MA_PARAMETER_CONTRACT
+        _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
+                                          parameter_contract=MA_PARAMETER_CONTRACT, strategy_label="四均線")
     payload = {
         "run_type": "single_backtest",
         "params": params,

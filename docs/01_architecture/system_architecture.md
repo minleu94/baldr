@@ -4,6 +4,8 @@
 
 ## 系統用途
 
+四均線基礎研究沿原策略Registry、單股producer、Broker、保存與歷史reader接線；新schema綁同次四MA與前後排列，不查目前executor補舊規則，不新增儲存或金融公式。責任與61列前置窗見[current決策分冊](current/decision_research_portfolio.md#四均線研究的同次來源與唯讀回訪)。
+
 具名營益版本沿原個股 report service／DTO／基本面分頁讀取；原件、用途及小時守衛在 application reader，UI只呈現。精確範圍與非歷史用途見[current資料分冊](current/data_storage_runtime.md#具名營益目前研究版本)。
 
 原回測PF以有語意版本的nullable分析值傳遞，零分母／無配對不顯假零或金額；batch／optimizer／保存與舊比較隔離沿[current分冊](current/decision_research_portfolio.md)，不遷移正式資料或升級舊值。

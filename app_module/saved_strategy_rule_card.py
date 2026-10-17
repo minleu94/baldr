@@ -190,7 +190,7 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
                     errors.append("execution_rule_capital_mismatch")
             except (KeyError, DecimalException, TypeError, ValueError):
                 errors.append("execution_rule_capital_mismatch")
-        if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-bollinger-execution.v1", "single-backtest-w-bottom-execution.v1"):
+        if execution.get("schema") in ("single-backtest-rule-execution.v2", "single-backtest-bollinger-execution.v1", "single-backtest-w-bottom-execution.v1", "single-backtest-ma-alignment-execution.v1"):
             broker = execution.get("broker_config")
             if not isinstance(broker, dict):
                 errors.append("execution_rule_saved_cost_mismatch")

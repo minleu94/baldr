@@ -187,6 +187,9 @@ def read_strategy_rule_card(spec: StrategySpec, *,
     if spec.strategy_id == "baldr_w_bottom_basic_v1":
         from app_module.w_bottom_rule_card import read_w_bottom_spec_card
         return read_w_bottom_spec_card(spec, meta, identity, tuple(errors))
+    if spec.strategy_id == "baldr_ma_alignment_basic_v1":
+        from app_module.ma_alignment_rule_card import read_ma_alignment_spec_card
+        return read_ma_alignment_spec_card(spec, meta, identity, tuple(errors))
     return _card(identity, values, tuple(errors))
 
 
@@ -199,6 +202,9 @@ def fixed_single_backtest_rule_identity(spec: StrategySpec) -> tuple[str, str] |
     if not isinstance(params, dict) or params.get("threshold_mode", "fixed") != "fixed":
         return None
     identities = {
+        ("baldr_ma_alignment_basic_v1", "1.0.0"): (
+            "single-backtest-ma-alignment-execution.v1",
+            "decision_module.strategies.baldr_ma_alignment_executor.BaldrMAAlignmentExecutor"),
         ("baldr_w_bottom_basic_v1", "1.0.0"): (
             "single-backtest-w-bottom-execution.v1",
             "decision_module.strategies.baldr_w_bottom_executor.BaldrWBottomExecutor"),
@@ -231,6 +237,9 @@ def _same_rule_number(left: Any, right: Any) -> bool:
 
 def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapping[str, Any]) -> StrategyRuleCard:
     """只投影同次producer已封存的fixed契約，不借現在registry或重跑executor。"""
+    if execution.get("schema") == "single-backtest-ma-alignment-execution.v1":
+        from app_module.ma_alignment_rule_card import read_ma_alignment_execution_card
+        return read_ma_alignment_execution_card(spec, execution)
     if execution.get("schema") == "single-backtest-w-bottom-execution.v1":
         from app_module.w_bottom_rule_card import read_w_bottom_execution_card
         return read_w_bottom_execution_card(spec, execution)

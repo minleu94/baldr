@@ -150,6 +150,32 @@ def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | No
     return lines
 
 
+def _ma_alignment_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
+    """四均線只列原觀測與意圖；缺件或不符版本不轉成分數診斷。"""
+    diagnostics = details.get("rule_diagnostics")
+    if not isinstance(diagnostics, dict) or diagnostics.get("schema") != "baldr-ma-alignment-basic-diagnostics.v1":
+        return None
+    labels = (("total_sessions", "總觀測列"), ("ready_sessions", "可評估列"),
+              ("unavailable_sessions", "暖機或資料不足列"), ("entry_signal_sessions", "新排列進場意圖"),
+              ("exit_condition_sessions", "排列破壞出場條件"))
+    required = {key for key, _ in labels} | {"schema", "strategy_id", "strategy_version", "entry_description", "exit_description"}
+    valid = (set(diagnostics) == required and diagnostics.get("strategy_id") == "baldr_ma_alignment_basic_v1"
+             and diagnostics.get("strategy_version") == "1.0.0"
+             and all(type(diagnostics[key]) is int and diagnostics[key] >= 0 for key, _ in labels)
+             and all(type(diagnostics[key]) is str and diagnostics[key].strip() for key in ("entry_description", "exit_description")))
+    if valid:
+        valid = (diagnostics["ready_sessions"] + diagnostics["unavailable_sessions"] == diagnostics["total_sessions"]
+                 and diagnostics["entry_signal_sessions"] <= diagnostics["ready_sessions"]
+                 and diagnostics["exit_condition_sessions"] <= diagnostics["ready_sessions"])
+    lines = ["", "--- 四均線規則診斷 ---"]
+    if not valid:
+        return lines + ["規則診斷不可用（身份、欄位或觀測計數不符）；不以預設分數代替。"]
+    lines.extend(f"{label}: {diagnostics[key]} 列" for key, label in labels)
+    lines.extend([f"進場條件: {diagnostics['entry_description']}", f"出場條件: {diagnostics['exit_description']}",
+                  "首列已排列或持續排列不另發進場；條件與意圖不代表成交或已完成配對。"])
+    return lines
+
+
 def _w_bottom_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
     """只呈現凍結版本的 W 底診斷；意圖狀態不代表成交或完成配對。"""
     diagnostics = details.get("rule_diagnostics")
@@ -271,6 +297,8 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
     rule_diagnostics_lines = _bollinger_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is None:
         rule_diagnostics_lines = _w_bottom_rule_diagnostics_lines(details)
+    if rule_diagnostics_lines is None:
+        rule_diagnostics_lines = _ma_alignment_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is not None:
         lines.extend(rule_diagnostics_lines)
 

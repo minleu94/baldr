@@ -32,6 +32,8 @@ for relative_source in (
     'decision_module/strategies/baldr_bollinger_contract.py',
     'decision_module/strategies/baldr_w_bottom_executor.py',
     'decision_module/strategies/baldr_w_bottom_contract.py',
+    'decision_module/strategies/baldr_ma_alignment_executor.py',
+    'decision_module/strategies/baldr_ma_alignment_contract.py',
     'analysis_module/pattern_analysis/causal_w_bottom.py',
     'analysis_module/technical_analysis/technical_date_support.py',
     'backtest_module/conservative_fill_policy.py',

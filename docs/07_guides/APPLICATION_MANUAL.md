@@ -57,6 +57,8 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 ## 3. 推薦、回測、候選與持倉
 
+原P07第二階段另補「策略回測 → 四均線多頭排列（研究）」1.0.0：固定MA5／10／20／60，由非排列轉嚴格多頭排列才發進場意圖，排列破壞或相等發出場意圖。正常單股執行後沿原保存、歷史規則／結果、返回與新程序重開；參數、暖機、撮合限制及排錯見[四均線操作](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#四均線多頭排列研究)。它不擴大一般四股價庫或V1範圍，研究資格與完整Gate仍各自待；固定EXE狀態依[119 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment119-ma-alignment)。
+
 建立推薦前核對資料日、母體、Profile、門檻及已啟用指標；結果先看 result ID、決策日、資料日、quality、warnings、Why／Why Not 和 screening matrix。保存後只沿同一 result ID 讀回。Research Lab 需確認日期、股票母體、策略版本、成本、滑價、成交假設與 benchmark；最佳化結果是候選，仍需 OOS 或 Walk-forward 等證據。
 
 固定試用版97及後續開發來源的單股回測完成後，在「實驗摘要」旁按「保存這次回測」即可沿原 Registry 流程保存；一般視窗即使已切到結果頁，也不必返回設定欄找按鈕。畫面先標「尚未保存」，成功後顯示原 Registry run ID，再用「找已保存結果」明選同一 run 重開；歷史讀回會停用再次保存。若保存已成功但清單刷新失敗，保留畫面上的 run ID，重新查找而不要重複保存。Registry 不可用時保存入口停用並顯示原因；SOP FAIL 不因能保存而解除，來源、成本與歷史 PIT 仍按原限制。95原包尚未包含此結果頁入口；目前指定候選已含此入口，操作細節見[回測執行與結果](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#執行取消與結果)。

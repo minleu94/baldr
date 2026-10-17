@@ -2248,3 +2248,24 @@ QA08以真實clock由實際118試用目錄public reader核117原五值，核18�
 118現為中央指定本機工程候選，整合116修正與117限定基本面；未改四條V1不全部重跑、不把原FAIL改判。這一Increment解除「選出的股票無法在正常個股頁看同份價量並接續收藏回訪」的交付阻礙；完整P03、真帳、來源／成本／幣別／歷史PIT、有效策略、Native／真人與自然成熟沿原§0.4繼續分流，非競爭總計畫或新增共同前置。
 
 QA09最終文件／task核對12features、8份中央／包內指南，errors=[]；outer SHA `dc3a8cc12d9f7ba96ffc6e5c08ebc4532018034d80492e906c93af5d8b45a781`，三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後僅記此結果與提交接手點，118固定EXE及交付原件不再變動。
+
+<a id="increment119-ma-alignment"></a>
+## Increment119：原P07／F02四均線研究的正常執行與保存出口
+
+本輪解除「四均線只可篩選，沒有具名單股研究可執行、保存原規則及新程序重開」的第二階段缺口，沿原計畫§5.4，不加V1共同前置。策略`baldr_ma_alignment_basic_v1@1.0.0`固定5／10／20／60期，依已知非排列轉嚴格多頭排列發進場意圖，排列破壞／相等發出場意圖；未知不造訊號。重用原因果分析邊界、Broker及Registry；測試窗前最多61列只作均線／前列排列，窗前不下單或計績效。規則、10個來源SHA、runtime、原成本輸入、前置窗及逐列證據同次保存，fresh不重算或查目前executor，研究不能晉升。原來源／PIT／有效績效及完整P07限制保留。
+
+### 來源與回歸證據
+
+- 基線`f028478a4816925cd666553b8bd584c1830f4ba6`，本輪產品檔由spec逐bytes／SHA綁定。QA02沿document_control的technical_analysis Level2，Unknown=[]；實際正文另核，路由Execution／QA／Documentation／Tech Lead／Data Audit由Root依階段履職，沒有新增獨立代理或冒稱peer複核。
+- QA03原9PASS／1FAIL保留：數字YYYYMMDD轉換後語意相同，但pandas的freq metadata與原BusinessDay不同。測試改為先核日期索引相等，再逐欄核訊號，不偽造官方日曆／freq。原outer `a45914d6f9facf06867478c43c0dade47ade0e4704b4555d844fefd2db0bc8c3`。
+- QA04共320PASS，涵蓋每prefix／未來污染、缺件重暖機、相等、低Decimal context、原Broker下一開盤、17類保存錯配、金融輸入脫綁、拒晉升、新舊策略與Workbench；compile、validator25/0/4、mypy1050檔及financial float guard PASS。outer `f1f58d25c66633c212c420fd49cd1bf4de97fe25200aea06a64c0236a20a0d0e`。UI原ignore_errors不證強型別，測試數不加總為Gate。
+- QA05正常來源Main PID38416執行2317／2025-01-02至2026-09-23，419列、8個進場意圖、6組完成配對，保存後查原規則／結果並返回；另一程序核同run／metadata／equity／trades身份，禁止重跑／另存／查目前Registry。六份行情SHA不變、無網路；[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment119_ma_main_source_qa05/result.json) SHA `9ac6c13c59c076b8234b7d3f61ce5307e63896eb81e999b5dfc18d1dfe0b2398`，outer `87913cde8cac2dcceb1e41bf32f09d1f25faf974e4011f3a28d934cc0a85feb1`。Qt offscreen功能驗證，不是Native／真人接受；這筆六配對不是使用者先前未定位的原run。
+- QA06補取消前／引擎完成後不發布完整來源、打包兩新檔及共用來源缺件拒絕；45PASS，原匯出測試另因Windows暫存路徑超長FAIL。outer `796db063064908ed5b14609a31e334eb0f139841e7c301a1266fafc3b35b128c`原樣保留。QA07只以`.t/i119x`短隔離路徑重驗同一匯出案例1PASS，不改產品或斷言；outer `ab592b602bb2e5de46ce35ec9655abd11caf16d9dec03fbea191f0213be8903b`。
+
+固定來源／EXE及本機試用包仍待此節後續具名交付收據；在它完成前中央入口維持118。批次、新策略參數研究、Walk-forward、完整趨勢家族、來源／成本權威及有效策略不在本輪接受範圍。
+
+### 外部116核對報告與原生環境診斷
+
+使用者提供的116核對紀錄按原版本保存為[分流記錄](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment119_external_116_review_triage.json)，SHA `6e1956a8c54e111883f71618ba92c85dd96a0bcfb74325d381494e8fe73374cd`。位元／啟動器／DB核對不當真人完整旅程接受：118已修價格選股→Main同源個股；固定路徑、一般四股價庫／兩來源日期、初始空私人清單、批次比較拒絕、Paper缺帳仍明示。所稱1–3秒延遲不是本輪量測；零交易不能證明引擎正常或策略有效，名冊缺source.json也不能泛稱不影響任何功能。舊116／118包不改，不把報告當118回歸。
+
+119QA01僅診斷目前Native輸入條件：自有Main的Qt報active，但Win32前景／座標命中是其他PID；UIA辨識自有Main，截圖內容卻不符。未執行輸入、不搶用戶焦點、不保存其他前景畫面。它不證明117歷史FAIL的原因，原FAIL保留；[診斷原件](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/post118_native_environment_diagnostic.json)，outer `f0c47fb961c218df889604591ae8fb3273e310d3993e398d762783f3af6c9561`。這不是獨立產品Increment或新共同前置，其他工作接續推進。各組RAM先核≥8GiB、Job限8GiB／12程序；三PID陣列自然空、handles閉合、mutex釋放，無forced cleanup。

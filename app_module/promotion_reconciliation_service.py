@@ -205,6 +205,8 @@ class PromotionReconciliationService:
             raise PromotionPreflightError("布林基礎目前是研究假說，來源／PIT與績效資格尚未接受，不可正式晉升")
         if metadata.strategy_id == "baldr_w_bottom_basic_v1":
             raise PromotionPreflightError("W底基礎目前是研究假說，來源／PIT與績效資格尚未接受，不可正式晉升")
+        if metadata.strategy_id == "baldr_ma_alignment_basic_v1":
+            raise PromotionPreflightError("四均線基礎目前是研究假說，來源／PIT與績效資格尚未接受，不可正式晉升")
         if metadata.is_archived:
             raise PromotionPreflightError("archived run 不可 promote")
         if metadata.promoted_version_id:

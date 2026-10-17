@@ -116,6 +116,10 @@ class BacktestService:
             if (execution_price != "next_open" or allow_pyramid
                     or stop_loss_atr_mult is not None or take_profit_atr_mult is not None):
                 raise ValueError("W底基礎研究僅支持 next_open、不加碼及百分比風控；未核路由不可忽略設定")
+        if strategy_spec.strategy_id == "baldr_ma_alignment_basic_v1":
+            if (execution_price != "next_open" or allow_pyramid
+                    or stop_loss_atr_mult is not None or take_profit_atr_mult is not None):
+                raise ValueError("四均線基礎研究僅支持 next_open、不加碼及百分比風控；未核路由不可忽略設定")
         # 1. 載入股票數據和技術指標（自動調整日期範圍）
         # ✅ 優化：如果提供了預載入的數據，直接使用
         if preloaded_data is not None:
@@ -340,7 +344,7 @@ class BacktestService:
         
         rule_diagnostics = None
         rule_signal_observations = None
-        if strategy_spec.strategy_id in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1"):
+        if strategy_spec.strategy_id in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1", "baldr_ma_alignment_basic_v1"):
             rule_diagnostics = dict(signal_frame.attrs["rule_diagnostics"])
             ready = signal_frame["rule_observation_ready"]
             rule_diagnostics.update(
@@ -350,7 +354,8 @@ class BacktestService:
                 exit_condition_sessions=int(signal_frame["exit_rule_match"].sum()),
             )
             is_w_bottom = strategy_spec.strategy_id == "baldr_w_bottom_basic_v1"
-            if not is_w_bottom:
+            is_ma_alignment = strategy_spec.strategy_id == "baldr_ma_alignment_basic_v1"
+            if not is_w_bottom and not is_ma_alignment:
                 from decision_module.strategies.baldr_bollinger_contract import confirmation_sessions
                 rule_diagnostics["confirmation_sessions"] = confirmation_sessions(strategy_spec.config.get("params", {}))
             close_key = next(key for key in ("收盤價", "Close", "close") if key in signal_frame)
@@ -368,7 +373,13 @@ class BacktestService:
                     "entry": bool(row["entry_rule_match"]), "exit": bool(row["exit_rule_match"]),
                     "reason": str(row["reason_tags"]),
                 }
-                if is_w_bottom:
+                if is_ma_alignment:
+                    observation.update(
+                        **{f"ma{period}": observed_price(f"MA{period}") for period in (5, 10, 20, 60)},
+                        alignment=None if row["ma_alignment"] is None else bool(row["ma_alignment"]),
+                        previous_alignment=None if row["previous_ma_alignment"] is None else bool(row["previous_ma_alignment"]),
+                    )
+                elif is_w_bottom:
                     evidence = None
                     if row["pattern_confirmed_at"] is not None:
                         evidence = {}
@@ -475,11 +486,13 @@ class BacktestService:
                 'execution_summary': execution_summary,
                 'factor_records': factor_records,
                 'factor_decision_date': factor_decision_date,
-                'can_promote': validation_result['can_promote'] and strategy_spec.strategy_id not in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1"),
+                'can_promote': validation_result['can_promote'] and strategy_spec.strategy_id not in ("baldr_bollinger_basic_v1", "baldr_w_bottom_basic_v1", "baldr_ma_alignment_basic_v1"),
                 **({'promotion_blocker': '布林基礎為研究假說，來源／PIT與績效資格尚未接受'}
                    if strategy_spec.strategy_id == "baldr_bollinger_basic_v1" else {}),
                 **({'promotion_blocker': 'W底基礎為研究假說，來源／PIT與績效資格尚未接受'}
                    if strategy_spec.strategy_id == "baldr_w_bottom_basic_v1" else {}),
+                **({'promotion_blocker': '四均線基礎為研究假說，來源／PIT與績效資格尚未接受'}
+                   if strategy_spec.strategy_id == "baldr_ma_alignment_basic_v1" else {}),
                 **({'rule_diagnostics': rule_diagnostics, 'rule_signal_observations': rule_signal_observations} if rule_diagnostics is not None else {}),
                 'score_diagnostics': score_diagnostics
             }

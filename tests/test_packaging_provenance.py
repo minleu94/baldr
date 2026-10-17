@@ -113,3 +113,35 @@ def test_modified_or_extra_python_source_cannot_pass_fixed_archive_verification(
     (source / "extra.py").write_bytes(b"extra\n")
     with pytest.raises(ValueError, match="程式"):
         provenance.verify_exported_source(archive, source)
+
+
+@pytest.mark.parametrize("omission", [None, "ma_contract", "ma_file", "shared_sources"])
+def test_ma_packaged_source_rejects_partial_or_missing_custody(tmp_path, omission):
+    sources = (
+        "decision_module/strategies/baldr_bollinger_executor.py",
+        "decision_module/strategies/baldr_bollinger_contract.py",
+        "decision_module/strategies/baldr_w_bottom_executor.py",
+        "decision_module/strategies/baldr_w_bottom_contract.py",
+        "analysis_module/pattern_analysis/causal_w_bottom.py",
+        "analysis_module/technical_analysis/technical_date_support.py",
+        "backtest_module/conservative_fill_policy.py", "financial_module/units.py",
+        "decision_module/strategies/baldr_ma_alignment_executor.py",
+        "decision_module/strategies/baldr_ma_alignment_contract.py",
+    )
+    declared = sources[:-1] if omission == "ma_contract" else sources[8:] if omission == "shared_sources" else sources
+    spec = tmp_path / "packaging/baldr.spec"
+    spec.parent.mkdir()
+    spec.write_text("for relative_source in " + repr(declared) + ":\n    pass\n", encoding="utf-8")
+    for relative in sources:
+        if omission == "ma_file" and relative == sources[-1]:
+            continue
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(relative.encode())
+    if omission:
+        with pytest.raises(ValueError, match="四均線.*完整兩檔"):
+            provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    else:
+        metadata = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+        assert {relative: metadata["resource_sha256"][relative] for relative in sources} == {
+            relative: hashlib.sha256(relative.encode()).hexdigest() for relative in sources}

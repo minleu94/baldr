@@ -194,6 +194,19 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in p07_rule_sources
         })
+    ma_rule_sources = (
+        "decision_module/strategies/baldr_ma_alignment_executor.py",
+        "decision_module/strategies/baldr_ma_alignment_contract.py",
+    )
+    declared_ma = [relative in declared_sources for relative in ma_rule_sources]
+    if any(declared_ma):
+        if (not all(declared_ma) or not all(declared_p07)
+                or not all((source / relative).is_file() for relative in ma_rule_sources)):
+            raise ValueError("四均線研究原始來源宣告須完整兩檔及原P07共用來源")
+        resource_hashes.update({
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in ma_rule_sources
+        })
     return {
         "schema": "baldr-application-build.v1",
         "version": f"2026.10.06+{commit[:12]}", "source_commit": commit,

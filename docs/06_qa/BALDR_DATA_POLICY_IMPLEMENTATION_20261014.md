@@ -3,9 +3,9 @@
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
 <a id="increment124-vcp-integration"></a>
-## Increment124：原P07正常回測／保存接線與合法千分位修復（2026-10-17，開發來源）
+## Increment124：原P07正常回測／保存接線、合法千分位修復與固定124交付（2026-10-17）
 
-本輪解除三段轉折收縮只有核心、缺正常操作／同次保存的交付阻礙，沿原BacktestService、Broker、Registry與歷史頁完成，不新增撮合或保存系統。原123固定規則與敏感度不變、四條V1不擴；Root依序履行Tech Lead／Execution／Data Audit／QA／Documentation，沒有獨立reviewer或新代理，累計10/10保持。來源HEAD基底`96d60ada9e3d7993cc16112ce5256804c5327eb8`，本節記工作樹增量；固定121保持原身分，同版EXE尚待。
+本輪解除三段轉折收縮只有核心、缺正常操作／同次保存的交付阻礙，沿原BacktestService、Broker、Registry與歷史頁完成，不新增撮合或保存系統。原123固定規則與敏感度不變、四條V1不擴；Root依序履行Tech Lead／Execution／Data Audit／QA／Documentation，沒有獨立reviewer或新代理，累計10/10保持。來源基底`96d60ada9e3d7993cc16112ce5256804c5327eb8`，實作後固定為`6721e05bc91339166214720bd7f164686eb19108`；下列保存來源階段與最終交付分開，121原身分保持。
 
 ### 同次來源與安全讀回
 
@@ -31,7 +31,21 @@ QA12 Main **19780→48096**，2330／2025-01-02至2026-09-23、本金10,000,000�
 
 使用者重貼116報告屬外部核對內容，其內Python命令與PASS不是本輪執行紀錄。--check／SHA只證身分與啟動資訊；18初始狀態hash相符不等於四旅程重跑。116價格選股另開視窗的限制已由118改為同源主個股頁，不能套121；固定路徑與完整搬移限制仍在。啟動延遲未測量，不接受1–3秒為實測。公司名冊缺來源憑證不能泛稱不影響用途。2330的布林／W底0交易須各自核原來源／版本／可判讀日／成交，不能據原摘要接受「真實數學無訊號」；本輪三段收縮1配對也不能代替那兩個策略驗收。
 
-Snapshot、原計畫、主手冊／專節、試用入口提醒、功能說明及current架構已同步。Product／6M／目標架構、正式排程、資料來源用途與安裝契約沒有新改判，not_required；中央README／Index未改主要權威或文件位置，沿原入口。UI_FEATURES_DOCUMENTATION的工作區／導航責任未變，not_required，選項操作由本次手冊承接。QA13補全部受改Python compile、context及owner task／12features／9份文件連結，errors=[]，outer `162fe7e4990cfa6d1f691da2e146839e219c560c8b473ece64b3b0575e553fdf`；context Level2摘錄1671字／3143bytes、Unknown=[]，僅導航，全文語意由Root核正文。原圖與前輪budget略過不當EOF，QA原件／unused specs保留。下一出口為固定EXE、同版金融核對及明確指南；來源、歷史PIT、真N、成本權威、完整雙策略績效、Native／真人、自然成熟與完整P00–P14／G0–G4繼續分流，不加總案例或commit成Gate。
+Snapshot、原計畫、主手冊／專節、試用入口提醒、功能說明及current架構已同步。Product／6M／目標架構、正式排程、資料來源用途與安裝契約沒有新改判，not_required；中央README／Index未改主要權威或文件位置，沿原入口。UI_FEATURES_DOCUMENTATION的工作區／導航責任未變，not_required，選項操作由本次手冊承接。QA13補全部受改Python compile、context及owner task／12features／9份文件連結，errors=[]，outer `162fe7e4990cfa6d1f691da2e146839e219c560c8b473ece64b3b0575e553fdf`；context Level2摘錄1671字／3143bytes、Unknown=[]，僅導航，全文語意由Root核正文。原圖與前輪budget略過不當EOF，QA原件／unused specs保留。最終固定交付見下段；來源、歷史PIT、真N、成本權威、完整雙策略績效、Native／真人、自然成熟與完整P00–P14／G0–G4繼續分流，不加總案例或commit成Gate。
+
+### 固定124與受影響金融輸出
+
+來源提交`6721e05bc91339166214720bd7f164686eb19108`後，QA14沿既有依賴鎖建置固定EXE **`a8b840d383b6d6a9918c074bf27ab462da3145d6f5dcd16d3b37fcf111fbeb12`**（56,517,786 bytes），build receipt `eb9e14aa6f27b1c0bf037fb15ade14fd6c42647ada3f2609172472c28acd689d`，source archive `776365b248ef26b51dc6625e053801fdda395084f1baeace65696e9dfd6c424f`，outer `04a635fa81bce98fb34c7ff8de7f7653038a5c258dda48c19f41cbd49a3b3ac5`。本機未簽章候選，沒有發布。
+
+QA15串行建立獨立124狀態：109原18份逐SHA複製、只重綁本次推薦索引，另複製117原7份基本面，不重seal或變可用小時。狀態SHA `0db4b4eb6d91caccdd1838641b79ce5104ad51eb5520fc7b8f873e31ed3c989b`，啟動器--check `d4bdf9d85983e7f41011505107c2782efa806b19df719098928c33d6fe488f23`。固定EXE Main **9988→38812**通過同窗2330正常執行、保存、原規則／結果／返回及fresh，419皆ready／1意圖／1配對，解析版正確；[EXE結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment124_vcp_main_exe_qa16/result.json) SHA `48947dc16517b2daf44532a2bcecac4214d54d1c1e87624282642c087c3d2fd3`。來源／EXE逐日觀測、規格、Broker、equity／trades與metrics全同，金融core SHA `71903dfec4aa4ad681b8db01a8ec0706304361409a917baf1ac80252f1b479e1`，[比對收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment124_source_exe_parity_qa16.json) SHA `ac655d7ab1d5dd5c5aeb105090cbd6485be2ee572ba66221af98bac17f90d228`。12來源SHA各按原runtime bytes核，CRLF正規化後內容相同；六行情／兩Registry未變，network0。
+
+同組最後的額外producer探測因QA工具`asdict(report)`碰到details內mappingproxy而FAIL，outer `c02703f93c9e3def52ffe28bc264807356749860449c62cf408ae3e50f15cb73`保留，**不因此重建EXE或重跑已通過Main**。另存QA17b，僅逐欄取原DTO／曲線／交易，八策略×兩股的千萬元、指定最小配置來源／EXE一致，SHA `742d84776c7046088b95e3885bbed77002c119ef4a18d2f6c385b9500d42c494`，outer `c020373b2b900da8009e7a5c8959b488b43dec162600cc7434e8d89e8f2a7f07`；其中三計分缺technical配置產生未知，不能稱正常UI配置已驗。
+
+QA17c因此改用120正常Main原run保存的三計分**完整spec配置**，原DB只用ro＋immutable、schema先核、前後SHA相同；另以百萬元核本次116報告的布林／W底指定輸入。來源／EXE五策略×兩股的逐日執行、Broker、原DTO／曲線／交易皆一致，逐來源核原bytes及內容；只另列Registry物件created_at／updated_at原文，沒有排除行情／可得時間或金融值。2317三計分8／9／2配對、布林／W底6／10；2330三計分2／1／0、布林／W底0／0，且後兩者**有18／4個進場意圖**。千萬元的2330布林／W底則6／4配對。這些是指定配置的producer／Broker工程核對，不能說0交易表示無訊號、不能當原116批次重跑、也不是提高本金建議。[QA17c](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment124_price_reader_regression_qa17c/result.json) SHA `c379bc79892bc6ad3f2a995828c0f369c99633755ebb366cf3771082d582c165`，outer `f603520cacd4b9fc06747e1c06659a0038c1ed68c07ffef7c1e15393d5862652`。
+
+上述出口齊備後QA18才create-only封存[124指南](../../output/trial/Baldr-Daily-Research-124/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-124/KNOWN_ISSUES.md)及[交付收據](../../output/trial/Baldr-Daily-Research-124/DELIVERY_RECEIPT.json)，交付SHA **`a012cfcfce0a49717b97db19135a4e7aa65d9c646223caf3c4826e935d792963`**，outer `cc4b668dbdd4b1c0703bc750c02d798be6ac52163454f40382ed5157d2c6ccac`。116–121交付原SHA保持、無私人內容匯入；124為目前本機候選。每組三PID陣列自然空、process／Job handles關閉、mutex釋放、無forced cleanup。正常操作工程鏈已交，不再把未成熟／外部缺件擴成同一核心的前置；接續按原§0.4其他產品線，完整Gate與自然成熟仍保持未完成。
+
+最終QA19核owner task、12features及10份中央／包內文件連結，errors=[]，outer `3a1210d0cf86e8ecbf119d25c1056fc1b1789cde2e3805e2cabd4dd0ed634fed`。三PID陣列自然空、process／Job handles關閉、mutex釋放、無forced cleanup。之後只記本次結果及文件commit，不改固定EXE／試用收據；全補完goal仍進行。
 
 <a id="increment123-vcp-core"></a>
 ## Increment123：原P07三段轉折收縮核心與敏感度（2026-10-17，未接正常操作）

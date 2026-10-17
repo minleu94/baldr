@@ -8,7 +8,7 @@
 
 `baldr_vcp_contract.py`保存Root預宣告的自有研究規格，`BaldrVCPExecutor.generate_signals()`只在右方觀測齊全時確認轉折，使用原欄位scalar、Decimal SMA及跨乘輸出逐列觀測／意圖。固定策略已加入原StrategyRegistry；`vcp_execution_source.py`只載入一次行情，最多保留160前置列、向前365日，不在測試前下單。沿原BacktestService／Broker產報告與Research Registry保存，不另設撮合或金融writer。敏感度變體不註冊、不冒用固定策略版號。
 
-`vcp_rule_card.py`以獨立execution schema與parameter contract綁同次12來源SHA、輸入／成本、runtime、窗口、OHLCV／均線／已確認轉折、收縮量能及一次性事件。reader核保存列彼此一致，窗口齊全時核原五列極值與回落量和；保存邊界外不補抓，不查目前executor或Registry重算。未接受模式在讀行情前拒絕，晉升保持禁止。正常Main／fresh與尚待EXE／Native的出口見[Increment124 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。
+`vcp_rule_card.py`以獨立execution schema與parameter contract綁同次12來源SHA、輸入／成本、runtime、窗口、OHLCV／均線／已確認轉折、收縮量能及一次性事件。reader核保存列彼此一致，窗口齊全時核原五列極值與回落量和；保存邊界外不補抓，不查目前executor或Registry重算。未接受模式在讀行情前拒絕，晉升保持禁止。來源及固定124正常Main／fresh、同版輸出與尚待Native的出口見[Increment124 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。
 
 共享`BacktestService._load_price_data()`辨識合法千分位後才沿原數值邊界處理；整數股數與缺量保持object／整數而不先浮點化，CSV明讀原文字。新資料manifest及保存規則來源列出`historical-price-numeric-text.v1`，來源SHA／fingerprint保存當次版本；不寫行情庫、不遷移舊run，也不授原float DTO完整精度或歷史PIT資格。固定121仍保持原bytes，凍結規則見[原計畫§5.7](../../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
 

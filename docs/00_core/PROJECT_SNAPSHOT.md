@@ -4,7 +4,7 @@
 
 ## 現在有哪些入口
 
-**目前指定本機試用候選為日常研究121（`c62a3eca221b`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-121/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)，版本與限制由包內收據固定。121新增原P07「布林帶寬低點突破」1.0.0，來源／固定EXE正常執行、保存、原規則／結果／返回與新程序已驗，金融輸出一致；同輪修正建置長路徑。沿120計分1.1.0、119四均線及118同源個股，未改旅程依原收據，不全數重跑。這不擴四條V1、歷史PIT、有效策略或完整Gate，詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
+**目前指定本機試用候選為日常研究124（`6721e05bc913`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-124/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)，版本與限制由包內收據固定。124修回測合法千分位價格被判缺值，另接原P07三段轉折收縮1.0.0的單股、保存／返回及fresh；來源與固定EXE金融輸出一致，並核既有策略受影響輸入。沿121帶寬、120計分1.1.0、119四均線及118同源個股，未改旅程依原收據，不全數重跑。這不擴四條V1、歷史PIT、有效策略或完整Gate，詳[124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。
 
 115、112、109、71、66及更早候選與各自狀態保留，不自動匯入個人內容。66原回報及指南D勘誤沿原身分保留；後續修復不冒充新版真人接受。116沒有重跑未改的四條全部旅程：單股雙策略保存／比較沿用112具名證據，價格選股、收藏與舊推薦回訪按109及相應原QA判讀。
 
@@ -13,15 +13,15 @@
 | 看市場、查個股 | 市場狀態與四股一般價格／技術研究；四股末日漲跌方向另有同股同日核對 | 一般個股仍是四股隔離價庫，截至2026-09-23；舊列缺方向維持未提供。 |
 | 設條件、選股、保存研究 | 另一份2026-10-16來源宣告1,989、處理1,951、排除38；可依MA條件選股、主個股頁看原價量、同源比較、收藏及重開 | 5筆價格UNKNOWN、名錄用途與來源clock未接受；不能稱正式真N或歷史PIT。 |
 | 觀察清單與持倉回訪 | 持倉位於四卡下方；唯一精確代號／名稱互補，未綁來源部位可回一般個股價量重載 | 真私人帳與真人手勢待驗；保存來源部位沿原exact守衛，Paper外部根未在試用配置。 |
-| 單股回測、保存與歷史 | 三個計分1.1.0可正常保存、核原規則與新程序重開；穩健／暴衝同版可對照並開明細返回；窄視窗切換設定／結果並捲動 | 舊1.0／1.0.0有回填缺值限制，原件保留、混版拒絕。原六配對run未定位；SOP／Baseline FAIL、Walk-forward及完整績效不改判。 |
+| 單股回測、保存與歷史 | 124含三段收縮正常保存與新程序，並修合法千分位；三計分1.1.0及同版對照沿原鏈，受改輸入已核。窄視窗切換設定／結果並捲動 | 舊候選／run不重寫；0配對不等於無訊號。舊計分回填限制、原六配對run、SOP／Baseline FAIL、Walk-forward及完整績效仍保留。 |
 
 原 V1 四條流程與出口維持[計畫 §0.3](../superpowers/plans/baldr_product_completion_plan_20261006.md#03-兩階段交付與v1範圍凍結)。以上是已交付及回報狀態，不是全部 P00–P14 或 G0–G4 接受。
 
 ## 目前工程狀態與限制
 
-開發來源已把原P07三段轉折收縮1.0.0接入原單股Backtest／Broker／Registry與規則卡，完成正常保存、返回及新程序讀回；固定121尚未包含。整合同時查到SQLite合法千分位被轉成NaN的缺陷，已修正讀取格式並在新run保存`historical-price-numeric-text.v1`，不改原資料或舊結果。修正後2330／2025-01-02至2026-09-23為419已知列、1意圖／1配對；這不是有效策略或歷史PIT接受。下一出口為固定EXE及同版核對，詳[Increment124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。基本面前期用途缺件仍維持不可用。
+124已把原P07三段轉折收縮1.0.0接入原單股Backtest／Broker／Registry與規則卡，完成來源及EXE正常保存、返回及新程序讀回。整合同時修SQLite合法千分位被轉成NaN，新run保存`historical-price-numeric-text.v1`，不改原資料或舊結果。2330／2025-01-02至2026-09-23、千萬元核對例為419已知列、1意圖／1配對；EXE9988→38812與來源一致。EXE SHA `a8b840d383b6d6a9918c074bf27ab462da3145d6f5dcd16d3b37fcf111fbeb12`，交付SHA `a012cfcfce0a49717b97db19135a4e7aa65d9c646223caf3c4826e935d792963`。百萬元同窗2330布林／W底仍0配對但有18／4意圖，不能叫無訊號；原完整計分配置的2317仍8／9／2配對。以上不是有效策略、完整雙策略績效或歷史PIT接受，詳[Increment124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。基本面前期用途缺件仍維持不可用。
 
-開發來源另修保存回訪的路徑誤讀：Research Registry 索引複製後，不再沿其舊絕對路徑讀原根，也拒其他 run 檔名及根內連結替換。原件不改寫，固定121與其交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
+124另包含保存回訪的錯根拒讀：Research Registry索引複製後不再沿舊絕對路徑讀原根，也拒其他run檔名及根內連結替換。原件不改寫、121交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
 
 121固定來源`c62a3eca221b3a360f812973bf558061004a3315`，EXE SHA `c9bc1e3025ecd283711cd623613b18a3a97d7f300b070bc384adadf93dbcc9f7`，交付SHA `628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`。來源Main28164→32412、EXE35832→48656皆驗2317同窗419列／2進場意圖／2完成配對及保存回訪，金融輸出一致；62項／public66項／UI91項等定向證據不加總為Gate。原大整數成交量／前列串接紅測及其他FAIL保留。完整Native、真人、F06全功能、家族與有效績效仍待；P14完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
 

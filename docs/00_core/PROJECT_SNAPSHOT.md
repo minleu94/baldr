@@ -12,7 +12,7 @@
 
 [Increment135](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment135-revenue-calendar-history)修正月營收後端因子的缺月、無前史新高及比較可得日／品質傳遞；80項受改測試與原服務／CLI／Registry保存→fresh通過，原5項紅測保留。此輪為合成工程驗證，沒有正常UI／正式評分接線或新EXE，固定試用仍為134；完整F12、官方來源與歷史PIT仍待。
 
-134另補[原生策略回訪](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post134-native-saved-strategy-comparison)：1280×760、父24192→fresh5684，實按三筆選取／訊號對照／原規則／返回，來源與研究store SHA保持。這只補已保存研究的限定Native，不含新回測保存、價格研究、其他DPI或真人；原observer及120 Native FAIL保留，EXE與交付原SHA不改。
+134已有兩組限定原生證據：[1280×760保存策略回訪](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post134-native-saved-strategy-comparison)，以及[1500×900新回測保存與重開](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post134-native-backtest-save-reopen)。後者以2317同窗執行穩健／暴衝策略，9／2組完成配對保存後，由新程序讀原規則、兩側明細及返回；金融輸出與原參考一致，來源及保存store保持。原FAIL保留；價格研究、摘要全文最底、其他DPI、真人及完整Native仍待。EXE與交付原SHA不改。
 
 | 使用流程 | 已知可用範圍 | 還要處理什麼 |
 |---|---|---|

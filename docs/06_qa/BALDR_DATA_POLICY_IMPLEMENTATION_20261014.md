@@ -3027,3 +3027,35 @@ launcher --check另驗啟動身分，與Main旅程分列；postQA初態與交付
 | `post134_native_compare_qa00b/result.json` | `d86058f3dda8e373b2251d2fd1a60060a87f52c5fb623f291da17308baa4e0d8` |
 
 745啟動RAM約24.01GiB；每組仍8GiB committed／12程序／kill-on-close／同workspace mutex，前組三PID陣列空、process／Job handles關閉及mutex釋放才接續，本輪自然排空、無強制清理。沒有新建代理，累計仍10/10。
+
+<a id="post134-native-backtest-save-reopen"></a>
+## 固定134補證：原生單股回測、保存與新程序回訪
+
+本輪補原第四條旅程的新回測保存出口，沒有產品程式變更、新Increment或新EXE。工作樹HEAD為`bff9900b8c1d656c1c11174caac2c4165d93aff7`，實際執行仍是134的`cd8dbe30f90a`固定EXE；EXE SHA與交付SHA保持。Root沿原product workflow兼QA／Execution／Documentation，Computer Use只送原生滑鼠／鍵盤，host只建立正常MainWindow、觀測與斷言，沒有用程式代按按鈕或填參數。
+
+自有`.t/p134nativebacktest0d/fixture`從134封存postQA初態核SHA複製六件行情及12件財報版本；研究庫初始為空，不借原示範或私人帳。Windows平台、正常主題、1500×900，父**28260**正常輸入2317／2025-01-02至2026-09-23，百萬元、14.25 bps費率、5 bps滑價、next_open、停損停利關閉，執行穩健1.1.0並保存；第二程序**50044**以相同條件執行暴衝1.1.0並另存。分別9／2組完成配對，419列／332已知分數／87未知保持，沒有為取得交易而改門檻或補值。摘要可向下讀到原SOP FAIL、未做Walk-forward與Primary段；全文最底尚未作具名Native驗收。
+
+第三程序**40604**禁止Backtest重算、Registry executor／metadata生成與save，明選這兩筆原run→對照基本策略→開兩側原明細→各自返回，再單選讀兩張原保存規則卡，最後恢復雙選及`saved_conditions_match`。保存metadata／equity／trades完整身分與父程序相同，兩張規則皆為`source_ref_only`，不是重新向Registry補版本。三程序分別9／9／17次spontaneous滑鼠事件，全部通過曝光、enabled、原生hit及祖先／viewport裁切守衛；日期透過原受控日曆選年、月、日。另有原生文字與鍵盤輸入，不充當滑鼠事件數。
+
+金融比較沿原120 EXE具名保存，不重算舊結果。750初次整包`financial_payload`雜湊不符，原FAIL保留；752逐欄唯讀診斷確認唯一差異是`strategy_spec.data_version`，其餘交易、equity、metrics、逐日分數、策略參數、executor、成本及撮合全部相同。修正後的QA不刪除此欄：由目前固定EXE原reader獨立讀419列並重建輸入frame指紋，要求它、execution的`input_fingerprint`及策略宣告三者完全相符，再將原120參考的該版本欄明確重綁後比較完整payload。舊指紋、原金融SHA與原保存身分全部留在oracle。11個宣告source hashes另逐件核實際MEIPASS來源；不借工作樹或把版本重綁當來源／歷史PIT接受。
+
+755兩個新保存的完整金融payload均與上述嚴格重綁後的原參考一致。行情六檔SHA保持，fresh前後三個研究store與Parquet逐件SHA保持；正式根及所有trial根的app I/O、網路嘗試均0。準備複製只在另列prepare階段讀固定134原件，正常旅程不讀原trial根。試用包與私人狀態沒有變更。
+
+失敗另行保存，未覆寫原helper／spec／結果：748因操作日期路徑探索耗盡原240秒host期限，未執行或保存；750是上述版本指紋比較；751診斷使用TWStockConfig追加舊隔離根的`application_state/logs/config.log`，因此整目錄不變斷言FAIL，原研究DB與Parquet仍與oracle逐件SHA相同，未還原或刪除log。752改用唯讀服務所需的最小路徑設定，完整目錄前後不變；753準備時Timestamp不能JSON序列化，FAIL及部分輸出保留，754新case沿原canonical序列化成功。755的235秒UI／240秒child／250秒命令期限、15秒曝光／計算守衛與原生幾何斷言均未放寬。
+
+| 原始收據／結果（owner task內） | SHA-256 |
+|---|---|
+| 748 FAIL `single_owned_qa_f7f68f93c84b4bcaa8d0174946db115f/receipt.json` | `c8c6c5b9b2fc9d3d0bdf948398f72c83d11ee89a7f2d336ba13a61b8f089f738` |
+| 750 FAIL `single_owned_qa_91c1880343144322a4e7bdda5bc103e7/receipt.json` | `6919ea0b8a2be0be5c6775649c45723ba8c7cbe5d528b121c1006cd72b7f8bb0` |
+| 751 FAIL `single_owned_qa_57ac9e767ee447acb5b42ec44ffe0d58/receipt.json` | `481d318a396dc8a12b7562a30bc9f0a39ab3d9c3de0c5dcf02df7b03e6f7f05c` |
+| 752診斷 `single_owned_qa_2b52cb11671c423baa3a2295ff2bb9c7/receipt.json` | `160e5ea04ae002b52242e208f0bc09595167ff75b0390c87b7090a8f74ad88a6` |
+| 753 FAIL `single_owned_qa_28b2931393324f33aa8a43a5d4e23a6a/receipt.json` | `01d106436bf2428f2f0c205a9b35065160a13d87ff8b4c0f6de026dde2a8dd7b` |
+| 754準備 `single_owned_qa_98fd8ebf1b7043c0bdec605c4511eb8c/receipt.json` | `38da65830bb5f623144477ceec05205d29d62e0734b82efb3defdb9d54a28a29` |
+| 755 spec `post134_native_backtest_qa09d_spec.json` | `3a9a0656a329e06e1ff710eb50f2506261a0826320d385817b2dd84f6075a57c` |
+| 755 outer `single_owned_qa_129173e40fbc48b3b85734b0457362cb/receipt.json` | `5daed4fd7ce32b6f5da925b7d323b172710069531fa11f69d0b645818f1acd01` |
+| `post134_native_backtest_qa00d/result.json` | `72275c745641a118000db2470f3fc03348496dfed22d83bb4be66ea5c7886440` |
+| 756 context `single_owned_qa_5b0405d850c9465793517d42b8acd436/receipt.json` | `b037e1065d7dad927500f32cc9d96f0aca6f2f7385f30d4f51e032f3f9e9345a` |
+
+756文件context摘錄1,963字元／3,245 UTF-8 bytes；Snapshot／QA導航budget略過、試用指南heading-only明列Unknown，受改Snapshot及指南已回正文，QA在原章節追加，不稱全庫覆核。Snapshot與現行試用指南同步，另補正常單股保存／重開例；入口、參數與產品行為未改，Manual、架構及Feature Map無新增契約，記not_required。不重跑未改的Workbench／validator／mypy或四條全部旅程。
+
+每組仍啟動可用RAM≥8GiB、全Job committed8GiB／12程序／kill-on-close／同workspace mutex；前組三PID陣列空、process／Job handles關閉及mutex釋放才接續，均自然排空，無強制清理。沒有新代理，累計10/10。這只補指定尺寸／具名雙策略旅程；價格研究Native、摘要全文最底、其他DPI、真人、來源用途、歷史PIT、真N、完整雙策略績效與自然成熟仍依各自原出口處理，完整目標保持active。不觸發maintainer、正式資料／Task、push、發布或交易。

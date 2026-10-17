@@ -2107,6 +2107,8 @@ def test_technical_source_copy_detached_restore_preserves_rows_and_clocks(
 ):
     """新定位鏈仍走原reader，舊DB及第一份bundle的絕對位置都不需要。"""
     import builtins
+    import io
+    import os
     from app_module.technical_source_copy import TechnicalSourcePin, copy_technical_source, restore_technical_source
     from app_module.research_output_copy import ResearchOutputCopyBudget
     from app_module.daily_market_technical_snapshot_v4_repository import _read_bounded_file
@@ -2135,14 +2137,31 @@ def test_technical_source_copy_detached_restore_preserves_rows_and_clocks(
     target.rename(detached)
     assert not target.exists()
     original_open = builtins.open
-    def no_original_io(path, *args, **kwargs):
+    original_io_open = io.open
+    original_os_open = os.open
+    archive_forbidden = False
+    def reject_original_path(path):
         if isinstance(path, (str, Path)):
             normalized = str(path).removeprefix("\\\\?\\")
-            if Path(normalized).absolute().is_relative_to(fixture["root"]):
+            absolute = Path(normalized).absolute()
+            if absolute.is_relative_to(fixture["root"]):
                 pytest.fail("恢復不可fallback到原source根")
+            if archive_forbidden and absolute.is_relative_to(detached):
+                pytest.fail("恢復後的public reader不可再讀封存包")
+    def no_original_io(path, *args, **kwargs):
+        reject_original_path(path)
         return original_open(path, *args, **kwargs)
+    def no_original_path_io(path, *args, **kwargs):
+        reject_original_path(path)
+        return original_io_open(path, *args, **kwargs)
+    def no_original_os_io(path, *args, **kwargs):
+        reject_original_path(path)
+        return original_os_open(path, *args, **kwargs)
     monkeypatch.setattr(builtins, "open", no_original_io)
+    monkeypatch.setattr(io, "open", no_original_path_io)
+    monkeypatch.setattr(os, "open", no_original_os_io)
     restored = restore_technical_source(detached, hashlib.sha256(raw).hexdigest(), tmp_path / "restored", budget=budget)
+    archive_forbidden = True
     session = open_daily_market_technical_universe_v4_read_session(**restored.to_dict())
     page = session.read_page(session.create_query(page_size=256))
     assert [row.to_dict() for row in page.rows] == [row.to_dict() for row in original_page.rows]
@@ -2235,3 +2254,74 @@ def test_technical_source_copy_does_not_publish_unrestorable_output(
     assert not (target / "TECHNICAL_COPY_RECEIPT.json").exists()
     assert (target / ".technical_copy_pending.json").exists()
     assert (target / "TECHNICAL_COPY_FAILURE.json").exists()
+
+
+@pytest.mark.parametrize("failure", [None, "worker", "cancel"])
+def test_technical_source_copy_bounded_io_joins_writes_on_success_failure_and_cancel(
+    synthetic_read_session_source, tmp_path, monkeypatch, failure,
+):
+    """原件寫入最多兩件；例外／取消返回前必須排空，callback仍由Root執行。"""
+    import threading
+    import app_module.technical_source_copy as copy_module
+    from app_module.research_output_copy import ResearchOutputCopyBudget
+
+    case = synthetic_read_session_source
+    pin = copy_module.TechnicalSourcePin(case["store_root"], case["plan"].generation_identity_sha256,
+        case["plan"].identity_sha256, case["plan_sha256"], case["complete"].identity_sha256,
+        case["complete"].content_sha256)
+    budget = ResearchOutputCopyBudget(16 * 1024**2, 256 * 1024**2, 10000, 32)
+    target = tmp_path / "bounded-copy"
+    original_write = copy_module._write_immutable
+    root_ident = threading.get_ident()
+    lock = threading.Lock()
+    barrier = threading.Barrier(2, timeout=5)
+    second_started = threading.Event()
+    started = threading.Event()
+    active = written = sequence = 0
+    write_threads = set()
+    maximum_active = [0]
+
+    def observed_write(path, raw, *, maximum):
+        nonlocal active, written, sequence
+        if "artifacts" not in path.parts:
+            return original_write(path, raw, maximum=maximum)
+        with lock:
+            maximum_active[0] = max(maximum_active[0], active + 1)
+            active += 1
+            sequence += 1
+            number = sequence
+            write_threads.add(threading.get_ident())
+        started.set()
+        try:
+            if failure is None and number <= 2:
+                barrier.wait()
+            if failure == "worker":
+                if number == 1:
+                    assert second_started.wait(5)
+                    raise ValueError("owned_copy_worker_failed")
+                second_started.set()
+            original_write(path, raw, maximum=maximum)
+            with lock:
+                written += 1
+        finally:
+            with lock:
+                active -= 1
+
+    def cancel():
+        assert threading.get_ident() == root_ident, "取消及預算由Root串行控制"
+        return failure == "cancel" and started.is_set()
+
+    monkeypatch.setattr(copy_module, "_write_immutable", observed_write)
+    if failure is None:
+        copied = copy_module.copy_technical_source(pin, target, budget=budget, cancel_callback=cancel)
+        assert copied.generation_identity_sha256 == pin.generation_identity_sha256
+        assert (target / "TECHNICAL_COPY_RECEIPT.json").exists()
+        assert maximum_active[0] == 2 and len(write_threads) == 2
+    else:
+        with pytest.raises(ValueError, match="owned_copy_worker_failed|cancelled"):
+            copy_module.copy_technical_source(pin, target, budget=budget, cancel_callback=cancel)
+        assert not (target / "TECHNICAL_COPY_RECEIPT.json").exists()
+        assert (target / "TECHNICAL_COPY_FAILURE.json").exists()
+        assert written >= 1
+    assert active == 0 and 1 <= maximum_active[0] <= 2
+    assert root_ident not in write_threads

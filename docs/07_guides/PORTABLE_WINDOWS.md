@@ -6,7 +6,7 @@
 
 來源工具已可為研究Registry、舊單股回測與舊推薦組合建立新副本，只重綁新索引的結果檔路徑，原金融檔不重寫。操作、預算、授權與失敗隔離見[Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)。來源Main及既存125 EXE已驗新根原規則／結果、返回及新程序；125沒有打入這個新來源工具，不應直接以舊EXE呼叫該腳本。
 
-technical v4另有[完整來源複製與封存恢復候選](MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)，逐bytes保留原snapshot／manifest與原plan／receipt，另建新定位鏈。隔離小來源已驗，但真1,951檔匯出在600秒FAIL，仍為WIP，尚不能替換125來源。封存移位後的設計出口須以外部固定收據SHA恢復，不能只改根或手改原JSON。
+technical v4另有[完整來源複製與封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)，逐bytes保留原snapshot／manifest與原plan／receipt，另建新定位鏈。明選1,951檔的匯出、移位恢復、公開查詢及既存125 EXE正常Main／比較／收藏／fresh已限定驗證，原600秒FAIL保留。恢復須使用外部固定收據SHA，不能只改根或手改原JSON；既存收藏仍綁原來源，不自動改簽。
 
 這兩項來源工具不使整個試用包變成可攜。行情、一般推薦與既存收藏的來源映射、私人帳及其他主機仍依完整清冊；不只換launcher冒稱完成移機。目前本機試用入口統一看[目前指定試用版](TRIAL_VERSION_GUIDE.md)，下方日期化候選留作歷史。
 

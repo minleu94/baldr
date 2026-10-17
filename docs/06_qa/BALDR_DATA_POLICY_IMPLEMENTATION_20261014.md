@@ -3,7 +3,7 @@
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
 <a id="increment127-technical-source-copy"></a>
-## Increment127：原P14技術來源的新定位鏈與封存恢復（2026-10-17，WIP／全量出口FAIL）
+## Increment127：原P14技術來源的新定位鏈與封存恢復（2026-10-17，來源工具已驗／125保持）
 
 本輪針對原P14中v4 snapshot／parent／universe仍綁舊絕對路徑的搬移阻礙，不擴四條V1、不替換固定125或另立計畫。接手HEAD `75dc1ead6de2e56c14a5913b18ade9dad67cfadd`；Root沿Tech Lead／Execution／Data Audit／QA／Documentation履職，沒有獨立reviewer或新代理，累計10/10保持。原圖只作有界導航，context Level2為1740字／3694bytes、Unknown=[]，不授全庫EOF；QA00 outer SHA `1cd6a114171342cbd6666a628026643a600b0eca5b139789560f9f4808808a2b`。API／單寫範圍先凍結SHA `a7b10cbfe8f707cd0a81db9a9e81753c771d8df64fdb13d2c5ceed445b9c7df1`；封存必須可移位後恢復的原P14補充SHA `ad0b4516a2125c0b8e2e8087b3156b2908c70076e70929cb4ba70a3147135e60`。
 
@@ -21,9 +21,31 @@ QA04的immutable runner在helper開始前讀長路徑pin失敗，原FAIL及spec�
 
 Root另補成功發布前的整個目的樹清冊與目錄項預算，避免副本含額外檔或在同預算下不能恢復卻發成功收據；不重跑全量。QA06定向11PASS／22deselected，含兩個新目的端反例，compile／mypy1062／金融float守衛PASS，outer SHA `3a0a33511d5fac23bf1201a1b4b593b780f051abeedef9d76d186be2efae1e26`。它不消除QA04b逾時；既有strict reader、金融值與UI碼未改，未改22項及Workbench／validator不重跑。QA05正常Main／source與既存125EXE／fresh僅有測試草稿，**not_run**，不作交付證據。
 
-此輪保存可接手WIP及現行報告勘誤，不宣稱技術來源全量搬移可交付。執行出口需先有耗時階段證據，才能做有針對性的修復；不盲跑、縮來源或延長原期限。固定125保持可試用，其他原計畫旅程及外部缺件按原範圍繼續，不把此工具變成V1新前置。
+前一接手commit `3ef975b1`保存WIP及現行報告勘誤，當時沒有宣稱技術來源全量搬移可交付。執行出口需先有耗時階段證據，才能做有針對性的修復；不盲跑、縮來源或延長原期限。固定125保持可試用，其他原計畫旅程及外部缺件按原範圍繼續，不把此工具變成V1新前置。
 
 QA07核owner task、12 features及10份文件連結，errors=[]，outer SHA `b8e60fbd8ac2e7147a842a5277f13f926f280c101eaddd9590ac36ddee4aa9da`；三PID陣列空、handles關閉與mutex釋放。Feature Map、Snapshot、原計畫§9.5、current資料保存、主手冊／Runbook及現行試用指南同步WIP／FAIL邊界。Product／6M／目標設計、UI碼、排程與首次安裝模式未改，對應Coverage維持not_required；正文語意由Root另核，沒有獨立reviewer。
+
+### 逾時後的有界I/O修正（同一Increment127）
+
+以自有半成品做一次QA08診斷：256檔parent完整原reader約20.37秒，64份原create-only寫入串行3.07秒、雙執行緒2.23秒；原bytes不變、DB／network為0。這是小範圍耗時證據，不是正式冷暖矩陣或全量效能接受。outer SHA `b919345b545903e34ac99085f570b5dc10cef30e928336c86c31ab8b9fb50ecd`；Level3 context 2374字／4328bytes，composite_query_v1與technical_source_copy因budget_omitted列Unknown，後者已回實際正文讀取，不稱全庫EOF。
+
+Root先凍結雙I/O範圍，SHA `e29e4fda3bf5dc1add8cd0c72d9223251cfd12f5dc6fbf0a578081d036dafcc8`。只將獨立原件寫入、封存全檔SHA及來源／目的finish排入最多2件的執行緒佇列；原bounded reader、immutable writer、fsync、create-only、全檔SHA／layout、來源clock、金融值、完整1,951檔與原期限均不變。預算／已宣告檔案與取消callback仍由Root串行處理，正常／例外／取消離開前都等待所有自有I/O結束；不新增子程序或代理。
+
+QA09為14PASS／22deselected，compile／mypy1062／金融float守衛PASS；新增成功最多雙寫、worker失敗與取消後排空、callback只在Root的反例。outer SHA `33e734ccc10b5a830952b575b4f68a5a51af0cadf653e109c804147729cff49a`。舊QA04b FAIL及其半成品保持，未以14項取代全量驗證。
+
+QA10使用全新自有根與原六欄來源pins，匯出／整包移位恢復／公開查詢均PASS，每階段600秒、全組1500秒與wrapper1620秒保持。PIDs **35736→50784→38320**，宣告1,989／處理1,951／排除38、MA符合39、價格UNKNOWN5及2317／2330精確查詢一致；原DB及network為0，原快照不重編碼。新增分段耗時與os.open／io.open／builtins.open原根拒讀；原QA04b FAIL及半成品不改。第一份副本移到detached後舊export位置確實不存在。export master SHA `20a26673818f5dcc3e8ac1fee6449f919b97fbdf24c60f9c7462468ccc69c004`，另以首段輸出固定外部SHA核移位原件；restore master SHA `b84c716db57ce345b5c9208cc615c800b69d2ba7300057e940c39abafd95ebcc`。結果SHA `3f94060c8296177217bccb79d7f2e662c923fc2cbd72e4225d7d1e27eb2a95cf`，Job664 outer SHA `f0ea34dbc30973d52b130070a29c69ec381094c7544588c9284da30e76343534`，三PID陣列空、handles／mutex閉鎖、無forced cleanup。平台只列Root，無可重用Luna；沒有新建代理，10/10維持。
+
+### 既存125正常Main、收藏與新程序
+
+Root用Git差異核125來源`147e80d35fa2`至目前工作樹：全部ui_qt／data_module及價格消費程式未改，runtime差異只在兩個複製工具與無關的已存回測selector。具名範圍證據SHA `dc3b3dbe6fbdf2635fe8f1cc79041058adebf72963094f82805b6e2f76a95355`；來源CLI／public reader已用新根驗全量，因此本次**Source Main為not_required，不是passed**，只以既存125 EXE覆蓋新根的正常使用鏈。這不刪全計畫Source／Native等其他出口，也不把未跑Source UI冒充已跑。
+
+QA11先將原3個移位恢復案例的禁讀擴及os.open／io.open／builtins.open，恢復後也禁止再讀detached archive；3PASS／33deselected、compile通過。未改其他11項不重跑，來源app碼的compile／mypy1062／float沿QA09；沒有UI碼變更，不重跑Workbench／validator或未改四旅程。
+
+同一固定125 EXE（SHA `3784016e12bb1001f3cfae312e61cabd14ff8d5dc7abccac273a91dfb532bbca`）正常Main **19188→fresh49708**，從restored/live/universe明選1,951檔來源、MA39、8933／2506主個股各120列、返回原頁、同源比較、保存2506及兩股籃，再由觀察清單雙擊重開原query／page／選取／籃，全部通過。bookmark JSON SHA `f21cd36af87030fbbed4cd7370770a9da2920444f402e2e3ed91a347909c70d8`；六行情檔前後相同，原根檔案讀取／network為0，product origins全在bundle，沒有借用工作樹產品碼。另核restore所綁外部master SHA仍等於原export收據，不以移位後重新計hash冒充外部pin。
+
+EXE旅程收據SHA `51e6eb4c0ab3fcc2dab0d84095ab1b0387c35fc801aed4f150f4656df5936a69`；與來源public query的母體／MA／籃一致，整合結果SHA `a2dba985e7d3cf9552ccd28f158e33c6b7dbe6589c71747e3d51b794719573bf`。Job665 outer SHA `67c46ca23b5bd50b5eb8db4d39ba4f58bc7801d5a13e2b73d3ca034ab9197a1f`，三PID陣列空、process／Job handles關閉、mutex釋放、無forced cleanup。這是Windows Qt功能，不授Native座標／真人、其他DPI／主機、真N、來源用途或歷史PIT；原所有FAIL保持。 QA12核owner task、12features與10份連結errors=[]，outer SHA `34c3afedaf2d41c60eb18aeff13a95f8b180fe063fa08cb95554e3d9697ebdfc`，自然閉鎖；正文及diff由Root另核，不充作產品Gate。
+
+本次交來源工具及[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)，固定125入口、私人內容與既存收藏不自動重綁；既存收藏仍是原來源，不能換Root後冒充同一query身分。完整行情、一般推薦／收藏、私人帳、其他主機及全環境搬移仍待。接續回原P03已定位的TWSE純文字正負號被舊HTML顏色解析丟失，先核版本／publication契約，沒有正式資料回補、網路scope重置或maintainer觸發。
 
 ### 116外部報告的判讀
 

@@ -147,7 +147,7 @@ Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 te
 
 ## 保留、遷移與高風險邊界
 
-`technical_source_copy.py`目前為WIP定位候選，隔離小來源已驗；真1,951檔匯出在600秒FAIL，正常Main／fresh未跑，不使125來源可搬移。它處理具名完整v4來源的定位，不修改既有reader契約。原strict reader先驗snapshot／batch manifest／parent／universe閉包；新根逐bytes保存snapshot及manifest，原plan／receipt另存`original`，以既有receipt codec建立新parent與universe鏈，再由原strict reader驗完整新閉包。source clock、原規則／價格、qualification與unknown不變；新parent `observed_at`只表示副本組裝時間，不授來源首存或歷史PIT。
+`technical_source_copy.py`建立具名技術來源的新定位鏈與可移位封存；原600秒FAIL保留，經有界雙I/O修正後，明選1,951檔及既存125 EXE正常Main／收藏／fresh已限定驗證。它不自動重綁既存收藏、設定或整個125環境。它處理具名完整v4來源的定位，不修改既有reader契約。原strict reader先驗snapshot／batch manifest／parent／universe閉包；新根逐bytes保存snapshot及manifest，原plan／receipt另存`original`，以既有receipt codec建立新parent與universe鏈，再由原strict reader驗完整新閉包。source clock、原規則／價格、qualification與unknown不變；新parent `observed_at`只表示副本組裝時間，不授來源首存或歷史PIT。
 
 封存恢復以外部SHA固定完整複製收據，再核closed檔案清冊、全檔bytes／SHA與預算。舊絕對URI僅作封存內明示映射，不能直接交給原reader或回查舊根；重綁後才由原strict reader授予新定位鏈的讀取資格。原副本／更早歷史收據保留，新receipt／path identity另記；缺件、額外檔、連結、修訂、取消或超限不發成功收據。操作與限制見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)及[127 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)。一般推薦／既存收藏、私人帳與全環境搬移仍另行核對，不自動啟用設定。
 

@@ -19,7 +19,7 @@
 
 ## 目前工程狀態與限制
 
-原P14的technical v4搬移另有[127 WIP候選](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)：原snapshot／manifest與原收據保留，另建新定位鏈；隔離來源的移位恢復及反例已驗，但真1,951檔匯出在原600秒出口FAIL，沒有成功收據，正常Main／fresh未跑。此未通過出口隔離，不改125來源、不擴V1或放寬期限。116外部報告的現行差異亦已列入[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)。
+原P14的[127技術來源副本工具](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment127-technical-source-copy)已驗完整1,951檔匯出、整包移位恢復、公開查詢及既存125 EXE **19188→49708**的主個股／比較／收藏／fresh；原件、來源clock及UNKNOWN保留，原600秒FAIL不改。原根檔案讀取為0，未替換125入口或自動改簽既存收藏；操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)。完整行情、一般推薦／既存收藏、私人帳與其他主機仍待；接續回P03已定位的純文字漲跌方向解析丟失，先驗版本與方向，不回補舊列或觸發maintainer。116報告的現行差異見[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)。
 
 原P14另完成保存研究的新副本工具：三種研究store逐bytes複製，僅重綁新索引路徑，原金融值／來源manifest不改。來源Main與既存125 EXE已從新根開原規則／結果、返回及fresh，並禁止原根I/O與重算；125候選本身不替換。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，證據見[126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。行情、technical v4、一般推薦／收藏、私人帳及其他主機的完整搬移仍待，不把此步當全環境可攜。
 

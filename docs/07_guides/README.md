@@ -11,7 +11,7 @@
 | 使用整包 Windows 可攜版 | [可攜版指南](PORTABLE_WINDOWS.md) |
 | 新電腦接手舊環境、資料或排程 | [機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md) → [排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md) |
 | 為已保存回測建立新的輸出根 | [保存研究新副本](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，來源工具，不自動啟用設定或搬整個環境 |
-| 開發中的價格來源搬移候選 | [技術來源複製與恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)，WIP；真全量逾時，不能替換試用來源 |
+| 保存價格選股來源，或從移位封存恢復 | [技術來源複製與恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#技術來源的新副本與封存恢復來源工具)，明選pins與外部SHA，不自動改既存收藏／試用設定 |
 | 查一般 UI 日常操作 | [完整操作手冊](APPLICATION_MANUAL.md) → [主題手冊地圖](manuals/README.md) |
 | 唯讀核對全部 baldr 排程 | [全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md) |
 

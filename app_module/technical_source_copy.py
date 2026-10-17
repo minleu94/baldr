@@ -1,15 +1,18 @@
 """重綁具名v4技術來源的新定位鏈；原快照與原收據逐bytes保留。"""
 from __future__ import annotations
 
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import partial
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
 import re
 import stat
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from app_module.research_output_copy import ResearchOutputCopyBudget
 from app_module.daily_market_technical_snapshot_v4_repository import (
@@ -139,11 +142,13 @@ class _Archive:
         layout = _tree_layout(self.directory, budget.max_entries, cancel)
         if layout != {**{name: size for name, (size, _) in self.entries.items()}, "TECHNICAL_COPY_RECEIPT.json": len(self.raw)}:
             raise TechnicalSourceCopyError("technical_copy_archive_members_changed_or_pending")
-        for name, expected in self.entries.items():
-            _cancel(cancel)
-            raw = _read_bounded_file(self.directory / name, budget.max_file_bytes)
-            if (len(raw), sha256(raw).hexdigest()) != expected:
-                raise TechnicalSourceCopyError("technical_copy_archive_member_sha_mismatch")
+        _run_io((partial(self._verify_member, name, expected, budget.max_file_bytes)
+                 for name, expected in self.entries.items()), cancel)
+
+    def _verify_member(self, name: str, expected: tuple[int, str], maximum: int) -> None:
+        raw = _read_bounded_file(self.directory / name, maximum)
+        if (len(raw), sha256(raw).hexdigest()) != expected:
+            raise TechnicalSourceCopyError("technical_copy_archive_member_sha_mismatch")
 
     def resolve(self, logical: Path) -> tuple[Path, str | None]:
         if logical == self.logical_root:
@@ -164,6 +169,26 @@ class _Archive:
 def _cancel(callback: Callable[[], bool] | None) -> None:
     if callback is not None and callback():
         raise TechnicalSourceCopyError("technical_copy_cancelled")
+
+
+def _run_io(work: Iterable[Callable[[], None]], cancel: Callable[[], bool] | None) -> None:
+    """最多兩件獨立檔案I/O；預算及取消由呼叫端串行判斷，離開前收束所有寫入。"""
+    pending: deque[Future[None]] = deque()
+    iterator = iter(work)
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="technical-copy-io") as executor:
+        while True:
+            _cancel(cancel)
+            if len(pending) == 2:
+                pending.popleft().result()
+                _cancel(cancel)
+            try:
+                operation = next(iterator)
+            except StopIteration:
+                break
+            pending.append(executor.submit(operation))
+        for future in pending:
+            future.result()
+    _cancel(cancel)
 
 
 def _read_state(pin: TechnicalSourcePin, callback=None, cancel=None):
@@ -207,17 +232,29 @@ class _Files:
             raise TechnicalSourceCopyError("technical_copy_source_changed")
         return raw
 
-    def write(self, path: Path, raw: bytes) -> None:
+    def _prepare_write(self, path: Path, raw: bytes) -> bool:
         _cancel(self.cancel)
         if path in self.destination:
             if self.destination[path] != (len(raw), sha256(raw).hexdigest()):
                 raise TechnicalSourceCopyError("technical_copy_destination_conflict")
-            return
+            return False
         self.destination_bytes += len(raw)
         if len(self.destination) + 1 > self.budget.max_entries or self.destination_bytes > self.budget.max_total_bytes:
             raise TechnicalSourceCopyError("technical_copy_destination_budget_exceeded")
-        _write_immutable(path, raw, maximum=self.budget.max_file_bytes)
         self.destination[path] = (len(raw), sha256(raw).hexdigest())
+        return True
+
+    def write(self, path: Path, raw: bytes) -> None:
+        if self._prepare_write(path, raw):
+            _write_immutable(path, raw, maximum=self.budget.max_file_bytes)
+
+    def copy_raw(self, paths: dict[Path, Path]) -> None:
+        def work() -> Iterable[Callable[[], None]]:
+            for source, destination in paths.items():
+                raw = self.read(source)
+                if self._prepare_write(destination, raw):
+                    yield partial(_write_immutable, destination, raw, maximum=self.budget.max_file_bytes)
+        _run_io(work(), self.cancel)
 
     def layout(self, path: Path) -> None:
         physical, _ = self.resolve(path)
@@ -226,14 +263,27 @@ class _Files:
             raise TechnicalSourceCopyError("technical_copy_source_layout_changed")
         self.layouts[path] = current
 
+    def _verify_source(self, path: Path, expected: tuple[int, str]) -> None:
+        physical, pinned = self.resolve(path)
+        raw = _read_bounded_file(physical, self.budget.max_file_bytes)
+        identity = (len(raw), sha256(raw).hexdigest())
+        if identity[1] != expected[1] or (pinned is not None and identity[1] != pinned):
+            raise TechnicalSourceCopyError("technical_copy_source_sha_mismatch")
+        if identity != expected:
+            raise TechnicalSourceCopyError("technical_copy_source_changed")
+
+    def _verify_destination(self, path: Path, expected: tuple[int, str]) -> None:
+        raw = _read_bounded_file(path, self.budget.max_file_bytes)
+        if (len(raw), sha256(raw).hexdigest()) != expected:
+            raise TechnicalSourceCopyError("technical_copy_source_or_destination_changed")
+
     def finish(self) -> None:
-        for path, expected in self.source.items():
-            self.read(path, expected[1])
-        for path, expected in self.destination.items():
-            _cancel(self.cancel)
-            raw = _read_bounded_file(path, self.budget.max_file_bytes)
-            if (len(raw), sha256(raw).hexdigest()) != expected:
-                raise TechnicalSourceCopyError("technical_copy_source_or_destination_changed")
+        def work() -> Iterable[Callable[[], None]]:
+            for path, expected in self.source.items():
+                yield partial(self._verify_source, path, expected)
+            for path, expected in self.destination.items():
+                yield partial(self._verify_destination, path, expected)
+        _run_io(work(), self.cancel)
         for path, expected_layout in self.layouts.items():
             physical, _ = self.resolve(path)
             if _tree_layout(physical, self.budget.max_entries, self.cancel) != expected_layout:
@@ -390,8 +440,7 @@ def _copy_technical_source(pin: TechnicalSourcePin, destination_root: Path, *,
             for name in archive.entries:
                 if name.startswith("original/"):
                     files.write(history / name, files.read(archive.logical_root / name))
-        for source, destination in raw_copies.items():
-            files.write(destination, files.read(source))
+        files.copy_raw(raw_copies)
         for index, data in parents.items():
             origin = target / "original/parents" / f"p{index:06d}"
             for name in files.layouts[data["directory"]]:

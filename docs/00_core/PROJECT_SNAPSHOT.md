@@ -21,7 +21,7 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 ## 目前工程狀態與限制
 
-**現在推進第二列基本面研究。** [139](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment139-quanta-monthly-sales)已從既存TWSE公司原件補廣達／2382與官方網站綁定，另存八檔月營收版本並接原基本面頁。只保留同表百萬元整數及0.1%披露率，不混年度表、推算累計或接評分。來源／時間／精度反例、舊reader、Workbench85、validator25/0/4及mypy1069有分輪證據。真可用小時為台北10/18 04:00，Main26468已驗此前等待、價格／返回／重載及歷史隔離；到時後Main／fresh與新EXE尚待，未替換134。
+**現在推進第二列基本面研究。** [139](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment139-quanta-monthly-sales)已從既存TWSE公司原件補廣達／2382與官方網站綁定，另存八檔月營收版本並接原基本面頁。只保留同表百萬元整數及0.1%披露率，不混年度表、推算累計或接評分。來源／時間／精度反例、舊reader、Workbench85、validator25/0/4及mypy1069有分輪證據。固定2851386b的EXE與43檔本機候選已備妥，啟動器及小時前Source26468／EXE47640的等待、價格／返回／重載與歷史隔離通過；真可用小時為台北10/18 04:00，到時後的Source／EXE Main與新程序尚待，未交付或替換134。另查官方綜合損益表連結只取得302 ASPX錯誤頁，已保留原件及停止該入口，半年財報缺件不外推成月營收不可用。
 
 [138](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)保留整包兩次600秒FAIL及partial原件；有界I/O／同次issued session修正已提交checkpoint，不略過前後SHA或延長期限，也不再盲重跑整包。135月營收因子的缺月／前史修正只屬後端工程驗證，尚未進134正式評分。這些局部成果不授完整F12或P14。
 

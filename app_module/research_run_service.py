@@ -1128,8 +1128,9 @@ class ResearchRunService:
                 raise ResearchRunIntegrityError(
                     "未宣告 portfolio result marker 的 run 出現 sidecar 或 orphan bytes"
                 )
-            equity_bytes = reading.read(Path(metadata.equity_path), metadata.equity_parquet_hash)
-            trades_bytes = reading.read(Path(metadata.trades_path), metadata.trades_parquet_hash)
+            equity_path, trades_path = self._unmarked_run_artifact_paths(metadata, paths)
+            equity_bytes = reading.read(equity_path, metadata.equity_parquet_hash)
+            trades_bytes = reading.read(trades_path, metadata.trades_parquet_hash)
             reading.cancelled()
             equity = pd.read_parquet(BytesIO(equity_bytes))
             reading.cancelled()
@@ -1154,6 +1155,36 @@ class ResearchRunService:
             replay_lineage=replay_lineage,
             portfolio_result_artifact=artifact,
         )
+
+    def _unmarked_run_artifact_paths(
+        self, metadata: ResearchRunMetadataDTO, paths: dict[str, Path],
+    ) -> tuple[Path, Path]:
+        """不把複製索引後仍可讀的舊根誤認為已完成搬移。"""
+        root = self.parquet_dir.absolute()
+        result: list[Path] = []
+        for field, key in (("equity_path", "equity_final"), ("trades_path", "trades_final")):
+            value = getattr(metadata, field)
+            message = (
+                f"保存檔案路徑不符目前研究根或 run（{field}）；"
+                "請在原保存環境開啟，搬移需另核對索引與原檔。"
+            )
+            if type(value) is not str or not Path(value).is_absolute():
+                raise ResearchRunIntegrityError(message)
+            candidate = Path(value)
+            if candidate != paths[key].absolute() or ".." in candidate.parts:
+                raise ResearchRunIntegrityError(message)
+            try:
+                candidate.relative_to(root)
+                # 先核 lexical 路徑，避免 resolve 抹去被替換的檔案或目錄連結。
+                for node in (candidate, *candidate.parents):
+                    if node == root.parent:
+                        break
+                    if self._is_symlink_or_reparse_point(node):
+                        raise ResearchRunIntegrityError(message)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ResearchRunIntegrityError(message) from exc
+            result.append(candidate)
+        return result[0], result[1]
 
     def list_runs(self, *, include_archived: bool = False) -> list[ResearchRunMetadataDTO]:
         runs = self.repository.list_metadata(include_archived=include_archived)

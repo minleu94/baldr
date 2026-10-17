@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+開發來源另修保存回訪的路徑誤讀：Research Registry 索引複製後，不再沿其舊絕對路徑讀原根，也拒其他 run 檔名及根內連結替換。原件不改寫，固定121與其交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
+
 121固定來源`c62a3eca221b3a360f812973bf558061004a3315`，EXE SHA `c9bc1e3025ecd283711cd623613b18a3a97d7f300b070bc384adadf93dbcc9f7`，交付SHA `628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`。來源Main28164→32412、EXE35832→48656皆驗2317同窗419列／2進場意圖／2完成配對及保存回訪，金融輸出一致；62項／public66項／UI91項等定向證據不加總為Gate。原大整數成交量／前列串接紅測及其他FAIL保留。完整Native、真人、F06全功能、家族與有效績效仍待；P14完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
 
 120固定來源`aad10ca40a374f3d4e7406981580ce3d8c2efc1b`，EXE SHA-256 `43c0d50bdabc966e784b435a2b99a6166b4076a461d5a282ae93c76818749491`，交付SHA `0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`。來源Main35632→48176、EXE51132→23412，各三策略419列／332已知分數／87未知日，baseline／穩健／暴衝8／9／2配對。89項定向因果／保存測試、前輪268PASS、失敗修正後38＋17PASS及必要防線分開記錄，不加總成Gate。原2317在2025-07-30四價全缺、量0，原因未核，不補價或稱停牌；保留未知後有效區段可繼續。舊版本、119固定包及歷史FAIL保留，見[120 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。

@@ -4,6 +4,10 @@
 
 ## 模組責任
 
+### 保存結果的根路徑綁定（開發分支）
+
+`ResearchRunService.load_run_data()` 對未宣告 portfolio result marker 的 Registry run，先核 metadata 的兩個絕對路徑等於目前 `research_run_parquet_dir` 下該 run 的 final path，拒絕根內檔案／目錄連結或 reparse，然後交原 `_ArtifactReadRound` 核同份 bytes 的 SHA、預算及取消。只複製索引後仍可讀舊根不構成搬移；沒有 root alias、metadata 改寫或來源資格變更。marked portfolio sidecar 沿原獨立路徑契約；legacy repository 不在此變更範圍。驗證與未完成可攜出口見[Increment122 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。
+
 ### 布林帶寬低點突破的同次保存（開發分支）
 
 原P07進階研究以獨立`baldr_bollinger_squeeze_v1@1.0.0`沿既有StrategyRegistry／BacktestService／Broker接線；因果指標邊界產出BBANDS30，executor只以Decimal跨乘核前列20列帶寬低點、真突破與原20日含當日量比>1.5。它不等同VCP，亦不改舊布林策略或來源權威。typed producer只載入一次、最多保留50前置列，同次封存10來源SHA與帶寬／量能／前列／訊號。新execution schema與parameter contract明確分版；readmodel核保存內部一致性，不查目前Registry或重算。

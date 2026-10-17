@@ -147,6 +147,7 @@ Daily Decision Desk 是已保存來源的唯讀摘要入口。先確認資料日
 | 更新部分成功或失敗 | 保存日期範圍、錯誤、已完成階段；確認來源、資料庫鎖與磁碟空間，再依失敗階段處理。 |
 | 推薦或回測看起來很強 | 核對母體、決策日、資料日、成本、成交假設、驗證期間及 run ID；單次高報酬不是自然或實盤證據。 |
 | 保存／讀回不一致 | 保留 result/run ID 和錯誤；不要手工改 hash、複製 artifact 或按最新檔名代替原來源。 |
+| 「保存檔案路徑不符目前研究根或 run」（開發分支） | Research Registry 的索引仍指向其他根或其他 run 的保存檔。回原保存環境核對；不要只複製索引、改路徑或改 hash。完整搬移尚未交付，固定121不自動取得此守衛。詳[保存路徑與搬移](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存路徑與搬移開發分支)。 |
 | Task Ready 或 exit 0 | 這只表示局部排程狀態，不代表產物與 consumer readback 已通過；按[排程唯讀稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)核對同一 run。 |
 | 啟動出現 `QWidget::setTabOrder` | 後續來源版已修正推薦頁建立鍵盤順序的時機；已保存版本 → 讀取歷史版本 → 回退到所選版本可沿 Tab 操作。舊 EXE 不會自動取得修正；回報時保留視窗版本與完整訊息，見[啟動警告修復 QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)。 |
 | `company_registry_source_manifest_missing` | 公司名冊 CSV 已讀取，但同目錄 `companies.csv.source.json` 來源憑證缺失；目前公司／產業分類仍可使用，不能視為已驗證歷史 PIT。保留原 CSV；不要手填來源、時間或 hash 消除提示，應由既有來源取得流程產生可核對的憑證。此提示不代表主程式啟動失敗。 |

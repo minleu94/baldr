@@ -2,6 +2,28 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+<a id="increment122-registry-root-binding"></a>
+## Increment122：保存回訪拒絕錯根與別檔（2026-10-17，開發來源）
+
+本輪解除原P14／V1保存回訪的一個誤讀阻礙：未宣告portfolio result marker的Research Registry run，原reader直接依metadata絕對路徑讀取。只複製索引到其他根時，原根仍在就可能被誤當搬移成功；同內容別檔也可能被代入。現在先核權益／交易路徑精確對應目前Parquet根下該run的final path，拒絕根內檔案／目錄連結或reparse，再沿原同份bytes、SHA、取消與byte budget讀取。不改metadata、原件、金融結果、PIT、來源資格或marked portfolio契約；沒有加入搬移框架。
+
+使用者再次貼入的116報告為15,151bytes、SHA `1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`，與前輪具名報告相同；沒有重跑其中命令、Python或116完整旅程。其「四股」只適用一般歷史價庫，118起可由價格選股轉主個股頁看同源原價量；不能把固定條件的0交易或一組批次參數限制外推為所有版本／策略。啟動延遲仍是外部觀察，未本機重測；公司名冊缺來源憑證仍有限制，不能稱所有用途不受影響。
+
+| 本輪證據 | 結果與界線 |
+|---|---|
+| QA01原紅測 | 10 FAIL／1 PASS保留。兩個搬移案例先遇fixture目錄已存在、兩個relative案例為舊低階錯誤；另6個同內容別檔／連結偵測注入案例未拒絕。wrapper允許pytest exit1僅為保存紅測，不是產品PASS。outer SHA `aacbd81175ac6f90682d155a71b45e433b1b273ccebde24525c9ccc262757ea3`。 |
+| QA02受改回歸 | 136 PASS／1 SKIP／2 fixture FAIL，原輸出保留；兩個目錄fixture修正後另驗，未修改產品斷言。其餘125個既有service／repository／lineage／finalize／Decimal／batch保存／UI保存案例通過後不再重跑。此輪mypy未到達。outer SHA `769a4c52305435eee96a85d23157b037a63415623c5949b44eeb5c3d56108dc9`。 |
+| QA03限定重驗 | 13個路徑／錯根／正向讀回案例PASS；compile與mypy1055檔通過。原2個untyped函式提示保留，ui_qt既有ignore_errors不證強型別。outer SHA `9aaaeab77fcfccb412a96c1888857a5839162cceefe9c574c4d55a33964c9466`。 |
+| QA04 public／fresh | 新增真正子程序讀回同metadata／兩表且DB與Parquet原bytes不變；public歷史reader傳遞路徑拒絕。連同B07、R01預算／取消及受影響Registry／規則UI共96 PASS，compile通過。Qt teardown未載入Main的原提示保留，Job自然排空。這是來源API／Qt定向測試，不是正常Main、Native或EXE新接受。outer SHA `289846dd4fac8c3d66076e64d07c6255624ba88b874620a922be88229074f2fb`。 |
+
+原始spec、來源pins、stdout／stderr及結果在owner task的`increment122_path_red_qa01`、`increment122_path_green_qa02`、`increment122_path_fixture_qa03`、`increment122_public_reader_qa04`；新測試檔有15個案例，未將分輪數量加總成Gate。各輪先核前組三PID陣列空、handles關閉及mutex釋放，RAM≥8GiB，Job8GiB／12程序／kill-on-close；全部自然收尾、無forced cleanup。沒有新建代理（累計10/10），沒有正式資料、Task、網路抓取或個人資料寫入。
+
+Context QA01／04有budget_omitted，Root另外閱讀本次load／paths／保存／metadata及public歷史resolve正文，沒有宣稱全庫EOF；其他官方複合研究／Main未改部分保持未讀界線。Graphify只讀原圖，定位ResearchRunService／Repository；舊圖不授現在程式接受。文件同步覆蓋Manual／分冊、Backtest功能、current架構、Snapshot、試用指南及原計畫；架構總入口與UI功能總覽因入口／責任未改，維持原導航。
+
+目前指定固定候選仍是121，交付SHA `628be1285d682e3d295751ef5813ccec3ec50e88a22e54ec7b3c71bfeb08bf02`，本輪未改固定包、不要求重試未改四旅程。此修復只交開發來源；完整可攜搬移、v4分段絕對引用、正常Main／EXE新出口，以及原P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4與原FAIL繼續保留。
+
+QA05核12 features／8份文件、owner task及連結，errors=[]；outer SHA `711dac4cad8f244f1daab9950e9a1a74efb9bb89bea821b389d8c121fe2f47d8`，三PID陣列空、process／Job handles關閉、mutex釋放、無forced cleanup。圖譜使用query預算900，只有既有圖遍歷，沒有本輪重建或LLM抽取；來源正文與受改範圍仍由Root判讀。
+
 ## Increment64：P07W底正常回測與當次訊號保存
 
 **解除的交付阻礙**：Increment63只有可執行核心，正常清單無入口，也沒有當次訊號保存／pure規則讀回。本輪沿原StrategyRegistry、BacktestService、ResearchRun／VersionService接回原單股／歷史／返回／fresh；不另造撮合、金融公式或儲存。原§5.3幾何／進出場假說不改，新增明示numeric metadata與獨立`single-backtest-w-bottom-execution.v1`。起始HEAD `ad05644841b73533ae5cf4f63a060a8f074fcd12`，固定0f644faa預覽與V1四旅程不替換。

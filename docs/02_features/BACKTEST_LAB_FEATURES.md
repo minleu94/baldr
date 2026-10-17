@@ -16,6 +16,8 @@
 
 Registry 保存 frozen execution_contract／成本／terminal policy／status；建構與 query 不建 schema、不 reconcile，維護 owner 才可顯式恢復未完成保存。跨版本或 cancelled／partial 為 Incompatible；成本／稅／lot 差異為 Caution。損毀、缺檔、未知版本拒絕比較，不重算歷史。close-to-close forward outcome 是事後診斷，不能替代撮合 PnL；人工覆盤提案不授予 Formal credit 或 promotion。
 
+後續來源版的 unmarked Research Registry 結果讀取，先核 equity／trades 的絕對路徑精確對應目前根下該 run 的 final path，拒絕根內連結／reparse，再沿原 SHA、取消與 byte budget 讀取。只複製索引不能借原根仍在的檔案冒稱搬移成功；不改舊 metadata、不換檔或重算。這是保存回訪的防錯修復，完整搬移及固定121更新尚未交付，見[保存路徑與搬移](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存路徑與搬移開發分支)。
+
 固定組合模式目前仍是固定清單的逐檔研究（`fixed_basket_stock`），不是共享現金、共同再平衡的 portfolio engine；排行榜與 Registry 類型會明確標示「固定組合（逐檔）」。
 
 操作及排錯以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準；執行與 Registry 的歷史驗收細節見 [TASK-04](../09_archive/TASK_LOOP_04_HANDOFF.md)／[TASK-05](../09_archive/TASK_LOOP_05_HANDOFF.md)，跨卡整合與仍未完成的外部 Gate 見 [TASK-08](../06_qa/TASK_LOOP_08_HANDOFF.md)。離線研究不等於真實 fills、有效投資證據或 V4 closeout。

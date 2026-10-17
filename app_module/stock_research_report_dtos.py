@@ -155,6 +155,48 @@ class StockFundamentalObservationDTO:
 
 
 @dataclass(frozen=True)
+class StockFundamentalComparisonDTO:
+    """具名目前比較；當期須精確對應同一報告已展示的原欄位。"""
+
+    stock_code: str
+    metric_name: str
+    label: str
+    current_period: str
+    prior_period: str
+    current_value: Decimal
+    prior_value: Decimal | None
+    value_unit: str
+    change_value: Decimal | None
+    change_unit: str
+    current_source_id: str
+    current_source_version: str
+    source_id: str
+    source_version: str
+    source_snapshot_hash: str
+    available_at: str
+    note: str = ""
+    current_observed_only: bool = True
+    historical_pit_eligible: bool = False
+    aggregate_feature_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.current_value) is not Decimal or not self.current_value.is_finite() or self.current_period == self.prior_period:
+            raise ValueError("財報比較須有有限當期值及不同的比較期間")
+        if any(not text.strip() for text in (self.stock_code, self.metric_name, self.current_period, self.prior_period,
+                self.current_source_id, self.current_source_version, self.source_id, self.source_version, self.source_snapshot_hash, self.available_at)):
+            raise ValueError("財報比較的公司、期間及來源不可缺漏")
+        if self.current_observed_only is not True or self.historical_pit_eligible is not False or self.aggregate_feature_eligible is not False:
+            raise ValueError("目前財報比較不得提升歷史或聚合資格")
+        for value in (self.current_value, self.prior_value, self.change_value):
+            if value is not None and (type(value) is not Decimal or not value.is_finite()):
+                raise ValueError("財報比較只接受有限Decimal或明示缺值")
+        if self.value_unit not in {"TWD", "percent"} or self.change_unit != ("percent" if self.value_unit == "TWD" else "percentage_point"):
+            raise ValueError("財報比較的金額、百分比與百分點不可混用")
+        if (self.prior_value is None or self.change_value is None) and not self.note.strip():
+            raise ValueError("財報比較缺值須說明原因")
+
+
+@dataclass(frozen=True)
 class StockFlowObservationDTO:
     data_date: str
     branch_name: str
@@ -565,6 +607,7 @@ class StockResearchReportDTO:
     saved_technical_chart_json: str = ""
     portfolio_scenario: PortfolioScenarioStockProjection | None = None
     official_attention: StockOfficialAttentionDTO = field(default_factory=StockOfficialAttentionDTO)
+    fundamental_comparisons: tuple[StockFundamentalComparisonDTO, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.stock_code.strip():
@@ -576,6 +619,17 @@ class StockResearchReportDTO:
             or self.portfolio_scenario.stock_code != self.stock_code
         ):
             raise ValueError("portfolio scenario與個股報告代碼不符")
+        identities: set[str] = set()
+        for comparison in self.fundamental_comparisons:
+            if type(comparison) is not StockFundamentalComparisonDTO or comparison.stock_code != self.stock_code:
+                raise ValueError("財報比較與個股報告代碼不符")
+            if comparison.metric_name in identities:
+                raise ValueError("財報比較欄位重複")
+            identities.add(comparison.metric_name)
+            current = [row for row in self.fundamentals if (row.source_id, row.source_version, row.metric_name, row.period) ==
+                (comparison.current_source_id, comparison.current_source_version, comparison.metric_name, comparison.current_period)]
+            if len(current) != 1 or current[0].value != comparison.current_value or current[0].unit != comparison.value_unit:
+                raise ValueError("財報比較當期值／單位與原報告來源不同")
     def to_dict(self) -> dict[str, Any]:
         return _serialize(asdict(self))
 

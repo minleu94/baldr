@@ -58,6 +58,7 @@ from app_module.stock_research_report_dtos import (
     StockEvidenceEventDTO,
     StockFlowObservationDTO,
     StockFundamentalObservationDTO,
+    StockFundamentalComparisonDTO,
     StockMarketStatusEvidenceDTO,
     StockMarketStatusSnapshotDTO,
     StockOfficialAttentionDTO,
@@ -3001,13 +3002,26 @@ class StockResearchReportView(QWidget):
     def _render_fundamental(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("fundamental")
         layout.addWidget(self._section_heading("基本面／營收財報", report, "fundamental"))
+        represented: set[tuple[str, str, str, str]] = set()
+        if report.fundamental_comparisons:
+            comparisons = report.fundamental_comparisons
+            first = comparisons[0]
+            layout.addWidget(self._wrapped_label(
+                f"半年比較：{first.current_period}／{first.prior_period}；本版比較可用時間：{first.available_at}。"
+                "營收看同比%，利潤率看百分點差；只供目前研究。"))
+            comparison_rows = tuple((item.label, _comparison_value_text(item.current_value, item.value_unit),
+                _comparison_value_text(item.prior_value, item.value_unit), _comparison_value_text(item.change_value, item.change_unit)) for item in comparisons)
+            comparison_tips = tuple(tuple(item.note for _ in range(4)) for item in comparisons)
+            self._add_table(layout, ("項目", first.current_period, first.prior_period, "同比變化"), comparison_rows, 220, tooltips=comparison_tips)
+            represented = {(item.current_source_id, item.current_source_version, item.metric_name, item.current_period) for item in comparisons}
         for source in report.sources:
-            if source.source_id.startswith("official.twse.operating_summary."):
+            if source.source_id.startswith(("official.twse.operating_summary.", "official.issuer.financial_comparison.")):
                 layout.addWidget(self._wrapped_label("\n".join((source.source_label, *source.limitations))))
         if not report.fundamentals:
             layout.addWidget(self._missing_panel("沒有可用的公告／可得日基本面 row；不補零。"))
             layout.addStretch()
             return
+        remaining = tuple(item for item in report.fundamentals if (item.source_id, item.source_version, item.metric_name, item.period) not in represented)
         rows = tuple(
             (
                 {"monthly_revenue": "月營收", "statement_item": "財報項目", "valuation": "估值"}.get(item.kind, item.kind),
@@ -3020,27 +3034,24 @@ class StockResearchReportView(QWidget):
                 item.quality,
                 item.source_version or "—",
             )
-            for item in report.fundamentals
+            for item in remaining
         )
         value_tooltips = tuple(
             tuple(
                 _fundamental_basis_tooltip(item) if column in {6, 7, 8} else ""
                 for column in range(9)
             )
-            for item in report.fundamentals
+            for item in remaining
         )
-        self._add_table(
-            layout,
-            ("類型", "項目", "期間", "資料日", "公告日", "資料可得時間", "值", "品質", "版本"),
-            rows,
-            420,
-            tooltips=value_tooltips,
-        )
+        if rows:
+            self._add_table(layout, ("類型", "項目", "期間", "資料日", "公告日", "資料可得時間", "值", "品質", "版本"),
+                rows, 420, tooltips=value_tooltips)
         layout.addWidget(
             self._wrapped_label(
                 "已核單位的金額才顯示為 TWD；來源單位未核或金額無法解析時，值欄明示不可用，原件仍保留。"
                 "值欄提示說明期間基礎、基礎核實與特徵彙總資格。"
-                "未核實或不具彙總資格時，不推算累計或比率。"
+                + ("具名比較只依其已核來源方法計算，不授其他累計、策略或聚合特徵資格。" if report.fundamental_comparisons
+                   else "未核實或不具彙總資格時，不推算累計或比率。") +
                 "目前查閱含已實際觀測的官方快照；歷史日期查詢只使用符合可得日限制的資料。"
                 "現況快照沒有原公告日，不作歷史回測證據；各項資料日期可能不同。"
             )
@@ -4624,6 +4635,12 @@ def _percent_text(value: Decimal | None) -> str:
 
 def _bp_text(value: int | None) -> str:
     return "—" if value is None else f"{value:,} bp"
+
+
+def _comparison_value_text(value: Decimal | None, unit: str) -> str:
+    if value is None:
+        return "未提供"
+    return _decimal_text(value) + {"TWD": " TWD", "percent": "%", "percentage_point": " 百分點"}[unit]
 
 
 def _metric_text(metric: StockMetricDTO | StockFundamentalObservationDTO) -> str:

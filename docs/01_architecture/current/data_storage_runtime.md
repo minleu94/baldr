@@ -37,6 +37,10 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ### 具名營益目前研究版本
 
+Increment132新增明選`twse-operating-summary-comparative-2026h1.v1`，不擴寫下述125政策。新版本共12檔：`current/`逐bytes保留原三公司9檔，另有固定SHA的比較數值事實、外層manifest及成功時鐘receipt。前期事實取自既存完整官方半年報，只接受2317／2330／2454的2025-H1合併口徑；原PDF及擷取收據另留原根，不隨快照散布。外層逐公司綁官方文件、原件／收據SHA與一次性目前研究用途，不授完整PDF重展示或其他用途。
+
+公開reader重驗12檔、子版本、用途與真實現在；原當期五欄仍依台北19:00可用，新增比較依22:47成功保存向上取整至23:00。等待比較時保持原五欄，不把新時間倒填至舊版本。當期值保留CSV顯示精度，前期金額依財報披露單位；營收同比與前期率只有在披露誤差區間四角皆得到相同0.01%結果時才顯示，否則不可用。率差是顯示率的百分點差。DTO逐股／指標／期間／來源ID及版本／值／單位精確綁當期列；explicit as-of、保存研究上下文、歷史PIT、聚合、策略與ML不使用這份新比較。正常Main、同版EXE及交付狀態分別見[132 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。
+
 原`twse_operating_summary_snapshot.py`的v1仍只接受資料集20762固定CSV、2330及2026-H1，不改原政策或7份原件。貨幣／期間由同發行人官方半年報與營收、四項比率在顯示精度內交叉核對，不外推1055列或未來版本。雙外部SHA、完整原件、一次性用途及每批實際保存時鐘獨立重驗；官方只有出表日，依成功批次台北小時，不借HTTP Date或財報期末倒填可得性。
 
 固定125另以`twse_operating_summary_reviewed.py`沿原public reader核v1，逐SHA複製原7檔至新版本`base/`，外層manifest／receipt共9檔另綁2317／2330／2454各自半年合併口徑證據及新可用小時；原版本與首存時間不改。reader重驗外層及子版本、讀取前後SHA／檔案身分、pending／failure與實際時鐘，拒絕改issuer、用途、相對子路徑或前移小時。2382文件導向驗證頁，仍不可用。此版本已保存於2026-10-17，台北19:00以前拒讀；來源與固定125 EXE正常Main／fresh、返回／重載及同值／版本／時間／顯示已限定驗證；不以此接受全來源或歷史PIT。

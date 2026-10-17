@@ -27,7 +27,15 @@
 
 管理者選新版本時，同時設定`OPERATING_SUMMARY_POLICY_SCHEMA=twse-operating-summary-reviewed-2026h1.v1`及既有目錄／manifest／receipt三項；它們只選固定原件，不抓取或寫正式庫。缺一項、schema錯誤、SHA漂移、pending／failure、尚未到新小時或公司未接受，對應來源不可用，價格及其他報告區塊仍可用。原三項配置未設新schema時保持2330 v1；新版本的`base/`保留原7檔與原可用小時，不手改收據搬移或提前日期。來源及正常UI出口見[Increment125 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
 
-### 原117版本（保留）
+### 三公司去年同期比較（Increment132開發候選）
+
+本段僅適用明選比較schema的新候選；131／125原包仍依上方當期五欄，不會自動取得前期。入口同為「個股研究 → 載入個股報告 → 基本面／營收財報」。輸入2317、2330或2454，先看五列四欄的當期、去年同期與變化；表頭分別為2026-H1和2025-H1，都是半年累計。營收金額是TWD，同比是百分比；四率的變化是百分點，不能讀成相對成長率。稅後率仍為合併本期損益口徑。滑過數值可查披露精度說明，來源區可核當期CSV與獨立的官方財報比較版本。
+
+管理者須同時指定比較schema `twse-operating-summary-comparative-2026h1.v1`、目錄及manifest／receipt雙SHA。新比較的真實可用時間為台北2026-10-17 23:00，早於此時只保留原19:00已可用的當期五欄；不是以財報期末推定歷史可用。切價格頁、觀察清單再返回或重載後，仍讀固定版本；關閉後用相同配置重開，不選latest、不重新抓資料。
+
+2382、未接受公司、缺來源、文件驗證頁、SHA漂移或精度不足均保持不可用；只隔離對應比較，價格頁可繼續。explicit歷史查詢與保存研究原上下文不套今日比較。新版本不供選股評分、策略、ML、歷史PIT或交易。固定候選與實際QA出口見[試用指南](../TRIAL_VERSION_GUIDE.md)及[132 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。
+
+### 原117版本配置（保留）
 
 以下是原2330 v1的配置與限制，不覆蓋上方125三公司用途。可用[117基本面預覽](../../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)啟動；116原包保留。啟動器已成組指定`OPERATING_SUMMARY_SNAPSHOT_DIRECTORY`、`OPERATING_SUMMARY_MANIFEST_SHA256`及`OPERATING_SUMMARY_RECEIPT_SHA256`，一般使用不用設定。它們只明選固定版本，不觸發抓取、匯入或正式庫寫入；管理者不可手改收據或選latest。
 

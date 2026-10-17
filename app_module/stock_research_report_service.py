@@ -64,6 +64,7 @@ from app_module.stock_research_report_dtos import (
     StockEvidenceEventDTO,
     StockFlowObservationDTO,
     StockFundamentalObservationDTO,
+    StockFundamentalComparisonDTO,
     StockMetricDTO,
     StockMLSnapshotDTO,
     StockOutcomeDTO,
@@ -835,6 +836,7 @@ class StockResearchReportReadService:
             }
 
         fundamentals: tuple[StockFundamentalObservationDTO, ...] = ()
+        fundamental_comparisons: tuple[StockFundamentalComparisonDTO, ...] = ()
         fundamental_sources: tuple[StockReportSourceDTO, ...] = ()
         try:
             self._check_cancel(cancel_callback)
@@ -851,6 +853,12 @@ class StockResearchReportReadService:
                     else ReportFreshness.UNKNOWN.value
                 ),
             )
+            # 目前財報比較不得混入明選歷史日或原封存研究的時點。
+            if (as_of_date is None and not has_pinned_research_context and cutoff == self.clock().astimezone(_TAIPEI).date()
+                    and isinstance(self.operating_summary_provider, OperatingSummaryReportProvider)):
+                self._check_cancel(cancel_callback)
+                fundamental_comparisons, comparison_sources = self.operating_summary_provider.read_comparisons(code, observed_at=self.clock())
+                fundamental_sources += comparison_sources
             industry = discovered_industry
         except StockResearchReportCancelled:
             raise
@@ -1174,6 +1182,7 @@ class StockResearchReportReadService:
             saved_technical_chart_json=saved_chart_json,
             portfolio_scenario=portfolio_scenario,
             official_attention=official_attention,
+            fundamental_comparisons=fundamental_comparisons,
         )
 
     def _read_prices(

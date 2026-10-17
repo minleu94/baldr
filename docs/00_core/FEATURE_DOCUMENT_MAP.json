@@ -762,6 +762,7 @@
         "tests/test_stock_research_official_attention_widget.py",
         "tests/test_twse_operating_summary_report.py",
         "tests/test_twse_operating_summary_reviewed.py",
+        "tests/test_twse_operating_summary_comparative.py",
         "tests/test_twse_price_change_direction.py",
         "tests/test_twse_daily_price_sqlite_publication.py"
       ],

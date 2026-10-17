@@ -2780,3 +2780,50 @@ Runbook、Manual、Watchlist與可攜指南及current架構同步明選ID、原�
 QA04b是固定EXE內MainWindow功能旅程，Source Main未重跑；consumer未改，producer沿126–130具名證據。offscreen fixture未呼叫正常入口的apply_app_theme，其預設樣式／方框字截圖只供定位，不能記易讀性或Native視覺PASS；正常入口仍按ui_qt/main.py套用主題。原Native FAIL、真人、其他DPI與完整四旅程未驗界線保留。
 
 Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mutex；前組三PID陣列與handles／mutex閉鎖後才起下一組。691–698皆自然閉鎖，失敗原因原樣保留，沒有強制回收或提高期限。Snapshot、原計畫、Manual、試用／可攜與Runbook同步；接續回§0.4其他可交付列，不再擴搬移前置。TPEx／來源權威、歷史PIT、真N、完整雙策略績效、Native／真人、私人帳、完整跨主機及自然成熟各自待辦；正式資料／Task／maintainer、push、發布與交易無新增授權。
+
+<a id="increment132-fundamental-comparison"></a>
+## Increment132：三公司同半年比較（2026-10-17，開發候選）
+
+本葉回原§0.4第二列，解除既有完整官方半年報含去年同期、正常個股頁卻只能讀當期的阻礙。基線`65a50d369bde2ade5d3b99bd01859b59c0fd6a27`，沿既有reader／service／DTO／基本面頁增量，不另造實作或擴四條V1。Root Sol兼Tech Lead／Data Audit／Execution／QA／Documentation；沒有獨立reviewer，Luna累計10/10，未新增代理。131仍是固定試用入口，以下不提前宣稱新EXE或Native接受。
+
+### 原件、用途與精度
+
+沒有新HTTP。唯讀重用2317、2330、2454既存完整官方半年報及擷取收據；逐表核同發行人、2026-H1／2025-H1、合併本期損益及TWD。2317／2454披露千元，2330官方IR簡表披露百萬元；2330排除美元欄與單季欄，2454不借母公司歸屬淨利。三份原表PNG已目視核對，原PDF不納產品快照或重新展示。
+
+| 股票 | PDF SHA-256 | 去年同期營收（原披露單位） | 前期毛利／營益／稅前／稅後率 |
+|---|---|---|---|
+| 2317 | `bf4e184cf36e62f5112fa56a17927f47f67e29863f5074571f96382faa669709` | 3437783609千TWD | 6.23／3.00／3.61／2.77% |
+| 2330 | `a55d6aca73ba6246385d885fbb41a4efa55c92033cb644b48fda671814e0754f` | 1773046百萬TWD | 58.70／49.10／52.11／42.76% |
+| 2454 | `b3f12e584a69d5e7fa1513f99d9b65e372874fab05cac4b527daeded39a38dd0` | 303680808千TWD | 48.63／19.57／22.32／18.97% |
+
+當期五值保持原CSV精度；先以原財報當期金額勾稽，沒有以較細披露覆蓋原值。前期率與營收同比以Decimal／局部高精度計算，納兩側披露半單位誤差；四角四捨五入至0.01%不一致、基準營收不為正或證據不符時不可用，不補0。四率變化是兩期顯示率之百分點差，不是相對成長率。三股營收同比35.13／35.61／-0.77%，毛利率差-0.08／8.33／-2.38百分點；其他率差按同一規則。
+
+新schema `twse-operating-summary-comparative-2026h1.v1`另存12檔：原9件逐bytes放`current/`，再固定數值事實／manifest／receipt。每公司一次性用途只接受這組數值作目前研究，原capture的未接受旗標不重寫。真保存台北`2026-10-17T22:47:22.570112+08:00`，依政策23:00才可用；此前原當期五欄19:00的可用性保持，沒有等待比較就整頁鎖死。舊2330 v1、三公司reviewed v1與原件不改。
+
+比較DTO精確綁同股票、指標、期間、來源ID／版本、值及單位；浮點、非有限值、錯綁及資格提升拒絕。原provider `.read()`兩項回傳不變，新增明確`.read_comparisons()`；報告尾欄相容。正常目前查詢才附比較，explicit as-of及保存研究原上下文不混入今日比較。UI先呈現5列4欄，避免與原五欄重複；當期CSV與比較來源分開標示。2382驗證頁、其他公司、歷史PIT、聚合、策略、ML／Paper及交易用途保持隔離。
+
+### 受控驗證與當前出口
+
+- 699來源審計通過，事實SHA `745f6fd1f739e7b5772923009e4e32422a7de1bb96a6a6efcb70155c2184e0e0`，proof SHA `f2c0820dfa8f40c87063c33d0f77a2e03651e5f62941e49fd27cf7f2f064bda9`。
+- 700原spec在任何命令前被runner拒絕：`env_unset`不接受營益選擇變數。原守衛與FAIL保留；改在單次呼叫的暫時shell清除選擇，不更動全域環境或原spec，沒有重抓。
+- 701：compile、94項新比較／舊reviewed／原報告及service定向測試、Workbench85、validator25PASS／0FAIL／4SKIP、mypy1063與精度守衛通過；真版本已保存且提前讀比較拒絕、當期仍5欄。Qt測試未載Main的teardown提示不當完整session驗收。
+- 702只重驗後續來源限制文案修正：compile、5項受影響測試（15項未選）及mypy1063通過。既有UI ignore／未型別化提示不授UI強型別；未改的共同QA沿701，不反覆全跑。
+- 703來源Main在初始化被`personal_root_overlaps_application_package`擋下：舊測試helper誤選程式包內私人store，未進比較旅程。原FAIL保留；02b另存佈景，沿實際試用的隔離legacy根，不修改產品守衛、原spec或期限。
+- 704於真23:00後正常來源Main **24156→46408**通過：三公司各5比較、原當期5值、顯示%／百分點、版本／23:00、四股價格到2026-09-23、重載、切觀察清單返回及fresh一致；2382仍不可用，explicit2025-06-30查詢不帶新比較。原6行情／12財報bytes不變，原財報根I/O與網路0。這次依正常入口套主題，截圖已核表格及中文字可讀；offscreen不授Native、其他尺寸／DPI或真人接受。
+- 固定新EXE與交付：尚待；131仍是固定入口。
+
+所有原始結果位於owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`：
+
+| 收據 | SHA-256 |
+|---|---|
+| 699 outer `single_owned_qa_5244d44ac8c3455e951e240b048e7cba/receipt.json` | `d57a60152c57ce8272137318e6403ba704354c9ddf4ba8b2d4dbe1c94efafc0e` |
+| 700 outer `single_owned_qa_72fb3853cb964baab0ebd3d340259ad7/receipt.json` | `ffbdf99c17a77a08e5f9fec13a8e16992059837d54cf8d6e7ef01a80b80796d8` |
+| 701 outer `single_owned_qa_ee86f2bf74704aebae0e13d1398cfe52/receipt.json` | `99ea03c5fcb62ba4722605b6651453538d42d612263d8320c106b7c118d5c8d5` |
+| 702 outer `single_owned_qa_4c228be18c05444bba4855e77c0b0260/receipt.json` | `ed023bd544357fa8d54510e8536b950927814b909f55755a9a0aa1e9f4ffb2b4` |
+| 703 outer `single_owned_qa_64d7c68021114e05a07d1edcf798b378/receipt.json` | `1843b8270358225c9024a827c7dbeec54d8a27292e8517d4443b31044b8936c9` |
+| 704 outer `single_owned_qa_8c0409289c7a49a68202df032c25fbbb/receipt.json` | `b63dca36f89d3c931e1ba846fade5603654d543dd1d50e8bde15d5c8b1991e86` |
+| 來源Main `increment132_comparative_main_source_qa02b/result.json` | `133f5ea0bf33b4a60aa3794c59573796ac5fa5cf6d11e5f6c3a1ef54fd0a1037` |
+| `increment132_real_seal_qa01/result.json` | `afa353e55e9548f1ce4e99ad44daabe0962e0778b2f0beaed53ceff22a1c9510` |
+| 新版本 manifest／receipt | `b5c0dbc6123edfca1d6779225ba138d231f126e8252e74c7612426a4abd4a6ea`／`c739b6ea5d353e093c28969fe81302fb4363f7b5db1630ad4b06c453fd628c88` |
+
+Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動RAM≥8GiB；699–702皆自然閉鎖，三PID陣列空、handles與mutex釋放後才接下一組。原計畫、Snapshot、current架構、Manual及Feature Map同步，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未結案。TPEx、歷史原件、真N、完整績效、自然成熟及私人帳各自續推；沒有正式資料／Task／maintainer、push、發布或交易變更。

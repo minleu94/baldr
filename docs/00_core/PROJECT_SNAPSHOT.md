@@ -21,6 +21,8 @@
 
 ## 目前工程狀態與限制
 
+**Increment132開發候選**回原§0.4第二列，使用既存完整官方半年報補2317／2330／2454的2026-H1對2025-H1五列比較；沒有新增抓取或搬移前置。原CSV五值與19:00可用時間保持，新比較真保存22:47，依政策23:00才可用。94項受改／舊reader／service、Workbench85、validator25/0/4、mypy1063及精度守衛通過；文案修正後5項及mypy另驗通過。正常來源Main24156→46408已驗三公司比較／四股價格／返回／重載與fresh，原根I/O與網路0；固定新EXE及交付尚待，131仍是固定試用入口。2382、其他公司、歷史PIT與金融用途不擴授，見[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。
+
 131已完成整合交付，EXE SHA `8f2d5342e80a3b9249168fdbb18ca464043aab9bcd420e99601bfac597285b0b`，交付SHA `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d`。啟動器身分與受改Main／fresh分開核對；原Context、helper回傳型別與legacy欄位錯誤FAIL保留，沒有重複來源複製或放寬期限。125及原件不改。此為本機固定候選，完整跨主機／私人帳／其他收藏家族與Native／真人仍待；接續回原§0.4的其餘可交付列，不再擴搬移前置，詳[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。
 
 原P14的[Increment130](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment130-price-bookmark-copy)已補明選F07價格收藏的新來源副本：原清單完整保留，新收藏另記ID與來源沿革；原118收藏在已驗127技術副本上，由既存125 EXE正常Main **39772→42976**驗同源個股、返回及fresh，原根I/O／網路0。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)。原600秒組合FAIL保留，其他收藏家族、私人帳與完整搬移仍待。接續整合126–130已驗成果成獨立V1試用候選；本輪尚未替換固定125，不另加搬移前置工程。

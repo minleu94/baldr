@@ -413,6 +413,8 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 <a id="workspace-stock-research"></a>
 ## 個股研究（共用工作區）
 
+Increment132比較候選沿同一基本面分頁，先顯示2317／2330／2454的2026-H1／2025-H1／變化五列四欄；當期CSV與前期官方半年報分開列來源。營收同比用%，四率差用百分點；缺件／披露精度不穩定維持不可用。舊125及131仍是各自的當期五欄版本，新比較真可用小時與受改Main／EXE出口見[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)，正常步驟與限制見[操作](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#三公司去年同期比較increment132開發候選)。
+
 後續分支的基本面頁可沿原report port讀明選的2330／2026-H1營益固定版本，顯示五項原數值、來源／授權及前期缺件。只有這個發行人與版本接受目前研究；未明選、不完整、錯版或未到成功批次小時只隔離此來源。原價格／技術、返回與歷史來源守衛保持。配置與步驟見[具名營益固定版本](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)，各平台驗證範圍見[Increment117 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment117-operating-summary)。
 
 個股研究是 Recommendation、觀察清單、Portfolio 等流程共用的同一工作區，保存結果與當下市場研究的來源身份不可互換。操作步驟看[推薦與 Research Lab 手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)。

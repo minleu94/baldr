@@ -2310,3 +2310,18 @@ QA13另複製109原18份隔離狀態、重綁自有推薦索引及117原7份基�
 完整比對通過後才create-only建立[120指南](../../output/trial/Baldr-Daily-Research-120/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-120/KNOWN_ISSUES.md)及[交付收據](../../output/trial/Baldr-Daily-Research-120/DELIVERY_RECEIPT.json)，交付SHA `0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`，outer `2f2c5e439d985dc328f9a5133187a378506a22cd6a3ec3575bfcff325073261a`。116／117／118／119交付收據逐SHA保持，沒有私人內容匯入、正式資料寫入或Task／maintainer變更。120現為指定本機工程候選；未改四旅程沿原證據，不加總測試為Gate。Qt offscreen功能及同版金融輸出不授Native／真人／不同DPI／歷史PIT／有效策略，原FAIL和完整補完目標保持。
 
 最終QA16核自有task、12features及11份中央／包內文件，errors=[]；outer `53f665faf385da55d41db1dbd737db7099a31f078cc11cd0abf9b79eb5e09f38`。QA16b依共同規則補齊最後版面修正後的Workbench指定85案例，85PASS，outer `9cb8886c4736f3b9f6905a583432b09429d825cf8429ba492c57df35175598e3`。兩組三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後只記錄結果並提交文件接手點；完整目標保持進行，120固定包與交付原件不再更動。
+
+<a id="post120-native-stock-fundamental"></a>
+### 120交付後：2330基本面與價格的限定Native驗收
+
+本輪接續原P13／P14與§0.4第二列的原生缺口，**沒有新產品Increment、程式修改、重建EXE或改寫120固定包**。沿Computer Use官方`@oai/sky`選唯一自有視窗，以畫面座標執行原生點擊／捲動，輸入前另核「搜尋個股代碼」焦點；不使用QTest、UIA invoke或Qt方法代點。Host只讀元件及觀測原生事件／狀態，保留15秒曝光／讀取、點擊命中與祖先裁切、240秒子程序及原Job資源守衛。
+
+QA01已實際操作父程序，但host把正常關閉後`isExposed=False`誤判為初次曝光逾時；FAIL／原events／states與outer `2c1bcf98721ce38ab1f1540d656cc2c3bec297328c5cde777fd3e8759d011807`保留。QA02只修host：曝光成功後記住初次曝光，處理關閉事件後即收尾；Qt向父元件轉送的非spontaneous複本另列，不充當原生輸入。沒有放寬原生點擊的曝光、命中、裁切或期限斷言。
+
+固定120 EXE `43c0d50bdabc966e784b435a2b99a6166b4076a461d5a282ae93c76818749491`，正常Main **52368→fresh32196**，兩邊皆從原「個股研究」輸入2330、載入報告、開基本面並捲動看五欄、回價格／技術、切觀察清單再返回、原按鈕重載、正常關閉。各8個原生spontaneous滑鼠事件的守衛全成立，各兩次載入；五原值與台北`2026-10-17T14:00:00+08:00`可用小時一致，價格至2026-09-23。Root逐畫面核五欄與價量圖、正常分頁及返回；WGC畫面留在本對話工具回傳，未另解碼或保存螢幕payload，不冒稱有可攜PNG原件。
+
+[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/post120_native_main_qa02/result.json) SHA `f347c236b48d1926a97fa89d9ca3d1766e12062fd89950736fa1062f9de7f3fb`，outer `bf846db6d56bb286b93eecdd3431e15ee332ae5a538131e85cf0b233b314b664`；[限定接受收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/post120_native_acceptance.json) SHA `0f8425a5f0427b8c082fd6c10bf732e23a5a4476a4b00ef4fefb6db7787f4583`。6行情＋7基本面隔離副本與原120的13檔SHA皆未變，無socket attempt，120交付SHA仍`0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`。開始RAM24.69GiB、結束24.90GiB；三PID陣列自然空、process／Job handles關閉、mutex釋放，無強制清除，Computer Use再核自有視窗為空。
+
+本次只接受這條**固定120／2330目前研究的原生旅程**；117歷史Native FAIL不改判，三計分策略Native、其他來源／尺寸／DPI、真人、歷史PIT、前期財報、完整P03與全產品Gate仍待。來源及真帳缺件不因本次原生成功解除；沒有重跑已驗的回測、P11或其他四流程。P06缺既有真策略Paper帳的問題已向使用者詢問，未獲資料前不以合成帳或成本假造NAV。
+
+QA03核自有task、12features／4份補證文件與連結，errors=[]；outer `444fe5c685df178eaee8b72f6a50dd2e15bee1550837ccc6799e26a11c6646c4`，三PID陣列自然空、handles關閉、mutex釋放。產品程式與操作未變，沒有因此重跑既有pytest／mypy或重建候選；限定證據與剩餘範圍各自保留。

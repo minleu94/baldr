@@ -158,6 +158,8 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 **Increment117接續第二列的正常數值出口**：[117基本面預覽](../../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)固定`8109709a0721`，以既存官方半年PDF獨立勾稽開放CSV之2330／2026-H1五欄，只接受這一原件目前研究。原件→用途／批次小時→原report／基本面頁→重載／返回→新程序已由來源版與EXE在真14:00後限定驗證；Qt元件功能不替代原生螢幕命中，本輪該項仍FAIL。前期、其他公司、歷史PIT、P07／P12及完整P03保留；116與四條V1不增前置，不重跑未改旅程。詳[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment117-operating-summary)。
 
+**120交付後的原生補證**：沿同一固定120 EXE，以Computer Use原生滑鼠／鍵盤走2330基本面五值／捲動、價格圖、觀察清單切頁返回、重載及另一程序同版讀回；52368→32196各8次原生點擊，曝光／命中／裁切與15秒讀取守衛保持，13輸入原SHA不變。這關閉該目前研究旅程的Native未知，沒有新Increment或重建包；117原FAIL、其他旅程／DPI／真人、前期與來源缺件仍保留，見[限定原生QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post120-native-stock-fundamental)。
+
 #### 為什麼改
 
 Increment118處理第一列與原P01／P02／P05的連貫性阻礙：價格來源內選出的股票，可直接在主個股工作區看同份保存價量及五規則，再返回原query／頁／比較籃並收藏；一般四股價庫不再是這條下鑽的前置。來源版受改與共同UI檢查、Main收藏及fresh已通過；固定118 EXE已驗8933／2506同源工作區、原頁返回、比較、收藏及另一程序重開；沒有新增策略、重算指標、來源capture或V1範圍。來源可得時間／歷史PIT／真N／真人與原Native FAIL仍各自保留，證據見[Increment118 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment118-price-stock-workspace)。

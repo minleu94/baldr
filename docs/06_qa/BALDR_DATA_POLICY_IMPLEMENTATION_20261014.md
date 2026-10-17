@@ -2782,9 +2782,9 @@ QA04b是固定EXE內MainWindow功能旅程，Source Main未重跑；consumer未�
 Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mutex；前組三PID陣列與handles／mutex閉鎖後才起下一組。691–698皆自然閉鎖，失敗原因原樣保留，沒有強制回收或提高期限。Snapshot、原計畫、Manual、試用／可攜與Runbook同步；接續回§0.4其他可交付列，不再擴搬移前置。TPEx／來源權威、歷史PIT、真N、完整雙策略績效、Native／真人、私人帳、完整跨主機及自然成熟各自待辦；正式資料／Task／maintainer、push、發布與交易無新增授權。
 
 <a id="increment132-fundamental-comparison"></a>
-## Increment132：三公司同半年比較（2026-10-17，開發候選）
+## Increment132：三公司同半年比較（2026-10-17，已交固定候選）
 
-本葉回原§0.4第二列，解除既有完整官方半年報含去年同期、正常個股頁卻只能讀當期的阻礙。基線`65a50d369bde2ade5d3b99bd01859b59c0fd6a27`，沿既有reader／service／DTO／基本面頁增量，不另造實作或擴四條V1。Root Sol兼Tech Lead／Data Audit／Execution／QA／Documentation；沒有獨立reviewer，Luna累計10/10，未新增代理。131仍是固定試用入口，以下不提前宣稱新EXE或Native接受。
+本葉回原§0.4第二列，解除既有完整官方半年報含去年同期、正常個股頁卻只能讀當期的阻礙。基線`65a50d369bde2ade5d3b99bd01859b59c0fd6a27`，沿既有reader／service／DTO／基本面頁增量，不另造實作或擴四條V1。Root Sol兼Tech Lead／Data Audit／Execution／QA／Documentation；沒有獨立reviewer，Luna累計10/10，未新增代理。來源checkpoint為`e3f042dd96736f57c36054b14ca8e5a125c47395`，已形成132固定本機候選；131及所有原件保留，Native／真人與完整Gate仍分列。
 
 ### 原件、用途與精度
 
@@ -2810,7 +2810,12 @@ Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mute
 - 702只重驗後續來源限制文案修正：compile、5項受影響測試（15項未選）及mypy1063通過。既有UI ignore／未型別化提示不授UI強型別；未改的共同QA沿701，不反覆全跑。
 - 703來源Main在初始化被`personal_root_overlaps_application_package`擋下：舊測試helper誤選程式包內私人store，未進比較旅程。原FAIL保留；02b另存佈景，沿實際試用的隔離legacy根，不修改產品守衛、原spec或期限。
 - 704於真23:00後正常來源Main **24156→46408**通過：三公司各5比較、原當期5值、顯示%／百分點、版本／23:00、四股價格到2026-09-23、重載、切觀察清單返回及fresh一致；2382仍不可用，explicit2025-06-30查詢不帶新比較。原6行情／12財報bytes不變，原財報根I/O與網路0。這次依正常入口套主題，截圖已核表格及中文字可讀；offscreen不授Native、其他尺寸／DPI或真人接受。
-- 固定新EXE與交付：尚待；131仍是固定入口。
+- 705文件結構／連結12功能、9來源通過；Root另核正文與coverage，不將結構PASS當產品接受。
+- 706由乾淨checkpoint沿既有Windows builder建新EXE，56,599,677bytes，SHA `c0b7e873697635e1237bdcf8f9df714ec35bb1ad6d01ed9b29d4f63534805345`。原builder記`built_not_validated`，後續Main收據另列，不改原建置收據。
+- 707組裝在來源canonical recommendation目錄的strict realpath遭沙箱WinError5拒絕，發生於目的store建立前。132根已核為空，原失敗與helper／spec保留；708另存05b佈景，正常Windows權限、相同Job與期限接手已核空根，沒有清除或重複複製來源。
+- 708另存六行情、12件比較版本及明選原109研究／推薦；只帶原131QA的示範收藏，不讀131後續私人內容。未改的完整技術來源明選共用131已驗元件，master SHA `58636e09a83b360ecf9d3ca8c115c27a249a92103c65de74d02b54d36cfe17c9`，不再複製1,951檔；配置／指南明示須保留131。這不是完整隔離整包或跨主機接受。
+- 709在132實際目錄的新EXE正常Main **36476→49708**通過：三公司各5比較與來源Main逐DTO相同；原五值19:00／新比較23:00及2382隔離保持。四股價格／重載、原推薦、2506示範收藏恢復39符合、8933／2506比較順序、主個股120列價量及原query／page返回／fresh通過。全部原行情／比較bytes保持；131明選技術元件以外的舊根／原財報I/O及網路0。正常主題的2330新程序圖已核中文字與表格可讀；仍不授Native／其他尺寸DPI／真人。
+- 710逐SHA核EXE、建置收據及source.zip，核六個本次程式／測試的封存內容，`Launch-Baldr.cmd --check` Exit0且狀態未改，另存交付與post-QA初始狀態收據。啟動資訊只證身分，Main旅程由709證明。未改回測／其餘旅程沿124／125／131原證據，不全部重跑或調參。
 
 所有原始結果位於owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`：
 
@@ -2823,7 +2828,16 @@ Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mute
 | 703 outer `single_owned_qa_64d7c68021114e05a07d1edcf798b378/receipt.json` | `1843b8270358225c9024a827c7dbeec54d8a27292e8517d4443b31044b8936c9` |
 | 704 outer `single_owned_qa_8c0409289c7a49a68202df032c25fbbb/receipt.json` | `b63dca36f89d3c931e1ba846fade5603654d543dd1d50e8bde15d5c8b1991e86` |
 | 來源Main `increment132_comparative_main_source_qa02b/result.json` | `133f5ea0bf33b4a60aa3794c59573796ac5fa5cf6d11e5f6c3a1ef54fd0a1037` |
+| 705 outer `single_owned_qa_03a34eaf402d4c5c802def5eae38f021/receipt.json` | `ac7be28b02a77bdaec4c279be9dafa63f24a2cf91743ca33cbafb702c61270c4` |
+| 706 outer `single_owned_qa_7618b261a6f8469a8eb893aef8054e9d/receipt.json` | `36291fdc481094e68d193e1475059364517659c450a695d7b8c98dc94d779ec7` |
+| 707 outer `single_owned_qa_5ed50a25ff1d46638b195f7e8d62bbef/receipt.json` | `ba52b3119a7bffa88f22305d38251f8c6d797888cf88fcf85e59af4591bc586c` |
+| 708 outer `single_owned_qa_e153a6dcbf134b8ba0b1daf36697e6ab/receipt.json` | `f995a2c0afae5e48a05951ed1056f428cdb64e9b9e4e170fd17af714a34f1b86` |
+| 709 outer `single_owned_qa_796c018a1d4b4efaa93891051cf57c49/receipt.json` | `12eebbc7120c73692231edd863badcf9525168e7a2dd9993da85956970e7111d` |
+| EXE Main `increment132_trial_main_qa06/result.json` | `a76e6239972e5a7add4810d7ab5b9c48373955584f6230376855cda1085db5a7` |
+| 710 outer `single_owned_qa_820d75c6c42e40aa97d72a509681d766/receipt.json` | `704912d21c97a130f206f6dae4e30deff9a54a2ec06083c6a64bac0d14336b29` |
+| 132 `DELIVERY_RECEIPT.json` | `67ee490d30b588fe206a2614891c1eaa0bc3f30777e7efa848c84b4cba93d151` |
+| post-QA初始state | `3a1ad43542f8387d677e8bf9ac2037a441110ebab69ead1d3a2a740cdc190415` |
 | `increment132_real_seal_qa01/result.json` | `afa353e55e9548f1ce4e99ad44daabe0962e0778b2f0beaed53ceff22a1c9510` |
 | 新版本 manifest／receipt | `b5c0dbc6123edfca1d6779225ba138d231f126e8252e74c7612426a4abd4a6ea`／`c739b6ea5d353e093c28969fe81302fb4363f7b5db1630ad4b06c453fd628c88` |
 
-Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動RAM≥8GiB；699–702皆自然閉鎖，三PID陣列空、handles與mutex釋放後才接下一組。原計畫、Snapshot、current架構、Manual及Feature Map同步，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未結案。TPEx、歷史原件、真N、完整績效、自然成熟及私人帳各自續推；沒有正式資料／Task／maintainer、push、發布或交易變更。
+Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動RAM≥8GiB；699–710皆自然閉鎖，三PID陣列空、handles與mutex釋放後才接下一組。原計畫、Snapshot、current架構、Manual／試用／可攜／Runbook及Feature Map同步，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未結案。接續回原第三至五列的獨立可交付出口，不把額外搬移或同來源重驗加成共同前置；TPEx、歷史原件、真N、完整績效、自然成熟及私人帳各自續推。沒有正式資料／Task／maintainer、push、發布或交易變更。

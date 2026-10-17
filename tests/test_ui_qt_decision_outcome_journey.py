@@ -456,6 +456,42 @@ def test_ready_outcome_shows_exact_source_limits_without_promoting_it() -> None:
     widget.close()
 
 
+@pytest.mark.parametrize("status,target,label", [
+    ("missing_price", "missing_at_planned_official_session", "來源標示計畫目標日缺收盤價，需補來源"),
+    ("insufficient_future_data", "waiting_for_planned_official_session", "來源標示等待計畫目標日"),
+    ("ready", "observed_on_planned_official_session", "來源標示已取得計畫目標日價格"),
+])
+def test_maturity_table_exposes_saved_plan_and_actual_dates_without_reclassifying(status: str, target: str, label: str) -> None:
+    original = _journey(outcome_status=status)
+    journey = replace(original, outcome_maturity=tuple(
+        replace(item, planned_official_maturity_date="2026-01-08", outcome_price_date="2026-01-09" if status == "ready" else None,
+            source_data_as_of_date="2026-01-10", target_price_state=target,
+            source_price_gap_reason="no_close_on_planned_official_session" if status == "missing_price" else None,
+            planned_official_calendar_status="annual_plan_only", formal_credit_granted=False)
+        if item.window_days == 5 else item for item in original.outcome_maturity))
+    widget = DecisionOutcomeJourneyWidget(JourneyServiceStub({"result-1": journey}), _context())
+    widget.resize(1180, 820)
+    widget.show()
+    _wait_for(lambda: widget.journey is not None)
+    model = widget.maturity_table.model()
+    assert model.columnCount() == 6
+    assert model.headerData(4, Qt.Horizontal) == "計畫目標日"
+    assert model.headerData(5, Qt.Horizontal) == "實際取價日"
+    assert model.index(0, 4).data() == "2026-01-08"
+    assert model.index(0, 5).data() == ("2026-01-09" if status == "ready" else "未提供")
+    table = widget.maturity_table
+    assert table.columnViewportPosition(5) + table.columnWidth(5) <= table.viewport().width()
+    reason = model.index(0, 3).data()
+    assert label in reason and "來源資料截止：2026-01-10" in reason
+    assert "臨時休市未核" in reason and "未獲正式採認" in reason
+    if status == "missing_price":
+        assert model.index(0, 2).data() == "缺結果價格"
+        assert "不以後一筆價格替代缺價日" in reason
+    assert widget.journey is journey
+    assert next(item for item in journey.outcome_maturity if item.window_days == 5).outcome_status == status
+    widget.close()
+
+
 def test_mixed_horizons_show_available_source_and_pending_separately() -> None:
     base = _journey()
     mixed = replace(

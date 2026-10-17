@@ -529,6 +529,11 @@ class OutcomeMaturityRecord:
     source_warning_codes: tuple[str, ...] = ()
     planned_official_calendar_status: str | None = None
     formal_credit_granted: bool | None = None
+    planned_official_maturity_date: str | None = None
+    outcome_price_date: str | None = None
+    source_data_as_of_date: str | None = None
+    target_price_state: str | None = None
+    source_price_gap_reason: str | None = None
 
     @property
     def maturity_key(self) -> tuple[str | None, int]:
@@ -547,7 +552,23 @@ class OutcomeMaturityRecord:
             "source_warning_codes": list(self.source_warning_codes),
             "planned_official_calendar_status": self.planned_official_calendar_status,
             "formal_credit_granted": self.formal_credit_granted,
+            "planned_official_maturity_date": self.planned_official_maturity_date,
+            "outcome_price_date": self.outcome_price_date,
+            "source_data_as_of_date": self.source_data_as_of_date,
+            "target_price_state": self.target_price_state,
+            "source_price_gap_reason": self.source_price_gap_reason,
         }
+
+
+def _canonical_maturity_date(value: object) -> str | None:
+    """只顯示原件的完整 ISO 日期；不從時間戳、價格列或目前日曆推算。"""
+    if type(value) is not str:
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return value if parsed.isoformat() == value else None
 
 
 def project_outcome_maturity(
@@ -2516,6 +2537,14 @@ class DecisionOutcomeJourneyService:
                         formal_credit_granted=(
                             formal_credit if isinstance(formal_credit, bool) else None
                         ),
+                        planned_official_maturity_date=(
+                            _canonical_maturity_date(outcome_metadata.get("planned_official_maturity_date"))
+                            if outcome_metadata.get("maturity_basis") == "official_market_sessions" else None
+                        ),
+                        outcome_price_date=_canonical_maturity_date(outcome_payload.get("outcome_price_date")),
+                        source_data_as_of_date=_canonical_maturity_date(outcome_payload.get("data_as_of_date")),
+                        target_price_state=_optional_text(outcome_metadata.get("target_price_state")),
+                        source_price_gap_reason=_optional_text(outcome_metadata.get("source_price_gap_reason")),
                     )
                 )
         return records

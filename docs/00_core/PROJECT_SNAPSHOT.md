@@ -21,6 +21,8 @@
 
 ## 目前工程狀態與限制
 
+**Increment134來源候選**回第五列P11補逐期計畫目標日、實際取價日與缺價原因。59項核心、17項UI（另1項正式smoke未啟用）、Workbench85／validator25/0/4、mypy1066與精度防線通過；Source Main36184→48864已驗兩個原推薦／股票的結果、日期曝光、返回與fresh。133固定入口不變，新EXE尚待；1538缺價與60日待成熟保持，沒有重算報酬、正式回補或自然資格升格，見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
+
 **Increment133已交本機固定候選**，回原第四列補保存策略逐日訊號對照：同股／研究窗／全部價量與解析政策核對後，原Registry可讀2至5個不同策略的進場／出場／未知與原規則。來源Main44552→44732已驗正常保存；24904→3112只補摘要；新EXE9076→15412再驗同版保存與重開，來源／EXE金融輸出一致。EXE SHA `b3cd7a19c49f407576123eb83f169f2e3b4dbf0ab90e6b835ec7044c134656db`，交付SHA `5eecbefd11f19c9a492e0a328356bf171d32e95bc852043a6c821fa62e5746d7`。原FAIL、完整績效、PIT及Native／真人界線保持，見[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
 
 **Increment132已交本機固定候選**，回原§0.4第二列補三公司去年同期比較。原CSV五值及19:00時間保持，新比較依22:47保存、23:00才可用。94項受改／舊reader／service、Workbench85、validator25/0/4、mypy1063與精度守衛通過，文案後5項另驗；來源及EXE正常Main／fresh金融輸出一致。EXE SHA `c0b7e873697635e1237bdcf8f9df714ec35bb1ad6d01ed9b29d4f63534805345`，交付SHA `67ee490d30b588fe206a2614891c1eaa0bc3f30777e7efa848c84b4cba93d151`。原FAIL保留；2382／其他公司、歷史PIT、金融用途、真帳、完整Native／真人與Gate仍待，見[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。

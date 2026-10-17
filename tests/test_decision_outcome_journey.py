@@ -785,6 +785,65 @@ def test_missing_result_key_is_unknown_without_fabricating_payload() -> None:
     assert any(item.code == "recommendation_result_key_missing" for item in journey.diagnostics)
 
 
+def test_maturity_dates_preserve_exact_source_plan_separately_from_price_rows() -> None:
+    outcome = _outcome()
+    outcome["metadata"].update({
+        "maturity_basis": "official_market_sessions",
+        "planned_official_maturity_date": "2026-01-08",
+        "expected_maturity_date": "2026-01-30",
+        "target_price_state": "observed_on_planned_official_session",
+    })
+    original = json.dumps(outcome, sort_keys=True)
+    journey = _service(events=[_event()], outcomes=[outcome]).build(RESULT_ID)
+    row = next(item for item in journey.outcome_maturity if item.window_days == 5)
+    assert row.planned_official_maturity_date == "2026-01-08"
+    assert row.outcome_price_date == row.source_data_as_of_date == "2026-01-09"
+    assert row.to_dict()["planned_official_maturity_date"] == "2026-01-08"
+    assert journey.outcomes[0].forward_return_bp == 120
+    assert row.outcome_status == "ready" and row.formal_credit_granted is None
+    assert json.dumps(outcome, sort_keys=True) == original
+
+
+@pytest.mark.parametrize("invalid", [None, True, 20260109, {}, "20260109", "2026-W02-5", "2026-01-09T00:00:00Z", "2026-02-30", " 2026-01-09"])
+def test_invalid_plan_date_remains_unknown_without_using_legacy_estimate(invalid: object) -> None:
+    outcome = _outcome()
+    outcome["metadata"].update({
+        "maturity_basis": "official_market_sessions", "planned_official_maturity_date": invalid,
+        "expected_maturity_date": "2026-01-09",
+    })
+    journey = _service(events=[_event()], outcomes=[outcome]).build(RESULT_ID)
+    row = next(item for item in journey.outcome_maturity if item.window_days == 5)
+    assert row.planned_official_maturity_date is None and row.outcome_price_date == "2026-01-09"
+    assert journey.outcomes[0].forward_return_bp == 120
+
+
+def test_legacy_or_invisible_outcome_does_not_fabricate_official_plan() -> None:
+    outcome = _outcome()
+    outcome["metadata"]["planned_official_maturity_date"] = "2026-01-09"
+    visible = _service(events=[_event()], outcomes=[outcome]).build(RESULT_ID)
+    assert next(row for row in visible.outcome_maturity if row.window_days == 5).planned_official_maturity_date is None
+    outcome["metadata"]["maturity_basis"] = "official_market_sessions"
+    deferred = _service(events=[_event()], outcomes=[outcome]).build(RESULT_ID, query_boundary="2026-01-03T09:00:00Z")
+    assert all(row.planned_official_maturity_date is None and row.outcome_price_date is None
+               and row.source_data_as_of_date is None and row.target_price_state is None for row in deferred.outcome_maturity)
+    assert deferred.outcomes == ()
+
+
+def test_missing_price_keeps_target_date_without_borrowing_later_price() -> None:
+    outcome = _outcome(outcome_status="missing_price", forward_return_bp=None)
+    outcome["outcome_price_date"] = None
+    outcome["metadata"].update({
+        "maturity_basis": "official_market_sessions", "planned_official_maturity_date": "2026-01-08",
+        "target_price_state": "missing_at_planned_official_session",
+        "source_price_gap_reason": "no_close_on_planned_official_session",
+    })
+    journey = _service(events=[_event()], outcomes=[outcome]).build(RESULT_ID)
+    row = next(item for item in journey.outcome_maturity if item.window_days == 5)
+    assert row.planned_official_maturity_date == "2026-01-08" and row.outcome_price_date is None
+    assert row.source_price_gap_reason == "no_close_on_planned_official_session"
+    assert journey.outcomes[0].forward_return_bp is None and row.outcome_status == "missing_price"
+
+
 def test_exact_outcome_maturity_preserves_source_quality_and_acceptance_limits() -> None:
     outcome = _outcome()
     outcome["data_quality"] = "degraded"

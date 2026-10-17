@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -248,7 +249,8 @@ class DecisionOutcomeJourneyWidget(QWidget):
         maturity_layout.addWidget(
             self._wrapped_label(
                 "每個期限會分開呈現連結狀態與結果狀態；"
-                "連結成功不等於結果已成熟。"
+                "連結成功不等於結果已成熟。計畫目標日與實際取價日分列；"
+                "未提供的日期不由目前日曆或舊價格列推算。"
             )
         )
         self.maturity_table = self._make_table(
@@ -258,6 +260,8 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 "連結狀態",
                 "結果狀態",
                 "說明",
+                "計畫目標日",
+                "實際取價日",
             ),
             220,
         )
@@ -697,6 +701,12 @@ class DecisionOutcomeJourneyWidget(QWidget):
         empty.setVisible(not rows)
         if rows:
             table.resizeColumnsToContents()
+            if table_id == "maturity":
+                header = table.horizontalHeader()
+                header.setStretchLastSection(False)
+                for column in (0, 1, 2, 4, 5):
+                    header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(3, QHeaderView.Stretch)
 
     def _render_journey(
         self,
@@ -767,6 +777,8 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 _link_status_text(item.status),
                 _outcome_status_text(item.outcome_status),
                 _maturity_reason_with_source_limits(item),
+                item.planned_official_maturity_date or "未提供",
+                item.outcome_price_date or "未提供",
             )
             for item in maturity
         )
@@ -1003,6 +1015,7 @@ def _outcome_status_text(status: str | None) -> str:
         "ready": "來源已標示 ready",
         "observed": "已觀測",
         "missing": "缺資料",
+        "missing_price": "缺結果價格",
         "unknown": "未知",
         "deferred": "待可得",
         "error": "讀取失敗",
@@ -1039,7 +1052,19 @@ def _maturity_source_limits(item: OutcomeMaturityRecord) -> tuple[str, ...]:
 
 def _maturity_reason_with_source_limits(item: OutcomeMaturityRecord) -> str:
     reason = _maturity_reason_text(item.reason)
-    limits = _maturity_source_limits(item)
+    limits = list(_maturity_source_limits(item))
+    target = {
+        "waiting_for_verified_official_session": "來源尚缺可核對的目標交易日",
+        "waiting_for_planned_official_session": "來源標示等待計畫目標日",
+        "missing_at_planned_official_session": "來源標示計畫目標日缺收盤價，需補來源",
+        "observed_on_planned_official_session": "來源標示已取得計畫目標日價格",
+    }.get(item.target_price_state or "")
+    if target:
+        limits.append(target)
+    if item.source_price_gap_reason == "no_close_on_planned_official_session":
+        limits.append("不以後一筆價格替代缺價日")
+    if item.source_data_as_of_date:
+        limits.append("來源資料截止：" + item.source_data_as_of_date)
     if not limits:
         return reason
     return f"{reason} {'；'.join(limits)}。"

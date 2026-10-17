@@ -2914,3 +2914,42 @@ Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動
 722啟動前可用RAM25,970,642,944 bytes；各組沿8GiB committed／12程序／kill-on-close／同workspace mutex。721、722、723皆三PID陣列真正空、process／Job handles閉鎖及mutex釋放，無強制清理；同session追蹤而未盲重跑。Snapshot、原計畫§0.4／§5.8／§9.5、Manual、操作／試用／可攜與Runbook同步133。這輪交付解除原第四列訊號判讀與可直接試用的阻礙，不擴原四條V1；P06同帳本真原件、2382／其他來源、來源／幣別／成本、歷史PIT、真N、完整績效、P12自然成熟與完整P00–P14仍待。沒有新抓取、正式資料／Task／maintainer、push、發布或交易變更。
 
 724最終文件核對12個feature／11件link sources、0錯誤，outer SHA `9e476423d82b92204a1e59f2653805530513ce0f70d750b47583d691e80df387`。隨後逐字核介面標籤，發現試用D步驟把按鈕功能名寫作「比較逐日進場意圖」；實際為「逐日策略訊號對照」。另存包內 `TRIAL_GUIDE_REV2.md` 與 `GUIDE_SUPPLEMENT_RECEIPT.json`，主要指南改指修訂2；原guide／delivery與全部產品QA不改寫，這是文件勘誤，不新增Increment或重跑策略。
+
+<a id="increment134-outcome-plan-price-dates"></a>
+## Increment134：P11保存期限計畫與實際取價日（2026-10-17，來源候選）
+
+**解除第五列交付阻礙**：原個股「決策→結果」只列期限／連結／結果及泛用原因，`missing_price`仍是英文，無法核同一原件預計哪日、是否已取價。Root Sol兼Execution／Data Audit／Tech Lead／QA／Documentation，未新增代理（累計10/10）；原V1四條不擴，固定133保持，新EXE尚待。此葉不改producer、報酬／成熟、benchmark、來源可得時計、原權限或正式資料。
+
+### 原件與可選投影
+
+同一唯一且查詢界線可見的outcome，保留canonical ISO的原計畫日、實際取價日與資料截止；計畫欄另需metadata的`maturity_basis=official_market_sessions`。舊`expected_maturity_date`、今天日曆或下一筆價格不代填；原payload、各期限的報酬、品質及formal-credit旗標不改。舊件缺欄、日期格式不合、deferred與conflict保持None；狀態未知不當成熟。metadata target state與具名缺價原因只作中文投影，不轉新金融結論。日期兩欄在正常視窗可見，說明欄使用餘寬且tooltip保留完整字串；原選股／返回／取消與fresh路由不換。
+
+726唯讀核10/17自然收據：decision capture `20261017T122502299673Z-ac5d53dc4258`由public exact reader核`verified/skipped_non_trading_day`，沒有新snapshot／自然資格；Forward run `20261017T124002870032Z`為`blocked/outcome_price_missing`，43個合格事件、2個缺價期限、77個待未來資料；172個outcome為該自然owner更新，不是本task寫入。Raw/PIT原父仍`blocked_source_revision`，不重觸發或改正式鎖。Graphify舊圖269節點／1000token略251只導航；Context4858字元／6382bytes，journey budget-omitted、widget headings-only均回原DTO／build／render及producer正文核對。
+
+### 驗證、原FAIL與正常來源Main
+
+- 727：compile、59核心、17UI／1正式smoke未啟用、Workbench85、validator25PASS／0FAIL／4保護SKIP、mypy1066與精度守衛通過。canonical日期、legacy估計不代填、未知／不可見、原報酬及source payload不變；缺價、待成熟與ready UI分列。UI既有ignore／untyped限制不授強型別；未載Main的teardown提示不冒充正常session。
+- 728只以`mode=ro/query_only`索引查具名1538 event `evt_bbd3c5eea73341bcb4a83d0fa28991f4`及原四outcomes，正式4GB DB只核stat前後，不重掃整庫SHA或複製全庫。原5／10日計畫日為09-17／09-24而缺價，20日計畫／價日10-13、60日12-09且待成熟。`legacy_price_row_offset_differs`的舊估計不得替代此計畫。
+- 729最初QA準備以兩個推薦ID選全股票，碰原100事件上限而FAIL；未放寬上限，失敗與六行情副本保留。730縮成1538／1528與各自具名result的原事件，原SQL兩表及選取列原樣封存，只在隔離副本插入原列、重綁新推薦索引path。沒有重新產生推薦或outcome、正式寫入或全量回補。來源Main8808→42652的原結果／返回／fresh與原輸入一致；人工看圖發現長說明把日期擠到右側，尚不接受可讀出口。
+- 731首屏曝光新增反例為3FAIL／14PASS／1SKIP：Qt在model建立前設定個別header無效，長說明仍佔寬；原斷言保留。732將日期欄及說明伸展設定移到原model建立後，17UI／1SKIP、Workbench85、validator25/0/4、mypy1066、compile及精度守衛通過；未重跑未改的59核心。
+- 732來源正常Main **36184→48864**只重讀730同一來源副本，沒有重取正式原件或改保存資料。兩個推薦／股票從原清單→原個股結果→逐期六欄→返回及fresh一致；日期曝光斷言及1280×760正常主題截圖可讀，原檔SHA保持、舊包／正式根I/O和socket嘗試0。這是Windows Qt功能及offscreen證據，不授Native／真人或其他DPI。原小價庫兩個缺SQL表降級CSV及名冊source缺件提示保留，不改資料以消警告。
+
+1538／2026-09-10原研究的5／10日顯示「缺結果價格」，20日仍原`ready`但來源／年度日曆／採認限制保持，60日待成熟；1528／2026-09-14原5／10／20價日為09-21／09-30／10-15，60日12-11待成熟。這是兩個具名case，不推論全43事件或全母體完成，也不由缺價推停牌／下市。
+
+以下路徑均在owner task：
+
+| 原始結果／收據 | SHA-256 |
+|---|---|
+| 726 outer `single_owned_qa_f8c415cb9a6f4b88ab931f9492b970c2/receipt.json` | `fb03ebf9a954dfe257873315a9d937fdd14c879b97b6f047dd48c3c12464fc12` |
+| 自然唯讀及導航 `increment134_context_natural_qa00/result.json` | `da854fd6d7ebe24d21f0cde4222f4c7dffbe915f94cc0b84e4f85f67040ef9fc` |
+| 727 outer `single_owned_qa_45fb93cfe2ca4b118180f79a75ce4cf8/receipt.json` | `99f813bc80e592755e8566cb9a0c871cc84eb7b745b3367636641f1081767825` |
+| 728 outer `single_owned_qa_5e5142cb6f204c809d155eb93a9c8433/receipt.json` | `815c7c57d3b67f79d9c46c10443d528dfd15c69b8375c0f222362b5110bf7022` |
+| 原四結果 `increment134_exact_event_qa02/result.json` | `950f076a5cdc2009654c41dde587bf7821e5fd434121a4d0a932cee3fac2328a` |
+| 729上限FAIL outer `single_owned_qa_fc923e6eb7b64403801aef8aaff53e8b/receipt.json` | `f7fc406d7dd5a7babef1fc0d61c0eba3e4ad13b4b2f7e9dcb0c879d6bb850843` |
+| 730 outer `single_owned_qa_958166312cdb4794bafcc6cc7011a6b6/receipt.json` | `533294cfbcdf6433e5a381aadcb4d69d6f3452a8bd20358e041e9c00f40b45a7` |
+| 原Main `increment134_result_main_source_qa03b/result.json` | `c644cbd64a4a5de2f71d27be733039a96d91d720f4737ef7c7535f20f7b85fc8` |
+| 731曝光FAIL outer `single_owned_qa_6e0c000a77854e32a740308bbc553db7/receipt.json` | `858469825b07791708462e34b4f878321099fc511eb177e86e453675e0676939` |
+| 732 outer `single_owned_qa_2c140a50123b4fba9ba09372cc734bce/receipt.json` | `d1cce9a2a77a3f858bbf72286ef0d1b63cdc71a8c0290670d14d6ef49544e823` |
+| 可見補核 `increment134_result_main_source_qa03c/result.json` | `06849686edb0cab72d8fe1844ed9638558fef5a47b75c313b35fe359a8505c03` |
+
+每組沿啟動RAM≥8GiB、全Job committed8GiB／12程序／kill-on-close／同workspace mutex；原三PID陣列空、process／Job handles關閉及mutex釋放後才接下一組，無強制清理。原計畫§5.9、Feature Map、current read-model契約、功能／Manual與Snapshot同步；正式日快照契約、來源用途與儲存writer未改，不需重寫資料契約或移機指南。接續建立同版EXE，通過新候選後才替換133入口；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未接受，TPEx／其他來源、真帳、歷史PIT、真N、完整績效與自然成熟各自續推。沒有正式資料／Task／maintainer、push、發布或交易變更。

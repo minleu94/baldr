@@ -3175,3 +3175,16 @@ Root兼TechLead／DataAudit後沿既有DailySourceUseAcceptance及基本面DTO�
 Root複核：重用範圍為同次初驗的不可變原件，容量先串行分配，四件核驗皆join後返回；中途來源變動仍由寫前／收據發布前的完整實體核對拒絕，新測試確認不得發布成功收據。無來源、時間、schema、策略／成本／幣別、金融公式或正式／私人資料變更；UI檔未改，未重跑未受影響Workbench／validator及139旅程。140解除第二階段P14的Source整包600秒斷點；V1已交139，不把搬移新增為V1前置。新固定EXE、保留139月營收的完整包與完整P14仍待，既有兩次FAIL不刪除，指定139與共用131保持。
 814文件核對發現新測試只登記在bootstrap代表入口，未同步同功能change_patterns；已補齊兩側，僅重驗文件。原FAIL outer `single_owned_qa_de47dc2089c44ac984c3a3684bedea38/receipt.json` SHA `c8f9046f9033890668d4a16391e4bd1401bb4d18b4a401029b2fde14b2b2dfc1`，自然閉鎖；不重跑已過產品旅程。
 815文件核對12features／6個連結來源／0errors，outer `single_owned_qa_804f4254816a4bc19b2ef5412174e83c/receipt.json` SHA `d8d1c34130d32131a72e965e8b1a4592ad8bacb86532ced15652052f254ee4d4`，自然排空、handles／mutex閉鎖。此為文件結構結果，不升格Source／EXE或任何產品Gate。
+
+<a id="increment141-full-trial-exe"></a>
+## Increment141：保留139內容的整包固定EXE出口（2026-10-17）
+
+**交付阻礙**：140只完成當前Source與138原資產的新位置設定／Main／fresh，舊清冊缺139月營收及市場狀態原件，不能據此換掉已交139。沿原P14續作既有first_setup，以v2清冊明選這兩家族；保留v1相容，v1夾新欄拒絕，舊EXE見v2亦拒絕，避免默默丟掉已交功能。不是新增V1前置。Root依Tech Lead／Execution／QA／Documentation履職，無新增代理或獨立複核，額度10/10保持。
+
+月營收八原件沿外部manifest／receipt雙SHA和closed files複製，記新目錄；資格／小時／原披露精度仍由原public reader判讀，不為首次設定偽造可得時間。市場狀態只接受明選的單一regime_history.json，不能擴成其他私人輸出搬移。來源與資料副本在發行設定前再核；晚到變更保留pending／failure，不發config／成功收據。另補DATA_ROOT空白／QA隔離時預設正式根始終拒寫，測試只做純路徑拒絕，不觸碰正式目錄。
+
+- 816：初版optional月營收的compile、31項定向檢查及mypy1069通過；outer `single_owned_qa_97fdd10d8f9a40e59ad29928edde7d16/receipt.json` SHA `eede810161d2f43b2be0ff81a01dfb37c6d29321b13a587a48b1a71c1c33d511`。其後補齊市場狀態家族與明確v2，00b未啟動而另綁00c，不覆寫原spec。
+- 817：擴充後compile、34項新家族／hash變動／副本變動／保存保護／v1拒夾帶／預設正式根及原件重用檢查、mypy1069通過；outer `single_owned_qa_dce5c1a326c54091a97e3229f61eb1d0/receipt.json` SHA `ba592a99e6cd0c1611888e67f90cfd98700c5bf4f4ac162439d97e7663c36941`。兩組三PID空、process／Job handles／mutex閉鎖，無forced cleanup；UI檔未改，不重跑未受影響Workbench／validator。
+
+唯讀對照139 postQA外部收據與138清冊，六行情／十二基本面SHA全相同；139市場狀態原件外部pin `bae45a5b4d6e4330d2b0c7c44b5d20cfb9e94c13fc943aa6f1a7afbd187c8bf6`，當前仍相符。組包將沿已封存138原資產與139具名月營收／市場狀態原件，不匯入139後續私人修改，不重抓來源。固定build、實際EXE全新移位600秒、正常Main／新程序及交付封存均尚待；目前指定139與131元件及原138兩次FAIL保持，完整P14／P00–P14／G0–G4仍未完成。
+818來源checkpoint文件核對12features／6個連結來源／0errors，outer `single_owned_qa_0e0e68dfcbb24dfeaffda63616ef2ba8/receipt.json` SHA `600e3301efc0ad721462e3e1f0e94e5333b735fbd40e73844933a1c3d5e4b062`，三PID空、handles／mutex閉鎖，無forced cleanup；不升格尚未執行的固定EXE／整包出口。

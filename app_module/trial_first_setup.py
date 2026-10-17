@@ -15,6 +15,7 @@ from app_module.recommendation_portfolio_calendar_artifact_v1 import _canonical_
 from app_module.technical_source_copy import restore_technical_source_with_price_session, copy_price_bookmarks, _tree_layout
 
 SCHEMA = "baldr-trial-first-setup.v1"
+EXTENDED_SCHEMA = "baldr-trial-first-setup.v2"
 _HASH = re.compile(r"[0-9a-f]{64}")
 _BUDGET = ResearchOutputCopyBudget(256 * 1024**2, 4 * 1024**3, 100000, 391)
 
@@ -83,15 +84,30 @@ def _verify_files(root: Path, entries: Any, prefix: str, cancel) -> list[tuple[P
     return files
 
 
+def _reject_protected_target(state: Path) -> None:
+    # DATA_ROOT空白或改指隔離庫時，預設正式根仍不能成為試用寫入目的。
+    protected_roots = {Path("D:/Min/Python/Project/FA_Data").absolute()}
+    for name in ("DATA_ROOT", "OUTPUT_ROOT", "PERSONAL_DATA_ROOT", "PERSONAL_STORE_ROOT", "PERSONAL_JOURNAL_ROOT"):
+        value = os.environ.get(name, "")
+        if value:
+            protected_roots.add(Path(value).absolute())
+    for protected in protected_roots:
+        if state.is_relative_to(protected) or protected.is_relative_to(state):
+            raise TrialSetupError("試用新根不得重疊正式／私人根")
+
+
 def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
                           check_cancel: Callable[[], bool] | None = None) -> Path:
     """首次移位後設定；同根重開保留使用者寫入，既有state移位一律拒絕。"""
     root = _canonical_path(package_directory, "trial_package", allow_missing=False)
     manifest_path = _member(root, "TRIAL_PACKAGE.json")
     manifest = _json(manifest_path, manifest_sha256)
-    if (manifest.get("schema") != SCHEMA or manifest.get("private_state_included") is not False
+    schema = manifest.get("schema")
+    if (schema not in (SCHEMA, EXTENDED_SCHEMA) or manifest.get("private_state_included") is not False
             or manifest.get("scope") != "fresh_trial_only"):
         raise TrialSetupError("只接受明選全新試用包，不接受私人環境")
+    if schema == SCHEMA and any(key in manifest for key in ("quanta_monthly_sales", "market_regime_files")):
+        raise TrialSetupError("新增封存家族須使用v2清冊，避免舊程式忽略已交內容")
     # 固定路徑不由清冊決定，避免把寫入導向正式或私人根。
     state = _canonical_path(root / "state", "trial_state", allow_missing=True)
     receipt = state / "TRIAL_SETUP_RECEIPT.json"
@@ -101,21 +117,37 @@ def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
                 ("TRIAL_SETUP_PENDING.json", "TRIAL_SETUP_FAILURE.json"))):
             raise TrialSetupError("既有state未完成；保留原件，不覆寫或重設")
         proof = _json(receipt, _digest(receipt, check_cancel))
-        if (proof.get("schema") != SCHEMA or proof.get("status") != "prepared_and_readers_verified"
+        if (proof.get("schema") != schema or proof.get("status") != "prepared_and_readers_verified"
                 or proof.get("package_directory") != str(root) or proof.get("manifest_sha256") != manifest_sha256):
             raise TrialSetupError("已使用state的位置或身分不同；請依搬移清冊另作副本，不重設")
         if _digest(_member(state, "config.json"), check_cancel) != proof.get("config_sha256"):
             raise TrialSetupError("既有試用設定已改變；保留狀態供核對")
         return receipt
-    for name in ("DATA_ROOT", "OUTPUT_ROOT", "PERSONAL_DATA_ROOT", "PERSONAL_STORE_ROOT", "PERSONAL_JOURNAL_ROOT"):
-        value = os.environ.get(name, "D:/Min/Python/Project/FA_Data" if name == "DATA_ROOT" else "")
-        if value:
-            protected = Path(value).absolute()
-            if state.is_relative_to(protected) or protected.is_relative_to(state):
-                raise TrialSetupError("試用新根不得重疊正式／私人根")
+    _reject_protected_target(state)
     runtime_files = _verify_files(root, manifest.get("runtime_files"), "app", check_cancel)
     market = _verify_files(root, manifest.get("market_files"), "assets/market", check_cancel)
     fundamental = _verify_files(root, manifest.get("fundamental_files"), "assets/fundamental", check_cancel)
+    monthly: list[tuple[Path, str]] = []
+    monthly_binding = manifest.get("quanta_monthly_sales")
+    if "quanta_monthly_sales" in manifest:
+        if (type(monthly_binding) is not dict
+                or set(monthly_binding) != {"files", "manifest_sha256", "receipt_sha256"}):
+            raise TrialSetupError("月營收封存需完整具名清冊與雙SHA")
+        monthly = _verify_files(root, monthly_binding["files"], "assets/quanta-monthly", check_cancel)
+        for name, field in (("manifest.json", "manifest_sha256"), ("receipt.json", "receipt_sha256")):
+            expected = monthly_binding[field]
+            if (type(expected) is not str or not _HASH.fullmatch(expected)
+                    or _digest(_member(root, "assets/quanta-monthly/" + name), check_cancel) != expected):
+                raise TrialSetupError("月營收封存入口與原件SHA不符")
+    elif os.path.lexists(root / "assets/quanta-monthly"):
+        raise TrialSetupError("月營收封存缺具名清冊")
+    regime: list[tuple[Path, str]] = []
+    if "market_regime_files" in manifest:
+        regime = _verify_files(root, manifest["market_regime_files"], "assets/market-regime", check_cancel)
+        if [path.relative_to(root).as_posix() for path, _ in regime] != ["assets/market-regime/regime_history.json"]:
+            raise TrialSetupError("僅接受明選市場狀態歷史原件")
+    elif os.path.lexists(root / "assets/market-regime"):
+        raise TrialSetupError("市場狀態封存缺具名清冊")
     if "app/baldr.exe" not in {path.relative_to(root).as_posix() for path, _ in runtime_files}:
         raise TrialSetupError("完整runtime缺baldr.exe")
     ids = manifest.get("bookmark_ids")
@@ -138,10 +170,12 @@ def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
     _cancel(check_cancel)
     state.mkdir(exist_ok=False)
     pending = state / "TRIAL_SETUP_PENDING.json"
-    _emit(pending, {"schema": SCHEMA, "manifest_sha256": manifest_sha256})
+    _emit(pending, {"schema": schema, "manifest_sha256": manifest_sha256})
     try:
-        for prefix, files in (("assets/market", market), ("assets/fundamental", fundamental)):
-            directory = "market" if prefix.endswith("market") else "fundamental-version"
+        copied_data: dict[Path, str] = {}
+        for prefix, directory, files in (("assets/market", "market", market),
+                ("assets/fundamental", "fundamental-version", fundamental),
+                ("assets/quanta-monthly", "monthly-sales-version", monthly)):
             for source, digest in files:
                 _cancel(check_cancel)
                 target = state / directory / source.relative_to(root / prefix)
@@ -149,8 +183,16 @@ def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
                 _canonical_path(target, "trial_copy_target", allow_missing=True)
                 if _digest(source, check_cancel, target) != digest:
                     raise TrialSetupError("試用資料在複製中變更")
+                if _digest(target, check_cancel) != digest:
+                    raise TrialSetupError("試用資料副本SHA不符")
+                copied_data[target] = digest
         research_receipt = restore_research_output(research, manifest["research_receipt_sha256"],
             state / "output", budget=_BUDGET, check_cancel=check_cancel)
+        for source, digest in regime:
+            target = state / "output/regime_history.json"
+            if _digest(source, check_cancel, target) != digest:
+                raise TrialSetupError("市場狀態原件在複製中變更")
+            copied_data[target] = digest
         pin, price_session = restore_technical_source_with_price_session(technical, manifest["technical_receipt_sha256"],
             state / "technical-source", budget=_BUDGET, cancel_callback=check_cancel)
         technical_receipt = state / "technical-source/TECHNICAL_COPY_RECEIPT.json"
@@ -164,23 +206,31 @@ def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
             "RESEARCH_STATE_ROOT": str(state / "registry"),
             "OFFICIAL_CALENDAR_CACHE_PATH": str(state / "calendar"),
             "TECHNICAL_UNIVERSE_READ_ROOT": str(pin.store_output_root)}
-        _emit(config, settings)
+        if monthly_binding is not None:
+            settings.update(QUANTA_MONTHLY_SALES_DIRECTORY=str(state / "monthly-sales-version"),
+                QUANTA_MONTHLY_SALES_MANIFEST_SHA256=monthly_binding["manifest_sha256"],
+                QUANTA_MONTHLY_SALES_RECEIPT_SHA256=monthly_binding["receipt_sha256"])
         # 只在所有封存／原值reader通過後發行設定；原清冊與只讀資料再核一次。
         _json(manifest_path, manifest_sha256)
-        for files in (runtime_files, market, fundamental):
+        for files in (runtime_files, market, fundamental, monthly, regime):
             for source, digest in files:
                 if _digest(source, check_cancel) != digest:
                     raise TrialSetupError("試用原件在設定中變更")
-        _emit(receipt, {"schema": SCHEMA, "status": "prepared_and_readers_verified",
+        for target, digest in copied_data.items():
+            if _digest(target, check_cancel) != digest:
+                raise TrialSetupError("試用資料副本在設定中變更")
+        _emit(config, settings)
+        _emit(receipt, {"schema": schema, "status": "prepared_and_readers_verified",
             "package_directory": str(root), "manifest_sha256": manifest_sha256,
             "config_sha256": _digest(config, check_cancel),
             "research_receipt_sha256": _digest(research_receipt, check_cancel),
             "technical_receipt_sha256": _digest(technical_receipt, check_cancel),
             "bookmark_receipt_sha256": _digest(bookmark_receipt, check_cancel),
+            "quanta_monthly_sales_verification": "copied_bytes_verified_not_source_acceptance" if monthly else "not_in_package",
             "financial_artifacts_reencoded": False, "private_state_imported": False,
             "existing_environment_migration_accepted": False, "full_gate_accepted": False})
         pending.unlink()
         return receipt
     except Exception as error:
-        _emit(state / "TRIAL_SETUP_FAILURE.json", {"schema": SCHEMA, "reason": str(error)[:2048]})
+        _emit(state / "TRIAL_SETUP_FAILURE.json", {"schema": schema, "reason": str(error)[:2048]})
         raise

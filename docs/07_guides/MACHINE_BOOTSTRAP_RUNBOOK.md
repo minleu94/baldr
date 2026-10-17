@@ -27,6 +27,8 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 
 140當前Source CLI已在原600秒內完成138原完整資產的新位置設定，Source Main／fresh可讀回原收藏、研究及金融值；同根重跑設定保留新手動觀察項目。仍依賴repository來源環境，不能當成包內EXE已通過；此舊清冊也尚未包含139新增月營收版本，不能取代指定139或用於私人帳搬移。
 
+141來源候選增加 `baldr-trial-first-setup.v2`，原v1仍可讀且不自動改寫。v2可明選 `quanta_monthly_sales`（`files`、manifest／receipt雙SHA），從 `assets/quanta-monthly` 逐bytes複製到 `state/monthly-sales-version` 並記新根設定；市場狀態原件另以 `market_regime_files` 明選 `assets/market-regime/regime_history.json`，只複製到研究輸出根，不接受其他私人輸出。v1不得夾帶這兩個新家族，舊EXE亦會拒絕v2。新來源在設定發布前重核來源及資料副本SHA；DATA_ROOT空白或改指隔離庫，預設正式根仍禁止寫入。月營收只記原件複製核對，不授來源接受或提前可用；正常頁沿原public reader的小時／用途／精度守衛。新固定EXE／整包出口待[141 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment141-full-trial-exe)，不能用此來源候選取代139。
+
 ## 保存研究的新副本（來源工具）
 
 若只要把已保存回測放到新的`OUTPUT_ROOT`，可使用來源工具`scripts/copy_research_output.py`。它處理研究Registry、舊單股回測與舊推薦組合三個store；不複製行情、價格選股來源、一般推薦、收藏、Paper帳或模型，亦不自動啟用新設定。這是完整移機中的一個步驟，原完整清冊仍須逐項處理。

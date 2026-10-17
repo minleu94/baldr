@@ -99,6 +99,8 @@ Main的日曆接受配置沿原`ApplicationSettings`→BacktestView→result_pan
 
 技術封存恢復沿 `technical_source_copy` 的closed映射及原strict reader。恢復期間可保留初次完整SHA已驗的原件bytes，每檔最多256KiB、總計最多384MiB且不超過原複製預算；中途讀取仍核預期SHA與身分，開始寫入前及發布收據前重新從實體來源／目的讀取完整清冊與SHA。一般複製與收藏的封存檢查預設不保留這些bytes；不增加I/O執行緒、程序或Root Job上限。這是既有首次設定的內部讀取修正，是否解除600秒阻礙另依[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment140-archive-byte-reuse)，不授整包可攜或P14接受。
 
+`trial_first_setup`保留v1讀取，v2才允許明選月營收封存及單一市場狀態歷史原件；兩者沿原件SHA複製，不接評分或重建原數值。來源及資料副本於設定發布前再核，預設正式根的拒寫不因DATA_ROOT環境值消失。月營收資格及可得小時仍由原個股public reader裁決，首次設定的bytes核對不替代來源接受；固定包實際出口見[141 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment141-full-trial-exe)。
+
 - QWidget 不直接查詢 Runtime store；Runtime Observatory 顯示透過 application／Runtime DTO 注入的狀態。
 - 保存後重新開啟結果時，應按保存 identity、版本與 source pins 讀回，不隱式改讀最新資料。
 - 產品操作與安全限制以 Manual 為準；架構契約不代表按鈕已開啟、資料來源已接受或 Gate 已通過。

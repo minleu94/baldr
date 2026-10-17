@@ -141,3 +141,147 @@ def test_protected_target_and_cancel_are_read_only(package, monkeypatch):
     with pytest.raises(ValueError, match="cancelled"):
         setup.prepare_trial_package(root, digest, check_cancel=lambda: True)
     assert not (root / "state").exists()
+
+
+def _add_monthly(package):
+    root, _ = package
+    directory = root / "assets/quanta-monthly"
+    directory.mkdir()
+    names = ("monthly.raw", "monthly-http.json", "twse-company.raw.json", "identity-publication.json",
+             "identity-receipt.json", "identity-archive.json", "manifest.json", "receipt.json")
+    originals, entries = {}, []
+    for name in names:
+        raw = ("immutable " + name).encode()
+        (directory / name).write_bytes(raw)
+        originals[name] = raw
+        entries.append({"path": "assets/quanta-monthly/" + name, "bytes": len(raw), "sha256": sha256(raw).hexdigest()})
+    manifest = root / "TRIAL_PACKAGE.json"
+    body = json.loads(manifest.read_bytes())
+    body["schema"] = setup.EXTENDED_SCHEMA
+    body["quanta_monthly_sales"] = {"files": entries,
+        "manifest_sha256": sha256(originals["manifest.json"]).hexdigest(),
+        "receipt_sha256": sha256(originals["receipt.json"]).hexdigest()}
+    manifest.write_text(json.dumps(body), encoding="utf-8")
+    return root, sha256(manifest.read_bytes()).hexdigest(), originals
+
+
+def test_optional_monthly_copies_all_original_bytes_and_binds_new_root(package, monkeypatch):
+    root, digest, originals = _add_monthly(package)
+    calls = _fake_copiers(monkeypatch)
+    receipt = setup.prepare_trial_package(root, digest)
+    assert calls == ["research", "technical", "bookmarks"]
+    copied = root / "state/monthly-sales-version"
+    assert {path.name: path.read_bytes() for path in copied.iterdir()} == originals
+    config = json.loads((root / "state/config.json").read_bytes())
+    assert config["QUANTA_MONTHLY_SALES_DIRECTORY"] == str(copied)
+    assert config["QUANTA_MONTHLY_SALES_MANIFEST_SHA256"] == sha256(originals["manifest.json"]).hexdigest()
+    assert config["QUANTA_MONTHLY_SALES_RECEIPT_SHA256"] == sha256(originals["receipt.json"]).hexdigest()
+    proof = json.loads(receipt.read_bytes())
+    assert proof["quanta_monthly_sales_verification"] == "copied_bytes_verified_not_source_acceptance"
+    before = receipt.read_bytes()
+    user = root / "state/output/user-research.json"
+    user.write_bytes(b"saved after setup")
+    assert setup.prepare_trial_package(root, digest) == receipt
+    assert receipt.read_bytes() == before and user.read_bytes() == b"saved after setup"
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("problem", ["partial", "null", "wrong_manifest", "wrong_receipt", "changed", "extra", "escape", "undeclared"])
+def test_invalid_optional_monthly_never_creates_state(package, problem):
+    root, digest, _ = _add_monthly(package)
+    manifest = root / "TRIAL_PACKAGE.json"
+    body = json.loads(manifest.read_bytes())
+    binding = body["quanta_monthly_sales"]
+    if problem == "partial":
+        del binding["receipt_sha256"]
+    elif problem == "null":
+        body["quanta_monthly_sales"] = None
+    elif problem == "wrong_manifest":
+        binding["manifest_sha256"] = "0" * 64
+    elif problem == "wrong_receipt":
+        binding["receipt_sha256"] = "0" * 64
+    elif problem == "changed":
+        (root / "assets/quanta-monthly/monthly.raw").write_bytes(b"changed")
+    elif problem == "extra":
+        (root / "assets/quanta-monthly/extra.raw").write_bytes(b"unlisted")
+    elif problem == "escape":
+        binding["files"][0]["path"] = "assets/quanta-monthly/../../outside.raw"
+    else:
+        del body["quanta_monthly_sales"]
+    manifest.write_text(json.dumps(body), encoding="utf-8")
+    digest = sha256(manifest.read_bytes()).hexdigest()
+    with pytest.raises(ValueError):
+        setup.prepare_trial_package(root, digest)
+    assert not (root / "state").exists()
+
+
+@pytest.mark.parametrize("destination", [False, True])
+def test_late_monthly_mutation_keeps_failure_and_does_not_publish_config(package, monkeypatch, destination):
+    root, digest, _ = _add_monthly(package)
+    _fake_copiers(monkeypatch)
+    original = setup.restore_technical_source_with_price_session
+    def technical(*args, **kwargs):
+        result = original(*args, **kwargs)
+        parent = "state/monthly-sales-version" if destination else "assets/quanta-monthly"
+        (root / parent / "monthly.raw").write_bytes(b"changed during setup")
+        return result
+    monkeypatch.setattr(setup, "restore_technical_source_with_price_session", technical)
+    with pytest.raises(ValueError, match="變更"):
+        setup.prepare_trial_package(root, digest)
+    assert (root / "state/TRIAL_SETUP_PENDING.json").is_file()
+    assert (root / "state/TRIAL_SETUP_FAILURE.json").is_file()
+    assert not (root / "state/TRIAL_SETUP_RECEIPT.json").exists()
+    assert not (root / "state/config.json").exists()
+
+
+@pytest.mark.parametrize("data_root", ["", "isolated-qa"])
+def test_default_formal_target_remains_protected_without_touching_it(monkeypatch, tmp_path, data_root):
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / data_root) if data_root else "")
+    with pytest.raises(setup.TrialSetupError, match="正式"):
+        setup._reject_protected_target(Path("D:/Min/Python/Project/FA_Data/trial/state").absolute())
+
+
+def test_fixed_regime_history_is_preserved_without_private_output_import(package, monkeypatch):
+    root, _ = package
+    path = root / "assets/market-regime/regime_history.json"
+    path.parent.mkdir()
+    raw = b'{"observations":["original history"]}'
+    path.write_bytes(raw)
+    manifest = root / "TRIAL_PACKAGE.json"
+    body = json.loads(manifest.read_bytes())
+    body["schema"] = setup.EXTENDED_SCHEMA
+    body["market_regime_files"] = [{"path": "assets/market-regime/regime_history.json", "bytes": len(raw),
+                                   "sha256": sha256(raw).hexdigest()}]
+    manifest.write_text(json.dumps(body), encoding="utf-8")
+    _fake_copiers(monkeypatch)
+    setup.prepare_trial_package(root, sha256(manifest.read_bytes()).hexdigest())
+    assert (root / "state/output/regime_history.json").read_bytes() == raw
+    assert not (root / "state/output/private-account.json").exists()
+
+
+def test_regime_family_cannot_import_other_output_files(package):
+    root, _ = package
+    path = root / "assets/market-regime/private-account.json"
+    path.parent.mkdir()
+    raw = b"not authorized"
+    path.write_bytes(raw)
+    manifest = root / "TRIAL_PACKAGE.json"
+    body = json.loads(manifest.read_bytes())
+    body["schema"] = setup.EXTENDED_SCHEMA
+    body["market_regime_files"] = [{"path": "assets/market-regime/private-account.json", "bytes": len(raw),
+                                   "sha256": sha256(raw).hexdigest()}]
+    manifest.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(setup.TrialSetupError, match="僅接受"):
+        setup.prepare_trial_package(root, sha256(manifest.read_bytes()).hexdigest())
+    assert not (root / "state").exists()
+
+
+def test_extended_family_cannot_hide_in_legacy_v1_manifest(package):
+    root, _, _ = _add_monthly(package)
+    manifest = root / "TRIAL_PACKAGE.json"
+    body = json.loads(manifest.read_bytes())
+    body["schema"] = setup.SCHEMA
+    manifest.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(setup.TrialSetupError, match="須使用v2"):
+        setup.prepare_trial_package(root, sha256(manifest.read_bytes()).hexdigest())
+    assert not (root / "state").exists()

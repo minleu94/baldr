@@ -72,6 +72,7 @@ Windows 啟動入口為 baldr_launcher.py；桌面主程式入口為 ui_qt/main.
 - 舊設定未指定 threshold mode 時維持 fixed；quantile 為明確 opt-in。quantile 門檻只使用 T-1 以前資料，暖機需要足夠歷史觀測。
 - 當日 eligible universe 先固定，再計算橫斷面百分位；同分保留同一排名語意，母體不足時明確拒絕，不靜默改用其他模式。
 - 新 factor 必須保存 `as_of_date`、`available_date`、來源版本、品質與 missing policy。晚於決策日或可得日未知的資料不能供當下決策使用。
+- 月營收診斷 pack 使用 `fundamental-revenue-pack.v2`：三月趨勢須為當期及前兩個曆月的唯一合格輸入；缺月標 missing／skip。新高只比較明示提供的前期月份（`provided_prior_months`），沒有前期回 unknown，不能稱完整歷史新高。YoY／MoM維持原Decimal比率，各衍生因子的可得日取所有消耗輸入最晚日、品質沿最弱輸入，並保存期別、原值、來源版本／hash與方法版本。歧義期別、未知可得日及非有限當期值拒絕；不改舊保存結果。目前只有原服務／CLI與合成Registry重開驗證，尚未接正常UI或ScoringEngine，來源用途與完整F12仍待，見[135 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment135-revenue-calendar-history)。
 - Candidate／shadow 輸入與 formal decision layer 分開。診斷、Research metadata、保存排名或負面證據不等於正式分數、Advice 或 Promotion。
 - Regime 的 `date`／effective date 表示請求的判斷日；`details.source_data_date` 表示實際可用行情日，兩者不得混用。此來源日期隨 DTO／snapshot lineage 傳遞；缺日期或超過 cutoff 時，不得借另一個資料集補值，也不改變分類或 PIT 資格。
 

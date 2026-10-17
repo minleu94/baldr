@@ -2977,3 +2977,30 @@ launcher --check另驗啟動身分，與Main旅程分列；postQA初態與交付
 | `output/trial/Baldr-Daily-Research-134/DELIVERY_RECEIPT.json`（repo相對） | `63616688bbdc63f7e5f080551d9a940b1d92df6c1e024879c5cb235878495466` |
 
 後續按原§0.4轉其他可交付缺口，不把同一日期／結果案例加成新共同前置。P06真同帳本、P03功能必要來源／用途、P01來源clock／真N、完整雙策略績效、Native／真人與P12自然成熟等仍各自待，完整目標保持active。無正式資料／Task／maintainer、push、發布或交易變更。
+
+<a id="increment135-revenue-calendar-history"></a>
+## Increment135：月營收診斷的曆月、前史與比較可得日
+
+本輪回原計畫§0.4第二列／F12，只解除既有後端會輸出錯誤正面旗標與過早可得日的金融結果阻礙。HEAD起點`0457b4873cff47a41ec05195d2f2868bd6479852`；單寫owner沿原task，不建新總計畫或增加代理。Root兼Execution／QA／Documentation／TechLead／DataAudit，沒有獨立reviewer；新建代理仍10/10。
+
+`build_revenue_factor_pack`沿原Decimal公式、factor names、來源版本與MissingPolicy.SKIP，增存方法`fundamental-revenue-pack.v2`及實際輸入的期別／原值／來源版本／hash／可得日／品質。三月趨勢須含當期與前兩個曆月；缺月維持insufficient並標MISSING，Gate跳過。無前期的新高改unknown／MISSING；有前期只稱`provided_prior_months`，不稱全歷史新高。衍生因子available_date取所有消耗輸入最晚日，品質沿最弱輸入；缺clock、歧義期別或非有限當期拒絕，不任選版本、不覆蓋原件或修改舊保存結果。
+
+737以既有圖的6個精確詞定位，504節點僅作過時導航；data_pipeline Level3摘錄4,156字元／5,081 UTF-8 bytes。storage與daily guide的budget／heading-only保留Unknown，adapter與service已回原全文；沒有藉此接受資料writer契約。738先保存原5項FAIL（缺月、首筆新高、晚前期、歧義當期、方法版本），不覆寫紅測收據。739編譯4件受改Python；原pack、歷史反例、adapter、service、CLI、Gate、SQLite provider及Registry共80項通過（4.12秒），八根mypy 1,066檔與financial_float_boundaries通過。既有ui_qt ignore／untyped限制不等於UI強型別。
+
+740以自有合成SQLite及合成availability mapping走原FundamentalFactorService、實際CLI、FactorGate與ResearchRunService。完整三曆月／缺月／單月的合格因子各4／2／0；單月兩個未知旗標保留在skipped，不補數值。以`factor_diagnostics`保存，equity／trades皆空、metrics空，不偽造回測、NAV或績效。父47092→新程序27436讀回整份metadata／方法／原輸入／skip相同；fresh禁止重建factor與save，保存store逐件SHA、合成來源檔SHA保持。正式根及各trial根I/O禁止，socket禁止，均0。合成mapping的official-shaped欄位只是測試夾具，不是官方來源、歷史PIT或用途接受。
+
+| 原始收據／結果（均在owner task） | SHA-256 |
+|---|---|
+| 737 outer `single_owned_qa_66504c55fff741fd9f79d5b78a075740/receipt.json` | `ca72e9d4d31884a75130a0e5e68127adf83634597889ca4817573ec71a0fefc3` |
+| 導航 `increment135_context_qa00/result.json` | `a9bb34c75258604b8ef00f8d0f3cf67f0b8a231d79c7d2eb7d3f6c98adda5954` |
+| 738原紅測outer `single_owned_qa_3fa59f5b9fbb4ae8beb9a3493389fc00/receipt.json` | `b4bb11d5c554404359771b95be761fd484fc403b808cc04e57f1bea4ab3fbdb3` |
+| 739 spec `increment135_integrated_qa02_spec.json` | `8ddd947bc5c217e31e467e5a4175aeebbfbb622776db0fe913535c88aff5f884` |
+| 739 outer `single_owned_qa_af8a1efc354a45879d3e557882f9e956/receipt.json` | `9f4fd20146b9ef06fb968e7a1347b65ae5e545786414c3ea277fc6cc777a2a13` |
+| 739 runner `increment135_integrated_runner_qa02/receipt.json` | `761c046e8b04d454abf8da4ce74216e291c2c4d4963b7ab63272e15dd52e991d` |
+| 740 spec `increment135_factor_lifecycle_qa03_spec.json` | `1a84d71fefd315b4e6a74d3eb301e588a744e19bfee0fd3bc5dd50ab749b598d` |
+| 740 outer `single_owned_qa_ecccf56b273f425e8a4aaab39ca8c30a/receipt.json` | `23544abe24f2b8ad4c10f9080221f6eb5721365fde2b0856358beade37baf869` |
+| 生命周期 `increment135_factor_lifecycle_qa03/result.json` | `7f5939a610b644d4c55c8388b4c35a28d4aa6ac541f646c5fd15ed72c4e6ed24` |
+
+740啟動可用RAM約22.96GiB，仍採全Job committed8GiB／12程序／kill-on-close／同workspace mutex；每組須前組三PID陣列空、process／Job handles關閉及mutex釋放才啟動，本輪自然歸零、無強制清理。UI與正常推薦／ScoringEngine沒有此pack caller，沒有UI變更，故未重跑Workbench／validator、四旅程或EXE；134固定GUI與原收據保持。current架構、CLI判讀、Manual、Feature Map、原計畫及Snapshot同步，正式每日時間政策、publisher／provider資料寫入、根路徑與移機契約未改。
+
+這是後端修復的限定工程出口。完整來源／單位、歷史新高母體、正常UI／排序、正式評分及完整F12未接受；不清舊FAIL、不授PIT、策略有效、自然成熟、Native／真人或完整Gate。116外部報告沿現行[判讀表](../07_guides/TRIAL_VERSION_GUIDE.md#如何判讀116外部檢查)，未重跑貼文命令。下一步回原其他可交付產品列，不把135變成所有流程的新前置。沒有網路取得、正式資料／Task／maintainer、push、發布或交易變更。

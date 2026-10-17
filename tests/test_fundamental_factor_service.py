@@ -89,7 +89,9 @@ def test_fundamental_factor_service_builds_revenue_pack_from_sqlite_provider(tmp
     factor_names = {record.factor_name for record in snapshot.records}
     assert "fundamental.revenue_yoy" in factor_names
     assert "fundamental.revenue_mom" in factor_names
-    assert "fundamental.revenue_3m_trend" in factor_names
+    assert "fundamental.revenue_3m_trend" not in factor_names
+    assert any(item.code == "fundamental_revenue.calendar_months_missing" for item in snapshot.diagnostics)
+    assert any(item.code == "factor.skipped_missing" and item.factor_name == "fundamental.revenue_3m_trend" for item in snapshot.diagnostics)
     assert "fundamental.revenue_new_high" in factor_names
     assert all(record.available_date <= date(2026, 6, 30) for record in snapshot.records)
     assert all(record.metadata["period"] != "2026-06" for record in snapshot.records)

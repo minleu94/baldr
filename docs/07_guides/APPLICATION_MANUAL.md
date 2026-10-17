@@ -2,7 +2,7 @@
 
 本手冊說明日常UI操作、結果判讀與安全界線。**目前指定候選、固定來源與啟動入口以[目前試用版指南](TRIAL_VERSION_GUIDE.md)為準**，資料範圍與各版驗證界線也集中於該入口；一般操作從下方「日常使用旅程」開始。
 
-目前132新增三公司2026-H1對2025-H1比較；四條主要流程沿既有版本，仍附2506示範收藏，可回同源個股、原條件及8933／2506比較。132另存行情、比較版本及輸出，明選共用131技術元件，請保留131資料夾；私人持倉初始空白，不自動搬入。正常來源／新EXE與fresh、可用範圍及限制見[目前試用版指南](TRIAL_VERSION_GUIDE.md)及[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)。
+目前134提供原推薦結果的期限／取價日期，保留133策略訊號對照與132三公司2026-H1對2025-H1比較；四條主要流程及2506示範收藏保持。行情、比較版本與輸出另存，技術來源明選共用131元件，請保留131資料夾；私人持倉初始空白，不自動搬入。正常來源／EXE與fresh、可用範圍及限制見[目前試用版指南](TRIAL_VERSION_GUIDE.md)。
 
 131包含TWSE新下載丟失明確漲跌符號的修復；原「個股研究 → 價格／技術」入口、返回與重載不變。新資料按原文字方向顯示，缺方向或未知仍未提供；歷史資料沒有重抓或回補。操作及排錯見[個股指南](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)，限定證據見[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 
@@ -68,6 +68,8 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 新來源每日快照的官方時間／成功批次小時、固定版本重開、缺前期與失敗批次判讀，見[每日快照時間判讀](manuals/DATA_AND_MARKET_RESEARCH.md#每日快照的時間判讀)。正式更新與排程是否已接入仍以具名 QA 為準。
 
 正常Main可在既有設定成對明示固定月營收binding路徑及外部SHA；配置／市場／版本不符時拒絕，不轉用latest。步驟與限制見[固定月營收快照配置](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#選擇已接受範圍的固定月營收快照)。目前有合成Main／新程序輸入讀回，完整推薦、官方來源與EXE仍按QA判讀。
+
+工程端的月營收因子診斷已有曆月與前史守衛：缺月不算連續三月，沒有前期不算新高；有前期的新高也只代表已提供樣本，不能當歷史紀錄。此修復尚未接入134的正常UI或正式評分，日常試用不需另跑工具；參數、缺件原因與安全限制見[因子診斷CLI](scripts_readme.md#基本面因子診斷工程入口)。
 
 如需保存並重開原 F17 月營收研究，正常 Main 已設定固定每日 binding 時，在原研究頁使用封存來源（`use_archived_sources=True`），再按「選擇研究保存資料夾」。此資料夾須與正式 `DATA_ROOT`／`OUTPUT_ROOT`、F17／來源 provider 根及 operation 暫存根分開；原 F17 入口與 operation 設定照常保留。保存後可從 Watchlist 的「個股分析」沿原收藏重開，不會另查最新版本。這段操作已有以下限定合成證據：storage 27 PASS／1 預期保護性 SKIP、封存收藏 9 PASS、Watchlist 5 PASS；archived UI 漂移重開1 PASS（44.49秒），正常 Main 父54640→fresh32420保存1128／頁1與 Watchlist typed 精確重開通過；父關閉後私有 DB/raw、舊snapshot/reference及mutable pointer漂移，26固定來源及原320 F17資產仍核對一致。詳見[封存 F17 來源保存與重開](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#f17-封存來源保存與精確重開2026-10-14)及[封存月營收收藏](manuals/WATCHLIST_AND_PORTFOLIO.md#封存月營收研究收藏2026-10-14)。
 

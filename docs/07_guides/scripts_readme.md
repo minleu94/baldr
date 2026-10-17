@@ -24,6 +24,14 @@
 
 ### 1. 數據更新腳本
 
+#### 基本面因子診斷（工程入口）
+
+`scripts/inspect_fundamental_factors.py` 讀取明選SQLite與相鄰的 `meta_data/monthly_revenue_availability.csv`，列出合格因子數及具名診斷，不抓取、不回補、不保存研究，也不連接ScoringEngine。管理者明示 `--db-file`、`--decision-date YYYY-MM-DD` 與可重複的 `--stock-code`；`--diagnostic-limit`／`--stock-summary-limit` 只限制顯示。批次選股參數 `--all-monthly-revenue-stocks` 不等於來源母體接受。先核隔離資料與來源版本；執行仍須遵守[Root owned Job／RAM與mutex規則](../agents/shared_context.md#python-驗證程序與資源)，不要把未驗正式庫當作示範。
+
+月營收 pack 方法為 `fundamental-revenue-pack.v2`。三月趨勢必須含當期及前兩個曆月；缺月或不可用品質標missing並skip。新高只與已提供的前期月份比較，沒有前期回unknown；不能讀成全歷史新高。YoY／MoM沿原Decimal比率；消耗輸入最晚可得日不得晚於決策日，歧義版本、缺可得日、零基期或不可用值有獨立診斷，不補零、不調門檻。
+
+原 `ResearchRunService` 可由工程caller保存factor快照；新程序讀回原方法、輸入版本及skip，不重算或升級舊結果。此次僅在自有合成SQLite驗完整三月／缺月／單月的服務→CLI→保存→fresh，並核原件SHA不變。尚未交正常UI、官方歷史新高、來源用途或完整F12；134試用入口不變，詳[135 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment135-revenue-calendar-history)。
+
 #### `batch_update_daily_data.py`（CLI 批次替代入口）
 - **功能**：批量更新多個交易日的每日股票數據（使用主模組）
 - **特點**：

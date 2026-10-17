@@ -132,8 +132,10 @@ def test_inspect_fundamental_factors_cli_can_scan_all_monthly_revenue_stocks(tmp
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "- stock_count: 2" in output
-    assert "2330: records=2 diagnostics=3" in output
-    assert "3207: records=2 diagnostics=3" in output
+    assert "2330: records=0 diagnostics=7" in output
+    assert "3207: records=0 diagnostics=7" in output
+    assert "fundamental_revenue.prior_history_missing" in output
+    assert "fundamental_revenue.calendar_months_missing" in output
 
 
 def test_inspect_fundamental_factors_cli_limits_stock_summary_rows(tmp_path, capsys):
@@ -158,6 +160,6 @@ def test_inspect_fundamental_factors_cli_limits_stock_summary_rows(tmp_path, cap
 
     output = capsys.readouterr().out
     assert exit_code == 0
-    assert "2330: records=2 diagnostics=3" in output
-    assert "3207: records=2 diagnostics=3" not in output
+    assert "2330: records=0 diagnostics=7" in output
+    assert "3207: records=0 diagnostics=7" not in output
     assert "... 1 more stocks omitted" in output

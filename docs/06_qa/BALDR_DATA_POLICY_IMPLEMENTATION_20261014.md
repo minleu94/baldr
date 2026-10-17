@@ -2166,3 +2166,18 @@ P03 具名2330財報的 PDF 原件、期間、單位與前瞻成功小時可核�
 **本輪交付為已驗開發來源，115固定EXE與包內原收據保持不變，尚未納入此修復。** [保存操作與精度界線](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)、Manual／current架構／Snapshot已同步。財報官方metadata復查仍未補上幣別／單季或累計基礎，原PDF展示用途亦未另授；第二列數值頁保持隔離，第三列真帳與第四列來源／成本／幣別／PIT、完整績效及第五列自然成熟各自保留。33PASS、source Main或commit不等於完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4。
 
 116文件QA06的12個feature／8份正文與task結構檢查PASS，errors=[]；outer SHA `d2f6abdb415af2061a81e4b9118bb68ec2d8e7034e6b678ffbbb88e3a42837e7`，自然閉鎖且無forced cleanup。此後只回填結果；本段來源階段不宣稱固定EXE接受。
+
+<a id="increment116-fixed-trial-delivery"></a>
+### Increment116同輪固定EXE與獨立試用交付
+
+來源修復提交`1cf80e32b4c229177152d364fce06ec4e63ec948`後，從乾淨HEAD另建[日常研究116](../../output/trial/Baldr-Daily-Research-116/TRIAL_GUIDE.md)，將同一保存修復交到可啟動的固定候選。EXE SHA-256 `ba38c46e72a880b7c1016210c748c826c026a18ffec8631c7a1cb14223830ca1`；原碼archive `b18ebc40672eff7e82d9cf0cff312ac3bf0c2568c0f67bf53d3e187318f8ac0d`、candidate receipt `6ca206dc083420367d2bf0d1964d8fc8920c673a5d390b7d788997deed8896ff`、[交付收據](../../output/trial/Baldr-Daily-Research-116/DELIVERY_RECEIPT.json) `94a541a5416ae1c93b8e529f3decb6519ae4dbf95989fc1f6b6eaa67505d98a1`。本包包含前輪115的批次拒錯／啟動修復，115及更早包的原件未改。
+
+QA07建置[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment116_fixed_build_qa07/result.json) SHA `e6b75e677be16cd1fb3c6f8abe8e45b385cd76ad489b04494db534e0d3bb610c`，outer `8e0a5234f1a7e55d540258cbd9eb4247499086a4e06c65e06bd8c84067f1dac9`。QA08固定EXE父程序PID13228已完成隔離Decimal新保存與正常Main原四筆規則／歷史／返回／拒比可視區；協調器誤用任何`CSV`字樣當儲存失敗，將缺市場指數SQLite表的既有「降級CSV」訊息也攔截，退出1，原failed outer `746df3e95974bbcb3dc8b3a634890e3c1ba801b5bd214fe26909c0472d9c01cb`保留。不是Parquet保存失敗，也未重寫產品行為。
+
+QA11重新核該成功父程序的SHA與完整來源清冊，**只續跑尚未開始的fresh**，沒有重跑父程序或重算四筆策略；原儲存庫警告仍精確檢查「改用CSV」。另一固定EXE PID6432逐值讀回兩個不同分位Decimal及20位成交價，原index／attrs和Parquet SHA一致；正常Main從來源Main的原四筆run讀規則卡、原結果、返回與批次拒比，原producer float DTO核原型別／hex不變，原source fixture清冊未改。EXE模組路徑核在frozen bundle，禁止原策略執行／Registry保存，隔離精度反例與來源真價run各自標示；[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment116_fixed_exe_qa08/result.json) SHA `eaff6a267d461896afd40e8f5f35a4ed3caab51dbd69a5a5004cca77c98d8e0d`，並保留父／fresh截圖。這是正常Windows EXE程式路徑，不是真人手勢、重跑全部V1或精度／績效權威接受。
+
+同一Job在fixed讀回成功後，執行原QA09／10尚未開始的試用準備與啟動器：109的18份固定輸入核SHA另複製到116，只改綁自有推薦索引；[狀態收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment116_trial_state_receipt.json) SHA `2fc9ad5eac68034c7a63c9110bf6839def8073dcb334eafbedb31dc8ab1f773f`，`Launch-Baldr.cmd --check`PASS且18份新狀態不變，[啟動器收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment116_launcher_check_receipt.json) `e91830ff9ca2fcc29dff1f8e13fddcce06061ba3daeb00ac236dcb39610b944f`。outer `1ffc38d632a9fddcf660763099b99a376941eba17436fa183b4fdbd29f7ef6a9`，交付索引outer `5b7a9d8db5a6daa1118533d5bd5af982dcc18ffcd8df9f15d67ad31f19413b7f`；RAM／Job上限／kill-on-close／mutex逐輪核讀，三PID陣列自然空、handles關閉、鎖釋放，無forced cleanup。
+
+現在主要入口、Snapshot、Manual及批次／研究指南統一指向116；包內指南與已知問題固定。未改的單股雙策略旅程沿112、價格選股／收藏及舊推薦沿既有109等具名證據，不冒充116新驗整條。舊CSV與SQLite REAL摘要、原float DTO、來源／幣別／成本／PIT、完整績效、真人／不同DPI／跨機及自然成熟限制保留；四條V1不擴張，正式資料／Task、maintainer、私人帳、交易、push及發布未動。
+
+116固定交付文件QA13：12個feature／10份主要及包內指南和自有task檢查PASS，errors=[]；outer SHA `adc6bac89f46db8841a77e19a4eb161bc12b8e30d648f4134f5cbe3c2ffca19a`，三PID陣列自然空、process／Job handles關閉、mutex釋放。之後僅回填此結果與接手點，不修改固定包或連結。

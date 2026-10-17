@@ -1,6 +1,6 @@
 # UI 功能文件（Qt）
 
-推薦頁初始化的跨視窗Tab順序、Qt自有連線清理及pandas相容性修復已納入115固定候選；原受影響回歸見[啟動修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)，固定EXE與具名限制見[Increment115 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment115-fixed-trial-delivery)。後續來源116只修舊回測保存的Decimal附註序列化，沒有改UI控制項或導航，尚未打入115；操作與精度界線見[保存格式說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。
+推薦頁初始化的跨視窗Tab順序、Qt自有連線清理及pandas相容性修復已納入115固定候選；原受影響回歸見[啟動修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)，固定EXE與具名限制見[Increment115 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment115-fixed-trial-delivery)。116只修舊回測保存的Decimal附註序列化，沒有改UI控制項或導航，已在同輪另交固定116候選；操作與精度界線見[保存格式說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。
 
 ## 按九個工作區查找
 

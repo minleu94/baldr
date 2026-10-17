@@ -2,7 +2,9 @@
 
 本手冊說明日常UI操作、結果判讀與安全界線。**目前指定候選、固定來源與啟動入口以[目前試用版指南](TRIAL_VERSION_GUIDE.md)為準**，資料範圍與各版驗證界線也集中於該入口；一般操作從下方「日常使用旅程」開始。
 
-後續來源分支已修復 TWSE 下載丟失明確漲跌符號的問題；原「個股研究 → 價格／技術」入口、返回與重載不變。新資料按原文字方向顯示，缺方向或未知仍未提供；固定125與歷史資料未更新。操作及排錯見[個股指南](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)，限定證據見[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
+目前131已整合獨立技術來源、保存推薦與一筆2506價格研究示範收藏；可從觀察清單雙擊回同源個股，再返回原條件及8933／2506比較。私人持倉初始為空，不自動搬入其他候選內容。正常新EXE／fresh、資料範圍與限制見[目前試用版指南](TRIAL_VERSION_GUIDE.md)及[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。
+
+131包含TWSE新下載丟失明確漲跌符號的修復；原「個股研究 → 價格／技術」入口、返回與重載不變。新資料按原文字方向顯示，缺方向或未知仍未提供；歷史資料沒有重抓或回補。操作及排錯見[個股指南](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)，限定證據見[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 
 首次安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 

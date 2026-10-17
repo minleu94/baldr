@@ -4,22 +4,24 @@
 
 ## 現在有哪些入口
 
-後續來源分支的 [Increment128](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text) 已修復 TWSE 新下載丟失明確漲跌符號：原 CSV／SQLite／public report 與合成正常 Main／新程序顯示、返回、重載已定向驗證，v1 原件與未知守衛保留。固定125及歷史資料未更新；沒有新抓取、回補或來源／PIT資格接受。原完整範圍與其餘交付列繼續。
+131已納入[Increment128](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)的TWSE新下載方向解析修復；歷史資料未重抓或回補，缺方向仍未提供，來源／PIT資格不因打包提升。
 
-**目前指定本機試用候選為日常研究125（`147e80d35fa2`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-125/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)，版本與限制由包內收據固定。125在原個股頁提供2317／2330／2454的2026-H1五欄目前研究，來源與固定EXE正常Main／fresh、返回／重載及原值比對通過；2382文件缺件隔離。未改的價格研究、清單／持倉與回測沿124及原收據，不全數重跑或擴V1，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
+**目前指定本機試用候選為日常研究131（`b1579f21f31a`）**，入口是 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-131/Launch-Baldr.cmd)。先看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)。131將保存研究／推薦、完整技術來源及明選示範收藏整合到獨立state；新EXE正常Main **412→4932**驗三公司H1五欄、四股價格／重載、2382缺件、保存推薦與同源收藏／返回／fresh，原值與時間保持，舊來源I/O／網路0。初始附2506示範收藏及8933／2506比較順序；私人持倉不匯入。未改回測與其餘流程沿124／125原證據，不重跑全部四旅程或擴V1，詳[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。
 
 115、112、109、71、66及更早候選與各自狀態保留，不自動匯入個人內容。66原回報及指南D勘誤沿原身分保留；後續修復不冒充新版真人接受。116沒有重跑未改的四條全部旅程：單股雙策略保存／比較沿用112具名證據，價格選股、收藏與舊推薦回訪按109及相應原QA判讀。
 
 | 使用流程 | 已知可用範圍 | 還要處理什麼 |
 |---|---|---|
 | 看市場、查個股 | 市場狀態與四股一般價格／技術研究；2317／2330／2454有H1五欄基本面 | 一般個股仍是四股隔離價庫，截至2026-09-23；舊列缺方向維持未提供。 |
-| 設條件、選股、保存研究 | 另一份2026-10-16來源宣告1,989、處理1,951、排除38；可依MA條件選股、主個股頁看原價量、同源比較、收藏及重開 | 5筆價格UNKNOWN、名錄用途與來源clock未接受；不能稱正式真N或歷史PIT。 |
+| 設條件、選股、保存研究 | 131獨立2026-10-16來源宣告1,989、處理1,951、排除38；可依MA條件選股、主個股頁看原價量、同源比較、收藏及重開，附2506示範收藏 | 5筆價格UNKNOWN、名錄用途與來源clock未接受；不能稱正式真N或歷史PIT。 |
 | 觀察清單與持倉回訪 | 持倉位於四卡下方；唯一精確代號／名稱互補，未綁來源部位可回一般個股價量重載 | 真私人帳與真人手勢待驗；保存來源部位沿原exact守衛，Paper外部根未在試用配置。 |
 | 單股回測、保存與歷史 | 124含三段收縮正常保存與新程序，並修合法千分位；三計分1.1.0及同版對照沿原鏈，受改輸入已核。窄視窗切換設定／結果並捲動 | 舊候選／run不重寫；0配對不等於無訊號。舊計分回填限制、原六配對run、SOP／Baseline FAIL、Walk-forward及完整績效仍保留。 |
 
 原 V1 四條流程與出口維持[計畫 §0.3](../superpowers/plans/baldr_product_completion_plan_20261006.md#03-兩階段交付與v1範圍凍結)。以上是已交付及回報狀態，不是全部 P00–P14 或 G0–G4 接受。
 
 ## 目前工程狀態與限制
+
+131已完成整合交付，EXE SHA `8f2d5342e80a3b9249168fdbb18ca464043aab9bcd420e99601bfac597285b0b`，交付SHA `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d`。啟動器身分與受改Main／fresh分開核對；原Context、helper回傳型別與legacy欄位錯誤FAIL保留，沒有重複來源複製或放寬期限。125及原件不改。此為本機固定候選，完整跨主機／私人帳／其他收藏家族與Native／真人仍待；接續回原§0.4的其餘可交付列，不再擴搬移前置，詳[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。
 
 原P14的[Increment130](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment130-price-bookmark-copy)已補明選F07價格收藏的新來源副本：原清單完整保留，新收藏另記ID與來源沿革；原118收藏在已驗127技術副本上，由既存125 EXE正常Main **39772→42976**驗同源個股、返回及fresh，原根I/O／網路0。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)。原600秒組合FAIL保留，其他收藏家族、私人帳與完整搬移仍待。接續整合126–130已驗成果成獨立V1試用候選；本輪尚未替換固定125，不另加搬移前置工程。
 

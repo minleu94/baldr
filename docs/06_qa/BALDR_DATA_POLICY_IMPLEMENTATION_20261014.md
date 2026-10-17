@@ -2735,3 +2735,48 @@ QA03是原600秒組合命令FAIL，不以後續不同scope的成功洗掉。QA06
 每組Root串行，以可讀回8GiB committed／12程序／kill-on-close Job及workspace mutex，啟動前RAM至少8GiB；下一組核前組三PID陣列空、process／Job handles與mutex閉鎖。QA06自然結束，三PID陣列空且handles／mutex關閉；正常PASS無強制回收。QA03命令timeout強制owned child的欄位原樣保留，沒有把outer forced_cleanup=false誤當自然成功。
 
 Runbook、Manual、Watchlist與可攜指南及current架構同步明選ID、原件保留、新ID、quota與failure出口。完整行情、所有收藏家族／COW、私人帳、外部ML及整包／其他主機仍待；本輪不改固定125入口。原P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、歷史PIT、來源權威、真N、完整雙策略績效及自然成熟繼續分列，不用案例加總為Gate。
+
+<a id="increment131-isolated-v1-candidate"></a>
+## Increment131：整合已驗成果的獨立V1候選（2026-10-17，已交付）
+
+本輪直接完成130所定的下一項：把126–130成果整合進可雙擊的固定候選，解除程式／來源／收藏各自通過但尚未成包的交付阻礙。來源固定 `b1579f21f31a12c316eb18bade81d851620d965d`；原四條V1與完整計畫保持，不新增資料或金融功能。Root兼任Execution／Tech Lead／Data Audit／QA／Documentation，沒有獨立reviewer或新增Luna（10/10）。目前指定入口改為[131啟動器](../../output/trial/Baldr-Daily-Research-131/Launch-Baldr.cmd)，操作與限制見[包內指南](../../output/trial/Baldr-Daily-Research-131/TRIAL_GUIDE.md)；125與原件保留。
+
+- 範圍凍結在 owner task 的 `increment131_scope_freeze.json`。新包採獨立state、明選原109保存推薦、原125九件基本面及原118的一筆2506示範收藏；私人帳不匯入。技術來源另存131專用目錄，不調整原價格、clock、未知或PIT資格。
+- 新來源CLI與讀取契約沿126–130，不另建搬移框架。新EXE僅從固定commit與原依賴鎖建置，未下載依賴；固定125與舊包保留。當次GUIDE與KNOWN_ISSUES均另存，QA通過後才切指定入口。
+- 受改QA聚焦新位置的正常來源選取、推薦、收藏、同源個股／返回、三公司基本面及fresh，禁止舊包／rc101／來源暫存I/O與網路；未改策略、持倉及UI防線沿原具名證據，不宣稱重跑四旅程或完整Gate。
+
+| 證據 | 實際結果 |
+|---|---|
+| QA01／group691 | release route通過；Context誤用不存在的bootstrap閱讀領域，exit2，尚未開始建置。原FAIL保留。 |
+| QA01b／group692 | 改用現行architecture_refactor領域，Context679字／1383bytes、Unknown空；相關路徑只是導航，不算正文EOF。固定EXE建置通過，尚非旅程接受。 |
+| QA02／group693 | 完整恢復API已返回TechnicalSourcePin並保存master、移除pending；QA helper誤以Path呼叫read_bytes而FAIL，不是整組PASS。原600秒期限未提高，無timeout或強制回收。 |
+| QA02收尾 | 只從已發布master的固定SHA恢復機械索引technical.json，不重複來源複製、不修改產品或舊helper／spec；收藏步驟仍須驗完整closed files，正常Main／fresh仍待。 |
+| QA03b／group694 | 研究／六份行情／九件基本面、明選收藏與配置完成。原來源／原件不變，收藏沿完整closed files驗證；本組PASS，正常Main另驗。 |
+| QA04／group695 | helper的prepare誤以stock_code讀legacy原件；實際欄位為「證券代號」，啟動EXE前KeyError停止。原FAIL、helper及spec保留；原件與副本不改，另存QA04b續驗，不重做來源步驟。 |
+| QA04b／group696 | 固定EXE Main412→4932通過三公司H1各五欄原值／時間、四股價格／重載、2382缺件、保存推薦原件、收藏雙擊→同源個股120列→返回與fresh；query／page／39匹配及8933／2506比較順序一致，舊包／rc101／來源暫存I/O與網路0，輸入SHA保持。 |
+| QA05b／group697 | 同版source archive逐檔核本次程式、啟動器--check／固定來源、原件與交付封存通過；--check只核啟動資訊，旅程證據另回QA04b。 |
+| QA06／group698 | 文件／task結構與連結通過，12 features／7 link sources；正文由Root另核，不作完整產品Gate。 |
+
+原件位於 `output/tasks/baldr-completion-resume-20261014-01a13cf9/`，各spec另存並釘HEAD、程式／來源SHA及新result directory。
+
+| 原件 | SHA-256 |
+|---|---|
+| 建置結果 `increment131_fixed_build_qa01/result.json` | `af4e0894f05ae4fc121285c60828aa84d890cab02eef242c1005f8e6e50c0371` |
+| 固定EXE `dist/candidate_b1579f21f31a_92fdbc2f/baldr/baldr.exe`（56,583,844bytes） | `8f2d5342e80a3b9249168fdbb18ca464043aab9bcd420e99601bfac597285b0b` |
+| QA01 outer `single_owned_qa_c60ec384a0be48ddb22c99ac1eb930da/receipt.json` | `bdecf9aeda1c36668c8200a023565b68765f30b1ed4e8c17ca0ef89a2ca55ecc` |
+| QA01b outer `single_owned_qa_b2223c7a94de4b489396ebad0547f89a/receipt.json` | `5146e71155a11c7ea39eeb6055dc5091ef03977dafd095e9e8eee5f9e7c417ce` |
+| QA02 outer `single_owned_qa_e7679bd79d1f4419ad52dfb64357fc65/receipt.json` | `81fbc40dd3f65ec6d8a50c31b3e283791541e3afca8544a38d239036c719f772` |
+| 131技術master（2,253,099bytes） | `58636e09a83b360ecf9d3ca8c115c27a249a92103c65de74d02b54d36cfe17c9` |
+| QA03b outer `single_owned_qa_59f1014c9b3f451fa64bb54182aa7019/receipt.json` | `e02eee5ea821581e1c6c2cab4cac520e85676f612eff95f9fda39a202f6e6555` |
+| 組裝結果 `increment131_prepare_trial_qa02/prepared.json` | `9bec522580d10b1dd8e9b348cdb588c45a4e3634b31c250f6a6d34b5ec7f4ccf` |
+| 新收藏收據／研究複製收據 | `0a67df9cc032a89eb32bbcf4e09559c0ace25008551a9fde47f88b4c42bf721a`／`1b3eac65f3a32e428e2edb049996c205a10040c132d0f7cbc2d4d7448fda3b84` |
+| QA04 outer `single_owned_qa_8e9a54806f284d7d8effadcffc2281b5/receipt.json` | `38250b0c9e18faa19fe8e8f4107ed93253296f4fc27fd127274046fe9b9dcb55` |
+| QA04b outer `single_owned_qa_126356b11fd249cf9964dba1559ebab1/receipt.json` | `93335fa848c96735d95685549bdf9f46096ab5521421d754d2a46023699ca860` |
+| Main／fresh `increment131_main_qa04b/result.json` | `76c78edbefbb1cfb7ffb6d704b6c4236eefabbd14958d01331971ad0403af643` |
+| QA05b outer `single_owned_qa_c44600743aea4d96bec8f97d544761ce/receipt.json` | `a0d1968d1e282f7f394c2c72f1ea4f964f5a2a548ce9c2e69cf620bc14eaed4c` |
+| 131 `DELIVERY_RECEIPT.json` | `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d` |
+| QA06 outer `single_owned_qa_a2420ec33b3c48e38aebbbb819fadd69/receipt.json` | `f38e6a35406b02dfe24393fdbf710ded17d2be1fee1c12fd972dd9b7b71df2a7` |
+
+QA04b是固定EXE內MainWindow功能旅程，Source Main未重跑；consumer未改，producer沿126–130具名證據。offscreen fixture未呼叫正常入口的apply_app_theme，其預設樣式／方框字截圖只供定位，不能記易讀性或Native視覺PASS；正常入口仍按ui_qt/main.py套用主題。原Native FAIL、真人、其他DPI與完整四旅程未驗界線保留。
+
+Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mutex；前組三PID陣列與handles／mutex閉鎖後才起下一組。691–698皆自然閉鎖，失敗原因原樣保留，沒有強制回收或提高期限。Snapshot、原計畫、Manual、試用／可攜與Runbook同步；接續回§0.4其他可交付列，不再擴搬移前置。TPEx／來源權威、歷史PIT、真N、完整雙策略績效、Native／真人、私人帳、完整跨主機及自然成熟各自待辦；正式資料／Task／maintainer、push、發布與交易無新增授權。

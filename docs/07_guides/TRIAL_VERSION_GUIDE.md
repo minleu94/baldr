@@ -1,8 +1,8 @@
 # 目前指定的本機日常研究入口
 
-**目前指定日常研究125，固定來源 `147e80d35fa2`。** 雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-125/Launch-Baldr.cmd)，依包內[試用指南](../../output/trial/Baldr-Daily-Research-125/TRIAL_GUIDE.md)操作；[已知問題](../../output/trial/Baldr-Daily-Research-125/KNOWN_ISSUES.md)與[交付收據](../../output/trial/Baldr-Daily-Research-125/DELIVERY_RECEIPT.json)固定本版身分。
+**目前指定日常研究131，固定來源 `b1579f21f31a`。** 雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-131/Launch-Baldr.cmd)，依包內[試用指南](../../output/trial/Baldr-Daily-Research-131/TRIAL_GUIDE.md)操作；[已知問題](../../output/trial/Baldr-Daily-Research-131/KNOWN_ISSUES.md)與[交付收據](../../output/trial/Baldr-Daily-Research-131/DELIVERY_RECEIPT.json)固定本版身分。125及舊包保留。
 
-125在原個股頁加入鴻海、聯發科的已核基本面，連同台積電共三家公司、各五欄。來源與固定EXE已驗正常載入、價格、返回、重載及新程序讀回，值、版本與可用時間一致。回測、價格研究及清單／持倉沿124和原收據；未改四旅程不全數重跑。舊包、舊run與私人內容保留，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
+131整合保存研究、一般推薦、完整技術來源及明選價格收藏的新副本，技術來源位於131自己的state目錄。原三公司基本面沿125九件原件；新EXE已驗五欄、四股價格／重載、2382隔離、保存推薦、收藏→同源個股→返回及新程序，舊包／rc101／來源暫存I/O與網路0。初始附2506示範收藏，含8933／2506比較順序；私人持倉不匯入。回測及未改旅程沿124／125原具名證據，沒有重跑四旅程或宣稱完整Gate，詳[131 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment131-isolated-v1-candidate)。
 
 ## 四條主要流程
 
@@ -10,8 +10,8 @@
 |---|---|
 | 看市場、查一般個股 | 市場探索／個股研究；一般價庫只有2317、2330、2382、2454，截至2026-09-23。基本面另有2317／2330／2454的2026-H1五欄固定版本。 |
 | 價格選股、個股、比較與收藏 | 推薦分析 → 每日研究條件 → 價格選股；明選2026-10-16來源，MA5／MA20金叉可得39檔。雙擊8933或2506到主視窗同源個股，返回原查詢、比較與收藏。 |
-| 觀察清單與持倉回訪 | 收藏重開原來源；持倉在四卡下方，唯一精確代號／名稱可互補，未綁來源部位可回一般個股重載。初始為空。 |
-| 回測、保存與歷史 | 沿124的策略與保存鏈，核對例見[包內D](../../output/trial/Baldr-Daily-Research-125/TRIAL_GUIDE.md#d單股回測保存與重開)。窄視窗可切查看結果／編輯設定，摘要可捲動。 |
+| 觀察清單與持倉回訪 | 可先雙擊2506示範收藏回原來源；持倉在四卡下方，唯一精確代號／名稱可互補，未綁來源部位可回一般個股重載。私人持倉初始為空。 |
+| 回測、保存與歷史 | 沿124的策略與保存鏈，核對例見[包內D](../../output/trial/Baldr-Daily-Research-131/TRIAL_GUIDE.md)。窄視窗可切查看結果／編輯設定，摘要可捲動。 |
 
 ## 本次基本面怎麼看
 
@@ -21,30 +21,30 @@
 
 ## 資料與已知限制
 
-後續開發分支的 Increment128 已修復 TWSE 新下載時丟失純文字正負號，並驗證正常 Main／新程序顯示、返回與重載；這次未替換125 EXE或其行情。125與歷史缺方向列仍按下述限制判讀，詳[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
+131包含 Increment128 的TWSE新下載純文字方向解析修復；原方向及未知守衛已定向驗證。此次沒有新抓取或回補歷史，原缺方向列仍按下述限制判讀，詳[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 
 價格選股宣告1,989、處理1,951、排除38，另5筆價格UNKNOWN；名錄用途、來源clock、正式真N與歷史PIT待驗。它與一般四股庫的日期／範圍不同，同源個股頁按「改用一般個股查詢」才離開原來源。一般庫缺8933／2506時仍無資料，缺明確漲跌方向的舊列仍顯示未提供。
 
 回測沿124合法千分位解析、三段收縮及其他原策略；0配對不直接等於沒有訊號，要核可判讀日、進場意圖、成交與期末部位。原SOP／Baseline FAIL、六配對run未定位、成本權威、Walk-forward與完整雙策略績效保留，不按交易數調參或晉升。批次逐股不能當同一投資組合排名。
 
-125使用獨立state：沿109原18檔複製，僅重綁本次推薦索引，另逐SHA複製9份營益原件；不重seal、不含發行人PDF、不自動匯入個人內容。保留專案、`dist/candidate_147e80d35fa2_aed6e63d/baldr`與原技術來源路徑。Registry錯根拒讀尚非完整搬移，本包仍是本機候選；--check只核啟動資訊，未有1–3秒速度驗收。
+131使用獨立state：六份一般行情、九件基本面、保存研究與推薦另存；完整1,951檔技術副本及明選收藏均有自己的收據與新定位。原件、原金融值及時間資格保持，不含發行人PDF或私人帳。保留專案、`dist/candidate_b1579f21f31a_92fdbc2f/baldr`與131目錄；任意移動整包、全部收藏家族、外部ML及跨主機仍待，本包仍是本機候選。`--check`只核啟動資訊，未有1–3秒速度驗收。
 
-offscreen Qt與同版輸出不授真人、其他DPI或完整Native；120的[限定原生證據](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post120-native-stock-fundamental)不外推125，原FAIL保留。Paper外部帳未配置，不能用持倉成本造NAV；來源、歷史PIT、有效績效與自然成熟繼續各自處理，正式資料／Task／maintainer、push、發布與交易沒有新授權。全範圍依[Snapshot](../00_core/PROJECT_SNAPSHOT.md)與原計畫推進。
+offscreen Qt與同版輸出不授真人、其他DPI、易讀性或完整Native；120的[限定原生證據](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post120-native-stock-fundamental)不外推131，原FAIL保留。Paper外部帳未配置，不能用持倉成本造NAV；來源、歷史PIT、有效績效與自然成熟繼續各自處理，正式資料／Task／maintainer、push、發布與交易沒有新授權。全範圍依[Snapshot](../00_core/PROJECT_SNAPSHOT.md)與原計畫推進。
 
 ## 如何判讀116外部檢查
 
-116原包與收據保留。外部報告的命令紀錄供核對，不代替原始stdout、收據或真人操作；SHA及`--check`不能推論四旅程已驗收。以下按現行125判讀：
+116原包與收據保留。外部報告的命令紀錄供核對，不代替原始stdout、收據或真人操作；SHA及`--check`不能推論四旅程已驗收。以下按現行131判讀：
 
 | 報告項目 | 現行處理 |
 |---|---|
-| 本機絕對路徑、不可直接搬整包 | 限制仍在；126保存研究與127技術來源各有具名新副本工具，127已驗全量及既存125 EXE正常收藏／fresh；既存收藏、私人內容與整包搬移仍另核，不自動改125入口。 |
+| 本機絕對路徑、不可直接搬整包 | 131已將明選技術來源、保存推薦及F07示範收藏另存於自己的state；新EXE正常Main／fresh禁止舊來源I/O已通過。整包任意搬動、其他收藏家族與私人帳仍未接受。 |
 | 啟動延遲1–3秒 | 啟動器確實核EXE，但沒有該時間區間的速度驗收；不得當作測量結果。 |
 | 一般四股庫與1,951檔來源不同 | 限制仍在。缺方向只能說原欄位證據不足，不能泛稱所有「未提供」均正常或自行補值。 |
-| 價格雙擊另開視窗 | 118起已接主個股頁，可返回原查詢；116描述不適用125。 |
+| 價格雙擊另開視窗 | 118起已接主個股頁，可返回原查詢；116描述不適用131。 |
 | 2330零交易就是真實無訊號 | 未接受。124修合法千分位解析後，指定百萬元例仍0配對但有18／4進場意圖；本金、費用、撮合與期末部位須分別核對，詳[原QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。 |
 | 名冊缺source.json不影響任何功能 | 未接受。基本顯示可用不等於名錄用途、來源clock、真N或歷史PIT已合格。 |
 
-清單／持倉初始空白、唯一精確名稱互補、批次逐股不可當同一組合排名及Paper外部根未配置，仍按本版指南操作。一般操作見[完整手冊](APPLICATION_MANUAL.md)。
+清單附示範收藏，私人持倉初始空白；唯一精確名稱互補、批次逐股不可當同一組合排名及Paper外部根未配置，仍按本版指南操作。一般操作見[完整手冊](APPLICATION_MANUAL.md)。
 
 <a id="入口與資料範圍"></a>
 <a id="increment71開發來源修正尚未替換試用包"></a>

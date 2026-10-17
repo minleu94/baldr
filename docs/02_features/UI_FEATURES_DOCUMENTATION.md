@@ -843,6 +843,6 @@ Increment29已有正常Main的外部接受binding配置接點，原daily表單�
 
 研究Registry的完整期間頁沿同一public exact pair結果，另以100個實際日期／頁展示左右兩run原capture的股票、現金、持倉估值、權益與可選已實現／未實現損益；日期採實際聯集，缺該日為無觀測，原欄位None為未提供，不補0。金額保留原Decimal文字，分開列各側本金、期間、完成狀態與幣別，不加總或重算；來源／日期覆蓋／資格阻擋保持。返回、取消、換選取或重試清空舊明細。這是後續開發分支的P08可讀流程，不追加為固定9fa第一版的前置，也不代表完整雙策略績效、歷史PIT或Native／EXE已接受。操作見[Registry指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#registry-雙-run-完整期間診斷)。
 
-## 第二階段：期限計畫與實際取價日期（Increment134來源候選）
+## 第二階段：期限計畫與實際取價日期（固定134）
 
-個股「決策→結果」沿同一原推薦／股票的精確唯讀旅程，逐期表分列原計畫目標日與實際取價日，並以中文分清計畫日缺價與尚待成熟。說明欄使用剩餘寬度，日期欄在正常視窗可見，長原因保留tooltip；選取／返回／fresh仍核同一原件。來源日期不明、非canonical或舊結果缺證據時維持未提供，不用舊價格列估計日或新日曆補算，不改報酬與金融資格。Source正常Main36184→48864與定向回歸已驗，固定133未替換；步驟見[期限判讀](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#期限日期與缺價判讀increment134來源候選)，完整界線見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
+個股「決策→結果」沿同一原推薦／股票的精確唯讀旅程，逐期表分列原計畫目標日與實際取價日，並以中文分清計畫日缺價與尚待成熟。說明欄使用剩餘寬度，日期欄在正常視窗可見，長原因保留tooltip；選取／返回／fresh仍核同一原件。來源日期不明、非canonical或舊結果缺證據時維持未提供，不用舊價格列估計日或新日曆補算，不改報酬與金融資格。Source Main36184→48864、EXE15312→28164與定向回歸已驗，同原結果／日期及fresh一致，固定134已交；步驟見[期限判讀](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#期限日期與缺價判讀increment134來源候選)，完整界線見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。

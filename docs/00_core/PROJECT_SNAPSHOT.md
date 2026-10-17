@@ -6,7 +6,7 @@
 
 131已納入[Increment128](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)的TWSE新下載方向解析修復；歷史資料未重抓或回補，缺方向仍未提供，來源／PIT資格不因打包提升。
 
-**目前指定本機試用候選為日常研究133（`efe7e957f842`）**，雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-133/Launch-Baldr.cmd)，操作看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)。133新增保存策略逐日進場意圖對照，固定EXE正常Main9076→15412已驗三策略保存、表格／原規則／原結果、返回與fresh，419日金融輸出與來源版一致。包內預放三筆示範研究；行情、12件比較版本與狀態另存，技術來源明選共用131固定元件，請保留131資料夾。未改價格／基本面與其他旅程沿原具名證據，不重跑全部四旅程、不匯入私人帳，詳[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
+**目前指定本機試用候選為日常研究134（`cd8dbe30f90a`）**，雙擊 [Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-134/Launch-Baldr.cmd)，操作看[試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)。134補原推薦結果的計畫目標日、實際取價日及缺價原因；新EXE15312→28164已驗兩個具名原推薦／股票的結果、返回與fresh，與來源版同原值。保留133三筆策略示範及既有四流程；未改基本面／價格／收藏沿原證據，不重跑全部旅程。狀態另存，技術來源明選共用131元件，請保留131；不匯入私人帳，詳[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
 
 115、112、109、71、66及更早候選與各自狀態保留，不自動匯入個人內容。66原回報及指南D勘誤沿原身分保留；後續修復不冒充新版真人接受。116沒有重跑未改的四條全部旅程：單股雙策略保存／比較沿用112具名證據，價格選股、收藏與舊推薦回訪按109及相應原QA判讀。
 
@@ -21,7 +21,7 @@
 
 ## 目前工程狀態與限制
 
-**Increment134來源候選**回第五列P11補逐期計畫目標日、實際取價日與缺價原因。59項核心、17項UI（另1項正式smoke未啟用）、Workbench85／validator25/0/4、mypy1066與精度防線通過；Source Main36184→48864已驗兩個原推薦／股票的結果、日期曝光、返回與fresh。133固定入口不變，新EXE尚待；1538缺價與60日待成熟保持，沒有重算報酬、正式回補或自然資格升格，見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
+**Increment134已交本機固定候選**，回第五列P11補原計畫目標日／實際取價日／資料截止與中文缺價原因。59核心、17UI（另1正式smoke未啟用）、Workbench85／validator25/0/4、mypy1066及精度防線通過；Source Main36184→48864與EXE15312→28164同原結果，日期欄首屏、原清單返回及fresh已驗。EXE SHA `d5695f002f589d47c2c613acfbaf1f1d9dbe62a12ddbf493e642d06e3d660362`，交付SHA `63616688bbdc63f7e5f080551d9a940b1d92df6c1e024879c5cb235878495466`。1538缺價、60日待成熟、原FAIL與來源／年度日曆／PIT／完整績效限制保持，見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
 
 **Increment133已交本機固定候選**，回原第四列補保存策略逐日訊號對照：同股／研究窗／全部價量與解析政策核對後，原Registry可讀2至5個不同策略的進場／出場／未知與原規則。來源Main44552→44732已驗正常保存；24904→3112只補摘要；新EXE9076→15412再驗同版保存與重開，來源／EXE金融輸出一致。EXE SHA `b3cd7a19c49f407576123eb83f169f2e3b4dbf0ab90e6b835ec7044c134656db`，交付SHA `5eecbefd11f19c9a492e0a328356bf171d32e95bc852043a6c821fa62e5746d7`。原FAIL、完整績效、PIT及Native／真人界線保持，見[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
 

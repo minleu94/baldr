@@ -2916,9 +2916,9 @@ Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動
 724最終文件核對12個feature／11件link sources、0錯誤，outer SHA `9e476423d82b92204a1e59f2653805530513ce0f70d750b47583d691e80df387`。隨後逐字核介面標籤，發現試用D步驟把按鈕功能名寫作「比較逐日進場意圖」；實際為「逐日策略訊號對照」。另存包內 `TRIAL_GUIDE_REV2.md` 與 `GUIDE_SUPPLEMENT_RECEIPT.json`，主要指南改指修訂2；原guide／delivery與全部產品QA不改寫，這是文件勘誤，不新增Increment或重跑策略。
 
 <a id="increment134-outcome-plan-price-dates"></a>
-## Increment134：P11保存期限計畫與實際取價日（2026-10-17，來源候選）
+## Increment134：P11保存期限計畫與實際取價日（2026-10-17，固定本機候選）
 
-**解除第五列交付阻礙**：原個股「決策→結果」只列期限／連結／結果及泛用原因，`missing_price`仍是英文，無法核同一原件預計哪日、是否已取價。Root Sol兼Execution／Data Audit／Tech Lead／QA／Documentation，未新增代理（累計10/10）；原V1四條不擴，固定133保持，新EXE尚待。此葉不改producer、報酬／成熟、benchmark、來源可得時計、原權限或正式資料。
+**解除第五列交付阻礙**：原個股「決策→結果」只列期限／連結／結果及泛用原因，`missing_price`仍是英文，無法核同一原件預計哪日、是否已取價。Root Sol兼Execution／Data Audit／Tech Lead／QA／Documentation，未新增代理（累計10/10）；原V1四條不擴；來源checkpoint時固定133保持，以下補記134固定交付，早期FAIL仍保留。此葉不改producer、報酬／成熟、benchmark、來源可得時計、原權限或正式資料。
 
 ### 原件與可選投影
 
@@ -2953,3 +2953,27 @@ Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動
 | 可見補核 `increment134_result_main_source_qa03c/result.json` | `06849686edb0cab72d8fe1844ed9638558fef5a47b75c313b35fe359a8505c03` |
 
 每組沿啟動RAM≥8GiB、全Job committed8GiB／12程序／kill-on-close／同workspace mutex；原三PID陣列空、process／Job handles關閉及mutex釋放後才接下一組，無強制清理。原計畫§5.9、Feature Map、current read-model契約、功能／Manual與Snapshot同步；正式日快照契約、來源用途與儲存writer未改，不需重寫資料契約或移機指南。接續建立同版EXE，通過新候選後才替換133入口；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未接受，TPEx／其他來源、真帳、歷史PIT、真N、完整績效與自然成熟各自續推。沒有正式資料／Task／maintainer、push、發布或交易變更。
+### 134固定EXE與交付補記
+
+733文件checkpoint核12個feature／8件link sources，0錯誤，隨後提交乾淨`cd8dbe30f90a53ef75ddd0c9a193a8fa3c3efc15`。734從該提交封存建EXE：`dist/candidate_cd8dbe30f90a_36316337/baldr/baldr.exe`，56,625,307 bytes，SHA `d5695f002f589d47c2c613acfbaf1f1d9dbe62a12ddbf493e642d06e3d660362`；source.zip的兩件受改production與兩件測試逐bytes相符（僅行尾正規化核對），沒有帶output。建置不替代正常旅程。
+
+735組裝`output/trial/Baldr-Daily-Research-134`，只在133四個研究store檔案集合及每件SHA與封存初態完全相符時，沿既有copy工具保留三個策略原run並只重綁新索引；不自動帶私人新增內容或重跑三策略。行情沿已驗Source副本的六件固定輸入，SQLite只帶同兩個推薦／股票的原四事件／八outcomes增量，正式4GB庫未複製、舊原件未改。12件132比較版本原SHA、131示範收藏及共用technical master保持；只增加一筆原09-10推薦，原09-14推薦仍同raw SHA。133交付 `5eecbefd11f19c9a492e0a328356bf171d32e95bc852043a6c821fa62e5746d7`及131 `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d`保持，不匯入私人帳。
+
+固定EXE正常Main **15312→28164**從兩個具名原推薦選股→個股「決策→結果」→六欄逐期表→原清單返回及fresh通過，日期欄可視範圍斷言與正常主題圖已核。父／fresh整份observed相同；Source與EXE的逐期六欄、原outcome、maturity、event、coverage與推薦原payload一致，來源artifact路徑依各自根保留，不把重綁路徑當金融漂移。所有app／ui／data module origins均在該EXE的MEIPASS，不借工作樹程式；市場、財報、設定、launcher及推薦輸入前後SHA保持，舊包／正式根I/O與網路0（只明選共用131 technical元件）。EXE的兩個缺價期限與60日待成熟均維持，沒有重新計算outcome或正式自然接受。
+
+launcher --check另驗啟動身分，與Main旅程分列；postQA初態與交付收據另存，未改回測／價格／基本面／收藏沿原具名證據，不假稱本輪重驗全部四旅程。735前組三PID空、handles／mutex閉鎖才啟動，8GiB／12程序、kill-on-close與RAM守衛不變；終態自然排空、無強制清理。這是固定Qt研究候選，不授Native、真人、PIT、真N、有效績效、自然成熟或完整Gate。原計畫§0.4／§5.9／§9.5、Snapshot、Manual／試用／可攜與Runbook已同步。
+
+| 固定出口（owner task內，交付除外） | SHA-256 |
+|---|---|
+| 733 outer `single_owned_qa_15e5f02a0b2c44a28ae1dbf9955849f5/receipt.json` | `fb39d85af8791c43236b4aa36ad7b31fb2d70c0f240cf4bdee90785741619d2d` |
+| 734 spec `increment134_fixed_build_qa05_spec.json` | `e048fc5c3afd01c90519704a3ed0f5dbd95affbb654fe0bc3c6e322a08b8707a` |
+| 734 outer `single_owned_qa_19efcf9ceb0743a3b8f815972019b893/receipt.json` | `6a73e9c721247f2bcc48bf536a22546df1358a37a30c3b41d62c25d562c05a34` |
+| build `increment134_fixed_build_qa05/result.json` | `7022373e575ff60d983b406bcc8777678a7eecec77ee2a4728a62a90c3ea98e2` |
+| source archive／build receipt | `2799c145a7f6076ddb39df7f22149264fa0edc1bfaab1633e0ed7ad7bbbc13f1`／`d52b617a833cdea87b0c507a91dc9f64badd45aed13288a31f638f57e9b9f3a6` |
+| 735 spec `increment134_trial_delivery_qa06_spec.json` | `edcdadb466cbc6e4cad3148ba9369978d8c4af8e964b33ec18bbdd70d0e8ca3d` |
+| 735 outer `single_owned_qa_661c85308d7e4ea4af797aee893860fd/receipt.json` | `b06b43d2b7c13510c4141951595ac69fa0d61c2e1b95b9388b0c351ab6720100` |
+| EXE `increment134_trial_main_qa07/result.json` | `aaf392fde31a3b8e6e5b0056a1c68d24dbeafd5566f4008d3bd1f7f7082974d4` |
+| postQA `increment134_trial_postqa_state_receipt.json` | `9c68d026cab34a302699a25427a6c9e408fd7233efcbd0c86b6e6410e7c10181` |
+| `output/trial/Baldr-Daily-Research-134/DELIVERY_RECEIPT.json`（repo相對） | `63616688bbdc63f7e5f080551d9a940b1d92df6c1e024879c5cb235878495466` |
+
+後續按原§0.4轉其他可交付缺口，不把同一日期／結果案例加成新共同前置。P06真同帳本、P03功能必要來源／用途、P01來源clock／真N、完整雙策略績效、Native／真人與P12自然成熟等仍各自待，完整目標保持active。無正式資料／Task／maintainer、push、發布或交易變更。

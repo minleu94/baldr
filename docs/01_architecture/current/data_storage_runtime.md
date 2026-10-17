@@ -35,6 +35,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 `research_output_copy.py` 原三store預設不變；caller 以 `include_recommendations=True`（CLI `--include-recommendations`）另明選 `recommendation/runs`。Legacy `runs.result_id` 與 canonical index／metadata 共用原 `RecommendationExecutionQueries` 驗身分，新索引僅改既知 `data_path`，原 JSON／artifact bytes不動。canonical 先由 verified envelope 核外部ML收據依賴，缺完整搬移契約時在任何該收據I/O與目的根建立前拒絕；來源邊界、全量預算、取消、journal／trigger、讀前後SHA與失敗隔離沿原工具。新收據明列選定store，不啟用設定或更動來源時間／用途資格。操作與驗證見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)及[129 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。
 
+`restore_research_output` 接受同一 `research-output-copy.v1` 封存及外部固定收據SHA；原狀態可為 `copied_and_public_readers_verified` 或 `restored_and_public_readers_verified`。來源根移位後，舊邏輯絕對根只作封存內映射，不開啟；所選store的完整清冊、每檔bytes／SHA、索引run與收據身分先核對，再在全新根複製原bytes、只重綁白名單SQL欄位。所有SQL列須等於原列加該映射，非DB原件SHA保持，重綁後才由原public readers讀回。一般推薦沿canonical／legacy原身分與metadata／context核對，外部ML依賴仍拒絕。成功另發 `restored_and_public_readers_verified`，輸入收據留 `original/RESEARCH_COPY_RECEIPT.json`；原封存前後重驗，失敗保留pending與原因。不啟用設定、不重算金融結果、不授來源用途或全環境移機，操作見[恢復Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#已移位研究封存的恢復)。
+
 ### 具名營益目前研究版本
 
 Increment132新增明選`twse-operating-summary-comparative-2026h1.v1`，不擴寫下述125政策。新版本共12檔：`current/`逐bytes保留原三公司9檔，另有固定SHA的比較數值事實、外層manifest及成功時鐘receipt。前期事實取自既存完整官方半年報，只接受2317／2330／2454的2025-H1合併口徑；原PDF及擷取收據另留原根，不隨快照散布。外層逐公司綁官方文件、原件／收據SHA與一次性目前研究用途，不授完整PDF重展示或其他用途。

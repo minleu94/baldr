@@ -25,6 +25,8 @@
 
 ## 目前工程狀態與限制
 
+[Increment137](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment137-research-archive-restore)已解除已保存研究封存移位後仍綁舊根的來源工具缺口：外部收據SHA固定所選store完整原件，只重綁新SQLite路徑，不重編金融值。15項新測試、原複製／推薦定向回歸、mypy1066及來源Main47012→37788的原規則／結果／返回與fresh有分輪證據，原失敗保留。沒有新EXE；固定134不變，整包可攜／私人帳／跨主機仍待。月營收136候選雖取得完整官方表，但公司代碼綁定原件缺失，未授用途、未進UI；精確缺件見同QA，不重抓耗盡scope。
+
 **Increment134已交本機固定候選**，回第五列P11補原計畫目標日／實際取價日／資料截止與中文缺價原因。59核心、17UI（另1正式smoke未啟用）、Workbench85／validator25/0/4、mypy1066及精度防線通過；Source Main36184→48864與EXE15312→28164同原結果，日期欄首屏、原清單返回及fresh已驗。EXE SHA `d5695f002f589d47c2c613acfbaf1f1d9dbe62a12ddbf493e642d06e3d660362`，交付SHA `63616688bbdc63f7e5f080551d9a940b1d92df6c1e024879c5cb235878495466`。1538缺價、60日待成熟、原FAIL與來源／年度日曆／PIT／完整績效限制保持，見[134 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment134-outcome-plan-price-dates)。
 
 **Increment133已交本機固定候選**，回原第四列補保存策略逐日訊號對照：同股／研究窗／全部價量與解析政策核對後，原Registry可讀2至5個不同策略的進場／出場／未知與原規則。來源Main44552→44732已驗正常保存；24904→3112只補摘要；新EXE9076→15412再驗同版保存與重開，來源／EXE金融輸出一致。EXE SHA `b3cd7a19c49f407576123eb83f169f2e3b4dbf0ab90e6b835ec7044c134656db`，交付SHA `5eecbefd11f19c9a492e0a328356bf171d32e95bc852043a6c821fa62e5746d7`。原FAIL、完整績效、PIT及Native／真人界線保持，見[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。

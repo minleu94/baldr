@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import sqlite3
 import stat
 from types import SimpleNamespace
@@ -358,6 +359,204 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
             "destination_files": [{"path": name, "bytes": stamp[0], "sha256": digest} for name, (stamp, digest) in destination_before.items()],
             "source_unchanged": True, "financial_artifacts_reencoded": False, "configuration_activated": False,
             "full_environment_portability_accepted": False, "full_gate_accepted": False})
+        pending.unlink()
+        return receipt
+    except Exception as error:
+        _emit(target / "RESEARCH_COPY_FAILURE.json", {"schema": SCHEMA, "reason": str(error)[:2048]})
+        raise
+
+
+def restore_research_output(archive_directory: Path, archive_receipt_sha256: str,
+                            destination_output_root: Path, *, budget: ResearchOutputCopyBudget,
+                            check_cancel: Callable[[], bool] | None = None) -> Path:
+    """從明選且完整的copy封存恢復新根；原邏輯位置只作比對，絕不開啟。"""
+    if type(budget) is not ResearchOutputCopyBudget:
+        raise ResearchOutputCopyError("請明示具型別的恢復預算")
+    if type(archive_receipt_sha256) is not str or not re.fullmatch(r"[0-9a-f]{64}", archive_receipt_sha256):
+        raise ResearchOutputCopyError("封存恢復需要外部固定收據SHA")
+    _cancel(check_cancel)
+    source = _canonical_path(archive_directory, "research_restore_archive", allow_missing=False)
+    target = _canonical_path(destination_output_root, "research_restore_target", allow_missing=True)
+    if os.path.lexists(target) or source.is_relative_to(target) or target.is_relative_to(source):
+        raise ResearchOutputCopyError("恢復目的根須不存在且不得與封存重疊")
+    for text in (os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.environ.get("OUTPUT_ROOT"),
+                 os.environ.get("PERSONAL_DATA_ROOT"), os.environ.get("PERSONAL_STORE_ROOT"), os.environ.get("PERSONAL_JOURNAL_ROOT")):
+        if text:
+            protected = Path(text).absolute()
+            if target.is_relative_to(protected) or protected.is_relative_to(target):
+                raise ResearchOutputCopyError("恢復目的根不得包含正式／私人根或位於其下")
+    if any(os.path.lexists(source / name) for name in (".research_copy_pending.json", "RESEARCH_COPY_FAILURE.json")):
+        raise ResearchOutputCopyError("封存仍pending或有失敗標記")
+    receipt_path = _canonical_path(source / "RESEARCH_COPY_RECEIPT.json", "research_restore_receipt", allow_missing=False)
+    receipt_stamp = _stamp(receipt_path)
+    if receipt_stamp[0] > budget.max_file_bytes:
+        raise ResearchOutputCopyError("封存收據超過單檔預算")
+    with receipt_path.open("rb") as receipt_stream:
+        raw = receipt_stream.read(budget.max_file_bytes + 1)
+    if len(raw) != receipt_stamp[0] or sha256(raw).hexdigest() != archive_receipt_sha256 or _stamp(receipt_path) != receipt_stamp:
+        raise ResearchOutputCopyError("封存收據SHA不符或讀取中變更")
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ResearchOutputCopyError("封存收據JSON鍵重複")
+            result[key] = value
+        return result
+    def invalid_constant(value: str) -> None:
+        raise ResearchOutputCopyError("封存收據含非有限JSON常數：" + value)
+    proof = json.loads(raw, object_pairs_hook=unique, parse_constant=invalid_constant)
+    if (not isinstance(proof, dict) or proof.get("schema") != SCHEMA
+            or proof.get("status") not in {"copied_and_public_readers_verified", "restored_and_public_readers_verified"}
+            or proof.get("source_unchanged") is not True or proof.get("financial_artifacts_reencoded") is not False
+            or proof.get("configuration_activated") is not False):
+        raise ResearchOutputCopyError("封存不是已核且未重編金融原件的copy收據")
+    declared = proof.get("selected_store_kinds")
+    choices = ([kind for kind in _STORES if kind != "recommendation"], list(_STORES))
+    if type(declared) is not list or declared not in choices:
+        raise ResearchOutputCopyError("封存store範圍不支援")
+    kinds = tuple(declared)
+    logical_value = proof.get("destination_output_root")
+    if type(logical_value) is not str or not Path(logical_value).is_absolute() or ".." in Path(logical_value).parts:
+        raise ResearchOutputCopyError("封存原邏輯根缺失或不明確")
+    logical = Path(logical_value)
+    manifest = proof.get("destination_files")
+    if type(manifest) is not list or len(manifest) >= budget.max_entries:
+        raise ResearchOutputCopyError("封存檔案清冊缺失或超限")
+    expected_files: dict[str, tuple[int, str]] = {}
+    for item in manifest:
+        if not isinstance(item, dict):
+            raise ResearchOutputCopyError("封存檔案清冊列格式錯誤")
+        name, size, digest = item.get("path"), item.get("bytes"), item.get("sha256")
+        if (type(name) is not str or not name or "\\" in name or ":" in name or PurePosixPath(name).is_absolute()
+                or ".." in PurePosixPath(name).parts or PurePosixPath(name).as_posix() != name or name in expected_files
+                or type(size) is not int or size < 0 or type(digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+            raise ResearchOutputCopyError("封存清冊路徑、大小、SHA或唯一性不符")
+        expected_files[name] = (size, digest)
+    if sum(size for size, _ in expected_files.values()) + len(raw) > budget.max_total_bytes:
+        raise ResearchOutputCopyError("封存含收據的總bytes超過預算")
+    before = _inventory(source, budget, check_cancel, store_kinds=kinds)
+    if {name: (stamp[0], digest) for name, (stamp, digest) in before.items()} != expected_files:
+        raise ResearchOutputCopyError("封存完整檔案集合或原件SHA不符")
+    stores: dict[str, list[dict[str, Any]]] = {}
+    rewrites: dict[str, dict[str, dict[str, str]]] = {}
+    expected_ids: set[tuple[str, str]] = set()
+    count = 0
+    for kind in kinds:
+        directory, filename, table, fields = _STORES[kind]
+        relative_db = directory + "/" + filename
+        if relative_db not in before:
+            if any(name.startswith(directory + "/") for name in before):
+                raise ResearchOutputCopyError("封存研究缺所屬索引")
+            continue
+        key = _STORE_KEYS[kind]
+        rows = _rows(source / relative_db, table, budget.max_runs - count, check_cancel,
+                     key=key, optional_table=kind == "recommendation")
+        count += len(rows)
+        stores[kind], rewrites[kind] = rows, {}
+        for row in rows:
+            mapped: dict[str, str] = {}
+            identifier = row[key]
+            expected_ids.add((kind, identifier))
+            for field in fields:
+                value = row.get(field)
+                if not value:
+                    continue
+                if type(value) is not str or not Path(value).is_absolute() or ".." in Path(value).parts:
+                    raise ResearchOutputCopyError("封存索引路徑不是明確絕對路徑")
+                try:
+                    relative = Path(value).relative_to(logical).as_posix()
+                except ValueError as error:
+                    raise ResearchOutputCopyError("封存索引跳出原邏輯根") from error
+                if relative not in before or not relative.startswith(directory + "/"):
+                    raise ResearchOutputCopyError("封存索引不是同store已核原件")
+                mapped[field] = str(target / relative)
+            rewrites[kind][identifier] = mapped
+        if kind == "recommendation":
+            canonical = _rows(source / relative_db, "result_artifact_index", budget.max_runs, check_cancel,
+                              key="result_id", optional_table=True)
+            expected_ids.update((kind, row["result_id"]) for row in canonical)
+    runs = proof.get("runs")
+    if type(runs) is not list or len(runs) > budget.max_runs or not stores or count > budget.max_runs:
+        raise ResearchOutputCopyError("封存研究清冊缺失或超過run預算")
+    for item in runs:
+        if (not isinstance(item, dict) or type(item.get("kind")) is not str or item["kind"] not in kinds
+                or type(item.get("run_id")) is not str or not item["run_id"]
+                or any(type(item.get(field)) is not str or not re.fullmatch(
+                       ("sha256:" if item["kind"] == "recommendation" and field == "destination_context_sha256" else "") + r"[0-9a-f]{64}", item[field])
+                       for field in ("destination_metadata_sha256", "destination_context_sha256"))):
+            raise ResearchOutputCopyError("封存研究身分或固定SHA格式不符")
+    declared_ids = [(item["kind"], item["run_id"]) for item in runs]
+    if len(declared_ids) != len(runs) or len(set(declared_ids)) != len(runs) or set(declared_ids) != expected_ids:
+        raise ResearchOutputCopyError("封存研究身分與索引清冊不符")
+    def verify_archive() -> None:
+        if (_stamp(receipt_path) != receipt_stamp or _digest(receipt_path, check_cancel) != archive_receipt_sha256
+                or _inventory(source, budget, check_cancel, store_kinds=kinds) != before):
+            raise ResearchOutputCopyError("封存在恢復過程中變更")
+    verify_archive()
+    target.mkdir(parents=True, exist_ok=False)
+    pending = target / ".research_copy_pending.json"
+    _emit(pending, {"schema": SCHEMA, "archive_receipt_sha256": archive_receipt_sha256})
+    try:
+        for name, (_, digest) in before.items():
+            destination = target / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            _canonical_path(destination, "research_restore_target", allow_missing=True)
+            if _digest(source / name, check_cancel, destination) != digest:
+                raise ResearchOutputCopyError("恢復過程的封存原件SHA變更")
+        for kind, rows in stores.items():
+            directory, filename, table, _ = _STORES[kind]
+            key = _STORE_KEYS[kind]
+            database = target / directory / filename
+            connection = sqlite3.connect(database)
+            try:
+                connection.execute("PRAGMA trusted_schema=OFF")
+                connection.execute("PRAGMA journal_mode=DELETE")
+                connection.execute("BEGIN IMMEDIATE")
+                for row in rows:
+                    _cancel(check_cancel)
+                    mapped = rewrites[kind][row[key]]
+                    if mapped:
+                        columns = ",".join(field + "=?" for field in mapped)
+                        connection.execute(f"UPDATE {table} SET {columns} WHERE {key}=?", (*mapped.values(), row[key]))
+                connection.commit()
+            finally:
+                connection.close()
+            if _rows(database, table, len(rows), check_cancel, key=key, optional_table=kind == "recommendation") != [
+                    dict(row, **rewrites[kind][row[key]]) for row in rows]:
+                raise ResearchOutputCopyError("恢復索引有路徑以外的metadata變更")
+        after = _inventory(target, budget, check_cancel, store_kinds=kinds)
+        changed_db = {directory + "/" + filename for kind, (directory, filename, _, _) in _STORES.items() if kind in stores}
+        if after.keys() != before.keys() or any(after[name][1] != digest for name, (_, digest) in before.items() if name not in changed_db):
+            raise ResearchOutputCopyError("恢復副本金融原件bytes或集合改變")
+        lookup = _lookup(target, budget)
+        recommendations = _recommendation_entries(target, budget, check_cancel) if "recommendation" in stores else {}
+        identities = []
+        for original in runs:
+            kind, identifier = original["kind"], original["run_id"]
+            current = recommendations[identifier] if kind == "recommendation" else _entry(lookup, kind, identifier, check_cancel)
+            if kind == "recommendation" and (current.metadata_sha256 != original["destination_metadata_sha256"]
+                                            or current.context_sha256 != original["destination_context_sha256"]):
+                raise ResearchOutputCopyError("恢復推薦的原值／metadata／資格不符")
+            identities.append({"kind": kind, "run_id": identifier,
+                "source_metadata_sha256": original["destination_metadata_sha256"],
+                "source_context_sha256": original["destination_context_sha256"],
+                "destination_metadata_sha256": current.metadata_sha256, "destination_context_sha256": current.context_sha256,
+                "rewritten_fields": rewrites[kind].get(identifier, {})})
+        verify_archive()
+        if _inventory(target, budget, check_cancel, store_kinds=kinds) != after:
+            raise ResearchOutputCopyError("恢復副本在public reader驗證中變更")
+        original_receipt = target / "original/RESEARCH_COPY_RECEIPT.json"
+        original_receipt.parent.mkdir()
+        if _digest(receipt_path, check_cancel, original_receipt) != archive_receipt_sha256:
+            raise ResearchOutputCopyError("封存收據在最後核驗時變更")
+        receipt = target / "RESEARCH_COPY_RECEIPT.json"
+        _emit(receipt, {"schema": SCHEMA, "status": "restored_and_public_readers_verified",
+            "created_at_utc": datetime.now(timezone.utc).isoformat(), "source_output_root": str(source),
+            "destination_output_root": str(target), "selected_store_kinds": list(kinds), "runs": identities,
+            "archive_receipt_sha256": archive_receipt_sha256, "archive_unchanged": True,
+            "source_files": manifest, "destination_files": [{"path": name, "bytes": stamp[0], "sha256": digest}
+                for name, (stamp, digest) in after.items()], "source_unchanged": True, "financial_artifacts_reencoded": False,
+            "configuration_activated": False, "full_environment_portability_accepted": False, "full_gate_accepted": False})
         pending.unlink()
         return receipt
     except Exception as error:

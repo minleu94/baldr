@@ -3059,3 +3059,37 @@ launcher --check另驗啟動身分，與Main旅程分列；postQA初態與交付
 756文件context摘錄1,963字元／3,245 UTF-8 bytes；Snapshot／QA導航budget略過、試用指南heading-only明列Unknown，受改Snapshot及指南已回正文，QA在原章節追加，不稱全庫覆核。Snapshot與現行試用指南同步，另補正常單股保存／重開例；入口、參數與產品行為未改，Manual、架構及Feature Map無新增契約，記not_required。不重跑未改的Workbench／validator／mypy或四條全部旅程。
 
 每組仍啟動可用RAM≥8GiB、全Job committed8GiB／12程序／kill-on-close／同workspace mutex；前組三PID陣列空、process／Job handles關閉及mutex釋放才接續，均自然排空，無強制清理。沒有新代理，累計10/10。這只補指定尺寸／具名雙策略旅程；價格研究Native、摘要全文最底、其他DPI、真人、來源用途、歷史PIT、真N、完整雙策略績效與自然成熟仍依各自原出口處理，完整目標保持active。不觸發maintainer、正式資料／Task、push、發布或交易。
+
+<a id="increment137-research-archive-restore"></a>
+
+## Increment137：已移位研究封存的原值恢復（2026-10-17）
+
+解除原P14的具體阻礙：研究副本搬動後，原copy收據與索引仍綁舊絕對根，不能直接交給public reader。沿既有工具新增 `restore_research_output` 及 CLI `--archive-directory`／`--archive-receipt-sha256`，原copy預設與三store範圍保持；一般推薦只沿原封存明選範圍。這是來源工具出口，沒有新EXE或替換固定134，更不以此宣稱整個試用包可攜。Root同一人履Execution／QA／Documentation，另複核架構與資料，不冒稱獨立review。
+
+外部固定收據SHA、原schema／成功狀態、所選store完整檔案集合、bytes／SHA、run清冊及索引先核；舊邏輯根只作映射，不能I/O。新根須不存在、不得重疊或落入正式／私人根。只改新SQLite副本的已知路徑欄位，整列須等於原列加該映射；Parquet／JSON與金融值不重編，原public reader逐run核對。推薦legacy／canonical沿原metadata／context及外部ML拒讀守衛。完成前後重驗來源及副本；新收據status為 `restored_and_public_readers_verified`，輸入收據留 `original/RESEARCH_COPY_RECEIPT.json`。失敗保留pending／failure，不自動啟用設定或覆寫重試。
+
+763先保存缺API的紅測（1FAIL／14deselected）。764 compile三檔通過；31PASS／12FAIL，其中12個Windows檔案存取拒絕發生在推薦fixture建立，mypy未執行。765受控host重驗11個既有推薦案例PASS，新增恢復案FAIL指出推薦context使用 `sha256:` 前綴；只修該欄位的型別驗證，沒有轉碼或改原資料。766 compile修後檔、15項新測試PASS（3.76秒）及八根mypy1066通過；既有未註記函式提示與ui ignore不證UI強型別。新測試涵蓋三store／推薦移位、原根禁讀、原bytes、錯SHA／改檔／多檔／pending／journal／預算／取消、惡意清冊／越界／trigger／錯scope／run清冊及CLI。
+
+767已完成copy→封存移位→restore，但Main因測試私人根位於程式包內被 `personal_root_overlaps_application_package` 擋下；FAIL保留，不改保護。768另存helper／spec／Temp目的根後，來源正常Main **47012→37788** 明選原stable run `single_backtest_20261017_101412_90fd5125`，開原規則／結果、返回及新程序讀回，金融身分均 `668053e7185360a689c18cbae49be13b52f9863cbc2f2c12c749827833055f01`。沿固定134原生保存的穩健9／暴衝2配對研究原件作封存輸入，整批複製；本輪正常頁只驗該stable run，不冒稱兩run全旅程重驗。原輸出根、已移位封存、trial根及正式根的正常app I/O受禁止，原根／網路嘗試0；禁Backtest重算、save與現行Registry版本補取。來源、封存與恢復金融檔保持；來源版功能Qt證據不授EXE／Native／真人。
+
+原件均位於owner task `output/tasks/baldr-completion-resume-20261014-01a13cf9/`，spec與結果不覆寫：
+
+| 具名原件 | SHA-256 |
+|---|---|
+| 763紅測 outer `single_owned_qa_8efd721db9bf4bffb0e89884f4385912/receipt.json` | `f7c50c96cb3c959fbf94fb9a2fff47cf0d0b5305c0068efb39f08e6bc55b862f` |
+| 764 FAIL outer `single_owned_qa_63fc66b01d164749877346af1ba36b07/receipt.json` | `a929f21067c2f77f590e62a64d236812962851effd7fc15a9c0d0a32803f5c75` |
+| 765 FAIL outer `single_owned_qa_6e54eb67dc244fb6a70068a6ad2c982c/receipt.json` | `71d6c452fa7c97fdc84f8e48fcd63d0b58db92e05378595c4f2848d1b12dafbc` |
+| 766 PASS outer `single_owned_qa_f93a99b1c7f546cb9de91ef166f7ab3f/receipt.json` | `a45934f14d8a0892c0201ab004082ab28d1c1eedd2f88041151c4b552efc0e7b` |
+| 767 FAIL outer `single_owned_qa_786bb62c63444a148dced9c20f27b78e/receipt.json` | `adb3f448944e3c30b9461c40625327c77931688918e6834d957e563e9a058582` |
+| 768 spec `increment137_restore_main_qa05b_spec.json` | `d001bbcfd53fd01cf42b989b0f8394a6c618d1f0abb8e2f0b2451a5c2f5cbeaa` |
+| 768 PASS outer `single_owned_qa_8fa362cbd6844b1c98d9df74d9513352/receipt.json` | `6d24baae08ead0b25b887850ed1c42d7260c511cd770ea726f5395ea4aeac32a` |
+| `increment137_restore_main_source_qa05b/result.json` | `318989024ca1c3c2680d054dffac0bd28c87593ba4b6e1da2cfdc1654fadb695` |
+
+762先以既有context定位架構與工具，實測3,568字元／5,770 UTF-8 bytes；工具正文因budget略過後另讀實檔。操作、參數、安全、結果與排錯同步Runbook／Manual，架構、Snapshot、原計畫§0.4及Feature Map同步。未改UI、計算、正式來源／Task／排程，Workbench／validator與完整四旅程不重跑。每組仍8GiB committed／12程序／kill-on-close／workspace mutex，啟動可用RAM≥8GiB；前組三PID陣列空、handles關閉、mutex釋放才接續，768自然終止。代理仍10/10，不新增。整包搬移、私人帳、其他主機、來源用途／PIT、完整金融績效與自然成熟仍待，完整目標active。
+
+### 136月營收取得候選：缺公司身分原件，未作產品接受
+
+原第二列F12只嘗試具名官方來源。759隔離DNS失敗保留；760取得Quanta官方完整月營收HTML 119,374 bytes，SHA `90399130663acffc144445118a393f134174baf8185653ca169ca0c0fb8b919b`，但原表未含可核股票代碼綁定。官方股價頁302至驗證站不跟隨，761公司資訊原件取得亦失敗；不以web摘錄補完整raw。候選留owner task，不接數值頁、public用途或歷史PIT；不重置舊MOPS／TWSE月營收GET額度，也不重試驗證站。轉137解除其他交付阻礙，非另建月營收前置。
+
+760 outer `single_owned_qa_16023ddfb5da4e9492725a81af524807/receipt.json` SHA `de7026359646190dab51deb80d7ac78b107ba3524352ac4bd1ac83b6193315b8`；761 outer `single_owned_qa_8f7c7035a8cc40a69e58b313a926fdf6/receipt.json` SHA `87af708df95f597c5e9212f8f4f3a4da5b856b05a84ab0151c058c09bcd2d468`。取得命令exit0只表示失敗／成功回應已記錄，不等於來源用途PASS。來源表單位與跨期修訂不得自行混用；解除條件是完整官方公司身分原件及同版本／單位／成功批次時鐘的用途複核，不阻擋其他已合格流程。
+137收尾：769的8檔compile及既有精度防線通過；文件check因漏列四份治理Coverage而FAIL，原收據保留（outer `single_owned_qa_3e7a5883f15841058b175109dc5cdedf/receipt.json`，SHA `f193586984fe9fa2866eb6ec028658c94b57b1720b8dd9f619af2f2b08834ce1`）。四份正文無契約變動，補具體not_required後，770只重驗文件／task：12features、8個連結來源、0errors，outer `single_owned_qa_2f26939a412d47b0897b711f965d0d7d/receipt.json` SHA `7f1b36e2b320a309c7e903959b31068fa63bdfbfea86b573f37d3e81431948d3`。兩組均自然排空、handles與mutex閉鎖。驗後僅補本段原結果及Feature Map測試列縮排，程式／測試bytes保持；不再重跑既過驗證。固定134與完整goal界線不變。

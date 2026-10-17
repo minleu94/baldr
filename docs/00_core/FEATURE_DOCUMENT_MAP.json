@@ -244,7 +244,8 @@
         "tests/test_ui_qt_technical_official_composite_view_v2.py",
         "tests/test_ui_qt_technical_official_revenue_research_presenter_v2.py",
         "tests/test_watchlist_revenue_archived_bookmark_v3.py",
-        "tests/test_research_output_copy.py"
+        "tests/test_research_output_copy.py",
+        "tests/test_research_output_restore.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -363,7 +364,8 @@
         "ui_qt/workers/revenue_source_actor_v2.py",
         "app_module/research_output_copy.py",
         "scripts/copy_research_output.py",
-        "tests/test_research_output_copy.py"
+        "tests/test_research_output_copy.py",
+        "tests/test_research_output_restore.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -519,6 +521,7 @@
         "tests/test_portfolio_scenario_registry_widget.py",
         "tests/test_portfolio_research_registry_open_widget.py",
         "tests/test_research_output_copy.py",
+        "tests/test_research_output_restore.py",
         "tests/test_saved_strategy_signal_comparison.py",
         "tests/test_ui_qt_saved_strategy_signal_comparison.py"
       ],
@@ -656,6 +659,7 @@
         "ui_qt/widgets/saved_strategy_version_lookup.py",
         "app_module/research_output_copy.py",
         "tests/test_research_output_copy.py",
+        "tests/test_research_output_restore.py",
         "app_module/strategy_signal_context.py",
         "app_module/saved_strategy_signal_comparison.py",
         "ui_qt/widgets/saved_strategy_signal_compare_widget.py",
@@ -1255,6 +1259,7 @@
         "tests/test_document_control.py",
         "tests/test_monthly_revenue_series_application_settings.py",
         "tests/test_research_output_copy.py",
+        "tests/test_research_output_restore.py",
         "tests/test_daily_market_technical_universe_v4_read_session.py",
         "tests/test_price_bookmark_copy.py",
         "tests/test_price_bookmark_copy_limits.py"
@@ -1287,6 +1292,7 @@
         "app_module/research_output_copy.py",
         "scripts/copy_research_output.py",
         "tests/test_research_output_copy.py",
+        "tests/test_research_output_restore.py",
         "app_module/technical_source_copy.py",
         "scripts/copy_technical_source.py",
         "tests/test_daily_market_technical_universe_v4_read_session.py",

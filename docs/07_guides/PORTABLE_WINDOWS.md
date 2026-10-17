@@ -16,6 +16,8 @@ technical v4另有[完整來源複製與封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.
 
 這兩項來源工具不使整個試用包變成可攜。行情、一般推薦外部依賴與既存收藏的來源映射、私人帳及其他主機仍依完整清冊；不只換launcher冒稱完成移機。目前本機試用入口統一看[目前指定試用版](TRIAL_VERSION_GUIDE.md)，下方日期化候選留作歷史。
 
+已移位的研究副本另可依[研究封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#已移位研究封存的恢復)使用外部固定收據SHA建立新根；只重綁已知SQLite路徑，金融原件不重編。來源Main與新程序已限定驗原規則／結果及返回，詳[137 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment137-research-archive-restore)。這解除研究store搬動後仍綁舊根的工程缺口，固定134與整包可攜的未驗邊界保持。
+
 ## 首次設定
 
 1. 將完整資料夾放在你有寫入權限的位置，保留來源包的所有檔案。

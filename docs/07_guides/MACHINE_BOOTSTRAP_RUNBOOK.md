@@ -44,6 +44,20 @@ owner 核准新 `OUTPUT_ROOT` 後，到「推薦分析」按「讀取可用來�
 
 來源正常Main與既存125 EXE已限定驗新根讀回及fresh，原根I/O與重算為0；125 EXE本身未打入這個新來源工具，執行複製須使用對應來源環境。完整行情／technical v4／一般推薦外部ML依賴／收藏／私人帳、其他主機與全環境移機仍待，詳[Increment126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。
 
+### 已移位研究封存的恢復
+
+若上一步完成的研究副本已移到另一位置，不能再把它當原根直接複製。保留完整副本及其 `RESEARCH_COPY_RECEIPT.json`，在搬動前另存該收據的 SHA-256；恢復使用這份外部固定 SHA，不以現場重新計算的值冒充原核對值。關閉使用封存的保存程序，明選另一個不存在、與封存不重疊且位於正式／私人根之外的目的根：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/copy_research_output.py --archive-directory 'D:\BaldrArchive\research-copy' --archive-receipt-sha256 '<搬動前另存的收據SHA-256>' --destination-output-root 'D:\BaldrResearch\research-restored'
+```
+
+恢復範圍沿原收據的三個 store，或原已明選的一般推薦；不能同時使用 `--source-output-root` 或再加 `--include-recommendations`。工具核對所選 store 的完整檔案集合、bytes／SHA、索引與 run 身分，再只重綁新 SQLite 副本的已知路徑欄位；Parquet、JSON、金融值與原規則不重編。收據中的舊絕對根只作映射，不開啟或沿舊根補件。原封存保持，新根 `original/RESEARCH_COPY_RECEIPT.json` 保存本次輸入收據。
+
+成功出口是新根 `RESEARCH_COPY_RECEIPT.json` 的 `restored_and_public_readers_verified`，且沒有 pending／failure 標記。原 public readers 已核新根；owner 另核准設定後，依上節第5步從原頁明選 run、讀原規則／結果、返回並重啟。SHA 錯誤、所選 store 多檔／少檔、journal、非標準 trigger／view、外部引用、取消或超限均拒絕；保留失敗副本及原因，改用另一全新目的根，不覆寫重試。預算沿上述複製工具，收據大小亦計入恢復總 bytes。
+
+來源版正常 Main **47012→37788** 已驗移位封存恢復後的原規則、結果、返回與新程序，原根 I/O、重算及網路皆0；15項新測試、原複製／推薦回歸與 mypy 的分輪結果見 [137 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment137-research-archive-restore)。此工具須由相應來源環境執行，沒有新 EXE；固定134啟動方式不變。行情、技術來源、收藏、私人帳與整個試用包的任意搬動／跨主機，仍須各自完成清冊與整合驗收。
+
 ## 技術來源的新副本與封存恢復（來源工具）
 
 已限定驗明選1,951檔來源的完整匯出、整包移位恢復、公開查詢，以及既存125 EXE從新根開同源個股、比較、保存收藏與新程序重開；原600秒期限及舊FAIL保留。價格消費程式自125未改，Source Main本輪不重跑。這個來源工具不自動改125入口、既存收藏或整個環境；下列命令仍須明選來源及全新目的根。

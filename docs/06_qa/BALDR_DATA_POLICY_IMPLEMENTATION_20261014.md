@@ -2279,7 +2279,7 @@ QA11核18＋7檔與EXE，create-only保存[119指南](../../output/trial/Baldr-D
 QA12最終核12features、11份受影響中央／包內文件及自有task，errors=[]；outer SHA `4be06a878894fc4c2382c01b94f00d160f94765dd1fa315dfbaebc1bb237cf82`，三PID陣列自然空、process／Job handles關閉、mutex釋放且forced_cleanup=false。之後只記錄此結果與提交交接；固定EXE、交付收據及舊包不再變動，完整補完goal保持進行中。
 
 <a id="increment120-causal-score-input"></a>
-## Increment120：原計分策略缺值因果修正（候選驗證中）
+## Increment120：原計分策略缺值因果修正與固定120交付
 
 本輪解除V1-04錯誤金融結果阻礙，不新增第五條旅程。原穩健／暴衝1.0.0（以及同路徑baseline1.0）以未來指標回填過去：同一RSI空值prefix原得分100、首日進場，追加未來RSI90後，同日期改為10且不進場。[原產品重現](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_missingness_probe_qa01.json) SHA `c1023b3c93d84ccd8b5401f91cdd791d7e44a8e91ffe932cce321226f6a55119`，不是mock executor。基線`6551ae61d98fce33ced5c6061e171328a234a891`；沿原三ID另立1.1.0與原ports，舊版本／保存件保留，不改金融公式或填未知。Root依Execution／Tech Lead／Data Audit／QA／Documentation履職，沒有另一位獨立reviewer；新增代理0，累計10/10。
 
@@ -2297,4 +2297,16 @@ QA09d正常來源Main PID9284→fresh13332，以原預設策略參數及2317／2
 
 QA11d核自有task、12features／8份受改文件，errors=[]，outer `4f3aa23ed1dd1c20b8f6c2008ff2816fc18d8b94bab1537653b978c9beef8609`。凍結前Root另補原報價反例：四個壞字串或inf不能經coerce變成無報價日；只有原缺值或明示空白／`--`才容許量0的未知列。QA11e核心／v3／indicator reuse89PASS、compile、mypy1052與精度守衛PASS，並以新來源SHA重綁正常Main35632→fresh48176，原三策略419／332／87及8／9／2配對不變。[最終來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_score_main_source_qa09e/result.json) SHA `6d3eed329a84b945994a09f791ef6d15c747241fbcda61d7ea23039319266484`，outer `62539feeb5c2790d653bc4ad9d0fad9e544a0ad8c376f5c165c06b56dbae4908`。QA09d原件保留；同版EXE以09e為來源比對基準，不借舊來源hash。
 
-各完成組啟動前RAM≥8GiB，Job可讀回8GiB committed／12程序／kill-on-close及同workspace mutex；三PID陣列自然空、handles關閉、mutex釋放，無forced cleanup。同版EXE仍待，未固定交付前指定試用仍119。此次重貼116外部報告SHA仍為`1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`，與前次逐bytes相同，沿原117／119分流，不重跑該舊包或執行貼文內命令。
+各完成組啟動前RAM≥8GiB，Job可讀回8GiB committed／12程序／kill-on-close及同workspace mutex；三PID陣列自然空、handles關閉、mutex釋放，無forced cleanup。來源凍結時指定試用仍119，同版EXE的後續出口見下節。此次重貼116外部報告SHA仍為`1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`，與前次逐bytes相同，沿原117／119分流，不重跑該舊包或執行貼文內命令。
+
+### 固定來源、EXE與120試用交付
+
+來源固定`aad10ca40a374f3d4e7406981580ce3d8c2efc1b`。QA12建置EXE `43c0d50bdabc966e784b435a2b99a6166b4076a461d5a282ae93c76818749491`（56,455,208 bytes），build receipt `ad8bd84bc9c9fe38c056959854a29ab8aab00a18405f7a44d7b8725b8191e286`，archive `79636d72e58e39a22ea563f8185ecaf8be3d99ca3c7396203f69a348d72f3059`，outer `f0f5a9220c29049126486e14046e7441d362ea3e7a228b11cf3a4ed6fbc8fe82`。這一步只建置，不冒稱流程已驗。
+
+QA13另複製109原18份隔離狀態、重綁自有推薦索引及117原7份基本面，未重新seal或變動可用小時。新狀態收據 `b097595bc22725e0ec96842b9b787abe968d8bbcd1e9d7979034285fd4107e4d`，啟動器--check `edacf4e2e0094ed28f489d7636ec50162da8a58415fd758d6572d9da555e7a06`。固定EXE Main51132→fresh23412，三筆原run正常保存、原規則／結果、雙策略對照／逐側明細返回／新程序均通過，419／332／87及8／9／2配對與來源相同；[EXE結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_score_main_exe_qa09e/result.json) SHA `61deffcda07bb9b3a221cf78de19537d983d76aefb9a174d43d1eaaddaf878d9`。六行情原件不變、socket0，frozen產品模組均核bundle內。
+
+同組的整體比對器先FAIL，outer `def9e5a678555be858d11efb5d9c3a9ffef97ad28d19502c7987b5ae7779a225`原樣保留；沒有再跑EXE、另存run或重建產品。QA14b逐欄比對證實只有穩健／暴衝的`registry_metadata.created_at/updated_at`四個建物件時間不同，baseline無差異；不是行情發布／可得時間。四值原文在[比對收據](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment120_source_exe_parity_qa14b.json)完整列出，其餘規則、參數、policy／runtime、逐日分數／訊號、Broker、equity／trades及metrics完全一致。金融斷言不放寬；每策略11來源SHA各按原runtime保存，原始檔CRLF正規化後內容一致，兩個Registry前後SHA不變。比對SHA `a5ccb0dc44ab1b1aeca92b90cce241f1eaffff9af660c6253cc87271432e3267`。
+
+完整比對通過後才create-only建立[120指南](../../output/trial/Baldr-Daily-Research-120/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Daily-Research-120/KNOWN_ISSUES.md)及[交付收據](../../output/trial/Baldr-Daily-Research-120/DELIVERY_RECEIPT.json)，交付SHA `0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`，outer `2f2c5e439d985dc328f9a5133187a378506a22cd6a3ec3575bfcff325073261a`。116／117／118／119交付收據逐SHA保持，沒有私人內容匯入、正式資料寫入或Task／maintainer變更。120現為指定本機工程候選；未改四旅程沿原證據，不加總測試為Gate。Qt offscreen功能及同版金融輸出不授Native／真人／不同DPI／歷史PIT／有效策略，原FAIL和完整補完目標保持。
+
+最終QA16核自有task、12features及11份中央／包內文件，errors=[]；outer `53f665faf385da55d41db1dbd737db7099a31f078cc11cd0abf9b79eb5e09f38`。QA16b依共同規則補齊最後版面修正後的Workbench指定85案例，85PASS，outer `9cb8886c4736f3b9f6905a583432b09429d825cf8429ba492c57df35175598e3`。兩組三PID陣列自然空、process／Job handles關閉、mutex釋放，無forced cleanup。之後只記錄結果並提交文件接手點；完整目標保持進行，120固定包與交付原件不再更動。

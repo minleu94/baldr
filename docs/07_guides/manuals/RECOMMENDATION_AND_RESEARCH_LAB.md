@@ -70,9 +70,10 @@ Paper保存快照區需先明示外部 `PAPER_CONTRACT_ARTIFACTS_ROOT` 絕對路
 
 清單候選本身未驗證。快照exact讀回成功也不代表底層來源可得性、完整期間曲線或績效資格已合格；未提供指標保持空值並列明原因，不能把零成交當零報酬。關閉工作區會取消未完成讀取並拒收過期回覆；需要重新查找時重新輸入原保存身分。設定與完整步驟見[主操作手冊](../APPLICATION_MANUAL.md)，驗證界線見[本輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
 
-### 計分策略1.1.0的缺值與保存（後續候選）
+<a id="計分策略110的缺值與保存後續候選"></a>
+### 計分策略1.1.0的缺值與保存（試用版120）
 
-目前交付119仍含原計分版本；下列1.1.0在後續候選驗證中，不能套用到119或改寫舊run。原baseline1.0、穩健／暴衝1.0.0有指標回填限制，不供因果策略結論；修正另立版本，詳[Increment120 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。
+固定[120試用版](../../../output/trial/Baldr-Daily-Research-120/TRIAL_GUIDE.md)已含下列1.1.0，來源／EXE正常Main與fresh及金融輸出一致有具名證據。不能套用到119或改寫舊run；原baseline1.0、穩健／暴衝1.0.0有指標回填限制，不供因果策略結論，詳[Increment120 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。
 
 1. 在「策略回測」的正常單股模式選baseline、穩健或暴衝，先查看原規則與1.1.0版號。明填股票、期間、本金及成本，使用fixed門檻及next_open；原門檻與成交守衛保持。其他模式尚未接受，不會默默套用不同方法。
 2. 執行後先核資料日與「可判讀得分／缺值或暖機未知」日數，再看訊號、實際成交、完成配對及期末持股。缺指標不補零；原四價全缺、量為0的列保持無報價未知，不代表已確認停牌。連續有報價區段重新分析，原Broker決定能否成交，未知日不發新委託。

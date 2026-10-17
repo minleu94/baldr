@@ -43,7 +43,7 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ### 具名廣達月營收目前研究
 
-`quanta_monthly_sales_snapshot`以已保存完整官方HTML與TWSE公司原件綁定2382／官方網站、同表兩年調整後合併口徑及NT$百萬元單位。只保存明選六件原件的新目錄，另發manifest、用途接受與批次receipt；雙外部SHA、完整集合、前後原件、EOF、版本／身分及台北可得小時皆重驗。`QuantaMonthlySalesReportProvider`以三項明選環境設定投影至原個股基本面DTO，欄位保留披露百萬元整數／0.1%及版本，沒有新的金融決策計算。未設來源時不開檔，缺件只隔離本來源；不改SQLite、原F17或每日月營收provider。`StockResearchReportReadService`只在目前日期／非保存歷史context讀此增量，未到時、未來cutoff及來源錯配皆不可用。根據真批次，此份可用小時為台北10/18 04:00；目前只有到時前Main、價格／返回／重載證據，成熟Main／fresh及新EXE仍待。完整契約見[每日來源版本](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#具名廣達月營收目前研究increment139)，操作見[具名月營收](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#廣達月營收固定版本來源分支139)。
+`quanta_monthly_sales_snapshot`以已保存完整官方HTML與TWSE公司原件綁定2382／官方網站、同表兩年調整後合併口徑及NT$百萬元單位。只保存明選六件原件的新目錄，另發manifest、用途接受與批次receipt；雙外部SHA、完整集合、前後原件、EOF、版本／身分及台北可得小時皆重驗。`QuantaMonthlySalesReportProvider`以三項明選環境設定投影至原個股基本面DTO，欄位保留披露百萬元整數／0.1%及版本，沒有新的金融決策計算。未設來源時不開檔，缺件只隔離本來源；不改SQLite、原F17或每日月營收provider。`StockResearchReportReadService`只在目前日期／非保存歷史context讀此增量，未到時、未來cutoff及來源錯配皆不可用。此份真可用小時為台北10/18 04:00；到時前後Source／固定EXE Main、價格／返回／重載、歷史隔離與fresh分輪有證據，亦驗實際財報／月營收並存、股票切換及表格可捲到。139本機候選已封存43檔初態，不授全環境搬移或完整Gate。完整契約見[每日來源版本](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#具名廣達月營收目前研究increment139)，操作見[具名月營收](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#廣達月營收固定版本來源分支139)。
 
 ### 具名營益目前研究版本
 

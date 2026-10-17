@@ -8,7 +8,7 @@
 
 首次安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
-全新試用包的[首次設定整合候選](MACHINE_BOOTSTRAP_RUNBOOK.md#全新試用包首次設定整合候選)尚待全包／新EXE驗證，固定134不變。此來源工具只建立全新state；同根重開保留保存內容，既有state移位拒絕，不自動清空或恢復初態。
+全新試用包的[首次設定整合候選](MACHINE_BOOTSTRAP_RUNBOOK.md#全新試用包首次設定整合候選)在原600秒尚未通過；目前固定139沿既有本機配置，不使用該出口。此來源工具只建立全新state；同根重開保留保存內容，既有state移位拒絕，不自動清空或恢復初態。
 
 若只要將已保存回測放到新的輸出目錄，先看[保存研究新副本](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，不要只複製索引或手改原收據。副本已移位時，依[封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.md#已移位研究封存的恢復)明選完整封存、搬動前另存的收據SHA及全新目的根；成功後才核准設定，從原頁讀回／返回／重開。缺件、錯SHA或失敗標記維持拒絕，不沿舊根補件。這是來源工具的明選複製／恢復，不自動改設定或移整個環境；固定134與私人內容保持原樣。
 
@@ -73,7 +73,7 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 工程端的月營收因子診斷已有曆月與前史守衛：缺月不算連續三月，沒有前期不算新高；有前期的新高也只代表已提供樣本，不能當歷史紀錄。此修復尚未接入134的正常UI或正式評分，日常試用不需另跑工具；參數、缺件原因與安全限制見[因子診斷CLI](scripts_readme.md#基本面因子診斷工程入口)。
 
-139來源分支另補[廣達月營收固定版本](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#廣達月營收固定版本來源分支139)，沿原個股基本面頁讀官方同表月營收與披露率，不接上述因子評分。台北10/18 04:00前顯示等待；正常Main已驗時間隔離及價格／返回，成熟後Main／fresh與新EXE仍待。指定134尚未包含此增量，2382半年財報缺件也未解除。
+固定139另補[廣達月營收固定版本](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#廣達月營收固定版本來源分支139)，沿原個股基本面頁讀官方同表月營收與披露率，不接上述因子評分。台北10/18 04:00前顯示等待；真實小時後Source及同版EXE正常Main／fresh已核原值、精度、價格／返回與歷史隔離，亦驗實際組合切換及表格捲動。2382半年財報缺件未解除。
 
 如需保存並重開原 F17 月營收研究，正常 Main 已設定固定每日 binding 時，在原研究頁使用封存來源（`use_archived_sources=True`），再按「選擇研究保存資料夾」。此資料夾須與正式 `DATA_ROOT`／`OUTPUT_ROOT`、F17／來源 provider 根及 operation 暫存根分開；原 F17 入口與 operation 設定照常保留。保存後可從 Watchlist 的「個股分析」沿原收藏重開，不會另查最新版本。這段操作已有以下限定合成證據：storage 27 PASS／1 預期保護性 SKIP、封存收藏 9 PASS、Watchlist 5 PASS；archived UI 漂移重開1 PASS（44.49秒），正常 Main 父54640→fresh32420保存1128／頁1與 Watchlist typed 精確重開通過；父關閉後私有 DB/raw、舊snapshot/reference及mutable pointer漂移，26固定來源及原320 F17資產仍核對一致。詳見[封存 F17 來源保存與重開](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#f17-封存來源保存與精確重開2026-10-14)及[封存月營收收藏](manuals/WATCHLIST_AND_PORTFOLIO.md#封存月營收研究收藏2026-10-14)。
 

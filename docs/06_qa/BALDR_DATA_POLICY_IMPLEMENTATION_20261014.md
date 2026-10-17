@@ -2,6 +2,35 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+<a id="increment125-reviewed-fundamentals"></a>
+## Increment125：沿原P03交付具名三公司基本面（2026-10-17，開發來源／固定候選待驗）
+
+本輪回原§0.4第二列，解除正常基本面只能讀2330的缺口；不再微修已交124回測，不增四條V1或新總計畫。Root依Tech Lead／Execution／Data Audit／QA／Documentation履職，沒有獨立reviewer或新代理，10/10保持。以HEAD `7eb3dba41b55648de24efffdc6fc8224e87f6a69`乾淨工作樹接手，前634組收據SHA `3a1210d0cf86e8ecbf119d25c1056fc1b1789cde2e3805e2cabd4dd0ed634fed`已閉鎖，可用RAM27,932,360,704 bytes。固定124與所有舊原件保持。
+
+### 官方原件、口徑與失敗隔離
+
+原20762 CSV仍為84,302 bytes／1,055唯一代碼、SHA `d9778530ceae60920d75d9eb1d27ba380be8589fc12eccf2aef352932c79b609`，沒有重抓或改寫。原三份用途文件與資料集授權鏈保持；新[鴻海官方半年報](https://image.honhai.com/upload/202609/financy_by_quarterly/2026Q2_consolidared_report(e)_20260922_0036.pdf)229頁、4,715,278 bytes，SHA `bf4e184cf36e62f5112fa56a17927f47f67e29863f5074571f96382faa669709`；[聯發科官方半年報](https://www.mediatek.com/hubfs/MediaTek%20Assets/Pdfs/Financial%20Reports/2026/Q2%20Consolidated%20Report.pdf)104頁、1,810,954 bytes，SHA `b3f12e584a69d5e7fa1513f99d9b65e372874fab05cac4b527daeded39a38dd0`。兩份HTTP實體有完整EOF／長度／SHA，僅供獨立核對、不隨產品散布；產品值仍只取開放CSV。
+
+鴻海首個索引因自設1MiB上限而拒絕已宣告1,408,772-byte HTML；不是WAF。保留FAIL後，以具名2MiB新範圍取同一已知文件，再沿其實際連結取單份PDF；沒有默默改舊scope或重置MOPS／TWSE額度。廣達索引完整，但唯一公開下載POST回302到`validate.perfdrive.com`，未跟隨、未解CAPTCHA，2382期間／單位用途仍未接受。每次新請求限一次、不重試、不redirect，保留20秒／具名容量及收據；舊月營收／MOPS partial與耗盡範圍不動。
+
+PDF初次關鍵字將聯發科權益變動表誤選為損益頁，當時保持未接受；Root看圖後改明選第5頁的完整合併損益表。QA03另因`Net income`同時中歸屬分配表頭而FAIL，outer `926bb0d8f7eb765eaeed91bf6d90500db62ec2fcfac612b6c5c01937671a1600`保留；QA03b明確排除非數值的歸屬表頭，仍要求唯一列／四組欄位。兩公司第5頁的2026半年營收及四率，用Decimal勾稽到原CSV精度，Root目測表頭／半年欄／NTD千元與合併本期損益；不是母公司股東淨利或綜合損益。新單位證據SHA `a860a9fdb1203a3250176b49786b6da0c6c8ae0e128a38caa536c77246b4c193`，outer `c1270c5325dbd1216d01a668aade7c68a09c9cb0bcd066be972c6985e1afac1e`。前期列未供產品或成長率，原其他FAIL不改判。
+
+### 原reader、明選版本與新可用小時
+
+API及單寫範圍先凍結，SHA `179995cd9493fc37a3d7e5869dea6dcc3691855d5e90d20f8f1e867ad923384e`。`ReviewedOperatingSummaryPin`明選新用途；publisher沿原v1 public reader核完整原件，逐SHA複製7檔至`base/`，外層另存manifest／receipt，共9檔，不改原2330 v1或首存時間。reader另核三公司固定用途、各自單位證據、原件／外層讀前後身分、子路徑與時鐘；不加儲存系統、不查latest、不把1055列都採認。原provider只加具名分支及schema選擇，原3項配置仍是2330 v1，新增`OPERATING_SUMMARY_POLICY_SCHEMA=twse-operating-summary-reviewed-2026h1.v1`才選三公司版本。
+
+QA04 compile、116項（含原Workbench85）PASS、validator25/0/4、mypy1060及精度守衛PASS，outer `95d68063f1a3b57fb2a6250490b05c971c59c4e70ab5585be0dc89532cce19f4`。覆蓋精確三公司、原v1、錯issuer／口徑／用途、重算SHA仍拒絕、子路徑、前移／未來時鐘、pending／failure、讀中原件更換、覆寫／正式根拒絕及原report port；合成單元不授來源資格，既有UI mypy ignore不證強型別。
+
+通過後才用真時鐘另存具名版本：manifest SHA `cf5784eaf569ae6ebcdf79234618e5086845d9794f6e143395759da320a41889`、receipt SHA `77696439895a0de47f1a7aaef97f2741eea482ab07053140bd2ac609e02a934d`，用途僅2317／2330／2454的2026-H1目前研究。實際保存完成台北18:42，**可用小時19:00**；保存當下三者public reader均拒讀等待，2382另因文件用途缺件不可用。[真保存結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment125_real_seal_qa04/result.json) SHA `23a9ed27d8319875cf45dca7799acf7cfa268f667e96b736172e4c61d43c5def`；原117七檔與14:00小時保持，不重seal或改可用性。
+
+QA05在真19:00前走正常Main27504，四股各載入／基本面／價格／切觀察清單返回／原按鈕重載：三公司明示19:00等待、2382明示驗證頁用途未接受；四股價格到2026-09-23仍可讀，歷史查詢不取目前營益。六行情／九營益原件不變、network0。[提前隔離結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment125_fundamental_early_source_qa05/result.json) SHA `f8eeb9e46dd4e406f23ffbb7b88e80c70713984f0e397da7aa9e4cdafa850503`，outer `bcea3df9e8275b37019bd81d442e219b09a9f5fc9052993a16224d2ff1c8142d`。這是功能與時間拒絕證據，還不是19:00後數值／fresh、EXE、Native或真人接受；不反覆提前探測。
+
+### Coverage與下一出口
+
+Feature Map補新module／測試與既有workspace匹配；Snapshot、原計畫、資料current架構、daily-source專節、主手冊及兩份操作分冊同步。P07／Portfolio不消費本版本，UI導航／元件未變，對應decision架構／UI_FEATURES／持倉分冊not_required；Product／6M／目標設計與generic daily record、正式更新／Task及安裝根契約未改，不另改標準。原圖沒有新節點，已回Git／Feature Map；context Level2的1671字／3143bytes、Unknown=[]只作導航，不當全庫EOF或接受。
+
+下一出口為真19:00後的正常數值／原頁返回／重載／新程序與固定EXE同版候選；124仍是指定試用包。其他發行人、前期、完整財報鏈、歷史PIT、正式真N、雙策略完整績效、真Paper帳、完整搬移、Native／真人及自然成熟各自保持。三公司來源用途／單元／Qt或commit不合計成整個P03、四旅程或G0–G4；沒有正式資料／私人帳寫入、Task／maintainer、push、發布或交易。
+
 <a id="increment124-vcp-integration"></a>
 ## Increment124：原P07正常回測／保存接線、合法千分位修復與固定124交付（2026-10-17）
 

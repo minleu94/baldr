@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+第二列基本面正在接具名三公司版本：既存CSV的2317／2454另以各自完整官方半年報核營收、四率及單位，沿原2330 reader保留7原件，新外層另存三公司用途／批次。116項（含Workbench85）、validator25/0/4、mypy1060及精度守衛通過；真保存台北19:00可用，此前拒讀，正常Main／fresh及同版EXE仍待。2382下載導向驗證頁隔離；前期、其他公司與歷史PIT不填值，固定124保持，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
+
 124已把原P07三段轉折收縮1.0.0接入原單股Backtest／Broker／Registry與規則卡，完成來源及EXE正常保存、返回及新程序讀回。整合同時修SQLite合法千分位被轉成NaN，新run保存`historical-price-numeric-text.v1`，不改原資料或舊結果。2330／2025-01-02至2026-09-23、千萬元核對例為419已知列、1意圖／1配對；EXE9988→38812與來源一致。EXE SHA `a8b840d383b6d6a9918c074bf27ab462da3145d6f5dcd16d3b37fcf111fbeb12`，交付SHA `a012cfcfce0a49717b97db19135a4e7aa65d9c646223caf3c4826e935d792963`。百萬元同窗2330布林／W底仍0配對但有18／4意圖，不能叫無訊號；原完整計分配置的2317仍8／9／2配對。以上不是有效策略、完整雙策略績效或歷史PIT接受，詳[Increment124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。基本面前期用途缺件仍維持不可用。
 
 124另包含保存回訪的錯根拒讀：Research Registry索引複製後不再沿舊絕對路徑讀原根，也拒其他run檔名及根內連結替換。原件不改寫、121交付SHA保持；此防錯修復不是完整搬移，詳[Increment122 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment122-registry-root-binding)。

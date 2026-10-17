@@ -21,6 +21,12 @@
 
 ## 具名營益固定版本研究
 
+**開發來源另有三公司版本，尚未替換固定124。** 新用途包含2317／2330／2454的2026-H1營收與四率，原值來自相同已保存開放CSV；鴻海／聯發科另用官方半年合併財報核期間、TWD及顯示精度，PDF不供產品值或前期。2382下載轉驗證頁，仍顯示不可用。新版本真實可用小時為台北2026-10-17 19:00，此前明示等待；不是歷史PIT或全資料集接受。
+
+正常入口仍是「個股研究 → 載入個股報告 → 基本面／營收財報」，可切回價格、切觀察清單返回及重載。顯示半年累計，不是Q2單季；稅後率以合併本期損益計，不是母公司股東淨利率。前期／其他指標缺件維持不可用，不能用PDF補值、推成長率或供策略／ML。
+
+管理者選新版本時，同時設定`OPERATING_SUMMARY_POLICY_SCHEMA=twse-operating-summary-reviewed-2026h1.v1`及既有目錄／manifest／receipt三項；它們只選固定原件，不抓取或寫正式庫。缺一項、schema錯誤、SHA漂移、pending／failure、尚未到新小時或公司未接受，對應來源不可用，價格及其他報告區塊仍可用。原三項配置未設新schema時保持2330 v1；新版本的`base/`保留原7檔與原可用小時，不手改收據搬移或提前日期。來源及正常UI出口見[Increment125 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
+
 可用[117基本面預覽](../../../output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md)啟動；116原包保留。啟動器已成組指定`OPERATING_SUMMARY_SNAPSHOT_DIRECTORY`、`OPERATING_SUMMARY_MANIFEST_SHA256`及`OPERATING_SUMMARY_RECEIPT_SHA256`，一般使用不用設定。它們只明選固定版本，不觸發抓取、匯入或正式庫寫入；管理者不可手改收據或選latest。
 
 在「個股研究」輸入2330→「載入個股報告」→「基本面／營收財報」。此版本只提供2026上半年累計營收、毛利率、營業利益率、稅前與稅後純益率；金額以TWD顯示，百分比沿原值。期間2026-H1不是Q2單季，出表日期也不是歷史公告時間。頁面直接列來源／授權與限制，價格頁仍沿它自己的資料日期，不能與財報期末混稱同日。

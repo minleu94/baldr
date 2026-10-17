@@ -835,9 +835,9 @@ Increment29已有正常Main的外部接受binding配置接點，原daily表單�
 
 單股 next-open、未成交日收盤估值、完成配對、即時與歷史摘要的未知值契約已收斂至[策略回測](#workspace-backtest-research-lab)；原 Increment36／37 QA 錨點保留於該契約。
 
-## 第二階段：保存策略逐日訊號對照（Increment133候選）
+## 第二階段：保存策略逐日訊號對照（Increment133固定候選）
 
-Increment133候選在原Registry明選2至5具名單股策略，比較同一實際研究窗的原保存訊號；新的canonical價量證據另綁execution／rule card，暖機不同不以整段指紋誤拒，缺舊證據不補造。新介面列各策略意圖數、逐日三態、策略／家族數、分頁與原保存規則，選取／metadata改變、取消或晚到清舊結果。沿原頁捲動到入口，對照視窗關閉回原列表；不重算／重存或用意圖當成交。來源Main保存／規則／原結果／返回／fresh已限定驗證，新EXE仍待；操作及非績效用途見[手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存策略逐日進場意圖對照)與[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
+固定133在原Registry明選2至5具名單股策略，比較同一實際研究窗的原保存訊號；新的canonical價量證據另綁execution／rule card，暖機不同不以整段指紋誤拒，缺舊證據不補造。新介面列各策略意圖數、逐日三態、策略／家族數、分頁與原保存規則，選取／metadata改變、取消或晚到清舊結果。沿原頁捲動到入口，對照視窗關閉回原列表；不重算／重存或用意圖當成交。來源Main44552→44732及新EXE9076→15412已限定驗保存／規則／原結果／返回／fresh，同419日金融輸出一致，包內附三筆示範；操作及非績效用途見[手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存策略逐日進場意圖對照)與[133 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment133-saved-signal-comparison)。
 
 ## 第二階段：雙策略逐日原觀測
 

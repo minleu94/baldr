@@ -2,7 +2,7 @@
 
 本 Runbook 用於第一次建置新環境，或 owner 將既有 baldr 環境移到新電腦。所有資料根、私人資產、runtime 與排程都需逐項確認。安裝 GUI、plan 無 error 或 Task 已建立都不代表排程已自然成功執行。
 
-目前132另存行情、12件財報比較版本、保存研究／一般推薦及F07示範清單；未改的完整技術來源沿131已驗元件，不重複複製，須保留131的`state/technical-source`。原件、時間與金融值保持；實際啟動與四旅程見[目前試用版指南](TRIAL_VERSION_GUIDE.md)。這是明示相依的本機候選，不代表完整owner-migration、私人帳、跨主機或正式Task接受。下述CLI仍是來源工具，不以EXE取代Python排程，也不自動啟用既存maintainer。
+目前133另存行情、12件財報比較版本、研究／一般推薦及F07示範清單，另附三筆新EXE正常保存的訊號對照示範；未改完整技術來源沿131已驗元件，須保留131的`state/technical-source`。原件、時間與金融值保持，啟動與四旅程見[目前試用版指南](TRIAL_VERSION_GUIDE.md)。這是明示相依的本機候選，不代表完整owner-migration、私人帳、跨主機或正式Task接受。下述CLI仍是來源工具，不以EXE取代Python排程，也不自動啟用既存maintainer。
 
 先選擇[首次安裝 Prompt](FIRST_INSTALL_PROMPT.md)中的 `fresh` 或 `owner-migration` 模式，依 repository 的[`baldr-bootstrap.v1 manifest 範例`](../../examples/machine_bootstrap_manifest.example.json)與[JSON Schema](../../examples/machine_bootstrap_manifest.schema.json)準備不含秘密的盤點資料。`scripts/document_control.py bootstrap-plan` 只唯讀檢查並把 plan JSON 輸出至 stdout，不會自動設定 root、複製資產、註冊或啟用排程。它與本機 `output/tasks/` task 狀態是分開的記錄，不可宣稱 bootstrap-plan 會建立該記錄。
 

@@ -2843,9 +2843,9 @@ Root每組串行，8GiB committed／12程序／kill-on-close與同workspace mute
 Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動RAM≥8GiB；699–710皆自然閉鎖，三PID陣列空、handles與mutex釋放後才接下一組。原計畫、Snapshot、current架構、Manual／試用／可攜／Runbook及Feature Map同步，完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4仍未結案。接續回原第三至五列的獨立可交付出口，不把額外搬移或同來源重驗加成共同前置；TPEx、歷史原件、真N、完整績效、自然成熟及私人帳各自續推。沒有正式資料／Task／maintainer、push、發布或交易變更。
 
 <a id="increment133-saved-signal-comparison"></a>
-## Increment133：保存策略逐日進場意圖對照（2026-10-17，來源候選）
+## Increment133：保存策略逐日進場意圖對照（2026-10-17，固定本機候選）
 
-本葉回原§0.4第四列及F22，解除原Registry只能比績效／查單筆規則、無法對照同股同日各策略原訊號的缺口，也直接處理零配對被誤讀為無訊號的操作問題。基線`f482a30465b90f5bc2e2f25df90c699c1471f1f9`；不新增策略、改原門檻／撮合／金融計算或擴四條V1。Root Sol兼Tech Lead／Data Audit／Execution／QA／Documentation，無獨立reviewer；代理額度10/10、無可重用agent，未新增。固定132保持，新EXE與交付尚待。
+本葉回原§0.4第四列及F22，解除原Registry只能比績效／查單筆規則、無法對照同股同日各策略原訊號的缺口，也直接處理零配對被誤讀為無訊號的操作問題。基線`f482a30465b90f5bc2e2f25df90c699c1471f1f9`；不新增策略、改原門檻／撮合／金融計算或擴四條V1。Root Sol兼Tech Lead／Data Audit／Execution／QA／Documentation，無獨立reviewer；代理額度10/10、無可重用agent，未新增。來源checkpoint時132入口保持；下列補記記錄其後133固定交付，早期FAIL不改。
 
 ### 保存與公開讀取契約
 
@@ -2888,3 +2888,29 @@ Root各組串行，沿8GiB／12程序／kill-on-close／workspace mutex及啟動
 | 摘要唯讀補核 `increment133_signal_main_source_qa03e/result.json` | `eee432555ecafc0a1d082b9d8d3dda7b0d63fdeccb543a603391d85d9849aa05` |
 
 712–720各Job都沿8GiB committed／12程序／kill-on-close／同workspace mutex，前組三PID陣列空、handles及mutex自然閉鎖後才接下一組，未放寬資源或原期限。原計畫§5.8、Scoped current架構、Feature Map、功能／手冊與Snapshot同步；完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4、P06真同帳本、來源權威／幣別／成本、歷史PIT、真N、完整績效、Native／真人及自然成熟仍待。沒有新抓取、正式資料／Task／maintainer、push、發布或交易變更。
+
+### 133固定EXE、試用入口與資源閉鎖補記
+
+- 721只核來源checkpoint的12個feature／8件文件，0錯誤；其後程式提交`efe7e957f842d3caec86c09d4e3efe1c5941cce0`，工作樹乾淨。
+- 722從該提交封存建置，EXE為`dist/candidate_efe7e957f842_b38b1a98/baldr/baldr.exe`，56,623,688 bytes，SHA `b3cd7a19c49f407576123eb83f169f2e3b4dbf0ab90e6b835ec7044c134656db`。source.zip與7件受改程式、2件測試相符，未帶output；建好本身不等於旅程通過。
+- 723組裝獨立`output/trial/Baldr-Daily-Research-133`：6行情及12件132財報版本逐bytes保持，原109四件研究／推薦沿既有複製工具，131不可變示範收藏原件另存；只明選共用131技術元件，不再重複1951檔來源複製。不匯入私人持倉、其他候選後續寫入或Paper帳。
+- 新EXE正常Main **9076→15412**在實際133試用狀態正常跑／保存三策略、Registry多選、表格100列分頁／篩選、原規則、原結果、返回及fresh通過。三筆示範留在133自己的Registry，毋須複製或重綁已產生run；fresh禁止執行策略與save_run。共同價量SHA、每策略context／signals／metrics／完整指紋及419逐日列與719來源結果精確一致；runID與metadata身分保留各自原件，不要求不同保存時間同SHA。
+- 新包的15件固定輸入（config、launcher、12財報及共用tech master）、6行情前後SHA一致；父關閉與fresh的研究DB／Parquet／Registry JSON相同，舊109／132／131非技術根、rc101、原財報與正式根I/O和網路為0。新3筆策略為四均線16意圖／1配對、W底4／0、布林18／0，共同進場0，未重現使用者原6配對run。原SOP／Baseline與完整績效限制維持。
+- 另核launcher --check、EXE／source archive／收據及交付後初始狀態；此核對不冒充Main旅程。132交付SHA `67ee490d30b588fe206a2614891c1eaa0bc3f30777e7efa848c84b4cba93d151`及131 `c2e1db9c4d3430bd69fc7975b6a6340151abc36d0a4d61bae34411412663981d`保持。正常主題截圖已核文字／表格，不授Native、真人、其他DPI／尺寸或完整Gate；未改132基本面、價格、收藏沿原證據，沒有重跑全部四旅程。
+
+| 133固定出口收據（owner task內） | SHA-256 |
+|---|---|
+| 721 outer `single_owned_qa_e324d58be8ff450b866263a58e14832e/receipt.json` | `520dd221b72da06107cc42c9700fd2da1b787995830a41f5d09173bc610187ab` |
+| 722 build spec `increment133_fixed_build_qa05_spec.json` | `d52c19aca6eb93e9c8fe6114f7a6f045ed92c8bd2fcbfd53a2ba10b8054dfe9b` |
+| 722 outer `single_owned_qa_3bc1967dba6445f6a825155809f14894/receipt.json` | `e07c011bbd946bbaefa0bca639bf5dc04a97c63cba14415b04aa31b4ff04754d` |
+| build result `increment133_fixed_build_qa05/result.json` | `101f398330a473a0d12255d5fa82170cea6ceee21dc0519c5b4ec32ec63e0282` |
+| source archive／build receipt | `db9d5adf824c4ff59433875fecd8daa243e188b6388429cbcca3f5a4b1b886bd`／`7a8e8e56d3dc1d2d6868e6d88693e9f6c4b8d4092c84c003e0898c53135cd03c` |
+| 723 spec `increment133_trial_delivery_qa06_spec.json` | `469307172170089cd01c1d39d78b05c73118a7c0d8ec4a1d16c46e427b1b2785` |
+| 723 outer `single_owned_qa_c55255e9a2c544229427161b115f45ea/receipt.json` | `ec1fc121fa5cdd94a0bace77d73137a7d85f55262eccf8927be0bf7f98f9e76e` |
+| EXE Main `increment133_trial_main_qa07/result.json` | `e614816a6cb2661aa5fafbe6b93f43d29f588a020c43de36ae12823ff20dff55` |
+| postQA state `increment133_trial_postqa_state_receipt.json` | `c1a9c39adc942528f4547f89a645e0c3965b8d5bebaa05eb13ad24c4c7ffb161` |
+| `output/trial/Baldr-Daily-Research-133/DELIVERY_RECEIPT.json`（repo相對） | `5eecbefd11f19c9a492e0a328356bf171d32e95bc852043a6c821fa62e5746d7` |
+
+722啟動前可用RAM25,970,642,944 bytes；各組沿8GiB committed／12程序／kill-on-close／同workspace mutex。721、722、723皆三PID陣列真正空、process／Job handles閉鎖及mutex釋放，無強制清理；同session追蹤而未盲重跑。Snapshot、原計畫§0.4／§5.8／§9.5、Manual、操作／試用／可攜與Runbook同步133。這輪交付解除原第四列訊號判讀與可直接試用的阻礙，不擴原四條V1；P06同帳本真原件、2382／其他來源、來源／幣別／成本、歷史PIT、真N、完整績效、P12自然成熟與完整P00–P14仍待。沒有新抓取、正式資料／Task／maintainer、push、發布或交易變更。
+
+724最終文件核對12個feature／11件link sources、0錯誤，outer SHA `9e476423d82b92204a1e59f2653805530513ce0f70d750b47583d691e80df387`。隨後逐字核介面標籤，發現試用D步驟把按鈕功能名寫作「比較逐日進場意圖」；實際為「逐日策略訊號對照」。另存包內 `TRIAL_GUIDE_REV2.md` 與 `GUIDE_SUPPLEMENT_RECEIPT.json`，主要指南改指修訂2；原guide／delivery與全部產品QA不改寫，這是文件勘誤，不新增Increment或重跑策略。

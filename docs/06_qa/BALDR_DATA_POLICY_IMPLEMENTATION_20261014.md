@@ -2,6 +2,35 @@
 
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
+<a id="increment126-research-output-copy"></a>
+## Increment126：原P14保存研究的新輸出副本（2026-10-17，來源工具／125候選保持）
+
+上一輪固定125已交，屬實質進度；本輪從乾淨`a2b5eb16a40c899a4dcdad615cd0411eba107200`接原P14保存搬移，不重驗125未改流程、不等真人回報。前645收據SHA `83bcf6b0b5b39e9a42cefeeb8db5ff33c2230a0b11b62c137634670357b9fd4e`已自然閉鎖，結束RAM27,635,265,536 bytes；Root單寫Tech Lead／Execution／Data Audit／QA／Documentation，無獨立reviewer或新代理，10/10維持。這是第二階段既存出口，不新增V1前置。
+
+既有圖譜先從實際詞彙選research／registry／artifact／bootstrap／path作有界query，原圖SHA不變；只作導航，現況回Git／原reader正文。context Level2為2428字／4630bytes、Unknown=[]，不授全庫EOF。QA00 outer `637b7b06e19b6e894eb9f967cd811a30c3e75e9e8c8ba0b0e26d4c43eb85d526`。API／單寫範圍先凍結，SHA `0c9fbf2e80b189fc99a3bcf911f3d47e75c7eb772cbe259b6a2a76edf7d5d6cb`。
+
+### 既有保存格式與來源保護
+
+`research_output_copy.py`與來源CLI只複製明選`research_runs`、`backtest/runs`、`recommendation_portfolio/runs`。來源離線唯讀且無journal／staging，所有run沿原public reader；legacy新增exact ID selector沿原metadata／artifact identity、取消與預算，不靠清單頁長截短。新根create-only、canonical／protected／重疊守衛，來源／目的全檔讀前後身分、每檔／總bytes／entries／runs預算、取消及非標準trigger／view拒絕。配置情境含外部帳本引用整批拒絕，不能省略或以手動成本代替。
+
+原Parquet／JSON／sidecar逐bytes複製，沒有呼叫save_run或重新序列化金融檔。只在**新副本**SQLite重綁既有path欄位，逐欄確認其餘metadata不變；原、新metadata／context與索引SHA另記，不冒充同一位元原件、不改原收據。原來源manifest、可得時間、策略版本、precision與FAIL保持。只有完整public重讀與來源／目的finish後才發成功收據；失敗保留pending／failure，不自動清理或啟用新根。來源工具不改正式資料、私人帳、Task或maintainer。
+
+### 定向驗證與正常使用鏈
+
+QA01 compile、70項受改／既有保存查找與錯根回歸、mypy1061與精度守衛通過，outer `4a1500de0abd019d788bf8494a1e4685145ba7b607bb8517668c4e97276ab29a`。Root補目的端public重讀後遭修訂的finish守衛，再只驗受改17項與compile／mypy1061／精度守衛，QA02 outer `c76ed4f6a54cff5826f4d733270bd0b1c2a513cdb14d6ad4cb1ef58f5a89f932`。測試含三store帶資料、原根移開、Decimal／大整數原值、禁止to_parquet／save_run、journal／staging／越界／trigger／scenario／壞原件、預算不得截短、取消及來源／目的讀中修訂；不是按70＋17加總Gate。既有UI mypy ignore仍不證UI強型別。
+
+QA03在測試full入口漏加repo import path，於複製前FAIL，outer `722094c097e5fa3e61a7dea6eb4f938aa7fa84a7eba28d898245b49e7f55bec1`。原helper／spec／FAIL保留；新QA03b只修測試入口，產品碼不因此修改。真正使用鏈唯讀取124原保存`single_backtest_20261017_030843_bea9824d`及原5件輸出，再各自複製到新隔離根；來源Main **34052→38916**、既存125 EXE **31544→30384**，從正常歷史清單明選原run、原規則／結果、切頁返回及fresh通過。原根Path.open／SQLite I/O、目前策略、重新執行／保存均禁止；實際attempt0、network0，6行情與原、新研究原件不變。兩runtime金融identity皆`8e34636a096db79368476d99b197d7e3058a0758bb4a26bdf3f058d8a30563ee`，只排除已明記的新舊兩個定位path欄位，原metadata其餘欄、表格及結果保持。
+
+來源Main結果SHA `ee7148405acbcde1b274dae54825edcc7f79fc40d87b83d53d015be7c657f9c1`、EXE結果SHA `3fc7da033b50309693fbe5801ecbbdadca1bee738780bdbccf799c3fcfa1a619`；兩份新副本收據SHA各為`3065a114fa7800ee990bf7731d8daa59ffcbb1bdd3d6d0bf3d663a1bbb86f3ae`／`3f96c2125adb3b299a41c580441f4f74df5ddb6ea39e62ff83b422b8a8cd869f`，不是同一新根身分。QA03b Job650 outer `44e82096a52ee0d8e07f4f19e36b123e74b2c61444f89cb199b5447ae2031c0b`，前各Job均8GiB／12程序／kill-on-close讀回、三PID陣列自然空、process／Job handles關閉與mutex釋放，無forced cleanup。
+
+### 交付與尚未覆蓋
+
+Root複核將明選來源根／同store／已核檔集合檢查移到legacy public reader之前，避免越界索引在拒絕前已讀外部檔。QA05在原越界反例加「外部Path.open不可發生」斷言，17項、compile、mypy1061與精度守衛通過，outer `66f8416354b1b1bf0f24ed17081a5ced357dc9fb6f0cad4d9cf7444b721c52f0`。有效映射、GUI與金融檔未改，沿QA03b正常鏈，不重新執行原回測或重跑Main。兩runtime全部Main／fresh終止後另以唯讀SHA核6行情，補證SHA `13b45e9582580f6a68f14a7154a48296a8cb675ca47911b59b7d33f9d38bd9c3`。前QA04的task／12features／9份連結errors=[]，outer `af49646c0be07105fbeab763f9c81f655eb82da2e90c2973a2fd709d7073c36b`，不當產品Gate。
+
+本次交來源工具及[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，沒有新打包EXE或換掉固定125；既存125只作既有reader可消費新根的證據，不假稱已打入新工具。正常Main例為一筆Registry原研究；舊單股與舊組合帶資料的搬移由合成fixture／public reader驗證，尚非真私人帳、所有格式變體或全部GUI旅程。offscreen不授Native、真人或其他主機。
+
+Snapshot、原計畫§9.5、Feature Map、主手冊、current資料保存、Runbook、可攜指南與領域README已同步；主手冊首頁原殘留121指定版改為引用現行試用指南，避免競爭入口。Product／6M／目標架構未改方向或Gate，not_required；UI碼／工作區入口不改，未改Workbench／validator不重跑。首次安裝Prompt的模式與授權、排程契約、正式writer與P06私人資產均未改，not_required。行情、technical v4分段receipt的絕對parent、一般推薦／收藏、私人帳、跨主機、來源／PIT／自然成熟及完整P00–P14／G0–G4仍各自保留；不把這一步當全環境搬移完成。
+
 <a id="increment125-reviewed-fundamentals"></a>
 ## Increment125：沿原P03交付具名三公司基本面（2026-10-17，固定125已交）
 

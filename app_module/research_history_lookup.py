@@ -305,6 +305,33 @@ class ResearchHistoryLookup:
         return ResearchHistoryPage(tuple(sorted(entries, key=lambda e: (e.created_at, e.source_kind, e.run_id), reverse=True)),
                                    tuple(diagnostics), limit)
 
+    def select_legacy_run(self, source_kind: str, run_id: str, *,
+                          read_budget: ResearchHistoryReadBudget | None = None,
+                          check_cancel: Callable[[], bool] | None = None) -> ResearchHistoryEntry:
+        """明選一筆舊保存研究；沿原讀取預算與身分守衛，不受清單頁長限制。"""
+        if source_kind not in self.legacy_paths:
+            raise ResearchHistoryUnavailable("legacy:source_kind_invalid")
+        if type(run_id) is not str or not run_id.strip() or run_id != run_id.strip() or len(run_id) > 512:
+            raise ResearchHistoryUnavailable("legacy:run_id_invalid")
+        reading = _ReadRound(read_budget or self.read_budget, check_cancel)
+        reading.cancelled()
+        rows = self._legacy_rows(source_kind, run_id=run_id)
+        if len(rows) != 1:
+            raise ResearchHistoryUnavailable("legacy:run_missing")
+        row = rows[0]
+        artifacts: dict[str, str | None] = {}
+        for key in ("equity_curve_path", "trade_list_path", "data_path"):
+            if row.get(key):
+                path = Path(row[key])
+                if not path.is_file():
+                    raise ResearchHistoryUnavailable("legacy_artifact_missing:" + key)
+                artifacts[key] = reading.read(path)[0]
+        entry = self._legacy_entry(source_kind, row, artifacts=artifacts)
+        reading.verify_sources()
+        if self._legacy_rows(source_kind, run_id=run_id) != rows:
+            raise ResearchHistoryUnavailable("selected_source_changed")
+        return entry
+
     def select_registry_run(self, run_id: str, *,
                             check_cancel: Callable[[], bool] | None = None) -> ResearchHistoryEntry:
         """按明示run建立當次唯讀選取；不掃latest、不讀結果或建立來源。"""

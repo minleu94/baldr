@@ -805,6 +805,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
 ### 9.5 資料阻塞分流與下一批交付（2026-10-14 調整）
+
+**原P14保存研究出口（Increment126）**：新來源工具可為研究Registry、舊單股回測與舊推薦組合建立離線新副本；逐bytes保留原金融檔，只重綁新索引已知path欄位，原、新選取與索引SHA各自記錄。既存124原run在新根由來源Main34052→38916及既存125 EXE31544→30384開原規則／結果、返回與fresh，禁止原根I/O及重算，金融identity一致。它解除已保存研究只能回舊絕對根的缺口，不替換125或追加V1前置。行情、technical v4分段來源、一般推薦／收藏、真帳與其他主機仍是完整P14待辦；不以此稱全環境移機。操作及具名測試／失敗見[126 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。
 **10/17固定125出口**：第二列已交2317／2330／2454、2026-H1五欄目前研究，從原licensed CSV取值、官方半年報只核單位與口徑。真批次台北19:00後來源Main46452→35928與EXE19012→34276完成載入、價格、返回、重載及fresh，同值／版本／時間／顯示一致；不授前期、其他公司或歷史PIT。2382下載驗證頁屬A工具／權威缺件，原MOPS partial與耗盡scope保留。固定125交付SHA `670e489253748b0bd3e2513413f6fbc1bcd6a55d6ff8ce8467a8af983d0f55b4`；原四條V1與全範圍不變，不以三公司或案例加總成Gate。後續依§0.4轉其餘可交付出口，P06真帳、完整保存搬移、來源／成本與自然成熟分開，見[125 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
 
 Increment124解除原P07三段收縮缺正常單股、同次保存／重開的交付阻礙，沿原producer／Broker／Registry完成並交[固定124](../../07_guides/TRIAL_VERSION_GUIDE.md)；同輪修合法千分位讀取，新run另存解析版本，不調策略門檻。原123規格及敏感度不改，四條V1不擴。原可操作工程鏈已交，不反覆微修同一核心；接續沿§0.4的財報前期／來源用途、真帳持倉情境、P14完整搬移與其餘範圍推進，歷史PIT、有效績效、Native／真人與自然成熟各自保留，見[Increment124 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。

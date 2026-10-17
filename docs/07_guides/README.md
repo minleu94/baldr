@@ -10,6 +10,7 @@
 | 使用目前指定本機試用版 | [目前試用版指南](TRIAL_VERSION_GUIDE.md) → [完整操作手冊](APPLICATION_MANUAL.md) |
 | 使用整包 Windows 可攜版 | [可攜版指南](PORTABLE_WINDOWS.md) |
 | 新電腦接手舊環境、資料或排程 | [機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md) → [排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md) |
+| 為已保存回測建立新的輸出根 | [保存研究新副本](MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，來源工具，不自動啟用設定或搬整個環境 |
 | 查一般 UI 日常操作 | [完整操作手冊](APPLICATION_MANUAL.md) → [主題手冊地圖](manuals/README.md) |
 | 唯讀核對全部 baldr 排程 | [全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md) |
 

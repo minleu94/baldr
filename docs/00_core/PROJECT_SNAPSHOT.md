@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+原P14另完成保存研究的新副本工具：三種研究store逐bytes複製，僅重綁新索引路徑，原金融值／來源manifest不改。來源Main與既存125 EXE已從新根開原規則／結果、返回及fresh，並禁止原根I/O與重算；125候選本身不替換。操作見[Runbook](../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)，證據見[126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。行情、technical v4、一般推薦／收藏、私人帳及其他主機的完整搬移仍待，不把此步當全環境可攜。
+
 第二列已交具名三公司固定版本：原CSV的2317／2454經完整官方半年報勾稽，沿2330原reader保留7件，新外層共9件；真保存台北19:00後才讀值。來源Main46452→35928、EXE19012→34276的五欄、版本、時間及顯示一致，四股價格／返回／重載可用，2382驗證頁缺件隔離。116項受改／Workbench、validator25/0/4、mypy1060及精度守衛通過；不授歷史PIT、前期或策略輸入。交付SHA `670e489253748b0bd3e2513413f6fbc1bcd6a55d6ff8ce8467a8af983d0f55b4`，詳[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
 
 124已把原P07三段轉折收縮1.0.0接入原單股Backtest／Broker／Registry與規則卡，完成來源及EXE正常保存、返回及新程序讀回。整合同時修SQLite合法千分位被轉成NaN，新run保存`historical-price-numeric-text.v1`，不改原資料或舊結果。2330／2025-01-02至2026-09-23、千萬元核對例為419已知列、1意圖／1配對；EXE9988→38812與來源一致。EXE SHA `a8b840d383b6d6a9918c074bf27ab462da3145d6f5dcd16d3b37fcf111fbeb12`，交付SHA `a012cfcfce0a49717b97db19135a4e7aa65d9c646223caf3c4826e935d792963`。百萬元同窗2330布林／W底仍0配對但有18／4意圖，不能叫無訊號；原完整計分配置的2317仍8／9／2配對。以上不是有效策略、完整雙策略績效或歷史PIT接受，詳[Increment124 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment124-vcp-integration)。基本面前期用途缺件仍維持不可用。

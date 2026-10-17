@@ -15,6 +15,23 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 - 模型不只是一個權重檔：需要核對 model lineage、source/account、feature／資料版本、cutoff、pins、manifest/hash 和使用資格。材料不齊列為 pending，不可僅按檔名啟用。
 - 在舊機 writer 確認停用前，不得在新機啟用相同正式 writer。兩邊同時寫入可產生重複、互相覆蓋或來源身份混淆。
 
+## 保存研究的新副本（來源工具）
+
+若只要把已保存回測放到新的`OUTPUT_ROOT`，可使用來源工具`scripts/copy_research_output.py`。它處理研究Registry、舊單股回測與舊推薦組合三個store；不複製行情、價格選股來源、一般推薦、收藏、Paper帳或模型，亦不自動啟用新設定。這是完整移機中的一個步驟，原完整清冊仍須逐項處理。
+
+1. 先取得owner對來源與**全新目的根**的精確授權，關閉使用該來源的保存程序。來源仍有SQLite journal／WAL、未完成staging、非標準trigger／view或配置情境外部帳本引用時，工具會拒絕，不省略那些內容。Agent驗證仍須使用受控Job，不可在正式根試跑。
+2. 以下為人工操作範例，須換成已授權的實際路徑；目的根必須不存在，不得位於正式資料或私人根內，也不得與來源重疊：
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts/copy_research_output.py --source-output-root 'C:\BaldrResearch\old-output' --destination-output-root 'C:\BaldrResearch\copied-output'
+   ```
+
+3. 工具沿原public reader逐run驗來源，逐bytes複製原檔，只在新SQLite副本重綁已知的結果檔路徑；原Parquet／JSON、金融metadata、來源manifest與sidecar不重新序列化。原件不改，原、新索引及選取context的不同SHA會記在新根`RESEARCH_COPY_RECEIPT.json`，不能混稱同一位元原件。
+4. 必須看到`copied_and_public_readers_verified`收據，且沒有`.research_copy_pending.json`或`RESEARCH_COPY_FAILURE.json`，才把此步列為完成。超限、取消或來源／新副本讀中修訂都不能當成功；失敗副本保留供核對，不直接重跑覆寫。預設每檔256MiB、全來源4GiB、100,000檔／目錄項與10,000runs，是明示資源預算，超限會整批拒絕，不截短來源。
+5. owner另行核准設定時，再讓GUI使用新`OUTPUT_ROOT`，保留原`DATA_ROOT`及其他已核根，從「策略回測 → 找已保存結果」明選原run、查原規則／結果、返回，關閉後重開。不重新回測或按目前策略重建保存值；舊根可保留作還原。這個複製命令不改Task、maintainer、模型、私人帳或正式writer。
+
+來源正常Main與既存125 EXE已限定驗新根讀回及fresh，原根I/O與重算為0；125 EXE本身未打入這個新來源工具，執行複製須使用對應來源環境。完整行情／technical v4／一般推薦／收藏／私人帳、其他主機與全環境移機仍待，詳[Increment126 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)。
+
 ## Fresh：全新環境
 
 1. **選環境與根目錄**：決定 `source` 或 `portable-gui`、repository／portable 位置、Windows 帳戶和資料磁碟。依[快速開始](QUICK_START.md)、[安裝指南](INSTALL_GUIDE.md)或[可攜版指南](PORTABLE_WINDOWS.md)建立新機環境。

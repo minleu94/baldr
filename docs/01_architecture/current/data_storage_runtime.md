@@ -147,6 +147,10 @@ Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 te
 
 ## 保留、遷移與高風險邊界
 
+`research_output_copy.py`只建立明選三種研究store的新輸出副本：`research_runs`、`backtest/runs`、`recommendation_portfolio/runs`。來源全程離線唯讀、逐run經原Registry／legacy public reader；`ResearchHistoryLookup.select_legacy_run`以exact ID沿原身分、讀取預算與取消建立選取，不依清單頁長截短。複製原檔後只修改新SQLite的已知path欄位，逐欄確認其他metadata未變；Parquet／JSON與sidecar原SHA保持，原、新metadata／context與索引SHA分別記錄，不重寫原收據。
+
+來源／目的根canonical與protected-root、無journal／staging／非標準trigger／view、明示檔／bytes／entries／runs預算、取消及來源／目的讀前後完整身分核對先於成功收據。失敗保留pending／failure，不啟用新設定、不刪來源、不遷移正式根；配置情境外部帳本引用尚不支援，須整批拒絕而非省略。新副本可沿既有嚴格reader開啟，錯根拒讀守衛不放寬。這不搬行情、technical v4、一般推薦／收藏或私人帳；限定正常Main／fresh及既存125消費證據見[126 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment126-research-output-copy)，操作見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)。
+
 - 不刪除或覆寫正式 raw source；全量重建前須有備份、明確確認、可用 restore path 及完整來源核對。
 - SQLite schema／CSV fallback 改動須經受控 migration；狀態查詢與一般 reader 不初始化資料庫。
 - Immutable publication／模型 artifact 的 retention 依 manifest lineage、consumer 與 recovery 契約執行。舊 anchor [`#111-immutable-ml-publication-retention`](../system_architecture.md#111-immutable-ml-publication-retention) 仍由架構首頁導向本段。現行 `scripts/inspect_ml_storage_retention.py` 僅提供唯讀 metadata inventory；此 repo 尚無現行 destructive retention runbook，舊 Manual Supplements 只供歷史追溯，不構成操作步驟或授權。

@@ -12,7 +12,7 @@ from app_module.research_output_copy import (
     ResearchOutputCopyBudget, _cancel, _digest, _emit, _stamp, restore_research_output,
 )
 from app_module.recommendation_portfolio_calendar_artifact_v1 import _canonical_path
-from app_module.technical_source_copy import restore_technical_source, copy_price_bookmarks, _tree_layout
+from app_module.technical_source_copy import restore_technical_source_with_price_session, copy_price_bookmarks, _tree_layout
 
 SCHEMA = "baldr-trial-first-setup.v1"
 _HASH = re.compile(r"[0-9a-f]{64}")
@@ -151,12 +151,12 @@ def prepare_trial_package(package_directory: Path, manifest_sha256: str, *,
                     raise TrialSetupError("試用資料在複製中變更")
         research_receipt = restore_research_output(research, manifest["research_receipt_sha256"],
             state / "output", budget=_BUDGET, check_cancel=check_cancel)
-        pin = restore_technical_source(technical, manifest["technical_receipt_sha256"],
+        pin, price_session = restore_technical_source_with_price_session(technical, manifest["technical_receipt_sha256"],
             state / "technical-source", budget=_BUDGET, cancel_callback=check_cancel)
         technical_receipt = state / "technical-source/TECHNICAL_COPY_RECEIPT.json"
         bookmark_receipt = copy_price_bookmarks(watchlist, manifest["watchlist_sha256"],
             technical_receipt.parent, _digest(technical_receipt, check_cancel), state / "bookmark-copy",
-            bookmark_ids=ids, budget=_BUDGET, cancel_callback=check_cancel)
+            bookmark_ids=ids, budget=_BUDGET, cancel_callback=check_cancel, read_session=price_session)
         new_watchlist = state / "output/watchlist/default.json"
         new_watchlist.parent.mkdir(exist_ok=False)
         _digest(state / "bookmark-copy/watchlist/default.json", check_cancel, new_watchlist)

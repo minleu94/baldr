@@ -156,7 +156,7 @@ Increment55沿原P13/P14補兩個後續開發旅程的固定同版Native出口�
 
 ### 0.4 依使用流程重排交付（2026-10-15）
 
-**138／P14全新試用包整合候選**：把已驗研究／technical／F07收藏工具接成首次設定，處理134對dist及131舊位置的依賴；10項保存保護測試與mypy1067已過，實際全包／新EXE／fresh仍待，固定134不變。只建全新state，同根重開保留保存，已有state移位拒絕且不重設；私人環境與完整P14不因此接受，見[138 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)。
+**138／P14全新試用包整合候選**：把已驗研究／technical／F07收藏工具接成首次設定，處理134對dist及131舊位置的依賴。來源保存保護及型別有定向證據；原EXE及修後Source整包初次移位均在原600秒FAIL，原件保留。唯讀核對、有界metadata寫入與同一strict graph的價格session重用不略過前後SHA或延長期限；停止整包盲重跑，回第二列既存月營收公司身分證據審核。修後完整EXE／Main／fresh仍待，固定134不變。只建全新state，同根重開保留保存，已有state移位拒絕且不重設；私人環境與完整P14不因此接受，見[138 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)。
 
 **137／伴隨各列的P14恢復出口**：已保存研究副本移位後，可用外部固定收據SHA恢復全新根，只重綁新索引的既知路徑，不重編原金融檔。來源Main47012→37788已驗原規則／結果／返回及fresh，原根I/O與重算0；原複製／推薦回歸及15項新測試分輪記錄，見[137 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment137-research-archive-restore)。這只解除研究store仍綁舊位置的交付阻礙，不重定V1範圍或授完整移機。固定134保持，完整試用副本整合仍待；136月營收公司身分原件缺失已隔離，不把它變成其他列的新前置。
 

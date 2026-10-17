@@ -70,7 +70,7 @@ owner 核准新 `OUTPUT_ROOT` 後，到「推薦分析」按「讀取可用來�
 
 已限定驗明選1,951檔來源的完整匯出、整包移位恢復、公開查詢，以及既存125 EXE從新根開同源個股、比較、保存收藏與新程序重開；原600秒期限及舊FAIL保留。價格消費程式自125未改，Source Main本輪不重跑。這個來源工具不自動改125入口、既存收藏或整個環境；下列命令仍須明選來源及全新目的根。
 
-執行修正只讓獨立檔案I/O最多兩件同時進行，待完成佇列亦最多兩件；新增原件buffer最多為`2 × max-file-bytes`，整體仍另受Root的8GiB Job限制。原fsync、不可覆寫、每檔讀前後檢查、完整來源／目的SHA及清冊重驗保留。預算與取消由呼叫端串行判斷，成功、取消或失敗返回前均等待本次自有寫入結束；這項修正的單元通過不能取代下列全量與正常UI出口。
+複製與不可變metadata寫入最多兩件獨立I/O，待完成佇列亦最多兩件；預算與清冊由呼叫端串行登記，metadata亦沿原fsync／不可覆寫codec。封存及來源／目的完整核對的開發修正最多四件唯讀I/O，逐檔bytes／SHA、closed集合與來源前後重驗皆保留。預設每檔256MiB時，複製原件buffer上限為512MiB，唯讀核對為1GiB；各階段不重疊，另受Root全Job committed8GiB／12程序限制。取消或失敗返回前均等本次自有工作結束。首次設定另可沿同一次strict graph所發的價格session接收藏，session須原reader發行且六來源pins匹配；收藏前後兩次完整封存核對仍執行，不把session當來源免驗。修後Source完整首次設定仍在600秒FAIL；新EXE出口未執行，138不得當可移位試用包使用。原逾時及partial原件保留，見[138 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)。
 
 價格選股的technical v4來源含snapshot、batch manifest、parent及universe定位鏈。只搬資料夾或改`TECHNICAL_UNIVERSE_READ_ROOT`不足以恢復；原收據仍綁舊絕對路徑。來源工具`scripts/copy_technical_source.py`可為**明選的完整來源**建立新定位鏈，或從已移位的完整封存包恢復；不抓取、不重算指標，也不修改原快照或原收據。
 

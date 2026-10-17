@@ -87,7 +87,7 @@ def _fake_copiers(monkeypatch, *, fail=False):
         calls.append("technical")
         target.mkdir()
         (target / "TECHNICAL_COPY_RECEIPT.json").write_bytes(b"technical proof")
-        return SimpleNamespace(store_output_root=target / "live/universe")
+        return SimpleNamespace(store_output_root=target / "live/universe"), object()
     def bookmarks(source, digest, technical, technical_sha, target, **kwargs):
         calls.append("bookmarks")
         (target / "watchlist").mkdir(parents=True)
@@ -96,7 +96,7 @@ def _fake_copiers(monkeypatch, *, fail=False):
         receipt.write_bytes(b"bookmark proof")
         return receipt
     monkeypatch.setattr(setup, "restore_research_output", research)
-    monkeypatch.setattr(setup, "restore_technical_source", technical)
+    monkeypatch.setattr(setup, "restore_technical_source_with_price_session", technical)
     monkeypatch.setattr(setup, "copy_price_bookmarks", bookmarks)
     return calls
 

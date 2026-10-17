@@ -12,7 +12,10 @@ import os
 from pathlib import Path
 import re
 import stat
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app_module.daily_market_technical_universe_price_query_v1 import DailyMarketTechnicalUniversePriceReadSessionV1
 
 from app_module.research_output_copy import ResearchOutputCopyBudget
 from app_module.daily_market_technical_snapshot_v4_repository import (
@@ -144,7 +147,7 @@ class _Archive:
         if layout != {**{name: size for name, (size, _) in self.entries.items()}, "TECHNICAL_COPY_RECEIPT.json": len(self.raw)}:
             raise TechnicalSourceCopyError("technical_copy_archive_members_changed_or_pending")
         _run_io((partial(self._verify_member, name, expected, budget.max_file_bytes)
-                 for name, expected in self.entries.items()), cancel)
+                 for name, expected in self.entries.items()), cancel, workers=4)
 
     def _verify_member(self, name: str, expected: tuple[int, str], maximum: int) -> None:
         raw = _read_bounded_file(self.directory / name, maximum)
@@ -172,14 +175,16 @@ def _cancel(callback: Callable[[], bool] | None) -> None:
         raise TechnicalSourceCopyError("technical_copy_cancelled")
 
 
-def _run_io(work: Iterable[Callable[[], None]], cancel: Callable[[], bool] | None) -> None:
-    """最多兩件獨立檔案I/O；預算及取消由呼叫端串行判斷，離開前收束所有寫入。"""
+def _run_io(work: Iterable[Callable[[], None]], cancel: Callable[[], bool] | None, *, workers: int = 2) -> None:
+    """寫入最多兩件、唯讀核對可四件；串行派工與取消，返回前收束全部工作。"""
+    if type(workers) is not int or workers not in (2, 4):
+        raise TechnicalSourceCopyError("technical_copy_io_workers_invalid")
     pending: deque[Future[None]] = deque()
     iterator = iter(work)
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="technical-copy-io") as executor:
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="technical-copy-io") as executor:
         while True:
             _cancel(cancel)
-            if len(pending) == 2:
+            if len(pending) == workers:
                 pending.popleft().result()
                 _cancel(cancel)
             try:
@@ -249,6 +254,14 @@ class _Files:
         if self._prepare_write(path, raw):
             _write_immutable(path, raw, maximum=self.budget.max_file_bytes)
 
+    def write_many(self, members: Iterable[tuple[Path, bytes]]) -> None:
+        """預算與清冊仍由呼叫端串行登記，最多兩份不可變bytes交給寫入端。"""
+        def work() -> Iterable[Callable[[], None]]:
+            for path, raw in members:
+                if self._prepare_write(path, raw):
+                    yield partial(_write_immutable, path, raw, maximum=self.budget.max_file_bytes)
+        _run_io(work(), self.cancel)
+
     def copy_raw(self, paths: dict[Path, Path]) -> None:
         def work() -> Iterable[Callable[[], None]]:
             for source, destination in paths.items():
@@ -284,7 +297,7 @@ class _Files:
                 yield partial(self._verify_source, path, expected)
             for path, expected in self.destination.items():
                 yield partial(self._verify_destination, path, expected)
-        _run_io(work(), self.cancel)
+        _run_io(work(), self.cancel, workers=4)
         for path, expected_layout in self.layouts.items():
             physical, _ = self.resolve(path)
             if _tree_layout(physical, self.budget.max_entries, self.cancel) != expected_layout:
@@ -330,9 +343,26 @@ def restore_technical_source(archive_directory: Path, archive_receipt_sha256: st
         cancel_callback=cancel_callback, archive=archive)
 
 
+def restore_technical_source_with_price_session(archive_directory: Path, archive_receipt_sha256: str,
+        destination_root: Path, *, budget: ResearchOutputCopyBudget,
+        cancel_callback: Callable[[], bool] | None = None
+        ) -> tuple[TechnicalSourcePin, DailyMarketTechnicalUniversePriceReadSessionV1]:
+    """同一strict graph驗證同時收集原F07 session；不重讀或跳過來源守衛。"""
+    if type(budget) is not ResearchOutputCopyBudget:
+        raise TechnicalSourceCopyError("請明選具型別複製預算")
+    archive = _Archive(archive_directory, archive_receipt_sha256, budget, cancel_callback)
+    sessions: list[DailyMarketTechnicalUniversePriceReadSessionV1] = []
+    pin = _copy_technical_source(archive.pin, destination_root, budget=budget,
+        cancel_callback=cancel_callback, archive=archive, price_sessions=sessions)
+    if len(sessions) != 1:
+        raise TechnicalSourceCopyError("technical_copy_price_session_missing")
+    return pin, sessions[0]
+
+
 def _copy_technical_source(pin: TechnicalSourcePin, destination_root: Path, *,
                            budget: ResearchOutputCopyBudget, cancel_callback=None,
-                           archive: _Archive | None = None) -> TechnicalSourcePin:
+                           archive: _Archive | None = None,
+                           price_sessions: list[DailyMarketTechnicalUniversePriceReadSessionV1] | None = None) -> TechnicalSourcePin:
     _cancel(cancel_callback)
     target = _canonical_directory(destination_root, must_exist=False)
     if _lstat_optional(target) is not None:
@@ -437,70 +467,84 @@ def _copy_technical_source(pin: TechnicalSourcePin, destination_root: Path, *,
     try:
         if archive is not None:
             history = target / "original/history" / archive.sha256
-            files.write(history / "source_copy_receipt.json", files.read(archive.logical_root / "TECHNICAL_COPY_RECEIPT.json", archive.sha256))
-            for name in archive.entries:
-                if name.startswith("original/"):
-                    files.write(history / name, files.read(archive.logical_root / name))
+            def history_members() -> Iterable[tuple[Path, bytes]]:
+                yield history / "source_copy_receipt.json", files.read(archive.logical_root / "TECHNICAL_COPY_RECEIPT.json", archive.sha256)
+                for name in archive.entries:
+                    if name.startswith("original/"):
+                        yield history / name, files.read(archive.logical_root / name)
+            files.write_many(history_members())
         files.copy_raw(raw_copies)
-        for index, data in parents.items():
-            origin = target / "original/parents" / f"p{index:06d}"
-            for name in files.layouts[data["directory"]]:
-                source = data["directory"] / name
-                files.write(origin / name, files.read(source))
-        original_universe = target / "original/universe"
-        universe_directory = pin.store_output_root / "daily_market_technical_universe_v4/generations" / pin.generation_identity_sha256
-        for name in files.layouts[universe_directory]:
-            files.write(original_universe / name, files.read(universe_directory / name))
-        references = {}
-        links = []
-        for index, data in sorted(parents.items()):
-            root = target / "live/parents" / f"p{index:06d}"
-            directory = root / "technical_parents_v4/plans" / data["plan"].identity_sha256
-            files.write(directory / "plan.json", data["plan_raw"])
-            previous = None
-            for old in data["chain"]:
+        links: list[dict[str, Any]] = []
+        copied_pins: list[TechnicalSourcePin] = []
+        def metadata_members() -> Iterable[tuple[Path, bytes]]:
+            for index, data in parents.items():
+                origin = target / "original/parents" / f"p{index:06d}"
+                for name in files.layouts[data["directory"]]:
+                    source = data["directory"] / name
+                    yield origin / name, files.read(source)
+            original_universe = target / "original/universe"
+            universe_directory = pin.store_output_root / "daily_market_technical_universe_v4/generations" / pin.generation_identity_sha256
+            for name in files.layouts[universe_directory]:
+                yield original_universe / name, files.read(universe_directory / name)
+            references = {}
+            for index, data in sorted(parents.items()):
+                root = target / "live/parents" / f"p{index:06d}"
+                directory = root / "technical_parents_v4/plans" / data["plan"].identity_sha256
+                yield directory / "plan.json", data["plan_raw"]
+                previous = None
+                for old in data["chain"]:
+                    body = old.to_dict()
+                    batches = []
+                    for item in body["batch_artifacts"]:
+                        changed = dict(item)
+                        changed["manifest_path"] = str(copied_batches[Path(item["manifest_path"])])
+                        batches.append(changed)
+                    repository = body["repository_output_root"]
+                    new = _parent_receipt(plan=data["plan"], sequence=body["sequence"],
+                        previous_receipt_identity_sha256=previous.identity_sha256 if previous else None,
+                        status=body["status"], batch_artifacts=batches,
+                        repository_output_root=str(repository_roots[Path(repository)]) if repository else None,
+                        writer_version=body["writer_version"], error_code=body["error_code"], observed_at=now)
+                    yield directory / "receipts" / (new.identity_sha256 + ".json"), new.to_json().encode()
+                    previous = new
+                assert previous is not None
+                references[index] = DailyMarketTechnicalUniverseV4ParentReceiptReference.create(root,
+                    parent_plan_identity_sha256=data["plan"].identity_sha256,
+                    parent_plan_sha256=sha256(data["plan_raw"]).hexdigest(),
+                    parent_receipt_identity_sha256=previous.identity_sha256, parent_receipt_sha256=previous.content_sha256)
+                links.append({"segment_index": index, "original": old_references[index].to_dict(), "copied": references[index].to_dict()})
+            new_root = target / "live/universe"
+            directory = new_root / "daily_market_technical_universe_v4/generations" / pin.generation_identity_sha256
+            yield directory / "plan.json", plan_raw
+            plan = DailyMarketTechnicalUniverseV4Plan.from_json(plan_raw)
+            previous_universe = None
+            last = None
+            for old in universe_chain:
                 body = old.to_dict()
-                batches = []
-                for item in body["batch_artifacts"]:
-                    changed = dict(item)
-                    changed["manifest_path"] = str(copied_batches[Path(item["manifest_path"])])
-                    batches.append(changed)
-                repository = body["repository_output_root"]
-                new = _parent_receipt(plan=data["plan"], sequence=body["sequence"],
-                    previous_receipt_identity_sha256=previous.identity_sha256 if previous else None,
-                    status=body["status"], batch_artifacts=batches,
-                    repository_output_root=str(repository_roots[Path(repository)]) if repository else None,
-                    writer_version=body["writer_version"], error_code=body["error_code"], observed_at=now)
-                files.write(directory / "receipts" / (new.identity_sha256 + ".json"), new.to_json().encode())
-                previous = new
-            assert previous is not None
-            references[index] = DailyMarketTechnicalUniverseV4ParentReceiptReference.create(root,
-                parent_plan_identity_sha256=data["plan"].identity_sha256,
-                parent_plan_sha256=sha256(data["plan_raw"]).hexdigest(),
-                parent_receipt_identity_sha256=previous.identity_sha256, parent_receipt_sha256=previous.content_sha256)
-            links.append({"segment_index": index, "original": old_references[index].to_dict(), "copied": references[index].to_dict()})
-        new_root = target / "live/universe"
-        directory = new_root / "daily_market_technical_universe_v4/generations" / pin.generation_identity_sha256
-        files.write(directory / "plan.json", plan_raw)
-        plan = DailyMarketTechnicalUniverseV4Plan.from_json(plan_raw)
-        previous_universe = None
-        last = None
-        for old in universe_chain:
-            body = old.to_dict()
-            segment = body["segment_reference"]
-            if segment is not None:
-                last = references[segment["segment_index"]]
-            new_receipt = _universe_receipt(plan=plan, sequence=body["sequence"], previous=previous_universe,
-                status=body["status"], counts=DailyMarketTechnicalUniverseV4Counts.from_dict(body["counts"]),
-                segment_index=segment["segment_index"] if segment else None,
-                parent_reference=references[segment["segment_index"]] if segment else None,
-                last_parent_reference=last, error_code=body["error_code"])
-            files.write(directory / "receipts" / (new_receipt.identity_sha256 + ".json"), new_receipt.to_json().encode())
-            previous_universe = new_receipt
-        assert previous_universe is not None
-        copied_pin = TechnicalSourcePin(new_root, pin.generation_identity_sha256, pin.plan_identity_sha256,
-            pin.plan_sha256, previous_universe.identity_sha256, previous_universe.content_sha256)
-        copied = _read_state(copied_pin, cancel=cancel_callback)
+                segment = body["segment_reference"]
+                if segment is not None:
+                    last = references[segment["segment_index"]]
+                new_receipt = _universe_receipt(plan=plan, sequence=body["sequence"], previous=previous_universe,
+                    status=body["status"], counts=DailyMarketTechnicalUniverseV4Counts.from_dict(body["counts"]),
+                    segment_index=segment["segment_index"] if segment else None,
+                    parent_reference=references[segment["segment_index"]] if segment else None,
+                    last_parent_reference=last, error_code=body["error_code"])
+                yield directory / "receipts" / (new_receipt.identity_sha256 + ".json"), new_receipt.to_json().encode()
+                previous_universe = new_receipt
+            assert previous_universe is not None
+            copied_pin = TechnicalSourcePin(new_root, pin.generation_identity_sha256, pin.plan_identity_sha256,
+                pin.plan_sha256, previous_universe.identity_sha256, previous_universe.content_sha256)
+            copied_pins.append(copied_pin)
+        files.write_many(metadata_members())
+        copied_pin = copied_pins[0]
+        captured_price_session = None
+        if price_sessions is None:
+            copied = _read_state(copied_pin, cancel=cancel_callback)
+        else:
+            from app_module.daily_market_technical_universe_price_query_v1 import open_daily_market_technical_universe_price_read_session_v1
+            captured_price_session = open_daily_market_technical_universe_price_read_session_v1(
+                **copied_pin.to_dict(), cancel_callback=cancel_callback)
+            copied = captured_price_session._state
         if state is not None:
             original = state.plan.to_dict()
             expected_counts = state.counts.to_dict()
@@ -535,6 +579,9 @@ def _copy_technical_source(pin: TechnicalSourcePin, destination_root: Path, *,
             "destination_files": [{"path": path.relative_to(target).as_posix(), "bytes": size, "sha256": digest} for path, (size, digest) in files.destination.items()]}
         _write_immutable(target / "TECHNICAL_COPY_RECEIPT.json", json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2).encode(), maximum=budget.max_file_bytes)
         pending.unlink()
+        if price_sessions is not None:
+            assert captured_price_session is not None
+            price_sessions.append(captured_price_session)
         return copied_pin
     except Exception as error:
         _write_immutable(target / "TECHNICAL_COPY_FAILURE.json", json.dumps({"schema": SCHEMA, "reason": str(error)[:2048]}, ensure_ascii=False).encode(), maximum=8192)
@@ -577,12 +624,14 @@ def copy_price_bookmarks(source_watchlist: Path, source_watchlist_sha256: str,
                          technical_copy_directory: Path, technical_copy_receipt_sha256: str,
                          destination_output_root: Path, *, bookmark_ids: Sequence[str],
                          budget: ResearchOutputCopyBudget,
-                         cancel_callback: Callable[[], bool] | None = None) -> Path:
+                         cancel_callback: Callable[[], bool] | None = None,
+                         read_session: DailyMarketTechnicalUniversePriceReadSessionV1 | None = None) -> Path:
     """為明選F07收藏建立新清單；原清單逐bytes封存，新ID與完整位置沿革另記。"""
     from app_module.daily_market_technical_universe_price_bookmark_v1 import DailyMarketTechnicalUniversePriceBookmarkV1
     from app_module.daily_market_technical_universe_price_comparison_v1 import DailyMarketTechnicalUniversePriceSelectionV1
     from app_module.daily_market_technical_universe_price_query_v1 import (
-        DailyMarketTechnicalUniversePriceQueryV1, open_daily_market_technical_universe_price_read_session_v1,
+        DailyMarketTechnicalUniversePriceQueryV1, DailyMarketTechnicalUniversePriceReadSessionV1,
+        open_daily_market_technical_universe_price_read_session_v1,
     )
     from app_module.watchlist_service import WatchlistItem, TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE, _bookmark_item_name
 
@@ -652,11 +701,19 @@ def copy_price_bookmarks(source_watchlist: Path, source_watchlist_sha256: str,
             raise TechnicalSourceCopyError("bookmark_copy_source_destination_overlap")
     if archive.pin.store_output_root != archive.directory / "live/universe":
         raise TechnicalSourceCopyError("bookmark_copy_restore_source_first")
-    session = open_daily_market_technical_universe_price_read_session_v1(
-        store_output_root=archive.pin.store_output_root, generation_identity_sha256=archive.pin.generation_identity_sha256,
-        plan_identity_sha256=archive.pin.plan_identity_sha256, plan_sha256=archive.pin.plan_sha256,
-        receipt_identity_sha256=archive.pin.receipt_identity_sha256, receipt_sha256=archive.pin.receipt_sha256,
-        cancel_callback=cancel_callback)
+    if read_session is None:
+        session = open_daily_market_technical_universe_price_read_session_v1(
+            store_output_root=archive.pin.store_output_root, generation_identity_sha256=archive.pin.generation_identity_sha256,
+            plan_identity_sha256=archive.pin.plan_identity_sha256, plan_sha256=archive.pin.plan_sha256,
+            receipt_identity_sha256=archive.pin.receipt_identity_sha256, receipt_sha256=archive.pin.receipt_sha256,
+            cancel_callback=cancel_callback)
+    else:
+        if type(read_session) is not DailyMarketTechnicalUniversePriceReadSessionV1:
+            raise TechnicalSourceCopyError("bookmark_copy_reader_issued_session_required")
+        read_session._validate_issued()
+        if {key: getattr(read_session.source, key) for key in TechnicalSourcePin.__dataclass_fields__} != archive.pin.to_dict():
+            raise TechnicalSourceCopyError("bookmark_copy_session_pin_mismatch")
+        session = read_session
     derived = []
     derived_ids: set[str] = set()
     mapping = []

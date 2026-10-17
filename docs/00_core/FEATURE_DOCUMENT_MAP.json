@@ -1265,7 +1265,8 @@
         "tests/test_daily_market_technical_universe_v4_read_session.py",
         "tests/test_price_bookmark_copy.py",
         "tests/test_price_bookmark_copy_limits.py",
-        "tests/test_trial_first_setup.py"
+        "tests/test_trial_first_setup.py",
+        "tests/test_technical_source_verification_io.py"
       ],
       "manual": [
         "docs/07_guides/FIRST_INSTALL_PROMPT.md",
@@ -1304,7 +1305,8 @@
         "scripts/prepare_trial_package.py",
         "tests/test_price_bookmark_copy.py",
         "tests/test_price_bookmark_copy_limits.py",
-        "tests/test_trial_first_setup.py"
+        "tests/test_trial_first_setup.py",
+        "tests/test_technical_source_verification_io.py"
       ],
       "sync_documents": [
         "docs/07_guides/README.md",

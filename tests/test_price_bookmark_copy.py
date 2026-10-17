@@ -178,3 +178,58 @@ def test_price_bookmark_copy_cancel_after_creation_keeps_pending_and_source(exac
     assert (target / ".bookmark_copy_pending.json").exists()
     assert (target / "BOOKMARK_COPY_FAILURE.json").exists()
     assert not (target / "BOOKMARK_COPY_RECEIPT.json").exists()
+
+
+def test_restore_issued_session_is_reused_and_both_archive_checks_remain(exact_price_store, tmp_path, monkeypatch):
+    import app_module.technical_source_copy as module
+    import app_module.daily_market_technical_universe_price_query_v1 as price
+    watchlist, bundle, bookmark, _ = _prepare(exact_price_store, tmp_path)
+    raw = watchlist.read_bytes()
+    digest = sha256((bundle / "TECHNICAL_COPY_RECEIPT.json").read_bytes()).hexdigest()
+    restored = tmp_path / "restored-with-session"
+    pin, session = module.restore_technical_source_with_price_session(bundle, digest, restored, budget=BUDGET)
+    assert session.source.store_output_root == str(pin.store_output_root)
+    original = module._Archive.__init__
+    checks = []
+    def checked(self, *a, **kw):
+        checks.append(a[0])
+        original(self, *a, **kw)
+    def duplicate_graph(*a, **kw):
+        pytest.fail("同一已驗graph不應再次建session")
+    with monkeypatch.context() as patch:
+        patch.setattr(module._Archive, "__init__", checked)
+        patch.setattr(price, "open_daily_market_technical_universe_price_read_session_v1", duplicate_graph)
+        receipt = _copy(watchlist, restored, tmp_path / "copied-with-session", (bookmark.bookmark_id,), read_session=session)
+    assert len(checks) == 2
+    proof = json.loads(receipt.read_bytes())
+    assert proof["status"] == "derived_bookmarks_and_source_verified" and watchlist.read_bytes() == raw
+    item = json.loads((receipt.parent / "watchlist/default.json").read_bytes())["items"][0]
+    saved = DailyMarketTechnicalUniversePriceBookmarkV1.from_dict(item["research_bookmark"])
+    assert saved.scroll_position == bookmark.scroll_position
+    assert saved.selected.close_price == bookmark.selected.close_price
+    assert [value.stock_code for value in saved.comparison_selections] == [value.stock_code for value in bookmark.comparison_selections]
+    read_daily_market_technical_universe_price_bookmark_v1(saved)
+
+
+def test_foreign_issued_session_cannot_replace_selected_copy(exact_price_store, tmp_path):
+    watchlist, bundle, bookmark, _ = _prepare(exact_price_store, tmp_path)
+    target = tmp_path / "foreign-session-output"
+    with pytest.raises(TechnicalSourceCopyError, match="session_pin_mismatch"):
+        _copy(watchlist, bundle, target, (bookmark.bookmark_id,), read_session=_open_session(exact_price_store))
+    assert not target.exists()
+
+
+def test_supplied_session_does_not_bypass_changed_archive(exact_price_store, tmp_path):
+    from app_module.daily_market_technical_universe_price_query_v1 import open_daily_market_technical_universe_price_read_session_v1
+    watchlist, bundle, bookmark, _ = _prepare(exact_price_store, tmp_path)
+    pin = json.loads((bundle / "TECHNICAL_COPY_RECEIPT.json").read_bytes())["copied_pin"]
+    session = open_daily_market_technical_universe_price_read_session_v1(**pin)
+    from app_module.personal_data_paths import to_internal_io_path
+    member = next(item["path"] for item in json.loads((bundle / "TECHNICAL_COPY_RECEIPT.json").read_bytes())["destination_files"]
+        if item["path"].startswith("live/repositories/"))
+    changed = Path(to_internal_io_path(bundle / member))
+    changed.write_bytes(changed.read_bytes() + b" ")
+    target = tmp_path / "changed-session-output"
+    with pytest.raises(TechnicalSourceCopyError):
+        _copy(watchlist, bundle, target, (bookmark.bookmark_id,), read_session=session)
+    assert not target.exists()

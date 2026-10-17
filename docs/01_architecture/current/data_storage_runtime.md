@@ -37,6 +37,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 `restore_research_output` 接受同一 `research-output-copy.v1` 封存及外部固定收據SHA；原狀態可為 `copied_and_public_readers_verified` 或 `restored_and_public_readers_verified`。來源根移位後，舊邏輯絕對根只作封存內映射，不開啟；所選store的完整清冊、每檔bytes／SHA、索引run與收據身分先核對，再在全新根複製原bytes、只重綁白名單SQL欄位。所有SQL列須等於原列加該映射，非DB原件SHA保持，重綁後才由原public readers讀回。一般推薦沿canonical／legacy原身分與metadata／context核對，外部ML依賴仍拒絕。成功另發 `restored_and_public_readers_verified`，輸入收據留 `original/RESEARCH_COPY_RECEIPT.json`；原封存前後重驗，失敗保留pending與原因。不啟用設定、不重算金融結果、不授來源用途或全環境移機，操作見[恢復Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#已移位研究封存的恢復)。
 
+技術副本的開發修正將唯讀完整核對限制為四件，原件／metadata寫入仍兩件；所有來源與目的SHA、集合、預算、取消及離開前等待自有I/O的守衛保持。`restore_technical_source_with_price_session`在新鏈同一次strict reader callback建立既有reader-issued價格session，僅在來源／目的最終核對及收據發行後返回。`copy_price_bookmarks`可明選該session，先驗發行錨點與六pins，前後兩次完整封存核對不省略；不傳session仍沿原factory。這只省去同一graph再次解析，不重算價格／規則或提升來源用途。首次設定600秒原FAIL保留，完整修後出口仍待。
+
 `trial_first_setup.prepare_trial_package` 是既有研究／technical／F07收藏工具的首次設定整合，不新增來源或金融計算。外部SHA固定 `baldr-trial-first-setup.v1` 清冊；runtime、行情與基本面核完整相對檔案集合，研究與technical各沿外部收據恢復，收藏沿新technical鏈另記ID。只建不存在的固定 `state/`，成功才發config與setup收據；原件再核，partial／失敗留標記。同根重開不重算、不重設已保存內容；已有state換根拒絕且保留。該API的單元證據不授全包可攜／EXE／私人環境搬移，操作及現行驗證界線見[首次設定](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#全新試用包首次設定整合候選)。
 
 ### 具名營益目前研究版本

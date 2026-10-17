@@ -4,6 +4,12 @@
 
 ## 模組責任
 
+### 布林帶寬低點突破的同次保存（開發分支）
+
+原P07進階研究以獨立`baldr_bollinger_squeeze_v1@1.0.0`沿既有StrategyRegistry／BacktestService／Broker接線；因果指標邊界產出BBANDS30，executor只以Decimal跨乘核前列20列帶寬低點、真突破與原20日含當日量比>1.5。它不等同VCP，亦不改舊布林策略或來源權威。typed producer只載入一次、最多保留50前置列，同次封存10來源SHA與帶寬／量能／前列／訊號。新execution schema與parameter contract明確分版；readmodel核保存內部一致性，不查目前Registry或重算。
+
+保存與reconciliation均拒研究晉升；未核批次／最佳化／Walk-forward在入口拒絕。固定120未納入，正常Main、EXE／Native及來源／PIT／績效仍待具名證據。凍結定義見[原計畫§5.6](../../superpowers/plans/baldr_product_completion_plan_20261006.md#56-bollinger-squeeze)，使用方式見[研究手冊](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林帶寬低點突破研究開發分支)。
+
 個股目前基本面另可消費明選的`OperatingSummaryReportProvider`，沿原`StockFundamentalObservationDTO`保留H1累計、TWD／percent、來源SHA、成功批次可用小時及basis核實。該版本只供2330目前查閱；`aggregate_feature_eligible`與`formal_pit_eligible`為false，不流入P07策略、P12決策擷取或績效比較。前期與成長率缺件保留，詳[具名營益資料契約](data_storage_runtime.md#具名營益目前研究版本)。
 
 表內先列 UI、application 與資料存取入口，再列領域責任。九個工作區與 UI／application 邊界見[UI 與應用流程](application_and_workspaces.md)；產品能力與 Gate 仍依本冊開頭所列的 Product Roadmap、6M Roadmap 與 Snapshot。

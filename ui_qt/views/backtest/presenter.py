@@ -150,6 +150,35 @@ def _bollinger_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | No
     return lines
 
 
+def _squeeze_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
+    """明示帶寬與量能條件；不借綜合分數、條件列數或零交易判策略有效。"""
+    diagnostics = details.get("rule_diagnostics")
+    if not isinstance(diagnostics, dict) or diagnostics.get("schema") != "baldr-bollinger-squeeze-diagnostics.v1":
+        return None
+    labels = (("total_sessions", "總觀測列"), ("ready_sessions", "可評估列"),
+              ("unavailable_sessions", "暖機或資料不足列"), ("entry_signal_sessions", "帶寬突破進場意圖"),
+              ("exit_condition_sessions", "中軌出場條件"))
+    required = {key for key, _ in labels} | {"schema", "strategy_id", "strategy_version", "entry_description",
+                                              "exit_description", "squeeze_window", "volume_window", "volume_multiple"}
+    valid = (set(diagnostics) == required and diagnostics.get("strategy_id") == "baldr_bollinger_squeeze_v1"
+             and diagnostics.get("strategy_version") == "1.0.0"
+             and diagnostics.get("squeeze_window") == 20 and diagnostics.get("volume_window") == 20
+             and diagnostics.get("volume_multiple") == "1.5"
+             and all(type(diagnostics[key]) is int and diagnostics[key] >= 0 for key, _ in labels)
+             and all(type(diagnostics[key]) is str and diagnostics[key].strip() for key in ("entry_description", "exit_description")))
+    if valid:
+        valid = (diagnostics["ready_sessions"] + diagnostics["unavailable_sessions"] == diagnostics["total_sessions"]
+                 and diagnostics["entry_signal_sessions"] <= diagnostics["ready_sessions"]
+                 and diagnostics["exit_condition_sessions"] <= diagnostics["ready_sessions"])
+    lines = ["", "--- 布林帶寬低點突破診斷 ---"]
+    if not valid:
+        return lines + ["規則診斷不可用（版本、欄位或計數不符），不以預設分數代替。"]
+    lines.extend(f"{label}: {diagnostics[key]} 列" for key, label in labels)
+    lines.extend([f"進場條件: {diagnostics['entry_description']}", f"出場條件: {diagnostics['exit_description']}",
+                  "低帶寬不代表方向；意圖不代表成交、已完成配對或有效策略。"])
+    return lines
+
+
 def _ma_alignment_rule_diagnostics_lines(details: dict[str, Any]) -> list[str] | None:
     """四均線只列原觀測與意圖；缺件或不符版本不轉成分數診斷。"""
     diagnostics = details.get("rule_diagnostics")
@@ -297,6 +326,8 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
         )
 
     rule_diagnostics_lines = _bollinger_rule_diagnostics_lines(details)
+    if rule_diagnostics_lines is None:
+        rule_diagnostics_lines = _squeeze_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is None:
         rule_diagnostics_lines = _w_bottom_rule_diagnostics_lines(details)
     if rule_diagnostics_lines is None:

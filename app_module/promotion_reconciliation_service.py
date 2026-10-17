@@ -201,7 +201,7 @@ class PromotionReconciliationService:
     def _validate_preflight(self, raw: dict[str, Any], metadata) -> Any:
         if raw.get("storage_state") != "committed" or raw.get("integrity_status") != "valid":
             raise PromotionPreflightError("registry run 尚未通過 integrity 檢查")
-        if metadata.strategy_id == "baldr_bollinger_basic_v1":
+        if metadata.strategy_id in ("baldr_bollinger_basic_v1", "baldr_bollinger_squeeze_v1"):
             raise PromotionPreflightError("布林基礎目前是研究假說，來源／PIT與績效資格尚未接受，不可正式晉升")
         if metadata.strategy_id == "baldr_w_bottom_basic_v1":
             raise PromotionPreflightError("W底基礎目前是研究假說，來源／PIT與績效資格尚未接受，不可正式晉升")

@@ -5,14 +5,25 @@ import ast
 import hashlib
 import importlib.metadata
 import json
+import os
 from pathlib import Path, PurePosixPath
 import platform
 import re
 import subprocess
 import zipfile
 
+from app_module.personal_data_paths import to_internal_io_path
+
 LOCK_SCHEMA = "baldr-windows-dependency-lock.v1"
 _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+
+
+def _archive_io_path(path: Path) -> Path:
+    """ZIP後續會附加長member；短根也須在OS邊界預先使用extended形式。"""
+    rendered = to_internal_io_path(path.absolute())
+    if os.name == "nt" and not rendered.startswith("\\\\?\\"):
+        rendered = "\\\\?\\UNC\\" + rendered.lstrip("\\") if rendered.startswith("\\\\") else "\\\\?\\" + rendered
+    return Path(rendered)
 
 
 def installed_dependency_snapshot() -> dict[str, str]:
@@ -63,7 +74,8 @@ def resolve_fixed_commit(repository: Path, commit: str) -> str:
 
 def extract_source_archive(archive: Path, destination: Path) -> None:
     """只能建立新快照；拒絕路徑逸出、重複與 symlink archive entry。"""
-    if destination.exists():
+    io_destination = _archive_io_path(destination)
+    if io_destination.exists():
         raise ValueError("來源快照已存在，不能覆寫")
     with zipfile.ZipFile(archive) as source:
         entries = source.infolist()
@@ -80,8 +92,9 @@ def extract_source_archive(archive: Path, destination: Path) -> None:
             total += item.file_size
             if total > 512 * 1024 * 1024:
                 raise ValueError("來源 archive 超過 512 MiB 邊界")
-        destination.mkdir(parents=True)
-        source.extractall(destination)
+        io_destination.mkdir(parents=True)
+        # canonical identity仍由caller保存；只在OS I/O邊界使用Windows extended path。
+        source.extractall(io_destination)
 
 
 def export_fixed_source(repository: Path, commit: str, job_root: Path) -> Path:
@@ -101,6 +114,7 @@ def export_fixed_source(repository: Path, commit: str, job_root: Path) -> Path:
 
 def verify_exported_source(archive: Path, source: Path) -> None:
     """逐檔核對固定 archive，避免建置後修改的 Python 快照冒充同版來源。"""
+    source = _archive_io_path(source)
     with zipfile.ZipFile(archive) as stream:
         declared: set[str] = set()
         for item in stream.infolist():
@@ -193,6 +207,19 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
         resource_hashes.update({
             relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
             for relative in p07_rule_sources
+        })
+    squeeze_sources = (
+        "decision_module/strategies/baldr_bollinger_squeeze_executor.py",
+        "decision_module/strategies/baldr_bollinger_squeeze_contract.py",
+    )
+    declared_squeeze = [relative in declared_sources for relative in squeeze_sources]
+    if any(declared_squeeze):
+        if (not all(declared_squeeze) or not all(declared_p07)
+                or not all((source / relative).is_file() for relative in squeeze_sources)):
+            raise ValueError("布林帶寬研究原始來源須完整兩檔及原P07共用來源")
+        resource_hashes.update({
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in squeeze_sources
         })
     ma_rule_sources = (
         "decision_module/strategies/baldr_ma_alignment_executor.py",

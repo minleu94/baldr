@@ -206,6 +206,8 @@ class BatchBacktestService:
         Returns:
             BatchBacktestResultDTO: 批次回測結果
         """
+        if strategy_spec.strategy_id == "baldr_bollinger_squeeze_v1":
+            raise ValueError("布林帶寬低點突破目前僅支持正常單股研究，批次保存契約尚未接受")
         if not stock_codes:
             raise ValueError("股票代號列表不能為空")
 

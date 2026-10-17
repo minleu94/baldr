@@ -896,12 +896,23 @@ class BacktestView(QWidget):
         if pair_controller is not None:
             pair_controller.invalidate_execution()
 
+    def _reject_squeeze_other_mode(self, mode: str) -> bool:
+        """尚未具保存契約的研究模式，在讀行情或建立worker前明確停止。"""
+        combo = getattr(self, "strategy_combo", None)
+        if combo is None or combo.currentData() != "baldr_bollinger_squeeze_v1" or mode == "single_stock":
+            return False
+        QMessageBox.warning(self, "研究模式尚未開放", "布林帶寬低點突破目前僅支持正常單股研究；請選單股模式。批次、參數掃描與Walk-forward尚未驗收。")
+        return True
+
     def _execute_backtest(self):
         """執行回測（支援單檔和批次模式）"""
         research_mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
         if research_mode == "recommendation_replay":
             # 推薦回放不需要股票代號；由其已載入的 profile／history 決定輸入母體。
             self._execute_recommendation_portfolio_backtest()
+            return
+
+        if BacktestView._reject_squeeze_other_mode(self, research_mode):
             return
 
         # 委派參數最佳化與 Walk-forward 驗證
@@ -920,6 +931,8 @@ class BacktestView(QWidget):
 
         # 判斷是單檔還是批次模式
         is_batch_mode = len(stock_codes) > 1
+        if is_batch_mode and BacktestView._reject_squeeze_other_mode(self, "batch_stock"):
+            return
 
         if is_batch_mode and not self.batch_backtest_service:
             QMessageBox.warning(self, "錯誤", "批次回測服務未初始化")
@@ -3798,6 +3811,8 @@ class BacktestView(QWidget):
 
     def _execute_optimization(self):
         """執行參數掃描"""
+        if BacktestView._reject_squeeze_other_mode(self, "optimization"):
+            return
         if not self.optimizer_service:
             QMessageBox.warning(self, "錯誤", "最佳化服務未初始化")
             return
@@ -4073,6 +4088,8 @@ class BacktestView(QWidget):
 
     def _execute_walkforward(self):
         """執行 Walk-forward 驗證"""
+        if BacktestView._reject_squeeze_other_mode(self, "walkforward"):
+            return
         if not self.walkforward_service:
             QMessageBox.warning(self, "錯誤", "Walk-forward 服務未初始化")
             return

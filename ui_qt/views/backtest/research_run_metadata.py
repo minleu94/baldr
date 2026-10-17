@@ -115,7 +115,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
     if request.strategy_spec.strategy_id in ("baseline_score_threshold", "stable_conservative_v1", "momentum_aggressive_v1") and request.strategy_spec.strategy_version == "1.1.0":
         if identity is None or request.execution_price != "next_open":
             raise ValueError("因果缺值1.1.0研究目前僅支持fixed門檻與next_open")
-    if request.strategy_spec.strategy_id == "baldr_bollinger_basic_v1" and (
+    if request.strategy_spec.strategy_id in ("baldr_bollinger_basic_v1", "baldr_bollinger_squeeze_v1") and (
             request.execution_price != "next_open" or request.allow_pyramid
             or request.stop_loss_atr_mult is not None or request.take_profit_atr_mult is not None):
         raise ValueError("布林基礎研究僅支持 next_open、不加碼及百分比風控")
@@ -138,6 +138,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
             from decision_module.strategies.baldr_bollinger_executor import BaldrBollingerExecutor
             from decision_module.strategies.baldr_bollinger_contract import rule_definition, confirmation_sessions, EXECUTION_SCHEMA
+            from decision_module.strategies.baldr_bollinger_squeeze_executor import BaldrBollingerSqueezeExecutor
+            from decision_module.strategies.baldr_bollinger_squeeze_contract import (
+                EXECUTION_SCHEMA as SQUEEZE_SCHEMA, rule_definition as squeeze_rules,
+            )
             from decision_module.strategies.baldr_w_bottom_executor import BaldrWBottomExecutor
             from decision_module.strategies.baldr_w_bottom_contract import (
                 EXECUTION_SCHEMA as W_SCHEMA, rule_definition as w_rules, wait_sessions,
@@ -150,7 +154,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             from backtest_module.broker_simulator import BrokerConfig, BrokerSimulator, NEXT_OPEN_CONTRACT
             if check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消")
-            context_start = (pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(days=180)).strftime("%Y-%m-%d") if schema in (EXECUTION_SCHEMA, MA_SCHEMA) else kwargs["start_date"]
+            context_start = (pd.Timestamp(kwargs["start_date"]) - pd.Timedelta(days=180)).strftime("%Y-%m-%d") if schema in (EXECUTION_SCHEMA, MA_SCHEMA, SQUEEZE_SCHEMA) else kwargs["start_date"]
             frame, actual_start, actual_end = service._load_stock_data(
                 kwargs["stock_code"], context_start, kwargs["end_date"])
             if frame is None or frame.empty:
@@ -160,15 +164,16 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                     or frame.index.min() < pd.Timestamp(context_start)):
                 raise ValueError("single_backtest 保存來源不在本次決策期間內")
             input_context = None
-            if schema in (EXECUTION_SCHEMA, MA_SCHEMA):
+            if schema in (EXECUTION_SCHEMA, MA_SCHEMA, SQUEEZE_SCHEMA):
                 before_start = frame.index < pd.Timestamp(kwargs["start_date"])
-                prior_limit = MAX_PRIOR_ROWS if schema == MA_SCHEMA else 31
+                prior_limit = MAX_PRIOR_ROWS if schema == MA_SCHEMA else 50 if schema == SQUEEZE_SCHEMA else 31
                 frame = pd.concat([frame.loc[before_start].tail(prior_limit), frame.loc[~before_start]])
                 input_context = {"lookback_calendar_days": 180, "max_prior_rows": prior_limit,
                                  "start_date": frame.index.min().strftime("%Y-%m-%d"),
                                  "end_date": frame.index.max().strftime("%Y-%m-%d"),
                                  "prior_rows": int((frame.index < pd.Timestamp(kwargs["start_date"])).sum()),
                                  "state_policy": ("prefix_indicators_and_previous_alignment_no_orders_before_test_start" if schema == MA_SCHEMA
+                                                  else "prefix_indicators_and_previous_squeeze_no_orders_before_test_start" if schema == SQUEEZE_SCHEMA
                                                   else "prefix_indicators_only_reset_confirmation_at_test_start")}
                 kwargs["signal_context_start_date"] = context_start
             raw = BytesIO()
@@ -186,12 +191,13 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "baldr_bollinger_basic_v1": BaldrBollingerExecutor,
                 "baldr_w_bottom_basic_v1": BaldrWBottomExecutor,
                 "baldr_ma_alignment_basic_v1": BaldrMAAlignmentExecutor,
+                "baldr_bollinger_squeeze_v1": BaldrBollingerSqueezeExecutor,
             }
             if (type(executor) is not executor_types.get(spec.strategy_id)
                     or type(executor).__module__ + "." + type(executor).__name__ != executor_ref):
                 raise ValueError("fixed typed executor 不一致")
             registry_metadata = None
-            if schema in ("single-backtest-rule-execution.v1", "single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA):
+            if schema in ("single-backtest-rule-execution.v1", "single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA, SQUEEZE_SCHEMA):
                 raw_meta = StrategyRegistry.get_strategy_meta(spec.strategy_id, version=spec.strategy_version)
                 registry_metadata = deepcopy(raw_meta.to_dict() if isinstance(raw_meta, StrategyMeta) else raw_meta)
                 if not isinstance(registry_metadata, dict):
@@ -203,7 +209,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
             kwargs.update(strategy_spec=spec, strategy_executor=executor, preloaded_data=frame,
                           actual_start_date=actual_start, actual_end_date=actual_end)
             report = service.run_backtest(**kwargs)
-            if schema in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA) and check_cancel is not None and check_cancel():
+            if schema in ("single-backtest-rule-execution.v2", "single-backtest-rule-execution.v3", EXECUTION_SCHEMA, W_SCHEMA, MA_SCHEMA, SQUEEZE_SCHEMA) and check_cancel is not None and check_cancel():
                 raise InterruptedError("回測已取消，不發布完整規則來源")
             details = dict(report.details or {})
             if details.get("execution_contract") != NEXT_OPEN_CONTRACT:
@@ -220,16 +226,16 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                                   safe_convert_technical_dates, w_rules,
                                   execute_single_backtest_with_rule_source, ConservativeFillPolicy, to_decimal]
                 effective_executor = {"max_wait_sessions": wait_sessions(spec.config.get("params", {}))}
-            elif schema in (EXECUTION_SCHEMA, MA_SCHEMA):
+            elif schema in (EXECUTION_SCHEMA, MA_SCHEMA, SQUEEZE_SCHEMA):
                 from analysis_module.technical_analysis.technical_indicators import calculate_causal_indicators
                 from analysis_module.technical_analysis.indicator_kernels import clean_price_values
                 from analysis_module.technical_analysis.technical_date_support import safe_convert_technical_dates
                 from backtest_module.conservative_fill_policy import ConservativeFillPolicy
                 from financial_module.units import to_decimal
                 source_objects = [type(executor), BrokerSimulator, type(service), calculate_causal_indicators,
-                                  clean_price_values, safe_convert_technical_dates, ma_rules if schema == MA_SCHEMA else rule_definition,
+                                  clean_price_values, safe_convert_technical_dates, ma_rules if schema == MA_SCHEMA else squeeze_rules if schema == SQUEEZE_SCHEMA else rule_definition,
                                   execute_single_backtest_with_rule_source, ConservativeFillPolicy, to_decimal]
-                effective_executor = ({"periods": list(PERIODS)} if schema == MA_SCHEMA else
+                effective_executor = ({"periods": list(PERIODS)} if schema == MA_SCHEMA else {} if schema == SQUEEZE_SCHEMA else
                                       {"entry_confirm_sessions": confirmation_sessions(spec.config.get("params", {}))})
             else:
                 source_objects = [type(executor), BrokerSimulator, type(executor.threshold_policy), type(service)]
@@ -276,10 +282,10 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 import numpy as np
                 execution.update(input_preparation=dict(INPUT_POLICY), score_observations=details.get("score_signal_observations"),
                                  analysis_runtime={"talib": talib.__version__, "numpy": np.__version__, "pandas": pd.__version__})
-            if schema in (EXECUTION_SCHEMA, MA_SCHEMA):
+            if schema in (EXECUTION_SCHEMA, MA_SCHEMA, SQUEEZE_SCHEMA):
                 import talib
                 import numpy as np
-                execution.update(rules=(ma_rules if schema == MA_SCHEMA else rule_definition)(spec.config.get("params", {})),
+                execution.update(rules=(ma_rules if schema == MA_SCHEMA else squeeze_rules if schema == SQUEEZE_SCHEMA else rule_definition)(spec.config.get("params", {})),
                                  signals=details.get("rule_signal_observations"),
                                  input_context=input_context,
                                  analysis_runtime={"talib": talib.__version__, "numpy": np.__version__, "pandas": pd.__version__})
@@ -301,6 +307,7 @@ def execute_single_backtest_with_rule_source(request: Any, service: Any, *, chec
                 "baldr_bollinger_basic_v1": "baldr-bollinger-basic.v1",
                 "baldr_w_bottom_basic_v1": "baldr-w-bottom-basic.v1",
                 "baldr_ma_alignment_basic_v1": "baldr-ma-alignment-basic.v1",
+                "baldr_bollinger_squeeze_v1": "baldr-bollinger-squeeze.v1",
             }[spec.strategy_id]
             if schema == "single-backtest-rule-execution.v3":
                 parameter_contract = {"baseline_score_threshold": "baseline-score-fixed.v2",
@@ -393,6 +400,11 @@ def build_single_backtest_metadata(
         _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
                                           parameter_contract=MA_PARAMETER_CONTRACT, strategy_label="四均線")
     is_causal_score = isinstance(execution, dict) and execution.get("schema") == "single-backtest-rule-execution.v3"
+    is_squeeze = isinstance(execution, dict) and execution.get("schema") == "single-backtest-bollinger-squeeze-execution.v1"
+    if is_squeeze:
+        from decision_module.strategies.baldr_bollinger_squeeze_contract import PARAMETER_CONTRACT as SQUEEZE_CONTRACT
+        _validate_w_bottom_metadata_input(params, details, execution, StrategySpec.from_dict(manifest["strategy_spec"]),
+                                          parameter_contract=SQUEEZE_CONTRACT, strategy_label="布林帶寬低點突破")
     if is_causal_score:
         expected_contract = {"baseline_score_threshold": "baseline-score-fixed.v2",
                              "stable_conservative_v1": "stable-conservative-fixed.v2",
@@ -421,8 +433,8 @@ def build_single_backtest_metadata(
         normalized_params=dict(params.get("strategy_params", {}) or {}),
         fallback_reason=dict(details.get("fallback_reason", {}) or {}),
         universe=[str(params.get("stock_code", ""))] if params.get("stock_code") else [],
-        start_date=str(execution["start_date"] if is_w_bottom or is_causal_score else params.get("start_date", "")),
-        end_date=str(execution["end_date"] if is_w_bottom or is_causal_score else params.get("end_date", "")),
+        start_date=str(execution["start_date"] if is_w_bottom or is_causal_score or is_squeeze else params.get("start_date", "")),
+        end_date=str(execution["end_date"] if is_w_bottom or is_causal_score or is_squeeze else params.get("end_date", "")),
         data_cutoff_date=str(details.get("data_as_of_date", "")),
         data_fingerprint=str(details.get("data_version", "")),
         fingerprint_algorithm=(

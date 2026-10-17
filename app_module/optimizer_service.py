@@ -174,6 +174,8 @@ class OptimizerService:
             最佳化結果列表（已排序）
         """
 
+        if strategy_id == "baldr_bollinger_squeeze_v1":
+            raise ValueError("布林帶寬低點突破目前僅支持正常單股研究，參數掃描契約尚未接受")
         # 生成參數網格
         param_combinations = self.generate_param_grid(param_ranges)
         total_combinations = len(param_combinations)

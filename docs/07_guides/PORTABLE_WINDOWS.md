@@ -25,6 +25,8 @@
 
 ## 啟動問題與圖示檢查
 
+開發來源的固定來源ZIP建置已補Windows長路徑I/O邊界：短解壓根附加長member時亦使用extended形式，再逐檔核原bytes；外部commit、canonical路徑、SHA及原封存拒絕守衛不改。這是建置修正，不代表120資料可搬移；其v4分段收據與保存索引仍有絕對路徑綁定，不能只改啟動器或重寫原收據。原P14完整移機／保存搬移及其他主機驗收保持未完成。
+
 載入進度只表示 UI 初始化，不表示行情新鮮度或排程成功。按 Esc／Alt+F4 會在安全階段邊界要求取消；單一同步初始化呼叫仍須先返回，既有 worker 也要合作式收尾。缺少載入背景圖時仍應保留可讀進度；啟動失敗請依該交付包標示的位置查看錯誤與 App log。
 
 可攜版使用 `app_icon.png`，並在建立視窗前設定 `Baldr.TechnicalAnalysis` AppUserModelID，不修改 registry。Windows 釘選或圖示快取可能暫時保留舊圖；先核對交付包本身，不要把快取外觀當成程式版本證據。完整歷史行為說明見[原手冊封存章節](../09_archive/documentation_productization_20261012/originals/docs/07_guides/PORTABLE_WINDOWS.md#啟動載入畫面與圖示)。

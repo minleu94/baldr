@@ -35,6 +35,8 @@ for relative_source in (
     'ui_qt/views/backtest/research_run_metadata.py',
     'decision_module/strategies/baldr_bollinger_executor.py',
     'decision_module/strategies/baldr_bollinger_contract.py',
+    'decision_module/strategies/baldr_bollinger_squeeze_executor.py',
+    'decision_module/strategies/baldr_bollinger_squeeze_contract.py',
     'decision_module/strategies/baldr_w_bottom_executor.py',
     'decision_module/strategies/baldr_w_bottom_contract.py',
     'decision_module/strategies/baldr_ma_alignment_executor.py',

@@ -19,6 +19,8 @@
 
 ## 目前工程狀態與限制
 
+開發分支Increment121補原P07布林進階「帶寬低點突破」1.0.0，沿原單股／Broker／Registry保存；固定120尚未替換。最終來源Main28164→32412已驗同窗419列／2進場意圖／2完成配對、原規則／結果與fresh；大整數成交量及保存前列串接的原3個紅測已修，定向62項與public模式66項、最後UI91項及原共同回歸分開記錄，不加總為Gate。固定EXE／Native、F06全功能、完整家族與有效績效仍待。同期修正固定來源ZIP的Windows長路徑解壓，保留canonical身分與原來源守衛；完整資料搬移仍受保存絕對引用限制。詳[121 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment121-bollinger-squeeze)。
+
 120固定來源`aad10ca40a374f3d4e7406981580ce3d8c2efc1b`，EXE SHA-256 `43c0d50bdabc966e784b435a2b99a6166b4076a461d5a282ae93c76818749491`，交付SHA `0462b9748721e8463795b9c440a9c864200621597132ff8e79191b3edcfb4472`。來源Main35632→48176、EXE51132→23412，各三策略419列／332已知分數／87未知日，baseline／穩健／暴衝8／9／2配對。89項定向因果／保存測試、前輪268PASS、失敗修正後38＋17PASS及必要防線分開記錄，不加總成Gate。原2317在2025-07-30四價全缺、量0，原因未核，不補價或稱停牌；保留未知後有效區段可繼續。舊版本、119固定包及歷史FAIL保留，見[120 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment120-causal-score-input)。
 
 交付後另以同一120 EXE原生滑鼠／鍵盤驗2330基本面五值、價格圖、觀察清單切頁返回及重載，父52368→fresh32196各8次原生點擊的曝光／命中／裁切守衛通過；13輸入與交付原SHA不變。這只補該目前研究旅程的限定Native證據，沒有重建或改舊FAIL；其他尺寸／DPI、真人及策略回測Native仍待，詳[原生補證](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#post120-native-stock-fundamental)。

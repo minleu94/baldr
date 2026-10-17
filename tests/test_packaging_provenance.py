@@ -30,6 +30,22 @@ def test_branch_and_short_commit_are_not_release_sources(tmp_path):
             provenance.resolve_fixed_commit(tmp_path, value)
 
 
+def test_archive_long_member_extracts_and_verifies_without_changing_logical_destination(tmp_path):
+    from app_module.personal_data_paths import to_internal_io_path
+    archive = tmp_path / "long.zip"
+    member = "docs/" + "/".join(["long-source-directory"] * 14) + "/source.py"
+    with zipfile.ZipFile(archive, "w") as stream:
+        stream.writestr(member, "# 長路徑原件\n")
+    destination = tmp_path / "source"
+    provenance.extract_source_archive(archive, destination)
+    assert len(str(destination / member)) > 260
+    assert Path(to_internal_io_path(destination / member)).read_text(encoding="utf-8") == "# 長路徑原件\n"
+    provenance.verify_exported_source(archive, destination)
+    assert not str(destination).startswith("\\\\?\\")
+    with pytest.raises(ValueError, match="不能覆寫"):
+        provenance.extract_source_archive(archive, destination)
+
+
 @pytest.mark.parametrize("name", ["../outside.py", "C:/outside.py", "a/../../outside.py"])
 def test_archive_rejects_path_escape_before_creating_destination(tmp_path, name):
     archive = tmp_path / "source.zip"
@@ -145,6 +161,35 @@ def test_ma_packaged_source_rejects_partial_or_missing_custody(tmp_path, omissio
         metadata = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
         assert {relative: metadata["resource_sha256"][relative] for relative in sources} == {
             relative: hashlib.sha256(relative.encode()).hexdigest() for relative in sources}
+
+
+@pytest.mark.parametrize("omission", [None, "file", "declaration", "shared"])
+def test_squeeze_packaged_source_requires_both_files_and_shared_group(tmp_path, omission):
+    shared = ("decision_module/strategies/baldr_bollinger_executor.py",
+              "decision_module/strategies/baldr_bollinger_contract.py",
+              "decision_module/strategies/baldr_w_bottom_executor.py",
+              "decision_module/strategies/baldr_w_bottom_contract.py",
+              "analysis_module/pattern_analysis/causal_w_bottom.py",
+              "analysis_module/technical_analysis/technical_date_support.py",
+              "backtest_module/conservative_fill_policy.py", "financial_module/units.py")
+    squeeze = ("decision_module/strategies/baldr_bollinger_squeeze_executor.py",
+               "decision_module/strategies/baldr_bollinger_squeeze_contract.py")
+    declared = squeeze if omission == "shared" else shared + squeeze[:-1] if omission == "declaration" else shared + squeeze
+    spec = tmp_path / "packaging/baldr.spec"
+    spec.parent.mkdir()
+    spec.write_text("for relative_source in " + repr(declared) + ":\n    pass\n", encoding="utf-8")
+    for relative in shared + squeeze:
+        if omission == "file" and relative == squeeze[-1]:
+            continue
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(relative.encode())
+    if omission:
+        with pytest.raises(ValueError, match="布林帶寬.*完整兩檔"):
+            provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    else:
+        metadata = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+        assert all(metadata["resource_sha256"][relative] == hashlib.sha256(relative.encode()).hexdigest() for relative in squeeze)
 
 
 @pytest.mark.parametrize("omission", [None, "file", "declaration", "shared"])

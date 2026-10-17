@@ -2335,3 +2335,32 @@ Outer `cc078fb440c9055fb7037ff4831a3f81938ac7912bff5e9f8be5c6064a33f5e3`記exit1
 使用者再次貼上的116報告為15,151bytes，逐位元等於既存原件，SHA仍`1aabb97ad4191c321f9e4b5b1b22766a15b750baa4f8c1cb77a14d7e69191650`。沿上文[外部116分流](#外部116核對報告與原生環境診斷)，不執行貼文命令、不重驗舊包、不當120真人接受。現行試用仍120；價格選股主個股接線已由118處理，缺方向、零交易、名冊來源與Paper限制按各自原證據判讀。
 
 收尾QA02只核本QA文件、12features與owner task，errors=[]，outer `f256db2406d340076e3fbb904a79d1f68f66aae79ac50c582d7f7ecb582f1ab5`。三PID陣列空、handles關閉、mutex釋放且無forced cleanup；未重跑產品測試或新增候選，回測Native未完成與原完整計畫保持。
+
+<a id="increment121-bollinger-squeeze"></a>
+## Increment121：原P07布林帶寬低點突破研究與P14長路徑修正（施工）
+
+**解除的第二階段阻礙**：原F06／P07只有帶寬原料與布林基礎，尚無可執行、保存及回訪的收斂突破研究；原V1四旅程不擴張。Root凍結自有`baldr_bollinger_squeeze_v1@1.0.0`，規格見[原計畫§5.6](../superpowers/plans/baldr_product_completion_plan_20261006.md#56-bollinger-squeeze)。前列含自身20列最低帶寬＋當列真突破＋原20日含當日均量比嚴格>1.5，中軌出場；不是VCP或已驗有效策略。沿原因果分析、Broker、Registry與規則卡，不造撮合或儲存。Root依Tech Lead／Execution／QA／Data Audit／Documentation履職，未另稱獨立複核；新建代理0，累計10/10。
+
+### 來源與核心
+
+基線`93913c2f15bfc8358830001d9253900799854d3d`，固定試用仍120。QA01最小Context原有三個Unknown：executor只列標題、registry與service因預算略過；Root另外回讀executor全文、Registry公開ports及service受影響的載入／訊號／觀測／保存區塊，沒有據此宣稱全庫EOF。Graphify以原圖實際詞彙`bollinger bandwidth contract strategy executor`查導航，圖SHA `1504686ffa7e752a7c7959ec7d052f8e2cbadc60a890a6b00fa68225e8c831f4`；新方法以現行source核，不借舊圖證完成。outer `8bbc523abf4c3aa0c7afdd7d2cb1c23b95a71f0104da749115a2d8d89ed84eaf`。
+
+QA02核心22PASS、compile及兩檔mypy PASS，outer `c61ae7178a381d3f4e5b2351271dcee0aa8f2e9555a6d786406b2e243fca89c2`。每prefix／未來追加、預存bands污染、量比1.5等於不進場、缺價50列重暖機、缺量窗口、零量分母、非法／非有限量、低Decimal context、數字日期與固定params反例分開驗；指標浮點留在原因果邊界，比較採120位Decimal跨乘，不補未知。
+
+### 整合原失敗與修正
+
+QA03編譯通過、390PASS／3FAIL，outer `b4f9a62c04d8ac4f726b61321732468cbf0a1bc43276267119099f445dcf251e`。原完成配對fixture只有跌停開盤，Broker正確拒賣；另有Batch建構子及RuleCardIdentity欄名誤用。只補下一有效開盤並核延後成交、修測試呼叫與欄名，原失敗／斷言與守衛保存；QA04受影響37PASS。沒有重跑已通過未改的390項，Workbench85包含於原組。
+
+QA04打包39PASS／1FAIL在固定archive的長member解壓出WinError3；QA05初次修正只render短根而未涵蓋其後附加的長member，新增長路徑例與原例2FAIL／39PASS，outer `3d191d443b34fe0ceaf9e022acaf96d2a1b11e301598d8d2b6317987f40fd5fc`保留。實際修正只在ZIP的OS I/O根先用既有字面路徑守衛與extended rendering，canonical identity／原archive bytes、逸出／重複／symlink／容量與create-only守衛保持。QA06打包41PASS（含超260字元解壓／逐檔核驗／拒覆寫）、validator25/0/4、全域mypy1055及金融精度守衛PASS，outer `28cc4b3fac032202b73bd22def018edc50d71961a35042bb5b7b0ae809aa7534`。QA04原outer `f168ffe467ee328f6a9fe498707e9c5fbcde66d61594c0fd73c6280eaad0e55d`亦保留，UI既有mypy ignore不證UI強型別。
+
+P14另核到120 v4分段收據`parent_root`與保存索引的絕對根綁定，不能只改launcher冒稱自含可攜，也不重寫原收據SHA。完整移機映射與其他主機仍待；不以刪去價格研究來源的縮小包取代四旅程。
+
+### 凍結前金融反例與最終來源Main
+
+QA07先完成來源Main25824→fresh，原419列／2意圖／2完成配對及保存回訪，[結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment121_squeeze_main_source_qa07/result.json) SHA `b89f577f70cfe48b9f2b43dae9e5d31b2d327c5bfa9b694506da87720bff51e8`，outer `e284fa798c07a041e7bf5269fffc3c760a52e0b56a592b97cbc6c004e7fb9d99`。凍結前Root新增QA08三個反例皆FAIL：`iterrows`把大整數量先轉float，門檻附近一股差異失去；保存card亦未拒絕與上一列不符、但局部仍符合進場的前列價格。原紅測stdout保存，outer `71125c7705651f580b297c39fd7186b4df320a797c742a84ce4437ac91d9b789`退出0僅因明示收取預期pytest exit1，不能稱測試PASS。
+
+修正只讓量能取原成交量欄的逐列scalar、分析索引須不變，並核保存列前後close／upper／squeeze一致；未改門檻、撮合或舊結果。QA09核心／保存／UI定向62PASS、compile、mypy1055與float guard PASS，outer `56ad2805d4a608883d6dd4cdf221c16c63ed96637f256f365c117760589b3321`。QA09b以最終新SHA重綁正常來源Main **34884→46936**，2317／2025-01-02至2026-09-23／本金1M、費率14.25bp、滑價5bp、停損停利0，419列／2意圖／2配對不變；正常保存、原規則／原結果／返回與fresh禁止重算／保存／查目前Registry均通過。[最終結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment121_squeeze_main_source_qa09/result.json) SHA `d990286d5030e1a842a324e3ad8eceb7903635427a3f134a5b745ac3ce674b78`，outer `5a9d2c36d95de7dd41603ce87ce992b2e3e6770cc13e0fb29b7fa2f95b8393fd`。六行情原件不變、network0；這是Qt功能，不是Native／真人／字體可讀性。
+
+QA09d另核public Optimizer／Train-Test／Walk-forward亦在讀行情或建參數網格前拒絕，原服務回歸與新方法66PASS、compile、mypy1055／float guard PASS，outer `af70f561fd9cb82658a8766ff5a26abc169422f7c6557ebc2b6d1dc9c7f3fd30`。研究版不可晉升；source已接原Registry／規則卡、單次輸入與最多50前置列、10來源SHA／逐日證據與保存錯配拒絕，同版EXE與固定交付尚待。120原EXE及舊收據不改，歷史PIT、來源／成本權威、完整績效、Native、真人、自然成熟及P00–P14全範圍各自保持未完成。
+
+最後Root複核將獨立Recommendation replay保持原Profile路由，不因左側新單股策略限制它；新增回歸並重跑必要UI防線，QA09f為91PASS（含Workbench85）、compile、validator25/0/4、mypy1055，outer `725a4d986d441d5bb7b79ef842d0d72ec9bd79eb5f601744e0733446ccb52ebb`。最後UI來源Main **28164→32412**的QA09g再核正常保存、規則／結果／返回與fresh，原419／2／2不變，六行情SHA一致、network0；[凍結前來源結果](../../output/tasks/baldr-completion-resume-20261014-01a13cf9/increment121_squeeze_main_source_qa09g/result.json) SHA `5f8ae3805e03887c51dd9679052aef20c1a7e96613f5a7a54036f41906f52ed2`，outer `e188d6ac7d01c08b6b4355b398beb6bb104fb5d0605fd97bd65060836bd27207`。這是後續固定EXE的來源比對基準，前次QA07／09b原件保持。各完成組RAM先核≥8GiB、Job可讀回8GiB committed／12程序／kill-on-close，三PID陣列自然空、process／Job handles閉合、mutex釋放，無forced cleanup。

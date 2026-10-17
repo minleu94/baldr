@@ -4,6 +4,8 @@
 
 ## 概述
 
+原P07布林進階另施工`baldr_bollinger_squeeze_v1@1.0.0`：前列20列帶寬低點＋當列真突破＋20日含當日量比嚴格>1.5，中軌出場；沿原單股producer／Broker／Registry保存與規則卡。固定120未納入，驗證與完整家族資格分開；凍結規格見[原補完計畫§5.6](../superpowers/plans/baldr_product_completion_plan_20261006.md#56-bollinger-squeeze)，操作見[專節](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#布林帶寬低點突破研究開發分支)。
+
 「策略回測」標籤已升級為完整的「實驗室/策略工作台」，支援反覆研究、知識累積、快速迭代。
 
 ### 2026-09-06 執行與保存契約

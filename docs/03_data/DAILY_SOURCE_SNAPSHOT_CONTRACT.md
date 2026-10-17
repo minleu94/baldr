@@ -16,11 +16,11 @@
 
 `twse-attention-daily-manifest.v1` 固定原 raw、HTTP receipt、request／headers／cookies／worker job與result及三份文件的 bytes／SHA，`twse-attention-daily-receipt.v1` 綁 manifest 與實際 first-persisted／successful-completion／available-hour。原 HTTP receipt 沒有 worker-result SHA，新版本明示綁保存的 bytes，不補造舊 hash。只有公告日，官方發布小時保留 None；依 `daily-hour.v1` 使用成功批次 guard 小時及 `successful_batch_completion_fallback`，不拿 HTTP Date 作官方發布時刻。更正新目錄、pending／failure 拒讀、讀前後完整核驗與取消，版本保留來源用途未接受／歷史 PIT false。公開 reader 拒未來 cutoff，正常 report provider 將截止限在觀測時刻與報告台北日末較早者。保存與參數見[指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)。
 
-## 具名營益三公司目前研究（Increment125，開發來源）
+## 具名營益三公司目前研究（Increment125，固定125）
 
 `twse-operating-summary-reviewed-2026h1.v1`是資料集20762固定原件的具名用途增量，僅2317／2330／2454、2026-H1、TWD與四率、`current_research`。各發行人文件只核半年合併期間、單位與CSV顯示精度；稅後率為合併本期損益而非母公司歸屬淨利率，PDF不作產品值或隨快照散布。原1055列／CSV版本不授全資料集用途、前期、歷史PIT、篩選、策略、ML或交易；2382未接受。
 
-新外層沿原v1 public reader核7原件，另存用途manifest／成功receipt並保留原件於相對`base/`，不改原2330政策或首存時間。來源用途與每日可用性分開：新成功批次由真保存完成時間取台北guard小時，此前拒讀；沒有官方發布小時，不借HTTP Date或期末倒填。雙外部SHA、具型別schema、固定子路徑、原件完整性／讀前後身分、pending／failure及未來cutoff守衛保持。新scope不修改generic daily record或正式庫，實際來源／GUI與待驗界線見[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
+新外層沿原v1 public reader核7原件，另存用途manifest／成功receipt並保留原件於相對`base/`，不改原2330政策或首存時間。來源用途與每日可用性分開：新成功批次由真保存完成時間取台北guard小時，此前拒讀；沒有官方發布小時，不借HTTP Date或期末倒填。雙外部SHA、具型別schema、固定子路徑、原件完整性／讀前後身分、pending／failure及未來cutoff守衛保持。新scope不修改generic daily record或正式庫，來源與固定EXE正常GUI／fresh已限定驗同值、版本與時間；其餘待驗界線見[125 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment125-reviewed-fundamentals)。
 
 ## TPEx法人精確diagnostics用途接受（Increment54）
 

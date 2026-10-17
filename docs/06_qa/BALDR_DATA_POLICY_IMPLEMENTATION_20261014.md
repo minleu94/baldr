@@ -3,7 +3,9 @@
 本輪依使用者決議恢復[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)，不另立總計畫。本輪跨使用者時區10/13–14；各收據原UTC時間保留。完整 P00–P14／G0–G4 尚未接受，舊 FAIL、P08 私有候選與其他 owner 的 singleton 保留。
 
 <a id="increment125-reviewed-fundamentals"></a>
-## Increment125：沿原P03交付具名三公司基本面（2026-10-17，開發來源／固定候選待驗）
+## Increment125：沿原P03交付具名三公司基本面（2026-10-17，固定125已交）
+
+來源接手點已提交為`147e80d35fa237c17b6a0603f9629bf51b395c23`。QA06核owner task、12 features與9份文件連結，errors=[]，outer SHA `2a906dade076e364bfae79718bb316cfbdaffa36a1332bb81fbe9f2b1f3d4c8e`；正文語意仍由Root核。QA08從該commit另建固定EXE，SHA `3784016e12bb1001f3cfae312e61cabd14ff8d5dc7abccac273a91dfb532bbca`、56,529,318 bytes；build receipt SHA `28e2b4c7b61ed8f6382d1e53a5757f61047e7e63fcff529fa3d0095b938faa5a`、來源ZIP SHA `858c5e62f0f225b958dd2c52f0fc5c81783a468a1c69a2603c625c60ec1700a6`。建置Job643 outer SHA `278a75fed2575f2bac6db04f0a20a80ac9e4b927273b1e951fa000537c9be584`自然閉鎖，三PID陣列空、handles關閉與mutex釋放、無forced cleanup；建置身分不當正常使用鏈通過。正常Main／fresh與交付仍依下方後續具名出口。
 
 本輪回原§0.4第二列，解除正常基本面只能讀2330的缺口；不再微修已交124回測，不增四條V1或新總計畫。Root依Tech Lead／Execution／Data Audit／QA／Documentation履職，沒有獨立reviewer或新代理，10/10保持。以HEAD `7eb3dba41b55648de24efffdc6fc8224e87f6a69`乾淨工作樹接手，前634組收據SHA `3a1210d0cf86e8ecbf119d25c1056fc1b1789cde2e3805e2cabd4dd0ed634fed`已閉鎖，可用RAM27,932,360,704 bytes。固定124與所有舊原件保持。
 
@@ -13,7 +15,7 @@
 
 鴻海首個索引因自設1MiB上限而拒絕已宣告1,408,772-byte HTML；不是WAF。保留FAIL後，以具名2MiB新範圍取同一已知文件，再沿其實際連結取單份PDF；沒有默默改舊scope或重置MOPS／TWSE額度。廣達索引完整，但唯一公開下載POST回302到`validate.perfdrive.com`，未跟隨、未解CAPTCHA，2382期間／單位用途仍未接受。每次新請求限一次、不重試、不redirect，保留20秒／具名容量及收據；舊月營收／MOPS partial與耗盡範圍不動。
 
-PDF初次關鍵字將聯發科權益變動表誤選為損益頁，當時保持未接受；Root看圖後改明選第5頁的完整合併損益表。QA03另因`Net income`同時中歸屬分配表頭而FAIL，outer `926bb0d8f7eb765eaeed91bf6d90500db62ec2fcfac612b6c5c01937671a1600`保留；QA03b明確排除非數值的歸屬表頭，仍要求唯一列／四組欄位。兩公司第5頁的2026半年營收及四率，用Decimal勾稽到原CSV精度，Root目測表頭／半年欄／NTD千元與合併本期損益；不是母公司股東淨利或綜合損益。新單位證據SHA `a860a9fdb1203a3250176b49786b6da0c6c8ae0e128a38caa536c77246b4c193`，outer `c1270c5325dbd1216d01a668aade7c68a09c9cb0bcd066be972c6985e1afac1e`。前期列未供產品或成長率，原其他FAIL不改判。
+PDF初次關鍵字將聯發科權益變動表誤選為損益頁，當時保持未接受；Root看圖後改明選PDF頁面索引5（零起算）的完整合併損益表。QA03另因`Net income`同時中歸屬分配表頭而FAIL，outer `926bb0d8f7eb765eaeed91bf6d90500db62ec2fcfac612b6c5c01937671a1600`保留；QA03b明確排除非數值的歸屬表頭，仍要求唯一列／四組欄位。兩公司PDF頁面索引5（零起算）的2026半年營收及四率，用Decimal勾稽到原CSV精度，Root目測表頭／半年欄／NTD千元與合併本期損益；不是母公司股東淨利或綜合損益。新單位證據SHA `a860a9fdb1203a3250176b49786b6da0c6c8ae0e128a38caa536c77246b4c193`，outer `c1270c5325dbd1216d01a668aade7c68a09c9cb0bcd066be972c6985e1afac1e`。前期列未供產品或成長率，原其他FAIL不改判。
 
 ### 原reader、明選版本與新可用小時
 
@@ -30,6 +32,14 @@ QA05在真19:00前走正常Main27504，四股各載入／基本面／價格／�
 Feature Map補新module／測試與既有workspace匹配；Snapshot、原計畫、資料current架構、daily-source專節、主手冊及兩份操作分冊同步。P07／Portfolio不消費本版本，UI導航／元件未變，對應decision架構／UI_FEATURES／持倉分冊not_required；Product／6M／目標設計與generic daily record、正式更新／Task及安裝根契約未改，不另改標準。原圖沒有新節點，已回Git／Feature Map；context Level2的1671字／3143bytes、Unknown=[]只作導航，不當全庫EOF或接受。
 
 下一出口為真19:00後的正常數值／原頁返回／重載／新程序與固定EXE同版候選；124仍是指定試用包。其他發行人、前期、完整財報鏈、歷史PIT、正式真N、雙策略完整績效、真Paper帳、完整搬移、Native／真人及自然成熟各自保持。三公司來源用途／單元／Qt或commit不合計成整個P03、四旅程或G0–G4；沒有正式資料／私人帳寫入、Task／maintainer、push、發布或交易。
+
+### 固定125與真可用小時後的正常鏈
+
+真台北19:00後才啟動QA10，未注入時鐘、重seal或提前可用性。來源Main **46452→35928**、固定EXE **19012→34276**，各在原個股頁依序載入2317／2330／2454／2382、基本面／價格切換、觀察清單返回與原按鈕重載，再由fresh讀回相同版本。三公司各5項Decimal值、版本SHA、台北19:00及表格顯示一致；2382保留驗證頁缺件、沒有數值。歷史報告不帶入目前來源，四股原價格截至2026-09-23，6份行情與9份營益原件不變、network attempt0。來源結果SHA `0f5524ce46534b1b7433918b6974796a9c0fffafc75d289e8df89aa2f5220b4b`、EXE結果SHA `b0e537af70556d4e739ba073cd2b34846ef51c485adb37feeccbf7e36f7e1753`；同值／版本／時間／顯示比對SHA `cfab21d1f156f5cecfbf49cdd292b5726790fba24efe0af741268747e804a129`。來源ZIP另核本次兩個產品模組，EXE產品import均來自自身bundle；offscreen元件／圖仍不授Native座標、中文字型或真人接受。
+
+[固定125指南](../../output/trial/Baldr-Daily-Research-125/TRIAL_GUIDE.md)沿原四流程，本輪只更動基本面；其餘按124及原具名證據承接，不再重跑未改回測。試用狀態沿109原18檔另複製，僅重綁新推薦索引，再逐SHA複製本次9份營益快照；原7件仍在`base/`、19:00小時不改、PDF不入包。狀態收據SHA `f663b8d7ae953d5e718568a92a4ae61e88a68c4dee6aea39f551e4dbd1ace053`，啟動器檢查SHA `e56bd52cb750325273744796773bc22b68bbef797ecdb5b46b04afb9b11a2213`只證身分。交付收據SHA **`670e489253748b0bd3e2513413f6fbc1bcd6a55d6ff8ce8467a8af983d0f55b4`**，116至121及124原交付SHA不變。Job644 outer SHA `f1ed204b34a3201a32244e9cfdea7a20297e446b65603d305760e17abf0bb7e7`，8GiB／12程序／kill-on-close讀回，三PID陣列自然空、handles關閉與mutex釋放，無forced cleanup。
+
+本輪解除第二列三公司當期正常研究與同版交付缺口，前期比較、2382、其他公司、其他來源權威、歷史PIT、真N、完整雙策略績效、Paper真帳、P14完整搬移、Native／真人及自然成熟仍各自保留；原P00–P14／G0–G4不按三公司或測試數加總完成。Snapshot、原計畫§0／§9.5、主手冊與專節、試用入口、資料契約及current架構同步。產品方向、6M、目標架構、正式Task／安裝根、UI導航與其他資料家族未改，not_required；Feature Map沿來源checkpoint。正式資料、私人內容、舊scope、singleton與停用maintainer不動。上文「待驗」為保存／建置當時狀態，由本節具名出口補足；原FAIL保持。
 
 <a id="increment124-vcp-integration"></a>
 ## Increment124：原P07正常回測／保存接線、合法千分位修復與固定124交付（2026-10-17）

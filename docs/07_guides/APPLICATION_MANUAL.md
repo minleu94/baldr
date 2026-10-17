@@ -138,9 +138,9 @@ Daily Decision Desk 是已保存來源的唯讀摘要入口。先確認資料日
 
 ## 12. 常見問題
 
-開發來源另補2317／2454的具名基本面，與2330同為2026-H1五欄目前研究，尚未替換固定124；2382文件導向驗證頁仍不可用。新保存版依實際批次台北19:00才可讀，不以財報期末或PDF值填前期。正常入口、四項版本選擇、口徑及失敗隔離見[具名營益指南](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)。
+固定125在原個股頁提供2317／2330／2454的2026-H1五欄目前研究；正常Main、返回／重載及新程序與同版EXE已限定驗證，2382文件導向驗證頁仍不可用。新保存版依實際批次台北19:00才可讀，不以財報期末或PDF值填前期。正常入口、四項版本選擇、口徑及失敗隔離見[具名營益指南](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)。
 
-固定124的「三段轉折收縮（研究）」1.0.0可走正常單股回測、保存、原規則／結果、返回及新程序重開。操作與限制見[專節](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#三段轉折收縮研究開發來源)。124亦修合法千分位解析，新保存會列解析版本；舊候選的零交易不能僅憑摘要判為無訊號。實際可試版本依[固定候選指南](TRIAL_VERSION_GUIDE.md)，規則與完整待交項見[原計畫§5.7](../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
+125沿124的「三段轉折收縮（研究）」1.0.0可走正常單股回測、保存、原規則／結果、返回及新程序重開。操作與限制見[專節](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#三段轉折收縮研究開發來源)。124亦修合法千分位解析，新保存會列解析版本；舊候選的零交易不能僅憑摘要判為無訊號。實際可試版本依[固定候選指南](TRIAL_VERSION_GUIDE.md)，規則與完整待交項見[原計畫§5.7](../superpowers/plans/baldr_product_completion_plan_20261006.md#57-vcp-three-contractions)。
 
 <a id="12-常見問題"></a>
 

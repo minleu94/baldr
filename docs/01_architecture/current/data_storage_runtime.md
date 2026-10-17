@@ -33,7 +33,7 @@ SQLite-first 是一般讀取優先序；CSV 保留原始來源、完整備份、
 
 原`twse_operating_summary_snapshot.py`的v1仍只接受資料集20762固定CSV、2330及2026-H1，不改原政策或7份原件。貨幣／期間由同發行人官方半年報與營收、四項比率在顯示精度內交叉核對，不外推1055列或未來版本。雙外部SHA、完整原件、一次性用途及每批實際保存時鐘獨立重驗；官方只有出表日，依成功批次台北小時，不借HTTP Date或財報期末倒填可得性。
 
-開發來源另以`twse_operating_summary_reviewed.py`沿原public reader核v1，逐SHA複製原7檔至新版本`base/`，外層manifest／receipt共9檔另綁2317／2330／2454各自半年合併口徑證據及新可用小時；原版本與首存時間不改。reader重驗外層及子版本、讀取前後SHA／檔案身分、pending／failure與實際時鐘，拒絕改issuer、用途、相對子路徑或前移小時。2382文件導向驗證頁，仍不可用。此版本已保存於2026-10-17，台北19:00以前拒讀；正常Main／fresh與固定候選出口待具名QA，不以單元測試接受全來源。
+固定125另以`twse_operating_summary_reviewed.py`沿原public reader核v1，逐SHA複製原7檔至新版本`base/`，外層manifest／receipt共9檔另綁2317／2330／2454各自半年合併口徑證據及新可用小時；原版本與首存時間不改。reader重驗外層及子版本、讀取前後SHA／檔案身分、pending／failure與實際時鐘，拒絕改issuer、用途、相對子路徑或前移小時。2382文件導向驗證頁，仍不可用。此版本已保存於2026-10-17，台北19:00以前拒讀；來源與固定125 EXE正常Main／fresh、返回／重載及同值／版本／時間／顯示已限定驗證；不以此接受全來源或歷史PIT。
 
 `OperatingSummaryReportProvider`只投影至目前個股報告；幣值以Decimal乘百萬、百分比保留原值，稅後率是合併本期損益而非母公司歸屬淨利率。新用途以`OPERATING_SUMMARY_POLICY_SCHEMA=twse-operating-summary-reviewed-2026h1.v1`及原目錄／雙SHA明選；未設schema仍走原2330 v1，不自動找latest或擴用途。前期、歷史PIT、聚合、策略、ML、Paper與交易均未授，PDF不隨產品快照複製或重展示。配置與失敗隔離見[操作手冊](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#具名營益固定版本研究)。不改月營收、generic daily record、正式SQLite或其他來源。
 

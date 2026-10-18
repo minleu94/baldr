@@ -1,6 +1,6 @@
 # UI 功能文件（Qt）
 
-開發來源142回應139試用：基本面頁先列月營收數值再展開來源；巢狀價格頁依作用中頁自然高度捲動，代碼可單獨清空；收藏名稱與原保存身分分開，同源收藏直接開原個股再返回原查詢。定向、共同防線及正常Source Main通過，固定EXE按[142 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment142-trial139-feedback)判定，141c原固定包不因source改動而改版。
+固定候選143回應139試用：基本面頁先列月營收數值再展開來源；巢狀價格頁依作用中頁自然高度捲動，代碼可單獨清空；收藏名稱與原保存身分分開，同源收藏直接開原個股再返回原查詢。定向、共同防線及正常Source Main通過；固定候選另驗新位置設定與同版雙程序，範圍按[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)判定，141c原固定包不因source改動而改版。
 
 推薦頁初始化的跨視窗Tab順序、Qt自有連線清理及pandas相容性修復已納入115固定候選；原受影響回歸見[啟動修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)，固定EXE與具名限制見[Increment115 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment115-fixed-trial-delivery)。116只修舊回測保存的Decimal附註序列化，沒有改UI控制項或導航，已在同輪另交固定116候選；操作與精度界線見[保存格式說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。
 

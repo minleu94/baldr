@@ -1,10 +1,10 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> 更新：2026-10-17（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
+> 更新：2026-10-18（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
 
 ## 現在有哪些入口
 
-**指定試用版為日常研究141c（`7134efaa94d6`）**。雙擊[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-141c/Launch-Baldr.cmd)，步驟見[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md)。全新包含自有runtime與原件，首次啟動前放妥完整資料夾；首次設定本機實測約8分34秒，同根後續保存保持。舊139及131保留供回訪，不自動匯入私人資料。EXE SHA `36a5cff62bf3835240c88c00e28d60daf002e8b0438b91e1489b977680fbc4c9`，交付SHA `1c49d736887bc62aa559d3a926523466d7761c4cb21b0edcebafc14b9622d79d`。
+**指定試用版為日常研究143（`bb09f218bba1`）**。雙擊[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd)，步驟見[試用指南](../07_guides/TRIAL_VERSION_GUIDE.md)。本包內含自有runtime與原件，首次啟動前放妥完整資料夾；本機新位置首次設定537.875秒／600秒，正常頁與同版新程序已核。舊139、141c及131保留，不自動匯入私人資料。EXE SHA `fcb94b81fefaea11eb83a52027bbe83c11772738586b1c7025e49add48476de9`，交付SHA `7495f1e3ff6129d97afab4f2eaf1ff8f5acc6c8369ea78db9c5d283c3bf131b1`。
 
 116與更早候選保留，不能把其外部檢查當目前版本驗收。三個判讀已在指南更正：0完成配對不等於沒有訊號；公司名錄缺來源憑證仍限制用途資格；118起價格選股雙擊會進主個股頁。一般四股行情與1,951檔同源價格研究仍是不同範圍及日期。
 
@@ -15,7 +15,7 @@
 | 清單、持倉與情境 | 持倉在四卡下方，唯一精確代號／名稱互補，回個股可重載；初次情境有隔離證據 | 私人帳／真人及真策略Paper同日原件仍待，不以手動成本造NAV。 |
 | 回測、保存與比較 | 原單股規則、結果、返回及新程序重開；2–5個同股同窗保存策略可看逐日意圖，附三筆示範 | 研究樣本不等於策略有效。SOP／Baseline FAIL、Walk-forward、成本／來源權威、PIT及完整雙策略績效分別保留。 |
 | 推薦結果追蹤 | 134補計畫目標日、實際取價日與缺價原因；5／10／20日受限結果可回訪 | 1538缺價、60日未成熟與P12正式時序／修訂限制保持。 |
-| 首次設定與搬移 | 141c固定EXE含139月營收／市場狀態，在原600秒內513.532秒完成本機新位置設定；正常Main／新程序收藏、原研究及金融值一致，保留新手動觀察項目，啟動器正反SHA通過 | 只接受全新包的本機新位置出口。已用state、跨機及私人帳搬移仍待；138與141診斷原FAIL保持。 |
+| 首次設定與搬移 | 143固定EXE／自有runtime及具名名錄；本機新位置537.875秒／600秒完成，受改Main／同版新程序、原研究金融值及啟動器正反SHA已核 | 只接受全新包本機出口。已用state、跨機、私人帳與其他DPI待；142原FAIL／partial及139／141c保持。 |
 
 V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_completion_plan_20261006.md#03-兩階段交付與v1範圍凍結)，後續增量不擴V1範圍。134已有1280×760保存策略回訪及1500×900新回測保存／新程序的限定原生證據；完整Native、其他DPI及真人接受仍待。
 
@@ -29,7 +29,7 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 外部缺件各自隔離：TPEx年度日曆授權、TPEx法人API、官方文件／單位／用途、歷史PIT、真N、完整績效、Native／EXE及Paper／forward自然成熟分別判定。MOPS partial／缺EOF及舊月營收／TWSE GET耗盡scope保持，不重抓、不把一處缺件變成全產品新前置。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項仍在原計畫，不以commit或案例加總計完成率。
 
-[142開發來源](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment142-trial139-feedback)回應139真人回報，先修月營收值被來源長文淹沒、窄頁壓縮及收藏名稱／下鑽混淆。48項定向、Workbench85、validator25／0／4及mypy1069通過；正常Source Main3344已核五列、窄頁、名稱、原來源與保存值；固定EXE出口另驗，指定141c暫不變。共同期限說明仍須核逐期限適用原因；真人D未驗不寫成PASS。原金融值、缺件、精度及可得時間守衛保持。
+[142固定候選](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)已回應139真人回報：五列月營收值前置、來源長文可展開；窄頁條件／結果可捲、代碼可單獨清空；具名名錄只補顯示名稱，同源收藏直接開原個股並返回。Source定向與共同防線保持，另驗新包首次設定、正常固定EXE與同版新程序讀回及啟動器正反SHA；未重跑未改旅程。逐期限共同說明仍待核適用性，真人D未驗；原金融值、缺件、精度及時間守衛保持。
 
 ## 產品與系統入口
 
@@ -47,4 +47,4 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 - Historical replay、readiness、dry-run、shadow、Paper、合成資料或測試通過，均不能代替真來源、有效績效、真人接受、自然成熟或 production ML 資格。程式碼／EXE 可啟動也不授上述接受；UI 的既有 mypy ignore 設定不證強型別。
 - Root 串行 QA 與資源守衛依[共用規則](../agents/shared_context.md)。本補完 task 已用完新建代理額度 10/10；只在無待寫與無衝突時重用既有 Luna。
 
-[143派工修正](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)只為解除142固定包首次設定600秒FAIL；原核驗與2／4併行上限保持，QA與新候選待驗。未通過前入口仍為141c，142／partial原件不改。
+[143固定交付](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)以537.875秒通過原600秒本機新位置設定，正常EXE與同版新程序核受改月營收、窄頁、顯示名稱及同源收藏，啟動器正反SHA通過。派工寫2／讀4與完整守衛保持，原142 FAIL／partial不改；完整跨機、Native／真人、金融資格與原計畫各Gate仍分別待驗。

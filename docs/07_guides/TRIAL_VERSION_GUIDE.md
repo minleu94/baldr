@@ -1,8 +1,8 @@
 # 目前指定的本機日常研究入口
 
-**新增可試用候選：題材研究01，固定來源 `f02b7ebded30`。** 雙擊[新候選啟動器](../../output/trial/Baldr-Theme-Research-01/Launch-Baldr.cmd)，新旅程依[包內指南](../../output/trial/Baldr-Theme-Research-01/TRIAL_GUIDE.md)：首頁 → 產業與題材 → 明選包內`research/theme_20261016/manifest.json` → 題材／成員 → 2330個股 → 返回 → 保存筆記／追加修訂／重啟讀回。新包帶自有runtime、原日常資產、具名名冊與題材版本；首次啟動前放妥整包，本機含空白新位置實測494.391秒／原600秒。限定正常EXE與新程序已驗，範圍及問題見[交付收據](../../output/trial/Baldr-Theme-Research-01/DELIVERY_RECEIPT.json)與[已知問題](../../output/trial/Baldr-Theme-Research-01/KNOWN_ISSUES.md)。
+**新增可試用候選：題材研究02，固定來源 `b292f803ce9c`。** 雙擊[新候選啟動器](../../output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd)，新旅程依[包內指南](../../output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md)：首頁 → 產業與題材 → 明選包內`research/theme_20261016/manifest.json` → 題材／成員 → 2330個股 → 返回 → 保存筆記／追加修訂／比較與前一版／重啟讀回。個股首屏分開行情事實、持倉、本次技術線索與明選保存推薦判斷。新包帶自有runtime、原日常資產、自有task具名名冊與題材版本；首次啟動前放妥整包，本機含空白新位置實測492秒／原600秒。限定正常EXE與新程序49584→21272已驗，範圍及問題見[交付收據](../../output/trial/Baldr-Theme-Research-02/DELIVERY_RECEIPT.json)與[已知問題](../../output/trial/Baldr-Theme-Research-02/KNOWN_ISSUES.md)。
 
-題材資料日10-16、一般四股行情到9-23，日期與用途分開。法人／合格五日日曆未包含，相關值維持不可用。新包沒有私人state，不匯入舊試用版；143及其已用state保留。未改日常旅程沿143原證據，不因新包授完整Gate、Native、真人或跨機接受。首頁多候選明選、筆記前版比較及個股首屏分層的後續Source改善已驗，**尚未納入本固定包**。一般個股通用判斷保存仍待，題材筆記不代替它。
+題材資料日10-16、一般四股行情到9-23，查詢日另標。法人／合格五日日曆未包含，相關值維持不可用。新包沒有私人state，不匯入舊試用版；01、143及其已用state保留。未改日常旅程沿143／01原證據，不因新包授完整Gate、Native、真人或跨機接受。首頁明選控制項已含02，真實多候選固定旅程尚未驗；Source合成案例不代替它。一般個股通用判斷保存仍待，題材筆記不代替它。
 
 **日常研究143保留，固定來源 `bb09f218bba1`。** 原[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd)及私人state不變。本版包含月營收值前置、窄頁條件與結果可捲、清空代碼按鈕、收藏公司名稱及同源個股回訪修正。完整步驟見[包內指南](../../output/trial/Baldr-Daily-Research-143/TRIAL_GUIDE.md)，限制見[已知問題](../../output/trial/Baldr-Daily-Research-143/KNOWN_ISSUES.md)，固定身分見[交付收據](../../output/trial/Baldr-Daily-Research-143/DELIVERY_RECEIPT.json)。以下四條日常流程與143的期限表維持原判讀，新題材旅程按上方指南另驗。
 

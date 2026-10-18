@@ -103,4 +103,16 @@ QA32固定EXE正常Main28556→9036通過：同一題材版本／2330一般行�
 
 重用Luna實作Workbench與單一新測試檔，另由既有Luna狹義唯讀複核，未改Main／DTO／金融來源。多檔預設未選、單檔相容；選第二檔沿同一原來源／日期context，刷新同源保留有效選擇，換日期／snapshot／逐列identity即清除，所有候選捷徑重核membership。QA30a：compile、112相關Qt測試（含既有Workbench85及9個新選取案例）、validator25/0/4、mypy1076通過；既有單檔斷言未修改。閉鎖收據`single_owned_qa_3bdc5e28e2834cf2a67e0f98e4d89c90/receipt.json` SHA `4493934fea6812238d20d7468004f1348920d66c61fc786e625adacffd34d3e0`，原始validator報告另存本task。這是合成候選的Qt／context技術驗證，不宣稱正式多股來源、同版EXE或真人接受；此葉片未含於f02固定候選，待下一次有意義的功能批次封裝。
 
-題材Source與本機固定候選旅程為PASS WITH KNOWN LIMITATIONS，這條M4交付出口已完成；M3首頁選取Source已驗但尚未封裝，完整通用研究閉環及其餘原UX清冊未關閉。前置原D技術出口已由QA36b補驗，真人簽核仍分開待；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。
+### M4題材02固定候選（QA49／51／53／54／55）
+
+本批解除「筆記前版比較與個股首屏改善只在Source、沒有同版可試用EXE」的交付阻礙。固定Source `b292f803ce9c08c39eeb1102b0c30fe18896ec41`，QA49以乾淨git archive建置，EXE SHA `2dfba4f2439406fbe62ece846e4ac60e81904d94d86dd914c4702fed5253b02c`。QA51另建`output/trial/Baldr-Theme-Research-02`，manifest SHA `30db72e9f2f789215d2e47123229ff0bd09f12f9ad579740277956909be36602`；原資產bytes保持，名冊另存自有task具名副本與custody收據，非正式來源用途接受。01、143、141c、其他owner task及私人state不改。
+
+QA53全新副本放到本機含空白新位置，首次設定492秒／原600秒，結果SHA `086eca868e2d83cce97a0607c6e8b59d2449a07887091db70866319e5e3522cc`。固定模組均由EXE resource root載入；沒有網路／舊trial／正式根存取，原模板無state。
+
+QA54固定EXE正常Main49584→新程序21272：題材原來源／篩選／位置返回、2330行情事實與查詢日分層、三篇筆記原文／直接父子版本／完整來源tooltip、實際800×520比較及保存期間關閉通過。兩程序Journal SHA同為`493f971a57911103f40b971005dd1fdfbe9a95ddc3cc583a0ef40ff1e6bb57a4`；結果SHA `15099975b31f830e07355916ee080db22b5b5b77bb892d49335cbbcfcb9d355c`。Root已檢圖，網路與受保護根嘗試0，沒有從Source補載產品模組。首頁只核明選控制項已包含，真實多候選固定旅程未驗，不能以QA30a合成測試替代。
+
+QA55啟動器正例0／錯EXE SHA反例2通過，隔離副本config／setup receipt／Journal前後不變；未更改驗證器，沿QA29具名四案例原證據，不重跑未改旅程。交付收據SHA `b044c2eb15760f20c903b375c4e9eccc9c3b5913cc2ce9193c7164c24735a4a2`，template inventory SHA `b85edc8d447889987de2c9d6022f6092299fec52506a1680e2bafa676e45b89a`，final結果SHA `37e4b83b1519dc371d6af5af142ff781f0f88b61ab5bd606ef624f12a548bc9a`。最新閉鎖`single_owned_qa_d41d6eaa94294055ab08bb198a9e1782/receipt.json` SHA `6667aa5139602cc5f881c135a34b3fe27093b39a372e2674b7271eb22974251e`；每組均在8GiB／12程序Job與workspace mutex下串行、啟動RAM≥8GiB，三PID陣列空／handles閉／mutex釋放／無強制清理後才起下一組。
+
+02限定交付為PASS WITH KNOWN LIMITATIONS。一般價庫仍只有四股至9/23，題材樣本10/16，缺法人／合格五日曆；一般個股通用判斷保存、完整M3、Native／真人／跨機接受仍待。本輪沒有重新執行Source未改的70個股、Workbench85、validator或mypy；這些沿前述具名Source證據，固定受改旅程另驗，不把兩者混成完整Gate。
+
+題材Source與本機固定候選旅程已取得限定出口，首頁控制項也已封裝02；完整通用研究閉環及其餘原UX清冊未關閉。前置原D技術出口已由QA36b補驗，真人簽核仍分開待；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。

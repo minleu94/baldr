@@ -4,7 +4,7 @@
 
 ## 現在有哪些入口
 
-**新增可試用：題材研究01（`f02b7ebded30`）**，[啟動器](../../output/trial/Baldr-Theme-Research-01/Launch-Baldr.cmd)與[指南](../../output/trial/Baldr-Theme-Research-01/TRIAL_GUIDE.md)。固定EXE本機移位後首次設定494.391秒／原600秒；題材→一般個股→原頁、三筆記追加／保存期間關閉與新程序28556→9036讀回已驗。EXE SHA `d04ad3ff55ab526071f3133b9c8a8a4c9191583ba62ac29b844d91dad39faffb`，交付SHA `de60528bbc95da097b6f1e6f9a53c300fc7d677c0c1826908c0d04a315a7d5e4`。原日常資產與具名名冊保留；私人state不匯入。題材10/16與一般行情9/23分開，法人／五日曆／PIT限制保持，未改旅程沿143證據；不是完整Gate或真人接受。
+**新增可試用：題材研究02（`b292f803ce9c`）**，[啟動器](../../output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd)與[指南](../../output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md)。包含筆記直接前版比較與個股首屏日期／依據分層；固定EXE移位首次設定492秒／原600秒、正常Main49584→新程序21272、三筆精確原文／保存期間關閉／實際800px比較及啟動器正反SHA通過。EXE SHA `2dfba4f2439406fbe62ece846e4ac60e81904d94d86dd914c4702fed5253b02c`，交付SHA `b044c2eb15760f20c903b375c4e9eccc9c3b5913cc2ce9193c7164c24735a4a2`。原日常資產及自有task具名名冊保持bytes，模板無私人state；01／143原包保留。首頁明選控制項已封裝，但真實多候選固定旅程未驗。題材10/16與一般行情9/23分開，法人／五日曆／PIT及完整Gate／真人限制保持。
 
 **日常研究143原版保留（`bb09f218bba1`）**。原[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd)、私人state與[指南](../07_guides/TRIAL_VERSION_GUIDE.md)均可回訪。本包內含自有runtime與原件，首次啟動前放妥完整資料夾；本機新位置首次設定537.875秒／600秒，正常頁與同版新程序已核。舊139、141c及131保留，不自動匯入私人資料。EXE SHA `fcb94b81fefaea11eb83a52027bbe83c11772738586b1c7025e49add48476de9`，交付SHA `7495f1e3ff6129d97afab4f2eaf1ff8f5acc6c8369ea78db9c5d283c3bf131b1`。
 
@@ -23,11 +23,11 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 ## 目前工程狀態與限制
 
-**筆記回訪比較與個股首屏改善已在Source驗證。** 可並列直接前版原文，實際800px窗及新程序保持Journal bytes；股摘要保留有日期的行情事實，分開持倉、本次技術線索與明選保存推薦正反，查詢日不再誤稱資料日。個股相關70項、validator25/0/4及mypy1076通過，原鍵盤等待FAIL與診斷保留；指南已同步。這批未含於f02題材01固定包，一般個股通用判斷保存與完整M3仍待，詳[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
+**筆記回訪比較與個股首屏改善已納入固定02。** 可並列直接前版原文，實際800px窗及新程序保持Journal bytes；股摘要保留有日期的行情事實，分開持倉、本次技術線索與明選保存推薦正反，查詢日不再誤稱資料日。Source相關70項、validator25/0/4及mypy1076與同版EXE受改旅程各有證據，原鍵盤等待FAIL及診斷保留。一般個股通用判斷保存與完整M3仍待，詳[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
 
 **原D固定EXE技術出口已補驗。** 題材01隔離副本的三筆exact保存策略、原規則、歷史原結果、返回已讀對照及新程序讀回通過；419觀測日的原意圖不是成交，金融identity／原件及Journal bytes保持。1280視窗先按「查看實驗結果」；真人D與Native仍待。收據、原FAIL與限定判讀見[QA36b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#原d固定exe技術出口qa36b)。
 
-**題材研究閉環已有固定候選；首頁明選改善另在Source。** 題材觀察／排行、25鏈及成員可進一般個股再返回；判斷沿原Journal追加、原文唯讀，正常EXE與新程序按原SHA讀回。每篇筆記有獨立修訂根，並行CAS及過時祖先守衛保持；保存期間關閉會等待已送出寫入。首頁多候選明選另有112相關測試／validator25-0-4／mypy1076通過，尚未含於f02固定包。原FAIL、身分與限定範圍見[題材QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。法人／五日曆／歷史PIT／真N、完整UX與原補完未完成項繼續保留。
+**題材研究閉環已有固定候選。** 題材觀察／排行、25鏈及成員可進一般個股再返回；判斷沿原Journal追加、原文唯讀，正常EXE與新程序按原SHA讀回。每篇筆記有獨立修訂根，並行CAS及過時祖先守衛保持；保存期間關閉會等待已送出寫入。首頁多候選明選的112相關Source測試已驗，控制項已含02；尚無真實多候選固定旅程接受。原FAIL、身分與限定範圍見[題材QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。法人／五日曆／歷史PIT／真N、完整UX與原補完未完成項繼續保留。
 
 **139的月營收成果已保留於141c。** [139 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment139-quanta-monthly-sales)綁既存TWSE公司原件與廣達官方月營收，八檔版本保留同表百萬元整數／0.1%披露率。真實台北10/18 04:00後的原正常頁／新程序、股票切換與捲動證據維持；141c另驗新根五列原值、精度及歷史隔離。未改旅程沿原證據，未重跑全部四流程或授完整Native。官方綜合損益表入口302 ASPX錯誤原件保留，停止該入口；半年財報缺件仍隔離，不混表、推算累計或接評分。完整F12、來源／PIT及原計畫其餘列繼續保留。
 

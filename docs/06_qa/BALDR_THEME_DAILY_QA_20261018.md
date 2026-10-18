@@ -134,3 +134,15 @@ QA67補開啟當下的背景重驗：9 PASS／1 FAIL，原件消失時原文、e
 QA70閉鎖SHA `105ccee1d6224fcb2acc5d149161452e2c8a4d19f8e213bdd3663121dbf7872c`；QA72為`276ef1f4130de7656d4330fae15c21512adcc12cd04ab4e9f54c108b4c0bb18c`；最新QA74為`0efc219525e601a264523d172c988fc94844f2df93e056f98334e03220eb23c8`。每組8GiB／12程序／kill-on-close／workspace mutex、啟動RAM≥8GiB，三PID陣列空／process與Job handles閉／mutex釋放／無強制清理後才接下一組。網路及保護根嘗試0只限上述已讀診斷，並非通用安全或全機程序接受。
 
 固定02／01／143及私人原件保持；未建03，也未宣稱新程序、EXE／Native／真人／完整M3通過。先停止這條相同完整來源旅程的重試，後續須先有具體reader診斷／修復；不因此阻塞一般四股報告可往返codec。QA71在允許QA資產找不到至少兩股的保存run，正式runtime及未檢視owner資料保持Unknown；首頁真實多候選未接受。QA73／75已定位並凍結一般完整report/context codec新葉片，尚未實作或QA，不能把靜態契約當保存閉環。
+
+### 一般整份報告codec（QA75至QA81）
+
+本葉片解除一般個股報告只有非對稱`to_dict`、沒有可精確讀回完整report/context的技術缺口；不是新總計畫，也尚未完成M3保存閉環。Root75凍結API，重用Luna單寫`stock_research_report_snapshot_codec.py`與單一新測試檔。完整report/context及nested型別保留，顯示float只以hex表示往返、不新增金融算術；未知類／自訂Mapping拒絕。75a另明定排名context的建構子會`Path.resolve`，v1在建構前明確拒絕，不能繞過原DTO驗證。其餘來源與資格不升格，模組不建立store或重查來源。
+
+固定候選原件：module SHA `aad06dc648e0a07aa907530c9fcb8498209c566c6ba6d9d31dcae7160b7a4011`，tests SHA `e42b69356d447a0f5d2da8b9e9bb9fe1da9a6b9bf68d52a43ce4e9f2614a9aa4`。Root已備QA78四股public report實際往返與QA79串行compile／定向pytest／mypy／四股驗證spec，spec SHA `fe1eb0a3096a8f9224b14df948640b4c62abdae8a164f8c7bfafcd25284de55b`；這些均**未執行**，沒有Job或結果收據，不是FAIL測試或PASS。
+
+QA79原命令兩次遭自動核准審查在啟動前拒絕：正常五小時額度100%，審查認為既有10,000上限仍不足以作本次QA79的明確credit授權。Root已讀原Goal §0／4.2並附最新使用者修正§4重送同命令，仍遭拒；沒有繞道、改名執行或啟動Python，已請使用者選擇授權本次驗證或等正常額度實際恢復。帳戶共用淨差與預算歸因只在本機task記錄，不當產品測試證據。
+
+獨立Luna已完成只讀QA81，報告SHA `ceab3f0d90bc86c82d6f5cbbfc82b7a22244b46f1abe0e99c3994091eff86cad`：輸出DTO的nested Mapping/list仍可變；依75a，canonical JSON+SHA才是權威，store/render必須重新解碼，不能信任可被修改的公開DTO。另node cap目前在JSON parse後檢查，文字／整體序列化的配置前界線並不完整；不能宣稱所有配置已先受node／byte預算限制。這些仍待Root裁決／必要修正與真正QA，沒有標整份review通過，也不為本次新增streaming重構。後續若改bytes須另存新spec／結果，保留79未啟動原件。
+
+沒有使用者可見新入口；操作手冊與固定02沿原版。下一步只在授權或實際正常額度可用後處理具體bounds問題，驗codec／四股真投影，再沿原M3接Journal與正常UI。保留F07原Main限制、真實多候選來源缺件、完整Gate／真人／PIT／真N及自然成熟各自界線。

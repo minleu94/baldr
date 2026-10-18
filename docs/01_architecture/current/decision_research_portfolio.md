@@ -250,6 +250,8 @@ Increment59固定來源包為兩個既有策略的v2規則收據加三份raw sou
 
 ### 價格研究、個股與 Portfolio 跨頁接線
 
+`stock_research_report_snapshot_codec`的未驗證Source葉片以`stock-research-report-projection-snapshot.v1`固定完整report與原typed request context；其SHA只代表顯示投影內容，不授上游來源／歷史PIT。顯式DTO／Enum allowlist、欄位型別、Decimal與展示float無損表示、原字串及tuple/list語義各自保留；排名context因建構子會解析檔案路徑，v1明確拒絕，不省欄冒充完整。公開DTO是脫離輸入別名的可變內層投影，consumer仍須從canonical JSON按SHA重讀；不把frozen wrapper當權威。尚無store／Journal／正常UI整合，資源界線仍待QA及複核處理，見[QA75–81](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#一般整份報告codecqa75至qa81)。
+
 `PinnedStockResearchSource`只接受既有F07 bookmark的canonical JSON，綁股票、原查詢／頁／選取／snapshot；保存及開啟前沿public exact reader重驗。`PinnedStockResearchNoteService`沿Journal ACTION_NOTE與CAS追加獨立根／直接修訂，原文完整保存於payload，摘要沿Journal既有正規化；股票明示，推薦result_id與decision_date留空，不製造候選或歷史決策身份。實際Journal保存時間、行情觀測日及原研究日分開。缺原件仍可讀原筆記，但新寫入、修訂及開啟來源拒絕；不改金融值、PIT或用途資格。
 
 正常Main注入同一Journal服務，個股工作區以持續存在的捲動容器掛「我的判斷」。背景讀取按generation／股票／選取拒晚到，來源開啟按下當下再重驗，沿原bookmark route恢復同源個股及返回；換股草稿保留原來源但清除修訂parent。已送出寫入不被合作取消，結果與native thread終態齊備才回收worker，關閉須等寫入排空。這只補`technical_price_saved_source`，一般整份即時報告仍沒有完整snapshot契約；限定證據見[QA](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#原價格版本的個股判斷qa62至qa70)。

@@ -818,6 +818,7 @@
         "app_module/quanta_monthly_sales_snapshot.py",
         "app_module/quanta_monthly_sales_report_provider.py",
         "app_module/pinned_stock_research_notes.py",
+        "app_module/stock_research_report_snapshot_codec.py",
         "ui_qt/views/stock_research_workspace.py",
         "ui_qt/widgets/pinned_stock_research_notes_widget.py"
       ],
@@ -842,6 +843,7 @@
         "tests/test_ui_qt_stock_research_evidence_summary.py",
         "tests/test_ui_qt_stock_research_report.py",
         "tests/test_pinned_stock_research_notes.py",
+        "tests/test_stock_research_report_snapshot_codec.py",
         "tests/test_ui_qt_pinned_stock_research_notes_widget.py",
         "tests/test_ui_qt_price_research_notes_navigation.py"
       ],
@@ -890,8 +892,10 @@
         "tests/test_ui_qt_stock_research_evidence_summary.py",
         "tests/test_ui_qt_stock_research_report.py",
         "app_module/pinned_stock_research_notes.py",
+        "app_module/stock_research_report_snapshot_codec.py",
         "ui_qt/widgets/pinned_stock_research_notes_widget.py",
         "tests/test_pinned_stock_research_notes.py",
+        "tests/test_stock_research_report_snapshot_codec.py",
         "tests/test_ui_qt_pinned_stock_research_notes_widget.py",
         "tests/test_ui_qt_price_research_notes_navigation.py"
       ],

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QBoxLayout,
     QAbstractItemView,
+    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -213,6 +214,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._workbench_narrow = False
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
+        self._daily_candidate_selection_identity: tuple[object, ...] | None = None
 
         self.status_model = WorkbenchStatusStripTableModel()
         self.review_model = WorkbenchReviewQueueTableModel()
@@ -1632,6 +1634,24 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         panel.layout.addWidget(self.daily_candidate_detail_label)
 
+        candidate_selector_row = QWidget()
+        candidate_selector_layout = QHBoxLayout(candidate_selector_row)
+        candidate_selector_layout.setContentsMargins(0, 0, 0, 0)
+        candidate_selector_layout.setSpacing(8)
+        candidate_selector_label = QLabel("明選要開啟的研究股票")
+        candidate_selector_label.setAccessibleName("每日候選研究股票選擇說明")
+        self.daily_candidate_selector = QComboBox()
+        self.daily_candidate_selector.setAccessibleName("每日候選研究股票明選")
+        self.daily_candidate_selector.setMinimumContentsLength(18)
+        self.daily_candidate_selector.addItem("請選擇研究股票", None)
+        self.daily_candidate_selector.setEnabled(False)
+        self.daily_candidate_selector.currentIndexChanged.connect(
+            self._on_daily_candidate_selection_changed
+        )
+        candidate_selector_layout.addWidget(candidate_selector_label)
+        candidate_selector_layout.addWidget(self.daily_candidate_selector, 1)
+        panel.layout.addWidget(candidate_selector_row)
+
         actions_row = QWidget()
         self.daily_action_layout = QHBoxLayout(actions_row)
         self.daily_action_layout.setContentsMargins(0, 0, 0, 0)
@@ -1688,6 +1708,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         daily: WorkbenchDailyEvidence | None,
     ) -> None:
         self._daily_investment_evidence = daily
+        self._populate_daily_candidate_selector(daily)
         self.daily_detail_button.blockSignals(True)
         self.daily_detail_button.setChecked(False)
         self.daily_detail_button.blockSignals(False)
@@ -1712,8 +1733,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.daily_candidate_detail_label.setText(
                 "個股研究候選：尚未載入；空白不等於沒有候選。"
             )
-            self.daily_candidate_button.setText("開啟候選研究報告")
-            self.daily_candidate_button.setEnabled(False)
+            self._sync_daily_candidate_open_controls()
             self.daily_watchlist_button.setEnabled(False)
             self.daily_evidence_button.setEnabled(False)
             self.daily_detail_button.setEnabled(False)
@@ -1769,20 +1789,122 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 "個股研究候選："
                 "目前沒有可安全呈現的候選列；空結果不等於 Gate 已通過。"
             )
-        if daily.candidate_symbols:
-            candidate_button_text = f"開啟 {daily.candidate_symbols[0]} 個股研究報告"
-        elif daily.candidate_status == "read_failure":
-            candidate_button_text = "候選來源讀取失敗"
-        else:
-            candidate_button_text = "開啟候選研究報告"
-        self.daily_candidate_button.setText(candidate_button_text)
-        self.daily_candidate_button.setEnabled(
-            bool(daily.candidate_symbols) and self.navigate_to_stock_research_callback is not None
-        )
+        self._sync_daily_candidate_open_controls()
         self.daily_watchlist_button.setEnabled(self.navigate_to_watchlist_callback is not None)
         self.daily_evidence_button.setEnabled(True)
         self.daily_detail_button.setEnabled(bool(daily.source_trace or daily.diagnostics))
         self.daily_trace_label.setText(self._format_daily_trace(daily))
+
+    @staticmethod
+    def _daily_candidate_source_identity(
+        daily: WorkbenchDailyEvidence,
+    ) -> tuple[object, ...]:
+        """以每日 DTO 原有來源與列 identity 判斷是否可保留明選。"""
+
+        return (
+            daily.candidate_result_id,
+            daily.candidate_source_id,
+            daily.candidate_source_snapshot_id,
+            daily.decision_date,
+            daily.data_as_of_date,
+            daily.candidate_data_date,
+            tuple(daily.candidate_symbols),
+            tuple(daily.candidate_identity),
+        )
+
+    @staticmethod
+    def _daily_candidate_open_options(
+        daily: WorkbenchDailyEvidence | None,
+    ) -> tuple[str, ...]:
+        if daily is None or str(daily.candidate_status).strip().lower() in {
+            "read_failure",
+            "stale",
+            "future_blocked",
+        }:
+            return ()
+        symbols = (str(symbol).strip() for symbol in daily.candidate_symbols)
+        return tuple(dict.fromkeys(symbol for symbol in symbols if symbol))
+
+    def _populate_daily_candidate_selector(
+        self,
+        daily: WorkbenchDailyEvidence | None,
+    ) -> None:
+        selector = self.daily_candidate_selector
+        previous_identity = self._daily_candidate_selection_identity
+        previous_code = selector.currentData()
+        identity = self._daily_candidate_source_identity(daily) if daily is not None else None
+        options = self._daily_candidate_open_options(daily)
+        keep_previous = (
+            identity is not None
+            and identity == previous_identity
+            and isinstance(previous_code, str)
+            and previous_code in options
+        )
+        selected_code = (
+            previous_code
+            if keep_previous
+            else options[0]
+            if len(options) == 1
+            else None
+        )
+        self._daily_candidate_selection_identity = identity
+
+        was_blocked = selector.blockSignals(True)
+        selector.clear()
+        selector.addItem("請選擇研究股票", None)
+        for stock_code in options:
+            selector.addItem(stock_code, stock_code)
+        selected_index = selector.findData(selected_code) if selected_code is not None else 0
+        selector.setCurrentIndex(max(0, selected_index))
+        selector.setEnabled(bool(options))
+        selector.blockSignals(was_blocked)
+        self._sync_daily_candidate_open_controls()
+
+    def _daily_candidate_selection_is_openable(self) -> bool:
+        daily = getattr(self, "_daily_investment_evidence", None)
+        if daily is None or self.navigate_to_stock_research_callback is None:
+            return False
+        if self._daily_candidate_source_identity(daily) != self._daily_candidate_selection_identity:
+            return False
+        selected_code = self.daily_candidate_selector.currentData()
+        return (
+            isinstance(selected_code, str)
+            and selected_code in self._daily_candidate_open_options(daily)
+        )
+
+    def _on_daily_candidate_selection_changed(self, _index: int) -> None:
+        self._sync_daily_candidate_open_controls()
+
+    def _sync_daily_candidate_open_controls(self) -> None:
+        daily = getattr(self, "_daily_investment_evidence", None)
+        options = self._daily_candidate_open_options(daily)
+        selected_code = self.daily_candidate_selector.currentData()
+        can_open = self._daily_candidate_selection_is_openable()
+        if isinstance(selected_code, str) and selected_code in options:
+            button_text = f"開啟 {selected_code} 個股研究報告"
+        elif daily is not None and str(daily.candidate_status).strip().lower() == "read_failure":
+            button_text = "候選來源讀取失敗"
+        elif daily is not None and str(daily.candidate_status).strip().lower() in {
+            "stale",
+            "future_blocked",
+        }:
+            button_text = "候選資料日期不可用"
+        elif options:
+            button_text = "請先選擇研究股票"
+        else:
+            button_text = "開啟候選研究報告"
+        self.daily_candidate_button.setText(button_text)
+        self.daily_candidate_button.setEnabled(can_open)
+
+        for key, target in getattr(self, "_today_action_targets", {}).items():
+            if target == "stock_research":
+                button = getattr(self, "today_action_buttons", {}).get(key)
+                if button is not None:
+                    button.setEnabled(can_open)
+        if getattr(self, "_primary_action_target", "") == "stock_research":
+            primary_button = getattr(self, "primary_action_button", None)
+            if primary_button is not None:
+                primary_button.setEnabled(can_open)
 
     def _style_daily_state(self, status: str) -> None:
         tone = _workbench_tone(status)
@@ -1867,9 +1989,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _open_daily_candidate_research(self) -> bool:
         daily = getattr(self, "_daily_investment_evidence", None)
         callback = self.navigate_to_stock_research_callback
-        if daily is None or not daily.candidate_symbols or callback is None:
+        if daily is None or callback is None or not self._daily_candidate_selection_is_openable():
             return False
-        stock_code = str(daily.candidate_symbols[0]).strip()
+        selected_code = self.daily_candidate_selector.currentData()
+        stock_code = str(selected_code).strip() if isinstance(selected_code, str) else ""
         if not stock_code:
             return False
         callback(
@@ -2278,7 +2401,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if target == "recommendation":
             return self.navigate_to_recommendation_callback is not None
         if target == "stock_research":
-            return self.navigate_to_stock_research_callback is not None
+            return self._daily_candidate_selection_is_openable()
         if target == "watchlist":
             return self.navigate_to_watchlist_callback is not None
         legacy_target = WORKBENCH_LEGACY_DRILLDOWN_TARGETS.get(target, target)
@@ -2557,9 +2680,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self._viewed_review_item_ids.add(str(item.item_id))
             self.review_state_label.setText(self._review_queue_state_text(self._dashboard))
         if model is self.review_model and str(getattr(item, "source", "")) == "continuity_review":
-            # Continuity rows carry their own exact candidate identity.  Do
-            # not fall back to the daily candidate button, whose historical
-            # compatibility contract intentionally opens candidate_symbols[0].
+            # 連續性覆盤列有自己的精確來源身份，不借用每日候選選擇。
             self._open_continuity_review_research(item)
             return
         target = getattr(item, "drilldown_target", "")

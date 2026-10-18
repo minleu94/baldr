@@ -55,4 +55,22 @@ Root已檢視原生Windows QPA背景圖；1280×760邏輯視窗在本機DPR1.5�
 
 ## 未完成與限制
 
-本機題材Source旅程為PASS WITH KNOWN LIMITATIONS；M3完整首頁多候選選取／通用研究閉環、M4固定交付與其餘原UX清冊未關閉。前置原D的技術補驗與真人簽核分開；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。
+### M4固定候選進度
+
+Source已提交`f02b7ebded3044bba80cef91d4b46d9d7ab7711f`。QA22 scoped文件檢查12 features／33 link sources通過；QA23只移除題材UI尾端空行並compile，沒有重跑未受影響旅程。QA24沿該commit的git archive建立固定EXE，SHA `d04ad3ff55ab526071f3133b9c8a8a4c9191583ba62ac29b844d91dad39faffb`；build結果SHA `a8e2713a0564cace3050fbee6265c2b2ef94a1300922a12b052e2332b9af0279`。建置成功不等於同版正常頁接受。
+
+QA25把原141c封存資產、自有具名名冊、新runtime與獨立題材三檔逐bytes組到全新`Baldr-Theme-Research-01`，不讀舊143私人state。清冊SHA `7bda65893a5081e1c6b005409581e0c70f9486d9d0fdb5069dd4ebe337993dda`，組包結果SHA `0d3da8ead71bf6572127288f1ce67135eeddafe04c3dcbe1c5d9d5202f161d48`；9877 copied files只是檔案清冊，不是案例或完整Gate。閉鎖收據`single_owned_qa_48c8d8ce2d7f498db32f469645067a31/receipt.json` SHA `0dbda0db1b00adadde6a43efc7367e1c04f5f9e044a9bdd409c06aa5aab9b33e`。
+
+QA26在完整正例即發現Windows PowerShell缺`Get-FileHash`而FAIL，尚未啟動設定或Main。原腳本、spec、log與失敗收據保留；QA29只將未交付候選的外部驗證器改用既有啟動器同樣的.NET SHA256，原件留在具名patch目錄，EXE及資料不變。新驗證器SHA `f7252d4980d01fd5d148597636c3dc60d9fd112cc410c0af1f03e2dedd04f221`；完整三檔接受、同長度損壞／缺件／多檔拒絕已通過，reparse動態測例未執行。
+
+QA29的固定EXE移位後首次設定通過，實測494.391秒／原600秒；結果SHA `725bdc1dca27408c1149c3bdc8779c9b80386b75761272b8fc67b2597f7989cb`。視窗測例匯入包內未收的QtTest即FAIL，尚未建立Main；不為測試往正式EXE增加依賴。原FAIL保留，QA32改用包內Qt事件API，命中位置／可見性／期限／來源與原文斷言不變，沿已驗設定副本接續，不重跑設定。
+
+QA32固定EXE正常Main28556→9036通過：同一題材版本／2330一般行情往返、來源篩選與位置、三筆精確原文與修訂、保存期間關閉及新程序讀回；Journal SHA `a9f3458955a16358b8b467afe7c72fe5d0cc1d2e2cc901133af643f312198609`，結果SHA `c8d24a86f66688185fa59734f5bf2fa581138e9162946109a3d4ac79bcf6b57a`。所有已載入產品模組路徑均在該EXE的resource root，網路／正式根／舊trial讀取嘗試均0。Root檢圖：DPR1，1280×760及窄窗實際1000×709；不把請求1000×700或Source的DPR1.5幾何當成此版結果，也不授Native／真人接受。
+
+同組finalize在清冊`Path.rglob`遇Windows長路徑FAIL，Main與新程序結果保留。QA34改用既有`_tree_layout`／`to_internal_io_path`，核同SHA既存provenance後只完成清冊／交付封存，不重跑設定或正常旅程；封存通過。交付收據SHA `de60528bbc95da097b6f1e6f9a53c300fc7d677c0c1826908c0d04a315a7d5e4`，final結果SHA `e819e2fe8384549632b580806409a7351f11b8092fa7e0773c82d753c3ac7736`。最新閉鎖`single_owned_qa_1b1022d3c6024429a3316c158210b4ef/receipt.json` SHA `af54f79190676ebf20b949d9edf7ddf22959d856c294e674757d5920f1cc0359`；自然終態／三PID陣列空／handles閉／mutex釋放／無forced cleanup。原143交付SHA及141c資產清冊SHA仍未變；新模板沒有state或QA筆記。
+
+### 首頁候選明選Source葉片
+
+重用Luna實作Workbench與單一新測試檔，另由既有Luna狹義唯讀複核，未改Main／DTO／金融來源。多檔預設未選、單檔相容；選第二檔沿同一原來源／日期context，刷新同源保留有效選擇，換日期／snapshot／逐列identity即清除，所有候選捷徑重核membership。QA30a：compile、112相關Qt測試（含既有Workbench85及9個新選取案例）、validator25/0/4、mypy1076通過；既有單檔斷言未修改。閉鎖收據`single_owned_qa_3bdc5e28e2834cf2a67e0f98e4d89c90/receipt.json` SHA `4493934fea6812238d20d7468004f1348920d66c61fc786e625adacffd34d3e0`，原始validator報告另存本task。這是合成候選的Qt／context技術驗證，不宣稱正式多股來源、同版EXE或真人接受；此葉片未含於f02固定候選，待下一次有意義的功能批次封裝。
+
+題材Source與本機固定候選旅程為PASS WITH KNOWN LIMITATIONS，這條M4交付出口已完成；M3首頁選取Source已驗但尚未封裝，完整通用研究閉環及其餘原UX清冊未關閉。前置原D的技術補驗與真人簽核分開；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。

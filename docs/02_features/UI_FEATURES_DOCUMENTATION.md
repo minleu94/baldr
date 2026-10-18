@@ -93,7 +93,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 <a id="workspace-market-exploration"></a>
 ### 2. 市場探索
 
-後繼Source新增「產業與題材」子頁，明選本機已保存manifest後顯示四類觀察卡、排行、產業鏈、題材、欄位覆蓋及成員；首頁入口接續同一頁。成員沿現有個股研究context往返，換股須回題材選取；來源版本與行情日期分開呈現，載入失敗不沿用舊成員。使用者判斷沿Journal追加修訂，原文唯讀，回訪核原SHA；資料缺件不補零。143固定試用包尚不包含此頁；操作／限制見[題材研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)。
+題材研究01固定候選新增「產業與題材」子頁，明選本機已保存manifest後顯示四類觀察卡、排行、產業鏈、題材、欄位覆蓋及成員；首頁入口接續同一頁。成員沿現有個股研究context往返，換股須回題材選取；來源版本與行情日期分開呈現，載入失敗不沿用舊成員。使用者判斷沿Journal追加修訂，原文唯讀，回訪核原SHA；資料缺件不補零。143原包不變；操作／限制見[題材研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)。
 
 主要 views：
 
@@ -146,6 +146,8 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - Regime 或 scoring 輸出語意改動需同步 `docs/02_features/SCORE_EXPLANATION.md`。
 
 <a id="workspace-decision-workbench"></a>
+
+後續Source的每日候選改為明選代碼：多檔預設未選、單檔相容預選；來源／日期／逐列身份改變會清除選擇，候選卡及首頁捷徑共用同一守衛。回傳的ResearchStockContextDTO沿原來源及日期欄位，不新增金融計算。Source定向及相關回歸112項／validator25-0-4／mypy1076通過；合成Qt候選不授正式多股來源或真人接受，固定`f02b7ebded30`候選不含。操作見[每日決策](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk)。
 ### 2.5 決策工作台
 
 主要 view / model：

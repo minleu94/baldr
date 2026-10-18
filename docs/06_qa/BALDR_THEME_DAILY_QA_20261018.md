@@ -116,3 +116,21 @@ QA55啟動器正例0／錯EXE SHA反例2通過，隔離副本config／setup rece
 02限定交付為PASS WITH KNOWN LIMITATIONS。一般價庫仍只有四股至9/23，題材樣本10/16，缺法人／合格五日曆；一般個股通用判斷保存、完整M3、Native／真人／跨機接受仍待。本輪沒有重新執行Source未改的70個股、Workbench85、validator或mypy；這些沿前述具名Source證據，固定受改旅程另驗，不把兩者混成完整Gate。
 
 題材Source與本機固定候選旅程已取得限定出口，首頁控制項也已封裝02；完整通用研究閉環及其餘原UX清冊未關閉。前置原D技術出口已由QA36b補驗，真人簽核仍分開待；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。
+
+### 原價格版本的個股判斷（QA62至QA70）
+
+本批解除F07價格選股進入個股後缺少「自己的判斷保存／修訂／回訪」入口，限定`technical_price_saved_source`；不把題材或單一行情row hash當一般整份報告。兩位既有Luna分別單寫新service及widget／測試，Root持有Main／Workspace接線、共用ports、金融判讀、QA及文件；第三位Luna寫獨立導航測試。沒有新建agent，所有Python由Root串行。
+
+`PinnedStockResearchNoteService`沿Journal ACTION_NOTE／CAS保存canonical既有bookmark、完整原文、同股身份與直接修訂；原文存payload，Journal摘要保留原正規化。資料日、原研究日與真正保存時間分開，不製造推薦result／decision身份。widget以背景worker讀寫，按下開啟時重新核對原件；失敗仍可讀原文但拒開啟／修訂，換股草稿保留原來源，已送出寫入須合作排空。Workspace以同一可捲動筆記頁接回原bookmark route，沒有新建金融reader、第二帳本或放寬來源守衛。
+
+QA62為8 PASS／1 FAIL：Journal摘要會strip，而decoder曾要求與未strip原文完全相等，造成有效追加後decode失敗。原檔／斷言保留，僅修decoder比對既有摘要語義，payload原文不改；QA62a原9案例及compile通過，閉鎖SHA `ce84471fff7cf26d39815128a93d33165c1fb1c3b170a228222d74c72a73255b`。包含同股／同來源、獨立根、直接parent、CAS／過時祖先及真缺原件隔離。
+
+QA64 compile通過，111 PASS／4 FAIL；既有Workbench85等未受改部分沿此證據。四個新測例先後修正測試長路徑copy、Qt等待的Python執行機會及錯誤文字預期；保留原期限、來源守衛與產品斷言。QA64a其餘8案例通過，QA64b缺原件案例通過；validator25／0／4與八套件mypy1078通過，原validator程式不改，輸出只重導本owner目錄。閉鎖SHA `ce96e5cd77f2cdcfddfd9b7d4d9f28101e2edb11d4117ba33f066fe828f9f1e9`。既有`ui_qt.* ignore_errors=True`不證UI強型別。
+
+QA67補開啟當下的背景重驗：9 PASS／1 FAIL，原件消失時原文、exact error、未發布來源與按鈕停用均正確，唯一失敗為open狀態文字。QA68只修該文字並compile，原失敗案例6.85秒通過；沒有重跑九個未改PASS。新UI／導航與backend證據只支持指定契約，不能累加當完整Gate。
+
+**正常Main未通過，不能交付本葉片。** QA68／69在啟動即被產品設定守衛拒絕：QA自建config誤加僅供env的`RUNTIME_STATE_ROOT`；只修測試設定，不改產品。QA70成功建立Main，但2506原收藏重開180秒未進同源個股。QA72加外層捲動及真可視點擊斷言後仍逾時，已證double-click送達，controls停在背景exact來源核驗，尚未執行筆記保存。QA74同期限只加60秒堆疊，60／120秒均在`_reverify_all_child_batches`／snapshot repository的link-component／lstat完整核驗鏈；最後程序回碼`3221225477`（存取違規），原因未歸因，不能直接宣稱是產品或診斷工具所致。所有spec／原FAIL／log／stack保留於本owner task的QA63／63a–d、QA68–74目錄；沒有重跑同一結果目錄、放寬180秒、略過原件或授通過。
+
+QA70閉鎖SHA `105ccee1d6224fcb2acc5d149161452e2c8a4d19f8e213bdd3663121dbf7872c`；QA72為`276ef1f4130de7656d4330fae15c21512adcc12cd04ab4e9f54c108b4c0bb18c`；最新QA74為`0efc219525e601a264523d172c988fc94844f2df93e056f98334e03220eb23c8`。每組8GiB／12程序／kill-on-close／workspace mutex、啟動RAM≥8GiB，三PID陣列空／process與Job handles閉／mutex釋放／無強制清理後才接下一組。網路及保護根嘗試0只限上述已讀診斷，並非通用安全或全機程序接受。
+
+固定02／01／143及私人原件保持；未建03，也未宣稱新程序、EXE／Native／真人／完整M3通過。先停止這條相同完整來源旅程的重試，後續須先有具體reader診斷／修復；不因此阻塞一般四股報告可往返codec。QA71在允許QA資產找不到至少兩股的保存run，正式runtime及未檢視owner資料保持Unknown；首頁真實多候選未接受。QA73／75已定位並凍結一般完整report/context codec新葉片，尚未實作或QA，不能把靜態契約當保存閉環。

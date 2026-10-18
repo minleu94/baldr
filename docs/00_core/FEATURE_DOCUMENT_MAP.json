@@ -816,7 +816,10 @@
         "app_module/decision_outcome_journey.py",
         "ui_qt/widgets/decision_outcome_journey_widget.py",
         "app_module/quanta_monthly_sales_snapshot.py",
-        "app_module/quanta_monthly_sales_report_provider.py"
+        "app_module/quanta_monthly_sales_report_provider.py",
+        "app_module/pinned_stock_research_notes.py",
+        "ui_qt/views/stock_research_workspace.py",
+        "ui_qt/widgets/pinned_stock_research_notes_widget.py"
       ],
       "tests": [
         "tests/test_stock_research_report_service.py",
@@ -837,7 +840,10 @@
         "tests/test_quanta_monthly_sales.py",
         "tests/test_theme_stock_context_guard.py",
         "tests/test_ui_qt_stock_research_evidence_summary.py",
-        "tests/test_ui_qt_stock_research_report.py"
+        "tests/test_ui_qt_stock_research_report.py",
+        "tests/test_pinned_stock_research_notes.py",
+        "tests/test_ui_qt_pinned_stock_research_notes_widget.py",
+        "tests/test_ui_qt_price_research_notes_navigation.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -882,7 +888,12 @@
         "tests/test_quanta_monthly_sales.py",
         "tests/test_theme_stock_context_guard.py",
         "tests/test_ui_qt_stock_research_evidence_summary.py",
-        "tests/test_ui_qt_stock_research_report.py"
+        "tests/test_ui_qt_stock_research_report.py",
+        "app_module/pinned_stock_research_notes.py",
+        "ui_qt/widgets/pinned_stock_research_notes_widget.py",
+        "tests/test_pinned_stock_research_notes.py",
+        "tests/test_ui_qt_pinned_stock_research_notes_widget.py",
+        "tests/test_ui_qt_price_research_notes_navigation.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

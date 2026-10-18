@@ -6,16 +6,18 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QSize, Signal, Qt
 from PySide6.QtWidgets import (
-    QGroupBox, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
+    QGroupBox, QHBoxLayout, QLabel, QPushButton, QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.research_session import ResearchStockContextDTO
+from app_module.pinned_stock_research_notes import PinnedStockResearchNoteService
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.views.stock_research_report_view import StockResearchReportView
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.info_button import InfoButton
+from ui_qt.widgets.pinned_stock_research_notes_widget import PinnedStockResearchNotesWidget
 
 
 class StockResearchWorkspace(QWidget):
@@ -25,6 +27,7 @@ class StockResearchWorkspace(QWidget):
     personalH20SavedRecheckRequested = Signal()
     priceResearchReturnRequested = Signal(object)
     sourceContextShown = Signal(object)
+    priceNoteSourceRequested = Signal(object)
 
     def __init__(
         self,
@@ -32,6 +35,7 @@ class StockResearchWorkspace(QWidget):
         *,
         journey_service: DecisionOutcomeJourneyService | None = None,
         continuity_controller: DecisionContinuityController | None = None,
+        price_note_service: PinnedStockResearchNoteService | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -101,6 +105,15 @@ class StockResearchWorkspace(QWidget):
         self.content_stack.addWidget(self.general_report_page)
         self.price_research_view = None
         self.price_research_context: ResearchStockContextDTO | None = None
+        self.price_notes_widget: PinnedStockResearchNotesWidget | None = None
+        self.price_notes_page: QScrollArea | None = None
+        if price_note_service is not None:
+            self.price_notes_widget = PinnedStockResearchNotesWidget(price_note_service, self)
+            self.price_notes_widget.open_source_requested.connect(self.priceNoteSourceRequested.emit)
+            self.price_notes_page = QScrollArea(self)
+            self.price_notes_page.setWidgetResizable(True)
+            self.price_notes_page.setWidget(self.price_notes_widget)
+            self.price_notes_page.hide()
         layout.addWidget(self.content_stack)
 
     def show_price_research(self, stock: object, selection: object) -> None:
@@ -115,6 +128,21 @@ class StockResearchWorkspace(QWidget):
             raise
         candidate.returnRequested.connect(self.priceResearchReturnRequested.emit)
         previous = self.price_research_view
+        if self.price_notes_widget is not None and self.price_notes_page is not None:
+            from app_module.daily_market_technical_universe_price_bookmark_v1 import (
+                DailyMarketTechnicalUniversePriceBookmarkV1,
+            )
+
+            # 原 selection 已由同源頁交叉核對；後台保存仍會 fresh exact 重驗。
+            bookmark = DailyMarketTechnicalUniversePriceBookmarkV1.create(
+                selected=selection, scroll_position=0,
+            )
+            if previous is not None:
+                tab_index = previous.detail_tabs.indexOf(self.price_notes_page)
+                if tab_index >= 0:
+                    previous.detail_tabs.removeTab(tab_index)
+            candidate.detail_tabs.addTab(self.price_notes_page, "我的判斷")
+            self.price_notes_widget.set_source(bookmark)
         self.content_stack.addWidget(candidate)
         self.content_stack.setCurrentWidget(candidate)
         self.price_research_view = candidate
@@ -282,6 +310,8 @@ class StockResearchWorkspace(QWidget):
     def is_busy(self) -> bool:
         return self.personal_h20_saved_busy or self.report_view.is_busy() or bool(
             self.journey_view is not None and self.journey_view.is_busy()
+        ) or bool(
+            self.price_notes_widget is not None and self.price_notes_widget.is_busy()
         )
 
     def request_close(self) -> bool:
@@ -289,4 +319,9 @@ class StockResearchWorkspace(QWidget):
 
         report_ready = self.report_view.request_close()
         journey_ready = self.journey_view is None or self.journey_view.request_close()
-        return report_ready and journey_ready
+        notes_ready = True
+        price_notes = getattr(self, "price_notes_widget", None)
+        if price_notes is not None:
+            price_notes.shutdown()
+            notes_ready = not price_notes.is_busy()
+        return report_ready and journey_ready and notes_ready

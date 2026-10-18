@@ -119,6 +119,7 @@ from ui_qt.views.weak_stocks_view import WeakStocksView
 from ui_qt.views.market_regime_view import MarketRegimeView
 from ui_qt.views.industry_theme_map_view import IndustryThemeMapView
 from app_module.theme_research_notes import ThemeResearchNoteService
+from app_module.pinned_stock_research_notes import PinnedStockResearchNoteService
 from ui_qt.widgets.theme_research_notes_widget import ThemeResearchNotesWidget
 from ui_qt.views.strong_industries_view import StrongIndustriesView
 from ui_qt.views.weak_industries_view import WeakIndustriesView
@@ -2388,6 +2389,7 @@ class MainWindow(QMainWindow):
                 self.stock_research_report_service,
                 journey_service=self.decision_outcome_journey_service,
                 continuity_controller=self.decision_continuity_controller,
+                price_note_service=PinnedStockResearchNoteService(self.journal_service),
                 parent=self,
             )
             self.stock_research_workspace.returnRequested.connect(
@@ -2395,6 +2397,9 @@ class MainWindow(QMainWindow):
             )
             self.stock_research_workspace.priceResearchReturnRequested.connect(
                 self._return_from_price_stock_research
+            )
+            self.stock_research_workspace.priceNoteSourceRequested.connect(
+                self._open_price_bookmark_state
             )
             self.stock_research_workspace.sourceContextShown.connect(
                 lambda context: self.research_session_store.set_stock_context(context, source="stock_workspace")
@@ -3756,6 +3761,9 @@ class MainWindow(QMainWindow):
         theme_notes = getattr(self, "theme_research_notes_widget", None)
         if send_cancel and theme_notes is not None:
             theme_notes.shutdown()
+        price_notes = getattr(getattr(self, "stock_research_workspace", None), "price_notes_widget", None)
+        if send_cancel and price_notes is not None:
+            price_notes.shutdown()
         if send_cancel:
             update_shutdown = getattr(update_view, "begin_shutdown", None)
             if not callable(update_shutdown):

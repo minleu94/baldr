@@ -46,6 +46,8 @@ flowchart TD
 
 後繼題材研究沿`ThemeDailyService`／`SQLiteThemeMarketReader`／`read_theme_research_snapshot`投影到既有市場探索工作區；UI不計算金融值或自行讀正式DB。新聚合不改原分類萃取，缺來源、方向或合格日曆保留不可用；原金融與歷史PIT資格不因技術驗證升級。[契約及證據](../02_features/INDUSTRY_THEME_MAP_DESIGN.md#53-後繼每日研究實作2026-10-18)
 
+原價格版本的個股判斷由`PinnedStockResearchNoteService`沿既有Journal／CAS追加，綁既有F07 bookmark與public exact reader；`StockResearchWorkspace`只掛載背景筆記元件並接回原來源路由。沒有新增金融producer或第二筆記帳本；一般報告完整快照仍待。[契約](current/decision_research_portfolio.md#價格研究個股與-portfolio-跨頁接線)
+
 依賴方向由 UI 經 application 到領域與資料邊界。Qt 不成為 domain 計算 owner；資料 reader 不自行決定 Advice；Runtime 不持有推薦公式。`ui_qt/main.py` 是 Qt 主程式入口，Windows 啟動由 `baldr_launcher.py` 導入既有 composition。[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py) 作為獨立之 L2 產業鏈與題材萃取對應模組，僅讀取 `TWStockConfig` 解析 `<DATA_ROOT>/meta_data/` 路徑並產出產業檔案、題材檔案與股票對應檔案，目前不介入既有 UI 或每日選股流程；詳見[L2 產業鏈與題材設計文件](../02_features/INDUSTRY_THEME_MAP_DESIGN.md)。
 
 法人固定批次唯讀路徑沿 UpdateView → UpdateService → `institutional_daily_snapshot` → 原capture／parser，原件、時鐘及資格由application reader核驗，widget只呈現。TPEx可另明選`institutional_source_use`的外部SHA契約，重用DailySourceUseAcceptance，固定官方文件／市場／schema／股數／diagnostics；一次接受與逐批品質小時分離，generic P0 v1決議及其他來源資格不變。具體保存／讀回界線見[資料架構](current/data_storage_runtime.md#讀寫與保存契約)。

@@ -38,6 +38,8 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 ### 1.1 開始前
 
+後繼Source的價格選股個股頁另有「我的判斷」：原文保存、明選回訪、追加修訂及重新核對原價格版本。入口、8,000字限制、保存時鐘、關閉等待及缺原件排錯見[個股判斷步驟](manuals/WATCHLIST_AND_PORTFOLIO.md#原價格版本的個股判斷後繼source)。題材研究02尚未包含，不能用題材筆記替代一般整份個股報告快照。
+
 1. 以你已完成設定的 source GUI 或 portable GUI 開啟 baldr。首次使用先依[首次安裝 Prompt](FIRST_INSTALL_PROMPT.md)、[安裝指南](INSTALL_GUIDE.md)或[可攜版指南](PORTABLE_WINDOWS.md)完成自己的環境設定。
 2. 在「數據更新」檢查資料根、行情資料日期、來源狀態、缺件與 warnings。`current`、`expected_wait`、`stale`、`partial`、`failed`、`unknown` 和有效空結果不能互換。
 3. 選一項任務：更新資料、查看市場、建立研究候選、讀個股／持倉，或回看已保存結果。先確認本輪決策日、資料日、來源及 scope。

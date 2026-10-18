@@ -420,6 +420,8 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 <a id="workspace-stock-research"></a>
 ## 個股研究（共用工作區）
 
+後繼Source的「個股研究｜價格選股原來源」新增「我的判斷」：原文唯讀回訪、直接追加修訂、按下開啟時重驗原來源及合作關閉。保存綁既有bookmark、股票與原查詢，資料日與實際保存時間分開；一般即時報告與題材筆記不互換。缺原件仍可讀筆記但拒絕開啟／修訂；固定題材研究02未含本葉片。操作見[個股判斷](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#原價格版本的個股判斷後繼source)，驗證見[QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#原價格版本的個股判斷qa62至qa70)。
+
 後繼Source首屏保留有日期的行情事實，持倉關係另列；本次技術線索不以H5成熟狀態代替。明選且股票／原日期可綁定的保存推薦，才列當時支持與反對原句，與模型估計分開；缺資料維持不可用，完整原文仍在決策／歷史。這批Source及筆記前版比較尚未含於題材01固定包，限定驗證見[題材QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
 
 Increment132比較候選沿同一基本面分頁，先顯示2317／2330／2454的2026-H1／2025-H1／變化五列四欄；當期CSV與前期官方半年報分開列來源。營收同比用%，四率差用百分點；缺件／披露精度不穩定維持不可用。舊125及131仍是各自的當期五欄版本，新比較真可用小時與受改Main／EXE出口見[132 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment132-fundamental-comparison)，正常步驟與限制見[操作](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#三公司去年同期比較increment132開發候選)。

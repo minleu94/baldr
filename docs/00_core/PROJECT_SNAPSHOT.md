@@ -29,6 +29,8 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 外部缺件各自隔離：TPEx年度日曆授權、TPEx法人API、官方文件／單位／用途、歷史PIT、真N、完整績效、Native／EXE及Paper／forward自然成熟分別判定。MOPS partial／缺EOF及舊月營收／TWSE GET耗盡scope保持，不重抓、不把一處缺件變成全產品新前置。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項仍在原計畫，不以commit或案例加總計完成率。
 
+[142開發來源](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment142-trial139-feedback)回應139真人回報，先修月營收值被來源長文淹沒、窄頁壓縮及收藏名稱／下鑽混淆。48項定向、Workbench85、validator25／0／4及mypy1069通過；正常Source Main3344已核五列、窄頁、名稱、原來源與保存值；固定EXE出口另驗，指定141c暫不變。共同期限說明仍須核逐期限適用原因；真人D未驗不寫成PASS。原金融值、缺件、精度及可得時間守衛保持。
+
 ## 產品與系統入口
 
 - **進度與交付**：[原補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。完整 P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4 保留；不以 Increment 或測試數量計算完成率。

@@ -3067,6 +3067,8 @@ class MainWindow(QMainWindow):
             return
         self._select_main_workspace("recommendation")
         recommendation.result_source_tabs.setCurrentWidget(daily)
+        if not view.open_selected_stock():
+            self.statusBar().showMessage("已還原原價格研究；請選取原股票再開同源個股，未改讀一般價庫。")
 
     def _open_technical_official_bookmark(self, value: object) -> None:
         """原query fresh重開，不轉成一般報告或最新來源。"""

@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QComboBox,
     QPushButton,
+    QToolButton,
     QScrollArea,
     QSizePolicy,
     QTabWidget,
@@ -3014,14 +3015,40 @@ class StockResearchReportView(QWidget):
             comparison_tips = tuple(tuple(item.note for _ in range(4)) for item in comparisons)
             self._add_table(layout, ("項目", first.current_period, first.prior_period, "同比變化"), comparison_rows, 220, tooltips=comparison_tips)
             represented = {(item.current_source_id, item.current_source_version, item.metric_name, item.current_period) for item in comparisons}
+        source_details = QWidget()
+        source_details.setObjectName("fundamentalSourceDetails")
+        source_layout = QVBoxLayout(source_details)
+        source_layout.setContentsMargins(0, 0, 0, 0)
         for source in report.sources:
             if source.source_id.startswith(("official.twse.operating_summary.", "official.issuer.financial_comparison.", "official.issuer.quanta.monthly_sales.")):
-                layout.addWidget(self._wrapped_label("\n".join((source.source_label, *source.limitations))))
+                source_layout.addWidget(self._wrapped_label("\n".join((source.source_label, *source.limitations))))
+                if source.status == "unavailable":
+                    layout.addWidget(self._wrapped_label(f"{source.source_label}：缺少已核原件；不以月營收替代半年財報。"))
+        source_toggle = QToolButton()
+        source_toggle.setObjectName("fundamentalSourceDetailsToggle")
+        source_toggle.setText("來源、單位與使用限制（展開）")
+        source_toggle.setCheckable(True)
+        source_toggle.toggled.connect(source_details.setVisible)
+        if source_layout.count() == 0:
+            source_toggle.hide()
+        source_details.hide()
         if not report.fundamentals:
             layout.addWidget(self._missing_panel("沒有可用的公告／可得日基本面 row；不補零。"))
+            layout.addWidget(source_toggle)
+            layout.addWidget(source_details)
             layout.addStretch()
             return
         remaining = tuple(item for item in report.fundamentals if (item.source_id, item.source_version, item.metric_name, item.period) not in represented)
+        monthly = tuple(item for item in remaining if item.kind == "monthly_revenue")
+        if monthly:
+            layout.addWidget(self._wrapped_label("月營收（目前研究；與半年財報分開）"))
+            self._add_table(
+                layout, ("項目", "值／原披露單位", "期間", "資料可得時間"),
+                tuple((item.label, _metric_text(item), item.period or "—", item.available_at or "—") for item in monthly),
+                240, tooltips=tuple(tuple(_fundamental_basis_tooltip(item) for _ in range(4)) for item in monthly),
+                object_name="fundamentalMonthlyRevenueTable", balanced_columns=True, numeric_columns=(1,),
+            )
+        remaining = tuple(item for item in remaining if item.kind != "monthly_revenue")
         rows = tuple(
             (
                 {"monthly_revenue": "月營收", "statement_item": "財報項目", "valuation": "估值"}.get(item.kind, item.kind),
@@ -3046,6 +3073,8 @@ class StockResearchReportView(QWidget):
         if rows:
             self._add_table(layout, ("類型", "項目", "期間", "資料日", "公告日", "資料可得時間", "值", "品質", "版本"),
                 rows, 420, tooltips=value_tooltips)
+        layout.addWidget(source_toggle)
+        layout.addWidget(source_details)
         layout.addWidget(
             self._wrapped_label(
                 "已核單位的金額才顯示幣別及原披露單位；百萬元整數不表示個位元精度。來源單位未核或金額無法解析時，值欄明示不可用，原件仍保留。"

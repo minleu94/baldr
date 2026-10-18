@@ -3217,3 +3217,23 @@ Root複核：重用範圍為同次初驗的不可變原件，容量先串行分�
 838交付文件檢查：原21 spec沿舊範本HEAD，啟動前即被守衛拒絕、沒有Python／Job；另存21b綁現行7134後，12features／7連結來源檢查指出漏列PROJECT_NAVIGATION及PORTABLE_WINDOWS，outer `single_owned_qa_0251273608a24acfb301ea4187c326a9/receipt.json` SHA `320608e9be21adf7d41221ba84be1c983e4834b791b6f9cffb921f99c107e347`保持FAIL。前者現行導航已連Snapshot／手冊且模組邊界不變，明記not_required；後者仍寫134固定路徑，已同步141c全新包與一般可攜版配置的適用範圍。三PID空、handles／mutex閉鎖；只重驗文件，不重跑產品旅程。
 
 839另存21c後文件／task檢查12features、8連結來源、0errors；outer `single_owned_qa_c4872961cdcd42dfbcfe818a830ebd31/receipt.json` SHA `545a593aa6afa4a7e16515af0718ea5379a9f9b8f1a92792c5af898b68d6e20d`，三PID空、handles／mutex閉鎖、無forced cleanup。這只核文件結構與Coverage，正文及836／837交付原件由Root複核，不冒充獨立review或產品Gate。
+
+<a id="increment142-trial139-feedback"></a>
+## Increment142：139真人回報的原旅程可用性（開發來源）
+
+**解除的交付阻礙**：2382月營收值被三段來源長文及橫向值欄淹沒；價格研究的巢狀分頁／窄頁會壓縮操作與表格；收藏以代碼充名稱，回原價格查詢與一般四股報告又容易混淆。本輪只修原旅程呈現及導航，四條V1、原金融值、缺件、Decimal、來源／PIT／時間守衛不變，未重新抓取資料。Root依Tech Lead／Execution／Data Audit／QA／Documentation履職，無新增代理或獨立review，10/10額度保持。
+
+月營收五列與原披露單位前置，值列移到第二欄；來源長文可展開，半年財報缺件仍明示。巢狀Daily Research沿用原作用中頁尺寸邏輯，原私有類名保留別名；只有外層可捲宿主保留自然高度及240px表格，獨立宿主零尺寸延後還原仍按原斷言。新增「清空代碼」只清輸入，保留MA規則及原來源；實際來源已核驗後，選取列與詳情提示同步，不以metadata當strict PASS。
+
+名稱只從目前行情／名冊的唯一精確對應補到畫面，不重寫typed收藏、原名稱或hash；缺名／歧義不猜。Source Main隔離副本沿既存`increment101_current_cohort_source/companies.csv`，1989列SHA `e364fb430a23b5a747d5409d70134ded3ba00203b2a3f84a9f3c4621b4427b63`，包含2506／太設及8933／愛地雅。這是名稱展示，不授名冊用途、clock、真N或歷史PIT。F07回訪在同次verified state還原原頁後開同源個股；一般價庫缺該股仍不補行情，亦不將名稱當價格來源。
+
+- 840精簡Context已保存，部分AST因預算略過，已另核具名程式正文；不以Context輸出當行為證據。outer `single_owned_qa_0b0e1a8fa3be454bbc2689013d9a7887/receipt.json` SHA `58817576f6a1df538cb21a6cb0490c7827bd82216f77279a8c6ba05c6b1fa663`。
+- 841 compile通過，45 PASS／3 FAIL：新巢狀頁按鈕低於自然高度，及無條件表格下限干擾原兩項捲動／零尺寸還原；三份原斷言與期限不改。outer `single_owned_qa_0cf62d99998e419895f79d0453e2f804/receipt.json` SHA `86ea28629515db965a54ede294a9e852b46339438a45a5a5ac1accbe4979d543`。改僅外層可捲宿主套用高度下限。
+- 842定向48 PASS、Workbench85、validator25／0／4通過；mypy1069查出新例外分支logger未定義，整組FAIL保留。outer `single_owned_qa_f5efd7f6a46946b3b1ac28fba9d5bb1d/receipt.json` SHA `d25600d11cf63fedb1c8973d0b0b8c549a42f0a6cae34c9dd969180c8edd13ee`。改明確logging，另補已核驗詳情不再顯示未核驗的斷言。
+- 843最終compile、定向48 PASS、Workbench85 PASS、validator25／0／4、mypy1069通過；outer `single_owned_qa_71bb1a096465499bae8b7f2cbf6ad51c/receipt.json` SHA `219aec52ce56d4351802b47fa5826c4f0e81d653433c0fc2233ee3616fcb1936`。UI既有ignore不證強型別。
+
+以上各組三PID陣列空、process／Job handles關閉、mutex釋放，無forced cleanup。正常Source Main受改實際畫面及原保存值已由844限定驗證；新固定EXE／新候選尚未交付，指定141c與139原件不改。共同期限說明仍待按原逐期限結果核適用性，真人D未驗不寫成PASS；原完整計畫、Native、有效績效、跨機及自然成熟分別保留。
+
+844以全新行情副本及既有owned研究原件，在Windows背景Source Main新程序3344核四股／三公司半年比較、2382五列原值／0.1%／可得小時及歷史隔離；月營收表五列在首屏可見、來源說明保持可展開。名稱太設／愛地雅來自上述名冊且原watchlist SHA保持92c6142639fe3e5ed9f220e38d999e2a7081ea6698c248466c6707234f8e91ae；收藏直接開2506同源個股120列，原頁／39檔／比較／返回一致。1000×700窄頁核清空代碼只改輸入、MA保留、套用鈕自然高度、可捲表格；三run金融身分與原規則／結果／返回對原固定Main26016 baseline一致，未重算或保存。這是新Source對已保存原件的跨程序讀回，不是新固定EXE的同版雙程序或真人D接受。result increment142_feedback_main_qa02/result.json SHA a8b198934dca24ededd72efe53cf46b2d160e85a265fc328e29b26f1d204948c；outer single_owned_qa_3228c1f8cca94c86b7bdc80dbfac769e/receipt.json SHA e61adff29ac6d4dfae9ec34a55e6ea46a68c7f9e2c00752a9c1eaef6c41fb309。原根／正式根I/O及網路0，三PID空、handles／mutex閉鎖，無forced cleanup。Source圖已由Root核讀；完整Native／其他DPI／真人與固定EXE仍各自待驗。
+
+845文件檢查原漏列DAILY_SOURCE_SNAPSHOT_CONTRACT，outer single_owned_qa_ee8634fcc0f4417b9554ba457534262e/receipt.json SHA c506522625cd0f48379d6b9f5e25729cc21cf3e0e24cc9f442cc2857d4961dff原FAIL保持；已讀契約並具名not_required，未改snapshot／用途／時間。846另存03b後12features／8連結來源／0errors；outer single_owned_qa_6603c89967484952908ade51e95e8f7a/receipt.json SHA 5928e9feb44c007e7cd7a658e5d6137bb5c527396d7a69cbca917a65547eca9b，三PID空、handles／mutex閉鎖、無forced cleanup。此為Source checkpoint；固定EXE、帶顯示名冊的新候選、逐期限文案與真人接受仍待。

@@ -14,6 +14,10 @@
 
 Windows 由 `baldr_launcher.py` 啟動；source 與 frozen 執行都交給既有 Qt composition。`ui_qt/main.py` 建立視窗與 widget，`app_module/` 的 composition factory 建立服務並以 DTO／明示 provider 注入 UI。Domain 與 Runtime 不反向依賴 Qt。
 
+巢狀研究分頁共用`layout_helpers.CurrentPageSizeTabWidget`，只依作用中頁的自然高度配置外層捲動；Recommendation原私有類名保留相容別名。價格頁只在外層可捲宿主保留表格下限，獨立宿主的零尺寸延後還原守衛保持。F07收藏回訪沿同次verified state還原原頁後，用原選列開同源個股，不改讀一般價庫。
+
+Watchlist的名稱查詢可從目前行情及`meta_data/companies.csv`讀唯一精確名稱，只作展示；清單及typed收藏的原名稱／身份／hash不重寫。此顯示補充不證名冊用途、來源clock、真N或歷史PIT；缺名維持未提供。
+
 固定Windows候選由commit archive建置，不與工作目錄拼接來源；執行收據需讀的raw sources由spec明示datas，metadata逐檔核資源身份。兩原策略v2另帶executor／wrapper三檔，AST只解析literal宣告而不執行spec；缺檔／partial拒建metadata，舊四來源版本不追補hash。包與固定export、正常Native保存／fresh及金融投影各別核驗，細節見[研究邊界](decision_research_portfolio.md#模組責任)與[候選指南](../../07_guides/PORTABLE_WINDOWS.md#試用回報修正預覽increment59)。
 
 ## 九個頂層工作區

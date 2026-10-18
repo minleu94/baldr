@@ -4,6 +4,8 @@
 
 目前141c保留139的2382同表月營收、原推薦結果日期、策略訊號對照與三公司半年比較，四條主要流程及2506示範收藏保持。包內含runtime及技術原件，首次設定後使用自有state；私人持倉初始空白，不自動搬入。正常EXE／新程序、可用範圍及限制見[目前試用版指南](TRIAL_VERSION_GUIDE.md)，舊139及131保留供回訪。
 
+139真人回報已進入開發來源142修正：月營收值前置、來源說明展開閱讀；窄頁條件及表格保留可捲高度，另有只清除代碼的按鈕；收藏名稱僅作顯示補充，回訪沿原價格來源開個股。定向、共同防線及正常Source Main已過，固定EXE仍按[142 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment142-trial139-feedback)分列，不代表舊139／141c已含新按鈕或真人D已驗收。
+
 131包含TWSE新下載丟失明確漲跌符號的修復；原「個股研究 → 價格／技術」入口、返回與重載不變。新資料按原文字方向顯示，缺方向或未知仍未提供；歷史資料沒有重抓或回補。操作及排錯見[個股指南](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)，限定證據見[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 
 首次安裝看[快速開始](QUICK_START.md)，既有 owner 搬機看[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)，排程核對看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。

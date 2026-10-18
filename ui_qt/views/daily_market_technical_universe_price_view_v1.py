@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
 
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalRuleStateFilterV4,
@@ -544,6 +545,16 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.stock_filter.setMaxLength(_MAX_STOCK_FILTER_CHARS)
         self.stock_filter.setPlaceholderText("例如 2330,2317；留空查此批已處理股票")
         self.stock_filter.setAccessibleName("股票代碼篩選")
+        self.stock_filter.setClearButtonEnabled(True)
+        self.clear_stock_filter_button = QPushButton("清空代碼")
+        self.clear_stock_filter_button.setObjectName("dailyMarketTechnicalPriceV1ClearStockFilter")
+        self.clear_stock_filter_button.setToolTip("只清空股票代碼；保留規則，按套用條件重新查詢。")
+        self.clear_stock_filter_button.clicked.connect(self.stock_filter.clear)
+        stock_filter_host = QWidget()
+        stock_filter_layout = QHBoxLayout(stock_filter_host)
+        stock_filter_layout.setContentsMargins(0, 0, 0, 0)
+        stock_filter_layout.addWidget(self.stock_filter, 1)
+        stock_filter_layout.addWidget(self.clear_stock_filter_button)
         self.eligible_stock_filter = QLineEdit()
         self.eligible_stock_filter.setObjectName("dailyMarketTechnicalPriceV1EligibleStockFilter")
         self.eligible_stock_filter.setMaxLength(_MAX_STOCK_FILTER_CHARS)
@@ -586,7 +597,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             (QLabel("技術規則組合"), (0, 0, 1, 1), (0, 0, 1, 1)),
             (self.combine_mode, (0, 1, 1, 1), (0, 1, 1, 1)),
             (QLabel("股票代碼篩選"), (0, 2, 1, 1), (1, 0, 1, 1)),
-            (self.stock_filter, (0, 3, 1, 3), (1, 1, 1, 1)),
+            (stock_filter_host, (0, 3, 1, 3), (1, 1, 1, 1)),
             (QLabel("收盤價下限（TWD／股）"), (1, 0, 1, 1), (2, 0, 1, 1)),
             (self.minimum, (1, 1, 1, 1), (2, 1, 1, 1)),
             (self.minimum_inclusive, (1, 2, 1, 1), (3, 1, 1, 1)),
@@ -634,7 +645,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         page_controls.addWidget(self.next_page_button)
         root.addLayout(page_controls)
 
-        basket_controls = QHBoxLayout()
+        basket_controls = QGridLayout()
         self._basket_controls = basket_controls
         self.add_comparison_button = QPushButton("加入比較籃")
         self.add_comparison_button.setObjectName("dailyMarketTechnicalPriceV1AddComparison")
@@ -646,12 +657,12 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.bookmark_button.setObjectName("dailyMarketTechnicalPriceV1Bookmark")
         self.basket_label = QLabel("比較籃：0 檔")
         self.basket_label.setObjectName("dailyMarketTechnicalPriceV1BasketLabel")
-        basket_controls.addWidget(self.add_comparison_button)
-        basket_controls.addWidget(self.run_comparison_button)
-        basket_controls.addWidget(self.clear_comparison_button)
-        basket_controls.addWidget(self.bookmark_button)
-        basket_controls.addWidget(self.basket_label, 1)
+        self._basket_buttons = (self.add_comparison_button, self.run_comparison_button,
+                                self.clear_comparison_button, self.bookmark_button)
+        for column, button in enumerate(self._basket_buttons):
+            basket_controls.addWidget(button, 0, column)
         root.addLayout(basket_controls)
+        root.addWidget(self.basket_label)
 
         self.result_details_toggle = QToolButton()
         self.result_details_toggle.setObjectName("dailyMarketTechnicalPriceV1ResultDetailsToggle")
@@ -1170,7 +1181,9 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             self._set_enabled_state()
             return
         self.source_pins.setText(
-            "選取列目前只是 metadata，尚未 strict 核驗；表格若已有內容仍屬原來源。\n"
+            ("所選來源與目前表格一致，已嚴格核驗；原來源與時間限制保持。\n"
+             if self._state is not None and _source_matches_entry(self._state.query, entry)
+             else "選取列目前只是 metadata，尚未 strict 核驗；表格若已有內容仍屬原來源。\n") +
             f"日期：{entry.decision_date}；狀態：{entry.source_status}；母體：{entry.population_state}\n"
             f"generation：{entry.generation_identity_sha256}\n"
             f"plan identity／bytes：{entry.plan_identity_sha256}／{entry.plan_bytes_sha256}\n"
@@ -1270,6 +1283,13 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         )
 
     def _update_source_summary(self) -> None:
+        for index in range(self.sources.count()):
+            candidate = self.sources.itemData(index)
+            if isinstance(candidate, DailyMarketTechnicalUniverseV4CatalogEntry):
+                label = self._catalog_label(candidate)
+                if self._state is not None and _source_matches_entry(self._state.query, candidate):
+                    label = label.removesuffix("待嚴格核驗") + "已嚴格核驗"
+                self.sources.setItemText(index, label)
         entry = self.selected_source
         loaded_summary = self._loaded_source_summary()
         if entry is None:
@@ -1297,6 +1317,9 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             return
 
         if self._state is not None and _source_matches_entry(self._state.query, entry):
+            text = self.source_pins.text()
+            if text.startswith("選取列目前只是 metadata"):
+                self.source_pins.setText("所選來源與目前表格一致，已嚴格核驗；原來源與時間限制保持。\n" + text.partition("\n")[2])
             self.source_summary.setText(loaded_summary)
             return
 
@@ -1509,6 +1532,11 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             self._controls_viewport = viewport
             if viewport is not None:
                 viewport.installEventFilter(self)
+        # 巢狀研究頁由外層捲動保留自然高度；獨立視圖仍保留零尺寸延後還原。
+        self.table.setMinimumHeight(240 if viewport is not None else 0)
+        if viewport is not None:
+            set_scroll_content_constraints(self)
+            set_scroll_content_constraints(self.controls_group)
         available_width = self.width()
         if viewport is not None and viewport.width() > 0:
             # 同頁其他研究區塊仍可能有較大的最小寬度；價格區本身須留在
@@ -1548,9 +1576,11 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             layout.addWidget(widget, *position)
             if narrow and widget is self.apply_query_button:
                 layout.setAlignment(widget, Qt.AlignmentFlag.AlignLeft)
-        self._basket_controls.setDirection(
-            QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
-        )
+        while self._basket_controls.count():
+            self._basket_controls.takeAt(0)
+        columns = 2 if narrow else 4
+        for index, button in enumerate(self._basket_buttons):
+            self._basket_controls.addWidget(button, index // columns, index % columns)
         self._arrange_rule_filters()
         self.updateGeometry()
 
@@ -1580,6 +1610,14 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             return None
         row = self.results_model.row_at(index.row())
         return row if isinstance(row, DailyMarketTechnicalUniversePriceRowV1) else None
+
+    def open_selected_stock(self) -> bool:
+        """沿原選取頁開個股；用於收藏回訪，不改讀一般價庫。"""
+        index = self.table.currentIndex()
+        if self.busy or self._closing or not index.isValid():
+            return False
+        self._on_row_activated(index)
+        return self._worker is not None
 
     def _on_row_activated(self, index: QModelIndex) -> None:
         state = self._state
@@ -1908,6 +1946,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.more_sources_button.setEnabled(idle and self._catalog_cursor is not None)
         self.load_source_button.setEnabled(idle and self.selected_source is not None and bool(self.selected_source.is_selectable))
         self.apply_query_button.setEnabled(idle and has_page)
+        self.clear_stock_filter_button.setEnabled(idle)
         self.previous_page_button.setEnabled(idle and has_page and self._state is not None and self._state.request.page_index > 0)
         self.next_page_button.setEnabled(idle and has_page and self._state is not None and self._state.request.page_index + 1 < self._state.page.page_count)
         self.add_comparison_button.setEnabled(idle and has_page and self._selected_row() is not None)

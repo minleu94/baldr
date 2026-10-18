@@ -4,6 +4,8 @@
 """
 
 import json
+import csv
+import logging
 import hashlib
 import os
 from copy import deepcopy
@@ -1335,10 +1337,11 @@ class WatchlistService:
             temp_file.replace(watchlist_file)
 
     def query_stock_names(self, stock_codes: List[str]) -> Dict[str, str]:
-        """UI 的名稱查詢接點；只讀既有來源，不初始化市場資料庫。"""
+        """只讀目前行情／名冊的顯示名稱，不變更收藏身份或資料用途。"""
         codes = [str(code).strip() for code in stock_codes if str(code).strip()]
         if not codes:
             return {}
+        names: Dict[str, str] = {}
         db_path = getattr(self.config, "db_file", None)
         if getattr(self.config, "use_sqlite", False) and db_path is not None and Path(db_path).is_file():
             try:
@@ -1346,15 +1349,31 @@ class WatchlistService:
                     conn.execute("PRAGMA query_only=ON")
                     placeholders = ",".join("?" for _ in codes)
                     rows = conn.execute(f"SELECT 證券代號, 證券名稱 FROM daily_prices WHERE 證券代號 IN ({placeholders}) ORDER BY 日期", tuple(codes)).fetchall()
-                    return {str(code): str(name) for code, name in rows if name and str(name).strip()}
+                    names.update({str(code): str(name) for code, name in rows if name and str(name).strip()})
             except sqlite3.Error:
                 pass
         path = getattr(self.config, "stock_data_file", None)
-        if path is None or not Path(path).is_file():
-            return {}
-        frame = pd.read_csv(path, dtype={"證券代號": str}, usecols=["證券代號", "證券名稱"])
-        return {str(row["證券代號"]): str(row["證券名稱"]) for _, row in frame.iterrows()
-                if str(row["證券代號"]) in codes and pd.notna(row["證券名稱"])}
+        if not names and path is not None and Path(path).is_file():
+            frame = pd.read_csv(path, dtype={"證券代號": str}, usecols=["證券代號", "證券名稱"])
+            names.update({str(row["證券代號"]): str(row["證券名稱"]) for _, row in frame.iterrows()
+                          if str(row["證券代號"]) in codes and pd.notna(row["證券名稱"])})
+        metadata = getattr(self.config, "meta_data_dir", None)
+        registry = Path(metadata) / "companies.csv" if metadata is not None else None
+        if registry is not None and registry.is_file() and any(code not in names for code in codes):
+            candidates: Dict[str, Set[str]] = {}
+            try:
+                with registry.open("r", encoding="utf-8-sig", newline="") as stream:
+                    for row in csv.DictReader(stream):
+                        code = str(row.get("stock_id", "")).strip()
+                        name = str(row.get("stock_name", "")).strip()
+                        if code in codes and name and name != code and name.casefold() not in {"none", "nan"}:
+                            candidates.setdefault(code, set()).add(name)
+                for code, values in candidates.items():
+                    if len(values) == 1:
+                        names.setdefault(code, next(iter(values)))
+            except (OSError, UnicodeError, csv.Error):
+                logging.getLogger(__name__).warning("顯示名稱名冊無法讀取；保留已知名稱，不補造。")
+        return names
 
     def get_default_watchlist(self) -> Optional[Watchlist]:
         """取得預設觀察清單"""

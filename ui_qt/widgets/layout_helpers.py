@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from weakref import ReferenceType, ref
 
-from PySide6.QtCore import QEvent, QMetaObject, QObject, QRect, QTimer, Qt, Slot
+from PySide6.QtCore import QEvent, QMetaObject, QObject, QRect, QSize, QTimer, Qt, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -14,9 +14,64 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QListView,
     QTableView,
+    QTabWidget,
+    QStyle,
     QWidget,
 )
 from shiboken6 import getCppPointer
+
+
+class CurrentPageSizeTabWidget(QTabWidget):
+    """只用作用中頁面計算尺寸，避免非作用中舊頁撐大 scroll 內容。"""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # 窄視窗仍可透過 QTabBar 自帶的左右控制切換被裁切的來源頁籤。
+        self.setUsesScrollButtons(True)
+        self.currentChanged.connect(self._refresh_page_size)
+
+    def _refresh_page_size(self, _index: int) -> None:
+        self.updateGeometry()
+        parent = self.parentWidget()
+        if parent is not None:
+            parent.updateGeometry()
+
+    def _active_page_size(self, *, minimum: bool) -> QSize:
+        page = self.currentWidget()
+        if page is None:
+            return super().minimumSizeHint() if minimum else super().sizeHint()
+
+        page_size = page.minimumSizeHint() if minimum else page.sizeHint()
+        page_size = page_size.expandedTo(page.minimumSize())
+        page_layout = page.layout()
+        if page_layout is not None and page_layout.hasHeightForWidth():
+            page_size.setHeight(max(page_size.height(), page_layout.totalHeightForWidth(max(1, page.width()))))
+        tab_bar = self.tabBar()
+        tab_size = tab_bar.minimumSizeHint() if minimum else tab_bar.sizeHint()
+        margins = self.contentsMargins()
+        frame = self.style().pixelMetric(
+            QStyle.PixelMetric.PM_DefaultFrameWidth,
+            None,
+            self,
+        ) * 2
+        horizontal_margins = margins.left() + margins.right() + frame
+        vertical_margins = margins.top() + margins.bottom() + frame
+        if self.tabPosition() in {
+            QTabWidget.TabPosition.North,
+            QTabWidget.TabPosition.South,
+        }:
+            width = max(page_size.width(), tab_size.width()) + horizontal_margins
+            height = page_size.height() + tab_size.height() + vertical_margins
+        else:
+            width = page_size.width() + tab_size.width() + horizontal_margins
+            height = max(page_size.height(), tab_size.height()) + vertical_margins
+        return QSize(max(0, width), max(0, height))
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        return self._active_page_size(minimum=False)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        return self._active_page_size(minimum=True)
 
 
 _CONTROLLER_ATTRIBUTE = "_layout_helpers_visible_rows_controller"

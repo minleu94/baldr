@@ -1028,6 +1028,19 @@ class WatchlistView(QWidget):
                     'added_at': '加入時間',
                     'notes': '備註'
                 })
+                # 名稱是目前名冊的展示補充；typed 收藏及其原始身份保持不變。
+                name_reader = getattr(self.watchlist_service, "query_stock_names", None)
+                try:
+                    display_names = name_reader([str(value).strip() for value in df["證券代號"]]) if callable(name_reader) else {}
+                except Exception as exc:
+                    logger.warning("顯示名稱暫不可讀；原收藏仍可核驗：%s", exc)
+                    display_names = {}
+                if not isinstance(display_names, Mapping):
+                    display_names = {}
+                df["證券名稱"] = [
+                    display_names.get(str(code).strip(), str(name).strip() if str(name).strip() != str(code).strip() else "名稱未提供")
+                    for code, name in zip(df["證券代號"], df["證券名稱"])
+                ]
                 if "source" not in df.columns:
                     df["source"] = ""
                 df["來源"] = [

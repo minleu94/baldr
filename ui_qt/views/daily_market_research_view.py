@@ -39,6 +39,7 @@ from app_module.daily_market_cohort_projection import (
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
 from app_module.daily_research_source_selection import DailyResearchQuery
 from ui_qt.widgets.daily_research_source_selector import DailyResearchSourceSelector
+from ui_qt.widgets.layout_helpers import CurrentPageSizeTabWidget
 from ui_qt.views.daily_market_technical_universe_v4_view import DailyMarketTechnicalUniverseV4View
 from ui_qt.views.daily_market_technical_stock_v4_view import DailyMarketTechnicalStockV4View
 from app_module.daily_market_technical_universe_v4_stock import DailyMarketTechnicalUniverseV4Stock
@@ -206,7 +207,7 @@ class DailyMarketResearchView(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(8)
-        self.research_sections = QTabWidget(self)
+        self.research_sections = CurrentPageSizeTabWidget(self)
         self.research_sections.setObjectName("dailyMarketResearchSections")
         self.research_sections.setDocumentMode(True)
         self.research_sections.setUsesScrollButtons(True)

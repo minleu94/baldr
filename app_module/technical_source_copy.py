@@ -1,8 +1,7 @@
 """重綁具名v4技術來源的新定位鏈；原快照與原收據逐bytes保留。"""
 from __future__ import annotations
 
-from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from functools import partial
@@ -204,19 +203,21 @@ def _run_io(work: Iterable[Callable[[], None]], cancel: Callable[[], bool] | Non
     """寫入最多兩件、唯讀核對可四件；串行派工與取消，返回前收束全部工作。"""
     if type(workers) is not int or workers not in (2, 4):
         raise TechnicalSourceCopyError("technical_copy_io_workers_invalid")
-    pending: deque[Future[None]] = deque()
+    pending: set[Future[None]] = set()
     iterator = iter(work)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="technical-copy-io") as executor:
         while True:
             _cancel(cancel)
             if len(pending) == workers:
-                pending.popleft().result()
+                completed, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in completed:
+                    future.result()
                 _cancel(cancel)
             try:
                 operation = next(iterator)
             except StopIteration:
                 break
-            pending.append(executor.submit(operation))
+            pending.add(executor.submit(operation))
         for future in pending:
             future.result()
     _cancel(cancel)

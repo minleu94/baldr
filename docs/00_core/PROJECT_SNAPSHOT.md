@@ -46,3 +46,5 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 - 金融精度、決策當下可得性、來源用途、原 FAIL 與各 Gate 門檻維持；缺值與未知不能補零。
 - Historical replay、readiness、dry-run、shadow、Paper、合成資料或測試通過，均不能代替真來源、有效績效、真人接受、自然成熟或 production ML 資格。程式碼／EXE 可啟動也不授上述接受；UI 的既有 mypy ignore 設定不證強型別。
 - Root 串行 QA 與資源守衛依[共用規則](../agents/shared_context.md)。本補完 task 已用完新建代理額度 10/10；只在無待寫與無衝突時重用既有 Luna。
+
+[143派工修正](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)只為解除142固定包首次設定600秒FAIL；原核驗與2／4併行上限保持，QA與新候選待驗。未通過前入口仍為141c，142／partial原件不改。

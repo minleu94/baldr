@@ -25,6 +25,22 @@ def test_parallelism_bound_and_join(workers):
     assert peak == workers and active == 0 and completed == workers * 2
 
 
+@pytest.mark.parametrize("workers", [2, 4])
+def test_completed_later_work_refills_slot_while_first_is_still_running(workers):
+    first_started = threading.Event()
+    slot_refilled = threading.Event()
+
+    def first():
+        first_started.set()
+        assert slot_refilled.wait(timeout=5), "completed slots must not wait for the first work"
+
+    def quick():
+        assert first_started.wait(timeout=5)
+
+    _run_io([first, *[quick] * (workers - 1), slot_refilled.set], None, workers=workers)
+    assert slot_refilled.is_set()
+
+
 def test_failure_waits_for_other_dispatched_verifications():
     barrier = threading.Barrier(4)
     finished = []

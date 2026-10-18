@@ -31,6 +31,8 @@ Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，�
 
 141的 `baldr-trial-first-setup.v2` 保留v1讀取且不自動改寫。v2可明選 `quanta_monthly_sales`（`files`、manifest／receipt雙SHA），從 `assets/quanta-monthly` 逐bytes複製到 `state/monthly-sales-version` ，由啟動器明選新根及雙SHA；市場狀態原件另以 `market_regime_files` 明選 `assets/market-regime/regime_history.json`，只複製到研究輸出根，不接受其他私人輸出。v1不得夾帶這兩個新家族，舊EXE亦會拒絕v2。新來源在設定發布前重核來源及資料副本SHA；DATA_ROOT空白或改指隔離庫，預設正式根仍禁止寫入。月營收只記原件複製核對，不授來源接受或提前可用；正常頁沿原public reader的小時／用途／精度守衛。141c生成config只含共同portable keys，provider專用key沿啟動器環境明選。啟動器改用.NET SHA256核同一固定EXE，避免依賴本機缺失的Get-FileHash cmdlet，錯SHA仍拒絕。
 
+143開發來源只修首次設定核對的有界派工補位；寫2／讀4、完整前後SHA、來源閉集與原600秒保持。142新位置設定600秒FAIL原件保留，新候選未驗之前仍沿指定141c。此工程檢查不授跨機或私人搬移資格，詳[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)。
+
 ## 保存研究的新副本（來源工具）
 
 若只要把已保存回測放到新的`OUTPUT_ROOT`，可使用來源工具`scripts/copy_research_output.py`。它處理研究Registry、舊單股回測與舊推薦組合三個store；不複製行情、價格選股來源、一般推薦、收藏、Paper帳或模型，亦不自動啟用新設定。這是完整移機中的一個步驟，原完整清冊仍須逐項處理。

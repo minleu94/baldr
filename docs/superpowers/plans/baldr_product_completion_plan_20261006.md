@@ -15,6 +15,8 @@
 
 139真人回報的142增量只解除原旅程的可用性阻礙：月營收值前置、窄頁可捲與明確清空代碼、收藏名稱展示及同源個股回訪。源程式定向／共同防線及正常Main已過，固定候選與期限說明各按[具名QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment142-trial139-feedback)接續；原D真人未驗保持未驗，不擴V1或把Source改動說成舊EXE已修。
 
+143僅解除142首次設定的原600秒FAIL：修有界派工讓完成工作釋出名額，保持原前後SHA、閉集、取消及2／4上限；定向QA與固定候選仍逐項驗收，不把此效能阻礙擴成其他功能新前置。詳[143 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)。
+
 | 目前位置 | 可查的成果 | 尚未交付的差距 |
 |---|---|---|
 | 已交試用 | [日常研究141c](../../../output/trial/Baldr-Daily-Research-141c/TRIAL_GUIDE.md)固定`7134efaa94d6`；含139月營收與原四流程。本機新位置首次設定513.532秒／600秒、受改正常頁／新程序讀回、啟動器及錯SHA拒絕已驗，詳[141 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment141-full-trial-exe)。 | 首次啟動前放妥完整包，已用state不可直接移動；2382半年財報／其他來源、真人／DPI、真帳、來源clock／用途、真N、歷史PIT、完整績效、自然成熟與跨機搬移各自待。 |

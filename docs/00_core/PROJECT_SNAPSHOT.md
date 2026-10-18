@@ -29,7 +29,7 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 外部缺件各自隔離：TPEx年度日曆授權、TPEx法人API、官方文件／單位／用途、歷史PIT、真N、完整績效、Native／EXE及Paper／forward自然成熟分別判定。MOPS partial／缺EOF及舊月營收／TWSE GET耗盡scope保持，不重抓、不把一處缺件變成全產品新前置。完整P00–P14／M1–M3／F01–F23／UX01–UX24／G0–G4未完成項仍在原計畫，不以commit或案例加總計完成率。
 
-[142固定候選](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)已回應139真人回報：五列月營收值前置、來源長文可展開；窄頁條件／結果可捲、代碼可單獨清空；具名名錄只補顯示名稱，同源收藏直接開原個股並返回。Source定向與共同防線保持，另驗新包首次設定、正常固定EXE與同版新程序讀回及啟動器正反SHA；未重跑未改旅程。逐期限共同說明仍待核適用性，真人D未驗；原金融值、缺件、精度及時間守衛保持。
+[142固定候選](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)已回應139真人回報：五列月營收值前置、來源長文可展開；窄頁條件／結果可捲、代碼可單獨清空；具名名錄只補顯示名稱，同源收藏直接開原個股並返回。Source定向與共同防線保持，另驗新包首次設定、正常固定EXE與同版新程序讀回及啟動器正反SHA；未重跑未改旅程。逐期限說明已核143副本8列，按[期限表](../07_guides/TRIAL_VERSION_GUIDE.md#原推薦結果與保存策略的判讀)分清缺價／ready受限／待成熟；真人D未驗；原金融值、缺件、精度及時間守衛保持。
 
 ## 產品與系統入口
 

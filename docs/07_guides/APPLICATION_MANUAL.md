@@ -4,7 +4,7 @@
 
 目前143保留139月營收、原推薦結果日期、策略訊號對照與三公司半年比較，四條主要流程及2506示範收藏保持。143把月營收值前置、窄頁條件與結果保留可捲高度，代碼可單獨清空；收藏名稱僅補展示，雙擊直接進原來源個股。固定EXE與新程序限定通過，詳細入口與限制見[目前試用版指南](TRIAL_VERSION_GUIDE.md)。舊139、141c及私人資料保持。
 
-143固定包帶task具名顯示名錄，可顯示2506太設與8933愛地雅，不改原收藏身分或金融用途。逐期限共同說明仍待核適用性；真人D未回報，不能記真人接受。原件與失敗詳[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)。
+143固定包帶task具名顯示名錄，可顯示2506太設與8933愛地雅，不改原收藏身分或金融用途。逐期限共同限制已核143副本原件，差異及判讀見[期限表](TRIAL_VERSION_GUIDE.md#原推薦結果與保存策略的判讀)；真人D未回報，不能記真人接受。原件與失敗詳[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)。
 
 131包含TWSE新下載丟失明確漲跌符號的修復；原「個股研究 → 價格／技術」入口、返回與重載不變。新資料按原文字方向顯示，缺方向或未知仍未提供；歷史資料沒有重抓或回補。操作及排錯見[個股指南](manuals/WATCHLIST_AND_PORTFOLIO.md#個股研究報告)，限定證據見[128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 

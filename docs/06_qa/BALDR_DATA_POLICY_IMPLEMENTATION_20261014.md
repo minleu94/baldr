@@ -3262,3 +3262,18 @@ Root複核：重用範圍為同次初驗的不可變原件，容量先串行分�
 
 **目前指定143，啟動方式為包內`Launch-Baldr.cmd`，四流程及資料範圍見[目前試用版指南](../07_guides/TRIAL_VERSION_GUIDE.md)。** 142原旅程修正已在此固定EXE驗受改出口，不改139／141c或私人state。逐期限共同說明接著核原件；真人D、真帳、完整來源／PIT／雙策略績效、Native／跨機及自然成熟各自保留，不宣稱完整P00–P14或Gate完成。
 859交付文件核對12features／11連結來源／0errors；outer `single_owned_qa_19c7c389b2e4456c876e274a4ea46036/receipt.json` SHA `c1973727ea96ffdc65a6ae87164c424780b34e68cd06a2d7d2ff4925b04285a7`，三PID空、handles／mutex閉鎖、無forced cleanup。正文、537.875秒與857讀回／858封存由Root複核；不冒充獨立review或完整Gate。
+
+<a id="increment143-horizon-audit"></a>
+### 143交付後：逐期限共同說明的唯讀核對
+
+此補充只解釋139回報的共同說明，沒有新增產品實作、抓取、計算或重發EXE。只讀143明選隔離副本的兩個`recommendation_included`事件及8列原outcome；另2個非推薦納入事件保持原樣，不混入期限連結。先前860腳本在一般pathlib掃長路徑FAIL（事件尚未讀），861的「全庫只有兩事件」假設FAIL，862改明確日期／8事件上限核到4事件；863因核對器只准URI連線，拒絕既有canonical SELECT pathname seam而FAIL。原helper/spec/output完整保留；這些是核對工具範圍／守衛修正，不是資料／產品修復。
+
+- 860 outer `single_owned_qa_2b5d918759d3488e81f887ab32b90818/receipt.json` SHA `98857b9da0f26033cbc332000eecaf3186d452e9083be82cf76e5d7d4a161dc4`。
+- 861 outer `single_owned_qa_a6509345639f41b29d769c0761bd4647/receipt.json` SHA `c0377a724e198326504a0dd141ccfce6171281236a223fb79e0e9234fd28b524`。
+- 862 bounded inventory outer `single_owned_qa_b9f47d3f17a94b969dd7fe49dbfca7fc/receipt.json` SHA `8f49b3971793a2454b42ae538437af91bae64855406e72e28229f5552096750b`。
+- 863 outer `single_owned_qa_b1e933fcadc7401caa714f27309704ed/receipt.json` SHA `f662b925ced87de225449b2981e3d231095907c28b824d57a808d933e08f107e`。
+
+864用既有長路徑closed掃描，依原journey契約選兩推薦納入事件；Evidence磁碟連線及canonical index SELECT在核對時均強制`mode=ro`／query_only，legacy則沿原memory deserialize snapshot。原DB／index／兩研究JSON的SHA與整個state檔案集合／大小前後相同，網路0。原件欄位、public service的`query_boundary=None`讀回與現有formatter的8列狀態／target metadata一致；未在此輪另走正常UI／Native、未讀已用139私人狀態、不授歷史PIT。result `increment143_horizon_audit_qa15/result.json` SHA `4807c5719986b3a0a171a7d1061800ab5b662b9b1a2b2676a07f5724742ed01a`；outer `single_owned_qa_e34bb983c88743129c56047ba18f6762/receipt.json` SHA `9c21a1251ee762ba5cf9f91141810fc83635851d3b6a2d1993a8ccbff4970b18`。860–864三PID空、handles／mutex閉鎖、無forced cleanup。
+
+1538的5／10日缺價，20日10-13已有價格，60日12-09待成熟；1528的5／10／20日分別09-21／09-30／10-15已有價格，60日12-11待成熟。8列均annual_plan_only且formal_credit=false，ready四列另有degraded／source_not_ingested，限制必須保留。因此共同前段相同，後段分缺價／已有價格／等待目標日；「讀到來源結果」不是「已取得價格」。差異及資料範圍已在[目前指南](../07_guides/TRIAL_VERSION_GUIDE.md#原推薦結果與保存策略的判讀)逐列說明。143封存GUIDE／KNOWN_ISSUES／清冊／交付SHA不改；本補充不重建新包、不把未知或ready提升為正式成熟，真人D仍待。
+865期限判讀文件核對12features／5來源／0errors；outer `single_owned_qa_706ce32d9cd6437c9babbe261d98a43f/receipt.json` SHA `03f9e9fc379d9df8e2934b1c8e9bba817f516a4f82a638e7829f2148282e5571`，三PID空、handles／mutex閉鎖、無forced cleanup。只更新目前文件，143封存交付SHA保持，無新EXE或資料更動。

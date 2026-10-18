@@ -59,6 +59,8 @@ from app_module.decision_presentation import (
     format_position_health_read_model,
 )
 from app_module.research_session import ResearchStockContextDTO, format_research_workflow_path
+from app_module.theme_research_presentation import build_theme_research_presentation
+from app_module.theme_research_snapshot import ThemeResearchSnapshot
 from ui_qt.models.workbench_table_models import (
     AdvicePortfolioTableModel,
     AdviceCandidateTableModel,
@@ -170,6 +172,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_stock_research_callback: Callable[[object], None] | None = None,
         navigate_to_update_callback: Callable[[], None] | None = None,
         navigate_to_recommendation_callback: Callable[[], None] | None = None,
+        navigate_to_industry_themes_callback: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -198,6 +201,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_stock_research_callback = navigate_to_stock_research_callback
         self.navigate_to_update_callback = navigate_to_update_callback
         self.navigate_to_recommendation_callback = navigate_to_recommendation_callback
+        self.navigate_to_industry_themes_callback = (
+            navigate_to_industry_themes_callback
+        )
+        self._theme_research_snapshot: ThemeResearchSnapshot | None = None
         self._dashboard: WorkbenchDashboardDTO | None = None
         self._last_good_dashboard: WorkbenchDashboardDTO | None = None
         self._last_good_dashboard_loaded_at: datetime | None = None
@@ -231,6 +238,34 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 self.refresh_dashboard()
         else:
             self._display_pending_dashboard()
+
+    def set_theme_research_snapshot(
+        self, snapshot: ThemeResearchSnapshot | None
+    ) -> None:
+        """只呈現 Main 已持有的題材版本摘要，不重新讀取來源。"""
+
+        if snapshot is not None and not isinstance(
+            snapshot, ThemeResearchSnapshot
+        ):
+            raise TypeError("snapshot 必須是 ThemeResearchSnapshot 或 None")
+        self._theme_research_snapshot = snapshot
+        if snapshot is None:
+            self.home_theme_summary_label.setText(
+                "尚未載入題材研究版本；請先到「產業與題材」選取本機已保存版本。"
+            )
+            self.home_theme_summary_label.setToolTip("")
+            return
+
+        presentation = build_theme_research_presentation(snapshot)
+        chain_count = len(presentation.chains)
+        theme_count = sum(len(chain.themes) for chain in presentation.chains)
+        self.home_theme_summary_label.setText(
+            f"目前所選題材版本：資料日 {snapshot.report.data_date.isoformat()}；"
+            f"涵蓋 {chain_count} 條產業鏈／{theme_count} 個題材。"
+        )
+        self.home_theme_summary_label.setToolTip(
+            f"版本 identity SHA-256：{snapshot.identity_sha256}"
+        )
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -926,6 +961,28 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.home_stock_search_hint.setWordWrap(True)
         panel.layout.addWidget(self.home_stock_search_hint)
+        theme_entry_layout = QHBoxLayout()
+        self.home_theme_button = QPushButton("繼續查看產業與題材")
+        self.home_theme_button.setObjectName("homeThemeResearchButton")
+        self.home_theme_button.setAccessibleName("繼續查看產業與題材研究")
+        self.home_theme_button.setProperty("variant", "secondary")
+        self.home_theme_button.setToolTip(
+            "返回目前題材研究頁；不重新載入或清除所選版本。"
+        )
+        self.home_theme_button.setEnabled(
+            self.navigate_to_industry_themes_callback is not None
+        )
+        self.home_theme_button.clicked.connect(self._open_home_industry_themes)
+        theme_entry_layout.addWidget(self.home_theme_button)
+        self.home_theme_summary_label = QLabel(
+            "尚未載入題材研究版本；請先到「產業與題材」選取本機已保存版本。"
+        )
+        self.home_theme_summary_label.setObjectName("homeThemeResearchSummary")
+        self.home_theme_summary_label.setAccessibleName("首頁題材研究版本摘要")
+        self.home_theme_summary_label.setWordWrap(True)
+        self.home_theme_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        theme_entry_layout.addWidget(self.home_theme_summary_label, 1)
+        panel.layout.addLayout(theme_entry_layout)
         intro = QLabel(
             "先看持倉、候選、市場與資料影響；需要完整理由時展開完整工作台。"
         )
@@ -1418,6 +1475,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.home_stock_input.setFocus()
             return self._open_home_stock_search() if self.home_stock_input.text().strip() else True
         return self.navigate_to_drilldown_target(target)
+
+    def _open_home_industry_themes(self) -> bool:
+        callback = self.navigate_to_industry_themes_callback
+        if callback is None:
+            return False
+        callback()
+        return True
 
     def _open_home_stock_search(self) -> bool:
         callback = self.navigate_to_stock_research_callback

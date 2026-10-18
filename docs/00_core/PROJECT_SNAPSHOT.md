@@ -21,6 +21,8 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 ## 目前工程狀態與限制
 
+**後繼Source已打通題材研究閉環。** 首頁可接續同一「產業與題材」版本，四類觀察／前五排行、25鏈目錄與成員可進一般個股再返回；判斷沿Journal追加、原文唯讀，另一新程序能按原修訂讀回並核原SHA。限定正常Main11508→22232、53項相關回歸、筆記／來源守衛及mypy1076見[題材QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。本機樣本資料日10/16，一般行情仍9/23，兩者分開；法人與五交易日日曆缺件隔離，未授歷史PIT／真N。這批尚未建立新固定EXE，指定143保持；其餘首頁候選選取、完整UX及原補完未完成項繼續保留。
+
 **139的月營收成果已保留於141c。** [139 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment139-quanta-monthly-sales)綁既存TWSE公司原件與廣達官方月營收，八檔版本保留同表百萬元整數／0.1%披露率。真實台北10/18 04:00後的原正常頁／新程序、股票切換與捲動證據維持；141c另驗新根五列原值、精度及歷史隔離。未改旅程沿原證據，未重跑全部四流程或授完整Native。官方綜合損益表入口302 ASPX錯誤原件保留，停止該入口；半年財報缺件仍隔離，不混表、推算累計或接評分。完整F12、來源／PIT及原計畫其餘列繼續保留。
 
 [138](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment138-first-trial-setup)兩次600秒FAIL及partial原件保留。[140](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment140-archive-byte-reuse)在同一恢復工具限量重用初次SHA已驗原件，保留前後完整實體核對，Source整包首次設定已在原600秒完成；不替換139或授整包可攜資格。135月營收因子的缺月／前史修正只屬後端工程驗證，尚未進指定候選的正式評分。這些局部成果不授完整F12或P14。
@@ -38,7 +40,7 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 - **實際操作**：[APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)；首次設定看[快速開始](../07_guides/QUICK_START.md)，移機看[首次安裝／移機 Prompt](../07_guides/FIRST_INSTALL_PROMPT.md)。
 - **現行與目標架構**：[system_architecture](../01_architecture/system_architecture.md)／[current 分冊](../01_architecture/current/README.md)；[FINAL](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 是目標設計，不作已實作證據。
 - **主程式與資料**：`ui_qt/main.py`，九個頂層工作區；資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理，預設 `DATA_ROOT=D:/Min/Python/Project/FA_Data`，不能以 repo 相對路徑推定正式資料位置。
-- **L2 產業鏈與題材萃取對應（獨立模組）**：[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py) 提供季度／手動之 25 條產業鏈、L2 題材與股票對應三檔建置（未介入既有選股／UI 流程）；規格與檔案欄位見[設計文件](../02_features/INDUSTRY_THEME_MAP_DESIGN.md)，驗證收據見[QA](../06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md)。
+- **L2 產業鏈與題材**：[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py) 保留季度／手動25鏈萃取。後繼application層另讀明選本機版本、每日聚合並接題材頁及研究筆記；規格見[設計文件](../02_features/INDUSTRY_THEME_MAP_DESIGN.md)，原萃取[QA](../06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md)與新[限定旅程QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)分開；固定143尚不含新頁。
 
 ## 重要限制
 

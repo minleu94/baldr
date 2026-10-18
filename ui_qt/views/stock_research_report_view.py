@@ -1283,9 +1283,12 @@ class StockResearchReportView(QWidget):
             if context.ml_scope_mode == "selected_saved_decision"
             else "依來源身分判定"
         )
+        data_date_label = (
+            "題材版本資料日" if context.source_kind == "industry_theme_snapshot" else "資料日"
+        )
         visible = (
             f"來源：{source}｜決策日：{context.decision_date or '未知'}｜"
-            f"資料日：{context.data_date or '未知'}｜ML範圍：{ml_scope_text}｜{return_text}"
+            f"{data_date_label}：{context.data_date or '未知'}｜ML範圍：{ml_scope_text}｜{return_text}"
         )
         if context.source_kind == "daily_market_research_snapshot":
             visible += (
@@ -1325,6 +1328,17 @@ class StockResearchReportView(QWidget):
             self._set_status("請輸入股票代碼。", "warning")
             return
         context = self.context
+        if (
+            context is not None
+            and context.source_kind == "industry_theme_snapshot"
+            and context.stock_code.strip() != code
+        ):
+            self._set_status(
+                "目前報告綁定原題材成員；請返回產業與題材選取其他成員，或另開一般個股研究。",
+                "warning",
+            )
+            self.stock_search.setText(context.stock_code)
+            return
         if (
             context is not None
             and context.source_workspace == "watchlist"

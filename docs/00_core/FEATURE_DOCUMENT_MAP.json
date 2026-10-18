@@ -17,20 +17,23 @@
         "ui_qt/views/workbench_view.py"
       ],
       "tests": [
-        "tests/test_ui_qt_workbench_view.py"
+        "tests/test_ui_qt_workbench_view.py",
+        "tests/test_ui_qt_workbench_theme_entry.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md"
       ],
       "evidence": [
-        "docs/06_qa/PRODUCT_UX_QA_INDEX.md"
+        "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
+        "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
         "ui_qt/views/workbench_view.py",
-        "tests/test_ui_qt_workbench_view.py"
+        "tests/test_ui_qt_workbench_view.py",
+        "tests/test_ui_qt_workbench_theme_entry.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -63,7 +66,14 @@
         "app_module/daily_market_technical_universe_projection_group_session_v3.py",
         "app_module/daily_market_technical_official_disposition_composite_query_v2.py",
         "decision_module/industry_theme_map.py",
-        "app_module/technical_source_copy.py"
+        "app_module/theme_daily_service.py",
+        "app_module/theme_daily_sqlite_reader.py",
+        "app_module/theme_research_snapshot.py",
+        "ui_qt/views/industry_theme_map_view.py",
+        "app_module/technical_source_copy.py",
+        "app_module/theme_research_presentation.py",
+        "app_module/theme_research_notes.py",
+        "ui_qt/widgets/theme_research_notes_widget.py"
       ],
       "tests": [
         "tests/test_ui_qt_market_regime_view.py",
@@ -74,7 +84,16 @@
         "tests/test_daily_market_technical_universe_projection_group_v3.py",
         "tests/test_daily_market_technical_universe_projection_group_v3_normal.py",
         "tests/test_daily_market_technical_universe_price_json_bounds.py",
-        "tests/test_industry_theme_map.py"
+        "tests/test_industry_theme_map.py",
+        "tests/test_theme_daily_service.py",
+        "tests/test_theme_daily_sqlite_reader.py",
+        "tests/test_theme_research_snapshot.py",
+        "tests/test_ui_qt_industry_theme_map_view.py",
+        "tests/test_industry_theme_main_navigation.py",
+        "tests/test_theme_research_presentation.py",
+        "tests/test_theme_research_notes.py",
+        "tests/test_ui_qt_theme_research_notes_widget.py",
+        "tests/test_theme_stock_context_guard.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -82,7 +101,8 @@
       ],
       "evidence": [
         "docs/06_qa/PRODUCT_UX_QA_INDEX.md",
-        "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md"
+        "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
+        "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md"
       ],
       "status": [
         "docs/00_core/PROJECT_SNAPSHOT.md"
@@ -109,9 +129,24 @@
         "tests/test_ui_qt_market_regime_view.py",
         "decision_module/industry_theme_map.py",
         "tests/test_industry_theme_map.py",
+        "app_module/theme_daily*",
+        "app_module/theme_research_snapshot.py",
+        "ui_qt/views/industry_theme_map_view.py",
+        "tests/test_theme_daily*",
+        "tests/test_theme_research_snapshot.py",
+        "tests/test_ui_qt_industry_theme_map_view.py",
+        "tests/test_industry_theme_main_navigation.py",
+        "docs/06_qa/BALDR_THEME_DAILY_QA_20261018.md",
         "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md",
         "docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md",
-        "app_module/technical_source_copy.py"
+        "app_module/technical_source_copy.py",
+        "app_module/theme_research_presentation.py",
+        "app_module/theme_research_notes.py",
+        "ui_qt/widgets/theme_research_notes_widget.py",
+        "tests/test_theme_research_presentation.py",
+        "tests/test_theme_research_notes.py",
+        "tests/test_ui_qt_theme_research_notes_widget.py",
+        "tests/test_theme_stock_context_guard.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -799,7 +834,8 @@
         "tests/test_twse_daily_price_sqlite_publication.py",
         "tests/test_decision_outcome_journey.py",
         "tests/test_ui_qt_decision_outcome_journey.py",
-        "tests/test_quanta_monthly_sales.py"
+        "tests/test_quanta_monthly_sales.py",
+        "tests/test_theme_stock_context_guard.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -841,7 +877,8 @@
         "tests/test_decision_outcome_journey.py",
         "tests/test_ui_qt_decision_outcome_journey.py",
         "app_module/quanta_monthly_sales*.py",
-        "tests/test_quanta_monthly_sales.py"
+        "tests/test_quanta_monthly_sales.py",
+        "tests/test_theme_stock_context_guard.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

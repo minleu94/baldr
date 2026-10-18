@@ -117,6 +117,9 @@ import decision_module.strategies
 from ui_qt.views.strong_stocks_view import StrongStocksView
 from ui_qt.views.weak_stocks_view import WeakStocksView
 from ui_qt.views.market_regime_view import MarketRegimeView
+from ui_qt.views.industry_theme_map_view import IndustryThemeMapView
+from app_module.theme_research_notes import ThemeResearchNoteService
+from ui_qt.widgets.theme_research_notes_widget import ThemeResearchNotesWidget
 from ui_qt.views.strong_industries_view import StrongIndustriesView
 from ui_qt.views.weak_industries_view import WeakIndustriesView
 from ui_qt.views.recommendation_view import RecommendationView
@@ -2018,6 +2021,16 @@ class MainWindow(QMainWindow):
             market_tabs.addTab(market_regime, "大盤指數")
             print("[MainWindow] 大盤指數視圖創建成功")
 
+            self.industry_theme_map_view = IndustryThemeMapView(parent=self)
+            self.industry_theme_map_view.stockSelected.connect(self._open_theme_research_stock)
+            self.theme_research_notes_widget = ThemeResearchNotesWidget(
+                ThemeResearchNoteService(self.journal_service), parent=self.industry_theme_map_view,
+            )
+            theme_layout = self.industry_theme_map_view.content.layout()
+            theme_layout.insertWidget(theme_layout.count() - 1, self.theme_research_notes_widget)
+            self.industry_theme_map_view.snapshotChanged.connect(self.theme_research_notes_widget.set_snapshot)
+            self.theme_research_notes_widget.openSnapshotRequested.connect(self._open_theme_note_snapshot)
+
             # 強勢個股標籤
             print("[MainWindow] 創建強勢個股視圖...")
             strong_stocks = StrongStocksView(
@@ -2086,6 +2099,7 @@ class MainWindow(QMainWindow):
             )
             market_tabs.addTab(smart_money_flow, "主力流向")
             print("[MainWindow] 主力流向視圖創建成功")
+            market_tabs.addTab(self.industry_theme_map_view, "產業與題材")
 
             # 監聽市場觀察 tab 切換事件
             def on_market_tab_changed(index):
@@ -2170,6 +2184,7 @@ class MainWindow(QMainWindow):
                     evidence_rehearsal_dashboard=self._controlled_rehearsal_dashboard(),
                     navigate_to_daily_decision_callback=self._open_workbench_daily_decision,
                     navigate_to_market_explore_callback=self._open_workbench_market_explore,
+                    navigate_to_industry_themes_callback=self._open_workbench_industry_themes,
                     navigate_to_evidence_review_callback=self._open_workbench_evidence_review,
                     navigate_to_portfolio_callback=self._open_workbench_portfolio,
                     navigate_to_watchlist_callback=lambda: self._select_main_workspace(
@@ -2187,6 +2202,8 @@ class MainWindow(QMainWindow):
                     parent=self,
                 )
                 self.workbench_view = workbench_view
+                self.industry_theme_map_view.snapshotChanged.connect(workbench_view.set_theme_research_snapshot)
+                workbench_view.set_theme_research_snapshot(self.industry_theme_map_view.snapshot)
                 print("[MainWindow] 決策工作台建立成功")
             except Exception as e:
                 print(f"[MainWindow] 警告：決策工作台初始化失敗：{e}")
@@ -2619,6 +2636,48 @@ class MainWindow(QMainWindow):
             self._select_main_workspace("recommendation")
         else:
             self.statusBar().showMessage("原價格研究頁尚忙或來源已變動，請重新讀取原收藏；未切換其他來源。")
+
+    def _open_workbench_industry_themes(self) -> None:
+        """首頁接續現有題材頁，保留原明選來源與操作位置。"""
+        view = getattr(self, "industry_theme_map_view", None)
+        if view is None or getattr(self, "_shutdown_close_requested", False):
+            return
+        self._select_main_workspace("market_explore")
+        self.market_tabs.setCurrentWidget(view)
+
+    def _open_theme_note_snapshot(self, identity_sha256: str) -> None:
+        """回訪筆記須明選原manifest並核保存身份，不接受同名新版本。"""
+        from PySide6.QtWidgets import QFileDialog
+        view = getattr(self, "industry_theme_map_view", None)
+        if view is None or view.is_busy() or getattr(self, "_shutdown_close_requested", False):
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "核對筆記的原題材版本", "", "題材版本 (*.json)")
+        if path:
+            view.load_snapshot(Path(path), expected_identity_sha256=identity_sha256)
+
+    def _open_theme_research_stock(self, stock_code: str) -> None:
+        """題材下鑽沿既有研究context；保持原頁，不混合兩份行情。"""
+        view = getattr(self, "industry_theme_map_view", None)
+        snapshot = getattr(view, "snapshot", None)
+        if snapshot is None or view.is_busy() or getattr(self, "_shutdown_close_requested", False):
+            return
+        mapped = [row for row in snapshot.mapping if row.stock_id == stock_code]
+        if not mapped:
+            return
+        names = {row.stock_name for row in mapped if row.stock_name}
+        context = ResearchStockContextDTO(
+            stock_code=stock_code, stock_name=next(iter(names)) if len(names) == 1 else "",
+            data_date=snapshot.report.data_date.isoformat(),
+            source_snapshot_id=snapshot.identity_sha256, source_snapshot_hash=snapshot.identity_sha256,
+            source_id="local.theme_research_snapshot", source_version=snapshot.identity_sha256,
+            mapping_version=snapshot.report.mapping_snapshot_date,
+            source_kind="industry_theme_snapshot", source_workspace="market_explore",
+            source_label="產業與題材／自選本機研究版本",
+            ml_scope_mode="current_stock_research",
+        )
+        self._industry_theme_origin = context
+        self._open_stock_research_context(context)
+        self.statusBar().showMessage("已開個股研究；題材版本與一般行情各標日期，不合併資料。")
 
     def _open_stock_research_context(self, value: object) -> None:
         """接收保存結果／觀察清單的下鑽 context 並開啟單股研究頁。"""
@@ -3547,6 +3606,16 @@ class MainWindow(QMainWindow):
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
             return
+        if context.source_kind == "industry_theme_snapshot":
+            view = getattr(self, "industry_theme_map_view", None)
+            snapshot = getattr(view, "snapshot", None)
+            if (context != getattr(self, "_industry_theme_origin", None) or snapshot is None
+                    or snapshot.identity_sha256 != context.source_snapshot_hash or view.is_busy()):
+                self.statusBar().showMessage("原題材版本已變動或不可用；未以新版本替代原研究。")
+                return
+            self._select_main_workspace("market_explore")
+            self.market_tabs.setCurrentWidget(view)
+            return
         if context.source_kind == "technical_price_saved_source":
             workspace = getattr(self, "stock_research_workspace", None)
             detail = getattr(workspace, "price_research_view", None)
@@ -3681,6 +3750,12 @@ class MainWindow(QMainWindow):
         """送出冪等取消並回報仍未完成的背景依賴。"""
 
         update_view = getattr(self, "update_view", None)
+        theme_view = getattr(self, "industry_theme_map_view", None)
+        if send_cancel and theme_view is not None:
+            theme_view.shutdown()
+        theme_notes = getattr(self, "theme_research_notes_widget", None)
+        if send_cancel and theme_notes is not None:
+            theme_notes.shutdown()
         if send_cancel:
             update_shutdown = getattr(update_view, "begin_shutdown", None)
             if not callable(update_shutdown):

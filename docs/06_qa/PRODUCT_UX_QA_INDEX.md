@@ -2,6 +2,8 @@
 
 本次啟動 TabOrder、Qt model 連線清理與 pandas 相容性修正，見[主視窗啟動警告修復](BALDR_STARTUP_WARNINGS_FIX_20261015.md)；來源版限定驗證與公司名冊來源憑證缺件分開判讀。
 
+[10/18後繼題材研究](BALDR_THEME_DAILY_QA_20261018.md)另核每日聚合、首頁／題材／個股返回及Journal原判斷重啟回訪；固定143與原完整Gate接受範圍保持。
+
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。
 
 ## 依功能、交付與 Increment 查找

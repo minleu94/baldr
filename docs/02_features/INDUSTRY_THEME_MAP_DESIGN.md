@@ -1,6 +1,6 @@
 # 台股 L2 產業鏈與題材萃取、對應與分配設計文件 (`INDUSTRY_THEME_MAP_DESIGN`)
 
-- **狀態**：獨立模組已建置（尚未介入現有選股／回測／UI 流程）
+- **狀態**：原獨立萃取模組維持；後繼每日聚合已有定向驗證，市場探索接線開發中，未接選股／回測。現況與限制見[5.3](#53-後繼每日研究實作2026-10-18)。
 - **核心程式位置**：[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py)
 - **對應單元測試**：[`tests/test_industry_theme_map.py`](../../tests/test_industry_theme_map.py)
 - **設定與路徑來源**：直接讀取 [`data_module/config.py`](../../data_module/config.py) 的 [`TWStockConfig`](../../data_module/config.py#L229)，不重複建構設定常數。
@@ -11,7 +11,7 @@
 
 1. **獨立單檔、不干擾現有系統**：
    - 本階段僅聚焦於**「把產業與題材提取出來的方法」**與**「記錄產業、題材與股票的對應及分配規則」**。
-   - 所有邏輯封裝於單一檔案 [`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py)，目前**不修改**任何既有 `ui_qt`、`app_module` 或每日選股流程，方便後續交由 Codex 或其他開發任務按圖索驥進行每日量價籌碼統計或 UI 串接。
+   - 萃取邏輯仍封裝於單一檔案 [`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py)。每日聚合與 UI 沿5.3新增 application／view 邊界，沒有重寫萃取或接入每日選股。
 2. **季度／手動更新即可（無須每日辨識或嵌入外部 LLM API）**：
    - 公司所屬的供應鏈與 L2 題材屬於慢變結構（一季或半年檢視一次即可）。
    - 透過本模組產出三張標準化 CSV 檔案後，未來每日行情統計只需直接讀取這三張 CSV 對齊成交量、漲跌幅與三大法人買賣超，無須每天重新萃取題材，零額外 API 負擔與維護成本。
@@ -276,6 +276,31 @@ flowchart LR
 
 
 ---
+
+### 5.3 後繼每日研究實作（2026-10-18）
+
+依使用者的 Active Resolution Gate 修正，人工產品簽核不阻塞無關開發；真實金融來源、歷史PIT、自然成熟及私人帳資格仍各自保留。143固定包不變，以下為後繼Source成果。
+
+- [`ThemeDailyService`](../../app_module/theme_daily_service.py)只讀既有映射與 typed observations，不寫資料或自動建立今日分類。拒絕replay-only／bootstrap映射，逐列核快照／可用日期，並要求額外精確的mapping可用時鐘；只檢查首列或manifest日期不夠。`historical_pit_eligible`固定false，日期對齊不授來源用途／歷史資格。
+- [`SQLiteThemeMarketReader`](../../app_module/theme_daily_sqlite_reader.py)只讀明選SHA版本，拒絕WAL／SHM／journal旁檔，使用mode=ro與query_only，前後核hash。只接受保存完成後的可用小時，不從DB日期推定公告時間。日價差沿共用方向解析，正的絕對價差缺方向時保持未提供。
+- [`read_theme_research_snapshot`](../../app_module/theme_research_snapshot.py)載入自選本機版本：manifest schema為`baldr.theme_research_snapshot.v1`，含`data_date`、`saved_completed_at`、`mapping`與`prices`各自的相對`path`／`sha256`。檔案須在同包內；mapping CSV上限4MiB、價格DB上限64MiB、manifest上限32KiB。保存批次先轉台北，再將小時向上取整；到點前拒讀。這是成功批次可用時間，非官方發布timestamp或歷史PIT證明。
+
+| 指標 | 口徑、單位與缺件 |
+|---|---|
+| 題材平均漲跌 | 已知有方向價差／前收的等權平均，單位%；逐題材揭露有效檔數／成員數。缺方向、零或無效前收不補值。 |
+| 成交金額 | 已知成員的TWD原金額合計；缺部分時覆蓋率不足，不稱全題材完整總額；全缺為None。 |
+| 五日量能倍數 | 同一全體成員今日成交股數／前五交易日平均成交股數。缺已核日曆、任一成員或任一日資料時不可用；不取後一筆或最近五筆補日。 |
+| 法人合計 | 外資（含原來源外資自營）／投信／自營商原股數合計，三分項有缺則該股不可用；TWD金額分欄，不以股價推算。 |
+| 共振 | 上漲家數／漲跌幅已知家數；法人買超家數比另列。不另造綜合強度分數。 |
+| 多標籤 | 同題材同股去重；不同題材可各計一次。題材總數或跨題材案例加總不是全市場真N，亦不能把重疊題材金額相加當全市場總額。 |
+
+原單元／映射及只讀接線52項已通過，真實本機單日1949檔／2537映射列形成90題材／25鏈，五次純聚合中位0.026秒。工程量測使用明示離線cutoff，沒有提前授日常可用性；法人與五日曆未包含於該量測，相關欄位不可用。新增snapshot／UI與獨立複核的實際狀態見[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)，不能由後端PASS宣稱UI或完整M1–M4完成。
+
+### 5.4 後繼呈現與研究筆記
+
+`theme_research_presentation`只選相關欄位覆蓋完整且值存在的題材，依精確Decimal／整數排序，穩定取前五；零與負值不丟棄。鏈目錄去重，跨題材重疊不加總為全市場績效。`IndustryThemeMapView`呈現四類觀察、排行、25鏈目錄及成員；Main沿既有ResearchStockContextDTO開一般個股並返回同一來源頁，不混合題材行情與一般價庫。
+
+`ThemeResearchNoteService`沿既有Journal的ACTION_NOTE追加修訂，保存原文、精確snapshot身份與獨立資料日tag；`created_at`為實際保存時鐘，決策日期及股票／推薦身份保持未知。每篇新筆記有獨立實體根，同快照可保存多篇；追加修訂沿原根，過時祖先仍由原Journal修訂鏈拒絕。讀歷史後以原history token提交，並行改動會拒絕過時保存。Widget背景保存固定送出時來源，回訪原文唯讀，再開來源須核原SHA；關閉時等待已送出的寫入完成，不能由全域取消丟棄。服務信任caller提供已由reader明選讀回的typed snapshot，不自行認證官方來源或磁碟防竄改。驗證狀態仍以本輪QA逐項為準。
 
 ## 6. 關聯文件索引
 

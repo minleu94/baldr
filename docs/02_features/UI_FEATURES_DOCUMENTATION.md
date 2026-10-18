@@ -93,10 +93,13 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 <a id="workspace-market-exploration"></a>
 ### 2. 市場探索
 
+後繼Source新增「產業與題材」子頁，明選本機已保存manifest後顯示四類觀察卡、排行、產業鏈、題材、欄位覆蓋及成員；首頁入口接續同一頁。成員沿現有個股研究context往返，換股須回題材選取；來源版本與行情日期分開呈現，載入失敗不沿用舊成員。使用者判斷沿Journal追加修訂，原文唯讀，回訪核原SHA；資料缺件不補零。143固定試用包尚不包含此頁；操作／限制見[題材研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)。
+
 主要 views：
 
 - `ui_qt/views/decision_desk_view.py`（「市場總覽」唯一 Decision Desk instance）
 - `ui_qt/views/market_regime_view.py`
+- `ui_qt/views/industry_theme_map_view.py`
 - `ui_qt/views/strong_stocks_view.py`
 - `ui_qt/views/weak_stocks_view.py`
 - `ui_qt/views/strong_industries_view.py`

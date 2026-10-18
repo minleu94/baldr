@@ -22,6 +22,10 @@ Watchlist的名稱查詢可從目前行情及`meta_data/companies.csv`讀唯一�
 
 ## 九個頂層工作區
 
+後繼Source的「市場探索 → 產業與題材」重用同一市場分頁及`ResearchStockContextDTO`，由application層讀明選的本機snapshot與聚合。載入開始即清除舊可操作來源；成員下鑽攜原manifest身份與資料日，返回前核同一身份並保留原view篩選／捲動。一般個股價庫與題材版本各標日期，不將兩份行情混接。原萃取模組與143固定包不改；契約與驗證狀態見[每日題材研究](../../02_features/INDUSTRY_THEME_MAP_DESIGN.md#53-後繼每日研究實作2026-10-18)。
+
+首頁題材入口只選回上述現有widget，接收snapshotChanged作短摘要；不重讀來源。個股以明確current_stock_research讀一般行情，題材日期／hash只作原探索脈絡；換股必須回題材明選。研究判斷以既有Journal追加，保存時鐘與資料日分開，新程序回訪核原文與原SHA。
+
 市場探索的保存來源 backend 提供明確 opt-in 的 Projection Group V3 opener：同一次 verified-parent callback 產生 MA／KDJ／volatility／F07 Decimal price facts，完整 exact cohort 核對後才發行 session，price digest 進入 group identity。V2 opener 與既有價格分類沿原契約；V3 不另讀價格母體，也不自行接 UI、query predicate 或 bookmark。實際驗證與未完成範圍見[本輪補完 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
 
 1. 決策工作台

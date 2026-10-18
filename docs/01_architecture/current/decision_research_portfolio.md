@@ -50,6 +50,8 @@
 <a id="entry-and-dataflow"></a>
 ## 入口與上下游
 
+後繼Source的題材下鑽攜`industry_theme_snapshot` context，資料日明標為題材版本日期，一般個股報告仍使用自己的行情日期。該context內換代碼先拒絕，回原題材明選成員才建立新context；返回核同一原身份。使用者題材筆記沿既有Journal ACTION_NOTE／CAS追加，實際保存時間與原資料日分開，不產生歷史決策或交易身份；契約見[題材研究](../../02_features/INDUSTRY_THEME_MAP_DESIGN.md#54-後繼呈現與研究筆記)。
+
 Windows 啟動入口為 baldr_launcher.py；桌面主程式入口為 ui_qt/main.py。UI 收集條件並顯示結果，經 app_module/ 的 composition／use case 發送明確請求。Application 組合來源與服務，經注入的 data_module/ reader 取得資料，呼叫領域模組計算，再把 DTO 交回 UI。需要保存時走對應的 application／data writer；View 不直接讀寫資料根或重算領域數值。
 
 | 工作階段 | 責任 | 上游與下游 |

@@ -61,20 +61,36 @@ def _widget_diagnostic(widget: ThemeResearchNotesWidget) -> str:
 
 
 class _FakeNoteService:
-    def __init__(self, *, started: Event | None = None, release: Event | None = None):
+    def __init__(
+        self,
+        *,
+        started: Event | None = None,
+        release: Event | None = None,
+        get_started: Event | None = None,
+        get_release: Event | None = None,
+    ):
         self.notes: dict[str, ThemeResearchNote] = {}
         self.started = started
         self.release = release
+        self.get_started = get_started
+        self.get_release = get_release
         self.saved_calls: list[tuple[ThemeResearchSnapshot, str, str, str | None, int]] = []
         self.thread_ids: list[int] = []
         self.fail_save: str | None = None
+        self.fail_list: str | None = None
 
     def list_notes(self) -> tuple[ThemeResearchNote, ...]:
         self.thread_ids.append(get_ident())
+        if self.fail_list is not None:
+            raise ValueError(self.fail_list)
         return tuple(self.notes.values())
 
     def get_note(self, revision_id: str) -> ThemeResearchNote:
         self.thread_ids.append(get_ident())
+        if self.get_started is not None:
+            self.get_started.set()
+        if self.get_release is not None:
+            self.get_release.wait(5)
         return self.notes[revision_id]
 
     def save(
@@ -104,6 +120,24 @@ class _FakeNoteService:
         )
         self.notes[revision_id] = note
         return note
+
+
+def _theme_note(
+    revision_id: str,
+    text: str,
+    *,
+    revision_of: str | None = None,
+    identity: str = "f" * 64,
+    data_date: str = "2026-10-17",
+) -> ThemeResearchNote:
+    return ThemeResearchNote(
+        revision_id=revision_id,
+        snapshot_identity_sha256=identity,
+        text=text,
+        data_date=data_date,
+        revision_of=revision_of,
+        recorded_at="2026-10-18T10:30:00+00:00",
+    )
 
 
 def test_widget_pins_unbound_draft_and_inflight_save_to_original_snapshot():
@@ -287,5 +321,187 @@ def test_shutdown_marks_inflight_save_unknown_without_terminating_it():
     _wait_until(application, lambda: not widget.is_busy(), timeout_ms=5000)
     assert "已保存修訂" in widget.status_label.text()
     assert service.saved_calls
+    widget.close()
+    application.processEvents()
+
+
+def test_compare_previous_shows_exact_notes_without_io_or_changing_draft():
+    application = app()
+    previous = _theme_note("compare-root", "前" * 8000)
+    selected = _theme_note(
+        "compare-child",
+        "後" * 8000,
+        revision_of=previous.revision_id,
+    )
+    service = _FakeNoteService()
+    service.notes = {previous.revision_id: previous, selected.revision_id: selected}
+    widget = ThemeResearchNotesWidget(service)  # type: ignore[arg-type]
+    _wait_until(application, lambda: not widget.is_busy(), timeout_ms=5000)
+
+    selected_index = widget.revisions.findData(selected.revision_id, Qt.ItemDataRole.UserRole)
+    widget.revisions.setCurrentIndex(selected_index)
+    widget.editor.setPlainText("未保存草稿保持原樣")
+    widget.saved_text.setPlainText("先前唯讀區內容")
+    thread_count = len(service.thread_ids)
+    saved_notes = dict(service.notes)
+
+    assert widget.compare_previous_button.isEnabled()
+    widget.compare_previous_button.click()
+    application.processEvents()
+
+    assert widget.compare_dialog.isVisible()
+    assert not widget.compare_dialog.isModal()
+    widget.compare_dialog.resize(800, 520)
+    application.processEvents()
+    assert widget.compare_dialog.width() == 800
+    assert widget.comparison_previous_text.isVisible()
+    assert widget.comparison_selected_text.isVisible()
+    assert widget.comparison_previous_text.verticalScrollBar().maximum() > 0
+    assert widget.comparison_selected_text.verticalScrollBar().maximum() > 0
+    assert widget.comparison_previous_text.toPlainText() == previous.text
+    assert widget.comparison_selected_text.toPlainText() == selected.text
+    for identity_label, note in (
+        (widget.comparison_previous_identity, previous),
+        (widget.comparison_selected_identity, selected),
+    ):
+        assert note.revision_id in identity_label.text()
+        assert note.data_date in identity_label.text()
+        assert note.recorded_at in identity_label.text()
+        assert f"{note.snapshot_identity_sha256[:16]}…" in identity_label.text()
+        assert note.snapshot_identity_sha256 not in identity_label.text()
+        assert note.snapshot_identity_sha256 in identity_label.toolTip()
+        assert note.revision_id in identity_label.toolTip()
+    assert len(service.thread_ids) == thread_count
+    assert service.notes == saved_notes
+    assert widget.editor.toPlainText() == "未保存草稿保持原樣"
+    assert widget.saved_text.toPlainText() == "先前唯讀區內容"
+
+    root_index = widget.revisions.findData(previous.revision_id, Qt.ItemDataRole.UserRole)
+    widget.revisions.setCurrentIndex(root_index)
+    application.processEvents()
+    assert not widget.compare_previous_button.isEnabled()
+    assert not widget.compare_dialog.isVisible()
+    assert not widget.comparison_previous_text.toPlainText()
+    assert not widget.comparison_selected_text.toPlainText()
+    assert widget.comparison_previous_identity.text() == "前一版：尚未載入"
+    assert widget.comparison_selected_identity.text() == "目前所選修訂：尚未載入"
+
+    widget.revisions.setCurrentIndex(selected_index)
+    widget.compare_previous_button.click()
+    application.processEvents()
+    assert widget.compare_dialog.isVisible()
+    service.fail_list = "合成刷新失敗"
+    widget.refresh_notes()
+    assert not widget.compare_dialog.isVisible()
+    assert not widget.comparison_previous_text.toPlainText()
+    assert widget.comparison_previous_identity.text() == "前一版：尚未載入"
+    assert not widget.comparison_selected_text.toPlainText()
+    _wait_until(application, lambda: not widget.is_busy(), timeout_ms=5000)
+    assert "未完成" in widget.status_label.text()
+
+    widget.shutdown()
+    assert not widget.compare_previous_button.isEnabled()
+    assert not widget.compare_dialog.isVisible()
+    assert not widget.comparison_previous_text.toPlainText()
+    widget.close()
+    application.processEvents()
+
+
+def test_compare_previous_fails_closed_for_invalid_direct_parent_links():
+    application = app()
+    valid_parent = _theme_note("valid-parent", "前一版")
+    cases = (
+        ("root", (_theme_note("root", "原始判斷"),), "root"),
+        (
+            "missing-parent",
+            (_theme_note("orphan", "找不到父版", revision_of="absent"),),
+            "orphan",
+        ),
+        (
+            "self-parent",
+            (_theme_note("self", "不能指向自己", revision_of="self"),),
+            "self",
+        ),
+        (
+            "wrong-sha",
+            (
+                valid_parent,
+                _theme_note(
+                    "wrong-sha-child",
+                    "來源不同",
+                    revision_of=valid_parent.revision_id,
+                    identity="e" * 64,
+                ),
+            ),
+            "wrong-sha-child",
+        ),
+        (
+            "wrong-date",
+            (
+                valid_parent,
+                _theme_note(
+                    "wrong-date-child",
+                    "資料日不同",
+                    revision_of=valid_parent.revision_id,
+                    data_date="2026-10-18",
+                ),
+            ),
+            "wrong-date-child",
+        ),
+    )
+
+    for _case_name, notes, selected_id in cases:
+        service = _FakeNoteService()
+        service.notes = {note.revision_id: note for note in notes}
+        widget = ThemeResearchNotesWidget(service)  # type: ignore[arg-type]
+        _wait_until(application, lambda: not widget.is_busy(), timeout_ms=5000)
+        selected_index = widget.revisions.findData(selected_id, Qt.ItemDataRole.UserRole)
+        widget.revisions.setCurrentIndex(selected_index)
+        application.processEvents()
+
+        assert not widget.compare_previous_button.isEnabled()
+        assert not widget.compare_dialog.isVisible()
+        assert not widget.comparison_previous_text.toPlainText()
+        assert not widget.comparison_selected_text.toPlainText()
+        assert widget.comparison_previous_identity.text() == "前一版：尚未載入"
+        assert widget.comparison_selected_identity.text() == "目前所選修訂：尚未載入"
+        widget.close()
+        application.processEvents()
+
+
+def test_compare_previous_closes_and_clears_while_selected_note_is_loading():
+    application = app()
+    get_started = Event()
+    get_release = Event()
+    previous = _theme_note("busy-root", "先前原文")
+    selected = _theme_note(
+        "busy-child",
+        "目前修訂",
+        revision_of=previous.revision_id,
+    )
+    service = _FakeNoteService(get_started=get_started, get_release=get_release)
+    service.notes = {previous.revision_id: previous, selected.revision_id: selected}
+    widget = ThemeResearchNotesWidget(service)  # type: ignore[arg-type]
+    _wait_until(application, lambda: not widget.is_busy(), timeout_ms=5000)
+    widget.revisions.setCurrentIndex(
+        widget.revisions.findData(selected.revision_id, Qt.ItemDataRole.UserRole)
+    )
+    widget.compare_previous_button.click()
+    application.processEvents()
+    assert widget.compare_dialog.isVisible()
+
+    widget.read_button.click()
+    try:
+        _wait_until(application, get_started.is_set, timeout_ms=5000)
+        assert widget.is_busy()
+        assert not widget.compare_previous_button.isEnabled()
+        assert not widget.compare_dialog.isVisible()
+        assert not widget.comparison_previous_text.toPlainText()
+        assert widget.comparison_previous_identity.text() == "前一版：尚未載入"
+    finally:
+        get_release.set()
+    _wait_until(application, lambda: not widget.is_busy(), timeout_ms=5000)
+    assert widget.compare_previous_button.isEnabled()
+
     widget.close()
     application.processEvents()

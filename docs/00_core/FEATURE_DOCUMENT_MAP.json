@@ -835,7 +835,9 @@
         "tests/test_decision_outcome_journey.py",
         "tests/test_ui_qt_decision_outcome_journey.py",
         "tests/test_quanta_monthly_sales.py",
-        "tests/test_theme_stock_context_guard.py"
+        "tests/test_theme_stock_context_guard.py",
+        "tests/test_ui_qt_stock_research_evidence_summary.py",
+        "tests/test_ui_qt_stock_research_report.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -878,7 +880,9 @@
         "tests/test_ui_qt_decision_outcome_journey.py",
         "app_module/quanta_monthly_sales*.py",
         "tests/test_quanta_monthly_sales.py",
-        "tests/test_theme_stock_context_guard.py"
+        "tests/test_theme_stock_context_guard.py",
+        "tests/test_ui_qt_stock_research_evidence_summary.py",
+        "tests/test_ui_qt_stock_research_report.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

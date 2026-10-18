@@ -298,6 +298,8 @@ flowchart LR
 
 ### 5.4 後繼呈現與研究筆記
 
+回訪比較只投影已載入清單中的精確直接父子修訂；兩者須非同一修訂，且完整snapshot SHA與資料日一致。非模態視窗並列唯讀原文，保存時間各列原值；切換、刷新、背景忙碌或關閉清除舊比較。缺父版或身份不符不猜補，不新增來源讀取、Journal寫入、文字評分或績效／PIT資格。
+
 `theme_research_presentation`只選相關欄位覆蓋完整且值存在的題材，依精確Decimal／整數排序，穩定取前五；零與負值不丟棄。鏈目錄去重，跨題材重疊不加總為全市場績效。`IndustryThemeMapView`呈現四類觀察、排行、25鏈目錄及成員；Main沿既有ResearchStockContextDTO開一般個股並返回同一來源頁，不混合題材行情與一般價庫。
 
 `ThemeResearchNoteService`沿既有Journal的ACTION_NOTE追加修訂，保存原文、精確snapshot身份與獨立資料日tag；`created_at`為實際保存時鐘，決策日期及股票／推薦身份保持未知。每篇新筆記有獨立實體根，同快照可保存多篇；追加修訂沿原根，過時祖先仍由原Journal修訂鏈拒絕。讀歷史後以原history token提交，並行改動會拒絕過時保存。Widget背景保存固定送出時來源，回訪原文唯讀，再開來源須核原SHA；關閉時等待已送出的寫入完成，不能由全域取消丟棄。服務信任caller提供已由reader明選讀回的typed snapshot，不自行認證官方來源或磁碟防竄改。驗證狀態仍以本輪QA逐項為準。

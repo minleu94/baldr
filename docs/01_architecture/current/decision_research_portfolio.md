@@ -250,6 +250,8 @@ Increment59固定來源包為兩個既有策略的v2規則收據加三份raw sou
 
 ### 價格研究、個股與 Portfolio 跨頁接線
 
+後繼Source的個股首屏仍只投影既有report／context DTO：行情事實不被持倉摘要覆蓋；本次Rule沿原去除保存／歷史理由的規則呈現，保存Advice須明選並核同股及原日期。H20、自然結果及使用者判斷保持各自來源，不新建producer或授資格；筆記直接父子比較只讀已載入Journal投影，不改儲存／CAS。限定狀態見[題材研究QA](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
+
 持倉頁的手動帳列表獨立於下方進階證據splitter，直接接四張狀態卡／活躍摘要；原DTO、分帳、刷新與交易服務不改。進階切換主動刷新操作列方向，中等寬度保留直列避免裁字。價格研究增三步引導及名稱，UI parser在格式／重複守衛後把代碼集合排序才呼叫原query；不改catalog／strict source session／核心篩選／收藏契約，舊後端仍拒非canonical順序。個股漲跌沿原價差方向守衛，說明缺件不代表0。
 
 Increment71 的價格頁只在 UI 層清除既有篩選並對同一 exact read session 重查，不改來源、價格事實、query／comparison／bookmark DTO 或 PIT 資格。單檔收藏把比較選取留空，不把不足兩檔的籃子冒充比較。手動交易表單的代碼／名稱互補只讀本機公司名冊，唯一且精確匹配才自動填；不改 Portfolio 交易 writer。未連結保存 result 的手動持倉下鑽傳 `current_stock_research`，一般個股 reader 因而可讀目前行情與技術；已有 validated result 的持倉仍傳原保存 scope。回測頁只調 splitter 與選用查找呈現，原結果 reader／金融資料不重算。

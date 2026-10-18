@@ -55,6 +55,36 @@ Root已檢視原生Windows QPA背景圖；1280×760邏輯視窗在本機DPR1.5�
 
 ## 未完成與限制
 
+### 原D固定EXE技術出口（QA36b）
+
+本項解除原D「三筆明選對照、歷史原結果與新程序」尚無完整固定EXE技術證據的阻礙，不改原V1範圍。使用已驗移位的題材01隔離副本，固定來源仍為`f02b7ebded3044bba80cef91d4b46d9d7ab7711f`；EXE／模板／143／私人state不改。三筆exact run及原金融identity以本owner的`predecessor_d_existing_oracle_qa36.json`另存並核SHA，沒有重算或重存原研究。
+
+QA36首次停在結果頁可見性斷言；QA36a保持15秒等待仍FAIL。窄窗實際紀錄確認1280×760 Main的回測寬1096，正常單欄模式先顯示設定，必須按「查看實驗結果」。QA36b補這個正常UI動作，未移除可見性或放寬期限；兩次原FAIL、helper及收據保留。
+
+固定EXE Main43972→新程序41448通過：明選MA／W底／布林三個原保存run、2330共同419觀測日及2025-01-02～2026-09-23提交期間；逐一查看原規則，關閉／重開對照，歷史查找exact原結果，再回同一Registry開啟已讀對照。共同輸入SHA `bbbb583c2e222de064f329fe6f5fa310c72228866e70853e5b8ebf018992adee`；三筆原金融identity、研究原件清冊及Journal SHA均前後／新程序一致。網路／受保護根／策略執行或保存嘗試均0，產品模組全取固定包；Root已檢視對照渲染圖。
+
+結果`predecessor_d_frozen_main_qa36b/result.json` SHA `9cdf3e29a92c75739eaeec46f47496d89534aaaa887e29367460d2bf45f44a57`；閉鎖`single_owned_qa_45487ea608b34f05bc5e7c7f37ad820b/receipt.json` SHA `aedb0dd4440cb5911ccaf45dcd519990fd6f6978c381d8ae6ab6d257bdd08e22`。8GiB／12程序、三PID陣列空、handles關閉／mutex釋放、無強制清理。此為Qt操作的限定技術出口；原意圖不是成交，PIT及績效可評旗標仍false，真人D、Native及完整Gate仍待，不將技術通過作人工批准。
+
+### M3判斷回訪比較（Source，QA38／39）
+
+本葉片解除回訪須逐篇切換、憑記憶比較判斷的阻礙。重用Luna只改筆記widget及既有UI測試；直接父子版本同snapshot SHA／資料日才可並列，根筆記／缺父版／錯來源／錯日／自指拒讀；切換、刷新失敗、忙碌與關閉清掉舊內容。比較只投影已載入的原文，不新增IO或寫入；原Journal／CAS／保存契約保持。
+
+QA38 compile、105相關測試（含Workbench85）、validator25/0/4、mypy1076及Source正常Main29668→新程序32636通過。兩版原文與Journal SHA `a9f3458955a16358b8b467afe7c72fe5d0cc1d2e2cc901133af643f312198609`不變，無網路或保護根存取；結果SHA `3831794989496b32966e41c21e95194e59752fd56d9f9998d8a7f719addf8b4e`。Root檢圖發現請求800px實際撐到1022px，該組不證800px可用。完整SHA改放身份tooltip，正文短識別；QA39只重驗受改7項UI及compile，含8,000字原文、實際800px／雙欄各自捲動、完整SHA及零額外service呼叫，通過。改後正常Main幾何待下一整合組，不含於f02固定候選。
+
+QA39閉鎖`single_owned_qa_e03772a5fd1f4d66a509b73ec642bc1c/receipt.json` SHA `12d5f2f241756ba993ab1d7b930320cd3c56d98e39005b6f1b2bcd35ab6f32bd`；自然終態、三PID陣列空、process／Job handles閉、mutex釋放、無強制清理。原完整M3、固定EXE／真人接受仍分開，既有UI mypy ignore不證強型別。
+
+### M3個股首屏與回訪整合（Source，QA41／45a／47）
+
+本葉片解除首屏行情事實被持倉關係覆蓋、H5成熟狀態被誤作個股理由的阻礙。重用另一Luna只改個股view及新增定向測試；本次技術線索沿原去除保存／歷史理由的規則，明選保存推薦須同股票、loaded context identity及原決策日／資料日吻合才顯示支持與反對原句。無反證不代表支持，空風險不代表沒有風險；ML與自然結果不補空白。完整文字仍在tooltip及原分頁，載入／失敗／切換清舊。沒有新producer、DTO、評分或金融計算。
+
+Root以實際報告核對查詢日2026-10-19、行情／技術資料日2026-09-23，修正兩處把`as_of`稱作資料日的標籤。舊測試只更正一個標題期待，原日期2026-09-08及其他來源／PIT／期限斷言不變；原件SHA `6663ffe7d53e48fd317368966a1b4e92b035d66cf80860c3c9d80105ab4ffaf9`另存本task。新案例另外核對查詢與實際資料異日，不用改日期通過測試。
+
+QA41 compile及157項通過，既有鍵盤載入case在原2500ms FAIL。QA44定向12通過／同case FAIL，但observer因pytest模組名不同未捕獲狀態；QA45未執行，另存45a先完成不相依的正常Main／共同防線。45a的診斷temp父路徑錯導致13 setup ERROR，原件保留；QA46只修診斷路徑，原wait／期限不變，13項通過並實測鍵盤case2.359秒。Root再於測試等待迴圈補既有慣用1ms Python執行緒讓步，保持原2500ms及所有內容斷言；QA47相關個股模組70項通過，該case觀察0.079秒。這支持測試等待需公平讓步，不宣稱已證實先前每次逾時的唯一根因；產品載入／關閉邏輯未改，全部FAIL／ERROR與spec／log留存，不以重試抹去。
+
+QA45a已獨立通過validator25/0/4、mypy1076及Source Main33996→49660：筆記兩版精確原文、實際800×520、切換清舊、2330正常搜尋框／載入按鈕、9/23收盤2,500.00 TWD與原來源SHA、股摘要事實／保存推薦分層及新程序一致。Journal SHA仍為`a9f3458955a16358b8b467afe7c72fe5d0cc1d2e2cc901133af643f312198609`；網路／保護根嘗試0。結果`m3_notes_stock_main_qa41/result.json` SHA `a94814e9dfdc106622cbf583331c0fa9a3233e7ca1b44835dfc4e8a16493d2f0`，Root已檢圖。原一般價庫與來源缺件保留，未明選的保存判斷仍不可用；沒有通用一般個股筆記入口，不把題材筆記冒充完整M3。
+
+QA47觀察收據SHA `97135245b7d2e85937ad000bd4bbccf1c029fab0a616deff94e7334125558169`；最新閉鎖`single_owned_qa_c4582521992143e0a252261437841ad2/receipt.json` SHA `d9eee550ac5a834fa1d4df02bfa344d69bfb1f386a82affc491b0707768e0059`。自然終態、三PID陣列空、process／Job handles閉、mutex釋放、無強制清理。這批Source尚未含於f02固定候選，完整M3、同版EXE／Native／真人及原Gate保持分開。
+
 ### M4固定候選進度
 
 Source已提交`f02b7ebded3044bba80cef91d4b46d9d7ab7711f`。QA22 scoped文件檢查12 features／33 link sources通過；QA23只移除題材UI尾端空行並compile，沒有重跑未受影響旅程。QA24沿該commit的git archive建立固定EXE，SHA `d04ad3ff55ab526071f3133b9c8a8a4c9191583ba62ac29b844d91dad39faffb`；build結果SHA `a8e2713a0564cace3050fbee6265c2b2ef94a1300922a12b052e2332b9af0279`。建置成功不等於同版正常頁接受。
@@ -73,4 +103,4 @@ QA32固定EXE正常Main28556→9036通過：同一題材版本／2330一般行�
 
 重用Luna實作Workbench與單一新測試檔，另由既有Luna狹義唯讀複核，未改Main／DTO／金融來源。多檔預設未選、單檔相容；選第二檔沿同一原來源／日期context，刷新同源保留有效選擇，換日期／snapshot／逐列identity即清除，所有候選捷徑重核membership。QA30a：compile、112相關Qt測試（含既有Workbench85及9個新選取案例）、validator25/0/4、mypy1076通過；既有單檔斷言未修改。閉鎖收據`single_owned_qa_3bdc5e28e2834cf2a67e0f98e4d89c90/receipt.json` SHA `4493934fea6812238d20d7468004f1348920d66c61fc786e625adacffd34d3e0`，原始validator報告另存本task。這是合成候選的Qt／context技術驗證，不宣稱正式多股來源、同版EXE或真人接受；此葉片未含於f02固定候選，待下一次有意義的功能批次封裝。
 
-題材Source與本機固定候選旅程為PASS WITH KNOWN LIMITATIONS，這條M4交付出口已完成；M3首頁選取Source已驗但尚未封裝，完整通用研究閉環及其餘原UX清冊未關閉。前置原D的技術補驗與真人簽核分開；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。
+題材Source與本機固定候選旅程為PASS WITH KNOWN LIMITATIONS，這條M4交付出口已完成；M3首頁選取Source已驗但尚未封裝，完整通用研究閉環及其餘原UX清冊未關閉。前置原D技術出口已由QA36b補驗，真人簽核仍分開待；官方來源用途／精確可得性／歷史PIT／TPEx授權／真N／自然成熟不因本輪解除。沒有新增正式資料寫入、backfill、maintainer、push、發布或交易授權。

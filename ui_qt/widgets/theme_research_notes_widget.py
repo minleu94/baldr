@@ -10,6 +10,7 @@ from uuid import uuid4
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -110,6 +111,16 @@ class ThemeResearchNotesWidget(QWidget):
         note_actions.addWidget(self.revise_button)
         layout.addLayout(note_actions)
 
+        compare_actions = QHBoxLayout()
+        self.compare_previous_button = QPushButton("比較與前一版")
+        self.compare_previous_button.setObjectName("themeResearchNoteComparePrevious")
+        self.compare_previous_button.clicked.connect(self._compare_with_previous)
+        compare_actions.addWidget(self.compare_previous_button)
+        compare_actions.addStretch(1)
+        layout.addLayout(compare_actions)
+
+        self._build_comparison_dialog()
+
         saved_label = QLabel("已保存內容（唯讀）")
         saved_label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(saved_label)
@@ -147,6 +158,51 @@ class ThemeResearchNotesWidget(QWidget):
         layout.addWidget(self.status_label)
         self._update_controls()
 
+    def _build_comparison_dialog(self) -> None:
+        self.compare_dialog = QDialog(self, Qt.WindowType.Window)
+        self.compare_dialog.setObjectName("themeResearchNoteComparisonDialog")
+        self.compare_dialog.setWindowTitle("題材研究筆記｜與前一版比較")
+        self.compare_dialog.resize(800, 520)
+        dialog_layout = QVBoxLayout(self.compare_dialog)
+
+        explanation = QLabel(
+            "使用者研究判斷的保存原文對照；不代表績效、歷史 PIT 資格或交易判斷。"
+        )
+        explanation.setWordWrap(True)
+        explanation.setTextFormat(Qt.TextFormat.PlainText)
+        dialog_layout.addWidget(explanation)
+
+        columns = QHBoxLayout()
+        previous_column = QVBoxLayout()
+        self.comparison_previous_identity = QLabel("前一版：尚未載入")
+        self.comparison_previous_identity.setObjectName("themeResearchNotePreviousIdentity")
+        self.comparison_previous_identity.setWordWrap(True)
+        self.comparison_previous_identity.setTextFormat(Qt.TextFormat.PlainText)
+        previous_column.addWidget(self.comparison_previous_identity)
+        self.comparison_previous_text = QPlainTextEdit()
+        self.comparison_previous_text.setObjectName("themeResearchNotePreviousText")
+        self.comparison_previous_text.setReadOnly(True)
+        self.comparison_previous_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.comparison_previous_text.setMinimumWidth(280)
+        previous_column.addWidget(self.comparison_previous_text, 1)
+        columns.addLayout(previous_column, 1)
+
+        selected_column = QVBoxLayout()
+        self.comparison_selected_identity = QLabel("目前所選修訂：尚未載入")
+        self.comparison_selected_identity.setObjectName("themeResearchNoteSelectedIdentity")
+        self.comparison_selected_identity.setWordWrap(True)
+        self.comparison_selected_identity.setTextFormat(Qt.TextFormat.PlainText)
+        selected_column.addWidget(self.comparison_selected_identity)
+        self.comparison_selected_text = QPlainTextEdit()
+        self.comparison_selected_text.setObjectName("themeResearchNoteSelectedText")
+        self.comparison_selected_text.setReadOnly(True)
+        self.comparison_selected_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.comparison_selected_text.setMinimumWidth(280)
+        selected_column.addWidget(self.comparison_selected_text, 1)
+        columns.addLayout(selected_column, 1)
+        dialog_layout.addLayout(columns, 1)
+        self._clear_comparison(close_dialog=False)
+
     def set_snapshot(self, snapshot: ThemeResearchSnapshot | None) -> None:
         """切換目前來源，但不改綁既有草稿或已送出的保存工作。"""
 
@@ -155,6 +211,8 @@ class ThemeResearchNotesWidget(QWidget):
         previous_identity = _snapshot_identity(self._snapshot)
         self._snapshot = snapshot
         current_identity = _snapshot_identity(snapshot)
+        if previous_identity != current_identity:
+            self._clear_comparison()
         if snapshot is None:
             self.source_label.setText("目前題材來源：尚未載入；可讀取已保存筆記。")
         else:
@@ -190,6 +248,7 @@ class ThemeResearchNotesWidget(QWidget):
     def refresh_notes(self) -> None:
         """背景刷新已保存修訂清單；忙碌時排在目前工作之後。"""
 
+        self._clear_comparison()
         if self._shutdown:
             return
         if self.is_busy():
@@ -207,6 +266,7 @@ class ThemeResearchNotesWidget(QWidget):
         if self._shutdown:
             return
         self._shutdown = True
+        self._clear_comparison()
         worker = self._active_worker
         job = self._active_job
         if worker is not None and job is not None:
@@ -237,6 +297,7 @@ class ThemeResearchNotesWidget(QWidget):
     def _on_revision_selected(self, *_args: Any) -> None:
         if self._updating_revisions:
             return
+        self._clear_comparison()
         selected = self._selected_revision_id()
         if self._loaded_note is not None and self._loaded_note.revision_id != selected:
             self._loaded_note = None
@@ -257,6 +318,77 @@ class ThemeResearchNotesWidget(QWidget):
             revision_id,
             job={"kind": "read", "revision_id": revision_id},
         )
+
+    def _compare_with_previous(self) -> None:
+        if self.is_busy() or self._shutdown:
+            self._clear_comparison()
+            self._update_controls()
+            return
+        pair = self._comparison_pair()
+        if pair is None:
+            self._clear_comparison()
+            self._set_status("所選修訂沒有可核對的同來源、同資料日直接前版。")
+            self._update_controls()
+            return
+
+        previous, selected = pair
+        self.comparison_previous_identity.setText(_comparison_identity("前一版", previous))
+        self.comparison_previous_identity.setToolTip(
+            _comparison_identity_tooltip("前一版", previous)
+        )
+        self.comparison_selected_identity.setText(
+            _comparison_identity("目前所選修訂", selected)
+        )
+        self.comparison_selected_identity.setToolTip(
+            _comparison_identity_tooltip("目前所選修訂", selected)
+        )
+        self.comparison_previous_text.setPlainText(previous.text)
+        self.comparison_selected_text.setPlainText(selected.text)
+        self.compare_dialog.show()
+        self.compare_dialog.raise_()
+        self.compare_dialog.activateWindow()
+
+    def _comparison_pair(self) -> tuple[ThemeResearchNote, ThemeResearchNote] | None:
+        selected_id = self._selected_revision_id()
+        selected = self._notes_by_id.get(selected_id or "")
+        if not isinstance(selected, ThemeResearchNote):
+            return None
+        previous_id = selected.revision_of
+        if (
+            not isinstance(previous_id, str)
+            or not previous_id
+            or previous_id == selected.revision_id
+        ):
+            return None
+        previous = self._notes_by_id.get(previous_id)
+        if not isinstance(previous, ThemeResearchNote):
+            return None
+        source_identity = selected.snapshot_identity_sha256
+        if (
+            not isinstance(source_identity, str)
+            or not _SHA256_RE.fullmatch(source_identity)
+            or previous.snapshot_identity_sha256 != source_identity
+        ):
+            return None
+        if (
+            not isinstance(selected.data_date, str)
+            or not selected.data_date
+            or previous.data_date != selected.data_date
+        ):
+            return None
+        return previous, selected
+
+    def _clear_comparison(self, *, close_dialog: bool = True) -> None:
+        if hasattr(self, "comparison_previous_text"):
+            self.comparison_previous_text.clear()
+            self.comparison_selected_text.clear()
+            self.comparison_previous_identity.setText("前一版：尚未載入")
+            self.comparison_selected_identity.setText("目前所選修訂：尚未載入")
+            self.comparison_previous_identity.setToolTip("")
+            self.comparison_selected_identity.setToolTip("")
+        dialog = getattr(self, "compare_dialog", None)
+        if close_dialog and dialog is not None and dialog.isVisible():
+            dialog.close()
 
     def _open_selected_source(self) -> None:
         revision_id = self._selected_revision_id()
@@ -502,6 +634,7 @@ class ThemeResearchNotesWidget(QWidget):
         self._set_status("背景工作回傳了未識別的結果；請重新整理後再讀取。")
 
     def _apply_note_list(self, value: Any) -> None:
+        self._clear_comparison()
         if not isinstance(value, tuple) or any(not isinstance(item, ThemeResearchNote) for item in value):
             self._set_note_list_issue("筆記清單格式無法核對；既有內容沒有清除。")
             return
@@ -562,6 +695,7 @@ class ThemeResearchNotesWidget(QWidget):
         self._post_refresh_status = None
 
     def _set_note_list_issue(self, text: str) -> None:
+        self._clear_comparison()
         self._set_status_after_refresh_failure(text)
 
     def _update_controls(self) -> None:
@@ -600,6 +734,14 @@ class ThemeResearchNotesWidget(QWidget):
         )
         self.revise_button.setEnabled(can_revise)
         self.revisions.setEnabled(not self._shutdown and not busy and bool(self._notes_by_id))
+        can_compare = (
+            not self._shutdown
+            and not busy
+            and self._comparison_pair() is not None
+        )
+        self.compare_previous_button.setEnabled(can_compare)
+        if not can_compare:
+            self._clear_comparison()
 
     def closeEvent(self, event: Any) -> None:  # noqa: N802 - Qt覆寫
         self.shutdown()
@@ -624,6 +766,23 @@ def _snapshot_data_date(snapshot: ThemeResearchSnapshot | None) -> str | None:
 def _note_recorded_at(note: ThemeResearchNote) -> str:
     value = getattr(note, "recorded_at", "")
     return value if isinstance(value, str) and value else "未知"
+
+
+def _comparison_identity(label: str, note: ThemeResearchNote) -> str:
+    short_identity = f"{note.snapshot_identity_sha256[:16]}…"
+    return (
+        f"{label}｜修訂 ID：{note.revision_id}\n"
+        f"資料日：{note.data_date}｜實際保存時間：{_note_recorded_at(note)}\n"
+        f"來源 SHA-256：{short_identity}"
+    )
+
+
+def _comparison_identity_tooltip(label: str, note: ThemeResearchNote) -> str:
+    return (
+        f"{label}｜修訂 ID：{note.revision_id}\n"
+        f"資料日：{note.data_date}｜實際保存時間：{_note_recorded_at(note)}\n"
+        f"完整來源 SHA-256：{note.snapshot_identity_sha256}"
+    )
 
 
 def _snapshot_is_saveable(snapshot: ThemeResearchSnapshot | None) -> bool:

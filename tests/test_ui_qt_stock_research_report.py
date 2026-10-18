@@ -360,6 +360,8 @@ def _wait_for(view: StockResearchReportView, predicate, timeout_ms: int = 2500) 
         if predicate():
             return
         QTest.qWait(10)
+        # Give Python TaskWorker callbacks a scheduling turn without extending the deadline.
+        time.sleep(0.001)
     assert predicate()
 
 
@@ -1487,7 +1489,7 @@ def test_ml_panel_displays_integer_bp_h5_and_exact_current_scope() -> None:
         for group in view.findChildren(QGroupBox)
         if "Rule 證據" in group.title() or "已保存 Advice 原 Rule 理由" in group.title()
     }
-    assert "當下技術／Rule 證據（本次資料日期：2026-09-08）" in rule_group_titles
+    assert "當下技術／Rule 證據（本次查詢日：2026-09-08）" in rule_group_titles
     assert "已保存 Advice 原 Rule 理由（原決策日：2026-09-23）" in rule_group_titles
     view.close()
 

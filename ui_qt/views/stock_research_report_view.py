@@ -844,6 +844,21 @@ class StockResearchReportView(QWidget):
             "摘要只整理報告 DTO 已提供的證據；完整來源、代碼與歷史請開啟進階內容。"
         )
         layout.addWidget(self.summary_focus)
+        self.summary_saved_advice_label = QLabel("當時保存的推薦判斷：尚未載入。")
+        self.summary_saved_advice_label.setObjectName("stockResearchSavedAdviceSummary")
+        self.summary_saved_advice_label.setAccessibleName("當時保存的推薦判斷摘要")
+        self.summary_saved_advice_label.setWordWrap(True)
+        self.summary_saved_advice_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.summary_saved_advice_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.summary_saved_advice_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.summary_saved_advice_label.setMinimumSize(0, 0)
+        self.summary_saved_advice_label.setMaximumHeight(72)
+        self.summary_saved_advice_label.setToolTip("")
+        layout.addWidget(self.summary_saved_advice_label)
         self.personal_h20_price_chart_group = QGroupBox("原保存 H20 價格圖")
         self.personal_h20_price_chart_group.setObjectName("stockResearchPersonalH20PriceChart")
         h20_chart_layout = QVBoxLayout(self.personal_h20_price_chart_group)
@@ -1836,6 +1851,7 @@ class StockResearchReportView(QWidget):
     def _clear_loaded_report(self) -> None:
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
+        self._clear_saved_advice_summary()
         self._personal_h20_evidence = None
         self.clear_personal_h20_price_chart()
         self.personal_h20_label.setToolTip("")
@@ -1877,6 +1893,7 @@ class StockResearchReportView(QWidget):
         reason: str,
         next_step: str,
     ) -> None:
+        self._clear_saved_advice_summary()
         self.identity_label.setText(f"{code}｜尚無可用報告")
         self.personal_h20_label.setText("個人 H20 模型：目前無法核驗本股")
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
@@ -1896,6 +1913,7 @@ class StockResearchReportView(QWidget):
         reason: str,
         next_step: str,
     ) -> None:
+        self._clear_saved_advice_summary()
         data_date = _report_data_date(report)
         self.personal_h20_label.setText("個人 H20 模型：報告讀取失敗，未以舊預測代替本次核驗")
         self.query_as_of_label.setText(f"上次可用報告查詢日（as_of）：{report.as_of or '未知'}")
@@ -2122,6 +2140,7 @@ class StockResearchReportView(QWidget):
         )
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
+        self._clear_saved_advice_summary()
         self._loaded_report = report
         self._personal_h20_evidence = None
         self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
@@ -2199,6 +2218,7 @@ class StockResearchReportView(QWidget):
 
     def _render_product_summary(self, report: StockResearchReportDTO) -> None:
         """首屏同步來源可用性與操作；原始 pins 留於進階明細。"""
+        self._clear_saved_advice_summary()
         refusal = ""
         try:
             summary = build_stock_research_product_summary(
@@ -2221,16 +2241,41 @@ class StockResearchReportView(QWidget):
             self._personal_h20_evidence is not None
             and self._personal_h20_evidence.status == "available"
         )
+        evidence_text = _report_evidence_text(report)
+        if summary.holding_relation:
+            evidence_text += (
+                "\n持倉關係（獨立持倉欄位，非上述行情來源）："
+                + summary.holding_relation
+            )
+        context = self.context
+        if has_h20_estimate:
+            reasons = summary.reasons
+            reasons_title = "模型研究依據（H20）"
+        elif context is not None and context.ml_scope_mode == "current_stock_research":
+            current_reasons = _current_stock_research_rule_reasons(report)
+            reasons = current_reasons or ("目前沒有可追溯的當下技術線索。",)
+            reasons_title = (
+                f"本次技術線索（查詢日 {report.as_of or '未知'}；各欄資料日另列）"
+            )
+        else:
+            saved_advice, _status = self._bound_saved_advice(report)
+            selected_rules = (
+                report.advice.rule_reasons if saved_advice is not None else ()
+            )
+            reasons = selected_rules or (
+                "沒有可核對的已選保存推薦理由；不以其他來源代替。",
+            )
+            reasons_title = "當時保存的推薦判斷"
         self.summary_focus.set_summary(
             conclusion=summary.conclusion if has_h20_estimate else _report_conclusion(report),
-            reasons=summary.reasons if has_h20_estimate else (_report_pending_text(report),),
-            next_step=next_step, evidence=summary.holding_relation,
+            reasons=reasons,
+            next_step=next_step, evidence=evidence_text,
             change=_price_change_text(report.price_points),
             risk=summary.risks if has_h20_estimate else _report_risk_text(report),
             sufficiency="" if has_h20_estimate else _report_limitations_text(report),
-            reasons_title="研究理由" if has_h20_estimate else "待驗證條件",
+            reasons_title=reasons_title,
         )
-        self.summary_focus.evidence_label.setText("持倉關係：" + summary.holding_relation)
+        self._render_saved_advice_summary(report)
         states = list(summary.status_lines)
         if refusal:
             states[2] = "模型可用性：H20 與所選保存來源不一致；這份估計不可使用。"
@@ -2242,6 +2287,92 @@ class StockResearchReportView(QWidget):
         self.summary_limitations_detail_label.setText(
             details + ("\n\n" + historical if historical else "")
         )
+
+    def _bound_saved_advice(self, report: StockResearchReportDTO) -> tuple[Any | None, str]:
+        """只回傳明選、同股、同來源且原日期吻合的保存 Advice。"""
+
+        context = self.context
+        if context is None or not str(context.result_id or "").strip():
+            return None, "not_selected"
+        recommendation = report.advice.recommendation
+        if (
+            context.stock_code.strip() != report.stock_code.strip()
+            or recommendation is None
+            or recommendation.stock_code.strip() != report.stock_code.strip()
+        ):
+            return None, "stock_mismatch"
+        if (
+            self._loaded_context_identity is None
+            or self._loaded_context_identity
+            != self._context_identity(context, report.stock_code)
+        ):
+            return None, "source_mismatch"
+        if (
+            not context.decision_date
+            or not context.data_date
+            or not recommendation.decision_date
+            or not recommendation.data_as_of_date
+            or recommendation.decision_date != context.decision_date
+            or recommendation.data_as_of_date != context.data_date
+        ):
+            return None, "date_mismatch"
+        return recommendation, "bound"
+
+    @staticmethod
+    def _summary_reason_excerpt(reason: str, *, limit: int = 52) -> str:
+        return reason if len(reason) <= limit else reason[:limit].rstrip() + "…"
+
+    def _render_saved_advice_summary(self, report: StockResearchReportDTO) -> None:
+        recommendation, status = self._bound_saved_advice(report)
+        label = self.summary_saved_advice_label
+        if recommendation is None:
+            if status == "not_selected":
+                text = (
+                    "當時保存的推薦判斷：尚未明確選取保存來源；"
+                    "不以本次技術線索或 ML 補入。"
+                )
+                tooltip = text
+            else:
+                text = (
+                    "當時保存的推薦判斷：無法核對目前股票、來源或原決策日／資料日；"
+                    "理由不顯示。"
+                )
+                tooltip = text
+            label.setText(text)
+            label.setToolTip(tooltip)
+            return
+
+        positive = tuple(reason for reason in recommendation.why_reasons if reason.strip())
+        negative = tuple(reason for reason in recommendation.why_not_reasons if reason.strip())
+        positive_excerpt = (
+            self._summary_reason_excerpt(positive[0]) if positive else "未提供"
+        )
+        negative_excerpt = (
+            self._summary_reason_excerpt(negative[0])
+            if negative
+            else "未提供反對理由；缺少反對證據不代表支持。"
+        )
+        text = (
+            f"當時保存的推薦判斷（決策日 {recommendation.decision_date}｜"
+            f"資料日 {recommendation.data_as_of_date}）\n"
+            f"支持理由：{positive_excerpt}\n反對／限制：{negative_excerpt}"
+        )
+        tooltip = (
+            f"當時保存的推薦判斷（決策日 {recommendation.decision_date}｜"
+            f"資料日 {recommendation.data_as_of_date}）\n"
+            f"支持理由：{'；'.join(positive) if positive else '未提供'}\n"
+            f"反對／限制：{'；'.join(negative) if negative else '未提供；缺少反對證據不代表支持。'}\n"
+            f"風險：{'；'.join(recommendation.risk_reasons) if recommendation.risk_reasons else '未提供'}\n"
+            f"失效條件：{'；'.join(recommendation.invalidation_conditions) if recommendation.invalidation_conditions else '未提供'}"
+        )
+        label.setText(text)
+        label.setToolTip(tooltip)
+
+    def _clear_saved_advice_summary(self) -> None:
+        label = getattr(self, "summary_saved_advice_label", None)
+        if label is not None:
+            label.setText("")
+            label.setToolTip("")
 
     def set_personal_h20_evidence(self, evidence: object) -> None:
         from app_module.recommendation.personal_h20_product_evidence import (
@@ -3648,24 +3779,9 @@ class StockResearchReportView(QWidget):
         rule_layout = QVBoxLayout(rule_group)
         context = self.context
         if context is not None and context.ml_scope_mode == "current_stock_research":
-            saved_rule_reasons = set(report.advice.rule_reasons)
-            historical_rule_reasons = {
-                reason
-                for event in report.events
-                for reason in (
-                    *event.reasons,
-                    *event.why_not_reasons,
-                    *event.risk_reasons,
-                )
-            }
-            current_rule_reasons = tuple(
-                reason
-                for reason in report.rule_reasons
-                if reason not in saved_rule_reasons
-                and reason not in historical_rule_reasons
-            )
+            current_rule_reasons = _current_stock_research_rule_reasons(report)
             rule_group.setTitle(
-                f"當下技術／Rule 證據（本次資料日期：{report.as_of or '未知'}）"
+                f"當下技術／Rule 證據（本次查詢日：{report.as_of or '未知'}）"
             )
             rule_layout.addWidget(
                 self._wrapped_label(
@@ -4796,6 +4912,27 @@ def _report_data_date(report: StockResearchReportDTO) -> str:
         if section.data_as_of:
             return str(section.data_as_of)
     return str(report.as_of or "未知")
+
+
+def _current_stock_research_rule_reasons(
+    report: StockResearchReportDTO,
+) -> tuple[str, ...]:
+    """Return current Rule clues after removing saved and historical reasons."""
+
+    saved_rule_reasons = set(report.advice.rule_reasons)
+    historical_rule_reasons = {
+        reason
+        for event in report.events
+        for reason in (*event.reasons, *event.why_not_reasons, *event.risk_reasons)
+    }
+    return tuple(
+        dict.fromkeys(
+            reason
+            for reason in report.rule_reasons
+            if reason not in saved_rule_reasons
+            and reason not in historical_rule_reasons
+        )
+    )
 
 
 def _context_trace_text(

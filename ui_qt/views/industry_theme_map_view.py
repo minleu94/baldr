@@ -13,8 +13,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -228,18 +230,70 @@ class IndustryThemeMapView(QWidget):
         content_layout.addWidget(self.source_details_button)
         content_layout.addWidget(self.summary_group)
 
-        self.filter_group = QGroupBox("選擇產業鏈與題材")
-        filter_layout = QHBoxLayout(self.filter_group)
+        self.filter_group = QGroupBox("選擇產業鏈、題材與股票")
+        filter_layout = QVBoxLayout(self.filter_group)
+        selector_layout = QHBoxLayout()
         self.chain_filter = QComboBox()
         self.chain_filter.setAccessibleName("產業鏈篩選")
         self.chain_filter.currentIndexChanged.connect(self._on_chain_changed)
         self.theme_filter = QComboBox()
         self.theme_filter.setAccessibleName("題材篩選")
         self.theme_filter.currentIndexChanged.connect(self._on_theme_changed)
-        filter_layout.addWidget(QLabel("產業鏈"))
-        filter_layout.addWidget(self.chain_filter, 1)
-        filter_layout.addWidget(QLabel("題材"))
-        filter_layout.addWidget(self.theme_filter, 2)
+        self.chain_filter.setMinimumWidth(0)
+        self.theme_filter.setMinimumWidth(0)
+        selector_layout.addWidget(QLabel("產業鏈"))
+        selector_layout.addWidget(self.chain_filter, 1)
+        selector_layout.addWidget(QLabel("題材"))
+        selector_layout.addWidget(self.theme_filter, 2)
+        filter_layout.addLayout(selector_layout)
+
+        lookup_layout = QHBoxLayout()
+        lookup_layout.addWidget(QLabel("股票反查"))
+        self.stock_lookup_input = QLineEdit()
+        self.stock_lookup_input.setObjectName("industryThemeStockLookupInput")
+        self.stock_lookup_input.setAccessibleName("股票代號或名稱搜尋")
+        self.stock_lookup_input.setPlaceholderText("完整四碼代號或公司名稱片段")
+        self.stock_lookup_input.setMinimumWidth(0)
+        self.stock_lookup_input.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        self.stock_lookup_input.textChanged.connect(self._search_stock_lookup)
+        lookup_layout.addWidget(self.stock_lookup_input, 2)
+
+        self.stock_lookup_results = QComboBox()
+        self.stock_lookup_results.setObjectName("industryThemeStockLookupResults")
+        self.stock_lookup_results.setAccessibleName("明選股票反查結果與題材")
+        self.stock_lookup_results.setMinimumWidth(0)
+        self.stock_lookup_results.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        self.stock_lookup_results.addItem("請輸入代號或名稱", None)
+        self.stock_lookup_results.currentIndexChanged.connect(
+            self._on_stock_lookup_result_changed
+        )
+        lookup_layout.addWidget(self.stock_lookup_results, 3)
+
+        self.stock_lookup_locate_button = QPushButton("定位所選股票")
+        self.stock_lookup_locate_button.setObjectName(
+            "industryThemeStockLookupLocateButton"
+        )
+        self.stock_lookup_locate_button.setAccessibleName("定位明選股票題材與成員")
+        self.stock_lookup_locate_button.clicked.connect(
+            self._locate_selected_stock_lookup_result
+        )
+        lookup_layout.addWidget(self.stock_lookup_locate_button)
+        filter_layout.addLayout(lookup_layout)
+
+        self.stock_lookup_status_label = QLabel(
+            "尚未載入版本；請先選取本機研究版本。"
+        )
+        self.stock_lookup_status_label.setObjectName(
+            "industryThemeStockLookupStatus"
+        )
+        self.stock_lookup_status_label.setAccessibleName("股票反查狀態")
+        self.stock_lookup_status_label.setWordWrap(True)
+        self.stock_lookup_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        filter_layout.addWidget(self.stock_lookup_status_label)
         content_layout.addWidget(self.filter_group)
 
         self.metrics_group = QGroupBox("題材指標與欄位覆蓋")
@@ -620,6 +674,7 @@ class IndustryThemeMapView(QWidget):
         self.source_details_button.setText("顯示來源與限制")
         self.metrics_table.setRowCount(0)
         self.member_table.setRowCount(0)
+        self._clear_stock_lookup()
         for key in self.leader_card_topics:
             self.leader_card_topics[key].setText("尚未載入")
             self.leader_card_values[key].setText("資料不足")
@@ -636,6 +691,193 @@ class IndustryThemeMapView(QWidget):
         del blockers
         self.scroll_area.verticalScrollBar().setValue(0)
         self.scroll_area.horizontalScrollBar().setValue(0)
+
+    def _clear_stock_lookup(self) -> None:
+        input_blocker = QSignalBlocker(self.stock_lookup_input)
+        self.stock_lookup_input.clear()
+        del input_blocker
+        result_blocker = QSignalBlocker(self.stock_lookup_results)
+        self.stock_lookup_results.clear()
+        self.stock_lookup_results.addItem("請輸入代號或名稱", None)
+        del result_blocker
+        if self._closed:
+            message = "頁面已關閉；股票反查已停用。"
+        elif self._busy:
+            message = "版本讀取中；舊搜尋結果已清除。"
+        elif self._snapshot is None:
+            message = "尚未載入版本；請先選取本機研究版本。"
+        else:
+            message = "已載入本機版本；代號需完整四碼，名稱可輸入片段。"
+        self.stock_lookup_status_label.setText(message)
+
+    @staticmethod
+    def _stock_lookup_selection(value: object) -> tuple[str, str, str, str] | None:
+        if not isinstance(value, (tuple, list)) or len(value) != 4:
+            return None
+        if any(type(item) is not str for item in value):
+            return None
+        return (value[0], value[1], value[2], value[3])
+
+    @Slot(str)
+    def _search_stock_lookup(self, query: str) -> None:
+        blocker = QSignalBlocker(self.stock_lookup_results)
+        self.stock_lookup_results.clear()
+        self.stock_lookup_results.addItem("請明選一筆搜尋結果", None)
+        del blocker
+
+        if self._closed:
+            self.stock_lookup_status_label.setText("頁面已關閉；股票反查已停用。")
+            self._update_controls()
+            return
+        if self._busy:
+            self.stock_lookup_status_label.setText("版本讀取中；股票反查暫停。")
+            self._update_controls()
+            return
+        snapshot = self._snapshot
+        if snapshot is None:
+            self.stock_lookup_status_label.setText("請先選取本機研究版本。")
+            self._update_controls()
+            return
+
+        normalized = query.strip()
+        if not normalized:
+            self.stock_lookup_status_label.setText(
+                "請輸入完整四碼代號，或輸入公司名稱片段。"
+            )
+            self._update_controls()
+            return
+
+        mapping_items = sorted(
+            self._mapping_by_theme_stock.items(),
+            key=lambda item: (
+                item[0][2],
+                item[0][0].casefold(),
+                item[0][1].casefold(),
+            ),
+        )
+        if normalized.isnumeric():
+            if not normalized.isascii() or not normalized.isdigit() or len(normalized) != 4:
+                self.stock_lookup_status_label.setText(
+                    "股票代號請輸入完整四碼半形數字；不做代號模糊比對。"
+                )
+                self._update_controls()
+                return
+            matches = [
+                (key, mapping_row)
+                for key, mapping_row in mapping_items
+                if key[2] == normalized
+            ]
+        else:
+            needle = normalized.casefold()
+            matches = []
+            for key, mapping_row in mapping_items:
+                name = getattr(mapping_row, "stock_name", None)
+                if type(name) is str and name.strip() and needle in name.casefold():
+                    matches.append((key, mapping_row))
+
+        if not matches:
+            self.stock_lookup_status_label.setText(
+                "沒有符合的本機映射；請確認代號完整或改用名稱片段。"
+            )
+            self._update_controls()
+            return
+
+        for key, mapping_row in matches:
+            chain_name, theme_name, stock_id = key
+            stock_name = self._mapping_text(mapping_row, "stock_name")
+            chain_tier = self._mapping_text(mapping_row, "chain_tier")
+            label = (
+                f"{stock_id}｜{stock_name}｜{chain_name}／{theme_name}｜{chain_tier}"
+            )
+            self.stock_lookup_results.addItem(
+                label,
+                (snapshot.identity_sha256, stock_id, chain_name, theme_name),
+            )
+        self.stock_lookup_status_label.setText(
+            f"找到 {len(matches)} 筆本機映射；請明選股票及其產業鏈／題材。"
+        )
+        self._update_controls()
+
+    @Slot(int)
+    def _on_stock_lookup_result_changed(self, _index: int) -> None:
+        selected = self._stock_lookup_selection(
+            self.stock_lookup_results.currentData(Qt.ItemDataRole.UserRole)
+        )
+        snapshot = self._snapshot
+        if selected is not None and snapshot is not None:
+            if selected[0] != snapshot.identity_sha256:
+                self.stock_lookup_status_label.setText(
+                    "所選搜尋結果屬於其他版本；請重新搜尋。"
+                )
+            else:
+                self.stock_lookup_status_label.setText(
+                    "已明選一筆股票／題材；按「定位所選股票」查看成員。"
+                )
+        self._update_controls()
+
+    @Slot()
+    def _locate_selected_stock_lookup_result(self) -> None:
+        snapshot = self._snapshot
+        if self._closed or self._busy or snapshot is None:
+            return
+        selected = self._stock_lookup_selection(
+            self.stock_lookup_results.currentData(Qt.ItemDataRole.UserRole)
+        )
+        if selected is None:
+            self.stock_lookup_status_label.setText("請先明確選擇一筆股票反查結果。")
+            self._update_controls()
+            return
+        identity, stock_id, chain_name, theme_name = selected
+        if identity != snapshot.identity_sha256:
+            self.stock_lookup_status_label.setText(
+                "所選搜尋結果屬於其他版本；沒有定位，請重新搜尋。"
+            )
+            return
+        if (chain_name, theme_name, stock_id) not in self._mapping_by_theme_stock:
+            self.stock_lookup_status_label.setText(
+                "所選結果不在目前版本映射中；沒有定位，請重新搜尋。"
+            )
+            return
+
+        chain_index = self.chain_filter.findData(chain_name)
+        if chain_index < 0:
+            self.stock_lookup_status_label.setText(
+                "目前版本找不到所選產業鏈；沒有定位。"
+            )
+            return
+        self.chain_filter.setCurrentIndex(chain_index)
+        theme_index = self.theme_filter.findText(theme_name)
+        if theme_index < 0:
+            self.stock_lookup_status_label.setText(
+                "目前版本找不到所選題材；沒有定位。"
+            )
+            return
+        self.theme_filter.setCurrentIndex(theme_index)
+
+        identifier_item = next(
+            (
+                self.member_table.item(row, 0)
+                for row in range(self.member_table.rowCount())
+                if self.member_table.item(row, 0) is not None
+                and self.member_table.item(row, 0).text() == stock_id
+            ),
+            None,
+        )
+        if identifier_item is None:
+            self.stock_lookup_status_label.setText(
+                "所選股票不在該題材成員表；沒有定位。"
+            )
+            return
+        self.scroll_area.ensureWidgetVisible(self.members_group, 0, 0)
+        self.member_table.setCurrentItem(identifier_item)
+        self.member_table.selectRow(identifier_item.row())
+        self.member_table.scrollToItem(
+            identifier_item, QAbstractItemView.ScrollHint.PositionAtCenter
+        )
+        self.scroll_area.ensureWidgetVisible(self.member_table, 0, 0)
+        self.stock_lookup_status_label.setText(
+            f"已定位 {stock_id}｜{chain_name}／{theme_name}；雙擊成員列可開啟個股。"
+        )
 
     def _populate_theme_filter(self) -> None:
         presentation = self._presentation
@@ -953,6 +1195,7 @@ class IndustryThemeMapView(QWidget):
 
     def _update_controls(self) -> None:
         available = self._snapshot is not None and not self._closed
+        lookup_available = available and not self._busy
         self.open_snapshot_button.setEnabled(not self._busy and not self._closed)
         self.ranking_type_combo.setEnabled(available and not self._busy)
         self.ranking_table.setEnabled(available and not self._busy)
@@ -960,3 +1203,34 @@ class IndustryThemeMapView(QWidget):
         self.theme_filter.setEnabled(available and not self._busy)
         self.metrics_table.setEnabled(available and not self._busy)
         self.member_table.setEnabled(available and not self._busy)
+        self.stock_lookup_input.setEnabled(lookup_available)
+        self.stock_lookup_results.setEnabled(
+            lookup_available and self.stock_lookup_results.count() > 1
+        )
+        self.stock_lookup_locate_button.setEnabled(
+            lookup_available
+            and self._stock_lookup_selection(
+                self.stock_lookup_results.currentData(Qt.ItemDataRole.UserRole)
+            )
+            is not None
+        )
+        if self._closed:
+            self.stock_lookup_status_label.setText(
+                "頁面已關閉；股票反查已停用。"
+            )
+        elif self._busy:
+            self.stock_lookup_status_label.setText(
+                "版本讀取中；舊搜尋結果已清除，反查暫停。"
+            )
+        elif self._snapshot is None:
+            self.stock_lookup_status_label.setText(
+                "尚未載入版本；請先選取本機研究版本。"
+            )
+        elif (
+            not self.stock_lookup_input.text().strip()
+            and self.stock_lookup_results.count() == 1
+            and "讀取中" in self.stock_lookup_status_label.text()
+        ):
+            self.stock_lookup_status_label.setText(
+                "已載入本機版本；代號需完整四碼，名稱可輸入片段。"
+            )

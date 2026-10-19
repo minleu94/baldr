@@ -275,3 +275,14 @@ QA129完整新位置含空白路徑首次設定494.781秒／原600秒通過，fr
 QA131啟動器正例exit0／錯EXE SHA反例exit2，state原文不變；封存TEMPLATE_FILES及DELIVERY_RECEIPT。首次設定後只補指南的實際捲動步驟與期限缺件，原／新文件SHA另列documentation_revisions_after_setup，沒有重驗未變EXE／資產或覆寫原QA指南。04 EXE SHA `0d87d296e1a0519372222d0e3222e4bf5df170ff7a09af4c642fc1dbab724e2d`，manifest `7bd885449d9e2ddbfaa02e2459cddd7bae5d7a35a19cd02be9f50721ecb38094`，交付 `ba2f1417e0f9284c4bfbe83de67675e99eb734a3b2a11ee446c3278dcc15bca7`。完整P00–P14等、自然Paper／forward、PIT／真N／官方權威／真人／跨機仍各自未接受；03／02／01／143／139／141c及私人原件保持。
 
 所有Root串行Job仍8GiB／12程序／kill-on-close／workspace mutex／RAM至少8GiB；各組三PID空、handles閉、mutex釋放且無強制回收。129／130／130a／130b／131閉鎖SHA分別 `83a549c0a339559dd4d8038c8e06109ae436b745ce59acc62dfdc2eb5705d7b4`、`501caa0e3408dc1e6144eb3e769765f67544a13636455c546d6f369d18d73d74`、`dd4311a005ec0b7b7e8490f86899afe5c6b020447ba0f3864333202bdaf301da`、`76288c4998af1b239713b75d9ce65f3fed21e0c2ab79291ecbff8ae1febebd71`、`d06a061c49934df4fb38400684e213526047d36695a0ca11ffeb5bf6aa421c9b`。具名spec／commands／raw/screens均保存在同owner task，舊原件不覆寫。
+
+<a id="題材股票反查qa133134"></a>
+## 題材股票反查（QA133–134）
+
+本葉片解除原L2研究頁「已有股票卻只能逐鏈／題材翻找」的操作阻礙，只用已載入snapshot.mapping，不改金融公式、來源、public DTO／signal、Main或保存。完整四碼精確代號／名稱片段列出所有匹配鏈題材與同名股，不預選；定位前核snapshot identity、原鏈題材與成員代號。換版本／失敗／取消／關閉清舊命中，不用舊選項定位新版本。Root凍結API、Luna單寫View及新test，另一既有Luna有限靜態複核未見重大回歸；累計10/10沒有新建，workers無Python／QA／network。
+
+QA133 context L3對View仍標headings_only／Unknown；Root另讀指定symbols／diff／test，不宣稱全檔EOF。編譯、20受改與原導航、Workbench85、validator25/0/4、mypy8套件1081通過。UI既有ignore不證強型別；窄頁只驗縮放／可捲控制，未授其他DPI或Native。spec SHA `fcac0a699a207562f65de9ad5b36a957c00e4220cadd0754f1372eb002fe105d`，閉鎖SHA `f279dcb63cfb7d51d0c6e53da5b87e754033900fa83848672b4b2135c8fa7a88`。
+
+QA134正常Source Main7516→10040使用既有10/16真manifest（identity `75f97365b03adf2d84efaad03250dc2510ba2eb8517b3212ea2c20166060ed7a`），首程序代號2330、新程序名稱台積皆列三題材；明選半導體／光罩後原成員列實際可見，雙擊到原個股context並返回同版本。真reader重載中關閉，舊反查立即清除、合作等待且晚到結果不復活；watchlist SHA一致、Journal未建立，network／protected／Qt errors0。Root檢視1280定位截圖。原15秒／每程序120秒不變，未重跑未改筆記或回測。spec SHA `f97601ff21246f50aae2b92962fb62a74e5405c24aced8b5ce5d412046cd0598`，閉鎖SHA `5ea124bab41ba33f88b0f914b2bad5bac0077ebf52a7a2e20b1e5ff1f7264056`；三PID空／handles閉／mutex釋放且無強制回收。
+
+此為Source技術出口，固定04不改也尚未收入本葉片；查到映射不授來源權威、歷史PIT、完整法人或合格日曆。整體原Gate、真人／Native與自然成熟分項保持；沒有為此另立總計畫或擴第一版範圍。

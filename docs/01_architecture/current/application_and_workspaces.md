@@ -119,3 +119,5 @@ Main的日曆接受配置沿原`ApplicationSettings`→BacktestView→result_pan
 - 舊相容錨點 `system_architecture.md#4-daily-decision-desk` 仍由目前架構首頁導向本節。
 
 P02補完候選在推薦結果來源分頁新增「官方條件與價格研究」，保留既有官方市場條件頁與V1收藏。新頁使用同一sealed V3 group的四組與價格facts，價格作共通AND、全域排序後分頁；Main按V1/V2 typed envelope選相對應的Watchlist writer／reader與頁面，拒絕restore時保持目前workspace。指定合成257股／雙parent的Main父→新PID已有限驗證，來源／歷史PIT／真N／Native／EXE及完整Gate另判。操作見[官方條件與價格研究](../../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#官方條件與價格研究)，證據見[本輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
+
+題材頁後續Source的股票反查只使用已讀snapshot.mapping與既有成員索引；選項攜snapshot identity／股票／鏈／題材，定位核同版本及成員代號後沿原stockSelected。公開signal、DTO、Main與reader不改；不新增來源查詢或跨版本快取。

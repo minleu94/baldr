@@ -99,7 +99,8 @@
         "tests/test_theme_research_presentation.py",
         "tests/test_theme_research_notes.py",
         "tests/test_ui_qt_theme_research_notes_widget.py",
-        "tests/test_theme_stock_context_guard.py"
+        "tests/test_theme_stock_context_guard.py",
+        "tests/test_ui_qt_industry_theme_stock_lookup.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -152,7 +153,8 @@
         "tests/test_theme_research_presentation.py",
         "tests/test_theme_research_notes.py",
         "tests/test_ui_qt_theme_research_notes_widget.py",
-        "tests/test_theme_stock_context_guard.py"
+        "tests/test_theme_stock_context_guard.py",
+        "tests/test_ui_qt_industry_theme_stock_lookup.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

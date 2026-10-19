@@ -325,3 +325,17 @@ QA145編譯、27定向／跨頁PASS、1既有real scheduled Qt opt-in未啟用�
 Evidence DB `eeea9a1a4bbf119bda97465d87e7a9e3b0c1268ffec2f1f9fd9a03248125ddc4`，最終結果 `ce648fbbd0de93e98d787b3316c9eeca335b5275af1cdcb55a934606ccb62946`。145a spec `4bf8a8fac157d6e4d573afa77e3ad5433ba44bdc99326b916b5e038b17745ffe`，146b spec `b69b8a13b6fe34adc5d0b9850d6b8afcaa4c12ea2378f279427c623e321c5c04`。145／146原FAIL／146a／145a／146b閉鎖SHA分別 `27fbfb07bbd6b1927f3d66426f433b76d126bcf98129058b4c33f3f6f95dada7`、`a599be55916ea1a70501c90b49f3355a6204ccfe4c0f2f6036e1f51e6a6f6a75`、`31ef50ac2a913c05c21a1680b99ec7ed5236ec5df6121b7cebfd40efdbf0411d`、`b5173fe0c64e85b193350130b4ea74880ef4108d5687301f4e57c7050bbe6a93`、`05fa20e8dcb126a6e2dfe9bcf7b3202cfcf7fbde150ae508b9f043e22b68ec77`。
 
 Root串行8GiB／12程序／kill-on-close／mutex／RAM至少8GiB，各組三PID空／handles閉／mutex釋放且無強制回收。context仍有headings_only Unknown，Root另讀symbols/diff/tests；mypy的UI ignore不證強型別。固定05尚未含本葉片，原143／139與私人state保持。只接受本機Source受改顯示，不授正式成熟、金融用途、歷史PIT、自然管線／完整Gate或Native／真人。
+
+<a id="固定06首屏與期限交付qa148152"></a>
+## 固定06首屏與期限交付（QA148–152）
+
+交付阻礙：已驗首屏與期限顯示Source尚未進可試用EXE。本輪合批封裝兩項，未重跑未改筆記、題材及日常旅程。固定來源`7fbe586705820ed005705b45de7b821737b9b693`，EXE `0c52da0d95982b4af7bafc769afad5609e79332657eaa393b2d3d08df00d6528`，manifest `a94ce98cc5f81e3d46c1503584397fe86d6f906b445ff3a15eec93c90bc35a84`，交付收據`b4b734e484770820faaaf141614211776e0be0ce698a3db0bd8031270a7cec72`。包位於`output/trial/Baldr-Theme-Research-06`，啟動方式與五條範圍見[現行指南](../07_guides/TRIAL_VERSION_GUIDE.md)。
+
+- QA148原1000秒建置及149組包通過；保留原141c資產、自有task具名名冊與127明選示範來源，不混入後續F07 WIP。具名名冊沿`trial03_display_roster_qa96/receipt.json`。私有Journal／每日Task status未帶入。
+- QA150整包移到新含空白路徑，以同版EXE首次設定525.141秒／原600秒通過。config、原件、月營收325300／423971／184109／-23.3／76.7及凍結模組來源核對；無舊trial／正式根存取或網路。結果SHA `11c6210de16e9220cc6ec022f3131a1fe38853a39f40925ed870ab57eb6b608a`。
+- QA151同版正常Main29824→新程序24664通過。在1280×760、結果欄721px，原1512／1236／1452／1526／1466五列完整垂直可見且選列CTA位於首屏；不是先resize或reveal表格後冒稱首屏。原09/10的1538與09/14的1528經正常入口逐一核八期限原狀態／日期／完整tooltip、共同限制與各期差異首句及返回。原DB／Evidence／清單SHA保持，Journal未建立，網路／保護根／Qt錯誤為0；所有產品模組來自本版`_internal`。Root檢視首屏及1538截圖。結果SHA `63d9abc98463560a1a803bdcf6241e4e861ba28489a8e8e181d2b3bf3e670671`。
+- QA152啟動器正向0／錯SHA反向2、模板inventory、指南修訂SHA與封存通過。指南149原件保留，另存152後補實測範圍；只更新新包文件。題材反查沿05、保存推薦筆記沿04、一般完整報告與其他未改旅程沿03等原證據，本次沒有再次接受這些旅程。新五股缺原期限連結，仍不借1538／1528結果。
+
+串行閉鎖收據SHA：148 `433fa6ca1a387f8d1f3f5a585e14db27978c5a138809ea083e5691af2fc1e852`；149 `1c4c325a3768665a6345a3a4d15e62d382d9639fe173ae26812ef9e73f3c4f39`；150 `9ca4c332b0b31aa7a4c07136c91bfd88648b2e43b0041c062611995947d981e4`；151 `7bf0b5c9cf46515df8a612073afff7db2cca2cc289adcd57b4dc05bef494c6da`；152 `78c1d34a074bf4cea617f00af70d4de1cb4a1ef5dea7ac77e917668b6bb81cfe`。各組三PID空、process／Job handles閉、mutex釋放，8GiB／12程序／RAM至少8GiB及原時限保持，未依賴強制回收。
+
+只接受這次固定EXE受改頁與本機新位置設定。Source窄窗證據不當06 EXE窄窗接受；2382半年財報、來源用途、TPEx、歷史PIT、真N、正式日曆、自然成熟、完整雙策略績效、F07原240秒完整旅程、私人state／跨機／其他DPI、真人D與完整Native仍分項保留。封存05／04／03／143／139／141c與私人原件不改。正常額度週用量耗盡後沿使用者明示授權使用既定credit上限，沒有購買／重置或啟用付費API。

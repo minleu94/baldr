@@ -1,5 +1,7 @@
 # 目前指定的本機日常研究入口
-**最新可試用：研究05，固定來源 `34b8e8d5402b`。** [啟動器](../../output/trial/Baldr-Theme-Research-05/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-05/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-05/KNOWN_ISSUES.md)。新增題材頁「股票反查」：先載入包內10/16版本，輸入2330或台積，明選一個鏈／題材，按「定位所選股票」再雙擊原成員進個股，返回保留原版本。首次設定542.171秒／600，同版EXE21696→38288、重載中關閉／新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-05/DELIVERY_RECEIPT.json)。原保存推薦／雙股Journal沿04證據，其他未改旅程沿03等證據。模板無私人state或每日Task status；缺行情、期限衝突／未知仍不可作績效，Native、真人、PIT與完整Gate分開。後續推薦首屏排版Source不在05內。
+**最新可試用：研究06，固定來源 `7fbe58670582`。** [啟動器](../../output/trial/Baldr-Theme-Research-06/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-06/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-06/KNOWN_ISSUES.md)。本版把原保存推薦的五股與「查看個股研究」放進1280×760首屏，期限表把共同來源限制集中，各列先顯示缺價／已有計畫日價格／等待目標日。先放妥完整資料夾，再沿啟動器建立自己的新state。首次設定525.141秒／600，同版EXE29824→24664五股首屏、1538／1528八期限與返回、新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-06/DELIVERY_RECEIPT.json)。題材沿05、保存筆記沿04、一般報告等未改旅程沿03原證據；F07專用筆記修正不在本包。缺行情、期限連結與正式採認等限制保持，這次沒有重驗所有旅程或取得真人接受。
+
+**保留候選：研究05，固定來源 `34b8e8d5402b`。** [啟動器](../../output/trial/Baldr-Theme-Research-05/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-05/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-05/KNOWN_ISSUES.md)。新增題材頁「股票反查」：先載入包內10/16版本，輸入2330或台積，明選一個鏈／題材，按「定位所選股票」再雙擊原成員進個股，返回保留原版本。首次設定542.171秒／600，同版EXE21696→38288、重載中關閉／新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-05/DELIVERY_RECEIPT.json)。原保存推薦／雙股Journal沿04證據，其他未改旅程沿03等證據。模板無私人state或每日Task status；缺行情、期限衝突／未知仍不可作績效，Native、真人、PIT與完整Gate分開。後續推薦首屏排版Source不在05內。
 
 **保留候選：研究04，固定來源 `dd55d1b2b0be`。** [04啟動器](../../output/trial/Baldr-Theme-Research-04/Launch-Baldr.cmd)與[原指南](../../output/trial/Baldr-Theme-Research-04/TRIAL_GUIDE.md)。原保存五股入口：首頁「選股研究」→「讀取可用來源」→明選10/19原保存推薦→「讀取」→向下捲右側股票表→1512／1236→「查看個股研究」→「決策→結果」記筆記／返回／重開。首次設定494.781秒／600、6028→36076與筆記／DB／清單SHA及啟動器正反SHA已有原證據。05保留同資產與接線，不重新跑此未改旅程；缺價與期限連結缺件不補值。
 
@@ -57,7 +59,7 @@ D在1280寬視窗可能先顯示設定，請按「查看實驗結果」，再切
 
 表中日期均為2026年。八列的年度計畫日曆／臨時休市未核、未正式採認限制相同，所以說明前段重複；後半段依缺價／已有價格／等待目標日不同。`ready`不等於正式成熟或可用績效，未改原狀態／報酬，也不提前成熟。封存143包內「待核」文字保留為封存當時紀錄；本節為後續唯讀補充，詳[143附期限核對](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-horizon-audit)。
 
-後續Source已將共同來源限制集中於表格上方，逐列先列缺價／已有價格／等待目標日；說明提示保留完整原文，部分期限才有的品質限制不提升為全體。上述八列原日期與狀態、正常主視窗及新程序已核；固定05尚未包含這批顯示修正，見[QA145–146b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#逐期限說明qa145146b)。此處沒有新增或重算期限結果。
+後續Source已將共同來源限制集中於表格上方，逐列先列缺價／已有價格／等待目標日；說明提示保留完整原文，部分期限才有的品質限制不提升為全體。上述八列原日期與狀態、正常主視窗及新程序已核；固定06已包含這批顯示修正；05原包保持，見[QA145–146b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#逐期限說明qa145146b)。此處沒有新增或重算期限結果。
 
 D附「四均線訊號示範」、「W底訊號示範」、「布林訊號示範」，操作見[包內D](../../output/trial/Baldr-Daily-Research-143/TRIAL_GUIDE.md)。0完成配對不等於0訊號；原SOP／Baseline FAIL、樣本不足、Walk-forward、成本／幣別／來源與完整雙策略績效分別保留。逐股獨立本金批次不是同一投資組合排名，手動成本不是Paper NAV。**使用者尚未回報D三筆策略／原結果／重開的真人試用，不記真人接受。**
 

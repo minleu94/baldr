@@ -1,10 +1,11 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
-> 更新：2026-10-18（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
+> 更新：2026-10-19（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
 
 ## 現在有哪些入口
 
-**新增可試用：題材研究02（`b292f803ce9c`）**，[啟動器](../../output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd)與[指南](../../output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md)。包含筆記直接前版比較與個股首屏日期／依據分層；固定EXE移位首次設定492秒／原600秒、正常Main49584→新程序21272、三筆精確原文／保存期間關閉／實際800px比較及啟動器正反SHA通過。EXE SHA `2dfba4f2439406fbe62ece846e4ac60e81904d94d86dd914c4702fed5253b02c`，交付SHA `b044c2eb15760f20c903b375c4e9eccc9c3b5913cc2ce9193c7164c24735a4a2`。原日常資產及自有task具名名冊保持bytes，模板無私人state；01／143原包保留。首頁明選控制項已封裝，但真實多候選固定旅程未驗。題材10/16與一般行情9/23分開，法人／五日曆／PIT及完整Gate／真人限制保持。
+**最新可試用：研究04（`dd55d1b2b0be`）**，[啟動器](../../output/trial/Baldr-Theme-Research-04/Launch-Baldr.cmd)與[五條流程指南](../../output/trial/Baldr-Theme-Research-04/TRIAL_GUIDE.md)。新增10/19原保存五股推薦，經「首頁→選股研究→讀取可用來源→明選原版本」可到1512／1236筆記並重開；首次設定494.781秒／600、同版EXE6028→36076及正反SHA通過。原payload／保存時間保留，新試用index只改顯示名及移除私人notes；不帶正式每日Task status。行情缺件與期限衝突／未知維持，不授今日自然推薦／成熟／績效。未改四股完整報告、題材、日常與Registry沿03等原證據。EXE `0d87d296e1a0519372222d0e3222e4bf5df170ff7a09af4c642fc1dbab724e2d`，交付 `ba2f1417e0f9284c4bfbe83de67675e99eb734a3b2a11ee446c3278dcc15bca7`；[QA125–131](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定04原保存推薦交付qa125131)。舊包與私人state保持。
+**保留候選：題材研究02（`b292f803ce9c`）**，[啟動器](../../output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd)與[指南](../../output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md)。包含筆記直接前版比較與個股首屏日期／依據分層；固定EXE移位首次設定492秒／原600秒、正常Main49584→新程序21272、三筆精確原文／保存期間關閉／實際800px比較及啟動器正反SHA通過。EXE SHA `2dfba4f2439406fbe62ece846e4ac60e81904d94d86dd914c4702fed5253b02c`，交付SHA `b044c2eb15760f20c903b375c4e9eccc9c3b5913cc2ce9193c7164c24735a4a2`。原日常資產及自有task具名名冊保持bytes，模板無私人state；01／143原包保留。首頁明選控制項已封裝，但真實多候選固定旅程未驗。題材10/16與一般行情9/23分開，法人／五日曆／PIT及完整Gate／真人限制保持。
 
 **日常研究143原版保留（`bb09f218bba1`）**。原[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd)、私人state與[指南](../07_guides/TRIAL_VERSION_GUIDE.md)均可回訪。本包內含自有runtime與原件，首次啟動前放妥完整資料夾；本機新位置首次設定537.875秒／600秒，正常頁與同版新程序已核。舊139、141c及131保留，不自動匯入私人資料。EXE SHA `fcb94b81fefaea11eb83a52027bbe83c11772738586b1c7025e49add48476de9`，交付SHA `7495f1e3ff6129d97afab4f2eaf1ff8f5acc6c8369ea78db9c5d283c3bf131b1`。
 
@@ -23,7 +24,7 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 
 ## 目前工程狀態與限制
 
-**首頁原保存推薦已有 Source 閉環。** 明選控制移到首頁候選列，context保留原snapshot並返回原工作台；較早候選仍不能當今日推薦。QA123b以正常隔夜首頁的原保存結果入口讀回10/19真5股，明選1512／1236、各自保存Journal筆記、返回原清單，再由新程序17292→48020核原文與身份一致；沒有注入日期投影或改時鐘。89項受改、Workbench85、validator25/0/4、mypy1081另有證據，不以案例加總作完整Gate。固定03未含此接線，固定04準備中；原行情缺件不補值，今日自然管線／完整行情報告與真人接受分開。詳[QA118–124](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁真保存候選閉環qa118123)。
+**首頁原保存推薦已有 Source 閉環。** 明選控制移到首頁候選列，context保留原snapshot並返回原工作台；較早候選仍不能當今日推薦。QA123b以正常隔夜首頁的原保存結果入口讀回10/19真5股，明選1512／1236、各自保存Journal筆記、返回原清單，再由新程序17292→48020核原文與身份一致；沒有注入日期投影或改時鐘。89項受改、Workbench85、validator25/0/4、mypy1081另有證據，不以案例加總作完整Gate。固定03未含此接線，固定04已含接線，模板以明選保存來源展示；原行情缺件不補值，今日自然管線／完整行情報告與真人接受分開。詳[QA118–124](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁真保存候選閉環qa118123)。
 
 **首頁明選 Paper 部位已有 Source 導覽出口。** 已接既有共用 read model 與唯一部位，不改金融計算或帳本；持倉頁獨立刷新核完整同版本後才定位，失配不回退手動同股。受改檢查及共同防線已有具名證據，正常 Main 與新程序40912→37776控制資料往返已核；另修復1280外層捲動時機，明選的同股第二部位確實可見，返回保留首頁選列／捲動。固定03未含本葉片，真實 Paper／歷史保存重開／真人資格不由控制資料代替。見[QA108–116](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁-paper-同版本部位導航qa108112)。
 

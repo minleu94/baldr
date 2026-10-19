@@ -260,3 +260,18 @@ QA123a保留原診斷FAIL：既有worker已自然結束，但queued UI callback�
 此PASS只接受原保存來源的唯讀研究與Journal閉環。固定行情不含1512／1236，價格技術等缺件維持不可用；不授完整行情報告、今日自然管線、ML、歷史PIT或整體M3/M4。
 
 QA124–124b為固定04準備最小示範資產，解除必須帶整份私人歷史庫的阻礙。124因原metadata notes非空拒絕；另存124a明示derived display metadata，只改label為「2026-10-19 原保存推薦（本機唯讀研究）」並移除私人notes，不改payload／ID／persisted_at，原庫不變。124a遇QA audit誤解析既有SQLite file URI而FAIL；124b只修URI解析、仍限owner來源／全新目的地。既有public writer→copy→restore→public list驗只一筆五股、原raw SHA及persisted_at一致；沒有新增production exporter或重跑推薦。原metadata SHA `f5dd3ecc89e58099cebe69b9259876cf820fb42a64e569285e3574312b85cb6d`，derived SHA `62bd09706373e24f36cf9d86b9fc1a1a68fbe5bb6a7744beaabb046569688d58`；原artifact `e6523f2b83123a9f2916ddd8326e005c77825542d57ec77aa2be41a05054cf4d`，封存receipt SHA `9c1e1fa7f1a72bf789ab2075631359b4f9d5f269bd01cc6d3b88e0c192dc007f`。新index不冒稱原DB，複製時間不提前原可得時間。124b閉鎖SHA `bc643bc46bc5ea88dcc5d60e917829851269e8981df81d8d7ad429863120e572`；三PID空、handles閉、mutex釋放且無強制回收。固定04尚未建置／交付。
+
+<a id="固定04原保存推薦交付qa125131"></a>
+## 固定04原保存推薦交付（QA125–131）
+
+此增量解除原M4「已驗Source但沒有可試固定包」的阻礙。Source提交 `dd55d1b2b0be03c678e51c23cabcdf59e951fa90`；QA125文控12features／36links通過，126沿原建置工具固定EXE，沒有重跑未改旅程或重觸正式Task。
+
+QA127把原141c八份研究fact加一筆10/19 canonical推薦，經public restore／writer／copy／restore及list核驗；原八份raw SHA保持，新單筆原artifact不改，metadata明示derived label／notes=None。新封存research receipt SHA `5c8158cff4c47a8e8f91c16f343146781725ac366e303efd4aa18e9c6fba1946`；模板共三筆可選推薦，不帶整份私人歷史庫、Journal或每日Task status。128逐bytes組全包，原日常／題材／task具名名錄沿原件。
+
+QA129完整新位置含空白路徑首次設定494.781秒／原600秒通過，frozen reader來源均在自有_internal，正式／舊trial I/O與網路0。130因QA spec使用runner不支援的三個env_unset欄位，在compile及產品執行前拒絕；130a另存合法spec，EXE成功讀五股，但QA在reveal前排timer而尚未開對話框便填字，FAIL。兩組原件均保留，不改runner／產品／state，不把helper錯誤當產品接受。
+
+130b只修helper先reveal再排timer，以原15秒／每程序120秒，同版正常Main6028→36076：首頁「選股研究」→讀可用來源→明選10/19原五股→1512／1236各自Journal筆記→返回清單→關閉／新程序原文與revision identity一致。兩程序Journal SHA `2f4725234c2244c2d11cc95448a0acf9614730dccaa27f36dbc1d5ed98e92465`、推薦DB SHA `f4c94b0d24c813f60fbb37deef5f3a665d7b9766d4d84d6c4eff1330a2b22c4d`、watchlist SHA一致，network／protected／Qt errors0。Build為dd55且dirty=false，模組來固定_internal；Root檢視1280截圖。模板今日候選仍停用；1512／1236價格技術缺件、期限連結衝突／未知缺原清單事件與結果，沒有填值或授自然管線／成熟／績效。只接受原保存推薦與筆記閉環，非完整金融功能、Native或真人。
+
+QA131啟動器正例exit0／錯EXE SHA反例exit2，state原文不變；封存TEMPLATE_FILES及DELIVERY_RECEIPT。首次設定後只補指南的實際捲動步驟與期限缺件，原／新文件SHA另列documentation_revisions_after_setup，沒有重驗未變EXE／資產或覆寫原QA指南。04 EXE SHA `0d87d296e1a0519372222d0e3222e4bf5df170ff7a09af4c642fc1dbab724e2d`，manifest `7bd885449d9e2ddbfaa02e2459cddd7bae5d7a35a19cd02be9f50721ecb38094`，交付 `ba2f1417e0f9284c4bfbe83de67675e99eb734a3b2a11ee446c3278dcc15bca7`。完整P00–P14等、自然Paper／forward、PIT／真N／官方權威／真人／跨機仍各自未接受；03／02／01／143／139／141c及私人原件保持。
+
+所有Root串行Job仍8GiB／12程序／kill-on-close／workspace mutex／RAM至少8GiB；各組三PID空、handles閉、mutex釋放且無強制回收。129／130／130a／130b／131閉鎖SHA分別 `83a549c0a339559dd4d8038c8e06109ae436b745ce59acc62dfdc2eb5705d7b4`、`501caa0e3408dc1e6144eb3e769765f67544a13636455c546d6f369d18d73d74`、`dd4311a005ec0b7b7e8490f86899afe5c6b020447ba0f3864333202bdaf301da`、`76288c4998af1b239713b75d9ce65f3fed21e0c2ab79291ecbff8ae1febebd71`、`d06a061c49934df4fb38400684e213526047d36695a0ca11ffeb5bf6aa421c9b`。具名spec／commands／raw/screens均保存在同owner task，舊原件不覆寫。

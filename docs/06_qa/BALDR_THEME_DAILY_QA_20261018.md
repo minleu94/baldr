@@ -339,3 +339,18 @@ Root串行8GiB／12程序／kill-on-close／mutex／RAM至少8GiB，各組三PID
 串行閉鎖收據SHA：148 `433fa6ca1a387f8d1f3f5a585e14db27978c5a138809ea083e5691af2fc1e852`；149 `1c4c325a3768665a6345a3a4d15e62d382d9639fe173ae26812ef9e73f3c4f39`；150 `9ca4c332b0b31aa7a4c07136c91bfd88648b2e43b0041c062611995947d981e4`；151 `7bf0b5c9cf46515df8a612073afff7db2cca2cc289adcd57b4dc05bef494c6da`；152 `78c1d34a074bf4cea617f00af70d4de1cb4a1ef5dea7ac77e917668b6bb81cfe`。各組三PID空、process／Job handles閉、mutex釋放，8GiB／12程序／RAM至少8GiB及原時限保持，未依賴強制回收。
 
 只接受這次固定EXE受改頁與本機新位置設定。Source窄窗證據不當06 EXE窄窗接受；2382半年財報、來源用途、TPEx、歷史PIT、真N、正式日曆、自然成熟、完整雙策略績效、F07原240秒完整旅程、私人state／跨機／其他DPI、真人D與完整Native仍分項保留。封存05／04／03／143／139／141c與私人原件不改。正常額度週用量耗盡後沿使用者明示授權使用既定credit上限，沒有購買／重置或啟用付費API。
+
+<a id="f07保存回讀qa154155"></a>
+## F07保存回讀（QA154–155，限定Source）
+
+交付阻礙：保存完成後，widget再完整核對同一來源才刷新，拖延F07筆記。Root凍結`m3_f07_save_readback_contract_qa154.md`，新增不可變`PinnedStockResearchNoteSaveReadback`與`save_with_readback()`；原`save()`回Note不變。保存前仍fresh exact，typed state／canonical bookmark須在Journal append前一致；保留CAS、原文、直接parent與實際保存時間，保存後另讀Journal核唯一對應原文。只在相同generation／股票／canonical且無pending load、非關閉時直接套用；其他情況保留原刷新與確認。下一動作仍fresh，不使用先前動作來源cache。
+
+既有Luna只寫widget／新UI測例，另一Luna只寫新service測例並做有界獨立service／UI複核，皆靜態、無Python、pending_writes=false；Root保留shared port／金融／整合／QA／文件單寫，補拒絕空recorded_at及測例。獨立複核未見具體缺陷，不替代執行驗收。
+
+QA154編譯通過、新舊45定向通過／1原close測例FAIL；該測例仍攔截舊`save()`，畫面已使用新API，故等待閘未啟動。Root只更新攔截點及對應回傳型別，保留原30秒與全部關閉斷言。QA154a該單項10.46秒通過，接續先前fail-fast未跑的Workbench85／validator25-0-4／mypy1081通過；未重跑未改45項，未將案例加總冒充完整Gate。mypy既有UI ignore仍不證UI強型別；context的headings_only Unknown另由Root實讀diff／symbols／測例。
+
+QA155正常Source Main保留原每程序240秒及每步15／120／180秒。首次原收藏核驗74.281秒，筆記來源59.359秒，第一篇保存及清單刷新59.890秒完成；自有Journal實際1列，SHA `4ebd6f85fa5473efadc2141ee9d2136f5b0735a3d5bdf41d4d8d5bda4dfe8617`。父程序在明選讀第一篇原文期間達240秒而FAIL；後續修訂、原版本重開／返回、保存中關閉與fresh均未執行接受。原104及155完整FAIL保留，不能把第一篇保存或定向通過當完整F07。固定06的7fbe archive早已凍結，未含這批Source。
+
+QA157另做一次原public reader的內部cProfile，保持原180秒取消、來源／SHA／語義／路徑與網路守衛；此量測有profiling負擔，不用其耗時冒稱產品退化或改善。122個repository.read_exact、1,951個snapshot的全來源解碼與語義核對佔主要成本，原來源守衛未略過；這不是單純重跑原GUI FAIL。相關profile留在自有task，不以略過全來源驗證或跨動作cache換取240秒PASS。
+
+閉鎖收據SHA：154 `7d407a2e5aa9cf0ff136d9408f525355bfc02a42f531e64f8634ed41b328cb4e`；154a `06d356c099ddda672007402b9de62d6d6af8ce75ec2da967784a4762908eac1d`；155 `93b07d3e217167bee80d5bf3d9c542563c616237e4be2e14f89f37702e605514`；157 `779ad9eb682c84ae85d5716a62e0af852511cc3d93085547047e027d62ee8855`。各組三PID空／handles閉／mutex釋放、無forced cleanup，8GiB／12程序／RAM至少8GiB及原時限保持。原件、正式資料、正式Task與其他owner資產不改。後續Reader效能與完整F07接受仍獨立待解，不阻擋已交付的一般報告／保存推薦／題材旅程。

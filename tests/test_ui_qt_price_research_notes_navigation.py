@@ -30,6 +30,7 @@ from app_module.journal_service import JournalService
 from app_module.personal_journal_paths import resolve_personal_journal_paths
 from app_module.pinned_stock_research_notes import (
     PinnedStockResearchNote,
+    PinnedStockResearchNoteSaveReadback,
     PinnedStockResearchNoteService,
     PinnedStockResearchSource,
     verify_pinned_stock_research_source,
@@ -372,7 +373,7 @@ def test_pending_note_write_keeps_workspace_close_not_ready(
         )
         notes.editor.setPlainText("關閉時需等待的筆記")
         assert notes.save_button.isEnabled()
-        original_save = service.save
+        original_save = service.save_with_readback
 
         def blocked_save(
             source: PinnedStockResearchSource,
@@ -380,7 +381,7 @@ def test_pending_note_write_keeps_workspace_close_not_ready(
             *,
             revision_id: str,
             revision_of: str | None = None,
-        ) -> PinnedStockResearchNote:
+        ) -> PinnedStockResearchNoteSaveReadback:
             write_started.set()
             if not release_write.wait(timeout=30.0):
                 raise TimeoutError("測試寫入等待未收到釋放訊號")
@@ -391,7 +392,7 @@ def test_pending_note_write_keeps_workspace_close_not_ready(
                 revision_of=revision_of,
             )
 
-        monkeypatch.setattr(service, "save", blocked_save)
+        monkeypatch.setattr(service, "save_with_readback", blocked_save)
         notes.save_button.click()
         _wait(app, write_started.is_set)
         assert notes.has_pending_write()

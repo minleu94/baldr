@@ -22,6 +22,7 @@ from app_module.daily_market_technical_universe_price_bookmark_v1 import (
 )
 from app_module.pinned_stock_research_notes import (
     PinnedStockResearchNote,
+    PinnedStockResearchNoteSaveReadback,
     PinnedStockResearchNoteService,
     PinnedStockResearchSource,
     verify_pinned_stock_research_source,
@@ -563,18 +564,33 @@ class PinnedStockResearchNotesWidget(QWidget):
             "generation": self._generation,
             "source": source,
             "stock_code": source.stock_code,
+            "bookmark_identity": self._bookmark_identity,
             "text": text,
             "revision_id": revision_id,
             "revision_of": revision_of,
         }
+        save_with_readback = getattr(self._service, "save_with_readback", None)
+        uses_save_readback = callable(save_with_readback)
+        job["save_with_readback"] = uses_save_readback
 
-        def save_note():
-            return self._service.save(
-                source,
-                text,
-                revision_id=revision_id,
-                revision_of=revision_of,
-            )
+        if uses_save_readback:
+            readback_saver = save_with_readback
+
+            def save_note():
+                return readback_saver(
+                    source,
+                    text,
+                    revision_id=revision_id,
+                    revision_of=revision_of,
+                )
+        else:
+            def save_note():
+                return self._service.save(
+                    source,
+                    text,
+                    revision_id=revision_id,
+                    revision_of=revision_of,
+                )
 
         self._set_status("正在把原文追加到明選 F07 價格版本的個人筆記…")
         self._start_worker("save", save_note, job=job)
@@ -751,6 +767,25 @@ class PinnedStockResearchNotesWidget(QWidget):
         if kind == "save":
             note = value
             source = job.get("source")
+            if job.get("save_with_readback"):
+                prepared_readback = self._prepare_save_readback(value, job)
+                if prepared_readback is None:
+                    self._set_status(
+                        "保存回讀身份與送出內容不符；結果未確認，請刷新清單核對。"
+                    )
+                    if self._stock_code:
+                        self._pending_load = True
+                    self._update_controls()
+                    return
+                note, list_value = prepared_readback
+                if self._can_apply_save_readback(note, job):
+                    self._clear_saved_draft_if_unchanged(note, job)
+                    self._post_refresh_status = (
+                        f"已保存筆記 {note.revision_id}｜實際保存時間 {_recorded_at(note)}。"
+                        "請明選新修訂讀回原文。"
+                    )
+                    self._apply_note_list(list_value, job)
+                    return
             if (
                 not isinstance(note, PinnedStockResearchNote)
                 or not isinstance(source, PinnedStockResearchSource)
@@ -794,6 +829,122 @@ class PinnedStockResearchNotesWidget(QWidget):
                     self._pending_load = True
             self._update_controls()
             return
+
+    def _prepare_save_readback(
+        self,
+        value: Any,
+        job: dict[str, Any],
+    ) -> tuple[PinnedStockResearchNote, dict[str, Any]] | None:
+        try:
+            if type(value) is not PinnedStockResearchNoteSaveReadback:
+                return None
+            note = value.note
+            state = value.source_state
+            notes = value.notes
+            source = job.get("source")
+            stock_code = job.get("stock_code")
+            if (
+                type(note) is not PinnedStockResearchNote
+                or type(note.source) is not PinnedStockResearchSource
+                or type(state) is not DailyMarketTechnicalUniversePriceBookmarkStateV1
+                or type(state.bookmark) is not DailyMarketTechnicalUniversePriceBookmarkV1
+                or not isinstance(source, PinnedStockResearchSource)
+                or not isinstance(notes, tuple)
+                or any(type(item) is not PinnedStockResearchNote for item in notes)
+                or not isinstance(stock_code, str)
+                or source.stock_code != stock_code
+                or source.identity_sha256 != job.get("bookmark_identity")
+                or state.bookmark.to_json() != source.bookmark_json
+                or state.bookmark.bookmark_identity_sha256 != source.identity_sha256
+                or state.bookmark.stock_code != stock_code
+                or note.source.bookmark_json != source.bookmark_json
+                or note.source.identity_sha256 != source.identity_sha256
+                or note.source.stock_code != stock_code
+                or note.revision_id != job.get("revision_id")
+                or note.text != job.get("text")
+                or note.revision_of != job.get("revision_of")
+                or not isinstance(note.recorded_at, str)
+                or not note.recorded_at.strip()
+            ):
+                return None
+
+            matching = tuple(
+                item for item in notes if item.revision_id == note.revision_id
+            )
+            if len(matching) != 1:
+                return None
+            readback_note = matching[0]
+            if (
+                readback_note != note
+                or readback_note.source.bookmark_json != note.source.bookmark_json
+                or readback_note.text != note.text
+                or readback_note.revision_of != note.revision_of
+                or readback_note.recorded_at != note.recorded_at
+                or any(
+                    not item.revision_id
+                    or item.source.stock_code != stock_code
+                    for item in notes
+                )
+                or len({item.revision_id for item in notes}) != len(notes)
+            ):
+                return None
+
+            locators = {
+                item.revision_id: _source_locator(item.source)
+                for item in notes
+            }
+            list_value = {
+                "source": note.source,
+                "source_error": "",
+                "source_locator": _source_locator(note.source),
+                "notes": notes,
+                "locators": locators,
+            }
+        except Exception:  # noqa: BLE001 - 回讀收據異常時安全拒絕
+            return None
+        return note, list_value
+
+    def _can_apply_save_readback(
+        self,
+        note: PinnedStockResearchNote,
+        job: dict[str, Any],
+    ) -> bool:
+        source = job.get("source")
+        bookmark = self._bookmark
+        if (
+            self._shutdown
+            or self._pending_load
+            or job.get("generation") != self._generation
+            or not isinstance(source, PinnedStockResearchSource)
+            or bookmark is None
+            or self._stock_code != job.get("stock_code")
+            or note.source.stock_code != self._stock_code
+            or source.stock_code != self._stock_code
+            or self._bookmark_identity != source.identity_sha256
+            or job.get("bookmark_identity") != source.identity_sha256
+        ):
+            return False
+        try:
+            return bookmark.to_json() == source.bookmark_json
+        except Exception:  # noqa: BLE001 - 目前來源不符時安全拒絕
+            return False
+
+    def _clear_saved_draft_if_unchanged(
+        self,
+        note: PinnedStockResearchNote,
+        job: dict[str, Any],
+    ) -> None:
+        if (
+            self.editor.toPlainText() == job.get("text")
+            and self._draft_source is not None
+            and self._draft_source.bookmark_json == note.source.bookmark_json
+        ):
+            self._updating_editor = True
+            self.editor.clear()
+            self._updating_editor = False
+            self._draft_source = None
+            self._draft_revision_of = None
+            self._draft_source_missing = False
 
     def _apply_note_list(self, value: Any, job: dict[str, Any]) -> None:
         if not isinstance(value, dict):

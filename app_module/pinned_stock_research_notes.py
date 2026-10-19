@@ -89,6 +89,15 @@ class PinnedStockResearchNote:
     recorded_at: str = field(default="", compare=False)
 
 
+@dataclass(frozen=True, slots=True)
+class PinnedStockResearchNoteSaveReadback:
+    """同次保存的來源核對與 Journal 原文回讀；不供下一次動作免驗。"""
+
+    note: PinnedStockResearchNote
+    source_state: DailyMarketTechnicalUniversePriceBookmarkStateV1
+    notes: tuple[PinnedStockResearchNote, ...]
+
+
 class PinnedStockResearchNoteError(ValueError):
     """價格研究收藏筆記或其固定來源無法驗證。"""
 
@@ -121,6 +130,51 @@ class PinnedStockResearchNoteService:
         revision_id: str,
         revision_of: str | None = None,
     ) -> PinnedStockResearchNote:
+        saved, _state = self._save_exact(
+            source, text, revision_id=revision_id, revision_of=revision_of
+        )
+        return saved
+
+    def save_with_readback(
+        self,
+        source: PinnedStockResearchSource,
+        text: str,
+        *,
+        revision_id: str,
+        revision_of: str | None = None,
+    ) -> PinnedStockResearchNoteSaveReadback:
+        """保存前 fresh exact 不變；以本次核對結果及新讀 Journal 刷新畫面。"""
+
+        saved, state = self._save_exact(
+            source,
+            text,
+            revision_id=revision_id,
+            revision_of=revision_of,
+            require_typed_state=True,
+        )
+        notes = self.list_notes(stock_code=source.stock_code)
+        matching = tuple(note for note in notes if note.revision_id == saved.revision_id)
+        if (
+            len(matching) != 1
+            or matching[0] != saved
+            or matching[0].recorded_at != saved.recorded_at
+        ):
+            raise PinnedStockResearchNoteConflict(
+                "journal readback differs from the saved price research note"
+            )
+        return PinnedStockResearchNoteSaveReadback(
+            note=matching[0], source_state=state, notes=notes
+        )
+
+    def _save_exact(
+        self,
+        source: PinnedStockResearchSource,
+        text: str,
+        *,
+        revision_id: str,
+        revision_of: str | None = None,
+        require_typed_state: bool = False,
+    ) -> tuple[PinnedStockResearchNote, DailyMarketTechnicalUniversePriceBookmarkStateV1]:
         if type(source) is not PinnedStockResearchSource:
             raise PinnedStockResearchNoteError(
                 "source must be a verified pinned stock research source"
@@ -137,7 +191,14 @@ class PinnedStockResearchNoteService:
                 "revision_of must differ from revision_id"
             )
 
-        _read_exact_source(source)
+        state = _read_exact_source(source)
+        if require_typed_state and (
+            type(state) is not DailyMarketTechnicalUniversePriceBookmarkStateV1
+            or state.bookmark.to_json() != source.bookmark_json
+        ):
+            raise PinnedStockResearchNoteConflict(
+                "saved note source readback differs from the exact submitted bookmark"
+            )
 
         history, history_token = self._journal_service.store.load_journal_snapshot()
         revisions = _decode_history(history)
@@ -159,7 +220,7 @@ class PinnedStockResearchNoteService:
                 raise PinnedStockResearchNoteConflict(
                     "revision_id already names different saved content"
                 )
-            return saved
+            return saved, state
 
         entity_id = _root_entity_id(source, resolved_revision_id)
         if resolved_revision_of is not None:
@@ -238,7 +299,7 @@ class PinnedStockResearchNoteService:
             raise PinnedStockResearchNoteConflict(
                 "journal returned a different saved price research note"
             )
-        return saved
+        return saved, state
 
     def get_note(self, revision_id: str) -> PinnedStockResearchNote:
         resolved_revision_id = _required_revision_id(revision_id, "revision_id")

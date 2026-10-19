@@ -188,6 +188,112 @@ def _snapshot_with_zero_and_negative_values() -> ThemeResearchSnapshot:
     return ThemeResearchSnapshot("c" * 64, report, mapping)
 
 
+def _snapshot_with_directional_rankings(
+    identity: str = "d" * 64,
+    *,
+    theme_prefix: str = "題材",
+) -> ThemeResearchSnapshot:
+    complete = ThemeMetricCoverage(1, 1, 1, 1, 1, 1)
+    specifications = (
+        ("A", Decimal("-3.00"), Decimal("70.00"), Decimal("0.00"), -7),
+        ("B", Decimal("-2.00"), Decimal("10.00"), Decimal("6.00"), -2),
+        ("C", Decimal("-1.00"), Decimal("60.00"), Decimal("5.00"), -1),
+        ("D", Decimal("0.00"), Decimal("20.00"), Decimal("4.00"), 0),
+        ("E", Decimal("1.00"), Decimal("50.00"), Decimal("3.00"), 1),
+        ("F", Decimal("2.00"), Decimal("30.00"), Decimal("2.00"), 2),
+        ("G", Decimal("3.00"), Decimal("40.00"), Decimal("1.00"), 7),
+    )
+    rows = []
+    mapping = []
+    for index, (suffix, returns, turnover, volume, flow_shares) in enumerate(
+        specifications,
+        start=1,
+    ):
+        chain_name = f"鏈{suffix}"
+        theme_name = f"{theme_prefix}{suffix}"
+        stock_id = f"8{index:03d}"
+        rows.append(
+            _daily_row(
+                chain_name,
+                theme_name,
+                (stock_id,),
+                returns=returns,
+                turnover=turnover,
+                volume=volume,
+                flow_shares=flow_shares,
+                flow_amount=Decimal(f"{flow_shares * 100}.00"),
+                coverage=complete,
+            )
+        )
+        mapping.append(
+            SimpleNamespace(
+                stock_id=stock_id,
+                stock_name=f"測試公司{stock_id}",
+                chain_name=chain_name,
+                theme_name=theme_name,
+                chain_tier="核心鏈",
+                assignment_method="公司主業",
+                source_name="本機分類來源",
+                source_tier="來源一級",
+                evidence_note="測試快照映射列",
+            )
+        )
+
+    rows.extend((
+        _daily_row(
+            "部分鏈",
+            "部分覆蓋極端值",
+            ("8991", "8992"),
+            returns=Decimal("-999.00"),
+            turnover=Decimal("999999.00"),
+            volume=Decimal("999.00"),
+            flow_shares=999,
+            flow_amount=Decimal("999999.00"),
+            coverage=ThemeMetricCoverage(2, 1, 1, 1, 1, 1),
+        ),
+        _daily_row(
+            "缺值鏈",
+            "未提供題材",
+            ("8993", "8994"),
+            returns=None,
+            turnover=None,
+            volume=None,
+            flow_shares=None,
+            flow_amount=None,
+            coverage=ThemeMetricCoverage(2, 0, 0, 0, 0, 0),
+        ),
+    ))
+    for chain_name, theme_name, stock_ids in (
+        ("部分鏈", "部分覆蓋極端值", ("8991", "8992")),
+        ("缺值鏈", "未提供題材", ("8993", "8994")),
+    ):
+        mapping.extend(
+            SimpleNamespace(
+                stock_id=stock_id,
+                stock_name=f"測試公司{stock_id}",
+                chain_name=chain_name,
+                theme_name=theme_name,
+                chain_tier="核心鏈",
+                assignment_method="公司主業",
+                source_name="本機分類來源",
+                source_tier="來源一級",
+                evidence_note="測試快照映射列",
+            )
+            for stock_id in stock_ids
+        )
+
+    report = ThemeDailyReport(
+        data_date=date(2026, 10, 16),
+        known_at=datetime(2026, 10, 17, 2, 0, tzinfo=timezone.utc),
+        mapping_snapshot_date="2026-10-15",
+        mapping_available_date="2026-10-15",
+        status="current_research",
+        rows=tuple(rows),
+        warnings=(),
+    )
+    return ThemeResearchSnapshot(identity, report, tuple(mapping))
+
+
 def _select_theme(view: IndustryThemeMapView, chain: str, theme: str) -> None:
     view.chain_filter.setCurrentIndex(view.chain_filter.findData(chain))
     view.theme_filter.setCurrentIndex(view.theme_filter.findText(theme))
@@ -199,6 +305,13 @@ def _metric_row(view: IndustryThemeMapView, label: str) -> int:
         if item is not None and item.text() == label:
             return row_index
     raise AssertionError(f"找不到指標列：{label}")
+
+
+def _ranked_theme_names(view: IndustryThemeMapView) -> list[str]:
+    return [
+        view.ranking_table.item(row, 2).text()
+        for row in range(view.ranking_table.rowCount())
+    ]
 
 
 def test_snapshot_render_keeps_decimal_and_separate_missing_coverage():
@@ -304,6 +417,14 @@ def test_failed_reload_clears_old_snapshot_and_disables_member_actions(monkeypat
     view.set_snapshot(initial_snapshot)
     _select_theme(view, "科技鏈", "AI")
     assert view.member_table.rowCount() == 2
+    view.ranking_type_combo.setCurrentIndex(
+        view.ranking_type_combo.findData("turnover")
+    )
+    view.sorting_direction_combo.setCurrentIndex(
+        view.sorting_direction_combo.findData(True)
+    )
+    assert view.ranking_table.rowCount() == 1
+    assert view.ranking_table.item(0, 2).text() == "AI"
 
     def fail_read(_path: Path):
         raise ValueError("無法讀取測試版本")
@@ -313,11 +434,14 @@ def test_failed_reload_clears_old_snapshot_and_disables_member_actions(monkeypat
 
     assert view.snapshot is None
     assert view.member_table.rowCount() == 0
+    assert view.ranking_table.rowCount() == 0
+    assert not view.sorting_direction_combo.isEnabled()
     assert not view.member_table.isEnabled()
     assert events == [initial_snapshot, None]
     _wait_until(application, lambda: not view.is_busy(), timeout_ms=3000)
     assert view.snapshot is None
     assert view.member_table.rowCount() == 0
+    assert view.ranking_table.rowCount() == 0
     assert "讀取失敗" in view.status_label.text()
     assert "2026-10-16" not in view.overview_label.text()
     assert events == [initial_snapshot, None, None]
@@ -435,6 +559,104 @@ def test_zero_and_negative_observations_remain_visible_in_presenter_order():
     assert view.ranking_table.item(1, 3).text() == "-4 股"
 
 
+def test_sorting_direction_projects_global_high_and_low_five_for_all_metrics():
+    app()
+    snapshot = _snapshot_with_directional_rankings()
+    original_rows = snapshot.report.rows
+    view = IndustryThemeMapView()
+    view.set_snapshot(snapshot)
+
+    assert view.sorting_direction_combo.currentData() is False
+    assert _ranked_theme_names(view) == ["題材G", "題材F", "題材E", "題材D", "題材C"]
+    cards_before = {
+        key: (
+            view.leader_card_topics[key].text(),
+            view.leader_card_values[key].text(),
+            view.leader_card_coverages[key].text(),
+        )
+        for key in view.leader_card_topics
+    }
+    expected_orders = {
+        "return": (
+            ["題材G", "題材F", "題材E", "題材D", "題材C"],
+            ["題材A", "題材B", "題材C", "題材D", "題材E"],
+        ),
+        "turnover": (
+            ["題材A", "題材C", "題材E", "題材G", "題材F"],
+            ["題材B", "題材D", "題材F", "題材G", "題材E"],
+        ),
+        "institutional": (
+            ["題材G", "題材F", "題材E", "題材D", "題材C"],
+            ["題材A", "題材B", "題材C", "題材D", "題材E"],
+        ),
+        "volume": (
+            ["題材B", "題材C", "題材D", "題材E", "題材F"],
+            ["題材A", "題材G", "題材F", "題材E", "題材D"],
+        ),
+    }
+    for metric, (high_order, low_order) in expected_orders.items():
+        view.ranking_type_combo.setCurrentIndex(
+            view.ranking_type_combo.findData(metric)
+        )
+        view.sorting_direction_combo.setCurrentIndex(
+            view.sorting_direction_combo.findData(False)
+        )
+        assert _ranked_theme_names(view) == high_order
+        view.sorting_direction_combo.setCurrentIndex(
+            view.sorting_direction_combo.findData(True)
+        )
+        assert _ranked_theme_names(view) == low_order
+        assert "部分覆蓋極端值" not in _ranked_theme_names(view)
+        assert "未提供題材" not in _ranked_theme_names(view)
+
+    view.ranking_type_combo.setCurrentIndex(
+        view.ranking_type_combo.findData("institutional")
+    )
+    view.sorting_direction_combo.setCurrentIndex(
+        view.sorting_direction_combo.findData(True)
+    )
+    assert view.ranking_table.item(3, 3).text() == "0 股"
+    assert "法人賣超" in view.ranking_note.text()
+    assert cards_before == {
+        key: (
+            view.leader_card_topics[key].text(),
+            view.leader_card_values[key].text(),
+            view.leader_card_coverages[key].text(),
+        )
+        for key in view.leader_card_topics
+    }
+    assert snapshot.report.rows == original_rows
+    view.close()
+
+
+def test_directional_projection_rebuilds_after_snapshot_replacement():
+    app()
+    view = IndustryThemeMapView()
+    view.set_snapshot(_snapshot_with_directional_rankings())
+    view.ranking_type_combo.setCurrentIndex(
+        view.ranking_type_combo.findData("return")
+    )
+    view.sorting_direction_combo.setCurrentIndex(
+        view.sorting_direction_combo.findData(True)
+    )
+    assert view.ranking_table.item(0, 2).text() == "題材A"
+
+    replacement = _snapshot_with_directional_rankings(
+        "e" * 64,
+        theme_prefix="新版",
+    )
+    view.set_snapshot(replacement)
+
+    assert view.snapshot is replacement
+    assert view.sorting_direction_combo.currentData() is True
+    assert view.ranking_table.item(0, 2).text() == "新版A"
+    assert "題材A" not in _ranked_theme_names(view)
+    view.shutdown()
+    view.close()
+    assert view.snapshot is None
+    assert view.ranking_table.rowCount() == 0
+
+
 def test_clicking_ranked_theme_selects_original_chain_theme_and_members():
     application = app()
     view = IndustryThemeMapView()
@@ -474,6 +696,48 @@ def test_clicking_ranked_theme_selects_original_chain_theme_and_members():
     ] == ["2330", "2317"]
 
 
+def test_low_direction_rank_click_selects_original_theme_and_member():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1100, 760)
+    view.set_snapshot(_snapshot_with_directional_rankings())
+    view.ranking_type_combo.setCurrentIndex(
+        view.ranking_type_combo.findData("return")
+    )
+    view.sorting_direction_combo.setCurrentIndex(
+        view.sorting_direction_combo.findData(True)
+    )
+    view.show()
+    application.processEvents()
+
+    assert view.ranking_table.item(0, 2).text() == "題材A"
+    view.scroll_area.ensureWidgetVisible(view.ranking_table, 0, 0)
+    item = view.ranking_table.item(0, 2)
+    view.ranking_table.scrollToItem(item)
+    application.processEvents()
+    position = view.ranking_table.visualItemRect(item).center()
+    table_viewport = view.ranking_table.viewport()
+    assert table_viewport.rect().contains(position)
+    assert table_viewport.visibleRegion().contains(position)
+    outer_position = view.scroll_area.viewport().mapFromGlobal(
+        table_viewport.mapToGlobal(position)
+    )
+    assert view.scroll_area.viewport().rect().contains(outer_position)
+
+    QTest.mouseClick(
+        table_viewport,
+        Qt.MouseButton.LeftButton,
+        pos=position,
+    )
+    application.processEvents()
+
+    assert view.chain_filter.currentData() == "鏈A"
+    assert view.theme_filter.currentText() == "題材A"
+    assert view.member_table.rowCount() == 1
+    assert view.member_table.item(0, 0).text() == "8001"
+    view.close()
+
+
 def test_snapshot_changed_clears_on_load_and_emits_loaded_snapshot(monkeypatch):
     application = app()
     loaded_snapshot = _snapshot("e" * 64)
@@ -506,6 +770,16 @@ def test_snapshot_changed_clears_on_load_and_emits_loaded_snapshot(monkeypatch):
     }
     assert view.snapshot is loaded_snapshot
     assert events == [initial_snapshot, None, loaded_snapshot]
+    view.ranking_type_combo.setCurrentIndex(
+        view.ranking_type_combo.findData("turnover")
+    )
+    view.sorting_direction_combo.setCurrentIndex(
+        view.sorting_direction_combo.findData(True)
+    )
+    assert view.ranking_table.rowCount() == 1
 
     view.shutdown()
     assert events[-1] is None
+    assert view.ranking_table.rowCount() == 0
+    assert not view.sorting_direction_combo.isEnabled()
+    view.close()

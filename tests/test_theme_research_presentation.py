@@ -1,6 +1,6 @@
 from dataclasses import FrozenInstanceError, replace
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -126,6 +126,68 @@ def test_equal_values_use_chain_then_theme_name_order():
     assert tuple((row.chain_name, row.theme_name) for row in leaders) == (
         ("chain-a", "theme-a"), ("chain-a", "theme-z"), ("chain-b", "theme-z"),
     )
+
+
+def test_lowest_five_come_from_full_eligible_population_with_stable_ties():
+    rows = tuple(
+        daily_row(f"chain-{index:02}", "theme", mean_return=D(index - 4),
+                  turnover=D(index), institutional_shares=index - 4, volume=D(index))
+        for index in reversed(range(9))
+    )
+    partial = daily_row("partial", "theme", mean_return=D("-999"), turnover=D(0),
+                        institutional_shares=-999, volume=D(0), returns_coverage=1,
+                        turnover_coverage=1, institutional_coverage=1, volume_coverage=1)
+    missing = daily_row("missing", "theme")
+    source = snapshot((*rows, partial, missing))
+    original = (source.identity_sha256, source.report, source.mapping)
+
+    high = build_theme_research_presentation(source)
+    low = build_theme_research_presentation(source, ascending=True)
+    expected_low = tuple(reversed(rows))[:5]
+    for field in ("return_leaders", "turnover_leaders", "institutional_leaders", "volume_leaders"):
+        assert getattr(low, field) == expected_low
+        assert getattr(low, field) != tuple(reversed(getattr(high, field)))
+    assert tuple(row.mean_return_pct for row in low.return_leaders) == (
+        D(-4), D(-3), D(-2), D(-1), D(0),
+    )
+    assert (source.identity_sha256, source.report, source.mapping) == original
+
+    ties = (
+        daily_row("b", "z", mean_return=D("1.000")),
+        daily_row("a", "z", mean_return=D("1.0")),
+        daily_row("a", "a", mean_return=D("1.00")),
+    )
+    for ascending in (False, True):
+        result = build_theme_research_presentation(snapshot(ties), ascending=ascending)
+        assert tuple((row.chain_name, row.theme_name) for row in result.return_leaders) == (
+            ("a", "a"), ("a", "z"), ("b", "z"),
+        )
+
+
+def test_sorting_uses_exact_original_values_under_low_decimal_precision():
+    lower_value = D("1.00000000000000000000000000001")
+    higher_value = D("1.00000000000000000000000000002")
+    lower = daily_row("a", "lower", mean_return=lower_value, turnover=lower_value,
+                      volume=lower_value, institutional_shares=10**40)
+    higher = daily_row("z", "higher", mean_return=higher_value, turnover=higher_value,
+                       volume=higher_value, institutional_shares=10**40 + 1)
+    source = snapshot((lower, higher))
+
+    with localcontext() as context:
+        context.prec = 2
+        for ascending, expected in ((False, (higher, lower)), (True, (lower, higher))):
+            result = build_theme_research_presentation(source, ascending=ascending)
+            for field in ("return_leaders", "turnover_leaders", "institutional_leaders", "volume_leaders"):
+                assert getattr(result, field) == expected
+        assert context.prec == 2
+    assert higher.mean_return_pct == higher_value
+    assert lower.mean_return_pct == lower_value
+
+
+@pytest.mark.parametrize("ascending", [None, 0, 1, "ascending", [], {}])
+def test_sort_direction_rejects_implicit_boolean_conversion(ascending):
+    with pytest.raises(TypeError, match="bool"):
+        build_theme_research_presentation(snapshot(()), ascending=ascending)
 
 
 def test_directory_deduplicates_source_metadata_without_merging_theme_metrics():

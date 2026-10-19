@@ -54,6 +54,7 @@ class IndustryThemeMapView(QWidget):
         self._closed = False
         self._snapshot: ThemeResearchSnapshot | None = None
         self._presentation: ThemeResearchPresentation | None = None
+        self._ascending_presentation: ThemeResearchPresentation | None = None
         self._theme_options: list[tuple[str, str] | None] = []
         self._rows_by_theme: dict[tuple[str, str], ThemeDailyRow] = {}
         self._mapping_by_theme_stock: dict[tuple[str, str, str], object] = {}
@@ -172,6 +173,15 @@ class IndustryThemeMapView(QWidget):
         self.ranking_type_combo.addItem("五日成交量倍數", "volume")
         self.ranking_type_combo.currentIndexChanged.connect(self._render_leaderboard)
         ranking_header.addWidget(self.ranking_type_combo)
+        ranking_header.addWidget(QLabel("排序方向"))
+        self.sorting_direction_combo = QComboBox()
+        self.sorting_direction_combo.setAccessibleName("題材排行排序方向")
+        self.sorting_direction_combo.addItem("由高到低", False)
+        self.sorting_direction_combo.addItem("由低到高", True)
+        self.sorting_direction_combo.currentIndexChanged.connect(
+            self._render_leaderboard
+        )
+        ranking_header.addWidget(self.sorting_direction_combo)
         ranking_header.addStretch(1)
         ranking_layout.addLayout(ranking_header)
 
@@ -214,7 +224,8 @@ class IndustryThemeMapView(QWidget):
         self.ranking_empty_label.setTextFormat(Qt.TextFormat.PlainText)
         ranking_layout.addWidget(self.ranking_empty_label)
         self.ranking_note = QLabel(
-            "此表僅整理對應欄位覆蓋完整的觀察值，不形成策略結論；點選題材可定位原成員。"
+            "此表只整理欄位覆蓋完整的觀察值，不形成策略結論；低值不自動代表下跌或法人賣超。"
+            "點選題材可定位原成員。"
         )
         self.ranking_note.setWordWrap(True)
         self.ranking_note.setTextFormat(Qt.TextFormat.PlainText)
@@ -662,6 +673,7 @@ class IndustryThemeMapView(QWidget):
 
     def _clear_snapshot_view(self) -> None:
         self._presentation = None
+        self._ascending_presentation = None
         self._rows_by_theme = {}
         self._mapping_by_theme_stock = {}
         self._theme_options = [None]
@@ -935,14 +947,38 @@ class IndustryThemeMapView(QWidget):
 
     def _render_leaderboard(self, _index: int = -1) -> None:
         presentation = self._presentation
+        if presentation is None or self._snapshot is None:
+            self.ranking_table.setRowCount(0)
+            self.ranking_empty_label.setText("尚未載入題材觀察排行。")
+            self.ranking_empty_label.show()
+            return
+        if self.sorting_direction_combo.currentData() is True:
+            ascending_presentation = self._ascending_presentation
+            if ascending_presentation is None:
+                try:
+                    ascending_presentation = build_theme_research_presentation(
+                        self._snapshot,
+                        ascending=True,
+                    )
+                except Exception as exc:
+                    self.ranking_table.setRowCount(0)
+                    self.ranking_empty_label.setText(
+                        "低值觀察排序無法產生；沒有沿用舊排行。"
+                    )
+                    self.ranking_empty_label.show()
+                    first_line = str(exc).splitlines()[0] if str(exc).splitlines() else ""
+                    self.status_label.setText(
+                        f"低值觀察排序失敗；沒有沿用舊排行：{first_line}"
+                    )
+                    return
+                self._ascending_presentation = ascending_presentation
+            presentation = ascending_presentation
         ranking_type = self.ranking_type_combo.currentData()
         row_sets = {
-            "return": presentation.return_leaders if presentation is not None else (),
-            "turnover": presentation.turnover_leaders if presentation is not None else (),
-            "institutional": (
-                presentation.institutional_leaders if presentation is not None else ()
-            ),
-            "volume": presentation.volume_leaders if presentation is not None else (),
+            "return": presentation.return_leaders,
+            "turnover": presentation.turnover_leaders,
+            "institutional": presentation.institutional_leaders,
+            "volume": presentation.volume_leaders,
         }
         leaders = row_sets.get(ranking_type, ())
         self.ranking_table.setRowCount(len(leaders))
@@ -1198,6 +1234,7 @@ class IndustryThemeMapView(QWidget):
         lookup_available = available and not self._busy
         self.open_snapshot_button.setEnabled(not self._busy and not self._closed)
         self.ranking_type_combo.setEnabled(available and not self._busy)
+        self.sorting_direction_combo.setEnabled(available and not self._busy)
         self.ranking_table.setEnabled(available and not self._busy)
         self.chain_filter.setEnabled(available and not self._busy)
         self.theme_filter.setEnabled(available and not self._busy)

@@ -17,6 +17,7 @@ def test_theme_stock_switch_requires_returning_to_verified_member_source(request
     statuses = []
     edits = []
     host = SimpleNamespace(
+        _saved_snapshot_only=False,
         context=original, _set_status=lambda *args: statuses.append(args),
         stock_search=SimpleNamespace(setText=edits.append),
     )

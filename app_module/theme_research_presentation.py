@@ -39,7 +39,7 @@ class ThemeResearchPresentation:
 
 def _leaders(
     rows: tuple[ThemeDailyRow, ...], *, metric_name: str, coverage_name: str,
-    numeric_type: type[Decimal] | type[int],
+    numeric_type: type[Decimal] | type[int], ascending: bool = False,
 ) -> tuple[ThemeDailyRow, ...]:
     eligible: list[ThemeDailyRow] = []
     for row in rows:
@@ -60,14 +60,19 @@ def _leaders(
         if type(row.chain_name) is not str or type(row.theme_name) is not str:
             raise TypeError("排行榜排序名稱必須為字串")
         eligible.append(row)
+    # 先排同值名稱，再穩定排序原值；不以負號觸發呼叫端Decimal精度捨入。
+    by_name = sorted(eligible, key=lambda row: (row.chain_name, row.theme_name))
     return tuple(sorted(
-        eligible,
-        key=lambda row: (-getattr(row, metric_name), row.chain_name, row.theme_name),
+        by_name, key=lambda row: getattr(row, metric_name), reverse=not ascending,
     )[:5])
 
 
-def build_theme_research_presentation(snapshot: ThemeResearchSnapshot) -> ThemeResearchPresentation:
-    """依既有完整涵蓋率排序觀察值，並從原映射建立穩定目錄；不重算或合併績效。"""
+def build_theme_research_presentation(
+    snapshot: ThemeResearchSnapshot, *, ascending: bool = False,
+) -> ThemeResearchPresentation:
+    """依完整涵蓋率列出高端或低端觀察，保留原精度與映射；不重算或合併績效。"""
+    if type(ascending) is not bool:
+        raise TypeError("題材排序方向須為bool")
     if type(snapshot) is not ThemeResearchSnapshot:
         raise TypeError("需使用ThemeResearchSnapshot")
     if type(snapshot.report) is not ThemeDailyReport or type(snapshot.report.rows) is not tuple:
@@ -93,12 +98,13 @@ def build_theme_research_presentation(snapshot: ThemeResearchSnapshot) -> ThemeR
 
     return ThemeResearchPresentation(
         return_leaders=_leaders(rows, metric_name="mean_return_pct", coverage_name="returns",
-                                numeric_type=Decimal),
+                                numeric_type=Decimal, ascending=ascending),
         turnover_leaders=_leaders(rows, metric_name="turnover_twd", coverage_name="turnover",
-                                  numeric_type=Decimal),
+                                  numeric_type=Decimal, ascending=ascending),
         institutional_leaders=_leaders(rows, metric_name="institutional_net_shares",
-                                        coverage_name="institutional_shares", numeric_type=int),
+                                        coverage_name="institutional_shares", numeric_type=int,
+                                        ascending=ascending),
         volume_leaders=_leaders(rows, metric_name="volume_multiple_5d", coverage_name="volume_history",
-                                numeric_type=Decimal),
+                                numeric_type=Decimal, ascending=ascending),
         chains=chains,
     )

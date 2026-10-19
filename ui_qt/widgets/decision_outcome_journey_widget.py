@@ -74,10 +74,17 @@ class JourneyTableModel(QAbstractTableModel):
         columns: Sequence[str],
         rows: Sequence[Sequence[str]],
         parent: QWidget | None = None,
+        *,
+        tooltips: Sequence[Sequence[str]] | None = None,
     ) -> None:
         super().__init__(parent)
         self._columns = tuple(str(column) for column in columns)
         self._rows = tuple(tuple(str(cell) for cell in row) for row in rows)
+        self._tooltips = (
+            None
+            if tooltips is None
+            else tuple(tuple(str(cell) for cell in row) for row in tooltips)
+        )
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         return 0 if parent.isValid() else len(self._rows)
@@ -92,8 +99,17 @@ class JourneyTableModel(QAbstractTableModel):
         if index.column() >= len(row):
             return None
         value = row[index.column()]
-        if role in (Qt.DisplayRole, Qt.ToolTipRole):
+        if role == Qt.DisplayRole:
             return value
+        if role == Qt.ToolTipRole:
+            if self._tooltips is None:
+                return value
+            if index.row() >= len(self._tooltips):
+                return None
+            tooltip_row = self._tooltips[index.row()]
+            if index.column() >= len(tooltip_row):
+                return None
+            return tooltip_row[index.column()]
         if role == Qt.TextAlignmentRole:
             return Qt.AlignLeft | Qt.AlignVCenter
         return None
@@ -253,6 +269,13 @@ class DecisionOutcomeJourneyWidget(QWidget):
                 "未提供的日期不由目前日曆或舊價格列推算。"
             )
         )
+        self.maturity_shared_limits_label = self._wrapped_label("")
+        self.maturity_shared_limits_label.setObjectName(
+            "decisionOutcomeJourneyMaturitySharedLimits"
+        )
+        self.maturity_shared_limits_label.setAccessibleName("所列期限共同來源限制")
+        self.maturity_shared_limits_label.setVisible(False)
+        maturity_layout.addWidget(self.maturity_shared_limits_label)
         self.maturity_table = self._make_table(
             "maturity",
             (
@@ -686,16 +709,49 @@ class DecisionOutcomeJourneyWidget(QWidget):
             not self._closing and bool(self._active_result_id) and not self.is_busy()
         )
 
+    def _set_maturity_shared_limits(
+        self,
+        maturity: Sequence[OutcomeMaturityRecord],
+        shared_limits: Sequence[str],
+    ) -> None:
+        if not shared_limits:
+            self._clear_maturity_shared_limits()
+            return
+        horizons = tuple(dict.fromkeys(item.window_days for item in maturity))
+        if len(horizons) < 2:
+            self._clear_maturity_shared_limits()
+            return
+        listed_horizons = "／".join(str(window) for window in horizons)
+        visible_limits = tuple(
+            "所列期限結果均未獲正式採認"
+            if limit == "此期限結果未獲正式採認"
+            else limit
+            for limit in shared_limits
+        )
+        self.maturity_shared_limits_label.setText(
+            f"所列期限（{listed_horizons} 個交易日）共有以下來源限制：\n"
+            + "；".join(visible_limits)
+        )
+        self.maturity_shared_limits_label.setVisible(True)
+
+    def _clear_maturity_shared_limits(self) -> None:
+        self.maturity_shared_limits_label.clear()
+        self.maturity_shared_limits_label.setVisible(False)
+
     def _set_table_rows(
         self,
         table_id: str,
         rows: Sequence[Sequence[str]],
         empty_text: str,
+        *,
+        tooltips: Sequence[Sequence[str]] | None = None,
     ) -> None:
         table = self._tables[table_id]
         columns = self._table_columns[table_id]
-        table.setModel(JourneyTableModel(columns, rows, table))
+        table.setModel(JourneyTableModel(columns, rows, table, tooltips=tooltips))
         table.setVisible(bool(rows))
+        if table_id == "maturity" and not rows:
+            self._clear_maturity_shared_limits()
         empty = self._empty_labels[table_id]
         empty.setText(empty_text)
         empty.setVisible(not rows)
@@ -771,21 +827,47 @@ class DecisionOutcomeJourneyWidget(QWidget):
             for item in project_outcome_maturity(journey.outcome_maturity)
             if item.candidate_key == candidate_key
         )
-        maturity_rows = tuple(
-            (
-                f"{item.window_days}個交易日",
-                _link_status_text(item.status),
-                _outcome_status_text(item.outcome_status),
-                _maturity_reason_with_source_limits(item),
-                item.planned_official_maturity_date or "未提供",
-                item.outcome_price_date or "未提供",
+        shared_limits = _shared_maturity_source_limits(maturity)
+        self._set_maturity_shared_limits(maturity, shared_limits)
+        maturity_rows: list[tuple[str, ...]] = []
+        maturity_tooltips: list[tuple[str, ...]] = []
+        for item in maturity:
+            horizon = f"{item.window_days}個交易日"
+            link_status = _link_status_text(item.status)
+            outcome_status = _outcome_status_text(item.outcome_status)
+            display_reason = _maturity_reason_with_source_limits(
+                item,
+                exclude_shared_limits=shared_limits,
+                prioritize_target=True,
             )
-            for item in maturity
-        )
+            original_reason = _maturity_reason_with_source_limits(item)
+            planned_date = item.planned_official_maturity_date or "未提供"
+            actual_date = item.outcome_price_date or "未提供"
+            maturity_rows.append(
+                (
+                    horizon,
+                    link_status,
+                    outcome_status,
+                    display_reason,
+                    planned_date,
+                    actual_date,
+                )
+            )
+            maturity_tooltips.append(
+                (
+                    horizon,
+                    link_status,
+                    outcome_status,
+                    original_reason,
+                    planned_date,
+                    actual_date,
+                )
+            )
         self._set_table_rows(
             "maturity",
             maturity_rows,
             "此 candidate 尚無 5/10/20/60 maturity row；不補造 outcome。",
+            tooltips=maturity_tooltips,
         )
 
         events = tuple(
@@ -1050,21 +1132,71 @@ def _maturity_source_limits(item: OutcomeMaturityRecord) -> tuple[str, ...]:
     return tuple(limits)
 
 
-def _maturity_reason_with_source_limits(item: OutcomeMaturityRecord) -> str:
+def _shared_maturity_source_limits(
+    maturity: Sequence[OutcomeMaturityRecord],
+) -> tuple[str, ...]:
+    """只回傳至少兩個期限的每一列都共有的來源限制文字。"""
+
+    if not maturity:
+        return ()
+    if len(tuple(dict.fromkeys(item.window_days for item in maturity))) < 2:
+        return ()
+    first_limits = _maturity_source_limits(maturity[0])
+    common = set(first_limits)
+    for item in maturity[1:]:
+        common.intersection_update(_maturity_source_limits(item))
+    return tuple(dict.fromkeys(limit for limit in first_limits if limit in common))
+
+
+def _maturity_reason_with_source_limits(
+    item: OutcomeMaturityRecord,
+    *,
+    exclude_shared_limits: Sequence[str] = (),
+    prioritize_target: bool = False,
+) -> str:
     reason = _maturity_reason_text(item.reason)
-    limits = list(_maturity_source_limits(item))
+    excluded = set(exclude_shared_limits)
+    source_limits = [
+        limit
+        for limit in _maturity_source_limits(item)
+        if limit not in excluded
+    ]
     target = {
         "waiting_for_verified_official_session": "來源尚缺可核對的目標交易日",
         "waiting_for_planned_official_session": "來源標示等待計畫目標日",
         "missing_at_planned_official_session": "來源標示計畫目標日缺收盤價，需補來源",
         "observed_on_planned_official_session": "來源標示已取得計畫目標日價格",
     }.get(item.target_price_state or "")
+    gap = (
+        "不以後一筆價格替代缺價日"
+        if item.source_price_gap_reason == "no_close_on_planned_official_session"
+        else None
+    )
+    source_as_of = (
+        "來源資料截止：" + item.source_data_as_of_date
+        if item.source_data_as_of_date
+        else None
+    )
+    if (
+        prioritize_target
+        and item.status is JourneyLinkStatus.LINKED
+        and (target or gap)
+    ):
+        ordered_details = [detail for detail in (target, gap) if detail]
+        ordered_details.extend(source_limits)
+        if reason:
+            ordered_details.append(reason.rstrip("。"))
+        if source_as_of:
+            ordered_details.append(source_as_of)
+        return "；".join(ordered_details) + "。"
+
+    limits = list(source_limits)
     if target:
         limits.append(target)
-    if item.source_price_gap_reason == "no_close_on_planned_official_session":
-        limits.append("不以後一筆價格替代缺價日")
-    if item.source_data_as_of_date:
-        limits.append("來源資料截止：" + item.source_data_as_of_date)
+    if gap:
+        limits.append(gap)
+    if source_as_of:
+        limits.append(source_as_of)
     if not limits:
         return reason
     return f"{reason} {'；'.join(limits)}。"

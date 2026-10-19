@@ -312,3 +312,16 @@ QA143沿public restore將具名127最小研究封存還原到全新owner output�
 原artifact `e6523f2b83123a9f2916ddd8326e005c77825542d57ec77aa2be41a05054cf4d`，owner DB `77905a51cc597a9bd79ad402c4fe587d0646ceda602b25188786e798e546459a`，結果JSON `87243e1e3751c9d21c8784268444d5a9de65da115dbba2ac50041e754b589445`。spec `cd93925907a1bc1d62f6d03f5602c0a8ef00c0008af64fca62426215fc4d213e`，閉鎖 `e596fdcf5de647614f04f470c3cd18fa1cd1f29aa03002072b6a7d5d95761751`。兩組Root串行原8GiB／12程序／kill-on-close／mutex／RAM至少8GiB，三PID空／handles閉／mutex釋放且無強制回收。
 
 本次只接受新Source受改排版與只讀重開，固定05 EXE沒有這批修改。行情缺件、期限衝突與原SOP／PIT／正式來源／自然成熟／真人／Native及完整Gate保持，不由顯示五股升格。
+
+<a id="逐期限說明qa145146b"></a>
+## 逐期限說明（QA145–146b，後續Source）
+
+此葉片解除139使用者回報「各期限都是相同長說明、無法辨別結果」的可讀性阻礙。只把至少兩種期限且每列都共有的來源限制文字交集集中一次；僅部分期限的降級／未納入警告留在原列。已連結列先顯示原target／gap，非LINKED保留阻擋理由優先；六欄日期／狀態及完整原tooltip保留。loading、錯誤、空表／換context清舊標籤。DTO、reader、原quality／summary／金融判斷皆未改；既有Luna單寫兩檔，Root凍結API與金融界線，另一Luna有限靜態複核沒有重大問題。
+
+QA145編譯、27定向／跨頁PASS、1既有real scheduled Qt opt-in未啟用略過，Workbench85、validator25/0/4、mypy1081通過。146父程序真八列通過，fresh在切入結果頁觸發原重讀後helper太早取None而FAIL；原件保留。146a只等待實際模型，以原15秒／每程序120秒正常Main38776→38772通過。Root檢視真截圖後發現共通限制雖移出，但基本長句仍遮住差異，故另補Display字序，不改tooltip預設原文與金融。
+
+最終145a新增三種target優先／衝突先行測例，31定向／跨頁PASS、同一1項opt-in略過，85／25-0-4／mypy1081通過。146b正常Source Main27256→40692從首頁明選09/10原推薦1538及09/14原推薦1528、原個股／決策結果／返回，八列target首句、狀態、計畫目標日／實際取價日及完整tooltip一致。共通只有年度計畫與未正式採認，四個ready列的degraded／source_not_ingested沒有升為全體。原推薦DB、watchlist、Evidence DB SHA保持，Journal未建立，network／protected／Qt errors0；Root看1280四列截圖。沒有注入Journey或更改outcome、重算績效／補價，也未改原期限。
+
+Evidence DB `eeea9a1a4bbf119bda97465d87e7a9e3b0c1268ffec2f1f9fd9a03248125ddc4`，最終結果 `ce648fbbd0de93e98d787b3316c9eeca335b5275af1cdcb55a934606ccb62946`。145a spec `4bf8a8fac157d6e4d573afa77e3ad5433ba44bdc99326b916b5e038b17745ffe`，146b spec `b69b8a13b6fe34adc5d0b9850d6b8afcaa4c12ea2378f279427c623e321c5c04`。145／146原FAIL／146a／145a／146b閉鎖SHA分別 `27fbfb07bbd6b1927f3d66426f433b76d126bcf98129058b4c33f3f6f95dada7`、`a599be55916ea1a70501c90b49f3355a6204ccfe4c0f2f6036e1f51e6a6f6a75`、`31ef50ac2a913c05c21a1680b99ec7ed5236ec5df6121b7cebfd40efdbf0411d`、`b5173fe0c64e85b193350130b4ea74880ef4108d5687301f4e57c7050bbe6a93`、`05fa20e8dcb126a6e2dfe9bcf7b3202cfcf7fbde150ae508b9f043e22b68ec77`。
+
+Root串行8GiB／12程序／kill-on-close／mutex／RAM至少8GiB，各組三PID空／handles閉／mutex釋放且無強制回收。context仍有headings_only Unknown，Root另讀symbols/diff/tests；mypy的UI ignore不證強型別。固定05尚未含本葉片，原143／139與私人state保持。只接受本機Source受改顯示，不授正式成熟、金融用途、歷史PIT、自然管線／完整Gate或Native／真人。

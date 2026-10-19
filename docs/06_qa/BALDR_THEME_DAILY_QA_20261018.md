@@ -367,3 +367,14 @@ QA158由同版EXE `0c52da0d95982b4af7bafc769afad5609e79332657eaa393b2d3d08df00d6
 manifest identity `75f97365b03adf2d84efaad03250dc2510ba2eb8517b3212ea2c20166060ed7a`，mapping `d9e50b02ec0dfe5f1eed130fac9855664ef9e649cd3aa627e9a0924d3b258491`、prices `9719bd90239f9171e0323e77c1b5229fc8755560f647b17f8516f25fb3f84f00`及config／setup receipt／watchlist／portfolio全檔清單與雜湊前後不變。Journal未建立，原兩個lock檔保持；網路、受保護根與Qt錯誤0。結果SHA `42b38c43f0ec35ddf9487b2ab118b36ef5caecc6649adc421ad23f3acd5c0cbd`；閉鎖 `fde828952e5f6bea01711c3d012458ffd4c9a7de5a9d0d002db323a314bf4baa`，三PID空、handles閉、mutex放、無forced cleanup。
 
 只接受獨立view的實際25鏈選取／成員與股票signal；25鏈完整Main個股報告／返回未驗，題材Main往返沿05具名未改證據。合格五日曆、法人schema及歷史映射警告仍有原文；畫面缺值保持未提供與覆蓋數0，不以未知卡當完整金融功能。既存06交付封存與私人資料不改，技術測試不代替Native／真人接受。
+
+<a id="f07既存筆記新程序讀回qa160"></a>
+## F07既存筆記新程序讀回（QA160，限定Source）
+
+此項補足QA155已保存第一篇卻尚未讀回的持久化證據，不重跑原完整240秒旅程。Source為`2ad49f3cac9bc0daaae0fdb90918d0a20fc1fb22`，執行HEAD `371444b5f6d8af16935ee1b0464bf32af3358a2c`；只複製155自有watchlist／portfolio到新owner狀態，原155資料與既存行情唯讀。沒有另存筆記、修訂或以新文字替換原文。
+
+新程序正常Main33380在1280×760，沿原觀察清單2506可視列雙擊、原價格個股及「我的判斷」，先讀來源／清單，再明選原筆記讀原文。每個動作仍fresh來源核驗；原收藏56.907秒、筆記來源與清單57.125秒、原文與原來源核驗57.328秒，176.328秒內合作關閉，保留單程序240秒與每步15／120／180秒。原文、唯一revision、無parent、原canonical bookmark及`recorded_at=2026-10-19T19:39:00.677159+00:00`一致，原文欄唯讀；Root檢視截圖。Journal SHA `4ebd6f85fa5473efadc2141ee9d2136f5b0735a3d5bdf41d4d8d5bda4dfe8617`與清單SHA `9f1e0117bd54812a840c6305b81886ed03a5f420cc73fdbfe9ef018c7e099e07`前後不變，網路／保護根／Qt錯誤0，candidate sentinel不存在。
+
+helper SHA `ee1c291d311bec4cb95339c33562583648faed73d2b6a8e78a8b742507f038bd`，spec `499ba0d5c4f0042fe2aaa33e62694ad58cf5824e81303c008838ea77b355a47d`，結果 `8cefdc6047c256853f461253fa4faae0e6860f17891284c0b87b1ebb84b11eae`。閉鎖收據 `0fef57e50eb6cb9c2fcfb4bcf5c64dbb328cee906c1911e47592c76675346c2f`：三PID空、process／Job handles閉、mutex釋放、無forced cleanup；8GiB committed／12程序／啟動RAM至少8GiB保持。編譯與新程序只讀檢查通過，未改產品Source，未重跑未受影響共同防線。
+
+原104／155完整FAIL保留；保存→修訂→原來源返回→保存中關閉→fresh完整旅程仍待，不能以本項只讀成功當完整F07／M3、金融用途、Native或真人接受。固定06未含F07 Source，封存包與私人資料不改。QA157及獨立靜態複核尚未證明足以解除完整240秒阻礙的局部修法；固定plan轉換或固定parameters重建的低收益候選暫不實作，不略過來源／語義／精度／PIT守衛或跨動作快取。

@@ -12,7 +12,6 @@ from typing import Any, Callable
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from app_module.daily_market_technical_universe_price_bookmark_v1 import (
@@ -64,8 +63,8 @@ def _wait_until(
         if time.monotonic() >= deadline:
             detail = f"；狀態：{diagnostic()}" if diagnostic else ""
             raise AssertionError(f"Qt 工作未在固定期限內完成{detail}")
-        QTest.qWait(10)
-        time.sleep(0.001)
+        # 讓背景來源核對取得 Python 執行緒時間，原固定五秒界線不變。
+        time.sleep(0.005)
 
 
 def _diagnostic(widget: PinnedStockResearchNotesWidget) -> str:

@@ -254,11 +254,15 @@ Increment59固定來源包為兩個既有策略的v2規則收據加三份raw sou
 
 ### 價格研究、個股與 Portfolio 跨頁接線
 
+F07後續Source以同一筆記服務的`source_read_scope()`在worker內啟用有界語義證明，只有完整成功讀取的repository proof可登記。Main把同一服務的factory交給原收藏與價格頁的完整來源reader，避免各入口重做冷語義計算；查詢、翻頁與單股投影仍走原路徑。保存、明選讀取與來源開啟每次仍核完整當前原件，只省去相同SHA原件的重複語義計算，不重用舊DTO、來源狀態或P01授權。Journal／CAS、實際保存時鐘及不可取消寫入保持；新程序冷驗、128份上限及竄改拒絕邊界見[QA163–168](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)。固定06不含此修改，完整旅程與後續候選的接受範圍依具名QA分開記錄。
+
+同View、同query的返回候選沿既有P01翻頁語義：已發行session／result及完整選取pins相符時，由原public `result.read_page`重讀該頁所涉批次，核manifest及該批全部raw的bytes／SHA／layout，以新page重建完整selection再比對。它保留已開啟的母體session，不宣稱每次返回都重新核完整parent／receipt graph，也不直接套舊page DTO。沒有符合狀態仍走原fresh full重開；快路徑遇取消、竄改或失配直接拒絕，不吞錯重試。筆記保存、讀取與開啟原版本的完整fresh來源路徑不變；驗證狀態見同段QA。
+
 `stock_research_report_snapshot_codec`以`stock-research-report-projection-snapshot.v1`固定完整report與typed context。QA82a編譯／19項定向／單檔mypy及QA82b四股實際public report往返通過；先前FAIL保留。顯式DTO／Enum allowlist、Decimal／展示float無損表示、原字串／tuple/list、4MiB／depth64／node100000守衛保持；排名context建構會解析路徑，v1明確拒絕。公開DTO內層可變，store/render均按canonical JSON+SHA重讀，內容hash不授上游來源／PIT。新`StockResearchReportNoteService`沿Journal ACTION_NOTE／CAS保存原文與完整typed payload、獨立根／直接修訂；result_id與decision_date留空，report查詢截至／原產生時間／實際保存時間分開。Main的「保存時報告」使用獨立只讀ReportView，不接即時providers，也不重查producer；一般報告Journal／UI接線已由QA89／90g及固定03限定驗證保存、直接修訂比較與新程序，原失敗與範圍見[QA82以後](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#一般報告保存整合qa82起)。
 
 `PinnedStockResearchSource`只接受既有F07 bookmark的canonical JSON，綁股票、原查詢／頁／選取／snapshot；保存及開啟前沿public exact reader重驗。`PinnedStockResearchNoteService`沿Journal ACTION_NOTE與CAS追加獨立根／直接修訂，原文完整保存於payload，摘要沿Journal既有正規化；股票明示，推薦result_id與decision_date留空，不製造候選或歷史決策身份。實際Journal保存時間、行情觀測日及原研究日分開。缺原件仍可讀原筆記，但新寫入、修訂及開啟來源拒絕；不改金融值、PIT或用途資格。
 
-後續Source新增`save_with_readback()`與不可變`PinnedStockResearchNoteSaveReadback`：每次保存前仍fresh exact，typed state與原canonical bookmark須在寫入前一致；CAS追加後實讀Journal並核唯一修訂、原文／parent與實際保存時間。舊`save()`維持回傳Note。UI僅同generation／股票／完整bookmark、沒有既存pending load且非關閉中時，用同次核驗與Journal回讀刷新；錯收據、缺保存時間或來源切換均回原刷新／確認路徑，不提供下一次動作免驗。QA154／154a限定定向與共同防線通過，但155完整旅程仍逾原240秒，未納入固定06；詳[保存回讀QA](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07保存回讀qa154155)。
+後續Source新增`save_with_readback()`與不可變`PinnedStockResearchNoteSaveReadback`：每次保存前仍fresh exact，typed state與原canonical bookmark須在寫入前一致；CAS追加後實讀Journal並核唯一修訂、原文／parent與實際保存時間。舊`save()`維持回傳Note。UI僅同generation／股票／完整bookmark、沒有既存pending load且非關閉中時，用同次核驗與Journal回讀刷新；錯收據、缺保存時間或來源切換均回原刷新／確認路徑，不提供下一次動作免驗。QA154／154a限定定向與共同防線通過，155原240秒FAIL保留；後續167／168已完成Source全旅程，固定06未含、07待建；詳[保存回讀QA](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07保存回讀qa154155)。
 
 正常Main注入同一Journal服務，個股工作區以持續存在的捲動容器掛「我的判斷」。背景讀取按generation／股票／選取拒晚到，來源開啟按下當下再重驗，沿原bookmark route恢復同源個股及返回；換股草稿保留原來源但清除修訂parent。已送出寫入不被合作取消，結果與native thread終態齊備才回收worker，關閉須等寫入排空。本分支只補`technical_price_saved_source`，與上述一般整份報告的完整snapshot契約分開；原接線證據見[QA](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#原價格版本的個股判斷qa62至qa70)。
 

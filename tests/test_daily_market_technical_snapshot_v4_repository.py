@@ -39,6 +39,7 @@ from app_module.daily_market_technical_snapshot_v4_repository import (
     sha256_bytes,
 )
 from app_module.personal_data_paths import to_internal_io_path
+from app_module.rule_research_sample_capture import ResearchCaptureWriteScope
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -107,14 +108,17 @@ def _make_run(tmp_path: Path, stock_count: int = 16) -> tuple[Path, Any]:
         for start in range(0, len(codes), 16):
             session.load_batch(codes[start : start + 16])
         windows = session.finish()
+    scope = ResearchCaptureWriteScope(output_root, database)
+    batch_root = scope.root / "run"
     artifact = write_daily_market_technical_snapshot_v4_batch(
-        output_root=output_root / "run",
+        output_root=batch_root,
         cohort=_cohort(codes),
         source_clock=clock,
         finished_windows=windows,
+        research_scope=scope,
     ).artifact
     assert artifact is not None
-    return output_root / "run", artifact
+    return batch_root, artifact
 
 
 def _read_manifest(path: Path) -> dict[str, Any]:

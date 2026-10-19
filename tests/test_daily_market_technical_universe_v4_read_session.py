@@ -1904,15 +1904,14 @@ def test_full_257_selection_freshly_hashes_segments_but_decodes_only_requested_p
     decoded_codes: list[str] = []
     artifact_paths: list[Path] = []
     observed_references: list[Any] = []
-    original_from_json = DailyMarketTechnicalFeatureSnapshotV4.from_json
+    original_rehydrate = snapshot_repository_module._rehydrate_snapshot_from_reader_issued_bytes
     original_read_file = snapshot_repository_module._read_bounded_file
     original_child_reader = query_module._read_session_child_snapshots
 
-    def count_from_json(
-        cls: type[DailyMarketTechnicalFeatureSnapshotV4],
-        raw: bytes | str,
+    def count_rehydrate(
+        raw: bytes,
     ) -> DailyMarketTechnicalFeatureSnapshotV4:
-        snapshot = original_from_json(raw)
+        snapshot = original_rehydrate(raw)
         decoded_codes.append(snapshot.stock_code)
         return snapshot
 
@@ -1937,9 +1936,9 @@ def test_full_257_selection_freshly_hashes_segments_but_decodes_only_requested_p
 
     with monkeypatch.context() as patch:
         patch.setattr(
-            DailyMarketTechnicalFeatureSnapshotV4,
-            "from_json",
-            classmethod(count_from_json),
+            snapshot_repository_module,
+            "_rehydrate_snapshot_from_reader_issued_bytes",
+            count_rehydrate,
         )
         patch.setattr(snapshot_repository_module, "_read_bounded_file", count_artifact_bytes)
         patch.setattr(query_module, "_read_session_child_snapshots", observe_child_read)
@@ -1951,6 +1950,15 @@ def test_full_257_selection_freshly_hashes_segments_but_decodes_only_requested_p
     assert selection_page.page.to_dict() == strict_page.to_dict()
     requested_codes = selection.stock_codes[200:257]
     assert tuple(row.stock_code for row in selection_page.page.rows) == requested_codes
+    # 實際回傳順序仍按上式逐項核對；既有並行 I/O 的監測完成次序不保證。
+    # 只正規化監測集合的次序，保留重複／遺漏與批次／原件數量的完整斷言。
+    decoded_codes.sort()
+    observed_references.sort(
+        key=lambda reference: (
+            reference.segment_index,
+            reference.semantic_proof.manifest.expected_stock_codes,
+        )
+    )
     assert decoded_codes == list(requested_codes)
     assert len(observed_references) == 5
     assert tuple(reference.segment_index for reference in observed_references) == (0, 0, 0, 0, 1)

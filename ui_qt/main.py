@@ -2427,14 +2427,28 @@ class MainWindow(QMainWindow):
             # --------------------------------------------
 
             _startup_step("正在建立個股研究")
+            price_note_service = PinnedStockResearchNoteService(self.journal_service)
             self.stock_research_workspace = StockResearchWorkspace(
                 self.stock_research_report_service,
                 journey_service=self.decision_outcome_journey_service,
                 continuity_controller=self.decision_continuity_controller,
-                price_note_service=PinnedStockResearchNoteService(self.journal_service),
+                price_note_service=price_note_service,
                 report_note_service=StockResearchReportNoteService(self.journal_service),
                 parent=self,
             )
+            # 原入口與筆記共用同服務證明；每個 worker 仍重新核對全部來源原件。
+            price_source_scope_factory = price_note_service.source_read_scope
+            price_source_readers = (
+                getattr(getattr(self, "watchlist_view", None), "price_bookmark_controls", None),
+                getattr(
+                    getattr(getattr(self, "recommendation_view", None), "daily_market_research_view", None),
+                    "technical_price_view", None,
+                ),
+            )
+            for price_source_reader in price_source_readers:
+                configure_scope = getattr(price_source_reader, "set_source_read_scope_factory", None)
+                if callable(configure_scope):
+                    configure_scope(price_source_scope_factory)
             self.stock_research_workspace.returnRequested.connect(
                 self._return_from_stock_research_report
             )

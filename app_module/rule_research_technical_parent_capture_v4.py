@@ -824,6 +824,7 @@ def _artifact_ref_to_dict(ref: object) -> dict[str, object]:
 def _batch_artifact_to_dict(
     artifact: object, plan: DailyMarketTechnicalParentPlanV4, *,
     _already_read_exact: bool = False,
+    _read_projection: tuple[dict[str, Any], DailyMarketTechnicalCohortV4] | None = None,
 ) -> dict[str, Any]:
     from app_module.daily_market_technical_snapshot_v4_repository import (
         DailyMarketTechnicalBatchArtifactV4,
@@ -832,8 +833,10 @@ def _batch_artifact_to_dict(
 
     if not isinstance(artifact, DailyMarketTechnicalBatchArtifactV4):
         raise TypeError("artifact 必須是 repository.read_exact() 驗證後的 DailyMarketTechnicalBatchArtifactV4")
-    body = plan.to_dict()
-    cohort = plan.cohort
+    # 僅重用同次已驗證不可變 plan 的純投影；不重用來源讀取結果。
+    body, cohort = _read_projection if _read_projection is not None else (
+        plan.to_dict(), plan.cohort
+    )
     expected_attrs = {
         "generation_identity_sha256": body["generation_identity_sha256"],
         "cohort_identity_sha256": cohort.cohort_identity_sha256,
@@ -1078,6 +1081,10 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
 
         self._validate_path(writing=False)
         plan = self._read_plan(plan_identity_sha256)
+        plan_body = plan.to_dict()
+        read_projection = (
+            plan_body, DailyMarketTechnicalCohortV4.from_dict(plan_body["cohort"])
+        )
         plan_raw = _read_file(self._plan_dir(plan_identity_sha256) / "plan.json", PARENT_CAPTURE_MAX_BYTES_V4)
         plan_sha = _sha256_bytes(plan_raw)
         if expected_plan_sha256 is not None and plan_sha != expected_plan_sha256:
@@ -1090,21 +1097,22 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
         body = receipt.to_dict()
         if (
             body["parent_plan_identity_sha256"] != plan_identity_sha256
-            or body["generation_identity_sha256"] != plan.to_dict()["generation_identity_sha256"]
-            or body["source_clock_identity_sha256"] != plan.to_dict()["source_clock_identity_sha256"]
+            or body["generation_identity_sha256"] != plan_body["generation_identity_sha256"]
+            or body["source_clock_identity_sha256"] != plan_body["source_clock_identity_sha256"]
             or body["receipt_identity_sha256"] != receipt_identity_sha256
         ):
             raise TechnicalParentCaptureV4Error("technical_parent_v4_receipt_plan_link_mismatch")
         self._verify_receipt_chain(plan, body)
-        self._verify_receipt_semantics(plan, body)
+        self._verify_receipt_semantics(plan, body, _read_projection=read_projection)
         verified_batches = self._reverify_all_child_batches(
             plan,
             body,
             cancel_callback=cancel_callback,
             retain_verified_batches=retain_verified_batches,
+            _read_projection=read_projection,
         )
         package = {
-            "plan": plan.to_dict(),
+            "plan": plan_body,
             "plan_sha256": plan_sha,
             "receipt": body,
             "receipt_sha256": _sha256_bytes(receipt_raw),
@@ -1311,6 +1319,7 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
         *,
         cancel_callback: Callable[[], bool] | None = None,
         retain_verified_batches: bool = False,
+        _read_projection: tuple[dict[str, Any], DailyMarketTechnicalCohortV4] | None = None,
     ) -> tuple["DailyMarketTechnicalBatchArtifactV4", ...]:
         from app_module.daily_market_technical_snapshot_v4_repository import DailyMarketTechnicalSnapshotV4Repository
 
@@ -1319,6 +1328,10 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
                 raise TechnicalParentCaptureV4Error("technical_parent_v4_empty_child_root_mismatch")
             return ()
         repository = DailyMarketTechnicalSnapshotV4Repository(receipt["repository_output_root"])
+        projection = _read_projection if _read_projection is not None else (
+            plan.to_dict(), plan.cohort
+        )
+        plan_body, cohort = projection
         retained: list["DailyMarketTechnicalBatchArtifactV4"] | None = (
             [] if retain_verified_batches else None
         )
@@ -1327,13 +1340,15 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
             verified = repository.read_exact(
                 child["manifest_path"],
                 expected_manifest_sha256=child["manifest_sha256"],
-                expected_cohort_identity_sha256=plan.cohort.cohort_identity_sha256,
-                expected_source_clock_sha256=plan.to_dict()["source_clock_identity_sha256"],
-                expected_method_contract_sha256=plan.to_dict()["method_contracts_sha256"],
-                expected_decision_date=plan.cohort.decision_date,
+                expected_cohort_identity_sha256=cohort.cohort_identity_sha256,
+                expected_source_clock_sha256=plan_body["source_clock_identity_sha256"],
+                expected_method_contract_sha256=plan_body["method_contracts_sha256"],
+                expected_decision_date=cohort.decision_date,
             )
             _check_parent_read_cancelled(cancel_callback)
-            actual = _batch_artifact_to_dict(verified, plan, _already_read_exact=True)
+            actual = _batch_artifact_to_dict(
+                verified, plan, _already_read_exact=True, _read_projection=projection
+            )
             if actual != child:
                 raise TechnicalParentCaptureV4Error("technical_parent_v4_receipt_child_pin_mismatch")
             if retained is not None:
@@ -1393,9 +1408,12 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
             raise TechnicalParentCaptureV4Error("technical_parent_v4_initial_receipt_invalid")
 
     def _verify_receipt_semantics(
-        self, plan: DailyMarketTechnicalParentPlanV4, receipt: Mapping[str, Any]
+        self, plan: DailyMarketTechnicalParentPlanV4, receipt: Mapping[str, Any], *,
+        _read_projection: tuple[dict[str, Any], DailyMarketTechnicalCohortV4] | None = None,
     ) -> None:
-        body = plan.to_dict()
+        body, cohort = _read_projection if _read_projection is not None else (
+            plan.to_dict(), plan.cohort
+        )
         artifacts = receipt["batch_artifacts"]
         expected_batches = body["batches"]
         expected_by_id = {item["batch_id"]: item for item in expected_batches}
@@ -1411,7 +1429,7 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
                 raise TechnicalParentCaptureV4Error("technical_parent_v4_receipt_batch_members_mismatch")
             if (
                 child["generation_identity_sha256"] != body["generation_identity_sha256"]
-                or child["cohort_identity_sha256"] != plan.cohort.cohort_identity_sha256
+                or child["cohort_identity_sha256"] != cohort.cohort_identity_sha256
                 or child["source_clock_identity_sha256"] != body["source_clock_identity_sha256"]
                 or child["method_contract_sha256"] != body["method_contracts_sha256"]
             ):

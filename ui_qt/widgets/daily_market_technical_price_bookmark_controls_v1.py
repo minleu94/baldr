@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 import re
 from typing import Any, Literal, cast
@@ -201,6 +202,8 @@ def _read_price_bookmark_state(
     watchlist_id: str,
     expected: DailyMarketTechnicalUniversePriceBookmarkV1,
     cancel_callback: Any = None,
+    *,
+    source_read_scope_factory: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> DailyMarketTechnicalUniversePriceBookmarkStateV1:
     """在同一 worker 內核對 watchlist identity 前後並 fresh 重開 exact bookmark。"""
 
@@ -216,10 +219,12 @@ def _read_price_bookmark_state(
     ):
         raise ValueError("technical_price_bookmark_changed_before_reopen")
     _check_cancel(cancel_callback)
-    state = read_daily_market_technical_universe_price_bookmark_v1(
-        current,
-        cancel_callback=cancel_callback,
-    )
+    scope = source_read_scope_factory() if source_read_scope_factory is not None else nullcontext()
+    with scope:
+        state = read_daily_market_technical_universe_price_bookmark_v1(
+            current,
+            cancel_callback=cancel_callback,
+        )
     if (
         not isinstance(state, DailyMarketTechnicalUniversePriceBookmarkStateV1)
         or state.bookmark.to_dict() != expected_dict
@@ -269,6 +274,7 @@ class DailyMarketTechnicalPriceBookmarkControlsV1(QWidget):
         self._entries: tuple[_PriceBookmarkEntry, ...] = ()
         self._has_loaded_list = False
         self._closing = False
+        self._source_read_scope_factory: Callable[[], AbstractContextManager[None]] | None = None
         self._setup_ui()
 
     @property
@@ -278,6 +284,14 @@ class DailyMarketTechnicalPriceBookmarkControlsV1(QWidget):
     @property
     def workers_remaining(self) -> int:
         return int(self._worker is not None and self._worker.isRunning())
+
+    def set_source_read_scope_factory(
+        self,
+        factory: Callable[[], AbstractContextManager[None]] | None,
+    ) -> None:
+        """設定 full source reader 的背景來源證明範圍建立器。"""
+
+        self._source_read_scope_factory = factory
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -347,12 +361,14 @@ class DailyMarketTechnicalPriceBookmarkControlsV1(QWidget):
         self._opening_bookmark_id = entry.bookmark_id
         self._opening_bookmark = entry.bookmark
         self._opening_selection_generation = self._selection_generation
+        source_read_scope_factory = self._source_read_scope_factory
         worker = TaskWorker(
             _read_price_bookmark_state,
             self.watchlist_service,
             entry.bookmark_id,
             self.watchlist_id,
             entry.bookmark,
+            source_read_scope_factory=source_read_scope_factory,
         )
         self._start_worker(worker, "open")
         self._status("正在背景依收藏保存的價格條件與來源資料重新核驗；不查目前行情。")

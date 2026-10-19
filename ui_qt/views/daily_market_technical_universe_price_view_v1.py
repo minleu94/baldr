@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -267,12 +268,16 @@ def _read_entry(
     inputs: _PriceQueryInputs,
     page_size: int,
     cancel_callback: Callable[[], object] | None,
+    *,
+    source_read_scope_factory: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> _PriceViewState:
     _check_cancel(cancel_callback)
-    session = open_daily_market_technical_universe_price_read_session_v1(
-        **_entry_open_kwargs(output_root, entry),
-        cancel_callback=cancel_callback,
-    )
+    scope = source_read_scope_factory() if source_read_scope_factory is not None else nullcontext()
+    with scope:
+        session = open_daily_market_technical_universe_price_read_session_v1(
+            **_entry_open_kwargs(output_root, entry),
+            cancel_callback=cancel_callback,
+        )
     query = session.create_query(
         rule_state_filters=inputs.rule_state_filters,
         combine_mode=inputs.combine_mode,
@@ -383,6 +388,84 @@ def _restore_selection(
     return _PriceViewState(session, reopened, result, request, page)
 
 
+def _restore_loaded_selection(
+    state: _PriceViewState,
+    selection: DailyMarketTechnicalUniversePriceSelectionV1,
+    cancel_callback: Callable[[], object] | None,
+) -> _PriceViewState:
+    """沿目前已發行的同查詢結果，重新讀取 selection 所指的 P01 頁。"""
+
+    _check_cancel(cancel_callback)
+    if not isinstance(state, _PriceViewState):
+        raise ValueError("technical_universe_price_live_origin_state_invalid")
+    if not isinstance(selection, DailyMarketTechnicalUniversePriceSelectionV1):
+        raise ValueError("technical_universe_price_selection_type_invalid")
+
+    selection = DailyMarketTechnicalUniversePriceSelectionV1.from_dict(selection.to_dict())
+    session = state.session
+    query = state.query
+    result = state.result
+    if not isinstance(session, DailyMarketTechnicalUniversePriceReadSessionV1):
+        raise ValueError("technical_universe_price_live_origin_session_invalid")
+    if not isinstance(query, DailyMarketTechnicalUniversePriceQueryV1):
+        raise ValueError("technical_universe_price_live_origin_query_invalid")
+    if not isinstance(result, DailyMarketTechnicalUniversePriceResultV1):
+        raise ValueError("technical_universe_price_live_origin_result_invalid")
+    if (
+        not isinstance(state.request, DailyMarketTechnicalUniversePricePageRequestV1)
+        or not isinstance(state.page, DailyMarketTechnicalUniversePricePageV1)
+    ):
+        raise ValueError("technical_universe_price_live_origin_page_invalid")
+
+    session._validate_issued()
+    result.to_dict()
+    state.request.to_dict()
+    state.page.to_dict()
+    query_json = query.to_json()
+    if (
+        selection.query_json != query_json
+        or not session.matches_query(query)
+        or result.query.to_json() != query_json
+        or result._session is not session
+        or state.request != state.page.request
+        or state.request.query_identity_sha256 != query.query_identity_sha256
+        or state.request.operation_identity_sha256 != result.operation_identity_sha256
+        or state.page.result_identity_sha256 != result.result_identity_sha256
+        or state.page.request.operation_identity_sha256 != result.operation_identity_sha256
+    ):
+        raise ValueError("technical_universe_price_live_origin_pin_mismatch")
+
+    selected_request = selection.page_request
+    if (
+        selection.result_identity_sha256 != result.result_identity_sha256
+        or selected_request.query_identity_sha256 != query.query_identity_sha256
+        or selected_request.operation_identity_sha256 != result.operation_identity_sha256
+    ):
+        raise ValueError("technical_universe_price_live_origin_operation_mismatch")
+    request = result.create_page_request(
+        selected_request.page_index,
+        page_size=selected_request.page_size,
+    )
+    if (
+        request.query_identity_sha256 != query.query_identity_sha256
+        or request.operation_identity_sha256 != result.operation_identity_sha256
+        or request.selection_identity_sha256 != selected_request.selection_identity_sha256
+    ):
+        raise ValueError("technical_universe_price_live_origin_request_mismatch")
+    page = result.read_page(request, cancel_callback=cancel_callback)
+    page.to_dict()
+    _check_cancel(cancel_callback)
+    actual = DailyMarketTechnicalUniversePriceSelectionV1.from_page(
+        query,
+        page,
+        selection.stock_code,
+    )
+    if actual.to_dict() != selection.to_dict():
+        raise ValueError("technical_universe_price_origin_pin_mismatch")
+    _check_cancel(cancel_callback)
+    return _PriceViewState(session, query, result, request, page)
+
+
 class DailyMarketTechnicalUniversePriceV1View(QWidget):
     """F07 價格範圍、三態篩選、全域排序與 exact drill-down。"""
 
@@ -416,6 +499,14 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
     def workers_remaining(self) -> int:
         return int(self._worker is not None and self._worker.isRunning())
 
+    def set_source_read_scope_factory(
+        self,
+        factory: Callable[[], AbstractContextManager[None]] | None,
+    ) -> None:
+        """設定 full source reader 的背景來源證明範圍建立器。"""
+
+        self._source_read_scope_factory = factory
+
     def __init__(self, store_output_root: str | Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.store_output_root = Path(store_output_root).absolute()
@@ -438,6 +529,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._scroll_restore_scheduled_for: _PendingBookmarkScrollRestore | None = None
         self._stock_filter_rejected_text: str | None = None
         self._drill_selection_code = ""
+        self._source_read_scope_factory: Callable[[], AbstractContextManager[None]] | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
@@ -820,6 +912,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         except ValueError as exc:
             self.status.setText(str(exc))
             return
+        source_read_scope_factory = self._source_read_scope_factory
         self._start(
             "嚴格核驗並載入價格來源",
             lambda cancel_callback=None: _read_entry(
@@ -828,6 +921,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
                 inputs,
                 page_size,
                 cancel_callback,
+                source_read_scope_factory=source_read_scope_factory,
             ),
             self._apply_interactive_state,
             kind="source_read",
@@ -977,12 +1071,26 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         if not isinstance(bookmark, DailyMarketTechnicalUniversePriceBookmarkV1):
             self.status.setText("收藏格式不符；未接受重開要求。")
             return False
+
+        source_read_scope_factory = self._source_read_scope_factory
+
+        def read_bookmark(
+            cancel_callback: Callable[[], object] | None = None,
+        ) -> DailyMarketTechnicalUniversePriceBookmarkStateV1:
+            scope = (
+                source_read_scope_factory()
+                if source_read_scope_factory is not None
+                else nullcontext()
+            )
+            with scope:
+                return read_daily_market_technical_universe_price_bookmark_v1(
+                    bookmark,
+                    cancel_callback=cancel_callback,
+                )
+
         return self._start(
             "重驗價格研究收藏",
-            lambda cancel_callback=None: read_daily_market_technical_universe_price_bookmark_v1(
-                bookmark,
-                cancel_callback=cancel_callback,
-            ),
+            read_bookmark,
             self._apply_bookmark_state,
             kind="bookmark_restore",
         )
@@ -1014,8 +1122,26 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
 
     def restore_origin(self, selection: DailyMarketTechnicalUniversePriceSelectionV1) -> bool:
         """按明示的 F07 原 selection 重開來源；True 只表示已接受或排隊。"""
-
-        return self.restore_selection(selection)
+        state = self._state
+        if (
+            not isinstance(selection, DailyMarketTechnicalUniversePriceSelectionV1)
+            or self._closing
+            or self._worker is not None
+            or self._pending is not None
+            or state is None
+            or selection.query_json != state.query.to_json()
+        ):
+            return self.restore_selection(selection)
+        return self._start(
+            f"返回 {selection.stock_code} 原價格查詢",
+            lambda cancel_callback=None: _restore_loaded_selection(
+                state,
+                selection,
+                cancel_callback,
+            ),
+            lambda value: self._apply_state(value, selected_code=selection.stock_code),
+            kind="origin_restore",
+        )
 
     def select_stock_code(self, stock_code: str) -> bool:
         index = self.results_model.index_for_stock(stock_code)

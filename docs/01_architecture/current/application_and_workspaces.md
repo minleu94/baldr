@@ -95,6 +95,8 @@ Research Lab 的 Paper 保存快照查找使用可選的外部 artifacts root；
 
 價格選股在正常Main的下鑽沿既有PriceV1 reader-issued stock與selection：`DailyMarketResearchView`通過原query／頁核驗後發`priceStockResearchRequested`，Main呼叫`StockResearchWorkspace.show_price_research`，不轉成一般report context或查最新價庫。既有詳情視圖核stock／row／snapshot／source／選取身份，僅把最多120列保存OHLCV投影到原圖表與明細；五規則與unknown照原件呈現。工作區以stack隔離一般報告／H20和原價格來源，返回由`restore_price_research_origin`沿原`restore_origin`恢復頁與選取；非Main宿主保留dialog。未修改來源、保存schema、指標計算、來源用途或歷史PIT，工程驗證見[Increment118](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment118-price-stock-workspace)。
 
+F07後續Source在Main組裝時，將同一`PinnedStockResearchNoteService.source_read_scope`交給收藏controls與價格view。factory於排程前擷取，僅在原full-reader worker內啟用；錯誤／取消亦退出範圍，generation／選取／晚到／關閉守衛不變。查詢、翻頁與單股投影不新增scope。這只重用repository發行的有界語義證明，每次原件仍fresh，新程序冷驗；完整旅程與固定包界線見[QA163–166](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)。
+
 Main的日曆接受配置沿原`ApplicationSettings`→BacktestView→result_panel→Registry controller。明示外部path／SHA只載入已有的兩市場typed用途接受，來源家族在binding與pin分別核對；不讀batch、不自建接受或選latest。Main複製caller設定並固定本視窗接受tuple；缺設定或讀取失敗只停用daily用途，錯誤跨模式保留。原worker native-finished、世代／pin／metadata重驗及關閉取消流程不變。配置與時間契約見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex年度股票日曆候選解析)。
 
 市場研究畫面消費具來源版本、日期、母體、方法與 hash 的 snapshot／manifest。Daily Research、候選摘要、研究書籤與跨頁投影沿同一已核驗來源和 query；readback 按保存的 source identity 重開，不搜尋 latest、不在 UI 重算指標或重新執行 producer。來源缺件、修訂、方法不相容或日期不可判定時保留 unknown／拒絕，不能套用舊投影或改讀一般即時行情。

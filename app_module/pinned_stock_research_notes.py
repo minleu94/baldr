@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from hashlib import sha256
@@ -22,6 +23,9 @@ from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
 )
 from app_module.journal_service import JournalService
+from app_module.daily_market_technical_snapshot_v4_repository import (
+    DailyMarketTechnicalSnapshotProofScope,
+)
 
 
 PINNED_STOCK_RESEARCH_NOTE_SOURCE_TYPE = "technical_price_research_note.v1"
@@ -121,6 +125,12 @@ class PinnedStockResearchNoteService:
         if not isinstance(journal_service, JournalService):
             raise TypeError("journal_service must be JournalService")
         self._journal_service = journal_service
+        self._source_proof_scope = DailyMarketTechnicalSnapshotProofScope()
+
+    def source_read_scope(self) -> AbstractContextManager[None]:
+        """在執行來源工作的背景 context 啟用同服務證明，不保留舊 DTO。"""
+
+        return self._source_proof_scope.activate()
 
     def save(
         self,
@@ -191,7 +201,8 @@ class PinnedStockResearchNoteService:
                 "revision_of must differ from revision_id"
             )
 
-        state = _read_exact_source(source)
+        with self.source_read_scope():
+            state = _read_exact_source(source)
         if require_typed_state and (
             type(state) is not DailyMarketTechnicalUniversePriceBookmarkStateV1
             or state.bookmark.to_json() != source.bookmark_json
@@ -352,7 +363,8 @@ class PinnedStockResearchNoteService:
             raise PinnedStockResearchNoteError("note must be a pinned stock research note")
         _required_revision_id(note.revision_id, "revision_id")
         _validated_note_text(note.text)
-        return _read_exact_source(note.source, cancel_callback=cancel_callback)
+        with self.source_read_scope():
+            return _read_exact_source(note.source, cancel_callback=cancel_callback)
 
 
 def verify_pinned_stock_research_source(

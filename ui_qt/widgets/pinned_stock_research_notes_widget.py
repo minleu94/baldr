@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 from uuid import uuid4
 
@@ -326,10 +327,15 @@ class PinnedStockResearchNotesWidget(QWidget):
             source = None
             source_error = ""
             try:
-                source = verify_pinned_stock_research_source(
-                    bookmark,
-                    cancel_callback=cancel_callback,
+                scope_factory = getattr(self._service, "source_read_scope", None)
+                source_scope = (
+                    scope_factory() if callable(scope_factory) else nullcontext()
                 )
+                with source_scope:
+                    source = verify_pinned_stock_research_source(
+                        bookmark,
+                        cancel_callback=cancel_callback,
+                    )
                 if (
                     not isinstance(source, PinnedStockResearchSource)
                     or source.identity_sha256 != expected_identity

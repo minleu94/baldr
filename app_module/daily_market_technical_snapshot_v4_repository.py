@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, datetime
 import hashlib
@@ -13,6 +16,7 @@ import re
 import shutil
 import stat
 import sys
+from threading import Lock
 import weakref
 from typing import Any, NoReturn, cast
 
@@ -28,6 +32,9 @@ from app_module.daily_market_technical_method_contract_v4 import (
 from app_module.daily_market_technical_read_session import (
     DAILY_MARKET_TECHNICAL_READ_SESSION_BATCH_MAX_STOCKS,
     DailyMarketTechnicalSourceClockV4,
+)
+from app_module.daily_market_technical_source import (
+    validate_daily_market_technical_calculation_binding,
 )
 from app_module.personal_data_paths import (
     _p01_page_operation_path_components,
@@ -49,6 +56,7 @@ DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_BATCH_ARTIFACT_BYTES = 4 * 1024 * 1024
 DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_RETAINED_BYTES = 64 * 1024 * 1024
 DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_COHORT_CODES = 256
 DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_FILES_PER_ATTEMPT = 64
+DAILY_MARKET_TECHNICAL_PROOF_SCOPE_MAX_BATCHES = 128
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _STOCK_CODE_RE = re.compile(r"^[A-Za-z0-9]{1,16}$")
@@ -226,6 +234,64 @@ _ISSUED_BATCH_PROOFS: dict[
         _VerifiedBatchSemanticProofV4,
     ],
 ] = {}
+
+
+class DailyMarketTechnicalSnapshotProofScope:
+    """同服務的有界語義證明；每次讀取仍核對全部當前原件。"""
+
+    def __init__(self) -> None:
+        self._proofs: OrderedDict[
+            tuple[Path, Path, str], _VerifiedBatchSemanticProofV4
+        ] = OrderedDict()
+        self._lock = Lock()
+
+    @contextmanager
+    def activate(self) -> Iterator[None]:
+        """只在實際執行工作的 context 啟用，例外與巢狀退出均還原。"""
+
+        token = _ACTIVE_SEMANTIC_PROOF_SCOPE.set(self)
+        try:
+            yield
+        finally:
+            _ACTIVE_SEMANTIC_PROOF_SCOPE.reset(token)
+
+    def _proof_for(
+        self, manifest: _ValidatedSnapshotBatchManifestV4,
+    ) -> _VerifiedBatchSemanticProofV4 | None:
+        key = (
+            manifest.repository_output_root,
+            manifest.manifest_path,
+            manifest.manifest_sha256,
+        )
+        with self._lock:
+            proof = self._proofs.get(key)
+            if proof is None:
+                return None
+            issued = _verify_issued_semantic_proof(proof, require_live_origin=False)
+            if issued.manifest != manifest:
+                _fail("technical_snapshot_v4_semantic_proof_manifest_mismatch")
+            self._proofs.move_to_end(key)
+            return issued
+
+    def _remember(self, proof: _VerifiedBatchSemanticProofV4) -> None:
+        # 只接受本次完整成功讀取所發行、原 batch 仍存活的證明。
+        issued = _verify_issued_semantic_proof(proof, require_live_origin=True)
+        manifest = issued.manifest
+        key = (
+            manifest.repository_output_root,
+            manifest.manifest_path,
+            manifest.manifest_sha256,
+        )
+        with self._lock:
+            self._proofs[key] = issued
+            self._proofs.move_to_end(key)
+            while len(self._proofs) > DAILY_MARKET_TECHNICAL_PROOF_SCOPE_MAX_BATCHES:
+                self._proofs.popitem(last=False)
+
+
+_ACTIVE_SEMANTIC_PROOF_SCOPE: ContextVar[
+    DailyMarketTechnicalSnapshotProofScope | None
+] = ContextVar("daily_market_technical_snapshot_proof_scope", default=None)
 
 
 def canonical_v4_json_bytes(value: Any) -> bytes:
@@ -786,6 +852,9 @@ class DailyMarketTechnicalSnapshotV4Repository:
             expected_method_contract_sha256=expected_method_contract_sha256,
             expected_decision_date=expected_decision_date,
         )
+        scope = _ACTIVE_SEMANTIC_PROOF_SCOPE.get()
+        proof = None if scope is None else scope._proof_for(manifest)
+        checked_bindings: set[tuple[str, str, str]] = set()
         snapshots: list[DailyMarketTechnicalFeatureSnapshotV4] = []
         batch_root = manifest.manifest_path.parent
         for ref in manifest.artifact_refs:
@@ -798,7 +867,12 @@ class DailyMarketTechnicalSnapshotV4Repository:
                 _fail("technical_snapshot_v4_artifact_size_mismatch")
             if sha256_bytes(artifact_raw) != ref.sha256:
                 _fail("technical_snapshot_v4_artifact_sha_mismatch")
-            snapshot = _decode_and_validate_snapshot(artifact_raw, ref, manifest)
+            if proof is None:
+                snapshot = _decode_and_validate_snapshot(artifact_raw, ref, manifest)
+            else:
+                snapshot = _decode_scope_proven_snapshot(
+                    artifact_raw, ref, manifest, proof, checked_bindings
+                )
             snapshots.append(snapshot)
 
         _validate_attempt_layout(batch_root, manifest.expected_stock_codes)
@@ -823,7 +897,9 @@ class DailyMarketTechnicalSnapshotV4Repository:
             source_clock=manifest.source_clock,
             writer_version=manifest.writer_version,
         )
-        _issue_semantic_proof(batch, manifest)
+        issued = _issue_semantic_proof(batch, manifest)
+        if scope is not None:
+            scope._remember(issued)
         return batch
 
     def read_selected_exact(
@@ -989,6 +1065,55 @@ def _decode_and_validate_snapshot(
 ) -> DailyMarketTechnicalFeatureSnapshotV4:
     try:
         snapshot = DailyMarketTechnicalFeatureSnapshotV4.from_json(raw)
+    except (TypeError, ValueError) as exc:
+        reason = str(exc)
+        code = reason if reason.startswith("technical_snapshot_v4_") else (
+            "technical_snapshot_v4_snapshot_invalid"
+        )
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(code, reason) from exc
+    _validate_snapshot_binding(
+        snapshot,
+        ref=ref,
+        clock=manifest.source_clock,
+        clock_sha=manifest.source_clock_identity_sha256,
+        method_sha=manifest.method_contract_sha256,
+        decision_date=manifest.decision_date,
+    )
+    return snapshot
+
+
+def _decode_scope_proven_snapshot(
+    raw: bytes,
+    ref: DailyMarketTechnicalSnapshotV4ArtifactRef,
+    manifest: _ValidatedSnapshotBatchManifestV4,
+    proof: _VerifiedBatchSemanticProofV4,
+    checked_bindings: set[tuple[str, str, str]],
+) -> DailyMarketTechnicalFeatureSnapshotV4:
+    """Scope 專用核證入口；不改變 P01 session 的解碼授權。"""
+
+    issued = _verify_issued_semantic_proof(proof, require_live_origin=False)
+    if (
+        _ACTIVE_SEMANTIC_PROOF_SCOPE.get() is None
+        or issued.manifest != manifest
+        or ref not in manifest.artifact_refs
+        or len(raw) != ref.byte_size
+        or sha256_bytes(raw) != ref.sha256
+    ):
+        _fail("technical_snapshot_v4_semantic_proof_manifest_mismatch")
+    try:
+        snapshot = _rehydrate_snapshot_from_reader_issued_bytes(raw)
+        binding_key = (
+            snapshot.calculation_binding_json,
+            snapshot.calculation_identity_sha256,
+            snapshot.talib_version,
+        )
+        if binding_key not in checked_bindings:
+            validate_daily_market_technical_calculation_binding(
+                json.loads(snapshot.calculation_binding_json),
+                expected_identity=snapshot.calculation_identity_sha256,
+                expected_talib_version=snapshot.talib_version,
+            )
+            checked_bindings.add(binding_key)
     except (TypeError, ValueError) as exc:
         reason = str(exc)
         code = reason if reason.startswith("technical_snapshot_v4_") else (

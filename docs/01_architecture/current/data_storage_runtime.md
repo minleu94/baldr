@@ -31,6 +31,10 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ## 讀寫與保存契約
 
+後續Source的F07筆記服務以`DailyMarketTechnicalSnapshotProofScope`保留最多128份同程序、repository發行的語義證明；`ContextVar`只在實際背景讀取內啟用。命中須重驗seal／登記／完整manifest，仍fresh讀取全部artifact並核bytes／SHA／layout，由本次bytes重建typed snapshot與原binding；保存計算binding沿原validator，不要求舊保存kernel等於現行kernel。Scope不存snapshot、raw或parent結果，新程序與未命中仍完整strict。P01的session capability不擴大，parent只重用同次plan純投影，所有child核對保持。此候選與原完整240秒旅程的驗證狀態見[F07 QA163](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)，不改來源用途、時鐘或PIT資格。
+
+同一已開啟View／query的返回候選另沿既有P01頁面讀取：原issued session／result保留，重讀原頁所涉批次並重建新page，完整selection pins相符才恢復。這不是新的全母體核驗或Scope擴權；跨query／無可用state仍full重開，保存與開啟原版本仍完整fresh。取消或完整性失敗不回退舊DTO；UI契約見[跨頁接線](decision_research_portfolio.md#價格研究個股與-portfolio-跨頁接線)。
+
 `technical_source_copy.copy_price_bookmarks` 沿同模組已完成的closed technical copy收據及封存歷史鏈，將明選F07價格收藏另存新legacy清單。原清單逐bytes封存，來源pin先匹配沿革，再用原PriceReadSession／query／page／selection／bookmark codecs重建新定位的錨點；價格、snapshot／raw row hash、來源時計、所有查詢政策、頁碼與比較順序保持。新ID另記映射，不改原serializer／reader，不以root alias繞過exact守衛。CLI只寫全新根，不啟用設定；原清單／完整來源在發行前後重驗，失敗保留pending與具名原因。其他家族、COW及外部來源未自授搬移，詳[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#明選價格研究收藏的新副本來源工具)。
 
 `research_output_copy.py` 原三store預設不變；caller 以 `include_recommendations=True`（CLI `--include-recommendations`）另明選 `recommendation/runs`。Legacy `runs.result_id` 與 canonical index／metadata 共用原 `RecommendationExecutionQueries` 驗身分，新索引僅改既知 `data_path`，原 JSON／artifact bytes不動。canonical 先由 verified envelope 核外部ML收據依賴，缺完整搬移契約時在任何該收據I/O與目的根建立前拒絕；來源邊界、全量預算、取消、journal／trigger、讀前後SHA與失敗隔離沿原工具。新收據明列選定store，不啟用設定或更動來源時間／用途資格。操作與驗證見[Runbook](../../07_guides/MACHINE_BOOTSTRAP_RUNBOOK.md#保存研究的新副本來源工具)及[129 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment129-recommendation-output-copy)。

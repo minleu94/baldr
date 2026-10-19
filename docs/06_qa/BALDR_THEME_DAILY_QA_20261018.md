@@ -166,3 +166,17 @@ QA86為有限只讀ports複核，SHA `4dc179255db49862acfda4e86de5464803574491fe
 最新QA84d Job收據SHA `1ef360555778a379966e2f989e27f159948d4a4c9c8bd7ec6755927c13f0989e`：自然終態、三PID空、handles關閉、mutex釋放、forced_cleanup=false。QA84e spec已另存（SHA `291fa686008e28b83e35032f594ef1a947d83c3d5a53bb83c4479a1feb63b998`），啟動前正常五小時額度100%／週80%，Root據此未呼叫啟動工具；沒有QA84e Job或結果，不是自動核准拒絕。恢復後須重綁新HEAD／bytes另存spec，不直接跑舊HEAD spec。
 
 Workbench85／validator／八套件mypy因前段fail-fast尚未執行；QA85正常Main／四股保存／精確報告／直接修訂比較／關閉等待／新程序尚未執行，固定03也未建。Source以未驗證checkpoint保存；固定02／01／143、私人原件及其他原FAIL不改。後續先完成這批出口，再依原清冊推進，不重跑未改的F07逾時旅程或將等待人工接受當全域阻礙。
+
+### 一般報告正常Main／新程序（QA89–93）
+
+本批解除一般完整報告判斷仍無正常Main與重開證據的交付阻礙，沿同一M3實作，不擴充金融功能。正常額度實際恢復後，QA89重綁HEAD `bc3a80ec7f1a84d7b39d3607fbc4927fc073f460`：編譯、11項定向（含延後讀取與私人Main）、Workbench85、validator25通過／0失敗／4跳過、八套件mypy1081檔通過。mypy原有UI ignore仍不證明UI強型別。自然閉鎖收據SHA `bf5016cb9f04b55767081fceab01e431ef7f87451004a2e51b8e4af1856abf8a`。
+
+QA90–90b保留第一股15秒未完成的原失敗；階段觀測停在籌碼讀取，另確認測試繼承本機candidate DB。90c明示owned不存在的candidate路徑並禁止原candidate目錄存取後，讀取完成，ML階段仍超時。QA93以相同空登錄直接觀測：構造0.0287秒／讀取0.0286秒；不支持生產效能修正。QA92既有Luna只讀複核亦保留此反證，未改Source。
+
+90d僅在helper的事件等待迴圈讓出5ms，原15秒、非空價格及來源守衛不變；四股載入完成。後續90d–90f失敗分別揭露helper未等筆記刷新、`held_save(**kwargs)`讓TaskWorker額外注入cancel_callback、fresh未等清單列就緒；只修測試同步與包裝簽名，沒有改產品API、資料或放寬斷言。各次spec、結果、錯誤及自然閉鎖收據均保存在owner task，不互覆。
+
+QA90g在正常Source Main、1280×760、prod隔離設定，以既有四股只讀價庫載入2317／2382／2454／2330。2330保存原文、另存直接修訂、開啟保存時報告各tab、返回及800×520比較；第三篇保存送出時要求關閉，視窗等待真Journal結果完成。程序52760結束後，程序1940未先載行情即明選三篇、開原報告與直接比較；完整canonical內容、Journal／watchlist／價庫SHA一致，producer讀取為0，網路及受保護存取嘗試均0。Root檢視原報告與比較截圖；這是Qt事件自動旅程，不是Native座標或真人接受。
+
+原件：`output/tasks/baldr-post-completion-execution/m3_report_notes_main_qa90g/result.json`；spec SHA `ed445e84bea0dec0869bc9f304bb8d60559bff2b5724d546a33b4588fb48ff14`。Job收據 `single_owned_qa_436990c1e237403ba9fc0d12e469c545/receipt.json` SHA `dc6783a1ccfef908b4de7d3d42aeac68955dfd8efd3189aed092954fa3d61886`；三PID陣列空、process／Job handles關閉、mutex釋放、forced_cleanup=false。8GiB／12程序／kill-on-close／啟動前8GiB可用RAM保持。
+
+本次candidate籌碼、ML run、外部營收等未隨隔離資料提供的能力仍為不可用，不接受其完整金融結果或來源用途；既有缺件保持。固定03尚未建，02／01／143原件保持。F07完整來源慢讀、真首頁多候選缺件、真人D／Native、授權／歷史PIT／真N及自然成熟各自保留，不阻塞此已具依賴的保存旅程。

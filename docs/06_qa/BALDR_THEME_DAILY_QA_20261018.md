@@ -354,3 +354,16 @@ QA155正常Source Main保留原每程序240秒及每步15／120／180秒。首�
 QA157另做一次原public reader的內部cProfile，保持原180秒取消、來源／SHA／語義／路徑與網路守衛；此量測有profiling負擔，不用其耗時冒稱產品退化或改善。122個repository.read_exact、1,951個snapshot的全來源解碼與語義核對佔主要成本，原來源守衛未略過；這不是單純重跑原GUI FAIL。相關profile留在自有task，不以略過全來源驗證或跨動作cache換取240秒PASS。
 
 閉鎖收據SHA：154 `7d407a2e5aa9cf0ff136d9408f525355bfc02a42f531e64f8634ed41b328cb4e`；154a `06d356c099ddda672007402b9de62d6d6af8ce75ec2da967784a4762908eac1d`；155 `93b07d3e217167bee80d5bf3d9c542563c616237e4be2e14f89f37702e605514`；157 `779ad9eb682c84ae85d5716a62e0af852511cc3d93085547047e027d62ee8855`。各組三PID空／handles閉／mutex釋放、無forced cleanup，8GiB／12程序／RAM至少8GiB及原時限保持。原件、正式資料、正式Task與其他owner資產不改。後續Reader效能與完整F07接受仍獨立待解，不阻擋已交付的一般報告／保存推薦／題材旅程。
+
+<a id="固定06的25鏈探索qa158"></a>
+## 固定06的25鏈探索（QA158）
+
+驗收缺口：既有UI只驗兩條合成鏈，原目標的25條鏈尚缺實際版本探索證據。重用既有Luna靜態單寫新helper，Root保留worker原稿、補齊執行入口／正式配色、隔離env與原15秒載入界線；無產品Source變更，沒有重建或改動固定06。
+
+QA158由同版EXE `0c52da0d95982b4af7bafc769afad5609e79332657eaa393b2d3d08df00d6528` 啟動兩個獨立`IndustryThemeMapView`，PID17840→10572，沿真`load_snapshot()`讀原manifest，所有產品模組來自本版`_internal`，build來源7fbe／dirty=false，未載入Main。原每程序120秒／父300秒、Root Job 8GiB／12程序／RAM至少8GiB保持。
+
+25鏈集合符合`STANDARD_25_CHAIN_SPECS`；90個題材選項符合原2537列映射。逐鏈明選一個題材，核該題材所有成員的代號、名稱、鏈別位置及原分類依據，再於可視表列單擊／雙擊，股票signal與該原成員一致。首鏈半導體／IC封測12成員、點2329；末鏈文創育樂／`文創/影視展演`32成員、點2926。這是25個代表題材的成員探索，不宣稱90題材所有成員均逐一點擊。Root檢視首／末鏈1280×760截圖。
+
+manifest identity `75f97365b03adf2d84efaad03250dc2510ba2eb8517b3212ea2c20166060ed7a`，mapping `d9e50b02ec0dfe5f1eed130fac9855664ef9e649cd3aa627e9a0924d3b258491`、prices `9719bd90239f9171e0323e77c1b5229fc8755560f647b17f8516f25fb3f84f00`及config／setup receipt／watchlist／portfolio全檔清單與雜湊前後不變。Journal未建立，原兩個lock檔保持；網路、受保護根與Qt錯誤0。結果SHA `42b38c43f0ec35ddf9487b2ab118b36ef5caecc6649adc421ad23f3acd5c0cbd`；閉鎖 `fde828952e5f6bea01711c3d012458ffd4c9a7de5a9d0d002db323a314bf4baa`，三PID空、handles閉、mutex放、無forced cleanup。
+
+只接受獨立view的實際25鏈選取／成員與股票signal；25鏈完整Main個股報告／返回未驗，題材Main往返沿05具名未改證據。合格五日曆、法人schema及歷史映射警告仍有原文；畫面缺值保持未提供與覆蓋數0，不以未知卡當完整金融功能。既存06交付封存與私人資料不改，技術測試不代替Native／真人接受。

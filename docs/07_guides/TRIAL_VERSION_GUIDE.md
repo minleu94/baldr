@@ -1,5 +1,9 @@
 # 目前指定的本機日常研究入口
+
+
 **最新可試用：研究06，固定來源 `7fbe58670582`。** [啟動器](../../output/trial/Baldr-Theme-Research-06/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-06/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-06/KNOWN_ISSUES.md)。本版把原保存推薦的五股與「查看個股研究」放進1280×760首屏，期限表把共同來源限制集中，各列先顯示缺價／已有計畫日價格／等待目標日。先放妥完整資料夾，再沿啟動器建立自己的新state。首次設定525.141秒／600，同版EXE29824→24664五股首屏、1538／1528八期限與返回、新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-06/DELIVERY_RECEIPT.json)。題材沿05、保存筆記沿04、一般報告等未改旅程沿03原證據；F07專用筆記修正不在本包。缺行情、期限連結與正式採認等限制保持，這次沒有重驗所有旅程或取得真人接受。
+
+研究06另有[25鏈探索補驗](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定06的25鏈探索qa158)：實際25鏈／90題材選項及每鏈一個代表題材的成員、股票signal與新程序一致。這是獨立題材頁範圍，Main往返沿05原證據；法人／日曆／PIT缺件及原封存收據保持。
 
 **保留候選：研究05，固定來源 `34b8e8d5402b`。** [啟動器](../../output/trial/Baldr-Theme-Research-05/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-05/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-05/KNOWN_ISSUES.md)。新增題材頁「股票反查」：先載入包內10/16版本，輸入2330或台積，明選一個鏈／題材，按「定位所選股票」再雙擊原成員進個股，返回保留原版本。首次設定542.171秒／600，同版EXE21696→38288、重載中關閉／新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-05/DELIVERY_RECEIPT.json)。原保存推薦／雙股Journal沿04證據，其他未改旅程沿03等證據。模板無私人state或每日Task status；缺行情、期限衝突／未知仍不可作績效，Native、真人、PIT與完整Gate分開。後續推薦首屏排版Source不在05內。
 

@@ -34,6 +34,7 @@ from tests.test_daily_market_technical_universe_price_query_v1 import (
     _open_session,
     exact_price_store,
 )
+import ui_qt.widgets.pinned_stock_research_notes_widget as pinned_notes_widget_module
 from ui_qt.widgets.pinned_stock_research_notes_widget import (
     PinnedStockResearchNotesWidget,
 )
@@ -101,17 +102,24 @@ class _FakePinnedNoteService:
         *,
         get_started: Event | None = None,
         get_release: Event | None = None,
+        verify_started: Event | None = None,
+        verify_release: Event | None = None,
+        verify_cancel_observed: Event | None = None,
         save_started: Event | None = None,
         save_release: Event | None = None,
     ):
         self.notes: dict[str, PinnedStockResearchNote] = {}
         self.get_started = get_started
         self.get_release = get_release
+        self.verify_started = verify_started
+        self.verify_release = verify_release
+        self.verify_cancel_observed = verify_cancel_observed
         self.save_started = save_started
         self.save_release = save_release
         self.list_calls: list[tuple[str, int]] = []
         self.get_calls: list[tuple[str, int]] = []
         self.verify_calls: list[tuple[str, int]] = []
+        self.verify_callbacks: list[Callable[[], bool] | None] = []
         self.save_calls: list[tuple[PinnedStockResearchSource, str, str, str | None, int]] = []
 
     def list_notes(self, *, stock_code: str = "") -> tuple[PinnedStockResearchNote, ...]:
@@ -129,9 +137,24 @@ class _FakePinnedNoteService:
         return self.notes[revision_id]
 
     def verify_source(
-        self, note: PinnedStockResearchNote
+        self,
+        note: PinnedStockResearchNote,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> DailyMarketTechnicalUniversePriceBookmarkStateV1:
         self.verify_calls.append((note.revision_id, get_ident()))
+        self.verify_callbacks.append(cancel_callback)
+        if self.verify_started is not None:
+            self.verify_started.set()
+        while self.verify_release is not None and not self.verify_release.wait(0.01):
+            if cancel_callback is not None and cancel_callback():
+                if self.verify_cancel_observed is not None:
+                    self.verify_cancel_observed.set()
+                raise InterruptedError("原價格版本核對已取消")
+        if cancel_callback is not None and cancel_callback():
+            if self.verify_cancel_observed is not None:
+                self.verify_cancel_observed.set()
+            raise InterruptedError("原價格版本核對已取消")
         return read_daily_market_technical_universe_price_bookmark_v1(
             note.source.bookmark_json
         )
@@ -247,6 +270,8 @@ def test_widget_saves_reads_opens_exact_source_and_appends_direct_revision(
     assert all(thread_id != get_ident() for _, thread_id in service.list_calls)
     assert all(thread_id != get_ident() for _, thread_id in service.get_calls)
     assert all(thread_id != get_ident() for _, thread_id in service.verify_calls)
+    assert service.verify_callbacks
+    assert all(callback is not None for callback in service.verify_callbacks)
     widget.close()
     application.processEvents()
 
@@ -305,6 +330,147 @@ def test_stock_switch_discards_late_read_and_never_carries_revision_parent(
 
     widget.close()
     application.processEvents()
+
+
+def test_cancel_during_source_listing_reaches_verifier_and_discards_result(
+    exact_price_store: dict[str, Any],
+    monkeypatch: Any,
+) -> None:
+    application = app()
+    bookmark = _bookmark_for(exact_price_store, "S0001")
+    verify_started, verify_release, cancel_observed = Event(), Event(), Event()
+
+    def slow_verifier(
+        selected_bookmark: DailyMarketTechnicalUniversePriceBookmarkV1,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> PinnedStockResearchSource:
+        assert cancel_callback is not None
+        verify_started.set()
+        while not verify_release.wait(0.01):
+            if cancel_callback():
+                cancel_observed.set()
+                raise InterruptedError("原價格版本核對已取消")
+        if cancel_callback():
+            cancel_observed.set()
+            raise InterruptedError("原價格版本核對已取消")
+        return _source(selected_bookmark)
+
+    monkeypatch.setattr(
+        pinned_notes_widget_module,
+        "verify_pinned_stock_research_source",
+        slow_verifier,
+    )
+    service = _FakePinnedNoteService()
+    widget = PinnedStockResearchNotesWidget(service)  # type: ignore[arg-type]
+    results: list[Any] = []
+    errors: list[str] = []
+    native_finished: list[bool] = []
+    worker = None
+    widget.set_source(bookmark)
+    try:
+        _wait_until(application, verify_started.is_set, diagnostic=lambda: _diagnostic(widget))
+        worker = widget._active_worker
+        assert worker is not None
+        worker.finished.connect(results.append)
+        worker.native_thread_finished.connect(lambda: native_finished.append(True))
+        worker.error.connect(errors.append)
+        widget.request_cancel()
+        _wait_until(
+            application,
+            lambda: not widget.is_busy(),
+            diagnostic=lambda: _diagnostic(widget),
+        )
+        assert native_finished == [True]
+        assert cancel_observed.is_set()
+        assert results == []
+        assert errors
+        assert "原價格版本核對已取消" in errors[0]
+        assert widget._verified_source is None
+        assert widget._source_error == ""
+        assert widget.revisions.count() == 0
+        assert service.list_calls == []
+    finally:
+        verify_release.set()
+        widget.shutdown()
+        if widget.is_busy():
+            _wait_until(
+                application,
+                lambda: not widget.is_busy(),
+                diagnostic=lambda: _diagnostic(widget),
+            )
+        widget.close()
+        application.processEvents()
+
+
+def test_cancel_during_explicit_note_source_read_reaches_verifier_without_emitting_state(
+    exact_price_store: dict[str, Any],
+) -> None:
+    application = app()
+    bookmark = _bookmark_for(exact_price_store, "S0001")
+    verify_started, verify_release, cancel_observed = Event(), Event(), Event()
+    note = PinnedStockResearchNote(
+        revision_id="slow-source-note",
+        source=_source(bookmark),
+        text="原筆記需在來源核對完成後才能回用",
+        recorded_at="2026-10-18T10:30:00+00:00",
+    )
+    service = _FakePinnedNoteService(
+        verify_started=verify_started,
+        verify_release=verify_release,
+        verify_cancel_observed=cancel_observed,
+    )
+    service.notes[note.revision_id] = note
+    widget = PinnedStockResearchNotesWidget(service)  # type: ignore[arg-type]
+    results: list[Any] = []
+    errors: list[str] = []
+    native_finished: list[bool] = []
+    opened: list[DailyMarketTechnicalUniversePriceBookmarkStateV1] = []
+    widget.open_source_requested.connect(opened.append)
+    worker = None
+    widget.set_source(bookmark)
+    try:
+        _wait_for_source(application, widget)
+        widget.revisions.setCurrentIndex(
+            widget.revisions.findData(note.revision_id, Qt.ItemDataRole.UserRole)
+        )
+        widget.read_button.click()
+        _wait_until(application, verify_started.is_set, diagnostic=lambda: _diagnostic(widget))
+        worker = widget._active_worker
+        assert worker is not None
+        worker.finished.connect(results.append)
+        worker.native_thread_finished.connect(lambda: native_finished.append(True))
+        worker.error.connect(errors.append)
+        widget.clear_source()
+        _wait_until(
+            application,
+            lambda: not widget.is_busy(),
+            diagnostic=lambda: _diagnostic(widget),
+        )
+
+        assert native_finished == [True]
+        assert cancel_observed.is_set()
+        assert service.verify_callbacks[-1] is not None
+        assert results == []
+        assert errors
+        assert "原價格版本核對已取消" in errors[0]
+        assert opened == []
+        assert widget._verified_source is None
+        assert widget._loaded_note is None
+        assert widget._loaded_source_state is None
+        assert not widget.saved_text.toPlainText()
+        assert widget.revisions.count() == 0
+    finally:
+        verify_release.set()
+        widget.shutdown()
+        if widget.is_busy():
+            _wait_until(
+                application,
+                lambda: not widget.is_busy(),
+                diagnostic=lambda: _diagnostic(widget),
+            )
+        widget.close()
+        application.processEvents()
 
 
 def test_missing_original_keeps_saved_text_but_blocks_source_open_and_revision(

@@ -378,3 +378,175 @@ def test_competing_journal_write_rejects_stale_pinned_note_without_overwrite(
     assert [note.revision_id for note in competing.list_notes()] == ["price-note-winner"]
     with pytest.raises(PinnedStockResearchNoteNotFound):
         competing.get_note("price-note-stale")
+
+
+def test_precancelled_source_verification_does_not_read_source_or_write_journal(
+    tmp_path: Path,
+    exact_price_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    journal, paths = _journal_service(tmp_path)
+    service = PinnedStockResearchNoteService(journal)
+    bookmark = _bookmark_for(exact_price_store, "S0001")
+    source = verify_pinned_stock_research_source(bookmark)
+    note = service.save(source, "保留預取消前已保存的內容", revision_id="price-note-precancel")
+    journal_before = paths.journal_file.read_bytes()
+    reader_calls: list[object] = []
+
+    def forbidden_reader(bookmark, *, cancel_callback=None):
+        reader_calls.append((bookmark, cancel_callback))
+        raise AssertionError("pre-cancelled verification must not open the exact source")
+
+    monkeypatch.setattr(
+        notes_module,
+        "read_daily_market_technical_universe_price_bookmark_v1",
+        forbidden_reader,
+    )
+    cancel_checks: list[bool] = []
+
+    def cancelled() -> bool:
+        cancel_checks.append(True)
+        return True
+
+    with pytest.raises(InterruptedError):
+        verify_pinned_stock_research_source(bookmark, cancel_callback=cancelled)
+    with pytest.raises(InterruptedError):
+        service.verify_source(note, cancel_callback=cancelled)
+
+    assert len(cancel_checks) >= 2
+    assert reader_calls == []
+    assert paths.journal_file.read_bytes() == journal_before
+
+
+def test_verify_source_forwards_cancel_callback_and_preserves_reader_cancellation(
+    tmp_path: Path,
+    exact_price_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    journal, paths = _journal_service(tmp_path)
+    service = PinnedStockResearchNoteService(journal)
+    bookmark = _bookmark_for(exact_price_store, "S0001")
+    source = verify_pinned_stock_research_source(bookmark)
+    note = service.save(source, "閱讀時取消不可改寫 Journal", revision_id="price-note-reader-cancel")
+    journal_before = paths.journal_file.read_bytes()
+    cancel_callback = lambda: False
+    reader_calls: list[tuple[object, object]] = []
+
+    def cancelling_reader(bookmark, *, cancel_callback=None):
+        reader_calls.append((bookmark, cancel_callback))
+        raise InterruptedError("simulated cancellation during exact read")
+
+    monkeypatch.setattr(
+        notes_module,
+        "read_daily_market_technical_universe_price_bookmark_v1",
+        cancelling_reader,
+    )
+
+    with pytest.raises(InterruptedError, match="simulated cancellation during exact read"):
+        service.verify_source(note, cancel_callback=cancel_callback)
+
+    assert len(reader_calls) == 1
+    assert reader_calls[0][1] is cancel_callback
+    assert paths.journal_file.read_bytes() == journal_before
+
+
+def test_uncancelled_verify_uses_real_exact_source_and_rejects_different_bookmark(
+    tmp_path: Path,
+    exact_price_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    journal, paths = _journal_service(tmp_path)
+    service = PinnedStockResearchNoteService(journal)
+    bookmark = _bookmark_for(exact_price_store, "S0001")
+    source = verify_pinned_stock_research_source(bookmark)
+    note = service.save(source, "未取消時仍精確核對來源", revision_id="price-note-verified-source")
+    journal_before = paths.journal_file.read_bytes()
+    cancel_callback = lambda: False
+    original_reader = notes_module.read_daily_market_technical_universe_price_bookmark_v1
+    reader_callbacks: list[object] = []
+
+    def tracked_reader(bookmark, *, cancel_callback=None):
+        reader_callbacks.append(cancel_callback)
+        return original_reader(bookmark, cancel_callback=cancel_callback)
+
+    monkeypatch.setattr(
+        notes_module,
+        "read_daily_market_technical_universe_price_bookmark_v1",
+        tracked_reader,
+    )
+
+    state = service.verify_source(note, cancel_callback=cancel_callback)
+
+    assert state.bookmark.to_json() == note.source.bookmark_json
+    assert state.bookmark.selected.stock_code == note.source.stock_code == "S0001"
+    assert (
+        state.bookmark.selected.snapshot_identity_sha256
+        == note.source.snapshot_identity_sha256
+    )
+    assert reader_callbacks and all(item is cancel_callback for item in reader_callbacks)
+    assert paths.journal_file.read_bytes() == journal_before
+
+    other_bookmark = _bookmark_for(exact_price_store, "S0001", scroll_position=1)
+
+    def mismatched_reader(bookmark, *, cancel_callback=None):
+        reader_callbacks.append(cancel_callback)
+        return original_reader(other_bookmark, cancel_callback=cancel_callback)
+
+    monkeypatch.setattr(
+        notes_module,
+        "read_daily_market_technical_universe_price_bookmark_v1",
+        mismatched_reader,
+    )
+    with pytest.raises(PinnedStockResearchNoteConflict, match="different bookmark"):
+        service.verify_source(note, cancel_callback=cancel_callback)
+
+    assert reader_callbacks[-1] is cancel_callback
+    assert paths.journal_file.read_bytes() == journal_before
+
+@pytest.mark.parametrize(
+    ("code", "callback_supplied", "requested", "cancelled"),
+    [
+        ("technical_parent_v4_read_cancelled", True, True, True),
+        ("technical_parent_v4_read_cancelled", True, False, False),
+        ("technical_parent_v4_read_cancelled", False, True, False),
+        ("technical_universe_v4_technical_parent_v4_read_cancelled", True, True, True),
+        ("technical_universe_v4_technical_parent_v4_read_cancelled", True, False, False),
+        ("technical_universe_v4_read_cancelled", True, True, True),
+        ("technical_snapshot_v4_file_type_rejected", True, True, False),
+    ],
+)
+def test_only_explicit_typed_cancellation_with_requested_callback_is_translated(
+    tmp_path: Path,
+    exact_price_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+    callback_supplied: bool,
+    requested: bool,
+    cancelled: bool,
+) -> None:
+    journal, paths = _journal_service(tmp_path)
+    service = PinnedStockResearchNoteService(journal)
+    source = verify_pinned_stock_research_source(_bookmark_for(exact_price_store, "S0001"))
+    note = service.save(source, "取消不能掩蓋其他來源錯誤", revision_id="typed-cancel")
+    before = paths.journal_file.read_bytes()
+    cancel_state = [False]
+    reader_error = DailyMarketTechnicalUniversePriceBookmarkV1Error(code, code)
+
+    def typed_failure(bookmark, *, cancel_callback=None):
+        cancel_state[0] = requested
+        raise reader_error
+
+    monkeypatch.setattr(
+        notes_module, "read_daily_market_technical_universe_price_bookmark_v1", typed_failure
+    )
+    callback = (lambda: cancel_state[0]) if callback_supplied else None
+    if cancelled:
+        with pytest.raises(InterruptedError) as error:
+            service.verify_source(note, cancel_callback=callback)
+        assert error.value.__cause__ is reader_error
+    else:
+        with pytest.raises(PinnedStockResearchNoteError) as source_error:
+            service.verify_source(note, cancel_callback=callback)
+        assert source_error.value.code == code
+        assert source_error.value.__cause__ is reader_error
+    assert paths.journal_file.read_bytes() == before

@@ -193,3 +193,24 @@ QA99在隔離副本驗啟動器正SHA成功／反SHA拒絕，既有Journal、設
 本次只接受一般報告保存的限定技術出口。原F07專用筆記未完成正常來源旅程，程式含候選葉片但不算03可用流程；未改題材／日常／Registry沿02／143／01證據，未反覆重跑。四股價格9-23、題材10-16、2382半年財報缺件、歷史PIT／TPEx／來源用途／真N／WF與自然成熟、真人D／Native／跨機及完整M3／Gate均保留。02／01／143／139／141c及私人原件不改。
 
 QA101依原M4執行不帶path限縮的document_control check（含owner task）：12features／36link sources、無錯誤；這是工具預設檢查範圍，不是全文EOF或產品接受。Job收據SHA `a04061c6da0300ef46319bdb21b52468136b999dd7fd945b63a1dc3a41fa8afc`，自然閉鎖。
+
+## 原價格來源讀取與取消（QA100–105）
+
+本次只處理原價格收藏筆記的真實流程阻礙，不新增金融用途或擴充第一版範圍。研究03已封存可試用，一般報告保存沿03原證據。
+
+QA100保留原180秒來源期限與整段240秒：來源180.016秒未完，未到筆記，正常FAIL；閉鎖收據SHA `5a2466f1e2b500c4404cd6576bb4efcdbaaca9d9d6492348cbda820fdc08a58b`。舊native crash本次未重現，但未歸因。
+
+QA103同2506原收藏、原public full-strict reader在無UI下57.509秒完成；plan.to_dict902次／5.816秒、repository.read_exact122次／46.012秒。QA102靜態複核確認122次是第一次完整child驗證，不得當作兩遍全圖；session消費verified batches，選取物化另有有限讀取，次數不由該計數推算。未做生產效能修改。閉鎖SHA `8f808645c5312f2afbe2e5d2d1a13f6129610c7fdb50f20b2033b00b94513f03`。
+
+QA104移除helper殘留的QTest.qWait，沿已驗processEvents＋sleep5ms，Source／來源守衛及120／180／240秒均不改。正常Main原收藏56.718秒成功，筆記來源再核對60.031秒；第一篇Journal確有追加，但保存後刷新尚未完即達subprocess原240秒，owned child由subprocess逾時回收。整段FAIL，不以一篇保存或來源成功升格完整旅程。收據 `single_owned_qa_98a50c856ac84bf6aa772539abdbff28/receipt.json` SHA `8acdc85213e0eb85092076948dbf91571478d736274f7b100802667d8d4d1c5f`：三PID陣列空／handles閉／mutex釋放；wrapper未啟強制清理不代表child自然完成。原堆疊、observations及失敗結果保留。
+
+QA105修復候選：唯讀verify API將TaskWorker取消callback傳至既有public strict reader；InterruptedError原樣傳遞，不誤報原件缺件，不產生部分結果。save不新增取消參數，仍fresh核對後append/CAS。Root單寫shared port／整合QA／文件，重用兩Luna單寫backend tests與widget/tests，累計代理10/10無新建。必要編譯、定向／跨頁、Workbench、validator、mypy及真2506取消probe狀態以後續收據記載，目前待驗；未重跑F07整段或已通過未改一般報告旅程。固定03原包及私人原件保持。
+QA105編譯PASS，pytest的24個案例因Root用環境LOCALAPPDATA產生不存在的sandbox Temp父目錄而setup ERROR，未跑案例；原收據SHA `f85ecf10365f29cd7cb33f822949392dc34b0f1a7aae9a3595df8ab99e12ef30`保留。105a另存spec，採已驗固定Temp父目錄，Source／斷言不改、不重跑編譯：24定向／跨頁、Workbench85、validator25/0/4及mypy8套件1081 PASS（既有ui_qt ignore_errors不代表UI強型別）。真2506取消probe在0.868秒停止，但底層取消以typed `technical_parent_v4_read_cancelled`一路包裝，服務誤當來源失敗，該項FAIL。原結果、watchlist SHA／network0／protected0保持；收據SHA `c579c0c101cf53593b8486c39daef3338c016927265f34e45bf6fa076215d868`自然閉鎖。
+
+105b只修服務邊界的明確取消碼轉接：需同時收到該typed code與實際callback取消，才轉InterruptedError；其他來源錯誤不因取消旗標被掩蓋。新增四個正反案例，save仍不取消。Worker後續因capacity失敗，Root已接回所有權；兩新Qt測試改觀察native_thread_finished而非存取deleteLater後的worker，不放寬自然完成斷言。接續只驗受改backend／兩取消UI與原保存關閉／單檔mypy／新真來源probe，不整組重跑已通過未改防線；最終結果待本組收據。
+105b編譯／19定向／單檔mypy PASS，真來源取消仍FAIL：Store包裝在code前加technical_universe_v4，錯誤文字仍為parent碼。Root沿實碼核對後補明確三碼allowlist，不用字串suffix或callback旗標吞任意來源錯誤。105b收據SHA `59841576a0c288623adefd6f23164c159e548798c0132ccb7e96f4026beeccac`自然閉鎖，原FAIL保留。
+
+105c最終限定PASS：受改編譯、10個取消正反／UI取消／原保存關閉案例、服務單檔mypy；真2506原public reader合作取消完成且未回傳來源，watchlist bytes保持、network0／protected0。原180秒期限保留。未取消完整來源／金融守衛及原來源缺件案例沿105a／105b已驗範圍；未更動UI的Workbook85／validator25/0/4／8套件mypy1081不反覆重跑。這些收據各自界定範圍，不作案例加總或完整Gate。最終閉鎖SHA `f5515127f936b5650a40832000569e1e8be9da54d3a1242954150a50140df3f9`，三PID陣列空／handles閉／mutex釋放／forced_cleanup=false。全程Root串行8GiB／12程序／kill-on-close，啟動前RAM至少8GiB。此次Source修復不改已封存03，完整F07整段仍未驗收，不能宣稱解除其240秒阻礙。
+真來源取消實測秒數：0.894902500032913；結果SHA 55b7214912be04b93c722d1a0f71d8d8a084ba22e45a98c4f948243da5a8250e。
+
+QA106文控含owner task：12features／36link sources PASS；最後閉鎖收據SHA `2769c79ee549693bf2375dce0c55f495fd8d2236fce9dfe4db20fa183c479622`。僅結構核對，不代表正文全EOF或產品接受。正常五小時／週用量皆95%，credit餘額53727.8877155000全輪未變；按user近額度約定收尾提交，不啟動新功能或完整F07重試。

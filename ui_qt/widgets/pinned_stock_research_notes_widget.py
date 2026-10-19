@@ -325,7 +325,10 @@ class PinnedStockResearchNotesWidget(QWidget):
             source = None
             source_error = ""
             try:
-                source = verify_pinned_stock_research_source(bookmark)
+                source = verify_pinned_stock_research_source(
+                    bookmark,
+                    cancel_callback=cancel_callback,
+                )
                 if (
                     not isinstance(source, PinnedStockResearchSource)
                     or source.identity_sha256 != expected_identity
@@ -334,6 +337,8 @@ class PinnedStockResearchNotesWidget(QWidget):
                 ):
                     raise ValueError("新鮮核對回傳與明選 F07 股票或版本不符")
                 source_locator = _source_locator(source)
+            except InterruptedError:
+                raise
             except Exception as exc:  # noqa: BLE001 - 保存來源邊界
                 source = None
                 source_error = _error_text(exc)
@@ -441,7 +446,10 @@ class PinnedStockResearchNotesWidget(QWidget):
             ):
                 raise ValueError("讀回的筆記身份或股票與明選項目不符")
             try:
-                state = self._service.verify_source(loaded)
+                state = self._service.verify_source(
+                    loaded,
+                    cancel_callback=cancel_callback,
+                )
                 if (
                     not isinstance(state, DailyMarketTechnicalUniversePriceBookmarkStateV1)
                     or state.bookmark.to_json() != loaded.source.bookmark_json
@@ -456,6 +464,8 @@ class PinnedStockResearchNotesWidget(QWidget):
                     "source_error": "",
                     "locator": locator,
                 }
+            except InterruptedError:
+                raise
             except Exception as exc:  # noqa: BLE001 - 原文仍可讀，來源另行標失敗
                 return {
                     "note": loaded,

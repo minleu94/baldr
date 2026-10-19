@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from hashlib import sha256
 import re
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from app_module.daily_market_technical_universe_price_bookmark_v1 import (
     DailyMarketTechnicalUniversePriceBookmarkV1,
@@ -284,16 +284,20 @@ class PinnedStockResearchNoteService:
     def verify_source(
         self,
         note: PinnedStockResearchNote,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> DailyMarketTechnicalUniversePriceBookmarkStateV1:
         if type(note) is not PinnedStockResearchNote:
             raise PinnedStockResearchNoteError("note must be a pinned stock research note")
         _required_revision_id(note.revision_id, "revision_id")
         _validated_note_text(note.text)
-        return _read_exact_source(note.source)
+        return _read_exact_source(note.source, cancel_callback=cancel_callback)
 
 
 def verify_pinned_stock_research_source(
     bookmark: DailyMarketTechnicalUniversePriceBookmarkV1 | str,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
 ) -> PinnedStockResearchSource:
     """Fresh exact-open one明示 F07 收藏並回傳其 canonical 原文。"""
 
@@ -309,29 +313,56 @@ def verify_pinned_stock_research_source(
         parsed = DailyMarketTechnicalUniversePriceBookmarkV1.from_json(raw)
     except DailyMarketTechnicalUniversePriceBookmarkV1Error as exc:
         raise _reader_error(exc) from exc
-    state = _read_exact_bookmark(parsed)
+    state = _read_exact_bookmark(parsed, cancel_callback=cancel_callback)
     return PinnedStockResearchSource(bookmark_json=state.bookmark.to_json())
 
 
 def _read_exact_source(
     source: PinnedStockResearchSource,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
 ) -> DailyMarketTechnicalUniversePriceBookmarkStateV1:
     if type(source) is not PinnedStockResearchSource:
         raise PinnedStockResearchNoteError("source must be a pinned stock research source")
-    return _read_exact_bookmark(source._bookmark())
+    return _read_exact_bookmark(source._bookmark(), cancel_callback=cancel_callback)
 
 
 def _read_exact_bookmark(
     bookmark: DailyMarketTechnicalUniversePriceBookmarkV1,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
 ) -> DailyMarketTechnicalUniversePriceBookmarkStateV1:
+    if cancel_callback is not None and cancel_callback():
+        raise InterruptedError("原價格版本核對已取消")
     try:
-        state = read_daily_market_technical_universe_price_bookmark_v1(bookmark)
+        if cancel_callback is None:
+            state = read_daily_market_technical_universe_price_bookmark_v1(bookmark)
+        else:
+            state = read_daily_market_technical_universe_price_bookmark_v1(
+                bookmark, cancel_callback=cancel_callback
+            )
+    except InterruptedError:
+        # 取消是唯讀工作的終態，不可改寫成來源缺件或回傳部分結果。
+        raise
     except DailyMarketTechnicalUniversePriceBookmarkV1Error as exc:
+        # 舊 parent reader 用 typed error 回報取消；只轉接明確碼與實際取消。
+        if (
+            exc.code in {
+                "technical_parent_v4_read_cancelled",
+                "technical_universe_v4_technical_parent_v4_read_cancelled",
+                "technical_universe_v4_read_cancelled",
+            }
+            and cancel_callback is not None
+            and cancel_callback()
+        ):
+            raise InterruptedError("原價格版本核對已取消") from exc
         raise _reader_error(exc) from exc
     except (OSError, ValueError, RuntimeError) as exc:
         raise PinnedStockResearchNoteError(
             f"price bookmark exact reader failed: {exc}"
         ) from exc
+    if cancel_callback is not None and cancel_callback():
+        raise InterruptedError("原價格版本核對已取消")
     if state.bookmark.to_json() != bookmark.to_json():
         raise PinnedStockResearchNoteConflict(
             "price bookmark exact reader returned a different bookmark"

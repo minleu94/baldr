@@ -58,6 +58,8 @@ flowchart TD
 
 目前 UI 有決策工作台、市場探索、推薦分析、策略回測／Research Lab、觀察清單、個股研究、持倉管理、數據更新及 Runtime Observatory。Daily Decision Desk 位於「市場探索 > 市場總覽」；決策工作台的來源導覽回到同一畫面。
 
+首頁明選 Paper 健康部位的 Source 接線沿同一工作區系統，以原 read model／唯一部位交接，持倉頁獨立刷新核同版本後才定位；不合併手動帳或代替歷史保存評估。契約見[工作區邊界](current/application_and_workspaces.md#九個頂層工作區)。
+
 依問題閱讀：[UI 與應用流程](current/application_and_workspaces.md)、[決策、研究與 Portfolio](current/decision_research_portfolio.md)、[資料、保存與 Runtime](current/data_storage_runtime.md)。使用者操作流程以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 ## 主要資料流

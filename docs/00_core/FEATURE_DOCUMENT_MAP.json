@@ -18,7 +18,8 @@
       ],
       "tests": [
         "tests/test_ui_qt_workbench_view.py",
-        "tests/test_ui_qt_workbench_theme_entry.py"
+        "tests/test_ui_qt_workbench_theme_entry.py",
+        "tests/test_ui_qt_workbench_portfolio_health_navigation.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md"
@@ -33,7 +34,8 @@
       "change_patterns": [
         "ui_qt/views/workbench_view.py",
         "tests/test_ui_qt_workbench_view.py",
-        "tests/test_ui_qt_workbench_theme_entry.py"
+        "tests/test_ui_qt_workbench_theme_entry.py",
+        "tests/test_ui_qt_workbench_portfolio_health_navigation.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -950,6 +952,7 @@
         "ui_qt/widgets/portfolio_scenario_registry_widget.py"
       ],
       "tests": [
+        "tests/test_ui_qt_portfolio_health_navigation.py",
         "tests/test_ui_qt_portfolio_view.py",
         "tests/test_portfolio_research_scenario_widget.py",
         "tests/test_portfolio_research_scenario_workspace.py",
@@ -999,6 +1002,7 @@
         "tests/test_portfolio_scenario_stock_report.py",
         "tests/test_position_health_strategy_archive.py",
         "tests/test_ui_qt_portfolio_scenario_stock_report.py",
+        "tests/test_ui_qt_portfolio_health_navigation.py",
         "tests/test_ui_qt_portfolio_view.py"
       ],
       "sync_documents": [

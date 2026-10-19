@@ -169,6 +169,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_market_explore_callback: Callable[[], None] | None = None,
         navigate_to_evidence_review_callback: Callable[[], None] | None = None,
         navigate_to_portfolio_callback: Callable[[], None] | None = None,
+        navigate_to_portfolio_position_callback: Callable[[PositionHealthReadModel, str], object] | None = None,
         navigate_to_watchlist_callback: Callable[[], None] | None = None,
         navigate_to_stock_research_callback: Callable[[object], None] | None = None,
         navigate_to_update_callback: Callable[[], None] | None = None,
@@ -198,6 +199,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_market_explore_callback = navigate_to_market_explore_callback
         self.navigate_to_evidence_review_callback = navigate_to_evidence_review_callback
         self.navigate_to_portfolio_callback = navigate_to_portfolio_callback
+        self.navigate_to_portfolio_position_callback = navigate_to_portfolio_position_callback
+        self._position_health_navigation_source: PositionHealthReadModel | None = None
+        self._position_health_navigation_id: str | None = None
         self.navigate_to_watchlist_callback = navigate_to_watchlist_callback
         self.navigate_to_stock_research_callback = navigate_to_stock_research_callback
         self.navigate_to_update_callback = navigate_to_update_callback
@@ -501,6 +505,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.position_health_summary_label = self._make_state_label()
         self.position_health_table = self._make_table(self.position_health_model)
         self.position_health_table.clicked.connect(self._show_position_health_row)
+        self.position_health_table.selectionModel().currentRowChanged.connect(
+            lambda current, _previous: self._show_position_health_row(current)
+        )
+        self.position_health_open_portfolio_button = QPushButton("在持倉管理查看此 Paper 部位")
+        self.position_health_open_portfolio_button.setEnabled(False)
+        self.position_health_open_portfolio_button.setToolTip(
+            "先明選部位；持倉頁重新讀取後，帳本、日期與來源版本相同才定位。"
+        )
+        self.position_health_open_portfolio_button.clicked.connect(
+            self._open_selected_position_health
+        )
         self.position_health_detail_button = QPushButton("查看 Position Health 技術詳情")
         self.position_health_detail_button.setProperty("variant", "secondary")
         self.position_health_detail_button.setCheckable(True)
@@ -515,6 +530,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.position_health_detail_label.setVisible(False)
         position_health_panel.layout.addWidget(self.position_health_summary_label)
         position_health_panel.layout.addWidget(self.position_health_table)
+        position_health_panel.layout.addWidget(self.position_health_open_portfolio_button)
         position_health_panel.layout.addWidget(self.position_health_detail_button)
         position_health_panel.layout.addWidget(self.position_health_detail_label)
         content_layout.addWidget(position_health_panel)
@@ -2487,6 +2503,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if self._shutdown_requested:
             return
         self._shutdown_requested = True
+        self._position_health_navigation_source = None
+        self._position_health_navigation_id = None
+        self.position_health_open_portfolio_button.setEnabled(False)
         self._refresh_generation += 1
         self._refresh_pending = False
         worker = self._refresh_worker
@@ -2499,6 +2518,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.research_console_view.begin_shutdown()
 
     def refresh_dashboard(self) -> None:
+        self._position_health_navigation_source = None
+        self._position_health_navigation_id = None
+        self.position_health_open_portfolio_button.setEnabled(False)
         if self.source_service is None:
             self._display_exception_dashboard("WorkbenchSourceService 不可用")
             return
@@ -2799,6 +2821,9 @@ class UnifiedDecisionWorkbenchView(QWidget):
     ) -> None:
         """只呈現 WorkbenchSourceService 已驗證的共用 health projection。"""
 
+        self._position_health_navigation_source = health
+        self._position_health_navigation_id = None
+        self.position_health_open_portfolio_button.setEnabled(False)
         self.position_health_detail_button.blockSignals(True)
         self.position_health_detail_button.setChecked(False)
         self.position_health_detail_button.blockSignals(False)
@@ -2826,7 +2851,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
     def _show_position_health_row(self, index) -> None:
         item = self.position_health_model.row_at(index.row())
         if item is None:
+            self._position_health_navigation_id = None
+            self.position_health_open_portfolio_button.setEnabled(False)
             return
+        self._position_health_navigation_id = item.position_id
+        self.position_health_open_portfolio_button.setEnabled(
+            self._selected_position_health_navigation() is not None
+        )
         self.position_health_detail_label.setText(
             format_position_health_presentation(item)
             + "\n\n來源 hash："
@@ -2835,6 +2866,60 @@ class UnifiedDecisionWorkbenchView(QWidget):
             + ("；".join(item.source_trace) or "未提供")
         )
         self.position_health_detail_button.setChecked(True)
+
+    def _selected_position_health_navigation(self) -> tuple[PositionHealthReadModel, str] | None:
+        """只交接明選的同版本 Paper 評估，不能以同股票猜部位。"""
+
+        source = self._position_health_navigation_source
+        position_id = self._position_health_navigation_id
+        if (
+            self._shutdown_requested
+            or self._dashboard_stale
+            or not callable(self.navigate_to_portfolio_position_callback)
+            or not isinstance(source, PositionHealthReadModel)
+            or not source.is_readable
+            or source.portfolio_id != "paper-main"
+            or not source.research_only
+            or source.apply_transition
+            or source.auto_action_allowed
+            or source.broker_execution
+            or source.formal_credit
+            or not source.decision_date
+            or not source.source_snapshot_id
+            or not position_id
+        ):
+            return None
+        if any(
+            not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None
+            for value in (source.receipt_sha256, source.result_sha256, source.source_snapshot_rows_sha256)
+        ):
+            return None
+        matches = tuple(row for row in source.positions if row.position_id == position_id)
+        if (
+            len(matches) != 1
+            or not matches[0].is_identity_verified
+            or not matches[0].stock_code.strip()
+            or matches[0].decision_date != source.decision_date
+            or matches[0].source_snapshot_id != source.source_snapshot_id
+        ):
+            return None
+        return source, position_id
+
+    def _open_selected_position_health(self) -> bool:
+        selected = self._selected_position_health_navigation()
+        if selected is None:
+            self.position_health_open_portfolio_button.setEnabled(False)
+            return False
+        callback = self.navigate_to_portfolio_position_callback
+        if callback is None:
+            return False
+        if callback(*selected) is False:
+            self.position_health_detail_label.setText(
+                "未能定位此份 Paper 評估；請核對原來源與持倉頁狀態，未改選手動帳的同股票。"
+            )
+            self.position_health_detail_button.setChecked(True)
+            return False
+        return True
 
     def _toggle_position_health_detail(self, expanded: bool) -> None:
         self.position_health_detail_label.setVisible(bool(expanded))

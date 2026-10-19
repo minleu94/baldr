@@ -4,7 +4,9 @@
 """
 
 import logging
+import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -120,6 +122,88 @@ from ui_qt.widgets.user_declared_holding_research_widget import (
 )
 
 logger = logging.getLogger(__name__)
+_POSITION_HEALTH_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingPositionHealthFocus:
+    source: PositionHealthReadModel
+    row: PositionHealthPresentationDTO
+    position_id: str
+    refresh_generation: int
+
+
+def _position_health_focus_candidate(
+    source: object,
+    position_id: object,
+) -> tuple[PositionHealthPresentationDTO | None, str]:
+    if type(source) is not PositionHealthReadModel:
+        return None, "Paper 健康來源缺件或型別不符"
+    if type(position_id) is not str or not position_id or position_id.strip() != position_id:
+        return None, "position_id 無效"
+    if not source.is_readable or source.portfolio_id != "paper-main":
+        return None, "來源不是可讀的 Paper 主帳"
+    if (
+        source.research_only is not True
+        or source.apply_transition is not False
+        or source.auto_action_allowed is not False
+        or source.broker_execution is not False
+        or source.formal_credit is not False
+    ):
+        return None, "來源研究安全旗標不符"
+    required_text = (
+        source.schema_version,
+        source.source_snapshot_id,
+        source.cohort_key,
+        source.receipt_path,
+        source.result_path,
+        source.decision_date,
+    )
+    if any(
+        type(value) is not str or not value or value.strip() != value
+        for value in required_text
+    ):
+        return None, "來源 receipt、result、snapshot 或日期欄位缺件"
+    if any(
+        type(value) is not str or _POSITION_HEALTH_SHA256_RE.fullmatch(value) is None
+        for value in (
+            source.receipt_sha256,
+            source.result_sha256,
+            source.source_snapshot_rows_sha256,
+        )
+    ):
+        return None, "來源 receipt、result 或 rows SHA 不完整"
+    try:
+        parsed_date = date.fromisoformat(source.decision_date)
+    except ValueError:
+        return None, "來源決策日格式無效"
+    if parsed_date.isoformat() != source.decision_date:
+        return None, "來源決策日格式無效"
+    if type(source.positions) is not tuple or not source.positions:
+        return None, "來源沒有可定位的 Paper 持倉列"
+
+    matches: list[PositionHealthPresentationDTO] = []
+    for row in source.positions:
+        if type(row) is not PositionHealthPresentationDTO:
+            return None, "Paper 持倉列型別不符"
+        if row.position_id == position_id:
+            matches.append(row)
+    if len(matches) != 1:
+        return None, "position_id 缺件或不唯一"
+
+    row = matches[0]
+    if (
+        type(row.stock_code) is not str
+        or not row.stock_code
+        or row.stock_code.strip() != row.stock_code
+        or row.decision_date != source.decision_date
+        or row.source_snapshot_id != source.source_snapshot_id
+        or row.cohort_key != source.cohort_key
+        or row.research_only is not True
+        or row.auto_action_allowed is not False
+    ):
+        return None, "Paper 持倉列與來源版本、股票或日期不符"
+    return row, ""
 
 
 def _format_recorded_trade_costs(summary: Any) -> str:
@@ -1162,6 +1246,7 @@ class PortfolioView(QWidget):
         self._worker_generation = 0
         self._refresh_worker: TaskWorker | None = None
         self._refresh_pending = False
+        self._pending_position_health_focus: _PendingPositionHealthFocus | None = None
         self._closing = False
         self._portfolio_narrow = False
         self._portfolio_action_narrow: bool | None = None
@@ -2081,6 +2166,12 @@ class PortfolioView(QWidget):
         if saved_panel is not None:
             saved_panel.reload_persisted_selection()
         self._refresh_generation += 1
+        pending_focus = self._pending_position_health_focus
+        if (
+            pending_focus is not None
+            and pending_focus.refresh_generation < self._refresh_generation
+        ):
+            self._discard_pending_position_health_focus("定位輪次已過期")
         if self.async_refresh:
             self._start_refresh_worker()
             return
@@ -2137,6 +2228,161 @@ class PortfolioView(QWidget):
         if raw_updated_at:
             status_tooltip += f"\n來源原始 timestamp：{raw_updated_at}"
         self.portfolio_refresh_status_label.setToolTip(status_tooltip)
+        self._apply_pending_position_health_focus(self._refresh_generation)
+
+    def request_position_health_focus(
+        self,
+        source: PositionHealthReadModel,
+        position_id: str,
+    ) -> bool:
+        """排入下一輪只讀 Paper health 精確定位，不啟動讀取或刷新。"""
+
+        self._pending_position_health_focus = None
+        if self._closing:
+            self._set_position_health_focus_message("持倉頁正在關閉；未執行定位。")
+            return False
+        row, reason = _position_health_focus_candidate(source, position_id)
+        if row is None:
+            self._set_position_health_focus_message(
+                f"未定位 Paper 持倉健康列：{reason}；既有選取保留。"
+            )
+            return False
+        self._pending_position_health_focus = _PendingPositionHealthFocus(
+            source=source,
+            row=row,
+            position_id=position_id,
+            refresh_generation=self._refresh_generation + 1,
+        )
+        self._set_position_health_focus_message(
+            "已排入下一輪 Paper 持倉健康讀取；將以同一 receipt 與 position_id 核對。"
+        )
+        return True
+
+    def _set_position_health_focus_message(self, message: str) -> None:
+        self.position_health_detail_label.setText(message)
+
+    def _discard_pending_position_health_focus(
+        self,
+        reason: str,
+        *,
+        generation: int | None = None,
+    ) -> None:
+        pending = self._pending_position_health_focus
+        if pending is None:
+            return
+        if generation is not None and pending.refresh_generation != generation:
+            return
+        self._pending_position_health_focus = None
+        self._set_position_health_focus_message(
+            f"未定位 Paper 持倉健康列：{reason}；既有選取保留。"
+        )
+
+    def _apply_pending_position_health_focus(self, generation: int) -> None:
+        pending = self._pending_position_health_focus
+        if pending is None:
+            return
+        if self._closing:
+            self._discard_pending_position_health_focus("持倉頁已關閉")
+            return
+        if pending.refresh_generation < generation:
+            self._discard_pending_position_health_focus("定位輪次已過期")
+            return
+        if pending.refresh_generation != generation:
+            return
+
+        self._pending_position_health_focus = None
+        model = self._position_health_read_model
+        row, reason = _position_health_focus_candidate(model, pending.position_id)
+        if row is None:
+            self._set_position_health_focus_message(
+                f"未定位 Paper 持倉健康列：刷新後來源不可讀或列無效（{reason}）；既有選取保留。"
+            )
+            return
+        if model != pending.source or row != pending.row:
+            self._set_position_health_focus_message(
+                "未定位 Paper 持倉健康列：刷新期間來源版本或完整 read model 已改變；既有選取保留。"
+            )
+            return
+
+        matching_rows = [
+            row_index
+            for row_index in range(self.position_health_model.rowCount())
+            if self.position_health_model.row_at(row_index) == pending.row
+        ]
+        if len(matching_rows) != 1:
+            self._set_position_health_focus_message(
+                "未定位 Paper 持倉健康列：畫面列與核對後 read model 不唯一；既有選取保留。"
+            )
+            return
+        paper_index = self.portfolio_account_selector.findData("paper")
+        if paper_index < 0:
+            self._set_position_health_focus_message(
+                "未定位 Paper 持倉健康列：Paper 帳工作區不可用；既有選取保留。"
+            )
+            return
+
+        self.portfolio_account_selector.setCurrentIndex(paper_index)
+        self._toggle_advanced_portfolio(True)
+        row_index = matching_rows[0]
+        index = self.position_health_model.index(row_index, 0)
+        self.position_health_table.selectRow(row_index)
+        self.position_health_table.setCurrentIndex(index)
+        self._show_position_health_row(index)
+        self._refresh_portfolio_health_geometry()
+        self.position_health_table.scrollTo(
+            index,
+            QAbstractItemView.PositionAtCenter,
+        )
+        # 展開進階區會排入 splitter 版面調整；待該輪完成才定位實際資料列。
+        QTimer.singleShot(
+            0, self,
+            lambda: self._reveal_position_health_focus(generation, pending.source, pending.row),
+        )
+
+    def _reveal_position_health_focus(
+        self,
+        generation: int,
+        source: PositionHealthReadModel,
+        row: PositionHealthPresentationDTO,
+        previous_geometry: tuple[int, ...] | None = None,
+        attempt: int = 0,
+    ) -> None:
+        """只捲到仍有效的明選列；較晚刷新或使用者換帳後不搶回位置。"""
+
+        index = self.position_health_table.currentIndex()
+        if (
+            self._closing
+            or generation != self._refresh_generation
+            or source != self._position_health_read_model
+            or self.portfolio_account_selector.currentData() != "paper"
+            or not self._advanced_details_visible
+            or not self.isVisible()
+            or not index.isValid()
+            or self.position_health_model.row_at(index.row()) != row
+        ):
+            return
+        self.position_health_table.scrollTo(index, QAbstractItemView.PositionAtCenter)
+        center = self.position_health_table.visualRect(index).center()
+        point = self.position_health_table.viewport().mapTo(
+            self.portfolio_advanced_scroll.widget(), center,
+        )
+        scroll = self.portfolio_advanced_scroll
+        geometry = (
+            scroll.widget().height(), scroll.verticalScrollBar().maximum(),
+            scroll.viewport().height(), self.position_health_table.height(),
+            point.x(), point.y(),
+        )
+        # 主工作區剛顯示時，最小列高與外層 scrollbar range 仍會排入後續事件。
+        # 只等本次明選的有界版面穩定；每次重核來源／輪次，不保留跨動作狀態。
+        if geometry != previous_geometry and attempt < 8:
+            QTimer.singleShot(
+                16, self,
+                lambda: self._reveal_position_health_focus(
+                    generation, source, row, geometry, attempt + 1,
+                ),
+            )
+            return
+        scroll.ensureVisible(point.x(), point.y(), 8, max(8, scroll.viewport().height() // 2))
 
     def _render_portfolio_focus_summary(self, portfolio: PortfolioDTO) -> None:
         """將同一份 PortfolioDTO 整理成首屏可懂的結論與下一步。"""
@@ -2647,6 +2893,10 @@ class PortfolioView(QWidget):
             worker.deleteLater()
             return
         if generation == self._refresh_generation and not self._closing:
+            self._discard_pending_position_health_focus(
+                "持倉刷新已取消",
+                generation=generation,
+            )
             self.portfolio_refresh_status_label.setText(
                 "持倉背景刷新已取消；畫面保留最近一次資料。"
             )
@@ -2668,6 +2918,10 @@ class PortfolioView(QWidget):
     def _handle_portfolio_refresh_error(self, message: str) -> None:
         error_line = _first_error_line(message)
         logger.error("Failed to load portfolio DTO: %s", error_line)
+        self._discard_pending_position_health_focus(
+            "持倉刷新失敗",
+            generation=self._refresh_generation,
+        )
         self._set_portfolio_focus_state("error", error_line)
         if self._last_portfolio_dto is not None:
             self.portfolio_refresh_status_label.setText(
@@ -2684,6 +2938,7 @@ class PortfolioView(QWidget):
 
         self._refresh_generation += 1
         self._refresh_pending = False
+        self._discard_pending_position_health_focus("持倉刷新已取消")
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             self._refresh_worker.cancel(cooperative=True, wait=False)
             self._set_portfolio_focus_state("cancelling")
@@ -2695,6 +2950,7 @@ class PortfolioView(QWidget):
         """鎖住新的 refresh，並撤銷完成後重啟的 pending generation。"""
 
         self._closing = True
+        self._pending_position_health_focus = None
         scenario_panel = getattr(self, "portfolio_research_scenario_widget", None)
         if scenario_panel is not None:
             scenario_panel.begin_shutdown()
@@ -2719,6 +2975,7 @@ class PortfolioView(QWidget):
         """關閉前合作式取消 worker，避免回呼在 widget 銷毀後套用。"""
 
         self._closing = True
+        self._pending_position_health_focus = None
         scenario_panel = getattr(self, "portfolio_research_scenario_widget", None)
         if scenario_panel is not None:
             scenario_panel.begin_shutdown()

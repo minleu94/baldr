@@ -214,3 +214,28 @@ QA105編譯PASS，pytest的24個案例因Root用環境LOCALAPPDATA產生不存�
 真來源取消實測秒數：0.894902500032913；結果SHA 55b7214912be04b93c722d1a0f71d8d8a084ba22e45a98c4f948243da5a8250e。
 
 QA106文控含owner task：12features／36link sources PASS；最後閉鎖收據SHA `2769c79ee549693bf2375dce0c55f495fd8d2236fce9dfe4db20fa183c479622`。僅結構核對，不代表正文全EOF或產品接受。正常五小時／週用量皆95%，credit餘額53727.8877155000全輪未變；按user近額度約定收尾提交，不啟動新功能或完整F07重試。
+
+<a id="首頁-paper-同版本部位導航qa108112"></a>
+## 首頁 Paper 同版本部位導航（QA108–116）
+
+解除的原 M3 阻礙是首頁明選 Paper 健康列只能泛用切頁，持倉頁可能仍顯示手動帳同股。QA107 靜態核現有公開 read model／exact archive 邊界後，QA108 沿原工作區接 `PositionHealthReadModel` 與唯一 `position_id`，沒有新增金融 DTO、評估、帳本或 writer。Main 先排入下一次刷新；持倉頁用自己的 reader 核完整同版本及唯一部位後才切 Paper。失配、缺件、重複 ID、舊 generation、取消及關閉均拒絕，不回退手動同股；歷史 exact receipt 不從 mutable status path 推造。
+
+QA112 編譯通過，106 項受改檢查通過、1 項新測試 FAIL。該新測試錯把「刷新後重新明選新來源」也當作必須停用；Root 保留原件並只更正期待：刷新清舊選取，舊來源不送出，重新明選才送新 model。產品碼未因這次 FAIL 改動。QA112a 該項 PASS；Workbench85、validator25/0/4、mypy8套件1081 PASS。原 UI mypy ignore 不證強型別。112／112a 自然閉鎖 SHA 分別 `a247fb3d261a048a23da73a0da1eed6e6586473d5802b2ce8be417e7a0c0317e`／`23221df1fc699eb975a3477b250e1fda7933ade826580cd5f9d56086cefa0adb`。
+
+QA115 正常 Source Main／新程序的缺件停用、同股票不同部位定位、來源改變保留手動帳、返回首頁選列／捲動等邏輯通過；Paper 正例明示使用控制 DTO，沒有自然 Paper 原件或保存驗收。Root 檢視 1280×760 截圖發現選中列仍在實際外層可視範圍之外，因此沒有將邏輯 PASS 當完整 UX。115 收據 SHA `a4f3890f40c4892dd095e056dcdc018950a36a90a5878bca55be939d3ba784c4`。
+
+QA116 先補下一 Qt 事件的精確列捲動：編譯、52 項受改持倉、Workbench85、validator25/0/4、mypy1081 通過，但正常 Main 真正外層 viewport 斷言仍 FAIL。116a 只加有界幾何觀察，證實首次 callback 時 scrollbar maximum=0／列中心724、viewport737，後續 layout 才擴張；不是來源身份錯配。原15秒／120秒期限保持，兩組 FAIL 原件保留。116／116a 收據 SHA `d4162c0ce0e94d676a3206dbedde39978a81f0b707133950ea3120d5fc9207c0`／`679f07c9cda7d9cc8cb353162da74633abbcc8b82d5989b251832de2d68d2a9e`。
+
+116b 修復只對仍有效的 generation／完整 model／選列／Paper 帳及可見工作區，等待有界的版面穩定再捲到實際資料列；不建立跨動作 cache 或放寬來源守衛。最終收據另記。固定03未收入本葉片；控制資料不授自然 Paper、歷史保存重開、金融用途、真人／Native 或完整 M3。Root 串行8GiB／12程序／kill-on-close／啟動RAM至少8GiB；每組三PID陣列空、handles閉與mutex釋放後才起下一組。
+
+證據保存勘誤：116沿用112 validator helper時，報告路徑仍指向同owner的112報告，該便利報告被新時間覆寫。112／112a原spec、command stdout／stderr及閉鎖收據保持；原validator接受依這些原始命令輸出，不以被覆寫的便利報告冒充原件。116報告另保全到自有116目錄，後續helper須用新具名路徑。
+
+## 真實多股保存來源的限定核驗（QA109–114）
+
+解除原 M3「只在QA資產尚未找到真多股來源」的證據缺口，沒有重觸發每日 Task。正式推薦 runs DB 經有界實體 bytes 保全，原件無sidecar／reparse、前後SHA一致；原DB未直接開SQLite。30筆canonical及88筆legacy metadata，canonical artifact共34,220,468 bytes保全到本owner。來源DB SHA `2370eab15a47d359ccb5bf50b8f00f08fa64ea74d3e7bed9aa0e105ed8bfa9af`。
+
+109 schema盤點通過；110 helper誤把帶sha256:前綴當裸hash而FAIL；110a碰到原32MiB總上限而FAIL，29檔保留；111只新增最後一檔有界保全，之後audit誤拒SciPy的NUL裝置；111a又誤拒既有reader的SQLite :memory:。原FAIL/spec/log均不覆寫；僅精確修QA裝置／記憶體庫邊界，不改產品守衛。111b完整保全後，整體public list因副本內legacy絕對data_path仍綁原root而拒絕。這是移位副本的root守衛，不證明原正式來源壞掉；沒有重寫path、刪列或弱化守衛。111b閉鎖SHA `849f0c1701895d1bc0d6e39db4387e8097dca6e08a988f12dcaf0bd078ebc08d`。
+
+QA114只用已保全owner副本，以原公開 `queries.get(result_id)` 明選兩筆canonical並通過原payload／index核驗：2026-10-19結果 `rec_3a4acdb159d841cc91492de258c1a0a9` 有5股；2026-10-14結果 `rec_0575414398f14eb8b2661191a140f158` 有32股。各自 `ml_read_status=unavailable`，未授ML或歷史PIT。這次沒有正式根I/O、producer、網路或資料寫入；DB及artifact copies保持。結果 `m3_canonical_selected_read_qa114/result.json`；spec SHA `1ee9369e647a465d97514931eff2d330de27aa81147f59b1c668e362649afcc5`，自然閉鎖SHA `5fa5aed6fa1e65fbce1b958aad924194e8f7e1332d408869a901b10c0bffcecf`。這是可供下一個首頁旅程驗證的真保存來源，不代表整體list、正式每日管線、正常Main多股旅程或完整Gate已接受。
+
+QA116b 最終限定 PASS：編譯、14 項受改導航及晚到捲動守衛；正常 Main40912→新程序37776的明選同股第二部位確實位於外層 viewport 中，來源變更仍保留手動帳，返回首頁選列及捲動124保持，watchlist SHA一致，network／protected／Qt error均0。Root檢視1280實際選中列截圖，原15秒／120秒保持；未重跑未改一般報告與題材旅程。spec SHA `941114e56c2da66f8a0478fbf89725002720d81d058ed6f6ecaeb569ce79710e`，自然閉鎖SHA `7d25266e2f7cac848369ecbcdfbe9063ad515721276963472170f11cce7dd364`；三PID空／handles閉／mutex釋放／forced_cleanup=false。這是明示控制Paper資料的Source技術出口，並非自然帳本、持久化、固定EXE或真人接受；完整M3仍待真首頁候選保存閉環。

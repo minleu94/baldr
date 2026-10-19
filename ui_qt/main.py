@@ -24,6 +24,7 @@ from app_module.application_bootstrap import (
     resolve_application_settings,
 )
 from app_module.build_identity import BuildIdentity, detect_build_identity
+from app_module.decision_presentation import PositionHealthReadModel
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
 
 from ui_qt.crash_diagnostics import (
@@ -1961,6 +1962,24 @@ class MainWindow(QMainWindow):
     def _open_workbench_portfolio(self) -> None:
         self._select_main_workspace("portfolio")
 
+    def _open_workbench_position_health(
+        self, source: PositionHealthReadModel, position_id: str
+    ) -> bool:
+        """先綁定來源，再由持倉頁既有刷新流程核對與定位。"""
+
+        portfolio = getattr(self, "portfolio_view", None)
+        request_focus = getattr(portfolio, "request_position_health_focus", None)
+        try:
+            accepted = callable(request_focus) and request_focus(source, position_id) is True
+        except Exception:  # noqa: BLE001 - 導覽準備失敗時保留原工作區
+            self.statusBar().showMessage("持倉定位未能準備；原帳本未改選。", 10000)
+            return False
+        if not accepted:
+            self.statusBar().showMessage("無法定位明選 Paper 部位；原帳本未改選。", 10000)
+            return False
+        self._select_main_workspace("portfolio")
+        return True
+
     def _on_workspace_selected(self, key: str) -> None:
         if key == "market_explore":
             market_tabs = getattr(self, "market_tabs", None)
@@ -2194,6 +2213,7 @@ class MainWindow(QMainWindow):
                     navigate_to_industry_themes_callback=self._open_workbench_industry_themes,
                     navigate_to_evidence_review_callback=self._open_workbench_evidence_review,
                     navigate_to_portfolio_callback=self._open_workbench_portfolio,
+                    navigate_to_portfolio_position_callback=self._open_workbench_position_health,
                     navigate_to_watchlist_callback=lambda: self._select_main_workspace(
                         "watchlist"
                     ),

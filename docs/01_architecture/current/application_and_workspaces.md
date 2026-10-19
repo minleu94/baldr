@@ -40,6 +40,8 @@ Watchlist的名稱查詢可從目前行情及`meta_data/companies.csv`讀唯一�
 
 Daily Decision Desk 沒有第二個頂層 widget；它位於「市場探索 > 市場總覽」，決策工作台的「決策來源」只導向同一個畫面。`StockResearchWorkspace` 是主視窗中的單一工作區，會以明示的研究 context 在報告、結果與來源之間導覽。
 
+Source 候選另有首頁明選 Paper 健康列的同版本導覽：Workbench 將既有 `PositionHealthReadModel` 與唯一 `position_id` 交給 Main，持倉頁先排入下一次刷新，再由自己的 reader 核對完整同版本及該部位，才切 Paper 帳與健康列。來源變更、失敗或過期回呼不回退手動帳同股；返回「決策工作台」沿既有工作區保留首頁上下文，不自動刷新。這條路徑不建立帳本、不產製評估，也不取代歷史 exact receipt 重開；驗證界線見[QA108／112](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁-paper-同版本部位導航qa108112)。
+
 <a id="daily-decision-desk"></a>
 <a id="4-daily-decision-desk"></a>
 ## 工作區責任

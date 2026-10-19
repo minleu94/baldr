@@ -158,6 +158,8 @@ Increment44 將 `PortfolioScenarioStockReference(account_kind, portfolio_id, art
 
 ### Saved Health 的 exact consumer 與回訪偏好
 
+首頁目前評估的同版本定位另用 `PortfolioView.request_position_health_focus(source, position_id)` 排入下一個 `refresh_generation`。既有持倉刷新完成後，以自有 `read_latest` 核完整 model／row 相等及唯一部位，才選 Paper 與健康列；後來刷新、取消、關閉或失配即丟棄，不以股票代碼推測手動／聲明持倉。此 UI 交接沒有持久化副作用，評估日期及 observed／available clock 不是行情估值日，也不從 mutable status path 推造 immutable receipt ID。它與下述歷史 exact consumer 分開；[本輪 QA](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁-paper-同版本部位導航qa108112)只授具名範圍。
+
 `PositionHealthExactPaperScopeFactory` 從 receipt 指定的同 route Paper snapshot 重建完整持倉 scope；`PositionHealthSavedPanel` 由正常 Main 成對注入 scope factory 與 `SavedHealthSelectionStore`。`portfolio-saved-health-selection.v1` 只保存回訪偏好，包含 receipt／result／snapshot rows hashes、decision date、完整 Paper identity、選中 position id 與分開的時鐘。不能按股票代號、最新結果或檔案 mtime 推測缺件。使用者流程見[已保存健康評估與回訪](../../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)。
 
 Immutable archive reader 與 snapshot reader 保持 bounded、no-follow、regular-file／alias 與 read-only 契約。讀者重核 exact receipt、snapshot、positions、cutoffs、witness 與來源 SHA；缺件、未來時鐘、錯誤身份及晚到回呼保持拒絕／未知。Panel 只允許當前 generation 在 UI thread 提交選擇偏好，正常 close 先取消並等待 native TaskWorker 收尾；reader 不建立 schema、不產製 Health，也不操作帳本。偏好以 16 KiB 上限、精確欄位與 canonical bytes 讀回，不授來源、PIT、模型或交易資格。

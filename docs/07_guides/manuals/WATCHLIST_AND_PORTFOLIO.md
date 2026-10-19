@@ -164,6 +164,12 @@ Paper Portfolio 分頁主要唯讀呈現 snapshot、現金、狀態、ledger、�
 
 Paper Health 只按 Paper 的完整持倉身份及原 receipt 核對。人工帳或聲明持倉與 Paper 即使股票代碼相同，也不是同一筆持倉；不要把 Paper action 顯示到人工帳上。整體 Health 正式整合和工作包驗收仍以[目前狀態快照](../../00_core/PROJECT_SNAPSHOT.md)為準；舊日期 QA、Task exit code 或單一存在的 status 檔都不能證明目前 read model 可用或自然成熟。
 
+### 首頁明選 Paper 部位定位
+
+在決策工作台首頁的 Paper 健康列明選一列，再按「在持倉管理查看此 Paper 部位」。Main 先請持倉頁排入下一輪 refresh，接受後才切到持倉管理；`True` 只表示已排入，定位要等該輪 refresh 完成。持倉頁以自己的 `read_latest` 重新讀取，完整 read model 必須與首頁所選版本相同，且唯一 `position_id`、股票、評估日與來源快照列一致，才切換至 Paper 帳並選取健康列。
+
+來源不符、缺件、重複或無法核對的部位、refresh 失敗／取消／過期或關閉，都會顯示未定位並保留原帳本選擇；不以同股票代號回退到手動帳或聲明持倉。首頁的 `decision_date`、`observed_at`、`available_at` 是評估日期與時鐘，不是行情估值日。左側「決策工作台」可返回原首頁；單純切頁不等於重新讀取或核驗。這個 same-version 導覽回到目前可讀的 Paper 健康表；歷史保存 receipt／snapshot 的 exact 重開仍依下節「已保存健康評估與回訪」操作。此功能屬後續 Source 候選，未納入固定03；正常 Source Main／新程序的控制資料往返與1280可視列已驗，真實 Paper 原件旅程尚未驗，不代表自然 Paper 成熟、金融資格或真人接受。
+
 ### 已保存健康評估與回訪
 
 在 Paper 區的「已保存健康評估」按「載入已保存評估」，明確選一份日期、snapshot 與 receipt，再按「開啟所選評估」。清單第一份不會自動成為選擇；此入口目前只支援沒有額外 namespace 的 `paper-main`。

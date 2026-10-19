@@ -172,6 +172,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - Evidence Feed、Action Items 與 Operating Loop 空狀態必須說明「目前沒有 DTO rows」不等於 gate passed 或 actionable 建議；degraded 狀態只提醒人工覆盤資料不完整，不補值、不觸發 replay / scheduler / lifecycle。
 - Advice 區以 `WAITING_FOR_ADVICE_DTO`、`NO_ELIGIBLE_ADVICE`、`ADVICE_DTO_ERROR` 分別呈現尚未載入、已載入但無合格建議、與 DTO 損毀／安全拒絕；來源降級但仍有有效 recommendation 時仍渲染表格與 warning，不得誤標為 DTO error。
 - V4.2 C 線把決策工作台、Daily Decision／市場總覽、產業探索、觀察清單與持倉覆盤標成單一路徑：`市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤`。Workbench 提供市場、產業、觀察清單與持倉導覽；關鍵股研究則由市場焦點、觀察清單或持倉列選取個股後，透過 `ResearchStockContextDTO` 開啟個股研究報告。
+- 後續 Source 候選的 Paper 健康區提供明選列導覽：「在持倉管理查看此 Paper 部位」。Workbench 只把已驗證的完整 `PositionHealthReadModel` 與唯一 `position_id` 傳給 Main；Main 先請 Portfolio 排入下一輪 refresh，接受後才切頁。Portfolio 自己呼叫 `read_latest`，只在完整 read model 與唯一部位列仍相同時切到 Paper 帳並定位；變更、缺件、失敗、取消、過期或關閉都保留既有帳本選擇，不回退到手動或聲明持倉的同股票列。一般持倉入口仍維持單純工作區導覽；左側可切回決策工作台，切頁本身不代表重新核驗。評估日、observed_at、available_at 不等於行情估值日，此功能也不重開歷史 saved receipt／snapshot。未納入固定03，正常 Source Main／新程序的控制資料往返與1280可視列已驗，真實 Paper 原件旅程尚未驗，不能據此宣稱 Paper 自然成熟、金融資格或真人接受；操作見[觀察清單與持倉手冊](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md)。
 - 市場焦點、觀察清單分析、Advice、持倉詳情與個股報告共用 `DecisionPresentationService`／`DecisionPresentationDTO` adapter；所有畫面分開呈現排名分數、校準機率、成本後獲利機率、動作適合度、證據狀態／信心、樣本數、適用期間、理由、風險、失效條件、權重差距、決策日、資料日與來源追溯。排名只作排序，不能推導任何機率；缺值固定顯示未知／研究中並 fail-closed。
 - 觀察清單以研究／等待與買進候選的既有來源理由、風險、失效條件為主；持倉則將既有 condition monitor 的 valid／warning／invalid 映射為持有／減碼候選／退出候選，並揭露 target／current／gap 權重與成本基準。這些都是唯讀判讀與候選分類，不是自動下單、調倉或平倉。
 - 相關決策頁面均補上 status、decision/data-as-of date、source trace 與可返回來源的 context；研究報告沒有來源時隱藏返回控制，避免製造虛假導覽。表格採單列選取、禁止編輯、StrongFocus、Tab 導覽、交替列色與窄版捲動；完整證據移至可選列的詳情區，避免主表塞入低價值長文。
@@ -358,6 +359,7 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 - 顯示目前價格、未實現損益、停損 / 停利與條件監控。
 - 一般持倉／聲明持倉研究的日曆核驗預設使用即時 UTC（live_now）；只有明示注入歷史 clock 才用 historical_as_of。行情資料日、來源取得時間與有效期分開；歷史觀測不授 PIT，過期／缺件不補為新鮮。未新增模式切換控制項；操作與排錯見[持倉手冊](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md)。
 - 已保存 Paper-main Health 提供明示選取、持倉列選擇與 exact receipt／snapshot 回訪；正常 Main 關閉後可在 fresh Main 重新核驗保存偏好。缺件與 WATCH 保留未知，不讀最新結果補件，也不由此入口執行 producer 或交易。操作依[已保存健康評估與回訪](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md#已保存健康評估與回訪)，服務契約依[目前架構](../01_architecture/current/decision_research_portfolio.md#saved-health-的-exact-consumer-與回訪偏好)；最新 QA 與完整工作包未接受範圍依 Snapshot。
+- 決策工作台的 Paper 部位導覽是另一條 same-version 當前表定位路徑：Main 僅在 Portfolio 接受排入後切頁，Portfolio 下一輪刷新再用自己的 read model 比對全部版本與 position identity。它不取代已保存健康評估的歷史 exact 回訪，source mismatch 時不選同股票的其他帳本。此 Source 候選尚未納入固定03；正常 Main／新程序未驗證。
 - 頂端摘要只顯示有最新價格持倉的「持倉市值（未含現金）」；缺價格會顯示 N/A 與缺漏股票，不把投入金額／已實現損益冒充完整 NAV。
 - 情境壓力：由 `PortfolioStressLabService` 對已標記持倉套用固定、可重播的研究情境；缺價只做部分計算，輪動／來源中斷等缺少必要輸入時 fail-closed，不寫資料、不改持倉、不產生交易指令。
 - Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果；下方歷史表由 `PortfolioStressHistoryReadService` query-only 讀取，缺 DB 不初始化，固定揭露研究用途與 `writes_allowed=false`。

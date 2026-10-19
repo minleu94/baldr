@@ -5,7 +5,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QPoint
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (
+    QApplication,
+    QGroupBox,
+    QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app_module.institutional_daily_snapshot import (
     InstitutionalDailyRow,
@@ -87,6 +96,88 @@ def test_tpex_result_shows_market_and_all_nine_original_integer_values():
         ]
         assert widget.rows_table.item(0, 2).text() == "9007199254740993"
     finally:
+        widget.close()
+        app.processEvents()
+
+
+def test_tpex_table_stays_tall_and_last_column_is_reachable():
+    app, widget = _widget()
+    outer_scroll = QScrollArea()
+    outer_scroll.setWidgetResizable(True)
+    content = QWidget()
+    content_layout = QVBoxLayout(content)
+    page_stack = QStackedWidget(content)
+    page_stack.addWidget(widget)
+    operations_group = QGroupBox("資料操作", content)
+    operations_group.setMinimumHeight(72)
+    content_layout.addWidget(page_stack)
+    content_layout.addWidget(operations_group)
+    outer_scroll.setWidget(content)
+    outer_scroll.resize(900, 700)
+    result = _read_result()
+
+    try:
+        outer_scroll.show()
+        widget.show_result(result)
+        QTest.qWait(50)
+        app.processEvents()
+
+        assert "Manifest SHA-256" in widget.identity_label.text()
+        assert "用途限制：候選資料" in widget.identity_label.text()
+        assert widget.height() >= widget.sizeHint().height()
+        assert widget.rows_table.geometry().bottom() + 1 <= widget.height()
+        assert operations_group.geometry().top() > page_stack.geometry().bottom()
+
+        table_bottom = widget.rows_table.mapTo(
+            content,
+            QPoint(widget.rows_table.width() - 1, widget.rows_table.height() - 1),
+        )
+        outer_scroll.ensureVisible(table_bottom.x(), table_bottom.y(), 0, 40)
+        QTest.qWait(20)
+        app.processEvents()
+
+        horizontal = widget.rows_table.horizontalScrollBar()
+        assert horizontal.maximum() > 0
+        assert horizontal.isVisible()
+        assert not horizontal.visibleRegion().isEmpty()
+
+        horizontal.setValue(horizontal.maximum())
+        app.processEvents()
+        last_column = widget.rows_table.visualItemRect(
+            widget.rows_table.item(0, 10)
+        )
+        assert not last_column.isEmpty()
+        assert widget.rows_table.viewport().rect().contains(last_column)
+        assert [
+            widget.rows_table.item(0, column).text() for column in range(2, 11)
+        ] == [
+            str(getattr(result.rows[0], field))
+            for field in (
+                "foreign_investor_buy",
+                "foreign_investor_sell",
+                "foreign_investor_net",
+                "investment_trust_buy",
+                "investment_trust_sell",
+                "investment_trust_net",
+                "dealer_buy",
+                "dealer_sell",
+                "dealer_net",
+            )
+        ]
+
+        widget.clear_result()
+        assert widget.rows_table.rowCount() == 0
+        assert widget.identity_label.text() == ""
+        assert "候選資料" not in widget.status_label.text()
+
+        widget.show_result(result)
+        widget.show_error("讀取失敗")
+        assert widget.rows_table.rowCount() == 0
+        assert widget.identity_label.text() == ""
+        assert widget.status_label.text() == "讀取失敗"
+        assert "候選資料" not in widget.identity_label.text()
+    finally:
+        outer_scroll.close()
         widget.close()
         app.processEvents()
 

@@ -136,6 +136,8 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 ### 固定法人與官方資料研究
 
+法人長來源身份下的表格使用自然垂直下限，顯示／清除／錯誤後通知外層重新配置；不固定整頁高度、不縮刪來源／資格說明，也不改九個原整數股數。先垂直捲到表格底，再水平捲到最後欄。QA189b舊08裁切FAIL保留；Source QA190定向21、Workbench85、validator25／0／4及mypy1082，191a正常Main35948→28512逐欄可到達與重開通過，尚非新固定EXE／Native或真人接受。詳[法人表格修復](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#法人表格可操作性qa189191a)。
+
 固定法人唯讀區可明選 TWSE 與 TPEx OpenAPI 批次；身份列顯示已核市場，九個股數值仍沿原 int 投影，不猜 market、不觸發資料取得或金融重算。來源錯誤、未到可用小時、pending 或輸入換版時清除舊結果，候選與 P0 資格邊界保留。操作見[TPEx 單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)。
 
 固定法人區的用途接受檔與 SHA 必須成對明選，沿原三參數 signal、不可變 request pin、owner worker、generation 與取消路由；只有 TPEx typed diagnostics 顯示接受 ID、SHA、時間與來源顯名。裸 True、錯市場或 scope 拒絕；無 pin 維持原 candidate 讀取，讀取不重寫來源或接受狀態，也不觸發抓取。操作見[用途接受指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人用途接受與重開後續開發分支)。

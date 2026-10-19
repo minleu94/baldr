@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -65,6 +66,10 @@ class InstitutionalDailySnapshotWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
         self.generation = 0
         self._loading = False
         self.requested_source_use_pin: InstitutionalSourceUsePin | None = None
@@ -226,6 +231,7 @@ class InstitutionalDailySnapshotWidget(QWidget):
         if self._loading:
             self.clear_result()
             self.status_label.setText("正在核驗同批原件、品質、時間與雙 SHA…")
+            self.updateGeometry()
 
     def show_result(self, result: InstitutionalDailySnapshotRead) -> None:
         self.clear_result()
@@ -270,6 +276,7 @@ class InstitutionalDailySnapshotWidget(QWidget):
                 self.status_label.setText(
                     f"指定批次已載入；股票 {result.stock_code} 命中 {len(display_rows)} 筆，日期欄保留原始資料日。"
                 )
+            self.updateGeometry()
         except Exception as exc:
             self.show_error(f"批次結果不符合唯讀顯示契約：{exc}")
 
@@ -375,8 +382,10 @@ class InstitutionalDailySnapshotWidget(QWidget):
     def show_error(self, message: str) -> None:
         self.clear_result()
         self.status_label.setText(str(message))
+        self.updateGeometry()
 
     def clear_result(self) -> None:
         self.rows_table.setRowCount(0)
         self.identity_label.clear()
         self.status_label.setText("尚未載入。請輸入批次目錄、雙 SHA 與股票代碼。")
+        self.updateGeometry()

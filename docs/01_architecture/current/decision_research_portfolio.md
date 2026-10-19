@@ -50,6 +50,8 @@
 <a id="entry-and-dataflow"></a>
 ## 入口與上下游
 
+後繼M1的`TPExThemeFlowReader`依賴法人每日固定批次的typed多股public reader與原一次性TPEx diagnostics用途pin，產出既有`ThemeMarketInput.flows`；舊單股API仍回原DTO，無快取或第二套原件解析。caller提供同版映射確認的TPEx代號交集，單日投影保留三原net整數和、原股數單位與raw／每日雙pin／用途SHA，不混TWSE或將股數換為TWD。QA185–188驗原API／真舊898與新888列／原映射部分覆蓋及新程序；固定08原單股法人頁另可讀新10/19日報，但沒有新batch API。正常題材snapshot尚未組裝此adapter，不由API或日報UI通過推定完整M1／題材UI完成。
+
 題材後續Source的純presentation builder提供keyword-only `ascending=False`，不改原typed DTO或reader。UI排序方向只選同snapshot的高／低端純投影，完整coverage及原值守衛相同，不讀新資料、不寫Journal。排序以原Decimal／整數穩定比較，不以受ambient context影響的算術鍵改變順序；Main原context返回仍保留同一view，固定08已含、07未含，驗證範圍見[QA176起](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材雙向排行qa176177)。
 
 後繼Source的題材下鑽攜`industry_theme_snapshot` context，資料日明標為題材版本日期，一般個股報告仍使用自己的行情日期。該context內換代碼先拒絕，回原題材明選成員才建立新context；返回核同一原身份。使用者題材筆記沿既有Journal ACTION_NOTE／CAS追加，實際保存時間與原資料日分開，不產生歷史決策或交易身份；契約見[題材研究](../../02_features/INDUSTRY_THEME_MAP_DESIGN.md#54-後繼呈現與研究筆記)。

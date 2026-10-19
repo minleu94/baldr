@@ -110,6 +110,25 @@ class InstitutionalDailySnapshotRead:
     source_use: InstitutionalSourceUseRead | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class InstitutionalDailySnapshotBatchRead:
+    """同一固定批次的多股原列；未命中不補零，總列數仍指完整原報表。"""
+
+    pin: InstitutionalDailySnapshotPin
+    stock_codes: tuple[str, ...]
+    rows: tuple[InstitutionalDailyRow, ...]
+    total_records: int
+    first_persisted_at: datetime
+    successful_batch_completed_at: datetime
+    available_hour: datetime
+    availability_basis: str
+    candidate_only: bool = True
+    source_use_accepted: bool = False
+    historical_pit_eligible: bool = False
+    market: str = "TWSE"
+    source_use: InstitutionalSourceUseRead | None = None
+
+
 def _read(path: Path, expected: str | None, maximum: int, pins: list[dict[str, Any]]) -> bytes:
     target = _canonical_path(path, "institutional_source", allow_missing=False)
     raw, signature = _read_exact_file(target, maximum=maximum)
@@ -356,6 +375,34 @@ def read_institutional_daily_snapshot(
     """重驗全部原件／品質，返回所選代號；不從最新DB補欄或授予連買／PIT。"""
     if type(pin) is not InstitutionalDailySnapshotPin or type(stock_code) is not str or not re.fullmatch(r"[A-Za-z0-9]{4,12}", stock_code):
         raise InstitutionalDailySnapshotError("請指定固定批次與有效證券代號")
+    batch = read_institutional_daily_snapshot_batch(
+        pin, stock_codes=(stock_code,), decision_cutoff=decision_cutoff,
+        check_cancel=check_cancel, source_use_pin=source_use_pin, _expected_scope=_expected_scope,
+    )
+    return InstitutionalDailySnapshotRead(
+        pin=batch.pin, stock_code=stock_code, rows=batch.rows, total_records=batch.total_records,
+        first_persisted_at=batch.first_persisted_at,
+        successful_batch_completed_at=batch.successful_batch_completed_at,
+        available_hour=batch.available_hour, availability_basis=batch.availability_basis,
+        candidate_only=batch.candidate_only, source_use_accepted=batch.source_use_accepted,
+        historical_pit_eligible=batch.historical_pit_eligible, market=batch.market, source_use=batch.source_use,
+    )
+
+
+def read_institutional_daily_snapshot_batch(
+    pin: InstitutionalDailySnapshotPin, *, stock_codes: tuple[str, ...], decision_cutoff: datetime,
+    check_cancel: Callable[[], bool] | None = None,
+    source_use_pin: InstitutionalSourceUsePin | None = None,
+    _expected_scope: str | None = None,
+) -> InstitutionalDailySnapshotBatchRead:
+    """一次重驗固定批次，投影有界明選多股；不快取、不搜尋或更換來源。"""
+    if (type(pin) is not InstitutionalDailySnapshotPin or type(stock_codes) is not tuple
+            or not 1 <= len(stock_codes) <= 5000
+            or any(type(code) is not str or re.fullmatch(r"[A-Za-z0-9]{4,12}", code) is None
+                   for code in stock_codes)
+            or len(set(stock_codes)) != len(stock_codes)):
+        raise InstitutionalDailySnapshotError("請指定固定批次與1–5000個唯一有效證券代號tuple")
+    selected_codes = set(stock_codes)
     cutoff = _local(decision_cutoff)
     directory = _canonical_path(pin.directory, "institutional_daily", allow_missing=False)
     if directory.name != "daily_snapshot":
@@ -400,7 +447,7 @@ def read_institutional_daily_snapshot(
         _finish(pins + source_pins, check_cancel)
         _barrier(directory)
         _cancel(check_cancel)
-    return InstitutionalDailySnapshotRead(pin, stock_code, tuple(row for row in rows if row.stock_code == stock_code),
+    return InstitutionalDailySnapshotBatchRead(pin, stock_codes, tuple(row for row in rows if row.stock_code in selected_codes),
                                           len(rows), first, completed, available, basis,
                                           market=market, source_use=source_use, source_use_accepted=source_use is not None)
 

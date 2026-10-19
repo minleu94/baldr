@@ -58,6 +58,10 @@ Root已核四份官方原件的固定完整fingerprint：政府條款第1版、m
 
 本次政府資料集HTML完整526503bytes與舊Swagger476923bytes、真API898原列／1151015，各自原件／SHA／HTTP EOF獨立保存。新版本重播已保存HTTP，capture metadata時鐘是本次重播完成，上游真HTTP時鐘另保留；首次daily成功保存使用真當下台北10/16 06:45:15，07:00才可用。沒有官方發布小時，basis仍為successful_batch_completion_fallback，不補歷史PIT。政府開放資料證據不代授整個institutional_flows來源桶、舊web或TPEx年度calendar；正式P0用途決策／排程／SQLite不變，candidate-only／source_use_accepted=false／historical_pit=false。正常操作見[TPEx單日指南](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人openapi單日版本後續開發分支)。
 
+## 後繼M1法人多股讀者（Source）
+
+後繼M1提供`read_institutional_daily_snapshot_batch`：明選1–5000個唯一代號，以同一內核完整重驗一次固定批次，再取原列；原單股reader與TWSE wrapper簽名、DTO及守衛保持。`total_records`仍是完整原報表列數，未命中不補零，多日原列不混成單日。`TPExThemeFlowReader`只消費具原TPEx diagnostics用途pin的同日原股數，限caller由同版映射確認的TPEx股票；不授TWSE或跨市場合計。接受時間與批次小時取較晚者，來源身份保留raw／manifest／receipt／用途SHA，不以股價換金額。QA185–188已限定驗原API相容、舊898與新888原列、映射交集及新程序；正常題材snapshot尚未接入，固定08沒有新batch API。10/19新資料另由固定08原法人頁驗讀，不修改原10/16題材或借日；詳[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
+
 ## TWSE法人候選成功批次（Increment42）
 
 此為原 `institutional-credit-flows-candidate-bundle.v1` 的獨立 JSON companion，限定 `twse_institutional`／原T86／1–30個排序唯一日期。原 parser／source version、整數股數與 candidate 不變，不借 MOPS record 或另一 revision reader namespace 的接受。`institutional-daily-manifest.v1` 綁原 capture manifest 外部SHA、完整raw／metadata／candidate／readback的絕對路徑、bytes及SHA、原始官方時間文字／台北時間、來源時鐘與原報表列總數；這個總數不是股票 universe 或真N。

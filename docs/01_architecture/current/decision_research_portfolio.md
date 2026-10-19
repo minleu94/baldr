@@ -164,6 +164,8 @@ Increment44 將 `PortfolioScenarioStockReference(account_kind, portfolio_id, art
 
 Immutable archive reader 與 snapshot reader 保持 bounded、no-follow、regular-file／alias 與 read-only 契約。讀者重核 exact receipt、snapshot、positions、cutoffs、witness 與來源 SHA；缺件、未來時鐘、錯誤身份及晚到回呼保持拒絕／未知。Panel 只允許當前 generation 在 UI thread 提交選擇偏好，正常 close 先取消並等待 native TaskWorker 收尾；reader 不建立 schema、不產製 Health，也不操作帳本。偏好以 16 KiB 上限、精確欄位與 canonical bytes 讀回，不授來源、PIT、模型或交易資格。
 
+推薦頁的公開 exact-open port 只接受明確結果 ID，沿原 single-get／canonical 身份讀回；外部明選不繼承另一筆列表選項的 expected identity，原列表入口仍保持該守衛。相符的 scheduled pointer 仍重核日期／筆數；讀回不取得 save receipt、採用或回測傳送資格。shutdown 開始即拒絕新讀，晚到回呼與取消沿既有 generation。首頁的較早保存來源只作原版本研究，不改今日 freshness、來源/PIT 或 ML 資格。
+
 ## Evidence 與模型權限
 
 P02的候選 `daily_market_technical_official_disposition_composite_query_v2` 消費同一sealed V3 group，F07價格facts與MA／KDJ／波動共用來源、母體及callback；價格範圍是既有四組AND／OR後的共通AND gate。V1四組三態計數保留，V2另列價格與最終可見計數，完整母體先排序再分頁，價格缺值置尾並以股票代碼作穩定tie-break。Result／page的逐次發行錨點核完整欄位與原V3 group，不能僅重算hash取得reader-verified資格。V2 presenter及bookmark只接受該版公開結果；bookmark恢復須由caller提供匹配的sealed V3 group，不能自行開latest。保存來源直接重播、型別及V2正常view已驗；Main新增「官方條件與價格研究」，Watchlist有獨立V2 envelope／typed add/read與schema分派，V1路徑保留。指定合成257股／雙parent的正常Main父54060→新PID34696旅程另通過，pins、query/result/page、basket、條件及scroll精確一致；首次view的scroll恢復用有界layout/range穩定檢查並綁generation/result/page/選列，確實套用後才發成功終態。此為候選限定範圍，未授原producer suite、真N、來源/PIT、Native、EXE或完整P02。具名驗證見[本輪QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。

@@ -26,6 +26,8 @@ Watchlist的名稱查詢可從目前行情及`meta_data/companies.csv`讀唯一�
 
 首頁題材入口只選回上述現有widget，接收snapshotChanged作短摘要；不重讀來源。個股以明確current_stock_research讀一般行情，題材日期／hash只作原探索脈絡；換股必須回題材明選。研究判斷以既有Journal追加，保存時鐘與資料日分開，新程序回訪核原文與原SHA。
 
+首頁候選沿原 selector／context，控制項移至日常候選列下方，保留結果、快照及日期；返回要求同一原首頁身份。較早候選不放寬今日 guard，而以明示按鈕交 Main 呼叫 `RecommendationView.open_saved_recommendation_result(result_id)`，排入既有 single-get worker 後才切推薦工作區。它不經整體 list／latest，不產製推薦；canonical 身份、matching pointer 日期／筆數、generation／取消及關閉守衛保持。筆記沿原 candidate Journal，與整份報告保存分開。
+
 市場探索的保存來源 backend 提供明確 opt-in 的 Projection Group V3 opener：同一次 verified-parent callback 產生 MA／KDJ／volatility／F07 Decimal price facts，完整 exact cohort 核對後才發行 session，price digest 進入 group identity。V2 opener 與既有價格分類沿原契約；V3 不另讀價格母體，也不自行接 UI、query predicate 或 bookmark。實際驗證與未完成範圍見[本輪補完 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)。
 
 1. 決策工作台

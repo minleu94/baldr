@@ -147,7 +147,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 <a id="workspace-decision-workbench"></a>
 
-後續Source的每日候選改為明選代碼：多檔預設未選、單檔相容預選；來源／日期／逐列身份改變會清除選擇，候選卡及首頁捷徑共用同一守衛。回傳的ResearchStockContextDTO沿原來源及日期欄位，不新增金融計算。Source定向及相關回歸112項／validator25-0-4／mypy1076通過；合成Qt候選不授正式多股來源或真人接受，固定`f02b7ebded30`候選不含。操作見[每日決策](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk)。
+後續 Source 的每日候選明選控制項位於首頁候選列下方，無須展開技術工作台；多檔先選、單檔預選，來源／日期／逐列身份改變清選擇。context 攜原 result/source/snapshot/date，返回要求原首頁身份仍相符。stale 仍不能作今日候選，但可明示讀回精確原保存結果，沿推薦頁既有 single get／身份與取消守衛，不重跑或挑 latest。個股筆記沿原 candidate Journal，缺行情或ML不補值。固定03未含；具名 Source／真來源回放／正常入口界線見[本輪 QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#首頁真保存候選閉環qa118123)，操作見[每日決策](../07_guides/APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk)。
 ### 2.5 決策工作台
 
 主要 view / model：

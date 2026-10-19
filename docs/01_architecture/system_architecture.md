@@ -60,6 +60,8 @@ flowchart TD
 
 首頁明選 Paper 健康部位的 Source 接線沿同一工作區系統，以原 read model／唯一部位交接，持倉頁獨立刷新核同版本後才定位；不合併手動帳或代替歷史保存評估。契約見[工作區邊界](current/application_and_workspaces.md#九個頂層工作區)。
 
+首頁較早推薦另沿明選 exact-result 接既有推薦 single-get／候選 Journal，今日日期守衛保持；詳[研究資料流](current/application_and_workspaces.md#九個頂層工作區)，不建立第二套研究保存或推薦管線。
+
 依問題閱讀：[UI 與應用流程](current/application_and_workspaces.md)、[決策、研究與 Portfolio](current/decision_research_portfolio.md)、[資料、保存與 Runtime](current/data_storage_runtime.md)。使用者操作流程以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 ## 主要資料流

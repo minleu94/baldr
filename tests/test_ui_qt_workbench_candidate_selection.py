@@ -90,8 +90,9 @@ def test_second_candidate_opens_exact_selected_context_through_candidate_shortcu
     assert context.data_date == "2026-10-15"
     assert context.result_id == "result-1"
     assert context.source_id == "source-1"
+    assert context.source_snapshot_id == "snapshot-1"
     assert context.source_kind == "scheduled_recommendation"
-    assert context.source_workspace == "recommendation"
+    assert context.source_workspace == "workbench"
     view.close()
 
 
@@ -174,6 +175,36 @@ def test_refresh_clears_selection_when_source_or_date_identity_changes(
     view.close()
 
 
+def test_snapshot_refresh_clears_old_selection_and_rebinds_only_after_reselection() -> None:
+    application = _app()
+    daily = _daily(("2330", "2603"))
+    view, contexts = _view(daily)
+    view.show()
+    application.processEvents()
+    view.daily_candidate_selector.setCurrentIndex(
+        view.daily_candidate_selector.findData("2603")
+    )
+
+    refreshed = replace(daily, candidate_source_snapshot_id="snapshot-2")
+    view._render_daily_investment_journey(refreshed)
+
+    assert view.daily_candidate_selector.currentData() is None
+    assert not view.daily_candidate_button.isEnabled()
+    view.daily_candidate_button.click()
+    assert not view.navigate_to_drilldown_target("stock_research")
+    assert contexts == []
+
+    view.daily_candidate_selector.setCurrentIndex(
+        view.daily_candidate_selector.findData("2603")
+    )
+    view.daily_candidate_button.click()
+    assert len(contexts) == 1
+    assert contexts[0].stock_code == "2603"
+    assert contexts[0].result_id == "result-1"
+    assert contexts[0].source_snapshot_id == "snapshot-2"
+    view.close()
+
+
 def test_empty_and_failed_candidates_clear_options_and_disable_opening() -> None:
     application = _app()
     daily = _daily(("2330", "2603"))
@@ -212,4 +243,48 @@ def test_single_candidate_remains_preselected_and_opens_from_candidate_button() 
     assert contexts[0].stock_code == "2330"
     assert contexts[0].decision_date == "2026-10-16"
     assert contexts[0].data_date == "2026-10-15"
+    view.close()
+
+
+def test_candidate_controls_are_visible_without_expanding_technical_workbench() -> None:
+    application = _app()
+    view, _contexts = _view(_daily(("2330", "2603")))
+    view.resize(1084, 730)
+    view.show()
+    application.processEvents()
+    assert view.daily_candidate_selector.isVisible()
+    assert view.daily_candidate_button.isVisible()
+    assert not view.position_health_table.isVisible()
+    view.close()
+
+
+def test_stale_source_can_open_only_its_explicit_saved_result() -> None:
+    _app()
+    daily = _daily(("2330", "2603"), status="stale")
+    view, contexts = _view(daily)
+    opened = []
+    view.navigate_to_saved_recommendation_callback = opened.append
+    view._sync_daily_candidate_open_controls()
+    assert not view.daily_candidate_button.isEnabled()
+    assert view.daily_candidate_selector.count() == 1
+    assert view.daily_saved_result_button.isEnabled()
+    assert "上次保存" in view.daily_saved_result_button.text()
+    view.daily_saved_result_button.click()
+    assert opened == ["result-1"] and contexts == []
+    view.begin_shutdown()
+    assert not view._open_daily_saved_result()
+    assert opened == ["result-1"]
+    view.close()
+
+
+@pytest.mark.parametrize("status", ["future_blocked", "read_failure", "missing", "degraded"])
+def test_unknown_or_future_candidate_does_not_offer_saved_source_fallback(status) -> None:
+    _app()
+    view, _contexts = _view(_daily(("2330",), status=status))
+    opened = []
+    view.navigate_to_saved_recommendation_callback = opened.append
+    view._sync_daily_candidate_open_controls()
+    assert not view.daily_saved_result_button.isEnabled()
+    assert not view._open_daily_saved_result()
+    assert opened == []
     view.close()

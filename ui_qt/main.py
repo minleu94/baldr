@@ -1962,6 +1962,21 @@ class MainWindow(QMainWindow):
     def _open_workbench_portfolio(self) -> None:
         self._select_main_workspace("portfolio")
 
+    def _open_workbench_saved_recommendation(self, result_id: str) -> bool:
+        """明選原保存結果；只有排入精確讀取後才切既有推薦工作區。"""
+
+        view = getattr(self, "recommendation_view", None)
+        open_saved = getattr(view, "open_saved_recommendation_result", None)
+        try:
+            accepted = callable(open_saved) and open_saved(result_id) is True
+        except Exception:  # noqa: BLE001 - 讀取準備失敗不切頁
+            accepted = False
+        if not accepted:
+            self.statusBar().showMessage("原保存推薦尚未能讀取；請查看推薦頁狀態，未改選其他結果。", 10000)
+            return False
+        self._select_main_workspace("recommendation")
+        return True
+
     def _open_workbench_position_health(
         self, source: PositionHealthReadModel, position_id: str
     ) -> bool:
@@ -2224,6 +2239,7 @@ class MainWindow(QMainWindow):
                     navigate_to_recommendation_callback=lambda: self._select_main_workspace(
                         "recommendation"
                     ),
+                    navigate_to_saved_recommendation_callback=self._open_workbench_saved_recommendation,
                     auto_refresh=True,
                     async_refresh=True,
                     parent=self,
@@ -3637,6 +3653,27 @@ class MainWindow(QMainWindow):
         else:
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
+            return
+        if context.source_kind == "scheduled_recommendation" and context.source_workspace == "workbench":
+            workbench = getattr(self, "workbench_view", None)
+            daily = getattr(workbench, "_daily_investment_evidence", None)
+            selector = getattr(workbench, "daily_candidate_selector", None)
+            openable = getattr(workbench, "_daily_candidate_selection_is_openable", None)
+            if (
+                daily is None
+                or not callable(openable)
+                or not openable()
+                or selector is None
+                or selector.currentData() != context.stock_code
+                or daily.candidate_result_id != context.result_id
+                or (daily.candidate_source_id or daily.candidate_result_id or "") != context.source_id
+                or (daily.candidate_source_snapshot_id or "") != context.source_snapshot_id
+                or daily.decision_date != context.decision_date
+                or (daily.candidate_data_date or daily.data_as_of_date or daily.decision_date) != context.data_date
+            ):
+                self.statusBar().showMessage("首頁原候選已改變或不可讀；未改選其他結果，請回首頁重新明選。", 10000)
+                return
+            self._select_main_workspace("workbench")
             return
         if context.source_kind == "industry_theme_snapshot":
             view = getattr(self, "industry_theme_map_view", None)

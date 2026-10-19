@@ -239,3 +239,24 @@ QA116 先補下一 Qt 事件的精確列捲動：編譯、52 項受改持倉、W
 QA114只用已保全owner副本，以原公開 `queries.get(result_id)` 明選兩筆canonical並通過原payload／index核驗：2026-10-19結果 `rec_3a4acdb159d841cc91492de258c1a0a9` 有5股；2026-10-14結果 `rec_0575414398f14eb8b2661191a140f158` 有32股。各自 `ml_read_status=unavailable`，未授ML或歷史PIT。這次沒有正式根I/O、producer、網路或資料寫入；DB及artifact copies保持。結果 `m3_canonical_selected_read_qa114/result.json`；spec SHA `1ee9369e647a465d97514931eff2d330de27aa81147f59b1c668e362649afcc5`，自然閉鎖SHA `5fa5aed6fa1e65fbce1b958aad924194e8f7e1332d408869a901b10c0bffcecf`。這是可供下一個首頁旅程驗證的真保存來源，不代表整體list、正式每日管線、正常Main多股旅程或完整Gate已接受。
 
 QA116b 最終限定 PASS：編譯、14 項受改導航及晚到捲動守衛；正常 Main40912→新程序37776的明選同股第二部位確實位於外層 viewport 中，來源變更仍保留手動帳，返回首頁選列及捲動124保持，watchlist SHA一致，network／protected／Qt error均0。Root檢視1280實際選中列截圖，原15秒／120秒保持；未重跑未改一般報告與題材旅程。spec SHA `941114e56c2da66f8a0478fbf89725002720d81d058ed6f6ecaeb569ce79710e`，自然閉鎖SHA `7d25266e2f7cac848369ecbcdfbe9063ad515721276963472170f11cce7dd364`；三PID空／handles閉／mutex釋放／forced_cleanup=false。這是明示控制Paper資料的Source技術出口，並非自然帳本、持久化、固定EXE或真人接受；完整M3仍待真首頁候選保存閉環。
+
+<a id="首頁真保存候選閉環qa118123"></a>
+## 首頁真保存候選閉環（QA118–123）
+
+本增量解除原M3的候選快照身份遺失、返回錯工作區，以及日常選股控制項藏在進階區的阻礙；不增加金融公式或新保存系統。原selector與開啟按鈕移到首頁候選列下方，多股仍須明選；context帶原snapshot，返回同首頁須result/source/snapshot/日期/選股相符。原stale／future今日候選守衛不改，另有明示原保存結果入口，經RecommendationView public exact-open沿既有single get；不經list／latest、不重跑。舊列表expected identity、matching pointer日期／筆數、generation／取消保持，shutdown開始即拒絕新讀。Root保留Main/shared port/金融/QA/docs，兩既有Luna有限單寫，10/10無新建；另一路獨立靜態複核未發現重大回歸，不代替執行QA。
+
+118原status完整65,964 bytes保全，SHA `bcd0241984516a4b7965b3b5a3517aeb73a3ceec4951ede217807ed31e3ddd8c`；原bytes與保全SHA核同。初次64KiB自選metadata上限拒絕時未讀raw；核實尺寸後另立128KiB完整JSON保全範圍，沒有改production/PIT或原測試斷言。回放只在自己runtime另存runs_dir重定位，內層cohort與原status／正式來源不改。
+
+QA120編譯／27受改PASS；11個新Main測試host漏接既有coerce方法而FAIL。Root保留原test/spec/log，120a只補host原方法後11PASS；Workbench85、validator25/0/4、mypy8套件1081PASS。120a正常Main helper未等首次Qt排程的來源完成便取None，屬helper FAIL。兩組自然閉鎖SHA `3b23dae8763e4d42b4cc68c5b99a4f9bde43f51d2b7685cb482b777604e47ab9`／`c40933345a6fcf3814c2b2d6ab4dfe5ec46894c01e63b09f9b49b6bed59f94d0`。
+
+QA121只修helper等待，原15秒／120秒不變。在正常Main組合中，以public DailyInvestmentJourneyService明示10/19原保存日期投影接既有render port，沒有改系統時鐘或將stale冒稱今日。真5股原件中明選1512／1236，各自精確candidate_key、Journal筆記、返回首頁；程序12772→43012讀回兩篇原文、revision及Journal SHA一致（`dd0688d27723f5dc1d8a39c33b69963b634280018deacc69ba1a5952605dd6cb`），DB原SHA與watchlist保持，網路／protected／Qt error均0。Root檢視1280筆記截圖。這是有明示日期投影的真原件回放，不是自然當日首頁或完整行情報告接受。spec SHA `1e781db79316ebc1b99eae3c53b092e0a8aa3b1a38fa0f87c6b9f705a4500d3c`；自然閉鎖SHA `cfca493f99e0a5f32db5793846baa44b45675a73773c269336d9ace1a12bf549`。
+
+QA123改由正常主視窗stale首頁的原保存結果按鈕進推薦頁，沒有注入DailyEvidence或改時鐘。context L3顯示RecommendationView為headings_only／Unknown；Root與workers另讀本次指定symbols及diff，不宣稱整檔或全庫EOF。編譯、89受改／舊單筆讀回與晚到取消、Workbench85、validator25/0/4、mypy1081PASS；UI既有ignore不證強型別。實際Main可讀五股原保存結果、今日候選仍停用，但個股Journey沒有連結完成，整段FAIL。123a只加具名UI診斷查明原因，尚未接受；不以單元數或單筆readback升格完整旅程。123收據SHA `e2c96d64fd8c82add741e30a4eed0efc80a71c14fc8e5a70e16ad7b992a7ebb4`，原件保留。
+
+完整當日首頁、固定04／EXE／Native／真人及M3/M4未由以上回放接受；ML、行情缺件、PIT／來源用途及自然成熟分別隔離。固定03／舊包及私人原件保持；Root串行原8GiB/12程序/kill-on-close/mutex/RAM至少8GiB，每組三PID陣列空、handles閉、mutex釋放後才起下一組。
+
+QA123a保留原診斷FAIL：既有worker已自然結束，但queued UI callback尚未套用模型；並非candidate身份失配。123b僅修helper，等待實際Journey模型、精確candidate identity、筆記控制與workspace idle；原15秒／120秒不變，產品碼未改，未重跑已過且未變的89／85／validator／mypy。正常Main17292→48020，以實際2026-10-20時鐘由首頁原保存按鈕讀10/19五股、明選1512／1236，各自保存筆記、返回原推薦，再由新程序讀回兩篇原文／ID／SHA一致。今日候選仍stale停用；無DailyEvidence注入、日期回放、producer或網路，來源DB與watchlist SHA保持。Root檢視1280截圖。Journal SHA `766c4af3f5ef87f6c7a3436758cf12ec3cab1ab5bc1e29c6a75cd94a902328f2`，spec SHA `7332e3e953e7965f3697b7c83fff7c13582b402855b06290abedc09b74600744`，閉鎖收據SHA `d546444523d54b60e3b1f2850e8d13cb0c2dd9c64236a3ab9c241c6e757e7312`。原stdout沿用舊「日期回放」標籤，但本次helper及result明示未注入；依實際程式與結果判定，不覆寫原輸出。
+
+此PASS只接受原保存來源的唯讀研究與Journal閉環。固定行情不含1512／1236，價格技術等缺件維持不可用；不授完整行情報告、今日自然管線、ML、歷史PIT或整體M3/M4。
+
+QA124–124b為固定04準備最小示範資產，解除必須帶整份私人歷史庫的阻礙。124因原metadata notes非空拒絕；另存124a明示derived display metadata，只改label為「2026-10-19 原保存推薦（本機唯讀研究）」並移除私人notes，不改payload／ID／persisted_at，原庫不變。124a遇QA audit誤解析既有SQLite file URI而FAIL；124b只修URI解析、仍限owner來源／全新目的地。既有public writer→copy→restore→public list驗只一筆五股、原raw SHA及persisted_at一致；沒有新增production exporter或重跑推薦。原metadata SHA `f5dd3ecc89e58099cebe69b9259876cf820fb42a64e569285e3574312b85cb6d`，derived SHA `62bd09706373e24f36cf9d86b9fc1a1a68fbe5bb6a7744beaabb046569688d58`；原artifact `e6523f2b83123a9f2916ddd8326e005c77825542d57ec77aa2be41a05054cf4d`，封存receipt SHA `9c1e1fa7f1a72bf789ab2075631359b4f9d5f269bd01cc6d3b88e0c192dc007f`。新index不冒稱原DB，複製時間不提前原可得時間。124b閉鎖SHA `bc643bc46bc5ea88dcc5d60e917829851269e8981df81d8d7ad429863120e572`；三PID空、handles閉、mutex釋放且無強制回收。固定04尚未建置／交付。

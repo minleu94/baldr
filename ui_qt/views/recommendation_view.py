@@ -813,6 +813,7 @@ class RecommendationView(QWidget):
         self._saved_result_load_worker: TaskWorker | None = None
         self._saved_result_load_generation = 0
         self._saved_result_load_requested_id = ""
+        self._saved_result_open_closed = False
         self._pending_scheduled_recommendation: ScheduledRecommendationPointer | None = None
         self._saved_source_list_worker: TaskWorker | None = None
         self._saved_source_list_generation = 0
@@ -6708,10 +6709,40 @@ class RecommendationView(QWidget):
         self.saved_result_id_input.setText(pointer.result_id)
         self._load_saved_recommendation_result()
 
-    def _load_saved_recommendation_result(self) -> None:
+    def open_saved_recommendation_result(self, result_id: str) -> bool:
+        """排入指定保存結果的唯讀讀回；不列舉來源或執行推薦。"""
+
+        if (
+            getattr(self, "_saved_result_open_closed", False)
+            or type(result_id) is not str
+            or not result_id
+            or result_id.strip() != result_id
+            or getattr(self, "_saved_result_load_worker", None) is not None
+        ):
+            return False
+        previous_generation = getattr(self, "_saved_result_load_generation", 0)
+        previous_worker = getattr(self, "_saved_result_load_worker", None)
+        self._load_saved_recommendation_result(selected_result_id=result_id)
+        worker = getattr(self, "_saved_result_load_worker", None)
+        return (
+            getattr(self, "_saved_result_load_generation", 0)
+            == previous_generation + 1
+            and worker is not None
+            and worker is not previous_worker
+        )
+
+    def _load_saved_recommendation_result(
+        self,
+        *,
+        selected_result_id: str | None = None,
+    ) -> None:
         """以精確 result_id 唯讀取回 canonical 或舊格式保存結果。"""
 
-        requested_result_id = self.saved_result_id_input.text().strip()
+        requested_result_id = (
+            self.saved_result_id_input.text().strip()
+            if selected_result_id is None
+            else selected_result_id
+        )
         if not requested_result_id:
             self.result_status_label.setText("請先讀取可用來源，再明確選擇一筆保存推薦。")
             return
@@ -6744,7 +6775,11 @@ class RecommendationView(QWidget):
             self, "_saved_result_load_generation", 0
         ) + 1
         generation = self._saved_result_load_generation
-        expected_identity = getattr(self, "_saved_source_expected_identity", None)
+        expected_identity = (
+            None
+            if selected_result_id is not None
+            else getattr(self, "_saved_source_expected_identity", None)
+        )
         if expected_identity is not None and expected_identity[3] != requested_result_id:
             self.result_status_label.setText("選項與結果 ID 不一致；請重新選擇來源。")
             return
@@ -8917,6 +8952,7 @@ class RecommendationView(QWidget):
         QMessageBox.information(self, "取消", "匯出已被取消")
 
     def request_cooperative_shutdown(self) -> bool:
+        self._saved_result_open_closed = True
         self._saved_source_list_generation += 1
         daily_view = getattr(self, "daily_market_research_view", None)
         daily_view_ready = (

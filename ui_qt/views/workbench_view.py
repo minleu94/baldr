@@ -174,6 +174,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         navigate_to_stock_research_callback: Callable[[object], None] | None = None,
         navigate_to_update_callback: Callable[[], None] | None = None,
         navigate_to_recommendation_callback: Callable[[], None] | None = None,
+        navigate_to_saved_recommendation_callback: Callable[[str], object] | None = None,
         navigate_to_industry_themes_callback: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
@@ -206,6 +207,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.navigate_to_stock_research_callback = navigate_to_stock_research_callback
         self.navigate_to_update_callback = navigate_to_update_callback
         self.navigate_to_recommendation_callback = navigate_to_recommendation_callback
+        self.navigate_to_saved_recommendation_callback = navigate_to_saved_recommendation_callback
         self.navigate_to_industry_themes_callback = (
             navigate_to_industry_themes_callback
         )
@@ -1099,6 +1101,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.guided_priority_conclusion_labels[key] = conclusion
             self.guided_priority_reason_labels[key] = reason
             panel.layout.addWidget(row)
+            if key == "candidates":
+                self.home_candidate_controls_layout = QVBoxLayout()
+                self.home_candidate_controls_layout.setContentsMargins(0, 0, 0, 0)
+                self.home_candidate_controls_layout.setSpacing(6)
+                panel.layout.addLayout(self.home_candidate_controls_layout)
             if key == "other":
                 row.setVisible(False)
 
@@ -1654,11 +1661,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
         candidate_selector_layout = QHBoxLayout(candidate_selector_row)
         candidate_selector_layout.setContentsMargins(0, 0, 0, 0)
         candidate_selector_layout.setSpacing(8)
-        candidate_selector_label = QLabel("明選要開啟的研究股票")
+        candidate_selector_label = QLabel("研究股票")
         candidate_selector_label.setAccessibleName("每日候選研究股票選擇說明")
         self.daily_candidate_selector = QComboBox()
         self.daily_candidate_selector.setAccessibleName("每日候選研究股票明選")
-        self.daily_candidate_selector.setMinimumContentsLength(18)
+        self.daily_candidate_selector.setMinimumContentsLength(10)
+        self.daily_candidate_selector.setMinimumWidth(0)
+        self.daily_candidate_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.daily_candidate_selector.addItem("請選擇研究股票", None)
         self.daily_candidate_selector.setEnabled(False)
         self.daily_candidate_selector.currentIndexChanged.connect(
@@ -1666,7 +1675,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         candidate_selector_layout.addWidget(candidate_selector_label)
         candidate_selector_layout.addWidget(self.daily_candidate_selector, 1)
-        panel.layout.addWidget(candidate_selector_row)
+        self.home_candidate_controls_layout.addWidget(candidate_selector_row)
 
         actions_row = QWidget()
         self.daily_action_layout = QHBoxLayout(actions_row)
@@ -1679,6 +1688,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "以每日候選的股票代號、決策日與來源 identity 開啟既有個股研究報告；不新增觀察清單。"
         )
         self.daily_candidate_button.clicked.connect(self._open_daily_candidate_research)
+        candidate_selector_layout.addWidget(self.daily_candidate_button)
+        self.daily_saved_result_button = QPushButton("讀回這筆保存的推薦結果")
+        self.daily_saved_result_button.setEnabled(False)
+        self.daily_saved_result_button.setAccessibleName("明選原保存推薦結果唯讀回訪")
+        self.daily_saved_result_button.setToolTip(
+            "只按原結果ID讀回保存時的候選與日期；不是今日推薦，不重跑分析或補齊缺資料。"
+        )
+        self.daily_saved_result_button.clicked.connect(self._open_daily_saved_result)
+        self.home_candidate_controls_layout.addWidget(self.daily_saved_result_button)
         self.daily_watchlist_button = QPushButton("查看既有觀察清單")
         self.daily_watchlist_button.setProperty("variant", "secondary")
         self.daily_watchlist_button.setAccessibleName("查看既有觀察清單")
@@ -1704,7 +1722,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.daily_detail_button.toggled.connect(self._toggle_daily_detail)
         for button in (
-            self.daily_candidate_button,
             self.daily_watchlist_button,
             self.daily_evidence_button,
             self.daily_detail_button,
@@ -1911,6 +1928,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
             button_text = "開啟候選研究報告"
         self.daily_candidate_button.setText(button_text)
         self.daily_candidate_button.setEnabled(can_open)
+        self.daily_saved_result_button.setText(
+            "讀回上次保存的推薦結果"
+            if daily is not None and str(daily.candidate_status).strip().lower() == "stale"
+            else "讀回這筆保存的推薦結果"
+        )
+        self.daily_saved_result_button.setEnabled(self._daily_saved_result_id() is not None)
 
         for key, target in getattr(self, "_today_action_targets", {}).items():
             if target == "stock_research":
@@ -2002,6 +2025,28 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "收合每日來源詳情" if expanded else "查看每日來源詳情"
         )
 
+    def _daily_saved_result_id(self) -> str | None:
+        daily = getattr(self, "_daily_investment_evidence", None)
+        if (
+            self._shutdown_requested
+            or self._dashboard_stale
+            or daily is None
+            or not callable(self.navigate_to_saved_recommendation_callback)
+            or str(daily.candidate_status).strip().lower() not in {"candidate", "candidate_degraded", "stale"}
+            or not daily.candidate_symbols
+            or not isinstance(daily.candidate_result_id, str)
+            or not daily.candidate_result_id.strip()
+        ):
+            return None
+        return daily.candidate_result_id
+
+    def _open_daily_saved_result(self) -> bool:
+        result_id = self._daily_saved_result_id()
+        if result_id is None:
+            self.daily_saved_result_button.setEnabled(False)
+            return False
+        return self.navigate_to_saved_recommendation_callback(result_id) is not False
+
     def _open_daily_candidate_research(self) -> bool:
         daily = getattr(self, "_daily_investment_evidence", None)
         callback = self.navigate_to_stock_research_callback
@@ -2018,9 +2063,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 data_date=daily.candidate_data_date or daily.data_as_of_date or daily.decision_date,
                 result_id=daily.candidate_result_id or "",
                 source_id=daily.candidate_source_id or daily.candidate_result_id or "",
+                source_snapshot_id=daily.candidate_source_snapshot_id or "",
                 source_kind="scheduled_recommendation",
                 source_label="每日推薦研究候選",
-                source_workspace="recommendation",
+                source_workspace="workbench",
             )
         )
         return True
@@ -2503,6 +2549,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if self._shutdown_requested:
             return
         self._shutdown_requested = True
+        self.daily_saved_result_button.setEnabled(False)
         self._position_health_navigation_source = None
         self._position_health_navigation_id = None
         self.position_health_open_portfolio_button.setEnabled(False)
@@ -2518,6 +2565,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.research_console_view.begin_shutdown()
 
     def refresh_dashboard(self) -> None:
+        self.daily_saved_result_button.setEnabled(False)
         self._position_health_navigation_source = None
         self._position_health_navigation_id = None
         self.position_health_open_portfolio_button.setEnabled(False)

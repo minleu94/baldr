@@ -250,7 +250,7 @@ Increment59固定來源包為兩個既有策略的v2規則收據加三份raw sou
 
 ### 價格研究、個股與 Portfolio 跨頁接線
 
-`stock_research_report_snapshot_codec`的未驗證Source葉片以`stock-research-report-projection-snapshot.v1`固定完整report與原typed request context；其SHA只代表顯示投影內容，不授上游來源／歷史PIT。顯式DTO／Enum allowlist、欄位型別、Decimal與展示float無損表示、原字串及tuple/list語義各自保留；排名context因建構子會解析檔案路徑，v1明確拒絕，不省欄冒充完整。公開DTO是脫離輸入別名的可變內層投影，consumer仍須從canonical JSON按SHA重讀；不把frozen wrapper當權威。尚無store／Journal／正常UI整合，資源界線仍待QA及複核處理，見[QA75–81](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#一般整份報告codecqa75至qa81)。
+`stock_research_report_snapshot_codec`以`stock-research-report-projection-snapshot.v1`固定完整report與typed context。QA82a編譯／19項定向／單檔mypy及QA82b四股實際public report往返通過；先前FAIL保留。顯式DTO／Enum allowlist、Decimal／展示float無損表示、原字串／tuple/list、4MiB／depth64／node100000守衛保持；排名context建構會解析路徑，v1明確拒絕。公開DTO內層可變，store/render均按canonical JSON+SHA重讀，內容hash不授上游來源／PIT。新`StockResearchReportNoteService`沿Journal ACTION_NOTE／CAS保存原文與完整typed payload、獨立根／直接修訂；result_id與decision_date留空，report查詢截至／原產生時間／實際保存時間分開。Main的「保存時報告」使用獨立只讀ReportView，不接即時providers，也不重查producer；這些Journal／UI接線仍待定向與正常旅程驗證，見[QA82以後](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#一般報告保存整合qa82起)。
 
 `PinnedStockResearchSource`只接受既有F07 bookmark的canonical JSON，綁股票、原查詢／頁／選取／snapshot；保存及開啟前沿public exact reader重驗。`PinnedStockResearchNoteService`沿Journal ACTION_NOTE與CAS追加獨立根／直接修訂，原文完整保存於payload，摘要沿Journal既有正規化；股票明示，推薦result_id與decision_date留空，不製造候選或歷史決策身份。實際Journal保存時間、行情觀測日及原研究日分開。缺原件仍可讀原筆記，但新寫入、修訂及開啟來源拒絕；不改金融值、PIT或用途資格。
 

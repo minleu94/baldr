@@ -44,6 +44,8 @@ class ThemeResearchNotesWidget(QWidget):
         self,
         service: ThemeResearchNoteService,
         parent: QWidget | None = None,
+        *,
+        auto_refresh: bool = True,
     ):
         super().__init__(parent)
         self._service = service
@@ -73,7 +75,10 @@ class ThemeResearchNotesWidget(QWidget):
         self.revise_button.clicked.connect(self._prepare_revision)
         self.read_button.clicked.connect(self._read_selected)
         self.open_source_button.clicked.connect(self._open_selected_source)
-        self.refresh_notes()
+        if auto_refresh:
+            self.refresh_notes()
+        else:
+            self._update_controls()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)

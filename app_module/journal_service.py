@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, TYPE_CHECKING
 from uuid import uuid4
 
 from app_module.dtos.decision_continuity_dtos import (
@@ -26,6 +26,9 @@ from app_module.personalization_contract import (
 from app_module.personal_journal_paths import PersonalJournalPaths, PersonalJournalJsonlStore
 from app_module.portfolio_store import PortfolioJsonlStore, project_journal_records
 from data_module.config import TWStockConfig
+
+if TYPE_CHECKING:
+    from app_module.stock_research_report_snapshot_codec import StockResearchReportProjectionSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -464,6 +467,7 @@ class JournalService:
         recorded_at: str | None = None,
         personalization_action: Mapping[str, Any] | None = None,
         personal_recommendation_choice: Mapping[str, Any] | None = None,
+        stock_research_report_snapshot: "StockResearchReportProjectionSnapshot | None" = None,
         expected_history_token: str | None = None,
     ) -> DecisionContinuityRevision:
         if action not in DECISION_CONTINUITY_ACTIONS:
@@ -477,6 +481,45 @@ class JournalService:
             raise ValueError("decision action requires stock_code")
         if action == ACTION_NOTE and not (body.strip() or note.strip()):
             raise ValueError("decision note body is required")
+        report_snapshot_payload: dict[str, str] | None = None
+        if stock_research_report_snapshot is not None:
+            from app_module.stock_research_report_snapshot_codec import (
+                STOCK_RESEARCH_REPORT_PROJECTION_SNAPSHOT_SCHEMA_V1,
+                StockResearchReportProjectionSnapshot,
+                read_stock_research_report_projection_snapshot,
+            )
+
+            # 公開 DTO 可由 caller 建立或改動；只信任重新核驗的 canonical 原文。
+            if type(stock_research_report_snapshot) is not StockResearchReportProjectionSnapshot:
+                raise ValueError("stock report snapshot must be a typed projection")
+            snapshot = read_stock_research_report_projection_snapshot(
+                stock_research_report_snapshot.canonical_json,
+                expected_identity_sha256=stock_research_report_snapshot.identity_sha256,
+            )
+            if (
+                action != ACTION_NOTE
+                or personalization_action is not None
+                or personal_recommendation_choice is not None
+                or not expected_history_token
+                or identity.stock_code != snapshot.stock_code
+                or identity.result_id
+                or identity.decision_date
+                or identity.identity_status != "unknown"
+                or identity.source_snapshot_id != snapshot.identity_sha256
+                or identity.source_snapshot_hash != snapshot.identity_sha256
+                or source_type != "stock_research_report_note.v1"
+                or source_id != snapshot.identity_sha256
+                or source_snapshot_id != snapshot.identity_sha256
+                or source_snapshot_hash != snapshot.identity_sha256
+                or linked_type != "stock_research_report_projection"
+                or linked_id != snapshot.identity_sha256
+            ):
+                raise ValueError("stock report snapshot conflicts with research note identity")
+            report_snapshot_payload = {
+                "schema_version": STOCK_RESEARCH_REPORT_PROJECTION_SNAPSHOT_SCHEMA_V1,
+                "identity_sha256": snapshot.identity_sha256,
+                "canonical_json": snapshot.canonical_json,
+            }
         personal_choice: PersonalRecommendationChoice | None = None
         if personal_recommendation_choice is not None:
             if action != ACTION_NOTE:
@@ -574,6 +617,8 @@ class JournalService:
             payload["personalization_action"] = dict(personalization_action)
         if personal_choice is not None:
             payload["personal_recommendation_choice"] = personal_choice.to_dict()
+        if report_snapshot_payload is not None:
+            payload["stock_research_report_snapshot"] = report_snapshot_payload
         revision = DecisionContinuityRevision(
             revision_id=resolved_revision_id,
             continuity_event_id=resolved_event_id,

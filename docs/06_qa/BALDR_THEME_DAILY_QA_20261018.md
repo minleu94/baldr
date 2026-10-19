@@ -146,3 +146,23 @@ QA79原命令兩次遭自動核准審查在啟動前拒絕：正常五小時額�
 獨立Luna已完成只讀QA81，報告SHA `ceab3f0d90bc86c82d6f5cbbfc82b7a22244b46f1abe0e99c3994091eff86cad`：輸出DTO的nested Mapping/list仍可變；依75a，canonical JSON+SHA才是權威，store/render必須重新解碼，不能信任可被修改的公開DTO。另node cap目前在JSON parse後檢查，文字／整體序列化的配置前界線並不完整；不能宣稱所有配置已先受node／byte預算限制。這些仍待Root裁決／必要修正與真正QA，沒有標整份review通過，也不為本次新增streaming重構。後續若改bytes須另存新spec／結果，保留79未啟動原件。
 
 沒有使用者可見新入口；操作手冊與固定02沿原版。下一步只在授權或實際正常額度可用後處理具體bounds問題，驗codec／四股真投影，再沿原M3接Journal與正常UI。保留F07原Main限制、真實多候選來源缺件、完整Gate／真人／PIT／真N及自然成熟各自界線。
+
+### 一般報告保存整合（QA82起）
+
+本批解除一般報告無法保存當時完整依據的M3阻礙。使用者恢復後實讀正常額度可用，沿原目標繼續；沒有以credit繞過QA79拒絕。舊QA75–81及未啟動spec原樣保留。
+
+QA82修文字長度預檢、JSON parse前node掃描與有界canonical累計，編譯／19項codec測試通過；mypy三處型別窄化FAIL保留。備份原碼後只補明確Mapping cast與dict guard，QA82a編譯／相同19項／單檔mypy通過，沒有新增ignore。QA82a四股helper未設定正確現況scope，原來源守衛拒絕價格；只修helper明選`explicit_latest_stock_research`及`ml_scope_mode=current_stock_research`，不改產品或價格非空斷言。QA82b的2330／2317／2382／2454既存只讀價庫public report/context完整往返、canonical SHA與`to_dict`一致通過；Main可選providers尚未組合，不能冒稱正常UI。
+
+QA82b原件在owner task的`m3_report_codec_real_qa78a/result.json`及`m3_report_codec_commands_qa82b`。最新Job收據SHA `1bb04669a92a78d60111d3aa831d970e3e3e1a65540a5d4f85053fa072c887fe`，三PID陣列空、process／Job handles關閉、mutex釋放、forced_cleanup=false；8GiB／12程序／啟動前8GiB可用RAM保持。
+
+Root QA83凍結沿既有Journal的typed完整報告payload及ACTION_NOTE身份，兩位原Luna各單寫新service/tests與新widget/tests；第三位只讀複核共享ports。Root持有Journal／ReportView／Workspace／Main、金融判斷、QA與文件。尚未驗證的新保存／修訂／獨立保存時報告頁及正常Main／新程序仍是WIP，不列PASS。沒有新agent、第二本ledger、交易寫入或上游用途／PIT資格提升；原F07來源效能分支及人工接受分開保留。
+
+QA84首次編譯通過，受改定向及既有回歸為125 PASS／11 FAIL；失敗屬既有私人Journal整合檔的Temp位於程式包內。QA84a改Temp時又遇sandbox的LOCALAPPDATA重映射父路徑不存在，16項setup error原樣保留。QA84b改用已核實的使用者Temp後14 PASS／2 FAIL，兩個Main測試的ML mock仍是過時零參數；備份後僅接受現行`repository_root`參數，私人路徑與無建立斷言不改。QA84c為1 PASS／1 FAIL，私人模式啟動建立目錄的缺陷仍在；不能將前述數量相加當完整Gate。
+
+Root先取消新報告筆記元件建構時的自動讀取，改開頁／查詢後讀取。QA84d編譯通過，8 PASS／2 FAIL：一項比較測試仍假設建構自動載入，另一項私人Main無建立斷言仍失敗。進一步定位Main原題材筆記也會在建構時自動讀Journal；因此補相容的`auto_refresh=True`參數，Main明示False、選「產業與題材」才刷新。比較測試改明按刷新後保留原比較／原文／無額外I/O斷言，另增延後讀取回歸。這組最後修正**尚未編譯或QA**，沒有宣稱啟動缺陷已解除。
+
+QA86為有限只讀ports複核，SHA `4dc179255db49862acfda4e86de5464803574491fe984737e2c0cd61c0332a31`；未見指定入口重查producer或提升PIT，但要求widget核選取與generation。Root已檢視widget在emit前的`_job_is_current`及`_matches_fresh_note`交叉綁定；仍不取代正常旅程。
+
+最新QA84d Job收據SHA `1ef360555778a379966e2f989e27f159948d4a4c9c8bd7ec6755927c13f0989e`：自然終態、三PID空、handles關閉、mutex釋放、forced_cleanup=false。QA84e spec已另存（SHA `291fa686008e28b83e35032f594ef1a947d83c3d5a53bb83c4479a1feb63b998`），啟動前正常五小時額度100%／週80%，Root據此未呼叫啟動工具；沒有QA84e Job或結果，不是自動核准拒絕。恢復後須重綁新HEAD／bytes另存spec，不直接跑舊HEAD spec。
+
+Workbench85／validator／八套件mypy因前段fail-fast尚未執行；QA85正常Main／四股保存／精確報告／直接修訂比較／關閉等待／新程序尚未執行，固定03也未建。Source以未驗證checkpoint保存；固定02／01／143、私人原件及其他原FAIL不改。後續先完成這批出口，再依原清冊推進，不重跑未改的F07逾時旅程或將等待人工接受當全域阻礙。

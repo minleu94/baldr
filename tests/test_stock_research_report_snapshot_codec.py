@@ -9,6 +9,7 @@ from types import MappingProxyType
 
 import pytest
 
+import app_module.stock_research_report_snapshot_codec as codec
 from app_module.advice_dtos import (
     AdviceAction,
     AdviceClassification,
@@ -827,3 +828,69 @@ def test_payload_byte_depth_integer_text_node_and_display_text_limits_are_enforc
             replace(report, saved_technical_chart_json="x" * (4 * 1024 * 1024 + 1)),
             context,
         )
+
+
+def test_oversized_text_is_rejected_before_encode_or_json_dumps(monkeypatch) -> None:
+    class ExplosiveText(str):
+        def encode(self, *args, **kwargs):
+            raise AssertionError("oversized text must be rejected before UTF-8 encoding")
+
+    dumps_calls = []
+
+    def unexpected_dumps(*args, **kwargs):
+        dumps_calls.append(True)
+        raise AssertionError("oversized text must be rejected before json.dumps")
+
+    monkeypatch.setattr(codec.json, "dumps", unexpected_dumps)
+    budget = codec._Budget()
+    with pytest.raises(StockResearchReportSnapshotCodecError, match="size limit"):
+        budget.text(ExplosiveText("x" * (4 * 1024 * 1024 + 1)))
+    assert budget.quoted_text_bytes == 0
+    assert dumps_calls == []
+
+
+def test_reader_rejects_over_node_limit_before_json_loads(monkeypatch) -> None:
+    escaped_syntax = '"' + ('\\"[]{}:,null' * 100_000) + '"'
+    assert len(escaped_syntax.encode("utf-8")) < 4 * 1024 * 1024
+    codec._check_raw_node_count(escaped_syntax)
+
+    payload = "[" + ",".join(["null"] * 100_000) + "]"
+    assert len(payload.encode("utf-8")) < 4 * 1024 * 1024
+    loads_calls = []
+    original_loads = codec.json.loads
+
+    def track_loads(*args, **kwargs):
+        loads_calls.append(True)
+        return original_loads(*args, **kwargs)
+
+    monkeypatch.setattr(codec.json, "loads", track_loads)
+    with pytest.raises(StockResearchReportSnapshotCodecError, match="node count"):
+        read_stock_research_report_projection_snapshot(
+            payload, expected_identity_sha256=_sha256(payload)
+        )
+    assert loads_calls == []
+
+
+def test_canonical_serialization_stops_when_incremental_size_exceeds_limit(monkeypatch) -> None:
+    emitted: list[str] = []
+
+    class TrackingEncoder(json.JSONEncoder):
+        def iterencode(self, value, _one_shot=False):
+            for part in super().iterencode(value, _one_shot):
+                emitted.append(part)
+                yield part
+
+    def unexpected_dumps(*args, **kwargs):
+        raise AssertionError("canonical serialization must use bounded iterencode")
+
+    monkeypatch.setattr(codec.json, "JSONEncoder", TrackingEncoder)
+    monkeypatch.setattr(codec.json, "dumps", unexpected_dumps)
+    payload = {
+        "c": "sentinel-after-limit",
+        "b": "b" * (2 * 1024 * 1024),
+        "a": "a" * (2 * 1024 * 1024),
+    }
+    with pytest.raises(StockResearchReportSnapshotCodecError, match="4 MiB"):
+        codec._canonical_json(payload)
+    assert emitted
+    assert all("sentinel-after-limit" not in part for part in emitted)

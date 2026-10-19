@@ -120,6 +120,7 @@ from ui_qt.views.market_regime_view import MarketRegimeView
 from ui_qt.views.industry_theme_map_view import IndustryThemeMapView
 from app_module.theme_research_notes import ThemeResearchNoteService
 from app_module.pinned_stock_research_notes import PinnedStockResearchNoteService
+from app_module.stock_research_report_notes import StockResearchReportNoteService
 from ui_qt.widgets.theme_research_notes_widget import ThemeResearchNotesWidget
 from ui_qt.views.strong_industries_view import StrongIndustriesView
 from ui_qt.views.weak_industries_view import WeakIndustriesView
@@ -2026,6 +2027,7 @@ class MainWindow(QMainWindow):
             self.industry_theme_map_view.stockSelected.connect(self._open_theme_research_stock)
             self.theme_research_notes_widget = ThemeResearchNotesWidget(
                 ThemeResearchNoteService(self.journal_service), parent=self.industry_theme_map_view,
+                auto_refresh=False,
             )
             theme_layout = self.industry_theme_map_view.content.layout()
             theme_layout.insertWidget(theme_layout.count() - 1, self.theme_research_notes_widget)
@@ -2101,6 +2103,10 @@ class MainWindow(QMainWindow):
             market_tabs.addTab(smart_money_flow, "主力流向")
             print("[MainWindow] 主力流向視圖創建成功")
             market_tabs.addTab(self.industry_theme_map_view, "產業與題材")
+            market_tabs.currentChanged.connect(
+                lambda _index: self.theme_research_notes_widget.refresh_notes()
+                if market_tabs.currentWidget() is self.industry_theme_map_view else None
+            )
 
             # 監聽市場觀察 tab 切換事件
             def on_market_tab_changed(index):
@@ -2390,6 +2396,7 @@ class MainWindow(QMainWindow):
                 journey_service=self.decision_outcome_journey_service,
                 continuity_controller=self.decision_continuity_controller,
                 price_note_service=PinnedStockResearchNoteService(self.journal_service),
+                report_note_service=StockResearchReportNoteService(self.journal_service),
                 parent=self,
             )
             self.stock_research_workspace.returnRequested.connect(

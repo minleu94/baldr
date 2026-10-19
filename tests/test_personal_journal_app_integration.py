@@ -199,7 +199,7 @@ from types import SimpleNamespace
 from PySide6.QtWidgets import QApplication, QMessageBox
 import ui_qt.main as main
 # 本驗證只關注 notes composition，不讀正式 ML registry。
-main.CurrentRestatedMLRunRegistry = lambda: SimpleNamespace()
+main.CurrentRestatedMLRunRegistry = lambda *, repository_root=None: SimpleNamespace()
 QMessageBox.critical = lambda *args, **kwargs: None
 QMessageBox.warning = lambda *args, **kwargs: None
 QMessageBox.information = lambda *args, **kwargs: None

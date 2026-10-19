@@ -13,11 +13,14 @@ from app_module.decision_continuity_controller import DecisionContinuityControll
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.research_session import ResearchStockContextDTO
 from app_module.pinned_stock_research_notes import PinnedStockResearchNoteService
+from app_module.stock_research_report_notes import StockResearchReportNoteService
+from app_module.stock_research_report_snapshot_codec import StockResearchReportProjectionSnapshot
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.views.stock_research_report_view import StockResearchReportView
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.pinned_stock_research_notes_widget import PinnedStockResearchNotesWidget
+from ui_qt.widgets.stock_research_report_notes_widget import StockResearchReportNotesWidget
 
 
 class StockResearchWorkspace(QWidget):
@@ -36,6 +39,7 @@ class StockResearchWorkspace(QWidget):
         journey_service: DecisionOutcomeJourneyService | None = None,
         continuity_controller: DecisionContinuityController | None = None,
         price_note_service: PinnedStockResearchNoteService | None = None,
+        report_note_service: StockResearchReportNoteService | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -92,6 +96,20 @@ class StockResearchWorkspace(QWidget):
         self.report_view = StockResearchReportView(service, parent=self)
         self.report_view.returnRequested.connect(self.returnRequested.emit)
         self.report_tabs.addTab(self.report_view, "個股研究報告")
+        self.report_notes_widget: StockResearchReportNotesWidget | None = None
+        self.report_notes_page: QScrollArea | None = None
+        self.saved_report_view: StockResearchReportView | None = None
+        if report_note_service is not None:
+            self.report_notes_widget = StockResearchReportNotesWidget(report_note_service, self)
+            self.report_notes_page = QScrollArea(self)
+            self.report_notes_page.setWidgetResizable(True)
+            self.report_notes_page.setWidget(self.report_notes_widget)
+            self.report_tabs.addTab(self.report_notes_page, "我的判斷")
+            self.report_notes_widget.openSnapshotRequested.connect(self.show_saved_report_snapshot)
+            self.report_view.activeContextChanged.connect(self._invalidate_report_snapshot)
+            self.report_view.reportLoaded.connect(self._capture_report_snapshot)
+            self.report_view.reportFailed.connect(self._invalidate_report_snapshot)
+            self.report_tabs.currentChanged.connect(self._on_report_notes_tab_changed)
         self.journey_view: DecisionOutcomeJourneyWidget | None = None
         if journey_service is not None:
             self.journey_view = DecisionOutcomeJourneyWidget(
@@ -115,6 +133,48 @@ class StockResearchWorkspace(QWidget):
             self.price_notes_page.setWidget(self.price_notes_widget)
             self.price_notes_page.hide()
         layout.addWidget(self.content_stack)
+
+    def _invalidate_report_snapshot(self, _context: object = None) -> None:
+        if self.report_notes_widget is not None:
+            self.report_notes_widget.set_snapshot(None, stock_code=self.report_view.stock_search.text().strip())
+
+    def _on_report_notes_tab_changed(self, _index: int) -> None:
+        if (
+            self.report_notes_widget is not None
+            and self.report_tabs.currentWidget() is self.report_notes_page
+        ):
+            self.report_notes_widget.refresh_notes()
+
+    def _capture_report_snapshot(self, _report: object) -> None:
+        notes = self.report_notes_widget
+        if notes is None:
+            return
+        try:
+            snapshot = self.report_view.get_loaded_report_snapshot()
+        except ValueError as exc:
+            self._invalidate_report_snapshot()
+            notes.source_label.setText(f"本次報告無法保存：{exc}；仍可讀取已保存判斷。")
+            return
+        notes.set_snapshot(
+            snapshot,
+            stock_code=snapshot.stock_code if snapshot is not None else self.report_view.stock_search.text().strip(),
+        )
+
+    def show_saved_report_snapshot(self, snapshot: StockResearchReportProjectionSnapshot) -> None:
+        """獨立只讀報告頁不接 Main 的即時資料 providers，也不替換一般報告。"""
+        if self.saved_report_view is None:
+            self.saved_report_view = StockResearchReportView(
+                self.report_view.service, parent=self, saved_snapshot_only=True,
+            )
+            self.saved_report_view.returnRequested.connect(self._return_to_report_notes)
+            self.report_tabs.addTab(self.saved_report_view, "保存時報告")
+        self.saved_report_view.show_saved_report_snapshot(snapshot)
+        self._show_general_report()
+        self.report_tabs.setCurrentWidget(self.saved_report_view)
+
+    def _return_to_report_notes(self) -> None:
+        if self.report_notes_page is not None:
+            self.report_tabs.setCurrentWidget(self.report_notes_page)
 
     def show_price_research(self, stock: object, selection: object) -> None:
         """原 reader 發出的同源選取在正常工作區顯示，不轉一般報告 context。"""
@@ -312,6 +372,8 @@ class StockResearchWorkspace(QWidget):
             self.journey_view is not None and self.journey_view.is_busy()
         ) or bool(
             self.price_notes_widget is not None and self.price_notes_widget.is_busy()
+        ) or bool(
+            self.report_notes_widget is not None and self.report_notes_widget.is_busy()
         )
 
     def request_close(self) -> bool:
@@ -324,4 +386,7 @@ class StockResearchWorkspace(QWidget):
         if price_notes is not None:
             price_notes.shutdown()
             notes_ready = not price_notes.is_busy()
+        if self.report_notes_widget is not None:
+            self.report_notes_widget.shutdown()
+            notes_ready = notes_ready and not self.report_notes_widget.is_busy()
         return report_ready and journey_ready and notes_ready

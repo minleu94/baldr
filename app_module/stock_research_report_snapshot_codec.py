@@ -14,7 +14,16 @@ import json
 import math
 import re
 from types import MappingProxyType, UnionType
-from typing import Any, Literal, Mapping, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Literal,
+    Mapping,
+    Union,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from app_module.advice_dtos import (
     AdviceAction,
@@ -150,6 +159,8 @@ class _Budget:
             raise StockResearchReportSnapshotCodecError("payload node count exceeds limit")
 
     def text(self, value: str) -> None:
+        if len(value) > _MAX_PAYLOAD_BYTES:
+            raise StockResearchReportSnapshotCodecError("payload text exceeds size limit")
         try:
             raw = value.encode("utf-8", errors="strict")
             if len(raw) > _MAX_PAYLOAD_BYTES:
@@ -261,7 +272,9 @@ def _encode_body(value: object, expected: Any, budget: _Budget, depth: int) -> o
         key_type, value_type = args if len(args) == 2 else (str, Any)
         if key_type not in (str, Any):
             raise StockResearchReportSnapshotCodecError("Mapping keys must be strings")
-        return _encode_mapping(value, value_type, budget, depth)
+        return _encode_mapping(
+            cast(MappingABC[object, object], value), value_type, budget, depth
+        )
     if origin is tuple or expected is tuple:
         if type(value) is not tuple:
             raise StockResearchReportSnapshotCodecError("tuple field has the wrong type")
@@ -360,7 +373,9 @@ def _encode_dynamic(value: object, budget: _Budget, depth: int) -> object:
             "items": [_encode_value(item, Any, budget, depth + 1) for item in value],
         }
     if _is_supported_mapping(value):
-        return _encode_mapping(value, Any, budget, depth)
+        return _encode_mapping(
+            cast(MappingABC[object, object], value), Any, budget, depth
+        )
     if type(value) in _DATACLASS_NAMES:
         return _encode_dataclass(value, budget, depth)
     raise StockResearchReportSnapshotCodecError(
@@ -441,17 +456,21 @@ def _check_wire_tree(root: object) -> None:
 
 
 def _canonical_json(root: object) -> str:
+    parts: list[str] = []
+    size = 0
     try:
-        value = json.dumps(
-            root,
+        encoder = json.JSONEncoder(
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
             allow_nan=False,
         )
-        if len(value.encode("utf-8", errors="strict")) > _MAX_PAYLOAD_BYTES:
-            raise StockResearchReportSnapshotCodecError("payload exceeds 4 MiB")
-        return value
+        for part in encoder.iterencode(root):
+            size += len(part.encode("utf-8", errors="strict"))
+            if size > _MAX_PAYLOAD_BYTES:
+                raise StockResearchReportSnapshotCodecError("payload exceeds 4 MiB")
+            parts.append(part)
+        return "".join(parts)
     except (TypeError, ValueError, UnicodeEncodeError) as exc:
         if isinstance(exc, StockResearchReportSnapshotCodecError):
             raise
@@ -595,6 +614,65 @@ def _check_raw_depth(text: str) -> None:
         raise StockResearchReportSnapshotCodecError("invalid JSON nesting")
 
 
+def _check_raw_node_count(text: str) -> None:
+    """在 JSON parser 配置物件樹前，以有限單趟掃描限制 value node 數。"""
+    index = 0
+    node_count = 0
+
+    def visit_node() -> None:
+        nonlocal node_count
+        node_count += 1
+        if node_count > _MAX_NODES:
+            raise StockResearchReportSnapshotCodecError("payload node count exceeds limit")
+
+    while index < len(text):
+        character = text[index]
+        if character in " \t\r\n,:}]":
+            index += 1
+            continue
+        if character == '"':
+            end = index + 1
+            while end < len(text):
+                if text[end] == "\\":
+                    end += 2
+                    continue
+                if text[end] == '"':
+                    break
+                end += 1
+            if end >= len(text):
+                return  # _check_raw_depth 先行拒絕未終止字串。
+            following = end + 1
+            while following < len(text) and text[following] in " \t\r\n":
+                following += 1
+            if following >= len(text) or text[following] != ":":
+                visit_node()
+            index = end + 1
+            continue
+        if character in "[{":
+            visit_node()
+            index += 1
+            continue
+        if character == "-" or character in "0123456789":
+            visit_node()
+            index += 1
+            while index < len(text) and text[index] in "0123456789.eE+-":
+                index += 1
+            continue
+        if text.startswith("true", index):
+            visit_node()
+            index += 4
+            continue
+        if text.startswith("false", index):
+            visit_node()
+            index += 5
+            continue
+        if text.startswith("null", index):
+            visit_node()
+            index += 4
+            continue
+        index += 1
+
+
 def _node_matches(node: object, expected: Any) -> bool:
     if expected is Any:
         return True
@@ -634,7 +712,9 @@ def _tag_is(node: object, tag: str) -> bool:
 
 
 def _tag_class_is(node: object, tag: str, cls: type[Any]) -> bool:
-    return _tag_is(node, tag) and node.get("class") == _class_name(cls)  # type: ignore[union-attr]
+    if type(node) is not dict or node.get("$type") != tag:
+        return False
+    return node.get("class") == _class_name(cls)
 
 
 def _decode_value(node: object, expected: Any, budget: _Budget, depth: int) -> object:
@@ -882,6 +962,7 @@ def read_stock_research_report_projection_snapshot(
     if len(raw) > _MAX_PAYLOAD_BYTES:
         raise StockResearchReportSnapshotCodecError("payload exceeds 4 MiB")
     _check_raw_depth(text)
+    _check_raw_node_count(text)
     try:
         wire = json.loads(
             text,

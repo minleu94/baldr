@@ -49,6 +49,11 @@ from app_module.research_session import (
 )
 from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
 from app_module.stock_research_product_summary import build_stock_research_product_summary
+from app_module.stock_research_report_snapshot_codec import (
+    StockResearchReportProjectionSnapshot,
+    create_stock_research_report_projection_snapshot,
+    read_stock_research_report_projection_snapshot,
+)
 from app_module.recommendation.personal_h20_price_chart import (
     PersonalH20PriceChartProjectionV1,
     assert_personal_h20_price_chart_projection_binding,
@@ -610,9 +615,13 @@ class StockResearchReportView(QWidget):
         stock_codes: Sequence[str] = (),
         parent: QWidget | None = None,
         presentation_service: DecisionPresentationService | None = None,
+        saved_snapshot_only: bool = False,
     ) -> None:
         super().__init__(parent)
         self.service = service
+        self._saved_snapshot_only = saved_snapshot_only
+        self._saved_projection_snapshot: StockResearchReportProjectionSnapshot | None = None
+        self._completed_report_request_id: int | None = None
         self.context = context
         self.research_bookmark_context_resolver: Callable[
             [ResearchStockContextDTO, str], ResearchStockContextDTO | None
@@ -1040,6 +1049,10 @@ class StockResearchReportView(QWidget):
         self._set_navigation_state()
 
     def set_context(self, context: ResearchStockContextDTO) -> None:
+        if self._saved_snapshot_only:
+            self._set_status("此頁只讀保存時報告；請回一般報告頁另行查詢。", "warning")
+            return
+        self._saved_projection_snapshot = None
         if context.result_id:
             if (
                 context.ml_scope_mode != "current_stock_research"
@@ -1055,6 +1068,59 @@ class StockResearchReportView(QWidget):
         self.stock_search.setText(context.stock_code)
         self._render_context_path()
         self._load_stock(context.stock_code)
+
+    def get_loaded_report_snapshot(self) -> StockResearchReportProjectionSnapshot | None:
+        """只擷取本次已完成且與可見股票／來源一致的報告。"""
+        if self._saved_projection_snapshot is not None:
+            snapshot = self._saved_projection_snapshot
+            return read_stock_research_report_projection_snapshot(
+                snapshot.canonical_json, expected_identity_sha256=snapshot.identity_sha256,
+            )
+        report = self._loaded_report
+        if (
+            self._closing
+            or self._completed_report_request_id != self._request_id
+            or report is None
+            or report.stock_code != self._active_code
+            or self._loaded_context_identity != self._context_identity(self.context, self._active_code)
+        ):
+            return None
+        return create_stock_research_report_projection_snapshot(report, self.context)
+
+    def show_saved_report_snapshot(self, snapshot: StockResearchReportProjectionSnapshot) -> None:
+        """核驗後只畫固定 projection；不發出重新查詢或 Main 附加資料訊號。"""
+        if type(snapshot) is not StockResearchReportProjectionSnapshot:
+            raise ValueError("saved report must be a typed projection snapshot")
+        exact = read_stock_research_report_projection_snapshot(
+            snapshot.canonical_json, expected_identity_sha256=snapshot.identity_sha256,
+        )
+        self._request_id += 1
+        self._completed_report_request_id = None
+        self._cancel_active_worker()
+        self._clear_loaded_report()
+        self._saved_projection_snapshot = exact
+        self._saved_snapshot_only = True
+        self.context = exact.context
+        self._active_code = exact.stock_code
+        self.stock_codes = ()
+        self.stock_search.setText(exact.stock_code)
+        self._loaded_request_context = exact.context
+        self._loaded_context_identity = self._context_identity(exact.context, exact.stock_code)
+        self._saved_decision_context = None
+        self._chart_marker_candidates = ()
+        self._chart_marker_identities = ()
+        self._chart_marker_diagnostics = ("saved_report_projection_has_no_live_markers",)
+        self._render_context_path()
+        self._render_report(exact.report)
+        self.daily_market_research_condition_label.hide()
+        self.personal_h20_label.setText("保存時報告副本；頁外另查的個人 H20 與交易標記未保存。")
+        self.query_as_of_label.setText(
+            f"保存時報告｜查詢截至 {exact.report.as_of or '未知'}｜原產生時間 {exact.report.generated_at or '未知'}"
+        )
+        self._set_status(
+            "正在閱讀保存時的報告與原缺件；未重查來源，不代表歷史 PIT 或上游資料用途已接受。"
+            f" 版本 {exact.identity_sha256[:12]}", "info",
+        )
 
     @staticmethod
     def _context_identity(
@@ -1338,6 +1404,9 @@ class StockResearchReportView(QWidget):
         self._load_stock(self.stock_codes[next_index])
 
     def _load_stock(self, value: object) -> None:
+        if self._saved_snapshot_only:
+            self._set_status("此頁只讀保存時報告；請回一般報告頁另行查詢。", "warning")
+            return
         code = str(value or "").strip()
         if not code:
             self._set_status("請輸入股票代碼。", "warning")
@@ -1436,6 +1505,7 @@ class StockResearchReportView(QWidget):
                 return
             self.context = resolved
         self._request_id += 1
+        self._completed_report_request_id = None
         request_id = self._request_id
         self._active_code = code
         self.stock_search.setText(code)
@@ -1660,6 +1730,7 @@ class StockResearchReportView(QWidget):
                 )
         else:
             self._set_status("報告部分載入；可讀內容與缺件分開列示，請選擇保存來源或建立分析。" if incomplete else "報告已載入；內容只讀取既有來源。", "partial" if incomplete else "observed")
+        self._completed_report_request_id = request_id
         self.reportLoaded.emit(report)
 
     def _render_daily_market_research_condition(
@@ -1772,6 +1843,7 @@ class StockResearchReportView(QWidget):
     def _on_report_error(self, request_id: int, code: str, error: object) -> None:
         if request_id != self._request_id or code != self._active_code:
             return
+        self._completed_report_request_id = None
         message = str(error).splitlines()[0].strip() or "未知讀取錯誤"
         previous_report = self._loaded_report
         if previous_report is not None and str(previous_report.stock_code).strip() == code:
@@ -1802,6 +1874,7 @@ class StockResearchReportView(QWidget):
 
     def _on_report_cancelled(self, request_id: int, code: str) -> None:
         if request_id == self._request_id and code == self._active_code and not self._closing:
+            self._completed_report_request_id = None
             previous_report = self._loaded_report
             if previous_report is not None and str(previous_report.stock_code).strip() == code:
                 last_good_report = replace(previous_report, portfolio_scenario=None) if previous_report.portfolio_scenario is not None else previous_report
@@ -1851,6 +1924,7 @@ class StockResearchReportView(QWidget):
     def _clear_loaded_report(self) -> None:
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
+        self._completed_report_request_id = None
         self._clear_saved_advice_summary()
         self._personal_h20_evidence = None
         self.clear_personal_h20_price_chart()
@@ -1958,6 +2032,12 @@ class StockResearchReportView(QWidget):
         self.return_button.setEnabled(not self._closing)
         self.return_button.setVisible(bool(self.context and self.context.has_source))
         self._sync_original_rank_actions()
+        if self._saved_snapshot_only:
+            self.stock_search.setReadOnly(True)
+            for button in (self.load_button, self.reload_button, self.previous_button, self.next_button):
+                button.setEnabled(False)
+            self.return_button.setVisible(True)
+            self.return_button.setText("返回我的判斷")
 
     def request_rank_bookmark(self) -> bool:
         """只提出收藏目前已核驗的原排名 context，由 host 確認後保存。"""
@@ -2375,6 +2455,8 @@ class StockResearchReportView(QWidget):
             label.setToolTip("")
 
     def set_personal_h20_evidence(self, evidence: object) -> None:
+        if self._saved_projection_snapshot is not None:
+            return
         from app_module.recommendation.personal_h20_product_evidence import (
             PersonalH20ProductEvidence, personal_h20_product_text,
         )
@@ -2464,6 +2546,8 @@ class StockResearchReportView(QWidget):
     ) -> bool:
         """顯示由 H20 verified view 純投影的同次來源價格；不讀報告服務。"""
 
+        if self._saved_projection_snapshot is not None:
+            return False
         if (self.context != context
                 or context.source_kind not in {
                     "personal_h20_saved_cohort",
@@ -2794,6 +2878,8 @@ class StockResearchReportView(QWidget):
         identities: Sequence[StockChartMarkerIdentityDTO],
     ) -> None:
         """中央 reader 可注入已核記錄 pins；不讀帳本、不從研究 event 猜成交。"""
+        if self._saved_projection_snapshot is not None:
+            return
         self._chart_marker_candidates = tuple(candidates)
         self._chart_marker_identities = tuple(identities)
         if self._loaded_report is not None:
@@ -2804,6 +2890,8 @@ class StockResearchReportView(QWidget):
         request: StockChartMarkerReadRequest | None,
     ) -> None:
         """注入既存唯讀來源與獨立 custody pins；每次畫圖重新核對 scope。"""
+        if self._saved_projection_snapshot is not None:
+            return
         self._chart_marker_reader = reader
         self._chart_marker_read_request = request
         self._chart_marker_candidates = ()
@@ -2913,7 +3001,7 @@ class StockResearchReportView(QWidget):
         layout.addWidget(self._section_heading("價格與成交量", report, "price"))
         context = self._loaded_request_context
         cutoff_date = _stock_chart_cutoff_date(report, context)
-        if self._chart_marker_reader is not None:
+        if self._chart_marker_reader is not None and self._saved_projection_snapshot is None:
             request = self._chart_marker_read_request
             self._chart_marker_candidates = ()
             self._chart_marker_identities = ()

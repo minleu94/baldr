@@ -874,4 +874,4 @@ Increment29已有正常Main的外部接受binding配置接點，原daily表單�
 
 後續Source的F07筆記保存改用同次fresh來源核對及Journal實讀清單，只有generation／股票／canonical bookmark一致、沒有pending load且非關閉中才套用；錯收據、缺保存時間拒絕，寫入不可取消。有界語義證明只省重複計算，保存／讀筆記／開原版仍完整fresh。同View／同query返回沿既有P01頁面重讀並比對新selection，無匹配state仍full重開，完整性失敗不回退舊DTO。QA167定向及共同防線、168正常Main／新程序三篇保存／修訂／返回／保存中關閉通過，均保留原15／240秒及原失敗。固定07已包含，06未含，見[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)；固定07由173a另驗同版EXE，不授完整金融或真人接受。
 
-題材雙向排行後續Source候選沿原四類排行加高／低排序；完整合格母體各取五名，四張高端摘要、成員定位及原個股返回保持，缺件不補值，固定07未含。排序原值精度與操作／接受邊界見[題材手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)及[QA176起](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材雙向排行qa176177)。
+固定08的題材雙向排行沿原四類排行加高／低排序；完整合格母體各取五名，四張高端摘要、成員定位及原個股返回保持，缺件不補值，固定07未含。排序原值精度與操作／接受邊界見[題材手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)及[QA176起](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材雙向排行qa176177)。

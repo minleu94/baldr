@@ -50,7 +50,7 @@
 <a id="entry-and-dataflow"></a>
 ## 入口與上下游
 
-題材後續Source的純presentation builder提供keyword-only `ascending=False`，不改原typed DTO或reader。UI排序方向只選同snapshot的高／低端純投影，完整coverage及原值守衛相同，不讀新資料、不寫Journal。排序以原Decimal／整數穩定比較，不以受ambient context影響的算術鍵改變順序；Main原context返回仍保留同一view，固定07未含，驗證範圍見[QA176起](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材雙向排行qa176177)。
+題材後續Source的純presentation builder提供keyword-only `ascending=False`，不改原typed DTO或reader。UI排序方向只選同snapshot的高／低端純投影，完整coverage及原值守衛相同，不讀新資料、不寫Journal。排序以原Decimal／整數穩定比較，不以受ambient context影響的算術鍵改變順序；Main原context返回仍保留同一view，固定08已含、07未含，驗證範圍見[QA176起](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材雙向排行qa176177)。
 
 後繼Source的題材下鑽攜`industry_theme_snapshot` context，資料日明標為題材版本日期，一般個股報告仍使用自己的行情日期。該context內換代碼先拒絕，回原題材明選成員才建立新context；返回核同一原身份。使用者題材筆記沿既有Journal ACTION_NOTE／CAS追加，實際保存時間與原資料日分開，不產生歷史決策或交易身份；契約見[題材研究](../../02_features/INDUSTRY_THEME_MAP_DESIGN.md#54-後繼呈現與研究筆記)。
 

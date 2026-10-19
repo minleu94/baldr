@@ -180,3 +180,16 @@ QA90g在正常Source Main、1280×760、prod隔離設定，以既有四股只讀
 原件：`output/tasks/baldr-post-completion-execution/m3_report_notes_main_qa90g/result.json`；spec SHA `ed445e84bea0dec0869bc9f304bb8d60559bff2b5724d546a33b4588fb48ff14`。Job收據 `single_owned_qa_436990c1e237403ba9fc0d12e469c545/receipt.json` SHA `dc6783a1ccfef908b4de7d3d42aeac68955dfd8efd3189aed092954fa3d61886`；三PID陣列空、process／Job handles關閉、mutex釋放、forced_cleanup=false。8GiB／12程序／kill-on-close／啟動前8GiB可用RAM保持。
 
 本次candidate籌碼、ML run、外部營收等未隨隔離資料提供的能力仍為不可用，不接受其完整金融結果或來源用途；既有缺件保持。固定03尚未建，02／01／143原件保持。F07完整來源慢讀、真首頁多候選缺件、真人D／Native、授權／歷史PIT／真N及自然成熟各自保留，不阻塞此已具依賴的保存旅程。
+### 固定03：一般報告保存交付（QA95–99）
+
+本批將已驗Source的完整報告判斷閉環交給使用者試用，解除只有工作樹、沒有固定候選的交付阻礙。固定Source `519233422d0085b27785dd1b7f7d892be98de5c0`，EXE SHA `c7d3f9798f758fda2c0424b083717cc7ab9e322d69f016f2bbba4f585de2e669`。QA95沿依賴鎖從固定commit建置，QA96沿141c封存原bytes組包，不開來源SQLite或連網；名冊另存本owner的`trial03_display_roster_qa96`，只供顯示、不改金融或來源資格。新啟動器明示自有缺件candidate路徑並清除外部ML設定，不沿用本機私人候選資料。
+
+QA97將完整新包複製到含空白的新位置，再用同版EXE首次設定，實測545.922秒／原600秒。沒有回讀舊trial／正式根或網路，portable config及2382官方月營收原五值讀回一致；原交付模板始終無state。spec SHA `e5a9b3d5674e4b5d2cf265d568891f8586958616323f76aa9f0c8eb66d0ff54a`；Job收據SHA `69b96be7b572fe608e9e2dfc4e3c0c91ac1470aec58817c20539894e9fbfb558`。
+
+QA98初始helper用了正式包未包含的QtTest，在Main前失敗，原件保留。QA98a只沿固定02既有的正式Qt事件adapter，沒有加產品依賴或重建EXE。固定EXE程序48996→44680完成四股載入、2330三篇判斷、完整保存時報告各tab、返回、直接父子800×520比較及保存期間合作關閉；fresh未先載即重開，producer讀取為0，Journal／watchlist／價庫SHA保持。每個關鍵產品模組均核在包內`_internal`，build identity為同一固定commit且dirty=false。Root檢視固定版截圖。這是Qt事件自動技術旅程，非Native座標／真人。spec SHA `04aa546d35218091c4986b697e2c09f05369d2bf3aa2b56454c2100a07abb196`；Job收據SHA `a42b93640eefcb6db31435e5174136a29c6a0daf3b73c1e84114279aadc4c4b2`。
+
+QA99在隔離副本驗啟動器正SHA成功／反SHA拒絕，既有Journal、設定及setup收據保持；複製具名來源／名冊／首次設定／Main原件，建立模板清冊與交付收據。新包`output/trial/Baldr-Theme-Research-03`，manifest SHA `01e91aaec3fd9b1caca9062fbd82b1f97222838be012e3dcbc289c95d0465f93`，交付收據SHA `28c61cfd6439ff8e374f49e7d8c6fb41abd941ace3c3fb5a4ba8ea548171127a`。QA99 Job收據SHA `6b17489132adbb61b51eb69636ed53e01cfa8a7046874d03e9aa90e1dd831c76`；本批各組三PID空、handles關閉、mutex釋放、forced_cleanup=false，原資源上限保持。
+
+本次只接受一般報告保存的限定技術出口。原F07專用筆記未完成正常來源旅程，程式含候選葉片但不算03可用流程；未改題材／日常／Registry沿02／143／01證據，未反覆重跑。四股價格9-23、題材10-16、2382半年財報缺件、歷史PIT／TPEx／來源用途／真N／WF與自然成熟、真人D／Native／跨機及完整M3／Gate均保留。02／01／143／139／141c及私人原件不改。
+
+QA101依原M4執行不帶path限縮的document_control check（含owner task）：12features／36link sources、無錯誤；這是工具預設檢查範圍，不是全文EOF或產品接受。Job收據SHA `a04061c6da0300ef46319bdb21b52468136b999dd7fd945b63a1dc3a41fa8afc`，自然閉鎖。

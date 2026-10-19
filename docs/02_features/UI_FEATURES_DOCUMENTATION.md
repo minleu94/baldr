@@ -872,4 +872,4 @@ Increment29已有正常Main的外部接受binding配置接點，原daily表單�
 
 固定06的期限表只對至少兩種期限、每列都共有的來源限制取交集，集中一次；逐期Display先列已連結期限的target／gap，非LINKED仍先列原阻擋原因。可選tooltip矩陣保留每列完整六欄原文，舊model呼叫維持相容；換context、loading／錯誤及空表清共享標籤。讀取、DTO、品質／成熟／採認判斷與日期不改，真八期限／Source新程序已有QA145–146b證據，固定06同版EXE／新程序由QA151核對；05保持。
 
-後續Source的F07筆記保存改用同次fresh來源核對及Journal實讀清單，只有generation／股票／canonical bookmark一致、沒有pending load且非關閉中才套用；錯收據、缺保存時間拒絕，寫入不可取消。有界語義證明只省重複計算，保存／讀筆記／開原版仍完整fresh。同View／同query返回沿既有P01頁面重讀並比對新selection，無匹配state仍full重開，完整性失敗不回退舊DTO。QA167定向及共同防線、168正常Main／新程序三篇保存／修訂／返回／保存中關閉通過，均保留原15／240秒及原失敗。固定07待建，06未含，見[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)；不授EXE、金融或真人接受。
+後續Source的F07筆記保存改用同次fresh來源核對及Journal實讀清單，只有generation／股票／canonical bookmark一致、沒有pending load且非關閉中才套用；錯收據、缺保存時間拒絕，寫入不可取消。有界語義證明只省重複計算，保存／讀筆記／開原版仍完整fresh。同View／同query返回沿既有P01頁面重讀並比對新selection，無匹配state仍full重開，完整性失敗不回退舊DTO。QA167定向及共同防線、168正常Main／新程序三篇保存／修訂／返回／保存中關閉通過，均保留原15／240秒及原失敗。固定07已包含，06未含，見[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)；固定07由173a另驗同版EXE，不授完整金融或真人接受。

@@ -1,7 +1,8 @@
 # 目前指定的本機日常研究入口
 
+**最新可試用：研究07，固定來源 `15d30353c583`。** [啟動器](../../output/trial/Baldr-Theme-Research-07/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-07/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-07/KNOWN_ISSUES.md)。先放妥完整資料夾，再雙擊啟動器建立自己的新state；不要匯入舊私人資料或刪state重設。本版在價格選股同源個股的「我的判斷」補齊保存、明選讀回、直接修訂、原版本／返回、保存期間關閉與新程序回訪；每次保存／讀取／開原版仍等完整來源核驗，同一已開啟查詢返回重讀原頁。首次設定496.406秒／原600，同版EXE51796→36696、啟動器正反SHA及封存已核；[交付收據](../../output/trial/Baldr-Theme-Research-07/DELIVERY_RECEIPT.json)分別記錄範圍。其他未改主要旅程沿06及其引用，缺資料、PIT、正式採認、Native／真人等限制保持，詳[QA170–174](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定07原價格筆記交付qa170174)。
 
-**最新可試用：研究06，固定來源 `7fbe58670582`。** [啟動器](../../output/trial/Baldr-Theme-Research-06/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-06/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-06/KNOWN_ISSUES.md)。本版把原保存推薦的五股與「查看個股研究」放進1280×760首屏，期限表把共同來源限制集中，各列先顯示缺價／已有計畫日價格／等待目標日。先放妥完整資料夾，再沿啟動器建立自己的新state。首次設定525.141秒／600，同版EXE29824→24664五股首屏、1538／1528八期限與返回、新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-06/DELIVERY_RECEIPT.json)。題材沿05、保存筆記沿04、一般報告等未改旅程沿03原證據；F07專用筆記修正不在本包。缺行情、期限連結與正式採認等限制保持，這次沒有重驗所有旅程或取得真人接受。
+**保留候選：研究06，固定來源 `7fbe58670582`。** [啟動器](../../output/trial/Baldr-Theme-Research-06/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-06/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-06/KNOWN_ISSUES.md)。本版把原保存推薦的五股與「查看個股研究」放進1280×760首屏，期限表把共同來源限制集中，各列先顯示缺價／已有計畫日價格／等待目標日。先放妥完整資料夾，再沿啟動器建立自己的新state。首次設定525.141秒／600，同版EXE29824→24664五股首屏、1538／1528八期限與返回、新程序及啟動器正反SHA已核；詳[收據](../../output/trial/Baldr-Theme-Research-06/DELIVERY_RECEIPT.json)。題材沿05、保存筆記沿04、一般報告等未改旅程沿03原證據；F07專用筆記修正不在本包。缺行情、期限連結與正式採認等限制保持，這次沒有重驗所有旅程或取得真人接受。
 
 研究06另有[25鏈探索補驗](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定06的25鏈探索qa158)：實際25鏈／90題材選項及每鏈一個代表題材的成員、股票signal與新程序一致。這是獨立題材頁範圍，Main往返沿05原證據；法人／日曆／PIT缺件及原封存收據保持。
 
@@ -17,7 +18,7 @@
 
 **日常研究143保留，固定來源 `bb09f218bba1`。** 原[Launch-Baldr.cmd](../../output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd)及私人state不變。本版包含月營收值前置、窄頁條件與結果可捲、清空代碼按鈕、收藏公司名稱及同源個股回訪修正。完整步驟見[包內指南](../../output/trial/Baldr-Daily-Research-143/TRIAL_GUIDE.md)，限制見[已知問題](../../output/trial/Baldr-Daily-Research-143/KNOWN_ISSUES.md)，固定身分見[交付收據](../../output/trial/Baldr-Daily-Research-143/DELIVERY_RECEIPT.json)。以下四條日常流程與143的期限表維持原判讀，新題材旅程按上方指南另驗。
 
-## 第一次啟動
+## 143首次啟動（歷史參照）
 
 1. 首次啟動前，把**完整143資料夾**放到要使用的位置，再雙擊啟動器。首次會核對原件並建立`state/`，請保留命令視窗；本機新位置實測537.875秒，原期限600秒。
 2. 後續沿同一入口使用，保存內容留在本包。已建立state後維持位置，不刪state重設；舊139、141c及私人資料不自動匯入。
@@ -25,7 +26,7 @@
 
 已驗本機新位置、正常固定EXE與同版新程序受改讀回及啟動器正反SHA。完整跨機、已用state搬移、私人owner-migration、其他DPI與真人接受仍各自待驗；143首次設定原件與142的600秒FAIL分別保存，詳[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)。
 
-## 四條主要流程
+## 143四條主要流程（歷史參照）
 
 | 要做的事 | 操作與資料範圍 |
 |---|---|

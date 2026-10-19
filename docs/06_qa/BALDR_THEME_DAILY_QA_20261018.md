@@ -286,3 +286,16 @@ QA133 context L3對View仍標headings_only／Unknown；Root另讀指定symbols�
 QA134正常Source Main7516→10040使用既有10/16真manifest（identity `75f97365b03adf2d84efaad03250dc2510ba2eb8517b3212ea2c20166060ed7a`），首程序代號2330、新程序名稱台積皆列三題材；明選半導體／光罩後原成員列實際可見，雙擊到原個股context並返回同版本。真reader重載中關閉，舊反查立即清除、合作等待且晚到結果不復活；watchlist SHA一致、Journal未建立，network／protected／Qt errors0。Root檢視1280定位截圖。原15秒／每程序120秒不變，未重跑未改筆記或回測。spec SHA `f97601ff21246f50aae2b92962fb62a74e5405c24aced8b5ce5d412046cd0598`，閉鎖SHA `5ea124bab41ba33f88b0f914b2bad5bac0077ebf52a7a2e20b1e5ff1f7264056`；三PID空／handles閉／mutex釋放且無強制回收。
 
 此為Source技術出口，固定04不改也尚未收入本葉片；查到映射不授來源權威、歷史PIT、完整法人或合格日曆。整體原Gate、真人／Native與自然成熟分項保持；沒有為此另立總計畫或擴第一版範圍。
+
+<a id="固定05題材反查交付qa136140"></a>
+## 固定05題材反查交付（QA136–140）
+
+此增量解除「已驗題材股票反查只有Source、使用者仍須逐題材尋找」的交付阻礙，沿原M4固定包流程，不擴第一版五條旅程。Source `34b8e8d5402b407dece718b231cefcfaa27dedb9`；QA136建置、137組包，原日常／題材／單筆保存推薦資產與task具名名冊沿原件。04／03及更早候選、私人原件保持；尚未驗證的推薦首屏排版Source沒有混入05。
+
+QA138將完整包移至含空白的新位置，以原600秒完成首次設定542.171秒。QA139同版正常Main21696→38288：真10/16版本輸入2330／台積均列三題材，明選半導體／光罩、原成員列實際可見、雙擊個股並返回；真reader重載中合作關閉，舊結果不復活，新程序身份一致。build34b8且dirty=false、產品模組來包內_internal；watchlist SHA兩程序相同 `1f0ae10e7217b1d6fcbd95c5fbc8b500b0ff2321b4cb46df42c2dc9b1e228d1a`，Journal未建立，network／protected／Qt errors0。Root檢視1280定位截圖。既有QMouseEvent適配不等於Native座標操作，未帶QtTest或借Source。
+
+QA140啟動器正例exit0、錯EXE SHA反例exit2，state保持；封存TEMPLATE_FILES與交付收據。首次設定後只補指南與問題清單的實測範圍，原／新文件SHA列documentation_revisions_after_setup，不改EXE／manifest／資產。EXE `53ed5302a13ceb1e646933cb3a34fca999d1732d19076c32907d648297391f34`，manifest `d5a64cd7134a3c6b783fefd9c8e3ba83bab50badb0b4919a5a1a7ac7d85ff1f9`，交付 `3bc5a251bce63d0fbd91a099f395b53d8abc0a3dcd6eb7f6960b0341d23d7cf8`。
+
+05沒有重跑未變的保存推薦／Journal旅程，明確繼承04交付收據 `ba2f1417e0f9284c4bfbe83de67675e99eb734a3b2a11ee446c3278dcc15bca7`；其他未改旅程沿03等原證據。只接受受改題材反查、本機首次設定及完整性出口，金融資格、PIT／真N／來源權威、自然成熟、完整Native／真人／跨機與原完整Gate仍分項未接受。
+
+Root串行Job維持8GiB committed／12程序／kill-on-close／workspace mutex／啟動RAM至少8GiB；各組三PID空、process／Job handles閉、mutex釋放且無強制回收。138／139／140閉鎖SHA分別 `eebb7f7ea80edfa65f6d8145700e02ba47b1ac30881f91c930f3d94bbbc9b2f5`、`0ffa9e411adb02e773685ac4acf6f61ab8d942c3cf7aef9fef9e65fd99e39028`、`c981b1a66c35f34ed03705b069a73f3bf3254e1a286beeee553a771fe866ae8c`；spec／commands／raw與截圖均在本owner task保存，不覆寫舊FAIL。

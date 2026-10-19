@@ -299,3 +299,16 @@ QA140啟動器正例exit0、錯EXE SHA反例exit2，state保持；封存TEMPLATE
 05沒有重跑未變的保存推薦／Journal旅程，明確繼承04交付收據 `ba2f1417e0f9284c4bfbe83de67675e99eb734a3b2a11ee446c3278dcc15bca7`；其他未改旅程沿03等原證據。只接受受改題材反查、本機首次設定及完整性出口，金融資格、PIT／真N／來源權威、自然成熟、完整Native／真人／跨機與原完整Gate仍分項未接受。
 
 Root串行Job維持8GiB committed／12程序／kill-on-close／workspace mutex／啟動RAM至少8GiB；各組三PID空、process／Job handles閉、mutex釋放且無強制回收。138／139／140閉鎖SHA分別 `eebb7f7ea80edfa65f6d8145700e02ba47b1ac30881f91c930f3d94bbbc9b2f5`、`0ffa9e411adb02e773685ac4acf6f61ab8d942c3cf7aef9fef9e65fd99e39028`、`c981b1a66c35f34ed03705b069a73f3bf3254e1a286beeee553a771fe866ae8c`；spec／commands／raw與截圖均在本owner task保存，不覆寫舊FAIL。
+
+<a id="保存推薦首屏qa142143"></a>
+## 保存推薦首屏（QA142–143，後續Source）
+
+此葉片解除QA130b真1280畫面中「結果欄約800px被900斷點堆疊四個來源按鈕，五股表落首屏外」的試用阻礙。Root凍結API、既有Luna單寫RecommendationView與新compact test，另一既有Luna獨立有限靜態複核無重大回歸；10/10沒有新建、workers未執行Python或QA。只在已成功保存讀回的720–899px壓縮來源／標題兩列，其餘風險列900不變；成功／fresh重算、失敗與取消保留。public port、身份／generation、資格及金融值不改。
+
+QA142 context L3仍將View標headings_only／Unknown；Root另讀受改symbols與diff/test，不宣稱全檔EOF。編譯、37項受改／原exact讀回／取消晚到／舊格式及執行排版、Workbench85、獨立具名validator25/0/4、mypy1081通過；UI既有ignore不證強型別。單元fixture只有兩筆，五列空間斷言沒有當真五股接受。spec `05e101839be6908817e59334bd87ef7b8a3151157fc10a2f45029a343ab367bf`，閉鎖 `07baf5f392865796830584124ecabcd76c3dedd6217df97c9fe5e0eb34acac9b`。
+
+QA143沿public restore將具名127最小研究封存還原到全新owner output，行情只唯讀既有05已準備資產；不帶私人Journal／每日Task status。新Source正常Main12900→38268以首頁原選股入口、原list/get明選10/19真五股，沒有DTO注入。1280×760結果欄721px，讀回後未resize或reveal表格／CTA，只將捲軸回頂，即核五筆真資料列完整垂直可見；實際滑鼠選列後「查看個股研究」可用且在首屏。窄窗保留垂直捲動、新程序同原identity／raw SHA，來源DB／watchlist SHA保持，Journal未建立，network／protected／Qt errors0。Root檢視截圖。原15秒／每程序120秒不變；沒有為排版重跑未改筆記旅程或回測。
+
+原artifact `e6523f2b83123a9f2916ddd8326e005c77825542d57ec77aa2be41a05054cf4d`，owner DB `77905a51cc597a9bd79ad402c4fe587d0646ceda602b25188786e798e546459a`，結果JSON `87243e1e3751c9d21c8784268444d5a9de65da115dbba2ac50041e754b589445`。spec `cd93925907a1bc1d62f6d03f5602c0a8ef00c0008af64fca62426215fc4d213e`，閉鎖 `e596fdcf5de647614f04f470c3cd18fa1cd1f29aa03002072b6a7d5d95761751`。兩組Root串行原8GiB／12程序／kill-on-close／mutex／RAM至少8GiB，三PID空／handles閉／mutex釋放且無強制回收。
+
+本次只接受新Source受改排版與只讀重開，固定05 EXE沒有這批修改。行情缺件、期限衝突與原SOP／PIT／正式來源／自然成熟／真人／Native及完整Gate保持，不由顯示五股升格。

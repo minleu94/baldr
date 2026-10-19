@@ -850,6 +850,8 @@ class RecommendationView(QWidget):
         self._recommendation_narrow = False
         self._recommendation_result_narrow = False
         self._personal_policy_history_narrow = False
+        self._recommendation_saved_result_narrow = False
+        self._recommendation_saved_title_narrow = False
 
         # 策略配置狀態
         self.strategy_config = self._get_default_config()
@@ -2778,28 +2780,46 @@ class RecommendationView(QWidget):
             or not hasattr(self, "config_scroll")
         ):
             return
+        viewport_width = self.result_scroll.viewport().width()
         narrow = self.width() < 820
-        result_narrow = narrow or self.result_scroll.viewport().width() < 900
-        history_narrow = result_narrow or self.result_scroll.viewport().width() < 560
+        result_narrow = narrow or viewport_width < 900
+        history_narrow = result_narrow or viewport_width < 560
+        saved_readback = (
+            getattr(self, "current_read_model", None) is not None
+            and getattr(self, "current_save_receipt", None) is None
+            and getattr(self, "_loaded_saved_result_identity", None) is not None
+        )
+        compact_saved_readback = (
+            saved_readback and not narrow and viewport_width >= 720
+        )
+        saved_result_narrow = result_narrow and not compact_saved_readback
+        saved_title_narrow = result_narrow and not compact_saved_readback
         if (
             not force
             and narrow == self._recommendation_narrow
             and result_narrow == self._recommendation_result_narrow
             and history_narrow == self._personal_policy_history_narrow
+            and saved_result_narrow == self._recommendation_saved_result_narrow
+            and saved_title_narrow == self._recommendation_saved_title_narrow
         ):
             return
         orientation_changed = narrow != self._recommendation_narrow
         self._recommendation_narrow = narrow
         self._recommendation_result_narrow = result_narrow
         self._personal_policy_history_narrow = history_narrow
+        self._recommendation_saved_result_narrow = saved_result_narrow
+        self._recommendation_saved_title_narrow = saved_title_narrow
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         self.result_title_layout.setDirection(
-            QBoxLayout.TopToBottom if result_narrow else QBoxLayout.LeftToRight
+            QBoxLayout.TopToBottom if saved_title_narrow else QBoxLayout.LeftToRight
         )
         self.config_scroll.setMinimumWidth(0)
         self.config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.result_scroll.setMinimumWidth(0)
-        self._set_result_row_directions(result_narrow)
+        self._set_result_row_directions(
+            result_narrow,
+            saved_result_narrow=saved_result_narrow,
+        )
         self._set_personal_policy_history_direction(history_narrow)
         policy_group = getattr(self, "personal_policy_group", None)
         if policy_group is not None:
@@ -2827,12 +2847,25 @@ class RecommendationView(QWidget):
         if isinstance(table, QTableView):
             self.results_table_minimum_height = ensure_visible_rows(table, rows=5)
 
-    def _set_result_row_directions(self, narrow: bool) -> None:
+    def _set_result_row_directions(
+        self,
+        narrow: bool,
+        *,
+        saved_result_narrow: bool | None = None,
+    ) -> None:
         """窄版時將長路徑欄與操作按鈕改為垂直排列，保留可讀寬度。"""
         direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+        saved_direction = (
+            direction
+            if saved_result_narrow is None
+            else (
+                QBoxLayout.TopToBottom
+                if saved_result_narrow
+                else QBoxLayout.LeftToRight
+            )
+        )
         for layout_name in (
             "research_context_header_layout",
-            "saved_result_row",
             "personal_capture_row",
             "assessment_capture_path_row",
             "assessment_summary_path_row",
@@ -2846,6 +2879,10 @@ class RecommendationView(QWidget):
             if row is not None:
                 row.setDirection(direction)
                 row.setSpacing(6)
+        saved_row = getattr(self, "saved_result_row", None)
+        if saved_row is not None:
+            saved_row.setDirection(saved_direction)
+            saved_row.setSpacing(6)
 
     def _set_personal_policy_history_direction(self, narrow: bool) -> None:
         """依歷史控制項所在結果欄寬度排列選擇器與操作按鈕。"""
@@ -5551,6 +5588,7 @@ class RecommendationView(QWidget):
             self.send_to_backtest_btn.setVisible(False)
             self.send_profile_to_portfolio_backtest_btn.setVisible(False)
             self.export_report_btn.setVisible(False)
+            self._apply_responsive_layout(force=True)
             QMessageBox.information(
                 self,
                 "篩選紀錄／未入選" if screening_rows else "分析完成",
@@ -5619,6 +5657,7 @@ class RecommendationView(QWidget):
         self.research_actions_toggle.setChecked(False)
         self.research_actions_widget.setVisible(False)
         self._refresh_personal_choice_controls()
+        self._apply_responsive_layout(force=True)
 
     def _on_recommendation_error(
         self,
@@ -6962,6 +7001,7 @@ class RecommendationView(QWidget):
         self._update_detail_text()
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
+        self._apply_responsive_layout(force=True)
 
     def _apply_legacy_saved_result(
         self,
@@ -7036,6 +7076,7 @@ class RecommendationView(QWidget):
         self._update_detail_text()
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
+        self._apply_responsive_layout(force=True)
 
     def _on_saved_result_load_error(
         self,

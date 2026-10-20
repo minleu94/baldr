@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**後繼Source：第三階段獨立動量濾網。** 新增純規則`evaluate_theme_momentum()`，嚴格>70%、淨流入TWD／前20%與可得時間／缺件拒絕；[QA246a](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#stage3獨立動量濾網qa246246a)43項、單檔mypy及本檔精度／未來函數掃描通過。這是未接線MODE_A契約，未含研究13，不授真資料、排名、歷史PIT或正式策略資格。五小時額度100%先checkpoint；文件結構檢查待下個視窗，接著處理reader／映射與來源版本綁定，不能只信輸入旗標。
+
 **最新可試用：研究13（`9838243476e6`）。** [啟動器](../../output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-13/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-13/KNOWN_ISSUES.md)。保存報告完成後顯示「載入完成」；固定Main24960→9440確認原筆記／報告全文及日期不變、無producer重讀。首次設定521.344秒／原600、啟動器正反SHA及封存通過，交付SHA `ae7f310408a1551d342ef967a2560e8c84206def94c9820c52b1963230f3341c`；[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定13保存報告完成狀態交付qa240244)。未改主要旅程沿12證據，舊包與私人資料保持；金融／PIT／自然成熟／Native／真人限制不升格。
 
 **research07五項回報已交付研究12（`ec4dd639b6be`）。** [啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)。一般查詢可明確離開保存context並辨識2330台積電；原F07圖顯示同版SMA20／60；題材可一鍵清除；原價格筆記可確認刪除整篇及修訂、重開不復活；績效與原逐日訊號入口分開。原07三筆實際run唯讀可讀419列，0／1成交不阻擋該對照。517.579秒／原600首次設定、固定EXE10788→26748筆記／MA／查股及41268→10408清除／960、新程序與啟動器正反SHA通過。EXE `918624dd549daec146c69b8986ce8b887e03bccb135ba9d9de1c8fef0f595dc6`，交付 `d161a7363131062e37c153d03760b7f323c18c5a7cfbc37c65a05bbc4d1613c1`；[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)。舊包與私人原件保持；保存報告缺行情、一般行情9/23及各項金融／權威／PIT／自然成熟／Native／真人限制保留。

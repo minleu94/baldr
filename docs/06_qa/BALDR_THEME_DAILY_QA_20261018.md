@@ -631,6 +631,14 @@ Result e131e4047a502e1038eb92a468851e120d2bc3659a3abd8b76e1ab4f830247e1，helper
 
 QA238編譯、6項定向、Workbench85、自有新目錄validator25通過／0失敗／4跳過、八套件mypy1083均PASS；既有ignore／untyped不證UI強型別。Route為Execution／TestingQA／Documentation；Context3500字僅作定位，Root另按實際方法與差異核對，未宣稱全文閱讀。Closure `a76244e157ca85776cbd513fe5f29314f651b32e4d9e34800aac2ab097cec1a4` 自然全閉鎖，三PID陣列空、handles閉與mutex釋放，Root串行Job8GiB／12程序／RAM至少8GiB。未重跑與狀態文字無關的原混合回訪、均線或刪除旅程。固定12／舊包／私人原件不改，新固定候選仍待建置及正常Main／新程序證據，不把本組當EXE或完整Gate接受。
 
+## Stage3獨立動量濾網QA246246a
+
+原「第三階段全部等歷史資料」分類過粗；本切片先完成原§5.2規則的可呼叫MODE_A葉片，沒有接策略／回測／UI或寫正式資料。Root凍結輸入、時間及金融門檻，原Luna單寫新module／test，另一原Luna只讀獨立複核；Source證據與實際歷史PIT資格不由旗標取得。無UI改動，不重跑Workbench或重建EXE，研究13及其私人／封存原件保持。
+
+246編譯及43項定向PASS，mypy報7處Optional比較型別錯誤，後續靜態防線尚未執行；原FAIL/spec/env/output保留，closure `ca0d2464a3642bfc0656de5ad08e6a344e69df9ec65bf71c896e76776754c03a`。Root僅在原型別／範圍守衛已成立的三處比較補cast，不改分支或門檻。246a另spec/env/result，編譯、43項、單一新module mypy與既有精度／未來函數掃描器的本檔範圍均PASS；closure `39de0fc7747c5c2a147329d40bd7b1f8d012b0f9aaaa67b7eef5ea4342aa6a09`自然全閉鎖。沒有將本檔掃描當全庫防線；Context1800字略過正文及未提交新檔，Root另讀實際新檔與精確SHA，並非工具已核全文。
+
+邊界包括嚴格>70%、`rank × 5 ≤ N`不向上湊整、正有限Decimal淨流入、跨aware時區／台北資料日、未來或未知時鐘、缺值、部分母體／覆蓋、bool冒整數、錯單位及Decimal精度。純規則旗標不能證明來源或排名，未測真資料、交易成效或PIT回測；下一步是reader／映射與來源版本的實際綁定。五小時100%／週33%時只收尾commit，文件結構檢查NOT_RUN，待下個實際可用視窗執行；不得把本節當第三階段或完整Gate接受。
+
 ## 固定13保存報告完成狀態交付QA240244
 
 本增量只把QA238的完成狀態修正交付為可啟動候選，沿原M3／M4切片；不擴功能或金融資格。Source `9838243476e6a2274adecc6763e7e4ac315f1afa`，候選 `output/trial/Baldr-Theme-Research-13`；舊12／07／11／139／141c及私人原件保持。

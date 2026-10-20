@@ -86,7 +86,7 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 - **產品方向與來源優先序**：[Product Roadmap](PRODUCT_ROADMAP_POST_REFACTOR.md)；正式 Gate 依賴見[六個月工程路線](ROADMAP_6M_ENGINEERING.md)，不以本輪交付排序改寫 Gate。
 - **實際操作**：[APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)；首次設定看[快速開始](../07_guides/QUICK_START.md)，移機看[首次安裝／移機 Prompt](../07_guides/FIRST_INSTALL_PROMPT.md)。
 - **現行與目標架構**：[system_architecture](../01_architecture/system_architecture.md)／[current 分冊](../01_architecture/current/README.md)；[FINAL](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 是目標設計，不作已實作證據。
-- **主程式與資料**：`ui_qt/main.py`，九個頂層工作區；資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理，預設 `DATA_ROOT=F:/Min/Python/Project/FA_Data`，不能以 repo 相對路徑推定正式資料位置。大型 repo 產出與測試暫存經 junction 存於 `F:/Min/Python/Project/BaldrStorage`；遷移證據見[儲存搬遷 QA](../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。
+- **主程式與資料**：`ui_qt/main.py`，九個頂層工作區；資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理，預設 `DATA_ROOT=F:/Min/Python/Project/FA_Data`，不能以 repo 相對路徑推定正式資料位置。大型 repo 產出與測試暫存經 junction 存於 `F:/Min/Python/Project/BaldrStorage`；2026-10-20 已完成 D→F 六個 Baldr 資料根搬遷核對及 D 原根清除，C repo 仍保留原始碼、`output`／`dist`／`.t` junction 指向 F；遷移收據與限制見[儲存搬遷 QA](../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。
 - **L2 產業鏈與題材**：[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py) 保留季度／手動25鏈萃取。後繼application層另讀明選本機版本、每日聚合並接題材頁及研究筆記；規格見[設計文件](../02_features/INDUSTRY_THEME_MAP_DESIGN.md)，原萃取[QA](../06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md)與新[限定旅程QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)分開；固定143尚不含新頁。
 
 ## 重要限制

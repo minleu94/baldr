@@ -2,7 +2,7 @@
 
 ## 目前狀態
 
-`PARTIAL — F 已設為新資料與大型產出位置；C repo 大型目錄已切換；D 舊資料尚未刪除。` 使用者要求確認內容後只保留 F 槽資料。D→F 複製／合併和 C→F 搬遷已完成，下方列出證據與核驗範圍。刪除 D 舊根之前，需先讓仍持有 `D:\Min\Python\Project\FA_Data\output\application_state\logs\config.log` 的程序正常關閉；不終止未知程序。尚未宣稱 D 已清空。
+`STORAGE CUTOVER COMPLETE — F 為 Baldr 資料及大型產出的唯一儲存位置；C repo 大型目錄已改接 F junction；D 的六個 Baldr 資料根已核對並刪除。` Repository source code 仍在 C。六個 F 對應根仍存在，D 的 `Min\Python\Project` 現在為空。D 的 `config.log` 在刪除前沒有找到阻擋性占用；原始 bytes 已先保存至 F 證據目錄並核對 SHA-256。下方保留核驗範圍、時間點與限制。
 
 本機 `output/tasks/<task_id>/task.json` 尚未建立：`document_control.py init-task` 拒絕寫入，因 `output` junction 解析到 repo 外的 F 槽目標，超出該工具的 repository path confinement。此工作目前以本 QA 紀錄維持恢復狀態；沒有繞過該路徑守衛。
 
@@ -10,7 +10,7 @@
 
 ## 磁碟與 C 槽目錄
 
-本輪開始時 C 可用空間約 64.4 GiB；搬遷後曾量得 253.9 GiB，Codex 重啟後最新查詢為 `270,541,762,560` bytes（約 252.0 GiB）。相較本輪開始增加約 187.6 GiB；可用空間會隨其他程序寫入而波動。D 可用 `151,000,436,736` bytes（約 140.6 GiB），F 可用 `78,803,542,016` bytes（約 73.4 GiB）。容量由 PowerShell FileSystem PSDrive 查詢；這是整個磁碟空間變化，不等同資料樹的 logical bytes。
+搬遷前後的可用空間曾多次量測，會隨其他程序寫入而波動。完成刪除後本次量得 C `261.84 GiB`、D `751.58 GiB`、F `73.37 GiB`；刪除前最近一次 D 為 `156.03 GiB`，本次觀測增加約 `595.55 GiB`。這是整個磁碟空間變化，不等同資料樹的 logical bytes。
 
 repo 的大型目錄已從 C 移至 `F:\Min\Python\Project\BaldrStorage`，C 原路徑改為 junction，並已核對 LinkType、ReparsePoint 及目標存在：
 
@@ -28,7 +28,9 @@ repo 的大型目錄已從 C 移至 `F:\Min\Python\Project\BaldrStorage`，C 原
 
 D 中較新的同名檔有 2,264 個。先前 F 版本已依使用者指示，在逐檔來源／目的 SHA-256 收據通過後刪除；D 較新版本已合併至 F，2,264 筆目標 SHA-256 收據均為 PASS（含共享寫入日誌，以兩次穩定唯讀雜湊核對）。差異資料共 7,961,233,287 bytes。完整收據位於 F 的 `BaldrStorage` 本機搬遷證據目錄。
 
-目前 D 仍有六個根：`FA_Data`、`FA_Data_candidate`、`FA_Data_Shadow`、`FA_Data_Shadow_BankTaiwan`、`FA_ML_Research`、`ig_data`。SQLite DB／WAL／SHM 及列出的其他資料庫已通過當次獨占開啟檢查；但 D 的 `FA_Data` 下 `config.log` 仍被未知程序開啟，普通獨占讀取失敗。Codex 重啟後 D 日誌長度與時間仍為 2,025,981 bytes／19:53:09 UTC；Restart Manager 唯讀查詢未回報程序。D 日誌兩次唯讀 SHA-256 穩定為 `769F3BDB81B71424A2A8DD67088DEEFD9A74316F044FC7A7F7C70F020690752D`；F 對應日誌亦仍被開啟，穩定 SHA-256 為 `B00CF6BB7754B7D4D13A0B3C0F0F87891D5AD4BBFF0B5AEE157E4D416CB76BD0`（2,030,541 bytes，20:36:24 UTC）。兩者不同，F 版本較新，未覆寫任何一方。D 日誌位元組已另存至 F `BaldrStorage/migration_evidence_20261020/D_FA_Data_config.log`；`D_config_log_receipt.json` 記錄來源、目的、長度、SHA-256 及核對方法。D 六個根目前全部保留；解除程序鎖定後須再確認 D 是否有新寫入，再確認其餘資料無變動，才移除 D 原始資料。沒有終止任何程序。
+刪除前再次對六個 D 根執行 Robocopy dry-run（`/E /L /XO /COPY:DAT /DCOPY:DAT /R:0 /W:0`）：所有根 `Copied=0`、`Mismatch=0`、`Failed=0`；D 的 `FA_Data\output\application_state\logs\config.log` 是唯一來源較舊檔，由 `/XO` 跳過，不覆蓋 F 現行日誌。FA_Data 另有四個 F-only 檔案、23,170,635 bytes，保留在 F。F 下其餘五根均無 extras。依既有逐檔 SHA-256 收據，2,264 個原先由 D 更新的同名檔已核實；D 日誌 SHA-256 為 `769F3BDB81B71424A2A8DD67088DEEFD9A74316F044FC7A7F7C70F020690752D`，與先前保存到 `F:\Min\Python\Project\BaldrStorage\migration_evidence_20261020\D_FA_Data_config.log` 的原件一致，長度均為 2,025,981 bytes。F 的活動日誌持續增長，故不與 D 舊快照混為一談。
+
+Resource Monitor 以 D 槽完整路徑搜尋沒有結果；唯讀獨占讀取成功，Write / ReadWrite 的 Win32 回報為 `ERROR_ACCESS_DENIED (5)`，不是 `ERROR_SHARING_VIOLATION (32)`。因此沒有查到會阻擋刪除的程序；沒有結束任何程序。刪除前確認六個 D 根皆非 reparse point、內部沒有 junction，F 對應根全部存在。之後逐一刪除六個精確 D 根，PowerShell 回報全部 `DELETED`；D 專案資料父目錄目前為空，六個 F 根仍存在。沒有刪除 D 上層 `D:\Min\Python\Project`，也沒有刪除 F-only `SportsLottery_Data`。
 
 ## 新資料根與程式設定
 
@@ -36,11 +38,10 @@ D 中較新的同名檔有 2,264 個。先前 F 版本已依使用者指示，�
 
 active source 中 `FA_Data`／`FA_ML_Research` 的 D 根路徑已更新至 F；保留測試、歷史文件及封存內容的舊路徑字串，避免改寫歷史來源。`dist` 現有固定包未覆寫；目前試用／固定包的啟動檔未找到 D 根引用。舊包若自行保存絕對 D 路徑，尚未逐一啟動驗證。
 
-## 下一步與限制
+## 後續與限制
 
-1. 待持有 D `config.log` 的程序正常退出後，重新核對 D 該檔及 F 端具名保存原件；其餘 D→F 複製內容已依上述收據／Robocopy 範圍完成核對。
-2. 刪除六個 D 原始資料根，確認 D 不再保留這批 Baldr 資料，並量測 D 可用空間變化。刪除只在鎖定解除及 final comparison 成功後執行。
-3. 以專案規定的 Windows Job 執行設定測試及受影響 Python 編譯；尚未執行者保持 NOT TESTED，不以字串檢查代替執行驗證。
-4. 驗證 F 上試用包／新程序會使用 F 根；舊固定包與私人原件不覆寫。
+1. C→F 路徑、F 資料根及 Windows User 環境設定已核對；此為本機設定，不會同步至其他 Windows 帳戶或電腦。
+2. 以專案規定的 Windows Job 執行設定測試及受影響 Python 編譯；尚未執行者保持 NOT TESTED，不以字串檢查代替執行驗證。
+3. 驗證 F 上試用包／新程序會使用 F 根；舊固定包與私人原件不覆寫。
 
-本紀錄不代表資料集全域一致性、資料庫語義完整性或產品 QA。若 D 有新寫入，先合併／保留可證明的最新版本再清除；不得只依 mtime 刪資料。
+本紀錄不代表資料集全域一致性、資料庫語義完整性或產品 QA。D→F 的全樹核對依 Robocopy 的相對路徑、大小、時間與 dry-run 結果；逐檔 SHA-256 覆蓋 2,264 個較新同名檔及具名 D 日誌，並非全樹逐檔雜湊。若日後在 D 重建資料，需重新核對後再清除，不得只依 mtime 刪除。

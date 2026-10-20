@@ -625,6 +625,18 @@ Result e131e4047a502e1038eb92a468851e120d2bc3659a3abd8b76e1ab4f830247e1，helper
 225題材清除正常Main9784→20016通過草稿預設否／確認是、結果清空、原manifest重載、實際960×720與fresh；原Journal／清單／來源保持。Result `a6b8dd4db289314963aba5aadce608f1af61953b913dc7f703225213ada57c6a`，closure `defab3437964fb0c28bd8c34f432fd7d8fc0e28208857c4a5075fb34a13197b0`。226文控12features／36links、errors空；closure `d2ef55b5347becca7c5d00416f1b00ec0e3b069f6c44841140b1c84882de0820`。223b的Workbench85／validator25-0-4及223c的mypy1083不重跑；ui_qt ignore／untyped不證UI強型別。
 
 上述只接受受改Source旅程；固定12、首次設定與同版EXE依下一節實際收據，不能外推真人、完整Native、金融、歷史PIT或原完整Gate。
+## 固定12混合回訪補驗QA235236b
+
+本切片補足原M3／M4缺少的「單一Main跨研究來源後重讀原筆記」證據，沿用研究12與Source `ec4dd639b6be6d8922cc7ff5af3467eb48dab6c3`，未修改產品或重建EXE。QA235只作有界導航／角色及context定位；舊Graphify圖不證目前Source，預算略過的Workspace／notes正文已由Root另讀。原有獨立旅程不等價於本次混合回訪，未重跑均線、刪除或清除旅程。
+
+QA236b固定EXE `51684→13624` 通過：明選既存QA90g一般2330筆記的指定修訂，讀保存報告，經題材CoWoS／2330返回原選取、觀察清單F07／2506原價格來源及返回，再從實際一般查詢入口查2330、重讀同一筆記和保存報告；新程序完整重做唯讀回訪。保存報告仍為2026-10-19，新的報告查詢日為10-20；原文、修訂／parent、建立時間與完整canonical JSON逐字一致，SHA `3ba78f6523d72fa321b82fa7c883f83b81b68dbff4c6b4475a738dca5b482175`。一般報告與獨立保存報告的context分開保留，未手動改寫或正規化測試狀態。兩程序context診斷、network／protected／errors均空，Root查看保存報告實圖。
+
+QA90g原Journal與隔離副本均保持SHA `e0fa9cc727dd0b4ea4d403b39c74cae6ecaa1430d2cb9cde42ce25c72d032ca0`；僅精確允許Main正常產生的兩個一位元組`0`鎖檔。原donor與整個MOVED的bytes／SHA／mtime／ctime inventory、行情SQLite、清單和題材來源前後一致；build clean／commit／EXE／manifest及包內模組origins核對通過。
+
+原236spec誤列不存在的package單檔，未啟動Python，原件保留。236a執行時測試器在整體讀取尚忙便按一般查詢，被原守衛拒絕，故15秒入口等待FAIL；closure `ba66d0f42264391413f58e347fda2a39dcba5a61c64f5ee8436cd63fb1ac7ed5`。236b另存CASE／ENV／spec，按原15秒界線先等現有讀取自然結束，再按同一真UI按鈕；保留原240秒每程序、180秒F07、120秒收藏、720秒driver與所有來源／內容斷言。Main操作parent78.922／fresh78.860秒，結果 `ea11221ec7cd32426b3392f95eb536abe4aec395e443ce5fb9605401c7e44476`，spec `dae24b284b7e7275515e76af3c17e8ccfe9941eec2e78d9682fc154420e7a112`，closure `8d729a18369f6820a22c4bbbf4b55e8208ad9068399cbfc75dcd2ce049e23e4d`。Root串行Job8GiB／12程序／RAM至少8GiB，三PID陣列自然為空、handles閉鎖與mutex釋放後才下組，未終止其他程序。
+
+結果為本混合旅程PASS；原金融／來源用途／歷史PIT／自然成熟、完整Native與人工接受分別保留，未授完整Gate。封存研究12、07／11／139／141c及私人原件不改。本次實圖另確認保存報告已同步載入後badge仍以`info`顯示「讀取中」；原Luna靜態定位至`show_saved_report_snapshot`，下一切片只修該完成狀態文字並驗無producer呼叫，尚未實作。五小時用量98%時先收尾，不因剩餘人工接受停掉此獨立READY。
+
 ## 固定12research07回報交付QA227234
 
 研究12固定Source `ec4dd639b6be6d8922cc7ff5af3467eb48dab6c3`，位於 `output/trial/Baldr-Theme-Research-12`。本輪沿既有五旅程解除research07五項操作阻礙；[啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)與[交付收據](../../output/trial/Baldr-Theme-Research-12/DELIVERY_RECEIPT.json)已封存。EXE `918624dd549daec146c69b8986ce8b887e03bccb135ba9d9de1c8fef0f595dc6`，manifest `08409ef440930d6c395fec97a35e6d3c1084089f134690cd9f18aa911ac20760`，交付SHA `d161a7363131062e37c153d03760b7f323c18c5a7cfbc37c65a05bbc4d1613c1`。07／11／139／141c及私人原件保持，未push。

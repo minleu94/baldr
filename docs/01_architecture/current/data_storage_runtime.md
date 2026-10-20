@@ -14,6 +14,8 @@
 
 `data_module/config.py` 的 `TWStockConfig` 是資料路徑權威。`DATA_ROOT` 預設為 `D:/Min/Python/Project/FA_Data`，可用環境變數覆蓋；`OUTPUT_ROOT` 亦由同一設定管理。主要市場 SQLite 位於 `<DATA_ROOT>/sqlite/twstock.db`。程式不得另造正式資料根目錄或硬編路徑。
 
+2026-10-20 的 D→F 儲存搬遷仍在進行；同名版本差異及 SQLite／writer 狀態尚未完成一致性核驗，因此此處所述 D 根仍是現行設定，不要先切換。已複製範圍、未合併差異與恢復步驟見[儲存搬遷進度](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。
+
 每日市場更新的主要資料流是：
 
 ```text

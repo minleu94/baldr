@@ -1,6 +1,6 @@
 # QA 證據導覽
 
-- [10/18 後繼題材每日研究](BALDR_THEME_DAILY_QA_20261018.md)：M1定向驗證、真實資料工程量測、M2接線及各自未驗界線；143候選與原完整Gate不變。
+- [10/18 後繼題材每日研究](BALDR_THEME_DAILY_QA_20261018.md)：M1定向驗證、真實資料工程量測、M2接線及各自未驗界線；[研究12](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)另核research07五項回報、固定EXE／新程序及交付，原完整Gate不變。
 
 > 本目錄保存日期化驗收、調查與交接證據。它們描述各自的範圍與時間點；目前專案狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，產品操作請看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。主題相同不代表證據可互換，舊報告中的待辦也不自動成為目前待辦。
 

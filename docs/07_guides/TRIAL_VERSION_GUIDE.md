@@ -1,6 +1,12 @@
 # 目前指定的本機日常研究入口
 
-**最新可試用：研究11，固定來源 `b676c7bca0e0`。** [啟動器](../../output/trial/Baldr-Theme-Research-11/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-11/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-11/KNOWN_ISSUES.md)。放妥整包後雙擊啟動器完成首次設定。新增操作：市場探索→產業與題材→明選包內 `research/theme_20261016/manifest.json`→展開產業鏈目錄；每鏈顯示題材／去重成員數，名稱序前三捷徑可定位原題材，再雙擊2330開個股並返回。前三不是績效排名，其他題材沿完整篩選器明選；960×720可垂直捲達。529.296秒／原600首次設定、同版EXE25964→22428、1280與960、新程序及啟動器正反SHA均有[封存](../../output/trial/Baldr-Theme-Research-11/DELIVERY_RECEIPT.json)；[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定11產業鏈目錄交付qa215219a)。未改流程沿10，10/19法人版本仍依賴本機原task位置；缺資料不補造，完整金融、PIT、Native、跨機及真人未接受。10與私人原件保持。
+**最新可試用：研究12，固定來源 `ec4dd639b6be`。** [啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)。先放妥完整資料夾，再雙擊啟動器完成首次設定；保留舊版與私人資料，不自動匯入。
+
+本版回應research07：輸入2330後明按「改用一般個股查詢」，可從一般價庫帶出台積電及價格；題材上方有「清除研究」；價格原來源圖增加金色SMA20／藍色SMA60；原價格筆記可明選「刪除所選筆記」，確認後隱藏整篇及修訂、保留原歷史；研究歷史分開「比較績效／權益」與「對照原保存逐日訊號」。清除及刪除均有草稿／確認守衛，詳包內指南。
+
+首次設定517.579秒／原600、固定EXE的兩組正常操作及新程序、960窄窗與啟動器正反SHA已核，[交付收據](../../output/trial/Baldr-Theme-Research-12/DELIVERY_RECEIPT.json)列明範圍。原研究07三筆run可讀419列逐日訊號，0／1成交不單獨阻擋；績效契約仍另判。保存報告缺同版行情時仍保留缺件，一般行情截至9/23，不借今天資料。未改旅程沿11，完整金融／PIT／Native／真人及自然成熟限制保留；[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)。
+
+**保留候選：研究11，固定來源 `b676c7bca0e0`。** [啟動器](../../output/trial/Baldr-Theme-Research-11/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-11/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-11/KNOWN_ISSUES.md)。放妥整包後雙擊啟動器完成首次設定。新增操作：市場探索→產業與題材→明選包內 `research/theme_20261016/manifest.json`→展開產業鏈目錄；每鏈顯示題材／去重成員數，名稱序前三捷徑可定位原題材，再雙擊2330開個股並返回。前三不是績效排名，其他題材沿完整篩選器明選；960×720可垂直捲達。529.296秒／原600首次設定、同版EXE25964→22428、1280與960、新程序及啟動器正反SHA均有[封存](../../output/trial/Baldr-Theme-Research-11/DELIVERY_RECEIPT.json)；[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定11產業鏈目錄交付qa215219a)。未改流程沿10，10/19法人版本仍依賴本機原task位置；缺資料不補造，完整金融、PIT、Native、跨機及真人未接受。10與私人原件保持。
 
 **保留候選：研究10，固定來源 `6f27d4aebbbf`。** [啟動器](../../output/trial/Baldr-Theme-Research-10/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-10/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-10/KNOWN_ISSUES.md)。先放妥整包，再雙擊啟動器建立自己的新state。本版新增「市場探索 → 產業與題材」明選10/19上櫃法人版本，依[具名步驟與原位置](../../output/tasks/baldr-post-completion-execution/TPEX_THEME_20261019_GUIDE.md)看原股數／覆蓋數、2330個股返回、保存判斷並重開原文。66題材部分覆蓋／24無覆蓋，完整法人榜維持空白；價格、TWD及五日量能缺件保持。首次設定569.641秒／原600，同版EXE33924→40200、啟動器正反SHA與[封存](../../output/trial/Baldr-Theme-Research-10/DELIVERY_RECEIPT.json)通過。未改流程沿09，來源綁本機task原位置，不當可攜來源、完整金融、PIT、Native或真人接受；09與私人原件保持。
 

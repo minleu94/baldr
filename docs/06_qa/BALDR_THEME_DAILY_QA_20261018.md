@@ -611,3 +611,32 @@ Result e131e4047a502e1038eb92a468851e120d2bc3659a3abd8b76e1ab4f830247e1，helper
 223c編譯、刪除及舊notes25項、八套件mypy1083通過；closure 8862e7d7f1b8f4bbf7cd685780ea1cd505df99b9bf27bce82fc87e5091dca065自然完全閉鎖。223b已通過共同防線不重跑；接正常Main225與224。
 
 225正常Main9784→20016以固定11原件的隔離副本通過清除No/Yes、同版重載、960×720按鈕可達及新程序；Root已看清空1280與重載960實圖。Journal/Watchlist未變、network/denied/errors空，MOVED全樹inventory SHA 358dd1c72ca67ddde0db7067d34949633ad4b530bff7c4ac8acb4abb298ab393 保持。closure defab3437964fb0c28bd8c34f432fd7d8fc0e28208857c4a5075fb34a13197b0自然完全閉鎖。載入中與筆記busy拒清由定向UI測試承擔，沒有稱此Main覆蓋。226文件檢查12 features／36 link sources／errors空，closure d2ef55b5347becca7c5d00416f1b00ec0e3b069f6c44841140b1c84882de0820；只證結構與紀錄，非正文／產品接受。
+
+## research07Source正常旅程與原案例核對QA224233
+
+本輪解除五個試用阻礙：一般查股沿用保存context、價格圖缺顯示均線、題材無清除入口、原價格筆記無刪除入口，以及績效／訊號比較難以辨識。Source固定ec4dd639b6be6d8922cc7ff5af3467eb48dab6c3；沒有新增金融資格或改原選股、成本、PIT、SOP與成熟判準。
+
+224f正常Main28624→43448通過：同源F07 2506的120筆收盤價與顯示SMA20／60完整逐值留證；筆記取消及確認刪除、整篇兩版隱藏、Journal原歷史與前綴保留、獨立筆記及未保存草稿保持、重開不復活。明按一般查詢後2330由一般SQLite辨識台積電，120筆行情至9/23；status=partial、freshness=unknown、available_at空維持原義。各自前後完整MOVED、來源、清單守衛通過，network／protected／errors空。Result `5236c7b0d8ca3712cb9739559eea047c816024416e9975eab87ed23cae8cc116`；closure `25d022182819f8311a9a39d346e9cd0462f7dec6ea380bbf43e7ff0517c0a36d` 自然全閉鎖。Root查看實際圖，兩線暖機及缺值留白；圖表浮點只在展示邊界。
+
+224／a遞迴長路徑、b短ENV audit、c NUL裝置、d非法config key、e誤要求行情available等測試器失敗均保留原件。修正只在新spec/helper，不改產品來迎合錯誤期望；233a獨立診斷確認原行情partial／unknown。233診斷錯用test profile而查空庫、233a複本Registry仍綁原絕對位置的不可用結果，均不得誤報為使用者原run不相容。
+
+233b使用原研究07的正常唯讀Registry ports核對三筆實際保存run：419列逐日訊號、3策略、comparison_state=available、reasons空；原檔bytes／SHA／mtime／ctime均未變，未產生WAL／SHM／journal。0／1筆成交不阻擋該訊號對照；不推論使用者一定按錯入口，也不把訊號可讀當績效契約通過。Closure `b4d832df11afaad3d7b4e62ea45b12a7a4488c9894f420a9fd63b91cd6cb1b72`。
+
+225題材清除正常Main9784→20016通過草稿預設否／確認是、結果清空、原manifest重載、實際960×720與fresh；原Journal／清單／來源保持。Result `a6b8dd4db289314963aba5aadce608f1af61953b913dc7f703225213ada57c6a`，closure `defab3437964fb0c28bd8c34f432fd7d8fc0e28208857c4a5075fb34a13197b0`。226文控12features／36links、errors空；closure `d2ef55b5347becca7c5d00416f1b00ec0e3b069f6c44841140b1c84882de0820`。223b的Workbench85／validator25-0-4及223c的mypy1083不重跑；ui_qt ignore／untyped不證UI強型別。
+
+上述只接受受改Source旅程；固定12、首次設定與同版EXE依下一節實際收據，不能外推真人、完整Native、金融、歷史PIT或原完整Gate。
+## 固定12research07回報交付QA227234
+
+研究12固定Source `ec4dd639b6be6d8922cc7ff5af3467eb48dab6c3`，位於 `output/trial/Baldr-Theme-Research-12`。本輪沿既有五旅程解除research07五項操作阻礙；[啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)與[交付收據](../../output/trial/Baldr-Theme-Research-12/DELIVERY_RECEIPT.json)已封存。EXE `918624dd549daec146c69b8986ce8b887e03bccb135ba9d9de1c8fef0f595dc6`，manifest `08409ef440930d6c395fec97a35e6d3c1084089f134690cd9f18aa911ac20760`，交付SHA `d161a7363131062e37c153d03760b7f323c18c5a7cfbc37c65a05bbc4d1613c1`。07／11／139／141c及私人原件保持，未push。
+
+227從clean commit archive建EXE並核37來源pins，result `54f87b3300c7fa429a773143372c8152fe3450c435c1b766b03f7f22b5de7991`；228create-only組包，帶原task具名顯示名冊，無私人state。229移位全新包首次設定517.579秒／原600通過，result `410d10911ac4dfdb3a60da034b157a3e8a569c3644646b500bf7f1acf335087d`。三組自然全閉鎖SHA依序 `f97204df1ddb219ce3c311b48424eb7ffee98e3b521b9268bf944c5694783fc4`、`0b3c65aa4d42fa3813adf89aa6e2fecd0099fdc9151706928703f9a116bb1fb9`、`8d41e52e7bb8df33b2ad7adf5c0879d9678a2df2f8e06d446b3e2a38c6be9cf7`。
+
+230在Main前因測試器引用未封裝QtTest失敗；230a改既有173a的包內Qt事件API，但短ENV仍為q230，被原create-only守衛拒絕。原FAIL／spec／partial保留，closure分別 `268d6061adcfa5bae8fc4b5723cc8e9634b80f9c5ae0015d3b38dc7e7f2dd003`、`3e73f76e739810bc427c257e079fc2117168d74502f616f98b975e0ed4ce41b5`。230b只另存獨立CASE／q230b，保留原240每程序、F07／筆記180、收藏120及一般查詢15秒期限與全部原斷言；產品Source與EXE未改，不重建。
+
+230b固定EXE10788→26748通過：原F07 120筆收盤與顯示SMA20／60逐值、取消／確認整篇及修訂刪除、Journal前綴與原歷史保留、另一篇及未保存草稿保持、重開不復活；一般2330名稱台積電、120筆價格與9/23日期、partial／unknown原義均符合224f。Main內操作計時parent175.157／fresh108.188秒，兩child均在原240秒期限內返回0；build clean／commit／EXE／manifest與包內模組origins一致，沒有拿虛擬PYZ .py路徑作檔案雜湊。完整MOVED前後一致，network／protected／errors空；Root看實圖。Result `baad54a53d9c7bf9fac8cf0ac4d1ae74dd6d0a26a825c8e57e125230fbcf35f7`，closure `73dd0842b9c61c0a140d6d0934bdbb033e1634a804ee6d0e450f902dd6531da1`。
+
+231固定EXE41268→10408通過題材清除草稿No／Yes、清空結果、原manifest重載與實際960×720／fresh；原完整MOVED、Journal、清單及來源前後一致，network／denied／errors空，Root看1280清空與960可達實圖。Result `02d7ed5928cfd399d72a221d02b1eef5c2f68a17f544cfbaa13f5d294cb9a5ea`，closure `67bf763a96a05042127546b4e08a480d122a4b7ce8fa1db881d986d4c0d27785`。
+
+232交叉核Source／固定EXE兩旅程、原120價格與均線向量、同一路徑的parent／fresh及各自清單／Journal守衛，實測啟動器正反SHA退出0／2。自建negative檔在精確MOVED根目錄以xb建立，核owned bytes後移除；MOVED全檔bytes前後一致，不宣稱根目錄時間戳不變。交付含233b原07三案例419列唯讀證據，指南及已知問題只增本輪實際範圍。Closure `1d1cd31aa0134fe6a4ac21edc6690165b3bc70bea76ec739563c975d488fa75b`；原Luna唯讀複核的清理邊界已納入，無pending writes。
+
+所有Python／compile／QA由Root串行，Job8GiB committed／12程序、RAM至少8GiB、kill-on-close／workspace mutex；每組terminal、三PID陣列空、process／Job handles閉及mutex釋放後才下組，無強制清除成功。必要文件出口依task內234原收據；文控不替代產品旅程。本輪未重驗未改流程，不提升正式來源用途、金融績效、歷史PIT、真N、自然成熟、跨機、完整Native或真人接受；原完整計畫各未完成項目保留。

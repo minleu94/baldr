@@ -17,12 +17,15 @@ from app_module.daily_market_technical_universe_price_bookmark_v1 import (
 )
 from app_module.dtos.decision_continuity_dtos import (
     ACTION_NOTE,
+    ACTION_REMOVED,
     DECISION_CONTINUITY_RECORD_TYPE,
     IDENTITY_STATUS_UNKNOWN,
     DecisionContinuityRevision,
     DecisionIdentity,
 )
 from app_module.journal_service import JournalService
+from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.portfolio_store import project_journal_records
 from app_module.daily_market_technical_snapshot_v4_repository import (
     DailyMarketTechnicalSnapshotProofScope,
 )
@@ -220,6 +223,8 @@ class PinnedStockResearchNoteService:
                 raise PinnedStockResearchNoteConflict(
                     "revision_id is ambiguous in journal history"
                 )
+            if not any(item.revision_id == resolved_revision_id for item in note_history):
+                raise PinnedStockResearchNoteNotFound("此篇筆記已刪除，不能重用原修訂ID保存。")
             saved = _decode_note_revision(existing[0])
             requested = PinnedStockResearchNote(
                 revision_id=resolved_revision_id,
@@ -352,6 +357,46 @@ class PinnedStockResearchNoteService:
             if not stock_code or note.source.stock_code == stock_code:
                 matching.append(note)
         return tuple(matching)
+
+    def delete_note_family(
+        self, note: PinnedStockResearchNote, *, removal_revision_id: str,
+    ) -> tuple[str, ...]:
+        """追加一筆刪除事件隱藏整篇修訂鏈；不刪原文字或價格來源。"""
+        if type(note) is not PinnedStockResearchNote:
+            raise PinnedStockResearchNoteError("note must be a pinned stock research note")
+        removal_id = _required_revision_id(removal_revision_id, "removal_revision_id")
+        revisions = self._journal_service.list_decision_revisions()
+        active_notes = _decode_note_history(revisions)
+        originals = [item for item in revisions if item.revision_id == note.revision_id]
+        if len(originals) != 1 or _decode_note_revision(originals[0]) != note:
+            raise PinnedStockResearchNoteConflict("所選筆記身份或原文已改變；未刪除。")
+        entity_id = originals[0].entity_id
+        family = tuple(item.revision_id for item in revisions if item.entity_id == entity_id
+                       and item.action == ACTION_NOTE)
+        prior_removal = [item for item in revisions if item.revision_id == removal_id]
+        if prior_removal:
+            if (any(item.revision_id in family for item in active_notes)
+                or len(prior_removal) != 1 or prior_removal[0].action != ACTION_REMOVED
+                or prior_removal[0].entity_id != entity_id or prior_removal[0].entity_type != "journal"):
+                raise PinnedStockResearchNoteConflict("刪除事件ID已用於其他內容。")
+            return family
+        if not any(item.revision_id == note.revision_id for item in active_notes):
+            raise PinnedStockResearchNoteNotFound("此篇筆記已刪除。")
+        head = next(item for item in reversed(revisions) if item.entity_id == entity_id)
+        try:
+            removed = self._journal_service.delete_journal_entry(
+                entity_id, revision_id=removal_id, continuity_event_id=removal_id,
+                actor="user", reason="使用者刪除價格研究筆記及其修訂",
+                expected_current_revision_id=head.revision_id,
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise PinnedStockResearchNoteConflict(f"刪除時Journal已改變：{exc}") from exc
+        if not removed:
+            raise PinnedStockResearchNoteNotFound("此篇筆記已刪除。")
+        remaining = _decode_note_history(self._journal_service.list_decision_revisions())
+        if any(item.revision_id in family for item in remaining):
+            raise PinnedStockResearchNoteConflict("Journal刪除回讀仍含原筆記；未確認完成。")
+        return family
 
     def verify_source(
         self,
@@ -506,11 +551,18 @@ def _decode_note_history(
         revision_counts[revision.revision_id] = (
             revision_counts.get(revision.revision_id, 0) + 1
         )
+    note_entities = {
+        revision.entity_id for revision in revisions
+        if isinstance(revision.payload, Mapping)
+        and revision.payload.get("source_type") == PINNED_STOCK_RESEARCH_NOTE_SOURCE_TYPE
+        and revision.action == ACTION_NOTE
+    }
     matching = [
         revision for revision in revisions
-        if isinstance(revision.payload, Mapping)
+        if (isinstance(revision.payload, Mapping)
         and revision.payload.get("source_type")
-        == PINNED_STOCK_RESEARCH_NOTE_SOURCE_TYPE
+        == PINNED_STOCK_RESEARCH_NOTE_SOURCE_TYPE)
+        or (revision.entity_id in note_entities and revision.action in {ACTION_NOTE, ACTION_REMOVED})
     ]
     by_id: dict[str, tuple[DecisionContinuityRevision, PinnedStockResearchNote]] = {}
     for revision in matching:
@@ -518,6 +570,8 @@ def _decode_note_history(
             raise PinnedStockResearchNoteConflict(
                 "revision_id is ambiguous in journal history"
             )
+        if revision.action == ACTION_REMOVED:
+            continue
         note = _decode_note_revision(revision)
         if revision.revision_id in by_id:
             raise PinnedStockResearchNoteConflict(
@@ -572,7 +626,33 @@ def _decode_note_history(
                 break
             current_id = parent_id
 
-    return tuple(note for _revision, note in by_id.values())
+    removed_entities: set[str] = set()
+    heads: dict[str, DecisionContinuityRevision] = {}
+    family_records: dict[str, list[dict[str, Any]]] = {}
+    for revision in matching:
+        if revision.action == ACTION_NOTE:
+            if revision.entity_id in removed_entities:
+                raise PinnedStockResearchNoteConflict("已刪除的筆記鏈不可追加修訂。")
+            heads[revision.entity_id] = revision
+            raw = revision.to_dict()
+            # DTO envelope版本與Journal欄位版本不同；原writer明確採payload的Journal schema。
+            raw["schema_version"] = revision.payload.get("schema_version", "4.1")
+            family_records.setdefault(revision.entity_id, []).append(raw)
+            continue
+        current_head = heads.get(revision.entity_id)
+        if (
+            current_head is None or revision.entity_id in removed_entities
+            or revision.entity_type != "journal" or revision.revision_of != current_head.revision_id
+            or revision.continuity_event_id != revision.revision_id
+            or revision.decision_identity != current_head.decision_identity
+        ):
+            raise PinnedStockResearchNoteConflict("價格筆記刪除事件與原修訂不一致。")
+        # 使用與原Journal writer相同的公開投影，保留完整身份、原文與原版本欄位。
+        projected = project_journal_records(family_records[revision.entity_id])
+        if len(projected) != 1 or revision.to_dict()["payload"] != JournalEntryDTO.from_dict(projected[0]).to_dict():
+            raise PinnedStockResearchNoteConflict("價格筆記刪除內容與原修訂不一致。")
+        removed_entities.add(revision.entity_id)
+    return tuple(note for revision, note in by_id.values() if revision.entity_id not in removed_entities)
 
 
 def _decode_note_revision(

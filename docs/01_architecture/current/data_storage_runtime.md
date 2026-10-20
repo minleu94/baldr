@@ -1,5 +1,9 @@
 # 資料、保存與 Runtime
 
+## 原價格筆記邏輯刪除（research07）
+
+刪除不移除或覆寫Journal原件；只追加一筆原journal removed事件，包含完整原投影與current revision parent。decoder先按筆記entity收齊note／removed，再驗整條來源／修訂／tombstone，即使來源標記損壞也拒絕忽略該刪除。Journal writer payload schema與continuity DTO envelope各按原版本處理，完整JSON payload逐欄核對；不省略tags等欄位。已刪家族不列出、不可用舊revision ID復活；沒有自動實體清理或恢復UI。
+
 本冊描述來源取得、儲存、研究快照與排程觀測的 current 邊界。一般操作看 [Application Manual](../../07_guides/APPLICATION_MANUAL.md) 及對應現行 Runbook；目前狀態與資料資格看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md) 與具名 QA 收據。舊 [Application Manual Supplements](../../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md) 僅供歷史錨點追溯，不是現行操作或授權依據。
 
 ## 資料路徑與來源

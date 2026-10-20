@@ -104,7 +104,8 @@
         "tests/test_theme_research_notes.py",
         "tests/test_ui_qt_theme_research_notes_widget.py",
         "tests/test_theme_stock_context_guard.py",
-        "tests/test_ui_qt_industry_theme_stock_lookup.py"
+        "tests/test_ui_qt_industry_theme_stock_lookup.py",
+        "tests/test_ui_qt_theme_research_clear.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -162,7 +163,8 @@
         "tests/test_ui_qt_theme_research_notes_widget.py",
         "tests/test_theme_stock_context_guard.py",
         "tests/test_ui_qt_industry_theme_stock_lookup.py",
-        "tests/test_ui_qt_theme_chain_directory.py"
+        "tests/test_ui_qt_theme_chain_directory.py",
+        "tests/test_ui_qt_theme_research_clear.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -576,7 +578,9 @@
         "tests/test_research_output_copy.py",
         "tests/test_research_output_restore.py",
         "tests/test_saved_strategy_signal_comparison.py",
-        "tests/test_ui_qt_saved_strategy_signal_comparison.py"
+        "tests/test_ui_qt_saved_strategy_signal_comparison.py",
+        "tests/test_saved_signal_zero_trade_journey.py",
+        "tests/test_ui_qt_registry_comparison_intent.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -717,7 +721,9 @@
         "app_module/saved_strategy_signal_comparison.py",
         "ui_qt/widgets/saved_strategy_signal_compare_widget.py",
         "tests/test_saved_strategy_signal_comparison.py",
-        "tests/test_ui_qt_saved_strategy_signal_comparison.py"
+        "tests/test_ui_qt_saved_strategy_signal_comparison.py",
+        "tests/test_saved_signal_zero_trade_journey.py",
+        "tests/test_ui_qt_registry_comparison_intent.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",
@@ -844,7 +850,8 @@
         "app_module/stock_research_report_notes.py",
         "ui_qt/views/stock_research_workspace.py",
         "ui_qt/widgets/stock_research_report_notes_widget.py",
-        "ui_qt/widgets/pinned_stock_research_notes_widget.py"
+        "ui_qt/widgets/pinned_stock_research_notes_widget.py",
+        "app_module/saved_price_moving_average_chart.py"
       ],
       "tests": [
         "tests/test_stock_research_report_service.py",
@@ -878,7 +885,11 @@
         "tests/test_ui_qt_stock_research_report_notes_widget.py",
         "tests/test_ui_qt_stock_research_report_snapshot_navigation.py",
         "tests/test_ui_qt_pinned_stock_research_notes_widget.py",
-        "tests/test_ui_qt_price_research_notes_navigation.py"
+        "tests/test_ui_qt_price_research_notes_navigation.py",
+        "tests/test_saved_price_moving_average_chart.py",
+        "tests/test_pinned_note_deletion.py",
+        "tests/test_ui_qt_general_stock_lookup_reset.py",
+        "tests/test_ui_qt_pinned_note_deletion.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md",
@@ -945,7 +956,12 @@
         "tests/test_ui_qt_stock_research_report_notes_widget.py",
         "tests/test_ui_qt_stock_research_report_snapshot_navigation.py",
         "tests/test_ui_qt_pinned_stock_research_notes_widget.py",
-        "tests/test_ui_qt_price_research_notes_navigation.py"
+        "tests/test_ui_qt_price_research_notes_navigation.py",
+        "app_module/saved_price_moving_average_chart.py",
+        "tests/test_saved_price_moving_average_chart.py",
+        "tests/test_pinned_note_deletion.py",
+        "tests/test_ui_qt_general_stock_lookup_reset.py",
+        "tests/test_ui_qt_pinned_note_deletion.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

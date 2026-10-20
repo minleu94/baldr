@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -92,6 +94,15 @@ class IndustryThemeMapView(QWidget):
         self.open_snapshot_button.setAccessibleName("選取本機已保存題材研究版本")
         self.open_snapshot_button.clicked.connect(self._choose_snapshot)
         header.addWidget(self.open_snapshot_button)
+        self.clear_research_button = QPushButton("清除研究")
+        self.clear_research_button.setObjectName("industryThemeClearResearchButton")
+        self.clear_research_button.setAccessibleName("清除目前題材研究")
+        self.clear_research_button.setToolTip(
+            "只清除此頁目前顯示版本並停止讀取；未保存草稿會在確認後清除，"
+            "已保存筆記與來源檔案不會刪除。"
+        )
+        self.clear_research_button.clicked.connect(self.clear_research)
+        header.addWidget(self.clear_research_button)
         page_layout.addLayout(header)
 
         self.status_label = QLabel("尚未載入題材研究版本。")
@@ -460,6 +471,7 @@ class IndustryThemeMapView(QWidget):
         worker.native_thread_finished.connect(
             self._finish_snapshot_load, Qt.ConnectionType.QueuedConnection
         )
+        self._update_controls()
         try:
             worker.start()
         except Exception as exc:
@@ -508,6 +520,98 @@ class IndustryThemeMapView(QWidget):
 
     def is_busy(self) -> bool:
         return self._busy
+
+    def _notes_editor_context(self) -> tuple[QWidget | None, QPlainTextEdit | None]:
+        editor = self.findChild(QPlainTextEdit, "themeResearchNoteEditor")
+        if editor is None:
+            return None, None
+        candidate: QWidget | None = editor
+        while candidate is not None and candidate is not self:
+            if callable(getattr(candidate, "is_busy", None)):
+                return candidate, editor
+            candidate = candidate.parentWidget()
+        return None, editor
+
+    def clear_research(self) -> bool:
+        """清除目前呈現與未保存草稿；不刪除來源或已保存筆記。"""
+
+        if self._closed:
+            return False
+        has_current_load = (
+            self._worker is not None
+            and self._worker_generation == self._generation
+        )
+        if self._snapshot is None and not has_current_load:
+            return False
+
+        notes_widget, notes_editor = self._notes_editor_context()
+        notes_is_busy = (
+            getattr(notes_widget, "is_busy", None) if notes_widget is not None else None
+        )
+        if callable(notes_is_busy) and notes_is_busy():
+            self.status_label.setText(
+                "題材筆記工作進行中；請等待完成後再清除研究。"
+            )
+            return False
+
+        has_unsaved_draft = (
+            notes_editor is not None and bool(notes_editor.toPlainText())
+        )
+        original_generation = self._generation
+        original_snapshot = self._snapshot
+        original_worker = self._worker
+        if has_unsaved_draft:
+            answer = QMessageBox.question(
+                self,
+                "清除研究",
+                "只清除此頁目前顯示的題材研究。尚未保存的研究草稿會一併清除；"
+                "已保存筆記與來源檔案不會刪除。要繼續嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.status_label.setText(
+                    "已取消清除；目前研究版本與未保存草稿仍保留。"
+                )
+                return False
+
+        if (self._closed or self._generation != original_generation
+            or self._snapshot is not original_snapshot or self._worker is not original_worker
+            or callable(notes_is_busy) and notes_is_busy()):
+            self.status_label.setText("研究或筆記工作已改變；未執行先前的清除確認。")
+            return False
+
+        worker = self._worker
+        self._generation += 1
+        self._snapshot = None
+        self._result = None
+        self._error = ""
+        self._cancelled = False
+        self._clear_snapshot_view()
+        ranking_blockers = [
+            QSignalBlocker(self.ranking_type_combo),
+            QSignalBlocker(self.sorting_direction_combo),
+        ]
+        self.ranking_type_combo.setCurrentIndex(0)
+        self.sorting_direction_combo.setCurrentIndex(
+            self.sorting_direction_combo.findData(False)
+        )
+        del ranking_blockers
+        self.snapshotChanged.emit(None)
+        if notes_editor is not None and notes_editor.toPlainText():
+            notes_editor.clear()
+
+        if worker is not None:
+            worker.cancel(cooperative=True, wait=False)
+            self._busy = True
+            self.status_label.setText(
+                "研究已清除；正在合作式停止背景讀取，完成前不能載入其他版本。"
+            )
+        else:
+            self._busy = False
+            self.status_label.setText("研究版本已清除。")
+        self._update_controls()
+        return True
 
     def shutdown(self) -> None:
         """失效所有回呼並非阻塞地要求背景讀取取消。"""
@@ -569,6 +673,8 @@ class IndustryThemeMapView(QWidget):
             if generation != self._generation:
                 if self._snapshot is not None:
                     self.status_label.setText("已載入所選本機研究版本。")
+                elif not self._closed:
+                    self.status_label.setText("研究版本已清除；背景讀取已停止。")
                 return
             if cancelled:
                 self._snapshot = None
@@ -1459,6 +1565,14 @@ class IndustryThemeMapView(QWidget):
         available = self._snapshot is not None and not self._closed
         lookup_available = available and not self._busy
         self.open_snapshot_button.setEnabled(not self._busy and not self._closed)
+        has_current_load = (
+            self._worker is not None
+            and self._worker_generation == self._generation
+        )
+        self.clear_research_button.setEnabled(
+            not self._closed and (self._snapshot is not None or has_current_load)
+        )
+        self.source_details_button.setEnabled(available and not self._busy)
         self.ranking_type_combo.setEnabled(available and not self._busy)
         self.sorting_direction_combo.setEnabled(available and not self._busy)
         self.ranking_table.setEnabled(available and not self._busy)

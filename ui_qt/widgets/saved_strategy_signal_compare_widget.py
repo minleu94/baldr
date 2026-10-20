@@ -29,11 +29,19 @@ class SavedStrategySignalCompareWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
-        self.compare_button = QPushButton("逐日策略訊號對照")
+        self.compare_button = QPushButton("對照原保存逐日訊號")
+        self.compare_button.setToolTip(
+            "只讀各 run 原保存的逐日進場意圖，不比較成交、權益或績效，也不按成交筆數推算。"
+            "需選 2 至 5 筆不同的支援單股策略版本；每筆都要保存並綁定原規則與逐日訊號，"
+            "且股票、日期窗與價量內容完全相同。缺件或不一致時會拒絕；成功對照也不代表成交、績效或歷史 PIT 資格。"
+        )
         self.compare_button.setEnabled(False)
         self.compare_button.clicked.connect(self.compare)
         row.addWidget(self.compare_button)
-        self.status = QLabel("選2至5筆不同單股策略；只讀原保存進場意圖，不作績效排名。")
+        self.status = QLabel(
+            "選 2 至 5 筆不同的已保存單股策略；只對照原保存進場意圖，不比較成交、權益或績效。"
+            "須為支援版本，且原規則／逐日訊號已綁定相同股票、日期與價量內容；缺件或不一致會拒絕。"
+        )
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.PlainText)
         row.addWidget(self.status, 1)
@@ -98,7 +106,10 @@ class SavedStrategySignalCompareWidget(QWidget):
         self.table.setRowCount(0)
         self.table.hide()
         self.result_controls.hide()
-        self.status.setText("已選" + str(len(runs)) + "筆；選2至5筆不同單股策略後按對照。訊號不是成交。")
+        self.status.setText(
+            "已選 " + str(len(runs)) + " 筆；選 2 至 5 筆不同的支援單股策略後，"
+            "可檢視原保存訊號。這不比較成交或績效，且仍會核對原規則、股票、日期與價量綁定。"
+        )
         self._update_button()
 
     def _update_button(self) -> None:

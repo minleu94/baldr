@@ -1,5 +1,9 @@
 # 台股 L2 產業鏈與題材萃取、對應與分配設計文件 (`INDUSTRY_THEME_MAP_DESIGN`)
 
+## research07一鍵清除增量
+
+沿既有題材頁新增「清除研究」，清空當前snapshot與衍生呈現；非保存動作。筆記忙碌時拒清，未保存草稿以預設No確認；確認前後核同一generation／snapshot／worker，避免modal期間換版後清錯。合作取消後等待原worker終結才允許新載入；晚到結果不能還原已清版本。保存筆記與來源原件不受影響，原換版本／失敗清舊結果規則保持。
+
 - **狀態**：原獨立萃取模組維持；後繼每日聚合已有定向驗證，市場探索接線開發中，未接選股／回測。現況與限制見[5.3](#53-後繼每日研究實作2026-10-18)。
 - **核心程式位置**：[`decision_module/industry_theme_map.py`](../../decision_module/industry_theme_map.py)
 - **對應單元測試**：[`tests/test_industry_theme_map.py`](../../tests/test_industry_theme_map.py)

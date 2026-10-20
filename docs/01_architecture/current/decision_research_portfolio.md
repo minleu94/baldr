@@ -1,5 +1,11 @@
 # 決策、研究與 Portfolio
 
+## research07顯示與保存增量
+
+saved_price_moving_average_chart只投影最多120筆已核保存價格，各日以原收盤前綴20／60筆及獨立Decimal context計算顯示用SMA；缺收盤重暖機，hash綁所用原列。結果只進原來源圖，不回流策略／篩選或填補原保存指標。績效比較與逐日訊號對照沿原分離reader，UI分別命名並展示原拒絕原因，不以完成交易筆數新增訊號門檻。
+
+PinnedStockResearchNotesService.delete_note_family精確核明選note與整體修訂鏈，以Journal現有ACTION_REMOVED追加單一整篇tombstone；current head CAS避免併發覆蓋，重試必須核原事件與有效刪除。widget送出不可取消寫入、以generation隔離晚到結果，回執後只重讀Journal清單；未保存草稿與其他家族保持。
+
 本冊涵蓋目前的 Recommendation、回測、研究證據與 Portfolio 責任。產品能力與 Advice 契約以 [Product Roadmap](../../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 為準；工程 Gate 及驗收標準以 [6M Roadmap](../../00_core/ROADMAP_6M_ENGINEERING.md) 為準；現況只看 [Snapshot](../../00_core/PROJECT_SNAPSHOT.md)。
 
 ## 模組責任

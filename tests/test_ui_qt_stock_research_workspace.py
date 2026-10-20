@@ -80,6 +80,7 @@ def test_embedded_shutdown_cancels_report_and_journey_even_when_report_busy():
     workspace = SimpleNamespace(
         report_view=SimpleNamespace(request_close=lambda: calls.append("report") or False),
         journey_view=SimpleNamespace(request_close=lambda: calls.append("journey") or True),
+        report_notes_widget=None,
     )
     assert StockResearchWorkspace.request_close(workspace) is False
     assert calls == ["report", "journey"]

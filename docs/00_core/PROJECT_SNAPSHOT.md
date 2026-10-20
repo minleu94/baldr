@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**research07人類回報修正進行中。** 一般查詢明確離開保存context、題材清除、同版顯示用SMA20／60、筆記家族邏輯刪除與比較入口分流已形成Source候選。223真1／0／0成交逐日訊號對照與受改測試、223b共同防線已有證據，mypy修正與正常Main／固定12尚待；固定11保持可試，勿將WIP當已交付。見[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#research07回報修正qa221起)。
+
 > 更新：2026-10-19（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
 
 ## 現在有哪些入口

@@ -18,6 +18,7 @@ from app_module.daily_market_technical_universe_price_query_v1 import (
 )
 from app_module.stock_research_report_dtos import StockPricePointDTO
 from ui_qt.views.stock_research_report_view import StockPriceChartWidget
+from app_module.saved_price_moving_average_chart import project_saved_price_moving_average_lines
 
 
 _RULE_LABELS: dict[str, str] = {
@@ -200,9 +201,11 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         )
         self.conditions.setText("原查詢條件\n" + _query_conditions(origin_selection))
         self.price_chart.set_points(points)
+        self.price_chart.set_technical_lines(project_saved_price_moving_average_lines(points))
         self.price_scope.setText(
             f"原來源保存 {len(snapshot.rows)} 列價量；圖表可定位 {len(points)} 個日期。"
-            "均線等訊號見「原選股規則」；未保存的歷史指標不繪製。"
+            "金色SMA20／藍色SMA60由同版保存收盤價依序計算，僅作圖表顯示；"
+            "未滿20／60筆或缺值後重新暖機處斷線，不視為原保存指標。選股訊號仍見「原選股規則」。"
             "缺值維持未知，可得時間未知，不作歷史可交易證據。"
         )
         self.price_table.setRowCount(len(snapshot.rows))

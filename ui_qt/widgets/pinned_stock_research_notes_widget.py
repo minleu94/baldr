@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -32,6 +33,7 @@ from ui_qt.workers.task_worker import TaskWorker
 
 
 _MAX_NOTE_LENGTH = 8000
+_WRITE_JOB_KINDS = frozenset({"save", "delete"})
 
 
 class _PinnedStockResearchNoteSaveWorker(TaskWorker):
@@ -85,6 +87,7 @@ class PinnedStockResearchNotesWidget(QWidget):
         self.read_button.clicked.connect(self._read_selected)
         self.open_source_button.clicked.connect(self._open_selected_source)
         self.revise_button.clicked.connect(self._prepare_revision)
+        self.delete_button.clicked.connect(self._delete_selected_note)
         self.save_button.clicked.connect(self._save_current_draft)
         self._update_controls()
 
@@ -122,9 +125,15 @@ class PinnedStockResearchNotesWidget(QWidget):
         self.open_source_button.setObjectName("pinnedStockResearchNoteOpenSource")
         self.revise_button = QPushButton("以此筆記另存修訂")
         self.revise_button.setObjectName("pinnedStockResearchNoteRevise")
+        self.delete_button = QPushButton("刪除所選筆記")
+        self.delete_button.setObjectName("pinnedStockResearchNoteDelete")
+        self.delete_button.setToolTip(
+            "邏輯刪除所選筆記及全部修訂；Journal 原始歷史、原文與價格來源保留，其他筆記不受影響。"
+        )
         action_row.addWidget(self.read_button)
         action_row.addWidget(self.open_source_button)
         action_row.addWidget(self.revise_button)
+        action_row.addWidget(self.delete_button)
         layout.addLayout(action_row)
 
         saved_label = QLabel("保存原文（唯讀）")
@@ -207,7 +216,7 @@ class PinnedStockResearchNotesWidget(QWidget):
             self._pending_load = False
             if (
                 self._active_worker is not None
-                and (self._active_job or {}).get("kind") != "save"
+                and (self._active_job or {}).get("kind") not in _WRITE_JOB_KINDS
             ):
                 self._active_worker.cancel(cooperative=True, wait=False)
             self._notes_by_id.clear()
@@ -219,7 +228,7 @@ class PinnedStockResearchNotesWidget(QWidget):
         self._pending_load = True
         if self._active_worker is not None:
             job = self._active_job or {}
-            if job.get("kind") != "save":
+            if job.get("kind") not in _WRITE_JOB_KINDS:
                 self._active_worker.cancel(cooperative=True, wait=False)
             self._update_controls()
             return
@@ -236,7 +245,7 @@ class PinnedStockResearchNotesWidget(QWidget):
     def has_pending_write(self) -> bool:
         return bool(
             self._active_job is not None
-            and self._active_job.get("kind") == "save"
+            and self._active_job.get("kind") in _WRITE_JOB_KINDS
             and self._active_worker is not None
         )
 
@@ -250,9 +259,11 @@ class PinnedStockResearchNotesWidget(QWidget):
         self._pending_load = False
         worker = self._active_worker
         job = self._active_job or {}
-        if worker is not None and job.get("kind") == "save":
+        if worker is not None and job.get("kind") in _WRITE_JOB_KINDS:
+            action = "刪除" if job.get("kind") == "delete" else "保存"
             self._set_status(
-                "筆記保存已送出且不能安全中止；關閉後結果可能未知，重新開啟後請明選股票並刷新清單核對。"
+                f"筆記{action}已送出且不能安全中止；關閉後結果可能未知，"
+                "重新開啟後請明選股票並刷新清單核對。"
             )
         elif worker is not None:
             worker.cancel(cooperative=True, wait=False)
@@ -601,6 +612,172 @@ class PinnedStockResearchNotesWidget(QWidget):
         self._set_status("正在把原文追加到明選 F07 價格版本的個人筆記…")
         self._start_worker("save", save_note, job=job)
 
+    def _delete_selected_note(self) -> None:
+        if self.is_busy() or self._shutdown:
+            return
+        revision_id = self._selected_revision_id()
+        note = self._notes_by_id.get(revision_id or "")
+        if (
+            not isinstance(note, PinnedStockResearchNote)
+            or revision_id is None
+            or note.revision_id != revision_id
+            or note.source.stock_code != self._stock_code
+        ):
+            self._set_status("請先明選一篇目前股票的已保存筆記；未刪除任何內容。")
+            return
+
+        generation = self._generation
+        answer = QMessageBox.question(
+            self,
+            "刪除個股判斷筆記",
+            f"要邏輯刪除所選筆記 {revision_id} 及它的全部修訂嗎？\n\n"
+            "Journal 會保留原始歷史與原文；不會刪除價格來源，也不影響其他筆記。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if (
+            self._shutdown
+            or self.is_busy()
+            or self._generation != generation
+            or self._selected_revision_id() != revision_id
+            or self._notes_by_id.get(revision_id) != note
+            or self._stock_code != note.source.stock_code
+        ):
+            self._set_status("明選筆記或股票已改變；未送出刪除。")
+            return
+
+        removal_revision_id = str(uuid4())
+        job = {
+            "kind": "delete",
+            "generation": generation,
+            "stock_code": self._stock_code,
+            "revision_id": revision_id,
+            "note": note,
+            "removal_revision_id": removal_revision_id,
+        }
+
+        def delete_note():
+            return self._service.delete_note_family(
+                note,
+                removal_revision_id=removal_revision_id,
+            )
+
+        self._set_status("正在以明選筆記身份向 Journal 送出家族刪除…")
+        self._start_worker("delete", delete_note, job=job)
+
+    def _apply_delete_result(self, value: Any, job: dict[str, Any]) -> None:
+        note = job.get("note")
+        if type(note) is not PinnedStockResearchNote:
+            self._set_status("刪除回執缺少明選筆記身份；畫面清單與草稿未變。")
+            return
+        if (
+            type(value) is not tuple
+            or any(not isinstance(item, str) or not item for item in value)
+            or len(set(value)) != len(value)
+            or note.revision_id not in value
+        ):
+            self._set_status(
+                "Journal 刪除回執無法核對所選筆記；畫面清單與草稿保留，請刷新清單確認。"
+            )
+            return
+
+        deleted_ids = frozenset(value)
+        job["deleted_revision_ids"] = value
+        draft_detached = self._remove_deleted_revision_rows(deleted_ids)
+        success_status = (
+            f"已確認邏輯刪除所選筆記家族的 {len(deleted_ids)} 個修訂；"
+            "Journal 原始歷史、原文與價格來源保留，其他筆記不受影響。"
+        )
+        if draft_detached:
+            success_status += " 未保存草稿已保留並解除被刪修訂父版，後續保存會建立新筆記。"
+        self._post_refresh_status = success_status
+        self._set_status("刪除回執已確認；正在重新讀取 Journal 筆記清單，不重讀價格來源。")
+        self._start_post_delete_list_refresh(job)
+
+    def _remove_deleted_revision_rows(self, deleted_ids: frozenset[str]) -> bool:
+        selected_id = self._selected_revision_id()
+        self._notes_by_id = {
+            revision_id: note
+            for revision_id, note in self._notes_by_id.items()
+            if revision_id not in deleted_ids
+        }
+        self._note_locators = {
+            revision_id: locator
+            for revision_id, locator in self._note_locators.items()
+            if revision_id not in deleted_ids
+        }
+        self._updating_revisions = True
+        for index in range(self.revisions.count() - 1, -1, -1):
+            if self.revisions.itemData(index, Qt.ItemDataRole.UserRole) in deleted_ids:
+                self.revisions.removeItem(index)
+        if selected_id in deleted_ids:
+            self.revisions.setCurrentIndex(-1)
+        self._updating_revisions = False
+
+        if (
+            self._loaded_note is not None
+            and self._loaded_note.revision_id in deleted_ids
+        ):
+            self._loaded_note = None
+            self._loaded_source_state = None
+            self._loaded_source_error = ""
+            self.saved_text.clear()
+            if self._verified_source is not None:
+                self._render_verified_source(self._verified_source, self._source_locator)
+            else:
+                self._render_unverified_source(self._source_error)
+        draft_detached = self._draft_revision_of in deleted_ids
+        if draft_detached:
+            self._draft_revision_of = None
+        self._update_controls()
+        return draft_detached
+
+    def _start_post_delete_list_refresh(self, delete_job: dict[str, Any]) -> None:
+        stock_code = str(delete_job.get("stock_code") or "")
+        generation = self._generation
+        source = self._verified_source
+        source_error = self._source_error
+        source_locator = self._source_locator
+        bookmark_identity = self._bookmark_identity
+        if not stock_code:
+            self._post_refresh_status = None
+            self._set_status("刪除收據已確認；目前沒有股票可刷新 Journal 清單。")
+            return
+
+        def list_notes(cancel_callback=None):
+            if cancel_callback is not None and cancel_callback():
+                raise InterruptedError("刪除後的 Journal 清單讀取已取消")
+            notes = self._service.list_notes(stock_code=stock_code)
+            if cancel_callback is not None and cancel_callback():
+                raise InterruptedError("刪除後的 Journal 清單讀取已取消")
+            locators = {
+                note.revision_id: _source_locator(note.source)
+                for note in notes
+                if isinstance(note, PinnedStockResearchNote)
+            }
+            return {
+                "source": source,
+                "source_error": source_error,
+                "source_locator": source_locator,
+                "notes": notes,
+                "locators": locators,
+            }
+
+        self._start_worker(
+            "list",
+            list_notes,
+            job={
+                "kind": "list",
+                "generation": generation,
+                "stock_code": stock_code,
+                "bookmark_identity": bookmark_identity,
+                "after_delete": True,
+                "deleted_revision_ids": delete_job.get("deleted_revision_ids", ()),
+            },
+        )
+
     def _start_worker(
         self,
         kind: str,
@@ -610,7 +787,11 @@ class PinnedStockResearchNotesWidget(QWidget):
     ) -> None:
         if self._shutdown or self.is_busy():
             return
-        worker_type = _PinnedStockResearchNoteSaveWorker if kind == "save" else TaskWorker
+        worker_type = (
+            _PinnedStockResearchNoteSaveWorker
+            if kind in _WRITE_JOB_KINDS
+            else TaskWorker
+        )
         worker = worker_type(function, *args)
         self._active_worker = worker
         self._active_job = job
@@ -636,6 +817,16 @@ class PinnedStockResearchNotesWidget(QWidget):
                 self._set_status(
                     f"原文仍可讀；原價格版本重新核對未能啟動：{detail}。"
                     "不能開啟來源或另存修訂。"
+                )
+            elif kind == "delete":
+                self._set_status(
+                    f"筆記刪除未能啟動：{detail}；原清單與草稿保留。"
+                )
+            elif kind == "list" and job.get("after_delete"):
+                self._post_refresh_status = None
+                self._set_status(
+                    "刪除回執已確認；Journal 清單刷新未能啟動："
+                    f"{detail}。畫面已依回執隱藏被刪家族，其他筆記與草稿保留。"
                 )
             else:
                 self._set_status(
@@ -683,8 +874,15 @@ class PinnedStockResearchNotesWidget(QWidget):
         if outcome_kind == "result":
             self._apply_worker_result(kind, value, job)
         elif outcome_kind == "error":
-            if kind == "save":
-                self._set_status(f"筆記保存失敗：{_error_text(value)}；原筆記未由畫面覆寫。")
+            if kind == "delete":
+                if job.get("generation") == self._generation and not self._shutdown:
+                    self._set_status(
+                        f"筆記刪除失敗：{_error_text(value)}；原清單與草稿保留。"
+                    )
+            elif kind == "save":
+                self._set_status(
+                    f"筆記保存失敗：{_error_text(value)}；原筆記未由畫面覆寫。"
+                )
             elif kind == "open" and job.get("generation") == self._generation:
                 self._loaded_source_state = None
                 self._loaded_source_error = _error_text(value)
@@ -694,9 +892,23 @@ class PinnedStockResearchNotesWidget(QWidget):
                 )
                 self._update_controls()
             elif job.get("generation") == self._generation:
-                self._set_status(f"筆記讀取未完成：{_error_text(value)}")
+                if kind == "list" and job.get("after_delete"):
+                    self._post_refresh_status = None
+                    self._set_status(
+                        "刪除回執已確認；Journal 清單刷新失敗："
+                        f"{_error_text(value)}。畫面已依回執隱藏被刪家族，其他筆記與草稿保留。"
+                    )
+                else:
+                    self._set_status(f"筆記讀取未完成：{_error_text(value)}")
         elif outcome_kind == "cancelled" and job.get("generation") == self._generation:
-            self._set_status("背景讀取已取消；沒有執行筆記寫入。")
+            if kind == "list" and job.get("after_delete"):
+                self._post_refresh_status = None
+                self._set_status(
+                    "刪除回執已確認；Journal 清單刷新已取消。"
+                    "畫面已依回執隱藏被刪家族，其他筆記與草稿保留。"
+                )
+            else:
+                self._set_status("背景讀取已取消；沒有執行筆記寫入。")
 
         if self._pending_load and not self._shutdown:
             self._start_current_load()
@@ -705,7 +917,34 @@ class PinnedStockResearchNotesWidget(QWidget):
         if kind != "save" and job.get("generation") != self._generation:
             return
         if kind == "list":
+            if job.get("after_delete"):
+                if (
+                    not isinstance(value, dict)
+                    or not isinstance(value.get("notes"), tuple)
+                    or any(
+                        not isinstance(note, PinnedStockResearchNote)
+                        for note in value.get("notes", ())
+                    )
+                    or any(
+                        note.revision_id in job.get("deleted_revision_ids", ())
+                        for note in value.get("notes", ())
+                    )
+                    or any(
+                        note.revision_id in self._notes_by_id
+                        and self._notes_by_id[note.revision_id] != note
+                        for note in value.get("notes", ())
+                    )
+                ):
+                    self._post_refresh_status = None
+                    self._set_status(
+                        "刪除回執已確認；Journal 清單回讀格式或身份不符。"
+                        "畫面已依回執隱藏被刪家族，其他筆記與草稿保留。"
+                    )
+                    return
             self._apply_note_list(value, job)
+            return
+        if kind == "delete":
+            self._apply_delete_result(value, job)
             return
         if kind in {"read", "open"}:
             if (
@@ -1083,8 +1322,11 @@ class PinnedStockResearchNotesWidget(QWidget):
             and bool(editor_text.strip())
             and len(editor_text) <= _MAX_NOTE_LENGTH
         )
-        saving = bool(self._active_job and self._active_job.get("kind") == "save")
-        self.editor.setReadOnly(self._shutdown or saving)
+        writing = bool(
+            self._active_job
+            and self._active_job.get("kind") in _WRITE_JOB_KINDS
+        )
+        self.editor.setReadOnly(self._shutdown or writing)
         self.save_button.setEnabled(not self._shutdown and not busy and draft_is_saveable)
         self.save_button.setText("保存修訂" if self._draft_revision_of else "保存新筆記")
         self.read_button.setEnabled(
@@ -1112,6 +1354,9 @@ class PinnedStockResearchNotesWidget(QWidget):
             and not editor_text.strip()
         )
         self.revise_button.setEnabled(can_revise)
+        self.delete_button.setEnabled(
+            not self._shutdown and not busy and selected_note is not None
+        )
         self.revisions.setEnabled(
             not self._shutdown and not busy and bool(self._notes_by_id)
         )

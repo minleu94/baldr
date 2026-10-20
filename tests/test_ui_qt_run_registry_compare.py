@@ -302,7 +302,7 @@ def test_registry_compare_replay_does_not_show_generic_performance_comparison(qt
     assert widget.metrics_table.model().rowCount() == 0
     assert widget.metrics_summary_table.isHidden()
     assert widget.normalized_equity_table.model().rowCount() == 0
-    assert "停止績效混排" in widget.normalized_equity_empty_label.text()
+    assert "績效／權益比較已停止" in widget.normalized_equity_empty_label.text()
 
 
 def test_registry_compare_widget_discards_stale_run_list_response(qt_app):
@@ -380,7 +380,7 @@ def test_registry_compare_blocks_mixed_versions_and_clears_previous_results(qt_a
     widget.compare_selected_runs()
     assert widget.metrics_table.model().rowCount() == 0
     assert widget.normalized_equity_table.model().rowCount() == 0
-    assert "停止績效混排" in widget.normalized_equity_empty_label.text()
+    assert "績效／權益比較已停止" in widget.normalized_equity_empty_label.text()
 
 
 def test_registry_compare_reports_corruption_without_implicit_repair(qt_app):

@@ -1,5 +1,9 @@
 # UI 與應用流程
 
+## research07操作邊界增量
+
+StockResearchWorkspace的一般查詢動作建立空名稱、無原保存ID／日期／SHA的explicit_latest_stock_research脈絡，由原一般報告service辨識名稱與行情；保存來源重讀仍走原來源。題材清除沿既有generation與worker取消，先處理筆記busy／草稿確認，modal確認後再核generation、snapshot與worker身份；不寫來源或已保存筆記。原價格圖的顯示用SMA邊界見decision_research_portfolio分冊。
+
 本冊描述目前 PySide6 UI 與 application layer 的責任。系統全貌見[目前系統架構](../system_architecture.md)，操作步驟與畫面判讀見[Application Manual](../../07_guides/APPLICATION_MANUAL.md)。工作包完成度仍以 Snapshot 與具名 QA 收據為準。
 
 ## 入口與分層

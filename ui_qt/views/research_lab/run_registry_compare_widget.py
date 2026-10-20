@@ -251,7 +251,7 @@ class RunRegistryCompareWidget(QWidget):
 
         selection_row = QHBoxLayout()
         self.selection_hint_label = QLabel(
-            "已選 0 / 5；可跨頁多選，至少 2 筆才能比較。"
+            "已選 0 / 5；上方比較績效／權益，下方另有原保存逐日訊號對照；兩者各自核對保存條件。"
         )
         self.selection_hint_label.setWordWrap(True)
         self.selection_hint_label.setStyleSheet(
@@ -274,7 +274,12 @@ class RunRegistryCompareWidget(QWidget):
         self.next_page_btn.clicked.connect(self.next_page)
         page_row.addWidget(self.next_page_btn)
         page_row.addStretch()
-        self.compare_button = QPushButton("比較選中")
+        self.compare_button = QPushButton("比較績效／權益")
+        self.compare_button.setToolTip(
+            "選 2 至 5 筆已保存 run，比較績效摘要與標準化權益。需有完整研究及可讀權益；"
+            "資料指紋、成交假設或部位 sizing 模式不同會判為不相容；單股 run 的股票、日期或成本不同也會停止績效混排。"
+            "這不是逐日訊號對照。"
+        )
         self.compare_button.clicked.connect(self.compare_selected_runs)
         self.compare_button.setEnabled(False)
         page_row.addWidget(self.compare_button)
@@ -480,8 +485,10 @@ class RunRegistryCompareWidget(QWidget):
         normalized_layout = QVBoxLayout(normalized_group)
         self.normalized_equity_empty_label = QLabel(
             "尚未觸發比較。\n"
-            "操作方式：在上方清單選 2 至 5 筆 run，按「比較選中」。\n"
-            "顯示條件：被比較的 run 都要有 equity curve，且日期要有交集；第一個共同日期會標準化為 10000。"
+            "操作方式：在上方清單選 2 至 5 筆 run，按「比較績效／權益」。\n"
+            "顯示條件：研究須完整、權益曲線可讀且有共同日期；第一個共同日期會標準化為 10000。"
+            "逐日策略訊號是下方另一項只讀檢視，仍要求原保存規則／訊號綁定相同股票、日期與價量內容；"
+            "本處不相容不保證訊號可對照，缺件或不一致時該入口也會拒絕。"
         )
         self.normalized_equity_empty_label.setWordWrap(True)
         self.normalized_equity_empty_label.setStyleSheet(
@@ -621,9 +628,11 @@ class RunRegistryCompareWidget(QWidget):
                 self._set_table_model(table, pd.DataFrame())
             self._render_metrics_summary_table(pd.DataFrame())
             self._set_table_model(self.params_diff_table, self._build_params_diff(metadata))
+            reasons = "、".join(comparability.reasons) or "不符合目前績效／權益比較條件"
             self.normalized_equity_empty_label.setText(
-                "研究契約不相容、未完整完成，或單股期間／股票／成本不同；"
-                "已停止績效混排與權益標準化。"
+                f"績效／權益比較已停止。現有核對指出：{reasons}。"
+                "這只說明本次績效比較未通過，不表示訊號可對照；下方逐日訊號入口另讀原保存訊號，"
+                "仍要求原規則／訊號綁定相同股票、日期與價量內容，缺件或不一致也會拒絕。"
             )
             self.normalized_equity_table.hide()
             self.regime_summary_label.setText("比較已阻擋")
@@ -777,11 +786,11 @@ class RunRegistryCompareWidget(QWidget):
                 "兩筆推薦回放先固定日曆版本，再按「比較完整期間」。"
                 if selected_count == 2 and len(selected_runs) == 2
                 and all(run.run_type == "recommendation_portfolio" for run in selected_runs.values())
-                else "含推薦回放時不可使用「比較選中」；完整期間只接受兩筆推薦回放。"
+                else "含推薦回放時不可使用績效／權益比較；完整期間只接受兩筆推薦回放。"
             )
         else:
             hint = (
-                f"已選 {selected_count} / 5；可跨頁多選，至少 2 筆才能比較。"
+                f"已選 {selected_count} / 5；可跨頁多選。上方比較績效／權益，下方另有原保存逐日訊號對照。"
                 + (" 已達上限。" if selected_count >= 5 else "")
             )
         self.selection_hint_label.setText(hint)

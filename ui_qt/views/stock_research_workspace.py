@@ -52,6 +52,7 @@ class StockResearchWorkspace(QWidget):
         title_layout.addStretch()
         title_layout.addWidget(InfoButton("stock_research", self))
         self.general_lookup_button = QPushButton("改用一般個股查詢", self)
+        self.general_lookup_button.setObjectName("stockResearchGeneralLookupButton")
         self.general_lookup_button.setToolTip("離開原選股來源，使用一般個股頁已配置的價庫；不會把兩份資料合併。")
         self.general_lookup_button.clicked.connect(self._open_general_lookup)
         self.general_lookup_button.hide()
@@ -94,6 +95,7 @@ class StockResearchWorkspace(QWidget):
         self.report_tabs = QTabWidget(self)
         self.report_tabs.setDocumentMode(True)
         self.report_view = StockResearchReportView(service, parent=self)
+        self.report_view.activeContextChanged.connect(self._sync_general_lookup_action)
         self.report_view.returnRequested.connect(self.returnRequested.emit)
         self.report_tabs.addTab(self.report_view, "個股研究報告")
         self.report_notes_widget: StockResearchReportNotesWidget | None = None
@@ -232,11 +234,42 @@ class StockResearchWorkspace(QWidget):
     def _show_general_report(self) -> None:
         self.content_stack.setCurrentWidget(self.general_report_page)
         self.workspace_title.setText("個股研究")
-        self.general_lookup_button.hide()
+        self._sync_general_lookup_action()
+
+    def _sync_general_lookup_action(self, _context: object = None) -> None:
+        context = self.report_view.context
+        bound_source = bool(
+            self.content_stack.currentWidget() is self.price_research_view
+            or context is not None and context.source_kind
+            and context.source_kind != "explicit_latest_stock_research"
+        )
+        self.general_lookup_button.setVisible(bound_source)
+        self.report_view.load_button.setText("重讀原來源報告" if bound_source else "載入個股報告")
+        self.general_lookup_button.setToolTip(
+            "使用目前輸入的代號另開一般價庫查詢；原保存來源不會獲得另一份行情或名稱資格。"
+        )
 
     def _open_general_lookup(self) -> None:
+        if self.is_busy():
+            self.report_view._set_status("請等目前讀取或筆記保存完成，再另開一般個股查詢。", "warning")
+            return
+        context = self.price_research_context if self.content_stack.currentWidget() is self.price_research_view else None
+        code = context.stock_code if context is not None else self.report_view.stock_search.text().strip()
+        if not code:
+            self.report_view.stock_search.setFocus()
+            return
         self._show_general_report()
-        self.sourceContextShown.emit(self.report_view.context)
+        self.clear_personal_h20_saved_summary()
+        self.report_tabs.setCurrentWidget(self.report_view)
+        independent = ResearchStockContextDTO(
+            stock_code=code,
+            source_kind="explicit_latest_stock_research",
+            source_label="使用者明選的一般個股查詢（獨立現況）",
+            source_workspace="stock_research",
+            ml_scope_mode="current_stock_research",
+        )
+        self.report_view.set_context(independent)
+        self.sourceContextShown.emit(independent)
 
     def clear_personal_h20_saved_summary(self) -> None:
         self.personal_h20_saved_evidence = None

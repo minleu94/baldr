@@ -734,6 +734,7 @@ class JournalService:
         continuity_event_id: str | None = None,
         actor: str = "",
         reason: str = "",
+        expected_current_revision_id: str | None = None,
     ) -> bool:
         """Append a tombstone; never rewrite or remove legacy bytes."""
 
@@ -742,7 +743,10 @@ class JournalService:
             prior = self._existing_revision(history, revision_id)
             if prior is not None:
                 parsed = DecisionContinuityRevision.from_mapping(prior)
-                if parsed.action != ACTION_REMOVED or parsed.entity_id != journal_id:
+                if (parsed.action != ACTION_REMOVED or parsed.entity_id != journal_id
+                        or parsed.entity_type != "journal"
+                        or expected_current_revision_id is not None
+                        and parsed.revision_of != expected_current_revision_id):
                     raise RuntimeError("journal_revision_event_conflict")
                 if continuity_event_id and continuity_event_id != parsed.continuity_event_id:
                     raise RuntimeError("journal_revision_event_conflict")
@@ -758,6 +762,8 @@ class JournalService:
         if not active:
             return False
         entry = JournalEntryDTO.from_dict(active[0])
+        if expected_current_revision_id is not None and entry.revision_id != expected_current_revision_id:
+            raise RuntimeError("journal_current_revision_conflict")
         tombstone = self._make_tombstone(
             entry,
             revision_id=revision_id,

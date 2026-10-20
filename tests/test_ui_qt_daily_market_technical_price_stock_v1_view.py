@@ -173,6 +173,18 @@ def test_embedded_workspace_uses_exact_saved_rows_without_general_report_read(
     assert workspace.content_stack.currentWidget() is workspace.general_report_page
     assert workspace.report_view._loaded_report is None
     assert not current.isVisible()
-    assert shown_contexts[-1] is None
+    # 明確另開一般查詢會建立空名稱的新脈絡；合成S代號仍不可由一般價庫補值。
+    independent = shown_contexts[-1]
+    assert independent is workspace.report_view.context
+    assert independent.stock_code == second.stock_code and independent.stock_name == ""
+    assert independent.source_kind == "explicit_latest_stock_research"
+    assert not independent.result_id and not independent.source_snapshot_hash and not independent.data_date
+    assert workspace.price_research_context.source_snapshot_hash == second.snapshot.snapshot_identity_sha256
+    # 新的明確一般查詢走背景worker；等原3秒有界期限結束才驗關閉。
+    for _ in range(300):
+        if not workspace.is_busy():
+            break
+        QTest.qWait(10)
+    assert not workspace.is_busy()
     assert workspace.request_close()
     workspace.close()

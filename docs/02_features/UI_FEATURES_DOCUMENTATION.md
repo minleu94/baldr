@@ -1,5 +1,9 @@
 # UI 功能文件（Qt）
 
+## research07試用回報增量（後續Source）
+
+五項改善限定原旅程：明確一般查詢離開保存context並從原價庫辨識名稱；題材頁一鍵清除含草稿確認；價格原來源圖顯示同版收盤SMA20／60；原價格筆記可確認隱藏整篇修訂家族並保留Journal歷史；研究歷史分開績效／權益與保存逐日訊號。零成交不另加訊號拒絕條件，缺原訊號或共同價量仍拒絕。操作見APPLICATION_MANUAL及分冊，Source／EXE實際出口以具名QA為準，固定11尚未包含。
+
 固定候選143回應139試用：基本面頁先列月營收數值再展開來源；巢狀價格頁依作用中頁自然高度捲動，代碼可單獨清空；收藏名稱與原保存身分分開，同源收藏直接開原個股再返回原查詢。定向、共同防線及正常Source Main通過；固定候選另驗新位置設定與同版雙程序，範圍按[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)判定，141c原固定包不因source改動而改版。
 
 推薦頁初始化的跨視窗Tab順序、Qt自有連線清理及pandas相容性修復已納入115固定候選；原受影響回歸見[啟動修復QA](../06_qa/BALDR_STARTUP_WARNINGS_FIX_20261015.md)，固定EXE與具名限制見[Increment115 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment115-fixed-trial-delivery)。116只修舊回測保存的Decimal附註序列化，沒有改UI控制項或導航，已在同輪另交固定116候選；操作與精度界線見[保存格式說明](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊回測保存格式與精度)。

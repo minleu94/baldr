@@ -1,5 +1,7 @@
 # 目前系統架構
 
+research07增量沿既有工作區與Journal：明確一般查詢建立獨立context，原來源圖只做顯示用SMA，題材清除不寫來源，原價格筆記追加tombstone隱藏家族；績效與訊號reader契約保持。操作生命週期見[current工作區](current/application_and_workspaces.md#research07操作邊界增量)，投影／刪除語義見[current決策](current/decision_research_portfolio.md#research07顯示與保存增量)與[儲存分冊](current/data_storage_runtime.md#原價格筆記邏輯刪除research07)。
+
 > 本文件是 current 模組、資料流與責任邊界的入口，不記錄逐日進度。完成度看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，產品方向看 [Product Roadmap](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)，目標實作設計唯一權威是 [FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)。
 
 ## 系統用途

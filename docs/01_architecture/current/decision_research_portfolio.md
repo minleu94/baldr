@@ -50,7 +50,7 @@
 <a id="entry-and-dataflow"></a>
 ## 入口與上下游
 
-後繼M1的`TPExThemeFlowReader`依賴法人每日固定批次的typed多股public reader與原一次性TPEx diagnostics用途pin，產出既有`ThemeMarketInput.flows`；舊單股API仍回原DTO，無快取或第二套原件解析。caller提供同版映射確認的TPEx代號交集，單日投影保留三原net整數和、原股數單位與raw／每日雙pin／用途SHA，不混TWSE或將股數換為TWD。QA185–188驗原API／真舊898與新888列／原映射部分覆蓋及新程序；固定08原單股法人頁另可讀新10/19日報，但沒有新batch API。正常題材snapshot尚未組裝此adapter，不由API或日報UI通過推定完整M1／題材UI完成。
+後繼M1的`TPExThemeFlowReader`依賴法人每日固定批次的typed多股public reader與原一次性TPEx diagnostics用途pin，產出既有`ThemeMarketInput.flows`；舊單股API仍回原DTO，無快取或第二套原件解析。caller提供同版映射確認的TPEx代號交集，單日投影保留三原net整數和、原股數單位與raw／每日雙pin／用途SHA，不混TWSE或將股數換為TWD。QA185–188驗原API／真舊898與新888列／原映射部分覆蓋及新程序；固定08原單股法人頁另可讀新10/19日報，但沒有新batch API。後續Source以flow-only v2 manifest組裝此adapter，沿原read_theme_research_snapshot簽名／DTO及原導航；v1價格版維持，v1攜institutional namespace拒絕。v2只依同版映射的精確tpex（上櫃）集合，市場衝突或無成員拒絕；不開價格DB。QA200為型別替身及既有回歸，201a真原件與202e正常Main3560→51796已限定驗證；09未含v2，不由port或日報UI通過推定完整M1。
 
 題材後續Source的純presentation builder提供keyword-only `ascending=False`，不改原typed DTO或reader。UI排序方向只選同snapshot的高／低端純投影，完整coverage及原值守衛相同，不讀新資料、不寫Journal。排序以原Decimal／整數穩定比較，不以受ambient context影響的算術鍵改變順序；Main原context返回仍保留同一view，固定08已含、07未含，驗證範圍見[QA176起](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材雙向排行qa176177)。
 

@@ -636,6 +636,11 @@ class IndustryThemeMapView(QWidget):
             "five_session_calendar_unavailable": "五日交易日曆未核",
             "price_clock_or_source_unavailable": "價格來源或可得時間缺件",
             "flow_clock_or_source_unavailable": "法人來源或可得時間缺件",
+            "institutional_tpex_diagnostics_only": "僅上櫃三大法人股數診斷",
+            "non_tpex_members_excluded": "上市、興櫃與未知市場未納入法人數值",
+            "institutional_selected_member_not_found": "部分上櫃成員缺此日法人原列",
+            "institutional_date_mismatch": "法人原列日期不符，未借用其他日",
+            "no_selected_members": "沒有符合此次來源的上櫃成員",
         }
         known_warnings = list(dict.fromkeys(
             warning_labels[warning]
@@ -1108,7 +1113,7 @@ class IndustryThemeMapView(QWidget):
                 self._decimal_tooltip(row.volume_multiple_5d),
             ),
             (
-                "法人流向淨股數",
+                ("法人淨股數（已覆蓋成員合計）" if 0 < coverage.institutional_shares < coverage.members else "法人流向淨股數"),
                 self._display_optional_int(row.institutional_net_shares),
                 self._coverage(coverage.institutional_shares, coverage.members),
                 self._integer_tooltip(row.institutional_net_shares),
@@ -1120,10 +1125,10 @@ class IndustryThemeMapView(QWidget):
                 self._decimal_tooltip(row.institutional_net_turnover_twd),
             ),
             ("上漲／下跌／平盤家數",
-             f"{row.up_count}／{row.down_count}／{row.flat_count}",
+             (f"{row.up_count}／{row.down_count}／{row.flat_count}" if coverage.returns else "未提供"),
              self._coverage(coverage.returns, coverage.members), ""),
-            ("法人買超／賣超／持平家數",
-             f"{row.institutional_buy_count}／{row.institutional_sell_count}／{row.institutional_flat_count}",
+            (("法人買超／賣超／持平家數（已覆蓋成員）" if 0 < coverage.institutional_shares < coverage.members else "法人買超／賣超／持平家數"),
+             (f"{row.institutional_buy_count}／{row.institutional_sell_count}／{row.institutional_flat_count}" if coverage.institutional_shares else "未提供"),
              self._coverage(coverage.institutional_shares, coverage.members), ""),
             (
                 "上漲比例",
@@ -1132,7 +1137,7 @@ class IndustryThemeMapView(QWidget):
                 self._decimal_tooltip(row.advancing_ratio),
             ),
             (
-                "法人買超比例",
+                ("法人買超比例（已覆蓋成員）" if 0 < coverage.institutional_shares < coverage.members else "法人買超比例"),
                 self._display_decimal(row.institutional_buy_ratio, percentage=True),
                 self._coverage(coverage.institutional_shares, coverage.members),
                 self._decimal_tooltip(row.institutional_buy_ratio),

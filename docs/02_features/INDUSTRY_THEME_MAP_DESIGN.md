@@ -279,7 +279,7 @@ flowchart LR
 
 ### 5.3 後繼每日研究實作（2026-10-18）
 
-後繼M1新增`TPExThemeFlowReader`，只把具名TPEx diagnostics固定批次的同日三原net股數投影到既有`ThemeFlowObservation`，不建正式DB、不推TWD金額或授歷史資格。多股public port在原每日驗證內核一次重驗全批，保持雙SHA、EOF、單位／合計、可用時鐘、用途及變動守衛；缺股、非TPEx與異日不補零或借日。QA185–188限定通過原API相容／精度／時鐘與用途守衛及真原件新程序；10/19資料與原10/16映射中890個TPEx代號的交集為763，66題材僅部分覆蓋，原90題材逐列核原整數及缺件。這些是明示TPEx部分診斷，不能叫完整題材或市場總流向。正常題材snapshot仍未接入此port，固定08仍只有原題材價量，不提前將法人卡列為完成；新10/19日報另可在08原法人唯讀頁明選。
+後繼M1新增`TPExThemeFlowReader`，只把具名TPEx diagnostics固定批次的同日三原net股數投影到既有`ThemeFlowObservation`，不建正式DB、不推TWD金額或授歷史資格。多股public port在原每日驗證內核一次重驗全批，保持雙SHA、EOF、單位／合計、可用時鐘、用途及變動守衛；缺股、非TPEx與異日不補零或借日。QA185–188限定通過原API相容／精度／時鐘與用途守衛及真原件新程序；10/19資料與原10/16映射中890個TPEx代號的交集為763，66題材僅部分覆蓋，原90題材逐列核原整數及缺件。這些是明示TPEx部分診斷，不能叫完整題材或市場總流向。Source另以精確TPEx flow-only v2 manifest接原snapshot reader，QA200限定compile／61PASS與2個環境symlink略過／85／25-0-4／mypy1082；真v2 public／正常Main與新程序尚待。固定08仍只有原題材價量，09沒有v2，不提前將法人卡列為完成；新10/19日報另可在原法人唯讀頁明選。
 
 2026-10-19後續Source補已載入版本的股票反查：只查snapshot.mapping，代號精確四碼／名稱片段，列出多題材及同名股票供明選，再核當前identity與原成員定位。沿原stockSelected與Main context，不加reader、金融公式或外部資料。換版／失敗／取消／關閉清舊結果；QA133–134正常Source與新程序限定通過，固定05的QA136–140再驗受改EXE／新程序並封存交付，固定04保持。法人／合格日曆與歷史PIT的三階段依賴不由此解除。
 

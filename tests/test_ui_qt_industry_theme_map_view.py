@@ -327,10 +327,10 @@ def test_snapshot_render_keeps_decimal_and_separate_missing_coverage():
     returns_row = _metric_row(view, "平均日漲跌幅")
     turnover_row = _metric_row(view, "價格成交金額（TWD）")
     volume_row = _metric_row(view, "成交量五日倍數")
-    flow_row = _metric_row(view, "法人流向淨股數")
+    flow_row = _metric_row(view, "法人淨股數（已覆蓋成員合計）")
     flow_amount_row = _metric_row(view, "法人流向淨金額（TWD）")
     advancing_row = _metric_row(view, "上漲比例")
-    institutional_ratio_row = _metric_row(view, "法人買超比例")
+    institutional_ratio_row = _metric_row(view, "法人買超比例（已覆蓋成員）")
 
     assert view.metrics_table.item(returns_row, 1).text() == "1.23 %"
     assert view.metrics_table.item(returns_row, 1).toolTip() == "1.2300 %"
@@ -783,3 +783,41 @@ def test_snapshot_changed_clears_on_load_and_emits_loaded_snapshot(monkeypatch):
     assert view.ranking_table.rowCount() == 0
     assert not view.sorting_direction_combo.isEnabled()
     view.close()
+
+
+def test_tpex_diagnostics_explains_market_scope_and_partial_flow_denominator():
+    from dataclasses import replace
+
+    application = app()
+    snapshot = _snapshot()
+    snapshot = replace(snapshot, report=replace(
+        snapshot.report,
+        warnings=("institutional_tpex_diagnostics_only", "non_tpex_members_excluded"),
+    ))
+    view = IndustryThemeMapView()
+    try:
+        view.set_snapshot(snapshot)
+        assert "僅上櫃三大法人股數診斷" in view.overview_label.text()
+        assert "上市、興櫃與未知市場未納入法人數值" in view.overview_label.text()
+        assert "另有" not in view.overview_label.text()
+        _select_theme(view, "科技鏈", "AI")
+        net = _metric_row(view, "法人淨股數（已覆蓋成員合計）")
+        counts = _metric_row(view, "法人買超／賣超／持平家數（已覆蓋成員）")
+        ratio = _metric_row(view, "法人買超比例（已覆蓋成員）")
+        assert view.metrics_table.item(net, 1).text() == "8"
+        assert view.metrics_table.item(net, 2).text() == "1 / 2 位成員"
+        assert view.metrics_table.item(counts, 2).text() == "1 / 2 位成員"
+        assert view.metrics_table.item(ratio, 1).text() == "100.00%"
+        assert view.metrics_table.item(ratio, 2).text() == "1 / 2 位成員"
+        view.ranking_type_combo.setCurrentIndex(view.ranking_type_combo.findData("institutional"))
+        assert _ranked_theme_names(view) == []
+        _select_theme(view, "金融鏈", "保險")
+        missing_returns = _metric_row(view, "上漲／下跌／平盤家數")
+        missing_flows = _metric_row(view, "法人買超／賣超／持平家數")
+        assert view.metrics_table.item(missing_returns, 1).text() == "未提供"
+        assert view.metrics_table.item(missing_flows, 1).text() == "未提供"
+        assert view.metrics_table.item(missing_returns, 2).text() == "0 / 1 位成員"
+        assert view.metrics_table.item(missing_flows, 2).text() == "0 / 1 位成員"
+    finally:
+        view.close()
+        application.processEvents()

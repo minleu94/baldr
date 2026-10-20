@@ -31,6 +31,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ## 讀寫與保存契約
 
+Source題材法人版本另用flow-only v2 descriptor，同包只放原映射副本；外部daily目錄與用途檔以精確pins唯讀綁原位置，不重seal／搬移或建立空價格DB。v1同包SQLite版保持，v2的實際保存小時與原來源時鐘各自核，不給歷史PIT。新descriptor的schema、用途、partial及變動守衛見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#題材tpex股數診斷版本source-v2)；目前QA200為限定Source，201a真原件與202e正常Main3560→51796已限定驗證，固定09不含。
+
 後續Source的F07筆記服務以`DailyMarketTechnicalSnapshotProofScope`保留最多128份同程序、repository發行的語義證明；`ContextVar`只在實際背景讀取內啟用。命中須重驗seal／登記／完整manifest，仍fresh讀取全部artifact並核bytes／SHA／layout，由本次bytes重建typed snapshot與原binding；保存計算binding沿原validator，不要求舊保存kernel等於現行kernel。Scope不存snapshot、raw或parent結果，新程序與未命中仍完整strict。P01的session capability不擴大，parent只重用同次plan純投影，所有child核對保持。此候選與原完整240秒旅程的驗證狀態見[F07 QA163](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)，不改來源用途、時鐘或PIT資格。
 
 同一已開啟View／query的返回候選另沿既有P01頁面讀取：原issued session／result保留，重讀原頁所涉批次並重建新page，完整selection pins相符才恢復。這不是新的全母體核驗或Scope擴權；跨query／無可用state仍full重開，保存與開啟原版本仍完整fresh。取消或完整性失敗不回退舊DTO；UI契約見[跨頁接線](decision_research_portfolio.md#價格研究個股與-portfolio-跨頁接線)。

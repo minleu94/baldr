@@ -60,8 +60,14 @@ Root已核四份官方原件的固定完整fingerprint：政府條款第1版、m
 
 ## 後繼M1法人多股讀者（Source）
 
-後繼M1提供`read_institutional_daily_snapshot_batch`：明選1–5000個唯一代號，以同一內核完整重驗一次固定批次，再取原列；原單股reader與TWSE wrapper簽名、DTO及守衛保持。`total_records`仍是完整原報表列數，未命中不補零，多日原列不混成單日。`TPExThemeFlowReader`只消費具原TPEx diagnostics用途pin的同日原股數，限caller由同版映射確認的TPEx股票；不授TWSE或跨市場合計。接受時間與批次小時取較晚者，來源身份保留raw／manifest／receipt／用途SHA，不以股價換金額。QA185–188已限定驗原API相容、舊898與新888原列、映射交集及新程序；正常題材snapshot尚未接入，固定08沒有新batch API。10/19新資料另由固定08原法人頁驗讀，不修改原10/16題材或借日；詳[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
+後繼M1提供`read_institutional_daily_snapshot_batch`：明選1–5000個唯一代號，以同一內核完整重驗一次固定批次，再取原列；原單股reader與TWSE wrapper簽名、DTO及守衛保持。`total_records`仍是完整原報表列數，未命中不補零，多日原列不混成單日。`TPExThemeFlowReader`只消費具原TPEx diagnostics用途pin的同日原股數，限caller由同版映射確認的TPEx股票；不授TWSE或跨市場合計。接受時間與批次小時取較晚者，來源身份保留raw／manifest／receipt／用途SHA，不以股價換金額。QA185–188已限定驗原API相容、舊898與新888原列、映射交集及新程序；後續Source已加flow-only v2入口，QA200限定測試通過、真資料與正常Main尚待；固定08沒有新batch API。10/19新資料另由固定08原法人頁驗讀，不修改原10/16題材或借日；詳[具名QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md)。
 
+
+### 題材TPEx股數診斷版本（Source v2）
+
+read_theme_research_snapshot保留原簽名／DTO與v1的同包mapping／prices；v1出現institutional欄位明確拒絕，不靜默忽略。新schema為baldr.theme_research_snapshot.tpex_flows.v2，精確五個頂層欄位schema／data_date／saved_completed_at／mapping／institutional，不接受prices或其他來源namespace。mapping只允許同包相對path與SHA、原完整CSV欄位與4MiB上限；同股跨題材market_type衝突拒絕，僅精確tpex（上櫃）納入，無eligible成員拒絕。
+
+institutional精確含daily_directory／manifest_sha256／receipt_sha256／source_use_path／source_use_sha256；三SHA須小寫hex64、來源為既存絕對位置。原typed daily/use reader繼續完整核原件／品質／EOF／股數／時鐘／用途及讀中變動，metadata不能自授資格。這份descriptor不移位或重seal原批次，不能冒稱全包可攜來源。新descriptor仍核實際保存後台北向上取整小時，與原daily／接受時間各自守衛；新副本不倒填時間。原manifest／mapping前後hash保持，資料日必須沿本次明選來源，不借其他日價格或法人。價格／TWD金額／五日量能維持缺件，部分覆蓋只顯示已覆蓋成員的診斷合計；historical_pit_eligible仍false。QA200只證候選接線與邊界，真原件／正常Main／固定EXE接受分開，見[具名後續QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#題材法人接線sourceqa200)。
 ## TWSE法人候選成功批次（Increment42）
 
 此為原 `institutional-credit-flows-candidate-bundle.v1` 的獨立 JSON companion，限定 `twse_institutional`／原T86／1–30個排序唯一日期。原 parser／source version、整數股數與 candidate 不變，不借 MOPS record 或另一 revision reader namespace 的接受。`institutional-daily-manifest.v1` 綁原 capture manifest 外部SHA、完整raw／metadata／candidate／readback的絕對路徑、bytes及SHA、原始官方時間文字／台北時間、來源時鐘與原報表列總數；這個總數不是股票 universe 或真N。

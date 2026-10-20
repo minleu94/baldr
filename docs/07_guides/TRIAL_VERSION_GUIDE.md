@@ -1,8 +1,10 @@
 # 目前指定的本機日常研究入口
 
-**最新可試用：研究12，固定來源 `ec4dd639b6be`。** [啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)。先放妥完整資料夾，再雙擊啟動器完成首次設定；保留舊版與私人資料，不自動匯入。
+**最新可試用：研究13，固定來源 `9838243476e6`。** [啟動器](../../output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-13/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-13/KNOWN_ISSUES.md)。保存時報告呈現完成後顯示「載入完成」；原筆記／報告全文、日期及無即時重抓已由正常固定Main與新程序核對。全新位置首次設定521.344秒／原600、啟動器正反SHA及封存通過；未改主要流程沿12及其引用證據，詳[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定13保存報告完成狀態交付qa240244)。舊包、私人資料及金融／PIT／Native／真人限制保持。
 
-研究12已補驗跨頁回訪：讀原保存報告，經題材與觀察清單原價格來源返回，再查一般個股、重讀原筆記；新程序仍保留當時日期與內容。來源讀取未結束時，請等完成再按「改用一般個股查詢」。保存報告目前即使已顯示完整內容，badge仍可能寫「讀取中」，這項文字誤標待修；不代表原筆記被重抓或改寫。詳[QA236b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12混合回訪補驗qa235236b)；封存包與收據保持原樣。
+**保留候選：研究12，固定來源 `ec4dd639b6be`。** [啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)。先放妥完整資料夾，再雙擊啟動器完成首次設定；保留舊版與私人資料，不自動匯入。
+
+研究12已補驗跨頁回訪：讀原保存報告，經題材與觀察清單原價格來源返回，再查一般個股、重讀原筆記；新程序仍保留當時日期與內容。來源讀取未結束時，請等完成再按「改用一般個股查詢」。保存報告目前即使已顯示完整內容，badge仍可能寫「讀取中」，此誤標已在研究13修正，研究12原包保持；不代表原筆記被重抓或改寫。詳[QA236b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12混合回訪補驗qa235236b)；封存包與收據保持原樣。
 
 本版回應research07：輸入2330後明按「改用一般個股查詢」，可從一般價庫帶出台積電及價格；題材上方有「清除研究」；價格原來源圖增加金色SMA20／藍色SMA60；原價格筆記可明選「刪除所選筆記」，確認後隱藏整篇及修訂、保留原歷史；研究歷史分開「比較績效／權益」與「對照原保存逐日訊號」。清除及刪除均有草稿／確認守衛，詳包內指南。
 

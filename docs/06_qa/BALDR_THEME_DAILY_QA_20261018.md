@@ -625,6 +625,12 @@ Result e131e4047a502e1038eb92a468851e120d2bc3659a3abd8b76e1ab4f830247e1，helper
 225題材清除正常Main9784→20016通過草稿預設否／確認是、結果清空、原manifest重載、實際960×720與fresh；原Journal／清單／來源保持。Result `a6b8dd4db289314963aba5aadce608f1af61953b913dc7f703225213ada57c6a`，closure `defab3437964fb0c28bd8c34f432fd7d8fc0e28208857c4a5075fb34a13197b0`。226文控12features／36links、errors空；closure `d2ef55b5347becca7c5d00416f1b00ec0e3b069f6c44841140b1c84882de0820`。223b的Workbench85／validator25-0-4及223c的mypy1083不重跑；ui_qt ignore／untyped不證UI強型別。
 
 上述只接受受改Source旅程；固定12、首次設定與同版EXE依下一節實際收據，不能外推真人、完整Native、金融、歷史PIT或原完整Gate。
+## 保存報告完成狀態修正QA238起
+
+本切片解除已完成保存回訪卻仍顯示「讀取中」的操作疑惑，不擴資料或功能。原Luna單寫report view與既有snapshot navigation測試；`show_saved_report_snapshot()`在完整同步呈現後改用既有`completed`／「載入完成」詞彙，來源限制旁文、唯讀控制、原canonical與其他非同步狀態均不改。新增斷言核對不busy與完成badge，原no-producer、無live signals、精度及完整原件斷言保留。
+
+QA238編譯、6項定向、Workbench85、自有新目錄validator25通過／0失敗／4跳過、八套件mypy1083均PASS；既有ignore／untyped不證UI強型別。Route為Execution／TestingQA／Documentation；Context3500字僅作定位，Root另按實際方法與差異核對，未宣稱全文閱讀。Closure `a76244e157ca85776cbd513fe5f29314f651b32e4d9e34800aac2ab097cec1a4` 自然全閉鎖，三PID陣列空、handles閉與mutex釋放，Root串行Job8GiB／12程序／RAM至少8GiB。未重跑與狀態文字無關的原混合回訪、均線或刪除旅程。固定12／舊包／私人原件不改，新固定候選仍待建置及正常Main／新程序證據，不把本組當EXE或完整Gate接受。
+
 ## 固定12混合回訪補驗QA235236b
 
 本切片補足原M3／M4缺少的「單一Main跨研究來源後重讀原筆記」證據，沿用研究12與Source `ec4dd639b6be6d8922cc7ff5af3467eb48dab6c3`，未修改產品或重建EXE。QA235只作有界導航／角色及context定位；舊Graphify圖不證目前Source，預算略過的Workspace／notes正文已由Root另讀。原有獨立旅程不等價於本次混合回訪，未重跑均線、刪除或清除旅程。

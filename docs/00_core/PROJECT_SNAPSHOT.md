@@ -2,7 +2,7 @@
 
 **research07五項回報已交付研究12（`ec4dd639b6be`）。** [啟動器](../../output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md)。一般查詢可明確離開保存context並辨識2330台積電；原F07圖顯示同版SMA20／60；題材可一鍵清除；原價格筆記可確認刪除整篇及修訂、重開不復活；績效與原逐日訊號入口分開。原07三筆實際run唯讀可讀419列，0／1成交不阻擋該對照。517.579秒／原600首次設定、固定EXE10788→26748筆記／MA／查股及41268→10408清除／960、新程序與啟動器正反SHA通過。EXE `918624dd549daec146c69b8986ce8b887e03bccb135ba9d9de1c8fef0f595dc6`，交付 `d161a7363131062e37c153d03760b7f323c18c5a7cfbc37c65a05bbc4d1613c1`；[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)。舊包與私人原件保持；保存報告缺行情、一般行情9/23及各項金融／權威／PIT／自然成熟／Native／真人限制保留。
 
-研究12另通過[跨頁回訪補驗QA236b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12混合回訪補驗qa235236b)：一般保存報告→題材2330返回→F07／2506返回→一般查詢→原筆記及保存報告，新程序一致；10月19日保存內容未被10月20日新查詢改寫。Source與固定包未改。下一個獨立READY是保存報告已載入仍顯示「讀取中」的狀態文字修正；本輪五小時額度98%先checkpoint，並非等待人工簽核。
+研究12另通過[跨頁回訪補驗QA236b](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定12混合回訪補驗qa235236b)：一般保存報告→題材2330返回→F07／2506返回→一般查詢→原筆記及保存報告，新程序一致；10月19日保存內容未被10月20日新查詢改寫。後繼Source已修正保存報告已載入仍顯示「讀取中」的誤標；[QA238](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#保存報告完成狀態修正qa238起)定向6項／Workbench85／validator25-0-4／mypy1083通過，固定12尚未含。額度恢復後直接接此獨立切片，新固定候選仍待建置及正常Main／新程序驗證。
 
 > 更新：2026-10-20（使用者時區）。本頁列目前入口、各流程進度與下一個出口。逐輪身分、原FAIL與收據見[具名QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md)，交付順序沿[原計畫§0.4](../superpowers/plans/baldr_product_completion_plan_20261006.md#04-依使用流程重排交付2026-10-15)。
 

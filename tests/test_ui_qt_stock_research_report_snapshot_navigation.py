@@ -54,6 +54,8 @@ def test_saved_report_renders_all_tabs_without_reads_or_live_load_signals():
     view.activeContextChanged.connect(lambda *_: signals.append("contextChanged"))
     try:
         view.show_saved_report_snapshot(snapshot)
+        assert not view.is_busy()
+        assert view.status_badge.text() == "載入完成"
         # 接收者可改動的 DTO 不能取代 canonical 原文。
         snapshot.report.shared_daily_features["display"].append("外部改值")
         for index in range(view.tabs.count()):

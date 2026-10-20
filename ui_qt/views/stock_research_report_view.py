@@ -1119,7 +1119,7 @@ class StockResearchReportView(QWidget):
         )
         self._set_status(
             "正在閱讀保存時的報告與原缺件；未重查來源，不代表歷史 PIT 或上游資料用途已接受。"
-            f" 版本 {exact.identity_sha256[:12]}", "info",
+            f" 版本 {exact.identity_sha256[:12]}", "completed",
         )
 
     @staticmethod

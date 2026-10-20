@@ -50,7 +50,7 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 後續Source已完成原價格筆記的保存、修訂、開原版本／返回、保存期間關閉與新程序讀回；固定07已包含，固定06尚未包含。操作按鈕不變，保存／讀取與開原版仍需等完整來源核驗；同一已開啟查詢的返回會重讀原頁。等待時不要重複送出保存或強制結束；限定結果及原失敗見[QA163–168](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)，固定07的EXE另由173a限定驗證，Source不替代EXE或真人接受。
 
-一般報告的「我的判斷／保存時報告」已包含於[固定研究03](../../output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md)，固定02尚未包含。它保存當時整份報告副本及原缺件，回訪不重查現在行情；操作與限制見[整份報告判斷](manuals/WATCHLIST_AND_PORTFOLIO.md#一般整份報告的判斷後繼source)。目前驗證狀態以具名QA為準。
+一般報告的「我的判斷／保存時報告」已包含於[固定研究03](../../output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md)，固定02尚未包含。它保存當時整份報告副本及原缺件，回訪不重查現在行情；操作與限制見[整份報告判斷](manuals/WATCHLIST_AND_PORTFOLIO.md#一般整份報告的判斷後繼source)。後繼Source已修正保存報告呈現完成仍顯示「讀取中」的誤標，固定12尚未含；目前驗證狀態以具名QA為準。
 
 1. 以你已完成設定的 source GUI 或 portable GUI 開啟 baldr。首次使用先依[首次安裝 Prompt](FIRST_INSTALL_PROMPT.md)、[安裝指南](INSTALL_GUIDE.md)或[可攜版指南](PORTABLE_WINDOWS.md)完成自己的環境設定。
 2. 在「數據更新」檢查資料根、行情資料日期、來源狀態、缺件與 warnings。`current`、`expected_wait`、`stale`、`partial`、`failed`、`unknown` 和有效空結果不能互換。

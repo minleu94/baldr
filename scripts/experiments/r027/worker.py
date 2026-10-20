@@ -94,8 +94,8 @@ def _safe_temp_workspace(workspace: Path) -> None:
     if _is_within(REPOSITORY_ROOT, resolved):
         raise RuntimeError("R027 workspace cannot contain the repository")
     for variable, fallback in (
-        ("R027_FORMAL_DATA_ROOT", Path("D:/Min/Python/Project/FA_Data")),
-        ("R027_FORMAL_OUTPUT_ROOT", Path("D:/Min/Python/Project/FA_Data/output")),
+        ("R027_FORMAL_DATA_ROOT", Path("F:/Min/Python/Project/FA_Data")),
+        ("R027_FORMAL_OUTPUT_ROOT", Path("F:/Min/Python/Project/FA_Data/output")),
     ):
         configured = Path(os.environ.get(variable, str(fallback))).resolve()
         if _is_within(resolved, configured) or _is_within(configured, resolved):

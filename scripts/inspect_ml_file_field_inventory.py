@@ -16,7 +16,7 @@ from data_module.ml_file_field_inventory import inspect_ml_file_fields  # noqa: 
 
 
 def build_parser() -> argparse.ArgumentParser:
-    data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+    data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
     output_root = Path(
         os.environ.get("OUTPUT_ROOT", str(data_root / "output"))
     )

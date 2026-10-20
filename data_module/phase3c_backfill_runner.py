@@ -1,7 +1,7 @@
 """Phase 3C 候選資料歷史回補執行器 (三大法人、信用交易與 TDCC 治理邊界)
 
 本模組為受控、可中斷、可續跑、可審計的 Candidate Working-Copy 回補執行器。
-嚴禁寫入正式資料庫 D:/Min/Python/Project/FA_Data/sqlite/twstock.db。
+嚴禁寫入正式資料庫 F:/Min/Python/Project/FA_Data/sqlite/twstock.db。
 """
 
 from __future__ import annotations
@@ -195,7 +195,7 @@ class Phase3CBackfillRunner:
         include_latest_tdcc_snapshot: bool = False,
         calendar: Optional[OfficialTradingCalendar] = None,
     ) -> None:
-        root = production_data_root or os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+        root = production_data_root or os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
         prod_db = production_db_path or Path(root) / "sqlite" / "twstock.db"
         self.candidate_db_path = validate_candidate_working_copy_path(
             candidate_db_path,

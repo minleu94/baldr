@@ -8,7 +8,7 @@ cd /d "%REPO_ROOT%" || exit /b 1
 if defined BALDR_PYTHON set "PYTHON=%BALDR_PYTHON%"
 if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not defined PYTHON set "PYTHON=python"
-if not defined DATA_ROOT set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if not defined DATA_ROOT set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if not defined OUTPUT_ROOT set "OUTPUT_ROOT=%DATA_ROOT%\output"
 rem Formal 與盤前 writer 共用這份 repository Paper snapshot；D 槽只保留
 rem market/source read-only input，candidate output 仍分離寫入 publication root。

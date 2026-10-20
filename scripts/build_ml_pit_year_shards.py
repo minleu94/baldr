@@ -549,7 +549,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _default_database_path() -> Path:
-    data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+    data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
     if os.environ.get("PROFILE", "prod") == "test":
         data_root = data_root / "_test"
     return data_root / "sqlite" / "twstock.db"

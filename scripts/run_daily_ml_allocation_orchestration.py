@@ -2698,7 +2698,7 @@ def _default_data_root() -> Path:
     return Path(
         os.environ.get(
             "DATA_ROOT",
-            "D:/Min/Python/Project/FA_Data",
+            "F:/Min/Python/Project/FA_Data",
         )
     )
 

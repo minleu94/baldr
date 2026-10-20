@@ -297,7 +297,7 @@ def _new_operation_root(
         archive,
         Path(source_reference.raw_archive_reference.archived_monthly_source_root),
         Path(source_reference.raw_archive_reference.original_monthly_source_root),
-        Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+        Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
     )
     output_env = os.environ.get("OUTPUT_ROOT")
     if output_env:

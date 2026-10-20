@@ -1781,7 +1781,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--data-root",
         type=Path,
         default=Path(
-            os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+            os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
         ),
     )
     parser.add_argument(
@@ -1790,7 +1790,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(
             os.environ.get(
                 "OUTPUT_ROOT",
-                "D:/Min/Python/Project/FA_Data/output",
+                "F:/Min/Python/Project/FA_Data/output",
             )
         ),
     )

@@ -41,6 +41,6 @@
 
 ## 本機資料與輸出
 
-市場資料預設位置和覆寫規則以 `data_module/config.py` 的 `TWStockConfig` 為準，正式資料根預設為 `D:/Min/Python/Project/FA_Data`，也可由 `DATA_ROOT` 覆蓋。研究輸出、私人資料、Paper 狀態、模型與本機 QA 輸出可能分屬不同根目錄；不得因根目錄名稱或最新修改時間推定所有權、用途或可刪除性。
+市場資料預設位置和覆寫規則以 `data_module/config.py` 的 `TWStockConfig` 為準，正式資料根預設為 `F:/Min/Python/Project/FA_Data`，也可由 `DATA_ROOT` 覆蓋。2026-10-20 搬遷已將 repo 大型產出放到 `F:/Min/Python/Project/BaldrStorage`；D 舊根待開啟中的日誌程序退出後再完成清理，詳[搬遷紀錄](docs/06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。研究輸出、私人資料、Paper 狀態、模型與本機 QA 輸出可能分屬不同根目錄；不得因根目錄名稱或最新修改時間推定所有權、用途或可刪除性。
 
 `output/`、快取、虛擬環境、測試暫存及本機模型／帳戶資料是工作環境產物，不是來源控制下的產品說明。Stage／commit 前依 [git exclusions](docs/agents/git_exclusions.md) 排除不應提交的資料。

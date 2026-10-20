@@ -1,5 +1,9 @@
 # 資料資產用途與恢復登記
 
+## 2026-10-20 儲存位置更新
+
+本資產表下方路徑與容量是 2026-10-06 的歷史盤點，不代表目前所在位置。現行 `DATA_ROOT` 已改為 `F:/Min/Python/Project/FA_Data`，repo 的 `output`、`dist`、`.t` 透過 junction 存於 `F:/Min/Python/Project/BaldrStorage`。D→F 資料已複製及合併，但 D 舊根尚未刪除，因 D 的 `FA_Data/output/application_state/logs/config.log` 仍被程序開啟；清除進度與核對界線見[2026-10-20 儲存搬遷紀錄](../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。請勿把下方 D 路徑表格視為當前資料位置。
+
 ## 查詢已登記的冷封存
 
 兩批34個歷史QA／備份／舊候選根的原位置、E槽位置與逐批權威文件，集中在[冷封存引用登記](COLD_ARCHIVE_REFERENCE_REGISTRY.json)。這些仍是ignored的外部證據，不是遺失的Git來源或可清理項目。後續查詢或文件檢查應先核登記，不把相同路徑反覆列為新發現。

@@ -39,7 +39,7 @@ from data_module.ml_storage_capacity import (
 from scripts import maintain_ml_direct_v3_refresh_chain as maintenance
 
 
-_DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+_DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 _RAW_ROOT_NAME = "ml_pit_year_shards"
 _DEFAULT_MINIMUM_FREE_SPACE_BYTES = SCHEDULED_SAFETY_RESERVE_BYTES
 _DEFAULT_DIRECT_PERSISTENT_STORAGE_BUDGET_BYTES = (

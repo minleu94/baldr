@@ -62,7 +62,7 @@ def _config(args: argparse.Namespace) -> TWStockConfig:
     return config
 
 
-_DEFAULT_PRODUCTION_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
+_DEFAULT_PRODUCTION_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 
 
 def _canonical_path(path: Path) -> Path:

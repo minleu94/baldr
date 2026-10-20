@@ -662,7 +662,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     route = None
     try:
         validate_store_environment()
-        config = TWStockConfig(output_root=args.output_root or Path(os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")))
+        config = TWStockConfig(output_root=args.output_root or Path(os.environ.get("OUTPUT_ROOT", "F:/Min/Python/Project/FA_Data/output")))
         selection = resolve_personal_store_selection(config)
         output_root = config.output_root
         baseline = args.baseline or output_root / "paper_portfolio" / "baseline_20260712.json"

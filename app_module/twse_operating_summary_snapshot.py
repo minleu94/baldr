@@ -211,7 +211,7 @@ def seal_operating_summary_snapshot(
 ) -> OperatingSummaryPin:
     """另存既有原件；不抓取、不寫正式庫，也不重用失敗或先前版本目錄。"""
     output = _canonical_path(output_directory, "operating_summary", allow_missing=True)
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
                  os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text:
             protected = Path(text).absolute()

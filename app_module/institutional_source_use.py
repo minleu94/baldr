@@ -213,7 +213,7 @@ def write_tpex_institutional_source_use(
     if not isinstance(evidence_files, Mapping) or set(evidence_files) != {item["role"] for item in _DOCUMENT_POLICY}:
         raise InstitutionalSourceUseError("須明選license／metadata／dataset／swagger四份原件")
     target = _canonical_path(output_directory, "institutional_use_output", allow_missing=True)
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
                  os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text and target.is_relative_to(Path(text).absolute()):
             raise InstitutionalSourceUseError("不可在正式／私人資料根寫來源用途接受")

@@ -1259,7 +1259,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     repo_root = Path(__file__).resolve().parents[1]
-    data_root = (args.data_root or Path("D:/Min/Python/Project/FA_Data")).resolve()
+    data_root = (args.data_root or Path("F:/Min/Python/Project/FA_Data")).resolve()
     defaults = _default_paths(data_root, repo_root)
     db_path = (args.db_path or data_root / "sqlite" / "twstock.db").resolve()
     receipt_dir = (args.receipt_dir or defaults["receipt"]).resolve()

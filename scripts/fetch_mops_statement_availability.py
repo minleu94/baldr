@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     # initialization creates output/data directories, while this collector is
     # an isolated read-only source observer.
     data_root = Path(
-        os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+        os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
     ).expanduser()
     safe_root = validate_development_output_root(
         requested_output_root,

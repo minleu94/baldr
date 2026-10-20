@@ -55,7 +55,7 @@ from data_module.paper_event_source_capture import (  # noqa: E402
 
 
 TASK_NAME = "baldr-paper-event-source-capture-daily"
-DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 OPERATIONAL_ROOT = ROOT / "output" / "paper_execution_eod_replay"
 RECOMMENDATION_ROOT = DEFAULT_DATA_ROOT / "output" / "recommendation" / "runs"
 MARKET_DB = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"

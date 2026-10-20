@@ -136,7 +136,7 @@ def test_cli_路徑拒絕矩陣(tmp_path: Path) -> None:
     dossier_檔.write_text(json.dumps(封包.to_dict(), indent=2), encoding="utf-8")
 
     # 模擬 DATA_ROOT
-    DATA_ROOT = os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+    DATA_ROOT = os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
 
     # A. 拒絕僅提供 --output-template 但未提供 --shadow-root 的情況
     結束碼 = main([

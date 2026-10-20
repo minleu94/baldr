@@ -24,7 +24,7 @@ def _default_output_root() -> Path:
     data_root = Path(
         os.environ.get(
             "DATA_ROOT",
-            "D:/Min/Python/Project/FA_Data",
+            "F:/Min/Python/Project/FA_Data",
         )
     )
     output_root = Path(

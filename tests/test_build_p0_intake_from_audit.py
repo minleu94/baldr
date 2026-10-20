@@ -171,7 +171,7 @@ def test_cli_writes_temp_candidate_and_rejects_production_path(tmp_path: Path) -
     saved = json.loads(output_path.read_text(encoding="utf-8"))
     assert saved["provenance"]["machine_evidence_only"] is True
 
-    production_path = Path("D:/Min/Python/Project/FA_Data") / "candidate-intake.json"
+    production_path = Path("F:/Min/Python/Project/FA_Data") / "candidate-intake.json"
     assert main(["--audit", str(audit_path), "--output", str(production_path)]) == 2
     assert not production_path.exists()
 

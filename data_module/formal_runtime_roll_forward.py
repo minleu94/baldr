@@ -982,7 +982,7 @@ def _wrapper_contract(
     runtime = str(config_path.resolve())
     base = {
         "BALDR_PYTHON": str((ROOT / ".venv" / "Scripts" / "python.exe").resolve()),
-        "DATA_ROOT": str(Path(os.environ.get("DATA_ROOT", r"D:\Min\Python\Project\FA_Data")).expanduser().resolve()),
+        "DATA_ROOT": str(Path(os.environ.get("DATA_ROOT", r"F:\Min\Python\Project\FA_Data")).expanduser().resolve()),
         "FORMAL_DAILY_RUNTIME_CONFIG": runtime,
         RUNTIME_CONFIG_ROOT_ENV: str(roll_forward_root.resolve()),
         CALENDAR_BUNDLE_ENV: str(calendar_bundle.resolve()),
@@ -1506,7 +1506,7 @@ def write_immutable_rolling_runtime_config(
 
 
 def _default_paths() -> dict[str, Path]:
-    data_root = Path(os.environ.get("DATA_ROOT", r"D:\Min\Python\Project\FA_Data")).expanduser().resolve()
+    data_root = Path(os.environ.get("DATA_ROOT", r"F:\Min\Python\Project\FA_Data")).expanduser().resolve()
     publication_root = _environment_path(
         PUBLICATION_ROOT_ENV,
         ROOT / "output" / "formal_daily_publications",

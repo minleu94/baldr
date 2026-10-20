@@ -76,7 +76,7 @@ def run_pilot(
     db_path = db_path.resolve()
     if not db_path.is_file():
         raise ValueError("db_path must be an existing read-only source DB")
-    data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).resolve()
+    data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).resolve()
     output_root = validate_development_output_root(
         development_output_root,
         data_root=data_root,

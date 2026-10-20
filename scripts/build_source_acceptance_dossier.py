@@ -45,7 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _require_non_production_output(output_path: Path) -> None:
-    production_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).resolve()
+    production_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).resolve()
     resolved_output = output_path.resolve()
     try:
         resolved_output.relative_to(production_root)

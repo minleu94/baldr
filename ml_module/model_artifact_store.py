@@ -176,7 +176,7 @@ def _validate_shadow_path(path: str | Path, *, data_root: str | Path | None) -> 
     resolved = Path(path).resolve()
     if not resolved.is_absolute():
         raise ValueError("explicit absolute shadow path is required")
-    formal_root = Path(data_root or os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).resolve()
+    formal_root = Path(data_root or os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).resolve()
     if resolved == formal_root or formal_root in resolved.parents:
         raise ValueError("shadow artifact path cannot be DATA_ROOT or its descendant")
     return resolved

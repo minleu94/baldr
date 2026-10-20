@@ -350,7 +350,7 @@ def test_lookahead_violation_in_custody_fails_closed(tmp_path: Path) -> None:
 
 def test_isolation_guard_rejects_formal_roots() -> None:
     with pytest.raises(RevisionAwareCandidateError, match="cannot target formal data root"):
-        _check_isolation(Path("D:/Min/Python/Project/FA_Data/output"), "test_formal_d")
+        _check_isolation(Path("F:/Min/Python/Project/FA_Data/output"), "test_formal_d")
 
     with pytest.raises(RevisionAwareCandidateError, match="prohibited formal path"):
         _check_isolation(Path("output/release_v4/target_candidate"), "test_release_v4")

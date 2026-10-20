@@ -34,7 +34,7 @@ _REPLAY = Path(
     "research_label_replay_20260520_h20_v3.json"
 )
 _UNION = Path(
-    r"D:/Min/Python/Project/FA_Data/output/release_v4/"
+    r"F:/Min/Python/Project/FA_Data/output/release_v4/"
     r"ml_research_shadow_union_full_v4_official_events/runs/"
     r"research-union-c385b17c541f2a132d05efa6/manifest.json"
 )

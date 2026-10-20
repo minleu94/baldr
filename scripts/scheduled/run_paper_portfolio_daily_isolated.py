@@ -45,7 +45,7 @@ from scripts.scheduled.paper_portfolio_state_isolation import (  # noqa: E402
 )
 
 
-DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 SOURCE_STATE_DB = (
     DEFAULT_DATA_ROOT / "output" / "paper_portfolio" / "paper_portfolio.sqlite"
 )

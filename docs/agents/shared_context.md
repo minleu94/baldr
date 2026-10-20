@@ -6,7 +6,7 @@
 
 - 使用繁體中文回覆與更新文件；新增程式註解也使用繁體中文。只在使用者授權的範圍內工作，不自行擴張功能、資料、清理或發布範圍。
 - 不覆寫、revert、刪除或清理使用者或其他 Agent 留下的未提交變更。先辨認工作目錄、HEAD 與 dirty tree；只整合本任務成果。
-- 不得刪除、覆寫、重建或破壞正式資料根目錄內的原始／每日資料。位置由 `data_module/config.py` 的 `TWStockConfig` 決定，預設 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。資料審計預設唯讀；任何寫入、migration、backfill 或重建都必須有明確授權與精確範圍。
+- 不得刪除、覆寫、重建或破壞正式資料根目錄內的原始／每日資料。位置由 `data_module/config.py` 的 `TWStockConfig` 決定，預設 `F:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。資料審計預設唯讀；任何寫入、migration、backfill 或重建都必須有明確授權與精確範圍。repo 的大型 `output`、`dist`、`.t` 經 junction 存於 `F:/Min/Python/Project/BaldrStorage`。
 - 不確定資料所有權、現行產品事實或操作影響時，先查對應 Scoped SSOT 和證據；無法裁決時標示需要確認，不猜測現況。
 - 刪除、清理、正式資料寫入／重建、migration、分支或工作樹清理，以及其他不可逆操作，只能在明確授權和完成影響／恢復性檢查後進行。不得使用寬泛 wildcard 或清理不明目標。
 

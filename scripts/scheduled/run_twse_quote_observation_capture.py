@@ -116,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", required=True)
     parser.add_argument(
         "--data-root",
-        default=os.environ.get("DATA_ROOT", r"D:\Min\Python\Project\FA_Data"),
+        default=os.environ.get("DATA_ROOT", r"F:\Min\Python\Project\FA_Data"),
         help="Read-only canonical daily-price root used to prove each symbol venue.",
     )
     parser.add_argument("--timeout-seconds", type=float, default=30.0)

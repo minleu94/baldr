@@ -438,7 +438,7 @@ class RecommendationLearningEvidenceProjectionService:
             else:
                 resolved_output_root = Path(learning_root).resolve()
                 paths = RecommendationLearningPaths(
-                    data_root=Path(getattr(config, "data_root", "D:/Min/Python/Project/FA_Data")).resolve(),
+                    data_root=Path(getattr(config, "data_root", "F:/Min/Python/Project/FA_Data")).resolve(),
                     output_root=resolved_output_root,
                 )
         self.paths = paths
@@ -2044,7 +2044,7 @@ def _normalize_cost_lane(value: str | None) -> str:
 
 
 def _default_lane_output_root(data_root: str | Path | None, cost_lane: str) -> Path:
-    formal_root = Path(data_root or "D:/Min/Python/Project/FA_Data").resolve()
+    formal_root = Path(data_root or "F:/Min/Python/Project/FA_Data").resolve()
     if cost_lane == "banktaiwan_estimated_research":
         configured = os.environ.get("BANKTAIWAN_RECOMMENDATION_LEARNING_OUTPUT_ROOT")
         return Path(configured).resolve() if configured else formal_root.parent / "FA_Data_Shadow_BankTaiwan"

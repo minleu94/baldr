@@ -31,7 +31,7 @@ def process_stock(stock_id="2330"):
     
     try:
         # 1. 創建配置
-        base_dir = Path("D:/Min/Python/Project/FA_Data")
+        base_dir = Path("F:/Min/Python/Project/FA_Data")
         config = TWStockConfig(base_dir=base_dir)
         
         # 2. 檢查關鍵目錄和檔案

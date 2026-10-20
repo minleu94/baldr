@@ -31,7 +31,7 @@ from scripts.run_p0_source_evidence_audit import validate_approved_output_path
 
 AUDIT_SCHEMA_VERSION = "p0-source-evidence-audit.v1"
 DOSSIER_SCHEMA_VERSION = "source-acceptance-dossier.v1"
-_PRODUCTION_DEFAULT = "D:/Min/Python/Project/FA_Data"
+_PRODUCTION_DEFAULT = "F:/Min/Python/Project/FA_Data"
 
 _SAFETY_FLAGS = {
     "read_only": True,

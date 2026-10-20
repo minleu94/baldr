@@ -207,7 +207,7 @@ def _protected_roots(values: Sequence[Path]) -> tuple[Path, ...]:
 
     project_root = Path(__file__).resolve().parents[1]
     roots.append(_canonical_path(project_root / "output", "project_output_root", allow_missing=True))
-    data_root_text = os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+    data_root_text = os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
     try:
         data_root_path = Path(data_root_text)
         output_root_text = os.environ.get("OUTPUT_ROOT", str(data_root_path / "output"))

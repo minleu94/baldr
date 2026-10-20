@@ -91,7 +91,7 @@ def _path(value: Path | str) -> Path:
 
 def _default_data_root() -> Path:
     return _path(
-        os.environ.get("DATA_ROOT", r"D:\Min\Python\Project\FA_Data")
+        os.environ.get("DATA_ROOT", r"F:\Min\Python\Project\FA_Data")
     )
 
 

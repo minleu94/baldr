@@ -11,7 +11,7 @@ cd /d "%REPO_ROOT%" || exit /b 1
 
 set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" set "PYTHON=python"
-if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if "%DATA_ROOT%"=="" set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if "%OUTPUT_ROOT%"=="" set "OUTPUT_ROOT=%DATA_ROOT%\output"
 if "%DB_PATH%"=="" set "DB_PATH=%DATA_ROOT%\sqlite\twstock.db"
 if "%FORWARD_OUTCOME_WINDOWS%"=="" set "FORWARD_OUTCOME_WINDOWS=5,10,20,60"

@@ -4,6 +4,17 @@ import logging
 from data_module.config import TWStockConfig
 
 
+def test_config_default_roots_follow_f_drive_migration(monkeypatch) -> None:
+    monkeypatch.delenv("DATA_ROOT", raising=False)
+    monkeypatch.delenv("OUTPUT_ROOT", raising=False)
+
+    data_factory = TWStockConfig.__dataclass_fields__["data_root"].default_factory
+    output_factory = TWStockConfig.__dataclass_fields__["output_root"].default_factory
+
+    assert data_factory() == Path("F:/Min/Python/Project/FA_Data")
+    assert output_factory() == Path("F:/Min/Python/Project/FA_Data/output")
+
+
 def test_config_builds_paths_from_injected_roots(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     output_root = tmp_path / "output"

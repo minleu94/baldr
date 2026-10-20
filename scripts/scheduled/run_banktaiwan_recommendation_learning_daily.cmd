@@ -19,7 +19,7 @@ if not exist "%PYTHON%" (
 )
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
-if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if "%DATA_ROOT%"=="" set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 for %%I in ("%DATA_ROOT%\..") do set "DATA_PARENT=%%~fI"
 if "%BANKTAIWAN_RECOMMENDATION_LEARNING_OUTPUT_ROOT%"=="" set "BANKTAIWAN_RECOMMENDATION_LEARNING_OUTPUT_ROOT=%DATA_PARENT%\FA_Data_Shadow_BankTaiwan"
 if "%BANKTAIWAN_SOURCE_ARTIFACT_ROOT%"=="" set "BANKTAIWAN_SOURCE_ARTIFACT_ROOT=%DATA_PARENT%\FA_Data_Shadow"

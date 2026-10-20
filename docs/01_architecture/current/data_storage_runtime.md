@@ -12,9 +12,9 @@
 
 注意版本使用獨立 `twse-attention-daily-manifest.v1`／`twse-attention-daily-receipt.v1`，不冒用 MOPS 或法人 schema。create-only／fsync／pending／批次實際時鐘沿既有每日政策，只有公告日故保留官方發布時刻 None，以成功批次小時 fallback。fixed reader 要明選目錄與雙 SHA，逐次重驗整鏈與 bytes／signature，拒 pending／failure、未來 cutoff、提前小時與中途變更；原 capture 不需仍在場，不掃 latest、不讀正式 SQL。改正另存；失敗只隔離該功能。操作與設定見[注意公告指南](../../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#單日官方注意公告後續開發分支)，資格仍候選／用途未接受／PIT false。
 
-`data_module/config.py` 的 `TWStockConfig` 是資料路徑權威。`DATA_ROOT` 預設為 `D:/Min/Python/Project/FA_Data`，可用環境變數覆蓋；`OUTPUT_ROOT` 亦由同一設定管理。主要市場 SQLite 位於 `<DATA_ROOT>/sqlite/twstock.db`。程式不得另造正式資料根目錄或硬編路徑。
+`data_module/config.py` 的 `TWStockConfig` 是資料路徑權威。`DATA_ROOT` 預設為 `F:/Min/Python/Project/FA_Data`，可用環境變數覆蓋；`OUTPUT_ROOT` 亦由同一設定管理，預設為 `<DATA_ROOT>/output`。主要市場 SQLite 位於 `<DATA_ROOT>/sqlite/twstock.db`。程式不得另造正式資料根目錄或硬編路徑。
 
-2026-10-20 的 D→F 儲存搬遷仍在進行；同名版本差異及 SQLite／writer 狀態尚未完成一致性核驗，因此此處所述 D 根仍是現行設定，不要先切換。已複製範圍、未合併差異與恢復步驟見[儲存搬遷進度](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。
+2026-10-20 已將 F 設為新的正式資料根，repo 的大型 `output`、`dist`、`.t` 也透過 junction 指向 `F:/Min/Python/Project/BaldrStorage`。D 舊資料尚未清除：一個舊 `config.log` 仍被程序開啟，待程序正常退出及最終核對後才能刪除 D 原始資料。搬遷範圍、核驗界線、空間數據及待辦見[儲存搬遷紀錄](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。
 
 每日市場更新的主要資料流是：
 

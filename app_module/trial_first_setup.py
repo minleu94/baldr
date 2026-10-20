@@ -86,7 +86,7 @@ def _verify_files(root: Path, entries: Any, prefix: str, cancel) -> list[tuple[P
 
 def _reject_protected_target(state: Path) -> None:
     # DATA_ROOT空白或改指隔離庫時，預設正式根仍不能成為試用寫入目的。
-    protected_roots = {Path("D:/Min/Python/Project/FA_Data").absolute()}
+    protected_roots = {Path("F:/Min/Python/Project/FA_Data").absolute()}
     for name in ("DATA_ROOT", "OUTPUT_ROOT", "PERSONAL_DATA_ROOT", "PERSONAL_STORE_ROOT", "PERSONAL_JOURNAL_ROOT"):
         value = os.environ.get(name, "")
         if value:

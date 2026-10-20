@@ -381,7 +381,7 @@ def test_personal_ui_learning_root_rejects_path_escape_without_statting_formal_d
         personal_ui.prepare_isolated_workspace(
             run_root=run_root,
             policy_config_path=policy_path,
-            learning_output_root=Path("D:/Min/Python/Project/FA_Data"),
+            learning_output_root=Path("F:/Min/Python/Project/FA_Data"),
             authority=authority,
             qa_root=qa_root,
             learning_qa_root=repo_qa_root,
@@ -440,8 +440,8 @@ def test_personal_ui_launch_environment_uses_only_isolated_roots(tmp_path, monke
             receipts_dir=run_root / "receipts",
         )
         monkeypatch.setenv("FORMAL_DAILY_DUMMY_BINDING", "must be removed")
-        monkeypatch.setenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
-        monkeypatch.setenv("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")
+        monkeypatch.setenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
+        monkeypatch.setenv("OUTPUT_ROOT", "F:/Min/Python/Project/FA_Data/output")
 
         personal_ui._configure_isolated_environment(layout, learning_output_root)
 

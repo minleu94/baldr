@@ -22,7 +22,7 @@ if not exist "%PYTHON%" (
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 echo Governed Python: %PYTHON%
-if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if "%DATA_ROOT%"=="" set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if not defined CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT (
   if defined OUTPUT_ROOT set "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT=%OUTPUT_ROOT%"
   if not defined CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT set "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT=%DATA_ROOT%\output"

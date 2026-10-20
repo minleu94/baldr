@@ -21,7 +21,7 @@ from app_module.runtime_services.environment_readiness_service import (
 )
 
 
-DEFAULT_DATA_ROOT = "D:/Min/Python/Project/FA_Data"
+DEFAULT_DATA_ROOT = "F:/Min/Python/Project/FA_Data"
 
 
 def main(argv: Sequence[str] | None = None) -> int:

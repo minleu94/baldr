@@ -25,7 +25,7 @@ DEFAULT_OUTPUT_ROOT = (
     Path(
         os.environ.get(
             "OUTPUT_ROOT",
-            "D:/Min/Python/Project/FA_Data/output",
+            "F:/Min/Python/Project/FA_Data/output",
         )
     )
     / "release_v4"

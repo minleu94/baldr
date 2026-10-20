@@ -316,7 +316,7 @@ def seal_institutional_capture(
 ) -> InstitutionalDailySnapshotPin:
     """僅在原候選run旁寫新收據；原raw／manifest與正式DB不變。"""
     run = _canonical_path(run_directory, "institutional_capture", allow_missing=False)
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"),
                  os.getenv("OUTPUT_ROOT"), os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text and run.is_relative_to(Path(text).absolute()):
             raise InstitutionalDailySnapshotError("不可在正式／私人資料根寫入法人候選收據")

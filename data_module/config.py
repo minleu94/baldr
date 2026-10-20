@@ -143,10 +143,10 @@ class TWStockConfig:
     
     # 基礎路徑配置 - 支持環境變量和CLI覆蓋
     data_root: Path = field(default_factory=lambda: Path(
-        os.environ.get('DATA_ROOT', 'D:/Min/Python/Project/FA_Data')
+        os.environ.get('DATA_ROOT', 'F:/Min/Python/Project/FA_Data')
     ))
     output_root: Path = field(default_factory=lambda: Path(
-        os.environ.get('OUTPUT_ROOT', 'D:/Min/Python/Project/FA_Data/output')
+        os.environ.get('OUTPUT_ROOT', 'F:/Min/Python/Project/FA_Data/output')
     ))
     profile: str = field(default_factory=lambda: os.environ.get('PROFILE', 'prod'))
     

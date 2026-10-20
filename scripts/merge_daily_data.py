@@ -188,7 +188,7 @@ def merge_daily_data(
         logger.info(f"使用配置路徑: base_dir={base_dir}")
     else:
         # 降級方案：使用硬編碼路徑（向後兼容）
-        base_dir = Path("D:/Min/Python/Project/FA_Data")
+        base_dir = Path("F:/Min/Python/Project/FA_Data")
         daily_price_dir = base_dir / "daily_price"
         tpex_daily_price_dir = base_dir / "daily_price_tpex"
         meta_data_dir = base_dir / "meta_data"

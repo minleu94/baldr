@@ -321,7 +321,7 @@ class EvidencePipelineRunner:
         if not db_path:
             return False
         target = Path(db_path).resolve()
-        default_data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+        default_data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
         default_target = (default_data_root / "sqlite" / "twstock.db").resolve()
         return target == default_target
 

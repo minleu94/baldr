@@ -37,7 +37,7 @@ _SOURCE_VERSION_REPORT_BASIS_RE = re.compile(
     re.IGNORECASE,
 )
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_DEFAULT_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
+_DEFAULT_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 _ISOLATION_MARKER_SUFFIX = ".research-only.json"
 
 

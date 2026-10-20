@@ -976,7 +976,7 @@ A: 請檢查：
 #### 2. 技術指標數據
 **CSV fallback 路徑範例：** `{DATA_ROOT}/technical_analysis/2330_indicators.csv`
 
-`DATA_ROOT` 由 `data_module/config.py` 的 `TWStockConfig` 決定；預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。以上是檔案位置範例，不取代目前操作／來源判讀；請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對當前流程。
+`DATA_ROOT` 由 `data_module/config.py` 的 `TWStockConfig` 決定；本機預設為 `F:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。以上是檔案位置範例，不取代目前操作／來源判讀；請依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 核對當前流程。
 
 **載入邏輯：**
 - 直接讀取對應股票的技術指標文件

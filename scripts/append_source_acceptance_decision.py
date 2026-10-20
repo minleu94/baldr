@@ -46,7 +46,7 @@ from scripts.inspect_p0_intake_readiness import inspect_p0_intake
 
 _PREVIEW_SCHEMA_VERSION = "source-acceptance-decision-preview.v1"
 _APPLYING_STATUSES = frozenset({"accepted", "limited"})
-_PRODUCTION_DEFAULT = "D:/Min/Python/Project/FA_Data"
+_PRODUCTION_DEFAULT = "F:/Min/Python/Project/FA_Data"
 
 
 def load_decision(path: Path) -> SourceAcceptanceDecisionRevision:

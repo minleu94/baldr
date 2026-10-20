@@ -45,7 +45,7 @@
   --expected-model-family <EXPECTED_MODEL_FAMILY> `
   --expected-label-registry-hash <EXPECTED_LABEL_REGISTRY_HASH> `
   --output-root C:\Temp\technical_analysis_shadow\output `
-  --data-root D:\Min\Python\Project\FA_Data
+  --data-root F:\Min\Python\Project\FA_Data
 ```
 
 結果同時輸出至 stdout 與 `<output-root>\ml-shadow-operation.json`。相同 model、dataset、decision date 與 feature snapshot 的請求重跑時，prediction registry 只保留同一筆識別結果，不應重複新增。
@@ -67,7 +67,7 @@
   --prediction-registry C:\Temp\technical_analysis_shadow\prediction.sqlite3 `
   --lifecycle-registry C:\Temp\technical_analysis_shadow\lifecycle.sqlite3 `
   --model-id <MODEL_ID> `
-  --data-root D:\Min\Python\Project\FA_Data
+  --data-root F:\Min\Python\Project\FA_Data
 ```
 
 檢視命令不會初始化或修改 registry。若檔案不存在，會回報 `shadow_registry_unavailable` 並以 exit code 1 結束。

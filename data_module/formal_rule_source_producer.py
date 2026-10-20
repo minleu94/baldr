@@ -1932,13 +1932,13 @@ def run_from_environment() -> tuple[dict[str, object], int]:
     market_db = Path(
         os.environ.get(
             "FORMAL_DAILY_MARKET_DB",
-            r"D:\Min\Python\Project\FA_Data\sqlite\twstock.db",
+            r"F:\Min\Python\Project\FA_Data\sqlite\twstock.db",
         )
     )
     baseline_root = Path(
         os.environ.get(
             "FORMAL_DAILY_RULE_BASELINE_ROOT",
-            r"D:\Min\Python\Project\FA_Data\output\formal_prospective",
+            r"F:\Min\Python\Project\FA_Data\output\formal_prospective",
         )
     )
     calendar_root = Path(

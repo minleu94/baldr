@@ -93,8 +93,8 @@ class Gate2ManualReviewPackage:
 
 ## Step 1: 建立 Working-Copy DB 副本
 ```powershell
-$SourceDB = "D:/Min/Python/Project/FA_Data/sqlite/twstock.db"
-$WorkingDB = "D:/Min/Python/Project/FA_Data/sqlite/twstock_working_copy.db"
+$SourceDB = "F:/Min/Python/Project/FA_Data/sqlite/twstock.db"
+$WorkingDB = "F:/Min/Python/Project/FA_Data/sqlite/twstock_working_copy.db"
 Copy-Item $SourceDB $WorkingDB -Force
 ```
 

@@ -897,10 +897,10 @@ def test_official_scheduled_result_renders_cjk_journey_screenshot_when_available
     if opt_in not in {"1", "true", "yes", "on"}:
         pytest.skip("real scheduled Qt smoke requires explicit opt-in")
     output_root = Path(
-        os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")
+        os.environ.get("OUTPUT_ROOT", "F:/Min/Python/Project/FA_Data/output")
     ).expanduser().resolve()
     data_root = Path(
-        os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+        os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
     ).expanduser().resolve()
     result_id = "scheduled_rec_20260914_051003"
     result_path = output_root / "recommendation" / "runs" / f"{result_id}.json"

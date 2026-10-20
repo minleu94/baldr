@@ -79,7 +79,7 @@ DEFAULT_RAW_LOOKBACK_DAYS = daily.DEFAULT_RAW_LOOKBACK_DAYS
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "output" / "v4_ml_daily_derived_shadow"
 DEFAULT_RELEASE_ROOT = REPO_ROOT / "output" / "v4_ml_derived_h5_20260907_real"
 DEFAULT_DATA_ROOT = Path(
-    os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+    os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
 )
 DEFAULT_DATABASE = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 DEFAULT_PAPER_STATE_DB = (

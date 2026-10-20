@@ -83,7 +83,7 @@ def test_missing_runtime_field_unconfigured_no_production(ctx,removed):
 def test_no_config_target_and_formal_source_refusal(ctx):
     path,day,c,_,_ = ctx
     assert owner.run_daily_owner(None,None)["status"] == "unconfigured"
-    c["source_db"] = "D:/Min/Python/Project/FA_Data/sqlite/twstock.db"
+    c["source_db"] = "F:/Min/Python/Project/FA_Data/sqlite/twstock.db"
     path.write_text(json.dumps(c),encoding="utf-8")
     result = owner.run_daily_owner(path,day,execute=True)
     assert result["status"] == "blocked" and "isolated_output" in result["error_code"]

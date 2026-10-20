@@ -1732,7 +1732,7 @@ class UpdateView(QWidget):
                 cli_box.setMaximumHeight(80)
                 if key == "tdcc_shareholding":
                     cmd_str = (
-                        "$env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3c_candidate.db'\n"
+                        "$env:PHASE3C_CANDIDATE_DB_PATH = 'F:/Min/Python/Project/FA_Data_candidate/phase3c_candidate.db'\n"
                         "$endDate = (Get-Date).ToString('yyyy-MM-dd')\n"
                         "python scripts/update_phase3c_candidates.py `\n"
                         "  --date $endDate --sources tdcc --include-latest-tdcc `\n"
@@ -1746,7 +1746,7 @@ class UpdateView(QWidget):
                         else "credit"
                     )
                     cmd_str = (
-                        "$env:PHASE3C_CANDIDATE_DB_PATH = 'D:/Min/Python/Project/FA_Data_candidate/phase3c_candidate.db'\n"
+                        "$env:PHASE3C_CANDIDATE_DB_PATH = 'F:/Min/Python/Project/FA_Data_candidate/phase3c_candidate.db'\n"
                         "$startDate = (Get-Date).AddYears(-2).ToString('yyyy-MM-dd')\n"
                         "$endDate = (Get-Date).ToString('yyyy-MM-dd')\n"
                         "python scripts/update_phase3c_candidates.py `\n"

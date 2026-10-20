@@ -7,7 +7,7 @@ cd /d "%REPO_ROOT%" || exit /b 1
 
 set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" set "PYTHON=python"
-if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if "%DATA_ROOT%"=="" set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if "%OUTPUT_ROOT%"=="" set "OUTPUT_ROOT=%DATA_ROOT%\output"
 if "%SOURCE_DB_PATH%"=="" set "SOURCE_DB_PATH=%DATA_ROOT%\sqlite\twstock.db"
 if "%SIDECAR_DB_PATH%"=="" set "SIDECAR_DB_PATH=%OUTPUT_ROOT%\scheduled\v2_2_weekly_collection\evidence_scheduler.db"

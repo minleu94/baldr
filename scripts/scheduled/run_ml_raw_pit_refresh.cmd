@@ -5,7 +5,7 @@ set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..\..") do set "REPO_ROOT=%%~fI"
 cd /d "%REPO_ROOT%"
 
-if not defined DATA_ROOT set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if not defined DATA_ROOT set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if not defined OUTPUT_ROOT set "OUTPUT_ROOT=%DATA_ROOT%\output"
 if defined BALDR_PYTHON set "PYTHON=%BALDR_PYTHON%"
 if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"

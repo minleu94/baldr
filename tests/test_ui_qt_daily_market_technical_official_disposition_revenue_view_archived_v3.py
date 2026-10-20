@@ -61,7 +61,7 @@ def test_original_view_archived_bookmark_reopens_after_mutable_sources_and_origi
     research, operations = tmp_path / "research", tmp_path / "operations"
     research.mkdir(); operations.mkdir()
     config = DailyRevenueSourceConfigV2(
-        base_provider, (Path("D:/Min/Python/Project/FA_Data"),),
+        base_provider, (Path("F:/Min/Python/Project/FA_Data"),),
         reader_factory=select, exact_reader_factory=exact_reader,
         use_archived_sources=True, source_roots=tuple(market_roots.values()),
     )

@@ -54,7 +54,7 @@ from data_module.formal_schedule_gate import (  # noqa: E402
 )
 
 
-_DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+_DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 TAIPEI = ZoneInfo("Asia/Taipei")
 _REQUIRED_SOURCE_ENV = (
     "FORMAL_DAILY_CLOCK_MANIFEST",

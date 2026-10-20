@@ -18,7 +18,7 @@ import sqlite3
 from typing import Any, Iterable
 
 
-DEFAULT_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
+DEFAULT_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 DEFAULT_DB = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 DEFAULT_OUTPUT = Path("output/qa/price_jump_20260921")
 TARGET_DATE = "20260921"

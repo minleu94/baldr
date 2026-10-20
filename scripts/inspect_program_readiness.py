@@ -42,7 +42,7 @@ from app_module.p0_source_control_center import P0SourceControlCenterService
 
 
 READINESS_SCHEMA_VERSION = "program-readiness.v1"
-DEFAULT_DATA_ROOT = "D:/Min/Python/Project/FA_Data"
+DEFAULT_DATA_ROOT = "F:/Min/Python/Project/FA_Data"
 
 
 @dataclass(frozen=True)

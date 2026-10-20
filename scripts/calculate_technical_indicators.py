@@ -64,7 +64,7 @@ def setup_logging(verbose=False):
         logger.removeHandler(handler)
     
     # 確保日誌目錄存在
-    log_dir = Path("D:/Min/Python/Project/FA_Data/logs")
+    log_dir = Path("F:/Min/Python/Project/FA_Data/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     
     # 檔案處理器 - 記錄所有日誌

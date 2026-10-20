@@ -49,7 +49,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.prepare:
             if args.root is None or args.technical_receipt_dir is None:
                 parser.error("--prepare 需要 --root 與 --technical-receipt-dir")
-            root = args.root or Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+            root = args.root or Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
             result = prepare(root, args.technical_receipt_dir, args.receipt_dir)
         elif args.stage:
             result = stage(args.receipt_dir)

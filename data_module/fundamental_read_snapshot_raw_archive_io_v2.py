@@ -139,7 +139,7 @@ def verify_raw_archive_reference_v2(
             or daily_monthly_cohort_reader.pin != clock.cohort_pin
             or str(provider.monthly_source_root) != reference.original_monthly_source_root):
         raise FundamentalReadSnapshotError("fundamental_snapshot_v2_archive_provider_or_full_pin_mismatch")
-    formal = Path(os.path.abspath(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")))
+    formal = Path(os.path.abspath(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")))
     if any(_paths_overlap(root, path) for path in (provider.output_root, provider.monthly_source_root, formal,
                                                   Path(clock.database_path).parent,
                                                   Path(reference.snapshot_reference.snapshot_root))):

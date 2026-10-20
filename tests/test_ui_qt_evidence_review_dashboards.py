@@ -142,11 +142,11 @@ class FakeManualObservedScheduledStatus:
             pipeline_diagnostic_codes=("source_missing_screening_matrix",),
             pipeline_blocking_gaps=(),
             diagnostics=(
-                r"status_missing:D:\Min\Python\Project\FA_Data\output\scheduled\recommendation_snapshot\latest_status.json",
-                r"manual_recommendation_result_observed:D:\Min\Python\Project\FA_Data\output\recommendation\runs\rec_20260707_113744.json",
+                r"status_missing:F:\Min\Python\Project\FA_Data\output\scheduled\recommendation_snapshot\latest_status.json",
+                r"manual_recommendation_result_observed:F:\Min\Python\Project\FA_Data\output\recommendation\runs\rec_20260707_113744.json",
             ),
             manual_recommendation_result_path=Path(
-                r"D:\Min\Python\Project\FA_Data\output\recommendation\runs\rec_20260707_113744.json"
+                r"F:\Min\Python\Project\FA_Data\output\recommendation\runs\rec_20260707_113744.json"
             ),
             report_preview=(
                 "# Evidence Pipeline Dry-run Report\n\n"
@@ -265,7 +265,7 @@ def test_evidence_review_view_contains_read_only_tabs_including_scheduled_status
 
 def test_evidence_review_view_shows_current_evidence_database_path() -> None:
     app()
-    db_path = r"D:\Min\Python\Project\FA_Data\output\evidence_ui_smoke\data_root\sqlite\twstock.db"
+    db_path = r"F:\Min\Python\Project\FA_Data\output\evidence_ui_smoke\data_root\sqlite\twstock.db"
     view = EvidenceReviewView(
         forward_performance_widget=QTabWidget(),
         live_gap_service=FakeDashboard(LiveResearchGapDashboardResult(LiveResearchGapDashboardRequest(), LiveResearchGapDashboardCards())),

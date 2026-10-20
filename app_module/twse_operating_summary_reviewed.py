@@ -119,7 +119,7 @@ def seal_reviewed_operating_summary_snapshot(
     if accepted < DOCUMENTS_NOT_BEFORE:
         raise base.OperatingSummaryError("三公司用途接受早於必要勾稽文件")
     output = _canonical_path(output_directory, "operating_reviewed", allow_missing=True)
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
                  os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text:
             protected = Path(text).absolute()
@@ -379,7 +379,7 @@ def seal_comparative_operating_summary_snapshot(original: ReviewedOperatingSumma
         "base/manifest.json": child["manifest_sha256"], "base/receipt.json": child["receipt_sha256"]}
     files = {name: base._read(original.directory / name, digest, pins) for name, digest in hashes.items()}
     output = _canonical_path(output_directory, "operating_comparative", allow_missing=True)
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"), os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"), os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text:
             protected = Path(text).absolute()
             if output.is_relative_to(protected) or protected.is_relative_to(output):

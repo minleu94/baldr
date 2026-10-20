@@ -32,5 +32,5 @@
 ## 專案入口
 
 - 主要 UI：`ui_qt/main.py`。
-- 資料根目錄：由 `data_module/config.py` 的 `TWStockConfig` 管理，預設 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。
+- 資料根目錄：由 `data_module/config.py` 的 `TWStockConfig` 管理，預設 `F:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋；repo 的大型 `output`、`dist`、`.t` 目錄透過 junction 存於 `F:/Min/Python/Project/BaldrStorage`。
 - 本機產出、正式資料、量化精度、未來函數、Python 驗證程序、Git 與未提交變更等硬規則一律以 `docs/agents/shared_context.md` 為準。

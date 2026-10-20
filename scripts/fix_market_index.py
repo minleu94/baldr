@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class MarketIndexFixer:
     def __init__(self):
         # 使用固定的基礎目錄
-        self.base_dir = Path('D:/Min/Python/Project/FA_Data')
+        self.base_dir = Path('F:/Min/Python/Project/FA_Data')
         self.meta_data_dir = self.base_dir / 'meta_data'
         self.market_index_file = self.meta_data_dir / 'market_index.csv'
         self.backup_dir = self.meta_data_dir / 'backup'

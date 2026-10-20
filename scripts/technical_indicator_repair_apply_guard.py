@@ -2100,7 +2100,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if selected_modes > 1:
             raise ApplyGuardError("--apply、--resume、--rollback 只能擇一")
-        data_root = (args.data_root or Path("D:/Min/Python/Project/FA_Data")).expanduser().resolve()
+        data_root = (args.data_root or Path("F:/Min/Python/Project/FA_Data")).expanduser().resolve()
         lock_path = (
             args.lock_path
             or data_root / "output" / "release_v4" / ".ml_heavy_chain.lock"

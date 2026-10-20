@@ -32,8 +32,8 @@ def is_path_safe(path: Path) -> bool:
     except Exception:
         return False
 
-    data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).resolve()
-    output_root = Path(os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")).resolve()
+    data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).resolve()
+    output_root = Path(os.environ.get("OUTPUT_ROOT", "F:/Min/Python/Project/FA_Data/output")).resolve()
     sqlite_dir = data_root / "sqlite"
     repo_root = Path(__file__).resolve().parents[1].resolve()
 

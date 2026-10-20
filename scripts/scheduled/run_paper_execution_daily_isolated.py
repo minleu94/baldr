@@ -60,7 +60,7 @@ from scripts.scheduled.paper_portfolio_state_isolation import (  # noqa: E402
 )
 
 
-DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 OPERATIONAL_ROOT = ROOT / "output" / "paper_execution_eod_replay"
 CANDIDATE_ROOT = OPERATIONAL_ROOT / "candidates"
 RECEIPT_ROOT = OPERATIONAL_ROOT / "receipts"

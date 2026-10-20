@@ -36,7 +36,7 @@ from data_module.official_trading_calendar_cache import (
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
-DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 DEFAULT_OUTPUT_ROOT = DEFAULT_DATA_ROOT / "output"
 DEFAULT_DB_PATH = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 DEFAULT_CALENDAR_CACHE_ROOT = (

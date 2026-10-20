@@ -19,9 +19,9 @@ def set_chinese_font():
         print("設定中文字體失敗，將使用默認字體")
 
 # 設置測試數據路徑
-TEST_DATA_PATH = r'D:\Min\Python\Project\FA_Data\test_data'
+TEST_DATA_PATH = r'F:\Min\Python\Project\FA_Data\test_data'
 # 設置測試結果路徑
-TEST_RESULTS_PATH = r'D:\Min\Python\Project\FA_Data\test_data'
+TEST_RESULTS_PATH = r'F:\Min\Python\Project\FA_Data\test_data'
 
 # 確保測試數據和結果目錄存在
 os.makedirs(TEST_DATA_PATH, exist_ok=True)
@@ -290,7 +290,7 @@ def plot_parameter_results(results, output_dir):
 
 def main():
     # 設置測試數據路徑
-    test_data_path = r'D:\Min\Python\Project\FA_Data\test_data'
+    test_data_path = r'F:\Min\Python\Project\FA_Data\test_data'
     os.makedirs(test_data_path, exist_ok=True)
     
     # 設置股票代碼

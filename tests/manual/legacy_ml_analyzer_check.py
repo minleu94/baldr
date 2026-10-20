@@ -28,11 +28,11 @@ def test_ml_analyzer():
     
     # 設定股票代碼和數據路徑
     ticker = '2330'  # 台積電
-    data_path = r"D:\Min\Python\Project\FA_Data\technical_analysis"
+    data_path = r"F:\Min\Python\Project\FA_Data\technical_analysis"
     file_path = os.path.join(data_path, f"{ticker}_indicators.csv")
     
     # 設定測試數據保存路徑
-    test_data_path = r"D:\Min\Python\Project\FA_Data\test_data"
+    test_data_path = r"F:\Min\Python\Project\FA_Data\test_data"
     stock_dir = os.path.join(test_data_path, ticker)
     os.makedirs(stock_dir, exist_ok=True)
     

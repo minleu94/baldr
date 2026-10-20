@@ -244,7 +244,7 @@ def test_late_monthly_mutation_keeps_failure_and_does_not_publish_config(package
 def test_default_formal_target_remains_protected_without_touching_it(monkeypatch, tmp_path, data_root):
     monkeypatch.setenv("DATA_ROOT", str(tmp_path / data_root) if data_root else "")
     with pytest.raises(setup.TrialSetupError, match="正式"):
-        setup._reject_protected_target(Path("D:/Min/Python/Project/FA_Data/trial/state").absolute())
+        setup._reject_protected_target(Path("F:/Min/Python/Project/FA_Data/trial/state").absolute())
 
 
 def test_fixed_regime_history_is_preserved_without_private_output_import(package, monkeypatch):

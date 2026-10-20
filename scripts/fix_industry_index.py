@@ -129,7 +129,7 @@ def fix_industry_index(default_start_date: str = "2024-11-23"):
     """修復並更新industry_index.csv文件"""
     try:
         # 設定路徑
-        base_path = Path("D:/Min/Python/Project/FA_Data")
+        base_path = Path("F:/Min/Python/Project/FA_Data")
         meta_data_path = base_path / 'meta_data'
         industry_index_file = meta_data_path / 'industry_index.csv'
         backup_path = meta_data_path / 'backup'

@@ -192,7 +192,7 @@ def test_approved_weekly_history_projection_path_security(tmp_path: Path):
     assert len(proj.records) == 1
 
     with pytest.raises(ValueError, match="不得位於正式 SQLite 資料庫目錄中"):
-        load_approved_weekly_history_projection("D:/Min/Python/Project/FA_Data/sqlite/projection.json")
+        load_approved_weekly_history_projection("F:/Min/Python/Project/FA_Data/sqlite/projection.json")
 
 
 def test_approved_weekly_history_projection_duplicate_period(tmp_path: Path):

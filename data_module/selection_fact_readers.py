@@ -597,7 +597,7 @@ class SelectionFundamentalReadSession:
             raise FundamentalReadSessionError("typed copy binding is required")
         protected_roots = (
             provider.output_root,
-            Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+            Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
         )
         try:
             if type(copy_binding) is FundamentalReadCopyBinding:

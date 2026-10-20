@@ -67,7 +67,7 @@
 
 ## 3. 三大產出檔案位置與欄位契約
 
-所有檔案預設存放於 `TWStockConfig.meta_data_dir`（預設為 `D:/Min/Python/Project/FA_Data/meta_data/`）：
+所有檔案預設存放於 `TWStockConfig.meta_data_dir`（本機預設為 `F:/Min/Python/Project/FA_Data/meta_data/`）：
 
 ### 3.1 檔案一：產業檔案 (`industry_chains_catalog.csv`)
 

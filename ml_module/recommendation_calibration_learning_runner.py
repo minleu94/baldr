@@ -58,7 +58,7 @@ from ml_module.recommendation_training_lineage import (
 )
 
 
-DEFAULT_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
+DEFAULT_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 RECOMMENDATION_LEARNING_OUTPUT_ROOT_ENV = "RECOMMENDATION_LEARNING_OUTPUT_ROOT"
 _RUN_INPUT_IDENTITY_SCHEMA = "recommendation-learning-run-input-identity.v1"
 _CANDIDATE_RUN_BINDING_SCHEMA = "recommendation-learning-candidate-run-binding.v1"

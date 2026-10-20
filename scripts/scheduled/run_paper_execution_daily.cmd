@@ -7,7 +7,7 @@ cd /d "%REPO_ROOT%" || exit /b 1
 
 set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" set "PYTHON=python"
-if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if "%DATA_ROOT%"=="" set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if "%OUTPUT_ROOT%"=="" set "OUTPUT_ROOT=%DATA_ROOT%\output"
 
 rem 這個獨立排程在延遲 EOD replay 門檻後執行；queue 會自動挑選下一官方 session 到期的 frozen recommendation。

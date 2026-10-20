@@ -36,7 +36,7 @@ def validate_fubon_shadow_db_path(
     if candidate.suffix.lower() not in {".db", ".sqlite", ".sqlite3"}:
         raise ValueError("candidate_db_path must be an explicit SQLite file")
 
-    data_root_str = os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data") if production_data_root is None else str(production_data_root)
+    data_root_str = os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data") if production_data_root is None else str(production_data_root)
     data_root = Path(data_root_str).expanduser().resolve(strict=False)
 
     prod_db_str = str(data_root / "sqlite" / "twstock.db") if production_db_path is None else str(production_db_path)

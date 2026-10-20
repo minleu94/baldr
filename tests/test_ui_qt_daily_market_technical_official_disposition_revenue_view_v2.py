@@ -59,7 +59,7 @@ def test_original_view_daily_actor_pages_bookmark_exact_reopen_and_shutdown(
     operations.mkdir()
     view = DailyMarketTechnicalOfficialDispositionRevenueView(
         bundle_fixture.bundle_root, operation_root_parent=operations, monthly_artifact_root=artifact_root,
-        daily_source_config_v2=DailyRevenueSourceConfigV2(base_provider, (Path("D:/Min/Python/Project/FA_Data"),), reader_factory=select, exact_reader_factory=exact_reader),
+        daily_source_config_v2=DailyRevenueSourceConfigV2(base_provider, (Path("F:/Min/Python/Project/FA_Data"),), reader_factory=select, exact_reader_factory=exact_reader),
     )
     view.page_size_box.setValue(50)
     outcomes: list[tuple[str, bool]] = []

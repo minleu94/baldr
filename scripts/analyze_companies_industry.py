@@ -15,8 +15,8 @@ def analyze_companies_industry():
     """分析 companies.csv 和 industry_index.csv"""
     
     # 讀取 companies.csv
-    companies_file = Path(r"D:\Min\Python\Project\FA_Data\meta_data\companies.csv")
-    industry_file = Path(r"D:\Min\Python\Project\FA_Data\meta_data\industry_index.csv")
+    companies_file = Path(r"F:\Min\Python\Project\FA_Data\meta_data\companies.csv")
+    industry_file = Path(r"F:\Min\Python\Project\FA_Data\meta_data\industry_index.csv")
     
     print("=" * 80)
     print("companies.csv 分析")

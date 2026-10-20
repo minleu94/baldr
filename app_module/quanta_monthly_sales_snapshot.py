@@ -26,7 +26,7 @@ SOURCE_URL = "https://www.quantatw.com/quanta/english/investment/financials_ms.a
 IDENTITY_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 PARSER = "quanta-adjusted-consolidated-monthly-sales.v1"
 _TAIPEI = ZoneInfo("Asia/Taipei")
-_DEFAULT_FORMAL_ROOT = Path("D:/Min/Python/Project/FA_Data").absolute()
+_DEFAULT_FORMAL_ROOT = Path("F:/Min/Python/Project/FA_Data").absolute()
 _HASH = re.compile(r"[0-9a-f]{64}")
 _FILES = {
     "monthly.raw": "90399130663acffc144445118a393f134174baf8185653ca169ca0c0fb8b919b",

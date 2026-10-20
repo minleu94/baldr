@@ -38,7 +38,7 @@ from data_module.ml_daily_price_revision_technical_snapshot import (
 
 RECOVERY_SCHEMA = "ml-daily-price-revision-isolated-recovery.v1"
 RECOVERY_CONFIRMATION = "recover-2026-05-20-revision-to-isolated-run02"
-FORMAL_DATABASE = Path(r"D:\Min\Python\Project\FA_Data\sqlite\twstock.db")
+FORMAL_DATABASE = Path(r"F:\Min\Python\Project\FA_Data\sqlite\twstock.db")
 DIFF_FILENAME = "recovery_cell_diff.jsonl"
 ROW_HASH_FILENAME = "affected_row_hashes.jsonl"
 RECEIPT_FILENAME = "recovery_receipt.json"

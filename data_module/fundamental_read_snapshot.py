@@ -2384,7 +2384,7 @@ def _verify_copy_binding_for_provider(
             protected_roots=(
                 provider.output_root,
                 provider.monthly_source_root,
-                Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+                Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
             ),
             cancel_callback=cancel_callback,
         )
@@ -2420,7 +2420,7 @@ def _validate_snapshot_root(
         source_database_path.parent,
         provider.output_root,
         provider.monthly_source_root,
-        Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+        Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
     ]
     if bool(getattr(sys, "frozen", False)):
         protected.append(Path(sys.executable).parent)
@@ -3633,7 +3633,7 @@ def _verify_finished_snapshot_reference(
         for path in (provider.output_root, provider.monthly_source_root)
     ):
         raise FundamentalReadSnapshotError("fundamental_snapshot_exact_root_overlaps_provider_root")
-    if _paths_overlap(snapshot_root, Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))):
+    if _paths_overlap(snapshot_root, Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))):
         raise FundamentalReadSnapshotError("fundamental_snapshot_exact_root_overlaps_formal_data_root")
     source_pins = _pin_source_file_set(source_database_path, cancel_callback=cancel_callback)
     if (
@@ -3697,7 +3697,7 @@ def _create_raw_source_archive(
         Path(snapshot_reference.snapshot_root),
         provider.output_root,
         provider.monthly_source_root,
-        Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+        Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
     )
     for protected_root in protected:
         candidate = Path(os.path.abspath(protected_root.expanduser()))
@@ -3990,7 +3990,7 @@ def _verify_raw_archive_reference(
         source_database_path.parent,
         provider.output_root,
         provider.monthly_source_root,
-        Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+        Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
     )
     for protected_root in protected_roots:
         protected = Path(os.path.abspath(protected_root.expanduser()))

@@ -28,10 +28,10 @@ from app_module.decision_outcome_journey import (
 
 
 DEFAULT_DATA_ROOT = Path(
-    os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+    os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
 )
 DEFAULT_OUTPUT_ROOT = Path(
-    os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")
+    os.environ.get("OUTPUT_ROOT", "F:/Min/Python/Project/FA_Data/output")
 )
 
 

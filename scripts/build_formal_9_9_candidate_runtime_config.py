@@ -43,7 +43,7 @@ from data_module.prospective_formal_clock import (  # noqa: E402
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 ACTIVATION_DATE = date(2026, 9, 9)
-DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 MARKET_DB = DATA_ROOT / "sqlite" / "twstock.db"
 BASELINE_CLOCK = DATA_ROOT / "output" / "formal_prospective" / "clock-20260828" / "clock" / "manifest.json"
 BASELINE_OWNER = BASELINE_CLOCK.parent.parent / "metadata" / "owner_acceptance.json"

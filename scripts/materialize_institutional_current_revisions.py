@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--db-path',required=True,type=Path)
     parser.add_argument('--dates',required=True,nargs='+')
     parser.add_argument('--output-root',required=True,type=Path)
-    parser.add_argument('--production-root',default='D:/Min/Python/Project/FA_Data',type=Path)
+    parser.add_argument('--production-root',default='F:/Min/Python/Project/FA_Data',type=Path)
     parser.add_argument('--apply',action='store_true')
     parser.add_argument('--confirm')
     args=parser.parse_args(argv)

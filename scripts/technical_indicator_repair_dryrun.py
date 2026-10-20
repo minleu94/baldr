@@ -34,7 +34,7 @@ import talib
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET_DATE = "20260520"
-DEFAULT_DATA_ROOT = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+DEFAULT_DATA_ROOT = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
 DEFAULT_OVERLAY = (
     ROOT
     / "output"

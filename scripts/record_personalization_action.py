@@ -40,7 +40,7 @@ from app_module.personalization_read_service import (
 )
 
 
-DEFAULT_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
+DEFAULT_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 
 
 def _text(value: object) -> str:

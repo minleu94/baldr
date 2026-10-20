@@ -221,7 +221,7 @@ def test_current_observed_reader_resolves_exact_legacy_and_active_roots(
     "active_root",
     [
         "relative/research",
-        "D:/Min/Python/Project/FA_Data/output/research",
+        "F:/Min/Python/Project/FA_Data/output/research",
     ],
 )
 def test_config_rejects_relative_or_protected_active_roots(

@@ -2,7 +2,7 @@
 from pathlib import Path
 import json, logging, os, sys
 case=Path(sys.argv[1])
-real_root=Path('D:/Min/Python/Project/FA_Data').resolve()
+real_root=Path('F:/Min/Python/Project/FA_Data').resolve()
 denied=[]
 def guard(event,args):
     if event in ('socket.connect','socket.getaddrinfo'):

@@ -25,7 +25,7 @@ from data_module.ml_restatement_official_market import (
 PROFILE_SCHEMA = "ml-restated-research-candidate-source-profile.v1"
 PROFILE_REFERENCE_KEYS = frozenset({"path", "file_sha256"})
 
-FORMAL_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+FORMAL_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 FORMAL_DATABASE = FORMAL_ROOT / "sqlite" / "twstock.db"
 CANDIDATE_SNAPSHOT = FORMAL_ROOT / "output" / "scheduled" / "formal_technical_repair_receipts" / "20260923_run02" / "source.sqlite"
 CANDIDATE_SOURCE_MANIFEST = CANDIDATE_SNAPSHOT.with_name("source.json")

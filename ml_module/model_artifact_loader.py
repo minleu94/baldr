@@ -208,7 +208,7 @@ class SafeShadowModelArtifactLoader:
         deserializer: Callable[[Path], Any] = joblib.load,
     ) -> None:
         self._data_root = _resolve_io_path(Path(
-            data_root or os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+            data_root or os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
         ))
         self._deserializer = deserializer
 

@@ -41,7 +41,7 @@ from data_module.fundamental_read_snapshot import (
 )
 
 
-_DEFAULT_DATA_ROOT = "D:/Min/Python/Project/FA_Data"
+_DEFAULT_DATA_ROOT = "F:/Min/Python/Project/FA_Data"
 _CHILD_NAMES = (
     "monthly-references.v3",
     "raw-archives.v2",

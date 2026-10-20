@@ -37,7 +37,7 @@ CLI 會 create-only 保存 `historical_dataset_manifest.json`、`historical_cali
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_terra_development_dataset_v0.py `
-  --database D:\Min\Python\Project\FA_Data\sqlite\twstock.db `
+  --database F:\Min\Python\Project\FA_Data\sqlite\twstock.db `
   --development-output-root C:\Temp\technical_analysis_development_output `
   --generation-id terra-v0-smoke-20260713 `
   --decision-date-start 2025-01-02 `

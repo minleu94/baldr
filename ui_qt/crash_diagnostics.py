@@ -157,7 +157,7 @@ def install_crash_diagnostics(
 
     resolved_root = Path(
         data_root
-        or os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+        or os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
     ).expanduser()
     log_path = resolved_root / "logs" / "ui_qt_crash.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)

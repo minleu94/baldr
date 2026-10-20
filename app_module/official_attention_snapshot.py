@@ -209,7 +209,7 @@ def seal_official_attention_snapshot(
     """只另存明示候選目錄；不寫正式資料、原attempt或mutable pointer。"""
     source = _canonical_path(attempt_directory, "attention_capture", allow_missing=False)
     output = _canonical_path(output_directory, "attention_output", allow_missing=True)
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
                  os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT")):
         if text and output.is_relative_to(Path(text).absolute()):
             raise OfficialAttentionSnapshotError("不可在正式／私人資料根寫入注意公告候選")

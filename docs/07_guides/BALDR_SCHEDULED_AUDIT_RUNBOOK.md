@@ -26,7 +26,7 @@ Direct maintainer 文件化 trigger 是 Pacific 10:00；05:30 是舊預期。舊
 
 每一環記錄 task identity、execution run／parent ID、實際日期與時區、source/data date、status、hash、輸出根和 consumer。`latest`／locator 只用來找到候選結果；必須核 typed schema、exact parent/run/date、receipt SHA 和原始 bytes。Hash 欄位若定義為 canonical content hash，就不能和 file-byte SHA 混稱。
 
-先依實際設定確認來源根；source mode 常見預設 `DATA_ROOT=D:/Min/Python/Project/FA_Data`，`OUTPUT_ROOT` 預設相對於 DATA_ROOT，但環境與 runtime 可能覆蓋。研究 active root、Paper、Shadow、BankTaiwan、私人持倉和模型根各別解析，不用 repository／`OUTPUT_ROOT` 假定全部寫在一處，也不從檔案 mtime 推導有效性。
+先依實際設定確認來源根；source mode 常見預設 `DATA_ROOT=F:/Min/Python/Project/FA_Data`，`OUTPUT_ROOT` 預設相對於 DATA_ROOT，但環境與 runtime 可能覆蓋。研究 active root、Paper、Shadow、BankTaiwan、私人持倉和模型根各別解析，不用 repository／`OUTPUT_ROOT` 假定全部寫在一處，也不從檔案 mtime 推導有效性。
 
 有幾個容易誤讀的 status 位置：
 

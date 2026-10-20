@@ -29,12 +29,12 @@ from analysis_module.pattern_analyzer import PatternAnalyzer
 from analysis_module.technical_analyzer import TechnicalAnalyzer
 
 # 設置基礎路徑
-BASE_DIR = "D:/Min/Python/Project/FA_Data"
+BASE_DIR = "F:/Min/Python/Project/FA_Data"
 
 # 設置測試數據路徑
-TEST_DATA_PATH = r"D:\Min\Python\Project\FA_Data\test_data"
+TEST_DATA_PATH = r"F:\Min\Python\Project\FA_Data\test_data"
 # 設置測試結果路徑
-TEST_RESULTS_PATH = r"D:\Min\Python\Project\FA_Data\test_data"
+TEST_RESULTS_PATH = r"F:\Min\Python\Project\FA_Data\test_data"
 
 # 確保測試數據和結果目錄存在
 os.makedirs(TEST_DATA_PATH, exist_ok=True)

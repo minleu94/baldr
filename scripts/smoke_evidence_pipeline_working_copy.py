@@ -57,7 +57,7 @@ def _windows(value: str) -> tuple[int, ...]:
 
 
 def _production_db_path() -> Path:
-    return (Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")) / "sqlite" / "twstock.db").resolve()
+    return (Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")) / "sqlite" / "twstock.db").resolve()
 
 
 def _is_production_like(path: Path) -> bool:

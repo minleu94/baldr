@@ -269,7 +269,7 @@ def test_source_output_overlap_refused(tmp_path, monkeypatch):
 
 def test_repository_and_formal_output_path_rejected():
     _expect("isolated_output_required", lambda: BoundedRuleResearchCaptureWriter(Path(__file__).parents[1] / "app_module" / "bad"))
-    _expect("isolated_output_required", lambda: BoundedRuleResearchCaptureWriter("D:/Min/Python/Project/FA_Data/capture"))
+    _expect("isolated_output_required", lambda: BoundedRuleResearchCaptureWriter("F:/Min/Python/Project/FA_Data/capture"))
 
 
 def test_hardlinked_capture_rejected(tmp_path, monkeypatch):

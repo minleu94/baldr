@@ -682,7 +682,7 @@ def update_phase3c_candidates_range(
     st_date = date.fromisoformat(start_date)
     ed_date = date.fromisoformat(end_date)
 
-    prod_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+    prod_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
     if not dry_run and not db_path:
         raise ValueError("apply 必須提供 explicit --db-path，且路徑不得位於正式 DATA_ROOT")
     # dry-run 不建立 DB；只使用隔離的暫定路徑承載摘要輸出。

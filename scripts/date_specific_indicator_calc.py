@@ -44,7 +44,7 @@ def process_stock_with_date_range(stock_id, start_date=None, end_date=None, days
     
     try:
         # 1. 創建配置
-        base_dir = Path("D:/Min/Python/Project/FA_Data")
+        base_dir = Path("F:/Min/Python/Project/FA_Data")
         config = TWStockConfig(base_dir=base_dir)
         
         # 2. 檢查關鍵目錄和檔案
@@ -250,7 +250,7 @@ def process_stock_with_date_range(stock_id, start_date=None, end_date=None, days
 def process_all_stocks(start_date=None, end_date=None, days=30, force=False):
     """處理所有股票的技術指標"""
     # 1. 創建配置
-    config = TWStockConfig(base_dir=Path("D:/Min/Python/Project/FA_Data"))
+    config = TWStockConfig(base_dir=Path("F:/Min/Python/Project/FA_Data"))
     
     # 2. 讀取股票數據
     print("讀取所有股票數據...")

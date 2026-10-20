@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+    data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
     formal_db = data_root / "sqlite" / "twstock.db"
     try:
         output_root = validate_development_output_root(

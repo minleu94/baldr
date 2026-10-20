@@ -34,7 +34,7 @@ def _configured_data_root() -> Path:
             return Path(factory())
     except (ImportError, KeyError, TypeError, ValueError):
         pass
-    return Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"))
+    return Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"))
 
 
 DEFAULT_DATA_ROOT = _configured_data_root()

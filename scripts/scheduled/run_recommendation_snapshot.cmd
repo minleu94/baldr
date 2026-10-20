@@ -7,7 +7,7 @@ cd /d "%REPO_ROOT%" || exit /b 1
 
 set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" set "PYTHON=python"
-if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+if "%DATA_ROOT%"=="" set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 if "%OUTPUT_ROOT%"=="" set "OUTPUT_ROOT=%DATA_ROOT%\output"
 if "%CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT%"=="" set "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT=%OUTPUT_ROOT%"
 if "%MAX_STOCKS%"=="" set "MAX_STOCKS=200"

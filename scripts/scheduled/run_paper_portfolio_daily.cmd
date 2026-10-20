@@ -10,7 +10,7 @@ if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHO
 if not defined PYTHON set "PYTHON=python"
 rem 來源根目錄只供 isolated adapter 以唯讀方式讀取；它不接受呼叫端
 rem 以 OUTPUT_ROOT 或 state_db 將 writer 導回 D 槽。
-set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
+set "DATA_ROOT=F:\Min\Python\Project\FA_Data"
 set "REPO_PAPER_OPERATION_ROOT=%REPO_ROOT%\output\paper_execution_eod_replay"
 set "REPO_PAPER_STATE_DB=%REPO_PAPER_OPERATION_ROOT%\paper_portfolio\paper_portfolio.sqlite"
 set "PAPER_EXECUTION_LEDGER_DB=%REPO_PAPER_OPERATION_ROOT%\paper_trade_ledger.sqlite"

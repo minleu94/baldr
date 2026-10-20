@@ -236,7 +236,7 @@ def summarize_root_placement(
     configured_data_root = formal_data_root or Path(
         os.environ.get("R027_FORMAL_DATA_ROOT")
         or os.environ.get("DATA_ROOT")
-        or "D:/Min/Python/Project/FA_Data"
+        or "F:/Min/Python/Project/FA_Data"
     )
     configured_output_root = formal_output_root or Path(
         os.environ.get("R027_FORMAL_OUTPUT_ROOT")

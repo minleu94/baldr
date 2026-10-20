@@ -237,7 +237,7 @@ def copy_research_output(source_output_root: Path, destination_output_root: Path
     target = _canonical_path(destination_output_root, "research_copy_target", allow_missing=True)
     if os.path.lexists(target) or source.is_relative_to(target) or target.is_relative_to(source):
         raise ResearchOutputCopyError("目的根須不存在且不得與來源重疊")
-    for text in (os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.environ.get("OUTPUT_ROOT"),
+    for text in (os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.environ.get("OUTPUT_ROOT"),
                  os.environ.get("PERSONAL_DATA_ROOT"), os.environ.get("PERSONAL_STORE_ROOT"), os.environ.get("PERSONAL_JOURNAL_ROOT")):
         if text:
             protected = Path(text).absolute()
@@ -379,7 +379,7 @@ def restore_research_output(archive_directory: Path, archive_receipt_sha256: str
     target = _canonical_path(destination_output_root, "research_restore_target", allow_missing=True)
     if os.path.lexists(target) or source.is_relative_to(target) or target.is_relative_to(source):
         raise ResearchOutputCopyError("恢復目的根須不存在且不得與封存重疊")
-    for text in (os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.environ.get("OUTPUT_ROOT"),
+    for text in (os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.environ.get("OUTPUT_ROOT"),
                  os.environ.get("PERSONAL_DATA_ROOT"), os.environ.get("PERSONAL_STORE_ROOT"), os.environ.get("PERSONAL_JOURNAL_ROOT")):
         if text:
             protected = Path(text).absolute()

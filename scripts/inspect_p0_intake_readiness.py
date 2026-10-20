@@ -33,7 +33,7 @@ from data_module.source_acceptance_governance import (
 
 P0_INTAKE_SCHEMA_VERSION = "p0-source-intake.v1"
 _DOSSIER_SCHEMA_VERSION = "source-acceptance-dossier.v1"
-_PRODUCTION_DEFAULT = "D:/Min/Python/Project/FA_Data"
+_PRODUCTION_DEFAULT = "F:/Min/Python/Project/FA_Data"
 _BOUNDARY = {
     "read_only": True,
     "writes_allowed": False,

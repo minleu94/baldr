@@ -64,12 +64,12 @@ FEATURE_SCHEMA = (("momentum_bp", "int", "bp"), ("volume_ratio_bp", "int", "bp")
 FEATURE_REGISTRY_HASH = "sha256:" + "3" * 64
 LEGACY_COST_CONTRACT_HASH = "sha256:8d05ee367ecec23c5b4d9951fd44221ad2758d314563d655ca7aeb9c2a3e33c2"
 LEGACY_CANDIDATE = Path(
-    "D:/Min/Python/Project/FA_Data_Shadow/recommendation_learning/runs/2026-09-14/"
+    "F:/Min/Python/Project/FA_Data_Shadow/recommendation_learning/runs/2026-09-14/"
     "scheduled-snapshot-5f4de77ffb404af2-eff4d2a/candidates/"
     "rec-cal-29c1b6129396a3885a89d080/candidate.json"
 )
 LEGACY_CAPTURE = Path(
-    "D:/Min/Python/Project/FA_Data_Shadow/recommendation_learning/captures/2026-09-14/"
+    "F:/Min/Python/Project/FA_Data_Shadow/recommendation_learning/captures/2026-09-14/"
     "scheduled-capture-5f4de77ffb404af2/"
     "rec-cal-29c1b6129396a3885a89d080-850760d54413e019199be668.json"
 )

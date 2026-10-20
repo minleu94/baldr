@@ -92,7 +92,7 @@ Restriction release 必須是新事件。日期 window 沒有 event rows 不能�
 ## 7. 正式 DB 唯讀 coverage audit
 
 ```powershell
-$db = 'D:\Min\Python\Project\FA_Data\sqlite\twstock.db'
+$db = 'F:\Min\Python\Project\FA_Data\sqlite\twstock.db'
 $report = Join-Path $env:OUTPUT_ROOT 'formal-coverage-2024-12-31.json'
 .\.venv\Scripts\python.exe scripts\audit_pit_historical_coverage.py `
   --db-path $db `

@@ -43,7 +43,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         database = args.database.expanduser().resolve()
         output_root = validate_development_output_root(
             args.development_output_root,
-            data_root=Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+            data_root=Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
             formal_db=database,
         )
         decision = load_development_data_usage_decision(
@@ -71,7 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = TerraDevelopmentDatasetGenerator(snapshot).generate(request)
         write_result = DevelopmentArtifactWriter(
             output_root,
-            data_root=Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
+            data_root=Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")),
             formal_db=database,
         ).write(result)
         if (source_hash_before, source_mtime_before) != (_file_sha256(database), database.stat().st_mtime_ns):

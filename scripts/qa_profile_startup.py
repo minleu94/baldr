@@ -34,7 +34,7 @@ ALLOWED_RECEIPT = (
 ALLOWED_OUTPUT_ROOT = (
     ROOT / "output" / "qa" / "product_stage01_20261005" / "baseline_agent"
 )
-FORMAL_DATA_ROOT = Path("D:/Min/Python/Project/FA_Data")
+FORMAL_DATA_ROOT = Path("F:/Min/Python/Project/FA_Data")
 MAX_CHILD_SECONDS = 90.0
 CHILD_SELF_CLOSE_SECONDS = 78.0
 READY_WAIT_SECONDS = 72.0

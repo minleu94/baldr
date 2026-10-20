@@ -85,7 +85,7 @@ TWSE／TPEX 與其他明示來源
 
 ## 儲存與排程
 
-正式資料路徑以 `data_module/config.py` 的 `TWStockConfig` 為準。`DATA_ROOT` 預設 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋；主要市場資料庫是 `<DATA_ROOT>/sqlite/twstock.db`。`OUTPUT_ROOT` 也由同一設定管理。SQLite-first 是一般讀取優先序，raw CSV 保留來源、備份及明示 fallback。
+正式資料路徑以 `data_module/config.py` 的 `TWStockConfig` 為準。`DATA_ROOT` 預設 `F:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋；主要市場資料庫是 `<DATA_ROOT>/sqlite/twstock.db`。`OUTPUT_ROOT` 也由同一設定管理。SQLite-first 是一般讀取優先序，raw CSV 保留來源、備份及明示 fallback。repo 的大型產出與 pytest 暫存路徑位於 `F:/Min/Python/Project/BaldrStorage`，本機 repo 以 junction 保留既有路徑。
 
 Windows Scheduler 與受控 CLI wrappers 分別執行資料更新、Evidence dry-run 或經批准的工作。Runtime Observatory 只讀 Runtime 與排程狀態，不啟動任務。正式市場資料寫入、Evidence write-mode、策略 lifecycle 與 broker execution 使用分離權限；排程狀態或零錯誤碼不授予產品接受。
 

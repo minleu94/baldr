@@ -109,7 +109,7 @@ def append_binding(
 def _safe_output_root(path: Path) -> Path:
     root = path.expanduser().resolve()
     repo = PROJECT_ROOT.resolve()
-    data_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).resolve()
+    data_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).resolve()
     if root == repo or root.is_relative_to(repo):
         raise ValueError("development output root cannot be inside the repository")
     if root == data_root or root.is_relative_to(data_root):

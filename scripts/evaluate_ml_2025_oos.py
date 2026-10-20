@@ -71,7 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _safe_output_root(value: Path) -> Path:
     resolved = value.resolve()
-    formal = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).resolve()
+    formal = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).resolve()
     if resolved == formal or formal in resolved.parents:
         raise ValueError("locked OOS output cannot be inside DATA_ROOT")
     return resolved

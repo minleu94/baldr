@@ -333,7 +333,7 @@ def _guard_operation_root(
             _fail("daily_reader_root_invalid")
         protected.append(value)
     protected.append(artifact_root)
-    data_root = os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
+    data_root = os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")
     output_root = os.environ.get("OUTPUT_ROOT", str(Path(data_root) / "output"))
     for value in (data_root, output_root, os.environ.get("PERSONAL_DATA_ROOT"), os.environ.get("PERSONAL_STORE_ROOT")):
         if value:

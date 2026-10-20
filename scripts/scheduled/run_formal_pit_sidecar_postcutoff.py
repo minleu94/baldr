@@ -342,7 +342,7 @@ def run_sidecar(
             coverage_start=coverage_start,
             calendar=_OfflinePITHistoryCalendar(
                 db_path=_env_path("FORMAL_DAILY_MARKET_DB")
-                or Path(r"D:\Min\Python\Project\FA_Data\sqlite\twstock.db"),
+                or Path(r"F:\Min\Python\Project\FA_Data\sqlite\twstock.db"),
                 calendar_cache_path=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
                 or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache",
                 temporary_closure_path=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")

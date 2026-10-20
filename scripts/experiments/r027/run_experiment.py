@@ -96,10 +96,10 @@ def assert_isolated_root(root: Path) -> None:
     if is_within(resolved, REPOSITORY_ROOT) or is_within(REPOSITORY_ROOT, resolved):
         raise RuntimeError("temporary run root must be disjoint from the repository")
     for variable, default in (
-        ("R027_FORMAL_DATA_ROOT", Path("D:/Min/Python/Project/FA_Data")),
+        ("R027_FORMAL_DATA_ROOT", Path("F:/Min/Python/Project/FA_Data")),
         (
             "R027_FORMAL_OUTPUT_ROOT",
-            Path("D:/Min/Python/Project/FA_Data/output"),
+            Path("F:/Min/Python/Project/FA_Data/output"),
         ),
     ):
         formal_root = Path(os.environ.get(variable, str(default))).resolve()
@@ -297,7 +297,7 @@ def worker_environment(workspace: Path) -> dict[str, str]:
     env["PROFILE"] = "test"
     env["DATA_ROOT"] = str(workspace / "environment_data_root")
     env["OUTPUT_ROOT"] = str(workspace / "environment_output_root")
-    env["R027_FORMAL_DATA_ROOT"] = inherited_data_root or "D:/Min/Python/Project/FA_Data"
+    env["R027_FORMAL_DATA_ROOT"] = inherited_data_root or "F:/Min/Python/Project/FA_Data"
     env["R027_FORMAL_OUTPUT_ROOT"] = (
         inherited_output_root
         or str(Path(env["R027_FORMAL_DATA_ROOT"]) / "output")

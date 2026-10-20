@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($DataRoot)) {
-    $DataRoot = "D:\Min\Python\Project\FA_Data"
+    $DataRoot = "F:\Min\Python\Project\FA_Data"
 }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $DataRoot "output"

@@ -47,11 +47,11 @@ _CLOSE_TIME = time(14, 30)
 _BUY_COST_BP = 25
 _SELL_COST_BP = 55
 _COST_LANE = "tw-equity-roundtrip-v1:buy=25bp;sell=55bp"
-_SOURCE_DB = Path(r"D:\Min\Python\Project\FA_Data\output\research_only\non_release\price_revision_rebuild_20260922_luna\revision_20260922_run02\inputs\twstock_snapshot_run02.db")
-_DIRECT_MANIFEST = Path(r"D:\Min\Python\Project\FA_Data\output\release_v4\portfolio_ml_direct_numeric_production_v4_v2\runs\direct-ooc-505c6adaf3f71a0c8f0a274e\manifest.json")
-_CA_MANIFEST = Path(r"D:\Min\Python\Project\FA_Data\output\release_v4\corporate_action_adjustments\runs\corporate-action-adjustments-1f167a302bb6acd17349502f\manifest.json")
+_SOURCE_DB = Path(r"F:\Min\Python\Project\FA_Data\output\research_only\non_release\price_revision_rebuild_20260922_luna\revision_20260922_run02\inputs\twstock_snapshot_run02.db")
+_DIRECT_MANIFEST = Path(r"F:\Min\Python\Project\FA_Data\output\release_v4\portfolio_ml_direct_numeric_production_v4_v2\runs\direct-ooc-505c6adaf3f71a0c8f0a274e\manifest.json")
+_CA_MANIFEST = Path(r"F:\Min\Python\Project\FA_Data\output\release_v4\corporate_action_adjustments\runs\corporate-action-adjustments-1f167a302bb6acd17349502f\manifest.json")
 _DEFAULT_OUTPUT = Path(r"E:\codex_model_repair_20260923\dataset")
-_TRANSFER_RECEIPT = Path(r"D:\Min\Python\Project\FA_Data\output\research_only\non_release\price_revision_rebuild_20260922_luna\transfer_receipt.json")
+_TRANSFER_RECEIPT = Path(r"F:\Min\Python\Project\FA_Data\output\research_only\non_release\price_revision_rebuild_20260922_luna\transfer_receipt.json")
 _EXPECTED_SNAPSHOT_SHA = "sha256:38ab1d1dfd201285ed817c8e94f689f91a50b39dc30cdbb8a90a49b7ce898771"
 _EXPECTED_DIRECT_MANIFEST_SHA = "sha256:61d806ef005d0881911201104079c1acc92826a26bd8a331b9bd79156983ffe8"
 _EXPECTED_TRANSFER_RECEIPT_SHA = "sha256:c0e0cb823d172c052db201351d7db0dc3d170f6b436003d37d4815ce28015fe4"

@@ -397,7 +397,7 @@ def _copy_technical_source(pin: TechnicalSourcePin, destination_root: Path, *,
     target = _canonical_directory(destination_root, must_exist=False)
     if _lstat_optional(target) is not None:
         raise TechnicalSourceCopyError("technical_copy_destination_exists")
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
                  os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT"), os.getenv("PERSONAL_JOURNAL_ROOT")):
         if text:
             protected = Path(text).absolute()
@@ -719,7 +719,7 @@ def copy_price_bookmarks(source_watchlist: Path, source_watchlist_sha256: str,
     target = _canonical_directory(destination_output_root, must_exist=False)
     if _lstat_optional(target) is not None:
         raise TechnicalSourceCopyError("bookmark_copy_destination_exists")
-    for text in (os.getenv("DATA_ROOT", "D:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
+    for text in (os.getenv("DATA_ROOT", "F:/Min/Python/Project/FA_Data"), os.getenv("OUTPUT_ROOT"),
                  os.getenv("PERSONAL_DATA_ROOT"), os.getenv("PERSONAL_STORE_ROOT"), os.getenv("PERSONAL_JOURNAL_ROOT")):
         if text:
             protected = Path(text).absolute()

@@ -19,7 +19,7 @@ from data_module.config import TWStockConfig
 from data_module.scheduler_health_observability import SchedulerHealthService
 
 
-DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
+DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
 DEFAULT_OUTPUT_ROOT = DEFAULT_DATA_ROOT / "output"
 
 

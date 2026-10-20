@@ -20,9 +20,9 @@ def test_extended_patterns():
     print("開始測試擴展的圖形模式識別功能...")
     
     # 設置數據來源路徑
-    data_source_path = r"D:\Min\Python\Project\FA_Data\technical_analysis"
+    data_source_path = r"F:\Min\Python\Project\FA_Data\technical_analysis"
     # 設置測試數據輸出路徑
-    test_data_path = r"D:\Min\Python\Project\FA_Data\test_data"
+    test_data_path = r"F:\Min\Python\Project\FA_Data\test_data"
     stock_dir = os.path.join(test_data_path, ticker)
     os.makedirs(stock_dir, exist_ok=True)
     

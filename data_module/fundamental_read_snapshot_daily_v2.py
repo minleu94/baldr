@@ -130,7 +130,7 @@ def _verify_finished_snapshot_reference_v2(
     if any(_paths_overlap(snapshot_root, Path(os.path.abspath(path)))
            for path in (provider.output_root, provider.monthly_source_root)):
         raise FundamentalReadSnapshotError("fundamental_snapshot_v2_root_overlaps_provider_root")
-    formal_root = Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")).expanduser()
+    formal_root = Path(os.environ.get("DATA_ROOT", "F:/Min/Python/Project/FA_Data")).expanduser()
     if _paths_overlap(snapshot_root, Path(os.path.abspath(formal_root))):
         raise FundamentalReadSnapshotError("fundamental_snapshot_v2_root_overlaps_formal_data_root")
     binding = clock.snapshot_binding

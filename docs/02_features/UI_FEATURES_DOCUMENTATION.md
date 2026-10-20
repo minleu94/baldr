@@ -95,6 +95,8 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 題材研究01固定候選新增「產業與題材」子頁，明選本機已保存manifest後顯示四類觀察卡、排行、產業鏈、題材、欄位覆蓋及成員；首頁入口接續同一頁。成員沿現有個股研究context往返，換股須回題材選取；來源版本與行情日期分開呈現，載入失敗不沿用舊成員。使用者判斷沿Journal追加修訂，原文唯讀，回訪核原SHA；資料缺件不補零。143原包不變；操作／限制見[題材研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)。
 
+後繼Source另補預設收合的產業鏈卡片目錄（固定10未含）：所有原鏈各一張卡，列題材數／去重成員數與名稱序最多三項捷徑，沿原filter／成員定位。具名QObject接收槽核原snapshot identity／忙碌／關閉，換版清舊控制；漲跌僅完整覆蓋且有限Decimal顯原值，缺件不補零，不新增來源或金融公式。
+
 主要 views：
 
 - `ui_qt/views/decision_desk_view.py`（「市場總覽」唯一 Decision Desk instance）
@@ -136,7 +138,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 ### 固定法人與官方資料研究
 
-Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／日曆不補值。首屏白話標示僅上櫃diagnostics與上市／興櫃／未知市場未納入；部分法人合計／家數／比例標示已覆蓋成員，零覆蓋家數顯示未提供與0/N，有觀察的原零值保持。完整排行仍只取全成員覆蓋，不將partial極值混入。QA200 compile／61PASS、2個環境symlink略過／85／25-0-4／mypy1082；UI既有ignore不證強型別。真v2原件／正常Main與新程序待驗，09未含；[操作與限制](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人題材診斷source-v2)。
+Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／日曆不補值。首屏白話標示僅上櫃diagnostics與上市／興櫃／未知市場未納入；部分法人合計／家數／比例標示已覆蓋成員，零覆蓋家數顯示未提供與0/N，有觀察的原零值保持。完整排行仍只取全成員覆蓋，不將partial極值混入。QA200 compile／61PASS、2個環境symlink略過／85／25-0-4／mypy1082；UI既有ignore不證強型別。201a真v2原件、202e正常Source與209a固定10同版EXE／新程序已限定通過，09未含；[操作與限制](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#tpex法人題材診斷source-v2)。
 
 法人長來源身份下的表格使用自然垂直下限，顯示／清除／錯誤後通知外層重新配置；不固定整頁高度、不縮刪來源／資格說明，也不改九個原整數股數。先垂直捲到表格底，再水平捲到最後欄。QA189b舊08裁切FAIL保留；Source QA190定向21、Workbench85、validator25／0／4及mypy1082，191a正常Main35948→28512逐欄可到達與重開通過，尚非新固定EXE／Native或真人接受。詳[法人表格修復](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#法人表格可操作性qa189191a)。
 

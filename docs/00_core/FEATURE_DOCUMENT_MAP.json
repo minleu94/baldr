@@ -98,6 +98,7 @@
         "tests/test_theme_research_snapshot.py",
         "tests/test_theme_research_snapshot_tpex_flows.py",
         "tests/test_ui_qt_industry_theme_map_view.py",
+        "tests/test_ui_qt_theme_chain_directory.py",
         "tests/test_industry_theme_main_navigation.py",
         "tests/test_theme_research_presentation.py",
         "tests/test_theme_research_notes.py",
@@ -160,7 +161,8 @@
         "tests/test_theme_research_notes.py",
         "tests/test_ui_qt_theme_research_notes_widget.py",
         "tests/test_theme_stock_context_guard.py",
-        "tests/test_ui_qt_industry_theme_stock_lookup.py"
+        "tests/test_ui_qt_industry_theme_stock_lookup.py",
+        "tests/test_ui_qt_theme_chain_directory.py"
       ],
       "sync_documents": [
         "docs/01_architecture/system_architecture.md",

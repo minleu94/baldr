@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSignalBlocker, Signal, Slot
@@ -9,6 +10,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -58,6 +60,9 @@ class IndustryThemeMapView(QWidget):
         self._theme_options: list[tuple[str, str] | None] = []
         self._rows_by_theme: dict[tuple[str, str], ThemeDailyRow] = {}
         self._mapping_by_theme_stock: dict[tuple[str, str, str], object] = {}
+        self._chain_directory_cards: list[QGroupBox] = []
+        self._chain_directory_buttons: list[QPushButton] = []
+        self._chain_directory_identity: str | None = None
 
         self._build_ui()
         self._render_empty("請選取本機已保存的題材研究版本。")
@@ -232,6 +237,34 @@ class IndustryThemeMapView(QWidget):
         self.ranking_note.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         ranking_layout.addWidget(self.ranking_note)
         content_layout.addWidget(self.ranking_group)
+
+        self.chain_directory_button = QPushButton("瀏覽產業鏈目錄（展開）")
+        self.chain_directory_button.setObjectName("industryThemeChainDirectoryButton")
+        self.chain_directory_button.setAccessibleName("展開或收合產業鏈卡片目錄")
+        self.chain_directory_button.setCheckable(True)
+        self.chain_directory_button.setChecked(False)
+        self.chain_directory_button.toggled.connect(self._toggle_chain_directory)
+        content_layout.addWidget(self.chain_directory_button)
+
+        self.chain_directory_group = QGroupBox("產業鏈卡片目錄")
+        self.chain_directory_group.setObjectName("industryThemeChainDirectoryGroup")
+        self.chain_directory_group.setVisible(False)
+        directory_layout = QVBoxLayout(self.chain_directory_group)
+        self.chain_directory_note = QLabel(
+            "每條鏈列題材名稱序前三個捷徑；名稱序不是表現排行。"
+            "完整題材仍可使用下方產業鏈與題材篩選。"
+        )
+        self.chain_directory_note.setAccessibleName("產業鏈目錄排序說明")
+        self.chain_directory_note.setWordWrap(True)
+        self.chain_directory_note.setTextFormat(Qt.TextFormat.PlainText)
+        directory_layout.addWidget(self.chain_directory_note)
+        self.chain_directory_cards_widget = QWidget(self.chain_directory_group)
+        self.chain_directory_cards_layout = QGridLayout(self.chain_directory_cards_widget)
+        self.chain_directory_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.chain_directory_cards_layout.setHorizontalSpacing(8)
+        self.chain_directory_cards_layout.setVerticalSpacing(8)
+        directory_layout.addWidget(self.chain_directory_cards_widget)
+        content_layout.addWidget(self.chain_directory_group)
 
         self.source_details_button = QPushButton("顯示來源與限制")
         self.source_details_button.setObjectName("industryThemeSourceDetailsButton")
@@ -681,6 +714,7 @@ class IndustryThemeMapView(QWidget):
         self._ascending_presentation = None
         self._rows_by_theme = {}
         self._mapping_by_theme_stock = {}
+        self._clear_chain_directory()
         self._theme_options = [None]
         self.overview_label.setText(
             "尚未載入題材研究版本；請先選取本機已保存版本。"
@@ -948,7 +982,194 @@ class IndustryThemeMapView(QWidget):
             self.leader_card_coverages[key].setText(
                 self._coverage(available, members)
             )
+        self._render_chain_directory()
         self._render_leaderboard()
+
+    def _clear_chain_directory(self) -> None:
+        self._chain_directory_identity = None
+        for button in self._chain_directory_buttons:
+            button.setEnabled(False)
+            button.hide()
+        self._chain_directory_buttons.clear()
+        self._chain_directory_cards.clear()
+        while self.chain_directory_cards_layout.count():
+            item = self.chain_directory_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setEnabled(False)
+                widget.hide()
+                widget.deleteLater()
+        self.chain_directory_group.setVisible(False)
+        blocker = QSignalBlocker(self.chain_directory_button)
+        self.chain_directory_button.setChecked(False)
+        del blocker
+        self.chain_directory_button.setText("瀏覽產業鏈目錄（展開）")
+
+    def _render_chain_directory(self) -> None:
+        presentation = self._presentation
+        snapshot = self._snapshot
+        if presentation is None or snapshot is None or self._closed:
+            self._clear_chain_directory()
+            return
+
+        self._clear_chain_directory()
+        self._chain_directory_identity = snapshot.identity_sha256
+        for chain_index, directory in enumerate(presentation.chains):
+            themes = tuple(sorted(set(directory.themes)))
+            card = QGroupBox(directory.chain_name, self.chain_directory_cards_widget)
+            card.setObjectName("industryThemeChainDirectoryCard")
+            card.setMinimumWidth(0)
+            card.setSizePolicy(
+                QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+            )
+            card_layout = QVBoxLayout(card)
+            metadata = QLabel(
+                f"{len(themes)} 個題材　｜　"
+                f"{len(set(directory.stock_ids))} 檔不重複成員"
+            )
+            metadata.setAccessibleName(f"{directory.chain_name}題材與成員數")
+            metadata.setWordWrap(True)
+            card_layout.addWidget(metadata)
+
+            for theme_name in themes[:3]:
+                key = (directory.chain_name, theme_name)
+                row = self._rows_by_theme.get(key)
+                button = QPushButton(theme_name)
+                button.setObjectName("industryThemeChainDirectoryShortcut")
+                button.setAccessibleName(
+                    f"{directory.chain_name}／{theme_name}題材捷徑"
+                )
+                button.setMinimumWidth(0)
+                button.setSizePolicy(
+                    QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+                )
+                if row is not None:
+                    button.setToolTip(self._chain_directory_shortcut_tooltip(row))
+                value_label = QLabel(self._chain_directory_shortcut_text(row))
+                value_label.setAccessibleName(
+                    f"{directory.chain_name}／{theme_name}漲跌觀察與覆蓋"
+                )
+                value_label.setWordWrap(True)
+                value_label.setTextFormat(Qt.TextFormat.PlainText)
+                if row is not None:
+                    value_label.setToolTip(self._chain_directory_shortcut_tooltip(row))
+                button.setProperty("themeSnapshotIdentity", snapshot.identity_sha256)
+                button.setProperty("themeChainName", directory.chain_name)
+                button.setProperty("themeName", theme_name)
+                button.clicked.connect(self._on_chain_directory_shortcut_clicked)
+                card_layout.addWidget(button)
+                card_layout.addWidget(value_label)
+                self._chain_directory_buttons.append(button)
+
+            row_index, column_index = divmod(chain_index, 2)
+            self.chain_directory_cards_layout.addWidget(
+                card, row_index, column_index
+            )
+            self._chain_directory_cards.append(card)
+
+        self._update_chain_directory_controls()
+
+    def _chain_directory_shortcut_text(self, row: ThemeDailyRow | None) -> str:
+        if row is None:
+            return "平均日漲跌幅：未提供｜題材報表列未提供"
+        coverage = row.coverage
+        value = row.mean_return_pct
+        if (
+            coverage.members > 0
+            and coverage.returns == coverage.members
+            and type(value) is Decimal
+            and value.is_finite()
+        ):
+            displayed = self._display_decimal(value, suffix=" %")
+        else:
+            displayed = "漲跌未提供"
+        return (
+            f"平均日漲跌幅：{displayed}｜"
+            f"{self._coverage(coverage.returns, coverage.members)}"
+        )
+
+    @staticmethod
+    def _chain_directory_shortcut_tooltip(row: ThemeDailyRow) -> str:
+        coverage = row.coverage
+        value = row.mean_return_pct
+        if (
+            coverage.members > 0
+            and coverage.returns == coverage.members
+            and type(value) is Decimal
+            and value.is_finite()
+        ):
+            return IndustryThemeMapView._decimal_tooltip(value, suffix=" %")
+        return (
+            "漲跌未提供；沒有用其他來源或日期補值。\n"
+            f"原始覆蓋：{IndustryThemeMapView._coverage(coverage.returns, coverage.members)}"
+        )
+
+    @Slot(bool)
+    def _toggle_chain_directory(self, expanded: bool) -> None:
+        if self._closed or self._busy or self._snapshot is None:
+            expanded = False
+            blocker = QSignalBlocker(self.chain_directory_button)
+            self.chain_directory_button.setChecked(False)
+            del blocker
+        self.chain_directory_group.setVisible(expanded)
+        self.chain_directory_button.setText(
+            "瀏覽產業鏈目錄（收合）" if expanded else "瀏覽產業鏈目錄（展開）"
+        )
+
+    def _update_chain_directory_controls(self) -> None:
+        available = self._snapshot is not None and not self._closed and not self._busy
+        self.chain_directory_button.setEnabled(available)
+        for button in self._chain_directory_buttons:
+            button.setEnabled(available)
+        self.chain_directory_group.setEnabled(available)
+
+    @Slot()
+    def _on_chain_directory_shortcut_clicked(self) -> None:
+        button = self.sender()
+        if not isinstance(button, QPushButton):
+            return
+        identity = button.property("themeSnapshotIdentity")
+        chain_name = button.property("themeChainName")
+        theme_name = button.property("themeName")
+        if not all(type(value) is str for value in (identity, chain_name, theme_name)):
+            return
+        self._open_chain_directory_theme(identity, chain_name, theme_name)
+
+    def _open_chain_directory_theme(
+        self, identity: str, chain_name: str, theme_name: str
+    ) -> None:
+        snapshot = self._snapshot
+        presentation = self._presentation
+        if (
+            self._closed
+            or self._busy
+            or snapshot is None
+            or presentation is None
+            or identity != snapshot.identity_sha256
+            or self._chain_directory_identity != snapshot.identity_sha256
+        ):
+            return
+        directory = next(
+            (item for item in presentation.chains if item.chain_name == chain_name),
+            None,
+        )
+        if (
+            directory is None
+            or theme_name not in directory.themes
+            or (chain_name, theme_name) not in self._rows_by_theme
+        ):
+            return
+        chain_index = self.chain_filter.findData(chain_name)
+        if chain_index < 0:
+            return
+        self.chain_filter.setCurrentIndex(chain_index)
+        theme_index = self.theme_filter.findText(theme_name)
+        if theme_index < 0:
+            return
+        self.theme_filter.setCurrentIndex(theme_index)
+        self.chain_directory_button.setChecked(False)
+        self.scroll_area.ensureWidgetVisible(self.metrics_group, 0, 0)
+        self.scroll_area.ensureWidgetVisible(self.members_group, 0, 0)
 
     def _render_leaderboard(self, _index: int = -1) -> None:
         presentation = self._presentation
@@ -1256,6 +1477,7 @@ class IndustryThemeMapView(QWidget):
             )
             is not None
         )
+        self._update_chain_directory_controls()
         if self._closed:
             self.stock_lookup_status_label.setText(
                 "頁面已關閉；股票反查已停用。"

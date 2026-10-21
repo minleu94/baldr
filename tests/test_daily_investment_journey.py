@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -59,6 +60,92 @@ def _config(tmp_path: Path) -> TWStockConfig:
     config.db_file = tmp_path / "evidence.sqlite"
     config.research_run_db_file = tmp_path / "research.sqlite"
     return config
+
+
+@pytest.fixture
+def _scheduled_base_execution(tmp_path: Path, monkeypatch) -> RecommendationExecution:
+    """沿既有 scheduled producer fixture 取得完整 typed identities/cohort。"""
+    from scripts.scheduled import run_scheduled_recommendation_snapshot as producer
+    from tests.test_scheduled_recommendation_snapshot_wrapper import (
+        _capture_composition,
+        _fake_recommendation_body_result,
+    )
+
+    monkeypatch.setenv("PROFILE", "test")
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / "scheduled-data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "scheduled-output"))
+    monkeypatch.setattr(
+        producer.RecommendationService,
+        "_run_recommendation_body_result",
+        _fake_recommendation_body_result,
+    )
+    monkeypatch.setattr(
+        producer,
+        "scheduled_now",
+        lambda: datetime(2026, 9, 22, 9, 6, tzinfo=timezone.utc),
+    )
+    captured = _capture_composition(monkeypatch, order=[])
+    assert producer.main(
+        [
+            "--data-root",
+            str(tmp_path / "scheduled-data"),
+            "--output-root",
+            str(tmp_path / "scheduled-output"),
+            "--max-stocks",
+            "25",
+            "--top-n",
+            "5",
+        ]
+    ) == 0
+    read_model = captured["read_model"]
+    execution = getattr(read_model, "execution", None)
+    assert isinstance(execution, RecommendationExecution)
+    return execution
+
+
+def _scheduled_candidate_execution(
+    base: RecommendationExecution,
+    result_id: str,
+    *,
+    decision_date: str,
+    config_overrides: dict[str, object] | None = None,
+    decision_at: datetime | None = None,
+) -> RecommendationExecution:
+    """只調日期角色，沿用 producer 產生的完整不可變執行身份。"""
+    snapshot = base.context.result_config_snapshot
+    assert snapshot is not None
+    result_config = json.loads(snapshot.raw_result_config_json)
+    market_date = date.fromisoformat(decision_date) - timedelta(days=1)
+    result_config.update(
+        {
+            "decision_date": decision_date,
+            "data_as_of_date": market_date.isoformat(),
+            "market_cutoff_date": market_date.isoformat(),
+            "temporal_mode": "natural_producer_clock",
+            "cutoff_policy": "source_latest_available_exact",
+            "cutoff_selection": "producer_selected_latest_available_cutoff",
+            "date_semantics_schema": "scheduled-recommendation-date-roles.v1",
+            "decision_timezone": "Asia/Taipei",
+        }
+    )
+    result_config.update(config_overrides or {})
+    raw_config = json.dumps(
+        result_config, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    result_snapshot = RecommendationResultConfigSnapshot(
+        raw_result_config_json=raw_config,
+        config_sha256="sha256:" + hashlib.sha256(raw_config.encode("utf-8")).hexdigest(),
+    )
+    market_date = date.fromisoformat(result_config["data_as_of_date"])
+    request = replace(base.request, as_of_date=market_date)
+    context = replace(
+        base.context,
+        as_of_date=market_date,
+        decision_at=decision_at
+        or datetime.fromisoformat(f"{decision_date}T08:10:00+08:00"),
+        result_config_snapshot=result_snapshot,
+    )
+    return replace(base, result_id=result_id, request=request, context=context)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -131,7 +218,13 @@ def _seed_candidate_outputs(config: TWStockConfig) -> None:
     )
 
 
-def _seed_canonical_candidate(config: TWStockConfig, result_id: str) -> Path:
+def _seed_canonical_candidate(
+    config: TWStockConfig,
+    result_id: str,
+    *,
+    execution_as_of_date: date | None = None,
+    execution_override: RecommendationExecution | None = None,
+) -> Path:
     runs_dir = config.output_root / "recommendation" / "runs"
     store = ResultArtifactStore(
         artifact_root=runs_dir / "execution_artifacts",
@@ -151,38 +244,109 @@ def _seed_canonical_candidate(config: TWStockConfig, result_id: str) -> Path:
         "horizon_days": 20,
         "return_basis": "close_to_close",
     }
-    raw_config = json.dumps(result_config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    saved_config = RecommendationResultConfigSnapshot(
-        raw_result_config_json=raw_config,
-        config_sha256="sha256:" + hashlib.sha256(raw_config.encode("utf-8")).hexdigest(),
-    )
-    execution = RecommendationExecution(
-        result_id=result_id,
-        request=Request(as_of_date=date(2026, 9, 14)),
-        context=Context(
-            as_of_date=date(2026, 9, 14),
-            result_config_snapshot=saved_config,
-        ),
-        status=ExecutionStatus.COMPLETED,
-        decision=DecisionBatch(
-            items=(
-                RecommendationItem(
-                    stock_code="1528",
-                    stock_name="恩德",
-                    industry="電機機械",
-                    rule_score=Decimal("73.13"),
-                    reason_text="圖形模式分數+",
-                    rank=4,
-                    ranking_method="fixed_threshold",
-                ),
-            )
-        ),
-        quality=QualityReport(QualityStatus.DEGRADED, warnings=("saved_quality_warning",)),
-    )
+    if execution_override is not None:
+        execution = execution_override
+    else:
+        effective_as_of_date = execution_as_of_date or date(2026, 9, 14)
+        raw_config = json.dumps(result_config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        saved_config = RecommendationResultConfigSnapshot(
+            raw_result_config_json=raw_config,
+            config_sha256="sha256:" + hashlib.sha256(raw_config.encode("utf-8")).hexdigest(),
+        )
+        execution = RecommendationExecution(
+            result_id=result_id,
+            request=Request(as_of_date=effective_as_of_date),
+            context=Context(
+                as_of_date=effective_as_of_date,
+                result_config_snapshot=saved_config,
+            ),
+            status=ExecutionStatus.COMPLETED,
+            decision=DecisionBatch(
+                items=(
+                    RecommendationItem(
+                        stock_code="1528",
+                        stock_name="恩德",
+                        industry="電機機械",
+                        rule_score=Decimal("73.13"),
+                        reason_text="圖形模式分數+",
+                        rank=4,
+                        ranking_method="fixed_threshold",
+                    ),
+                )
+            ),
+            quality=QualityReport(QualityStatus.DEGRADED, warnings=("saved_quality_warning",)),
+        )
     receipt = persistence.save(execution, label="合成 canonical 排程結果")
     assert receipt.artifact_location is not None
     artifact_path = store.artifact_root / receipt.artifact_location
     return artifact_path
+
+
+def _write_canonical_candidate_status(
+    config: TWStockConfig,
+    result_id: str,
+    *,
+    decision_date: str,
+    data_as_of_date: str,
+    execution: RecommendationExecution | None = None,
+) -> None:
+    result_config: dict[str, object] | None = None
+    if execution is not None and execution.context.result_config_snapshot is not None:
+        result_config = json.loads(execution.context.result_config_snapshot.raw_result_config_json)
+    if result_config is None:
+        status_cohort: dict[str, object] = {
+            "cohort_hash": "sha256:cohort-1",
+            "requested_count": 2,
+            "eligible_count": 1,
+            "degraded_symbols": 1,
+            "missing_symbols": 0,
+            "coverage_status": "degraded",
+            "universe_policy_id": "policy-1",
+            "universe_policy_hash": "sha256:policy-1",
+            "universe_snapshot_id": "snapshot-1",
+            "universe_snapshot_hash": "sha256:snapshot-1",
+        }
+        evidence_identity: dict[str, object] = {
+            "strategy_version_id": "strategy-1",
+            "strategy_config_id": "config-1",
+            "universe_policy_id": "policy-1",
+            "universe_policy_hash": "sha256:policy-1",
+            "universe_snapshot_id": "snapshot-1",
+            "universe_snapshot_hash": "sha256:snapshot-1",
+            "benchmark_id": "TAIEX",
+            "cost_model_id": "cost-1",
+            "horizon_days": 20,
+        }
+        source_snapshot_id = "snapshot-1"
+    else:
+        status_cohort = result_config["snapshot_cohort"]
+        evidence_keys = (
+            "strategy_version_id",
+            "strategy_config_id",
+            "universe_policy_id",
+            "universe_policy_hash",
+            "universe_snapshot_id",
+            "universe_snapshot_hash",
+            "cost_model_id",
+            "benchmark_id",
+            "horizon_days",
+            "return_basis",
+        )
+        evidence_identity = {key: result_config[key] for key in evidence_keys}
+        source_snapshot_id = result_config["universe_snapshot_id"]
+    _write_json(
+        config.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json",
+        {
+            "status": "passed",
+            "decision_date": decision_date,
+            "data_as_of_date": data_as_of_date,
+            "result_id": result_id,
+            "source_snapshot_id": source_snapshot_id,
+            "recommendations_count": 1,
+            "snapshot_cohort": status_cohort,
+            "evidence_identity": evidence_identity,
+        },
+    )
 
 
 def _seed_registered_legacy_payload(
@@ -456,6 +620,145 @@ def test_daily_journey_reads_canonical_execution_and_preserves_status_identity(t
     assert not (config.output_root / "recommendation" / "runs" / f"{result_id}.json").exists()
     assert artifact_path.read_bytes() == before
     assert hashlib.sha256(artifact_path.read_bytes()).hexdigest() == before_hash.removeprefix("sha256:")
+
+
+def test_daily_journey_accepts_scheduled_cutoff_before_decision_date(
+    tmp_path: Path, _scheduled_base_execution: RecommendationExecution
+) -> None:
+    config = _config(tmp_path)
+    result_id = "scheduled-cutoff-before-decision"
+    execution = _scheduled_candidate_execution(
+        _scheduled_base_execution, result_id, decision_date="2026-10-21"
+    )
+    artifact_path = _seed_canonical_candidate(config, result_id, execution_override=execution)
+    _write_canonical_candidate_status(
+        config,
+        result_id,
+        decision_date="2026-10-21",
+        data_as_of_date="2026-10-20",
+        execution=execution,
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-10-21",
+    )
+
+    assert daily.candidate_symbols == ("2330",)
+    assert daily.candidate_result_id == result_id
+    assert daily.candidate_status == "candidate"
+    assert daily.candidate_quality == "observed"
+    assert daily.candidate_data_date == "2026-10-20"
+    assert not any(
+        item.startswith("recommendation_execution_as_of_mismatch:")
+        for item in daily.diagnostics
+    )
+    assert artifact_path.is_file()
+
+
+@pytest.mark.parametrize(
+    ("config_overrides", "decision_at"),
+    [
+        ({}, datetime.fromisoformat("2026-10-20T23:00:00+08:00")),
+        ({"cutoff_policy": "unverified_policy"}, None),
+    ],
+)
+def test_invalid_scheduled_clock_or_policy_does_not_fall_back_to_same_day(
+    tmp_path: Path,
+    _scheduled_base_execution: RecommendationExecution,
+    config_overrides: dict[str, object],
+    decision_at: datetime | None,
+) -> None:
+    config = _config(tmp_path)
+    result_id = "scheduled-invalid-clock-or-policy"
+    execution = _scheduled_candidate_execution(
+        _scheduled_base_execution,
+        result_id,
+        decision_date="2026-10-21",
+        config_overrides=config_overrides,
+        decision_at=decision_at,
+    )
+    _seed_canonical_candidate(config, result_id, execution_override=execution)
+    _write_canonical_candidate_status(
+        config,
+        result_id,
+        decision_date="2026-10-21",
+        data_as_of_date="2026-10-20",
+        execution=execution,
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-10-21",
+    )
+
+    assert daily.candidate_symbols == ()
+    assert daily.candidate_status == "degraded"
+    assert "recommendation_scheduled_decision_date_invalid" in daily.diagnostics
+
+
+def test_scheduled_result_must_match_status_decision_date(
+    tmp_path: Path, _scheduled_base_execution: RecommendationExecution
+) -> None:
+    config = _config(tmp_path)
+    result_id = "scheduled-status-date-mismatch"
+    execution = _scheduled_candidate_execution(
+        _scheduled_base_execution, result_id, decision_date="2026-10-21"
+    )
+    _seed_canonical_candidate(config, result_id, execution_override=execution)
+    _write_canonical_candidate_status(
+        config,
+        result_id,
+        decision_date="2026-10-20",
+        data_as_of_date="2026-10-20",
+        execution=execution,
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-10-21",
+    )
+
+    assert daily.candidate_symbols == ()
+    assert (
+        "recommendation_scheduled_decision_date_mismatch:2026-10-21!=2026-10-20"
+        in daily.diagnostics
+    )
+
+
+def test_non_scheduled_execution_keeps_same_day_cutoff_check(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    result_id = "non-scheduled-cutoff-mismatch"
+    _seed_canonical_candidate(
+        config,
+        result_id,
+        execution_as_of_date=date(2026, 9, 13),
+    )
+    _write_canonical_candidate_status(
+        config,
+        result_id,
+        decision_date="2026-09-14",
+        data_as_of_date="2026-09-13",
+    )
+
+    daily = DailyInvestmentJourneyService(config).build(
+        decision_snapshot=None,
+        scheduled_status=_status(result_id=result_id),
+        recommendation_learning_status=None,
+        requested_decision_date="2026-09-14",
+    )
+
+    assert daily.candidate_symbols == ()
+    assert (
+        "recommendation_execution_as_of_mismatch:2026-09-13!=2026-09-14"
+        in daily.diagnostics
+    )
 
 
 def test_daily_journey_legacy_projection_preserves_exact_identity_rank_and_date(

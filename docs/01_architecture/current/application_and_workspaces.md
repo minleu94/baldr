@@ -1,5 +1,7 @@
 # UI 與應用流程
 
+首頁的 `DailyInvestmentJourneyService` 從 `config.output_root/scheduled/recommendation_snapshot/latest_status.json` 讀排程指標，再經原推薦 query 核對保存的 execution、cohort 與身份。明確 `scheduled_snapshot` 的 canonical 結果，決策日沿 `canonical_scheduled_decision_date()` 核對自然時鐘與 cutoff 契約，行情截止日另保留為 `candidate_data_date`。無效契約不退回同日猜測，未標記排程的舊結果保留原 as-of 比對；過時與未來來源仍沿既有拒絕／回訪規則。這項 reader 修正不改 producer、保存格式或金融資格。
+
 儲存維護由 Main 明示盤點邊界：原始碼模式使用 repo 的 `dist` 版本容器；封裝模式使用目前 `sys.executable` 所在套件作單一項目，不向父目錄尋找其他版本。`inspect_storage` 只查三個設定位置的磁碟容量及明示盤點根；共用 4096 項／64 版本上限，內層連結不跟隨。回傳另含盤點位置、可用性與診斷，缺失或不可讀不能當成成功空清單；大小完整性與引用／清理資格分開。此後繼原始碼修復不在固定 e369 EXE，驗證範圍見 [V2 驗收紀錄](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
 
 V2 月營收結果的「開啟一般個股研究」由 view 產生不可變的 `RevenueStockResearchOrigin`，核對原來源、query、page request、page 與 row SHA。Main 只將股票及來源識別映射到原 `ResearchStockContextDTO`，一般報告另讀行情，不攜入月營收 facts 或推定其日期。返回只接受仍在當前已核快照的原頁原列，忙碌或身份改變即拒絕；此短期回返不代替收藏跨程序的磁碟原件核驗。

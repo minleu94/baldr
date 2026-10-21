@@ -8,6 +8,8 @@
 
 ## V2分支與本機技術候選
 
+首頁研究線索的「決策日」與「資料日」可以不同：例如10/21決策使用10/20截止行情。系統只在保存結果的自然時鐘／cutoff 契約與排程狀態一致時呈現，並保留較早資料日及降級原因。過時來源不能當今日候選，可沿明示入口讀回保存結果；無效日期／身份仍停用，不以改日期解鎖。Paper、月營收與正式金融資格各自受原守衛限制。既有 `eefd2163ad95` EXE 不含此後繼 reader 修復，未重建；工程裁決與驗證範圍見 [V2 工程收尾](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#最終工程收尾診斷2026-10-21)。
+
 V2 日常開發、Milestone 與候選準備採開發團隊自動化驗收；Owner UAT 未做不要求你現在逐頁操作或提供真人收據。程式／契約、自動 GUI、原生 Windows Smoke 與 Owner UAT 分開記錄；Native 停止指示有效時只做允許的自動檢查，原生結果標為 `NATIVE_SMOKE_NOT_EXECUTED`。這不提高月營收、Paper 或歷史 PIT 的資格，也不代表所有研究旅程分支已通過。
 
 本機另有固定整合技術候選 `2026.10.21+eefd2163ad95`，位置為 `dist/candidate_eefd2163ad95_873638e9/baldr`。保留完整資料夾，以內附 `Launch-Baldr.cmd` 啟動；獨立 `r181_candidate_state` 已準備四股／題材受限樣本，`--check launch-info` 只核設定，不需重做 prepare。價格研究另沿包外既存唯讀技術來源，來源不可讀時不以樣本補造；本機綁定路徑見包內 `GUIDE.md`。來源、EXE SHA、12個檔案pin與限定驗證見 `DELIVERY_RECEIPT.json` 及[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#eefd2163-整合候選qa144-起)。本版已含統一篩選保存、保存報告／價格另開最新與原件返回、Paper前置檢查及Journal修正；建帳缺件時仍停用。正常關閉後可從保留a65、412ca、2b或研究13原啟動器回退，各用原state；不可合併至正式／私人資料。既有指定試用入口未替換，五旅程 PARTIAL、原生停止／真人待驗及金融限制保持。

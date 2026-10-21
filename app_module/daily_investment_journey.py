@@ -26,6 +26,7 @@ from app_module.recommendation.persistence import ExecutionPersistenceError
 from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
+    canonical_scheduled_decision_date,
     execution_result_config,
     recommendation_runs_dir,
     verified_saved_calibration_projections,
@@ -500,23 +501,42 @@ class DailyInvestmentJourneyService:
                 saved_read = None
             elif saved_read.execution is not None:
                 execution = saved_read.execution
-                selected_date = execution.context.as_of_date or execution.request.as_of_date
-                if (
-                    selected_date is not None
-                    and payload_date is not None
-                    and selected_date.isoformat() != payload_date
+                result_config = execution_result_config(execution)
+                if result_config.get("scheduled_snapshot") is True:
+                    canonical_decision_date = canonical_scheduled_decision_date(saved_read)
+                    if canonical_decision_date is None:
+                        diagnostics.append("recommendation_scheduled_decision_date_invalid")
+                        saved_read = None
+                    elif payload_date is None:
+                        diagnostics.append("recommendation_scheduled_status_decision_date_missing")
+                        saved_read = None
+                    elif canonical_decision_date != payload_date:
+                        diagnostics.append(
+                            "recommendation_scheduled_decision_date_mismatch:"
+                            f"{canonical_decision_date}!={payload_date}"
+                        )
+                        saved_read = None
+                else:
+                    selected_date = execution.context.as_of_date or execution.request.as_of_date
+                    if (
+                        selected_date is not None
+                        and payload_date is not None
+                        and selected_date.isoformat() != payload_date
+                    ):
+                        diagnostics.append(
+                            "recommendation_execution_as_of_mismatch:"
+                            f"{selected_date.isoformat()}!={payload_date}"
+                        )
+                        saved_read = None
+                if saved_read is not None and (
+                    execution.status is not ExecutionStatus.COMPLETED
+                    or execution.decision is None
                 ):
-                    diagnostics.append(
-                        "recommendation_execution_as_of_mismatch:"
-                        f"{selected_date.isoformat()}!={payload_date}"
-                    )
-                    saved_read = None
-                elif execution.status is not ExecutionStatus.COMPLETED or execution.decision is None:
                     diagnostics.append(
                         f"recommendation_execution_unsupported:{execution.status.value}"
                     )
                     saved_read = None
-                else:
+                elif saved_read is not None:
                     execution_cohort = _canonical_cohort(saved_read)
                     if execution_cohort:
                         status_cohort_hash = _text(cohort.get("cohort_hash"))

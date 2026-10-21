@@ -2,6 +2,34 @@
 
 本文件記錄依 [V2 Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 開發的 Source 分支證據。基線 `9ce92743`，分支 `codex/baldr-v2-product`。已有本機技術候選及分階段驗證，最新整合候選與限制見下節；完整五旅程仍為 PARTIAL，既有固定研究13不包含本輪變更。
 
+## 最終工程收尾診斷（2026-10-21）
+
+Owner 要求一次有界工程裁決；不以金融資格、Owner UAT 或 Native 停止自動判定產品缺陷，不再以重複缺件檢查延長開發。查核基線為 `2c7e1feb`；以下既有驗收結果仍依原版本與範圍判讀。
+
+**最終裁決：`PRODUCT_RC_READY_WITH_LIMITATIONS`。** 範圍為本機來源版已列明的研究功能、安全拒絕出口及本次日期適配修復，未宣告全部正向金融流程完成。找到的一項工程缺陷已修復並通過必要回歸；未找到其他阻擋此範圍交付的已證實工程缺陷。先前長期 goal 的 blocked 不能直接推論產品工程未就緒。
+
+| 工程範圍 | 裁決與證據 |
+|---|---|
+| 四主導航、系統管理、搜尋與返回 | 已交付；QA159鍵盤／原查詢返回、QA162真正main()17路由／125%四尺寸；本輪未更動Shell。 |
+| 題材／價格研究、保存與重開、Journal、Registry | 已有具名受限樣本及正常Main／fresh證據，沿下方四軌表重用；QA164只接受功能切片。 |
+| 首頁候選日期適配 | 本輪缺陷已修；QA168真來源reader核回1列，QA171必要回歸通過。正常Main正向首頁全旅程未在本輪補驗。 |
+| 月營收跨源／Paper正向建帳 | 隔離限制；Paper通用producer仍未實作，不以安全出口冒稱完成，也不阻擋本次限定研究RC。 |
+| 固定eefd EXE | 保留既有包與回退身份；後繼鍵盤與日期修復僅來源版，未重新封包。 |
+
+**修復驗證。** QA168的 `r218_home_source_verified/result.json` 經原reader與真來源，SQLite連線僅以診斷guard強制 `mode=ro&immutable=1`／query-only，不替換service或列值：10/21決策回1595一列，品質仍degraded、資料日10/20；10/22查詢為stale，早於來源決策日的請求為future_blocked。四檔前後bytes／SHA相同、無sidecar、來源寫入denial空。結果 `QUERY_VERIFIED`；本機hostname與IPv6探測仍被guard拒絕，`whole_isolation_pass=false`，不宣稱全隔離PASS或正常Main GUI E2E。reader結果SHA為 `d6ea4cf8ec18d591a914a8907020a8ef8e6b833a3c3775c848b63f0dba7dc852`。
+
+QA171最終編譯、75項日期／排程狀態／首頁選列與返回定向、85項強制Workbench、更新頁25通過／0失敗／4略過、mypy1108檔全通過。closure `9a6009cc261ca1472f54dbe9cadaf4430698ca3ee56728f2a053689fabf0dc18` terminal0、三PID陣列空、handles關閉與mutex釋放，無強制清除。QA167新增fixture缺typed cohort、QA168／169／170 fixture股號或品質預期錯配的原FAIL均保留；測試沿既有fixture補齊metadata，不修改正式來源或降低契約。R219獨立靜態複核未見日期／身份守衛放寬。產品檔SHA為 `f080520fc0d8c9858d131e7b99c4ba8200c10860727c0e37c74e29b1c441fdd8`。
+
+**IPv6 FAIL。** 失敗項是 QA164 `qa164_source_registry_physical_roots` 的 isolation 彙總，不是比較演算法或 GUI assertion：`r209_source_main_registry/r209_result.json` 只有一筆 `socket.bind`，位址為 `('::1', 0)`。呼叫鏈是安裝環境 `urllib3/util/connection.py:137` 匯入時呼叫 `_has_ipv6()`，第127行嘗試本機 bind，捕捉例外並關閉 socket；不是 connect、listen 或對外傳輸。測試守衛阻止該探測後仍完成相容120日／240列、不相容拒絕、原頁選列返回，來源與 Registry DB 雜湊保持、worker0。結論為測試隔離限制，未發現由此導致的產品功能或資料安全缺陷；不改產品網路設定、不鬆守衛或依賴套件，只保留原整輪 FAIL 與功能切片證據，無需為取得全綠重跑。
+
+**首頁資料鏈與新工程缺陷。** 真正來源是 `config.output_root/scheduled/recommendation_snapshot/latest_status.json`，經 `WorkbenchSourceService` → `DailyInvestmentJourneyService` → `WorkbenchDailyEvidence` → 原 Workbench selector／typed context；返回由 Main 重核原候選身份。`run_scheduled_recommendation_snapshot.py` 已有 canonical execution 保存、原件核驗與狀態產生能力；不是缺少 producer、查詢或 UI 顯示功能。先前 QA162 的隔離 CASE 及 R57 restore 缺該狀態，不等於正式來源不存在。
+
+本輪唯讀找到正式 `F:/Min/Python/Project/FA_Data/output` 的10/21狀態（63,183 bytes，SHA `4f0aed92b103bfa5147e47847060861c2f137fff84c1e3d50091ff21ad0bcbe4`），指向 `rec_e64969b24b2b4784aa02bcb89f2980e4`，宣告1筆研究結果。總狀態 blocked 的具名原因為 `paper_frozen_source_eligible_date_mismatch`；這不等於研究結果可以直接取得 Paper 資格。保存 execution 明確封存10/21決策、10/20行情截止、自然時鐘及 cutoff policy。QA166 真 reader 診斷揭露首頁仍以 `as_of_date=10/20` 比對狀態決策日10/21，誤拒為 `recommendation_execution_as_of_mismatch`；因此不是單純外部缺件，而是日期語意適配缺陷。
+
+最小修正只讓明確 scheduled canonical 結果沿現有 `canonical_scheduled_decision_date()` 嚴格核對決策日；helper 不接受、狀態缺日或日期不符即拒絕，不回退猜測。舊非scheduled as-of規則、cohort／identity、資料日、過時／未來拒絕與金融資格均保留。沒有改 producer、正式資料、binding 或 Paper 帳戶。QA166 原 FAIL、四來源前後 SHA 與 sidecar 不變證據保留；其診斷 guard 另阻 Windows NUL 裝置寫入及套件本機探測，不把該整輪算 PASS。
+
+**金融與產品分軌。** 月營收核准 binding／用途接受、Paper 合格帳戶／策略／同日 mark-cash 與尚未實作的通用正向 producer、歷史 PIT、自然 Forward、ML promotion 各自留待辦。正向 Paper 建帳停用是明示的候選限制；不宣稱該功能已完成。Native 維持 `NATIVE_SMOKE_NOT_EXECUTED`，Owner 為 `OWNER_UAT_NOT_PERFORMED`，均不冒充已驗，也不單憑 UAT 未做阻擋研究 RC。固定 `eefd2163ad95` 包保留，未包含後繼鍵盤及本次 reader 修復，未重建 EXE。
+
 ## 自動化優先與四軌驗收（2026-10-21 Owner override）
 
 交付先讀[一頁式摘要與截圖](BALDR_V2_AUTOMATED_ACCEPTANCE_20261021.md)。本節的來源版 RC 判定只涵蓋明列的研究功能與安全缺件出口，並非完整五旅程所有分支或金融資格接受。

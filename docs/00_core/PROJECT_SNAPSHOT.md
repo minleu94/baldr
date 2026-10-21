@@ -1,10 +1,12 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**目前 V2 本機技術候選：`2026.10.21+412ca3e5fe4f`。** 位於 `dist/candidate_412ca3e5fe4f_95e7e445/baldr`，使用包內 `Launch-Baldr.cmd`／`RESEARCH_GUIDE.md` 及獨立 `r114_candidate_state`。新增同題材成員上一檔／下一檔；QA103 真 frozen Main first/fresh 完成2330→2360→2330、原選列返回及來源選列變動拒絕，來源SHA保持，worker／pool0自然關閉。QA100同版、QA101啟動器正反SHA及1280×760／DPR1.5的17路由通過，首頁另驗1500／1440／1920。EXE SHA `68cfa7673abbbc7a2d148246bfd00897bca70a8299c04c5c54a708ed3adfeedd`；交付收據 SHA `8c677527f2a6a3723cafb816939e338d32d94c292716e16e48a319911c2c993a`。舊包／研究13／active delivery 保留；Native停止及真人待驗不變，金融資格與完整五旅程不升格，見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
+
 **後繼 Python 候選：同題材成員上一檔／下一檔。** Main 固定原題材版本、成員順序及選列，換股只更新代碼與名稱；返回保留最初題材選列。來源、篩選或選列變動後拒絕舊導航，保存時報告不可切股。QA092 編譯、85 定向、Workbench85、更新頁25/0/4、mypy1104通過；QA096 正常 Main 與新程序的成員來回及選列變動拒絕通過，固定 `2b164aede953` EXE 不含。QA092 文件定位命令使用未知領域而失敗，QA093 已用正確領域完成定位；原失敗保留，見 [V2 驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
 
 QA090 另以同一新 EXE 完成既有兩股保存來源的讀取、價格下限1、2317／2330比較、同源個股及原 query／page／row 返回，來源四檔、唯讀價庫與 Journal 保持，正常關閉／worker0。這是既有來源的限定旅程，不包含 EXE 來源產製或金融資格。更新後交付收據 SHA 為 `d88dfd7a765582cb816a16bbc1b757a97fda19bfa37b7d46f5239336572148c7`；八個關鍵檔 pin 不變，QA080 版原收據留存於任務紀錄。
 
-**V2 新整合技術候選：`2026.10.21+2b164aede953`。** 本機 `dist/candidate_2b164aede953_1dff24ee/baldr` 已納入儲存盤點、首頁原報告回訪／分日及推薦頁關閉修復；用整包的 `Launch-Baldr.cmd`，指南為 `RESEARCH_GUIDE.md`，專屬 state 為本任務的 `r74_candidate_state`。QA078 Python／EXE 同版、QA080 真 frozen 原件 fresh 回訪／儲存正確套件根、啟動器正反 SHA 通過；17 路由於 1280×760／DPR1.5，首頁另驗 1500×900、1440×900、1920×1080。EXE SHA `8499fc15231750a3616316b40079c9ac572bbaa5af95943ffd98f4575585e89f`；交付收據 SHA `d88dfd7a765582cb816a16bbc1b757a97fda19bfa37b7d46f5239336572148c7`。舊 e369 與研究13保持，未替換 active delivery；完整五旅程、原生／真人及金融資格仍未接受，見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
+**保留前版技術候選：`2026.10.21+2b164aede953`。** 本機 `dist/candidate_2b164aede953_1dff24ee/baldr` 已納入儲存盤點、首頁原報告回訪／分日及推薦頁關閉修復；用整包的 `Launch-Baldr.cmd`，指南為 `RESEARCH_GUIDE.md`，專屬 state 為本任務的 `r74_candidate_state`。QA078 Python／EXE 同版、QA080 真 frozen 原件 fresh 回訪／儲存正確套件根、啟動器正反 SHA 通過；17 路由於 1280×760／DPR1.5，首頁另驗 1500×900、1440×900、1920×1080。EXE SHA `8499fc15231750a3616316b40079c9ac572bbaa5af95943ffd98f4575585e89f`；交付收據 SHA `d88dfd7a765582cb816a16bbc1b757a97fda19bfa37b7d46f5239336572148c7`。舊 e369 與研究13保持，未替換 active delivery；完整五旅程、原生／真人及金融資格仍未接受，見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
 
 **後繼原始碼：首頁原報告回訪與推薦頁關閉修復已驗。** 最近研究的一般報告可直接開保存原件並返回首頁，原研究來源日與行情日分列，缺件不借用日期。QA073 歷史推薦 first/fresh 與 QA075 題材→2330、獨立 9/23 行情 120 點、保存／重開／首頁原件回訪均通過；題材來源仍是 10/16，原件 SHA、Journal 讀回及返回身份保持。推薦頁延後 resize 改為自有 QTimer，正常關閉不再存取已刪除元件；45 定向、Workbench85、更新頁25/0/4、mypy1103及編譯通過。原失敗及受限範圍見 [V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。固定 e369 EXE 尚未包含本輪修復，原生停止／真人待驗及金融資格維持。
 

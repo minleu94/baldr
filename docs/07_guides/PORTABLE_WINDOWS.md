@@ -1,8 +1,10 @@
 # baldr Windows 可攜版
 
-V2 新整合本機技術候選為 `dist/candidate_2b164aede953_1dff24ee/baldr`，版本 `2026.10.21+2b164aede953`，包含儲存盤點、首頁原報告回訪與推薦頁關閉修復。用該資料夾的 `Launch-Baldr.cmd` 啟動，`--prepare` 只準備受限樣本並核設定，`--check launch-info` 只檢查設定。它已通過 Python／EXE 同版、真 frozen 原件回訪／儲存頁、啟動器正反 SHA，以及 1280×760／DPR1.5 的 17 路由；首頁另驗 1500×900、1440×900、1920×1080。原生／真人接受及完整五旅程仍依[V2 驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。本包使用本任務 `r74_candidate_state` 與四股／固定題材樣本，未匯入私人帳、正式資料或排程；本機位置綁定不表示跨機可攜。README、RESEARCH_GUIDE 與交付收據列精確位置及限制；舊 e369、研究13及 active delivery 保持。
+目前 V2 本機技術候選為 `dist/candidate_412ca3e5fe4f_95e7e445/baldr`，版本 `2026.10.21+412ca3e5fe4f`，使用包內 `Launch-Baldr.cmd`／`RESEARCH_GUIDE.md` 及獨立 `r114_candidate_state`。QA100同版、QA101啟動器prepare／check／錯SHA拒絕與17路由、QA103真frozen Main題材上一／下一及原選列返回first/fresh通過；範圍及原工具失敗見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#題材導航候選交付qa098103)。EXE SHA `68cfa7673abbbc7a2d148246bfd00897bca70a8299c04c5c54a708ed3adfeedd`；交付收據 SHA `8c677527f2a6a3723cafb816939e338d32d94c292716e16e48a319911c2c993a`。本機位置綁定、原生停止／真人待驗及金融限制保持；先正常關閉本版，再從舊2b或研究13原啟動器回退，各自state不合併、不遷移。未替換active delivery或刪除舊包。
 
-候選的 `qa233a-two-stock-population.json` 與 README 另提供兩股研究重現步驟：從「產製新研究版本」明選範例、核對隔離價庫及截止時間，再至「價格母體」查詢、比較、開個股並返回。JSON 只宣告2317／2330及2026-09-23研究範圍；請沿 README 的實體 F 槽路徑選檔，勿改原來源時鐘。這段已由正常 Python Main 與新程序有界驗證，未宣稱候選 EXE 此旅程或歷史 PIT 接受。
+保留前版技術候選為 `dist/candidate_2b164aede953_1dff24ee/baldr`，版本 `2026.10.21+2b164aede953`，包含儲存盤點、首頁原報告回訪與推薦頁關閉修復。用該資料夾的 `Launch-Baldr.cmd` 啟動，`--prepare` 只準備受限樣本並核設定，`--check launch-info` 只檢查設定。它已通過 Python／EXE 同版、真 frozen 原件回訪／儲存頁、啟動器正反 SHA，以及 1280×760／DPR1.5 的 17 路由；首頁另驗 1500×900、1440×900、1920×1080。原生／真人接受及完整五旅程仍依[V2 驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。本包使用本任務 `r74_candidate_state` 與四股／固定題材樣本，未匯入私人帳、正式資料或排程；本機位置綁定不表示跨機可攜。README、RESEARCH_GUIDE 與交付收據列精確位置及限制；舊 e369、研究13及 active delivery 保持。
+
+候選的 `qa233a-two-stock-population.json` 與 README 另提供兩股研究重現步驟：從「產製新研究版本」明選範例、核對隔離價庫及截止時間，再至「價格母體」查詢、比較、開個股並返回。JSON 只宣告2317／2330及2026-09-23研究範圍；請沿 README 的實體 F 槽路徑選檔，勿改原來源時鐘。這段另已在前版2b EXE由QA098正式產生來源、QA100 fresh同源讀回／比較／個股返回限定驗證；不外推新版412ca3另一次producer或歷史PIT接受。
 
 V2 工程候選由完整固定 commit 建置；可明示 `packaging/build_windows.py --commit <完整40字元SHA> --version-date 2026.10.21`。版本日期必須是有效 `YYYY.MM.DD`，不依建置機時鐘；不指定時保留舊日期以相容既有流程。候選輸出仍標為 `built_not_validated`，需另做同版與產品驗證，日期及 release 渠道字樣本身不代表接受。
 

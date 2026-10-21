@@ -6,7 +6,7 @@ V2 月營收結果的「開啟一般個股研究」由 view 產生不可變的 `
 
 ## research07操作邊界增量
 
-V2 後繼 Python 候選以 `ThemeMemberNavigation` 固定已選題材的 snapshot 物件、SHA、成員順序、原選列及 selection revision；Main 核對來源後，Report 的上一檔／下一檔只替換 context 的股票代碼與名稱。行情仍由一般報告 reader 各自讀取，返回不移動原題材選列。換來源、篩選或選列後拒絕沿舊脈絡切股與返回；保存時報告仍不可切股。此接線已通過 QA096 正常 Main 與新程序的成員來回及選列變動拒絕，固定 `2b164aede953` EXE 不含，實際接受範圍見 [V2 驗收紀錄](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
+V2 後繼 Python 候選以 `ThemeMemberNavigation` 固定已選題材的 snapshot 物件、SHA、成員順序、原選列及 selection revision；Main 核對來源後，Report 的上一檔／下一檔只替換 context 的股票代碼與名稱。行情仍由一般報告 reader 各自讀取，返回不移動原題材選列。換來源、篩選或選列後拒絕沿舊脈絡切股與返回；保存時報告仍不可切股。此接線已通過 QA096 正常 Main 與新程序的成員來回及選列變動拒絕，固定 `2b164aede953` EXE 未含；新 `412ca3e5fe4f` 候選已通過 QA103 包內正常 Main first/fresh，實際接受範圍見 [V2 驗收紀錄](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
 
 StockResearchWorkspace的一般查詢動作建立空名稱、無原保存ID／日期／SHA的explicit_latest_stock_research脈絡，由原一般報告service辨識名稱與行情；保存來源重讀仍走原來源。題材清除沿既有generation與worker取消，先處理筆記busy／草稿確認，modal確認後再核generation、snapshot與worker身份；不寫來源或已保存筆記。原價格圖的顯示用SMA邊界見decision_research_portfolio分冊。
 

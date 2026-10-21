@@ -94,8 +94,8 @@ QA038 從固定 `730613e121b3fb5ca349440bf9973acc6a727842` 建立首個隔離 EX
 | 五條研究旅程 | 狀態 | 已有證據與未覆蓋出口 |
 |---|---|---|
 | 總覽→線索→個股→保存→返回 | PARTIAL | QA073 正常 Main 從首頁進 10/19 歷史保存推薦、明選 1512 原 context、保存報告並返回同結果同列，first/fresh 自然關閉；QA075 fresh 再驗首頁具名最近研究卡真按鈕開原報告、返回首頁同卡及 Journal 不變。這些受限腳本切片 PASS；受接受今日候選、原生 GUI 與真人仍待。 |
-| 市場／題材→成分→個股→返回 | PARTIAL | QA024 原固定題材切片保持；QA075 正常 Main first/fresh 另用真實 9/23 一般行情，完成 10/16 題材 25 鏈／90 題材、CoWoS→2330、保存及原件重開、返回原成員列。一般報告 120 點取自獨立價庫，沒有借用題材價量；context 來源日 10/16、價格末日 9/23 分開核對，三題材檔及價庫 SHA 不變。完整來源資格、原生 GUI 與真人仍待。 |
-| 綜合選股→條件→2–5股比較→個股 | PARTIAL | QA056 正常 Main／新程序已完成價格母體兩股條件、比較、個股與原頁返回，屬 scoped PASS；QA033 原月營收 view 的分頁、比較、收藏及精確重開另有局部證據。月營收完整 Main 綁定、EXE 此旅程與 Native／真人仍待。 |
+| 市場／題材→成分→個股→返回 | PASS（限定研究快照） | QA075 真題材及獨立行情的保存／fresh回訪證據保持；QA096 Python Main、QA103 新412ca3 EXE正常Main first/fresh另驗CoWoS2330→2360→2330、原列返回及選列漂移拒絕。25鏈／90題材、來源SHA、10/16題材與9/23行情120點分開；缺成員行情不借題材補值。完整來源資格、原生 GUI 與真人仍待。 |
+| 綜合選股→條件→2–5股比較→個股 | PARTIAL（兩股價格旅程PASS） | QA056 Python Main／fresh原切片保持；QA098前版2b EXE正式四對話框producer complete及五功能步驟、QA100 fresh exact同源讀回／條件／比較／個股／原頁列返回通過，來源SHA保持。QA098原first finalhash長路徑工具FAIL保留；QA100並未重跑producer。月營收完整Main真來源綁定、全來源及 Native／真人仍待，不外推412ca3另一次producer。 |
 | 個股→人工確認→Paper→Forward→覆盤 | PARTIAL（安全出口） | QA033 正常 Main 缺合法 mark/cash/snapshot 時拒絕建帳，manual/Paper 分開、無 NAV/ledger 寫入；手動研究日記經 UI 保存並 fresh 精確回讀。完整建帳及自然 Forward 成熟未驗。 |
 | 策略→回測→保存→比較→返回 | PASS（受限腳本） | QA033 正常 Main 以 2330 真實受限 120 點樣本執行兩策略、保存 Registry 並 fresh 精確讀回；QA035/036 另以同策略原輸入新增合法 run、fresh 比較 120 共同日期/240列權益，原件保持。異指紋與搬移路徑拒錯另有原證據。非績效資格、Native 或真人接受。 |
 
@@ -184,3 +184,17 @@ QA096 的新 R110 CASE 完成正常 MainWindow／正式服務及 fresh 程序各
 QA096 整輪仍 FAIL：另一項 R108 EXE producer 已完成四個精確確認對話框，但回傳非 complete；helper 在保存診斷前即拒絕，原因待下一次具名診斷，不認定為產品缺陷或成功產製。來源與 EXE SHA 保持。Closure `c0970d70670632471c4ffa14f12144b0ab47f0b2714092f962a2cd0291c69b77` 自然排空；題材功能的有效證據不受另一 helper 失敗取消，也不外推整輪通過。
 
 QA097 固定 EXE 以正常 Main 的正式 Registry widget 重開 QA093 兩筆真 run，同指紋比較標籤、120共同日期、240列權益及返回後狀態成功；expected.json、Registry DB及4個Parquet前後SHA保持，Main關閉／deferred-delete drain／worker0通過。整輪仍 FAIL，隔離器另阻擋既有輸出目錄 mkdir、Journal 鎖與 Registry 寫模式探測；未把這些阻擋改成成功寫入，也未聲稱完整隔離接受。保留功能已驗與該具名隔離限制，避免只為工具分類重跑同一旅程。Closure `cc3197b88c4e90d3c122b6debe44abaa8a65c4be4800fa569c89498bb453cef9` 自然閉鎖。原生／真人及金融資格不變。
+
+## 題材導航候選交付（QA098–103）
+
+QA098 的 R111 正規化 Windows extended 路徑後，前版2b EXE正式producer完成，且 strict-load、兩股明確條件、比較、同源個股及精確原query／頁列返回五步成功；availability仍unknown、PIT=false。整輪只在最後兩個普通長路徑的 `resolve(strict=True)` 雜湊檢查失敗。QA100 R112只重開同一R111 generation／receipt，不重產來源，先核原五步／complete與原兩條工具錯誤，再以extended I/O嚴核原件SHA，fresh五步與source／DB／population保持通過；原first receipt SHA保持 `610acf5c6db24b5e3ea98e5b259cf237325f62827528aeb1bea19f865ba2c8a3`。QA098五份相關文件12features／0errors通過，整輪FAIL仍保留。
+
+QA099 從已提交 `412ca3e5fe4f4d70a77f893e576bc55af265ed2f` 建置本任務第4份重要RC，包含新增同題材成員導航；沒有為工具修正重建。QA100 Python／EXE同版隔離比較通過。新包 `dist/candidate_412ca3e5fe4f_95e7e445/baldr`，版本 `2026.10.21+412ca3e5fe4f`，EXE57,119,760bytes、SHA `68cfa7673abbbc7a2d148246bfd00897bca70a8299c04c5c54a708ed3adfeedd`；專屬state為本task `r114_candidate_state`。
+
+QA101 新啟動器prepare／check、錯SHA exit3拒絕、包內及state四真樣本保持通過。真frozen Main的17routes於1280×760／DPR1.5，首頁另1500×900、1440×900、1920×1080，worker／pool0；未把單一尺寸的路由證據外推為所有尺寸全覆蓋。另一導航helper錯用byte hash處理Path，先於Main失敗；QA102導航五步成功但工具又關閉已由正常Main刪除的物件而FAIL，原件保留。
+
+QA103 R116以`isValid`避免重複關閉已刪除物件，真frozen正常Main first／fresh全部通過：四個產品模組均為`PyiFrozenLoader`且在_MEIPASS，沒有工作樹fallback；CoWoS2330→2360→2330、10/16題材／9/23行情120點分開、返回原2330列、來源選列變動後拒絕跨股與返回。source SHA保持、SQLite sidecar缺席、Main rc0／worker0／pool0，Main正常刪除；root看過fresh返回及拒絕畫面。沒有改產品、來源時鐘或舊收據來通過。
+
+QA099／100／103 closure分別為 `c9fe124d3c668dd8e3d95fface03312be30e662bd77128ef8617030f02df0f4b`、`ea61ca83194916a73dec047bb8602cbbffd5b8f18f9d54decbee08b040604263`、`7dbe47beb9f96587d2e0f65b2906d909d1e6b352267f8fe7c943bcb4440f0b13`；QA098／101／102原FAIL也皆自然閉鎖。所有Job PID空、process／Job handles關閉及mutex釋放，沒有強制清除。
+
+交付收據 SHA `8c677527f2a6a3723cafb816939e338d32d94c292716e16e48a319911c2c993a`，8關鍵檔pin；包內7,135files／976,476,885 logical bytes，build5,271files／315,378,063 logical bytes，並非SSD唯一實體配置。新增一份重要RC及必要小樣本，不刪舊包；本機位置綁定、未簽章、未替換active delivery。首頁原件回訪與Storage重用前版2b QA080未改功能路徑證據；兩股producer及Registry證據也明列其2b來源版本。原生停止、真人待驗、真營收綁定、Paper／自然Forward及金融資格各自保留限制，不升格完整V2接受。

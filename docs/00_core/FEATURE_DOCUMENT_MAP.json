@@ -1312,6 +1312,7 @@
       ],
       "tests": [
         "tests/test_storage_overview.py",
+        "tests/test_ui_qt_storage_overview.py",
         "tests/test_ui_qt_runtime_view.py",
         "tests/test_decision_capture_status_reader.py",
         "tests/decision_capture_status_fixture.py",
@@ -1331,6 +1332,7 @@
         "app_module/storage_overview.py",
         "ui_qt/views/storage_overview_view.py",
         "tests/test_storage_overview.py",
+        "tests/test_ui_qt_storage_overview.py",
         "ui_qt/views/runtime*",
         "runtime/*",
         "app_module/runtime_services/*",

@@ -11,19 +11,21 @@ from ui_qt.workers.task_worker import TaskWorker
 
 
 class StorageOverviewView(QWidget):
-    def __init__(self, roots: Mapping[str, Path], trial_root: Path, parent=None):
+    def __init__(self, roots: Mapping[str, Path], trial_root: Path | None = None,
+                 parent=None, *, package_root: Path | None = None):
         super().__init__(parent)
         self._roots = dict(roots)
         self._trial_root = trial_root
+        self._package_root = package_root
         self._worker: TaskWorker | None = None
         self._loaded = False
         self._closing = False
         layout = QVBoxLayout(self)
         notice = QLabel("儲存維護（唯讀）｜同一磁碟的容量不可跨位置相加。\n"
-                        "Trial 盤點限64個版本／4096項；引用、備份與回退尚未逐件核對，沒有自動刪除操作。")
+                        "明示盤點根限64個版本／4096項；套件根以單一項目量測。引用、備份與回退尚未逐件核對，沒有自動刪除操作。")
         notice.setWordWrap(True)
         layout.addWidget(notice)
-        self.refresh_button = QPushButton("重新盤點儲存位置與 Trial")
+        self.refresh_button = QPushButton("重新盤點儲存位置與明示根")
         self.refresh_button.clicked.connect(self.refresh)
         layout.addWidget(self.refresh_button)
         self.status_label = QLabel("開啟本頁後讀取儲存狀態。")
@@ -32,7 +34,7 @@ class StorageOverviewView(QWidget):
         self.locations_table = QTableWidget(0, 5)
         self.locations_table.setHorizontalHeaderLabels(("位置", "路徑", "磁碟總量 MiB", "磁碟可用 MiB", "狀態"))
         self.artifacts_table = QTableWidget(0, 4)
-        self.artifacts_table.setHorizontalHeaderLabels(("Trial 版本", "已量測 MiB", "大小完整", "引用與保留狀態"))
+        self.artifacts_table.setHorizontalHeaderLabels(("盤點項目", "已量測 MiB", "大小完整", "引用與保留狀態"))
         for table in (self.locations_table, self.artifacts_table):
             table.setEditTriggers(QTableWidget.NoEditTriggers)
             table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -47,12 +49,14 @@ class StorageOverviewView(QWidget):
     def refresh(self) -> None:
         if self._closing or self._worker is not None:
             return
-        worker = TaskWorker(inspect_storage, self._roots, self._trial_root)
+        worker = TaskWorker(inspect_storage, self._roots, self._trial_root,
+                            package_root=self._package_root)
         self._worker = worker
         self.refresh_button.setEnabled(False)
         self.status_label.setText("正在唯讀盤點；未檢查引用的版本一律保留。")
         worker.finished.connect(self._apply)
-        worker.error.connect(lambda error: self.status_label.setText("盤點未完成：" + str(error).splitlines()[0]))
+        worker.error.connect(lambda error: self.status_label.setText(
+            f"盤點未完成：{self._inventory_target()}（{str(error).splitlines()[0]}）"))
 
         def cleanup():
             self._worker = None
@@ -77,7 +81,16 @@ class StorageOverviewView(QWidget):
             cells = (artifact.name, self._mib(artifact.measured_bytes), "是" if artifact.complete else "否／部分", artifact.status)
             for column, text in enumerate(cells):
                 self.artifacts_table.setItem(row, column, QTableWidgetItem(text))
-        self.status_label.setText("有界盤點完成；" + ("已達上限，部分版本未量測。" if value.limited else "") + "所有版本仍保留，清理須另行核對引用與 Owner 授權。")
+        detail = f"{value.inventory_path or '未提供盤點位置'}；{value.inventory_status}"
+        if value.inventory_available:
+            self.status_label.setText(
+                f"{detail}。所有版本仍保留，清理須另行核對引用與 Owner 授權。")
+        else:
+            self.status_label.setText(f"盤點未完成：{detail}。未將缺失或不可讀位置視為空清單。")
+
+    def _inventory_target(self) -> str:
+        root = self._package_root if self._package_root is not None else self._trial_root
+        return str(root) if root is not None else "未提供盤點位置"
 
     @staticmethod
     def _mib(value: int | None) -> str:

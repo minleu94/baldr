@@ -26,6 +26,10 @@
 | 數據更新 | [數據更新](#workspace-data-update) | [資料與市場研究手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md) | freshness、正式／候選、CSV、SQLite、取消、唯讀 |
 | Runtime Observatory | [Runtime Observatory](#workspace-runtime-observatory) | [系統狀態手冊](../07_guides/APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態) | event、worker、receipt SHA、終態、過期回呼、unknown |
 
+### 系統管理：儲存維護
+
+儲存維護頁提供唯讀、有界的儲存位置及版本盤點。原始碼啟動只檢查明示的 repo／dist 版本容器；封裝啟動只檢查目前套件位置，不搜尋父磁碟或其他 Trial。磁碟容量欄代表整個磁碟，不是目錄用量；最多盤點 64 個版本及 4096 個項目，超限、不可讀或未跟隨內層連結時保留部分／不可用狀態。未盤點不等於零；沒有清理或刪除資格，引用、備份與回退未逐件核對的版本一律保留。操作及狀態判讀見[APPLICATION_MANUAL 儲存維護](../07_guides/APPLICATION_MANUAL.md#系統管理儲存維護)。後繼原始碼的定向、正常 Main 首次盤點及雙次刷新證據見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#儲存盤點缺件診斷qa058-起)；舊 e369 EXE 不含此修復。
+
 本頁說明 UI 呈現與互動契約；操作步驟、參數、安全限制、結果判讀及排錯以操作手冊為準。工作區責任與資料流見[目前架構分冊](../01_architecture/current/application_and_workspaces.md)，Recommendation、Backtest、Portfolio 計算責任見[決策、研究與 Portfolio](../01_architecture/current/decision_research_portfolio.md)。目前產品狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，驗收範圍依各原 QA 收據判讀。
 
 ## 跨頁責任與搜尋入口

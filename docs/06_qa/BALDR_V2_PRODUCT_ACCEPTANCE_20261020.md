@@ -120,3 +120,17 @@ QA056 以全新 Main 程序與 CASE，透過正式 `ApplicationSettings` 明選�
 本任務新 EXE 建置共 2 份，首包保留但未通過同版；本機修正候選約 976 MB，未替換研究13、`dist/baldr` 或 active delivery。已有包、正式資料、模型及私人資產未刪除。平台可觀測帳戶共用額度與餘額，無精確任務計費歸屬，額外 Credits 實耗為 UNKNOWN；不聲稱能對平台帳單強制數字硬停。
 
 本文件僅記本輪實際範圍，V2 產品驗收尚未完成。
+
+## 儲存盤點缺件診斷（QA058 起）
+
+QA058 探針未點重新盤點便檢查表格，QA059 誤用 PySide6 instance enum；兩輪為驗證腳本失敗，原收據保留。QA060 修正探針後，在真正 e369 frozen Main 使用隔離 DATA／OUTPUT／應用狀態，點實際盤點按鈕；三位置符合設定，但 Trial 根是不存在的 `_internal/dist`，空清單仍顯示「有界盤點完成」，因此 FAIL。Root 已檢視截圖，關窗後 managed worker 為零，closure `3b60facfe3f19ad0bd5f6e69b309d0154f729f03d8e4e2612b3d8f28b48f2f94` 自然排空、handles 關閉、mutex 釋放，沒有操作原生桌面。
+
+後繼原始碼改為封裝模式僅盤點目前套件、原始碼模式使用明示 dist 容器，並呈現根路徑及缺件／不可讀診斷。QA061 Workbench 85 通過、更新頁 25 通過／0 失敗／4 跳過、指定 mypy 1103 檔通過；定向首次有一項新測試的狀態文字期待不符，修正後 QA062 儲存 service／view 14 通過／1 平台連結跳過。reparse 不跟隨另有可重現的模擬測試通過，跳過不冒稱真連結覆蓋。
+
+QA062 source Main 探針缺 repo import 路徑，QA063 對巢狀 `processEvents` 中的 cleanup 等待未達條件，原失敗保持。QA064 正常 Main 首次盤點通過：三個隔離設定位置一致、實際 F 槽 dist 路徑明示、4096 項上限與部分大小呈現，root 已檢視 1280×760／DPR 1.5 截圖，無 modal，route／close worker 皆零。closure `edf9cd3d1bcad457f362b25aa1b2558aca34d219f5b4e107d6434ced82e04452` 自然排空、handles 關閉、mutex 釋放。QA065 再以真正 Qt event loop、真 TaskWorker 驗兩次刷新、按鈕重新啟用及單檔 1→2 MiB 重新量測，1 通過；closure `bb73dfd9941d6bf819adcdb8bf80cff3b509652f6238995333c8c85469f7782c` 自然閉鎖。這將 QA063 限定為探針事件循環限制，沒有為它修改產品生命週期。
+
+固定 e369 未重建，不能將此修復寫成已交付 EXE。沒有提供清理或授予任何舊版本可刪除資格。以上不是 Native／真人或完整五旅程接受。
+
+QA066 的 R55 診斷以真正 Qt event loop 重開既有 R54 隔離 CASE，確認首頁按鈕導向選股研究、來源刷新與自然關閉正常；reader 回覆「legacy data_path 超出 runs 目錄範圍」。來源副本 DB／artifact 前後 pin 保持，沒有修改原件或放寬 guard，因此這份搬移副本不能當成完整歷史研究旅程通過。QA061 的 R51 準備階段因匯入提前建立隔離目錄而拒覆、QA063 的 R54 未取得保存來源，原失敗均保留。
+
+QA066 五份文件合查未通過：Snapshot／Manual 既有指向 output junction 的歷史 Trial 連結被越界守衛拒絕。沒有改寫舊連結或放寬檢查，不能聲稱全份文件檢查通過；本次新增操作與內部 QA／架構連結另作 scoped 核對。

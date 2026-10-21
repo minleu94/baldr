@@ -2565,7 +2565,9 @@ class MainWindow(QMainWindow):
             self.storage_overview_view = StorageOverviewView(
                 {"市場資料": Path(self.config.data_root), "產品輸出": Path(self.config.output_root),
                  "應用狀態": self.application_settings.runtime_state_root},
-                (project_root / "dist").resolve(), parent=self,
+                None if getattr(sys, "frozen", False) else (project_root / "dist").resolve(),
+                package_root=Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None,
+                parent=self,
             )
             add_workspace("storage", self.storage_overview_view)
             self.research_timeline_view = ResearchTimelineView(

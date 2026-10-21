@@ -1524,6 +1524,7 @@
         "app_module/application_bootstrap.py",
         "app_module/packaging_provenance.py",
         "packaging/build_windows.py",
+        "packaging/portable_probe.py",
         "packaging/baldr.spec",
         "app_module/decision_service_composition.py",
         "data_module/daily_monthly_revenue_cohort_binding.py"
@@ -1575,6 +1576,7 @@
         "tests/test_decision_service_composition.py",
         "app_module/packaging_provenance.py",
         "packaging/build_windows.py",
+        "packaging/portable_probe.py",
         "packaging/baldr.spec",
         "tests/test_calendar_acceptance_application_settings.py",
         "tests/test_packaging_kernel_provenance.py",

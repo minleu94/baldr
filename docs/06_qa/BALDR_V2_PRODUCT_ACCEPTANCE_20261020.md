@@ -87,6 +87,8 @@ QA021–025 的範圍、原失敗和修正後輸出分開記錄；後續 PASS �
 
 QA037 固定建置日期參數的編譯、74 項來源／資源／身分測試、單檔 mypy 與 scoped 文件檢查全部通過；closure `049af0e847a6bd5872c480e4462e5936a8a173ab5784d481798b42d60c10a8e1`，自然閉鎖。此證據尚未包含 EXE 建置或同版驗證。
 
+QA038 從固定 `730613e121b3fb5ca349440bf9973acc6a727842` 建立首個隔離 EXE，僅為 built_not_validated。QA039 在固定 archive 的 Python model probe 遇到舊 `workspace_widgets == 9` 假設而失敗，尚未進 EXE 比較，不是同版 PASS。更新驗證工具後，QA040 來源版 model/spawn/fresh/Main 正式 17 路由及全部既有後端入口通過，無 modal、正常關閉；編譯及 scoped 文件檢查亦通過。首包及原失敗保留，需固定新 commit 重新建置後驗證。
+
 狀態只描述目前有界工程證據，產品 Gate 仍未整體接受。`PARTIAL` 不等於完整旅程通過；真人接受另列 `MANUAL_ACCEPTANCE_PENDING`。
 
 | 五條研究旅程 | 狀態 | 已有證據與未覆蓋出口 |

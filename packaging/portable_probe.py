@@ -84,14 +84,22 @@ def main() -> None:
         window=main_module.MainWindow(policy_config_path=case/'policy.json',
             application_settings=settings, build_identity=identity)
         window.show(); app.processEvents()
-        assert len(window.workspace_widgets) == 9
+        from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, PRODUCT_ROUTES
+        expected_workspaces = {item.key for item in WORKSPACE_DEFINITIONS}
+        expected_workspaces.update(route.workspace for route in PRODUCT_ROUTES)
+        assert set(window.workspace_widgets) == expected_workspaces
         degraded=[key for key,w in window.workspace_widgets.items() if isinstance(w,QLabel)]
         assert not degraded, degraded
         navigation=[]
-        for key,widget in window.workspace_widgets.items():
-            window.left_navigation._buttons[key].click(); app.processEvents()
+        for route in PRODUCT_ROUTES:
+            window.product_shell.activate_route(route.route_id); app.processEvents()
+            assert window.workspace_stack.currentWidget() is window.workspace_widgets[route.workspace]
+            assert window.product_shell.route_id == route.route_id
+            navigation.append(route.route_id)
+        # 保留舊 callback 的所有後端頁面，另核不在主導航的個股 Detail。
+        for key, widget in window.workspace_widgets.items():
+            window._select_main_workspace(key); app.processEvents()
             assert window.workspace_stack.currentWidget() is widget
-            navigation.append(key)
         assert (resource_root/'ui_qt/app_icon.png').is_file()
         assert identity.display_text in window.windowTitle()
         assert identity.display_text == window.findChild(QLabel, 'baldrBuildIdentity').text()

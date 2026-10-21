@@ -72,6 +72,8 @@ ML registry、runtime 狀態與行情根目錄分開解析；研究 registry 的
 - 首次無字或缺資料時，確認整個資料夾存在、JSON 為 UTF-8、roots 是程式包外的可寫絕對路徑。無 console 的 stdout／stderr 和 App 日誌依該交付版列出的實際位置核對。
 - 長路徑、主機上的 Qt／Windows 差異、私人模型與自然排程執行都要依具名 QA 範圍判讀；在別台 Windows 主機啟動成功不由這份文件推定。
 
+V2 候選回退時，先正常關閉候選，再用原研究13入口 `output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd` 啟動。各自保留原目錄與 state，不匯入、合併或複製候選資料到研究13、正式或私人資料根；不需刪包或執行資料還原。
+
 ## 歷史日常研究修正版試用（Increment66）
 
 本機試用入口為 `output/trial/Baldr-Daily-Research-66/Launch-Baldr.cmd`。雙擊啟動；在命令列加 `--check` 只核 EXE SHA、版本和隔離設定，不開 GUI。固定來源 `ec5c9573360891595bb395fa7bbb934077c6d4c0`，版本 `2026.10.06+ec5c95733608`；候選完整目錄 `dist/candidate_ec5c95733608_44024cd5/baldr`，EXE SHA-256 `f6eb269748fe8bf711535bac7811507dc61cb889929dee4fc30f3d73e4514494`。請從本次入口啟動並保留完整候選資料夾與 `state/`，不要只複製 EXE。逐步操作、已知問題與證據分見試用入口同目錄 `TRIAL_GUIDE.md`、`KNOWN_ISSUES.md`、`DELIVERY_RECEIPT.json`。

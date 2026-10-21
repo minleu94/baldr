@@ -109,6 +109,10 @@ QA041 從固定 `e36919493b70a6be99df43b8e6d420b6d6b6c418` 建置修正候選，
 
 本機候選位於 `dist/candidate_e36919493b70_a1df3b90/baldr`，使用同資料夾 `Launch-Baldr.cmd`；指南與 `DELIVERY_RECEIPT.json` 列原樣本、獨立 state、流程限制和原始收據。EXE SHA `1834e107cbe6e93a0f5e684dadba003e6809662f12ceb05cdd5838273b4b6f1f`。QA042 closure `abf2513883a466b21dcf7a97d68be18022dbcf07a7c6db3bdf814ae9c0a45cd3`；QA045 closure `be4531d9421e230d4871b5d5263015604efb7145ef9a95d9f1bc22f508bafe15`，自然排空、handles 關閉、mutex 釋放。原生操作仍受使用者先前 Escape 停止指示，已另請確認是否恢復；無回覆不視為同意。
 
+QA047 補齊 Blueprint §11A 的 **1500×900、DPR 1.5**，沿用同一 e369 EXE 與隔離 state，沒有重建。真正 frozen Main 的 17 路由通過；首頁與選股頁截圖實際為 2250×1350 像素，root 已檢視，無意外 modal／錯誤，TaskWorker／thread pool 為零。啟動器正反 SHA 檢查及包內／state 四個樣本 SHA 保持。原始收據在本 task 的 `qa047_1500_probe/receipt.json` 與 `qa047_1500_probe/r27_exe_main_smoke/result.json`；closure `ee26d03ce16d9bd9843153d950068acd2ca125738a40507dfd30cc9b49507e45` 自然排空、handles 關閉、mutex 釋放。這補足指定尺寸的 offscreen 證據，不改變五條完整旅程的 PARTIAL 或原生／真人待驗狀態。
+
+交付回退只切換啟動對象：先正常關閉此候選，保留完整目錄及獨立 state，再從研究13原入口 `output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd` 啟動。不要把候選 state 匯入、合併或複製進研究13／正式／私人根；本步驟沒有資料還原、遷移或清理。兩份新 EXE（730 首包與 e369 修正版）及原失敗證據均保留，資源現況依既有 task `RESOURCE_LEDGER.md`，任務 Credits 為 `USAGE_UNOBSERVABLE`。
+
 本任務新 EXE 建置共 2 份，首包保留但未通過同版；本機修正候選約 976 MB，未替換研究13、`dist/baldr` 或 active delivery。已有包、正式資料、模型及私人資產未刪除。平台可觀測帳戶共用額度與餘額，無精確任務計費歸屬，額外 Credits 實耗為 UNKNOWN；不聲稱能對平台帳單強制數字硬停。
 
 本文件僅記本輪實際範圍，V2 產品驗收尚未完成。

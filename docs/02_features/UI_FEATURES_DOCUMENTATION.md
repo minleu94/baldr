@@ -36,6 +36,8 @@ V2 後繼 Python 候選新增同題材成員的上一檔／下一檔，來源版
 
 研究時間軸另有「對照目前可讀資料」候選操作，以左右欄呈現原件與獨立讀取的目前來源及各自日期、來源限制，不計算差值。原件變更或身份不符時整體拒絕；重新讀取、換選、離頁或關閉會使舊結果失效。手動筆記無封存行情，題材筆記不含行情值且只對照明選目錄中的目前版本；價格重驗原來源，報告保留原保存投影。此操作不寫回 Journal、不計金融差值，也不提升 PIT 或資料資格。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 雙欄同屏及長 SHA 換行已通過；固定 `412ca3e5fe4f` EXE 未包含此增量；新 `a65d2b2b4fd5` RC 已通過 QA117 包內正常 Main 保存／fresh 對照及 QA121 同筆記150%重開。五旅程 PARTIAL、Native停止／真人待驗與金融資格保持。
 
+研究時間軸新增「檢查 Paper 條件」唯讀入口：Main 對同一筆明選 ResearchTimelineEntry 背景呼叫 `ResearchTimelineService.read_evidence_baseline()` 重核原件，成功後才顯示原件身份與文字。讀取失敗或原件漂移時不顯示對話框、不換版本。現有對話框明示缺少將研究精確綁定至 generic Paper candidate/account 的建帳流程，以及驗證同日合法 mark/cash 的 producer；建立帳戶操作停用，只能另行檢視既有 Paper 狀態並返回原研究。EqualWeight 僅 benchmark，策略空倉 500K seed 僅其既存 exact account，均不構成本研究的 candidate 或資格。此入口不改原件、Journal、Paper 帳本或資格；本增量經 QA124／126 限定驗證，固定 `a65d2b2b4fd5` RC 不含。
+
 本頁說明 UI 呈現與互動契約；操作步驟、參數、安全限制、結果判讀及排錯以操作手冊為準。工作區責任與資料流見[目前架構分冊](../01_architecture/current/application_and_workspaces.md)，Recommendation、Backtest、Portfolio 計算責任見[決策、研究與 Portfolio](../01_architecture/current/decision_research_portfolio.md)。目前產品狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，驗收範圍依各原 QA 收據判讀。
 
 ## 跨頁責任與搜尋入口

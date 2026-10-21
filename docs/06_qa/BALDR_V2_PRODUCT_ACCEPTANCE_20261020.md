@@ -226,3 +226,17 @@ QA121 R139只fresh重開R134同一筆記，未再保存、未複製來源。原e
 Canonical `DELIVERY_RECEIPT.json` 與本task `delivery_a65d2b2b4fd5.json` 相同SHA `720f6b02a26a719a47f7b02b686d45e7af6cb7eb93acda72d2ac4eeab6e19240`；11個pin為EXE、BUILD_INFO、材料manifest及其8個材料檔，manifest本身不含EXE／BUILD_INFO。收據逐項記真正驗證版本：題材上一／下一與150%路由沿412ca證據，正式兩股producer／fresh沿2b，Registry 2b功能成功但audit整輪FAIL保留；不宣稱本a65另執producer或全部舊旅程。新版包7,134files／976,499,191 logical bytes，build5,276files／315,558,345 bytes，非SSD唯一實體配置。累計5份本task EXE，未清理；Credits USAGE_UNOBSERVABLE／UNKNOWN、原累計12,500額外授權跨session沿用，未購買或改計費設定。
 
 本機技術候選可沿包內GUIDE操作，未簽章、未驗跨機可攜、未替換active delivery。正常關閉後可用保留412ca／2b或研究13原啟動器回退，各用原state、不合併、不遷移。五旅程overall PARTIAL、Product Acceptance NOT_ACCEPTED、Native USER_STOPPED_ESCAPE、真人MANUAL_ACCEPTANCE_PENDING；真今日候選、完整Main月營收綁定、Paper完整現金與合法marks、自然Forward、歷史PIT／全市場／ML Promotion維持具名Evidence Backlog，不阻擋已接受的安全產品功能。
+
+## Paper前置流程與100顯示（QA123–126）
+
+QA123 對同一固定 `a65d2b2b4fd5` EXE 補驗 Blueprint 明定的100%：17路由只在1280×760／實際DPR1.0，1500×900、1440×900、1920×1080另驗首頁；root看過首頁。五個既有設定目錄只核 `already_present`（meta_data只含空backup），不建立或複製資料；8材料／4state／EXE／BUILD_INFO保持、worker／pool0及自然刪除。closure `ebcdce1a8805122cc7a8baec420cd286ecf5c7f23dc1e47773d3f9e80af4dac5` 全閉。Canonical交付收據維持原SHA，新證據在本task `r142_dpi100`，未重寫收據或建包。
+
+R141／R143進一步靜態核對發現具體產品缺口：QA033預覽的是Equal Weight benchmark，不能證明一般研究候選的資格預覽／人工確認／Paper建帳。策略cash-seed只服務已綁定精確策略帳戶的空倉500K政策，不能接一般股票研究。後繼source R144補第一層「保存研究→原件重核→Paper條件檢查」：Timeline只傳同一entry，Main背景 `read_evidence_baseline` 驗原件及來源，成功才開唯讀對話框；換選、refresh、離頁或shutdown拒收晚到結果。可查看既有Paper頁並返回同entry，建帳停用；沒有寫Journal、建立部位/NAV或提升資格。通用候選建帳producer及合法帳戶／mark／cash契約仍是未實作的程式缺口，此前置層不替代整個旅程。
+
+QA124 編譯、47個新UI／Main信任邊界與原Timeline定向、Workbench85、更新頁25/0/4、mypy1108全部通過。QA125探針誤以 `passed` 核對舊R134實際 `PASS` 狀態，在Main啟動前退出，原CASE與失敗保持；closure `607ab0e20ccb7044e86669f77c117a2879c96cd26360cea46052914375353a1e` 自然排空。
+
+QA126 R148只修探針狀態對齊、另建小CASE，重用R134原報告／Journal及R114四真來源，不重新保存、產製或複製價庫。正常MainWindow（非 `main()` entry）於1280×760／DPR1.25，經UI選原報告、檢查Paper條件、查看既有Paper分區、返回同一時間軸原件。對話框720×680／實體900×850，完整64字來源身份、原文與缺件可讀，建帳按鈕停用；root看過兩張圖。原R134 expected／first／fresh三JSON、Journal SHA `b56b49a3306aad59c30daa351866e49ccd4d50cb35ca0cda8bb979d11aeb73ce`、四來源保持，SQLite sidecar缺席；worker／pool0、隱藏後deferred-delete完成。CASE-only audit拒絕舊輸出根的日誌及手動成交讀鎖寫入，應用降級顯示其持倉缺件；這次只接受新增對話框與路由往返，不宣稱完整持倉/Paper狀態讀取或零寫入嘗試。原件未改，未放寬audit以求通過。
+
+QA124 closure `a60e178214be9d36cee6662414a3bdf125db975ad92983cb6e5e78b82f36af7b`、QA126 `3ce3bc13fffb15ac79806eafdc37d4de2b47ade38690fa038a043777f2eb129b`，所有Job三PID列表空、process／Job handles關閉、mutex釋放，無強制清除。未新EXE、未改a65交付包、舊包或正式／私人資料。
+
+R140另證QA035月營收view通過的是直接注入合成fixture，非正常Main真binding；現行ApplicationSettings與Main接線存在，但四個cohort／series環境鍵及當前本機config均未配置。已向Owner詢問外部固定SHA的合法binding路徑，不重造fixture或提升資格。Native停止、五旅程overall PARTIAL、真人待驗及長期金融Evidence Backlog保持；完整目標尚未達成。

@@ -32,6 +32,8 @@ Stock Research 詳情頭部另提供純自選、來源內比較與準備回測�
 
 Research Timeline 的「對照目前可讀資料」候選流程以目前選取 entry 建立唯讀基準，再由 `ResearchEvidenceComparisonService` 獨立讀取當前來源，交由雙欄 widget 顯示來源、日期與限制；不計算金融差值、不寫回 Journal。手動筆記沒有封存行情；題材筆記只核對目前明選目錄中的版本身份、不含行情值；價格來源重驗原 bookmark，報告沿用保存投影。原件變更或身份不符時整體拒絕，換選、重新讀取、離頁及關閉會阻止過期結果套用。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 同屏及長來源換行已限定通過；固定 `412ca3e5fe4f` EXE 不含本增量；新 `a65d2b2b4fd5` RC 經 QA117／121 由12個 `PyiFrozenLoader` 產品模組執行正常 Main 保存／fresh 對照，原件及來源保持、worker／pool0且自然刪除，不使用工作樹 fallback。
 
+時間軸另以 `paperPrerequisitesRequested` 接出「檢查 Paper 條件」。`MainWindow._check_timeline_paper_prerequisites` 僅接受目前 ResearchTimelineView 的同一 selected entry 與可見 route，再由 `_verify_timeline_entry(..., evidence_baseline=True)` 背景呼叫 `ResearchTimelineService.read_evidence_baseline()`；原件缺失、變動、晚到或 Main 關閉時不顯示結果。核驗成功才建立 `ResearchPaperPrerequisiteDialog`，呈現原件 ID、保存時間、資料日、來源身份與保存原文。對話框不寫 Paper：因缺少 generic candidate/account 的精確建帳流程及同日合法 mark/cash 的完整 producer，「建立 Paper 帳戶」固定停用；可另開既有 Paper 狀態，再返回時間軸。返回保留時間軸原件上下文；不建立帳戶、不修改原件或 Journal、不提升資料資格。EqualWeight 是 benchmark；策略空倉 500K seed 只屬其既有 exact 帳戶，不能替代本研究 candidate。此增量 QA 待驗，固定 `a65d2b2b4fd5` RC 不含。
+
 ```text
 使用者
   → ui_qt/main.py（視窗、工作區、表單與呈現）

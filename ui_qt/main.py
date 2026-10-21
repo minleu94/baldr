@@ -2594,6 +2594,7 @@ class MainWindow(QMainWindow):
             self.research_timeline_view.refresh()
             self.research_timeline_view.openOriginalRequested.connect(self._open_timeline_original)
             self.research_timeline_view.compareEvidenceRequested.connect(self._compare_timeline_evidence)
+            self.research_timeline_view.paperPrerequisitesRequested.connect(self._check_timeline_paper_prerequisites)
             timeline_page = QWidget(self)
             timeline_layout = QVBoxLayout(timeline_page)
             timeline_actions = QHBoxLayout()
@@ -2939,6 +2940,9 @@ class MainWindow(QMainWindow):
                 or self.workspace_stack.currentWidget() is self.workspace_widgets["research_timeline"]):
             return
         timeline.invalidate_evidence_comparison()
+        dialog = getattr(self, "_research_paper_prerequisite_dialog", None)
+        if dialog is not None:
+            dialog.close()
         worker = getattr(self, "_timeline_comparison_worker", None)
         if worker is not None and worker.isRunning():
             worker.cancel(cooperative=True, wait=False)
@@ -3008,7 +3012,50 @@ class MainWindow(QMainWindow):
         worker.native_thread_finished.connect(cleanup)
         worker.start()
 
-    def _verify_timeline_entry(self, entry: ResearchTimelineEntry, completed) -> None:
+    def _check_timeline_paper_prerequisites(self, value: object) -> None:
+        """重核保存判斷後檢查 Paper 前置條件，不建立帳本或提升資格。"""
+        if type(value) is not ResearchTimelineEntry or getattr(self, "_shutdown_close_requested", False):
+            return
+        timeline = self.research_timeline_view
+        if (timeline.selected_entry is not value
+                or self.workspace_stack.currentWidget() is not self.workspace_widgets["research_timeline"]):
+            return
+        revision = timeline.evidence_comparison_revision
+
+        def current() -> bool:
+            return (not getattr(self, "_shutdown_close_requested", False)
+                    and timeline.selected_entry is value
+                    and timeline.evidence_comparison_revision == revision
+                    and self.workspace_stack.currentWidget() is self.workspace_widgets["research_timeline"])
+
+        def apply(result: object) -> None:
+            if not current() or not isinstance(result, tuple) or len(result) != 2:
+                return
+            from ui_qt.widgets.research_paper_prerequisite_dialog import ResearchPaperPrerequisiteDialog
+
+            previous = getattr(self, "_research_paper_prerequisite_dialog", None)
+            if previous is not None:
+                previous.close()
+            dialog = ResearchPaperPrerequisiteDialog(value, parent=self)
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            self._research_paper_prerequisite_dialog = dialog
+
+            def closed(_result: int) -> None:
+                if getattr(self, "_research_paper_prerequisite_dialog", None) is dialog:
+                    self._research_paper_prerequisite_dialog = None
+
+            def open_paper_status() -> None:
+                if current() and getattr(self, "_research_paper_prerequisite_dialog", None) is dialog:
+                    dialog.close()
+                    self.product_shell.activate_route("paper")
+
+            dialog.finished.connect(closed)
+            dialog.paperStatusRequested.connect(open_paper_status)
+            dialog.open()
+
+        self._verify_timeline_entry(value, apply, evidence_baseline=True)
+
+    def _verify_timeline_entry(self, entry: ResearchTimelineEntry, completed, *, evidence_baseline: bool = False) -> None:
         """同一 reader 背景重核原件；晚到或關閉回傳不改畫面。"""
         from ui_qt.workers.task_worker import TaskWorker
 
@@ -3017,7 +3064,9 @@ class MainWindow(QMainWindow):
         previous = getattr(self, "_timeline_original_worker", None)
         if previous is not None and previous.isRunning():
             previous.cancel(cooperative=True, wait=False)
-        worker = TaskWorker(self.research_timeline_service.read_original, entry)
+        reader = (self.research_timeline_service.read_evidence_baseline
+                  if evidence_baseline else self.research_timeline_service.read_original)
+        worker = TaskWorker(reader, entry)
         self._timeline_original_worker = worker
         workers = getattr(self, "_timeline_original_workers", None)
         if workers is None:
@@ -4598,6 +4647,10 @@ class MainWindow(QMainWindow):
             self._shutdown_close_last_diagnostic_monotonic = None
             MainWindow._record_shutdown_diagnostic(self, "requested")
             MainWindow._freeze_child_refresh_sources(self)
+
+            paper_prerequisite = getattr(self, "_research_paper_prerequisite_dialog", None)
+            if paper_prerequisite is not None:
+                paper_prerequisite.close()
 
             research_workspace = getattr(self, "stock_research_workspace", None)
             request_report_close = getattr(research_workspace, "request_close", None)

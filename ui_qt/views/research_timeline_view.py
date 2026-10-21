@@ -54,6 +54,7 @@ class ResearchTimelineView(QWidget):
     resultReady = Signal(object)
     readUnavailable = Signal(str)
     compareEvidenceRequested = Signal(object)
+    paperPrerequisitesRequested = Signal(object)
 
     def __init__(
         self,
@@ -149,7 +150,14 @@ class ResearchTimelineView(QWidget):
         self.compare_evidence_button.setObjectName("researchTimelineCompareEvidence")
         self.compare_evidence_button.setAccessibleName("對照所選紀錄的固定證據與目前可讀資料")
         self.compare_evidence_button.setEnabled(False)
-        detail_layout.addWidget(self.compare_evidence_button)
+        self.paper_prerequisites_button = QPushButton("檢查 Paper 條件", detail)
+        self.paper_prerequisites_button.setObjectName("researchTimelinePaperPrerequisites")
+        self.paper_prerequisites_button.setAccessibleName("檢查所選研究紀錄的 Paper 條件")
+        self.paper_prerequisites_button.setEnabled(False)
+        evidence_actions = QHBoxLayout()
+        evidence_actions.addWidget(self.compare_evidence_button)
+        evidence_actions.addWidget(self.paper_prerequisites_button)
+        detail_layout.addLayout(evidence_actions)
         self.evidence_comparison_widget = ResearchEvidenceComparisonWidget(detail)
         self.evidence_comparison_widget.setMinimumHeight(150)
         detail_layout.addWidget(self.evidence_comparison_widget, 1)
@@ -184,12 +192,14 @@ class ResearchTimelineView(QWidget):
         self.entries_table.itemSelectionChanged.connect(self._selection_changed)
         self.open_original_button.clicked.connect(self._open_original)
         self.compare_evidence_button.clicked.connect(self._request_evidence_comparison)
+        self.paper_prerequisites_button.clicked.connect(self._request_paper_prerequisites)
 
     def refresh(self) -> None:
         if self._closing:
             return
         self._clear_evidence_comparison("重新讀取後需重新選取並對照資料。")
         self.compare_evidence_button.setEnabled(False)
+        self.paper_prerequisites_button.setEnabled(False)
         self._generation += 1
         generation = self._generation
         previous = self._active_worker
@@ -245,6 +255,7 @@ class ResearchTimelineView(QWidget):
         status = f"讀取失敗；保留原畫面：{message}"
         self.status_label.setText(status)
         self.compare_evidence_button.setEnabled(self._selected is not None)
+        self.paper_prerequisites_button.setEnabled(self._selected is not None)
         self.readUnavailable.emit(status)
 
     def _receive_cancelled(self, generation: int) -> None:
@@ -252,6 +263,7 @@ class ResearchTimelineView(QWidget):
             status = "讀取已安全取消；保留目前可用紀錄。"
             self.status_label.setText(status)
             self.compare_evidence_button.setEnabled(self._selected is not None)
+            self.paper_prerequisites_button.setEnabled(self._selected is not None)
             self.readUnavailable.emit(status)
 
     def _render_entries(self) -> None:
@@ -305,6 +317,7 @@ class ResearchTimelineView(QWidget):
         self._selected_identity = None if entry is None else (entry.kind, entry.record_id)
         self.original_text.setPlainText("" if entry is None else entry.text)
         self.compare_evidence_button.setEnabled(entry is not None and not self._closing)
+        self.paper_prerequisites_button.setEnabled(entry is not None and not self._closing)
         if entry is None:
             self.detail_label.setText("選取一筆原始研究紀錄")
             self.open_original_button.setEnabled(False)
@@ -361,6 +374,13 @@ class ResearchTimelineView(QWidget):
         self.compare_evidence_button.setEnabled(False)
         self.evidence_comparison_widget.clear("正在讀取目前可讀資料…")
         self.compareEvidenceRequested.emit(entry)
+
+    def _request_paper_prerequisites(self) -> None:
+        """只傳遞目前選取的原件；前置條件讀取由 Main 負責。"""
+        entry = self._selected
+        if entry is None or self._closing:
+            return
+        self.paperPrerequisitesRequested.emit(entry)
 
     def set_evidence_comparison(
         self,
@@ -435,6 +455,7 @@ class ResearchTimelineView(QWidget):
     def request_close(self) -> bool:
         self._closing = True
         self._clear_evidence_comparison("時間軸已關閉；不再套用延遲到達的對照結果。")
+        self.paper_prerequisites_button.setEnabled(False)
         self._generation += 1
         workers = [worker for worker in self._workers if worker.isRunning()]
         for worker in workers:

@@ -32,6 +32,13 @@ from ui_qt.crash_diagnostics import (
     record_diagnostic,
     record_exception,
 )
+from ui_qt.views.strategy_library_view import StrategyLibraryView
+from ui_qt.views.backtest_product_layout import BacktestProductLayout
+from ui_qt.views.storage_overview_view import StorageOverviewView
+from ui_qt.views.research_timeline_view import ResearchTimelineView
+from app_module.research_timeline_service import ResearchTimelineService
+from app_module.research_timeline_dtos import ResearchTimelineEntry
+from ui_qt.widgets.recent_research_widget import RecentResearchWidget
 
 
 def _configure_console_streams() -> None:
@@ -129,6 +136,7 @@ from ui_qt.views.recommendation_view import RecommendationView
 from ui_qt.views.update_view import UpdateView
 from ui_qt.views.backtest_view import BacktestView
 from ui_qt.views.watchlist_view import WatchlistView
+from ui_qt.views.watchlist_product_layout import WatchlistProductLayout
 from ui_qt.views.stock_research_workspace import StockResearchWorkspace
 from ui_qt.views.stock_research_report_view import StockResearchReportDialog
 from ui_qt.widgets.session_context_strip import SessionContextStrip
@@ -164,7 +172,11 @@ from ui_qt.widgets.left_navigation import LeftNavigationWidget, NavigationItem
 from ui_qt.widgets.adaptive_workspace_stack import AdaptiveWorkspaceStack
 from ui_qt.widgets.layout_helpers import bounded_initial_window_geometry, set_scroll_content_constraints
 from ui_qt.widgets.text_sanitizer import sanitize_button_texts
-from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, resolve_workspace_key
+from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, PRIMARY_NAVIGATION, resolve_workspace_key
+from ui_qt.v2_shell import ProductShell
+from ui_qt.views.stock_lookup_landing import StockLookupLanding
+from ui_qt.views.market_analysis_workspace import MarketAnalysisWorkspace
+from ui_qt.views.unified_screener_workspace import UnifiedScreenerWorkspace
 from ui_qt.runtime_composition import build_runtime_ui_composition
 from ui_qt.workers.task_worker import (
     request_cooperative_task_worker_shutdown,
@@ -1933,6 +1945,9 @@ class MainWindow(QMainWindow):
         left_navigation = getattr(self, "left_navigation", None)
         if left_navigation is not None:
             left_navigation.set_current_key(key)
+        product_shell = getattr(self, "product_shell", None)
+        if product_shell is not None:
+            product_shell.workspace_selected(key)
         self._on_workspace_selected(key)
 
     def _select_main_tab(self, tab_name: str) -> None:
@@ -2005,6 +2020,9 @@ class MainWindow(QMainWindow):
             watchlist = getattr(self, "watchlist_view", None)
             if hasattr(watchlist, "refresh_all"):
                 watchlist.refresh_all()
+                product_layout = getattr(self, "watchlist_product_layout", None)
+                if product_layout is not None:
+                    product_layout.sync_rows()
         elif key == "portfolio":
             portfolio_view = getattr(self, "portfolio_view", None)
             if hasattr(portfolio_view, "refresh_all"):
@@ -2059,14 +2077,16 @@ class MainWindow(QMainWindow):
 
             self.industry_theme_map_view = IndustryThemeMapView(parent=self)
             self.industry_theme_map_view.stockSelected.connect(self._open_theme_research_stock)
+            self.theme_note_service = ThemeResearchNoteService(self.journal_service)
             self.theme_research_notes_widget = ThemeResearchNotesWidget(
-                ThemeResearchNoteService(self.journal_service), parent=self.industry_theme_map_view,
+                self.theme_note_service, parent=self.industry_theme_map_view,
                 auto_refresh=False,
             )
             theme_layout = self.industry_theme_map_view.content.layout()
             theme_layout.insertWidget(theme_layout.count() - 1, self.theme_research_notes_widget)
             self.industry_theme_map_view.snapshotChanged.connect(self.theme_research_notes_widget.set_snapshot)
             self.theme_research_notes_widget.openSnapshotRequested.connect(self._open_theme_note_snapshot)
+            self._configure_product_theme_catalog()
 
             # 強勢個股標籤
             print("[MainWindow] 創建強勢個股視圖...")
@@ -2139,7 +2159,8 @@ class MainWindow(QMainWindow):
             market_tabs.addTab(self.industry_theme_map_view, "產業與題材")
             market_tabs.currentChanged.connect(
                 lambda _index: self.theme_research_notes_widget.refresh_notes()
-                if market_tabs.currentWidget() is self.industry_theme_map_view else None
+                if market_tabs.currentWidget() is self.industry_theme_map_view
+                and self.industry_theme_map_view.snapshot is not None else None
             )
 
             # 監聽市場觀察 tab 切換事件
@@ -2269,6 +2290,9 @@ class MainWindow(QMainWindow):
                 parent=self,
             )
             self.backtest_view = backtest
+            self.backtest_product_layout = BacktestProductLayout(backtest)
+            self.backtest_product_layout.install()
+            backtest.resultPresented.connect(self.backtest_product_layout.refresh_assumptions)
             self._configure_portfolio_scenario_registry(backtest)
             print("[MainWindow] 策略回測視圖創建成功")
 
@@ -2322,6 +2346,12 @@ class MainWindow(QMainWindow):
                             )
                         )
                     self.watchlist_view = watchlist
+                    self.watchlist_product_layout = WatchlistProductLayout(watchlist)
+                    if not self.watchlist_product_layout.install():
+                        raise RuntimeError("無法安裝自選與研究收藏導覽")
+                    self.watchlist_product_layout.comparisonRequested.connect(
+                        self._open_composite_research_bookmark
+                    )
                     from scripts.scheduled.personal_h20_bookmark_read_session import (
                         read_personal_h20_research_bookmark_with_session,
                     )
@@ -2428,12 +2458,18 @@ class MainWindow(QMainWindow):
 
             _startup_step("正在建立個股研究")
             price_note_service = PinnedStockResearchNoteService(self.journal_service)
+            report_note_service = StockResearchReportNoteService(self.journal_service)
+            self.research_timeline_service = ResearchTimelineService(
+                self.journal_service, price_note_service=price_note_service,
+                report_note_service=report_note_service,
+                theme_note_service=self.theme_note_service,
+            )
             self.stock_research_workspace = StockResearchWorkspace(
                 self.stock_research_report_service,
                 journey_service=self.decision_outcome_journey_service,
                 continuity_controller=self.decision_continuity_controller,
                 price_note_service=price_note_service,
-                report_note_service=StockResearchReportNoteService(self.journal_service),
+                report_note_service=report_note_service,
                 parent=self,
             )
             # 原入口與筆記共用同服務證明；每個 worker 仍重新核對全部來源原件。
@@ -2458,6 +2494,9 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.priceNoteSourceRequested.connect(
                 self._open_price_bookmark_state
             )
+            self.stock_research_workspace.favoriteRequested.connect(self._favorite_stock_detail)
+            self.stock_research_workspace.priceComparisonRequested.connect(self._compare_price_stock_detail)
+            self.stock_research_workspace.prepareBacktestRequested.connect(self._prepare_stock_detail_backtest)
             self.stock_research_workspace.sourceContextShown.connect(
                 lambda context: self.research_session_store.set_stock_context(context, source="stock_workspace")
             )
@@ -2491,10 +2530,20 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.personalH20SavedRecheckRequested.connect(
                 self._recheck_personal_h20_saved_evidence
             )
+            h20_widget = getattr(self, "personal_h20_research_widget", None)
+            if h20_widget is not None:
+                h20_widget.setProperty("v2_screener_ml_route", True)
+            self.unified_screener_workspace = UnifiedScreenerWorkspace(recommendation)
+            self.unified_screener_workspace.select_widget(daily_price.technical_universe_view)
             _startup_step("正在完成介面配置")
             workspace_instances = {
                 "workbench": workbench_view,
-                "market_explore": market_tabs,
+                "market_explore": MarketAnalysisWorkspace(market_tabs, {
+                    "summary": decision_desk_view, "index": market_regime,
+                    "strong_stocks": strong_stocks, "weak_stocks": weak_stocks,
+                    "strong_industries": strong_industries, "weak_industries": weak_industries,
+                    "flow": smart_money_flow, "cohort": self.daily_market_cohort_view,
+                }, parent=self),
                 "recommendation": recommendation,
                 "backtest": backtest,
                 "watchlist": watchlist_widget,
@@ -2505,21 +2554,77 @@ class MainWindow(QMainWindow):
             }
             for definition in WORKSPACE_DEFINITIONS:
                 add_workspace(definition.key, workspace_instances[definition.key])
+            self.stock_lookup_landing = StockLookupLanding(self)
+            add_workspace("stock_lookup", self.stock_lookup_landing)
+            self.strategy_library_view = StrategyLibraryView(
+                version_service=self.strategy_version_service, parent=self,
+                can_apply=backtest.can_select_registered_strategy,
+            )
+            self.strategy_library_view.strategySelected.connect(self._open_library_strategy)
+            add_workspace("strategy_library", self.strategy_library_view)
+            self.storage_overview_view = StorageOverviewView(
+                {"市場資料": Path(self.config.data_root), "產品輸出": Path(self.config.output_root),
+                 "應用狀態": self.application_settings.runtime_state_root},
+                (project_root / "dist").resolve(), parent=self,
+            )
+            add_workspace("storage", self.storage_overview_view)
+            self.research_timeline_view = ResearchTimelineView(
+                self.research_timeline_service, self.decision_outcome_journey_service, parent=self,
+                auto_refresh=False,
+            )
+            if hasattr(self.workbench_view, "overview_scroll_area"):
+                self.recent_research_widget = RecentResearchWidget(self.workbench_view)
+                self.workbench_view.mount_recent_research_widget(
+                    self.recent_research_widget, self._open_recent_research,
+                )
+                self.research_timeline_view.resultReady.connect(self.recent_research_widget.set_result)
+                self.research_timeline_view.readUnavailable.connect(self.recent_research_widget.set_unavailable)
+            self.research_timeline_view.refresh()
+            self.research_timeline_view.openOriginalRequested.connect(self._open_timeline_original)
+            timeline_page = QWidget(self)
+            timeline_layout = QVBoxLayout(timeline_page)
+            timeline_actions = QHBoxLayout()
+            for label, tab_key in (("手動筆記與編輯", "journal"), ("生命週期研究", "lifecycle")):
+                button = QPushButton(label, timeline_page)
+                button.clicked.connect(lambda _checked=False, key=tab_key: self._open_timeline_legacy(key))
+                timeline_actions.addWidget(button)
+            timeline_actions.addStretch(1)
+            timeline_layout.addLayout(timeline_actions)
+            timeline_layout.addWidget(self.research_timeline_view, 1)
+            add_workspace("research_timeline", timeline_page)
 
             workspace_items = tuple(
                 NavigationItem(definition.key, definition.label, icon=definition.icon)
-                for definition in WORKSPACE_DEFINITIONS
+                for definition in PRIMARY_NAVIGATION
             )
-            self.left_navigation = LeftNavigationWidget(workspace_items, parent=self)
-            self.left_navigation.workspaceSelected.connect(self._select_main_workspace)
-            shell_layout.addWidget(self.left_navigation)
-            shell_layout.addWidget(workspace_stack, 1)
+            self.left_navigation = LeftNavigationWidget(workspace_items, parent=self, primary_mode=True)
 
             self.workspace_stack = workspace_stack
             self.workspace_widgets = workspace_widgets
             self.tabs = workspace_stack
+            self.product_shell = ProductShell(self, stock_directory=Path(self.config.meta_data_dir) / "companies.csv")
+            self.stock_lookup_landing.searchRequested.connect(self.product_shell.search_query)
+            market_tabs.currentChanged.connect(lambda _index: self.product_shell.market_section_changed())
+            recommendation.result_source_tabs.currentChanged.connect(
+                lambda _index: self.product_shell.research_section_changed()
+            )
+            portfolio_section_signal = getattr(self.portfolio_view, "v2SectionChanged", None)
+            if portfolio_section_signal is not None:
+                portfolio_section_signal.connect(self.product_shell.portfolio_section_changed)
+            self.left_navigation.workspaceSelected.connect(self.product_shell.activate_group)
+            content = QWidget(shell)
+            content_layout = QVBoxLayout(content)
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            content_layout.setSpacing(0)
+            content_layout.addWidget(self.product_shell)
+            content_layout.addWidget(workspace_stack, 1)
+            shell_layout.addWidget(self.left_navigation)
+            shell_layout.addWidget(content, 1)
             self.left_navigation.set_current_key("workbench")
             self.workspace_stack.setCurrentWidget(workspace_widgets["workbench"])
+            if self.width() <= 1380:
+                self.left_navigation.set_collapsed(True)
+                self._navigation_collapsed_by_window = True
 
             self.setCentralWidget(shell)
             print("[MainWindow] UI 設置完成")
@@ -2553,13 +2658,13 @@ class MainWindow(QMainWindow):
         if navigation is None:
             return
 
-        if self.width() <= 1120:
+        if self.width() <= 1380:
             if not navigation.is_collapsed():
                 navigation.set_collapsed(True)
                 self._navigation_collapsed_by_window = True
             return
 
-        if self.width() >= 1240 and self._navigation_collapsed_by_window:
+        if self.width() >= 1480 and self._navigation_collapsed_by_window:
             navigation.set_collapsed(False)
             self._navigation_collapsed_by_window = False
 
@@ -2687,9 +2792,233 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"原價格研究來源不一致，未切換個股：{exc}")
             return
         self._select_main_workspace("stock_research")
+        pending = getattr(self, "_timeline_pending_price_entry", None)
+        self._timeline_pending_price_entry = None
+        self._timeline_detail_entry = None
+        if pending is not None:
+            from app_module.daily_market_technical_universe_price_bookmark_v1 import DailyMarketTechnicalUniversePriceBookmarkV1
+            bookmark = DailyMarketTechnicalUniversePriceBookmarkV1.from_json(pending.reference.source.bookmark_json)
+            if bookmark.selected.to_dict() == selection.to_dict():
+                self._timeline_detail_entry = pending
+                self.product_shell.set_detail_origin("journal")
+
+    def _open_library_strategy(self, strategy_id: str, version: str) -> None:
+        """策略庫只準備精確設定，運算仍需使用者在回測頁啟動。"""
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        if not self.backtest_view.select_registered_strategy(strategy_id, version):
+            self.statusBar().showMessage("此保存版本目前只供唯讀研究，未套用成其他版本。")
+            return
+        self.product_shell.activate_route("backtests")
+        self.statusBar().showMessage(f"已選取 {strategy_id} 版本 {version}；請檢查期間、資料與成本後執行。")
+
+    def _favorite_stock_detail(self, value: object) -> None:
+        """純自選只保存代號與名稱；不把研究脈絡降格成研究書籤。"""
+        from ui_qt.workers.task_worker import TaskWorker
+
+        workspace = self.stock_research_workspace
+        service = self.watchlist_service
+        if (type(value) is not ResearchStockContextDTO or service is None
+                or getattr(self, "_shutdown_close_requested", False)
+                or value != workspace._active_detail_context()):
+            return
+        previous = getattr(self, "_detail_favorite_worker", None)
+        if previous is not None and previous.isRunning():
+            self.statusBar().showMessage("純自選保存中，請等候完成。")
+            return
+        worker = TaskWorker(service.add_stocks, [
+            {"stock_code": value.stock_code, "stock_name": value.stock_name},
+        ], source="manual", watchlist_id="default")
+        self._detail_favorite_worker = worker
+
+        def finished(count: object) -> None:
+            if not getattr(self, "_shutdown_close_requested", False):
+                self.statusBar().showMessage(f"{value.stock_code} 純自選已處理（新增 {count}）；原研究條件需另存研究書籤。")
+
+        def cleanup() -> None:
+            if getattr(self, "_detail_favorite_worker", None) is worker:
+                self._detail_favorite_worker = None
+            worker.deleteLater()
+
+        worker.finished.connect(finished)
+        worker.error.connect(lambda message: self.statusBar().showMessage("純自選未保存：" + str(message).splitlines()[0]))
+        worker.native_thread_finished.connect(cleanup)
+        worker.start()
+
+    def _prepare_stock_detail_backtest(self, value: object) -> None:
+        workspace = self.stock_research_workspace
+        if (type(value) is not ResearchStockContextDTO
+                or value != workspace._live_general_backtest_context()
+                or getattr(self, "_shutdown_close_requested", False)):
+            return
+        if self.backtest_view.prepare_stock_research(value):
+            self.product_shell.activate_route("backtests")
+            self.statusBar().showMessage("只預填單股代號；請檢查回測自身資料、期間與成本後執行。")
+        else:
+            self.statusBar().showMessage("回測頁尚忙或一般來源不符；未變更設定。")
+
+    def _compare_price_stock_detail(self, value: object) -> None:
+        """只把目前原頁可重建的精確選取加入其既有比較籃。"""
+        from app_module.daily_market_technical_universe_price_comparison_v1 import DailyMarketTechnicalUniversePriceSelectionV1
+
+        workspace = self.stock_research_workspace
+        daily = self.recommendation_view.daily_market_research_view
+        view = daily.technical_price_view
+        if (type(value) is not DailyMarketTechnicalUniversePriceSelectionV1
+                or getattr(self, "_shutdown_close_requested", False)
+                or not workspace._is_price_research_active()
+                or value != getattr(workspace.price_research_view, "_origin_selection", None)
+                or view.busy):
+            return
+        state = view._state
+        try:
+            current = DailyMarketTechnicalUniversePriceSelectionV1.from_page(state.query, state.page, value.stock_code)
+            if current.to_dict() != value.to_dict():
+                raise ValueError("原查詢與選取已改變")
+        except (AttributeError, TypeError, ValueError):
+            self.statusBar().showMessage("原比較頁身份已改變；請先返回原來源再加入比較，未用同股其他版本替代。")
+            return
+        for row in range(view.results_model.rowCount()):
+            item = view.results_model.row_at(row)
+            if item.technical_row.stock_code == value.stock_code:
+                view.table.setCurrentIndex(view.results_model.index(row, 0))
+                view.add_selected_to_comparison()
+                self.statusBar().showMessage(view.status.text())
+                return
+
+    def _open_timeline_legacy(self, tab_key: str) -> None:
+        """沿同一 Portfolio 服務保留原筆記編輯與生命週期研究。"""
+        view = self.portfolio_view
+        select = getattr(view, "select_v2_section", None)
+        if tab_key not in {"journal", "lifecycle"} or not callable(select):
+            return
+        if select("journal"):
+            self._select_main_workspace("portfolio")
+            view._set_portfolio_detail_tab(tab_key)
+            self.product_shell.portfolio_section_changed("journal")
+
+    def _open_recent_research(self, value: object) -> None:
+        if type(value) is not ResearchTimelineEntry or getattr(self, "_shutdown_close_requested", False):
+            return
+        if self.research_timeline_view.select_entry(value):
+            self.product_shell.activate_route("journal")
+        else:
+            self.statusBar().showMessage("研究時間軸已重新讀取，原首頁項目不再是目前選取；請到時間軸明選。")
+
+    def _verify_timeline_entry(self, entry: ResearchTimelineEntry, completed) -> None:
+        """同一 reader 背景重核原件；晚到或關閉回傳不改畫面。"""
+        from ui_qt.workers.task_worker import TaskWorker
+
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        previous = getattr(self, "_timeline_original_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel(cooperative=True, wait=False)
+        worker = TaskWorker(self.research_timeline_service.read_original, entry)
+        self._timeline_original_worker = worker
+        workers = getattr(self, "_timeline_original_workers", None)
+        if workers is None:
+            workers = self._timeline_original_workers = set()
+        workers.add(worker)
+
+        def current() -> bool:
+            return (not getattr(self, "_shutdown_close_requested", False)
+                    and getattr(self, "_timeline_original_worker", None) is worker)
+
+        def apply(value: object) -> None:
+            if current():
+                completed(value)
+
+        def failed(message: str) -> None:
+            if current():
+                self.statusBar().showMessage("原版本回訪未完成；保留原畫面：" + str(message).splitlines()[0])
+
+        def cleanup() -> None:
+            workers.discard(worker)
+            if getattr(self, "_timeline_original_worker", None) is worker:
+                self._timeline_original_worker = None
+            worker.deleteLater()
+
+        worker.finished.connect(apply)
+        worker.error.connect(failed)
+        worker.native_thread_finished.connect(cleanup)
+        self.statusBar().showMessage("正在重新核對所選筆記、修訂與原來源…")
+        worker.start()
+
+    def _open_timeline_original(self, value: object) -> None:
+        if type(value) is not ResearchTimelineEntry:
+            return
+        entry = value
+        timeline = self.research_timeline_view
+
+        def apply(result: object) -> None:
+            if (timeline._selected is not entry
+                    or self.workspace_stack.currentWidget() is not self.workspace_widgets["research_timeline"]):
+                return
+            if not isinstance(result, tuple) or len(result) != 2:
+                return
+            note, price_state = result
+            self._timeline_detail_entry = None
+            if entry.kind == "report":
+                self.stock_research_workspace.show_saved_report_snapshot(note.snapshot)
+                self._select_main_workspace("stock_research")
+                self._timeline_detail_entry = entry
+                self.product_shell.set_detail_origin("journal")
+            elif entry.kind == "price":
+                self._timeline_pending_price_entry = entry
+                self._open_price_bookmark_state(price_state)
+            elif entry.kind == "theme":
+                self._open_theme_note_snapshot(note.snapshot_identity_sha256)
+
+        self._verify_timeline_entry(entry, apply)
+
+    def _return_from_timeline_detail(self) -> bool:
+        """保存詳情返回前核原筆記；不以同股其他版本替代選取。"""
+        entry = getattr(self, "_timeline_detail_entry", None)
+        if entry is None:
+            return False
+        workspace = self.stock_research_workspace
+        if entry.kind == "report":
+            saved = workspace.saved_report_view
+            snapshot = getattr(saved, "_saved_projection_snapshot", None)
+            active = (workspace.content_stack.currentWidget() is workspace.general_report_page
+                      and workspace.report_tabs.currentWidget() is saved
+                      and snapshot is not None
+                      and snapshot.canonical_json == entry.reference.snapshot.canonical_json)
+        else:
+            detail = workspace.price_research_view
+            selection = getattr(detail, "_origin_selection", None)
+            from app_module.daily_market_technical_universe_price_bookmark_v1 import DailyMarketTechnicalUniversePriceBookmarkV1
+            bookmark = DailyMarketTechnicalUniversePriceBookmarkV1.from_json(entry.reference.source.bookmark_json)
+            active = (workspace._is_price_research_active() and selection is not None
+                      and selection.to_dict() == bookmark.selected.to_dict())
+        if not active:
+            self._timeline_detail_entry = None
+            return False
+        visible_page = workspace.content_stack.currentWidget()
+        report_page = workspace.report_tabs.currentWidget()
+        price_page = workspace.price_research_view
+
+        def apply(_result: object) -> None:
+            if (getattr(self, "_timeline_detail_entry", None) is entry
+                    and self.workspace_stack.currentWidget() is self.workspace_widgets["stock_research"]
+                    and self.product_shell._detail_origin == "journal"
+                    and workspace.content_stack.currentWidget() is visible_page
+                    and workspace.report_tabs.currentWidget() is report_page
+                    and workspace.price_research_view is price_page
+                    and (entry.kind != "report" or getattr(
+                        getattr(workspace.saved_report_view, "_saved_projection_snapshot", None),
+                        "canonical_json", None) == entry.reference.snapshot.canonical_json)):
+                self.product_shell.activate_route("journal")
+                self._timeline_detail_entry = None
+
+        self._verify_timeline_entry(entry, apply)
+        return True
 
     def _return_from_price_stock_research(self, selection: object) -> None:
         if getattr(self, "_shutdown_close_requested", False):
+            return
+        if MainWindow._return_from_timeline_detail(self):
             return
         recommendation = getattr(self, "recommendation_view", None)
         daily = getattr(recommendation, "daily_market_research_view", None)
@@ -2707,6 +3036,38 @@ class MainWindow(QMainWindow):
         self._select_main_workspace("market_explore")
         self.market_tabs.setCurrentWidget(view)
 
+    def _configure_product_theme_catalog(self) -> None:
+        """只定位 Owner 配置或先前明選的版本目錄，不掃其他任務或正式根。"""
+        from app_module.product_preferences import read_theme_catalog_root
+
+        view = self.industry_theme_map_view
+        explicit = self.application_settings.environment.get("THEME_RESEARCH_CATALOG_ROOT")
+        selected: Path | None = Path(explicit).resolve() if explicit else None
+        error = ""
+        if selected is None:
+            try:
+                selected = read_theme_catalog_root(self.application_settings.runtime_state_root)
+            except (OSError, ValueError) as exc:
+                error = f"題材目錄偏好無法讀取；請重新明選目錄：{exc}"
+        if selected is None:
+            default = Path(self.config.output_root) / "theme_research_snapshots"
+            if default.is_dir():
+                selected = default.resolve()
+        view.configure_catalog_root(selected.resolve() if selected is not None else None)
+        view.catalogRootSelected.connect(self._save_product_theme_catalog)
+        if error:
+            view.status_label.setText(error)
+
+    def _save_product_theme_catalog(self, value: object) -> None:
+        from app_module.product_preferences import save_theme_catalog_root
+
+        if not isinstance(value, Path):
+            return
+        try:
+            save_theme_catalog_root(self.application_settings.runtime_state_root, value)
+        except (OSError, ValueError) as exc:
+            self.statusBar().showMessage(f"本次仍可讀取題材；版本目錄偏好未保存：{exc}", 10000)
+
     def _open_theme_note_snapshot(self, identity_sha256: str) -> None:
         """回訪筆記須明選原manifest並核保存身份，不接受同名新版本。"""
         from PySide6.QtWidgets import QFileDialog
@@ -2716,6 +3077,8 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "核對筆記的原題材版本", "", "題材版本 (*.json)")
         if path:
             view.load_snapshot(Path(path), expected_identity_sha256=identity_sha256)
+            self._select_main_workspace("market_explore")
+            self.market_tabs.setCurrentWidget(view)
 
     def _open_theme_research_stock(self, stock_code: str) -> None:
         """題材下鑽沿既有研究context；保持原頁，不混合兩份行情。"""
@@ -2742,6 +3105,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("已開個股研究；題材版本與一般行情各標日期，不合併資料。")
 
     def _open_stock_research_context(self, value: object) -> None:
+        self._timeline_pending_price_entry = None
+        self._timeline_detail_entry = None
         """接收保存結果／觀察清單的下鑽 context 並開啟單股研究頁。"""
 
         context = self._coerce_stock_research_context(value)
@@ -3583,6 +3948,8 @@ class MainWindow(QMainWindow):
             return ()
 
     def _return_from_stock_research_report(self) -> None:
+        if MainWindow._return_from_timeline_detail(self):
+            return
         workspace = getattr(self, "stock_research_workspace", None)
         context = getattr(getattr(workspace, "report_view", None), "context", None)
         if context is not None:
@@ -3909,6 +4276,12 @@ class MainWindow(QMainWindow):
 
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
+
+        for attribute in ("research_timeline_view", "storage_overview_view"):
+            view = getattr(self, attribute, None)
+            close = getattr(view, "request_close", None)
+            if callable(close):
+                close()
 
         for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "backtest_view", "recommendation_view", "watchlist_view", "technical_official_research_view", "technical_official_ma_research_view", "technical_official_revenue_research_view", "technical_official_composite_research_view", "technical_official_composite_price_research_view"):
             view = getattr(self, attribute, None)

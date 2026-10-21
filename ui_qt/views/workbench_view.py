@@ -221,6 +221,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
         self._daily_candidate_selection_identity: tuple[object, ...] | None = None
+        self._recent_research_widget: QWidget | None = None
 
         self.status_model = WorkbenchStatusStripTableModel()
         self.review_model = WorkbenchReviewQueueTableModel()
@@ -275,12 +276,57 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"版本 identity SHA-256：{snapshot.identity_sha256}"
         )
 
+    def mount_recent_research_widget(
+        self,
+        widget: QWidget,
+        entry_callback: Callable[[object], None],
+    ) -> None:
+        """將既有時間軸投影固定掛入首頁，並交由 Main 處理原件回訪路由。"""
+
+        if not isinstance(widget, QWidget):
+            raise TypeError("最近研究元件必須是 QWidget")
+        if not callable(entry_callback):
+            raise TypeError("最近研究回訪 callback 必須可呼叫")
+        if self._recent_research_widget is widget:
+            return
+        if self._recent_research_widget is not None:
+            layout = self.overview_scroll_area.widget().layout()
+            if layout is not None:
+                layout.removeWidget(self._recent_research_widget)
+        widget.setParent(self)
+        layout = self.overview_scroll_area.widget().layout()
+        if layout is None:
+            raise RuntimeError("首頁內容 layout 尚未建立")
+        layout.insertWidget(6, widget)
+        requested = getattr(widget, "entryRequested", None)
+        if requested is None or not hasattr(requested, "connect"):
+            layout.removeWidget(widget)
+            raise TypeError("最近研究元件缺少 entryRequested signal")
+        requested.connect(entry_callback)
+        self._recent_research_widget = widget
+
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
         layout.setContentsMargins(12, 12, 12, 12)
 
         self.subtabs = QTabWidget()
+        self.subtabs.setObjectName("workbenchAuxiliaryPages")
+        self.subtabs.tabBar().hide()
+        self.auxiliary_navigation_row = QWidget(self)
+        self.auxiliary_navigation_row.setObjectName("workbenchAuxiliaryNavigation")
+        auxiliary_navigation_layout = QHBoxLayout(self.auxiliary_navigation_row)
+        auxiliary_navigation_layout.setContentsMargins(0, 0, 0, 0)
+        self.return_home_button = QPushButton("返回今日總覽", self.auxiliary_navigation_row)
+        self.return_home_button.setObjectName("workbenchReturnHome")
+        self.return_home_button.setAccessibleName("返回今日總覽")
+        self.return_home_button.clicked.connect(self.return_to_home)
+        auxiliary_navigation_layout.addWidget(self.return_home_button)
+        self.auxiliary_page_title = QLabel("", self.auxiliary_navigation_row)
+        self.auxiliary_page_title.setWordWrap(True)
+        auxiliary_navigation_layout.addWidget(self.auxiliary_page_title, 1)
+        self.auxiliary_navigation_row.hide()
+        layout.addWidget(self.auxiliary_navigation_row)
         layout.addWidget(self.subtabs)
 
         overview_page = QWidget()
@@ -302,7 +348,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         root_content_layout = content_layout
 
         title_layout = QHBoxLayout()
-        title = QLabel("決策工作台")
+        title = QLabel("今日總覽")
         title_font = QFont()
         title_font.setPointSize(17)
         title_font.setBold(True)
@@ -314,6 +360,28 @@ class UnifiedDecisionWorkbenchView(QWidget):
         content_layout.addLayout(title_layout)
 
         self._build_guided_home(root_content_layout)
+        home_research_actions = QHBoxLayout()
+        home_research_actions.setContentsMargins(0, 0, 0, 0)
+        self.home_research_evidence_button = QPushButton("開啟研究證據")
+        self.home_research_evidence_button.setObjectName("workbenchHomeResearchEvidence")
+        self.home_research_evidence_button.setProperty("variant", "secondary")
+        self.home_research_evidence_button.setToolTip(
+            "前往既有唯讀 Research Console；載入與關閉沿用原元件。"
+        )
+        self.home_research_evidence_button.clicked.connect(
+            lambda: self.select_subtab("研究證據")
+        )
+        home_research_actions.addWidget(self.home_research_evidence_button)
+        self.home_advanced_button = QPushButton("展開完整工作台")
+        self.home_advanced_button.setObjectName("workbenchHomeAdvanced")
+        self.home_advanced_button.setProperty("variant", "secondary")
+        self.home_advanced_button.setToolTip(
+            "展開既有來源表格、診斷、證據與每日檢查；不重新讀取或計算。"
+        )
+        self.home_advanced_button.clicked.connect(self._open_home_advanced)
+        home_research_actions.addWidget(self.home_advanced_button)
+        home_research_actions.addStretch(1)
+        root_content_layout.addLayout(home_research_actions)
         self.advanced_workbench_panel = CollapsibleSectionPanel(
             "完整工作台／所有來源與進階詳情",
             collapsed=True,
@@ -325,6 +393,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         )
         self.advanced_overview_layout = self.advanced_workbench_panel.content_layout
         content_layout = self.advanced_overview_layout
+        self._build_advanced_destination_actions(content_layout)
 
         workflow_panel = CollapsibleSectionPanel(
             "單一路徑 / Research Workflow",
@@ -403,6 +472,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.summary_value_labels: dict[str, QLabel] = {}
         self.summary_detail_labels: dict[str, QLabel] = {}
         summary_row = QWidget()
+        summary_row.setObjectName("workbenchHomeSummary")
+        self.summary_row = summary_row
         summary_layout = QHBoxLayout(summary_row)
         summary_layout.setContentsMargins(0, 0, 0, 0)
         summary_layout.setSpacing(8)
@@ -789,6 +860,23 @@ class UnifiedDecisionWorkbenchView(QWidget):
         root_content_layout.addWidget(self.advanced_workbench_panel)
         root_content_layout.addStretch()
 
+        # 將已建立的唯讀摘要元件提升到同一個首頁捲動區，沿用原 DTO 與回呼。
+        for widget in (
+            self.priority_banner,
+            self.summary_row,
+            self.position_health_panel,
+            self.today_action_panel,
+            self.daily_investment_journey_panel,
+        ):
+            self.advanced_overview_layout.removeWidget(widget)
+        self.advanced_overview_layout.removeItem(root_content_layout.itemAt(root_content_layout.count() - 1))
+        root_content_layout.insertWidget(3, self.priority_banner)
+        root_content_layout.insertWidget(4, self.summary_row)
+        root_content_layout.insertWidget(5, self.position_health_panel)
+        root_content_layout.insertWidget(6, self.today_action_panel)
+        root_content_layout.insertWidget(7, self.daily_investment_journey_panel)
+        root_content_layout.addStretch()
+
         set_scroll_content_constraints(scroll_content)
         scroll_area.setWidget(scroll_content)
         overview_layout.addWidget(scroll_area)
@@ -823,6 +911,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "操作節奏",
         )
         self._apply_responsive_layout(force=True)
+        self._sync_subtab_return_state(self.subtabs.currentIndex())
 
     def _build_decision_source_page(self) -> QWidget:
         return self._build_navigation_page(
@@ -869,6 +958,42 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 self.subtabs.setCurrentIndex(index)
                 return True
         return False
+
+    def return_to_home(self) -> None:
+        """從既有輔助頁回到同一份今日總覽。"""
+
+        self.subtabs.setCurrentIndex(0)
+
+    def _sync_subtab_return_state(self, index: int) -> None:
+        is_home = index <= 0
+        self.auxiliary_navigation_row.setVisible(not is_home)
+        if not is_home:
+            self.auxiliary_page_title.setText(self.subtabs.tabText(index))
+
+    def _open_home_advanced(self) -> None:
+        self.advanced_workbench_panel.set_collapsed(False)
+        self.overview_scroll_area.ensureWidgetVisible(self.advanced_workbench_panel)
+
+    def _build_advanced_destination_actions(self, parent_layout: QVBoxLayout) -> None:
+        """用明確動作保留舊輔助頁入口，不顯示巢狀頁籤列。"""
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        for index, (key, label) in enumerate((
+            ("決策來源", "市場來源導覽"),
+            ("研究證據", "研究證據詳情"),
+            ("持倉追蹤", "持倉追蹤導覽"),
+            ("操作節奏", "操作節奏詳情"),
+        )):
+            button = QPushButton(label)
+            button.setObjectName(f"workbenchAuxiliaryAction{index}")
+            button.setProperty("variant", "secondary")
+            button.clicked.connect(
+                lambda _checked=False, destination=key: self.select_subtab(destination)
+            )
+            row.addWidget(button)
+        row.addStretch(1)
+        parent_layout.addLayout(row)
 
     def viewed_review_item_ids(self) -> set[str]:
         return set(self._viewed_review_item_ids)
@@ -1734,6 +1859,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_trace_label.setObjectName("dailyJourneyTrace")
         self.daily_trace_label.setVisible(False)
         panel.layout.addWidget(self.daily_trace_label)
+        panel.setObjectName("dailyInvestmentJourney")
+        self.daily_investment_journey_panel = panel
         parent_layout.addWidget(panel)
 
     def _render_daily_investment_journey(
@@ -2193,6 +2320,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             cards_layout.addWidget(card, index // 2, index % 2)
         layout.addLayout(cards_layout)
+        self.today_action_panel = panel
         parent_layout.addWidget(panel)
 
     def _make_today_action_card(
@@ -2540,6 +2668,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         return button
 
     def _on_subtab_changed(self, index: int) -> None:
+        self._sync_subtab_return_state(index)
         if self.subtabs.widget(index) is self.research_console_view:
             self.research_console_view.ensure_loaded()
 

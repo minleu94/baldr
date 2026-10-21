@@ -140,6 +140,8 @@ class WatchlistView(QWidget):
     
     # 信號：當觀察清單更新時發出
     watchlistUpdated = Signal()
+    # 表格模型完成載入或降級替換後發出，供唯讀 UI adapter 重新接線。
+    watchlistLoaded = Signal()
     sendToBacktestRequested = Signal(dict)
     stockAnalysisRequested = Signal(str)
     stockResearchRequested = Signal(object)
@@ -1132,6 +1134,7 @@ class WatchlistView(QWidget):
             self._refresh_storage_status()
             self._refresh_technical_bookmark_controls()
             logger.info("[WatchlistView._load_watchlist] 載入完成")
+            self.watchlistLoaded.emit()
             
         except Exception as e:
             import traceback
@@ -1165,6 +1168,7 @@ class WatchlistView(QWidget):
                 logger.error("[WatchlistView._load_watchlist] 已顯示錯誤提示")
             except Exception as e2:
                 logger.error(f"[WatchlistView._load_watchlist] 顯示錯誤提示時也失敗: {e2}")
+            self.watchlistLoaded.emit()
 
     def _update_research_lab_button_state(self, stock_count: int) -> None:
         """依候選池內容啟用或停用 Research Lab 批次回測入口。"""

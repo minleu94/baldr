@@ -80,9 +80,9 @@ class _BacktestHarness(QWidget):
 @pytest.mark.parametrize(
     ("strategy_id", "expected_version"),
     [
-        ("baseline_score_threshold", "1.0"),
-        ("momentum_aggressive_v1", "1.0.0"),
-        ("stable_conservative_v1", "1.0.0"),
+        ("baseline_score_threshold", "1.1.0"),
+        ("momentum_aggressive_v1", "1.1.0"),
+        ("stable_conservative_v1", "1.1.0"),
     ],
 )
 def test_selected_spec_uses_registered_version_and_preserves_complete_config(
@@ -120,8 +120,8 @@ def test_selected_spec_uses_registered_version_and_preserves_complete_config(
 @pytest.mark.parametrize(
     ("strategy_id", "expected_version"),
     [
-        ("momentum_aggressive_v1", "1.0.0"),
-        ("stable_conservative_v1", "1.0.0"),
+        ("momentum_aggressive_v1", "1.1.0"),
+        ("stable_conservative_v1", "1.1.0"),
     ],
 )
 def test_rule_card_button_uses_registered_version_without_filling_missing_contracts(

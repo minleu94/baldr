@@ -17,6 +17,7 @@
         "ui_qt/views/workbench_view.py"
       ],
       "tests": [
+        "tests/test_ui_qt_workbench_home_single_page.py",
         "tests/test_ui_qt_workbench_view.py",
         "tests/test_ui_qt_workbench_theme_entry.py",
         "tests/test_ui_qt_workbench_portfolio_health_navigation.py",
@@ -34,6 +35,7 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "tests/test_ui_qt_workbench_home_single_page.py",
         "ui_qt/views/workbench_view.py",
         "tests/test_ui_qt_workbench_view.py",
         "tests/test_ui_qt_workbench_theme_entry.py",
@@ -62,6 +64,8 @@
         "docs/02_features/INDUSTRY_THEME_MAP_DESIGN.md"
       ],
       "code": [
+        "app_module/theme_snapshot_catalog.py",
+        "ui_qt/views/market_analysis_workspace.py",
         "ui_qt/views/market_regime_view.py",
         "ui_qt/views/decision_desk_view.py",
         "app_module/decision_desk_dtos.py",
@@ -84,6 +88,9 @@
         "ui_qt/widgets/theme_research_notes_widget.py"
       ],
       "tests": [
+        "tests/test_theme_snapshot_catalog.py",
+        "tests/test_ui_qt_theme_catalog_loading.py",
+        "tests/test_ui_qt_market_analysis_workspace.py",
         "tests/test_ui_qt_market_regime_view.py",
         "tests/test_ui_qt_decision_desk_view.py",
         "tests/test_ui_qt_decision_desk_main_integration.py",
@@ -122,6 +129,11 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "app_module/theme_snapshot_catalog.py",
+        "ui_qt/views/market_analysis_workspace.py",
+        "tests/test_theme_snapshot_catalog.py",
+        "tests/test_ui_qt_theme_catalog_loading.py",
+        "tests/test_ui_qt_market_analysis_workspace.py",
         "ui_qt/views/market*",
         "app_module/regime_service.py",
         "app_module/industry_strength*",
@@ -143,6 +155,8 @@
         "tests/test_ui_qt_market_regime_view.py",
         "decision_module/industry_theme_map.py",
         "tests/test_industry_theme_map.py",
+        "decision_module/theme_momentum_filter.py",
+        "tests/test_theme_momentum_filter.py",
         "app_module/theme_daily*",
         "app_module/theme_institutional_reader.py",
         "tests/test_theme_institutional_reader.py",
@@ -190,6 +204,7 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
+        "ui_qt/views/unified_screener_workspace.py",
         "app_module/advice_dtos.py",
         "app_module/fundamental_factor_service.py",
         "decision_module/factors/fundamental_adapters.py",
@@ -242,6 +257,7 @@
         "scripts/copy_research_output.py"
       ],
       "tests": [
+        "tests/test_ui_qt_unified_screener_workspace.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "tests/test_revenue_factor_pack.py",
         "tests/test_revenue_factor_pack_history.py",
@@ -314,6 +330,8 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "ui_qt/views/unified_screener_workspace.py",
+        "tests/test_ui_qt_unified_screener_workspace.py",
         "analysis_module/*",
         "app_module/advice_dtos.py",
         "app_module/fundamental_factor_service.py",
@@ -446,6 +464,8 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
+        "ui_qt/views/strategy_library_view.py",
+        "ui_qt/views/backtest_product_layout.py",
         "app_module/registered_strategy_spec.py",
         "decision_module/strategies/baldr_bollinger_contract.py",
         "decision_module/strategies/baldr_bollinger_executor.py",
@@ -515,6 +535,8 @@
         "ui_qt/widgets/saved_strategy_signal_compare_widget.py"
       ],
       "tests": [
+        "tests/test_ui_qt_strategy_library_view.py",
+        "tests/test_ui_qt_backtest_product_layout.py",
         "tests/test_registered_strategy_spec.py",
         "tests/test_baldr_completion_p07_bollinger.py",
         "tests/test_baldr_completion_p07_w_bottom.py",
@@ -596,6 +618,10 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "ui_qt/views/strategy_library_view.py",
+        "ui_qt/views/backtest_product_layout.py",
+        "tests/test_ui_qt_strategy_library_view.py",
+        "tests/test_ui_qt_backtest_product_layout.py",
         "ui_qt/views/backtest/*",
         "ui_qt/views/backtest_view.py",
         "backtest_module/*",
@@ -856,6 +882,7 @@
         "app_module/saved_price_moving_average_chart.py"
       ],
       "tests": [
+        "tests/test_ui_qt_stock_research_v2_layout.py",
         "tests/test_stock_research_report_service.py",
         "tests/test_portfolio_scenario_stock_report.py",
         "tests/test_portfolio_scenario_stock_report_integration.py",
@@ -906,6 +933,7 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "tests/test_ui_qt_stock_research_v2_layout.py",
         "ui_qt/views/stock_research*",
         "app_module/stock_research*",
         "app_module/twse_operating_summary*.py",
@@ -990,6 +1018,9 @@
         "docs/01_architecture/current/decision_research_portfolio.md"
       ],
       "code": [
+        "app_module/research_timeline_dtos.py",
+        "app_module/research_timeline_service.py",
+        "ui_qt/views/research_timeline_view.py",
         "ui_qt/views/portfolio_view.py",
         "ui_qt/widgets/portfolio_research_scenario_widget.py",
         "app_module/portfolio_research_scenario_workspace.py",
@@ -1006,6 +1037,9 @@
         "ui_qt/widgets/portfolio_scenario_registry_widget.py"
       ],
       "tests": [
+        "tests/test_research_timeline_service.py",
+        "tests/test_ui_qt_research_timeline_view.py",
+        "tests/test_ui_qt_portfolio_v2_sections.py",
         "tests/test_ui_qt_portfolio_health_navigation.py",
         "tests/test_ui_qt_portfolio_view.py",
         "tests/test_portfolio_research_scenario_widget.py",
@@ -1035,6 +1069,12 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "app_module/research_timeline_dtos.py",
+        "app_module/research_timeline_service.py",
+        "ui_qt/views/research_timeline_view.py",
+        "tests/test_research_timeline_service.py",
+        "tests/test_ui_qt_research_timeline_view.py",
+        "tests/test_ui_qt_portfolio_v2_sections.py",
         "ui_qt/views/portfolio*",
         "ui_qt/widgets/portfolio_research_scenario*",
         "tests/test_portfolio_research_scenario*",
@@ -1254,6 +1294,8 @@
         "docs/01_architecture/current/data_storage_runtime.md"
       ],
       "code": [
+        "app_module/storage_overview.py",
+        "ui_qt/views/storage_overview_view.py",
         "ui_qt/views/runtime_view.py",
         "app_module/decision_capture_status_reader.py",
         "app_module/dtos/runtime_dtos.py",
@@ -1261,6 +1303,7 @@
         "app_module/workbench_source_service.py"
       ],
       "tests": [
+        "tests/test_storage_overview.py",
         "tests/test_ui_qt_runtime_view.py",
         "tests/test_decision_capture_status_reader.py",
         "tests/decision_capture_status_fixture.py",
@@ -1277,6 +1320,9 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "app_module/storage_overview.py",
+        "ui_qt/views/storage_overview_view.py",
+        "tests/test_storage_overview.py",
         "ui_qt/views/runtime*",
         "runtime/*",
         "app_module/runtime_services/*",
@@ -1458,7 +1504,15 @@
         "docs/01_architecture/current/application_and_workspaces.md"
       ],
       "code": [
+        "app_module/product_preferences.py",
+        "app_module/stock_search_directory.py",
+        "ui_qt/views/stock_lookup_landing.py",
         "ui_qt/main.py",
+        "ui_qt/main_window_coordinator.py",
+        "ui_qt/v2_shell.py",
+        "ui_qt/widgets/left_navigation.py",
+        "ui_qt/widgets/global_search_bar.py",
+        "ui_qt/widgets/workspace_subnav.py",
         "app_module/application_bootstrap.py",
         "app_module/packaging_provenance.py",
         "packaging/baldr.spec",
@@ -1466,6 +1520,11 @@
         "data_module/daily_monthly_revenue_cohort_binding.py"
       ],
       "tests": [
+        "tests/test_ui_qt_v2_product_shell.py",
+        "tests/test_ui_qt_v2_integrated_routes.py",
+        "tests/test_product_preferences.py",
+        "tests/test_stock_search_directory.py",
+        "tests/test_ui_qt_v2_shell_widgets.py",
         "tests/test_ui_qt_decision_desk_main_integration.py",
         "tests/test_packaging_kernel_provenance.py",
         "tests/test_packaging_provenance.py",
@@ -1485,7 +1544,20 @@
         "docs/00_core/PROJECT_SNAPSHOT.md"
       ],
       "change_patterns": [
+        "app_module/product_preferences.py",
+        "app_module/stock_search_directory.py",
+        "ui_qt/views/stock_lookup_landing.py",
+        "tests/test_ui_qt_v2_product_shell.py",
+        "tests/test_ui_qt_v2_integrated_routes.py",
+        "tests/test_product_preferences.py",
+        "tests/test_stock_search_directory.py",
         "ui_qt/main.py",
+        "ui_qt/main_window_coordinator.py",
+        "ui_qt/v2_shell.py",
+        "ui_qt/widgets/left_navigation.py",
+        "ui_qt/widgets/global_search_bar.py",
+        "ui_qt/widgets/workspace_subnav.py",
+        "tests/test_ui_qt_v2_shell_widgets.py",
         "app_module/application_bootstrap.py",
         "app_module/decision_service_composition.py",
         "data_module/daily_monthly_revenue_cohort_binding.py",

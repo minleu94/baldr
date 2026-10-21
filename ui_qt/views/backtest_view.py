@@ -98,6 +98,8 @@ from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionReq
 class BacktestView(QWidget):
     """回測視圖"""
 
+    resultPresented = Signal(object)
+
     # 一般寬度並列；中等視窗一次顯示一個完整面板，極窄內容改上下流。
     RESPONSIVE_BREAKPOINT = 680
     SINGLE_PANE_BREAKPOINT = 1150
@@ -1136,6 +1138,7 @@ class BacktestView(QWidget):
             if hasattr(self, "export_report_btn"):
                 self.export_report_btn.setEnabled(False)
             self._show_finished_result_in_windowed_mode()
+            self.resultPresented.emit(report)
             return
         if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
             result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(report))
@@ -1336,6 +1339,7 @@ class BacktestView(QWidget):
         if hasattr(self, 'export_report_btn'):
             self.export_report_btn.setEnabled(True)
         self._show_finished_result_in_windowed_mode()
+        self.resultPresented.emit(report)
 
     def _show_recommendation_portfolio_result(
         self,
@@ -1873,12 +1877,68 @@ class BacktestView(QWidget):
         strategy_id = self.strategy_combo.currentData()
         if not isinstance(strategy_id, str) or not strategy_id:
             raise ValueError("請先選擇已登記的策略")
-        return registered_strategy_spec(
+        spec = registered_strategy_spec(
             strategy_id, name=self.strategy_combo.currentText(),
             description=self.strategy_desc.text(),
             config={**self._get_default_strategy_config(),
                     "params": self._get_strategy_params() if params is None else params},
         )
+        pin = getattr(self, "_library_strategy_pin", None)
+        if pin is not None and pin != (spec.strategy_id, spec.strategy_version):
+            raise ValueError("策略庫選取的版本已不再是目前可執行版本；請重新選取")
+        return spec
+
+    @staticmethod
+    def can_select_registered_strategy(strategy_id: str, version: str) -> bool:
+        """目前執行面板只支援登記中的版本；歷史保存版本保持唯讀。"""
+        try:
+            spec = registered_strategy_spec(strategy_id, config={})
+        except (TypeError, ValueError):
+            return False
+        return (spec.strategy_id, spec.strategy_version) == (strategy_id, version)
+
+    def select_registered_strategy(self, strategy_id: str, version: str) -> bool:
+        """精確選取可執行版本並顯示設定；不開始運算或保存。"""
+        if not self.can_select_registered_strategy(strategy_id, version):
+            return False
+        index = self.strategy_combo.findData(strategy_id)
+        if index < 0:
+            return False
+        self.strategy_combo.setCurrentIndex(index)
+        self._on_strategy_changed()
+        self._library_strategy_pin = (strategy_id, version)
+        self._set_config_panel_collapsed(False)
+        return True
+
+    def prepare_stock_research(self, context) -> bool:
+        """只預填一般查股代號，不保存清單、帶入舊價格或啟動回測。"""
+        from app_module.research_session import ResearchStockContextDTO
+
+        if (type(context) is not ResearchStockContextDTO
+                or context.source_kind != "explicit_latest_stock_research"
+                or not context.stock_code or context.stock_code != context.stock_code.strip()
+                or getattr(self, "_shutting_down", False)):
+            return False
+        worker = getattr(self, "worker", None)
+        if worker is not None and worker.isRunning():
+            return False
+        mode_index = self.research_lab_mode_combo.findData("single_stock")
+        if mode_index < 0:
+            return False
+        self.research_lab_mode_combo.setCurrentIndex(mode_index)
+        self.stock_mode_combo.setCurrentText("單一股票")
+        self.stock_code_input.setText(context.stock_code)
+        self._prepared_stock_research_context = context
+        if not hasattr(self, "stock_research_reference_label"):
+            self.stock_research_reference_label = QLabel(self.config_panel)
+            self.stock_research_reference_label.setWordWrap(True)
+            self.config_panel.layout().insertWidget(0, self.stock_research_reference_label)
+        self.stock_research_reference_label.setText(
+            f"由一般個股研究預填：{context.stock_code}。只帶代號；回測將使用其自身配置的資料、期間與成本，"
+            "原報告不是回測價格或可用資格證明。請檢查設定後另行執行。"
+        )
+        self._set_config_panel_collapsed(False)
+        return True
 
     def _show_strategy_rule_card(self):
         """只投影此次回測設定；不替既有 run 補來源身份。"""
@@ -1898,6 +1958,7 @@ class BacktestView(QWidget):
 
     def _on_strategy_changed(self):
         """策略選擇改變"""
+        self._library_strategy_pin = None
         strategy_id = self.strategy_combo.currentData()
         if not strategy_id:
             self.strategy_desc.setText("請選擇策略")
@@ -3226,6 +3287,7 @@ class BacktestView(QWidget):
             result_panel.set_research_mode(mode, reveal_single_detail=True)
             result_panel.focus_result_tab("summary")
         self._show_finished_result_in_windowed_mode()
+        self.resultPresented.emit({"details": run_data})
 
     def _open_research_history_result(self, selected: Any) -> None:
         """lookup 已核對 exact 來源；回到既有結果呈現，不重跑或借另一份結果。"""

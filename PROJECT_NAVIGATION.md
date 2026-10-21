@@ -2,6 +2,10 @@
 
 這份文件提供程式碼定位與功能閱讀路徑，不保存目前完成度或任務流水帳。產品目前狀態見 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)，現行模組邊界見[系統架構](docs/01_architecture/system_architecture.md)，使用步驟見[操作手冊](docs/07_guides/APPLICATION_MANUAL.md)。
 
+## V2 開發分支導航（尚非固定 RC）
+
+目前開發分支的四個主工作區為「今日總覽」、「探索與研究」、「我的投資」、「策略實驗室」，齒輪「系統管理」進入資料與診斷子頁。路由接線看 `ui_qt/main_window_coordinator.py`，殼層與快捷鍵看 `ui_qt/v2_shell.py`，左側導覽與子導覽看 `ui_qt/widgets/left_navigation.py`、`ui_qt/widgets/workspace_subnav.py`，全域搜尋看 `ui_qt/widgets/global_search_bar.py`。Ctrl+K 後需明選查詢結果；未映射名稱不會有結果。Alt+Left 依原來源身份守衛返回，約 1280 像素寬自動收合 rail。完整使用步驟、一般報告與價格研究來源差異、缺件處理及限制見[操作手冊 V2 分支節](docs/07_guides/APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)。此處是開發中導覽，Journal 統一時間軸、跨域漏斗、Storage 容量／引用清冊及策略庫版面仍未完成，也不是固定 RC 或通過驗收的說明。
+
 ## 依任務選入口
 
 | 你要處理的工作 | 先看 | 再看 |

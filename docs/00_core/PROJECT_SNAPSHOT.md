@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**V2 Source 整合進行中，尚非 Release Candidate。** 本機分支 `codex/baldr-v2-product` 已接四主頁、系統入口、題材版本目錄、綜合選股來源與漏斗、三個既有技術條件範本、共用個股章節、研究時間軸、策略庫與單頁首頁。QA023 正常 Main 完成一般查股保存／fresh 精確讀回、純自選及返回，17 路由在 1280×760、150% offscreen 保持尺寸；QA024 另以固定10/16真題材快照驗25鏈／90題材、CoWoS→2330→返回、筆記保存及新程序原件回讀，三來源檔SHA與Journal讀回不變。個股一般行情刻意隔離為空，未把題材價量補成其行情。最新共同防線為選股13、Workbench85、更新頁25/0/4及指定mypy1102通過；完整五旅程、原生GUI、真人與RC仍未接受。原生操作在使用者Escape後維持停止，研究13及金融限制不變。範圍、原失敗及未驗出口見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。
+
 **後繼Source：第三階段獨立動量濾網。** 新增純規則`evaluate_theme_momentum()`，嚴格>70%、淨流入TWD／前20%與可得時間／缺件拒絕；[QA246a](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#stage3獨立動量濾網qa246246a)43項、單檔mypy及本檔精度／未來函數掃描通過。這是未接線MODE_A契約，未含研究13，不授真資料、排名、歷史PIT或正式策略資格。五小時額度100%先checkpoint；文件結構檢查待下個視窗，接著處理reader／映射與來源版本綁定，不能只信輸入旗標。
 
 **最新可試用：研究13（`9838243476e6`）。** [啟動器](../../output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd)、[五條操作指南](../../output/trial/Baldr-Theme-Research-13/TRIAL_GUIDE.md)、[已知問題](../../output/trial/Baldr-Theme-Research-13/KNOWN_ISSUES.md)。保存報告完成後顯示「載入完成」；固定Main24960→9440確認原筆記／報告全文及日期不變、無producer重讀。首次設定521.344秒／原600、啟動器正反SHA及封存通過，交付SHA `ae7f310408a1551d342ef967a2560e8c84206def94c9820c52b1963230f3341c`；[本輪QA](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#固定13保存報告完成狀態交付qa240244)。未改主要旅程沿12證據，舊包與私人資料保持；金融／PIT／自然成熟／Native／真人限制不升格。

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt, QSignalBlocker, Signal, Slot
 from PySide6.QtWidgets import (
@@ -36,6 +38,10 @@ from app_module.theme_research_snapshot import (
     ThemeResearchSnapshot,
     read_theme_research_snapshot,
 )
+from app_module.theme_snapshot_catalog import (
+    ThemeSnapshotCatalogResult,
+    resolve_latest_theme_research_snapshot,
+)
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -45,18 +51,21 @@ class IndustryThemeMapView(QWidget):
 
     stockSelected = Signal(str)
     snapshotChanged = Signal(object)
+    catalogRootSelected = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._generation = 0
         self._worker_generation: int | None = None
         self._worker: TaskWorker | None = None
+        self._load_kind = "manifest"
         self._result: object = None
         self._error = ""
         self._cancelled = False
         self._busy = False
         self._closed = False
         self._snapshot: ThemeResearchSnapshot | None = None
+        self._catalog_root: Path | None = None
         self._presentation: ThemeResearchPresentation | None = None
         self._ascending_presentation: ThemeResearchPresentation | None = None
         self._theme_options: list[tuple[str, str] | None] = []
@@ -67,7 +76,10 @@ class IndustryThemeMapView(QWidget):
         self._chain_directory_identity: str | None = None
 
         self._build_ui()
-        self._render_empty("請選取本機已保存的題材研究版本。")
+        self._render_empty("請設定題材版本目錄，或明選歷史版本。")
+        self.status_label.setText(
+            "尚未設定本機題材版本目錄；請選擇目錄或明選歷史版本。"
+        )
         self._update_controls()
 
     @property
@@ -89,9 +101,25 @@ class IndustryThemeMapView(QWidget):
         )
         header.addWidget(self.title_label)
         header.addStretch(1)
-        self.open_snapshot_button = QPushButton("選取本機研究版本…")
+        self.latest_snapshot_button = QPushButton("最新可讀版本")
+        self.latest_snapshot_button.setObjectName("industryThemeLoadLatestButton")
+        self.latest_snapshot_button.setAccessibleName("載入最新可讀價量題材版本")
+        self.latest_snapshot_button.setToolTip(
+            "只搜尋已設定的本機版本目錄，預設使用已完成且可讀的 price-v1 版本。"
+        )
+        self.latest_snapshot_button.clicked.connect(self.load_latest_snapshot)
+        header.addWidget(self.latest_snapshot_button)
+        self.choose_catalog_root_button = QPushButton("選擇版本目錄…")
+        self.choose_catalog_root_button.setObjectName("industryThemeChooseCatalogRootButton")
+        self.choose_catalog_root_button.setAccessibleName("選擇本機題材版本目錄")
+        self.choose_catalog_root_button.clicked.connect(self._choose_catalog_root)
+        header.addWidget(self.choose_catalog_root_button)
+        self.open_snapshot_button = QPushButton("明選歷史版本…")
         self.open_snapshot_button.setObjectName("industryThemeOpenSnapshotButton")
-        self.open_snapshot_button.setAccessibleName("選取本機已保存題材研究版本")
+        self.open_snapshot_button.setAccessibleName("明選題材歷史版本manifest")
+        self.open_snapshot_button.setToolTip(
+            "保留原 manifest 選取器，可明選 price-v1 或 flow-v2 歷史版本。"
+        )
         self.open_snapshot_button.clicked.connect(self._choose_snapshot)
         header.addWidget(self.open_snapshot_button)
         self.clear_research_button = QPushButton("清除研究")
@@ -420,6 +448,57 @@ class IndustryThemeMapView(QWidget):
         if selected:
             self.load_snapshot(Path(selected))
 
+    def _choose_catalog_root(self) -> None:
+        if self._closed or self._busy:
+            return
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "選擇本機題材版本目錄",
+            str(self._catalog_root) if self._catalog_root is not None else "",
+        )
+        if not selected:
+            return
+        previous_root = self._catalog_root
+        selected_root = Path(selected).resolve()
+        self.configure_catalog_root(selected_root)
+        if self.load_latest_snapshot():
+            self.catalogRootSelected.emit(selected_root)
+        else:
+            self.configure_catalog_root(previous_root)
+
+    def configure_catalog_root(self, root: Path | None) -> None:
+        """設定由主視窗提供的本機版本根目錄；此處不列舉或讀取檔案。"""
+
+        if root is not None and not isinstance(root, Path):
+            raise TypeError("root 必須是 pathlib.Path 或 None")
+        self._catalog_root = root
+        if root is None and self._snapshot is None and not self._busy:
+            self.status_label.setText(
+                "尚未設定本機題材版本目錄；請選擇目錄或明選歷史版本。"
+            )
+        self._update_controls()
+
+    def load_latest_snapshot(self) -> bool:
+        """在明示的本機目錄尋找最新可讀價量版本；不建立或改寫版本。"""
+
+        if self._closed or self._busy:
+            return False
+        if self._catalog_root is None:
+            self.status_label.setText(
+                "尚未設定本機題材版本目錄；請選擇目錄，或明選歷史版本。"
+            )
+            return False
+        return self._start_snapshot_load(
+            resolve_latest_theme_research_snapshot,
+            self._catalog_root,
+            kwargs={
+                "known_at": datetime.now(timezone.utc),
+                "schema": "price-v1",
+            },
+            load_kind="catalog",
+            status="正在已設定的本機目錄尋找最新可讀 price-v1；舊版本已清除。",
+        )
+
     def load_snapshot(
         self,
         path: Path,
@@ -428,14 +507,78 @@ class IndustryThemeMapView(QWidget):
     ) -> None:
         """背景讀取指定 manifest；新讀取開始即清除舊版本可操作狀態。"""
 
-        if self._closed or self._busy:
-            return
         if not isinstance(path, Path):
             raise TypeError("path 必須是 pathlib.Path")
         if expected_identity_sha256 is not None and not isinstance(
             expected_identity_sha256, str
         ):
             raise TypeError("expected_identity_sha256 必須是字串或 None")
+
+        kwargs = (
+            {"expected_identity_sha256": expected_identity_sha256}
+            if expected_identity_sha256 is not None
+            else {}
+        )
+        self._start_snapshot_load(
+            read_theme_research_snapshot,
+            path,
+            kwargs=kwargs,
+            load_kind="manifest",
+            status="正在讀取明選的本機研究版本；舊版本已清除。",
+        )
+
+    def _confirm_load_replacement(self) -> tuple[QPlainTextEdit | None, str] | None:
+        """確認版本切換不會靜默丟棄忙碌中的筆記或未保存草稿。"""
+
+        notes_widget, notes_editor = self._notes_editor_context()
+        notes_is_busy = (
+            getattr(notes_widget, "is_busy", None) if notes_widget is not None else None
+        )
+        if callable(notes_is_busy) and notes_is_busy():
+            self.status_label.setText("題材筆記工作進行中；完成後再切換研究版本。")
+            return None
+        draft = notes_editor.toPlainText() if notes_editor is not None else ""
+        original_generation = self._generation
+        original_snapshot = self._snapshot
+        original_worker = self._worker
+        if draft:
+            answer = QMessageBox.question(
+                self,
+                "切換題材版本",
+                "切換版本會清除此頁未保存的題材研究草稿；已保存筆記與來源檔案不會更動。要繼續嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("已取消版本切換；目前版本與未保存草稿仍保留。")
+                return None
+        if (
+            self._closed
+            or self._busy
+            or self._generation != original_generation
+            or self._snapshot is not original_snapshot
+            or self._worker is not original_worker
+            or (notes_editor is not None and notes_editor.toPlainText() != draft)
+            or (callable(notes_is_busy) and notes_is_busy())
+        ):
+            self.status_label.setText("研究或筆記工作已改變；未執行先前的版本切換。")
+            return None
+        return notes_editor, draft
+
+    def _start_snapshot_load(
+        self,
+        task_function: Callable[..., object],
+        *args: object,
+        kwargs: dict[str, object],
+        load_kind: str,
+        status: str,
+    ) -> bool:
+        if self._closed or self._busy:
+            return False
+        confirmed = self._confirm_load_replacement()
+        if confirmed is None:
+            return False
+        notes_editor, draft = confirmed
 
         self._generation += 1
         generation = self._generation
@@ -446,19 +589,12 @@ class IndustryThemeMapView(QWidget):
         self._clear_snapshot_view()
         self.snapshotChanged.emit(None)
         self._busy = True
-        self.status_label.setText("正在讀取所選本機研究版本；舊版本已清除。")
+        self.status_label.setText(status)
         self._update_controls()
-
-        if expected_identity_sha256 is None:
-            worker = TaskWorker(read_theme_research_snapshot, path)
-        else:
-            worker = TaskWorker(
-                read_theme_research_snapshot,
-                path,
-                expected_identity_sha256=expected_identity_sha256,
-            )
+        worker = TaskWorker(task_function, *args, **kwargs)
         self._worker = worker
         self._worker_generation = generation
+        self._load_kind = load_kind
         worker.finished.connect(
             self._receive_snapshot, Qt.ConnectionType.QueuedConnection
         )
@@ -485,6 +621,10 @@ class IndustryThemeMapView(QWidget):
             self.snapshotChanged.emit(None)
             worker.deleteLater()
             self._update_controls()
+            return False
+        if notes_editor is not None and draft and notes_editor.toPlainText() == draft:
+            notes_editor.clear()
+        return True
 
     def set_snapshot(self, snapshot: ThemeResearchSnapshot) -> None:
         """設定已讀取的 typed snapshot，並清除前一版本的篩選與選取。"""
@@ -664,6 +804,7 @@ class IndustryThemeMapView(QWidget):
         result = self._result
         error = self._error
         cancelled = self._cancelled
+        load_kind = self._load_kind
         self._worker = None
         self._worker_generation = None
         self._busy = False
@@ -691,17 +832,59 @@ class IndustryThemeMapView(QWidget):
                 self.snapshotChanged.emit(None)
                 return
             if not isinstance(result, ThemeResearchSnapshot):
-                self._snapshot = None
-                self._clear_snapshot_view()
-                self.status_label.setText(
-                    "題材版本讀取失敗；讀者未回傳 ThemeResearchSnapshot。"
-                )
-                self.snapshotChanged.emit(None)
-                return
-            self._snapshot = result
-            self._apply_snapshot(result)
-            self.snapshotChanged.emit(result)
-            self.status_label.setText("已載入所選本機研究版本。")
+                if load_kind == "catalog" and isinstance(
+                    result, ThemeSnapshotCatalogResult
+                ):
+                    entry = result.selected
+                    if entry is None:
+                        self._snapshot = None
+                        self._clear_snapshot_view()
+                        if result.limited:
+                            reason = result.limit_reason or "搜尋範圍未能完整核實"
+                            message = (
+                                "未宣稱最新版本：有界搜尋已停止（"
+                                + reason
+                                + "）。可縮小已選目錄或明選歷史版本。"
+                            )
+                        elif result.rejections:
+                            rejection = result.rejections[0]
+                            message = (
+                                "目前目錄沒有可讀的 price-v1 版本；首項拒絕："
+                                f"{rejection.path.name}（{rejection.reason}）。"
+                                "可檢查來源完整性，或明選其他歷史版本。"
+                            )
+                        else:
+                            message = (
+                                "目前目錄沒有可讀的 price-v1 版本；"
+                                "可檢查合法版本，或明選歷史版本。"
+                            )
+                        self.status_label.setText(message)
+                        self.snapshotChanged.emit(None)
+                        return
+                    snapshot = entry.snapshot
+                    if not isinstance(snapshot, ThemeResearchSnapshot):
+                        raise TypeError("catalog entry 未回傳 ThemeResearchSnapshot")
+                    self._snapshot = snapshot
+                    self._apply_snapshot(snapshot)
+                    self.snapshotChanged.emit(snapshot)
+                    skipped = len(result.rejections)
+                    suffix = f"；拒絕候選 {skipped} 項" if skipped else ""
+                    self.status_label.setText(
+                        f"已載入最新可讀 price-v1（資料日 {entry.data_date.isoformat()}）{suffix}。"
+                    )
+                else:
+                    self._snapshot = None
+                    self._clear_snapshot_view()
+                    self.status_label.setText(
+                        "題材版本讀取失敗；讀者未回傳 ThemeResearchSnapshot。"
+                    )
+                    self.snapshotChanged.emit(None)
+                    return
+            else:
+                self._snapshot = result
+                self._apply_snapshot(result)
+                self.snapshotChanged.emit(result)
+                self.status_label.setText("已載入明選的本機研究版本。")
         except Exception as exc:
             self._snapshot = None
             self._clear_snapshot_view()
@@ -792,7 +975,8 @@ class IndustryThemeMapView(QWidget):
         overview_parts = [
             f"資料日：{report.data_date.isoformat()}　｜　"
             f"範圍：{len(chain_names)} 條產業鏈／{len(theme_keys)} 個題材",
-            "使用者明選的本機目前研究；不代表官方來源接受或歷史 PIT。",
+            f"映射版本：{report.mapping_snapshot_date}　｜　"
+            "用途：本機目前研究／題材價量觀察，不代表官方來源接受或歷史 PIT",
         ]
         if missing_fields:
             overview_parts.append("部分欄位缺件：" + "、".join(missing_fields))
@@ -1564,6 +1748,10 @@ class IndustryThemeMapView(QWidget):
     def _update_controls(self) -> None:
         available = self._snapshot is not None and not self._closed
         lookup_available = available and not self._busy
+        self.latest_snapshot_button.setEnabled(
+            self._catalog_root is not None and not self._busy and not self._closed
+        )
+        self.choose_catalog_root_button.setEnabled(not self._busy and not self._closed)
         self.open_snapshot_button.setEnabled(not self._busy and not self._closed)
         has_current_load = (
             self._worker is not None

@@ -162,9 +162,16 @@ class LeftNavigationWidget(QWidget):
 
     workspaceSelected = Signal(str)
 
-    def __init__(self, items: Sequence[NavigationItem], parent=None) -> None:
+    def __init__(
+        self,
+        items: Sequence[NavigationItem],
+        parent=None,
+        *,
+        primary_mode: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._items = tuple(items)
+        self._primary_mode = primary_mode
         self._buttons: dict[str, QPushButton] = {}
         self._group_buttons: dict[str, QToolButton] = {}
         self._group_items: dict[str, tuple[str, ...]] = {}
@@ -187,51 +194,51 @@ class LeftNavigationWidget(QWidget):
         self.collapse_button = QPushButton("‹")
         self.collapse_button.setObjectName("leftNavCollapseButton")
         self.collapse_button.setToolTip("收合左側導覽")
+        self.collapse_button.setAccessibleName("收合左側導覽")
         self.collapse_button.setMinimumHeight(30)
         self.collapse_button.clicked.connect(lambda _checked=False: self.set_collapsed(not self._collapsed))
         layout.addWidget(self.collapse_button)
 
-        grouped_items: dict[str, list[NavigationItem]] = {
-            group_id: [] for group_id, _label in _NAV_GROUPS
-        }
-        for item in self._items:
-            group_id = _NAV_GROUP_BY_KEY.get(item.key, "research")
-            grouped_items.setdefault(group_id, []).append(item)
+        if self._primary_mode:
+            system_items = tuple(item for item in self._items if self._is_system_item(item))
+            primary_items = tuple(item for item in self._items if not self._is_system_item(item))
+            for item in primary_items:
+                self._add_workspace_button(layout, item)
+            layout.addStretch()
+            for item in system_items:
+                self._add_workspace_button(layout, item)
+        else:
+            grouped_items: dict[str, list[NavigationItem]] = {
+                group_id: [] for group_id, _label in _NAV_GROUPS
+            }
+            for item in self._items:
+                group_id = _NAV_GROUP_BY_KEY.get(item.key, "research")
+                grouped_items.setdefault(group_id, []).append(item)
 
-        for group_id, group_label in _NAV_GROUPS:
-            group_items = grouped_items.get(group_id, [])
-            if not group_items:
-                continue
-            self._group_expanded[group_id] = True
-            group_button = _NavigationGroupButton()
-            group_button.setObjectName(f"leftNavGroup_{group_id}")
-            group_button.setCheckable(True)
-            group_button.setChecked(True)
-            group_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            group_button.setMinimumHeight(26)
-            group_button.setAccessibleName(f"導覽分組：{group_label}")
-            group_button.setToolTip(f"展開或收合{group_label}")
-            group_button.clicked.connect(
-                lambda checked, key=group_id: self._toggle_group(key, checked)
-            )
-            self._group_buttons[group_id] = group_button
-            self._group_items[group_id] = tuple(item.key for item in group_items)
-            layout.addWidget(group_button)
+            for group_id, group_label in _NAV_GROUPS:
+                group_items = grouped_items.get(group_id, [])
+                if not group_items:
+                    continue
+                self._group_expanded[group_id] = True
+                group_button = _NavigationGroupButton()
+                group_button.setObjectName(f"leftNavGroup_{group_id}")
+                group_button.setCheckable(True)
+                group_button.setChecked(True)
+                group_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                group_button.setMinimumHeight(26)
+                group_button.setAccessibleName(f"導覽分組：{group_label}")
+                group_button.setToolTip(f"展開或收合{group_label}")
+                group_button.clicked.connect(
+                    lambda checked, key=group_id: self._toggle_group(key, checked)
+                )
+                self._group_buttons[group_id] = group_button
+                self._group_items[group_id] = tuple(item.key for item in group_items)
+                layout.addWidget(group_button)
 
-            for item in group_items:
-                button = QPushButton(self._button_text(item))
-                button.setObjectName(f"leftNavButton_{item.key}")
-                button.setCheckable(True)
-                button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                button.setMinimumHeight(34)
-                button.setIcon(self._icon_for_item(item))
-                button.setIconSize(QSize(20, 20))
-                button.setToolTip(item.tooltip or item.label)
-                button.clicked.connect(lambda _checked=False, key=item.key: self._select_from_click(key))
-                self._buttons[item.key] = button
-                layout.addWidget(button)
+                for item in group_items:
+                    self._add_workspace_button(layout, item)
 
-        layout.addStretch()
+            layout.addStretch()
         self._refresh_group_button_text()
         self._apply_styles()
 
@@ -252,6 +259,8 @@ class LeftNavigationWidget(QWidget):
     def label_for_key(self, key: str) -> str | None:
         for item in self._items:
             if item.key == key:
+                if self._primary_mode and self._is_system_item(item):
+                    return self._display_label(item)
                 # 舊呼叫端仍以 Runtime 作為穩定識別文字；畫面按鈕使用新的白話標籤。
                 if item.key == "runtime" and item.label == "系統狀態":
                     return "Runtime"
@@ -268,12 +277,15 @@ class LeftNavigationWidget(QWidget):
         self.setMaximumWidth(width)
         self.collapse_button.setText("›" if self._collapsed else "‹")
         self.collapse_button.setToolTip("展開左側導覽" if self._collapsed else "收合左側導覽")
+        self.collapse_button.setAccessibleName(
+            "展開左側導覽" if self._collapsed else "收合左側導覽"
+        )
         self._refresh_group_button_text()
         for item in self._items:
             button = self._buttons[item.key]
             button.setText(self._button_text(item))
             button.setIconSize(QSize(22, 22) if self._collapsed else QSize(20, 20))
-            button.setToolTip(item.tooltip or item.label)
+            button.setToolTip(item.tooltip or self._display_label(item))
 
     def set_current_key(self, key: str) -> None:
         if key not in self._buttons:
@@ -291,24 +303,54 @@ class LeftNavigationWidget(QWidget):
 
     def _select_from_click(self, key: str) -> None:
         if key == self._current_key:
-            self.set_collapsed(not self._collapsed)
+            if not self._primary_mode:
+                self.set_collapsed(not self._collapsed)
             return
         self.set_current_key(key)
         self.workspaceSelected.emit(key)
 
+    def _add_workspace_button(self, layout: QVBoxLayout, item: NavigationItem) -> None:
+        button = QPushButton(self._button_text(item))
+        button.setObjectName(f"leftNavButton_{item.key}")
+        button.setCheckable(True)
+        button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        button.setMinimumHeight(34)
+        button.setIcon(self._icon_for_item(item))
+        button.setIconSize(QSize(20, 20))
+        display_label = self._display_label(item)
+        button.setToolTip(item.tooltip or display_label)
+        button.setAccessibleName(display_label)
+        button.clicked.connect(lambda _checked=False, key=item.key: self._select_from_click(key))
+        self._buttons[item.key] = button
+        layout.addWidget(button)
+
+    @staticmethod
+    def _is_system_item(item: NavigationItem) -> bool:
+        normalized_label = item.label.strip()
+        return item.key in {"systems", "system_management"} or normalized_label in {
+            "⚙ 系統管理",
+            "系統管理",
+        }
+
     def _button_text(self, item: NavigationItem) -> str:
+        display_label = self._display_label(item)
         if self._collapsed:
-            return "" if item.icon in _NAV_ICON_SVGS else item.label[:1]
+            return "" if item.icon in _NAV_ICON_SVGS else display_label[:1]
         display_label = (
             "系統狀態"
             if item.key == "runtime" and item.label == "系統狀態"
-            else item.label
+            else display_label
         )
         pieces = []
         pieces.append(display_label)
         if item.badge:
             pieces.append(item.badge)
         return "  ".join(pieces)
+
+    def _display_label(self, item: NavigationItem) -> str:
+        if self._primary_mode and self._is_system_item(item):
+            return "⚙ 系統管理"
+        return item.label
 
     def _group_for_key(self, key: str) -> str | None:
         for group_id, keys in self._group_items.items():

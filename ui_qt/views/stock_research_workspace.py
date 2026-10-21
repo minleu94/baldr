@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PySide6.QtCore import QSize, Signal, Qt
+from PySide6.QtCore import QSize, Signal, Qt, QSignalBlocker
 from PySide6.QtWidgets import (
-    QGroupBox, QHBoxLayout, QLabel, QPushButton, QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
+    QButtonGroup, QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton,
+    QScrollArea, QStackedWidget, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from app_module.decision_continuity_controller import DecisionContinuityController
@@ -16,6 +17,9 @@ from app_module.pinned_stock_research_notes import PinnedStockResearchNoteServic
 from app_module.stock_research_report_notes import StockResearchReportNoteService
 from app_module.stock_research_report_snapshot_codec import StockResearchReportProjectionSnapshot
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.daily_market_technical_universe_price_comparison_v1 import (
+    DailyMarketTechnicalUniversePriceSelectionV1,
+)
 from ui_qt.views.stock_research_report_view import StockResearchReportView
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.info_button import InfoButton
@@ -31,6 +35,9 @@ class StockResearchWorkspace(QWidget):
     priceResearchReturnRequested = Signal(object)
     sourceContextShown = Signal(object)
     priceNoteSourceRequested = Signal(object)
+    favoriteRequested = Signal(object)
+    priceComparisonRequested = Signal(object)
+    prepareBacktestRequested = Signal(object)
 
     def __init__(
         self,
@@ -58,7 +65,51 @@ class StockResearchWorkspace(QWidget):
         self.general_lookup_button.hide()
         title_layout.addWidget(self.general_lookup_button)
         layout.addLayout(title_layout)
+        self.product_action_row = QWidget(self)
+        product_action_layout = QHBoxLayout(self.product_action_row)
+        product_action_layout.setContentsMargins(0, 0, 0, 0)
+        product_action_layout.setSpacing(6)
+        self.favorite_action = QPushButton("☆自選", self.product_action_row)
+        self.favorite_action.setObjectName("stockResearchFavoriteAction")
+        self.favorite_action.setAccessibleName("加入純自選")
+        self.favorite_action.setToolTip("只以股票代號與名稱加入純自選，不保存原選股 Query。")
+        self.favorite_action.clicked.connect(self._emit_favorite_request)
+        product_action_layout.addWidget(self.favorite_action)
+        self.price_comparison_action = QPushButton("＋比較", self.product_action_row)
+        self.price_comparison_action.setObjectName("stockResearchPriceComparisonAction")
+        self.price_comparison_action.setAccessibleName("加入來源內比較")
+        self.price_comparison_action.setToolTip("只有母體價量原來源可加入同來源比較；其他來源請回來源頁建立比較。")
+        self.price_comparison_action.clicked.connect(self._emit_price_comparison_request)
+        product_action_layout.addWidget(self.price_comparison_action)
+        self.prepare_backtest_action = QPushButton("準備回測", self.product_action_row)
+        self.prepare_backtest_action.setObjectName("stockResearchPrepareBacktestAction")
+        self.prepare_backtest_action.setAccessibleName("以目前一般個股報告準備回測")
+        self.prepare_backtest_action.setToolTip("只為已載入的一般最新可用個股報告預填，不會執行回測。")
+        self.prepare_backtest_action.clicked.connect(self._emit_prepare_backtest_request)
+        product_action_layout.addWidget(self.prepare_backtest_action)
+        self._product_action_group = QButtonGroup(self)
+        self._product_action_group.setExclusive(True)
+        self.research_content_action = QPushButton("研究內容", self.product_action_row)
+        self.research_content_action.setObjectName("stockResearchContentAction")
+        self.save_judgment_action = QPushButton("保存判斷", self.product_action_row)
+        self.save_judgment_action.setObjectName("stockResearchJudgmentAction")
+        self.outcome_tracking_action = QPushButton("成果追蹤", self.product_action_row)
+        self.outcome_tracking_action.setObjectName("stockResearchOutcomeAction")
+        for key, button in (
+            ("content", self.research_content_action),
+            ("judgment", self.save_judgment_action),
+            ("outcomes", self.outcome_tracking_action),
+        ):
+            button.setCheckable(True)
+            button.clicked.connect(
+                lambda _checked=False, action=key: self._activate_product_action(action)
+            )
+            self._product_action_group.addButton(button)
+            product_action_layout.addWidget(button)
+        product_action_layout.addStretch(1)
+        layout.addWidget(self.product_action_row)
         self.content_stack = QStackedWidget(self)
+        self.content_stack.currentChanged.connect(self._sync_product_action_state)
         self.general_report_page = QWidget(self.content_stack)
         general_layout = QVBoxLayout(self.general_report_page)
         general_layout.setContentsMargins(0, 0, 0, 0)
@@ -111,7 +162,10 @@ class StockResearchWorkspace(QWidget):
             self.report_view.activeContextChanged.connect(self._invalidate_report_snapshot)
             self.report_view.reportLoaded.connect(self._capture_report_snapshot)
             self.report_view.reportFailed.connect(self._invalidate_report_snapshot)
-            self.report_tabs.currentChanged.connect(self._on_report_notes_tab_changed)
+        self.report_tabs.currentChanged.connect(self._on_report_notes_tab_changed)
+        self.report_view.activeContextChanged.connect(self._sync_product_action_state)
+        self.report_view.reportLoaded.connect(self._sync_product_action_state)
+        self.report_view.reportFailed.connect(self._sync_product_action_state)
         self.journey_view: DecisionOutcomeJourneyWidget | None = None
         if journey_service is not None:
             self.journey_view = DecisionOutcomeJourneyWidget(
@@ -124,6 +178,9 @@ class StockResearchWorkspace(QWidget):
         general_layout.addWidget(self.report_tabs)
         self.content_stack.addWidget(self.general_report_page)
         self.price_research_view = None
+        self.price_research_page: QWidget | None = None
+        self.price_source_header: QLabel | None = None
+        self.price_section_selector: QComboBox | None = None
         self.price_research_context: ResearchStockContextDTO | None = None
         self.price_notes_widget: PinnedStockResearchNotesWidget | None = None
         self.price_notes_page: QScrollArea | None = None
@@ -135,19 +192,269 @@ class StockResearchWorkspace(QWidget):
             self.price_notes_page.setWidget(self.price_notes_widget)
             self.price_notes_page.hide()
         layout.addWidget(self.content_stack)
+        self.enable_product_layout()
 
     def _invalidate_report_snapshot(self, _context: object = None) -> None:
+        if getattr(self, "_product_content_report", self.report_view) is not self.report_view:
+            return
         if self.report_notes_widget is not None:
             self.report_notes_widget.set_snapshot(None, stock_code=self.report_view.stock_search.text().strip())
 
     def _on_report_notes_tab_changed(self, _index: int) -> None:
+        current = self.report_tabs.currentWidget()
+        if isinstance(current, StockResearchReportView):
+            self._product_content_report = current
+            if getattr(self, "journey_view", None) is not None:
+                self.journey_view.set_context(current.context)
         if (
             self.report_notes_widget is not None
             and self.report_tabs.currentWidget() is self.report_notes_page
         ):
             self.report_notes_widget.refresh_notes()
+        self._sync_product_action_state()
+
+    def enable_product_layout(self) -> None:
+        """以工作區動作列與章節選擇器呈現既有研究頁面。"""
+
+        self.report_tabs.tabBar().hide()
+        self.report_view.enable_product_layout()
+        if self.saved_report_view is not None:
+            self.saved_report_view.enable_product_layout()
+        if self.price_research_view is not None:
+            self.price_research_view.detail_tabs.tabBar().hide()
+        self.product_action_row.show()
+        self._sync_product_action_state()
+
+    def focus_section(self, key: str) -> bool:
+        """提供主殼層可呼叫的研究章節定位入口。"""
+
+        if self._is_price_research_active():
+            candidate = self.price_research_view
+            if candidate is None:
+                return False
+            if key in ("price", "main_chart", "price_chart"):
+                candidate.detail_tabs.setCurrentIndex(0)
+                return True
+            if key in ("rules", "price_rules", "evidence"):
+                candidate.detail_tabs.setCurrentIndex(1)
+                return True
+            if key in ("judgment", "notes") and self.price_notes_page is not None:
+                index = candidate.detail_tabs.indexOf(self.price_notes_page)
+                if index >= 0:
+                    candidate.detail_tabs.setCurrentIndex(index)
+                    return True
+            return False
+        report_target = self.report_tabs.currentWidget()
+        if isinstance(report_target, StockResearchReportView):
+            return report_target.focus_section(key)
+        if report_target is self.report_notes_page or report_target is self.journey_view:
+            self.report_tabs.setCurrentWidget(getattr(self, "_product_content_report", self.report_view))
+            self._sync_product_action_state()
+        return getattr(self, "_product_content_report", self.report_view).focus_section(key)
+
+    def _activate_product_action(self, action: str) -> None:
+        if self._is_price_research_active():
+            candidate = self.price_research_view
+            if candidate is None:
+                return
+            if action == "content":
+                candidate.detail_tabs.setCurrentIndex(0)
+            elif action == "judgment" and self.price_notes_page is not None:
+                index = candidate.detail_tabs.indexOf(self.price_notes_page)
+                if index >= 0:
+                    candidate.detail_tabs.setCurrentIndex(index)
+        elif action == "content":
+            self.report_tabs.setCurrentWidget(getattr(self, "_product_content_report", self.report_view))
+        elif action == "judgment" and self.report_notes_page is not None:
+            self.report_tabs.setCurrentWidget(self.report_notes_page)
+        elif action == "outcomes" and self.journey_view is not None:
+            self.report_tabs.setCurrentWidget(self.journey_view)
+        self._sync_product_action_state()
+
+    def _is_price_research_active(self) -> bool:
+        price_page = getattr(self, "price_research_page", None)
+        return (
+            price_page is not None
+            and self.content_stack.currentWidget() is price_page
+        )
+
+    def _active_detail_context(self) -> ResearchStockContextDTO | None:
+        """回傳目前可見且股票代號一致的原始研究脈絡。"""
+        if self._is_price_research_active():
+            view = self.price_research_view
+            context = self.price_research_context
+            selection = getattr(view, "_origin_selection", None)
+            if (
+                type(selection) is DailyMarketTechnicalUniversePriceSelectionV1
+                and isinstance(context, ResearchStockContextDTO)
+                and selection.stock_code == context.stock_code
+            ):
+                return context
+            return None
+
+        if self.content_stack.currentWidget() is not self.general_report_page:
+            return None
+        report_page = self.report_tabs.currentWidget()
+        if not isinstance(report_page, StockResearchReportView):
+            report_page = getattr(self, "_product_content_report", self.report_view)
+        if not isinstance(report_page, StockResearchReportView):
+            return None
+        try:
+            snapshot = report_page.get_loaded_report_snapshot()
+        except (AttributeError, ValueError):
+            return None
+        if snapshot is None or snapshot.context is None:
+            return None
+        if snapshot.stock_code != snapshot.context.stock_code:
+            return None
+        return snapshot.context
+
+    def _live_general_backtest_context(self) -> ResearchStockContextDTO | None:
+        """只讓明選的一般最新報告進入單股回測預填。"""
+        if (
+            self._is_price_research_active()
+            or self.content_stack.currentWidget() is not self.general_report_page
+            or self.report_tabs.currentWidget() is not self.report_view
+        ):
+            return None
+        try:
+            snapshot = self.report_view.get_loaded_report_snapshot()
+        except ValueError:
+            return None
+        if snapshot is None:
+            return None
+        context = snapshot.context
+        if (
+            context is None
+            or context.source_kind != "explicit_latest_stock_research"
+            or snapshot.stock_code != context.stock_code
+        ):
+            return None
+        return context
+
+    def _emit_favorite_request(self) -> None:
+        context = self._active_detail_context()
+        if context is not None:
+            self.favoriteRequested.emit(context)
+
+    def _emit_price_comparison_request(self) -> None:
+        if not self._is_price_research_active():
+            return
+        view = self.price_research_view
+        selection = getattr(view, "_origin_selection", None)
+        context = self.price_research_context
+        if (
+            type(selection) is DailyMarketTechnicalUniversePriceSelectionV1
+            and isinstance(context, ResearchStockContextDTO)
+            and selection.stock_code == context.stock_code
+        ):
+            self.priceComparisonRequested.emit(selection)
+
+    def _emit_prepare_backtest_request(self) -> None:
+        context = self._live_general_backtest_context()
+        if context is not None:
+            self.prepareBacktestRequested.emit(context)
+
+    def _sync_product_action_state(self, _index: int = -1) -> None:
+        if not hasattr(self, "research_content_action"):
+            return
+        price_active = self._is_price_research_active()
+        report_current = self.report_tabs.currentWidget()
+        price_view = getattr(self, "price_research_view", None)
+        price_notes_page = getattr(self, "price_notes_page", None)
+        report_notes_page = getattr(self, "report_notes_page", None)
+        journey_view = getattr(self, "journey_view", None)
+        if price_active:
+            price_notes_active = bool(
+                price_view is not None
+                and price_notes_page is not None
+                and price_view.detail_tabs.currentWidget() is price_notes_page
+            )
+            current_action = "judgment" if price_notes_active else "content"
+        elif report_current is report_notes_page:
+            current_action = "judgment"
+        elif journey_view is not None and report_current is journey_view:
+            current_action = "outcomes"
+        else:
+            current_action = "content"
+
+        self.research_content_action.setChecked(current_action == "content")
+        self.save_judgment_action.setChecked(current_action == "judgment")
+        self.outcome_tracking_action.setChecked(current_action == "outcomes")
+        has_notes = report_notes_page is not None or price_notes_page is not None
+        self.save_judgment_action.setVisible(has_notes)
+        self.save_judgment_action.setEnabled(
+            price_notes_page is not None
+            if price_active
+            else report_notes_page is not None
+        )
+        self.outcome_tracking_action.setVisible(journey_view is not None)
+        self.outcome_tracking_action.setEnabled(
+            journey_view is not None and not price_active
+        )
+        active_context = self._active_detail_context()
+        self.favorite_action.setEnabled(active_context is not None)
+        self.price_comparison_action.setEnabled(
+            price_active
+            and active_context is not None
+            and type(getattr(price_view, "_origin_selection", None))
+            is DailyMarketTechnicalUniversePriceSelectionV1
+        )
+        backtest_context = self._live_general_backtest_context()
+        self.prepare_backtest_action.setEnabled(backtest_context is not None)
+        if price_active:
+            self.price_comparison_action.setToolTip(
+                "加入目前已核驗的母體價量原來源比較清單。"
+                if self.price_comparison_action.isEnabled()
+                else "原選取身份無法核驗；請回來源頁建立同源比較。"
+            )
+            self.prepare_backtest_action.setToolTip(
+                "原來源已釘定；不能套用一般最新價庫。請先明選一般個股查詢。"
+            )
+        else:
+            self.price_comparison_action.setToolTip(
+                "此來源沒有同源比較資格；請回來源頁建立比較。"
+            )
+            displayed_context = self._active_detail_context()
+            if displayed_context is not None and (
+                displayed_context.source_kind != "explicit_latest_stock_research"
+                or self.report_tabs.currentWidget() is self.saved_report_view
+            ):
+                self.prepare_backtest_action.setToolTip(
+                    "此報告來自保存或釘定來源；不能套用一般最新價庫。"
+                )
+            else:
+                self.prepare_backtest_action.setToolTip(
+                    "準備回測僅適用於已載入的一般最新可用個股報告；不會執行回測。"
+                )
+
+    def _sync_price_section_selector(self, candidate: QWidget, index: int) -> None:
+        if (
+            candidate is not self.price_research_view
+            or self.price_section_selector is None
+            or index < 0
+        ):
+            return
+        blocker = QSignalBlocker(self.price_section_selector)
+        self.price_section_selector.setCurrentIndex(
+            self.price_section_selector.findData(index, Qt.ItemDataRole.UserRole)
+        )
+        del blocker
+        self._sync_product_action_state()
+
+    def _select_price_section(self, index: int) -> None:
+        candidate = self.price_research_view
+        if candidate is None or self.price_section_selector is None:
+            return
+        tab_index = self.price_section_selector.itemData(
+            index, Qt.ItemDataRole.UserRole
+        )
+        if isinstance(tab_index, int) and 0 <= tab_index < candidate.detail_tabs.count():
+            candidate.detail_tabs.setCurrentIndex(tab_index)
 
     def _capture_report_snapshot(self, _report: object) -> None:
+        if getattr(self, "_product_content_report", self.report_view) is not self.report_view:
+            return
         notes = self.report_notes_widget
         if notes is None:
             return
@@ -170,13 +477,17 @@ class StockResearchWorkspace(QWidget):
             )
             self.saved_report_view.returnRequested.connect(self._return_to_report_notes)
             self.report_tabs.addTab(self.saved_report_view, "保存時報告")
+        self.saved_report_view.enable_product_layout()
         self.saved_report_view.show_saved_report_snapshot(snapshot)
         self._show_general_report()
         self.report_tabs.setCurrentWidget(self.saved_report_view)
+        if self.report_notes_widget is not None:
+            self.report_notes_widget.set_snapshot(snapshot, stock_code=snapshot.stock_code)
 
     def _return_to_report_notes(self) -> None:
         if self.report_notes_page is not None:
             self.report_tabs.setCurrentWidget(self.report_notes_page)
+        self._sync_product_action_state()
 
     def show_price_research(self, stock: object, selection: object) -> None:
         """原 reader 發出的同源選取在正常工作區顯示，不轉一般報告 context。"""
@@ -190,6 +501,7 @@ class StockResearchWorkspace(QWidget):
             raise
         candidate.returnRequested.connect(self.priceResearchReturnRequested.emit)
         previous = self.price_research_view
+        previous_page = self.price_research_page
         if self.price_notes_widget is not None and self.price_notes_page is not None:
             from app_module.daily_market_technical_universe_price_bookmark_v1 import (
                 DailyMarketTechnicalUniversePriceBookmarkV1,
@@ -205,9 +517,40 @@ class StockResearchWorkspace(QWidget):
                     previous.detail_tabs.removeTab(tab_index)
             candidate.detail_tabs.addTab(self.price_notes_page, "我的判斷")
             self.price_notes_widget.set_source(bookmark)
-        self.content_stack.addWidget(candidate)
-        self.content_stack.setCurrentWidget(candidate)
+
+        price_page = QWidget(self.content_stack)
+        price_layout = QVBoxLayout(price_page)
+        price_layout.setContentsMargins(0, 0, 0, 0)
+        self.price_source_header = QLabel(price_page)
+        self.price_source_header.setObjectName("stockResearchPriceSourceHeader")
+        self.price_source_header.setAccessibleName("價格研究來源與資料日期")
+        self.price_source_header.setWordWrap(True)
+        price_layout.addWidget(self.price_source_header)
+        section_row = QHBoxLayout()
+        section_row.addWidget(QLabel("研究情境", price_page))
+        self.price_section_selector = QComboBox(price_page)
+        self.price_section_selector.setObjectName("stockResearchPriceSectionSelector")
+        self.price_section_selector.setAccessibleName("價格研究章節選擇")
+        for index in range(candidate.detail_tabs.count()):
+            self.price_section_selector.addItem(
+                candidate.detail_tabs.tabText(index), index
+            )
+        self.price_section_selector.currentIndexChanged.connect(
+            self._select_price_section
+        )
+        section_row.addWidget(self.price_section_selector, 1)
+        price_layout.addLayout(section_row)
+        candidate.detail_tabs.tabBar().hide()
+        price_layout.addWidget(candidate, 1)
+        self.content_stack.addWidget(price_page)
         self.price_research_view = candidate
+        self.price_research_page = price_page
+        candidate.detail_tabs.currentChanged.connect(
+            lambda index, current=candidate: self._sync_price_section_selector(
+                current, index
+            )
+        )
+        self.content_stack.setCurrentWidget(price_page)
         self.workspace_title.setText("個股研究｜價格選股原來源")
         self.general_lookup_button.show()
         self.clear_personal_h20_saved_summary()
@@ -226,20 +569,28 @@ class StockResearchWorkspace(QWidget):
             source_label="價格選股原來源（可得時間未知）",
             source_workspace="recommendation",
         )
+        self.price_source_header.setText(
+            f"{self.price_research_context.source_label}｜{stock.stock_code}｜"
+            f"決策日 {self.price_research_context.decision_date or '未知'}｜"
+            f"資料日 {self.price_research_context.data_date or '未知'}"
+        )
         self.sourceContextShown.emit(self.price_research_context)
-        if previous is not None:
-            self.content_stack.removeWidget(previous)
-            previous.deleteLater()
+        if previous_page is not None:
+            self.content_stack.removeWidget(previous_page)
+            previous_page.deleteLater()
+        self._sync_general_lookup_action()
+        self._sync_product_action_state()
 
     def _show_general_report(self) -> None:
         self.content_stack.setCurrentWidget(self.general_report_page)
         self.workspace_title.setText("個股研究")
         self._sync_general_lookup_action()
+        self._sync_product_action_state()
 
     def _sync_general_lookup_action(self, _context: object = None) -> None:
         context = self.report_view.context
         bound_source = bool(
-            self.content_stack.currentWidget() is self.price_research_view
+            self._is_price_research_active()
             or context is not None and context.source_kind
             and context.source_kind != "explicit_latest_stock_research"
         )
@@ -253,7 +604,7 @@ class StockResearchWorkspace(QWidget):
         if self.is_busy():
             self.report_view._set_status("請等目前讀取或筆記保存完成，再另開一般個股查詢。", "warning")
             return
-        context = self.price_research_context if self.content_stack.currentWidget() is self.price_research_view else None
+        context = self.price_research_context if self._is_price_research_active() else None
         code = context.stock_code if context is not None else self.report_view.stock_search.text().strip()
         if not code:
             self.report_view.stock_search.setFocus()

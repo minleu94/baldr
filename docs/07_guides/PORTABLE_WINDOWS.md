@@ -29,11 +29,12 @@ technical v4另有[完整來源複製與封存恢復](MACHINE_BOOTSTRAP_RUNBOOK.
    ```json
    {
      "DATA_ROOT": "D:/My Baldr/market",
-     "OUTPUT_ROOT": "D:/My Baldr/results"
+     "OUTPUT_ROOT": "D:/My Baldr/results",
+     "THEME_RESEARCH_CATALOG_ROOT": "D:/My Baldr/theme-research"
    }
    ```
 
-   同名環境變數優先於 JSON。程式不自動讀 `.env`。`DATA_ROOT` 與 `OUTPUT_ROOT` 分別設定；只改一個不會連動另一個。
+   `THEME_RESEARCH_CATALOG_ROOT` 是選用欄位，指向已存在的題材研究版本目錄；也可設同名環境變數。它只指定 UI 查找本機既有版本的位置，不建立或更改快照，也不提升來源用途、金融資格或歷史 PIT 資格。V2 題材頁在設定此根後可載入最新可讀 `price-v1`；`flow-v2` 仍須明選原 manifest。未設定時可在頁面明選目錄或歷史 manifest。目錄選擇成功後，應用可保存本機目錄偏好。其他同名環境變數優先於 JSON。程式不自動讀 `.env`。`DATA_ROOT` 與 `OUTPUT_ROOT` 分別設定；只改一個不會連動另一個。
 4. 關閉程式後編輯設定，再啟動 `baldr.exe`。到「數據更新」檢查路徑、資料日期和缺件；確認來源授權後再更新。
 5. 檢查更新結果中的 status、資料日期與 warnings。`passed_with_warnings` 仍需閱讀警告；missing、unknown、stale 與零筆不可互相代替。
 

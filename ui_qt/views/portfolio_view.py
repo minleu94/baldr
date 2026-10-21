@@ -1108,9 +1108,16 @@ class AddJournalDialog(QDialog):
 class PortfolioView(QWidget):
     """持倉管理與交易日誌主 UI 視圖"""
 
+    _V2_SECTION_TAB_KEYS = {
+        "positions": ("transactions", "declared", "monitor", "chip"),
+        "paper": ("paper", "allocation", "stress"),
+        "journal": ("journal", "lifecycle"),
+    }
+
     # 信號：當持倉數據或交易更新時發出
     portfolioUpdated = Signal()
     stockResearchRequested = Signal(object)
+    v2SectionChanged = Signal(str)
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
         """允許持倉頁在主視窗 viewport 內縮放，表格承接額外內容。"""
@@ -1251,6 +1258,10 @@ class PortfolioView(QWidget):
         self._portfolio_narrow = False
         self._portfolio_action_narrow: bool | None = None
         self._advanced_details_visible = False
+        self._v2_section_enabled = False
+        self._v2_section_transition = False
+        self._current_v2_section: str | None = None
+        self._last_v2_tab_by_section: dict[str, str] = {}
 
         self._setup_ui()
         self.refresh_all()
@@ -1310,6 +1321,18 @@ class PortfolioView(QWidget):
         self.portfolio_account_context_label.setWordWrap(True)
         self.portfolio_account_context_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         main_layout.addWidget(self.portfolio_account_context_label)
+        self.portfolio_v2_identity_banner = QLabel()
+        self.portfolio_v2_identity_banner.setObjectName("portfolioV2IdentityBanner")
+        self.portfolio_v2_identity_banner.setWordWrap(True)
+        self.portfolio_v2_identity_banner.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.portfolio_v2_identity_banner.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background-color: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 7px 10px; font-weight: 600;"
+        )
+        self.portfolio_v2_identity_banner.hide()
+        main_layout.addWidget(self.portfolio_v2_identity_banner)
         self.portfolio_account_selector.currentIndexChanged.connect(self._select_portfolio_account)
 
         self.portfolio_focus_summary = V5ResearchSummary("手動登錄帳持倉重點")
@@ -1956,6 +1979,27 @@ class PortfolioView(QWidget):
 
         right_widget.addTab(chip_tab, "籌碼監控")
 
+        # V2 分區導覽依 widget 身分篩選現有分頁，保留實體物件以免重建頁面或改動服務。
+        self._portfolio_detail_tab_widgets = {
+            "transactions": history_tab,
+            "journal": journal_tab,
+            "declared": user_declared_tab,
+            "paper": paper_tab,
+            "allocation": self.portfolio_research_scenario_widget,
+            "stress": stress_tab,
+            "monitor": monitor_tab,
+            "lifecycle": lifecycle_tab,
+            "chip": chip_tab,
+        }
+        self._portfolio_detail_tab_sections = {
+            tab_key: section
+            for section, tab_keys in self._V2_SECTION_TAB_KEYS.items()
+            for tab_key in tab_keys
+        }
+        self.portfolio_detail_tabs.currentChanged.connect(
+            self._on_portfolio_detail_tab_changed
+        )
+
         main_splitter.addWidget(paper_health_group)
         main_splitter.addWidget(right_widget)
 
@@ -1993,25 +2037,159 @@ class PortfolioView(QWidget):
         )
         self._apply_portfolio_advanced_visibility()
 
-    def _select_portfolio_account(self, _index: int = 0) -> None:
-        """只切換既有分帳工作區，不讀取或寫入另一帳的資料。"""
-
-        account = self.portfolio_account_selector.currentData()
+    def _apply_portfolio_account_context(self, account: object) -> None:
+        """更新既有帳種說明與進階區顯示，不執行帳本操作。"""
         labels = {
             "manual": "目前查看手動登錄帳；未核券商成交。成本為成交毛額，費稅另列；不合併聲明或 Paper 總值。",
             "user_declared": "目前查看聲明研究帳；成本為使用者聲明，估值日期逐列顯示。非成交證明；不合併手動或 Paper 總值。",
             "paper": "目前查看 Paper 模擬帳；估值／成本／turnover 沿原收據，缺件保持未知。非實盤績效；不合併其他帳總值。",
         }
-        self.portfolio_account_context_label.setText(labels.get(account, "帳本未知；不能判讀總值。"))
-        if account != "manual":
-            self._toggle_advanced_portfolio(True)
-            target = "聲明持倉研究" if account == "user_declared" else "Paper Portfolio"
-            for index in range(self.portfolio_detail_tabs.count()):
-                if self.portfolio_detail_tabs.tabText(index) == target:
-                    self.portfolio_detail_tabs.setCurrentIndex(index)
-                    break
+        account_label = labels.get(account) if isinstance(account, str) else None
+        self.portfolio_account_context_label.setText(
+            account_label or "帳本未知；不能判讀總值。"
+        )
+        self._toggle_advanced_portfolio(
+            self._v2_section_enabled or account != "manual"
+        )
+
+    def _select_portfolio_account(self, _index: int = 0) -> None:
+        """只切換既有分帳工作區，不讀取或寫入另一帳的資料。"""
+
+        account = self.portfolio_account_selector.currentData()
+        if self._v2_section_enabled and not self._v2_section_transition:
+            section = "paper" if account == "paper" else "positions"
+            preferred_tab = {
+                "user_declared": "declared",
+                "paper": "paper",
+            }.get(account)
+            self._activate_v2_section(
+                section,
+                account=account,
+                preferred_tab=preferred_tab,
+            )
+            return
+
+        self._apply_portfolio_account_context(account)
+        if not self._v2_section_enabled and account != "manual":
+            target_key = "declared" if account == "user_declared" else "paper"
+            self._set_portfolio_detail_tab(target_key)
+
+    def select_v2_section(self, section: str) -> bool:
+        """選取 V2 投資分區，沿用既有子頁並依分區隱藏其他頁。"""
+
+        account_by_section = {
+            "positions": "manual",
+            "paper": "paper",
+            "journal": "manual",
+        }
+        if section not in self._V2_SECTION_TAB_KEYS:
+            return False
+        return self._activate_v2_section(
+            section,
+            account=account_by_section[section],
+        )
+
+    def _activate_v2_section(
+        self,
+        section: str,
+        *,
+        account: object,
+        preferred_tab: str | None = None,
+    ) -> bool:
+        allowed_keys = self._V2_SECTION_TAB_KEYS.get(section)
+        if not allowed_keys:
+            return False
+
+        self._v2_section_enabled = True
+        self._v2_section_transition = True
+        try:
+            account_index = self.portfolio_account_selector.findData(account)
+            if (
+                account_index >= 0
+                and self.portfolio_account_selector.currentIndex() != account_index
+            ):
+                previous_blocked = self.portfolio_account_selector.blockSignals(True)
+                try:
+                    self.portfolio_account_selector.setCurrentIndex(account_index)
+                finally:
+                    self.portfolio_account_selector.blockSignals(previous_blocked)
+
+            self._apply_portfolio_account_context(account)
+            allowed = set(allowed_keys)
+            for tab_key, widget in self._portfolio_detail_tab_widgets.items():
+                index = self.portfolio_detail_tabs.indexOf(widget)
+                if index >= 0:
+                    self.portfolio_detail_tabs.setTabVisible(index, tab_key in allowed)
+
+            self._current_v2_section = section
+            tab_key = preferred_tab
+            if tab_key not in allowed:
+                tab_key = self._last_v2_tab_by_section.get(section)
+            if tab_key not in allowed:
+                tab_key = allowed_keys[0]
+            if tab_key is None or not self._set_portfolio_detail_tab(tab_key):
+                return False
+            self._last_v2_tab_by_section[section] = tab_key
+            self._set_v2_identity_banner(section, account)
+            self.v2SectionChanged.emit(section)
+            return True
+        finally:
+            self._v2_section_transition = False
+
+    def _set_v2_identity_banner(self, section: str, account: object) -> None:
+        if section == "paper":
+            text = "🧪 Paper 模擬，不會下單。此分區只呈現 Paper 帳本、配置研究與情境；不代表手動持倉或實盤績效。"
+        elif section == "journal":
+            text = "研究紀錄與覆盤：Journal／生命週期研究，不代表手動持倉或 Paper 帳本。"
+        elif account == "user_declared":
+            text = "使用者聲明研究帳，未與券商同步；不代表成交證明或手動持倉。"
         else:
-            self._toggle_advanced_portfolio(False)
+            text = "手動紀錄持倉，未與券商同步"
+        self.portfolio_v2_identity_banner.setText(text)
+        self.portfolio_v2_identity_banner.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background-color: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: {'2px dashed' if section == 'paper' else '1px solid'} {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 7px 10px; font-weight: 600;"
+        )
+        self.portfolio_v2_identity_banner.show()
+
+    def _set_portfolio_detail_tab(self, tab_key: str) -> bool:
+        widget = self._portfolio_detail_tab_widgets.get(tab_key)
+        if widget is None or self.portfolio_detail_tabs.indexOf(widget) < 0:
+            return False
+        self.portfolio_detail_tabs.setCurrentWidget(widget)
+        return True
+
+    def _on_portfolio_detail_tab_changed(self, index: int) -> None:
+        if not self._v2_section_enabled or self._v2_section_transition or index < 0:
+            return
+        widget = self.portfolio_detail_tabs.widget(index)
+        tab_key = next(
+            (
+                key
+                for key, candidate in self._portfolio_detail_tab_widgets.items()
+                if candidate is widget
+            ),
+            None,
+        )
+        if tab_key is None:
+            return
+        section = self._portfolio_detail_tab_sections.get(tab_key)
+        if section is None:
+            return
+        if section != self._current_v2_section:
+            account = {
+                "paper": "paper",
+                "declared": "user_declared",
+            }.get(tab_key, "manual")
+            self._activate_v2_section(
+                section,
+                account=account,
+                preferred_tab=tab_key,
+            )
+            return
+        self._last_v2_tab_by_section[section] = tab_key
 
     def _toggle_advanced_portfolio(self, expanded: bool) -> None:
         """切換持倉進階工作區；不改變任何既有資料或 identity。"""

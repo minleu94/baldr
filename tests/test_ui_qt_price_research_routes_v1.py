@@ -285,7 +285,8 @@ def test_daily_research_parent_opens_returns_compares_and_guards_bookmark_confir
     QTest.mouseClick(details.return_button, Qt.MouseButton.LeftButton)
     _wait(app, lambda: not price.busy)
     assert restored_origins[-1].to_dict() == origin.to_dict()
-    assert opened_queries[-1] == origin.query_json
+    # 同查詢返回仍核原件並重讀原頁，沿既有 session，不重開另一份來源。
+    assert opened_queries == []
     assert price.current_query is not None and price.current_page is not None
     assert price.current_query.to_json() == origin.query_json
     assert price.current_page.page_identity_sha256 == origin.page_identity_sha256
@@ -311,8 +312,8 @@ def test_daily_research_parent_opens_returns_compares_and_guards_bookmark_confir
     QTest.mouseClick(comparison_details.return_button, Qt.MouseButton.LeftButton)
     _wait(app, lambda: not price.busy)
     assert restored_origins[-1].to_dict() == expected_return.to_dict()
-    assert opened_queries[-1] == expected_return.query_json
-    assert opened_queries == [origin.query_json, expected_return.query_json]
+    # 比較返回仍是同一查詢；跨查詢重開另由 live-return 負例驗證。
+    assert opened_queries == []
     assert price.current_query is not None and price.current_page is not None
     assert price.current_query.to_json() == expected_return.query_json
     assert price.current_page.page_identity_sha256 == expected_return.page_identity_sha256
@@ -467,7 +468,8 @@ def test_daily_research_parent_opens_returns_compares_and_guards_bookmark_confir
     current_page_identity = price.current_page.page_identity_sha256
     current_code = _selected_price_code(price)
     current_basket = tuple(item.to_dict() for item in price._basket)
-    assert daily.begin_shutdown()
+    # 安全停止以 native thread 終態為準，不把結果 signal 當成原生執行緒已結束。
+    _wait(app, daily.begin_shutdown, timeout_seconds=30.0)
     MainWindow._open_price_bookmark_state(cast(MainWindow, host), reopened_state)
     assert host.workspace_selections == ["recommendation"]
     assert len(restore_calls) == 2

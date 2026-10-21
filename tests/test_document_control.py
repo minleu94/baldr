@@ -382,6 +382,114 @@ def test_init_task_uses_distinct_paths_and_does_not_overwrite_same_id(tmp_path: 
     assert second["record"]["task_id"] == "workbench-two"
 
 
+def _link_output_to_storage(root: Path, storage: Path) -> None:
+    storage.mkdir(parents=True, exist_ok=True)
+    try:
+        (root / "output").symlink_to(storage, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"此環境不能建立 output junction 模擬：{exc}")
+
+
+def test_task_state_and_own_evidence_work_through_output_junction(tmp_path: Path) -> None:
+    root = _seed_document_repo(tmp_path)
+    storage = tmp_path / "baldr-storage" / "repo-output"
+    _link_output_to_storage(root, storage)
+
+    scope = ["ui_qt/views/workbench_view.py"]
+    first = document_control.init_task(
+        root, task_id="workbench-change", kind="ui", owner="root", paths=scope
+    )
+    task_relative = "output/tasks/workbench-change/task.json"
+    task_file = storage / "tasks/workbench-change/task.json"
+    assert Path(first["created"]) == task_file
+    assert task_file.is_file()
+    assert document_control.check(root, paths=[], task_path=task_relative)["passed"]
+    original = task_file.read_bytes()
+    with pytest.raises(FileExistsError):
+        document_control.init_task(
+            root, task_id="workbench-change", kind="ui", owner="other", paths=scope
+        )
+    assert task_file.read_bytes() == original
+
+    evidence_relative = "output/tasks/workbench-change/evidence/ui-regression.json"
+    _write_text(root, evidence_relative, '{"result":"passed"}\n')
+    task = _valid_done_ui_task(root)
+    task["verification"][0]["evidence"] = evidence_relative
+    result = _check_task(root, task)
+    assert result["passed"]
+
+
+def test_task_paths_reject_dotdot_and_child_symlink_escape(tmp_path: Path) -> None:
+    root = _seed_document_repo(tmp_path)
+    storage = tmp_path / "baldr-storage" / "repo-output"
+    _link_output_to_storage(root, storage)
+
+    with pytest.raises(ValueError, match="路徑片段"):
+        document_control.check(
+            root, paths=[], task_path="output/tasks/workbench/../other/task.json"
+        )
+    with pytest.raises(ValueError, match="repo 相對任務路徑"):
+        document_control.check(
+            root,
+            paths=[],
+            task_path=str(storage / "tasks/workbench-change/task.json"),
+        )
+
+    outside = tmp_path / "outside-task"
+    outside.mkdir()
+    task_parent = storage / "tasks"
+    task_parent.mkdir(parents=True)
+    try:
+        (task_parent / "workbench-escape").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"此環境不能建立 task 子層 symlink 模擬：{exc}")
+    with pytest.raises(ValueError, match="子層不接受"):
+        document_control.init_task(
+            root,
+            task_id="workbench-escape",
+            kind="ui",
+            owner="root",
+            paths=["ui_qt/views/workbench_view.py"],
+        )
+
+
+def test_check_missing_task_output_is_read_only(tmp_path: Path) -> None:
+    root = _seed_document_repo(tmp_path)
+    output = root / "output"
+    assert not output.exists()
+
+    with pytest.raises(FileNotFoundError):
+        document_control.check(
+            root,
+            paths=[],
+            task_path="output/tasks/workbench-missing/task.json",
+        )
+
+    assert not output.exists()
+
+
+def test_task_evidence_rejects_symlink_below_its_task_directory(tmp_path: Path) -> None:
+    root = _seed_document_repo(tmp_path)
+    storage = tmp_path / "baldr-storage" / "repo-output"
+    _link_output_to_storage(root, storage)
+    outside = tmp_path / "outside-evidence.json"
+    outside.write_text('{"result":"passed"}\n', encoding="utf-8")
+    task_evidence = storage / "tasks/workbench-change/evidence"
+    task_evidence.mkdir(parents=True)
+    try:
+        (task_evidence / "external.json").symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"此環境不能建立 evidence symlink 模擬：{exc}")
+
+    with pytest.raises(ValueError, match="子層不接受"):
+        document_control._task_storage_path(
+            root,
+            "output/tasks/workbench-change/evidence/external.json",
+            task_id="workbench-change",
+            evidence=True,
+        )
+
+
 def test_ui_feature_coverage_includes_manual_and_user_visible_feature_docs(tmp_path: Path) -> None:
     root = _seed_document_repo(tmp_path)
 

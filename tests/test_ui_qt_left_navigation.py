@@ -133,3 +133,72 @@ def test_left_navigation_group_labels_are_left_anchored_and_keep_state_marker():
     research.click()
     assert research.text().startswith("v ")
     assert nav.button_for_key("backtest").isVisible() is True
+
+
+def test_primary_mode_shows_main_pages_in_order_and_systems_at_bottom():
+    app()
+    items = (
+        NavigationItem("home", "今日總覽", icon="command"),
+        NavigationItem("explore", "探索與研究", icon="radar"),
+        NavigationItem("selection", "綜合選股", icon="spark-list"),
+        NavigationItem("portfolio", "我的投資", icon="briefcase"),
+        NavigationItem("systems", "設定", icon="database-sync"),
+    )
+    nav = LeftNavigationWidget(items, primary_mode=True)
+
+    assert nav.item_keys() == ["home", "explore", "selection", "portfolio", "systems"]
+    assert [nav.button_for_key(key).text() for key in nav.item_keys()] == [
+        "今日總覽",
+        "探索與研究",
+        "綜合選股",
+        "我的投資",
+        "⚙ 系統管理",
+    ]
+    assert all(
+        nav.group_button_for_id(group_id) is None
+        for group_id in ("daily", "research", "maintenance")
+    )
+
+    visual_buttons = [
+        nav.layout().itemAt(index).widget()
+        for index in range(nav.layout().count())
+        if nav.layout().itemAt(index).widget() is not None
+        and nav.layout().itemAt(index).widget() is not nav.collapse_button
+    ]
+    assert [button.objectName() for button in visual_buttons] == [
+        "leftNavButton_home",
+        "leftNavButton_explore",
+        "leftNavButton_selection",
+        "leftNavButton_portfolio",
+        "leftNavButton_systems",
+    ]
+    assert nav.layout().itemAt(nav.layout().count() - 1).widget() is nav.button_for_key("systems")
+
+
+def test_primary_mode_active_click_does_not_toggle_collapse_and_compact_controls_remain_accessible():
+    app()
+    nav = LeftNavigationWidget(
+        (
+            NavigationItem("home", "今日總覽", icon="command"),
+            NavigationItem("systems", "設定", icon="database-sync"),
+        ),
+        primary_mode=True,
+    )
+    selected: list[str] = []
+    nav.workspaceSelected.connect(selected.append)
+
+    nav.button_for_key("home").click()
+    nav.button_for_key("home").click()
+
+    assert selected == ["home"]
+    assert nav.current_key() == "home"
+    assert nav.is_collapsed() is False
+
+    nav.set_collapsed(True)
+    systems_button = nav.button_for_key("systems")
+    assert systems_button.text() == ""
+    assert systems_button.toolTip() == "⚙ 系統管理"
+    assert systems_button.accessibleName() == "⚙ 系統管理"
+
+    nav.collapse_button.click()
+    assert nav.is_collapsed() is False

@@ -16,7 +16,7 @@ import json
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal, QUrl
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal, QUrl, QSignalBlocker
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -706,6 +706,37 @@ class StockResearchReportView(QWidget):
         self.identity_label.setAccessibleName("個股識別")
         root.addWidget(self.identity_label)
 
+        self._product_layout_enabled = False
+        self.section_navigation_row = QWidget(self)
+        section_navigation_layout = QHBoxLayout(self.section_navigation_row)
+        section_navigation_layout.setContentsMargins(0, 0, 0, 0)
+        section_navigation_layout.addWidget(QLabel("研究章節", self.section_navigation_row))
+        self.section_selector = QComboBox(self.section_navigation_row)
+        self.section_selector.setObjectName("stockResearchSectionSelector")
+        self.section_selector.setAccessibleName("個股研究章節選擇")
+        for key, title in (
+            ("summary", "摘要／五問"),
+            ("price", "價格與技術"),
+            ("fundamental", "基本面與營收"),
+            ("flows", "籌碼與產業事件"),
+            ("position", "持倉與風險"),
+            ("decision", "Rule、ML 與歷史證據"),
+        ):
+            self.section_selector.addItem(title, key)
+        self.section_selector.currentIndexChanged.connect(
+            self._select_section_from_combo
+        )
+        section_navigation_layout.addWidget(self.section_selector, 1)
+        self.main_chart_button = QPushButton("主圖", self.section_navigation_row)
+        self.main_chart_button.setObjectName("stockResearchMainChartShortcut")
+        self.main_chart_button.setAccessibleName("定位個股研究主圖")
+        self.main_chart_button.clicked.connect(
+            lambda: self.focus_section("main_chart")
+        )
+        section_navigation_layout.addWidget(self.main_chart_button)
+        self.section_navigation_row.hide()
+        root.addWidget(self.section_navigation_row)
+
         self.query_as_of_label = QLabel("本次研究查詢日（as_of）：尚未載入")
         self.query_as_of_label.setObjectName("stockResearchQueryAsOf")
         self.query_as_of_label.setAccessibleName("本次研究查詢日")
@@ -821,8 +852,57 @@ class StockResearchReportView(QWidget):
         QWidget.setTabOrder(self.reload_button, self.previous_button)
         QWidget.setTabOrder(self.previous_button, self.next_button)
         QWidget.setTabOrder(self.next_button, self.return_button)
-        QWidget.setTabOrder(self.return_button, self.tabs)
+        QWidget.setTabOrder(self.return_button, self.section_selector)
+        QWidget.setTabOrder(self.section_selector, self.main_chart_button)
+        QWidget.setTabOrder(self.main_chart_button, self.tabs)
         self._set_navigation_state()
+
+    def enable_product_layout(self) -> None:
+        """以章節選擇器取代報告頁籤列，保留原六個捲動頁與來源內容。"""
+
+        self._product_layout_enabled = True
+        self.tabs.tabBar().hide()
+        self.section_navigation_row.show()
+        self._sync_section_selector(self.tabs.currentIndex())
+
+    def focus_section(self, key: str) -> bool:
+        """切到既有報告章節；main_chart 另定位同頁主圖。"""
+
+        aliases = {
+            "summary": "summary",
+            "price": "price",
+            "main_chart": "price",
+            "fundamental": "fundamental",
+            "flows": "flows",
+            "position": "position",
+            "decision": "decision",
+        }
+        section = aliases.get(key)
+        keys = ("summary", "price", "fundamental", "flows", "position", "decision")
+        if section is None:
+            return False
+        index = keys.index(section)
+        if index >= self.tabs.count():
+            return False
+        self.tabs.setCurrentIndex(index)
+        if key == "main_chart":
+            scroll = self.tabs.widget(index)
+            if isinstance(scroll, QScrollArea) and self._chart_widget is not None:
+                scroll.ensureWidgetVisible(self._chart_widget)
+        return True
+
+    def _select_section_from_combo(self, index: int) -> None:
+        if index < 0:
+            return
+        key = self.section_selector.itemData(index)
+        self.focus_section(str(key))
+
+    def _sync_section_selector(self, index: int) -> None:
+        if not self._product_layout_enabled or index < 0:
+            return
+        blocker = QSignalBlocker(self.section_selector)
+        self.section_selector.setCurrentIndex(index)
+        del blocker
 
     def _create_page(self, page_id: str, title: str) -> None:
         inner = QWidget()
@@ -2788,6 +2868,7 @@ class StockResearchReportView(QWidget):
     def _on_report_tab_changed(self, index: int) -> None:
         """只在使用者進入分頁時繪製有限內容，不重讀 service。"""
 
+        self._sync_section_selector(index)
         self._render_report_tab(index)
 
     def _render_report_tab(self, index: int) -> None:

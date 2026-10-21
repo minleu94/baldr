@@ -9,13 +9,14 @@ from typing import Any, Callable, cast
 
 import pytest
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QScrollArea, QSplitter, QTabWidget, QWidget
 
 from app_module.daily_market_technical_official_disposition_revenue_bookmark_v2 import DailyMarketTechnicalOfficialDispositionRevenueBookmarkV2
 from app_module.daily_market_research_bookmark import DailyMarketResearchBookmarkError
 from app_module.watchlist_service import WatchlistService
 from ui_qt.views.daily_market_technical_official_disposition_revenue_view import DailyMarketTechnicalOfficialDispositionRevenueView, DailyRevenueSourceConfigV2
 from ui_qt.views.watchlist_view import WatchlistView
+from ui_qt.views.unified_screener_workspace import UnifiedScreenerWorkspace
 from tests.test_daily_market_technical_official_disposition_revenue_query_v2 import _daily_f17_environment
 
 pytest_plugins = ("test_daily_market_technical_official_disposition_bundle_v1",)
@@ -61,6 +62,24 @@ def test_original_view_daily_actor_pages_bookmark_exact_reopen_and_shutdown(
         bundle_fixture.bundle_root, operation_root_parent=operations, monthly_artifact_root=artifact_root,
         daily_source_config_v2=DailyRevenueSourceConfigV2(base_provider, (Path("F:/Min/Python/Project/FA_Data"),), reader_factory=select, exact_reader_factory=exact_reader),
     )
+    route_tabs = QTabWidget()
+    route_tabs.addTab(view, "營收條件來源")
+    route_scroll = QScrollArea()
+    route_scroll.setWidgetResizable(True)
+    route_scroll.setWidget(route_tabs)
+    route_splitter = QSplitter()
+    route_splitter.addWidget(QWidget())
+    route_splitter.addWidget(route_scroll)
+    route_host = SimpleNamespace(
+        result_source_tabs=route_tabs,
+        result_scroll=route_scroll,
+        main_splitter=route_splitter,
+        result_panel=QWidget(),
+    )
+    route_workspace = UnifiedScreenerWorkspace(route_host)
+    assert route_workspace.quick_route_buttons["official_technical_revenue"].isEnabled()
+    assert route_workspace.select_recipe("official_technical_revenue")
+    assert route_workspace._source_by_key[route_workspace.combo.currentData()].widget is view
     view.page_size_box.setValue(50)
     outcomes: list[tuple[str, bool]] = []
     view.operationSettled.connect(lambda kind, ok: outcomes.append((kind, ok)))
@@ -151,14 +170,24 @@ def test_original_view_daily_actor_pages_bookmark_exact_reopen_and_shutdown(
         assert view._selected_row is not None and view._selected_row.stock_code == second
         assert view.current_recipe.monthly_cohort_sha256 == pin.cohort_sha256
         before = len(outcomes)
+        # 從統一入口進入原條件面板，明示兩個來源條件群組及 UNKNOWN 政策。
+        technical_check = view.rule_state_checks[next(iter(view.rule_state_checks))]["match"]
+        technical_check.setChecked(True)
+        view.ma_state_checks["match"].setChecked(True)
+        view.condition_combine_box.setCurrentIndex(view.condition_combine_box.findData("AND"))
+        view.unknown_policy_box.setCurrentIndex(view.unknown_policy_box.findData("only"))
         view.apply_filters()
         _wait(app, lambda: len(outcomes) == before + 1)
         assert outcomes[-1][1], view.status_label.text()
+        assert view.current_result.query.condition_combine_mode == "AND"
+        assert view.current_result.query.unknown_policy == "only"
         assert selection_count == 1 and not view.comparison_basket
         assert len(set(factory_threads)) == 1 and factory_threads[0] != get_ident()
     finally:
+        route_workspace._timer.stop()
         view.begin_shutdown()
         _wait(app, lambda: view.begin_shutdown())
         view.close()
+        route_splitter.close()
         app.processEvents()
     assert view._source_actor_v2 is not None and not view._source_actor_v2.isRunning()

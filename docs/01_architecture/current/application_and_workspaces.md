@@ -8,6 +8,20 @@ StockResearchWorkspace的一般查詢動作建立空名稱、無原保存ID／�
 
 ## 入口與分層
 
+### V2 開發分支導航（尚非固定 RC）
+
+V2 分支的 ProductShell 將入口分為「今日總覽」、「探索與研究」、「我的投資」、「策略實驗室」四個主工作區，另以齒輪「系統管理」提供資料、執行狀態及診斷入口。此為目前導覽層，不取代現有九個頂層工作區契約，也不表示各子頁已完成整合。`main_window_coordinator.py` 將 market、themes、screener、lookup、lists、positions、paper、journal、strategies、backtests、performance、ml、data、operations、diagnostics、storage 等子路由交給既有 Views；PortfolioView 的新分區仍重用原持倉／Paper／Journal 元件與服務。
+
+全域查詢由 `v2_shell.py` 的 Ctrl+K 搜尋列提供。Main 將 `companies.csv` 路徑交給 ProductShell，後者以 `read_stock_search_directory` 背景讀取公司名錄；名稱子字串或代號命中時，選單最多列 20 筆公司候選，明選後開一般個股資料。4–6 位數字代號也可直接明選一般可用資料。題材名稱、產業鏈及映射內股票則另由目前已載入的題材映射提供，題材選取攜帶版本身份；載入失效或版本改變時拒絕舊結果。名錄僅提供搜尋定位，不代表行情或歷史資格。一般報告與價格研究保留不同來源身份，日期／來源分開呈現，不以相同代號作資料拼接。
+
+個股詳情的 Alt+Left 沿原來源返回，並經既有來源上下文守衛核對身份；若原身份失效則不應回訪錯誤來源。主視窗寬度約 1280 像素時左側 rail 自動收合。今日總覽使用原 Workbench readmodel 與元件整理為單一可捲頁，另保留完整工作台及研究證據入口；不建立第二份首頁 readmodel。首頁「最近研究」直接投影同一次 ResearchTimelineView read result，最多三筆，卡片呈現研究類型、代號、保存時間、資料日及摘要；資料日或來源身份缺少時由提示說明原件未提供並引導至研究紀錄核對，並非額外來源欄位。卡片讀取失敗或取消時清空，late result 由 generation 守衛拒收；mount ownership 保證沿用同一時間軸 view 與讀取結果，不另造 read model。按「開啟研究紀錄與覆盤」以同次結果的 entry 物件身份選取原項目；若 entry 已過期即拒絕，不以相同 ID 搜尋或替換新版本。Stock Research 以明確動作切換研究內容、保存判斷及成果追蹤，仍維持一般報告快照和價格選股來源的不同身份、日期及回訪路徑。
+
+「我的投資 > 自選與名單」把純自選、候選與其他來源、已保存股票代碼清單、保存研究與查詢、來源內比較／返回原研究分區呈現。純自選新增與移除仍經既有 WatchlistService；其他來源及未能核對的舊收藏保留原列與操作。股票代碼清單僅保存代碼，不是研究條件或資料版本快照。保存研究與查詢沿已核對的原來源回訪；來源內比較只把已保存的來源內比較交回原研究，不提供建立或編輯獨立比較清單的功能。
+
+Stock Research 詳情頭部另提供純自選、來源內比較與準備回測。純自選由 Main 重驗目前可見的 `ResearchStockContextDTO` 後，僅以股票代號／名稱寫入預設 Watchlist，不保存研究 Query 或來源 bookmark。比較只接受母體價格選股詳情攜帶的原 `DailyMarketTechnicalUniversePriceSelectionV1`；Main 還會以原價格 view 的當前 query／page 重建 selection 並逐欄比對，通過才將原選列加入其既有比較籃，來源變動則拒絕、不替換其他版本。回測入口僅接受與 workspace 當前 live general report context 完全相同的 `explicit_latest_stock_research` context；`BacktestView.prepare_stock_research` 只切單股模式並預填代號，不保存清單、不帶入原報告價格或啟動執行。保存報告、歷史 context 與原價格來源不符合此入口資格。
+
+目前另有 Research Timeline 的唯讀瀏覽 View、Strategy Library 的唯讀登記／版本 View，以及 Unified Screener 對現有來源計數的跨域狀態呈現。漏斗沒有分母時顯示未提供，不從可見列推算，亦不代表所有條件已接線；策略庫明選 ID／版本不等於回測執行。條件範本只經 V4 View 的 `apply_condition_recipe` 設定既有規則控件，以 AND／單規則符合替換原規則篩選；來源、其他條件與原結果仍保留，須使用者明確查詢。忙碌、未載入或未知方案拒絕，控件訊號不觸發查詢。Timeline 的「回訪原版本」由 Main 對明選 entry 排背景 fresh read，`ResearchTimelineService.read_original` 按 kind 呼叫原 note reader，核對 entry/reference 全欄及重新投影的一致性；price 另 fresh 驗證原 bookmark/source state，report 開保存 snapshot，theme 沿原 manifest identity。核驗失敗或選取／頁面已改時拒絕套用，不回退到同股最新來源；舊首頁 entry 也不能替換成新 entry。題材 catalog 預設只從設定目錄查找最新可讀 `price-v1`；`flow-v2` 保留明選歷史 manifest 的路徑，目錄設定只定位資料，不授予用途或資格。Storage 只盤點具名位置與有界 Trial 容量，引用未核一律保留，沒有刪除操作。QA023／024 分別核實一般報告與題材筆記的正常 Main 保存／新程序讀回；這些增量仍屬 V2 開發分支，尚無固定 RC、真人或完整五旅程驗收結論。
+
 ```text
 使用者
   → ui_qt/main.py（視窗、工作區、表單與呈現）

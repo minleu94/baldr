@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 from typing import Any, cast
 
-from PySide6.QtCore import QModelIndex, Qt, Signal
+from PySide6.QtCore import QModelIndex, QSignalBlocker, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -1156,6 +1156,46 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             ),
             self._apply_query_result,
         )
+
+    def apply_condition_recipe(self, recipe_key: str) -> bool:
+        """只替換已保存來源的規則篩選；不改來源、不執行查詢。"""
+        recipe_rules = {
+            "ma5_20_golden_cross": "ma5_20_golden_cross",
+            "kd_golden_cross": "kd_golden_cross",
+            "macd_golden_cross": "macd_golden_cross",
+        }
+        rule_key = recipe_rules.get(recipe_key)
+        query = self._query
+        if (
+            rule_key is None
+            or query is None
+            or self._closing
+            or self._worker is not None
+            or self._pending is not None
+            or rule_key not in query.method_rule_keys
+            or rule_key not in self._rule_filters
+        ):
+            return False
+
+        mode_index = self.mode.findData("AND")
+        indexes: dict[str, int] = {}
+        for key, combo in self._rule_filters.items():
+            filter_id = "match" if key == rule_key else _NO_STATE_FILTER
+            index = combo.findData(filter_id)
+            if index < 0:
+                return False
+            indexes[key] = index
+        if mode_index < 0:
+            return False
+
+        # 擋住任何目前或未來的控件變更副作用；查詢只能由使用者按按鈕啟動。
+        blockers = [QSignalBlocker(self.mode)]
+        blockers.extend(QSignalBlocker(combo) for combo in self._rule_filters.values())
+        self.mode.setCurrentIndex(mode_index)
+        for key, combo in self._rule_filters.items():
+            combo.setCurrentIndex(indexes[key])
+        del blockers
+        return True
 
     def change_page(self, delta: int) -> None:
         base = self._query

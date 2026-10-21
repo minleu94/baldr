@@ -114,7 +114,8 @@ class _BundleFixture:
 @pytest.fixture(scope="module")
 def bundle_fixture() -> Iterator[_BundleFixture]:
     repo_root = Path(__file__).resolve().parents[1]
-    qa_parent = repo_root / "output" / "qa"
+    # 測試根使用實體路徑，避免儲存 junction 觸發原來源安全拒絕。
+    qa_parent = (repo_root / "output" / "qa").resolve()
     qa_parent.mkdir(parents=True, exist_ok=True)
     qa_root = Path(tempfile.mkdtemp(prefix="f17-bundle-v1-synthetic-", dir=to_internal_io_path(qa_parent)))
     database = qa_root / "synthetic_prices.sqlite"
@@ -1275,6 +1276,13 @@ def _roc(value: date) -> str:
 
 def _tree_signature(path: Path) -> tuple[tuple[str, int, int, str], ...]:
     io_path = to_internal_io_path(path)
+    # 遞迴後的子路徑可能超過 MAX_PATH；由根保留 extended 形式以完整核驗。
+    if os.name == "nt" and not io_path.startswith("\\\\?\\"):
+        io_path = (
+            "\\\\?\\UNC\\" + io_path[2:]
+            if io_path.startswith("\\\\")
+            else "\\\\?\\" + io_path
+        )
     root_info = os.lstat(io_path)
     assert not _is_test_reparse(root_info)
     if stat.S_ISREG(root_info.st_mode):

@@ -27,6 +27,7 @@ from scripts import document_external_references as external_references
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROLE_CATALOG = "docs/agents/ROLE_ROUTING.json"
 FEATURE_MAP = "docs/00_core/FEATURE_DOCUMENT_MAP.json"
+TASK_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,95}")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -44,6 +45,68 @@ def confined(root: Path, relative: str) -> Path:
     if not candidate.is_relative_to(root.resolve()):
         raise ValueError(f"路徑超出 repository：{relative}")
     return candidate
+
+
+def _task_path_parts(relative: str) -> tuple[str, ...]:
+    """解析受限任務路徑前先核對其詞法片段。"""
+    if not relative or Path(relative).is_absolute() or re.match(r"^[A-Za-z]:", relative):
+        raise ValueError(f"必須提供 repo 相對任務路徑：{relative}")
+    normalized = relative.replace("\\", "/")
+    parts = tuple(normalized.split("/"))
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(f"任務路徑含不允許的路徑片段：{relative}")
+    if len(parts) < 4 or parts[:2] != ("output", "tasks") or not TASK_ID_PATTERN.fullmatch(parts[2]):
+        raise ValueError(f"只接受 output/tasks/<safe-task-id> 下的任務路徑：{relative}")
+    return parts
+
+
+def _is_reparse_or_symlink(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return False
+    return path.is_symlink() or bool(
+        getattr(metadata, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    )
+
+
+def _task_storage_path(root: Path, relative: str, *, task_id: str, evidence: bool = False) -> Path:
+    """解析 repo output 根目錄下本任務限定的狀態或證據路徑。
+
+    repo 根的 output 可是已核准的儲存 junction；解析後的子層必須都是
+    一般目錄或檔案。此解析器只讀，不建立缺少的目錄。
+    """
+    parts = _task_path_parts(relative)
+    if parts[2] != task_id:
+        raise ValueError(f"任務路徑 ID 與 task record 不一致：{relative}")
+    if evidence:
+        if len(parts) < 5 or parts[3] != "evidence":
+            raise ValueError(f"任務證據必須位於本任務 evidence 子目錄：{relative}")
+    elif len(parts) != 4 or parts[3] != "task.json":
+        raise ValueError(f"任務狀態路徑必須是 output/tasks/<safe-task-id>/task.json：{relative}")
+
+    repo = root.resolve()
+    output = repo / "output"
+    if not output.exists():
+        if _is_reparse_or_symlink(output):
+            raise ValueError(f"repo output 儲存 junction 目標不可讀：{output}")
+        output_root = output
+    else:
+        try:
+            output_root = output.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError(f"repo output 儲存根目錄不可讀：{output}") from exc
+        if not output_root.is_dir():
+            raise ValueError(f"repo output 儲存根目錄不是目錄：{output}")
+
+    current = output_root
+    # 僅信任 repo 根的 output junction；其下每層都要先檢查再使用。
+    for part in parts[1:]:
+        current = current / part
+        if _is_reparse_or_symlink(current):
+            raise ValueError(f"任務路徑子層不接受 symlink／junction：{relative}")
+    return current
 
 
 def match_paths(paths: list[str], patterns: list[str]) -> bool:
@@ -110,14 +173,19 @@ def required_documents(root: Path, paths: list[str]) -> list[str]:
 
 
 def init_task(root: Path, *, task_id: str, kind: str, owner: str, paths: list[str], request: str = "") -> dict[str, Any]:
-    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,95}", task_id):
+    if not TASK_ID_PATTERN.fullmatch(task_id):
         raise ValueError("task_id 必須是 1–96 位小寫英數、底線或連字號。")
     if not owner.strip():
         raise ValueError("必須指定任務 owner。")
     classified = route(root, kind=kind, request=request, changed=paths)
-    directory = confined(root, f"output/tasks/{task_id}")
+    target = _task_storage_path(
+        root, f"output/tasks/{task_id}/task.json", task_id=task_id
+    )
+    directory = target.parent
     directory.mkdir(parents=True, exist_ok=True)
-    target = confined(root, f"output/tasks/{task_id}/task.json")
+    target = _task_storage_path(
+        root, f"output/tasks/{task_id}/task.json", task_id=task_id
+    )
     baseline = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False).stdout.strip()
     record = {
         "schema_version": "baldr-task.v1", "task_id": task_id, "owner": owner,
@@ -260,8 +328,20 @@ def check_task(root: Path, task: dict[str, Any]) -> list[str]:
                 errors.append("驗證通過卻缺證據位置")
             if result.get("status") == "not_required" and not result.get("reason"):
                 errors.append("免驗證未附理由")
-            if result.get("evidence") and not confined(root, result["evidence"]).is_file():
-                errors.append(f"驗證證據缺件：{result['evidence']}")
+            evidence = result.get("evidence")
+            if evidence:
+                normalized_evidence = str(evidence).replace("\\", "/")
+                if normalized_evidence.startswith("output/tasks/"):
+                    evidence_path = _task_storage_path(
+                        root,
+                        normalized_evidence,
+                        task_id=str(task.get("task_id") or ""),
+                        evidence=True,
+                    )
+                else:
+                    evidence_path = confined(root, normalized_evidence)
+                if not evidence_path.is_file():
+                    errors.append(f"驗證證據缺件：{evidence}")
         required_gates = set(expected.get("gates", []))
         represented = {result.get("name") for result in results}
         for gate in sorted(required_gates - represented):
@@ -327,7 +407,13 @@ def check(root: Path, *, paths: list[str] | None = None, task_path: str | None =
     links = link_report(root, link_scope)
     errors.extend(links["errors"])
     if task_path:
-        errors.extend(check_task(root, read_json(confined(root, task_path))))
+        task_parts = _task_path_parts(task_path)
+        task_record = read_json(
+            _task_storage_path(root, task_path, task_id=task_parts[2])
+        )
+        if task_record.get("task_id") != task_parts[2]:
+            raise ValueError(f"task.json 內 task_id 與路徑不一致：{task_path}")
+        errors.extend(check_task(root, task_record))
     return {"schema_version": "baldr-document-check.v1", "passed": not errors, "errors": errors, "checked_features": len(ids), "checked_link_sources": len(link_scope), "registered_external_references": links["registered_external_references"], "limitation": "結構與紀錄核對；已登記冷封存另列且不讀raw bytes，不證明外部內容、文件語意、產品Gate、真安裝或自然排程成功。"}
 
 

@@ -60,7 +60,7 @@ flowchart TD
 
 保存母體的四路同 callback Projection Group V3 是 application backend 的 opt-in seam；MA／KDJ／volatility 與 F07 facts 共用 exact verified parent，來源 ledger、population 及 canonical digest 綁同 session。既有 V2、UI／query／bookmark 仍依各自入口，未由新增 backend 宣稱完整比較工作流完成。責任邊界見[UI 與應用流程](current/application_and_workspaces.md)。
 
-目前 UI 有決策工作台、市場探索、推薦分析、策略回測／Research Lab、觀察清單、個股研究、持倉管理、數據更新及 Runtime Observatory。Daily Decision Desk 位於「市場探索 > 市場總覽」；決策工作台的來源導覽回到同一畫面。
+目前 route 定義保留九個穩定 workspace keys：`workbench`、`market_explore`、`recommendation`、`backtest`、`watchlist`、`stock_research`、`portfolio`、`update`、`runtime`，供既有 route、context 與來源回訪識別。V2 導覽將這些頁面呈現在「今日總覽」、「探索與研究」、「我的投資」、「策略實驗室」四個主導覽群組，另以系統管理承載系統子頁；呈現分組不改寫後端 key 或領域責任。個股 Detail 是共用呈現入口，仍以各自 source kind、source workspace、版本／日期與有效上下文隔離來源；相同股票代號不構成跨來源互換。Daily Decision Desk 位於「探索與研究 > 市場總覽」；決策工作台的來源導覽回到同一畫面。操作細節見 [Application Manual V2 導航](../07_guides/APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)。
 
 首頁明選 Paper 健康部位的 Source 接線沿同一工作區系統，以原 read model／唯一部位交接，持倉頁獨立刷新核同版本後才定位；不合併手動帳或代替歷史保存評估。契約見[工作區邊界](current/application_and_workspaces.md#九個頂層工作區)。
 

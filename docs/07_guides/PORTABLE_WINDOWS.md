@@ -2,6 +2,8 @@
 
 V2 本機技術候選為 `dist/candidate_e36919493b70_a1df3b90/baldr`，版本 `2026.10.21+e36919493b70`。用該資料夾的 `Launch-Baldr.cmd` 啟動，`--prepare` 只準備受限樣本並核設定，`--check launch-info` 只檢查設定。它已通過同版與 17 路由 offscreen 驗證，原生／真人接受及完整五旅程仍依[V2 驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)。本包使用具名隔離 state 與四股／固定題材樣本，未匯入私人帳、正式資料或排程；本機位置綁定不表示跨機可攜。README 與交付收據列精確位置及限制。
 
+候選的 `qa233a-two-stock-population.json` 與 README 另提供兩股研究重現步驟：從「產製新研究版本」明選範例、核對隔離價庫及截止時間，再至「價格母體」查詢、比較、開個股並返回。JSON 只宣告2317／2330及2026-09-23研究範圍；請沿 README 的實體 F 槽路徑選檔，勿改原來源時鐘。這段已由正常 Python Main 與新程序有界驗證，未宣稱候選 EXE 此旅程或歷史 PIT 接受。
+
 V2 工程候選由完整固定 commit 建置；可明示 `packaging/build_windows.py --commit <完整40字元SHA> --version-date 2026.10.21`。版本日期必須是有效 `YYYY.MM.DD`，不依建置機時鐘；不指定時保留舊日期以相容既有流程。候選輸出仍標為 `built_not_validated`，需另做同版與產品驗證，日期及 release 渠道字樣本身不代表接受。
 
 可攜版供不安裝 Python 的 Windows 使用者啟動桌面 UI。使用與下載時一併提供的完整 `baldr` 資料夾，內含 `baldr.exe` 與 `_internal`；不要只複製 exe。版本、commit 與候選／發布狀態須看該份交付隨附的 metadata 和驗收收據，本指南不指定目前最新 exe。

@@ -95,7 +95,7 @@ QA038 從固定 `730613e121b3fb5ca349440bf9973acc6a727842` 建立首個隔離 EX
 |---|---|---|
 | 總覽→線索→個股→保存→返回 | PARTIAL | QA017 覆蓋一般查股、保存、fresh 回訪及返回；沒有覆蓋由總覽線索進入的完整旅程，offscreen 不是原生 GUI。 |
 | 市場／題材→成分→個股→返回 | PARTIAL | QA024 固定 10/16 受限快照之正常 Main first/fresh 證明 25 鏈／90 題材、CoWoS 21/21 有價量觀測的明選成分進 2330、保存題材 note revision 並 fresh 回讀原 manifest identity；這是固定題材來源的腳本旅程 PASS。一般個股行情在隔離根仍缺件，完整來源資格、原生 GUI 與真人接受待驗，不能把題材價量當作個股行情。QA013／QA017 另提供路由／布局證據。 |
-| 綜合選股→條件→2–5股比較→個股 | PARTIAL | QA024 範本 13 PASS、QA033 原月營收 view 的來源、分頁、比較、收藏與精確重開 1 PASS；完整 Main wrapper 多股旅程另驗。 |
+| 綜合選股→條件→2–5股比較→個股 | PARTIAL | QA056 正常 Main／新程序已完成價格母體兩股條件、比較、個股與原頁返回，屬 scoped PASS；QA033 原月營收 view 的分頁、比較、收藏及精確重開另有局部證據。月營收完整 Main 綁定、EXE 此旅程與 Native／真人仍待。 |
 | 個股→人工確認→Paper→Forward→覆盤 | PARTIAL（安全出口） | QA033 正常 Main 缺合法 mark/cash/snapshot 時拒絕建帳，manual/Paper 分開、無 NAV/ledger 寫入；手動研究日記經 UI 保存並 fresh 精確回讀。完整建帳及自然 Forward 成熟未驗。 |
 | 策略→回測→保存→比較→返回 | PASS（受限腳本） | QA033 正常 Main 以 2330 真實受限 120 點樣本執行兩策略、保存 Registry 並 fresh 精確讀回；QA035/036 另以同策略原輸入新增合法 run、fresh 比較 120 共同日期/240列權益，原件保持。異指紋與搬移路徑拒錯另有原證據。非績效資格、Native 或真人接受。 |
 
@@ -112,6 +112,10 @@ QA041 從固定 `e36919493b70a6be99df43b8e6d420b6d6b6c418` 建置修正候選，
 QA047 補齊 Blueprint §11A 的 **1500×900、DPR 1.5**，沿用同一 e369 EXE 與隔離 state，沒有重建。真正 frozen Main 的 17 路由通過；首頁與選股頁截圖實際為 2250×1350 像素，root 已檢視，無意外 modal／錯誤，TaskWorker／thread pool 為零。啟動器正反 SHA 檢查及包內／state 四個樣本 SHA 保持。原始收據在本 task 的 `qa047_1500_probe/receipt.json` 與 `qa047_1500_probe/r27_exe_main_smoke/result.json`；closure `ee26d03ce16d9bd9843153d950068acd2ca125738a40507dfd30cc9b49507e45` 自然排空、handles 關閉、mutex 釋放。這補足指定尺寸的 offscreen 證據，不改變五條完整旅程的 PARTIAL 或原生／真人待驗狀態。
 
 交付回退只切換啟動對象：先正常關閉此候選，保留完整目錄及獨立 state，再從研究13原入口 `output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd` 啟動。不要把候選 state 匯入、合併或複製進研究13／正式／私人根；本步驟沒有資料還原、遷移或清理。兩份新 EXE（730 首包與 e369 修正版）及原失敗證據均保留，資源現況依既有 task `RESOURCE_LEDGER.md`，任務 Credits 為 `USAGE_UNOBSERVABLE`。
+
+QA049–055 原失敗均保留。QA052 的舊143來源因保存的 C 槽 output 別名已成 junction 而被 source-clock canonical 檢查拒絕；現有封存恢復工具保留 clock，不能解除這個具名限制。QA054 改用固定 QA233a 真行情副本，經正常 Main 四個 Qt 非原生確認與正式 producer 建立明示兩股母體（2317／2330、資料日 2026-09-23、台北16:00截止），分母／處理各2、缺件0；完成條件、比較及個股開啟後，驗證腳本錯把隱藏個股頁要求清空而逾時，整輪仍是 FAIL，沒有改產品返回邏輯。
+
+QA056 以全新 Main 程序與 CASE，透過正式 `ApplicationSettings` 明選剛產製的保存來源，通過兩股查詢、價格下限1、比較、個股及返回；query／page／row identity 全部保持。原 QA233a／本 CASE 價庫 SHA 與來源 plan／三份 receipt SHA 保持，availability 仍 unknown、歷史 PIT 仍 false。`r44_qa056/journey_receipt.json` 為原始證據，closure `36a15b1a8b374bf1b2b7907742c591d995fa819f93a05ef9b44bd0884ed45782` 自然排空、handles 關閉、mutex 釋放，worker／thread pool 為零。本切片不是月營收綁定、全市場、EXE 此旅程或 Native／真人接受。候選另附已由正式 loader 接受的兩股母體 JSON 範例及 README 步驟，只有研究範圍參數，沒有手寫金融列、clock 或接受紀錄。
 
 本任務新 EXE 建置共 2 份，首包保留但未通過同版；本機修正候選約 976 MB，未替換研究13、`dist/baldr` 或 active delivery。已有包、正式資料、模型及私人資產未刪除。平台可觀測帳戶共用額度與餘額，無精確任務計費歸屬，額外 Credits 實耗為 UNKNOWN；不聲稱能對平台帳單強制數字硬停。
 

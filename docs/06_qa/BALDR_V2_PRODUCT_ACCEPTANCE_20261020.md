@@ -148,3 +148,13 @@ QA073 修復後，歷史推薦 first/fresh 均 PASS：首頁實際入口、原 1
 QA075 改沿實際「保存判斷」按鈕並等待讀取完成，正常 Main first/fresh 全部 PASS：固定題材→2330、獨立 9/23 行情 120 點、報告判斷保存、原題材原列返回；新程序 Timeline 精確重開、首頁真按鈕開同一報告並返回同卡、Journal 不變。原始證據 `r58_market_theme/r71_first_result.json`／`r71_fresh_result.json` 明列 10/16 context 與 9/23 價格日期、來源身份及 SHA；root 已檢視兩張返回題材頁圖。closure `e0e30f9c15518560d00112826baf0618a494591332eacae62e171c7f6102a252` 自然排空，workers／Job PID 為零、handles 關閉、mutex 釋放，無強制清除。
 
 上述新功能與關閉修復只在後繼原始碼，固定 e369 EXE 不含；未新建 EXE。原生操作仍停止，真人與整體 V2 Gate 未接受；金融資格維持原限制。
+
+## 新整合候選（QA077–080）
+
+QA077 從已提交 `2b164aede9533f8f1cebe1b95d4e267792ecdf9f` 建置本任務第三份 EXE，版本 `2026.10.21+2b164aede953`；包含先前 Storage、首頁原件回訪／分日與推薦頁 owned timer 修復。新包為 `dist/candidate_2b164aede953_1dff24ee/baldr`，EXE 57,115,086 bytes，SHA `8499fc15231750a3616316b40079c9ac572bbaa5af95943ffd98f4575585e89f`。QA078 使用固定 archive 的 Python／EXE 同版 probe 通過；closure `04f7f4873a9ae0f890837b186c2775aa404533a9867d0ed244b73074205eb4cb` 自然閉鎖。沒有替換既有包或重複複製完整封裝。
+
+QA079 新增驗證工具遇到未封裝的 QtTest、及 loader module 名稱假設而 FAIL，原收據保留；沒有為測試重建 EXE。後續 helper 改以 Qt 滑鼠事件操作實際 viewport，並精確接受兩個已知 frozen loader module 名稱，仍要求 `PyiFrozenLoader` 且來源位於 `_MEIPASS`，不允許工作樹 fallback。
+
+QA080 全部命令通過：真正 frozen Main 重用 QA075 保存原件，核 source commit／五個包內模組、題材與獨立行情、Timeline 與首頁原報告精確重開及返回，Journal／來源 SHA 不變；儲存頁明確盤點 `sys.executable.parent` 的單一套件，三隔離根正確，達 4096 項時呈現部分大小而非假完整。啟動器 prepare／check、錯 SHA exit3 拒絕、包內與 state 四樣本不變通過。17 路由在 1280×760、DPR1.5 通過；首頁另驗 1500×900、1440×900、1920×1080，非所有路由的四尺寸全覆蓋。root 已檢視首頁原件卡、保存報告、儲存頁及1500首頁圖。無意外 modal，worker／thread pool 為零；closure `1f9a1286c795c9049c6d53ed6e1e19b30980845ea0c4fde759edbaef6f3a0e41` 自然排空、handles 關閉、mutex 釋放。
+
+新包有 `Launch-Baldr.cmd`、`RESEARCH_GUIDE.md`、既有兩股母體範例與 `DELIVERY_RECEIPT.json`；交付收據 SHA `76ea834b8edea9b680a4a86cf1e055c5bf9f80e0cf34605cb8eff3e7199cbe3a`，列八個關鍵檔 pin。啟動器固定 Windows PowerShell、CRLF／無 BOM 與新 `r74_candidate_state`，四個真樣本沿舊包固定 pin 核對。回退僅切換至研究13原入口，不合併或遷移 state；未簽章、未替換 active delivery、未執行原生輸入。兩股價格完整 EXE 旅程、真月營收來源／binding、完整 Paper／自然 Forward、Native 與真人仍各自待驗；整體 V2 Gate 不升格。

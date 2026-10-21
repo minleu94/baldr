@@ -30,6 +30,8 @@
 
 儲存維護頁提供唯讀、有界的儲存位置及版本盤點。原始碼啟動只檢查明示的 repo／dist 版本容器；封裝啟動只檢查目前套件位置，不搜尋父磁碟或其他 Trial。磁碟容量欄代表整個磁碟，不是目錄用量；最多盤點 64 個版本及 4096 個項目，超限、不可讀或未跟隨內層連結時保留部分／不可用狀態。未盤點不等於零；沒有清理或刪除資格，引用、備份與回退未逐件核對的版本一律保留。操作及狀態判讀見[APPLICATION_MANUAL 儲存維護](../07_guides/APPLICATION_MANUAL.md#系統管理儲存維護)。後繼原始碼的定向、正常 Main 首次盤點及雙次刷新證據見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#儲存盤點缺件診斷qa058-起)；舊 e369 EXE 不含此修復。
 
+首頁「最近研究」保留既有「開啟研究紀錄與覆盤」入口；只有保存原件為 report 且同時有來源資料日與來源身份時，另顯示「回訪原報告」。報告卡的行情日只取實際 `StockResearchReportNote.snapshot.report.price_points[-1].data_date`；原件型別不符、沒有價格列或末筆日期缺失時顯示原件未提供，不從 context 推算。新入口以同次讀取的 exact entry 選取時間軸，重用原件 reader 背景重核後才呈現保存時 snapshot；首頁來源返回首頁，時間軸原入口仍返回時間軸。過期 entry、缺 provenance、原件欄位不符或讀取失敗不會改開同 ID／同股的其他版本。保存時間、來源資料日、來源資格與當下行情各自判讀；保存 snapshot 不代表最新資料或投資建議。操作步驟及限制見 [APPLICATION_MANUAL V2 導航](../07_guides/APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)。本段描述目前原始碼接線，不宣稱 QA 已通過或既有 EXE 已包含。
+
 本頁說明 UI 呈現與互動契約；操作步驟、參數、安全限制、結果判讀及排錯以操作手冊為準。工作區責任與資料流見[目前架構分冊](../01_architecture/current/application_and_workspaces.md)，Recommendation、Backtest、Portfolio 計算責任見[決策、研究與 Portfolio](../01_architecture/current/decision_research_portfolio.md)。目前產品狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，驗收範圍依各原 QA 收據判讀。
 
 ## 跨頁責任與搜尋入口

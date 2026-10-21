@@ -2581,6 +2581,7 @@ class MainWindow(QMainWindow):
                 )
                 self.research_timeline_view.resultReady.connect(self.recent_research_widget.set_result)
                 self.research_timeline_view.readUnavailable.connect(self.recent_research_widget.set_unavailable)
+                self.recent_research_widget.originalRequested.connect(self._open_recent_report_original)
             self.research_timeline_view.refresh()
             self.research_timeline_view.openOriginalRequested.connect(self._open_timeline_original)
             timeline_page = QWidget(self)
@@ -2907,6 +2908,20 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("研究時間軸已重新讀取，原首頁項目不再是目前選取；請到時間軸明選。")
 
+    def _open_recent_report_original(self, value: object) -> None:
+        """首頁明選保存報告；沿原時間軸核驗，返回仍回原首頁。"""
+        if (type(value) is not ResearchTimelineEntry
+                or getattr(self, "_shutdown_close_requested", False)
+                or value.kind != "report" or not isinstance(value.data_date, str)
+                or not value.data_date.strip() or not isinstance(value.source_identity, str)
+                or not value.source_identity.strip()):
+            return
+        if not self.research_timeline_view.select_entry(value):
+            self.statusBar().showMessage("研究時間軸已重新讀取，原首頁項目不再是目前選取；請到時間軸明選。")
+            return
+        self.product_shell.activate_route("journal")
+        self._open_timeline_original(value, return_route="overview")
+
     def _verify_timeline_entry(self, entry: ResearchTimelineEntry, completed) -> None:
         """同一 reader 背景重核原件；晚到或關閉回傳不改畫面。"""
         from ui_qt.workers.task_worker import TaskWorker
@@ -2947,8 +2962,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("正在重新核對所選筆記、修訂與原來源…")
         worker.start()
 
-    def _open_timeline_original(self, value: object) -> None:
-        if type(value) is not ResearchTimelineEntry:
+    def _open_timeline_original(self, value: object, *, return_route: str = "journal") -> None:
+        if (type(value) is not ResearchTimelineEntry or return_route not in {"journal", "overview"}
+                or (return_route == "overview" and (value.kind != "report"
+                    or not isinstance(value.data_date, str) or not value.data_date.strip()
+                    or not isinstance(value.source_identity, str) or not value.source_identity.strip()))):
             return
         entry = value
         timeline = self.research_timeline_view
@@ -2965,7 +2983,7 @@ class MainWindow(QMainWindow):
                 self.stock_research_workspace.show_saved_report_snapshot(note.snapshot)
                 self._select_main_workspace("stock_research")
                 self._timeline_detail_entry = entry
-                self.product_shell.set_detail_origin("journal")
+                self.product_shell.set_detail_origin(return_route)
             elif entry.kind == "price":
                 self._timeline_pending_price_entry = entry
                 self._open_price_bookmark_state(price_state)
@@ -3000,18 +3018,21 @@ class MainWindow(QMainWindow):
         visible_page = workspace.content_stack.currentWidget()
         report_page = workspace.report_tabs.currentWidget()
         price_page = workspace.price_research_view
+        origin_route = self.product_shell._detail_origin
+        if origin_route not in {"journal", "overview"}:
+            return False
 
         def apply(_result: object) -> None:
             if (getattr(self, "_timeline_detail_entry", None) is entry
                     and self.workspace_stack.currentWidget() is self.workspace_widgets["stock_research"]
-                    and self.product_shell._detail_origin == "journal"
+                    and self.product_shell._detail_origin == origin_route
                     and workspace.content_stack.currentWidget() is visible_page
                     and workspace.report_tabs.currentWidget() is report_page
                     and workspace.price_research_view is price_page
                     and (entry.kind != "report" or getattr(
                         getattr(workspace.saved_report_view, "_saved_projection_snapshot", None),
                         "canonical_json", None) == entry.reference.snapshot.canonical_json)):
-                self.product_shell.activate_route("journal")
+                self.product_shell.activate_route(origin_route)
                 self._timeline_detail_entry = None
 
         self._verify_timeline_entry(entry, apply)

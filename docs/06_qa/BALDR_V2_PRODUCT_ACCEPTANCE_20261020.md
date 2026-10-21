@@ -93,8 +93,8 @@ QA038 從固定 `730613e121b3fb5ca349440bf9973acc6a727842` 建立首個隔離 EX
 
 | 五條研究旅程 | 狀態 | 已有證據與未覆蓋出口 |
 |---|---|---|
-| 總覽→線索→個股→保存→返回 | PARTIAL | QA017 覆蓋一般查股、保存、fresh 回訪及返回；沒有覆蓋由總覽線索進入的完整旅程，offscreen 不是原生 GUI。 |
-| 市場／題材→成分→個股→返回 | PARTIAL | QA024 固定 10/16 受限快照之正常 Main first/fresh 證明 25 鏈／90 題材、CoWoS 21/21 有價量觀測的明選成分進 2330、保存題材 note revision 並 fresh 回讀原 manifest identity；這是固定題材來源的腳本旅程 PASS。一般個股行情在隔離根仍缺件，完整來源資格、原生 GUI 與真人接受待驗，不能把題材價量當作個股行情。QA013／QA017 另提供路由／布局證據。 |
+| 總覽→線索→個股→保存→返回 | PARTIAL | QA073 正常 Main 從首頁進 10/19 歷史保存推薦、明選 1512 原 context、保存報告並返回同結果同列，first/fresh 自然關閉；QA075 fresh 再驗首頁具名最近研究卡真按鈕開原報告、返回首頁同卡及 Journal 不變。這些受限腳本切片 PASS；受接受今日候選、原生 GUI 與真人仍待。 |
+| 市場／題材→成分→個股→返回 | PARTIAL | QA024 原固定題材切片保持；QA075 正常 Main first/fresh 另用真實 9/23 一般行情，完成 10/16 題材 25 鏈／90 題材、CoWoS→2330、保存及原件重開、返回原成員列。一般報告 120 點取自獨立價庫，沒有借用題材價量；context 來源日 10/16、價格末日 9/23 分開核對，三題材檔及價庫 SHA 不變。完整來源資格、原生 GUI 與真人仍待。 |
 | 綜合選股→條件→2–5股比較→個股 | PARTIAL | QA056 正常 Main／新程序已完成價格母體兩股條件、比較、個股與原頁返回，屬 scoped PASS；QA033 原月營收 view 的分頁、比較、收藏及精確重開另有局部證據。月營收完整 Main 綁定、EXE 此旅程與 Native／真人仍待。 |
 | 個股→人工確認→Paper→Forward→覆盤 | PARTIAL（安全出口） | QA033 正常 Main 缺合法 mark/cash/snapshot 時拒絕建帳，manual/Paper 分開、無 NAV/ledger 寫入；手動研究日記經 UI 保存並 fresh 精確回讀。完整建帳及自然 Forward 成熟未驗。 |
 | 策略→回測→保存→比較→返回 | PASS（受限腳本） | QA033 正常 Main 以 2330 真實受限 120 點樣本執行兩策略、保存 Registry 並 fresh 精確讀回；QA035/036 另以同策略原輸入新增合法 run、fresh 比較 120 共同日期/240列權益，原件保持。異指紋與搬移路徑拒錯另有原證據。非績效資格、Native 或真人接受。 |
@@ -134,3 +134,17 @@ QA062 source Main 探針缺 repo import 路徑，QA063 對巢狀 `processEvents`
 QA066 的 R55 診斷以真正 Qt event loop 重開既有 R54 隔離 CASE，確認首頁按鈕導向選股研究、來源刷新與自然關閉正常；reader 回覆「legacy data_path 超出 runs 目錄範圍」。來源副本 DB／artifact 前後 pin 保持，沒有修改原件或放寬 guard，因此這份搬移副本不能當成完整歷史研究旅程通過。QA061 的 R51 準備階段因匯入提前建立隔離目錄而拒覆、QA063 的 R54 未取得保存來源，原失敗均保留。
 
 QA066 五份文件合查未通過：Snapshot／Manual 既有指向 output junction 的歷史 Trial 連結被越界守衛拒絕。沒有改寫舊連結或放寬檢查，不能聲稱全份文件檢查通過；本次新增操作與內部 QA／架構連結另作 scoped 核對。
+
+## 保存研究回訪與關閉修復（QA068–075）
+
+QA068 使用官方 `copy_research_output.py` 的 archive restore，將研究13的 13 個封存檔恢復到新的任務隔離根，依原收據重綁新副本的索引路徑，公開 reader 驗證通過；沒有手改 DB、放寬搬移守衛或重編金融 artifact。原封存不變、未啟用正式設定、未產製今日候選或來源資格。restore receipt SHA `5c4eeb357dfea29aa42139d81e3ddfeccdbefca61f77f3c57d4b0044be83411c`；closure `c492210992c312c7d59c6e83c3a9065971bcf16506cc7c129eebdc00d780e7f8` 自然閉鎖。
+
+QA069 helper 未接受 Qt 將 tuple 轉為 list 的資料表示，原 FAIL 保留。QA070／072 的歷史推薦旅程四個功能步驟完成，但正常關閉的 deferred-delete drain 重現推薦頁延後 resize 回呼存取已刪除 QScrollArea，整輪仍 FAIL；QA071 已另以新程序精確回讀原保存判斷。修復將延後回呼改為 RecommendationView 自有的單次 QTimer，銷毀時由 Qt 取消，成功關閉時停止；沒有吞錯、略過 drain 或修改金融邏輯。
+
+QA073 修復後，歷史推薦 first/fresh 均 PASS：首頁實際入口、原 10/19 保存結果 `rec_3a4acdb159d841cc91492de258c1a0a9`、1512 原研究脈絡、UI 保存、返回原結果／原列、fresh Timeline 原件及原 Journal 保持。degraded 與來源缺件照原件保留，沒有升格為今日推薦。原始收據在本 task 的 `r57_recommendation_restore/r67_first_receipt.json`、`r67_fresh_receipt.json`；closure `1aff377ab3815333eb3c3d9eb4744518c330c2aa48b2dadec08ba6eceb537316` 自然排空。QA073 整輪仍因另一題材 helper 的 runtime 根假設錯誤為 FAIL，不將子命令通過寫成整輪通過。
+
+首頁最近報告新增「回訪原報告」，以同次 entry 物件選取、背景重核原件，保存報告開啟與返回均保留身份；時間軸入口仍返回時間軸。報告卡分列保存時間、原研究來源日及行情日；行情日只取 typed 保存原件末筆價格，缺件明示原件未提供。QA074 編譯、45 項定向、Workbench 85、更新頁 25/0/4、mypy 1103 檔通過。題材 helper 在剛切筆記頁時立即檢查保存按鈕，未等待背景刷新而 FAIL；原失敗與三題材檔／價庫不變證據保留，closure `927b317f88dfa056461dbea9fed21968be4f41e42f71e6ee3789ad5522e13d58` 自然閉鎖。
+
+QA075 改沿實際「保存判斷」按鈕並等待讀取完成，正常 Main first/fresh 全部 PASS：固定題材→2330、獨立 9/23 行情 120 點、報告判斷保存、原題材原列返回；新程序 Timeline 精確重開、首頁真按鈕開同一報告並返回同卡、Journal 不變。原始證據 `r58_market_theme/r71_first_result.json`／`r71_fresh_result.json` 明列 10/16 context 與 9/23 價格日期、來源身份及 SHA；root 已檢視兩張返回題材頁圖。closure `e0e30f9c15518560d00112826baf0618a494591332eacae62e171c7f6102a252` 自然排空，workers／Job PID 為零、handles 關閉、mutex 釋放，無強制清除。
+
+上述新功能與關閉修復只在後繼原始碼，固定 e369 EXE 不含；未新建 EXE。原生操作仍停止，真人與整體 V2 Gate 未接受；金融資格維持原限制。

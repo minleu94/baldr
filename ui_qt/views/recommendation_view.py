@@ -764,6 +764,10 @@ class RecommendationView(QWidget):
             parent: 父窗口
         """
         super().__init__(parent)
+        # 由視圖持有延後的響應式版面更新；視圖銷毀時 Qt 會一併取消計時器。
+        self._responsive_layout_timer = QTimer(self)
+        self._responsive_layout_timer.setSingleShot(True)
+        self._responsive_layout_timer.timeout.connect(self._apply_responsive_layout)
         self.recommendation_service = recommendation_service
         self.regime_service = regime_service
         self.watchlist_service = watchlist_service
@@ -2770,7 +2774,7 @@ class RecommendationView(QWidget):
         self._apply_responsive_layout()
         # QSplitter 的子 viewport 幾何會在父視圖 resizeEvent 後才更新；
         # 下一輪事件再依結果區實際寬度切換長控制列的方向。
-        QTimer.singleShot(0, self._apply_responsive_layout)
+        self._responsive_layout_timer.start(0)
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
         """在窄版把設定與結果上下排列，保留同一份分析 context。"""
@@ -9040,5 +9044,6 @@ class RecommendationView(QWidget):
         if not self.request_cooperative_shutdown():
             event.ignore()
             return
+        self._responsive_layout_timer.stop()
         event.accept()
 

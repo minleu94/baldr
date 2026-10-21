@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from app_module.research_timeline_dtos import ResearchTimelineEntry, ResearchTimelineReadResult
+from app_module.stock_research_report_notes import StockResearchReportNote
 
 
 _KIND_LABELS = {
@@ -24,6 +25,7 @@ class RecentResearchWidget(QWidget):
     """以不可變時間軸結果顯示最多三筆有明確保存時間的研究。"""
 
     entryRequested = Signal(object)
+    originalRequested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -105,12 +107,26 @@ class RecentResearchWidget(QWidget):
         open_button.setProperty("variant", "secondary")
         open_button.clicked.connect(lambda _checked=False, selected=entry: self.entryRequested.emit(selected))
         top.addWidget(open_button)
+        if _has_report_source_identity(entry):
+            original_button = QPushButton("回訪原報告", card)
+            original_button.setObjectName("recentResearchOpenOriginalReport")
+            original_button.setProperty("variant", "secondary")
+            original_button.setAccessibleName("回訪此筆保存報告原版本")
+            original_button.clicked.connect(
+                lambda _checked=False, selected=entry: self.originalRequested.emit(selected)
+            )
+            top.addWidget(original_button)
         layout.addLayout(top)
 
-        metadata = QLabel(
-            f"保存時間 {entry.recorded_at}｜資料日 {entry.data_date or '原件未提供'}",
-            card,
-        )
+        if entry.kind == "report":
+            market_date = _saved_report_market_date(entry)
+            metadata_text = (
+                f"保存時間 {entry.recorded_at}｜原研究來源日 {entry.data_date or '原件未提供'}｜"
+                f"行情日 {market_date or '原件未提供'}"
+            )
+        else:
+            metadata_text = f"保存時間 {entry.recorded_at}｜資料日 {entry.data_date or '原件未提供'}"
+        metadata = QLabel(metadata_text, card)
         metadata.setObjectName("recentResearchEntryMetadata")
         metadata.setWordWrap(True)
         layout.addWidget(metadata)
@@ -160,6 +176,23 @@ def _has_aware_recorded_at(value: str) -> bool:
     except (AttributeError, TypeError, ValueError):
         return False
     return parsed.tzinfo is not None and parsed.utcoffset() is not None
+
+
+def _has_report_source_identity(entry: ResearchTimelineEntry) -> bool:
+    return (
+        entry.kind == "report"
+        and bool(str(entry.data_date or "").strip())
+        and bool(str(entry.source_identity or "").strip())
+    )
+
+
+def _saved_report_market_date(entry: ResearchTimelineEntry) -> str:
+    if type(entry.reference) is not StockResearchReportNote:
+        return ""
+    points = entry.reference.snapshot.report.price_points
+    if not points:
+        return ""
+    return str(points[-1].data_date or "").strip()
 
 
 def _preview(value: str) -> str:

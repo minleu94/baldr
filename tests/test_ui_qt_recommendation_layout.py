@@ -12,7 +12,7 @@ from decimal import Decimal
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pandas as pd
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, Qt
 from PySide6.QtGui import QFontMetrics, QTextCursor
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QBoxLayout, QHBoxLayout, QWidget
@@ -326,6 +326,65 @@ def _new_view() -> RecommendationView:
         regime_service=_RegimeService(),
         config=None,
     )
+
+
+def test_responsive_layout_timer_coalesces_resizes_without_reentry(monkeypatch) -> None:
+    app = _app()
+    original_apply = RecommendationView._apply_responsive_layout
+    active = 0
+    max_active = 0
+
+    def tracked_apply(view, *, force=False):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        try:
+            return original_apply(view, force=force)
+        finally:
+            active -= 1
+
+    monkeypatch.setattr(RecommendationView, "_apply_responsive_layout", tracked_apply)
+    view = _new_view()
+    view.show()
+    try:
+        for width, expected in (
+            (760, Qt.Orientation.Vertical),
+            (390, Qt.Orientation.Vertical),
+            (1366, Qt.Orientation.Horizontal),
+        ):
+            view.resize(width, 800)
+            assert view._responsive_layout_timer.isActive()
+            app.processEvents()
+            assert view.main_splitter.orientation() == expected
+            assert not view._responsive_layout_timer.isActive()
+        assert max_active == 1
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_responsive_layout_timer_dies_with_deferred_deleted_view(monkeypatch) -> None:
+    app = _app()
+    view = _new_view()
+    view.show()
+    app.processEvents()
+
+    qt_exceptions: list[BaseException] = []
+    previous_excepthook = sys.excepthook
+    monkeypatch.setattr(
+        sys,
+        "excepthook",
+        lambda exception_type, exception, traceback: qt_exceptions.append(exception),
+    )
+    try:
+        view.resize(390, 844)
+        assert view._responsive_layout_timer.isActive()
+        view.deleteLater()
+        QCoreApplication.sendPostedEvents(view, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        assert qt_exceptions == []
+    finally:
+        sys.excepthook = previous_excepthook
 
 
 def test_recommendation_result_scroll_and_five_rows_at_desktop_viewports() -> None:

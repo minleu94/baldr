@@ -6,6 +6,8 @@ V2 新整合本機技術候選為 `dist/candidate_2b164aede953_1dff24ee/baldr`�
 
 V2 工程候選由完整固定 commit 建置；可明示 `packaging/build_windows.py --commit <完整40字元SHA> --version-date 2026.10.21`。版本日期必須是有效 `YYYY.MM.DD`，不依建置機時鐘；不指定時保留舊日期以相容既有流程。候選輸出仍標為 `built_not_validated`，需另做同版與產品驗證，日期及 release 渠道字樣本身不代表接受。
 
+QA090 已另驗同一新 EXE 讀取既有官方 producer 兩股來源，完成條件、比較、同源個股及原查詢／頁／列返回與正常關閉；不是 EXE 內產製來源的整段驗收。價庫／來源／Journal 保持，availability unknown 與 PIT=false 不變，原生／真人仍待。最新交付收據及原失敗依上述 V2 驗收紀錄。
+
 可攜版供不安裝 Python 的 Windows 使用者啟動桌面 UI。使用與下載時一併提供的完整 `baldr` 資料夾，內含 `baldr.exe` 與 `_internal`；不要只複製 exe。版本、commit 與候選／發布狀態須看該份交付隨附的 metadata 和驗收收據，本指南不指定目前最新 exe。
 
 目前[143試用包](TRIAL_VERSION_GUIDE.md)含自有runtime、技術原件與139研究資料，另含task具名顯示名錄。首次啟動前放妥整包，雙擊`Launch-Baldr.cmd`建立自有state；本機新位置實測537.875秒／600秒，正常固定EXE／同版新程序與啟動器正反SHA限定通過。舊139、141c及私人帳保持；已用state、其他收藏家族與跨機仍待，詳[143 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)。

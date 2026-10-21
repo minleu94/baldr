@@ -158,3 +158,11 @@ QA079 新增驗證工具遇到未封裝的 QtTest、及 loader module 名稱假�
 QA080 全部命令通過：真正 frozen Main 重用 QA075 保存原件，核 source commit／五個包內模組、題材與獨立行情、Timeline 與首頁原報告精確重開及返回，Journal／來源 SHA 不變；儲存頁明確盤點 `sys.executable.parent` 的單一套件，三隔離根正確，達 4096 項時呈現部分大小而非假完整。啟動器 prepare／check、錯 SHA exit3 拒絕、包內與 state 四樣本不變通過。17 路由在 1280×760、DPR1.5 通過；首頁另驗 1500×900、1440×900、1920×1080，非所有路由的四尺寸全覆蓋。root 已檢視首頁原件卡、保存報告、儲存頁及1500首頁圖。無意外 modal，worker／thread pool 為零；closure `1f9a1286c795c9049c6d53ed6e1e19b30980845ea0c4fde759edbaef6f3a0e41` 自然排空、handles 關閉、mutex 釋放。
 
 新包有 `Launch-Baldr.cmd`、`RESEARCH_GUIDE.md`、既有兩股母體範例與 `DELIVERY_RECEIPT.json`；交付收據 SHA `76ea834b8edea9b680a4a86cf1e055c5bf9f80e0cf34605cb8eff3e7199cbe3a`，列八個關鍵檔 pin。啟動器固定 Windows PowerShell、CRLF／無 BOM 與新 `r74_candidate_state`，四個真樣本沿舊包固定 pin 核對。回退僅切換至研究13原入口，不合併或遷移 state；未簽章、未替換 active delivery、未執行原生輸入。兩股價格完整 EXE 旅程、真月營收來源／binding、完整 Paper／自然 Forward、Native 與真人仍各自待驗；整體 V2 Gate 不升格。
+
+## 兩股既有來源 EXE 旅程（QA082–090）
+
+QA082–088 原工具失敗保留：長路徑需使用既有 Windows extended read path；PyInstaller 的虛擬 `__file__` 不能要求實體檔；專項 startup controller 必須依正式 ready 契約啟用 Main；查詢欄位是 `min_close_price`。重用價庫保持唯讀，crash diagnostics 沿既有 public API 指定本次 CASE，不放行舊資料根寫入。QA086 同時量得普通261字元 plan 探測失敗但 extended 可讀；正式產品 catalog 已有 extended I/O，QA088 實際讀出 complete entry，不判為封裝長路徑缺陷。沒有修改產品、來源 clock 或收據。
+
+QA089 六項功能步驟完成，但 helper 在合作式關閉開始時取樣而判 FAIL；原 crash log 已記正常收尾。QA090 將最終關閉判定移到正常 Main 返回及 drain 後，編譯與完整限定 EXE 旅程 PASS：明選 R42 官方 producer 既有兩股來源、價格下限1、2317／2330 比較、同源個股與同 query／page／row 返回。四個來源索引 SHA、R44 唯讀價庫及 Journal 保持；沒有新增價庫副本、產製來源或網路。availability 仍 unknown、PIT=false，非全市場、月營收或自然 Forward 接受。
+
+證據在本 task 的 `r98_price_frozen_2b164aede953/price_frozen_journey_r98/receipt.json`，root 已檢視返回圖；closure `08b5e8ac6ffed6634e9a2db7da2a1b98333506033540c2141f2de13156a8788e` 正常退出、worker／Job PID0、handles 關閉、mutex 釋放，無強制清除。更新後交付收據 SHA `d88dfd7a765582cb816a16bbc1b757a97fda19bfa37b7d46f5239336572148c7`，八個 key file pins 不變；原 QA080 收據另存於任務目錄。EXE 來源產製、Native／真人、完整五旅程與金融 Gate 仍不升格。

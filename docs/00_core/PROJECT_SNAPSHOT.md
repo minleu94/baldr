@@ -1,5 +1,8 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**後繼 source：Paper baseline 不再將未知補零。** 已保存推薦的研究用 baseline，總分或收盤價缺失、布林、非法文字與非有限數值會明確拒絕；明確觀測零仍沿原配置政策診斷，未改本金、日期或金融資格。QA128編譯、26項service／CLI／配置回歸及受改module型別檢查通過；無效輸入不新建或覆寫輸出。這是既有研究baseline缺陷修正，未實作一般候選建帳，也未重建a65 RC；詳見[V2驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#paper-baseline未知值拒絕qa128)。
+
+
 **後繼 Python source：保存研究的 Paper 條件檢查。** 已選原件經背景重核後才顯示來源、日期及原文，可查看既有 Paper 分區並返回同筆研究；換選、刷新、離頁或關閉後拒絕晚到結果。QA124 編譯、47定向、Workbench85、更新頁25/0/4與mypy1108通過；QA126正常MainWindow同筆原件／Paper往返、Journal與四來源保持、worker／pool0及自然刪除，root看過實圖。通用研究候選建帳producer與合法帳戶／行情／現金契約仍未實作，建立按鈕停用；這是產品程式缺口，不以benchmark或策略空倉seed代替，也不以長期金融資格阻擋其他功能。固定下列a65 RC不含此增量，未重建EXE；詳見[V2驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#paper前置流程與100顯示qa123126)。
 
 **目前 V2 本機技術候選：`2026.10.21+a65d2b2b4fd5`。** 整包位於 `dist/candidate_a65d2b2b4fd5_cb32716d/baldr`，使用 `Launch-Baldr.cmd`／`GUIDE.md` 及獨立 `r132_candidate_state`。新增研究原件與目前可讀資料的唯讀對照：先重核原件，再分列各自日期、來源及缺件，不寫回 Journal、不補未知或計金融差值。QA115 同版、QA117 包內正常 Main UI 保存／fresh 對照、QA118 啟動器正反身份切片、QA120 17路由1280×760／125%與另三尺寸首頁通過；QA121 沿原筆記補驗150%完整來源識別換行，原件／四來源保持、worker／pool0且自然刪除。EXE SHA `0417d9c1c2d6a812a55b777974be623f2a23bac49e874f0dc218d31a8410c9d4`；11檔交付收據 SHA `720f6b02a26a719a47f7b02b686d45e7af6cb7eb93acda72d2ac4eeab6e19240`。原工具失敗及重用證據版本見[V2驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#研究證據對照候選交付qa113121)。未簽章、本機位置綁定；Native停止、真人待驗及完整五旅程 PARTIAL，金融資格不提升。

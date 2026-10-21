@@ -240,3 +240,11 @@ QA126 R148只修探針狀態對齊、另建小CASE，重用R134原報告／Journ
 QA124 closure `a60e178214be9d36cee6662414a3bdf125db975ad92983cb6e5e78b82f36af7b`、QA126 `3ce3bc13fffb15ac79806eafdc37d4de2b47ade38690fa038a043777f2eb129b`，所有Job三PID列表空、process／Job handles關閉、mutex釋放，無強制清除。未新EXE、未改a65交付包、舊包或正式／私人資料。
 
 R140另證QA035月營收view通過的是直接注入合成fixture，非正常Main真binding；現行ApplicationSettings與Main接線存在，但四個cohort／series環境鍵及當前本機config均未配置。已向Owner詢問外部固定SHA的合法binding路徑，不重造fixture或提升資格。Native停止、五旅程overall PARTIAL、真人待驗及長期金融Evidence Backlog保持；完整目標尚未達成。
+
+## Paper baseline未知值拒絕（QA128）
+
+R149修復既有 `PaperPortfolioBaselineService._decimal` 將缺失或非法總分／收盤價補成0的缺陷。轉換現在拒絕None、bool、非法文字及非有限Decimal，錯誤指出欄位，且在配置服務前停止；明確觀測0仍保留原零目標／無效價格診斷。正常來源的Decimal金額、政策、排序與日期未改，不建立任何Paper帳本或提升資格。舊None→0測試改為明確觀測0，另新增未知不得進配置負例；沒有降低缺值守衛。
+
+QA128 compile、baseline service／CLI與既有配置sandbox共26測試、受改module mypy全部通過。CLI無效輸入時新輸出不存在、既有輸出bytes保持；這些是隔離fixture的工程回歸，不是真來源或建帳接受。closure `617622026067a06c777dfe4810277da1ef617b60801a02ca1c67421c0241aeac` terminal0、三PID列表空、process／Job handles關閉及mutex釋放，無強制清除。新backend變更沒有UI接線，沿用未改UI的QA124／126證據，未重跑或重建EXE。
+
+R150／R151另核實：嚴格publication-row reader與策略帳checkpoint鏈可重用，但行情availability／用途與quote-event／官方session、精確保存結果及帳戶cash鏈均須原契約。CSV人工確認匯入只有成交／成本事件，缺研究原件／result ID／candidate key及mark/cash provenance，不能作一般研究建帳producer。不得把空倉seed、研究股價或現有CSV匯入升格為候選建帳資格。完整Paper正向流程仍未完成，合法輸入問題待Owner提供；五旅程、Native／真人及長期金融狀態不變。

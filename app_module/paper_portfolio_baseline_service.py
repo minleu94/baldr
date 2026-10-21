@@ -16,13 +16,18 @@ from app_module.portfolio_construction_dtos import (
 from app_module.portfolio_construction_service import PortfolioConstructionService
 
 
-def _decimal(value: object, *, default: Decimal = Decimal("0")) -> Decimal:
+def _decimal(value: object, *, field: str) -> Decimal:
     if value is None or isinstance(value, bool):
-        return default
+        raise ValueError(f"recommendation field {field!r} must be a finite numeric value")
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except (InvalidOperation, ValueError):
-        return default
+        raise ValueError(
+            f"recommendation field {field!r} must be a finite numeric value"
+        ) from None
+    if not result.is_finite():
+        raise ValueError(f"recommendation field {field!r} must be a finite numeric value")
+    return result
 
 
 class PaperPortfolioBaselineService:
@@ -82,12 +87,14 @@ class PaperPortfolioBaselineService:
     def _candidate(row: object) -> PortfolioConstructionCandidate:
         if not isinstance(row, dict):
             raise ValueError("recommendation row must be an object")
-        score = _decimal(row.get("總分"))
+        score = _decimal(row.get("總分"), field="總分")
         return PortfolioConstructionCandidate(
             stock_code=str(row.get("證券代號") or "").strip(),
             stock_name=str(row.get("證券名稱") or "").strip(),
             score_bp=int(score * Decimal("100")),
-            reference_price=_decimal(row.get("收盤價")).quantize(Decimal("0.01")),
+            reference_price=_decimal(
+                row.get("收盤價"), field="收盤價"
+            ).quantize(Decimal("0.01")),
             metadata={"sector": str(row.get("產業") or "")},
         )
 

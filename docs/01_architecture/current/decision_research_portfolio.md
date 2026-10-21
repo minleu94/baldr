@@ -1,5 +1,8 @@
 # 決策、研究與 Portfolio
 
+PaperPortfolioBaselineService 只從明選保存推薦建立 research-only 配置研究輸出，不建持倉帳。候選轉換對總分與收盤價要求有限 Decimal：缺失、null、布林、非法文字及NaN／Infinity均在配置前拒絕並指出欄位，不以0補值；明確觀測0仍交原配置政策診斷。既有日期、政策與精度不變；CLI在build成功後才寫輸出，無效來源不新建或覆寫研究檔。QA128限定回歸已驗；此契約不授合法Paper標價、現金或績效資格，固定a65 RC未含。
+
+
 研究時間軸的證據對照先由 `ResearchTimelineService.read_evidence_baseline()` 重讀所選原件並逐欄核對，再以新的當下研究 context 讀取目前來源；手動筆記另核唯一修訂，價格收藏重核來源，報告沿原封存投影。對照 DTO 只保存展示文字及限制，不修改 Journal、Forward、帳本或來源用途資格；沒有封存的行情不由現況回填。入口與取消／過期回應責任見[目前工作區](application_and_workspaces.md)。固定 `412ca3e5fe4f` EXE 不含此後繼原始碼增量；新 `a65d2b2b4fd5` RC 已限定驗證正常 frozen Main 保存／fresh 對照與原 Journal／來源保持，資格邊界不變。
 
 時間軸「檢查 Paper 條件」只重核同一筆明選原件後展示其來源身份與保存文字。Main 以 `read_evidence_baseline()` 背景驗證原件，對話框只讀；漂移、缺件、過期結果或關閉均不套用。現階段缺少把原件精確映射至 generic candidate/account 的建帳流程，以及驗證同日合法 mark/cash 的完整產製流程，故建立帳戶控制項停用；唯讀跳轉查看既有 Paper 狀態不改帳本，返回仍回時間軸。EqualWeight 是 benchmark，策略空倉 500K seed 僅屬既存 exact 帳戶，均不構成此原件的 candidate／資格。沒有原件、Journal、帳本或資格寫入；此 source 增量經 QA124／126 限定驗證，固定 `a65d2b2b4fd5` RC 不含。

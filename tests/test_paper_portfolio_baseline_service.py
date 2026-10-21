@@ -54,7 +54,7 @@ def test_missing_recommendations_fail_closed(tmp_path: Path) -> None:
         PaperPortfolioBaselineService().build(source)
 
 
-def test_invalid_price_is_preserved_as_rejected_diagnostic(tmp_path: Path) -> None:
+def test_observed_zero_price_is_preserved_as_rejected_diagnostic(tmp_path: Path) -> None:
     source = tmp_path / "recommendation.json"
     source.write_text(
         json.dumps(
@@ -62,7 +62,7 @@ def test_invalid_price_is_preserved_as_rejected_diagnostic(tmp_path: Path) -> No
                 "result_id": "bad-price",
                 "created_at": "2026-07-12T05:10:02",
                 "recommendations": [
-                    {"證券代號": "2330", "證券名稱": "台積電", "收盤價": None, "總分": "65.00", "產業": "半導體"},
+                    {"證券代號": "2330", "證券名稱": "台積電", "收盤價": "0", "總分": "65.00", "產業": "半導體"},
                     {"證券代號": "2317", "證券名稱": "鴻海", "收盤價": "100", "總分": "60.00", "產業": "電子"},
                 ],
             },
@@ -77,3 +77,68 @@ def test_invalid_price_is_preserved_as_rejected_diagnostic(tmp_path: Path) -> No
     assert rejected["stock_code"] == "2330"
     assert rejected["executable_amount"] == "0.00"
     assert "rejected_invalid_reference_price" in rejected["diagnostics"]
+
+
+def test_observed_zero_score_keeps_portfolio_construction_diagnostic(tmp_path: Path) -> None:
+    source = tmp_path / "recommendation.json"
+    source.write_text(
+        json.dumps(
+            {
+                "result_id": "zero-score",
+                "created_at": "2026-07-12T05:10:02",
+                "recommendations": [
+                    {"證券代號": "2330", "證券名稱": "台積電", "收盤價": "1000", "總分": "0"},
+                    {"證券代號": "2317", "證券名稱": "鴻海", "收盤價": "100", "總分": "60"},
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = PaperPortfolioBaselineService().build(source)
+
+    zero_score = payload["allocations"][0]
+    assert zero_score["score_bp"] == 0
+    assert zero_score["target_weight_bp"] == 0
+    assert "rejected_zero_target" in zero_score["diagnostics"]
+
+
+@pytest.mark.parametrize("field", ["總分", "收盤價"])
+@pytest.mark.parametrize(
+    "value", [None, True, "not-a-number", "NaN", "Infinity", "-Infinity"]
+)
+def test_unknown_or_nonfinite_candidate_value_fails_before_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    source = tmp_path / "recommendation.json"
+    row: dict[str, object] = {
+        "證券代號": "2330", "證券名稱": "台積電", "收盤價": "1000", "總分": "65.00"
+    }
+    row[field] = value
+    source.write_text(
+        json.dumps({
+            "result_id": "invalid-candidate-value",
+            "created_at": "2026-07-12T05:10:02",
+            "recommendations": [row],
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    called = False
+
+    def unexpected_construct(*_args: object, **_kwargs: object) -> None:
+        nonlocal called
+        called = True
+        raise AssertionError("invalid candidate value reached allocation")
+
+    monkeypatch.setattr(
+        "app_module.paper_portfolio_baseline_service.PortfolioConstructionService.construct",
+        unexpected_construct,
+    )
+
+    with pytest.raises(ValueError, match=field):
+        PaperPortfolioBaselineService().build(source)
+    assert called is False

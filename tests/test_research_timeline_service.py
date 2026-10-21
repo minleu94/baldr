@@ -436,3 +436,42 @@ def test_read_original_cancellation_after_price_verification_is_not_swallowed():
         service.read_original(entry, cancel_after_verify)
     assert reader.get_calls == ["price-1"]
     assert reader.verify_calls == ["price-1"]
+
+
+def test_evidence_baseline_rechecks_manual_body_identity_and_uniqueness():
+    note = _manual("manual-baseline", recorded_at="2026-10-19T12:00:00+00:00")
+    journal = _Journal((note,))
+    service = ResearchTimelineService(
+        journal, price_note_service=_Notes(), report_note_service=_Notes(),
+        theme_note_service=_Notes(),
+    )
+    entry = service.read().entries[0]
+    assert service.read_evidence_baseline(entry) == (note, None)
+    journal.records = (replace(note, body="已變動"),)
+    with pytest.raises(ValueError, match="已變更"):
+        service.read_evidence_baseline(entry)
+    journal.records = (note, note)
+    with pytest.raises(ValueError, match="重複"):
+        service.read_evidence_baseline(entry)
+    journal.records = ()
+    with pytest.raises(ValueError, match="不存在"):
+        service.read_evidence_baseline(entry)
+
+
+def test_evidence_baseline_manual_cancellation_and_report_original_verification():
+    note = _manual("manual-baseline", recorded_at="2026-10-19T12:00:00+00:00")
+    service = _service(manual=(note,))
+    entry = service.read().entries[0]
+    with pytest.raises(InterruptedError):
+        service.read_evidence_baseline(entry, lambda: True)
+    report = _report_note()
+    reader = _Notes((report,))
+    service = ResearchTimelineService(
+        _Journal(()), price_note_service=_Notes(), report_note_service=reader,
+        theme_note_service=_Notes(),
+    )
+    entry = service.read().entries[0]
+    assert service.read_evidence_baseline(entry) == (report, None)
+    reader.fresh_notes[report.revision_id] = replace(report, text="原件已變")
+    with pytest.raises(ValueError, match="原件欄位已變更"):
+        service.read_evidence_baseline(entry)

@@ -15,6 +15,10 @@ from PySide6.QtWidgets import QApplication
 
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
 from app_module.decision_outcome_journey import DecisionOutcomeJourney
+from app_module.research_evidence_comparison_dtos import (
+    EvidenceComparisonColumn,
+    ResearchEvidenceComparison,
+)
 from app_module.research_timeline_dtos import ResearchTimelineEntry, ResearchTimelineReadResult
 from ui_qt.views.research_timeline_view import ResearchTimelineView
 
@@ -353,4 +357,138 @@ def test_closing_error_and_cancel_do_not_notify_home():
     view._receive_cancelled(generation)
 
     assert emitted == []
+    view.close()
+
+
+def test_manual_entry_can_request_comparison_without_a_saved_result_id():
+    _app()
+    entry = _entry("manual", "manual-comparison", "手動保存研究", result_id="")
+    view = ResearchTimelineView(
+        _Reader(ResearchTimelineReadResult((entry,))), auto_refresh=False
+    )
+    view._receive(view._generation, ResearchTimelineReadResult((entry,)))
+    emitted: list[object] = []
+    view.compareEvidenceRequested.connect(emitted.append)
+
+    assert view._selected is entry
+    assert view.journey_widget is None
+    assert view.compare_evidence_button.isEnabled()
+    view.compare_evidence_button.click()
+    request_revision = view.evidence_comparison_revision
+    assert emitted == [entry]
+    assert not view.compare_evidence_button.isEnabled()
+
+    comparison = ResearchEvidenceComparison(
+        EvidenceComparisonColumn("當時固定證據", "available", (("來源", "筆記"),)),
+        EvidenceComparisonColumn("目前可讀資料", "unavailable", (), ("未設定來源",)),
+        "2026-10-21T12:00:00+00:00",
+    )
+    assert view.set_evidence_comparison(
+        entry, comparison, expected_revision=request_revision
+    )
+    assert "對照時間" in view.evidence_comparison_widget.status_label.text()
+    assert view.compare_evidence_button.isEnabled()
+    view.close()
+
+
+def test_evidence_comparison_rejects_stale_selection_and_late_close_result():
+    _app()
+    first = _entry("manual", "manual-first", "第一筆")
+    second = _entry("report", "report-second", "第二筆")
+    result = ResearchTimelineReadResult((first, second))
+    view = ResearchTimelineView(_Reader(result), auto_refresh=False)
+    view._receive(view._generation, result)
+    view.compare_evidence_button.click()
+    assert view._comparison_loading
+
+    assert view.select_entry(second)
+    assert not view._comparison_loading
+    comparison = ResearchEvidenceComparison(
+        EvidenceComparisonColumn("當時固定證據", "available", (("版本", "v1"),)),
+        EvidenceComparisonColumn("目前可讀資料", "limited", (), ("缺少行情",)),
+        "2026-10-21T12:00:00+00:00",
+    )
+    assert not view.set_evidence_comparison(first, comparison)
+    assert view._selected is second
+    assert "對照目前可讀資料" in view.evidence_comparison_widget.status_label.text()
+
+    view.compare_evidence_button.click()
+    assert view._comparison_loading
+    view.request_close()
+    assert not view.set_evidence_comparison(second, comparison)
+    assert not view.set_evidence_comparison_error(second, "late error")
+    assert not view._comparison_loading
+    assert not view.compare_evidence_button.isEnabled()
+    view.close()
+
+
+def test_evidence_comparison_revision_rejects_a_to_b_to_a_response():
+    _app()
+    first = _entry("manual", "manual-a", "第一筆")
+    second = _entry("report", "report-b", "第二筆")
+    result = ResearchTimelineReadResult((first, second))
+    view = ResearchTimelineView(_Reader(result), auto_refresh=False)
+    view._receive(view._generation, result)
+    view.compare_evidence_button.click()
+    request_revision = view.evidence_comparison_revision
+
+    assert view.select_entry(second)
+    assert view.select_entry(first)
+    comparison = ResearchEvidenceComparison(
+        EvidenceComparisonColumn("當時固定證據", "available", (("版本", "v1"),)),
+        EvidenceComparisonColumn("目前可讀資料", "available", (("版本", "v2"),)),
+        "2026-10-21T12:00:00+00:00",
+    )
+
+    assert view._selected is first
+    assert view.evidence_comparison_revision != request_revision
+    assert not view.set_evidence_comparison(
+        first, comparison, expected_revision=request_revision
+    )
+    view.close()
+
+
+def test_refresh_revision_rejects_late_response_when_entry_object_is_preserved():
+    application = _app()
+    entry = _entry("manual", "manual-refresh", "重新讀取仍是同一原件")
+    result = ResearchTimelineReadResult((entry,))
+    reader = _Reader(result)
+    view = ResearchTimelineView(reader, auto_refresh=False)
+    view._receive(view._generation, result)
+    view.compare_evidence_button.click()
+    request_revision = view.evidence_comparison_revision
+
+    view.refresh()
+    view._receive_error(view._generation, "本次刷新失敗")
+    _wait(application, lambda: _timeline_idle(view))
+    assert view._selected is entry
+    comparison = ResearchEvidenceComparison(
+        EvidenceComparisonColumn("當時固定證據", "available"),
+        EvidenceComparisonColumn("目前可讀資料", "limited"),
+        "2026-10-21T12:00:00+00:00",
+    )
+    assert view.evidence_comparison_revision != request_revision
+    assert not view.set_evidence_comparison(
+        entry, comparison, expected_revision=request_revision
+    )
+    view.close()
+
+
+def test_leaving_timeline_invalidates_response_for_same_selected_entry():
+    _app()
+    entry = _entry("manual", "manual-leave", "原件仍選取")
+    result = ResearchTimelineReadResult((entry,))
+    view = ResearchTimelineView(_Reader(result), auto_refresh=False)
+    view._receive(view._generation, result)
+    view.compare_evidence_button.click()
+    revision = view.evidence_comparison_revision
+    view.invalidate_evidence_comparison()
+    comparison = ResearchEvidenceComparison(
+        EvidenceComparisonColumn("原件", "available"),
+        EvidenceComparisonColumn("現況", "unavailable"), "now",
+    )
+    assert view.selected_entry is entry
+    assert not view.set_evidence_comparison(entry, comparison, expected_revision=revision)
+    assert not view._comparison_loading
+    assert view.compare_evidence_button.isEnabled()
     view.close()

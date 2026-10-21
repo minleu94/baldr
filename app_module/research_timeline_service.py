@@ -159,6 +159,26 @@ class ResearchTimelineService:
         _verify_price_state(note, state)
         return note, state
 
+    def read_evidence_baseline(
+        self,
+        entry: ResearchTimelineEntry,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[TimelineReference, object | None]:
+        """對照前重核原件；手動筆記也不接受索引後變動的內容。"""
+
+        _raise_if_cancelled(cancel_callback)
+        if type(entry) is not ResearchTimelineEntry:
+            raise ValueError("研究時間軸項目型別無效")
+        if entry.kind != "manual":
+            return self.read_original(entry, cancel_callback=cancel_callback)
+        if type(entry.reference) is not JournalEntryDTO or not entry.record_id:
+            raise ValueError("手動筆記原件型別或修訂識別無效")
+        matches = tuple(item for item in self._read_manual() if item.record_id == entry.record_id)
+        _raise_if_cancelled(cancel_callback)
+        if len(matches) != 1 or not _exact_value_equal(entry, matches[0]):
+            raise ValueError("手動筆記原件不存在、重複或已變更；未讀取現況")
+        return matches[0].reference, None
+
     def _read_manual(self) -> tuple[ResearchTimelineEntry, ...]:
         result: list[ResearchTimelineEntry] = []
         for record in self._journal.list_journal_entries():

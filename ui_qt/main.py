@@ -38,6 +38,8 @@ from ui_qt.views.storage_overview_view import StorageOverviewView
 from ui_qt.views.research_timeline_view import ResearchTimelineView
 from app_module.research_timeline_service import ResearchTimelineService
 from app_module.research_timeline_dtos import ResearchTimelineEntry
+from app_module.research_evidence_comparison_dtos import ResearchEvidenceComparison
+from app_module.research_evidence_comparison_service import ResearchEvidenceComparisonService
 from ui_qt.widgets.recent_research_widget import RecentResearchWidget
 from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
 
@@ -2465,6 +2467,9 @@ class MainWindow(QMainWindow):
                 report_note_service=report_note_service,
                 theme_note_service=self.theme_note_service,
             )
+            self.research_evidence_comparison_service = ResearchEvidenceComparisonService(
+                self.research_timeline_service, self.stock_research_report_service,
+            )
             self.stock_research_workspace = StockResearchWorkspace(
                 self.stock_research_report_service,
                 journey_service=self.decision_outcome_journey_service,
@@ -2588,6 +2593,7 @@ class MainWindow(QMainWindow):
                 self.recent_research_widget.originalRequested.connect(self._open_recent_report_original)
             self.research_timeline_view.refresh()
             self.research_timeline_view.openOriginalRequested.connect(self._open_timeline_original)
+            self.research_timeline_view.compareEvidenceRequested.connect(self._compare_timeline_evidence)
             timeline_page = QWidget(self)
             timeline_layout = QVBoxLayout(timeline_page)
             timeline_actions = QHBoxLayout()
@@ -2599,6 +2605,7 @@ class MainWindow(QMainWindow):
             timeline_layout.addLayout(timeline_actions)
             timeline_layout.addWidget(self.research_timeline_view, 1)
             add_workspace("research_timeline", timeline_page)
+            workspace_stack.currentChanged.connect(self._timeline_evidence_workspace_changed)
 
             workspace_items = tuple(
                 NavigationItem(definition.key, definition.label, icon=definition.icon)
@@ -2925,6 +2932,81 @@ class MainWindow(QMainWindow):
             return
         self.product_shell.activate_route("journal")
         self._open_timeline_original(value, return_route="overview")
+
+    def _timeline_evidence_workspace_changed(self, _index: int) -> None:
+        timeline = getattr(self, "research_timeline_view", None)
+        if (timeline is None or getattr(self, "_shutdown_close_requested", False)
+                or self.workspace_stack.currentWidget() is self.workspace_widgets["research_timeline"]):
+            return
+        timeline.invalidate_evidence_comparison()
+        worker = getattr(self, "_timeline_comparison_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.cancel(cooperative=True, wait=False)
+
+    def _compare_timeline_evidence(self, value: object) -> None:
+        """明選後背景讀取獨立現況；不替換原筆記、日期或來源脈絡。"""
+        from ui_qt.workers.task_worker import TaskWorker
+
+        if type(value) is not ResearchTimelineEntry or getattr(self, "_shutdown_close_requested", False):
+            return
+        timeline = self.research_timeline_view
+        if (timeline.selected_entry is not value
+                or self.workspace_stack.currentWidget() is not self.workspace_widgets["research_timeline"]):
+            timeline.set_evidence_comparison_error(value, "請在研究時間軸明選原筆記後重新對照。")
+            return
+        revision = timeline.evidence_comparison_revision
+        catalog_view = getattr(self, "industry_theme_map_view", None)
+        catalog_root = getattr(catalog_view, "_catalog_root", None)
+        if not isinstance(catalog_root, Path):
+            catalog_root = None
+        previous = getattr(self, "_timeline_comparison_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel(cooperative=True, wait=False)
+        worker = TaskWorker(
+            self.research_evidence_comparison_service.read, value,
+            theme_catalog_root=catalog_root,
+        )
+        self._timeline_comparison_worker = worker
+        workers = getattr(self, "_timeline_comparison_workers", None)
+        if workers is None:
+            workers = self._timeline_comparison_workers = set()
+        workers.add(worker)
+
+        def current() -> bool:
+            return (not getattr(self, "_shutdown_close_requested", False)
+                    and getattr(self, "_timeline_comparison_worker", None) is worker
+                    and timeline.selected_entry is value
+                    and timeline.evidence_comparison_revision == revision)
+
+        def failed(message: str) -> None:
+            if current():
+                timeline.set_evidence_comparison_error(
+                    value, str(message).splitlines()[0], expected_revision=revision,
+                )
+
+        def apply(result: object) -> None:
+            if not current():
+                return
+            if self.workspace_stack.currentWidget() is not self.workspace_widgets["research_timeline"]:
+                failed("已離開研究時間軸；返回後請重新對照。")
+            elif value.kind == "theme" and getattr(catalog_view, "_catalog_root", None) != catalog_root:
+                failed("題材版本目錄已變更；請重新對照。")
+            elif type(result) is ResearchEvidenceComparison:
+                timeline.set_evidence_comparison(value, result, expected_revision=revision)
+            else:
+                failed("唯讀對照回傳型別無效。")
+
+        def cleanup() -> None:
+            workers.discard(worker)
+            if getattr(self, "_timeline_comparison_worker", None) is worker:
+                self._timeline_comparison_worker = None
+            worker.deleteLater()
+
+        worker.finished.connect(apply)
+        worker.error.connect(failed)
+        worker.cancelled.connect(lambda: failed("讀取已取消；可重新對照。"))
+        worker.native_thread_finished.connect(cleanup)
+        worker.start()
 
     def _verify_timeline_entry(self, entry: ResearchTimelineEntry, completed) -> None:
         """同一 reader 背景重核原件；晚到或關閉回傳不改畫面。"""

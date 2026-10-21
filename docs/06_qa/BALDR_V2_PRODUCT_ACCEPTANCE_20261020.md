@@ -198,3 +198,17 @@ QA103 R116以`isValid`避免重複關閉已刪除物件，真frozen正常Main fi
 QA099／100／103 closure分別為 `c9fe124d3c668dd8e3d95fface03312be30e662bd77128ef8617030f02df0f4b`、`ea61ca83194916a73dec047bb8602cbbffd5b8f18f9d54decbee08b040604263`、`7dbe47beb9f96587d2e0f65b2906d909d1e6b352267f8fe7c943bcb4440f0b13`；QA098／101／102原FAIL也皆自然閉鎖。所有Job PID空、process／Job handles關閉及mutex釋放，沒有強制清除。
 
 交付收據 SHA `8c677527f2a6a3723cafb816939e338d32d94c292716e16e48a319911c2c993a`，8關鍵檔pin；包內7,135files／976,476,885 logical bytes，build5,271files／315,378,063 logical bytes，並非SSD唯一實體配置。新增一份重要RC及必要小樣本，不刪舊包；本機位置綁定、未簽章、未替換active delivery。首頁原件回訪與Storage重用前版2b QA080未改功能路徑證據；兩股producer及Registry證據也明列其2b來源版本。原生停止、真人待驗、真營收綁定、Paper／自然Forward及金融資格各自保留限制，不升格完整V2接受。
+
+## 研究證據對照與125顯示（QA105–112）
+
+固定 `412ca3e5fe4f` EXE 在 QA107 以實際 DPR1.25 完成1280×760的17路由，首頁另驗1500×900、1440×900及1920×1080；Main rc0／worker及pool0、四來源與模板、BUILD_INFO、EXE pin保持。QA105舊模板pin誤配、QA106診斷日誌嘗試寫唯讀樣本而被拒的工具FAIL均保留；R122沿已接受的public診斷CASE初始化與安全關閉後通過。Root看過首頁及選股圖。這不外推所有尺寸各17路由或Native。
+
+Blueprint §4.6後繼source新增明選的「當時固定證據／目前可讀資料」唯讀對照。四種筆記均先重讀原件；手動缺行情與題材未封存值明示，價格沿已核原收藏，保存報告沿原投影，當下另以新context讀既有reader。沒有回填舊研究、金融差值、寫回Journal或用途資格提升。換選、重新讀取、離頁及關閉使舊回應失效。
+
+QA108保留新service import及tuple typing錯誤，QA109修後編譯、Workbench85、更新頁25/0/4、mypy1107通過；定向84PASS／1SKIP／1FAIL只剩題材測試欄名，QA110修該assert後service8PASS。唯一SKIP為原scheduled Qt smoke需顯式opt-in，並非自然排程接受。原FAIL未抹除。
+
+QA110正常MainWindow在隔離state透過真UI保存2330報告，再首次與新程序明選原筆記並對照。題材10/16、行情9/23、報告查詢10/21分列；新報告讀取不以查詢日冒充行情日。原snapshot與Journal SHA `7a11bf7900823df4a2a60dbc261ec5b30c277be66794c250289c682466bb0d0b`、四真來源pin保持，SQLite sidecar缺席，worker／pool0後自然deferred-delete。Root實圖發現長來源擠出第三欄，機器功能PASS仍記視覺FAILED；QA111修同屏後又發現無空格SHA裁切，未以機器PASS取代視覺接受。
+
+QA112改為原生純文字換行儲存格，完整來源識別可選取；640／1280有界widget測試核實長token換行、無內部水平／垂直溢位。18個Timeline／widget測試、Workbench85、更新頁25/0/4、mypy1107及compile通過。R130只fresh重開原R123筆記，沒有重新保存或複製來源，原R123／R126收據與Journal／四來源保持；1280×760／DPR1.25的三欄、日期／收盤／完整來源身份同屏通過，Root看過Main與比較區兩圖。正常隱藏、worker／pool0、deferred-delete完成，未強制清理。
+
+QA107 closure `840aefa796261361724b43a4cdbb3886c9e14c8ab8a253f20dd94a882bfd9f1c`、QA110 `62e59df6a602ffd507eb1325ba4eaa7191917d15bfc3ac4ad3d91f3438c1178c`、QA112 `2bb27c4636508256ab621cb09bfcf9a2356f1e3dcf3441f2da717a73ddc39bf8`；三PID列表空、process／Job handles關閉及mutex釋放。新增對照僅source受限接受，固定412ca EXE不含；下一重要整合RC另驗，五旅程overall PARTIAL、USER_STOPPED_ESCAPE／真人待驗與金融Evidence Backlog保持。

@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
 )
 
 from app_module.research_session.session_dtos import ResearchStockContextDTO
+from app_module.research_evidence_comparison_dtos import ResearchEvidenceComparison
 from app_module.research_timeline_dtos import ResearchTimelineEntry, ResearchTimelineReadResult
 from ui_qt.widgets.decision_outcome_journey_widget import (
     DecisionOutcomeJourneyReadPort,
     DecisionOutcomeJourneyWidget,
 )
+from ui_qt.widgets.research_evidence_comparison_widget import ResearchEvidenceComparisonWidget
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -51,6 +53,7 @@ class ResearchTimelineView(QWidget):
     readyToClose = Signal()
     resultReady = Signal(object)
     readUnavailable = Signal(str)
+    compareEvidenceRequested = Signal(object)
 
     def __init__(
         self,
@@ -69,6 +72,8 @@ class ResearchTimelineView(QWidget):
         self._workers: set[TaskWorker] = set()
         self._active_worker: TaskWorker | None = None
         self._closing = False
+        self._comparison_loading = False
+        self._evidence_comparison_revision = 0
         self.last_result: ResearchTimelineReadResult | None = None
         self._setup_ui(journey_service)
         if auto_refresh:
@@ -103,6 +108,7 @@ class ResearchTimelineView(QWidget):
 
         self.status_label = QLabel("正在讀取原始研究紀錄…", self)
         self.status_label.setObjectName("researchTimelineStatus")
+        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         self.status_label.setWordWrap(True)
         root.addWidget(self.status_label)
 
@@ -126,6 +132,7 @@ class ResearchTimelineView(QWidget):
         detail_layout.setContentsMargins(6, 0, 0, 0)
         self.detail_label = QLabel("選取一筆原始研究紀錄", detail)
         self.detail_label.setObjectName("researchTimelineDetailMetadata")
+        self.detail_label.setTextFormat(Qt.TextFormat.PlainText)
         self.detail_label.setWordWrap(True)
         self.original_text = QTextEdit(detail)
         self.original_text.setObjectName("researchTimelineOriginalText")
@@ -138,6 +145,14 @@ class ResearchTimelineView(QWidget):
         detail_layout.addWidget(self.detail_label)
         detail_layout.addWidget(self.original_text, 1)
         detail_layout.addWidget(self.open_original_button)
+        self.compare_evidence_button = QPushButton("對照目前可讀資料", detail)
+        self.compare_evidence_button.setObjectName("researchTimelineCompareEvidence")
+        self.compare_evidence_button.setAccessibleName("對照所選紀錄的固定證據與目前可讀資料")
+        self.compare_evidence_button.setEnabled(False)
+        detail_layout.addWidget(self.compare_evidence_button)
+        self.evidence_comparison_widget = ResearchEvidenceComparisonWidget(detail)
+        self.evidence_comparison_widget.setMinimumHeight(150)
+        detail_layout.addWidget(self.evidence_comparison_widget, 1)
         if journey_service is None:
             self.journey_widget = None
             self.journey_placeholder = QLabel("Forward 成熟度需提供既有唯讀 journey reader。", detail)
@@ -168,10 +183,13 @@ class ResearchTimelineView(QWidget):
         self.refresh_button.clicked.connect(self.refresh)
         self.entries_table.itemSelectionChanged.connect(self._selection_changed)
         self.open_original_button.clicked.connect(self._open_original)
+        self.compare_evidence_button.clicked.connect(self._request_evidence_comparison)
 
     def refresh(self) -> None:
         if self._closing:
             return
+        self._clear_evidence_comparison("重新讀取後需重新選取並對照資料。")
+        self.compare_evidence_button.setEnabled(False)
         self._generation += 1
         generation = self._generation
         previous = self._active_worker
@@ -226,12 +244,14 @@ class ResearchTimelineView(QWidget):
             return
         status = f"讀取失敗；保留原畫面：{message}"
         self.status_label.setText(status)
+        self.compare_evidence_button.setEnabled(self._selected is not None)
         self.readUnavailable.emit(status)
 
     def _receive_cancelled(self, generation: int) -> None:
         if not self._closing and generation == self._generation:
             status = "讀取已安全取消；保留目前可用紀錄。"
             self.status_label.setText(status)
+            self.compare_evidence_button.setEnabled(self._selected is not None)
             self.readUnavailable.emit(status)
 
     def _render_entries(self) -> None:
@@ -277,9 +297,14 @@ class ResearchTimelineView(QWidget):
         self._show_entry(visible[row] if 0 <= row < len(visible) else None)
 
     def _show_entry(self, entry: ResearchTimelineEntry | None) -> None:
+        self._clear_evidence_comparison(
+            "選取研究紀錄後可對照當時固定證據與目前可讀資料。"
+            if entry is None else "按「對照目前可讀資料」讀取此筆紀錄的雙欄證據。"
+        )
         self._selected = entry
         self._selected_identity = None if entry is None else (entry.kind, entry.record_id)
         self.original_text.setPlainText("" if entry is None else entry.text)
+        self.compare_evidence_button.setEnabled(entry is not None and not self._closing)
         if entry is None:
             self.detail_label.setText("選取一筆原始研究紀錄")
             self.open_original_button.setEnabled(False)
@@ -327,6 +352,81 @@ class ResearchTimelineView(QWidget):
                     if entry.stock_code else None
                 )
 
+    def _request_evidence_comparison(self) -> None:
+        entry = self._selected
+        if entry is None or self._closing or self._comparison_loading:
+            return
+        self._comparison_loading = True
+        self._evidence_comparison_revision += 1
+        self.compare_evidence_button.setEnabled(False)
+        self.evidence_comparison_widget.clear("正在讀取目前可讀資料…")
+        self.compareEvidenceRequested.emit(entry)
+
+    def set_evidence_comparison(
+        self,
+        entry: ResearchTimelineEntry,
+        result: ResearchEvidenceComparison,
+        *,
+        expected_revision: int | None = None,
+    ) -> bool:
+        """只接受目前仍選取的同一筆原件之比較結果。"""
+        if (
+            self._closing
+            or self._selected is not entry
+            or (
+                expected_revision is not None
+                and expected_revision != self._evidence_comparison_revision
+            )
+        ):
+            return False
+        self._comparison_loading = False
+        self.evidence_comparison_widget.show_comparison(result)
+        self.compare_evidence_button.setEnabled(True)
+        return True
+
+    def set_evidence_comparison_error(
+        self,
+        entry: ResearchTimelineEntry,
+        message: str,
+        *,
+        expected_revision: int | None = None,
+    ) -> bool:
+        if (
+            self._closing
+            or self._selected is not entry
+            or (
+                expected_revision is not None
+                and expected_revision != self._evidence_comparison_revision
+            )
+        ):
+            return False
+        self._comparison_loading = False
+        self.evidence_comparison_widget.clear(f"目前資料對照不可用：{message}")
+        self.compare_evidence_button.setEnabled(True)
+        return True
+
+    def _clear_evidence_comparison(self, message: str) -> None:
+        self._evidence_comparison_revision += 1
+        self._comparison_loading = False
+        if hasattr(self, "compare_evidence_button"):
+            self.compare_evidence_button.setEnabled(self._selected is not None and not self._closing)
+        if hasattr(self, "evidence_comparison_widget"):
+            self.evidence_comparison_widget.clear(message)
+
+    def invalidate_evidence_comparison(self) -> None:
+        """離開頁面即丟棄當次對照；再次返回必須明選重新讀取。"""
+        self._clear_evidence_comparison("返回研究紀錄後，請重新對照目前可讀資料。")
+
+    @property
+    def evidence_comparison_revision(self) -> int:
+        """目前比較請求的唯讀版號，供呼叫端配對非同步回應。"""
+        return self._evidence_comparison_revision
+
+    @property
+    def selected_entry(self) -> ResearchTimelineEntry | None:
+        """目前選取的原始時間軸 entry；供外部讀取，不可直接改寫。"""
+        return self._selected
+
     def _open_original(self) -> None:
         entry = self._selected
         if entry is not None and entry.kind in {"price", "report", "theme"}:
@@ -334,6 +434,7 @@ class ResearchTimelineView(QWidget):
 
     def request_close(self) -> bool:
         self._closing = True
+        self._clear_evidence_comparison("時間軸已關閉；不再套用延遲到達的對照結果。")
         self._generation += 1
         workers = [worker for worker in self._workers if worker.isRunning()]
         for worker in workers:

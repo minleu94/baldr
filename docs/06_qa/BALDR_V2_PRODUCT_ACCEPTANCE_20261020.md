@@ -105,6 +105,10 @@ PIT、全市場資料覆蓋、法人金額／單位、Forward 自然成熟、ML 
 
 ## 資源與交付界線
 
-本任務新 EXE／Trial：0。已有包、正式資料、模型及私人資產未刪除。平台可觀測帳戶共用額度與餘額，無精確任務計費歸屬，額外 Credits 實耗為 UNKNOWN；不聲稱能對平台帳單強制數字硬停。
+QA041 從固定 `e36919493b70a6be99df43b8e6d420b6d6b6c418` 建置修正候選，版本 `2026.10.21+e36919493b70`。QA042 Python／EXE 同版隔離 fixture 通過，包含固定來源／依賴／資源身份、直接 Qt 入口、保存旅程、模型／spawn／fresh 與 H20 呈現；不代表真實市場或真人接受。QA043 的 CMD 行尾及 QA044 的 PowerShell runtime 模組相容失敗保留；標準 CRLF、固定 Windows 內建 PowerShell 與其模組路徑後，QA045 整包通過：啟動器 prepare/check、錯 SHA 拒絕、原樣本不變，以及真正 frozen Main 17 路由、1280×760／1440×900／1920×1080、DPR 1.5。Main／coordinator／新 origin 均由 `PyiFrozenLoader` 從 `_MEIPASS` 載入，無 modal／錯誤，TaskWorker／thread pool 為零。以上是 offscreen，沒有恢復原生輸入。
+
+本機候選位於 `dist/candidate_e36919493b70_a1df3b90/baldr`，使用同資料夾 `Launch-Baldr.cmd`；指南與 `DELIVERY_RECEIPT.json` 列原樣本、獨立 state、流程限制和原始收據。EXE SHA `1834e107cbe6e93a0f5e684dadba003e6809662f12ceb05cdd5838273b4b6f1f`。QA042 closure `abf2513883a466b21dcf7a97d68be18022dbcf07a7c6db3bdf814ae9c0a45cd3`；QA045 closure `be4531d9421e230d4871b5d5263015604efb7145ef9a95d9f1bc22f508bafe15`，自然排空、handles 關閉、mutex 釋放。原生操作仍受使用者先前 Escape 停止指示，已另請確認是否恢復；無回覆不視為同意。
+
+本任務新 EXE 建置共 2 份，首包保留但未通過同版；本機修正候選約 976 MB，未替換研究13、`dist/baldr` 或 active delivery。已有包、正式資料、模型及私人資產未刪除。平台可觀測帳戶共用額度與餘額，無精確任務計費歸屬，額外 Credits 實耗為 UNKNOWN；不聲稱能對平台帳單強制數字硬停。
 
 本文件僅記本輪實際範圍，V2 產品驗收尚未完成。

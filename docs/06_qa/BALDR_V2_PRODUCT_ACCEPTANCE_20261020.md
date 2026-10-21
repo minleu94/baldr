@@ -2,6 +2,36 @@
 
 本文件記錄依 [V2 Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 開發的 Source 分支證據。基線 `9ce92743`，分支 `codex/baldr-v2-product`。已有本機技術候選及分階段驗證，最新整合候選與限制見下節；完整五旅程仍為 PARTIAL，既有固定研究13不包含本輪變更。
 
+## 來源取得與獨立自動驗證（R188 起）
+
+Owner 明示真人驗收標為「等我有空」，不阻止其他安全工作；Native `USER_STOPPED_ESCAPE` 維持，沒有恢復桌面輸入。Root 分派 Luna 唯讀月營收、Paper 取得鏈及自動 UI 缺口盤點；不建立來源 binding、來源接受收據或合成金融資料。既有 `eefd2163ad95` 候選及 canonical 交付收據不變，完整五旅程仍 PARTIAL，真人仍未通過。
+
+| 範圍 | 可獨立完成的事與實際發現 | 仍需的來源／核准或工程 |
+|---|---|---|
+| 月營收官方 OpenData | 上市[資料集18420](https://data.gov.tw/dataset/18420)、上櫃[資料集56510](https://data.gov.tw/dataset/56510)明列免費與[政府資料開放授權第1版](https://data.gov.tw/license)，遵守顯名條件的該等開放資料不需另取供應方書面授權；不推廣為其他即時／商用資訊權限。QA154 已做兩個固定官方 JSON endpoint 的記憶體內工程觀測。 | 官方欄位可取得不等於 Main 的既有 MOPS source contract、來源用途接受或歷史 PIT。 |
+| Main 月營收 current-only | `daily_monthly_revenue_cohort_binding.py` 精確要求 `mops.monthly_revenue_static_snapshot`、`mops-current-revenue-normalizer.v2`、`mops-static-snapshot.v2` 與 `recommendation_current_fundamental`；`daily_source_snapshot.py` 的 `daily-hour.v1` 可在缺官方 timestamp 時，以成功批次完成後的小時保守判定可用時間。`daily_monthly_revenue_series.py` 明示 historical／formal PIT false。 | 需要真實、相符的 `DailySourceUseAcceptance` 用途證據與可信外部 binding／SHA。現有 serializer／create-only writer 不等於可用的正式發布 CLI。不能把 OpenData 改標為 MOPS，或為 current-only UI 強加完整歷史 PIT 前置條件。 |
+| P0 研究取得與治理 | `V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md` §12–13 已記 bounded foreground、官方來源、TEMP/research-only 的既有 Owner 授權；此研究取得能力可獨立前進。 | P0 TWSE／TPEx `monthly_revenue_announcement` 的 source IDs 與 Main current-only 不同；其 applying revision DB 路徑由 caller 提供，當前未定位，保持 UNKNOWN。8月歷史 `not_supplied` 不證明目前仍未批准，也不是 Main binding 的必要 DB 依賴。 |
+| Paper 行情 | 既有 `paper_event_source_capture.py` 可在真實台北當日 regular session 內擷取 quote observation，具有日期、symbol／venue 與來源核對；它不產生 fill 或證明成交事件。官方 OpenAPI、盤後商品與需契約的資訊服務按用途分開核對。 | Owner 尚未指定供本次使用的同日合格行情／mark 來源與收據；公開收盤資料不能直接充當 session execution event。 |
+| Paper 帳戶與現金 | 原前置條件與只讀 readiness 可用；策略帳戶 manifest 綁定精確策略／policy／cost／benchmark。 | 通用「已保存研究→Paper帳戶」producer 尚未實作；另缺帳戶／策略版本、Owner 指定的本金／幣別／起始日、相符現金與持倉來源及存放範圍。此流程不需要券商登入憑證，不用研究股價、benchmark、成交CSV或既有策略500K seed補齊。 |
+
+QA154 R193 只對 TWSE `https://openapi.twse.com.tw/v1/opendata/t187ap05_L` 與 TPEx `https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O` 各做一次 GET，每端點最多 2 MiB／8 秒、無重試、最多一次同主機 HTTPS redirect；沒有保存 response、輸出金融列值、建立 binding 或來源接受收據。實測皆 HTTP200／JSON list，分別 607,634 bytes／1,088列及496,597 bytes／893列；各14個欄位且無非物件列，欄位包含出表日期與資料年月，未提供逐筆官方發布 timestamp。這是當次連線與結構觀測，不驗證營收數值、來源完整性或下游資格。Web 工具先前不能讀端點只代表工具限制，本次受控 direct GET 已實測可讀。Job closure `7f948fe2a962ed8eb1d8fbc7f9ad55f8dbca21d6686bd7cdb17dd92223d0e3d7` 自然全閉，8 GiB／12程序不變。
+
+R190 另定位兩個未覆蓋的 frozen Main 自動切片：真鍵盤 shortcut／子頁啟用，以及共用「儲存篩選條件」到原 writer 的單次保存與 strict 重讀。它們使用既有受限來源及隔離狀態；實際執行結果另記，不能用 helper 存在或單元測試通過替代。
+
+QA155 R191 原始 FAIL 保留：Ctrl+K 由非搜尋控件出發後正確聚焦；後續 helper 誤要求 Tab 在互斥導覽組內直接換另一按鈕，並將落盤 `research_bookmark` mapping 誤認為 typed DTO。真正 Save 已確認且 CASE 寫入一筆 `technical-universe-bookmark.v1`，但尚未完成 strict 重讀與 Alt+Left，不將該輪寫成完整 PASS。R194 獨立靜態複核另補足返回前後外層工作區／來源 frame 守衛。Root 對照本包 Qt6.10 的[官方按鈕實作](https://raw.githubusercontent.com/qt/qtbase/6.10/src/widgets/widgets/qabstractbutton.cpp)：互斥組只有當前焦點按鈕保留 TabFocus，方向鍵可選取同組按鈕；收藏應沿 `WatchlistService.get_research_bookmark()` 解碼，再由 strict reader 核原來源。R195 只修新隔離測試，不改產品或重建候選；實際重驗另記。QA155 closure `857dce810e29bd68c2fa5271723ff23e6d229cdda1e603bfd944c60cab640eb4` 自然全閉、來源／價庫／產品 pins 保持，沒有 Native 輸入。
+
+QA156 R195 仍為 FAIL，原證據保留。Ctrl+K 通過，但 Tab 探針在 `recommendationResultScroll` 焦點重複時提前停止，不能據此判定整個子頁不可達或聲稱完整鍵盤驗收通過。收藏則已經過真 writer 寫入，codec 解碼成功；helper 誤用不存在的 mapping `bookmark_id` 鍵，正確落盤識別為 `bookmark_identity_sha256`，因此 getter 收到空身份，尚未到 strict 重讀與返回檢查。產品與候選不變，來源／價庫／index pins 保持，worker／pool0並自然刪除視窗；closure `7db1d38948478836f7dfab7f76ee2f9eaab9f8720c3a185201d782f778fa0ce4` 三 PID 陣列空、handles 關閉及 mutex 釋放。R196 另修獨立 helper 並延長有界 Tab 追蹤，後續結果另記。
+
+QA157 R196 已完成共用 Save 的原 writer 單次保存、既有 getter／codec 解碼與 strict reader 核原 query／source／row；條件範本 dirty 狀態阻擋再次保存，原查詢／選列與一筆收藏保持。Ctrl+K、獨立焦點 fixture 下的子頁方向鍵／Space 通過；完整 Tab 未通過，64步仍未從捲動區到子頁。整輪最後在真價格詳情的 Alt+Left 返回逾時，故保留 FAIL，不把前三個切片外推為整輪成功。原來源／價庫／產品 pins 保持、worker／pool0自然刪除；closure `7b0d01cf558f4570ca63f61182478e9d4df019c98ff6821499c9a265de720f2a` 自然全閉。
+
+R198 獨立靜態複核找到價格快捷返回的確定契約錯配：Shell 無參數發出 `Signal(object)`，且未沿詳情頁原選取配對核驗。來源修復改點擊原返回按鈕，保留核驗、typed selection 與 Main 原來源恢復鏈。QA157 未記 shortcut activated，故不能僅憑該次逾時宣稱已觸發此缺陷。R199 另以 `WorkspaceSubnav.set_tab_predecessor()` 明接搜尋按鈕與目前啟用子頁，切換路由／重建按鈕組時維持單一 Tab 停駐點；不改原生方向鍵行為。新增回歸只用非金融 object identity token 與實際 Qt 訊號核接線，不另建金融 fixture。這兩項修復由來源版驗證，既有 `eefd2163ad95` EXE 不包含，未因小修重建候選；QA158 及真 Main 鍵盤結果另記。
+
+QA158 四檔編譯、29項定向、85項 Workbench、更新頁25通過／0失敗／4略過及 mypy1108全通過。closure `b0e6626bf971dc4ced5d88f203dc247cbe4e57518c8bdd08607c7842468a53fa` 自然全閉。測試檔後續只有28 bytes排版調整，QA159按最終 bytes 另編譯並重驗該檔13項通過，未重跑 Common。
+
+QA159 R198 正常來源 MainWindow（非 `main()` entry）在1280×760／DPR1.25通過：Ctrl+K由搜尋按鈕聚焦輸入欄，Tab到搜尋鈕、再到目前選股子頁，Shift+Tab回搜尋鈕；真 R42 PriceView 明選／查詢／2317 typed detail 後，從可見且啟用控件發送 Alt+Left，shortcut activated與詳情／工作區兩層訊號各一次，傳遞同一 selection 物件。Main恢復原 query `5fe8208c0fbe31fff07d3bf419016aac0b1c33e97e35959ad2012bfc14fdcb90`、page `41ebd7806b77436c1244db9b90cdbe428d81755e366ee6e1759aa5aeea767d62` 與2317原列，來源 frame 清除；Root已看返回畫面。R181價庫 bytes／SHA、R42四個index與產品 source pins 保持，availability unknown／historical及formal PIT false。這是離屏 Qt 事件自動檢查，沒有 Native 輸入或真人接受。
+
+QA159 closure `85e52f3fb923385bc012f70160afc71b573cd5f3378e93e71849c94f93b61345` terminal0、三 PID 陣列空、process／Job handles關閉、mutex釋放，worker／pool0並自然刪除視窗，未強制清除。原QA155–157 FAIL均保留；六份既有候選及兩份canonical交付收據 SHA `87cadb86f01fc45838bfa05d355c776c9359a7d283257ce2ee5a28784f6ca4d6` 保持，未build或替換試用入口。來源／UI缺口盤點及兩個實際修復完成後，本輪尚未找到其他無需新金融契約、正式輸入或真人操作的具體修復；未將受限來源、工程測試或公開結構觀測當作真來源／完整V2驗收。月營收用途接受與binding、Paper帳戶／行情／現金及通用建帳契約仍具名受阻，真人標記「等我有空」，Native停止與五旅程PARTIAL保持。
+
 ## eefd2163 整合候選（QA144 起）
 
 來源固定為 `eefd2163ad956d906d9f884a9b46f9e2f8661538`，版本 `2026.10.21+eefd2163ad95`，候選 `dist/candidate_eefd2163ad95_873638e9/baldr`。這次集中封裝 Paper 前置檢查、baseline 未知值拒絕、統一保存入口與 V4 dirty gate、保存報告／價格詳情另開最新及精確返回、Journal 唯讀修復；下方舊段落的「a65 不含」仍是各原版本的歷史界線。

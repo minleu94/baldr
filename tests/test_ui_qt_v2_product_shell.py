@@ -17,6 +17,7 @@ from ui_qt.main_window_coordinator import (
     ROUTE_BY_ID,
     WORKSPACE_DEFINITIONS,
 )
+from ui_qt.views.daily_market_technical_price_stock_v1_view import DailyMarketTechnicalPriceStockV1View
 from ui_qt.views.stock_lookup_landing import StockLookupLanding
 from ui_qt.views.stock_research_report_view import StockResearchReportView
 from ui_qt.v2_shell import ProductShell
@@ -207,19 +208,63 @@ def _make_host(app: QApplication) -> tuple[_MinimalHost, ProductShell]:
     return host, shell
 
 
-def test_price_detail_return_recognizes_product_container(app: QApplication) -> None:
+def _attach_price_detail(host: _MinimalHost) -> DailyMarketTechnicalPriceStockV1View:
+    detail = DailyMarketTechnicalPriceStockV1View(host)
+    host.stock_research_workspace = SimpleNamespace(
+        report_view=SimpleNamespace(context=None),
+        price_research_context=object(),
+        _is_price_research_active=lambda: True,
+        content_stack=SimpleNamespace(currentWidget=lambda: detail),
+        price_research_view=detail,
+    )
+    return detail
+
+
+def test_price_detail_return_uses_typed_button_signal_and_preserves_exact_selection(
+    app: QApplication, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     host, shell = _make_host(app)
-    host.recommendation_view.result_source_tabs.widgets.append(QWidget(host))
-    shell.activate_route("screener")
-    host._select_main_workspace("stock_research")
-    returned: list[str] = []
-    workspace = host.stock_research_workspace
-    workspace.price_research_context = object()
-    workspace._is_price_research_active = lambda: True
-    workspace.price_research_view.returnRequested.emit = lambda: returned.append("original-price")
+    detail = _attach_price_detail(host)
+    stock_token, selection_token = object(), object()
+    detail._stock = stock_token
+    detail._origin_selection = selection_token
+    detail.return_button.setEnabled(True)
+    call_order: list[object] = []
+
+    def validate(stock: object, selection: object) -> None:
+        call_order.append(("guard", stock, selection))
+
+    monkeypatch.setattr(
+        "ui_qt.views.daily_market_technical_price_stock_v1_view._validate_origin_pair", validate,
+    )
+    restored: list[object] = []
+    detail.returnRequested.connect(
+        lambda selection: (call_order.append(("signal", selection)), restored.append(selection))
+    )
+    shell._detail_origin = "screener"
+
     shell.return_to_source()
-    assert returned == ["original-price"]
-    assert host.report_return_count == 0
+
+    assert restored == [selection_token]
+    assert restored[0] is selection_token
+    assert call_order == [("guard", stock_token, selection_token), ("signal", selection_token)]
+
+
+def test_price_detail_return_button_disabled_does_not_emit(
+    app: QApplication,
+) -> None:
+    host, shell = _make_host(app)
+    detail = _attach_price_detail(host)
+    detail._stock = object()
+    detail._origin_selection = object()
+    returned: list[object] = []
+    detail.returnRequested.connect(returned.append)
+    detail.return_button.setEnabled(False)
+    shell._detail_origin = "screener"
+
+    shell.return_to_source()
+
+    assert returned == []
 
 
 def test_primary_routes_and_legacy_workspace_callbacks_reach_the_existing_views(app: QApplication) -> None:

@@ -1,5 +1,9 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**來源版鍵盤修復已驗證，既有候選保留。** QA158通過編譯、29定向、85Workbench、更新頁25/0/4及mypy1108；QA159正常Main實測搜尋與子頁Tab／Shift+Tab、Alt+Left經原typed selection恢復同價格query／page／2317列，另13項最終shell回歸通過。這兩項修復未包含於既有 `eefd2163ad95` EXE，未因小修重建或替換入口。原QA155–157失敗保留，離屏自動檢查不等於Native或真人接受；細節與來源缺件見下方V2 QA。
+
+**獨立工作繼續，真人等Owner有空。** Native停止維持；Luna已完成月營收／Paper取得鏈盤點，QA154已以記憶體內受限GET核兩個官方月營收端點HTTP200／14欄位，未建binding或來源接受紀錄。Main的MOPS current-only契約可採批次完成時間保守判定可用性，與P0歷史PIT隊列分開；尚需相符用途接受／可信binding，不能將OpenData改標MOPS。通用研究→Paper producer與正式帳戶／行情／現金輸入另列缺件，不阻獨立自動UI檢查；細節見[V2來源與自動驗證](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#來源取得與獨立自動驗證r188-起)。
+
 **目前整合候選：eefd2163。** `2026.10.21+eefd2163ad95` 已將下列後繼 Source 集中封裝一次；QA144建置、QA146同版、QA148真正frozen保存報告／價格最新與原件返回、Paper建帳停用、QA150隔離啟動器正反SHA，以及QA152新候選125%／17路由與三尺寸首頁通過。12檔pin交付收據兩份同SHA `87cadb86f01fc45838bfa05d355c776c9359a7d283257ce2ee5a28784f6ca4d6`，舊版本不含項目依各段原身份判讀。完整五旅程仍PARTIAL、Native停止與真人待驗保持；詳見[V2候選驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#eefd2163-整合候選qa144-起)。
 
 **後繼 Source：選股保存與歷史返回。** 綜合選股共用儲存入口沿原來源 typed 流程，範本未成功查詢前禁止誤存舊 Query。保存報告與價格詳情可另開獨立最新查詢並重核返回；全域查股返回保留原投組／自選畫面。唯讀 Journal 不再把存取時間更新誤判為內容變更，缺失私人 Journal 空讀取也不再建立鎖檔；既存 writer／CAS及來源守衛保留。QA137編譯、209項定向、Workbench85、更新頁25/0/4與mypy1108通過，QA136 R168正常Main保存報告往返及125%儲存入口可見已限定驗證；QA141 R176亦已驗證價格詳情另開最新、重核同選取並返回原query／page／2317列，完整五旅程仍PARTIAL。固定a65 EXE不含本增量，見[V2驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#選股保存與歷史返回qa130起)。

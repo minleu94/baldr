@@ -37,6 +37,7 @@ class ProductShell(QWidget):
         self.search.searchRequested.connect(self.search_query)
         layout.addWidget(self.search)
         self.subnav = WorkspaceSubnav(self)
+        self.subnav.set_tab_predecessor(self.search.search_button)
         self.subnav.routeSelected.connect(self.activate_route)
         layout.addWidget(self.subnav)
         self.return_button = QPushButton(self)
@@ -245,7 +246,8 @@ class ProductShell(QWidget):
             is_price() if callable(is_price)
             else workspace.content_stack.currentWidget() is workspace.price_research_view
         ):
-            workspace.price_research_view.returnRequested.emit()
+            # 經過詳情按鈕既有的來源配對驗證，再由它發出原 typed selection。
+            workspace.price_research_view.return_button.click()
         else:
             self.host._return_from_stock_research_report()
 

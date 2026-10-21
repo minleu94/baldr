@@ -3,7 +3,9 @@ from __future__ import annotations
 import sys
 
 import pytest
-from PySide6.QtWidgets import QApplication, QToolButton
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from ui_qt.views.stock_lookup_landing import StockLookupLanding
 from ui_qt.widgets.global_search_bar import GlobalSearchBar
@@ -39,6 +41,76 @@ def test_workspace_subnav_rejects_more_than_four_routes(app: QApplication) -> No
 
     with pytest.raises(ValueError):
         subnav.set_routes(tuple((f"route-{index}", f"頁面 {index}") for index in range(5)))
+
+
+def test_workspace_subnav_tab_entry_and_reverse_return(app: QApplication) -> None:
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    predecessor = QPushButton("搜尋", host)
+    subnav = WorkspaceSubnav(host)
+    layout.addWidget(predecessor)
+    layout.addWidget(subnav)
+    subnav.set_routes((("overview", "總覽"), ("detail", "明細")))
+    subnav.set_tab_predecessor(predecessor)
+    host.show()
+    app.processEvents()
+
+    current = subnav._buttons["overview"]
+    other = subnav._buttons["detail"]
+    assert current.focusPolicy() == Qt.FocusPolicy.TabFocus
+    assert other.focusPolicy() == Qt.FocusPolicy.NoFocus
+
+    predecessor.setFocus()
+    QTest.keyClick(predecessor, Qt.Key.Key_Tab)
+    app.processEvents()
+    assert QApplication.focusWidget() is current
+
+    QTest.keyClick(current, Qt.Key.Key_Tab, Qt.KeyboardModifier.ShiftModifier)
+    app.processEvents()
+    assert QApplication.focusWidget() is predecessor
+    host.close()
+
+
+def test_workspace_subnav_rebuild_and_programmatic_route_rewire_tab_order(app: QApplication) -> None:
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    predecessor = QPushButton("搜尋", host)
+    subnav = WorkspaceSubnav(host)
+    layout.addWidget(predecessor)
+    layout.addWidget(subnav)
+    emitted: list[str] = []
+    subnav.routeSelected.connect(emitted.append)
+    subnav.set_tab_predecessor(predecessor)
+    subnav.set_routes((("overview", "總覽"), ("detail", "明細")))
+    subnav.set_current_route("detail")
+    assert subnav._buttons["detail"].focusPolicy() == Qt.FocusPolicy.TabFocus
+    assert subnav._buttons["overview"].focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert emitted == []
+
+    subnav.set_routes((("detail", "明細"), ("history", "歷史")))
+    host.show()
+    app.processEvents()
+    current = subnav._buttons["detail"]
+    assert current.focusPolicy() == Qt.FocusPolicy.TabFocus
+    predecessor.setFocus()
+    QTest.keyClick(predecessor, Qt.Key.Key_Tab)
+    app.processEvents()
+    assert QApplication.focusWidget() is current
+    assert emitted == []
+    host.close()
+
+
+def test_workspace_subnav_does_not_promote_disabled_current_route(app: QApplication) -> None:
+    subnav = WorkspaceSubnav()
+    subnav.set_routes((("overview", "總覽"), ("detail", "明細")))
+    disabled = subnav._buttons["overview"]
+    disabled.setEnabled(False)
+    subnav.set_current_route("overview")
+
+    assert not disabled.isEnabled()
+    assert disabled.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert subnav._buttons["detail"].focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert disabled.isChecked()
 
 
 def test_global_search_bar_ignores_blank_query_and_emits_original_text(app: QApplication) -> None:

@@ -30,6 +30,15 @@ class WorkspaceSubnav(QWidget):
         self._buttons: dict[str, QToolButton] = {}
         self._current_route: str | None = None
         self._routes: tuple[tuple[str, str], ...] = ()
+        self._tab_predecessor: QWidget | None = None
+
+    def set_tab_predecessor(self, widget: QWidget | None) -> None:
+        """指定 Tab 進入目前子頁按鈕的前一個可聚焦元件。"""
+
+        if widget is not None and not isinstance(widget, QWidget):
+            raise TypeError("Tab 前置元件必須是 QWidget 或 None")
+        self._tab_predecessor = widget
+        self._update_tab_focus()
 
     @property
     def current_route(self) -> str | None:
@@ -105,6 +114,19 @@ class WorkspaceSubnav(QWidget):
             raise ValueError(f"未設定的 route_id：{route_id}")
         self._current_route = route_id
         button.setChecked(True)
+        self._update_tab_focus()
+
+    def _update_tab_focus(self) -> None:
+        """只讓目前可用的子頁成為 Tab 停駐點，並接回來源順序。"""
+
+        current = self._buttons.get(self._current_route or "")
+        for route_button in self._buttons.values():
+            route_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        if current is None or not current.isEnabled():
+            return
+        current.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        if self._tab_predecessor is not None:
+            QWidget.setTabOrder(self._tab_predecessor, current)
 
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
         return QSize(280, 34)
@@ -129,4 +151,5 @@ class WorkspaceSubnav(QWidget):
         if not isinstance(route_id, str) or route_id == self._current_route:
             return
         self._current_route = route_id
+        self._update_tab_focus()
         self.routeSelected.emit(route_id)

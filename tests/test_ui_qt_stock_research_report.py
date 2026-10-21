@@ -61,6 +61,38 @@ def _app() -> QApplication:
     return instance
 
 
+def test_theme_member_navigation_requires_resolver_and_saved_snapshot_stays_read_only():
+    _app()
+    context = ResearchStockContextDTO(
+        stock_code="2330", stock_name="台積電", data_date="2026-10-16",
+        source_snapshot_id="a" * 64, source_snapshot_hash="a" * 64,
+        source_id="local.theme_research_snapshot", source_version="a" * 64,
+        mapping_version="2026-10-15", source_kind="industry_theme_snapshot",
+        source_workspace="market_explore", source_label="自選題材版本",
+    )
+    view = StockResearchReportView(SimpleNamespace())
+    try:
+        view.context = context
+        view._load_stock("2317")
+        assert view.context is context
+        assert view.stock_search.text() == "2330"
+        assert "已拒絕切換" in view.status_label.text()
+    finally:
+        view.close()
+
+    saved_view = StockResearchReportView(SimpleNamespace(), saved_snapshot_only=True)
+    resolver_calls = []
+    try:
+        saved_view.context = context
+        saved_view.theme_member_context_resolver = lambda *_args: resolver_calls.append(True)
+        saved_view._load_stock("2317")
+        assert saved_view.context is context
+        assert resolver_calls == []
+        assert "只讀保存時報告" in saved_view.status_label.text()
+    finally:
+        saved_view.close()
+
+
 @pytest.mark.parametrize("state", ["not_mature", "not_mature_as_of_cutoff"])
 def test_legal_h5_immaturity_preserves_forecast_and_qualification(state) -> None:
     ml = StockMLSnapshotDTO(status="degraded", h5_status=state,

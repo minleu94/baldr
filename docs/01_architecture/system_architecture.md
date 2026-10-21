@@ -48,6 +48,8 @@ flowchart TD
 
 後繼題材研究沿`ThemeDailyService`／`SQLiteThemeMarketReader`／`read_theme_research_snapshot`投影到既有市場探索工作區；UI不計算金融值或自行讀正式DB。新聚合不改原分類萃取，缺來源、方向或合格日曆保留不可用；原金融與歷史PIT資格不因技術驗證升級。[契約及證據](../02_features/INDUSTRY_THEME_MAP_DESIGN.md#53-後繼每日研究實作2026-10-18)
 
+R104的`theme_member_navigation` Python候選只處理已載入題材snapshot內的成員導覽，沿原成員列及篩選版本核對selection revision；報告切換股票時由既有行情reader載入該股資料，返回恢復原題材選列。來源或選列漂移會拒絕導覽，已保存報告不可切股。候選的正常Main／新程序導航已於QA096通過，現行2b EXE不含此功能；QA092的定向檢查不等於整輪驗收。
+
 原價格版本的個股判斷由`PinnedStockResearchNoteService`沿既有Journal／CAS追加，綁既有F07 bookmark與public exact reader。一般報告則由`StockResearchReportNoteService`保存版本化完整projection與判斷，仍走同一本Journal；重開時核驗canonical SHA，在獨立只讀ReportView呈現，不接Main即時providers。兩路來源不混用，沒有新增金融producer或第二筆記帳本；各自QA與固定交付範圍見[契約](current/decision_research_portfolio.md#價格研究個股與-portfolio-跨頁接線)。
 
 後續F07 Source由Main將同一筆記服務的有界語義證明範圍接至原完整來源reader與筆記worker，每次動作仍核當前全部原件並還原本次DTO，新程序重新冷驗。它不快取原來源狀態、不擴P01資格或更動保存時鐘；邊界與具名驗證見[資料架構](current/data_storage_runtime.md)及[QA163–168](../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)，未收入固定06。

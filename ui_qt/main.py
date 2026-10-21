@@ -39,6 +39,7 @@ from ui_qt.views.research_timeline_view import ResearchTimelineView
 from app_module.research_timeline_service import ResearchTimelineService
 from app_module.research_timeline_dtos import ResearchTimelineEntry
 from ui_qt.widgets.recent_research_widget import RecentResearchWidget
+from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
 
 
 def _configure_console_streams() -> None:
@@ -2504,6 +2505,9 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.report_view.research_bookmark_context_resolver = (
                 self._resolve_research_bookmark_stock
             )
+            self.stock_research_workspace.report_view.theme_member_context_resolver = (
+                self._resolve_theme_member_stock
+            )
             self.stock_research_workspace.report_view.rankBookmarkRequested.connect(
                 self._save_original_ranking_bookmark
             )
@@ -3112,9 +3116,12 @@ class MainWindow(QMainWindow):
         mapped = [row for row in snapshot.mapping if row.stock_id == stock_code]
         if not mapped:
             return
-        names = {row.stock_name for row in mapped if row.stock_name}
+        navigation = view.capture_selected_member_navigation(expected_stock_code=stock_code)
+        if navigation is None or navigation.snapshot_ref is not snapshot:
+            self.statusBar().showMessage("請先明選目前題材的成員；未沿用其他題材或版本。")
+            return
         context = ResearchStockContextDTO(
-            stock_code=stock_code, stock_name=next(iter(names)) if len(names) == 1 else "",
+            stock_code=stock_code, stock_name=dict(navigation.member_names).get(stock_code, ""),
             data_date=snapshot.report.data_date.isoformat(),
             source_snapshot_id=snapshot.identity_sha256, source_snapshot_hash=snapshot.identity_sha256,
             source_id="local.theme_research_snapshot", source_version=snapshot.identity_sha256,
@@ -3123,9 +3130,45 @@ class MainWindow(QMainWindow):
             source_label="產業與題材／自選本機研究版本",
             ml_scope_mode="current_stock_research",
         )
+        self._industry_theme_navigation = navigation
         self._industry_theme_origin = context
         self._open_stock_research_context(context)
         self.statusBar().showMessage("已開個股研究；題材版本與一般行情各標日期，不合併資料。")
+
+    def _current_theme_member_navigation(
+        self, context: ResearchStockContextDTO,
+    ) -> tuple[ThemeMemberNavigation, ThemeMemberNavigation] | None:
+        """只接受原題材版本、篩選與原選列仍未變的成員集合。"""
+        view = getattr(self, "industry_theme_map_view", None)
+        navigation = getattr(self, "_industry_theme_navigation", None)
+        if (getattr(self, "_shutdown_close_requested", False)
+                or context != getattr(self, "_industry_theme_origin", None)
+                or not isinstance(navigation, ThemeMemberNavigation)
+                or view is None or view.is_busy()):
+            return None
+        current = view.capture_selected_member_navigation()
+        if current is None or not navigation.matches(current):
+            return None
+        return navigation, current
+
+    def _resolve_theme_member_stock(
+        self, context: ResearchStockContextDTO, stock_code: str,
+    ) -> ResearchStockContextDTO | None:
+        """同題材換股只替換代碼／名稱，來源頁保留最初選列。"""
+        workspace = getattr(self, "stock_research_workspace", None)
+        if (workspace is None or workspace.report_view.context != context
+                or self.workspace_stack.currentWidget() is not self.workspace_widgets["stock_research"]
+                or workspace.content_stack.currentWidget() is not workspace.general_report_page):
+            return None
+        state = self._current_theme_member_navigation(context)
+        if state is None:
+            return None
+        navigation, current = state
+        resolved = navigation.resolve_context(context, stock_code, current)
+        if resolved is None:
+            return None
+        self._industry_theme_origin = resolved
+        return resolved
 
     def _open_stock_research_context(self, value: object) -> None:
         self._timeline_pending_price_entry = None
@@ -3960,6 +4003,10 @@ class MainWindow(QMainWindow):
     ) -> tuple[str, ...]:
         """只從來源頁現有 model 取代碼，供研究頁上一檔／下一檔。"""
 
+        if context.source_kind == "industry_theme_snapshot":
+            state = self._current_theme_member_navigation(context)
+            return state[0].member_stock_codes if state is not None else ()
+
         if (
             context.source_workspace == "recommendation"
             and context.source_kind == "original_stock_ranking"
@@ -4122,9 +4169,7 @@ class MainWindow(QMainWindow):
             return
         if context.source_kind == "industry_theme_snapshot":
             view = getattr(self, "industry_theme_map_view", None)
-            snapshot = getattr(view, "snapshot", None)
-            if (context != getattr(self, "_industry_theme_origin", None) or snapshot is None
-                    or snapshot.identity_sha256 != context.source_snapshot_hash or view.is_busy()):
+            if self._current_theme_member_navigation(context) is None:
                 self.statusBar().showMessage("原題材版本已變動或不可用；未以新版本替代原研究。")
                 return
             self._select_main_workspace("market_explore")

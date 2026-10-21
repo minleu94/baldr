@@ -166,3 +166,21 @@ QA082–088 原工具失敗保留：長路徑需使用既有 Windows extended re
 QA089 六項功能步驟完成，但 helper 在合作式關閉開始時取樣而判 FAIL；原 crash log 已記正常收尾。QA090 將最終關閉判定移到正常 Main 返回及 drain 後，編譯與完整限定 EXE 旅程 PASS：明選 R42 官方 producer 既有兩股來源、價格下限1、2317／2330 比較、同源個股與同 query／page／row 返回。四個來源索引 SHA、R44 唯讀價庫及 Journal 保持；沒有新增價庫副本、產製來源或網路。availability 仍 unknown、PIT=false，非全市場、月營收或自然 Forward 接受。
 
 證據在本 task 的 `r98_price_frozen_2b164aede953/price_frozen_journey_r98/receipt.json`，root 已檢視返回圖；closure `08b5e8ac6ffed6634e9a2db7da2a1b98333506033540c2141f2de13156a8788e` 正常退出、worker／Job PID0、handles 關閉、mutex 釋放，無強制清除。更新後交付收據 SHA `d88dfd7a765582cb816a16bbc1b757a97fda19bfa37b7d46f5239336572148c7`，八個 key file pins 不變；原 QA080 收據另存於任務目錄。EXE 來源產製、Native／真人、完整五旅程與金融 Gate 仍不升格。
+
+## 題材成員導航與後續 EXE 補驗（QA092 起）
+
+Blueprint 第二旅程要求同題材成員的上一檔／下一檔；後繼 Python 原始碼以不可變的題材導航身份核對原 snapshot、題材、成員順序及原選列。Report 僅替換代碼與名稱，價格仍各自讀取；來源或選列漂移時拒絕，保存時報告保持唯讀。QA096 正常 Main 與新程序導航已通過，固定 `2b164aede953` EXE 不含。
+
+QA092 編譯、四檔定向85項、Workbench85項、更新頁25通過／0失敗／4跳過、指定 mypy1104檔通過。整輪因文件定位用了不支援的 `industry_theme` 領域而 FAIL；QA093 改用 `ui` 完成定位，不更改產品門檻。QA092 closure `c2183442d4f0d214c4a1737f14b0d60e570ee2ae9d072d0d96e1243f350ea2d2` 自然閉鎖。
+
+QA093 固定 EXE 實際完成兩次相同 MA 參數的回測與正式 Registry 保存，兩筆 fingerprint 相同、Registry／Parquet 與唯讀價庫 SHA 保持，Main 正常關閉、worker0。整輪因 audit 記錄到並阻擋既有來源目錄建立及 `socket.bind` 嘗試而 FAIL；不能把被阻擋嘗試寫成實際外部寫入，也不能把本輪當完整比較通過。後續將唯讀重開這兩筆合法產出作比較，原收據不改。Closure `0e8cb779a690f5dd0f7e619940bac006e96d04d075a5acb8942f0e043df1c527` 自然閉鎖。
+
+QA094 的 EXE producer helper 在正式產生動作前因不存在的 `view.busy` 屬性而 FAIL；EXE、population 與價庫 SHA 保持，SQLite sidecar 未產生。這是驗證工具錯誤，尚無來源產製通過證據；原結果保留。Closure `39dc62211705a49f480af8b58edd4576f224aceb6fd4e2a6f8e923cb36dd7ed1` 自然閉鎖。以上 Job 均無剩餘 PID、process／Job handles 關閉、mutex 釋放，沒有強制清除。
+
+QA095 原失敗保留：helper 的 mkdir audit 使用 `AssertionError`，令原本 `Path.mkdir(exist_ok=True)` 對既有目錄的無操作變成啟動失敗；另舊 guard 測試替身缺新 resolver 屬性及仍預期舊文案。後續工具改用 `PermissionError` 繼續阻擋外部寫入，讓標準庫正常處理已存在目錄；測試替身明確沒有 resolver，仍驗拒絕任意跨股。沒有放行來源寫入或放寬身份守衛。
+
+QA096 的新 R110 CASE 完成正常 MainWindow／正式服務及 fresh 程序各五步：明選真10/16版本（25鏈／90題材）、2330→真下一檔2360→真上一檔2330、原題材原2330列返回、原選列變動後拒絕切股與返回且 context 不變。各股只有代碼／名稱變，成員清單與來源身份保持；2330 仍有120筆行情截至9/23，不借10/16題材行情。三題材原件及重用 R74 價庫 SHA 不變、SQLite sidecar 缺席、worker0自然關閉；root 看過返回及拒絕畫面。另8項原守衛／題材反查回歸通過。新導航不在固定 EXE。
+
+QA096 整輪仍 FAIL：另一項 R108 EXE producer 已完成四個精確確認對話框，但回傳非 complete；helper 在保存診斷前即拒絕，原因待下一次具名診斷，不認定為產品缺陷或成功產製。來源與 EXE SHA 保持。Closure `c0970d70670632471c4ffa14f12144b0ab47f0b2714092f962a2cd0291c69b77` 自然排空；題材功能的有效證據不受另一 helper 失敗取消，也不外推整輪通過。
+
+QA097 固定 EXE 以正常 Main 的正式 Registry widget 重開 QA093 兩筆真 run，同指紋比較標籤、120共同日期、240列權益及返回後狀態成功；expected.json、Registry DB及4個Parquet前後SHA保持，Main關閉／deferred-delete drain／worker0通過。整輪仍 FAIL，隔離器另阻擋既有輸出目錄 mkdir、Journal 鎖與 Registry 寫模式探測；未把這些阻擋改成成功寫入，也未聲稱完整隔離接受。保留功能已驗與該具名隔離限制，避免只為工具分類重跑同一旅程。Closure `cc3197b88c4e90d3c122b6debe44abaa8a65c4be4800fa569c89498bb453cef9` 自然閉鎖。原生／真人及金融資格不變。

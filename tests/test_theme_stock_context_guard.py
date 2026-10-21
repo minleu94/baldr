@@ -18,10 +18,11 @@ def test_theme_stock_switch_requires_returning_to_verified_member_source(request
     edits = []
     host = SimpleNamespace(
         _saved_snapshot_only=False,
+        theme_member_context_resolver=None,
         context=original, _set_status=lambda *args: statuses.append(args),
         stock_search=SimpleNamespace(setText=edits.append),
     )
     StockResearchReportView._load_stock(host, requested)
     assert host.context is original
     assert edits == ["2330"]
-    assert statuses == [("目前報告綁定原題材成員；請返回產業與題材選取其他成員，或另開一般個股研究。", "warning")]
+    assert statuses == [("目標股票不在同一題材版本的原成員列，或題材來源已變更；已拒絕切換。", "warning")]

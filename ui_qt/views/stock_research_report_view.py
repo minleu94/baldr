@@ -626,6 +626,9 @@ class StockResearchReportView(QWidget):
         self.research_bookmark_context_resolver: Callable[
             [ResearchStockContextDTO, str], ResearchStockContextDTO | None
         ] | None = None
+        self.theme_member_context_resolver: Callable[
+            [ResearchStockContextDTO, str], ResearchStockContextDTO | None
+        ] | None = None
         self.presentation_service = presentation_service or DecisionPresentationService()
         self.stock_codes = tuple(str(code).strip() for code in stock_codes if str(code).strip())
         self._request_id = 0
@@ -1497,12 +1500,22 @@ class StockResearchReportView(QWidget):
             and context.source_kind == "industry_theme_snapshot"
             and context.stock_code.strip() != code
         ):
-            self._set_status(
-                "目前報告綁定原題材成員；請返回產業與題材選取其他成員，或另開一般個股研究。",
-                "warning",
-            )
-            self.stock_search.setText(context.stock_code)
-            return
+            resolver = self.theme_member_context_resolver
+            resolved = resolver(context, code) if callable(resolver) else None
+            if (
+                not isinstance(resolved, ResearchStockContextDTO)
+                or resolved.stock_code != code
+                or replace(context, stock_code=code, stock_name=resolved.stock_name)
+                != resolved
+            ):
+                self._set_status(
+                    "目標股票不在同一題材版本的原成員列，或題材來源已變更；已拒絕切換。",
+                    "warning",
+                )
+                self.stock_search.setText(context.stock_code)
+                return
+            self.context = resolved
+            self._render_context_path()
         if (
             context is not None
             and context.source_workspace == "watchlist"

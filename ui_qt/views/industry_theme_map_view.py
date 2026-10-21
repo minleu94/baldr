@@ -43,6 +43,7 @@ from app_module.theme_snapshot_catalog import (
     resolve_latest_theme_research_snapshot,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -74,6 +75,7 @@ class IndustryThemeMapView(QWidget):
         self._chain_directory_cards: list[QGroupBox] = []
         self._chain_directory_buttons: list[QPushButton] = []
         self._chain_directory_identity: str | None = None
+        self._navigation_selection_revision = 0
 
         self._build_ui()
         self._render_empty("請設定題材版本目錄，或明選歷史版本。")
@@ -87,6 +89,61 @@ class IndustryThemeMapView(QWidget):
         """目前載入的唯讀快照，供主視圖核對 identity 與映射。"""
 
         return self._snapshot
+
+    def capture_selected_member_navigation(
+        self, expected_stock_code: str | None = None
+    ) -> ThemeMemberNavigation | None:
+        """只擷取目前已載快照、題材列及實際選取成員，不拼接搜尋結果。"""
+
+        snapshot = self._snapshot
+        if self._closed or self._busy or snapshot is None:
+            return None
+        theme_index = self.theme_filter.currentIndex()
+        if theme_index <= 0 or theme_index >= len(self._theme_options):
+            return None
+        theme_key = self._theme_options[theme_index]
+        if theme_key is None:
+            return None
+        row = self._rows_by_theme.get(theme_key)
+        if row is None:
+            return None
+        selected_row = self.member_table.currentRow()
+        if selected_row < 0 or selected_row >= len(row.stock_ids):
+            return None
+        item = self.member_table.item(selected_row, 0)
+        if item is None:
+            return None
+        selected_stock_code = item.text().strip()
+        if (
+            not selected_stock_code
+            or selected_stock_code != row.stock_ids[selected_row]
+            or (expected_stock_code is not None
+                and selected_stock_code != str(expected_stock_code).strip())
+        ):
+            return None
+        member_names: list[tuple[str, str]] = []
+        for stock_code in row.stock_ids:
+            names = {
+                mapping_row.stock_name.strip()
+                for mapping_row in snapshot.mapping
+                if mapping_row.chain_name == theme_key[0]
+                and mapping_row.theme_name == theme_key[1]
+                and mapping_row.stock_id == stock_code
+                and mapping_row.stock_name.strip()
+            }
+            member_names.append((stock_code, next(iter(names)) if len(names) == 1 else ""))
+        return ThemeMemberNavigation(
+            snapshot_ref=snapshot,
+            snapshot_identity=snapshot.identity_sha256,
+            theme_key=theme_key,
+            member_stock_codes=tuple(row.stock_ids),
+            member_names=tuple(member_names),
+            origin_stock_code=selected_stock_code,
+            origin_row_index=selected_row,
+            source_data_date=snapshot.report.data_date.isoformat(),
+            mapping_version=snapshot.report.mapping_snapshot_date,
+            selection_revision=self._navigation_selection_revision,
+        )
 
     def _build_ui(self) -> None:
         page_layout = QVBoxLayout(self)
@@ -429,6 +486,7 @@ class IndustryThemeMapView(QWidget):
             3, QHeaderView.ResizeMode.Stretch
         )
         self.member_table.itemDoubleClicked.connect(self._emit_selected_stock)
+        self.member_table.currentCellChanged.connect(self._on_member_cell_changed)
         members_layout.addWidget(self.member_table)
         content_layout.addWidget(self.members_group)
         content_layout.addStretch(1)
@@ -1582,13 +1640,21 @@ class IndustryThemeMapView(QWidget):
 
     @Slot(int)
     def _on_chain_changed(self, _index: int) -> None:
+        self._navigation_selection_revision += 1
         if self._snapshot is None:
             return
         self._populate_theme_filter()
 
     @Slot(int)
     def _on_theme_changed(self, _index: int) -> None:
+        self._navigation_selection_revision += 1
         self._render_selected_theme()
+
+    def _on_member_cell_changed(
+        self, _current_row: int, _current_column: int,
+        _previous_row: int, _previous_column: int,
+    ) -> None:
+        self._navigation_selection_revision += 1
 
     def _render_selected_theme(self) -> None:
         self.metrics_table.setRowCount(0)

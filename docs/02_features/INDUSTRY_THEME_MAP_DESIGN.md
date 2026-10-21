@@ -318,6 +318,8 @@ flowchart LR
 
 `theme_research_presentation`只選相關欄位覆蓋完整且值存在的題材，依精確Decimal／整數排序，穩定取前五；零與負值不丟棄。鏈目錄去重，跨題材重疊不加總為全市場績效。`IndustryThemeMapView`呈現四類觀察、排行、25鏈目錄及成員；Main沿既有ResearchStockContextDTO開一般個股並返回同一來源頁，不混合題材行情與一般價庫。
 
+R104另有Python候選 `theme_member_navigation`：由Main保存原snapshot、成員清單、題材／篩選條件與selection revision；個股報告的上一／下一只切換代號與名稱，行情仍由各股原reader載入，返回時回到原題材及原選列。來源或選列變動時拒絕舊導航；已保存報告禁止切股。此候選的正常Main／新程序導航已於QA096通過，現行2b EXE未包含；QA092只代表其列明的定向檢查結果，不代表整輪驗收或產品交付完成。
+
 `ThemeResearchNoteService`沿既有Journal的ACTION_NOTE追加修訂，保存原文、精確snapshot身份與獨立資料日tag；`created_at`為實際保存時鐘，決策日期及股票／推薦身份保持未知。每篇新筆記有獨立實體根，同快照可保存多篇；追加修訂沿原根，過時祖先仍由原Journal修訂鏈拒絕。讀歷史後以原history token提交，並行改動會拒絕過時保存。Widget背景保存固定送出時來源，回訪原文唯讀，再開來源須核原SHA；關閉時等待已送出的寫入完成，不能由全域取消丟棄。服務信任caller提供已由reader明選讀回的typed snapshot，不自行認證官方來源或磁碟防竄改。驗證狀態仍以本輪QA逐項為準。
 
 ## 6. 關聯文件索引

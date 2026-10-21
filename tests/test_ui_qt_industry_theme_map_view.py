@@ -629,6 +629,33 @@ def test_sorting_direction_projects_global_high_and_low_five_for_all_metrics():
     view.close()
 
 
+def test_selected_theme_member_navigation_capture_is_bound_to_visible_row():
+    application = app()
+    view = IndustryThemeMapView()
+    snapshot = _snapshot()
+    view.set_snapshot(snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    view.member_table.setCurrentCell(0, 0)
+    navigation = view.capture_selected_member_navigation("2330")
+    assert navigation is not None
+    assert navigation.snapshot_ref is snapshot
+    assert navigation.snapshot_identity == snapshot.identity_sha256
+    assert navigation.theme_key == ("科技鏈", "AI")
+    assert navigation.member_stock_codes == ("2330", "2317")
+    assert navigation.origin_stock_code == "2330"
+    assert navigation.member_names == (("2330", "台積電"), ("2317", ""))
+
+    assert view.capture_selected_member_navigation("2317") is None
+    _select_theme(view, "金融鏈", "保險")
+    _select_theme(view, "科技鏈", "AI")
+    view.member_table.setCurrentCell(0, 0)
+    changed_selection = view.capture_selected_member_navigation("2330")
+    assert changed_selection is not None
+    assert not navigation.matches(changed_selection)
+    view.close()
+    application.processEvents()
+
+
 def test_directional_projection_rebuilds_after_snapshot_replacement():
     app()
     view = IndustryThemeMapView()

@@ -2,7 +2,9 @@
 
 本次啟動 TabOrder、Qt model 連線清理與 pandas 相容性修正，見[主視窗啟動警告修復](BALDR_STARTUP_WARNINGS_FIX_20261015.md)；來源版限定驗證與公司名冊來源憑證缺件分開判讀。
 
-V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)（M1 進行中；此索引入口不代表 PASS，請依摘要標示的範圍與未核實項目判讀）。
+V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)；2026-10-21 Owner 已改採自動化優先，四軌驗收、各旅程範圍與金融缺件分開判讀。本索引不替代原始證據，也不代表 Native、Owner UAT 或完整金融資格通過。
+
+可先讀[V2自動化驗收一頁摘要與截圖](BALDR_V2_AUTOMATED_ACCEPTANCE_20261021.md)，不要求Owner現在逐頁操作。
 
 [10/18後繼題材研究](BALDR_THEME_DAILY_QA_20261018.md)另核每日聚合、首頁／題材／個股返回及Journal原判斷重啟回訪；[研究12回報修正](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)包含清除、同版顯示均線、原價格筆記刪除與明確一般查詢，完整Gate接受範圍保持。
 

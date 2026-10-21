@@ -2,6 +2,43 @@
 
 本文件記錄依 [V2 Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 開發的 Source 分支證據。基線 `9ce92743`，分支 `codex/baldr-v2-product`。已有本機技術候選及分階段驗證，最新整合候選與限制見下節；完整五旅程仍為 PARTIAL，既有固定研究13不包含本輪變更。
 
+## 自動化優先與四軌驗收（2026-10-21 Owner override）
+
+交付先讀[一頁式摘要與截圖](BALDR_V2_AUTOMATED_ACCEPTANCE_20261021.md)。本節的來源版 RC 判定只涵蓋明列的研究功能與安全缺件出口，並非完整五旅程所有分支或金融資格接受。
+
+Owner 已覆蓋先前真人等待規則：日常開發、Milestone 與 RC 準備不以 Owner 親自操作為前置條件，不逐包索取真人操作收據。下方舊紀錄的 `MANUAL_ACCEPTANCE_PENDING`、`PARTIAL`、`full_product_accepted=false` 保留原意與原始結果；它們不再單憑 Owner UAT 未做而阻擋可獨立工作，也不因新政策改寫為已通過。
+
+每個 Milestone 分列 `CODE_AND_CONTRACT_VERIFIED`、`AUTOMATED_GUI_E2E_VERIFIED`、`NATIVE_WINDOWS_SMOKE_VERIFIED` 與 `OWNER_UAT_NOT_PERFORMED`，前兩者必須附版本、資料與實際動作範圍。Native 的有效停止指示仍為 `USER_STOPPED_ESCAPE`，因此第三軌結果為 `NATIVE_SMOKE_NOT_EXECUTED`，不能以離屏 Qt 事件、mock 或合成測試代替 Windows 原生桌面驗收。第四軌為 `OWNER_UAT_NOT_PERFORMED`，不作日常開發／RC blocker。正式金融來源、PIT、Forward 成熟度及 Paper 正向建帳資格仍分開判讀。
+
+只有宣告完成的功能具必要自動化證據、沒有未解重大安全／完整性缺陷，且缺資格功能安全隔離、Native 限制明示時，才可在明確範圍使用 `PRODUCT_RC_AUTOMATED_VERIFIED_OWNER_UAT_PENDING`。來源版 `b8ed339f` 與固定 `eefd2163ad95` EXE 分開記錄；後者未包含兩項鍵盤修復，不更新原包內收據來冒稱新版本。
+
+R201–205 沿原始結果重新核對五旅程。Workbench 正向線索的入口需要 reader 原有 `latest_status.json` 及相符 typed candidate；R67 的10/19／1512保存推薦只經推薦頁 reader，原 restore manifest 沒有該首頁狀態原件，不能注入 DTO 或改路由冒充完整首頁線索旅程。此資料分支仍未驗；可使用的保存研究回訪不受影響。QA148 frozen 的正確結果為 task `r134_frozen_comparison/r179_report_fresh_result.json`，20個 `PyiFrozenLoader` 模組、建帳停用及原件／latest／Timeline往返已驗；`r148_paper_prerequisite/r148_result.json` 是較早 standalone MainWindow 結果，不是該 frozen run。
+
+### M0–M5 四軌結果
+
+前兩欄的「已驗」分別表示 `CODE_AND_CONTRACT_VERIFIED` 與 `AUTOMATED_GUI_E2E_VERIFIED`，**僅限同行範圍**；不把缺資料的正向分支寫成通過。Native 欄記錄 `NATIVE_WINDOWS_SMOKE_VERIFIED` 軌的實際未執行結果，Owner 欄獨立記錄未做 UAT。
+
+| Milestone | 程式／契約 | 自動 GUI E2E 的實際範圍 | Native Windows | Owner UAT |
+|---|---|---|---|---|
+| M0 恢復 | 已驗：唯一 root、既有成果／來源 pins、Git與恢復點 | 不適用；工程恢復不是 GUI 旅程 | `NATIVE_SMOKE_NOT_EXECUTED` | `OWNER_UAT_NOT_PERFORMED` |
+| M1 Shell | 已驗：既有導航／來源返回及兩項鍵盤修復；QA158／159 | 已驗：QA162 真 `main()` 17路由／四尺寸；QA159 Ctrl+K、Tab／Shift+Tab及typed價格返回 | `NATIVE_SMOKE_NOT_EXECUTED` | `OWNER_UAT_NOT_PERFORMED` |
+| M2 探索／個股 | 已驗：既有題材、價格來源、Query／收藏與歷史身份守衛 | 已驗：QA075／103題材受限切片、QA090雙股比較、QA148／159歷史／最新回訪；月營收正向仍未驗 | `NATIVE_SMOKE_NOT_EXECUTED` | `OWNER_UAT_NOT_PERFORMED` |
+| M3 投資／策略 | 已驗：Journal／帳種隔離、Paper拒絕與baseline非法值守衛、Registry相容性；QA124／128／137 | 已驗：QA148保存原件／Paper安全出口；QA033／036回測保存重開；QA164目前Main比較功能切片，整輪FAIL另列；正向建帳未驗且停用 | `NATIVE_SMOKE_NOT_EXECUTED` | `OWNER_UAT_NOT_PERFORMED` |
+| M4 總覽 | 已驗：原readmodel、最近研究引用及來源不足拒絕 | 已驗：QA075保存研究回訪；QA162實際首頁缺件出口。**正向首頁線索入口缺原狀態檔，未驗** | `NATIVE_SMOKE_NOT_EXECUTED` | `OWNER_UAT_NOT_PERFORMED` |
+| M5 交付 | 已驗：既有eefd包同版／啟動器／pins；目前來源鍵盤回歸 | 已驗：QA148／152固定包有界功能，QA159／162目前來源；兩版本不混稱同版 | `NATIVE_SMOKE_NOT_EXECUTED` | `OWNER_UAT_NOT_PERFORMED` |
+
+### 本輪真主程式與 Registry 證據
+
+QA161 以既有 document_control 定位release角色／文件範圍；Context預算略過Snapshot片段，Root另讀目前頂端狀態，不把related_paths清單視為全核讀。QA162 R207透過正式 `ui_qt.main.main(application_settings=..., startup_controller=...)` 啟動，17個路由在1280×760／DPR1.25，以及1500×900、1440×900、1920×1080首頁全部完成，`main_exit_code=0`、errors空、worker／pool0，Main自行deferred-delete後視窗失效。R181價庫、R42四個index與7份產品檔前後保持；Root已看首頁截圖。實際 WorkbenchDailyEvidence 為 missing，兩個候選／保存結果按鈕停用並明示缺件，不算正向線索成功。台股決策日按臺北時間顯示，與本交付的洛杉磯日期分開。closure `08a1ca5f91f13d21a053432abd88ea3e1c8b9d447582a629ae49b5bcdbaec55f` 自然全閉。
+
+QA163 R206首次Registry補驗在初始化時被未canonical化的repo output junction路徑拒絕，尚未比較，整輪FAIL保留；closure `bdd31d4e01b491d1f32aa2897c495aeed714ae51dbcdab5fcd2c65f7372e4b87` 自然全閉。原result的source-unchanged為false，是初始化先失敗而baseline未寫入result；Root另按expected preflight逐key核8個來源的bytes／SHA與檔集合全部相同，沒有改寫原旗標或FAIL。
+
+QA164 R209以物理路徑與正式ApplicationSettings重驗，目前來源Main使用真ResearchRunService的fixture配置，只有三個Registry讀取路徑指向既有R09原件，其他輸出都在新CASE；不是產品新增任意root功能，也沒有mock Widget、改metadata或新增run。相同MA pair精確顯示120共同日／240權益列；MA／RSI pair由原元件拒絕「資料指紋不同」，再恢復原overview／原選取。原run metadata、8個來源DB／Parquet與Registry DB SHA全部保持，CASE外寫拒絕清單空、worker0。
+
+**QA164整輪仍為FAIL，僅接受上述功能切片。** 唯一isolation error來自import時 urllib3 `_has_ipv6("::1")` 嘗試 `socket.bind(("::1", 0))`，被原網路守衛阻止。已核實address／family／call stack；沒有放行該socket、connect或外部傳輸，不宣稱零socket嘗試或整輪隔離PASS，也不為分類再造CASE重跑。closure `af9236afa9d1992d831d1be06445a674d4259c5e69e959bbfe93c7025417cd27` terminal1、三PID陣列空、handles關閉及mutex釋放，無強制回收。這是已定位的測試初始化探測限制；在宣告的唯讀比較功能中，未觀察到原件寫入、非法比較接受或資料完整性破壞。
+
+Root據既有必要回歸、上述真GUI動作與來源完整性，將**本機來源版已宣告研究功能**列為 `PRODUCT_RC_AUTOMATED_VERIFIED_OWNER_UAT_PENDING`；不表示完整五旅程所有分支已完成、沒有任何未知缺陷、可正式發布或取得金融資格。月營收／Paper與正向首頁線索仍按各自缺件隔離；Native與Owner未執行不能單獨阻擋這個限定候選及後續安全開發。沒有產品程式改動，因此重用QA158／159既有必要回歸，不重跑Common；沒有新建Trial／EXE或改寫舊包收據。
+
 ## 來源取得與獨立自動驗證（R188 起）
 
 Owner 明示真人驗收標為「等我有空」，不阻止其他安全工作；Native `USER_STOPPED_ESCAPE` 維持，沒有恢復桌面輸入。Root 分派 Luna 唯讀月營收、Paper 取得鏈及自動 UI 缺口盤點；不建立來源 binding、來源接受收據或合成金融資料。既有 `eefd2163ad95` 候選及 canonical 交付收據不變，完整五旅程仍 PARTIAL，真人仍未通過。

@@ -268,3 +268,13 @@ QA137在程式包外隔離basetemp重驗，編譯、209項定向（包含16個no
 R170對既有R111／R112最多八檔有界核對：證據是TechnicalUniverse V4產製／查詢／比較／個股返回，沒有價格詳情需要的typed price bookmark或selection。未將它冒充價格來源，未建新helper或造state；新價格latest的實際Main往返仍NOT_RUN，工程定向包含signal、原selection、token及strict reader dispatch。一般保存報告的Main證據與此缺件分開判讀。
 
 QA138既有個股詳情動作／V2版面／導航另8項通過。文件全檢首輪FAIL包含root同步字串誤替換的UI文件連結（已恢復HEAD原正文，僅重加新段落），及研究分冊原有output/trial junction越界連結。保留原FAIL，closure `0f5ae7db4aacb5daf03abd133fadcd30c2c88b7f8ac0f876228d601625540395` 自然全閉；最後收斂檢查五份非junction正文與task／Feature Map，Manual／Snapshot／研究分冊的新diff由root另審，不宣稱其舊全檔連結通過。
+
+## 價格詳情另開最新與精確返回（QA140–141）
+
+R172／R173釐清R170的定位界線：F07價格來源由既存V4 strict parent callback投影，不需要另一producer或預存typed bookmark。R42既存generation `d259dd1f68ad0485c5523fc3ad48d48c2d3a091b21e716f2306210f5b6602f04`、plan與完整receipt四檔SHA仍匹配；R98原證據顯示可由正常PriceView建立真正PriceSelectionV1，不能直接將V4 row轉型冒充。這次沒有產製來源、複製價庫或手造typed state。
+
+QA140 R174正常Main已完成原來源／最低價1查詢／2317 typed selection／獨立latest／strict重核同詳情五步，最後helper誤要求隱藏工作區內的price子頁也必須清空而逾時；保留畫面是既有設計，原FAIL及收據完整保留。Root另建R176，只移除該不適用predicate；原查詢、頁面、row、選列與可見來源頁的判定全部保留。
+
+QA141 R176在相同Source commit `1d0a6d30e993af0dccd6e9a98444a045b8b6d459` 完成六步正常MainWindow（非main() entry），1280×760／DPR1.25。新latest context的歷史日期／result ID／pins為空；返回核strict原source與typed selection，恢復同price page／view／context，再回到query `5fe8208c0fbe31fff07d3bf419016aac0b1c33e97e35959ad2012bfc14fdcb90`、page `41ebd7806b77436c1244db9b90cdbe428d81755e366ee6e1759aa5aeea767d62` 及2317同row。Root看三圖；四來源index、R114價庫SHA、R134 Journal與產品source保持，worker／pool0並自然deferred-delete完成。來源僅兩股保存研究，availability unknown／historical PIT false，沒有保存新Journal或提高金融資格。
+
+QA140 closure `7670b66c510625a5c94649f2aa6850199335a5454985f1faadadc7c0926b32ff`、QA141 closure `6b61d6ae690f2b753542132409d728ea11be32f990503d50e552b7435ef00383` 均三PID陣列空、process／Job handles閉、mutex釋放及無強制回收。固定a65 EXE仍不含後繼Source；累積Paper前置檢查、baseline未知拒絕與本輪保存／回訪／Journal修復，接著以一次重要整合候選收斂可操作出口。候選建置及包內驗證另記，完整五旅程、Native／真人與金融缺件不升格。

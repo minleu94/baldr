@@ -106,6 +106,17 @@ def test_original_view_daily_actor_pages_bookmark_exact_reopen_and_shutdown(
         view.show_selected_detail()
         assert "22.006875" in view.detail_text.toPlainText()
         assert "PIT" in view.detail_text.toPlainText()
+        origins: list[object] = []
+        view.stockResearchRequested.connect(origins.append)
+        origin = view.create_stock_research_origin()
+        assert origin is not None
+        view.open_stock_research_button.click()
+        assert origins == [origin]
+        assert view.restore_stock_research_origin(origin)
+        assert view.results_stack.currentIndex() == 0
+        assert view.current_selected_row is not None
+        assert view.current_selected_row.stock_code == "1000"
+        assert selection_count == 1
         view.add_selected_to_comparison()
         view.navigate_page(5)
         _wait(app, lambda: len(outcomes) == 3)

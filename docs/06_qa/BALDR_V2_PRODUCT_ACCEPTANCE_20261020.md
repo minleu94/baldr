@@ -77,9 +77,15 @@ QA018 原定向整合收據保留兩個失敗；修正後 QA019 同一測試組�
 
 QA033 closure SHA `1905734286700f7930b731900d2097aaec9a6d70047f40113fe87e448f78944d`；Job 自然排空，handles 關閉、mutex 釋放，無強制收尾。QA032 的診斷 PASS 與 QA033 原 view PASS 分開記錄；QA026 原 FAIL 保留。全域舊 junction 連結檢查仍是局部未解，scoped check 不代表全域通過。
 
+QA034 正常 Main 的真 WorkbenchSourceService 缺件出口通過：沒有每日快照狀態檔時，候選為零、無來源身份、選單及開啟按鈕停用，按鈕不會誤入個股；未生成候選檔。QA035 新增月營收明確個股入口與短期來源回返契約，25 項定向、原 view 真 fixture 1 項、Workbench 85、validator 25/0/4、mypy 1103、17 路由 smoke 及 scoped 文件檢查通過。同輪 R17 first 正常 Main 追加同條件 MA run，真正指紋相同且原兩筆 metadata/Parquet 保持；fresh 因比較讀取器不識單股原存 `equity` 欄失敗，故整輪仍 FAIL，closure `076a8ca931dfd59179744286ed8d6026035c1fc06f3cf5a4c0f32909c0e6bcbb`。
+
+QA036 將明確 `single_backtest` 原曲線在比較副本轉接欄名後，七命令全部 0：編譯、47 項日期／精度／保存／比較測試、正常 Main fresh 同指紋比較、Workbench 85、validator 25/0/4、mypy 1103 及 scoped 文件檢查通過。真正讀回 120 個共同日期、240 列標準化權益，原來源與 QA033 原件不變，未重算原回測或覆寫 QA035 失敗。closure `ef6ef15e4d3f0978eecc338a9b802e5a84c966a65bdc4d6eec0a42fcc53df6f1`；兩輪 Job 均自然排空、handles 閉、mutex 釋放。證據位於本 task `qa034_daily_missing`、`qa035_revenue_route_and_compare`、`qa036_registry_comparison`，R17 各輪結果另名保存。
+
 QA021–025 的範圍、原失敗和修正後輸出分開記錄；後續 PASS 不抹去舊 receipt。QA025 的文件檢查失敗是既有 junction 連結越界，不能外推成產品 backend 結果。QA024 closure 的受控程序自然排空，但不代表整體 V2 gate 接受。
 
 ## 五條旅程與金融界線
+
+QA037 固定建置日期參數的編譯、74 項來源／資源／身分測試、單檔 mypy 與 scoped 文件檢查全部通過；closure `049af0e847a6bd5872c480e4462e5936a8a173ab5784d481798b42d60c10a8e1`，自然閉鎖。此證據尚未包含 EXE 建置或同版驗證。
 
 狀態只描述目前有界工程證據，產品 Gate 仍未整體接受。`PARTIAL` 不等於完整旅程通過；真人接受另列 `MANUAL_ACCEPTANCE_PENDING`。
 
@@ -89,7 +95,7 @@ QA021–025 的範圍、原失敗和修正後輸出分開記錄；後續 PASS �
 | 市場／題材→成分→個股→返回 | PARTIAL | QA024 固定 10/16 受限快照之正常 Main first/fresh 證明 25 鏈／90 題材、CoWoS 21/21 有價量觀測的明選成分進 2330、保存題材 note revision 並 fresh 回讀原 manifest identity；這是固定題材來源的腳本旅程 PASS。一般個股行情在隔離根仍缺件，完整來源資格、原生 GUI 與真人接受待驗，不能把題材價量當作個股行情。QA013／QA017 另提供路由／布局證據。 |
 | 綜合選股→條件→2–5股比較→個股 | PARTIAL | QA024 範本 13 PASS、QA033 原月營收 view 的來源、分頁、比較、收藏與精確重開 1 PASS；完整 Main wrapper 多股旅程另驗。 |
 | 個股→人工確認→Paper→Forward→覆盤 | PARTIAL（安全出口） | QA033 正常 Main 缺合法 mark/cash/snapshot 時拒絕建帳，manual/Paper 分開、無 NAV/ledger 寫入；手動研究日記經 UI 保存並 fresh 精確回讀。完整建帳及自然 Forward 成熟未驗。 |
-| 策略→回測→保存→比較→返回 | PARTIAL | QA033 正常 Main 以 2330 真實受限 120 點樣本執行兩策略、保存 Registry 並 fresh 精確讀回；原來源 SHA 保持。異指紋與搬移路徑拒錯通過，相容比較尚待。 |
+| 策略→回測→保存→比較→返回 | PASS（受限腳本） | QA033 正常 Main 以 2330 真實受限 120 點樣本執行兩策略、保存 Registry 並 fresh 精確讀回；QA035/036 另以同策略原輸入新增合法 run、fresh 比較 120 共同日期/240列權益，原件保持。異指紋與搬移路徑拒錯另有原證據。非績效資格、Native 或真人接受。 |
 
 QA013、QA017 與 QA020 的 scoped 結果均不能升格為 V2 Product Acceptance PASS。真人接受仍為 `MANUAL_ACCEPTANCE_PENDING`。
 

@@ -85,12 +85,17 @@ class ResearchRunComparisonService:
         return ComparabilityResult(ComparabilityStatus.COMPARABLE, [])
 
     def build_normalized_equity(
-        self, equity_by_run: dict[str, pd.DataFrame]
+        self, equity_by_run: dict[str, pd.DataFrame], *,
+        run_types: dict[str, str] | None = None,
     ) -> NormalizedEquityResult:
+        if run_types is not None and set(run_types) != set(equity_by_run):
+            raise ValueError("權益曲線與保存 run 類型的身份集合不一致")
         date_sets: dict[str, set[str]] = {}
         prepared: dict[str, pd.DataFrame] = {}
         for run_id, equity in equity_by_run.items():
-            frame = self._prepare_equity_frame(equity)
+            frame = self._prepare_equity_frame(
+                equity, run_type=run_types.get(run_id) if run_types is not None else None,
+            )
             prepared[run_id] = frame
             date_sets[run_id] = set(frame["date"].tolist())
 
@@ -197,19 +202,28 @@ class ResearchRunComparisonService:
                 reasons.append(COMPARABILITY_REASON_LABELS.get(reason, reason))
         return reasons
 
-    def _prepare_equity_frame(self, equity: pd.DataFrame) -> pd.DataFrame:
+    def _prepare_equity_frame(
+        self, equity: pd.DataFrame, *, run_type: str | None = None,
+    ) -> pd.DataFrame:
         if not isinstance(equity, pd.DataFrame):
             raise ValueError("已保存權益曲線必須是 DataFrame")
         date_column = "日期" if "日期" in equity.columns else "date"
         if date_column not in equity.columns:
             raise ValueError("equity curve 必須包含 date 或 日期 欄位")
-        if "portfolio_value" not in equity.columns:
+        value_column = "portfolio_value"
+        # 單股 broker 的原保存格式使用 equity；只在已讀回的 run 類型明確時
+        # 投影同一金額欄，不修改 Parquet、不補值或重新計算原 run。
+        if run_type == "single_backtest" and "equity" in equity.columns:
+            if "portfolio_value" in equity.columns:
+                raise ValueError("單股保存曲線含多個權益欄，來源不明確")
+            value_column = "equity"
+        if value_column not in equity.columns:
             raise ValueError("equity curve 必須包含 portfolio_value 欄位")
 
         # 原件即使通過檔案 hash，也可能帶重複／倒序日期或無效金額；
         # 在交集與績效展示之前驗證全列，不修補保存結果。
         verified = research_run_dated_equity_copy(equity) if not equity.empty else equity
-        frame = verified[[date_column, "portfolio_value"]].copy()
+        frame = verified[[date_column, value_column]].copy()
         frame.columns = ["date", "portfolio_value"]
         frame["date"] = frame["date"].map(str)
         for value in frame["portfolio_value"]:

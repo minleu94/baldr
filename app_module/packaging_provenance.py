@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+from datetime import date
 import hashlib
 import importlib.metadata
 import json
@@ -16,6 +17,8 @@ from app_module.personal_data_paths import to_internal_io_path
 
 LOCK_SCHEMA = "baldr-windows-dependency-lock.v1"
 _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+_VERSION_DATE = re.compile(r"[0-9]{4}\.[0-9]{2}\.[0-9]{2}\Z")
+_DEFAULT_VERSION_DATE = "2026.10.06"
 
 
 def _archive_io_path(path: Path) -> Path:
@@ -130,9 +133,18 @@ def verify_exported_source(archive: Path, source: Path) -> None:
         raise ValueError("固定來源快照含額外程式：" + ", ".join(sorted(extras)))
 
 
-def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[str, object]:
+def create_build_metadata(
+    source: Path, commit: str, lock_sha256: str, *,
+    version_date: str = _DEFAULT_VERSION_DATE,
+) -> dict[str, object]:
     if not _COMMIT.fullmatch(commit) or not re.fullmatch(r"[0-9a-f]{64}", lock_sha256):
         raise ValueError("建置來源或依賴身分錯誤")
+    if not isinstance(version_date, str) or not _VERSION_DATE.fullmatch(version_date):
+        raise ValueError("版本日期必須使用 YYYY.MM.DD")
+    try:
+        date.fromisoformat(version_date.replace(".", "-"))
+    except ValueError as exc:
+        raise ValueError("版本日期不是有效的 Gregorian 日期") from exc
     resource_hashes = {
         path.relative_to(source).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted((source / "ui_qt").rglob("*"))
@@ -264,7 +276,7 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
                                 for relative in causal_score_sources})
     return {
         "schema": "baldr-application-build.v1",
-        "version": f"2026.10.06+{commit[:12]}", "source_commit": commit,
+        "version": f"{version_date}+{commit[:12]}", "source_commit": commit,
         "channel": "release", "dirty": False,
         "dependency_lock_sha256": lock_sha256, "resource_sha256": resource_hashes,
     }

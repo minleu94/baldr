@@ -24,6 +24,7 @@ def main() -> int:
     sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True, help="已驗證的完整 40 字元來源 commit")
+    parser.add_argument("--version-date", default="2026.10.06", help="版本日期（YYYY.MM.DD）；未指定時沿用既有日期")
     parser.add_argument("--candidate", action="store_true", help="相容舊參數；現在一律建置獨立 candidate")
     args = parser.parse_args()
     if sys.platform != "win32":
@@ -38,7 +39,7 @@ def main() -> int:
     if any(not (source / name).is_file() for name in required):
         raise ValueError("此 commit 尚未包含共同啟動／版本／依賴鎖，不能建置本次 candidate")
     lock_sha = verify_dependency_lock(source / "packaging/windows-dependencies.lock.json")
-    metadata = create_build_metadata(source, args.commit, lock_sha)
+    metadata = create_build_metadata(source, args.commit, lock_sha, version_date=args.version_date)
     (source / "application_build.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )

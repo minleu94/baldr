@@ -1,5 +1,7 @@
 # 決策、研究與 Portfolio
 
+V2 Registry 比較讀取邊界由 UI 傳入已載回 metadata 的 run 類型。僅明確 `single_backtest` 允許把 broker 原保存的 `equity` 投影為比較內部 `portfolio_value`；此轉接只對副本改欄名，不改 Parquet、原值、日期或成本／指紋契約。雙權益欄歧義及缺件仍拒絕，非單股類型不借用此轉接。標準化仍沿既有 Decimal 計算與明確日期交集，不補齊缺日。
+
 ## research07顯示與保存增量
 
 saved_price_moving_average_chart只投影最多120筆已核保存價格，各日以原收盤前綴20／60筆及獨立Decimal context計算顯示用SMA；缺收盤重暖機，hash綁所用原列。結果只進原來源圖，不回流策略／篩選或填補原保存指標。績效比較與逐日訊號對照沿原分離reader，UI分別命名並展示原拒絕原因，不以完成交易筆數新增訊號門檻。

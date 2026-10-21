@@ -205,6 +205,7 @@
       ],
       "code": [
         "ui_qt/views/unified_screener_workspace.py",
+        "ui_qt/views/revenue_stock_research_origin.py",
         "app_module/advice_dtos.py",
         "app_module/fundamental_factor_service.py",
         "decision_module/factors/fundamental_adapters.py",
@@ -258,6 +259,7 @@
       ],
       "tests": [
         "tests/test_ui_qt_unified_screener_workspace.py",
+        "tests/test_ui_qt_revenue_stock_research_origin.py",
         "tests/test_daily_market_monthly_revenue_archive_reference_artifact_v4.py",
         "tests/test_revenue_factor_pack.py",
         "tests/test_revenue_factor_pack_history.py",
@@ -332,6 +334,8 @@
       "change_patterns": [
         "ui_qt/views/unified_screener_workspace.py",
         "tests/test_ui_qt_unified_screener_workspace.py",
+        "ui_qt/views/revenue_stock_research_origin.py",
+        "tests/test_ui_qt_revenue_stock_research_origin.py",
         "analysis_module/*",
         "app_module/advice_dtos.py",
         "app_module/fundamental_factor_service.py",
@@ -504,6 +508,7 @@
         "app_module/recommendation/replay_lineage_service.py",
         "app_module/research_run_dated_equity.py",
         "app_module/research_run_repository.py",
+        "app_module/research_run_comparison_service.py",
         "app_module/research_run_service.py",
         "app_module/basic_strategy_saved_pair.py",
         "app_module/strategy_historical_performance_read_service.py",
@@ -537,6 +542,7 @@
       "tests": [
         "tests/test_ui_qt_strategy_library_view.py",
         "tests/test_ui_qt_backtest_product_layout.py",
+        "tests/test_research_run_comparison_service.py",
         "tests/test_registered_strategy_spec.py",
         "tests/test_baldr_completion_p07_bollinger.py",
         "tests/test_baldr_completion_p07_w_bottom.py",
@@ -654,6 +660,8 @@
         "tests/test_ui_qt_historical_card_wiring.py",
         "app_module/research_run_dated_equity.py",
         "tests/test_research_run_dated_equity.py",
+        "app_module/research_run_comparison_service.py",
+        "tests/test_research_run_comparison_service.py",
         "app_module/recommendation_portfolio_period_precision_v2.py",
         "tests/test_recommendation_portfolio_period_precision_v2.py",
         "app_module/recommendation_portfolio_backtest_service.py",
@@ -1515,6 +1523,7 @@
         "ui_qt/widgets/workspace_subnav.py",
         "app_module/application_bootstrap.py",
         "app_module/packaging_provenance.py",
+        "packaging/build_windows.py",
         "packaging/baldr.spec",
         "app_module/decision_service_composition.py",
         "data_module/daily_monthly_revenue_cohort_binding.py"
@@ -1565,6 +1574,7 @@
         "tests/test_daily_monthly_revenue_cohort_binding.py",
         "tests/test_decision_service_composition.py",
         "app_module/packaging_provenance.py",
+        "packaging/build_windows.py",
         "packaging/baldr.spec",
         "tests/test_calendar_acceptance_application_settings.py",
         "tests/test_packaging_kernel_provenance.py",

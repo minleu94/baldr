@@ -1,5 +1,7 @@
 # UI 與應用流程
 
+V2 月營收結果的「開啟一般個股研究」由 view 產生不可變的 `RevenueStockResearchOrigin`，核對原來源、query、page request、page 與 row SHA。Main 只將股票及來源識別映射到原 `ResearchStockContextDTO`，一般報告另讀行情，不攜入月營收 facts 或推定其日期。返回只接受仍在當前已核快照的原頁原列，忙碌或身份改變即拒絕；此短期回返不代替收藏跨程序的磁碟原件核驗。
+
 ## research07操作邊界增量
 
 StockResearchWorkspace的一般查詢動作建立空名稱、無原保存ID／日期／SHA的explicit_latest_stock_research脈絡，由原一般報告service辨識名稱與行情；保存來源重讀仍走原來源。題材清除沿既有generation與worker取消，先處理筆記busy／草稿確認，modal確認後再核generation、snapshot與worker身份；不寫來源或已保存筆記。原價格圖的顯示用SMA邊界見decision_research_portfolio分冊。

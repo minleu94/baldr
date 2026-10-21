@@ -641,7 +641,8 @@ class RunRegistryCompareWidget(QWidget):
 
         try:
             normalized = self.comparison_service.build_normalized_equity(
-                {item.metadata.run_id: item.equity for item in run_data}
+                {item.metadata.run_id: item.equity for item in run_data},
+                run_types={item.metadata.run_id: item.metadata.run_type for item in run_data},
             )
         except (ValueError, TypeError, ArithmeticError) as exc:
             self._render_comparability_badge(

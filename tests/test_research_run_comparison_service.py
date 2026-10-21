@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+from decimal import Decimal
 
 from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_run_comparison_service import (
@@ -178,6 +179,50 @@ def test_normalized_equity_rejects_invalid_saved_rows_before_comparison(
         service.build_normalized_equity({"saved-run": equity})
 
     assert equity["日期"].tolist() == dates
+
+
+def test_single_backtest_equity_alias_preserves_original_decimal_values():
+    service = ResearchRunComparisonService()
+    equity = pd.DataFrame({
+        "date": ["2026-01-02", "2026-01-05"],
+        "equity": [Decimal("100.000000000000000001"), Decimal("101.000000000000000001")],
+    })
+    original = equity.copy(deep=True)
+    result = service.build_normalized_equity(
+        {"single": equity}, run_types={"single": "single_backtest"},
+    )
+    assert result.normalized["single"]["normalized_value"].tolist() == [10000, 10100]
+    pd.testing.assert_frame_equal(equity, original)
+    assert "portfolio_value" not in equity.columns
+
+
+@pytest.mark.parametrize("run_type", [None, "recommendation_portfolio", "unknown"])
+def test_equity_alias_requires_explicit_single_backtest_type(run_type):
+    service = ResearchRunComparisonService()
+    equity = pd.DataFrame({"date": ["2026-01-02"], "equity": [Decimal("100")]})
+    with pytest.raises(ValueError, match="portfolio_value"):
+        service.build_normalized_equity({"run": equity}, run_types={"run": run_type})
+
+
+@pytest.mark.parametrize("values, reason", [
+    ([Decimal("100"), None], "無法解析"),
+    ([Decimal("100"), Decimal("Infinity")], "非有限"),
+])
+def test_single_backtest_alias_keeps_invalid_amount_rejection(values, reason):
+    equity = pd.DataFrame({"date": ["2026-01-02", "2026-01-05"], "equity": values})
+    with pytest.raises(ValueError, match=reason):
+        ResearchRunComparisonService().build_normalized_equity(
+            {"run": equity}, run_types={"run": "single_backtest"},
+        )
+
+
+def test_single_backtest_alias_rejects_ambiguous_columns_and_missing_run_identity():
+    service = ResearchRunComparisonService()
+    equity = pd.DataFrame({"date": ["2026-01-02"], "equity": [100], "portfolio_value": [100]})
+    with pytest.raises(ValueError, match="多個權益欄"):
+        service.build_normalized_equity({"run": equity}, run_types={"run": "single_backtest"})
+    with pytest.raises(ValueError, match="身份集合"):
+        service.build_normalized_equity({"run": equity}, run_types={"other": "single_backtest"})
 
 
 def test_benchmark_attribution_reads_saved_benchmark_results_only():

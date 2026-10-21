@@ -3227,6 +3227,7 @@ class MainWindow(QMainWindow):
         self.technical_official_revenue_research_view = revenue_view
         recommendation.result_source_tabs.addTab(revenue_view, "均線／月營收／官方對照研究")
         revenue_view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
+        revenue_view.stockResearchRequested.connect(self._open_revenue_stock_research)
         from ui_qt.views.daily_market_technical_official_disposition_composite_view import (
             DailyMarketTechnicalOfficialDispositionCompositeView,
         )
@@ -3247,6 +3248,43 @@ class MainWindow(QMainWindow):
         self.technical_official_composite_price_research_view = composite_price_view
         recommendation.result_source_tabs.addTab(composite_price_view, "官方條件與價格研究")
         composite_price_view.bookmarkPrepared.connect(self._save_composite_research_bookmark)
+
+    def _open_revenue_stock_research(self, value: object) -> None:
+        """由明選的月營收原結果開一般個股報告；不搬入財務值或行情。"""
+        from ui_qt.views.revenue_stock_research_origin import RevenueStockResearchOrigin
+
+        view = getattr(self, "technical_official_revenue_research_view", None)
+        if (getattr(self, "_shutdown_close_requested", False)
+                or type(value) is not RevenueStockResearchOrigin or view is None
+                or view.create_stock_research_origin() != value):
+            return
+        context = ResearchStockContextDTO(
+            stock_code=value.stock_code,
+            result_id=value.origin_sha256,
+            source_snapshot_id=value.query_identity_sha256,
+            source_snapshot_hash=value.origin_sha256,
+            source_id="official_monthly_revenue.saved_selection",
+            source_kind="official_revenue_saved_selection",
+            source_label="月營收原已核選取／一般個股研究（行情與日期另讀）",
+            source_workspace="recommendation",
+            ml_scope_mode="current_stock_research",
+        )
+        self._official_revenue_research_origin = (context, value)
+        self._open_stock_research_context(context)
+
+    def _return_to_revenue_stock_research(self, context: ResearchStockContextDTO) -> bool:
+        """只返回仍保持同一已核查詢、頁面及列的營收檢視。"""
+        origin = getattr(self, "_official_revenue_research_origin", None)
+        view = getattr(self, "technical_official_revenue_research_view", None)
+        if (origin is None or origin[0] != context or view is None
+                or not view.restore_stock_research_origin(origin[1])):
+            self.statusBar().showMessage("原月營收來源、查詢或選取已改變；未以同股其他結果替代。")
+            return False
+        self._select_main_workspace("recommendation")
+        tabs = self.recommendation_view.result_source_tabs
+        with QSignalBlocker(tabs):
+            tabs.setCurrentWidget(view)
+        return True
 
     def _show_technical_official_comparison(self, value: object) -> None:
         """並列同來源已核事實，保留原結果頁與各股獨立捲動。"""
@@ -4034,6 +4072,9 @@ class MainWindow(QMainWindow):
         else:
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
+            return
+        if context.source_kind == "official_revenue_saved_selection":
+            self._return_to_revenue_stock_research(context)
             return
         if context.source_kind == "scheduled_recommendation" and context.source_workspace == "workbench":
             workbench = getattr(self, "workbench_view", None)

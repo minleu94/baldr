@@ -133,6 +133,7 @@ from ui_qt.technical_official_revenue_research_presenter_v2 import (
     format_technical_official_revenue_counts_v2,
     revenue_row_cells_v2,
 )
+from ui_qt.views.revenue_stock_research_origin import RevenueStockResearchOrigin
 
 _RecipeBase = DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV1 | DailyMarketTechnicalOfficialDispositionRevenueSavedRecipeV2
 _Recipe = _RecipeBase | DailyMarketTechnicalOfficialDispositionRevenueArchivedSavedRecipeV3
@@ -723,6 +724,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
     """以明示保存 F17 bundle 與月營收 V2 封存來源進行全母體 YoY 研究。"""
 
     stockSelected = Signal(object)
+    stockResearchRequested = Signal(object)
     bookmarkPrepared = Signal(object)
     comparisonReady = Signal(object)
     operationSettled = Signal(str, bool)
@@ -786,6 +788,10 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
     @property
     def current_recipe(self) -> _Recipe | None:
         return self._recipe
+
+    @property
+    def current_selected_row(self) -> _Row | None:
+        return self._selected_row
 
     @property
     def active_worker(self) -> TaskWorker | None:
@@ -973,7 +979,13 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         detail_layout.addWidget(self.audit_text, 1)
         self.return_button = QPushButton("返回原研究結果頁")
         self.return_button.clicked.connect(self.return_to_results)
-        detail_layout.addWidget(self.return_button)
+        self.open_stock_research_button = QPushButton("開啟一般個股研究")
+        self.open_stock_research_button.setObjectName("openRevenueStockResearch")
+        self.open_stock_research_button.clicked.connect(self.request_stock_research)
+        detail_actions = QHBoxLayout()
+        detail_actions.addWidget(self.open_stock_research_button)
+        detail_actions.addWidget(self.return_button)
+        detail_layout.addLayout(detail_actions)
         self.results_stack.addWidget(detail_panel)
         body.addWidget(self.results_stack, 1)
 
@@ -1748,6 +1760,119 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         self.results_stack.setCurrentIndex(1)
         self.stockSelected.emit(row)
 
+    def _source_identity_sha256(self) -> str | None:
+        source, page = self._source, self._page
+        if source is None or page is None:
+            return None
+        pins = getattr(page, "source_pins", None)
+        if type(pins) is not tuple:
+            return None
+        try:
+            payload = {
+                "schema": "official-revenue-verified-source.v1",
+                "mode": source.mode,
+                "bundle_identity_sha256": source.bundle_identity_sha256,
+                "manifest_sha256": source.manifest_sha256,
+                "source_pins": [[key, value] for key, value in pins],
+            }
+            encoded = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        except (AttributeError, TypeError, ValueError):
+            return None
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _origin_for_row(self, row: _Row) -> RevenueStockResearchOrigin | None:
+        if self._closing or not self._can_start():
+            return None
+        source, recipe = self._source, self._recipe
+        query, result, request, page = (
+            self._query, self._result, self._page_request, self._page
+        )
+        if any(value is None for value in (source, recipe, query, result, request, page)):
+            return None
+        assert source is not None and recipe is not None and query is not None
+        assert result is not None and request is not None and page is not None
+        try:
+            query_identity = query.query_identity_sha256
+            if (
+                result.query.query_identity_sha256 != query_identity
+                or request.query.query_identity_sha256 != query_identity
+                or page.query.query_identity_sha256 != query_identity
+                or page.request_identity_sha256 != request.request_identity_sha256
+                or page.page_index != request.page_index
+                or not _query_matches_recipe(query, recipe)
+                or not any(
+                    candidate.stock_code == row.stock_code
+                    and candidate.row_identity_sha256 == row.row_identity_sha256
+                    for candidate in page.rows
+                )
+            ):
+                return None
+            source_identity = self._source_identity_sha256()
+            if source_identity is None:
+                return None
+            recipe_identity = hashlib.sha256(recipe.to_json().encode("utf-8")).hexdigest()
+            return RevenueStockResearchOrigin.create(
+                stock_code=row.stock_code,
+                source_identity_sha256=source_identity,
+                recipe_identity_sha256=recipe_identity,
+                query_identity_sha256=query_identity,
+                page_identity_sha256=page.page_identity_sha256,
+                request_identity_sha256=request.request_identity_sha256,
+                row_identity_sha256=row.row_identity_sha256,
+                page_index=page.page_index,
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def create_stock_research_origin(self) -> RevenueStockResearchOrigin | None:
+        """只為目前已核驗結果頁中的選取列建立身份，不觸發查詢。"""
+        row = self._selected_row
+        return None if row is None else self._origin_for_row(row)
+
+    def request_stock_research(self) -> None:
+        origin = self.create_stock_research_origin()
+        if origin is None:
+            self._set_status("目前沒有可用的已核驗選取列，或來源／頁面正在變動。")
+            return
+        self.stockResearchRequested.emit(origin)
+
+    def restore_stock_research_origin(self, origin: object) -> bool:
+        """只回到仍在目前已核快照中的原頁原列；不重新開啟磁碟來源。"""
+        if type(origin) is not RevenueStockResearchOrigin or self._closing or not self._can_start():
+            return False
+        page = self._page
+        selected = self._selected_row
+        if (
+            page is None
+            or selected is None
+            or selected.stock_code != origin.stock_code
+            or selected.row_identity_sha256 != origin.row_identity_sha256
+        ):
+            return False
+        current_row = next(
+            (
+                row for row in page.rows
+                if row.stock_code == origin.stock_code
+                and row.row_identity_sha256 == origin.row_identity_sha256
+            ),
+            None,
+        )
+        if current_row is None or self._origin_for_row(current_row) != origin:
+            return False
+        if not self.select_stock_code(origin.stock_code):
+            return False
+        selected = self._selected_row
+        if (
+            selected is None
+            or selected.stock_code != origin.stock_code
+            or selected.row_identity_sha256 != origin.row_identity_sha256
+        ):
+            return False
+        self.return_to_results()
+        return True
+
     def _set_audit_visible(self, visible: bool) -> None:
         self.audit_text.setVisible(visible)
 
@@ -2022,6 +2147,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         for widget in (
             self.detail_button, self.add_comparison_button, self.remove_comparison_button,
             self.clear_comparison_button, self.compare_button, self.bookmark_button,
+            self.open_stock_research_button,
         ):
             widget.setEnabled(enabled)
         page = self._page

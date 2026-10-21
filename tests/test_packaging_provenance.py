@@ -81,6 +81,23 @@ def test_metadata_binds_source_dependency_and_resources(tmp_path):
     assert value["resource_sha256"] == {"ui_qt/app_icon.png": hashlib.sha256(b"known-fixture").hexdigest()}
 
 
+def test_metadata_uses_explicit_gregorian_version_date(tmp_path):
+    value = provenance.create_build_metadata(
+        tmp_path, "a" * 40, "b" * 64, version_date="2026.10.21",
+    )
+    assert value["version"] == "2026.10.21+aaaaaaaaaaaa"
+
+
+@pytest.mark.parametrize("version_date", [
+    "2026-10-21", "2026.1.21", "2026.10.1", "2026.02.29", "2026.13.01", "2026.10.21x",
+])
+def test_metadata_rejects_invalid_version_date(tmp_path, version_date):
+    with pytest.raises(ValueError, match="版本日期"):
+        provenance.create_build_metadata(
+            tmp_path, "a" * 40, "b" * 64, version_date=version_date,
+        )
+
+
 def test_p07_packaged_source_manifest_is_complete_and_bound(tmp_path):
     sources = (
         "decision_module/strategies/baldr_bollinger_executor.py",

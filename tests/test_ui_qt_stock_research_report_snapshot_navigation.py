@@ -50,6 +50,8 @@ def test_saved_report_renders_all_tabs_without_reads_or_live_load_signals():
     report = _report()
     snapshot = create_stock_research_report_projection_snapshot(report, context)
     signals = []
+    latest_requests = []
+    view.latestResearchRequested.connect(latest_requests.append)
     view.reportLoaded.connect(lambda *_: signals.append("reportLoaded"))
     view.activeContextChanged.connect(lambda *_: signals.append("contextChanged"))
     try:
@@ -72,6 +74,11 @@ def test_saved_report_renders_all_tabs_without_reads_or_live_load_signals():
         assert exact.report.price_points[0].close_price.as_tuple() == Decimal("100.0100").as_tuple()
         assert exact.report.shared_daily_features["display"] == ["原值", Decimal("1.2300")]
         assert view.context == context and view._active_code == "2330"
+        assert not view.open_latest_rank_research_button.isHidden()
+        assert view.open_latest_rank_research_button.text() == "另開最新可用資料"
+        view.open_latest_rank_research_button.click()
+        assert latest_requests == [context]
+        assert view._saved_projection_snapshot.canonical_json == snapshot.canonical_json
         assert all(not button.isEnabled() for button in (
             view.load_button, view.reload_button, view.previous_button, view.next_button,
         ))
@@ -139,6 +146,20 @@ def test_saved_workspace_report_keeps_live_report_and_returns_to_notes(tmp_path)
         workspace.show_saved_report_snapshot(snapshot)
         assert workspace.report_tabs.currentWidget() is workspace.saved_report_view
         assert workspace.saved_report_view._loaded_report == original
+        saved_view = workspace.saved_report_view
+        token = workspace.capture_historical_view()
+        assert token is not None and token.saved_snapshot is not None
+        assert token.saved_report_view is saved_view
+        latest_requests = []
+        workspace.latestResearchRequested.connect(latest_requests.append)
+        saved_view.open_latest_rank_research_button.click()
+        assert latest_requests == [context]
+        # host切到獨立最新查詢後，原保存頁仍是同一個元件；返回只核驗並切回，不重建頁面。
+        workspace._show_general_report()
+        workspace.report_tabs.setCurrentWidget(workspace.report_view)
+        assert workspace.restore_historical_view(token)
+        assert workspace.report_tabs.currentWidget() is saved_view
+        assert saved_view._saved_projection_snapshot.canonical_json == snapshot.canonical_json
         workspace.saved_report_view.return_button.click()
         assert workspace.report_tabs.currentWidget() is workspace.report_notes_page
         assert workspace.report_view._loaded_report is original

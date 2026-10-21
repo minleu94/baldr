@@ -175,7 +175,7 @@ class _MinimalHost(QWidget):
         self.layout().addWidget(self.shell, 1)
         return self.shell
 
-    def _select_main_workspace(self, key: str) -> None:
+    def _select_main_workspace(self, key: str, *, preserve_view_state: bool = False) -> None:
         widget = self.workspace_widgets.get(key)
         if widget is None:
             return

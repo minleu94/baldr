@@ -122,19 +122,24 @@ class ProductShell(QWidget):
         if routes:
             self.activate_route(self._last_routes.get(group, routes[0].route_id))
 
-    def activate_route(self, route_id: str) -> None:
+    def activate_route(self, route_id: str, *, preserve_view_state: bool = False) -> None:
         route = ROUTE_BY_ID.get(route_id)
         if route is None:
             return
         self.host._timeline_pending_price_entry = None
         self.host._timeline_detail_entry = None
+        self.host._historical_research_return = None
         self._activating = True
         try:
             self.route_id = route_id
             self._last_routes[route.group] = route_id
             self._detail_origin = None
-            self.host._select_main_workspace(route.workspace)
-            self._select_existing_section(route_id)
+            if preserve_view_state:
+                self.host._select_main_workspace(route.workspace, preserve_view_state=True)
+            else:
+                self.host._select_main_workspace(route.workspace)
+            if not preserve_view_state:
+                self._select_existing_section(route_id)
             self._refresh_navigation()
         finally:
             self._activating = False
@@ -148,6 +153,7 @@ class ProductShell(QWidget):
                 self._detail_origin = self.route_id
             self._refresh_navigation()
             return
+        self.host._historical_research_return = None
         route_id = LEGACY_DEFAULT_ROUTES.get(key)
         if route_id is None:
             return
@@ -221,6 +227,9 @@ class ProductShell(QWidget):
     def return_to_source(self) -> None:
         if self._detail_origin is None:
             return
+        historical_return = getattr(self.host, "_return_from_latest_historical_research", None)
+        if callable(historical_return) and historical_return():
+            return
         timeline_return = getattr(self.host, "_return_from_timeline_detail", None)
         if callable(timeline_return) and timeline_return():
             return
@@ -229,7 +238,7 @@ class ProductShell(QWidget):
         context = getattr(workspace.report_view, "context", None)
         if (context is not None and context.source_kind == "explicit_latest_stock_research"
                 and context.source_workspace in {"stock_research", "stock_lookup"}):
-            self.activate_route(self._detail_origin)
+            self.activate_route(self._detail_origin, preserve_view_state=True)
             return
         is_price = getattr(workspace, "_is_price_research_active", None)
         if price is not None and (

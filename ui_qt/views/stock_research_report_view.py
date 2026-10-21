@@ -2185,6 +2185,9 @@ class StockResearchReportView(QWidget):
                 return False
             # H20 來源仍由 host 以原 context 核身；host 另開乾淨的現況 context。
             self.latestResearchRequested.emit(context)
+        elif self._has_historical_latest_action():
+            # Host 需要原 context 建立並重驗歷史返回 frame；由 host 再建立乾淨的新查詢。
+            self.latestResearchRequested.emit(context)
         elif self._loaded_report is not None and technical_history_saved_scope_limitation(self._loaded_report.research_context) is not None:
             self.latestResearchRequested.emit(ResearchStockContextDTO(
                 stock_code=context.stock_code, stock_name=context.stock_name,
@@ -2194,6 +2197,24 @@ class StockResearchReportView(QWidget):
         else:
             return False
         return True
+
+    def _has_historical_latest_action(self) -> bool:
+        context = self.context
+        report = self._loaded_report
+        if (
+            context is None
+            or report is None
+            or not context.stock_code
+            or context.stock_code != self._active_code
+            or report.stock_code != self._active_code
+        ):
+            return False
+        snapshot = self._saved_projection_snapshot
+        return bool(
+            type(snapshot) is StockResearchReportProjectionSnapshot
+            and snapshot.stock_code == self._active_code
+            and snapshot.context == context
+        )
 
     def _sync_original_rank_actions(self) -> None:
         context = self.context
@@ -2221,7 +2242,10 @@ class StockResearchReportView(QWidget):
         )
         self.original_ranking_label.setVisible(is_rank_context)
         self.favorite_original_ranking_button.setVisible(is_rank_context)
-        self.open_latest_rank_research_button.setVisible(is_rank_context or missing_saved_chart)
+        historical_latest_available = self._has_historical_latest_action()
+        self.open_latest_rank_research_button.setVisible(
+            is_rank_context or historical_latest_available or missing_saved_chart
+        )
         if is_personal_h20_saved:
             self.open_latest_rank_research_button.setText(
                 "查看目前個股行情與資料（獨立研究）"
@@ -2233,11 +2257,17 @@ class StockResearchReportView(QWidget):
                 "原保存 H20 沒有綁定同版本價格／技術圖表。僅在 H20 預測已核驗可用時，"
                 "另開目前一般個股研究；不修改原保存內容。"
             )
-        else:
+        elif is_rank_context:
             self.open_latest_rank_research_button.setText("另開最新研究")
             self.open_latest_rank_research_button.setAccessibleName("另開最新研究")
             self.open_latest_rank_research_button.setToolTip(
                 "以新 context 開啟當下個股研究；不變更或覆蓋原保存來源。"
+            )
+        else:
+            self.open_latest_rank_research_button.setText("另開最新可用資料")
+            self.open_latest_rank_research_button.setAccessibleName("另開最新可用資料")
+            self.open_latest_rank_research_button.setToolTip(
+                "以獨立的新 context 查詢目前可用資料；保留原保存報告與來源身份。"
             )
         available = bool(
             is_rank_context
@@ -2255,7 +2285,14 @@ class StockResearchReportView(QWidget):
             available and not self._closing
         )
         self.open_latest_rank_research_button.setEnabled(
-            (is_rank_context or missing_saved_chart)
+            (is_rank_context or historical_latest_available or missing_saved_chart)
+            and (
+                is_rank_context
+                or (
+                    report is not None
+                    and bool(context is not None and context.stock_code == self._active_code)
+                )
+            )
             and (not is_personal_h20_saved or h20_estimate_available)
             and not self._closing
         )

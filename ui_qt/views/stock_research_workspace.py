@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from PySide6.QtCore import QSize, Signal, Qt, QSignalBlocker
 from PySide6.QtWidgets import (
@@ -15,7 +16,10 @@ from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.research_session import ResearchStockContextDTO
 from app_module.pinned_stock_research_notes import PinnedStockResearchNoteService
 from app_module.stock_research_report_notes import StockResearchReportNoteService
-from app_module.stock_research_report_snapshot_codec import StockResearchReportProjectionSnapshot
+from app_module.stock_research_report_snapshot_codec import (
+    StockResearchReportProjectionSnapshot,
+    read_stock_research_report_projection_snapshot,
+)
 from app_module.stock_research_report_service import StockResearchReportReadService
 from app_module.daily_market_technical_universe_price_comparison_v1 import (
     DailyMarketTechnicalUniversePriceSelectionV1,
@@ -25,6 +29,18 @@ from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourney
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.pinned_stock_research_notes_widget import PinnedStockResearchNotesWidget
 from ui_qt.widgets.stock_research_report_notes_widget import StockResearchReportNotesWidget
+
+
+@dataclass(frozen=True)
+class HistoricalResearchViewToken:
+    """保留可精確返回的保存報告或價格原來源元件。"""
+
+    saved_snapshot: StockResearchReportProjectionSnapshot | None = None
+    price_selection: DailyMarketTechnicalUniversePriceSelectionV1 | None = None
+    saved_report_view: QWidget | None = None
+    price_page: QWidget | None = None
+    price_view: QWidget | None = None
+    price_context: ResearchStockContextDTO | None = None
 
 
 class StockResearchWorkspace(QWidget):
@@ -38,6 +54,7 @@ class StockResearchWorkspace(QWidget):
     favoriteRequested = Signal(object)
     priceComparisonRequested = Signal(object)
     prepareBacktestRequested = Signal(object)
+    latestResearchRequested = Signal(object)
 
     def __init__(
         self,
@@ -146,6 +163,7 @@ class StockResearchWorkspace(QWidget):
         self.report_tabs = QTabWidget(self)
         self.report_tabs.setDocumentMode(True)
         self.report_view = StockResearchReportView(service, parent=self)
+        self.report_view.latestResearchRequested.connect(self.latestResearchRequested.emit)
         self.report_view.activeContextChanged.connect(self._sync_general_lookup_action)
         self.report_view.returnRequested.connect(self.returnRequested.emit)
         self.report_tabs.addTab(self.report_view, "個股研究報告")
@@ -283,7 +301,7 @@ class StockResearchWorkspace(QWidget):
         if self._is_price_research_active():
             view = self.price_research_view
             context = self.price_research_context
-            selection = getattr(view, "_origin_selection", None)
+            selection = getattr(view, "origin_selection", None)
             if (
                 type(selection) is DailyMarketTechnicalUniversePriceSelectionV1
                 and isinstance(context, ResearchStockContextDTO)
@@ -308,6 +326,100 @@ class StockResearchWorkspace(QWidget):
         if snapshot.stock_code != snapshot.context.stock_code:
             return None
         return snapshot.context
+
+    def capture_historical_view(self) -> HistoricalResearchViewToken | None:
+        """記錄目前可見的固定報告或原價格詳情，以供 host 重核後返回。"""
+        if self._is_price_research_active():
+            view = self.price_research_view
+            page = self.price_research_page
+            context = self.price_research_context
+            selection = getattr(view, "origin_selection", None)
+            if (
+                view is not None
+                and page is not None
+                and type(selection) is DailyMarketTechnicalUniversePriceSelectionV1
+                and isinstance(context, ResearchStockContextDTO)
+                and context.stock_code == selection.stock_code
+                and self.content_stack.indexOf(page) >= 0
+            ):
+                return HistoricalResearchViewToken(
+                    price_selection=selection,
+                    price_page=page,
+                    price_view=view,
+                    price_context=context,
+                )
+            return None
+
+        if (
+            self.content_stack.currentWidget() is not self.general_report_page
+            or self.saved_report_view is None
+            or self.report_tabs.currentWidget() is not self.saved_report_view
+        ):
+            return None
+        try:
+            snapshot = self.saved_report_view.get_loaded_report_snapshot()
+        except (AttributeError, ValueError):
+            return None
+        if type(snapshot) is not StockResearchReportProjectionSnapshot:
+            return None
+        return HistoricalResearchViewToken(
+            saved_snapshot=snapshot,
+            saved_report_view=self.saved_report_view,
+        )
+
+    def restore_historical_view(self, token: HistoricalResearchViewToken) -> bool:
+        """只還原同一個仍保留的歷史元件；不把舊 context 當成新查詢。"""
+        if type(token) is not HistoricalResearchViewToken:
+            return False
+        if token.saved_snapshot is not None:
+            if type(token.saved_snapshot) is not StockResearchReportProjectionSnapshot:
+                return False
+            view = token.saved_report_view
+            if view is None or view is not self.saved_report_view:
+                return False
+            current = getattr(view, "_saved_projection_snapshot", None)
+            if (
+                type(current) is not StockResearchReportProjectionSnapshot
+                or current.canonical_json != token.saved_snapshot.canonical_json
+                or current.identity_sha256 != token.saved_snapshot.identity_sha256
+            ):
+                return False
+            try:
+                verified = read_stock_research_report_projection_snapshot(
+                    current.canonical_json,
+                    expected_identity_sha256=current.identity_sha256,
+                )
+            except (TypeError, ValueError):
+                return False
+            if verified.canonical_json != token.saved_snapshot.canonical_json:
+                return False
+            self._show_general_report()
+            self.report_tabs.setCurrentWidget(view)
+            self._sync_product_action_state()
+            return self.report_tabs.currentWidget() is view
+
+        selection = token.price_selection
+        page = token.price_page
+        view = token.price_view
+        context = token.price_context
+        if (
+            type(selection) is not DailyMarketTechnicalUniversePriceSelectionV1
+            or page is None
+            or view is None
+            or not isinstance(context, ResearchStockContextDTO)
+            or self.price_research_view is not view
+            or self.price_research_page is not page
+            or self.price_research_context != context
+            or getattr(view, "origin_selection", None) is not selection
+            or self.content_stack.indexOf(page) < 0
+        ):
+            return False
+        self.content_stack.setCurrentWidget(page)
+        self.workspace_title.setText("個股研究｜價格選股原來源")
+        self.general_lookup_button.show()
+        self._sync_general_lookup_action()
+        self._sync_product_action_state()
+        return self.content_stack.currentWidget() is page
 
     def _live_general_backtest_context(self) -> ResearchStockContextDTO | None:
         """只讓明選的一般最新報告進入單股回測預填。"""
@@ -341,7 +453,7 @@ class StockResearchWorkspace(QWidget):
         if not self._is_price_research_active():
             return
         view = self.price_research_view
-        selection = getattr(view, "_origin_selection", None)
+        selection = getattr(view, "origin_selection", None)
         context = self.price_research_context
         if (
             type(selection) is DailyMarketTechnicalUniversePriceSelectionV1
@@ -397,7 +509,7 @@ class StockResearchWorkspace(QWidget):
         self.price_comparison_action.setEnabled(
             price_active
             and active_context is not None
-            and type(getattr(price_view, "_origin_selection", None))
+            and type(getattr(price_view, "origin_selection", None))
             is DailyMarketTechnicalUniversePriceSelectionV1
         )
         backtest_context = self._live_general_backtest_context()
@@ -476,6 +588,7 @@ class StockResearchWorkspace(QWidget):
                 self.report_view.service, parent=self, saved_snapshot_only=True,
             )
             self.saved_report_view.returnRequested.connect(self._return_to_report_notes)
+            self.saved_report_view.latestResearchRequested.connect(self.latestResearchRequested.emit)
             self.report_tabs.addTab(self.saved_report_view, "保存時報告")
         self.saved_report_view.enable_product_layout()
         self.saved_report_view.show_saved_report_snapshot(snapshot)
@@ -500,6 +613,9 @@ class StockResearchWorkspace(QWidget):
             candidate.deleteLater()
             raise
         candidate.returnRequested.connect(self.priceResearchReturnRequested.emit)
+        candidate.latestResearchRequested.connect(
+            lambda current=candidate: self._request_latest_research_from_price(current)
+        )
         previous = self.price_research_view
         previous_page = self.price_research_page
         if self.price_notes_widget is not None and self.price_notes_page is not None:
@@ -580,6 +696,20 @@ class StockResearchWorkspace(QWidget):
             previous_page.deleteLater()
         self._sync_general_lookup_action()
         self._sync_product_action_state()
+
+    def _request_latest_research_from_price(self, view: QWidget) -> None:
+        """把原價格 context 交給 Main；由 Main 建立乾淨的目前資料 context。"""
+        selection = getattr(view, "origin_selection", None)
+        context = self.price_research_context
+        if (
+            not self._is_price_research_active()
+            or view is not self.price_research_view
+            or type(selection) is not DailyMarketTechnicalUniversePriceSelectionV1
+            or not isinstance(context, ResearchStockContextDTO)
+            or context.stock_code != selection.stock_code
+        ):
+            return
+        self.latestResearchRequested.emit(context)
 
     def _show_general_report(self) -> None:
         self.content_stack.setCurrentWidget(self.general_report_page)

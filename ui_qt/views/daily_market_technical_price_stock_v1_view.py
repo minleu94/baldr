@@ -115,6 +115,7 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
     """展示保存來源中的價格與五規則原始理由，不重算訊號。"""
 
     returnRequested = Signal(object)
+    latestResearchRequested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -174,6 +175,15 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self.return_button.setEnabled(False)
         self.return_button.clicked.connect(self._return_to_origin)
         layout.addWidget(self.return_button)
+        self.latest_research_button = QPushButton("另開最新可用資料")
+        self.latest_research_button.setObjectName("priceStockOpenLatestResearch")
+        self.latest_research_button.setAccessibleName("另開最新可用資料")
+        self.latest_research_button.setToolTip(
+            "明確另開目前可用資料；保留此筆原價格查詢與來源身份。"
+        )
+        self.latest_research_button.setEnabled(False)
+        self.latest_research_button.clicked.connect(self._request_latest_research)
+        layout.addWidget(self.latest_research_button)
 
     def show_stock(
         self,
@@ -274,6 +284,7 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self._stock = stock
         self._origin_selection = origin_selection
         self.return_button.setEnabled(True)
+        self.latest_research_button.setEnabled(True)
 
     @staticmethod
     def _price_points(stock: DailyMarketTechnicalUniversePriceStockV1) -> tuple[StockPricePointDTO, ...]:
@@ -315,3 +326,14 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         if self._stock is not None and self._origin_selection is not None:
             _validate_origin_pair(self._stock, self._origin_selection)
             self.returnRequested.emit(self._origin_selection)
+
+    def _request_latest_research(self) -> None:
+        if self._stock is None or self._origin_selection is None:
+            return
+        _validate_origin_pair(self._stock, self._origin_selection)
+        self.latestResearchRequested.emit()
+
+    @property
+    def origin_selection(self) -> DailyMarketTechnicalUniversePriceSelectionV1 | None:
+        """唯讀取得詳情所屬的原查詢錨點，不建立或切換來源。"""
+        return self._origin_selection

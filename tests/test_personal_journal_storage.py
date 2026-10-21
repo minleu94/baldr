@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import namedtuple
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -90,6 +91,73 @@ def test_legacy_missing_discovery_does_not_create_source_lock(tmp_path):
     reader.journal_source.scan_integrity()
     assert not paths.personal_paths.legacy_output_root.exists()
     assert not paths.personal_paths.personal_root.exists()
+
+
+@pytest.mark.parametrize(
+    "reader",
+    ["load_journal_history", "load_journal_entries", "load_journal_snapshot", "private_read"],
+)
+def test_missing_personal_journal_reads_empty_without_lock_or_legacy_fallback(
+    tmp_path, reader
+):
+    paths, config = setup(tmp_path)
+    legacy = JournalService(config)
+    legacy.add_journal_entry("legacy fallback marker", journal_id="legacy-only")
+    legacy_bytes = paths.legacy_source.read_bytes()
+    service = JournalService(config, journal_paths=paths)
+
+    if reader == "private_read":
+        result = list(service.store._read_jsonl(paths.journal_file))
+    else:
+        result = getattr(service.store, reader)()
+
+    if reader == "load_journal_snapshot":
+        assert result[0] == []
+        assert isinstance(result[1], str) and result[1]
+    else:
+        assert result == []
+    assert not paths.personal_paths.personal_root.exists()
+    assert not paths.journal_file.exists()
+    assert not paths.lock_file.exists()
+    assert paths.legacy_source.read_bytes() == legacy_bytes
+
+
+def test_missing_personal_journal_snapshot_can_start_writer_cas(tmp_path):
+    paths, config = setup(tmp_path)
+    legacy = JournalService(config)
+    legacy.add_journal_entry("legacy fallback marker", journal_id="legacy-only")
+    legacy_bytes = paths.legacy_source.read_bytes()
+    service = JournalService(config, journal_paths=paths)
+
+    empty_history, initial_token = service.store.load_journal_snapshot()
+    assert empty_history == []
+    assert not paths.personal_paths.personal_root.exists()
+    service.record_decision_action(
+        ACTION_NOTE,
+        identity(),
+        body="created after missing-store read",
+        revision_id="missing-store-write",
+        journal_id="missing-store-journal",
+        expected_history_token=initial_token,
+    )
+
+    written_history, written_token = service.store.load_journal_snapshot()
+    assert len(written_history) == 1
+    assert written_token != initial_token
+    assert service.list_journal_history() == written_history
+    before_stale_write = paths.journal_file.read_bytes()
+    with pytest.raises(RuntimeError, match="stream_conflict"):
+        service.record_decision_action(
+            ACTION_NOTE,
+            identity(),
+            body="must not overwrite newer history",
+            revision_id="stale-missing-store-write",
+            journal_id="stale-missing-store-journal",
+            expected_history_token=initial_token,
+        )
+    assert paths.journal_file.read_bytes() == before_stale_write
+    assert paths.lock_file.is_file()
+    assert paths.legacy_source.read_bytes() == legacy_bytes
 
 
 def test_history_cas_tombstone_and_projection(tmp_path):
@@ -286,6 +354,122 @@ def test_legacy_adapter_helpers_do_not_create_source_locks(tmp_path):
     with pytest.raises(RuntimeError, match="legacy_journal_read_only"):
         service.store._ensure_line_separator_unlocked(paths.legacy_source)
     assert not paths.personal_paths.legacy_output_root.exists()
+
+
+_STAT_FIELDS = (
+    "st_mode st_ino st_dev st_nlink st_uid st_gid st_size st_atime st_mtime st_ctime "
+    "st_atime_ns st_mtime_ns st_ctime_ns"
+).split()
+_StatProbe = namedtuple("_StatProbe", _STAT_FIELDS)
+
+
+def _legacy_stat_probe(info, *, change=None):
+    values = {name: getattr(info, name) for name in _STAT_FIELDS}
+    if change == "atime":
+        values["st_atime"] += 1
+        values["st_atime_ns"] += 1_000_000_000
+    elif change == "mtime_ns":
+        values["st_mtime"] += 1
+        values["st_mtime_ns"] += 1_000_000_000
+    elif change == "size":
+        values["st_size"] += 1
+    elif change == "inode":
+        values["st_ino"] += 1
+    elif change == "ctime_ns":
+        values["st_ctime"] += 1
+        values["st_ctime_ns"] += 1_000_000_000
+    return _StatProbe(**values)
+
+
+def _legacy_reader_with_fixture(paths, config):
+    paths.legacy_source.parent.mkdir(parents=True)
+    paths.legacy_source.write_text('{"synthetic":"legacy"}\n', encoding="utf-8")
+    return JournalService(config, journal_paths=paths, legacy_read_only=True)
+
+
+def test_legacy_read_ignores_access_time_only_change(tmp_path, monkeypatch):
+    paths, config = setup(tmp_path)
+    service = _legacy_reader_with_fixture(paths, config)
+    source = paths.legacy_source
+    original_stat = Path.stat
+    original_reader = service.store._read_jsonl_unlocked
+    after_read = False
+    baseline = original_stat(source)
+
+    def stat_with_access_time_change(path, *args, **kwargs):
+        info = original_stat(path, *args, **kwargs)
+        if path != source:
+            return info
+        return _legacy_stat_probe(
+            baseline, change="atime" if after_read else None
+        )
+
+    def read_then_mark_after(path):
+        nonlocal after_read
+        result = original_reader(path)
+        after_read = True
+        return result
+
+    monkeypatch.setattr(Path, "stat", stat_with_access_time_change)
+    monkeypatch.setattr(service.store, "_read_jsonl_unlocked", read_then_mark_after)
+    assert service.store._read_legacy() == [{"synthetic": "legacy"}]
+    assert after_read
+
+
+@pytest.mark.parametrize("field", ["mtime_ns", "size", "inode", "ctime_ns"])
+def test_legacy_read_rejects_content_identity_stat_change(tmp_path, monkeypatch, field):
+    paths, config = setup(tmp_path)
+    service = _legacy_reader_with_fixture(paths, config)
+    source = paths.legacy_source
+    original_stat = Path.stat
+    original_reader = service.store._read_jsonl_unlocked
+    after_read = False
+    baseline = original_stat(source)
+
+    def changed_stat(path, *args, **kwargs):
+        info = original_stat(path, *args, **kwargs)
+        if path != source:
+            return info
+        return _legacy_stat_probe(baseline, change=field if after_read else None)
+
+    def read_then_mark_after(path):
+        nonlocal after_read
+        result = original_reader(path)
+        after_read = True
+        return result
+
+    monkeypatch.setattr(Path, "stat", changed_stat)
+    monkeypatch.setattr(service.store, "_read_jsonl_unlocked", read_then_mark_after)
+    with pytest.raises(RuntimeError, match="legacy_journal_changed_during_read"):
+        service.store._read_legacy()
+    assert after_read
+
+
+@pytest.mark.parametrize("presence", [(False, True), (True, False)])
+def test_legacy_read_rejects_missing_exists_transition(tmp_path, monkeypatch, presence):
+    paths, config = setup(tmp_path)
+    service = _legacy_reader_with_fixture(paths, config)
+    source = paths.legacy_source
+    original_exists = Path.exists
+    original_reader = service.store._read_jsonl_unlocked
+    after_read = False
+
+    def changing_exists(path):
+        if path == source:
+            return presence[1] if after_read else presence[0]
+        return original_exists(path)
+
+    def read_then_mark_after(path):
+        nonlocal after_read
+        result = original_reader(path)
+        after_read = True
+        return result
+
+    monkeypatch.setattr(Path, "exists", changing_exists)
+    monkeypatch.setattr(service.store, "_read_jsonl_unlocked", read_then_mark_after)
+    with pytest.raises(RuntimeError, match="legacy_journal_changed_during_read"):
+        service.store._read_legacy()
+    assert after_read
 
 
 @pytest.mark.parametrize("caller", ["continuity", "personalization"])

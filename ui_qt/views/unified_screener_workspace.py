@@ -317,6 +317,14 @@ class UnifiedScreenerWorkspace:
             )
             self.condition_recipe_buttons[key] = button
             self.quick_routes.addWidget(button)
+        self.save_filter_button = QPushButton("儲存篩選條件")
+        self.save_filter_button.setObjectName("unifiedScreenerSaveFilter")
+        self.save_filter_button.setEnabled(False)
+        self.save_filter_button.setToolTip(
+            "目前來源沒有可用的原生收藏流程。"
+        )
+        self.save_filter_button.clicked.connect(self.save_current_filter)
+        self.quick_routes.addWidget(self.save_filter_button)
         self.unavailable_conditions = QLabel(
             "尚未接通：題材條件、財報條件、法人條件。月營收可由「官方＋技術＋月營收」來源頁使用。"
         )
@@ -555,6 +563,56 @@ class UnifiedScreenerWorkspace:
                 if len(recipe_sources) == 1
                 else "此技術規則範本需要唯一掛載的每日技術規則研究來源。"
             )
+        self._refresh_save_filter_action()
+
+    _BOOKMARK_BUTTON_SOURCES = {
+        ("ui_qt.views.daily_market_technical_universe_v4_view", "DailyMarketTechnicalUniverseV4View"): "bookmark_button",
+        ("ui_qt.views.daily_market_technical_universe_price_view_v1", "DailyMarketTechnicalUniversePriceV1View"): "bookmark_button",
+        ("ui_qt.views.daily_market_technical_official_disposition_view", "DailyMarketTechnicalOfficialDispositionView"): "bookmark_button",
+        ("ui_qt.views.daily_market_technical_official_disposition_ma_view", "DailyMarketTechnicalOfficialDispositionMaView"): "bookmark_button",
+        ("ui_qt.views.daily_market_technical_official_disposition_revenue_view", "DailyMarketTechnicalOfficialDispositionRevenueView"): "bookmark_button",
+        ("ui_qt.views.daily_market_technical_official_disposition_composite_view", "DailyMarketTechnicalOfficialDispositionCompositeView"): "bookmark_button",
+        ("ui_qt.views.daily_market_technical_official_disposition_composite_view_v2", "DailyMarketTechnicalOfficialDispositionCompositeViewV2"): "bookmark_button",
+    }
+
+    def _bookmark_button_for(self, source: _Source | None) -> QPushButton | None:
+        if source is None or source.ml:
+            return None
+        qualified = (type(source.widget).__module__, type(source.widget).__name__)
+        attribute = self._BOOKMARK_BUTTON_SOURCES.get(qualified)
+        button = getattr(source.widget, attribute, None) if attribute else None
+        return button if isinstance(button, QPushButton) else None
+
+    def _refresh_save_filter_action(self) -> QPushButton | None:
+        source = self._source_by_key.get(self._active_key or "")
+        native_button = self._bookmark_button_for(source)
+        if native_button is None:
+            self.save_filter_button.setEnabled(False)
+            self.save_filter_button.setToolTip(
+                "此來源尚未提供已接通的原生收藏流程；無法由共用選股頁保存。"
+            )
+            return None
+        enabled = native_button.isEnabled()
+        self.save_filter_button.setEnabled(enabled)
+        native_hint = native_button.toolTip().strip()
+        if enabled:
+            detail = native_button.text().strip() or "來源頁收藏"
+            self.save_filter_button.setToolTip(
+                f"沿用目前來源的「{detail}」流程；不另建或改寫收藏內容。"
+            )
+        else:
+            self.save_filter_button.setToolTip(
+                native_hint or "來源頁目前不允許收藏；請依來源頁狀態完成核驗或查詢。"
+            )
+        return native_button
+
+    def save_current_filter(self) -> bool:
+        """只點擊目前精確來源已接通的收藏按鈕，沿用原有保存管線。"""
+        native_button = self._refresh_save_filter_action()
+        if native_button is None or not native_button.isEnabled():
+            return False
+        native_button.click()
+        return True
 
     def apply_condition_recipe(self, key: str) -> bool:
         """定位既有技術來源並只套條件；明確保留查詢由使用者啟動。"""
@@ -715,6 +773,7 @@ class UnifiedScreenerWorkspace:
         self.tabs.setSizePolicy(tab_policy)
 
     def refresh_funnel(self) -> None:
+        self._refresh_save_filter_action()
         source = self._source_by_key.get(self._active_key or "")
         if source is None:
             self.funnel.setText("母體漏斗：未提供")

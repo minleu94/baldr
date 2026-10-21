@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSplitter,
     QTabWidget,
@@ -465,6 +466,67 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     assert "月營收可由" in workspace.unavailable_conditions.text()
 
 
+def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot):
+    _host, workspace, pages = _workspace(qtbot)
+    calls = []
+
+    class _BookmarkPage(_Page):
+        def __init__(self, name):
+            super().__init__(name)
+            self.bookmark_button = QPushButton("原生收藏", self)
+            self.bookmark_button.clicked.connect(lambda: calls.append("native"))
+
+    supported = _BookmarkPage("supportedBookmarkPage")
+    workspace.tabs.addTab(supported, "測試來源")
+    key = (type(supported).__module__, type(supported).__name__)
+    workspace._BOOKMARK_BUTTON_SOURCES = {
+        **workspace._BOOKMARK_BUTTON_SOURCES,
+        key: "bookmark_button",
+    }
+    workspace.sync_sources()
+    source = next(item for item in workspace._sources if item.widget is supported)
+    assert workspace.select_source(source.key)
+    assert workspace.save_filter_button.isEnabled()
+
+    workspace.save_filter_button.click()
+    assert calls == ["native"]
+
+    supported.bookmark_button.setEnabled(False)
+    workspace.refresh_funnel()
+    assert not workspace.save_filter_button.isEnabled()
+    assert workspace.save_current_filter() is False
+    assert calls == ["native"]
+
+    unsupported = pages[0]
+    unsupported.bookmark_button = QPushButton("未登錄的收藏按鈕", unsupported)
+    unsupported_source = next(item for item in workspace._sources if item.widget is unsupported)
+    assert workspace.select_source(unsupported_source.key)
+    assert not workspace.save_filter_button.isEnabled()
+    assert "尚未提供" in workspace.save_filter_button.toolTip()
+
+
+def test_unified_save_filter_preserves_v4_dirty_bookmark_gate(qtbot):
+    _host, workspace, pages = _workspace(qtbot)
+    view = QWidget()
+    view.bookmark_button = QPushButton("收藏目前查詢與比較籃", view)
+    view.bookmark_button.clicked.connect(lambda: None)
+    key = (type(view).__module__, type(view).__name__)
+    workspace._BOOKMARK_BUTTON_SOURCES = {
+        **workspace._BOOKMARK_BUTTON_SOURCES,
+        key: "bookmark_button",
+    }
+    # 以輕量元件核對精確登錄的適配器；共用入口沿用原生按鈕的
+    # 範本未查詢、忙碌或沒有結果等停用門檻。
+    pages[2].addTab(view, "V4 規則研究")
+    workspace.sync_sources()
+    source = next(item for item in workspace._sources if item.widget is view)
+    assert workspace.select_source(source.key)
+    view.bookmark_button.setEnabled(False)
+    workspace.refresh_funnel()
+    assert not workspace.save_filter_button.isEnabled()
+    assert workspace.save_current_filter() is False
+
+
 def test_condition_recipe_routes_without_query_and_keeps_return_source(qtbot):
     host, workspace, pages = _workspace(qtbot)
     applied = []
@@ -528,15 +590,25 @@ def test_v4_condition_recipe_changes_only_rule_controls_and_never_queries(qtbot)
     stock_filter = QLineEdit("2330")
     qtbot.addWidget(mode)
     qtbot.addWidget(stock_filter)
+    bookmark_button = QPushButton("收藏目前查詢與比較籃")
+    qtbot.addWidget(bookmark_button)
+    status_messages = []
+    start_calls = []
+    original_page = object()
     original_query = SimpleNamespace(method_rule_keys=rule_keys)
     view = SimpleNamespace(
         _query=original_query,
+        _page=original_page,
+        _condition_recipe_dirty=False,
         _closing=False,
         _worker=None,
         _pending=None,
         _rule_filters=rule_filters,
         mode=mode,
         stock_filter=stock_filter,
+        bookmark_button=bookmark_button,
+        status=SimpleNamespace(setText=status_messages.append),
+        _start=lambda *args, **kwargs: start_calls.append((args, kwargs)),
     )
 
     for recipe, target in (
@@ -551,8 +623,17 @@ def test_v4_condition_recipe_changes_only_rule_controls_and_never_queries(qtbot)
             for key, combo in rule_filters.items()
         )
         assert view._query is original_query
+        assert view._page is original_page
+        assert view._condition_recipe_dirty is True
+        assert bookmark_button.isEnabled() is False
         assert stock_filter.text() == "2330"
         assert emitted == []
+
+    DailyMarketTechnicalUniverseV4View.prepare_bookmark(view)
+    assert view._query is original_query
+    assert view._page is original_page
+    assert start_calls == []
+    assert "未收藏舊查詢" in status_messages[-1]
 
     before = (mode.currentData(), tuple(combo.currentData() for combo in rule_filters.values()))
     assert not DailyMarketTechnicalUniverseV4View.apply_condition_recipe(view, "unknown")
@@ -566,3 +647,152 @@ def test_v4_condition_recipe_changes_only_rule_controls_and_never_queries(qtbot)
         view, "ma5_20_golden_cross"
     )
     assert (mode.currentData(), tuple(combo.currentData() for combo in rule_filters.values())) == before
+
+
+def _pending_recipe_view(qtbot):
+    from ui_qt.views.daily_market_technical_universe_v4_view import (
+        DailyMarketTechnicalUniverseV4View,
+    )
+
+    rule_keys = ("ma5_20_golden_cross", "kd_golden_cross", "macd_golden_cross")
+    rule_filters = {}
+    for key in rule_keys:
+        combo = QComboBox()
+        combo.addItem("不限制", "all")
+        combo.addItem("符合", "match")
+        combo.addItem("未知", "unknown")
+        qtbot.addWidget(combo)
+        rule_filters[key] = combo
+    mode = QComboBox()
+    mode.addItem("OR", "OR")
+    mode.addItem("AND", "AND")
+    qtbot.addWidget(mode)
+    stock_filter = QLineEdit()
+    qtbot.addWidget(stock_filter)
+    sort = QComboBox()
+    sort.addItem("代號", "stock_code")
+    qtbot.addWidget(sort)
+    descending = QComboBox()
+    descending.addItem("升冪", False)
+    qtbot.addWidget(descending)
+    page_size = QComboBox()
+    page_size.addItem("100", 100)
+    qtbot.addWidget(page_size)
+    bookmark_button = QPushButton("收藏目前查詢與比較籃")
+    qtbot.addWidget(bookmark_button)
+    status_messages = []
+    operations = []
+    old_query = SimpleNamespace(method_rule_keys=("macd_golden_cross",))
+    old_page = object()
+    new_query, new_page = object(), object()
+    table = SimpleNamespace(
+        verticalScrollBar=lambda: SimpleNamespace(value=lambda: 17)
+    )
+    view = SimpleNamespace(
+        _query=old_query,
+        _page=old_page,
+        _condition_recipe_dirty=False,
+        _closing=False,
+        _worker=None,
+        _pending=None,
+        _rule_filters=rule_filters,
+        _selected_rule_state_filters=lambda: (),
+        _parse_stock_filter=lambda _text: (),
+        _stock_filter_rejected_text=None,
+        _read_session=object(),
+        _comparison_basket=[],
+        _selected_row=lambda: SimpleNamespace(stock_code="2330"),
+        table=table,
+        mode=mode,
+        stock_filter=stock_filter,
+        sort=sort,
+        descending=descending,
+        page_size=page_size,
+        bookmark_button=bookmark_button,
+        status=SimpleNamespace(setText=status_messages.append),
+        _start=lambda name, operation, apply, **kwargs: operations.append(
+            (name, operation, apply, kwargs)
+        ),
+    )
+    view._apply_query_result = lambda _value: (
+        setattr(view, "_query", new_query),
+        setattr(view, "_page", new_page),
+        True,
+    )[-1]
+    view._apply_condition_recipe_query_result = lambda value: (
+        DailyMarketTechnicalUniverseV4View._apply_condition_recipe_query_result(
+            view, value
+        )
+    )
+    view._set_page_controls = lambda: bookmark_button.setEnabled(
+        not view._condition_recipe_dirty
+    )
+    return view, old_query, old_page, new_query, new_page, operations, status_messages
+
+
+def test_recipe_bookmark_unlocks_only_after_successful_new_query(qtbot, monkeypatch):
+    from ui_qt.views.daily_market_technical_universe_v4_view import (
+        DailyMarketTechnicalUniverseV4View,
+    )
+
+    view, old_query, old_page, new_query, new_page, operations, _status = (
+        _pending_recipe_view(qtbot)
+    )
+    assert DailyMarketTechnicalUniverseV4View.apply_condition_recipe(
+        view, "macd_golden_cross"
+    )
+    assert view._query is old_query
+    assert view._page is old_page
+    assert view._condition_recipe_dirty is True
+
+    DailyMarketTechnicalUniverseV4View.apply_query(view)
+    assert len(operations) == 1
+    assert view._condition_recipe_dirty is True
+    assert view.bookmark_button.isEnabled() is False
+
+    query_apply = operations[-1][2]
+    query_apply(object())
+    assert view._query is new_query
+    assert view._page is new_page
+    assert view._condition_recipe_dirty is False
+    assert view.bookmark_button.isEnabled() is True
+
+    saved_queries = []
+    monkeypatch.setattr(
+        "ui_qt.views.daily_market_technical_universe_v4_view.create_daily_market_technical_universe_v4_bookmark_fresh",
+        lambda query, *_args, **_kwargs: saved_queries.append(query),
+    )
+    DailyMarketTechnicalUniverseV4View.prepare_bookmark(view)
+    assert len(operations) == 2
+    operations[-1][1]()
+    assert saved_queries == [new_query]
+
+
+@pytest.mark.parametrize("outcome", ["failed", "cancelled"])
+def test_failed_or_cancelled_recipe_query_keeps_bookmark_locked(qtbot, outcome):
+    from ui_qt.views.daily_market_technical_universe_v4_view import (
+        DailyMarketTechnicalUniverseV4View,
+    )
+
+    view, _old_query, old_page, _new_query, _new_page, operations, _status = (
+        _pending_recipe_view(qtbot)
+    )
+    assert DailyMarketTechnicalUniverseV4View.apply_condition_recipe(
+        view, "macd_golden_cross"
+    )
+    DailyMarketTechnicalUniverseV4View.apply_query(view)
+    callback = operations[-1][2]
+    if outcome == "failed":
+        view._apply_query_result = lambda _value: False
+        callback(object())
+    else:
+        DailyMarketTechnicalUniverseV4View._show_worker_cancelled(
+            view, "更新全域查詢"
+        )
+
+    assert view._condition_recipe_dirty is True
+    assert view._page is old_page
+    assert view.bookmark_button.isEnabled() is False
+    operation_count = len(operations)
+    DailyMarketTechnicalUniverseV4View.prepare_bookmark(view)
+    assert len(operations) == operation_count

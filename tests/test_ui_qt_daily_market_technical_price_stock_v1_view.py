@@ -159,11 +159,24 @@ def test_embedded_workspace_uses_exact_saved_rows_without_general_report_read(
     app.processEvents()
     current = workspace.price_research_view
     assert current is not None and current is not old and current.isVisible()
+    assert current.origin_selection is second_selection
     assert current.price_chart._points[-1].close_price == second.snapshot.rows[-1].close_price
     assert workspace.content_stack.count() == 2
     assert workspace.price_research_context.stock_code == second.stock_code
     assert workspace.price_research_context.source_snapshot_hash == second.snapshot.snapshot_identity_sha256
     assert shown_contexts[-1] == workspace.price_research_context
+    token = workspace.capture_historical_view()
+    assert token is not None and token.price_selection is second_selection
+    assert token.price_view is current and token.price_page is workspace.price_research_page
+    latest_requests: list[object] = []
+    workspace.latestResearchRequested.connect(latest_requests.append)
+    current.latest_research_button.click()
+    assert latest_requests == [workspace.price_research_context]
+    workspace._show_general_report()
+    assert workspace.restore_historical_view(token)
+    assert workspace.price_research_view is current
+    assert workspace.price_research_view.origin_selection is second_selection
+    assert workspace.price_research_context.source_snapshot_hash == second.snapshot.snapshot_identity_sha256
     returned: list[object] = []
     workspace.priceResearchReturnRequested.connect(returned.append)
     current.return_button.click()

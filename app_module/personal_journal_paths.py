@@ -152,6 +152,8 @@ class PersonalJournalJsonlStore(PortfolioJsonlStore):
         self.paths.assert_selected(path, legacy_read_only=self.legacy_read_only)
         if self.legacy_read_only:
             return self._read_legacy()
+        if not path.exists():
+            return []
         return super()._read_jsonl(path)
 
     def _ensure_line_separator_unlocked(self, path: Path) -> None:  # type: ignore[override]
@@ -173,25 +175,40 @@ class PersonalJournalJsonlStore(PortfolioJsonlStore):
 
     def _read_legacy(self) -> list[dict[str, Any]]:
         self._guard()
-        before = self.journal_file.stat() if self.journal_file.exists() else None
+
+        def content_identity() -> tuple[int, ...] | None:
+            if not self.journal_file.exists():
+                return None
+            info = self.journal_file.stat()
+            # 讀取本身可更新存取時間；檔案身分、內容與其他穩定 metadata 仍須一致。
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                    info.st_uid, info.st_gid, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+        before = content_identity()
         result = self._read_jsonl_unlocked(self.journal_file)
         self.paths.assert_selected(self.journal_file, legacy_read_only=True)
-        after = self.journal_file.stat() if self.journal_file.exists() else None
+        after = content_identity()
         if before != after:
             raise RuntimeError("legacy_journal_changed_during_read")
         return result
 
     def load_journal_history(self) -> list[dict[str, Any]]:
         self._guard()
+        if not self.legacy_read_only and not self.journal_file.exists():
+            return []
         return self._read_legacy() if self.legacy_read_only else super().load_journal_history()
 
     def load_journal_entries(self) -> list[dict[str, Any]]:
         self._guard()
+        if not self.legacy_read_only and not self.journal_file.exists():
+            return []
         return project_journal_records(self._read_legacy()) if self.legacy_read_only else super().load_journal_entries()
 
     def load_journal_snapshot(self) -> tuple[list[dict[str, Any]], str]:
         self._guard()
         if not self.legacy_read_only:
+            if not self.journal_file.exists():
+                return [], _journal_history_token([])
             return super().load_journal_snapshot()
         records = self._read_legacy()
         return records, _journal_history_token(records)

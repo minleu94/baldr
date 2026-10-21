@@ -248,3 +248,23 @@ R149修復既有 `PaperPortfolioBaselineService._decimal` 將缺失或非法總�
 QA128 compile、baseline service／CLI與既有配置sandbox共26測試、受改module mypy全部通過。CLI無效輸入時新輸出不存在、既有輸出bytes保持；這些是隔離fixture的工程回歸，不是真來源或建帳接受。closure `617622026067a06c777dfe4810277da1ef617b60801a02ca1c67421c0241aeac` terminal0、三PID列表空、process／Job handles關閉及mutex釋放，無強制清除。新backend變更沒有UI接線，沿用未改UI的QA124／126證據，未重跑或重建EXE。
 
 R150／R151另核實：嚴格publication-row reader與策略帳checkpoint鏈可重用，但行情availability／用途與quote-event／官方session、精確保存結果及帳戶cash鏈均須原契約。CSV人工確認匯入只有成交／成本事件，缺研究原件／result ID／candidate key及mark/cash provenance，不能作一般研究建帳producer。不得把空倉seed、研究股價或現有CSV匯入升格為候選建帳資格。完整Paper正向流程仍未完成，合法輸入問題待Owner提供；五旅程、Native／真人及長期金融狀態不變。
+
+## 選股保存與歷史返回（QA130起）
+
+R155／R159補統一選股儲存入口，明確映射七種來源原生收藏按鈕；保留原 typed payload、writer 與核驗門檻。V4 套範本後阻止收藏舊 Query，只有新查詢成功套用才解除；失敗或取消不解除。R156補完整保存報告與價格詳情的最新入口、原件 token 回訪；排名、H20與舊缺圖報告仍保留原分支。Main 將新查詢的日期／result ID／pins清空，返回前背景重核，並拒絕過期回傳。一般全域查股返回不刷新或重設投組／自選帳種及子頁。
+
+QA130 編譯、Workbench85、更新頁25/0/4與mypy1108通過；定向122通過、3失敗為新測試替身未掛stock_research及誤用strategy_library作route。失敗保留，closure `91149cb357497a3edeb138f04d27d2a06a0ff2cec8b2d325d90ae916473c6bd6` 自然排空。Root修測試替身，另在靜態複核發現並恢復被候選誤漏的舊缺圖報告分支，增加對應回歸。
+
+QA131 編譯、126定向、Workbench85、更新頁25/0/4及mypy1108全通過，closure `15cf306822c187934cbbac9fe95409b74987fa89e0e203bed60fe49dc2c00f01` 自然全閉。QA132 R162正常Main選回既有R134報告後，回訪原件逾時，尚未到latest步驟，不能視為正常Main往返通過；Journal、來源四pins及原三JSON保持，worker／pool0並自然刪除。closure `e2f02df2092fcf01664768cec7bcff5a9efdfd3f3bee77961e524174991583f6` 三PID陣列空、process／Job handles閉、mutex釋放；R164只新增診斷helper，不改原失敗證據或放寬CASE-only audit。固定a65 EXE、Native停止、五旅程PARTIAL與真人／金融待驗保持。
+
+QA133／134新增只讀診斷後，原件開啟與乾淨latest均已完成；返回時的完整例外定位至 `legacy_journal_changed_during_read`。原Journal bytes／SHA、size、mtime_ns、ctime_ns、inode及device保持，只有讀取造成atime變化。Root將比較限定於穩定metadata，保留身分、大小、納秒修改／變更時間及存在狀態的拒絕防線；新增7項守衛案例。QA134 closure `a2e75a83bdfbbb5e5d481cfc38ae2b804630d39325c7db403755806472701fdc`、QA133 `e8acd9dfc6fe070eb501ade8e3b723327e609af236c2b902b40dd765c649fcdf` 均自然全閉，原失敗保留。
+
+QA135 compile、193項定向、Workbench85、更新頁25/0/4及mypy1108通過；另11個既有私人根整合案例因basetemp放在程式包內而被路徑守衛拒絕，整輪FAIL保留，未放寬產品守衛。closure `d660e8fa9175b9b9ca5db56f634f669ba7a6d40df0985c39402958c366f00abd` 自然全閉。QA136把該測試根移至task實體外部位置後15通過、1失敗；最後personal模式案例定位到缺失Journal的讀取會建立1-byte鎖檔。Root另補缺失PERSONAL store空讀取分支，不改已有store的鎖、writer或CAS；後續驗證另記。
+
+QA136 R168正常MainWindow（非main() entry）於1280×760／DPR1.25六步全通過：真R134保存報告→獨立latest完成→原件背景重核→相同canonical投影→原時間軸同筆記，另檢視統一Save入口完整122×44且按來源狀態停用，未點擊或另存。Root看過latest、返回原件及選股畫面；Journal `b56b49a3306aad59c30daa351866e49ccd4d50cb35ca0cda8bb979d11aeb73ce`、四來源及R134三JSON保持、SQLite sidecar缺席、worker／pool0及deferred-delete自然完成。CASE-only audit仍阻舊log與手動帳讀鎖，不宣稱完整持倉讀取或零寫入嘗試。整輪QA136因上述私人模式案例仍FAIL，此Main切片限定接受；closure `7dce123561d3976795b562aa9d97e25de291f6184b4320ad9a984e61b1ef68e4` 全閉、無強制清除。固定a65包未重建，完整五旅程及金融／Native／真人接受不升格。
+
+QA137在程式包外隔離basetemp重驗，編譯、209項定向（包含16個notes composition、7個metadata守衛及5個缺失store／CAS新增案例）、Workbench85、更新頁25/0/4與mypy1108全通過；未略過或放寬原失敗案例。closure `439a1a3900384ccbc8a9b64f52842c03ef37520a46a9ea013aedb5dbb2c7647c` terminal0、三PID陣列空、process／Job handles關閉及mutex釋放，無強制回收。新增缺失store分支只影響PERSONAL空讀取，QA136 R168所驗legacy只讀報告返回分支未改；不重跑已接受報告流或build。
+
+R170對既有R111／R112最多八檔有界核對：證據是TechnicalUniverse V4產製／查詢／比較／個股返回，沒有價格詳情需要的typed price bookmark或selection。未將它冒充價格來源，未建新helper或造state；新價格latest的實際Main往返仍NOT_RUN，工程定向包含signal、原selection、token及strict reader dispatch。一般保存報告的Main證據與此缺件分開判讀。
+
+QA138既有個股詳情動作／V2版面／導航另8項通過。文件全檢首輪FAIL包含root同步字串誤替換的UI文件連結（已恢復HEAD原正文，僅重加新段落），及研究分冊原有output/trial junction越界連結。保留原FAIL，closure `0f5ae7db4aacb5daf03abd133fadcd30c2c88b7f8ac0f876228d601625540395` 自然全閉；最後收斂檢查五份非junction正文與task／Feature Map，Manual／Snapshot／研究分冊的新diff由root另審，不宣稱其舊全檔連結通過。

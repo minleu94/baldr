@@ -813,6 +813,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self._pending: _QueuedOperation | None = None
         self._query: DailyMarketTechnicalUniverseV4Query | None = None
         self._page: DailyMarketTechnicalUniverseV4Page | None = None
+        self._condition_recipe_dirty = False
         self._read_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
         self._selection_query: DailyMarketTechnicalUniverseV4Query | None = None
         self._selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None
@@ -1154,8 +1155,15 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                     _read_operation_cancellation_capability
                 ),
             ),
-            self._apply_query_result,
+            self._apply_condition_recipe_query_result,
         )
+
+    def _apply_condition_recipe_query_result(self, value: object) -> None:
+        """只有明確查詢成功套用新結果後，才解除範本收藏鎖。"""
+        if not self._apply_query_result(value):
+            return
+        self._condition_recipe_dirty = False
+        self._set_page_controls()
 
     def apply_condition_recipe(self, recipe_key: str) -> bool:
         """只替換已保存來源的規則篩選；不改來源、不執行查詢。"""
@@ -1195,6 +1203,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         for key, combo in self._rule_filters.items():
             combo.setCurrentIndex(indexes[key])
         del blockers
+        self._condition_recipe_dirty = True
+        self.bookmark_button.setEnabled(False)
+        self.status.setText("範本條件已變更；請先成功套用全域查詢，再收藏新條件。")
         return True
 
     def change_page(self, delta: int) -> None:
@@ -1365,6 +1376,11 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         )
 
     def prepare_bookmark(self) -> None:
+        if self._condition_recipe_dirty:
+            self.status.setText(
+                "範本條件尚未成功套用全域查詢；未收藏舊查詢，請先查詢或恢復原條件。"
+            )
+            return
         query = self._query
         row = self._selected_row()
         if query is None or row is None:
@@ -2112,7 +2128,11 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             2 <= len(self._comparison_basket) <= 256 and not self._closing
         )
         self.bookmark_button.setEnabled(
-            query is not None and page is not None and bool(page.rows) and not self._closing
+            query is not None
+            and page is not None
+            and bool(page.rows)
+            and not self._closing
+            and not self._condition_recipe_dirty
         )
 
     def _selected_row(self) -> DailyMarketTechnicalParentV4Row | None:

@@ -5,7 +5,7 @@ PySide6 主應用程式
 import os
 import sys
 import time
-from dataclasses import replace as dataclass_replace
+from dataclasses import dataclass, replace as dataclass_replace
 from pathlib import Path
 
 # 添加項目根目錄到系統路徑
@@ -140,7 +140,7 @@ from ui_qt.views.update_view import UpdateView
 from ui_qt.views.backtest_view import BacktestView
 from ui_qt.views.watchlist_view import WatchlistView
 from ui_qt.views.watchlist_product_layout import WatchlistProductLayout
-from ui_qt.views.stock_research_workspace import StockResearchWorkspace
+from ui_qt.views.stock_research_workspace import HistoricalResearchViewToken, StockResearchWorkspace
 from ui_qt.views.stock_research_report_view import StockResearchReportDialog
 from ui_qt.widgets.session_context_strip import SessionContextStrip
 from ui_qt.views.smart_money.smart_money_flow_view import SmartMoneyFlowView
@@ -263,6 +263,14 @@ def _resolve_personal_policy_config_path(
     if not location:
         return None
     return (Path(location) / "personal_use_policy.json").resolve()
+
+
+@dataclass(frozen=True)
+class _HistoricalResearchReturn:
+    token: HistoricalResearchViewToken
+    origin_route: str
+    timeline_entry: ResearchTimelineEntry | None
+    latest_context: ResearchStockContextDTO
 
 
 class MainWindow(QMainWindow):
@@ -1935,7 +1943,9 @@ class MainWindow(QMainWindow):
                 blockers=(f"controlled_rehearsal_report_unavailable:{error}",),
             )
 
-    def _select_main_workspace(self, key_or_label: str) -> None:
+    def _select_main_workspace(
+        self, key_or_label: str, *, preserve_view_state: bool = False
+    ) -> None:
         workspace_stack = getattr(self, "workspace_stack", None)
         workspace_widgets = getattr(self, "workspace_widgets", {})
         if workspace_stack is None:
@@ -1951,7 +1961,10 @@ class MainWindow(QMainWindow):
         product_shell = getattr(self, "product_shell", None)
         if product_shell is not None:
             product_shell.workspace_selected(key)
-        self._on_workspace_selected(key)
+        if preserve_view_state:
+            self._on_workspace_selected(key, preserve_view_state=True)
+        else:
+            self._on_workspace_selected(key)
 
     def _select_main_tab(self, tab_name: str) -> None:
         self._select_main_workspace(tab_name)
@@ -2013,7 +2026,10 @@ class MainWindow(QMainWindow):
         self._select_main_workspace("portfolio")
         return True
 
-    def _on_workspace_selected(self, key: str) -> None:
+    def _on_workspace_selected(self, key: str, *, preserve_view_state: bool = False) -> None:
+        # 詳情返回沿用離開前的 model、選列與捲動；一般導覽仍依原流程刷新。
+        if preserve_view_state and key in {"watchlist", "portfolio"}:
+            return
         if key == "market_explore":
             market_tabs = getattr(self, "market_tabs", None)
             on_market_tab_changed = getattr(self, "_on_market_tab_changed", None)
@@ -2516,7 +2532,7 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.report_view.rankBookmarkRequested.connect(
                 self._save_original_ranking_bookmark
             )
-            self.stock_research_workspace.report_view.latestResearchRequested.connect(
+            self.stock_research_workspace.latestResearchRequested.connect(
                 self._open_latest_bookmark_research
             )
             self.stock_research_workspace.report_view.activeContextChanged.connect(
@@ -2806,6 +2822,7 @@ class MainWindow(QMainWindow):
         except (TypeError, ValueError) as exc:
             self.statusBar().showMessage(f"原價格研究來源不一致，未切換個股：{exc}")
             return
+        self._historical_research_return = None
         self._select_main_workspace("stock_research")
         pending = getattr(self, "_timeline_pending_price_entry", None)
         self._timeline_pending_price_entry = None
@@ -3057,6 +3074,12 @@ class MainWindow(QMainWindow):
 
     def _verify_timeline_entry(self, entry: ResearchTimelineEntry, completed, *, evidence_baseline: bool = False) -> None:
         """同一 reader 背景重核原件；晚到或關閉回傳不改畫面。"""
+        reader = (self.research_timeline_service.read_evidence_baseline
+                  if evidence_baseline else self.research_timeline_service.read_original)
+        self._start_original_verification(reader, (entry,), completed)
+
+    def _start_original_verification(self, reader, arguments: tuple, completed) -> None:
+        """原件回訪共用同一可取消、可收尾的背景讀取生命週期。"""
         from ui_qt.workers.task_worker import TaskWorker
 
         if getattr(self, "_shutdown_close_requested", False):
@@ -3064,9 +3087,7 @@ class MainWindow(QMainWindow):
         previous = getattr(self, "_timeline_original_worker", None)
         if previous is not None and previous.isRunning():
             previous.cancel(cooperative=True, wait=False)
-        reader = (self.research_timeline_service.read_evidence_baseline
-                  if evidence_baseline else self.research_timeline_service.read_original)
-        worker = TaskWorker(reader, entry)
+        worker = TaskWorker(reader, *arguments)
         self._timeline_original_worker = worker
         workers = getattr(self, "_timeline_original_workers", None)
         if workers is None:
@@ -3302,6 +3323,7 @@ class MainWindow(QMainWindow):
         return resolved
 
     def _open_stock_research_context(self, value: object) -> None:
+        self._historical_research_return = None
         self._timeline_pending_price_entry = None
         self._timeline_detail_entry = None
         """接收保存結果／觀察清單的下鑽 context 並開啟單股研究頁。"""
@@ -3938,10 +3960,31 @@ class MainWindow(QMainWindow):
     def _open_latest_bookmark_research(self, value: object) -> None:
         context = self._coerce_stock_research_context(value)
         if context is not None and context.source_kind in {
-            "personal_h20_saved_cohort",
-            "personal_h20_research_bookmark",
+            "personal_h20_saved_cohort", "personal_h20_research_bookmark",
         }:
             self._open_personal_h20_current_research(context)
+            return
+        workspace = getattr(self, "stock_research_workspace", None)
+        capture = getattr(workspace, "capture_historical_view", None)
+        token = capture() if callable(capture) else None
+        if context is not None and token is not None:
+            original = token.saved_snapshot or token.price_selection
+            if (original is None or original.stock_code != context.stock_code
+                    or self.workspace_stack.currentWidget() is not self.workspace_widgets["stock_research"]):
+                return
+            shell = self.product_shell
+            origin = shell._detail_origin or shell.route_id
+            entry = getattr(self, "_timeline_detail_entry", None)
+            latest = ResearchStockContextDTO(
+                stock_code=context.stock_code, stock_name=context.stock_name,
+                source_kind="explicit_latest_stock_research",
+                source_label="使用者明確要求另開最新可用資料；可返回歷史原件",
+                source_workspace="stock_research",
+            )
+            self._open_stock_research_context(latest)
+            self._historical_research_return = _HistoricalResearchReturn(token, origin, entry, latest)
+            shell.set_detail_origin(origin)
+            shell.return_button.setText("← 返回歷史原件")
             return
         if context is not None and (
             context.rank_context is not None
@@ -3965,6 +4008,53 @@ class MainWindow(QMainWindow):
         opener(context)
         self._select_main_workspace("recommendation")
         recommendation.result_source_tabs.setCurrentWidget(daily)
+
+    def _return_from_latest_historical_research(self) -> bool:
+        """返回明確保存的歷史頁，重核原來源；晚到回傳不得覆蓋新查詢。"""
+        frame = getattr(self, "_historical_research_return", None)
+        if not isinstance(frame, _HistoricalResearchReturn):
+            return False
+        workspace = self.stock_research_workspace
+
+        def current() -> bool:
+            return (not getattr(self, "_shutdown_close_requested", False)
+                    and getattr(self, "_historical_research_return", None) is frame
+                    and self.workspace_stack.currentWidget() is self.workspace_widgets["stock_research"]
+                    and workspace.content_stack.currentWidget() is workspace.general_report_page
+                    and workspace.report_tabs.currentWidget() is workspace.report_view
+                    and workspace.report_view.context == frame.latest_context
+                    and self.product_shell._detail_origin == frame.origin_route)
+
+        if not current():
+            self._historical_research_return = None
+            return False
+
+        def apply(_result: object) -> None:
+            if current() and workspace.restore_historical_view(frame.token):
+                self._historical_research_return = None
+                self._timeline_detail_entry = frame.timeline_entry
+                self.product_shell.set_detail_origin(frame.origin_route)
+
+        if frame.timeline_entry is not None:
+            self._verify_timeline_entry(frame.timeline_entry, apply)
+        else:
+            def read_origin(cancel_callback=None) -> object:
+                snapshot = getattr(frame.token, "saved_snapshot", None)
+                if snapshot is not None:
+                    from app_module.stock_research_report_snapshot_codec import read_stock_research_report_projection_snapshot
+                    return read_stock_research_report_projection_snapshot(
+                        snapshot.canonical_json, expected_identity_sha256=snapshot.identity_sha256
+                    )
+                selection = getattr(frame.token, "price_selection", None)
+                if selection is None:
+                    raise ValueError("歷史回訪缺少精確來源")
+                from app_module.daily_market_technical_universe_price_comparison_v1 import read_daily_market_technical_universe_price_selections_v1
+                return read_daily_market_technical_universe_price_selections_v1(
+                    (selection,), cancel_callback=cancel_callback
+                )
+
+            self._start_original_verification(read_origin, (), apply)
+        return True
 
     def _open_personal_h20_current_research(
         self, context: ResearchStockContextDTO
@@ -4187,6 +4277,8 @@ class MainWindow(QMainWindow):
             return ()
 
     def _return_from_stock_research_report(self) -> None:
+        if MainWindow._return_from_latest_historical_research(self):
+            return
         if MainWindow._return_from_timeline_detail(self):
             return
         workspace = getattr(self, "stock_research_workspace", None)

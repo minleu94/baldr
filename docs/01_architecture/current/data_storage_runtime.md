@@ -109,6 +109,10 @@ Watchlist、bookmark 與個人 journal 依成對的明示 root／mode 選擇私�
 
 Saved snapshot、benchmark、圖表與研究成果須在原保存 bytes 上驗證來源、scope 與 identity。條件不符即拒絕或降級；不能退回 live data、借用最新來源或補回未知 PIT。
 
+Legacy Journal 唯讀讀取前後以檔案存在狀態、device／inode、mode／link／owner、大小及納秒修改／變更時間核對穩定身分。讀取本身可能更新的 atime 不視為內容變更；其餘差異仍拒絕，不建立來源 lock、不修改或搬移原件。此檢查不替代保存投影 canonical／identity 及修訂核驗，也不提升金融資格。正常 Main 回訪曾因 atime 被誤拒，修復與工程／操作證據集中於[V2 QA](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#選股保存與歷史返回qa130起)。
+
+明選 PERSONAL Journal 的缺失 store 回傳空歷史／空投影與空歷史token，不為讀取建立資料夾或鎖，也不改讀legacy。已有store仍在原鎖內讀取；首次明示寫入才沿原writer建立保存結構，CAS仍於寫入鎖內核對預期token。
+
 ## 市場資料、研究母體與報告
 
 原 F17 `CurrentOfficialDisposalReader` 新 pin／parser v3 可直接解析既存 TWSE `/announcement/punish` 十欄英文 array，identity 綁內部 row contract 與官方 Swagger SHA；v2 原 wire／identity／讀法不變，舊保存來源不遷移。原 raw／原列 SHA、公告與生效期間、觀測日及 current_only／PIT false 保留，空列仍 unknown。`CurrentMarketAssignmentReader` 以 parser 原 `listing_termination` 型別核公文的正向終止日期，停止交易不作終止；snapshot 與 raw 不合仍拒絕，無缺列推論。版本與守衛見[資料契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#已存官方處置來源的版本相容increment46)，限定真原件／正常 Main 與未驗邊界見[Increment46 QA](../../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment46p03真twse處置與終止公文讀回)。

@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**目前整合候選：eefd2163。** `2026.10.21+eefd2163ad95` 已將下列後繼 Source 集中封裝一次；QA144建置、QA146同版、QA148真正frozen保存報告／價格最新與原件返回、Paper建帳停用、QA150隔離啟動器正反SHA，以及QA152新候選125%／17路由與三尺寸首頁通過。12檔pin交付收據兩份同SHA `87cadb86f01fc45838bfa05d355c776c9359a7d283257ce2ee5a28784f6ca4d6`，舊版本不含項目依各段原身份判讀。完整五旅程仍PARTIAL、Native停止與真人待驗保持；詳見[V2候選驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#eefd2163-整合候選qa144-起)。
+
 **後繼 Source：選股保存與歷史返回。** 綜合選股共用儲存入口沿原來源 typed 流程，範本未成功查詢前禁止誤存舊 Query。保存報告與價格詳情可另開獨立最新查詢並重核返回；全域查股返回保留原投組／自選畫面。唯讀 Journal 不再把存取時間更新誤判為內容變更，缺失私人 Journal 空讀取也不再建立鎖檔；既存 writer／CAS及來源守衛保留。QA137編譯、209項定向、Workbench85、更新頁25/0/4與mypy1108通過，QA136 R168正常Main保存報告往返及125%儲存入口可見已限定驗證；QA141 R176亦已驗證價格詳情另開最新、重核同選取並返回原query／page／2317列，完整五旅程仍PARTIAL。固定a65 EXE不含本增量，見[V2驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#選股保存與歷史返回qa130起)。
 
 **後繼 source：Paper baseline 不再將未知補零。** 已保存推薦的研究用 baseline，總分或收盤價缺失、布林、非法文字與非有限數值會明確拒絕；明確觀測零仍沿原配置政策診斷，未改本金、日期或金融資格。QA128編譯、26項service／CLI／配置回歸及受改module型別檢查通過；無效輸入不新建或覆寫輸出。這是既有研究baseline缺陷修正，未實作一般候選建帳，也未重建a65 RC；詳見[V2驗收](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#paper-baseline未知值拒絕qa128)。

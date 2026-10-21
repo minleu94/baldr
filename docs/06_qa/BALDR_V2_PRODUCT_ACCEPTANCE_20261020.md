@@ -1,6 +1,22 @@
 # Baldr V2 產品驗收
 
-本文件記錄依 [V2 Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 開發的 Source 分支證據。基線 `9ce92743`，分支 `codex/baldr-v2-product`。目前施工中，尚未交付 V2 Release Candidate；既有固定研究13不包含本輪變更。
+本文件記錄依 [V2 Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 開發的 Source 分支證據。基線 `9ce92743`，分支 `codex/baldr-v2-product`。已有本機技術候選及分階段驗證，最新整合候選與限制見下節；完整五旅程仍為 PARTIAL，既有固定研究13不包含本輪變更。
+
+## eefd2163 整合候選（QA144 起）
+
+來源固定為 `eefd2163ad956d906d9f884a9b46f9e2f8661538`，版本 `2026.10.21+eefd2163ad95`，候選 `dist/candidate_eefd2163ad95_873638e9/baldr`。這次集中封裝 Paper 前置檢查、baseline 未知值拒絕、統一保存入口與 V4 dirty gate、保存報告／價格詳情另開最新及精確返回、Journal 唯讀修復；下方舊段落的「a65 不含」仍是各原版本的歷史界線。
+
+QA144 建置及 QA146 封存來源／EXE 同版比較通過；EXE 57,157,707 bytes，SHA-256 `32bbfd46055494fa585959984fded67cd7604b0cf34df662c3e11a978f6c01c9`，BUILD_INFO SHA-256 `926f2348994a9b4ccf9c36f775fac234107475b26e80a6e8bfce50546cd1a929`。沒有因後續工具修正重建候選。
+
+QA148 R179 在真正 frozen Main 執行保存報告→獨立最新→同 saved view／snapshot／context→原 Timeline 選列，再讀取現況對照；同時驗證 Paper 前置對話框建帳停用。另一程序以原 R42 strict 來源建立 PriceSelectionV1，完成原查詢→價格詳情→最新報告→原詳情→同 query／page／2317 列。報告 20 個、價格 10 個產品模組均由 PyiFrozenLoader 載入，無工作樹 fallback；Root 已看七張完整主視窗圖。R134 三份原始 JSON、Journal、R114 四來源與 R42 index 保持，worker／pool 為零並自然刪除視窗。報告為 1280×760／DPR1.5、價格為 DPR1.25；部分來源缺件明示，不作完整行情、金融資格或 native 接受。
+
+QA147 材料組裝通過；QA150 啟動器 prepare／check 與錯 EXE SHA 拒絕通過。新 `r181_candidate_state` 僅準備一次固定公開樣本，不含私人 Journal；第五個設定鍵明選既有包外 `TECHNICAL_UNIVERSE_READ_ROOT`，R42 只記四個 index pins，不複製 payload 或重跑 producer。這是本機綁定候選，availability unknown／historical PIT false；既有候選與 state 保留。
+
+QA143 參數錯位、QA145 通用 pin 對 dist junction 的前置拒絕、QA147 驗證器長路徑、QA149 命令規格錯漏均保留原 FAIL；後三者未重建 EXE 或重組公開樣本。QA144／146／148／150 均自然閉鎖，三 PID 陣列空、process／Job handles 關閉及 mutex 釋放，維持 8 GiB／12 程序。新候選 125% 路由及交付 pins 另記；完整五旅程、真人與金融缺件不升格。
+
+QA151 R183 在路由前被 CASE-only audit 擋下 `r181_candidate_state/market/daily_price` 初始化，原 FAIL 保留。QA152 R184 沿舊已驗作法，僅預備五個應用標準空目錄，再以新 CASE 驗 17 路由 1280×760／DPR1.25；1500×900、1440×900、1920×1080 僅驗首頁。來源及四個 state 樣本不變，未放寬 inner audit，Main return0、worker／pool0且自然刪除；Root 看首頁與選股圖。closure `7bd3f809f5d0cfff43dcf67bdda2a2f5cec8928ca9c9196c5feb4773db01dea9` 全閉。R185 獨立靜態 review 無交付阻擋，僅澄清 GUIDE：啟動器以內嵌路徑及 SHA 準備樣本，SAMPLE_RECEIPT 是 pins 紀錄；更正後九項材料與 manifest 由 QA152 再核，QA150 原材料 pins 保留不改寫。
+
+本機交付 canonical `DELIVERY_RECEIPT.json` 與 task `delivery_eefd2163ad95.json` 均為 10,733 bytes／SHA-256 `87cadb86f01fc45838bfa05d355c776c9359a7d283257ce2ee5a28784f6ca4d6`，固定 12 個檔案 pins（九材料、材料 manifest、EXE、BUILD_INFO）及五個成功自然閉鎖收據。候選含交付收據為 7,135 files／976,519,308 logical bytes，build 為 5,281 files／315,749,973 bytes；與前五份合計 7,743,557,105 bytes，僅邏輯檔案大小，非 SSD 唯一配置。六份候選保留，未替換既有指定試用入口、未清理或推送；任務 Credits USAGE_UNOBSERVABLE／UNKNOWN，跨 session 授權不重置。
 
 ## M0 與所有權
 

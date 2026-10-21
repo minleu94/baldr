@@ -32,7 +32,7 @@ Stock Research 詳情頭部另提供純自選、來源內比較與準備回測�
 
 Unified Screener 的「儲存篩選條件」候選只代理目前來源已登錄的原生 bookmark button，沿原 `prepare_bookmark`、typed payload 與 Main 保存 handler；未登錄來源停用並提供原因。V4 recipe dirty 狀態沿來源 button gate：成功套用新的明確查詢前不可收藏；失敗或取消維持舊 query/page，但不得以舊 query 生成新收藏。QA137定向與共同防線已通過；正常Main另核入口可見，固定 `a65d2b2b4fd5` RC 不含。
 
-保存時報告／price 明確要求「另開最新可用資料」時，Main 以清掉歷史 pins、日期與來源身份的 `explicit_latest_stock_research` context 開啟一般最新可用讀取，歷史 note/source identity 不併入新請求；返回以保存的 view token 重新核對歷史入口與原件。一般 Global Stock Research latest search 沿現有 view state 返回，不主動 reload／refresh。QA136 R168已限定驗證保存報告正常Main往返；價格詳情亦由QA141 R176驗證strict返回及原query／page／row，固定 `a65d2b2b4fd5` RC 不含這些後續變更。
+保存時報告／price 明確要求「另開最新可用資料」時，Main 以清掉歷史 pins、日期與來源身份的 `explicit_latest_stock_research` context 開啟一般最新可用讀取，歷史 note/source identity 不併入新請求；返回以保存的 view token 重新核對歷史入口與原件。一般 Global Stock Research latest search 沿現有 view state 返回，不主動 reload／refresh。QA136 R168已限定驗證保存報告正常Main往返；價格詳情亦由QA141 R176驗證strict返回及原query／page／row。固定 `a65d2b2b4fd5` RC 不含，後繼 `eefd2163ad95` 候選已由QA148真正frozen Main重核上述兩種原件往返及Paper前置停用；20／10產品模組由PyiFrozenLoader載入，原件與來源不變，非完整金融或真人接受。
 
 Research Timeline 的「對照目前可讀資料」候選流程以目前選取 entry 建立唯讀基準，再由 `ResearchEvidenceComparisonService` 獨立讀取當前來源，交由雙欄 widget 顯示來源、日期與限制；不計算金融差值、不寫回 Journal。手動筆記沒有封存行情；題材筆記只核對目前明選目錄中的版本身份、不含行情值；價格來源重驗原 bookmark，報告沿用保存投影。原件變更或身份不符時整體拒絕，換選、重新讀取、離頁及關閉會阻止過期結果套用。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 同屏及長來源換行已限定通過；固定 `412ca3e5fe4f` EXE 不含本增量；新 `a65d2b2b4fd5` RC 經 QA117／121 由12個 `PyiFrozenLoader` 產品模組執行正常 Main 保存／fresh 對照，原件及來源保持、worker／pool0且自然刪除，不使用工作樹 fallback。
 

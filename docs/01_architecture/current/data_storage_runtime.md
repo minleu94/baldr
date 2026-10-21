@@ -1,5 +1,7 @@
 # 資料、保存與 Runtime
 
+V2 本機整合候選 `eefd2163ad95` 的啟動設定明選五個 root：隔離 state 的 DATA／OUTPUT／RESEARCH_STATE／THEME_RESEARCH_CATALOG，以及包外既存 R42 `TECHNICAL_UNIVERSE_READ_ROOT`。啟動器只準備四個固定公開樣本；包內不含私人 Journal 或 R42 payload，後者沿四個 index pins 及原 strict parent reader 重核，本機綁定／unknown／PIT=false 不變。QA150啟動正反identity、QA148 frozen原件往返、QA152五空目錄初始化後的路由與材料保持已限定驗證；12檔pin與限制見[V2候選驗收](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#eefd2163-整合候選qa144-起)。既存writer、CAS、正式資料根及私人分區不受遷移。
+
 ## 原價格筆記邏輯刪除（research07）
 
 刪除不移除或覆寫Journal原件；只追加一筆原journal removed事件，包含完整原投影與current revision parent。decoder先按筆記entity收齊note／removed，再驗整條來源／修訂／tombstone，即使來源標記損壞也拒絕忽略該刪除。Journal writer payload schema與continuity DTO envelope各按原版本處理，完整JSON payload逐欄核對；不省略tags等欄位。已刪家族不列出、不可用舊revision ID復活；沒有自動實體清理或恢復UI。

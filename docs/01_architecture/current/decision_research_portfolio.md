@@ -1,6 +1,6 @@
 # 決策、研究與 Portfolio
 
-研究時間軸的證據對照先由 `ResearchTimelineService.read_evidence_baseline()` 重讀所選原件並逐欄核對，再以新的當下研究 context 讀取目前來源；手動筆記另核唯一修訂，價格收藏重核來源，報告沿原封存投影。對照 DTO 只保存展示文字及限制，不修改 Journal、Forward、帳本或來源用途資格；沒有封存的行情不由現況回填。入口與取消／過期回應責任見[目前工作區](application_and_workspaces.md)。固定 `412ca3e5fe4f` EXE 不含此後繼原始碼增量。
+研究時間軸的證據對照先由 `ResearchTimelineService.read_evidence_baseline()` 重讀所選原件並逐欄核對，再以新的當下研究 context 讀取目前來源；手動筆記另核唯一修訂，價格收藏重核來源，報告沿原封存投影。對照 DTO 只保存展示文字及限制，不修改 Journal、Forward、帳本或來源用途資格；沒有封存的行情不由現況回填。入口與取消／過期回應責任見[目前工作區](application_and_workspaces.md)。固定 `412ca3e5fe4f` EXE 不含此後繼原始碼增量；新 `a65d2b2b4fd5` RC 已限定驗證正常 frozen Main 保存／fresh 對照與原 Journal／來源保持，資格邊界不變。
 
 V2 Registry 比較讀取邊界由 UI 傳入已載回 metadata 的 run 類型。僅明確 `single_backtest` 允許把 broker 原保存的 `equity` 投影為比較內部 `portfolio_value`；此轉接只對副本改欄名，不改 Parquet、原值、日期或成本／指紋契約。雙權益欄歧義及缺件仍拒絕，非單股類型不借用此轉接。標準化仍沿既有 Decimal 計算與明確日期交集，不補齊缺日。
 

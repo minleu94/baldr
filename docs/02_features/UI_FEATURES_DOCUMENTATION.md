@@ -34,7 +34,7 @@ V2 後繼 Python 候選新增同題材成員的上一檔／下一檔，來源版
 
 首頁「最近研究」保留既有「開啟研究紀錄與覆盤」入口；只有保存原件為 report 且同時有來源資料日與來源身份時，另顯示「回訪原報告」。報告卡的行情日只取實際 `StockResearchReportNote.snapshot.report.price_points[-1].data_date`；原件型別不符、沒有價格列或末筆日期缺失時顯示原件未提供，不從 context 推算。新入口以同次讀取的 exact entry 選取時間軸，重用原件 reader 背景重核後才呈現保存時 snapshot；首頁來源返回首頁，時間軸原入口仍返回時間軸。過期 entry、缺 provenance、原件欄位不符或讀取失敗不會改開同 ID／同股的其他版本。保存時間、來源資料日、來源資格與當下行情各自判讀；保存 snapshot 不代表最新資料或投資建議。操作步驟及限制見 [APPLICATION_MANUAL V2 導航](../07_guides/APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)。本段描述目前原始碼接線，不宣稱 QA 已通過或既有 EXE 已包含。
 
-研究時間軸另有「對照目前可讀資料」候選操作，以左右欄呈現原件與獨立讀取的目前來源及各自日期、來源限制，不計算差值。原件變更或身份不符時整體拒絕；重新讀取、換選、離頁或關閉會使舊結果失效。手動筆記無封存行情，題材筆記不含行情值且只對照明選目錄中的目前版本；價格重驗原來源，報告保留原保存投影。此操作不寫回 Journal、不計金融差值，也不提升 PIT 或資料資格。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 雙欄同屏及長 SHA 換行已通過；固定 `412ca3e5fe4f` EXE 未包含此增量。
+研究時間軸另有「對照目前可讀資料」候選操作，以左右欄呈現原件與獨立讀取的目前來源及各自日期、來源限制，不計算差值。原件變更或身份不符時整體拒絕；重新讀取、換選、離頁或關閉會使舊結果失效。手動筆記無封存行情，題材筆記不含行情值且只對照明選目錄中的目前版本；價格重驗原來源，報告保留原保存投影。此操作不寫回 Journal、不計金融差值，也不提升 PIT 或資料資格。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 雙欄同屏及長 SHA 換行已通過；固定 `412ca3e5fe4f` EXE 未包含此增量；新 `a65d2b2b4fd5` RC 已通過 QA117 包內正常 Main 保存／fresh 對照及 QA121 同筆記150%重開。五旅程 PARTIAL、Native停止／真人待驗與金融資格保持。
 
 本頁說明 UI 呈現與互動契約；操作步驟、參數、安全限制、結果判讀及排錯以操作手冊為準。工作區責任與資料流見[目前架構分冊](../01_architecture/current/application_and_workspaces.md)，Recommendation、Backtest、Portfolio 計算責任見[決策、研究與 Portfolio](../01_architecture/current/decision_research_portfolio.md)。目前產品狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，驗收範圍依各原 QA 收據判讀。
 

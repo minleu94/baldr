@@ -212,3 +212,17 @@ QA110正常MainWindow在隔離state透過真UI保存2330報告，再首次與新
 QA112改為原生純文字換行儲存格，完整來源識別可選取；640／1280有界widget測試核實長token換行、無內部水平／垂直溢位。18個Timeline／widget測試、Workbench85、更新頁25/0/4、mypy1107及compile通過。R130只fresh重開原R123筆記，沒有重新保存或複製來源，原R123／R126收據與Journal／四來源保持；1280×760／DPR1.25的三欄、日期／收盤／完整來源身份同屏通過，Root看過Main與比較區兩圖。正常隱藏、worker／pool0、deferred-delete完成，未強制清理。
 
 QA107 closure `840aefa796261361724b43a4cdbb3886c9e14c8ab8a253f20dd94a882bfd9f1c`、QA110 `62e59df6a602ffd507eb1325ba4eaa7191917d15bfc3ac4ad3d91f3438c1178c`、QA112 `2bb27c4636508256ab621cb09bfcf9a2356f1e3dcf3441f2da717a73ddc39bf8`；三PID列表空、process／Job handles關閉及mutex釋放。新增對照僅source受限接受，固定412ca EXE不含；下一重要整合RC另驗，五旅程overall PARTIAL、USER_STOPPED_ESCAPE／真人待驗與金融Evidence Backlog保持。
+
+## 研究證據對照候選交付（QA113–121）
+
+QA113 五份相關文件、12 features／0 errors scoped 通過。QA114 從已提交 `a65d2b2b4fd50a16b8e3f806e827469b1f8175d5` 集中建置第5份重要RC；QA115 Python／EXE同版隔離fixture通過。版本為 `2026.10.21+a65d2b2b4fd5`，整包位於 `dist/candidate_a65d2b2b4fd5_cb32716d/baldr`；EXE57,143,377bytes，SHA `0417d9c1c2d6a812a55b777974be623f2a23bac49e874f0dc218d31a8410c9d4`。Launcher／GUIDE使用專屬 `r132_candidate_state`，不匯入正式、私人或舊候選state；沒有為helper修正重新build。
+
+QA117 的 R134 在真正 frozen 正常 Main 首次經題材CoWoS→2330→一般報告→UI保存判斷，選原筆記對照，再由新程序重開同一筆記。12個產品模組均在 `_MEIPASS` 且為 `PyiFrozenLoader`，無工作樹fallback。1280×760／DPR1.25、1600×950實體畫面中三欄及完整來源身份可讀；報告查詢10/21、行情9/23、題材10/16各自保留。原報告snapshot、Journal SHA `b56b49a3306aad59c30daa351866e49ccd4d50cb35ca0cda8bb979d11aeb73ce`及四來源保持，SQLite sidecar缺席、Main rc0／worker與pool0且自然刪除。功能first/fresh收據全部PASS；整輪隨後直接dispatch pwsh不符合既有commands runner的Python入口限制而FAIL，材料尚未執行。這是工具限制，不是自動審批拒絕；原FAIL保留。QA116另有helper compile FAIL，未執產品驗證。
+
+QA118 由固定Python wrapper執行材料組裝，新候選新增Launcher、GUIDE、config、固定四樣本與8材料pin manifest。R132 package probe的prepare0、check0、錯EXE SHA exit3，以及包內／state樣本保持均PASS；後續route在初始化缺少的空daily_price目錄時被CASE-only audit拒絕，整輪FAIL且未開始路由。QA119新helper縮排compile FAIL也保留。QA120 R138先於隔離state建立並記錄五個標準空設定目錄，再以原CASE-only守衛完成17路由，只有1280×760／DPR1.25；1500×900、1440×900、1920×1080另驗首頁。8材料／4state樣本、EXE、BUILD_INFO及helper pin保持，無金融資料寫入；Main0／worker與pool0且自然刪除。Root看過首頁實圖，不外推所有尺寸的17路由。
+
+QA121 R139只fresh重開R134同一筆記，未再保存、未複製來源。原expected／first／fresh三份JSON與Journal、四來源SHA保持；實際DPR1.5，1280×760邏輯／1920×1140實體，日期、收盤、完整來源身份及保存身份三欄同屏，Root看過全窗實圖。12 frozen模組及正常Main0／worker與pool0／自然刪除通過。QA120 closure `adf2636b7af5315f67da61d142188b2dc7c14d0822b6c4ba3af7f1560df7bab6`、QA121 `e0e800261ef854d8ec614383f049a0ca89203a21a29965ffa902d1973cb1d2e0`，三PID列表皆空、process／Job handles關閉、mutex釋放，無強制清除。
+
+Canonical `DELIVERY_RECEIPT.json` 與本task `delivery_a65d2b2b4fd5.json` 相同SHA `720f6b02a26a719a47f7b02b686d45e7af6cb7eb93acda72d2ac4eeab6e19240`；11個pin為EXE、BUILD_INFO、材料manifest及其8個材料檔，manifest本身不含EXE／BUILD_INFO。收據逐項記真正驗證版本：題材上一／下一與150%路由沿412ca證據，正式兩股producer／fresh沿2b，Registry 2b功能成功但audit整輪FAIL保留；不宣稱本a65另執producer或全部舊旅程。新版包7,134files／976,499,191 logical bytes，build5,276files／315,558,345 bytes，非SSD唯一實體配置。累計5份本task EXE，未清理；Credits USAGE_UNOBSERVABLE／UNKNOWN、原累計12,500額外授權跨session沿用，未購買或改計費設定。
+
+本機技術候選可沿包內GUIDE操作，未簽章、未驗跨機可攜、未替換active delivery。正常關閉後可用保留412ca／2b或研究13原啟動器回退，各用原state、不合併、不遷移。五旅程overall PARTIAL、Product Acceptance NOT_ACCEPTED、Native USER_STOPPED_ESCAPE、真人MANUAL_ACCEPTANCE_PENDING；真今日候選、完整Main月營收綁定、Paper完整現金與合法marks、自然Forward、歷史PIT／全市場／ML Promotion維持具名Evidence Backlog，不阻擋已接受的安全產品功能。

@@ -30,7 +30,7 @@ Stock Research 詳情頭部另提供純自選、來源內比較與準備回測�
 
 目前另有 Research Timeline 的唯讀瀏覽 View、Strategy Library 的唯讀登記／版本 View，以及 Unified Screener 對現有來源計數的跨域狀態呈現。漏斗沒有分母時顯示未提供，不從可見列推算，亦不代表所有條件已接線；策略庫明選 ID／版本不等於回測執行。條件範本只經 V4 View 的 `apply_condition_recipe` 設定既有規則控件，以 AND／單規則符合替換原規則篩選；來源、其他條件與原結果仍保留，須使用者明確查詢。忙碌、未載入或未知方案拒絕，控件訊號不觸發查詢。Timeline 的「回訪原版本」由 Main 對明選 entry 排背景 fresh read，`ResearchTimelineService.read_original` 按 kind 呼叫原 note reader，核對 entry/reference 全欄及重新投影的一致性；price 另 fresh 驗證原 bookmark/source state，report 開保存 snapshot，theme 沿原 manifest identity。核驗失敗或選取／頁面已改時拒絕套用，不回退到同股最新來源；舊首頁 entry 也不能替換成新 entry。題材 catalog 預設只從設定目錄查找最新可讀 `price-v1`；`flow-v2` 保留明選歷史 manifest 的路徑，目錄設定只定位資料，不授予用途或資格。Storage 只盤點具名位置與有界 Trial 容量，引用未核一律保留，沒有刪除操作。QA023／024 分別核實一般報告與題材筆記的正常 Main 保存／新程序讀回；這些增量仍屬 V2 開發分支，尚無固定 RC、真人或完整五旅程驗收結論。
 
-Research Timeline 的「對照目前可讀資料」候選流程以目前選取 entry 建立唯讀基準，再由 `ResearchEvidenceComparisonService` 獨立讀取當前來源，交由雙欄 widget 顯示來源、日期與限制；不計算金融差值、不寫回 Journal。手動筆記沒有封存行情；題材筆記只核對目前明選目錄中的版本身份、不含行情值；價格來源重驗原 bookmark，報告沿用保存投影。原件變更或身份不符時整體拒絕，換選、重新讀取、離頁及關閉會阻止過期結果套用。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 同屏及長來源換行已限定通過；固定 `412ca3e5fe4f` EXE 不含本增量。
+Research Timeline 的「對照目前可讀資料」候選流程以目前選取 entry 建立唯讀基準，再由 `ResearchEvidenceComparisonService` 獨立讀取當前來源，交由雙欄 widget 顯示來源、日期與限制；不計算金融差值、不寫回 Journal。手動筆記沒有封存行情；題材筆記只核對目前明選目錄中的版本身份、不含行情值；價格來源重驗原 bookmark，報告沿用保存投影。原件變更或身份不符時整體拒絕，換選、重新讀取、離頁及關閉會阻止過期結果套用。QA110 正常 MainWindow 首次／重開功能與 QA112 的 125% 同屏及長來源換行已限定通過；固定 `412ca3e5fe4f` EXE 不含本增量；新 `a65d2b2b4fd5` RC 經 QA117／121 由12個 `PyiFrozenLoader` 產品模組執行正常 Main 保存／fresh 對照，原件及來源保持、worker／pool0且自然刪除，不使用工作樹 fallback。
 
 ```text
 使用者

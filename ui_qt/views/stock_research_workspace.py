@@ -81,7 +81,6 @@ class StockResearchWorkspace(QWidget):
         self.general_lookup_button.clicked.connect(self._open_general_lookup)
         self.general_lookup_button.hide()
         title_layout.addWidget(self.general_lookup_button)
-        layout.addLayout(title_layout)
         self.product_action_row = QWidget(self)
         product_action_layout = QHBoxLayout(self.product_action_row)
         product_action_layout.setContentsMargins(0, 0, 0, 0)
@@ -124,7 +123,9 @@ class StockResearchWorkspace(QWidget):
             self._product_action_group.addButton(button)
             product_action_layout.addWidget(button)
         product_action_layout.addStretch(1)
-        layout.addWidget(self.product_action_row)
+        # 同列保留工作區身份、研究動作及說明，將首屏高度留給圖表。
+        title_layout.insertWidget(1, self.product_action_row, 1)
+        layout.addLayout(title_layout)
         self.content_stack = QStackedWidget(self)
         self.content_stack.currentChanged.connect(self._sync_product_action_state)
         self.general_report_page = QWidget(self.content_stack)

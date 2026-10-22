@@ -266,6 +266,8 @@ def test_stale_source_can_open_only_its_explicit_saved_result() -> None:
     view.navigate_to_saved_recommendation_callback = opened.append
     view._sync_daily_candidate_open_controls()
     assert not view.daily_candidate_button.isEnabled()
+    assert view.home_candidate_selector_row.isHidden()
+    assert not view.daily_saved_result_button.isHidden()
     assert view.daily_candidate_selector.count() == 1
     assert view.daily_saved_result_button.isEnabled()
     assert "上次保存" in view.daily_saved_result_button.text()
@@ -285,6 +287,35 @@ def test_unknown_or_future_candidate_does_not_offer_saved_source_fallback(status
     view.navigate_to_saved_recommendation_callback = opened.append
     view._sync_daily_candidate_open_controls()
     assert not view.daily_saved_result_button.isEnabled()
+    # missing／degraded 的 DTO 仍可能提供研究股票，保持原入口資格。
+    if status in {"future_blocked", "read_failure"}:
+        assert view.home_candidate_selector_row.isHidden()
+    else:
+        assert not view.home_candidate_selector_row.isHidden()
+    assert view.daily_saved_result_button.isHidden()
     assert not view._open_daily_saved_result()
     assert opened == []
     view.close()
+
+
+def test_missing_candidate_controls_return_after_verified_refresh_without_implicit_selection() -> None:
+    application = _app()
+    view, contexts = _view(_daily((), status="missing"))
+    view.show()
+    application.processEvents()
+    try:
+        assert view.home_candidate_selector_row.isHidden()
+        assert view.daily_saved_result_button.isHidden()
+        view._render_daily_investment_journey(_daily(("2330", "2603")))
+        application.processEvents()
+        assert view.daily_candidate_selector.isVisible()
+        assert view.daily_candidate_selector.currentData() is None
+        assert not view.daily_candidate_button.isEnabled()
+        assert contexts == []
+        view.daily_candidate_selector.setCurrentIndex(
+            view.daily_candidate_selector.findData("2603")
+        )
+        view.daily_candidate_button.click()
+        assert len(contexts) == 1 and contexts[0].stock_code == "2603"
+    finally:
+        view.close()

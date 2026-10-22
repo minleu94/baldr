@@ -875,8 +875,15 @@ class StockResearchReportView(QWidget):
             root = self.layout()
             if root is not None:
                 root.removeItem(self._navigation_row)
+                root.removeWidget(self.identity_label)
                 root.setContentsMargins(8, 6, 8, 6)
                 root.setSpacing(6)
+            # 身份與下鑽共用短標頭；長公司名可換行，不截去原文字。
+            self.identity_label.setWordWrap(True)
+            section_layout = self.section_navigation_row.layout()
+            if isinstance(section_layout, QHBoxLayout):
+                section_layout.insertWidget(0, self.identity_label, 2)
+                section_layout.setStretch(section_layout.indexOf(self.section_selector), 1)
             self._rank_action_row.removeWidget(self.open_latest_rank_research_button)
             self._search_row.addWidget(self.open_latest_rank_research_button)
             QWidget.setTabOrder(self.return_button, self.open_latest_rank_research_button)

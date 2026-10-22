@@ -1195,11 +1195,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             copy_layout.setSpacing(2)
             conclusion = QLabel("尚未確認。")
             conclusion.setWordWrap(True)
+            conclusion.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
             conclusion.setStyleSheet(
                 f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
             )
             reason = QLabel("資料尚未載入，不推定沒有風險。")
             reason.setWordWrap(True)
+            reason.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
             reason.setStyleSheet(
                 f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
             )
@@ -1792,6 +1794,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         panel.layout.addWidget(self.daily_candidate_detail_label)
 
         candidate_selector_row = QWidget()
+        self.home_candidate_selector_row = candidate_selector_row
         candidate_selector_layout = QHBoxLayout(candidate_selector_row)
         candidate_selector_layout.setContentsMargins(0, 0, 0, 0)
         candidate_selector_layout.setSpacing(8)
@@ -2064,12 +2067,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
             button_text = "開啟候選研究報告"
         self.daily_candidate_button.setText(button_text)
         self.daily_candidate_button.setEnabled(can_open)
+        # 缺件原因留在候選圖卡，沒有可明選股票時不占用兩排停用控制。
+        self.home_candidate_selector_row.setVisible(bool(options))
         self.daily_saved_result_button.setText(
             "讀回上次保存的推薦結果"
             if daily is not None and str(daily.candidate_status).strip().lower() == "stale"
             else "讀回這筆保存的推薦結果"
         )
         self.daily_saved_result_button.setEnabled(self._daily_saved_result_id() is not None)
+        self.daily_saved_result_button.setVisible(self.daily_saved_result_button.isEnabled())
 
         for key, target in getattr(self, "_today_action_targets", {}).items():
             if target == "stock_research":

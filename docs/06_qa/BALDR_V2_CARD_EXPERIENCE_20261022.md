@@ -49,3 +49,21 @@
 - 文件新增10個連結、Coverage與task結構檢查通過；全庫檢查仍有96項既存Junction引用問題，原件保留，不冒稱全庫通過。
 
 Native停止、Owner未驗、正式金融資格、PIT／Forward成熟及Daily Operations Recovery各自保持。本次不執行排程、交易、正式資料更新或EXE發布。
+
+## Track A 首屏增量（2026-10-22）
+
+基線 `4dd820139148`，任務 `track-a-ux-20261022-01a164e6`；本節只涵蓋本批個股與首頁展示增量，不重新授予前述完整功能或金融資格。Root 依序履行 Execution、QA、Documentation，沒有獨立 reviewer。共享 `main.py`、Reader、DTO、金融計算與其他 Track 檔案不在修改範圍。
+
+- A1：工作區身份與保存／追蹤動作同列，股票身份與章節下鑽同列。保持完整公司名、查詢日、來源日、Unknown 與缺件。正常 Main 三尺寸的原行情圖與報告同值，保存、原版本回訪、返回原選列及新程序 Journal 不變均通過。
+- A2：只在既有候選入口已無可選股票時收起停用控制；缺件結論仍在圖卡。有可核過期保存結果時保持原結果入口，刷新恢復多股選單時仍須明選。`missing/degraded` 但仍提供股票的既有契約保持。
+- 本批沒有重做 A3–A5；它們目前沿本文件前批的成果與限制，不能把本批標頭改善宣稱為全站 UX 接受。
+
+證據在 `output/tasks/track-a-ux-20261022-01a164e6/`。`single_owned_qa_bf2adb3550d9433e820fe3ed8325f72a` 正常 Main 125%／150%，各驗 1280×760、1500×900、1920×1080；首屏完整 visible region 核身份、章節、主圖、保存與報酬限制。兩個縮放均 first/fresh 通過、worker 0、Job 自然排空、handles 關閉與共享鎖釋放。Root 已看125% 1280／1920與150% 1500實圖；本批重用具名行情隔離副本及明示非正式的報酬 QA snapshot，沒有新抓行情、產生預測或操作 Native。
+
+首次標頭回歸83 PASS、Workbench85 PASS、validator25 PASS／0 FAIL／4 SKIP、mypy1124檔與編譯通過（`single_owned_qa_1f84bbaee7a84e71b4abc847e698d1d5`）。加入首頁後的 `targeted_final.log` 為160 PASS／2 FAIL：新增測試誤判 missing/degraded 一律無研究股票，已按既有入口契約修正斷言，未改資格。一次重跑因共享鎖占用以125拒絕，`single_owned_qa_89a2d9dfcb9948d7acd9fdfbe8d8fbe4` 證明沒有啟動 child；不得以此冒稱通過。
+
+修正後 `targeted_verified.log` 162 PASS、`workbench_verified.log` 85 PASS、`validator_verified.log` 25 PASS／0 FAIL／4 SKIP、`compile_verified.log` 通過。`mypy_verified.log` 必跑全範圍1125檔回報其他 Track 新增且不屬本批的 `data_module/revision_custody_relocation.py:152`：`Any | None` 不能傳入 `Path`。保留原 FAIL，不修改該檔、不排除該檔以製造整體 PASS；較早1124檔通過不能取代這個新結果。
+
+`main_accepted125/150` 兩種縮放 first/fresh 均通過；Root 實圖覆核另發現首頁市場／待辦多行說明會被垂直壓縮。已將結論與說明的垂直 size policy 改成 Minimum；最終 `main_verified125/150` 兩種縮放 first/fresh 均通過，新增三尺寸 `height >= heightForWidth(width)` 文字高度斷言，原保存／下鑽／返回旅程保持。Root 已看最終125% 1280及150% 1500首頁，沒有原多行切半問題；首頁截圖按 first/fresh 分開保留。本輪總執行器 `single_owned_qa_6a10686506bd4ed78951a0a6675e7279` 的 Job 自然排空與handles／鎖收尾通過，只代表程序與GUI收尾，不能取代上列mypy的明列FAIL。
+
+仍可安全改善的下一批：首頁「其他待處理」卡占整列、題材與最近研究距首屏較遠；A3–A5沿既有成果繼續以真實畫面裁定，不宣告整體 UX 完成。Native 停止、Owner 未驗及固定 EXE 不含此增量保持。

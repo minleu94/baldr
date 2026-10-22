@@ -263,6 +263,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 "尚未載入題材研究版本；請先到「產業與題材」選取本機已保存版本。"
             )
             self.home_theme_summary_label.setToolTip("")
+            self.home_theme_observation_label.setText("尚無可核的題材強弱觀察；不補行情。")
             return
 
         presentation = build_theme_research_presentation(snapshot)
@@ -275,6 +276,25 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.home_theme_summary_label.setToolTip(
             f"版本 identity SHA-256：{snapshot.identity_sha256}"
         )
+        complete = sum(
+            row.coverage.members > 0 and row.coverage.returns == row.coverage.members
+            and row.mean_return_pct is not None for row in snapshot.report.rows
+        )
+        lines = [f"漲跌幅完整覆蓋 {complete}／{len(snapshot.report.rows)} 個題材；其餘為 Unknown 或部分資料。"]
+        if presentation.return_leaders:
+            higher = presentation.return_leaders[0]
+            lower = build_theme_research_presentation(snapshot, ascending=True).return_leaders[0]
+            for title, row in (("相對高端", higher), ("相對低端", lower)):
+                if title == "相對低端" and complete == 1:
+                    lines.append("只有一個完整題材，尚不足以比較強弱。")
+                    break
+                lines.append(
+                    f"{title}：{row.chain_name}／{row.theme_name} {row.mean_return_pct:+.2f}%"
+                    f"｜覆蓋 {row.coverage.returns}／{row.coverage.members} 檔"
+                )
+        else:
+            lines.append("尚無完整漲跌幅可供比較；請到題材頁查看原缺件。")
+        self.home_theme_observation_label.setText("\n".join(lines))
 
     def mount_recent_research_widget(
         self,
@@ -287,23 +307,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
             raise TypeError("最近研究元件必須是 QWidget")
         if not callable(entry_callback):
             raise TypeError("最近研究回訪 callback 必須可呼叫")
+        requested = getattr(widget, "entryRequested", None)
+        if requested is None or not hasattr(requested, "connect"):
+            raise TypeError("最近研究元件缺少 entryRequested signal")
         if self._recent_research_widget is widget:
             return
         if self._recent_research_widget is not None:
-            layout = self.overview_scroll_area.widget().layout()
-            if layout is not None:
-                layout.removeWidget(self._recent_research_widget)
-        widget.setParent(self)
-        layout = self.overview_scroll_area.widget().layout()
-        if layout is None:
-            raise RuntimeError("首頁內容 layout 尚未建立")
-        layout.insertWidget(6, widget)
-        requested = getattr(widget, "entryRequested", None)
-        if requested is None or not hasattr(requested, "connect"):
-            layout.removeWidget(widget)
-            raise TypeError("最近研究元件缺少 entryRequested signal")
+            self.home_recent_layout.removeWidget(self._recent_research_widget)
+            self._recent_research_widget.hide()
+        widget.setParent(self.home_recent_panel)
+        layout = self.home_recent_layout
+        layout.addWidget(widget)
         requested.connect(entry_callback)
         self._recent_research_widget = widget
+        self.home_recent_panel.show()
+        widget.show()
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -1103,7 +1121,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             "自行搜尋使用當下研究來源；原候選與保存結果仍由原列下鑽。"
         )
         self.home_stock_search_hint.setWordWrap(True)
-        theme_entry_layout = QHBoxLayout()
+        self.home_theme_panel = QFrame()
+        self.home_theme_panel.setObjectName("homeThemeResearchCard")
+        theme_entry_layout = QVBoxLayout(self.home_theme_panel)
+        theme_entry_layout.setContentsMargins(9, 7, 9, 7)
+        theme_title = QLabel("產業與題材｜所選研究版本")
+        theme_title.setProperty("role", "section-title")
+        theme_entry_layout.addWidget(theme_title)
         self.home_theme_button = QPushButton("繼續查看產業與題材")
         self.home_theme_button.setObjectName("homeThemeResearchButton")
         self.home_theme_button.setAccessibleName("繼續查看產業與題材研究")
@@ -1115,7 +1139,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.navigate_to_industry_themes_callback is not None
         )
         self.home_theme_button.clicked.connect(self._open_home_industry_themes)
-        theme_entry_layout.addWidget(self.home_theme_button)
         self.home_theme_summary_label = QLabel(
             "尚未載入題材研究版本；請先到「產業與題材」選取本機已保存版本。"
         )
@@ -1123,7 +1146,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.home_theme_summary_label.setAccessibleName("首頁題材研究版本摘要")
         self.home_theme_summary_label.setWordWrap(True)
         self.home_theme_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        theme_entry_layout.addWidget(self.home_theme_summary_label, 1)
+        theme_entry_layout.addWidget(self.home_theme_summary_label)
+        self.home_theme_observation_label = QLabel("尚無可核的題材強弱觀察；不補行情。")
+        self.home_theme_observation_label.setObjectName("homeThemeObservations")
+        self.home_theme_observation_label.setWordWrap(True)
+        self.home_theme_observation_label.setTextFormat(Qt.PlainText)
+        self.home_theme_observation_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        theme_entry_layout.addWidget(self.home_theme_observation_label)
+        theme_entry_layout.addWidget(self.home_theme_button, 0, Qt.AlignLeft)
         self.guided_date_label = QLabel("判讀日期：尚未確認｜資料日期：尚未確認")
         self.guided_date_label.setWordWrap(True)
         self.guided_date_label.setStyleSheet(
@@ -1172,7 +1202,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
                 f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; }}"
             )
-            row_layout = QVBoxLayout(row)
+            row_layout = QBoxLayout(QBoxLayout.LeftToRight if key == "other" else QBoxLayout.TopToBottom, row)
             row_layout.setContentsMargins(9, 7, 9, 7)
             row_layout.setSpacing(10)
 
@@ -1187,7 +1217,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             badge = StatusBadge("未知", "unknown")
             badge.setMinimumWidth(78)
             self.guided_priority_status_badges[key] = badge
-            card_heading.addWidget(badge)
+            card_heading.addWidget(badge, 0, Qt.AlignVCenter)
             row_layout.addLayout(card_heading)
 
             copy_layout = QVBoxLayout()
@@ -1217,13 +1247,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 lambda checked=False, row_key=key: self._open_guided_priority(row_key)
             )
             self.guided_priority_action_buttons[key] = action_button
-            row_layout.addWidget(action_button, 0)
+            if key == "other":
+                row_layout.addWidget(action_button, 0)
+            else:
+                card_heading.addWidget(action_button)
 
             self.guided_priority_rows[key] = row
             self.guided_priority_conclusion_labels[key] = conclusion
             self.guided_priority_reason_labels[key] = reason
             card_index = len(self.guided_priority_rows) - 1
-            self.guided_cards_layout.addWidget(row, card_index // 2, card_index % 2)
+            self.guided_cards_layout.addWidget(row, card_index // 2, card_index % 2, 1, 2 if key == "other" else 1)
             if key == "candidates":
                 self.home_candidate_controls_layout = QVBoxLayout()
                 self.home_candidate_controls_layout.setContentsMargins(0, 0, 0, 0)
@@ -1239,10 +1272,26 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"color: {MIDNIGHT_ANALYST.warning}; font-weight: 700;"
         )
         panel.layout.addWidget(self.guided_warning_summary_label)
-        panel.layout.addLayout(theme_entry_layout)
-        panel.layout.addLayout(search_layout)
-        panel.layout.addWidget(self.home_stock_search_hint)
-        panel.layout.addLayout(purpose_layout)
+        self.home_followup_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.home_followup_layout.addWidget(self.home_theme_panel, 1, Qt.AlignTop)
+        self.home_recent_panel = QWidget()
+        self.home_recent_panel.setObjectName("homeRecentResearchSlot")
+        self.home_recent_layout = QVBoxLayout(self.home_recent_panel)
+        self.home_recent_layout.setContentsMargins(9, 7, 9, 7)
+        self.home_recent_panel.hide()
+        for card in (self.home_theme_panel, self.home_recent_panel):
+            card.setStyleSheet(
+                f"#{card.objectName()} {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; }}"
+            )
+        self.home_followup_layout.addWidget(self.home_recent_panel, 1, Qt.AlignTop)
+        panel.layout.addLayout(self.home_followup_layout)
+        self.home_more_actions = CollapsibleSectionPanel("更多研究入口：查股與工作區", collapsed=True)
+        self.home_more_actions.content_layout.addLayout(search_layout)
+        self.home_more_actions.content_layout.addWidget(self.home_stock_search_hint)
+        self.home_more_actions.content_layout.addLayout(purpose_layout)
+        panel.layout.addWidget(self.home_more_actions)
         parent_layout.addWidget(panel)
 
     def _render_guided_home(self, dashboard: WorkbenchDashboardDTO | None) -> None:
@@ -1434,6 +1483,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 candidate_conclusion = "目前沒有可安全呈現的候選列。"
                 candidate_reasons = "空結果不代表條件已通過；請查看來源與限制。"
                 candidate_target = "recommendation"
+
+        if daily is not None:
+            candidate_reasons = (
+                f"候選資料日：{daily.candidate_data_date or '未知'}｜"
+                f"來源品質：{_daily_quality_text(daily.candidate_quality)}\n"
+                + candidate_reasons
+            )
 
         if market_review_items:
             market_status = "warning"
@@ -1678,15 +1734,19 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._workbench_narrow = narrow
 
         # 重排同一組圖卡，保留所有選列、來源身份與既有訊號連線。
-        for index, card in enumerate(self.guided_priority_rows.values()):
+        for index, (key, card) in enumerate(self.guided_priority_rows.items()):
             self.guided_cards_layout.removeWidget(card)
             self.guided_cards_layout.addWidget(
-                card, index if narrow else index // 2, 0 if narrow else index % 2
+                card, index if narrow else index // 2, 0 if narrow else index % 2,
+                1, 2 if key == "other" and not narrow else 1,
             )
+            if key == "other":
+                card.layout().setDirection(QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight)
         self.guided_cards_layout.setColumnStretch(0, 1)
         self.guided_cards_layout.setColumnStretch(1, 0 if narrow else 1)
 
         direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+        self.home_followup_layout.setDirection(direction)
         self.summary_layout.setDirection(direction)
         self.workflow_path_layout.setDirection(direction)
         self.drilldown_layout.setDirection(direction)

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import replace
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -131,6 +133,9 @@ def test_home_theme_entry_shows_unloaded_state_and_only_navigates() -> None:
     assert theme_navigation == ["open"]
     assert "尚未載入題材研究版本" in view.home_theme_summary_label.text()
 
+    assert view.home_more_actions.is_collapsed()
+    view.home_more_actions.toggle_button.click()
+    application.processEvents()
     view.home_stock_input.setText("2330")
     QTest.mouseClick(view.home_stock_search_button, Qt.MouseButton.LeftButton)
     assert len(stock_contexts) == 1
@@ -158,6 +163,8 @@ def test_home_theme_summary_uses_snapshot_scope_and_clears() -> None:
     assert "資料日 2026-10-16" in summary
     assert "涵蓋 2 條產業鏈／2 個題材" in summary
     assert snapshot.identity_sha256 in view.home_theme_summary_label.toolTip()
+    assert "0／2" in view.home_theme_observation_label.text()
+    assert "Unknown" in view.home_theme_observation_label.text()
     QTest.mouseClick(view.home_theme_button, Qt.MouseButton.LeftButton)
     assert theme_navigation == ["open"]
     assert view.home_theme_summary_label.text() == summary
@@ -165,6 +172,39 @@ def test_home_theme_summary_uses_snapshot_scope_and_clears() -> None:
     view.set_theme_research_snapshot(None)
     assert "尚未載入題材研究版本" in view.home_theme_summary_label.text()
     assert view.home_theme_summary_label.toolTip() == ""
+    assert "相對高端" not in view.home_theme_observation_label.text()
+
+
+def test_home_theme_extremes_keep_negative_values_and_exclude_partial_coverage() -> None:
+    app()
+    original = _snapshot()
+    first, second = original.report.rows
+    covered = replace(first.coverage, returns=1)
+    rows = (
+        replace(first, mean_return_pct=Decimal("-1.25"), coverage=covered),
+        replace(second, mean_return_pct=Decimal("-5.50"), coverage=covered),
+        replace(first, theme_name="部分覆蓋", mean_return_pct=Decimal("99.00")),
+    )
+    snapshot = replace(original, report=replace(original.report, rows=rows))
+    opened = []
+    view = UnifiedDecisionWorkbenchView(
+        auto_refresh=False, navigate_to_industry_themes_callback=lambda: opened.append("same"),
+    )
+    try:
+        view.set_theme_research_snapshot(snapshot)
+        text = view.home_theme_observation_label.text()
+        assert "2／3" in text and "Unknown" in text
+        assert "相對高端：科技鏈／AI -1.25%" in text
+        assert "相對低端：金融鏈／保險 -5.50%" in text
+        assert "99.00" not in text and "上漲" not in text
+        view.home_theme_button.click()
+        assert opened == ["same"]
+        assert view._theme_research_snapshot is snapshot
+        view.set_theme_research_snapshot(None)
+        assert "-1.25" not in view.home_theme_observation_label.text()
+    finally:
+        view.begin_shutdown()
+        view.close()
 
 
 def test_home_theme_summary_rejects_untyped_snapshot() -> None:
@@ -174,3 +214,21 @@ def test_home_theme_summary_rejects_untyped_snapshot() -> None:
     assert not view.home_theme_button.isEnabled()
     with pytest.raises(TypeError):
         getattr(view, "set_theme_research_snapshot")(object())
+
+
+def test_candidate_source_date_is_distinct_from_market_date_on_home() -> None:
+    from tests.test_ui_qt_workbench_candidate_selection import _daily, _view
+
+    app()
+    daily = _daily(("2330", "2603"), data_date="2026-10-15")
+    view, _ = _view(daily)
+    try:
+        reason = view.guided_priority_reason_labels["candidates"].text()
+        assert "候選資料日：2026-10-15" in reason
+        assert "來源品質：缺漏" in reason
+        dashboard = replace(view._dashboard, daily_evidence=replace(daily, candidate_data_date=None))
+        view.render_dashboard(dashboard)
+        assert "候選資料日：未知" in view.guided_priority_reason_labels["candidates"].text()
+    finally:
+        view.begin_shutdown()
+        view.close()

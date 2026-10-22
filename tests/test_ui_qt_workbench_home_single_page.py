@@ -138,9 +138,8 @@ def test_recent_research_mount_uses_existing_home_and_entry_callback() -> None:
     entry = object()
     try:
         view.mount_recent_research_widget(widget, received.append)
-        content = view.overview_scroll_area.widget()
-        assert widget.parentWidget() is content
-        assert content.layout().itemAt(6).widget() is widget
+        assert widget.parentWidget() is view.home_recent_panel
+        assert view.home_recent_layout.itemAt(0).widget() is widget
         widget.entryRequested.emit(entry)
         assert received == [entry]
         view.mount_recent_research_widget(widget, received.append)

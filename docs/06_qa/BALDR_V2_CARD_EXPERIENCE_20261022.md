@@ -67,3 +67,20 @@ Native停止、Owner未驗、正式金融資格、PIT／Forward成熟及Daily Op
 `main_accepted125/150` 兩種縮放 first/fresh 均通過；Root 實圖覆核另發現首頁市場／待辦多行說明會被垂直壓縮。已將結論與說明的垂直 size policy 改成 Minimum；最終 `main_verified125/150` 兩種縮放 first/fresh 均通過，新增三尺寸 `height >= heightForWidth(width)` 文字高度斷言，原保存／下鑽／返回旅程保持。Root 已看最終125% 1280及150% 1500首頁，沒有原多行切半問題；首頁截圖按 first/fresh 分開保留。本輪總執行器 `single_owned_qa_6a10686506bd4ed78951a0a6675e7279` 的 Job 自然排空與handles／鎖收尾通過，只代表程序與GUI收尾，不能取代上列mypy的明列FAIL。
 
 仍可安全改善的下一批：首頁「其他待處理」卡占整列、題材與最近研究距首屏較遠；A3–A5沿既有成果繼續以真實畫面裁定，不宣告整體 UX 完成。Native 停止、Owner 未驗及固定 EXE 不含此增量保持。
+
+## Track A A2 首頁資訊層級
+
+基線 `1bf874e2`，沿同一 Track task；此批只修改 Workbench View、兩份定向測試及必要文件。沒有改 `main.py`、共享 DTO、Reader、來源身份或金融計算。首頁沿現有 snapshot signal 及回訪 callback，沒有新增資料服務。
+
+- 四張主要卡片的動作與狀態共列；「其他待處理」改為跨欄短列，窄窗依序排列。結論、缺件與完整原因保持。
+- 題材及最近研究靠近主要卡片並列，窄窗上下排列。額外查股／工作區捷徑放在可展開的「更多研究入口」，不觸發讀取或計算。
+- 題材卡顯示所選版本日期、完整覆蓋題材數／總數、相對高低端原漲跌幅及每列成員覆蓋。沿既有高／低端 presentation；全部下跌時不將高端改稱上漲，部分覆蓋的極端值不取代完整列，單一完整題材不作雙端比較。Unknown 不補零。
+- 最近研究沿既有時間軸原件與日期；移動元件不重讀、重排來源或改寫 Journal，重複 mount 不重接相同 callback。
+
+最終程式防線原件 `*_a2_signoff.log`：194 定向 PASS、85 Workbench PASS、validator 25 PASS／0 FAIL／4 SKIP、1125檔 mypy PASS、編譯 PASS。含候選資料日／來源品質與市場日期分列、缺日保持未知的回歸。兩個既有 annotation-unchecked 提示保持；上批 mypy FAIL 原件不改寫。首次 A2 啟動因可用RAM約5.4GiB，以125拒絕且無child；後繼保留原8GiB／12 process及啟動前8GiB門檻，自然排空後才啟動下一輪。
+
+最終 `main_a2_signoff125/150` 於1280×760、1500×900、1920×1080通過缺件首頁、明示QA題材／多候選snapshot、原報告保存／下鑽／返回及新程序回訪，worker0。總執行器 `single_owned_qa_bed44e1cd4e2422892410a63d7e5b37d` 的 Job 自然排空、handles與鎖收尾正常。Root實看125%1280候選、150%1500題材及125%1280新程序最近研究：日期、原值、分母／Unknown與候選明選保持，狀態標籤不再隨按鈕拉高。候選可用時以原選單／原結果入口為優先，1280題材較下方須捲動；沒有候選時題材高低端可同屏完整讀取，不宣稱所有資料情境皆免捲動。
+
+task／Coverage／功能地圖結構與新增QA錨點檢查通過，原件為 `metadata_check_a2.json`、`task_check_a2.json`。檢查只證結構及紀錄，不代表重驗全庫歷史正文或金融資格。
+
+新增多候選畫面檢查曾因測試fixture的匯入路徑缺件而FAIL（`main_a2_final125/first_result.json`），原FAIL保留，未歸因為產品資料或來源失敗。已補檢查器的測試路徑，產品程式不因此更動。所有題材、候選及模型正向fixture皆明示QA示意，不能代替真來源資格、當日市場判讀、自然排程或金融接受。正式行情只沿具名隔離副本，Native停止、Owner未驗與固定EXE保持。

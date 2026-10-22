@@ -324,6 +324,8 @@ R104另有Python候選 `theme_member_navigation`：由Main保存原snapshot、�
 
 ### 5.4 圖卡展示（後繼原始碼）
 
+首頁引用同一 `ThemeResearchSnapshot` 與既有 `build_theme_research_presentation` 高／低端投影，顯示資料日、完整漲跌幅覆蓋題材數／總數及兩端成員覆蓋分母。僅完整覆蓋參與兩端觀察；Unknown 不補零，單一可比較題材不作兩端比較。沿既有 Main snapshot signal 與返回 callback，不新增 Reader、DTO、金融排序或來源服務。
+
 四種觀察仍沿既有完整覆蓋判定與高端排序，只放大呈現有合格觀察值的卡片；初始未載入與個別缺件集中提示，不把未知改成零。寬窗並列、窄窗重排，原排行類型與成員入口保持。成交金額的大值用 Decimal 換成萬／億元 TWD 展示，提示保留精確原值；排序、原觀察值、映射、來源用途與歷史 PIT 資格不變。操作見[資料與市場研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md)，原始碼與固定 EXE 的界線及驗證見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
 
 ## 6. 關聯文件索引

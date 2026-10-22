@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -25,6 +26,7 @@ from app_module.daily_operations_receipts import adapt_receipt
 MAX_BYTES = 2 * 1024 * 1024
 MAX_RECEIPT_BYTES = 512 * 1024
 MAX_READS = 128
+_TAIPEI_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Taipei")
 
 
 class AuditInputError(ValueError):
@@ -151,6 +153,37 @@ def _read_receipt(root: Path, ref: dict[str, str]) -> dict[str, Any]:
                 "producer_status": value["status"],
             })
 
+    # Paper EOD gate有時會列出大量逐檔缺件。原收據仍受512KiB與外部SHA
+    # 保護；超過一般128項列表界限時，只建立明確標記的有限來源阻擋投影。
+    if (
+        value.get("schema_version") == "paper-execution-dependency-gate.v1"
+        and isinstance(value.get("blockers"), list)
+        and len(value["blockers"]) > 128
+    ):
+        projection = _paper_eod_blocked_projection(
+            value,
+            verified_sha256=hashlib.sha256(raw).hexdigest(),
+            verified_relative_path=ref["path"],
+        )
+        if projection is None:
+            raise AuditInputError("receipt_blockers_invalid")
+        return {
+            "supported": True,
+            "kind": "producer",
+            "schema": "paper-execution-dependency-gate.v1",
+            "run_id": None,
+            "started_at": None,
+            "completed_at": None,
+            "producer_status": "blocked",
+            "producer_status_semantic": "blocked",
+            # 不把超限的原始清單帶入分類器，也不聲稱逐條驗證。
+            "blockers": [],
+            "errors": [],
+            "warnings": [],
+            "blocker": [],
+            "_bounded_paper_eod_projection": projection,
+        }
+
     def bounded_text_list(raw_value: object, field: str, *, allow_scalar: bool = False) -> list[str]:
         if raw_value is None:
             return []
@@ -176,6 +209,88 @@ def _read_receipt(root: Path, ref: dict[str, str]) -> dict[str, Any]:
         "blocker": blocker_values,
     })
     return adapted
+
+
+def _paper_eod_blocked_projection(
+    value: dict[str, Any], *, verified_sha256: str, verified_relative_path: str
+) -> dict[str, Any] | None:
+    """從已驗SHA與有界JSON建立不含run-id主張的Paper EOD阻擋摘要。"""
+    if (
+        value.get("status") != "blocked"
+        or value.get("ready") is not False
+        or value.get("source_db_written") is not False
+        or value.get("source_files_written") is not False
+    ):
+        return None
+    target_date = value.get("target_date")
+    observed_at = value.get("observed_at")
+    blockers = value.get("blockers")
+    if (
+        not isinstance(target_date, str)
+        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", target_date)
+        or not isinstance(observed_at, str)
+        or not isinstance(blockers, list)
+        or len(blockers) <= 128
+        or type(value.get("attempt")) is not int
+        or value["attempt"] < 1
+    ):
+        return None
+    try:
+        target = datetime.fromisoformat(target_date)
+        observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if (
+        target.date().isoformat() != target_date
+        or observed.tzinfo is None
+        or observed.utcoffset() is None
+        or observed.astimezone(_TAIPEI_TIMEZONE).date().isoformat() != target_date
+    ):
+        return None
+
+    lane = value.get("freshness_lane")
+    if not isinstance(lane, dict):
+        return None
+    required = lane.get("required_sources")
+    daily_prices = required.get("sqlite.daily_prices") if isinstance(required, dict) else None
+    market = value.get("market_observation")
+    actual_period = daily_prices.get("actual_period") if isinstance(daily_prices, dict) else None
+    try:
+        actual_date = date.fromisoformat(actual_period) if isinstance(actual_period, str) else None
+    except ValueError:
+        actual_date = None
+    if (
+        lane.get("schema_version") != "paper-eod-freshness-lane.v1"
+        or lane.get("status") != "blocked"
+        or lane.get("target_date") != target_date
+        or not isinstance(daily_prices, dict)
+        or daily_prices.get("freshness_status") != "stale"
+        or daily_prices.get("expected_period") != target_date
+        or actual_date is None
+        or actual_date.isoformat() != actual_period
+        or actual_date >= target.date()
+        or not isinstance(market, dict)
+        or market.get("mode") != "ro/query_only"
+        or market.get("ready") is not False
+        or market.get("target_date") != target_date
+        or market.get("target_key") != target_date.replace("-", "")
+    ):
+        return None
+    return {
+        "schema": "paper-eod-blocked-reader-projection.v1",
+        "source_schema": "paper-execution-dependency-gate.v1",
+        "raw_sha256_verified": True,
+        "evidence_kind": "scheduler_time_correlated_not_producer_run_id",
+        "target_date": target_date,
+        "observed_at": observed_at,
+        "receipt_path": verified_relative_path,
+        "raw_sha256": verified_sha256,
+        "blocker_count": len(blockers),
+        "blockers_validation": "not_performed_above_128",
+        "source_basis": "sqlite.daily_prices_stale_and_target_mismatch",
+        "source_db_written": False,
+        "source_files_written": False,
+    }
 
 
 def audit(manifest_path: Path, expected_sha256: str, receipt_root: Path) -> dict[str, Any]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 import codecs
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -384,6 +384,7 @@ class DailySourceTransportCapture:
     content_encoding_original_text: str | None = None
     eof_observed: bool = True
     body_observation_ended_at: datetime | None = None
+    effective_decoding_encoding: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.raw_response_bytes, bytes) or not self.raw_response_bytes:
@@ -471,6 +472,7 @@ class DailySourceTransportCapture:
                 self.raw_response_bytes.decode("utf-8", errors="strict")
             except UnicodeDecodeError as exc:
                 raise DailySourceSnapshotError("JSON transport 不是 strict UTF-8") from exc
+            object.__setattr__(self, "effective_decoding_encoding", "utf-8")
             object.__setattr__(self, "html_meta_charset_original_text", None)
             object.__setattr__(self, "body_completed_at", _to_taipei(self.body_completed_at, "transport body_completed_at"))
             return
@@ -503,7 +505,11 @@ class DailySourceTransportCapture:
         if _codec_name(encoding) != _codec_name(selected_charset):
             raise DailySourceSnapshotError("declared decoding encoding 與原始 charset 不符")
         try:
-            self.raw_response_bytes.decode(encoding, errors="strict")
+            _, effective_encoding = _decode_transport_html_with_codec(
+                self.raw_response_bytes,
+                encoding,
+                official_source_url=self.official_source_url,
+            )
         except (LookupError, UnicodeDecodeError) as exc:
             raise DailySourceSnapshotError("transport response bytes 無法依宣告編碼 strict decode") from exc
         object.__setattr__(
@@ -511,6 +517,7 @@ class DailySourceTransportCapture:
             "body_completed_at",
             _to_taipei(self.body_completed_at, "transport body_completed_at"),
         )
+        object.__setattr__(self, "effective_decoding_encoding", effective_encoding)
         object.__setattr__(self, "html_meta_charset_original_text", meta_charset)
 
     @property
@@ -518,7 +525,7 @@ class DailySourceTransportCapture:
         """依已驗證的 encoding strict decode 原始 response body。"""
 
         return self.raw_response_bytes.decode(
-            self.declared_decoding_encoding,
+            self.effective_decoding_encoding,
             errors="strict",
         )
 
@@ -2130,6 +2137,30 @@ def _codec_name(value: str) -> str:
         return codecs.lookup(_require_text(value, "charset")).name
     except LookupError as exc:
         raise DailySourceSnapshotError(f"charset 編碼名稱不受支援：{value}") from exc
+
+
+def _decode_transport_html_with_codec(
+    raw_response_bytes: bytes,
+    encoding: str,
+    *,
+    official_source_url: str,
+) -> tuple[str, str]:
+    """以 strict 模式解碼 HTML，並相容 MOPS Big5 使用的 CP950 字元集。"""
+
+    try:
+        decoded = raw_response_bytes.decode(encoding, errors="strict")
+        return decoded, _codec_name(encoding)
+    except UnicodeDecodeError:
+        # MOPS 宣告 `big5`，官方 HTML 可能包含台灣 CP950 擴充字元。
+        # 保留原始宣告作為來源證據，僅在宣告 codec 失敗後使用相容字集；
+        # 兩條路徑都採 strict 解碼，無效位元仍會拒絕。
+        if (
+            _codec_name(encoding) != "big5"
+            or urlsplit(official_source_url).hostname
+            not in {"mops.twse.com.tw", "mopsov.twse.com.tw"}
+        ):
+            raise
+        return raw_response_bytes.decode("cp950", errors="strict"), "cp950"
 
 
 def _match_ascii_charset(match: re.Match[bytes], label: str) -> str:

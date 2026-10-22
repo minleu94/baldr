@@ -122,7 +122,8 @@ def test_pipeline_forwards_opt_in_without_changing_original_cycle_arguments(tmp_
     kwargs = dict(args=args, data_root=tmp_path, output_root=tmp_path, source_db=tmp_path / "source.sqlite",
         decision_date="2026-10-06", snapshot_result_id="result", snapshot_cohort_hash="hash",
         snapshot_invocation_output_sha256="raw", snapshot_invocation_output_path="invocation",
-        current_cycle_pin=Cycle(), current_observed_source_output_root=tmp_path)
+        current_cycle_pin=Cycle(), current_observed_source_output_root=tmp_path,
+        aggregate_run_id="aggregate-test-run")
     original = _learning_child_arguments(**kwargs)
     args.personal_h20_activation_config = tmp_path / "private" / "activation.json"
     enabled = _learning_child_arguments(**kwargs)

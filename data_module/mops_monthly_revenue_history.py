@@ -9,7 +9,7 @@ import re
 import stat
 import time
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.client import HTTPResponse
 from pathlib import Path
@@ -58,6 +58,10 @@ MOPS_MONTHLY_REVENUE_HISTORY_DATASET_ID = "mops.official.monthly_revenue_history
 MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION = (
     "mops-monthly-revenue-history-capture-parser.v1"
 )
+MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION = (
+    "mops-monthly-revenue-history-capture-parser.v2"
+)
+MOPS_BIG5_CP950_DECODER_PROFILE = "mops-big5-cp950-strict.v1"
 MOPS_MONTHLY_REVENUE_HISTORY_ROW_PARSER = (
     "monthly_revenue_snapshot_harvester.parse_mops_monthly_revenue_snapshot_html"
 )
@@ -238,6 +242,9 @@ class MopsMonthlyRevenueHistoricalCapture:
     transport_capture: DailySourceTransportCapture
     transport_mode: str = "direct_static_v1"
     transport_hops: tuple[MopsMonthlyRevenueTransportHop, ...] = ()
+    decoder_profile: str | None = None
+    effective_decoding_encoding: str | None = None
+    _legacy_decoder_provenance: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.market not in MOPS_MONTHLY_REVENUE_HISTORY_SOURCE_IDS:
@@ -247,6 +254,27 @@ class MopsMonthlyRevenueHistoricalCapture:
         _require_aware(self.request_started_at, "request_started_at")
         if type(self.transport_capture) is not DailySourceTransportCapture:
             raise MopsMonthlyRevenueHistoryError("transport_capture_type_invalid")
+        effective_encoding = self.transport_capture.effective_decoding_encoding
+        if type(self._legacy_decoder_provenance) is not bool:
+            raise MopsMonthlyRevenueHistoryError("decoder_legacy_mode_invalid")
+        if self._legacy_decoder_provenance:
+            if (
+                effective_encoding != "cp950"
+                or self.decoder_profile is not None
+                or self.effective_decoding_encoding is not None
+            ):
+                raise MopsMonthlyRevenueHistoryError("legacy_decoder_provenance_invalid")
+        elif effective_encoding == "cp950":
+            if self.decoder_profile is None and self.effective_decoding_encoding is None:
+                object.__setattr__(self, "decoder_profile", MOPS_BIG5_CP950_DECODER_PROFILE)
+                object.__setattr__(self, "effective_decoding_encoding", "cp950")
+            elif (
+                self.decoder_profile != MOPS_BIG5_CP950_DECODER_PROFILE
+                or self.effective_decoding_encoding != "cp950"
+            ):
+                raise MopsMonthlyRevenueHistoryError("decoder_profile_mismatch")
+        elif self.decoder_profile is not None or self.effective_decoding_encoding is not None:
+            raise MopsMonthlyRevenueHistoryError("decoder_profile_not_applicable")
         if self.transport_mode not in MOPS_MONTHLY_REVENUE_HISTORY_TRANSPORT_MODES:
             raise MopsMonthlyRevenueHistoryError("transport_mode_invalid")
         expected_url = _official_history_url(self.market, self.period)
@@ -330,14 +358,28 @@ class MopsMonthlyRevenueHistoricalCapture:
             chain_sha = hashlib.sha256(_canonical_json_bytes(
                 [hop.to_dict() for hop in self.transport_hops]
             )).hexdigest()
-            return (
+            base_version = (
                 f"{self.source_id}.redirect-chain.v1:{self.period}:captured_at:{completed}"
                 f":chain-sha256:{chain_sha}:sha256:{self.raw_response_sha256}"
             )
+        else:
+            base_version = (
+                f"{self.source_id}.v1:{self.period}:captured_at:{completed}"
+                f":sha256:{self.raw_response_sha256}"
+            )
+        if self.decoder_profile is None:
+            return base_version
         return (
-            f"{self.source_id}.v1:{self.period}:captured_at:{completed}"
-            f":sha256:{self.raw_response_sha256}"
+            f"{base_version}:decoder-profile:{self.decoder_profile}"
+            f":effective-codec:{self.effective_decoding_encoding}"
+            f":parser:{self.parser_version}"
         )
+
+    @property
+    def parser_version(self) -> str:
+        if self.decoder_profile == MOPS_BIG5_CP950_DECODER_PROFILE:
+            return MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION
+        return MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION
 
     @property
     def rows(self) -> tuple[dict[str, str], ...]:
@@ -463,7 +505,7 @@ class MopsMonthlyRevenueHistoricalCapture:
             "raw_response_sha256": self.raw_response_sha256,
             "raw_response_bytes": len(self.raw_response_bytes),
             "transport_capture": self._transport_capture_dict(),
-            "parser_version": MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION,
+            "parser_version": self.parser_version,
             "reused_row_parser": MOPS_MONTHLY_REVENUE_HISTORY_ROW_PARSER,
             "printed_report_date": self.printed_report_date,
             "observed_unit_annotations": list(self.observed_unit_annotations),
@@ -479,6 +521,9 @@ class MopsMonthlyRevenueHistoricalCapture:
         if self.transport_mode == "redirect_chain_v1":
             payload["transport_mode"] = self.transport_mode
             payload["transport_hops"] = [hop.to_dict() for hop in self.transport_hops]
+        if self.decoder_profile is not None:
+            payload["decoder_profile"] = self.decoder_profile
+            payload["effective_decoding_encoding"] = self.effective_decoding_encoding
         return payload
 
     def canonical_bytes(self) -> bytes:
@@ -523,13 +568,18 @@ class MopsMonthlyRevenueHistoricalCapture:
                 ("transport_mode", self.transport_mode),
                 ("transport_chain_json", self.transport_chain_json),
             ))
+        if self.decoder_profile is not None:
+            transport_provenance_items.extend((
+                ("decoder_profile", self.decoder_profile),
+                ("effective_decoding_encoding", self.effective_decoding_encoding),
+            ))
         transport_provenance = tuple(transport_provenance_items)
         return MonthlyRevenueRawBatchEvidenceV1(
             market=self.market,
             source_id=self.source_id,
             source_version=self.source_version,
             period=self.period,
-            parser_version=MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION,
+            parser_version=self.parser_version,
             raw_source_bytes=self.raw_response_bytes,
             raw_source_sha256=self.raw_response_sha256,
             captured_at=completed_at,
@@ -1459,6 +1509,9 @@ def rebuild_mops_monthly_revenue_history_capture_from_transport_chain(
     *, market: MopsHistoryMarket, period: str, transport_mode: str,
     transport_hops: Sequence[object],
     final_transport_capture: DailySourceTransportCapture,
+    decoder_profile: str | None = None,
+    effective_decoding_encoding: str | None = None,
+    legacy_decoder_provenance: bool = False,
 ) -> MopsMonthlyRevenueHistoricalCapture:
     """從archive中的逐跳JSON與raw blob重建capture並重新驗證全鏈。"""
     if transport_mode != "redirect_chain_v1":
@@ -1485,6 +1538,9 @@ def rebuild_mops_monthly_revenue_history_capture_from_transport_chain(
         transport_capture=final_transport_capture,
         transport_mode=transport_mode,
         transport_hops=hops,
+        decoder_profile=decoder_profile,
+        effective_decoding_encoding=effective_decoding_encoding,
+        _legacy_decoder_provenance=legacy_decoder_provenance,
     )
     _verify_capture(capture)
     return capture
@@ -1576,12 +1632,19 @@ def read_mops_monthly_revenue_history_capture(
             "raw_source_values_by_stock_code",
         }
         redirect_keys = base_keys | {"transport_mode", "transport_hops"}
+        decoder_keys = {"decoder_profile", "effective_decoding_encoding"}
+        artifact_key_sets = {
+            frozenset(base_keys),
+            frozenset(redirect_keys),
+            frozenset(base_keys | decoder_keys),
+            frozenset(redirect_keys | decoder_keys),
+        }
         payload_keys = frozenset(payload) if isinstance(payload, dict) else frozenset()
-        if not isinstance(payload, dict) or payload_keys not in {frozenset(base_keys), frozenset(redirect_keys)}:
+        if not isinstance(payload, dict) or payload_keys not in artifact_key_sets:
             raise MopsMonthlyRevenueHistoryError("artifact_schema_invalid")
         schema_version = payload.get("schema_version")
         is_redirect = schema_version == MOPS_MONTHLY_REVENUE_HISTORY_REDIRECT_SCHEMA_VERSION
-        if is_redirect != (payload_keys == frozenset(redirect_keys)):
+        if is_redirect != ("transport_mode" in payload_keys):
             raise MopsMonthlyRevenueHistoryError("artifact_schema_mode_mismatch")
         if schema_version not in {
             MOPS_MONTHLY_REVENUE_HISTORY_SCHEMA_VERSION,
@@ -1590,6 +1653,17 @@ def read_mops_monthly_revenue_history_capture(
             raise MopsMonthlyRevenueHistoryError("artifact_schema_version_mismatch")
         transport_value = payload["transport_capture"]
         transport = _transport_capture_from_dict(transport_value)
+        has_decoder_metadata = decoder_keys.issubset(payload_keys)
+        decoder_profile = payload.get("decoder_profile") if has_decoder_metadata else None
+        effective_encoding = (
+            payload.get("effective_decoding_encoding")
+            if has_decoder_metadata
+            else None
+        )
+        legacy_decoder_provenance = (
+            not has_decoder_metadata
+            and transport.effective_decoding_encoding == "cp950"
+        )
         hops: tuple[MopsMonthlyRevenueTransportHop, ...] = ()
         mode = "direct_static_v1"
         if is_redirect:
@@ -1607,6 +1681,9 @@ def read_mops_monthly_revenue_history_capture(
             transport_capture=transport,
             transport_mode=mode,
             transport_hops=hops,
+            decoder_profile=decoder_profile,
+            effective_decoding_encoding=effective_encoding,
+            _legacy_decoder_provenance=legacy_decoder_provenance,
         )
         if capture.canonical_bytes() != raw:
             raise MopsMonthlyRevenueHistoryError("artifact_content_revalidation_mismatch")
@@ -1633,11 +1710,22 @@ def _expected_capture_source_version(capture: MopsMonthlyRevenueHistoricalCaptur
         chain_sha = hashlib.sha256(_canonical_json_bytes(
             [hop.to_dict() for hop in capture.transport_hops]
         )).hexdigest()
-        return (
+        base_version = (
             f"{capture.source_id}.redirect-chain.v1:{capture.period}:captured_at:{completed}"
             f":chain-sha256:{chain_sha}:sha256:{capture.raw_response_sha256}"
         )
-    return f"{capture.source_id}.v1:{capture.period}:captured_at:{completed}:sha256:{capture.raw_response_sha256}"
+    else:
+        base_version = (
+            f"{capture.source_id}.v1:{capture.period}:captured_at:{completed}"
+            f":sha256:{capture.raw_response_sha256}"
+        )
+    if capture.decoder_profile is None:
+        return base_version
+    return (
+        f"{base_version}:decoder-profile:{capture.decoder_profile}"
+        f":effective-codec:{capture.effective_decoding_encoding}"
+        f":parser:{capture.parser_version}"
+    )
 
 
 def _transport_hop_from_dict(value: object) -> MopsMonthlyRevenueTransportHop:
@@ -1885,6 +1973,8 @@ __all__ = [
     "MAX_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS",
     "MOPS_MONTHLY_REVENUE_HISTORY_DATASET_ID",
     "MOPS_MONTHLY_REVENUE_HISTORY_LICENSE_STATUS",
+    "MOPS_BIG5_CP950_DECODER_PROFILE",
+    "MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION",
     "MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION",
     "MOPS_MONTHLY_REVENUE_HISTORY_SCHEMA_VERSION",
     "MOPS_MONTHLY_REVENUE_HISTORY_REDIRECT_SCHEMA_VERSION",

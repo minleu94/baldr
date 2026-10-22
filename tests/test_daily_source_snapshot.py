@@ -336,6 +336,38 @@ def test_big5_http_original_round_trips_separate_transport_and_canonical_hashes(
     assert header_capture.decoded_html == stored_capture.decoded_html
 
 
+def test_big5_declared_transport_strictly_accepts_cp950_extension_bytes() -> None:
+    _, _, capture = _big5_transport_fixture()
+    # F9D6 是 CP950 擴充字元，且可在 2026-06 官方回應中找到。
+    raw_bytes = b'<meta charset="big5"><html><body>\xf9\xd6</body></html>'
+    stored_capture = replace(
+        capture,
+        raw_response_bytes=raw_bytes,
+        transport_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        received_body_bytes=len(raw_bytes),
+    )
+
+    assert stored_capture.declared_decoding_encoding == "big5"
+    assert stored_capture.html_meta_charset_original_text == "big5"
+    assert stored_capture.decoded_html == raw_bytes.decode("cp950", errors="strict")
+
+
+def test_big5_cp950_compatibility_still_rejects_malformed_bytes() -> None:
+    _, _, capture = _big5_transport_fixture()
+    raw_bytes = b'<meta charset="big5"><html><body>\xff</body></html>'
+
+    with pytest.raises(
+        DailySourceSnapshotError,
+        match="transport response bytes 無法依宣告編碼 strict decode",
+    ):
+        replace(
+            capture,
+            raw_response_bytes=raw_bytes,
+            transport_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+            received_body_bytes=len(raw_bytes),
+        )
+
+
 def test_v1_manifest_remains_readable_and_identifies_canonical_only_payload(
     tmp_path: Path,
 ) -> None:

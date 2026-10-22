@@ -624,6 +624,7 @@ def test_learning_arguments_keep_shadow_snapshot_root_separate_from_raw_root(
         snapshot_invocation_output_path=str(shadow_root / "snapshot.json"),
         current_cycle_pin=pin,
         current_observed_source_output_root=raw_root,
+        aggregate_run_id="aggregate-test-run",
     )
 
     assert learning[learning.index("--output-root") + 1] == str(shadow_root)

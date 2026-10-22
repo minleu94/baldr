@@ -14,9 +14,17 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, Iterable, Mapping, Sequence
 from uuid import uuid4
+
+from data_module.ml_research_output_boundary import (
+    _assert_no_reparse_aliases,
+    _read_bounded_regular_file_no_follow,
+    _reject_json_constant,
+    _unique_json_object,
+)
 
 
 SCHEMA_VERSION = "recommendation-calibration-source-contract.v1"
@@ -1381,13 +1389,145 @@ def _event_publication_status(
     output_root: Path,
     *,
     availability_cutoff_at: datetime | None = None,
+    expected_binding: Mapping[str, Any] | None = None,
 ) -> dict[str, object]:
+    expected_mapping: Mapping[str, Any] = (
+        expected_binding if isinstance(expected_binding, Mapping) else {}
+    )
     status_path = output_root / "scheduled" / "official_market_events" / "latest_status.json"
     status = _read_json(status_path)
     if status is None:
-        return {"status": "missing", "status_path": str(status_path)}
+        mode = str(expected_mapping.get("mode") or "")
+        return {
+            "status": "missing",
+            "status_path": str(status_path),
+            "consumer_binding_mode": mode or None,
+            "consumer_binding_verified": False if mode else None,
+            "consumer_binding_reason": (
+                "official_status_missing_for_expected_binding" if mode else None
+            ),
+            "aggregate_run_id": expected_mapping.get("aggregate_run_id"),
+        }
     publication_root = (output_root / "release_v4" / "official_market_events").resolve()
-    refresh_failed = status.get("status") != "published"
+    expected_mode = str(expected_mapping.get("mode") or "")
+    refresh_failed = status.get("status") != "published" or expected_mode == "last_good_fallback"
+    expected_publication_fields = (
+        "publication_id",
+        "manifest_path",
+        "manifest_hash",
+        "manifest_file_hash",
+        "canonical_events_hash",
+    )
+    if expected_mode == "invocation_publication":
+        artifact_error: str | None = None
+        artifact_path_text = expected_mapping.get("invocation_stdout_artifact_path")
+        artifact_hash = expected_mapping.get("invocation_stdout_sha256")
+        try:
+            if type(artifact_path_text) is not str or type(artifact_hash) is not str:
+                raise ValueError("official_invocation_stdout_binding_missing")
+            lexical_artifact_path = Path(artifact_path_text).expanduser()
+            if not lexical_artifact_path.is_absolute() or ".." in lexical_artifact_path.parts:
+                raise ValueError("official_invocation_stdout_path_invalid")
+            lexical_runs_root = (
+                output_root.absolute()
+                / "scheduled"
+                / "recommendation_calibration_learning"
+                / "runs"
+            )
+            aggregate_run_id = expected_mapping.get("aggregate_run_id")
+            if (
+                not isinstance(aggregate_run_id, str)
+                or re.fullmatch(r"[A-Za-z0-9._-]{1,160}", aggregate_run_id) is None
+                or aggregate_run_id in {".", ".."}
+                or lexical_artifact_path
+                != lexical_runs_root / aggregate_run_id / "official_market_events.stdout.bin"
+            ):
+                raise ValueError("official_invocation_stdout_aggregate_run_mismatch")
+            _assert_no_reparse_aliases(lexical_runs_root)
+            _assert_no_reparse_aliases(lexical_artifact_path)
+            allowed_runs_root = lexical_runs_root.resolve(strict=True)
+            artifact_path = lexical_artifact_path.resolve(strict=True)
+            if not artifact_path.is_relative_to(allowed_runs_root):
+                raise ValueError("official_invocation_stdout_path_unauthorized")
+            artifact_bytes = _read_bounded_regular_file_no_follow(
+                lexical_artifact_path,
+                maximum_bytes=256 * 1024,
+            )
+            if _hash_bytes(artifact_bytes) != artifact_hash:
+                raise ValueError("official_invocation_stdout_artifact_hash_mismatch")
+            parsed_artifact = json.loads(
+                artifact_bytes.decode("utf-8"),
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+            if not isinstance(parsed_artifact, Mapping):
+                raise ValueError("official_invocation_stdout_payload_invalid")
+            if (
+                parsed_artifact.get("schema_version")
+                != "scheduled-official-market-events.v1"
+                or parsed_artifact.get("status") != "published"
+                or any(
+                    parsed_artifact.get(key) != expected_mapping.get(key)
+                    for key in expected_publication_fields
+                )
+            ):
+                raise ValueError("official_invocation_stdout_publication_mismatch")
+        except (OSError, RuntimeError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+            artifact_error = f"official_invocation_stdout_invalid:{type(exc).__name__}"
+        if artifact_error is not None:
+            return {
+                "status": "invalid",
+                "status_path": str(status_path),
+                "reason": artifact_error,
+                "consumer_binding_mode": expected_mode,
+                "consumer_binding_verified": False,
+                "aggregate_run_id": expected_mapping.get("aggregate_run_id"),
+                "expected_publication": {
+                    key: expected_mapping.get(key) for key in expected_publication_fields
+                },
+                "invocation_stdout_artifact_path": artifact_path_text,
+                "invocation_stdout_sha256": artifact_hash,
+                "formal_publication_verified": False,
+                "prospective_publication_verified": False,
+            }
+        observed = {key: status.get(key) for key in expected_publication_fields}
+        matches = all(
+            type(expected_mapping.get(key)) is str
+            and bool(str(expected_mapping.get(key)).strip())
+            and expected_mapping.get(key) == observed.get(key)
+            for key in expected_publication_fields
+        )
+        if status.get("status") != "published" or not matches:
+            return {
+                "status": "invalid",
+                "status_path": str(status_path),
+                "reason": "official_invocation_publication_binding_mismatch",
+                "consumer_binding_mode": expected_mode,
+                "consumer_binding_verified": False,
+                "expected_publication": {
+                    key: expected_mapping.get(key) for key in expected_publication_fields
+                },
+                "observed_publication": observed,
+                "aggregate_run_id": expected_mapping.get("aggregate_run_id"),
+                "invocation_stdout_artifact_path": expected_mapping.get(
+                    "invocation_stdout_artifact_path"
+                ),
+                "invocation_stdout_sha256": expected_mapping.get(
+                    "invocation_stdout_sha256"
+                ),
+                "formal_publication_verified": False,
+                "prospective_publication_verified": False,
+            }
+    elif expected_mode not in {"", "last_good_fallback"}:
+        return {
+            "status": "invalid",
+            "status_path": str(status_path),
+            "reason": "official_event_consumer_binding_mode_invalid",
+            "consumer_binding_mode": expected_mode,
+            "consumer_binding_verified": False,
+            "formal_publication_verified": False,
+            "prospective_publication_verified": False,
+        }
     binding: Mapping[str, Any] = status
     pointer_path: Path | None = None
     pointer: Mapping[str, Any] | None = None
@@ -1415,6 +1555,8 @@ def _event_publication_status(
                 "formal_publication_verified": False,
                 "prospective_publication_verified": False,
                 "refresh_failure_preserved": True,
+            "consumer_binding_mode": expected_mode or None,
+            "consumer_binding_verified": False if expected_mode else None,
             }
     manifest_path = Path(str(binding.get("manifest_path") or ""))
     if not manifest_path.is_absolute():
@@ -1530,6 +1672,13 @@ def _event_publication_status(
     prospective_publication_verified = verified and prospective_freshness_ok and prospective_availability_ok and (
         publication_status == "prospective_source_publication"
     )
+    consumer_binding_verified = (
+        verified and not refresh_failed
+        if expected_mode == "invocation_publication"
+        else False
+        if expected_mode == "last_good_fallback"
+        else None
+    )
     return {
         "status": "published" if verified and not refresh_failed else "published_last_known_good" if verified else "invalid",
         "status_path": str(status_path),
@@ -1560,6 +1709,37 @@ def _event_publication_status(
         "refresh_failure_reason": (
             status.get("message") or status.get("failure_class")
             if refresh_failed
+            else None
+        ),
+        "consumer_binding_mode": expected_mode or None,
+        "consumer_binding_verified": consumer_binding_verified,
+        "consumer_binding_reason": (
+            "matched_official_child_invocation_publication"
+            if expected_mode == "invocation_publication" and consumer_binding_verified is True
+            else "official_source_publication_verification_failed"
+            if expected_mode == "invocation_publication"
+            else "explicit_last_good_fallback_not_same_invocation"
+            if expected_mode == "last_good_fallback"
+            else None
+        ),
+        "expected_publication": (
+            {key: expected_mapping.get(key) for key in expected_publication_fields}
+            if expected_mode == "invocation_publication"
+            else None
+        ),
+        "invocation_stdout_artifact_path": (
+            expected_mapping.get("invocation_stdout_artifact_path")
+            if expected_mode == "invocation_publication"
+            else None
+        ),
+        "invocation_stdout_sha256": (
+            expected_mapping.get("invocation_stdout_sha256")
+            if expected_mode == "invocation_publication"
+            else None
+        ),
+        "aggregate_run_id": (
+            expected_mapping.get("aggregate_run_id")
+            if expected_mode
             else None
         ),
     }
@@ -1955,6 +2135,7 @@ def inspect_source_contract(
     replay_end_date: str | None = None,
     availability_cutoff_at: str | datetime | None = None,
     authorized_output_roots: Sequence[str | Path] | None = None,
+    expected_official_event_binding: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Inspect real artifacts and return lane-specific readiness."""
 
@@ -2029,9 +2210,47 @@ def inspect_source_contract(
         key=lambda item: str(item["payload"].get("available_at") or ""),
         default=None,
     )
+    normalized_official_binding: dict[str, object] | None = None
+    if expected_official_event_binding is not None:
+        mode = expected_official_event_binding.get("mode")
+        if mode == "last_good_fallback":
+            aggregate_run_id = expected_official_event_binding.get("aggregate_run_id")
+            if type(aggregate_run_id) is not str or not aggregate_run_id.strip():
+                raise ValueError("official_fallback_aggregate_run_id_missing")
+            normalized_official_binding = {
+                "mode": "last_good_fallback",
+                "aggregate_run_id": aggregate_run_id,
+            }
+        elif mode == "invocation_publication":
+            required_binding_fields = (
+                "publication_id",
+                "manifest_path",
+                "manifest_hash",
+                "manifest_file_hash",
+                "canonical_events_hash",
+                "invocation_stdout_artifact_path",
+                "invocation_stdout_sha256",
+                "aggregate_run_id",
+            )
+            if any(
+                type(expected_official_event_binding.get(key)) is not str
+                or not str(expected_official_event_binding.get(key)).strip()
+                for key in required_binding_fields
+            ):
+                raise ValueError("official_invocation_binding_invalid")
+            normalized_official_binding = {
+                "mode": "invocation_publication",
+                **{
+                    key: expected_official_event_binding[key]
+                    for key in required_binding_fields
+                },
+            }
+        else:
+            raise ValueError("official_invocation_binding_mode_unsupported")
     event_status = _event_publication_status(
         source_output,
         availability_cutoff_at=availability_cutoff,
+        expected_binding=normalized_official_binding,
     )
     adjustment_custody = _corporate_adjustment_custody_status(
         source_output,

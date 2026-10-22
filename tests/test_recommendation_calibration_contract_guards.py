@@ -334,6 +334,18 @@ def _fake_pipeline_child(calls: list[dict[str, Any]]):
                 "excluded_symbols": [],
                 "cohort_hash": "sha256:" + "a" * 64,
             }
+        if name == "official_market_events":
+            child_status = {
+                "schema_version": "scheduled-official-market-events.v1",
+                "status": "published",
+                "publication_id": "official-publication-test",
+                "manifest_path": str(child_root / "release_v4" / "official_market_events" / "runs" / "pub" / "manifest.json"),
+                "manifest_hash": "sha256:" + "1" * 64,
+                "manifest_file_hash": "sha256:" + "2" * 64,
+                "canonical_events_hash": "sha256:" + "3" * 64,
+                "warnings": [],
+                "blockers": [],
+            }
         status_path.parent.mkdir(parents=True, exist_ok=True)
         status_path.write_text(
             json.dumps(child_status, ensure_ascii=False),
@@ -375,6 +387,34 @@ def _fake_pipeline_child(calls: list[dict[str, Any]]):
                     "child_stdout_sha256": artifact_hash,
                 }
                 calls[-1].update(artifact_metadata)
+        if name == "official_market_events":
+            stdout_bytes = json.dumps(child_status, ensure_ascii=False).encode("utf-8")
+            artifact_path = kwargs.get("official_stdout_artifact_path")
+            runs_root = kwargs.get("official_stdout_runs_root")
+            if artifact_path is not None and runs_root is not None:
+                artifact_path, artifact_size, artifact_hash = (
+                    pipeline._write_snapshot_invocation_stdout_artifact(
+                        path=artifact_path,
+                        allowed_runs_root=runs_root,
+                        raw_stdout=stdout_bytes,
+                    )
+                )
+                artifact_metadata = {
+                    "child_stdout_artifact_path": artifact_path,
+                    "child_stdout_artifact_size": artifact_size,
+                    "child_stdout_sha256": artifact_hash,
+                    "official_invocation_binding": {
+                        "mode": "invocation_publication",
+                        "publication_id": child_status["publication_id"],
+                        "manifest_path": child_status["manifest_path"],
+                        "manifest_hash": child_status["manifest_hash"],
+                        "manifest_file_hash": child_status["manifest_file_hash"],
+                        "canonical_events_hash": child_status["canonical_events_hash"],
+                        "invocation_stdout_artifact_path": artifact_path,
+                        "invocation_stdout_sha256": artifact_hash,
+                    },
+                }
+                calls[-1].update(artifact_metadata)
         return {
             "name": name,
             "script": kwargs["script"],
@@ -384,6 +424,9 @@ def _fake_pipeline_child(calls: list[dict[str, Any]]):
             "status_path": str(status_path),
             "child_status": child_status,
             "child_status_source": "invocation_stdout_json",
+            "official_invocation_binding": artifact_metadata.get(
+                "official_invocation_binding"
+            ),
             **artifact_metadata,
             "child_warnings": [],
             "child_blockers": [],
@@ -439,6 +482,116 @@ def test_snapshot_child_parser_uses_one_typed_stdout_object_and_rejects_ambiguit
     rejected, error = pipeline._snapshot_child_payload_from_stdout(unsupported)
     assert rejected is None
     assert error == "snapshot_child_stdout_cohort_schema_unsupported"
+
+
+def test_official_child_publication_is_pinned_from_bounded_invocation_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root = tmp_path / "output"
+    runs_root = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "runs"
+    )
+    invocation_dir = runs_root / "aggregate-run-1"
+    invocation_dir.mkdir(parents=True)
+    stdout_path = invocation_dir / pipeline._OFFICIAL_INVOCATION_STDOUT_NAME
+    payload = {
+        "schema_version": "scheduled-official-market-events.v1",
+        "status": "published",
+        "publication_id": "published-by-this-invocation",
+        "manifest_path": str(output_root / "release_v4" / "official_market_events" / "runs" / "pub" / "manifest.json"),
+        "manifest_hash": "sha256:" + "a" * 64,
+        "manifest_file_hash": "sha256:" + "b" * 64,
+        "canonical_events_hash": "sha256:" + "c" * 64,
+    }
+    stdout = json.dumps(payload, sort_keys=True).encode("utf-8")
+    status_path = pipeline._status_path(output_root, "official_market_events")
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps({**payload, "publication_id": "later-overwrite"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        pipeline.subprocess,
+        "run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, stdout, b""),
+    )
+
+    result = pipeline._run_child(
+        name="official_market_events",
+        script="scripts/scheduled/run_official_market_event_backfill.py",
+        arguments=[],
+        environment={"RECOMMENDATION_LEARNING_OUTPUT_ROOT": str(output_root)},
+        log_handle=StringIO(),
+        timeout_seconds=1.0,
+        official_stdout_artifact_path=stdout_path,
+        official_stdout_runs_root=runs_root,
+    )
+
+    assert result["status"] == "passed"
+    assert result["child_status_source"] == "invocation_stdout_json"
+    assert result["child_status"]["publication_id"] == "published-by-this-invocation"
+    assert result["child_stdout_artifact_path"] == str(stdout_path.resolve())
+    assert result["child_stdout_sha256"] == "sha256:" + hashlib.sha256(stdout).hexdigest()
+    binding = result["official_invocation_binding"]
+    assert binding["canonical_events_hash"] == payload["canonical_events_hash"]
+
+    terminal = pipeline._terminal_receipt_projection(
+        {
+            "steps": {
+                "official_market_events": result,
+                "recommendation_learning": {
+                    "official_event_consumer_binding": {
+                        "mode": "invocation_publication",
+                        "verified": True,
+                        "reason": "matched_official_child_invocation_publication",
+                        "aggregate_run_id": "aggregate-run-1",
+                        "expected_publication": {
+                            "publication_id": "published-by-this-invocation",
+                            "manifest_path": payload["manifest_path"],
+                            "manifest_hash": payload["manifest_hash"],
+                            "manifest_file_hash": payload["manifest_file_hash"],
+                            "canonical_events_hash": payload["canonical_events_hash"],
+                        },
+                        "source_contract_path": str(output_root / "contract.json"),
+                        "source_contract_content_sha256": "sha256:" + "d" * 64,
+                        "source_contract_file_sha256": "sha256:" + "e" * 64,
+                    },
+                },
+            }
+        }
+    )
+    assert terminal["steps"]["official_market_events"][
+        "official_invocation_binding"
+    ]["publication_id"] == "published-by-this-invocation"
+    assert terminal["steps"]["official_market_events"][
+        "child_stdout_sha256"
+    ] == result["child_stdout_sha256"]
+    consumer = terminal["steps"]["recommendation_learning"][
+        "official_event_consumer_binding"
+    ]
+    assert consumer["verified"] is True
+    assert consumer["aggregate_run_id"] == "aggregate-run-1"
+    assert consumer["expected_publication"]["canonical_events_hash"] == payload[
+        "canonical_events_hash"
+    ]
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        b'{"schema_version":"scheduled-official-market-events.v1","status":"published","status":"failed","publication_id":"p","manifest_path":"m","manifest_hash":"h","manifest_file_hash":"f","canonical_events_hash":"c"}',
+        b'{"schema_version":"scheduled-official-market-events.v1","status":"published","publication_id":"p","manifest_path":"m","manifest_hash":"h","manifest_file_hash":"f","canonical_events_hash":"c","extra":NaN}',
+    ],
+)
+def test_official_child_stdout_rejects_ambiguous_nonstandard_json(stdout: bytes) -> None:
+    payload, error = pipeline._official_child_payload_from_stdout(stdout)
+
+    assert payload is None
+    assert error == "official_child_stdout_json_invalid"
 
 
 @pytest.mark.parametrize(
@@ -948,6 +1101,7 @@ def test_learning_child_arguments_forward_same_calendar_overrides_as_quick_child
         snapshot_invocation_output_path=tmp_path / "snapshot.stdout",
         current_cycle_pin=cycle_pin,
         current_observed_source_output_root=data_root / "output",
+        aggregate_run_id="aggregate-test-run",
     )
 
     assert arguments[arguments.index("--calendar-cache-path") + 1] == str(calendar_path)
@@ -1462,6 +1616,21 @@ def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
                             "excluded_symbols": [],
                             "cohort_hash": "sha256:" + "a" * 64,
                         }
+                    elif name == "official_market_events":
+                        child_status = {
+                            "schema_version": "scheduled-official-market-events.v1",
+                            "status": "published",
+                            "publication_id": "official-runpy-publication",
+                            "manifest_path": str(
+                                child_root / "release_v4" / "official_market_events"
+                                / "runs" / "pub" / "manifest.json"
+                            ),
+                            "manifest_hash": "sha256:" + "1" * 64,
+                            "manifest_file_hash": "sha256:" + "2" * 64,
+                            "canonical_events_hash": "sha256:" + "3" * 64,
+                            "warnings": [],
+                            "blockers": [],
+                        }
                     status_path.parent.mkdir(parents=True, exist_ok=True)
                     status_path.write_text(json.dumps(child_status), encoding="utf-8")
                 stdout = (
@@ -1472,6 +1641,8 @@ def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
                         }
                     ).encode("utf-8")
                     if name == "recommendation_snapshot"
+                    else json.dumps(child_status).encode("utf-8")
+                    if name == "official_market_events"
                     else b""
                 )
                 return subprocess.CompletedProcess(command, 0, stdout, b"")

@@ -13,6 +13,7 @@ _SCHEMAS: dict[str, str] = {
     "decision-evidence-capture.v1": "producer",
     "formal-input-daily-producer-receipt.v1": "producer",
     "formal-input-producer-terminal-receipt.v1": "producer",
+    "paper-execution-retry-terminal-receipt.v1": "producer",
     "formal-pit-sidecar-scheduled-status.v1": "producer",
     "scheduled-forward-outcomes.v1": "producer",
     "ml-allocation-daily-orchestration.v3": "producer",
@@ -80,6 +81,51 @@ _FORMAL_TERMINAL_FIELDS = frozenset(
         "financial_qualification_status",
         "dependency_readiness_status",
         "status_payload",
+    }
+)
+
+_PAPER_RETRY_TERMINAL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "task",
+        "run_id",
+        "started_at",
+        "completed_at",
+        "code_version",
+        "exit_code",
+        "failure_code",
+        "status",
+        "blockers",
+        "financial_qualification_status",
+        "dependency_readiness_status",
+        "status_payload",
+    }
+)
+_PAPER_RETRY_TERMINAL_PAYLOAD_FIELDS = frozenset(
+    {
+        "schema_version",
+        "task",
+        "run_id",
+        "started_at",
+        "completed_at",
+        "status",
+        "exit_code",
+        "financial_qualification_status",
+        "dependency_readiness_status",
+        "terminal_blocker_code",
+        "gate_attempts",
+        "gate_blocker_count",
+        "gate_blockers_validation",
+    }
+)
+_PAPER_RETRY_TERMINAL_SUCCESS = frozenset(
+    {
+        "machine_verified_candidate",
+        "no_trade_required_candidate",
+        "skipped_non_trading_day",
+        "skipped_no_pending_recommendation",
+        "waiting_for_execution_session",
+        "waiting_for_execution_source",
     }
 )
 
@@ -220,6 +266,186 @@ def _formal_terminal_valid(payload: Mapping[str, Any]) -> bool:
     )
     return payload.get("dependency_readiness_status") == expected_dependency
 
+
+def _paper_retry_terminal_valid(payload: Mapping[str, Any]) -> bool:
+    """只接受Paper retry wrapper自有、同次且有界的終態收據。"""
+    if set(payload) != _PAPER_RETRY_TERMINAL_FIELDS:
+        return False
+    if payload.get("task") != "baldr-paper-execution-eod-replay-daily":
+        return False
+    run_id = payload.get("run_id")
+    if not isinstance(run_id, str) or len(run_id) != 32 or run_id != run_id.lower():
+        return False
+    try:
+        if uuid.UUID(hex=run_id).hex != run_id:
+            return False
+    except (ValueError, AttributeError):
+        return False
+    code_version = payload.get("code_version")
+    if (
+        not isinstance(code_version, str)
+        or len(code_version) != 71
+        or not code_version.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in code_version[7:])
+    ):
+        return False
+    exit_code = payload.get("exit_code")
+    if type(exit_code) is not int or exit_code not in {0, 2}:
+        return False
+    started_at = payload.get("started_at")
+    completed_at = payload.get("completed_at")
+    if not isinstance(started_at, str) or not isinstance(completed_at, str):
+        return False
+    try:
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if (
+        started.tzinfo is None
+        or completed.tzinfo is None
+        or started.utcoffset() != timedelta(0)
+        or completed.utcoffset() != timedelta(0)
+        or completed < started
+    ):
+        return False
+
+    status = payload.get("status")
+    if not isinstance(status, str) or len(status) > 128:
+        return False
+    if exit_code == 0:
+        if status not in _PAPER_RETRY_TERMINAL_SUCCESS:
+            return False
+    elif status not in {"blocked", "failed", "degraded_runtime_roll_forward"}:
+        return False
+    if payload.get("financial_qualification_status") != "unknown":
+        return False
+    dependency = payload.get("dependency_readiness_status")
+    if dependency not in {"passed", "blocked", "not_applicable", "unknown", "failed"}:
+        return False
+
+    blockers = payload.get("blockers")
+    failure_code = payload.get("failure_code")
+    expected_blocker = {
+        "blocked": "paper_execution_blocked",
+        "failed": "paper_execution_failed",
+        "degraded_runtime_roll_forward": "paper_execution_roll_forward_not_ready",
+    }.get(status)
+    if (
+        not isinstance(blockers, list)
+        or len(blockers) > 1
+        or any(not isinstance(item, str) or not item.strip() or len(item) > 128 for item in blockers)
+        or blockers != ([expected_blocker] if expected_blocker else [])
+        or failure_code != expected_blocker
+    ):
+        return False
+
+    nested = payload.get("status_payload")
+    if not isinstance(nested, Mapping) or set(nested) != _PAPER_RETRY_TERMINAL_PAYLOAD_FIELDS:
+        return False
+    if (
+        nested.get("schema_version") != "paper-execution-retry-terminal-status.v1"
+        or nested.get("task") != payload.get("task")
+        or nested.get("run_id") != run_id
+        or nested.get("started_at") != started_at
+        or nested.get("completed_at") != completed_at
+        or nested.get("status") != status
+        or type(nested.get("exit_code")) is not int
+        or nested.get("exit_code") != exit_code
+        or nested.get("financial_qualification_status") != "unknown"
+        or nested.get("dependency_readiness_status") != dependency
+        or nested.get("terminal_blocker_code") != expected_blocker
+        or nested.get("gate_blockers_validation") != "not_copied_or_validated"
+    ):
+        return False
+    gate_blocker_count = nested.get("gate_blocker_count")
+    if gate_blocker_count is not None and (
+        type(gate_blocker_count) is not int or gate_blocker_count < 0
+    ):
+        return False
+    attempts = nested.get("gate_attempts")
+    if not isinstance(attempts, list) or len(attempts) > 5:
+        return False
+    seen_attempts: set[int] = set()
+    last_attempt_number = 0
+    for item in attempts:
+        if not isinstance(item, Mapping) or set(item) != {
+            "attempt", "target_date", "status", "ready", "blocker_count", "receipt_ref"
+        }:
+            return False
+        attempt = item.get("attempt")
+        if (
+            type(attempt) is not int
+            or attempt < 1
+            or attempt > 5
+            or attempt in seen_attempts
+            or attempt <= last_attempt_number
+        ):
+            return False
+        seen_attempts.add(attempt)
+        last_attempt_number = attempt
+        target_date = item.get("target_date")
+        if target_date is not None:
+            if not isinstance(target_date, str):
+                return False
+            try:
+                if datetime.fromisoformat(target_date).date().isoformat() != target_date:
+                    return False
+            except ValueError:
+                return False
+        if item.get("status") is not None and (
+            not isinstance(item.get("status"), str) or len(item["status"]) > 128
+        ):
+            return False
+        if item.get("ready") is not None and type(item.get("ready")) is not bool:
+            return False
+        blocker_count = item.get("blocker_count")
+        if blocker_count is not None and (type(blocker_count) is not int or blocker_count < 0):
+            return False
+        ref = item.get("receipt_ref")
+        if ref is not None and (
+            not isinstance(ref, Mapping)
+            or set(ref) != {"path", "sha256"}
+            or not isinstance(ref.get("path"), str)
+            or not ref.get("path")
+            or len(ref["path"]) > 2048
+            or not isinstance(ref.get("sha256"), str)
+            or len(ref["sha256"]) != 64
+            or any(character not in "0123456789abcdef" for character in ref["sha256"])
+        ):
+            return False
+        if ref is None:
+            if any(item.get(key) is not None for key in ("target_date", "status", "ready", "blocker_count")):
+                return False
+        elif (
+            not isinstance(target_date, str)
+            or not isinstance(item.get("status"), str)
+            or type(item.get("ready")) is not bool
+            or type(blocker_count) is not int
+        ):
+            return False
+    if attempts:
+        latest = attempts[-1]
+        latest_status = latest.get("status")
+        latest_ready = latest.get("ready")
+        expected_dependency = (
+            "not_applicable"
+            if latest_status in {"official_no_data", "not_trading_day"}
+            else "passed"
+            if latest_ready is True
+            else "blocked"
+            if latest_ready is False
+            else "unknown"
+        )
+        if (
+            dependency != expected_dependency
+            or gate_blocker_count != latest.get("blocker_count")
+        ):
+            return False
+    elif dependency != "unknown" or gate_blocker_count is not None:
+        return False
+    return True
+
 _TRACK_STATUS_KEYS = {
     "source_freshness": ("freshness_status", "source_status", "freshness"),
     "financial_qualification": ("financial_qualification_status", "financial_status"),
@@ -330,14 +556,24 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
         schema == "formal-input-producer-terminal-receipt.v1"
         and _formal_terminal_valid(source)
     )
+    paper_retry_terminal_valid = (
+        schema == "paper-execution-retry-terminal-receipt.v1"
+        and _paper_retry_terminal_valid(source)
+    )
     if (
         schema == "formal-input-producer-terminal-receipt.v1"
         and not formal_terminal_valid
     ):
         kind = None
+    if schema == "paper-execution-retry-terminal-receipt.v1" and not paper_retry_terminal_valid:
+        kind = None
     supported = kind is not None
 
-    status_payload = source.get("status_payload") if formal_terminal_valid else None
+    status_payload = (
+        source.get("status_payload")
+        if formal_terminal_valid or paper_retry_terminal_valid
+        else None
+    )
     status = (
         status_payload.get("status")
         if isinstance(status_payload, Mapping)
@@ -414,6 +650,15 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
         else "unknown" if not supported
         else _semantic(status)
     )
+    if paper_retry_terminal_valid and isinstance(status, str):
+        producer_semantic = {
+            "machine_verified_candidate": "passed",
+            "no_trade_required_candidate": "passed",
+            "skipped_non_trading_day": "not_applicable",
+            "skipped_no_pending_recommendation": "not_applicable",
+            "waiting_for_execution_session": "degraded",
+            "waiting_for_execution_source": "degraded",
+        }.get(status, _semantic(status))
     if legacy == "legacy:baldr-evidence-pipeline-dry-run-daily" and (
         not isinstance(run_id, str) or not isinstance(started_at, str)
     ):
@@ -435,7 +680,10 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
         "completed_at": completed_at if isinstance(completed_at, str) else None,
         "producer_status": status if isinstance(status, str) else None,
         "producer_status_semantic": producer_semantic,
-        "failure_code": source.get("failure_code") if formal_terminal_valid else None,
+        "gate_reference_verification": (
+            "shape_only_producer_asserted" if paper_retry_terminal_valid else None
+        ),
+        "failure_code": source.get("failure_code") if formal_terminal_valid or paper_retry_terminal_valid else None,
         "blockers": blockers,
         "missing_fields": missing_fields,
         **tracks,

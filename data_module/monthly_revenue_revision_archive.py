@@ -22,6 +22,8 @@ from data_module.opendata_monthly_revenue import (
 )
 from data_module.daily_source_snapshot import _transport_capture_from_dict
 from data_module.mops_monthly_revenue_history import (
+    MOPS_BIG5_CP950_DECODER_PROFILE,
+    MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION,
     MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION,
     MopsHistoryMarket,
     MopsMonthlyRevenueHistoricalCapture,
@@ -885,7 +887,10 @@ def _reparse_and_verify(entry: Mapping[str, object], raw_bytes: bytes) -> None:
     provenance = entry["transport_provenance"]
     if type(provenance) is not dict:
         raise MonthlyRevenueRevisionArchiveError("archive_transport_provenance_invalid")
-    if entry["parser_version"] == MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION:
+    if entry["parser_version"] in {
+        MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION,
+        MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION,
+    }:
         _reparse_mops_and_verify(entry, provenance, raw_bytes)
         return
     if entry["parser_version"] != OPENAPI_MONTHLY_REVENUE_PARSER_VERSION:
@@ -1030,6 +1035,35 @@ def _reparse_mops_and_verify(
         raise MonthlyRevenueRevisionArchiveError("archive_mops_transport_mode_invalid")
     try:
         transport = _transport_capture_from_dict(transport_data)
+        has_decoder_profile = "decoder_profile" in provenance
+        has_effective_encoding = "effective_decoding_encoding" in provenance
+        if has_decoder_profile != has_effective_encoding:
+            raise MonthlyRevenueRevisionArchiveError(
+                "archive_mops_decoder_provenance_incomplete"
+            )
+        if has_decoder_profile:
+            decoder_profile = provenance["decoder_profile"]
+            effective_encoding = provenance["effective_decoding_encoding"]
+            if (
+                decoder_profile != MOPS_BIG5_CP950_DECODER_PROFILE
+                or effective_encoding != "cp950"
+                or entry["parser_version"]
+                != MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION
+            ):
+                raise MonthlyRevenueRevisionArchiveError(
+                    "archive_mops_decoder_profile_mismatch"
+                )
+            legacy_decoder_provenance = False
+        else:
+            if entry["parser_version"] != MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION:
+                raise MonthlyRevenueRevisionArchiveError(
+                    "archive_mops_decoder_profile_missing"
+                )
+            decoder_profile = None
+            effective_encoding = None
+            legacy_decoder_provenance = (
+                transport.effective_decoding_encoding == "cp950"
+            )
         if transport_mode == "redirect_chain_v1":
             capture = rebuild_mops_monthly_revenue_history_capture_from_transport_chain(
                 market=market,
@@ -1037,6 +1071,9 @@ def _reparse_mops_and_verify(
                 transport_mode=transport_mode,
                 transport_hops=transport_hop_values,
                 final_transport_capture=transport,
+                decoder_profile=decoder_profile,
+                effective_decoding_encoding=effective_encoding,
+                legacy_decoder_provenance=legacy_decoder_provenance,
             )
             if (
                 capture.requested_url != requested_url
@@ -1057,6 +1094,9 @@ def _reparse_mops_and_verify(
                 transport_capture=transport,
                 transport_mode=transport_mode,
                 transport_hops=(),
+                decoder_profile=decoder_profile,
+                effective_decoding_encoding=effective_encoding,
+                _legacy_decoder_provenance=legacy_decoder_provenance,
             )
         rows = parse_mops_monthly_revenue_history_capture(capture)
         rebuilt = capture.to_monthly_revenue_raw_batch_evidence()
@@ -1065,6 +1105,7 @@ def _reparse_mops_and_verify(
     if (
         capture.source_id != entry["source_id"]
         or capture.source_version != entry["source_version"]
+        or capture.parser_version != entry["parser_version"]
         or capture.period != entry["period"]
         or capture.raw_response_sha256 != entry["raw_source_sha256"]
         or _datetime_text(capture.transport_capture.body_completed_at)

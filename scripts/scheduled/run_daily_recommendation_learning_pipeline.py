@@ -34,6 +34,8 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 TASK_NAME = "baldr-recommendation-calibration-learning-daily"
 _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES = 8 * 1024 * 1024
 _SNAPSHOT_INVOCATION_STDOUT_NAME = "recommendation_snapshot.stdout.bin"
+_MAX_OFFICIAL_INVOCATION_STDOUT_BYTES = 256 * 1024
+_OFFICIAL_INVOCATION_STDOUT_NAME = "official_market_events.stdout.bin"
 _LEARNING_TERMINAL_FLUSH_RESERVE_SECONDS = 5 * 60
 _QUICK_LOCK_RELEASE_MAX_WAIT_SECONDS = 30.0
 _QUICK_LOCK_RELEASE_POLL_SECONDS = 0.25
@@ -221,6 +223,20 @@ def _write_terminal_receipt(
 def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
     """保留 bounded terminal 摘要，避免把 child stdout／完整 payload 複製進 receipt。"""
 
+    def bounded_fields(value: object, fields: tuple[str, ...]) -> dict[str, object]:
+        if not isinstance(value, Mapping):
+            return {}
+        result: dict[str, object] = {}
+        for field in fields:
+            item = value.get(field)
+            if item is None or type(item) in {bool, int}:
+                result[field] = item
+            elif type(item) is str and len(item) <= 1024:
+                result[field] = item
+            else:
+                raise ValueError("terminal_projection_field_invalid_or_over_bound")
+        return result
+
     def bounded_messages(value: object) -> list[str]:
         if not isinstance(value, (list, tuple)):
             return []
@@ -232,7 +248,7 @@ def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         for name, value in steps.items():
             if not isinstance(value, Mapping):
                 continue
-            step_projection[str(name)] = {
+            projected_step = {
                 "status": value.get("status"),
                 "returncode": value.get("returncode"),
                 "recoverable": value.get("recoverable"),
@@ -254,7 +270,40 @@ def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "child_stdout_artifact_path": value.get("child_stdout_artifact_path"),
                 "child_stdout_artifact_size": value.get("child_stdout_artifact_size"),
                 "child_stdout_sha256": value.get("child_stdout_sha256"),
+                "official_invocation_binding_error": value.get("official_invocation_binding_error"),
             }
+            official_binding = value.get("official_invocation_binding")
+            if isinstance(official_binding, Mapping):
+                projected_step["official_invocation_binding"] = bounded_fields(
+                    official_binding,
+                    (
+                        "mode", "publication_id", "manifest_path", "manifest_hash",
+                        "manifest_file_hash", "canonical_events_hash",
+                        "invocation_stdout_artifact_path", "invocation_stdout_sha256",
+                    ),
+                )
+            consumer_binding = value.get("official_event_consumer_binding")
+            if isinstance(consumer_binding, Mapping):
+                projected_consumer = bounded_fields(
+                    consumer_binding,
+                    (
+                        "mode", "verified", "reason", "aggregate_run_id",
+                        "source_contract_path", "source_contract_content_sha256",
+                        "source_contract_file_sha256",
+                    ),
+                )
+                for binding_key in ("expected_publication", "observed_publication"):
+                    binding_value = consumer_binding.get(binding_key)
+                    if isinstance(binding_value, Mapping):
+                        projected_consumer[binding_key] = bounded_fields(
+                            binding_value,
+                            (
+                                "publication_id", "manifest_path", "manifest_hash",
+                                "manifest_file_hash", "canonical_events_hash",
+                            ),
+                        )
+                projected_step["official_event_consumer_binding"] = projected_consumer
+            step_projection[str(name)] = projected_step
     return {
         "schema_version": "daily-recommendation-learning-terminal-receipt.v1",
         "task": payload.get("task"),
@@ -782,6 +831,54 @@ def _snapshot_child_payload_from_stdout(
     return payload, None
 
 
+def _official_child_payload_from_stdout(
+    raw_stdout: bytes,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """驗證本次官方事件 child 的唯一 stdout publication 收據。"""
+
+    try:
+        payload = json.loads(
+            raw_stdout.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, ValueError):
+        return None, "official_child_stdout_json_invalid"
+    if not isinstance(payload, dict):
+        return None, "official_child_stdout_payload_not_object"
+    if payload.get("schema_version") != "scheduled-official-market-events.v1":
+        return None, "official_child_stdout_schema_unsupported"
+    if payload.get("status") != "published":
+        return None, "official_child_stdout_not_published"
+    required_text = (
+        "publication_id",
+        "manifest_path",
+        "manifest_hash",
+        "manifest_file_hash",
+        "canonical_events_hash",
+    )
+    if any(type(payload.get(key)) is not str or not payload[key].strip() for key in required_text):
+        return None, "official_child_stdout_publication_binding_missing"
+    return payload, None
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """拒絕官方 child stdout 中重複的 JSON 欄位。"""
+
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    """拒絕 JSON 標準之外的 NaN 與 Infinity 常數。"""
+
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
 def _validate_research_reference_snapshot(
     args: argparse.Namespace,
     *,
@@ -1019,9 +1116,19 @@ def _write_snapshot_invocation_stdout_artifact(
 ) -> tuple[str, int, str]:
     """將單次 child stdout 以限定路徑、大小與 create-only 語意保存。"""
 
+    expected_name = (
+        _OFFICIAL_INVOCATION_STDOUT_NAME
+        if path.name == _OFFICIAL_INVOCATION_STDOUT_NAME
+        else _SNAPSHOT_INVOCATION_STDOUT_NAME
+    )
+    size_limit = (
+        _MAX_OFFICIAL_INVOCATION_STDOUT_BYTES
+        if expected_name == _OFFICIAL_INVOCATION_STDOUT_NAME
+        else _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES
+    )
     if type(raw_stdout) is not bytes:
         raise TypeError("snapshot child stdout 必須是原始 bytes")
-    if len(raw_stdout) > _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES:
+    if len(raw_stdout) > size_limit:
         raise ValueError("snapshot child stdout 超過 invocation artifact 大小上限")
     reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
 
@@ -1066,7 +1173,7 @@ def _write_snapshot_invocation_stdout_artifact(
         raise ValueError("snapshot child stdout invocation root 無法驗證") from exc
     if (
         canonical_parent.parent != canonical_runs_root
-        or path.name != _SNAPSHOT_INVOCATION_STDOUT_NAME
+        or path.name != expected_name
         or Path(os.path.abspath(path)) != canonical_candidate
     ):
         raise ValueError("snapshot child stdout artifact 超出本次 run root")
@@ -1090,7 +1197,7 @@ def _write_snapshot_invocation_stdout_artifact(
         readback = _read_regular_file_no_follow(
             canonical_candidate,
             canonical_runs_root,
-            max_bytes=_MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES,
+            max_bytes=size_limit,
         )
         file_after = file_identity(canonical_candidate)
         parent_after = directory_identity(canonical_parent)
@@ -1120,6 +1227,8 @@ def _run_child(
     log_handle: Any,
     snapshot_stdout_artifact_path: Path | None = None,
     snapshot_stdout_runs_root: Path | None = None,
+    official_stdout_artifact_path: Path | None = None,
+    official_stdout_runs_root: Path | None = None,
     timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
     command = [sys.executable, str(ROOT / script), *arguments]
@@ -1177,7 +1286,44 @@ def _run_child(
     child_stdout_artifact_path: str | None = None
     child_stdout_artifact_size: int | None = None
     child_status_source = "latest_status"
-    if name == "recommendation_snapshot":
+    official_binding_error: str | None = None
+    official_invocation_binding: dict[str, Any] | None = None
+    if name == "official_market_events":
+        child_status_source = "invocation_stdout_json"
+        if official_stdout_artifact_path is None or official_stdout_runs_root is None:
+            official_binding_error = "official_child_stdout_artifact_path_missing"
+            child_status = None
+        else:
+            try:
+                (
+                    child_stdout_artifact_path,
+                    child_stdout_artifact_size,
+                    child_stdout_sha256,
+                ) = _write_snapshot_invocation_stdout_artifact(
+                    path=official_stdout_artifact_path,
+                    allowed_runs_root=official_stdout_runs_root,
+                    raw_stdout=stdout_bytes,
+                )
+                child_status, official_binding_error = _official_child_payload_from_stdout(
+                    stdout_bytes
+                )
+                if child_status is not None:
+                    official_invocation_binding = {
+                        "mode": "invocation_publication",
+                        "publication_id": child_status["publication_id"],
+                        "manifest_path": child_status["manifest_path"],
+                        "manifest_hash": child_status["manifest_hash"],
+                        "manifest_file_hash": child_status["manifest_file_hash"],
+                        "canonical_events_hash": child_status["canonical_events_hash"],
+                        "invocation_stdout_artifact_path": child_stdout_artifact_path,
+                        "invocation_stdout_sha256": child_stdout_sha256,
+                    }
+            except (OSError, TypeError, ValueError) as exc:
+                official_binding_error = (
+                    f"official_child_stdout_artifact_invalid:{type(exc).__name__}"
+                )
+                child_status = None
+    elif name == "recommendation_snapshot":
         child_status, snapshot_receipt_error = _snapshot_child_payload_from_stdout(
             stdout_bytes
         )
@@ -1237,10 +1383,13 @@ def _run_child(
     child_blockers = list(child_status.get("blockers") or []) if isinstance(child_status, Mapping) else []
     if snapshot_receipt_error is not None:
         child_blockers.append(snapshot_receipt_error)
+    if official_binding_error is not None:
+        child_blockers.append(official_binding_error)
     child_blockers.extend(nested_blockers)
     if (
         nested_blockers
         or snapshot_receipt_error is not None
+        or official_binding_error is not None
         or completed.returncode != 0
         or child_status_name in failed_child_statuses
     ):
@@ -1268,6 +1417,8 @@ def _run_child(
         "child_stdout_artifact_size": child_stdout_artifact_size,
         "child_stdout_sha256": child_stdout_sha256,
         "child_receipt_error": snapshot_receipt_error,
+        "official_invocation_binding": official_invocation_binding,
+        "official_invocation_binding_error": official_binding_error,
         "child_warnings": list(child_status.get("warnings") or [])
         if isinstance(child_status, Mapping)
         else [],
@@ -1365,6 +1516,8 @@ def _learning_child_arguments(
     snapshot_invocation_output_path: object,
     current_cycle_pin: CurrentObservedRawCyclePin,
     current_observed_source_output_root: Path,
+    aggregate_run_id: str,
+    official_invocation_binding: Mapping[str, Any] | None = None,
 ) -> list[str]:
     arguments = [
         "--data-root", str(data_root),
@@ -1382,6 +1535,24 @@ def _learning_child_arguments(
             source_output_root=current_observed_source_output_root
         )
     )
+    if isinstance(official_invocation_binding, Mapping):
+        for key in (
+            "publication_id",
+            "manifest_path",
+            "manifest_hash",
+            "manifest_file_hash",
+            "canonical_events_hash",
+            "invocation_stdout_artifact_path",
+            "invocation_stdout_sha256",
+        ):
+            value = official_invocation_binding.get(key)
+            if type(value) is not str or not value.strip():
+                raise ValueError("official invocation publication binding is incomplete")
+            arguments.extend([f"--official-event-{key.replace('_', '-')}", value])
+        arguments.extend(["--official-event-binding-mode", "invocation_publication"])
+    else:
+        arguments.extend(["--official-event-binding-mode", "last_good_fallback"])
+    arguments.extend(["--official-event-aggregate-run-id", aggregate_run_id])
     if args.cost_scenario == "banktaiwan_estimated_research":
         arguments.extend(
             [
@@ -1540,6 +1711,9 @@ def main(argv: list[str] | None = None) -> int:
     invocation_dir.mkdir(parents=True, exist_ok=False)
     snapshot_stdout_artifact_path = (
         invocation_dir / _SNAPSHOT_INVOCATION_STDOUT_NAME
+    )
+    official_stdout_artifact_path = (
+        invocation_dir / _OFFICIAL_INVOCATION_STDOUT_NAME
     )
 
     environment = os.environ.copy()
@@ -1991,6 +2165,8 @@ def main(argv: list[str] | None = None) -> int:
                 ],
                 environment=environment,
                 log_handle=log_handle,
+                official_stdout_artifact_path=official_stdout_artifact_path,
+                official_stdout_runs_root=snapshot_stdout_runs_root,
             )
             payload["steps"]["official_market_events"] = official_step
             official_status = _read_json(_status_path(output_root, "official_market_events"))
@@ -2099,6 +2275,12 @@ def main(argv: list[str] | None = None) -> int:
                         snapshot_invocation_output_path=snapshot_invocation_output_path,
                         current_cycle_pin=source_cycle_pin,
                         current_observed_source_output_root=current_observed_source_output_root,
+                        official_invocation_binding=(
+                            official_step.get("official_invocation_binding")
+                            if official_step.get("status") == "passed"
+                            else None
+                        ),
+                        aggregate_run_id=run_id,
                     )
                     stage = "recommendation_learning"
                     learning_step = run_child_bounded(
@@ -2115,6 +2297,72 @@ def main(argv: list[str] | None = None) -> int:
                         output_root / "recommendation_learning" / "latest_status.json"
                     )
                     if isinstance(learning_status, Mapping):
+                        learning_dependencies = learning_status.get("dependencies")
+                        learning_dependencies = (
+                            learning_dependencies
+                            if isinstance(learning_dependencies, Mapping)
+                            else {}
+                        )
+                        source_contract = learning_dependencies.get("source_contract")
+                        source_contract = (
+                            source_contract if isinstance(source_contract, Mapping) else {}
+                        )
+                        corporate_actions = source_contract.get("corporate_actions")
+                        corporate_actions = (
+                            corporate_actions
+                            if isinstance(corporate_actions, Mapping)
+                            else {}
+                        )
+                        event_publication = corporate_actions.get("event_publication")
+                        event_publication = (
+                            event_publication
+                            if isinstance(event_publication, Mapping)
+                            else {}
+                        )
+                        source_receipt = learning_dependencies.get(
+                            "source_contract_receipt"
+                        )
+                        source_receipt = (
+                            source_receipt if isinstance(source_receipt, Mapping) else {}
+                        )
+                        same_aggregate = (
+                            event_publication.get("aggregate_run_id") == run_id
+                        )
+                        learning_step["official_event_consumer_binding"] = {
+                            "mode": event_publication.get("consumer_binding_mode"),
+                            "verified": (
+                                event_publication.get("consumer_binding_verified") is True
+                                and same_aggregate
+                            ),
+                            "reason": (
+                                event_publication.get("consumer_binding_reason")
+                                or event_publication.get("reason")
+                                if same_aggregate
+                                else "source_contract_not_bound_to_this_aggregate_run"
+                            ),
+                            "aggregate_run_id": event_publication.get(
+                                "aggregate_run_id"
+                            ),
+                            "expected_publication": event_publication.get(
+                                "expected_publication"
+                            ),
+                            "observed_publication": {
+                                key: event_publication.get(key)
+                                for key in (
+                                    "manifest_path",
+                                    "manifest_hash",
+                                    "manifest_file_sha256",
+                                    "canonical_events_hash",
+                                )
+                            },
+                            "source_contract_path": source_receipt.get("contract_path"),
+                            "source_contract_content_sha256": source_receipt.get(
+                                "contract_content_sha256"
+                            ),
+                            "source_contract_file_sha256": source_receipt.get(
+                                "contract_file_sha256"
+                            ),
+                        }
                         payload["learning_latest_status"] = {
                             "status": learning_status.get("status"),
                             "decision": learning_status.get("decision"),

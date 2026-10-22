@@ -230,11 +230,46 @@ def test_dry_run_is_read_only_and_persists_receipt(
         "current_session_close_not_reached"
     )
     assert EvidenceEventRepository(config).list_outcomes() == []
+    observation = result["source_observation"]
+    assert observation["training_eligible"] is False
+    assert observation["pit_qualified"] is False
+    assert observation["source_availability"] == "unknown"
+    assert (Path(result["artifact_output_root"]) / observation["manifest_path"]).is_file()
     status_path = Path(result["status_path"])
     run_path = Path(result["run_path"])
     assert status_path.is_file()
     assert run_path.is_file()
     assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "dry_run"
+
+
+def test_source_observation_failure_prevents_confirmed_outcome_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    _install_deterministic_writer_acquisition_clock(monkeypatch, config)
+    original_writer = forward_runner._write_create_only
+
+    def fail_observation_write(path: Path, text: str) -> None:
+        if "source_observations" in path.parts:
+            raise OSError("source observation persistence unavailable")
+        original_writer(path, text)
+
+    monkeypatch.setattr(forward_runner, "_write_create_only", fail_observation_write)
+    result = run_scheduled_forward_outcomes(
+        config=config,
+        now=_now(),
+        confirm=True,
+        allow_production_db_confirm=True,
+        windows=(5,),
+        start_date="2026-09-01",
+        end_date="2026-09-10",
+        data_as_of_date="2026-09-10",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["exit_code"] == 2
+    assert EvidenceEventRepository(config).list_outcomes() == []
 
 
 def test_default_calendar_context_never_falls_back_to_row_offset(
@@ -620,6 +655,7 @@ def test_confirmed_run_writes_only_outcomes(
     original_upsert = EvidenceEventRepository.upsert_outcomes
     original_repository = forward_runner.EvidenceEventRepository
     observed_read_only: list[bool] = []
+    upsert_calls: list[int] = []
 
     def build_tracked_repository(*args, **kwargs):
         repository = original_repository(*args, **kwargs)
@@ -631,6 +667,7 @@ def test_confirmed_run_writes_only_outcomes(
             heavy_chain_lock_path(config.output_root / "release_v4")
         )
         assert competing is None
+        upsert_calls.append(len(outcomes))
         return original_upsert(repository, outcomes)
 
     monkeypatch.setattr(EvidenceEventRepository, "upsert_outcomes", verify_writer_holds_shared_lock)
@@ -679,8 +716,9 @@ def test_confirmed_run_writes_only_outcomes(
     assert len(outcomes) == 1
     assert outcomes[0].return_basis == "close_to_close_event_date"
     outcome_id = outcomes[0].outcome_id
+    assert upsert_calls == [1]
 
-    second = run_scheduled_forward_outcomes(
+    duplicate = run_scheduled_forward_outcomes(
         config=config,
         output_root=shadow_output,
         now=_now(),
@@ -691,9 +729,27 @@ def test_confirmed_run_writes_only_outcomes(
         end_date="2026-09-10",
         data_as_of_date="2026-09-10",
     )
+    assert duplicate["status"] == "blocked"
+    assert duplicate["exit_code"] == 2
+    assert upsert_calls == [1]
+    assert len(repository.list_outcomes()) == 1
+
+    second = run_scheduled_forward_outcomes(
+        config=config,
+        output_root=shadow_output,
+        # 以不同 attempt 時間模擬下一次執行，避免重用 immutable run ID。
+        now=_now() + timedelta(microseconds=1),
+        confirm=True,
+        allow_production_db_confirm=True,
+        windows=(5,),
+        start_date="2026-09-01",
+        end_date="2026-09-10",
+        data_as_of_date="2026-09-10",
+    )
     assert second["summary"]["outcomes_created"] == 0
     assert second["summary"]["outcomes_updated"] == 1
     assert second["summary"]["outcomes_written"] == 1
+    assert upsert_calls == [1, 1]
     outcomes_after_retry = repository.list_outcomes()
     assert len(outcomes_after_retry) == 1
     assert outcomes_after_retry[0].outcome_id == outcome_id

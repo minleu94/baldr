@@ -105,7 +105,9 @@ class RecommendationEvidenceImporter:
         self.queries = queries
 
     def collect(self, request: EvidenceCaptureRequest) -> EvidenceImportResult:
-        read_model, latest_selection_diagnostic = self._load_result(request)
+        read_model, latest_selection_diagnostic, latest_selection_metadata = self._load_result(
+            request
+        )
         if read_model is None:
             if latest_selection_diagnostic:
                 is_query_failure = latest_selection_diagnostic.startswith(
@@ -123,6 +125,7 @@ class RecommendationEvidenceImporter:
                                 else "canonical/legacy mixed latest timestamp 不完整或不明確；拒絕猜測選取結果。"
                             ),
                             source_name=self.source_name,
+                            metadata=latest_selection_metadata,
                         ),
                     ),
                 )
@@ -805,17 +808,25 @@ class RecommendationEvidenceImporter:
 
     def _load_result(
         self, request: EvidenceCaptureRequest
-    ) -> tuple[Any | None, str | None]:
+    ) -> tuple[Any | None, str | None, dict[str, Any]]:
         try:
             if request.result_id:
-                return self.queries.get(request.result_id), None
+                return self.queries.get(request.result_id), None, {}
             results = self.queries.list()
             if not results:
-                return None, None
+                return None, None, {}
             latest, diagnostic = select_latest_saved_recommendation(results)
-            return latest, diagnostic
+            return latest, diagnostic, {}
         except (ExecutionPersistenceError, ValueError) as exc:
-            return None, f"recommendation_query_failure:{type(exc).__name__}"
+            reason = " ".join(str(exc).split())[:240]
+            return (
+                None,
+                f"recommendation_query_failure:{type(exc).__name__}",
+                {
+                    "exception_type": type(exc).__name__,
+                    "integrity_reason": reason,
+                },
+            )
 
 
 def _quality_for_execution(status: QualityStatus) -> str:

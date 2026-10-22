@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from http.client import HTTPResponse
 import hashlib
@@ -13,6 +14,8 @@ import pytest
 import data_module.mops_monthly_revenue_history as history
 from data_module.daily_source_snapshot import DailySourceTransportCapture
 from data_module.mops_monthly_revenue_history import (
+    MOPS_BIG5_CP950_DECODER_PROFILE,
+    MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION,
     MOPS_MONTHLY_REVENUE_HISTORY_SOURCE_IDS,
     MopsMonthlyRevenueHistoryCapturePlan,
     MopsMonthlyRevenueHistoryError,
@@ -86,6 +89,44 @@ def _capture(
     )
 
 
+def _capture_big5(*, cp950_extension: bool) -> MopsMonthlyRevenueHistoricalCapture:
+    html = _html().decode("utf-8").replace('charset="utf-8"', 'charset="big5"')
+    if cp950_extension:
+        html = html.replace("台積電", "台積電__CP950_EXTENSION__")
+        before, after = html.split("__CP950_EXTENSION__", 1)
+        body = before.encode("cp950") + b"\xf9\xd6" + after.encode("cp950")
+    else:
+        body = html.encode("big5")
+    captured_at = CAPTURED_AT
+    url = history._official_history_url("twse", "2026-09")
+    transport = DailySourceTransportCapture(
+        raw_response_bytes=body,
+        official_source_url=url,
+        response_status=200,
+        content_type="text/html",
+        declared_decoding_encoding="big5",
+        decoding_basis="html_meta_charset",
+        body_completed_at=captured_at,
+        transport_sha256=hashlib.sha256(body).hexdigest(),
+        response_body_complete=True,
+        received_body_bytes=len(body),
+        content_length_original_text=str(len(body)),
+        body_completion_evidence_ref=f"content-length:{len(body)}",
+        response_url=url,
+        content_encoding_original_text="identity",
+        eof_observed=True,
+        body_observation_ended_at=captured_at,
+    )
+    return MopsMonthlyRevenueHistoricalCapture(
+        market="twse",
+        period="2026-09",
+        requested_url=url,
+        response_url=url,
+        request_started_at=captured_at,
+        transport_capture=transport,
+    )
+
+
 def test_historical_capture_uses_existing_parser_and_never_infers_twd_or_pit():
     capture = _capture()
     rows = parse_mops_monthly_revenue_history_capture(capture)
@@ -152,11 +193,81 @@ def test_capture_artifact_create_only_and_reader_reparse(tmp_path: Path):
     assert reopened.transport_capture.content_encoding_original_text == "identity"
     assert reopened.transport_capture.eof_observed is True
     assert reopened.transport_capture.body_observation_ended_at == capture.transport_capture.body_observation_ended_at
+    assert reopened.parser_version == history.MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION
+    assert "decoder_profile" not in reopened.to_dict()
+    assert reopened.source_version == capture.source_version
     assert parse_mops_monthly_revenue_history_capture(reopened) == capture.rows
     with pytest.raises(MopsMonthlyRevenueHistoryError, match="create_only_conflict"):
         write_mops_monthly_revenue_history_capture_create_only(artifact, capture)
     with pytest.raises(MopsMonthlyRevenueHistoryError, match="sha256_mismatch"):
         read_mops_monthly_revenue_history_capture(artifact, expected_sha256="0" * 64)
+
+
+def test_cp950_capture_artifact_names_decoder_and_roundtrips(tmp_path: Path):
+    capture = _capture_big5(cp950_extension=True)
+    payload = capture.to_dict()
+    assert payload["decoder_profile"] == MOPS_BIG5_CP950_DECODER_PROFILE
+    assert payload["effective_decoding_encoding"] == "cp950"
+    assert payload["parser_version"] == MOPS_MONTHLY_REVENUE_HISTORY_CP950_PARSER_VERSION
+    assert capture.effective_decoding_encoding == "cp950"
+
+    artifact = tmp_path / "cp950-history.json"
+    write_mops_monthly_revenue_history_capture_create_only(artifact, capture)
+    reopened = read_mops_monthly_revenue_history_capture(
+        artifact, expected_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()
+    )
+    assert reopened.canonical_bytes() == capture.canonical_bytes()
+    assert reopened.source_version == capture.source_version
+    assert reopened.decoder_profile == MOPS_BIG5_CP950_DECODER_PROFILE
+
+
+def test_legacy_cp950_artifact_keeps_legacy_identity_and_is_marked(tmp_path: Path):
+    profiled = _capture_big5(cp950_extension=True)
+    legacy = replace(
+        profiled,
+        decoder_profile=None,
+        effective_decoding_encoding=None,
+        _legacy_decoder_provenance=True,
+    )
+    assert legacy.raw_response_sha256 == profiled.raw_response_sha256
+    assert legacy.source_version != profiled.source_version
+    assert "decoder_profile" not in legacy.to_dict()
+    assert legacy.to_dict()["parser_version"] == history.MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION
+
+    artifact = tmp_path / "legacy-cp950-history.json"
+    write_mops_monthly_revenue_history_capture_create_only(artifact, legacy)
+    reopened = read_mops_monthly_revenue_history_capture(
+        artifact, expected_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest()
+    )
+    assert reopened.canonical_bytes() == legacy.canonical_bytes()
+    assert reopened.source_version == legacy.source_version
+    assert reopened._legacy_decoder_provenance is True
+    assert reopened.decoder_profile is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("decoder_profile", "mops-big5-cp950-strict.v999"),
+        ("effective_decoding_encoding", "big5"),
+        ("parser_version", history.MOPS_MONTHLY_REVENUE_HISTORY_PARSER_VERSION),
+    ),
+)
+def test_cp950_artifact_rejects_tampered_decoder_provenance(
+    tmp_path: Path, field: str, value: str
+):
+    payload = _capture_big5(cp950_extension=True).to_dict()
+    payload[field] = value
+    raw = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    artifact = tmp_path / f"tampered-{field}.json"
+    artifact.write_bytes(raw)
+
+    with pytest.raises(MopsMonthlyRevenueHistoryError):
+        read_mops_monthly_revenue_history_capture(
+            artifact, expected_sha256=hashlib.sha256(raw).hexdigest()
+        )
 
 
 def test_invalid_market_period_or_report_identity_fails_closed():

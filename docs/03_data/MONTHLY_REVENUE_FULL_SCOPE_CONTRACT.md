@@ -33,3 +33,11 @@ Owner 授權與來源資格分開：來源身分／授權、每批品質、金�
 研究service連接比較、篩選、分市場shadow因子與Portfolio研究；原推薦consumer另經精確source／normalizer／自然鍵／衍生摘要核對接受合格OpenData DTO，不改原MOPS身份。金額、正式評分／排名、回測、Paper／Forward與ML使用各自資格門；完整連續月窗的TTM／三月趨勢工程不會替未知單位簽證。
 
 完成範圍、實際歷史覆蓋及 QA 見[全用途整合驗收](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)及本任務 `output/tasks/baldr-monthly-revenue-full-scope` 的具名原始收據。操作見[研究管線](../07_guides/MONTHLY_REVENUE_RESEARCH_PIPELINE.md)。既有 RC `d9a2380fcb7e` 不因 Source 增量自動包含新功能。
+
+## 2026-10-22 Track B 歷史原件增量
+
+新的隔離 r2 archive 已保存 2026-06 雙市場完整原件：TWSE 995／TPEx 865 列，共 1,860 列，外部 index SHA `9a36e482b106c9e54e2aa45fc9291b32a1490de877cf703c3f4caeb1cec489f1`。它明示 decoder profile `mops-big5-cp950-strict.v1`、effective codec `cp950`、parser v2，source version 亦包含這三項；舊 v1 archive 原件及身份保持，reader另有明示 legacy 相容路徑。兩者是**同一個雙市場歷史報表月份**，不重複計算，不等於全歷史或全公司完整；2026-07／08 的既有不完整捕獲維持失敗，不重試或拼接 prefix。原失敗 report、完整三跳、原 bytes／SHA 與離線修復收據見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
+MOPS 官方 host 宣告 Big5 而包含 CP950 擴充時，先依宣告 strict decode，僅該 codec 失敗且 exact MOPS host 才以 CP950 strict decode；壞 bytes 仍拒絕，原宣告與 raw hash 保持。不將 charset 相容當來源接受。這批歷史 HTML 的 license/use 尚未接受、金額單位仍 `unknown_no_twd_conversion`；available_at 是 2026-10-23 Taipei 的本機事後捕獲觀測，非 2026-06 官方發布時間。歷史 PIT、正式 Scoring／Backtest／ML 與其餘用途資格未因此成立，也未改正式 registry／DB 或既有百分率研究包。
+
+雙市場六月原 HTML 的產業表頭確有 `單位：千元`，capture 的 `observed_unit_annotations` 已保留這項原文。這只綁定上述歷史 HTML 原件，尚未構成貨幣、欄位 mapping 與用途接受齊全的 typed unit proof，也不能外推成兩個 OpenAPI 金額欄的單位證明；不據此乘 1,000 或標為 TWD。

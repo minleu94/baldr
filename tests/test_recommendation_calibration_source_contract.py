@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
+
+import pytest
 
 from data_module.official_daily_price_custody import (
     persist_official_daily_price_response,
 )
 from data_module.recommendation_calibration_source_contract import (
     _cost_lanes,
+    _event_publication_status,
     _hash_file,
     _hash_payload,
     build_technical_computation_evidence,
@@ -18,6 +22,185 @@ from data_module.recommendation_calibration_source_contract import (
     publish_technical_indicator_receipt,
     technical_custody_source_window,
 )
+
+
+def _official_event_publication_for_binding_test(
+    output_root: Path,
+) -> dict[str, str | None]:
+    publication_root = output_root / "release_v4" / "official_market_events"
+    run_root = publication_root / "runs" / "binding-test"
+    raw_root = run_root / "raw"
+    canonical_root = run_root / "canonical"
+    raw_root.mkdir(parents=True)
+    canonical_root.mkdir(parents=True)
+    raw_path = raw_root / "response.json"
+    raw_path.write_bytes(b'{"source":"fixture"}\n')
+    raw_hash = _hash_file(raw_path)
+    raw_index_path = run_root / "raw_index.jsonl"
+    raw_index_path.write_text(
+        json.dumps(
+            {"response_path": "raw/response.json", "response_sha256": raw_hash},
+            sort_keys=True,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    event = {"event_id": "event-1", "raw_response_sha256": raw_hash}
+    canonical_path = canonical_root / "events.jsonl"
+    canonical_path.write_text(json.dumps(event, sort_keys=True) + "\n", encoding="utf-8")
+    canonical_hash = _hash_file(canonical_path)
+    manifest_body = {
+        "schema_version": "official-market-event-publication.v1",
+        "publication_id": "binding-publication-1",
+        "status": "prospective_source_publication",
+        "publication_scope": "prospective_bounded",
+        "generated_at": "2026-10-21T10:00:00+00:00",
+        "request": {"start_year": 2026, "end_year": 2026},
+        "raw_index": {"path": "raw_index.jsonl", "file_hash": _hash_file(raw_index_path)},
+        "canonical_events": {
+            "path": "canonical/events.jsonl",
+            "file_hash": canonical_hash,
+            "event_count": 1,
+        },
+    }
+    manifest = {**manifest_body, "manifest_hash": _hash_payload(manifest_body)}
+    manifest_path = run_root / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+    binding = {
+        "publication_id": "binding-publication-1",
+        "manifest_path": str(manifest_path.resolve()),
+        "manifest_hash": manifest["manifest_hash"],
+        "manifest_file_hash": _hash_file(manifest_path),
+        "canonical_events_hash": canonical_hash,
+    }
+    pointer = {
+        "publication_id": binding["publication_id"],
+        "manifest_path": "runs/binding-test/manifest.json",
+        "manifest_hash": binding["manifest_hash"],
+        "manifest_file_hash": binding["manifest_file_hash"],
+        "canonical_events_hash": binding["canonical_events_hash"],
+    }
+    (publication_root / "prospective_latest_manifest.json").write_text(
+        json.dumps(pointer, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    status_root = output_root / "scheduled" / "official_market_events"
+    status_root.mkdir(parents=True)
+    (status_root / "latest_status.json").write_text(
+        json.dumps({"status": "published", **binding}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    invocation_dir = (
+        output_root
+        / "scheduled"
+        / "recommendation_calibration_learning"
+        / "runs"
+        / "aggregate-run-1"
+    )
+    invocation_dir.mkdir(parents=True)
+    invocation_path = invocation_dir / "official_market_events.stdout.bin"
+    invocation_bytes = json.dumps(
+        {"schema_version": "scheduled-official-market-events.v1", "status": "published", **binding},
+        sort_keys=True,
+    ).encode("utf-8")
+    invocation_path.write_bytes(invocation_bytes)
+    return {
+        **binding,
+        "invocation_stdout_artifact_path": str(invocation_path.resolve()),
+        "invocation_stdout_sha256": "sha256:" + hashlib.sha256(invocation_bytes).hexdigest(),
+    }
+
+
+def test_official_event_consumer_binding_matches_invocation_and_rejects_divergence(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    observed = _official_event_publication_for_binding_test(output_root)
+    expected = {
+        "mode": "invocation_publication",
+        **observed,
+        "aggregate_run_id": "aggregate-run-1",
+    }
+    exact = _event_publication_status(
+        output_root,
+        expected_binding=expected,
+    )
+    assert exact["consumer_binding_verified"] is True
+    assert exact["consumer_binding_mode"] == "invocation_publication"
+    assert exact["canonical_events_hash"] == observed["canonical_events_hash"]
+    assert exact["aggregate_run_id"] == "aggregate-run-1"
+    assert exact["invocation_stdout_artifact_path"] == observed[
+        "invocation_stdout_artifact_path"
+    ]
+    assert exact["invocation_stdout_sha256"] == observed["invocation_stdout_sha256"]
+
+    status_path = output_root / "scheduled" / "official_market_events" / "latest_status.json"
+    status_payload = json.loads(status_path.read_text(encoding="utf-8"))
+    status_payload["publication_id"] = "other-publication"
+    status_path.write_text(json.dumps(status_payload, sort_keys=True) + "\n", encoding="utf-8")
+    diverged = _event_publication_status(output_root, expected_binding=expected)
+    assert diverged["status"] == "invalid"
+    assert diverged["consumer_binding_verified"] is False
+    assert diverged["reason"] == "official_invocation_publication_binding_mismatch"
+
+
+@pytest.mark.parametrize("aggregate_run_id", ["aggregate-run-2", "../aggregate-run-1", ".", "x" * 161])
+def test_official_invocation_binding_rejects_another_aggregate_run(
+    tmp_path: Path, aggregate_run_id: str,
+) -> None:
+    output_root = tmp_path / "output"
+    observed = _official_event_publication_for_binding_test(output_root)
+    result = _event_publication_status(
+        output_root,
+        expected_binding={"mode": "invocation_publication", **observed, "aggregate_run_id": aggregate_run_id},
+    )
+    assert result["status"] == "invalid"
+    assert result["consumer_binding_verified"] is False
+    assert result["formal_publication_verified"] is False
+
+
+def test_official_invocation_binding_keeps_pins_but_fails_when_manifest_is_invalid(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    observed = _official_event_publication_for_binding_test(output_root)
+    expected = {
+        "mode": "invocation_publication",
+        **observed,
+        "aggregate_run_id": "aggregate-run-1",
+    }
+    Path(str(observed["manifest_path"])).write_text("invalid manifest\n", encoding="utf-8")
+
+    result = _event_publication_status(output_root, expected_binding=expected)
+
+    assert result["status"] == "invalid"
+    assert result["consumer_binding_verified"] is False
+    assert result["consumer_binding_reason"] == "official_source_publication_verification_failed"
+    assert result["aggregate_run_id"] == "aggregate-run-1"
+    assert result["invocation_stdout_artifact_path"] == observed[
+        "invocation_stdout_artifact_path"
+    ]
+    assert result["invocation_stdout_sha256"] == observed["invocation_stdout_sha256"]
+
+
+def test_official_event_last_good_fallback_is_explicitly_not_same_invocation(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _official_event_publication_for_binding_test(output_root)
+    status_path = output_root / "scheduled" / "official_market_events" / "latest_status.json"
+    status_path.write_text(
+        json.dumps({"status": "failed", "failure_class": "retryable"}) + "\n",
+        encoding="utf-8",
+    )
+
+    fallback = _event_publication_status(
+        output_root,
+        expected_binding={"mode": "last_good_fallback", "aggregate_run_id": "aggregate-run-2"},
+    )
+    assert fallback["status"] == "published_last_known_good"
+    assert fallback["consumer_binding_mode"] == "last_good_fallback"
+    assert fallback["consumer_binding_verified"] is False
+    assert fallback["consumer_binding_reason"] == "explicit_last_good_fallback_not_same_invocation"
+    assert fallback["aggregate_run_id"] == "aggregate-run-2"
 
 
 def test_technical_custody_window_uses_actual_calculation_day_on_closed_day():

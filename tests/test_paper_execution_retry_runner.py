@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,15 +29,180 @@ OBSERVED = datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
 def test_retry_runner_exit_code_preserves_skip_and_blocked_statuses(
     status: str,
     expected_exit_code: int,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        paper_execution_retry_runner,
+        "write_terminal_receipt",
+        lambda path, payload, **_kwargs: {"path": str(path), "sha256": "sha256:" + "a" * 64},
+    )
     monkeypatch.setattr(
         paper_execution_retry_runner,
         "run_scheduled",
         lambda **_kwargs: {"status": status, "blockers": []},
     )
 
-    assert paper_execution_retry_runner.main([]) == expected_exit_code
+    gate_root = tmp_path / "isolated" / "dependency_gate"
+    assert paper_execution_retry_runner.main(["--gate-output-root", str(gate_root)]) == expected_exit_code
+
+
+def test_terminal_receipt_is_bounded_and_contains_exact_gate_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        paper_execution_retry_runner,
+        "code_version",
+        lambda _path: "sha256:" + "b" * 64,
+    )
+    gate_result = {
+        "status": "blocked",
+        "blockers": ["raw-detail-must-not-be-copied"] * 1970,
+        "scheduled_retry": {
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "gate_status": "blocked",
+                    "gate_ready": False,
+                    "gate_target_date": "2026-10-21",
+                    "gate_blocker_count": 1970,
+                    "gate_receipt": {
+                        "path": "C:/output/dependency_gate_1.json",
+                        "file_sha256": "sha256:" + "c" * 64,
+                    },
+                }
+            ]
+        },
+    }
+    receipt = paper_execution_retry_runner._build_terminal_receipt(
+        gate_result,
+        run_id="1" * 32,
+        started_at=OBSERVED,
+        completed_at=OBSERVED,
+        exit_code=2,
+    )
+    nested = receipt["status_payload"]
+    assert isinstance(nested, dict)
+    assert nested["gate_blocker_count"] == 1970
+    assert nested["gate_blockers_validation"] == "not_copied_or_validated"
+    assert nested["gate_attempts"][0]["receipt_ref"] == {
+        "path": "C:/output/dependency_gate_1.json",
+        "sha256": "c" * 64,
+    }
+    assert receipt["blockers"] == ["paper_execution_blocked"]
+    assert "raw-detail-must-not-be-copied" not in json.dumps(receipt)
+    assert receipt["financial_qualification_status"] == "unknown"
+
+
+def test_terminal_gate_attempts_preserve_cross_day_wait_as_unknown_and_reject_bad_shapes() -> None:
+    cross_day = {
+        "scheduled_retry": {
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "terminal": True,
+                    "reason": "paper_execution_natural_day_changed_before_retry",
+                }
+            ]
+        }
+    }
+    summary = paper_execution_retry_runner._terminal_gate_attempts(cross_day)
+    assert summary == [
+        {
+            "attempt": 1,
+            "target_date": None,
+            "status": None,
+            "ready": None,
+            "blocker_count": None,
+            "receipt_ref": None,
+        }
+    ]
+
+    too_many = {"scheduled_retry": {"attempts": [{}] * 6}}
+    with pytest.raises(ValueError, match="exceed_bound"):
+        paper_execution_retry_runner._terminal_gate_attempts(too_many)
+    malformed = {"scheduled_retry": {"attempts": [None]}}
+    with pytest.raises(ValueError, match="attempt_invalid"):
+        paper_execution_retry_runner._terminal_gate_attempts(malformed)
+    unknown_field = {
+        "scheduled_retry": {
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "terminal": True,
+                    "reason": "paper_execution_natural_day_changed_before_retry",
+                    "unreviewed": "drop",
+                }
+            ]
+        }
+    }
+    with pytest.raises(ValueError, match="cross_day_record_invalid"):
+        paper_execution_retry_runner._terminal_gate_attempts(unknown_field)
+
+
+def test_main_persists_exception_as_terminal_and_persist_failure_is_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persisted: list[dict[str, object]] = []
+
+    def persist(_path, payload, **_kwargs):
+        persisted.append(dict(payload))
+        return {"path": "terminal.json", "sha256": "sha256:" + "d" * 64}
+
+    monkeypatch.setattr(
+        paper_execution_retry_runner,
+        "run_scheduled",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("private detail")),
+    )
+    monkeypatch.setattr(paper_execution_retry_runner, "write_terminal_receipt", persist)
+    monkeypatch.setattr(paper_execution_retry_runner, "code_version", lambda _path: "sha256:" + "e" * 64)
+    gate_arg = ["--gate-output-root", str(tmp_path / "isolated" / "dependency_gate")]
+    assert paper_execution_retry_runner.main(gate_arg) == 2
+    assert len(persisted) == 1
+    assert persisted[0]["status"] == "failed"
+    assert persisted[0]["failure_code"] == "paper_execution_failed"
+    assert "private detail" not in json.dumps(persisted[0])
+
+    monkeypatch.setattr(
+        paper_execution_retry_runner,
+        "write_terminal_receipt",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk unavailable")),
+    )
+    assert paper_execution_retry_runner.main(gate_arg) == 2
+
+
+def test_main_isolates_terminal_receipt_and_locator_beside_custom_gate_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate_root = tmp_path / "isolated" / "dependency_gate"
+
+    def run_isolated_retry(
+        *, max_attempts: int, retry_delay_seconds: int, gate_output_root: Path
+    ) -> dict[str, object]:
+        assert gate_output_root == gate_root
+        assert max_attempts == paper_execution_retry_runner.DEFAULT_MAX_ATTEMPTS
+        assert retry_delay_seconds == paper_execution_retry_runner.DEFAULT_RETRY_DELAY_SECONDS
+        return {"status": "skipped_no_pending_recommendation", "blockers": []}
+
+    monkeypatch.setattr(paper_execution_retry_runner, "run_scheduled", run_isolated_retry)
+
+    assert paper_execution_retry_runner.main(["--gate-output-root", str(gate_root)]) == 0
+
+    terminal_root = gate_root.parent / "terminal_receipts"
+    immutable_receipts = [
+        path for path in terminal_root.glob("*.json") if path.name != "latest_terminal.json"
+    ]
+    assert len(immutable_receipts) == 1
+    receipt_path = immutable_receipts[0]
+    receipt_bytes = receipt_path.read_bytes()
+    receipt = json.loads(receipt_bytes)
+    locator = json.loads((terminal_root / "latest_terminal.json").read_bytes())
+    assert receipt["status"] == "skipped_no_pending_recommendation"
+    assert locator["run_id"] == receipt["run_id"]
+    assert locator["terminal_receipt"]["path"] == str(receipt_path)
+    assert locator["terminal_receipt"]["sha256"] == "sha256:" + hashlib.sha256(receipt_bytes).hexdigest()
 
 
 def _write_cross_day_calendar(path: Path) -> tuple[Path, str]:

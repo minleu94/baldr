@@ -221,3 +221,7 @@ Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 te
 <!-- 舊書籤導向：current system_architecture 的個人模型／ML lineage contracts 由本冊第一節和決策分冊接續；完整日期化原文位於文件治理原 bytes 封存。 -->
 
 每日營運的舊校準source-contract只允許程式釘選的16檔exact locator；BankTaiwan候選保留原hash／cost守衛，唯一舊receipt以釘選latest的39欄完整語義投影核custody，原D身份保持，缺候選錨點不補欄。非通用root alias、不授來源或金融資格。ML raw launcher新增每run獨立log記有效root／Python／UTC／timezone／stdout／stderr／child exit，建log失敗73且不啟動child；舊10/21結果不回填。實際pins、reader限制與QA見[營運恢復摘要](../../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。
+
+Forward 排程在真正 SQLite fetch 邊界保存 SQL、參數、列 hash／chunks 與 event／outcome 使用關聯；同次 manifest 成功保存後才允許 outcome upsert。這是當前觀測，未保證跨 query snapshot 一致性、官方 availability 或歷史 PIT。BankTaiwan 大型 stdout 改用同 invocation、nonce／外部 SHA／snapshot identity 固定的 512 KiB 控制收據供 wrapper 分類，原 16 MiB stdout artifact 上限與完整診斷日誌保持；兩者不授金融資格。具名格式、預算與 consumer 界線見 [Track B 資料契約](../../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)與[排程稽核手冊](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
+校準 source-contract reader 另核 official child invocation artifact與aggregate／publication／manifest／canonical pins；last-good明示非同次。Paper retry wrapper另以獨立UUID終態引用原gate，原大清單不進有界terminal。Recommendation legacy catalog的88個D data_path仍未取得原件byte custody，mixed reader保持拒絕，不由F counterpart存在建立通用root alias；當前原件與source資格界線見[Track B驗收](../../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。

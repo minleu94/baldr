@@ -19,6 +19,12 @@
 
 Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資料庫身份、兩份市場來源與16份錯日排除來源定位。它固定原 hash 鏈與新唯讀保護狀態，**不是這些原件逐檔搬遷 SHA 通過的證據**。原修訂、來源取得時間、禁止歷史 PIT 及訓練資格不變；新 rollback、未知 marker、替換 DB、原 D 資料重現或 hash 漂移均重新拒絕。
 
+校準 pipeline 新 run 將 official child 的完整 invocation stdout 保存為不超過 256 KiB 的 create-only artifact，傳遞其 publication ID、manifest file／logical hash、canonical events hash、stdout path／SHA 與 aggregate run ID。真正 source-contract reader 以 strict JSON、plain path／no-follow 有界讀取核原件，要求 stdout 位於該 aggregate 的固定 run 目錄，並將 expected pins 與實際讀到的 publication 比對；來源 manifest／canonical／raw custody 尚未通過時，不標 `consumer_binding_verified=true`。成功比對不授歷史 PIT 或正式來源資格；immutable contract／父 terminal 保存相應引用。
+
+目前 recommendation mixed query 仍因88筆legacy data_path在核准runs root外而拒絕；33筆canonical index數不等於可交付33筆混合列表。88個F counterpart的新hash不是原搬遷同一性證明，原target SHA清冊沒有這88份逐檔entry；不建立通用alias、不改catalog或跳過legacy。原自然Decision診斷缺cause，當前readonly probe只證明現在的拒絕；新diagnostic metadata保留exception type及240字內reason，不含traceback／payload，也不補造path／原SHA。
+
+官方 refresh 失敗時的既有 last-good 政策保持，明示 `last_good_fallback`、aggregate ID 與 `consumer_binding_verified=false`；它不是本次 child publication。10/22 舊自然收據沒有這項 invocation 綁定，不能事後補造「Decision evidence／校準確實使用了早一個 Task 的 publication」。Decision evidence 的 research-only、snapshot degraded 與 recommendation integrity warning 亦不因此解除。
+
 ## Track C：ML Data Readiness
 
 資料集 manifest 應引用共通身份與資格，另明示 feature／label 名稱、資料期間、symbol universe、train／validation／test／OOS 分界、每筆決策 cutoff、feature available_at、label planned maturity／actual observation 及 purge／embargo 政策。沒有實際 manifest 與 consumer 讀回時，本文件只是交付要求，不是已交付可訓練資料集。
@@ -30,6 +36,14 @@ Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資�
 
 2026-10-22 可交付的是原收據／現況與限定研究資料身份；Raw PIT 的當日來源階段未啟動，Formal compatible count=0，當日 cutoff 前 PIT capture 缺件。Forward 自然 run 有 172 筆 outcome 更新，但仍有缺價、未成熟與來源 lineage 限制，不是完整可訓練資料集。月營收 1,975 筆 YoY 的限定研究使用不能外推為正式 ML／歷史 PIT 資格。
 
+### Forward 實際來源觀測接口
+
+新排程 run 的 `source_observation` 引用 `forward-source-observations.v1`，含 run ID、相對 manifest 路徑與外部 SHA、query／row／chunk counts。Manifest 保存實際執行 SQL／參數、fetch 時間、原始回傳列的 canonical hash 與 create-only chunks，並將 cache reuse、event／window／outcome hash 綁到 query ID。SQLite 浮點值以 `sqlite_float` 字串觀測表示保存，不能將其當作新增決策計算格式。
+
+此接口明示 `source_availability=unknown`、`pit_qualified=false`、`training_eligible=false`、`cross_read_snapshot_consistency=not_guaranteed`。同一次讀取的列證據不能證明原發布時間，也不宣稱各 query 是同一交易快照。下一次自然 run 才可能產生新 manifest；10/22 原 172 筆結果不回填來源引用。Recorder 單次使用，產物先持久化並讀回，再允許 outcome upsert；超限、重用或保存失敗即拒絕該輪寫入。
+
+單 chunk／manifest 上限各 512 KiB，每 run 64 MiB／128 chunks／500,000 rows／4,096 queries／10,000 outcomes；保留目錄達 4,096 runs 或 12 GiB 即拒絕，不自行清理。Consumer 應依 manifest／chunk SHA 讀回，仍須另外取得來源用途、availability、revision／custody 及 OOS 資格，不能只憑此引用授訓練或正式績效。
+
 ## Track A：唯讀研究展示
 
 透過既有 read model／DTO 與 provider port 讀取，保持 `mode=ro`／`query_only`、固定 artifact 身份及明確 source/data/decision 日期；不要求 UI 直接解析正式 DB、原始 receipt 或私人 binding。新增 UI 欄位沿 typed interface 另行接線，Track B 不修改 UI。
@@ -39,3 +53,5 @@ Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資�
 月營收目前可展示具名雙市場原值、百分率／YoY與原 unknown；未有外部固定 unit proof 時不標 TWD、不推定千元或乘 1000。Paper 的舊 cash／mark、研究 sizing 或 500,000 TWD 契約數字不可展示成真帳戶當日資金。Forward 的未成熟欄位保持 null 及目標日，不宣稱績效或交易權限。
 
 讀回不得寫行情 DB、來源檔、Ledger 或正式控制路徑；Research Run、使用者筆記的既有保存能力依原本獨立契約。金融 source gate 失敗可展示原因，不把一條線缺件擴成其他獨立研究資料的全域禁止。
+
+機器可讀的本輪交付為任務目錄 `ml_data_readiness_contract_r2.json` 與 `readonly_research_display_contract_r2.json`，外部SHA及具名現況見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。這些是有證據引用的readiness／介面要求，不是已合格feature/label資料集；缺件家庭仍不能訓練、OOS或自動返回部分結果。

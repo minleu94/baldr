@@ -81,6 +81,66 @@ def _manifest(row: dict[str, object]) -> dict[str, object]:
     return {"schema": SCHEMA, "observed_at": "2026-10-21T12:00:00+00:00", "components": [row]}
 
 
+def _paper_eod_gate(*, blocker_count: int = 129) -> dict[str, object]:
+    return {
+        "schema_version": "paper-execution-dependency-gate.v1",
+        "status": "blocked",
+        "ready": False,
+        "attempt": 1,
+        "target_date": "2026-10-21",
+        "observed_at": "2026-10-21T06:00:02-07:00",
+        "source_db_written": False,
+        "source_files_written": False,
+        "blockers": ["source_not_current"] * blocker_count,
+        "freshness_lane": {
+            "schema_version": "paper-eod-freshness-lane.v1",
+            "status": "blocked",
+            "target_date": "2026-10-21",
+            "required_sources": {
+                "sqlite.daily_prices": {
+                    "freshness_status": "stale",
+                    "expected_period": "2026-10-21",
+                    "actual_period": "2026-10-20",
+                }
+            },
+        },
+        "market_observation": {
+            "mode": "ro/query_only",
+            "ready": False,
+            "target_date": "2026-10-21",
+            "target_key": "20261021",
+        },
+    }
+
+
+def _paper_eod_row(ref: dict[str, str], **changes: object) -> dict[str, object]:
+    row = _row(
+        id="baldr-paper-execution-eod-replay-daily",
+        scheduler_result=2,
+        scheduler_last_run_at="2026-10-21T06:00:01-07:00",
+        producer_status="blocked",
+        producer_run_id=None,
+        receipt_ref=ref,
+        receipt_identity_verified=False,
+        stale=False,
+        writes_formal_data=False,
+    )
+    row.update(changes)
+    return row
+
+
+def _write_paper_eod_gate(
+    tmp_path: Path,
+    payload: dict[str, object],
+    relative: Path = Path("natural_receipts_v2/baldr-paper-execution-eod-replay-daily.json"),
+) -> dict[str, str]:
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    target.write_bytes(raw)
+    return {"path": relative.as_posix(), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
 def test_same_run_verified_receipt_is_healthy_but_manifest_claim_is_ignored() -> None:
     result = classify_component(_row(), receipt=_receipt(), observed_at=NOW)
     assert result["status"] == "HEALTHY"
@@ -249,6 +309,168 @@ def test_bad_receipt_sha_stays_unverified_and_does_not_hide_scheduler_failure(tm
     assert result["tracks"]["application_receipt"]["status"] == "UNKNOWN"
 
 
+def test_large_paper_eod_gate_projects_source_block_only_without_run_id_or_blocker_claim(
+    tmp_path: Path,
+) -> None:
+    ref = _write_paper_eod_gate(tmp_path, _paper_eod_gate(blocker_count=1970))
+    receipt = _read_receipt(tmp_path, ref)
+    result = classify_component(
+        _paper_eod_row(ref),
+        receipt=receipt,
+        observed_at=datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc),
+    )
+
+    application = result["tracks"]["application_receipt"]
+    assert application["status"] == "BLOCKED_SOURCE"
+    assert application["raw"]["run_id"] is None
+    assert application["raw"]["evidence_kind"] == "scheduler_time_correlated_not_producer_run_id"
+    projection = application["raw"]["bounded_gate_projection"]
+    assert projection["blocker_count"] == 1970
+    assert projection["blockers_validation"] == "not_performed_above_128"
+    assert projection["source_schema"] == "paper-execution-dependency-gate.v1"
+    assert projection["raw_sha256_verified"] is True
+    assert receipt["blockers"] == []
+    assert result["tracks"]["financial_qualification"]["status"] == "UNKNOWN"
+    assert result["tracks"]["observability"]["status"] == "UNKNOWN"
+    assert result["status"] == "EXECUTION_FAILED"
+
+
+def test_paper_eod_projection_threshold_stays_at_128(tmp_path: Path) -> None:
+    ref = _write_paper_eod_gate(tmp_path, _paper_eod_gate(blocker_count=128))
+    receipt = _read_receipt(tmp_path, ref)
+    assert "_bounded_paper_eod_projection" not in receipt
+    result = classify_component(
+        _paper_eod_row(ref),
+        receipt=receipt,
+        observed_at=datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc),
+    )
+    assert result["tracks"]["application_receipt"]["status"] == "UNKNOWN"
+
+    first_over_limit = _read_receipt(
+        tmp_path,
+        _write_paper_eod_gate(tmp_path, _paper_eod_gate(blocker_count=129)),
+    )
+    assert first_over_limit["_bounded_paper_eod_projection"]["blocker_count"] == 129
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"target_date": "2026-10-20"},
+        {"source_db_written": True},
+        {"source_files_written": True},
+        {"ready": True},
+        {"status": "passed"},
+        {
+            "freshness_lane": {
+                "schema_version": "paper-eod-freshness-lane.v1",
+                "status": "blocked",
+                "target_date": "2026-10-21",
+                "required_sources": {
+                    "sqlite.daily_prices": {
+                        "freshness_status": "current",
+                        "expected_period": "2026-10-21",
+                        "actual_period": "2026-10-21",
+                    }
+                },
+            }
+        },
+        {
+            "freshness_lane": {
+                "schema_version": "paper-eod-freshness-lane.v1",
+                "status": "blocked",
+                "target_date": "2026-10-21",
+                "required_sources": {
+                    "sqlite.daily_prices": {
+                        "freshness_status": "stale",
+                        "expected_period": "2026-10-21",
+                        "actual_period": "2026-10-22",
+                    }
+                },
+            }
+        },
+    ],
+)
+def test_paper_eod_reader_projection_rejects_unproven_source_or_scope(
+    tmp_path: Path, changes: dict[str, object]
+) -> None:
+    payload = _paper_eod_gate()
+    payload.update(changes)
+    ref = _write_paper_eod_gate(tmp_path, payload)
+    with pytest.raises(AuditInputError, match="receipt_blockers_invalid"):
+        _read_receipt(tmp_path, ref)
+
+
+def test_paper_eod_projection_rejects_wrong_raw_hash(tmp_path: Path) -> None:
+    ref = _write_paper_eod_gate(tmp_path, _paper_eod_gate())
+    ref["sha256"] = "0" * 64
+    with pytest.raises(AuditInputError, match="receipt_sha256_mismatch"):
+        _read_receipt(tmp_path, ref)
+
+
+def test_paper_eod_projection_rejects_stale_scheduler_time_and_wrong_date(
+    tmp_path: Path,
+) -> None:
+    ref = _write_paper_eod_gate(tmp_path, _paper_eod_gate())
+    receipt = _read_receipt(tmp_path, ref)
+    observed = datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc)
+
+    stale = classify_component(
+        _paper_eod_row(ref, scheduler_last_run_at="2026-10-21T06:05:00-07:00"),
+        receipt=receipt,
+        observed_at=observed,
+    )
+    assert stale["tracks"]["application_receipt"]["status"] == "UNKNOWN"
+
+    wrong_date = classify_component(
+        _paper_eod_row(ref, scheduler_last_run_at="2026-10-20T06:00:01-07:00"),
+        receipt=receipt,
+        observed_at=observed,
+    )
+    assert wrong_date["tracks"]["application_receipt"]["status"] == "UNKNOWN"
+
+    late_payload = _paper_eod_gate()
+    late_payload["observed_at"] = "2026-10-21T06:05:02-07:00"
+    late_ref = _write_paper_eod_gate(tmp_path, late_payload)
+    late_receipt = _read_receipt(tmp_path, late_ref)
+    outside_window = classify_component(
+        _paper_eod_row(late_ref), receipt=late_receipt, observed_at=observed
+    )
+    assert outside_window["tracks"]["application_receipt"]["status"] == "UNKNOWN"
+
+
+def test_paper_eod_projection_never_supplies_or_replaces_producer_run_identity(
+    tmp_path: Path,
+) -> None:
+    ref = _write_paper_eod_gate(tmp_path, _paper_eod_gate())
+    receipt = _read_receipt(tmp_path, ref)
+    result = classify_component(
+        _paper_eod_row(ref, producer_run_id="claimed-run"),
+        receipt=receipt,
+        observed_at=datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc),
+    )
+    assert result["tracks"]["application_receipt"]["status"] == "UNKNOWN"
+    assert result["tracks"]["observability"]["status"] == "UNKNOWN"
+
+
+def test_paper_eod_projection_uses_verified_manifest_relative_path(tmp_path: Path) -> None:
+    relative = Path("verified/archive/2026-10-21/paper-gate.json")
+    ref = _write_paper_eod_gate(tmp_path, _paper_eod_gate(), relative)
+    receipt = _read_receipt(tmp_path, ref)
+    observed = datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc)
+    result = classify_component(
+        _paper_eod_row(ref), receipt=receipt, observed_at=observed
+    )
+    assert result["tracks"]["application_receipt"]["status"] == "BLOCKED_SOURCE"
+
+    mismatched = dict(ref)
+    mismatched["path"] = "verified/archive/2026-10-21/other.json"
+    result = classify_component(
+        _paper_eod_row(mismatched), receipt=receipt, observed_at=observed
+    )
+    assert result["tracks"]["application_receipt"]["status"] == "UNKNOWN"
+
+
 def test_receipt_error_invalidates_otherwise_valid_same_run_receipt() -> None:
     result = classify_component(
         _row(), receipt=_receipt(), receipt_error="receipt_sha256_mismatch", observed_at=NOW
@@ -380,3 +602,96 @@ def test_manifest_external_sha_is_required_before_any_receipt_read(tmp_path: Pat
     manifest_path.write_bytes(raw)
     with pytest.raises(AuditInputError, match="snapshot_sha256_mismatch"):
         audit(manifest_path, "0" * 64, tmp_path)
+
+
+def _paper_retry_terminal_success() -> dict[str, object]:
+    started = "2026-10-21T11:59:00Z"
+    completed = "2026-10-21T11:59:30Z"
+    run_id = "1" * 32
+    nested: dict[str, object] = {
+        "schema_version": "paper-execution-retry-terminal-status.v1",
+        "task": "baldr-paper-execution-eod-replay-daily",
+        "run_id": run_id,
+        "started_at": started,
+        "completed_at": completed,
+        "status": "machine_verified_candidate",
+        "exit_code": 0,
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": "passed",
+        "terminal_blocker_code": None,
+        "gate_attempts": [
+            {
+                "attempt": 1,
+                "target_date": "2026-10-21",
+                "status": "ready",
+                "ready": True,
+                "blocker_count": 0,
+                "receipt_ref": {"path": "claimed-gate.json", "sha256": "0" * 64},
+            }
+        ],
+        "gate_blocker_count": 0,
+        "gate_blockers_validation": "not_copied_or_validated",
+    }
+    return {
+        "schema_version": "paper-execution-retry-terminal-receipt.v1",
+        "task": "baldr-paper-execution-eod-replay-daily",
+        "run_id": run_id,
+        "started_at": started,
+        "completed_at": completed,
+        "code_version": "sha256:" + "b" * 64,
+        "exit_code": 0,
+        "failure_code": None,
+        "status": "machine_verified_candidate",
+        "blockers": [],
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": "passed",
+        "status_payload": nested,
+    }
+
+
+def test_paper_terminal_same_run_receipt_sha_yields_observability_not_finance(
+    tmp_path: Path,
+) -> None:
+    receipt_payload = _paper_retry_terminal_success()
+    receipt_raw = json.dumps(receipt_payload, separators=(",", ":")).encode("utf-8")
+    (tmp_path / "paper-terminal.json").write_bytes(receipt_raw)
+    run_id = str(receipt_payload["run_id"])
+    row = _row(
+        id="baldr-paper-execution-eod-replay-daily",
+        scheduler_result=0,
+        scheduler_last_run_at="2026-10-21T11:59:01Z",
+        producer_status="machine_verified_candidate",
+        producer_run_id=run_id,
+        receipt_ref={
+            "path": "paper-terminal.json",
+            "sha256": hashlib.sha256(receipt_raw).hexdigest(),
+        },
+        receipt_identity_verified=False,
+    )
+    manifest_raw = json.dumps(_manifest(row), separators=(",", ":")).encode("utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_bytes(manifest_raw)
+    report = audit(manifest_path, hashlib.sha256(manifest_raw).hexdigest(), tmp_path)
+    component = report["components"][0]
+    assert component["status"] == "HEALTHY"
+    assert component["tracks"]["observability"]["status"] == "HEALTHY"
+    assert component["tracks"]["financial_qualification"]["status"] == "UNKNOWN"
+    assert (
+        component["tracks"]["application_receipt"]["raw"]["gate_reference_verification"]
+        == "shape_only_producer_asserted"
+    )
+
+    tampered_row = dict(row)
+    tampered_row["receipt_ref"] = {"path": "paper-terminal.json", "sha256": "0" * 64}
+    tampered_manifest_raw = json.dumps(
+        _manifest(tampered_row), separators=(",", ":")
+    ).encode("utf-8")
+    manifest_path.write_bytes(tampered_manifest_raw)
+    tampered_report = audit(
+        manifest_path,
+        hashlib.sha256(tampered_manifest_raw).hexdigest(),
+        tmp_path,
+    )
+    tampered = tampered_report["components"][0]
+    assert tampered["tracks"]["observability"]["status"] == "UNKNOWN"
+    assert "receipt_unverified:receipt_sha256_mismatch" in tampered["tracks"]["observability"]["reason"]

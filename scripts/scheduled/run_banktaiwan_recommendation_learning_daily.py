@@ -2499,6 +2499,10 @@ def _verify_child_terminal_readback(
         actual = receipt.get(field)
         if actual != expected:
             return {"status": "failed", "reason": f"child_run_receipt_{field}_mismatch"}
+    run_scope = child_payload.get("run_scope")
+    if type(run_scope) is str and run_scope.strip():
+        if receipt.get("run_scope") != run_scope or receipt_path.parent.name != run_scope:
+            return {"status": "failed", "reason": "child_run_receipt_run_scope_mismatch"}
 
     summary_receipt_fields = (
         "reason",
@@ -2544,6 +2548,9 @@ def _child_command(
     scenario: RecommendationCostScenario,
     args: argparse.Namespace,
     snapshot: SnapshotSummary,
+    parent_terminal_receipt_path: Path | None = None,
+    parent_invocation_nonce: str | None = None,
+    parent_run_id: str | None = None,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -2594,6 +2601,19 @@ def _child_command(
             str(snapshot.invocation_output_path),
         ]
     )
+    if parent_terminal_receipt_path is not None:
+        if parent_invocation_nonce is None or parent_run_id is None:
+            raise OperationalLaneError("child terminal control identity is incomplete")
+        command.extend(
+            (
+                "--parent-terminal-receipt",
+                str(parent_terminal_receipt_path),
+                "--parent-invocation-nonce",
+                parent_invocation_nonce,
+                "--parent-run-id",
+                parent_run_id,
+            )
+        )
     research_invocation = getattr(args, "current_restated_research_invocation", None)
     if research_invocation is not None:
         command.extend(research_invocation.child_arguments())
@@ -2627,6 +2647,8 @@ def _run_child_subprocess(
     *,
     run_id: str,
     stdout_artifact_path: Path,
+    parent_terminal_receipt_path: Path,
+    parent_invocation_nonce: str,
 ) -> Mapping[str, Any]:
     command = _child_command(
         paths=paths,
@@ -2634,6 +2656,9 @@ def _run_child_subprocess(
         scenario=scenario,
         args=args,
         snapshot=snapshot,
+        parent_terminal_receipt_path=parent_terminal_receipt_path,
+        parent_invocation_nonce=parent_invocation_nonce,
+        parent_run_id=run_id,
     )
     environment = os.environ.copy()
     environment.update(
@@ -2698,6 +2723,24 @@ def _run_child_subprocess(
             )
     else:
         child_payload_source = str(stdout_artifact.get("reason") or "stdout_artifact_blocked")
+        terminal_payload, terminal_control = _read_child_terminal_control_receipt(
+            stdout_bytes,
+            paths=paths,
+            expected_path=parent_terminal_receipt_path,
+            expected_nonce=parent_invocation_nonce,
+            expected_run_id=run_id,
+            decision_date=decision_date,
+            scenario=scenario,
+            snapshot=snapshot,
+        )
+        if terminal_payload is not None:
+            child_payload = terminal_payload
+            child_payload_source = "verified_child_terminal_control_receipt"
+        else:
+            terminal_control = {
+                "status": "failed",
+                "reason": terminal_control.get("reason", "child_terminal_control_missing"),
+            }
     combined = ((stdout_text or _subprocess_text(stdout_value)) + stderr_text).strip()
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"\n===== CHILD =====\n{combined}\n")
@@ -2708,7 +2751,117 @@ def _run_child_subprocess(
         "child_payload": child_payload,
         "child_payload_source": child_payload_source,
         "stdout_artifact": stdout_artifact,
+        "terminal_control": terminal_control if stdout_artifact.get("status") != "verified" else None,
         "stdout_stderr_tail": _tail(combined),
+    }
+
+
+def _read_child_terminal_control_receipt(
+    stdout_bytes: bytes,
+    *,
+    paths: OperationalPaths,
+    expected_path: Path,
+    expected_nonce: str,
+    expected_run_id: str,
+    decision_date: date,
+    scenario: RecommendationCostScenario,
+    snapshot: SnapshotSummary,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """只從 stdout 有界尾端讀 control trailer，再讀其固定路徑不可變收據。"""
+    trailer_prefix = b"BALDR-CHILD-TERMINAL-V1 "
+    tail = stdout_bytes[-64 * 1024 :]
+    lines = [line for line in tail.splitlines() if line.startswith(trailer_prefix)]
+    if len(lines) != 1:
+        return None, {"status": "failed", "reason": "child_terminal_control_trailer_missing_or_ambiguous"}
+    try:
+        trailer = json.loads(lines[0][len(trailer_prefix) :].decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return None, {"status": "failed", "reason": "child_terminal_control_trailer_invalid"}
+    if not isinstance(trailer, Mapping):
+        return None, {"status": "failed", "reason": "child_terminal_control_trailer_invalid"}
+    if not _same_resolved_path(trailer.get("receipt_path"), expected_path):
+        return None, {"status": "failed", "reason": "child_terminal_control_path_mismatch"}
+    digest = trailer.get("receipt_sha256")
+    if not _is_sha256_text(digest):
+        return None, {"status": "failed", "reason": "child_terminal_control_sha256_invalid"}
+    try:
+        from app_module.recommendation.queries import (
+            ExecutionArtifactIntegrityError,
+            _read_regular_file_no_follow,
+        )
+
+        raw = _read_regular_file_no_follow(
+            expected_path,
+            paths.operational_root,
+            max_bytes=512 * 1024,
+        )
+    except (ExecutionArtifactIntegrityError, OSError, RuntimeError, ValueError):
+        return None, {"status": "failed", "reason": "child_terminal_control_receipt_unreadable"}
+    actual_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    if actual_digest != digest:
+        return None, {"status": "failed", "reason": "child_terminal_control_receipt_sha256_mismatch"}
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return None, {"status": "failed", "reason": "child_terminal_control_receipt_invalid"}
+    if not isinstance(body, Mapping):
+        return None, {"status": "failed", "reason": "child_terminal_control_receipt_invalid"}
+    expected_identity = {
+        "schema_version": "banktaiwan-child-terminal-control.v1",
+        "invocation_nonce": expected_nonce,
+        "parent_run_id": expected_run_id,
+        "decision_date": decision_date.isoformat(),
+        "cost_scenario_hash": scenario.scenario_hash,
+        "lane_output_root": str(paths.lane_output_root.resolve()),
+        "source_db": str(paths.source_db.resolve()),
+    }
+    for key, expected in expected_identity.items():
+        if body.get(key) != expected:
+            return None, {"status": "failed", "reason": f"child_terminal_control_{key}_mismatch"}
+    snapshot_binding = body.get("snapshot_binding")
+    if not isinstance(snapshot_binding, Mapping):
+        return None, {"status": "failed", "reason": "child_terminal_control_snapshot_binding_missing"}
+    expected_snapshot: dict[str, object] = {
+        "result_id": snapshot.result_id,
+        "snapshot_output_root": str(paths.snapshot_output_root.resolve()),
+        "cohort_hash": snapshot.cohort_hash,
+        "invocation_output_path": str(snapshot.invocation_output_path.resolve()),
+        "invocation_output_size": snapshot.invocation_output_size,
+        "invocation_output_sha256": snapshot.invocation_output_sha256,
+        "decision_date": decision_date.isoformat(),
+    }
+    for key, expected_snapshot_value in expected_snapshot.items():
+        if snapshot_binding.get(key) != expected_snapshot_value:
+            return None, {"status": "failed", "reason": f"child_terminal_control_snapshot_{key}_mismatch"}
+    child_payload = body.get("child_payload")
+    if not isinstance(child_payload, Mapping):
+        return None, {"status": "failed", "reason": "child_terminal_control_projection_missing"}
+    if (
+        child_payload.get("schema_version") != _CHILD_CLI_SCHEMA_VERSION
+        or child_payload.get("decision_date") != decision_date.isoformat()
+        or child_payload.get("cost_scenario_hash") != scenario.scenario_hash
+        or child_payload.get("formal_order_allowed") is not False
+        or child_payload.get("shadow_only") is not True
+        or not isinstance(child_payload.get("terminal_projection"), Mapping)
+        or child_payload["terminal_projection"].get("schema_version")
+        != "banktaiwan-child-projection.v1"
+        or not isinstance(child_payload.get("run"), Mapping)
+        or not isinstance(child_payload.get("dependencies"), Mapping)
+        or not isinstance(child_payload.get("live_capture"), Mapping)
+        or type(child_payload["live_capture"].get("status")) is not str
+        or any(
+            type(child_payload["dependencies"].get(field)) is not str
+            for field in ("data_status", "outcome_status", "drift_status")
+        )
+    ):
+        return None, {"status": "failed", "reason": "child_terminal_control_projection_incomplete"}
+    return dict(child_payload), {
+        "status": "verified",
+        "receipt_path": str(expected_path),
+        "receipt_sha256": actual_digest,
+        "receipt_bytes": len(raw),
+        "invocation_nonce": expected_nonce,
+        "parent_run_id": expected_run_id,
     }
 
 
@@ -2778,10 +2931,14 @@ def _child_classification(child_result: Mapping[str, Any]) -> tuple[str, str, bo
     dependencies_value = child.get("dependencies")
     dependencies = dependencies_value if isinstance(dependencies_value, Mapping) else {}
     diagnostics = dependencies.get("diagnostics")
-    if isinstance(diagnostics, list) and any(
+    diagnostic_failure = (
+        isinstance(diagnostics, list)
+        and any(
         "source" in str(item).lower() and "failed" in str(item).lower()
         for item in diagnostics
-    ):
+        )
+    ) or dependencies.get("source_failure_diagnostic_present") is True
+    if diagnostic_failure:
         return "completed_with_advisories", decision_reason or "source_advisory_preserved", False
     return "completed_shadow", decision_reason or "shadow_learning_completed", False
 
@@ -2851,6 +3008,7 @@ def _compact_child_payload_summary(
     child_payload: Mapping[str, Any],
     *,
     stdout_artifact: Mapping[str, Any] | None,
+    terminal_control: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """產生 operational receipt 白名單摘要，不展開完整來源合約或列資料。"""
 
@@ -2884,6 +3042,12 @@ def _compact_child_payload_summary(
         diagnostics = dependencies_value.get("diagnostics")
         if isinstance(diagnostics, list):
             dependencies["diagnostic_count"] = len(diagnostics)
+        elif type(dependencies_value.get("diagnostic_count")) is int:
+            dependencies["diagnostic_count"] = dependencies_value["diagnostic_count"]
+        if type(dependencies_value.get("source_failure_diagnostic_present")) is bool:
+            dependencies["source_failure_diagnostic_present"] = dependencies_value[
+                "source_failure_diagnostic_present"
+            ]
         receipt = dependencies_value.get("source_contract_receipt")
         receipt_summary = _typed_summary_fields(
             receipt,
@@ -3021,7 +3185,12 @@ def _compact_child_payload_summary(
     )
     summary: dict[str, Any] = {
         "schema_version": "banktaiwan-child-result-summary.v1",
-        "source": "verified_child_cli_stdout_artifact",
+        "source": (
+            "verified_child_terminal_control_receipt"
+            if isinstance(terminal_control, Mapping)
+            and terminal_control.get("status") == "verified"
+            else "verified_child_cli_stdout_artifact"
+        ),
         "source_stdout_artifact": source_artifact,
         "child_cli": _typed_summary_fields(
             child_payload,
@@ -3056,6 +3225,11 @@ def _compact_child_payload_summary(
             child_payload.get("active_model_natural_evidence"), kind="evidence"
         ),
     }
+    if isinstance(terminal_control, Mapping):
+        summary["terminal_control"] = _typed_summary_fields(
+            terminal_control,
+            ("status", "receipt_path", "receipt_sha256", "receipt_bytes", "parent_run_id"),
+        )
     return summary
 
 
@@ -3825,6 +3999,10 @@ def _run_locked(
         child_result = dict(child_runner(paths, decision_date, scenario, child_args))
     else:
         assert stdout_artifact_path is not None
+        parent_terminal_receipt_path = (
+            paths.operational_root / "child_terminal_receipts" / f"{run_id}.json"
+        )
+        parent_invocation_nonce = secrets.token_hex(32)
         child_result = dict(
             _run_child_subprocess(
                 paths,
@@ -3834,6 +4012,8 @@ def _run_locked(
                 snapshot,
                 run_id=run_id,
                 stdout_artifact_path=stdout_artifact_path,
+                parent_terminal_receipt_path=parent_terminal_receipt_path,
+                parent_invocation_nonce=parent_invocation_nonce,
             )
         )
     child_result["wrapper_calendar_is_trading_day"] = official_day
@@ -3843,6 +4023,13 @@ def _run_locked(
         decision_date=decision_date,
         scenario=scenario,
     )
+    if child_result.get("child_payload_source") == "verified_child_terminal_control_receipt":
+        terminal_control = child_result.get("terminal_control")
+        if not isinstance(terminal_control, Mapping) or terminal_control.get("status") != "verified":
+            child_result["terminal_readback"] = {
+                "status": "failed",
+                "reason": "child_terminal_control_readback_failed",
+            }
     status, reason, recoverable = _child_classification(child_result)
     child_payload = child_result.get("child_payload")
     child_payload = child_payload if isinstance(child_payload, Mapping) else {}
@@ -3860,6 +4047,7 @@ def _run_locked(
                 "stdout_stderr_tail": child_result.get("stdout_stderr_tail", ""),
                 "child_payload_source": child_result.get("child_payload_source"),
                 "stdout_artifact": child_result.get("stdout_artifact"),
+                "terminal_control": child_result.get("terminal_control"),
                 "terminal_readback": child_result.get("terminal_readback"),
                 "status_path": str(paths.lane_learning_root / "latest_status.json"),
             },
@@ -3869,6 +4057,11 @@ def _run_locked(
                     stdout_artifact=(
                         child_result.get("stdout_artifact")
                         if isinstance(child_result.get("stdout_artifact"), Mapping)
+                        else None
+                    ),
+                    terminal_control=(
+                        child_result.get("terminal_control")
+                        if isinstance(child_result.get("terminal_control"), Mapping)
                         else None
                     ),
                 )

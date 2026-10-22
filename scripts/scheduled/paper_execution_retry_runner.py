@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 from typing import Any, Callable, Mapping, Sequence
+import uuid
 from zoneinfo import ZoneInfo
 
 # Task Scheduler invokes this file by path, so Python's import root is the
@@ -29,6 +30,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.scheduled.paper_execution_dependency_gate import inspect_dependency
+from scripts.scheduled.daily_operations_receipt import code_version, write_terminal_receipt
 from scripts.scheduled.run_paper_execution_daily_isolated import run_isolated
 
 
@@ -338,6 +340,8 @@ def run_scheduled(
             "attempt": attempt,
             "gate_status": gate.get("status"),
             "gate_ready": bool(gate.get("ready")),
+            "gate_target_date": gate.get("target_date"),
+            "gate_blocker_count": len(_object_list(gate.get("blockers"))),
             "gate_receipt": gate_receipt,
         }
 
@@ -441,23 +445,239 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    _configure_utf8_stdio()
-    args = build_parser().parse_args(argv)
-    result = run_scheduled(
-        max_attempts=args.max_attempts,
-        retry_delay_seconds=args.retry_delay_seconds,
-        gate_output_root=args.gate_output_root,
-    )
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
-    return 0 if str(result.get("status")) in {
+_PAPER_TERMINAL_SUCCESS_STATUSES = frozenset(
+    {
         "machine_verified_candidate",
         "no_trade_required_candidate",
         "skipped_non_trading_day",
         "skipped_no_pending_recommendation",
         "waiting_for_execution_session",
         "waiting_for_execution_source",
-    } else 2
+    }
+)
+
+
+def _paper_terminal_exit_code(result: Mapping[str, object]) -> int:
+    return 0 if str(result.get("status")) in _PAPER_TERMINAL_SUCCESS_STATUSES else 2
+
+
+def _terminal_gate_attempts(result: Mapping[str, object]) -> list[dict[str, object]]:
+    retry = result.get("scheduled_retry")
+    attempts = retry.get("attempts") if isinstance(retry, Mapping) else None
+    if retry is None and attempts is None:
+        if "scheduled_retry" in result:
+            raise ValueError("paper_terminal_retry_result_invalid")
+        return []
+    if not isinstance(attempts, Sequence) or isinstance(attempts, (str, bytes)):
+        raise ValueError("paper_terminal_gate_attempts_invalid")
+    if len(attempts) > 5:
+        raise ValueError("paper_terminal_gate_attempts_exceed_bound")
+    summaries: list[dict[str, object]] = []
+    for expected_attempt, record in enumerate(attempts, start=1):
+        if not isinstance(record, Mapping):
+            raise ValueError("paper_terminal_gate_attempt_invalid")
+        attempt = record.get("attempt")
+        if type(attempt) is not int or attempt != expected_attempt or attempt > 5:
+            raise ValueError("paper_terminal_gate_attempt_number_invalid")
+        receipt = record.get("gate_receipt")
+        receipt_ref: dict[str, str] | None = None
+        cross_day_terminal = (
+            record.get("terminal") is True
+            and record.get("reason") == "paper_execution_natural_day_changed_before_retry"
+            and "gate_status" not in record
+            and "gate_ready" not in record
+            and receipt is None
+        )
+        if cross_day_terminal:
+            if set(record) != {"attempt", "terminal", "reason"}:
+                raise ValueError("paper_terminal_cross_day_record_invalid")
+        elif not set(record).issubset(
+            {
+                "attempt",
+                "gate_status",
+                "gate_ready",
+                "gate_target_date",
+                "gate_blocker_count",
+                "gate_receipt",
+                "gate_blockers",
+                "terminal",
+                "retry_reason",
+                "adapter_status",
+            }
+        ):
+            raise ValueError("paper_terminal_gate_attempt_unknown_fields")
+        if "terminal" in record and type(record["terminal"]) is not bool:
+            raise ValueError("paper_terminal_gate_terminal_flag_invalid")
+        for text_field in ("retry_reason", "adapter_status"):
+            value = record.get(text_field)
+            if value is not None and (not isinstance(value, str) or not value or len(value) > 128):
+                raise ValueError("paper_terminal_gate_attempt_text_invalid")
+        raw_blockers = record.get("gate_blockers")
+        if raw_blockers is not None:
+            if not isinstance(raw_blockers, list):
+                raise ValueError("paper_terminal_gate_blocker_count_invalid")
+            if len(raw_blockers) != record.get("gate_blocker_count"):
+                raise ValueError("paper_terminal_gate_blocker_count_mismatch")
+        if isinstance(receipt, Mapping):
+            path = receipt.get("path")
+            digest = receipt.get("file_sha256")
+            if (
+                isinstance(path, str)
+                and path
+                and len(path) <= 2048
+                and isinstance(digest, str)
+                and digest.startswith("sha256:")
+                and len(digest) == 71
+                and all(character in "0123456789abcdef" for character in digest[7:])
+            ):
+                receipt_ref = {"path": path, "sha256": digest[7:]}
+            else:
+                raise ValueError("paper_terminal_gate_receipt_ref_invalid")
+        elif not cross_day_terminal:
+            raise ValueError("paper_terminal_gate_receipt_missing")
+        status = record.get("gate_status")
+        ready = record.get("gate_ready")
+        blocker_count = record.get("gate_blocker_count")
+        target_date = record.get("gate_target_date")
+        if not cross_day_terminal and (
+            not isinstance(status, str)
+            or len(status) > 128
+            or type(ready) is not bool
+            or type(blocker_count) is not int
+            or blocker_count < 0
+            or not isinstance(target_date, str)
+        ):
+            raise ValueError("paper_terminal_gate_attempt_fields_invalid")
+        if isinstance(target_date, str):
+            try:
+                if datetime.fromisoformat(target_date).date().isoformat() != target_date:
+                    raise ValueError("paper_terminal_gate_target_date_invalid")
+            except ValueError:
+                raise ValueError("paper_terminal_gate_target_date_invalid")
+        elif target_date is not None:
+            raise ValueError("paper_terminal_gate_target_date_invalid")
+        summaries.append(
+            {
+                "attempt": attempt,
+                "target_date": target_date if isinstance(target_date, str) else None,
+                "status": status if isinstance(status, str) and len(status) <= 128 else None,
+                "ready": ready if type(ready) is bool else None,
+                "blocker_count": blocker_count if type(blocker_count) is int and blocker_count >= 0 else None,
+                "receipt_ref": receipt_ref,
+            }
+        )
+    return summaries
+
+
+def _build_terminal_receipt(
+    result: Mapping[str, object],
+    *,
+    run_id: str,
+    started_at: datetime,
+    completed_at: datetime,
+    exit_code: int,
+) -> dict[str, object]:
+    raw_status = result.get("status")
+    allowed_statuses = _PAPER_TERMINAL_SUCCESS_STATUSES | frozenset(
+        {"blocked", "failed", "degraded_runtime_roll_forward"}
+    )
+    status = raw_status if isinstance(raw_status, str) and raw_status in allowed_statuses else "failed"
+    attempts = _terminal_gate_attempts(result)
+    last_attempt = attempts[-1] if attempts else None
+    last_status = last_attempt.get("status") if last_attempt else None
+    last_ready = last_attempt.get("ready") if last_attempt else None
+    if last_status in _NO_OP_GATE_STATUSES:
+        dependency_status = "not_applicable"
+    elif last_ready is True:
+        dependency_status = "passed"
+    elif last_ready is False:
+        dependency_status = "blocked"
+    else:
+        dependency_status = "unknown"
+    blocker_code = {
+        "blocked": "paper_execution_blocked",
+        "failed": "paper_execution_failed",
+        "degraded_runtime_roll_forward": "paper_execution_roll_forward_not_ready",
+    }.get(status)
+    blockers = [blocker_code] if blocker_code else []
+    started_text = started_at.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    completed_text = completed_at.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    gate_blocker_count = last_attempt.get("blocker_count") if last_attempt else None
+    status_payload: dict[str, object] = {
+        "schema_version": "paper-execution-retry-terminal-status.v1",
+        "task": "baldr-paper-execution-eod-replay-daily",
+        "run_id": run_id,
+        "started_at": started_text,
+        "completed_at": completed_text,
+        "status": status,
+        "exit_code": exit_code,
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": dependency_status,
+        "terminal_blocker_code": blocker_code,
+        "gate_attempts": attempts,
+        "gate_blocker_count": gate_blocker_count,
+        "gate_blockers_validation": "not_copied_or_validated",
+    }
+    return {
+        "schema_version": "paper-execution-retry-terminal-receipt.v1",
+        "task": "baldr-paper-execution-eod-replay-daily",
+        "run_id": run_id,
+        "started_at": started_text,
+        "completed_at": completed_text,
+        "code_version": code_version(Path(__file__)),
+        "exit_code": exit_code,
+        "failure_code": blocker_code,
+        "status": status,
+        "blockers": blockers,
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": dependency_status,
+        "status_payload": status_payload,
+    }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    _configure_utf8_stdio()
+    args = build_parser().parse_args(argv)
+    run_id = uuid.uuid4().hex
+    started_at = datetime.now(timezone.utc)
+    try:
+        result = run_scheduled(
+            max_attempts=args.max_attempts,
+            retry_delay_seconds=args.retry_delay_seconds,
+            gate_output_root=args.gate_output_root,
+        )
+    except Exception:  # noqa: BLE001 - 此排程邊界仍需留下終態收據
+        result = {"status": "failed", "blockers": ["paper_execution_failed"]}
+    completed_at = datetime.now(timezone.utc)
+    exit_code = _paper_terminal_exit_code(result)
+    terminal_root = Path(args.gate_output_root).expanduser().resolve().parent / "terminal_receipts"
+    try:
+        receipt_path = terminal_root / f"{run_id}.json"
+        receipt = _build_terminal_receipt(
+            result,
+            run_id=run_id,
+            started_at=started_at,
+            completed_at=completed_at,
+            exit_code=exit_code,
+        )
+        result["terminal_receipt"] = write_terminal_receipt(
+            receipt_path, receipt, receipt_root=terminal_root
+        )
+        _atomic_write_json(
+            terminal_root / "latest_terminal.json",
+            {
+                "schema_version": "paper-execution-retry-terminal-locator.v1",
+                "run_id": run_id,
+                "updated_at": completed_at.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
+                "terminal_receipt": result["terminal_receipt"],
+                "create_only_receipt": True,
+            },
+        )
+    except Exception:  # noqa: BLE001 - 持久化或定位失敗必須回傳非零
+        exit_code = 2
+        result["terminal_receipt_error"] = "paper_terminal_receipt_or_locator_persist_failed"
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
+    return exit_code
 
 
 def _configure_utf8_stdio() -> None:

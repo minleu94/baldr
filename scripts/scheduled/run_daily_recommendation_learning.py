@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import stat
 import sys
@@ -527,6 +528,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--source-db", type=Path, default=None)
     parser.add_argument(
+        "--parent-terminal-receipt",
+        type=Path,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument("--parent-invocation-nonce", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--parent-run-id", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
         "--calendar-cache-path",
         type=Path,
         default=None,
@@ -594,6 +603,19 @@ def build_parser() -> argparse.ArgumentParser:
             "省略時沿用 learning output root。"
         ),
     )
+    parser.add_argument(
+        "--official-event-binding-mode",
+        choices=("invocation_publication", "last_good_fallback"),
+        default=None,
+    )
+    parser.add_argument("--official-event-publication-id", default=None)
+    parser.add_argument("--official-event-manifest-path", default=None)
+    parser.add_argument("--official-event-manifest-hash", default=None)
+    parser.add_argument("--official-event-manifest-file-hash", default=None)
+    parser.add_argument("--official-event-canonical-events-hash", default=None)
+    parser.add_argument("--official-event-invocation-stdout-artifact-path", default=None)
+    parser.add_argument("--official-event-invocation-stdout-sha256", default=None)
+    parser.add_argument("--official-event-aggregate-run-id", default=None)
     parser.add_argument(
         "--symbols",
         default=None,
@@ -2039,6 +2061,33 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    parent_terminal_fields = (
+        args.parent_terminal_receipt,
+        args.parent_invocation_nonce,
+        args.parent_run_id,
+    )
+    if any(value is not None for value in parent_terminal_fields) and (
+        any(value is None for value in parent_terminal_fields)
+        or not isinstance(args.parent_invocation_nonce, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", args.parent_invocation_nonce)
+        or not isinstance(args.parent_run_id, str)
+        or not args.parent_run_id
+        or len(args.parent_run_id) > 160
+    ):
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-terminal-control.v1",
+                    "status": "blocked",
+                    "reason": "parent_terminal_control_identity_invalid",
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
     try:
         research_invocation = parse_current_restated_research_invocation(args)
     except (CurrentRestatedResearchError, OSError, TypeError, ValueError) as exc:
@@ -2321,6 +2370,24 @@ def main(argv: list[str] | None = None) -> int:
         snapshot_cohort=snapshot_cohort,
         snapshot_source_binding=snapshot_source_binding,
     )
+    official_event_binding: dict[str, object] | None = None
+    if args.official_event_binding_mode == "last_good_fallback":
+        official_event_binding = {
+            "mode": "last_good_fallback",
+            "aggregate_run_id": args.official_event_aggregate_run_id,
+        }
+    elif args.official_event_binding_mode == "invocation_publication":
+        official_event_binding = {
+            "mode": "invocation_publication",
+            "publication_id": args.official_event_publication_id,
+            "manifest_path": args.official_event_manifest_path,
+            "manifest_hash": args.official_event_manifest_hash,
+            "manifest_file_hash": args.official_event_manifest_file_hash,
+            "canonical_events_hash": args.official_event_canonical_events_hash,
+            "invocation_stdout_artifact_path": args.official_event_invocation_stdout_artifact_path,
+            "invocation_stdout_sha256": args.official_event_invocation_stdout_sha256,
+            "aggregate_run_id": args.official_event_aggregate_run_id,
+        }
     source_contract_audit = _audit_source_contract(
         data_root=config.data_root,
         output_root=source_artifact_root,
@@ -2335,6 +2402,7 @@ def main(argv: list[str] | None = None) -> int:
         replay_end_date=replay_config.replay_end_date,
         availability_cutoff_at=checked_clock.isoformat(timespec="seconds"),
         current_observed_snapshot=current_observed_feature_snapshot,
+        expected_official_event_binding=official_event_binding,
     )
     runner = _build_runner(
         learning_output_root,
@@ -3348,8 +3416,262 @@ def main(argv: list[str] | None = None) -> int:
         run_result.latest_status_path,
         payload,
     )
+    if any(
+        value is not None
+        for value in (
+            args.parent_terminal_receipt,
+            args.parent_invocation_nonce,
+            args.parent_run_id,
+        )
+    ):
+        try:
+            terminal_receipt = _write_parent_terminal_control_receipt(
+                payload=payload,
+                receipt_path=args.parent_terminal_receipt,
+                invocation_nonce=args.parent_invocation_nonce,
+                parent_run_id=args.parent_run_id,
+                output_root=learning_output_root,
+                source_db=source_db,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "daily-recommendation-learning-terminal-control.v1",
+                        "status": "blocked",
+                        "reason": "parent_terminal_control_receipt_write_failed",
+                        "error": type(exc).__name__,
+                        "formal_order_allowed": False,
+                        "shadow_only": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 2
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    if any(value is not None for value in parent_terminal_fields):
+        print(
+            "BALDR-CHILD-TERMINAL-V1 "
+            + json.dumps(terminal_receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        )
     return 2 if capture_failure is not None else 0
+
+
+def _terminal_projection_fields(value: object, fields: tuple[str, ...]) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError("parent_terminal_projection_mapping_missing")
+    projected: dict[str, object] = {}
+    for field in fields:
+        item = value.get(field)
+        if item is None or type(item) in {bool, int}:
+            projected[field] = item
+        elif type(item) is str:
+            if len(item) > 1024:
+                raise ValueError("parent_terminal_projection_string_over_bound")
+            projected[field] = item
+        else:
+            raise ValueError("parent_terminal_projection_field_type_invalid")
+    return projected
+
+
+def _parent_terminal_child_projection(payload: Mapping[str, Any]) -> dict[str, object]:
+    """以明確白名單保留 Bank wrapper 的 gate 欄位，不複製診斷列資料。"""
+    run = _terminal_projection_fields(
+        payload.get("run"),
+        (
+            "run_id", "status", "reason", "receipt_path", "latest_status_path",
+            "dataset_id", "dataset_hash", "candidate_id", "candidate_root",
+            "training_lineage_manifest_hash", "training_lineage_manifest_path",
+            "training_lineage_status", "decision", "decision_reason", "idempotent_replay",
+        ),
+    )
+    dependencies_value = payload.get("dependencies")
+    dependencies = _terminal_projection_fields(
+        dependencies_value,
+        ("data_status", "outcome_status", "drift_status", "recovery_policy"),
+    )
+    if isinstance(dependencies_value, Mapping):
+        contract_value = dependencies_value.get("source_contract")
+        if isinstance(contract_value, Mapping):
+            contract = _terminal_projection_fields(
+                contract_value,
+                (
+                    "status", "reason", "decision_date", "contract_sha256", "checked_at",
+                    "availability_cutoff_at", "history_start_date", "replay_start_date", "replay_end_date",
+                ),
+            )
+            for key, fields in (
+                ("technical", (
+                    "status", "reason", "verified", "publication_time_verified",
+                    "prospective_available", "latest_receipt_source_date", "technical_input_cutoff_max",
+                )),
+                ("corporate_actions", (
+                    "status", "reason", "official_event_publication_verified", "formal_source_contract_verified",
+                )),
+            ):
+                nested_value = contract_value.get(key)
+                if isinstance(nested_value, Mapping):
+                    nested = _terminal_projection_fields(nested_value, fields)
+                    if key == "technical":
+                        feature_value = nested_value.get("prospective_feature_snapshot")
+                        if isinstance(feature_value, Mapping):
+                            nested["prospective_feature_snapshot"] = _terminal_projection_fields(
+                                feature_value,
+                                ("status", "verified", "reason", "captured_at", "rows_sha256", "content_sha256", "row_count"),
+                            )
+                    else:
+                        adjustment_value = nested_value.get("adjustment_custody")
+                        if isinstance(adjustment_value, Mapping):
+                            nested["adjustment_custody"] = _terminal_projection_fields(
+                                adjustment_value,
+                                ("status", "reason", "verified", "manifest_path", "manifest_sha256", "available_at", "row_count"),
+                            )
+                        event_value = nested_value.get("event_publication")
+                        if isinstance(event_value, Mapping):
+                            event_projection = _terminal_projection_fields(
+                                event_value,
+                                (
+                                    "status", "reason", "publication_id", "manifest_path",
+                                    "manifest_file_sha256", "manifest_hash", "canonical_events_hash",
+                                    "consumer_binding_mode", "consumer_binding_verified",
+                                    "consumer_binding_reason", "aggregate_run_id",
+                                    "invocation_stdout_artifact_path", "invocation_stdout_sha256",
+                                ),
+                            )
+                            for binding_key in ("expected_publication", "observed_publication"):
+                                binding_value = event_value.get(binding_key)
+                                if isinstance(binding_value, Mapping):
+                                    event_projection[binding_key] = _terminal_projection_fields(
+                                        binding_value,
+                                        (
+                                            "publication_id", "manifest_path", "manifest_hash",
+                                            "manifest_file_hash", "canonical_events_hash",
+                                        ),
+                                    )
+                            nested["event_publication"] = event_projection
+                    contract[key] = nested
+            lanes_value = contract_value.get("lanes")
+            if isinstance(lanes_value, Mapping):
+                lane_value = lanes_value.get("price_up_calibration")
+                if isinstance(lane_value, Mapping):
+                    lane = _terminal_projection_fields(lane_value, ("prospective_status", "status", "reason"))
+                    blockers = lane_value.get("prospective_blockers") or lane_value.get("blockers")
+                    if isinstance(blockers, list):
+                        lane["blocker_count"] = len(blockers)
+                    contract["lanes"] = {"price_up_calibration": lane}
+            dependencies["source_contract"] = contract
+        source_receipt = dependencies_value.get("source_contract_receipt")
+        if isinstance(source_receipt, Mapping):
+            dependencies["source_contract_receipt"] = _terminal_projection_fields(
+                source_receipt,
+                ("status", "reason", "contract_path", "contract_content_sha256", "contract_file_sha256", "contract_sha256", "decision_date", "checked_at", "availability_cutoff_at"),
+            )
+        diagnostics = dependencies_value.get("diagnostics")
+        if isinstance(diagnostics, list):
+            dependencies["diagnostic_count"] = len(diagnostics)
+            dependencies["source_failure_diagnostic_present"] = any(
+                "source" in str(item).lower() and "failed" in str(item).lower()
+                for item in diagnostics
+            )
+    def record(key: str, fields: tuple[str, ...]) -> dict[str, object]:
+        value = payload.get(key)
+        return _terminal_projection_fields(value, fields) if isinstance(value, Mapping) else {}
+
+    pointer_fields = (
+        "status", "reason", "candidate_id", "candidate_root", "model_path", "artifact_path",
+        "artifact_sha256", "manifest_path", "manifest_sha256", "cost_scenario_hash", "updated_at", "created_at",
+    )
+    evidence_fields = (
+        "status", "reason", "checked_at", "decision_date", "source_date", "candidate_id", "model_id",
+        "matured_count", "pending_count", "failed_count", "eligible_count", "row_count", "sample_count",
+        "report_path", "receipt_path", "evidence_path", "evidence_sha256", "source_contract_sha256", "available_at",
+    )
+    live_capture = _terminal_projection_fields(
+        payload.get("live_capture"),
+        ("status", "reason", "checked_at", "decision_date", "source_contract_hash", "candidate_id", "capture_path", "capture_id", "capture_hash", "active_model_monitor_status", "active_model_monitor_reason"),
+    )
+    top = _terminal_projection_fields(
+        payload,
+        (
+            "schema_version", "decision_date", "decision_timezone", "cost_scenario_hash",
+            "symbol_source", "run_scope", "capture_scope", "experiment_scope", "recoverable",
+            "formal_order_allowed", "shadow_only", "error", "decision", "decision_reason",
+        ),
+    )
+    projection: dict[str, object] = {
+        **top,
+        "run": run,
+        "dependencies": dependencies,
+        "live_capture": live_capture,
+        "active_pointer": record("active_pointer", pointer_fields),
+        "challenger": record("challenger", pointer_fields),
+        "natural_evidence": record("natural_evidence", evidence_fields),
+        "active_model_natural_evidence": record("active_model_natural_evidence", evidence_fields),
+        "terminal_projection": {"schema_version": "banktaiwan-child-projection.v1"},
+    }
+    required = ("run_id", "status", "receipt_path")
+    if any(not run.get(key) for key in required) or not payload.get("decision_date") or not payload.get("cost_scenario_hash"):
+        raise ValueError("parent_terminal_projection_identity_missing")
+    if type(payload.get("formal_order_allowed")) is not bool or type(payload.get("shadow_only")) is not bool:
+        raise ValueError("parent_terminal_projection_lane_flags_missing")
+    if (
+        type(live_capture.get("status")) is not str
+        or not live_capture.get("status")
+        or any(type(dependencies.get(field)) is not str for field in ("data_status", "outcome_status", "drift_status"))
+    ):
+        raise ValueError("parent_terminal_projection_gate_fields_missing")
+    return projection
+
+
+def _write_parent_terminal_control_receipt(
+    *, payload: Mapping[str, Any], receipt_path: Path | None, invocation_nonce: str | None,
+    parent_run_id: str | None, output_root: Path, source_db: Path,
+) -> dict[str, str]:
+    if receipt_path is None or not isinstance(invocation_nonce, str) or not re.fullmatch(r"[0-9a-f]{64}", invocation_nonce):
+        raise ValueError("parent_terminal_invocation_binding_missing")
+    if (
+        not isinstance(parent_run_id, str)
+        or parent_run_id in {".", ".."}
+        or not re.fullmatch(r"[A-Za-z0-9._-]{1,160}", parent_run_id)
+    ):
+        raise ValueError("parent_terminal_run_id_invalid")
+    if not output_root.is_absolute() or ".." in output_root.parts:
+        raise ValueError("parent_terminal_output_root_invalid")
+    if not receipt_path.is_absolute() or ".." in receipt_path.parts:
+        raise ValueError("parent_terminal_receipt_path_invalid")
+    expected_root = (
+        Path(os.path.abspath(output_root))
+        / "scheduled"
+        / "recommendation_learning_banktaiwan"
+        / "child_terminal_receipts"
+    )
+    expected_path = expected_root / f"{parent_run_id}.json"
+    if Path(os.path.abspath(receipt_path)) != expected_path:
+        raise ValueError("parent_terminal_receipt_outside_anchored_root")
+    from scripts.scheduled.daily_operations_receipt import write_terminal_receipt
+
+    body = {
+        "schema_version": "banktaiwan-child-terminal-control.v1",
+        "invocation_nonce": invocation_nonce,
+        "parent_run_id": parent_run_id,
+        "decision_date": payload.get("decision_date"),
+        "cost_scenario_hash": payload.get("cost_scenario_hash"),
+        "lane_output_root": str(output_root.resolve()),
+        "source_db": str(Path(source_db).resolve()),
+        "snapshot_binding": _terminal_projection_fields(
+            payload.get("snapshot_source_binding"),
+            (
+                "result_id", "snapshot_output_root", "schema_version", "schema_revision",
+                "integrity_basis", "raw_artifact_sha256", "payload_hash", "cohort_hash",
+                "invocation_output_path", "invocation_output_size", "invocation_output_sha256",
+                "decision_date",
+            ),
+        ),
+        "child_payload": _parent_terminal_child_projection(payload),
+    }
+    receipt = write_terminal_receipt(receipt_path, body, receipt_root=expected_root)
+    return {"receipt_path": receipt["path"], "receipt_sha256": receipt["sha256"]}
 
 
 def _build_runner(
@@ -4451,6 +4773,7 @@ def _audit_source_contract(
     replay_end_date: str,
     availability_cutoff_at: str | None = None,
     current_observed_snapshot: Mapping[str, Any] | None = None,
+    expected_official_event_binding: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """Create a read-only source audit and persist its shadow receipt."""
 
@@ -4480,6 +4803,7 @@ def _audit_source_contract(
             replay_start_date=replay_start_date,
             replay_end_date=replay_end_date,
             availability_cutoff_at=availability_cutoff_at,
+            expected_official_event_binding=expected_official_event_binding,
         )
         if isinstance(current_observed_snapshot, Mapping):
             contract = dict(contract)

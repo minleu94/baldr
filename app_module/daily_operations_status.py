@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import PurePosixPath
 from typing import Any, Mapping
 
 
@@ -16,6 +17,7 @@ SOURCE_PENDING_STATUSES = frozenset({"pending", "unmatured", "not_mature", "wait
 FAILURE_STATUSES = frozenset({"failed", "failure", "error", "exception", "cancelled"})
 STALE_STATUSES = frozenset({"stale", "expired", "receipt_expired", "evidence_expired"})
 STATES = frozenset({"HEALTHY", "DEGRADED", "STALE", "BLOCKED_SOURCE", "EXECUTION_FAILED", "UNKNOWN"})
+_TAIPEI_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Taipei")
 
 TRACK_KEYS = (
     "windows_execution",
@@ -162,6 +164,110 @@ def _identity_errors(
             if started is not None and abs((started - scheduler_at).total_seconds()) > 300:
                 reasons.append("receipt_scheduler_time_mismatch")
     return reasons, started
+
+
+def _paper_eod_projection_is_correlated(
+    row: Mapping[str, Any],
+    projection: object,
+    *,
+    observed_at: datetime,
+) -> bool:
+    """驗證專用Paper gate摘要；不把時間關聯冒充producer run ID。"""
+    expected_keys = {
+        "schema",
+        "source_schema",
+        "raw_sha256_verified",
+        "evidence_kind",
+        "target_date",
+        "observed_at",
+        "receipt_path",
+        "raw_sha256",
+        "blocker_count",
+        "blockers_validation",
+        "source_basis",
+        "source_db_written",
+        "source_files_written",
+    }
+    if not isinstance(projection, Mapping) or set(projection) != expected_keys:
+        return False
+    if (
+        projection.get("schema") != "paper-eod-blocked-reader-projection.v1"
+        or projection.get("source_schema") != "paper-execution-dependency-gate.v1"
+        or projection.get("raw_sha256_verified") is not True
+        or projection.get("evidence_kind")
+        != "scheduler_time_correlated_not_producer_run_id"
+        or projection.get("blockers_validation") != "not_performed_above_128"
+        or projection.get("source_basis")
+        != "sqlite.daily_prices_stale_and_target_mismatch"
+        or projection.get("source_db_written") is not False
+        or projection.get("source_files_written") is not False
+        or type(projection.get("blocker_count")) is not int
+        or projection["blocker_count"] <= MAX_LIST
+    ):
+        return False
+
+    receipt_ref = row.get("receipt_ref")
+    expected_hash = projection.get("raw_sha256")
+    receipt_hash = receipt_ref.get("sha256") if isinstance(receipt_ref, Mapping) else None
+    projection_path = projection.get("receipt_path")
+    path_parts = PurePosixPath(projection_path).parts if isinstance(projection_path, str) else ()
+    if (
+        row.get("id") != "baldr-paper-execution-eod-replay-daily"
+        or row.get("enabled") is not True
+        or row.get("expected_enabled") is not True
+        or row.get("scheduler_result") != 2
+        or type(row.get("scheduler_result")) is not int
+        or row.get("stale") is not False
+        or row.get("writes_formal_data") is not False
+        or row.get("producer_status") != "blocked"
+        or row.get("producer_run_id") is not None
+        or row.get("receipt_identity_verified") is not False
+        or not isinstance(receipt_ref, Mapping)
+        or not isinstance(projection_path, str)
+        or not projection_path
+        or PurePosixPath(projection_path).is_absolute()
+        or any(part in {"", ".", ".."} for part in path_parts)
+        or "\\" in projection_path
+        or receipt_ref.get("path") != projection_path
+        or not isinstance(expected_hash, str)
+        or len(expected_hash) != 64
+        or any(character not in "0123456789abcdef" for character in expected_hash)
+        or not isinstance(receipt_hash, str)
+        or receipt_hash.lower() != expected_hash
+    ):
+        return False
+
+    target_date = projection.get("target_date")
+    try:
+        target = datetime.fromisoformat(target_date) if isinstance(target_date, str) else None
+        gate_time = datetime.fromisoformat(
+            str(projection.get("observed_at")).replace("Z", "+00:00")
+        )
+        scheduler_time = datetime.fromisoformat(
+            str(row.get("scheduler_last_run_at")).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return False
+    if (
+        target is None
+        or target.date().isoformat() != target_date
+        or gate_time.tzinfo is None
+        or gate_time.utcoffset() is None
+        or scheduler_time.tzinfo is None
+        or scheduler_time.utcoffset() is None
+        or gate_time.astimezone(_TAIPEI_TIMEZONE).date().isoformat() != target_date
+        or scheduler_time.astimezone(_TAIPEI_TIMEZONE).date().isoformat() != target_date
+    ):
+        return False
+    gate_utc = gate_time.astimezone(timezone.utc)
+    scheduler_utc = scheduler_time.astimezone(timezone.utc)
+    if (
+        gate_utc < scheduler_utc
+        or gate_utc - scheduler_utc > timedelta(minutes=5)
+        or gate_utc > observed_at.astimezone(timezone.utc)
+    ):
+        return False
+    return True
 
 
 def _adapter_track(
@@ -324,13 +430,33 @@ def classify_component(
         "started_at": adapted.get("started_at"),
         "completed_at": adapted.get("completed_at"),
         "status": raw_status,
+        "gate_reference_verification": adapted.get("gate_reference_verification"),
     }
+    bounded_projection = adapted.get("_bounded_paper_eod_projection")
+    projection_correlated = (
+        receipt_error is None
+        and _paper_eod_projection_is_correlated(
+            row, bounded_projection, observed_at=observed
+        )
+    )
+    if projection_correlated:
+        application_raw["evidence_kind"] = (
+            "scheduler_time_correlated_not_producer_run_id"
+        )
+        application_raw["bounded_gate_projection"] = dict(bounded_projection)  # type: ignore[arg-type]
     normalized_status = raw_status.strip().lower() if isinstance(raw_status, str) else ""
     receipt_blockers = adapted.get("blockers")
     blockers = list(receipt_blockers) if isinstance(receipt_blockers, list) else []
     app_reasons = list(identity_reasons)
     app_status = "UNKNOWN"
-    if same_run:
+    if projection_correlated:
+        app_status = "BLOCKED_SOURCE"
+        app_reasons = [
+            "pinned_paper_eod_gate_source_blocked_bounded_projection",
+            "blockers_not_validated_above_128:"
+            f"{bounded_projection['blocker_count']}",  # type: ignore[index]
+        ]
+    elif same_run:
         if blockers:
             app_status, app_reasons = "BLOCKED_SOURCE", [f"named_blocker:{item}" for item in blockers]
         elif producer_semantic == "passed" or normalized_status in SUCCESS_STATUSES:

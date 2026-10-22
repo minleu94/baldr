@@ -91,3 +91,13 @@ Read-only 狀態或失敗收據不授權重跑 writer、補跑錯過的自然排
 過往逐日診斷、工程假設與 named QA 時點見[歷史封存區](../09_archive/README.md)，不可用來推定目前排程已存在或已自然執行。現行排程基準與 lane 入口見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
 
 ML raw 每run診斷位於有效 OUTPUT_ROOT 的 scheduled/ml_raw_pit_refresh/launcher_logs；核有效roots、Python、UTC／timezone、兩streams與child exit。這不是producer receipt；建log失敗73且不啟動child，不能據此補回10/21舊失敗原因。Freshness／Evidence收據明示receipt_root，拒絕內層junction與reparse，repo/output僅沿既有核准mountpoint resolver。
+
+BankTaiwan 的大型 child stdout 仍受 16 MiB artifact 上限約束，不截取前綴冒充原件。Wrapper 可從最後 64 KiB 的唯一 `BALDR-CHILD-TERMINAL-V1` locator，驗證固定 lane 路徑下、不超過 512 KiB 的 `banktaiwan-child-terminal-control.v1` create-only 收據：外部 SHA、invocation nonce、parent run、日期、cost、DB／output root 與 snapshot result／cohort／invocation bytes 必須同次相符；還須通過原 child immutable run receipt 讀回及分類器。完整 stdout／stderr 診斷仍在該次日誌，不能以控制投影或 Task result 授金融資格。沒有 marker、錯路徑、hash／nonce 不符或 child exit 非零均保持拒絕。
+
+Forward 新 run 的實際 fetch 觀測位於 `scheduled/forward_outcomes/source_observations/runs/<run_id>/manifest.json`，相對路徑與 SHA 見同次收據的 `source_observation`。超限或保存失敗會在 outcome upsert 前拒絕；不清理舊產物、不替舊 outcome 補 lineage。觀測時間不是官方 availability，PIT／training 仍為 false；格式與有界保留條件見 [Track B 交付契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)。
+
+Paper EOD retry wrapper 的新自然 run 另產 `paper-execution-retry-terminal-receipt.v1`，預設位於 repo output 的 `paper_execution_eod_replay/terminal_receipts/<UUID>.json`，同目錄 `latest_terminal.json` 只作 locator。自訂 `--gate-output-root` 時，terminal 置於該 gate 目錄同父的 `terminal_receipts`，不落回正式預設根。核 terminal 的外部 SHA、同 UUID／UTC start/end／task／exit、scheduler 時窗及精確 schema，再依原 gate 引用核內容；adapter 對 gate ref 僅作 `shape_only_producer_asserted`，不冒稱已讀原 gate。原大型 blockers 仍在各次 immutable gate，terminal 只留有界摘要與計數；financial 永遠 unknown，保存或 locator 失敗均非零，不新增 retry。
+
+10/22 舊 Paper gate 沒有 producer run ID／起訖時間。Reader 可在固定 raw SHA、exact schema、來源 stale、write=false 及 scheduler 五分鐘時間關聯成立時，顯示具名 BLOCKED_SOURCE；明示 `scheduler_time_correlated_not_producer_run_id` 與 blockers 未逐條驗證。整體仍 EXECUTION_FAILED，financial／observability仍UNKNOWN；不將這項舊 gate 投影當新 terminal 自然驗收。
+
+校準 official child 不再以可變 latest 當本次輸出；以 `scheduled/recommendation_calibration_learning/runs/<aggregate_run_id>/official_market_events.stdout.bin` 的有界原件／SHA及publication pins傳給真正source-contract reader核 expected／observed。`last_good_fallback` 明示非同 invocation，不能把先執行過官方 Task 當 downstream 已使用同版本。詳見 [Track B 契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)。

@@ -29,6 +29,7 @@ from app_module.event_price_resolver import (
 from app_module.official_maturity_calendar import OfficialMaturityCalendar
 from app_module.outcome_maturity_service import OutcomeMaturity, OutcomeMaturityService
 from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
+from app_module.forward_source_observation import ForwardSourceObservationRecorder
 from data_module.twse_quote_observation_capture import SESSION_CLOSE
 
 
@@ -202,6 +203,7 @@ class ForwardPerformanceService:
         db_path: str | Path | None = None,
         maturity_calendar: OfficialMaturityCalendar | None = None,
         clock: Callable[[], datetime] | None = None,
+        source_observer: ForwardSourceObservationRecorder | None = None,
     ) -> None:
         self.config = config
         self.repository = repository or EvidenceEventRepository(config)
@@ -211,6 +213,12 @@ class ForwardPerformanceService:
         ] = {}
         self._index_return_cache: dict[tuple[str, str | None, str, str], int | None] = {}
         self._index_table_columns_cache: dict[str, tuple[str, ...]] = {}
+        self._source_observer = source_observer
+        self._daily_price_observation_ids: dict[tuple[str, str | None], str] = {}
+        self._index_return_observation_ids: dict[
+            tuple[str, str | None, str, str], tuple[str, ...]
+        ] = {}
+        self._index_table_column_observation_ids: dict[str, str] = {}
         self._maturity_calendar = maturity_calendar
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._corporate_action_policy = CorporateActionPolicy(CorporateActionProvider(self.db_path))
@@ -231,9 +239,14 @@ class ForwardPerformanceService:
         invocation_at: datetime | None = None,
         require_cohort_identity: bool = False,
     ) -> ForwardOutcomeSummary:
+        if self._source_observer is not None:
+            self._source_observer.begin_calculation()
         self._daily_price_cache.clear()
         self._index_return_cache.clear()
         self._index_table_columns_cache.clear()
+        self._daily_price_observation_ids.clear()
+        self._index_return_observation_ids.clear()
+        self._index_table_column_observation_ids.clear()
         read_window = self._resolve_price_read_window(
             data_as_of_date=data_as_of_date,
             invocation_at=invocation_at,
@@ -291,11 +304,29 @@ class ForwardPerformanceService:
             counters["events_ready"] += 1
             for window in tuple(int(item) for item in windows):
                 existing = self.repository.get_outcome(event.event_id, window)
-                outcome = self._build_outcome(
-                    event,
-                    window,
-                    data_as_of_date=read_window.price_read_cutoff_date,
-                )
+                if self._source_observer is not None:
+                    self._source_observer.begin_outcome(
+                        event_id=event.event_id, window_days=window
+                    )
+                try:
+                    outcome = self._build_outcome(
+                        event,
+                        window,
+                        data_as_of_date=read_window.price_read_cutoff_date,
+                    )
+                except Exception:
+                    if self._source_observer is not None:
+                        self._source_observer.end_outcome()
+                        # 計算失敗時仍須發布已讀取的部分觀察資料，再向外拋出例外；
+                        # 錯誤路徑不會 upsert outcome。
+                        self._source_observer.persist()
+                    raise
+                else:
+                    query_ids = (
+                        self._source_observer.end_outcome()
+                        if self._source_observer is not None
+                        else ()
+                    )
                 outcome = replace(outcome, metadata={
                     **outcome.metadata,
                     **read_window.to_metadata(),
@@ -303,6 +334,49 @@ class ForwardPerformanceService:
                     "is_execution_pnl": False,
                     **_event_identity_metadata(event),
                 })
+                if self._source_observer is not None:
+                    self._source_observer.record_outcome(
+                        event_id=event.event_id,
+                        window_days=window,
+                        return_basis=outcome.return_basis,
+                        outcome_status=getattr(
+                            outcome.outcome_status,
+                            "value",
+                            str(outcome.outcome_status),
+                        ),
+                        outcome_payload={
+                            "outcome_id": outcome.outcome_id,
+                            "event_id": outcome.event_id,
+                            "window_days": outcome.window_days,
+                            "window_type": outcome.window_type,
+                            "return_basis": outcome.return_basis,
+                            "event_price_date": outcome.event_price_date,
+                            "event_close": outcome.event_close,
+                            "outcome_price_date": outcome.outcome_price_date,
+                            "outcome_close": outcome.outcome_close,
+                            "forward_return_bp": outcome.forward_return_bp,
+                            "benchmark_return_bp": outcome.benchmark_return_bp,
+                            "benchmark_excess_bp": outcome.benchmark_excess_bp,
+                            "industry_return_bp": outcome.industry_return_bp,
+                            "industry_excess_bp": outcome.industry_excess_bp,
+                            "max_adverse_excursion_bp": outcome.max_adverse_excursion_bp,
+                            "max_favorable_excursion_bp": outcome.max_favorable_excursion_bp,
+                            "outcome_status": getattr(
+                                outcome.outcome_status,
+                                "value",
+                                str(outcome.outcome_status),
+                            ),
+                            "data_quality": getattr(
+                                outcome.data_quality,
+                                "value",
+                                str(outcome.data_quality),
+                            ),
+                            "warnings": list(outcome.warnings),
+                            "data_as_of_date": outcome.data_as_of_date,
+                            "metadata": outcome.metadata,
+                        },
+                        query_ids=query_ids,
+                    )
                 counters["warnings_count"] += len(outcome.warnings)
                 if outcome.metadata.get("time_contract_state") == "blocked_time_contract":
                     counters["blocked_time_contract_count"] += 1
@@ -322,6 +396,9 @@ class ForwardPerformanceService:
                     counters["outcomes_updated"] += 1
                 if not dry_run:
                     pending_writes.append(outcome)
+
+        if self._source_observer is not None:
+            self._source_observer.persist()
 
         if not dry_run:
             # Commit the bounded run as one transaction.  A source or SQLite
@@ -671,7 +748,10 @@ class ForwardPerformanceService:
     ) -> EventPriceResolution | None:
         target = self._date_key(event_date)
         as_of = self._date_key(data_as_of_date) if data_as_of_date else None
-        _, values = self._daily_price_series(symbol, as_of_date=data_as_of_date)
+        _, values = self._daily_price_series(
+            symbol,
+            as_of_date=data_as_of_date,
+        )
         resolution = EventPriceResolver().resolve(
             decision_date=self._date_iso(target),
             data_as_of_date=self._date_iso(as_of) if as_of is not None else None,
@@ -692,7 +772,10 @@ class ForwardPerformanceService:
         *,
         data_as_of_date: str | None,
     ) -> OutcomeMaturity:
-        keys, _ = self._daily_price_series(symbol, as_of_date=data_as_of_date)
+        keys, _ = self._daily_price_series(
+            symbol,
+            as_of_date=data_as_of_date,
+        )
         trading_dates = tuple(self._date_iso(key) for key in keys)
         as_of = data_as_of_date or (trading_dates[-1] if trading_dates else event_price_date)
         return OutcomeMaturityService().evaluate(
@@ -712,7 +795,10 @@ class ForwardPerformanceService:
     ) -> tuple[str, Decimal] | None:
         target = self._date_key(event_price_date)
         as_of = self._date_key(data_as_of_date) if data_as_of_date else None
-        keys, values = self._daily_price_series(symbol, as_of_date=data_as_of_date)
+        keys, values = self._daily_price_series(
+            symbol,
+            as_of_date=data_as_of_date,
+        )
         start_index = bisect_right(keys, target)
         outcome_index = start_index + int(window_days) - 1
         if outcome_index >= len(values):
@@ -742,17 +828,25 @@ class ForwardPerformanceService:
             sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
         ) as conn:
             conn.execute("PRAGMA query_only = ON")
-            rows = conn.execute(
-                f"""
+            query = f"""
                 SELECT {self._quote_identifier(date_column)},
                        {self._quote_identifier(close_column)}
                 FROM daily_prices
                 WHERE {self._quote_identifier(symbol_column)} = ?
                   AND REPLACE(REPLACE(CAST({self._quote_identifier(date_column)} AS TEXT), '-', ''), '/', '') = ?
                 LIMIT 2
-                """,
-                (symbol, target_key),
-            ).fetchall()
+                """
+            parameters = (symbol, target_key)
+            rows = conn.execute(query, parameters).fetchall()
+            if self._source_observer is not None:
+                self._source_observer.observe_query(
+                    table="daily_prices",
+                    query=query,
+                    parameters=parameters,
+                    rows=rows,
+                    symbol=symbol,
+                    purpose="exact_official_target_price",
+                )
         if not rows:
             return None, "no_daily_price_row_on_planned_official_session"
         if len(rows) != 1:
@@ -782,10 +876,18 @@ class ForwardPerformanceService:
         end_key = self._date_key(outcome_price_date)
         cache_key = (table_name, str(index_name or ""), start_key, end_key)
         if cache_key in self._index_return_cache:
+            if self._source_observer is not None:
+                for query_id in self._index_return_observation_ids.get(cache_key, ()):
+                    self._source_observer.record_use(
+                        query_id, purpose=f"{table_name}_benchmark_cache_reuse"
+                    )
             return self._index_return_cache[cache_key]
+        query_observation_ids: list[str] = []
         with closing(sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             conn.execute("PRAGMA query_only = ON")
-            columns = self._index_table_columns(conn, table_name)
+            columns = self._index_table_columns(
+                conn, table_name, observation_ids=query_observation_ids
+            )
             date_column = self._first_existing_column(columns, INDEX_DATE_COLUMNS)
             close_columns = self._existing_columns(columns, INDEX_CLOSE_COLUMNS)
             name_column = self._first_existing_column(columns, INDEX_NAME_COLUMNS)
@@ -800,6 +902,7 @@ class ForwardPerformanceService:
                             close_column=close_column,
                             index_name=candidate,
                             date_key=start_key,
+                            observation_ids=query_observation_ids,
                         )
                         end = self._index_value(
                             conn,
@@ -809,6 +912,7 @@ class ForwardPerformanceService:
                             close_column=close_column,
                             index_name=candidate,
                             date_key=end_key,
+                            observation_ids=query_observation_ids,
                         )
                         start_value = self._to_decimal(start)
                         end_value = self._to_decimal(end)
@@ -816,15 +920,48 @@ class ForwardPerformanceService:
                             continue
                         result = self._return_bp(end_value, start_value)
                         self._index_return_cache[cache_key] = result
+                        self._index_return_observation_ids[cache_key] = tuple(
+                            dict.fromkeys(query_observation_ids)
+                        )
                         return result
 
         self._index_return_cache[cache_key] = None
+        self._index_return_observation_ids[cache_key] = tuple(
+            dict.fromkeys(query_observation_ids)
+        )
         return None
 
-    def _index_table_columns(self, conn: sqlite3.Connection, table_name: str) -> tuple[str, ...]:
+    def _index_table_columns(
+        self,
+        conn: sqlite3.Connection,
+        table_name: str,
+        *,
+        observation_ids: list[str] | None = None,
+    ) -> tuple[str, ...]:
         if table_name not in self._index_table_columns_cache:
-            rows = conn.execute(f"PRAGMA table_info({self._quote_identifier(table_name)})").fetchall()
+            query = f"PRAGMA table_info({self._quote_identifier(table_name)})"
+            rows = conn.execute(query).fetchall()
             self._index_table_columns_cache[table_name] = tuple(str(row[1]) for row in rows)
+            if self._source_observer is not None:
+                query_id = self._source_observer.observe_query(
+                    table=table_name,
+                    query=query,
+                    parameters=(),
+                    rows=rows,
+                    symbol=None,
+                    purpose="index_table_schema",
+                )
+                self._index_table_column_observation_ids[table_name] = query_id
+                if observation_ids is not None:
+                    observation_ids.append(query_id)
+        elif self._source_observer is not None:
+            cached_query_id = self._index_table_column_observation_ids.get(table_name)
+            if cached_query_id is not None:
+                self._source_observer.record_use(
+                    cached_query_id, purpose="index_table_schema_cache_reuse"
+                )
+                if observation_ids is not None:
+                    observation_ids.append(cached_query_id)
         return self._index_table_columns_cache[table_name]
 
     def _index_value(
@@ -837,52 +974,82 @@ class ForwardPerformanceService:
         close_column: str,
         index_name: str | None,
         date_key: str,
+        observation_ids: list[str] | None = None,
     ) -> Any:
         table_sql = self._quote_identifier(table_name)
         date_sql = self._quote_identifier(date_column)
         close_sql = self._quote_identifier(close_column)
+        parameters: tuple[str, ...]
         if index_name is None:
             if name_column is None:
-                row = conn.execute(
-                    f"""
+                query = f"""
                     SELECT {close_sql}
                     FROM {table_sql}
                     WHERE REPLACE(REPLACE(CAST({date_sql} AS TEXT), '-', ''), '/', '') = ?
                       AND {close_sql} IS NOT NULL
                     LIMIT 1
-                    """,
-                    (date_key,),
-                ).fetchone()
+                    """
+                parameters = (date_key,)
+                row = conn.execute(query, parameters).fetchone()
+                self._observe_index_value(
+                    observation_ids, table_name, query, parameters, row, index_name
+                )
                 return None if row is None else row[0]
             name_sql = self._quote_identifier(name_column)
-            row = conn.execute(
-                f"""
+            query = f"""
                 SELECT {close_sql}
                 FROM {table_sql}
                 WHERE ({name_sql} IS NULL OR TRIM(CAST({name_sql} AS TEXT)) = '')
                   AND REPLACE(REPLACE(CAST({date_sql} AS TEXT), '-', ''), '/', '') = ?
                   AND {close_sql} IS NOT NULL
                 LIMIT 1
-                """,
-                (date_key,),
-            ).fetchone()
+                """
+            parameters = (date_key,)
+            row = conn.execute(query, parameters).fetchone()
+            self._observe_index_value(
+                observation_ids, table_name, query, parameters, row, index_name
+            )
             return None if row is None else row[0]
 
         if name_column is None:
             return None
         name_sql = self._quote_identifier(name_column)
-        row = conn.execute(
-            f"""
+        query = f"""
             SELECT {close_sql}
             FROM {table_sql}
             WHERE {name_sql} = ?
               AND REPLACE(REPLACE(CAST({date_sql} AS TEXT), '-', ''), '/', '') = ?
               AND {close_sql} IS NOT NULL
             LIMIT 1
-            """,
-            (index_name, date_key),
-        ).fetchone()
+            """
+        parameters = (index_name, date_key)
+        row = conn.execute(query, parameters).fetchone()
+        self._observe_index_value(
+            observation_ids, table_name, query, parameters, row, index_name
+        )
         return None if row is None else row[0]
+
+    def _observe_index_value(
+        self,
+        observation_ids: list[str] | None,
+        table_name: str,
+        query: str,
+        parameters: tuple[Any, ...],
+        row: tuple[Any, ...] | None,
+        index_name: str | None,
+    ) -> None:
+        if self._source_observer is None:
+            return
+        query_id = self._source_observer.observe_query(
+            table=table_name,
+            query=query,
+            parameters=parameters,
+            rows=() if row is None else (row,),
+            symbol=index_name,
+            purpose="benchmark_value",
+        )
+        if observation_ids is not None:
+            observation_ids.append(query_id)
 
     @classmethod
     def _index_name_candidates(cls, table_name: str, index_name: str | None) -> tuple[str | None, ...]:
@@ -955,6 +1122,12 @@ class ForwardPerformanceService:
         as_of_key = self._date_key(as_of_date) if as_of_date is not None else None
         cache_key = (symbol, as_of_key)
         if cache_key in self._daily_price_cache:
+            if self._source_observer is not None:
+                query_id = self._daily_price_observation_ids.get(cache_key)
+                if query_id is not None:
+                    self._source_observer.record_use(
+                        query_id, purpose="daily_price_series_cache_reuse"
+                    )
             return self._daily_price_cache[cache_key]
         rows: list[tuple[str, Decimal]] = []
         with closing(sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
@@ -974,7 +1147,18 @@ class ForwardPerformanceService:
                   AND (? IS NULL OR {normalized_date_sql} <= ?)
                 ORDER BY {normalized_date_sql} ASC
             """
-            fetched = conn.execute(query, (symbol, as_of_key, as_of_key)).fetchall()
+            parameters = (symbol, as_of_key, as_of_key)
+            fetched = conn.execute(query, parameters).fetchall()
+            if self._source_observer is not None:
+                query_id = self._source_observer.observe_query(
+                    table="daily_prices",
+                    query=query,
+                    parameters=parameters,
+                    rows=fetched,
+                    symbol=symbol,
+                    purpose="daily_price_series",
+                )
+                self._daily_price_observation_ids[cache_key] = query_id
         for raw_date, raw_close in fetched:
             close_value = self._to_decimal(raw_close)
             if close_value is None:

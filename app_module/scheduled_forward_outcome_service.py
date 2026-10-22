@@ -26,6 +26,7 @@ from app_module.forward_performance_service import (
     ForwardOutcomeSummary,
     ForwardPerformanceService,
 )
+from app_module.forward_source_observation import ForwardSourceObservationRecorder
 from app_module.forward_outcome_context import build_official_maturity_calendar
 from app_module.scheduled_writer_reservation import (
     ScheduledWriterReservationError,
@@ -130,6 +131,7 @@ def run_scheduled_forward_outcomes(
     }
 
     reservation = None
+    source_observer: ForwardSourceObservationRecorder | None = None
     try:
         normalized_windows = _normalise_windows(windows)
         lookback = _positive_bounded_int(
@@ -324,11 +326,18 @@ def run_scheduled_forward_outcomes(
             db_path=resolved_db,
             read_only=not confirm,
         )
+        source_observer = ForwardSourceObservationRecorder(
+            run_id=run_id,
+            output_root=resolved_output,
+            db_path=resolved_db,
+            writer=_write_create_only,
+        )
         service = ForwardPerformanceService(
             config,
             repository,
             db_path=resolved_db,
             maturity_calendar=maturity_calendar,
+            source_observer=source_observer,
         )
         summary = service.calculate(
             windows=normalized_windows,
@@ -343,6 +352,8 @@ def run_scheduled_forward_outcomes(
             require_cohort_identity=require_cohort_identity,
         )
         summary_payload = asdict(summary)
+        if source_observer.reference is not None:
+            payload["source_observation"] = dict(source_observer.reference)
         summary_payload["outcomes_written"] = (
             summary.outcomes_created + summary.outcomes_updated
         )
@@ -399,6 +410,8 @@ def run_scheduled_forward_outcomes(
                 "exit_code": 2,
             }
         )
+        if source_observer is not None and source_observer.reference is not None:
+            payload["source_observation"] = dict(source_observer.reference)
     except Exception as exc:  # noqa: BLE001 - scheduled boundary must fail closed
         payload.update(
             {
@@ -407,6 +420,8 @@ def run_scheduled_forward_outcomes(
                 "exit_code": 2,
             }
         )
+        if source_observer is not None and source_observer.reference is not None:
+            payload["source_observation"] = dict(source_observer.reference)
     finally:
         if reservation is not None:
             try:

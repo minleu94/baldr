@@ -536,7 +536,7 @@ def test_production_child_stdout_over_status_bound_is_pinned_and_reusable(
     assert receipt_path.stat().st_size <= operational._MAX_CHILD_RUN_RECEIPT_BYTES
 
 
-def test_production_child_stdout_size_cap_blocks_without_parsing(
+def test_production_child_stdout_size_cap_uses_bounded_terminal_control_receipt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -544,9 +544,55 @@ def test_production_child_stdout_size_cap_blocks_without_parsing(
     _open_calendar(monkeypatch)
     paths, decision_date, scenario = operational._common_args(args)
     _successful_child(paths, decision_date, scenario, args)
-    raw_stdout = b"x" * (operational._MAX_CHILD_CLI_STDOUT_ARTIFACT_BYTES + 1)
-
     def completed_process(command: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        command_values = list(command)
+        def flag_value(flag: str) -> str:
+            return command_values[command_values.index(flag) + 1]
+
+        nonce = flag_value("--parent-invocation-nonce")
+        parent_run_id = flag_value("--parent-run-id")
+        terminal_path = Path(flag_value("--parent-terminal-receipt"))
+        invocation_output_path = Path(flag_value("--snapshot-invocation-output-path"))
+        payload = _successful_child(paths, decision_date, scenario, args)["child_payload"]
+        assert isinstance(payload, dict)
+        payload["dependencies"].update(
+            {"data_status": "passed", "outcome_status": "pending", "drift_status": "clean"}
+        )
+        payload["snapshot_source_binding"] = {
+            "result_id": flag_value("--snapshot-result-id"),
+            "snapshot_output_root": str(paths.snapshot_output_root.resolve()),
+            "schema_version": None,
+            "schema_revision": None,
+            "integrity_basis": None,
+            "raw_artifact_sha256": None,
+            "payload_hash": None,
+            "cohort_hash": flag_value("--snapshot-cohort-hash"),
+            "invocation_output_path": str(invocation_output_path.resolve()),
+            "invocation_output_size": invocation_output_path.stat().st_size,
+            "invocation_output_sha256": flag_value("--snapshot-invocation-output-sha256"),
+            "decision_date": decision_date.isoformat(),
+        }
+        from scripts.scheduled import run_daily_recommendation_learning as child
+
+        receipt = child._write_parent_terminal_control_receipt(
+            payload=payload,
+            receipt_path=terminal_path,
+            invocation_nonce=nonce,
+            parent_run_id=parent_run_id,
+            output_root=paths.lane_output_root,
+            source_db=paths.source_db,
+        )
+        assert set(receipt) == {"receipt_path", "receipt_sha256"}
+        trailer = (
+            b"BALDR-CHILD-TERMINAL-V1 "
+            + json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            + b"\n"
+        )
+        raw_stdout = (
+            b"x" * (operational._MAX_CHILD_CLI_STDOUT_ARTIFACT_BYTES + 1)
+            + b"\n"
+            + trailer
+        )
         return subprocess.CompletedProcess(
             args=command,
             returncode=0,
@@ -562,20 +608,143 @@ def test_production_child_stdout_size_cap_blocks_without_parsing(
     )
     code, payload = operational.run_once(args)
 
-    assert code == 2
-    assert payload["status"] == "failed_dependency"
+    assert code == 0
+    assert payload["status"] == "completed_waiting_natural_maturity"
     artifact = payload["child_invocation"]["stdout_artifact"]
     assert artifact["status"] == "blocked"
     assert artifact["reason"] == "child_stdout_artifact_size_limit_exceeded"
-    assert artifact["observed_size_bytes"] == len(raw_stdout)
+    assert artifact["observed_size_bytes"] > operational._MAX_CHILD_CLI_STDOUT_ARTIFACT_BYTES
     assert "path" in artifact
     assert not Path(artifact["path"]).exists()
+    assert payload["child_invocation"]["child_payload_source"] == "verified_child_terminal_control_receipt"
+    assert payload["child_invocation"]["terminal_control"]["status"] == "verified"
     receipt_path = Path(str(payload["receipt_path"]))
     assert receipt_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    assert receipt["status"] == "failed_dependency"
+    assert receipt["status"] == "completed_waiting_natural_maturity"
     assert receipt["reason"] == payload["reason"]
     assert paths.latest_status_path.stat().st_size <= operational._MAX_OPERATIONAL_STATUS_BYTES
+
+
+def test_child_terminal_control_writer_rejects_out_of_root_and_traversal_targets(
+    tmp_path: Path,
+) -> None:
+    from scripts.scheduled import run_daily_recommendation_learning as child
+
+    output_root = tmp_path / "lane"
+    outside_path = tmp_path / "outside.json"
+    with pytest.raises(ValueError, match="parent_terminal_receipt_outside_anchored_root"):
+        child._write_parent_terminal_control_receipt(
+            payload={},
+            receipt_path=outside_path,
+            invocation_nonce="a" * 64,
+            parent_run_id="2026-10-22-attempt-001-abcd1234",
+            output_root=output_root,
+            source_db=tmp_path / "source.db",
+        )
+
+    escaped_path = (
+        output_root
+        / "scheduled"
+        / "recommendation_learning_banktaiwan"
+        / "child_terminal_receipts"
+        / ".."
+        / "escape.json"
+    )
+    with pytest.raises(ValueError, match="parent_terminal_run_id_invalid"):
+        child._write_parent_terminal_control_receipt(
+            payload={},
+            receipt_path=escaped_path,
+            invocation_nonce="b" * 64,
+            parent_run_id="../escape",
+            output_root=output_root,
+            source_db=tmp_path / "source.db",
+        )
+
+
+def test_child_terminal_control_reader_rejects_nonce_hash_and_path_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = _fixture_args(tmp_path)
+    _open_calendar(monkeypatch)
+    paths, decision_date, scenario = operational._common_args(args)
+    snapshot, snapshot_error = operational.load_same_day_snapshot(
+        output_root=paths.snapshot_output_root,
+        decision_date=decision_date,
+    )
+    assert snapshot is not None, snapshot_error
+    from scripts.scheduled import run_daily_recommendation_learning as child
+
+    payload_value = _successful_child(paths, decision_date, scenario, args)["child_payload"]
+    assert isinstance(payload_value, dict)
+    payload_value["dependencies"].update(
+        {"data_status": "passed", "outcome_status": "pending", "drift_status": "clean"}
+    )
+    payload_value["snapshot_source_binding"] = {
+        "result_id": snapshot.result_id,
+        "snapshot_output_root": str(paths.snapshot_output_root.resolve()),
+        "schema_version": snapshot.schema_version,
+        "schema_revision": snapshot.schema_revision,
+        "integrity_basis": snapshot.integrity_basis,
+        "raw_artifact_sha256": snapshot.canonical_artifact_sha256,
+        "payload_hash": snapshot.payload_hash,
+        "cohort_hash": snapshot.cohort_hash,
+        "invocation_output_path": str(snapshot.invocation_output_path.resolve()),
+        "invocation_output_size": snapshot.invocation_output_size,
+        "invocation_output_sha256": snapshot.invocation_output_sha256,
+        "decision_date": decision_date.isoformat(),
+    }
+    parent_run_id = "terminal-reader-negative-cases"
+    nonce = "c" * 64
+    receipt_path = paths.operational_root / "child_terminal_receipts" / f"{parent_run_id}.json"
+    trailer = child._write_parent_terminal_control_receipt(
+        payload=payload_value,
+        receipt_path=receipt_path,
+        invocation_nonce=nonce,
+        parent_run_id=parent_run_id,
+        output_root=paths.lane_output_root,
+        source_db=paths.source_db,
+    )
+    stdout_bytes = (
+        b"ordinary full child output\nBALDR-CHILD-TERMINAL-V1 "
+        + json.dumps(trailer, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        + b"\n"
+    )
+    reader_args = {
+        "stdout_bytes": stdout_bytes,
+        "paths": paths,
+        "expected_path": receipt_path,
+        "expected_nonce": nonce,
+        "expected_run_id": parent_run_id,
+        "decision_date": decision_date,
+        "scenario": scenario,
+        "snapshot": snapshot,
+    }
+    verified_payload, verified = operational._read_child_terminal_control_receipt(**reader_args)
+    assert verified["status"] == "verified"
+    assert verified_payload is not None
+
+    _, nonce_mismatch = operational._read_child_terminal_control_receipt(
+        **{**reader_args, "expected_nonce": "d" * 64}
+    )
+    assert nonce_mismatch["reason"] == "child_terminal_control_invocation_nonce_mismatch"
+
+    tampered_trailer = {**trailer, "receipt_sha256": "sha256:" + "0" * 64}
+    tampered_stdout = (
+        b"BALDR-CHILD-TERMINAL-V1 "
+        + json.dumps(tampered_trailer, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        + b"\n"
+    )
+    _, hash_mismatch = operational._read_child_terminal_control_receipt(
+        **{**reader_args, "stdout_bytes": tampered_stdout}
+    )
+    assert hash_mismatch["reason"] == "child_terminal_control_receipt_sha256_mismatch"
+
+    _, path_mismatch = operational._read_child_terminal_control_receipt(
+        **{**reader_args, "expected_path": tmp_path / "outside.json"}
+    )
+    assert path_mismatch["reason"] == "child_terminal_control_path_mismatch"
 
 
 def test_child_stdout_artifact_readback_mismatch_keeps_artifact_and_blocks(

@@ -1,5 +1,8 @@
 """唯讀每日營運收據轉接器的契約測試。"""
 
+from copy import deepcopy
+from typing import Any, Callable
+
 from app_module.daily_operations_receipts import adapt_receipt
 
 
@@ -23,6 +26,125 @@ def test_quick_legacy_contract_maps_only_explicit_run_clocks() -> None:
     assert result["completed_at"].startswith("2026-10-21T08:03")
     assert result["producer_status"] == "passed_with_warnings"
     assert result["producer_status_semantic"] == "degraded"
+
+
+def _paper_retry_terminal() -> dict[str, object]:
+    started = "2026-10-22T09:00:00Z"
+    completed = "2026-10-22T09:00:01Z"
+    run_id = "1" * 32
+    nested: dict[str, object] = {
+        "schema_version": "paper-execution-retry-terminal-status.v1",
+        "task": "baldr-paper-execution-eod-replay-daily",
+        "run_id": run_id,
+        "started_at": started,
+        "completed_at": completed,
+        "status": "blocked",
+        "exit_code": 2,
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": "blocked",
+        "terminal_blocker_code": "paper_execution_blocked",
+        "gate_attempts": [
+            {
+                "attempt": 1,
+                "target_date": "2026-10-21",
+                "status": "blocked",
+                "ready": False,
+                "blocker_count": 1970,
+                "receipt_ref": {"path": "dependency_gate/attempt-1.json", "sha256": "a" * 64},
+            }
+        ],
+        "gate_blocker_count": 1970,
+        "gate_blockers_validation": "not_copied_or_validated",
+    }
+    return {
+        "schema_version": "paper-execution-retry-terminal-receipt.v1",
+        "task": "baldr-paper-execution-eod-replay-daily",
+        "run_id": run_id,
+        "started_at": started,
+        "completed_at": completed,
+        "code_version": "sha256:" + "b" * 64,
+        "exit_code": 2,
+        "failure_code": "paper_execution_blocked",
+        "status": "blocked",
+        "blockers": ["paper_execution_blocked"],
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": "blocked",
+        "status_payload": nested,
+    }
+
+
+def test_paper_retry_terminal_is_exact_and_keeps_finance_unknown() -> None:
+    result = adapt_receipt(_paper_retry_terminal())
+    assert result["supported"] is True
+    assert result["kind"] == "producer"
+    assert result["producer_task"] == "baldr-paper-execution-eod-replay-daily"
+    assert result["run_id"] == "1" * 32
+    assert result["producer_status"] == "blocked"
+    assert result["dependency_readiness"]["semantic"] == "blocked"
+    assert result["financial_qualification"]["semantic"] == "unknown"
+    assert result["failure_code"] == "paper_execution_blocked"
+
+
+def test_paper_retry_terminal_accepts_success_with_dependency_passed() -> None:
+    payload = _paper_retry_terminal()
+    nested = payload["status_payload"]
+    assert isinstance(nested, dict)
+    payload.update(
+        status="machine_verified_candidate",
+        exit_code=0,
+        failure_code=None,
+        blockers=[],
+        dependency_readiness_status="passed",
+    )
+    nested.update(
+        status="machine_verified_candidate",
+        exit_code=0,
+        terminal_blocker_code=None,
+        dependency_readiness_status="passed",
+    )
+    attempts = nested["gate_attempts"]
+    assert isinstance(attempts, list) and isinstance(attempts[0], dict)
+    attempts[0].update(status="ready", ready=True, blocker_count=0)
+    nested["gate_blocker_count"] = 0
+    result = adapt_receipt(payload)
+    assert result["supported"] is True
+    assert result["producer_status"] == "machine_verified_candidate"
+    assert result["dependency_readiness"]["semantic"] == "passed"
+    assert result["financial_qualification"]["semantic"] == "unknown"
+
+
+def test_paper_retry_terminal_rejects_nested_identity_exit_and_gate_tampering() -> None:
+    mutations: tuple[Callable[[dict[str, Any]], None], ...] = (
+        lambda payload: payload.update(task="other-task"),
+        lambda payload: payload["status_payload"].update(exit_code=0),
+        lambda payload: payload["status_payload"].update(run_id="2" * 32),
+        lambda payload: payload["status_payload"]["gate_attempts"][0]["receipt_ref"].update(sha256="0" * 63),
+        lambda payload: payload["status_payload"].update(dependency_readiness_status="passed"),
+        lambda payload: payload["status_payload"].update(gate_blocker_count=1969),
+        lambda payload: payload.update(financial_qualification_status="qualified"),
+    )
+    for mutate in mutations:
+        payload = deepcopy(_paper_retry_terminal())
+        mutate(payload)
+        adapted = adapt_receipt(payload)
+        assert adapted["supported"] is False
+        assert adapted["kind"] is None
+
+
+def test_paper_retry_adapter_labels_gate_reference_as_asserted_not_content_verified() -> None:
+    payload = _paper_retry_terminal()
+    nested = payload["status_payload"]
+    assert isinstance(nested, dict)
+    attempts = nested["gate_attempts"]
+    assert isinstance(attempts, list) and isinstance(attempts[0], dict)
+    reference = attempts[0]["receipt_ref"]
+    assert isinstance(reference, dict)
+    reference["sha256"] = "0" * 64
+
+    result = adapt_receipt(payload)
+    assert result["supported"] is True
+    assert result["gate_reference_verification"] == "shape_only_producer_asserted"
+    assert result["financial_qualification"]["semantic"] == "unknown"
 
 
 def test_freshness_legacy_contract_preserves_source_vocabulary_and_no_start_time() -> None:

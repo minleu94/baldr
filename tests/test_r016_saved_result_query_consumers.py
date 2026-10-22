@@ -557,7 +557,35 @@ def test_evidence_importer_reports_query_integrity_failure_without_fallback() ->
     assert by_id.diagnostics_by_code == {
         "recommendation_query_failure:ExecutionArtifactIntegrityError": 1
     }
+    assert by_id.diagnostics[0].message == "推薦結果 query 驗證失敗；拒絕使用未驗證資料。"
+    assert by_id.diagnostics[0].metadata == {
+        "exception_type": "ExecutionArtifactIntegrityError",
+        "integrity_reason": "synthetic corrupt query result",
+    }
     assert latest.events_seen == 0
     assert latest.diagnostics_by_code == {
         "recommendation_query_failure:ExecutionArtifactIntegrityError": 1
     }
+    assert latest.diagnostics[0].message == "推薦結果 query 驗證失敗；拒絕使用未驗證資料。"
+    assert latest.diagnostics[0].metadata == {
+        "exception_type": "ExecutionArtifactIntegrityError",
+        "integrity_reason": "synthetic corrupt query index",
+    }
+
+
+def test_evidence_importer_bounds_query_integrity_reason_without_fallback() -> None:
+    class LongReasonQueries:
+        def get(self, _result_id: str) -> None:
+            raise ExecutionArtifactIntegrityError("unused")
+
+        def list(self) -> tuple[Any, ...]:
+            raise ExecutionArtifactIntegrityError("integrity detail " * 40)
+
+    result = RecommendationEvidenceImporter(LongReasonQueries()).collect(
+        EvidenceCaptureRequest(source="recommendation")
+    )
+
+    assert result.events_seen == 0
+    assert result.diagnostics[0].message == "推薦結果 query 驗證失敗；拒絕使用未驗證資料。"
+    assert result.diagnostics[0].metadata["exception_type"] == "ExecutionArtifactIntegrityError"
+    assert len(result.diagnostics[0].metadata["integrity_reason"]) == 240

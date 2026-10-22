@@ -87,6 +87,7 @@
 
 - BankTaiwan本run的child stdout為20,312,574 bytes，超既有16,777,216上限，`child_payload_source=child_stdout_artifact_size_limit_exceeded`、terminal readback失敗。新控制面以固定lane路徑、nonce、同parent run／日期／cost／DB／snapshot及外部SHA驗證512 KiB內typed receipt，再核原child run receipt；保留大型完整日誌及原cap。定向PASS不替原child exit2改判，也不證明下一自然run已恢復。
 - Forward本run172筆為95 ready／56 pending／21 missing price。新工程在實際fetch保存query／params／rows／cache reuse與outcome對應，create-only持久化及讀回先於upsert；同recorder與同run ID重用均拒絕。availability仍unknown、PIT／training=false、跨query一致性未保證；不事後替舊172筆補來源，不以動態DB hash冒充PIT。
+- **尚未完成的來源工程：Forward逐筆價格版本／可得時間映射。** 靜態複核未找到現成合格resolver；`daily_prices`沒有source version／revision ID／available_at，同鍵更新不保留舊版本，revision gate只核全域cutoff。須先具備逐筆row至已接受不可變官方payload／revision／SHA及可信發布／本機可得時間的權威映射，再實作consumer讀回；不能由同值比對或全域gate推定來源。新fetch觀測工程PASS只限實際讀取與持久化，並非完整金融lineage工程PASS；不改正式DB或回填舊outcomes補造資格。
 - Formal／PIT當前實際binding三角色同樣拒絕09/09過期runtime，不再以舊path mismatch作當前根因。有效資料用途批准仍不可代理；新的Formal終態只影響下一run，不補舊收據。
 - **尚未完成的工程：legacy recommendation custody reconciliation／精確reader接線。** 當前query以強制SQLite `ro/query_only`重現 `legacy data_path 超出 runs 目錄範圍`；canonical index33筆、legacy88筆，88個data_path均仍指D，原D檔均不存在，F counterpart均存在。逐一查原target SHA receipt，88份全部沒有逐檔entry／原SHA PASS；當前F hash僅是新觀測，不足證明原件同一性。不得改DB路徑、建立通用D/F alias、跳過legacy回傳部分結果或口頭接受來源。取得原bytes／外部固定原SHA與custody後，才可實作有限locator、全88讀回及負向回歸；目前具名缺件保留。
 - 這次current query probe不是舊Decision run的事後完整根因。原自然child只保存泛化error，沒有cause path／SHA；新importer保留原訊息與拒絕行為，僅將exception type／240字內reason放入diagnostic metadata，讓下一自然run可定位。沒有偽造舊metadata或重建snapshot。

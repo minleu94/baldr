@@ -42,6 +42,8 @@ Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資�
 
 此接口明示 `source_availability=unknown`、`pit_qualified=false`、`training_eligible=false`、`cross_read_snapshot_consistency=not_guaranteed`。同一次讀取的列證據不能證明原發布時間，也不宣稱各 query 是同一交易快照。下一次自然 run 才可能產生新 manifest；10/22 原 172 筆結果不回填來源引用。Recorder 單次使用，產物先持久化並讀回，再允許 outcome upsert；超限、重用或保存失敗即拒絕該輪寫入。
 
+**剩餘來源工程：逐筆價格版本與可得時間映射。** 現行 `daily_prices` 只有市場欄位及 `(symbol, date)` 主鍵，沒有 source version、revision ID 或 available_at；同鍵更新不保留舊版本。現有 revision gate 只作全域 cutoff／修訂風險檢查，不能替 Forward 同次 fetched rows 授逐筆來源資格。合格接口須將 `(symbol, date, row content／source_row_id)` 綁至已接受的不可變官方 payload／revision ID／SHA、可信發布及本機可得時間，並保留被替換版本。相同價格值、交易日期、全域 gate 或目前 DB hash 均不能代替此映射；目前沒有可安全接用的合格 resolver，不改正式表或回填歷史來製造資格。
+
 單 chunk／manifest 上限各 512 KiB，每 run 64 MiB／128 chunks／500,000 rows／4,096 queries／10,000 outcomes；保留目錄達 4,096 runs 或 12 GiB 即拒絕，不自行清理。Consumer 應依 manifest／chunk SHA 讀回，仍須另外取得來源用途、availability、revision／custody 及 OOS 資格，不能只憑此引用授訓練或正式績效。
 
 ## Track A：唯讀研究展示

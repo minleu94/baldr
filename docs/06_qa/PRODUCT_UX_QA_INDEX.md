@@ -1,5 +1,7 @@
 # 產品與個股研究 QA 索引
 
+[個股營收與籌碼視覺整合](BALDR_RESEARCH_VISUALIZATION_20261022.md)承接既有圖卡布局，記錄原值圖卡、指標分組與資料界線；最終視覺驗證狀態依該頁判讀。
+
 [V2 圖卡優先研究體驗](BALDR_V2_CARD_EXPERIENCE_20261022.md)記錄首頁、個股同屏、選股與策略庫收合、題材缺件及研究時間展示的後繼 UI 增量；不改每日資料恢復或固定候選資格，進度按原文判讀。
 
 V2後繼補完集中看[工程與整合驗收](BALDR_V2_FINAL_COMPLETION_20261021.md)：原始失敗保留，來源／Paper程式契約、真Main GUI、金融用途、Native及OwnerUAT各自列證據，不以正向fixture代替正式來源資格。

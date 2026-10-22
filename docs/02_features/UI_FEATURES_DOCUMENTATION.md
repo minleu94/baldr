@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+個股基本面與籌碼新增已載入 DTO 的原值圖卡，營收／財報、法人、信用、集保級距及分點按各自來源、日期與單位分開；單點採值卡，多點採中性色零中線橫條。原表及保存身份保持，不新增來源或金融計算。操作見[圖卡判讀](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#個股營收與籌碼圖卡)，驗證見[研究視覺整合 QA](../06_qa/BALDR_RESEARCH_VISUALIZATION_20261022.md)。
+
 V2 後繼原始碼新增圖卡優先的研究呈現：首頁將風險／市場／候選／資料影響並列；個股摘要與原價格詳情讓圖表、支持與反證同屏；綜合選股與策略庫收合來源及參數原文；題材缺件改用集中提示，研究保存時間改為台北分鐘顯示並保留原時間。既有 DTO、writer、來源資格與每日資料流程不變。操作見[手冊](../07_guides/APPLICATION_MANUAL.md#綜合選股與跨頁研究)，各項驗證與固定 EXE 界線見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
 
 月營收全用途授權後的新增研究入口位於[研究管線 CLI](../07_guides/MONTHLY_REVENUE_RESEARCH_PIPELINE.md)。它使用明選原件與外部 SHA 資格包，沒有新增 Qt 控制項或自動修改 Main 設定；Main 的金額單位、用途接受與 Paper 守衛保持。實際 Source／資格範圍依[全用途驗收](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)判讀。

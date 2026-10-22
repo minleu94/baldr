@@ -16,6 +16,11 @@ import json
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ui_qt.stock_research_visuals import (
+    ResearchVisualGroup, fundamental_visuals, metric_visuals, flow_visuals, shareholding_tier_visuals,
+)
+from ui_qt.widgets.research_metric_chart import ResearchMetricChart
+
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal, QUrl, QSignalBlocker
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QDesktopServices
 from PySide6.QtWidgets import (
@@ -3504,6 +3509,10 @@ class StockResearchReportView(QWidget):
     def _render_fundamental(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("fundamental")
         layout.addWidget(self._section_heading("基本面／營收財報", report, "fundamental"))
+        self._add_research_visuals(
+            layout, fundamental_visuals(report),
+            "目前沒有單位與期間基礎足以繪圖的原觀測；可查閱下方原表，不能據此判定營收趨勢。",
+        )
         represented: set[tuple[str, str, str, str]] = set()
         if report.fundamental_comparisons:
             comparisons = report.fundamental_comparisons
@@ -3597,6 +3606,15 @@ class StockResearchReportView(QWidget):
                 "各區資料日與品質以來源實際提供內容為準；缺資料不補零。"
             )
         )
+        self._add_research_visuals(
+            layout,
+            (*metric_visuals("法人原觀測", report.institutional),
+             *shareholding_tier_visuals(report.shareholding),
+             *metric_visuals("信用原觀測", report.credit),
+             *metric_visuals("集保原觀測", report.shareholding),
+             *flow_visuals(report.flows)),
+            "目前沒有同日、同來源且已知單位的籌碼數值可繪圖；下方保留原資料與缺件原因。",
+        )
         if report.flows:
             rows = tuple(
                 (
@@ -3641,6 +3659,36 @@ class StockResearchReportView(QWidget):
         self._add_event_table(event_layout, report.events)
         layout.addWidget(events)
         layout.addStretch()
+
+    def _add_research_visuals(
+        self, layout: QVBoxLayout, groups: Sequence[ResearchVisualGroup], missing: str,
+    ) -> None:
+        """圖卡先行；原表始終保留，不額外取得或改寫報告。"""
+        if not groups:
+            layout.addWidget(self._wrapped_label(missing))
+            return
+        for group in groups[:4]:
+            self._add_research_chart(layout, group)
+        if len(groups) > 4:
+            extra = QWidget()
+            extra_layout = QVBoxLayout(extra)
+            for group in groups[4:]:
+                self._add_research_chart(extra_layout, group)
+            toggle = QToolButton()
+            toggle.setText(f"其他原觀測圖卡（{len(groups) - 4} 組）")
+            toggle.setCheckable(True)
+            toggle.toggled.connect(extra.setVisible)
+            extra.hide()
+            layout.addWidget(toggle)
+            layout.addWidget(extra)
+
+    def _add_research_chart(self, layout: QVBoxLayout, group: ResearchVisualGroup) -> None:
+        try:
+            chart = ResearchMetricChart(group.title, group.unit, group.points, group.note)
+        except Exception:
+            layout.addWidget(self._wrapped_label(f"{group.title}圖卡暫時無法顯示；下方原表仍可查閱。"))
+            return
+        layout.addWidget(chart)
 
     def _render_metric_group(
         self,

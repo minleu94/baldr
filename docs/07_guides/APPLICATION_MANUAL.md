@@ -8,6 +8,8 @@
 
 ## V2分支與本機技術候選
 
+後繼原始碼的個股研究在「基本面與營收」及「籌碼與產業事件」先呈現已載入報告的原值圖卡，再列原表。單筆數值不畫成趨勢，未知單位或期間基礎不補圖；詳見[個股圖卡的操作與判讀](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#個股營收與籌碼圖卡)。固定 EXE 不因這項增量自動更新。
+
 目前集中候選為 `2026.10.21+06a4e1c15ed9`，完整資料夾 `dist/candidate_06a4e1c15ed9_e74f9e5f/baldr`，用包內 `Launch-Baldr.cmd` 與 `GUIDE.md`；獨立 state 位於 `output/tasks/baldr-v2-release-operations-closeout/candidate_state`。新包已包含下列月營收、Paper、首頁日期與鍵盤工程，具名舊包的「尚未包含」只適用該舊版本。樣本日期、包外來源、精確 SHA、回退及驗收限制見[Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)。關閉新包後使用舊包原 Launcher／原 state 回退，不合併私人或正式資料；金融缺件時仍不可建帳或升格用途。
 
 維運人員可依[唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)使用 `scripts/audit_daily_operations.py`，明選觀察 manifest、外部固定 SHA 及原始收據根；Python 必須置於專案規定的 owned Job。此工具只輸出六狀態 JSON，不讀回 Task 設定或啟動工作。UNKNOWN／非零 Task／來源缺件分別核對，同次 identity／SHA／時鐘不符時保持下游 hold；不以重跑 writer、改舊收據或補零處理。CLI 不支援的舊 receipt schema 保留 UNKNOWN，不代表全部排程失效。

@@ -220,6 +220,7 @@ def test_dry_run_is_read_only_and_persists_receipt(
     assert result["status"] == "dry_run"
     assert result["writes_evidence_db"] is False
     assert result["source_db_changed"] is False
+    assert result["daily_price_source_bundle"]["status"] == "unknown"
     assert observed_read_only == [True, True]
     assert result["summary"]["outcomes_created"] == 1
     assert result["summary"]["outcomes_written"] == 1
@@ -240,6 +241,32 @@ def test_dry_run_is_read_only_and_persists_receipt(
     assert status_path.is_file()
     assert run_path.is_file()
     assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "dry_run"
+
+
+def test_source_bundle_uses_configured_roots_and_explicit_descriptor(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    selected = {"status": "captured", "reference": {"sha256": "fixture"}}
+    calls = []
+
+    def load(**kwargs):
+        calls.append(kwargs)
+        return {"status": "unknown", "reason_code": "fixture_not_qualified"}
+
+    monkeypatch.setattr(forward_runner, "load_daily_price_source_bundle", load)
+    artifact_root = tmp_path / "separate-artifacts"
+    result = run_scheduled_forward_outcomes(
+        config=config, output_root=artifact_root, now=_now(), confirm=False,
+        windows=(5,), start_date="2026-09-01", end_date="2026-09-10",
+        data_as_of_date="2026-09-10", price_source_bundle_descriptor=selected,
+    )
+    assert result["status"] == "dry_run"
+    assert len(calls) == 1
+    assert calls[0] == {
+        "output_root": Path(config.output_root), "data_root": Path(config.data_root),
+        "database_path": Path(config.db_file).resolve(), "descriptor": selected,
+    }
+    assert result["daily_price_source_bundle"]["reason_code"] == "fixture_not_qualified"
+    assert result["writes_evidence_db"] is False
 
 
 def test_source_observation_failure_prevents_confirmed_outcome_upsert(

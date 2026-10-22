@@ -17,8 +17,14 @@ import math
 import os
 from pathlib import Path, PurePosixPath
 import sqlite3
+import stat
 from typing import Any, Mapping, Sequence, cast
 from uuid import uuid4
+from data_module.ml_research_output_boundary import (
+    _read_bounded_regular_file_no_follow,
+    _reject_json_constant,
+    _unique_json_object,
+)
 from data_module.price_change_direction import (
     CHANGE_SIGN_COLUMNS,
     TWSE_DIRECTION_PARSER_ID,
@@ -32,6 +38,8 @@ PUBLICATION_SCHEMA_V1 = "twse-daily-price-sqlite-publication.v1"
 _DAILY_PRICE_SOURCE_ID = "twse.mi_index.daily_price"
 _HASH_PREFIX = "sha256:"
 _MAX_JSON_BYTES = 32 * 1024 * 1024
+_MAX_BINDING_EVIDENCE_BYTES = 64 * 1024 * 1024
+_MAX_BINDING_PROJECTION_MANIFESTS = 128
 _CSV_DTYPES = {
     "日期": str,
     "證券代號": str,
@@ -116,8 +124,12 @@ def _parse_payload(data: bytes, *, schema_version: str) -> dict[str, Any]:
     if not isinstance(data, bytes) or not data or len(data) > _MAX_JSON_BYTES:
         raise DailyPriceEvidenceError("evidence payload size is invalid")
     try:
-        payload = json.loads(data.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as exc:
+        payload = json.loads(
+            data.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
         raise DailyPriceEvidenceError("evidence JSON is invalid") from exc
     if not isinstance(payload, dict):
         raise DailyPriceEvidenceError("evidence JSON must be an object")
@@ -128,6 +140,96 @@ def _parse_payload(data: bytes, *, schema_version: str) -> dict[str, Any]:
     if not isinstance(declared, str) or declared != _sha256(_canonical_json(body)):
         raise DailyPriceEvidenceError("evidence content hash mismatch")
     return payload
+
+
+def _read_evidence_relative(
+    root: Path,
+    relative: object,
+    *,
+    maximum_bytes: int = _MAX_JSON_BYTES,
+    read_budget: list[int] | None = None,
+) -> bytes:
+    if not isinstance(relative, str) or not relative or "\\" in relative or ":" in relative:
+        raise DailyPriceEvidenceError("evidence relative path is invalid")
+    pure = PurePosixPath(relative)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        raise DailyPriceEvidenceError("evidence relative path is not canonical")
+    resolved_root = root.expanduser().resolve(strict=True)
+    candidate = resolved_root.joinpath(*pure.parts)
+    chain: list[tuple[Path, tuple[int, int, int, int]]] = []
+    for parent in (candidate, *candidate.parents):
+        try:
+            info = parent.lstat()
+        except OSError as exc:
+            raise DailyPriceEvidenceError("evidence path component is unavailable") from exc
+        if parent.is_symlink() or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise DailyPriceEvidenceError("evidence path contains a link or reparse point")
+        chain.append((parent, (info.st_dev, info.st_ino, info.st_mode, getattr(info, "st_file_attributes", 0))))
+        if parent == resolved_root:
+            break
+    if not chain or chain[-1][0] != resolved_root:
+        raise DailyPriceEvidenceError("evidence path is not anchored at the configured root")
+    try:
+        raw = _read_bounded_regular_file_no_follow(
+            candidate, maximum_bytes=maximum_bytes
+        )
+    except (OSError, ValueError) as exc:
+        raise DailyPriceEvidenceError("evidence file is not a bounded regular file") from exc
+    for path, before in chain:
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise DailyPriceEvidenceError("evidence path changed during read") from exc
+        after = (info.st_dev, info.st_ino, info.st_mode, getattr(info, "st_file_attributes", 0))
+        if path.is_symlink() or getattr(info, "st_file_attributes", 0) & 0x400 or after != before:
+            raise DailyPriceEvidenceError("evidence path changed during read")
+    if read_budget is not None:
+        read_budget[0] += len(raw)
+        if read_budget[0] > _MAX_BINDING_EVIDENCE_BYTES:
+            raise DailyPriceEvidenceError("binding evidence byte budget exceeded")
+    return raw
+
+
+def _strict_json_bytes(raw: bytes, *, encoding: str = "utf-8") -> Any:
+    try:
+        return json.loads(
+            raw.decode(encoding),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise DailyPriceEvidenceError("evidence JSON is invalid") from exc
+
+
+def _binding_cache_key(
+    *, output: Path, data: Path, database: Path, descriptor: Mapping[str, object]
+) -> tuple[object, ...]:
+    try:
+        output_info = output.stat()
+        data_info = data.stat()
+        database_info = database.lstat()
+    except OSError as exc:
+        raise DailyPriceEvidenceError("binding cache roots or database are unavailable") from exc
+    if (
+        not output.is_dir()
+        or not data.is_dir()
+        or not stat.S_ISREG(database_info.st_mode)
+        or database.is_symlink()
+        or getattr(database_info, "st_file_attributes", 0) & 0x400
+    ):
+        raise DailyPriceEvidenceError("binding cache roots or database are not regular")
+    return (
+        "twse-daily-price-binding-v1",
+        str(output), output_info.st_dev, output_info.st_ino,
+        str(data), data_info.st_dev, data_info.st_ino,
+        str(database), database_info.st_dev, database_info.st_ino,
+        database_info.st_size, database_info.st_mtime_ns,
+        descriptor.get("status"), descriptor.get("schema_version"),
+        descriptor.get("relative_path"), descriptor.get("sha256"),
+    )
+
+
+_VERIFIED_SOURCE_CACHE_MARKER = object()
 
 
 def _date_key(value: object) -> str:
@@ -571,13 +673,16 @@ def create_download_projection_manifest(
 
 
 def _load_projection_manifest(
-    *, output_root: Path, data_root: Path, descriptor: Mapping[str, object]
+    *,
+    output_root: Path,
+    data_root: Path,
+    descriptor: Mapping[str, object],
+    read_budget: list[int] | None = None,
 ) -> dict[str, Any]:
     if descriptor.get("status") != "captured" or descriptor.get("schema_version") != PROJECTION_SCHEMA_V1:
         raise DailyPriceEvidenceError("projection descriptor is unavailable")
     relative = descriptor.get("relative_path")
-    path = _resolve_relative_file(output_root, relative)
-    raw = path.read_bytes()
+    raw = _read_evidence_relative(output_root, relative, read_budget=read_budget)
     if _sha256(raw) != descriptor.get("sha256"):
         raise DailyPriceEvidenceError("projection descriptor hash mismatch")
     payload = _parse_payload(raw, schema_version=PROJECTION_SCHEMA_V1)
@@ -586,8 +691,10 @@ def _load_projection_manifest(
     if payload.get("source_published_at") is not None:
         raise DailyPriceEvidenceError("source publication time must remain unknown")
     source_date = _date_key(payload.get("source_date"))
-    csv_path = _resolve_relative_file(data_root, payload.get("csv_relative_path"))
-    csv_bytes, columns, parsed_rows = _read_csv_projection(csv_path, source_date)
+    csv_bytes = _read_evidence_relative(
+        data_root, payload.get("csv_relative_path"), read_budget=read_budget
+    )
+    columns, parsed_rows = _parse_csv_projection(csv_bytes, source_date)
     if _sha256(csv_bytes) != payload.get("csv_sha256"):
         raise DailyPriceEvidenceError("downloaded CSV changed after projection")
     if list(columns) != payload.get("projection_columns"):
@@ -613,15 +720,19 @@ def _load_projection_manifest(
         ("observation_receipt_relative_path", "observation_receipt_sha256"),
     )
     for path_field, hash_field in custody_files:
-        custody_path = _resolve_relative_file(output_root, payload.get(path_field))
-        if _sha256(custody_path.read_bytes()) != payload.get(hash_field):
+        custody_bytes = _read_evidence_relative(
+            output_root, payload.get(path_field), read_budget=read_budget
+        )
+        if _sha256(custody_bytes) != payload.get(hash_field):
             raise DailyPriceEvidenceError(f"custody file changed: {path_field}")
     receipt_captured_at: dict[str, str] = {}
     for path_field in ("custody_receipt_relative_path", "observation_receipt_relative_path"):
-        receipt_path = _resolve_relative_file(output_root, payload.get(path_field))
         try:
-            receipt_value = json.loads(receipt_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            receipt_raw = _read_evidence_relative(
+                output_root, payload.get(path_field), read_budget=read_budget
+            )
+            receipt_value = _strict_json_bytes(receipt_raw)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
             raise DailyPriceEvidenceError("custody receipt cannot be parsed") from exc
         if not isinstance(receipt_value, Mapping):
             raise DailyPriceEvidenceError("custody receipt is not an object")
@@ -638,10 +749,15 @@ def _load_projection_manifest(
         receipt_captured_at[path_field] = _aware_timestamp(
             receipt_value.get("captured_at"), field="captured_at"
         )
-    raw_source_path = _resolve_relative_file(output_root, payload.get("raw_response_relative_path"))
     try:
-        raw_source = json.loads(raw_source_path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raw_source = _strict_json_bytes(
+            _read_evidence_relative(
+                output_root, payload.get("raw_response_relative_path"),
+                read_budget=read_budget,
+            ),
+            encoding="utf-8-sig",
+        )
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         raise DailyPriceEvidenceError("direction raw response cannot be parsed") from exc
     if not isinstance(raw_source, Mapping):
         raise DailyPriceEvidenceError("direction raw response is not an object")
@@ -1210,6 +1326,363 @@ def read_sqlite_daily_price_scalar_evidence(
     )
 
 
+def _fetched_alias_value(
+    row: Mapping[str, object], column: str
+) -> object:
+    aliases = {
+        "日期": ("date",),
+        "證券代號": ("股票代號", "stock_code", "stock_id"),
+        "證券名稱": ("股票名稱",),
+        "漲跌(+/-)": ("漲跌", "涨跌"),
+        "漲跌": ("漲跌(+/-)", "涨跌"),
+        "涨跌": ("漲跌(+/-)", "漲跌"),
+    }
+    candidates = (column, *aliases.get(column, ()))
+    present = [(name, row[name]) for name in candidates if name in row]
+    if not present:
+        raise DailyPriceEvidenceError(f"fetched row misses projection column: {column}")
+    selected = next((value for name, value in present if name == column), present[0][1])
+    if any(
+        not _is_missing_scalar(selected)
+        and not _is_missing_scalar(value)
+        and not _values_equal_for_sqlite(selected, value)
+        for _, value in present
+    ):
+        raise DailyPriceEvidenceError(f"fetched row projection aliases conflict: {column}")
+    return selected
+
+
+def _fetched_sqlite_projection_hash(
+    row: Mapping[str, object], columns: Sequence[str]
+) -> str:
+    typed_values: list[list[object]] = []
+    for column in columns:
+        value = _fetched_alias_value(row, column)
+        item = getattr(value, "item", None)
+        if callable(item):
+            try:
+                value = item()
+            except (TypeError, ValueError):
+                pass
+        if _is_missing_scalar(value):
+            value = None
+        if value is None:
+            sqlite_type = "null"
+        elif isinstance(value, bool):
+            raise DailyPriceEvidenceError("fetched SQLite bool scalar is invalid")
+        elif isinstance(value, int):
+            sqlite_type = "integer"
+        elif isinstance(value, float):
+            sqlite_type = "real"
+        elif isinstance(value, str):
+            sqlite_type = "text"
+        elif isinstance(value, bytes):
+            sqlite_type = "blob"
+        else:
+            raise DailyPriceEvidenceError("fetched SQLite scalar type is unsupported")
+        typed_values.append([column, sqlite_type, _scalar(value)])
+    return _sha256(
+        _canonical_json({"columns": list(columns), "values": typed_values})
+    )
+
+
+def _rebuild_twse_raw_projection(
+    *, raw_source: Mapping[str, object], source_date: str, parser_id: object,
+    expected_columns: Sequence[str], expected_rows: Sequence[Mapping[str, object]],
+) -> tuple[tuple[int, ...], tuple[str, ...]]:
+    import numpy as np
+    import pandas as pd
+
+    tables = raw_source.get("tables")
+    if not isinstance(tables, list):
+        raise DailyPriceEvidenceError("raw TWSE tables are missing")
+    table = next(
+        (
+            item for item in tables
+            if isinstance(item, Mapping)
+            and isinstance(item.get("fields"), list)
+            and {"證券代號", "收盤價"}.issubset(item["fields"])
+        ),
+        None,
+    )
+    if not isinstance(table, Mapping):
+        raise DailyPriceEvidenceError("raw TWSE stock table is missing")
+    fields = table.get("fields")
+    raw_rows = table.get("data")
+    if (
+        not isinstance(fields, list)
+        or not all(isinstance(field, str) for field in fields)
+        or len(set(fields)) != len(fields)
+        or not isinstance(raw_rows, list)
+    ):
+        raise DailyPriceEvidenceError("raw TWSE row layout is invalid")
+    frame = pd.DataFrame(raw_rows, columns=fields)
+    if "證券代號" not in frame.columns or "收盤價" not in frame.columns:
+        raise DailyPriceEvidenceError("raw TWSE projection identity columns are missing")
+    frame = frame[frame["證券代號"].str.len() == 4]
+    original_ordinals = tuple(int(index) for index in frame.index)
+    numeric_columns = (
+        "成交股數", "成交筆數", "成交金額", "開盤價", "最高價", "最低價",
+        "收盤價", "漲跌價差", "最後揭示買價", "最後揭示買量",
+        "最後揭示賣價", "最後揭示賣量", "本益比",
+    )
+    for column in numeric_columns:
+        if column in frame.columns:
+            frame[column] = frame[column].replace({"--": np.nan, "": np.nan})
+            frame[column] = frame[column].apply(
+                lambda value: str(value).replace(",", "") if pd.notnull(value) else value
+            )
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    if parser_id == TWSE_DIRECTION_PARSER_ID:
+        for column in CHANGE_SIGN_COLUMNS:
+            if column in frame.columns:
+                frame[column] = frame[column].apply(normalize_twse_change_sign)
+    elif parser_id not in TWSE_PRICE_PARSER_IDS:
+        raise DailyPriceEvidenceError("TWSE parser version is unsupported")
+    columns, rebuilt_rows = _serialize_frame_projection(frame, source_date)
+    if tuple(columns) != tuple(expected_columns) or len(rebuilt_rows) != len(expected_rows):
+        raise DailyPriceEvidenceError("TWSE raw-to-projection shape differs")
+    for rebuilt, expected in zip(rebuilt_rows, expected_rows):
+        if (
+            str(rebuilt.get("日期", "")) != str(expected.get("source_date", ""))
+            or str(rebuilt.get("證券代號", "")) != str(expected.get("stock_code", ""))
+            or _row_hash(rebuilt, columns) != expected.get("projection_row_sha256")
+        ):
+            raise DailyPriceEvidenceError("TWSE raw-to-projection row differs")
+    raw_hashes = tuple(
+        _sha256(_canonical_json(raw_rows[index])) for index in original_ordinals
+    )
+    return original_ordinals, raw_hashes
+
+
+def verify_fetched_daily_price_rows(
+    *,
+    output_root: str | Path,
+    data_root: str | Path,
+    database_path: str | Path,
+    descriptor: Mapping[str, object] | None,
+    fetched_rows: Sequence[Mapping[str, object]],
+    verified_source_cache: dict[tuple[object, ...], object] | None = None,
+) -> tuple[Mapping[str, object], ...]:
+    """只以呼叫端同次取出的完整列核對固定 TWSE publication。"""
+    results: list[dict[str, object]] = [
+        {
+            "status": "unknown",
+            "reason_code": "publication_descriptor_missing",
+            "source_id": _DAILY_PRICE_SOURCE_ID,
+            "source_use_accepted": False,
+            "available_at": None,
+            "source_published_at": None,
+            "pit_eligible": False,
+            "training_eligible": False,
+        }
+        for _ in fetched_rows
+    ]
+    if not isinstance(descriptor, Mapping):
+        return tuple(results)
+    try:
+        output = Path(output_root).expanduser().resolve(strict=True)
+        data = Path(data_root).expanduser().resolve(strict=True)
+        supplied_database = Path(database_path).expanduser()
+        if supplied_database.is_symlink():
+            raise DailyPriceEvidenceError("SQLite database cannot be a symlink")
+        database = supplied_database.resolve(strict=True)
+        database_relative = _relative_path(data, database)
+        cache_key = _binding_cache_key(
+            output=output, data=data, database=database, descriptor=descriptor
+        )
+        cached = verified_source_cache.get(cache_key) if verified_source_cache is not None else None
+        projection_cache: dict[str, dict[str, Any]] = {}
+        ordinal_cache: dict[str, tuple[tuple[int, ...], tuple[str, ...]]] = {}
+        if (
+            isinstance(cached, Mapping)
+            and cached.get("_marker") is _VERIFIED_SOURCE_CACHE_MARKER
+        ):
+            publication = cached["publication"]
+            projection_descriptors = cached["projection_descriptors"]
+            published_rows = cached["published_rows"]
+            projection_cache = cached["projection_cache"]
+            ordinal_cache = cached["ordinal_cache"]
+        else:
+            read_budget = [0]
+            publication_raw = _read_evidence_relative(
+                output, descriptor.get("relative_path"), read_budget=read_budget
+            )
+            if _sha256(publication_raw) != descriptor.get("sha256"):
+                raise DailyPriceEvidenceError("publication descriptor hash mismatch")
+            publication = _parse_payload(
+                publication_raw, schema_version=PUBLICATION_SCHEMA_V1
+            )
+            if (
+                descriptor.get("status") != "captured"
+                or descriptor.get("schema_version") != PUBLICATION_SCHEMA_V1
+                or publication.get("source_id") != _DAILY_PRICE_SOURCE_ID
+                or publication.get("source_published_at") is not None
+                or _resolve_relative_file(data, publication.get("database_relative_path")) != database
+                or publication.get("database_relative_path") != database_relative
+            ):
+                raise DailyPriceEvidenceError("publication identity or qualification differs")
+            for flag in ("available_at", "source_use_accepted", "pit_eligible", "training_eligible"):
+                if flag in publication and publication.get(flag) is not False and publication.get(flag) is not None:
+                    raise DailyPriceEvidenceError("publication contains a positive qualification claim")
+            projection_descriptors = publication.get("projection_manifests")
+            published_rows = publication.get("rows")
+            if not isinstance(projection_descriptors, list) or not isinstance(published_rows, list):
+                raise DailyPriceEvidenceError("publication row references are invalid")
+            if len(projection_descriptors) > _MAX_BINDING_PROJECTION_MANIFESTS:
+                raise DailyPriceEvidenceError("binding projection manifest count limit")
+            for reference in projection_descriptors:
+                if not isinstance(reference, Mapping):
+                    raise DailyPriceEvidenceError("projection manifest reference is invalid")
+                manifest = _load_projection_manifest(
+                    output_root=output, data_root=data, descriptor=reference,
+                    read_budget=read_budget,
+                )
+                relative = str(reference.get("relative_path"))
+                projection_cache[relative] = manifest
+                raw_source = _strict_json_bytes(
+                    _read_evidence_relative(
+                        output, manifest.get("raw_response_relative_path"),
+                        read_budget=read_budget,
+                    ),
+                    encoding="utf-8-sig",
+                )
+                if not isinstance(raw_source, Mapping):
+                    raise DailyPriceEvidenceError("TWSE raw source is not an object")
+                manifest_rows = manifest.get("observed_response_rows")
+                columns = manifest.get("projection_columns")
+                if (
+                    not isinstance(manifest_rows, list)
+                    or not all(isinstance(item, Mapping) for item in manifest_rows)
+                    or not isinstance(columns, list)
+                    or not all(isinstance(item, str) for item in columns)
+                ):
+                    raise DailyPriceEvidenceError("TWSE projection row layout is invalid")
+                ordinal_cache[relative] = _rebuild_twse_raw_projection(
+                    raw_source=raw_source,
+                    source_date=str(manifest.get("source_date", "")),
+                    parser_id=manifest.get("parser_id"),
+                    expected_columns=columns,
+                    expected_rows=manifest_rows,
+                )
+            if verified_source_cache is not None and len(verified_source_cache) < 4:
+                verified_source_cache[cache_key] = {
+                    "_marker": _VERIFIED_SOURCE_CACHE_MARKER,
+                    "publication": publication,
+                    "projection_descriptors": projection_descriptors,
+                    "published_rows": published_rows,
+                    "projection_cache": projection_cache,
+                    "ordinal_cache": ordinal_cache,
+                }
+        key_counts: dict[tuple[str, str], int] = {}
+        fetched_keys: list[tuple[str, str] | None] = []
+        for index, fetched in enumerate(fetched_rows):
+            try:
+                key = (
+                    _date_key(_fetched_alias_value(fetched, "日期")),
+                    str(_fetched_alias_value(fetched, "證券代號")),
+                )
+                fetched_keys.append(key)
+                key_counts[key] = key_counts.get(key, 0) + 1
+            except (DailyPriceEvidenceError, KeyError, TypeError, ValueError) as exc:
+                fetched_keys.append(None)
+                results[index] = {**results[index], "reason_code": str(exc) or type(exc).__name__}
+        for index, fetched in enumerate(fetched_rows):
+            try:
+                fetched_key = fetched_keys[index]
+                if fetched_key is None:
+                    continue
+                source_date, stock_code = fetched_key
+                key = fetched_key
+                if key_counts[key] != 1:
+                    raise DailyPriceEvidenceError("fetched natural key is ambiguous")
+                selected = [
+                    (row, reference)
+                    for row in published_rows
+                    if isinstance(row, Mapping)
+                    and row.get("source_date") == source_date
+                    and row.get("stock_code") == stock_code
+                    for reference in projection_descriptors
+                    if isinstance(reference, Mapping)
+                    and row.get("projection_manifest_relative_path") == reference.get("relative_path")
+                    and row.get("projection_manifest_sha256") == reference.get("sha256")
+                ]
+                if len(selected) != 1:
+                    raise DailyPriceEvidenceError("published natural key is missing or ambiguous")
+                published, reference = selected[0]
+                relative = str(reference["relative_path"])
+                manifest = projection_cache[relative]
+                projection_rows = manifest.get("observed_response_rows")
+                columns = manifest.get("projection_columns")
+                if not isinstance(projection_rows, list) or not isinstance(columns, list):
+                    raise DailyPriceEvidenceError("TWSE projection rows are invalid")
+                projected = [
+                    row for row in projection_rows
+                    if isinstance(row, Mapping)
+                    and row.get("source_date") == source_date
+                    and row.get("stock_code") == stock_code
+                ]
+                if len(projected) != 1:
+                    raise DailyPriceEvidenceError("TWSE projection key is missing or ambiguous")
+                projected_row = projected[0]
+                if (
+                    published.get("source_id") != _DAILY_PRICE_SOURCE_ID
+                    or published.get("parser_id") != manifest.get("parser_id")
+                    or published.get("projection_manifest_sha256") != reference.get("sha256")
+                    or published.get("projection_row_sha256") != projected_row.get("projection_row_sha256")
+                    or published.get("raw_response_sha256") != manifest.get("raw_response_sha256")
+                    or published.get("custody_receipt_sha256") != manifest.get("custody_receipt_sha256")
+                    or published.get("observation_receipt_sha256") != manifest.get("observation_receipt_sha256")
+                    or published.get("csv_sha256") != manifest.get("csv_sha256")
+                    or published.get("source_published_at") is not None
+                ):
+                    raise DailyPriceEvidenceError("TWSE publication row references differ")
+                index_in_manifest = next(
+                    i for i, row in enumerate(projection_rows)
+                    if isinstance(row, Mapping) and row is projected_row
+                )
+                ordinals, raw_hashes = ordinal_cache[relative]
+                source_row_ordinal = ordinals[index_in_manifest]
+                source_row_sha256 = raw_hashes[index_in_manifest]
+                if _fetched_sqlite_projection_hash(fetched, columns) != published.get("sqlite_projection_row_sha256"):
+                    raise DailyPriceEvidenceError("fetched SQLite projection differs")
+                result = {
+                    "status": "source_identity_bound",
+                    "reason_code": "ok",
+                    "source_id": _DAILY_PRICE_SOURCE_ID,
+                    "parser_id": manifest["parser_id"],
+                    "source_date": source_date,
+                    "stock_code": stock_code,
+                    "publication_relative_path": descriptor["relative_path"],
+                    "publication_sha256": descriptor["sha256"],
+                    "projection_manifest_relative_path": relative,
+                    "projection_manifest_sha256": reference["sha256"],
+                    "raw_response_sha256": manifest["raw_response_sha256"],
+                    "custody_receipt_sha256": manifest["custody_receipt_sha256"],
+                    "observation_receipt_sha256": manifest["observation_receipt_sha256"],
+                    "source_row_ordinal": source_row_ordinal,
+                    "source_row_ordinal_basis": "derived_verified_raw_ordinal",
+                    "source_row_sha256": source_row_sha256,
+                    "projection_row_sha256": published["projection_row_sha256"],
+                    "sqlite_projection_row_sha256": published["sqlite_projection_row_sha256"],
+                    "available_at": None,
+                    "source_published_at": None,
+                    "source_use_accepted": False,
+                    "pit_eligible": False,
+                    "training_eligible": False,
+                }
+                results[index] = result
+            except (DailyPriceEvidenceError, KeyError, TypeError, ValueError, OSError, IndexError) as exc:
+                results[index] = {
+                    **results[index],
+                    "reason_code": str(exc) or type(exc).__name__,
+                }
+    except (DailyPriceEvidenceError, KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
+        reason = str(exc) or type(exc).__name__
+        return tuple({**item, "reason_code": reason} for item in results)
+    return tuple(results)
+
+
 __all__ = [
     "DailyPriceEvidenceError",
     "DailyPriceEvidenceReadResult",
@@ -1221,4 +1694,5 @@ __all__ = [
     "publish_sqlite_row_evidence",
     "read_sqlite_daily_price_evidence",
     "read_sqlite_daily_price_scalar_evidence",
+    "verify_fetched_daily_price_rows",
 ]

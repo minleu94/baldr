@@ -46,7 +46,17 @@ Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資�
 
 單 chunk／manifest 上限各 512 KiB，每 run 64 MiB／128 chunks／500,000 rows／4,096 queries／10,000 outcomes；保留目錄達 4,096 runs 或 12 GiB 即拒絕，不自行清理。Consumer 應依 manifest／chunk SHA 讀回，仍須另外取得來源用途、availability、revision／custody 及 OOS 資格，不能只憑此引用授訓練或正式績效。
 
-上游新增TPEx同次逐列projection／SQLite publication，與既有TWSE列證據分開；只有本次raw、原列ordinal、parser重建17欄、CSV／merged唯一鍵及readonly SQLite全部吻合才產生映射。這是未接受用途的前瞻證據，並未接成Forward合格resolver，不能把觀測時刻填成官方availability或補回舊172筆。
+上游新增TPEx同次逐列projection／SQLite publication，與既有TWSE列證據分開；只有本次raw、原列ordinal、parser重建17欄、CSV／merged唯一鍵及readonly SQLite全部吻合才產生映射。後續來源身份接線如下；這仍不是Forward金融合格resolver，不能把觀測時刻填成官方availability或補回舊172筆。
+
+#### 同次 fetched row 的來源身份接線
+
+Quick僅將本輪SQLite同步回傳的captured TWSE／TPEx publication descriptor保存成`daily-price-source-bundle.v1`；create-only run檔以外部SHA固定，`latest.json`僅為精確locator，不掃目錄或補選舊publication。`quick_execution_passed`只表示Quick結果；`natural_success=false`固定，不由passed推定自然排程。Bundle保存DB相對路徑與檔案device／inode；來源家庭、完整列、raw／parser／custody仍由consumer另外核對。
+
+Forward從`config.output_root`／`config.data_root`讀來源bundle，與本輪artifact output root分離；可由caller明選bundle descriptor，不從DB父目錄猜來源根。正常價格SELECT在同一次fetch取17欄，計算仍只沿原日期與close；binder不重讀SQLite、不按相同收盤價搜尋來源。每列只能有一個family的完整投影吻合；兩者吻合、缺descriptor／欄位、列漂移或來源證據無效均為具名unknown。TWSE原raw ordinal由固定parser重建，明示`derived_verified_raw_ordinal`，不改舊artifact。來源證據的本輪快取不替代每列內容比對。
+
+有逐列binding時，manifest為`forward-source-observations.v2`，保留原query／outcome／cache-reuse關聯與actual rows hash，另記`source_bindings_sha256`；`forward-source-observation-bound-chunk.v2`把rows和bindings按相同位置分chunk。無binding的既有呼叫仍發v1。原512KiB／64MiB等預算不放寬；binding bytes一併計入。Track A可唯讀展示`source_identity_bound`及原件SHA／ordinal，不能顯示來源已接受；Track C不得從此狀態授訓練、OOS或label資格。
+
+所有結果仍為`source_use_accepted=false`、`available_at=null`、`source_published_at=null`、PIT／training=false。尚缺可信發布／可得時間、來源用途接受及完整歷史修訂版本；同鍵被替換前尚未保存的歷史不能由新接線恢復。定向QA與自然生效狀態以[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)為準。
 
 六月歷史HTML的獨立scale-only proof只證明固定兩個raw的逐表金額欄為千元尺度、百分率不乘1000；currency仍unknown，原archive的unit_status／金融unit proof不改。它不授ML金額特徵、歷史PIT或OOS，亦不外推兩個OpenAPI，詳[月營收契約](MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md#2026-10-22-track-b-歷史原件增量)。
 

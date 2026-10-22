@@ -1,6 +1,6 @@
 # Track B 金融資料與營運補完（2026-10-22）
 
-裁決：`TRACK_B_ENGINEERING_IN_PROGRESS`。不宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。Quick custody、Formal／Paper新終態、BankTaiwan有界控制面、Forward實際來源觀測、校準official invocation綁定、TPEx同次逐列來源證據及月營收decoder版本已有定向工程證據；仍有 **88筆legacy recommendation的原件custody未成立、mixed query維持拒絕**、Forward合格逐筆版本／可得時間resolver未接通，以及修復後自然鏈尚未驗實。QA024正式metadata污染與人工cache修復另有原貌／SHA記錄，不納入自然執行。固定 V2 RC、275 項歷史驗證與 Track A/C 開發均不重開；不 push。
+裁決：`TRACK_B_ENGINEERING_IN_PROGRESS`。不宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。Quick custody、Formal／Paper新終態、BankTaiwan有界控制面、Forward實際來源觀測與同次fetched row來源身份、校準official invocation綁定、TPEx同次逐列來源證據及月營收decoder版本已有定向工程證據；仍有 **88筆legacy recommendation的原件custody未成立、mixed query維持拒絕**、Forward可信可得時間／用途與歷史修訂的合格resolver未接通，以及修復後自然鏈尚未驗實。QA024正式metadata污染與人工cache修復另有原貌／SHA記錄，不納入自然執行。固定 V2 RC、275 項歷史驗證與 Track A/C 開發均不重開；不 push。
 
 本機證據根：`output/tasks/baldr-track-b-data-operations-20261022/`。來源 HEAD `4dd820139148089ec09635ac5b0818409aa915df`；繼承恢復 `32d37e1295a1`。Release Closeout、UI 與儲存治理的他人變更保持。
 
@@ -38,7 +38,7 @@
 | Formal input | 新immutable終態定向PASS，待自然 | 10/21 21:25 result2（Taipei10/22）；10/22晚尚未到 | 未接受 | ready/compatible=0 | 未成立 | 拒絕 | 有效runtime／Owner來源包 |
 | PIT preopen／sidecar | QA014有效binding讀回；三角色均09/09runtime過期 | 10/21 16:00／18:00 result2（Taipei10/22） | candidate-only | target10/22無capture | 不能用10/20 archive代替 | formal/OOS=false | 有效配置／cutoff前自然capture |
 | Paper EOD／Portfolio | EOD新immutable終態與精確reader定向PASS，待自然；Portfolio待新run | EOD blocked；Portfolio上一run10/21 17:25 result2 | 真帳戶／cash／mark未接受 | 舊snapshot非當日 | 缺同日合法輸入 | 無ledger成功讀回 | Owner帳戶策略資金包／Quick |
-| Forward outcomes | 實際fetch觀測／持久化前置guard定向PASS，待自然 | 真自然研究更新但blocked | research-only | 缺價與pending分列 | availability未知／非跨讀快照 | 不授ML／績效 | 官方價源／自然horizon |
+| Forward outcomes | 實際fetch觀測／持久化前置guard及Quick bundle→同次完整列身份綁定定向PASS，待自然 | 真自然研究更新但blocked；新接口未自然驗實 | identity bound仍非用途接受／research-only | 缺價與pending分列；新production bindings未觀測 | availability未知／非跨讀快照 | 不授ML／績效 | 可信時點／用途／歷史修訂、自然horizon |
 | Calibration／BankTaiwan | 有界同次child控制面定向PASS，待自然；原依賴拒絕保持 | result1／2 | shadow-only | 合格samples未建立 | 不借舊source clock | 未就緒 | Raw PIT／snapshot |
 | 月營收 | strict CP950、隔離archive與真原件scale-only proof讀回PASS | 非獨立每日正式Task成功證據 | 原OpenData限定資格保持；六月HTML千元尺度已綁，幣別／用途未接受 | 原current1,981列；新增六月雙市場1,860列／1歷史月 | 歷史發布／修訂證據0 | 原YoY限定研究；新歷史候選與正式用途blocked | 幣別／完整unit用途證據、連續歷史／PIT／歷史來源用途 |
 | Official market events | wrapper→historical child→manifest／canonical讀回相符 | 10/22 result0／published | corporate-action custody formal=false | 28,799事件；4 ambiguity | historical PIT=false；current-only另列 | 下游是否使用此版本不可由執行順序推定 | child資格／精確consumer版本 |
@@ -138,3 +138,19 @@ Track C 的 ML Data Readiness 與 Track A 的唯讀研究展示見 [共用交付
 機器可讀交付位於本任務 `ml_data_readiness_contract_r2.json`（SHA `f2b68daa108933156de87ec243a9a48f45d45f33eb15a8378c04a564515fe204`）與 `readonly_research_display_contract_r2.json`（SHA `8f650d909b88e4a9cc5e87bc53a75f5706c87a810c2b4c93341a71aa568614db`）。兩份均固定原證據引用，明示不是已合格訓練資料集／新增金融接受；training／validation／OOS／promotion=false，UI不使用不完整fallback或將研究cash當真資金。Legacy custody原件屬不可替代外部證據，不由Owner口頭批准代替。
 
 後續r3交付為`ml_data_readiness_contract_r3.json`及`readonly_research_display_contract_r3.json`，保留r2，另附新自然／automation再核、QA024污染與cache修復、TPEx最終定向QA及六月scale-only proof引用；外部SHA與逐件引用核驗見`delivery_contract_r3_verification.json`。它們仍是readiness觀測／唯讀展示要求，不是訓練資料集或已接入新UI的聲明，亦不解除legacy或Forward缺件。
+
+## 後續來源身份接線（同日 QA044–045）
+
+13:52:55 PDT 再核21 Tasks：新LastRun=0、XML變更=0、21原收據SHA變更=0；`natural_revalidation_20261022T2053Z.json` SHA `7b1c0fc37c59810fb2583aeb1302c3e40214044289024369ae1637e693dbeda5`。這是唯讀再核，沒有重播producer。QA後Quick可變status仍為原失敗SHA `9b238cf57c16cc807697b1b53ae6d1d0a490edbed5c3c00f3060449a6a5c89f1`。
+
+Quick新`daily-price-source-bundle.v1`只收同輪唯一SQLite sync step回傳的captured TWSE／TPEx descriptors，hash-addressed create-only run加精確locator；讀取前後核DB relative path與dev/ino。Quick passed只表示執行結果，bundle固定`natural_success=false`。Forward使用config來源根，與artifact output root分離；同一次SELECT取得完整17欄及既存方向別名，binder不另讀SQLite，兩family純verifier重建raw／parser／custody、逐列核完整內容；單一來源吻合才標`source_identity_bound`。DB在load／binding期間被替換、雙family歧義、來源缺件或同close但非價格欄漂移均拒綁。
+
+原TWSE檔案讀取在新路徑改為bounded/no-follow、前後路徑chain身份檢查與strict JSON；TPEx補chain／累積budget。單輪已驗證來源cache最多4項，key含root／DB身份與descriptor pins，命中仍核每列內容，不依close推來源。新觀測v2把逐列binding與實際rows對齊chunk，另存binding SHA，原大小及保留上限不放寬；v1無binder caller保持。
+
+QA044：14檔compile通過，123 passed／12 failed、4 mypy errors，原輸出保留。失敗包含新測試run ID不符固定格式、TWSE雙方向欄的null placeholder、TPEx負向誤用了同值42.50及cache分支型別；修正案例／實作，未放寬金融守衛。QA045：**138 passed、14檔compile通過、8來源檔mypy通過**，包括真合成TWSE下載→sync publication→bundle→Forward同次fetch→綁定、DB替換／cache／chunk與舊reader相容性。兩輪Job均自然terminal、remaining PIDs=0、handles關閉、mutex釋放、forced_cleanup=false。限定工程QA不是自然排程或整體金融Gate。
+
+剩餘工程具名：來源用途接受與可信availability/cutoff接線、歷史被替換版本的custody／精確consumer讀回；88 legacy recommendation仍缺原件或獨立原SHA；有效Formal runtime及真Paper輸入仍待具名Owner來源包。新身份接線不補10/22舊172筆、不修改正式表schema、不授ML/OOS或交易權限。
+
+月營收官方單位查詢另核政府18420／56510、TWSE OpenAPI與2013 IFRS申報說明；只找到來源／欄位及仟元申報尺度，未找到可精確綁本次兩OpenAPI與六月HTML幣別的證據。未借發行人其他報表授整市場TWD、未改原unit_status；既存scale-only proof及百分率研究範圍保持。
+
+後續r4機器交付（保留r1–r3）：`ml_data_readiness_contract_r4.json` SHA `d52a6b5e24ab3266df01e3b1fe493ce3fd66ba310fb419a97192621f5669f28f`；`readonly_research_display_contract_r4.json` SHA `96a8a9299011e17bac28dc457aa8b2652a2cbe58bab3a82e51e44f84cb27da8c`。每份25個證據引用均按外部SHA讀回；格式與同次列身份接口已交付，PIT／training／OOS／promotion與交易資格不升格，production bindings仍未觀測。

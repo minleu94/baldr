@@ -226,4 +226,6 @@ Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 te
 
 Forward 排程在真正 SQLite fetch 邊界保存 SQL、參數、列 hash／chunks 與 event／outcome 使用關聯；同次 manifest 成功保存後才允許 outcome upsert。這是當前觀測，未保證跨 query snapshot 一致性、官方 availability 或歷史 PIT。BankTaiwan 大型 stdout 改用同 invocation、nonce／外部 SHA／snapshot identity 固定的 512 KiB 控制收據供 wrapper 分類，原 16 MiB stdout artifact 上限與完整診斷日誌保持；兩者不授金融資格。具名格式、預算與 consumer 界線見 [Track B 資料契約](../../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)與[排程稽核手冊](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
+日價的後續來源身份流為Quick本輪sync descriptors→hash-addressed source bundle→Forward同次17欄fetch→TWSE／TPEx純原件verifier→v2 rows／bindings chunks；verifier不另讀SQLite。Bundle定位根與Forward產出根分離，來源缺件不回掃latest publication；每輪已驗來源可快取，逐列仍核完整投影。這條流只證明身份，不提供來源用途接受、歷史availability或修訂倉；原金融及OOS守衛保持。
+
 校準 source-contract reader 另核 official child invocation artifact與aggregate／publication／manifest／canonical pins；last-good明示非同次。Paper retry wrapper另以獨立UUID終態引用原gate，原大清單不進有界terminal。Recommendation legacy catalog的88個D data_path仍未取得原件byte custody，mixed reader保持拒絕，不由F counterpart存在建立通用root alias；當前原件與source資格界線見[Track B驗收](../../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。

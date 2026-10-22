@@ -11,6 +11,7 @@ import math
 import os
 from pathlib import Path, PurePosixPath
 import sqlite3
+import stat
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
@@ -29,6 +30,8 @@ _HASH_PREFIX = "sha256:"
 _MAX_EVIDENCE_BYTES = 8 * 1024 * 1024
 _MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 _MAX_RECEIPT_BYTES = 512 * 1024
+_MAX_BINDING_EVIDENCE_BYTES = 64 * 1024 * 1024
+_MAX_BINDING_PROJECTION_MANIFESTS = 128
 _COLUMNS = (
     "日期", "證券代號", "證券名稱", "成交股數", "成交筆數", "成交金額",
     "開盤價", "最高價", "最低價", "收盤價", "漲跌", "漲跌價差",
@@ -101,7 +104,13 @@ def _verify_request_identity(receipt: Mapping[str, object]) -> None:
         raise TpexDailyPriceEvidenceError("TPEx official request identity changed") from exc
 
 
-def _read_under_root(root: Path, relative: object, maximum_bytes: int) -> bytes:
+def _read_under_root(
+    root: Path,
+    relative: object,
+    maximum_bytes: int,
+    *,
+    read_budget: list[int] | None = None,
+) -> bytes:
     if not isinstance(relative, str) or not relative or "\\" in relative or ":" in relative:
         raise TpexDailyPriceEvidenceError("來源證據相對路徑無效")
     pure = PurePosixPath(relative)
@@ -109,19 +118,71 @@ def _read_under_root(root: Path, relative: object, maximum_bytes: int) -> bytes:
         raise TpexDailyPriceEvidenceError("來源證據相對路徑不正規")
     root_path = Path(root).expanduser().resolve(strict=True)
     candidate = root_path.joinpath(*pure.parts)
+    chain: list[tuple[Path, tuple[int, int, int, int]]] = []
     for parent in (candidate, *candidate.parents):
-        if parent == root_path:
-            break
-        metadata = parent.lstat()
+        try:
+            metadata = parent.lstat()
+        except OSError as exc:
+            raise TpexDailyPriceEvidenceError("來源證據路徑元件不可用") from exc
         attributes = getattr(metadata, "st_file_attributes", 0)
         if parent.is_symlink() or attributes & 0x400:
             raise TpexDailyPriceEvidenceError("來源證據路徑含連結或 reparse point")
+        chain.append((parent, (metadata.st_dev, metadata.st_ino, metadata.st_mode, attributes)))
+        if parent == root_path:
+            break
+    if not chain or chain[-1][0] != root_path:
+        raise TpexDailyPriceEvidenceError("來源證據路徑不在核准根目錄下")
     try:
-        return _read_bounded_regular_file_no_follow(
+        raw = _read_bounded_regular_file_no_follow(
             candidate, maximum_bytes=maximum_bytes
         )
     except (OSError, ValueError) as exc:
         raise TpexDailyPriceEvidenceError("來源證據檔無法安全讀取") from exc
+    for path, before in chain:
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise TpexDailyPriceEvidenceError("來源證據路徑在讀取期間改變") from exc
+        attributes = getattr(metadata, "st_file_attributes", 0)
+        after = (metadata.st_dev, metadata.st_ino, metadata.st_mode, attributes)
+        if path.is_symlink() or attributes & 0x400 or after != before:
+            raise TpexDailyPriceEvidenceError("來源證據路徑在讀取期間改變")
+    if read_budget is not None:
+        read_budget[0] += len(raw)
+        if read_budget[0] > _MAX_BINDING_EVIDENCE_BYTES:
+            raise TpexDailyPriceEvidenceError("來源綁定證據總量超出上限")
+    return raw
+
+
+def _binding_cache_key(
+    *, output: Path, data: Path, database: Path, descriptor: Mapping[str, object]
+) -> tuple[object, ...]:
+    try:
+        output_info = output.stat()
+        data_info = data.stat()
+        database_info = database.lstat()
+    except OSError as exc:
+        raise TpexDailyPriceEvidenceError("綁定快取根目錄或資料庫不可用") from exc
+    if (
+        not output.is_dir()
+        or not data.is_dir()
+        or not stat.S_ISREG(database_info.st_mode)
+        or database.is_symlink()
+        or getattr(database_info, "st_file_attributes", 0) & 0x400
+    ):
+        raise TpexDailyPriceEvidenceError("綁定快取根目錄或資料庫型態無效")
+    return (
+        "tpex-daily-price-binding-v1",
+        str(output), output_info.st_dev, output_info.st_ino,
+        str(data), data_info.st_dev, data_info.st_ino,
+        str(database), database_info.st_dev, database_info.st_ino,
+        database_info.st_size, database_info.st_mtime_ns,
+        descriptor.get("status"), descriptor.get("schema_version"),
+        descriptor.get("relative_path"), descriptor.get("sha256"),
+    )
+
+
+_VERIFIED_SOURCE_CACHE_MARKER = object()
 
 
 def _relative_under_root(root: Path, path: Path) -> str:
@@ -552,10 +613,16 @@ def create_download_projection_manifest(
 
 
 def _verify_download_manifest(
-    *, output_root: Path, data_root: Path, descriptor: Mapping[str, object]
+    *,
+    output_root: Path,
+    data_root: Path,
+    descriptor: Mapping[str, object],
+    read_budget: list[int] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
     relative = descriptor.get("relative_path")
-    raw_manifest = _read_under_root(output_root, relative, _MAX_EVIDENCE_BYTES)
+    raw_manifest = _read_under_root(
+        output_root, relative, _MAX_EVIDENCE_BYTES, read_budget=read_budget
+    )
     if _sha256(raw_manifest) != descriptor.get("sha256"):
         raise TpexDailyPriceEvidenceError("TPEx projection descriptor hash mismatch")
     manifest = _verified_payload(raw_manifest, DOWNLOAD_SCHEMA)
@@ -570,15 +637,18 @@ def _verify_download_manifest(
     ):
         raise TpexDailyPriceEvidenceError("TPEx projection qualification or identity is invalid")
     raw = _read_under_root(
-        output_root, manifest.get("raw_response_relative_path"), _MAX_RESPONSE_BYTES
+        output_root, manifest.get("raw_response_relative_path"), _MAX_RESPONSE_BYTES,
+        read_budget=read_budget,
     )
     if _sha256(raw) != manifest.get("raw_response_sha256"):
         raise TpexDailyPriceEvidenceError("TPEx raw response hash changed")
     receipt_raw = _read_under_root(
-        output_root, manifest.get("custody_receipt_relative_path"), _MAX_RECEIPT_BYTES
+        output_root, manifest.get("custody_receipt_relative_path"), _MAX_RECEIPT_BYTES,
+        read_budget=read_budget,
     )
     observation_raw = _read_under_root(
-        output_root, manifest.get("observation_receipt_relative_path"), _MAX_RECEIPT_BYTES
+        output_root, manifest.get("observation_receipt_relative_path"), _MAX_RECEIPT_BYTES,
+        read_budget=read_budget,
     )
     if (
         _sha256(receipt_raw) != manifest.get("custody_receipt_sha256")
@@ -650,7 +720,10 @@ def _verify_download_manifest(
             raise TpexDailyPriceEvidenceError(
                 f"TPEx manifest row {index} differs from raw-to-normalized projection"
             )
-    csv_bytes = _read_under_root(data_root, manifest.get("csv_relative_path"), _MAX_EVIDENCE_BYTES)
+    csv_bytes = _read_under_root(
+        data_root, manifest.get("csv_relative_path"), _MAX_EVIDENCE_BYTES,
+        read_budget=read_budget,
+    )
     if _sha256(csv_bytes) != manifest.get("csv_sha256"):
         raise TpexDailyPriceEvidenceError("TPEx CSV changed after projection")
     try:
@@ -807,10 +880,196 @@ def _read_sqlite_row(database: Path, source_date: str, stock_code: str) -> list[
     return [dict(row) for row in rows]
 
 
+def verify_fetched_daily_price_rows(
+    *,
+    output_root: str | Path,
+    data_root: str | Path,
+    database_path: str | Path,
+    descriptor: Mapping[str, object] | None,
+    fetched_rows: Sequence[Mapping[str, object]],
+    verified_source_cache: dict[tuple[object, ...], object] | None = None,
+) -> tuple[Mapping[str, object], ...]:
+    """只以呼叫端同次取出的完整列核對固定 TPEx publication。"""
+    empty_results: list[dict[str, object]] = [
+        {
+            "status": "unknown",
+            "reason_code": "publication_descriptor_missing",
+            "source_id": SOURCE_ID,
+            "source_use_accepted": False,
+            "available_at": None,
+            "source_published_at": None,
+            "pit_eligible": False,
+            "training_eligible": False,
+        }
+        for _ in fetched_rows
+    ]
+    if not isinstance(descriptor, Mapping):
+        return tuple(empty_results)
+    try:
+        output = Path(output_root).expanduser().resolve(strict=True)
+        data = Path(data_root).expanduser().resolve(strict=True)
+        database = Path(database_path).expanduser().absolute()
+        database_relative = _relative_under_root(data, database)
+        cache_key = _binding_cache_key(
+            output=output, data=data, database=database, descriptor=descriptor
+        )
+        cached = verified_source_cache.get(cache_key) if verified_source_cache is not None else None
+        verified_manifests: list[tuple[Mapping[str, object], dict[str, Any]]] = []
+        if (
+            isinstance(cached, Mapping)
+            and cached.get("_marker") is _VERIFIED_SOURCE_CACHE_MARKER
+        ):
+            relative = cached["relative"]
+            publication = cached["publication"]
+            published_rows = cached["published_rows"]
+            verified_manifests = cached["verified_manifests"]
+        else:
+            relative = descriptor.get("relative_path")
+            read_budget = [0]
+            raw_publication = _read_under_root(
+                output, relative, _MAX_EVIDENCE_BYTES, read_budget=read_budget
+            )
+            if _sha256(raw_publication) != descriptor.get("sha256"):
+                raise TpexDailyPriceEvidenceError("TPEx publication descriptor hash mismatch")
+            publication = _verified_payload(raw_publication, PUBLICATION_SCHEMA)
+            if (
+                descriptor.get("status") != "captured"
+                or descriptor.get("schema_version") != PUBLICATION_SCHEMA
+                or publication.get("source_id") != SOURCE_ID
+                or publication.get("source_published_at") is not None
+                or publication.get("formal_source_contract_eligible") is not False
+                or publication.get("pit_eligible") is not False
+                or publication.get("training_eligible") is not False
+                or publication.get("database_relative_path") != database_relative
+            ):
+                raise TpexDailyPriceEvidenceError("TPEx publication identity or flags differ")
+            projection_descriptors = publication.get("projection_manifests")
+            published_rows = publication.get("rows")
+            if not isinstance(projection_descriptors, list) or not isinstance(published_rows, list):
+                raise TpexDailyPriceEvidenceError("TPEx publication references are invalid")
+            if len(projection_descriptors) > _MAX_BINDING_PROJECTION_MANIFESTS:
+                raise TpexDailyPriceEvidenceError("TPEx projection manifest count limit")
+            for reference in projection_descriptors:
+                if not isinstance(reference, Mapping):
+                    raise TpexDailyPriceEvidenceError("TPEx projection reference is invalid")
+                manifest, _csv_rows = _verify_download_manifest(
+                    output_root=output, data_root=data, descriptor=reference,
+                    read_budget=read_budget,
+                )
+                verified_manifests.append((reference, manifest))
+            if verified_source_cache is not None and len(verified_source_cache) < 4:
+                verified_source_cache[cache_key] = {
+                    "_marker": _VERIFIED_SOURCE_CACHE_MARKER,
+                    "relative": relative,
+                    "publication": publication,
+                    "published_rows": published_rows,
+                    "verified_manifests": verified_manifests,
+                }
+        counts: dict[tuple[str, str], int] = {}
+        for fetched in fetched_rows:
+            key = (
+                str(fetched.get("日期", "")).strip().replace("-", "").replace("/", ""),
+                str(fetched.get("證券代號", "")),
+            )
+            counts[key] = counts.get(key, 0) + 1
+        for index, fetched in enumerate(fetched_rows):
+            try:
+                source_date = str(fetched.get("日期", "")).strip().replace("-", "").replace("/", "")
+                if len(source_date) != 8 or not source_date.isdigit():
+                    raise TpexDailyPriceEvidenceError("fetched date is invalid")
+                stock_code = str(fetched.get("證券代號", ""))
+                key = (source_date, stock_code)
+                if counts[key] != 1:
+                    raise TpexDailyPriceEvidenceError("fetched natural key is ambiguous")
+                if not all(column in fetched for column in _COLUMNS):
+                    raise TpexDailyPriceEvidenceError("fetched TPEx row is not a full projection")
+                selected_publication_rows = [
+                    row for row in published_rows
+                    if isinstance(row, Mapping)
+                    and row.get("source_date") == source_date
+                    and row.get("stock_code") == stock_code
+                ]
+                if len(selected_publication_rows) != 1:
+                    raise TpexDailyPriceEvidenceError("published natural key is missing or ambiguous")
+                published = selected_publication_rows[0]
+                projection_matches: list[tuple[Mapping[str, object], dict[str, Any], Mapping[str, object]]] = []
+                for reference, manifest in verified_manifests:
+                    manifest_rows = manifest.get("rows")
+                    if not isinstance(manifest_rows, list):
+                        continue
+                    for projected in manifest_rows:
+                        if (
+                            isinstance(projected, Mapping)
+                            and projected.get("source_date") == source_date
+                            and projected.get("stock_code") == stock_code
+                            and projected.get("source_row_ordinal") == published.get("source_row_ordinal")
+                            and projected.get("source_row_sha256") == published.get("source_row_sha256")
+                            and projected.get("projection_row_sha256") == published.get("projection_row_sha256")
+                        ):
+                            projection_matches.append((reference, manifest, projected))
+                if len(projection_matches) != 1:
+                    raise TpexDailyPriceEvidenceError("TPEx projection identity is missing or ambiguous")
+                reference, manifest, projected = projection_matches[0]
+                if (
+                    published.get("source_id") != SOURCE_ID
+                    or published.get("parser_id") != PARSER_ID
+                    or published.get("parser_id") != manifest.get("parser_id")
+                    or published.get("observed_at") != manifest.get("observed_at")
+                    or published.get("raw_response_sha256") != manifest.get("raw_response_sha256")
+                    or published.get("observation_receipt_sha256") != manifest.get("observation_receipt_sha256")
+                    or published.get("source_published_at") is not None
+                    or projected.get("source_row_ordinal") != published.get("source_row_ordinal")
+                    or projected.get("source_row_sha256") != published.get("source_row_sha256")
+                ):
+                    raise TpexDailyPriceEvidenceError("TPEx publication row identity differs")
+                actual_projection_hash = _row_hash(fetched, _COLUMNS)
+                if (
+                    actual_projection_hash != projected.get("projection_row_sha256")
+                    or actual_projection_hash != published.get("sqlite_projection_row_sha256")
+                ):
+                    raise TpexDailyPriceEvidenceError("fetched TPEx full row differs")
+                results = {
+                    "status": "source_identity_bound",
+                    "reason_code": "ok",
+                    "source_id": SOURCE_ID,
+                    "parser_id": PARSER_ID,
+                    "source_date": source_date,
+                    "stock_code": stock_code,
+                    "publication_relative_path": relative,
+                    "publication_sha256": descriptor["sha256"],
+                    "projection_manifest_relative_path": reference["relative_path"],
+                    "projection_manifest_sha256": reference["sha256"],
+                    "raw_response_sha256": manifest["raw_response_sha256"],
+                    "custody_receipt_sha256": manifest["custody_receipt_sha256"],
+                    "observation_receipt_sha256": manifest["observation_receipt_sha256"],
+                    "source_row_ordinal": projected["source_row_ordinal"],
+                    "source_row_ordinal_basis": "captured_raw_ordinal",
+                    "source_row_sha256": projected["source_row_sha256"],
+                    "projection_row_sha256": projected["projection_row_sha256"],
+                    "sqlite_projection_row_sha256": published["sqlite_projection_row_sha256"],
+                    "available_at": None,
+                    "source_published_at": None,
+                    "source_use_accepted": False,
+                    "pit_eligible": False,
+                    "training_eligible": False,
+                }
+                empty_results[index] = results
+            except (TpexDailyPriceEvidenceError, KeyError, TypeError, ValueError, OSError) as exc:
+                empty_results[index] = {
+                    **empty_results[index],
+                    "reason_code": str(exc) or type(exc).__name__,
+                }
+    except (TpexDailyPriceEvidenceError, KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
+        reason = str(exc) or type(exc).__name__
+        return tuple({**item, "reason_code": reason} for item in empty_results)
+    return tuple(empty_results)
+
+
 __all__ = [
     "DOWNLOAD_SCHEMA",
     "PUBLICATION_SCHEMA",
     "TpexDailyPriceEvidenceError",
     "create_download_projection_manifest",
     "publish_sqlite_row_evidence",
+    "verify_fetched_daily_price_rows",
 ]

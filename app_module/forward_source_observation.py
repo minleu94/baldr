@@ -15,6 +15,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 SCHEMA_VERSION = "forward-source-observations.v1"
 CHUNK_SCHEMA_VERSION = "forward-source-observation-chunk.v1"
+BOUND_SCHEMA_VERSION = "forward-source-observations.v2"
+BOUND_CHUNK_SCHEMA_VERSION = "forward-source-observation-bound-chunk.v2"
 MAX_CHUNK_BYTES = 512 * 1024
 MAX_MANIFEST_BYTES = 512 * 1024
 MAX_RUN_BYTES = 64 * 1024 * 1024
@@ -181,6 +183,8 @@ class ForwardSourceObservationRecorder:
         symbol: str | None,
         purpose: str,
         observed_at: datetime | None = None,
+        columns: Sequence[str] | None = None,
+        source_bindings: Sequence[Mapping[str, Any]] | None = None,
     ) -> str:
         if self._active is None:
             raise ForwardSourceObservationError("source_observation_query_outside_outcome")
@@ -192,8 +196,28 @@ class ForwardSourceObservationRecorder:
         observed_text = captured_at.astimezone(timezone.utc).isoformat()
         normalized_rows = [_json_value(tuple(row)) for row in rows]
         row_bytes = _canonical_bytes(normalized_rows)
+        normalized_bindings = None
+        if columns is not None:
+            if len(set(columns)) != len(columns) or any(len(row) != len(columns) for row in rows):
+                raise ForwardSourceObservationError("source_observation_columns_invalid")
+        if source_bindings is not None:
+            if columns is None or len(source_bindings) != len(rows):
+                raise ForwardSourceObservationError("source_observation_binding_count_invalid")
+            normalized_bindings = []
+            for binding in source_bindings:
+                if (
+                    binding.get("source_use_accepted") is not False
+                    or binding.get("pit_eligible") is not False
+                    or binding.get("training_eligible") is not False
+                    or binding.get("available_at") is not None
+                    or binding.get("source_published_at") is not None
+                ):
+                    raise ForwardSourceObservationError("source_observation_binding_qualification_invalid")
+                normalized_bindings.append(_json_value(binding))
         self._row_count += len(normalized_rows)
         self._row_bytes += len(row_bytes)
+        if normalized_bindings is not None:
+            self._row_bytes += len(_canonical_bytes(normalized_bindings))
         if self._row_count > MAX_ROWS or self._row_bytes > MAX_RUN_BYTES:
             raise ForwardSourceObservationError("source_observation_row_budget_exceeded")
         query_id = f"q{len(self._queries) + 1:06d}"
@@ -210,6 +234,11 @@ class ForwardSourceObservationRecorder:
             "rows": normalized_rows,
             "uses": [],
         }
+        if columns is not None:
+            query_record["columns"] = list(columns)
+        if normalized_bindings is not None:
+            query_record["source_bindings"] = normalized_bindings
+            query_record["source_bindings_sha256"] = _sha256(_canonical_bytes(normalized_bindings))
         self._queries.append(query_record)
         self._query_by_id[query_id] = query_record
         self.record_use(query_id, purpose=purpose)
@@ -269,7 +298,7 @@ class ForwardSourceObservationRecorder:
         for query in self._queries:
             rows = query["rows"]
             chunks: list[dict[str, Any]] = []
-            row_batches = self._chunk_rows(query["query_id"], rows)
+            row_batches = self._chunk_rows(query["query_id"], rows, query.get("source_bindings"))
             for index, (chunk_value, row_count) in enumerate(row_batches):
                 raw = _canonical_bytes(chunk_value)
                 if len(raw) > MAX_CHUNK_BYTES:
@@ -283,7 +312,7 @@ class ForwardSourceObservationRecorder:
                 chunks.append(
                     {"path": relative, "sha256": digest, "row_count": row_count}
                 )
-            query_copy = {key: value for key, value in query.items() if key != "rows"}
+            query_copy = {key: value for key, value in query.items() if key not in {"rows", "source_bindings"}}
             query_copy["chunks"] = chunks
             manifest_queries.append(query_copy)
 
@@ -292,8 +321,9 @@ class ForwardSourceObservationRecorder:
         total_bytes = sum(len(raw) for _, raw, _ in chunk_payloads)
         if total_bytes > MAX_RUN_BYTES:
             raise ForwardSourceObservationError("source_observation_run_byte_limit")
+        manifest_schema = BOUND_SCHEMA_VERSION if any("source_bindings" in query for query in self._queries) else SCHEMA_VERSION
         manifest: dict[str, Any] = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": manifest_schema,
             "run_id": self.run_id,
             "db_path": self.db_path,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
@@ -331,7 +361,7 @@ class ForwardSourceObservationRecorder:
         manifest_path = self.output_root / Path(manifest_relative)
         self._write_and_verify(manifest_path, manifest_raw)
         self.reference = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": manifest_schema,
             "run_id": self.run_id,
             "manifest_path": manifest_relative,
             "manifest_sha256": _sha256(manifest_raw),
@@ -346,53 +376,43 @@ class ForwardSourceObservationRecorder:
         return dict(self.reference)
 
     def _chunk_rows(
-        self, query_id: str, rows: Sequence[Any]
+        self, query_id: str, rows: Sequence[Any], bindings: Sequence[Any] | None = None,
     ) -> list[tuple[dict[str, Any], int]]:
         batches: list[tuple[dict[str, Any], int]] = []
         current: list[Any] = []
-        for row in rows:
-            candidate = [*current, row]
+        current_bindings: list[Any] = []
+
+        def body(values: list[Any], references: list[Any]) -> dict[str, Any]:
             value = {
-                "schema_version": CHUNK_SCHEMA_VERSION,
+                "schema_version": BOUND_CHUNK_SCHEMA_VERSION if bindings is not None else CHUNK_SCHEMA_VERSION,
                 "run_id": self.run_id,
                 "query_id": query_id,
-                "rows": candidate,
+                "rows": values,
             }
-            if current and len(_canonical_bytes(value)) > MAX_CHUNK_BYTES:
-                batches.append(
-                    (
-                        {
-                            "schema_version": CHUNK_SCHEMA_VERSION,
-                            "run_id": self.run_id,
-                            "query_id": query_id,
-                            "rows": current,
-                        },
-                        len(current),
-                    )
-                )
-                current = [row]
-                single = {
-                    "schema_version": CHUNK_SCHEMA_VERSION,
-                    "run_id": self.run_id,
-                    "query_id": query_id,
-                    "rows": current,
-                }
-                if len(_canonical_bytes(single)) > MAX_CHUNK_BYTES:
-                    raise ForwardSourceObservationError("source_observation_row_too_large")
-            else:
-                current = candidate
+            if bindings is not None:
+                value["source_bindings"] = references
+            return value
+
+        base_bytes = len(_canonical_bytes(body([], [])))
+        content_bytes = 0
+        for index, row in enumerate(rows):
+            binding = bindings[index] if bindings is not None else None
+            extra = len(_canonical_bytes(row))
+            if bindings is not None:
+                extra += len(_canonical_bytes(binding))
+            comma_bytes = (2 if bindings is not None else 1) if current else 0
+            if current and base_bytes + content_bytes + comma_bytes + extra > MAX_CHUNK_BYTES:
+                batches.append((body(current, current_bindings), len(current)))
+                current, current_bindings, content_bytes = [], [], 0
+                comma_bytes = 0
+            if base_bytes + content_bytes + comma_bytes + extra > MAX_CHUNK_BYTES:
+                raise ForwardSourceObservationError("source_observation_row_too_large")
+            current.append(row)
+            if bindings is not None:
+                current_bindings.append(binding)
+            content_bytes += comma_bytes + extra
         if current or not rows:
-            batches.append(
-                (
-                    {
-                        "schema_version": CHUNK_SCHEMA_VERSION,
-                        "run_id": self.run_id,
-                        "query_id": query_id,
-                        "rows": current,
-                    },
-                    len(current),
-                )
-            )
+            batches.append((body(current, current_bindings), len(current)))
         return batches
 
     def _prepare_store(self) -> Path:

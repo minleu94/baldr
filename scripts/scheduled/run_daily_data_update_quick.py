@@ -598,6 +598,74 @@ def _sync_daily_price_files_with_twse_evidence(
     )
 
 
+def _publish_quick_daily_price_source_bundle(
+    *,
+    output_root: Path,
+    data_root: Path,
+    database_path: Path,
+    run_id: str,
+    completed_at: datetime,
+    quick_status: str,
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """只收集本輪 SQLite sync 回傳的 captured descriptor，不掃描舊收據。"""
+    sync_steps = [
+        step for step in steps
+        if step.get("name") == "sync_daily_prices_to_sqlite"
+    ]
+    if len(sync_steps) != 1:
+        reason = (
+            "quick_sync_result_missing"
+            if not sync_steps
+            else "quick_sync_result_ambiguous"
+        )
+        return {"status": "unknown", "reason_code": reason}
+    sync_result = sync_steps[0].get("result")
+    if not isinstance(sync_result, Mapping):
+        return {"status": "unknown", "reason_code": "quick_sync_result_missing"}
+    expected = {
+        "row_evidence": (
+            "twse.mi_index.daily_price",
+            "twse-daily-price-sqlite-publication.v1",
+        ),
+        "tpex_row_evidence": (
+            "tpex.daily_close_quotes",
+            "tpex-daily-price-sqlite-publication.v1",
+        ),
+    }
+    descriptors: dict[str, Mapping[str, object]] = {}
+    for key, (source_id, schema_version) in expected.items():
+        candidate = sync_result.get(key)
+        if not isinstance(candidate, Mapping):
+            continue
+        if (
+            candidate.get("status") == "captured"
+            and candidate.get("schema_version") == schema_version
+        ):
+            descriptors[source_id] = candidate
+    if not descriptors:
+        return {"status": "unknown", "reason_code": "captured_publication_descriptors_missing"}
+    try:
+        from data_module.daily_price_source_bundle import (
+            publish_daily_price_source_bundle,
+        )
+
+        return publish_daily_price_source_bundle(
+            output_root=output_root,
+            data_root=data_root,
+            database_path=database_path,
+            quick_run_id=run_id,
+            completed_at=completed_at.isoformat(),
+            quick_status=quick_status,
+            descriptors=descriptors,
+        )
+    except Exception as exc:  # noqa: BLE001 - bundle 是觀測索引，不改核心更新結果
+        return {
+            "status": "unknown",
+            "reason_code": f"daily_price_source_bundle_failed:{type(exc).__name__}",
+        }
+
+
 def _technical_is_current(
     status: dict[str, Any],
     coverage: dict[str, Any] | None = None,
@@ -1787,6 +1855,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     capacity_reservation_released_before_research_capture = False
     completed_at = scheduled_now()
+    daily_price_source_bundle = _publish_quick_daily_price_source_bundle(
+        output_root=config.output_root,
+        data_root=config.data_root,
+        database_path=config.db_file,
+        run_id=run_id,
+        completed_at=completed_at,
+        quick_status=final_status,
+        steps=steps,
+    )
     payload = {
         "task": "baldr-data-update-quick-daily",
         "status": final_status,
@@ -1831,6 +1908,7 @@ def main(argv: list[str] | None = None) -> int:
             "skip_broker_branch": bool(args.skip_broker_branch),
         },
         "monthly_revenue_research_capture": research_capture,
+        "daily_price_source_bundle": daily_price_source_bundle,
     }
     try:
         from data_module.recommendation_calibration_source_contract import (

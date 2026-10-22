@@ -27,12 +27,14 @@ from app_module.forward_performance_service import (
     ForwardPerformanceService,
 )
 from app_module.forward_source_observation import ForwardSourceObservationRecorder
+from app_module.forward_daily_price_source_binding import ForwardDailyPriceSourceBinder
 from app_module.forward_outcome_context import build_official_maturity_calendar
 from app_module.scheduled_writer_reservation import (
     ScheduledWriterReservationError,
     wait_for_scheduled_writer_reservation,
 )
 from data_module.ml_storage_capacity import release_heavy_chain_reservation
+from data_module.daily_price_source_bundle import load_daily_price_source_bundle
 
 
 TASK_NAME = "baldr-forward-outcomes-daily"
@@ -77,6 +79,7 @@ def run_scheduled_forward_outcomes(
     calendar_cache_path: str | Path | None = None,
     temporary_closure_path: str | Path | None = None,
     reservation_wait_seconds: int = SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+    price_source_bundle_descriptor: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """執行一次有界 outcome 更新並保存 machine-readable receipt。
 
@@ -332,12 +335,37 @@ def run_scheduled_forward_outcomes(
             db_path=resolved_db,
             writer=_write_create_only,
         )
+        # 來源根與本輪產出根分離；不從 DB 位置猜測資料根或來源身份。
+        source_bundle: dict[str, Any] = {
+            "status": "unknown", "reason_code": "configured_data_root_unavailable",
+            "source_use_accepted": False, "pit_eligible": False,
+            "training_eligible": False,
+        }
+        configured_data_root = getattr(config, "data_root", None)
+        price_source_binder = None
+        if configured_data_root is not None:
+            source_bundle = load_daily_price_source_bundle(
+                output_root=Path(config.output_root),
+                data_root=Path(configured_data_root),
+                database_path=resolved_db,
+                descriptor=price_source_bundle_descriptor,
+            )
+            price_source_binder = ForwardDailyPriceSourceBinder(
+                output_root=Path(config.output_root),
+                data_root=Path(configured_data_root),
+                database_path=resolved_db, bundle=source_bundle,
+            )
+        payload["daily_price_source_bundle"] = {
+            key: value for key, value in source_bundle.items()
+            if key != "descriptors"
+        }
         service = ForwardPerformanceService(
             config,
             repository,
             db_path=resolved_db,
             maturity_calendar=maturity_calendar,
             source_observer=source_observer,
+            price_source_binder=price_source_binder,
         )
         summary = service.calculate(
             windows=normalized_windows,

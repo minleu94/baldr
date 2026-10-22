@@ -98,6 +98,8 @@ BankTaiwan 的大型 child stdout 仍受 16 MiB artifact 上限約束，不截�
 
 Forward 新 run 的實際 fetch 觀測位於 `scheduled/forward_outcomes/source_observations/runs/<run_id>/manifest.json`，相對路徑與 SHA 見同次收據的 `source_observation`。超限或保存失敗會在 outcome upsert 前拒絕；不清理舊產物、不替舊 outcome 補 lineage。觀測時間不是官方 availability，PIT／training 仍為 false；格式與有界保留條件見 [Track B 交付契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)。
 
+Quick後續會另保存本輪`daily_price_source_bundle`，只引用當次sync的captured publication；核`scheduled/daily_price_source_bundles/runs/<quick_run_id>/<SHA>.json`及收據reference，不把latest locator或`quick_execution_passed`當自然執行證明。Forward讀來源根仍是config設定，artifact output root可獨立；逐列來源身份binding存在時收據為v2，須同時核rows與bindings各自SHA及chunk位置。缺件回unknown、PIT／training=false；仍須原Quick／Raw PIT／金融Gate，不能因來源身份吻合放行下游或追補舊結果。
+
 Paper EOD retry wrapper 的新自然 run 另產 `paper-execution-retry-terminal-receipt.v1`，預設位於 repo output 的 `paper_execution_eod_replay/terminal_receipts/<UUID>.json`，同目錄 `latest_terminal.json` 只作 locator。自訂 `--gate-output-root` 時，terminal 置於該 gate 目錄同父的 `terminal_receipts`，不落回正式預設根。核 terminal 的外部 SHA、同 UUID／UTC start/end／task／exit、scheduler 時窗及精確 schema，再依原 gate 引用核內容；adapter 對 gate ref 僅作 `shape_only_producer_asserted`，不冒稱已讀原 gate。原大型 blockers 仍在各次 immutable gate，terminal 只留有界摘要與計數；financial 永遠 unknown，保存或 locator 失敗均非零，不新增 retry。
 
 10/22 舊 Paper gate 沒有 producer run ID／起訖時間。Reader 可在固定 raw SHA、exact schema、來源 stale、write=false 及 scheduler 五分鐘時間關聯成立時，顯示具名 BLOCKED_SOURCE；明示 `scheduler_time_correlated_not_producer_run_id` 與 blockers 未逐條驗證。整體仍 EXECUTION_FAILED，financial／observability仍UNKNOWN；不將這項舊 gate 投影當新 terminal 自然驗收。

@@ -30,6 +30,10 @@ from app_module.official_maturity_calendar import OfficialMaturityCalendar
 from app_module.outcome_maturity_service import OutcomeMaturity, OutcomeMaturityService
 from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 from app_module.forward_source_observation import ForwardSourceObservationRecorder
+from app_module.forward_daily_price_source_binding import (
+    ForwardDailyPriceSourceBinder, PRICE_PROJECTION_COLUMNS, PRICE_DIRECTION_COLUMNS,
+    has_full_price_projection, unknown_price_source_binding,
+)
 from data_module.twse_quote_observation_capture import SESSION_CLOSE
 
 
@@ -204,6 +208,7 @@ class ForwardPerformanceService:
         maturity_calendar: OfficialMaturityCalendar | None = None,
         clock: Callable[[], datetime] | None = None,
         source_observer: ForwardSourceObservationRecorder | None = None,
+        price_source_binder: ForwardDailyPriceSourceBinder | None = None,
     ) -> None:
         self.config = config
         self.repository = repository or EvidenceEventRepository(config)
@@ -214,6 +219,7 @@ class ForwardPerformanceService:
         self._index_return_cache: dict[tuple[str, str | None, str, str], int | None] = {}
         self._index_table_columns_cache: dict[str, tuple[str, ...]] = {}
         self._source_observer = source_observer
+        self._price_source_binder = price_source_binder
         self._daily_price_observation_ids: dict[tuple[str, str | None], str] = {}
         self._index_return_observation_ids: dict[
             tuple[str, str | None, str, str], tuple[str, ...]
@@ -828,9 +834,10 @@ class ForwardPerformanceService:
             sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
         ) as conn:
             conn.execute("PRAGMA query_only = ON")
+            fetched_columns = self._price_fetch_columns(conn, date_column, close_column)
+            selected_columns = ", ".join(self._quote_identifier(column) for column in fetched_columns)
             query = f"""
-                SELECT {self._quote_identifier(date_column)},
-                       {self._quote_identifier(close_column)}
+                SELECT {selected_columns}
                 FROM daily_prices
                 WHERE {self._quote_identifier(symbol_column)} = ?
                   AND REPLACE(REPLACE(CAST({self._quote_identifier(date_column)} AS TEXT), '-', ''), '/', '') = ?
@@ -846,12 +853,13 @@ class ForwardPerformanceService:
                     rows=rows,
                     symbol=symbol,
                     purpose="exact_official_target_price",
+                    **self._price_binding_observation_options(fetched_columns, rows),
                 )
         if not rows:
             return None, "no_daily_price_row_on_planned_official_session"
         if len(rows) != 1:
             return None, "multiple_daily_price_rows_on_planned_official_session"
-        raw_date, raw_close = rows[0]
+        raw_date, raw_close = rows[0][:2]
         if self._date_key(raw_date) != target_key:
             return None, "daily_price_date_does_not_match_planned_official_session"
         close_value = self._to_decimal(raw_close)
@@ -1138,9 +1146,11 @@ class ForwardPerformanceService:
             date_sql = self._quote_identifier(date_column)
             symbol_sql = self._quote_identifier(symbol_column)
             close_sql = self._quote_identifier(close_column)
+            fetched_columns = self._price_fetch_columns(conn, date_column, close_column)
+            selected_columns = ", ".join(self._quote_identifier(column) for column in fetched_columns)
             normalized_date_sql = f"REPLACE(REPLACE(CAST({date_sql} AS TEXT), '-', ''), '/', '')"
             query = f"""
-                SELECT {date_sql}, {close_sql}
+                SELECT {selected_columns}
                 FROM daily_prices
                 WHERE {symbol_sql} = ?
                   AND {close_sql} IS NOT NULL
@@ -1157,9 +1167,11 @@ class ForwardPerformanceService:
                     rows=fetched,
                     symbol=symbol,
                     purpose="daily_price_series",
+                    **self._price_binding_observation_options(fetched_columns, fetched),
                 )
                 self._daily_price_observation_ids[cache_key] = query_id
-        for raw_date, raw_close in fetched:
+        for row in fetched:
+            raw_date, raw_close = row[:2]
             close_value = self._to_decimal(raw_close)
             if close_value is None:
                 continue
@@ -1168,6 +1180,34 @@ class ForwardPerformanceService:
         keys = tuple(row[0] for row in values)
         self._daily_price_cache[cache_key] = (keys, values)
         return keys, values
+
+    def _price_fetch_columns(
+        self, connection: sqlite3.Connection, date_column: str, close_column: str,
+    ) -> tuple[str, ...]:
+        if self._price_source_binder is None or self._source_observer is None:
+            return date_column, close_column
+        present = {row[1] for row in connection.execute('PRAGMA table_info("daily_prices")').fetchall()}
+        if not has_full_price_projection(tuple(present)):
+            return date_column, close_column
+        return (date_column, close_column) + tuple(
+            column for column in PRICE_PROJECTION_COLUMNS
+            if column not in {date_column, close_column} and column in present
+        ) + tuple(
+            column for column in PRICE_DIRECTION_COLUMNS
+            if column in present and column not in PRICE_PROJECTION_COLUMNS
+        )
+
+    def _price_binding_observation_options(
+        self, columns: tuple[str, ...], rows: list[Any],
+    ) -> dict[str, Any]:
+        if self._price_source_binder is None:
+            return {}
+        if not has_full_price_projection(columns):
+            bindings = tuple(unknown_price_source_binding("price_projection_columns_missing") for _ in rows)
+        else:
+            fetched_rows = tuple(dict(zip(columns, row, strict=True)) for row in rows)
+            bindings = self._price_source_binder.bind_rows(fetched_rows)
+        return {"columns": columns, "source_bindings": bindings}
 
     @staticmethod
     def _return_bp(current: Decimal, base: Decimal) -> int:

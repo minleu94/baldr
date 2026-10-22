@@ -26,6 +26,8 @@ Quick只將本次`update_tpex_daily_prices`回報的`source_custody[].row_projec
 
 新下載與SQLite publication均create-only並附外部artifact SHA；`observed_at`只代表response本機觀測，`source_published_at=None`、`available_at=None`，formal／PIT／training均false。它是前瞻列證據，不是來源用途接受、歷史修訂倉或Forward合格resolver。驗證與待自然界線見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
 
+前述日價publication另可經Quick本輪`daily-price-source-bundle.v1`精確交付Forward的同次17欄fetch。綁定以完整列及raw重建為準，不重讀DB、不由close值推來源；只授`source_identity_bound`，可得時間／用途／PIT仍未接受。Bundle與Forward v2 chunks、原v1相容及讀取預算見[Track B資料契約](BALDR_TRACK_B_DATA_READINESS_CONTRACT.md#同次-fetched-row-的來源身份接線)。
+
 ## 具名營益固定版本（Increment117）
 
 此接受僅涵蓋[政府開放資料20762](https://data.gov.tw/dataset/20762)之`d9778530…b609`原CSV、2330／2026-H1的營收與四個利潤率；不是全資料集單位契約。Root以既存完整官方發行人PDF獨立核對幣別、半年累計基礎與顯示精度，產品數值只取開放CSV。營收原值`2404483.69`百萬元以Decimal轉TWD，四比率保留原百分比，不以PDF較低精度替換。其他公司、前期及PDF重展示用途未接受。

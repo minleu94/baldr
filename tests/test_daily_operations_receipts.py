@@ -242,3 +242,140 @@ def test_versioned_freshness_and_evidence_receipts_have_exact_run_identity() -> 
     assert evidence["supported"] is True
     assert evidence["run_id"] == "evidence-run"
     assert evidence["producer_status_semantic"] == "failed"
+
+
+def test_formal_terminal_receipt_preserves_status_but_never_qualifies_finance() -> None:
+    run_id = "0123456789abcdef0123456789abcdef"
+    status_payload = {
+        "schema_version": "formal-input-daily-producer-receipt.v1",
+        "task": "baldr-formal-input-producer-daily",
+        "run_id": run_id,
+        "wrapper_started_at": "2026-10-22T04:25:03+00:00",
+        "completed_at": "2026-10-22T04:25:04+00:00",
+        "status": "candidate_only",
+        "blockers": ["runtime_config_expired"],
+        "financial_qualification_status": "qualified",
+        "exit_code": 2,
+    }
+    receipt = {
+        "schema_version": "formal-input-producer-terminal-receipt.v1",
+        "task": "baldr-formal-input-producer-daily",
+        "run_id": run_id,
+        "started_at": "2026-10-22T04:25:03+00:00",
+        "completed_at": "2026-10-22T04:25:04+00:00",
+        "code_version": "sha256:" + "a" * 64,
+        "exit_code": 2,
+        "failure_code": "runtime_config_expired",
+        "status": "candidate_only",
+        "blockers": ["runtime_config_expired"],
+        "financial_qualification_status": "unknown",
+        "dependency_readiness_status": "blocked",
+        "status_payload": status_payload,
+    }
+
+    result = adapt_receipt(receipt)
+
+    assert result["supported"] is True
+    assert result["schema"] == "formal-input-producer-terminal-receipt.v1"
+    assert result["producer_task"] == receipt["task"]
+    assert result["run_id"] == run_id
+    assert result["started_at"] == receipt["started_at"]
+    assert result["completed_at"] == receipt["completed_at"]
+    assert result["producer_status"] == status_payload["status"]
+    assert result["producer_status_semantic"] == "degraded"
+    assert result["failure_code"] == "runtime_config_expired"
+    assert result["blockers"] == ["runtime_config_expired"]
+    assert result["financial_qualification"]["raw_status"] == "unknown"
+    assert result["financial_qualification"]["semantic"] == "unknown"
+    assert result["dependency_readiness"]["raw_status"] == "blocked"
+    assert result["dependency_readiness"]["semantic"] == "blocked"
+
+    extra_top_level_field = {**receipt, "financial_claim": "qualified"}
+    rejected = adapt_receipt(extra_top_level_field)
+    assert rejected["supported"] is False
+    assert rejected["producer_status_semantic"] == "unknown"
+    assert rejected["missing_fields"] == ["formal_terminal_contract_invalid"]
+
+    unknown_nested_schema = {
+        **receipt,
+        "status_payload": {
+            **status_payload,
+            "schema_version": "formal-input-daily-producer-receipt.v99",
+        },
+    }
+    rejected_nested = adapt_receipt(unknown_nested_schema)
+    assert rejected_nested["supported"] is False
+    assert rejected_nested["producer_status_semantic"] == "unknown"
+
+    outer_exit_mismatch = {**receipt, "exit_code": 0}
+    rejected_exit = adapt_receipt(outer_exit_mismatch)
+    assert rejected_exit["supported"] is False
+
+    boolean_nested_exit = {
+        **receipt,
+        "status_payload": {**status_payload, "exit_code": True},
+    }
+    rejected_boolean_exit = adapt_receipt(boolean_nested_exit)
+    assert rejected_boolean_exit["supported"] is False
+
+    candidate_zero_exit = {
+        **receipt,
+        "exit_code": 0,
+        "status_payload": {**status_payload, "exit_code": 0},
+    }
+    rejected_candidate_exit = adapt_receipt(candidate_zero_exit)
+    assert rejected_candidate_exit["supported"] is False
+
+    formal_pass_with_blocker = {
+        **receipt,
+        "exit_code": 0,
+        "failure_code": "unexpected_blocker",
+        "status": "formal_inputs_machine_verified",
+        "blockers": ["unexpected_blocker"],
+        "dependency_readiness_status": "passed",
+        "status_payload": {
+            **status_payload,
+            "status": "formal_inputs_machine_verified",
+            "exit_code": 0,
+            "blockers": ["unexpected_blocker"],
+        },
+    }
+    rejected_formal_blocker = adapt_receipt(formal_pass_with_blocker)
+    assert rejected_formal_blocker["supported"] is False
+
+    skipped = {
+        **receipt,
+        "exit_code": 0,
+        "failure_code": None,
+        "status": "skipped_non_trading_day",
+        "blockers": [],
+        "dependency_readiness_status": "not_applicable",
+        "status_payload": {
+            **status_payload,
+            "status": "skipped_non_trading_day",
+            "exit_code": 0,
+            "blockers": [],
+        },
+    }
+    assert adapt_receipt(skipped)["supported"] is True
+
+    skipped_with_log_failure = {
+        **skipped,
+        "failure_code": "attempt_log_write_failed",
+        "blockers": ["attempt_log_write_failed"],
+        "dependency_readiness_status": "blocked",
+        "status_payload": {
+            **skipped["status_payload"],
+            "observability_blocker": "attempt_log_write_failed",
+        },
+    }
+    skipped_result = adapt_receipt(skipped_with_log_failure)
+    assert skipped_result["supported"] is True
+    assert skipped_result["dependency_readiness"]["semantic"] == "blocked"
+
+    skipped_nonzero = {
+        **skipped,
+        "exit_code": 2,
+        "status_payload": {**skipped["status_payload"], "exit_code": 2},
+    }
+    assert adapt_receipt(skipped_nonzero)["supported"] is False

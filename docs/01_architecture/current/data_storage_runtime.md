@@ -10,6 +10,7 @@ V2 本機整合候選 `eefd2163ad95` 的啟動設定明選五個 root：隔離 s
 
 ## 資料路徑與來源
 
+Track B 的 [金融資料交付契約](../../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md) 分列來源／版本／custody、可得時間／cutoff、coverage／品質及 consumer 身份。三份歷史修訂的 relocation helper 只沿外部固定 profile 定位舊DB身份；對當前DB dev/ino、原根缺失、plain parents、原修訂檔 pins及語義audit重驗，返回前再核身份。錯日排除原archive與兩份市場來源亦以精確origin＋SHA定位；不泛化D/F alias、不改原件、不提升PIT。未知marker／rollback／新增run項目或替換DB維持拒絕。Formal scheduled wrapper另保存create-only terminal與分階段attempt log，financial track固定unknown；latest仍為locator。實際定向QA、自然時點與限制見 [10/22 Track B](../../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
 後繼全用途月營收分支把capture、append-only候選版本歸檔、資格原件reader與下游研究service分開。市場＋代碼＋期別保留，不將無market的舊歷史表默默遷移；新歸檔實際落盤小時參與版本可見下界，不能倒填舊cutoff。舊daily snapshot／series的用途與PIT旗標保持，歷史MOPS使用獨立source與尚未建立的授權狀態。詳[全用途契約](../../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)，當前工程與金融資格分軌見[驗收](../../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。
 
 V2新增`opendata_monthly_revenue`精確TWSE／TPEx profile，保留實際HTTP狀態／headers／EOF／完成時鐘與raw bytes；單位證據artifact包含官方原件與欄位mapping並由外部SHA固定。current-only可得時間取完整批次完成向上整點，來源、單位或用途未核不得發行TWD金融列。原MOPS契約、daily writer、cohort pin與exact binding仍為保存／讀回邊界，見[Daily Source契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)。Paper新reader從原seed及單交易唯讀ledger rowset重建prestate；新producer只原子追加既有ledger，不另寫平行snapshot。見[整合決策](../BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)。

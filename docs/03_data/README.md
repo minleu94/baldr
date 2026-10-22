@@ -15,6 +15,7 @@
 
 ## 來源資格、保留與資產盤點
 
+- [Track B 金融資料交付契約](BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)：ML 可用時間／版本／PIT／OOS 與唯讀研究展示邊界；不以工程或排程通過授予金融用途。
 - [TWSE／TPEx 月營收全用途授權與資料資格](MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)：Owner 已授全部研究用途；來源、單位、歷史修訂／PIT 與下游 Gate 分別驗證。
 - [每日來源版本快照與小時可用性契約](DAILY_SOURCE_SNAPSHOT_CONTRACT.md)：新保存來源的成功批次、小時不提前、用途接受與每日品質驗證；實際接線／QA 狀態另看具名收據。
 - [基本面來源盤點入口](FUNDAMENTAL_SOURCE_INVENTORY.md)：短導引連到目前狀態、現行架構及來源 QA；Month 5 詳細盤點已封存。

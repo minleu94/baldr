@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -10,6 +12,7 @@ from typing import Any
 _SCHEMAS: dict[str, str] = {
     "decision-evidence-capture.v1": "producer",
     "formal-input-daily-producer-receipt.v1": "producer",
+    "formal-input-producer-terminal-receipt.v1": "producer",
     "formal-pit-sidecar-scheduled-status.v1": "producer",
     "scheduled-forward-outcomes.v1": "producer",
     "ml-allocation-daily-orchestration.v3": "producer",
@@ -57,7 +60,165 @@ _STATUS_SEMANTICS = {
     "authorized": "authorized",
     "exited": "launcher_completed",
     "unknown": "unknown",
+    "formal_inputs_machine_verified": "passed",
+    "individual_sources_verified": "degraded",
+    "candidate_only": "degraded",
 }
+
+_FORMAL_TERMINAL_FIELDS = frozenset(
+    {
+        "schema_version",
+        "task",
+        "run_id",
+        "started_at",
+        "completed_at",
+        "code_version",
+        "exit_code",
+        "failure_code",
+        "status",
+        "blockers",
+        "financial_qualification_status",
+        "dependency_readiness_status",
+        "status_payload",
+    }
+)
+
+
+def _formal_terminal_valid(payload: Mapping[str, Any]) -> bool:
+    """核對 Formal terminal envelope 的精確欄位與 nested producer identity。"""
+    if set(payload) != _FORMAL_TERMINAL_FIELDS:
+        return False
+    if payload.get("task") != "baldr-formal-input-producer-daily":
+        return False
+    run_id = payload.get("run_id")
+    if not isinstance(run_id, str) or len(run_id) != 32 or run_id != run_id.lower():
+        return False
+    try:
+        if uuid.UUID(hex=run_id).hex != run_id:
+            return False
+    except (ValueError, AttributeError):
+        return False
+    code_version = payload.get("code_version")
+    if (
+        not isinstance(code_version, str)
+        or code_version != code_version.lower()
+        or not code_version.startswith("sha256:")
+        or len(code_version) != 71
+        or any(
+            character not in "0123456789abcdef"
+            for character in code_version[7:].lower()
+        )
+    ):
+        return False
+    exit_code = payload.get("exit_code")
+    if (
+        not isinstance(exit_code, int)
+        or isinstance(exit_code, bool)
+        or exit_code not in {0, 2}
+    ):
+        return False
+    started_at = payload.get("started_at")
+    completed_at = payload.get("completed_at")
+    if not isinstance(started_at, str) or not isinstance(completed_at, str):
+        return False
+    try:
+        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if (
+        started.tzinfo is None
+        or completed.tzinfo is None
+        or started.utcoffset() != timedelta(0)
+        or completed.utcoffset() != timedelta(0)
+        or completed < started
+    ):
+        return False
+    if payload.get("financial_qualification_status") != "unknown":
+        return False
+
+    nested = payload.get("status_payload")
+    if not isinstance(nested, Mapping):
+        return False
+    if (
+        nested.get("schema_version") != "formal-input-daily-producer-receipt.v1"
+        or nested.get("task") != payload.get("task")
+        or nested.get("run_id") != run_id
+        or nested.get("wrapper_started_at") != started_at
+        or nested.get("completed_at") != completed_at
+        or nested.get("status") != payload.get("status")
+    ):
+        return False
+    nested_exit_code = nested.get("exit_code")
+    if (
+        not isinstance(nested_exit_code, int)
+        or isinstance(nested_exit_code, bool)
+        or nested_exit_code != exit_code
+    ):
+        return False
+    status = payload.get("status")
+    if not isinstance(status, str) or status not in {
+        "formal_inputs_machine_verified",
+        "individual_sources_verified",
+        "candidate_only",
+        "blocked",
+        "skipped_non_trading_day",
+    }:
+        return False
+    blockers = nested.get("blockers")
+    expected_receipt_blockers = list(blockers) if isinstance(blockers, list) else []
+    observability_blocker = nested.get("observability_blocker")
+    if (
+        isinstance(observability_blocker, str)
+        and observability_blocker not in expected_receipt_blockers
+    ):
+        expected_receipt_blockers.append(observability_blocker)
+    if (
+        not isinstance(blockers, list)
+        or len(blockers) > 128
+        or any(not isinstance(item, str) or not item.strip() for item in blockers)
+        or payload.get("blockers") != expected_receipt_blockers
+    ):
+        return False
+    first_blocker = (
+        blockers[0]
+        if isinstance(blockers, list)
+        and blockers
+        and isinstance(blockers[0], str)
+        else None
+    )
+    expected_failure = observability_blocker or first_blocker
+    failure_code = payload.get("failure_code")
+    if failure_code is not None and (
+        not isinstance(failure_code, str) or not failure_code.strip()
+    ):
+        return False
+    if failure_code != expected_failure:
+        return False
+    if status == "formal_inputs_machine_verified":
+        if exit_code == 0:
+            if blockers or observability_blocker:
+                return False
+        elif not (
+            isinstance(observability_blocker, str)
+            and observability_blocker.strip()
+        ):
+            return False
+    elif status == "skipped_non_trading_day":
+        if exit_code != 0:
+            return False
+    elif exit_code != 2:
+        return False
+    expected_dependency = (
+        "blocked"
+        if observability_blocker
+        else "passed"
+        if exit_code == 0 and status == "formal_inputs_machine_verified"
+        else "not_applicable"
+        if status == "skipped_non_trading_day"
+        else "blocked"
+    )
+    return payload.get("dependency_readiness_status") == expected_dependency
 
 _TRACK_STATUS_KEYS = {
     "source_freshness": ("freshness_status", "source_status", "freshness"),
@@ -165,16 +326,34 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
     schema = raw_schema if isinstance(raw_schema, str) and raw_schema in _SCHEMAS else None
     legacy = _legacy_contract(source) if "schema_version" not in source else None
     kind = _SCHEMAS.get(schema) if schema is not None else ("producer" if legacy else None)
+    formal_terminal_valid = (
+        schema == "formal-input-producer-terminal-receipt.v1"
+        and _formal_terminal_valid(source)
+    )
+    if (
+        schema == "formal-input-producer-terminal-receipt.v1"
+        and not formal_terminal_valid
+    ):
+        kind = None
     supported = kind is not None
 
-    status = source.get("overall_status") if schema == "scheduled-official-market-status-bundle.v1" else source.get("status")
+    status_payload = source.get("status_payload") if formal_terminal_valid else None
+    status = (
+        status_payload.get("status")
+        if isinstance(status_payload, Mapping)
+        else source.get("overall_status")
+        if schema == "scheduled-official-market-status-bundle.v1"
+        else source.get("status")
+    )
     if not isinstance(status, str) and schema == "scheduled-weekly-collection-controller-result.v1":
         status = source.get("status")
     if kind == "pointer":
         status = source.get("overall_status") if isinstance(source.get("overall_status"), str) else source.get("status")
 
     run_id = source.get("run_id")
-    if schema == "scheduled-official-market-status-bundle.v1":
+    if formal_terminal_valid:
+        run_id = source.get("run_id")
+    elif schema == "scheduled-official-market-status-bundle.v1":
         run_id = source.get("wrapper_run_id")
     elif schema == "daily-recommendation-learning-terminal-receipt.v1":
         run_id = source.get("run_id")
@@ -182,7 +361,9 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
         run_id = source.get("run_id")
 
     started_at = source.get("started_at")
-    if schema == "decision-evidence-capture.v1":
+    if formal_terminal_valid:
+        started_at = source.get("started_at")
+    elif schema == "decision-evidence-capture.v1":
         started_at = source.get("run_started_at")
     elif schema == "scheduled-weekly-collection-controller-receipt.v2":
         started_at = source.get("started_at_utc")
@@ -194,10 +375,18 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
     elif schema == "scheduled-weekly-collection-controller-receipt.v2":
         completed_at = source.get("completed_at_utc")
 
-    blockers = source.get("blockers") if isinstance(source.get("blockers"), list) else []
+    blockers = (
+        source.get("blockers")
+        if isinstance(source.get("blockers"), list)
+        else []
+    )
     missing_fields: list[str] = []
     if not supported:
-        missing_fields.append("schema_version_or_exact_legacy_contract")
+        missing_fields.append(
+            "formal_terminal_contract_invalid"
+            if schema == "formal-input-producer-terminal-receipt.v1"
+            else "schema_version_or_exact_legacy_contract"
+        )
     if supported and kind == "producer":
         if not isinstance(status, str):
             missing_fields.append("status")
@@ -246,6 +435,7 @@ def adapt_receipt(payload: object) -> dict[str, Any]:
         "completed_at": completed_at if isinstance(completed_at, str) else None,
         "producer_status": status if isinstance(status, str) else None,
         "producer_status_semantic": producer_semantic,
+        "failure_code": source.get("failure_code") if formal_terminal_valid else None,
         "blockers": blockers,
         "missing_fields": missing_fields,
         **tracks,

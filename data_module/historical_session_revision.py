@@ -134,7 +134,12 @@ def _validated_plan(
             role_id=None if run_role is None else f'{run_role}/revision.json',
             expected_run=expected_run,
         )
-        if marker['schema_version'] != 'historical-session-revision.v1' or Path(marker['database_path']).resolve() != database_path.resolve():
+        bound_database = database_path.resolve()
+        if Path(marker['database_path']).resolve() != bound_database:
+            from data_module.revision_custody_relocation import verified_revision_database
+
+            bound_database = verified_revision_database(database_path, path)
+        if marker['schema_version'] != 'historical-session-revision.v1' or Path(marker['database_path']).resolve() != bound_database:
             raise ValueError('修訂標記不符')
         plan_bytes, plan_sha256 = _read_bytes_with_hash(
             path.parent / 'plan.json',

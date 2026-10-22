@@ -52,6 +52,10 @@ from data_module.pit_prospective_denominator import (  # noqa: E402
 from data_module.formal_schedule_gate import (  # noqa: E402
     formal_schedule_day_state,
 )
+from scripts.scheduled.daily_operations_receipt import (  # noqa: E402
+    code_version,
+    write_terminal_receipt,
+)
 
 
 _DEFAULT_DATA_ROOT = Path(r"F:\Min\Python\Project\FA_Data")
@@ -69,6 +73,7 @@ _LEGACY_FORMAL_SOURCE_ENV = (
     "BALDR_ML_PIT_EXPECTED_UNIVERSE_PATH",
 )
 _SCHEDULED_ATTEMPT_LOG_SCHEMA_VERSION = "formal-input-scheduled-attempt.v1"
+_SCHEDULED_TASK = "baldr-formal-input-producer-daily"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -1551,6 +1556,187 @@ def _append_attempt_log(path: Path, payload: dict[str, object]) -> None:
         os.fsync(stream.fileno())
 
 
+def _add_observability_blocker(status: dict[str, object], detail: str) -> None:
+    existing = status.get("observability_blockers")
+    values = list(existing) if isinstance(existing, list) else []
+    if detail not in values:
+        values.append(detail)
+    status["observability_blockers"] = values
+    status["observability_blocker"] = ";".join(str(item) for item in values)
+
+
+def _persist_scheduled_terminal(
+    status: dict[str, object],
+    *,
+    status_root: Path,
+    run_id: str,
+    started_at: str,
+    exit_code: int,
+    runtime: Mapping[str, object] | None = None,
+) -> tuple[dict[str, object], int]:
+    """保存可覆寫的 latest locator 與 create-only 的單次排程終態收據。"""
+
+    status_path = status_root / "latest_status.json"
+    attempt_log_path = status_root / "attempts.jsonl"
+    receipt_path = status_root / "receipts" / f"{run_id}.json"
+    status["run_id"] = run_id
+    status["task"] = _SCHEDULED_TASK
+    status["wrapper_started_at"] = started_at
+    status["exit_code"] = exit_code
+    producer_exit_code = exit_code
+    attempt_base: dict[str, object] = {
+        "schema_version": _SCHEDULED_ATTEMPT_LOG_SCHEMA_VERSION,
+        "run_id": run_id,
+        "task": _SCHEDULED_TASK,
+        "phase": "producer_completed_before_terminal_persistence",
+        "observed_at": status.get("observed_at", started_at),
+        "wrapper_started_at": started_at,
+        "status_path": str(status_path),
+        "attempt_log_path": str(attempt_log_path),
+        "terminal_receipt_path": str(receipt_path),
+        "status": status.get("status"),
+        "exit_code": producer_exit_code,
+        "blockers": status.get("blockers", []),
+        "formal_ready_input_count": status.get("formal_ready_input_count", 0),
+        "formal_consumer_compatible_count": status.get(
+            "formal_consumer_compatible_count", 0
+        ),
+        "machine_candidate_input_count": status.get(
+            "machine_candidate_input_count", 0
+        ),
+    }
+    if runtime is not None:
+        attempt_base.update(runtime)
+    initial_attempt_log_failed = False
+    try:
+        _append_attempt_log(attempt_log_path, attempt_base)
+    except Exception as error:  # noqa: BLE001 - any initial log failure is operationally nonzero
+        initial_attempt_log_failed = True
+        _add_observability_blocker(
+            status,
+            f"scheduled_attempt_log_write_failed:{type(error).__name__}:{error}",
+        )
+
+    status_text = status.get("status")
+    if status_text == "skipped_non_trading_day":
+        terminal_exit_code = producer_exit_code
+    elif status.get("observability_blocker"):
+        terminal_exit_code = 2
+    else:
+        terminal_exit_code = producer_exit_code
+    status["exit_code"] = terminal_exit_code
+
+    completed_at = datetime.now(timezone.utc).isoformat()
+    status["completed_at"] = completed_at
+    terminal_persisted = False
+    receipt: dict[str, str] | None = None
+    try:
+        raw_status = status.get("status")
+        status_text = raw_status if isinstance(raw_status, str) else "unknown"
+        blockers = status.get("blockers")
+        first_blocker = (
+            blockers[0]
+            if isinstance(blockers, list)
+            and blockers
+            and isinstance(blockers[0], str)
+            else None
+        )
+        failure_code = status.get("observability_blocker") or first_blocker
+        receipt_blockers = (
+            list(blockers) if isinstance(blockers, list) else []
+        )
+        if (
+            isinstance(status.get("observability_blocker"), str)
+            and status["observability_blocker"] not in receipt_blockers
+        ):
+            receipt_blockers.append(str(status["observability_blocker"]))
+        dependency_status = (
+            "passed"
+            if (
+                terminal_exit_code == 0
+                and status_text == "formal_inputs_machine_verified"
+                and not status.get("observability_blocker")
+            )
+            else "not_applicable"
+            if status_text == "skipped_non_trading_day"
+            and not status.get("observability_blocker")
+            else "blocked"
+        )
+        receipt_payload = {
+            "schema_version": "formal-input-producer-terminal-receipt.v1",
+            "task": _SCHEDULED_TASK,
+            "run_id": run_id,
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "code_version": code_version(Path(__file__)),
+            "exit_code": terminal_exit_code,
+            "failure_code": failure_code,
+            "status": status_text,
+            "blockers": receipt_blockers,
+            "financial_qualification_status": "unknown",
+            "dependency_readiness_status": dependency_status,
+            "status_payload": dict(status),
+        }
+        receipt = write_terminal_receipt(
+            receipt_path,
+            receipt_payload,
+            receipt_root=status_root,
+        )
+        status["terminal_receipt_path"] = receipt["path"]
+        status["terminal_receipt_sha256"] = receipt["sha256"]
+        status["terminal_receipt"] = {
+            "path": receipt["path"],
+            "sha256": receipt["sha256"],
+        }
+        terminal_persisted = True
+    except Exception as error:  # noqa: BLE001 - 終態收據是必要的排程觀測證據
+        _add_observability_blocker(
+            status,
+            f"terminal_receipt_write_failed:{type(error).__name__}:{error}",
+        )
+        status["terminal_receipt_path"] = str(receipt_path)
+        status["terminal_receipt_sha256"] = None
+        status["terminal_receipt"] = {
+            "path": str(receipt_path),
+            "sha256": None,
+        }
+        terminal_exit_code = 2
+        status["exit_code"] = terminal_exit_code
+
+    final_exit_code = 2 if initial_attempt_log_failed else terminal_exit_code
+    status["exit_code"] = final_exit_code
+    final_phase = (
+        "terminal_persistence_completed"
+        if terminal_persisted
+        else "terminal_persistence_failed"
+    )
+    final_attempt = {
+        **attempt_base,
+        "phase": final_phase,
+        "completed_at": completed_at,
+        "exit_code": final_exit_code,
+        "observability_blockers": status.get("observability_blockers", []),
+        "terminal_receipt": {
+            "path": receipt["path"] if receipt is not None else str(receipt_path),
+            "sha256": receipt["sha256"] if receipt is not None else None,
+        },
+    }
+    try:
+        _append_attempt_log(attempt_log_path, final_attempt)
+    except Exception as error:  # noqa: BLE001 - any final phase log failure is operationally nonzero
+        _add_observability_blocker(
+            status,
+            f"scheduled_final_phase_log_write_failed:{type(error).__name__}:{error}",
+        )
+        final_exit_code = 2
+        status["exit_code"] = final_exit_code
+
+    status["status_path"] = str(status_path)
+    status["attempt_log_path"] = str(attempt_log_path)
+    _write_status(status_path, status)
+    return status, final_exit_code
+
+
 def run_from_environment(
     *,
     publication_root: Path,
@@ -1558,6 +1744,7 @@ def run_from_environment(
 ) -> tuple[dict[str, object], int]:
     observed = datetime.now(timezone.utc)
     observed_at = observed.isoformat()
+    run_id = uuid.uuid4().hex
     status_path = status_root / "latest_status.json"
     attempt_log_path = status_root / "attempts.jsonl"
     calendar_state, calendar_reason = formal_schedule_day_state(
@@ -1598,21 +1785,13 @@ def run_from_environment(
             },
             "exit_code": exit_code,
         }
-        _write_status(status_path, status)
-        _append_attempt_log(
-            attempt_log_path,
-            {
-                "schema_version": _SCHEDULED_ATTEMPT_LOG_SCHEMA_VERSION,
-                "observed_at": observed_at,
-                "wrapper_started_at": observed_at,
-                "status_path": str(status_path),
-                "attempt_log_path": str(attempt_log_path),
-                "status": status_text,
-                "exit_code": exit_code,
-                "blockers": status["blockers"],
-            },
+        return _persist_scheduled_terminal(
+            status,
+            status_root=status_root,
+            run_id=run_id,
+            started_at=observed_at,
+            exit_code=exit_code,
         )
-        return status, exit_code
     runtime_config: dict[str, object] | None = None
     runtime_config_error: str | None = None
     try:
@@ -1838,41 +2017,14 @@ def run_from_environment(
             "attempt_log_path": str(attempt_log_path),
         }
     exit_code = 0 if status.get("status") == "formal_inputs_machine_verified" else 2
-    status["exit_code"] = exit_code
-    _write_status(status_path, status)
-    status_observed_at = status.get("observed_at")
-    if not isinstance(status_observed_at, str) or not status_observed_at:
-        status_observed_at = observed_at
-    attempt = {
-        "schema_version": _SCHEDULED_ATTEMPT_LOG_SCHEMA_VERSION,
-        "observed_at": status_observed_at,
-        "wrapper_started_at": observed_at,
-        "status_path": str(status_path),
-        "attempt_log_path": str(attempt_log_path),
-        "status": status.get("status"),
-        "exit_code": exit_code,
-        "blockers": status.get("blockers", []),
-        "formal_ready_input_count": status.get("formal_ready_input_count", 0),
-        "formal_consumer_compatible_count": status.get(
-            "formal_consumer_compatible_count", 0
-        ),
-        "machine_candidate_input_count": status.get(
-            "machine_candidate_input_count", 0
-        ),
-        **runtime,
-    }
-    try:
-        _append_attempt_log(attempt_log_path, attempt)
-    except OSError as error:
-        # status／receipt 仍可供排錯，但無法驗證的 scheduler run 不得表示為
-        # 成功的 operational attempt。
-        status["observability_blocker"] = (
-            f"scheduled_attempt_log_write_failed:{type(error).__name__}:{error}"
-        )
-        status["exit_code"] = 2
-        _write_status(status_path, status)
-        exit_code = 2
-    return status, exit_code
+    return _persist_scheduled_terminal(
+        status,
+        status_root=status_root,
+        run_id=run_id,
+        started_at=observed_at,
+        exit_code=exit_code,
+        runtime=runtime,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1881,7 +2033,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         status_root = _status_root(publication_root, args.status_root)
     except ValueError as error:
-        observed_at = datetime.now(timezone.utc).isoformat()
+        observed = datetime.now(timezone.utc)
+        observed_at = observed.isoformat()
+        run_id = uuid.uuid4().hex
         status_root = ROOT / "output" / "formal_daily_publications" / "scheduler"
         status = _common_status(
             observed_at=observed_at,
@@ -1894,7 +2048,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "inputs": {},
             }
         )
-        _write_status(status_root / "latest_status.json", status)
+        status, _ = _persist_scheduled_terminal(
+            status,
+            status_root=status_root,
+            run_id=run_id,
+            started_at=observed_at,
+            exit_code=2,
+        )
         print(json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True))
         return 2
     status, exit_code = run_from_environment(

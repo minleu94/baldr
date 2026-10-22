@@ -8,6 +8,7 @@
 
 ## 每日營運唯讀狀態（2026-10-21）
 
+10/22 的新自然結果與修訂 custody／Formal 終態增量見 [Track B 觀測](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)：21項XML無差異，Direct保持停用；Freshness／Evidence終態已自然產生，但Quick仍有新修訂身份失敗，不能沿用昨日修復便宣稱恢復。51份Codex設定與既有after全bytes hash一致；匹配Baldr／repo／資料根者48份（含2 ACTIVE），其他設定亦未改。沒有新增heartbeat或第二個producer。
 目前 Windows inventory 為 21 個具名 task；`baldr-ml-direct-chain-maintainer` 預期維持停用，不能因盤點到 21 項就推定它應啟用。逐機實際 Enabled、LastRun、NextRun 與 DST／時區讀回仍須以該機唯讀稽核為準；未取得可核的執行用量時，記為 `UNOBSERVABLE`，不可推定為零或已完成。
 
 `scripts/audit_daily_operations.py <manifest> --snapshot-sha256 <外部固定SHA-256> --receipt-root <收據根目錄>` 是每日六狀態觀察 CLI。它只對雜湊固定的 manifest 和有界收據唯讀分類，狀態為 `HEALTHY`、`DEGRADED`、`BLOCKED_SOURCE`、`STALE`、`EXECUTION_FAILED`、`UNKNOWN`；沒有可驗證輸入時維持 `UNKNOWN`，不代表 task 已缺失或執行成功。CLI 不讀回 Windows task 設定，也不建立排程證據；輸出不能代替 exact task、自然 run、DST／offset 或下游 readback 核對。

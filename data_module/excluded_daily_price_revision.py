@@ -344,7 +344,16 @@ def _verify_archive(
         if name in by_name:
             raise ValueError("官方來源 archive 檔名重複")
         expected_path = (archive_dir / name).resolve(strict=True)
-        if Path(str(archived)).resolve(strict=True) != expected_path:
+        archived_path = Path(str(archived))
+        try:
+            archived_path.lstat()
+        except FileNotFoundError:
+            from data_module.revision_custody_relocation import locate_revision_source
+
+            archived_path = locate_revision_source(
+                archived_path, expected_sha256=str(entry.get("sha256", "")),
+            )
+        if archived_path.resolve(strict=True) != expected_path:
             raise ValueError("官方來源 archive 路徑不符")
         by_name[name] = entry
     if set(by_name) != set(_EVIDENCE_FILES):
@@ -551,10 +560,15 @@ def _validate_market_chain(
             expected_directory=market_dir,
         )
         plan = _json_from_bytes(plan_bytes, plan_path)
+    bound_database = Path(database_path).resolve()
+    if Path(str(marker.get("database_path"))).resolve() != bound_database:
+        from data_module.revision_custody_relocation import verified_revision_database
+
+        bound_database = verified_revision_database(Path(database_path), revision_path)
     if (
         marker.get("schema_version") != "formal-market-revision.v1"
         or marker.get("state") != "applied"
-        or Path(str(marker.get("database_path"))).resolve() != Path(database_path).resolve()
+        or Path(str(marker.get("database_path"))).resolve() != bound_database
         or marker.get("receipt_sha256") != _hash_bytes(receipt_bytes)
         or journal.get("schema_version") != "formal-market-repair.v1"
         or journal.get("state") != "prepared"
@@ -565,7 +579,7 @@ def _validate_market_chain(
         raise ValueError("正式市場修訂 receipt/journal/plan 鏈不符")
     if marker.get("plan_sha256", plan_sha) != plan_sha:
         raise ValueError("正式市場修訂標記 plan hash 不符")
-    if plan.get("database_path") != str(Path(database_path).resolve()):
+    if plan.get("database_path") != str(bound_database):
         raise ValueError("正式市場修訂資料庫路徑不符")
     sources = plan.get("sources")
     if not isinstance(sources, list) or not sources:
@@ -577,6 +591,14 @@ def _validate_market_chain(
         if not isinstance(source, dict) or not isinstance(source.get("path"), str):
             raise ValueError("正式市場來源清冊格式不符")
         source_path_value = Path(source["path"])
+        try:
+            source_path_value.lstat()
+        except FileNotFoundError:
+            from data_module.revision_custody_relocation import locate_revision_source
+
+            source_path_value = locate_revision_source(
+                source_path_value, expected_sha256=str(source.get("sha256", "")),
+            )
         _assert_no_reparse_components(source_path_value, root)
         source_path = source_path_value.resolve(strict=True)
         try:
@@ -796,9 +818,14 @@ def _validate_revision(
             f"{role_prefix}/revision.json",
             expected_directory=expected_run,
         )
+    bound_database = Path(database_path).resolve()
+    if Path(str(marker.get("database_path"))).resolve() != bound_database:
+        from data_module.revision_custody_relocation import verified_revision_database
+
+        bound_database = verified_revision_database(Path(database_path), path)
     if (
         marker.get("schema_version") != REVISION_SCHEMA
-        or Path(str(marker.get("database_path"))).resolve() != Path(database_path).resolve()
+        or Path(str(marker.get("database_path"))).resolve() != bound_database
         or marker.get("state") not in {"pending", "applied", "rolled_back"}
     ):
         raise ValueError("錯日排除修訂標記不符")
@@ -823,7 +850,7 @@ def _validate_revision(
         )
     if (
         plan.get("schema_version") != SCHEMA
-        or plan.get("database_path") != str(Path(database_path).resolve())
+        or plan.get("database_path") != str(bound_database)
         or plan.get("run_id") != path.parent.name
         or marker.get("plan_sha256") != plan_sha
         or journal.get("schema_version") != SCHEMA

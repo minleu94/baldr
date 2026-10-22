@@ -176,6 +176,27 @@ def test_missing_source_configuration_is_durable_and_observable(
         )
     )
     assert stored == status
+    receipt_path = Path(str(status["terminal_receipt_path"]))
+    assert receipt_path.is_file()
+    assert str(status["terminal_receipt_sha256"]).startswith("sha256:")
+    terminal = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert terminal["schema_version"] == "formal-input-producer-terminal-receipt.v1"
+    assert terminal["task"] == "baldr-formal-input-producer-daily"
+    assert terminal["run_id"] == status["run_id"]
+    assert terminal["started_at"] == status["wrapper_started_at"]
+    assert terminal["completed_at"] == status["completed_at"]
+    assert terminal["code_version"].startswith("sha256:")
+    assert terminal["status"] == status["status"]
+    assert terminal["financial_qualification_status"] == "unknown"
+    assert terminal["dependency_readiness_status"] == "blocked"
+    assert terminal["status_payload"]["status"] == "candidate_only"
+    assert terminal["status_payload"]["exit_code"] == 2
+    assert terminal["status_payload"]["run_id"] == status["run_id"]
+    assert terminal["status_payload"]["task"] == terminal["task"]
+    assert status["terminal_receipt"] == {
+        "path": status["terminal_receipt_path"],
+        "sha256": status["terminal_receipt_sha256"],
+    }
     attempt_log = Path(str(status["attempt_log_path"]))
     assert attempt_log == publication_root / "scheduler" / "attempts.jsonl"
     attempts = [
@@ -183,13 +204,19 @@ def test_missing_source_configuration_is_durable_and_observable(
         for line in attempt_log.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert len(attempts) == 1
+    assert len(attempts) == 2
     attempt = attempts[0]
+    assert attempt["phase"] == "producer_completed_before_terminal_persistence"
     assert attempt["status"] == "candidate_only"
     assert attempt["exit_code"] == 2
+    assert attempt["run_id"] == status["run_id"]
     assert attempt["working_directory"] == str(Path.cwd().resolve())
     assert attempt["arguments"] == list(sys.argv[1:])
     assert attempt["wrapper_command"][0:3] == ["cmd.exe", "/d", "/c"]
+    final_attempt = attempts[1]
+    assert final_attempt["phase"] == "terminal_persistence_completed"
+    assert final_attempt["exit_code"] == status["exit_code"]
+    assert final_attempt["terminal_receipt"] == status["terminal_receipt"]
 
 
 def test_candidate_only_run_is_not_reported_as_scheduled_success(
@@ -229,6 +256,115 @@ def test_candidate_only_run_is_not_reported_as_scheduled_success(
     assert status["schedule_exit_policy"].startswith("zero_only_for_formal_inputs")
     assert status["writes_formal_controlled_paths"] is False
     assert (publication_root / "scheduler" / "latest_status.json").is_file()
+
+
+def test_terminal_receipt_failure_keeps_financial_status_and_returns_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in runner._REQUIRED_SOURCE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        runner,
+        "run_daily_formal_input_producer",
+        lambda _paths: {
+            "status": "candidate_only",
+            "formal_ready_input_count": 0,
+            "formal_consumer_compatible_count": 0,
+            "machine_candidate_input_count": 0,
+            "inputs": {},
+            "blockers": ["fixture_candidate_only"],
+        },
+    )
+
+    def fail_receipt(*_args: object, **_kwargs: object) -> dict[str, str]:
+        raise OSError("fixture_receipt_write_failed")
+
+    monkeypatch.setattr(runner, "write_terminal_receipt", fail_receipt)
+    publication_root = tmp_path / "publication"
+    status_root = publication_root / "scheduler"
+    status, exit_code = runner.run_from_environment(
+        publication_root=publication_root,
+        status_root=status_root,
+    )
+
+    assert exit_code == 2
+    assert status["status"] == "candidate_only"
+    assert status["exit_code"] == 2
+    assert "terminal_receipt_write_failed:OSError" in str(
+        status["observability_blocker"]
+    )
+    stored = json.loads((status_root / "latest_status.json").read_text(encoding="utf-8"))
+    assert stored == status
+    assert status["terminal_receipt_sha256"] is None
+    assert status["terminal_receipt"]["sha256"] is None
+    attempts = [
+        json.loads(line)
+        for line in (status_root / "attempts.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert attempts[-1]["phase"] == "terminal_persistence_failed"
+    assert attempts[-1]["exit_code"] == 2
+
+
+def test_final_attempt_log_failure_does_not_rewrite_passed_terminal_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in runner._REQUIRED_SOURCE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        runner,
+        "run_daily_formal_input_producer",
+        lambda _paths: {
+            "status": "formal_inputs_machine_verified",
+            "formal_ready_input_count": 3,
+            "formal_consumer_compatible_count": 3,
+            "machine_candidate_input_count": 0,
+            "inputs": {},
+            "blockers": [],
+        },
+    )
+    original_append = runner._append_attempt_log
+    append_payloads: list[dict[str, object]] = []
+
+    def fail_final_append(path: Path, payload: dict[str, object]) -> None:
+        append_payloads.append(dict(payload))
+        if payload.get("phase") == "terminal_persistence_completed":
+            raise OSError("fixture_final_phase_write_failed")
+        original_append(path, payload)
+
+    monkeypatch.setattr(runner, "_append_attempt_log", fail_final_append)
+    publication_root = tmp_path / "publication"
+    status_root = publication_root / "scheduler"
+    status, exit_code = runner.run_from_environment(
+        publication_root=publication_root,
+        status_root=status_root,
+    )
+
+    assert exit_code == 2
+    assert status["status"] == "formal_inputs_machine_verified"
+    assert status["exit_code"] == 2
+    assert "scheduled_final_phase_log_write_failed:OSError" in str(
+        status["observability_blocker"]
+    )
+    receipt_path = Path(status["terminal_receipt"]["path"])
+    terminal = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert terminal["status"] == "formal_inputs_machine_verified"
+    assert terminal["exit_code"] == 0
+    assert terminal["status_payload"]["exit_code"] == 0
+    assert status["terminal_receipt_sha256"] == status["terminal_receipt"]["sha256"]
+    assert [entry["phase"] for entry in append_payloads] == [
+        "producer_completed_before_terminal_persistence",
+        "terminal_persistence_completed",
+    ]
+    logged = [
+        json.loads(line)
+        for line in (status_root / "attempts.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(logged) == 1
+    assert logged[0]["phase"] == "producer_completed_before_terminal_persistence"
 
 
 def test_runtime_paths_auto_resolve_verified_current_pit_publications(

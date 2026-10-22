@@ -10,6 +10,9 @@
 
 ## 1. 查詢範圍與限制
 
+10/22 新自然觀測與工程修復見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。Freshness／Evidence 的 create-only 終態已自然產生；Quick 本輪仍在另一份 excluded revision 的舊資料庫身份拒絕，不能宣稱上游恢復。新三-family custody profile 只定位精確原 hash 鏈及18份來源；原件沒有逐檔搬遷 SHA PASS，不得以新語義核驗冒稱該證據。原 revision、歷史 PIT、用途與寫入守衛保持。
+
+Formal input 新終態為 `formal-input-producer-terminal-receipt.v1`，latest 的 `terminal_receipt` 只定位原 bytes。核相同 UUID、task、UTC started/completed、code SHA、nested 原 producer schema/status/exit、blockers 與外部 receipt SHA；attempts 的前置 phase 不代表 terminal 已持久化，必須另核 final phase。收據或 log 持久化失敗仍非零；金融資格不由該 envelope 升格。舊 run 不補造新終態；新的自然 run 另行核驗。CLI manifest 的 receipt path 必須在明示 root 內且為相對路徑，SHA 使用不含前綴的64位hex，不能直接把latest的絕對 locator當接受。
 既有唯讀檢查器 `scripts/inspect_scheduled_task_registration.py` 預設 stdout 模式一次盤點預期的 21 個 baldr tasks，包括完整 task path、State、Enabled、LastRun、LastTaskResult、NextRun、action、arguments、working directory、trigger、timeout、IgnoreNew／retry 與電源條件。使用前核對當下程式入口和其設定的 EXPECTED_TASKS；不要拿本文件表格代替主機查詢。
 
 一般 sandbox 的 CIM access denied、COM unknown、schtasks network／path 錯誤只代表查詢受限。保留錯誤並將相應欄位標為 `unknown`；不得改 ACL、principal、系統服務或權限，也不能把 query failure 推成 task missing。`confirmed_missing=0` 也不表示所有 task 已存在。

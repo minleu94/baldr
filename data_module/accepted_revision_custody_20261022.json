@@ -1,0 +1,256 @@
+{
+  "schema_version": "revision-custody-relocation.v1",
+  "status": "accepted_custody_only",
+  "formal_training_allowed": false,
+  "historical_pit_eligible": false,
+  "database_current": {
+    "path": "F:\\Min\\Python\\Project\\FA_Data\\sqlite\\twstock.db",
+    "dev": 3532133302,
+    "ino": 281474976892416
+  },
+  "entries": [
+    {
+      "marker_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_receipts\\20260923_run01\\revision.json",
+      "original_database_path": "D:\\Min\\Python\\Project\\FA_Data\\sqlite\\twstock.db",
+      "files": [
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_receipts\\20260923_run01\\before_rows.json",
+          "sha256": "a404945ceaaee4cf1448738d29b28f3dd52889049938bc96510c9fb4b41078c2",
+          "bytes": 4962174
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_receipts\\20260923_run01\\journal.json",
+          "sha256": "520ceec0a97130ed6b51a434d6a9e46e087529a7ab5882b610dbd3b25ac69332",
+          "bytes": 448
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_receipts\\20260923_run01\\plan.json",
+          "sha256": "27a56f4dcec575d7b93c80353b6c0d6430f503013f2aae97e9a8eb0bea47d287",
+          "bytes": 65270
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_receipts\\20260923_run01\\receipt.json",
+          "sha256": "2223d8ce29558d7aca78b69774c6380be7f03f2d91adaf135abddffd67ced617",
+          "bytes": 1238
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_receipts\\20260923_run01\\revision.json",
+          "sha256": "f68e4068f9aca157dc1871160df6433900b47c5ad26912b51b711badff2f7573",
+          "bytes": 524
+        }
+      ],
+      "allowed_names": [
+        "before_rows.json",
+        "journal.json",
+        "plan.json",
+        "receipt.json",
+        "revision.json",
+        "sqlite_before.db",
+        "sqlite_before.db-shm",
+        "sqlite_before.db-wal",
+        "validation"
+      ],
+      "allowed_directories": [
+        "validation"
+      ]
+    },
+    {
+      "marker_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_receipts\\20260923_run01\\revision.json",
+      "original_database_path": "D:\\Min\\Python\\Project\\FA_Data\\sqlite\\twstock.db",
+      "files": [
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_receipts\\20260923_run01\\journal.json",
+          "sha256": "9fbc33a9526cb8db7e8f823b0c462226760b56ae46f54147276a50874a32d36f",
+          "bytes": 276
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_receipts\\20260923_run01\\plan.json",
+          "sha256": "2c490f8aa336f646e9570f05d2a0c46e68346b3b2ba55d8e2fa2049b3b756d86",
+          "bytes": 1742509
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_receipts\\20260923_run01\\receipt.json",
+          "sha256": "c3b7625f10f7a7a4c4784ce6d385911f86f8a4fb2762b66253ff81294f10a58e",
+          "bytes": 758
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_receipts\\20260923_run01\\revision.json",
+          "sha256": "801375e37a6f3c387d80178c775bfa73a1bf21ec914e73f7a014233078c700d2",
+          "bytes": 357
+        }
+      ],
+      "allowed_names": [
+        "journal.json",
+        "market_after.csv",
+        "market_before.csv",
+        "plan.json",
+        "receipt.json",
+        "revision.json",
+        "sqlite_before.db",
+        "sqlite_before.db-shm",
+        "sqlite_before.db-wal"
+      ],
+      "allowed_directories": []
+    },
+    {
+      "marker_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\historical_session_repair_receipts\\20260923_run01\\revision.json",
+      "original_database_path": "D:\\Min\\Python\\Project\\FA_Data\\sqlite\\twstock.db",
+      "files": [
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\historical_session_repair_receipts\\20260923_run01\\after_state.json",
+          "sha256": "e4182671521beb80b552484541b1107ab0bcadbad7c84743f773298b190d2be5",
+          "bytes": 78
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\historical_session_repair_receipts\\20260923_run01\\backup.json",
+          "sha256": "a862947705695e719788fa115523b0aeba8c47e2c54aae682610551e81a0bb0e",
+          "bytes": 78
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\historical_session_repair_receipts\\20260923_run01\\plan.json",
+          "sha256": "c97c3f85c42ec2ab14a0fa39473526e033578ea76a7559b9b186a5a06cb1e96c",
+          "bytes": 5560644
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\historical_session_repair_receipts\\20260923_run01\\receipt.json",
+          "sha256": "03dd86224a5485de5c91b3461e2f4e366abacd5895480e2d34ed8a085433127b",
+          "bytes": 321
+        },
+        {
+          "path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\historical_session_repair_receipts\\20260923_run01\\revision.json",
+          "sha256": "8eea7d1ffc8a72588612c4b8379f8a2cd63fbedfdd1855cc557dd86bf7d3f21a",
+          "bytes": 379
+        }
+      ],
+      "allowed_names": [
+        "after_state.json",
+        "backup.json",
+        "plan.json",
+        "receipt.json",
+        "revision.json",
+        "sqlite_before.db",
+        "sqlite_before.db-shm",
+        "sqlite_before.db-wal"
+      ],
+      "allowed_directories": []
+    }
+  ],
+  "source_files": [
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_sources\\20260923_run01\\history\\capture-20260923T080139Z.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_sources\\20260923_run01\\history\\capture-20260923T080139Z.json",
+      "sha256": "4bc1917cbbc46334b10b40012d569d63db4084bae8e17972d46795bf01c8839f",
+      "bytes": 1209084
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_sources\\20260923_run01\\september\\capture.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\formal_market_repair_sources\\20260923_run01\\september\\capture.json",
+      "sha256": "45dba3fd863f621b755378544522c79d564a4116fe87d0798733f8d4d6b06059",
+      "bytes": 7576
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20160211.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20160211.json",
+      "sha256": "ca2d359d22111af8afa9d84ffe0d86ea3470cc8647d40274407c7fa17508b82b",
+      "bytes": 665
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20160211.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20160211.receipt.json",
+      "sha256": "87d5b9cbcf7e103578acc4d8dfba2eb4715554e52fc4107eda55fe5c2d09730d",
+      "bytes": 338
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20241002.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20241002.json",
+      "sha256": "8695d7d651d31cabef202e6df88806a4f88f8c9ae2ff2f0728510daff03a00e9",
+      "bytes": 665
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20241002.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20241002.receipt.json",
+      "sha256": "46407eae42c20daa457cdd5582b522dceb0bdb1d12e4c2cbfa852f59e9dd9e3b",
+      "bytes": 338
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20250929.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20250929.json",
+      "sha256": "037b44e04939dd17ba1712e2ba55671cafe67e24b64bc4cf7bbee0b630caa34a",
+      "bytes": 665
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20250929.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20250929.receipt.json",
+      "sha256": "06338ed5a55e0b22b54704bfc64745423d74dcb44f8f9c8bd3e3b8a4c5e9fc32",
+      "bytes": 338
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20260520.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20260520.json",
+      "sha256": "ce20190709026911e541a5bddf679dc97d31df088af9c12af4a3842a067df45d",
+      "bytes": 146114
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20260520.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\tpex-20260520.receipt.json",
+      "sha256": "8ebd6ab32227e9ba4321a19884eb40189bbf35029b5ab568ad4a8c019547fb2a",
+      "bytes": 338
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20160211.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20160211.json",
+      "sha256": "ba1654ebf51eb53ed01342f180345069946eb5d25f275ad29804c04aab5cfee3",
+      "bytes": 64
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20160211.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20160211.receipt.json",
+      "sha256": "b98e439bb18dd166af3ec8380fe078b7c72f8bb2a5924cc3b027effc843730a9",
+      "bytes": 335
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20241002.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20241002.json",
+      "sha256": "ba1654ebf51eb53ed01342f180345069946eb5d25f275ad29804c04aab5cfee3",
+      "bytes": 64
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20241002.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20241002.receipt.json",
+      "sha256": "841f9ea592f1f1341ca400a20a3eead847ffb66708da7e65793b8153c7de4c48",
+      "bytes": 335
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20250929.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20250929.json",
+      "sha256": "ba1654ebf51eb53ed01342f180345069946eb5d25f275ad29804c04aab5cfee3",
+      "bytes": 64
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20250929.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20250929.receipt.json",
+      "sha256": "eabd7e7f1b12a47cdd7d1ebfff3efe9dcd5ab0da9b3d3353ca416a791298da1d",
+      "bytes": 335
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20260520.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20260520.json",
+      "sha256": "07ce39629374c27759cfde95cb0f533b2f17b76068b98762f3289ad400826d84",
+      "bytes": 4293833
+    },
+    {
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20260520.receipt.json",
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\excluded_daily_price_repair_sources\\20260923_run01\\twse-20260520.receipt.json",
+      "sha256": "12bc3cde89b58a7210d6b86e5c424f92a31bdd72d1faeac9fccf97dd5af7707d",
+      "bytes": 335
+    }
+  ],
+  "migration_proof": {
+    "path": "F:\\Min\\Python\\Project\\BaldrStorage\\D_to_F_target_sha256_receipt_20261020.jsonl",
+    "sha256": "007f76e65b5410ef274f023ecae8486bbd5ad435afe4e945647eb2a22ac07384"
+  },
+  "readonly_audit": {
+    "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-output\\tasks\\baldr-track-b-data-operations-20261022\\revision_readonly_audit.json",
+    "sha256": "4ee37f3ab340057ce4fec5e27051b9d7b99f1251a7d44559bbb791c4ed7fca3d"
+  }
+}

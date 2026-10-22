@@ -1,5 +1,6 @@
 *.cmd text eol=crlf
 data_module/accepted_daily_price_relocation_20261020.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+data_module/accepted_revision_custody_20261022.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 data_module/legacy_source_contract_locators_20261020.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 tests/fixtures/official_attention/twse_20261015.json -text
 tests/fixtures/official_attention/undated_placeholder.json -text

@@ -247,7 +247,12 @@ def inspect_market_revision_state(
             payload = capture.read_json(marker_path, marker_role)
             if payload['schema_version'] != 'formal-market-revision.v1':
                 raise ValueError('不支援的大盤修訂標記')
-            if Path(payload['database_path']).resolve() != database:
+            bound_database = database
+            if Path(payload['database_path']).resolve() != bound_database:
+                from data_module.revision_custody_relocation import verified_revision_database
+
+                bound_database = verified_revision_database(database, marker_path)
+            if Path(payload['database_path']).resolve() != bound_database:
                 raise ValueError('大盤修訂資料庫不符')
             state = payload['state']
             if state not in {'pending', 'applied', 'rolled_back'}:
@@ -365,7 +370,12 @@ def validate_market_replacement(
     for path in markers:
         try:
             state = json.loads(path.read_text(encoding='utf-8'))
-            if state['schema_version'] != 'formal-market-revision.v1' or Path(state['database_path']).resolve() != database_path.resolve():
+            bound_database = database_path.resolve()
+            if Path(state['database_path']).resolve() != bound_database:
+                from data_module.revision_custody_relocation import verified_revision_database
+
+                bound_database = verified_revision_database(database_path, path)
+            if state['schema_version'] != 'formal-market-revision.v1' or Path(state['database_path']).resolve() != bound_database:
                 raise ValueError('市場修訂標記不符')
             if state['state'] == 'rolled_back':
                 if hashlib.sha256((path.parent / 'rollback.json').read_bytes()).hexdigest() != state['rollback_sha256']:

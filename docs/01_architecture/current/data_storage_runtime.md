@@ -20,7 +20,11 @@ V2新增`opendata_monthly_revenue`精確TWSE／TPEx profile，保留實際HTTP�
 
 `data_module/config.py` 的 `TWStockConfig` 是資料路徑權威。`DATA_ROOT` 預設為 `F:/Min/Python/Project/FA_Data`，可用環境變數覆蓋；`OUTPUT_ROOT` 亦由同一設定管理，預設為 `<DATA_ROOT>/output`。主要市場 SQLite 位於 `<DATA_ROOT>/sqlite/twstock.db`。程式不得另造正式資料根目錄或硬編路徑。
 
-2026-10-20 已將 F 設為新的正式資料根，repo 的大型 `output`、`dist`、`.t` 也透過 junction 指向 `F:/Min/Python/Project/BaldrStorage`。D 舊資料尚未清除：一個舊 `config.log` 仍被程序開啟，待程序正常退出及最終核對後才能刪除 D 原始資料。搬遷範圍、核驗界線、空間數據及待辦見[儲存搬遷紀錄](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。
+2026-10-20 已將 F 設為新的正式資料根，repo 的大型 `output`、`dist`、`.t` 也透過 junction 指向 `F:/Min/Python/Project/BaldrStorage`。搬遷收尾已保存被占用的舊 `config.log`，核對並移除六個 D 舊根；此前「待清除」描述已被[儲存搬遷紀錄](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)取代。搬檔核對不等於舊金融 revision receipt 的 D→F custody 已受用途接受；該失配仍拒絕，不能只改路徑解鎖 writer。
+
+`runtime/repository_output.py` 僅允許明確的 `<repo>/output` Windows mount-point junction；其他 symlink、內層 junction、別名 target 與正式資料重疊仍拒絕。Paper isolated wrappers 和 ML legacy/config reader 重用此邊界；ML active root 仍由原設定及保護根檢查決定。正式 runtime config 的路徑身份比較會正規化同一檔案的 logical／physical 路徑，沒有放寬日期、SHA、approval 或來源資格。
+
+每日維運的 `scripts/audit_daily_operations.py` 只讀外部 SHA 固定的觀察 manifest 與逐檔 receipt，由 application 分類六種狀態並列下游 hold。只有同次 run、時鐘、完成終態與 Scheduler 零結果核對後才可列 HEALTHY；缺身份或不支援的舊 schema 保持 UNKNOWN。它沒有 producer、網路、retry 或修復執行權限；操作與限制見[唯讀稽核 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 每日市場更新的主要資料流是：
 

@@ -543,7 +543,11 @@ def _normalise_environment_value(name: str, value: str) -> str:
     # exact strings.
     if (
         name.endswith(("_PATH", "_ROOT", "_DB", "_DIR"))
-        or name in {"BALDR_PYTHON", "DATA_ROOT"}
+        or name in {
+            "BALDR_PYTHON",
+            "DATA_ROOT",
+            FORMAL_RUNTIME_CONFIG_ENV,
+        }
     ):
         try:
             return str(Path(text).expanduser().resolve()).casefold()

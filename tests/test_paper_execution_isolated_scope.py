@@ -65,10 +65,13 @@ def _make_directory_junction(link: Path, target: Path) -> None:
 def _patch_scope_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    *,
+    output_target: Path | None = None,
 ) -> tuple[Path, Path]:
     """將 Paper scope writer 全部導向 temp repository，避免碰正式 output。"""
 
     repo = tmp_path / "repo"
+    repo.mkdir()
     operation_root = repo / "output" / "paper_execution_eod_replay"
     data_root = tmp_path / "source"
     state_root = operation_root / "paper_portfolio"
@@ -93,8 +96,17 @@ def _patch_scope_paths(
     }
     for name, value in constants.items():
         monkeypatch.setattr(isolated, name, value)
-    operation_root.mkdir(parents=True)
-    (repo / "output").mkdir(parents=True, exist_ok=True)
+    if output_target is None:
+        (repo / "output").mkdir(parents=True, exist_ok=True)
+    else:
+        repo.mkdir(parents=True, exist_ok=True)
+        _make_directory_junction(repo / "output", output_target)
+    physical_operation_root = (
+        output_target / "paper_execution_eod_replay"
+        if output_target is not None
+        else operation_root
+    )
+    physical_operation_root.mkdir(parents=True)
     return repo, operation_root
 
 
@@ -252,7 +264,47 @@ def test_operation_root_junction_outside_repo_is_rejected(
     monkeypatch.setattr(isolated, "LEDGER_DB", operation_link / "paper_trade_ledger.sqlite")
     monkeypatch.setattr(isolated, "SCOPE_MANIFEST", operation_link / "scope_manifest.json")
 
-    with pytest.raises(RuntimeError, match="operation root"):
+    with pytest.raises(RuntimeError, match="output boundary"):
+        isolated._validate_write_scope()
+
+
+def test_repository_output_mountpoint_is_the_allowed_paper_storage_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("true repository output junction requires Windows")
+    storage = tmp_path / "owner-configured-storage"
+    _repo, operation_root = _patch_scope_paths(
+        monkeypatch,
+        tmp_path,
+        output_target=storage,
+    )
+
+    paths = isolated._validate_write_scope()
+
+    assert paths["repository_output_root"] == storage.resolve()
+    assert paths["operation_root"] == (storage / "paper_execution_eod_replay").resolve()
+    assert paths["candidate_root"] == (storage / "paper_execution_eod_replay" / "candidates").resolve()
+    assert operation_root.resolve() == storage / "paper_execution_eod_replay"
+
+
+def test_repository_output_mountpoint_cannot_overlap_formal_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("true repository output junction requires Windows")
+    formal_data = tmp_path / "formal-data"
+    formal_data.mkdir()
+    _patch_scope_paths(
+        monkeypatch,
+        tmp_path,
+        output_target=formal_data,
+    )
+    monkeypatch.setattr(isolated, "DEFAULT_DATA_ROOT", formal_data)
+
+    with pytest.raises(RuntimeError, match="escaped repository scope|overlaps source data root"):
         isolated._validate_write_scope()
 
 
@@ -520,6 +572,7 @@ def test_isolated_eod_rejects_ledger_target_outside_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
+    repo.mkdir()
     operation_root = repo / "output" / "paper_execution_eod_replay"
     monkeypatch.setattr(isolated, "ROOT", repo)
     monkeypatch.setattr(isolated, "OPERATIONAL_ROOT", operation_root)

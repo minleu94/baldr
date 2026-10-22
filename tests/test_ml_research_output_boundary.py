@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -53,6 +55,27 @@ def _write_config_path(
     return config_path
 
 
+def _make_true_junction(link: Path, target: Path) -> None:
+    if os.name != "nt":
+        pytest.skip("true mount-point junctions require Windows")
+    link.parent.mkdir(parents=True, exist_ok=True)
+    target.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["cmd.exe", "/d", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode == 0:
+        return
+    output = f"{completed.stdout}\n{completed.stderr}".casefold()
+    if any(marker in output for marker in ("access is denied", "privilege", "requires elevation")):
+        pytest.skip(f"junction creation unavailable: {output.strip()}")
+    pytest.fail(f"junction creation failed: {output.strip()}")
+
+
 def test_absent_config_keeps_legacy_root_active_without_creating_it(tmp_path: Path) -> None:
     repository = tmp_path / "repo"
     repository.mkdir()
@@ -71,6 +94,82 @@ def test_absent_config_keeps_legacy_root_active_without_creating_it(tmp_path: Pa
         access="write",
     ) == legacy / "new" / "manifest.json"
     assert not legacy.exists()
+
+
+def test_legacy_ml_root_accepts_only_the_repository_output_junction(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    storage = tmp_path / "owner-configured-storage"
+    _make_true_junction(repository / "output", storage)
+    legacy = storage / "ml_research"
+
+    assert get_ml_research_root(repository_root=repository) == legacy
+    assert resolve_ml_research_output_path(
+        repository / "output" / "ml_research" / "runs" / "old.json",
+        repository_root=repository,
+        access="read",
+    ) == legacy / "runs" / "old.json"
+    assert resolve_ml_research_output_path(
+        repository / "output" / "ml_research" / "runs" / "new.json",
+        repository_root=repository,
+        access="write",
+    ) == legacy / "runs" / "new.json"
+
+
+def test_storage_config_under_repository_output_junction_keeps_active_root_separate(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    storage = tmp_path / "owner-configured-storage"
+    _make_true_junction(repository / "output", storage)
+    active = tmp_path / "independent-ml-research"
+    _write_config(repository, active)
+
+    assert get_ml_research_root(repository_root=repository) == active
+    assert resolve_ml_research_output_path(
+        repository / "output" / "ml_research" / "old" / "manifest.json",
+        repository_root=repository,
+        access="read",
+    ) == storage / "ml_research" / "old" / "manifest.json"
+    assert resolve_ml_research_output_path(
+        active / "new" / "manifest.json",
+        repository_root=repository,
+        access="write",
+    ) == active / "new" / "manifest.json"
+
+
+def test_ml_candidate_cannot_use_a_reparse_point_at_another_repository_location(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    (repository / "output").mkdir(parents=True)
+    outside = tmp_path / "other-storage"
+    _make_true_junction(repository / "other", outside)
+
+    with pytest.raises(MLResearchOutputBoundaryError, match="symlink or junction"):
+        resolve_ml_research_output_path(
+            repository / "other" / "manifest.json",
+            repository_root=repository,
+            access="read",
+        )
+
+
+def test_legacy_ml_root_junction_cannot_overlap_formal_data_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    formal_data = tmp_path / "formal-data"
+    _make_true_junction(repository / "output", formal_data)
+    monkeypatch.setenv("DATA_ROOT", str(formal_data))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "formal-output"))
+
+    with pytest.raises(MLResearchOutputBoundaryError, match="protected root"):
+        get_ml_research_root(repository_root=repository)
 
 
 def test_configured_root_is_only_write_root_while_legacy_pins_remain_readable(
@@ -219,10 +318,7 @@ def test_current_observed_reader_resolves_exact_legacy_and_active_roots(
 
 @pytest.mark.parametrize(
     "active_root",
-    [
-        "relative/research",
-        "F:/Min/Python/Project/FA_Data/output/research",
-    ],
+    ["relative/research"],
 )
 def test_config_rejects_relative_or_protected_active_roots(
     tmp_path: Path, active_root: str
@@ -232,6 +328,21 @@ def test_config_rejects_relative_or_protected_active_roots(
     _write_config(repository, active_root)
 
     with pytest.raises(MLResearchOutputBoundaryError):
+        get_ml_research_root(repository_root=repository)
+
+
+def test_config_rejects_active_root_inside_configured_formal_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    formal_data = tmp_path / "isolated-formal-data"
+    _write_config(repository, formal_data / "output" / "research")
+    monkeypatch.setenv("DATA_ROOT", str(formal_data))
+    monkeypatch.setenv("OUTPUT_ROOT", str(formal_data / "output"))
+
+    with pytest.raises(MLResearchOutputBoundaryError, match="protected root"):
         get_ml_research_root(repository_root=repository)
 
 

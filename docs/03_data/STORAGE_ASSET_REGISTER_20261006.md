@@ -2,7 +2,7 @@
 
 ## 2026-10-20 儲存位置更新
 
-本資產表下方路徑與容量是 2026-10-06 的歷史盤點，不代表目前所在位置。現行 `DATA_ROOT` 已改為 `F:/Min/Python/Project/FA_Data`，repo 的 `output`、`dist`、`.t` 透過 junction 存於 `F:/Min/Python/Project/BaldrStorage`。D→F 資料已複製及合併，但 D 舊根尚未刪除，因 D 的 `FA_Data/output/application_state/logs/config.log` 仍被程序開啟；清除進度與核對界線見[2026-10-20 儲存搬遷紀錄](../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)。請勿把下方 D 路徑表格視為當前資料位置。
+本資產表下方路徑與容量是 2026-10-06 的歷史盤點，不代表目前所在位置。2026-10-20 搬遷已完成：`DATA_ROOT` 為 `F:/Min/Python/Project/FA_Data`，repo 的 `output`、`dist`、`.t` 透過 junction 存於 `F:/Min/Python/Project/BaldrStorage`；六個 D 槽 Baldr 資料根已逐項核對並刪除，C 槽 repo 原始碼保留。不要將下方 D 路徑、容量或恢復欄位當成現況。搬遷範圍、SHA 收據、磁碟觀測與尚未建立的 task 狀態見[2026-10-20 儲存搬遷紀錄](../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)；下方資產表仍保留作為 10/06 歷史基準。
 
 ## 查詢已登記的冷封存
 

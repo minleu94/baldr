@@ -97,6 +97,8 @@ TWSE／TPEX 與其他明示來源
 
 Windows Scheduler 與受控 CLI wrappers 分別執行資料更新、Evidence dry-run 或經批准的工作。Runtime Observatory 只讀 Runtime 與排程狀態，不啟動任務。正式市場資料寫入、Evidence write-mode、策略 lifecycle 與 broker execution 使用分離權限；排程狀態或零錯誤碼不授予產品接受。
 
+每日維運另有唯讀 `app_module.daily_operations_status`／`scripts.audit_daily_operations`，核對外部固定 SHA 與同次原始收據後分列六種狀態及下游 hold。共用 `runtime.repository_output` 僅接受既有 repo/output 的精確 Windows junction，不把所有 reparse path 列白名單；Paper、ML 的正式資料隔離及金融用途守衛保持。詳見[current Runtime 分冊](current/data_storage_runtime.md)。
+
 儲存、source cutoff、snapshot identity、SQLite 讀寫與 runtime custody 的穩定細節見[資料、保存與 Runtime 分冊](current/data_storage_runtime.md)。
 
 每日新來源保存的小時可用性、批次／版本釘定與來源用途接受依[每日快照契約](../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)；接入沿既有 data reader／更新服務邊界，隔離抓取成功不等同正常 UI、正式排程或完整產品接受。

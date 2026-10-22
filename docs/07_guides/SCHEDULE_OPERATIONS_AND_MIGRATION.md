@@ -6,6 +6,14 @@
 
 需要重跑時，先核上次失敗原因、正式teacher inputs與自然證據累積資格，再取得另行人類授權；不能僅因前次failed或有新receipt就重跑。資格不足不降低gate、不補造歷史，保留blocked收據。停用不是模型驗收或自然證據累積恢復；本輪完整結果、hash與核對界線見[具名QA報告](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
 
+## 每日營運唯讀狀態（2026-10-21）
+
+目前 Windows inventory 為 21 個具名 task；`baldr-ml-direct-chain-maintainer` 預期維持停用，不能因盤點到 21 項就推定它應啟用。逐機實際 Enabled、LastRun、NextRun 與 DST／時區讀回仍須以該機唯讀稽核為準；未取得可核的執行用量時，記為 `UNOBSERVABLE`，不可推定為零或已完成。
+
+`scripts/audit_daily_operations.py <manifest> --snapshot-sha256 <外部固定SHA-256> --receipt-root <收據根目錄>` 是每日六狀態觀察 CLI。它只對雜湊固定的 manifest 和有界收據唯讀分類，狀態為 `HEALTHY`、`DEGRADED`、`BLOCKED_SOURCE`、`STALE`、`EXECUTION_FAILED`、`UNKNOWN`；沒有可驗證輸入時維持 `UNKNOWN`，不代表 task 已缺失或執行成功。CLI 不讀回 Windows task 設定，也不建立排程證據；輸出不能代替 exact task、自然 run、DST／offset 或下游 readback 核對。
+
+狀態分類不授權重跑 writer。失敗、來源阻擋、過期或未知時先核同一 run 的 task、producer、收據、產物與 consumer；不可重播舊 task、重建歷史或藉新 receipt 補自然 credit。正式金融資料、Paper 帳本、正式評分／回測、Promotion 與交易均受各自來源、PIT、金融精度與用途 Gate 限制；本 CLI 的健康狀態不放寬任何 Gate，也不構成正式金融驗收。
+
 本指南說明 baldr 排程的種類、日常核對入口與移機界線。它是操作文件，不是註冊、啟用、手動觸發、改帳戶或切換 portable executable 的授權。若目標是新機或 owner 移交，從[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)開始；唯讀查證看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 ## 排程種類與權威

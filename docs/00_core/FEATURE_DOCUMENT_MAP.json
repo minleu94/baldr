@@ -1383,7 +1383,10 @@
         "app_module/decision_capture_status_reader.py",
         "app_module/dtos/runtime_dtos.py",
         "app_module/runtime_services/scheduled_operations_service.py",
-        "app_module/workbench_source_service.py"
+        "app_module/workbench_source_service.py",
+        "app_module/daily_operations_status.py",
+        "scripts/audit_daily_operations.py",
+        "runtime/repository_output.py"
       ],
       "tests": [
         "tests/test_storage_overview.py",
@@ -1392,7 +1395,9 @@
         "tests/test_decision_capture_status_reader.py",
         "tests/decision_capture_status_fixture.py",
         "tests/test_scheduled_operations_service.py",
-        "tests/test_decision_date_semantics_regression.py"
+        "tests/test_decision_date_semantics_regression.py",
+        "tests/test_daily_operations_status.py",
+        "tests/test_repository_output_boundary.py"
       ],
       "manual": [
         "docs/07_guides/APPLICATION_MANUAL.md"
@@ -1405,6 +1410,10 @@
       ],
       "change_patterns": [
         "app_module/storage_overview.py",
+        "app_module/daily_operations_status.py",
+        "scripts/audit_daily_operations.py",
+        "tests/test_daily_operations_status.py",
+        "tests/test_repository_output_boundary.py",
         "ui_qt/views/storage_overview_view.py",
         "tests/test_storage_overview.py",
         "tests/test_ui_qt_storage_overview.py",

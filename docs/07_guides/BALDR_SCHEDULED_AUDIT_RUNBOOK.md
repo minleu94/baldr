@@ -1,6 +1,6 @@
 # baldr 全排程唯讀稽核 Runbook
 
-2026-10-14 owner已在本輪自然退出後停用Direct每日重跑：`\baldr-ml-direct-chain-maintainer` 預期 `Enabled=false`，原10:00 trigger/action保留。21項仍應查核；不要把這一項已授權停用判成意外缺件或自行重新啟用。其餘20項與晨晚automation不變。停用不等於本輪fit成功或自然累積恢復；詳見[排程運維指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
+2026-10-14 owner已在本輪自然退出後停用Direct每日重跑：`\baldr-ml-direct-chain-maintainer` 預期 `Enabled=false`，原10:00 trigger/action保留。現行 inventory 為21個具名 Windows task，仍須逐項唯讀核對；不要把Direct已授權停用判成意外缺件或自行重新啟用。其餘20項與晨晚automation依各自證據判讀。停用不等於本輪fit成功或自然累積恢復；詳見[排程運維指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
 
 人類另行授權的修正重跑應獨立列 producer 收據與資料寫入範圍；手動執行不代表 Scheduler Last／Result 恢復。Forward／Decision 的手動 `--reservation-wait-seconds` 僅限定等待，不豁免鎖或來源资格；唯讀 audit 不使用它啟動 producer。台北10/14盤前具名重跑、恢复及未解除阻塞見[10/13修復報告](../06_qa/BALDR_SCHEDULE_REPORT_REPAIR_20261013.md)。
 
@@ -13,6 +13,8 @@
 既有唯讀檢查器 `scripts/inspect_scheduled_task_registration.py` 預設 stdout 模式一次盤點預期的 21 個 baldr tasks，包括完整 task path、State、Enabled、LastRun、LastTaskResult、NextRun、action、arguments、working directory、trigger、timeout、IgnoreNew／retry 與電源條件。使用前核對當下程式入口和其設定的 EXPECTED_TASKS；不要拿本文件表格代替主機查詢。
 
 一般 sandbox 的 CIM access denied、COM unknown、schtasks network／path 錯誤只代表查詢受限。保留錯誤並將相應欄位標為 `unknown`；不得改 ACL、principal、系統服務或權限，也不能把 query failure 推成 task missing。`confirmed_missing=0` 也不表示所有 task 已存在。
+
+每日營運可另以唯讀 CLI 對已固定 SHA-256 的 observation snapshot 和收據分類：`scripts/audit_daily_operations.py <manifest> --snapshot-sha256 <外部固定SHA-256> --receipt-root <收據根目錄>`。輸出六種 component 狀態：`HEALTHY`、`DEGRADED`、`BLOCKED_SOURCE`、`STALE`、`EXECUTION_FAILED`、`UNKNOWN`。輸入無法核實、收據缺失或格式不支援時保留 `UNKNOWN` 或相應阻塞狀態；這不是 task 設定讀回，也不替代 scheduler inspector、同次 producer terminal 或 consumer readback。沒有可核實的執行用量記錄為 `UNOBSERVABLE`，不可當成零用量或已完成。
 
 2026-10-09 具名設定 QA 的 readback 範圍記錄 Direct、Paper Portfolio、PIT sector preopen 和 ML Allocation Forward 四項透過 `pythonw.exe → run_scheduled_cmd_hidden.py --task <exact task> → canonical CMD`；另 17 項使用 canonical CMD action。這是該次主機 QA 的設定描述，不是本次或新機驗收。核 hidden dispatcher 時逐項比對 interpreter、exact argv、cwd 和固定 mapping。
 
@@ -43,6 +45,8 @@ Direct maintainer 文件化 trigger 是 Pacific 10:00；05:30 是舊預期。舊
 
 Paper Portfolio 與 ML forward 於台北 08:25（UTC 00:25）offset 喚醒，PDT 前一日 17:25／PST 前一日 16:25 是同一時刻的時區換算，不代表當季 Task 已自然驗收。前者等真實 08:30 guard；後者等 08:30 cutoff 並有 08:35 deadline。新機必須讀 Task XML offset 和實際 UTC／本地 `NextRun`。台北 cutoff 尚未到、holiday、`waiting_for_taipei_cutoff` 或 `completed_with_pending` 都不能當成完整成功或自然 maturity。
 
+Pacific Task 隨 DST 改變本地鐘點所代表的 UTC 時間；台北 offset lane 則依固定 UTC offset 執行。每次 DST 切換、搬機或時區設定改動後，必須以該機 Task XML 和實際 UTC／本地 `NextRun` 確認；沒有讀回資料時記 `UNOBSERVABLE`，不可用手算換算填成已驗收。
+
 晨間 05:30 report 早於 05:40 Forward、05:45 learning、05:50 Bank 和 06:00 EOD；只可報告這些尚未到期或上一個已驗 terminal 的實際狀態。06:20 report 也不保證長時間 G6／G9 chain 已完成；timeout、仍活躍 child 或 heartbeat 過期分別報告，不能以放寬檢查時間掩蓋。timeout、retry、電源條件及 cutoff 以當次實際 argv／Task XML 為準。
 
 跨 task 依賴透過同次 source identity、receipt、lock、terminal 和 consumer readback 來判斷，不能因排程時間前後相接就推定上游完成。`Task Ready`、`LastTaskResult=0`、process exit 0、單一 status file 存在、heartbeat 回報和人工執行成功各是不同證據。
@@ -72,5 +76,7 @@ Paper Portfolio 與 ML forward 於台北 08:25（UTC 00:25）offset 喚醒，PDT
 每份 audit 至少包含日期／時區、21 tasks 的查詢覆蓋、read failure／unknown、兩個 heartbeat 讀回狀態（若有）、新增／恢復／持續 blocker、exact run／receipt／hash、下游結果和下一步 owner。只對新失敗、恢復、完成、超期或需要人處理的差異詳報；例行休市、正常週頻等待、自然成熟等待和既有人工待審依 notification 契約處理。
 
 這項稽核不得自行 HTTP 抓資料、執行 writer／producer／訓練、修改 DB／sidecar／repo output、改 Task／Codex automation／credentials／ACL、交易、promotion、commit 或 push。發現需要修正時，留下具體 affected run、原始 blocker、驗收條件與所需 owner；若另獲明確授權再以獨立 scope 修正。
+
+Read-only 狀態或失敗收據不授權重跑 writer、補跑錯過的自然排程或重建歷史；先保留原始 failure、查同一 run 的終態與下游讀回，待來源及期限資格明確後再依獨立人類授權處理。正式金融資料、正式評分／回測、Paper／Forward、ML Promotion 與交易仍各受正式來源、PIT、金融精度與用途 Gate 約束；`HEALTHY` 只表示本 CLI 核過的同次收據符合其輸入契約，不等於任何正式金融接受或績效證明。
 
 過往逐日診斷、工程假設與 named QA 時點見[歷史封存區](../09_archive/README.md)，不可用來推定目前排程已存在或已自然執行。現行排程基準與 lane 入口見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。

@@ -18,6 +18,8 @@ from data_module.formal_runtime_config import (
     build_runtime_environment_binding,
     load_runtime_environment_binding,
     _payload_hash,
+    _normalise_environment_value,
+    _validate_environment_contract,
     read_runtime_environment_values,
     load_formal_runtime_config,
 )
@@ -127,6 +129,83 @@ def _bind_environment(
     monkeypatch.setenv(
         "FORMAL_DAILY_PORTFOLIO_CLOCK_MANIFEST",
         str(portfolio_clock),
+    )
+
+
+def test_runtime_config_binding_accepts_real_repository_output_junction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    logical_output = repository_root / "output"
+    logical_config = (
+        logical_output
+        / "v4_next_formal"
+        / "formal_daily_runtime_config_v6"
+        / "2026-09-09.json"
+    )
+    if (
+        not logical_config.is_file()
+        or logical_output.resolve() == logical_output
+    ):
+        pytest.skip("requires the deployed repository output junction")
+
+    resolved_config = logical_config.resolve()
+    assert str(logical_config).casefold() != str(resolved_config).casefold()
+    environment = {FORMAL_RUNTIME_CONFIG_ENV: str(logical_config)}
+    monkeypatch.setenv(FORMAL_RUNTIME_CONFIG_ENV, str(logical_config))
+
+    projection = _validate_environment_contract(
+        {
+            "pit_preopen_wrapper": {
+                "entrypoint": (
+                    "scripts/scheduled/run_pit_sector_membership_"
+                    "preopen_capture.cmd"
+                ),
+                "environment": environment,
+                "required_environment": [FORMAL_RUNTIME_CONFIG_ENV],
+            }
+        },
+        role="pit_preopen_wrapper",
+        config_path=resolved_config,
+    )
+
+    assert projection["environment_match"] is True
+
+
+def test_runtime_config_binding_still_rejects_a_different_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_config = tmp_path / "expected-config.json"
+    actual_config = tmp_path / "actual-config.json"
+    monkeypatch.setenv(FORMAL_RUNTIME_CONFIG_ENV, str(expected_config))
+
+    with pytest.raises(
+        FormalRuntimeConfigError,
+        match="pit_preopen_wrapper_runtime_config_binding_path_mismatch",
+    ):
+        _validate_environment_contract(
+            {
+                "pit_preopen_wrapper": {
+                    "entrypoint": (
+                        "scripts/scheduled/run_pit_sector_membership_"
+                        "preopen_capture.cmd"
+                    ),
+                    "environment": {
+                        FORMAL_RUNTIME_CONFIG_ENV: str(expected_config)
+                    },
+                    "required_environment": [FORMAL_RUNTIME_CONFIG_ENV],
+                }
+            },
+            role="pit_preopen_wrapper",
+            config_path=actual_config.resolve(),
+        )
+
+
+def test_non_path_environment_values_remain_exact_strings() -> None:
+    assert _normalise_environment_value("PIT_SOURCE_MODE", "Official") == "Official"
+    assert _normalise_environment_value("PIT_SOURCE_MODE", "Official") != (
+        _normalise_environment_value("PIT_SOURCE_MODE", "official")
     )
 
 

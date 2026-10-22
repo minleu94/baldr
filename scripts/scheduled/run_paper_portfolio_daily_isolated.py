@@ -25,7 +25,7 @@ import time as time_module
 from uuid import uuid4
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(os.path.abspath(__file__)).parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -42,6 +42,12 @@ from scripts.run_paper_portfolio_daily import (  # noqa: E402
 from scripts.scheduled.paper_portfolio_state_isolation import (  # noqa: E402
     ensure_repo_state_from_readonly_source,
     publish_repo_state_head,
+)
+from runtime.repository_output import (  # noqa: E402
+    RepositoryOutputBoundaryError,
+    is_repository_output_path,
+    resolve_repository_output_path,
+    validate_repository_root,
 )
 
 
@@ -166,7 +172,18 @@ def _file_hash(path: Path) -> str:
 
 
 def _resolved(path: Path) -> Path:
-    return path.expanduser().resolve()
+    candidate = Path(os.path.abspath(path.expanduser()))
+    try:
+        if candidate == ROOT:
+            return validate_repository_root(candidate)
+        if is_repository_output_path(candidate, repository_root=ROOT):
+            return resolve_repository_output_path(
+                candidate,
+                repository_root=ROOT,
+            )
+    except RepositoryOutputBoundaryError as error:
+        raise RuntimeError(f"repository output boundary rejected path: {error}") from error
+    return candidate.resolve()
 
 
 def _is_under(path: Path, root: Path) -> bool:
@@ -531,12 +548,11 @@ def _validate_scope() -> dict[str, Path]:
     paths = _scope_paths()
     repository_output = paths["repository_output"]
     operation = paths["operation_root"]
-    if not _is_under(repository_output, paths["repository_root"]):
-        raise RuntimeError("isolated Paper repository output escaped repository")
+    if repository_output == paths["repository_root"]:
+        raise RuntimeError("isolated Paper repository output cannot equal repository root")
     if operation == repository_output or not _is_under(operation, repository_output):
         raise RuntimeError("isolated Paper operation root escaped repository output")
-    # resolve() 會展開 junction／reparse point，因此也會拒絕表面位於 repo、
-    # 實際解析後指向 repo 外的 operation root。
+    # _resolved 只容許根 output junction；operation 下層的 alias 會在解析前拒絕。
     writable = (
         ("operation_root", operation),
         ("paper_state_root", paths["paper_state_root"]),

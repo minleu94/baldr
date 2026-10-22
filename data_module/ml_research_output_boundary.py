@@ -15,9 +15,15 @@ import stat
 from typing import Any, Literal, Sequence
 
 from data_module.config import TWStockConfig
+from runtime.repository_output import (
+    RepositoryOutputBoundaryError,
+    is_repository_output_path,
+    resolve_repository_output_path,
+    validate_repository_root,
+)
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(os.path.abspath(__file__)).parents[1]
 LEGACY_ML_RESEARCH_ROOT = REPO_ROOT / "output" / "ml_research"
 # Kept as a compatibility name for callers that construct legacy pinned paths.
 APPROVED_ML_RESEARCH_ROOT = LEGACY_ML_RESEARCH_ROOT
@@ -89,7 +95,12 @@ def resolve_ml_research_output_path(
         reject_legacy_overlap=configured is not None,
     )
 
-    candidate = _absolute_candidate(path, base=repository, label="research output path")
+    candidate = _absolute_candidate(
+        path,
+        base=repository,
+        label="research output path",
+        allowed_repository_output=repository / "output",
+    )
     candidate_resolved = candidate.resolve(strict=False)
     allowed_roots = (active_root,) if access == "write" else (legacy_root, active_root)
     if not any(_is_same_or_child(candidate_resolved, root) for root in allowed_roots):
@@ -103,7 +114,8 @@ def resolve_ml_research_output_path(
 
     for forbidden in _configured_forbidden_roots(repository, extra_forbidden_roots):
         forbidden_path = _absolute_candidate(
-            forbidden, base=repository, label="protected root"
+            forbidden, base=repository, label="protected root",
+            allowed_repository_output=repository / "output",
         ).resolve(strict=False)
         if _paths_overlap(candidate_resolved, forbidden_path):
             raise MLResearchOutputBoundaryError(
@@ -116,15 +128,21 @@ def _repository_root(repository_root: Path | None) -> Path:
     root = Path(REPO_ROOT if repository_root is None else repository_root).expanduser()
     if not root.is_absolute():
         raise MLResearchOutputBoundaryError("repository_root must be absolute")
-    raw_root = Path(os.path.abspath(root))
-    _assert_no_reparse_aliases(raw_root)
-    return raw_root.resolve(strict=False)
+    try:
+        return validate_repository_root(root)
+    except RepositoryOutputBoundaryError as exc:
+        raise MLResearchOutputBoundaryError(str(exc)) from exc
 
 
 def _legacy_root(repository_root: Path) -> Path:
     candidate = repository_root / "output" / "ml_research"
-    _assert_no_reparse_aliases(candidate)
-    return candidate.resolve(strict=False)
+    try:
+        return resolve_repository_output_path(
+            candidate,
+            repository_root=repository_root,
+        )
+    except RepositoryOutputBoundaryError as exc:
+        raise MLResearchOutputBoundaryError(str(exc)) from exc
 
 
 def _read_active_root_config(repository_root: Path) -> Path | None:
@@ -149,10 +167,17 @@ def _read_active_root_config(repository_root: Path) -> Path | None:
             candidate,
             base=repository_root,
             label=ML_RESEARCH_STORAGE_CONFIG_ENV,
+            allowed_repository_output=repository_root / "output",
         )
     else:
         config_path = repository_root / "output" / ML_RESEARCH_STORAGE_CONFIG_NAME
-        _assert_no_reparse_aliases(config_path)
+        try:
+            config_path = resolve_repository_output_path(
+                config_path,
+                repository_root=repository_root,
+            )
+        except RepositoryOutputBoundaryError as exc:
+            raise MLResearchOutputBoundaryError(str(exc)) from exc
     try:
         info = config_path.lstat()
     except FileNotFoundError:
@@ -376,6 +401,7 @@ def _absolute_candidate(
     *,
     base: Path,
     label: str,
+    allowed_repository_output: Path | None = None,
 ) -> Path:
     try:
         candidate = Path(path).expanduser()
@@ -389,6 +415,20 @@ def _absolute_candidate(
     if not candidate.is_absolute():
         candidate = base / candidate
     candidate = Path(os.path.abspath(candidate))
+    if (
+        allowed_repository_output is not None
+        and is_repository_output_path(
+            candidate,
+            repository_root=allowed_repository_output.parent,
+        )
+    ):
+        try:
+            return resolve_repository_output_path(
+                candidate,
+                repository_root=allowed_repository_output.parent,
+            )
+        except RepositoryOutputBoundaryError as exc:
+            raise MLResearchOutputBoundaryError(str(exc)) from exc
     _assert_no_reparse_aliases(candidate)
     return candidate
 
@@ -414,7 +454,10 @@ def _validate_root_safety(
         repository_root, extra_forbidden_roots
     ):
         forbidden_resolved = _absolute_candidate(
-            forbidden, base=repository_root, label="protected root"
+            forbidden,
+            base=repository_root,
+            label="protected root",
+            allowed_repository_output=repository_root / "output",
         ).resolve(strict=False)
         if _paths_overlap(active_root, forbidden_resolved):
             raise MLResearchOutputBoundaryError(

@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 import json
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -35,6 +37,27 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 class _OpenCalendar:
     def is_official_trading_day(self, _target_date):
         return True, "test_official_schedule_open"
+
+
+def _make_true_output_junction(link: Path, target: Path) -> None:
+    if os.name != "nt":
+        pytest.skip("true repository output junction requires Windows")
+    link.parent.mkdir(parents=True, exist_ok=True)
+    target.mkdir(parents=True, exist_ok=True)
+    completed = subprocess.run(
+        ["cmd.exe", "/d", "/c", "mklink", "/J", str(link), str(target)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.returncode == 0:
+        return
+    output = f"{completed.stdout}\n{completed.stderr}".casefold()
+    if any(marker in output for marker in ("access is denied", "privilege", "requires elevation")):
+        pytest.skip(f"junction creation unavailable: {output.strip()}")
+    pytest.fail(f"junction creation failed: {output.strip()}")
 
 
 def _make_source_state(
@@ -106,6 +129,43 @@ def _make_market(
         )
 
 
+def test_preopen_scope_accepts_owner_configured_repository_output_junction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    storage = tmp_path / "owner-configured-storage"
+    _make_true_output_junction(repo / "output", storage)
+    operation = repo / "output" / "paper_execution_eod_replay"
+    state_root = operation / "paper_portfolio"
+    source_root = tmp_path / "source-data"
+    source_state = source_root / "output" / "paper_portfolio" / "paper_portfolio.sqlite"
+    source_baseline = source_root / "output" / "paper_portfolio" / "baseline.json"
+    market = source_root / "sqlite" / "twstock.db"
+    _make_source_state(source_state)
+    _make_baseline(source_baseline)
+    _make_market(market)
+    for name, value in {
+        "ROOT": repo,
+        "DEFAULT_DATA_ROOT": source_root,
+        "SOURCE_STATE_DB": source_state,
+        "SOURCE_BASELINE_PATH": source_baseline,
+        "OPERATIONAL_ROOT": operation,
+        "PAPER_STATE_ROOT": state_root,
+        "STATE_DB": state_root / "paper_portfolio.sqlite",
+        "STATE_SEED_MANIFEST": state_root / "state_seed_manifest.json",
+        "LEDGER_DB": operation / "paper_trade_ledger.sqlite",
+        "MARKET_DB": market,
+    }.items():
+        monkeypatch.setattr(preopen_adapter, name, value)
+
+    paths = preopen_adapter._validate_scope()
+
+    assert paths["repository_output"] == storage.resolve()
+    assert paths["operation_root"] == (storage / "paper_execution_eod_replay").resolve()
+
+
 def _make_calendar_cache(
     path: Path,
     *,
@@ -172,7 +232,9 @@ def _patch_preopen_paths(
     _make_source_state(source_state, decision_date=source_decision_date)
     _make_baseline(baseline, decision_date=source_decision_date)
     _make_market(market, price_date=market_price_date)
-    monkeypatch.setattr(preopen_adapter, "ROOT", operation_root.parents[1])
+    repository_root = operation_root.parents[1]
+    repository_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(preopen_adapter, "ROOT", repository_root)
     monkeypatch.setattr(preopen_adapter, "DEFAULT_DATA_ROOT", data_root)
     monkeypatch.setattr(preopen_adapter, "SOURCE_STATE_DB", source_state)
     monkeypatch.setattr(preopen_adapter, "SOURCE_BASELINE_PATH", baseline)
@@ -427,8 +489,8 @@ def test_registered_paths_use_one_repository_state_for_eod_and_formal(
         source_paths={},
         publication_root=Path("output") / "formal-test-publication",
     )
-    assert paths.paper_snapshot_db_path == preopen_adapter.STATE_DB.resolve()
-    assert paths.paper_trade_ledger_db_path == preopen_adapter.LEDGER_DB.resolve()
+    assert paths.paper_snapshot_db_path.resolve() == preopen_adapter.STATE_DB.resolve()
+    assert paths.paper_trade_ledger_db_path.resolve() == preopen_adapter.LEDGER_DB.resolve()
 
 
 def test_eod_scope_preflight_reads_seeded_repository_state_after_preopen(

@@ -20,13 +20,14 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
 import uuid
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(os.path.abspath(__file__)).parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -57,6 +58,12 @@ from data_module.official_trading_calendar_cache import (  # noqa: E402
 )
 from scripts.scheduled.paper_portfolio_state_isolation import (  # noqa: E402
     verify_repo_state_seed,
+)
+from runtime.repository_output import (  # noqa: E402
+    RepositoryOutputBoundaryError,
+    is_repository_output_path,
+    resolve_repository_output_path,
+    validate_repository_root,
 )
 
 
@@ -119,7 +126,18 @@ def _file_signature(path: Path) -> dict[str, int]:
 
 
 def _resolved(value: Path) -> Path:
-    return value.expanduser().resolve()
+    candidate = Path(os.path.abspath(value.expanduser()))
+    try:
+        if candidate == ROOT:
+            return validate_repository_root(candidate)
+        if is_repository_output_path(candidate, repository_root=ROOT):
+            return resolve_repository_output_path(
+                candidate,
+                repository_root=ROOT,
+            )
+    except RepositoryOutputBoundaryError as error:
+        raise RuntimeError(f"repository output boundary rejected path: {error}") from error
+    return candidate.resolve()
 
 
 def _legacy_scope_manifest_path() -> Path:
@@ -343,23 +361,21 @@ def _validate_write_scope() -> dict[str, Path]:
     state = _resolved(STATE_DB)
     state_root = _resolved(PAPER_STATE_ROOT)
 
-    if not _is_under(repository_output, repository_root) or (
-        repository_output == repository_root
-    ):
+    if repository_output == repository_root:
         raise RuntimeError(
-            "isolated Paper repository output root is outside repository"
+            "isolated Paper repository output root cannot equal repository root"
         )
     if not _is_under(operation, repository_output) or operation == repository_output:
         raise RuntimeError(
             "isolated Paper operation root must be a repository output child"
         )
 
-    for name, candidate in {
+    for name, manifest_candidate in {
         "scope_manifest": SCOPE_MANIFEST,
         "legacy_scope_manifest": _legacy_scope_manifest_path(),
         "scope_migration_receipt": _scope_migration_receipt_path(),
     }.items():
-        if candidate.expanduser().is_symlink():
+        if manifest_candidate.expanduser().is_symlink():
             raise RuntimeError(f"isolated Paper scope path is a reparse point:{name}")
 
     for name, target in {

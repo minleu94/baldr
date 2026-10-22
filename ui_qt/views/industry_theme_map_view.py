@@ -227,7 +227,13 @@ class IndustryThemeMapView(QWidget):
         summary_layout.addWidget(self.summary_label)
 
         self.observations_group = QGroupBox("完整覆蓋觀察重點")
-        observations_layout = QHBoxLayout(self.observations_group)
+        observations_layout = QVBoxLayout(self.observations_group)
+        self.observation_cards_layout = QGridLayout()
+        observations_layout.addLayout(self.observation_cards_layout)
+        self.observation_missing_label = QLabel("尚未載入題材觀察值。")
+        self.observation_missing_label.setWordWrap(True)
+        observations_layout.addWidget(self.observation_missing_label)
+        self.observation_cards: dict[str, QGroupBox] = {}
         observations_layout.setSpacing(8)
         self.leader_card_topics: dict[str, QLabel] = {}
         self.leader_card_values: dict[str, QLabel] = {}
@@ -256,7 +262,9 @@ class IndustryThemeMapView(QWidget):
             card_layout.addWidget(topic_label)
             card_layout.addWidget(value_label)
             card_layout.addWidget(coverage_label)
-            observations_layout.addWidget(card, 1)
+            self.observation_cards[key] = card
+            self.observation_cards_layout.addWidget(card, 0, len(self.observation_cards) - 1)
+            card.hide()
             self.leader_card_topics[key] = topic_label
             self.leader_card_values[key] = value_label
             self.leader_card_coverages[key] = coverage_label
@@ -1075,10 +1083,14 @@ class IndustryThemeMapView(QWidget):
         self.member_table.setRowCount(0)
         self._clear_stock_lookup()
         for key in self.leader_card_topics:
+            self.observation_cards[key].hide()
             self.leader_card_topics[key].setText("尚未載入")
             self.leader_card_values[key].setText("資料不足")
             self.leader_card_values[key].setToolTip("")
             self.leader_card_coverages[key].setText("尚未載入題材觀察值。")
+        self.observation_missing_label.setText("尚未載入題材觀察值；不能推定為零。")
+        self.observation_missing_label.show()
+        self._arrange_observation_cards()
         self.ranking_table.setRowCount(0)
         self.ranking_empty_label.setText("尚未載入題材觀察排行。")
         self.ranking_empty_label.show()
@@ -1307,8 +1319,11 @@ class IndustryThemeMapView(QWidget):
             "institutional": presentation.institutional_leaders,
             "volume": presentation.volume_leaders,
         }
+        missing: list[str] = []
         for key, rows in leader_lists.items():
+            self.observation_cards[key].setVisible(bool(rows))
             if not rows:
+                missing.append(self.observation_cards[key].title())
                 self.leader_card_topics[key].setText("完整覆蓋題材不足")
                 self.leader_card_values[key].setText("資料不足")
                 self.leader_card_values[key].setToolTip(
@@ -1330,8 +1345,30 @@ class IndustryThemeMapView(QWidget):
             self.leader_card_coverages[key].setText(
                 self._coverage(available, members)
             )
+        self.observation_missing_label.setText(
+            "資料不足：" + "、".join(missing) + "。沒有完整覆蓋觀察值，不能推定為零。"
+            if missing else ""
+        )
+        self.observation_missing_label.setVisible(bool(missing))
+        self._arrange_observation_cards()
         self._render_chain_directory()
         self._render_leaderboard()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._arrange_observation_cards()
+
+    def _arrange_observation_cards(self) -> None:
+        if not hasattr(self, "observation_cards"):
+            return
+        columns = 1 if self.width() < 650 else 2 if self.width() < 1100 else 4
+        visible = [card for card in self.observation_cards.values() if not card.isHidden()]
+        for card in self.observation_cards.values():
+            self.observation_cards_layout.removeWidget(card)
+        for index, card in enumerate(visible):
+            self.observation_cards_layout.addWidget(card, index // columns, index % columns)
+        for column in range(4):
+            self.observation_cards_layout.setColumnStretch(column, int(column < columns))
 
     def _clear_chain_directory(self) -> None:
         self._chain_directory_identity = None
@@ -1592,8 +1629,15 @@ class IndustryThemeMapView(QWidget):
                 coverage.members,
             )
         if ranking_type == "turnover":
+            value = row.turnover_twd
+            if value is not None and value.is_finite() and abs(value) >= Decimal("100000000"):
+                display = f"{value / Decimal('100000000'):,.2f} 億元 TWD"
+            elif value is not None and value.is_finite() and abs(value) >= Decimal("10000"):
+                display = f"{value / Decimal('10000'):,.2f} 萬元 TWD"
+            else:
+                display = self._display_decimal(value, suffix=" TWD")
             return (
-                self._display_decimal(row.turnover_twd, suffix=" TWD"),
+                display,
                 coverage.turnover,
                 coverage.members,
             )

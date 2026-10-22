@@ -558,6 +558,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         root.addWidget(self.disclaimer)
 
         source_group = QGroupBox("步驟 1：選擇來源批次（一次一份）")
+        source_group.setObjectName("screenerSourcePreparation")
         source_layout = QGridLayout(source_group)
         self.sources = QComboBox()
         self.sources.setObjectName("dailyMarketTechnicalPriceV1Sources")

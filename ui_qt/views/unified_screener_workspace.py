@@ -10,6 +10,9 @@ from PySide6.QtCore import QSignalBlocker, Qt, QTimer
 from PySide6.QtGui import QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
+    QBoxLayout,
+    QGroupBox,
+    QAbstractButton,
     QLabel,
     QSizePolicy,
     QSplitter,
@@ -19,6 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
     QScrollArea,
 )
+from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,9 +291,10 @@ class UnifiedScreenerWorkspace:
         self.disabled_note.setObjectName("unifiedScreenerUsageHint")
         self.disabled_note.setWordWrap(True)
         self.quick_routes = QHBoxLayout()
+        self.source_routes = QHBoxLayout()
         self.source_route_group_label = QLabel("來源")
         self.source_route_group_label.setObjectName("unifiedScreenerSourceGroupLabel")
-        self.quick_routes.addWidget(self.source_route_group_label)
+        self.source_routes.addWidget(self.source_route_group_label)
         self.quick_route_buttons: dict[str, QPushButton] = {}
         for key, label in (
             ("official_technical_revenue", "官方＋技術＋月營收"),
@@ -299,7 +305,7 @@ class UnifiedScreenerWorkspace:
             button.setObjectName(f"unifiedScreenerRoute_{key}")
             button.setToolTip("開啟既有來源條件頁；不會自動執行查詢。")
             self.quick_route_buttons[key] = button
-            self.quick_routes.addWidget(button)
+            self.source_routes.addWidget(button)
         self.condition_recipe_group_label = QLabel("條件範本")
         self.condition_recipe_group_label.setObjectName("unifiedScreenerConditionGroupLabel")
         self.quick_routes.addWidget(self.condition_recipe_group_label)
@@ -338,10 +344,17 @@ class UnifiedScreenerWorkspace:
         layout.setSpacing(4)
         layout.addWidget(self.combo)
         layout.addLayout(self.quick_routes)
-        layout.addWidget(self.banner)
+        self.research_scope = QLabel("研究用｜查詢截至：未提供；逐筆資料日依原表。")
+        self.research_scope.setWordWrap(True)
+        layout.addWidget(self.research_scope)
         layout.addWidget(self.funnel)
         layout.addWidget(self.disabled_note)
-        layout.addWidget(self.unavailable_conditions)
+        self.source_details = CollapsibleSectionPanel("來源版本與可用條件", collapsed=True)
+        self._compact_disclosure(self.source_details)
+        self.source_details.content_layout.addLayout(self.source_routes)
+        self.source_details.content_layout.addWidget(self.banner)
+        self.source_details.content_layout.addWidget(self.unavailable_conditions)
+        layout.addWidget(self.source_details)
         # 保留原結果捲動區與分頁物件；選擇器放在捲動區上方，不另包捲動區。
         index = self.splitter.indexOf(self.scroll)
         if index < 0:
@@ -734,6 +747,7 @@ class UnifiedScreenerWorkspace:
         self.select_source(source.key)
 
     def _show_source(self, source: _Source, *, update_outer: bool) -> None:
+        self._adapt_source_preparation(source.widget)
         if update_outer and self.tabs.currentWidget() is not source.outer_widget:
             self.tabs.setCurrentWidget(source.outer_widget)
         if source.inner_tabs is not None and source.inner_tabs.currentWidget() is not source.widget:
@@ -757,6 +771,67 @@ class UnifiedScreenerWorkspace:
         self._set_outer_scroll_policy(source)
         self.refresh_funnel()
 
+    @staticmethod
+    def _compact_disclosure(panel: CollapsibleSectionPanel) -> None:
+        """工具設定用緊湊展開列，把可視高度留給研究結果。"""
+        panel.layout.setContentsMargins(6, 2, 6, 2)
+        panel.layout.setSpacing(2)
+        panel.title_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px; "
+            "font-weight: 700; padding: 0; border: none; background: transparent;"
+        )
+        panel.toggle_button.setStyleSheet("min-height: 0px; padding: 2px 6px;")
+        panel.toggle_button.setFixedSize(48, 28)
+
+    @staticmethod
+    def _adapt_source_preparation(widget: QWidget) -> None:
+        """收合明示標記的既有來源控制；不重接訊號或自動核驗來源。"""
+        if widget.property("v2_source_preparation_adapted"):
+            return
+        group = widget.findChild(QGroupBox, "screenerSourcePreparation")
+        if group is None:
+            return
+        owner = group.parentWidget()
+        layout = owner.layout() if owner is not None else None
+        if not isinstance(layout, QBoxLayout):
+            return
+        index = layout.indexOf(group)
+        if index < 0:
+            return
+        panel = CollapsibleSectionPanel("研究來源與資料準備", collapsed=True, parent=owner)
+        UnifiedScreenerWorkspace._compact_disclosure(panel)
+        panel.setObjectName("screenerSourcePreparationDisclosure")
+        layout.removeWidget(group)
+        layout.insertWidget(index, panel)
+        panel.content_layout.addWidget(group)
+        for name in ("source_pins", "verified_pins"):
+            pins = getattr(widget, name, None)
+            if isinstance(pins, QWidget) and pins.parentWidget() is owner:
+                layout.removeWidget(pins)
+                panel.content_layout.addWidget(pins)
+        filters = widget.findChild(QGroupBox, "screenerAdvancedConditions")
+        filter_owner = filters.parentWidget() if filters is not None else None
+        filter_layout = filter_owner.layout() if filter_owner is not None else None
+        if filters is not None and isinstance(filter_layout, QBoxLayout):
+            filter_index = filter_layout.indexOf(filters)
+            if filter_index >= 0:
+                advanced = CollapsibleSectionPanel("進階條件與排序", collapsed=True, parent=filter_owner)
+                UnifiedScreenerWorkspace._compact_disclosure(advanced)
+                advanced.setObjectName("screenerAdvancedConditionsDisclosure")
+                filter_layout.removeWidget(filters)
+                filter_layout.insertWidget(filter_index, advanced)
+                advanced.content_layout.addWidget(filters)
+                apply_button = getattr(widget, "apply_button", None)
+                if isinstance(apply_button, QPushButton) and apply_button.parentWidget() is filters:
+                    original_layout = filters.layout()
+                    if original_layout is not None:
+                        original_layout.removeWidget(apply_button)
+                    filter_layout.insertWidget(filter_index + 1, apply_button)
+        toggle = getattr(widget, "query_controls_toggle", None)
+        if isinstance(toggle, QAbstractButton):
+            toggle.setChecked(False)
+        widget.setProperty("v2_source_preparation_adapted", True)
+
     def _set_outer_scroll_policy(self, source: _Source) -> None:
         widget = source.widget
         nested = widget.findChild(QScrollArea) is not None
@@ -776,6 +851,7 @@ class UnifiedScreenerWorkspace:
         self._refresh_save_filter_action()
         source = self._source_by_key.get(self._active_key or "")
         if source is None:
+            self.research_scope.setText("研究用｜查詢截至：未提供；逐筆資料日依原表。")
             self.funnel.setText("母體漏斗：未提供")
             self.banner.setText(
                 "研究用｜查詢截至：未提供｜來源識別：未提供｜查詢識別：未提供｜格式：未提供"
@@ -783,6 +859,9 @@ class UnifiedScreenerWorkspace:
             return
         view = source.widget
         projection = project_result_funnel(view)
+        self.research_scope.setText(
+            f"研究用｜查詢截至：{projection.data_date or '未提供'}；逐筆資料日依原表。"
+        )
         self.banner.setText(
             "研究用｜查詢截至：{}（逐筆資料日依原表）｜來源識別：{}｜查詢識別：{}｜格式：{}".format(
                 projection.data_date or "未提供",

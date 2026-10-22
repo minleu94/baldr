@@ -1,0 +1,51 @@
+# V2 圖卡優先研究體驗
+
+狀態：`UI_SCOPE_AUTOMATED_VERIFIED_WITH_LIMITS`。本次交付為原始碼的圖卡與研究動線；不是固定 EXE、完整產品接受或金融資格收據。
+
+## 範圍
+
+基線 `32d37e1295a11fae005f4465502b12a908a9dced`，分支 `codex/baldr-v2-product`。使用者要先看市場、候選、股票支持／反證與報酬研究，再下鑽、保存判斷與回訪。Root 依序履行 Execution、Tech Lead、QA、Documentation，未委派獨立 reviewer。
+
+只改 `ui_qt/` 展示與測試、必要文件；不改 application DTO、金融計算、來源資格、正式資料、Quick／Freshness／Evidence 或排程。既有 dirty `BALDR_V2_RELEASE_CLOSEOUT_20261021.md`（空檔 SHA `e3b0c442…b855`）保持，不納入提交。固定 `2026.10.21+06a4e1c15ed9` EXE 未重建，不含本次增量。
+
+## 完成行為
+
+| 需求 | 本次行為與證據 |
+|---|---|
+| 首頁先看重點 | 風險、市場、候選、資料影響並排，窄窗單欄；候選明選、來源與導航保持。重排／缺件／不額外讀取測試通過。 |
+| 個股同屏 | 原研究價格圖與支持、反證、限制並列；六章節、精確價格表及來源稽核保留。切股清舊圖，建圖失敗仍可讀報告與價格表。 |
+| 報酬判讀 | 使用既有產品投影的相對基準白話、成本與研究資格；H5欄位衝突拒顯數值，不混H20毛報酬。沒有估計就明示不能判定獲利機率。 |
+| 原價格研究 | 圖與原五條規則的支持／反證同屏，完整條件可展開；返回仍核對原 selection。 |
+| 選股先看結果 | 來源準備、版本與進階條件用緊湊展開列；原查詢按鈕保持。正常Main 1280×760的真保存結果首列完整可視，三列均可讀。 |
+| 原件後再查詢 | 修復原每頁3筆等合法非預設值回訪後變空選項的UI缺陷。三股真原件驗證：原選列／頁數保持，範本不自動查詢，明按原按鈕後沿同 generation 查詢。 |
+| 題材與紀錄 | 有完整覆蓋的觀察值才放大成卡；初始未載入與缺項集中提示。大金額顯示萬／億元、完整原值保持；零／負值與排序不改。保存時間顯示台北分鐘，原時間留在提示／明細。 |
+| 策略庫 | 規則、風險、成本與資格先呈現；參數及來源原文可展開、可捲動，展開不執行回測或寫入。 |
+
+## 最終自動驗證
+
+本機證據根：`output/tasks/v2-card-experience-20261022-01a161de/`。執行器使用共享鎖、全Job committed memory 8 GiB／12 process、啟動前至少8 GiB可用RAM；PASS輪次自然排空、程序0、handles關閉及鎖釋放。Raw output及截圖不提交。
+
+| 檢查 | 結果／原件 |
+|---|---|
+| 本次UI、保存來源、模型成本、圖表、時間軸與返回 | 286 PASS；`root/targeted_final_commit.txt`。含拒絕無效來源選擇保留日期、失去來源清除舊日期的回歸。 |
+| 原來源View分批回歸 | 46 PASS：v4 UI8、價格17、月營收6、價格聯合V2 5、舊聯合6、均線4；`root/native_ui_results.json`。V2另含真257列／兩parent的查詢與收藏回訪。 |
+| 強制Workbench | `pytest tests/test_ui_qt_update_view_workbench.py -q -o addopts=`：85 PASS |
+| 更新頁validator | `scripts/qa_validate_update_tab.py`：25 PASS／0 FAIL／4 SKIP |
+| 型別 | `mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`：1124檔通過；兩個既有annotation-unchecked提示保留。 |
+| 編譯 | 所有本次修改及新增Python檔 `py_compile` 通過；上述防線原件為 `root/commit_mandatory_*.txt`。 |
+| 正常Main與縮放 | `main_final_layout125`／`150`：1280×760、1500×900、1920×1080，120日期圖同值、保存／新程序原件回訪、原選列返回、Journal不變及worker0。原17路由另有 `routes_final125`／`150` 的worker／pool0收據；不等於Native／Owner接受。 |
+| 首屏實際可視 | 正常Main直接檢查結果首列，以及三尺寸模型成本／資格標籤的完整visible region；不是只測元件存在。Root已看1280選股與模型卡、150%模型卡等實圖。 |
+
+報酬正向畫面使用明示「QA模型示意（非正式資料）」的typed snapshot，沿既有產品投影顯示H5落後基準1個百分點、80bp成本與研究資格；未寫Journal、不代表模型真來源或金融資格接受。行情則為具名候選樣本的隔離副本，不是新抓行情。原件及前後副本SHA均保持 `eeea9a1a4bbf119bda97465d87e7a9e3b0c1268ffec2f1f9fd9a03248125ddc4`；P0程式目錄差異為空。
+
+## 保留的失敗與界線
+
+- `targeted_03`：28 FAIL／91 PASS，Windows locale無法在strftime格式內編碼中文；改為ASCII時間格式另接中文標籤，後繼通過。
+- `targeted_06`：2 FAIL／278 PASS，空摘要圖干擾舊章節選取，以及建圖初始化失敗阻斷報告；延後建圖並保留降級，後繼通過。
+- 真原件檢查先遇測試fixture沒有waitUntil，再抓到原頁數空選項；檢查器與UI分別修正，`real_source_adapter04_stdout.txt` 20 PASS。AST檢查器的中間失敗亦保留。
+- 額外合併完整來源回歸在600秒期限以124結束；`single_owned_qa_4011d8bc0dd445e19c13e1af41e4094c` 原FAIL保持、最後程序0。另一次獨立v4大fixture診斷為3221225477，輸出停於JSON encoder／Windows access violation，不能據此裁定根因。
+- 因此兩個依賴v4 `synthetic_full_store` 的257股案例仍未完成，不宣稱完整producer、全母體、金融資格或資料恢復通過。來源頁除明示展示標記與合法原頁數恢復外，未改reader／producer；本次UI以三股真原件、其餘46項原View及正常Main驗證。沒有修改大型fixture或放寬原測試。
+- 早期render的匯入與延後啟動等待器失敗保留。共用 `root/*.png` 曾被後繼render覆蓋，只作歷史檢查紀錄；最終視覺證據只採獨立的 `main_final_layout125`／`150`，明載本機中文字型。
+- 文件新增10個連結、Coverage與task結構檢查通過；全庫檢查仍有96項既存Junction引用問題，原件保留，不冒稱全庫通過。
+
+Native停止、Owner未驗、正式金融資格、PIT／Forward成熟及Daily Operations Recovery各自保持。本次不執行排程、交易、正式資料更新或EXE發布。

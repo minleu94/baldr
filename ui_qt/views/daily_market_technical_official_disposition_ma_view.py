@@ -509,6 +509,7 @@ class DailyMarketTechnicalOfficialDispositionMaView(QWidget):
         body.addWidget(self.qualification_label)
 
         source_box = QGroupBox("保存來源")
+        source_box.setObjectName("screenerSourcePreparation")
         source_box.setObjectName("technicalOfficialMaSourceBox")
         source_layout = QVBoxLayout(source_box)
         self.root_label = QLabel(str(self.bundle_output_root) if self.bundle_output_root else "尚未選擇")
@@ -657,6 +658,7 @@ class DailyMarketTechnicalOfficialDispositionMaView(QWidget):
 
     def _build_filter_panel(self) -> QWidget:
         panel = QGroupBox("全母體條件與排序")
+        panel.setObjectName("screenerAdvancedConditions")
         panel_layout = QVBoxLayout(panel)
         scope_box = QGroupBox("母體列範圍（固定外層資格）")
         scope_layout = QHBoxLayout(scope_box)

@@ -826,6 +826,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
         body.addWidget(self.qualification_label)
 
         source_box = QGroupBox("明示保存來源")
+        source_box.setObjectName("screenerSourcePreparation")
         source_layout = QVBoxLayout(source_box)
         self.root_label = QLabel(str(self.bundle_output_root) if self.bundle_output_root else "尚未選擇")
         self.root_label.setObjectName("technicalOfficialRevenueBundleRoot")
@@ -999,6 +1000,7 @@ class DailyMarketTechnicalOfficialDispositionRevenueView(QWidget):
 
     def _build_filter_panel(self) -> QWidget:
         panel = QGroupBox("全母體條件與全域排序")
+        panel.setObjectName("screenerAdvancedConditions")
         panel.setObjectName("technicalOfficialRevenueFilterPanel")
         panel_layout = QVBoxLayout(panel)
 

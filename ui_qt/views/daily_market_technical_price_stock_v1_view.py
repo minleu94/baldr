@@ -7,7 +7,7 @@ from decimal import Decimal
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QHeaderView, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget,
+    QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget, QBoxLayout,
 )
 
 from app_module.daily_market_technical_universe_price_comparison_v1 import (
@@ -133,6 +133,11 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self.conditions.setWordWrap(True)
         self.conditions.setTextFormat(Qt.TextFormat.PlainText)
         self.conditions.setAccessibleName("原價格與技術查詢條件")
+        self.conditions_toggle = QPushButton("查看原選股條件")
+        self.conditions_toggle.setCheckable(True)
+        self.conditions_toggle.toggled.connect(self.conditions.setVisible)
+        layout.addWidget(self.conditions_toggle)
+        self.conditions.hide()
         layout.addWidget(self.conditions)
 
         self.evidence = QTextBrowser()
@@ -146,7 +151,15 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self.price_scope.setTextFormat(Qt.TextFormat.PlainText)
         price_layout.addWidget(self.price_scope)
         self.price_chart = StockPriceChartWidget(price_page)
-        price_layout.addWidget(self.price_chart)
+        self.price_overview_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.price_overview_layout.addWidget(self.price_chart, 1)
+        self.rule_overview = QTextBrowser(price_page)
+        self.rule_overview.setObjectName("priceStockRulesOverview")
+        self.rule_overview.setAccessibleName("同來源技術規則支持與反證")
+        self.rule_overview.setOpenExternalLinks(False)
+        self.rule_overview.setMinimumHeight(188)
+        self.price_overview_layout.addWidget(self.rule_overview, 1)
+        price_layout.addLayout(self.price_overview_layout)
         self.price_table = QTableWidget(0, 7, price_page)
         self.price_table.setAccessibleName("原價格研究保存價量明細")
         self.price_table.setHorizontalHeaderLabels(["日期", "開盤", "最高", "最低", "收盤", "成交股數", "品質"])
@@ -260,6 +273,8 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
             "來源資料可得時間未知；historical PIT 不合格。此頁重述已保存的當下研究，不推定歷史可交易時間。",
         ))
         self.evidence.setPlainText("\n".join(parts))
+        self.rule_overview.setPlainText("\n".join(parts[7:]))
+        self.conditions_toggle.setChecked(False)
         self.audit_toggle.setChecked(False)
         self.audit.setPlainText(
             "\n".join((
@@ -285,6 +300,13 @@ class DailyMarketTechnicalPriceStockV1View(QWidget):
         self._origin_selection = origin_selection
         self.return_button.setEnabled(True)
         self.latest_research_button.setEnabled(True)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        if hasattr(self, "price_overview_layout"):
+            self.price_overview_layout.setDirection(
+                QBoxLayout.TopToBottom if self.width() < 850 else QBoxLayout.LeftToRight
+            )
 
     @staticmethod
     def _price_points(stock: DailyMarketTechnicalUniversePriceStockV1) -> tuple[StockPricePointDTO, ...]:

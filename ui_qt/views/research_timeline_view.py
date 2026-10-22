@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ui_qt.research_display import research_saved_time
+
 from typing import Any, Callable, Protocol
 
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
@@ -276,7 +278,7 @@ class ResearchTimelineView(QWidget):
             self.entries_table.insertRow(row)
             identity = (entry.kind, entry.record_id)
             summary = entry.text.replace("\n", " ↵ ")[:160]
-            values = (_KIND_LABELS.get(entry.kind, entry.kind), entry.stock_code, entry.recorded_at, summary)
+            values = (_KIND_LABELS.get(entry.kind, entry.kind), entry.stock_code, research_saved_time(entry.recorded_at), summary)
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)

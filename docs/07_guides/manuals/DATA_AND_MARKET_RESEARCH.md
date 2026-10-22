@@ -1,5 +1,7 @@
 # 資料與市場研究
 
+V2 後繼原始碼的題材觀察卡只放大呈現有完整覆蓋的既有觀察值。沒有合格觀察值的項目集中在「資料不足」提示，仍可在排行類型和完整來源明細核對；不能把缺件當成零。寬窗並排、窄窗重排，成交金額大值以萬／億元 TWD 顯示，提示保留完整原值，排序仍用原觀察值。選取題材、成員、開個股與返回的來源版本規則不變。固定候選未含增量，驗證見[圖卡體驗 QA](../../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
+
 具名TWSE／TPEx OpenData月營收已獲全用途Owner授權，歷史與下游研究可繼續開發；逐用途金融資格分別核驗。新Source明選原件、歷史分批與版本歸檔見[管線操作](../MONTHLY_REVENUE_RESEARCH_PIPELINE.md)及[驗收](../../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。原MOPS身份、原daily current-only入口與exact cohort契約保持；沒有相符單位／用途／外部SHA時不轉Main正式TWD金融輸入，見[Daily Source](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)。
 
 ## research07回報修正（後續Source）

@@ -20,6 +20,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, 
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
+    QBoxLayout,
     QAbstractItemView,
     QFrame,
     QGroupBox,
@@ -681,6 +682,7 @@ class StockResearchReportView(QWidget):
         self.reload_button.clicked.connect(self._reload)
         search_row.addWidget(self.reload_button)
         root.addLayout(search_row)
+        self._search_row = search_row
 
         navigation_row = QHBoxLayout()
         self.previous_button = QPushButton("上一檔")
@@ -700,6 +702,7 @@ class StockResearchReportView(QWidget):
         navigation_row.addWidget(self.return_button)
         navigation_row.addStretch()
         root.addLayout(navigation_row)
+        self._navigation_row = navigation_row
 
         self.identity_label = QLabel("尚未選取股票")
         identity_font = QFont()
@@ -819,6 +822,7 @@ class StockResearchReportView(QWidget):
         rank_action_row.addWidget(self.open_latest_rank_research_button)
         rank_action_row.addStretch()
         root.addLayout(rank_action_row)
+        self._rank_action_row = rank_action_row
 
         status_row = QHBoxLayout()
         self.status_badge = StatusBadge("尚未載入", "info")
@@ -863,10 +867,82 @@ class StockResearchReportView(QWidget):
     def enable_product_layout(self) -> None:
         """以章節選擇器取代報告頁籤列，保留原六個捲動頁與來源內容。"""
 
+        if not self._product_layout_enabled:
+            # 合併同一組操作，讓首屏高度留給圖表與證據，不建立第二套導航。
+            for button in (self.previous_button, self.next_button, self.return_button):
+                self._navigation_row.removeWidget(button)
+                self._search_row.addWidget(button)
+            root = self.layout()
+            if root is not None:
+                root.removeItem(self._navigation_row)
+                root.setContentsMargins(8, 6, 8, 6)
+                root.setSpacing(6)
+            self._rank_action_row.removeWidget(self.open_latest_rank_research_button)
+            self._search_row.addWidget(self.open_latest_rank_research_button)
+            QWidget.setTabOrder(self.return_button, self.open_latest_rank_research_button)
+            QWidget.setTabOrder(self.open_latest_rank_research_button, self.section_selector)
         self._product_layout_enabled = True
         self.tabs.tabBar().hide()
         self.section_navigation_row.show()
+        self.overview_price_group.show()
+        self._arrange_overview()
+        if self._loaded_report is not None:
+            self._render_overview_chart(self._loaded_report)
         self._sync_section_selector(self.tabs.currentIndex())
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._arrange_overview()
+
+    def _arrange_overview(self) -> None:
+        if not hasattr(self, "overview_layout"):
+            return
+        self.overview_layout.setDirection(
+            QBoxLayout.TopToBottom if self.width() < 900 else QBoxLayout.LeftToRight
+        )
+
+    def _render_overview_chart(self, report: StockResearchReportDTO) -> None:
+        """首屏沿用同股、同日期、同來源投影；不啟動讀取或重算金融資料。"""
+        if not self._product_layout_enabled:
+            return
+        projection = project_stock_chart_payload(
+            report,
+            cutoff_date=_stock_chart_cutoff_date(report, self._loaded_request_context),
+            expected_stock_code=self._active_code or report.stock_code,
+            expected_source_context=_stock_chart_expected_source_context(
+                self._loaded_request_context
+            ),
+        )
+        payload = projection.payload
+        if projection.status == "rejected" or payload is None:
+            if self.overview_chart is not None:
+                self.overview_chart.hide()
+            self.overview_chart_caption.setText(
+                "來源或日期核對失敗；不顯示其他版本價格。請查看價格與技術章節。"
+            )
+            return
+        try:
+            if self.overview_chart is None:
+                chart = StockPriceChartWidget()
+                chart.setMinimumHeight(160)
+                chart.setObjectName("stockResearchOverviewChart")
+                self._overview_price_layout.insertWidget(0, chart)
+                self.overview_chart = chart
+            self.overview_chart.set_points(payload.price_points)
+            self.overview_chart.set_technical_lines(payload.technical_lines)
+        except Exception:
+            if self.overview_chart is not None:
+                self.overview_chart.hide()
+            self.overview_chart_caption.setText(
+                "圖表目前無法呈現；請到價格與技術章節查看同來源精確價格表。"
+            )
+            return
+        self.overview_chart.show()
+        self.overview_chart_caption.setText(
+            (_price_chart_range_text(payload.price_points) if payload.price_points
+             else "這份研究沒有可核驗價格；不借用最新行情補圖。")
+            + "\n歷史價格，不是即時報價或獲利預測。完整精確數值見價格與技術。"
+        )
 
     def focus_section(self, key: str) -> bool:
         """切到既有報告章節；main_chart 另定位同頁主圖。"""
@@ -935,7 +1011,25 @@ class StockResearchReportView(QWidget):
         self.summary_focus.setToolTip(
             "摘要只整理報告 DTO 已提供的證據；完整來源、代碼與歷史請開啟進階內容。"
         )
-        layout.addWidget(self.summary_focus)
+        self.overview_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.overview_layout.setSpacing(12)
+        self.overview_price_group = QGroupBox("價格走勢｜原研究版本")
+        self.overview_price_group.setObjectName("stockResearchOverviewPrice")
+        overview_price_layout = QVBoxLayout(self.overview_price_group)
+        self._overview_price_layout = overview_price_layout
+        self.overview_chart: StockPriceChartWidget | None = None
+        self.overview_chart_caption = self._wrapped_label("尚未載入同來源價格。")
+        overview_price_layout.addWidget(self.overview_chart_caption)
+        self.overview_return_label = self._wrapped_label(
+            "報酬研究：尚無可核驗估計；不能判定獲利機率。"
+        )
+        self.overview_return_label.setObjectName("stockResearchOverviewReturn")
+        overview_price_layout.addWidget(self.overview_return_label)
+        overview_price_layout.addStretch()
+        self.overview_price_group.hide()
+        self.overview_layout.addWidget(self.overview_price_group, 1)
+        self.overview_layout.addWidget(self.summary_focus, 1)
+        layout.addLayout(self.overview_layout)
         self.summary_saved_advice_label = QLabel("當時保存的推薦判斷：尚未載入。")
         self.summary_saved_advice_label.setObjectName("stockResearchSavedAdviceSummary")
         self.summary_saved_advice_label.setAccessibleName("當時保存的推薦判斷摘要")
@@ -2026,6 +2120,13 @@ class StockResearchReportView(QWidget):
         self._chart_viewport = ChartViewportState()
         self._chart_widget = None
         self._loaded_report = None
+        if self.overview_chart is not None:
+            try:
+                self.overview_chart.set_points(())
+            except Exception:
+                self.overview_chart.hide()
+        self.overview_chart_caption.setText("尚未載入本股同來源價格。")
+        self.overview_return_label.setText("報酬研究：尚無本股可核驗估計；不能判定獲利機率。")
         self._loaded_context_identity = None
         self._loaded_request_context = None
         self._rendered_report_tabs = set()
@@ -2423,6 +2524,7 @@ class StockResearchReportView(QWidget):
 
         self._render_sources(report)
         self._render_product_summary(report)
+        self._render_overview_chart(report)
         self._render_report_tab(self.tabs.currentIndex())
         self._set_navigation_state()
 
@@ -2446,18 +2548,40 @@ class StockResearchReportView(QWidget):
             "返回原模型名單核對來源後重新載入；目前報告仍可研究。"
             if refusal else summary.next_step
         )
-        self._summary_values["next_step"].setText(next_step)
+        # 使用既有產品投影的白話相對基準判讀，也沿用其欄位衝突拒絕。
+        return_notes = tuple(
+            note for note in summary.advanced_notes
+            if note.startswith(("另一份 H5 研究：", "H5 "))
+        )
+        if return_notes:
+            return_text = "\n".join(return_notes) + "\n僅供研究，不是獲利機率或已驗證收益；期間定義與資格請核對完整模型證據。"
+        elif report.ml.predicted_benchmark_excess_return_bp:
+            return_text = _ml_estimate_summary(
+                report.ml, personal_h20_context=bool(
+                    self._personal_h20_evidence is not None
+                    and self._personal_h20_evidence.status == "available"
+                )
+            )
+        else:
+            return_text = "報酬研究：這份報告沒有可核驗的基準超額報酬估計；不能判定獲利機率。"
+        self.overview_return_label.setText(return_text)
         has_h20_estimate = (
             self._personal_h20_evidence is not None
             and self._personal_h20_evidence.status == "available"
         )
+        context = self.context
+        explicit_h20_context = bool(
+            context is not None and context.source_kind.startswith("personal_h20")
+        )
+        if self._product_layout_enabled and not has_h20_estimate and not explicit_h20_context and not refusal:
+            next_step = "先核對行情日與主要反證；需要追蹤時可保存這次研究判斷。"
+        self._summary_values["next_step"].setText(next_step)
         evidence_text = _report_evidence_text(report)
         if summary.holding_relation:
             evidence_text += (
                 "\n持倉關係（獨立持倉欄位，非上述行情來源）："
                 + summary.holding_relation
             )
-        context = self.context
         if has_h20_estimate:
             reasons = summary.reasons
             reasons_title = "模型研究依據（H20）"
@@ -2476,13 +2600,19 @@ class StockResearchReportView(QWidget):
                 "沒有可核對的已選保存推薦理由；不以其他來源代替。",
             )
             reasons_title = "當時保存的推薦判斷"
+        sufficiency = "" if has_h20_estimate else _report_limitations_text(report)
+        if self._product_layout_enabled and not has_h20_estimate:
+            sufficiency = (
+                _report_sufficiency_text(report)
+                + f"；模型：{_quality_label(report.ml.status)}。僅供研究，不能當正式建議；完整缺件原因見資料稽核。"
+            )
         self.summary_focus.set_summary(
             conclusion=summary.conclusion if has_h20_estimate else _report_conclusion(report),
             reasons=reasons,
             next_step=next_step, evidence=evidence_text,
             change=_price_change_text(report.price_points),
             risk=summary.risks if has_h20_estimate else _report_risk_text(report),
-            sufficiency="" if has_h20_estimate else _report_limitations_text(report),
+            sufficiency=sufficiency,
             reasons_title=reasons_title,
         )
         self._render_saved_advice_summary(report)

@@ -15,10 +15,12 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
+from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
 
 
 def _plain(value: Any) -> str:
@@ -120,6 +122,9 @@ class StrategyLibraryView(QWidget):
         self.version_combo.setEnabled(False)
         detail_layout.addWidget(self.version_combo)
         self.details = QFormLayout()
+        self.advanced_details = CollapsibleSectionPanel("參數設定與來源原文", collapsed=True)
+        advanced_form = QFormLayout()
+        self.advanced_details.content_layout.addLayout(advanced_form)
         self.detail_labels: dict[str, QLabel] = {}
         for key, title in (
             ("strategy_id", "策略 ID"),
@@ -144,14 +149,23 @@ class StrategyLibraryView(QWidget):
             label.setWordWrap(True)
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self.detail_labels[key] = label
-            self.details.addRow(title, label)
+            target = advanced_form if key in {
+                "parameter_schema", "saved_parameters", "saved_config",
+                "metadata_source", "source_identity",
+            } else self.details
+            target.addRow(title, label)
         detail_layout.addLayout(self.details)
+        detail_layout.addWidget(self.advanced_details)
         detail_layout.addStretch(1)
         self.select_button = QPushButton("以此設定回測")
         self.select_button.setEnabled(False)
         self.select_button.setToolTip("明確選取後只回傳策略 ID 與版本，不會執行回測或保存資料。")
         detail_layout.addWidget(self.select_button)
-        split.addWidget(detail)
+        detail_scroll = QScrollArea()
+        detail_scroll.setWidgetResizable(True)
+        detail_scroll.setMinimumSize(0, 0)
+        detail_scroll.setWidget(detail)
+        split.addWidget(detail_scroll)
         split.setStretchFactor(0, 1)
         split.setStretchFactor(1, 2)
         root.addWidget(split, stretch=1)

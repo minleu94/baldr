@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ui_qt.research_display import research_saved_time
+
 from datetime import datetime
 
 from PySide6.QtCore import Qt, Signal
@@ -121,14 +123,15 @@ class RecentResearchWidget(QWidget):
         if entry.kind == "report":
             market_date = _saved_report_market_date(entry)
             metadata_text = (
-                f"保存時間 {entry.recorded_at}｜原研究來源日 {entry.data_date or '原件未提供'}｜"
+                f"保存時間 {research_saved_time(entry.recorded_at)}｜原研究來源日 {entry.data_date or '原件未提供'}｜"
                 f"行情日 {market_date or '原件未提供'}"
             )
         else:
-            metadata_text = f"保存時間 {entry.recorded_at}｜資料日 {entry.data_date or '原件未提供'}"
+            metadata_text = f"保存時間 {research_saved_time(entry.recorded_at)}｜資料日 {entry.data_date or '原件未提供'}"
         metadata = QLabel(metadata_text, card)
         metadata.setObjectName("recentResearchEntryMetadata")
         metadata.setWordWrap(True)
+        metadata.setToolTip(f"原保存時間：{entry.recorded_at or '未知'}")
         layout.addWidget(metadata)
 
         original_label = QLabel(_preview(entry.text), card)

@@ -227,7 +227,8 @@ def test_report_card_separates_original_source_date_from_typed_saved_price_date(
 
     metadata = widget.findChild(QLabel, "recentResearchEntryMetadata")
     assert metadata is not None
-    assert "保存時間 2026-10-20T10:00:00+00:00" in metadata.text()
+    assert "保存時間 2026-10-20 18:00（台北）" in metadata.text()
+    assert "2026-10-20T10:00:00+00:00" in metadata.toolTip()
     assert "原研究來源日 2026-10-16" in metadata.text()
     assert "行情日 2026-09-23" in metadata.text()
     widget.close()

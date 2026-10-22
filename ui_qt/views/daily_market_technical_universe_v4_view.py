@@ -844,6 +844,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         root.addWidget(self.disclaimer)
 
         source_group = QGroupBox("已保存來源")
+        source_group.setObjectName("screenerSourcePreparation")
         source_layout = QGridLayout(source_group)
         self.sources = QComboBox()
         self.sources.setObjectName("dailyMarketTechnicalUniverseV4Sources")
@@ -899,6 +900,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         root.addWidget(self.verified_pins)
 
         filter_group = QGroupBox("全母體規則篩選與排序")
+        filter_group.setObjectName("screenerAdvancedConditions")
         filter_layout = QGridLayout(filter_group)
         self.mode = QComboBox()
         self.mode.setObjectName("dailyMarketTechnicalUniverseV4CombineMode")
@@ -1977,7 +1979,12 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.stock_filter.setText(", ".join(query.stock_filter))
         self.sort.setCurrentIndex(self.sort.findData(query.sort_key))
         self.descending.setCurrentIndex(self.descending.findData(query.descending))
-        self.page_size.setCurrentIndex(self.page_size.findData(query.page_size))
+        page_size_index = self.page_size.findData(query.page_size)
+        if page_size_index < 0:
+            # 保存查詢可使用合法的非預設頁數，回訪時不能變成未選取或偷換頁數。
+            self.page_size.addItem(f"{query.page_size}（原保存）", query.page_size)
+            page_size_index = self.page_size.count() - 1
+        self.page_size.setCurrentIndex(page_size_index)
         states_by_key = {
             item.rule_key: item.states
             for item in query.rule_state_filters

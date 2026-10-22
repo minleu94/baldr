@@ -514,12 +514,18 @@ def test_short_overview_precedes_collapsed_source_details():
 def test_partial_coverage_is_excluded_and_missing_rank_explained():
     app()
     view = IndustryThemeMapView()
+    assert all(card.isHidden() for card in view.observation_cards.values())
+    assert "尚未載入" in view.observation_missing_label.text()
     view.set_snapshot(_snapshot())
 
     assert view.leader_card_values["return"].text() == "資料不足"
     assert "沒有成員覆蓋完整" in view.leader_card_coverages["return"].text()
     assert view.leader_card_values["institutional"].text() == "資料不足"
     assert view.leader_card_values["volume"].text() == "資料不足"
+    assert view.observation_cards["volume"].isHidden()
+    assert view.observation_cards["institutional"].isHidden()
+    assert "法人淨流向" in view.observation_missing_label.text()
+    assert "不能推定為零" in view.observation_missing_label.text()
     assert view.leader_card_topics["turnover"].text() == "科技鏈／AI"
     assert view.leader_card_values["turnover"].text() == "125.00 TWD"
     assert view.leader_card_coverages["turnover"].text() == "2 / 2 位成員"
@@ -545,7 +551,6 @@ def test_zero_and_negative_observations_remain_visible_in_presenter_order():
     assert view.leader_card_values["turnover"].text() == "0.00 TWD"
     assert view.leader_card_values["institutional"].text() == "0 股"
     assert view.leader_card_values["volume"].text() == "0.00 倍"
-
     assert view.ranking_table.rowCount() == 2
     assert view.ranking_table.item(0, 2).text() == "零值題材"
     assert view.ranking_table.item(0, 3).text() == "0.00 %"
@@ -557,6 +562,20 @@ def test_zero_and_negative_observations_remain_visible_in_presenter_order():
     )
     assert view.ranking_table.item(0, 3).text() == "0 股"
     assert view.ranking_table.item(1, 3).text() == "-4 股"
+
+
+def test_large_turnover_uses_readable_units_and_preserves_exact_original():
+    from dataclasses import replace
+
+    app()
+    view = IndustryThemeMapView()
+    row = replace(_snapshot().report.rows[0], turnover_twd=Decimal("12345678901.23456789"))
+    before = row.turnover_twd
+    display, available, members = view._leader_value_and_coverage("turnover", row)
+    assert display == "123.46 億元 TWD"
+    assert "12345678901.23456789" in view._leader_original_value("turnover", row)
+    assert row.turnover_twd == before
+    assert (available, members) == (2, 2)
 
 
 def test_sorting_direction_projects_global_high_and_low_five_for_all_metrics():

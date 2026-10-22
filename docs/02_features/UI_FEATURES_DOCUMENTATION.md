@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+V2 後繼原始碼新增圖卡優先的研究呈現：首頁將風險／市場／候選／資料影響並列；個股摘要與原價格詳情讓圖表、支持與反證同屏；綜合選股與策略庫收合來源及參數原文；題材缺件改用集中提示，研究保存時間改為台北分鐘顯示並保留原時間。既有 DTO、writer、來源資格與每日資料流程不變。操作見[手冊](../07_guides/APPLICATION_MANUAL.md#綜合選股與跨頁研究)，各項驗證與固定 EXE 界線見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
+
 月營收全用途授權後的新增研究入口位於[研究管線 CLI](../07_guides/MONTHLY_REVENUE_RESEARCH_PIPELINE.md)。它使用明選原件與外部 SHA 資格包，沒有新增 Qt 控制項或自動修改 Main 設定；Main 的金額單位、用途接受與 Paper 守衛保持。實際 Source／資格範圍依[全用途驗收](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)判讀。
 
 V2保存研究新增明選合格證據後的Paper模擬預覽／人工確認／同意圖重試／原件返回；缺來源或帳戶時仍保留前置拒絕。Main只組裝原application服務，不授予來源資格或自建本金。月營收具名OpenData pipeline與MOPS隔離，沒有正式單位／用途接受時不顯成可用金融列。操作見[手冊](../07_guides/APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)，工程與五軌驗證見[補完驗收](../06_qa/BALDR_V2_FINAL_COMPLETION_20261021.md)。

@@ -480,6 +480,7 @@ class DailyMarketTechnicalOfficialDispositionCompositeViewV2(QWidget):
         body.addWidget(disclosure)
 
         source_box = QGroupBox("已保存來源（需明確選取）")
+        source_box.setObjectName("screenerSourcePreparation")
         source_layout = QVBoxLayout(source_box)
         self.root_label = QLabel()
         self.root_label.setWordWrap(True)
@@ -608,6 +609,7 @@ class DailyMarketTechnicalOfficialDispositionCompositeViewV2(QWidget):
 
     def _build_filter_panel(self) -> QWidget:
         panel = QGroupBox("四群條件、F07 價格閘門、全域排序與分頁")
+        panel.setObjectName("screenerAdvancedConditions")
         layout = QVBoxLayout(panel)
         scope_box = QGroupBox("母體列範圍（外層 hard filter）")
         scope_layout = QGridLayout(scope_box)

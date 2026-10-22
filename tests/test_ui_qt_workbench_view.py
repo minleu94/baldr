@@ -456,6 +456,42 @@ def test_workbench_refresh_preserves_last_good_dashboard_as_stale_and_focuses_re
     assert view.refresh_button.focusPolicy().value != 0
 
 
+def test_home_cards_reflow_without_reading_sources_or_losing_unknown_state() -> None:
+    application = app()
+    dashboard = _empty_dashboard()
+    service = _FakeWorkbenchSourceService(dashboard)
+    contexts = []
+    view = UnifiedDecisionWorkbenchView(
+        source_service=service, dashboard=dashboard, auto_refresh=False,
+        navigate_to_stock_research_callback=contexts.append,
+    )
+    view.resize(1200, 900)
+    view.show()
+    try:
+        application.processEvents()
+        portfolio = view.guided_priority_rows["portfolio"]
+        market = view.guided_priority_rows["market"]
+        candidates = view.guided_priority_rows["candidates"]
+        assert portfolio.geometry().x() < market.geometry().x()
+        assert portfolio.geometry().y() == market.geometry().y()
+        assert candidates.geometry().y() > portfolio.geometry().y()
+        original_text = view.guided_priority_reason_labels["data"].text()
+        assert original_text
+        view.resize(740, 900)
+        application.processEvents()
+        assert portfolio.geometry().x() == market.geometry().x()
+        assert portfolio.geometry().y() < market.geometry().y()
+        assert view.guided_priority_reason_labels["data"].text() == original_text
+        view.home_stock_input.setText("2330")
+        view.home_stock_search_button.click()
+        assert contexts[0].stock_code == "2330"
+        assert contexts[0].source_kind == "explicit_latest_stock_research"
+        assert service.calls == []
+        assert view._dashboard is dashboard
+    finally:
+        _dispose_workbench_view(view)
+
+
 def test_workbench_initial_refresh_failure_is_unknown_and_does_not_claim_human_review() -> None:
     app()
     view = UnifiedDecisionWorkbenchView(

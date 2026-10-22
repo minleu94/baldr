@@ -71,6 +71,13 @@ def test_true_stock_detail_renders_saved_facts_and_returns_exact_selection(
     assert "歷史 PIT" in summary
     assert "TWD／股" in evidence
     assert view.detail_tabs.currentIndex() == 0
+    assert view.conditions.isHidden()
+    view.conditions_toggle.click()
+    assert not view.conditions.isHidden()
+    assert view.origin_selection is selection
+    for rule in stock.snapshot.rules:
+        for reason in (*rule.supports, *rule.counterevidence, *rule.unknown_reasons):
+            assert reason in view.rule_overview.toPlainText()
     assert view.price_table.rowCount() == len(stock.snapshot.rows)
     assert tuple(point.close_price for point in view.price_chart._points) == tuple(
         row.close_price if row.ohlc_valid else None

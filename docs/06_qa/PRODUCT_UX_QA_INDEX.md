@@ -1,5 +1,7 @@
 # 產品與個股研究 QA 索引
 
+[V2 圖卡優先研究體驗](BALDR_V2_CARD_EXPERIENCE_20261022.md)記錄首頁、個股同屏、選股與策略庫收合、題材缺件及研究時間展示的後繼 UI 增量；不改每日資料恢復或固定候選資格，進度按原文判讀。
+
 V2後繼補完集中看[工程與整合驗收](BALDR_V2_FINAL_COMPLETION_20261021.md)：原始失敗保留，來源／Paper程式契約、真Main GUI、金融用途、Native及OwnerUAT各自列證據，不以正向fixture代替正式來源資格。
 
 本次啟動 TabOrder、Qt model 連線清理與 pandas 相容性修正，見[主視窗啟動警告修復](BALDR_STARTUP_WARNINGS_FIX_20261015.md)；來源版限定驗證與公司名冊來源憑證缺件分開判讀。

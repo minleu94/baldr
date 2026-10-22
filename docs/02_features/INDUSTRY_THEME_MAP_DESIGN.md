@@ -322,6 +322,10 @@ R104另有Python候選 `theme_member_navigation`：由Main保存原snapshot、�
 
 `ThemeResearchNoteService`沿既有Journal的ACTION_NOTE追加修訂，保存原文、精確snapshot身份與獨立資料日tag；`created_at`為實際保存時鐘，決策日期及股票／推薦身份保持未知。每篇新筆記有獨立實體根，同快照可保存多篇；追加修訂沿原根，過時祖先仍由原Journal修訂鏈拒絕。讀歷史後以原history token提交，並行改動會拒絕過時保存。Widget背景保存固定送出時來源，回訪原文唯讀，再開來源須核原SHA；關閉時等待已送出的寫入完成，不能由全域取消丟棄。服務信任caller提供已由reader明選讀回的typed snapshot，不自行認證官方來源或磁碟防竄改。驗證狀態仍以本輪QA逐項為準。
 
+### 5.4 圖卡展示（後繼原始碼）
+
+四種觀察仍沿既有完整覆蓋判定與高端排序，只放大呈現有合格觀察值的卡片；初始未載入與個別缺件集中提示，不把未知改成零。寬窗並列、窄窗重排，原排行類型與成員入口保持。成交金額的大值用 Decimal 換成萬／億元 TWD 展示，提示保留精確原值；排序、原觀察值、映射、來源用途與歷史 PIT 資格不變。操作見[資料與市場研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md)，原始碼與固定 EXE 的界線及驗證見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
+
 ## 6. 關聯文件索引
 
 - 模組架構定位：[`docs/01_architecture/system_architecture.md`](../01_architecture/system_architecture.md)

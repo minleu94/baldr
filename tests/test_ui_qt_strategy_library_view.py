@@ -71,6 +71,12 @@ def test_real_registry_metadata_is_rendered_without_engine_or_writer_calls(qt_dr
     assert view.detail_labels["cost"].text() == "未提供"
     assert view.select_button.isEnabled()
     assert service.write_calls == 0
+    assert view.advanced_details.is_collapsed()
+    original_parameters = view.detail_labels["parameter_schema"].text()
+    view.advanced_details.toggle_button.click()
+    assert not view.advanced_details.is_collapsed()
+    assert view.detail_labels["parameter_schema"].text() == original_parameters
+    assert service.write_calls == 0
 
 
 def test_select_emits_exact_registered_identity_and_never_runs_query(qt_driver):

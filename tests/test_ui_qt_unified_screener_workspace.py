@@ -8,6 +8,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QGroupBox,
+    QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -28,6 +30,7 @@ from app_module.daily_market_technical_universe_price_query_v1 import (
     DailyMarketTechnicalUniversePriceResultV1,
 )
 from tests.test_daily_market_technical_universe_price_query_v1 import _open_session
+from tests.test_daily_market_technical_universe_v4_bookmark import pinned_bookmark
 import tests.test_daily_market_technical_official_disposition_bundle_v1 as composite_fixtures
 
 from ui_qt.views.unified_screener_workspace import (
@@ -447,8 +450,109 @@ def test_ml_mode_isolates_h20_source_and_never_merges_its_counts(qtbot):
     assert not workspace.combo.model().item(workspace.combo.findData("__unwired_institutional__")).isEnabled()
 
 
+def test_real_v4_saved_query_keeps_identity_after_controls_are_collapsed(qtbot, pinned_bookmark):
+    import time
+    from app_module.daily_market_technical_universe_v4_bookmark import (
+        read_daily_market_technical_universe_v4_bookmark,
+    )
+    from ui_qt.views.daily_market_technical_universe_v4_view import DailyMarketTechnicalUniverseV4View
+
+    def wait_for(predicate):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            QApplication.processEvents()
+            if predicate():
+                return
+            time.sleep(0.005)
+        assert predicate(), "原保存查詢未在期限內讀回"
+
+    _host, workspace, pages = _workspace(qtbot)
+    saved = pinned_bookmark["bookmark"]
+    state = read_daily_market_technical_universe_v4_bookmark(saved)
+    view = DailyMarketTechnicalUniverseV4View(saved.origin_query.store_output_root)
+    pages[2].addTab(view, "原技術來源")
+    workspace.sync_sources()
+    key = next(item.key for item in workspace._sources if item.widget is view)
+    assert workspace.select_source(key)
+    view.restore_bookmark_state(state)
+    wait_for(lambda: view._worker is None and view.current_query == saved.origin_query)
+    preparation = view.findChild(QWidget, "screenerSourcePreparationDisclosure")
+    advanced = view.findChild(QWidget, "screenerAdvancedConditionsDisclosure")
+    assert preparation is not None and preparation.is_collapsed()
+    assert advanced is not None and advanced.is_collapsed()
+    assert view.current_page is state.origin_page
+    assert view.page_size.currentData() == saved.origin_query.page_size
+    assert view._selected_row().stock_code == saved.selected_stock_code
+    assert view.apply_button.parentWidget() is advanced.parentWidget()
+    assert not view.apply_button.isHidden()
+    original_query = view.current_query
+    assert view.apply_condition_recipe("macd_golden_cross")
+    assert view.current_query is original_query
+    assert view._worker is None
+    view.apply_button.click()
+    wait_for(lambda: view._worker is None and not view._condition_recipe_dirty)
+    assert view.current_query.generation_identity_sha256 == saved.origin_query.generation_identity_sha256
+    assert view.current_query.stock_filter == saved.origin_query.stock_filter
+    assert view.current_query.rule_state_filters != saved.origin_query.rule_state_filters
+    view.begin_shutdown()
+
+
+def test_source_preparation_disclosure_preserves_original_controls_and_explicit_action(qtbot):
+    _host, workspace, pages = _workspace(qtbot)
+    price = pages[3]
+    group = QGroupBox("原保存來源", price)
+    group.setObjectName("screenerSourcePreparation")
+    group_layout = QVBoxLayout(group)
+    original_load = QPushButton("核驗原來源", group)
+    original_load.clicked.connect(price.run_query)
+    group_layout.addWidget(original_load)
+    price.layout().insertWidget(0, group)
+    pins = QLabel("原來源完整識別", price)
+    price.source_pins = pins
+    price.layout().insertWidget(1, pins)
+    filters = QGroupBox("原條件", price)
+    filters.setObjectName("screenerAdvancedConditions")
+    filter_layout = QVBoxLayout(filters)
+    selected_rule = QComboBox(filters)
+    selected_rule.addItem("原規則符合", "original-rule-match")
+    filter_layout.addWidget(selected_rule)
+    original_apply = QPushButton("套用全域查詢", filters)
+    original_apply.clicked.connect(price.run_query)
+    filter_layout.addWidget(original_apply)
+    price.apply_button = original_apply
+    price.layout().insertWidget(2, filters)
+    key = next(item.key for item in workspace._sources if item.widget is price)
+    assert workspace.select_source(key)
+    disclosure = price.findChild(QWidget, "screenerSourcePreparationDisclosure")
+    assert disclosure is not None and disclosure.is_collapsed()
+    assert group.parentWidget() is disclosure.content_widget
+    assert pins.parentWidget() is disclosure.content_widget
+    advanced = price.findChild(QWidget, "screenerAdvancedConditionsDisclosure")
+    assert advanced is not None and advanced.is_collapsed()
+    assert filters.parentWidget() is advanced.content_widget
+    assert original_apply.parentWidget() is price
+    assert selected_rule.currentData() == "original-rule-match"
+    assert price.run_count == 0
+    disclosure.toggle_button.click()
+    assert not group.isHidden()
+    assert price.run_count == 0
+    original_load.click()
+    assert price.run_count == 1
+    original_apply.click()
+    assert price.run_count == 2
+    assert workspace.select_source(key)
+    assert len(price.findChildren(QWidget, "screenerSourcePreparationDisclosure")) == 1
+    assert workspace.combo.currentData() == key
+
+
 def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason(qtbot):
     _host, workspace, _pages = _workspace(qtbot)
+    assert workspace.source_details.is_collapsed()
+    original_key = workspace.combo.currentData()
+    workspace.source_details.toggle_button.click()
+    assert not workspace.source_details.is_collapsed()
+    assert workspace.combo.currentData() == original_key
+    assert all(page.run_count == 0 for page in _pages if isinstance(page, _Page))
     assert workspace.source_route_group_label.text() == "來源"
     assert workspace.condition_recipe_group_label.text() == "條件範本"
     assert workspace.disabled_note.text() == "先載入並核驗保存來源；套用條件後仍需明確查詢。"
@@ -503,6 +607,20 @@ def test_unified_save_filter_proxies_only_the_exact_native_bookmark_button(qtbot
     assert workspace.select_source(unsupported_source.key)
     assert not workspace.save_filter_button.isEnabled()
     assert "尚未提供" in workspace.save_filter_button.toolTip()
+
+
+def test_primary_date_preserves_rejected_selection_and_clears_missing_source(qtbot):
+    _host, workspace, _pages = _workspace(qtbot)
+    workspace.research_scope.setText("研究用｜查詢截至：2026-10-21；逐筆資料日依原表。")
+    active_key = workspace._active_key
+    assert workspace.select_source("不存在的來源") is False
+    assert workspace._active_key == active_key
+    assert "2026-10-21" in workspace.research_scope.text()
+
+    workspace._active_key = None
+    workspace.refresh_funnel()
+    assert "查詢截至：未提供" in workspace.research_scope.text()
+    assert "2026-10-21" not in workspace.research_scope.text()
 
 
 def test_unified_save_filter_preserves_v4_dirty_bookmark_gate(qtbot):

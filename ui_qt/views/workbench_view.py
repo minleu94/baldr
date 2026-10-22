@@ -1062,7 +1062,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         return label
 
     def _build_guided_home(self, parent_layout: QVBoxLayout) -> None:
-        """建立首屏的四列摘要；完整模型與技術欄位留在進階區。"""
+        """以圖卡並列既有判讀；完整模型與技術欄位留在進階區。"""
 
         panel, self.guided_home_section_title = self._panel_with_title("今日優先查看")
         self.guided_home_panel = panel
@@ -1086,7 +1086,6 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             purpose_layout.addWidget(button)
             self.home_purpose_buttons[key] = button
-        panel.layout.addLayout(purpose_layout)
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("股票代號"))
         self.home_stock_input = QLineEdit()
@@ -1100,12 +1099,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         search_available = self.navigate_to_stock_research_callback is not None
         self.home_stock_input.setEnabled(search_available)
         self.home_stock_search_button.setEnabled(search_available)
-        panel.layout.addLayout(search_layout)
         self.home_stock_search_hint = QLabel(
             "自行搜尋使用當下研究來源；原候選與保存結果仍由原列下鑽。"
         )
         self.home_stock_search_hint.setWordWrap(True)
-        panel.layout.addWidget(self.home_stock_search_hint)
         theme_entry_layout = QHBoxLayout()
         self.home_theme_button = QPushButton("繼續查看產業與題材")
         self.home_theme_button.setObjectName("homeThemeResearchButton")
@@ -1127,17 +1124,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.home_theme_summary_label.setWordWrap(True)
         self.home_theme_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         theme_entry_layout.addWidget(self.home_theme_summary_label, 1)
-        panel.layout.addLayout(theme_entry_layout)
-        intro = QLabel(
-            "先看持倉、候選、市場與資料影響；需要完整理由時展開完整工作台。"
-        )
-        intro.setWordWrap(True)
-        intro.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
-        panel.layout.addWidget(intro)
         self.guided_date_label = QLabel("判讀日期：尚未確認｜資料日期：尚未確認")
         self.guided_date_label.setWordWrap(True)
         self.guided_date_label.setStyleSheet(
-            f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 10px;"
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
         )
         panel.layout.addWidget(self.guided_date_label)
         self.guided_conclusion_label = QLabel("判讀結論：尚未確認。")
@@ -1163,11 +1153,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.guided_priority_reason_labels: dict[str, QLabel] = {}
         self.guided_priority_action_buttons: dict[str, QPushButton] = {}
         self._guided_priority_row_indices: dict[str, int] = {}
+        self.guided_cards_layout = QGridLayout()
+        self.guided_cards_layout.setSpacing(10)
+        panel.layout.addLayout(self.guided_cards_layout)
 
         row_specs = (
-            ("portfolio", "持倉"),
-            ("candidates", "候選"),
-            ("market", "市場"),
+            ("portfolio", "持倉風險與待辦"),
+            ("market", "大盤與市場"),
+            ("candidates", "選股研究線索"),
             ("data", "資料影響"),
             ("other", "其他待處理"),
         )
@@ -1179,7 +1172,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
                 f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; }}"
             )
-            row_layout = QHBoxLayout(row)
+            row_layout = QVBoxLayout(row)
             row_layout.setContentsMargins(9, 7, 9, 7)
             row_layout.setSpacing(10)
 
@@ -1188,12 +1181,14 @@ class UnifiedDecisionWorkbenchView(QWidget):
             title_label.setStyleSheet(
                 f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 800;"
             )
-            row_layout.addWidget(title_label, 0)
+            card_heading = QHBoxLayout()
+            card_heading.addWidget(title_label, 1)
 
             badge = StatusBadge("未知", "unknown")
             badge.setMinimumWidth(78)
             self.guided_priority_status_badges[key] = badge
-            row_layout.addWidget(badge, 0)
+            card_heading.addWidget(badge)
+            row_layout.addLayout(card_heading)
 
             copy_layout = QVBoxLayout()
             copy_layout.setContentsMargins(0, 0, 0, 0)
@@ -1225,12 +1220,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.guided_priority_rows[key] = row
             self.guided_priority_conclusion_labels[key] = conclusion
             self.guided_priority_reason_labels[key] = reason
-            panel.layout.addWidget(row)
+            card_index = len(self.guided_priority_rows) - 1
+            self.guided_cards_layout.addWidget(row, card_index // 2, card_index % 2)
             if key == "candidates":
                 self.home_candidate_controls_layout = QVBoxLayout()
                 self.home_candidate_controls_layout.setContentsMargins(0, 0, 0, 0)
                 self.home_candidate_controls_layout.setSpacing(6)
-                panel.layout.addLayout(self.home_candidate_controls_layout)
+                row_layout.addLayout(self.home_candidate_controls_layout)
             if key == "other":
                 row.setVisible(False)
 
@@ -1241,6 +1237,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             f"color: {MIDNIGHT_ANALYST.warning}; font-weight: 700;"
         )
         panel.layout.addWidget(self.guided_warning_summary_label)
+        panel.layout.addLayout(theme_entry_layout)
+        panel.layout.addLayout(search_layout)
+        panel.layout.addWidget(self.home_stock_search_hint)
+        panel.layout.addLayout(purpose_layout)
         parent_layout.addWidget(panel)
 
     def _render_guided_home(self, dashboard: WorkbenchDashboardDTO | None) -> None:
@@ -1674,6 +1674,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if not force and narrow == self._workbench_narrow:
             return
         self._workbench_narrow = narrow
+
+        # 重排同一組圖卡，保留所有選列、來源身份與既有訊號連線。
+        for index, card in enumerate(self.guided_priority_rows.values()):
+            self.guided_cards_layout.removeWidget(card)
+            self.guided_cards_layout.addWidget(
+                card, index if narrow else index // 2, 0 if narrow else index % 2
+            )
+        self.guided_cards_layout.setColumnStretch(0, 1)
+        self.guided_cards_layout.setColumnStretch(1, 0 if narrow else 1)
 
         direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
         self.summary_layout.setDirection(direction)

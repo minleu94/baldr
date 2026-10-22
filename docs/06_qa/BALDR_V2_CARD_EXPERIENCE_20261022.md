@@ -119,3 +119,15 @@ task／Coverage、功能地圖結構及新QA／手冊錨點檢查通過。`conte
 A3先前的flat counts缺口已關閉；A4／A5仍待續作。Native GUI保持停止、未重建EXE、未push。
 
 最終125%文案補圖 `main_a3_counts_final125` first／fresh通過，Root已檢視1280原圖；補編譯及task／Coverage／metadata／新錨點通過。收據 `single_owned_qa_41802f5e292a43e1bb2bef4520e16bb5` 自然排空、handles關閉及鎖釋放；此結構檢查不代表全庫文件EOF或真人驗收。
+
+## Track A A4 題材指標與成員對照
+
+題材詳情改為寬窗左右並列原九項指標及成員，低於1050寬改垂直；可調分隔器、原表捲動與全部欄位保持。詳情標頭就近列原日漲跌、覆蓋分母與資料日，精確值保留提示。明選成員後可按「研究選取股票」，沿原 `stockSelected`／`ThemeMemberNavigation`；不自選首檔、不改成員順序，忙碌、清除及關閉會停用。分類依據截短時可看完整提示；清空題材會清除摘要及舊提示。Reader／DTO、金融計算、來源、Main與保存契約均未變。
+
+最終 `*_a4_detail_final.log`：編譯、53項題材／目錄／反查／導航／清除定向、Workbench85、更新頁25 PASS／0 FAIL／4 SKIP與全範圍mypy1127檔通過。正常Main在 `main_a4_detail06125/150` first／fresh均通過，worker0：原讀取器載入三股隔離題材manifest／映射／價格樣本；原均值覆蓋是1/2，未升格為完整覆蓋。1280×760、1500×900、1920×1080及900×760檢查成員按鈕完整可見；Root看過兩縮放1280與125%窄窗原圖，指標／成員／鏈位置可對照，來源與分類原文可查。
+
+同版明按個股下鑽／返回保持原2330選列及導航身份，三來源SHA保持；題材筆記經正常UI明按保存，新程序按原筆記身份讀回並重新載入同版、下鑽／返回。一般報告保存、首頁最近研究及原比較流程亦沿原具名樣本重驗。只有隔離合成來源與原具名行情副本；不授正式資料、金融或歷史PIT資格。最終收據 `single_owned_qa_8c77e963154f45c99b69948859cf223f` 自然排空、handles關閉及共享鎖釋放。
+
+早輪腳本失敗保留：載入方法誤傳known_at、假定首列為2330、假定覆蓋2/2，以及保存題材筆記後仍假定最近研究只有一筆。後繼腳本改依實際公開介面、股票代碼、原coverage與保存身份驗證，沒有改產品契約迎合假定；所有Job均排空。A4仍需核對強弱與圖文對照的高價值缺口，A5尚待續作；Native停止、無EXE重建、無push。
+
+task／Coverage、功能地圖metadata與新QA錨點檢查通過，收據 `single_owned_qa_bb9d55b1de96453eb75df0151654403c` 排空及鎖釋放。`context_a4_detail.txt` 是6500字的bug領域定位摘錄，預算略過歷史 `BALDR_COMPLETION_RESUME_PROGRESS_20261012.md` 2148字；題材設計、操作與當前View則直接核讀相關正文。未宣稱全歷史EOF、全庫連結或真人驗收。

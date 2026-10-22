@@ -31,6 +31,45 @@ def app():
     return instance
 
 
+def test_selected_theme_details_share_width_and_explicit_member_action():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1280, 760)
+    view.show()
+    snapshot = _snapshot()
+    view.set_snapshot(snapshot)
+    view.chain_filter.setCurrentIndex(view.chain_filter.findData("科技鏈"))
+    view.theme_filter.setCurrentIndex(view.theme_filter.findText("AI"))
+    application.processEvents()
+    assert view.theme_detail_splitter.orientation() == Qt.Orientation.Horizontal
+    assert "科技鏈／AI" in view.selected_theme_summary.text()
+    assert "1 / 2 位成員" in view.selected_theme_summary.text()
+    assert "2026-10-16" in view.selected_theme_summary.text()
+    assert not view.open_member_button.isEnabled()
+    view.member_table.setCurrentCell(1, 1)
+    assert view.member_table.item(1, 3).toolTip() == view.member_table.item(1, 3).text()
+    received = []
+    view.stockSelected.connect(received.append)
+    navigation = view.capture_selected_member_navigation("2317")
+    view.open_member_button.click()
+    assert received == ["2317"]
+    assert view.capture_selected_member_navigation("2317") == navigation
+    assert view.snapshot is snapshot
+    view._busy = True
+    view._update_controls()
+    assert not view.open_member_button.isEnabled()
+    view._busy = False
+    view._update_controls()
+    view.resize(800, 760)
+    application.processEvents()
+    assert view.theme_detail_splitter.orientation() == Qt.Orientation.Vertical
+    view.clear_research()
+    assert not view.open_member_button.isEnabled()
+    assert "選擇題材" in view.selected_theme_summary.text()
+    view.shutdown()
+    view.close()
+
+
 def _wait_until(application, predicate, *, timeout_ms: int) -> None:
     deadline = time.monotonic() + timeout_ms / 1000
     while True:

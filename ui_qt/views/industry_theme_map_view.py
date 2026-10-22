@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSplitter,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -444,7 +445,20 @@ class IndustryThemeMapView(QWidget):
         filter_layout.addWidget(self.stock_lookup_status_label)
         content_layout.addWidget(self.filter_group)
 
+        self.selected_theme_summary = QLabel("選擇題材以對照原指標與成員。")
+        self.selected_theme_summary.setObjectName("industryThemeSelectedSummary")
+        self.selected_theme_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self.selected_theme_summary.setWordWrap(True)
+        self.selected_theme_summary.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
+        )
+        content_layout.addWidget(self.selected_theme_summary)
+        self.theme_detail_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.theme_detail_splitter.setObjectName("industryThemeDetailSplitter")
+        self.theme_detail_splitter.setChildrenCollapsible(False)
+        content_layout.addWidget(self.theme_detail_splitter)
         self.metrics_group = QGroupBox("題材指標與欄位覆蓋")
+        self.metrics_group.setMinimumWidth(0)
         metrics_layout = QVBoxLayout(self.metrics_group)
         self.metrics_table = QTableWidget(0, 3)
         self.metrics_table.setObjectName("industryThemeMetricsTable")
@@ -465,10 +479,22 @@ class IndustryThemeMapView(QWidget):
             2, QHeaderView.ResizeMode.ResizeToContents
         )
         metrics_layout.addWidget(self.metrics_table)
-        content_layout.addWidget(self.metrics_group)
+        self.theme_detail_splitter.addWidget(self.metrics_group)
 
         self.members_group = QGroupBox("題材成員（雙擊任一欄開啟）")
+        self.members_group.setMinimumWidth(0)
         members_layout = QVBoxLayout(self.members_group)
+        member_actions = QHBoxLayout()
+        self.member_selection_label = QLabel("先選取一檔成員股票。")
+        self.member_selection_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.member_selection_label.setWordWrap(True)
+        member_actions.addWidget(self.member_selection_label, 1)
+        self.open_member_button = QPushButton("研究選取股票")
+        self.open_member_button.setObjectName("industryThemeOpenSelectedMember")
+        self.open_member_button.setEnabled(False)
+        self.open_member_button.clicked.connect(self._open_selected_member)
+        member_actions.addWidget(self.open_member_button)
+        members_layout.addLayout(member_actions)
         self.member_table = QTableWidget(0, 4)
         self.member_table.setObjectName("industryThemeMemberTable")
         self.member_table.setAccessibleName("題材成員與分類依據清單")
@@ -496,7 +522,9 @@ class IndustryThemeMapView(QWidget):
         self.member_table.itemDoubleClicked.connect(self._emit_selected_stock)
         self.member_table.currentCellChanged.connect(self._on_member_cell_changed)
         members_layout.addWidget(self.member_table)
-        content_layout.addWidget(self.members_group)
+        self.theme_detail_splitter.addWidget(self.members_group)
+        self.theme_detail_splitter.setStretchFactor(0, 4)
+        self.theme_detail_splitter.setStretchFactor(1, 6)
         content_layout.addStretch(1)
 
         self.scroll_area.setWidget(self.content)
@@ -1066,6 +1094,8 @@ class IndustryThemeMapView(QWidget):
         self.scroll_area.horizontalScrollBar().setValue(0)
 
     def _clear_snapshot_view(self) -> None:
+        self.selected_theme_summary.setText("選擇題材以對照原指標與成員。")
+        self.selected_theme_summary.setToolTip("")
         self._presentation = None
         self._ascending_presentation = None
         self._rows_by_theme = {}
@@ -1357,6 +1387,11 @@ class IndustryThemeMapView(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._arrange_observation_cards()
+        if hasattr(self, "theme_detail_splitter"):
+            orientation = Qt.Orientation.Horizontal if self.width() >= 1050 else Qt.Orientation.Vertical
+            if self.theme_detail_splitter.orientation() != orientation:
+                self.theme_detail_splitter.setOrientation(orientation)
+                self.theme_detail_splitter.setSizes([400, 600])
 
     def _arrange_observation_cards(self) -> None:
         if not hasattr(self, "observation_cards"):
@@ -1699,10 +1734,28 @@ class IndustryThemeMapView(QWidget):
         _previous_row: int, _previous_column: int,
     ) -> None:
         self._navigation_selection_revision += 1
+        self._refresh_member_action()
+
+    def _refresh_member_action(self) -> None:
+        item = self.member_table.item(self.member_table.currentRow(), 0)
+        navigation = self.capture_selected_member_navigation(item.text()) if item else None
+        self.open_member_button.setEnabled(navigation is not None)
+        self.member_selection_label.setText(
+            f"已選 {item.text()}｜沿目前題材版本研究" if navigation is not None and item else
+            "先選取一檔成員股票。"
+        )
+
+    def _open_selected_member(self) -> None:
+        item = self.member_table.item(self.member_table.currentRow(), 0)
+        if item is not None and self.capture_selected_member_navigation(item.text()) is not None:
+            self._emit_selected_stock(item)
 
     def _render_selected_theme(self) -> None:
         self.metrics_table.setRowCount(0)
         self.member_table.setRowCount(0)
+        self.selected_theme_summary.setText("選擇題材以對照原指標與成員。")
+        self.selected_theme_summary.setToolTip("")
+        self._refresh_member_action()
         index = self.theme_filter.currentIndex()
         if index <= 0 or index >= len(self._theme_options):
             self.metrics_table.setToolTip("請選擇一個題材以查看指標與成員。")
@@ -1714,6 +1767,14 @@ class IndustryThemeMapView(QWidget):
         if row is None:
             return
         coverage = row.coverage
+        report = self._snapshot.report if self._snapshot else None
+        self.selected_theme_summary.setText(
+            f"{row.chain_name}／{row.theme_name}｜"
+            f"平均日漲跌 {self._display_decimal(row.mean_return_pct, suffix=' %')}｜"
+            f"覆蓋 {self._coverage(coverage.returns, coverage.members)}｜"
+            f"資料日 {report.data_date.isoformat() if report else '未提供'}"
+        )
+        self.selected_theme_summary.setToolTip(self._decimal_tooltip(row.mean_return_pct, suffix=" %"))
         metrics: tuple[tuple[str, str, str, str], ...] = (
             (
                 "平均日漲跌幅",
@@ -1782,8 +1843,10 @@ class IndustryThemeMapView(QWidget):
             for column, value in enumerate((stock_id, name, chain_tier, basis)):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                item.setToolTip(value)
                 self.member_table.setItem(member_index, column, item)
         self.member_table.resizeRowsToContents()
+        self._refresh_member_action()
 
     @staticmethod
     def _display_decimal(
@@ -1878,6 +1941,7 @@ class IndustryThemeMapView(QWidget):
         self.theme_filter.setEnabled(available and not self._busy)
         self.metrics_table.setEnabled(available and not self._busy)
         self.member_table.setEnabled(available and not self._busy)
+        self._refresh_member_action()
         self.stock_lookup_input.setEnabled(lookup_available)
         self.stock_lookup_results.setEnabled(
             lookup_available and self.stock_lookup_results.count() > 1

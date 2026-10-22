@@ -37,6 +37,7 @@
 
 ## 開發與受控維運指南
 
+- [月營收全用途研究管線](MONTHLY_REVENUE_RESEARCH_PIPELINE.md)：後繼Source的明選原件／外部SHA、歷史有界chunk、版本歸檔與cutoff判讀；金融資格另核。
 - [scripts 說明](scripts_readme.md)：`scripts/` 的分類與執行入口。
 - [tests 說明](tests_readme.md)：測試組織與驗收路由。
 - [週度 Review Runbook](V2_2_WEEKLY_REVIEW_RUNBOOK.md)：Evidence Review、working-copy DB 與 sidecar 操作邊界。

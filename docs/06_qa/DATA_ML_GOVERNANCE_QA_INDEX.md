@@ -1,5 +1,7 @@
 # 資料、ML 與來源治理 QA 索引
 
+- [月營收全用途整合](MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)：Owner 全用途授權、官方授權原件、未知金額單位、雙市場版本歸檔、百分率研究及逐用途 Gate。
+
 > [回 QA 證據導覽](README.md)。本索引只供導覽。每份收據仍須按自身日期、範圍與限制判讀；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。索引不代表 Gate 通過，也不改變 QA 原件的生命週期。
 
 ## Data Governance、來源與 ML 主題地圖

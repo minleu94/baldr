@@ -1,6 +1,6 @@
 # 資料與市場研究
 
-V2工程另有具名TWSE／TPEx OpenData月營收current-only adapter；成功下載及解析只產生候選。原MOPS靜態來源身份不變，單位文件／欄位mapping、逐用途接受與外部固定SHA缺任一項時，不轉為Main正式金融輸入。完整批次可得時間、transport原件及exact雙市場cohort契約見[Daily Source](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)；一般操作與缺件判讀見[完整手冊](../APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)。
+具名TWSE／TPEx OpenData月營收已獲全用途Owner授權，歷史與下游研究可繼續開發；逐用途金融資格分別核驗。新Source明選原件、歷史分批與版本歸檔見[管線操作](../MONTHLY_REVENUE_RESEARCH_PIPELINE.md)及[驗收](../../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。原MOPS身份、原daily current-only入口與exact cohort契約保持；沒有相符單位／用途／外部SHA時不轉Main正式TWD金融輸入，見[Daily Source](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)。
 
 ## research07回報修正（後續Source）
 

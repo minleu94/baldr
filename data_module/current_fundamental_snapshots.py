@@ -6,24 +6,31 @@ import csv
 from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal
-import hashlib
 from pathlib import Path
 import re
 import sqlite3
+
+from utils.monthly_revenue_identity import (
+    MONTHLY_NORMALIZER_VERSION,
+    MONTHLY_SNAPSHOT_SOURCE,
+    MONTHLY_YOY_COMPARATOR_VERSION,
+    OPENAPI_MONTHLY_NORMALIZER_VERSION,
+    OPENAPI_MONTHLY_SOURCE_IDS,
+    derived_monthly_source_version as _derived_monthly_source_version,
+    derived_monthly_yoy_comparator_version as _derived_monthly_yoy_comparator_version,
+    is_monthly_derived_source_version as _is_monthly_derived_source_version,
+    is_monthly_source_version as _is_monthly_source_version,
+    is_monthly_yoy_comparator_source_version as _is_monthly_yoy_comparator_source_version,
+    monthly_source_available_at as _monthly_source_available_at,
+    monthly_source_version_parts as _monthly_source_version_parts,
+    parse_utc_timestamp as _parse_utc_timestamp,
+)
 
 
 TABLE = "fundamental_current_observations"
 PERIOD_BASES = frozenset(
     {"unknown", "monthly_flow", "year_to_date_cumulative", "period_end"}
 )
-MONTHLY_SNAPSHOT_SOURCE = "mops.monthly_revenue_static_snapshot"
-MONTHLY_NORMALIZER_VERSION = "mops-current-revenue-normalizer.v2"
-OPENAPI_MONTHLY_SOURCE_IDS = {
-    "twse": "twse.openapi.t187ap05_L",
-    "tpex": "tpex.openapi.mopsfin_t187ap05_O",
-}
-OPENAPI_MONTHLY_NORMALIZER_VERSION = "twse-tpex-openapi-monthly-revenue-parser.v1"
-MONTHLY_YOY_COMPARATOR_VERSION = "mops-current-revenue-yoy-comparator.v1"
 MONTHLY_YOY_COMPARATOR_ITEM_CODE = "revenue_yoy_comparator"
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS {TABLE} (
@@ -409,238 +416,3 @@ def _validate_verified_basis_source(row: dict[str, str]) -> None:
         or row["aggregate_feature_eligible"] != "0"
     ):
         raise ValueError("MOPS statement basis claim is inconsistent with source type")
-
-
-def _is_monthly_source_version(version: str, *, market: str, period: str) -> bool:
-    parts = _monthly_source_version_parts(version)
-    return parts is not None and parts[0] == market and parts[1] == period
-
-
-def _monthly_source_available_at(version: str, *, market: str, period: str) -> str:
-    """回傳新來源版本明確綁定的 body 完成時間；舊批次沒有則留空。"""
-    match = re.fullmatch(
-        r"mops-static-snapshot\.v2:(twse|tpex):(\d{4}-\d{2}):"
-        r"body_completed_at:(.+):sha256:[0-9a-f]{64}", version
-    )
-    if match is None:
-        match = re.fullmatch(
-            r"(twse\.openapi\.t187ap05_L|tpex\.openapi\.mopsfin_t187ap05_O)\.v1:"
-            r"(twse|tpex):(\d{4}-\d{2}):body_completed_at:(.+):sha256:[0-9a-f]{64}",
-            version,
-        )
-        if match is None:
-            return ""
-        source_id, version_market, version_period, capture_text = match.groups()
-        if (
-            source_id != OPENAPI_MONTHLY_SOURCE_IDS.get(version_market)
-            or version_market != market
-            or version_period != period
-        ):
-            raise ValueError("monthly source capture time does not match source identity")
-        return _parse_utc_timestamp(capture_text, "monthly source capture time").isoformat()
-    if match.group(1) != market or match.group(2) != period:
-        raise ValueError("monthly source capture time does not match source identity")
-    return _parse_utc_timestamp(match.group(3), "monthly source capture time").isoformat()
-
-
-def _derived_monthly_source_version(
-    raw_source_version: str,
-    *,
-    stock_code: str,
-    period: str,
-    value: str,
-    unit: str,
-    source_available_at: str,
-) -> str:
-    parts = _monthly_source_version_parts(raw_source_version)
-    if parts is None or parts[1] != period:
-        raise ValueError("official monthly raw source version does not match period")
-    market = parts[0]
-    normalizer = (
-        OPENAPI_MONTHLY_NORMALIZER_VERSION
-        if raw_source_version.startswith(tuple(f"{item}.v1:" for item in OPENAPI_MONTHLY_SOURCE_IDS.values()))
-        else MONTHLY_NORMALIZER_VERSION
-    )
-    payload = "\0".join(
-        (
-            normalizer,
-            raw_source_version,
-            stock_code,
-            period,
-            "revenue",
-            value,
-            unit,
-            source_available_at,
-            "monthly_flow",
-            "basis_verified=1",
-            "aggregate_feature_eligible=0",
-        )
-    ).encode("utf-8")
-    digest = hashlib.sha256(payload).hexdigest()
-    return (
-        f"{normalizer}:{market}:{period}:raw:{raw_source_version}"
-        f":derived:sha256:{digest}"
-    )
-
-
-def _is_monthly_derived_source_version(
-    version: str,
-    *,
-    market: str,
-    period: str,
-    stock_code: str,
-    value: str,
-    unit: str,
-    source_available_at: str,
-) -> bool:
-    match = re.fullmatch(
-        r"(mops-current-revenue-normalizer\.v2|twse-tpex-openapi-monthly-revenue-parser\.v1):"
-        r"(twse|tpex):(\d{4}-\d{2}):raw:(.+):derived:sha256:([0-9a-f]{64})",
-        version,
-    )
-    if match is None or match.group(2) != market or match.group(3) != period:
-        return False
-    normalizer, _, _, raw_source_version, _ = match.groups()
-    if not _is_monthly_source_version(raw_source_version, market=market, period=period):
-        return False
-    expected_normalizer = (
-        OPENAPI_MONTHLY_NORMALIZER_VERSION
-        if raw_source_version.startswith(tuple(f"{item}.v1:" for item in OPENAPI_MONTHLY_SOURCE_IDS.values()))
-        else MONTHLY_NORMALIZER_VERSION
-    )
-    if normalizer != expected_normalizer:
-        return False
-    if _monthly_source_available_at(
-        raw_source_version, market=market, period=period
-    ) != source_available_at:
-        return False
-    try:
-        return version == _derived_monthly_source_version(
-            raw_source_version,
-            stock_code=stock_code,
-            period=period,
-            value=value,
-            unit=unit,
-            source_available_at=source_available_at,
-        )
-    except ValueError:
-        return False
-
-
-def _derived_monthly_yoy_comparator_version(
-    raw_source_version: str,
-    *,
-    stock_code: str,
-    source_period: str,
-    comparator_period: str,
-    value: str,
-    unit: str,
-    source_available_at: str,
-) -> str:
-    parts = _monthly_source_version_parts(raw_source_version)
-    expected_prior = f"{int(source_period[:4]) - 1:04d}-{source_period[5:]}"
-    if parts is None or parts[1] != source_period or comparator_period != expected_prior:
-        raise ValueError("monthly comparator period does not match its source report")
-    payload = "\0".join(
-        (
-            MONTHLY_YOY_COMPARATOR_VERSION,
-            raw_source_version,
-            stock_code,
-            source_period,
-            comparator_period,
-            value,
-            unit,
-            source_available_at,
-            "monthly_flow",
-            "basis_verified=1",
-            "aggregate_feature_eligible=0",
-            "availability_basis=current_report_local_observation",
-        )
-    ).encode("utf-8")
-    return (
-        f"{MONTHLY_YOY_COMPARATOR_VERSION}:{parts[0]}:{comparator_period}"
-        f":from:{source_period}:raw:{raw_source_version}:derived:sha256:"
-        f"{hashlib.sha256(payload).hexdigest()}"
-    )
-
-
-def _is_monthly_yoy_comparator_source_version(
-    version: str,
-    *,
-    market: str,
-    comparator_period: str,
-    stock_code: str,
-    value: str,
-    unit: str,
-    source_available_at: str,
-) -> bool:
-    match = re.fullmatch(
-        r"mops-current-revenue-yoy-comparator\.v1:(twse|tpex):"
-        r"(\d{4}-\d{2}):from:(\d{4}-\d{2}):raw:(.+):derived:sha256:"
-        r"([0-9a-f]{64})",
-        version,
-    )
-    if match is None or match.group(1) != market or match.group(2) != comparator_period:
-        return False
-    source_period = match.group(3)
-    raw_source_version = match.group(4)
-    if _monthly_source_version_parts(raw_source_version) is None:
-        return False
-    raw_parts = _monthly_source_version_parts(raw_source_version)
-    if raw_parts is None or raw_parts[:2] != (market, source_period):
-        return False
-    if _monthly_source_available_at(
-        raw_source_version, market=market, period=source_period
-    ) != source_available_at:
-        return False
-    try:
-        return version == _derived_monthly_yoy_comparator_version(
-            raw_source_version,
-            stock_code=stock_code,
-            source_period=source_period,
-            comparator_period=comparator_period,
-            value=value,
-            unit=unit,
-            source_available_at=source_available_at,
-        )
-    except ValueError:
-        return False
-
-
-def _parse_utc_timestamp(value: str, label: str) -> datetime:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError(f"{label} must be an ISO timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError(f"{label} must include a timezone")
-    return parsed.astimezone(timezone.utc)
-
-
-def _monthly_source_version_parts(version: str) -> tuple[str, str, str] | None:
-    legacy = re.fullmatch(
-        r"mops-static-(twse|tpex)-(\d{4}-\d{2})-sha256-([0-9a-f]{64})",
-        version,
-    )
-    if legacy is not None:
-        return legacy.group(1), legacy.group(2), legacy.group(3)
-    current = re.fullmatch(
-        r"mops-static-snapshot\.v2:(twse|tpex):(\d{4}-\d{2}):"
-        r"body_completed_at:(.+):sha256:([0-9a-f]{64})",
-        version,
-    )
-    if current is None:
-        opendata = re.fullmatch(
-            r"(twse\.openapi\.t187ap05_L|tpex\.openapi\.mopsfin_t187ap05_O)\.v1:"
-            r"(twse|tpex):(\d{4}-\d{2}):body_completed_at:(.+):sha256:([0-9a-f]{64})",
-            version,
-        )
-        if opendata is None:
-            return None
-        source_id, market, period, captured, digest = opendata.groups()
-        if source_id != OPENAPI_MONTHLY_SOURCE_IDS.get(market):
-            return None
-        _parse_utc_timestamp(captured, "monthly source capture time")
-        return market, period, digest
-    _parse_utc_timestamp(current.group(3), "monthly source capture time")
-    return current.group(1), current.group(2), current.group(4)

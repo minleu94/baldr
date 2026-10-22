@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import ast
 from dataclasses import FrozenInstanceError, replace
-from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, localcontext
+import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
@@ -54,6 +55,12 @@ from decision_module.recommendation.evaluate import (
     StrategyEvaluationError,
 )
 from data_module.fundamental_data import MonthlyRevenueRecord
+from data_module.current_fundamental_snapshots import (
+    MONTHLY_SNAPSHOT_SOURCE,
+    OPENAPI_MONTHLY_SOURCE_IDS,
+    _derived_monthly_source_version,
+    _derived_monthly_yoy_comparator_version,
+)
 from data_module.recommendation_current_fundamental_provider import (
     CurrentObservedMonthlyRevenueInput,
     CurrentObservedPEInput,
@@ -90,6 +97,80 @@ def _policy(
         minimum_universe_size=minimum_size,
         ranking_method="nearest_rank" if threshold_mode == "quantile" else "fixed",
         eligible_universe_date=CUTOFF,
+    )
+
+
+def _openapi_current_revenue_facts(
+    market: str,
+    *,
+    frozen: datetime = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc),
+    corrupt_profile: str | None = None,
+) -> MonthlyRevenueFacts:
+    source = OPENAPI_MONTHLY_SOURCE_IDS[market]
+    source_available_at = frozen - timedelta(hours=2)
+    observed_at = frozen - timedelta(minutes=20)
+    raw_sha256 = hashlib.sha256(f"fixture:{market}".encode("ascii")).hexdigest()
+    raw_source_version = (
+        f"{source}.v1:{market}:2026-04:body_completed_at:"
+        f"{source_available_at.isoformat()}:sha256:{raw_sha256}"
+    )
+    current_version = _derived_monthly_source_version(
+        raw_source_version,
+        stock_code="2330",
+        period="2026-04",
+        value="110",
+        unit="TWD",
+        source_available_at=source_available_at.isoformat(),
+    )
+    comparator_version = _derived_monthly_yoy_comparator_version(
+        raw_source_version,
+        stock_code="2330",
+        source_period="2026-04",
+        comparator_period="2025-04",
+        value="100",
+        unit="TWD",
+        source_available_at=source_available_at.isoformat(),
+    )
+    if corrupt_profile == "reported_version":
+        current_version += ":unrecognized"
+    elif corrupt_profile == "comparator_version":
+        comparator_version += ":unrecognized"
+    elif corrupt_profile == "source":
+        source = MONTHLY_SNAPSHOT_SOURCE
+    common = {
+        "stock_code": "2330",
+        "observed_at": observed_at,
+        "source_available_at": source_available_at,
+        "source": source,
+        "market": market,
+        "raw_source_version": raw_source_version,
+        "raw_source_sha256": raw_sha256,
+        "unit": "TWD",
+        "period_basis": "monthly_flow",
+        "basis_verified": True,
+        "aggregate_feature_eligible": False,
+        "formal_pit_eligible": False,
+        "availability_basis": "official_body_capture",
+    }
+    current = CurrentObservedMonthlyRevenueInput(
+        period="2026-04",
+        revenue=Decimal("110"),
+        available_at=observed_at,
+        source_version=current_version,
+        input_role="reported_period_value",
+        **common,
+    )
+    comparator = CurrentObservedMonthlyRevenueInput(
+        period="2025-04",
+        revenue=Decimal("100"),
+        available_at=observed_at,
+        source_version=comparator_version,
+        input_role="same_report_prior_year_comparison_baseline",
+        parent_report_period="2026-04",
+        **common,
+    )
+    return project_current_monthly_revenue_records(
+        (current, comparator), (), stock_code="2330"
     )
 
 
@@ -536,6 +617,24 @@ def test_current_pe_projection_keeps_quote_date_separate_from_capture_date() -> 
 
 def test_natural_current_revenue_yoy_requires_current_period_and_exact_baseline() -> None:
     frozen = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
+    source_raw_version = "mops-static-twse-2026-04-sha256-" + "b" * 64
+    current_source_version = _derived_monthly_source_version(
+        source_raw_version,
+        stock_code="2330",
+        period="2026-04",
+        value="110",
+        unit="TWD",
+        source_available_at="",
+    )
+    comparator_source_version = _derived_monthly_yoy_comparator_version(
+        source_raw_version,
+        stock_code="2330",
+        source_period="2026-04",
+        comparator_period="2025-04",
+        value="100",
+        unit="TWD",
+        source_available_at="",
+    )
     policy = replace(
         _policy(revenue_min=Decimal("10")),
         fundamental_input_scope="natural_current_observation",
@@ -548,14 +647,10 @@ def test_natural_current_revenue_yoy_requires_current_period_and_exact_baseline(
         observed_at=frozen.replace(hour=11, minute=59),
         source_available_at=None,
         available_at=frozen.replace(hour=11, minute=59),
-        source="mops.monthly_revenue_static_snapshot",
-        source_version=(
-            "mops-current-revenue-normalizer.v2:twse:2026-04:raw:"
-            "mops-static-twse-2026-04-sha256-" + "b" * 64
-            + ":derived:sha256:" + "c" * 64
-        ),
+        source=MONTHLY_SNAPSHOT_SOURCE,
+        source_version=current_source_version,
         market="twse",
-        raw_source_version="mops-static-twse-2026-04-sha256-" + "b" * 64,
+        raw_source_version=source_raw_version,
         raw_source_sha256="b" * 64,
     )
     prior = MonthlyRevenueRecord(
@@ -576,14 +671,10 @@ def test_natural_current_revenue_yoy_requires_current_period_and_exact_baseline(
         observed_at=current.observed_at,
         source_available_at=None,
         available_at=current.available_at,
-        source="mops.monthly_revenue_static_snapshot",
-        source_version=(
-            "mops-current-revenue-yoy-comparator.v1:twse:2025-04:from:2026-04:raw:"
-            "mops-static-twse-2026-04-sha256-" + "b" * 64
-            + ":derived:sha256:" + "d" * 64
-        ),
+        source=MONTHLY_SNAPSHOT_SOURCE,
+        source_version=comparator_source_version,
         market="twse",
-        raw_source_version="mops-static-twse-2026-04-sha256-" + "b" * 64,
+        raw_source_version=source_raw_version,
         raw_source_sha256="b" * 64,
         input_role="same_report_prior_year_comparison_baseline",
         parent_report_period="2026-04",
@@ -621,10 +712,13 @@ def test_natural_current_revenue_yoy_requires_current_period_and_exact_baseline(
                 source_available_at=None,
                 available_at=current.available_at,
                 source="mops.monthly_revenue_static_snapshot",
-                source_version=(
-                    "mops-current-revenue-normalizer.v2:twse:2025-04:raw:"
-                    "mops-static-twse-2025-04-sha256-" + "a" * 64
-                    + ":derived:sha256:" + "e" * 64
+                source_version=_derived_monthly_source_version(
+                    "mops-static-twse-2025-04-sha256-" + "a" * 64,
+                    stock_code="2330",
+                    period="2025-04",
+                    value="100",
+                    unit="TWD",
+                    source_available_at="",
                 ),
                 market="twse",
                 raw_source_version="mops-static-twse-2025-04-sha256-" + "a" * 64,
@@ -701,6 +795,102 @@ def test_natural_current_revenue_yoy_requires_current_period_and_exact_baseline(
     )
     assert RecommendationEvaluator._revenue_yoy(
         formal_latest_only,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    ) is None
+
+    rejected_mops_versions = MonthlyRevenueFacts(
+        records=tuple(
+            replace(record, source_version=record.source_version + "unrecognized")
+            for record in facts.records
+        )
+    )
+    assert RecommendationEvaluator._revenue_yoy(
+        rejected_mops_versions,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    ) is None
+
+
+@pytest.mark.parametrize("market", ("twse", "tpex"))
+def test_natural_current_revenue_yoy_accepts_exact_openapi_profiles_and_decimal_precision(market):
+    frozen = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
+    facts = _openapi_current_revenue_facts(market, frozen=frozen)
+    with localcontext() as context:
+        context.prec = 3
+        yoy = RecommendationEvaluator._revenue_yoy(
+            facts,
+            cutoff=CUTOFF,
+            stock_code="2330",
+            fundamental_input_scope="natural_current_observation",
+            current_observation_cutoff_at=frozen,
+        )
+    assert yoy == Decimal("10.0")
+    assert all(record.source == OPENAPI_MONTHLY_SOURCE_IDS[market] for record in facts.records)
+
+
+def test_current_revenue_projection_rejects_wrong_openapi_identity_and_version():
+    assert _openapi_current_revenue_facts(
+        "twse", corrupt_profile="reported_version"
+    ).records == ()
+    assert _openapi_current_revenue_facts("twse", corrupt_profile="source").records == ()
+
+    comparator_rejected = _openapi_current_revenue_facts(
+        "twse", corrupt_profile="comparator_version"
+    )
+    assert tuple(record.period for record in comparator_rejected.records) == ("2026-04",)
+    assert RecommendationEvaluator._revenue_yoy(
+        comparator_rejected,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc),
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "wrong_market",
+        "wrong_source",
+        "wrong_schema",
+        "wrong_unit",
+        "wrong_version",
+        "available_after_cutoff",
+        "source_available_after_cutoff",
+        "observed_after_cutoff",
+    ),
+)
+def test_natural_current_openapi_yoy_rejects_profile_schema_and_clock_mismatches(mutation):
+    frozen = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
+    records = _openapi_current_revenue_facts("twse", frozen=frozen).records
+    changed = []
+    for index, record in enumerate(records):
+        if mutation == "wrong_market":
+            record = replace(record, market="tpex")
+        elif mutation == "wrong_source":
+            record = replace(record, source=MONTHLY_SNAPSHOT_SOURCE)
+        elif mutation == "wrong_schema":
+            record = replace(record, period_basis="year_to_date_cumulative")
+        elif mutation == "wrong_unit":
+            record = replace(record, unit="shares")
+        elif mutation == "wrong_version" and index == 1:
+            record = replace(record, source_version="twse.openapi.t187ap05_L.v1:forged")
+        elif mutation == "available_after_cutoff" and index == 1:
+            record = replace(record, available_at=frozen + timedelta(minutes=1))
+        elif mutation == "source_available_after_cutoff":
+            record = replace(record, source_available_at=frozen + timedelta(minutes=1))
+        elif mutation == "observed_after_cutoff":
+            future = frozen + timedelta(minutes=1)
+            record = replace(record, observed_at=future, available_at=future)
+        changed.append(record)
+    facts = MonthlyRevenueFacts(records=tuple(changed))
+    assert RecommendationEvaluator._revenue_yoy(
+        facts,
         cutoff=CUTOFF,
         stock_code="2330",
         fundamental_input_scope="natural_current_observation",

@@ -218,7 +218,9 @@ def test_full_batch_rejects_duplicate_and_mixed_period_rows():
 
 def test_pending_pair_approval_never_creates_accepted_at():
     request = json.loads(build_openapi_monthly_revenue_pair_approval_request())
-    assert request["approval_status"] == "pending_owner_decision"
+    assert request["approval_status"] == "per_use_qualification_pending"
+    assert request["owner_development_authorization"] == "authorized_all_purpose_development"
+    assert request["requested_qualification"] == "all_purpose_development_with_per_use_gate"
     assert request["source_acceptance_created"] is False
     assert request["accepted_at"] is None
     assert tuple(source["source_id"] for source in request["sources"]) == (

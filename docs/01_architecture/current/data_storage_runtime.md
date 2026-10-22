@@ -10,6 +10,8 @@ V2 本機整合候選 `eefd2163ad95` 的啟動設定明選五個 root：隔離 s
 
 ## 資料路徑與來源
 
+後繼全用途月營收分支把capture、append-only候選版本歸檔、資格原件reader與下游研究service分開。市場＋代碼＋期別保留，不將無market的舊歷史表默默遷移；新歸檔實際落盤小時參與版本可見下界，不能倒填舊cutoff。舊daily snapshot／series的用途與PIT旗標保持，歷史MOPS使用獨立source與尚未建立的授權狀態。詳[全用途契約](../../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)，當前工程與金融資格分軌見[驗收](../../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。
+
 V2新增`opendata_monthly_revenue`精確TWSE／TPEx profile，保留實際HTTP狀態／headers／EOF／完成時鐘與raw bytes；單位證據artifact包含官方原件與欄位mapping並由外部SHA固定。current-only可得時間取完整批次完成向上整點，來源、單位或用途未核不得發行TWD金融列。原MOPS契約、daily writer、cohort pin與exact binding仍為保存／讀回邊界，見[Daily Source契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)。Paper新reader從原seed及單交易唯讀ledger rowset重建prestate；新producer只原子追加既有ledger，不另寫平行snapshot。見[整合決策](../BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)。
 
 官方注意公告沿 `selection_official_attention.py` 的有界單日 TWSE 報表解析；保留完整原列 SHA、官方原因 HTML 原文與純文字投影、收盤價／本益比原字串，不將注意當處置或轉成金融輸入。`official_attention_snapshot.py` 另存 self-contained 原 body、HTTP／worker 原收據、headers／request／cookie 側錄與三份固定官方查詢文件。外部 HTTP 收據 SHA、原件各 SHA、完整 EOF／正常 worker 回收、單日全證券查詢、宣告筆數及 schema 均重驗。原 HTTP receipt 未含 worker-result SHA；新 manifest 明示現在才綁已保存 bytes，不追補舊收據。

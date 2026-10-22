@@ -1,5 +1,7 @@
 # Scripts 目錄說明
 
+月營收明選原件的歷史分批擷取、版本歸檔、固定SHA查詢與資格包百分率研究入口為 `scripts/monthly_revenue_archive.py`；命令、參數與拒絕原因見[月營收研究管線](MONTHLY_REVENUE_RESEARCH_PIPELINE.md)。輸出限repo `output`，不自動接正式資料或排程。
+
 ## 概述
 本目錄包含系統中獨立的腳本，主要用於數據更新、修復、合併以及參數優化等任務。這些腳本在系統架構中扮演重要角色，確保數據的完整性和系統的穩定性。
 

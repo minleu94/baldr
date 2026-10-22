@@ -10,11 +10,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from enum import Enum
 from hashlib import sha256
 from types import MappingProxyType
 from zoneinfo import ZoneInfo
+
+from utils.monthly_revenue_identity import (
+    MONTHLY_NORMALIZER_VERSION,
+    MONTHLY_SNAPSHOT_SOURCE,
+    OPENAPI_MONTHLY_NORMALIZER_VERSION,
+    OPENAPI_MONTHLY_SOURCE_IDS,
+    is_monthly_derived_source_version,
+    is_monthly_yoy_comparator_source_version,
+    monthly_derived_source_version_parts,
+    monthly_source_version_identity,
+    monthly_yoy_comparator_source_version_parts,
+)
 
 from decision_module.recommendation.contracts import (
     CandidateAssessment,
@@ -4583,18 +4595,6 @@ def _current_observed_revenue_yoy(
             "local_verified_observation",
         }:
             continue
-        if record.input_role == "reported_period_value":
-            if record.source_version.startswith(
-                "mops-current-revenue-yoy-comparator.v1:"
-            ):
-                continue
-        elif record.input_role == "same_report_prior_year_comparison_baseline":
-            if not record.source_version.startswith(
-                "mops-current-revenue-yoy-comparator.v1:"
-            ):
-                continue
-        else:
-            continue
         if (
             record.formal_pit_eligible is not False
             or record.available_at is None
@@ -4606,13 +4606,7 @@ def _current_observed_revenue_yoy(
             or record.period_basis != "monthly_flow"
             or record.basis_verified is not True
             or record.aggregate_feature_eligible is not False
-            or record.source != "mops.monthly_revenue_static_snapshot"
-            or not record.source_version.startswith(
-                (
-                    "mops-current-revenue-normalizer.v2:",
-                    "mops-current-revenue-yoy-comparator.v1:",
-                )
-            )
+            or not _current_monthly_record_version_is_exact(record)
             or not _is_sha256_text(record.raw_source_sha256)
             or record.available_date
             != record.observed_at.astimezone(ZoneInfo("Asia/Taipei")).date()
@@ -4681,9 +4675,97 @@ def _current_observed_revenue_yoy(
     if not prior_rows or len({row.revenue for row in prior_rows}) != 1:
         return None
     prior = min(prior_rows, key=lambda row: row.source_version)
-    if prior.revenue <= 0:
+    if not latest.revenue.is_finite() or not prior.revenue.is_finite() or prior.revenue <= 0:
         return None
-    return ((latest.revenue - prior.revenue) / prior.revenue) * Decimal("100.0")
+    latest_exponent = latest.revenue.as_tuple().exponent
+    prior_exponent = prior.revenue.as_tuple().exponent
+    if not isinstance(latest_exponent, int) or not isinstance(prior_exponent, int):
+        return None
+    with localcontext() as context:
+        context.prec = max(
+            50,
+            max(latest.revenue.adjusted(), prior.revenue.adjusted())
+            - min(latest_exponent, prior_exponent)
+            + 32,
+        )
+        return ((latest.revenue - prior.revenue) / prior.revenue) * Decimal("100.0")
+
+
+def _current_monthly_record_version_is_exact(record: MonthlyRevenueFact) -> bool:
+    """只接受 current-revenue reader 產生的 MOPS/OpenData 完整版本摘要。"""
+
+    market = record.market
+    if market is None or market not in {"twse", "tpex"} or record.raw_source_sha256 is None:
+        return False
+    if record.source == MONTHLY_SNAPSHOT_SOURCE:
+        normalizer = MONTHLY_NORMALIZER_VERSION
+        expected_source = MONTHLY_SNAPSHOT_SOURCE
+    elif record.source == OPENAPI_MONTHLY_SOURCE_IDS[market]:
+        normalizer = OPENAPI_MONTHLY_NORMALIZER_VERSION
+        expected_source = OPENAPI_MONTHLY_SOURCE_IDS[market]
+    else:
+        return False
+
+    if record.input_role == "reported_period_value":
+        parts = monthly_derived_source_version_parts(record.source_version)
+        if parts is None:
+            return False
+        version_normalizer, version_market, version_period, raw_source_version, _digest = parts
+        if version_normalizer != normalizer or version_market != market or version_period != record.period:
+            return False
+        try:
+            raw_identity = monthly_source_version_identity(raw_source_version)
+            if raw_identity != (expected_source, market, record.period, record.raw_source_sha256):
+                return False
+            return is_monthly_derived_source_version(
+                record.source_version,
+                market=market,
+                period=record.period,
+                stock_code=record.stock_code or "",
+                value=str(record.revenue),
+                unit=record.unit or "",
+                source_available_at=_current_monthly_source_clock_text(record),
+            )
+        except ValueError:
+            return False
+    elif record.input_role == "same_report_prior_year_comparison_baseline":
+        version = record.source_version
+        suffix = ":verified-csv-sha256:"
+        if suffix in version:
+            base_version, suffix_hash = version.rsplit(suffix, 1)
+            if not _is_sha256_text(suffix_hash):
+                return False
+        else:
+            base_version = version
+        parts = monthly_yoy_comparator_source_version_parts(version)
+        if parts is None:
+            return False
+        version_market, comparator_period, source_period, raw_source_version, _digest = parts
+        if version_market != market or comparator_period != record.period or record.parent_report_period != source_period:
+            return False
+        try:
+            raw_identity = monthly_source_version_identity(raw_source_version)
+            if raw_identity != (expected_source, market, source_period, record.raw_source_sha256):
+                return False
+            return is_monthly_yoy_comparator_source_version(
+                base_version,
+                market=market,
+                comparator_period=record.period,
+                stock_code=record.stock_code or "",
+                value=str(record.revenue),
+                unit=record.unit or "",
+                source_available_at=_current_monthly_source_clock_text(record),
+            )
+        except ValueError:
+            return False
+    else:
+        return False
+
+
+def _current_monthly_source_clock_text(record: MonthlyRevenueFact) -> str:
+    if record.source_available_at is None:
+        return ""
+    return record.source_available_at.astimezone(timezone.utc).isoformat()
 
 
 def _current_monthly_revision_clock(record: MonthlyRevenueFact) -> datetime:

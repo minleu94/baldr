@@ -14,7 +14,7 @@
 
 證據由設定成對明選 `RESEARCH_PAPER_EVIDENCE_BINDING_PATH`（包外絕對路徑）與 `RESEARCH_PAPER_EVIDENCE_BINDING_SHA256`（外部固定的64字元小寫SHA）。工程端須先備妥逐用途接受的現金、同日行情及官方日曆原件；一般使用者不要手改JSON解鎖。帳戶由原服務核驗，目前只支援既有明示500,000 TWD／八檔上限帳戶契約；不自建帳戶、補本金、借研究股價或benchmark建帳。一帳戶一日仍限原子操作，不同意圖不能冒作重試。保存只追加原Paper帳本，不自動更新NAV、Forward、Journal或金融資格。日期、來源、SHA、帳戶或現金失配時，按提示修復明選證據並重新預覽；不得改正式資料或舊收據。
 
-TWSE／TPEx月營收新增各自具名的OpenData current-only工程入口；原MOPS身份不變。沒有相符官方單位原件、逐用途接受及固定binding時，Main維持停用或缺件，不能直接把下載JSON填成正式MOPS資料。工程及驗證範圍見[增量整合決策](../01_architecture/BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)與[補完驗收](../06_qa/BALDR_V2_FINAL_COMPLETION_20261021.md)。以下具名舊候選的能力仍按原版本判讀。
+TWSE／TPEx月營收已獲Owner全用途開發與使用授權，包含歷史、因子與下游研究；既有current-only入口只是原路徑能力，不能當成授權上限。新Source的明選原件／分批歷史／版本歸檔CLI見[月營收管線操作](MONTHLY_REVENUE_RESEARCH_PIPELINE.md)，工程與逐用途資格見[全用途驗收](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。原MOPS身份不變；缺相符單位原件、用途資格或固定binding時Main仍保持缺件，不能將下載JSON填成正式MOPS。以下具名舊候選按原版本判讀。
 
 首頁研究線索的「決策日」與「資料日」可以不同：例如10/21決策使用10/20截止行情。系統只在保存結果的自然時鐘／cutoff 契約與排程狀態一致時呈現，並保留較早資料日及降級原因。過時來源不能當今日候選，可沿明示入口讀回保存結果；無效日期／身份仍停用，不以改日期解鎖。Paper、月營收與正式金融資格各自受原守衛限制。既有 `eefd2163ad95` EXE 不含此後繼 reader 修復，未重建；工程裁決與驗證範圍見 [V2 工程收尾](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#最終工程收尾診斷2026-10-21)。
 

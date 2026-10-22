@@ -1,5 +1,7 @@
 # QA 證據導覽
 
+- [月營收全用途整合](MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)：雙市場原件、版本歸檔、逐用途資格與研究接線；Source 工程與正式金融接受分別判讀。
+
 - [V2工程補完與整合](BALDR_V2_FINAL_COMPLETION_20261021.md)：具名月營收來源、人工確認Paper producer、真Main歷史來源保存重開與五旅程五軌判讀；不取代原金融批准或Native／Owner驗收。
 
 - [10/18 後繼題材每日研究](BALDR_THEME_DAILY_QA_20261018.md)：M1定向驗證、真實資料工程量測、M2接線及各自未驗界線；[研究12](BALDR_THEME_DAILY_QA_20261018.md#固定12research07回報交付qa227234)另核research07五項回報、固定EXE／新程序及交付，原完整Gate不變。

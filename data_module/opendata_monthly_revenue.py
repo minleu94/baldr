@@ -237,7 +237,7 @@ class OpenApiMonthlyRevenueRow:
 
 @dataclass(frozen=True, slots=True)
 class OpenApiMonthlyRevenueBatch:
-    """同一市場、同一資料年月的一次 current-only 候選批次。"""
+    """同一具名市場與資料年月的單一官方 OpenData 候選批次。"""
 
     capture: OpenApiMonthlyRevenueCapture
     period: str
@@ -1029,7 +1029,7 @@ def build_openapi_monthly_revenue_pair_approval_request(
     *,
     unit_proofs: Mapping[OpenApiMarket, OpenApiMonthlyRevenueUnitProof] | None = None,
 ) -> bytes:
-    """產生等待 Owner 決策的具名雙來源接受提案；不建立 acceptance/accepted_at。"""
+    """產生具名雙來源提案；Owner 已授開發，逐用途資格仍待資料 Gate。"""
     proofs = unit_proofs or {}
     if set(proofs) - set(OPENAPI_MONTHLY_REVENUE_ENDPOINTS):
         raise OpenApiMonthlyRevenueError("approval_request_unit_proof_market_invalid")
@@ -1059,14 +1059,18 @@ def build_openapi_monthly_revenue_pair_approval_request(
                 "requested_normalized_unit": "TWD" if proof is not None else None,
                 "proof_status": "candidate_untrusted" if proof is not None else "missing",
                 "intended_use": "recommendation_current_fundamental",
+                "default_intended_use_compatibility": "recommendation_current_fundamental",
+                "owner_development_authorization": "authorized_all_purpose_development",
+                "per_use_data_gate": "qualification_required_before_each_use",
                 "unit_proof": proof.to_dict() if proof is not None else None,
             }
         )
     return _canonical_json_bytes(
         {
             "schema_version": OPENAPI_MONTHLY_REVENUE_APPROVAL_REQUEST_SCHEMA,
-            "approval_status": "pending_owner_decision",
-            "requested_qualification": "current_only_recommendation_fundamental",
+            "approval_status": "per_use_qualification_pending",
+            "owner_development_authorization": "authorized_all_purpose_development",
+            "requested_qualification": "all_purpose_development_with_per_use_gate",
             "historical_pit_eligible": False,
             "source_acceptance_created": False,
             "accepted_at": None,

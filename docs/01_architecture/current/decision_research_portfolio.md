@@ -1,5 +1,7 @@
 # 決策、研究與 Portfolio
 
+月營收全用途後繼Source新增研究service，將官方原公布YoY／MoM百分率與需精確單位的金額分流，經逐用途policy與原件resolver後供比較、篩選及分市場shadow因子排行。歷史TTM／三月趨勢要求唯一連續月窗；capture-as-of研究不等於正式PIT。回測／ML逐cutoff及Paper／Forward月營收feature另核，不把營收作行情／現金，不更動正式權重或模型Promotion。實作／驗收界線見[全用途契約](../../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)與[驗收](../../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。
+
 V2 保存時報告及原價格詳情的另開最新入口由 Workspace 統一發送原 context，Main 建立獨立的一般查詢與只讀歷史返回 token。新 context 不帶原決策日、資料日、result ID 或來源 pins；Timeline 返回重讀同一 entry，其他價格返回以原 selection 執行 strict reader，保存報告核 canonical 與 identity。背景回傳須仍是同一 frame、股票查詢、頁面與 route；離頁、另開查詢或 shutdown 後不恢復舊畫面。此 UI 回訪不寫 Journal、不變更金融資格；固定 a65 EXE 未含，限定驗證見[V2 QA](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#選股保存與歷史返回qa130起)。
 
 PaperPortfolioBaselineService 只從明選保存推薦建立 research-only 配置研究輸出，不建持倉帳。候選轉換對總分與收盤價要求有限 Decimal：缺失、null、布林、非法文字及NaN／Infinity均在配置前拒絕並指出欄位，不以0補值；明確觀測0仍交原配置政策診斷。既有日期、政策與精度不變；CLI在build成功後才寫輸出，無效來源不新建或覆寫研究檔。QA128限定回歸已驗；此契約不授合法Paper標價、現金或績效資格，固定a65 RC未含。

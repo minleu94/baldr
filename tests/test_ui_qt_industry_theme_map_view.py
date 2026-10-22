@@ -624,8 +624,8 @@ def test_sorting_direction_projects_global_high_and_low_five_for_all_metrics():
     view = IndustryThemeMapView()
     view.set_snapshot(snapshot)
 
-    assert view.sorting_direction_combo.currentData() is False
-    assert _ranked_theme_names(view) == ["題材G", "題材F", "題材E", "題材D", "題材C"]
+    assert view.sorting_direction_combo.currentData() == "both"
+    assert _ranked_theme_names(view) == ["題材G", "題材F", "題材A", "題材B"]
     cards_before = {
         key: (
             view.leader_card_topics[key].text(),
@@ -666,6 +666,10 @@ def test_sorting_direction_projects_global_high_and_low_five_for_all_metrics():
         assert _ranked_theme_names(view) == low_order
         assert "部分覆蓋極端值" not in _ranked_theme_names(view)
         assert "未提供題材" not in _ranked_theme_names(view)
+        view.sorting_direction_combo.setCurrentIndex(view.sorting_direction_combo.findData("both"))
+        expected = list(dict.fromkeys(high_order[:2] + low_order[:2]))
+        assert _ranked_theme_names(view) == expected
+        assert view.ranking_table.rowCount() <= 4
 
     view.ranking_type_combo.setCurrentIndex(
         view.ranking_type_combo.findData("institutional")

@@ -131,3 +131,15 @@ A3先前的flat counts缺口已關閉；A4／A5仍待續作。Native GUI保持�
 早輪腳本失敗保留：載入方法誤傳known_at、假定首列為2330、假定覆蓋2/2，以及保存題材筆記後仍假定最近研究只有一筆。後繼腳本改依實際公開介面、股票代碼、原coverage與保存身份驗證，沒有改產品契約迎合假定；所有Job均排空。A4仍需核對強弱與圖文對照的高價值缺口，A5尚待續作；Native停止、無EXE重建、無push。
 
 task／Coverage、功能地圖metadata與新QA錨點檢查通過，收據 `single_owned_qa_bb9d55b1de96453eb75df0151654403c` 排空及鎖釋放。`context_a4_detail.txt` 是6500字的bug領域定位摘錄，預算略過歷史 `BALDR_COMPLETION_RESUME_PROGRESS_20261012.md` 2148字；題材設計、操作與當前View則直接核讀相關正文。未宣稱全歷史EOF、全庫連結或真人驗收。
+
+## Track A A4 兩端觀察與原值長條
+
+題材觀察預設「兩端對照（各前兩筆）」，直接使用原 presentation 的高、低端結果，依產業鏈＋題材去重，單一題材／兩端重疊另標；原雙向前五名仍可明選。沒有改 ranking、金融公式、完整覆蓋門檻、DTO或Reader。表格的長條delegate只把原值映射為繪圖幾何：同欄目前列共用絕對值尺度，中線0；正負、零、原顯示文字、完整精度提示及覆蓋數保留。缺值／非有限值不畫條，不從格式化字串推算。缺件後的觀察卡依可用卡數填滿欄寬，不留空欄。
+
+最終 `*_a4_bars_final.log`：編譯、54項Qt／題材／目錄／反查／導航／清除／長條定向、Workbench85、更新頁25 PASS／0 FAIL／4 SKIP及全範圍mypy1128檔通過。方向回歸同時核對原高低前五與兩端去重，部分覆蓋極端值／未提供題材不混入；delegate保留高精度Decimal、負值、零與原文字，非法／非有限值保持未知，實際Qt繪圖可用。
+
+`main_a4_bars_final125/150` 正常Main first／fresh均通過、worker0。沿原Reader讀取七股／六題材隔離樣本，明列正負價差方向，原三檔SHA保持。兩端四筆與原mean_return_pct逐項相等，缺件題材不入列；四種尺寸1280×760、1500×900、1920×1080、900×760擷取初屏與排行。Root檢視兩縮放1280最終原圖及125%窄窗：日期、兩端標記、原數值、覆蓋及共用零線可讀；缺件提示保留，沒有不透明文字殘影。排行低端點選可定位原題材，成員明按下鑽／原選列返回、筆記保存與新程序原identity回訪保持。一般報告／原比較也沿既有具名行情副本重驗；合成樣本不授金融或歷史PIT資格。
+
+最終收據 `single_owned_qa_969d189313fe49a99f6e727a3eb3414b` 自然排空、handles關閉及鎖釋放；早輪 `main_a4_bars01` 功能亦通過，僅後繼消除觀察卡空欄，原輸出保留。其他線同期提交資料receipt／lineage，未stage或修改其檔案。A4強弱圖文缺口已具體改善，接續A5已有成果呈現與全目標證據核對；Native停止、無EXE重建、無push。
+
+task／Coverage、功能metadata及新QA錨點通過，收據 `single_owned_qa_8183e92bdbad43b591fdfbaf791c74ff` 排空、handles關閉及鎖釋放。`context_a4_bars.txt` 是ui領域Level2的6份摘錄、2726字，Unknown清單為空；這只代表該次定位摘錄沒有略過，不代表全庫文件EOF、全連結或真人接受。

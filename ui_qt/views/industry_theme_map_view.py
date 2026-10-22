@@ -46,6 +46,7 @@ from app_module.theme_snapshot_catalog import (
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
 from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.widgets.observation_bar_delegate import ObservationBarDelegate, OBSERVATION_VALUE_ROLE
 
 
 class IndustryThemeMapView(QWidget):
@@ -271,7 +272,7 @@ class IndustryThemeMapView(QWidget):
             self.leader_card_coverages[key] = coverage_label
         content_layout.addWidget(self.observations_group)
 
-        self.ranking_group = QGroupBox("完整覆蓋題材排行（最多前五名）")
+        self.ranking_group = QGroupBox("完整覆蓋題材觀察（兩端對照／前五名）")
         ranking_layout = QVBoxLayout(self.ranking_group)
         ranking_header = QHBoxLayout()
         ranking_header.addWidget(QLabel("排行類型"))
@@ -288,6 +289,8 @@ class IndustryThemeMapView(QWidget):
         self.sorting_direction_combo.setAccessibleName("題材排行排序方向")
         self.sorting_direction_combo.addItem("由高到低", False)
         self.sorting_direction_combo.addItem("由低到高", True)
+        self.sorting_direction_combo.addItem("兩端對照（各前兩筆）", "both")
+        self.sorting_direction_combo.setCurrentIndex(2)
         self.sorting_direction_combo.currentIndexChanged.connect(
             self._render_leaderboard
         )
@@ -299,8 +302,9 @@ class IndustryThemeMapView(QWidget):
         self.ranking_table.setObjectName("industryThemeResearchRankingTable")
         self.ranking_table.setAccessibleName("完整覆蓋題材排行表")
         self.ranking_table.setHorizontalHeaderLabels(
-            ["名次", "產業鏈", "題材", "觀察值", "覆蓋數"]
+            ["位置", "產業鏈", "題材", "觀察值｜中線 0", "覆蓋數"]
         )
+        self.ranking_table.setItemDelegateForColumn(3, ObservationBarDelegate(self.ranking_table))
         self.ranking_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.ranking_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -335,6 +339,7 @@ class IndustryThemeMapView(QWidget):
         ranking_layout.addWidget(self.ranking_empty_label)
         self.ranking_note = QLabel(
             "此表只整理欄位覆蓋完整的觀察值，不形成策略結論；低值不自動代表下跌或法人賣超。"
+            "長條只對照目前列的共用尺度，中線為零；高低端重疊不重列，單一題材不構成兩端比較。"
             "點選題材可定位原成員。"
         )
         self.ranking_note.setWordWrap(True)
@@ -1398,6 +1403,7 @@ class IndustryThemeMapView(QWidget):
             return
         columns = 1 if self.width() < 650 else 2 if self.width() < 1100 else 4
         visible = [card for card in self.observation_cards.values() if not card.isHidden()]
+        columns = min(columns, max(1, len(visible)))
         for card in self.observation_cards.values():
             self.observation_cards_layout.removeWidget(card)
         for index, card in enumerate(visible):
@@ -1598,7 +1604,8 @@ class IndustryThemeMapView(QWidget):
             self.ranking_empty_label.setText("尚未載入題材觀察排行。")
             self.ranking_empty_label.show()
             return
-        if self.sorting_direction_combo.currentData() is True:
+        direction = self.sorting_direction_combo.currentData()
+        if direction is True or direction == "both":
             ascending_presentation = self._ascending_presentation
             if ascending_presentation is None:
                 try:
@@ -1618,7 +1625,8 @@ class IndustryThemeMapView(QWidget):
                     )
                     return
                 self._ascending_presentation = ascending_presentation
-            presentation = ascending_presentation
+            if direction is True:
+                presentation = ascending_presentation
         ranking_type = self.ranking_type_combo.currentData()
         row_sets = {
             "return": presentation.return_leaders,
@@ -1627,6 +1635,23 @@ class IndustryThemeMapView(QWidget):
             "volume": presentation.volume_leaders,
         }
         leaders = row_sets.get(ranking_type, ())
+        positions = [str(rank) for rank in range(1, len(leaders) + 1)]
+        if direction == "both" and self._ascending_presentation is not None:
+            low_sets = {
+                "return": self._ascending_presentation.return_leaders,
+                "turnover": self._ascending_presentation.turnover_leaders,
+                "institutional": self._ascending_presentation.institutional_leaders,
+                "volume": self._ascending_presentation.volume_leaders,
+            }
+            high = leaders[:2]
+            low = low_sets.get(ranking_type, ())[:2]
+            high_keys = {(row.chain_name, row.theme_name) for row in high}
+            low_keys = {(row.chain_name, row.theme_name) for row in low}
+            leaders = high + tuple(row for row in low if (row.chain_name, row.theme_name) not in high_keys)
+            positions = ["兩端重疊" if (row.chain_name, row.theme_name) in low_keys else f"高 {rank}" for rank, row in enumerate(high, 1)]
+            positions += [f"低 {rank}" for rank, row in enumerate(low, 1) if (row.chain_name, row.theme_name) not in high_keys]
+            if len(leaders) == 1:
+                positions = ["單一觀察"]
         self.ranking_table.setRowCount(len(leaders))
         if not leaders:
             self.ranking_empty_label.setText(
@@ -1640,7 +1665,7 @@ class IndustryThemeMapView(QWidget):
                 str(ranking_type), row
             )
             values = (
-                str(rank),
+                positions[rank - 1],
                 row.chain_name,
                 row.theme_name,
                 value,
@@ -1651,7 +1676,11 @@ class IndustryThemeMapView(QWidget):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if column == 3:
                     item.setToolTip(self._leader_original_value(str(ranking_type), row))
+                    field = {"return": "mean_return_pct", "turnover": "turnover_twd", "institutional": "institutional_net_shares", "volume": "volume_multiple_5d"}.get(str(ranking_type))
+                    raw = getattr(row, field, None) if field else None
+                    item.setData(OBSERVATION_VALUE_ROLE, str(raw) if raw is not None else None)
                 self.ranking_table.setItem(rank - 1, column, item)
+        self.ranking_table.resizeRowsToContents()
 
     def _leader_value_and_coverage(
         self, ranking_type: str, row: ThemeDailyRow

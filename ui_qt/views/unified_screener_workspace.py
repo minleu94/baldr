@@ -175,6 +175,10 @@ def project_result_funnel(view: object) -> FunnelProjection:
     if population is None:
         base = getattr(counts, "base_f17_counts", None)
         population = getattr(base, "population", None)
+    # v4 頁面直接攜帶已核驗的扁平母體計數，不能以可見列數替代。
+    flat_population = population is None and hasattr(counts, "declared_count")
+    if flat_population:
+        population = counts
     declared = getattr(population, "declared_count", None)
     processed = getattr(population, "processed_count", None)
     if type(declared) is int and declared >= 0:
@@ -191,6 +195,14 @@ def project_result_funnel(view: object) -> FunnelProjection:
         metrics.append(FunnelMetric("尚待處理", pending))
     if type(excluded) is int and excluded >= 0:
         metrics.append(FunnelMetric("來源排除", excluded))
+    if flat_population:
+        for domain, field in (
+            ("來源納入", "included_count"),
+            ("已處理但缺資料", "missing_data_count"),
+            ("待處理且缺資料", "missing_data_pending_count"),
+        ):
+            value = getattr(population, field, None)
+            metrics.append(FunnelMetric(domain, value if type(value) is int and value >= 0 else None))
 
     # F07 結果與頁面都帶有經核驗的來源計數及價格三態計數。
     if price_counts is None and page is not None:
@@ -873,9 +885,16 @@ class UnifiedScreenerWorkspace:
         if not projection.available:
             self.funnel.setText("母體漏斗：未提供（此來源尚無已核結果計數）")
             return
-        lines = ["母體漏斗（目前查詢來源，不跨來源合併）："]
+        lines = ["母體漏斗（目前查詢來源，不跨來源合併；各項可能重疊）："]
+        population_pieces: list[str] = []
         for metric in projection.metrics:
             pieces = [f"{metric.domain} {self._format_count(metric.denominator)}"]
+            if all(value is None for value in (
+                metric.match, metric.no_match, metric.unknown,
+                metric.not_evaluated, metric.not_applicable,
+            )):
+                population_pieces.extend(pieces)
+                continue
             if metric.match is not None or metric.no_match is not None or metric.unknown is not None:
                 pieces.append(
                     "符合／不符合／未知 "
@@ -890,6 +909,8 @@ class UnifiedScreenerWorkspace:
                         f"{self._format_count(metric.not_applicable)}"
                     )
             lines.append(" · ".join(pieces))
+        if population_pieces:
+            lines.insert(1, " · ".join(population_pieces))
         self.funnel.setText("\n".join(lines))
 
     @staticmethod

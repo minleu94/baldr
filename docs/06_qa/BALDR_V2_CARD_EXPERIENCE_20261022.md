@@ -107,3 +107,15 @@ task／Coverage／功能地圖結構與新增QA錨點檢查通過，原件為 `m
 仍待A3續作：目前總選股的母體漏斗投影尚未涵蓋v4的flat counts結構，已核來源首屏仍可能顯示漏斗未提供；原來源頁的日期／宣告分母及結果均可讀。本批沒有用可見列數推算此漏斗，後續只可沿既有公開計數修正展示。A4／A5繼續依真實畫面與原結果裁定；Native停止、Owner未驗、正式來源／金融資格與固定EXE保持。
 
 task／Coverage、功能地圖結構及新QA／手冊錨點檢查通過。`context_a3.txt` 的4500字預算略過 `current/decision_research_portfolio.md` 的完整選中正文；另核該冊原件返回與UI／application模組責任，未宣稱重讀全部歷史／策略正文或全庫EOF。
+
+## Track A A3 扁平母體計數
+
+修正共用選股摘要未辨識 v4 頁面扁平 `counts` 的缺口：沿原 Reader 的宣告、納入、已處理、待處理、排除、已處理缺資料、待處理缺資料七項計數展示，不以當頁列數推算、不合成三態分區。缺資料缺值、負值或布林維持未提供；原查詢截至日及短查詢身份保持。單純計數並列，領域三態仍各自列出；畫面明示各項可能重疊，原來源頁保留未知規則股票數與完整稽核。沒有改 Reader、DTO、來源取得或金融計算。
+
+`*_a3_counts.log`：編譯、43項定向、8項原 v4 小樣本回歸、Workbench85、更新頁25 PASS／0 FAIL／4 SKIP及全範圍mypy1127檔通過。前批16項型別失敗原件保留，這次只代表當時共享工作樹通過，未代改其他線。
+
+隔離正常 Main 的 `main_a3_counts125/150` first／fresh均通過：原筆記保存、新程序回訪、比較下鑽與原Query／選列返回，worker0；三種尺寸的比較操作保持。Root檢視兩縮放1280×760的選股原圖，七項計數與操作／三列樣本可見。來源為三股合成保存樣本及既有四股capture，不授正式金融資格；原市場缺件仍降級。`single_owned_qa_ef61f4838b9d48499bf72bf6a8b62a4f` Job自然排空、handles關閉、共享鎖釋放；後繼125%補圖只補最後「各項可能重疊」文案，不改數值或流程。
+
+A3先前的flat counts缺口已關閉；A4／A5仍待續作。Native GUI保持停止、未重建EXE、未push。
+
+最終125%文案補圖 `main_a3_counts_final125` first／fresh通過，Root已檢視1280原圖；補編譯及task／Coverage／metadata／新錨點通過。收據 `single_owned_qa_41802f5e292a43e1bb2bef4520e16bb5` 自然排空、handles關閉及鎖釋放；此結構檢查不代表全庫文件EOF或真人驗收。

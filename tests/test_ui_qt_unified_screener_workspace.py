@@ -481,6 +481,24 @@ def test_real_v4_saved_query_keeps_identity_after_controls_are_collapsed(qtbot, 
     assert preparation is not None and preparation.is_collapsed()
     assert advanced is not None and advanced.is_collapsed()
     assert view.current_page is state.origin_page
+    projection = project_result_funnel(view)
+    assert projection.available
+    assert projection.data_date == saved.origin_query.decision_date.isoformat()
+    assert projection.query_identity == saved.origin_query.query_identity_sha256[:12]
+    actual = {metric.domain: metric.denominator for metric in projection.metrics}
+    original = state.origin_page.counts
+    assert actual == {
+        "來源母體": original.declared_count,
+        "來源已處理": original.processed_count,
+        "尚待處理": original.pending_count,
+        "來源排除": original.excluded_count,
+        "來源納入": original.included_count,
+        "已處理但缺資料": original.missing_data_count,
+        "待處理且缺資料": original.missing_data_pending_count,
+    }
+    workspace.refresh_funnel()
+    assert f"來源母體 {original.declared_count}" in workspace.funnel.text()
+    assert "此來源尚無已核結果計數" not in workspace.funnel.text()
     assert view.page_size.currentData() == saved.origin_query.page_size
     assert view._selected_row().stock_code == saved.selected_stock_code
     assert view.apply_button.parentWidget() is advanced.parentWidget()
@@ -495,6 +513,21 @@ def test_real_v4_saved_query_keeps_identity_after_controls_are_collapsed(qtbot, 
     assert view.current_query.stock_filter == saved.origin_query.stock_filter
     assert view.current_query.rule_state_filters != saved.origin_query.rule_state_filters
     view.begin_shutdown()
+
+
+@pytest.mark.parametrize("invalid", (None, -1, True))
+def test_flat_population_missing_data_is_unknown_not_zero(invalid):
+    page = SimpleNamespace(
+        counts=SimpleNamespace(declared_count=20, processed_count=17,
+                               included_count=19, pending_count=2, excluded_count=1,
+                               missing_data_count=invalid),
+        rows=(object(),),
+    )
+    projection = project_result_funnel(SimpleNamespace(current_page=page))
+    counts = {item.domain: item.denominator for item in projection.metrics}
+    assert counts["來源母體"] == 20
+    assert counts["已處理但缺資料"] is None
+    assert counts["待處理且缺資料"] is None
 
 
 def test_source_preparation_disclosure_preserves_original_controls_and_explicit_action(qtbot):

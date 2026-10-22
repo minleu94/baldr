@@ -2,7 +2,7 @@
 
 本輪依 [Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 與 Owner 10/21補完授權，從 `12e7f620`、`codex/baldr-v2-product` 增量完成。本文的 QA001起屬新任務 `output/tasks/baldr-v2-final-completion`；舊QA159／162／164／171屬 `baldr-v2-product-implementation`，兩個命名空間不可混用。角色及原件審查由root負責，三個實際Luna High工作包分別處理月營收、Paper及UI／Main測試；不是更換角色名稱充作獨立複核。
 
-Source及正常Main正向驗證已完成，正在固定唯一Source與集中RC；RC收據完成前不宣告整體交付完成。Native保持`USER_STOPPED_ESCAPE`及`NATIVE_SMOKE_NOT_EXECUTED`，Owner保持`OWNER_UAT_NOT_PERFORMED`。累計額外Credits授權12,500未重置；任務級支出為`USAGE_UNOBSERVABLE`。沒有push、正式資料寫入、實盤、排程變更或替換正式入口。
+最終裁決：**`V2_ENGINEERING_COMPLETE_PENDING_EXTERNAL_ACCEPTANCE`**。本輪宣告範圍的可安全實作工程、正常Main正向Paper與必要回歸已完成，並集中建置一份新RC；通用producer不再列為未實作。這不宣稱全部金融功能正式可用或五旅程完整接受。Native保持`USER_STOPPED_ESCAPE`及`NATIVE_SMOKE_NOT_EXECUTED`，Owner保持`OWNER_UAT_NOT_PERFORMED`。累計額外Credits授權12,500未重置；任務級支出為`USAGE_UNOBSERVABLE`。沒有push、正式資料寫入、實盤、排程變更或替換正式入口。
 
 ## 已完成工程與驗證
 
@@ -38,10 +38,31 @@ QA031全文手冊機械檢查遇到HEAD已存在的兩個舊junction trial guide
 
 ## 外部接受與使用限制
 
-OpenData沒有改標MOPS；官方單位原件必須能證明該endpoint／欄位的千元mapping，再由有權接受者固定外部SHA與逐用途接受。下載成功、政府資料開放授權或一般申報簡報都不能單獨補此證明。已準備實際候選、provenance及`approval_request.pending.json`，不是要求Owner自行編JSON或SHA。current-only不另要求完整歷史PIT；用途成立後仍需取得新的完整成功批次，不能倒填舊availability。
+OpenData沒有改標MOPS；官方單位原件必須能證明該endpoint／欄位的千元mapping，再由有權接受者固定外部SHA與逐用途接受。下載成功、政府資料開放授權或一般申報簡報都不能單獨補此證明。已準備實際候選、provenance及`approval_request.pending.json`，不是要求Owner自行編JSON或SHA。current-only不另要求完整歷史PIT；用途成立後仍須經原writer完整驗證並持久化新批次，不倒填早於實際接受／持久化的availability。
+
+集中批准需求只有一項月營收用途決策：**是否接受具名TWSE `t187ap05_L`與TPEx `mopsfin_t187ap05_O`，僅用於current-only月營收研究，保留官方歸屬、原始bytes／SHA與逐批品質守衛？** 單位原件／mapping未核前仍禁止TWD轉換及正式binding，批准此用途也不替代那些證據。具體scope與尚未授予欄位位於本任務`revenue/capture_20261021T235255_729111Z/approval_request.pending.json`，同目錄receipt包含兩市場實際版本與raw SHA；接受後由工程端處理序列化及外部pin，不交給Owner手編。
 
 Paper正向工程已實作。正式使用仍需Owner明選／批准原帳戶、資金與策略政策，以及可核同日行情、現金與日曆用途；目前只支援原500,000 TWD／八檔契約、整手股數與一帳戶一日operation。非此契約的本金或帳戶形式仍是具名產品限制，不能用隱藏default或放寬policy補足。持久化只寫原ledger，不宣稱已完成獨立NAV投影、Forward成熟或ML資格。完整契約見[增量決策](../01_architecture/BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)，操作見[手冊](../07_guides/APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)。
 
 ## 版本與候選
 
-舊`eefd2163ad95`後的來源差異包括`b8ed339f`鍵盤／價格返回、`12e7f620`首頁日期修復與本次月營收／Paper工程。舊包及啟動器SHA不改，Source的通過不冒作舊EXE通過。集中新RC只在固定Source後建立一次；source archive、依賴鎖、EXE、同版測試與Launcher各有具名收據，Native未執行、未簽章及發布授權另記。新候選收據尚待完成，正式入口不替換。
+舊`eefd2163ad95`後的來源差異包括`b8ed339f`鍵盤／價格返回、`12e7f620`首頁日期修復與本次月營收／Paper工程。唯一執行來源固定為`d9a2380fcb7e38bae4525f23edf3c17d4f648132`；後續只補交付文件，不改runtime source或重build。
+
+| 交付身份 | 固定值 |
+|---|---|
+| 版本 | `2026.10.21+d9a2380fcb7e` |
+| 候選整包 | `dist/candidate_d9a2380fcb7e_ec818150/baldr`；保留完整資料夾，用包內`Launch-Baldr.cmd`，操作與限制見`GUIDE.md` |
+| 獨立state | `output/tasks/baldr-v2-final-completion/v2fc_candidate_state`，不合併至舊包或正式／私人根 |
+| EXE SHA256 | `c8c8f388a9885c8e47f01b2ea6a80ea37a4216f7915e47675dd1665f0fa05043` |
+| BUILD_INFO SHA256 | `7e9919c2fe6380f6c0eab72c896edf6c83f537975aaf91321e2f1148236c69e6` |
+| 12檔交付收據 SHA256 | `4e96052e34eac8aab616ce77bb7361e24ad38bf8c0a2ab5c33733073dee9726d`；包內`DELIVERY_RECEIPT.json`與任務`release_summary.json`相同bytes |
+
+QA040單次建置通過，Job自然排空。QA041 Source archive／依賴鎖／版本／Python與EXE的journey、model、H20及新增v2-contracts可觀察結果相同；新對話框缺證據拒絕與原件返回亦納入。Launcher材料組裝、prepare／check／wrong-sha三切片通過，錯SHA回3且未改launch-info。這些成功命令不把QA041原整輪FAIL改寫：最後frozen Main因CASE外樣本根的建目錄被guard拒絕。
+
+QA042沿相同EXE，只將已固定的7.2MB公開價庫樣本複製到新CASE，讓Main設定目錄寫入保持CASE限制；原樣本state／package／R42 index pins前後保持。正常frozen Main的17路由於1280×760／125%以及首頁另三尺寸通過；來源模組由frozen importer載入，不回退workspace。Main exit0、worker／pool0、關閉並排空deferred deletes後window無效；root看過首頁及選股截圖。只有本機臨時埠能力bind例外，外部網路仍拒絕。這是離屏UI與缺件研究樣本，不是新RC內正式月營收或正向金融全旅程驗收。
+
+QA043全部固定Source變更Python編譯通過；機械檢查完整Snapshot時，遇到26個既有junction外部引用而整輪FAIL。逐項與固定Source的Snapshot比對，26個target全已存在，本輪只改開頭狀態段且該連結target不變。最後文件檢查限定新增／更新的驗收、摘要、ADR及Feature Map，不將這項baseline限制改寫成全庫PASS，也不擴張成舊資產治理清理。
+
+任務完成狀態的QA044因證據索引不在規定的`evidence/`子目錄失敗；QA045以逐位元副本與SHA索引修正，原件保留。其後預設全域文件檢查仍因既有junction引用FAIL；逐項與固定Source核對，沒有新引入的target。最終QA046限定上述具名文件並檢查完整task結構與證據存在性，不宣稱全庫文件通過。這些收尾僅改本機任務紀錄與交付文件，未改runtime或重建候選。
+
+舊eefd包EXE、BUILD_INFO及原交付收據SHA再核保持，原生停止、未簽章、全金融PARTIAL及正式發布授權不變。正常關閉新候選後，可用保留eefd包原Launcher／原state回退；不刪包、不合併、不遷移。正式使用入口仍未替換。

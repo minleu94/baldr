@@ -105,3 +105,5 @@ Paper EOD retry wrapper 的新自然 run 另產 `paper-execution-retry-terminal-
 10/22 舊 Paper gate 沒有 producer run ID／起訖時間。Reader 可在固定 raw SHA、exact schema、來源 stale、write=false 及 scheduler 五分鐘時間關聯成立時，顯示具名 BLOCKED_SOURCE；明示 `scheduler_time_correlated_not_producer_run_id` 與 blockers 未逐條驗證。整體仍 EXECUTION_FAILED，financial／observability仍UNKNOWN；不將這項舊 gate 投影當新 terminal 自然驗收。
 
 校準 official child 不再以可變 latest 當本次輸出；以 `scheduled/recommendation_calibration_learning/runs/<aggregate_run_id>/official_market_events.stdout.bin` 的有界原件／SHA及publication pins傳給真正source-contract reader核 expected／observed。`last_good_fallback` 明示非同 invocation，不能把先執行過官方 Task 當 downstream 已使用同版本。詳見 [Track B 契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)。
+
+核Codex heartbeat執行時，由原automation TOML的target thread定位，再以native `read_thread`核具名turn的heartbeat automation ID、aware dispatch時間、started/completed、status與error；只保存必要摘要，勿將整段歷史／工具輸出載入報告。`completed`只表示本輪監測完成，監測內的producer成功仍須精確原件；名義查核時點與實際dispatch不同時分別列出，原因未暴露就UNKNOWN，不改排程或假設漏跑。10/22兩輪已如此讀回，見[具名證據](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。

@@ -8,7 +8,7 @@
 
 本輪 COM 唯讀查詢 21/21，XML delta=0、20 enabled／Direct disabled，沒有手動觸發或更改 Task。`windows_observation.json` SHA `1b69b384ed3aea9230058b7df9de7baf178e516710a2144a5129f74748c09b61`；時點為 10/22 Pacific 日間。COM 的 LastRun 為本機無 offset 值，解讀沿該主機 Pacific；producer 各自的 aware clock 另核，不由字串補成跨時區接受。
 
-51份Codex automation TOML與原after baseline逐檔SHA delta=0；廣義Baldr／repo／FA_Data相關48份，其中ACTIVE2份為 `baldr-scheduled-evidence-morning-report`（05:30）與 `paper`（06:20），其餘相關46份paused。兩份完整config SHA分別 `6072aa41d85b1079e988c933663d330448001fb7fbd9f5d367380d454ad9adc1`、`21bb4db1939e68ed625071c3fb94937c78611b907f80cfd6d6ec213fe172e9b3`；native view亦成功顯示，但沒有新的automation執行收據或用量證據，不能將ACTIVE當自然彙報已成功。未新建、恢復或修改任何automation。
+51份Codex automation TOML與原after baseline逐檔SHA delta=0；廣義Baldr／repo／FA_Data相關48份，其中ACTIVE2份為 `baldr-scheduled-evidence-morning-report`（05:30）與 `paper`（06:20），其餘相關46份paused。兩份完整config SHA分別 `6072aa41d85b1079e988c933663d330448001fb7fbd9f5d367380d454ad9adc1`、`21bb4db1939e68ed625071c3fb94937c78611b907f80cfd6d6ec213fe172e9b3`；後續由native目標聊天讀回兩份10/22 heartbeat completed終態，詳下節。這證明監測執行，不授producer成功／金融資格，也沒有準時性或模型／用量證據。未新建、恢復或修改任何automation。
 
 `natural_receipt_index.json` 固定當前 21 條原件的 copy hash；`natural_receipts_v2/` 保留 bytes。新的 Freshness／Evidence immutable terminal 外部 SHA 已與 locator 一致，不改原件、不將失敗改成成功。
 
@@ -49,7 +49,7 @@
 | Promotion evidence→authority | fail-closed | result0／blocked→skipped | 未授promotion | evidence不足 | 未成立 | authority未啟動 | 合格同次evidence |
 | Weekly collection | 既有人工review待處理 | 10/18 result1；本週尚未到 | child partial | 未全核 | 未外推 | 未接受 | monthly_statement review |
 | Direct maintainer | 預期停用 | NOT_APPLICABLE | 不作模型成功證據 | 不外推 | 不外推 | 不啟動 | 不擅自開啟 |
-| Windows／Codex | 定義無差異；timeout budget另列 | 21項按各run；heartbeat非producer | 不授金融資格 | 本機設定覆蓋 | 不適用 | 彙報契約 | DST實際讀回／設定可觀測性 |
+| Windows／Codex | 定義無差異；timeout budget另列 | 21項按各run；兩個10/22 heartbeat completed已讀回，非producer成功 | 不授金融資格 | 21 Tasks／51設定／兩個具名目標turn | 不適用 | 監測回報有執行；準時性未授PASS | dispatch原因／模型／用量未暴露 |
 
 ## 工程修復與驗證
 
@@ -127,6 +127,8 @@
 
 Owner不可代理決策最小包：
 
+本輪Owner已直接回覆Formal有效runtime／來源用途包與真實Paper帳戶、策略、cash／mark／Ledger來源「尚未選定」。此為明確外部條件，不由程式選候選、延長日期或使用研究預設；以下第3項Weekly review不由這個回覆代替。
+
 1. **正式runtime與來源用途版本**：選定有效日期／版本及其外部接受reference／SHA，具名 clock／universe／owner acceptance、Source／Revision／Custody與consumer用途。當前binding固定09/09候選配置、仍帶D來源根，不能直接延長日期或沿用批准授新來源。
 2. **Paper正式輸入**：選定真帳戶、策略policy及其版本、合法cash／mark與官方日曆／Ledger來源。研究500,000 TWD或9/7舊cash不是正式來源。
 3. **Weekly monthly_statement**：對原具名partial child作人工review或提供合格替代版本；不重試已耗盡入口冒稱成功。
@@ -154,3 +156,17 @@ QA044：14檔compile通過，123 passed／12 failed、4 mypy errors，原輸出�
 月營收官方單位查詢另核政府18420／56510、TWSE OpenAPI與2013 IFRS申報說明；只找到來源／欄位及仟元申報尺度，未找到可精確綁本次兩OpenAPI與六月HTML幣別的證據。未借發行人其他報表授整市場TWD、未改原unit_status；既存scale-only proof及百分率研究範圍保持。
 
 後續r4機器交付（保留r1–r3）：`ml_data_readiness_contract_r4.json` SHA `d52a6b5e24ab3266df01e3b1fe493ce3fd66ba310fb419a97192621f5669f28f`；`readonly_research_display_contract_r4.json` SHA `96a8a9299011e17bac28dc457aa8b2652a2cbe58bab3a82e51e44f84cb27da8c`。每份25個證據引用均按外部SHA讀回；格式與同次列身份接口已交付，PIT／training／OOS／promotion與交易資格不升格，production bindings仍未觀測。
+
+## 後續有限完成審計：自然收據、日期守衛與 heartbeat
+
+14:17:19 PDT 再核仍為21 Tasks、XML／LastRun及21 receipt SHA均零變更；Direct保持停用，沒有live producer等待或新自然成功。`natural_revalidation_20261022T2118Z.json` SHA `99ba4f6302059c2e42616d29f9666463edee695abc428013b9b209d9f383c1d5`。初次sandbox COM拒絕後，以核准elevated唯讀COM重查；不改ACL／Task、不重播producer。
+
+Recommendation自然保存result `rec_49453d47e7304e2cb34613df311bb1db`的原artifact SHA `5769c262d8c935b666646480495fd5c40b65697ad8d6ee0afcc3d3e87d744b72`未變：context as-of及唯一入選列eligible date均為10/20，decision date為10/22；原quality含`natural_market_data_session_insufficient:stale:expected=2026-10-22:observed=2026-10-20`。因此Paper frozen日期拒絕是過時來源的預期fail-closed，不是已證實的日期adapter缺陷。`recommendation_frozen_date_cause_readback.json`保存精確crossbind／SHA與限制，不更改eligible date或重播writer。
+
+Native目標聊天的兩個具名heartbeat已核：晨報thread `01a08626-6d14-7350-8502-61ba8fc3aa30`／turn `01a164cd-911a-7ec0-ab1a-cabfca99729e`，Paper thread `01a0b393-181a-7ef3-9ad7-2af05bc09f8b`／turn `01a164cd-9334-7911-a00f-b353917607d0`；兩輪started為10/22 18:09:16 UTC，分別completed 18:18:20／18:19:31，status completed、error=null且原heartbeat automation ID相符。讀取摘要`automation_runtime_observation_20261022T2122Z.json` SHA `614ac67f2fbc99db9c7e1b35227f8534cb447f9bc23635f12a4285bfc6adfb21`。這補上監測執行證據；不把名義05:30／06:20 Pacific與實際dispatch混為準時證明，dispatch原因／模型／用量未暴露。晨報內scheduler查詢UNKNOWN與Paper查到21項屬各自查核能力，本任務COM再核仍以本次原件為準。沒有發訊至目標聊天、修改prompt／cadence或新增automation。
+
+獨立靜態複核重新區分了舊自然失敗與現行修復：Quick的04:20 excluded marker mismatch已由原hash鏈＋保護狀態的精確D/F custody及QA007／reader readback覆蓋，current profile／三個marker pins沒有新差異；不再因舊log重開相同修復。Formal三角色當前拒絕09/09過期配置，不以舊path mismatch作現因；尚未找到已批准的新runtime。Monthly既有capture/import/archive介面已能保存後續具名OpenData版本，但endpoint沒有期別回補參數；六月MOPS候選與金額／PIT接受界線保持，沒有可直接接用的新歷史或幣別原件。
+
+現在的可執行恢復條件具名維持：下一個真正Quick／下游與Formal/PIT自然run；Owner明確選定Formal與Paper來源包；88 legacy原件custody；Forward已接受用途、可信availability/cutoff及歷史revision後的精確consumer接線；官方金額單位／幣別、連續歷史與公告／修訂證據；Weekly具名partial review。不能以stub、空資格resolver或研究現金宣稱剩餘工程已完成。
+
+後續r5交付保留r1–r4：`ml_data_readiness_contract_r5.json` SHA `b6582cca898ab970e1c64a169c4184b3b24113065a39bef1fdfd6cc653f4c592`；`readonly_research_display_contract_r5.json` SHA `038ed16af88440f780aa15da629d82ae05006ebe805153e26d0a6fa2c6745c86`。每份28個證據引用驗真；兩個heartbeat完成僅授監測執行觀測，不授準時性或producer成功。Owner已回覆Formal/Paper來源尚未選定；所有金融、PIT、ML及交易資格保持。

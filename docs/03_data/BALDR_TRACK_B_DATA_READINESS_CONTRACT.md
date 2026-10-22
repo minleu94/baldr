@@ -17,6 +17,8 @@
 | Consumer | consumer 名稱／版本、同 run/date/artifact 的唯讀讀回、warnings／reject reason；上游 passed 不推導 consumer accepted |
 | Qualification | Engineering、Natural Scheduled Execution、Source Qualification、Data Coverage、PIT Validity、Consumer Readiness、External Dependencies 分列；每用途獨立判定 |
 
+Codex heartbeat的具名native turn可證明監測執行，不能代替被監測的producer／consumer或金融資格。10/22兩個target的completed／error=null已讀回；名義05:30／06:20 Pacific與實際18:09 UTC dispatch分列，原因與準時性UNKNOWN。Recommendation同次原artifact的eligible date 10/20與decision date 10/22已按固定SHA讀回，Paper frozen拒絕是stale來源守衛，不將eligible date改成當日來放行。
+
 Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資料庫身份、兩份市場來源與16份錯日排除來源定位。它固定原 hash 鏈與新唯讀保護狀態，**不是這些原件逐檔搬遷 SHA 通過的證據**。原修訂、來源取得時間、禁止歷史 PIT 及訓練資格不變；新 rollback、未知 marker、替換 DB、原 D 資料重現或 hash 漂移均重新拒絕。
 
 校準 pipeline 新 run 將 official child 的完整 invocation stdout 保存為不超過 256 KiB 的 create-only artifact，傳遞其 publication ID、manifest file／logical hash、canonical events hash、stdout path／SHA 與 aggregate run ID。真正 source-contract reader 以 strict JSON、plain path／no-follow 有界讀取核原件，要求 stdout 位於該 aggregate 的固定 run 目錄，並將 expected pins 與實際讀到的 publication 比對；來源 manifest／canonical／raw custody 尚未通過時，不標 `consumer_binding_verified=true`。成功比對不授歷史 PIT 或正式來源資格；immutable contract／父 terminal 保存相應引用。

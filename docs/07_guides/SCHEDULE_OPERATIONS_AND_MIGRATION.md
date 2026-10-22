@@ -75,6 +75,8 @@ Windows task 啟動順序不代表上游成功或來源已完成。`IgnoreNew` �
 
 這是文件化基準，不表示目標 thread 或本機 automation 現況已讀回。Heartbeat 對話通常保存 cadence／target，而 prompt 的模型文字不是實際模型設定。兩份 report 都不能代替 Windows producer trigger 或自然執行期限。
 
+10/22後續已由native `read_thread`讀回兩個既有target的具名heartbeat終態：兩者均在18:09 UTC開始，分別18:18:20／18:19:31完成，turn status completed、error=null且automation ID吻合。這是本次監測執行證據；與文件化05:30／06:20 Pacific查核時間不同，平台未暴露dispatch原因，不能據此調cadence、聲稱準時或推定producer成功。具名turn／config pins與原始監測結果見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
 ## 時區、offset 與 DST
 
 多數 Windows task 依 `Pacific Standard Time` 本地時鐘執行，隨 DST 變化；Generic registrar 在現有文件化契約中只接受 Windows Pacific 時區，不要把台北時間改寫成一個固定 Pacific 鐘點。Paper Portfolio 與 ML forward 兩者於 Taipei 08:25（UTC 00:25）offset 喚醒；其時區換算是 PDT 前一日 17:25／PST 前一日 16:25。這是鐘點換算，不是 seasonal Task QA 或自然 run 證據。

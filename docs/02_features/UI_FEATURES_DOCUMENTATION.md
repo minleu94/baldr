@@ -30,6 +30,8 @@ Track A A3 的原保存比較以共用純文字元件分列支持、反證、未
 
 Track A A5 在單股「實驗摘要」加入原結果圖卡與同源權益預覽，指標沿原availability契約、成本只標原費率假設；歷史重開與設定草稿分離，詳細圖表保留自身來源。原Reader、DTO、金融公式、保存及Main接線不變；操作見[Research Lab手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)，限定原件驗證見[圖卡QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md#track-a-a5-單股原結果圖卡與權益預覽)。
 
+兩個基本策略的原保存對照亦改為完整欄寬、就近原明細與來源漸進揭露，成功／返回定位原結果；Registry頁不混入單股舊假設。原完整期間日曆控制項只加收合容器，pin／controller／來源守衛保持；見[兩策略QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md#track-a-a5-原策略比較與返回可讀性)。
+
 V2 後繼 Python 候選新增同題材成員的上一檔／下一檔，來源版本與原選列必須保持；已保存報告不可切股。各股票行情與題材來源日分開判讀，缺價不借題材數值。QA096 正常 Main 與新程序的成員來回及選列變動拒絕已通過，固定 `2b164aede953` EXE 未含；新 `412ca3e5fe4f` 候選已通過 QA103 包內正常 Main first/fresh；操作及過期來源的處理見 [題材手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)。
 
 九個 workspace key 是 Feature Map、路由及來源上下文使用的穩定識別；V2 以四個主導覽群組和「系統管理」呈現，不代表後端頁面或責任已合併。共用個股 Detail 依來源身份隔離一般報告、價格研究及其他保存來源，返回時仍核對原上下文。V2 導覽與 QA023／024 的限定證據見[完整操作手冊 V2 導航](../07_guides/APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)；該證據不構成 RC、Native、真人或金融資格接受。

@@ -159,3 +159,17 @@ task／Coverage、功能metadata及新QA錨點通過，收據 `single_owned_qa_8
 最終收據 `single_owned_qa_9c183f1920554b66b4fdf0cf15692c7f` 自然排空、handles關閉及共享鎖釋放。Native停止、無EXE重建、無push，金融資格不提升；仍需逐項核對Journal／策略比較及A1–A5全目標證據，不以本批通過宣稱整個平台完成。
 
 task／Coverage、功能metadata及QA／手冊錨點通過，收據 `single_owned_qa_dab6a9a7a3464096b2f368414b0e3d63` 排空、handles關閉與鎖釋放。`context_a5_cards.txt` 的6500字預算略過 `current/decision_research_portfolio.md` 完整選中正文6798字；該冊相關責任已在前批定位，本批另直接核對原指標契約、保存payload、Qt callback及操作正文。不宣稱重讀整冊／全歷史EOF、全庫連結或真人驗收。
+
+## Track A A5 原策略比較與返回可讀性
+
+正常Main原正向畫面 `main_a5_pair_before02125` 功能可用，但兩策略比較七列被窄欄及長來源SHA擠壓。後繼改為原欄位自適應、雙策略等寬，原值提示保留；原明細按鈕在結果旁。條件、期間、共同本金／費率及不可評資格先讀，完整run／metadata／context SHA與撮合契約可展開。成功及返回定位原結果；單股明細的原返回按鈕移到摘要頂端，callback與原雙選／結果保持。選取失效清除舊來源文字。沒有改Reader、DTO、ranking、財務公式、Main或保存契約。
+
+Registry等不同來源頁不顯示單股舊假設／草稿提示。原完整期間日曆控制項只加預設收合容器，原controller、輸入、pin、接受錨點及來源守衛不變；展開不觸發讀取或接受。Journal原畫面在1280可讀原文、身份與回訪，保留原設計，沒有為增加改動數量重做。
+
+`*_a5_pair02.log` 編譯、48項比較／原結果／參數範圍／Journal定向、Workbench85、更新頁25 PASS／0 FAIL／4 SKIP與全範圍mypy1131檔通過。真Reader雙策略單測驗原SHA揭露、原明細callback及換選清除；Scope單測驗Registry不帶入單股舊假設。原日曆控制與期間widget另14 PASS；daily控制16例早輪因pytest provider fixture未載而ERROR，明示載入原plugin後 `daily_period_controls_a5_pair.log` 16 PASS，未改測試或守衛。原失敗記錄保留，不把原14 PASS／16 ERROR重標為全通過。
+
+`main_a5_pair_final125/150` 正常Main first／fresh均通過、worker0：原executor／broker在隔離合成OHLCV產生穩健／積極各一筆原件，Main原Registry API保存及有界Reader讀回；在原清單恰選兩筆並明按比較。四尺寸1280×760、1500×900、1920×1080、900×760驗期間／費率、雙入口及完整七列表可見；Root看過125%1280與150%900原圖，原長精度Sharpe與配對標題不再截斷。完整來源可讀兩筆SHA；日曆區展開不改原pin。明按穩健原明細、頂端返回按鈕完整可見，返回同一比較物件及原雙選；新程序重讀相同原件再驗。Journal原筆記可選、原文保持。原單股結果、報告保存／回訪及前批價格／題材返回亦隨同重驗；合成績效不代表真實股票收益或PIT／可排名資格。
+
+收據 `single_owned_qa_eb6c236b8a6b42bf99837524fc9e7b27`、`single_owned_qa_68facb7c2ae44834baa282fe4d794703`、`single_owned_qa_43139af74d96464aab976c452f7dd305` 均排空、handles關閉及鎖釋放。早輪缺Qt import、Scope測試誤選內層非tab wrapper及fixture載入錯誤均留原件，後繼沿真介面驗證。Native停止、無EXE重建、無push；下一步做全目標逐項證據核對，不以這批通過直接宣稱整個平台完成。
+
+為讓驗收狀態與命令整體退出碼一致，14例artifact controller／period widget另以獨立命令重驗，`artifact_period_controls_a5_pair.log` 14 PASS／exit0，收據 `single_owned_qa_5d7701f5598a4c9e9c5b6483958ab8bd` 排空、handles關閉及鎖釋放；task已指向此乾淨分項證據，早輪混合ERROR原件保持。task／Coverage、功能metadata及QA／手冊錨點通過，收據 `single_owned_qa_232d2bd3d9364a32a7d0d7f725590cb1` 排空及鎖釋放。6500字 `context_a5_pair.txt` 略過 `current/decision_research_portfolio.md` 選中正文6798字；本批直接核對原比較Reader／DTO、控制項與callback，未宣稱重讀整冊或全庫EOF。

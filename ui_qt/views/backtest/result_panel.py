@@ -1225,7 +1225,14 @@ class BacktestResultPanel(QWidget):
         registry_container = QWidget()
         registry_layout = QVBoxLayout(registry_container)
         registry_layout.addWidget(registry_banner)
-        registry_layout.addWidget(self.period_pair_controller.calendar_controls)
+        from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
+        from ui_qt.widgets.comparison_evidence_panel import compact_comparison_audit
+        self.period_calendar_disclosure = CollapsibleSectionPanel(
+            "推薦回放完整期間：日曆來源設定", collapsed=True,
+        )
+        compact_comparison_audit(self.period_calendar_disclosure)
+        self.period_calendar_disclosure.content_layout.addWidget(self.period_pair_controller.calendar_controls)
+        registry_layout.addWidget(self.period_calendar_disclosure)
         registry_layout.addWidget(self.run_registry_compare_widget)
         self._register_result_tab("registry", registry_container, "研究 Registry")
         self.set_research_mode(self._research_mode_id)
@@ -1238,6 +1245,9 @@ class BacktestResultPanel(QWidget):
     def _return_to_basic_pair(self) -> None:
         self.set_research_mode("single_stock")
         self.focus_result_tab("registry")
+        if self.run_registry_compare_widget is not None:
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, self.run_registry_compare_widget.focus_basic_pair_result)
         self.return_basic_pair_button.hide()
 
     def add_forward_performance_tab(self):

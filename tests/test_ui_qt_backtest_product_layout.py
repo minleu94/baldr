@@ -336,4 +336,23 @@ def test_missing_observation_data_is_explicitly_unavailable(qt_driver):
 
     assert "未提供" in adapter.open_positions_status.text()
     assert "未提供" in adapter.daily_signals_status.text()
+
+
+def test_other_result_pages_do_not_show_single_stock_assumptions(qt_driver):
+    host, adapter = _layout(qt_driver)
+    report = SimpleNamespace(details={"start_date": "2026-01-01", "fee_bps": "14.25"})
+    host.current_report = report
+    adapter.refresh_assumptions(report)
+    original = adapter.assumption_banner.text()
+    registry_page = QWidget()
+    host.result_panel._add_outer("registry", registry_page, "研究 Registry")
+    adapter.refresh_routes()
+    host.result_panel.result_tabs.setCurrentWidget(host.result_panel._result_tab_widgets["registry"])
+    assert adapter.assumption_details_button.isHidden()
+    host.fee_bps_input.setValue(99)
+    assert adapter.draft_status.isHidden()
+    assert adapter.assumption_banner.isHidden()
+    host.result_panel.result_tabs.setCurrentWidget(host.result_panel._result_tab_widgets["summary"])
+    assert not adapter.assumption_details_button.isHidden()
+    assert adapter.assumption_banner.text() == original
     assert adapter.daily_signals_table.rowCount() == 0

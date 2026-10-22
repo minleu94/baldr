@@ -7,7 +7,8 @@ from copy import deepcopy
 from decimal import Decimal
 
 import pandas as pd
-from PySide6.QtCore import QSize, QSignalBlocker, Qt
+from PySide6.QtCore import QSize, QSignalBlocker, Qt, QTimer
+from PySide6.QtGui import QTextOption
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
@@ -25,6 +26,8 @@ from PySide6.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QTextBrowser,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -41,6 +44,8 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
+from ui_qt.widgets.comparison_evidence_panel import compact_comparison_audit
 
 
 if TYPE_CHECKING:
@@ -179,26 +184,24 @@ class RunRegistryCompareWidget(QWidget):
         self.compare_basic_pair_button.clicked.connect(self.compare_selected_basic_pair)
         self.compare_basic_pair_button.setEnabled(False)
         self.compare_basic_pair_button.setMaximumWidth(220)
-        basic_pair_row = QVBoxLayout()
+        basic_pair_row = QHBoxLayout()
         basic_pair_row.addWidget(self.compare_basic_pair_button)
         basic_pair_hint = QLabel("穩健與積極各一筆 → 核對原來源 → 看保存數值與原明細")
         basic_pair_hint.setWordWrap(True)
         basic_pair_hint.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
-        basic_pair_row.addWidget(basic_pair_hint)
+        basic_pair_row.addWidget(basic_pair_hint, 1)
         self.open_basic_stable_button = QPushButton("查看穩健原明細")
         self.open_basic_stable_button.setMaximumWidth(220)
         self.open_basic_stable_button.clicked.connect(
             lambda: self.open_basic_pair_detail("stable_conservative_v1")
         )
         self.open_basic_stable_button.setEnabled(False)
-        basic_pair_row.addWidget(self.open_basic_stable_button)
         self.open_basic_momentum_button = QPushButton("查看積極原明細")
         self.open_basic_momentum_button.setMaximumWidth(220)
         self.open_basic_momentum_button.clicked.connect(
             lambda: self.open_basic_pair_detail("momentum_aggressive_v1")
         )
         self.open_basic_momentum_button.setEnabled(False)
-        basic_pair_row.addWidget(self.open_basic_momentum_button)
         layout.addLayout(basic_pair_row)
 
         filter_row = QHBoxLayout()
@@ -325,14 +328,31 @@ class RunRegistryCompareWidget(QWidget):
         self.basic_pair_status.setWordWrap(True)
         self.basic_pair_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         basic_layout.addWidget(self.basic_pair_status)
+        basic_actions = QHBoxLayout()
+        basic_actions.addWidget(self.open_basic_stable_button)
+        basic_actions.addWidget(self.open_basic_momentum_button)
+        basic_actions.addStretch(1)
+        basic_layout.addLayout(basic_actions)
         self.basic_pair_metrics = QTableWidget()
         self.basic_pair_metrics.setColumnCount(3)
         self.basic_pair_metrics.setHorizontalHeaderLabels(["原保存欄位", "穩健", "積極"])
         self.basic_pair_metrics.setEditTriggers(QTableWidget.NoEditTriggers)
         self.basic_pair_metrics.setMinimumHeight(180)
         apply_financial_table_style(self.basic_pair_metrics)
+        self.basic_pair_metrics.verticalHeader().hide()
+        self.basic_pair_metrics.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        for column in (1, 2):
+            self.basic_pair_metrics.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
         self.basic_pair_metrics.hide()
         basic_layout.addWidget(self.basic_pair_metrics)
+        self.basic_pair_sources = CollapsibleSectionPanel("完整來源與原假設", collapsed=True)
+        compact_comparison_audit(self.basic_pair_sources)
+        self.basic_pair_source_text = QTextBrowser()
+        self.basic_pair_source_text.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
+        self.basic_pair_source_text.setMaximumHeight(130)
+        self.basic_pair_sources.content_layout.addWidget(self.basic_pair_source_text)
+        self.basic_pair_sources.hide()
+        basic_layout.addWidget(self.basic_pair_sources)
         layout.addWidget(self.basic_pair_group)
 
         self.period_pair_result_group = QGroupBox("完整期間比較結果")
@@ -825,6 +845,9 @@ class RunRegistryCompareWidget(QWidget):
         self._basic_pair_selection = None
         self.basic_pair_metrics.setRowCount(0)
         self.basic_pair_metrics.hide()
+        self.basic_pair_source_text.clear()
+        self.basic_pair_sources.set_collapsed(True)
+        self.basic_pair_sources.hide()
         self.open_basic_stable_button.setEnabled(False)
         self.open_basic_momentum_button.setEnabled(False)
         self.basic_pair_status.setText("各選一筆穩健與積極策略，按「對照兩個基本策略」。")
@@ -899,7 +922,11 @@ class RunRegistryCompareWidget(QWidget):
                     display = f"{value * Decimal('100'):.2f}%"
                 else:
                     display = str(value)
-                self.basic_pair_metrics.setItem(row, column, QTableWidgetItem(display))
+                item = QTableWidgetItem(display)
+                item.setToolTip(f"原保存值：{value}" if value is not None else "原結果不可用；不補零。")
+                self.basic_pair_metrics.setItem(row, column, item)
+        self.basic_pair_metrics.resizeRowsToContents()
+        ensure_visible_rows(self.basic_pair_metrics, len(fields))
         self.basic_pair_metrics.show()
         self.open_basic_stable_button.setEnabled(True)
         self.open_basic_momentum_button.setEnabled(True)
@@ -908,15 +935,34 @@ class RunRegistryCompareWidget(QWidget):
         self.basic_pair_status.setText(
             "保存條件相同；僅並列原保存研究輸出，兩筆歷史績效／PIT 資格均不可評，不作排名或升級證據。\n"
             f"股票：{', '.join(reference.universe or ())}；期間：{reference.start_date} 至 {reference.end_date}。\n"
-            + "\n".join(f"{entry.run_name}：{entry.run_id}／metadata SHA {entry.metadata_sha256}"
-                        for entry in result.entries)
+            f"共同原假設｜資金 {Decimal(reference.capital_cents) / 100:,.2f}；"
+            f"手續費 {Decimal(reference.fee_bp_x100) / 100} bps／滑價 {Decimal(reference.slippage_bp_x100) / 100} bps。"
         )
+        self.basic_pair_source_text.setPlainText(
+            "\n".join(f"{entry.run_name}：{entry.run_id}\nmetadata SHA {entry.metadata_sha256}\ncontext SHA {entry.context_sha256}"
+                      for entry in result.entries)
+            + f"\n原撮合：{reference.execution_price}／{reference.execution_contract}"
+            + "\n費率是原假設，不代表實際扣款合計；沒有重算成本或淨報酬。"
+        )
+        self.basic_pair_sources.show()
+        QTimer.singleShot(0, self.focus_basic_pair_result)
+
+    def focus_basic_pair_result(self) -> None:
+        if self._basic_pair_result is None or self._rule_closed:
+            return
+        ancestor = self.parentWidget()
+        while ancestor is not None and not isinstance(ancestor, QScrollArea):
+            ancestor = ancestor.parentWidget()
+        if isinstance(ancestor, QScrollArea):
+            ancestor.ensureWidgetVisible(self.basic_pair_metrics, 0, 0)
 
     def _on_basic_pair_error(self, request_id: int, message: str) -> None:
         if request_id == self._basic_pair_request_id and not self._rule_closed:
             self._basic_pair_result = None
             self.basic_pair_metrics.setRowCount(0)
             self.basic_pair_metrics.hide()
+            self.basic_pair_source_text.clear()
+            self.basic_pair_sources.hide()
             self.open_basic_stable_button.setEnabled(False)
             self.open_basic_momentum_button.setEnabled(False)
             self.basic_pair_status.setText("兩筆原來源讀取失敗；未顯示數值。" + message)

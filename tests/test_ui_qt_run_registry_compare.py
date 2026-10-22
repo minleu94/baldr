@@ -1,11 +1,14 @@
 import os
 import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 
 from app_module.research_run_dtos import ResearchRunMetadataDTO
 from ui_qt.views.backtest_view import BacktestView
@@ -15,6 +18,50 @@ from ui_qt.views.research_lab.run_registry_compare_widget import (
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+def test_basic_pair_original_details_and_source_disclosure_clear_with_selection(qt_app, tmp_path, monkeypatch):
+    from tests.test_single_backtest_rule_execution_v2 import executed_v2_case
+    from app_module.basic_strategy_saved_pair import BasicStrategySavedPairReader
+    from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
+    _, registry, stable, _, _, _ = executed_v2_case(tmp_path, monkeypatch, "stable_conservative_v1")
+    _, _, momentum, _, _, _ = executed_v2_case(tmp_path, monkeypatch, "momentum_aggressive_v1")
+    lookup = ResearchHistoryLookup(registry=registry, read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024))
+    opened = []
+    widget = RunRegistryCompareWidget(registry)
+    widget.configure_basic_pair(BasicStrategySavedPairReader(registry, lookup), lookup, opened.append, lambda: None)
+    widget.refresh_runs()
+    for i in range(widget.run_list.count()):
+        item = widget.run_list.item(i)
+        item.setSelected(item.data(Qt.ItemDataRole.UserRole) in {stable.run_id, momentum.run_id})
+    widget.compare_basic_pair_button.click()
+    def wait_worker():
+        deadline = time.monotonic() + 10
+        while widget._basic_pair_worker is not None and time.monotonic() < deadline:
+            qt_app.processEvents()
+            QTest.qWait(10)
+        assert widget._basic_pair_worker is None
+    wait_worker()
+    result = widget._basic_pair_result
+    assert result is not None
+    assert widget.basic_pair_metrics.rowCount() == 7
+    assert "14.25 bps" in widget.basic_pair_status.text()
+    assert "metadata SHA" not in widget.basic_pair_status.text()
+    assert widget.basic_pair_sources.is_collapsed()
+    for entry in result.entries:
+        assert entry.metadata_sha256 in widget.basic_pair_source_text.toPlainText()
+    for row in range(7):
+        assert widget.basic_pair_metrics.item(row, 1).toolTip().startswith("原保存值：")
+    widget.open_basic_stable_button.click()
+    wait_worker()
+    assert opened[0].entry.run_id == stable.run_id
+    widget.run_list.clearSelection()
+    assert widget.basic_pair_metrics.rowCount() == 0
+    assert widget.basic_pair_sources.isHidden()
+    assert not widget.basic_pair_source_text.toPlainText()
+    widget.begin_basic_pair_shutdown()
+    widget.close()
+    qt_app.processEvents()
 
 
 @pytest.fixture

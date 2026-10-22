@@ -105,10 +105,17 @@ class BacktestProductLayout:
                 summary_layout = QVBoxLayout(summary_page)
             if isinstance(summary_layout, QVBoxLayout):
                 summary_layout.insertWidget(0, self.outcome_summary)
+                pair_return = getattr(panel, "return_basic_pair_button", None)
+                if isinstance(pair_return, QPushButton):
+                    original_parent = pair_return.parentWidget()
+                    original_layout = original_parent.layout() if original_parent is not None else None
+                    if original_layout is not None:
+                        original_layout.removeWidget(pair_return)
+                    summary_layout.insertWidget(0, pair_return)
         self.assumption_details_button = QPushButton("顯示完整來源與運算假設", panel)
         self.assumption_details_button.setObjectName("backtestAssumptionDetailsToggle")
         self.assumption_details_button.setCheckable(True)
-        self.assumption_details_button.toggled.connect(self.assumption_banner.setVisible)
+        self.assumption_details_button.toggled.connect(lambda _checked: self._update_assumptions_scope())
         self.assumption_banner.hide()
 
         self.stack = QStackedWidget(panel)
@@ -347,7 +354,21 @@ class BacktestProductLayout:
                 if index >= tabs.count() or not _visible_tab(tabs, index):
                     return False
                 tabs.setCurrentIndex(index)
+        self._update_assumptions_scope()
         return True
+
+    def _assumptions_in_scope(self) -> bool:
+        if self.stack.currentWidget() is not self.result_tabs:
+            return True
+        pages = getattr(self.result_panel, "_result_tab_widgets", {})
+        return self.result_tabs.currentWidget() in [pages.get(key) for key in ("summary", "diagnostics", "charts")]
+
+    def _update_assumptions_scope(self) -> None:
+        own_result = self._assumptions_in_scope()
+        self.assumption_details_button.setVisible(own_result)
+        self.assumption_banner.setVisible(own_result and self.assumption_details_button.isChecked())
+        if not own_result:
+            self.draft_status.hide()
 
     def _on_route_selected(self, index: int) -> None:
         if self._transitioning or index < 0:
@@ -408,7 +429,7 @@ class BacktestProductLayout:
             self.draft_status.setText(
                 "設定欄已變更；上方仍顯示目前結果的來源假設，變更值只適用下一次執行。"
             )
-            self.draft_status.setVisible(True)
+            self.draft_status.setVisible(self._assumptions_in_scope())
         else:
             self.refresh_assumptions()
 
@@ -519,6 +540,7 @@ class BacktestProductLayout:
         self.outcome_summary.present(target if self._presented_snapshot_exists else None, params, source_label)
         self._refresh_open_positions(target)
         self._refresh_daily_signals(target)
+        self._update_assumptions_scope()
         return True
 
     def _clear_projected_results(self, message: str) -> None:

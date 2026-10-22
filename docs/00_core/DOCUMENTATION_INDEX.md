@@ -25,6 +25,7 @@
 | 目標package、契約與遷移設計 | [Target背景](../01_architecture/target_system_architecture.md)、[FINAL設計](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
 | 資料來源、保存與恢復 | [資料專區](../03_data/README.md)、[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)、[冷封存引用登記](../03_data/COLD_ARCHIVE_REFERENCE_REGISTRY.json) |
 | 排程與搬機 | [操作／搬機](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md)、[唯讀稽核](../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)、[wrapper入口](../../scripts/scheduled/README.md) |
+| 每日營運 recovery 證據（2026-10-21） | [Recovery QA 摘要](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)：21 task readback、六軌觀測、自然 run 阻塞與分支待驗條件；不表示修復後自然驗收。 |
 | 測試與驗收證據 | [QA索引](../06_qa/README.md)、[測試指南](../07_guides/tests_readme.md) |
 | 程式規模、產品落差與外部專案比較 | [2026-10-12 研究基線](../09_archive/product_research_baseline_20261012/README.md)：重構前沿用，按影響增量確認 |
 | 文件同步與處置 | [Coverage](DOC_COVERAGE_MAP.md)、[生命週期](DOCUMENTATION_STRUCTURE.md) |

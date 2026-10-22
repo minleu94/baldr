@@ -147,7 +147,10 @@ def _write_receipt(database_path: Path, *, pending: bool = True) -> dict[str, ob
 def _database_path(tmp_path: Path) -> Path:
     sqlite_dir = tmp_path / "sqlite"
     sqlite_dir.mkdir(parents=True, exist_ok=True)
-    return sqlite_dir / "twstock.db"
+    database_path = sqlite_dir / "twstock.db"
+    # 修訂 writer 的測試前提包含可核驗的既存資料庫路徑。
+    database_path.touch(exist_ok=True)
+    return database_path
 
 
 def _db_manager(tmp_path: Path):

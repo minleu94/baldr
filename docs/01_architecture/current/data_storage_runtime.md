@@ -20,11 +20,11 @@ V2新增`opendata_monthly_revenue`精確TWSE／TPEx profile，保留實際HTTP�
 
 `data_module/config.py` 的 `TWStockConfig` 是資料路徑權威。`DATA_ROOT` 預設為 `F:/Min/Python/Project/FA_Data`，可用環境變數覆蓋；`OUTPUT_ROOT` 亦由同一設定管理，預設為 `<DATA_ROOT>/output`。主要市場 SQLite 位於 `<DATA_ROOT>/sqlite/twstock.db`。程式不得另造正式資料根目錄或硬編路徑。
 
-2026-10-20 已將 F 設為新的正式資料根，repo 的大型 `output`、`dist`、`.t` 也透過 junction 指向 `F:/Min/Python/Project/BaldrStorage`。搬遷收尾已保存被占用的舊 `config.log`，核對並移除六個 D 舊根；此前「待清除」描述已被[儲存搬遷紀錄](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)取代。搬檔核對不等於舊金融 revision receipt 的 D→F custody 已受用途接受；該失配仍拒絕，不能只改路徑解鎖 writer。
+2026-10-20 已將 F 設為新的正式資料根，repo 的大型 `output`、`dist`、`.t` 也透過 junction 指向 `F:/Min/Python/Project/BaldrStorage`。搬遷收尾已保存被占用的舊 `config.log`，核對並移除六個 D 舊根；此前「待清除」描述已被[儲存搬遷紀錄](../../06_qa/BALDR_STORAGE_MIGRATION_20261020.md)取代。搬檔核對不等於舊金融 revision receipt 的 D→F custody 已受用途接受；本次僅以外部固定profile、原receipt／pending／backup、遷移proof、本機DB身份與唯讀scope audit接受具名custody定位；其他失配仍拒絕，不能只改路徑解鎖writer。
 
 `runtime/repository_output.py` 僅允許明確的 `<repo>/output` Windows mount-point junction；其他 symlink、內層 junction、別名 target 與正式資料重疊仍拒絕。Paper isolated wrappers 和 ML legacy/config reader 重用此邊界；ML active root 仍由原設定及保護根檢查決定。正式 runtime config 的路徑身份比較會正規化同一檔案的 logical／physical 路徑，沒有放寬日期、SHA、approval 或來源資格。
 
-每日維運的 `scripts/audit_daily_operations.py` 只讀外部 SHA 固定的觀察 manifest 與逐檔 receipt，由 application 分類六種狀態並列下游 hold。只有同次 run、時鐘、完成終態與 Scheduler 零結果核對後才可列 HEALTHY；缺身份或不支援的舊 schema 保持 UNKNOWN。它沒有 producer、網路、retry 或修復執行權限；操作與限制見[唯讀稽核 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+每日維運的 `scripts/audit_daily_operations.py` 候選只讀外部 SHA 固定的觀察 manifest 與 bounded receipt，由 application 分類六軌 WindowsExecution、Application、SourceFreshness、FinancialQualification、DependencyReadiness、Observability 並列下游 hold。只有同次 run 的 schema／identity、started/completed、terminal、來源／cutoff、artifact/hash 與 Scheduler result 均核對後，才可依各軌契約判讀；缺身份或不支援的舊 schema 保持 UNKNOWN，舊 adapter 不補時間或 run ID。Freshness/Evidence 的新 terminal receipt綁定實際時間、code version、failure code 與 payload SHA，latest 僅作 locator；root-owned integration 與必要 QA 已驗，自然驗證仍待。Quick custody readback 與 21-task CLI readback 是獨立觀測成功，不代表修復後自然排程恢復；該 recovery 狀態為 `DAILY_OPERATIONS_PARTIAL_RECOVERY`，必要工程QA已驗；natural run、ML raw舊失敗不可觀測及Owner動作另列。CLI 無 producer、網路、retry 或修復權限；操作與限制見[唯讀稽核 Runbook](../../07_guides/BALDR_SCHEDULED_AUDIT_RUNBOOK.md)及[2026-10-21 recovery 摘要](../../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。
 
 每日市場更新的主要資料流是：
 
@@ -218,3 +218,5 @@ Lineage 的 create-only 發布仍先驗證 canonical target／parent。只有 te
 5. 操作後讀回原 pointer、保留項目與完整依賴閉包，核對 manifest/hash；需要恢復時，從記錄的 cold archive/backup 將 bytes 還原到原精確相對路徑，逐一比對保存的 hash，再重核 pointer 與閉包，確認之前不恢復任何 consumer。此處是受控操作的安全邊界，不代表本 repo 已提供自動 restore/delete 命令。
 
 <!-- 舊書籤導向：current system_architecture 的個人模型／ML lineage contracts 由本冊第一節和決策分冊接續；完整日期化原文位於文件治理原 bytes 封存。 -->
+
+每日營運的舊校準source-contract只允許程式釘選的16檔exact locator；BankTaiwan候選保留原hash／cost守衛，唯一舊receipt以釘選latest的39欄完整語義投影核custody，原D身份保持，缺候選錨點不補欄。非通用root alias、不授來源或金融資格。ML raw launcher新增每run獨立log記有效root／Python／UTC／timezone／stdout／stderr／child exit，建log失敗73且不啟動child；舊10/21結果不回填。實際pins、reader限制與QA見[營運恢復摘要](../../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。

@@ -19,6 +19,7 @@ from app_module.daily_operations_status import (
     classify_manifest,
     validate_manifest,
 )
+from app_module.daily_operations_receipts import adapt_receipt
 
 
 MAX_BYTES = 2 * 1024 * 1024
@@ -130,29 +131,51 @@ def _read_receipt(root: Path, ref: dict[str, str]) -> dict[str, Any]:
     if hashlib.sha256(raw).hexdigest().lower() != ref["sha256"].lower():
         raise AuditInputError("receipt_sha256_mismatch")
     value = _strict_json(raw)
-    # 僅支援刻意收斂的收據格式；舊版格式一律保留為 UNKNOWN。
+    # schema明列時只接受adapter認得的契約，不以generic legacy補接未知schema。
     if not isinstance(value, dict):
         raise AuditInputError("receipt_not_object")
-    status = value.get("producer_status") or value.get("status")
-    if (
-        not isinstance(value.get("run_id"), str)
-        or not isinstance(value.get("started_at"), str)
-        or not isinstance(status, str)
-        or not isinstance(value.get("blockers", []), list)
-        or any(not isinstance(item, str) or not item.strip() or len(item) > 2048
-               for item in value.get("blockers", []))
-        or len(value.get("blockers", [])) > 128
-    ):
-        raise AuditInputError("receipt_schema_unsupported")
-    # 只回傳獨立讀取的收據欄位，不沿用 manifest 的宣稱。
-    return {
-        "run_id": value["run_id"],
-        "started_at": value["started_at"],
-        "producer_status": value.get("producer_status") or value.get("status"),
-        "status": value.get("status"),
-        "blockers": value.get("blockers", []),
-        "completed_at": value.get("completed_at", value.get("completed_at_utc")),
-    }
+    adapted = adapt_receipt(value)
+    if "schema_version" not in value and adapted.get("supported") is True:
+        legacy_task = value.get("task")
+        adapted["schema"] = f"legacy:{legacy_task}" if isinstance(legacy_task, str) and legacy_task else "legacy:generic.v1"
+    if "schema_version" not in value and adapted.get("supported") is not True:
+        # 僅兼容具備完整基本身份欄位的無schema舊收據。
+        if all(isinstance(value.get(key), str) and value[key].strip() for key in ("run_id", "started_at", "status")):
+            adapted.update({
+                "supported": True,
+                "kind": "producer",
+                "schema": "legacy:generic.v1",
+                "run_id": value["run_id"],
+                "started_at": value["started_at"],
+                "completed_at": value.get("completed_at", value.get("completed_at_utc")),
+                "producer_status": value["status"],
+            })
+
+    def bounded_text_list(raw_value: object, field: str, *, allow_scalar: bool = False) -> list[str]:
+        if raw_value is None:
+            return []
+        items = [raw_value] if allow_scalar and isinstance(raw_value, str) else raw_value
+        if not isinstance(items, list) or len(items) > 128:
+            raise AuditInputError(f"receipt_{field}_invalid")
+        if any(not isinstance(item, str) or not item.strip() or len(item) > 2048 for item in items):
+            raise AuditInputError(f"receipt_{field}_invalid")
+        return list(items)
+
+    blockers = bounded_text_list(value.get("blockers", []), "blockers")
+    blocker_values = bounded_text_list(value.get("blocker"), "blocker", allow_scalar=True)
+    errors = bounded_text_list(value.get("errors"), "errors", allow_scalar=True)
+    warnings = bounded_text_list(value.get("warnings"), "warnings", allow_scalar=True)
+    status = adapted.get("producer_status")
+    if not isinstance(status, str):
+        status = value.get("producer_status") if isinstance(value.get("producer_status"), str) else value.get("status")
+    adapted.update({
+        "producer_status": status if isinstance(status, str) else None,
+        "blockers": blockers + [item for item in blocker_values if item not in blockers],
+        "errors": errors,
+        "warnings": warnings,
+        "blocker": blocker_values,
+    })
+    return adapted
 
 
 def audit(manifest_path: Path, expected_sha256: str, receipt_root: Path) -> dict[str, Any]:

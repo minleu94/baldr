@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -1432,6 +1433,412 @@ def test_old_estimated_challenger_pointer_resolves_from_anchored_candidate(
     assert stored is not None
     assert stored.scenario_hash == scenario.scenario_hash
     assert daily_learning._cost_scenario_root_conflict(output_root, scenario) is None
+
+
+def _banktaiwan_relocated_pointer_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    copy_to_current: bool = True,
+) -> tuple[RecommendationCostScenario, Path, dict[str, object], Path, Path, Path]:
+    scenario, _, fitted_root, metadata = _fit_estimated_candidate(tmp_path)
+    legacy_root = tmp_path / "d" / "recommendation_learning"
+    current_root = tmp_path / "f" / "recommendation_learning"
+    suffix = Path("runs") / "x" / "c" / str(metadata["candidate_id"])
+    legacy_candidate = legacy_root / suffix
+    current_candidate = current_root / suffix
+    if copy_to_current:
+        current_candidate.parent.mkdir(parents=True, exist_ok=True)
+        current_candidate.mkdir()
+        manifest = json.loads((fitted_root / "manifest.json").read_text(encoding="utf-8"))
+        for filename in ("candidate.json", "manifest.json", str(manifest["artifact_filename"])):
+            shutil.copy2(fitted_root / filename, current_candidate / filename)
+    marker_path = current_root / "challenger" / "current.json"
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker: dict[str, object] = {
+        "schema_version": "recommendation-calibration-challenger-pointer.v1",
+        "status": "pending",
+        "candidate_id": metadata["candidate_id"],
+        "candidate_root": str(legacy_candidate),
+        "candidate_freeze_hash": metadata["candidate_freeze_hash"],
+        "candidate_manifest_hash": metadata["manifest_hash"],
+        "candidate_artifact_hash": metadata["artifact_hash"],
+        "dataset_hash": metadata["dataset_hash"],
+    }
+    marker_path.write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
+    monkeypatch.setattr(daily_learning, "BANKTAIWAN_LEGACY_CANDIDATE_ROOT", legacy_root)
+    monkeypatch.setattr(daily_learning, "BANKTAIWAN_CURRENT_CANDIDATE_ROOT", current_root)
+    return scenario, current_root.parent, marker, marker_path, legacy_candidate, current_candidate
+
+
+def test_banktaiwan_missing_legacy_candidate_resolves_from_exact_current_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario, output_root, marker, marker_path, legacy_candidate, current_candidate = (
+        _banktaiwan_relocated_pointer_fixture(tmp_path, monkeypatch)
+    )
+    original_marker_bytes = marker_path.read_bytes()
+
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+
+    assert conflict is None
+    assert not legacy_candidate.exists()
+    assert (current_candidate / "candidate.json").is_file()
+    assert marker_path.read_bytes() == original_marker_bytes
+    assert marker["candidate_root"] == str(legacy_candidate)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ("wrong_prefix", "traversal", "missing_current", "metadata_tamper", "artifact_tamper"),
+)
+def test_banktaiwan_candidate_relocation_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    scenario, output_root, marker, marker_path, legacy_candidate, current_candidate = (
+        _banktaiwan_relocated_pointer_fixture(
+            tmp_path,
+            monkeypatch,
+            copy_to_current=failure != "missing_current",
+        )
+    )
+    if failure == "wrong_prefix":
+        marker["candidate_root"] = str(tmp_path / "D" / "unrelated" / "candidate")
+        marker_path.write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
+    elif failure == "traversal":
+        marker["candidate_root"] = str(legacy_candidate / ".." / legacy_candidate.name)
+        marker_path.write_text(json.dumps(marker, sort_keys=True), encoding="utf-8")
+    elif failure == "metadata_tamper":
+        candidate_path = current_candidate / "candidate.json"
+        candidate_metadata = json.loads(candidate_path.read_text(encoding="utf-8"))
+        candidate_metadata["research_order_quantity_shares"] = 999
+        candidate_path.write_text(json.dumps(candidate_metadata, sort_keys=True), encoding="utf-8")
+    elif failure == "artifact_tamper":
+        manifest = json.loads((current_candidate / "manifest.json").read_text(encoding="utf-8"))
+        artifact_path = current_candidate / manifest["artifact_filename"]
+        artifact_path.write_bytes(artifact_path.read_bytes() + b"tampered")
+
+    original_marker_bytes = marker_path.read_bytes()
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+
+    assert conflict is not None
+    assert "candidate_metadata_unreadable" in conflict or "unverifiable_cost_scenario" in conflict
+    assert marker_path.read_bytes() == original_marker_bytes
+    if failure == "wrong_prefix":
+        assert marker["candidate_root"] != str(current_candidate)
+    else:
+        assert marker["candidate_root"] == str(legacy_candidate) or failure == "traversal"
+
+
+def test_banktaiwan_existing_legacy_candidate_remains_authoritative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario, output_root, marker, marker_path, legacy_candidate, current_candidate = (
+        _banktaiwan_relocated_pointer_fixture(tmp_path, monkeypatch)
+    )
+    legacy_candidate.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(current_candidate, legacy_candidate)
+    candidate_path = current_candidate / "candidate.json"
+    candidate_metadata = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate_metadata["research_order_quantity_shares"] = 999
+    candidate_path.write_text(json.dumps(candidate_metadata, sort_keys=True), encoding="utf-8")
+    original_marker_bytes = marker_path.read_bytes()
+
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+
+    assert conflict is None
+    assert legacy_candidate.exists()
+    assert marker_path.read_bytes() == original_marker_bytes
+    assert marker["candidate_root"] == str(legacy_candidate)
+
+
+def test_banktaiwan_relocated_candidate_rejects_target_ancestor_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scenario, output_root, _, marker_path, _, current_candidate = (
+        _banktaiwan_relocated_pointer_fixture(tmp_path, monkeypatch)
+    )
+    current_runs = current_candidate.parents[3]
+    shutil.rmtree(current_runs)
+    outside_runs = tmp_path / "outside-runs"
+    outside_runs.mkdir()
+    try:
+        os.symlink(outside_runs, current_runs, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlink/reparse test unavailable: {type(exc).__name__}")
+
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+
+    assert conflict is not None
+    assert "candidate_metadata_unreadable" in conflict
+    assert marker_path.is_file()
+
+
+def _banktaiwan_latest_status_receipt_projection_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, RecommendationCostScenario, Path, Path, Path, dict[str, object]]:
+    (
+        output_root,
+        scenario,
+        latest_path,
+        _,
+        current_receipt_path,
+        _,
+        receipt_payload,
+        _,
+    ) = _legacy_missing_freeze_cross_anchor_fixture(tmp_path)
+    current_root = output_root / "recommendation_learning"
+    receipt_payload["projection_nested_probe"] = {
+        "enabled": True,
+        "sequence": ["a", 2, {"decision": "retain"}],
+    }
+    logical_receipt_path = (
+        tmp_path
+        / "d"
+        / "recommendation_learning"
+        / "runs"
+        / "2026-10-20"
+        / "scheduled-snapshot-db53c057ad8ffa99-efed573"
+        / "attempts"
+        / "attempt-03116777214275cc3bccffd6.json"
+    )
+    receipt_payload["receipt_path"] = str(logical_receipt_path.resolve())
+    latest_path.write_text(
+        json.dumps(receipt_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    current_receipt_path.write_text(
+        json.dumps(receipt_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    latest_bytes = latest_path.read_bytes()
+    receipt_bytes = current_receipt_path.read_bytes()
+    migration_path = tmp_path / "migration.jsonl"
+    migration_row = {
+        "Root": "FA_Data_Shadow_BankTaiwan",
+        "Relative": "recommendation_learning\\latest_status.json",
+        "DBytes": len(latest_bytes),
+        "FBytes": len(latest_bytes),
+        "D_SHA256": hashlib.sha256(latest_bytes).hexdigest().upper(),
+        "F_SHA256": hashlib.sha256(latest_bytes).hexdigest().upper(),
+        "Status": "PASS",
+    }
+    migration_path.write_text(json.dumps(migration_row) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_LEGACY_LATEST_STATUS_RECEIPT_PATH",
+        logical_receipt_path.resolve(),
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_CURRENT_LATEST_STATUS_RECEIPT_PATH",
+        current_receipt_path.resolve(),
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_CURRENT_LATEST_STATUS_PATH",
+        latest_path.resolve(),
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_CURRENT_CANDIDATE_ROOT",
+        current_root.resolve(),
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_LATEST_STATUS_MIGRATION_PROOF_PATH",
+        migration_path,
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_LATEST_STATUS_MIGRATION_PROOF_SHA256",
+        hashlib.sha256(migration_path.read_bytes()).hexdigest(),
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_PINNED_LATEST_STATUS_SHA256",
+        hashlib.sha256(latest_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(daily_learning, "BANKTAIWAN_PINNED_LATEST_STATUS_BYTES", len(latest_bytes))
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_PINNED_RECEIPT_SHA256",
+        hashlib.sha256(receipt_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(daily_learning, "BANKTAIWAN_PINNED_RECEIPT_BYTES", len(receipt_bytes))
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_RECEIPT_PROJECTION_KEYS",
+        tuple(sorted(receipt_payload)),
+    )
+    monkeypatch.setattr(
+        daily_learning,
+        "BANKTAIWAN_RECEIPT_PROJECTION_KEY_COUNT",
+        len(receipt_payload),
+    )
+    return (
+        output_root,
+        scenario,
+        latest_path.resolve(),
+        logical_receipt_path.resolve(),
+        current_receipt_path.resolve(),
+        receipt_payload,
+    )
+
+
+def test_banktaiwan_missing_receipt_clears_root_conflict_from_exact_semantic_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        output_root,
+        scenario,
+        latest_path,
+        logical_receipt_path,
+        current_receipt_path,
+        _,
+    ) = _banktaiwan_latest_status_receipt_projection_fixture(tmp_path, monkeypatch)
+    latest_before = latest_path.read_bytes()
+    receipt_before = current_receipt_path.read_bytes()
+
+    conflict = daily_learning._cost_scenario_root_conflict(output_root, scenario)
+
+    assert conflict is None
+    assert not logical_receipt_path.exists()
+    assert latest_path.read_bytes() == latest_before
+    assert current_receipt_path.read_bytes() == receipt_before
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "wrong_latest_pin",
+        "wrong_receipt_pin",
+        "unknown_origin",
+        "missing_key",
+        "changed_value",
+        "latest_payload_mismatch",
+    ),
+)
+def test_banktaiwan_receipt_projection_rejects_unpinned_or_incomplete_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    (
+        _,
+        _,
+        latest_path,
+        logical_receipt_path,
+        current_receipt_path,
+        receipt_payload,
+    ) = _banktaiwan_latest_status_receipt_projection_fixture(tmp_path, monkeypatch)
+    latest_payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    before = {latest_path: latest_path.read_bytes(), current_receipt_path: current_receipt_path.read_bytes()}
+    requested_origin = logical_receipt_path
+    if failure == "wrong_latest_pin":
+        monkeypatch.setattr(daily_learning, "BANKTAIWAN_PINNED_LATEST_STATUS_SHA256", "0" * 64)
+    elif failure == "wrong_receipt_pin":
+        monkeypatch.setattr(daily_learning, "BANKTAIWAN_PINNED_RECEIPT_SHA256", "0" * 64)
+    elif failure == "unknown_origin":
+        requested_origin = logical_receipt_path.parent / "other.json"
+    elif failure in {"missing_key", "changed_value"}:
+        changed_receipt = dict(receipt_payload)
+        if failure == "missing_key":
+            changed_receipt.pop("run_scope")
+        else:
+            changed_receipt["run_scope"] = "changed-under-same-latest"
+        changed_bytes = json.dumps(changed_receipt, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        current_receipt_path.write_bytes(changed_bytes)
+        monkeypatch.setattr(
+            daily_learning,
+            "BANKTAIWAN_PINNED_RECEIPT_SHA256",
+            hashlib.sha256(changed_bytes).hexdigest(),
+        )
+        monkeypatch.setattr(daily_learning, "BANKTAIWAN_PINNED_RECEIPT_BYTES", len(changed_bytes))
+        before[current_receipt_path] = changed_bytes
+    elif failure == "latest_payload_mismatch":
+        latest_payload["run_scope"] = "changed-caller-payload"
+
+    result = daily_learning._read_banktaiwan_latest_status_receipt_projection(
+        latest_payload,
+        logical_receipt_path=requested_origin,
+        source_path=latest_path,
+        candidate_relocation_root=latest_path.parent,
+    )
+
+    assert result is None
+    assert {path: path.read_bytes() for path in before} == before
+
+
+def test_banktaiwan_existing_receipt_path_remains_authoritative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        _,
+        scenario,
+        latest_path,
+        logical_receipt_path,
+        current_receipt_path,
+        receipt_payload,
+    ) = _banktaiwan_latest_status_receipt_projection_fixture(tmp_path, monkeypatch)
+    logical_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    logical_receipt_path.write_text(
+        json.dumps(receipt_payload, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    path, loaded, loaded_scenario, error = daily_learning._load_latest_status_receipt_anchor(
+        json.loads(latest_path.read_text(encoding="utf-8")),
+        scenario=scenario,
+        source_path=latest_path,
+        candidate_relocation_root=latest_path.parent,
+    )
+
+    assert error is None
+    assert loaded is not None and loaded_scenario is not None
+    assert path == logical_receipt_path
+    assert path != current_receipt_path
+
+
+def test_banktaiwan_receipt_permission_error_does_not_use_projection_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        _,
+        scenario,
+        latest_path,
+        logical_receipt_path,
+        current_receipt_path,
+        _,
+    ) = _banktaiwan_latest_status_receipt_projection_fixture(tmp_path, monkeypatch)
+    original_read_text = Path.read_text
+
+    def permission_denied(path: Path, *args: object, **kwargs: object) -> str:
+        if path == logical_receipt_path:
+            raise PermissionError("denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", permission_denied)
+    path, loaded, _, error = daily_learning._load_latest_status_receipt_anchor(
+        json.loads(original_read_text(latest_path, encoding="utf-8")),
+        scenario=scenario,
+        source_path=latest_path,
+        candidate_relocation_root=latest_path.parent,
+    )
+
+    assert path is None
+    assert loaded is None
+    assert error is not None and "PermissionError" in error
+    assert current_receipt_path.is_file()
 
 
 def test_legacy_missing_freeze_marker_resolves_from_same_cohort_full_anchor(

@@ -1,0 +1,101 @@
+{
+  "schema_version": "legacy-source-contract-locators.v1",
+  "entries": [
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\recommendation_learning\\source_contract\\2026-09-14\\e799ddb93626edef\\contract.json",
+      "size_bytes": 659767,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\recommendation_learning\\source_contract\\2026-09-14\\e799ddb93626edef\\contract.json",
+      "sha256": "sha256:22cba7aa0cb57cb7775b7423515059c853bd8b893984ee7fbe6bdd79b7366183"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\technical_indicator_publication\\2026-09-14\\0f533bde5119890a\\receipt.json",
+      "size_bytes": 79057,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\technical_indicator_publication\\2026-09-14\\0f533bde5119890a\\receipt.json",
+      "sha256": "sha256:1b3e89c7ec83e030c7864ce69596ffc19d0ffe60a4584a4b815db149402b6070"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\tpex\\20260914\\d0f58acbe81f1652\\receipt.json",
+      "size_bytes": 2344,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\tpex\\20260914\\d0f58acbe81f1652\\receipt.json",
+      "sha256": "sha256:71a029f6f8c646643917e86285d1e38916a840e1c4ffd8ffbd50cf88dc76df68"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\tpex\\20260914\\d0f58acbe81f1652\\raw_response.bin",
+      "size_bytes": 145713,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\tpex\\20260914\\d0f58acbe81f1652\\raw_response.bin",
+      "sha256": "sha256:d0f58acbe81f1652c99f915e2534d45ffbbd850509154d287012b0aa85033cc3"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\twse\\20260914\\9f79ff7f03a17bcb\\receipt.json",
+      "size_bytes": 2158,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\twse\\20260914\\9f79ff7f03a17bcb\\receipt.json",
+      "sha256": "sha256:563b2f11f2daf09349dbf4f7826e85888c4f78a5381b39a32fed79614afa46d6"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\twse\\20260914\\9f79ff7f03a17bcb\\raw_response.bin",
+      "size_bytes": 4801305,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\scheduled\\daily_price_source_custody\\twse\\20260914\\9f79ff7f03a17bcb\\raw_response.bin",
+      "sha256": "sha256:9f79ff7f03a17bcbf696aa295bb500da6d3963c0d4a9efc49f38e0a6261c72f1"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\corporate_action_adjustments\\runs\\corporate-action-adjustments-68aed1271bcef77764e0e5d9\\manifest.json",
+      "size_bytes": 1183,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\corporate_action_adjustments\\runs\\corporate-action-adjustments-68aed1271bcef77764e0e5d9\\manifest.json",
+      "sha256": "sha256:5df7dc2009929c8750abc11fa90bf5803e46044c3c1baf34cdb643e671d3633b"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\corporate_action_adjustments\\runs\\corporate-action-adjustments-68aed1271bcef77764e0e5d9\\adjustments.jsonl",
+      "size_bytes": 1561170,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\corporate_action_adjustments\\runs\\corporate-action-adjustments-68aed1271bcef77764e0e5d9\\adjustments.jsonl",
+      "sha256": "sha256:fccfc71e281f212fcac1a0639b775f17063875f149f6066c61b2003cded54b3b"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\corporate_action_adjustments\\runs\\corporate-action-adjustments-68aed1271bcef77764e0e5d9\\coverage.json",
+      "size_bytes": 983,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\corporate_action_adjustments\\runs\\corporate-action-adjustments-68aed1271bcef77764e0e5d9\\coverage.json",
+      "sha256": "sha256:ac970edadce1dc1c55a28a304f60edeab039262085ea5e81a94920e470df14d7"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\manifest.json",
+      "size_bytes": 7031,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\manifest.json",
+      "sha256": "sha256:454dd6007164d8a58c39e932e64a4945381f7ee5454a65113c3a06941e321eee"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\canonical\\events.jsonl",
+      "size_bytes": 3851673,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\canonical\\events.jsonl",
+      "sha256": "sha256:9605db4d2f347c650b83c711c8ab62daef0ce3279cb27b386c822eb775463463"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw_index.jsonl",
+      "size_bytes": 3694,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw_index.jsonl",
+      "sha256": "sha256:270a9318a05810b6687f3acb5bd62f392c4fe12c87da3e4d8a1a1bad38c30379"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\twse.TWTAWU.halt_resume\\year=2026\\response.json",
+      "size_bytes": 29555,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\twse.TWTAWU.halt_resume\\year=2026\\response.json",
+      "sha256": "sha256:ef45603b47826cbbb848a4a215e70f3b56b5515b2a39bf3f60e20a2741de1271"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\tpex.sprcHis.halt_resume\\year=2026\\response.json",
+      "size_bytes": 2169,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\tpex.sprcHis.halt_resume\\year=2026\\response.json",
+      "sha256": "sha256:184c07e8cfd61f20a8cbf65ab49d2ab86ddac276da450eeed3938ec08c2ffe18"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\twse.TWT49U.ex_right_dividend_result\\year=2026\\response.json",
+      "size_bytes": 249031,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\twse.TWT49U.ex_right_dividend_result\\year=2026\\response.json",
+      "sha256": "sha256:a110e8fbdd07741fd25b26a66dd846ec132efd3414554d0893b87e4ce0a5a68d"
+    },
+    {
+      "current_path": "F:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\twse.TWTAUU.capital_reduction_result\\year=2026\\response.json",
+      "size_bytes": 1660,
+      "origin_path": "D:\\Min\\Python\\Project\\FA_Data_Shadow\\release_v4\\official_market_events\\runs\\official-market-events-af1b4cbb9f59d8c3b6addfec\\raw\\twse.TWTAUU.capital_reduction_result\\year=2026\\response.json",
+      "sha256": "sha256:b88bee55fab3726d01a413b598bc0b76348aec4d40e8b2b0fab00045e11e4496"
+    }
+  ]
+}

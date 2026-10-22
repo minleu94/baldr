@@ -14,6 +14,10 @@
 
 狀態分類不授權重跑 writer。失敗、來源阻擋、過期或未知時先核同一 run 的 task、producer、收據、產物與 consumer；不可重播舊 task、重建歷史或藉新 receipt 補自然 credit。正式金融資料、Paper 帳本、正式評分／回測、Promotion 與交易均受各自來源、PIT、金融精度與用途 Gate 限制；本 CLI 的健康狀態不放寬任何 Gate，也不構成正式金融驗收。
 
+每日狀態採六軌：WindowsExecution、Application、SourceFreshness、FinancialQualification、DependencyReadiness、Observability。只在同一 run 的明確 schema、run ID、started/completed、terminal、來源／cutoff、artifact 與 hash 均能核對時才連結證據；缺欄位為 UNKNOWN，舊 receipt adapter 不補時鐘或身份。Freshness 與 Evidence 新終態收據記錄 run 時鐘、code version、failure code 與 payload SHA，latest 只負責定位。舊 payload 不改寫；必要工程QA已完成、自然驗證待觀測，細節及本次 readback 見[2026-10-21 recovery 摘要](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。
+
+2026-10-21 Windows readback 為 21/21，query error 0、XML definition delta 0；Direct maintainer 預期停用。唯一新 natural run 是 formal-input：blocked/result 2、runtime config expired、formal write=false、無 immutable run receipt。Quick custody actual readback 與 21-task CLI readback 各自成功，但工程 QA 尚未 pass；總體 `PARTIAL_RECOVERY`，修復後自然 run 均待驗。Paper 輸出邊界、Forward PIT 缺件、Quick、BankTaiwan、DST 等分支的實際原因與 QA003–QA007 原結果依[recovery 摘要](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)逐項判讀；程式或設定候選不等於修復後自然 run。Source-contract closure 定位修復由 C 核完整依賴中，未全核前不能標記完成。兩個 Codex heartbeat 仍 ACTIVE 且 config SHA 與 previous-after 相同；TOML 未提供模型欄位。
+
 本指南說明 baldr 排程的種類、日常核對入口與移機界線。它是操作文件，不是註冊、啟用、手動觸發、改帳戶或切換 portable executable 的授權。若目標是新機或 owner 移交，從[機器啟動 Runbook](MACHINE_BOOTSTRAP_RUNBOOK.md)開始；唯讀查證看[全排程唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
 
 ## 排程種類與權威
@@ -73,6 +77,8 @@ Windows task 啟動順序不代表上游成功或來源已完成。`IgnoreNew` �
 ## 時區、offset 與 DST
 
 多數 Windows task 依 `Pacific Standard Time` 本地時鐘執行，隨 DST 變化；Generic registrar 在現有文件化契約中只接受 Windows Pacific 時區，不要把台北時間改寫成一個固定 Pacific 鐘點。Paper Portfolio 與 ML forward 兩者於 Taipei 08:25（UTC 00:25）offset 喚醒；其時區換算是 PDT 前一日 17:25／PST 前一日 16:25。這是鐘點換算，不是 seasonal Task QA 或自然 run 證據。
+
+2026-10-21 的兩份 XML 有界模擬分類為 `CONFIG_SIMULATION_VERIFIED; NATURAL_POST_DST_UNOBSERVED`。它確認 StartBoundary 帶固定 `-07:00` 的配置模擬仍映射 UTC 00:25，但 2026-11-01 後自然 NextRun 尚未觀察；先前 COM late-bound `GetRunTimes` 的 `MissingMemberException` 原樣保留，不當作成功查詢。切換後須唯讀確認 Task Scheduler UI 的「Synchronize across time zones」和實際 Last／NextRun，不改 trigger。
 
 Paper 流程再等真實台北 08:30 guard；ML forward 在 08:30 cutoff 前不消費並有 08:35 deadline。移機或 DST 變換後須讀新機 Task XML offset、trigger 與實際 UTC／本地 `NextRun`，再核台北時鐘、日曆和 lane status。若實際時區不同、offset 缺失或查詢權限不足，標示 drift／unknown 並停在 plan；不可手工換算後宣稱驗收通過。
 

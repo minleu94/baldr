@@ -34,6 +34,7 @@
 | Daily Decision Desk、結果品質與共通排錯 | [APPLICATION_MANUAL §8–12](APPLICATION_MANUAL.md#8-每日決策-daily-decision-desk) |
 | 系統狀態、決策擷取終態與保存未知 | [APPLICATION_MANUAL §11](APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態) |
 | Windows Task Scheduler 與 Codex 排程 | [排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)及[全排程唯讀稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md) |
+| 六軌每日營運狀態、同次收據與排程排錯 | [稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)、[排程運維](SCHEDULE_OPERATIONS_AND_MIGRATION.md)、[2026-10-21 recovery QA](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md) |
 
 ## 開發與受控維運指南
 

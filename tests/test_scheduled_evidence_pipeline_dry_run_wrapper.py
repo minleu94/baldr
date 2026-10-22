@@ -89,6 +89,27 @@ def test_blocked_snapshot_has_status_diagnostic_without_lowering_binding_gate(tm
             tmp_path, decision_date="2026-09-29", observed_at=now)
 
 
+def test_blocked_snapshot_reports_dependency_without_claiming_engineering_failure(tmp_path, monkeypatch):
+    """上游明示拒絕不誤報程式故障，仍不啟動 child 或授金融用途。"""
+    runner = run_scheduled_evidence_pipeline_dry_run
+    now, path, payload, _ = _binding_fixture(tmp_path, monkeypatch)
+    payload["status"] = "blocked"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(runner, "scheduled_now", lambda: now)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("child must not start"))
+    assert runner.main([
+        "--dry-run", "--bind-scheduled-recommendation", "--data-root", str(tmp_path / "data"),
+        "--output-root", str(tmp_path), "--db-path", str(tmp_path / "market.db"),
+    ]) == 2
+    observed = json.loads((tmp_path / "scheduled/evidence_pipeline_dry_run/latest_status.json").read_text(encoding="utf-8"))
+    assert observed["pipeline_execution_started"] is False
+    assert observed["engineering_action_required"] is False
+    assert observed["dependency_readiness_status"] == "blocked"
+    assert observed["financial_qualification_status"] == "unknown"
+    assert observed["blockers"] == ["scheduled_recommendation_not_ready"]
+    assert observed["writes_evidence_db"] is False
+
+
 @pytest.mark.parametrize("changes", [
     {"decision_date": "2026-09-28"}, {"status": "running"},
     {"writes_recommendation_result": False}, {"output_root": "other-root"},
@@ -130,6 +151,34 @@ def test_binding_missing_stops_before_any_child_and_records_failure(tmp_path, mo
     assert payload["writes_evidence_db"] is False
     assert payload["manual_action_required"] is False
     assert payload["engineering_action_required"] is True
+    receipt_ref = payload["terminal_receipt"]
+    receipt_raw = Path(receipt_ref["path"]).read_bytes()
+    receipt = json.loads(receipt_raw)
+    assert payload["schema_version"] == "baldr-evidence-pipeline-terminal-receipt.v1"
+    assert receipt["run_id"] == payload["run_id"]
+    assert receipt["code_version"].startswith("sha256:")
+    assert receipt["pipeline_execution_started"] is False
+    assert receipt_ref["sha256"] == "sha256:" + hashlib.sha256(receipt_raw).hexdigest()
+
+
+def test_binding_failure_receipt_write_failure_is_explicit_and_nonzero(tmp_path, monkeypatch):
+    """最早 binding 拒絕時若終態收據無法寫入，latest 明示失敗且維持非零。"""
+    runner = run_scheduled_evidence_pipeline_dry_run
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("child must not start"))
+
+    def reject_receipt(*args, **kwargs):
+        raise OSError("fixture receipt failure")
+
+    monkeypatch.setattr(runner, "write_terminal_receipt", reject_receipt)
+    assert runner.main([
+        "--dry-run", "--bind-scheduled-recommendation", "--data-root", str(tmp_path / "data"),
+        "--output-root", str(tmp_path), "--db-path", str(tmp_path / "market.db"),
+    ]) == 2
+    payload = json.loads((tmp_path / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json").read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["exit_code"] == 2
+    assert payload["pipeline_execution_started"] is False
+    assert payload["terminal_receipt_error"] == "terminal_receipt_write_failed:OSError:fixture receipt failure"
 
 
 def test_binding_is_forwarded_and_timeout_preserves_partial_output(tmp_path, monkeypatch):
@@ -680,6 +729,15 @@ def test_scheduled_wrapper_connects_market_sources_to_transition_evaluator(
     assert payload["paper_health_source_status"] == "degraded"
     assert payload["paper_health_source_blocked"] is False
     assert payload["paper_health_source_receipt"]["source_snapshot_hash"].startswith("sha256:")
+    receipt_ref = payload["terminal_receipt"]
+    receipt_raw = Path(receipt_ref["path"]).read_bytes()
+    receipt = json.loads(receipt_raw)
+    assert payload["schema_version"] == "baldr-evidence-pipeline-terminal-receipt.v1"
+    assert receipt["run_id"] == payload["run_id"]
+    assert receipt["started_at"] == payload["started_at"]
+    assert receipt["completed_at"] == payload["completed_at"]
+    assert receipt["code_version"].startswith("sha256:")
+    assert receipt_ref["sha256"] == "sha256:" + hashlib.sha256(receipt_raw).hexdigest()
     assert isinstance(evaluator, dict)
     assert evaluator["condition_source_path"] == str(tmp_path / "sources" / "condition.json")
     assert evaluator["metrics_source_path"] == str(tmp_path / "sources" / "metrics.json")

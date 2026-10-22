@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+from uuid import uuid4
 from typing import Any
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.scheduled.scheduled_clock import scheduled_now
+from scripts.scheduled.daily_operations_receipt import code_version, write_terminal_receipt
 from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
     canonical_scheduled_decision_date,
@@ -834,6 +836,9 @@ def main(argv: list[str] | None = None) -> int:
     report_root.mkdir(parents=True, exist_ok=True)
 
     run_now = scheduled_now()
+    run_id = f"evidence-{run_now.strftime('%Y%m%dT%H%M%S%f')}-{uuid4().hex}"
+    started_at = run_now.isoformat(timespec="microseconds")
+    producer_code_version = code_version(Path(__file__))
     decision_date = run_now.astimezone(TAIPEI).date().isoformat()
     if args.validation_decision_date:
         replay_date = date.fromisoformat(args.validation_decision_date)
@@ -861,15 +866,38 @@ def main(argv: list[str] | None = None) -> int:
                 output_root, decision_date=decision_date, observed_at=run_now,
             )
         except Exception as error:  # noqa: BLE001 - 不退回猜測 latest 或舊快照
+            upstream_not_ready = isinstance(error, ValueError) and str(error) in {
+                f"scheduled_recommendation_status_not_passed:{value}"
+                for value in ("blocked", "degraded", "partial", "failed")
+            }
             payload = {
+                "schema_version": "baldr-evidence-pipeline-terminal-receipt.v1",
                 "task": "baldr-evidence-pipeline-dry-run-daily", "status": "failed",
+                "run_id": run_id, "started_at": started_at,
+                "completed_at": scheduled_now().isoformat(timespec="microseconds"),
+                "code_version": producer_code_version,
                 "decision_date": decision_date, "checked_at": run_now.isoformat(),
                 "dry_run": True, "confirm": False, "writes_evidence_db": False,
-                "production_scheduler_allowed": False, "manual_action_required": False, "engineering_action_required": True,
+                "production_scheduler_allowed": False, "manual_action_required": False, "engineering_action_required": not upstream_not_ready,
+                "dependency_readiness_status": "blocked" if upstream_not_ready else "unknown",
+                "financial_qualification_status": "unknown",
+                "blockers": ["scheduled_recommendation_not_ready"] if upstream_not_ready else [],
                 "exit_code": 2, "pipeline_summary_available": False,
                 "pipeline_execution_started": False,
                 "recommendation_binding_error": f"{type(error).__name__}:{error}",
             }
+            try:
+                payload["terminal_receipt"] = write_terminal_receipt(
+                    status_path.parent / "receipts" / f"{run_id}.json", payload,
+                    receipt_root=status_path.parent,
+                )
+            except Exception as receipt_error:  # noqa: BLE001 - 可觀測收據失敗須明示
+                payload["terminal_receipt_error"] = (
+                    f"terminal_receipt_write_failed:{type(receipt_error).__name__}:{receipt_error}"
+                )
+                payload["status"] = "failed"
+                payload["exit_code"] = 2
+                payload["engineering_action_required"] = True
             status_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
             return 2
@@ -1316,7 +1344,12 @@ def main(argv: list[str] | None = None) -> int:
         or pipeline_actionable_warning_count or paper_health_refresh_blocked or paper_health_source_blocked
         or forward_binding_blocked or exit_effectiveness_blocked)
     payload = {
+        "schema_version": "baldr-evidence-pipeline-terminal-receipt.v1",
         "task": "baldr-evidence-pipeline-dry-run-daily",
+        "run_id": run_id,
+        "started_at": started_at,
+        "completed_at": scheduled_now().isoformat(timespec="microseconds"),
+        "code_version": producer_code_version,
         "status": status,
         "dry_run": True,
         "confirm": False,
@@ -1441,6 +1474,19 @@ def main(argv: list[str] | None = None) -> int:
         "exit_effectiveness_receipt": exit_effectiveness,
     }
     payload.update(pipeline_fields)
+    try:
+        payload["terminal_receipt"] = write_terminal_receipt(
+            status_path.parent / "receipts" / f"{run_id}.json", payload,
+            receipt_root=status_path.parent,
+        )
+    except Exception as receipt_error:  # noqa: BLE001 - 可觀測收據失敗須明示
+        payload["terminal_receipt_error"] = (
+            f"terminal_receipt_write_failed:{type(receipt_error).__name__}:{receipt_error}"
+        )
+        payload["status"] = "failed"
+        payload["exit_code"] = 2
+        payload["engineering_action_required"] = True
+        wrapper_exit_code = 2
     status_text = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
     stdout_text = json.dumps(payload, ensure_ascii=True, sort_keys=True, indent=2)
     status_path.write_text(status_text + "\n", encoding="utf-8")

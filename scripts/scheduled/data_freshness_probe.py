@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 import stat
+from uuid import uuid4
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import sys
@@ -39,6 +40,7 @@ from app_module.update_status_history import (
     build_update_status_history_record,
 )
 from scripts.scheduled.scheduled_clock import scheduled_now
+from scripts.scheduled.daily_operations_receipt import code_version, write_terminal_receipt
 
 
 DAILY_DATA_CUTOFF_TIMEZONE = "America/Los_Angeles"
@@ -1918,6 +1920,9 @@ def main(argv: list[str] | None = None) -> int:
     db_path = Path(args.db_path)
     run_root = output_root / "scheduled" / "data_freshness"
     run_now = scheduled_now()
+    run_id = f"freshness-{run_now.strftime('%Y%m%dT%H%M%S%f')}-{uuid4().hex}"
+    started_at = run_now.isoformat(timespec="microseconds")
+    producer_code_version = code_version(Path(__file__))
     run_date = _local_now(run_now).date()
     today_key = run_date.isoformat().replace("-", "")
     status_path = Path(args.status_path) if args.status_path else run_root / "latest_status.json"
@@ -2148,8 +2153,14 @@ def main(argv: list[str] | None = None) -> int:
         for status in sorted({str(item.get("freshness_status")) for item in source_statuses})
     }
     status = "failed" if errors else "degraded" if warnings else "passed"
+    completed_at = scheduled_now().isoformat(timespec="microseconds")
     payload = {
+        "schema_version": "baldr-data-freshness-terminal-receipt.v1",
         "task": "baldr-data-freshness-check-daily",
+        "run_id": run_id,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "code_version": producer_code_version,
         "status": status,
         "read_only": True,
         "checked_at": run_now.isoformat(timespec="seconds"),
@@ -2162,6 +2173,17 @@ def main(argv: list[str] | None = None) -> int:
         "stale_days": args.stale_days,
         "status_vocabulary": ["current", "expected_wait", "stale", "failed", "partial", "not_applicable", "unknown"],
     }
+    receipt_path = status_path.parent / "receipts" / f"{run_id}.json"
+    try:
+        payload["terminal_receipt"] = write_terminal_receipt(
+            receipt_path, payload, receipt_root=status_path.parent,
+        )
+    except Exception as exc:  # noqa: BLE001 - 無法留下可追溯終態時必須明確失敗
+        receipt_error = f"terminal_receipt_write_failed:{type(exc).__name__}:{exc}"
+        errors.append(receipt_error)
+        payload["terminal_receipt_error"] = receipt_error
+        payload["status"] = "failed"
+        payload["errors"] = errors
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2, default=str)
     write_errors: list[str] = []
     for label, path in (("status", status_path), ("log", log_path)):

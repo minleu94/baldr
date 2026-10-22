@@ -63,6 +63,10 @@ from data_module.pinned_sqlite_read_session import (
     PinnedSQLiteReadSession,
     SQLiteFilePinV1,
 )
+from data_module.legacy_source_contract_locator import (
+    locate_legacy_source_contract,
+    locate_legacy_source_contract_dependency,
+)
 
 
 _CURRENT_OBSERVED_RESEARCH_ROOT = (
@@ -1967,11 +1971,19 @@ def _verify_source_contract_binding(
         raise ValueError("capture source contract binding cannot claim historical PIT")
     if require_ready and binding.get("price_up_prospective_status") != "ready":
         raise ValueError("capture source contract prospective price-up source is not ready")
-    contract_path = Path(str(binding.get("contract_path") or "")).expanduser().resolve()
+    raw_contract_path = Path(str(binding.get("contract_path") or "")).expanduser()
+    contract_path = raw_contract_path.resolve()
     contract_file_hash = str(binding.get("contract_file_sha256") or "")
     contract_content_hash = str(binding.get("contract_content_sha256") or "")
     if not contract_path.is_file() or contract_path.is_symlink():
-        raise ValueError("capture source contract receipt is missing")
+        relocated_contract_path = locate_legacy_source_contract(
+            raw_contract_path,
+            contract_file_sha256=contract_file_hash,
+        )
+        if relocated_contract_path is not None:
+            contract_path = relocated_contract_path
+        else:
+            raise ValueError("capture source contract receipt is missing")
     if not contract_file_hash.startswith("sha256:") or len(contract_file_hash) != 71:
         raise ValueError("capture source contract file hash is invalid")
     if _sha256_file(contract_path) != contract_file_hash:
@@ -4019,7 +4031,15 @@ def _verify_source_contract_dependencies(
     publication = technical.get("publication_receipt")
     if not isinstance(publication, Mapping):
         raise ValueError("capture source contract technical publication lineage missing")
-    publication_path = Path(str(publication.get("path") or "")).expanduser().resolve()
+    publication_reference = str(publication.get("path") or "")
+    publication_path = Path(publication_reference).expanduser().resolve()
+    if not publication_path.is_file():
+        relocated = locate_legacy_source_contract_dependency(
+            publication_reference,
+            expected_sha256=str(publication.get("sha256") or ""),
+        )
+        if relocated is not None:
+            publication_path = relocated
     if publication_path.is_symlink() or not publication_path.is_file():
         raise ValueError("capture source contract technical publication missing")
     if _sha256_file(publication_path) != publication.get("sha256"):
@@ -4050,7 +4070,15 @@ def _verify_source_contract_dependencies(
     for reference in source_receipts:
         if not isinstance(reference, Mapping):
             raise ValueError("capture source contract daily receipt lineage invalid")
-        receipt_path = Path(str(reference.get("receipt_path") or "")).expanduser().resolve()
+        receipt_reference = str(reference.get("receipt_path") or "")
+        receipt_path = Path(receipt_reference).expanduser().resolve()
+        if not receipt_path.is_file():
+            relocated = locate_legacy_source_contract_dependency(
+                receipt_reference,
+                expected_sha256=str(reference.get("receipt_sha256") or ""),
+            )
+            if relocated is not None:
+                receipt_path = relocated
         if receipt_path.is_symlink() or not receipt_path.is_file():
             raise ValueError("capture source contract daily receipt missing")
         if _sha256_file(receipt_path) != reference.get("receipt_sha256"):
@@ -4058,7 +4086,15 @@ def _verify_source_contract_dependencies(
         receipt_payload = _read_json(receipt_path)
         if not _verified_payload_hash(receipt_payload, "content_sha256"):
             raise ValueError("capture source contract daily receipt content hash mismatch")
-        raw_path = Path(str(reference.get("raw_response_path") or "")).expanduser().resolve()
+        raw_reference = str(reference.get("raw_response_path") or "")
+        raw_path = Path(raw_reference).expanduser().resolve()
+        if not raw_path.is_file():
+            relocated = locate_legacy_source_contract_dependency(
+                raw_reference,
+                expected_sha256=str(reference.get("raw_response_sha256") or ""),
+            )
+            if relocated is not None:
+                raw_path = relocated
         if raw_path.is_symlink() or not raw_path.is_file() or not raw_path.is_relative_to(receipt_path.parent):
             raise ValueError("capture source contract raw response lineage invalid")
         if _sha256_file(raw_path) != reference.get("raw_response_sha256"):
@@ -4070,7 +4106,15 @@ def _verify_source_contract_dependencies(
     adjustment = adjustment if isinstance(adjustment, Mapping) else {}
     if adjustment.get("prospective_verified") is not True:
         raise ValueError("capture source contract corporate adjustment custody is not ready")
-    adjustment_path = Path(str(adjustment.get("manifest_path") or "")).expanduser().resolve()
+    adjustment_reference = str(adjustment.get("manifest_path") or "")
+    adjustment_path = Path(adjustment_reference).expanduser().resolve()
+    if not adjustment_path.is_file():
+        relocated = locate_legacy_source_contract_dependency(
+            adjustment_reference,
+            expected_sha256=str(adjustment.get("manifest_file_hash") or ""),
+        )
+        if relocated is not None:
+            adjustment_path = relocated
     adjustment_file_hash = adjustment.get("manifest_file_hash")
     if adjustment_path.is_symlink() or not adjustment_path.is_file() or _sha256_file(adjustment_path) != adjustment_file_hash:
         raise ValueError("capture source contract adjustment manifest hash mismatch")
@@ -4094,7 +4138,15 @@ def _verify_source_contract_dependencies(
             raise ValueError("capture source contract adjustment section hash mismatch")
     event_publication = corporate.get("event_publication")
     event_publication = event_publication if isinstance(event_publication, Mapping) else {}
-    event_path = Path(str(event_publication.get("manifest_path") or "")).expanduser().resolve()
+    event_reference = str(event_publication.get("manifest_path") or "")
+    event_path = Path(event_reference).expanduser().resolve()
+    if not event_path.is_file():
+        relocated = locate_legacy_source_contract_dependency(
+            event_reference,
+            expected_sha256=str(event_publication.get("manifest_file_sha256") or ""),
+        )
+        if relocated is not None:
+            event_path = relocated
     if event_path.is_symlink() or not event_path.is_file() or _sha256_file(event_path) != event_publication.get("manifest_file_sha256"):
         raise ValueError("capture source contract event manifest hash mismatch")
     event_manifest = _read_json(event_path)

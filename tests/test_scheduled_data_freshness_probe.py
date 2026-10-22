@@ -180,6 +180,50 @@ def _run_freshness_probe(tmp_path: Path, monkeypatch, output_root: Path) -> dict
     return json.loads(status_path.read_text(encoding="utf-8"))
 
 
+def test_freshness_status_references_same_run_immutable_receipt(tmp_path, monkeypatch) -> None:
+    """Latest status 與不可覆寫終態收據綁定同一 run 及原始位元組雜湊。"""
+    output_root = tmp_path / "data" / "output"
+    payload = _run_freshness_probe(tmp_path, monkeypatch, output_root)
+    reference = payload["terminal_receipt"]
+    receipt_path = Path(reference["path"])
+    raw = receipt_path.read_bytes()
+    receipt = json.loads(raw)
+    assert payload["schema_version"] == "baldr-data-freshness-terminal-receipt.v1"
+    assert receipt["run_id"] == payload["run_id"]
+    assert receipt["started_at"] == payload["started_at"]
+    assert receipt["completed_at"] == payload["completed_at"]
+    assert receipt["code_version"].startswith("sha256:")
+    assert reference["sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def test_freshness_receipt_write_failure_is_reported_as_failed(tmp_path, monkeypatch) -> None:
+    """終態收據寫入失敗須寫入 latest 診斷並回傳非零。"""
+    data_root = tmp_path / "data"
+    output_root = data_root / "output"
+    db_path = data_root / "sqlite" / "twstock.db"
+    _write_probe_db(db_path)
+    _patch_calendar(monkeypatch, [{
+        "date_str": "2026-07-06", "is_trading_day": True,
+        "reason_code": "test_official_open", "evidence": {"source": "test-calendar"},
+    }])
+    monkeypatch.setattr(probe, "scheduled_now", lambda: datetime(2026, 7, 6, 5, 5, tzinfo=probe.PACIFIC))
+
+    def fail_receipt(*args, **kwargs):
+        raise OSError("fixture receipt failure")
+
+    monkeypatch.setattr(probe, "write_terminal_receipt", fail_receipt)
+    status_path = tmp_path / "freshness.json"
+    exit_code = main([
+        "--data-root", str(data_root), "--output-root", str(output_root),
+        "--db-path", str(db_path), "--status-path", str(status_path),
+    ])
+    payload = json.loads(status_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert payload["status"] == "failed"
+    assert payload["terminal_receipt_error"] == "terminal_receipt_write_failed:OSError:fixture receipt failure"
+    assert any(error.startswith("terminal_receipt_write_failed:") for error in payload["errors"])
+
+
 def test_phase3c_freshness_reads_explicit_candidate_db_with_market_coverage(
     tmp_path,
 ) -> None:

@@ -16,6 +16,10 @@
 
 每日營運可另以唯讀 CLI 對已固定 SHA-256 的 observation snapshot 和收據分類：`scripts/audit_daily_operations.py <manifest> --snapshot-sha256 <外部固定SHA-256> --receipt-root <收據根目錄>`。輸出六種 component 狀態：`HEALTHY`、`DEGRADED`、`BLOCKED_SOURCE`、`STALE`、`EXECUTION_FAILED`、`UNKNOWN`。輸入無法核實、收據缺失或格式不支援時保留 `UNKNOWN` 或相應阻塞狀態；這不是 task 設定讀回，也不替代 scheduler inspector、同次 producer terminal 或 consumer readback。沒有可核實的執行用量記錄為 `UNOBSERVABLE`，不可當成零用量或已完成。
 
+本輪 recovery CLI 採六軌：WindowsExecution、Application、SourceFreshness、FinancialQualification、DependencyReadiness、Observability。只有同一 run 的精確 schema、run ID、開始／完成時鐘、terminal、來源／cutoff、artifact 與 hash 可互相綁定；舊 adapter 不補缺失時間或 run identity，未知欄位留 `UNKNOWN`。Freshness／Evidence 新終態 receipt含實際 run 時鐘、code version、failure code 與 payload SHA；latest 是 locator，不是結果證據。root-owned CLI integration 已驗，修復後自然驗證待觀測，詳見[2026-10-21 recovery 觀測](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。
+
+2026-10-21 主機讀回 21/21，query error 0、XML definition delta 0。唯一新增自然執行是 formal-input 21:25 PDT，blocked/result 2，原因為 2026-09-09 runtime config 對 2026-10-22 已過期；formal write=false 且沒有 immutable run receipt。Paper 08:25 Taipei 同次 terminal 的輸出越界與 Forward 同次 PIT archive 缺件各自保留失敗。Direct maintainer 的 `Enabled=false` 是預期狀態，不列為告警。Quick custody 的實際 readback 與 21-task CLI readback 分開記錄；必要工程 QA 已驗，整體 `DAILY_OPERATIONS_PARTIAL_RECOVERY`；修復分支等自然 run，ML raw 原失敗不可觀測與Owner外部動作另列。精確 21-row branch 狀態、QA003–QA007 原結果與具名依賴鏈見[recovery 摘要](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。這些是當日證據，不代表修復後自然驗收。
+
 2026-10-09 具名設定 QA 的 readback 範圍記錄 Direct、Paper Portfolio、PIT sector preopen 和 ML Allocation Forward 四項透過 `pythonw.exe → run_scheduled_cmd_hidden.py --task <exact task> → canonical CMD`；另 17 項使用 canonical CMD action。這是該次主機 QA 的設定描述，不是本次或新機驗收。核 hidden dispatcher 時逐項比對 interpreter、exact argv、cwd 和固定 mapping。
 
 Direct maintainer 文件化 trigger 是 Pacific 10:00；05:30 是舊預期。舊 trigger expectation 不能用來判斷目前 drift；仍應以該輪 scheduler readback 為準。
@@ -79,4 +83,8 @@ Pacific Task 隨 DST 改變本地鐘點所代表的 UTC 時間；台北 offset l
 
 Read-only 狀態或失敗收據不授權重跑 writer、補跑錯過的自然排程或重建歷史；先保留原始 failure、查同一 run 的終態與下游讀回，待來源及期限資格明確後再依獨立人類授權處理。正式金融資料、正式評分／回測、Paper／Forward、ML Promotion 與交易仍各受正式來源、PIT、金融精度與用途 Gate 約束；`HEALTHY` 只表示本 CLI 核過的同次收據符合其輸入契約，不等於任何正式金融接受或績效證明。
 
+失敗分支的修復後條件各自獨立：Quick add-only binding、BankTaiwan 精確 D→F candidate/manifest/artifact hash 與 receipt gate、Paper 隔離 output 邊界、Forward PIT/cutoff、Formal runtime config、Freshness/Evidence same-run terminal。已核的 Quick 868 rows／14,756 cells 只證明該次唯讀 scope；Bank F counterpart 的 candidate 等 identity hashes 相符，但 migration receipt 缺 candidate.json／manifest.json 精確 PASS。這些工程分支已經必要QA，仍待新自然 run；不得降低 guard 或把一個分支的 PASS 外推到其他 lane。
+
 過往逐日診斷、工程假設與 named QA 時點見[歷史封存區](../09_archive/README.md)，不可用來推定目前排程已存在或已自然執行。現行排程基準與 lane 入口見[排程運維與搬機指南](SCHEDULE_OPERATIONS_AND_MIGRATION.md)。
+
+ML raw 每run診斷位於有效 OUTPUT_ROOT 的 scheduled/ml_raw_pit_refresh/launcher_logs；核有效roots、Python、UTC／timezone、兩streams與child exit。這不是producer receipt；建log失敗73且不啟動child，不能據此補回10/21舊失敗原因。Freshness／Evidence收據明示receipt_root，拒絕內層junction與reparse，repo/output僅沿既有核准mountpoint resolver。

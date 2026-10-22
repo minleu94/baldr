@@ -8,6 +8,8 @@
 
 ## 範圍與安全界線
 
+2026-10-20 D→F 的日價修訂定位接受是本機範圍：`data_module/accepted_daily_price_relocation_20261020.json` 由程式外部固定 SHA，另核當前資料庫的 volume/file identity、原 receipt／pending 及遷移／唯讀審計 pins。新機、替換資料庫或新增 rollback 都必須重新核驗；複製相同路徑字串或改接受檔中的身份數字不能取得資格。保留其引用的原始證據，不把這份接受設定當可攜資料或正式 PIT／訓練批准。校準的舊 immutable 原件另依封閉逐檔 SHA 定位，不能泛化為 D／F drive alias；操作與狀態見[每日營運 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
 Prompt 的 plan-only、configure、restore-and-enable 是整體任務授權，與唯讀計畫工具分開。已授權 configure／restore-and-enable 時，完成具體清冊核對後持續完成該範圍的環境、設定、停用註冊或原狀啟用；不逐Task重複確認。資產與writer前提未成立者留pending，需要新範圍才另確認。
 
 - GUI runtime 可選 `source` 或 `portable-gui`，但 Task Scheduler 使用的 canonical wrapper/action 是獨立設定；不得因 GUI 換成 portable 就默默把 CMD／Python action 換成 EXE。

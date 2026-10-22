@@ -254,6 +254,8 @@ Daily Decision Desk 是已保存來源的唯讀摘要入口。先確認資料日
 
 此頁只顯示安全摘要，原 stderr／例外訊息留在原件。它不會補資料、改 Task、啟用 maintainer 或提升 Paper／Forward 資格。正式排程的自然執行仍依[日常核對與自然 run 驗收](SCHEDULE_OPERATIONS_AND_MIGRATION.md#日常核對與自然-run-驗收)逐項判讀。
 
+日常維運 owner 另可使用唯讀 `scripts/audit_daily_operations.py`；本輪六軌輸出已通過必要工程QA，修復後自然驗證仍待。由固定 observation SHA 與 bounded receipt root 分開呈現 WindowsExecution、Application、SourceFreshness、FinancialQualification、DependencyReadiness、Observability。CLI 不啟動 task／writer、不更改輸出，也不替 UI 設定讀回。只有同次 run 的明確 schema、ID、開始／完成、terminal、來源／cutoff、artifact 與 hash 可綁定；缺件顯示 UNKNOWN，舊收據不補時間。詳見[稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)及[2026-10-21 recovery 摘要](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。若 latest／receipt 不一致、timeout 或結果未知，先保留原件並由 owner 核對；不可直接重跑 writer、重播舊 task 或把局部 HEALTHY 當正式金融接受。
+
 ## 12. 常見問題
 
 固定133可在「策略回測 → 研究Registry」明選2至5筆不同的新保存單股策略，捲到「逐日策略訊號對照」後核原價量／規則。視窗逐日列進場、出場、未發進場及未知，摘要分清各策略意圖數、策略／家族與共同判定；意圖不等於成交或完成配對。可分頁、看原規則、關閉返回列表及從原歷史開原結果，新程序沿同run重核。缺共同上下文的舊run或混源保持不可用，不回填、不重算。平台／固定候選看[試用指南](TRIAL_VERSION_GUIDE.md)，完整步驟、三態、資料限制與排錯見[操作](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#保存策略逐日進場意圖對照)。

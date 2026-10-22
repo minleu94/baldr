@@ -259,11 +259,21 @@ def _load_revision_scope(database_path: Path) -> _RevisionScope | None:
 
     receipt = _read_json_object(receipt_path, "daily-price revision receipt")
     _verify_payload_hash(receipt, receipt_path)
-    scope = _scope_from_receipt(receipt, database_path, receipt_path)
+    receipt_database = database_path
+    if Path(str(receipt.get("db_path", ""))).resolve() != database_path:
+        from data_module.daily_price_revision_relocation import verified_original_database
+
+        try:
+            receipt_database = verified_original_database(database_path, receipt_path)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise DailyPriceRevisionWriteError(
+                f"daily-price revision receipt database path mismatch: {receipt_path}; {exc}"
+            ) from exc
+    scope = _scope_from_receipt(receipt, receipt_database, receipt_path)
 
     if pending_exists:
         pending = _read_json_object(pending_path, "daily-price pending marker")
-        _validate_completed_pending(pending, receipt, database_path, pending_path)
+        _validate_completed_pending(pending, receipt, receipt_database, pending_path)
 
     if rollback_exists:
         rollback = _read_json_object(rollback_path, "daily-price rollback receipt")

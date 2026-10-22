@@ -1,0 +1,29 @@
+{
+  "schema_version": "daily-price-revision-relocation-acceptance.v1",
+  "status": "accepted_custody_only",
+  "accepted_at": "2026-10-22T05:26:22.0926654+00:00",
+  "authority": "Owner Daily Operations Recovery authorization; root verified migration and protected revision scope",
+  "original_database_path": "D:\\Min\\Python\\Project\\FA_Data\\sqlite\\twstock.db",
+  "current_database_path": "F:\\Min\\Python\\Project\\FA_Data\\sqlite\\twstock.db",
+  "current_file_identity": {
+    "dev": 3532133302,
+    "ino": 281474976892416
+  },
+  "receipt_path": "F:\\Min\\Python\\Project\\FA_Data\\output\\scheduled\\daily_price_repair_receipts\\20260520\\historical_price_spike_20260921\\receipt.json",
+  "receipt_sha256": "a157a401b21f3eaac8ae82fd21859161f37acc277fcd3d26a0614ccb6a6d280f",
+  "pending_sha256": "f60fe67d82930280f3ce76d8a0a3e0dd4b0f28e00fa48900e86f0fa1bf8b19b7",
+  "migration_proof": {
+    "sha256": "007f76e65b5410ef274f023ecae8486bbd5ad435afe4e945647eb2a22ac07384",
+    "path": "F:\\Min\\Python\\Project\\BaldrStorage\\D_to_F_target_sha256_receipt_20261020.jsonl"
+  },
+  "readonly_audit": {
+    "sha256": "8a27101ab2408f3dfaca76a4dd751ce40e4dee60b8ef2248167ab84e96c00416",
+    "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-output\\tasks\\baldr-daily-operations-recovery-20261021\\quick\\readonly_scope_audit.json"
+  },
+  "protected_rows": 868,
+  "protected_cells": 14756,
+  "backup_sha256": "545925ac9dccf5c7b488a4fdfdbbe68be077ac408b5a76314868ee3287169e4b",
+  "formal_training_allowed": false,
+  "historical_pit_eligible": false,
+  "scope": "Only the original receipt database identity; original payload, row guards, and downstream financial gates remain authoritative"
+}

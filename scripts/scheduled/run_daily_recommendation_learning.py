@@ -30,6 +30,79 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# 僅供 BankTaiwan 舊候選根的唯讀相容定位；正式路徑必須由呼叫端明確提供。
+BANKTAIWAN_LEGACY_CANDIDATE_ROOT = Path(
+    r"D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning"
+)
+BANKTAIWAN_CURRENT_CANDIDATE_ROOT = Path(
+    r"F:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning"
+)
+BANKTAIWAN_LEGACY_LATEST_STATUS_RECEIPT_PATH = Path(
+    r"D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning\runs\2026-10-20\scheduled-snapshot-db53c057ad8ffa99-efed573\attempts\attempt-03116777214275cc3bccffd6.json"
+)
+BANKTAIWAN_CURRENT_LATEST_STATUS_RECEIPT_PATH = Path(
+    r"F:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning\runs\2026-10-20\scheduled-snapshot-db53c057ad8ffa99-efed573\attempts\attempt-03116777214275cc3bccffd6.json"
+)
+BANKTAIWAN_CURRENT_LATEST_STATUS_PATH = Path(
+    r"F:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning\latest_status.json"
+)
+BANKTAIWAN_LATEST_STATUS_MIGRATION_PROOF_PATH = Path(
+    r"F:\Min\Python\Project\BaldrStorage\D_to_F_target_sha256_receipt_20261020.jsonl"
+)
+BANKTAIWAN_LATEST_STATUS_MIGRATION_PROOF_SHA256 = (
+    "007f76e65b5410ef274f023ecae8486bbd5ad435afe4e945647eb2a22ac07384"
+)
+BANKTAIWAN_PINNED_LATEST_STATUS_SHA256 = (
+    "c4c04a9c3a8c5b907d546ab39892ac5b09eb09dd8b6da451bb01a1f8e6ada261"
+)
+BANKTAIWAN_PINNED_LATEST_STATUS_BYTES = 46_697_722
+BANKTAIWAN_PINNED_RECEIPT_SHA256 = (
+    "c086645ec2c74da706f7595f2d7a068a65a4b17c2dc7e1a5f1b66a72eaa29b7d"
+)
+BANKTAIWAN_PINNED_RECEIPT_BYTES = 4_466
+BANKTAIWAN_RECEIPT_PROJECTION_KEYS = (
+    "attempt_id",
+    "candidate_id",
+    "cost_basis",
+    "cost_policy_id",
+    "cost_policy_version",
+    "cost_scenario",
+    "cost_scenario_hash",
+    "cost_scenario_id",
+    "cost_scenario_version",
+    "data_dependency_status",
+    "dataset_hash",
+    "dataset_id",
+    "decision",
+    "decision_date",
+    "decision_reason",
+    "drift_status",
+    "finalized",
+    "formal_order_allowed",
+    "instrument_type",
+    "lot_type",
+    "natural_matured_sample_count",
+    "next_step",
+    "outcome_dependency_status",
+    "policy_estimate_date",
+    "reason",
+    "receipt_path",
+    "recoverable",
+    "research_order_amount_twd",
+    "research_order_quantity_shares",
+    "run_id",
+    "run_scope",
+    "schema_version",
+    "shadow_only",
+    "status",
+    "steps",
+    "training_diagnostics",
+    "training_lineage_manifest_hash",
+    "training_lineage_manifest_path",
+    "training_lineage_status",
+)
+BANKTAIWAN_RECEIPT_PROJECTION_KEY_COUNT = 39
+
 from ml_module.recommendation_calibration_learning_runner import (  # noqa: E402
     DailyRecommendationLearningRunner,
 )
@@ -706,6 +779,7 @@ def _stored_cost_scenario(
     *,
     source_path: Path,
     allow_legacy_marker_missing_freeze: bool = False,
+    candidate_relocation_root: Path | None = None,
 ) -> tuple[RecommendationCostScenario | None, str | None]:
     """Resolve one shared-root marker without ever inventing a new lane.
 
@@ -750,6 +824,7 @@ def _stored_cost_scenario(
             payload,
             source_path=source_path,
             allow_missing_candidate_freeze_hash=allow_legacy_marker_missing_freeze,
+            candidate_relocation_root=candidate_relocation_root,
         )
 
     try:
@@ -784,6 +859,7 @@ def _stored_cost_scenario(
             payload,
             source_path=source_path,
             allow_missing_candidate_freeze_hash=allow_legacy_marker_missing_freeze,
+            candidate_relocation_root=candidate_relocation_root,
         )
         if error is not None or candidate_scenario is None:
             return None, error or f"{source_path}:unverifiable_cost_scenario:candidate_missing"
@@ -800,6 +876,7 @@ def _stored_cost_scenario_from_candidate_root(
     *,
     source_path: Path,
     allow_missing_candidate_freeze_hash: bool = False,
+    candidate_relocation_root: Path | None = None,
 ) -> tuple[RecommendationCostScenario | None, str | None]:
     """Recover a legacy pointer's lane from verified candidate artifacts.
 
@@ -860,11 +937,76 @@ def _stored_cost_scenario_from_candidate_root(
                 f"{marker_key}",
             )
     try:
-        candidate_root = Path(str(candidate_root_value)).expanduser().resolve()
+        original_candidate_path = Path(str(candidate_root_value)).expanduser()
+        original_candidate_root = original_candidate_path.resolve()
+        candidate_root = original_candidate_root
+        relocated = False
+        relocated_candidate_identity: tuple[int, int, int, int, int] | None = None
+        relocated_manifest_identity: tuple[int, int, int, int, int] | None = None
+        if candidate_relocation_root is not None:
+            configured_root_path = Path(candidate_relocation_root).expanduser()
+            configured_root = configured_root_path.resolve()
+            marker_anchor = Path(source_path).expanduser().resolve()
+            try:
+                marker_anchor.relative_to(configured_root)
+            except ValueError:
+                configured_anchor = False
+            else:
+                configured_anchor = configured_root == BANKTAIWAN_CURRENT_CANDIDATE_ROOT.resolve()
+            try:
+                original_candidate_root.stat()
+            except FileNotFoundError:
+                original_root_missing = True
+            except OSError:
+                # 權限錯誤等不可讀狀態不得觸發跨根 fallback。
+                original_root_missing = False
+            else:
+                original_root_missing = False
+            if (
+                configured_anchor
+                and original_root_missing
+                and ".." not in original_candidate_path.parts
+            ):
+                try:
+                    relative_candidate = original_candidate_root.relative_to(
+                        BANKTAIWAN_LEGACY_CANDIDATE_ROOT.resolve()
+                    )
+                except ValueError:
+                    relative_candidate = None
+                if relative_candidate is not None and relative_candidate.parts and ".." not in relative_candidate.parts:
+                    relocated_root = _relocated_target_has_plain_containment(
+                        configured_root_path,
+                        relative_candidate,
+                    )
+                    if relocated_root is not None:
+                        relocated_candidate_path = relocated_root / "candidate.json"
+                        relocated_manifest_path = relocated_root / "manifest.json"
+                        relocated_candidate_identity = _relocated_metadata_identity(
+                            relocated_candidate_path
+                        )
+                        relocated_manifest_identity = _relocated_metadata_identity(
+                            relocated_manifest_path
+                        )
+                        if (
+                            relocated_candidate_identity is not None
+                            and relocated_manifest_identity is not None
+                        ):
+                            candidate_root = relocated_root
+                            relocated = True
         candidate_path = candidate_root / "candidate.json"
         manifest_path = candidate_root / "manifest.json"
-        candidate_metadata = json.loads(candidate_path.read_text(encoding="utf-8"))
-        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if relocated:
+            with candidate_path.open("rb") as stream:
+                candidate_bytes = stream.read(2 * 1024 * 1024 + 1)
+            with manifest_path.open("rb") as stream:
+                manifest_bytes = stream.read(2 * 1024 * 1024 + 1)
+            if max(len(candidate_bytes), len(manifest_bytes)) > 2 * 1024 * 1024:
+                return None, f"{source_path}:unverifiable_cost_scenario:relocated_metadata_size_limit"
+        else:
+            candidate_bytes = candidate_path.read_bytes()
+            manifest_bytes = manifest_path.read_bytes()
+        candidate_metadata = json.loads(candidate_bytes.decode("utf-8"))
+        manifest_payload = json.loads(manifest_bytes.decode("utf-8"))
     except (OSError, RuntimeError, UnicodeError, json.JSONDecodeError) as exc:
         return (
             None,
@@ -1024,6 +1166,27 @@ def _stored_cost_scenario_from_candidate_root(
     )
     if candidate_metadata.get("label_registry_hash") != expected_label_registry_hash:
         return None, f"{source_path}:unverifiable_cost_scenario:label_registry_hash_mismatch"
+    if relocated:
+        try:
+            with candidate_path.open("rb") as stream:
+                candidate_readback = stream.read(2 * 1024 * 1024 + 1)
+            with manifest_path.open("rb") as stream:
+                manifest_readback = stream.read(2 * 1024 * 1024 + 1)
+            if (
+                candidate_root.resolve() != candidate_root
+                or candidate_path.resolve().parent != candidate_root
+                or manifest_path.resolve().parent != candidate_root
+                or _relocated_metadata_identity(candidate_path) != relocated_candidate_identity
+                or _relocated_metadata_identity(manifest_path) != relocated_manifest_identity
+                or candidate_readback != candidate_bytes
+                or manifest_readback != manifest_bytes
+            ):
+                return None, f"{source_path}:unverifiable_cost_scenario:relocated_candidate_metadata_changed_during_read"
+        except OSError as exc:
+            return (
+                None,
+                f"{source_path}:unverifiable_cost_scenario:relocated_candidate_metadata_unreadable_after_validation:{type(exc).__name__}",
+            )
     return scenario, None
 
 
@@ -1032,6 +1195,74 @@ def _is_sha256_digest(value: object) -> bool:
         return False
     digest = value[len("sha256:") :]
     return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+
+
+def _path_has_reparse_attribute(path: Path, metadata: os.stat_result) -> bool:
+    """同時拒絕 Windows reparse point 與一般符號連結。"""
+
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return path.is_symlink() or bool(getattr(metadata, "st_file_attributes", 0) & reparse_attribute)
+
+
+def _relocated_metadata_identity(path: Path) -> tuple[int, int, int, int, int] | None:
+    """核對有界的一般檔案身份，拒絕連結與超大 JSON。"""
+
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return None
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or _path_has_reparse_attribute(path, metadata)
+        or metadata.st_size < 0
+        or metadata.st_size > 2 * 1024 * 1024
+    ):
+        return None
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_size),
+        int(getattr(metadata, "st_mtime_ns", int(metadata.st_mtime * 1_000_000_000))),
+        int(getattr(metadata, "st_ctime_ns", int(metadata.st_ctime * 1_000_000_000))),
+    )
+
+
+def _relocated_target_has_plain_containment(
+    configured_root: Path,
+    relative_candidate: Path,
+) -> Path | None:
+    """逐層檢查配置根與相對候選路徑，不穿越 reparse point。"""
+
+    lexical_root = configured_root
+    lexical_anchor = Path(lexical_root.anchor)
+    try:
+        anchor_metadata = lexical_anchor.lstat()
+    except OSError:
+        return None
+    if not stat.S_ISDIR(anchor_metadata.st_mode) or _path_has_reparse_attribute(lexical_anchor, anchor_metadata):
+        return None
+    lexical_target = lexical_anchor
+    components = (*lexical_root.parts[1:], *relative_candidate.parts)
+    for component in components:
+        if component in ("", ".", ".."):
+            return None
+        lexical_target = lexical_target / component
+        try:
+            component_metadata = lexical_target.lstat()
+        except OSError:
+            return None
+        if (
+            not stat.S_ISDIR(component_metadata.st_mode)
+            or _path_has_reparse_attribute(lexical_target, component_metadata)
+        ):
+            return None
+    try:
+        resolved_root = lexical_root.resolve()
+        resolved_target = lexical_target.resolve()
+        resolved_target.relative_to(resolved_root)
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return resolved_target
 
 
 def _sha256_file(path: Path) -> str:
@@ -1103,6 +1334,7 @@ def _cost_scenario_root_conflict(
             payload,
             source_path=marker_path,
             allow_legacy_marker_missing_freeze=True,
+            candidate_relocation_root=root,
         )
         if error is not None or scenario is None:
             return f"cost_scenario_root_conflict:{error or marker_path}"
@@ -1116,6 +1348,7 @@ def _cost_scenario_root_conflict(
                 payload,
                 scenario=scenario,
                 source_path=marker_path,
+                candidate_relocation_root=root,
             )
             if receipt_error is not None:
                 return f"cost_scenario_root_conflict:{receipt_error}"
@@ -1420,11 +1653,251 @@ def _is_unverifiable_rule_only_pointer(payload: Mapping[str, Any]) -> bool:
     )
 
 
+def _banktaiwan_projection_path_identity(path: Path, max_bytes: int) -> tuple[int, ...] | None:
+    """只接受無 reparse、無硬連結且大小受限的普通檔案。"""
+
+    if not path.is_absolute() or ".." in path.parts:
+        return None
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+    current = Path(path.anchor)
+    try:
+        anchor_info = current.lstat()
+    except OSError:
+        return None
+    if (
+        not stat.S_ISDIR(anchor_info.st_mode)
+        or stat.S_ISLNK(anchor_info.st_mode)
+        or getattr(anchor_info, "st_file_attributes", 0) & reparse_flag
+    ):
+        return None
+    for component in path.parts[1:-1]:
+        if component in ("", ".", ".."):
+            return None
+        current = current / component
+        try:
+            info = current.lstat()
+        except OSError:
+            return None
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & reparse_flag
+        ):
+            return None
+    try:
+        info = path.lstat()
+    except OSError:
+        return None
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or getattr(info, "st_file_attributes", 0) & reparse_flag
+        or getattr(info, "st_nlink", 1) != 1
+        or info.st_size < 0
+        or info.st_size > max_bytes
+    ):
+        return None
+    return (
+        int(info.st_dev),
+        int(info.st_ino),
+        int(info.st_mode),
+        int(info.st_size),
+        int(getattr(info, "st_mtime_ns", int(info.st_mtime * 1_000_000_000))),
+        int(getattr(info, "st_ctime_ns", int(info.st_ctime * 1_000_000_000))),
+        int(getattr(info, "st_nlink", 1)),
+        int(getattr(info, "st_file_attributes", 0)),
+    )
+
+
+def _read_banktaiwan_projection_file(path: Path, max_bytes: int) -> tuple[bytes, str] | None:
+    """以 no-follow 開啟方式讀取穩定的普通檔案並回傳其 SHA-256。"""
+
+    before = _banktaiwan_projection_path_identity(path, max_bytes)
+    if before is None:
+        return None
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        opened_before = os.fstat(descriptor)
+        opened_identity = (
+            int(opened_before.st_dev),
+            int(opened_before.st_ino),
+            int(opened_before.st_mode),
+            int(opened_before.st_size),
+            int(getattr(opened_before, "st_mtime_ns", int(opened_before.st_mtime * 1_000_000_000))),
+            int(getattr(opened_before, "st_ctime_ns", int(opened_before.st_ctime * 1_000_000_000))),
+            int(getattr(opened_before, "st_nlink", 1)),
+            int(getattr(opened_before, "st_file_attributes", 0)),
+        )
+        if not stat.S_ISREG(opened_before.st_mode) or opened_identity != before:
+            return None
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            content = handle.read(max_bytes + 1)
+        opened_after = os.fstat(descriptor)
+        opened_after_identity = (
+            int(opened_after.st_dev),
+            int(opened_after.st_ino),
+            int(opened_after.st_mode),
+            int(opened_after.st_size),
+            int(getattr(opened_after, "st_mtime_ns", int(opened_after.st_mtime * 1_000_000_000))),
+            int(getattr(opened_after, "st_ctime_ns", int(opened_after.st_ctime * 1_000_000_000))),
+            int(getattr(opened_after, "st_nlink", 1)),
+            int(getattr(opened_after, "st_file_attributes", 0)),
+        )
+        after = _banktaiwan_projection_path_identity(path, max_bytes)
+        if len(content) > max_bytes or opened_after_identity != opened_identity or after != before:
+            return None
+        return content, hashlib.sha256(content).hexdigest()
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+
+
+def _strict_json_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """解析釘選 JSON 時拒絕重複欄位。"""
+
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("JSON object contains duplicate keys")
+        result[key] = value
+    return result
+
+
+def _strict_json_constant(value: str) -> object:
+    """拒絕 JSON 規格外的 NaN 與 Infinity。"""
+
+    raise ValueError(f"JSON contains invalid constant: {value}")
+
+
+def _json_projection_value_equal(left: object, right: object) -> bool:
+    """以 JSON 型別與完整巢狀值比較兩個投影欄位。"""
+
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict) and isinstance(right, dict):
+        if left.keys() != right.keys():
+            return False
+        return all(_json_projection_value_equal(left[key], right[key]) for key in left)
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            _json_projection_value_equal(left[index], right[index])
+            for index in range(len(left))
+        )
+    return left == right
+
+
+def _read_banktaiwan_latest_status_receipt_projection(
+    payload: Mapping[str, Any],
+    *,
+    logical_receipt_path: Path,
+    source_path: Path,
+    candidate_relocation_root: Path | None,
+) -> tuple[Path, Mapping[str, Any]] | None:
+    """只讀取唯一已核准的 D 收據，並要求完整投影到釘選 latest status。"""
+
+    if (
+        str(logical_receipt_path) != str(BANKTAIWAN_LEGACY_LATEST_STATUS_RECEIPT_PATH)
+        or str(source_path) != str(BANKTAIWAN_CURRENT_LATEST_STATUS_PATH)
+        or candidate_relocation_root is None
+        or str(candidate_relocation_root) != str(BANKTAIWAN_CURRENT_CANDIDATE_ROOT)
+    ):
+        return None
+    try:
+        logical_receipt_path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        return None
+    else:
+        return None
+
+    proof = _read_banktaiwan_projection_file(
+        BANKTAIWAN_LATEST_STATUS_MIGRATION_PROOF_PATH,
+        1024 * 1024,
+    )
+    latest = _read_banktaiwan_projection_file(
+        BANKTAIWAN_CURRENT_LATEST_STATUS_PATH,
+        64 * 1024 * 1024,
+    )
+    receipt = _read_banktaiwan_projection_file(
+        BANKTAIWAN_CURRENT_LATEST_STATUS_RECEIPT_PATH,
+        2 * 1024 * 1024,
+    )
+    if (
+        proof is None
+        or proof[1] != BANKTAIWAN_LATEST_STATUS_MIGRATION_PROOF_SHA256
+        or latest is None
+        or latest[1] != BANKTAIWAN_PINNED_LATEST_STATUS_SHA256
+        or len(latest[0]) != BANKTAIWAN_PINNED_LATEST_STATUS_BYTES
+        or receipt is None
+        or receipt[1] != BANKTAIWAN_PINNED_RECEIPT_SHA256
+        or len(receipt[0]) != BANKTAIWAN_PINNED_RECEIPT_BYTES
+    ):
+        return None
+    try:
+        proof_rows = [
+            json.loads(
+                line,
+                object_pairs_hook=_strict_json_object_pairs,
+                parse_constant=_strict_json_constant,
+            )
+            for line in proof[0].decode("utf-8").splitlines()
+            if line.strip()
+        ]
+        pinned_latest_payload = json.loads(
+            latest[0].decode("utf-8"),
+            object_pairs_hook=_strict_json_object_pairs,
+            parse_constant=_strict_json_constant,
+        )
+        receipt_payload = json.loads(
+            receipt[0].decode("utf-8"),
+            object_pairs_hook=_strict_json_object_pairs,
+            parse_constant=_strict_json_constant,
+        )
+    except (UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(pinned_latest_payload, Mapping) or not isinstance(receipt_payload, Mapping):
+        return None
+    migration_matches = [
+        row
+        for row in proof_rows
+        if isinstance(row, Mapping)
+        and row.get("Root") == "FA_Data_Shadow_BankTaiwan"
+        and row.get("Relative") == "recommendation_learning\\latest_status.json"
+    ]
+    if (
+        len(migration_matches) != 1
+        or migration_matches[0].get("DBytes") != BANKTAIWAN_PINNED_LATEST_STATUS_BYTES
+        or migration_matches[0].get("FBytes") != BANKTAIWAN_PINNED_LATEST_STATUS_BYTES
+        or str(migration_matches[0].get("D_SHA256", "")).lower()
+        != BANKTAIWAN_PINNED_LATEST_STATUS_SHA256
+        or str(migration_matches[0].get("F_SHA256", "")).lower()
+        != BANKTAIWAN_PINNED_LATEST_STATUS_SHA256
+        or migration_matches[0].get("Status") != "PASS"
+        or not _json_projection_value_equal(dict(payload), pinned_latest_payload)
+        or tuple(sorted(receipt_payload)) != tuple(sorted(BANKTAIWAN_RECEIPT_PROJECTION_KEYS))
+        or len(BANKTAIWAN_RECEIPT_PROJECTION_KEYS) != BANKTAIWAN_RECEIPT_PROJECTION_KEY_COUNT
+        or str(receipt_payload.get("receipt_path") or "")
+        != str(BANKTAIWAN_LEGACY_LATEST_STATUS_RECEIPT_PATH)
+    ):
+        return None
+    for key in BANKTAIWAN_RECEIPT_PROJECTION_KEYS:
+        if key not in payload or not _json_projection_value_equal(receipt_payload[key], payload[key]):
+            return None
+    return BANKTAIWAN_CURRENT_LATEST_STATUS_RECEIPT_PATH, receipt_payload
+
+
 def _load_latest_status_receipt_anchor(
     payload: Mapping[str, Any],
     *,
     scenario: RecommendationCostScenario,
     source_path: Path,
+    candidate_relocation_root: Path | None = None,
 ) -> tuple[
     Path | None,
     Mapping[str, Any] | None,
@@ -1443,9 +1916,26 @@ def _load_latest_status_receipt_anchor(
             None,
             f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_missing",
         )
-    receipt_path = Path(receipt_value).expanduser().resolve()
+    logical_receipt_path = Path(receipt_value).expanduser().resolve()
+    receipt_path = logical_receipt_path
     try:
         receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        projection = _read_banktaiwan_latest_status_receipt_projection(
+            payload,
+            logical_receipt_path=logical_receipt_path,
+            source_path=source_path,
+            candidate_relocation_root=candidate_relocation_root,
+        )
+        if projection is None:
+            return (
+                None,
+                None,
+                None,
+                f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_unreadable:"
+                f"{type(exc).__name__}",
+            )
+        receipt_path, receipt_payload = projection
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return (
             None,
@@ -1461,7 +1951,7 @@ def _load_latest_status_receipt_anchor(
             None,
             f"{source_path}:unverifiable_cost_scenario:latest_status_receipt_invalid",
         )
-    if str(receipt_payload.get("receipt_path") or "") != str(receipt_path):
+    if str(receipt_payload.get("receipt_path") or "") != str(logical_receipt_path):
         return (
             None,
             None,
@@ -1472,6 +1962,7 @@ def _load_latest_status_receipt_anchor(
         receipt_payload,
         source_path=receipt_path,
         allow_legacy_marker_missing_freeze=True,
+        candidate_relocation_root=candidate_relocation_root,
     )
     if error is not None or receipt_scenario is None:
         return (

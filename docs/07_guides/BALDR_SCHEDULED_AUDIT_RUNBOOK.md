@@ -80,6 +80,8 @@ Pacific Task 隨 DST 改變本地鐘點所代表的 UTC 時間；台北 offset l
 
 ## 5. 彙報與不變事項
 
+稽核時將Task真正`LastRunTime`／result與producer run／時間／外部SHA交叉核對；可變latest的裸`passed`缺乏同次身分時保持unknown，不當自然恢復。PowerShell讀JSON日期須保留字串或轉為同型別ticks比較，避免DateTime反序列化造成假差異。測試pipeline必須在fixture及外層runner隔離DATA_ROOT、OUTPUT_ROOT、CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT；若發現正式metadata受測試污染，先保存原貌與SHA、定位非自然run及影響，不刪改history或藉新測試重播正式writer。人工cache修復需另有精確授權、不可變原件SHA與無活writer的前置核驗，另存修復收據且不當自然執行；具名案例見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md#1320-後續唯讀核對與-qa-隔離修復)。
+
 每份 audit 至少包含日期／時區、21 tasks 的查詢覆蓋、read failure／unknown、兩個 heartbeat 讀回狀態（若有）、新增／恢復／持續 blocker、exact run／receipt／hash、下游結果和下一步 owner。只對新失敗、恢復、完成、超期或需要人處理的差異詳報；例行休市、正常週頻等待、自然成熟等待和既有人工待審依 notification 契約處理。
 
 這項稽核不得自行 HTTP 抓資料、執行 writer／producer／訓練、修改 DB／sidecar／repo output、改 Task／Codex automation／credentials／ACL、交易、promotion、commit 或 push。發現需要修正時，留下具體 affected run、原始 blocker、驗收條件與所需 owner；若另獲明確授權再以獨立 scope 修正。

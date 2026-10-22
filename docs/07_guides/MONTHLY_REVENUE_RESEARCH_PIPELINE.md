@@ -65,3 +65,5 @@ cutoff須有時區。先核index與全部原件再選版；結果保留市場、
 `--report`是全域參數，必須放在子命令前；目的地僅限repo `output`的新檔，已存在時拒絕覆寫。`rejected`或退出碼2應依`error`處理；不能透過改時鐘、重寫原件或取消SHA核對解鎖。
 
 MOPS 完整 HTML 若宣告 Big5 且含 CP950 擴充，transport 只對 exact 官方 MOPS host 提供 strict CP950 相容路徑，不使用 replacement decode；原 bytes、宣告與 SHA 保留。不完整 EOF 仍不能匯入。已有完整三跳而舊解析失敗時，可由工程流程從固定 SHA 原件離線重建、用既有 reader 重驗後再以 `import-history-capture` 匯入新的隔離 archive；不重抓、改原 FAIL 或倒填官方可用時間。2026-06 的新隔離候選及尚未接受的單位／用途界線見 [全用途資料契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)。
+
+六月兩份固定HTML另有獨立scale-only proof，工程API建立／讀回都必須重驗原capture；僅能標示「原報表千元尺度、幣別未知」，不能放入archive既有完整unit proof欄位、改unit_status或直接乘1000換算TWD。它只覆蓋具名產業表與五個金額欄，不影響三個原公布百分率、兩個OpenAPI、既有research-current資格或歷史PIT。空存託憑證表與全市場合計不計公司coverage；精確原件／proof SHA及實際QA見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。

@@ -51,6 +51,10 @@ def _read_fixture_files_inside_the_sandbox(
 ) -> None:
     """The native Windows ancestor-handle API is blocked by this sandbox."""
 
+    # fixture 自身隔離主機設定；不能只依賴外層 QA runner 清除環境。
+    for name in ("DATA_ROOT", "OUTPUT_ROOT", "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT"):
+        monkeypatch.delenv(name, raising=False)
+
     def read_regular_file(path: Path, root: Path, *, max_bytes: int | None = None) -> bytes:
         if path.is_symlink():
             raise OSError("fixture symlink rejected")

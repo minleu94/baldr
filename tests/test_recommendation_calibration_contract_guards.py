@@ -46,6 +46,14 @@ from data_module.official_daily_price_custody import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_installed_data_roots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """臨時來源測試不得繼承主機正式資料與排程輸出定位。"""
+
+    for name in ("DATA_ROOT", "OUTPUT_ROOT", "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _formal_quick_fixture(
     tmp_path: Path,
     *,

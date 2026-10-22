@@ -16,6 +16,10 @@ from data_module.backup_retention import (
 )
 
 
+_SOURCE_ROW_ORDINAL_KEY = "_tpex_source_row_ordinal"
+_SOURCE_ROW_SHA256_KEY = "_tpex_source_row_sha256"
+
+
 @dataclass(frozen=True)
 class TpexDailyPriceDiagnostic:
     code: str
@@ -36,10 +40,14 @@ class TpexDailyPriceDiagnostic:
 class TpexDailyPriceNormalizeResult:
     rows: tuple[dict[str, object], ...]
     diagnostics: tuple[TpexDailyPriceDiagnostic, ...] = ()
+    source_row_ordinals: tuple[int, ...] = ()
+    source_row_sha256s: tuple[str | None, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "rows", tuple(self.rows))
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
+        object.__setattr__(self, "source_row_ordinals", tuple(self.source_row_ordinals))
+        object.__setattr__(self, "source_row_sha256s", tuple(self.source_row_sha256s))
 
 
 @dataclass(frozen=True)
@@ -90,7 +98,9 @@ def normalize_tpex_daily_price_rows(
 ) -> TpexDailyPriceNormalizeResult:
     rows: list[dict[str, object]] = []
     diagnostics: list[TpexDailyPriceDiagnostic] = []
-    for source_row in source_rows:
+    source_ordinals: dict[tuple[str, str], int] = {}
+    source_hashes: dict[tuple[str, str], str | None] = {}
+    for ordinal, source_row in enumerate(source_rows):
         stock_code = _first(source_row, "SecuritiesCompanyCode", "Code")
         stock_name = _first(source_row, "CompanyName", "CompanyAbbreviation", "Name")
         raw_date = _first(source_row, "Date") or fallback_date
@@ -120,8 +130,7 @@ def normalize_tpex_daily_price_rows(
             continue
 
         change_sign, change_value = _split_change(_first(source_row, "Change", "ChangePrice"))
-        rows.append(
-            {
+        normalized_row: dict[str, object] = {
                 "日期": _normalize_date(raw_date),
                 "證券代號": stock_code,
                 "證券名稱": stock_name,
@@ -140,12 +149,28 @@ def normalize_tpex_daily_price_rows(
                 "最後揭示賣量": _int_value(_first(source_row, "LastBestAskVolume", "BestAskVolume")),
                 "本益比": _decimal_text(_first(source_row, "PERatio", "PE", "P/E")),
             }
+        rows.append(normalized_row)
+        key = (str(normalized_row["證券代號"]), str(normalized_row["日期"]))
+        supplied_ordinal = source_row.get(_SOURCE_ROW_ORDINAL_KEY)
+        source_ordinals[key] = (
+            supplied_ordinal
+            if isinstance(supplied_ordinal, int) and not isinstance(supplied_ordinal, bool)
+            and supplied_ordinal >= 0
+            else ordinal
         )
+        supplied_hash = source_row.get(_SOURCE_ROW_SHA256_KEY)
+        source_hashes[key] = supplied_hash if isinstance(supplied_hash, str) else None
 
     deduped: dict[tuple[str, str], dict[str, object]] = {}
     for row in rows:
         deduped[(str(row["證券代號"]), str(row["日期"]))] = row
-    return TpexDailyPriceNormalizeResult(rows=tuple(deduped.values()), diagnostics=tuple(diagnostics))
+    surviving_keys = tuple(deduped)
+    return TpexDailyPriceNormalizeResult(
+        rows=tuple(deduped.values()),
+        diagnostics=tuple(diagnostics),
+        source_row_ordinals=tuple(source_ordinals[key] for key in surviving_keys),
+        source_row_sha256s=tuple(source_hashes[key] for key in surviving_keys),
+    )
 
 
 def build_tpex_daily_price_plan(

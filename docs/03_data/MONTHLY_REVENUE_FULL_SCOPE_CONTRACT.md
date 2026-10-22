@@ -40,4 +40,8 @@ Owner 授權與來源資格分開：來源身分／授權、每批品質、金�
 
 MOPS 官方 host 宣告 Big5 而包含 CP950 擴充時，先依宣告 strict decode，僅該 codec 失敗且 exact MOPS host 才以 CP950 strict decode；壞 bytes 仍拒絕，原宣告與 raw hash 保持。不將 charset 相容當來源接受。這批歷史 HTML 的 license/use 尚未接受、金額單位仍 `unknown_no_twd_conversion`；available_at 是 2026-10-23 Taipei 的本機事後捕獲觀測，非 2026-06 官方發布時間。歷史 PIT、正式 Scoring／Backtest／ML 與其餘用途資格未因此成立，也未改正式 registry／DB 或既有百分率研究包。
 
-雙市場六月原 HTML 的產業表頭確有 `單位：千元`，capture 的 `observed_unit_annotations` 已保留這項原文。這只綁定上述歷史 HTML 原件，尚未構成貨幣、欄位 mapping 與用途接受齊全的 typed unit proof，也不能外推成兩個 OpenAPI 金額欄的單位證明；不據此乘 1,000 或標為 TWD。
+雙市場六月原 HTML 的產業表頭確有 `單位：千元`。另建的 `mops-monthly-revenue-unit-scale-proof.v1` 只為這兩份固定raw保存逐產業／欄位的尺度證據：TWSE 33表／995公司列、TPEx 28表／865公司列；TWSE「存託憑證」只有明示零合計的空表，保留其scope但不計公司列，亦不混入全市場sibling合計表。五個金額欄的scale為1000，三個百分率欄不適用；不換算任何原值。跨列備註不在這份10欄mapping中，不藉此修改既有parser或archive。
+
+Builder、create-only writer及reader都由固定SHA／URL／CP950 profile的真capture重新推導逐表證據；手造proof、自算SHA、原件或scope漂移、連結／讀取期間替換均拒絕。TWSE proof SHA `c5a998b5be056507f452f1b5b70081d033eaf25ac6c5dcee6a4b74fdca1b9336`、TPEx `a89e429422406c02e6beb61381206006f4545d3e39b638c1cb7af7839eeb2e0b`，QA與固定原件見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
+這是scale-only proof，`currency=unknown`、PIT／金融資格=false，不是貨幣及用途接受齊全的unit proof，不塞入archive既有`unit_proof_sha256`或將`unit_status`改verified。兩個OpenAPI單位仍未知，不以此乘1,000或標TWD；r2 archive、原百分率研究與既有資格不變。

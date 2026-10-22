@@ -8,13 +8,17 @@ import json
 from pathlib import Path
 import time
 from typing import Callable, Mapping, Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, parse_qsl
 from urllib.request import Request, urlopen
 
 import pandas as pd
 import requests
 
 from data_module.tpex_daily_price_backfill import normalize_tpex_daily_price_rows
+from data_module.tpex_daily_price_backfill import (
+    _SOURCE_ROW_ORDINAL_KEY,
+    _SOURCE_ROW_SHA256_KEY,
+)
 from data_module.official_daily_price_custody import (
     OfficialDailyPriceCustodyError,
     persist_official_daily_price_response,
@@ -23,6 +27,32 @@ from data_module.official_daily_price_custody import (
 
 TPEX_DAILY_CLOSE_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
 TPEX_AFTER_TRADING_OTC_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc"
+
+
+def _validate_official_response_identity(
+    *, requested_url: str, final_url: str,
+    request_parameters: Mapping[str, object], source_date: str | None,
+) -> None:
+    """固定請求端點與參數；轉址不得把其他主機回應歸為官方來源。"""
+
+    expected_date = _date_key(source_date) if source_date is not None else None
+    endpoint = TPEX_AFTER_TRADING_OTC_URL if expected_date else TPEX_DAILY_CLOSE_URL
+    expected_parameters: dict[str, object] = (
+        {"date": f"{expected_date[:4]}/{expected_date[4:6]}/{expected_date[6:8]}",
+         "type": "EW", "response": "json"}
+        if expected_date else {}
+    )
+    if dict(request_parameters) != expected_parameters:
+        raise ValueError("TPEx request parameters differ from requested source date")
+    for value in (requested_url, final_url):
+        parsed = urlsplit(value)
+        base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        if base != endpoint or parsed.fragment:
+            raise ValueError("TPEx response URL is outside the exact official endpoint")
+        if parsed.query:
+            pairs = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+            if len(pairs) != len(dict(pairs)) or dict(pairs) != expected_parameters:
+                raise ValueError("TPEx response URL parameters changed")
 
 
 class _UrlLibResponse:
@@ -73,6 +103,7 @@ class TpexDailyPriceSource:
 
     def update_for_date(self, date_value: str) -> TpexDailyPriceUpdateResult:
         requested_date = _date_key(date_value)
+        self._last_response_custody = None
         try:
             try:
                 source_rows = self.fetch_rows(requested_date)
@@ -97,6 +128,16 @@ class TpexDailyPriceSource:
         source_dates = sorted({str(row.get("日期")) for row in normalized.rows if row.get("日期")})
         source_date = source_dates[-1] if source_dates else None
         rows_for_date = [row for row in normalized.rows if row.get("日期") == requested_date]
+        selected_indexes = tuple(
+            index for index, row in enumerate(normalized.rows)
+            if row.get("日期") == requested_date
+        )
+        selected_ordinals = tuple(
+            normalized.source_row_ordinals[index] for index in selected_indexes
+        )
+        selected_source_hashes = tuple(
+            normalized.source_row_sha256s[index] for index in selected_indexes
+        )
         skipped_count = max(len(source_rows) - len(normalized.rows), 0)
 
         if not rows_for_date:
@@ -114,6 +155,12 @@ class TpexDailyPriceSource:
                 source_custody=self._last_response_custody,
             )
 
+        response_details = self._last_response_custody
+        raw_response = (
+            response_details.get("raw_response")
+            if isinstance(response_details, Mapping)
+            else None
+        )
         source_custody = self._persist_response_custody(
             source_date=source_date or requested_date,
             row_count=len(rows_for_date),
@@ -123,6 +170,37 @@ class TpexDailyPriceSource:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         output_file = self.output_dir / f"{requested_date}.csv"
         pd.DataFrame(rows_for_date).to_csv(output_file, index=False, encoding="utf-8-sig")
+        if source_custody is not None and self.source_custody_root is not None:
+            try:
+                from data_module.tpex_daily_price_publication import (
+                    create_download_projection_manifest,
+                )
+
+                if not isinstance(raw_response, bytes):
+                    raise ValueError("本次 TPEx response body 缺失")
+                source_custody = {
+                    **source_custody,
+                    "row_projection_manifest": create_download_projection_manifest(
+                        output_root=self.source_custody_root,
+                        data_root=self.output_dir.parent,
+                        csv_path=output_file,
+                        raw_response=raw_response,
+                        source_custody=source_custody,
+                        source_rows=source_rows,
+                        normalized_rows=rows_for_date,
+                        source_row_ordinals=selected_ordinals,
+                        source_row_sha256s=selected_source_hashes,
+                    ),
+                }
+            except Exception as evidence_error:
+                source_custody = {
+                    **source_custody,
+                    "row_projection_manifest": {
+                        "status": "unknown",
+                        "reason_code": "projection_manifest_failed",
+                        "error_type": type(evidence_error).__name__,
+                    },
+                }
         return TpexDailyPriceUpdateResult(
             success=True,
             message=(
@@ -283,9 +361,13 @@ class TpexDailyPriceSource:
 
         data = response_payload if response_payload is not None else response.json()
         response_url = getattr(response, "url", None) or url
+        _validate_official_response_identity(
+            requested_url=url, final_url=response_url,
+            request_parameters=params or {}, source_date=date_key,
+        )
         response_headers = getattr(response, "headers", None) or {}
         self._last_response_custody = {
-            "requested_url": response_url,
+            "requested_url": url,
             "final_url": response_url,
             "request_parameters": params or {},
             "http_status": int(getattr(response, "status_code", 200)),
@@ -297,7 +379,15 @@ class TpexDailyPriceSource:
             return _rows_from_after_trading_response(data, fallback_date=date_key)
         if not isinstance(data, list):
             raise ValueError("TPEX daily close response is not a list")
-        return data
+        return [
+            {
+                **dict(row),
+                _SOURCE_ROW_ORDINAL_KEY: ordinal,
+                _SOURCE_ROW_SHA256_KEY: _source_row_sha256(row),
+            }
+            for ordinal, row in enumerate(data)
+            if isinstance(row, Mapping)
+        ]
 
 
 def _date_key(value: str) -> str:
@@ -331,7 +421,7 @@ def _rows_from_after_trading_response(
     source_date = _date_key(str(table.get("date") or fallback_date))
     field_names = [str(field) for field in fields]
     rows: list[Mapping[str, Any]] = []
-    for values in data_rows:
+    for ordinal, values in enumerate(data_rows):
         if not isinstance(values, list):
             continue
         raw = {field_names[idx]: values[idx] for idx in range(min(len(field_names), len(values)))}
@@ -353,9 +443,24 @@ def _rows_from_after_trading_response(
                 "LatesAskPrice": _first_field(raw, "最後賣價"),
                 "LastBestAskVolume": _first_field(raw, "最後賣量"),
                 "Capitals": _first_field(raw, "發行股數"),
+                _SOURCE_ROW_ORDINAL_KEY: ordinal,
+                _SOURCE_ROW_SHA256_KEY: _source_row_sha256(values),
             }
         )
     return rows
+
+
+def _source_row_sha256(value: object) -> str:
+    import hashlib
+
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _first_field(row: Mapping[str, Any], text: str) -> Any:

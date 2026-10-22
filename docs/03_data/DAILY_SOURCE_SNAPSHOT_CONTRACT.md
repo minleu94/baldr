@@ -18,6 +18,14 @@
 
 這是既有下載鏈的工程修復，不補抓或回寫歷史資料、不啟動 maintainer；首見與批次觀測不冒充官方發布時刻、歷史 PIT、每日用途接受或較早可用小時。原試用包、缺方向舊列及原失敗保留。受限驗證與未驗邊界見 [128 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment128-twse-direction-text)。
 
+## TPEx 日價同次逐列來源證據（Track B）
+
+新TPEx下載在原始response列保存ordinal與列SHA，normalizer沿既有同鍵保留最後一列的政策傳遞勝出身分，不更改行情數值。下載projection重新以官方parser從固定raw bytes還原全部17欄，核對CSV每列／全檔SHA；只接受兩個具名TPEx HTTPS端點、原始請求URL、日期參數及相同官方端點的final URL，非官方redirect或參數漂移拒絕。新觀測不改既存raw／首見custody原件。
+
+Quick只將本次`update_tpex_daily_prices`回報的`source_custody[].row_projection_manifest`傳給SQLite同步。`UpdateService`在原upsert後另發`tpex_row_evidence`：再驗原raw／custody／observation、parser重建、CSV、合併frame唯一鍵及唯讀SQLite同鍵17欄；缺列、值漂移、同鍵歧義不獲該列映射，不從目錄掃描舊件補來源。證據保存失敗回報unknown，不重寫已提交行情。
+
+新下載與SQLite publication均create-only並附外部artifact SHA；`observed_at`只代表response本機觀測，`source_published_at=None`、`available_at=None`，formal／PIT／training均false。它是前瞻列證據，不是來源用途接受、歷史修訂倉或Forward合格resolver。驗證與待自然界線見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
 ## 具名營益固定版本（Increment117）
 
 此接受僅涵蓋[政府開放資料20762](https://data.gov.tw/dataset/20762)之`d9778530…b609`原CSV、2330／2026-H1的營收與四個利潤率；不是全資料集單位契約。Root以既存完整官方發行人PDF獨立核對幣別、半年累計基礎與顯示精度，產品數值只取開放CSV。營收原值`2404483.69`百萬元以Decimal轉TWD，四比率保留原百分比，不以PDF較低精度替換。其他公司、前期及PDF重展示用途未接受。

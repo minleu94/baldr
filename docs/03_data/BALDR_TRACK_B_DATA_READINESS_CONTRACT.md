@@ -46,13 +46,17 @@ Root 新增的修訂 custody profile 只處理三份精確修訂 run 的舊資�
 
 單 chunk／manifest 上限各 512 KiB，每 run 64 MiB／128 chunks／500,000 rows／4,096 queries／10,000 outcomes；保留目錄達 4,096 runs 或 12 GiB 即拒絕，不自行清理。Consumer 應依 manifest／chunk SHA 讀回，仍須另外取得來源用途、availability、revision／custody 及 OOS 資格，不能只憑此引用授訓練或正式績效。
 
+上游新增TPEx同次逐列projection／SQLite publication，與既有TWSE列證據分開；只有本次raw、原列ordinal、parser重建17欄、CSV／merged唯一鍵及readonly SQLite全部吻合才產生映射。這是未接受用途的前瞻證據，並未接成Forward合格resolver，不能把觀測時刻填成官方availability或補回舊172筆。
+
+六月歷史HTML的獨立scale-only proof只證明固定兩個raw的逐表金額欄為千元尺度、百分率不乘1000；currency仍unknown，原archive的unit_status／金融unit proof不改。它不授ML金額特徵、歷史PIT或OOS，亦不外推兩個OpenAPI，詳[月營收契約](MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md#2026-10-22-track-b-歷史原件增量)。
+
 ## Track A：唯讀研究展示
 
 透過既有 read model／DTO 與 provider port 讀取，保持 `mode=ro`／`query_only`、固定 artifact 身份及明確 source/data/decision 日期；不要求 UI 直接解析正式 DB、原始 receipt 或私人 binding。新增 UI 欄位沿 typed interface 另行接線，Track B 不修改 UI。
 
 展示至少保留 source identity/version、資料截止日、available_at 依據、品質、coverage、各用途資格及拒絕原因。`current`／`stale`／`unknown`、`candidate`／`research_only`／`formal_qualified` 分別顯示；不可由 Task result=0 或資料檔存在變成「今日正式可用」。
 
-月營收目前可展示具名雙市場原值、百分率／YoY與原 unknown；未有外部固定 unit proof 時不標 TWD、不推定千元或乘 1000。Paper 的舊 cash／mark、研究 sizing 或 500,000 TWD 契約數字不可展示成真帳戶當日資金。Forward 的未成熟欄位保持 null 及目標日，不宣稱績效或交易權限。
+月營收目前可展示具名雙市場原值、百分率／YoY與原unknown；兩個OpenAPI金額不標TWD、不推定千元或乘1000。六月固定HTML可依獨立proof標示「原報表千元尺度、幣別未知」，仍不換算TWD。Paper的舊cash／mark、研究sizing或500,000 TWD契約數字不可展示成真帳戶當日資金。Forward的未成熟欄位保持null及目標日，不宣稱績效或交易權限。
 
 讀回不得寫行情 DB、來源檔、Ledger 或正式控制路徑；Research Run、使用者筆記的既有保存能力依原本獨立契約。金融 source gate 失敗可展示原因，不把一條線缺件擴成其他獨立研究資料的全域禁止。
 

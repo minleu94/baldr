@@ -898,6 +898,7 @@ class UpdateService :
     cancel_callback :Optional [Callable [[],bool ]]=None ,
     *,
     row_evidence_source_diagnostics: Optional[List[Dict[str, Any]]] = None,
+    row_evidence_tpex_source_diagnostics: Optional[List[Dict[str, Any]]] = None,
     )->Dict [str ,Any ]:
         """將既有 CSV 更新結果同步到 SQLite，保留日常 CSV 輸出行為。"""
         import logging
@@ -1112,6 +1113,29 @@ class UpdateService :
                         'status': 'unknown',
                         'reason_code': 'publication_failed',
                     }
+                if row_evidence_tpex_source_diagnostics:
+                    from data_module.tpex_daily_price_publication import (
+                        publish_sqlite_row_evidence as publish_tpex_row_evidence,
+                    )
+
+                    try:
+                        result['tpex_row_evidence'] = publish_tpex_row_evidence(
+                            output_root=self.config.output_root,
+                            data_root=self.config.data_root,
+                            database_path=db.db_path,
+                            source_diagnostics=row_evidence_tpex_source_diagnostics,
+                            merged_frame=df,
+                        )
+                    except Exception as evidence_error:
+                        # 已提交的資料不重寫；TPEx 證據失敗不授來源或 PIT 資格。
+                        logger.warning(
+                            "[UpdateService] TPEx SQLite row evidence unavailable: %s",
+                            type(evidence_error).__name__,
+                        )
+                        result['tpex_row_evidence'] = {
+                            'status': 'unknown',
+                            'reason_code': 'publication_failed',
+                        }
             return result
         except Exception as e :
             logger .exception ("[UpdateService] 同步 SQLite 失敗: source=%s",source )

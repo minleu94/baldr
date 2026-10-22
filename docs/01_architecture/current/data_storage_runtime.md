@@ -48,6 +48,8 @@ TWSE 日價下載的新 parser `twse.mi_index.direction_text.v2` 先解析明確
 
 ## 讀寫與保存契約
 
+TPEx日價沿原下載／normalizer／CSV／SQLite同步另保存同次逐列來源證據；原始response的勝出ordinal與SHA經官方parser重建17欄，Quick只轉交本次projection，application在upsert後唯讀核SQLite同鍵值。原請求URL與final URL分別保存並核官方端點／日期參數；舊CSV不補來源、歧義列不歸因。獨立`tpex_row_evidence`不改原TWSE欄位，availability／正式來源／PIT／training仍未接受，詳[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#tpex-日價同次逐列來源證據track-b)。
+
 Source題材法人版本另用flow-only v2 descriptor，同包只放原映射副本；外部daily目錄與用途檔以精確pins唯讀綁原位置，不重seal／搬移或建立空價格DB。v1同包SQLite版保持，v2的實際保存小時與原來源時鐘各自核，不給歷史PIT。新descriptor的schema、用途、partial及變動守衛見[每日來源契約](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md#題材tpex股數診斷版本source-v2)；目前QA200為限定Source，201a真原件與202e正常Main3560→51796已限定驗證，固定09不含。
 
 後續Source的F07筆記服務以`DailyMarketTechnicalSnapshotProofScope`保留最多128份同程序、repository發行的語義證明；`ContextVar`只在實際背景讀取內啟用。命中須重驗seal／登記／完整manifest，仍fresh讀取全部artifact並核bytes／SHA／layout，由本次bytes重建typed snapshot與原binding；保存計算binding沿原validator，不要求舊保存kernel等於現行kernel。Scope不存snapshot、raw或parent結果，新程序與未命中仍完整strict。P01的session capability不擴大，parent只重用同次plan純投影，所有child核對保持。此候選與原完整240秒旅程的驗證狀態見[F07 QA163](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)，不改來源用途、時鐘或PIT資格。

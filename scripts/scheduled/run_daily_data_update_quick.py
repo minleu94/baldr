@@ -559,7 +559,7 @@ def _sync_daily_price_files_with_twse_evidence(
     start_date: str,
     end_date: str,
 ) -> dict[str, Any]:
-    """只把本次 TWSE subprocess 明確回報的 projection 傳給 SQLite publisher。"""
+    """只傳本次兩市場 producer 明確回報的 projection，不掃描舊件補來源。"""
 
     twse_result: dict[str, Any] = {}
     for step in steps:
@@ -573,11 +573,28 @@ def _sync_daily_price_files_with_twse_evidence(
     trusted_diagnostics = [
         item for item in diagnostics if isinstance(item, dict)
     ]
+    tpex_diagnostics: list[dict[str, Any]] = []
+    for step in steps:
+        result = step.get("result")
+        if step.get("name") != "update_tpex_daily_prices" or not isinstance(result, dict):
+            continue
+        custody = result.get("source_custody", [])
+        if isinstance(custody, list):
+            tpex_diagnostics = [
+                item for item in custody
+                if isinstance(item, dict)
+                and isinstance(item.get("row_projection_manifest"), dict)
+            ]
+        break
+    extra: dict[str, Any] = {}
+    if tpex_diagnostics:
+        extra["row_evidence_tpex_source_diagnostics"] = tpex_diagnostics
     return service.sync_source_to_sqlite(
         "daily_price_files",
         start_date,
         end_date,
         row_evidence_source_diagnostics=trusted_diagnostics,
+        **extra,
     )
 
 

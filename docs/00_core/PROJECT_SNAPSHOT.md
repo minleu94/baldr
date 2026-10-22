@@ -4,6 +4,8 @@
 
 **後繼原始碼：圖卡優先研究介面。** 首頁並列風險／市場／候選／資料影響，題材高低端、覆蓋與最近研究靠近主圖卡，次要待辦及額外入口緊湊呈現；個股圖表與支持／反證同屏，報酬研究沿既有產品投影與欄位衝突拒絕。選股的原資料準備及完整條件可展開，原保存比較就近分列支持／反證／未知及原條件、日期、分母，策略參數、題材缺件與保存時間也已整理。只改 UI 展示，Daily Operations Recovery、金融計算與來源資格保持；固定 `06a4e1c15ed9` EXE 未含本增量。實際檢查及限制見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
 
+**Track A A1–A5 本輪 UX 工程已核對完成。** 個股主圖／支持反證、首頁資訊層級、原選股比較、題材雙端／成員、原策略報酬／回撤／成本與同原件返回均有實作及隔離Main驗證；最後補首頁原canonical候選經實際UI保存、Journal及新程序最近研究回訪。最新定向75、Workbench85、validator25／0／4與mypy1133檔通過；125%／150%實圖及逐項限制見[完成核對](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md#track-a-a1a5-完成核對)。不授正式金融資格，不代表固定EXE發布、Native或Owner UAT通過；本輪不再無限重做視覺設計。
+
 **目前 V2 最終研究候選為 `2026.10.21+06a4e1c15ed9`。** 唯一 runtime Source `06a4e1c15ed98d2b92a02967eaea03d5d47f49d8` 已集中 d9 的 UX／Paper、c6 月營收增量與搬遷路徑修復。新包同版、Launcher 正反 SHA、frozen Main 100%／125%／150% 的17路由及四尺寸關鍵矩陣通過，worker／pool 0 自然關閉；260項整合回歸、mypy1120檔通過。全主機224 Tasks發現21相關項，Direct維持停用；已修Source邊界但未重跑producer或宣稱自然恢復。51份Codex設定已核，僅更新兩個既有Baldr prompt，48暫停及其他設定保持。金額單位Unknown、歷史完整月份0、正式金融資格PARTIAL、Native停止與Owner未驗保持。候選／交付SHA、真實維運缺件與集中外部動作見[Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)；以下具名舊包及日期化紀錄按各自版本判讀。
 
 **月營收全用途研究工程已交付，金融資格分軌。** Owner 已正式撤銷 current-only 授權限制。後繼Source提供雙市場原件版本歸檔、歷史分批capture／匯入、外部SHA資格reader、百分率因子／選股／比較／分市場shadow排名與逐用途安全入口；原推薦投影另接精確OpenData profile。QA022的228項／mypy11與真原件1,981列通過，QA023增量72項／mypy3通過；YoY可用1,975、Unknown6。官方授權已核並顯名，但金額單位Unknown、歷史完整月份0、正式PIT及Scoring／回測／Paper／Forward／ML Gate未成立；QA024兩市場HTML期限截斷仍拒絕，原FAIL保持。沒有更新正式資料／資金、Main設定或RC。詳見[全用途契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)、[資格矩陣](../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)及[操作入口](../07_guides/MONTHLY_REVENUE_RESEARCH_PIPELINE.md)。以下 V2 固定候選與日期化結果按各自版本判讀。

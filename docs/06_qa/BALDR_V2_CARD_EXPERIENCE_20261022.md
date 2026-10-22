@@ -173,3 +173,36 @@ Registry等不同來源頁不顯示單股舊假設／草稿提示。原完整期
 收據 `single_owned_qa_eb6c236b8a6b42bf99837524fc9e7b27`、`single_owned_qa_68facb7c2ae44834baa282fe4d794703`、`single_owned_qa_43139af74d96464aab976c452f7dd305` 均排空、handles關閉及鎖釋放。早輪缺Qt import、Scope測試誤選內層非tab wrapper及fixture載入錯誤均留原件，後繼沿真介面驗證。Native停止、無EXE重建、無push；下一步做全目標逐項證據核對，不以這批通過直接宣稱整個平台完成。
 
 為讓驗收狀態與命令整體退出碼一致，14例artifact controller／period widget另以獨立命令重驗，`artifact_period_controls_a5_pair.log` 14 PASS／exit0，收據 `single_owned_qa_5d7701f5598a4c9e9c5b6483958ab8bd` 排空、handles關閉及鎖釋放；task已指向此乾淨分項證據，早輪混合ERROR原件保持。task／Coverage、功能metadata及QA／手冊錨點通過，收據 `single_owned_qa_232d2bd3d9364a32a7d0d7f725590cb1` 排空及鎖釋放。6500字 `context_a5_pair.txt` 略過 `current/decision_research_portfolio.md` 選中正文6798字；本批直接核對原比較Reader／DTO、控制項與callback，未宣稱重讀整冊或全庫EOF。
+
+## Track A A2 原候選端到端補驗
+
+全目標核對發現早批首頁多候選正向畫面只驗typed DTO展示，不能代替原Reader的候選保存／回訪。本批在獨立CASE沿既有producer測試fixture產生合成canonical execution，用原Persistence保存payload與索引，寫入同CASE對應狀態；日期採當次台北日2026-10-23、行情截止2026-10-22。正常Main的WorkbenchSourceService、查詢Reader及時鐘未替換，亦未改正式來源、排程、Writer或來源接受契約。合成理由仍明示fixture，不把它當真實當日推薦、自然成熟或PIT。
+
+實圖發現可讀候選後附加的綜合降級摘要會讓人誤讀為缺少候選。只調整View：候選卡呈現原候選理由、資料日／品質與研究限制；沒有個別理由就明示未提供。市場／資料缺件仍保留，原`stock_summary`全文移入原每日來源詳情，不改DTO或可開啟資格。
+
+原件根仍為本Track task：`main_a2_canonical02125/150` first／fresh全部PASS、worker0。正常首頁原Reader顯示2330後，按原按鈕開報告，逐一核對result／source／snapshot／decision_date／data_date，再由原報告返回同候選。經實際筆記UI保存按下時的原快照，Journal與新程序首頁最近研究均回訪同revision、原文與canonical JSON；原canonical artifact SHA未變。兩縮放各擷取1280×760、1500×900、1920×1080、900×760首頁；Root實看125%1280及150%1280新程序圖，候選可操作、日期可讀，市場缺件不被改寫成安全。單候選完整Main路徑與既有多候選第二檔／變更清選擇的單元回歸分列，不宣稱本樣本含多個canonical候選。
+
+`*_a2_canonical04.log`：編譯PASS、75項候選／Workbench View／Daily Journey定向PASS、強制Workbench85 PASS、validator25 PASS／0 FAIL／4 SKIP、全範圍mypy1133檔PASS。Qt未載入Main的pytest teardown訊息不作Main關閉證據，Main關閉另以四份worker0原件與owned Job判定。收據`single_owned_qa_9852c121f2b4487c8df8d0232ed3c2c8`及`single_owned_qa_78d27e33938c49d3bc090a5b5cc5190a`均自然排空、handles關閉及共享鎖釋放。
+
+失敗原件保持：第一輪150%以「第一次開啟」快照比對「返回後重開再保存」快照，捕捉時間不同而FAIL，後繼改核按保存時實際載入的快照。新增單測前兩輪各2 FAIL／73 PASS，先因共用fixture有待辦導向另一分支，再因市場來源狀態未設missing；只修正fixture情境，不改斷言或產品來源守衛。兩個FAIL Job及GUI FAIL Job均排空。
+
+## Track A A1–A5 完成核對
+
+裁決：`TRACK_A_UX_SCOPE_VERIFIED_WITH_LIMITS`。對照使用者A1–A5、10/15旅程／用語審視、10/21 UI方向Review及V2 Blueprint的本次UI範圍逐項核對，以下均已有真正PySide6改動、定向回歸、隔離offscreen Main證據、Root實圖檢視及必要文件；沒有只交概念稿。這是本輪來源版UX工程完成，不是整個股票平台所有資料與金融用途接受。
+
+| 原需求 | 現行產品與驗收依據 |
+|---|---|
+| A1 緊湊股票標頭、主圖、趨勢／摘要、支持與風險同屏 | `stock_research_workspace.py`、`stock_research_report_view.py`；A1及前置圖卡批次。當前`main_a5_pair_final125/stock_1280.png`仍有多日期行情、MA20／60與原技術事實、支持／反證／未知。有用的原事實與缺件案例分驗，不以手填獲利或風險等級補空。 |
+| A1 日期／品質、詳細下鑽、保存及返回原脈絡 | 原章節與精確價格／來源稽核可查；實際筆記UI保存及新程序同canonical JSON回訪。來源選取、股票與原版本返回由A3／A4 Main及本批首頁原候選再驗。 |
+| A2 市場、產業強弱、候選、待辦、最近保存 | `workbench_view.py`主四卡、短待辦、同版題材高低端與分母、最近研究及漸進揭露。A2圖與測試驗有資料／缺件兩種呈現，本批補原canonical Reader→個股→保存→最近研究完整路徑。市場真來源缺件維持清楚降級，無新增市場結論。 |
+| A3 主要結果、篩選條件、命中理由、比較入口 | 原選股結果首列可視，來源準備預設收合；比較支持／反證／未知並列，原條件及精確稽核可展開。A3小原件真Reader及正常Main驗第二欄原Query、原選列、比較籃與返回。 |
+| A3 Unknown／分母／資料日 | 平坦原V4Counts投影、原宣告／納入／處理／pending／缺件分開，不以頁列數推全市場。價格比較各來源時鐘、未知政策與精確原值保留。沒有改公式、篩選或Reader。 |
+| A4 強弱分區、產業鏈層級、成員、返回及圖文對照 | `industry_theme_map_view.py`／model／原值bar delegate：雙端原觀察值、零中線、負號與Unknown；產業鏈→題材→原chain tier／成員，詳細觀察與成員並列。A4正常Main原manifest／Reader、UI成員開股、返回及題材筆記保存／新程序同身份回訪，來源SHA不變。 |
+| A5 Journal保存、績效、回撤、成本與比較 | 原Journal原文、來源、原件回訪可讀；原策略結果四卡及同筆權益預覽，雙策略七列比較與原明細／返回。原executor／broker實算隔離樣本，Registry原API保存／精確Reader讀回，沒有手填或重算績效。費率假設不冒充扣款合計，unavailable零不冒充觀測零。 |
+| 第一屏有答案且保留深度 | 個股圖與五問、首頁主四卡、選股首列及比較／策略原指標先讀；完整來源、SHA、參數、精確原值及明細仍可展開。缺件不推定零風險；首頁候選操作多時，題材／最近研究允許向下捲動。 |
+| 主要尺寸／DPI與流程 | 各批1280×760、1500×900、1920×1080於125%／150%正常Main，A4／A5另900寬；實圖及visible-region檢查按各批記錄，不用17路由存在測試代替視覺驗收。保存／新程序回訪、下鑽、同原來源返回均有正向證據。 |
+| Track隔離、Git與交付 | 本Track只提交UI、測試及必要文件；未改Main、共享DTO、Reader、正式DB、金融公式、排名、模型、ML、排程或清理政策。每批scoped commit，不stage他線，不push、不重建EXE；Native停止及未作Owner UAT明示。 |
+
+完成核對後未發現可在Track A授權內安全處理的具體高價值缺口，停止本輪設計重做。保留界線：前述257股大型fixture未完成、256欄效能未驗、完整金融分支／自然市場資料／PIT／Forward／ML資格不由本輪補授；正式來源及儲存工作歸其他Track。Owner UAT與Native真桌面仍未執行，不作本輪UI工程的假通過或擅自恢復輸入。既有固定EXE亦不含後繼UI。各批context預算略過與失敗紀錄沿原文保留；不宣稱讀完全庫SSOT、全歷史EOF或全庫連結通過。
+
+收尾task／Coverage、功能metadata、完成矩陣與QA錨點及GUI收據自然排空欄位檢查PASS，Job `single_owned_qa_301b212547f44c6b98ff9015e49152c2` 自然排空、handles關閉與鎖釋放。前輪檢查器把wrapper摘要的`forced_cleanup`誤當完整receipt欄位而KeyError，原件保留；後繼改讀原receipt的`members_after_parent_exit`／最終成員／handles／鎖，不放寬收尾條件。

@@ -96,6 +96,35 @@ def test_second_candidate_opens_exact_selected_context_through_candidate_shortcu
     view.close()
 
 
+@pytest.mark.parametrize("reasons", [("2330：原來源的研究理由。",), ()])
+def test_candidate_card_keeps_original_reason_while_market_gap_stays_inspectable(reasons) -> None:
+    _app()
+    raw_summary = "個股：缺少市場快照或每日候選；請先檢查來源。"
+    daily = replace(
+        _daily(("2330",)),
+        candidate_reasons=reasons,
+        stock_summary=raw_summary,
+        market_summary="市場快照缺失，不能判定市場狀態。",
+    )
+    view, _contexts = _view(daily)
+    try:
+        view.render_dashboard(replace(
+            _dashboard_with_replay(), daily_evidence=daily,
+            action_items=(), review_items=(), market_context={"source_status": "missing"},
+        ))
+        reason = view.guided_priority_reason_labels["candidates"].text()
+        assert ("原來源的研究理由" if reasons else "原來源未提供個別研究理由") in reason
+        assert "候選僅供研究，不代表可交易" in reason
+        assert "候選資料日：2026-10-15" in reason
+        assert raw_summary not in reason
+        assert raw_summary in view.daily_trace_label.text()
+        assert "市場快照缺失" in view.guided_priority_reason_labels["market"].text()
+        assert view._daily_investment_evidence is daily
+        assert view.daily_candidate_button.isEnabled()
+    finally:
+        view.close()
+
+
 def test_unselected_candidate_and_shared_route_do_not_open_first_symbol() -> None:
     application = _app()
     view, contexts = _view(_daily(("2330", "2603")))

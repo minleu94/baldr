@@ -1464,8 +1464,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 )
                 candidate_conclusion = f"有 {daily.candidate_count} 檔研究候選可查看。"
                 candidate_reasons = _guided_join_reasons(
-                    *daily.candidate_reasons,
-                    daily.stock_summary,
+                    *(daily.candidate_reasons or ("原來源未提供個別研究理由；請回原結果查證。",)),
                     "候選僅供研究，不代表可交易。",
                     fallback="請逐檔查看股票、理由與日期。",
                 )
@@ -2163,6 +2162,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         ) or "未知"
         lines = [
             "每日來源詳情（唯讀）",
+            f"個股綜合摘要原文：{daily.stock_summary or '未知'}",
             f"決策日={daily.decision_date}｜資料日={daily.data_as_of_date or '未知'}",
             f"候選 result_id={daily.candidate_result_id or '未知'}｜source_id={daily.candidate_source_id or '未知'}｜"
             f"source_snapshot_id={daily.candidate_source_snapshot_id or '未知'}",

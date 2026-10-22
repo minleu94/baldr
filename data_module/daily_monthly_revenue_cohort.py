@@ -179,7 +179,25 @@ class DailyMonthlyRevenueCohortPin:
             for item in self.market_pins
         )
         if len(set(shared_scopes)) != 1:
-            raise DailyMonthlyRevenueCohortError("cohort_market_scopes_not_equivalent")
+            openapi_pair = (
+                len(shared_scopes) == 2
+                and tuple(item[0] for item in shared_scopes)
+                == ("fundamental_current_observations.monthly_revenue",) * 2
+                and tuple(item[1] for item in shared_scopes)
+                == (
+                    "twse.openapi.t187ap05_L",
+                    "tpex.openapi.mopsfin_t187ap05_O",
+                )
+                and len({item[2:] for item in shared_scopes}) == 1
+                and shared_scopes[0][2:] == (
+                    "twse-tpex-openapi-monthly-revenue-parser.v1",
+                    "twse-tpex-openapi-monthly-revenue-14-fields.v1",
+                    "TWD",
+                    "recommendation_current_fundamental",
+                )
+            )
+            if not openapi_pair:
+                raise DailyMonthlyRevenueCohortError("cohort_market_scopes_not_equivalent")
         object.__setattr__(self, "required_markets", markets)
         object.__setattr__(self, "available_hour", _to_taipei(self.available_hour, "available_hour"))
         expected_hour = max(item.available_hour for item in self.market_pins)

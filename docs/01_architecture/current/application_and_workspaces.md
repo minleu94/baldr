@@ -16,6 +16,8 @@ StockResearchWorkspace的一般查詢動作建立空名稱、無原保存ID／�
 
 ## 入口與分層
 
+V2研究Paper由Main重核目前選取的Timeline原件後組裝：未明選外部證據保留前置頁；明選證據時開啟`ResearchPaperSimulationDialog`。來源預覽、純事件預覽及確認保存均走背景TaskWorker；換選、刷新、離頁、關閉與generation守衛拒絕晚到套用。Writer只在人工確認後由account-derived route建立；UI不能指定帳本檔名。首次確認取實際時鐘，重試保持同immutable intent，原研究返回與既有Paper route分開接線。詳細契約見[整合決策](../BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)。
+
 ### V2 開發分支導航（尚非固定 RC）
 
 V2 分支的 ProductShell 將入口分為「今日總覽」、「探索與研究」、「我的投資」、「策略實驗室」四個主工作區，另以齒輪「系統管理」提供資料、執行狀態及診斷入口。此為目前導覽層，不取代現有九個頂層工作區契約，也不表示各子頁已完成整合。`main_window_coordinator.py` 將 market、themes、screener、lookup、lists、positions、paper、journal、strategies、backtests、performance、ml、data、operations、diagnostics、storage 等子路由交給既有 Views；PortfolioView 的新分區仍重用原持倉／Paper／Journal 元件與服務。

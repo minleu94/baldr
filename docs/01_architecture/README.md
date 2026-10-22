@@ -8,6 +8,7 @@
 - [目前架構分冊](current/README.md)：依工作區與 application、決策／研究／Portfolio、資料／保存／Runtime 三個主題閱讀穩定契約。
 - [Application Manual](../07_guides/APPLICATION_MANUAL.md)：使用者操作入口、步驟、判讀、安全限制與排錯。
 - [Runtime Observatory 規則](runtime_observatory_rules.md)：Runtime DTO、UI bridge、生命週期及依賴方向細節。
+- [V2 月營收與研究 Paper 增量整合決策](BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)：新來源身份、用途接受及沿原帳本的人工確認／CAS 邊界；實際完成度以具名 QA 為準。
 
 ## 目標架構
 

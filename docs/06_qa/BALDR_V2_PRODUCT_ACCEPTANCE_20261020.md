@@ -1,5 +1,7 @@
 # Baldr V2 產品驗收
 
+10/21後繼補完另見[工程與整合驗收](BALDR_V2_FINAL_COMPLETION_20261021.md)：具名雙市場月營收pipeline與人工確認Paper producer已新增，下面「尚未實作」等敘述保留其具名舊版本／階段。新工程不授正式來源、Native或Owner資格；Source／EXE各自依收據判讀。
+
 本文件記錄依 [V2 Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 開發的 Source 分支證據。基線 `9ce92743`，分支 `codex/baldr-v2-product`。已有本機技術候選及分階段驗證，最新整合候選與限制見下節；完整五旅程仍為 PARTIAL，既有固定研究13不包含本輪變更。
 
 ## 最終工程收尾診斷（2026-10-21）

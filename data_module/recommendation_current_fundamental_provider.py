@@ -20,6 +20,8 @@ from typing import Any, Callable, Iterator, Mapping
 from zoneinfo import ZoneInfo
 
 from data_module.current_fundamental_snapshots import (
+    OPENAPI_MONTHLY_NORMALIZER_VERSION,
+    OPENAPI_MONTHLY_SOURCE_IDS,
     MONTHLY_SNAPSHOT_SOURCE,
     MONTHLY_NORMALIZER_VERSION,
     MONTHLY_YOY_COMPARATOR_ITEM_CODE,
@@ -54,8 +56,10 @@ DEFAULT_OFFICIAL_CALENDAR_CACHE_ROOT = (
     _REPOSITORY_ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
 )
 _DERIVED_MONTHLY_VERSION = re.compile(
-    r"mops-current-revenue-normalizer\.v2:(twse|tpex):(\d{4}-\d{2}):raw:(.+)"
-    r":derived:sha256:([0-9a-f]{64})"
+    r"(?P<normalizer>mops-current-revenue-normalizer\.v2|"
+    r"twse-tpex-openapi-monthly-revenue-parser\.v1):"
+    r"(?P<market>twse|tpex):(?P<period>\d{4}-\d{2}):raw:(?P<raw>.+)"
+    r":derived:sha256:(?P<digest>[0-9a-f]{64})"
 )
 
 
@@ -424,6 +428,7 @@ class RecommendationCurrentFundamentalProvider:
         cutoff_date = cutoff.astimezone(_TAIPEI).date()
         diagnostics: list[str] = []
         snapshot_by_market: dict[str, DailySourceSnapshot | None] = {}
+        opendata_amounts_by_market: dict[str, dict[str, Decimal] | None] = {}
         eligible_by_period: dict[str, list[CurrentObservedMonthlyRevenueInput]] = {}
         invalid_by_period: dict[str, list[tuple[datetime | None, str]]] = {}
         for row in rows:
@@ -480,8 +485,8 @@ class RecommendationCurrentFundamentalProvider:
                 if (
                     raw_market not in {"twse", "tpex"}
                     or derived_version is None
-                    or derived_version.group(1) != raw_market
-                    or derived_version.group(2) != period
+                    or derived_version.group("market") != raw_market
+                    or derived_version.group("period") != period
                 ):
                     diagnostics.append(
                         "daily_source_snapshot_record_not_in_pinned_batch:"
@@ -489,12 +494,24 @@ class RecommendationCurrentFundamentalProvider:
                     )
                     continue
                 if raw_market not in snapshot_by_market:
+                    raw_source = str(raw.get("source") or "")
+                    if raw_source == MONTHLY_SNAPSHOT_SOURCE:
+                        expected_source_id = DAILY_SOURCE_SNAPSHOT_SOURCE_ID
+                        parser_version = MONTHLY_NORMALIZER_VERSION
+                        source_schema_version = "mops-static-snapshot.v2"
+                    elif raw_source == OPENAPI_MONTHLY_SOURCE_IDS.get(raw_market):
+                        expected_source_id = raw_source
+                        parser_version = OPENAPI_MONTHLY_NORMALIZER_VERSION
+                        source_schema_version = "twse-tpex-openapi-monthly-revenue-14-fields.v1"
+                    else:
+                        diagnostics.append("monthly_source_profile_not_allowlisted")
+                        continue
                     expected_scope = DailySourceUseScope(
                         dataset_id=DAILY_SOURCE_SNAPSHOT_DATASET_ID,
-                        source_id=DAILY_SOURCE_SNAPSHOT_SOURCE_ID,
+                        source_id=expected_source_id,
                         market=raw_market,
-                        parser_version=MONTHLY_NORMALIZER_VERSION,
-                        source_schema_version="mops-static-snapshot.v2",
+                        parser_version=parser_version,
+                        source_schema_version=source_schema_version,
                         unit="TWD",
                         intended_use="recommendation_current_fundamental",
                     )
@@ -563,9 +580,31 @@ class RecommendationCurrentFundamentalProvider:
                 pinned_snapshot = snapshot_by_market[raw_market]
                 if pinned_snapshot is None:
                     continue
+                if str(raw.get("source") or "") in OPENAPI_MONTHLY_SOURCE_IDS.values():
+                    if raw_market not in opendata_amounts_by_market:
+                        try:
+                            from data_module.opendata_monthly_revenue import (
+                                verify_openapi_snapshot_raw_batch,
+                            )
+
+                            opendata_amounts_by_market[raw_market] = (
+                                verify_openapi_snapshot_raw_batch(pinned_snapshot)
+                            )
+                        except (TypeError, ValueError) as exc:
+                            return CurrentMonthlyRevenueReadResult(
+                                "unavailable",
+                                code,
+                                cutoff,
+                                None,
+                                diagnostics=(
+                                    "daily_source_snapshot_raw_reparse_rejected:"
+                                    f"{type(exc).__name__}:{exc}",
+                                ),
+                                diagnostic_source_row_count=diagnostic_source_row_count,
+                            )
                 try:
                     raw_version_parts = _monthly_source_version_parts(
-                        derived_version.group(3)
+                        derived_version.group("raw")
                     )
                 except ValueError:
                     raw_version_parts = None
@@ -577,14 +616,14 @@ class RecommendationCurrentFundamentalProvider:
                         stock_code=str(raw.get("stock_code") or ""),
                         market=raw_market,
                         period=period,
-                        source_version=derived_version.group(3),
+                        source_version=derived_version.group("raw"),
                         raw_source_sha256=raw_version_parts[2],
                         unit=str(raw.get("unit") or ""),
                     )
                 if pinned_snapshot_record is None:
                     diagnostics.append(
                         "daily_source_snapshot_record_not_in_pinned_batch:"
-                        f"{period}:{derived_version.group(3)}"
+                        f"{period}:{derived_version.group('raw')}"
                     )
                     continue
             try:
@@ -592,6 +631,19 @@ class RecommendationCurrentFundamentalProvider:
                 if normalized.get("stock_code") != code:
                     raise ValueError("current monthly source returned a different stock")
                 observation = _monthly_input_from_normalized(normalized, cutoff)
+                if observation.source in OPENAPI_MONTHLY_SOURCE_IDS.values():
+                    batch_amounts = opendata_amounts_by_market.get(observation.market)
+                    source_amount = (
+                        batch_amounts.get(observation.stock_code)
+                        if batch_amounts is not None
+                        else None
+                    )
+                    if source_amount is None or observation.revenue != source_amount:
+                        diagnostics.append(
+                            "daily_source_snapshot_normalized_value_differs_from_raw_response:"
+                            f"{observation.period}:{observation.stock_code}"
+                        )
+                        continue
                 if selected_batch_id is not None:
                     if (
                         pinned_snapshot is None
@@ -1169,23 +1221,35 @@ def _monthly_input_from_normalized(
 ) -> CurrentObservedMonthlyRevenueInput:
     if row.get("kind") != "monthly_revenue" or row.get("item_code") != "revenue":
         raise ValueError("unexpected current fundamental identity")
-    if row.get("source") != MONTHLY_SNAPSHOT_SOURCE:
-        raise ValueError("monthly source is not the verified official snapshot")
+    source = str(row.get("source") or "")
+    market = row.get("market", "")
+    if source != MONTHLY_SNAPSHOT_SOURCE and source != OPENAPI_MONTHLY_SOURCE_IDS.get(market):
+        raise ValueError("monthly source is outside the exact MOPS/OpenData profile")
     if row.get("unit") != "TWD":
         raise ValueError("monthly current value is not normalized to TWD")
     if row.get("period_basis") != "monthly_flow" or row.get("basis_verified") != "1":
         raise ValueError("monthly current observation basis is not verified monthly flow")
     if row.get("aggregate_feature_eligible") != "0":
         raise ValueError("monthly revenue must remain a single-period flow")
-    market = row.get("market", "")
     if market not in {"twse", "tpex"}:
         raise ValueError("monthly current source market is invalid")
     period = str(row.get("period") or "")
     raw_version = str(row.get("source_version") or "")
     match = _DERIVED_MONTHLY_VERSION.fullmatch(raw_version)
-    if match is None or match.group(1) != market or match.group(2) != period:
+    if (
+        match is None
+        or match.group("market") != market
+        or match.group("period") != period
+    ):
         raise ValueError("monthly version does not bind market and period")
-    raw_source_version = match.group(3)
+    expected_normalizer = (
+        OPENAPI_MONTHLY_NORMALIZER_VERSION
+        if source in OPENAPI_MONTHLY_SOURCE_IDS.values()
+        else MONTHLY_NORMALIZER_VERSION
+    )
+    if match.group("normalizer") != expected_normalizer:
+        raise ValueError("monthly source and normalizer profiles do not match")
+    raw_source_version = match.group("raw")
     raw_parts = _monthly_source_version_parts(raw_source_version)
     if raw_parts is None or raw_parts[:2] != (market, period):
         raise ValueError("monthly raw version does not bind market and period")

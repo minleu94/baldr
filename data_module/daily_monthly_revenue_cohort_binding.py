@@ -379,7 +379,19 @@ def _validate_current_scope(scope: DailySourceUseScope, market: str) -> None:
         scope.unit,
         scope.intended_use,
     )
-    if market not in _MARKET_ORDER or actual != expected:
+    openapi_expected = (
+        "fundamental_current_observations.monthly_revenue",
+        {
+            "twse": "twse.openapi.t187ap05_L",
+            "tpex": "tpex.openapi.mopsfin_t187ap05_O",
+        }.get(market),
+        market,
+        "twse-tpex-openapi-monthly-revenue-parser.v1",
+        "twse-tpex-openapi-monthly-revenue-14-fields.v1",
+        "TWD",
+        "recommendation_current_fundamental",
+    )
+    if market not in _MARKET_ORDER or actual not in {expected, openapi_expected}:
         raise DailyMonthlyRevenueCohortBindingError(
             f"binding_scope_not_current_monthly_revenue:{market}"
         )

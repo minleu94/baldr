@@ -506,6 +506,25 @@ class PaperTradeDailyOperationRead:
     allocation_prefix_rowset_hash: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PaperTradeLedgerRowsetSnapshot:
+    """同一唯讀 SQLite snapshot 中的全部成交、轉換與 CAS 雜湊。"""
+
+    portfolio_id: str
+    fills: tuple[PaperTradeFill, ...]
+    transitions: tuple[PaperTradeTransition, ...]
+    rowset_hash: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.portfolio_id, str) or not self.portfolio_id.strip():
+            raise ValueError("paper rowset snapshot portfolio_id is required")
+        _require_sha256(self.rowset_hash, "paper rowset snapshot hash")
+        if any(item.portfolio_id != self.portfolio_id for item in self.fills):
+            raise ValueError("paper rowset snapshot contains a foreign fill")
+        if any(item.portfolio_id != self.portfolio_id for item in self.transitions):
+            raise ValueError("paper rowset snapshot contains a foreign transition")
+
+
 def _validate_transition_prices(value: Mapping[str, Decimal]) -> None:
     if not isinstance(value, Mapping) or not value:
         raise ValueError("transition common_prices are required")
@@ -1157,6 +1176,58 @@ class PaperTradeLedgerRepository:
             connection.execute("PRAGMA query_only=ON")
             connection.execute("BEGIN")
             return _ledger_rowset_hash(connection)
+        finally:
+            if connection.in_transaction:
+                connection.rollback()
+            connection.close()
+
+    def read_rowset_snapshot(
+        self,
+        *,
+        portfolio_id: str = "paper-main",
+    ) -> PaperTradeLedgerRowsetSnapshot:
+        """在單一 query-only snapshot 中讀取全部成交、轉換與 CAS 雜湊。"""
+
+        self._require_identity(portfolio_id)
+        connection = self._connect(read_only=True)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only=ON")
+            query_only_row = connection.execute("PRAGMA query_only").fetchone()
+            if query_only_row is None or query_only_row[0] != 1:
+                raise ValueError("paper rowset snapshot connection is not query-only")
+            connection.execute("BEGIN")
+            _require_exact_table_columns(
+                connection,
+                "paper_trade_ledger",
+                _PAPER_TRADE_LEDGER_ROW_COLUMNS,
+            )
+            _require_exact_table_columns(
+                connection,
+                "paper_trade_transitions",
+                _PAPER_TRADE_TRANSITION_ROW_COLUMNS,
+            )
+            fill_rows = connection.execute(
+                "SELECT * FROM paper_trade_ledger ORDER BY fill_id"
+            ).fetchall()
+            transition_rows = connection.execute(
+                "SELECT * FROM paper_trade_transitions ORDER BY transition_id"
+            ).fetchall()
+            fills = tuple(_validate_raw_fill_row(row) for row in fill_rows)
+            transitions = tuple(
+                _validate_raw_transition_row(row) for row in transition_rows
+            )
+            if any(item.portfolio_id != portfolio_id for item in fills):
+                raise ValueError("paper rowset snapshot contains a foreign fill")
+            if any(item.portfolio_id != portfolio_id for item in transitions):
+                raise ValueError("paper rowset snapshot contains a foreign transition")
+            rowset_hash = _ledger_rowset_hash(connection)
+            return PaperTradeLedgerRowsetSnapshot(
+                portfolio_id=portfolio_id,
+                fills=fills,
+                transitions=transitions,
+                rowset_hash=rowset_hash,
+            )
         finally:
             if connection.in_transaction:
                 connection.rollback()
@@ -2211,5 +2282,6 @@ __all__ = [
     "PaperTradeDailyOperationMarker",
     "PaperTradeFill",
     "PaperTradeLedgerRepository",
+    "PaperTradeLedgerRowsetSnapshot",
     "PaperTradeTransition",
 ]

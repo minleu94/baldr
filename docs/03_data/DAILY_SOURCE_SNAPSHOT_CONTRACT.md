@@ -106,7 +106,7 @@ Increment43取得2026/10/15單日真T86原件、EOF及21,000列品質，保存�
 
 ## 目前實作邊界
 
-`data_module/daily_source_snapshot.py` 目前先支援既有 MOPS 月營收 v1／v2 的 hash-bound 版本，沿 Recommendation current-fundamental reader 的明確 `pinned_daily_batch_id` 接入。Reader 必須由 caller 提供可信用途接受錨點，與 manifest 完整比對；快照不能以自述接受紀錄授權自己。無 pin 的既有 caller 保留原資格，指定 pin 卻缺 port／版本時拒絕或排除，不混入 latest。其他資料的政策已定，ports／producer 接入仍依工作包逐項驗證。
+`data_module/daily_source_snapshot.py` 支援既有 MOPS 月營收 v1／v2 的 hash-bound 版本，以及本文下方具名 TWSE／TPEx OpenData 雙市場 profile；兩者沿 Recommendation current-fundamental reader 的明確 `pinned_daily_batch_id`／cohort 接入，但保留不同 source identity 與 transport／parser 契約。Reader 必須由 caller 提供可信用途接受錨點，與 manifest 完整比對；快照不能以自述接受紀錄授權自己。無 pin 的既有 caller 保留原資格，指定 pin 卻缺 port／版本時拒絕或排除，不混入 latest。其他資料的政策已定，ports／producer 接入仍依工作包逐項驗證。
 
 收據持久化逐列 `available_hour`／basis，public reader 依固定時間政策重算核對。原件與 pending receipt 寫入後 `flush`／`fsync` 並關閉，再取得完成時鐘樣本；跨小時或超過發布 guard 的批次保存 raw／原因並隔離。若樣本恰整點而後面仍需發布寫入，採具名下一小時 publication guard，保留原樣本，不能冒充該整點已完成發布。這個保守發布限制不改官方原文時間，也不把 decision cutoff 向上取整。
 
@@ -183,6 +183,18 @@ Cohort reader 固定各市場 root／trusted acceptance 的副本，每次使用
 TWSE JSON 使用獨立 `monthly_revenue_openapi_preparation.py`／`twse.openapi.t187ap05_L` 版本，不套 MOPS normalizer 或 manifest。它核完整原件、HTTP／EOF／長度、UTF-8、唯一股票／期間、日期、有限且有界 Decimal、JSON 深度／列數；缺百分比保留原因。Date-only 的批次小時依同一 `daily-hour.v1` 向上取整，與單位未核／用途未接受分開。此版只供 shadow／diagnostics，保存原值、不換算 TWD、不給 scoring／排程／歷史 PIT 或完整市場資格。44合成案例與真 partial 拒絕已驗；10/13既有完整原件另唯讀解析2330／11509並由不同PID讀回相同結果，原候選時間政策和 bytes 不改。這些證據不等於新每日快照已發布或正常 UI 已接入，詳本輪 QA。
 
 TWSE／TPEx／MOPS 可用官方 API 沿用。P03 的 [Scrapling](https://github.com/d4vinci/Scrapling) 僅補 session、browser 或動態頁需求，先以 task-owned venv 限縮驗證 MOPS 清單→對應文件→該版官方 timestamp；安裝成功或 HTTP 200 不能代替完整鏈。WAF、無法解析、錯文件、時間缺件與品質缺件逐項記錄。
+
+### TWSE／TPEx OpenData 月營收雙市場 profile（current-only）
+
+OpenData profile 與既有 MOPS profile 並列，不以 TPEx endpoint 名稱或資料語義將其改標為 MOPS。TWSE source identity 固定為 `twse.openapi.t187ap05_L`／`https://openapi.twse.com.tw/v1/opendata/t187ap05_L`；TPEx 固定為 `tpex.openapi.mopsfin_t187ap05_O`／`https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O`。兩者各自保留市場、endpoint、`twse-tpex-openapi-monthly-revenue-parser.v1`、`twse-tpex-openapi-monthly-revenue-14-fields.v1`、`fundamental_current_observations.monthly_revenue`、TWD及 `recommendation_current_fundamental` 的精確用途範圍。跨市場 source／endpoint、parser、schema、單位或用途混搭均拒絕；既有 MOPS source identity 與用途契約不因新增 profile 收緊或改寫。
+
+OpenData 快照必須隨 manifest 保存實際 HTTP response body 與 transport capture。Capture 綁原始 request／response URL、HTTP status、未改寫的 Content-Type／Content-Encoding／Content-Length header、body bytes 與 SHA、收取 byte 數、EOF／完整性旗標，以及 body completion／observation end clock。JSON 依 RFC 8259 strict UTF-8 解碼；`decoding_basis` 明示 `rfc8259_utf8`，不冒稱 HTTP charset 或 HTML meta charset。Public reader 從保存的 transport 原件重新解析整批 JSON，核對 endpoint、schema、期間、所有列身分、raw SHA、版本時間及快照列；缺 transport、raw 漂移或只靠 manifest 自述均拒讀。
+
+官方欄位的金額單位須以具名 unit proof 核實後才能轉為 TWD。Proof artifact 保存官方文件原始 bytes、原件 SHA、明確的 14 欄 field map bytes 與 SHA，並由外部 typed `DailySourceUseAcceptance.document_chain` 固定 proof SHA、artifact reference 與官方文件 URL；每次讀取都讀回並重驗 proof artifact 及其中文件／mapping bytes。單位證據、market、source ID、endpoint、金額欄位映射或接受範圍有任何不一致即拒絕。沒有精確且外部固定的 proof 時，只能保留候選中的來源數值與來源單位，不得推定千元、不乘1000或標示 TWD。Proof 本身不代表用途接受；`accepted_at` 僅取外部 Owner 建立的 typed acceptance，程式不自行產生或回填。
+
+取得與批次完整驗證完成時刻以實際 response body completion／批次完成證據保存；沒有來源發布時刻時不推造官方時間，可用性依 `daily-hour.v1` 將成功批次完成時間向上取整，決策 cutoff 本身不取整。這是明示的 current-only 前瞻資料路徑；不得回填過去決策、歷史 PIT、績效或訓練資格，`historical_pit_eligible` 保持 false。缺少完整 PIT 歷史不阻擋已接受來源的新 current snapshot，但每次使用仍須通過來源接受、可用小時與當下 cutoff 守衛。
+
+`publish_openapi_monthly_revenue_snapshot` 只接受 caller 提供的官方 capture、外部 typed用途接受、artifact 路徑及其可信 SHA，重新解析全批、套用已核 proof，再呼叫既有 immutable daily snapshot writer；不建立 acceptance 或 `accepted_at`。雙市場 cohort／binding 沿既有 serializer、reader 與精確 allowlist 同時固定 TWSE／TPEx 接受與 snapshot；必須完整讀回兩市場並在 cohort 可用小時之後才可供 current provider 使用，不能由 scalar pin、單市場快照或 latest 選擇繞過。合成驗證只證明受控 reader pipeline 可接入，不代表任何真來源已獲 Owner 接受或正式資料已寫入；目前不得宣稱 live formal acceptance。
 
 成功鏈沿既有更新服務與 data ports 接入原件／版本保存、解析與品質、public reader、正常 UI 及新程序。資料工作不成為其他補完包的新前置；正式 root 寫入與 Task 變更依原精確授權。不得由隔離測試推論正式日常批次已運作。
 

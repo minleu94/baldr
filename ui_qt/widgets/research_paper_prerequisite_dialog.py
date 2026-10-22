@@ -110,7 +110,7 @@ class ResearchPaperPrerequisiteDialog(QDialog):
 
         self.blockers_label = QLabel(
             "尚未取得這筆研究對應的 Paper 帳戶身分、同日合格行情與可核現金，"
-            "現行建帳流程尚未支援直接納入此研究。\n"
+            "尚未明選此研究的外部固定證據；完成來源用途與帳戶核驗後才能開啟人工確認模擬。\n"
             "既有 Paper 帳本與等權重比較基準不能代替這些條件。",
             self,
         )

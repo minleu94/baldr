@@ -25,6 +25,16 @@ DAILY_SOURCE_SNAPSHOT_QUARANTINE_TRANSPORT_SCHEMA = "daily-source-quarantine.v2"
 DAILY_SOURCE_TIME_BASIS_POLICY = "daily-hour.v1"
 DAILY_SOURCE_SNAPSHOT_DATASET_ID = "fundamental_current_observations.monthly_revenue"
 DAILY_SOURCE_SNAPSHOT_SOURCE_ID = "mops.monthly_revenue_static_snapshot"
+OPENAPI_MONTHLY_REVENUE_SOURCE_IDS = {
+    "twse": "twse.openapi.t187ap05_L",
+    "tpex": "tpex.openapi.mopsfin_t187ap05_O",
+}
+OPENAPI_MONTHLY_REVENUE_ENDPOINTS = {
+    "twse": "https://openapi.twse.com.tw/v1/opendata/t187ap05_L",
+    "tpex": "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O",
+}
+OPENAPI_MONTHLY_REVENUE_PARSER_VERSION = "twse-tpex-openapi-monthly-revenue-parser.v1"
+OPENAPI_MONTHLY_REVENUE_SCHEMA_VERSION = "twse-tpex-openapi-monthly-revenue-14-fields.v1"
 DAILY_SOURCE_SNAPSHOT_MANIFEST_NAME = "manifest.json"
 DAILY_SOURCE_SNAPSHOT_RECEIPT_NAME = "receipt.json"
 MAX_DAILY_SOURCE_RAW_BYTES = 16 * 1024 * 1024
@@ -155,7 +165,7 @@ class DailySourceUseAcceptance:
 
 @dataclass(frozen=True, slots=True)
 class DailySourceSnapshotRecord:
-    """一筆月營收列的來源識別；版本須沿用既有 MOPS v1/v2 hash 格式。"""
+    """一筆月營收列的來源識別；版本綁定批次完成時間與原始 bytes SHA。"""
 
     stock_code: str
     market: str
@@ -370,6 +380,10 @@ class DailySourceTransportCapture:
     content_length_original_text: str | None
     body_completion_evidence_ref: str
     html_meta_charset_original_text: str | None = None
+    response_url: str | None = None
+    content_encoding_original_text: str | None = None
+    eof_observed: bool = True
+    body_observation_ended_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.raw_response_bytes, bytes) or not self.raw_response_bytes:
@@ -426,11 +440,48 @@ class DailySourceTransportCapture:
         if not _CONTENT_TYPE_MEDIA_RE.fullmatch(media_type) or media_type not in {
             "text/html",
             "application/xhtml+xml",
+            "application/json",
         }:
-            raise DailySourceSnapshotError("transport Content-Type 必須是 HTML media type")
+            raise DailySourceSnapshotError("transport Content-Type media type 不受支援")
         encoding = _require_text(
             self.declared_decoding_encoding, "declared_decoding_encoding"
         )
+        if media_type == "application/json":
+            if self.decoding_basis != "rfc8259_utf8":
+                raise DailySourceSnapshotError("JSON transport decoding_basis 必須是 rfc8259_utf8")
+            if _codec_name(encoding) != "utf-8":
+                raise DailySourceSnapshotError("JSON transport 必須使用 UTF-8")
+            if self.raw_response_bytes.startswith(codecs.BOM_UTF8):
+                raise DailySourceSnapshotError("RFC 8259 JSON transport 不接受 UTF-8 BOM")
+            if self.response_url != self.official_source_url:
+                raise DailySourceSnapshotError("JSON response URL 必須與接受的 endpoint 完全相同")
+            if type(self.eof_observed) is not bool or not self.eof_observed:
+                raise DailySourceSnapshotError("JSON transport 必須明示觀測 EOF")
+            if self.body_observation_ended_at is None:
+                raise DailySourceSnapshotError("JSON transport 必須保存 body observation end clock")
+            observation_end = _to_taipei(
+                self.body_observation_ended_at, "transport body_observation_ended_at"
+            )
+            if observation_end < _to_taipei(self.body_completed_at, "transport body_completed_at"):
+                raise DailySourceSnapshotError("JSON body observation end 早於完成時鐘")
+            content_encoding = (self.content_encoding_original_text or "identity").strip().lower()
+            if content_encoding not in {"", "identity"}:
+                raise DailySourceSnapshotError("JSON transport Content-Encoding 必須是 identity")
+            try:
+                self.raw_response_bytes.decode("utf-8", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise DailySourceSnapshotError("JSON transport 不是 strict UTF-8") from exc
+            object.__setattr__(self, "html_meta_charset_original_text", None)
+            object.__setattr__(self, "body_completed_at", _to_taipei(self.body_completed_at, "transport body_completed_at"))
+            return
+        if self.decoding_basis not in {"http_content_type_charset", "html_meta_charset"}:
+            raise DailySourceSnapshotError("HTML transport decoding_basis 不受支援")
+        if self.response_url is not None and self.response_url != self.official_source_url:
+            raise DailySourceSnapshotError("HTML response URL 必須與接受的 endpoint 相同")
+        if self.content_encoding_original_text not in {None, "", "identity"}:
+            raise DailySourceSnapshotError("HTML transport Content-Encoding 必須是 identity")
+        if type(self.eof_observed) is not bool or not self.eof_observed:
+            raise DailySourceSnapshotError("HTTP transport 必須明示觀測 EOF")
         header_charset = _content_type_charset_text(content_type)
         meta_charset = _html_meta_charset_text(self.raw_response_bytes)
         if (
@@ -474,11 +525,12 @@ class DailySourceTransportCapture:
     @property
     def canonical_source_bytes(self) -> bytes:
         """回傳既有 MOPS parser 使用的 UTF-8 canonical payload bytes。"""
-
+        if self.content_type.split(";", 1)[0].strip().lower() == "application/json":
+            return self.raw_response_bytes
         return self.decoded_html.encode("utf-8")
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload = {
             "raw_response_bytes_base64": base64.b64encode(
                 self.raw_response_bytes
             ).decode("ascii"),
@@ -495,6 +547,23 @@ class DailySourceTransportCapture:
             "content_length_original_text": self.content_length_original_text,
             "body_completion_evidence_ref": self.body_completion_evidence_ref,
         }
+        if self.content_type.split(";", 1)[0].strip().lower() == "application/json":
+            body_observation_ended_at = self.body_observation_ended_at
+            if body_observation_ended_at is None:
+                raise DailySourceSnapshotError(
+                    "JSON transport 序列化缺少 body observation end clock"
+                )
+            payload.update(
+                {
+                    "response_url": self.response_url,
+                    "content_encoding_original_text": self.content_encoding_original_text,
+                    "eof_observed": self.eof_observed,
+                    "body_observation_ended_at": _datetime_text(
+                        body_observation_ended_at
+                    ),
+                }
+            )
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -1449,7 +1518,7 @@ def _availability_from_dict(value: object) -> DailySourceRecordAvailability:
 
 
 def _transport_capture_from_dict(value: object) -> DailySourceTransportCapture:
-    if not isinstance(value, dict) or set(value) != {
+    base_fields = {
         "raw_response_bytes_base64",
         "official_source_url",
         "response_status",
@@ -1463,6 +1532,18 @@ def _transport_capture_from_dict(value: object) -> DailySourceTransportCapture:
         "received_body_bytes",
         "content_length_original_text",
         "body_completion_evidence_ref",
+    }
+    json_fields = {
+        "response_url",
+        "content_encoding_original_text",
+        "eof_observed",
+        "body_observation_ended_at",
+    }
+    json_legacy_fields = json_fields - {"body_observation_ended_at"}
+    if not isinstance(value, dict) or frozenset(value) not in {
+        frozenset(base_fields),
+        frozenset(base_fields | json_legacy_fields),
+        frozenset(base_fields | json_fields),
     }:
         raise DailySourceSnapshotError("transport_capture 欄位與版本契約不符")
     meta_charset = value.get("html_meta_charset_original_text")
@@ -1510,6 +1591,22 @@ def _transport_capture_from_dict(value: object) -> DailySourceTransportCapture:
             "body_completion_evidence_ref",
         ),
         html_meta_charset_original_text=meta_charset,
+        response_url=(
+            _require_text(value.get("response_url"), "response_url")
+            if "response_url" in value
+            else None
+        ),
+        content_encoding_original_text=(
+            _require_text(value.get("content_encoding_original_text"), "content_encoding_original_text")
+            if value.get("content_encoding_original_text") is not None
+            else None
+        ),
+        eof_observed=value.get("eof_observed", True),
+        body_observation_ended_at=(
+            _parse_datetime(value.get("body_observation_ended_at"), "body_observation_ended_at")
+            if value.get("body_observation_ended_at") is not None
+            else None
+        ),
     )
 
 
@@ -1525,9 +1622,29 @@ def _validate_transport_capture_for_snapshot(
     records: tuple[DailySourceSnapshotRecord, ...],
 ) -> None:
     if transport_capture is None:
+        if use_acceptance.scope.source_id in OPENAPI_MONTHLY_REVENUE_SOURCE_IDS.values():
+            raise DailySourceSnapshotError("OpenData snapshot requires actual HTTP transport capture")
         return
     if not isinstance(transport_capture, DailySourceTransportCapture):
         raise DailySourceSnapshotError("transport_capture 型別錯誤")
+    if use_acceptance.scope.source_id in OPENAPI_MONTHLY_REVENUE_SOURCE_IDS.values():
+        if (
+            transport_capture.content_type.split(";", 1)[0].strip().lower()
+            != "application/json"
+            or transport_capture.decoding_basis != "rfc8259_utf8"
+            or transport_capture.response_url != use_acceptance.official_source_endpoint
+        ):
+            raise DailySourceSnapshotError("OpenData snapshot requires exact JSON HTTP transport metadata")
+    elif use_acceptance.scope.source_id == DAILY_SOURCE_SNAPSHOT_SOURCE_ID:
+        media_type = transport_capture.content_type.split(";", 1)[0].strip().lower()
+        if (
+            media_type not in {"text/html", "application/xhtml+xml"}
+            or transport_capture.decoding_basis
+            not in {"http_content_type_charset", "html_meta_charset"}
+        ):
+            raise DailySourceSnapshotError(
+                "MOPS snapshot transport must retain the existing HTML charset profile"
+            )
     _validate_transport_source_url(transport_capture, use_acceptance)
     if transport_capture.body_completed_at < _to_taipei(
         source_batch_started_at, "source_batch_started_at"
@@ -1588,14 +1705,21 @@ def _mops_v2_body_completed_at(record: DailySourceSnapshotRecord) -> datetime:
         record.source_version,
     )
     if match is None:
-        raise DailySourceSnapshotError(
-            "transport capture 需要含 body_completed_at 的 MOPS v2 source_version"
+        match = re.fullmatch(
+            r"(twse\.openapi\.t187ap05_L|tpex\.openapi\.mopsfin_t187ap05_O)\.v1:"
+            r"(twse|tpex):(\d{4}-\d{2}):body_completed_at:(.+):sha256:([0-9a-f]{64})",
+            record.source_version,
         )
+    if match is None:
+        raise DailySourceSnapshotError(
+            "transport capture 需要含 body_completed_at 的 monthly source_version"
+        )
+    clock_group = 3 if match.re.pattern.startswith("mops-static") else 4
     try:
-        parsed = datetime.fromisoformat(match.group(3).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(match.group(clock_group).replace("Z", "+00:00"))
     except ValueError as exc:
         raise DailySourceSnapshotError("MOPS v2 body_completed_at 格式錯誤") from exc
-    return _to_taipei(parsed, "MOPS v2 body_completed_at")
+    return _to_taipei(parsed, "monthly source body_completed_at")
 
 
 def _validate_snapshot_inputs(
@@ -1645,6 +1769,14 @@ def _validate_snapshot_inputs(
     for record in records:
         if record.market != scope.market or record.unit != scope.unit:
             raise DailySourceSnapshotError("快照列市場或單位與用途接受範圍不符")
+        if scope.source_id == DAILY_SOURCE_SNAPSHOT_SOURCE_ID and not record.source_version.startswith(
+            ("mops-static-snapshot.v2:", "mops-static-")
+        ):
+            raise DailySourceSnapshotError("MOPS scope cannot bind an OpenData source version")
+        if scope.source_id in OPENAPI_MONTHLY_REVENUE_SOURCE_IDS.values() and not record.source_version.startswith(
+            f"{scope.source_id}.v1:"
+        ):
+            raise DailySourceSnapshotError("OpenData scope cannot bind another source version")
         if record.raw_source_sha256 != raw_source_sha256:
             raise DailySourceSnapshotError("快照列原始雜湊與保存 bytes 不符")
         _validate_mops_monthly_version_binding(record)
@@ -1677,6 +1809,25 @@ def _validate_mops_monthly_version_binding(
         r"body_completed_at:(.+):sha256:([0-9a-f]{64})",
         record.source_version,
     )
+    openapi = re.fullmatch(
+        r"(twse\.openapi\.t187ap05_L|tpex\.openapi\.mopsfin_t187ap05_O)\.v1:"
+        r"(twse|tpex):(\d{4}-\d{2}):body_completed_at:(.+):sha256:([0-9a-f]{64})",
+        record.source_version,
+    )
+    if openapi is not None:
+        source_id, market, period, clock_text, version_hash = openapi.groups()
+        if source_id != OPENAPI_MONTHLY_REVENUE_SOURCE_IDS.get(market):
+            raise DailySourceSnapshotError("OpenData 月營收 source_version endpoint 身分不符")
+        if (market, period) != (record.market, record.period):
+            raise DailySourceSnapshotError("OpenData 月營收 source_version 市場或期間不符")
+        if version_hash != record.raw_source_sha256:
+            raise DailySourceSnapshotError("OpenData 月營收 source_version SHA 與原始 bytes 不符")
+        try:
+            source_clock = datetime.fromisoformat(clock_text.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise DailySourceSnapshotError("OpenData body_completed_at 格式錯誤") from exc
+        _to_taipei(source_clock, "OpenData source_version body_completed_at")
+        return
     if legacy is not None:
         version = legacy
         version_hash = legacy.group(3)
@@ -1702,11 +1853,36 @@ def _validate_mops_monthly_version_binding(
 
 
 def _validate_supported_scope(scope: DailySourceUseScope) -> None:
-    if (
-        scope.dataset_id != DAILY_SOURCE_SNAPSHOT_DATASET_ID
-        or scope.source_id != DAILY_SOURCE_SNAPSHOT_SOURCE_ID
-    ):
-        raise DailySourceSnapshotError("daily snapshot contract 目前只支援 MOPS 月營收來源")
+    common = (
+        DAILY_SOURCE_SNAPSHOT_DATASET_ID,
+        scope.market,
+        "TWD",
+        "recommendation_current_fundamental",
+    )
+    openapi = (
+        common[0],
+        OPENAPI_MONTHLY_REVENUE_SOURCE_IDS.get(scope.market),
+        scope.market,
+        OPENAPI_MONTHLY_REVENUE_PARSER_VERSION,
+        OPENAPI_MONTHLY_REVENUE_SCHEMA_VERSION,
+        common[2],
+        common[3],
+    )
+    actual = (
+        scope.dataset_id,
+        scope.source_id,
+        scope.market,
+        scope.parser_version,
+        scope.source_schema_version,
+        scope.unit,
+        scope.intended_use,
+    )
+    mops_profile = (
+        scope.dataset_id == DAILY_SOURCE_SNAPSHOT_DATASET_ID
+        and scope.source_id == DAILY_SOURCE_SNAPSHOT_SOURCE_ID
+    )
+    if not (mops_profile or actual == openapi):
+        raise DailySourceSnapshotError("daily snapshot scope is outside exact MOPS/OpenData profiles")
 
 
 def _scope_from_dict(value: object) -> DailySourceUseScope:

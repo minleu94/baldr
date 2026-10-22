@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -10,6 +11,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from app_module.dtos.portfolio_dtos import JournalEntryDTO
+from app_module.application_bootstrap import ApplicationSettings
 from app_module.research_timeline_dtos import ResearchTimelineEntry
 from ui_qt.main import MainWindow
 
@@ -90,6 +92,11 @@ def _host(entry: ResearchTimelineEntry):
         workspace_stack=stack,
         workspace_widgets={"research_timeline": page},
         product_shell=SimpleNamespace(routes=[]),
+        application_settings=ApplicationSettings(
+            Path.cwd() / "unused-config.json", False, {}, Path.cwd(), Path.cwd(), Path.cwd(),
+        ),
+        config=SimpleNamespace(data_root=Path.cwd(), output_root=Path.cwd()),
+        research_timeline_service=object(),
     )
     host.product_shell.activate_route = host.product_shell.routes.append
     pending = []
@@ -195,5 +202,47 @@ def test_current_verified_entry_opens_dialog_and_status_signal_routes_once(monke
     dialog.paperStatusRequested.emit()
     assert dialog.close_count == 1
     assert host.product_shell.routes == ["paper"]
+    assert host.research_timeline_view.selected_entry is selected
+
+
+def test_configured_main_composes_simulation_only_after_original_verification(monkeypatch):
+    from app_module import research_paper_ui_composition
+    from ui_qt.widgets import research_paper_simulation_dialog
+
+    selected = _entry("configured-main")
+    host, pending, calls, _page = _host(selected)
+    messages = []
+    host.statusBar = lambda: SimpleNamespace(showMessage=messages.append)
+    returned = []
+    host.research_timeline_view.select_entry = returned.append
+    provider, factory = object(), object()
+    composition_calls = []
+
+    def compose(**kwargs):
+        composition_calls.append(kwargs)
+        return SimpleNamespace(provider=provider, producer_factory=factory)
+
+    class SimulationSpy(_DialogSpy):
+        def __init__(self, entry, actual_provider, actual_factory, parent=None):
+            super().__init__(entry, parent)
+            assert actual_provider is provider and actual_factory is factory
+            self.paperProduced = _Signal()
+            self.returnToEntryRequested = _Signal()
+
+    SimulationSpy.instances = []
+    monkeypatch.setattr(research_paper_ui_composition, "configured_research_paper_simulation", compose)
+    monkeypatch.setattr(research_paper_simulation_dialog, "ResearchPaperSimulationDialog", SimulationSpy)
+    MainWindow._check_timeline_paper_prerequisites(host, selected)
+    assert calls == [(selected, True)] and composition_calls == []
+    pending[0]((selected.reference, None))
+    assert composition_calls[0]["entry"] is selected
+    dialog = SimulationSpy.instances[0]
+    dialog.paperProduced.emit(object())
+    assert "原帳本" in messages[-1]
+    dialog.returnToEntryRequested.emit(selected)
+    assert returned == [selected]
+    dialog.paperStatusRequested.emit()
+    assert host.product_shell.routes == ["paper"]
+    assert dialog.close_count == 1
     assert host.research_timeline_view.selected_entry is selected
 

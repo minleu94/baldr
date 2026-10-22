@@ -6,6 +6,8 @@ research07增量沿既有工作區與Journal：明確一般查詢建立獨立con
 
 ## 系統用途
 
+V2保存研究的人工確認模擬經Main原件核驗、獨立對話框及application composition接入既有Paper帳本。外部SHA證據reader分別核現金／行情／日曆用途、原策略帳戶與唯一seed，再以同一唯讀交易取得帳本列和CAS；producer在人工確認後依原政策／費用建立fill、transition和operation marker，同交易保存。月營收另有具名TWSE／TPEx OpenData profile，沿原daily snapshot publisher／reader及exact cohort binding，不改標MOPS。責任、限制及接受邊界見[增量決策](BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)。
+
 研究時間軸新增原件與獨立現況的唯讀對照；原件核驗、來源 reader 與非持久化展示契約分開，Main 管理背景讀取及離頁取消。詳見[工作區](current/application_and_workspaces.md)及[決策研究分冊](current/decision_research_portfolio.md)。這不變更研究保存或金融資格契約。
 
 三段轉折收縮沿原單股producer／Broker／Research Registry接線，同次保存12來源SHA、轉折與原量能證據；reader只核原件，不查目前executor補舊規則。歷史價格合法千分位解析版另隨新run保存，不修改來源資料或舊run；責任見[current決策分冊](current/decision_research_portfolio.md#三段轉折收縮的同次保存)。

@@ -4,6 +4,8 @@
 
 ## V2 開發分支導航（尚非固定 RC）
 
+月營收具名OpenData pipeline入口為`data_module/opendata_monthly_revenue.py`，沿原daily snapshot與cohort binding。保存研究Paper的核驗reader、producer、Main composition分別位於`app_module/research_paper_evidence_binding.py`、`research_paper_producer.py`、`research_paper_ui_composition.py`；對話框為`ui_qt/widgets/research_paper_simulation_dialog.py`。它們消費原Timeline、StrategyPaperAccountService與PaperTradeLedgerRepository，不另建帳本；[增量決策](docs/01_architecture/BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)記錄權限與資料界線。
+
 目前開發分支的四個主工作區為「今日總覽」、「探索與研究」、「我的投資」、「策略實驗室」，齒輪「系統管理」進入資料與診斷子頁。路由接線看 `ui_qt/main_window_coordinator.py`，殼層與快捷鍵看 `ui_qt/v2_shell.py`，左側導覽與子導覽看 `ui_qt/widgets/left_navigation.py`、`ui_qt/widgets/workspace_subnav.py`，全域搜尋看 `ui_qt/widgets/global_search_bar.py`。Ctrl+K 後需明選查詢結果；未映射名稱不會有結果。Alt+Left 依原來源身份守衛返回，約 1280 像素寬自動收合 rail。完整使用步驟、一般報告與價格研究來源差異、缺件處理及限制見[操作手冊 V2 分支節](docs/07_guides/APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)。此處是開發中導覽，Journal 統一時間軸、跨域漏斗、Storage 容量／引用清冊及策略庫版面仍未完成，也不是固定 RC 或通過驗收的說明。
 
 ## 依任務選入口

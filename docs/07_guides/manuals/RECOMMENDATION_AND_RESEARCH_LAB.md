@@ -1,5 +1,7 @@
 # 推薦與 Research Lab
 
+V2後繼來源的固定月營收cohort binding另可使用精確TWSE／TPEx OpenData pair，仍由原`MONTHLY_REVENUE_COHORT_BINDING_PATH`與外部SHA選取；source／parser／schema身份保持各自具名，不能改標MOPS或混任意市場來源。工程pipeline已可下載候選並沿原publisher／reader核驗；沒有相符官方單位原件及逐用途接受時不建立正式binding。保存研究的Paper人工確認模擬另沿原帳戶服務，步驟與正式輸入限制見[完整手冊](../APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)，驗證與版本看[V2補完驗收](../../06_qa/BALDR_V2_FINAL_COMPLETION_20261021.md)。
+
 V2 導覽把推薦分析與策略實驗室放在不同主導覽群組，但仍沿用既有頁面、服務及 workspace keys。由共用個股 Detail 回訪推薦或回測來源時，依原 source identity、資料版本與上下文判讀；同股不表示來源可互換。V2 導覽說明及受限 QA 範圍見[完整操作手冊](../APPLICATION_MANUAL.md#v2開發分支導航尚非固定rc)。
 
 ## 保存策略的兩種比較（research07後續Source）

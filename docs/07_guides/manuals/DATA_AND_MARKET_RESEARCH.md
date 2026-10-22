@@ -1,5 +1,7 @@
 # 資料與市場研究
 
+V2工程另有具名TWSE／TPEx OpenData月營收current-only adapter；成功下載及解析只產生候選。原MOPS靜態來源身份不變，單位文件／欄位mapping、逐用途接受與外部固定SHA缺任一項時，不轉為Main正式金融輸入。完整批次可得時間、transport原件及exact雙市場cohort契約見[Daily Source](../../03_data/DAILY_SOURCE_SNAPSHOT_CONTRACT.md)；一般操作與缺件判讀見[完整手冊](../APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)。
+
 ## research07回報修正（後續Source）
 
 若原保存報告顯示「沒有可核驗的同版價格／MA」，保留該缺件。在上方輸入 `2330`，明按「改用一般個股查詢」另開一般價庫；新查詢不沿用原結果ID、日期、SHA或股票名稱，名稱由實際一般行情列辨識。一般行情日期以新報告為準，不能拿它替原保存報告補值。保存來源內的「重讀原來源報告」仍讀原版本。

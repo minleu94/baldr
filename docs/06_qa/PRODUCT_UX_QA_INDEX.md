@@ -1,5 +1,7 @@
 # 產品與個股研究 QA 索引
 
+V2後繼補完集中看[工程與整合驗收](BALDR_V2_FINAL_COMPLETION_20261021.md)：原始失敗保留，來源／Paper程式契約、真Main GUI、金融用途、Native及OwnerUAT各自列證據，不以正向fixture代替正式來源資格。
+
 本次啟動 TabOrder、Qt model 連線清理與 pandas 相容性修正，見[主視窗啟動警告修復](BALDR_STARTUP_WARNINGS_FIX_20261015.md)；來源版限定驗證與公司名冊來源憑證缺件分開判讀。
 
 V2 開發分支產品接受摘要：[BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md](BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md)；2026-10-21 Owner 已改採自動化優先，四軌驗收、各旅程範圍與金融缺件分開判讀。本索引不替代原始證據，也不代表 Native、Owner UAT 或完整金融資格通過。

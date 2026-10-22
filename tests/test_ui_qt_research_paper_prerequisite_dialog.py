@@ -79,7 +79,7 @@ def test_dialog_shows_saved_identity_and_readonly_original_without_enabling_acco
     assert dialog.original_text.toPlainText() == original
     assert dialog.original_text.isReadOnly()
     assert not dialog.create_account_button.isEnabled()
-    assert "現行建帳流程尚未支援直接納入此研究" in dialog.blockers_label.text()
+    assert "尚未明選此研究的外部固定證據" in dialog.blockers_label.text()
     assert "既有 Paper 帳本與等權重比較基準不能代替" in dialog.blockers_label.text()
 
     requested: list[bool] = []

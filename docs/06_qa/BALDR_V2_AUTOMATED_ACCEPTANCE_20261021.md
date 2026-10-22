@@ -1,5 +1,7 @@
 # Baldr V2｜自動化驗收一頁摘要
 
+後繼補完的目前證據見[V2工程與整合驗收](BALDR_V2_FINAL_COMPLETION_20261021.md)：新增月營收雙市場工程、人工確認Paper producer／UI及真Main歷史結果保存重開；下方表格是本輪之前的固定驗收範圍，原始失敗與版本界線保留。完整五旅程金融分支仍PARTIAL。
+
 2026-10-21（America/Los_Angeles）。最終工程裁決：**`PRODUCT_RC_READY_WITH_LIMITATIONS`**。包含 `b8ed339f` 已驗功能與本次首頁日期修復；本機來源版研究 RC：**`PRODUCT_RC_AUTOMATED_VERIFIED_OWNER_UAT_PENDING`**，僅涵蓋下列已核實的功能。Owner UAT 不作日常開發或 RC 準備的前置條件；不要求現在逐頁點測。
 
 **四軌分開記錄：**`CODE_AND_CONTRACT_VERIFIED`、`AUTOMATED_GUI_E2E_VERIFIED` 均限定所列版本／資料／動作；原生 Windows 軌為 `NATIVE_SMOKE_NOT_EXECUTED`（既有停止指示維持），Owner 軌為 `OWNER_UAT_NOT_PERFORMED`。離屏 GUI 不代表原生桌面或真人驗收。

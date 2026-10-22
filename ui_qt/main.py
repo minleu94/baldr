@@ -3030,7 +3030,7 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _check_timeline_paper_prerequisites(self, value: object) -> None:
-        """重核保存判斷後檢查 Paper 前置條件，不建立帳本或提升資格。"""
+        """重核原件後，依明選證據開啟人工確認模擬或既有前置檢查。"""
         if type(value) is not ResearchTimelineEntry or getattr(self, "_shutdown_close_requested", False):
             return
         timeline = self.research_timeline_view
@@ -3048,12 +3048,38 @@ class MainWindow(QMainWindow):
         def apply(result: object) -> None:
             if not current() or not isinstance(result, tuple) or len(result) != 2:
                 return
+            from app_module.research_paper_ui_composition import configured_research_paper_simulation
             from ui_qt.widgets.research_paper_prerequisite_dialog import ResearchPaperPrerequisiteDialog
+
+            inputs = getattr(self, "paper_checkpoint_account_inputs", None)
+            try:
+                composition = configured_research_paper_simulation(
+                    settings=self.application_settings, entry=value,
+                    timeline_service=self.research_timeline_service,
+                    account_service=getattr(self, "paper_checkpoint_account_service", None),
+                    personal_paths=getattr(inputs, "personal_paths", None),
+                    protected_roots=(Path(self.config.data_root), Path(self.config.output_root),
+                                     self.application_settings.resource_root),
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Paper 證據設定無法核驗：{str(exc).splitlines()[0]}")
+                return
 
             previous = getattr(self, "_research_paper_prerequisite_dialog", None)
             if previous is not None:
                 previous.close()
-            dialog = ResearchPaperPrerequisiteDialog(value, parent=self)
+                if previous.isVisible():
+                    self.statusBar().showMessage("原 Paper 模擬仍在執行，請待保存核驗完成。")
+                    return
+            dialog: Any
+            if composition is None:
+                dialog = ResearchPaperPrerequisiteDialog(value, parent=self)
+            else:
+                from ui_qt.widgets.research_paper_simulation_dialog import ResearchPaperSimulationDialog
+
+                dialog = ResearchPaperSimulationDialog(
+                    value, composition.provider, composition.producer_factory, parent=self,
+                )
             dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
             self._research_paper_prerequisite_dialog = dialog
 
@@ -3068,6 +3094,15 @@ class MainWindow(QMainWindow):
 
             dialog.finished.connect(closed)
             dialog.paperStatusRequested.connect(open_paper_status)
+            if composition is not None:
+                def produced(_result: object) -> None:
+                    if current():
+                        self.statusBar().showMessage("Paper 模擬已保存到原帳本；研究原件與 Forward 資格維持原狀。")
+
+                dialog.paperProduced.connect(produced)
+                dialog.returnToEntryRequested.connect(
+                    lambda original: timeline.select_entry(original) if current() and original is value else None
+                )
             dialog.open()
 
         self._verify_timeline_entry(value, apply, evidence_baseline=True)

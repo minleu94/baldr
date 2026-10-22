@@ -275,6 +275,8 @@ Increment59固定來源包為兩個既有策略的v2規則收據加三份raw sou
 
 ### 價格研究、個股與 Portfolio 跨頁接線
 
+`ResearchPaperProducer`新增人工確認的通用保存研究事件入口，消費原Timeline與原策略帳戶，不重寫scheduled producer。Typed context只攜帶核實的原件／現金／持倉／同日mark及sector，政策與費用由Decimal純預覽和提交共用邏輯計算。原ledger的CAS、同日唯一operation及原子fill／transition／marker保持；Reader重試必須exact-read原operation且目前rowset仍等於其post hash，再重建原prefix prestate。後續異動、來源或用途改變即拒絕重試，不靠布林旗標跳驗。外部binding與用途收據只接受明選SHA，無預設本金或research-price成交替代；NAV／Forward另循原投影資格。見[整合決策](../BALDR_V2_SOURCE_PAPER_INTEGRATION_20261021.md)。
+
 F07後續Source以同一筆記服務的`source_read_scope()`在worker內啟用有界語義證明，只有完整成功讀取的repository proof可登記。Main把同一服務的factory交給原收藏與價格頁的完整來源reader，避免各入口重做冷語義計算；查詢、翻頁與單股投影仍走原路徑。保存、明選讀取與來源開啟每次仍核完整當前原件，只省去相同SHA原件的重複語義計算，不重用舊DTO、來源狀態或P01授權。Journal／CAS、實際保存時鐘及不可取消寫入保持；新程序冷驗、128份上限及竄改拒絕邊界見[QA163–168](../../06_qa/BALDR_THEME_DAILY_QA_20261018.md#f07語義證明範圍qa163164)。固定06不含此修改，完整旅程與後續候選的接受範圍依具名QA分開記錄。
 
 同View、同query的返回候選沿既有P01翻頁語義：已發行session／result及完整選取pins相符時，由原public `result.read_page`重讀該頁所涉批次，核manifest及該批全部raw的bytes／SHA／layout，以新page重建完整selection再比對。它保留已開啟的母體session，不宣稱每次返回都重新核完整parent／receipt graph，也不直接套舊page DTO。沒有符合狀態仍走原fresh full重開；快路徑遇取消、竄改或失配直接拒絕，不吞錯重試。筆記保存、讀取與開啟原版本的完整fresh來源路徑不變；驗證狀態見同段QA。

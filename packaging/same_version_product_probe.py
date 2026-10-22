@@ -89,9 +89,94 @@ def h20_summary(case: Path) -> dict:
         app.processEvents()
 
 
+def v2_contract_summary() -> dict:
+    """限定合成封裝契約：缺單位不換算、缺確認不接受，無來源批准。"""
+    from datetime import datetime, timezone
+    from app_module.research_paper_producer import HumanConfirmedPaperIntent
+    from data_module.opendata_monthly_revenue import (
+        OPENAPI_MONTHLY_REVENUE_ENDPOINTS,
+        OpenApiMonthlyRevenueCapture,
+        OpenApiMonthlyRevenueError,
+        openapi_batch_to_current_observations,
+        prepare_openapi_monthly_revenue_batch,
+    )
+    from data_module.monthly_revenue_openapi_preparation import (
+        AMOUNT_FIELDS, PERCENTAGE_FIELDS,
+    )
+
+    clock = datetime(2026, 10, 21, 7, 15, tzinfo=timezone.utc)
+    row = {"出表日期": "1151021", "資料年月": "11509", "公司代號": "2330",
+           "公司名稱": "隔離封裝測試", "產業別": "隔離測試", "備註": "合成列，非正式來源"}
+    row.update({field: "100" for field in AMOUNT_FIELDS})
+    row.update({field: "0" for field in PERCENTAGE_FIELDS})
+    raw = json.dumps([row], ensure_ascii=False).encode("utf-8")
+    markets = {}
+    for market in ("twse", "tpex"):
+        endpoint = OPENAPI_MONTHLY_REVENUE_ENDPOINTS[market]
+        capture = OpenApiMonthlyRevenueCapture(
+            market=market, requested_url=endpoint, response_url=endpoint,
+            response_status=200, content_type_original_text="application/json; charset=utf-8",
+            content_encoding_original_text=None, content_length_original_text=str(len(raw)),
+            response_body_complete=True, eof_observed=True, received_body_bytes=len(raw),
+            body_observation_ended_at=clock, body_completed_at=clock, raw_response_bytes=raw,
+        )
+        batch = prepare_openapi_monthly_revenue_batch(
+            capture=capture, successful_batch_completed_at=clock,
+        )
+        assert batch.conversion_to_twd is None and batch.unit_proof_sha256 is None
+        try:
+            openapi_batch_to_current_observations(batch, observed_at=clock)
+        except OpenApiMonthlyRevenueError:
+            pass
+        else:
+            raise AssertionError("缺正式單位證據時不得產生 TWD observation")
+        markets[market] = {"source_id": capture.source_id, "period": batch.period,
+                           "row_count": len(batch.rows), "twd_without_proof_rejected": True}
+
+    try:
+        HumanConfirmedPaperIntent(
+            operation_id="isolated-packaging", confirmation_id="isolated-only",
+            candidate_identity_sha256="sha256:" + "1" * 64,
+            account_namespace="isolated-account", binding_sha256="sha256:" + "2" * 64,
+            evidence_fingerprint_sha256="sha256:" + "3" * 64,
+            side="buy", quantity=1, event_date="2026-10-21",
+            confirmed_at=clock.isoformat(),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("不合格股數不得建立人工確認意圖")
+    from PySide6.QtWidgets import QApplication
+    from app_module.dtos.portfolio_dtos import JournalEntryDTO
+    from app_module.research_timeline_dtos import ResearchTimelineEntry
+    from app_module.research_paper_evidence_binding import ResearchPaperEvidenceBindingReader
+    from app_module.research_paper_ui_composition import configured_research_paper_simulation
+    from ui_qt.widgets.research_paper_simulation_dialog import ResearchPaperSimulationDialog
+
+    app = QApplication.instance() or QApplication([])
+    reference = JournalEntryDTO(journal_id="packaging-fixture", portfolio_id="default", body="隔離研究原文")
+    entry = ResearchTimelineEntry(
+        kind="manual", record_id=reference.journal_id, recorded_at="2026-10-21T07:15:00+00:00",
+        text=reference.body, reference=reference,
+    )
+    dialog = ResearchPaperSimulationDialog(entry, None, None)
+    returned = []
+    dialog.returnToEntryRequested.connect(returned.append)
+    assert not dialog.confirm_button.isEnabled() and dialog.quantity_edit.text() == ""
+    dialog.return_button.click()
+    assert returned == [entry] and returned[0] is entry
+    dialog.close()
+    app.processEvents()
+    assert callable(configured_research_paper_simulation) and callable(ResearchPaperEvidenceBindingReader)
+    return {"status": "passed", "fixture_kind": "isolated_contract_only",
+            "monthly_markets": markets, "paper_invalid_lot_rejected": True,
+            "paper_missing_evidence_ui_rejected": True, "paper_original_return_verified": True,
+            "formal_source_accepted": False, "paper_account_created": False}
+
+
 def main() -> int:
-    if len(sys.argv) != 3 or sys.argv[2] not in {"journey", "model", "h20"}:
-        raise ValueError("usage: same_version_product_probe.py <isolated-case> journey|model|h20")
+    if len(sys.argv) != 3 or sys.argv[2] not in {"journey", "model", "h20", "v2-contracts"}:
+        raise ValueError("usage: same_version_product_probe.py <isolated-case> journey|model|h20|v2-contracts")
     case = Path(sys.argv[1]).resolve(strict=True)
     if not case.is_dir():
         raise ValueError("隔離 fixture 目錄不存在")
@@ -110,8 +195,10 @@ def main() -> int:
         sys.argv = [str(scripts / "portable_probe.py"), str(case)]
         runpy.run_path(sys.argv[0], run_name="__main__")
         result = json.loads((case / "probe.json").read_text(encoding="utf-8"))
-    else:
+    elif mode == "h20":
         result = h20_summary(case)
+    else:
+        result = v2_contract_summary()
     print(json.dumps(result, ensure_ascii=False))
     return 0
 

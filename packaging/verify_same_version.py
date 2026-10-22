@@ -48,7 +48,7 @@ def main() -> int:
     config.write_text(json.dumps(roots, ensure_ascii=False, indent=2), encoding="utf-8")
     env = dict(os.environ)
     for name in tuple(env):
-        if name.startswith(("PERSONAL_", "DAILY_MARKET_", "CURRENT_RESTATED_", "PIT_")) or name in {
+        if name.startswith(("PERSONAL_", "DAILY_MARKET_", "CURRENT_RESTATED_", "PIT_", "RESEARCH_PAPER_", "PAPER_")) or name in {
             "DATA_ROOT", "OUTPUT_ROOT", "RESEARCH_STATE_ROOT", "BALDR_CONFIG", "MPLCONFIGDIR", "PYTHONPATH",
         }:
             env.pop(name)
@@ -93,7 +93,7 @@ def main() -> int:
                     or info["build"]["dependency_lock_sha256"] != lock_sha):
                 raise ValueError(f"{mode} 沒有通過固定發布身分核對")
             results[mode]["launch"] = info
-            for workflow in ("journey", "model", "h20"):
+            for workflow in ("journey", "model", "h20", "v2-contracts"):
                 print(f"執行 {mode} {workflow}", flush=True)
                 results[mode][workflow] = run(f"{mode}_{workflow}", command, [str(probe), str(case), workflow])
                 persist()

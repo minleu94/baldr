@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**V2後繼補完：Source契約已驗，正收斂Main與唯一新RC。** 已新增具名TWSE／TPEx OpenData current-only pipeline及人工確認Paper producer／UI，原ledger／CAS、帳戶／成本政策及MOPS身份保持。新QA028 Paper96項與mypy1113檔通過；QA030月營收177 PASS／1 SKIP、量化及前置頁回歸通過；QA019真Main完成原歷史來源→個股→Journal保存→返回→fresh，今日來源仍stale。兩官方各一次有界GET皆通過，未換算TWD或批准正式用途。金融來源／帳戶輸入、Forward成熟、Native停止及Owner待驗仍分開；本輪Main正向與集中RC收據收斂中。詳見[補完驗收](../06_qa/BALDR_V2_FINAL_COMPLETION_20261021.md)。以下日期化舊段按其版本判讀，不再以「producer未實作」代表新Source。
+
 **最終工程裁決：`PRODUCT_RC_READY_WITH_LIMITATIONS`。** 10/21有界收尾找到並修復首頁日期適配缺陷：正式來源已有10/21排程狀態，reader不再將10/20行情截止日錯比為決策日失配，改沿既有嚴格canonical日期契約。真來源唯讀核回1列、保留降級／過時與未來拒絕，四檔不變；QA171編譯、75定向、Workbench85、更新頁25／0／4與mypy1108通過。QA164 IPv6屬匯入時本機探測被測試guard攔下，原整輪FAIL保留。具名來源版研究RC就緒，非全部金融分支完成；月營收binding、Paper正向producer及合法輸入、PIT／Forward／ML另管，OwnerUAT不阻候選、Native停止維持。既有eefd EXE不含後繼鍵盤與本次reader修復，未重建。詳見[工程收尾裁決](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#最終工程收尾診斷2026-10-21)，完成本輪後不再重複缺件檢查。
 
 **自動化優先，Owner UAT不作日常Gate。** 依10/21 Owner override，程式／契約、自動GUI、原生Windows及Owner UAT四軌分列；來源版 `b8ed339f` 的明列研究功能為 `PRODUCT_RC_AUTOMATED_VERIFIED_OWNER_UAT_PENDING`，不宣告完整五旅程所有分支或金融資格接受。QA162真 `main()` 17路由／125%四尺寸通過；QA164當前Main的Registry相容120日／240列、不相容拒絕與返回功能完成，但整輪因守衛攔下urllib3本機IPv6探測而FAIL，原結果保留。正向首頁線索仍缺供本次驗證的原狀態檔，月營收／Paper真來源資格保持；Native停止→`NATIVE_SMOKE_NOT_EXECUTED`，Owner→`OWNER_UAT_NOT_PERFORMED`。既有eefd EXE不含後繼鍵盤修復，未新build；見[一頁摘要與截圖](../06_qa/BALDR_V2_AUTOMATED_ACCEPTANCE_20261021.md)。以下日期化舊Gate敘述不再單憑UAT未做阻擋開發或RC準備。

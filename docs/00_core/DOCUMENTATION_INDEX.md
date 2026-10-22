@@ -8,6 +8,7 @@
 |---|---|
 | 能做什麼、日常從哪裡開始 | [README](../../README.md)、[快速開始](../07_guides/QUICK_START.md) |
 | 現在有哪些入口與限制 | [Snapshot](PROJECT_SNAPSHOT.md) |
+| V2 固定候選、交付與維運收尾 | [Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)，金融資格及 Native／Owner 各別判讀 |
 | 產品目標與成立條件 | [Product Roadmap](PRODUCT_ROADMAP_POST_REFACTOR.md)、[願景](../01_architecture/system_vision_specification.md) |
 | 系統如何組成 | [目前架構](../01_architecture/system_architecture.md)、[主題分冊](../01_architecture/current/README.md) |
 | 完整操作與結果判讀 | [手冊](../07_guides/APPLICATION_MANUAL.md)、[指南](../07_guides/README.md) |

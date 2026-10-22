@@ -1,5 +1,7 @@
 # V2 工程補完與整合驗收
 
+本頁固定 d9 工程與當輪候選的歷史驗收；後繼 c6 月營收增量及唯一 06a4 最終包、排程治理與交付身份見 [Release Closeout](BALDR_V2_RELEASE_CLOSEOUT_20261021.md)。下方「後續只補文件」是該輪截止時點，不能推定後繼 runtime 沒有變更；舊結果及原失敗保持。
+
 本輪依 [Blueprint](../superpowers/specs/BALDR_V2_PRODUCT_UX_BLUEPRINT_CONSOLIDATED_20261020.md) 與 Owner 10/21補完授權，從 `12e7f620`、`codex/baldr-v2-product` 增量完成。本文的 QA001起屬新任務 `output/tasks/baldr-v2-final-completion`；舊QA159／162／164／171屬 `baldr-v2-product-implementation`，兩個命名空間不可混用。角色及原件審查由root負責，三個實際Luna High工作包分別處理月營收、Paper及UI／Main測試；不是更換角色名稱充作獨立複核。
 
 最終裁決：**`V2_ENGINEERING_COMPLETE_PENDING_EXTERNAL_ACCEPTANCE`**。本輪宣告範圍的可安全實作工程、正常Main正向Paper與必要回歸已完成，並集中建置一份新RC；通用producer不再列為未實作。這不宣稱全部金融功能正式可用或五旅程完整接受。Native保持`USER_STOPPED_ESCAPE`及`NATIVE_SMOKE_NOT_EXECUTED`，Owner保持`OWNER_UAT_NOT_PERFORMED`。累計額外Credits授權12,500未重置；任務級支出為`USAGE_UNOBSERVABLE`。沒有push、正式資料寫入、實盤、排程變更或替換正式入口。

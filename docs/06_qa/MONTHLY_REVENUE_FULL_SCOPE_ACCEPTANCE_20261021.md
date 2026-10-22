@@ -1,5 +1,7 @@
 # 月營收全用途研究工程與資格矩陣
 
+本頁固定 c6 Source 研究工程與金融資格；該增量已集中至後繼 `06a4e1c15ed9` 候選，包內來源驗證與交付身份見 [Release Closeout](BALDR_V2_RELEASE_CLOSEOUT_20261021.md)。封裝不改下列單位、PIT、用途 Gate 或歷史取得失敗。
+
 本輪從 `fd0e7302` 接續，沒有重啟 V2 或重建候選；獨立任務為 `output/tasks/baldr-monthly-revenue-full-scope`。Owner 全用途授權已確認，[權威契約](../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)分開定義開發授權與逐用途資料資格。交付為Source研究管線與逐用途安全入口；不宣稱全部金融功能已合格或全部正式consumer已啟用。
 
 ## 已取得的實際證據

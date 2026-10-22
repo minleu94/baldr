@@ -1,5 +1,7 @@
 # QA 證據導覽
 
+- [V2 Release Closeout](BALDR_V2_RELEASE_CLOSEOUT_20261021.md)：唯一 Source／EXE、Windows 全發現、Codex 設定讀回與恢復邊界；自然運行、金融資格及真人接受分軌。
+
 - [月營收全用途整合](MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)：雙市場原件、版本歸檔、逐用途資格與研究接線；Source 工程與正式金融接受分別判讀。
 
 - [V2工程補完與整合](BALDR_V2_FINAL_COMPLETION_20261021.md)：具名月營收來源、人工確認Paper producer、真Main歷史來源保存重開與五旅程五軌判讀；不取代原金融批准或Native／Owner驗收。

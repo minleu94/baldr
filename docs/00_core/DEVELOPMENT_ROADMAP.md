@@ -2,6 +2,8 @@
 
 本 Hub 只回答「該讀哪份權威文件」，不保存目前完成度、下一步、日期化收據或完整歷史。
 
+V2 固定候選、排程治理與外部接受的日期化證據由 [Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)導覽；後續版本仍依下列工程及成熟度權威，不以候選交付推定 Gate 通過。
+
 ## 閱讀路徑
 
 1. **目前狀態與優先事項**：[PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。Gate 與工作包的通過／待驗以最新適用的具名 QA 收據為證。

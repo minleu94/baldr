@@ -8,6 +8,10 @@
 
 ## V2分支與本機技術候選
 
+目前集中候選為 `2026.10.21+06a4e1c15ed9`，完整資料夾 `dist/candidate_06a4e1c15ed9_e74f9e5f/baldr`，用包內 `Launch-Baldr.cmd` 與 `GUIDE.md`；獨立 state 位於 `output/tasks/baldr-v2-release-operations-closeout/candidate_state`。新包已包含下列月營收、Paper、首頁日期與鍵盤工程，具名舊包的「尚未包含」只適用該舊版本。樣本日期、包外來源、精確 SHA、回退及驗收限制見[Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)。關閉新包後使用舊包原 Launcher／原 state 回退，不合併私人或正式資料；金融缺件時仍不可建帳或升格用途。
+
+維運人員可依[唯讀稽核 Runbook](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)使用 `scripts/audit_daily_operations.py`，明選觀察 manifest、外部固定 SHA 及原始收據根；Python 必須置於專案規定的 owned Job。此工具只輸出六狀態 JSON，不讀回 Task 設定或啟動工作。UNKNOWN／非零 Task／來源缺件分別核對，同次 identity／SHA／時鐘不符時保持下游 hold；不以重跑 writer、改舊收據或補零處理。CLI 不支援的舊 receipt schema 保留 UNKNOWN，不代表全部排程失效。
+
 ### 保存研究的人工確認 Paper 模擬
 
 在「我的投資 → 研究紀錄」明選原筆記，再開啟 Paper 條件。未配置合格證據時仍顯示前置缺件；已配置時可按「重新核驗」，明選已核帳戶、策略版本、買賣方向及 1,000 股整數倍股數，先預覽日期、執行參考價、模擬價、費用與模擬後現金，再明確確認保存。確認前不建立 writer；首次確認使用實際時鐘，跨台北日期須重新核驗。失敗時只重試同一確認，避免重複成交；變更股數／方向會使舊預覽失效。背景保存完成前不能關閉，完成後可返回原研究或查看既有 Paper。

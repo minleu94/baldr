@@ -2,7 +2,7 @@
 
 **日常營運裁決 `DAILY_OPERATIONS_PARTIAL_RECOVERY`，固定 V2 RC 保持。** Quick 已唯讀核對遷移證據、原備份及868筆／14,756欄修訂值，並完成精確 custody binding 的正式根 metadata 讀回；舊收據與資料庫未改寫。Freshness／Evidence 終態收據、六軌唯讀分類及 BankTaiwan／校準原件定位已完成必要回歸（275項／4 skip、mypy11檔，最新Bank45項／1 skip及launcher2項另驗）；不以程式修復宣稱自然排程恢復。21項Task定義無差異、Direct停用、兩個既有heartbeat保持；新formal-input自然run已越過舊路徑錯誤，但因09/09配置對10/22過期而拒絕。來源資格、當日PIT、Forward成熟、Native停止及Owner未驗維持；實際QA與逐分支下一步見[日常營運恢復](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。
 
-**後繼原始碼：圖卡優先研究介面。** 首頁並列風險／市場／候選／資料影響，題材高低端、覆蓋與最近研究靠近主圖卡，次要待辦及額外入口緊湊呈現；個股圖表與支持／反證同屏，報酬研究沿既有產品投影與欄位衝突拒絕。選股的原資料準備及完整條件可展開，策略參數、題材缺件與保存時間也已整理。只改 UI 展示，Daily Operations Recovery、金融計算與來源資格保持；固定 `06a4e1c15ed9` EXE 未含本增量。實際檢查及限制見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
+**後繼原始碼：圖卡優先研究介面。** 首頁並列風險／市場／候選／資料影響，題材高低端、覆蓋與最近研究靠近主圖卡，次要待辦及額外入口緊湊呈現；個股圖表與支持／反證同屏，報酬研究沿既有產品投影與欄位衝突拒絕。選股的原資料準備及完整條件可展開，原保存比較就近分列支持／反證／未知及原條件、日期、分母，策略參數、題材缺件與保存時間也已整理。只改 UI 展示，Daily Operations Recovery、金融計算與來源資格保持；固定 `06a4e1c15ed9` EXE 未含本增量。實際檢查及限制見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
 
 **目前 V2 最終研究候選為 `2026.10.21+06a4e1c15ed9`。** 唯一 runtime Source `06a4e1c15ed98d2b92a02967eaea03d5d47f49d8` 已集中 d9 的 UX／Paper、c6 月營收增量與搬遷路徑修復。新包同版、Launcher 正反 SHA、frozen Main 100%／125%／150% 的17路由及四尺寸關鍵矩陣通過，worker／pool 0 自然關閉；260項整合回歸、mypy1120檔通過。全主機224 Tasks發現21相關項，Direct維持停用；已修Source邊界但未重跑producer或宣稱自然恢復。51份Codex設定已核，僅更新兩個既有Baldr prompt，48暫停及其他設定保持。金額單位Unknown、歷史完整月份0、正式金融資格PARTIAL、Native停止與Owner未驗保持。候選／交付SHA、真實維運缺件與集中外部動作見[Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)；以下具名舊包及日期化紀錄按各自版本判讀。
 

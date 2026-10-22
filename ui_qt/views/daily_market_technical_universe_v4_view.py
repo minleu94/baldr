@@ -981,7 +981,6 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSortingEnabled(False)
-        root.addWidget(self.table)
 
         navigation = QHBoxLayout()
         self.previous_button = QPushButton("上一頁")
@@ -994,10 +993,10 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         navigation.addWidget(self.next_button)
         navigation.addStretch(1)
         navigation.addWidget(self.open_button)
-        root.addLayout(navigation)
 
         comparison_controls = QHBoxLayout()
-        self.add_comparison_button = QPushButton("將所選股票加入比較")
+        self.add_comparison_button = QPushButton("加入比較")
+        self.add_comparison_button.setToolTip("將目前明選股票的原查詢與來源加入比較籃；不讀取其他來源。")
         self.add_comparison_button.setObjectName("dailyMarketTechnicalUniverseV4AddComparison")
         self.clear_comparison_button = QPushButton("清空比較籃")
         self.clear_comparison_button.setObjectName("dailyMarketTechnicalUniverseV4ClearComparison")
@@ -1011,7 +1010,11 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         comparison_controls.addWidget(self.clear_comparison_button)
         comparison_controls.addWidget(self.compare_button)
         comparison_controls.addWidget(self.bookmark_button)
+        navigation.removeWidget(self.open_button)
+        comparison_controls.insertWidget(0, self.open_button)
         root.addLayout(comparison_controls)
+        root.addWidget(self.table)
+        root.addLayout(navigation)
         self.comparison_basket_label = QLabel("比較籃 0／256；至少 2 檔可比較。")
         self.comparison_basket_label.setObjectName("dailyMarketTechnicalUniverseV4ComparisonBasket")
         self.comparison_basket_label.setAccessibleName("跨頁保留的原保存研究比較清單")
@@ -1875,11 +1878,11 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         pieces = [
             f"{page.query.universe_id}｜{page.query.population_version}｜決策日 {page.query.decision_date}",
             f"母體狀態：{state_text}；宣告 {counts.declared_count}、納入 {counts.included_count}、"
-            f"排除 {counts.excluded_count}、已處理 {counts.processed_count}、待處理 {counts.pending_count}",
+            f"排除 {counts.excluded_count}、已處理 {counts.processed_count}、待處理 {counts.pending_count}；"
             f"缺資料 {counts.missing_data_count}、待處理缺資料 {counts.missing_data_pending_count}、"
             f"未知規則股票 {page.unknown_rule_count}",
             f"已核段 {page.processed_segment_count}/{page.query.segment_count}；"
-            f"符合目前篩選 {page.matching_count} 筆，第 {page.query.page_index + 1}/{page.page_count} 頁",
+            f"符合目前篩選 {page.matching_count} 筆，第 {page.query.page_index + 1}/{page.page_count} 頁；"
             f"涵蓋：{page.coverage_scope}；聚合：{page.aggregation_scope}；全市場宣稱：否",
         ]
         if page.exclusion_reasons:

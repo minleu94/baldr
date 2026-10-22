@@ -84,3 +84,26 @@ Native停止、Owner未驗、正式金融資格、PIT／Forward成熟及Daily Op
 task／Coverage／功能地圖結構與新增QA錨點檢查通過，原件為 `metadata_check_a2.json`、`task_check_a2.json`。檢查只證結構及紀錄，不代表重驗全庫歷史正文或金融資格。
 
 新增多候選畫面檢查曾因測試fixture的匯入路徑缺件而FAIL（`main_a2_final125/first_result.json`），原FAIL保留，未歸因為產品資料或來源失敗。已補檢查器的測試路徑，產品程式不因此更動。所有題材、候選及模型正向fixture皆明示QA示意，不能代替真來源資格、當日市場判讀、自然排程或金融接受。正式行情只沿具名隔離副本，Native停止、Owner未驗與固定EXE保持。
+
+## Track A A3 原證據比較與結果操作
+
+本批承接 `a37caeaf`，驗證期間共享HEAD前進至 Track B 的 `7f34b074`；不修改其資料、Forward、排程或校準檔案。Root依序履行Execution、QA、Documentation及UI設計／契約複核，沒有獨立reviewer。只改Qt呈現、相應測試與手冊；Reader、DTO、金融計算、來源資格、Main接線與固定EXE不變。
+
+| 需求 | 實作與有界證據 |
+|---|---|
+| 原理由可掃讀 | 兩類比較共用純文字支持／反證／未知分區，選股票欄或規則格時同步原文；未提供反證不解讀成無風險。HTML形狀的原文仍是純文字，換選不沿用上一股。 |
+| 原條件、日期與分母 | AND／OR、規則狀態、代碼／候選清單範圍及來源納入／宣告分母就近顯示。價格上下限含／不含、未知政策、各欄時鐘及原分子分母保留；不將來源宣告數稱為全市場分母。 |
+| 掃讀與查證 | 比率只在展示層明示「約」並顯示四位小數；精確Decimal、理由及pins完整保留於可展開原查詢稽核。版本列短碼有完整身份可查；不重算比率、訊號、報酬或評級。 |
+| 比較入口與容量 | 技術母體讀取／加入比較／比較／收藏在結果表上方；五行母體摘要收成三行，原數字、Unknown、來源範圍及頁數未移除。價格比較原UI的5欄拒絕與Reader既有256上限不一致，已沿同一常數；真Reader六欄用不同Query核過最末欄返回及水平捲動。未驗完整256欄效能。 |
+| 對話框可讀 | 來源捲動區透明樣式原會沿父系影響比較對話框；只在兩類比較對話框套局部不透明背景。價格比較直接在該對話框建立，避免換父容器後殘留透明樣式；無效比較仍保留舊結果並清除新建隱藏對話框。 |
+| 原版本返回與保存 | 正常Main按原比較按鈕開五規則對話框，返回第二欄的原Query、原選列及兩筆比較籃。價格比較以Reader發行結果進既有Main槽，返回第二欄缺價股票及原價格Query；原報告筆記保存、下鑽／返回與新程序回訪保持。 |
+
+最終原件在 `output/tasks/track-a-ux-20261022-01a164e6/`：`targeted_a3_final.log` 40 PASS、`native_v4_a3_final.log` 8 PASS、`workbench_a3_final.log` 85 PASS、`validator_a3_final.log` 25 PASS／0 FAIL／4 SKIP及`compile_a3_final.log` PASS。8項原View只涵蓋所列小樣本、來源時鐘、保存、輸入與合作式取消，不重標先前兩個257股案例為通過。
+
+`main_a3_final125/150` 各以1280×760、1500×900、1920×1080檢查正常Main的來源動作、比較表、原條件／日期、來源稽核與返回；first/fresh均通過、worker0。Root已看125%1280的兩比較及首屏選股結果，直接Qt擷取背景alpha255、沒有舊透明文字殘影，來源按鈕與結果首列完整可視。原選股來源來自三股合成隔離保存樣本，價格比較另用四股合成隔離capture，其他模型示意沿前批明示QA身份；不授正式金融或全市場資格。總Job收據 `single_owned_qa_2cdbb5ffaf3d4e61bfd6ba72e3006585` 自然排空、handles關閉及共享鎖釋放；其退出0只代表GUI／程序收尾，不取代下列mypy FAIL。
+
+必跑全範圍mypy保留失敗：早輪為其他線 `forward_performance_service.py` 的2項錯誤；最新 `mypy_a3_final.log` 在1127檔中回報 `data_module/recommendation_calibration_source_contract.py` 的16項型別錯誤。未修改、排除或以局部PASS掩蓋這些檔案。早期 `main_a3_01/02` 功能通過但比較圖有透明底，不作最終視覺證據；繪製診斷曾因PySide render overload及診斷路徑替換錯誤失敗，原輸出與退出碼保留，後繼直接Qt grab驗證，不後製圖片。
+
+仍待A3續作：目前總選股的母體漏斗投影尚未涵蓋v4的flat counts結構，已核來源首屏仍可能顯示漏斗未提供；原來源頁的日期／宣告分母及結果均可讀。本批沒有用可見列數推算此漏斗，後續只可沿既有公開計數修正展示。A4／A5繼續依真實畫面與原結果裁定；Native停止、Owner未驗、正式來源／金融資格與固定EXE保持。
+
+task／Coverage、功能地圖結構及新QA／手冊錨點檢查通過。`context_a3.txt` 的4500字預算略過 `current/decision_research_portfolio.md` 的完整選中正文；另核該冊原件返回與UI／application模組責任，未宣稱重讀全部歷史／策略正文或全庫EOF。

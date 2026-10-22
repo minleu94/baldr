@@ -79,6 +79,8 @@ def test_true_comparison_preserves_each_original_query_and_return_origin(
     assert first_selection.source_identity_sha256 == second_selection.source_identity_sha256
     assert first_selection.query.source.decision_date.isoformat() in view.evidence.toPlainText()
     assert first_selection.query.source.source_clock_identity_sha256 in view.evidence.toPlainText()
+    assert view.source_details.is_collapsed()
+    assert "S0001" in view.evidence_summary.heading.text()
     price_state_item = view.table.item(1, 1)
     assert price_state_item is not None
     assert price_state_item.text() == "未知價格"
@@ -86,6 +88,21 @@ def test_true_comparison_preserves_each_original_query_and_return_origin(
     view.table.setCurrentCell(0, 1)
     app.processEvents()
     assert second_selection.query.query_identity_sha256 in view.evidence.toPlainText()
+    assert second_selection.source_identity_sha256 in view.evidence.toPlainText()
+    assert "S0003" in view.evidence_summary.heading.text()
+    assert "價格 未知" in view.evidence_summary.context.text()
+    assert "≥100" in view.evidence_summary.conditions.text()
+    assert "只看未知" in view.evidence_summary.conditions.text()
+    assert "不是全市場分母" in view.evidence_summary.conditions.text()
+    view.table.setCurrentCell(8, 1)
+    app.processEvents()
+    selected_rule = next(rule for rule in comparison.columns[1].row.technical_row.rules if rule.key == "volume_ratio_20_including_current")
+    assert "20 日均量比" in view.evidence_summary.heading.text()
+    assert f"分母 {selected_rule.denominator if selected_rule.denominator is not None else '未知'}" in view.evidence_summary.context.text()
+    assert "決策截止" in view.evidence_summary.context.text()
+    assert all(text in view.evidence_summary.values["unknown"].toPlainText() for text in selected_rule.unknown_reasons)
+    view.source_details.toggle_button.click()
+    assert not view.source_details.is_collapsed()
     assert second_selection.source_identity_sha256 in view.evidence.toPlainText()
     returned: list[object] = []
     view.originRequested.connect(returned.append)
@@ -114,3 +131,31 @@ def test_comparison_view_rejects_one_column_without_replacing_existing_result(
     with pytest.raises(TypeError, match="reader 發行"):
         view.show_comparison(object())  # type: ignore[arg-type]
     assert view.summary.text() == old_summary
+
+
+def test_six_reader_issued_columns_remain_readable_and_return_the_selected_origin(app, exact_price_store):
+    session = _open_session(exact_price_store)
+    selections = []
+    for lower in (None, Decimal("90"), Decimal("95")):
+        query = session.create_query(min_close_price=lower, unknown_price_policy="include")
+        result = session.execute(query)
+        page = result.read_page(result.create_page_request(0, page_size=4))
+        selections.extend(DailyMarketTechnicalUniversePriceSelectionV1.from_page(query, page, code) for code in ("S0001", "S0002"))
+    comparison = read_daily_market_technical_universe_price_comparison_v1(tuple(selections))
+    view = DailyMarketTechnicalPriceComparisonV1View()
+    view.resize(900, 650)
+    view.show()
+    returned = []
+    view.originRequested.connect(returned.append)
+    try:
+        view.show_comparison(comparison)
+        view.table.setCurrentCell(8, 5)
+        app.processEvents()
+        assert view.table.columnCount() == 6
+        assert view.table.columnWidth(5) >= 140
+        assert view.table.horizontalScrollBar().maximum() > 0
+        assert "≥95" in view.evidence_summary.conditions.text()
+        view.return_button.click()
+        assert returned == [selections[5]]
+    finally:
+        view.close()

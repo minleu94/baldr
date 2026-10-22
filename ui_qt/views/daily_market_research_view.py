@@ -2559,19 +2559,21 @@ class DailyMarketResearchView(QWidget):
     def _accept_price_comparison(self, value: object) -> None:
         if self._shutting_down or not isinstance(value, DailyMarketTechnicalUniversePriceComparisonV1):
             return
-        details = DailyMarketTechnicalPriceComparisonV1View(self)
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.setWindowTitle("原價格條件研究比較")
+        from ui_qt.widgets.comparison_evidence_panel import style_comparison_dialog
+        style_comparison_dialog(dialog)
+        details = DailyMarketTechnicalPriceComparisonV1View(dialog)
         try:
             details.show_comparison(value)
         except (TypeError, ValueError) as exc:
-            details.deleteLater()
+            dialog.deleteLater()
             if self.technical_price_view is not None:
                 self.technical_price_view.status.setText(f"價格比較未接受：{exc}")
             return
         if self._price_comparison_dialog is not None:
             self._price_comparison_dialog.close()
-        dialog = QDialog(self)
-        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        dialog.setWindowTitle("原價格條件研究比較")
         layout = QVBoxLayout(dialog)
         layout.addWidget(details)
         details.originRequested.connect(lambda selection: self._return_price_origin(selection, dialog))
@@ -2658,6 +2660,8 @@ class DailyMarketResearchView(QWidget):
         dialog = QDialog(self)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.setWindowTitle("原保存五規則研究比較")
+        from ui_qt.widgets.comparison_evidence_panel import style_comparison_dialog
+        style_comparison_dialog(dialog)
         layout = QVBoxLayout(dialog)
         details = DailyMarketTechnicalComparisonV4View(dialog)
         details.show_comparison(value)

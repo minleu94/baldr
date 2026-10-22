@@ -7,6 +7,7 @@ from decimal import Decimal
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QHeaderView,
     QLabel,
     QPushButton,
     QTableWidget,
@@ -17,12 +18,15 @@ from PySide6.QtWidgets import (
 )
 
 from app_module.daily_market_technical_universe_price_comparison_v1 import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_COMPARISON_MAX_ITEMS,
     DailyMarketTechnicalUniversePriceComparisonV1,
     DailyMarketTechnicalUniversePriceSelectionV1,
 )
 from app_module.daily_market_technical_universe_price_query_v1 import (
     DailyMarketTechnicalUniversePriceRowV1,
 )
+from ui_qt.widgets.comparison_evidence_panel import ComparisonEvidencePanel, compact_comparison_audit
+from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
 
 
 _RULE_LABELS: dict[str, str] = {
@@ -62,6 +66,7 @@ class DailyMarketTechnicalPriceComparisonV1View(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._comparison: DailyMarketTechnicalUniversePriceComparisonV1 | None = None
         layout = QVBoxLayout(self)
         self.summary = QLabel("請選取已 fresh 核驗的 F07 比較。")
@@ -74,13 +79,22 @@ class DailyMarketTechnicalPriceComparisonV1View(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectColumns)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setAccessibleName("F07 價格與五規則比較；每欄使用自身來源")
+        self.table.verticalHeader().setDefaultSectionSize(max(26, self.fontMetrics().height() + 8))
+        self.table.horizontalHeader().setMinimumSectionSize(140)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerItem)
         layout.addWidget(self.table, 1)
+        self.evidence_summary = ComparisonEvidencePanel(self)
+        layout.addWidget(self.evidence_summary)
+        self.source_details = CollapsibleSectionPanel("完整原條件、理由與來源稽核", collapsed=True)
+        compact_comparison_audit(self.source_details)
 
         self.evidence = QTextBrowser()
         self.evidence.setOpenExternalLinks(False)
         self.evidence.setAccessibleName("所選比較欄的原查詢條件、技術理由與來源 pins")
         self.evidence.setMaximumHeight(240)
-        layout.addWidget(self.evidence)
+        self.source_details.content_layout.addWidget(self.evidence)
+        layout.addWidget(self.source_details)
         self.table.currentCellChanged.connect(self._show_column_evidence)
 
         self.return_button = QPushButton("返回所選欄的原價格研究")
@@ -92,8 +106,8 @@ class DailyMarketTechnicalPriceComparisonV1View(QWidget):
         if not isinstance(comparison, DailyMarketTechnicalUniversePriceComparisonV1):
             raise TypeError("需要 reader 發行的 F07 價格比較")
         comparison.to_json()
-        if not 2 <= len(comparison.columns) <= 5:
-            raise ValueError("F07 比較畫面接受 2 至 5 檔")
+        if not 2 <= len(comparison.columns) <= DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_COMPARISON_MAX_ITEMS:
+            raise ValueError("價格比較欄數超出 reader 契約")
         for column in comparison.columns:
             column.selection.to_json()
             column.row.to_dict()
@@ -118,7 +132,6 @@ class DailyMarketTechnicalPriceComparisonV1View(QWidget):
                     f"來源：{column.selection.source_identity_sha256}"
                 )
                 self.table.setItem(row_index, column_index, item)
-        self.table.resizeColumnsToContents()
         self._comparison = comparison
         self.summary.setText(
             f"已核驗 {len(comparison.columns)} 檔；逐欄分別列出價格觀測日、決策日與技術規則狀態。\n"
@@ -135,15 +148,54 @@ class DailyMarketTechnicalPriceComparisonV1View(QWidget):
         previous_row: int,
         previous_column: int,
     ) -> None:
-        del row_index, previous_row, previous_column
+        del previous_row, previous_column
         comparison = self._comparison
         if comparison is None or not 0 <= column_index < len(comparison.columns):
             self.evidence.clear()
+            self.evidence_summary.set_evidence(heading="尚未選取比較欄。", context="", supports=(), counterevidence=(), unknown_reasons=())
             return
         column = comparison.columns[column_index]
         selection = column.selection
         query = selection.query
         row = column.row
+        rules = (
+            tuple(rule for rule in row.technical_row.rules if rule.key == _RULE_KEYS[row_index - 5])
+            if 5 <= row_index <= 9 else row.technical_row.rules
+        )
+        supports, counter, unknown = [], [], list(row.price_fact.reason_codes)
+        for rule in rules:
+            prefix = _RULE_LABELS.get(rule.key, rule.key) + "：" if len(rules) > 1 else ""
+            supports.extend(prefix + text for text in rule.supports)
+            counter.extend(prefix + text for text in rule.counterevidence)
+            unknown.extend(prefix + text for text in rule.unknown_reasons)
+        context = (
+            f"價格 {_price_text(row.price_fact.close_price)}｜價格日 {row.price_fact.observation_date or '未知'}"
+            f"｜決策日 {row.technical_row.decision_date}｜技術特徵日 {row.technical_row.latest_feature_date or '未知'}"
+        )
+        title = "原價格與五項規則"
+        if len(rules) == 1:
+            rule = rules[0]
+            title = _RULE_LABELS.get(rule.key, rule.key) + "｜" + _STATE_LABELS.get(rule.state, rule.state)
+            context += f"｜規則特徵日 {rule.feature_date or '未知'}｜決策截止 {rule.decision_cutoff.isoformat()}"
+            ratio_text = f"約 {rule.ratio:.4f}（原精度見稽核）" if rule.ratio is not None else "未知"
+            context += f"｜分子 {rule.numerator if rule.numerator is not None else '未知'}／分母 {rule.denominator if rule.denominator is not None else '未知'}｜比率 {ratio_text}"
+        filters = "；".join(
+            _RULE_LABELS.get(item.rule_key, item.rule_key) + "＝"
+            + "／".join(_STATE_LABELS.get(state, state) for state in item.states)
+            for item in query.rule_state_filters
+        ) or "技術規則不限狀態"
+        lower = "未設下限" if query.min_close_price is None else f"{'≥' if query.min_inclusive else '>'}{query.min_close_price}"
+        upper = "未設上限" if query.max_close_price is None else f"{'≤' if query.max_inclusive else '<'}{query.max_close_price}"
+        unknown_policy_text = {"include": "納入未知", "exclude": "排除未知", "only": "只看未知"}[query.unknown_price_policy]
+        conditions = f"原價格條件：{lower}／{upper} TWD／股；{unknown_policy_text}。技術 {query.combine_mode}：{filters}。"
+        conditions += f"技術代碼 {len(query.technical_stock_filter)} 檔（清單見稽核）。" if query.technical_stock_filter else "技術代碼不限。"
+        conditions += "候選範圍：全納入清冊。" if query.eligible_stock_codes is None else f"候選範圍：明選 {len(query.eligible_stock_codes)} 檔（清單見稽核）。"
+        counts = query.source.counts
+        conditions += f"技術來源納入 {counts.included_count}／宣告 {counts.declared_count} 檔（排除 {counts.excluded_count}、待處理 {counts.pending_count}）；不是全市場分母。"
+        self.evidence_summary.set_evidence(
+            heading=f"{selection.stock_code}｜{title}", context=context,
+            supports=supports, counterevidence=counter, unknown_reasons=unknown, conditions=conditions,
+        )
         unknown_policy = {
             "include": "納入未知",
             "exclude": "排除未知",
@@ -164,6 +216,7 @@ class DailyMarketTechnicalPriceComparisonV1View(QWidget):
                 parts.append(f"條件：{_RULE_LABELS.get(item.rule_key, item.rule_key)}＝{states}")
         for rule in row.technical_row.rules:
             parts.append(f"{_RULE_LABELS.get(rule.key, rule.key)}（{rule.version}）：{_STATE_LABELS.get(rule.state, rule.state)}")
+            parts.append(f"分子：{rule.numerator}；分母：{rule.denominator}；比率：{rule.ratio}")
             if rule.supports:
                 parts.append("支持依據：" + "；".join(rule.supports))
             if rule.counterevidence:

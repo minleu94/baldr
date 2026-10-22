@@ -205,6 +205,8 @@ def test_assumption_banner_uses_report_and_matching_run_params_not_live_draft(qt
     assert "99" not in text
     assert "sha256:original-source" in text
     assert "research_only" in text
+    assert "14.25 bps" in adapter.outcome_summary.values["cost"].text()
+    assert "99" not in adapter.outcome_summary.values["cost"].text()
     assert not adapter.draft_status.isHidden()
 
 

@@ -143,3 +143,19 @@ task／Coverage、功能地圖metadata與新QA錨點檢查通過，收據 `singl
 最終收據 `single_owned_qa_969d189313fe49a99f6e727a3eb3414b` 自然排空、handles關閉及鎖釋放；早輪 `main_a4_bars01` 功能亦通過，僅後繼消除觀察卡空欄，原輸出保留。其他線同期提交資料receipt／lineage，未stage或修改其檔案。A4強弱圖文缺口已具體改善，接續A5已有成果呈現與全目標證據核對；Native停止、無EXE重建、無push。
 
 task／Coverage、功能metadata及新QA錨點通過，收據 `single_owned_qa_8183e92bdbad43b591fdfbaf791c74ff` 排空、handles關閉及鎖釋放。`context_a4_bars.txt` 是ui領域Level2的6份摘錄、2726字，Unknown清單為空；這只代表該次定位摘錄沒有略過，不代表全庫文件EOF、全連結或真人接受。
+
+## Track A A5 單股原結果圖卡與權益預覽
+
+單股「實驗摘要」新增原總報酬、原最大回撤、完成配對與原費率假設圖卡，完整文字／交易明細仍在下方。圖卡直接讀原DTO或保存payload；已宣告的原指標契約沿既有解碼器核對，unavailable零不顯示為已觀測零，契約錯誤保持未知。無契約舊原摘要明示未核契約，不升績效資格。費率不等於扣款合計，不推算成本或淨報酬，修改草稿99bps不污染原14.25bps。完整來源及運算假設可展開，原Main／Reader／DTO／金融公式／保存契約未改。
+
+同筆原權益預覽只讀原equity與日期欄／索引的最近120筆，顯示筆數／原分母及原列順序；缺值留斷點，游標顯示精確原值。沒有計算報酬、回撤或基準。圖卡與預覽放在同一原摘要頁；詳細圖表另有來源選擇器，故不把原摘要圖卡留在其上，避免視覺暗示跨來源配對。寬窄窗重排；900寬沿原「查看實驗結果／編輯回測設定」流程。
+
+最終 `*_a5_cards_final.log`：編譯、35項原結果／參數快照／歷史卡／格式／原曲線定向、Workbench85、更新頁25 PASS／0 FAIL／4 SKIP及全範圍mypy1131檔通過。測試核對精確原比率、真零、未知、契約unavailable零、錯誤SHA、原cost快照、原Frame不變、120筆界線、原日期欄及缺值斷點。早輪全範圍mypy曾因其他線tpex_daily_price_backfill.py:152失敗，原件保留，未代改該檔。
+
+`main_a5_cards_final125/150` 正常Main first／fresh均通過，worker0。原fixed策略1.0.0 executor／broker在90筆隔離合成OHLCV實際執行，原performance analyzer產出結果並以既有Registry保存API寫入正常Main隔離命名空間；Main經有界exact Reader重開，metadata SHA與保存原件一致，讀回不變。這不是手填收益，亦不代表真實2330行情／績效或PIT資格。沒有重跑回測保存按鈕的對話框；本批保存驗證用原Registry API及Main真讀回，原Journal筆記的正常UI保存、原選列返回與新程序回訪另隨同驗證。
+
+1280×760、1500×900、1920×1080、900×760在穩定Qt事件循環後檢查四圖卡與原曲線完整可見；Root看過兩縮放1280及125%900原圖，日期底端、負報酬、回撤、配對、費率與曲線均可讀。原完整假設可展開，詳細圖表頁不沿用摘要圖卡；不以早輪白色未載圖表當作接受證據。早輪亦保留Registry命名空間、缺顯式讀取預算及900設定單欄尚未切到結果的腳本失敗；後繼依原服務、預算與既有結果按鈕驗證，未繞過守衛。最終輔助expected檔的metadata SHA改用原canonical helper並核對Reader身份，早輪未採用的輔助欄位不作身份證據。
+
+最終收據 `single_owned_qa_9c183f1920554b66b4fdf0cf15692c7f` 自然排空、handles關閉及共享鎖釋放。Native停止、無EXE重建、無push，金融資格不提升；仍需逐項核對Journal／策略比較及A1–A5全目標證據，不以本批通過宣稱整個平台完成。
+
+task／Coverage、功能metadata及QA／手冊錨點通過，收據 `single_owned_qa_dab6a9a7a3464096b2f368414b0e3d63` 排空、handles關閉與鎖釋放。`context_a5_cards.txt` 的6500字預算略過 `current/decision_research_portfolio.md` 完整選中正文6798字；該冊相關責任已在前批定位，本批另直接核對原指標契約、保存payload、Qt callback及操作正文。不宣稱重讀整冊／全歷史EOF、全庫連結或真人驗收。

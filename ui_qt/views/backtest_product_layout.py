@@ -10,6 +10,7 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
+    QPushButton,
     QLabel,
     QStackedWidget,
     QTableWidget,
@@ -93,6 +94,22 @@ class BacktestProductLayout:
         self.draft_status.setObjectName("backtestDraftAssumptionStatus")
         self.draft_status.setWordWrap(True)
         self.draft_status.setVisible(False)
+        from ui_qt.widgets.backtest_outcome_summary import BacktestOutcomeSummary
+        self.outcome_summary = BacktestOutcomeSummary(panel)
+        summary_page = getattr(panel, "_result_tab_content_widgets", {}).get("summary")
+        if summary_page is None:
+            summary_page = getattr(panel, "_result_tab_widgets", {}).get("summary")
+        if isinstance(summary_page, QWidget):
+            summary_layout = summary_page.layout()
+            if summary_layout is None:
+                summary_layout = QVBoxLayout(summary_page)
+            if isinstance(summary_layout, QVBoxLayout):
+                summary_layout.insertWidget(0, self.outcome_summary)
+        self.assumption_details_button = QPushButton("顯示完整來源與運算假設", panel)
+        self.assumption_details_button.setObjectName("backtestAssumptionDetailsToggle")
+        self.assumption_details_button.setCheckable(True)
+        self.assumption_details_button.toggled.connect(self.assumption_banner.setVisible)
+        self.assumption_banner.hide()
 
         self.stack = QStackedWidget(panel)
         self.stack.setObjectName("backtestProductResultStack")
@@ -102,9 +119,10 @@ class BacktestProductLayout:
         layout.removeWidget(tabs)
         self.stack.addWidget(tabs)
         layout.insertWidget(original_index, self.stack, 1)
-        layout.insertWidget(1, self.assumption_banner)
-        layout.insertWidget(2, self.draft_status)
-        layout.insertWidget(3, self.navigator)
+        layout.insertWidget(1, self.assumption_details_button)
+        layout.insertWidget(2, self.assumption_banner)
+        layout.insertWidget(3, self.draft_status)
+        layout.insertWidget(4, self.navigator)
 
         self.open_positions_page, self.open_positions_table, self.open_positions_status = self._make_table_page(
             "backtestOpenPositionsPage", "期末未平倉：只顯示本次結果原始期末欄位。"
@@ -398,6 +416,7 @@ class BacktestProductLayout:
         """只呈現明確結果事件或歷史 payload；None 不會重新綁定可變的 live state。"""
         mode = self._active_mode()
         if mode != "single_stock":
+            self.outcome_summary.clear()
             mode_label = self._active_mode_label()
             self._last_report = None
             self._last_params = {}
@@ -497,6 +516,7 @@ class BacktestProductLayout:
             f"來源身份 {_text(source_identity)}｜來源資格 {_text(qualification)}"
         )
         self.draft_status.setVisible(False)
+        self.outcome_summary.present(target if self._presented_snapshot_exists else None, params, source_label)
         self._refresh_open_positions(target)
         self._refresh_daily_signals(target)
         return True

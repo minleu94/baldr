@@ -1,0 +1,56 @@
+{
+  "schema_version": "baldr-track-c-retention-policy.v1",
+  "mode": "preview_and_owner_review",
+  "automatic_existing_artifact_deletion": false,
+  "protected": ["formal_sources", "sqlite_wal_shm_journal", "ledger", "source_and_pit_custody", "active_or_shadow_model_closure", "unique_qa_oos_golden", "other_track_owned_artifacts"],
+  "release": {
+    "keep": ["current_fixed_rc", "at_least_one_verified_rollback", "all_named_golden_versions", "unique_runtime_without_verified_restore_copy"],
+    "redundant_dist": "可移除的只有逐檔驗證的額外runtime副本；先保留其Trial／archive、來源與build收據，再核active引用與handle，具名批准後執行。",
+    "source_zip_is_sufficient_runtime_backup": false
+  },
+  "trial_build": {
+    "keep": ["unique_trial_state_and_provenance", "accepted_reference_trial", "source_archive_and_build_receipt"],
+    "preview_age_days": 14,
+    "age_is_deletion_evidence": false,
+    "cap": "每個受保護版本保留一份已核runtime；第二份以上只進審核queue，不依數量自動刪除。"
+  },
+  "ml_checkpoint": {
+    "keep": ["active_latest_resumable", "last_verified_complete", "best_accepted_model", "all_oos_and_golden_dependencies"],
+    "optimizer_state": "先辨認framework及resume語義；不能以inference模型取代optimizer狀態。本輪未證明存在可刪optimizer checkpoint。",
+    "partial_direct_assembly": "未完成run須先取得放棄resume決定、排除writer並驗證可重建輸入閉包；不可僅因heartbeat陳舊刪除。"
+  },
+  "dataset_cache": {
+    "identity": ["source_bytes", "revision", "availability", "cutoff", "schema", "feature_label_versions", "computation_dependency_pins"],
+    "preview_ttl_days": 30,
+    "ttl_is_deletion_authority": false,
+    "keep": ["unique_raw_or_pit", "pinned_model_input", "replay_or_oos_reference", "unreproducible_snapshot"],
+    "new_writes": "先核可重用的immutable block；不得跨PIT／revision合併，不重寫正式資料或為壓縮大量複製原件。"
+  },
+  "failed_runs": {
+    "preserve_failure_receipt_and_identity": true,
+    "required": ["writer_and_lock_clear", "owner_resume_abandonment", "verified_rebuild_or_restore", "consumer_and_evidence_closure_clear", "exact_manifest_approval"],
+    "isolated_new_task_scratch": "允許在owned Job排空後，以逐項清冊清除本任務新建、合成、可重建且無外部hardlink／reparse的fixture；不清除收據。"
+  },
+  "capacity": {
+    "bytes_per_gib": 1073741824,
+    "warning_free_gib": 120,
+    "scheduled_heavy_required_free_gib": 95,
+    "scheduled_persistent_new_gib": 35,
+    "scheduled_temporary_peak_gib": 40,
+    "minimum_safety_reserve_gib": 20,
+    "emergency_review_free_gib": 40,
+    "engineering_probe_persistent_gib": 1,
+    "engineering_probe_scratch_peak_gib": 1,
+    "engineering_probe_job_memory_gib": 8,
+    "engineering_probe_max_processes": 12,
+    "training_allowed": false,
+    "interpretation": "95GiB及20GiB沿既有ML容量契約；120／40為本線操作警戒，不安裝新排程或更改既有guard。任何訓練另須Track B合格資料、預註冊OOS與精確資源預算。"
+  },
+  "execution": {
+    "revalidate_immediately_before_deletion": true,
+    "same_volume_trash_counts_as_reclaimed": false,
+    "delete_existing_requires_explicit_owner_approval": true,
+    "stop_on_identity_hash_reference_or_handle_drift": true,
+    "push_or_publish_authorized": false
+  }
+}

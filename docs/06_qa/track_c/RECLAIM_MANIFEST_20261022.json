@@ -1,0 +1,287 @@
+{
+  "schema_version": "baldr-safe-reclaim-manifest.v1",
+  "observed_utc": "2026-10-23T05:27:17.559878+00:00",
+  "owner_approval_required": true,
+  "existing_deletion_performed": false,
+  "estimated_total_reclaimable_bytes": 9909706064,
+  "items": [
+    {
+      "id": "dist-extra-theme-06",
+      "classification": "SAFE_RECLAIM",
+      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-dist\\candidate_7fbe58670582_eb880817\\baldr",
+      "retained_runtime": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-output\\trial\\Baldr-Theme-Research-06\\app",
+      "root_identity": [
+        3532133302,
+        281474978283566
+      ],
+      "file_count": 7124,
+      "directory_count": 514,
+      "estimated_reclaimable_bytes": 978534056,
+      "estimate_scope": "unique ordinary file AllocationSize; not guaranteed physical extent or concurrent volume delta",
+      "full_tree_manifest": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\pair-06.json",
+      "full_tree_manifest_sha256": "1529bad412771a0764523cf0aa9acd44b446923fcec4f9dec5e9e24430a51d70",
+      "source_commit": "7fbe586705820ed005705b45de7b821737b9b693",
+      "exe_sha256": "0c52da0d95982b4af7bafc769afad5609e79332657eaa393b2d3d08df00d6528",
+      "trial_package_sha256": "a94ce98cc5f81e3d46c1503584397fe86d6f906b445ff3a15eec93c90bc35a84",
+      "retained_build_receipt": "output\\packaging\\build_7fbe58670582_eb880817\\candidate_receipt.json",
+      "retained_build_receipt_sha256": "f045f2cf1c1002206db7262cf6c54e6428b429db9da01793e611dbc8dbc02d0f",
+      "active_references": {
+        "windows_tasks": 0,
+        "codex_automations": 0,
+        "registered_resource_users": 0,
+        "exclusive_read_failures": 0,
+        "active_task_exact_matches": 0,
+        "tracked_exact_path_consumers": 0
+      },
+      "passive_references": "build receipt records old dist path; receipt and all Trial/runtime bytes remain; recreate named path before historical replay",
+      "restore": {
+        "method": "copy retained Trial/app exact tree back to this exact baldr path, preserve directory layout, recheck all 7124 SHA and BUILD_INFO/exe identity; apply recorded attributes/time/owner/group/DACL if required",
+        "metadata_manifest": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\security-06.json",
+        "metadata_manifest_sha256": "a12c43f7fa9f8bd2983d8b27e8df054e7ca15f56549ddf8259bb0f755ff75cd3",
+        "scope": "runtime bytes and paths; file IDs change, SACL/forensic clone not asserted",
+        "minimum_restore_free_bytes": 22453370536
+      },
+      "pre_delete": "After explicit Owner approval, unconditionally rerun complete pair SHA/tree/ADS/hardlink/allocation and full metadata, expanded references, RM and exclusive probes immediately before deleting. Match approved stable file-identity/content contract and exact roots. Any drift stops execution and requires a revised manifest; fingerprint alone never bypasses full hashing.",
+      "post_delete": "candidate absent; retained Trial/runtime/receipt/pointer identities unchanged; measure volume free; preserve exact unlink receipt",
+      "risk": "low operational risk under observed idle snapshot; historical path must be restored for any consumer requiring it; no automatic deletion",
+      "deletion_authorized": false,
+      "approved_identity_contract_sha256": "fc496cc5eb78444afb915cabcb0bb15a1855bf1571a1673a3abeab53427004b6",
+      "reference_scope": {
+        "evidence": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\reference-scope-expanded.json",
+        "sha256": "7049395c203391db9352f687a9e710f6e0e2c1cacb6694b333858cf8b1e8ed11",
+        "covers": [
+          "F physical path",
+          "C repo/dist junction alias",
+          "relative candidate folder and 12-char commit prefix case-insensitive",
+          "full Task XML and automation prompts",
+          "tracked code version references",
+          "builder variable/version resolution; new random candidate, no existing candidate enumeration",
+          "retained Trial relative app launcher and passive build receipt"
+        ],
+        "observational_not_eternal": true
+      }
+    },
+    {
+      "id": "dist-extra-theme-07",
+      "classification": "SAFE_RECLAIM",
+      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-dist\\candidate_15d30353c583_5815c921\\baldr",
+      "retained_runtime": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-output\\trial\\Baldr-Theme-Research-07\\app",
+      "root_identity": [
+        3532133302,
+        281474978283538
+      ],
+      "file_count": 7124,
+      "directory_count": 514,
+      "estimated_reclaimable_bytes": 978542248,
+      "estimate_scope": "unique ordinary file AllocationSize; not guaranteed physical extent or concurrent volume delta",
+      "full_tree_manifest": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\pair-07.json",
+      "full_tree_manifest_sha256": "98acbc9181b74484e449ee4f5b681549349650716325678f58dc4066975b5072",
+      "source_commit": "15d30353c583594f973306aa272d581b3629feec",
+      "exe_sha256": "7a68de474737fcb1d03cb719284d11dab9541c9c010983c157ab93578ecb2420",
+      "trial_package_sha256": "59be15afc508e6218afc8d25a1fc18e9ec854dbfcb748eb7f9c2579dd8f926ea",
+      "retained_build_receipt": "output\\packaging\\build_15d30353c583_5815c921\\candidate_receipt.json",
+      "retained_build_receipt_sha256": "6cade6d2a4e5cef35fdc2160a32c659e1718cc4ec2e9d2ab21edda6d6716990b",
+      "active_references": {
+        "windows_tasks": 0,
+        "codex_automations": 0,
+        "registered_resource_users": 0,
+        "exclusive_read_failures": 0,
+        "active_task_exact_matches": 0,
+        "tracked_exact_path_consumers": 0
+      },
+      "passive_references": "build receipt records old dist path; receipt and all Trial/runtime bytes remain; recreate named path before historical replay",
+      "restore": {
+        "method": "copy retained Trial/app exact tree back to this exact baldr path, preserve directory layout, recheck all 7124 SHA and BUILD_INFO/exe identity; apply recorded attributes/time/owner/group/DACL if required",
+        "metadata_manifest": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\security-07.json",
+        "metadata_manifest_sha256": "5681e94a5f2c2c98533d4d6c5b8bcc5162b42e144e8265068cbf8672355e8564",
+        "scope": "runtime bytes and paths; file IDs change, SACL/forensic clone not asserted",
+        "minimum_restore_free_bytes": 22453378728
+      },
+      "pre_delete": "After explicit Owner approval, unconditionally rerun complete pair SHA/tree/ADS/hardlink/allocation and full metadata, expanded references, RM and exclusive probes immediately before deleting. Match approved stable file-identity/content contract and exact roots. Any drift stops execution and requires a revised manifest; fingerprint alone never bypasses full hashing.",
+      "post_delete": "candidate absent; retained Trial/runtime/receipt/pointer identities unchanged; measure volume free; preserve exact unlink receipt",
+      "risk": "low operational risk under observed idle snapshot; historical path must be restored for any consumer requiring it; no automatic deletion",
+      "deletion_authorized": false,
+      "approved_identity_contract_sha256": "d1017d8341f9a3e3e9c51f8f1e02ef7d2a6a76d71a0214b028acac72abfdab33",
+      "reference_scope": {
+        "evidence": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\reference-scope-expanded.json",
+        "sha256": "7049395c203391db9352f687a9e710f6e0e2c1cacb6694b333858cf8b1e8ed11",
+        "covers": [
+          "F physical path",
+          "C repo/dist junction alias",
+          "relative candidate folder and 12-char commit prefix case-insensitive",
+          "full Task XML and automation prompts",
+          "tracked code version references",
+          "builder variable/version resolution; new random candidate, no existing candidate enumeration",
+          "retained Trial relative app launcher and passive build receipt"
+        ],
+        "observational_not_eternal": true
+      }
+    },
+    {
+      "id": "failed-snapshot-extra-1e40b7ef8b34297429a36e81f37990f9",
+      "classification": "SAFE_RECLAIM",
+      "safety_scope": "redundant physical snapshot payload bytes and required per-cycle mtime can be rehydrated; preserved sidecars/evidence unchanged; no qualified source-context replay claim",
+      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "path": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\source.sqlite",
+      "file_identity": [
+        3532133302,
+        281474976897064,
+        3976314880,
+        1791108932146532900,
+        1
+      ],
+      "sha256": "505964dc2125e0f79d59e190f9a6379dbaa2cf1b36026c8359df8f4a4790640b",
+      "expected_bytes": 3976314880,
+      "expected_mtime_ns": 1791108932146532900,
+      "estimated_reclaimable_bytes": 3976314880,
+      "retained_snapshot_anchor": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\437aa76c88ac050886a9f3a7fd7c6a91\\snapshot\\source.sqlite",
+      "retained_anchor_identity": [
+        3532133302,
+        281474976897195,
+        3976314880,
+        1791103452139044900,
+        1
+      ],
+      "retained_anchor_sha256": "505964dc2125e0f79d59e190f9a6379dbaa2cf1b36026c8359df8f4a4790640b",
+      "restore_proof": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-restore-proof.json",
+      "restore_proof_sha256": "785018ae93439effad8adcbaca02c149badedbb63501665870cba5f1d0b3b1ab",
+      "reference_evidence": [
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-cycle-index-reference-check.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-registered-record-readback.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-classification-final.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-external-references.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-consumer-locator-readback.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-ml-latest-references.json"
+      ],
+      "reference_facts": {
+        "terminal_status": "failed",
+        "terminal_stage": "sidecar",
+        "next_action": "retry_with_new_raw_run_id",
+        "cycle_index_matches": 0,
+        "verified_published_registry_records": 0,
+        "task_cycle_id_matches": 0,
+        "automation_cycle_id_matches": 0,
+        "registered_resource_users": 0,
+        "wal_bytes": 0
+      },
+      "preserve": [
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\snapshot_receipt.json",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\context\\source_context.json",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\terminal_receipt.json",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\source.sqlite-wal",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\source.sqlite-shm",
+        "all other files in this failed cycle",
+        "entire 437aa76c88ac050886a9f3a7fd7c6a91 run"
+      ],
+      "receipt_sha256": "bb1288367eb1e79f9a96513d82b94e10ba327af81c651281087db81e1496b160",
+      "context_sha256": "39fff5a3ed03a9b3a3fe7afdb1fabbe5345f58b3b88e7a81c23fea5f7ac67bf0",
+      "terminal_sha256": "4875bde1e3ad3c23aec6aafff90e57746650d410b285c4ffacbeeb0db9ec9731",
+      "restore": {
+        "method": "copy verified retained 437 snapshot bytes back only to this exact F path; restore this row expected_mtime_ns with integer ns; verify bytes/SHA/mtime against saved snapshot receipt, then revalidate preserved receipt/context/source dependencies before any use",
+        "sacl_and_file_id_clone_not_asserted": true,
+        "source_receipt_original_path": "D:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\source.sqlite",
+        "qualification": "pre-existing D-path/F-physical drift is preserved; no source, custody, PIT, training or OOS eligibility is granted; B must validate any migration/consumer qualification independently",
+        "minimum_restore_free_bytes": 25451151360
+      },
+      "pre_delete": "Obtain explicit Owner acknowledgement abandoning immediate old-run resume; restore before historical inspection. After explicit approval, unconditionally rehash this DB and retained anchor, verify exact size/mtime/identities, empty stable WAL and preserved SHM/receipt/context, no ADS/hardlink/reparse, refresh Tasks/automation/raw-run IDs/registry/model/active-task references and RM/probes; stop on drift. Do not delete any sidecar, metadata or directory.",
+      "post_delete": "only this source.sqlite absent; all preserve entries and anchor hashes unchanged; record per-file unlink result and volume free observation",
+      "risk": "moderate: removes immediate self-containment of an unpublished failed cycle; content restoration is verified, full source qualification remains blocked by prior path drift; historical inspection must restore first",
+      "owner_acknowledgements_required": [
+        "only duplicate snapshot body is removed",
+        "437 anchor and all failed-run evidence/sidecars remain",
+        "restore exact per-cycle mtime, do not rewrite receipt to fit",
+        "no qualified replay claim despite restored bytes",
+        "Owner accepts abandoning immediate resume of this old failed run; historical inspection requires prior restore from retained anchor, without source qualification"
+      ],
+      "deletion_authorized": false
+    },
+    {
+      "id": "failed-snapshot-extra-f65f59b1a430d84cc9a1e11b9b0fb918",
+      "classification": "SAFE_RECLAIM",
+      "safety_scope": "redundant physical snapshot payload bytes and required per-cycle mtime can be rehydrated; preserved sidecars/evidence unchanged; no qualified source-context replay claim",
+      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "path": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\source.sqlite",
+      "file_identity": [
+        3532133302,
+        281474976897448,
+        3976314880,
+        1791105969997312900,
+        1
+      ],
+      "sha256": "505964dc2125e0f79d59e190f9a6379dbaa2cf1b36026c8359df8f4a4790640b",
+      "expected_bytes": 3976314880,
+      "expected_mtime_ns": 1791105969997312900,
+      "estimated_reclaimable_bytes": 3976314880,
+      "retained_snapshot_anchor": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\437aa76c88ac050886a9f3a7fd7c6a91\\snapshot\\source.sqlite",
+      "retained_anchor_identity": [
+        3532133302,
+        281474976897195,
+        3976314880,
+        1791103452139044900,
+        1
+      ],
+      "retained_anchor_sha256": "505964dc2125e0f79d59e190f9a6379dbaa2cf1b36026c8359df8f4a4790640b",
+      "restore_proof": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-restore-proof.json",
+      "restore_proof_sha256": "785018ae93439effad8adcbaca02c149badedbb63501665870cba5f1d0b3b1ab",
+      "reference_evidence": [
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-cycle-index-reference-check.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-registered-record-readback.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-classification-final.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-external-references.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-consumer-locator-readback.json",
+        "output\\tasks\\track-c-reclaim-20261022-01a164e7\\snapshot-ml-latest-references.json"
+      ],
+      "reference_facts": {
+        "terminal_status": "failed",
+        "terminal_stage": "fit",
+        "next_action": "retry_with_new_raw_run_id",
+        "cycle_index_matches": 0,
+        "verified_published_registry_records": 0,
+        "task_cycle_id_matches": 0,
+        "automation_cycle_id_matches": 0,
+        "registered_resource_users": 0,
+        "wal_bytes": 0
+      },
+      "preserve": [
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\snapshot_receipt.json",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\context\\source_context.json",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\terminal_receipt.json",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\source.sqlite-wal",
+        "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\source.sqlite-shm",
+        "all other files in this failed cycle",
+        "entire 437aa76c88ac050886a9f3a7fd7c6a91 run"
+      ],
+      "receipt_sha256": "34f455ca3676ac3d5785dda849e9e0aa5b5547bf443bb3f88cdb8383cdde8795",
+      "context_sha256": "e790230c2519f33c700385114ae87a6bf45af9c60cd7f5689c7e738bfea92c01",
+      "terminal_sha256": "96070270416a60b0064790ede46dab6ffdf4ae073e7270fb9cfc656f5efbc476",
+      "restore": {
+        "method": "copy verified retained 437 snapshot bytes back only to this exact F path; restore this row expected_mtime_ns with integer ns; verify bytes/SHA/mtime against saved snapshot receipt, then revalidate preserved receipt/context/source dependencies before any use",
+        "sacl_and_file_id_clone_not_asserted": true,
+        "source_receipt_original_path": "D:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\source.sqlite",
+        "qualification": "pre-existing D-path/F-physical drift is preserved; no source, custody, PIT, training or OOS eligibility is granted; B must validate any migration/consumer qualification independently",
+        "minimum_restore_free_bytes": 25451151360
+      },
+      "pre_delete": "Obtain explicit Owner acknowledgement abandoning immediate old-run resume; restore before historical inspection. After explicit approval, unconditionally rehash this DB and retained anchor, verify exact size/mtime/identities, empty stable WAL and preserved SHM/receipt/context, no ADS/hardlink/reparse, refresh Tasks/automation/raw-run IDs/registry/model/active-task references and RM/probes; stop on drift. Do not delete any sidecar, metadata or directory.",
+      "post_delete": "only this source.sqlite absent; all preserve entries and anchor hashes unchanged; record per-file unlink result and volume free observation",
+      "risk": "moderate: removes immediate self-containment of an unpublished failed cycle; content restoration is verified, full source qualification remains blocked by prior path drift; historical inspection must restore first",
+      "owner_acknowledgements_required": [
+        "only duplicate snapshot body is removed",
+        "437 anchor and all failed-run evidence/sidecars remain",
+        "restore exact per-cycle mtime, do not rewrite receipt to fit",
+        "no qualified replay claim despite restored bytes",
+        "Owner accepts abandoning immediate resume of this old failed run; historical inspection requires prior restore from retained anchor, without source qualification"
+      ],
+      "deletion_authorized": false
+    }
+  ],
+  "protected": [
+    "current RC candidate_06a4e1c15ed9_e74f9e5f",
+    "retained full Trial 06/07",
+    "all ML/financial sources, ledgers, custody and other Track artifacts",
+    "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\437aa76c88ac050886a9f3a7fd7c6a91\\snapshot\\source.sqlite"
+  ],
+  "evidence_root": "output\\tasks\\track-c-reclaim-20261022-01a164e7",
+  "approval_contract": "Owner must select exact item IDs/paths from this manifest; estimated bytes are not a deletion authorization. Fresh mandatory validation required for each selected item."
+}

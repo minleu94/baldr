@@ -106,3 +106,53 @@ Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；�
    - **雙版本原值完整保留**：工程不得擅自判定何者為「正確」版本，亦不得逕自排除 6443 以湊成 100% 對等。
    - **TWSE 2026-09 跨來源尺度判定**：因 6443 存在 2 欄數值不一致（amount_mismatch_count = 2），TWSE 2026-09 之 `cross_verified_scale_to_base_unit` 維持 `null`，不生成正式金融資格。
    - 完整收據記錄於 `output/tasks/baldr-track-b-six-packages-20261023/wp4_twse_6443_revision_diff.json`。
+
+## 2026-10-23 WP5 月營收歷史 Coverage 與 Availability 具名矩陣清冊
+
+依 2026-06..09 雙市場八份完整 HTML 原件與兩份 2026-09 OpenAPI 原件（四個月 archive 共 10 批、9,423 筆觀測，索引 SHA256 `ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5`），整理具名盤點矩陣如下：
+
+### 1. 具名批次盤點矩陣（Market × Period × Issuer × Source Version）
+
+| 批次 | 期別 | 市場 | 來源類型與 ID | 原始 SHA256 (首8碼) / Bytes | 尺度證明 SHA256 (首8碼) | 觀測列數 (發行人家數) | 金額尺度 | 幣別 | 官方出表時間 | 本機觀測時間 | PIT/可得性 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| 0 | 2026-06 | TPEx | `mops.history.monthly_revenue.tpex` | `a2e43407...` / 394,920 B | `a89e4294...` | 865 列 (865 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 1 | 2026-06 | TWSE | `mops.history.monthly_revenue.twse` | `116fa1f6...` / 454,774 B | `c5a998b5...` | 995 列 (995 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 2 | 2026-07 | TPEx | `mops.history.monthly_revenue.tpex` | `2e95ec42...` / 394,928 B | `488d2999...` | 865 列 (865 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 3 | 2026-07 | TWSE | `mops.history.monthly_revenue.twse` | `11150efd...` / 454,778 B | `f3ba5928...` | 995 列 (995 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 4 | 2026-08 | TPEx | `mops.history.monthly_revenue.tpex` | `cad3b21a...` / 395,356 B | `316fd90c...` | 866 列 (866 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 5 | 2026-08 | TWSE | `mops.history.monthly_revenue.twse` | `06593a29...` / 455,420 B | `a950f356...` | 995 列 (995 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 6 | 2026-09 | TPEx | `mops.history.monthly_revenue.tpex` | `f8b339b6...` / 395,392 B | `1e9118de...` | 866 列 (866 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 7 | 2026-09 | TWSE | `mops.history.monthly_revenue.twse` | `373d75e8...` / 455,508 B | `87891694...` | 995 列 (995 家) | 1,000 (表頭明示) | unknown | 115/10/23 | 2026-10-23 | 未證明 (事後觀測) |
+| 8 | 2026-09 | TWSE | `twse.openapi.t187ap05_L` | `a58c04b3...` / 607,634 B | `02477fa3...` (parity) | 1,088 列 (1,088 家) | null (6443差異) | unknown | 1151017 | 2026-10-21 | 未證明 (事後觀測) |
+| 9 | 2026-09 | TPEx | `tpex.openapi.mopsfin_t187ap05_O` | `a27fea12...` / 496,597 B | `ed4a0293...` (parity) | 893 列 (893 家) | 1,000 (交叉核驗) | unknown | 1151017 | 2026-10-21 | 未證明 (事後觀測) |
+
+**合計**：10 批次、9,423 筆發行人月營收觀測值。
+
+### 2. 尺度與幣別治理分離
+
+1. **千元尺度（Scale-to-base unit）**：
+   - 八份 MOPS HTML 原件已由 `data_module/monthly_revenue_unit_scale_proof.py` 嚴格推導逐產業表頭與欄位，證明 `scale_to_base_unit = 1000`。
+   - OpenAPI 原件端點未明示單位，TPEx 經 863 家共同發行人 100% 金額相符而建立千元交叉核驗；TWSE 因 6443 差異維持 `scale = null`。
+2. **幣別（Currency）**：
+   - 所有 10 批次原始資料皆未包含官方貨幣代碼，全數標記為 `currency = unknown`。
+   - **禁止擅自換算 TWD**：在取得官方幣別證據前，不得將未知幣別視同新台幣，亦不得將未知填補為零。
+
+### 3. 時間維度與 Point-in-Time (PIT) 嚴格隔離
+
+1. **事後取得時間不得冒充歷史可用時間**：
+   - MOPS HTML 出表日期為 `115/10/23`，本機捕獲時間為 `2026-10-22T22:58:11Z`（Taipei 10/23）。
+   - OpenAPI 捕獲時間為 `2026-10-21`。
+   - 歷史月份（2026-06、07、08）之發布時刻未經官方公告原件證明，全數維持 `historical_pit_eligible = False` 與 `historical_availability_proven = False`。
+   - 回測與決策系統不得以事後取得時間回填為歷史當時已知。
+
+### 4. 下游 Consumer 用途資格盤點
+
+| Consumer 用途 | 資格狀態 | 拒絕／限制原因 |
+| :--- | :--- | :--- |
+| **Formal Scoring** | **未授權 (Not Qualified)** | `formal_scoring_gate_allowed = False`；缺已驗證幣別及官方 PIT 證明。 |
+| **Backtest 回測** | **未授權 (Not Qualified)** | 歷史樣本依決策 cutoff 不可見（`not_visible_by_cutoff`）；`formal_pit = False`。 |
+| **ML 重訓與驗證** | **未授權 (Not Qualified)** | `currency = unknown`，未建立正式 PIT 與正規化貨幣資格。 |
+| **Paper 實盤模擬** | **未授權 (Not Qualified)** | Formal runtime 與真實 Paper 來源尚未經 Owner 批准選定。 |
+| **Limited Research Shadow** | **有限授權 (Partially Qualified)** | 僅 2026-09 發行之本機百分率研究包於受限範圍內可讀；其餘歷史月份維持研究封存。 |
+
+完整收據檔案已固化於 `output/tasks/baldr-track-b-six-packages-20261023/wp5_monthly_revenue_history_inventory.json`。

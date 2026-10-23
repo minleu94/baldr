@@ -238,6 +238,20 @@ class MonthlyRevenueWindowResult:
     formal_pit_eligible: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class MonthlyRevenueScoringRankingProjection:
+    """Scoring / Ranking 用途門投影結果；不修改預設權重，未合格一律轉拒絕並保留原因。"""
+
+    purpose: MonthlyRevenueUse
+    decision_date: date
+    cutoff_at: datetime
+    allowed: bool
+    qualified_records: tuple[FactorRecord, ...]
+    unknown_stock_codes: tuple[str, ...]
+    rejected_by_stock_code: tuple[tuple[str, tuple[str, ...]], ...]
+    reasons: tuple[str, ...] = ()
+
+
 class MonthlyRevenueResearchService:
     """月營收應用層用途門；不替正式 ScoringEngine 或 Paper 管理現金/行情。
 
@@ -777,6 +791,143 @@ class MonthlyRevenueResearchService:
             decision_cutoff_at=decision_cutoff_at,
             purpose=purpose,
         )
+
+    def project_scoring_ranking_candidates(
+        self,
+        facts: Iterable[MonthlyRevenueResearchFact],
+        *,
+        decision_date: date,
+        cutoff_at: datetime,
+        purpose: MonthlyRevenueUse | str = MonthlyRevenueUse.SCORING,
+    ) -> MonthlyRevenueScoringRankingProjection:
+        """對單一市場月營收 facts 執行正式 Scoring / Ranking 用途門投影。"""
+
+        use = MonthlyRevenueUse(purpose)
+        if use not in {MonthlyRevenueUse.SCORING, MonthlyRevenueUse.RANKING}:
+            raise ValueError("scoring_ranking_projector_requires_scoring_or_ranking_use")
+        candidates = tuple(facts)
+        markets = {fact.market for fact in candidates}
+        if len(markets) > 1:
+            raise ValueError("scoring_ranking_projection_requires_single_market")
+        qualification = self._qualification_reasons_by_fact(candidates, use, cutoff_at)
+        qualified_facts: list[MonthlyRevenueResearchFact] = []
+        unknown_codes: list[str] = []
+        rejected_items: list[tuple[str, tuple[str, ...]]] = []
+        all_reasons: list[str] = []
+        for fact in candidates:
+            reasons = qualification[id(fact)]
+            if reasons:
+                rejected_items.append((fact.stock_code, reasons))
+                all_reasons.extend(reasons)
+            elif fact.value is None:
+                unknown_codes.append(fact.stock_code)
+            else:
+                qualified_facts.append(fact)
+        ordered = sorted(
+            qualified_facts,
+            key=lambda item: (-_fact_value(item), item.stock_code),
+        )
+        size = len(ordered)
+        records: list[FactorRecord] = []
+        previous_value: Decimal | None = None
+        previous_rank: int | None = None
+        for index, fact in enumerate(ordered, start=1):
+            val = _fact_value(fact)
+            rank = previous_rank if val == previous_value and previous_rank is not None else index
+            score_bp = _shadow_score_bp(rank, size)
+            records.append(FactorRecord(
+                factor_name=f"monthly_revenue.{fact.metric}.{use.value}",
+                stock_code=fact.stock_code,
+                as_of_date=_period_date(fact.period),
+                available_date=fact.available_at.astimezone(_TAIPEI).date(),
+                value=val,
+                score_bp=score_bp,
+                quality=FactorQuality.OBSERVED,
+                missing_policy=MissingPolicy.SKIP,
+                source_version=fact.source_version,
+                metadata={
+                    "purpose_gate": use.value,
+                    "batch_sha256": fact.batch_sha256,
+                    "market": fact.market,
+                    "value_kind": fact.value_kind,
+                    "unit": fact.unit,
+                },
+            ))
+            previous_value = val
+            previous_rank = rank
+        allowed = bool(records) and not rejected_items
+        return MonthlyRevenueScoringRankingProjection(
+            purpose=use,
+            decision_date=decision_date,
+            cutoff_at=cutoff_at,
+            allowed=allowed,
+            qualified_records=tuple(records),
+            unknown_stock_codes=tuple(unknown_codes),
+            rejected_by_stock_code=tuple(rejected_items),
+            reasons=tuple(dict.fromkeys(all_reasons)),
+        )
+
+    def project_backtest_ml_cutoff_matrix(
+        self,
+        archive: MonthlyRevenueRevisionArchiveV1,
+        *,
+        expected_archive_sha256: str,
+        requests: Iterable[tuple[str, str, str, str, datetime]],
+        evidence_by_batch_sha256: Mapping[str, MonthlyRevenueQualificationEvidence],
+        purpose: MonthlyRevenueUse | str,
+    ) -> tuple[MonthlyRevenueHistoricalProjection, ...]:
+        """逐一按 (market, stock_code, period, metric, decision_cutoff_at) 重選並驗證 PIT 資格。"""
+
+        use = MonthlyRevenueUse(purpose)
+        if use not in _BACKTEST_ML_USES:
+            raise ValueError("decision_cutoff_matrix_requires_backtest_or_ml_use")
+        reopened = read_monthly_revenue_revision_archive(
+            archive.root,
+            archive.archive_sha256,
+            expected_archive_sha256=expected_archive_sha256,
+        )
+        results: list[MonthlyRevenueHistoricalProjection] = []
+        for market, stock_code, period, metric, cutoff_at in requests:
+            selected = select_monthly_revenue_observation_as_of(
+                reopened,
+                market=market,
+                stock_code=stock_code,
+                period=period,
+                cutoff_at=cutoff_at,
+            )
+            obs = selected.observation
+            if obs is None:
+                results.append(
+                    MonthlyRevenueHistoricalProjection(
+                        None, use, cutoff_at, selected.status,
+                        tuple(selected.diagnostics), selected.observation_as_of_verified, False,
+                    )
+                )
+                continue
+            evidence = evidence_by_batch_sha256.get(obs.raw_source_sha256)
+            if evidence is None:
+                results.append(
+                    MonthlyRevenueHistoricalProjection(
+                        None, use, cutoff_at, "qualification_evidence_missing",
+                        ("qualification_evidence_not_supplied_for_batch",),
+                        selected.observation_as_of_verified, False,
+                    )
+                )
+                continue
+            results.append(
+                self.project_decision_cutoff(
+                    reopened,
+                    expected_archive_sha256=expected_archive_sha256,
+                    market=market,
+                    stock_code=stock_code,
+                    period=period,
+                    metric=metric,
+                    evidence=evidence,
+                    decision_cutoff_at=cutoff_at,
+                    purpose=use,
+                )
+            )
+        return tuple(results)
 
     def paper_forward_revenue_gate(
         self,

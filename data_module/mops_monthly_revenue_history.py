@@ -88,7 +88,8 @@ MAX_MOPS_MONTHLY_REVENUE_HISTORY_PLAN_ARTIFACT_BYTES = 1024 * 1024
 MAX_MOPS_MONTHLY_REVENUE_HISTORY_PERIODS_PER_MARKET = 2
 MAX_MOPS_MONTHLY_REVENUE_HISTORY_CAPTURES = 4
 MAX_MOPS_MONTHLY_REVENUE_HISTORY_PLANNED_PERIODS = 240
-MAX_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS = 8.0
+DEFAULT_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS = 8.0
+MAX_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS = 30.0
 _SHA256_RE = re.compile(r"\A[0-9a-f]{64}\Z")
 _PERIOD_RE = re.compile(r"\A(\d{4})-(0[1-9]|1[0-2])\Z")
 _UNIT_RE = re.compile(
@@ -765,7 +766,7 @@ def capture_mops_monthly_revenue_history_plan_chunk(
     plan: MopsMonthlyRevenueHistoryCapturePlan,
     *,
     cursor: str | None = None,
-    timeout_seconds: float = MAX_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS,
+    timeout_seconds: float = DEFAULT_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS,
     transport_mode: str = "direct_static_v1",
 ) -> MopsMonthlyRevenueHistoryPlanChunkResult:
     """只執行游標指定的有界年月；transport模式必須由呼叫端明選。"""
@@ -874,7 +875,7 @@ def capture_mops_monthly_revenue_history_batch(
     start_period: str,
     end_period: str,
     markets: Sequence[MopsHistoryMarket],
-    timeout_seconds: float = MAX_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS,
+    timeout_seconds: float = DEFAULT_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS,
     transport_mode: str = "direct_static_v1",
 ) -> MopsMonthlyRevenueHistoryBatch:
     """逐市場／月份擷取MOPS歷史報告；模式明選且失敗不自動重試。"""
@@ -923,7 +924,7 @@ def capture_mops_monthly_revenue_history_period(
     *,
     market: MopsHistoryMarket,
     period: str,
-    timeout_seconds: float = MAX_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS,
+    timeout_seconds: float = DEFAULT_MOPS_MONTHLY_REVENUE_HISTORY_TIMEOUT_SECONDS,
     transport_mode: str = "direct_static_v1",
 ) -> MopsMonthlyRevenueHistoricalCapture:
     """單次明確模式擷取一個精確市場／月份，不會在direct/redirect間fallback。"""

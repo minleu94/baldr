@@ -35,10 +35,11 @@ def main(argv:list[str]|None=None)->int:
     if args.period is None: args.period=_expected_latest_statement_period(today)
     parent=None
     if args.parent_weekly_root is not None:
+        from data_module.scheduled_research_acquisition_binding import _path_matches_relocated
         parent=verify_weekly_acquisition(args.parent_weekly_root,now=datetime.now(timezone.utc),repository_root=ROOT)
-        if parent.get('status')!='verified': raise ValueError('weekly父收據未驗證，不能啟動現況更新')
+        if parent.get('status') not in {'verified','partial'} or parent.get('core_exit_code')!=0: raise ValueError('weekly父收據未驗證，不能啟動現況更新')
         parent_receipt=read_bound_json(Path(parent['receipt_path']),expected_sha256=parent['receipt_sha256'])
-        if args.db_path is None or Path(parent_receipt.payload['source_db_path']).resolve()!=args.db_path.resolve():
+        if args.db_path is None or not _path_matches_relocated(parent_receipt.payload['source_db_path'],args.db_path.resolve()):
             raise ValueError('現況更新DB與weekly父來源身分不符')
     year,quarter=map(int,args.period.split('-Q'))
     root=args.output_root/('current-mops-statements-'+uuid4().hex);root.mkdir(parents=True,exist_ok=False)

@@ -668,12 +668,152 @@ def _path_identity(path: Path) -> tuple[int, int, int, int, int]:
     return _stat_identity(info)
 
 
+def build_mops_monthly_revenue_period_scale_proof(
+    capture: MopsMonthlyRevenueHistoricalCapture,
+) -> MopsMonthlyRevenueUnitScaleProof:
+    """為任意已驗證之 MOPS 歷史 HTML 原件建立逐產業千元尺度證據（不宣稱幣別或 PIT）。"""
+
+    if type(capture) is not MopsMonthlyRevenueHistoricalCapture:
+        raise MonthlyRevenueUnitScaleProofError("capture_type_invalid")
+    try:
+        parsed_rows = parse_mops_monthly_revenue_history_capture(capture)
+        source_rows = capture.raw_source_values_by_stock_code
+        html = capture.transport_capture.decoded_html
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise MonthlyRevenueUnitScaleProofError("capture_revalidation_failed") from exc
+    if capture.observed_unit_annotations not in {("千元",), ("仟元",)}:
+        raise MonthlyRevenueUnitScaleProofError("global_unit_annotations_missing_or_conflicting")
+
+    scopes = _extract_table_scopes(html)
+    scoped_codes: list[str] = []
+    for scope in scopes:
+        if scope.unit_text not in {"千元", "仟元"}:
+            raise MonthlyRevenueUnitScaleProofError("table_unit_missing_or_conflicting")
+        for stock_code, pairs in scope.source_rows:
+            if stock_code in scoped_codes:
+                raise MonthlyRevenueUnitScaleProofError("duplicate_stock_code_across_tables")
+            scoped_codes.append(stock_code)
+            source_values = source_rows.get(stock_code)
+            if source_values is None or dict(pairs) != source_values:
+                raise MonthlyRevenueUnitScaleProofError("table_source_values_disagree")
+
+    parser_codes = [row["stock_code"] for row in parsed_rows]
+    if (
+        len(scopes) == 0
+        or len(scoped_codes) != len(parser_codes)
+        or len(set(scoped_codes)) != len(scoped_codes)
+        or set(scoped_codes) != set(parser_codes)
+        or set(scoped_codes) != set(source_rows)
+    ):
+        raise MonthlyRevenueUnitScaleProofError("table_scope_coverage_mismatch")
+
+    return MopsMonthlyRevenueUnitScaleProof(
+        market=capture.market,
+        source_id=capture.source_id,
+        period=capture.period,
+        official_url=capture.requested_url,
+        raw_source_sha256=capture.raw_response_sha256,
+        raw_source_bytes=len(capture.raw_response_bytes),
+        parser_version=capture.parser_version,
+        decoder_profile=capture.decoder_profile or MOPS_BIG5_CP950_DECODER_PROFILE,
+        effective_decoding_encoding=capture.effective_decoding_encoding or capture.transport_capture.effective_decoding_encoding,
+        tables=scopes,
+        row_count=len(scoped_codes),
+    )
+
+
+def build_openapi_mops_cross_source_parity_proof(
+    openapi_batch: object,
+    mops_capture: MopsMonthlyRevenueHistoricalCapture,
+) -> dict[str, object]:
+    """交叉核對同市場、同期別之 OpenAPI JSON 與 MOPS 靜態 HTML 數值與千元尺度。"""
+    from decimal import Decimal
+    from data_module.opendata_monthly_revenue import OpenApiMonthlyRevenueBatch
+
+    if type(openapi_batch) is not OpenApiMonthlyRevenueBatch:
+        raise MonthlyRevenueUnitScaleProofError("openapi_batch_type_invalid")
+    if type(mops_capture) is not MopsMonthlyRevenueHistoricalCapture:
+        raise MonthlyRevenueUnitScaleProofError("mops_capture_type_invalid")
+    if openapi_batch.capture.market != mops_capture.market:
+        raise MonthlyRevenueUnitScaleProofError("cross_source_market_mismatch")
+    if openapi_batch.period != mops_capture.period:
+        raise MonthlyRevenueUnitScaleProofError("cross_source_period_mismatch")
+
+    scale_proof = build_mops_monthly_revenue_period_scale_proof(mops_capture)
+    openapi_by_code = {row.stock_code: row for row in openapi_batch.rows}
+    mops_by_code = mops_capture.raw_source_values_by_stock_code
+    common_codes = sorted(set(openapi_by_code).intersection(mops_by_code))
+    openapi_only = sorted(set(openapi_by_code) - set(mops_by_code))
+    mops_only = sorted(set(mops_by_code) - set(openapi_by_code))
+
+    amount_field_pairs = (
+        ("營業收入-當月營收", "當月營收"),
+        ("營業收入-上月營收", "上月營收"),
+        ("營業收入-去年當月營收", "去年當月營收"),
+        ("累計營業收入-當月累計營收", "當月累計營收"),
+        ("累計營業收入-去年累計營收", "去年累計營收"),
+    )
+    exact_matches = 0
+    mismatches: list[dict[str, object]] = []
+    for code in common_codes:
+        oa_row = openapi_by_code[code]
+        oa_amounts = dict(oa_row.amount_values_source_unit)
+        mops_vals = mops_by_code[code]
+        row_ok = True
+        for oa_field, mops_field in amount_field_pairs:
+            oa_val = oa_amounts.get(oa_field)
+            mops_raw = (mops_vals.get(mops_field) or "").replace(",", "").strip()
+            mops_val = Decimal(mops_raw) if mops_raw and mops_raw not in {"-", "N/A"} else None
+            if oa_val != mops_val:
+                row_ok = False
+                mismatches.append({
+                    "stock_code": code,
+                    "openapi_field": oa_field,
+                    "mops_field": mops_field,
+                    "openapi_value": str(oa_val) if oa_val is not None else None,
+                    "mops_value": str(mops_val) if mops_val is not None else None,
+                })
+        if row_ok:
+            exact_matches += 1
+
+    body: dict[str, object] = {
+        "schema_version": "monthly-revenue-openapi-mops-cross-source-parity.v1",
+        "market": mops_capture.market,
+        "period": mops_capture.period,
+        "openapi_source_id": openapi_batch.capture.source_id,
+        "openapi_endpoint_url": openapi_batch.capture.requested_url,
+        "openapi_raw_sha256": openapi_batch.capture.raw_response_sha256,
+        "openapi_row_count": len(openapi_batch.rows),
+        "mops_source_id": mops_capture.source_id,
+        "mops_official_url": mops_capture.requested_url,
+        "mops_raw_sha256": mops_capture.raw_response_sha256,
+        "mops_row_count": scale_proof.row_count,
+        "mops_scale_proof_sha256": scale_proof.proof_sha256,
+        "common_stock_count": len(common_codes),
+        "openapi_only_stock_codes": openapi_only,
+        "mops_only_stock_codes": mops_only,
+        "exact_amount_match_stock_count": exact_matches,
+        "amount_mismatch_count": len(mismatches),
+        "amount_mismatches": mismatches[:20],
+        "mops_html_observed_unit_text": "千元",
+        "cross_verified_scale_to_base_unit": 1000 if len(mismatches) == 0 and len(common_codes) > 0 else None,
+        "currency": "unknown",
+        "standalone_openapi_unit_status": "unknown_without_owner_accepted_cross_source_currency_proof",
+        "historical_pit_eligible": False,
+        "financial_qualification_created": False,
+    }
+    body["proof_sha256"] = hashlib.sha256(_canonical_json_bytes(body)).hexdigest()
+    return body
+
+
 __all__ = [
     "MAX_MOPS_MONTHLY_REVENUE_UNIT_SCALE_PROOF_BYTES",
     "MOPS_MONTHLY_REVENUE_UNIT_SCALE_PROOF_SCHEMA",
     "MonthlyRevenueUnitScaleProofError",
     "MopsMonthlyRevenueUnitScaleProof",
+    "build_mops_monthly_revenue_period_scale_proof",
     "build_mops_monthly_revenue_unit_scale_proof",
+    "build_openapi_mops_cross_source_parity_proof",
     "read_mops_monthly_revenue_unit_scale_proof",
     "write_mops_monthly_revenue_unit_scale_proof_create_only",
 ]

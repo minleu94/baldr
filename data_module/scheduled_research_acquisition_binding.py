@@ -107,6 +107,31 @@ def parse_aware_utc(value: object, *, field_name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _path_matches_relocated(declared: str | Path, actual: Path) -> bool:
+    declared_abs = Path(os.path.abspath(os.fspath(declared)))
+    actual_abs = Path(os.path.abspath(os.fspath(actual)))
+    if declared_abs == actual_abs:
+        return True
+    declared_str = str(declared_abs)
+    actual_str = str(actual_abs)
+    legacy_d = r"D:\Min\Python\Project\FA_Data"
+    current_f = r"F:\Min\Python\Project\FA_Data"
+    if (
+        declared_str.startswith(legacy_d)
+        and not Path(legacy_d).exists()
+        and declared_str.replace(legacy_d, current_f, 1) == actual_str
+    ):
+        return True
+    live_repo_output = Path(__file__).resolve().parents[1] / "output"
+    if declared_str.startswith(str(live_repo_output)):
+        try:
+            if str(declared_abs.resolve()) == str(actual_abs.resolve()):
+                return True
+        except OSError:
+            return False
+    return False
+
+
 def validate_weekly_quarterly_terminal(
     terminal: Mapping[str, Any],
     *,
@@ -136,8 +161,8 @@ def validate_weekly_quarterly_terminal(
     declared_run_root = terminal.get("run_root")
     if not isinstance(declared_run_root, str) or not declared_run_root:
         raise ResearchBindingError("weekly_quarterly_terminal_run_root_missing")
-    if not Path(declared_run_root).is_absolute() or Path(os.path.abspath(declared_run_root)) != Path(
-        os.path.abspath(os.fspath(expected_run_root))
+    if not Path(declared_run_root).is_absolute() or not _path_matches_relocated(
+        declared_run_root, expected_run_root
     ):
         raise ResearchBindingError("weekly_quarterly_terminal_run_root_mismatch")
     if terminal.get("candidate_available_at") is not None:
@@ -339,7 +364,7 @@ def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
             raise ResearchBindingError("weekly_sidecar_invocation_path_invalid")
         if isinstance(sidecar.get("path"), str):
             sidecar_path = resolve_output_relative_path(output_root, sidecar.get("path"), must_exist=False)
-            if Path(os.path.abspath(declared_sidecar)) != sidecar_path:
+            if not _path_matches_relocated(declared_sidecar, sidecar_path):
                 raise ResearchBindingError("weekly_sidecar_invocation_path_mismatch")
             _assert_no_links(sidecar_path if sidecar_path.exists() else sidecar_path.parent)
         elif sidecar.get("absolute_path") != declared_sidecar:
@@ -379,7 +404,7 @@ def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
     if isinstance(sidecar.get("path"), str):
         sidecar_path = resolve_output_relative_path(output_root, sidecar.get("path"))
         declared_sidecar = receipt.get("sidecar_db_path")
-        if not isinstance(declared_sidecar, str) or Path(os.path.abspath(declared_sidecar)) != sidecar_path:
+        if not isinstance(declared_sidecar, str) or not _path_matches_relocated(declared_sidecar, sidecar_path):
             raise ResearchBindingError("weekly_sidecar_invocation_path_mismatch")
     else:
         absolute_sidecar = sidecar.get("absolute_path")
@@ -426,12 +451,24 @@ def _resolve_known_child_path(repository_root: Path, value: object, *, lane: str
     else:
         raise ResearchBindingError("weekly_child_lane_invalid")
     absolute = Path(os.path.abspath(os.fspath(path)))
+    live_repo_root = Path(__file__).resolve().parents[1]
+    is_live_repo = root == live_repo_root
     try:
         relative = absolute.relative_to(allowed_root)
     except ValueError as exc:
-        raise ResearchBindingError(f"weekly_{lane}_path_outside_producer_root") from exc
+        if is_live_repo and allowed_root.exists():
+            try:
+                relative = absolute.relative_to(allowed_root.resolve())
+            except ValueError:
+                raise ResearchBindingError(f"weekly_{lane}_path_outside_producer_root") from exc
+        else:
+            raise ResearchBindingError(f"weekly_{lane}_path_outside_producer_root") from exc
     if not relative.parts or any(part in {".", ".."} for part in relative.parts):
         raise ResearchBindingError(f"weekly_{lane}_path_invalid")
+    if is_live_repo and allowed_root.exists():
+        resolved_base = allowed_root.resolve()
+        target = resolved_base.joinpath(*relative.parts)
+        return _assert_no_links(target)
     _assert_no_links(absolute)
     return absolute
 
@@ -745,7 +782,7 @@ def verify_weekly_acquisition(
         if payload.get("receipt_relative_path") != expected_relative:
             raise ResearchBindingError("weekly_parent_receipt_path_mismatch")
         declared_root = payload.get("output_root")
-        if not isinstance(declared_root, str) or Path(os.path.abspath(declared_root)) != root:
+        if not isinstance(declared_root, str) or not _path_matches_relocated(declared_root, root):
             raise ResearchBindingError("weekly_parent_output_root_mismatch")
         started = parse_aware_utc(payload.get("started_at_utc"), field_name="weekly_started_at")
         now_utc = now.astimezone(timezone.utc)

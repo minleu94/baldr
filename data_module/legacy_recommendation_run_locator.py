@@ -282,6 +282,8 @@ class LocatedLegacyRecommendationRun:
     independent_pre_migration_evidence_ref: str
     custody_verified: bool = False
     research_only: bool = True
+    effective_custody_verification_tier: CustodyVerificationTier | None = None
+    custody_evidence_basis: Literal["audit_only", "independent_git_original", "external_identity_pin"] = "audit_only"
 
 
 @dataclass(frozen=True, slots=True)
@@ -576,7 +578,7 @@ def _locate_legacy_recommendation_run(
         if allowed_tiers is None
         else set(allowed_tiers)
     )
-    if not permitted_tiers.issubset(ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS):
+    if not permitted_tiers or not permitted_tiers.issubset(ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS):
         return None
     entries = _read_verified_locator_profile()
     if entries is None:
@@ -593,7 +595,7 @@ def _locate_legacy_recommendation_run(
     if entry is None:
         return None
     tier = cast(CustodyVerificationTier, entry["custody_verification_tier"])
-    if tier not in permitted_tiers and result_id not in _GIT_ORIGINAL_PINS:
+    if audit_only and tier not in permitted_tiers:
         return None
     if not _valid_sha256(db_row_sha256) or entry.get("db_row_sha256") != db_row_sha256:
         return None
@@ -602,6 +604,8 @@ def _locate_legacy_recommendation_run(
     if Path(os.path.abspath(target)) != expected_in_root:
         return None
     verified = False
+    effective_tier: CustodyVerificationTier | None = None
+    evidence_basis: Literal["audit_only", "independent_git_original", "external_identity_pin"] = "audit_only"
     if not audit_only:
         if tier != "tier1_independent_pre_migration_file_sha256" and result_id not in _GIT_ORIGINAL_PINS:
             return None
@@ -613,6 +617,11 @@ def _locate_legacy_recommendation_run(
         )
         if not verified:
             return None
+        # 清冊 tier 保留歷史原貌；只有原件驗真後才能以有效 tier 套用呼叫端限制。
+        effective_tier = "tier1_independent_pre_migration_file_sha256"
+        if effective_tier not in permitted_tiers:
+            return None
+        evidence_basis = "external_identity_pin" if supplied_pin is not None else "independent_git_original"
 
     origin_path = Path(origin_text)
     try:
@@ -654,6 +663,8 @@ def _locate_legacy_recommendation_run(
         ),
         custody_verified=verified,
         research_only=not verified,
+        effective_custody_verification_tier=effective_tier,
+        custody_evidence_basis=evidence_basis,
     )
 
 

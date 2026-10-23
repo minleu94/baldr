@@ -931,6 +931,8 @@ def test_blocked_monthly_binding_requires_typed_terminal_diagnostics(tmp_path, c
 
 def test_pinned_weekly_root_migration_binding_verifies_real_receipt_and_reads_partial():
     migration = binding.DEFAULT_PINNED_WEEKLY_MIGRATION_BINDING
+    if not migration.migration_proof_path.is_file() or not Path(migration.current_output_root).is_dir():
+        pytest.skip("本機具名遷移原件不存在；隔離契約負測仍須執行")
     assert binding._verify_pinned_weekly_migration_binding(migration) is True
 
     # Pinned paths are recognized when migration binding is passed

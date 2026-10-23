@@ -141,7 +141,7 @@ def test_extract_event_decision_cutoff_contract():
     from app_module.evidence_event_dtos import EvidenceEvent, EvidenceEventType
     from app_module.forward_performance_service import extract_event_decision_cutoff
 
-    # 1. Explicit aware datetime in metadata
+    # 零散 metadata 的 aware 時間不是獨立決策時鐘證據。
     ev1 = EvidenceEvent(
         event_id="e1",
         event_hash="h1",
@@ -154,8 +154,7 @@ def test_extract_event_decision_cutoff_contract():
         metadata={"decision_cutoff": "2026-10-20T14:30:00+08:00"},
     )
     cutoff = extract_event_decision_cutoff(ev1)
-    assert cutoff is not None
-    assert cutoff == datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc)
+    assert cutoff is None
 
     # 2. Bare date without timezone/time must NOT be assumed as midnight
     ev_bare = EvidenceEvent(
@@ -186,7 +185,7 @@ def test_extract_event_decision_cutoff_contract():
     assert extract_event_decision_cutoff(ev_missing) is None
 
 
-def test_scheduled_forward_decision_baseline_wiring_and_cache_isolation(tmp_path: Path):
+def test_contextless_baseline_policy_is_rejected(tmp_path: Path):
     from app_module.forward_daily_price_source_binding import ForwardDailyPriceSourceBinder
 
     class MockResolver:
@@ -208,11 +207,10 @@ def test_scheduled_forward_decision_baseline_wiring_and_cache_isolation(tmp_path
     assert bound_missing[0]["status"] == "unknown"
     assert bound_missing[0]["reason_code"] == "decision_cutoff_missing_or_unverifiable"
 
-    # Event with valid cutoff builds event policy
+    # 即使時間有時區，沒有事件身份與上下文也不建立政策。
     policy = binder.build_event_policy(
         temporal_role="decision_baseline",
         cutoff_at=datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc),
     )
-    assert policy.temporal_role == "decision_baseline"
-    assert policy.cutoff_at == datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc)
+    assert policy == "decision_context_missing_or_outside_evaluation_cutoff"
 

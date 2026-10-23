@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**Track B 六包再複核（10/23 Taipei）：** Legacy 實際為7筆獨立託管、81筆缺證；Weekly 固定遷移原件驗證後仍5/6 partial；Forward 改為驗證capture context與事件hash後登記每事件政策，outcome角色分開核對。真reader重建9,423筆版本矩陣、8份HTML尺度證據，6443差異與幣別／歷史availability未解。37個既有導航連結採35個精確文件／目標登記，並非整庫豁免；詳見[六包獨立複核](../06_qa/BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)。Formal/Paper未選定與自然驗證界線保持。
+
 **Track B 接任成果獨立複核：完成裁決不成立。** 已補強 Forward 外部接受／原件重播、Legacy custody、搬遷路徑與 Weekly 期別檢查；八份雙市場月營收 HTML 及四月 archive 已離線讀回，但 TWSE 6443 仍有兩欄差異、正式 Scoring/PIT 未通過。Formal/Paper 來源 Owner 尚未選定，自然排程未恢復完整鏈；不宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。原 RC／Track A UI 保持，驗證與逐線剩餘工程見[Track B 獨立複核](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
 
 **後繼個股研究原值圖卡。** 承接已完成 Track A 布局，基本面／營收、財報比較、法人、信用、集保級距與分點新增已載入 DTO 的原值圖卡；單點採值卡、同日同源同單位才比較，不推算成長或連買。82定向、Workbench85、validator25／0／4及mypy1135通過；125%／150%三尺寸研究View實圖已核。這是UI工程，不改P0、正式資料或金融資格，固定EXE未重建；來源缺件及驗證界線見[研究視覺整合](../06_qa/BALDR_RESEARCH_VISUALIZATION_20261022.md)。

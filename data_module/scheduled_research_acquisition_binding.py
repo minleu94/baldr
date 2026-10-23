@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-import functools
 import hashlib
 import json
 import os
@@ -312,20 +311,28 @@ def _normalize_sha256(value: object) -> str:
     return text
 
 
-@functools.lru_cache(maxsize=8)
 def _verify_pinned_weekly_migration_binding(
     binding: PinnedWeeklyRootMigrationBinding,
 ) -> bool:
     """核驗具名遷移原件與散列；只接受經過 pre-migration 收據固定的每週採集實體。"""
-    proof_path = _assert_no_links(binding.migration_proof_path)
-    if not proof_path.is_file():
-        return False
-    raw = _read_stable_bytes(proof_path, max_bytes=16 * 1024 * 1024)
-    if sha256_bytes(raw) != _normalize_sha256(binding.migration_proof_sha256):
+    # 這是一次具名歷史搬遷，呼叫者不得用相同原件授權其他根目錄。
+    if binding != DEFAULT_PINNED_WEEKLY_MIGRATION_BINDING:
         return False
     try:
-        found_db = False
-        found_status = False
+        raw = _read_stable_bytes(binding.migration_proof_path, max_bytes=16 * 1024 * 1024)
+        if sha256_bytes(raw) != _normalize_sha256(binding.migration_proof_sha256):
+            return False
+        expected = {
+            r"output\scheduled\v2_2_weekly_collection\evidence_scheduler.db": (
+                Path(binding.current_sidecar_db_path), 28672,
+                "78fb7ea950e4613d7718d6a2415d4b52274b258dc3e042445a31e7f9d9d5201c",
+            ),
+            r"output\scheduled\v2_2_weekly_collection\latest_status.json": (
+                Path(binding.current_output_root) / WEEKLY_LOCATOR_RELATIVE_PATH, 503,
+                "eb419c7bbe8ef2de20c56f055952e1a17832650e2a5db4472320b2a4bd16bac9",
+            ),
+        }
+        seen: set[str] = set()
         for line in raw.decode("utf-8").splitlines():
             line_str = line.strip()
             if not line_str:
@@ -335,21 +342,29 @@ def _verify_pinned_weekly_migration_binding(
                 object_pairs_hook=_strict_json_object_pairs,
                 parse_constant=_reject_constant,
             )
-            rel = entry.get("Relative", "").replace("/", "\\")
+            rel = entry.get("Relative")
+            if rel not in expected or entry.get("Root") != "FA_Data":
+                continue
+            if rel in seen:
+                return False
+            seen.add(rel)
+            target, size, digest = expected[rel]
             if (
-                entry.get("Root") == "FA_Data"
-                and rel == r"output\scheduled\v2_2_weekly_collection\evidence_scheduler.db"
-                and entry.get("Status") == "PASS"
+                entry.get("Status") != "PASS"
+                or type(entry.get("DBytes")) is not int or entry.get("DBytes") != size
+                or type(entry.get("FBytes")) is not int or entry.get("FBytes") != size
+                # 原遷移 JSONL 使用大寫十六進位；僅此格式做大小寫規範化。
+                or not isinstance(entry.get("D_SHA256"), str)
+                or _normalize_sha256(entry["D_SHA256"].lower()) != digest
+                or not isinstance(entry.get("F_SHA256"), str)
+                or _normalize_sha256(entry["F_SHA256"].lower()) != digest
             ):
-                found_db = True
-            elif (
-                entry.get("Root") == "FA_Data"
-                and rel == r"output\scheduled\v2_2_weekly_collection\latest_status.json"
-                and entry.get("Status") == "PASS"
-            ):
-                found_status = True
-        return found_db and found_status
-    except Exception:
+                return False
+            current = _read_stable_bytes(target, max_bytes=MAX_CHILD_BYTES)
+            if len(current) != size or sha256_bytes(current) != digest:
+                return False
+        return seen == set(expected)
+    except (OSError, ValueError, TypeError, AttributeError):
         return False
 
 
@@ -924,6 +939,8 @@ def verify_weekly_acquisition(
         if not isinstance(declared_root, str):
             raise ResearchBindingError("weekly_parent_output_root_mismatch")
         is_same = _path_matches_relocated(declared_root, root)
+        # 例外只屬於這一份固定 parent，不向同根的新收據傳遞。
+        verified_migration = None
         if not is_same:
             if (
                 migration_binding is not None
@@ -933,7 +950,7 @@ def verify_weekly_acquisition(
                     declared_root, root, migration_binding=migration_binding
                 )
             ):
-                pass
+                verified_migration = migration_binding
             else:
                 raise ResearchBindingError("weekly_parent_output_root_mismatch")
         started = parse_aware_utc(payload.get("started_at_utc"), field_name="weekly_started_at")
@@ -965,7 +982,7 @@ def verify_weekly_acquisition(
             pointer_updated = parse_aware_utc(pointer.get("updated_at_utc"), field_name="weekly_locator_updated_at")
             if pointer_started != started or pointer_updated != completed:
                 raise ResearchBindingError("weekly_locator_terminal_clock_mismatch")
-        _verify_core_binding(root, payload, migration_binding=migration_binding)
+        _verify_core_binding(root, payload, migration_binding=verified_migration)
         children = _verify_weekly_child_bindings(root, repo, payload)
         receipt_status = _receipt_status(payload)
         core_payload = payload.get("core")

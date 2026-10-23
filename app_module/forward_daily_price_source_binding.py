@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import date, datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 import stat
 from typing import Any, Mapping, Sequence
@@ -49,6 +52,43 @@ class ForwardDailyPriceSourceBinder:
         self.qualification_policy = qualification_policy
         self.qualification_resolver = qualification_resolver
         self._verified_source_cache: dict[tuple[object, ...], object] = {}
+        self._event_policies: dict[str, tuple[Any, dict[str, str]]] = {}
+        self._policy_context_keys: dict[int, tuple[Any, str]] = {}
+
+    def _registered_context_key(self, policy: Any) -> str | None:
+        saved = self._policy_context_keys.get(id(policy))
+        return saved[1] if saved is not None and saved[0] is policy else None
+
+    def outcome_policy(self) -> Any | None:
+        """結果價一律使用本輪明選的 outcome cutoff，不沿用事件基期政策。"""
+        if self.qualification_resolver is None or self.qualification_policy is None:
+            return None
+        if self.qualification_policy.temporal_role == "outcome_realization":
+            return self.qualification_policy
+        return self.qualification_resolver.build_policy(
+            temporal_role="outcome_realization", cutoff_at=self.qualification_policy.cutoff_at,
+        )
+
+    def verify_qualified_binding(self, binding: Mapping[str, Any]) -> bool:
+        """只重用本次實際事件建立的政策，不從被驗資料重建可信 cutoff。"""
+        from data_module.daily_price_qualification_binding import verify_qualified_binding_payload
+
+        key = binding.get("qualification_context_id")
+        if key is not None:
+            saved = self._event_policies.get(str(key))
+            if saved is None:
+                return False
+            policy, context = saved
+            if any(binding.get(name) != value for name, value in context.items()):
+                return False
+        elif binding.get("temporal_role") == "outcome_realization":
+            policy = self.outcome_policy()
+        else:
+            return False
+        return bool(policy is not None and verify_qualified_binding_payload(
+            binding, resolver=self.qualification_resolver,
+            policy=policy, revision_ledger=self.revision_ledger,
+        ))
 
     def build_event_policy(
         self,
@@ -58,16 +98,45 @@ class ForwardDailyPriceSourceBinder:
         decision_cutoff_at: datetime | None = None,
         event_price_date: date | None = None,
         outcome_price_date: date | None = None,
+        event_context: Mapping[str, str] | None = None,
     ) -> Any | None:
         if self.qualification_resolver is None:
             return None
-        return self.qualification_resolver.build_policy(
+        if (
+            temporal_role != "decision_baseline" or not event_context
+            or event_price_date is None or decision_cutoff_at != cutoff_at
+            or cutoff_at.tzinfo is None or cutoff_at.utcoffset() is None
+            or self.qualification_policy is None
+            or cutoff_at > self.qualification_policy.cutoff_at
+            or set(event_context) != {
+                "qualification_event_id", "qualification_event_hash", "qualification_event_context_hash",
+                "qualification_event_price_date", "qualification_context_basis",
+            }
+            or any(not isinstance(value, str) or not value for value in event_context.values())
+            or event_context.get("qualification_context_basis") != "validated_research_capture_context"
+        ):
+            return "decision_context_missing_or_outside_evaluation_cutoff"
+        policy = self.qualification_resolver.build_policy(
             temporal_role=temporal_role,
             cutoff_at=cutoff_at,
             decision_cutoff_at=decision_cutoff_at,
             event_price_date=event_price_date,
             outcome_price_date=outcome_price_date,
         )
+        context = dict(event_context)
+        key = "sha256:" + hashlib.sha256(json.dumps({
+            **context, "cutoff_at": cutoff_at.astimezone(timezone.utc).isoformat(),
+            "event_price_date": event_price_date.isoformat(),
+            "acceptance_binding_sha256": policy.acceptance_binding_sha256,
+        }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        context["qualification_context_id"] = key
+        if key in self._event_policies:
+            return self._event_policies[key][0]
+        if len(self._event_policies) >= 100_000:
+            return "event_policy_context_limit_exceeded"
+        self._event_policies[key] = (policy, context)
+        self._policy_context_keys[id(policy)] = (policy, key)
+        return policy
 
     def bind_rows(
         self,
@@ -82,6 +151,11 @@ class ForwardDailyPriceSourceBinder:
         )
         if isinstance(active_policy, str):
             return tuple(unknown_price_source_binding(active_policy) for _ in rows)
+        if (
+            getattr(active_policy, "temporal_role", None) == "decision_baseline"
+            and self._registered_context_key(active_policy) is None
+        ):
+            return tuple(unknown_price_source_binding("event_decision_context_not_registered") for _ in rows)
         if self.bundle.get("status") != "captured":
             return tuple(unknown_price_source_binding("source_bundle_unavailable") for _ in rows)
         descriptors = self.bundle.get("descriptors")
@@ -224,11 +298,16 @@ class ForwardDailyPriceSourceBinder:
                         evaluate_bound_daily_price_row_qualification,
                     )
 
+                    context_key = self._registered_context_key(active_policy)
+                    if context_key is not None:
+                        result.update(self._event_policies[context_key][1])
                     result = evaluate_bound_daily_price_row_qualification(
                         bound_row=result,
                         revision_ledger=ledger,
                         policy=active_policy,
                     )
+                    if result.get("status") == "source_identity_and_availability_bound":
+                        result = unknown_price_source_binding("source_use_not_accepted_for_temporal_role")
                     from data_module.daily_price_qualification_binding import (
                         verify_qualified_binding_payload,
                     )

@@ -100,7 +100,7 @@ Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；�
    - MOPS：`896,335 (累計) - 88,430 (當月) = 807,905 千元`
    - 兩者截至 2026-08 之歷史前期累計營收皆為 `807,905 千元`，上月（8月）營收皆為 `66,546 千元`，去年同期數字亦完全相符。差額 +8,132 千元完全且僅集中於 2026-09 單月，並線性遞延至當月累計營收。
 2. **修訂時序判讀**：
-   - 官方出表日期分別為 1151017（OpenAPI）與 115/10/23（MOPS），備註說明文字亦經調整，顯示 6443 於 10 月中旬申報後曾發生更正或重編。
+   - 官方出表日期分別為 1151017（OpenAPI）與 115/10/23（MOPS），數值及備註不同，只能證明兩份捕獲版本有差異。未取得具名官方更正公告或版本沿革前，不能推定已發生更正／重編、實際修訂時間或任一版本較正確。
 3. **治理與資格判定**：
    - 目前依契約定性為 `unresolved_revision_candidate`（未解修訂候選）。
    - **雙版本原值完整保留**：工程不得擅自判定何者為「正確」版本，亦不得逕自排除 6443 以湊成 100% 對等。
@@ -111,7 +111,7 @@ Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；�
 
 依 2026-06..09 雙市場八份完整 HTML 原件與兩份 2026-09 OpenAPI 原件（四個月 archive 共 10 批、9,423 筆觀測，索引 SHA256 `ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5`），整理具名盤點矩陣如下：
 
-### 1. 具名批次盤點矩陣（Market × Period × Issuer × Source Version）
+### 1. 批次摘要（尚非逐發行人與來源版本矩陣）
 
 | 批次 | 期別 | 市場 | 來源類型與 ID | 原始 SHA256 (首8碼) / Bytes | 尺度證明 SHA256 (首8碼) | 觀測列數 (發行人家數) | 金額尺度 | 幣別 | 官方出表時間 | 本機觀測時間 | PIT/可得性 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -126,13 +126,13 @@ Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；�
 | 8 | 2026-09 | TWSE | `twse.openapi.t187ap05_L` | `a58c04b3...` / 607,634 B | `02477fa3...` (parity) | 1,088 列 (1,088 家) | null (6443差異) | unknown | 1151017 | 2026-10-21 | 未證明 (事後觀測) |
 | 9 | 2026-09 | TPEx | `tpex.openapi.mopsfin_t187ap05_O` | `a27fea12...` / 496,597 B | `ed4a0293...` (parity) | 893 列 (893 家) | 1,000 (交叉核驗) | unknown | 1151017 | 2026-10-21 | 未證明 (事後觀測) |
 
-**合計**：10 批次、9,423 筆發行人月營收觀測值。
+**合計**：10 批次、9,423 筆發行人月營收觀測值。原 WP5 JSON 每批只列五筆樣本，未提供逐發行人與完整來源版本矩陣；它是批次摘要，不能作為逐列 coverage 驗收。原批次 available_at 應與捕獲、落盤與 availability_basis 一起保留，不可直接等同官方發布時間。
 
 ### 2. 尺度與幣別治理分離
 
 1. **千元尺度（Scale-to-base unit）**：
    - 八份 MOPS HTML 原件已由 `data_module/monthly_revenue_unit_scale_proof.py` 嚴格推導逐產業表頭與欄位，證明 `scale_to_base_unit = 1000`。
-   - OpenAPI 原件端點未明示單位，TPEx 經 863 家共同發行人 100% 金額相符而建立千元交叉核驗；TWSE 因 6443 差異維持 `scale = null`。
+   - OpenAPI 原件端點未明示單位；TPEx 的 863 家共同發行人僅在當月及當月累計兩欄金額相符，這份交叉比較不得外推其餘 30 家 OpenAPI-only 公司、其他欄位或全批尺度資格。TWSE 因 6443 差異維持 `scale = null`。
 2. **幣別（Currency）**：
    - 所有 10 批次原始資料皆未包含官方貨幣代碼，全數標記為 `currency = unknown`。
    - **禁止擅自換算 TWD**：在取得官方幣別證據前，不得將未知幣別視同新台幣，亦不得將未知填補為零。
@@ -149,10 +149,12 @@ Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；�
 
 | Consumer 用途 | 資格狀態 | 拒絕／限制原因 |
 | :--- | :--- | :--- |
-| **Formal Scoring** | **未授權 (Not Qualified)** | `formal_scoring_gate_allowed = False`；缺已驗證幣別及官方 PIT 證明。 |
-| **Backtest 回測** | **未授權 (Not Qualified)** | 歷史樣本依決策 cutoff 不可見（`not_visible_by_cutoff`）；`formal_pit = False`。 |
-| **ML 重訓與驗證** | **未授權 (Not Qualified)** | `currency = unknown`，未建立正式 PIT 與正規化貨幣資格。 |
-| **Paper 實盤模擬** | **未授權 (Not Qualified)** | Formal runtime 與真實 Paper 來源尚未經 Owner 批准選定。 |
-| **Limited Research Shadow** | **有限授權 (Partially Qualified)** | 僅 2026-09 發行之本機百分率研究包於受限範圍內可讀；其餘歷史月份維持研究封存。 |
+| **Formal Scoring** | **未合格 (Not Qualified)** | `formal_scoring_gate_allowed = False`；缺已驗證幣別及官方 PIT 證明。 |
+| **Backtest 回測** | **未合格 (Not Qualified)** | 歷史樣本依決策 cutoff 不可見（`not_visible_by_cutoff`）；`formal_pit = False`。 |
+| **ML 重訓與驗證** | **未合格 (Not Qualified)** | `currency = unknown`，未建立正式 PIT 與正規化貨幣資格。 |
+| **Paper 實盤模擬** | **未合格 (Not Qualified)** | Formal runtime 與真實 Paper 來源尚未經 Owner 批准選定。 |
+| **Limited Research Shadow** | **有限合格 (Partially Qualified)** | 既有已發行百分率研究資格只限明選 2026-09 兩份 OpenAPI raw；不能擴及同期 HTML 或所有歷史版本。其餘歷史候選可做授權範圍內的隔離工程與原值審閱，尚未取得 consumer 用途資格。 |
 
 完整收據檔案已固化於 `output/tasks/baldr-track-b-six-packages-20261023/wp5_monthly_revenue_history_inventory.json`。
+
+上述用途開發已有全用途授權；尚未合格的原因是來源／批次／時間與 consumer Gate，不是重新等待 Owner 批准相同開發範圍。原 WP4 JSON 的 `variance_amount_thousand_twd` 欄位誤帶幣別，應讀作原單位數值差額 8,132；目前不能授 TWD 或 OpenAPI 全批尺度。兩份原收據保留原貌，由獨立複核收據記錄更正。

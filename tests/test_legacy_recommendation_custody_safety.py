@@ -55,6 +55,8 @@ def test_independent_full_identity_required_and_read_back(sample):
         "rec_test", entry["origin_path"], **options, custody_evidence={"rec_test": pin},
     )
     assert bound is not None and bound.custody_verified and not bound.research_only
+    assert bound.effective_custody_verification_tier == "tier1_independent_pre_migration_file_sha256"
+    assert bound.custody_evidence_basis == "external_identity_pin"
     pin.evidence_path.write_bytes(b"{}")
     assert locator.locate_legacy_recommendation_run(
         "rec_test", entry["origin_path"], **options, custody_evidence={"rec_test": pin},
@@ -74,6 +76,50 @@ def test_weak_tier_only_explicit_audit_envelope(sample, tier):
     audited = locator.audit_legacy_recommendation_run("rec_test", entry["origin_path"], **options)
     assert audited is not None and audited.research_only and not audited.custody_verified
     assert audited.custody_verification_tier == tier
+    assert audited.effective_custody_verification_tier is None
+    assert audited.custody_evidence_basis == "audit_only"
+
+
+@pytest.fixture
+def git_0906_sample(sample, monkeypatch):
+    entry, options, _, target = sample
+    result_id = "scheduled_rec_20260906_051003"
+    entry["result_id"] = result_id
+    entry["origin_path"] = rf"D:\Min\Python\Project\FA_Data\output\recommendation\runs\{result_id}.json"
+    entry["current_path"] = str(target.with_name(f"{result_id}.json"))
+    Path(entry["current_path"]).write_bytes(target.read_bytes())
+    entry["custody_verification_tier"] = "tier3_pre_migration_db_index_only_no_independent_file_sha256"
+    entry["independent_pre_migration_file_sha256"] = None
+    statement = (
+        "- source recommendation：\n"
+        f"  `{entry['origin_path']}`，\n"
+        f"  file hash `{entry['relocated_file_sha256']}`；"
+    )
+    monkeypatch.setattr(locator, "_read_original_git_document", lambda _: statement.encode("utf-8"))
+    return entry, options
+
+
+@pytest.mark.parametrize("allowed", [(),
+    ("tier2_pre_migration_db_index_and_twstock_event_hash",),
+    ("tier3_pre_migration_db_index_only_no_independent_file_sha256",),
+])
+def test_git_original_never_overrides_explicit_caller_tier_restriction(git_0906_sample, allowed):
+    entry, options = git_0906_sample
+    assert locator.locate_legacy_recommendation_run(
+        entry["result_id"], entry["origin_path"], **options, allowed_tiers=allowed,
+    ) is None
+
+
+def test_git_0906_verified_effective_tier_preserves_original_catalog_tier(git_0906_sample):
+    entry, options = git_0906_sample
+    bound = locator.locate_legacy_recommendation_run(
+        entry["result_id"], entry["origin_path"], **options,
+        allowed_tiers=("tier1_independent_pre_migration_file_sha256",),
+    )
+    assert bound is not None and bound.custody_verified and not bound.research_only
+    assert bound.custody_verification_tier == "tier3_pre_migration_db_index_only_no_independent_file_sha256"
+    assert bound.effective_custody_verification_tier == "tier1_independent_pre_migration_file_sha256"
+    assert bound.custody_evidence_basis == "independent_git_original"
 
 
 @pytest.mark.parametrize("field", ["result_id", "origin_path", "original_sha256"])

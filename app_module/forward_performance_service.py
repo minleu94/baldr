@@ -19,6 +19,7 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
+from app_module.evidence_event_importer_dtos import capture_context_is_valid
 from app_module.corporate_action_policy import CorporateActionProvider, CorporateActionPolicy
 from app_module.trading_restriction_policy import TradingRestrictionProvider, TradingRestrictionPolicy
 from app_module.event_price_resolver import (
@@ -109,37 +110,39 @@ def _identity_text(value: object) -> str:
 
 
 def extract_event_decision_cutoff(event: EvidenceEvent | None) -> datetime | None:
-    """從事件明確取得含時區的決策截斷時間；不得以 event date 午夜或事後捕獲時間推論。"""
+    """只解析既有 capture context 的研究時鐘；零散 metadata 不是時間證據。"""
     if event is None:
         return None
     meta = event.metadata if isinstance(event.metadata, Mapping) else {}
-    candidates = [
-        meta.get("decision_cutoff"),
-        meta.get("decision_cutoff_at"),
-        meta.get("decision_cutoff_utc"),
-        meta.get("event_decision_cutoff"),
-    ]
-    if isinstance(event.decision_date, str) and ("T" in event.decision_date or "+" in event.decision_date):
-        candidates.append(event.decision_date)
-
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        if isinstance(candidate, datetime):
-            if candidate.tzinfo is not None and candidate.utcoffset() is not None:
-                return candidate.astimezone(timezone.utc)
-            continue
-        if isinstance(candidate, str) and candidate.strip():
-            text = candidate.strip()
-            if len(text) <= 10:
-                continue
-            try:
-                parsed = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
-                if parsed.tzinfo is not None and parsed.utcoffset() is not None:
-                    return parsed.astimezone(timezone.utc)
-            except (ValueError, TypeError):
-                continue
-    return None
+    context = meta.get("capture_context")
+    if not isinstance(context, Mapping) or not capture_context_is_valid(context):
+        return None
+    if (
+        context.get("temporal_status") != "verified"
+        or context.get("research_only") is not True
+        or context.get("preopen_authority") is not False
+        or context.get("natural_authority") is not False
+        or context.get("source_availability_preserved") is not True
+    ):
+        return None
+    try:
+        cutoff = datetime.fromisoformat(str(context["decision_at"]).replace("Z", "+00:00"))
+        captured = datetime.fromisoformat(str(context["captured_at"]).replace("Z", "+00:00"))
+        if any(value.tzinfo is None or value.utcoffset() is None for value in (cutoff, captured)):
+            return None
+        day = cutoff.astimezone(TAIWAN_MARKET_TIMEZONE).date()
+        if date.fromisoformat(event.decision_date) != day or date.fromisoformat(event.event_date) > day:
+            return None
+        if captured < cutoff or date.fromisoformat(str(context["as_of"])) > day:
+            return None
+        for field in ("decision_cutoff", "decision_cutoff_at", "decision_cutoff_utc", "event_decision_cutoff"):
+            if meta.get(field) is not None:
+                other = datetime.fromisoformat(str(meta[field]).replace("Z", "+00:00"))
+                if other.tzinfo is None or other.utcoffset() is None or other != cutoff:
+                    return None
+        return cutoff.astimezone(timezone.utc)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return None
 
 
 def _event_identity_metadata(event: EvidenceEvent) -> dict[str, Any]:
@@ -248,13 +251,13 @@ class ForwardPerformanceService:
         self.repository = repository or EvidenceEventRepository(config)
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
         self._daily_price_cache: dict[
-            tuple[str, str | None], tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]
+            tuple[str, str | None, str | None], tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]
         ] = {}
         self._index_return_cache: dict[tuple[str, str | None, str, str], int | None] = {}
         self._index_table_columns_cache: dict[str, tuple[str, ...]] = {}
         self._source_observer = source_observer
         self._price_source_binder = price_source_binder
-        self._daily_price_observation_ids: dict[tuple[str, str | None], str] = {}
+        self._daily_price_observation_ids: dict[tuple[str, str | None, str | None], str] = {}
         self._index_return_observation_ids: dict[
             tuple[str, str | None, str, str], tuple[str, ...]
         ] = {}
@@ -794,22 +797,44 @@ class ForwardPerformanceService:
         active_baseline_policy = None
         if self._price_source_binder is not None:
             conf_policy = getattr(self._price_source_binder, "qualification_policy", None)
-            if getattr(conf_policy, "temporal_role", None) == "decision_baseline":
-                if event_cutoff is not None:
-                    cutoff_isolation_key = event_cutoff.isoformat()
-                    parsed_event_date = None
-                    try:
-                        parsed_event_date = self._parse_iso_date(event_date, field_name="event_date")
-                    except Exception:
-                        pass
+            if conf_policy is not None and getattr(conf_policy, "temporal_role", None) == "decision_baseline":
+                context_verified = False
+                if event_cutoff is not None and event is not None:
+                    expected_hash = EvidenceEventService(self.repository).build_event_hash(
+                        event_date=event.event_date, decision_date=event.decision_date,
+                        symbol=event.symbol, event_type=event.event_type,
+                        source_type=event.source_type, source_id=event.source_id,
+                        source_snapshot_id=event.source_snapshot_id,
+                        reason_codes=event.reason_codes, why_not_codes=event.why_not_codes,
+                        risk_codes=event.risk_codes, strategy_version_id=event.strategy_version_id,
+                        profile_id=event.profile_id, run_id=event.run_id, metadata=event.metadata,
+                    )
+                    context_capture = datetime.fromisoformat(
+                        event.metadata["capture_context"]["captured_at"].replace("Z", "+00:00")
+                    )
+                    context_verified = (
+                        expected_hash == event.event_hash
+                        and event_cutoff <= conf_policy.cutoff_at
+                        and context_capture <= conf_policy.cutoff_at
+                    )
+                if context_verified and event is not None and event_cutoff is not None:
+                    cutoff_isolation_key = f"{event.event_id}:{event.event_hash}:{event_cutoff.isoformat()}"
+                    parsed_event_date = self._parse_iso_date(event_date, field_name="event_date")
                     active_baseline_policy = self._price_source_binder.build_event_policy(
                         temporal_role="decision_baseline",
                         cutoff_at=event_cutoff,
                         decision_cutoff_at=event_cutoff,
                         event_price_date=parsed_event_date,
+                        event_context={
+                            "qualification_event_id": event.event_id,
+                            "qualification_event_hash": event.event_hash,
+                            "qualification_event_context_hash": event.metadata["capture_context"]["capture_context_identity_hash"],
+                            "qualification_event_price_date": parsed_event_date.isoformat(),
+                            "qualification_context_basis": "validated_research_capture_context",
+                        },
                     )
                 else:
-                    cutoff_isolation_key = "unverifiable_decision_cutoff"
+                    cutoff_isolation_key = f"unverifiable:{event.event_id if event else 'no_event'}"
                     active_baseline_policy = "decision_cutoff_missing_or_unverifiable"
         if cutoff_isolation_key is not None or active_baseline_policy is not None:
             _, values = self._daily_price_series(
@@ -922,11 +947,9 @@ class ForwardPerformanceService:
                         fetched_columns,
                         rows,
                         qualification_policy=(
-                            self._price_source_binder.qualification_policy
-                            if self._price_source_binder is not None and getattr(
-                                self._price_source_binder.qualification_policy, "temporal_role", None
-                            ) == "outcome_realization"
-                            else None
+                            self._price_source_binder.outcome_policy()
+                            if self._price_source_binder is not None
+                            and getattr(self._price_source_binder, "qualification_policy", None) is not None else None
                         ),
                     ),
                 )
@@ -1206,6 +1229,12 @@ class ForwardPerformanceService:
     ) -> tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]:
         as_of_key = self._date_key(as_of_date) if as_of_date is not None else None
         cache_key = (symbol, as_of_key, cutoff_isolation_key)
+        if (
+            qualification_policy is None and cutoff_isolation_key is None
+            and self._price_source_binder is not None
+            and getattr(self._price_source_binder, "qualification_policy", None) is not None
+        ):
+            qualification_policy = self._price_source_binder.outcome_policy()
         if cache_key in self._daily_price_cache:
             if self._source_observer is not None:
                 query_id = self._daily_price_observation_ids.get(cache_key)
@@ -1291,8 +1320,12 @@ class ForwardPerformanceService:
             bindings = tuple(unknown_price_source_binding("price_projection_columns_missing") for _ in rows)
         else:
             fetched_rows = tuple(dict(zip(columns, row, strict=True)) for row in rows)
-            bindings = self._price_source_binder.bind_rows(
-                fetched_rows, qualification_policy=qualification_policy
+            bindings = (
+                self._price_source_binder.bind_rows(fetched_rows)
+                if qualification_policy is None
+                else self._price_source_binder.bind_rows(
+                    fetched_rows, qualification_policy=qualification_policy
+                )
             )
         return {"columns": columns, "source_bindings": bindings}
 

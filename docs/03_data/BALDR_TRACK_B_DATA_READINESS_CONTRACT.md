@@ -1,5 +1,13 @@
 # Track B 金融資料交付契約
 
+## R8 六包複核補充（優先於以下歷史觀測）
+
+本次具名結果見[六包複核](../06_qa/BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)。Legacy 7/88僅證custody，不能推導歷史PIT；81筆仍拒絕。回傳`effective_custody_verification_tier`與`custody_evidence_basis`，呼叫者明示允許集合仍須符合。Weekly例外限定固定10/19 run、terminal及D/F完整原件pins，不授同根新收據遷移權限。
+
+Forward baseline政策必須由真實事件canonical hash、有效research capture context及本輪cutoff上限建立，讀回使用已登記context與resolver，不接受payload自帶cutoff自授權。`qualification_event_id/hash/context_hash/price_date/context_basis`與context ID必須保存；outcome另用outcome_realization。Research context不授盤前自然證據或正式金融PIT；沒有外部用途接受及逐列availability仍拒絕。
+
+Track C須讀每筆market/period/issuer/sourceversion、raw/row/revision SHA、五類時鐘、尺度證據及其scope，currency保持unknown；月營收矩陣9,423列是coverage盤點，ML、歷史Backtest、正式Scoring與Paper不因此合格，OOS及訓練保持false。Track A可唯讀展示來源原值、有效custody tier、unknown與拒絕原因，不把版本日期當生效順序，也不將6443兩版本指定勝負。正式runtime與Paper帳戶/cash/mark/Ledger仍Owner尚未選定。
+
 本契約約束 Track B 對 Track C（ML 資料）與 Track A（唯讀研究展示）的交付。它不建立來源接受、不啟動訓練、不改 Ledger，也不取代各來源的用途契約。2026-10-22 實際觀測、具名狀態矩陣及工程缺口見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
 
 ## 共通身份與資格

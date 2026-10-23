@@ -442,28 +442,9 @@ def run_scheduled_forward_outcomes(
                 assert revision_ledger is not None
 
                 def verify_observed_qualification(binding: Mapping[str, Any]) -> bool:
-                    role = binding.get("temporal_role")
-                    if role == qualification_policy.temporal_role:
-                        target_policy = qualification_policy
-                    elif role in ("decision_baseline", "outcome_realization"):
-                        cutoff_str = binding.get("cutoff_at")
-                        if not isinstance(cutoff_str, str):
-                            return False
-                        try:
-                            cutoff_dt = datetime.fromisoformat(cutoff_str)
-                        except (ValueError, TypeError):
-                            return False
-                        target_policy = qualification_resolver.build_policy(
-                            temporal_role=cast(TemporalRole, role),
-                            cutoff_at=cutoff_dt,
-                        )
-                    else:
-                        return False
-                    return verify_qualified_binding_payload(
-                        binding,
-                        resolver=qualification_resolver,
-                        policy=target_policy,
-                        revision_ledger=revision_ledger,
+                    return bool(
+                        price_source_binder is not None
+                        and price_source_binder.verify_qualified_binding(binding)
                     )
 
                 qualification_verifier = verify_observed_qualification

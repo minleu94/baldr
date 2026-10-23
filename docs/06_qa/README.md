@@ -1,5 +1,7 @@
 # QA 證據導覽
 
+- [Track B 六包交付獨立複核](BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)：七筆 Legacy、Weekly 遷移信任範圍、Forward 每事件政策、9,423 筆版本矩陣與精確 output 導航登記；不授正式來源接受。
+
 - [Track B 金融資料與營運補完](BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)：10/22 新自然收據、修訂 custody 語義核驗、Formal immutable terminal、七維狀態矩陣及 Track A/C 契約；金融接受與新自然執行另判。
 - [每日營運恢復觀測（2026-10-21）](BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)：21 個 Windows task readback、六軌操作觀測、Freshness／Evidence same-run 收據契約與各分支未驗條件；設定 readback、有限只讀 scope 與候選修復不代表自然 run 或金融 Gate 通過。
 - [V2 Release Closeout](BALDR_V2_RELEASE_CLOSEOUT_20261021.md)：唯一 Source／EXE、Windows 全發現、Codex 設定讀回與恢復邊界；自然運行、金融資格及真人接受分軌。

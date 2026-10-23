@@ -112,7 +112,9 @@ Paper EOD retry wrapper 的新自然 run 另產 `paper-execution-retry-terminal-
 
 Forward新資格入口須整組提供外部binding path/SHA、temporal role/cutoff與exact bundle run/path/SHA；部分配置直接拒絕。未配置沿原identity-only，不授PIT/training。以完整本機publication inventory重播raw/custody/projection建立ledger；集合完整只指本機保存版本，不能外推官方歷史。依role分開核決策基期與事後outcome cutoff；available_at必須不早於實際觀測與收盤下界，written_at不是官方發布證明。
 
-目前scheduled入口僅接受`outcome_realization`，cutoff不得晚於本輪checked_at；缺每事件決策上下文時，`decision_baseline`明確拒絕。一般逐列resolver的baseline能力不等於scheduled已支援。相同來源／完整列hash相同的多份publication，只有exact bundle primary明確選中一份才讀回；ledger仍檢查所有已保存修訂，真正數值更正及跨來源歧義不放行。
+R8 scheduled入口可接`decision_baseline`，但必須驗事件canonical hash、有效research capture context及capture/decision不晚於本輪cutoff，並先登記政策供讀回；缺件逐事件unknown，不從任意metadata或收據自帶cutoff建立信任。結果價明確使用`outcome_realization`，不得沿用baseline政策。這不授自然盤前證據或正式金融PIT。相同來源／完整列hash相同的多份publication，只有exact bundle primary明確選中一份才讀回；ledger仍檢查所有已保存修訂，真正數值更正及跨來源歧義不放行。
+
+Weekly遷移讀回僅接受固定10/19 run/terminal與封閉D/F mapping，逐次核Root、Relative、bytes及SHA；同根新收據、原件漂移或proof替換重新拒絕，不快取永久可信。當前5/6 partial及human review保持，詳見[六包複核](../06_qa/BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)。
 
 `qualification_proof_sha256`僅校驗內文完整性，不能當簽章或獨立授權。Consumer必須提供可信resolver/policy/ledger重驗接受來源、用途、版本和時間。Observation reader逐項核schema、相對路徑、count/hash、row/binding位置與有界regular-file讀取；原件改動、根外路徑、連結、壞schema均拒絕。
 

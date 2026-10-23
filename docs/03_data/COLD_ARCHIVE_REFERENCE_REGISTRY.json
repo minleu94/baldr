@@ -258,5 +258,188 @@
       "classification": "historical_qa_or_backup",
       "tracking": "registered_external_evidence"
     }
-  ]
+  ],
+  "repository_output_references": {
+    "scope_document": "docs/06_qa/BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md",
+    "mount_relative": "output",
+    "mount_target": "F:/Min/Python/Project/BaldrStorage/repo-output",
+    "verification_boundary": "僅精確文件導航metadata，不是冷封存、內容核驗或金融接受",
+    "references": [
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/tasks/baldr-post-completion-execution/TPEX_20261019_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/tasks/baldr-post-completion-execution/TPEX_20261019_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-143/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-02/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-02/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-05/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-05/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-05/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-05/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-07/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-07/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-08/KNOWN_ISSUES.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-08/KNOWN_ISSUES.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-08/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-08/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-08/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-08/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-09/KNOWN_ISSUES.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-09/KNOWN_ISSUES.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-09/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-09/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-09/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-09/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-10/KNOWN_ISSUES.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-10/KNOWN_ISSUES.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-10/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-10/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-10/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-10/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-11/KNOWN_ISSUES.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-11/KNOWN_ISSUES.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-11/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-11/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-11/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-11/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-12/KNOWN_ISSUES.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-12/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-12/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-13/KNOWN_ISSUES.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-13/KNOWN_ISSUES.md"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-13/Launch-Baldr.cmd"
+      },
+      {
+        "source_document": "docs/00_core/PROJECT_SNAPSHOT.md",
+        "source_file": "output/trial/Baldr-Theme-Research-13/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-13/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/APPLICATION_MANUAL.md",
+        "source_file": "output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/APPLICATION_MANUAL.md",
+        "source_file": "output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Theme-Research-03/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-117/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-120/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-120/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-121/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-121/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-82/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-82/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-90/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-90/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-94/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-94/TRIAL_GUIDE.md"
+      },
+      {
+        "source_document": "docs/07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md",
+        "source_file": "output/trial/Baldr-Daily-Research-95/TRIAL_GUIDE.md",
+        "target_path": "F:/Min/Python/Project/BaldrStorage/repo-output/trial/Baldr-Daily-Research-95/TRIAL_GUIDE.md"
+      }
+    ]
+  }
 }

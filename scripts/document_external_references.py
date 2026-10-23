@@ -1,4 +1,4 @@
-"""文件冷封存路徑登記與唯讀metadata查詢；不讀取外部證據內容。"""
+"""文件冷封存與精確 output 導航登記；只查 metadata，不讀外部證據內容。"""
 from __future__ import annotations
 
 import os
@@ -82,7 +82,87 @@ def load_registry(root: Path) -> dict[str, Any]:
         if actual_sources != expected_sources:
             raise ValueError(f"冷封存登記與批次權威來源不完整：{batch_id}")
     data["registry_available"] = True
+    _validate_output_registry(root, data)
     return data
+
+
+def _validate_output_registry(root: Path, registry: dict[str, Any]) -> None:
+    """普通 output 掛載導航獨立於冷封存批次，逐檔與引用文件登記。"""
+    group = registry.get("repository_output_references")
+    if group is None:
+        return
+    if not isinstance(group, dict) or group.get("mount_relative") != "output":
+        raise ValueError("output 導航登記掛載範圍不符")
+    mount_target = Path(str(group["mount_target"]))
+    if not mount_target.is_absolute() or ".." in mount_target.parts:
+        raise ValueError("output 掛載目標必須為固定絕對路徑")
+    scope_rel = _relative(str(group["scope_document"]))
+    scope = root.joinpath(*scope_rel.parts)
+    _ordinary_repo_file(root, scope)
+    listed = set(re.findall(r"^\|\s*`?((?:output)/[^|`\s]+)`?\s*\|", scope.read_text(encoding="utf-8-sig"), flags=re.M))
+    rows = group.get("references")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("output 導航需要精確檔案清冊")
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        relative = _relative(str(row["source_file"]))
+        document = _relative(str(row["source_document"]))
+        _ordinary_repo_file(root, root.joinpath(*document.parts))
+        key = (str(document), str(relative))
+        if key in seen or len(relative.parts) < 2 or relative.parts[0] != "output":
+            raise ValueError("output 導航來源重複或不在掛載內")
+        seen.add(key)
+        if str(relative) not in listed:
+            raise ValueError("output 導航來源未列權威表")
+        expected = mount_target.joinpath(*relative.parts[1:])
+        if _normalized(str(row["target_path"])) != _normalized(expected):
+            raise ValueError("output 導航目標不符固定掛載與來源")
+
+
+def _ordinary_repo_file(root: Path, target: Path) -> None:
+    if not target.is_relative_to(root) or not target.is_file():
+        raise ValueError("output 導航權威文件缺件或越界")
+    cursor = target
+    while cursor != root:
+        info = cursor.lstat()
+        if cursor.is_symlink() or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise ValueError("output 導航權威文件不得經連結")
+        cursor = cursor.parent
+
+
+def registered_output_reference(root: Path, lexical: Path, resolved: Path,
+                                registry: dict[str, Any], source_document: str) -> dict[str, Any] | None:
+    """只核已登記普通 output 檔的掛載與存在性，不讀內容或授金融資格。"""
+    group = registry.get("repository_output_references")
+    if not group or not lexical.is_relative_to(root):
+        return None
+    relative = lexical.relative_to(root).as_posix()
+    matched = next((row for row in group["references"]
+                    if row["source_file"] == relative and row["source_document"] == source_document), None)
+    if matched is None:
+        return None
+    mount = root / "output"
+    expected_mount = Path(group["mount_target"])
+    if _normalized(mount.resolve(strict=True)) != _normalized(expected_mount):
+        raise ValueError("output 掛載物理目標漂移")
+    # 掛載點本身可以是既定 junction，下面每層只允許普通檔案／目錄。
+    cursor = mount
+    for part in lexical.relative_to(mount).parts:
+        cursor = cursor / part
+        info = cursor.lstat()
+        if cursor.is_symlink() or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise ValueError("output 導航內部不得含連結")
+    actual = lexical.resolve(strict=True)
+    if (_normalized(actual) != _normalized(matched["target_path"])
+            or _normalized(actual) != _normalized(resolved)
+            or not actual.is_relative_to(expected_mount) or not actual.is_file()):
+        raise ValueError("output 導航目標缺件或身份不符")
+    if _normalized(mount.resolve(strict=True)) != _normalized(expected_mount):
+        raise ValueError("output 掛載查詢期間漂移")
+    return {"registry": REGISTRY_PATH, "source_file": relative,
+            "target_path": matched["target_path"], "tracking": "registered_repository_output_navigation",
+            "availability": "metadata_available", "target_exists": True,
+            "content_verified": False, "financial_acceptance": False}
 
 
 def registered_reference(root: Path, lexical: Path, resolved: Path, registry: dict[str, Any]) -> dict[str, Any] | None:

@@ -220,13 +220,15 @@ def heading_anchors(content: str) -> set[str]:
 
 
 def link_report(root: Path, paths: list[str]) -> dict[str, Any]:
-    """驗證本地連結，並將精確登記的冷封存另列為外部證據。"""
+    """驗證本地連結；冷封存及精確 output 導航分列且只核 metadata。"""
     errors: list[str] = []
     registered: list[dict[str, Any]] = []
+    output_navigation: list[dict[str, Any]] = []
     try:
         registry = external_references.load_registry(root)
     except (ValueError, KeyError, TypeError, OSError) as exc:
-        return {"errors": [f"冷封存登記無效：{exc}"], "registered_external_references": []}
+        return {"errors": [f"外部引用登記無效：{exc}"], "registered_external_references": [],
+                "registered_repository_output_references": []}
     content_cache: dict[Path, str] = {}
     anchor_cache: dict[Path, set[str]] = {}
     root = root.resolve()
@@ -250,9 +252,13 @@ def link_report(root: Path, paths: list[str]) -> dict[str, Any]:
                 continue
             candidate = lexical.resolve()
             try:
+                navigation = external_references.registered_output_reference(root, lexical, candidate, registry, relative)
+                if navigation:
+                    output_navigation.append({"source": relative, "link": target, **navigation})
+                    continue
                 archived = external_references.registered_reference(root, lexical, candidate, registry)
             except (ValueError, OSError) as exc:
-                errors.append(f"{relative}: 冷封存連結無效 {target}：{exc}")
+                errors.append(f"{relative}: 外部引用連結無效 {target}：{exc}")
                 continue
             if archived:
                 registered.append({"source": relative, "link": target, **archived})
@@ -277,6 +283,7 @@ def link_report(root: Path, paths: list[str]) -> dict[str, Any]:
                     if anchor not in anchor_cache[candidate]:
                         errors.append(f"{relative}: 錨點缺件 {target}")
     return {"errors": errors, "registered_external_references": registered,
+            "registered_repository_output_references": output_navigation,
             "external_content_verification": "not_run; 只核登記、Junction目標及存在性metadata"}
 
 

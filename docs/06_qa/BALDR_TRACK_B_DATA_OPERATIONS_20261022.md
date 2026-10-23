@@ -1,5 +1,7 @@
 # Track B 金融資料與營運補完（2026-10-22）
 
+最新六包獨立複核見[10/23補充](BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)：原88筆缺證現為7筆有獨立custody、81筆仍缺；9423筆版本矩陣已由真reader建立。Forward每事件政策、Weekly固定遷移信任範圍與37處精確導航已有補修，並不推導正式金融接受或自然鏈恢復。以下段落保留原時點觀測，遇到上述數量以新補充為準。
+
 裁決：`TRACK_B_ENGINEERING_IN_PROGRESS`。不宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。Quick custody、Formal／Paper新終態、BankTaiwan有界控制面、Forward實際來源觀測與同次fetched row來源身份、校準official invocation綁定、TPEx同次逐列來源證據及月營收decoder版本已有定向工程證據；仍有 **88筆legacy recommendation的原件custody未成立、mixed query維持拒絕**、Forward可信可得時間／用途與歷史修訂的合格resolver未接通，以及修復後自然鏈尚未驗實。QA024正式metadata污染與人工cache修復另有原貌／SHA記錄，不納入自然執行。固定 V2 RC、275 項歷史驗證與 Track A/C 開發均不重開；不 push。
 
 本機證據根：`output/tasks/baldr-track-b-data-operations-20261022/`。來源 HEAD `4dd820139148089ec09635ac5b0818409aa915df`；繼承恢復 `32d37e1295a1`。Release Closeout、UI 與儲存治理的他人變更保持。

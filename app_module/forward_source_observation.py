@@ -212,7 +212,14 @@ class ForwardSourceObservationRecorder:
                     or binding.get("available_at") is not None
                     or binding.get("source_published_at") is not None
                 ):
-                    raise ForwardSourceObservationError("source_observation_binding_qualification_invalid")
+                    from data_module.daily_price_qualification_binding import (
+                        verify_qualified_binding_payload,
+                    )
+
+                    if not verify_qualified_binding_payload(binding):
+                        raise ForwardSourceObservationError(
+                            "source_observation_binding_qualification_invalid"
+                        )
                 normalized_bindings.append(_json_value(binding))
         self._row_count += len(normalized_rows)
         self._row_bytes += len(row_bytes)
@@ -490,6 +497,80 @@ class ForwardSourceObservationRecorder:
             raise ForwardSourceObservationError("source_observation_readback_mismatch")
 
 
+def verify_forward_source_observation_readback(
+    *,
+    output_root: str | Path,
+    reference: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Consumer 端唯讀驗證已持久化的 Forward source observation manifest 與 chunks。"""
+
+    root = Path(output_root).expanduser().resolve(strict=False)
+    manifest_rel = reference.get("manifest_path")
+    expected_manifest_sha = reference.get("manifest_sha256")
+    if not isinstance(manifest_rel, str) or not isinstance(expected_manifest_sha, str):
+        raise ForwardSourceObservationError("source_observation_reference_invalid")
+    manifest_path = root / Path(manifest_rel)
+    info = _lstat(manifest_path)
+    if info is None or not stat.S_ISREG(info.st_mode) or _is_reparse(info):
+        raise ForwardSourceObservationError("source_observation_manifest_missing")
+    manifest_raw = manifest_path.read_bytes()
+    if _sha256(manifest_raw) != expected_manifest_sha:
+        raise ForwardSourceObservationError("source_observation_manifest_sha256_mismatch")
+    manifest = json.loads(manifest_raw.decode("utf-8"))
+    if not isinstance(manifest, dict):
+        raise ForwardSourceObservationError("source_observation_manifest_invalid")
+
+    verified_queries: list[dict[str, Any]] = []
+    for query_meta in manifest.get("queries", []):
+        if not isinstance(query_meta, Mapping):
+            raise ForwardSourceObservationError("source_observation_query_meta_invalid")
+        reconstructed_rows: list[Any] = []
+        reconstructed_bindings: list[Any] = []
+        has_bindings = "source_bindings_sha256" in query_meta
+        for chunk_meta in query_meta.get("chunks", []):
+            if not isinstance(chunk_meta, Mapping):
+                raise ForwardSourceObservationError("source_observation_chunk_meta_invalid")
+            chunk_path = root / Path(str(chunk_meta.get("path") or ""))
+            chunk_info = _lstat(chunk_path)
+            if chunk_info is None or not stat.S_ISREG(chunk_info.st_mode) or _is_reparse(chunk_info):
+                raise ForwardSourceObservationError("source_observation_chunk_missing")
+            chunk_raw = chunk_path.read_bytes()
+            if _sha256(chunk_raw) != chunk_meta.get("sha256"):
+                raise ForwardSourceObservationError("source_observation_chunk_sha256_mismatch")
+            chunk_body = json.loads(chunk_raw.decode("utf-8"))
+            chunk_rows = chunk_body.get("rows", [])
+            if len(chunk_rows) != chunk_meta.get("row_count"):
+                raise ForwardSourceObservationError("source_observation_chunk_row_count_mismatch")
+            reconstructed_rows.extend(chunk_rows)
+            if has_bindings:
+                chunk_bindings = chunk_body.get("source_bindings", [])
+                if len(chunk_bindings) != len(chunk_rows):
+                    raise ForwardSourceObservationError("source_observation_chunk_binding_count_mismatch")
+                reconstructed_bindings.extend(chunk_bindings)
+        if _sha256(_canonical_bytes(reconstructed_rows)) != query_meta.get("rows_sha256"):
+            raise ForwardSourceObservationError("source_observation_rows_sha256_mismatch")
+        if has_bindings:
+            if _sha256(_canonical_bytes(reconstructed_bindings)) != query_meta.get("source_bindings_sha256"):
+                raise ForwardSourceObservationError("source_observation_bindings_sha256_mismatch")
+        verified_queries.append(
+            {
+                "query_id": query_meta.get("query_id"),
+                "purpose": query_meta.get("purpose"),
+                "row_count": len(reconstructed_rows),
+                "rows": reconstructed_rows,
+                "source_bindings": reconstructed_bindings if has_bindings else None,
+            }
+        )
+    return {
+        "status": "verified",
+        "run_id": manifest.get("run_id"),
+        "manifest_sha256": expected_manifest_sha,
+        "query_count": len(verified_queries),
+        "queries": verified_queries,
+        "outcomes": manifest.get("outcomes", []),
+    }
+
+
 __all__ = [
     "CHUNK_SCHEMA_VERSION",
     "ForwardSourceObservationError",
@@ -503,4 +584,5 @@ __all__ = [
     "MAX_ROWS",
     "MAX_RUN_BYTES",
     "SCHEMA_VERSION",
+    "verify_forward_source_observation_readback",
 ]

@@ -37,14 +37,28 @@ class ForwardDailyPriceSourceBinder:
     def __init__(
         self, *, output_root: Path, data_root: Path, database_path: Path,
         bundle: Mapping[str, Any],
+        revision_ledger: Any | None = None,
+        qualification_policy: Any | None = None,
     ) -> None:
         self.output_root = Path(output_root)
         self.data_root = Path(data_root)
         self.database_path = Path(database_path)
         self.bundle = deepcopy(dict(bundle))
+        self.revision_ledger = revision_ledger
+        self.qualification_policy = qualification_policy
         self._verified_source_cache: dict[tuple[object, ...], object] = {}
 
-    def bind_rows(self, rows: Sequence[Mapping[str, object]]) -> tuple[dict[str, Any], ...]:
+    def bind_rows(
+        self,
+        rows: Sequence[Mapping[str, object]],
+        *,
+        qualification_policy: Any | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        active_policy = (
+            qualification_policy
+            if qualification_policy is not None
+            else self.qualification_policy
+        )
         if self.bundle.get("status") != "captured":
             return tuple(unknown_price_source_binding("source_bundle_unavailable") for _ in rows)
         descriptors = self.bundle.get("descriptors")
@@ -65,51 +79,105 @@ class ForwardDailyPriceSourceBinder:
             ("twse.mi_index.daily_price", verify_twse),
             ("tpex.daily_close_quotes", verify_tpex),
         ):
-            descriptor = descriptors.get(source_id)
-            if not isinstance(descriptor, Mapping):
-                continue
-            try:
-                verified = verifier(
-                    output_root=self.output_root, data_root=self.data_root,
-                    database_path=self.database_path, descriptor=descriptor,
-                    fetched_rows=rows,
-                    verified_source_cache=self._verified_source_cache,
+            descriptor_list: list[Mapping[str, Any]] = []
+            primary_descriptor = descriptors.get(source_id)
+            if isinstance(primary_descriptor, Mapping):
+                descriptor_list.append(primary_descriptor)
+            if self.revision_ledger is not None:
+                pub_map = getattr(
+                    self.revision_ledger, "_publication_descriptors_by_date", {}
                 )
-                if len(verified) != len(rows):
-                    raise ValueError("source_verifier_row_count_mismatch")
-            except (OSError, ValueError, TypeError, KeyError) as exc:
-                for row_reasons in reasons:
-                    row_reasons[source_id] = f"source_verifier_failed:{type(exc).__name__}"
-                continue
-            for index, result in enumerate(verified):
-                if not isinstance(result, Mapping):
-                    reasons[index][source_id] = "source_verifier_result_invalid"
+                for (sid, _dkey), extra_descs in sorted(pub_map.items()):
+                    if sid != source_id:
+                        continue
+                    for extra in extra_descs:
+                        if isinstance(extra, Mapping) and all(
+                            extra.get("sha256") != d.get("sha256")
+                            for d in descriptor_list
+                        ):
+                            descriptor_list.append(extra)
+            for descriptor in descriptor_list:
+                try:
+                    verified = verifier(
+                        output_root=self.output_root, data_root=self.data_root,
+                        database_path=self.database_path, descriptor=descriptor,
+                        fetched_rows=rows,
+                        verified_source_cache=self._verified_source_cache,
+                    )
+                    if len(verified) != len(rows):
+                        raise ValueError("source_verifier_row_count_mismatch")
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    for row_reasons in reasons:
+                        row_reasons[source_id] = f"source_verifier_failed:{type(exc).__name__}"
                     continue
-                if result.get("status") != "source_identity_bound":
-                    reasons[index][source_id] = str(result.get("reason_code") or "source_row_not_bound")[:240]
-                    continue
-                if (
-                    result.get("source_id") != source_id
-                    or result.get("source_published_at") is not None
-                    or result.get("available_at") is not None
-                    or result.get("source_use_accepted") is not False
-                    or result.get("pit_eligible") is not False
-                    or result.get("training_eligible") is not False
-                ):
-                    reasons[index][source_id] = "source_verifier_qualification_contract_invalid"
-                    continue
-                candidates[index].append(dict(result))
+                for index, result in enumerate(verified):
+                    if not isinstance(result, Mapping):
+                        reasons[index][source_id] = "source_verifier_result_invalid"
+                        continue
+                    if result.get("status") != "source_identity_bound":
+                        if source_id not in reasons[index]:
+                            reasons[index][source_id] = str(result.get("reason_code") or "source_row_not_bound")[:240]
+                        continue
+                    if (
+                        result.get("source_id") != source_id
+                        or result.get("source_published_at") is not None
+                        or result.get("available_at") is not None
+                        or result.get("source_use_accepted") is not False
+                        or result.get("pit_eligible") is not False
+                        or result.get("training_eligible") is not False
+                    ):
+                        reasons[index][source_id] = "source_verifier_qualification_contract_invalid"
+                        continue
+                    if not any(
+                        existing.get("source_id") == source_id
+                        and existing.get("publication_sha256") == result.get("publication_sha256")
+                        for existing in candidates[index]
+                    ):
+                        candidates[index].append(dict(result))
         results = []
         if not self._database_identity_matches():
             return tuple(unknown_price_source_binding("source_bundle_database_identity_changed") for _ in rows)
+        ledger = self.revision_ledger
+        if active_policy is not None and ledger is None:
+            from data_module.daily_price_qualification_binding import (
+                DailyPriceRevisionLedger,
+            )
+
+            ledger = DailyPriceRevisionLedger(
+                output_root=self.output_root, data_root=self.data_root
+            )
+            for source_id, desc in descriptors.items():
+                if isinstance(desc, Mapping) and isinstance(desc.get("relative_path"), str):
+                    ledger.register_publication(
+                        source_id=source_id,
+                        relative_path=str(desc["relative_path"]),
+                        expected_sha256=(
+                            str(desc["sha256"]) if isinstance(desc.get("sha256"), str) else None
+                        ),
+                    )
         for index, matches in enumerate(candidates):
             if len(matches) == 1:
                 result = matches[0]
                 result["source_bundle_reference"] = deepcopy(self.bundle.get("reference"))
+                if active_policy is not None and ledger is not None:
+                    from data_module.daily_price_qualification_binding import (
+                        evaluate_bound_daily_price_row_qualification,
+                    )
+
+                    result = evaluate_bound_daily_price_row_qualification(
+                        bound_row=result,
+                        revision_ledger=ledger,
+                        policy=active_policy,
+                    )
             else:
-                result = unknown_price_source_binding(
-                    "ambiguous_source_identity" if matches else "no_verified_source_identity"
-                )
+                reason_code = "ambiguous_source_identity" if matches else "no_verified_source_identity"
+                if len(matches) > 1:
+                    distinct_sources = {m.get("source_id") for m in matches}
+                    if len(distinct_sources) > 1:
+                        reason_code = "dual_source_ambiguity"
+                    else:
+                        reason_code = "same_key_revision_conflict"
+                result = unknown_price_source_binding(reason_code)
                 if reasons[index]:
                     result["source_reasons"] = reasons[index]
             results.append(result)

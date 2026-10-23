@@ -208,6 +208,7 @@ def test_git_missing_original_or_timeout_does_not_accept_worktree_copy(monkeypat
 
 
 @pytest.mark.parametrize("result_id", [
+    "scheduled_rec_20260906_051003",
     "scheduled_rec_20260914_051003", "scheduled_rec_20260917_051002",
     "scheduled_rec_20260921_051002",
 ])
@@ -219,7 +220,13 @@ def test_additional_git_records_require_adjacent_exact_source_identity(monkeypat
         "independent_pre_migration_file_sha256": source_sha,
         "relocated_file_sha256": source_sha,
     }
-    if result_id == "scheduled_rec_20260914_051003":
+    if result_id == "scheduled_rec_20260906_051003":
+        statement = (
+            "- source recommendation：\n"
+            f"  `{origin}`，\n"
+            f"  file hash `{source_sha}`；"
+        )
+    elif result_id == "scheduled_rec_20260914_051003":
         statement = f"- path：`{origin}`\n- file hash：`{source_sha}`"
     elif result_id == "scheduled_rec_20260917_051002":
         statement = (

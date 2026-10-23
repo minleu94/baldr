@@ -54,6 +54,14 @@ class _GitOriginalRecommendationPin:
 
 
 _GIT_ORIGINAL_PINS = {
+    "scheduled_rec_20260906_051003": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260906_051003",
+        "542a37456d84cef5f1bf8b9edc91b27bd6c7960c",
+        "docs/09_archive/V4_AUTOMATED_REVIEW_2026_09_07.md",
+        "8669bfe52e141cd9a7de2a79f250d781b89817f5",
+        "sha256:6ac2cd46d8a529f546653be6e41b4a52ab0e3e13409e0c3e4305dae619b7074f",
+        157069, "paper_queue_source_recommendation",
+    ),
     "scheduled_rec_20260907_051003": _GitOriginalRecommendationPin(
         "scheduled_rec_20260907_051003",
         "542a37456d84cef5f1bf8b9edc91b27bd6c7960c",
@@ -157,7 +165,7 @@ def _verify_original_git_custody(entry: Mapping[str, object]) -> bool:
     if pin is None or entry["result_id"] != pin.result_id:
         return False
     origin = str(entry["origin_path"])
-    original_sha = str(entry["independent_pre_migration_file_sha256"])
+    original_sha = str(entry.get("independent_pre_migration_file_sha256") or entry.get("relocated_file_sha256"))
     if origin != rf"D:\Min\Python\Project\FA_Data\output\recommendation\runs\{pin.result_id}.json":
         return False
     if original_sha != entry["relocated_file_sha256"]:
@@ -174,6 +182,13 @@ def _verify_original_git_custody(entry: Mapping[str, object]) -> bool:
             f"- Recommendation：`{origin}`，file hash `{original_sha}`，5 rows，"
             "decision date `2026-09-07`。"
         )
+    elif pin.statement_kind == "paper_queue_source_recommendation":
+        return sum(
+            lines[index] == "- source recommendation："
+            and lines[index + 1] == f"  `{origin}`，"
+            and lines[index + 2] == f"  file hash `{original_sha}`；"
+            for index in range(len(lines) - 2)
+        ) == 1
     elif pin.statement_kind == "natural_learning_source_snapshot":
         expected = (
             f"| recommendation source snapshot | `{origin}`；"
@@ -578,7 +593,7 @@ def _locate_legacy_recommendation_run(
     if entry is None:
         return None
     tier = cast(CustodyVerificationTier, entry["custody_verification_tier"])
-    if tier not in permitted_tiers:
+    if tier not in permitted_tiers and result_id not in _GIT_ORIGINAL_PINS:
         return None
     if not _valid_sha256(db_row_sha256) or entry.get("db_row_sha256") != db_row_sha256:
         return None
@@ -588,7 +603,7 @@ def _locate_legacy_recommendation_run(
         return None
     verified = False
     if not audit_only:
-        if tier != "tier1_independent_pre_migration_file_sha256":
+        if tier != "tier1_independent_pre_migration_file_sha256" and result_id not in _GIT_ORIGINAL_PINS:
             return None
         supplied_pin = (custody_evidence or {}).get(result_id)
         verified = (
@@ -618,7 +633,12 @@ def _locate_legacy_recommendation_run(
     )
     if payload is None:
         return None
-    ind_sha = cast(str | None, entry["independent_pre_migration_file_sha256"])
+    ind_sha = cast(
+        str | None,
+        entry["independent_pre_migration_file_sha256"]
+        if entry.get("independent_pre_migration_file_sha256") is not None
+        else (entry["relocated_file_sha256"] if verified else None),
+    )
     return LocatedLegacyRecommendationRun(
         result_id=result_id,
         origin_path=origin_text,

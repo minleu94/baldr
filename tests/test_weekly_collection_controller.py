@@ -927,3 +927,40 @@ def test_blocked_monthly_binding_requires_typed_terminal_diagnostics(tmp_path, c
             repository_root,
             receipt,
         )
+
+
+def test_pinned_weekly_root_migration_binding_verifies_real_receipt_and_reads_partial():
+    migration = binding.DEFAULT_PINNED_WEEKLY_MIGRATION_BINDING
+    assert binding._verify_pinned_weekly_migration_binding(migration) is True
+
+    # Pinned paths are recognized when migration binding is passed
+    assert binding._path_matches_relocated(
+        migration.original_output_root,
+        Path(migration.current_output_root),
+        migration_binding=migration,
+    )
+    assert binding._path_matches_relocated(
+        migration.original_sidecar_db_path,
+        Path(migration.current_sidecar_db_path),
+        migration_binding=migration,
+    )
+
+    # General D->F without migration binding is strictly rejected
+    assert not binding._path_matches_relocated(
+        migration.original_output_root,
+        Path(migration.current_output_root),
+        migration_binding=None,
+    )
+
+    # Full readback on actual FA_Data output yields partial with monthly_statement failure
+    fa_output = Path(migration.current_output_root)
+    if fa_output.is_dir():
+        now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
+        result = binding.verify_weekly_acquisition(fa_output, now=now)
+        assert result["status"] == "partial"
+        assert result["core_exit_code"] == 0
+        assert result["child_failures"] == ["monthly_statement"]
+        assert result["run_id"] == migration.run_id
+        assert result["children"]["monthly_statement"]["status"] == "failed"
+        assert result["children"]["quarterly_openapi"]["status"] == "captured_with_review"
+

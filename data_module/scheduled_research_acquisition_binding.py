@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+import functools
 import hashlib
 import json
 import os
@@ -67,6 +68,31 @@ class BoundJson:
     sha256: str
 
 
+@dataclass(frozen=True)
+class PinnedWeeklyRootMigrationBinding:
+    original_output_root: str = r"D:\Min\Python\Project\FA_Data\output"
+    current_output_root: str = r"F:\Min\Python\Project\FA_Data\output"
+    original_sidecar_db_path: str = (
+        r"D:\Min\Python\Project\FA_Data\output\scheduled\v2_2_weekly_collection\evidence_scheduler.db"
+    )
+    current_sidecar_db_path: str = (
+        r"F:\Min\Python\Project\FA_Data\output\scheduled\v2_2_weekly_collection\evidence_scheduler.db"
+    )
+    migration_proof_path: Path = Path(
+        r"F:\Min\Python\Project\BaldrStorage\D_to_F_target_sha256_receipt_20261020.jsonl"
+    )
+    migration_proof_sha256: str = (
+        "007f76e65b5410ef274f023ecae8486bbd5ad435afe4e945647eb2a22ac07384"
+    )
+    run_id: str = "weekly_4bc95c7fa46d4b018672f63f762aeba0"
+    receipt_sha256: str = (
+        "6806f1502dbf37c6795d997ba980eee0e706a83d7a7145c445a2086146e1a0fd"
+    )
+
+
+DEFAULT_PINNED_WEEKLY_MIGRATION_BINDING = PinnedWeeklyRootMigrationBinding()
+
+
 def weekly_timing_budget_seconds() -> dict[str, int]:
     """回傳 controller 子程序上限及 pending 邊界的唯一計算依據。"""
     return {
@@ -108,9 +134,33 @@ def parse_aware_utc(value: object, *, field_name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def _path_matches_relocated(declared: str | Path, actual: Path) -> bool:
-    """只接受同一掛載實體；缺原件的 D/F 文字替換不授來源身份。"""
-    return same_repository_output_path(declared, actual, repository_root=Path(__file__).resolve().parents[1])
+def _path_matches_relocated(
+    declared: str | Path,
+    actual: Path,
+    *,
+    migration_binding: PinnedWeeklyRootMigrationBinding | None = None,
+) -> bool:
+    """只接受同一掛載實體或經由遷移收據具名核銷的特定路徑；缺原件的通用 D/F 文字替換不授來源身份。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    if same_repository_output_path(declared, actual, repository_root=repo_root):
+        return True
+    if migration_binding is not None:
+        try:
+            declared_norm = os.path.normcase(os.path.abspath(os.fspath(declared)))
+            actual_norm = os.path.normcase(os.path.abspath(os.fspath(actual)))
+
+            orig_root = os.path.normcase(os.path.abspath(migration_binding.original_output_root))
+            curr_root = os.path.normcase(os.path.abspath(migration_binding.current_output_root))
+            if declared_norm == orig_root and actual_norm == curr_root:
+                return _verify_pinned_weekly_migration_binding(migration_binding)
+
+            orig_sidecar = os.path.normcase(os.path.abspath(migration_binding.original_sidecar_db_path))
+            curr_sidecar = os.path.normcase(os.path.abspath(migration_binding.current_sidecar_db_path))
+            if declared_norm == orig_sidecar and actual_norm == curr_sidecar:
+                return _verify_pinned_weekly_migration_binding(migration_binding)
+        except Exception:
+            return False
+    return False
 
 
 def validate_weekly_quarterly_terminal(
@@ -262,6 +312,47 @@ def _normalize_sha256(value: object) -> str:
     return text
 
 
+@functools.lru_cache(maxsize=8)
+def _verify_pinned_weekly_migration_binding(
+    binding: PinnedWeeklyRootMigrationBinding,
+) -> bool:
+    """核驗具名遷移原件與散列；只接受經過 pre-migration 收據固定的每週採集實體。"""
+    proof_path = _assert_no_links(binding.migration_proof_path)
+    if not proof_path.is_file():
+        return False
+    raw = _read_stable_bytes(proof_path, max_bytes=16 * 1024 * 1024)
+    if sha256_bytes(raw) != _normalize_sha256(binding.migration_proof_sha256):
+        return False
+    try:
+        found_db = False
+        found_status = False
+        for line in raw.decode("utf-8").splitlines():
+            line_str = line.strip()
+            if not line_str:
+                continue
+            entry = json.loads(
+                line_str,
+                object_pairs_hook=_strict_json_object_pairs,
+                parse_constant=_reject_constant,
+            )
+            rel = entry.get("Relative", "").replace("/", "\\")
+            if (
+                entry.get("Root") == "FA_Data"
+                and rel == r"output\scheduled\v2_2_weekly_collection\evidence_scheduler.db"
+                and entry.get("Status") == "PASS"
+            ):
+                found_db = True
+            elif (
+                entry.get("Root") == "FA_Data"
+                and rel == r"output\scheduled\v2_2_weekly_collection\latest_status.json"
+                and entry.get("Status") == "PASS"
+            ):
+                found_status = True
+        return found_db and found_status
+    except Exception:
+        return False
+
+
 def resolve_output_relative_path(output_root: Path, value: object, *, must_exist: bool = True) -> Path:
     if not isinstance(value, str) or not value or "\\" in value:
         raise ResearchBindingError("artifact_relative_path_invalid")
@@ -373,7 +464,12 @@ def _verify_monthly_query_period(
             raise ResearchBindingError("weekly_monthly_manifest_query_period_mismatch")
 
 
-def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
+def _verify_core_binding(
+    output_root: Path,
+    receipt: Mapping[str, Any],
+    *,
+    migration_binding: PinnedWeeklyRootMigrationBinding | None = None,
+) -> None:
     core = receipt.get("core")
     if not isinstance(core, Mapping):
         raise ResearchBindingError("weekly_core_binding_missing")
@@ -399,7 +495,7 @@ def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
             raise ResearchBindingError("weekly_sidecar_invocation_path_invalid")
         if isinstance(sidecar.get("path"), str):
             sidecar_path = resolve_output_relative_path(output_root, sidecar.get("path"), must_exist=False)
-            if not _path_matches_relocated(declared_sidecar, sidecar_path):
+            if not _path_matches_relocated(declared_sidecar, sidecar_path, migration_binding=migration_binding):
                 raise ResearchBindingError("weekly_sidecar_invocation_path_mismatch")
             _assert_no_links(sidecar_path if sidecar_path.exists() else sidecar_path.parent)
         elif sidecar.get("absolute_path") != declared_sidecar:
@@ -440,7 +536,7 @@ def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
     if isinstance(sidecar.get("path"), str):
         sidecar_path = resolve_output_relative_path(output_root, sidecar.get("path"))
         declared_sidecar = receipt.get("sidecar_db_path")
-        if not isinstance(declared_sidecar, str) or not _path_matches_relocated(declared_sidecar, sidecar_path):
+        if not isinstance(declared_sidecar, str) or not _path_matches_relocated(declared_sidecar, sidecar_path, migration_binding=migration_binding):
             raise ResearchBindingError("weekly_sidecar_invocation_path_mismatch")
     else:
         absolute_sidecar = sidecar.get("absolute_path")
@@ -763,6 +859,7 @@ def verify_weekly_acquisition(
     receipt_path: Path | None = None,
     expected_sha256: str | None = None,
     repository_root: Path | None = None,
+    migration_binding: PinnedWeeklyRootMigrationBinding | None = DEFAULT_PINNED_WEEKLY_MIGRATION_BINDING,
 ) -> dict[str, Any]:
     """解析預設 locator 或精確外部 path+SHA；只重驗，不推測 lineage。"""
     if now.tzinfo is None or now.utcoffset() is None:
@@ -824,8 +921,21 @@ def verify_weekly_acquisition(
         if payload.get("receipt_relative_path") != expected_relative:
             raise ResearchBindingError("weekly_parent_receipt_path_mismatch")
         declared_root = payload.get("output_root")
-        if not isinstance(declared_root, str) or not _path_matches_relocated(declared_root, root):
+        if not isinstance(declared_root, str):
             raise ResearchBindingError("weekly_parent_output_root_mismatch")
+        is_same = _path_matches_relocated(declared_root, root)
+        if not is_same:
+            if (
+                migration_binding is not None
+                and payload.get("run_id") == migration_binding.run_id
+                and receipt.sha256 == migration_binding.receipt_sha256
+                and _path_matches_relocated(
+                    declared_root, root, migration_binding=migration_binding
+                )
+            ):
+                pass
+            else:
+                raise ResearchBindingError("weekly_parent_output_root_mismatch")
         started = parse_aware_utc(payload.get("started_at_utc"), field_name="weekly_started_at")
         now_utc = now.astimezone(timezone.utc)
         if started > now_utc:
@@ -855,7 +965,7 @@ def verify_weekly_acquisition(
             pointer_updated = parse_aware_utc(pointer.get("updated_at_utc"), field_name="weekly_locator_updated_at")
             if pointer_started != started or pointer_updated != completed:
                 raise ResearchBindingError("weekly_locator_terminal_clock_mismatch")
-        _verify_core_binding(root, payload)
+        _verify_core_binding(root, payload, migration_binding=migration_binding)
         children = _verify_weekly_child_bindings(root, repo, payload)
         receipt_status = _receipt_status(payload)
         core_payload = payload.get("core")

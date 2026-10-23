@@ -152,8 +152,11 @@ def test_primary_mode_shows_main_pages_in_order_and_systems_at_bottom():
         "探索與研究",
         "綜合選股",
         "我的投資",
-        "⚙ 系統管理",
+        "系統管理",
     ]
+    assert not nav.button_for_key("systems").icon().isNull()
+    assert "⚙" not in nav.button_for_key("systems").text()
+    assert nav.button_for_key("systems").accessibleName() == "系統管理"
     assert all(
         nav.group_button_for_id(group_id) is None
         for group_id in ("daily", "research", "maintenance")
@@ -197,8 +200,9 @@ def test_primary_mode_active_click_does_not_toggle_collapse_and_compact_controls
     nav.set_collapsed(True)
     systems_button = nav.button_for_key("systems")
     assert systems_button.text() == ""
-    assert systems_button.toolTip() == "⚙ 系統管理"
-    assert systems_button.accessibleName() == "⚙ 系統管理"
+    assert systems_button.toolTip() == "系統管理"
+    assert systems_button.accessibleName() == "系統管理"
+    assert not systems_button.icon().isNull()
 
     nav.collapse_button.click()
     assert nav.is_collapsed() is False

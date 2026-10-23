@@ -68,9 +68,6 @@ class ComparisonEvidencePanel(QWidget):
         columns = QHBoxLayout()
         self.values: dict[str, QTextBrowser] = {}
         for key, title in (("support", "支持依據"), ("counter", "反證與限制"), ("unknown", "未知原因")):
-            group = QGroupBox(title)
-            inner = QVBoxLayout(group)
-            inner.setContentsMargins(6, 6, 6, 6)
             value = QTextBrowser()
             value.setObjectName(f"comparisonEvidence_{key}")
             value.setAccessibleName(title + "原文")
@@ -79,8 +76,29 @@ class ComparisonEvidencePanel(QWidget):
             value.setMinimumHeight(72)
             value.setMaximumHeight(120)
             value.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-            inner.addWidget(value)
             self.values[key] = value
+            if key == "unknown":
+                self.unknown_details = CollapsibleSectionPanel(title, collapsed=True)
+                self.unknown_details.setObjectName("comparisonUnknownDetails")
+                self.unknown_details.layout.setContentsMargins(6, 2, 6, 2)
+                self.unknown_details.layout.setSpacing(2)
+                self.unknown_details.title_label.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 12px; "
+                    "font-weight: 700; padding: 0; border: none; background: transparent;"
+                )
+                self.unknown_details.toggle_button.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.text_muted}; min-height: 0px; padding: 2px 6px;"
+                )
+                self.unknown_details.content_layout.addWidget(value)
+                value.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_1};"
+                )
+                columns.addWidget(self.unknown_details, 1)
+                continue
+            group = QGroupBox(title)
+            inner = QVBoxLayout(group)
+            inner.setContentsMargins(6, 6, 6, 6)
+            inner.addWidget(value)
             columns.addWidget(group, 1)
         root.addLayout(columns)
 
@@ -99,3 +117,7 @@ class ComparisonEvidencePanel(QWidget):
         ):
             self.values[key].setPlainText("\n".join(lines) if lines else missing)
             self.values[key].verticalScrollBar().setValue(0)
+        count = len(unknown_reasons)
+        self.unknown_details.title_label.setText(
+            f"未知原因（{count} 項；選取查看）" if count else "未知原因（未提供；選取查看）"
+        )

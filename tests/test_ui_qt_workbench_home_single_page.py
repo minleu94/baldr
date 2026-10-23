@@ -9,8 +9,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from ui_qt.views.research_console_view import ResearchConsoleView
 from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
@@ -57,9 +57,12 @@ def _keep_qt_application_and_drain_deferred_deletes():
 
 
 def test_home_is_one_visible_page_with_existing_summary_widgets() -> None:
-    _app()
+    application = _app()
     view = UnifiedDecisionWorkbenchView(auto_refresh=False)
     try:
+        view.resize(1280, 900)
+        view.show()
+        application.processEvents()
         home = view.overview_scroll_area.widget()
         assert view.subtabs.tabBar().isHidden()
         assert view.subtabs.widget(0) is not None
@@ -75,8 +78,19 @@ def test_home_is_one_visible_page_with_existing_summary_widgets() -> None:
             assert widget.parentWidget() is home
 
         assert view.home_theme_summary_label.text().startswith("尚未載入題材研究版本")
+        assert "候選資料尚未載入" in " ".join(
+            label.text() for label in view.home_candidate_preview.findChildren(QLabel)
+        )
+        assert "不是按鈕" in view.guided_priority_status_badges["candidates"].accessibleDescription()
         assert view.home_research_evidence_button.isEnabled()
         assert view.home_advanced_button.isEnabled()
+        market_row = view.guided_priority_rows["market"]
+        assert view.daily_market_kpi_row.parentWidget() is market_row
+        assert view.daily_market_footer_label.parentWidget() is market_row
+        assert market_row.isVisible()
+        assert view.daily_market_kpi_row.mapTo(home, QPoint(0, 0)).y() < (
+            view.daily_market_card.mapTo(home, QPoint(0, 0)).y()
+        )
     finally:
         view.begin_shutdown()
         view.close()
@@ -145,6 +159,21 @@ def test_recent_research_mount_uses_existing_home_and_entry_callback() -> None:
         view.mount_recent_research_widget(widget, received.append)
         widget.entryRequested.emit(entry)
         assert received == [entry, entry]
+    finally:
+        view.begin_shutdown()
+        view.close()
+
+
+def test_theme_and_recent_research_stay_in_the_followup_row() -> None:
+    _app()
+    view = UnifiedDecisionWorkbenchView(auto_refresh=False)
+    try:
+        assert view.home_theme_panel.parentWidget() is view.guided_home_panel
+        assert view.home_recent_panel.parentWidget() is view.guided_home_panel
+        assert view.home_followup_layout.indexOf(view.home_theme_panel) == 0
+        assert view.home_followup_layout.indexOf(view.home_recent_panel) == 1
+        assert view.daily_candidate_button.styleSheet().find("QPushButton:disabled") >= 0
+        assert view.daily_saved_result_button.styleSheet().find("QPushButton:disabled") >= 0
     finally:
         view.begin_shutdown()
         view.close()

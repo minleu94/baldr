@@ -1,5 +1,9 @@
 # 產品與個股研究 QA 索引
 
+[Opus外部UI／UX審查](OPUS_BALDR_UI_UX_REVIEW_20261022.md)及[修正處置計畫](../superpowers/plans/BALDR_OPUS_UX_REMEDIATION_20261022.md)指出方向色、資訊層級、圖型、巢狀捲動與面向遮蔽問題；本輪Luna實作、root複核及未評頁面補證見[修正 QA](BALDR_OPUS_UX_REMEDIATION_QA_20261022.md)。既有與本輪工程QA均不等於美觀／直覺、金融或真人接受。
+
+[UI／UX 外部審查包](BALDR_UI_UX_EXTERNAL_REVIEW_BRIEF_20261022.md)整理各使用路徑的現行呈現、視覺化進度、實圖位置與可交給Opus的獨立審查任務；不是新的設計合格或金融接受宣告。
+
 [個股營收與籌碼視覺整合](BALDR_RESEARCH_VISUALIZATION_20261022.md)承接既有圖卡布局，記錄原值圖卡、指標分組與資料界線；最終視覺驗證狀態依該頁判讀。
 
 [V2 圖卡優先研究體驗](BALDR_V2_CARD_EXPERIENCE_20261022.md)記錄首頁、個股同屏、選股與策略庫收合、題材缺件及研究時間展示的後繼 UI 增量；不改每日資料恢復或固定候選資格，進度按原文判讀。

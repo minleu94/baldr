@@ -82,9 +82,13 @@ class StockResearchWorkspace(QWidget):
         self.general_lookup_button.hide()
         title_layout.addWidget(self.general_lookup_button)
         self.product_action_row = QWidget(self)
+        self.product_action_row.setObjectName("stockResearchWorkspaceActionRow")
+        self.product_action_row.setStyleSheet(
+            "QPushButton { padding: 1px 6px; min-height: 19px; font-size: 9pt; }"
+        )
         product_action_layout = QHBoxLayout(self.product_action_row)
         product_action_layout.setContentsMargins(0, 0, 0, 0)
-        product_action_layout.setSpacing(6)
+        product_action_layout.setSpacing(3)
         self.favorite_action = QPushButton("☆自選", self.product_action_row)
         self.favorite_action.setObjectName("stockResearchFavoriteAction")
         self.favorite_action.setAccessibleName("加入純自選")
@@ -107,10 +111,19 @@ class StockResearchWorkspace(QWidget):
         self._product_action_group.setExclusive(True)
         self.research_content_action = QPushButton("研究內容", self.product_action_row)
         self.research_content_action.setObjectName("stockResearchContentAction")
+        self.research_content_action.setAccessibleName("切換到研究內容")
         self.save_judgment_action = QPushButton("保存判斷", self.product_action_row)
         self.save_judgment_action.setObjectName("stockResearchJudgmentAction")
+        self.save_judgment_action.setAccessibleName("切換到保存判斷")
         self.outcome_tracking_action = QPushButton("成果追蹤", self.product_action_row)
         self.outcome_tracking_action.setObjectName("stockResearchOutcomeAction")
+        self.outcome_tracking_action.setAccessibleName("切換到成果追蹤")
+        self.favorite_action.setText("☆自選")
+        self.price_comparison_action.setText("＋比較")
+        self.prepare_backtest_action.setText("回測")
+        self.research_content_action.setText("內容")
+        self.save_judgment_action.setText("判斷")
+        self.outcome_tracking_action.setText("追蹤")
         for key, button in (
             ("content", self.research_content_action),
             ("judgment", self.save_judgment_action),

@@ -22,6 +22,7 @@ from app_module.theme_daily_service import (
 from app_module.theme_research_snapshot import ThemeResearchSnapshot
 from ui_qt.views import industry_theme_map_view as view_module
 from ui_qt.views.industry_theme_map_view import IndustryThemeMapView
+from ui_qt.widgets.observation_bar_delegate import OBSERVATION_DIRECTIONAL_ROLE
 
 
 def app():
@@ -595,10 +596,16 @@ def test_zero_and_negative_observations_remain_visible_in_presenter_order():
     assert view.ranking_table.item(0, 3).text() == "0.00 %"
     assert view.ranking_table.item(1, 2).text() == "負值題材"
     assert view.ranking_table.item(1, 3).text() == "-1.50 %"
+    assert view.ranking_table.item(0, 3).data(OBSERVATION_DIRECTIONAL_ROLE) is True
+    assert view.ranking_table.item(1, 3).data(OBSERVATION_DIRECTIONAL_ROLE) is True
+
+    view.ranking_type_combo.setCurrentIndex(view.ranking_type_combo.findData("turnover"))
+    assert view.ranking_table.item(0, 3).data(OBSERVATION_DIRECTIONAL_ROLE) is False
 
     view.ranking_type_combo.setCurrentIndex(
         view.ranking_type_combo.findData("institutional")
     )
+    assert view.ranking_table.item(0, 3).data(OBSERVATION_DIRECTIONAL_ROLE) is True
     assert view.ranking_table.item(0, 3).text() == "0 股"
     assert view.ranking_table.item(1, 3).text() == "-4 股"
 

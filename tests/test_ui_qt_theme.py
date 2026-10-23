@@ -26,6 +26,10 @@ def test_midnight_analyst_tokens_expose_required_palette():
     assert MIDNIGHT_ANALYST.accent_warm == "#d97706"
     assert MIDNIGHT_ANALYST.data_positive == "#22c55e"
     assert MIDNIGHT_ANALYST.data_negative == "#ef4444"
+    assert MIDNIGHT_ANALYST.market_up == "#ef4444"
+    assert MIDNIGHT_ANALYST.market_down == "#22c55e"
+    assert MIDNIGHT_ANALYST.market_flat == MIDNIGHT_ANALYST.data_neutral
+    assert MIDNIGHT_ANALYST.success != MIDNIGHT_ANALYST.market_up
     assert MIDNIGHT_ANALYST.table_hover == "#20334a"
 
 

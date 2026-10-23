@@ -1,6 +1,7 @@
 """比較第一層保留原證據、未知與純文字；換選不得沿用前股理由。"""
 
 from PySide6.QtWidgets import QApplication, QDialog, QScrollArea, QWidget
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 from ui_qt.widgets.comparison_evidence_panel import ComparisonEvidencePanel, style_comparison_dialog
 
@@ -17,11 +18,18 @@ def test_original_text_and_missing_counterevidence_are_not_interpreted_or_carrie
         assert panel.values["support"].toPlainText() == "<b>原件文字，不是HTML</b>"
         assert "不代表沒有風險" in panel.values["counter"].toPlainText()
         assert "分母 0" in panel.context.text()
+        assert panel.unknown_details.is_collapsed()
+        assert "1 項；選取查看" in panel.unknown_details.title_label.text()
+        assert f"color: {MIDNIGHT_ANALYST.text_secondary}" in panel.values["unknown"].styleSheet()
+        panel.unknown_details.toggle_button.click()
+        assert not panel.unknown_details.is_collapsed()
+        assert "原資料日缺件" in panel.values["unknown"].toPlainText()
         panel.set_evidence(heading="2603｜未知", context="資料日未知", supports=(), counterevidence=(), unknown_reasons=())
         assert "2330" not in panel.heading.text()
         assert "原件文字" not in panel.values["support"].toPlainText()
         assert "原資料日缺件" not in panel.values["unknown"].toPlainText()
         assert "原件未提供" in panel.values["unknown"].toPlainText()
+        assert "未知原因（未提供" in panel.unknown_details.title_label.text()
     finally:
         panel.close()
 

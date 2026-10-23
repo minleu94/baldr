@@ -288,7 +288,7 @@ class UnifiedScreenerWorkspace:
         self.splitter: QSplitter = getattr(recommendation_view, "main_splitter")
         self.combo = QComboBox()
         self.combo.setObjectName("unifiedScreenerSourceSelector")
-        self.combo.setAccessibleName("研究來源與母體選擇")
+        self.combo.setAccessibleName("研究線索篩選來源")
         self.banner = QLabel(
             "研究用｜查詢截至：未提供｜來源識別：未提供｜查詢識別：未提供｜格式：未提供"
         )
@@ -297,12 +297,23 @@ class UnifiedScreenerWorkspace:
         self.funnel = QLabel("母體漏斗：未提供")
         self.funnel.setObjectName("unifiedScreenerFunnel")
         self.funnel.setWordWrap(True)
+        self.funnel.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;")
+        self.funnel_details = CollapsibleSectionPanel("母體漏斗明細（可展開）", collapsed=True)
+        self.funnel_details.setObjectName("unifiedScreenerFunnelDetails")
+        self._compact_disclosure(self.funnel_details)
+        self.funnel_detail_text = QLabel("")
+        self.funnel_detail_text.setObjectName("unifiedScreenerFunnelDetailText")
+        self.funnel_detail_text.setWordWrap(True)
+        self.funnel_detail_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.funnel_details.content_layout.addWidget(self.funnel_detail_text)
         self.disabled_note = QLabel(
             "先載入並核驗保存來源；套用條件後仍需明確查詢。"
         )
         self.disabled_note.setObjectName("unifiedScreenerUsageHint")
         self.disabled_note.setWordWrap(True)
         self.quick_routes = QHBoxLayout()
+        self.quick_routes.setContentsMargins(0, 0, 0, 0)
+        self.quick_routes.setSpacing(4)
         self.source_routes = QHBoxLayout()
         self.source_route_group_label = QLabel("來源")
         self.source_route_group_label.setObjectName("unifiedScreenerSourceGroupLabel")
@@ -318,7 +329,7 @@ class UnifiedScreenerWorkspace:
             button.setToolTip("開啟既有來源條件頁；不會自動執行查詢。")
             self.quick_route_buttons[key] = button
             self.source_routes.addWidget(button)
-        self.condition_recipe_group_label = QLabel("條件範本")
+        self.condition_recipe_group_label = QLabel("研究線索篩選")
         self.condition_recipe_group_label.setObjectName("unifiedScreenerConditionGroupLabel")
         self.quick_routes.addWidget(self.condition_recipe_group_label)
         self.condition_recipe_buttons: dict[str, QPushButton] = {}
@@ -329,6 +340,7 @@ class UnifiedScreenerWorkspace:
         ):
             button = QPushButton(label)
             button.setObjectName(f"unifiedScreenerCondition_{key}")
+            button.setMinimumHeight(28)
             button.setToolTip(
                 "只替換已保存技術來源的規則篩選；其他條件保留。"
                 "需再按來源頁「套用全域查詢」；不代表資料資格或投資建議。"
@@ -337,6 +349,7 @@ class UnifiedScreenerWorkspace:
             self.quick_routes.addWidget(button)
         self.save_filter_button = QPushButton("儲存篩選條件")
         self.save_filter_button.setObjectName("unifiedScreenerSaveFilter")
+        self.save_filter_button.setMinimumHeight(28)
         self.save_filter_button.setEnabled(False)
         self.save_filter_button.setToolTip(
             "目前來源沒有可用的原生收藏流程。"
@@ -353,13 +366,14 @@ class UnifiedScreenerWorkspace:
         self.host.setObjectName("unifiedScreenerSourceHost")
         layout = QVBoxLayout(self.host)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(2)
         layout.addWidget(self.combo)
         layout.addLayout(self.quick_routes)
         self.research_scope = QLabel("研究用｜查詢截至：未提供；逐筆資料日依原表。")
         self.research_scope.setWordWrap(True)
         layout.addWidget(self.research_scope)
         layout.addWidget(self.funnel)
+        layout.addWidget(self.funnel_details)
         layout.addWidget(self.disabled_note)
         self.source_details = CollapsibleSectionPanel("來源版本與可用條件", collapsed=True)
         self._compact_disclosure(self.source_details)
@@ -865,6 +879,7 @@ class UnifiedScreenerWorkspace:
         if source is None:
             self.research_scope.setText("研究用｜查詢截至：未提供；逐筆資料日依原表。")
             self.funnel.setText("母體漏斗：未提供")
+            self.funnel_detail_text.setText("")
             self.banner.setText(
                 "研究用｜查詢截至：未提供｜來源識別：未提供｜查詢識別：未提供｜格式：未提供"
             )
@@ -883,7 +898,9 @@ class UnifiedScreenerWorkspace:
             )
         )
         if not projection.available:
-            self.funnel.setText("母體漏斗：未提供（此來源尚無已核結果計數）")
+            unavailable = "母體漏斗：未提供（此來源尚無已核結果計數）"
+            self.funnel.setText("母體漏斗：未提供")
+            self.funnel_detail_text.setText(unavailable)
             return
         lines = ["母體漏斗（目前查詢來源，不跨來源合併；各項可能重疊）："]
         population_pieces: list[str] = []
@@ -911,7 +928,22 @@ class UnifiedScreenerWorkspace:
             lines.append(" · ".join(pieces))
         if population_pieces:
             lines.insert(1, " · ".join(population_pieces))
-        self.funnel.setText("\n".join(lines))
+        detail_text = "\n".join(lines)
+        self.funnel_detail_text.setText(detail_text)
+        summary = ["母體漏斗"]
+        for metric in projection.metrics:
+            if metric.domain in {"來源母體", "來源已處理", "尚待處理", "來源排除"}:
+                summary.append(f"{metric.domain} {self._format_count(metric.denominator)}")
+            elif metric.match is not None or metric.no_match is not None or metric.unknown is not None:
+                summary.append(
+                    f"{metric.domain} 符合／不符合／未知 "
+                    f"{self._format_count(metric.match)}／{self._format_count(metric.no_match)}／"
+                    f"{self._format_count(metric.unknown)}"
+                )
+            if len(summary) >= 4:
+                break
+        summary.append("更多計數可展開")
+        self.funnel.setText("｜".join(summary))
 
     @staticmethod
     def _format_count(value: int | None) -> str:

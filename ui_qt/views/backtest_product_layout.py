@@ -27,6 +27,13 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+def _qualification_text(value: Any) -> str:
+    """將已知展示代碼翻成日常用語。"""
+    if value == "research_only":
+        return "僅供研究"
+    return _text(value)
+
+
 def _details(report: Any) -> Mapping[str, Any]:
     value = report.get("details", {}) if isinstance(report, Mapping) else getattr(report, "details", {})
     return value if isinstance(value, Mapping) else {}
@@ -534,7 +541,11 @@ class BacktestProductLayout:
             f"{source_label}｜期間 {_text(period_start)}～{_text(period_end)}｜"
             f"撮合 {_text(execution)}｜資金 {_text(capital)}｜"
             f"手續費 {_text(fee)} bps｜滑價 {_text(slippage)} bps｜"
-            f"來源身份 {_text(source_identity)}｜來源資格 {_text(qualification)}"
+            f"來源身份 {_text(source_identity)}｜來源資格 {_qualification_text(qualification)}"
+        )
+        self.assumption_banner.setToolTip(
+            f"來源資格原碼：{qualification}"
+            if qualification == "research_only" else ""
         )
         self.draft_status.setVisible(False)
         self.outcome_summary.present(target if self._presented_snapshot_exists else None, params, source_label)

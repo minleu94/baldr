@@ -79,6 +79,7 @@ from ui_qt.models.workbench_table_models import (
     display_workbench_value,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.status_vocabulary import status_label
 from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
@@ -1216,6 +1217,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
             badge = StatusBadge("未知", "unknown")
             badge.setMinimumWidth(78)
+            badge.setCursor(Qt.ArrowCursor)
+            badge.setAccessibleDescription("狀態標籤，僅供辨識，不是按鈕。")
             self.guided_priority_status_badges[key] = badge
             card_heading.addWidget(badge, 0, Qt.AlignVCenter)
             row_layout.addLayout(card_heading)
@@ -1242,6 +1245,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
             action_button = QPushButton("查看")
             action_button.setProperty("variant", "secondary")
             action_button.setMinimumWidth(116)
+            action_button.setStyleSheet(
+                f"QPushButton:disabled {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"color: {MIDNIGHT_ANALYST.text_muted}; border-color: {MIDNIGHT_ANALYST.border}; }}"
+            )
             action_button.setAccessibleName(f"查看{title}重點")
             action_button.clicked.connect(
                 lambda checked=False, row_key=key: self._open_guided_priority(row_key)
@@ -1262,6 +1269,12 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 self.home_candidate_controls_layout.setContentsMargins(0, 0, 0, 0)
                 self.home_candidate_controls_layout.setSpacing(6)
                 row_layout.addLayout(self.home_candidate_controls_layout)
+                self.home_candidate_preview = QWidget()
+                self.home_candidate_preview.setObjectName("homeCandidatePreview")
+                self.home_candidate_preview_layout = QVBoxLayout(self.home_candidate_preview)
+                self.home_candidate_preview_layout.setContentsMargins(0, 0, 0, 0)
+                self.home_candidate_preview_layout.setSpacing(4)
+                self.home_candidate_controls_layout.addWidget(self.home_candidate_preview)
             if key == "other":
                 row.setVisible(False)
 
@@ -1322,6 +1335,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             self.guided_conclusion_label.setText("判讀結論：尚未確認。")
             self.guided_next_action_label.setText("主要下一步：重新整理目前狀態。")
+            self._render_home_candidate_preview(None)
         else:
             rows, warning_text = self._guided_rows_for_dashboard(dashboard)
             snapshot_date = _optional_date_text(dashboard.snapshot_date)
@@ -1348,6 +1362,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.guided_next_action_label.setText(f"主要下一步：{next_action}")
             self.guided_conclusion_label.setToolTip(str(getattr(daily, "headline", "") or ""))
             self.guided_next_action_label.setToolTip(str(getattr(daily, "next_action", "") or ""))
+            self._render_home_candidate_preview(daily)
 
         self.guided_summary_model.set_rows(rows)
         self._guided_priority_row_indices = {
@@ -1358,6 +1373,61 @@ class UnifiedDecisionWorkbenchView(QWidget):
         for key, row_widget in self.guided_priority_rows.items():
             row_widget.setVisible(key in self._guided_priority_row_indices)
         self.guided_warning_summary_label.setText(warning_text)
+
+    def _render_home_candidate_preview(
+        self, daily: WorkbenchDailyEvidence | None
+    ) -> None:
+        """在首頁列出少量原候選；不補名稱或拆解未分型的來源理由。"""
+
+        layout = self.home_candidate_preview_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        if daily is None:
+            label = QLabel("候選資料尚未載入；請先確認資料狀態。")
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            return
+        options = self._daily_candidate_open_options(daily)
+        if not options:
+            label = QLabel("目前沒有可直接開啟的候選；請查看來源狀態與下一步。")
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            return
+        for symbol in options[:5]:
+            line = QFrame()
+            line.setObjectName("homeCandidateLine")
+            row = QHBoxLayout(line)
+            row.setContentsMargins(6, 4, 6, 4)
+            text = QLabel(
+                f"{symbol}｜名稱未提供｜資料日：{daily.candidate_data_date or '未知'}\n"
+                f"原來源說明：{_candidate_reason_for_symbol(daily, symbol) or '未提供個別說明'}"
+            )
+            text.setWordWrap(True)
+            text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+            row.addWidget(text, 1)
+            button = QPushButton("開啟研究")
+            button.setObjectName(f"homeCandidateOpen_{symbol}")
+            button.setProperty("variant", "secondary")
+            button.setAccessibleName(f"開啟候選 {symbol} 個股研究")
+            button.setEnabled(self.navigate_to_stock_research_callback is not None)
+            button.setStyleSheet(
+                f"QPushButton:disabled {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"color: {MIDNIGHT_ANALYST.text_muted}; border-color: {MIDNIGHT_ANALYST.border}; }}"
+            )
+            identity = self._daily_candidate_source_identity(daily)
+            button.clicked.connect(
+                lambda checked=False, code=symbol, source_identity=identity:
+                    self._open_daily_candidate_symbol(code, source_identity)
+            )
+            row.addWidget(button)
+            layout.addWidget(line)
+        if len(options) > 5:
+            more = QLabel(f"另有 {len(options) - 5} 檔；完整清單可在下方明選。")
+            more.setWordWrap(True)
+            layout.addWidget(more)
 
     def _guided_rows_for_dashboard(
         self, dashboard: WorkbenchDashboardDTO
@@ -1454,8 +1524,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 candidate_conclusion = "無法確認今天的研究候選。"
                 candidate_reasons = _guided_join_reasons(
                     *daily.candidate_reasons,
-                    "候選資料缺件時不推定沒有候選。",
-                    fallback="請先查看資料狀態。",
+                    "影響：目前無法確認候選內容與資料日期；不代表沒有候選。",
+                    fallback="下一步：重新整理來源，再查看推薦分析的原執行日期與條件。",
                 )
                 candidate_target = "update"
             elif daily.candidate_count > 0:
@@ -1463,8 +1533,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
                     "warning" if candidate_state in {"candidate_degraded", "degraded"} else "info"
                 )
                 candidate_conclusion = f"有 {daily.candidate_count} 檔研究候選可查看。"
+                matched_reasons = tuple(
+                    reason
+                    for symbol in daily.candidate_symbols
+                    if (reason := _candidate_reason_for_symbol(daily, symbol)) is not None
+                )
                 candidate_reasons = _guided_join_reasons(
-                    *(daily.candidate_reasons or ("原來源未提供個別研究理由；請回原結果查證。",)),
+                    *(matched_reasons or ("原來源未提供可確認對應個股的研究理由；請回原結果查證。",)),
                     "候選僅供研究，不代表可交易。",
                     fallback="請逐檔查看股票、理由與日期。",
                 )
@@ -1818,6 +1893,44 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_metrics_layout.setContentsMargins(0, 0, 0, 0)
         self.daily_metrics_layout.setSpacing(8)
         self.daily_market_card = MetricCard("市場", "等待")
+        self.daily_market_kpi_labels: dict[str, QLabel] = {}
+        market_guided_row = self.guided_priority_rows["market"]
+        market_guided_layout = cast(QBoxLayout, market_guided_row.layout())
+        self.daily_market_footer_label = QLabel("等待市場資料", market_guided_row)
+        self.daily_market_footer_label.setObjectName("dailyMarketKpiFooter")
+        self.daily_market_footer_label.setWordWrap(True)
+        self.daily_market_footer_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;"
+        )
+        market_kpi_row = QWidget(market_guided_row)
+        market_kpi_row.setObjectName("dailyMarketKpiRow")
+        market_kpi_layout = QHBoxLayout(market_kpi_row)
+        market_kpi_layout.setContentsMargins(0, 2, 0, 0)
+        market_kpi_layout.setSpacing(8)
+        for key, label, marker in (
+            ("advancing", "上漲", "▲"),
+            ("declining", "下跌", "▼"),
+            ("unchanged", "平盤", "平"),
+        ):
+            cell = QWidget(market_kpi_row)
+            cell_layout = QVBoxLayout(cell)
+            cell_layout.setContentsMargins(0, 0, 0, 0)
+            cell_layout.setSpacing(1)
+            caption = QLabel(f"{marker} {label}", cell)
+            caption.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+            number = QLabel("—", cell)
+            number.setObjectName(f"dailyMarketKpi_{key}")
+            number.setAccessibleName(f"市場{label}家數")
+            number.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 17pt; font-weight: 700;"
+            )
+            cell_layout.addWidget(caption)
+            cell_layout.addWidget(number)
+            market_kpi_layout.addWidget(cell, 1)
+            self.daily_market_kpi_labels[key] = number
+        market_guided_layout.insertWidget(1, market_kpi_row)
+        market_guided_layout.insertWidget(2, self.daily_market_footer_label)
+        self.daily_market_kpi_row = market_kpi_row
         self.daily_industry_card = MetricCard("產業", "等待")
         self.daily_candidate_card = MetricCard("今日候選", "等待")
         self.daily_portfolio_card = MetricCard("持倉", "等待")
@@ -1879,6 +1992,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.daily_action_layout.setSpacing(8)
         self.daily_candidate_button = QPushButton("開啟候選研究報告")
         self.daily_candidate_button.setProperty("variant", "primary")
+        self.daily_candidate_button.setStyleSheet(
+            f"QPushButton:disabled {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"color: {MIDNIGHT_ANALYST.text_muted}; border-color: {MIDNIGHT_ANALYST.border}; }}"
+        )
         self.daily_candidate_button.setAccessibleName("開啟每日候選個股研究報告")
         self.daily_candidate_button.setToolTip(
             "以每日候選的股票代號、決策日與來源 identity 開啟既有個股研究報告；不新增觀察清單。"
@@ -1887,6 +2004,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         candidate_selector_layout.addWidget(self.daily_candidate_button)
         self.daily_saved_result_button = QPushButton("讀回這筆保存的推薦結果")
         self.daily_saved_result_button.setEnabled(False)
+        self.daily_saved_result_button.setStyleSheet(
+            f"QPushButton:disabled {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"color: {MIDNIGHT_ANALYST.text_muted}; border-color: {MIDNIGHT_ANALYST.border}; }}"
+        )
         self.daily_saved_result_button.setAccessibleName("明選原保存推薦結果唯讀回訪")
         self.daily_saved_result_button.setToolTip(
             "只按原結果ID讀回保存時的候選與日期；不是今日推薦，不重跑分析或補齊缺資料。"
@@ -1958,6 +2079,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 self.daily_evidence_card,
             ):
                 card.value_label.setText("等待")
+            self.daily_market_card.value_label.setText("市場狀態待確認")
+            self._render_home_market_metrics(None)
             self.daily_journey_label.setText(
                 "下一步：重新整理既有唯讀來源。UI 不讀 DB、不執行策略、不補值。"
             )
@@ -1996,23 +2119,15 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if fallback_line:
             journey_lines.append(fallback_line)
         self.daily_journey_label.setText("\n".join(journey_lines))
-        reasons = tuple(daily.candidate_reasons)
-        if reasons or daily.candidate_symbols:
-            candidate_lines = []
-            for index, symbol in enumerate(daily.candidate_symbols):
-                reason = reasons[index] if index < len(reasons) else "來源未提供個別理由"
-                candidate_lines.append(f"{symbol}：{reason}")
-            if len(reasons) > len(daily.candidate_symbols):
-                candidate_lines.extend(reasons[len(daily.candidate_symbols):])
-            candidate_text = "\n".join(candidate_lines or reasons)
+        if daily.candidate_count or daily.candidate_symbols or daily.candidate_reasons:
             suffix = (
-                f"\n決策日：{daily.decision_date}｜"
-                f"\n資料品質：{_daily_quality_text(daily.candidate_quality)}｜"
+                f"狀態：{_daily_candidate_surface_status(daily)}｜"
+                f"資料品質：{_daily_quality_text(daily.candidate_quality)}｜"
                 f"資料日：{daily.candidate_data_date or '未知'}"
             )
             self.daily_candidate_detail_label.setText(
-                "個股研究候選：\n"
-                f"{candidate_text}{suffix}\n候選僅供研究；不代表已驗證、可成交或應下單。"
+                f"個股研究候選：{daily.candidate_count} 檔｜{suffix}\n"
+                "逐股原始理由請看上方候選列；候選僅供研究，不代表已驗證、可成交或應下單。"
                 f"\n下一步：{next_action}"
             )
         else:
@@ -2251,12 +2366,26 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
     def _open_daily_candidate_research(self) -> bool:
         daily = getattr(self, "_daily_investment_evidence", None)
-        callback = self.navigate_to_stock_research_callback
-        if daily is None or callback is None or not self._daily_candidate_selection_is_openable():
+        if daily is None or not self._daily_candidate_selection_is_openable():
             return False
         selected_code = self.daily_candidate_selector.currentData()
         stock_code = str(selected_code).strip() if isinstance(selected_code, str) else ""
-        if not stock_code:
+        return self._open_daily_candidate_symbol(
+            stock_code, self._daily_candidate_selection_identity
+        )
+
+    def _open_daily_candidate_symbol(
+        self, stock_code: str, source_identity: tuple[object, ...] | None
+    ) -> bool:
+        daily = getattr(self, "_daily_investment_evidence", None)
+        callback = self.navigate_to_stock_research_callback
+        if (
+            daily is None
+            or callback is None
+            or not stock_code
+            or source_identity != self._daily_candidate_source_identity(daily)
+            or stock_code not in self._daily_candidate_open_options(daily)
+        ):
             return False
         callback(
             ResearchStockContextDTO(
@@ -2272,6 +2401,43 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
         )
         return True
+
+    def _render_home_market_metrics(self, market_context: object) -> None:
+        """把既有市場 DTO 欄位投影為三個數字位及單行來源狀態。"""
+
+        context = market_context if isinstance(market_context, dict) else {}
+        breadth = context.get("market_breadth")
+        regime = context.get("market_regime")
+        breadth = breadth if isinstance(breadth, dict) else {}
+        regime = regime if isinstance(regime, dict) else {}
+        source_status = str(context.get("source_status") or "unknown").strip().lower()
+        raw_quality = str(breadth.get("quality") or regime.get("quality") or "unknown")
+        raw_data_date = str(breadth.get("as_of_date") or regime.get("as_of_date") or "")
+        data_date = raw_data_date if raw_data_date.lower() not in {"unknown", "none", "n/a"} else ""
+        quality = status_label(raw_quality, dimension="data")
+        source_status_label = status_label(source_status, dimension="data")
+
+        for key, label in self.daily_market_kpi_labels.items():
+            value = breadth.get(key)
+            number = str(value) if isinstance(value, int) and not isinstance(value, bool) else "—"
+            label.setText(number)
+            label.setToolTip("DTO 未提供此數字" if number == "—" else "只顯示來源 DTO 原值")
+
+        summary = str(regime.get("regime_label") or "").strip()
+        if not summary:
+            summary = {
+                "ready": "市場資料可用",
+                "partial": "市場資料部分可用",
+                "blocked": "市場資料來源受阻",
+                "missing": "市場資料缺件",
+            }.get(source_status, "市場狀態待確認")
+        self.daily_market_card.value_label.setText(summary)
+        self.daily_market_footer_label.setText(
+            f"資料日 {data_date or '未提供'}｜品質 {quality}｜來源 {source_status_label}"
+        )
+        self.daily_market_footer_label.setToolTip(
+            f"來源品質原碼：{raw_quality}｜市場來源狀態原碼：{source_status}"
+        )
 
     def _open_continuity_review_research(self, item: object) -> bool:
         """Open one due row through the existing exact stock research callback."""
@@ -3028,6 +3194,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._set_summary_blocks(dashboard)
         self._set_priority_banner(dashboard)
         self._render_daily_investment_journey(dashboard.daily_evidence)
+        self._render_home_market_metrics(dashboard.market_context)
         self._render_position_health(dashboard.position_health)
         self.research_console_view.set_decision_date(dashboard.as_of_date.isoformat())
         self._render_today_action_center(dashboard)
@@ -4049,6 +4216,20 @@ def _daily_candidate_surface_status(daily: WorkbenchDailyEvidence) -> str:
     if status in {"missing", "read_failure"}:
         return "來源待檢查"
     return _daily_quality_text(status)
+
+
+def _candidate_reason_for_symbol(
+    daily: WorkbenchDailyEvidence, symbol: str
+) -> str | None:
+    """只接受原理由文字明確帶有完整股票代號前綴的對應。"""
+
+    prefixes = (f"{symbol}：", f"{symbol}:")
+    matches = tuple(
+        reason
+        for reason in daily.candidate_reasons
+        if any(reason.startswith(prefix) for prefix in prefixes)
+    )
+    return "\n".join(matches) if matches else None
 
 
 def _daily_evidence_state_parts(daily: WorkbenchDailyEvidence) -> list[str]:

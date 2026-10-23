@@ -499,6 +499,8 @@ def test_real_v4_saved_query_keeps_identity_after_controls_are_collapsed(qtbot, 
     workspace.refresh_funnel()
     assert f"來源母體 {original.declared_count}" in workspace.funnel.text()
     assert "此來源尚無已核結果計數" not in workspace.funnel.text()
+    assert workspace.funnel_details.is_collapsed()
+    assert f"來源母體 {original.declared_count}" in workspace.funnel_detail_text.text()
     assert view.page_size.currentData() == saved.origin_query.page_size
     assert view._selected_row().stock_code == saved.selected_stock_code
     assert view.apply_button.parentWidget() is advanced.parentWidget()
@@ -587,7 +589,10 @@ def test_quick_routes_require_exact_mounted_source_class_and_show_missing_reason
     assert workspace.combo.currentData() == original_key
     assert all(page.run_count == 0 for page in _pages if isinstance(page, _Page))
     assert workspace.source_route_group_label.text() == "來源"
-    assert workspace.condition_recipe_group_label.text() == "條件範本"
+    assert workspace.condition_recipe_group_label.text() == "研究線索篩選"
+    assert workspace.combo.accessibleName() == "研究線索篩選來源"
+    assert workspace.quick_routes.spacing() == 4
+    assert all(button.minimumHeight() >= 28 for button in workspace.condition_recipe_buttons.values())
     assert workspace.disabled_note.text() == "先載入並核驗保存來源；套用條件後仍需明確查詢。"
     revenue = workspace.quick_route_buttons["official_technical_revenue"]
     composite = workspace.quick_route_buttons["official_technical_price"]

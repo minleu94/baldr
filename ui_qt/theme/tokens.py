@@ -18,6 +18,10 @@ class ThemeTokens:
     danger: str
     info: str
     accent_warm: str = "#d97706"
+    market_up: str = "#ef4444"
+    market_down: str = "#22c55e"
+    market_flat: str = "#a8b3c2"
+    # 舊版通用資料色保留相容；市場方向請使用 market_*。
     data_positive: str = "#22c55e"
     data_negative: str = "#ef4444"
     data_neutral: str = "#a8b3c2"
@@ -46,6 +50,9 @@ MIDNIGHT_ANALYST = ThemeTokens(
     danger="#f05b5b",
     info="#77aef5",
     accent_warm="#d97706",
+    market_up="#ef4444",
+    market_down="#22c55e",
+    market_flat="#a8b3c2",
     data_positive="#22c55e",
     data_negative="#ef4444",
     data_neutral="#a8b3c2",

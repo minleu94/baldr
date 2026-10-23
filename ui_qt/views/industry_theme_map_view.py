@@ -46,7 +46,11 @@ from app_module.theme_snapshot_catalog import (
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.theme_member_navigation import ThemeMemberNavigation
 from ui_qt.workers.task_worker import TaskWorker
-from ui_qt.widgets.observation_bar_delegate import ObservationBarDelegate, OBSERVATION_VALUE_ROLE
+from ui_qt.widgets.observation_bar_delegate import (
+    ObservationBarDelegate,
+    OBSERVATION_DIRECTIONAL_ROLE,
+    OBSERVATION_VALUE_ROLE,
+)
 
 
 class IndustryThemeMapView(QWidget):
@@ -1679,6 +1683,10 @@ class IndustryThemeMapView(QWidget):
                     field = {"return": "mean_return_pct", "turnover": "turnover_twd", "institutional": "institutional_net_shares", "volume": "volume_multiple_5d"}.get(str(ranking_type))
                     raw = getattr(row, field, None) if field else None
                     item.setData(OBSERVATION_VALUE_ROLE, str(raw) if raw is not None else None)
+                    item.setData(
+                        OBSERVATION_DIRECTIONAL_ROLE,
+                        str(ranking_type) in {"return", "institutional"},
+                    )
                 self.ranking_table.setItem(rank - 1, column, item)
         self.ranking_table.resizeRowsToContents()
 

@@ -6,7 +6,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from app_module.research_session import ResearchStockContextDTO
 from app_module.workbench_dtos import WorkbenchDailyEvidence
@@ -113,7 +113,7 @@ def test_candidate_card_keeps_original_reason_while_market_gap_stays_inspectable
             action_items=(), review_items=(), market_context={"source_status": "missing"},
         ))
         reason = view.guided_priority_reason_labels["candidates"].text()
-        assert ("原來源的研究理由" if reasons else "原來源未提供個別研究理由") in reason
+        assert ("原來源的研究理由" if reasons else "原來源未提供可確認對應個股的研究理由") in reason
         assert "候選僅供研究，不代表可交易" in reason
         assert "候選資料日：2026-10-15" in reason
         assert raw_summary not in reason
@@ -121,6 +121,108 @@ def test_candidate_card_keeps_original_reason_while_market_gap_stays_inspectable
         assert "市場快照缺失" in view.guided_priority_reason_labels["market"].text()
         assert view._daily_investment_evidence is daily
         assert view.daily_candidate_button.isEnabled()
+    finally:
+        view.close()
+
+
+def test_home_candidate_rows_match_only_explicit_symbol_reasons_and_open_original_context() -> None:
+    _app()
+    daily = replace(
+        _daily(("2330", "2603", "1101")),
+        candidate_reasons=("2603：這是2603的原始說明。",),
+    )
+    view, contexts = _view(daily)
+    try:
+        first_text = view.home_candidate_preview.findChildren(QLabel)
+        joined_text = "\n".join(label.text() for label in first_text)
+        assert "2330｜名稱未提供" in joined_text
+        assert "2603｜名稱未提供" in joined_text
+        assert "2330的原始說明" not in joined_text
+        assert "2603：這是2603的原始說明。" in joined_text
+        assert "個別說明" in joined_text
+        assert "資料日：2026-10-15" in joined_text
+        assert "這是2603的原始說明" not in view.daily_candidate_detail_label.text()
+        assert "逐股原始理由請看上方候選列" in view.daily_candidate_detail_label.text()
+
+        button = view.home_candidate_preview.findChild(QPushButton, "homeCandidateOpen_2603")
+        assert button is not None and button.isEnabled()
+        button.click()
+        assert len(contexts) == 1
+        assert contexts[0].stock_code == "2603"
+        assert contexts[0].source_snapshot_id == "snapshot-1"
+        assert contexts[0].data_date == "2026-10-15"
+        assert view.daily_candidate_selector.count() == 4
+    finally:
+        view.close()
+
+
+def test_home_market_card_projects_only_existing_numeric_market_fields() -> None:
+    _app()
+    dashboard = replace(
+        _dashboard_with_replay(),
+        market_context={
+            "source_status": "partial",
+            "market_breadth": {
+                "quality": "degraded", "advancing": 812, "declining": 506,
+                "unchanged": 42, "breadth_ratio_bp": 6150, "as_of_date": "2026-10-15",
+            },
+            "market_regime": {
+                "quality": "observed", "regime_label": "區間整理",
+                "regime_score": 2, "regime_confidence": 71, "as_of_date": "2026-10-14",
+            },
+        },
+    )
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    try:
+        assert view.daily_market_card.value_label.text() == "區間整理"
+        assert view.daily_market_kpi_labels["advancing"].text() == "812"
+        assert view.daily_market_kpi_labels["declining"].text() == "506"
+        assert view.daily_market_kpi_labels["unchanged"].text() == "42"
+        footer = view.daily_market_footer_label.text()
+        assert footer == "資料日 2026-10-15｜品質 品質降級｜來源 部分可用（資料缺件）"
+        visible_text = " ".join((
+            view.daily_market_card.value_label.text(),
+            *(label.text() for label in view.daily_market_kpi_labels.values()),
+            footer,
+        ))
+        assert "廣度比" not in visible_text and "信心值" not in visible_text
+        assert "成交額" not in visible_text and "指數收盤" not in visible_text
+    finally:
+        view.close()
+
+
+def test_home_market_kpis_clear_missing_values_and_old_status_after_refresh() -> None:
+    _app()
+    dashboard = replace(
+        _dashboard_with_replay(),
+        market_context={
+            "source_status": "partial",
+            "market_breadth": {
+                "quality": "degraded", "advancing": 812,
+                "declining": 506, "unchanged": 42, "as_of_date": "2026-10-15",
+            },
+        },
+    )
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    try:
+        view.render_dashboard(replace(
+            dashboard,
+            market_context={
+                "source_status": "blocked",
+                "market_breadth": {"quality": "missing"},
+            },
+        ))
+        assert view.daily_market_card.value_label.text() == "市場資料來源受阻"
+        assert all(label.text() == "—" for label in view.daily_market_kpi_labels.values())
+        assert view.daily_market_footer_label.text() == "資料日 未提供｜品質 資料缺件｜來源 受阻"
+        assert "812" not in view.daily_market_card.value_label.text()
+        assert "partial" not in view.daily_market_footer_label.text()
+
+        view.render_dashboard(replace(dashboard, market_context={}))
+        assert view.daily_market_card.value_label.text() == "市場狀態待確認"
+        assert all(label.text() == "—" for label in view.daily_market_kpi_labels.values())
+        assert view.daily_market_footer_label.text() == "資料日 未提供｜品質 未知｜來源 未知"
+        assert "unknown" not in view.daily_market_footer_label.text()
     finally:
         view.close()
 

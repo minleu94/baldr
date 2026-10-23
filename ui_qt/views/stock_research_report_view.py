@@ -655,6 +655,7 @@ class StockResearchReportView(QWidget):
         self._chart_marker_diagnostics: tuple[str, ...] = ()
         self._chart_viewport = ChartViewportState()
         self._chart_widget: StockPriceChartWidget | None = None
+        self._summary_question_full_text: dict[str, str] = {}
         self._setup_ui()
         if context is not None and context.stock_code:
             self.set_context(context)
@@ -667,8 +668,12 @@ class StockResearchReportView(QWidget):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
-        search_row = QHBoxLayout()
-        self.stock_search = QLineEdit()
+        self.search_panel = QWidget(self)
+        self.search_panel.setObjectName("stockResearchSearchPanel")
+        search_row = QHBoxLayout(self.search_panel)
+        search_row.setContentsMargins(0, 0, 0, 0)
+        search_row.setSpacing(4)
+        self.stock_search = QLineEdit(self.search_panel)
         self.stock_search.setObjectName("stockResearchSearch")
         self.stock_search.setPlaceholderText("輸入股票代碼，例如 2330")
         self.stock_search.setMaxLength(12)
@@ -677,36 +682,53 @@ class StockResearchReportView(QWidget):
         self.stock_search.returnPressed.connect(self._load_from_search)
         search_row.addWidget(self.stock_search, 1)
 
-        self.load_button = QPushButton("載入個股報告")
+        self.load_button = QPushButton("載入個股報告", self.search_panel)
         self.load_button.setProperty("variant", "primary")
         self.load_button.setAccessibleName("載入個股研究報告")
         self.load_button.clicked.connect(self._load_from_search)
         search_row.addWidget(self.load_button)
-        self.reload_button = QPushButton("重新載入")
+        self.reload_button = QPushButton("重新載入", self.search_panel)
         self.reload_button.setAccessibleName("重新讀取目前個股報告")
         self.reload_button.clicked.connect(self._reload)
-        search_row.addWidget(self.reload_button)
-        root.addLayout(search_row)
+        root.addWidget(self.search_panel)
         self._search_row = search_row
 
-        navigation_row = QHBoxLayout()
-        self.previous_button = QPushButton("上一檔")
+        self._navigation_row_widget = QWidget(self)
+        self._navigation_row_widget.setObjectName("stockResearchCompactActions")
+        self._navigation_row_widget.setStyleSheet(
+            "QPushButton { padding: 1px 7px; min-height: 19px; font-size: 9pt; } "
+            "QToolButton { padding: 1px 7px; min-height: 19px; font-size: 9pt; }"
+        )
+        navigation_row = QHBoxLayout(self._navigation_row_widget)
+        navigation_row.setContentsMargins(0, 0, 0, 0)
+        navigation_row.setSpacing(4)
+        self.switch_stock_button = QToolButton(self._navigation_row_widget)
+        self.switch_stock_button.setObjectName("stockResearchSwitchStockToggle")
+        self.switch_stock_button.setText("切換股票")
+        self.switch_stock_button.setAccessibleName("展開搜尋欄以切換股票")
+        self.switch_stock_button.setCheckable(True)
+        self.switch_stock_button.toggled.connect(self._toggle_stock_search)
+        self.switch_stock_button.hide()
+        navigation_row.addWidget(self.switch_stock_button)
+        self.reload_button.setParent(self._navigation_row_widget)
+        navigation_row.addWidget(self.reload_button)
+        self.previous_button = QPushButton("上一檔", self._navigation_row_widget)
         self.previous_button.setAccessibleName("載入上一檔個股")
         self.previous_button.setToolTip("在來源清單代碼中載入上一檔；沒有清單時停用。")
         self.previous_button.clicked.connect(lambda: self._step_stock(-1))
         navigation_row.addWidget(self.previous_button)
-        self.next_button = QPushButton("下一檔")
+        self.next_button = QPushButton("下一檔", self._navigation_row_widget)
         self.next_button.setAccessibleName("載入下一檔個股")
         self.next_button.setToolTip("在來源清單代碼中載入下一檔；沒有清單時停用。")
         self.next_button.clicked.connect(lambda: self._step_stock(1))
         navigation_row.addWidget(self.next_button)
-        self.return_button = QPushButton("返回來源清單")
+        self.return_button = QPushButton("返回來源清單", self._navigation_row_widget)
         self.return_button.setAccessibleName("返回原持倉或觀察清單")
         self.return_button.setToolTip("關閉報告並回到原清單；原篩選與選取由來源頁保留。")
         self.return_button.clicked.connect(self._return_to_source)
         navigation_row.addWidget(self.return_button)
         navigation_row.addStretch()
-        root.addLayout(navigation_row)
+        root.addWidget(self._navigation_row_widget)
         self._navigation_row = navigation_row
 
         self.identity_label = QLabel("尚未選取股票")
@@ -715,12 +737,28 @@ class StockResearchReportView(QWidget):
         identity_font.setPointSize(14)
         self.identity_label.setFont(identity_font)
         self.identity_label.setAccessibleName("個股識別")
-        root.addWidget(self.identity_label)
+        self.identity_quote_row = QWidget(self)
+        self.identity_quote_row.setObjectName("stockResearchIdentityQuoteRow")
+        self.identity_quote_layout = QBoxLayout(QBoxLayout.LeftToRight, self.identity_quote_row)
+        self.identity_quote_layout.setContentsMargins(0, 0, 0, 0)
+        self.identity_quote_layout.setSpacing(8)
+        self.identity_quote_layout.addWidget(self.identity_label, 1)
+        self.quote_summary_label = QLabel("收盤 —｜漲跌 —｜行情日 未知")
+        self.quote_summary_label.setObjectName("stockResearchQuoteSummary")
+        self.quote_summary_label.setAccessibleName("原報告價格、漲跌與行情日")
+        self.quote_summary_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.quote_summary_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.identity_quote_layout.addWidget(self.quote_summary_label)
+        root.addWidget(self.identity_quote_row)
 
         self._product_layout_enabled = False
         self.section_navigation_row = QWidget(self)
         section_navigation_layout = QHBoxLayout(self.section_navigation_row)
         section_navigation_layout.setContentsMargins(0, 0, 0, 0)
+        self.section_navigation_row.setStyleSheet(
+            "QPushButton, QToolButton { padding: 1px 7px; min-height: 19px; font-size: 9pt; } "
+            "QComboBox { padding: 1px 6px; min-height: 19px; font-size: 9pt; }"
+        )
         section_navigation_layout.addWidget(QLabel("研究章節", self.section_navigation_row))
         self.section_selector = QComboBox(self.section_navigation_row)
         self.section_selector.setObjectName("stockResearchSectionSelector")
@@ -755,7 +793,6 @@ class StockResearchReportView(QWidget):
         self.query_as_of_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
         )
-        root.addWidget(self.query_as_of_label)
 
         self.context_path_label = QLabel("研究路徑：" + format_research_workflow_path())
         self.context_path_label.setWordWrap(True)
@@ -764,7 +801,21 @@ class StockResearchReportView(QWidget):
         self.context_path_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
         )
-        root.addWidget(self.context_path_label)
+        self.header_details = QWidget(self)
+        header_details_layout = QVBoxLayout(self.header_details)
+        header_details_layout.setContentsMargins(0, 0, 0, 0)
+        header_details_layout.addWidget(self.query_as_of_label)
+        header_details_layout.addWidget(self.context_path_label)
+        self.header_details_toggle = QToolButton(self)
+        self.header_details_toggle.setObjectName("stockResearchHeaderDetailsToggle")
+        self.header_details_toggle.setText("來源與研究日期明細（展開）")
+        self.header_details_toggle.setCheckable(True)
+        self.header_details_toggle.setStyleSheet(
+            "QToolButton { padding: 1px 6px; min-height: 18px; font-size: 9pt; }"
+        )
+        self.header_details_toggle.setAccessibleName("展開來源與研究日期明細")
+        self.header_details_toggle.toggled.connect(self.header_details.setVisible)
+        self.header_details.hide()
 
         self.daily_market_research_condition_label = QLabel("")
         self.daily_market_research_condition_label.setObjectName(
@@ -838,7 +889,9 @@ class StockResearchReportView(QWidget):
         self.status_label.setWordWrap(True)
         self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         status_row.addWidget(self.status_label, 1)
+        status_row.addWidget(self.header_details_toggle)
         root.addLayout(status_row)
+        root.addWidget(self.header_details)
 
         self.tabs = QTabWidget()
         self.tabs.setObjectName("stockResearchTabs")
@@ -859,6 +912,7 @@ class StockResearchReportView(QWidget):
         self._personal_h20_price_chart_reason_code: str | None = None
         self._build_summary_shell()
         self._render_context_path()
+        QWidget.setTabOrder(self.switch_stock_button, self.stock_search)
         QWidget.setTabOrder(self.stock_search, self.load_button)
         QWidget.setTabOrder(self.load_button, self.reload_button)
         QWidget.setTabOrder(self.reload_button, self.previous_button)
@@ -874,29 +928,24 @@ class StockResearchReportView(QWidget):
 
         if not self._product_layout_enabled:
             # 合併同一組操作，讓首屏高度留給圖表與證據，不建立第二套導航。
-            for button in (self.previous_button, self.next_button, self.return_button):
-                self._navigation_row.removeWidget(button)
-                self._search_row.addWidget(button)
             root = self.layout()
             if root is not None:
-                root.removeItem(self._navigation_row)
-                root.removeWidget(self.identity_label)
                 root.setContentsMargins(8, 6, 8, 6)
-                root.setSpacing(6)
-            # 身份與下鑽共用短標頭；長公司名可換行，不截去原文字。
+                root.setSpacing(4)
+            # 公司身份與報價同列；窄版會在 resizeEvent 改為直向排列。
             self.identity_label.setWordWrap(True)
             section_layout = self.section_navigation_row.layout()
             if isinstance(section_layout, QHBoxLayout):
-                section_layout.insertWidget(0, self.identity_label, 2)
                 section_layout.setStretch(section_layout.indexOf(self.section_selector), 1)
             self._rank_action_row.removeWidget(self.open_latest_rank_research_button)
-            self._search_row.addWidget(self.open_latest_rank_research_button)
+            self._navigation_row.addWidget(self.open_latest_rank_research_button)
             QWidget.setTabOrder(self.return_button, self.open_latest_rank_research_button)
             QWidget.setTabOrder(self.open_latest_rank_research_button, self.section_selector)
         self._product_layout_enabled = True
         self.tabs.tabBar().hide()
         self.section_navigation_row.show()
         self.overview_price_group.show()
+        self._sync_stock_search_controls()
         self._arrange_overview()
         if self._loaded_report is not None:
             self._render_overview_chart(self._loaded_report)
@@ -912,6 +961,31 @@ class StockResearchReportView(QWidget):
         self.overview_layout.setDirection(
             QBoxLayout.TopToBottom if self.width() < 900 else QBoxLayout.LeftToRight
         )
+        self.identity_quote_layout.setDirection(
+            QBoxLayout.TopToBottom if self.width() < 900 else QBoxLayout.LeftToRight
+        )
+
+    def _toggle_stock_search(self, expanded: bool) -> None:
+        self.search_panel.setVisible(expanded)
+        self.switch_stock_button.setText("收合搜尋欄" if expanded else "切換股票")
+        self.switch_stock_button.setAccessibleName(
+            "收合股票搜尋欄" if expanded else "展開搜尋欄以切換股票"
+        )
+
+    def _sync_stock_search_controls(self) -> None:
+        has_report = (
+            self._loaded_report is not None
+            and str(self._loaded_report.stock_code).strip() == str(self._active_code).strip()
+        )
+        self.switch_stock_button.setVisible(self._product_layout_enabled and has_report)
+        if self._product_layout_enabled and has_report:
+            self.search_panel.setVisible(self.switch_stock_button.isChecked())
+        else:
+            blocker = QSignalBlocker(self.switch_stock_button)
+            self.switch_stock_button.setChecked(False)
+            del blocker
+            self._toggle_stock_search(False)
+            self.search_panel.show()
 
     def _render_overview_chart(self, report: StockResearchReportDTO) -> None:
         """首屏沿用同股、同日期、同來源投影；不啟動讀取或重算金融資料。"""
@@ -1023,6 +1097,12 @@ class StockResearchReportView(QWidget):
         self.summary_focus.setToolTip(
             "摘要只整理報告 DTO 已提供的證據；完整來源、代碼與歷史請開啟進階內容。"
         )
+        self.summary_questions_toggle = QToolButton()
+        self.summary_questions_toggle.setObjectName("stockResearchFiveQuestionsToggle")
+        self.summary_questions_toggle.setText("展開五問證據與限制")
+        self.summary_questions_toggle.setAccessibleName("展開完整五問證據與限制")
+        self.summary_questions_toggle.setCheckable(True)
+        self.summary_questions_toggle.toggled.connect(self._toggle_five_question_details)
         self.overview_layout = QBoxLayout(QBoxLayout.LeftToRight)
         self.overview_layout.setSpacing(12)
         self.overview_price_group = QGroupBox("價格走勢｜原研究版本")
@@ -1042,6 +1122,10 @@ class StockResearchReportView(QWidget):
         self.overview_layout.addWidget(self.overview_price_group, 1)
         self.overview_layout.addWidget(self.summary_focus, 1)
         layout.addLayout(self.overview_layout)
+        layout.addWidget(self.summary_questions_toggle)
+        self.summary_facets_layout = QHBoxLayout()
+        self.summary_facets_layout.setSpacing(6)
+        layout.addLayout(self.summary_facets_layout)
         self.summary_saved_advice_label = QLabel("當時保存的推薦判斷：尚未載入。")
         self.summary_saved_advice_label.setObjectName("stockResearchSavedAdviceSummary")
         self.summary_saved_advice_label.setAccessibleName("當時保存的推薦判斷摘要")
@@ -1232,6 +1316,31 @@ class StockResearchReportView(QWidget):
             if expanded
             else "顯示進階：來源與各區塊日期"
         )
+
+    def _toggle_five_question_details(self, expanded: bool) -> None:
+        for key, label in (
+            ("evidence", self.summary_focus.evidence_label),
+            ("change", self.summary_focus.change_label),
+            ("risk", self.summary_focus.risk_label),
+            ("sufficiency", self.summary_focus.sufficiency_label),
+        ):
+            full_text = self._summary_question_full_text.get(key, "")
+            label.setText(f"{_summary_question_prefix(key)}{full_text if expanded else _short_summary_question(full_text)}")
+            label.setVisible(True)
+        self.summary_questions_toggle.setText(
+            "收合五問證據與限制" if expanded else "展開五問證據與限制"
+        )
+
+    def _set_five_question_summary(self, **kwargs: Any) -> None:
+        """保留五問全文，收合時仍讓每題短摘要常顯。"""
+        self._summary_question_full_text = {
+            key: str(kwargs.get(key, "")).strip() or _summary_question_missing_text(key)
+            for key in ("evidence", "change", "risk", "sufficiency")
+        }
+        shortened = dict(kwargs)
+        shortened.update({key: _short_summary_question(value) for key, value in self._summary_question_full_text.items()})
+        self.summary_focus.set_summary(**shortened)
+        self._toggle_five_question_details(self.summary_questions_toggle.isChecked())
 
     def set_stock_codes(self, stock_codes: Sequence[str]) -> None:
         self.stock_codes = tuple(str(code).strip() for code in stock_codes if str(code).strip())
@@ -1928,7 +2037,7 @@ class StockResearchReportView(QWidget):
                     "observed",
                 )
         else:
-            self._set_status("報告部分載入；可讀內容與缺件分開列示，請選擇保存來源或建立分析。" if incomplete else "報告已載入；內容只讀取既有來源。", "partial" if incomplete else "observed")
+            self._set_status("部分讀回；可用資料與缺件分開列示。" if incomplete else "報告已讀回；資料可用狀態見摘要。", "partial" if incomplete else "observed")
         self._completed_report_request_id = request_id
         self.reportLoaded.emit(report)
 
@@ -2142,11 +2251,21 @@ class StockResearchReportView(QWidget):
         self._loaded_context_identity = None
         self._loaded_request_context = None
         self._rendered_report_tabs = set()
-        self.summary_focus.set_summary(
+        while self.summary_facets_layout.count():
+            item = self.summary_facets_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.deleteLater()
+        self._set_five_question_summary(
             conclusion="所選股票尚未有可讀報告。",
             reasons=("正在切換來源；舊股票的模型估計已清除。",),
             next_step="等待本股報告讀回，或重新載入。",
         )
+        self._toggle_five_question_details(False)
+        self.quote_summary_label.setText("收盤 未知｜漲跌 未知｜行情日 未知")
+        self.summary_questions_toggle.setChecked(False)
+        self.header_details_toggle.setChecked(False)
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self.market_status_label.setText("當下上市／交易狀態：尚未載入本股。")
         self.market_status_evidence_label.setText("尚未載入本股的狀態來源證據。")
@@ -2164,6 +2283,7 @@ class StockResearchReportView(QWidget):
             layout = self._reset_page(page_id)
             layout.addWidget(self._wrapped_label("尚未載入此股票的報告內容。"))
             layout.addStretch()
+        self._sync_stock_search_controls()
 
     def _show_unavailable_state(
         self,
@@ -2175,13 +2295,15 @@ class StockResearchReportView(QWidget):
     ) -> None:
         self._clear_saved_advice_summary()
         self.identity_label.setText(f"{code}｜尚無可用報告")
+        self.quote_summary_label.setText("收盤 未知｜漲跌 未知｜行情日 未知")
         self.personal_h20_label.setText("個人 H20 模型：目前無法核驗本股")
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
-        self.summary_focus.set_summary(
+        self._set_five_question_summary(
             conclusion=conclusion,
             reasons=(reason,),
             next_step=next_step,
         )
+        self._toggle_five_question_details(self.summary_questions_toggle.isChecked())
         self.summary_limitations_detail_label.setText(reason)
         self._find_widget("stockResearchLimitations").setText(reason)
 
@@ -2204,7 +2326,7 @@ class StockResearchReportView(QWidget):
         if report.industry:
             identity += f"｜{report.industry}"
         self.identity_label.setText(identity)
-        self.summary_focus.set_summary(
+        self._set_five_question_summary(
             conclusion=conclusion,
             reasons=(f"上次可用資料：{data_date}", reason),
             next_step=next_step,
@@ -2217,6 +2339,7 @@ class StockResearchReportView(QWidget):
             sufficiency=_report_sufficiency_text(report),
             reasons_title="目前狀態",
         )
+        self._toggle_five_question_details(self.summary_questions_toggle.isChecked())
 
     def _set_status(self, text: str, quality: str) -> None:
         self.status_label.setText(text)
@@ -2490,6 +2613,15 @@ class StockResearchReportView(QWidget):
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
             + (f"｜{report.industry}" if report.industry else "")
         )
+        if report.price_points:
+            latest = report.price_points[-1]
+            price_text = _decimal_text(latest.close_price) if latest.close_price is not None else "未知"
+            change_text = _decimal_text(latest.change) if latest.change is not None else "未知"
+            self.quote_summary_label.setText(
+                f"收盤 {price_text} TWD｜漲跌 {change_text} TWD｜行情日 {latest.data_date or '未知'}"
+            )
+        else:
+            self.quote_summary_label.setText("收盤 未知｜漲跌 未知｜行情日 未知")
         self._render_market_status(report.market_status)
         self._render_official_attention(report.official_attention)
         self._summary_values["latest_price"].setText(_latest_price_text(report.price_points))
@@ -2511,7 +2643,7 @@ class StockResearchReportView(QWidget):
         self._summary_values["advice"].setText(_advice_summary(report.advice))
         next_step = _report_next_step(report)
         self._summary_values["next_step"].setText(next_step)
-        self.summary_focus.set_summary(
+        self._set_five_question_summary(
             conclusion=_report_conclusion(report),
             reasons=(_report_pending_text(report),),
             next_step=next_step,
@@ -2521,9 +2653,14 @@ class StockResearchReportView(QWidget):
             sufficiency=_report_limitations_text(report),
             reasons_title="待驗證條件",
         )
+        self._toggle_five_question_details(self.summary_questions_toggle.isChecked())
         self.summary_focus.sufficiency_label.setText(
             "資料／模型限制：" + _report_limitations_text(report)
         )
+        self._summary_question_full_text["sufficiency"] = (
+            "資料／模型限制：" + _report_limitations_text(report)
+        )
+        self._toggle_five_question_details(self.summary_questions_toggle.isChecked())
         limitations = _join_or_missing(
             report.limitations,
             "來源未提供其他限制說明。",
@@ -2536,9 +2673,113 @@ class StockResearchReportView(QWidget):
 
         self._render_sources(report)
         self._render_product_summary(report)
+        self._render_summary_facets(report)
         self._render_overview_chart(report)
         self._render_report_tab(self.tabs.currentIndex())
         self._set_navigation_state()
+        self._sync_stock_search_controls()
+
+    def _render_summary_facets(self, report: StockResearchReportDTO) -> None:
+        while self.summary_facets_layout.count():
+            item = self.summary_facets_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.deleteLater()
+        revenue, revenue_ambiguous = _latest_monthly_revenue_observation(report.fundamentals)
+        self._add_summary_facet(
+            self.summary_facets_layout, "營收",
+            value=("來源組別不唯一；摘要保留未知" if revenue_ambiguous else
+                   _metric_text(revenue) if revenue is not None else "目前缺件"),
+            date=(
+                f"資料日 {revenue.as_of_date or '未知'}"
+                + (f"｜期間 {revenue.period}" if revenue.period else "")
+            ) if revenue is not None else "來源／期間待核對" if revenue_ambiguous else "資料日未知",
+            state=_daily_status_text(revenue.quality) if revenue is not None else "待核對" if revenue_ambiguous else "缺件",
+            target="fundamental",
+            tooltip=(status_detail(revenue.quality) if revenue is not None else
+                     "月營收有多個無法合併的來源／版本／市場／單位組別。" if revenue_ambiguous else ""),
+        )
+        institutional_net = _flow_facet_summary_metrics("法人", report.institutional)
+        self._add_metric_summary_facet(
+            self.summary_facets_layout, "法人", institutional_net, "flows",
+            missing_text="法人買賣超欄位缺件",
+            required_keys=("foreign_investor_net", "investment_trust_net", "dealer_net"),
+        )
+        credit_balances = _flow_facet_summary_metrics("信用", report.credit)
+        self._add_metric_summary_facet(
+            self.summary_facets_layout, "信用", credit_balances, "flows",
+            missing_text="融資／融券餘額缺件",
+            required_keys=("margin_balance", "short_balance"),
+        )
+        tiers = _flow_facet_summary_metrics("集保", report.shareholding)
+        if tiers:
+            self._add_metric_summary_facet(
+                self.summary_facets_layout, "集保", tiers, "flows",
+                required_keys=("large_holder_ratio_bp", "retail_holder_ratio_bp", "dispersion_index_bp"),
+            )
+        else:
+            tier = next((item for item in report.shareholding if item.key == "shareholding_tiers"), None)
+            self._add_summary_facet(
+                self.summary_facets_layout, "集保",
+                value="級距原表可查" if tier is not None else "目前缺件",
+                date=(tier.data_as_of or "資料日未知") if tier is not None else "資料日未知",
+                state=_daily_status_text(tier.quality) if tier is not None else "缺件",
+                target="flows",
+                tooltip=status_detail(tier.quality) if tier is not None else "",
+            )
+
+    def _add_summary_facet(
+        self, layout: QHBoxLayout, title: str, *, value: str,
+        date: str, state: str, target: str, tooltip: str = "",
+    ) -> None:
+        card = QGroupBox(title)
+        card.setObjectName(f"stockResearchSummaryFacet_{title}")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(6, 6, 6, 6)
+        card_layout.setSpacing(3)
+        label = QLabel(f"{value}\n{date}｜{state}")
+        label.setObjectName(f"stockResearchSummaryFacetText_{title}")
+        label.setWordWrap(True)
+        label.setAccessibleName(f"{title}原值、資料日與狀態")
+        if tooltip:
+            label.setToolTip(tooltip)
+        card_layout.addWidget(label)
+        button = QPushButton("查看章節")
+        button.setObjectName(f"stockResearchSummaryFacetOpen_{title}")
+        button.setStyleSheet(
+            "QPushButton { padding: 1px 6px; min-height: 18px; font-size: 9pt; }"
+        )
+        button.setAccessibleName(f"查看{title}研究章節")
+        button.clicked.connect(lambda _checked=False, key=target: self.focus_section(key))
+        card_layout.addWidget(button)
+        layout.addWidget(card, 1)
+
+    def _add_metric_summary_facet(
+        self, layout: QHBoxLayout, title: str, metrics: Sequence[StockMetricDTO],
+        target: str, *, missing_text: str = "目前缺件", required_keys: Sequence[str] = (),
+    ) -> None:
+        value, date, state, tooltip = _summary_metric_payload(
+            metrics, missing_text, include_all=bool(required_keys),
+        )
+        missing_keys = tuple(key for key in required_keys if not any(item.key == key for item in metrics))
+        if missing_keys and metrics:
+            labels = {
+                "foreign_investor_net": "外資買賣超",
+                "investment_trust_net": "投信買賣超",
+                "dealer_net": "自營商買賣超",
+                "margin_balance": "融資餘額",
+                "short_balance": "融券餘額",
+                "large_holder_ratio_bp": "大額持有人比例",
+                "retail_holder_ratio_bp": "小額持有人比例",
+                "dispersion_index_bp": "持股分散指標",
+            }
+            value += "\n缺件：" + "、".join(labels.get(key, key) for key in missing_keys)
+            state = "部分缺件"
+        self._add_summary_facet(
+            layout, title, value=value, date=date, state=state, tooltip=tooltip,
+            target=target,
+        )
 
     def _render_product_summary(self, report: StockResearchReportDTO) -> None:
         """首屏同步來源可用性與操作；原始 pins 留於進階明細。"""
@@ -2618,7 +2859,7 @@ class StockResearchReportView(QWidget):
                 _report_sufficiency_text(report)
                 + f"；模型：{_quality_label(report.ml.status)}。僅供研究，不能當正式建議；完整缺件原因見資料稽核。"
             )
-        self.summary_focus.set_summary(
+        self._set_five_question_summary(
             conclusion=summary.conclusion if has_h20_estimate else _report_conclusion(report),
             reasons=reasons,
             next_step=next_step, evidence=evidence_text,
@@ -2627,6 +2868,7 @@ class StockResearchReportView(QWidget):
             sufficiency=sufficiency,
             reasons_title=reasons_title,
         )
+        self._toggle_five_question_details(self.summary_questions_toggle.isChecked())
         self._render_saved_advice_summary(report)
         states = list(summary.status_lines)
         if refusal:
@@ -3606,14 +3848,19 @@ class StockResearchReportView(QWidget):
                 "各區資料日與品質以來源實際提供內容為準；缺資料不補零。"
             )
         )
+        detail_panel = QWidget()
+        detail_panel.setObjectName("stockResearchFlowDetails")
+        detail_layout = QVBoxLayout(detail_panel)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.addWidget(self._wrapped_label("詳細圖表與原表；日期、品質及來源沿用原 DTO。"))
         self._add_research_visuals(
-            layout,
+            detail_layout,
             (*metric_visuals("法人原觀測", report.institutional),
              *shareholding_tier_visuals(report.shareholding),
              *metric_visuals("信用原觀測", report.credit),
              *metric_visuals("集保原觀測", report.shareholding),
              *flow_visuals(report.flows)),
-            "目前沒有同日、同來源且已知單位的籌碼數值可繪圖；下方保留原資料與缺件原因。",
+            "目前沒有同日、同來源且已知單位的籌碼數值可繪圖；原表仍可查。",
         )
         if report.flows:
             rows = tuple(
@@ -3630,35 +3877,98 @@ class StockResearchReportView(QWidget):
                 for flow in report.flows
             )
             self._add_table(
-                layout,
+                detail_layout,
                 ("日期", "分點", "買進股數", "賣出股數", "買賣超股數", "淨額千元", "類型", "品質"),
                 rows,
                 350,
             )
         else:
-            layout.addWidget(self._missing_panel("沒有可用分點 row；請檢查 broker_flows 更新狀態。"))
+            detail_layout.addWidget(self._missing_panel("沒有可用分點 row；請檢查 broker_flows 更新狀態。"))
 
-        layout.addWidget(
+        detail_layout.addWidget(
             self._render_metric_group(
                 "法人資料",
                 report.institutional,
                 missing_text="目前沒有法人資料；不補零。",
             )
         )
-        layout.addWidget(
+        detail_layout.addWidget(
             self._render_metric_group(
                 "信用資料",
                 report.credit,
                 missing_text="目前沒有信用資料；不補零。",
             )
         )
-        layout.addWidget(self._render_shareholding_group(report.shareholding))
+        detail_layout.addWidget(self._render_shareholding_group(report.shareholding))
 
         events = QGroupBox("產業／事件證據")
         event_layout = QVBoxLayout(events)
         self._add_event_table(event_layout, report.events)
-        layout.addWidget(events)
+        detail_layout.addWidget(events)
+        detail_layout.addStretch()
+
+        scroll = self.findChild(QScrollArea, "stockResearchScroll_flows")
+        def open_details() -> None:
+            details_toggle.setChecked(True)
+            if isinstance(scroll, QScrollArea):
+                scroll.ensureWidgetVisible(detail_panel)
+
+        facets = QHBoxLayout()
+        facets.setSpacing(6)
+        self._add_flow_facet(facets, "法人", report.institutional, section="flows", opener=open_details)
+        self._add_flow_facet(facets, "信用", report.credit, section="flows", opener=open_details)
+        self._add_flow_facet(facets, "集保", report.shareholding, section="flows", opener=open_details)
+        branch_value = "缺少分點 row" if not report.flows else f"原順序 {len(report.flows)} 列"
+        branch_date = (report.flows[0].data_date or "資料日未知") if report.flows else "未知"
+        self._add_flow_facet(facets, "分點", (), section="flows", opener=open_details,
+                             value_override=branch_value, date_override=branch_date,
+                             state_override=_daily_status_text(report.flows[0].quality) if report.flows else "缺件",
+                             tooltip_override=status_detail(report.flows[0].quality) if report.flows else "")
+        layout.addLayout(facets)
+        details_toggle = QToolButton()
+        details_toggle.setObjectName("stockResearchFlowDetailsToggle")
+        details_toggle.setText("展開詳細圖表與原表")
+        details_toggle.setAccessibleName("展開法人、信用、集保、分點與事件詳細資料")
+        details_toggle.setCheckable(True)
+        details_toggle.toggled.connect(detail_panel.setVisible)
+        layout.addWidget(details_toggle)
+        detail_panel.hide()
+        layout.addWidget(detail_panel)
         layout.addStretch()
+
+    def _add_flow_facet(
+        self, layout: QHBoxLayout, title: str, metrics: Sequence[StockMetricDTO], *,
+        section: str, opener: Callable[[], None], value_override: str = "",
+        date_override: str = "", state_override: str = "", tooltip_override: str = "",
+    ) -> None:
+        card = QGroupBox(title)
+        card.setObjectName(f"stockResearchFacet_{title}")
+        card.setProperty("section", section)
+        card_layout = QVBoxLayout(card)
+        summary_metrics = _flow_facet_summary_metrics(title, metrics)
+        value, date, state, tooltip = _summary_metric_payload(
+            summary_metrics,
+            "目前缺件",
+            include_all=title in {"法人", "信用", "集保"},
+        )
+        if summary_metrics and all(item.key == "shareholding_tiers" for item in summary_metrics):
+            value = "級距原表可查"
+        value = value_override or value
+        date = date_override or date
+        state = state_override or state
+        tooltip = tooltip_override or tooltip
+        summary = QLabel(f"{value}\n{date}｜{state}")
+        summary.setObjectName(f"stockResearchFacetSummary_{title}")
+        summary.setWordWrap(True)
+        summary.setAccessibleName(f"{title}原觀測摘要、資料日與狀態")
+        if tooltip:
+            summary.setToolTip(tooltip)
+        card_layout.addWidget(summary)
+        button = QPushButton("看明細")
+        button.setAccessibleName(f"前往{title}原始章節明細")
+        button.clicked.connect(opener)
+        card_layout.addWidget(button)
+        layout.addWidget(card, 1)
 
     def _add_research_visuals(
         self, layout: QVBoxLayout, groups: Sequence[ResearchVisualGroup], missing: str,
@@ -3684,7 +3994,20 @@ class StockResearchReportView(QWidget):
 
     def _add_research_chart(self, layout: QVBoxLayout, group: ResearchVisualGroup) -> None:
         try:
-            chart = ResearchMetricChart(group.title, group.unit, group.points, group.note)
+            chart_kind = getattr(group, "chart_kind", "bar")
+            semantic = getattr(group, "semantic", "generic")
+            orientation = {
+                "column": "column",
+                "paired_column": "paired_column",
+            }.get(chart_kind, "bar")
+            periods = tuple(point.label for point in group.points) if chart_kind in {"column", "paired_column"} else None
+            chart = ResearchMetricChart(
+                group.title, group.unit, group.points, group.note,
+                orientation=orientation,
+                directional=semantic == "directional",
+                periods=periods,
+                detail_note=getattr(group, "detail_note", ""),
+            )
         except Exception:
             layout.addWidget(self._wrapped_label(f"{group.title}圖卡暫時無法顯示；下方原表仍可查閱。"))
             return
@@ -4913,6 +5236,136 @@ def _quality_label(value: str, *, dimension: str = "data") -> str:
         return shared_label
     local_label = labels.get(token.lower())
     return local_label if local_label is not None else shared_label
+
+
+def _daily_status_text(value: object) -> str:
+    """日常卡片只顯示現有詞彙；未知原碼留在可展開提示。"""
+    label = status_label(value)
+    raw = getattr(value, "value", value)
+    token = str(raw if raw is not None else "unknown").strip() or "unknown"
+    return label if label != token else "狀態待確認"
+
+
+def _summary_metric_payload(
+    metrics: Sequence[StockMetricDTO], missing_text: str, *, include_all: bool = False,
+) -> tuple[str, str, str, str]:
+    """同一面向只並列同來源同資料日原值；身份有歧義時不挑一列代表。"""
+    if not metrics:
+        return missing_text, "資料日未知", "缺件", ""
+    identities = {(item.source_id, item.data_as_of, item.unit) for item in metrics}
+    details = "\n".join(
+        f"{item.label}｜來源 {item.source_id or '未知'}｜資料日 {item.data_as_of or '未知'}｜"
+        f"單位 {item.unit or '未知'}｜可得時間 {item.available_at or '未知'}｜"
+        f"{status_detail(item.quality)}"
+        for item in metrics
+    )
+    if len(identities) != 1 or any(not source or not day or not unit for source, day, unit in identities):
+        return "來源、日期或單位不一致；摘要保留未知", "來源／資料日／單位待核對", "待核對", details
+    _source, day, _unit = next(iter(identities))
+    observed = tuple(item for item in metrics if item.value is not None)
+    if not observed:
+        return "沒有可用原值", f"資料日 {day}", _daily_status_text(metrics[0].quality), details
+    shown = tuple(f"{item.label}：{_metric_text(item)}" for item in (observed if include_all else observed[:2]))
+    if len(observed) > 2 and not include_all:
+        shown += (f"另有 {len(observed) - 2} 項原值，請看章節",)
+    states = {_daily_status_text(item.quality) for item in observed}
+    state = next(iter(states)) if len(states) == 1 else "狀態不同"
+    return "\n".join(shown), f"資料日 {day}", state, details
+
+
+def _flow_facet_summary_metrics(
+    title: str, metrics: Sequence[StockMetricDTO],
+) -> tuple[StockMetricDTO, ...]:
+    """選取總覽與籌碼面向摘要共用的原始欄位。"""
+    preferred_keys = {
+        "法人": ("foreign_investor_net", "investment_trust_net", "dealer_net"),
+        "信用": ("margin_balance", "short_balance"),
+        "集保": (
+            "large_holder_ratio_bp", "retail_holder_ratio_bp", "dispersion_index_bp",
+        ),
+    }.get(title)
+    if preferred_keys is None:
+        return tuple(metrics)
+    selected = tuple(item for item in metrics if item.key in preferred_keys)
+    if selected:
+        return selected
+    if title == "集保":
+        return tuple(item for item in metrics if item.key == "shareholding_tiers")
+    return ()
+
+
+def _latest_monthly_revenue_observation(
+    fundamentals: Sequence[StockFundamentalObservationDTO],
+) -> tuple[StockFundamentalObservationDTO | None, bool]:
+    """只取單一、已核期間基礎組別中 YYYY-MM 最大的原觀測。"""
+    monthly_rows = tuple(item for item in fundamentals if item.kind == "monthly_revenue")
+    if not monthly_rows:
+        return None, False
+    candidates = tuple(
+        item for item in monthly_rows
+        if item.metric_name.strip()
+        and item.source_id.strip()
+        and item.source_version.strip()
+        and item.market.strip()
+        and item.unit.strip()
+        and item.basis_verified is True
+        and item.period_basis.strip()
+        and len(item.period) == 7
+        and item.period[4] == "-"
+        and item.period[:4].isdigit()
+        and item.period[5:].isdigit()
+        and 1 <= int(item.period[5:]) <= 12
+    )
+    if len(candidates) != len(monthly_rows):
+        return None, True
+    groups: dict[tuple[str, str, str, str, str, str], list[StockFundamentalObservationDTO]] = {}
+    for item in candidates:
+        identity = (
+            item.metric_name, item.source_id, item.source_version,
+            item.market, item.unit, item.period_basis,
+        )
+        groups.setdefault(identity, []).append(item)
+    if not groups:
+        return None, False
+    if len(groups) != 1:
+        return None, True
+    rows = next(iter(groups.values()))
+    latest_period = max(item.period for item in rows)
+    latest_rows = tuple(item for item in rows if item.period == latest_period)
+    latest_values = {
+        (item.value, item.value_text, item.as_of_date, item.announced_date, item.available_at,
+         item.source_snapshot_hash, item.quality)
+        for item in latest_rows
+    }
+    if len(latest_values) != 1:
+        return None, True
+    return latest_rows[0], False
+
+
+def _summary_question_prefix(key: str) -> str:
+    return {
+        "evidence": "主要證據／資料日：",
+        "change": "較前變化：",
+        "risk": "主要風險／反證：",
+        "sufficiency": "資料是否足夠：",
+    }.get(key, "")
+
+
+def _summary_question_missing_text(key: str) -> str:
+    return {
+        "evidence": "目前沒有可核對的證據列。",
+        "change": "目前沒有足夠原值比較前後變化。",
+        "risk": "目前沒有可呈現的風險列；不代表風險不存在。",
+        "sufficiency": "完整度與限制請查看資料稽核。",
+    }.get(key, "尚未提供可核對內容。")
+
+
+def _short_summary_question(value: str) -> str:
+    text = str(value).strip()
+    if not text:
+        return "尚未提供可核對內容。"
+    limit = 56
+    return text if len(text) <= limit else text[:limit].rstrip("，,；;。 ") + "…（展開可讀全文）"
 
 
 def _quality_detail(value: object, *, dimension: str = "data") -> str:

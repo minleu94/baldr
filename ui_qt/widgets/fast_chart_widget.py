@@ -6,6 +6,7 @@ from typing import Optional, Type
 
 import pandas as pd
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
 
 from ui_qt.widgets.chart_payloads import (
@@ -21,6 +22,7 @@ from ui_qt.widgets.chart_widget import (
     HoldingDaysHistogramWidget,
     TradeReturnHistogramWidget,
 )
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -31,6 +33,20 @@ except ImportError:
     HAS_QTWEBENGINE = False
 
 
+def _set_webengine_dark_surface(web_view) -> None:
+    """在頁面載入前與空資料狀態維持圖表區的深色背景。"""
+    web_view.setStyleSheet(
+        f"QWebEngineView {{ background: {MIDNIGHT_ANALYST.app_bg}; border: 0; }}"
+    )
+    web_view.page().setBackgroundColor(QColor(MIDNIGHT_ANALYST.app_bg))
+
+
+def _load_webengine_payload(web_view, payload: dict) -> None:
+    """設定頁面底色後載入保留原資料的本地圖表 HTML。"""
+    _set_webengine_dark_surface(web_view)
+    web_view.setHtml(_build_html(payload))
+
+
 class _FastCanvasChartWidget(QWidget):
     """Shared QtWebEngine host for compact HTML canvas chart payloads."""
 
@@ -39,6 +55,11 @@ class _FastCanvasChartWidget(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
+        self.setObjectName("fastCanvasChartWidget")
+        self.setStyleSheet(
+            f"QWidget#fastCanvasChartWidget {{ background-color: {MIDNIGHT_ANALYST.app_bg}; "
+            f"color: {MIDNIGHT_ANALYST.text_primary}; }}"
+        )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -49,6 +70,10 @@ class _FastCanvasChartWidget(QWidget):
         self.numeric_toggle.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.numeric_toggle.setAccessibleName("顯示圖表文字數值")
         self.numeric_toggle.setToolTip("展開可讀的日期、數值與區間筆數。")
+        self.numeric_toggle.setStyleSheet(
+            f"QToolButton {{ background: {MIDNIGHT_ANALYST.surface_1}; "
+            f"color: {MIDNIGHT_ANALYST.text_primary}; border: 1px solid {MIDNIGHT_ANALYST.border}; }}"
+        )
         layout.addWidget(self.numeric_toggle)
 
         self.numeric_text = QLabel(self)
@@ -61,6 +86,10 @@ class _FastCanvasChartWidget(QWidget):
         self.numeric_text.setAccessibleDescription(
             "圖表的日期、數值或區間筆數文字替代；可使用鍵盤選取。"
         )
+        self.numeric_text.setStyleSheet(
+            f"QLabel {{ background: {MIDNIGHT_ANALYST.surface_1}; "
+            f"color: {MIDNIGHT_ANALYST.text_primary}; padding: 8px; }}"
+        )
         self.numeric_text.setVisible(False)
         layout.addWidget(self.numeric_text)
         self.numeric_toggle.toggled.connect(self.numeric_text.setVisible)
@@ -70,7 +99,10 @@ class _FastCanvasChartWidget(QWidget):
             self.fallback_label = QLabel(
                 "快速圖表目前無法載入（未安裝 QtWebEngine）；請展開下方數值資料。"
             )
-            self.fallback_label.setStyleSheet("color: #666; padding: 12px;")
+            self.fallback_label.setStyleSheet(
+                f"QLabel {{ background: {MIDNIGHT_ANALYST.surface_1}; "
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 12px; }}"
+            )
             self.fallback_label.setWordWrap(True)
             self.fallback_label.setAccessibleName("快速圖表替代訊息")
             layout.addWidget(self.fallback_label)
@@ -97,7 +129,8 @@ class _FastCanvasChartWidget(QWidget):
                 "快速圖表目前無法載入（未安裝 QtWebEngine）；請展開下方數值資料。"
             )
             return
-        self.web_view.setHtml(_build_html(payload))
+        # 每次載入（包含初始空圖與清空後）都先指定頁面底色，避免載入期間閃白。
+        _load_webengine_payload(self.web_view, payload)
 
     def _update_numeric_alternative(self, payload: dict) -> None:
         self.numeric_text.setText(_numeric_alternative_text(payload))

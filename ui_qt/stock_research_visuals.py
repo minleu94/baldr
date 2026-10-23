@@ -21,6 +21,9 @@ class ResearchVisualGroup:
     unit: str
     points: tuple[ResearchMetricBar, ...]
     note: str
+    chart_kind: str = "bar"
+    semantic: str = "generic"
+    detail_note: str = ""
 
 
 def _number(value: Decimal | None) -> Decimal | None:
@@ -42,8 +45,13 @@ def fundamental_visuals(report: StockResearchReportDTO) -> tuple[ResearchVisualG
             comparison.label, comparison.value_unit,
             (ResearchMetricBar(comparison.prior_period, comparison.prior_value, "原比較前期"),
              ResearchMetricBar(comparison.current_period, comparison.current_value, "原比較當期")),
-            f"原財報比較｜可用時間 {comparison.available_at}｜來源 {comparison.source_id}／{comparison.source_version}。"
-            f"{comparison.note} 目前研究；不是歷史 PIT 或成長預測。",
+            f"原值前期／當期比較｜可用時間 {comparison.available_at or '未知'}｜目前研究；不是歷史 PIT 或成長預測。缺值不補零。",
+            "paired_column",
+            detail_note=(
+                f"比較來源 {comparison.source_id}／{comparison.source_version}｜"
+                f"當期來源 {comparison.current_source_id}／{comparison.current_source_version}｜"
+                f"原比較說明：{comparison.note or '未提供'}"
+            ),
         ))
     series: dict[tuple[str, ...], list[StockFundamentalObservationDTO]] = defaultdict(list)
     represented = {(c.current_source_id, c.current_source_version, c.metric_name, c.current_period)
@@ -69,8 +77,14 @@ def fundamental_visuals(report: StockResearchReportDTO) -> tuple[ResearchVisualG
             tuple(ResearchMetricBar(item.period, _number(item.value),
                   f"資料日 {item.as_of_date or '未提供'}｜可用 {item.available_at or '未知'}｜品質 {item.quality}")
                   for item in ordered),
-            f"已載入 {len(items)} 筆原觀測｜市場 {key[6] or '未提供'}｜來源 {key[1]}／{key[2] or '版本未提供'}｜期間基礎 {key[5]}。"
-            + ("單一期間，不能判定趨勢。" if len(items) == 1 else "只比較這些已提供期間；不補缺月、不推算同比或累計。"),
+            f"原觀測 {len(items)} 筆｜"
+            + ("單一期間，不能判定趨勢。" if len(items) == 1 else "只呈現已提供期間；不補缺月、不推算同比或累計。")
+            + "缺值不補零。",
+            "column" if key[0] == "monthly_revenue" else "bar",
+            detail_note=(
+                f"市場 {key[6] or '未提供'}｜來源 {key[1]}／{key[2] or '版本未提供'}｜"
+                f"期間基礎 {key[5]}｜品質及每筆資料日／可用時間見逐筆明細。"
+            ),
         )
         if key[0] == "monthly_revenue":
             groups.insert(0, group)
@@ -96,7 +110,10 @@ def metric_visuals(title: str, metrics: Sequence[StockMetricDTO]) -> tuple[Resea
             f"{title}｜{family if family == '法人淨額' else items[0].label}", unit,
             tuple(ResearchMetricBar(item.label, _number(item.value),
                   f"可用 {item.available_at or '未知'}｜品質 {item.quality}") for item in items),
-            f"資料日 {day}｜來源 {source}｜單日原觀測，各項意義依標籤；不是連買、持股變化或買賣建議。",
+            f"資料日 {day}｜單日原觀測；各項意義依標籤，不代表連買、持股變化或買賣建議。缺值不補零。",
+            "bar",
+            "directional" if family == "法人淨額" else "generic",
+            f"來源 {source}｜各筆可用時間與品質見逐筆明細。",
         ))
     return tuple(result)
 
@@ -116,8 +133,10 @@ def flow_visuals(flows: Sequence[StockFlowObservationDTO]) -> tuple[ResearchVisu
             tuple(ResearchMetricBar(row.branch_name,
                   Decimal(row.net_shares) if row.net_shares is not None else None,
                   f"品質 {row.quality}｜可用 {row.available_at or '未知'}") for row in shown),
-            f"資料日 {day}｜來源 {source}｜類型 {trade_type or '未提供'}｜原順序前 {len(shown)}／{len(rows)} 列，完整原表在下方。"
-            "單日分點，不累計、不代表主力連買。",
+            f"資料日 {day}｜原順序顯示前 {len(shown)}／{len(rows)} 列；單日分點，不累計、不代表主力連買。缺值不補零。",
+            "bar",
+            "directional",
+            f"來源 {source}｜類型 {trade_type or '未提供'}｜每筆品質及可用時間見逐筆明細。",
         ))
     return tuple(result)
 
@@ -155,6 +174,7 @@ def shareholding_tier_visuals(metrics: Sequence[StockMetricDTO]) -> tuple[Resear
                     f"可用 {metric.available_at or '未知'}｜品質 {metric.quality}"))
         if any(point.value is not None for point in points):
             result.append(ResearchVisualGroup("集保持股級距分布", "基點", tuple(points),
-                f"資料日 {metric.data_as_of}｜來源 {metric.source_id}｜1–15級原比例；100基點為1%。"
-                "調整與合計列只留原表，不與級距混比；這是一個快照，不是大戶增減趨勢。"))
+                f"資料日 {metric.data_as_of}｜1–15級原比例；100基點為1%。"
+                "調整與合計列只留原表，不與級距混比；這是一個快照，不是大戶增減趨勢。缺值不補零。",
+                detail_note=f"來源 {metric.source_id}｜品質及可用時間見逐筆明細。"))
     return tuple(result)

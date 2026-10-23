@@ -76,6 +76,12 @@ _NAV_ICON_SVGS: dict[str, str] = {
             <path d="M5 5.5a9 9 0 0 1 14 0M5 18.5a9 9 0 0 0 14 0" />
         </svg>
     """,
+    "settings": """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l1.7-1.3-1.8-3.1-2 .8a7.8 7.8 0 0 0-2.6-1.5L14.4 3h-3.6l-.3 2.4a7.8 7.8 0 0 0-2.6 1.5l-2-.8-1.8 3.1 1.7 1.3a7.7 7.7 0 0 0 0 3l-1.7 1.3 1.8 3.1 2-.8a7.8 7.8 0 0 0 2.6 1.5l.3 2.4h3.6l.3-2.4a7.8 7.8 0 0 0 2.6-1.5l2 .8 1.8-3.1-1.7-1.3Z" />
+        </svg>
+    """,
 }
 
 
@@ -335,7 +341,10 @@ class LeftNavigationWidget(QWidget):
     def _button_text(self, item: NavigationItem) -> str:
         display_label = self._display_label(item)
         if self._collapsed:
-            return "" if item.icon in _NAV_ICON_SVGS else display_label[:1]
+            has_vector_icon = item.icon in _NAV_ICON_SVGS or (
+                self._primary_mode and self._is_system_item(item)
+            )
+            return "" if has_vector_icon else display_label[:1]
         display_label = (
             "系統狀態"
             if item.key == "runtime" and item.label == "系統狀態"
@@ -349,7 +358,7 @@ class LeftNavigationWidget(QWidget):
 
     def _display_label(self, item: NavigationItem) -> str:
         if self._primary_mode and self._is_system_item(item):
-            return "⚙ 系統管理"
+            return "系統管理"
         return item.label
 
     def _group_for_key(self, key: str) -> str | None:
@@ -393,7 +402,8 @@ class LeftNavigationWidget(QWidget):
                 button.setText(f"{marker} {label}")
 
     def _icon_for_item(self, item: NavigationItem) -> QIcon:
-        svg = _NAV_ICON_SVGS.get(item.icon, "")
+        icon_key = "settings" if self._primary_mode and self._is_system_item(item) else item.icon
+        svg = _NAV_ICON_SVGS.get(icon_key, "")
         if not svg:
             return QIcon()
         return _icon_from_svg(svg, MIDNIGHT_ANALYST.text_secondary)

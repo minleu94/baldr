@@ -9,6 +9,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from ui_qt.main_window_coordinator import (
@@ -460,6 +461,40 @@ def test_compact_shell_keeps_search_and_context_navigation_available(app: QAppli
     assert shell.search.context_label.width() >= 180
     assert shell.subnav.isVisible()
     assert shell.subnav.current_route == "market"
+
+
+def test_detail_uses_compact_source_breadcrumb_and_keeps_global_search_reachable(
+    app: QApplication,
+) -> None:
+    host, shell = _make_host(app)
+    shell.set_detail_origin("market")
+    host.show()
+    app.processEvents()
+
+    assert shell.search.isVisible() is False
+    assert shell.breadcrumb_row.isVisible()
+    assert shell.breadcrumb_row.maximumHeight() <= 30
+    assert shell.breadcrumb_label.text() == "個股研究  /  市場分析"
+    assert shell.return_button.isVisible()
+    assert shell.return_button.accessibleName() == "返回原研究來源"
+    assert shell.return_button.toolTip() == "返回原研究來源：市場分析"
+    assert shell.global_search_button.isVisible()
+    for button in (shell.global_search_button, shell.return_button):
+        assert button.focusPolicy() != Qt.FocusPolicy.NoFocus
+        assert "min-height: 0px" in button.styleSheet()
+        assert "max-height: 22px" in button.styleSheet()
+        button_rect = button.geometry()
+        assert button_rect.top() >= 0
+        assert button_rect.bottom() < shell.breadcrumb_row.height()
+        metrics = button.fontMetrics()
+        assert button.height() >= metrics.height() + 4  # text + vertical padding + border
+        assert button.width() >= metrics.horizontalAdvance(button.text()) + 14  # horizontal padding + border
+
+    search = shell.search
+    shell.global_search_button.click()
+    assert shell.search is search
+    assert shell.search.isVisible()
+    assert not shell.global_search_button.isVisible()
 
 
 def test_external_market_tab_selection_syncs_theme_route_only_in_foreground(app: QApplication) -> None:

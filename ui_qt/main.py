@@ -1624,11 +1624,22 @@ class MainWindow(QMainWindow):
         # Main持有自己的設定副本，呼叫端之後改原dict不會替換已選來源錨點。
         self.application_settings = dataclass_replace(application_settings or resolve_application_settings())
         self.build_identity = build_identity or detect_build_identity(repository_root=project_root)
-        self.setWindowTitle(f"baldr · {self.build_identity.display_text}")
-        self.build_identity_label = QLabel(self.build_identity.display_text)
+        identity_display_text = self.build_identity.display_text
+        if (
+            self.build_identity.channel == "release"
+            and self.build_identity.source_commit != "unknown"
+        ):
+            readable_version = self.build_identity.version.partition("+")[0]
+            identity_display_text = f"{readable_version}｜發布版"
+        self.setWindowTitle(f"baldr · {identity_display_text}")
+        self.build_identity_label = QLabel(identity_display_text)
         self.build_identity_label.setObjectName("baldrBuildIdentity")
         self.build_identity_label.setToolTip(
+            f"版本：{self.build_identity.version}\n"
+            f"通道：{self.build_identity.channel}\n"
             f"來源 commit：{self.build_identity.source_commit}\n"
+            f"含未提交變更：{'是' if self.build_identity.dirty else '否'}\n"
+            f"依賴鎖 SHA-256：{self.build_identity.dependency_lock_sha256 or '未知'}\n"
             f"設定：{self.application_settings.config_path}\n"
             f"行情：{self.application_settings.environment['DATA_ROOT']}\n"
             f"輸出：{self.application_settings.environment['OUTPUT_ROOT']}\n"

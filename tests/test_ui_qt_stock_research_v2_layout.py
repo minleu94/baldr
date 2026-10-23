@@ -10,7 +10,8 @@ from typing import Any
 
 import pytest
 
-from PySide6.QtWidgets import QApplication, QBoxLayout
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QApplication, QBoxLayout, QPushButton, QToolButton
 
 from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_dtos import (
@@ -146,6 +147,59 @@ def test_workspace_uses_action_row_and_all_six_report_sections_remain_reachable(
         assert workspace.outcome_tracking_action.isChecked()
         workspace.report_tabs.setCurrentWidget(report)
         assert workspace.research_content_action.isChecked()
+    finally:
+        workspace.request_close()
+        _wait(app, lambda: not workspace.is_busy())
+        workspace.close()
+
+
+def test_loaded_report_compact_header_keeps_switch_shortcuts_and_four_facets_on_first_screen():
+    app = _app()
+    workspace = StockResearchWorkspace(
+        _ReadService(),
+        journey_service=SimpleNamespace(build=lambda *_args, **_kwargs: None),
+    )
+    workspace.resize(1280, 760)
+    view = workspace.report_view
+    view._active_code = "2330"
+    from tests.opus_ux_review_fixture import full_research_report
+
+    report = full_research_report()
+    view._render_report(report)
+    view.status_label.setText("部分讀回；可用資料與缺件分開列示。")
+    workspace.show()
+    app.processEvents()
+    try:
+        assert workspace.product_action_row.objectName() == "stockResearchWorkspaceActionRow"
+        assert workspace.product_action_row.height() <= 36
+        assert view.search_panel.objectName() == "stockResearchSearchPanel"
+        assert view.search_panel.isHidden()
+        assert "讀回" in view.status_label.text()
+        assert not view.summary_focus.risk_label.isHidden()
+        assert not view.summary_focus.sufficiency_label.isHidden()
+        assert len(view.summary_focus.risk_label.text()) < 90
+        switch_button = view.findChild(QToolButton, "stockResearchSwitchStockToggle")
+        assert switch_button is not None and switch_button.isVisibleTo(workspace)
+        assert view.reload_button.isVisibleTo(workspace)
+        assert view.previous_button.isVisibleTo(workspace)
+        assert view.next_button.isVisibleTo(workspace)
+
+        hero_top = view.overview_price_group.mapTo(workspace, QPoint(0, 0)).y()
+        assert hero_top <= 200
+        assert view.overview_price_group.objectName() == "stockResearchOverviewPrice"
+        assert view.identity_quote_row.objectName() == "stockResearchIdentityQuoteRow"
+        for name in ("營收", "法人", "信用", "集保"):
+            button = view.findChild(QPushButton, f"stockResearchSummaryFacetOpen_{name}")
+            assert button is not None and button.isVisibleTo(workspace)
+            button_top = button.mapTo(workspace, QPoint(0, 0)).y()
+            assert button_top + button.height() <= workspace.height()
+
+        switch_button.click()
+        app.processEvents()
+        assert not view.search_panel.isHidden()
+        assert view.stock_search.isVisibleTo(workspace)
+        assert view.load_button.isVisibleTo(workspace)
+        assert view.stock_search.nextInFocusChain() is view.load_button
     finally:
         workspace.request_close()
         _wait(app, lambda: not workspace.is_busy())

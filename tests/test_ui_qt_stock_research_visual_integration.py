@@ -3,7 +3,7 @@
 from decimal import Decimal
 from types import SimpleNamespace
 
-from PySide6.QtWidgets import QApplication, QLabel, QTableView
+from PySide6.QtWidgets import QApplication, QLabel, QTableView, QToolButton
 
 from app_module.stock_research_report_dtos import StockMetricDTO, StockResearchReportDTO
 from ui_qt.views.stock_research_report_view import StockResearchReportView
@@ -21,9 +21,23 @@ def test_ownership_chart_is_same_report_and_missing_next_report_clears_it():
     assert len(charts) == 1
     assert charts[0].points[0].value == report.institutional[0].value
     assert view.findChildren(QTableView)
+    view.show()
+    assert view.focus_section("flows")
+    app.processEvents()
+    details = view.findChild(QToolButton, "stockResearchFlowDetailsToggle")
+    assert details is not None and not details.isChecked()
+    details.setChecked(True)
+    app.processEvents()
+    assert charts[0].isVisibleTo(view)
+
     view._render_flows(StockResearchReportDTO(stock_code="2317"))
-    # 舊頁元件可等待 Qt deferred-delete，但不得再屬於可見內容。
-    assert all(chart.isHidden() or chart.parent() is None for chart in charts)
+    app.processEvents()
+    assert all(not chart.isVisibleTo(view) for chart in charts)
+    visible_text = "\n".join(
+        label.text() for label in view.findChildren(QLabel) if label.isVisibleTo(view)
+    )
+    assert "外資淨買賣" not in visible_text
+    assert "-1,200" not in visible_text
     app.processEvents()
     view.close()
 

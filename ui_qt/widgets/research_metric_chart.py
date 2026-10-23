@@ -4,22 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
+from datetime import date
+import re
 from typing import Sequence
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetricsF, QPainter, QPen
 from PySide6.QtWidgets import (
-    QFrame,
     QBoxLayout,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.theme_widgets import CollapsibleSectionPanel
 
 
 @dataclass(frozen=True)
@@ -37,14 +38,16 @@ class _ZeroCenteredBar(QWidget):
         value: Decimal | None,
         scale: Decimal,
         *,
+        directional: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._value = value if value is not None and value.is_finite() else None
         self._scale = scale if scale.is_finite() and scale > 0 else Decimal(0)
+        self._directional = directional
         self.setMinimumSize(40, 24)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setAccessibleName("以零為中心的數值長條")
+        self.setAccessibleName("原值比例長條")
         self.setAccessibleDescription(
             "缺值" if self._value is None else f"原始數值：{format(self._value, 'f')}"
         )
@@ -54,22 +57,151 @@ class _ZeroCenteredBar(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         area = QRectF(self.rect()).adjusted(5, 7, -5, -7)
-        middle = area.center().x()
         painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.border), 1))
         painter.drawLine(int(area.left()), int(area.center().y()), int(area.right()), int(area.center().y()))
+        negative = self._value is not None and self._value < 0
+        signed = negative or getattr(self, "_signed", False)
+        middle = area.center().x() if signed else area.left()
         painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted), 1))
         painter.drawLine(int(middle), int(area.top()), int(middle), int(area.bottom()))
         if self._value is not None and self._scale > 0:
             with localcontext() as context:
                 context.prec = 28
                 ratio = min(self._value.copy_abs() / self._scale, Decimal(1))
-                width = float(ratio) * area.width() / 2
-            # 原觀測的正負不是利多利空；用中性色避免把賣出量或餘額誤當訊號。
-            color = QColor(MIDNIGHT_ANALYST.accent)
+                width = float(ratio) * area.width() / (2 if signed else 1)
+            # 通用值保持中性；只有明確方向語意才使用市場方向色。
+            color = QColor(
+                MIDNIGHT_ANALYST.market_up if self._value > 0 else
+                MIDNIGHT_ANALYST.market_down if self._value < 0 else
+                MIDNIGHT_ANALYST.market_flat
+            ) if self._directional else QColor(MIDNIGHT_ANALYST.accent)
             color.setAlpha(150)
             left = middle if self._value >= 0 else middle - width
             painter.fillRect(QRectF(left, area.top(), width, area.height()), color)
         painter.end()
+
+
+class _PeriodColumnChart(QWidget):
+    """以原期間位置繪製柱；月份缺口按日曆距離保留。"""
+
+    def __init__(
+        self,
+        points: Sequence[ResearchMetricBar],
+        periods: Sequence[str],
+        unit: str,
+        paired: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._points = tuple(points)
+        self._periods = tuple(periods)
+        self._unit = unit
+        self._paired = paired
+        self.setMinimumHeight(150)
+        self.setAccessibleName("原值期間柱圖")
+        self._period_axis = paired or (
+            len(self._periods) == len(self._points)
+            and all(self._parse_period(p) is not None for p in self._periods)
+        )
+        self.setToolTip(
+            "比較類別並列原始值。" if paired else
+            "柱位依 YYYY-MM 月份間隔排列；缺少月份不補值。" if self._period_axis else
+            "部分期間不符合 YYYY-MM；按原標籤作類別排列，不推定月份連續性。"
+        )
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        area = QRectF(self.rect()).adjusted(8, 30, -8, -34)
+        if not self._points or area.width() <= 0:
+            painter.end()
+            return
+        values = [p.value for p in self._points if p.value is not None and p.value.is_finite()]
+        if not values:
+            painter.end()
+            return
+        signed = any(v < 0 for v in values)
+        scale = max((abs(v) for v in values), default=Decimal(1)) or Decimal(1)
+        labels = [self._periods[i] if i < len(self._periods) else point.label
+                  for i, point in enumerate(self._points)]
+        value_labels = [
+            "缺值" if point.value is None or not point.value.is_finite()
+            else f"{format(point.value, 'f')} {self._unit}".rstrip()
+            for point in self._points
+        ]
+        edge_margin, plot_width = self._edge_label_layout(area.width(), (*labels, *value_labels))
+        xs = [area.left() + edge_margin + value for value in self._x_positions(plot_width)]
+        zero_y = area.center().y() if signed else area.bottom()
+        painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted), 1))
+        painter.drawLine(int(area.left()), int(zero_y), int(area.right()), int(zero_y))
+        step = plot_width / max(1, len(self._points))
+        width = max(4, min(34, step * .58))
+        max_bar_height = max(0.0, area.height() - 28) if not signed else max(0.0, area.height() / 2 - 28)
+        for i, (point, x) in enumerate(zip(self._points, xs)):
+            value = point.value
+            value_text = value_labels[i]
+            self.setAccessibleDescription(f"{point.label}：{value_text}")
+            if value is not None and value.is_finite():
+                with localcontext() as context:
+                    context.prec = 28
+                    height = float(abs(value) / scale) * max_bar_height
+                color = QColor(MIDNIGHT_ANALYST.accent)
+                painter.fillRect(QRectF(x - width / 2, zero_y - height if value >= 0 else zero_y,
+                                        width, height), color)
+                # 顯示精確原值，paired_column 不必展開明細就能比較兩根柱。
+                painter.setPen(QColor(MIDNIGHT_ANALYST.text_primary))
+                value_rect = self._centered_label_rect(value_text, x, zero_y - height - 22)
+                if value < 0:
+                    value_rect.moveTop(zero_y + height + 2)
+                painter.drawText(
+                    value_rect,
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                    value_text,
+                )
+                self.setToolTip(f"{point.label}｜原值 {value_text}")
+            label = labels[i]
+            painter.setPen(QColor(MIDNIGHT_ANALYST.text_secondary))
+            painter.drawText(self._centered_label_rect(label, x, area.bottom() + 4),
+                             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, label)
+        painter.end()
+
+    def _edge_label_layout(self, width: float, labels: Sequence[str]) -> tuple[float, float]:
+        """保留完整首尾標籤寬度，期間位置仍映射到同一日曆比例。"""
+        metrics = QFontMetricsF(self.font())
+        half_label = max((metrics.horizontalAdvance(label) / 2 for label in labels), default=0.0)
+        margin = min(half_label + 6.0, max(0.0, (width - 8.0) / 2))
+        return margin, max(1.0, width - 2 * margin)
+
+    def _centered_label_rect(self, text: str, x: float, y: float) -> QRectF:
+        width = max(1.0, QFontMetricsF(self.font()).horizontalAdvance(text) + 2.0)
+        return QRectF(x - width / 2, y, width, 22.0)
+
+    def _x_positions(self, width: float) -> tuple[float, ...]:
+        if self._paired:
+            gap = min(100.0, max(60.0, width * .2))
+            return tuple(
+                width / 2 + (i - (len(self._points) - 1) / 2) * gap
+                for i in range(len(self._points))
+            )
+        dates = tuple(self._parse_period(period) for period in self._periods)
+        valid_dates = tuple(item for item in dates if item is not None)
+        if self._period_axis and len(valid_dates) == len(self._points) and len(set(valid_dates)) > 1:
+            first, last = min(valid_dates), max(valid_dates)
+            span = (last - first).days or 1
+            return tuple((item - first).days / span * width for item in valid_dates)
+        step = width / max(1, len(self._points))
+        return tuple(step * (i + .5) for i in range(len(self._points)))
+
+    @staticmethod
+    def _parse_period(period: str):
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}", period):
+                return None
+            year, month = period.split("-")
+            return date(int(year), int(month), 1)
+        except (ValueError, TypeError):
+            return None
 
 
 class _ResponsiveResearchMetricRow(QWidget):
@@ -102,12 +234,21 @@ class ResearchMetricChart(QWidget):
         points: Sequence[ResearchMetricBar],
         note: str = "",
         parent: QWidget | None = None,
+        *,
+        orientation: str = "bar",
+        directional: bool = False,
+        periods: Sequence[str] | None = None,
+        detail_note: str = "",
     ) -> None:
         super().__init__(parent)
         self._points = tuple(points)
         self.title = title
         self.unit = unit
         self.note = note
+        self.detail_note = detail_note
+        self.orientation = orientation if orientation in {"bar", "column", "paired_column"} else "bar"
+        self.directional = directional
+        self.periods = tuple(periods or (point.label for point in self._points))
         self.setObjectName("researchMetricChart")
         self.setAccessibleName(title)
 
@@ -134,20 +275,12 @@ class ResearchMetricChart(QWidget):
             note_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
             root.addWidget(note_label)
 
-        self._scroll = QScrollArea()
-        self._scroll.setObjectName("researchMetricChartScrollArea")
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        root.addWidget(self._scroll)
-
         content = QWidget()
         content.setObjectName("researchMetricChartContent")
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(2, 2, 8, 2)
+        content_layout.setContentsMargins(2, 2, 2, 2)
         content_layout.setSpacing(5)
-        self._scroll.setWidget(content)
+        root.addWidget(content)
 
         finite_values = tuple(
             point.value
@@ -155,12 +288,8 @@ class ResearchMetricChart(QWidget):
             if point.value is not None and point.value.is_finite()
         )
         self._scale = max((value.copy_abs() for value in finite_values), default=Decimal(0))
+        self._signed = any(value < 0 for value in finite_values)
         self._row_widgets: list[QWidget] = []
-        visible_rows = min(6, max(1, len(self._points)))
-        chart_height = visible_rows * 48 + 12
-        self._scroll.setMinimumHeight(chart_height)
-        self._scroll.setMaximumHeight(chart_height)
-
         if not finite_values:
             missing = QLabel("目前沒有可繪製的數值；缺值不視為零。")
             missing.setObjectName("researchMetricChartMissing")
@@ -172,18 +301,55 @@ class ResearchMetricChart(QWidget):
             self._missing_label = missing
         else:
             self._missing_label = None
-            for point in self._points:
-                row = self._build_row(point)
-                self._row_widgets.append(row)
-                content_layout.addWidget(row)
+            if self.orientation in {"column", "paired_column"} and len(self._points) > 1:
+                plot = _PeriodColumnChart(
+                    self._points, self.periods, unit,
+                    paired=self.orientation == "paired_column", parent=content,
+                )
+                plot.setObjectName("researchMetricChartPlot")
+                content_layout.addWidget(plot)
+                if self.orientation == "paired_column":
+                    legend = QLabel(
+                        "　｜　".join(
+                            f"{point.label}：{self._format_value(point.value if point.value is not None and point.value.is_finite() else None)}"
+                            for point in self._points
+                        )
+                    )
+                    legend.setTextFormat(Qt.TextFormat.PlainText)
+                    legend.setObjectName("researchMetricChartPairedValues")
+                    legend.setWordWrap(True)
+                    legend.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                    legend.setAccessibleName("比較柱原始值")
+                    legend.setAccessibleDescription(legend.text())
+                    legend.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
+                    content_layout.addWidget(legend)
+            elif self.orientation in {"column", "paired_column"}:
+                # 單一期間只呈現原值卡，不畫單柱趨勢圖，也不把原值藏在明細。
+                point = self._points[0]
+                period = self.periods[0] if self.periods else point.label
+                value = point.value if point.value is not None and point.value.is_finite() else None
+                card = QLabel(
+                    f"{point.label or '未命名項目'}　{self._format_value(value)}\n"
+                    f"期間：{period}　｜　單一觀測，不能判定趨勢"
+                )
+                card.setTextFormat(Qt.TextFormat.PlainText)
+                card.setObjectName("researchMetricChartSingleColumnValue")
+                card.setWordWrap(True)
+                card.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                card.setAccessibleName(f"{point.label or '未命名項目'}單一期間原值")
+                card.setAccessibleDescription(card.text())
+                card.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
+                )
+                content_layout.addWidget(card)
+            if self.orientation == "bar":
+                for point in self._points:
+                    row = self._build_row(point)
+                    self._row_widgets.append(row)
+                    content_layout.addWidget(row)
+            self.details_panel = self._build_details_panel()
+            content_layout.addWidget(self.details_panel)
         content_layout.addStretch(1)
-
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        if hasattr(self, "_scroll"):
-            row_height = 48 if event.size().width() >= 650 else 84
-            height = min(6, max(1, len(self._points))) * row_height + 12
-            self._scroll.setFixedHeight(height)
 
     @property
     def points(self) -> tuple[ResearchMetricBar, ...]:
@@ -195,8 +361,7 @@ class ResearchMetricChart(QWidget):
         row = _ResponsiveResearchMetricRow()
         row.setObjectName("researchMetricChartRow")
         row.setAccessibleName(point.label or "未命名項目")
-        row.setAccessibleDescription(point.detail or point.label or "未提供列說明")
-        row.setToolTip(point.detail)
+        row.setAccessibleDescription(point.label or "未命名項目")
         layout = row._layout
 
         text_column = QWidget()
@@ -211,15 +376,6 @@ class ResearchMetricChart(QWidget):
         label.setAccessibleName(point.label or "未命名項目")
         label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         text_layout.addWidget(label)
-        if point.detail:
-            detail = QLabel(point.detail)
-            detail.setTextFormat(Qt.TextFormat.PlainText)
-            detail.setObjectName("researchMetricChartRowDetail")
-            detail.setWordWrap(True)
-            detail.setAccessibleName("資料日期與來源明細")
-            detail.setAccessibleDescription(point.detail)
-            detail.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;")
-            text_layout.addWidget(detail)
         layout.addWidget(text_column, 1)
 
         value = point.value if point.value is not None and point.value.is_finite() else None
@@ -229,7 +385,8 @@ class ResearchMetricChart(QWidget):
         value_bar_layout.setContentsMargins(0, 0, 0, 0)
         value_bar_layout.setSpacing(8)
         if len(self._points) > 1:
-            bar = _ZeroCenteredBar(value, self._scale)
+            bar = _ZeroCenteredBar(value, self._scale, directional=self.directional)
+            bar._signed = self._signed
             bar.setObjectName("researchMetricChartBar")
             value_bar_layout.addWidget(bar, 1)
         else:
@@ -250,6 +407,43 @@ class ResearchMetricChart(QWidget):
         value_bar_layout.addWidget(value_label)
         layout.addWidget(value_bar, 2)
         return row
+
+    def _build_details_panel(self) -> CollapsibleSectionPanel:
+        panel = CollapsibleSectionPanel("原值與來源明細（選取展開）", collapsed=True)
+        panel.setObjectName("researchMetricChartDetails")
+        panel.layout.setContentsMargins(4, 2, 4, 2)
+        panel.layout.setSpacing(2)
+        panel.title_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px; "
+            "font-weight: 600; padding: 0; border: none; background: transparent;"
+        )
+        if self.detail_note:
+            note = QLabel(self.detail_note)
+            note.setTextFormat(Qt.TextFormat.PlainText)
+            note.setObjectName("researchMetricChartSourceDetail")
+            note.setWordWrap(True)
+            note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            note.setAccessibleName("來源與原始說明")
+            note.setAccessibleDescription(self.detail_note)
+            note.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+            panel.content_layout.addWidget(note)
+        for point in self._points:
+            value = point.value if point.value is not None and point.value.is_finite() else None
+            label = QLabel(
+                f"{point.label or '未命名項目'}｜原值 {self._format_value(value)}"
+                + (f"｜{point.detail}" if point.detail else "｜來源明細未提供")
+            )
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setObjectName("researchMetricChartExactDetail")
+            label.setWordWrap(True)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            label.setAccessibleName(f"{point.label or '未命名項目'}原值與來源明細")
+            label.setAccessibleDescription(
+                f"原值 {self._format_value(value)}；{point.detail or '來源明細未提供'}"
+            )
+            label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+            panel.content_layout.addWidget(label)
+        return panel
 
     def _format_value(self, value: Decimal | None) -> str:
         if value is None:

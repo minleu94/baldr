@@ -30,6 +30,11 @@ def test_fundamental_groups_keep_original_values_missing_periods_and_source_boun
     assert [point.value for point in groups[0].points] == [Decimal("-10.25"), None]
     assert groups[1].points[0].value == 0
     assert "單一期間" in groups[1].note
+    assert groups[0].chart_kind == "column"
+    assert groups[0].semantic == "generic"
+    assert "來源 official" not in groups[0].note
+    assert "來源 official" in groups[0].detail_note
+    assert "缺值不補零" in groups[0].note
     assert report.fundamentals == rows
 
 
@@ -52,6 +57,8 @@ def test_ownership_separates_days_units_sources_and_keeps_missing_zero():
     assert groups[0].points[0].value == Decimal(0)
     assert groups[0].points[1].value is None
     assert all("單日" in group.note for group in groups)
+    assert groups[0].semantic == "directional"
+    assert groups[0].chart_kind == "bar"
 
 
 def test_branch_preview_retains_original_order_and_denominator_without_summing():
@@ -98,4 +105,8 @@ def test_comparison_chart_uses_original_current_prior_without_recomputing_change
     group, = fundamental_visuals(StockResearchReportDTO(stock_code="2330", fundamentals=(current,), fundamental_comparisons=(comparison,)))
     assert [point.value for point in group.points] == [Decimal("54.15"), Decimal("55.25")]
     assert group.unit == "percent"
+    assert group.chart_kind == "paired_column"
+    assert "來源 current／v1" not in group.note
+    assert "來源 current／v1" in group.detail_note
+    assert "比較來源 comparison／c1" in group.detail_note
     assert comparison.change_value == Decimal("1.10")

@@ -1,5 +1,7 @@
 # baldr Windows 可攜版
 
+後繼原始碼在 release 渠道的標題及狀態列先顯示人可讀版本與發布標記，完整版本、commit、dirty 及 lock metadata 仍可在提示核對；開發渠道保留開發身份。這項顯示調整沒有重建或替換下述固定候選，也不代表取得數位簽章、跨機或真人接受。
+
 V2後繼候選支援明選包外 `RESEARCH_PAPER_EVIDENCE_BINDING_PATH` 與外部固定 `RESEARCH_PAPER_EVIDENCE_BINDING_SHA256`，兩欄必須成對；未選或核驗失敗不開啟正向模擬。帳戶與成本原件另循原`PAPER_CONTRACT_ARTIFACTS_ROOT`及PERSONAL路由，不隨EXE自動建立或複製私人金融狀態。操作與限制見[完整手冊](APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)。本輪候選與Source／EXE身份只依[補完驗收](../06_qa/BALDR_V2_FINAL_COMPLETION_20261021.md)及具名本機收據判讀，下方舊候選保持原範圍。
 
 目前 V2 本機技術候選為 `dist/candidate_a65d2b2b4fd5_cb32716d/baldr`，版本 `2026.10.21+a65d2b2b4fd5`。保留完整資料夾，以 `Launch-Baldr.cmd` 啟動，操作見包內 `GUIDE.md`；state 為本task獨立 `r132_candidate_state`，已準備四個受限真樣本，不需再次 prepare。`--check launch-info` 可核啟動身份。QA115 同版、QA117 真 frozen Main UI 保存與 fresh 對照、QA118 啟動器 prepare0／check0／錯SHA拒絕3、QA120 1280×760／125%的17路由及另三尺寸首頁通過；QA121只重開同一筆記補驗150%完整來源識別，不再保存。EXE SHA `0417d9c1c2d6a812a55b777974be623f2a23bac49e874f0dc218d31a8410c9d4`；11檔交付收據 SHA `720f6b02a26a719a47f7b02b686d45e7af6cb7eb93acda72d2ac4eeab6e19240`。原工具失敗與沿用前版證據的範圍見[V2驗收紀錄](../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#研究證據對照候選交付qa113121)。本機位置綁定、未簽章，五旅程 PARTIAL、Native停止／真人待驗及金融限制保持；正常關閉後可從保留的412ca、2b或研究13原啟動器回退，各用原state、不合併或遷移。未替換active delivery或清理舊包。

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QLabel, QMenu, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from app_module.research_session import ResearchStockContextDTO
 from ui_qt.main_window_coordinator import (
@@ -26,6 +26,7 @@ class ProductShell(QWidget):
         self._last_routes: dict[str, str] = {}
         self._activating = False
         self._detail_origin: str | None = None
+        self._global_search_expanded = False
         self._theme_auto_requested = False
         self._stock_directory_entries: tuple[StockSearchEntry, ...] = ()
         self._stock_directory_worker: TaskWorker | None = None
@@ -36,6 +37,25 @@ class ProductShell(QWidget):
         self.search = GlobalSearchBar(self)
         self.search.searchRequested.connect(self.search_query)
         layout.addWidget(self.search)
+        self.breadcrumb_row = QWidget(self)
+        self.breadcrumb_row.setObjectName("productDetailBreadcrumb")
+        self.breadcrumb_row.setMaximumHeight(30)
+        breadcrumb_layout = QHBoxLayout(self.breadcrumb_row)
+        breadcrumb_layout.setContentsMargins(0, 0, 0, 0)
+        breadcrumb_layout.setSpacing(6)
+        self.breadcrumb_label = QLabel(self.breadcrumb_row)
+        self.breadcrumb_label.setObjectName("productDetailBreadcrumbLabel")
+        self.breadcrumb_label.setAccessibleName("個股研究原返回來源")
+        breadcrumb_layout.addWidget(self.breadcrumb_label, 1)
+        self.global_search_button = QPushButton("全域查找", self.breadcrumb_row)
+        self.global_search_button.setObjectName("productGlobalSearchEntry")
+        self.global_search_button.setAccessibleName("展開全域查找")
+        self.global_search_button.setStyleSheet(
+            "QPushButton#productGlobalSearchEntry { min-height: 0px; max-height: 22px; "
+            "padding: 1px 6px; }"
+        )
+        self.global_search_button.clicked.connect(self._show_global_search)
+        breadcrumb_layout.addWidget(self.global_search_button)
         self.subnav = WorkspaceSubnav(self)
         self.subnav.set_tab_predecessor(self.search.search_button)
         self.subnav.routeSelected.connect(self.activate_route)
@@ -43,16 +63,24 @@ class ProductShell(QWidget):
         self.return_button = QPushButton(self)
         self.return_button.setObjectName("productReturnToSource")
         self.return_button.setAccessibleName("返回原研究來源")
+        self.return_button.setText("← 返回原來源")
+        self.return_button.setProperty("variant", "secondary")
+        self.return_button.setStyleSheet(
+            "QPushButton#productReturnToSource { min-height: 0px; max-height: 22px; "
+            "padding: 1px 6px; }"
+        )
+        self.return_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.return_button.clicked.connect(self.return_to_source)
-        self.return_button.hide()
-        layout.addWidget(self.return_button)
+        breadcrumb_layout.addWidget(self.return_button)
+        self.breadcrumb_row.hide()
+        layout.addWidget(self.breadcrumb_row)
         self.route_hint = QLabel(self)
         self.route_hint.setObjectName("productRouteHint")
         self.route_hint.setWordWrap(True)
         self.route_hint.hide()
         layout.addWidget(self.route_hint)
         self.search_shortcut = QShortcut(QKeySequence("Ctrl+K"), host)
-        self.search_shortcut.activated.connect(self.search.focus_search)
+        self.search_shortcut.activated.connect(self._show_global_search)
         self.return_shortcut = QShortcut(QKeySequence("Alt+Left"), host)
         self.return_shortcut.activated.connect(self.return_to_source)
         self._refresh_navigation()
@@ -135,6 +163,7 @@ class ProductShell(QWidget):
             self.route_id = route_id
             self._last_routes[route.group] = route_id
             self._detail_origin = None
+            self._global_search_expanded = False
             if preserve_view_state:
                 self.host._select_main_workspace(route.workspace, preserve_view_state=True)
             else:
@@ -152,6 +181,7 @@ class ProductShell(QWidget):
         if key == "stock_research":
             if self._detail_origin is None:
                 self._detail_origin = self.route_id
+            self._global_search_expanded = False
             self._refresh_navigation()
             return
         self.host._historical_research_return = None
@@ -173,19 +203,34 @@ class ProductShell(QWidget):
 
     def _refresh_navigation(self) -> None:
         route = ROUTE_BY_ID[self.route_id]
+        in_detail = self._detail_origin is not None
         self.host.left_navigation.set_current_key(route.group)
         self.subnav.set_routes(tuple((r.route_id, r.label) for r in routes_for_group(route.group)))
         self.subnav.set_current_route(self.route_id)
         self.subnav.setVisible(self._detail_origin is None and route.group != "workbench")
-        self.return_button.setVisible(self._detail_origin is not None)
+        self.search.setVisible(not in_detail or self._global_search_expanded)
+        self.breadcrumb_row.setVisible(in_detail)
+        self.global_search_button.setVisible(in_detail and not self._global_search_expanded)
+        self.return_button.setVisible(in_detail)
         if self._detail_origin is not None:
-            self.return_button.setText("← 返回：" + ROUTE_BY_ID[self._detail_origin].label)
+            origin_label = ROUTE_BY_ID[self._detail_origin].label
+            self.breadcrumb_label.setText(f"個股研究  /  {origin_label}")
+            self.return_button.setToolTip(f"返回原研究來源：{origin_label}")
         hints = {
             "ml": "模型研究專區：未取得正式決策資格，預測不等於實際成果。",
         }
         hint = hints.get(self.route_id, "") if self._detail_origin is None else ""
         self.route_hint.setText(hint)
         self.route_hint.setVisible(bool(hint))
+
+    def _show_global_search(self) -> None:
+        """詳情頁以明確入口展開同一個全域搜尋欄。"""
+
+        if self._detail_origin is not None:
+            self._global_search_expanded = True
+            self._refresh_navigation()
+        self.search.setVisible(True)
+        self.search.focus_search()
 
     def _select_existing_section(self, route_id: str) -> None:
         host = self.host

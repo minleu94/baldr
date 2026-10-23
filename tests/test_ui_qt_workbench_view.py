@@ -435,6 +435,21 @@ def test_workbench_evidence_table_model_has_no_diagnostics_column() -> None:
     assert visible_fields == ("label", "status", "summary")
 
 
+def test_market_card_keeps_missing_kpis_unknown_without_filling_zeros() -> None:
+    app()
+    dashboard = replace(
+        _dashboard_with_replay(),
+        market_context={"source_status": "partial", "market_breadth": {"quality": "missing"}},
+    )
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    try:
+        assert view.daily_market_card.value_label.text() == "市場資料部分可用"
+        assert all(label.text() == "—" for label in view.daily_market_kpi_labels.values())
+        assert view.daily_market_footer_label.text() == "資料日 未提供｜品質 資料缺件｜來源 部分可用（資料缺件）"
+    finally:
+        _dispose_workbench_view(view)
+
+
 def test_workbench_refresh_preserves_last_good_dashboard_as_stale_and_focuses_retry() -> None:
     app()
     dashboard = _dashboard_with_replay()

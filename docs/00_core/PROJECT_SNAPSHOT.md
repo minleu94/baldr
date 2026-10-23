@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**Opus複審後的UI修正已完成具名工程回歸。** Luna分工實作、root審查：紅漲綠跌與狀態色分離、緊湊個股頁首、短五問及四面向摘要、缺月營收柱／財報配對柱、固定籌碼四面向與展開原值、首頁市場家數與逐股候選、選股漏斗／比較未知／深色回測及返回列。281項定向、Workbench85、validator25／0／4、mypy1138及編譯通過；正常Main125%／150%首次及新程序回訪通過，1280首圖頂端166邏輯px、四摘要入口完整可見。完整合成欄位與17路由已補圖，但市場／Paper／持倉仍有舊術語及長表問題，並非全平台美觀接受。正式資料、Daily Operations Recovery、DTO／金融規則及固定EXE保持；最終增量、原失敗、外部／真人未驗界線見[修正QA](../06_qa/BALDR_OPUS_UX_REMEDIATION_QA_20261022.md)。
+
 **Track B 六包再複核（10/23 Taipei）：** Legacy 實際為7筆獨立託管、81筆缺證；Weekly 固定遷移原件驗證後仍5/6 partial；Forward 改為驗證capture context與事件hash後登記每事件政策，outcome角色分開核對。真reader重建9,423筆版本矩陣、8份HTML尺度證據，6443差異與幣別／歷史availability未解。37個既有導航連結採35個精確文件／目標登記，並非整庫豁免；詳見[六包獨立複核](../06_qa/BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)。Formal/Paper未選定與自然驗證界線保持。
 
 **Track B 接任成果獨立複核：完成裁決不成立。** 已補強 Forward 外部接受／原件重播、Legacy custody、搬遷路徑與 Weekly 期別檢查；八份雙市場月營收 HTML 及四月 archive 已離線讀回，但 TWSE 6443 仍有兩欄差異、正式 Scoring/PIT 未通過。Formal/Paper 來源 Owner 尚未選定，自然排程未恢復完整鏈；不宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。原 RC／Track A UI 保持，驗證與逐線剩餘工程見[Track B 獨立複核](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。

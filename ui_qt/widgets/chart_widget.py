@@ -9,7 +9,6 @@ import matplotlib
 matplotlib.use('QtAgg')  # 使用 Qt 後端
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.ticker import MaxNLocator
 import pandas as pd
@@ -17,6 +16,7 @@ import numpy as np
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 import logging
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 # 嘗試導入 mplcursors（用於 hover tooltip）
 try:
@@ -26,18 +26,34 @@ except ImportError:
     HAS_MPLCURSORS = False
     logging.warning("[ChartWidget] mplcursors 未安裝，將使用基本 tooltip 功能")
 
-# 設定中文字體（支援繁體中文）
-def setup_chinese_font():
-    """設定 matplotlib 中文字體"""
-    try:
-        # Windows 常見的中文字體
-        plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei', 'Microsoft YaHei', 'SimHei', 'Arial Unicode MS', 'DejaVu Sans']
-        plt.rcParams['axes.unicode_minus'] = False  # 解決負號顯示問題
-    except Exception as e:
-        print(f"[ChartWidget] 設定中文字體失敗: {e}")
-
-# 初始化字體設定
-setup_chinese_font()
+def _apply_dark_chart_theme(figure, canvas) -> None:
+    """只設定這一張圖的背景、刻度與文字，不改 matplotlib 全域 rcParams。"""
+    figure.set_facecolor(MIDNIGHT_ANALYST.app_bg)
+    figure.patch.set_facecolor(MIDNIGHT_ANALYST.app_bg)
+    canvas.setStyleSheet(f"background: {MIDNIGHT_ANALYST.surface_1};")
+    for axes in figure.axes:
+        axes.set_facecolor(MIDNIGHT_ANALYST.surface_1)
+        axes.tick_params(axis="both", colors=MIDNIGHT_ANALYST.text_secondary)
+        axes.xaxis.label.set_color(MIDNIGHT_ANALYST.text_secondary)
+        axes.yaxis.label.set_color(MIDNIGHT_ANALYST.text_secondary)
+        axes.title.set_color(MIDNIGHT_ANALYST.text_primary)
+        for spine in axes.spines.values():
+            spine.set_color(MIDNIGHT_ANALYST.border)
+        for text in axes.texts:
+            if str(text.get_color()).casefold() in {"black", "k", "#000000"}:
+                text.set_color(MIDNIGHT_ANALYST.text_primary)
+            patch = text.get_bbox_patch()
+            if patch is not None:
+                patch.set_facecolor(MIDNIGHT_ANALYST.surface_3)
+                patch.set_edgecolor(MIDNIGHT_ANALYST.border)
+        legend = axes.get_legend()
+        if legend is not None:
+            legend.get_frame().set_facecolor(MIDNIGHT_ANALYST.surface_2)
+            legend.get_frame().set_edgecolor(MIDNIGHT_ANALYST.border)
+            for text in legend.get_texts():
+                text.set_color(MIDNIGHT_ANALYST.text_primary)
+        axes.grid(True, color=MIDNIGHT_ANALYST.border_subtle, alpha=0.75)
+    canvas.draw()
 
 
 class EquityCurveWidget(QWidget):
@@ -69,18 +85,19 @@ class EquityCurveWidget(QWidget):
         layout.setSpacing(0)
         
         # 圖表（使用較大的初始尺寸，但會隨窗口調整）
-        self.figure = Figure(figsize=(12, 8))  # 增大初始尺寸
+        self.figure = Figure(figsize=(12, 8), facecolor=MIDNIGHT_ANALYST.app_bg)
         self.canvas = FigureCanvas(self.figure)
         # 設置 canvas 可以隨窗口大小調整
         self.canvas.setMinimumSize(400, 300)  # 設置最小尺寸，但允許更大
         layout.addWidget(self.canvas)
         
-        self.ax = self.figure.add_subplot(111)
+        self.ax = self.figure.add_subplot(111, facecolor=MIDNIGHT_ANALYST.surface_1)
         # 確保使用中文字體
         self.ax.set_title('權益曲線 (Equity Curve)', fontsize=12, fontweight='bold')
         self.ax.set_xlabel('日期')
         self.ax.set_ylabel('權益 ($)')
         self.ax.grid(True, alpha=0.3)
+        _apply_dark_chart_theme(self.figure, self.canvas)
     
     def plot(
         self, 
@@ -105,7 +122,7 @@ class EquityCurveWidget(QWidget):
         
         if equity_series is None or len(equity_series) == 0:
             self.ax.text(0.5, 0.5, '無資料', ha='center', va='center', transform=self.ax.transAxes)
-            self.canvas.draw()
+            _apply_dark_chart_theme(self.figure, self.canvas)
             return
         
         # 確保索引是 DatetimeIndex
@@ -115,7 +132,7 @@ class EquityCurveWidget(QWidget):
             except Exception as e:
                 logging.warning(f"[EquityCurveWidget] 無法轉換索引為日期: {e}")
                 self.ax.text(0.5, 0.5, '日期索引格式錯誤', ha='center', va='center', transform=self.ax.transAxes)
-                self.canvas.draw()
+                _apply_dark_chart_theme(self.figure, self.canvas)
                 return
         
         # 1. 找出第一個買點（用於基準線對齊）
@@ -200,7 +217,7 @@ class EquityCurveWidget(QWidget):
         # 格式化 x 軸日期
         self.figure.autofmt_xdate()
         
-        self.canvas.draw()
+        _apply_dark_chart_theme(self.figure, self.canvas)
     
     def _align_date_to_index(self, target_date: pd.Timestamp, index: pd.DatetimeIndex, method: str = 'asof') -> Optional[pd.Timestamp]:
         """
@@ -781,16 +798,17 @@ class DrawdownCurveWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        self.figure = Figure(figsize=(12, 8))  # 增大初始尺寸
+        self.figure = Figure(figsize=(12, 8), facecolor=MIDNIGHT_ANALYST.app_bg)
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setMinimumSize(400, 300)  # 設置最小尺寸，但允許更大
         layout.addWidget(self.canvas)
         
-        self.ax = self.figure.add_subplot(111)
+        self.ax = self.figure.add_subplot(111, facecolor=MIDNIGHT_ANALYST.surface_1)
         self.ax.set_title('回撤曲線 (Drawdown Curve)', fontsize=12, fontweight='bold', fontfamily='sans-serif')
         self.ax.set_xlabel('日期', fontfamily='sans-serif')
         self.ax.set_ylabel('回撤 (%)', fontfamily='sans-serif')
         self.ax.grid(True, alpha=0.3)
+        _apply_dark_chart_theme(self.figure, self.canvas)
     
     def plot(self, drawdown_series: pd.Series, max_dd_info: Optional[Dict[str, Any]] = None):
         """
@@ -804,7 +822,7 @@ class DrawdownCurveWidget(QWidget):
         
         if drawdown_series is None or len(drawdown_series) == 0:
             self.ax.text(0.5, 0.5, '無資料', ha='center', va='center', transform=self.ax.transAxes)
-            self.canvas.draw()
+            _apply_dark_chart_theme(self.figure, self.canvas)
             return
         
         # 轉換為百分比
@@ -855,7 +873,7 @@ class DrawdownCurveWidget(QWidget):
         self.ax.grid(True, alpha=0.3)
         
         self.figure.autofmt_xdate()
-        self.canvas.draw()
+        _apply_dark_chart_theme(self.figure, self.canvas)
 
 
 class TradeReturnHistogramWidget(QWidget):
@@ -870,16 +888,17 @@ class TradeReturnHistogramWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        self.figure = Figure(figsize=(12, 8))  # 增大初始尺寸
+        self.figure = Figure(figsize=(12, 8), facecolor=MIDNIGHT_ANALYST.app_bg)
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setMinimumSize(400, 300)  # 設置最小尺寸，但允許更大
         layout.addWidget(self.canvas)
         
-        self.ax = self.figure.add_subplot(111)
+        self.ax = self.figure.add_subplot(111, facecolor=MIDNIGHT_ANALYST.surface_1)
         self.ax.set_title('交易報酬', fontsize=12, fontweight='bold')
         self.ax.set_xlabel('報酬率 (%)')
         self.ax.set_ylabel('頻率')
         self.ax.grid(True, alpha=0.3, axis='y')
+        _apply_dark_chart_theme(self.figure, self.canvas)
     
     def plot(self, returns: np.ndarray, stats: Optional[Dict[str, float]] = None):
         """
@@ -893,7 +912,7 @@ class TradeReturnHistogramWidget(QWidget):
         
         if returns is None or len(returns) == 0:
             self.ax.text(0.5, 0.5, '無資料', ha='center', va='center', transform=self.ax.transAxes)
-            self.canvas.draw()
+            _apply_dark_chart_theme(self.figure, self.canvas)
             return
         
         values = np.asarray(returns, dtype=float)
@@ -966,7 +985,7 @@ class TradeReturnHistogramWidget(QWidget):
             self.ax.legend(loc='best')
         self.ax.grid(True, alpha=0.3, axis='y')
         
-        self.canvas.draw()
+        _apply_dark_chart_theme(self.figure, self.canvas)
 
 
 class HoldingDaysHistogramWidget(QWidget):
@@ -981,16 +1000,17 @@ class HoldingDaysHistogramWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        self.figure = Figure(figsize=(12, 8))  # 增大初始尺寸
+        self.figure = Figure(figsize=(12, 8), facecolor=MIDNIGHT_ANALYST.app_bg)
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setMinimumSize(400, 300)  # 設置最小尺寸，但允許更大
         layout.addWidget(self.canvas)
         
-        self.ax = self.figure.add_subplot(111)
+        self.ax = self.figure.add_subplot(111, facecolor=MIDNIGHT_ANALYST.surface_1)
         self.ax.set_title('持有天數分佈 (Holding Period Distribution)', fontsize=12, fontweight='bold')
         self.ax.set_xlabel('持有天數')
         self.ax.set_ylabel('頻率')
         self.ax.grid(True, alpha=0.3, axis='y')
+        _apply_dark_chart_theme(self.figure, self.canvas)
     
     def plot(self, holding_days: np.ndarray):
         """
@@ -1003,7 +1023,7 @@ class HoldingDaysHistogramWidget(QWidget):
         
         if holding_days is None or len(holding_days) == 0:
             self.ax.text(0.5, 0.5, '無資料', ha='center', va='center', transform=self.ax.transAxes)
-            self.canvas.draw()
+            _apply_dark_chart_theme(self.figure, self.canvas)
             return
         
         # 計算統計
@@ -1038,4 +1058,4 @@ class HoldingDaysHistogramWidget(QWidget):
         self.ax.legend(loc='best')
         self.ax.grid(True, alpha=0.3, axis='y')
         
-        self.canvas.draw()
+        _apply_dark_chart_theme(self.figure, self.canvas)

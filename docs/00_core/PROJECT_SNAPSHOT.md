@@ -144,5 +144,6 @@ V1維持[原四條流程與驗收出口](../superpowers/plans/baldr_product_comp
 - 金融精度、決策當下可得性、來源用途、原 FAIL 與各 Gate 門檻維持；缺值與未知不能補零。
 - Historical replay、readiness、dry-run、shadow、Paper、合成資料或測試通過，均不能代替真來源、有效績效、真人接受、自然成熟或 production ML 資格。程式碼／EXE 可啟動也不授上述接受；UI 的既有 mypy ignore 設定不證強型別。
 - Root 串行 QA 與資源守衛依[共用規則](../agents/shared_context.md)。本補完 task 已用完新建代理額度 10/10；只在無待寫與無衝突時重用既有 Luna。
+- 修改範圍內既存 37 個 `output/` 連結越界問題已完成具名盤點（真缺件=0、路徑錯誤=0、全數為 `BaldrStorage/repo-output` 實體存在之試用包與任務指南）；因 Windows NTFS junction 跨磁碟邊界依嚴格模式列管。依契約保留證據連結，不刪除連結、不全面豁免 output，差異檢查維持新增錯誤為零（收據見 `wp6_document_links_triage.json`）。
 
 [143固定交付](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment143-setup-work-scheduling)以537.875秒通過原600秒本機新位置設定，正常EXE與同版新程序核受改月營收、窄頁、顯示名稱及同源收藏，啟動器正反SHA通過。派工寫2／讀4與完整守衛保持，原142 FAIL／partial不改；完整跨機、Native／真人、金融資格與原計畫各Gate仍分別待驗。

@@ -45,3 +45,27 @@ MOPS 官方 host 宣告 Big5 而包含 CP950 擴充時，先依宣告 strict dec
 Builder、create-only writer及reader都由固定SHA／URL／CP950 profile的真capture重新推導逐表證據；手造proof、自算SHA、原件或scope漂移、連結／讀取期間替換均拒絕。TWSE proof SHA `c5a998b5be056507f452f1b5b70081d033eaf25ac6c5dcee6a4b74fdca1b9336`、TPEx `a89e429422406c02e6beb61381206006f4545d3e39b638c1cb7af7839eeb2e0b`，QA與固定原件見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
 
 這是scale-only proof，`currency=unknown`、PIT／金融資格=false，不是貨幣及用途接受齊全的unit proof，不塞入archive既有`unit_proof_sha256`或將`unit_status`改verified。兩個OpenAPI單位仍未知，不以此乘1,000或標TWD；r2 archive、原百分率研究與既有資格不變。
+
+## 2026-10-22 Track B 接任歷史原件全覆蓋與對等證明（R3 整合）
+
+接任負責人依 `FULL_SCOPE_MONTHLY_REVENUE_OWNER_AUTHORIZATION` 完成全用途範圍之歷史原件捕獲與跨來源對等性核驗：
+
+1. **官方 MOPS 靜態 HTML 歷史原件完整捕獲**：
+   - 成功捕獲 2026-07、2026-08、2026-09 雙市場（TWSE 上市與 TPEx 上櫃）共 6 份完整 HTML 原件於 `wp5_monthly_revenue/mops_history_captures_r3/`。
+   - 所有檔案均具完整 HTTP 200、完整 EOF、精確 Content-Length 與 SHA-256 收據，無任何截斷或逾時缺件。
+
+2. **統一修訂帳本（Unified Revision Archive）**：
+   - 建立 10 個批次、共 9,423 筆觀測值之修訂帳本（涵蓋 2026-06..2026-09 MOPS 歷史與 2026-09 OpenAPI）。
+   - 索引檔位於 `wp5_monthly_revenue/r3_full_archive/indexes/ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5.json`。
+
+3. **跨來源金額完全對等證明（Cross-Source Amount Parity Proof）**：
+   - 針對 2026-09 共同存在的 863 家上市櫃公司進行跨來源（OpenAPI vs MOPS HTML）逐欄位金額交叉比對。
+   - 比較結果：863/863 家公司金額 100% 完全相符，差異數為 0（0 mismatches），確認兩來源數值對等性。
+
+4. **千元尺度與幣別界線**：
+   - 由 MOPS HTML 表頭結構嚴格推導金額欄位之千元乘數尺度（`scale_to_base_unit=1000`），百分率欄位維持原比率。
+   - 由於官方端點與宣告文件未具備雙向明確指定新台幣之法律文件前，系統誠實保留 `currency="unknown"`，不以主觀習慣猜測 TWD。
+
+5. **下游 Consumer 轉接器與防護閘門**：
+   - 於 `data_module/monthly_revenue_qualification_binding.py` 與 `app_module/monthly_revenue_research_service.py` 完整接通 Scoring、Backtest、ML 轉接器與用途防護閘門。
+

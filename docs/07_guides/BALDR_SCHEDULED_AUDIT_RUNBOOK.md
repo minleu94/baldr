@@ -107,3 +107,15 @@ Paper EOD retry wrapper 的新自然 run 另產 `paper-execution-retry-terminal-
 校準 official child 不再以可變 latest 當本次輸出；以 `scheduled/recommendation_calibration_learning/runs/<aggregate_run_id>/official_market_events.stdout.bin` 的有界原件／SHA及publication pins傳給真正source-contract reader核 expected／observed。`last_good_fallback` 明示非同 invocation，不能把先執行過官方 Task 當 downstream 已使用同版本。詳見 [Track B 契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)。
 
 核Codex heartbeat執行時，由原automation TOML的target thread定位，再以native `read_thread`核具名turn的heartbeat automation ID、aware dispatch時間、started/completed、status與error；只保存必要摘要，勿將整段歷史／工具輸出載入報告。`completed`只表示本輪監測完成，監測內的producer成功仍須精確原件；名義查核時點與實際dispatch不同時分別列出，原因未暴露就UNKNOWN，不改排程或假設漏跑。10/22兩輪已如此讀回，見[具名證據](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
+### 接任稽核擴充：資格綁定與 Legacy 讀回查核
+
+1. **Forward 日頻行情資格查核**：
+   - 稽核 `daily-price-qualification-binding.v1` 產物，確認 `temporal_role`（`decision_baseline` vs `outcome_realization`）明確分立。
+   - 檢查 `available_at` 是否符合 `daily-hour.v1` Asia/Taipei 整點進位，且 `written_at >= first_observed_at >= 13:30+08:00`。
+   - 驗證 `qualification_proof_sha256` 簽章與內文一致，未帶 `qualification_proof_sha256` 或簽章不符者視為偽造或未授權數據。
+2. **Legacy Recommendation 88 筆讀回查核**：
+   - 依 `data_module/legacy_recommendation_run_locators_20261022.json` 固定目錄讀回，核對三層驗證狀態（Tier 1: 16 筆、Tier 2: 28 筆、Tier 3: 44 筆）。
+   - 嚴禁透過通用 D/F alias 繞過清冊；未在清冊內之 unpinned legacy run 必須 fail closed。
+   - 查詢時確認總筆數為 121 筆（33 筆 canonical + 88 筆 legacy），且 `recommendation_runs.db` 之 SHA-256 零變更。
+

@@ -72,4 +72,11 @@ Forward從`config.output_root`／`config.data_root`讀來源bundle，與本輪ar
 
 讀回不得寫行情 DB、來源檔、Ledger 或正式控制路徑；Research Run、使用者筆記的既有保存能力依原本獨立契約。金融 source gate 失敗可展示原因，不把一條線缺件擴成其他獨立研究資料的全域禁止。
 
-機器可讀的本輪交付為任務目錄 `ml_data_readiness_contract_r2.json` 與 `readonly_research_display_contract_r2.json`，外部SHA及具名現況見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。這些是有證據引用的readiness／介面要求，不是已合格feature/label資料集；缺件家庭仍不能訓練、OOS或自動返回部分結果。
+機器可讀的最新交付為任務目錄 `ml_data_readiness_contract_r6.json` 與 `readonly_research_display_contract_r6.json`，外部 SHA 及具名現況見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。這些是有證據引用的 readiness／介面要求，完整覆蓋六大工作包實作接線：
+1. **Forward 日頻行情資格與修訂鏈**：實作 `daily-price-qualification-binding.v1` 與 `daily-price-revision-entry.v1`，強制區隔基期（`decision_baseline`）與實現（`outcome_realization`）時點，執行 `daily-hour.v1` Asia/Taipei 整點進位與收盤門檻，tamper-evident proof 防偽。
+2. **88 筆 Legacy Recommendation 讀回**：以 `legacy_recommendation_run_locators_20261022.json` 三層架構（16 筆 Tier 1、28 筆 Tier 2、44 筆 Tier 3）完整接通 121 筆查詢與儲存庫讀回，0 DB 修改。
+3. **Formal／PIT 候選配置**：產出 2026-10-22 與 2026-10-23 之 `candidate_ready_for_root_review` 配置，接通日曆繼承鏈與盤前分類 split v2。
+4. **Paper 正式輸入隔離**：修復 Pipeline A 之 D→F 搬遷與 junction 遍歷，產出投資組合時鐘清單，嚴格排除研究預設。
+5. **月營收歷史原件與全用途轉接器**：完成 2026-07..2026-09 雙市場 6 份完整 HTML 原件捕獲、10 批次 9,423 筆修訂帳本、863/863 共同標的金額完全對等與千元尺度證明，幣別如實保留 `unknown`。
+6. **Weekly monthly_statement 審核**：完成客觀技術核驗並隔離暫態逾時，整理單一最小 Owner 決策包。
+

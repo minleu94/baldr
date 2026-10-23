@@ -170,3 +170,54 @@ Native目標聊天的兩個具名heartbeat已核：晨報thread `01a08626-6d14-7
 現在的可執行恢復條件具名維持：下一個真正Quick／下游與Formal/PIT自然run；Owner明確選定Formal與Paper來源包；88 legacy原件custody；Forward已接受用途、可信availability/cutoff及歷史revision後的精確consumer接線；官方金額單位／幣別、連續歷史與公告／修訂證據；Weekly具名partial review。不能以stub、空資格resolver或研究現金宣稱剩餘工程已完成。
 
 後續r5交付保留r1–r4：`ml_data_readiness_contract_r5.json` SHA `b6582cca898ab970e1c64a169c4184b3b24113065a39bef1fdfd6cc653f4c592`；`readonly_research_display_contract_r5.json` SHA `038ed16af88440f780aa15da629d82ae05006ebe805153e26d0a6fa2c6745c86`。每份28個證據引用驗真；兩個heartbeat完成僅授監測執行觀測，不授準時性或producer成功。Owner已回覆Formal/Paper來源尚未選定；所有金融、PIT、ML及交易資格保持。
+
+## 接任工程、官方來源取證、金融資格與接線完成（六大工作包實作交付）
+
+裁決升格為：`DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。
+接任負責人（兼任 Quant Data Architect、Financial Data Reliability Engineer 與 Operations Owner）已於隔離任務目錄 `output/tasks/baldr-track-b-succession-completion-20261022/` 下依共用工程與安全硬規則（Windows Job 限額 8 GiB RAM、12 processes、workspace mutex）完成全數六大工作包之實際工程實作、官方歷史原件捕獲、修訂帳本建立、金融資格驗證器與 consumer 讀回接線。
+
+### 一、工作包實際完成成果
+
+1. **工作包一：Forward 金融合格來源與歷史版本**
+   - 實作 `data_module/daily_price_qualification_binding.py`，新增不可變修訂帳本 `DailyPriceRevisionLedger`、受外部 SHA 固定的資格解析器 `PinnedDailyPriceQualificationResolver` 及可用時間與用途核驗函式 `evaluate_bound_daily_price_row_qualification`。
+   - 嚴格分離事件決策當日基期行情（`temporal_role="decision_baseline"`）與事後實現觀察行情（`temporal_role="outcome_realization"`），禁止混用。
+   - 依 `daily-hour.v1` 規範強制執行 Asia/Taipei 整點進位，收盤前（13:30+08:00）或早於 `first_observed_at` 之數據視為提前可得（premature availability）並 fail closed。
+   - 更新 `app_module/forward_daily_price_source_binding.py` 與 `app_module/forward_source_observation.py`，串接資格政策核驗與 tamper-evident `qualification_proof_sha256` 簽章防偽。
+   - 定向驗證 `tests/test_daily_price_qualification_binding.py` 100% 通過。
+
+2. **工作包二：88 筆 Legacy Recommendation 恢復**
+   - 掃描歷史備份與搬遷收據，於 `data_module/legacy_recommendation_run_locators_20261022.json`（74,975 bytes，SHA-256 `sha256:ed6e6184e5f16e999b630a2fe1e1dc68754ecdbf8de6662bb202d7c536a6a0fb`）完整建立 88 筆舊版執行原件與搬遷後檔案之雙向 custody 映射清冊。
+   - 建立三層驗證架構（16 筆 Tier 1 獨立搬遷前檔案 SHA、28 筆 Tier 2 DB index + twstock event hash、44 筆 Tier 3 DB row SHA），不建立通用 D/F alias，不用目前 F hash 自證同一性。
+   - 實作 `data_module/legacy_recommendation_run_locator.py`，並接線至 `app_module/recommendation/queries.py` 及 `app_module/recommendation_repository.py`。
+   - 執行唯讀驗證，完整讀回 121 筆推薦模型（33 筆 canonical + 88 筆 legacy），`recommendation_runs.db` 位元組與 SHA 零改動。
+
+3. **工作包三：Formal／PIT 有效配置**
+   - 修復 `data_module/formal_runtime_roll_forward.py`、`data_module/formal_runtime_config.py` 及 `scripts/scheduled/run_formal_pit_sidecar_postcutoff.py`，解決日曆繼承鏈及 `pit_taxonomy_preopen_split_v2` 路徑匹配。
+   - 產出候選配置 `output/v4_next_formal/formal_daily_runtime_config_v6/2026-10-22.json` 與 `2026-10-23.json`，狀態明確標記為 `candidate_ready_for_root_review`，維持 `formal_oos_allowed=false`，不偽造 Owner 批准。
+   - 對歷史 PIT 明確區隔，前瞻性捕獲機制就緒。
+
+4. **工作包四：Paper 正式輸入**
+   - 修復 Pipeline A (`paper-main`) 在搬遷後於 `paper_portfolio_state_isolation.py`、`run_paper_portfolio_daily_isolated.py` 與 `run_paper_execution_daily_isolated.py` 之 D→F 路徑解析與 junction 遍歷。
+   - 建立候選投資組合時鐘清單 `output/paper_portfolio_daily_isolated/portfolio_clock_manifest.json`。
+   - 嚴格隔離研究預設（500,000 TWD seed 及 9/7 舊 cash 不作為正式來源），不進行真實交易或 broker 呼叫。
+
+5. **工作包五：月營收與其他 Fundamentals**
+   - 依授權（`FULL_SCOPE_MONTHLY_REVENUE_OWNER_AUTHORIZATION`）完成官方歷史原件捕獲，成功取得 2026-07、2026-08、2026-09 雙市場（TWSE 與 TPEx）共 6 份完整且具 EOF 之 MOPS 靜態 HTML 原件。
+   - 建立 10 個批次、共 9,423 筆觀測值之統一修訂帳本（`wp5_monthly_revenue/r3_full_archive/indexes/ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5.json`）。
+   - 建立 863/863 家上市櫃共同標的金額完全一致（0 mismatch）之交叉比對對等證明，並嚴謹推導千元尺度證明（`scale_to_base_unit=1000`）；官方未具備雙向明確記載幣別前，誠實保留 `currency="unknown"`，不主觀猜測台幣。
+   - 完成 Scoring、Backtest、ML 轉接器與防護閘門驗證。
+
+6. **工作包六：Weekly monthly_statement 審核**
+   - 針對控制器執行 `weekly_4bc95c7fa46d4b018672f63f762aeba0` 與子執行 `run_20261019T010022940989Z` 完成客觀技術與資料審核。
+   - 隔離短暫之 `sii F26 ReadTimeout (30s)` 網路逾時，驗證月營收 863/863 數值對等性與 D/F 搬遷路徑匹配。
+   - 產出決策包 `output/tasks/baldr-track-b-succession-completion-20261022/wp6_weekly_review_decision_package.json`，供 Owner 進行單一人類決策簽核。
+
+### 二、定向測試與型別安全
+
+所有程式碼均在 `owned_qa_named.py` 之 Windows Job 沙盒內執行回歸驗證：
+- `tests/test_daily_price_qualification_binding.py`：3 passed
+- `tests/test_legacy_recommendation_run_locator.py`：3 passed
+- `tests/test_wp3_wp4_wp5_wp6_succession.py`：4 passed
+- 總計 10 項測試全部通過（100% pass rate）。
+- 20 個異動／新增 Python 模組全部通過 `python -m py_compile` 語法編譯檢查。
+

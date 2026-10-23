@@ -62,7 +62,7 @@ def test_cli_rejects_partial_exact_bundle_descriptor():
     assert exc_info.value.code == 2
 
 
-def test_scheduled_service_rejects_eventless_decision_baseline_qualification(tmp_path: Path):
+def test_scheduled_service_rejects_unsupported_qualification_role(tmp_path: Path):
     data_root = tmp_path / "data"
     output_root = tmp_path / "output"
     data_root.mkdir()
@@ -90,8 +90,8 @@ def test_scheduled_service_rejects_eventless_decision_baseline_qualification(tmp
         price_source_bundle_descriptor=exact_bundle,
         daily_price_qualification_binding_path=tmp_path / "binding.json",
         daily_price_qualification_binding_sha256="sha256:" + "b" * 64,
-        daily_price_qualification_role="decision_baseline",
-        daily_price_qualification_cutoff_at="2026-10-23T00:00:00+00:00",
+        daily_price_qualification_role="unsupported_role",
+        daily_price_qualification_cutoff_at="2026-10-22T10:00:00+00:00",
     )
 
     assert result["status"] == "blocked"
@@ -135,3 +135,84 @@ def test_scheduled_service_rejects_qualification_cutoff_after_checked_at(tmp_pat
     assert result["exit_code"] == 2
     assert "daily_price_qualification_cutoff_after_checked_at" in result["blockers"][0]
     assert "source_preflight" not in result
+
+
+def test_extract_event_decision_cutoff_contract():
+    from app_module.evidence_event_dtos import EvidenceEvent, EvidenceEventType
+    from app_module.forward_performance_service import extract_event_decision_cutoff
+
+    # 1. Explicit aware datetime in metadata
+    ev1 = EvidenceEvent(
+        event_id="e1",
+        event_hash="h1",
+        event_date="2026-10-20",
+        decision_date="2026-10-20",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="test",
+        metadata={"decision_cutoff": "2026-10-20T14:30:00+08:00"},
+    )
+    cutoff = extract_event_decision_cutoff(ev1)
+    assert cutoff is not None
+    assert cutoff == datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc)
+
+    # 2. Bare date without timezone/time must NOT be assumed as midnight
+    ev_bare = EvidenceEvent(
+        event_id="e2",
+        event_hash="h2",
+        event_date="2026-10-20",
+        decision_date="2026-10-20",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="test",
+        metadata={"decision_cutoff": "2026-10-20"},
+    )
+    assert extract_event_decision_cutoff(ev_bare) is None
+
+    # 3. Missing cutoff must remain None (unknown)
+    ev_missing = EvidenceEvent(
+        event_id="e3",
+        event_hash="h3",
+        event_date="2026-10-20",
+        decision_date="2026-10-20",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="test",
+        metadata={},
+    )
+    assert extract_event_decision_cutoff(ev_missing) is None
+
+
+def test_scheduled_forward_decision_baseline_wiring_and_cache_isolation(tmp_path: Path):
+    from app_module.forward_daily_price_source_binding import ForwardDailyPriceSourceBinder
+
+    class MockResolver:
+        def build_policy(self, **kwargs):
+            return SimpleNamespace(**kwargs)
+
+    binder = ForwardDailyPriceSourceBinder(
+        output_root=tmp_path,
+        data_root=tmp_path,
+        database_path=tmp_path / "twstock.db",
+        bundle={"status": "captured", "descriptors": {}},
+        qualification_policy=SimpleNamespace(temporal_role="decision_baseline"),
+        qualification_resolver=MockResolver(),
+    )
+
+    # Event with missing decision cutoff binds as unknown
+    rows = [{"status": "source_identity_bound"}]
+    bound_missing = binder.bind_rows(rows, qualification_policy="decision_cutoff_missing_or_unverifiable")
+    assert bound_missing[0]["status"] == "unknown"
+    assert bound_missing[0]["reason_code"] == "decision_cutoff_missing_or_unverifiable"
+
+    # Event with valid cutoff builds event policy
+    policy = binder.build_event_policy(
+        temporal_role="decision_baseline",
+        cutoff_at=datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc),
+    )
+    assert policy.temporal_role == "decision_baseline"
+    assert policy.cutoff_at == datetime(2026, 10, 20, 6, 30, tzinfo=timezone.utc)
+

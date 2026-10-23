@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--daily-price-qualification-binding-sha256", default=None)
     parser.add_argument(
         "--daily-price-qualification-role",
-        choices=("outcome_realization",),
+        choices=("outcome_realization", "decision_baseline"),
         default=None,
     )
     parser.add_argument("--daily-price-qualification-cutoff-at", default=None)

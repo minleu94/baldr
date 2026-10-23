@@ -108,6 +108,40 @@ def _identity_text(value: object) -> str:
     return str(value).strip()
 
 
+def extract_event_decision_cutoff(event: EvidenceEvent | None) -> datetime | None:
+    """從事件明確取得含時區的決策截斷時間；不得以 event date 午夜或事後捕獲時間推論。"""
+    if event is None:
+        return None
+    meta = event.metadata if isinstance(event.metadata, Mapping) else {}
+    candidates = [
+        meta.get("decision_cutoff"),
+        meta.get("decision_cutoff_at"),
+        meta.get("decision_cutoff_utc"),
+        meta.get("event_decision_cutoff"),
+    ]
+    if isinstance(event.decision_date, str) and ("T" in event.decision_date or "+" in event.decision_date):
+        candidates.append(event.decision_date)
+
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if isinstance(candidate, datetime):
+            if candidate.tzinfo is not None and candidate.utcoffset() is not None:
+                return candidate.astimezone(timezone.utc)
+            continue
+        if isinstance(candidate, str) and candidate.strip():
+            text = candidate.strip()
+            if len(text) <= 10:
+                continue
+            try:
+                parsed = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+                if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+                    return parsed.astimezone(timezone.utc)
+            except (ValueError, TypeError):
+                continue
+    return None
+
+
 def _event_identity_metadata(event: EvidenceEvent) -> dict[str, Any]:
     """把事件的明確 cohort identity 複製到 outcome metadata。
 
@@ -515,7 +549,7 @@ class ForwardPerformanceService:
         data_as_of_date: str,
     ) -> EvidenceOutcome:
         warnings: list[str] = []
-        event_price = self._find_event_price(str(event.symbol), event.event_date, data_as_of_date=data_as_of_date)
+        event_price = self._find_event_price(str(event.symbol), event.event_date, data_as_of_date=data_as_of_date, event=event)
         if event_price is None:
             return EvidenceOutcome(
                 outcome_id=f"out_{uuid4().hex}",
@@ -751,13 +785,44 @@ class ForwardPerformanceService:
         event_date: str,
         *,
         data_as_of_date: str | None = None,
+        event: EvidenceEvent | None = None,
     ) -> EventPriceResolution | None:
         target = self._date_key(event_date)
         as_of = self._date_key(data_as_of_date) if data_as_of_date else None
-        _, values = self._daily_price_series(
-            symbol,
-            as_of_date=data_as_of_date,
-        )
+        event_cutoff = extract_event_decision_cutoff(event) if event is not None else None
+        cutoff_isolation_key = None
+        active_baseline_policy = None
+        if self._price_source_binder is not None:
+            conf_policy = getattr(self._price_source_binder, "qualification_policy", None)
+            if getattr(conf_policy, "temporal_role", None) == "decision_baseline":
+                if event_cutoff is not None:
+                    cutoff_isolation_key = event_cutoff.isoformat()
+                    parsed_event_date = None
+                    try:
+                        parsed_event_date = self._parse_iso_date(event_date, field_name="event_date")
+                    except Exception:
+                        pass
+                    active_baseline_policy = self._price_source_binder.build_event_policy(
+                        temporal_role="decision_baseline",
+                        cutoff_at=event_cutoff,
+                        decision_cutoff_at=event_cutoff,
+                        event_price_date=parsed_event_date,
+                    )
+                else:
+                    cutoff_isolation_key = "unverifiable_decision_cutoff"
+                    active_baseline_policy = "decision_cutoff_missing_or_unverifiable"
+        if cutoff_isolation_key is not None or active_baseline_policy is not None:
+            _, values = self._daily_price_series(
+                symbol,
+                as_of_date=data_as_of_date,
+                cutoff_isolation_key=cutoff_isolation_key,
+                qualification_policy=active_baseline_policy,
+            )
+        else:
+            _, values = self._daily_price_series(
+                symbol,
+                as_of_date=data_as_of_date,
+            )
         resolution = EventPriceResolver().resolve(
             decision_date=self._date_iso(target),
             data_as_of_date=self._date_iso(as_of) if as_of is not None else None,
@@ -853,7 +918,17 @@ class ForwardPerformanceService:
                     rows=rows,
                     symbol=symbol,
                     purpose="exact_official_target_price",
-                    **self._price_binding_observation_options(fetched_columns, rows),
+                    **self._price_binding_observation_options(
+                        fetched_columns,
+                        rows,
+                        qualification_policy=(
+                            self._price_source_binder.qualification_policy
+                            if self._price_source_binder is not None and getattr(
+                                self._price_source_binder.qualification_policy, "temporal_role", None
+                            ) == "outcome_realization"
+                            else None
+                        ),
+                    ),
                 )
         if not rows:
             return None, "no_daily_price_row_on_planned_official_session"
@@ -1126,9 +1201,11 @@ class ForwardPerformanceService:
         symbol: str,
         *,
         as_of_date: str | None = None,
+        cutoff_isolation_key: str | None = None,
+        qualification_policy: Any | None = None,
     ) -> tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]:
         as_of_key = self._date_key(as_of_date) if as_of_date is not None else None
-        cache_key = (symbol, as_of_key)
+        cache_key = (symbol, as_of_key, cutoff_isolation_key)
         if cache_key in self._daily_price_cache:
             if self._source_observer is not None:
                 query_id = self._daily_price_observation_ids.get(cache_key)
@@ -1166,8 +1243,12 @@ class ForwardPerformanceService:
                     parameters=parameters,
                     rows=fetched,
                     symbol=symbol,
-                    purpose="daily_price_series",
-                    **self._price_binding_observation_options(fetched_columns, fetched),
+                    purpose="decision_baseline" if cutoff_isolation_key is not None else "daily_price_series",
+                    **self._price_binding_observation_options(
+                        fetched_columns,
+                        fetched,
+                        qualification_policy=qualification_policy,
+                    ),
                 )
                 self._daily_price_observation_ids[cache_key] = query_id
         for row in fetched:
@@ -1198,7 +1279,11 @@ class ForwardPerformanceService:
         )
 
     def _price_binding_observation_options(
-        self, columns: tuple[str, ...], rows: list[Any],
+        self,
+        columns: tuple[str, ...],
+        rows: list[Any],
+        *,
+        qualification_policy: Any | None = None,
     ) -> dict[str, Any]:
         if self._price_source_binder is None:
             return {}
@@ -1206,7 +1291,9 @@ class ForwardPerformanceService:
             bindings = tuple(unknown_price_source_binding("price_projection_columns_missing") for _ in rows)
         else:
             fetched_rows = tuple(dict(zip(columns, row, strict=True)) for row in rows)
-            bindings = self._price_source_binder.bind_rows(fetched_rows)
+            bindings = self._price_source_binder.bind_rows(
+                fetched_rows, qualification_policy=qualification_policy
+            )
         return {"columns": columns, "source_bindings": bindings}
 
     @staticmethod

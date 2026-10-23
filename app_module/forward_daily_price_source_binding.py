@@ -50,6 +50,25 @@ class ForwardDailyPriceSourceBinder:
         self.qualification_resolver = qualification_resolver
         self._verified_source_cache: dict[tuple[object, ...], object] = {}
 
+    def build_event_policy(
+        self,
+        *,
+        temporal_role: str,
+        cutoff_at: datetime,
+        decision_cutoff_at: datetime | None = None,
+        event_price_date: date | None = None,
+        outcome_price_date: date | None = None,
+    ) -> Any | None:
+        if self.qualification_resolver is None:
+            return None
+        return self.qualification_resolver.build_policy(
+            temporal_role=temporal_role,
+            cutoff_at=cutoff_at,
+            decision_cutoff_at=decision_cutoff_at,
+            event_price_date=event_price_date,
+            outcome_price_date=outcome_price_date,
+        )
+
     def bind_rows(
         self,
         rows: Sequence[Mapping[str, object]],
@@ -61,6 +80,8 @@ class ForwardDailyPriceSourceBinder:
             if qualification_policy is not None
             else self.qualification_policy
         )
+        if isinstance(active_policy, str):
+            return tuple(unknown_price_source_binding(active_policy) for _ in rows)
         if self.bundle.get("status") != "captured":
             return tuple(unknown_price_source_binding("source_bundle_unavailable") for _ in rows)
         descriptors = self.bundle.get("descriptors")

@@ -2,21 +2,34 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
 import requests
 
 from app_module.forward_daily_price_source_binding import ForwardDailyPriceSourceBinder
-from app_module.forward_performance_service import ForwardPerformanceService
+from app_module.forward_performance_service import ForwardOutcomeSummary, ForwardPerformanceService
+from app_module.forward_source_observation import verify_forward_source_observation_readback
+from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module import scheduled_forward_outcome_service as scheduled_forward
 from app_module.update_service import UpdateService
 from data_module.daily_price_source_bundle import (
     load_daily_price_source_bundle,
     publish_daily_price_source_bundle,
+)
+from data_module.daily_price_qualification_binding import (
+    DAILY_PRICE_QUALIFICATION_BINDING_SCHEMA_V1,
+    DailyPriceRevisionLedger,
+    PinnedDailyPriceQualificationResolver,
+    _canonical_bytes,
+    verify_qualified_binding_payload,
 )
 from data_module.config import TWStockConfig
 from data_module.data_loader import DataLoader
@@ -453,3 +466,173 @@ def test_tpex_binding_cache_reuses_verified_artifacts_but_rechecks_each_row(
         verified_source_cache=verified_cache,
     )
     assert rejected[0]["status"] == "unknown"
+
+
+def test_scheduled_forward_qualification_accepts_verified_row_and_keeps_training_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, descriptor, fetched = _twse_fixture(tmp_path, monkeypatch)
+    (config.output_root / "scheduled" / "tpex_daily_price_sqlite_publication").mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    EvidenceEventRepository(config).ensure_schema()
+    completed_at = datetime.now(timezone.utc)
+    exact_bundle = publish_daily_price_source_bundle(
+        output_root=config.output_root,
+        data_root=config.data_root,
+        database_path=config.db_file,
+        quick_run_id="20261022T123456123456Z",
+        completed_at=completed_at.isoformat(),
+        quick_status="passed",
+        descriptors={"twse.mi_index.daily_price": descriptor},
+    )
+    decision = {
+        "source_id": "twse.mi_index.daily_price",
+        "decision_revision_id": "accept-forward-outcome-test",
+        "parent_revision_id": None,
+        "status": "accepted",
+        "allowed_use_cases": ["forward_outcome_evaluation"],
+        "blockers": [],
+        "license_evidence_ids": ["sha256:" + "a" * 64],
+        "quality_evidence_ids": ["sha256:" + "b" * 64],
+        "pit_evidence_ids": ["sha256:" + "c" * 64],
+        "owner_role": "quant_data_architect",
+        "reviewer_role": "operations_owner",
+        "decided_at": (completed_at - timedelta(hours=1)).isoformat(),
+        "rollback_reference": "initial_decision",
+    }
+    qualification_payload = {
+        "schema_version": DAILY_PRICE_QUALIFICATION_BINDING_SCHEMA_V1,
+        "binding_id": "scheduled-forward-test-binding-v1",
+        "created_at": completed_at.isoformat(),
+        "decision": decision,
+    }
+    qualification_raw = _canonical_bytes(qualification_payload) + b"\n"
+    qualification_path = tmp_path / "qualification-binding.json"
+    qualification_path.write_bytes(qualification_raw)
+    qualification_sha = "sha256:" + hashlib.sha256(qualification_raw).hexdigest()
+    qualification_resolver = PinnedDailyPriceQualificationResolver(
+        qualification_path,
+        qualification_sha,
+    )
+    qualification_policy = qualification_resolver.build_policy(
+        temporal_role="outcome_realization",
+        cutoff_at=completed_at + timedelta(hours=3),
+    )
+    revision_ledger = DailyPriceRevisionLedger(
+        output_root=config.output_root,
+        data_root=config.data_root,
+    )
+    assert revision_ledger.scan_scheduled_publications() == 2
+    assert revision_ledger.revision_closure_verified is True
+    observed_bindings: list[dict[str, object]] = []
+
+    class _Calendar:
+        def describe(self) -> dict[str, str]:
+            return {"schema_version": "fixture-calendar.v1"}
+
+    class _ForwardService:
+        def __init__(self, _config, _repository, **kwargs) -> None:
+            self.observer = kwargs["source_observer"]
+            self.binder = kwargs["price_source_binder"]
+
+        def calculate(self, **_kwargs):
+            self.observer.begin_calculation()
+            self.observer.begin_outcome(event_id="fixture-event", window_days=5)
+            binding = self.binder.bind_rows([fetched])[0]
+            observed_bindings.append(binding)
+            columns = tuple(fetched)
+            self.observer.observe_query(
+                table="daily_prices",
+                query="SELECT fixture daily price row",
+                parameters=("2330",),
+                rows=[tuple(fetched[column] for column in columns)],
+                columns=columns,
+                source_bindings=[binding],
+                symbol="2330",
+                purpose="daily_price_series",
+                observed_at=completed_at,
+            )
+            query_ids = self.observer.end_outcome()
+            self.observer.record_outcome(
+                event_id="fixture-event",
+                window_days=5,
+                return_basis="close_to_close_event_date",
+                outcome_status="pending_insufficient_future_data",
+                outcome_payload={"status": "pending"},
+                query_ids=query_ids,
+            )
+            self.observer.persist()
+            return ForwardOutcomeSummary(
+                events_scanned=1,
+                pending_insufficient_future_data=1,
+                dry_run=True,
+            )
+
+    monkeypatch.setattr(
+        scheduled_forward,
+        "build_official_maturity_calendar",
+        lambda **_kwargs: _Calendar(),
+    )
+    monkeypatch.setattr(
+        scheduled_forward,
+        "_read_calendar_observation",
+        lambda *_args: {"status": "fixture"},
+    )
+    monkeypatch.setattr(
+        scheduled_forward,
+        "_build_daily_health",
+        lambda **_kwargs: {
+            "classification": "waiting_for_natural_maturity",
+            "blockers": [],
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(scheduled_forward, "ForwardPerformanceService", _ForwardService)
+    qualification_cutoff = completed_at + timedelta(hours=3)
+    run_now = (completed_at + timedelta(hours=4)).astimezone(
+        ZoneInfo("Asia/Taipei")
+    )
+    result = scheduled_forward.run_scheduled_forward_outcomes(
+        config=config,
+        now=run_now,
+        confirm=False,
+        windows=(5,),
+        price_source_bundle_descriptor=exact_bundle,
+        daily_price_qualification_binding_path=qualification_path,
+        daily_price_qualification_binding_sha256=qualification_sha,
+        daily_price_qualification_role="outcome_realization",
+        daily_price_qualification_cutoff_at=qualification_cutoff.isoformat(),
+    )
+
+    assert result["exit_code"] == 0, result
+    assert observed_bindings[0]["status"] == "source_qualified", observed_bindings[0]
+    assert observed_bindings[0]["source_use_accepted"] is True
+    assert observed_bindings[0]["pit_eligible"] is True
+    assert observed_bindings[0]["training_eligible"] is False
+    assert result["daily_price_qualification"]["training_eligible"] is False
+    observation_reference = result["source_observation"]
+    assert observation_reference["training_eligible"] is False
+
+    def reverify(binding: dict[str, object]) -> bool:
+        return verify_qualified_binding_payload(
+            binding,
+            resolver=qualification_resolver,
+            policy=qualification_policy,
+            revision_ledger=revision_ledger,
+        )
+
+    readback = verify_forward_source_observation_readback(
+        output_root=config.output_root,
+        reference=observation_reference,
+        qualification_verifier=reverify,
+    )
+    bindings = [
+        binding
+        for query in readback["queries"]
+        for binding in query["source_bindings"]
+    ]
+    assert readback["status"] == "verified"
+    assert bindings[0]["status"] == "source_qualified"
+    assert bindings[0]["training_eligible"] is False

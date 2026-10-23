@@ -75,7 +75,7 @@ def test_pinned_daily_price_qualification_resolver(tmp_path: Path):
         "binding_id": "daily-price-twse-tpex-qualified-v1",
         "created_at": "2026-10-22T08:00:00+00:00",
         "decision": {
-            "source_id": "twse.mi_index.allbut0999",
+            "source_id": "twse.mi_index.daily_price",
             "decision_revision_id": "accept-twse-tpex-daily-price-20261022",
             "parent_revision_id": None,
             "status": "accepted",
@@ -150,6 +150,8 @@ def test_evaluate_bound_row_qualification_and_proof(tmp_path: Path):
     )
 
     class DummyLedger:
+        revision_closure_verified = True
+
         def resolve_row_revision(self, **kwargs):
             cutoff = kwargs.get("cutoff_at")
             avail_dt = datetime.fromisoformat(rev.available_at).astimezone(timezone.utc)
@@ -165,6 +167,7 @@ def test_evaluate_bound_row_qualification_and_proof(tmp_path: Path):
         oos_purge_cutoff_date=date(2026, 10, 31),
         source_use_accepted=True,
         accepted_uses=("forward_decision_baseline", "ml_training"),
+        source_id="twse.mi_index.daily_price",
         acceptance_decision_id="accept-001",
         acceptance_binding_sha256="sha256:" + "a" * 64,
     )
@@ -190,7 +193,7 @@ def test_evaluate_bound_row_qualification_and_proof(tmp_path: Path):
     assert res["training_eligible"] is True
     assert res["available_at"] == "2026-10-20T15:00:00+08:00"
     assert res["source_published_at"] is None
-    assert verify_qualified_binding_payload(res) is True
+    assert verify_qualified_binding_payload(res) is False
 
     # 2. Tampering fails proof check
     tampered = dict(res)
@@ -203,6 +206,7 @@ def test_evaluate_bound_row_qualification_and_proof(tmp_path: Path):
         cutoff_at=datetime(2026, 10, 20, 14, 0, tzinfo=_TAIPEI),
         source_use_accepted=True,
         accepted_uses=("forward_decision_baseline",),
+        source_id="twse.mi_index.daily_price",
         acceptance_decision_id="accept-001",
         acceptance_binding_sha256="sha256:" + "a" * 64,
     )

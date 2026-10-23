@@ -29,7 +29,9 @@ from data_module.formal_pit_sector_publisher import (  # noqa: E402
     publish_daily_pit_taxonomy_sidecar,
     publish_formal_pit_sector_sidecar,
 )
-from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
+from data_module.official_trading_calendar import (  # noqa: E402
+    OfficialTradingCalendar, CalendarObservationClock, CalendarObservation,
+)
 from data_module.pit_prospective_denominator import (  # noqa: E402
     validate_prospective_pit_denominator,
 )
@@ -55,8 +57,11 @@ class _OfflinePITHistoryCalendar(OfficialTradingCalendar):
 
     def is_official_trading_day(
         self, target_date: date, allow_online_probe: bool = True,
+        *, observation_clock: CalendarObservationClock | CalendarObservation | None = None,
     ) -> tuple[bool | None, str]:
-        return super().is_official_trading_day(target_date, allow_online_probe=False)
+        return super().is_official_trading_day(
+            target_date, allow_online_probe=False, observation_clock=observation_clock,
+        )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -177,6 +182,7 @@ def _find_taxonomy_bundle(
         )
     )
     resolved_publication = publication_root.expanduser().resolve()
+    candidates: list[Path] = []
     for candidate_root in candidate_roots:
         root = candidate_root.expanduser().resolve()
         try:
@@ -185,8 +191,10 @@ def _find_taxonomy_bundle(
             raise ValueError("PIT taxonomy preopen root must be under publication root") from error
         path = root / target_date.isoformat() / "bundle_manifest.json"
         if path.is_file():
-            return path
-    return None
+            candidates.append(path)
+    if len(candidates) > 1:
+        raise ValueError("PIT taxonomy preopen bundle ambiguous; configure exact source root")
+    return candidates[0] if candidates else None
 
 
 def _missing_taxonomy_result() -> dict[str, object]:

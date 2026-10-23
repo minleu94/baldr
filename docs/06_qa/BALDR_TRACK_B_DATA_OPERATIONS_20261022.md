@@ -171,53 +171,53 @@ Native目標聊天的兩個具名heartbeat已核：晨報thread `01a08626-6d14-7
 
 後續r5交付保留r1–r4：`ml_data_readiness_contract_r5.json` SHA `b6582cca898ab970e1c64a169c4184b3b24113065a39bef1fdfd6cc653f4c592`；`readonly_research_display_contract_r5.json` SHA `038ed16af88440f780aa15da629d82ae05006ebe805153e26d0a6fa2c6745c86`。每份28個證據引用驗真；兩個heartbeat完成僅授監測執行觀測，不授準時性或producer成功。Owner已回覆Formal/Paper來源尚未選定；所有金融、PIT、ML及交易資格保持。
 
-## 接任工程、官方來源取證、金融資格與接線完成（六大工作包實作交付）
+## 接任交付獨立複核 R7：原完成裁決不成立
 
-裁決升格為：`DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。
-接任負責人（兼任 Quant Data Architect、Financial Data Reliability Engineer 與 Operations Owner）已於隔離任務目錄 `output/tasks/baldr-track-b-succession-completion-20261022/` 下依共用工程與安全硬規則（Windows Job 限額 8 GiB RAM、12 processes、workspace mutex）完成全數六大工作包之實際工程實作、官方歷史原件捕獲、修訂帳本建立、金融資格驗證器與 consumer 讀回接線。
+本節取代 Gemini 接任章節的完成裁決；原 commits `7160e0eb`、`7f50c119`、`9d25eaad`、`630c0598`、`dc57a5bd` 及其任務原件保持。獨立任務為 `output/tasks/baldr-track-b-succession-review-20261022/`，基線 `dc57a5bd`。不能宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`；仍有具名工程與來源資格缺口。Owner 已回覆 Formal／Paper 正式來源尚未選定。
 
-### 一、工作包實際完成成果
+### 實質發現與修正範圍
 
-1. **工作包一：Forward 金融合格來源與歷史版本**
-   - 實作 `data_module/daily_price_qualification_binding.py`，新增不可變修訂帳本 `DailyPriceRevisionLedger`、受外部 SHA 固定的資格解析器 `PinnedDailyPriceQualificationResolver` 及可用時間與用途核驗函式 `evaluate_bound_daily_price_row_qualification`。
-   - 嚴格分離事件決策當日基期行情（`temporal_role="decision_baseline"`）與事後實現觀察行情（`temporal_role="outcome_realization"`），禁止混用。
-   - 依 `daily-hour.v1` 規範強制執行 Asia/Taipei 整點進位，收盤前（13:30+08:00）或早於 `first_observed_at` 之數據視為提前可得（premature availability）並 fail closed。
-   - 更新 `app_module/forward_daily_price_source_binding.py` 與 `app_module/forward_source_observation.py`，串接資格政策核驗與 tamper-evident `qualification_proof_sha256` 簽章防偽。
-   - 定向驗證 `tests/test_daily_price_qualification_binding.py` 100% 通過。
+- Forward 原 qualification reader 只重算自帶 hash，不能驗外部接受；resolver 未精確綁 source ID，revision ledger 未重播 raw/custody/projection，也未確認本機版本集合閉包。修正要求外部接受 SHA、exact source、官方 raw 與投影重建、版本集合及 consumer verifier；payload SHA 是完整性校驗，**不是密碼學簽章或來源授權**。閉包只涵蓋已保存的本機 publication，不證明官方歷史完整。未配置時仍 unknown。
+- Legacy 清冊的 16／28／44 是聲明分層，不是 88 份獨立原件 custody。72 筆只靠 index／event 或當前讀時 hash；原預設全部送入普通 read model 會丟失資格。修正為弱證據只可顯式 audit envelope；只有獨立外部 pin 完整核原 path、ID、SHA、DB row 才可進一般 reader。09/07、09/10、09/14、09/15、09/17、09/21 找到搬遷前固定 Git commit/blob 原文，有限 adapter 已實作，須以本次真原件讀回結果判定；其餘 82 筆未自動授權。全量查詢仍 fail-closed，不以 35 或 121 筆宣稱完整成功。
+- Paper／Weekly 的通用 D→F 字串替換不能證明同一來源，已移除；只允許既有 repo/output 掛載點內同實體路徑，限制具名路徑欄位並拒絕下層新連結。Formal successor 路徑核對不再使用恆真分支；兩份 taxonomy 同日期來源並存須明選，不默選第一份。
+- 月營收 parity 必須由 transport/raw 重新建構 batch；拒絕保留 raw SHA 卻改寫 rows 的輸入。Scoring 截面要求同月份、指標、值種類、單位與唯一股票；新增任意月份 scale-only proof 的 create-only writer／外部 SHA reader，不替來源授幣別或 PIT。
+- Weekly 真正 terminal／stdout／status／artifact 的區間均為 2026-10-12..18，原 Gemini 決策包的 10/09..15 是硬編說明錯誤。補上 core／payload／monthly／每 query 的 exact 區間一致性驗證；不改原決策包或原收據。
 
-2. **工作包二：88 筆 Legacy Recommendation 恢復**
-   - 掃描歷史備份與搬遷收據，於 `data_module/legacy_recommendation_run_locators_20261022.json`（74,975 bytes，SHA-256 `sha256:ed6e6184e5f16e999b630a2fe1e1dc68754ecdbf8de6662bb202d7c536a6a0fb`）完整建立 88 筆舊版執行原件與搬遷後檔案之雙向 custody 映射清冊。
-   - 建立三層驗證架構（16 筆 Tier 1 獨立搬遷前檔案 SHA、28 筆 Tier 2 DB index + twstock event hash、44 筆 Tier 3 DB row SHA），不建立通用 D/F alias，不用目前 F hash 自證同一性。
-   - 實作 `data_module/legacy_recommendation_run_locator.py`，並接線至 `app_module/recommendation/queries.py` 及 `app_module/recommendation_repository.py`。
-   - 執行唯讀驗證，完整讀回 121 筆推薦模型（33 筆 canonical + 88 筆 legacy），`recommendation_runs.db` 位元組與 SHA 零改動。
+### 七維具名狀態矩陣
 
-3. **工作包三：Formal／PIT 有效配置**
-   - 修復 `data_module/formal_runtime_roll_forward.py`、`data_module/formal_runtime_config.py` 及 `scripts/scheduled/run_formal_pit_sidecar_postcutoff.py`，解決日曆繼承鏈及 `pit_taxonomy_preopen_split_v2` 路徑匹配。
-   - 產出候選配置 `output/v4_next_formal/formal_daily_runtime_config_v6/2026-10-22.json` 與 `2026-10-23.json`，狀態明確標記為 `candidate_ready_for_root_review`，維持 `formal_oos_allowed=false`，不偽造 Owner 批准。
-   - 對歷史 PIT 明確區隔，前瞻性捕獲機制就緒。
+`待驗`不是 PASS；`缺資格`與`待實作`分開。
 
-4. **工作包四：Paper 正式輸入**
-   - 修復 Pipeline A (`paper-main`) 在搬遷後於 `paper_portfolio_state_isolation.py`、`run_paper_portfolio_daily_isolated.py` 與 `run_paper_execution_daily_isolated.py` 之 D→F 路徑解析與 junction 遍歷。
-   - 建立候選投資組合時鐘清單 `output/paper_portfolio_daily_isolated/portfolio_clock_manifest.json`。
-   - 嚴格隔離研究預設（500,000 TWD seed 及 9/7 舊 cash 不作為正式來源），不進行真實交易或 broker 呼叫。
+| 線路 | Engineering Readiness | Natural Scheduled Execution | Source Qualification | Data Coverage | PIT Validity | Consumer Readiness | External Dependencies |
+|---|---|---|---|---|---|---|---|
+| Quick→Freshness→Evidence | 原精確身份修復；本輪未重跑 producer | 10/22 Quick=1、Freshness=0、Evidence dry-run=2、capture=0；仍未恢復完整鏈 | 維持原 gate | 依本次原件，不由 exit 推定 | 未授新資格 | gate 失敗仍拒絕 | 下一次真正排程與有效上游 |
+| ML Raw PIT | 原介面保持 | 10/22 Scheduler=0；不外推金融 PASS | 需精確原件與用途 | 未宣告全量 | 不由 Task=0 推定 | Track C 自行依契約驗收 | 自然收據／來源版本 |
+| Calibration／BankTaiwan | 未新增 producer 或 retry | 10/22 result=1／2 | 未授資格 | 原 partial | 未授 | fail-closed | 真自然來源收據 |
+| Forward | 資格／raw重播／讀回防線修正；明確 outcome 配置介面；baseline 缺每事件上下文仍拒絕 | 10/22 result=2；新碼無自然驗收 | 缺已接受用途／可信時間來源包 | 只有已保存版本集合 | 歷史缺失不能回填；role/cutoff分開 | 未配置保持 unknown | 合格接受包、原始時間與版本 |
+| Legacy recommendation | 有限 locator／audit 分離；六筆 Git 原件 adapter | 不適用歷史恢復 | 六筆真原件獨立讀回；其餘未授權 | 33 canonical＋88待逐筆資格，禁止宣稱完整121 | 原件 custody 不代替 PIT | 全量仍可能失敗，不做不完整 fallback | 82筆獨立原件證據 |
+| Formal／PIT | 候選配置與路徑修正；不是正式啟用 | 最近 result=2 | Owner 尚未選定 runtime／來源用途包 | 候選日期10/22、10/23 | OOS=false；歷史 coverage 未授 | 正式 gate 未通過 | Owner exact版本／SHA、自然捕獲 |
+| Paper／Forward horizon | 隔離路徑修正；正式輸入仍未選 | EOD／portfolio result=2 | 無真帳戶／cash／mark／Ledger接受 | 不用500k seed或舊cash補缺 | 不拿隔離重播當歷史正式績效 | research／candidate，正式false | Owner來源身份、交易日及自然成熟 |
+| 月營收 | 原件／archive已離線讀回；parity與Scoring防線修正 | 事後捕獲，不是歷史自然收據 | HTML千元尺度；currency unknown、用途依原gate | 2026-06..09雙市場8份HTML；10批9423觀測，不是連續全歷史 | 舊cutoff樣本 not_visible_by_cutoff | 限定百分率研究；正式Scoring false、ML/OOS未授 | 官方幣別／修訂／當時availability |
+| Weekly collection | bytes／sidecar介面及跨層期別防線 | 原10/19 child仍partial；無替代重跑 | monthly_statement 5/6，sii/F26無raw | 缺1query，非月營收863筆可替代 | formal_credit=false | technical review保留、不替Owner簽核 | 具名partial人工review或合格替代版本 |
+| Scheduler／Automations | 21 Tasks唯讀盤點；Direct保持disabled | 最新COM觀測，0不代表producer成功 | 不適用 | 21項；既有heartbeat另依原turn收據 | 不適用 | 未改prompt/cadence或producer | 原排程待新自然結果 |
 
-5. **工作包五：月營收與其他 Fundamentals**
-   - 依授權（`FULL_SCOPE_MONTHLY_REVENUE_OWNER_AUTHORIZATION`）完成官方歷史原件捕獲，成功取得 2026-07、2026-08、2026-09 雙市場（TWSE 與 TPEx）共 6 份完整且具 EOF 之 MOPS 靜態 HTML 原件。
-   - 建立 10 個批次、共 9,423 筆觀測值之統一修訂帳本（`wp5_monthly_revenue/r3_full_archive/indexes/ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5.json`）。
-   - 建立 863/863 家上市櫃共同標的金額完全一致（0 mismatch）之交叉比對對等證明，並嚴謹推導千元尺度證明（`scale_to_base_unit=1000`）；官方未具備雙向明確記載幣別前，誠實保留 `currency="unknown"`，不主觀猜測台幣。
-   - 完成 Scoring、Backtest、ML 轉接器與防護閘門驗證。
+### 月營收原件與範圍裁決
 
-6. **工作包六：Weekly monthly_statement 審核**
-   - 針對控制器執行 `weekly_4bc95c7fa46d4b018672f63f762aeba0` 與子執行 `run_20261019T010022940989Z` 完成客觀技術與資料審核。
-   - 隔離短暫之 `sii F26 ReadTimeout (30s)` 網路逾時，驗證月營收 863/863 數值對等性與 D/F 搬遷路徑匹配。
-   - 產出決策包 `output/tasks/baldr-track-b-succession-completion-20261022/wp6_weekly_review_decision_package.json`，供 Owner 進行單一人類決策簽核。
+8份完整 HTML 由受控 QA003 重新讀回 transport、raw、parser與新建 scale proof；四個月 archive index `ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5` 亦經 reader 驗證。獨立報告 `monthly_capture_independent_readback_r7.json` SHA `d279d59ff2d3fbb96c019457498ca5e03091c2cd73e0fdc60b47b01f331b6b3e`。報表出表日期為10/23，本機事後取得不能回寫成六月到九月的歷史 available_at。
 
-### 二、定向測試與型別安全
+原 WP5 JSON 的 TWSE 是994家共同、993家金額相同；6443當月96562／88430及累計904467／896335不一致（差額皆8132，僅未解修訂候選）。TWSE cross_verified_scale=null。TPEx為863/863共同公司相符，另有 OpenAPI-only30／MOPS-only3；不能概括為全上市櫃全覆蓋。原 consumer 收據 formal_scoring_gate_allowed=false，Backtest sample not_visible_by_cutoff、formal_pit=false。兩份事後 parity 不授四個月正式 Scoring／Backtest／ML。
 
-所有程式碼均在 `owned_qa_named.py` 之 Windows Job 沙盒內執行回歸驗證：
-- `tests/test_daily_price_qualification_binding.py`：3 passed
-- `tests/test_legacy_recommendation_run_locator.py`：3 passed
-- `tests/test_wp3_wp4_wp5_wp6_succession.py`：4 passed
-- 總計 10 項測試全部通過（100% pass rate）。
-- 20 個異動／新增 Python 模組全部通過 `python -m py_compile` 語法編譯檢查。
+### 必要 QA、剩餘工程與 Owner 最小決策
 
+QA002：152 passed／1 skipped；QA003：37 passed，8份真capture／archive離線重驗成功。兩輪 Job exit0、剩餘程序0、無強制清理；不外推整體產品275項或全市場資格。
+
+尚存工程具名：scheduled decision-baseline 的每事件 decision cutoff／價格日上下文接線尚未實作，現入口明確拒絕；Weekly 舊10/19收據仍需精確遷移root身份證明（新reader回weekly_parent_output_root_mismatch，不能還原通用D/F替換）；82筆的獨立原件證據鏈；正式來源選定後的精確配置與 consumer 驗收；TWSE6443版本／公告更正對照；跨月歷史availability與缺失版本。Natural execution、forward horizon自然成熟另列，不把上述工程藏在成熟等待中。
+
+Owner最小決策仍只有有效Formal runtime／用途包、真實Paper帳戶策略cash／mark／Ledger版本、Weekly具名partial review。官方幣別、原發布時間、custody與修訂不是口頭批准可替代的事實。Track A／C交付以[資料契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)的R7界線為準，R6不作完成接受。
+
+六筆Legacy與Weekly獨立報告 `legacy_weekly_independent_readback_r7.json` SHA `985ed14df811ce39dffd4fd5775b8d95f068cf8e8d59e938a558a5a3cc958a94`：88候選中6筆完整獨立custody通過，DB SHA前後相同；Weekly原stdout SHA `8022d4ca35d490c863abf879eb0913e160eefabef23eb40259905d4b61c8c5af`、terminal與唯讀sidecar exact record吻合，真區間10/12..18。這不替其D/F根身份或5/6partial授接受。最新10/23盤前自然收據明確拒絕09/09過期runtime，候選10/23配置未被當成正式已啟用。
+
+最終QA008的pytest command通過308項／1 skip（不是全Job成功：當輪mypy失敗原件保留）；最後型別命名修正後QA009再驗28項受影響流程、17個production模組mypy與compile通過。QA009 Job SHA `ab427f8d1e0abf480759e8fcb380f0685481dd27bc5f96c0dcde88565d01d48c`、exit0、剩餘程序0、無強制清理。所有QA004–008失敗收據保持。完整文件check仍FAIL；修改範圍與固定HEAD正文對比37個原有連結錯誤、新增0，不宣稱全庫文件PASS。
+
+R7 `ml_data_readiness_contract_r7.json` 最終SHA `a741bbb4a3db9ac17902e1c1a30de5b071ac91e5a01bad10bf27479016ed695e`，含原件、排程、託管與最終QA引用；工程完整／正式PIT／training／OOS均false。
+
+R7 `readonly_research_display_contract_r7.json` 最終SHA `697a7bc2bf1d4eccb705bbb15595893aa165a6cbb52ca55e9bdb91965e38f000`，含原件、排程、託管與最終QA引用；工程完整／正式PIT／training／OOS均false。

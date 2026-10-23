@@ -54,7 +54,10 @@ def _prepare_sidecar(output_root: Path, source_db: Path, *, status: str = "pendi
         "source_path": str(source_db.resolve()),
         "source_hash": source_hash,
         "status": status,
-        "payload_json": {"source_access": "sqlite_uri_mode_ro", "write_intent": False},
+        "payload_json": {
+            "source_access": "sqlite_uri_mode_ro", "write_intent": False,
+            "period_start": "2026-09-28", "period_end": "2026-10-03",
+        },
         "error_type": "",
         "error_message": "",
         "created_at": "2026-10-03 08:00:00",
@@ -87,6 +90,8 @@ def _core_stdout(record: dict[str, object]) -> bytes:
             "write_intent": False,
             "source_db_path": record["source_path"],
             "collection_record": record,
+            "period_start": record["period_start"],
+            "period_end": record["period_end"],
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -409,11 +414,11 @@ def test_controller_cli_help_is_read_only_and_names_required_roots():
     assert "--output-root" in help_text
 
 
-def test_weekly_cmd_delegates_to_controller_and_keeps_original_root_defaults():
+def test_weekly_cmd_delegates_to_controller_and_keeps_current_root_defaults():
     command = (controller.REPO_ROOT / "scripts" / "scheduled" / "run_v2_2_weekly_collection.cmd").read_text(encoding="utf-8")
     assert "weekly_collection_controller.py" in command
     assert "BALDR_ENABLE_MOPS_STATEMENT_CUSTODY" not in command or "controller" in command
-    assert "D:\\Min\\Python\\Project\\FA_Data" in command
+    assert "F:\\Min\\Python\\Project\\FA_Data" in command
     assert "evidence_scheduler.db" in command
 
 
@@ -480,6 +485,18 @@ def test_current_weekly_parent_rejects_swapped_valid_historical_quarterly_termin
         binding._verify_weekly_child_bindings(output_root, repository_root, receipt)
 
 
+def _monthly_fixture_artifact_raw():
+    """保留正式 artifact 的查詢區間欄位與逐查詢日期。"""
+    query = {"query_start_date": "2026-09-28", "query_end_date": "2026-10-03"}
+    return binding.canonical_json_bytes({
+        "candidate_rows": 1, **query,
+        "query_manifest": [
+            {**query, "market": market, "announcement_item": item}
+            for market in ("sii", "otc") for item in ("F26", "F27", "F28")
+        ],
+    })
+
+
 def _monthly_binding_fixture(tmp_path, *, declared_artifact_sha: str):
     repository_root = tmp_path
     output_root = tmp_path / "FA_Data" / "output"
@@ -488,7 +505,7 @@ def _monthly_binding_fixture(tmp_path, *, declared_artifact_sha: str):
     run_root = repository_root / "output" / "research" / "mops_statement_availability" / run_id
     run_root.mkdir(parents=True)
     artifact = run_root / "candidate.json"
-    artifact_raw = b'{"candidate_rows":1}\n'
+    artifact_raw = _monthly_fixture_artifact_raw()
     artifact.write_bytes(artifact_raw)
     mapping = run_root / "mapping.csv"
     mapping_raw = b"source,target\n"
@@ -504,6 +521,8 @@ def _monthly_binding_fixture(tmp_path, *, declared_artifact_sha: str):
         "formal_oos_allowed": False,
         "formal_credit_authorized": False,
         "source_readback_status": "not_enabled",
+        "selected_start_date": "2026-09-28",
+        "selected_end_date": "2026-10-03",
     }
     (run_root / "weekly_research_status.json").write_bytes(binding.canonical_json_bytes(status))
     stdout_payload = {
@@ -544,12 +563,15 @@ def _monthly_binding_fixture(tmp_path, *, declared_artifact_sha: str):
         "started_at_utc": "2026-10-03T07:59:00+00:00",
         "completed_at_utc": "2026-10-03T08:02:00+00:00",
         "children": {"monthly_statement": item, "quarterly_openapi": {"status": "skipped"}},
+        "core": {"collection_record": {
+            "period_start": "2026-09-28", "period_end": "2026-10-03",
+        }},
     }
     return output_root, repository_root, item, receipt, stdout_path
 
 
 def test_monthly_prefixed_artifact_sha_is_bound_through_controller_and_verifier(tmp_path):
-    raw = b'{"candidate_rows":1}\n'
+    raw = _monthly_fixture_artifact_raw()
     declared = "sha256:" + hashlib.sha256(raw).hexdigest()
     output_root, repository_root, item, receipt, _ = _monthly_binding_fixture(
         tmp_path,

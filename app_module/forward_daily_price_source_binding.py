@@ -39,6 +39,7 @@ class ForwardDailyPriceSourceBinder:
         bundle: Mapping[str, Any],
         revision_ledger: Any | None = None,
         qualification_policy: Any | None = None,
+        qualification_resolver: Any | None = None,
     ) -> None:
         self.output_root = Path(output_root)
         self.data_root = Path(data_root)
@@ -46,6 +47,7 @@ class ForwardDailyPriceSourceBinder:
         self.bundle = deepcopy(dict(bundle))
         self.revision_ledger = revision_ledger
         self.qualification_policy = qualification_policy
+        self.qualification_resolver = qualification_resolver
         self._verified_source_cache: dict[tuple[object, ...], object] = {}
 
     def bind_rows(
@@ -138,6 +140,11 @@ class ForwardDailyPriceSourceBinder:
         if not self._database_identity_matches():
             return tuple(unknown_price_source_binding("source_bundle_database_identity_changed") for _ in rows)
         ledger = self.revision_ledger
+        if active_policy is not None and self.qualification_resolver is None:
+            return tuple(
+                unknown_price_source_binding("qualification_trust_root_missing")
+                for _ in rows
+            )
         if active_policy is not None and ledger is None:
             from data_module.daily_price_qualification_binding import (
                 DailyPriceRevisionLedger,
@@ -156,6 +163,38 @@ class ForwardDailyPriceSourceBinder:
                         ),
                     )
         for index, matches in enumerate(candidates):
+            if len(matches) > 1:
+                distinct_sources = {item.get("source_id") for item in matches}
+                if len(distinct_sources) == 1:
+                    selected_source_id = next(iter(distinct_sources))
+                    same_full_row = len(
+                        {
+                            (
+                                item.get("source_date"),
+                                item.get("stock_code"),
+                                item.get("parser_id"),
+                                item.get("projection_row_sha256"),
+                                item.get("sqlite_projection_row_sha256"),
+                            )
+                            for item in matches
+                        }
+                    ) == 1
+                    primary_descriptor = (
+                        descriptors.get(selected_source_id)
+                        if isinstance(selected_source_id, str) else None
+                    )
+                    if same_full_row and isinstance(primary_descriptor, Mapping):
+                        primary_path = primary_descriptor.get("relative_path")
+                        primary_sha = primary_descriptor.get("sha256")
+                        selected = [
+                            item
+                            for item in matches
+                            if item.get("publication_relative_path") == primary_path
+                            and item.get("publication_sha256") == primary_sha
+                        ]
+                        if len(selected) == 1:
+                            candidates[index] = matches = selected
+
             if len(matches) == 1:
                 result = matches[0]
                 result["source_bundle_reference"] = deepcopy(self.bundle.get("reference"))
@@ -169,6 +208,19 @@ class ForwardDailyPriceSourceBinder:
                         revision_ledger=ledger,
                         policy=active_policy,
                     )
+                    from data_module.daily_price_qualification_binding import (
+                        verify_qualified_binding_payload,
+                    )
+
+                    if result.get("source_use_accepted") is True and not verify_qualified_binding_payload(
+                        result,
+                        resolver=self.qualification_resolver,
+                        policy=active_policy,
+                        revision_ledger=ledger,
+                    ):
+                        result = unknown_price_source_binding(
+                            "qualification_revalidation_failed"
+                        )
             else:
                 reason_code = "ambiguous_source_identity" if matches else "no_verified_source_identity"
                 if len(matches) > 1:

@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 import sqlite3
 import tempfile
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, cast
 from zoneinfo import ZoneInfo
 
 from app_module.evidence_event_repository import EvidenceEventRepository
@@ -80,6 +80,10 @@ def run_scheduled_forward_outcomes(
     temporary_closure_path: str | Path | None = None,
     reservation_wait_seconds: int = SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
     price_source_bundle_descriptor: Mapping[str, object] | None = None,
+    daily_price_qualification_binding_path: str | Path | None = None,
+    daily_price_qualification_binding_sha256: str | None = None,
+    daily_price_qualification_role: str | None = None,
+    daily_price_qualification_cutoff_at: str | datetime | None = None,
 ) -> dict[str, Any]:
     """執行一次有界 outcome 更新並保存 machine-readable receipt。
 
@@ -136,6 +140,44 @@ def run_scheduled_forward_outcomes(
     reservation = None
     source_observer: ForwardSourceObservationRecorder | None = None
     try:
+        qualification_values = (
+            daily_price_qualification_binding_path,
+            daily_price_qualification_binding_sha256,
+            daily_price_qualification_role,
+            daily_price_qualification_cutoff_at,
+        )
+        qualification_requested = any(value is not None for value in qualification_values)
+        if qualification_requested and (
+            any(value is None for value in qualification_values)
+            or price_source_bundle_descriptor is None
+        ):
+            raise ScheduledForwardOutcomeError(
+                "daily_price_qualification_requires_binding_role_cutoff_and_exact_bundle"
+            )
+        if daily_price_qualification_role is not None and daily_price_qualification_role not in {
+            "outcome_realization"
+        }:
+            raise ScheduledForwardOutcomeError("daily_price_qualification_role_invalid")
+        qualification_cutoff: datetime | None = None
+        if daily_price_qualification_cutoff_at is not None:
+            try:
+                qualification_cutoff = (
+                    daily_price_qualification_cutoff_at
+                    if isinstance(daily_price_qualification_cutoff_at, datetime)
+                    else datetime.fromisoformat(daily_price_qualification_cutoff_at)
+                )
+            except (TypeError, ValueError) as exc:
+                raise ScheduledForwardOutcomeError(
+                    "daily_price_qualification_cutoff_invalid"
+                ) from exc
+            if qualification_cutoff.tzinfo is None or qualification_cutoff.utcoffset() is None:
+                raise ScheduledForwardOutcomeError(
+                    "daily_price_qualification_cutoff_timezone_missing"
+                )
+            if qualification_cutoff.astimezone(TAIPEI) > checked_at:
+                raise ScheduledForwardOutcomeError(
+                    "daily_price_qualification_cutoff_after_checked_at"
+                )
         normalized_windows = _normalise_windows(windows)
         lookback = _positive_bounded_int(
             lookback_calendar_days,
@@ -329,12 +371,6 @@ def run_scheduled_forward_outcomes(
             db_path=resolved_db,
             read_only=not confirm,
         )
-        source_observer = ForwardSourceObservationRecorder(
-            run_id=run_id,
-            output_root=resolved_output,
-            db_path=resolved_db,
-            writer=_write_create_only,
-        )
         # 來源根與本輪產出根分離；不從 DB 位置猜測資料根或來源身份。
         source_bundle: dict[str, Any] = {
             "status": "unknown", "reason_code": "configured_data_root_unavailable",
@@ -343,6 +379,9 @@ def run_scheduled_forward_outcomes(
         }
         configured_data_root = getattr(config, "data_root", None)
         price_source_binder = None
+        qualification_resolver = None
+        qualification_policy = None
+        revision_ledger = None
         if configured_data_root is not None:
             source_bundle = load_daily_price_source_bundle(
                 output_root=Path(config.output_root),
@@ -350,11 +389,102 @@ def run_scheduled_forward_outcomes(
                 database_path=resolved_db,
                 descriptor=price_source_bundle_descriptor,
             )
+            if qualification_requested:
+                if source_bundle.get("status") != "captured":
+                    raise ScheduledForwardOutcomeError(
+                        "daily_price_qualification_exact_bundle_unavailable"
+                    )
+                from data_module.daily_price_qualification_binding import (
+                    DailyPriceRevisionLedger,
+                    PinnedDailyPriceQualificationResolver,
+                    TemporalRole,
+                    verify_qualified_binding_payload,
+                )
+
+                assert daily_price_qualification_binding_path is not None
+                assert daily_price_qualification_binding_sha256 is not None
+                assert daily_price_qualification_role is not None
+                assert qualification_cutoff is not None
+                qualification_resolver = PinnedDailyPriceQualificationResolver(
+                    daily_price_qualification_binding_path,
+                    str(daily_price_qualification_binding_sha256),
+                )
+                qualification_policy = qualification_resolver.build_policy(
+                    temporal_role=cast(
+                        TemporalRole,
+                        daily_price_qualification_role,
+                    ),
+                    cutoff_at=qualification_cutoff,
+                )
+                required_acceptance_use = (
+                    "forward_decision_baseline"
+                    if daily_price_qualification_role == "decision_baseline"
+                    else "forward_outcome_evaluation"
+                )
+                if (
+                    qualification_policy.source_use_accepted is not True
+                    or not (
+                        required_acceptance_use in qualification_policy.accepted_uses
+                        or "forward_evaluation" in qualification_policy.accepted_uses
+                    )
+                ):
+                    raise ScheduledForwardOutcomeError(
+                        "daily_price_qualification_decision_not_accepted_for_role_and_cutoff"
+                    )
+                revision_ledger = DailyPriceRevisionLedger(
+                    output_root=Path(config.output_root),
+                    data_root=Path(configured_data_root),
+                )
+                publication_count = revision_ledger.scan_scheduled_publications()
+                assert qualification_resolver is not None
+                assert qualification_policy is not None
+                assert revision_ledger is not None
+
+                def verify_observed_qualification(binding: Mapping[str, Any]) -> bool:
+                    return verify_qualified_binding_payload(
+                        binding,
+                        resolver=qualification_resolver,
+                        policy=qualification_policy,
+                        revision_ledger=revision_ledger,
+                    )
+
+                qualification_verifier = verify_observed_qualification
+            else:
+                qualification_verifier = None
             price_source_binder = ForwardDailyPriceSourceBinder(
                 output_root=Path(config.output_root),
                 data_root=Path(configured_data_root),
-                database_path=resolved_db, bundle=source_bundle,
+                database_path=resolved_db,
+                bundle=source_bundle,
+                revision_ledger=revision_ledger,
+                qualification_policy=qualification_policy,
+                qualification_resolver=qualification_resolver,
             )
+        elif qualification_requested:
+            raise ScheduledForwardOutcomeError(
+                "daily_price_qualification_data_root_unavailable"
+            )
+        else:
+            qualification_verifier = None
+        source_observer = ForwardSourceObservationRecorder(
+            run_id=run_id,
+            output_root=resolved_output,
+            db_path=resolved_db,
+            writer=_write_create_only,
+            qualification_verifier=qualification_verifier,
+        )
+        if qualification_requested and qualification_policy is not None and revision_ledger is not None:
+            payload["daily_price_qualification"] = {
+                "status": "configured",
+                "revision_inventory_scope": "local_saved_publications_only",
+                "temporal_role": qualification_policy.temporal_role,
+                "cutoff_at": qualification_policy.cutoff_at.isoformat(),
+                "decision_id": qualification_policy.acceptance_decision_id,
+                "binding_sha256": qualification_policy.acceptance_binding_sha256,
+                "revision_publication_count": publication_count,
+                "pit_eligible": False,
+                "training_eligible": False,
+            }
         payload["daily_price_source_bundle"] = {
             key: value for key, value in source_bundle.items()
             if key != "descriptors"

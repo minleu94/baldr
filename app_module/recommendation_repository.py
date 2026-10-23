@@ -300,7 +300,7 @@ class RecommendationRepository:
                             data_path=existing_row[7],
                         ),
                     )
-                    if located is not None:
+                    if located is not None and located.custody_verified and not located.research_only:
                         existing_file = located.current_path
                 if self._contains_personalization_capture(existing_file):
                     raise RuntimeError(
@@ -477,7 +477,7 @@ class RecommendationRepository:
                     data_path=row[7],
                 ),
             )
-            if located is None:
+            if located is None or not located.custody_verified or located.research_only:
                 return None
             try:
                 data = json.loads(located.raw_payload.decode("utf-8"))

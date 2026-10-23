@@ -108,6 +108,144 @@ def test_binder_returns_one_identity_match_without_granting_qualification(
     assert result[0]["training_eligible"] is False
 
 
+def test_binder_uses_exact_primary_for_identical_same_family_publications(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from data_module import tpex_daily_price_publication, twse_daily_price_publication
+
+    fetched_rows = ({"日期": "20260601", "證券代號": "2330"},)
+    primary = {
+        "relative_path": "scheduled/twse/primary.json",
+        "sha256": "sha256:" + "a" * 64,
+    }
+    secondary = {
+        "relative_path": "scheduled/twse/secondary.json",
+        "sha256": "sha256:" + "b" * 64,
+    }
+
+    def verifier(**kwargs):
+        descriptor = kwargs["descriptor"]
+        return [
+            _identity_result(
+                SOURCE_TWSE,
+                publication_relative_path=descriptor["relative_path"],
+                publication_sha256=descriptor["sha256"],
+                source_date="20260601",
+                stock_code="2330",
+                parser_id="twse.mi_index.daily_price.v1",
+                projection_row_sha256="sha256:" + "c" * 64,
+                sqlite_projection_row_sha256="sha256:" + "d" * 64,
+            )
+            for _row in kwargs["fetched_rows"]
+        ]
+
+    monkeypatch.setattr(twse_daily_price_publication, "verify_fetched_daily_price_rows", verifier)
+    monkeypatch.setattr(
+        tpex_daily_price_publication,
+        "verify_fetched_daily_price_rows",
+        lambda **_kwargs: (),
+    )
+    bundle = _captured_bundle(tmp_path, SOURCE_TWSE)
+    bundle["descriptors"][SOURCE_TWSE] = primary
+    ledger = SimpleNamespace(
+        _publication_descriptors_by_date={(SOURCE_TWSE, "20260601"): [secondary]}
+    )
+    binder = ForwardDailyPriceSourceBinder(
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "data",
+        database_path=tmp_path / "data" / "market.sqlite3",
+        bundle=bundle,
+        revision_ledger=ledger,
+    )
+
+    result = binder.bind_rows(fetched_rows)
+
+    assert result[0]["status"] == "source_identity_bound"
+    assert result[0]["publication_relative_path"] == primary["relative_path"]
+    assert result[0]["publication_sha256"] == primary["sha256"]
+    assert result[0]["source_use_accepted"] is False
+    assert result[0]["pit_eligible"] is False
+    assert result[0]["training_eligible"] is False
+
+    unselected_bundle = dict(bundle)
+    unselected_bundle["descriptors"] = {}
+    unselected_ledger = SimpleNamespace(
+        _publication_descriptors_by_date={
+            (SOURCE_TWSE, "20260601"): [primary, secondary]
+        }
+    )
+    unselected_binder = ForwardDailyPriceSourceBinder(
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "data",
+        database_path=tmp_path / "data" / "market.sqlite3",
+        bundle=unselected_bundle,
+        revision_ledger=unselected_ledger,
+    )
+    unselected = unselected_binder.bind_rows(fetched_rows)
+    assert unselected[0]["status"] == "unknown"
+    assert unselected[0]["reason_code"] == "same_key_revision_conflict"
+
+
+def test_binder_rejects_same_family_publications_with_changed_full_row_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from data_module import tpex_daily_price_publication, twse_daily_price_publication
+
+    fetched_rows = ({"日期": "20260601", "證券代號": "2330"},)
+    primary = {
+        "relative_path": "scheduled/twse/primary.json",
+        "sha256": "sha256:" + "a" * 64,
+    }
+    secondary = {
+        "relative_path": "scheduled/twse/secondary.json",
+        "sha256": "sha256:" + "b" * 64,
+    }
+
+    def verifier(**kwargs):
+        descriptor = kwargs["descriptor"]
+        projection_hash = "c" if descriptor["sha256"] == primary["sha256"] else "e"
+        return [
+            _identity_result(
+                SOURCE_TWSE,
+                publication_relative_path=descriptor["relative_path"],
+                publication_sha256=descriptor["sha256"],
+                source_date="20260601",
+                stock_code="2330",
+                parser_id="twse.mi_index.daily_price.v1",
+                projection_row_sha256="sha256:" + projection_hash * 64,
+                sqlite_projection_row_sha256="sha256:" + projection_hash * 64,
+            )
+            for _row in kwargs["fetched_rows"]
+        ]
+
+    monkeypatch.setattr(twse_daily_price_publication, "verify_fetched_daily_price_rows", verifier)
+    monkeypatch.setattr(
+        tpex_daily_price_publication,
+        "verify_fetched_daily_price_rows",
+        lambda **_kwargs: (),
+    )
+    bundle = _captured_bundle(tmp_path, SOURCE_TWSE)
+    bundle["descriptors"][SOURCE_TWSE] = primary
+    ledger = SimpleNamespace(
+        _publication_descriptors_by_date={(SOURCE_TWSE, "20260601"): [secondary]}
+    )
+    binder = ForwardDailyPriceSourceBinder(
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "data",
+        database_path=tmp_path / "data" / "market.sqlite3",
+        bundle=bundle,
+        revision_ledger=ledger,
+    )
+
+    result = binder.bind_rows(fetched_rows)
+
+    assert result[0]["status"] == "unknown"
+    assert result[0]["reason_code"] == "same_key_revision_conflict"
+    assert result[0]["source_use_accepted"] is False
+    assert result[0]["pit_eligible"] is False
+    assert result[0]["training_eligible"] is False
+
+
 def test_binder_marks_two_family_matches_ambiguous(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -126,7 +264,11 @@ def test_binder_marks_two_family_matches_ambiguous(
 
     result = binder.bind_rows(fetched_rows)
 
-    assert result == (unknown_price_source_binding("ambiguous_source_identity"),)
+    assert result == (unknown_price_source_binding("dual_source_ambiguity"),)
+    assert result[0]["status"] == "unknown"
+    assert result[0]["source_use_accepted"] is False
+    assert result[0]["pit_eligible"] is False
+    assert result[0]["training_eligible"] is False
 
 
 @pytest.mark.parametrize(

@@ -193,6 +193,8 @@ baldr 提供市場資料、個股研究、推薦回放、回測和持倉檢視�
 
 ## 3. 推薦、回測、候選與持倉
 
+舊推薦搬遷後回訪需逐筆驗證原始 custody；檔案存在或清冊分層不代表已接受。若完整清單仍有原件缺證，入口可能顯示具名讀取失敗；不得把不完整清單當全部歷史。稽核用副本保留 research-only／custody unknown，不冒充正式推薦。處理方式及來源界線見[唯讀回訪](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#舊格式已保存推薦的唯讀回訪試用版90)與[排程稽核](BALDR_SCHEDULED_AUDIT_RUNBOOK.md)。
+
 原P07第二階段另補「策略回測 → 四均線多頭排列（研究）」1.0.0：固定MA5／10／20／60，由非排列轉嚴格多頭排列才發進場意圖，排列破壞或相等發出場意圖。正常單股執行後沿原保存、歷史規則／結果、返回與新程序重開；參數、暖機、撮合限制及排錯見[四均線操作](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#四均線多頭排列研究)。它不擴大一般四股價庫或V1範圍，研究資格與完整Gate仍各自待；固定EXE狀態依[119 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment119-ma-alignment)。
 
 建立推薦前核對資料日、母體、Profile、門檻及已啟用指標；結果先看 result ID、決策日、資料日、quality、warnings、Why／Why Not 和 screening matrix。保存後只沿同一 result ID 讀回。Research Lab 需確認日期、股票母體、策略版本、成本、滑價、成交假設與 benchmark；最佳化結果是候選，仍需 OOS 或 Walk-forward 等證據。

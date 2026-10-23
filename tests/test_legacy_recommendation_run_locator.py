@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
-import pytest
-
-from app_module.recommendation.queries import RecommendationExecutionQueries
-from app_module.recommendation_repository import RecommendationRepository
 from data_module.legacy_recommendation_run_locator import (
     load_pinned_legacy_recommendation_locators,
     locate_legacy_recommendation_run,
@@ -44,42 +39,11 @@ def test_legacy_recommendation_locator_rejects_unpinned(tmp_path: Path):
     )
 
 
-def test_full_121_recommendation_query_and_repository_readback_without_db_mutation():
-    from app_module.recommendation.persistence import RecommendationExecutionPersistence
-    from data_module.config import TWStockConfig
-    from data_module.result_artifact_store import ResultArtifactStore
-
-    runs_dir = Path(r"F:\Min\Python\Project\FA_Data\output\recommendation\runs")
-    db_path = runs_dir / "recommendation_runs.db"
-    if not db_path.is_file() or not runs_dir.is_dir():
-        pytest.skip("Formal FA_Data recommendation runs not mounted on this host")
-
-    before_sha = hashlib.sha256(db_path.read_bytes()).hexdigest()
-
-    store = ResultArtifactStore(
-        artifact_root=runs_dir / "execution_artifacts",
-        database_path=db_path,
-    )
-    persistence = RecommendationExecutionPersistence(store)
-    queries = RecommendationExecutionQueries(persistence)
-    models = queries.list()
-    assert len(models) == 121
-
-    canonical = [m for m in models if m.execution is not None]
-    legacy = [m for m in models if m.legacy_result is not None]
-    assert len(canonical) == 33
-    assert len(legacy) == 88
-
-    trusted_verified = [m for m in legacy if m.integrity_basis == "legacy_trusted_hash_verified"]
-    read_time_only = [m for m in legacy if m.integrity_basis == "legacy_read_time_hash_only"]
-    assert len(trusted_verified) == 16
-    assert len(read_time_only) == 72
-
-    cfg = TWStockConfig()
-    repo = RecommendationRepository(cfg)
-    loaded = repo.load_result(legacy[0].result_id)
-    assert loaded is not None
-    assert loaded.result_id == legacy[0].result_id
-
-    after_sha = hashlib.sha256(db_path.read_bytes()).hexdigest()
-    assert before_sha == after_sha
+def test_catalog_claims_do_not_authorize_original_custody(tmp_path: Path):
+    entries = load_pinned_legacy_recommendation_locators()
+    assert entries is not None
+    for entry in entries:
+        assert locate_legacy_recommendation_run(
+            str(entry['result_id']), str(entry['origin_path']),
+            runs_root=tmp_path, db_row_sha256=str(entry['db_row_sha256']),
+        ) is None

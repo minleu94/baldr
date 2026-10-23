@@ -25,6 +25,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_module.formal_next_clock_preparation import _inspect_calendar_bundle
+from data_module.repository_output_path_identity import same_repository_output_path
 from data_module.formal_runtime_config import (
     FORMAL_RUNTIME_CONFIG_ENV,
     RUNTIME_CONFIG_ROOT_ENV,
@@ -458,14 +459,7 @@ def _read_calendar_successor_link(
     source_record = _mapping_field(payload.get("source_bundle"), "calendar_successor_link.source_bundle")
     expected_source_path = str(source["path"])
     recorded_source_path = source_record.get("path")
-    if not (
-        recorded_source_path == expected_source_path
-        or (
-            isinstance(recorded_source_path, str)
-            and _absolute_path(recorded_source_path, "calendar_successor_link.source_path")
-            == Path(expected_source_path)
-        )
-    ):
+    if not same_repository_output_path(recorded_source_path, Path(expected_source_path), repository_root=ROOT):
         raise FormalRuntimeRollForwardError("calendar_successor_link_source_path_mismatch")
     source_start = source.get("range_start")
     source_end = source.get("range_end")
@@ -497,10 +491,7 @@ def _read_calendar_successor_link(
             "calendar_successor_link_successor_outside_publication_root"
         ) from error
     successor = _calendar_bundle_identity(successor_path)
-    if not (
-        successor.get("path") == successor_record.get("path")
-        or Path(str(successor.get("path"))) == successor_path
-    ):
+    if not same_repository_output_path(successor_record.get("path"), Path(str(successor.get("path"))), repository_root=ROOT):
         raise FormalRuntimeRollForwardError(
             "calendar_successor_link_successor_path_mismatch"
         )

@@ -23,14 +23,13 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
+import stat
 from typing import Any, Literal, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
-from data_module.daily_source_snapshot import (
-    DailySourceRecordAvailability,
-)
 from data_module.ml_research_output_boundary import (
     _read_bounded_regular_file_no_follow,
     _reject_json_constant,
@@ -50,6 +49,11 @@ DAILY_PRICE_QUALIFICATION_BINDING_SCHEMA_V1 = "daily-price-qualification-binding
 DAILY_PRICE_REVISION_ENTRY_SCHEMA_V1 = "daily-price-revision-entry.v1"
 MAX_QUALIFICATION_BINDING_BYTES = 2 * 1024 * 1024
 MAX_PUBLICATION_ARTIFACT_BYTES = 32 * 1024 * 1024
+MAX_REVISION_PUBLICATIONS = 4096
+MAX_REVISION_ROWS = 500_000
+MAX_REVISION_SCAN_ENTRIES = 16_384
+MAX_REVISION_SCAN_DIRECTORIES = 8_192
+MAX_REVISION_CLOSURE_READ_BYTES = 4 * 1024 * 1024 * 1024
 _SHA256_PREFIX_RE = re.compile(r"\Asha256:[0-9a-f]{64}\Z")
 _DATE_KEY_RE = re.compile(r"\A\d{8}\Z")
 
@@ -132,7 +136,7 @@ def compute_daily_price_available_at(
     first_observed_at: str | datetime | None = None,
     fetched_at: str | datetime | None = None,
     written_at: str | datetime,
-) -> tuple[datetime, DailySourceRecordAvailability]:
+) -> tuple[datetime, DailyPriceAvailabilityInfo]:
     """依 verified `first_observed_at` 與 `written_at` 計算 `daily-hour.v1` 本機可得時間。
 
     若 `first_observed_at` 或 `written_at` 早於該交易日台股收盤時間（13:30 Asia/Taipei），
@@ -232,6 +236,13 @@ class DailyPriceRevisionLedger:
         self._publication_descriptors_by_date: dict[
             tuple[str, str], list[dict[str, object]]
         ] = {}
+        self._revision_closure_verified = False
+        self._last_registration_read_bytes = 0
+
+    @property
+    def revision_closure_verified(self) -> bool:
+        """只有完整掃描並驗證兩個來源目錄後才表示修訂閉包完整。"""
+        return self._revision_closure_verified
 
     def register_publication(
         self,
@@ -241,6 +252,9 @@ class DailyPriceRevisionLedger:
         expected_sha256: str | None = None,
     ) -> int:
         """讀取並驗證單份 publication 及其 projection manifest，加入不可變修訂鏈。"""
+
+        self._revision_closure_verified = False
+        self._last_registration_read_bytes = 0
 
         if source_id not in SUPPORTED_DAILY_PRICE_SOURCES:
             raise DailyPriceQualificationError("unsupported_daily_price_source_id")
@@ -268,11 +282,34 @@ class DailyPriceRevisionLedger:
         if not isinstance(payload, dict) or _canonical_bytes(payload) + b"\n" != raw:
             raise DailyPriceQualificationError("publication_json_not_canonical")
         body = {k: v for k, v in payload.items() if k != "content_sha256"}
+        expected_publication_fields = {
+            "schema_version", "source_id", "source_published_at", "written_at",
+            "database_relative_path", "projection_manifests", "rows", "content_sha256",
+        }
+        if source_id == "twse.mi_index.daily_price":
+            expected_publication_fields.add("coverage_basis")
+        else:
+            expected_publication_fields |= {
+                "formal_source_contract_eligible", "pit_eligible", "training_eligible"
+            }
         if (
-            payload.get("schema_version") != profile["publication_schema"]
+            set(payload) != expected_publication_fields
+            or payload.get("schema_version") != profile["publication_schema"]
             or payload.get("source_id") != source_id
             or payload.get("content_sha256") != _sha256_prefixed(_canonical_bytes(body))
             or payload.get("source_published_at") is not None
+            or (
+                source_id == "twse.mi_index.daily_price"
+                and payload.get("coverage_basis")
+                != "keys_observed_in_this_twse_response_only"
+            )
+            or any(
+                payload.get(field) is not False
+                for field in (
+                    {"formal_source_contract_eligible", "pit_eligible", "training_eligible"}
+                    if source_id == "tpex.daily_close_quotes" else set()
+                )
+            )
         ):
             raise DailyPriceQualificationError("publication_envelope_invalid")
 
@@ -281,10 +318,19 @@ class DailyPriceRevisionLedger:
         )
         written_at_iso = written_at_dt.astimezone(timezone.utc).isoformat()
 
-        # Verify referenced projection manifests exist and match SHA-256
         proj_refs = payload.get("projection_manifests")
         if not isinstance(proj_refs, list) or not proj_refs:
             raise DailyPriceQualificationError("publication_projection_manifests_missing")
+        if len(proj_refs) > 128:
+            raise DailyPriceQualificationError("publication_projection_manifest_limit")
+        read_budget = [len(raw)]
+        verified_manifests: dict[
+            str, tuple[Mapping[str, Any], list[Mapping[str, Any]]]
+        ] = {}
+        if len({
+            ref.get("relative_path") for ref in proj_refs if isinstance(ref, Mapping)
+        }) != len(proj_refs):
+            raise DailyPriceQualificationError("publication_projection_manifest_duplicate")
         for ref in proj_refs:
             if not isinstance(ref, Mapping):
                 raise DailyPriceQualificationError("projection_manifest_ref_invalid")
@@ -293,39 +339,73 @@ class DailyPriceRevisionLedger:
             if not isinstance(ref_rel, str) or not isinstance(ref_sha, str):
                 raise DailyPriceQualificationError("projection_manifest_ref_invalid")
             ref_pure = PurePosixPath(ref_rel)
-            if ref_pure.is_absolute() or any(p in {"", ".", ".."} for p in ref_pure.parts):
-                raise DailyPriceQualificationError("projection_manifest_path_invalid")
-            proj_path = self.output_root.joinpath(*ref_pure.parts)
-            try:
-                proj_raw = _read_bounded_regular_file_no_follow(
-                    proj_path, maximum_bytes=MAX_PUBLICATION_ARTIFACT_BYTES
-                )
-            except Exception as exc:
-                raise DailyPriceQualificationError("projection_manifest_missing") from exc
-            if _sha256_prefixed(proj_raw) != ref_sha:
-                raise DailyPriceQualificationError("projection_manifest_sha256_drift")
-            proj_payload = _strict_json(proj_raw)
-            if not isinstance(proj_payload, dict):
-                raise DailyPriceQualificationError("projection_manifest_json_invalid")
-            for sub_field in (
-                "raw_response_relative_path",
-                "custody_receipt_relative_path",
-                "observation_receipt_relative_path",
+            if (
+                ref_pure.is_absolute()
+                or "\\" in ref_rel
+                or ":" in ref_rel
+                or any(p in {"", ".", ".."} for p in ref_pure.parts)
+                or not _SHA256_PREFIX_RE.fullmatch(ref_sha)
             ):
-                sub_rel = proj_payload.get(sub_field)
-                if not isinstance(sub_rel, str) or not sub_rel:
-                    raise DailyPriceQualificationError(f"missing_{sub_field}")
-                sub_pure = PurePosixPath(sub_rel)
-                sub_path = self.output_root.joinpath(*sub_pure.parts)
-                if not sub_path.is_file():
-                    raise DailyPriceQualificationError(f"missing_artifact:{sub_field}")
+                raise DailyPriceQualificationError("projection_manifest_path_invalid")
+            try:
+                if source_id == "twse.mi_index.daily_price":
+                    from data_module.twse_daily_price_publication import (
+                        _load_projection_manifest,
+                    )
+
+                    manifest = _load_projection_manifest(
+                        output_root=self.output_root,
+                        data_root=self.data_root,
+                        descriptor={
+                            "status": "captured",
+                            "schema_version": profile["projection_schema"],
+                            "relative_path": ref_rel,
+                            "sha256": ref_sha,
+                        },
+                        read_budget=read_budget,
+                    )
+                    projected_rows = manifest.get("observed_response_rows")
+                else:
+                    from data_module.tpex_daily_price_publication import (
+                        _verify_download_manifest,
+                    )
+
+                    manifest, _csv_rows = _verify_download_manifest(
+                        output_root=self.output_root,
+                        data_root=self.data_root,
+                        descriptor={
+                            "status": "captured",
+                            "schema_version": profile["projection_schema"],
+                            "relative_path": ref_rel,
+                            "sha256": ref_sha,
+                        },
+                        read_budget=read_budget,
+                    )
+                    projected_rows = manifest.get("rows")
+            except Exception as exc:
+                raise DailyPriceQualificationError(
+                    "projection_source_chain_invalid"
+                ) from exc
+            if not isinstance(projected_rows, list) or not all(
+                isinstance(item, Mapping) for item in projected_rows
+            ):
+                raise DailyPriceQualificationError("projection_rows_invalid")
+            verified_manifests[ref_rel] = (manifest, projected_rows)
+            manifest_observed = _parse_aware_datetime(
+                manifest.get("observed_at"), field_name="observed_at"
+            )
+            if written_at_dt < manifest_observed:
+                raise DailyPriceQualificationError("publication_written_before_observation")
 
         rows = payload.get("rows")
         if not isinstance(rows, list) or not rows:
             raise DailyPriceQualificationError("publication_rows_missing")
+        if len(rows) > MAX_REVISION_ROWS:
+            raise DailyPriceQualificationError("publication_row_limit")
 
         staged_entries: list[dict[str, Any]] = []
         observed_dates: set[str] = set()
+        seen_row_keys: set[tuple[str, str]] = set()
         for row in rows:
             if not isinstance(row, Mapping):
                 raise DailyPriceQualificationError("publication_row_invalid")
@@ -333,9 +413,122 @@ class DailyPriceRevisionLedger:
             stock_code = str(row.get("stock_code") or "").strip()
             if not stock_code:
                 raise DailyPriceQualificationError("publication_row_stock_code_missing")
+            row_key = (source_date_key, stock_code)
+            if row_key in seen_row_keys:
+                raise DailyPriceQualificationError("publication_duplicate_natural_key")
+            seen_row_keys.add(row_key)
+            if source_id == "twse.mi_index.daily_price":
+                projection_rel = row.get("projection_manifest_relative_path")
+                projection_sha = row.get("projection_manifest_sha256")
+                if (
+                    not isinstance(projection_rel, str)
+                    or not isinstance(projection_sha, str)
+                    or projection_rel not in verified_manifests
+                    or not _SHA256_PREFIX_RE.fullmatch(projection_sha)
+                    or not any(
+                        isinstance(ref, Mapping)
+                        and ref.get("relative_path") == projection_rel
+                        and ref.get("sha256") == projection_sha
+                        for ref in proj_refs
+                    )
+                ):
+                    raise DailyPriceQualificationError(
+                        "publication_row_projection_reference_invalid"
+                    )
+                selected_manifest, projected_rows = verified_manifests[projection_rel]
+                projected = [
+                    item for item in projected_rows
+                    if item.get("source_date") == source_date_key
+                    and item.get("stock_code") == stock_code
+                ]
+            else:
+                projected_candidates: list[
+                    tuple[str, Mapping[str, Any], Mapping[str, Any]]
+                ] = []
+                for ref in proj_refs:
+                    if not isinstance(ref, Mapping):
+                        continue
+                    ref_rel = str(ref.get("relative_path") or "")
+                    candidate_manifest, candidate_rows = verified_manifests[ref_rel]
+                    for candidate_row in candidate_rows:
+                        if (
+                            candidate_row.get("source_date") == source_date_key
+                            and candidate_row.get("stock_code") == stock_code
+                            and candidate_row.get("source_row_ordinal") == row.get("source_row_ordinal")
+                            and candidate_row.get("source_row_sha256") == row.get("source_row_sha256")
+                            and candidate_row.get("projection_row_sha256") == row.get("projection_row_sha256")
+                        ):
+                            projected_candidates.append(
+                                (ref_rel, candidate_manifest, candidate_row)
+                            )
+                if len(projected_candidates) != 1:
+                    raise DailyPriceQualificationError(
+                        "publication_row_projection_missing_or_ambiguous"
+                    )
+                projection_rel, selected_manifest, projected_row = projected_candidates[0]
+                projection_sha = next(
+                    str(ref.get("sha256")) for ref in proj_refs
+                    if isinstance(ref, Mapping)
+                    and ref.get("relative_path") == projection_rel
+                )
+                projected = [projected_row]
+            if len(projected) != 1:
+                raise DailyPriceQualificationError(
+                    "publication_row_source_projection_missing_or_ambiguous"
+                )
+            projected_row = projected[0]
+            if row.get("projection_row_sha256") != projected_row.get("projection_row_sha256"):
+                raise DailyPriceQualificationError("publication_row_projection_hash_drift")
+            if (
+                row.get("source_id", source_id) != source_id
+                or row.get("parser_id") != selected_manifest.get("parser_id")
+                or _parse_aware_datetime(
+                    row.get("written_at", written_at_dt), field_name="written_at"
+                ) != written_at_dt
+            ):
+                raise DailyPriceQualificationError("publication_row_identity_or_time_drift")
+            source_fields = {
+                "raw_response_sha256": selected_manifest.get("raw_response_sha256"),
+                "custody_receipt_sha256": selected_manifest.get("custody_receipt_sha256"),
+                "observation_receipt_sha256": selected_manifest.get("observation_receipt_sha256"),
+                "csv_sha256": selected_manifest.get("csv_sha256"),
+            }
+            if source_id == "tpex.daily_close_quotes" and (
+                row.get("observed_at") != selected_manifest.get("observed_at")
+                or row.get("parser_id") != selected_manifest.get("parser_id")
+            ):
+                raise DailyPriceQualificationError("publication_row_observation_drift")
+            for field_name, expected_value in source_fields.items():
+                if (
+                    field_name in row and row.get(field_name) != expected_value
+                ) or (
+                    source_id == "twse.mi_index.daily_price"
+                    and field_name not in row
+                ):
+                    raise DailyPriceQualificationError(
+                        f"publication_row_{field_name}_drift"
+                    )
+            if source_id == "tpex.daily_close_quotes":
+                first_observed = selected_manifest.get("observed_at")
+            else:
+                first_observed = selected_manifest.get("first_observed_at")
             first_obs_dt = _parse_aware_datetime(
-                row.get("first_observed_at"), field_name="first_observed_at"
+                first_observed, field_name="first_observed_at"
             )
+            row_first = row.get("first_observed_at")
+            if row_first is not None and _parse_aware_datetime(
+                row_first, field_name="first_observed_at"
+            ) != first_obs_dt:
+                raise DailyPriceQualificationError("publication_row_first_observed_at_drift")
+            projection_row_hash = row.get("projection_row_sha256")
+            sqlite_row_hash = row.get("sqlite_projection_row_sha256")
+            if (
+                not isinstance(projection_row_hash, str)
+                or not _SHA256_PREFIX_RE.fullmatch(projection_row_hash)
+                or not isinstance(sqlite_row_hash, str)
+                or not _SHA256_PREFIX_RE.fullmatch(sqlite_row_hash)
+            ):
+                raise DailyPriceQualificationError("publication_sqlite_row_hash_invalid")
             first_obs_iso = first_obs_dt.astimezone(timezone.utc).isoformat()
             available_dt, availability = compute_daily_price_available_at(
                 source_date=trading_date,
@@ -351,24 +544,11 @@ class DailyPriceRevisionLedger:
                     "stock_code": stock_code,
                     "publication_relative_path": pure.as_posix(),
                     "publication_sha256": actual_sha,
-                    "projection_manifest_relative_path": str(
-                        row.get("projection_manifest_relative_path") or ""
-                    ),
-                    "projection_manifest_sha256": str(
-                        row.get("projection_manifest_sha256") or ""
-                    ),
-                    "raw_response_sha256": str(row.get("raw_response_sha256") or ""),
-                    "custody_receipt_sha256": str(
-                        row.get("custody_receipt_sha256") or ""
-                    ),
-                    "observation_receipt_sha256": str(
-                        row.get("observation_receipt_sha256") or ""
-                    ),
-                    "csv_sha256": str(row.get("csv_sha256") or ""),
-                    "projection_row_sha256": str(row.get("projection_row_sha256") or ""),
-                    "sqlite_projection_row_sha256": str(
-                        row.get("sqlite_projection_row_sha256") or ""
-                    ),
+                    "projection_manifest_relative_path": projection_rel,
+                    "projection_manifest_sha256": projection_sha,
+                    **source_fields,
+                    "projection_row_sha256": projection_row_hash,
+                    "sqlite_projection_row_sha256": sqlite_row_hash,
                     "first_observed_at": first_obs_iso,
                     "written_at": written_at_iso,
                     "available_at": available_dt.isoformat(),
@@ -400,7 +580,7 @@ class DailyPriceRevisionLedger:
                 for rev in existing
             ):
                 continue
-            raw_nodes = [
+            raw_nodes: list[dict[str, Any]] = [
                 {
                     "source_id": rev.source_id,
                     "source_date": rev.source_date,
@@ -482,27 +662,97 @@ class DailyPriceRevisionLedger:
                     )
                 )
             self._revisions_by_source_key[s_key] = tuple(rebuilt)
+        self._last_registration_read_bytes = read_budget[0]
         return len(staged_entries)
 
     def scan_scheduled_publications(self) -> int:
-        """掃描 `output_root/scheduled/*_daily_price_sqlite_publication` 下所有不可變 publication。"""
+        """封閉本機已保存的兩來源 publication inventory。
 
-        count = 0
-        for source_id, profile in SUPPORTED_DAILY_PRICE_SOURCES.items():
-            base = self.output_root / "scheduled" / profile["publication_dir"]
-            if not base.is_dir():
-                continue
-            for json_file in sorted(base.rglob("*.json")):
-                rel = json_file.relative_to(self.output_root).as_posix()
-                expected_sha = "sha256:" + json_file.stem
-                if _SHA256_PREFIX_RE.fullmatch(expected_sha):
-                    self.register_publication(
-                        source_id=source_id,
-                        relative_path=rel,
-                        expected_sha256=expected_sha,
+        這只證明目前核准輸出根內的 publication inventory 已完整掃描，
+        不證明官方來源的歷史資料完整或所有曾發布版本均已取得。
+        任一來源目錄缺失、連結、超界或含壞檔時都不建立本機閉包。
+        """
+
+        self._revision_closure_verified = False
+        discovered: list[tuple[str, str, str]] = []
+        scanned_entries = 0
+        try:
+            for source_id, profile in SUPPORTED_DAILY_PRICE_SOURCES.items():
+                base = self.output_root / "scheduled" / profile["publication_dir"]
+                base_info = base.lstat()
+                if (
+                    not stat.S_ISDIR(base_info.st_mode)
+                    or getattr(base_info, "st_file_attributes", 0) & 0x400
+                    or base.is_symlink()
+                ):
+                    raise DailyPriceQualificationError("revision_closure_source_directory_invalid")
+                pending = [base]
+                while pending:
+                    directory = pending.pop()
+                    with os.scandir(directory) as iterator:
+                        for entry in iterator:
+                            scanned_entries += 1
+                            if scanned_entries > MAX_REVISION_SCAN_ENTRIES:
+                                raise DailyPriceQualificationError(
+                                    "revision_closure_entry_limit"
+                                )
+                            info = entry.stat(follow_symlinks=False)
+                            if (
+                                entry.is_symlink()
+                                or getattr(info, "st_file_attributes", 0) & 0x400
+                            ):
+                                raise DailyPriceQualificationError(
+                                    "revision_closure_reparse_entry"
+                                )
+                            if stat.S_ISDIR(info.st_mode):
+                                pending.append(Path(entry.path))
+                                if len(pending) > MAX_REVISION_SCAN_DIRECTORIES:
+                                    raise DailyPriceQualificationError(
+                                        "revision_closure_directory_limit"
+                                    )
+                                continue
+                            if not stat.S_ISREG(info.st_mode) or not entry.name.endswith(".json"):
+                                raise DailyPriceQualificationError(
+                                    "revision_closure_unexpected_entry"
+                                )
+                            stem = entry.name[:-5]
+                            if not re.fullmatch(r"[0-9a-f]{64}", stem):
+                                raise DailyPriceQualificationError(
+                                    "revision_closure_filename_invalid"
+                                )
+                            relative = Path(entry.path).relative_to(self.output_root).as_posix()
+                            discovered.append((source_id, relative, "sha256:" + stem))
+                            if len(discovered) > MAX_REVISION_PUBLICATIONS:
+                                raise DailyPriceQualificationError(
+                                    "revision_closure_publication_limit"
+                                )
+            staged = DailyPriceRevisionLedger(
+                output_root=self.output_root, data_root=self.data_root
+            )
+            total_rows = 0
+            total_read_bytes = 0
+            for source_id, relative, expected_sha in discovered:
+                total_rows += staged.register_publication(
+                    source_id=source_id,
+                    relative_path=relative,
+                    expected_sha256=expected_sha,
+                )
+                total_read_bytes += staged._last_registration_read_bytes
+                if total_rows > MAX_REVISION_ROWS:
+                    raise DailyPriceQualificationError("revision_closure_row_limit")
+                if total_read_bytes > MAX_REVISION_CLOSURE_READ_BYTES:
+                    raise DailyPriceQualificationError(
+                        "revision_closure_read_budget_exceeded"
                     )
-                    count += 1
-        return count
+        except Exception as exc:
+            if isinstance(exc, DailyPriceQualificationError):
+                raise
+            raise DailyPriceQualificationError("revision_closure_scan_failed") from exc
+        self._revisions_by_source_key = staged._revisions_by_source_key
+        self._sources_by_natural_key = staged._sources_by_natural_key
+        self._publication_descriptors_by_date = staged._publication_descriptors_by_date
+        self._revision_closure_verified = True
+        return len(discovered)
 
     def resolve_row_revision(
         self,
@@ -515,6 +765,9 @@ class DailyPriceRevisionLedger:
         cutoff_at: datetime,
     ) -> DailyPriceRowRevision:
         """驗證單一列在 `cutoff_at` 當下的不可變版本、無雙來源歧義與無同鍵數值覆寫。"""
+
+        if not self._revision_closure_verified:
+            raise DailyPriceQualificationError("revision_closure_unverified")
 
         date_key, _ = _parse_date_key(source_date)
         n_key = (date_key, stock_code)
@@ -567,6 +820,7 @@ class DailyPriceQualificationPolicy:
     oos_purge_cutoff_date: date | None = None
     source_use_accepted: bool = False
     accepted_uses: tuple[str, ...] = ()
+    source_id: str | None = None
     acceptance_decision_id: str | None = None
     acceptance_binding_sha256: str | None = None
 
@@ -579,7 +833,10 @@ class DailyPriceQualificationPolicy:
                 self.decision_cutoff_at, field_name="decision_cutoff_at"
             )
         if self.source_use_accepted and (
-            not self.acceptance_decision_id or not self.acceptance_binding_sha256
+            not self.source_id
+            or self.source_id not in SUPPORTED_DAILY_PRICE_SOURCES
+            or not self.acceptance_decision_id
+            or not self.acceptance_binding_sha256
         ):
             raise DailyPriceQualificationError(
                 "accepted_source_use_requires_pinned_decision_and_binding_sha256"
@@ -590,7 +847,7 @@ class PinnedDailyPriceQualificationResolver:
     """以受外部 SHA 固定的 qualification binding JSON 核發 `DailyPriceQualificationPolicy`。"""
 
     def __init__(self, binding_path: str | Path, expected_sha256: str) -> None:
-        self._binding_path = Path(binding_path).expanduser().resolve(strict=True)
+        self._binding_path = Path(binding_path).expanduser().absolute()
         if not isinstance(expected_sha256, str) or not _SHA256_PREFIX_RE.fullmatch(
             expected_sha256
         ):
@@ -613,11 +870,12 @@ class PinnedDailyPriceQualificationResolver:
         if not isinstance(decision_raw, Mapping):
             raise DailyPriceQualificationError("binding_decision_invalid")
         decision = parse_source_acceptance_decision_revision(decision_raw)
-        errors = validate_source_acceptance_decision_revision(decision)
-        if errors:
+        try:
+            validate_source_acceptance_decision_revision(decision)
+        except (TypeError, ValueError) as exc:
             raise DailyPriceQualificationError(
-                f"binding_decision_validation_failed:{','.join(errors)}"
-            )
+                f"binding_decision_validation_failed:{type(exc).__name__}"
+            ) from exc
         return payload, decision
 
     def build_policy(
@@ -644,6 +902,7 @@ class PinnedDailyPriceQualificationResolver:
             decision_status == "accepted"
             and decided_utc <= cutoff_utc
             and bool(decision_uses)
+            and decision.source_id in SUPPORTED_DAILY_PRICE_SOURCES
         )
         return DailyPriceQualificationPolicy(
             temporal_role=temporal_role,
@@ -654,6 +913,7 @@ class PinnedDailyPriceQualificationResolver:
             oos_purge_cutoff_date=oos_purge_cutoff_date,
             source_use_accepted=accepted,
             accepted_uses=tuple(decision_uses) if accepted else (),
+            source_id=decision.source_id if accepted else None,
             acceptance_decision_id=decision_id if accepted else None,
             acceptance_binding_sha256=self._expected_sha256 if accepted else None,
         )
@@ -685,6 +945,19 @@ def evaluate_bound_daily_price_row_qualification(
     publication_sha256 = str(bound_row.get("publication_sha256") or "")
     sqlite_row_sha256 = str(bound_row.get("sqlite_projection_row_sha256") or "")
 
+    if policy.source_use_accepted and policy.source_id != source_id:
+        return {
+            **dict(bound_row),
+            "status": "unknown",
+            "reason_code": "acceptance_source_id_mismatch",
+            "temporal_role": policy.temporal_role,
+            "source_use_accepted": False,
+            "source_published_at": None,
+            "available_at": None,
+            "pit_eligible": False,
+            "training_eligible": False,
+        }
+
     effective_cutoff = (
         policy.decision_cutoff_at
         if policy.temporal_role == "decision_baseline"
@@ -696,6 +969,8 @@ def evaluate_bound_daily_price_row_qualification(
     ).astimezone(timezone.utc)
 
     try:
+        if getattr(revision_ledger, "revision_closure_verified", False) is not True:
+            raise DailyPriceQualificationError("revision_closure_unverified")
         revision = revision_ledger.resolve_row_revision(
             source_id=source_id,
             source_date=source_date,
@@ -801,6 +1076,7 @@ def evaluate_bound_daily_price_row_qualification(
         "is_value_restatement": revision.is_value_restatement,
         "source_use_accepted": use_accepted,
         "acceptance_decision_id": policy.acceptance_decision_id if use_accepted else None,
+        "acceptance_source_id": policy.source_id if use_accepted else None,
         "acceptance_binding_sha256": (
             policy.acceptance_binding_sha256 if use_accepted else None
         ),
@@ -817,39 +1093,94 @@ def evaluate_bound_daily_price_row_qualification(
     return qualified_payload
 
 
-def verify_qualified_binding_payload(binding: Mapping[str, Any]) -> bool:
-    """供 `ForwardSourceObservationRecorder` 驗證非預設 qualification 綁定並非偽造。"""
+def verify_qualified_binding_payload(
+    binding: Mapping[str, Any],
+    *,
+    resolver: PinnedDailyPriceQualificationResolver | None = None,
+    policy: DailyPriceQualificationPolicy | None = None,
+    revision_ledger: DailyPriceRevisionLedger | None = None,
+) -> bool:
+    """用外部 SHA、當前用途政策及完整修訂帳本重算資格；自算 proof 不作信任根。"""
 
-    proof = binding.get("qualification_proof_sha256")
-    if not isinstance(proof, str) or not _SHA256_PREFIX_RE.fullmatch(proof):
-        return False
-    body = {k: v for k, v in binding.items() if k != "qualification_proof_sha256"}
-    if _sha256_prefixed(_canonical_bytes(body)) != proof:
-        return False
-    if binding.get("source_published_at") is not None:
-        return False
-    if binding.get("temporal_role") not in ("decision_baseline", "outcome_realization"):
-        return False
-    avail = binding.get("available_at")
-    cutoff = binding.get("cutoff_at")
-    if not isinstance(avail, str) or not isinstance(cutoff, str):
+    if (
+        not isinstance(binding, Mapping)
+        or resolver is None
+        or policy is None
+        or revision_ledger is None
+        or getattr(revision_ledger, "revision_closure_verified", False) is not True
+        or binding.get("source_use_accepted") is not True
+        or binding.get("pit_eligible") is not True
+        or binding.get("status") != "source_qualified"
+    ):
         return False
     try:
-        avail_dt = _parse_aware_datetime(avail, field_name="available_at")
-        cutoff_dt = _parse_aware_datetime(cutoff, field_name="cutoff_at")
-    except DailyPriceQualificationError:
-        return False
-    if avail_dt > cutoff_dt:
-        return False
-    if binding.get("source_use_accepted") is True:
-        if not binding.get("acceptance_decision_id") or not _SHA256_PREFIX_RE.fullmatch(
-            str(binding.get("acceptance_binding_sha256") or "")
+        _payload, decision = resolver.load_verified_binding()
+        decision_id = getattr(
+            decision, "decision_revision_id", getattr(decision, "decision_id", None)
+        )
+        decision_uses = tuple(
+            getattr(decision, "allowed_use_cases", getattr(decision, "accepted_uses", ()))
+        )
+        decision_status = getattr(
+            decision, "status", getattr(decision, "acceptance_status", None)
+        )
+        decision_cutoff = _parse_aware_datetime(
+            policy.cutoff_at, field_name="policy_cutoff_at"
+        ).astimezone(timezone.utc)
+        decided_at = _parse_aware_datetime(
+            decision.decided_at, field_name="decision_decided_at"
+        ).astimezone(timezone.utc)
+        required_use = (
+            "forward_decision_baseline"
+            if policy.temporal_role == "decision_baseline"
+            else "forward_outcome_evaluation"
+        )
+        if (
+            decision_status != "accepted"
+            or decided_at > decision_cutoff
+            or policy.source_use_accepted is not True
+            or policy.acceptance_binding_sha256 != resolver._expected_sha256
+            or binding.get("acceptance_binding_sha256") != resolver._expected_sha256
+            or policy.source_id != decision.source_id
+            or binding.get("acceptance_source_id") != decision.source_id
+            or binding.get("source_id") != decision.source_id
+            or policy.acceptance_decision_id != decision_id
+            or binding.get("acceptance_decision_id") != decision_id
+            or tuple(policy.accepted_uses) != decision_uses
+            or not (
+                required_use in decision_uses
+                or "forward_evaluation" in decision_uses
+            )
         ):
             return False
-    else:
-        if binding.get("pit_eligible") is not False or binding.get("training_eligible") is not False:
+        proof = binding.get("qualification_proof_sha256")
+        if not isinstance(proof, str) or not _SHA256_PREFIX_RE.fullmatch(proof):
             return False
-    return True
+        derived_fields = {
+            "status", "reason_code", "temporal_role", "decision_time_usable",
+            "outcome_time_usable", "cutoff_at", "first_observed_at", "written_at",
+            "available_at", "availability_basis", "source_published_at",
+            "revision_number", "revision_id", "parent_revision_id",
+            "parent_publication_sha256", "is_value_restatement", "source_use_accepted",
+            "acceptance_decision_id", "acceptance_source_id",
+            "acceptance_binding_sha256", "pit_eligible", "training_eligible",
+            "oos_boundary_status", "qualification_proof_sha256",
+        }
+        source_row = {
+            key: value for key, value in binding.items() if key not in derived_fields
+        }
+        source_row["status"] = "source_identity_bound"
+        recomputed = evaluate_bound_daily_price_row_qualification(
+            bound_row=source_row,
+            revision_ledger=revision_ledger,
+            policy=policy,
+        )
+        return (
+            recomputed.get("status") == "source_qualified"
+            and _canonical_bytes(recomputed) == _canonical_bytes(dict(binding))
+        )
+    except (DailyPriceQualificationError, OSError, TypeError, ValueError, KeyError):
+        return False
 
 
 __all__ = (

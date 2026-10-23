@@ -7,10 +7,16 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 from typing import Any, Callable, Mapping, Sequence
+
+from data_module.ml_research_output_boundary import (
+    _read_bounded_regular_file_no_follow,
+    _reject_json_constant,
+    _unique_json_object,
+)
 
 
 SCHEMA_VERSION = "forward-source-observations.v1"
@@ -26,6 +32,7 @@ MAX_QUERIES = 4096
 MAX_ROWS = 500_000
 MAX_CHUNKS = 128
 MAX_OUTCOMES = 10_000
+MAX_READBACK_BYTES = MAX_RUN_BYTES
 _RUN_ID = re.compile(r"\d{8}T\d{12}Z\Z")
 _REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
@@ -35,6 +42,7 @@ class ForwardSourceObservationError(ValueError):
 
 
 ArtifactWriter = Callable[[Path, str], None]
+QualificationVerifier = Callable[[Mapping[str, Any]], bool]
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -45,6 +53,17 @@ def _canonical_bytes(value: object) -> bytes:
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
+
+
+def _strict_json(raw: bytes) -> object:
+    try:
+        return json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise ForwardSourceObservationError("source_observation_json_invalid") from exc
 
 
 def _sha256(raw: bytes) -> str:
@@ -123,6 +142,7 @@ class ForwardSourceObservationRecorder:
         output_root: str | Path,
         db_path: str | Path,
         writer: ArtifactWriter,
+        qualification_verifier: QualificationVerifier | None = None,
     ) -> None:
         if not isinstance(run_id, str) or _RUN_ID.fullmatch(run_id) is None:
             raise ForwardSourceObservationError("source_observation_run_id_invalid")
@@ -133,6 +153,7 @@ class ForwardSourceObservationRecorder:
             raise ForwardSourceObservationError("source_observation_output_root_not_canonical")
         self.db_path = str(Path(db_path).expanduser().resolve(strict=False))
         self._writer = writer
+        self._qualification_verifier = qualification_verifier
         self._queries: list[dict[str, Any]] = []
         self._query_by_id: dict[str, dict[str, Any]] = {}
         self._outcomes: list[dict[str, Any]] = []
@@ -205,6 +226,22 @@ class ForwardSourceObservationRecorder:
                 raise ForwardSourceObservationError("source_observation_binding_count_invalid")
             normalized_bindings = []
             for binding in source_bindings:
+                qualification_claim = (
+                    binding.get("status") in {
+                        "source_qualified", "source_identity_and_availability_bound"
+                    }
+                    or binding.get("source_use_accepted") is True
+                    or binding.get("pit_eligible") is True
+                    or binding.get("training_eligible") is True
+                    or binding.get("available_at") is not None
+                    or binding.get("source_published_at") is not None
+                )
+                if qualification_claim:
+                    verifier = self._qualification_verifier
+                    if not callable(verifier) or not verifier(binding):
+                        raise ForwardSourceObservationError(
+                            "source_observation_binding_qualification_invalid"
+                        )
                 if (
                     binding.get("source_use_accepted") is not False
                     or binding.get("pit_eligible") is not False
@@ -212,13 +249,9 @@ class ForwardSourceObservationRecorder:
                     or binding.get("available_at") is not None
                     or binding.get("source_published_at") is not None
                 ):
-                    from data_module.daily_price_qualification_binding import (
-                        verify_qualified_binding_payload,
-                    )
-
-                    if not verify_qualified_binding_payload(binding):
+                    if not qualification_claim:
                         raise ForwardSourceObservationError(
-                            "source_observation_binding_qualification_invalid"
+                            "source_observation_binding_contract_invalid"
                         )
                 normalized_bindings.append(_json_value(binding))
         self._row_count += len(normalized_rows)
@@ -501,74 +534,368 @@ def verify_forward_source_observation_readback(
     *,
     output_root: str | Path,
     reference: Mapping[str, Any],
+    qualification_verifier: QualificationVerifier | None = None,
 ) -> dict[str, Any]:
-    """Consumer 端唯讀驗證已持久化的 Forward source observation manifest 與 chunks。"""
+    """在有界路徑內嚴格驗證完整 Forward observation 及其資格綁定。"""
 
     root = Path(output_root).expanduser().resolve(strict=False)
     manifest_rel = reference.get("manifest_path")
     expected_manifest_sha = reference.get("manifest_sha256")
-    if not isinstance(manifest_rel, str) or not isinstance(expected_manifest_sha, str):
+    run_id = reference.get("run_id")
+    schema_version = reference.get("schema_version")
+    if (
+        not isinstance(manifest_rel, str)
+        or not isinstance(expected_manifest_sha, str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_manifest_sha)
+        or not isinstance(run_id, str)
+        or _RUN_ID.fullmatch(run_id) is None
+        or schema_version not in {SCHEMA_VERSION, BOUND_SCHEMA_VERSION}
+        or manifest_rel != (
+            f"scheduled/forward_outcomes/source_observations/runs/{run_id}/manifest.json"
+        )
+    ):
         raise ForwardSourceObservationError("source_observation_reference_invalid")
-    manifest_path = root / Path(manifest_rel)
-    info = _lstat(manifest_path)
-    if info is None or not stat.S_ISREG(info.st_mode) or _is_reparse(info):
-        raise ForwardSourceObservationError("source_observation_manifest_missing")
-    manifest_raw = manifest_path.read_bytes()
+    expected_reference_fields = {
+        "schema_version", "run_id", "manifest_path", "manifest_sha256",
+        "query_count", "row_count", "chunk_count", "source_availability",
+        "pit_qualified", "training_eligible", "cross_read_snapshot_consistency",
+    }
+    if set(reference) != expected_reference_fields:
+        raise ForwardSourceObservationError("source_observation_reference_schema_invalid")
+    if (
+        reference.get("source_availability") != "unknown"
+        or reference.get("pit_qualified") is not False
+        or reference.get("training_eligible") is not False
+        or reference.get("cross_read_snapshot_consistency") != "not_guaranteed"
+    ):
+        raise ForwardSourceObservationError("source_observation_reference_qualification_invalid")
+
+    manifest_raw = _read_observation_file(root, manifest_rel, MAX_MANIFEST_BYTES)
     if _sha256(manifest_raw) != expected_manifest_sha:
         raise ForwardSourceObservationError("source_observation_manifest_sha256_mismatch")
-    manifest = json.loads(manifest_raw.decode("utf-8"))
-    if not isinstance(manifest, dict):
+    manifest = _strict_json(manifest_raw)
+    manifest_fields = {
+        "schema_version", "run_id", "db_path", "recorded_at", "semantics",
+        "query_count", "row_count", "chunk_count", "outcomes", "queries",
+    }
+    if (
+        type(manifest) is not dict
+        or set(manifest) != manifest_fields
+        or manifest.get("schema_version") != schema_version
+        or manifest.get("run_id") != run_id
+    ):
         raise ForwardSourceObservationError("source_observation_manifest_invalid")
+    semantics = manifest.get("semantics")
+    if semantics != {
+        "source_availability": "unknown",
+        "pit_qualified": False,
+        "training_eligible": False,
+        "cross_read_snapshot_consistency": "not_guaranteed",
+        "rows_are_actual_fetch_results": True,
+    }:
+        raise ForwardSourceObservationError("source_observation_semantics_invalid")
+    _require_bounded_int(manifest.get("query_count"), 0, MAX_QUERIES, "query_count")
+    _require_bounded_int(manifest.get("row_count"), 0, MAX_ROWS, "row_count")
+    _require_bounded_int(manifest.get("chunk_count"), 0, MAX_CHUNKS, "chunk_count")
+    for field_name in ("query_count", "row_count", "chunk_count"):
+        _require_bounded_int(reference.get(field_name), 0, MAX_ROWS, f"reference_{field_name}")
+        if reference.get(field_name) != manifest.get(field_name):
+            raise ForwardSourceObservationError("source_observation_reference_count_mismatch")
+    if (
+        not isinstance(manifest.get("db_path"), str)
+        or not manifest["db_path"]
+        or not isinstance(manifest.get("recorded_at"), str)
+    ):
+        raise ForwardSourceObservationError("source_observation_manifest_identity_invalid")
+    try:
+        recorded_at = datetime.fromisoformat(manifest["recorded_at"])
+    except ValueError as exc:
+        raise ForwardSourceObservationError("source_observation_recorded_at_invalid") from exc
+    if recorded_at.tzinfo is None or recorded_at.utcoffset() is None:
+        raise ForwardSourceObservationError("source_observation_recorded_at_invalid")
+    queries = manifest.get("queries")
+    outcomes = manifest.get("outcomes")
+    if (
+        not isinstance(queries, list)
+        or len(queries) != manifest["query_count"]
+        or not isinstance(outcomes, list)
+        or len(outcomes) > MAX_OUTCOMES
+    ):
+        raise ForwardSourceObservationError("source_observation_manifest_counts_invalid")
 
     verified_queries: list[dict[str, Any]] = []
-    for query_meta in manifest.get("queries", []):
+    seen_query_ids: set[str] = set()
+    query_uses: dict[str, list[Mapping[str, Any]]] = {}
+    found_bound_query = False
+    total_rows = 0
+    total_chunks = 0
+    total_bytes = len(manifest_raw)
+    for query_index, query_meta in enumerate(queries, start=1):
         if not isinstance(query_meta, Mapping):
             raise ForwardSourceObservationError("source_observation_query_meta_invalid")
+        base_query_fields = {
+            "query_id", "table", "query", "parameters", "symbol", "purpose",
+            "observed_at", "row_count", "rows_sha256", "uses", "chunks",
+        }
+        query_fields = set(query_meta)
+        has_bindings = "source_bindings_sha256" in query_fields
+        found_bound_query = found_bound_query or has_bindings
+        if query_fields not in (
+            base_query_fields,
+            base_query_fields | {"columns"},
+            base_query_fields | {"source_bindings_sha256"},
+            base_query_fields | {"columns", "source_bindings_sha256"},
+        ):
+            raise ForwardSourceObservationError("source_observation_query_schema_invalid")
+        query_id = query_meta.get("query_id")
+        if (
+            not isinstance(query_id, str)
+            or not re.fullmatch(r"q\d{6}", query_id)
+            or query_id != f"q{query_index:06d}"
+            or query_id in seen_query_ids
+            or not isinstance(query_meta.get("table"), str)
+            or not isinstance(query_meta.get("query"), str)
+            or not isinstance(query_meta.get("purpose"), str)
+            or not isinstance(query_meta.get("rows_sha256"), str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", query_meta["rows_sha256"])
+        ):
+            raise ForwardSourceObservationError("source_observation_query_identity_invalid")
+        seen_query_ids.add(query_id)
+        uses = query_meta.get("uses")
+        if not isinstance(uses, list) or not uses:
+            raise ForwardSourceObservationError("source_observation_query_uses_invalid")
+        for use in uses:
+            if not isinstance(use, Mapping) or set(use) != {
+                "event_id", "window_days", "purpose"
+            }:
+                raise ForwardSourceObservationError("source_observation_query_use_invalid")
+            if (
+                not isinstance(use.get("event_id"), str)
+                or type(use.get("window_days")) is not int
+                or use["window_days"] <= 0
+                or not isinstance(use.get("purpose"), str)
+            ):
+                raise ForwardSourceObservationError("source_observation_query_use_invalid")
+        query_uses[query_id] = uses
+        _require_bounded_int(query_meta.get("row_count"), 0, MAX_ROWS, "query_row_count")
+        columns = query_meta.get("columns")
+        if columns is not None and (
+            not isinstance(columns, list)
+            or any(not isinstance(column, str) for column in columns)
+            or len(columns) != len(set(columns))
+        ):
+            raise ForwardSourceObservationError("source_observation_columns_invalid")
+        query_chunks = query_meta.get("chunks")
+        if not isinstance(query_chunks, list) or not query_chunks:
+            raise ForwardSourceObservationError("source_observation_query_chunks_invalid")
         reconstructed_rows: list[Any] = []
         reconstructed_bindings: list[Any] = []
-        has_bindings = "source_bindings_sha256" in query_meta
-        for chunk_meta in query_meta.get("chunks", []):
-            if not isinstance(chunk_meta, Mapping):
+        for chunk_meta in query_chunks:
+            if not isinstance(chunk_meta, Mapping) or set(chunk_meta) != {
+                "path", "sha256", "row_count"
+            }:
                 raise ForwardSourceObservationError("source_observation_chunk_meta_invalid")
-            chunk_path = root / Path(str(chunk_meta.get("path") or ""))
-            chunk_info = _lstat(chunk_path)
-            if chunk_info is None or not stat.S_ISREG(chunk_info.st_mode) or _is_reparse(chunk_info):
-                raise ForwardSourceObservationError("source_observation_chunk_missing")
-            chunk_raw = chunk_path.read_bytes()
+            chunk_rel = chunk_meta.get("path")
+            expected_chunk_path = re.compile(
+                rf"scheduled/forward_outcomes/source_observations/runs/{re.escape(run_id)}/chunk-\d{{4}}\.json"
+            )
+            expected_chunk_index = total_chunks + 1
+            if (
+                not isinstance(chunk_rel, str)
+                or expected_chunk_path.fullmatch(chunk_rel) is None
+                or chunk_rel.endswith(f"chunk-{expected_chunk_index:04d}.json") is False
+            ):
+                raise ForwardSourceObservationError("source_observation_chunk_path_invalid")
+            chunk_raw = _read_observation_file(root, chunk_rel, MAX_CHUNK_BYTES)
+            total_bytes += len(chunk_raw)
+            total_chunks += 1
+            if total_bytes > MAX_READBACK_BYTES or total_chunks > MAX_CHUNKS:
+                raise ForwardSourceObservationError("source_observation_readback_budget_exceeded")
             if _sha256(chunk_raw) != chunk_meta.get("sha256"):
                 raise ForwardSourceObservationError("source_observation_chunk_sha256_mismatch")
-            chunk_body = json.loads(chunk_raw.decode("utf-8"))
-            chunk_rows = chunk_body.get("rows", [])
-            if len(chunk_rows) != chunk_meta.get("row_count"):
+            chunk_body = _strict_json(chunk_raw)
+            expected_chunk_fields = (
+                {"schema_version", "run_id", "query_id", "rows", "source_bindings"}
+                if has_bindings
+                else {"schema_version", "run_id", "query_id", "rows"}
+            )
+            if (
+                type(chunk_body) is not dict
+                or set(chunk_body) != expected_chunk_fields
+                or chunk_body.get("schema_version") != (
+                    BOUND_CHUNK_SCHEMA_VERSION if has_bindings else CHUNK_SCHEMA_VERSION
+                )
+                or chunk_body.get("run_id") != run_id
+                or chunk_body.get("query_id") != query_id
+                or not isinstance(chunk_body.get("rows"), list)
+            ):
+                raise ForwardSourceObservationError("source_observation_chunk_schema_invalid")
+            chunk_rows = chunk_body["rows"]
+            _require_bounded_int(
+                chunk_meta.get("row_count"), 0, MAX_ROWS, "chunk_row_count"
+            )
+            if len(chunk_rows) != chunk_meta["row_count"]:
                 raise ForwardSourceObservationError("source_observation_chunk_row_count_mismatch")
             reconstructed_rows.extend(chunk_rows)
             if has_bindings:
-                chunk_bindings = chunk_body.get("source_bindings", [])
-                if len(chunk_bindings) != len(chunk_rows):
+                chunk_bindings = chunk_body.get("source_bindings")
+                if not isinstance(chunk_bindings, list) or len(chunk_bindings) != len(chunk_rows):
                     raise ForwardSourceObservationError("source_observation_chunk_binding_count_mismatch")
+                for binding in chunk_bindings:
+                    if not isinstance(binding, Mapping):
+                        raise ForwardSourceObservationError("source_observation_binding_invalid")
+                    _verify_observed_binding(
+                        binding, qualification_verifier=qualification_verifier
+                    )
                 reconstructed_bindings.extend(chunk_bindings)
+        if len(reconstructed_rows) != query_meta["row_count"]:
+            raise ForwardSourceObservationError("source_observation_query_row_count_mismatch")
+        if any(
+            not isinstance(row, list)
+            or (columns is not None and len(row) != len(columns))
+            for row in reconstructed_rows
+        ):
+            raise ForwardSourceObservationError("source_observation_row_shape_invalid")
+        total_rows += len(reconstructed_rows)
         if _sha256(_canonical_bytes(reconstructed_rows)) != query_meta.get("rows_sha256"):
             raise ForwardSourceObservationError("source_observation_rows_sha256_mismatch")
-        if has_bindings:
-            if _sha256(_canonical_bytes(reconstructed_bindings)) != query_meta.get("source_bindings_sha256"):
-                raise ForwardSourceObservationError("source_observation_bindings_sha256_mismatch")
+        if has_bindings and (
+            not isinstance(query_meta.get("source_bindings_sha256"), str)
+            or _sha256(_canonical_bytes(reconstructed_bindings))
+            != query_meta.get("source_bindings_sha256")
+        ):
+            raise ForwardSourceObservationError("source_observation_bindings_sha256_mismatch")
         verified_queries.append(
             {
-                "query_id": query_meta.get("query_id"),
+                "query_id": query_id,
                 "purpose": query_meta.get("purpose"),
                 "row_count": len(reconstructed_rows),
                 "rows": reconstructed_rows,
                 "source_bindings": reconstructed_bindings if has_bindings else None,
             }
         )
+    if total_rows != manifest["row_count"] or total_chunks != manifest["chunk_count"]:
+        raise ForwardSourceObservationError("source_observation_manifest_totals_mismatch")
+    if (schema_version == BOUND_SCHEMA_VERSION) is not found_bound_query:
+        raise ForwardSourceObservationError("source_observation_schema_binding_mismatch")
+    for outcome in outcomes:
+        if not isinstance(outcome, Mapping) or set(outcome) != {
+            "event_id", "window_days", "return_basis", "outcome_status",
+            "outcome_sha256", "query_ids",
+        }:
+            raise ForwardSourceObservationError("source_observation_outcome_invalid")
+        if (
+            not isinstance(outcome.get("event_id"), str)
+            or type(outcome.get("window_days")) is not int
+            or outcome["window_days"] <= 0
+            or not isinstance(outcome.get("return_basis"), str)
+            or not isinstance(outcome.get("outcome_status"), str)
+            or not isinstance(outcome.get("outcome_sha256"), str)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", outcome["outcome_sha256"])
+            or not isinstance(outcome.get("query_ids"), list)
+            or any(query_id not in seen_query_ids for query_id in outcome["query_ids"])
+            or any(
+                not any(
+                    use.get("event_id") == outcome.get("event_id")
+                    and use.get("window_days") == outcome.get("window_days")
+                    for use in query_uses.get(query_id, [])
+                )
+                for query_id in outcome.get("query_ids", [])
+            )
+        ):
+            raise ForwardSourceObservationError("source_observation_outcome_identity_invalid")
     return {
         "status": "verified",
-        "run_id": manifest.get("run_id"),
+        "run_id": run_id,
         "manifest_sha256": expected_manifest_sha,
         "query_count": len(verified_queries),
         "queries": verified_queries,
-        "outcomes": manifest.get("outcomes", []),
+        "outcomes": outcomes,
     }
+
+
+def _require_bounded_int(value: object, minimum: int, maximum: int, label: str) -> None:
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise ForwardSourceObservationError(f"source_observation_{label}_invalid")
+
+
+def _read_observation_file(root: Path, relative: str, maximum_bytes: int) -> bytes:
+    if (
+        not isinstance(relative, str)
+        or not relative
+        or "\\" in relative
+        or ":" in relative
+    ):
+        raise ForwardSourceObservationError("source_observation_path_invalid")
+    pure = PurePosixPath(relative)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        raise ForwardSourceObservationError("source_observation_path_invalid")
+    root_info = root.lstat()
+    if not stat.S_ISDIR(root_info.st_mode) or _is_reparse(root_info):
+        raise ForwardSourceObservationError("source_observation_root_invalid")
+    candidate = root.joinpath(*pure.parts)
+    parent_states: list[tuple[Path, tuple[int, int, int, int]]] = []
+    current = root
+    for part in pure.parts[:-1]:
+        current = current / part
+        info = current.lstat()
+        if not stat.S_ISDIR(info.st_mode) or _is_reparse(info):
+            raise ForwardSourceObservationError("source_observation_parent_invalid")
+        parent_states.append(
+            (current, (info.st_dev, info.st_ino, info.st_mode, info.st_mtime_ns))
+        )
+    before = candidate.lstat()
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or _is_reparse(before)
+        or before.st_nlink != 1
+        or before.st_size < 0
+        or before.st_size > maximum_bytes
+    ):
+        raise ForwardSourceObservationError("source_observation_file_invalid")
+    raw = _read_bounded_regular_file_no_follow(candidate, maximum_bytes=maximum_bytes)
+    after = candidate.lstat()
+    if (
+        len(raw) != before.st_size
+        or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+        != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        or not stat.S_ISREG(after.st_mode)
+        or _is_reparse(after)
+    ):
+        raise ForwardSourceObservationError("source_observation_file_changed_during_read")
+    for parent, identity in parent_states:
+        info = parent.lstat()
+        if (info.st_dev, info.st_ino, info.st_mode, info.st_mtime_ns) != identity:
+            raise ForwardSourceObservationError("source_observation_parent_changed_during_read")
+    return raw
+
+
+def _verify_observed_binding(
+    binding: Mapping[str, Any],
+    *,
+    qualification_verifier: QualificationVerifier | None,
+) -> None:
+    claim = (
+        binding.get("status") in {
+            "source_qualified", "source_identity_and_availability_bound"
+        }
+        or binding.get("source_use_accepted") is True
+        or binding.get("pit_eligible") is True
+        or binding.get("training_eligible") is True
+        or binding.get("available_at") is not None
+        or binding.get("source_published_at") is not None
+    )
+    if claim:
+        if not callable(qualification_verifier) or not qualification_verifier(binding):
+            raise ForwardSourceObservationError("source_observation_binding_qualification_invalid")
+    elif (
+        binding.get("source_use_accepted") is not False
+        or binding.get("pit_eligible") is not False
+        or binding.get("training_eligible") is not False
+        or binding.get("available_at") is not None
+        or binding.get("source_published_at") is not None
+    ):
+        raise ForwardSourceObservationError("source_observation_binding_contract_invalid")
 
 
 __all__ = [

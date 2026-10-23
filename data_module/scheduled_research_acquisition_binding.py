@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import sqlite3
 import stat
 from typing import Any, Mapping
+from data_module.repository_output_path_identity import same_repository_output_path
 
 
 WEEKLY_LOCATOR_SCHEMA = "scheduled-weekly-collection-locator.v1"
@@ -108,28 +109,8 @@ def parse_aware_utc(value: object, *, field_name: str) -> datetime:
 
 
 def _path_matches_relocated(declared: str | Path, actual: Path) -> bool:
-    declared_abs = Path(os.path.abspath(os.fspath(declared)))
-    actual_abs = Path(os.path.abspath(os.fspath(actual)))
-    if declared_abs == actual_abs:
-        return True
-    declared_str = str(declared_abs)
-    actual_str = str(actual_abs)
-    legacy_d = r"D:\Min\Python\Project\FA_Data"
-    current_f = r"F:\Min\Python\Project\FA_Data"
-    if (
-        declared_str.startswith(legacy_d)
-        and not Path(legacy_d).exists()
-        and declared_str.replace(legacy_d, current_f, 1) == actual_str
-    ):
-        return True
-    live_repo_output = Path(__file__).resolve().parents[1] / "output"
-    if declared_str.startswith(str(live_repo_output)):
-        try:
-            if str(declared_abs.resolve()) == str(actual_abs.resolve()):
-                return True
-        except OSError:
-            return False
-    return False
+    """只接受同一掛載實體；缺原件的 D/F 文字替換不授來源身份。"""
+    return same_repository_output_path(declared, actual, repository_root=Path(__file__).resolve().parents[1])
 
 
 def validate_weekly_quarterly_terminal(
@@ -338,6 +319,60 @@ def _read_sidecar_record(sidecar_path: Path, *, collection_id: str) -> dict[str,
     return record
 
 
+def _query_period(payload: Mapping[str, Any], start_key: str, end_key: str) -> tuple[str, str]:
+    """只接受完整 ISO 日期且起訖順序正確的查詢區間。"""
+    values = (payload.get(start_key), payload.get(end_key))
+    if any(type(value) is not str for value in values):
+        raise ResearchBindingError("weekly_query_period_missing_or_invalid")
+    start, end = str(values[0]), str(values[1])
+    try:
+        if date.fromisoformat(start).isoformat() != start or date.fromisoformat(end).isoformat() != end:
+            raise ValueError("noncanonical_date")
+        if start > end:
+            raise ValueError("reversed_period")
+    except ValueError as exc:
+        raise ResearchBindingError("weekly_query_period_missing_or_invalid") from exc
+    return start, end
+
+
+def _verify_core_query_period(
+    stdout: Mapping[str, Any], record: Mapping[str, Any],
+) -> tuple[str, str]:
+    """核心摘要、收據列與 sidecar payload 的查詢日期必須一致。"""
+    period = _query_period(record, "period_start", "period_end")
+    payload = record.get("payload_json")
+    if not isinstance(payload, Mapping):
+        raise ResearchBindingError("weekly_core_payload_period_missing")
+    if (
+        _query_period(stdout, "period_start", "period_end") != period
+        or _query_period(payload, "period_start", "period_end") != period
+    ):
+        raise ResearchBindingError("weekly_core_query_period_mismatch")
+    return period
+
+
+def _verify_monthly_query_period(
+    receipt: Mapping[str, Any], status: Mapping[str, Any], artifact: Mapping[str, Any],
+) -> None:
+    """子採集日期與每個查詢 manifest 都綁定本次核心區間。"""
+    core = receipt.get("core")
+    record = core.get("collection_record") if isinstance(core, Mapping) else None
+    if not isinstance(record, Mapping):
+        raise ResearchBindingError("weekly_core_collection_record_missing")
+    period = _query_period(record, "period_start", "period_end")
+    if (
+        _query_period(status, "selected_start_date", "selected_end_date") != period
+        or _query_period(artifact, "query_start_date", "query_end_date") != period
+    ):
+        raise ResearchBindingError("weekly_monthly_query_period_mismatch")
+    manifest = artifact.get("query_manifest")
+    if not isinstance(manifest, list) or not manifest:
+        raise ResearchBindingError("weekly_monthly_query_manifest_missing")
+    for query in manifest:
+        if not isinstance(query, Mapping) or _query_period(query, "query_start_date", "query_end_date") != period:
+            raise ResearchBindingError("weekly_monthly_manifest_query_period_mismatch")
+
+
 def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
     core = receipt.get("core")
     if not isinstance(core, Mapping):
@@ -380,6 +415,7 @@ def _verify_core_binding(output_root: Path, receipt: Mapping[str, Any]) -> None:
     record = core.get("collection_record")
     if not isinstance(record, Mapping) or dict(raw_record) != dict(record):
         raise ResearchBindingError("weekly_core_stdout_record_mismatch")
+    _verify_core_query_period(stdout_bound.payload, record)
     if type(core.get("exit_code")) is not int:
         raise ResearchBindingError("weekly_core_exit_code_must_be_int")
     if record.get("status") not in {"pending_human_review", "collection_failed"}:
@@ -605,6 +641,7 @@ def _verify_weekly_child_bindings(output_root: Path, repository_root: Path, rece
                 child_finished=status_bound.payload.get("collection_completed_at_utc"),
                 lane="monthly",
             )
+            artifact_bound: BoundJson | None = None
             for key in ("artifact", "mapping", "custody_receipt", "source_readback"):
                 pin = item.get(key)
                 if pin is None and key in {"custody_receipt", "source_readback"} and item.get("custody_status") == "not_enabled":
@@ -612,8 +649,13 @@ def _verify_weekly_child_bindings(output_root: Path, repository_root: Path, rece
                 if not isinstance(pin, Mapping):
                     raise ResearchBindingError(f"weekly_monthly_{key}_pin_missing")
                 bound = _verify_absolute_child_pin(repository_root, pin, lane="monthly", json_file=key != "mapping")
+                if key == "artifact" and isinstance(bound, BoundJson):
+                    artifact_bound = bound
                 if isinstance(bound, BoundJson) and pin.get("schema_version") is not None and bound.payload.get("schema_version") != pin.get("schema_version"):
                     raise ResearchBindingError(f"weekly_monthly_{key}_schema_mismatch")
+            if artifact_bound is None:
+                raise ResearchBindingError("weekly_monthly_artifact_binding_missing")
+            _verify_monthly_query_period(receipt, status_bound.payload, artifact_bound.payload)
             if item.get("custody_status") == "verified":
                 from data_module.mops_success_response_custody import read_mops_success_response_custody
                 verified_custody = read_mops_success_response_custody(

@@ -541,32 +541,9 @@ def _scope_manifest_migration_plan(
 
 
 def _scope_value_matches_relocated(existing_val: object, expected_val: object) -> bool:
-    if existing_val == expected_val:
-        return True
-    if isinstance(existing_val, Mapping) and isinstance(expected_val, Mapping):
-        if set(existing_val.keys()) != set(expected_val.keys()):
-            return False
-        return all(
-            _scope_value_matches_relocated(existing_val[k], expected_val[k])
-            for k in expected_val
-        )
-    if isinstance(existing_val, str) and isinstance(expected_val, str):
-        legacy_d = r"D:\Min\Python\Project\FA_Data"
-        current_f = r"F:\Min\Python\Project\FA_Data"
-        if (
-            existing_val.startswith(legacy_d)
-            and not Path(legacy_d).exists()
-            and existing_val.replace(legacy_d, current_f, 1) == expected_val
-        ):
-            return True
-        repo_output_prefix = str(ROOT / "output")
-        if existing_val.startswith(repo_output_prefix):
-            try:
-                if str(_resolved(Path(existing_val))) == expected_val:
-                    return True
-            except Exception:
-                return False
-    return False
+    from data_module.repository_output_path_identity import same_output_scope
+
+    return same_output_scope(existing_val, expected_val, repository_root=ROOT)
 
 
 def _read_exact_legacy_scope(

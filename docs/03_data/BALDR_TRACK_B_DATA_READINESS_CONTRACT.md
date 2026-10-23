@@ -72,11 +72,16 @@ Forward從`config.output_root`／`config.data_root`讀來源bundle，與本輪ar
 
 讀回不得寫行情 DB、來源檔、Ledger 或正式控制路徑；Research Run、使用者筆記的既有保存能力依原本獨立契約。金融 source gate 失敗可展示原因，不把一條線缺件擴成其他獨立研究資料的全域禁止。
 
-機器可讀的最新交付為任務目錄 `ml_data_readiness_contract_r6.json` 與 `readonly_research_display_contract_r6.json`，外部 SHA 及具名現況見 [Track B 驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。這些是有證據引用的 readiness／介面要求，完整覆蓋六大工作包實作接線：
-1. **Forward 日頻行情資格與修訂鏈**：實作 `daily-price-qualification-binding.v1` 與 `daily-price-revision-entry.v1`，強制區隔基期（`decision_baseline`）與實現（`outcome_realization`）時點，執行 `daily-hour.v1` Asia/Taipei 整點進位與收盤門檻，tamper-evident proof 防偽。
-2. **88 筆 Legacy Recommendation 讀回**：以 `legacy_recommendation_run_locators_20261022.json` 三層架構（16 筆 Tier 1、28 筆 Tier 2、44 筆 Tier 3）完整接通 121 筆查詢與儲存庫讀回，0 DB 修改。
-3. **Formal／PIT 候選配置**：產出 2026-10-22 與 2026-10-23 之 `candidate_ready_for_root_review` 配置，接通日曆繼承鏈與盤前分類 split v2。
-4. **Paper 正式輸入隔離**：修復 Pipeline A 之 D→F 搬遷與 junction 遍歷，產出投資組合時鐘清單，嚴格排除研究預設。
-5. **月營收歷史原件與全用途轉接器**：完成 2026-07..2026-09 雙市場 6 份完整 HTML 原件捕獲、10 批次 9,423 筆修訂帳本、863/863 共同標的金額完全對等與千元尺度證明，幣別如實保留 `unknown`。
-6. **Weekly monthly_statement 審核**：完成客觀技術核驗並隔離暫態逾時，整理單一最小 Owner 決策包。
+## R7 獨立複核交付界線
 
+R6 只是接任工作宣稱，不能當完成接受；原件保持。本次 R7 位於 `output/tasks/baldr-track-b-succession-review-20261022/`，含外部 SHA、拒絕理由與精確來源引用。實測與七維狀態以[獨立驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md#接任交付獨立複核-r7原完成裁決不成立)為準；不得宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。
+
+Track C 必須逐筆取得 source ID/version、raw/custody/projection SHA、原可得時間依據、revision、coverage/品質、用途接受外部 SHA、decision cutoff、label outcome cutoff、PIT 與 OOS 分界。Forward 明確配置需同時給外部 binding path/SHA、role/cutoff 與 exact bundle run/path/SHA；只重算內文 SHA 不授資格。版本閉包只表示本機已保存 publication，非官方全歷史。缺任一條件維持 training/validation/OOS/promotion=false，不自行啟動大規模重訓。
+
+Scheduled目前僅接`outcome_realization`且cutoff不晚於checked_at；`decision_baseline`仍缺每事件decision cutoff/價格日上下文，明確拒絕。固定bundle primary可消除同源同完整列的重複發布歧義，但不能跳過ledger的真修訂檢查。
+
+四個月 HTML 的 scale-only proof 可逐份外部 SHA 讀回，千元乘數1000、currency unknown。TPEx 863共同公司相符不包含其餘30/3家；TWSE 6443兩欄差異保留，cross-verified scale未成立。歷史樣本 not_visible_by_cutoff，正式Scoring gate=false；不得將取得歷史值改成取得歷史可用時間。既有限定百分率研究資格依原包，不被單一無關缺件全域停用。
+
+Track A 只經原typed provider/read model展示。Legacy弱custody限顯式audit envelope，保留research_only/custody_verified/reason；不可轉普通推薦DTO而丟失資格。有限Git原件adapter逐筆核固定commit/blob/rawSHA/完整原文，再核DB row及當前原件SHA。清冊16/28/44不是自動授權，總121不作查詢成功標準。正式來源未選定時顯示具名unknown/candidate；不用預設500k或舊cash當真帳戶。
+
+`qualification_proof_sha256`是完整性校驗，不是簽章；Consumer須用同一外部resolver、role/cutoff及修訂帳本重驗。舊v1觀測保持相容，v2對每chunk/row/binding/count/hash、路徑與有界讀回逐項驗證。Task=0、process exit=0與事後scale證明均不能提升金融用途。

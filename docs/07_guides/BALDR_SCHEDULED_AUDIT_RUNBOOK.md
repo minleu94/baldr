@@ -108,14 +108,16 @@ Paper EOD retry wrapper 的新自然 run 另產 `paper-execution-retry-terminal-
 
 核Codex heartbeat執行時，由原automation TOML的target thread定位，再以native `read_thread`核具名turn的heartbeat automation ID、aware dispatch時間、started/completed、status與error；只保存必要摘要，勿將整段歷史／工具輸出載入報告。`completed`只表示本輪監測完成，監測內的producer成功仍須精確原件；名義查核時點與實際dispatch不同時分別列出，原因未暴露就UNKNOWN，不改排程或假設漏跑。10/22兩輪已如此讀回，見[具名證據](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
 
-### 接任稽核擴充：資格綁定與 Legacy 讀回查核
+### R7 資格、Legacy 與期別查核
 
-1. **Forward 日頻行情資格查核**：
-   - 稽核 `daily-price-qualification-binding.v1` 產物，確認 `temporal_role`（`decision_baseline` vs `outcome_realization`）明確分立。
-   - 檢查 `available_at` 是否符合 `daily-hour.v1` Asia/Taipei 整點進位，且 `written_at >= first_observed_at >= 13:30+08:00`。
-   - 驗證 `qualification_proof_sha256` 簽章與內文一致，未帶 `qualification_proof_sha256` 或簽章不符者視為偽造或未授權數據。
-2. **Legacy Recommendation 88 筆讀回查核**：
-   - 依 `data_module/legacy_recommendation_run_locators_20261022.json` 固定目錄讀回，核對三層驗證狀態（Tier 1: 16 筆、Tier 2: 28 筆、Tier 3: 44 筆）。
-   - 嚴禁透過通用 D/F alias 繞過清冊；未在清冊內之 unpinned legacy run 必須 fail closed。
-   - 查詢時確認總筆數為 121 筆（33 筆 canonical + 88 筆 legacy），且 `recommendation_runs.db` 之 SHA-256 零變更。
+Forward新資格入口須整組提供外部binding path/SHA、temporal role/cutoff與exact bundle run/path/SHA；部分配置直接拒絕。未配置沿原identity-only，不授PIT/training。以完整本機publication inventory重播raw/custody/projection建立ledger；集合完整只指本機保存版本，不能外推官方歷史。依role分開核決策基期與事後outcome cutoff；available_at必須不早於實際觀測與收盤下界，written_at不是官方發布證明。
 
+目前scheduled入口僅接受`outcome_realization`，cutoff不得晚於本輪checked_at；缺每事件決策上下文時，`decision_baseline`明確拒絕。一般逐列resolver的baseline能力不等於scheduled已支援。相同來源／完整列hash相同的多份publication，只有exact bundle primary明確選中一份才讀回；ledger仍檢查所有已保存修訂，真正數值更正及跨來源歧義不放行。
+
+`qualification_proof_sha256`僅校驗內文完整性，不能當簽章或獨立授權。Consumer必須提供可信resolver/policy/ledger重驗接受來源、用途、版本和時間。Observation reader逐項核schema、相對路徑、count/hash、row/binding位置與有界regular-file讀取；原件改動、根外路徑、連結、壞schema均拒絕。
+
+Legacy清冊16/28/44僅聲明分層，不要求查詢總121以湊成功。普通reader須逐筆獨立原SHA證明（固定Git原文或外部精確pin）及DB row/current raw核對；弱證據限顯式audit envelope，不能丟掉research_only/custody_verified。讀回不得改推薦DB；未完整恢復時全量維持失敗，不把partial清單當完整。
+
+搬遷不得用D→F文字替換授來源身份。repo/output既有掛載點的別名僅限同實體、具名路徑欄位且下層無新連結；不存在的舊D來源需獨立遷移custody，不能以F檔存在替代。Formal taxonomy同日有多來源時必須明選root，禁止默選第一個。
+
+Weekly除了raw bytes／sidecar核對，core stdout、record、payload、monthly status selected dates、artifact query dates及每query manifest必須完全相同期別。原10/19真區間10/12..18，舊Gemini package文字10/09..15不作事實。sii/F26逾時無raw，仍5/6partial；月營收parity不能替代公告query。保留原件，另建修正審核包，不重跑producer偽造自然成功。

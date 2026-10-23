@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**Track B 接任成果獨立複核：完成裁決不成立。** 已補強 Forward 外部接受／原件重播、Legacy custody、搬遷路徑與 Weekly 期別檢查；八份雙市場月營收 HTML 及四月 archive 已離線讀回，但 TWSE 6443 仍有兩欄差異、正式 Scoring/PIT 未通過。Formal/Paper 來源 Owner 尚未選定，自然排程未恢復完整鏈；不宣告 `DATA_PIPELINES_ENGINEERING_COMPLETE_AWAITING_MATURITY`。原 RC／Track A UI 保持，驗證與逐線剩餘工程見[Track B 獨立複核](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。
+
 **後繼個股研究原值圖卡。** 承接已完成 Track A 布局，基本面／營收、財報比較、法人、信用、集保級距與分點新增已載入 DTO 的原值圖卡；單點採值卡、同日同源同單位才比較，不推算成長或連買。82定向、Workbench85、validator25／0／4及mypy1135通過；125%／150%三尺寸研究View實圖已核。這是UI工程，不改P0、正式資料或金融資格，固定EXE未重建；來源缺件及驗證界線見[研究視覺整合](../06_qa/BALDR_RESEARCH_VISUALIZATION_20261022.md)。
 
 **日常營運裁決 `DAILY_OPERATIONS_PARTIAL_RECOVERY`，固定 V2 RC 保持。** Quick 已唯讀核對遷移證據、原備份及868筆／14,756欄修訂值，並完成精確 custody binding 的正式根 metadata 讀回；舊收據與資料庫未改寫。Freshness／Evidence 終態收據、六軌唯讀分類及 BankTaiwan／校準原件定位已完成必要回歸（275項／4 skip、mypy11檔，最新Bank45項／1 skip及launcher2項另驗）；不以程式修復宣稱自然排程恢復。21項Task定義無差異、Direct停用、兩個既有heartbeat保持；新formal-input自然run已越過舊路徑錯誤，但因09/09配置對10/22過期而拒絕。來源資格、當日PIT、Forward成熟、Native停止及Owner未驗維持；實際QA與逐分支下一步見[日常營運恢復](../06_qa/BALDR_DAILY_OPERATIONS_RECOVERY_20261021.md)。

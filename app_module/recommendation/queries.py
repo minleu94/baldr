@@ -34,6 +34,7 @@ from app_module.recommendation.persistence import (
 )
 from data_module.legacy_recommendation_run_locator import (
     ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS,
+    LegacyRecommendationCustodyEvidencePin,
     LocatedLegacyRecommendationRun,
     compute_legacy_runs_db_row_sha256,
     locate_legacy_recommendation_run,
@@ -783,10 +784,12 @@ class SQLiteLegacyRecommendationRawByteReader:
         *,
         trusted_expected_hashes: Mapping[str, str] | None = None,
         allowed_relocated_custody_tiers: Collection[str] | None = None,
+        relocated_custody_evidence: Mapping[str, LegacyRecommendationCustodyEvidencePin] | None = None,
     ) -> None:
         self._runs_dir = Path(runs_dir)
         self._database_path = Path(database_path)
         self._trusted_expected_hashes = dict(trusted_expected_hashes or {})
+        self._relocated_custody_evidence = dict(relocated_custody_evidence or {})
         self._allowed_relocated_custody_tiers: tuple[str, ...] | None = (
             None
             if allowed_relocated_custody_tiers is None
@@ -1011,6 +1014,7 @@ class SQLiteLegacyRecommendationRawByteReader:
                     runs_root=root,
                     db_row_sha256=db_row_sha256,
                     allowed_tiers=self._allowed_relocated_custody_tiers,
+                    custody_evidence=self._relocated_custody_evidence,
                 )
             if located is None:
                 raise ExecutionArtifactIntegrityError(

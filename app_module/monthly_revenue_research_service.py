@@ -809,6 +809,15 @@ class MonthlyRevenueResearchService:
         markets = {fact.market for fact in candidates}
         if len(markets) > 1:
             raise ValueError("scoring_ranking_projection_requires_single_market")
+        dimensions = {
+            (fact.metric, fact.period, fact.value_kind, fact.unit)
+            for fact in candidates
+        }
+        if len(dimensions) > 1:
+            raise ValueError("scoring_ranking_projection_requires_single_factor_period_unit")
+        codes = [fact.stock_code for fact in candidates]
+        if len(codes) != len(set(codes)):
+            raise ValueError("scoring_ranking_projection_duplicate_stock_code")
         qualification = self._qualification_reasons_by_fact(candidates, use, cutoff_at)
         qualified_facts: list[MonthlyRevenueResearchFact] = []
         unknown_codes: list[str] = []

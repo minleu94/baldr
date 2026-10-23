@@ -134,31 +134,19 @@ def _manifest_body(path: Path) -> dict[str, object]:
 
 
 def _same_resolved_target_path(recorded: object, actual: Path) -> bool:
-    if recorded == str(actual):
-        return True
-    if not isinstance(recorded, str) or not recorded.strip():
-        return False
-    try:
-        return _resolved(Path(recorded)) == actual
-    except OSError:
-        return False
+    from data_module.repository_output_path_identity import same_repository_output_path
+
+    return same_repository_output_path(
+        recorded, actual, repository_root=Path(__file__).absolute().parents[2],
+    )
 
 
 def _same_or_relocated_source_path(recorded: object, actual: Path) -> bool:
-    if _same_resolved_target_path(recorded, actual):
-        return True
-    if not isinstance(recorded, str):
-        return False
-    legacy_d_source = r"D:\Min\Python\Project\FA_Data\output\paper_portfolio\paper_portfolio.sqlite"
-    current_f_source = r"F:\Min\Python\Project\FA_Data\output\paper_portfolio\paper_portfolio.sqlite"
-    if (
-        recorded == legacy_d_source
-        and str(actual) == current_f_source
-        and not Path(legacy_d_source).exists()
-        and actual.is_file()
-    ):
-        return True
-    return False
+    from data_module.repository_output_path_identity import same_repository_output_path
+
+    return same_repository_output_path(
+        recorded, actual, repository_root=Path(__file__).absolute().parents[2],
+    )
 
 
 def _validate_existing(

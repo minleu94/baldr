@@ -82,18 +82,9 @@ def test_wp5_period_scale_proof_and_scoring_ranking_projector():
     assert proof.to_dict()["currency"] == "unknown"
 
 
-def test_wp6_relocated_path_matching_and_weekly_acquisition_verification():
+def test_wp6_missing_original_drive_is_not_custody():
     fa_output = Path(r"F:\Min\Python\Project\FA_Data\output")
-    if not fa_output.is_dir():
-        pytest.skip("FA_Data output not mounted")
-    assert _path_matches_relocated(
+    assert not _path_matches_relocated(
         r"D:\Min\Python\Project\FA_Data\output", fa_output
     )
-    res = verify_weekly_acquisition(
-        fa_output,
-        now=datetime.now(timezone.utc),
-        repository_root=ROOT,
-    )
-    assert res["status"] in {"partial", "verified"}
-    assert res["core_exit_code"] == 0
-    assert res["collection_id"].startswith(("weekly", "ewc"))
+    assert _path_matches_relocated(str(fa_output), fa_output)

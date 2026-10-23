@@ -46,6 +46,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-as-of-date", default=None)
     parser.add_argument("--event-type", default=None)
     parser.add_argument("--symbol", default=None)
+    parser.add_argument("--price-source-bundle-run-id", default=None)
+    parser.add_argument("--price-source-bundle-relative-path", default=None)
+    parser.add_argument("--price-source-bundle-sha256", default=None)
+    parser.add_argument("--daily-price-qualification-binding-path", type=Path, default=None)
+    parser.add_argument("--daily-price-qualification-binding-sha256", default=None)
+    parser.add_argument(
+        "--daily-price-qualification-role",
+        choices=("outcome_realization",),
+        default=None,
+    )
+    parser.add_argument("--daily-price-qualification-cutoff-at", default=None)
     parser.add_argument(
         "--calendar-cache-path",
         type=Path,
@@ -72,7 +83,30 @@ def _parse_windows(value: str) -> tuple[int, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     _configure_utf8()
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    bundle_values = (
+        args.price_source_bundle_run_id,
+        args.price_source_bundle_relative_path,
+        args.price_source_bundle_sha256,
+    )
+    if any(value is not None for value in bundle_values) and any(
+        value is None for value in bundle_values
+    ):
+        parser.error("exact source bundle requires run id, relative path, and SHA-256")
+    qualification_values = (
+        args.daily_price_qualification_binding_path,
+        args.daily_price_qualification_binding_sha256,
+        args.daily_price_qualification_role,
+        args.daily_price_qualification_cutoff_at,
+    )
+    if any(value is not None for value in qualification_values) and (
+        any(value is None for value in qualification_values)
+        or any(value is None for value in bundle_values)
+    ):
+        parser.error(
+            "daily price qualification requires binding path/SHA, role/cutoff, and exact bundle pins"
+        )
     config_kwargs = {}
     if args.data_root is not None:
         config_kwargs["data_root"] = args.data_root
@@ -95,6 +129,23 @@ def main(argv: list[str] | None = None) -> int:
         calendar_cache_path=args.calendar_cache_path,
         temporary_closure_path=args.temporary_closure_path,
         reservation_wait_seconds=args.reservation_wait_seconds,
+        price_source_bundle_descriptor=(
+            {
+                "status": "captured",
+                "schema_version": "daily-price-source-bundle.v1",
+                "quick_run_id": args.price_source_bundle_run_id,
+                "reference": {
+                    "relative_path": args.price_source_bundle_relative_path,
+                    "sha256": args.price_source_bundle_sha256,
+                },
+            }
+            if all(value is not None for value in bundle_values)
+            else None
+        ),
+        daily_price_qualification_binding_path=args.daily_price_qualification_binding_path,
+        daily_price_qualification_binding_sha256=args.daily_price_qualification_binding_sha256,
+        daily_price_qualification_role=args.daily_price_qualification_role,
+        daily_price_qualification_cutoff_at=args.daily_price_qualification_cutoff_at,
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return int(result.get("exit_code", 2))

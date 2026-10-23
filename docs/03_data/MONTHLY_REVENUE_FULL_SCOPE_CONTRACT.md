@@ -46,26 +46,14 @@ Builder、create-only writer及reader都由固定SHA／URL／CP950 profile的真
 
 這是scale-only proof，`currency=unknown`、PIT／金融資格=false，不是貨幣及用途接受齊全的unit proof，不塞入archive既有`unit_proof_sha256`或將`unit_status`改verified。兩個OpenAPI單位仍未知，不以此乘1,000或標TWD；r2 archive、原百分率研究與既有資格不變。
 
-## 2026-10-22 Track B 接任歷史原件全覆蓋與對等證明（R3 整合）
+## 2026-10-22 接任原件增量與 R7 獨立複核
 
-接任負責人依 `FULL_SCOPE_MONTHLY_REVENUE_OWNER_AUTHORIZATION` 完成全用途範圍之歷史原件捕獲與跨來源對等性核驗：
+2026-07..09雙市場6份完整HTML與六月2份原件，已由獨立受控reader離線重播；四個月archive為10批9423觀測，index `ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5`。不是全歷史、全公司coverage或歷史PIT。印出日期10/23與本機捕獲時間如實保留，不能回填成六月到九月當時可用。
 
-1. **官方 MOPS 靜態 HTML 歷史原件完整捕獲**：
-   - 成功捕獲 2026-07、2026-08、2026-09 雙市場（TWSE 上市與 TPEx 上櫃）共 6 份完整 HTML 原件於 `wp5_monthly_revenue/mops_history_captures_r3/`。
-   - 所有檔案均具完整 HTTP 200、完整 EOF、精確 Content-Length 與 SHA-256 收據，無任何截斷或逾時缺件。
+新增任意月份scale-only create-only writer及外部SHA reader，由完整capture重新推導每表/欄位與原件身份。八份原件可證千元尺度1000，currency仍unknown；不改原archive unit_status，不以此接受金額ML。Parity builder會重播OpenAPI transport/raw並核對rows，拒絕手改rows卻沿用rawSHA。
 
-2. **統一修訂帳本（Unified Revision Archive）**：
-   - 建立 10 個批次、共 9,423 筆觀測值之修訂帳本（涵蓋 2026-06..2026-09 MOPS 歷史與 2026-09 OpenAPI）。
-   - 索引檔位於 `wp5_monthly_revenue/r3_full_archive/indexes/ac526dfb867e4434fbeb95f690d6e7d59c920e0079df7b29448ed24fe57165b5.json`。
+原9月parity：TWSE共同994、相符993，6443當月96562/88430及累計904467/896335差異皆8132，僅未解修訂候選；cross_verified_scale=null。TPEx共同863全部相符，另有OpenAPI-only30及MOPS-only3。不能將863/863稱為全上市櫃對等，也不能擅自排除6443湊PASS。
 
-3. **跨來源金額完全對等證明（Cross-Source Amount Parity Proof）**：
-   - 針對 2026-09 共同存在的 863 家上市櫃公司進行跨來源（OpenAPI vs MOPS HTML）逐欄位金額交叉比對。
-   - 比較結果：863/863 家公司金額 100% 完全相符，差異數為 0（0 mismatches），確認兩來源數值對等性。
+Scoring投影另外要求單一metric/period/value-kind/unit且股票唯一；正式use gate仍須獨立來源用途接受。原實測formal_scoring_gate_allowed=false，歷史Backtest樣本not_visible_by_cutoff、formal_pit=false。既有合格百分率研究沿原授權；全用途開發授權不等於所有歷史資料已合格。待補官方幣別、原可得時間、修訂公告與更長連續歷史。
 
-4. **千元尺度與幣別界線**：
-   - 由 MOPS HTML 表頭結構嚴格推導金額欄位之千元乘數尺度（`scale_to_base_unit=1000`），百分率欄位維持原比率。
-   - 由於官方端點與宣告文件未具備雙向明確指定新台幣之法律文件前，系統誠實保留 `currency="unknown"`，不以主觀習慣猜測 TWD。
-
-5. **下游 Consumer 轉接器與防護閘門**：
-   - 於 `data_module/monthly_revenue_qualification_binding.py` 與 `app_module/monthly_revenue_research_service.py` 完整接通 Scoring、Backtest、ML 轉接器與用途防護閘門。
-
+獨立原件讀回 `monthly_capture_independent_readback_r7.json` SHA `d279d59ff2d3fbb96c019457498ca5e03091c2cd73e0fdc60b47b01f331b6b3e`，位於本次審查任務；QA與消費界線見[Track B驗收](../06_qa/BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)。

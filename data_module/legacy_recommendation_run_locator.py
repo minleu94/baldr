@@ -1,14 +1,15 @@
-"""唯讀定位 88 筆已由遷入收據與分級外部證據固定的舊推薦結果，不改寫原件或建立通用 D/F 別名。"""
+"""唯讀定位有限舊推薦副本；原件資格另需獨立證據，不建立通用 D/F 別名。"""
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 import hashlib
 import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 from typing import Literal, cast
 
 
@@ -40,8 +41,219 @@ _REPARSE_ATTRIBUTE = 0x400
 
 
 @dataclass(frozen=True, slots=True)
+class _GitOriginalRecommendationPin:
+    """搬遷前既有 Git 文件原物件，與本次定位清冊分開固定。"""
+
+    result_id: str
+    commit: str
+    document_path: str
+    blob_id: str
+    raw_sha256: str
+    size_bytes: int
+    statement_kind: str
+
+
+_GIT_ORIGINAL_PINS = {
+    "scheduled_rec_20260907_051003": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260907_051003",
+        "542a37456d84cef5f1bf8b9edc91b27bd6c7960c",
+        "docs/09_archive/V4_AUTOMATED_REVIEW_2026_09_07.md",
+        "8669bfe52e141cd9a7de2a79f250d781b89817f5",
+        "sha256:6ac2cd46d8a529f546653be6e41b4a52ab0e3e13409e0c3e4305dae619b7074f",
+        157069, "paper_preview_recommendation",
+    ),
+    "scheduled_rec_20260910_051003": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260910_051003",
+        "5c6eee9581bf09f0e074413ebc931fa08bfd6070",
+        "docs/06_qa/NATURAL_LEARNING_TRACE_2026_09_18.md",
+        "a342994c41d0537206751897a3e0d203a059b59f",
+        "sha256:4a20318354aa4d31aaddc69e30dbf37474503d104f74d10ab215eb93e436d1b9",
+        15398, "natural_learning_source_snapshot",
+    ),
+    "scheduled_rec_20260914_051003": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260914_051003",
+        "ec19e9db439512d9cd8b33e9a287e6bf57b77ac6",
+        "docs/09_archive/DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md",
+        "67950552f067fc9369f02e2a4e09d8d1d973b84c",
+        "sha256:fd025f5199640454428d2dd170806385c9ed8a5223d9318da13737b737b23ee5",
+        10241, "banktaiwan_source_path_and_hash",
+    ),
+    "scheduled_rec_20260915_051003": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260915_051003",
+        "0aaf0dffeb99224aa3f51f2bc58f29606a1002d9",
+        "docs/06_qa/BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md",
+        "975516839f72689bfb0ebfabaf0467d85d3df49d",
+        "sha256:928e2c6a63d71bda2ea99e1f9a8137641e6dd4962bb997a90ed00250ae291dca",
+        12208, "banktaiwan_snapshot_and_pinned_receipt",
+    ),
+    "scheduled_rec_20260917_051002": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260917_051002",
+        "d8ce9add897575a8cb3036a85c4a73217ad338b7",
+        "docs/09_archive/DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md",
+        "63399bbc9f55e169caf30d333fb75ddc7a9e7c20",
+        "sha256:6662e4c48c59a8426f1a054320c40e6b472372150ca65786078cbb5d56b277c9",
+        53241, "capture_clock_recommendation_source",
+    ),
+    "scheduled_rec_20260921_051002": _GitOriginalRecommendationPin(
+        "scheduled_rec_20260921_051002",
+        "caa55f551d39f73f944a2fc2355a27a5199cc87c",
+        "docs/06_qa/FORMAL_SCHEDULER_READINESS_AUDIT_2026_09_20.md",
+        "ec35c157dbf1416f5528e4133b03ff61f67035f7",
+        "sha256:3781a7fb86c5eae603c4ab2179ad39bc9d458a015d78868283dbbfe2301ea5d7",
+        21901, "formal_scheduler_source_identity",
+    ),
+}
+
+_BANKTAIWAN_0915_RECEIPT_PATH = Path(
+    r"F:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\scheduled\recommendation_learning_banktaiwan\runs\2026-09-15-attempt-002-848408b70b64.json"
+)
+_BANKTAIWAN_0915_RECEIPT_SHA256 = "sha256:3a4e38a0bb0ecfa54f405936814350231536b32cb030f9d806fb9c92eff945cd"
+_BANKTAIWAN_0915_RECEIPT_BYTES = 3425408
+
+
+def _read_original_git_document(pin: _GitOriginalRecommendationPin) -> bytes | None:
+    """只讀固定 commit 的原 blob；不讀工作樹副本，也不接受可變分支名稱。"""
+
+    executable = Path(r"C:\Program Files\Git\cmd\git.exe") if os.name == "nt" else Path("/usr/bin/git")
+    if not executable.is_file():
+        return None
+    environment = {key: value for key, value in os.environ.items() if not key.upper().startswith("GIT_")}
+    base_arguments = [str(executable), "-c", "core.fsmonitor=false", "cat-file"]
+    object_name = f"{pin.commit}:{pin.document_path}"
+    try:
+        size_result = subprocess.run(
+            [*base_arguments, "-s", object_name],
+            cwd=Path(__file__).resolve().parents[1], env=environment,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=5, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if size_result.returncode != 0 or size_result.stdout.strip() != str(pin.size_bytes).encode("ascii"):
+            return None
+        result = subprocess.run(
+            [*base_arguments, "blob", object_name],
+            cwd=Path(__file__).resolve().parents[1], env=environment,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=5, check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0 or len(result.stdout) != pin.size_bytes:
+        return None
+    raw = result.stdout
+    if "sha256:" + hashlib.sha256(raw).hexdigest() != pin.raw_sha256:
+        return None
+    git_blob = b"blob " + str(len(raw)).encode("ascii") + b"\x00" + raw
+    if hashlib.sha1(git_blob).hexdigest() != pin.blob_id:
+        return None
+    return raw
+
+
+def _verify_original_git_custody(entry: Mapping[str, object]) -> bool:
+    """驗原文件完整具名陳述；同一雜湊出現在其他來源或備註不取得資格。"""
+
+    pin = _GIT_ORIGINAL_PINS.get(str(entry["result_id"]))
+    if pin is None or entry["result_id"] != pin.result_id:
+        return False
+    origin = str(entry["origin_path"])
+    original_sha = str(entry["independent_pre_migration_file_sha256"])
+    if origin != rf"D:\Min\Python\Project\FA_Data\output\recommendation\runs\{pin.result_id}.json":
+        return False
+    if original_sha != entry["relocated_file_sha256"]:
+        return False
+    raw = _read_original_git_document(pin)
+    if raw is None:
+        return False
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return False
+    if pin.statement_kind == "paper_preview_recommendation":
+        expected = (
+            f"- Recommendation：`{origin}`，file hash `{original_sha}`，5 rows，"
+            "decision date `2026-09-07`。"
+        )
+    elif pin.statement_kind == "natural_learning_source_snapshot":
+        expected = (
+            f"| recommendation source snapshot | `{origin}`；"
+            "`created_at=2026-09-10T05:10:03-07:00`；"
+            f"bytes SHA-256 `{original_sha}`。 |"
+        )
+    elif pin.statement_kind == "banktaiwan_source_path_and_hash":
+        return sum(
+            lines[index] == f"- path：`{origin}`"
+            and lines[index + 1] == f"- file hash：`{original_sha}`"
+            for index in range(len(lines) - 1)
+        ) == 1
+    elif pin.statement_kind == "capture_clock_recommendation_source":
+        expected = (
+            f"| recommendation source | `{origin}`；file hash `{original_sha}`；"
+            "`available_at=created_at=2026-09-17T05:10:02-07:00` | "
+            "source bytes 在 candidate decision 前已可用。 |"
+        )
+    elif pin.statement_kind == "formal_scheduler_source_identity":
+        identity = (
+            f"其 `result_id={pin.result_id}`、`created_at=2026-09-21T05:10:02-07:00`、"
+            "`decision_date=2026-09-21`、`decision_at=2026-09-21T12:10:22.626235+00:00`；"
+            f"檔案 SHA256 為 `{original_sha}`"
+        )
+        return sum(
+            lines[index - 2] == f"`{origin}`" and lines[index - 1] == ""
+            and line.partition("。")[0] == identity
+            and line.partition("。")[2].startswith("snapshot cohort 共 200 rows，")
+            for index, line in enumerate(lines) if index >= 2
+        ) == 1
+    elif pin.statement_kind == "banktaiwan_snapshot_and_pinned_receipt":
+        expected_snapshot = (
+            "前置 dry-run 結果為 exit `0`：官方交易日判定 `true`、snapshot `verified`，"
+            f"snapshot hash 仍為 `{original_sha}`，成本情境為 `banktaiwan-electronic-estimate`／"
+            "`sha256:73ad38fa8a5cd983535f50fcaf99e168aea44400ac2e7428d58400a21f55e450`，"
+            "且 `shadow_only=true`、`formal_order_allowed=false`。"
+        )
+        expected_receipt = (
+            "| operational receipt | `D:\\Min\\Python\\Project\\FA_Data_Shadow_BankTaiwan\\scheduled\\"
+            "recommendation_learning_banktaiwan\\runs\\2026-09-15-attempt-002-848408b70b64.json`；"
+            f"SHA-256 `{_BANKTAIWAN_0915_RECEIPT_SHA256}` |"
+        )
+        return (
+            lines.count(expected_snapshot) == 1 and lines.count(expected_receipt) == 1
+            and _verify_banktaiwan_0915_original_receipt(origin, original_sha)
+        )
+    else:
+        return False
+    return lines.count(expected) == 1
+
+
+def _verify_banktaiwan_0915_original_receipt(origin: str, original_sha: str) -> bool:
+    """原 Git 文件固定 operational receipt 原 bytes，再讀精確 snapshot 身份。"""
+
+    raw = _read_pinned_profile_target_bytes(
+        _BANKTAIWAN_0915_RECEIPT_PATH,
+        expected_sha256=_BANKTAIWAN_0915_RECEIPT_SHA256,
+        expected_size=_BANKTAIWAN_0915_RECEIPT_BYTES,
+    )
+    if raw is None:
+        return False
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeDecodeError, ValueError, TypeError):
+        return False
+    if not isinstance(payload, dict) or not isinstance(payload.get("snapshot"), dict):
+        return False
+    snapshot = payload["snapshot"]
+    return (
+        snapshot.get("path") == origin and snapshot.get("file_sha256") == original_sha
+        and snapshot.get("status") == "verified"
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class LocatedLegacyRecommendationRun:
-    """單筆經分級 custody 驗證的舊推薦結果定位結果。"""
+    """單筆副本定位 envelope，明確區分實際 custody 驗證與稽核聲明。"""
 
     result_id: str
     origin_path: str
@@ -53,6 +265,65 @@ class LocatedLegacyRecommendationRun:
     custody_verification_tier: CustodyVerificationTier
     independent_pre_migration_file_sha256: str | None
     independent_pre_migration_evidence_ref: str
+    custody_verified: bool = False
+    research_only: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyRecommendationCustodyEvidencePin:
+    """由呼叫端明確接受的獨立原件證據；清冊自身雜湊不構成此授權。"""
+
+    evidence_path: Path
+    evidence_sha256: str
+    evidence_size_bytes: int
+    record_pointer: tuple[str, ...]
+    result_id_field: str
+    origin_path_field: str
+    original_sha256_field: str
+
+
+def _verify_independent_custody(
+    entry: Mapping[str, object], pin: LegacyRecommendationCustodyEvidencePin | None,
+) -> bool:
+    """讀回外部固定的完整原件身份記錄，不以任意文字中的雜湊命中代替。"""
+
+    if pin is None or not _valid_sha256(pin.evidence_sha256):
+        return False
+    if (
+        type(pin.evidence_size_bytes) is not int
+        or not 0 < pin.evidence_size_bytes <= MAX_LOCATED_LEGACY_RUN_BYTES
+        or not pin.evidence_path.is_absolute()
+        or Path(os.path.abspath(pin.evidence_path)) == Path(os.path.abspath(str(entry["current_path"])))
+        or not all(type(key) is str and key for key in pin.record_pointer)
+        or not all(type(key) is str and key for key in (
+            pin.result_id_field, pin.origin_path_field, pin.original_sha256_field,
+        ))
+    ):
+        return False
+    content = _read_pinned_profile_target_bytes(
+        pin.evidence_path,
+        expected_sha256=pin.evidence_sha256,
+        expected_size=pin.evidence_size_bytes,
+    )
+    if content is None:
+        return False
+    try:
+        record: object = json.loads(
+            content.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_json_constant,
+        )
+        for key in pin.record_pointer:
+            if not isinstance(record, dict):
+                return False
+            record = record[key]
+    except (UnicodeDecodeError, ValueError, TypeError, KeyError):
+        return False
+    return isinstance(record, dict) and (
+        record.get(pin.result_id_field) == entry["result_id"]
+        and record.get(pin.origin_path_field) == entry["origin_path"]
+        and record.get(pin.original_sha256_field) == entry["relocated_file_sha256"]
+        and entry["independent_pre_migration_file_sha256"] == entry["relocated_file_sha256"]
+    )
 
 
 def compute_legacy_runs_db_row_sha256(
@@ -245,8 +516,37 @@ def locate_legacy_recommendation_run(
     runs_root: Path,
     db_row_sha256: str | None = None,
     allowed_tiers: Collection[str] | None = None,
+    custody_evidence: Mapping[str, LegacyRecommendationCustodyEvidencePin] | None = None,
 ) -> LocatedLegacyRecommendationRun | None:
-    """只定位清單逐檔固定的 88 筆缺失 D 槽舊推薦結果，且嚴格區分 custody 等級。"""
+    """一般 consumer 僅接受另有外部原件證據且精確綁定 DB 列的搬遷結果。"""
+
+    return _locate_legacy_recommendation_run(
+        result_id, origin_data_path, runs_root=runs_root,
+        db_row_sha256=db_row_sha256, allowed_tiers=allowed_tiers,
+        custody_evidence=custody_evidence, audit_only=False,
+    )
+
+
+def audit_legacy_recommendation_run(
+    result_id: str, origin_data_path: str | Path, *, runs_root: Path,
+    db_row_sha256: str,
+) -> LocatedLegacyRecommendationRun | None:
+    """明示稽核入口只提供當前副本 envelope，不授原件 custody 或 consumer 資格。"""
+
+    return _locate_legacy_recommendation_run(
+        result_id, origin_data_path, runs_root=runs_root,
+        db_row_sha256=db_row_sha256,
+        allowed_tiers=ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS,
+        custody_evidence=None, audit_only=True,
+    )
+
+
+def _locate_legacy_recommendation_run(
+    result_id: str, origin_data_path: str | Path, *, runs_root: Path,
+    db_row_sha256: str | None, allowed_tiers: Collection[str] | None,
+    custody_evidence: Mapping[str, LegacyRecommendationCustodyEvidencePin] | None,
+    audit_only: bool,
+) -> LocatedLegacyRecommendationRun | None:
 
     if type(result_id) is not str or not result_id:
         return None
@@ -257,7 +557,7 @@ def locate_legacy_recommendation_run(
     if not isinstance(origin_text, str):
         return None
     permitted_tiers = (
-        set(ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS)
+        {"tier1_independent_pre_migration_file_sha256"}
         if allowed_tiers is None
         else set(allowed_tiers)
     )
@@ -280,8 +580,24 @@ def locate_legacy_recommendation_run(
     tier = cast(CustodyVerificationTier, entry["custody_verification_tier"])
     if tier not in permitted_tiers:
         return None
-    if db_row_sha256 is not None and entry.get("db_row_sha256") != db_row_sha256:
+    if not _valid_sha256(db_row_sha256) or entry.get("db_row_sha256") != db_row_sha256:
         return None
+    target = Path(str(entry["current_path"]))
+    expected_in_root = Path(os.path.abspath(runs_root)) / f"{result_id}.json"
+    if Path(os.path.abspath(target)) != expected_in_root:
+        return None
+    verified = False
+    if not audit_only:
+        if tier != "tier1_independent_pre_migration_file_sha256":
+            return None
+        supplied_pin = (custody_evidence or {}).get(result_id)
+        verified = (
+            _verify_independent_custody(entry, supplied_pin)
+            if supplied_pin is not None
+            else _verify_original_git_custody(entry)
+        )
+        if not verified:
+            return None
 
     origin_path = Path(origin_text)
     try:
@@ -291,11 +607,6 @@ def locate_legacy_recommendation_run(
     except OSError:
         return None
     else:
-        return None
-
-    target = Path(str(entry["current_path"]))
-    expected_in_root = Path(os.path.abspath(runs_root)) / f"{result_id}.json"
-    if Path(os.path.abspath(target)) != expected_in_root:
         return None
 
     expected_sha256 = str(entry["relocated_file_sha256"])
@@ -321,6 +632,8 @@ def locate_legacy_recommendation_run(
         independent_pre_migration_evidence_ref=str(
             entry["independent_pre_migration_evidence_ref"]
         ),
+        custody_verified=verified,
+        research_only=not verified,
     )
 
 
@@ -438,6 +751,8 @@ __all__ = (
     "LEGACY_RECOMMENDATION_RUN_LOCATOR_PROFILE_PATH",
     "LEGACY_RECOMMENDATION_RUN_LOCATOR_PROFILE_SHA256",
     "LocatedLegacyRecommendationRun",
+    "LegacyRecommendationCustodyEvidencePin",
+    "audit_legacy_recommendation_run",
     "PINNED_MIGRATION_RECEIPT_DB_SHA256",
     "compute_legacy_runs_db_row_sha256",
     "load_pinned_legacy_recommendation_locators",

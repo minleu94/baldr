@@ -248,6 +248,13 @@ def write_mops_monthly_revenue_unit_scale_proof_create_only(
     """由已驗證capture重新推導並以create-only方式寫入proof候選。"""
 
     proof = build_mops_monthly_revenue_unit_scale_proof(capture)
+    return _write_scale_proof_create_only(path, proof)
+
+
+def _write_scale_proof_create_only(
+    path: Path | str, proof: MopsMonthlyRevenueUnitScaleProof,
+) -> Path:
+    """共用有界且不覆寫的原件衍生證據寫入。"""
     raw = proof.canonical_bytes()
     if len(raw) > MAX_MOPS_MONTHLY_REVENUE_UNIT_SCALE_PROOF_BYTES:
         raise MonthlyRevenueUnitScaleProofError("proof_exceeds_size_limit")
@@ -722,18 +729,89 @@ def build_mops_monthly_revenue_period_scale_proof(
     )
 
 
+def write_mops_monthly_revenue_period_scale_proof_create_only(
+    path: Path | str,
+    capture: MopsMonthlyRevenueHistoricalCapture,
+) -> Path:
+    """從完整原件重建任意月份尺度證據；不授幣別或用途資格。"""
+    return _write_scale_proof_create_only(
+        path, build_mops_monthly_revenue_period_scale_proof(capture)
+    )
+
+
+def read_mops_monthly_revenue_period_scale_proof(
+    path: Path | str,
+    *,
+    expected_sha256: str,
+    capture: MopsMonthlyRevenueHistoricalCapture,
+) -> dict[str, object]:
+    """外部 SHA、完整 capture 重播及原件 bytes 三者必須一致。"""
+    if type(expected_sha256) is not str or not _SHA256_RE.fullmatch(expected_sha256):
+        raise MonthlyRevenueUnitScaleProofError("expected_sha256_invalid")
+    proof = build_mops_monthly_revenue_period_scale_proof(capture)
+    expected_raw = proof.canonical_bytes()
+    if len(expected_raw) > MAX_MOPS_MONTHLY_REVENUE_UNIT_SCALE_PROOF_BYTES:
+        raise MonthlyRevenueUnitScaleProofError("proof_exceeds_size_limit")
+    if hashlib.sha256(expected_raw).hexdigest() != expected_sha256:
+        raise MonthlyRevenueUnitScaleProofError("proof_sha256_not_bound_to_capture")
+    target = _resolve_proof_target(path)
+    _assert_plain_parent_chain(target.parent)
+    parent_identity = _parent_chain_identity(target.parent)
+    try:
+        before = target.lstat()
+        if (
+            _is_reparse_or_link(target, before)
+            or not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size > MAX_MOPS_MONTHLY_REVENUE_UNIT_SCALE_PROOF_BYTES
+        ):
+            raise MonthlyRevenueUnitScaleProofError("proof_file_invalid_or_exceeds_limit")
+        _require_nofollow_support()
+        raw = _read_bounded_regular_file_no_follow(
+            target, maximum_bytes=MAX_MOPS_MONTHLY_REVENUE_UNIT_SCALE_PROOF_BYTES
+        )
+        if (
+            _stat_identity(before) != _path_identity(target)
+            or parent_identity != _parent_chain_identity(target.parent)
+            or len(raw) != before.st_size
+        ):
+            raise MonthlyRevenueUnitScaleProofError("proof_file_or_parent_changed_during_read")
+    except (OSError, MLResearchOutputBoundaryError) as exc:
+        raise MonthlyRevenueUnitScaleProofError("proof_read_failed") from exc
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise MonthlyRevenueUnitScaleProofError("proof_sha256_mismatch")
+    if raw != expected_raw:
+        raise MonthlyRevenueUnitScaleProofError("proof_bytes_not_derived_from_capture")
+    return proof.to_dict()
+
+
 def build_openapi_mops_cross_source_parity_proof(
     openapi_batch: object,
     mops_capture: MopsMonthlyRevenueHistoricalCapture,
 ) -> dict[str, object]:
     """交叉核對同市場、同期別之 OpenAPI JSON 與 MOPS 靜態 HTML 數值與千元尺度。"""
     from decimal import Decimal
-    from data_module.opendata_monthly_revenue import OpenApiMonthlyRevenueBatch
+    from data_module.opendata_monthly_revenue import (
+        OpenApiMonthlyRevenueBatch, prepare_openapi_monthly_revenue_batch,
+    )
 
     if type(openapi_batch) is not OpenApiMonthlyRevenueBatch:
         raise MonthlyRevenueUnitScaleProofError("openapi_batch_type_invalid")
     if type(mops_capture) is not MopsMonthlyRevenueHistoricalCapture:
         raise MonthlyRevenueUnitScaleProofError("mops_capture_type_invalid")
+    # 此比較只需要來源單位原值；已帶轉換資格的 batch 必須先回到原始批次。
+    if openapi_batch.unit_proof_sha256 is not None:
+        raise MonthlyRevenueUnitScaleProofError("parity_requires_source_unit_batch")
+    try:
+        openapi_batch.capture.verify_transport()
+        rebuilt = prepare_openapi_monthly_revenue_batch(
+            capture=openapi_batch.capture,
+            successful_batch_completed_at=openapi_batch.successful_batch_completed_at,
+        )
+        if rebuilt.canonical_bytes() != openapi_batch.canonical_bytes():
+            raise MonthlyRevenueUnitScaleProofError("openapi_batch_raw_replay_mismatch")
+    except (TypeError, ValueError) as exc:
+        raise MonthlyRevenueUnitScaleProofError("openapi_batch_raw_revalidation_failed") from exc
     if openapi_batch.capture.market != mops_capture.market:
         raise MonthlyRevenueUnitScaleProofError("cross_source_market_mismatch")
     if openapi_batch.period != mops_capture.period:
@@ -741,6 +819,8 @@ def build_openapi_mops_cross_source_parity_proof(
 
     scale_proof = build_mops_monthly_revenue_period_scale_proof(mops_capture)
     openapi_by_code = {row.stock_code: row for row in openapi_batch.rows}
+    if len(openapi_by_code) != len(openapi_batch.rows):
+        raise MonthlyRevenueUnitScaleProofError("openapi_duplicate_stock_code")
     mops_by_code = mops_capture.raw_source_values_by_stock_code
     common_codes = sorted(set(openapi_by_code).intersection(mops_by_code))
     openapi_only = sorted(set(openapi_by_code) - set(mops_by_code))
@@ -790,6 +870,10 @@ def build_openapi_mops_cross_source_parity_proof(
         "mops_row_count": scale_proof.row_count,
         "mops_scale_proof_sha256": scale_proof.proof_sha256,
         "common_stock_count": len(common_codes),
+        "comparison_scope": "common_stock_codes_and_five_named_amount_fields_only",
+        "compared_stock_codes": common_codes,
+        "compared_amount_fields": [list(pair) for pair in amount_field_pairs],
+        "unmatched_rows_unit_verified": False,
         "openapi_only_stock_codes": openapi_only,
         "mops_only_stock_codes": mops_only,
         "exact_amount_match_stock_count": exact_matches,
@@ -815,5 +899,7 @@ __all__ = [
     "build_mops_monthly_revenue_unit_scale_proof",
     "build_openapi_mops_cross_source_parity_proof",
     "read_mops_monthly_revenue_unit_scale_proof",
+    "read_mops_monthly_revenue_period_scale_proof",
+    "write_mops_monthly_revenue_period_scale_proof_create_only",
     "write_mops_monthly_revenue_unit_scale_proof_create_only",
 ]

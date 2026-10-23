@@ -1,14 +1,14 @@
 {
   "schema_version": "baldr-safe-reclaim-manifest.v1",
-  "observed_utc": "2026-10-23T05:27:17.559878+00:00",
+  "observed_utc": "2026-10-23T05:48:25.523888+00:00",
   "owner_approval_required": true,
-  "existing_deletion_performed": false,
+  "existing_deletion_performed": true,
   "estimated_total_reclaimable_bytes": 9909706064,
   "items": [
     {
       "id": "dist-extra-theme-06",
       "classification": "SAFE_RECLAIM",
-      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "execution_status": "RECLAIMED",
       "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-dist\\candidate_7fbe58670582_eb880817\\baldr",
       "retained_runtime": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-output\\trial\\Baldr-Theme-Research-06\\app",
       "root_identity": [
@@ -45,7 +45,7 @@
       "pre_delete": "After explicit Owner approval, unconditionally rerun complete pair SHA/tree/ADS/hardlink/allocation and full metadata, expanded references, RM and exclusive probes immediately before deleting. Match approved stable file-identity/content contract and exact roots. Any drift stops execution and requires a revised manifest; fingerprint alone never bypasses full hashing.",
       "post_delete": "candidate absent; retained Trial/runtime/receipt/pointer identities unchanged; measure volume free; preserve exact unlink receipt",
       "risk": "low operational risk under observed idle snapshot; historical path must be restored for any consumer requiring it; no automatic deletion",
-      "deletion_authorized": false,
+      "deletion_authorized": true,
       "approved_identity_contract_sha256": "fc496cc5eb78444afb915cabcb0bb15a1855bf1571a1673a3abeab53427004b6",
       "reference_scope": {
         "evidence": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\reference-scope-expanded.json",
@@ -60,12 +60,21 @@
           "retained Trial relative app launcher and passive build receipt"
         ],
         "observational_not_eternal": true
+      },
+      "executed": {
+        "id": "dist-extra-theme-06",
+        "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-dist\\candidate_7fbe58670582_eb880817\\baldr",
+        "files_removed": 7124,
+        "started_utc": "2026-10-23T05:48:18.743456+00:00",
+        "finished_utc": "2026-10-23T05:48:20.801665+00:00",
+        "candidate_absent": true,
+        "estimated_unique_allocation_removed": 978534056
       }
     },
     {
       "id": "dist-extra-theme-07",
       "classification": "SAFE_RECLAIM",
-      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "execution_status": "RECLAIMED",
       "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-dist\\candidate_15d30353c583_5815c921\\baldr",
       "retained_runtime": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-output\\trial\\Baldr-Theme-Research-07\\app",
       "root_identity": [
@@ -102,7 +111,7 @@
       "pre_delete": "After explicit Owner approval, unconditionally rerun complete pair SHA/tree/ADS/hardlink/allocation and full metadata, expanded references, RM and exclusive probes immediately before deleting. Match approved stable file-identity/content contract and exact roots. Any drift stops execution and requires a revised manifest; fingerprint alone never bypasses full hashing.",
       "post_delete": "candidate absent; retained Trial/runtime/receipt/pointer identities unchanged; measure volume free; preserve exact unlink receipt",
       "risk": "low operational risk under observed idle snapshot; historical path must be restored for any consumer requiring it; no automatic deletion",
-      "deletion_authorized": false,
+      "deletion_authorized": true,
       "approved_identity_contract_sha256": "d1017d8341f9a3e3e9c51f8f1e02ef7d2a6a76d71a0214b028acac72abfdab33",
       "reference_scope": {
         "evidence": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\reference-scope-expanded.json",
@@ -117,13 +126,22 @@
           "retained Trial relative app launcher and passive build receipt"
         ],
         "observational_not_eternal": true
+      },
+      "executed": {
+        "id": "dist-extra-theme-07",
+        "path": "F:\\Min\\Python\\Project\\BaldrStorage\\repo-dist\\candidate_15d30353c583_5815c921\\baldr",
+        "files_removed": 7124,
+        "started_utc": "2026-10-23T05:48:20.802665+00:00",
+        "finished_utc": "2026-10-23T05:48:22.712618+00:00",
+        "candidate_absent": true,
+        "estimated_unique_allocation_removed": 978542248
       }
     },
     {
       "id": "failed-snapshot-extra-1e40b7ef8b34297429a36e81f37990f9",
       "classification": "SAFE_RECLAIM",
       "safety_scope": "redundant physical snapshot payload bytes and required per-cycle mtime can be rehydrated; preserved sidecars/evidence unchanged; no qualified source-context replay claim",
-      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "execution_status": "RECLAIMED",
       "path": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\source.sqlite",
       "file_identity": [
         3532133302,
@@ -195,13 +213,22 @@
         "no qualified replay claim despite restored bytes",
         "Owner accepts abandoning immediate resume of this old failed run; historical inspection requires prior restore from retained anchor, without source qualification"
       ],
-      "deletion_authorized": false
+      "deletion_authorized": true,
+      "executed": {
+        "id": "failed-snapshot-extra-1e40b7ef8b34297429a36e81f37990f9",
+        "path": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\1e40b7ef8b34297429a36e81f37990f9\\snapshot\\source.sqlite",
+        "files_removed": 1,
+        "started_utc": "2026-10-23T05:48:22.713673+00:00",
+        "finished_utc": "2026-10-23T05:48:22.715670+00:00",
+        "candidate_absent": true,
+        "estimated_unique_allocation_removed": 3976314880
+      }
     },
     {
       "id": "failed-snapshot-extra-f65f59b1a430d84cc9a1e11b9b0fb918",
       "classification": "SAFE_RECLAIM",
       "safety_scope": "redundant physical snapshot payload bytes and required per-cycle mtime can be rehydrated; preserved sidecars/evidence unchanged; no qualified source-context replay claim",
-      "execution_status": "AWAITING_OWNER_APPROVAL",
+      "execution_status": "RECLAIMED",
       "path": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\source.sqlite",
       "file_identity": [
         3532133302,
@@ -273,7 +300,16 @@
         "no qualified replay claim despite restored bytes",
         "Owner accepts abandoning immediate resume of this old failed run; historical inspection requires prior restore from retained anchor, without source qualification"
       ],
-      "deletion_authorized": false
+      "deletion_authorized": true,
+      "executed": {
+        "id": "failed-snapshot-extra-f65f59b1a430d84cc9a1e11b9b0fb918",
+        "path": "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\f65f59b1a430d84cc9a1e11b9b0fb918\\snapshot\\source.sqlite",
+        "files_removed": 1,
+        "started_utc": "2026-10-23T05:48:22.715670+00:00",
+        "finished_utc": "2026-10-23T05:48:22.716970+00:00",
+        "candidate_absent": true,
+        "estimated_unique_allocation_removed": 3976314880
+      }
     }
   ],
   "protected": [
@@ -283,5 +319,23 @@
     "F:\\Min\\Python\\Project\\FA_ML_Research\\current_stock_cycles\\2026-10-02\\437aa76c88ac050886a9f3a7fd7c6a91\\snapshot\\source.sqlite"
   ],
   "evidence_root": "output\\tasks\\track-c-reclaim-20261022-01a164e7",
-  "approval_contract": "Owner must select exact item IDs/paths from this manifest; estimated bytes are not a deletion authorization. Fresh mandatory validation required for each selected item."
+  "approval_contract": "Owner must select exact item IDs/paths from this manifest; estimated bytes are not a deletion authorization. Fresh mandatory validation required for each selected item.",
+  "owner_approval": {
+    "source": "human user in this chat",
+    "exact_message": "全部批准",
+    "approved_manifest_commit": "c97685daa2564d2bfa4753933ed431e9c9e093ec",
+    "approved_manifest_sha256": "b32af5eb4db4f002399bc26ef19bae19e513e6c4bb51a40ddd35d47819517340",
+    "snapshot_resume_acknowledgements_accepted": true
+  },
+  "execution": {
+    "status": "COMPLETED",
+    "receipt": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\evidence\\executed_reclaim_receipt.json",
+    "receipt_sha256": "9aa0dc43c166d551900c29a8094815a72b7234aade1c21271c44cef1748c0e1a",
+    "owned_job_receipt": "output\\tasks\\track-c-reclaim-20261022-01a164e7\\evidence\\executed_job_receipt.json",
+    "owned_job_receipt_sha256": "c7562ca7b6d2d5f5065d31fff39c4d508721cef9eb545b3913eb8467801d3e1d",
+    "observed_free_before": 63504646144,
+    "observed_free_after": 73412988928,
+    "observed_free_delta": 9908342784,
+    "volume_delta_attribution": "Observed global free-space change; concurrent writers and filesystem metadata prevent exclusive attribution"
+  }
 }

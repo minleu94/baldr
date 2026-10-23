@@ -1,10 +1,10 @@
 # Track C 具名回收核驗 — 2026-10-22
 
-本輪接續 [先前盤點](STORAGE_ML_READINESS_20261022.md)，未重掃整顆 F 槽。4 項條件式 `SAFE_RECLAIM` 共 **9,909,706,064 bytes（約 9.23 GiB）**，全部仍為 `AWAITING_OWNER_APPROVAL`，現有產物未刪除。依 Owner goal 第 4 節，須取得具名批准，再逐項重新核驗才可執行；清單不構成刪除授權。
+本輪接續 [先前盤點](STORAGE_ML_READINESS_20261022.md)，未重掃整顆 F 槽。4 項條件式 `SAFE_RECLAIM` 共 **9,909,706,064 bytes（約 9.23 GiB）**，Owner 隨後回覆「全部批准」，包含 snapshot 即時 resume 的還原條件；本輪已重新核驗並完成四項精確刪除。原批准清單保存於 commit `c97685daa256`，本清單已更新為執行紀錄。
 
-2026-10-23 UTC 收尾觀察：F 槽總容量 1,024,191,361,024 bytes，可用 63,542,218,752 bytes（約 59.18 GiB）。其他 Track 同時寫入，這不是本輪回收量。既有 V2 RC、Trial、正式資料、收據、排程與 ML Promotion 守衛皆保留。
+2026-10-22 22:48（America/Los_Angeles）執行後觀察：F 槽總容量 1,024,191,361,024 bytes，可用 73,412,988,928 bytes（約 68.37 GiB）。其他 Track 可同時寫入，前後差值與歸因限制見下方執行結果。既有 V2 RC、Trial、正式資料、收據、排程與 ML Promotion 守衛皆保留。
 
-## 待批准的 4 項
+## 已批准並回收的 4 項
 
 完整實體路徑、檔案身分、SHA、證據 SHA、還原方式及前後檢查見 [Manifest](RECLAIM_MANIFEST_20261022.json)。容量為唯一普通檔案 AllocationSize 估計，不能保證與並行系統的磁碟空間增量相等。
 
@@ -31,9 +31,9 @@ snapshot receipt 原有 D: 路徑與 F: 實體位置不一致，保持原件不�
 | `REVIEW_REQUIRED` | 7 | 未完成 Direct `.work-year` assembly；先 Owner 放棄 resume、排除 writer，再證明 raw/shard/carry/sector/action/code 等重建閉包 |
 | `RETAIN_REFERENCE` | 19 | 18 個已發布 snapshot（含 failed 但已註冊者）＋上述 437 anchor |
 | `REVIEW_REQUIRED` | 2 | `5b673cb7db851b64aa551518c82aa986` 無核實替代副本；`910dde3e5bb97afb12234887239b38bf` 缺 snapshot receipt |
-| 條件式 `SAFE_RECLAIM` | 2 | 本次兩份冗餘 snapshot，等 Owner 批准 |
+| 條件式 `SAFE_RECLAIM` | 2 | 本次兩份冗餘 snapshot，已批准並完成精確回收 |
 
-33 個檔案的 ID／length／mtime 與前輪皆一致。7 個舊 heartbeat PID 不存在，不代表已獲刪除或放棄續跑授權。早期 `candidate-33-current.json` 的粗分類已由 `snapshot-classification-final.json` 與本次 Manifest 修正，不能再當最終分類。
+刪除前 33 個檔案的 ID／length／mtime 與前輪皆一致。7 個舊 heartbeat PID 不存在，不代表已獲刪除或放棄續跑授權。早期 `candidate-33-current.json` 的粗分類已由 `snapshot-classification-final.json` 與本次 Manifest 修正，不能再當最終分類。
 
 ## ML 資產與保留政策
 
@@ -57,6 +57,18 @@ OOC 上游 training manifest canonical `ca197fcbfd894bf4785fb39e6f782eaf676eab83
 
 ## 整合與續行
 
-僅提交本 Track 的 verifier、tests、README、本文件及兩份 JSON。共享 Snapshot／Manual／QA index 由 Integration Owner 核對其他 Track commit 與回歸後接手；本輪不接管其 dirty files、不 push。目標仍 active，未以報告完成取代實際回收。
+僅提交本 Track 的 verifier、tests、README、本文件及兩份 JSON。共享 Snapshot／Manual／QA index 由 Integration Owner 核對其他 Track commit 與回歸後接手；本輪不接管其 dirty files、不 push。此輪只執行已批准清單，不合併跨線或發布產品。
 
-Owner 可選全部 4 項，或先批准兩份 dist（1,957,076,304 bytes，約 1.82 GiB）。選 snapshot 時，另須確認放棄這兩個舊 run 的即時 resume；歷史檢視前先從 anchor 還原，並不因此取得來源資格。批准後按 Manifest 無條件重新驗證、只 unlink 選中項目、核保留副本／收據／指標未變、記錄逐項結果與最新容量；未批准部分繼續保留。
+Owner 已批准全部四項；歷史檢視兩個失敗 cycle 前仍須從 anchor 還原，不因此取得來源資格。其他 REVIEW／BLOCKED 項目保持原狀，沒有擴大清理或啟動重訓。
+
+## Owner 批准後執行結果
+
+Owner 回覆「全部批准」後，於 2026-10-22 22:48（America/Los_Angeles；原收據時間為 `2026-10-23T05:48:25.523888+00:00`）完成 4 項。移除 14,250 個檔案（兩份 runtime 共 14,248 個＋兩個 snapshot payload），僅移除已核 runtime 空目錄，不使用遞迴清除。原估唯一配置 **9,909,706,064 bytes（約 9.23 GiB）**。
+
+執行前 F: 可用 **63,504,646,144 bytes**，後為 **73,412,988,928 bytes（約 68.37 GiB）**，觀察增量 **9,908,342,784 bytes（約 9.23 GiB）**。這是全磁碟觀察，並行寫入及檔案系統metadata使其不等同完全可歸因的回收量；增量不是同槽搬移。
+
+完整重新讀回兩份 runtime 與三份 snapshot SHA；核原身分、receipt/context、空 WAL／穩定 SHM、所有檔 ADS／hardlink／reparse、RM／exclusive probes 與全 runtime ACL/time。224 Tasks／51 automations 無目標引用，18 份 registry 正文及 cycle index、已知 consumer／ML latest 再核通過。新增命中的其他 task 及冷封存登記只引用保留的 Trial guide／receipt／source-version，經逐段核對不是刪除目標依賴；該 Trial 與登記均未改。
+
+四個目標已不存在；保留 runtime 的全部檔案身分、三個 run 其餘檔案與目錄身分、anchor 完整 SHA、WAL/SHM、指標與收據 hashes 在執行後保持。逐檔 unlink journal、完整前後證據及 owned Job 收據存於同任務；Job 正常 exit 0、剩餘程序 0、handles 與 mutex 已釋放。沒有終止其他程序，沒有動正式資料／Track A UI／排程／資格。
+
+本機關鍵收據：`evidence/executed_reclaim_receipt.json` SHA `9aa0dc43c166d551900c29a8094815a72b7234aade1c21271c44cef1748c0e1a`；`evidence/executed_job_receipt.json` SHA `c7562ca7b6d2d5f5065d31fff39c4d508721cef9eb545b3913eb8467801d3e1d`。Manifest 釘住同一收據；逐檔 journal 與舊未批准證據仍保留，不覆寫歷史失敗紀錄。容量仍低於既有 95 GiB heavy ML 預算，禁止據此開始訓練。

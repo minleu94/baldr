@@ -133,6 +133,34 @@ def _manifest_body(path: Path) -> dict[str, object]:
     return body
 
 
+def _same_resolved_target_path(recorded: object, actual: Path) -> bool:
+    if recorded == str(actual):
+        return True
+    if not isinstance(recorded, str) or not recorded.strip():
+        return False
+    try:
+        return _resolved(Path(recorded)) == actual
+    except OSError:
+        return False
+
+
+def _same_or_relocated_source_path(recorded: object, actual: Path) -> bool:
+    if _same_resolved_target_path(recorded, actual):
+        return True
+    if not isinstance(recorded, str):
+        return False
+    legacy_d_source = r"D:\Min\Python\Project\FA_Data\output\paper_portfolio\paper_portfolio.sqlite"
+    current_f_source = r"F:\Min\Python\Project\FA_Data\output\paper_portfolio\paper_portfolio.sqlite"
+    if (
+        recorded == legacy_d_source
+        and str(actual) == current_f_source
+        and not Path(legacy_d_source).exists()
+        and actual.is_file()
+    ):
+        return True
+    return False
+
+
 def _validate_existing(
     *,
     target: Path,
@@ -164,12 +192,14 @@ def _validate_existing(
     if expected_source is not None:
         if expected_source.expanduser().is_symlink():
             raise RuntimeError("Paper state expected source must not be a symlink")
-        if source_info.get("path") != str(_resolved(expected_source)):
+        if not _same_or_relocated_source_path(
+            source_info.get("path"), _resolved(expected_source)
+        ):
             raise RuntimeError("Paper state seed source path changed")
     target_info = body.get("target")
     if not isinstance(target_info, Mapping):
         raise RuntimeError("Paper state seed manifest target is invalid")
-    if target_info.get("path") != str(resolved_target):
+    if not _same_resolved_target_path(target_info.get("path"), resolved_target):
         raise RuntimeError("Paper state seed manifest target path changed")
     expected_hash = target_info.get("seed_file_sha256", target_info.get("file_sha256"))
     actual_hash = _file_hash(resolved_target)
@@ -180,9 +210,11 @@ def _validate_existing(
         head = _manifest_body(head_path)
         if head.get("schema_version") != STATE_HEAD_SCHEMA_VERSION:
             raise RuntimeError("Paper state head manifest schema is unsupported")
-        if head.get("target_path") != str(resolved_target):
+        if not _same_resolved_target_path(head.get("target_path"), resolved_target):
             raise RuntimeError("Paper state head target path changed")
-        if head.get("seed_manifest_path") != str(resolved_manifest):
+        if not _same_resolved_target_path(
+            head.get("seed_manifest_path"), resolved_manifest
+        ):
             raise RuntimeError("Paper state head seed manifest path changed")
         if head.get("seed_manifest_file_sha256") != _file_hash(resolved_manifest):
             raise RuntimeError("Paper state seed manifest changed after head publish")

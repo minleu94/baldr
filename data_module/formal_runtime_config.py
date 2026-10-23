@@ -547,6 +547,8 @@ def _normalise_environment_value(name: str, value: str) -> str:
             "BALDR_PYTHON",
             "DATA_ROOT",
             FORMAL_RUNTIME_CONFIG_ENV,
+            "FORMAL_DAILY_ROLLING_CALENDAR_BUNDLE",
+            "FORMAL_DAILY_PORTFOLIO_CLOCK_MANIFEST",
         }
     ):
         try:

@@ -540,6 +540,35 @@ def _scope_manifest_migration_plan(
     }
 
 
+def _scope_value_matches_relocated(existing_val: object, expected_val: object) -> bool:
+    if existing_val == expected_val:
+        return True
+    if isinstance(existing_val, Mapping) and isinstance(expected_val, Mapping):
+        if set(existing_val.keys()) != set(expected_val.keys()):
+            return False
+        return all(
+            _scope_value_matches_relocated(existing_val[k], expected_val[k])
+            for k in expected_val
+        )
+    if isinstance(existing_val, str) and isinstance(expected_val, str):
+        legacy_d = r"D:\Min\Python\Project\FA_Data"
+        current_f = r"F:\Min\Python\Project\FA_Data"
+        if (
+            existing_val.startswith(legacy_d)
+            and not Path(legacy_d).exists()
+            and existing_val.replace(legacy_d, current_f, 1) == expected_val
+        ):
+            return True
+        repo_output_prefix = str(ROOT / "output")
+        if existing_val.startswith(repo_output_prefix):
+            try:
+                if str(_resolved(Path(existing_val))) == expected_val:
+                    return True
+            except Exception:
+                return False
+    return False
+
+
 def _read_exact_legacy_scope(
     path: Path,
 ) -> tuple[dict[str, object], str, str]:
@@ -553,7 +582,7 @@ def _read_exact_legacy_scope(
         _expected_legacy_scope(include_event_capture_root=False),
         _expected_legacy_scope(include_event_capture_root=True),
     )
-    if not any(body == expected for expected in accepted):
+    if not any(_scope_value_matches_relocated(body, expected) for expected in accepted):
         raise RuntimeError("isolated Paper v2 scope manifest changed")
     return body, content_hash, file_hash
 
@@ -593,6 +622,12 @@ def _write_or_verify_migration_receipt(
             raise RuntimeError("scope migration receipt recorded_at invalid") from error
         if parsed_recorded_at.tzinfo is None:
             raise RuntimeError("scope migration receipt recorded_at must be timezone aware")
+        expected_relocated = dict(body)
+        expected_relocated["recorded_at"] = recorded_at
+        if existing_body != expected_relocated and _scope_value_matches_relocated(
+            existing_body, expected_relocated
+        ):
+            return receipt_path
     else:
         # 遷移完成時間必須取實際執行時間，不得用歷史排程觀測時間追認。
         recorded_at = datetime.now(timezone.utc).isoformat()
@@ -631,23 +666,27 @@ def _write_or_verify_scope_manifest() -> tuple[Path, str]:
             SCOPE_MANIFEST,
             role="isolated Paper v3 scope manifest",
         )
-        if existing_body != body:
+        if not _scope_value_matches_relocated(existing_body, body):
             raise RuntimeError("isolated Paper v3 scope manifest changed")
         target_file_hash = existing_file_hash
+        effective_target_body: Mapping[str, object] = existing_body
+        effective_target_raw = manifest_path.read_bytes()
     else:
         target_file_hash = _write_create_only_bytes(
             SCOPE_MANIFEST,
             encoded,
             "isolated Paper v3 scope manifest",
         )
+        effective_target_body = body
+        effective_target_raw = encoded
     if legacy_info is not None:
         legacy_body, legacy_content_hash, legacy_file_hash = legacy_info
         plan = _scope_manifest_migration_plan(
             legacy_body=legacy_body,
             legacy_content_hash=legacy_content_hash,
             legacy_file_hash=legacy_file_hash,
-            target_body=body,
-            target_raw=encoded,
+            target_body=effective_target_body,
+            target_raw=effective_target_raw,
         )
         if _file_hash(legacy_path) != legacy_file_hash:
             raise RuntimeError("isolated Paper v2 scope manifest changed during migration")

@@ -168,13 +168,25 @@ def _find_taxonomy_bundle(
     """只解析 preopen 固定日期路徑，不掃描 latest 或重抓來源。"""
 
     configured = _env_path(PIT_TAXONOMY_PREOPEN_ROOT_ENV)
-    root = (configured or publication_root / "pit_taxonomy_preopen").expanduser().resolve()
-    try:
-        root.relative_to(publication_root.expanduser().resolve())
-    except ValueError as error:
-        raise ValueError("PIT taxonomy preopen root must be under publication root") from error
-    path = root / target_date.isoformat() / "bundle_manifest.json"
-    return path if path.is_file() else None
+    candidate_roots = (
+        (configured,)
+        if configured is not None
+        else (
+            publication_root / "pit_taxonomy_preopen",
+            publication_root / "pit_taxonomy_preopen_split_v2",
+        )
+    )
+    resolved_publication = publication_root.expanduser().resolve()
+    for candidate_root in candidate_roots:
+        root = candidate_root.expanduser().resolve()
+        try:
+            root.relative_to(resolved_publication)
+        except ValueError as error:
+            raise ValueError("PIT taxonomy preopen root must be under publication root") from error
+        path = root / target_date.isoformat() / "bundle_manifest.json"
+        if path.is_file():
+            return path
+    return None
 
 
 def _missing_taxonomy_result() -> dict[str, object]:

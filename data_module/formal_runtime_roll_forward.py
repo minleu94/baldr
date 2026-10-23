@@ -457,7 +457,15 @@ def _read_calendar_successor_link(
         raise FormalRuntimeRollForwardError("calendar_successor_link_safety_invalid")
     source_record = _mapping_field(payload.get("source_bundle"), "calendar_successor_link.source_bundle")
     expected_source_path = str(source["path"])
-    if source_record.get("path") != expected_source_path:
+    recorded_source_path = source_record.get("path")
+    if not (
+        recorded_source_path == expected_source_path
+        or (
+            isinstance(recorded_source_path, str)
+            and _absolute_path(recorded_source_path, "calendar_successor_link.source_path")
+            == Path(expected_source_path)
+        )
+    ):
         raise FormalRuntimeRollForwardError("calendar_successor_link_source_path_mismatch")
     source_start = source.get("range_start")
     source_end = source.get("range_end")
@@ -489,7 +497,14 @@ def _read_calendar_successor_link(
             "calendar_successor_link_successor_outside_publication_root"
         ) from error
     successor = _calendar_bundle_identity(successor_path)
-    for field in ("path", "file_hash", "bundle_hash"):
+    if not (
+        successor.get("path") == successor_record.get("path")
+        or Path(str(successor.get("path"))) == successor_path
+    ):
+        raise FormalRuntimeRollForwardError(
+            "calendar_successor_link_successor_path_mismatch"
+        )
+    for field in ("file_hash", "bundle_hash"):
         if successor.get(field) != successor_record.get(field):
             raise FormalRuntimeRollForwardError(
                 f"calendar_successor_link_successor_{field}_mismatch"

@@ -659,6 +659,35 @@ def _scope_manifest(paths: Mapping[str, Path]) -> dict[str, object]:
     return body
 
 
+def _scope_value_matches_relocated(existing_val: object, expected_val: object) -> bool:
+    if existing_val == expected_val:
+        return True
+    if isinstance(existing_val, Mapping) and isinstance(expected_val, Mapping):
+        if set(existing_val.keys()) != set(expected_val.keys()):
+            return False
+        return all(
+            _scope_value_matches_relocated(existing_val[k], expected_val[k])
+            for k in expected_val
+        )
+    if isinstance(existing_val, str) and isinstance(expected_val, str):
+        legacy_d = r"D:\Min\Python\Project\FA_Data"
+        current_f = r"F:\Min\Python\Project\FA_Data"
+        if (
+            existing_val.startswith(legacy_d)
+            and not Path(legacy_d).exists()
+            and existing_val.replace(legacy_d, current_f, 1) == expected_val
+        ):
+            return True
+        repo_output_prefix = str(ROOT / "output")
+        if existing_val.startswith(repo_output_prefix):
+            try:
+                if str(_resolved(Path(existing_val))) == expected_val:
+                    return True
+            except Exception:
+                return False
+    return False
+
+
 def _write_or_verify_scope_manifest(paths: Mapping[str, Path]) -> tuple[Path, str]:
     manifest_path = paths["operation_root"] / "paper_portfolio_scope_manifest.json"
     body = _scope_manifest(paths)
@@ -672,7 +701,7 @@ def _write_or_verify_scope_manifest(paths: Mapping[str, Path]) -> tuple[Path, st
             raise RuntimeError("isolated Paper preopen scope manifest is not an object")
         existing_body = dict(existing)
         declared = existing_body.pop("content_sha256", None)
-        if declared != _payload_hash(existing_body) or existing_body != body:
+        if declared != _payload_hash(existing_body) or not _scope_value_matches_relocated(existing_body, body):
             raise RuntimeError("isolated Paper preopen scope manifest changed")
     else:
         _atomic_write_json(manifest_path, payload)

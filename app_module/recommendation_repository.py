@@ -270,12 +270,38 @@ class RecommendationRepository:
             cursor = conn.cursor()
             self._assert_no_canonical_execution_identity(cursor, result.result_id)
             cursor.execute(
-                "SELECT data_path FROM runs WHERE result_id = ?",
+                """
+                SELECT result_id, result_name, regime, stock_count, config, notes, created_at, data_path
+                FROM runs WHERE result_id = ?
+                """,
                 (result.result_id,),
             )
             existing_row = cursor.fetchone()
-            if existing_row and existing_row[0]:
-                existing_file = Path(existing_row[0])
+            if existing_row and existing_row[7]:
+                existing_file = Path(existing_row[7])
+                if not existing_file.exists():
+                    from data_module.legacy_recommendation_run_locator import (
+                        compute_legacy_runs_db_row_sha256,
+                        locate_legacy_recommendation_run,
+                    )
+
+                    located = locate_legacy_recommendation_run(
+                        result.result_id,
+                        existing_row[7],
+                        runs_root=self.runs_dir,
+                        db_row_sha256=compute_legacy_runs_db_row_sha256(
+                            result_id=existing_row[0],
+                            result_name=existing_row[1],
+                            regime=existing_row[2],
+                            stock_count=existing_row[3],
+                            config=existing_row[4],
+                            notes=existing_row[5],
+                            created_at=existing_row[6],
+                            data_path=existing_row[7],
+                        ),
+                    )
+                    if located is not None:
+                        existing_file = located.current_path
                 if self._contains_personalization_capture(existing_file):
                     raise RuntimeError(
                         "recommendation legacy save refused: existing result "
@@ -416,16 +442,49 @@ class RecommendationRepository:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        cursor.execute("SELECT data_path FROM runs WHERE result_id = ?", (result_id,))
+        cursor.execute(
+            """
+            SELECT result_id, result_name, regime, stock_count, config, notes, created_at, data_path
+            FROM runs WHERE result_id = ?
+            """,
+            (result_id,),
+        )
         row = cursor.fetchone()
         conn.close()
-        
-        if not row:
+
+        if not row or not row[7]:
             return None
-        
-        data_file = Path(row[0])
+
+        data_file = Path(row[7])
         if not data_file.exists():
-            return None
+            from data_module.legacy_recommendation_run_locator import (
+                compute_legacy_runs_db_row_sha256,
+                locate_legacy_recommendation_run,
+            )
+
+            located = locate_legacy_recommendation_run(
+                result_id,
+                row[7],
+                runs_root=self.runs_dir,
+                db_row_sha256=compute_legacy_runs_db_row_sha256(
+                    result_id=row[0],
+                    result_name=row[1],
+                    regime=row[2],
+                    stock_count=row[3],
+                    config=row[4],
+                    notes=row[5],
+                    created_at=row[6],
+                    data_path=row[7],
+                ),
+            )
+            if located is None:
+                return None
+            try:
+                data = json.loads(located.raw_payload.decode("utf-8"))
+                return RecommendationResultDTO.from_dict(data)
+            except Exception as e:
+                print(f"[RecommendationRepository] 載入失敗 {result_id}: {e}")
+                return None
         
         try:
             data = json.loads(data_file.read_text(encoding='utf-8'))

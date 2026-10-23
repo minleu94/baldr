@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 import ctypes
@@ -30,6 +31,12 @@ from app_module.recommendation.persistence import (
     ExecutionArtifactIntegrityError,
     ExecutionIndexReadError,
     RecommendationExecutionPersistence,
+)
+from data_module.legacy_recommendation_run_locator import (
+    ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS,
+    LocatedLegacyRecommendationRun,
+    compute_legacy_runs_db_row_sha256,
+    locate_legacy_recommendation_run,
 )
 from data_module.result_artifact_store import ArtifactIndexRecord
 
@@ -741,6 +748,7 @@ class LegacyRecommendationBytes:
     notes: str | None
     created_at: str | None
     trusted_expected_sha256: str | None
+    relocated_custody_tier: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -774,10 +782,16 @@ class SQLiteLegacyRecommendationRawByteReader:
         database_path: Path,
         *,
         trusted_expected_hashes: Mapping[str, str] | None = None,
+        allowed_relocated_custody_tiers: Collection[str] | None = None,
     ) -> None:
         self._runs_dir = Path(runs_dir)
         self._database_path = Path(database_path)
         self._trusted_expected_hashes = dict(trusted_expected_hashes or {})
+        self._allowed_relocated_custody_tiers: tuple[str, ...] | None = (
+            None
+            if allowed_relocated_custody_tiers is None
+            else tuple(allowed_relocated_custody_tiers)
+        )
         if self._database_path.name != "recommendation_runs.db":
             raise ValueError("legacy reader database_path 必須是 recommendation_runs.db")
         if Path(os.path.abspath(self._database_path.parent)) != Path(
@@ -789,6 +803,12 @@ class SQLiteLegacyRecommendationRawByteReader:
                 raise ValueError("trusted expected hash map 含無效 result_id")
             if type(expected_hash) is not str or _SHA256_PATTERN.fullmatch(expected_hash) is None:
                 raise ValueError("trusted expected hash 必須是 sha256:<64 小寫 hex>")
+        if self._allowed_relocated_custody_tiers is not None:
+            if any(
+                tier not in ALL_LEGACY_RECOMMENDATION_CUSTODY_TIERS
+                for tier in self._allowed_relocated_custody_tiers
+            ):
+                raise ValueError("allowed_relocated_custody_tiers 含未定義 custody tier")
 
     def _connect_read_only(self) -> sqlite3.Connection | None:
         runs_root = Path(os.path.abspath(self._runs_dir))
@@ -963,7 +983,13 @@ class SQLiteLegacyRecommendationRawByteReader:
             )
         return configured_root
 
-    def _read_scoped_path(self, result_id: str, stored_path: object) -> tuple[Path, bytes]:
+    def _read_scoped_path(
+        self,
+        result_id: str,
+        stored_path: object,
+        *,
+        db_row_sha256: str | None = None,
+    ) -> tuple[Path, bytes, LocatedLegacyRecommendationRun | None]:
         _require_safe_legacy_result_id(result_id)
         if type(stored_path) is not str or not stored_path.strip():
             raise ExecutionArtifactIntegrityError("legacy runs.data_path 缺失或型別錯誤")
@@ -973,13 +999,31 @@ class SQLiteLegacyRecommendationRawByteReader:
             supplied_path = root / supplied_path
         supplied_absolute = Path(os.path.abspath(supplied_path))
         expected_absolute = Path(os.path.abspath(root / f"{result_id}.json"))
+        located: LocatedLegacyRecommendationRun | None = None
         try:
             relative = supplied_absolute.relative_to(root)
             expected_absolute.relative_to(root)
         except ValueError as exc:
-            raise ExecutionArtifactIntegrityError(
-                "legacy data_path 超出 runs 目錄範圍"
-            ) from exc
+            if db_row_sha256 is not None:
+                located = locate_legacy_recommendation_run(
+                    result_id,
+                    stored_path,
+                    runs_root=root,
+                    db_row_sha256=db_row_sha256,
+                    allowed_tiers=self._allowed_relocated_custody_tiers,
+                )
+            if located is None:
+                raise ExecutionArtifactIntegrityError(
+                    "legacy data_path 超出 runs 目錄範圍"
+                ) from exc
+            supplied_absolute = Path(os.path.abspath(located.current_path))
+            try:
+                relative = supplied_absolute.relative_to(root)
+                expected_absolute.relative_to(root)
+            except ValueError as relocated_exc:
+                raise ExecutionArtifactIntegrityError(
+                    "legacy data_path 超出 runs 目錄範圍"
+                ) from relocated_exc
         if supplied_absolute != expected_absolute or not relative.parts:
             raise ExecutionArtifactIntegrityError(
                 "legacy data_path 與 result_id 的舊檔名規則不符"
@@ -1004,29 +1048,57 @@ class SQLiteLegacyRecommendationRawByteReader:
             raise ExecutionArtifactIntegrityError(
                 "無法安全唯讀 legacy result bytes"
             ) from exc
+        if located is not None:
+            actual_sha256 = "sha256:" + hashlib.sha256(payload).hexdigest()
+            if (
+                len(payload) != located.relocated_size_bytes
+                or actual_sha256 != located.relocated_file_sha256
+                or payload != located.raw_payload
+            ):
+                raise ExecutionArtifactIntegrityError(
+                    "relocated legacy result bytes 與定位清單固定雜湊不符"
+                )
         if self._verified_runs_root() != root:
             raise ExecutionArtifactIntegrityError(
                 "legacy runs root 在 raw bytes 讀取期間改變"
             )
-        return resolved, payload
+        return resolved, payload, located
 
     def get(self, result_id: str) -> LegacyRecommendationBytes | None:
         _require_safe_legacy_result_id(result_id)
         connection = self._connect_read_only()
         if connection is None:
             return None
+        db_row_sha256: str | None = None
         try:
             if not self._has_runs_table(connection):
                 return None
-            rows = connection.execute(
-                """
-                SELECT result_id, result_name, notes, created_at, data_path
-                  FROM runs
-                 WHERE result_id = ?
-                 LIMIT 2
-                """,
-                (result_id,),
-            ).fetchall()
+            columns = {
+                col_row[1]
+                for col_row in connection.execute("PRAGMA table_info('runs')").fetchall()
+            }
+            has_full_columns = {"regime", "stock_count", "config"}.issubset(columns)
+            if has_full_columns:
+                rows = connection.execute(
+                    """
+                    SELECT result_id, result_name, notes, created_at, data_path,
+                           regime, stock_count, config
+                      FROM runs
+                     WHERE result_id = ?
+                     LIMIT 2
+                    """,
+                    (result_id,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT result_id, result_name, notes, created_at, data_path
+                      FROM runs
+                     WHERE result_id = ?
+                     LIMIT 2
+                    """,
+                    (result_id,),
+                ).fetchall()
         except sqlite3.Error as exc:
             raise ExecutionIndexReadError("無法唯讀查詢 legacy result identity") from exc
         finally:
@@ -1036,13 +1108,37 @@ class SQLiteLegacyRecommendationRawByteReader:
         if len(rows) > 1:
             raise ExecutionArtifactIntegrityError("legacy runs 含重複 result_id")
         row = rows[0]
-        stored_result_id, label, notes, created_at, stored_path = row
+        stored_result_id, label, notes, created_at, stored_path = row[:5]
         if stored_result_id != result_id:
             raise ExecutionArtifactIntegrityError("legacy SQLite result_id identity mismatch")
-        path, payload = self._read_scoped_path(result_id, stored_path)
         for value, field_name in ((label, "result_name"), (notes, "notes"), (created_at, "created_at")):
             if value is not None and type(value) is not str:
                 raise ExecutionArtifactIntegrityError(f"legacy runs.{field_name} 型別錯誤")
+        if has_full_columns and type(stored_path) is str and stored_path.strip():
+            regime, stock_count, config = row[5], row[6], row[7]
+            if (
+                (regime is None or type(regime) is str)
+                and (stock_count is None or type(stock_count) is int)
+                and (config is None or type(config) is str)
+            ):
+                db_row_sha256 = compute_legacy_runs_db_row_sha256(
+                    result_id=result_id,
+                    result_name=cast(str | None, label),
+                    regime=cast(str | None, regime),
+                    stock_count=cast(int | None, stock_count),
+                    config=cast(str | None, config),
+                    notes=cast(str | None, notes),
+                    created_at=cast(str | None, created_at),
+                    data_path=stored_path,
+                )
+        path, payload, located = self._read_scoped_path(
+            result_id,
+            stored_path,
+            db_row_sha256=db_row_sha256,
+        )
+        trusted_expected_sha256 = self._trusted_expected_hashes.get(result_id)
+        if trusted_expected_sha256 is None and located is not None:
+            trusted_expected_sha256 = located.independent_pre_migration_file_sha256
         return LegacyRecommendationBytes(
             result_id=result_id,
             data_path=str(path),
@@ -1050,7 +1146,10 @@ class SQLiteLegacyRecommendationRawByteReader:
             label=cast(str | None, label),
             notes=cast(str | None, notes),
             created_at=cast(str | None, created_at),
-            trusted_expected_sha256=self._trusted_expected_hashes.get(result_id),
+            trusted_expected_sha256=trusted_expected_sha256,
+            relocated_custody_tier=(
+                located.custody_verification_tier if located is not None else None
+            ),
         )
 
 
@@ -1362,6 +1461,11 @@ class RecommendationExecutionQueries:
             integrity_basis,
         ) = self._decode_legacy_original_payload(result_id, before)
         self._assert_registered_legacy_unchanged(result_id, before)
+        diagnostics: tuple[str, ...] = (
+            (f"legacy_relocated_custody_tier:{before.relocated_custody_tier}",)
+            if before.relocated_custody_tier is not None
+            else ()
+        )
         return RecommendationExecutionReadModel(
             execution=None,
             label=before.label or legacy_result.result_name,
@@ -1373,6 +1477,7 @@ class RecommendationExecutionQueries:
             raw_artifact_sha256=payload_hash,
             integrity_basis=integrity_basis,
             ml_read_status="legacy_saved_fields",
+            diagnostics=diagnostics,
         )
 
     @staticmethod

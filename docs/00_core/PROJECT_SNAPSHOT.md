@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M114–M115 後繼原始碼補兩處既有來源的資訊層級：大盤指數 Trend「判斷摘要」現在列出原檢測器第三條 `+DI > -DI`，真、假及缺件分別顯示，不重算結構分或交易資格；系統狀態的「營運排程（已保存結果）」在原核心就緒數與清單之間顯同一次 `ScheduledOperationsSnapshotDTO` 的六類精確筆數及有限分布條，來源未確認與未知狀態不混入正常。Sol 複核、受控聚焦 33、Workbench 85、validator 25／0／4、mypy 1,144 clean；隔離正常 Main 1280／1500 真 OS DPI216 與同資料 View before／after 圖通過。只核合成資料及 UI；正式排程／市場來源、其他真 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。Stress 報價日須先有逐列計算價格與報價身份的同源契約，不以同價快取猜日。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m114m115-市場判斷與營運快照分布)。
+
 M111–M113 後繼原始碼新增三項受限 UX：Backtest 最佳化／驗證把原 typed Top-5 參數眾數集中度（bp、實際有值數／樣本數）畫成有限圖條，空結果清舊文字／表／圖；綜合選股把同一查詢各條件完整五態計數畫成可收合分布條，各自分母、可能重疊，不是逐步淘汰，類別用非漲跌方向色；Portfolio Stress 選情境前顯原定義的說明、支援狀態與必要輸入，實際診斷仍以執行結果為準。Sol 審查與隔離正常 Main 1280×760／1500×900、真 OS DPI216 圖通過；最終聚焦 117、Workbench 85、validator 25／0／4、mypy 1,144 clean。未改公式、DTO、來源資格或私人資料；正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m111m113-最佳化選股與情境資訊層級)。
 
 M109／M110 後繼原始碼改善兩個容易誤讀的清單：Paper Health 長表把「需要確認」移至標的旁，代號提示保留精確 `position_id`／snapshot／cohort，選列仍讀同一部位原詳情；Watchlist 把候選列數與不同代號數分開顯示，同股不同來源不合併，載入失敗維持未知。Sol 複核與隔離正常 Main 1280×760／1500×900、真 OS DPI216 畫面通過；聚焦 136、Workbench 85、validator 25／0／4、mypy 1,144 clean。這是呈現與身份辨識改造，不改交易、健康判定或來源資格；正式資料、其他 DPI、固定 EXE、Owner UAT 及完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m109m110-paper-health-與候選池辨識)。

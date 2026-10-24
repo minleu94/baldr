@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M113；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M115；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M113 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M115 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -214,3 +214,13 @@ Luna `/root/m108_research_visual_audit` 唯讀核綜合選股現有 `FunnelMetri
 Luna `/root/m107_portfolio_audit` 唯讀排除同股 Paper 舊項與跨次 Stress 比較的不可比來源後，單一 writer 僅改 `ui_qt/views/portfolio_view.py` 與測試。M113 在「情境壓力 → 目前情境」選取前以原 `StressScenarioDefinition` 顯說明、支援與必要輸入；未知定義保留未知，72 邏輯像素高有界可捲。Sol 退回首版在未執行時拼出 `scenario_requires` blocker 的說法，改為原定義能力提示、實際診斷依當次結果；原執行、保存、來源及 A→B 清舊不變。正常 Main 1280／1500 真 DPI216、隔離空帳支持／不支持情境四圖及收據 `.../root/single_owned_qa_1dc9333cac3e4a8580cde97491981c9c/receipt.json`、`.../root/native_m113_stress_preview_evidence/run_bf38d91a8d4642329ae8bef65b0e768a/`。前兩次 native harness 選到保存歷史、又以舊文案斷言，失敗收據 `.../root/single_owned_qa_14eab38b7241473d87041215e4fa781f/receipt.json`、`.../root/single_owned_qa_dc54fa0ed3ae489595fa22907ea3dca2/receipt.json` 保留，修 harness 後通過。
 
 三切片最終共同 8 GiB／12 程序 Job `.../root/single_owned_qa_e0e5ffe4d0fa41be9f086ad7a6860e5b/receipt.json`：受改 Python compile 0、聚焦 **117 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean，無殘留 PID 或強制清理。首輪 `.../root/single_owned_qa_c4f0fc366f884b4aad8408bc36e0abe6/receipt.json` 聚焦 3 個新測試的文案斷言不符（113 passed／3 failed），產品文案較精確，修測試與圖色後最終通過；原失敗未抹除。M1–M113 是含審查、實作與 QA 的切片序號，不是 113 個獨立功能。正式市場／Backtest／私人 Portfolio、自然排程、其他真 DPI、1920 可用螢幕、固定新版 EXE、Owner UAT、M73／M75 契約及完整產品 Gate 未驗；未改金融公式／DTO、正式或私人資料，未 push、merge 或部署。
+
+## M114／M115 市場判斷與營運快照分布
+
+Luna `/root/m108_research_visual_audit` 唯讀核對原市場 Regime detector 的 Trend 結構分由 `close_above_ma60`、`ma20_slope_positive`、`plus_di_above_minus_di` 三條組成，發現「大盤指數」判斷摘要只列前兩條。單一 writer 只改 `ui_qt/views/market_regime_view.py`、`tests/test_ui_qt_market_regime_view.py`；M114 加第三條來源布林的真／假／未知文字，不改 detector、結構分、DTO、技術細節或交易資格。Sol 複核測試與同份合成結果 before／after View 圖，再沿正常 Main 按原「檢測市場狀態」按鈕驗 1280×760／1500×900 真 OS DPI216，第三條可見，左側本次分類與資料日一致。初版 native harness 直接呼叫摘要 render，留下「尚未檢測」與結果同屏的矛盾畫面；該收據 `root/single_owned_qa_90ce9cb026474979978557dbe0957cfa/receipt.json` 不作完整操作證據。修正後 `root/single_owned_qa_33a3d723d6c84060a17eef8ae37d59a7/receipt.json` 與 `root/native_m114_m115_evidence/run_7437edcac24443aaacc9eaabaf71755f/` 通過；同份 before／after `root/single_owned_qa_fd3fed5938c748c29d837e27679a3569/receipt.json`、`root/native_m114_m115_compare_evidence/run_6166ac69de86454c8e0aa849d38188c7/`。
+
+Luna `/root/m107_evidence_audit` 唯讀核對 Runtime `ScheduledOperationsSnapshotDTO.operations` 單一已保存狀態快照後，單一 writer 只改 `ui_qt/views/runtime_view.py`、`tests/test_ui_qt_runtime_view.py`。M115 在核心就緒與原清單間加有限六類分布與精確計數：正常、安全邊界中、需要注意、無法判定、來源未確認、未知狀態。僅 `read_state=observed` 計入已觀測 normalized state；未知新碼不補正常。狀態選單仍只篩清單，全快照圖保持不變；替換／空快照清舊段，原碼與 read state tooltip 可核。條長只表示本次工作項目比例，不是 Windows Scheduler 執行紀錄、工作成功率、核心就緒分母或資料資格。Sol 目視正常 Main 1280／1500 真 DPI216 圖與同資料 View before／after，六段可讀、原清單仍可捲。上述最終 native 與 before／after 收據共用。
+
+共同受控 8 GiB／12 程序 Job 首輪 `root/single_owned_qa_62b56448cebc4fb38b0e711b5e352e1c/receipt.json`：受改 Python compile 0，聚焦 32 passed／1 failed，失敗是新空快照測試把計數行誤當文字結尾，實際還有精確「共 0 項」；Workbench 85、validator 25／0／4、mypy 1,144 clean，原失敗保留。Luna 修正測試斷言後，最終 `root/single_owned_qa_514be759d88c42899e87cbc65d15c143/receipt.json`：compile 0、聚焦 **33 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；無殘留 PID 或強制清理。M1–M115 是含審查、實作與 QA 的切片序號，非 115 個獨立功能。
+
+Portfolio Stress 目前結果雖有 optional `as_of_date`，計算列沒有逐部位報價來源身份；同一代號或同數值快取不足以證明與計算採用的價格同源。此候選轉為先補 UI DTO／Application Adapter 的後續契約工作，本輪不猜日期、不寫入 result。正式市場／營運排程／私人 Portfolio、其他真 OS DPI、1920 真可用螢幕、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未驗；未讀寫正式或私人資料，未 push、merge 或部署。

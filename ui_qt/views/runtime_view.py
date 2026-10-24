@@ -258,6 +258,34 @@ class RuntimeView(QWidget):
             self._render_scheduled_operations
         )
         operations_layout.addWidget(self.operations_summary_label)
+        self.operations_distribution_label = QLabel(
+            "本次已保存狀態快照：尚未讀取"
+        )
+        self.operations_distribution_label.setObjectName(
+            "operationsDistributionLabel"
+        )
+        self.operations_distribution_label.setAccessibleName(
+            "本次已保存工作狀態分布"
+        )
+        self.operations_distribution_label.setWordWrap(True)
+        self.operations_distribution_label.setMinimumWidth(0)
+        self.operations_distribution_label.setSizePolicy(
+            QSizePolicy.Ignored, QSizePolicy.Preferred
+        )
+        operations_layout.addWidget(self.operations_distribution_label)
+        self.operations_distribution_bar = QWidget()
+        self.operations_distribution_bar.setObjectName(
+            "operationsDistributionBar"
+        )
+        self.operations_distribution_bar_layout = QHBoxLayout(
+            self.operations_distribution_bar
+        )
+        self.operations_distribution_bar_layout.setContentsMargins(0, 0, 0, 0)
+        self.operations_distribution_bar_layout.setSpacing(2)
+        self._operations_distribution_segment_widgets = []
+        self.operations_distribution_bar.setFixedHeight(10)
+        self.operations_distribution_bar.hide()
+        operations_layout.addWidget(self.operations_distribution_bar)
         operations_layout.addWidget(self.operations_state_filter)
         operations_layout.addWidget(self.operations_list)
         self.operations_details = QWidget()
@@ -689,6 +717,7 @@ class RuntimeView(QWidget):
                     "\n".join(
                         (
                             f"job: {operation.job_id}",
+                            f"state: {operation.state}",
                             f"raw_status: {operation.raw_status}",
                             f"lane: {operation.lane}",
                             f"read_state: {operation.read_state}",
@@ -724,6 +753,66 @@ class RuntimeView(QWidget):
             empty_item = QListWidgetItem("此狀態沒有符合的營運工作。")
             empty_item.setFlags(Qt.NoItemFlags)
             self.operations_list.addItem(empty_item)
+
+    def _render_scheduled_operations_distribution(self) -> None:
+        """摘要單一已載入快照；未確認來源不計入任何已觀測狀態。"""
+        self._clear_scheduled_operations_distribution_bar()
+        labels = {
+            "operational": ("正常", MIDNIGHT_ANALYST.accent),
+            "guarded": ("安全邊界中", MIDNIGHT_ANALYST.info),
+            "attention": ("需要注意", MIDNIGHT_ANALYST.warning),
+            "unavailable": ("無法判定", MIDNIGHT_ANALYST.text_muted),
+            "source_unconfirmed": ("來源未確認", MIDNIGHT_ANALYST.border),
+            "unknown": ("未知狀態", MIDNIGHT_ANALYST.accent_warm),
+        }
+        counts = {key: 0 for key in labels}
+        for operation in self._scheduled_operations:
+            if operation.read_state != "observed":
+                counts["source_unconfirmed"] += 1
+            elif operation.state in {
+                "operational", "guarded", "attention", "unavailable"
+            }:
+                counts[operation.state] += 1
+            else:
+                counts["unknown"] += 1
+
+        parts = [f"{labels[key][0]} {counts[key]}" for key in labels]
+        total_count = len(self._scheduled_operations)
+        self.operations_distribution_label.setText(
+            "本次已保存狀態快照（非排程器執行紀錄）："
+            + "｜".join(parts)
+            + f"｜共 {total_count} 項"
+        )
+        if total_count == 0:
+            self.operations_distribution_bar.hide()
+            return
+
+        for key, (label, color) in labels.items():
+            count = counts[key]
+            if count <= 0:
+                continue
+            segment = QFrame(self.operations_distribution_bar)
+            segment.setObjectName(f"operationsDistributionSegment_{key}")
+            segment.setAccessibleName(f"{label} {count}")
+            segment.setProperty("count", count)
+            segment.setFixedHeight(8)
+            segment.setStyleSheet(f"background-color: {color}; border: 0px;")
+            self.operations_distribution_bar_layout.addWidget(
+                segment, max(1, count * 1000 // total_count)
+            )
+            self._operations_distribution_segment_widgets.append(segment)
+        self.operations_distribution_bar.show()
+
+    def _clear_scheduled_operations_distribution_bar(self) -> None:
+        layout = self.operations_distribution_bar_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        self._operations_distribution_segment_widgets.clear()
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         """窄版把治理雙欄改成單欄，避免文字被切在 viewport 外。"""
@@ -842,6 +931,7 @@ class RuntimeView(QWidget):
         self._scheduled_operations_by_job_id = {
             operation.job_id: operation for operation in dto.operations
         }
+        self._render_scheduled_operations_distribution()
         self._render_scheduled_operations()
         self.operations_raw_text.setPlainText("\n\n".join(
             f"{operation.label}\njob: {operation.job_id}\nraw_status: {operation.raw_status}\n"

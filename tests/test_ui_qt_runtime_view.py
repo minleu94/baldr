@@ -224,6 +224,138 @@ def test_runtime_view_renders_operation_status_without_claiming_scheduler_state(
     assert "timestamp_source: checked_at" in view.operations_list.item(0).toolTip()
 
 
+def test_runtime_operations_distribution_counts_only_observed_states_and_keeps_unknowns():
+    app()
+    view = RuntimeView()
+    operations = (
+        ScheduledOperationStatusDTO(
+            job_id="normal_a", label="正常 A", raw_status="passed",
+            state="operational", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="normal_b", label="正常 B", raw_status="passed",
+            state="operational", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="guarded", label="安全邊界", raw_status="blocked",
+            state="guarded", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="attention", label="注意", raw_status="failed",
+            state="attention", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="unavailable", label="無法判定", raw_status="missing",
+            state="unavailable", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="unconfirmed", label="來源未確認", raw_status="passed",
+            state="operational", updated_at=None, read_state="unreadable",
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="unknown", label="未知狀態", raw_status="strange",
+            state="future_state_code", updated_at=None,
+        ),
+    )
+    dto = ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=2, core_job_count=4,
+        operations=operations, observed_at=datetime(2026, 10, 23, tzinfo=timezone.utc),
+    )
+
+    view.on_scheduled_operations_updated(dto)
+
+    summary = view.operations_distribution_label.text()
+    assert "本次已保存狀態快照（非排程器執行紀錄）" in summary
+    assert "正常 2｜安全邊界中 1｜需要注意 1｜無法判定 1｜來源未確認 1｜未知狀態 1" in summary
+    segments = {
+        widget.objectName().removeprefix("operationsDistributionSegment_"): widget
+        for widget in view._operations_distribution_segment_widgets
+    }
+    assert {key: widget.property("count") for key, widget in segments.items()} == {
+        "operational": 2,
+        "guarded": 1,
+        "attention": 1,
+        "unavailable": 1,
+        "source_unconfirmed": 1,
+        "unknown": 1,
+    }
+    assert "state: future_state_code" in view.operations_list.item(6).toolTip()
+
+
+def test_runtime_operations_distribution_is_independent_of_list_filter():
+    app()
+    view = RuntimeView()
+    operations = (
+        ScheduledOperationStatusDTO(
+            job_id="normal", label="正常", raw_status="passed",
+            state="operational", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="attention", label="注意", raw_status="failed",
+            state="attention", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="unconfirmed", label="來源未確認", raw_status="passed",
+            state="operational", updated_at=None, read_state="unreadable",
+        ),
+    )
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=1, core_job_count=2,
+        operations=operations, observed_at=datetime(2026, 10, 23, tzinfo=timezone.utc),
+    ))
+    original_distribution = view.operations_distribution_label.text()
+
+    view.operations_state_filter.setCurrentIndex(1)
+
+    assert view.operations_distribution_label.text() == original_distribution
+    assert "正常 1｜安全邊界中 0｜需要注意 1｜無法判定 0｜來源未確認 1｜未知狀態 0" in original_distribution
+    assert "目前顯示 2/3 項" in view.operations_summary_label.text()
+
+
+def test_runtime_operations_distribution_replacement_and_empty_snapshot_clear_old_segments():
+    app()
+    view = RuntimeView()
+    first_operations = (
+        ScheduledOperationStatusDTO(
+            job_id="normal", label="正常", raw_status="passed",
+            state="operational", updated_at=None,
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="attention", label="注意", raw_status="failed",
+            state="attention", updated_at=None,
+        ),
+    )
+    observed_at = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=1, core_job_count=2,
+        operations=first_operations, observed_at=observed_at,
+    ))
+    first_segments = tuple(view._operations_distribution_segment_widgets)
+    assert len(first_segments) == 2
+
+    replacement = ScheduledOperationStatusDTO(
+        job_id="new_attention", label="新注意", raw_status="failed",
+        state="attention", updated_at=None,
+    )
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=0, core_job_count=1,
+        operations=(replacement,), observed_at=observed_at,
+    ))
+    assert all(widget.isHidden() and widget.parent() is None for widget in first_segments)
+    assert len(view._operations_distribution_segment_widgets) == 1
+    assert "正常 0｜安全邊界中 0｜需要注意 1｜無法判定 0｜來源未確認 0｜未知狀態 0" in view.operations_distribution_label.text()
+
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=0, core_job_count=0,
+        operations=(), observed_at=observed_at,
+    ))
+    empty_summary = view.operations_distribution_label.text()
+    assert "正常 0｜安全邊界中 0｜需要注意 0｜無法判定 0｜來源未確認 0｜未知狀態 0" in empty_summary
+    assert "共 0 項" in empty_summary
+    assert view._operations_distribution_segment_widgets == []
+    assert view.operations_distribution_bar.isHidden()
+
+
 def test_runtime_operations_state_filter_renders_all_normalized_states_and_preserves_dto():
     app()
     view = RuntimeView()

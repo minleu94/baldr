@@ -83,6 +83,39 @@ class FakeRegimeService:
         return {"technical": {}, "patterns": {}, "signals": {}}
 
 
+def test_market_regime_trend_summary_shows_plus_di_source_state():
+    application = app()
+    view = MarketRegimeView(FakeRegimeService())
+    try:
+        cases = (
+            (True, "+DI 高於 -DI"),
+            (False, "+DI 未高於 -DI"),
+            (None, "+DI 高於 -DI：未知（來源未提供）"),
+        )
+        for source_value, expected in cases:
+            details = {
+                "close_above_ma60": True,
+                "ma20_slope_positive": True,
+            }
+            if source_value is not None:
+                details["plus_di_above_minus_di"] = source_value
+            view._update_layer2(
+                RegimeResultDTO(
+                    regime="Trend",
+                    confidence=0.82,
+                    regime_name_cn="趨勢盤",
+                    details=details,
+                )
+            )
+            summary = view.layer2_label.text()
+            assert expected in summary
+            assert "價格在中長期均線之上" in summary
+            assert "短期均線上升" in summary
+    finally:
+        view.close()
+        application.processEvents()
+
+
 def test_market_source_date_invalid_value_is_unknown_in_visible_summary():
     class InvalidDateService(FakeRegimeService):
         def detect_regime(self):

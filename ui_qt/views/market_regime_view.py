@@ -703,6 +703,7 @@ class MarketRegimeView(QWidget):
             "Trend": (
                 ("close_above_ma60", "價格在中長期均線之上", "價格未在中長期均線之上"),
                 ("ma20_slope_positive", "短期均線上升", "短期均線未上升"),
+                ("plus_di_above_minus_di", "+DI 高於 -DI", "+DI 未高於 -DI"),
             ),
             "Breakout": (
                 ("bandwidth_compressed", "波動率壓縮", "波動率未壓縮"),

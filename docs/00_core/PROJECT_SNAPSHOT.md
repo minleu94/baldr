@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M121 後繼原始碼在 Portfolio「情境壓力」逐列結果增加「計算輸入」，直接顯示同筆 Stress result 的股數與 mark price；缺價持倉仍只列於部分計算警示，不補零。畫面同時明示結果未附逐列報價資料日／來源，不能借其他持倉觀測推定。Sol 拒絕將另讀的行情快取日期貼到結果：目前 `PortfolioService` 取價與 observation 分讀，且 CSV 重複列語義不同；須先有同次計算輸入的 typed provenance 契約。Luna 實作經 Sol 複核，Portfolio 80、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 1280／1500 真 OS DPI216 隔離合成表格圖通過。正式私人持倉、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗；詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m121-stress-逐列計算輸入可核對性)。
+
 M120 後繼原始碼替 Watchlist 增加單次讀取的候選列與私人查看狀態快照，再在候選表前顯示待查看／已確認／稍後／未知四類精確列數及比例。表格與圖卡共用同一讀取；SQLite revision 顯原值，legacy JSON 明示無持久 revision。同股不同來源按列保留；身份或 extension 不可核對標未知，成功空集合才是真零，清單缺件／讀取失敗均不假裝零。所選列另讀狀態若 revision 變更會拒絕保存並提示刷新。Sol 退回初版缺件假零與第二次讀取、修正 1280 窄窗圖卡高度；最終聚焦 28、Workbench 85、validator 25／0／4、mypy 1,144 clean，正常 Main 1280／1500 真 OS DPI216 隔離合成圖通過。正式私人資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗；詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m120-watchlist-同版私人查看狀態分布)。
 
 M118–M119 後繼原始碼補兩處同源研究資訊：產業／題材分類 explorer 對目前明選版本的 `ThemeClassificationPresentation.members` 畫最多八個 L1 類別與有界「其他」的分類列數條，空白欄位分開，原標籤、完整成員表與版本日期保留；這不是公司權重、供應關係或歷史 PIT。Evidence「資料缺口」選列在表前摘要及可複製明細顯本列保存的 Research Run／Event／Outcome ID，缺件為「未提供」，不由 ID 推定匹配或來源資格。Sol 原生目視修正類別標籤窄欄及埋在頁尾的追溯 ID；最終受控聚焦 91、Workbench 85、validator 25／0／4、mypy 1,144 clean，正常 Main 1280／1500 真 OS DPI216 合成 before／after 通過。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m118m119-題材-l1-組成與資料缺口追溯)。

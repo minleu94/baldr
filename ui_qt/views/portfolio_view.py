@@ -3838,6 +3838,9 @@ class PortfolioView(QWidget):
             diagnostics.append(
                 f"缺最新價：{', '.join(result.missing_price_codes)}；只計算已標記持倉。"
             )
+        diagnostics.append(
+            "本次 Stress 結果未附逐列報價資料日／來源；不以其他持倉觀測推定。"
+        )
         diagnostics.append("研究用途；情境不是預測，不代表投資有效性或可交易性。")
         self.stress_detail_label.setText("\n".join(diagnostics))
 
@@ -3845,6 +3848,7 @@ class PortfolioView(QWidget):
             {
                 "證券代號": item.stock_code,
                 "證券名稱": item.stock_name,
+                "計算輸入": f"{item.quantity} 股 × TWD {item.mark_price}/股",
                 "基準市值": str(item.base_value),
                 "衝擊(bp)": item.shock_bp,
                 "壓力後市值": str(item.stressed_value),
@@ -3853,7 +3857,16 @@ class PortfolioView(QWidget):
             }
             for item in result.positions
         ]
-        columns = ["證券代號", "證券名稱", "基準市值", "衝擊(bp)", "壓力後市值", "變動", "狀態"]
+        columns = [
+            "證券代號",
+            "證券名稱",
+            "計算輸入",
+            "基準市值",
+            "衝擊(bp)",
+            "壓力後市值",
+            "變動",
+            "狀態",
+        ]
         self.stress_positions_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
         self.stress_positions_table.resizeColumnsToContents()
 

@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M121 後繼原始碼：Portfolio Stress 逐列結果表將同筆 result 的原股數與 mark price 顯在「計算輸入」欄，部分計算只列已有報價的持倉，缺價另在診斷提示。結果尚無逐列 quote date／source identity，畫面明示未提供；不能拿其他觀測或保存時間推定。公式、服務 DTO、保存行為與私人帳未改；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m121-stress-逐列計算輸入可核對性)。
+
 M120 後繼原始碼：Watchlist `get_review_snapshot()` 只載入一次候選清單，保留每列原身份、原表格欄位、共同 revision 與私人查看狀態；候選表前以兩欄分布卡顯四態精確列數／當次總列數。SQLite revision 顯原值，legacy JSON 顯未提供；同股不同來源不合併，身份或狀態擴充不可核對為未知。來源缺件／讀取錯誤不畫舊圖、不把未知寫成 0；已載入空集合顯真 0。分布是私人操作狀態，不是金融評分；單列另讀若 revision 已變更則拒絕保存並要求刷新。原 CAS、研究來源、金融公式與私人正式資料未改；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m120-watchlist-同版私人查看狀態分布)。
 
 M118–M119 後繼原始碼：所選題材分類區以同一 typed snapshot 的分類成員列計數 L1 組成，最多八類及一列有界合併數，來源原標籤、空白欄位、資料日／mapping 日期與完整成員表各自保留；此分類數不是市場權重、供應鏈邊、歷史 PIT 或績效。Evidence 資料缺口在選列明細與表前摘要顯同列保存的三種追溯 ID；空值明示未提供，換列及刷新清舊，ID 的存在不授匹配或來源資格。兩者只改展示層，未改 DTO、公式或來源資格。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m118m119-題材-l1-組成與資料缺口追溯)。

@@ -1254,10 +1254,35 @@ def test_portfolio_stress_lab_is_visible_and_research_only(tmp_path):
     assert "最大持倉事件" in view.stress_summary_label.text()
     assert "可計算" in view.stress_summary_label.text()
     assert "研究用途" in view.stress_detail_label.text()
+    assert "本次 Stress 結果未附逐列報價資料日／來源" in (
+        view.stress_detail_label.text()
+    )
     assert view.stress_positions_table.model().rowCount() == 2
+    stress_rows = view.stress_positions_table.model()._dataframe
+    assert "計算輸入" in stress_rows.columns
+    assert stress_rows["計算輸入"].tolist() == [
+        "1000 股 × TWD 110/股",
+        "1000 股 × TWD 151/股",
+    ]
     assert view._stress_result.research_only is True
     assert view._stress_result.investment_effectiveness_claim is False
     assert view.btn_save_stress_history.isEnabled() is True
+
+
+def test_portfolio_stress_input_column_keeps_only_priced_rows(tmp_path):
+    portfolio_service = FakePortfolioService(FakeConfig(tmp_path))
+    portfolio_service.positions[1].current_price = None
+    view = make_portfolio_view(tmp_path, portfolio_service=portfolio_service)
+
+    view.btn_run_stress.click()
+
+    assert view._stress_result.status == "partial"
+    assert view._stress_result.missing_price_codes == ("2317",)
+    assert view.stress_positions_table.model().rowCount() == 1
+    stress_rows = view.stress_positions_table.model()._dataframe
+    assert stress_rows["證券代號"].tolist() == ["2330"]
+    assert stress_rows["計算輸入"].tolist() == ["1000 股 × TWD 110/股"]
+    assert "缺最新價：2317" in view.stress_detail_label.text()
 
 
 def test_portfolio_stress_scenario_preview_uses_definition_before_execution(tmp_path):
@@ -1359,6 +1384,7 @@ def test_portfolio_stress_scenario_change_clears_result_and_save_identity(
     assert view.stress_summary_label.text() == "情境已變更；請重新執行情境。"
     assert "舊結果已清除" in view.stress_detail_label.text()
     assert view.stress_positions_table.model().rowCount() == 0
+    assert "計算輸入" not in view.stress_positions_table.model()._dataframe.columns
     assert view.btn_save_stress_history.isEnabled() is False
     view.btn_save_stress_history.click()
     assert not view.stress_history_db_path.exists()
@@ -1408,6 +1434,7 @@ def test_portfolio_stress_load_failure_clears_result_and_disables_save(
     assert view.stress_summary_label.text() == "情境壓力測試載入失敗；未修改持倉。"
     assert view.stress_detail_label.text() == "診斷：stress fixture error"
     assert view.stress_positions_table.model().rowCount() == 0
+    assert "計算輸入" not in view.stress_positions_table.model()._dataframe.columns
     assert view.btn_save_stress_history.isEnabled() is False
 
 

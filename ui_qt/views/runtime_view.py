@@ -1,7 +1,7 @@
 ﻿from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTextEdit, QLabel, QListWidget, QGroupBox, QListWidgetItem, QSizePolicy,
-    QScrollArea, QFrame, QPushButton, QComboBox
+    QScrollArea, QFrame, QPushButton, QComboBox, QProgressBar
 )
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
@@ -265,6 +265,11 @@ class RuntimeView(QWidget):
         operations_details_layout.addWidget(self.scope_label)
         operations_details_layout.addWidget(self.operations_detail_label)
         operations_details_layout.addWidget(self.operations_capture_detail_label)
+        self.operations_stage_chart = QWidget()
+        self.operations_stage_chart_layout = QVBoxLayout(self.operations_stage_chart)
+        self.operations_stage_chart_layout.setContentsMargins(0, 0, 0, 0)
+        self.operations_stage_chart_layout.setSpacing(3)
+        operations_details_layout.addWidget(self.operations_stage_chart)
         self.operations_raw_text = QTextEdit()
         self.operations_raw_text.setReadOnly(True)
         operations_details_layout.addWidget(self.operations_raw_text)
@@ -553,6 +558,81 @@ class RuntimeView(QWidget):
             )
         )
 
+    def _render_decision_capture_stages(
+        self, operation: ScheduledOperationStatusDTO | None
+    ) -> None:
+        layout = self.operations_stage_chart_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        capture = getattr(operation, "capture", None) if operation is not None else None
+        if (
+            operation is None
+            or operation.job_id != "decision_evidence_capture"
+            or not isinstance(capture, DecisionCaptureRunStatus)
+            or not isinstance(capture.stages, tuple)
+            or not capture.stages
+        ):
+            self.operations_stage_chart.hide()
+            return
+
+        displayed = [
+            stage for stage in capture.stages[:32]
+            if isinstance(stage, DecisionCaptureStage)
+        ]
+        if not displayed:
+            self.operations_stage_chart.hide()
+            return
+        cap_ms = 86_400_000
+        values = [
+            min(stage.elapsed_ms, cap_ms)
+            for stage in displayed
+            if type(stage.elapsed_ms) is int and stage.elapsed_ms >= 0
+        ]
+        scale_max = max(values, default=0)
+        caption = QLabel("階段耗時（相對於本次顯示最長階段；不代表總耗時或成功）")
+        caption.setWordWrap(True)
+        caption.setMinimumWidth(0)
+        layout.addWidget(caption)
+        for stage in displayed:
+            name = self._safe_capture_code(stage.stage) or "未知"
+            state = self._safe_capture_code(stage.state) or "未知"
+            elapsed = stage.elapsed_ms
+            valid = type(elapsed) is int and elapsed >= 0
+            shown_elapsed = self._capture_elapsed_text(elapsed)
+            extra = []
+            error_type = self._safe_capture_code(stage.error_type)
+            if error_type:
+                extra.append(f"錯誤類型：{error_type}")
+            status = f"｜{'；'.join(extra)}" if extra else ""
+            row = QWidget(self.operations_stage_chart)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(6)
+            label = QLabel(f"{name}｜{state}｜{shown_elapsed}{status}")
+            label.setWordWrap(True)
+            label.setMinimumWidth(0)
+            label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            row_layout.addWidget(label, 2)
+            bar = QProgressBar(row)
+            bar.setRange(0, 1000)
+            bar.setTextVisible(False)
+            bar.setFixedHeight(8)
+            bar.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            if valid and scale_max > 0:
+                bar.setValue(min(1000, min(elapsed, cap_ms) * 1000 // scale_max))
+            else:
+                bar.setValue(0)
+            bar.setVisible(valid)
+            row_layout.addWidget(bar, 1)
+            layout.addWidget(row)
+        if len(capture.stages) > 32:
+            layout.addWidget(QLabel(f"另有 {len(capture.stages) - 32} 個階段未顯示。"))
+        self.operations_stage_chart.show()
+
     def _on_scheduled_operation_selection_changed(self, current, _previous) -> None:
         self._selected_scheduled_operation_id = (
             current.data(Qt.UserRole) if current is not None else None
@@ -561,6 +641,7 @@ class RuntimeView(QWidget):
             self.operations_capture_detail_label.setText(
                 "選取排程列以查看其唯讀終態；未提供終端讀回時狀態未知。"
             )
+            self._render_decision_capture_stages(None)
             return
         job_id = current.data(Qt.UserRole)
         operation = self._scheduled_operations_by_job_id.get(job_id)
@@ -568,10 +649,12 @@ class RuntimeView(QWidget):
             self.operations_capture_detail_label.setText(
                 "此排程列的唯讀終態尚未取得。"
             )
+            self._render_decision_capture_stages(None)
             return
         self.operations_capture_detail_label.setText(
             self._render_decision_capture_status(operation)
         )
+        self._render_decision_capture_stages(operation)
 
     def _render_scheduled_operations(self, _index: int = -1) -> None:
         """依選取狀態純呈現已載入 DTO，並維持仍可見的原選取。"""

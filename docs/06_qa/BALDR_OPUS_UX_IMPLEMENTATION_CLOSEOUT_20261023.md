@@ -1,6 +1,6 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發至 M88 的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M97 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -73,3 +73,14 @@ Luna `/root/m95_research_audit` 唯讀去重後指出 Portfolio「情境壓力�
 M95 後的唯讀盤點確認，既有 M29–M30 僅呈現單一題材的分類成員，已載 snapshot 仍可回答「目前題材與哪些其他題材共用同一檔股票」。Luna 做分類資料唯讀審查，並由兩個獨立 writer 修改 `app_module/theme_overlap_presentation.py`、`tests/test_theme_overlap_presentation.py` 與 `ui_qt/views/industry_theme_map_view.py`、`tests/test_ui_qt_industry_theme_map_view.py`；Sol 核來源與 UI 邊界，退回只有文字比值的初版，要求真正的水平重疊條及兩側原分類依據。DTO 限同 manifest、`current_research`、報表與映射交集、同版日期及有效 SHA；拒絕重複分類列。UI 最多八張卡，揭露總鄰居與省略數，點擊沿原鏈／題材身份定位，換題／換版／清除／錯誤清舊；沒有改行情、報酬、PIT、正式來源或私人帳。
 
 首輪受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_8fb9d8273377408a8bdc8b683862cd76/receipt.json` 發現 PySide6 將按鈕 tuple 屬性取回為 list，造成導航被守衛拒絕；mypy 另抓到兩個 DTO 迴圈同名變數型別衝突。Sol 修正後目視正常 Main，發現點卡後落在過低的筆記區，故使新入口回到新題材摘要，並修正合成鄰居的成員覆蓋分母。最終受控 `.../single_owned_qa_e301b2bd3f824c45a5583a7043fd6cb4/receipt.json`：受改 Python 編譯、題材 DTO／View／原分類聚焦 **47 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。真 Windows DPI144（150%）的隔離合成 View 在 1280×760／900×760 驗八張卡、2／2 與 1／2 水平條、長文捲動及省略數；最終收據 `.../single_owned_qa_9d285ce660704930864437d72beb2c20/receipt.json`，PNG／JSON 在 `.../native_m96_evidence/run_a8cfd732cd3d47308feb42f5b46ba699/`。正常 Main 1280×760 另驗市場探索導航、卡片點擊精確進入鄰居題材且新摘要與成員表可見，來源 fixture SHA 不變；最終收據 `.../single_owned_qa_ab291c1225d34b5b936985e4a0dcf7f4/receipt.json`，PNG／JSON 在 `.../native_m96_evidence/main_36e9c5e27a5743c2977ee5adab272269/`。這是合成來源與單一 OS DPI 證據，尚未核正式題材版本、其他 DPI、固定 EXE、Owner UAT 或完整產品 Gate。
+## M97 Runtime 階段耗時圖與工程收尾
+
+Luna 唯讀盤點 Recommendation／Research Lab／Backtest 已有的視覺化與資格界線，未找到值得重做的新圖；另一 Luna 指出 Runtime 決策擷取終態的階段耗時僅以長文字呈現，而既有 typed DTO 已提供原順序、狀態、整數毫秒及安全例外類型。Sol 限定只改 `ui_qt/views/runtime_view.py` 與 `tests/test_ui_qt_runtime_view.py`：在既有收合明細內附橫條，最多顯示前 32 個原事件，保留原文字、同名事件各列、零值、截限、無效值及省略數；條長只相對於本次顯示最長階段，不解讀為總耗時、成功率或金融資格。選列、篩選、被動刷新、空結果與缺型別終態清舊。沒有改 reader、排程、資料寫入或金融計算。
+
+Sol 目視首輪真 Windows 圖後發現同名 `failed`／`started` 事件均被原 `unfinished_stages` 名稱標成「未完成」，故移除逐列推定，整體未完成階段仍在原終態文字核對。修後受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_6158fd336d2c4483836be6e601fccbc2/receipt.json`：受改 Python 編譯、Runtime 聚焦 **19 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留或強制清理。修前通過但語義被退回的原 QA 收據 `.../single_owned_qa_95a6a432a3e7484fb6432916344659d4/receipt.json` 與原生圖 `.../native_m97_evidence/run_bb0ea4d3ff6a48b1adbd2438fec95c50/` 均保留，不當最終接受。最終原生收據 `.../single_owned_qa_e752b43112444d599780ac9186980ecc/receipt.json`；真 OS DPI144（150%）隔離合成 View 的基線文字／修後橫條、完整正常 Main 1280×760、局部圖與原始碼 SHA 位於 `.../native_m97_evidence/run_7a38356a3d8c421ab0ef265b20d04059/`。Sol 目視確認同名 failed 不再帶錯誤的未完成標記，原清單仍可見。
+
+### 全任務盤點與保留界線
+
+M1–M97 是工程切片序號，包含唯讀裁決與 QA 專項，**不是 97 個獨立功能**。P0 已改善台股方向色、數值單位、日期、未知／真零、關鍵摘要及互動回饋；P1 已交付題材格、成交額圖、同版分類成員與鄰域、搜尋及精確下鑽；P2 已整理市場／個股／推薦／Portfolio／Backtest／Evidence／Runtime 的首屏、原值圖卡、歷史與狀態清舊。各處保留原明細、來源身份與金融限制。P3 的有向供應鏈及跨期強弱仍需要逐邊來源／時鐘與用途契約；既有靜態重疊不得升格。審查來源是 Opus 起始、Antigravity 續作完成六份主要報告，Sol 逐項去重與核現行程式，Luna 分切片、root 複核及執行受控 QA；具名身份以本頁「審查來源與工程處置」為準。
+
+本次收尾是**後繼原始碼與隔離 QA 的工程階段完成**。正式市場／Evidence／Portfolio 資料、自然排程、私人帳、完整 100%／125%／150% DPI／Light（若支援）、固定新版 EXE、Owner UAT 與完整產品 Gate 沒有因此通過；M73 決策品質控制作用範圍與 M75 來源／用途契約仍待產品裁決。下一步只依具名來源與授權取得安全唯讀副本後補正式接受，不以合成 PASS、圖卡外觀或單一截圖取代。

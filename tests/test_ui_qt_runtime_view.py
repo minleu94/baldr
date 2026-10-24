@@ -9,7 +9,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QSizePolicy
+from PySide6.QtWidgets import QApplication, QSizePolicy, QProgressBar, QLabel
 
 from app_module.dtos.runtime_dtos import (
     GovernanceSeverity,
@@ -484,6 +484,93 @@ def test_runtime_view_keeps_legacy_or_untyped_capture_unknown():
     detail = view.operations_capture_detail_label.text()
     assert "終態：未知" in detail
     assert "forged-run" not in detail
+
+
+def test_runtime_capture_stage_chart_preserves_order_duplicates_and_bounded_elapsed():
+    app()
+    view = RuntimeView()
+    capture = replace(
+        _decision_capture_status(),
+        stages=(
+            DecisionCaptureStage("same", "completed", 0),
+            DecisionCaptureStage("same", "failed", 500, "OSError"),
+            DecisionCaptureStage("long", "started", 90_000_000),
+            DecisionCaptureStage("bad", "completed", -1),
+            DecisionCaptureStage("invalid", "completed", True),
+        ),
+        unfinished_stages=("long",),
+    )
+    operation = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture", label="擷取", raw_status="failed",
+        state="attention", updated_at=None, lane="core", capture=capture,
+    )
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(operation))
+    view.operations_list.setCurrentRow(0)
+
+    chart = view.operations_stage_chart
+    text = "\n".join(label.text() for label in chart.findChildren(QLabel))
+    assert "相對於本次顯示最長階段" in text
+    assert "不代表總耗時或成功" in text
+    assert "same｜completed｜0 ms" in text
+    assert "same｜failed｜500 ms｜錯誤類型：OSError" in text
+    assert "long｜started｜≥86400000 ms（已截限）" in text
+    assert "未完成階段：long" in view.operations_capture_detail_label.text()
+    assert "same｜failed｜500 ms｜未完成" not in text
+    assert "bad｜completed｜未知" in text
+    assert "invalid｜completed｜未知" in text
+    bars = chart.findChildren(QProgressBar)
+    assert len(bars) == 5
+    stage_text = [bar.parentWidget().findChild(QLabel).text() for bar in bars]
+    assert [text.split("｜", 1)[0] for text in stage_text] == [
+        "same", "same", "long", "bad", "invalid",
+    ]
+    assert bars[0].value() == 0
+    assert bars[1].value() == 0  # 相對於截限後的最長階段，極短條寬為零。
+    assert bars[2].value() == 1000
+    assert bars[3].isHidden() and bars[4].isHidden()
+
+
+def test_runtime_capture_stage_chart_caps_rows_and_clears_on_selection_and_filter():
+    app()
+    view = RuntimeView()
+    stages = tuple(DecisionCaptureStage(f"stage_{i}", "completed", i) for i in range(35))
+    capture_operation = ScheduledOperationStatusDTO(
+        job_id="decision_evidence_capture", label="擷取", raw_status="passed",
+        state="operational", updated_at=None, lane="core",
+        capture=replace(_decision_capture_status(), stages=stages),
+    )
+    other_operation = ScheduledOperationStatusDTO(
+        job_id="other", label="其他", raw_status="passed", state="operational",
+        updated_at=None, lane="core",
+    )
+    view.on_scheduled_operations_updated(
+        replace(_decision_capture_snapshot(capture_operation), operations=(capture_operation, other_operation), core_job_count=2)
+    )
+    view.operations_list.setCurrentRow(0)
+    chart = view.operations_stage_chart
+    assert len(chart.findChildren(QProgressBar)) == 32
+    assert any("另有 3 個階段未顯示" in label.text() for label in chart.findChildren(QLabel))
+
+    view.operations_list.setCurrentRow(1)
+    assert chart.isHidden()
+    view.operations_list.setCurrentRow(0)
+    view.operations_state_filter.setCurrentIndex(2)  # guarded, hides the selected operational job
+    assert view.operations_list.currentItem() is None
+    assert chart.isHidden()
+
+    view.operations_state_filter.setCurrentIndex(0)
+    untyped = replace(capture_operation, capture=SimpleNamespace(stages=stages))
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(untyped))
+    view.operations_list.setCurrentRow(0)
+    assert chart.isHidden()
+
+    missing_stages = replace(
+        capture_operation,
+        capture=replace(_decision_capture_status(), stages=()),
+    )
+    view.on_scheduled_operations_updated(_decision_capture_snapshot(missing_stages))
+    view.operations_list.setCurrentRow(0)
+    assert chart.isHidden()
 
 
 def test_runtime_view_renders_environment_write_boundary_without_claiming_probe_success():

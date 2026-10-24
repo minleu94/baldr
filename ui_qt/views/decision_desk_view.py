@@ -220,6 +220,18 @@ class DecisionDeskView(QWidget):
             self.saved_recommendation_button, 0, Qt.AlignmentFlag.AlignTop
         )
         info_layout.addLayout(saved_recommendation_row)
+        self.saved_recommendation_open_status = QLabel("")
+        self.saved_recommendation_open_status.setObjectName(
+            "decisionDeskSavedRecommendationOpenStatus"
+        )
+        self.saved_recommendation_open_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.saved_recommendation_open_status.setWordWrap(True)
+        self.saved_recommendation_open_status.setAccessibleName("原保存推薦開啟狀態")
+        self.saved_recommendation_open_status.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        self.saved_recommendation_open_status.setVisible(False)
+        info_layout.addWidget(self.saved_recommendation_open_status)
         info_layout.addWidget(self.warning_summary_label)
         info_layout.addWidget(self.warning_details_panel)
 
@@ -972,6 +984,7 @@ class DecisionDeskView(QWidget):
     def _render_saved_recommendation(self, recommendation: Any | None) -> None:
         """只呈現快照提供的原保存結果身分，不推定缺席代表沒有結果。"""
 
+        self.clear_saved_recommendation_open_error()
         if recommendation is None:
             self.saved_recommendation_label.setText(
                 "保存推薦：本次摘要未提供（狀態未知）；不是今日新推薦。"
@@ -1005,6 +1018,7 @@ class DecisionDeskView(QWidget):
         self.saved_recommendation_button.setVisible(valid_result_id)
 
     def _open_saved_recommendation(self) -> None:
+        self.clear_saved_recommendation_open_error()
         result_id = self.saved_recommendation_button.property("result_id")
         if (
             type(result_id) is str
@@ -1012,6 +1026,19 @@ class DecisionDeskView(QWidget):
             and result_id == result_id.strip()
         ):
             self.savedRecommendationRequested.emit(result_id)
+
+    def clear_saved_recommendation_open_error(self) -> None:
+        self.saved_recommendation_open_status.clear()
+        self.saved_recommendation_open_status.setVisible(False)
+
+    def show_saved_recommendation_open_error(self, message: str) -> None:
+        """在原摘要旁顯示 Main 導覽準備失敗的可讀原因。"""
+
+        text = str(message).splitlines()[0][:300].strip()
+        if not text:
+            text = "原保存推薦尚未能讀取；未改選其他結果。"
+        self.saved_recommendation_open_status.setText(text)
+        self.saved_recommendation_open_status.setVisible(True)
 
     @staticmethod
     def _visibility_quality_label(value: str) -> str:

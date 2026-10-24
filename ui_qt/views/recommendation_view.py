@@ -760,6 +760,7 @@ class RecommendationView(QWidget):
     recommendationRequested = Signal(dict)  # 推薦請求（傳遞配置）
     sendToBacktestRequested = Signal(dict)  # 一鍵送回測請求（Phase 3.3）
     stockResearchRequested = Signal(object)  # 單股研究上下文（唯讀下鑽）
+    returnToDailyDecisionRequested = Signal()
 
     def __init__(
         self,
@@ -2665,6 +2666,19 @@ class RecommendationView(QWidget):
         title_font.setBold(True)
         title.setFont(title_font)
         title_layout.addWidget(title)
+        self.return_to_daily_decision_button = QPushButton("返回每日決策")
+        self.return_to_daily_decision_button.setObjectName(
+            "returnToDailyDecisionSource"
+        )
+        self.return_to_daily_decision_button.setAccessibleName("返回每日決策來源")
+        self.return_to_daily_decision_button.setToolTip(
+            "返回原每日決策摘要；不重新整理來源。"
+        )
+        self.return_to_daily_decision_button.setVisible(False)
+        self.return_to_daily_decision_button.clicked.connect(
+            lambda: self.returnToDailyDecisionRequested.emit()
+        )
+        title_layout.addWidget(self.return_to_daily_decision_button)
         title_layout.addStretch()
 
         info_btn = InfoButton("recommendation", self)
@@ -6819,24 +6833,35 @@ class RecommendationView(QWidget):
     def open_saved_recommendation_result(self, result_id: str) -> bool:
         """排入指定保存結果的唯讀讀回；不列舉來源或執行推薦。"""
 
-        if (
-            getattr(self, "_saved_result_open_closed", False)
-            or type(result_id) is not str
-            or not result_id
-            or result_id.strip() != result_id
-            or getattr(self, "_saved_result_load_worker", None) is not None
-        ):
+        if getattr(self, "_saved_result_open_closed", False):
+            self.result_status_label.setText("推薦頁正在關閉；未排入保存結果讀取。")
+            return False
+        if type(result_id) is not str or not result_id or result_id.strip() != result_id:
+            self.result_status_label.setText("保存結果 ID 無效；未排入讀取。")
+            return False
+        if getattr(self, "_saved_result_load_worker", None) is not None:
+            self.result_status_label.setText("另一筆保存結果仍在讀取；未排入新讀取。")
             return False
         previous_generation = getattr(self, "_saved_result_load_generation", 0)
         previous_worker = getattr(self, "_saved_result_load_worker", None)
         self._load_saved_recommendation_result(selected_result_id=result_id)
         worker = getattr(self, "_saved_result_load_worker", None)
-        return (
+        accepted = (
             getattr(self, "_saved_result_load_generation", 0)
             == previous_generation + 1
             and worker is not None
             and worker is not previous_worker
         )
+        if not accepted:
+            return False
+        self.result_source_tabs.setCurrentWidget(self.result_panel)
+        self.result_scroll.verticalScrollBar().setValue(0)
+        return True
+
+    def set_daily_decision_return_available(self, available: bool) -> None:
+        """僅在由每日決策明選進入時提供精確返回操作。"""
+
+        self.return_to_daily_decision_button.setVisible(bool(available))
 
     def _load_saved_recommendation_result(
         self,

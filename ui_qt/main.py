@@ -1967,6 +1967,12 @@ class MainWindow(QMainWindow):
         widget = workspace_widgets.get(key)
         if widget is None:
             return
+        recommendation_view = getattr(self, "recommendation_view", None)
+        set_return_available = getattr(
+            recommendation_view, "set_daily_decision_return_available", None
+        )
+        if callable(set_return_available):
+            set_return_available(False)
         workspace_stack.setCurrentWidget(widget)
         left_navigation = getattr(self, "left_navigation", None)
         if left_navigation is not None:
@@ -2007,19 +2013,61 @@ class MainWindow(QMainWindow):
         self._select_main_workspace("portfolio")
 
     def _open_workbench_saved_recommendation(self, result_id: str) -> bool:
-        """明選原保存結果；只有排入精確讀取後才切既有推薦工作區。"""
+        """由一般工作台明選原保存結果；不建立每日決策返回脈絡。"""
 
         view = getattr(self, "recommendation_view", None)
         open_saved = getattr(view, "open_saved_recommendation_result", None)
+        error_detail = ""
         try:
             accepted = callable(open_saved) and open_saved(result_id) is True
-        except Exception:  # noqa: BLE001 - 讀取準備失敗不切頁
+        except Exception as exc:  # noqa: BLE001 - 讀取準備失敗不切頁
             accepted = False
+            error_detail = f"{type(exc).__name__}: {exc}"
         if not accepted:
-            self.statusBar().showMessage("原保存推薦尚未能讀取；請查看推薦頁狀態，未改選其他結果。", 10000)
+            if not error_detail:
+                status_label = getattr(view, "result_status_label", None)
+                error_detail = str(getattr(status_label, "text", lambda: "")())
+            message = error_detail or "原保存推薦尚未能讀取；未改選其他結果。"
+            self._last_saved_recommendation_open_error = message
+            self.statusBar().showMessage(message[:300], 10000)
             return False
+        self._last_saved_recommendation_open_error = ""
         self._select_main_workspace("recommendation")
         return True
+
+    def _open_decision_desk_saved_recommendation(self, result_id: str) -> bool:
+        """每日決策來源專用入口；失敗留在原摘要，成功才允許返回。"""
+
+        decision_desk = getattr(self, "decision_desk_view", None)
+        clear_error = getattr(
+            decision_desk, "clear_saved_recommendation_open_error", None
+        )
+        if callable(clear_error):
+            clear_error()
+        accepted = self._open_workbench_saved_recommendation(result_id)
+        view = getattr(self, "recommendation_view", None)
+        if not accepted:
+            message = getattr(self, "_last_saved_recommendation_open_error", "")
+            if not message:
+                status_label = getattr(view, "result_status_label", None)
+                message = str(getattr(status_label, "text", lambda: "")())
+            show_error = getattr(
+                decision_desk, "show_saved_recommendation_open_error", None
+            )
+            if callable(show_error):
+                show_error(message or "原保存推薦尚未能讀取；未改選其他結果。")
+            return False
+        set_return_available = getattr(
+            view, "set_daily_decision_return_available", None
+        )
+        if callable(set_return_available):
+            set_return_available(True)
+        return True
+
+    def _return_to_daily_decision_source(self) -> None:
+        """返回同一個已掛載的每日決策頁，不重新整理來源。"""
+
+        self._open_workbench_market_explore()
 
     def _open_workbench_position_health(
         self, source: PositionHealthReadModel, position_id: str
@@ -2242,7 +2290,7 @@ class MainWindow(QMainWindow):
                     )
                 if hasattr(decision_desk_view, "savedRecommendationRequested"):
                     decision_desk_view.savedRecommendationRequested.connect(
-                        self._open_workbench_saved_recommendation
+                        self._open_decision_desk_saved_recommendation
                     )
                 print("[MainWindow] 每日決策來源建立成功")
             except Exception as e:
@@ -2362,6 +2410,10 @@ class MainWindow(QMainWindow):
             if hasattr(recommendation, "stockResearchRequested"):
                 recommendation.stockResearchRequested.connect(
                     self._open_stock_research_context
+                )
+            if hasattr(recommendation, "returnToDailyDecisionRequested"):
+                recommendation.returnToDailyDecisionRequested.connect(
+                    self._return_to_daily_decision_source
                 )
             self.recommendation_view = recommendation
             daily_price = recommendation.daily_market_research_view

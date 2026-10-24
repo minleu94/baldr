@@ -41,6 +41,7 @@ class _DummyView(QWidget):
         self.load_data_if_needed_calls = 0
         self.resultPresented = _DummySignal()
         self.savedRecommendationRequested = _DummySignal()
+        self.returnToDailyDecisionRequested = _DummySignal()
 
     def load_data_if_needed(self):
         self.load_data_if_needed_calls += 1
@@ -75,7 +76,18 @@ class _DummyRecommendationView(_DummyView):
         self.result_source_tabs = QTabWidget(self)
         self.daily_market_research_view = _DummyDailyMarketResearchView(parent=self)
         self.sendToBacktestRequested = _DummySignal()
+        self.result_status_label = QLabel("reader is busy", self)
+        self.open_saved_result = True
+        self.opened_result_ids = []
+        self.return_available = False
         type(self).instances.append(self)
+
+    def open_saved_recommendation_result(self, result_id):
+        self.opened_result_ids.append(result_id)
+        return self.open_saved_result
+
+    def set_daily_decision_return_available(self, available):
+        self.return_available = available
 
 
 class _RecordedDecisionDeskView(_DummyView):
@@ -86,7 +98,17 @@ class _RecordedDecisionDeskView(_DummyView):
         self.as_of_date = as_of_date
         self.navigate_to_smart_money_callback = navigate_to_smart_money_callback
         super().__init__(parent=parent)
+        self.saved_recommendation_open_status = QLabel(self)
+        self.saved_recommendation_open_status.hide()
         _RecordedDecisionDeskView.instances.append(self)
+
+    def clear_saved_recommendation_open_error(self):
+        self.saved_recommendation_open_status.clear()
+        self.saved_recommendation_open_status.hide()
+
+    def show_saved_recommendation_open_error(self, message):
+        self.saved_recommendation_open_status.setText(message)
+        self.saved_recommendation_open_status.show()
 
 
 class _RecordedWorkbenchView(_DummyView):
@@ -335,7 +357,7 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     saved_recommendation_calls = []
     monkeypatch.setattr(
         main_module.MainWindow,
-        "_open_workbench_saved_recommendation",
+        "_open_decision_desk_saved_recommendation",
         lambda _self, result_id: saved_recommendation_calls.append(result_id),
     )
     target_window = _build_main_window()
@@ -361,6 +383,59 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     assert len(connected_slots) == 1
     connected_slots[0]("saved-result-exact-id")
     assert saved_recommendation_calls == ["saved-result-exact-id"]
+
+
+def test_saved_recommendation_route_reports_rejection_and_returns_to_same_desk(monkeypatch):
+    app()
+    _TrackingDecisionDeskBuilder.instances = []
+    _RecordedDecisionDeskView.instances = []
+    _DummyRecommendationView.instances = []
+    _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
+    target_window = _build_main_window()
+    target_window._setup_ui()
+
+    desk = target_window.decision_desk_view
+    recommendation = target_window.recommendation_view
+    recommendation.open_saved_result = False
+    assert not target_window._open_workbench_saved_recommendation("workbench-id")
+    assert desk.saved_recommendation_open_status.isHidden()
+    assert not recommendation.return_available
+    assert recommendation.opened_result_ids == ["workbench-id"]
+
+    recommendation.open_saved_result = True
+    assert target_window._open_workbench_saved_recommendation("workbench-id")
+    assert not recommendation.return_available
+    target_window._select_main_workspace("market_explore")
+    original_workspace = target_window.workspace_stack.currentWidget()
+
+    recommendation.open_saved_result = False
+    assert not target_window._open_decision_desk_saved_recommendation("exact-id")
+    assert target_window.workspace_stack.currentWidget() is original_workspace
+    assert not desk.saved_recommendation_open_status.isHidden()
+    assert desk.saved_recommendation_open_status.text() == "reader is busy"
+    assert recommendation.opened_result_ids == [
+        "workbench-id", "workbench-id", "exact-id"
+    ]
+    assert not recommendation.return_available
+
+    recommendation.open_saved_result = True
+    assert target_window._open_decision_desk_saved_recommendation("exact-id")
+    assert recommendation.opened_result_ids == [
+        "workbench-id", "workbench-id", "exact-id", "exact-id"
+    ]
+    assert recommendation.return_available
+    assert target_window.workspace_stack.currentWidget() is (
+        target_window.workspace_widgets["recommendation"]
+    )
+
+    return_slots = recommendation.returnToDailyDecisionRequested.calls
+    assert len(return_slots) == 1
+    return_slots[0]()
+    assert target_window.workspace_stack.currentWidget() is (
+        target_window.workspace_widgets["market_explore"]
+    )
+    assert target_window.market_tabs.currentWidget() is desk
+    assert not recommendation.return_available
 
 
 def test_market_exploration_lazy_loading_uses_widget_identity_after_overview_insert(

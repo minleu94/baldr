@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M149 後繼原始碼補完每日決策開啟原保存推薦的操作鏈：精確單筆讀取成功排入後顯示保存推薦分頁並將結果捲回頂端；排入前失敗在原摘要旁顯示原因，仍留原頁；由每日決策進入才顯「返回每日決策」，返回同一已掛載摘要。一般 Workbench 入口不帶此返回來源。Sol 複核 focused 70、Workbench 85、validator 25／0／4、mypy 1,144；真 OS DPI216 隔離正常 Main 1280×760／1500×900 使用合成 canonical 精確 reader，驗失敗、成功、返回與一般進入，八張圖、callback exception 0。未讀正式保存來源；舊跨頁測試的舊側欄按鈕定位在進本路徑前失敗，保留原收據，未當 M149 通過證據。其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m149-原保存推薦精確讀回與返回)。
+
 M148 後繼原始碼讓市場總覽的每日決策從原快照直接讀到已保存推薦的資料日、品質、來源 ID 與候選，並可將有效原 ID 交給 Main 既有精確唯讀入口；缺件／無效 ID、載入或錯誤清除按鈕，不改選其他結果。Sol 目視退回首版獨占一整列的按鈕，修成緊湊同列並在無效態隱藏；最終 focused 60、Workbench 85、validator 25／0／4、mypy 1,144，真 OS DPI216 的隔離正常 Main 1280×760／1500×900 路由及畫面通過。此入口不是今日新推薦或交易指令；正式 reader／來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m148-每日決策開啟原保存推薦)。
 
 M147 後繼原始碼在題材「雙版本題材原值比較」各版欄位加入中性藍色報酬資料覆蓋條，直接顯示該版原 DTO 的 `N / M 位成員`；真 0／M、部分覆蓋、無報表列的未知及 0 位成員的不適用各自分開。切換、取消、失敗或主版本失效會清舊圖。Sol 核對 focused 58、Workbench 85、validator 25／0／4、mypy 1,144；隔離合成正常 Main 在真 OS DPI216 的 1280×760／1500×900 四圖可讀，無 Qt callback exception。藍色只表資料覆蓋，不表報酬強弱或跨期差額；正式來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 仍未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m147-雙版本題材報酬資料覆蓋條)。

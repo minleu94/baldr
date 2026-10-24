@@ -75,14 +75,23 @@ def test_public_exact_open_uses_only_get_and_ignores_other_list_selection(
         "old-label", "", "", "different-result-id", "", "", "", ""
     )
     try:
+        assert view.return_to_daily_decision_button.isHidden()
         previous_generation = view._saved_result_load_generation
+        view.result_source_tabs.setCurrentWidget(view.daily_market_research_view)
+        view.result_scroll.verticalScrollBar().setValue(120)
         assert view.open_saved_recommendation_result(result_id)
         assert entered.wait(2)
+        assert view.result_source_tabs.currentWidget() is view.result_panel
+        assert view.result_scroll.verticalScrollBar().value() == 0
+        assert view.return_to_daily_decision_button.isHidden()
         assert view._saved_result_load_generation == previous_generation + 1
         assert view.saved_result_id_input.text() == "older-visible-id"
         assert view.current_execution is previous_execution
 
+        view.result_source_tabs.setCurrentWidget(view.daily_market_research_view)
         assert not view.open_saved_recommendation_result("another-result-id")
+        assert view.result_source_tabs.currentWidget() is view.daily_market_research_view
+        assert "另一筆保存結果仍在讀取" in view.result_status_label.text()
         assert view._saved_result_load_generation == previous_generation + 1
         assert get_calls == [result_id]
         assert list_calls == []
@@ -112,6 +121,7 @@ def test_public_exact_open_rejects_non_exact_ids_and_closed_view(
         assert not view.open_saved_recommendation_result(result_id)
         assert view._saved_result_load_generation == 0
         assert get_calls == []
+        assert "ID 無效" in view.result_status_label.text()
 
         event = QCloseEvent()
         view.closeEvent(event)

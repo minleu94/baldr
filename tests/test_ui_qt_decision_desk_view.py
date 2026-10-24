@@ -9,6 +9,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel, QFrame, QPushButton, QScrollArea
 
 from app_module.decision_desk_dtos import (
@@ -1059,6 +1060,31 @@ def test_saved_recommendation_summary_opens_only_the_exact_result_id():
     assert not view.saved_recommendation_button.isHidden()
     view.saved_recommendation_button.click()
     assert emitted == ["saved-result-exact-id"]
+    view.close()
+
+
+def test_saved_recommendation_open_failure_is_visible_plain_text_and_keeps_summary():
+    app()
+    recommendation = RecommendationDeskSummary(
+        as_of_date=date(2026, 6, 12),
+        quality=DecisionDeskQuality.OBSERVED,
+        result_id="saved-result-exact-id",
+        stock_codes=("2330",),
+    )
+    view = rendered_view(FakeBuilder(replace(_snapshot(), recommendations=recommendation)))
+    previous_summary = view.saved_recommendation_label.text()
+
+    view.show_saved_recommendation_open_error(
+        "ValueError: reader is busy\nadditional detail"
+    )
+
+    assert not view.saved_recommendation_open_status.isHidden()
+    assert view.saved_recommendation_open_status.text() == "ValueError: reader is busy"
+    assert view.saved_recommendation_open_status.textFormat() == Qt.TextFormat.PlainText
+    assert view.saved_recommendation_label.text() == previous_summary
+
+    view.clear_saved_recommendation_open_error()
+    assert view.saved_recommendation_open_status.isHidden()
     view.close()
 
 

@@ -617,6 +617,44 @@ def _snapshot_with_duplicate_theme_names() -> ThemeResearchSnapshot:
     )
 
 
+def _snapshot_with_large_theme_search_catalog() -> ThemeResearchSnapshot:
+    base = _snapshot_with_duplicate_theme_names()
+    rows = list(base.report.rows)
+    mapping = list(base.mapping)
+    complete = ThemeMetricCoverage(1, 1, 1, 1, 1, 1)
+    for index in range(81):
+        chain_name = f"大量鏈{index:02d}"
+        theme_name = f"大量題材{index:02d}"
+        stock_id = f"9{index:03d}"
+        rows.append(_daily_row(
+            chain_name,
+            theme_name,
+            (stock_id,),
+            returns=Decimal(index),
+            turnover=Decimal(index + 1),
+            volume=Decimal(index + 1),
+            flow_shares=index,
+            flow_amount=Decimal(index + 1),
+            coverage=complete,
+        ))
+        mapping.append(SimpleNamespace(
+            stock_id=stock_id,
+            stock_name=f"測試公司{stock_id}",
+            chain_name=chain_name,
+            theme_name=theme_name,
+            chain_tier="核心鏈",
+            assignment_method="公司主業",
+            source_name="本機分類來源",
+            source_tier="來源一級",
+            evidence_note="搜尋目錄合成列",
+        ))
+    return ThemeResearchSnapshot(
+        base.identity_sha256,
+        replace(base.report, rows=tuple(rows)),
+        tuple(mapping),
+    )
+
+
 def _select_theme(view: IndustryThemeMapView, chain: str, theme: str) -> None:
     view.chain_filter.setCurrentIndex(view.chain_filter.findData(chain))
     view.theme_filter.setCurrentIndex(view.theme_filter.findText(theme))
@@ -861,6 +899,121 @@ def test_two_version_comparison_reads_explicit_files_and_shows_zero_missing_and_
         assert "平均日漲跌幅（%）：未知" in label.text()
         assert "報酬覆蓋：1 / 2 位成員" in label.text()
     view.shutdown()
+    view.close()
+
+
+@pytest.mark.parametrize("width", (900, 1280))
+def test_theme_name_search_filters_large_catalog_and_explicitly_locates_cross_chain_duplicate(width):
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(width, 760)
+    snapshot = _snapshot_with_large_theme_search_catalog()
+    view.set_snapshot(snapshot)
+    view.show()
+    application.processEvents()
+
+    assert len(view._theme_options) == 91
+    for control in (
+        view.chain_filter,
+        view.theme_filter,
+        view.theme_search_input,
+        view.theme_search_results,
+        view.theme_search_locate_button,
+        view.stock_lookup_input,
+        view.stock_lookup_results,
+    ):
+        assert control.width() > 0
+    assert view.chain_filter.currentIndex() == 0
+    assert view.theme_filter.currentIndex() == 0
+
+    view.theme_search_input.setText("觀察")
+    assert view.theme_search_results.count() == 3
+    assert view.theme_search_results.itemText(1) == "鏈A／同名觀察題材"
+    assert view.theme_search_results.itemText(2) == "鏈B／同名觀察題材"
+    assert view.theme_search_results.currentIndex() == 0
+    assert view.theme_search_results.currentData() is None
+    assert not view.theme_search_locate_button.isEnabled()
+    assert view.chain_filter.currentIndex() == 0
+    assert view.theme_filter.currentIndex() == 0
+    assert "找到 2 個題材" in view.theme_search_status_label.text()
+
+    view.theme_search_results.setCurrentIndex(2)
+    assert tuple(view.theme_search_results.currentData()) == (
+        snapshot.identity_sha256, "鏈B", "同名觀察題材",
+    )
+    assert view.chain_filter.currentIndex() == 0
+    assert view.theme_filter.currentIndex() == 0
+    assert view.theme_search_locate_button.isEnabled()
+    view.theme_search_locate_button.click()
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈B"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+    assert view.metrics_table.item(_metric_row(view, "平均日漲跌幅"), 1).text() == "-2.00 %"
+    assert view.snapshot is snapshot
+
+    view.theme_search_results.setItemData(
+        2, ("0" * 64, "鏈B", "同名觀察題材")
+    )
+    view._locate_selected_theme_search_result()
+    assert view.theme_search_input.text() == ""
+    assert view.theme_search_results.count() == 1
+    assert "搜尋結果已失效" in view.theme_search_status_label.text()
+    assert view.chain_filter.currentData() == "鏈B"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+
+    # 搜尋依整份載入目錄，不受定位後的鏈篩選限制。
+    view.theme_search_input.setText("觀察題材")
+    assert view.theme_search_results.count() == 3
+    assert view.theme_search_results.itemText(1) == "鏈A／同名觀察題材"
+    assert view.theme_search_results.itemText(2) == "鏈B／同名觀察題材"
+
+    view.theme_search_input.setText("不存在的名稱片段")
+    assert view.theme_search_results.count() == 1
+    assert view.theme_search_results.currentData() is None
+    assert not view.theme_search_locate_button.isEnabled()
+    assert "沒有符合" in view.theme_search_status_label.text()
+    assert view.chain_filter.currentData() == "鏈B"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+
+    view.theme_search_input.clear()
+    assert view.theme_search_input.text() == ""
+    assert view.theme_search_results.count() == 1
+    assert view.theme_search_results.currentData() is None
+    assert "輸入題材名稱片段" in view.theme_search_status_label.text()
+    assert len(view._theme_options) == 2  # 目前鏈篩選仍保留；搜尋目錄不受限
+
+    view.theme_search_input.setText("觀察題材")
+    replacement = ThemeResearchSnapshot(
+        "8" * 64, snapshot.report, snapshot.mapping,
+    )
+    view.set_snapshot(replacement)
+    assert view.snapshot is replacement
+    assert view.theme_search_input.text() == ""
+    assert view.theme_search_results.count() == 1
+    assert view.theme_search_results.currentData() is None
+    assert view.chain_filter.currentIndex() == 0
+    assert view.theme_filter.currentIndex() == 0
+    assert len(view._theme_options) == 91
+
+    view.theme_search_input.setText("觀察題材")
+    view.theme_search_results.setCurrentIndex(1)
+    view._snapshot = None
+    view._busy = True
+    view._clear_snapshot_view()
+    view._update_controls()
+    assert view.theme_search_input.text() == ""
+    assert view.theme_search_results.count() == 1
+    assert view.theme_search_results.currentData() is None
+    assert not view.theme_search_input.isEnabled()
+    assert not view.theme_search_locate_button.isEnabled()
+    assert "讀取中" in view.theme_search_status_label.text()
+
+    view._busy = False
+    view.shutdown()
+    assert view.theme_search_input.text() == ""
+    assert view.theme_search_results.count() == 1
+    assert not view.theme_search_locate_button.isEnabled()
+    assert "已關閉" in view.theme_search_status_label.text()
     view.close()
 
 

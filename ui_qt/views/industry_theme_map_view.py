@@ -589,6 +589,55 @@ class IndustryThemeMapView(QWidget):
         selector_layout.addWidget(self.theme_filter, 2)
         filter_layout.addLayout(selector_layout)
 
+        theme_search_layout = QHBoxLayout()
+        theme_search_layout.addWidget(QLabel("題材名稱搜尋"))
+        self.theme_search_input = QLineEdit()
+        self.theme_search_input.setObjectName("industryThemeNameSearchInput")
+        self.theme_search_input.setAccessibleName("題材名稱片段搜尋")
+        self.theme_search_input.setPlaceholderText("輸入題材名稱片段；跨鏈同名會分列")
+        self.theme_search_input.setClearButtonEnabled(True)
+        self.theme_search_input.setMinimumWidth(0)
+        self.theme_search_input.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        self.theme_search_input.textChanged.connect(self._search_theme_names)
+        theme_search_layout.addWidget(self.theme_search_input, 2)
+
+        self.theme_search_results = QComboBox()
+        self.theme_search_results.setObjectName("industryThemeNameSearchResults")
+        self.theme_search_results.setAccessibleName("題材名稱搜尋結果，明選鏈與題材")
+        self.theme_search_results.setMinimumWidth(0)
+        self.theme_search_results.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        self.theme_search_results.addItem("輸入片段以搜尋題材", None)
+        self.theme_search_results.currentIndexChanged.connect(
+            self._update_theme_search_controls
+        )
+        theme_search_layout.addWidget(self.theme_search_results, 3)
+
+        self.theme_search_locate_button = QPushButton("定位題材")
+        self.theme_search_locate_button.setObjectName("industryThemeNameSearchLocate")
+        self.theme_search_locate_button.setAccessibleName("定位明選的題材搜尋結果")
+        self.theme_search_locate_button.clicked.connect(
+            self._locate_selected_theme_search_result
+        )
+        theme_search_layout.addWidget(self.theme_search_locate_button)
+
+        self.theme_search_clear_button = QPushButton("清除")
+        self.theme_search_clear_button.setObjectName("industryThemeNameSearchClear")
+        self.theme_search_clear_button.setAccessibleName("清除題材名稱搜尋")
+        self.theme_search_clear_button.clicked.connect(self.theme_search_input.clear)
+        theme_search_layout.addWidget(self.theme_search_clear_button)
+        filter_layout.addLayout(theme_search_layout)
+
+        self.theme_search_status_label = QLabel("載入版本後可輸入題材名稱片段。")
+        self.theme_search_status_label.setObjectName("industryThemeNameSearchStatus")
+        self.theme_search_status_label.setAccessibleName("題材名稱搜尋狀態")
+        self.theme_search_status_label.setWordWrap(True)
+        self.theme_search_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        filter_layout.addWidget(self.theme_search_status_label)
+
         lookup_layout = QHBoxLayout()
         lookup_layout.addWidget(QLabel("股票反查"))
         self.stock_lookup_input = QLineEdit()
@@ -1712,6 +1761,7 @@ class IndustryThemeMapView(QWidget):
         self.member_page_previous_button.setEnabled(False)
         self.member_page_next_button.setEnabled(False)
         self._clear_stock_lookup()
+        self._clear_theme_search()
         for key in self.leader_card_topics:
             self.observation_cards[key].hide()
             self.leader_card_topics[key].setText("尚未載入")
@@ -1914,14 +1964,11 @@ class IndustryThemeMapView(QWidget):
         )
 
     def _populate_theme_filter(self) -> None:
-        presentation = self._presentation
         chain_name = self.chain_filter.currentData()
-        options = sorted({
-            (directory.chain_name, theme)
-            for directory in (presentation.chains if presentation is not None else ())
-            if chain_name is None or directory.chain_name == chain_name
-            for theme in directory.themes
-        })
+        options = [
+            key for key in self._all_theme_filter_keys()
+            if chain_name is None or key[0] == chain_name
+        ]
         self._theme_options = [None, *options]
         blocker = QSignalBlocker(self.theme_filter)
         self.theme_filter.clear()
@@ -1931,6 +1978,146 @@ class IndustryThemeMapView(QWidget):
             self.theme_filter.addItem(label)
         del blocker
         self._render_selected_theme()
+
+    def _all_theme_filter_keys(self) -> tuple[tuple[str, str], ...]:
+        presentation = self._presentation
+        return tuple(sorted({
+            (directory.chain_name, theme)
+            for directory in (presentation.chains if presentation is not None else ())
+            for theme in directory.themes
+        }))
+
+    @Slot(str)
+    def _search_theme_names(self, query: str) -> None:
+        """只搜尋目前快照的原題材名稱，結果仍保留各自鏈／題材鍵。"""
+        normalized = query.strip().casefold()
+        blocker = QSignalBlocker(self.theme_search_results)
+        self.theme_search_results.clear()
+        self.theme_search_results.addItem(
+            "輸入片段以搜尋題材" if not normalized else "沒有符合的題材",
+            None,
+        )
+        del blocker
+
+        snapshot = self._snapshot
+        if self._closed or self._busy or snapshot is None:
+            self._update_theme_search_controls()
+            return
+        if not normalized:
+            self._update_theme_search_controls()
+            return
+
+        matches = tuple(
+            key for key in self._all_theme_filter_keys()
+            if normalized in key[1].casefold()
+        )
+        blocker = QSignalBlocker(self.theme_search_results)
+        self.theme_search_results.clear()
+        self.theme_search_results.addItem(
+            "請明選一筆題材搜尋結果" if matches else "沒有符合的題材",
+            None,
+        )
+        for chain_name, theme_name in matches:
+            self.theme_search_results.addItem(
+                f"{chain_name}／{theme_name}",
+                (snapshot.identity_sha256, chain_name, theme_name),
+            )
+        del blocker
+        self._update_theme_search_controls()
+
+    def _clear_theme_search(self) -> None:
+        blocker = QSignalBlocker(self.theme_search_input)
+        self.theme_search_input.clear()
+        del blocker
+        blocker = QSignalBlocker(self.theme_search_results)
+        self.theme_search_results.clear()
+        self.theme_search_results.addItem("輸入片段以搜尋題材", None)
+        del blocker
+        self._update_theme_search_controls()
+
+    @Slot(int)
+    def _update_theme_search_controls(self, _index: int = -1) -> None:
+        snapshot = self._snapshot
+        available = snapshot is not None and not self._closed
+        lookup_available = available and not self._busy
+        query = self.theme_search_input.text().strip()
+        result_count = max(0, self.theme_search_results.count() - 1)
+        selected = self.theme_search_results.currentData(Qt.ItemDataRole.UserRole)
+        valid_selection = (
+            isinstance(selected, (tuple, list))
+            and len(selected) == 3
+            and all(type(value) is str for value in selected)
+            and snapshot is not None
+            and selected[0] == snapshot.identity_sha256
+            and (selected[1], selected[2]) in self._all_theme_filter_keys()
+        )
+        self.theme_search_input.setEnabled(lookup_available)
+        self.theme_search_results.setEnabled(lookup_available and result_count > 0)
+        self.theme_search_locate_button.setEnabled(
+            lookup_available and valid_selection
+        )
+        self.theme_search_clear_button.setEnabled(bool(query) and not self._closed)
+
+        if self._closed:
+            message = "頁面已關閉；題材名稱搜尋已停用。"
+        elif self._busy:
+            message = "版本讀取中；題材搜尋已清除並暫停。"
+        elif snapshot is None:
+            message = "尚未載入版本；請先選取本機研究版本。"
+        elif not query:
+            message = "輸入題材名稱片段；結果按鏈／題材分列。"
+        elif result_count == 0:
+            message = f"沒有符合「{query}」的題材；目前選取與研究結果不變。"
+        elif valid_selection:
+            message = (
+                f"已明選 {selected[1]}／{selected[2]}；按「定位題材」套用原篩選。"
+            )
+        else:
+            message = (
+                f"找到 {result_count} 個題材；同名題材分列，請明選結果後定位。"
+            )
+        self.theme_search_status_label.setText(message)
+
+    @Slot()
+    def _locate_selected_theme_search_result(self) -> None:
+        snapshot = self._snapshot
+        selected = self.theme_search_results.currentData(Qt.ItemDataRole.UserRole)
+        if (
+            self._closed or self._busy or snapshot is None
+            or not isinstance(selected, (tuple, list)) or len(selected) != 3
+            or any(type(value) is not str for value in selected)
+            or selected[0] != snapshot.identity_sha256
+        ):
+            self._clear_theme_search()
+            self.theme_search_status_label.setText(
+                "搜尋結果已失效；請重新輸入題材名稱片段。"
+            )
+            return
+        chain_name, theme_name = selected[1], selected[2]
+        key = (chain_name, theme_name)
+        if key not in self._all_theme_filter_keys():
+            self.theme_search_status_label.setText(
+                "所選題材已不在目前版本；沒有套用舊結果。"
+            )
+            return
+        chain_index = self.chain_filter.findData(chain_name)
+        if chain_index < 0:
+            self.theme_search_status_label.setText(
+                "所選產業鏈已不在目前版本；沒有套用舊結果。"
+            )
+            return
+        self.chain_filter.setCurrentIndex(chain_index)
+        try:
+            theme_index = self._theme_options.index(key)
+        except ValueError:
+            self.theme_search_status_label.setText(
+                "所選題材已不在目前篩選目錄；沒有套用舊結果。"
+            )
+            return
+        self.theme_filter.setCurrentIndex(theme_index)
+        self.theme_search_status_label.setText(
+            f"已定位 {chain_name}／{theme_name}；原快照與題材身份保持不變。"
+        )
 
     def _render_presentation(self) -> None:
         presentation = self._presentation
@@ -3422,6 +3609,7 @@ class IndustryThemeMapView(QWidget):
             )
             is not None
         )
+        self._update_theme_search_controls()
         self._update_chain_directory_controls()
         self._update_return_tile_controls()
         self._update_turnover_treemap_controls()

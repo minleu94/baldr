@@ -41,3 +41,13 @@ M89 由 Luna 修改 `ui_qt/views/industry_theme_map_view.py` 和對應測試，S
 M90 是 QA 專項，未修改產品程式。前一輪 M87 的早期截圖未證明 WebEngine canvas 線條可見；本輪用隔離合成 SQLite／CSV 的 A `100／105／110`、B `200／210／205`，等待頁面完成與兩次繪製幀，在正常 Main 1280×760、真 Windows DPI144（150%）截取 canvas 與整窗。A／B 分別有 **4,538／4,761** 個權益線色像素，canvas SHA 不同，切換後整窗顯 B run 身份與可見線條；來源 SHA 前後一致。結果與四張 PNG 位於 `output/tasks/baldr-opus-ux-implementation/root/native_m90_evidence/run_59cc07a00cd842ea94d0b26a1921ca63/`，通過收據為 `.../single_owned_qa_5d5c822f746749f5846d7c0acf778846/receipt.json`。首次 QA harness 因錯把桌面 DPI 固定假設為 96 而失敗，收據 `.../single_owned_qa_c92bbc3edea142438d5f96f8bd71281d/receipt.json`；修正為記錄實際 DPI 後重跑通過，這次失敗不能解讀為產品畫圖缺陷。
 
 上述證據限合成來源、權益曲線及真 OS 150% 的兩個視窗寬度；其他圖種、GPU 路徑、其他 DPI、正式資料、固定 EXE、Owner UAT 與完整產品 Gate 仍待各自驗收。M 編號仍包含實作與 QA 專項，不能作功能數相加。
+
+## 後續 M91–M93（題材查找與圖表刻度）
+
+M91 由 Luna 在題材頁加名稱片段搜尋，只查已載入快照的原題材目錄；跨鏈同名結果分列，明選並按定位才套用原鏈／題材篩選。Sol 審查時修正合成 fixture 多一筆及 PySide6 `QComboBox` 將 tuple 轉成 list 的實際返回型別，保留首兩輪失敗收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_dd7d280cb95b45689e35ccae23616293/receipt.json`、`.../single_owned_qa_82d65c7965104de7b50824426dddf367/receipt.json`。修後題材聚焦 **49 passed**（`.../single_owned_qa_ba1cc99b6648482aba14511093492692/receipt.json`）；合成 90 題材原生 View 在真 Windows DPI144（150%）的 900×760／1280×760 驗搜尋前、同名結果、精確定位及無匹配清舊，來源快照指紋不變。收據 `.../single_owned_qa_213c5ba58a504a20b2991668789e6524/receipt.json`，截圖與結果 `output/tasks/baldr-opus-ux-implementation/root/native_m91_evidence/run_5ef7f056500c44f3bd56c8c25e6344aa/`。
+
+M92 是 QA 專項，未改產品程式。正常 Main 1280×760／真 Windows DPI144，以隔離合成 Legacy A/B 原檔等候各 WebEngine 頁載入並取 canvas：A 回撤、交易報酬、持有天數三圖皆有相應線／柱色；切 B 後回撤圖仍有 B 線，兩張缺交易圖隱藏、無 A 舊色像素且各有缺件文字；SQLite／CSV SHA 不變。收據 `.../single_owned_qa_ebcde30cda5243d39a0377c3d61edd13/receipt.json`，前版截圖與結果 `output/tasks/baldr-opus-ux-implementation/root/native_m92_evidence/run_49a02f69e2f74ee39a8d6d9ad865fc4c/`。Sol 目視 A 回撤圖發現 Y 軸小幅值全被格式化為 `0`／`-0`，進入 M93。
+
+M93 由 Luna 僅改 Fast chart canvas 的 Y 軸顯示：回撤圖依刻度間距保留小數、附 `%` 並正規化顯示精度內的負零；原曲線 payload、圖形範圍、金融計算及權益圖整數刻度路徑不變。Sol 在同一隔離 A/B 正常 Main 重跑，目視 A 真零回撤的刻度從重複 `0`／`-0` 改為 `0.02%／0.01%／0.00%／-0.01%／-0.02%`，B 非零回撤的刻度也可區分，另三圖仍可見／缺件清舊；收據 `.../single_owned_qa_b6d3667e3e9c40beb7169c165097177b/receipt.json`，後版截圖與結果 `output/tasks/baldr-opus-ux-implementation/root/native_m92_evidence/run_9771ebe1acfd4c9e9a0a073b0a75f234/`。Sol 最後補搜尋舊身份失效時清結果與可見提示後，重跑 M91–M93 受改 Python 編譯、聚焦 **71 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,143** source files clean；受控 Job 無殘留或強制清理，最終收據 `.../single_owned_qa_6f1583c8cd9b4e1995906db4c17d6190/receipt.json`。
+
+這些證據仍限合成題材／Legacy 原檔、真 OS 150% 的已測畫面；正式資料、其他 DPI／GPU、固定 EXE、Owner UAT 與完整產品 Gate 未接受。M91–M93 皆未改 DTO、正式回測公式、PIT 或來源資格。

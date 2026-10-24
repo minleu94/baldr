@@ -491,6 +491,23 @@ def _build_html(payload: dict) -> str:
       return area.bottom - ((value - range.minY) / (range.maxY - range.minY)) * (area.bottom - area.top);
     }}
 
+    function formatAxisTick(value, range, percentageAxis) {{
+      if (!percentageAxis) {{
+        return value.toLocaleString(undefined, {{maximumFractionDigits: 0}});
+      }}
+      const tickStep = Math.abs(range.maxY - range.minY) / 4;
+      const digits = tickStep >= 1
+        ? 0
+        : Math.min(6, Math.max(1, Math.ceil(-Math.log10(tickStep))));
+      const rounded = Number(value.toFixed(digits));
+      // 顯示精度內的真零一律正規化，避免出現「-0%」。
+      const normalized = Object.is(rounded, -0) || rounded === 0 ? 0 : rounded;
+      return `${{normalized.toLocaleString(undefined, {{
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+      }})}}%`;
+    }}
+
     function drawGrid(area, range) {{
       ctx.strokeStyle = colors.grid;
       ctx.lineWidth = 1;
@@ -498,6 +515,7 @@ def _build_html(payload: dict) -> str:
       ctx.fillStyle = colors.text;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
+      const percentageAxis = payload.kind === 'lineArea' && payload.yLabel === 'Drawdown (%)';
       for (let i = 0; i <= 4; i++) {{
         const y = area.top + (area.bottom - area.top) * i / 4;
         const value = range.maxY - (range.maxY - range.minY) * i / 4;
@@ -505,7 +523,7 @@ def _build_html(payload: dict) -> str:
         ctx.moveTo(area.left, y);
         ctx.lineTo(area.right, y);
         ctx.stroke();
-        ctx.fillText(value.toLocaleString(undefined, {{maximumFractionDigits: 0}}), area.left - 8, y);
+        ctx.fillText(formatAxisTick(value, range, percentageAxis), area.left - 8, y);
       }}
     }}
 

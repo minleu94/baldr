@@ -348,6 +348,8 @@ M29–M30 增加單一已讀取版本的分類成員投影與預設收合的 Qt 
 
 M89 的圖格名稱投影只在不同鏈的同名題材間計算最短可辨識鏈名前綴。原 `chain_name::theme_name` 身份、報表原值、排序、提示、快照守衛與點擊下鑽不變；正常名稱仍不增加鏈名。這項投影不擴大可畫母體或來源用途，操作與 QA 見[市場研究手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md)及[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)。
 
+M91 在原鏈／題材篩選旁增獨立題材名稱片段搜尋，只使用目前已載快照的原題材目錄。跨鏈同名分列，結果須明選並按定位才套用原 `(chain_name, theme_name)` 篩選；輸入或無匹配不自動改研究選取。換版、失敗、清除研究、忙碌與關閉會清搜尋結果並拒舊身份。此呈現不增加來源、映射關係或金融計算；合成 90 題材與真 OS 150% 的 900／1280 寬 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)。
+
 ## 6. 關聯文件索引
 
 - 模組架構定位：[`docs/01_architecture/system_architecture.md`](../01_architecture/system_architecture.md)

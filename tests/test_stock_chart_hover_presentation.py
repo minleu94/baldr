@@ -3,6 +3,7 @@ from decimal import Decimal
 import hashlib
 
 import pytest
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
 from app_module.saved_stock_technical_chart import SavedTechnicalChartError, read_saved_technical_chart
@@ -106,3 +107,38 @@ def test_saved_snapshot_hash_mismatch_still_rejected(tmp_path):
     with pytest.raises(SavedTechnicalChartError):
         read_saved_technical_chart(envelope, stock_code="2330", decision_date=DAY,
             scope_identity=stock["scope_identity"], input_fingerprint_sha256=stock["input_fingerprint_sha256"])
+
+
+def test_volume_scale_is_visible_without_hover_and_zero_or_missing_volume_is_safe(app):
+    chart = StockPriceChartWidget()
+    try:
+        chart.resize(600, 250)
+        chart.set_points((
+            StockPricePointDTO(data_date="2026-10-07", open_price=Decimal("10"),
+                high_price=Decimal("12"), low_price=Decimal("9"), close_price=Decimal("11"), volume=0),
+            StockPricePointDTO(data_date="2026-10-08", open_price=Decimal("11"),
+                high_price=Decimal("13"), low_price=Decimal("10"), close_price=Decimal("12"), volume=1234567),
+        ))
+        assert chart.display_mode == "ohlc_volume"
+        assert "成交量刻度（股）：0 至 1,234,567" in chart.accessibleDescription()
+        chart.render(QPixmap(chart.size()))
+
+        chart.set_points((
+            StockPricePointDTO(data_date="2026-10-07", open_price=Decimal("10"),
+                high_price=Decimal("12"), low_price=Decimal("9"), close_price=Decimal("11"), volume=0),
+            StockPricePointDTO(data_date="2026-10-08", open_price=Decimal("11"),
+                high_price=Decimal("13"), low_price=Decimal("10"), close_price=Decimal("12"), volume=0),
+        ))
+        assert chart.display_mode == "ohlc_volume"
+        assert "成交量刻度（股）：0（期間內無正成交量）" in chart.accessibleDescription()
+        chart.render(QPixmap(chart.size()))
+
+        chart.set_points((
+            StockPricePointDTO(data_date="2026-10-07", close_price=Decimal("11"), volume=None),
+            StockPricePointDTO(data_date="2026-10-08", close_price=Decimal("12"), volume=1234567),
+        ))
+        assert chart.display_mode == "close"
+        assert "成交量刻度" not in chart.accessibleDescription()
+        chart.render(QPixmap(chart.size()))
+    finally:
+        chart.close()

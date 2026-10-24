@@ -357,9 +357,22 @@ def _numeric_alternative_text(payload: dict, max_rows: int = 200) -> str:
     return "\n".join(lines)
 
 
+def _hover_tooltip_semantics(payload: dict) -> tuple[str, str]:
+    """依圖表 payload 選擇 hover 標籤與單位，不推定貨幣。"""
+
+    if "equity" in payload:
+        return "策略淨值", ""
+    if payload.get("kind") == "lineArea" and payload.get("yLabel") == "Drawdown (%)":
+        return "回撤", "%"
+    return str(payload.get("yLabel") or "數值"), ""
+
+
 def _build_html(payload: dict) -> str:
     payload_json = json.dumps(payload, ensure_ascii=False)
     title = html.escape(str(payload.get("title") or "圖表"), quote=True)
+    hover_label, hover_suffix = _hover_tooltip_semantics(payload)
+    hover_label_json = json.dumps(hover_label, ensure_ascii=False)
+    hover_suffix_json = json.dumps(hover_suffix, ensure_ascii=False)
     chart_aria_label = (
         f"{title}；可使用方向鍵、Home、End 瀏覽資料，"
         "或展開下方文字數值替代"
@@ -427,6 +440,8 @@ def _build_html(payload: dict) -> str:
   </div>
   <script>
     const payload = {payload_json};
+    const hoverLabel = {hover_label_json};
+    const hoverSuffix = {hover_suffix_json};
     const canvas = document.getElementById('chart');
     const tooltip = document.getElementById('tooltip');
     const ctx = canvas.getContext('2d');
@@ -615,9 +630,8 @@ def _build_html(payload: dict) -> str:
       tooltip.style.display = 'block';
       tooltip.style.left = `${{Math.min(x + 12, canvas.clientWidth - 170)}}px`;
       tooltip.style.top = `${{Math.max(area.top + 4, y - 38)}}px`;
-      const label = payload.equity ? 'Equity' : (payload.yLabel || 'Value');
-      const prefix = payload.equity ? '$' : '';
-      tooltip.textContent = `${{point.time}}\\n${{label}}: ${{prefix}}${{point.value.toLocaleString(undefined, {{maximumFractionDigits: 2}})}}`;
+      const value = point.value.toLocaleString(undefined, {{maximumFractionDigits: 2}});
+      tooltip.textContent = `${{point.time}}\\n${{hoverLabel}}: ${{value}}${{hoverSuffix}}`;
     }}
 
     function drawTitle() {{

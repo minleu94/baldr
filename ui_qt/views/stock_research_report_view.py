@@ -230,18 +230,30 @@ class StockPriceChartWidget(QWidget):
                 "ohlc": "K 線（成交量資料不足）",
                 "close": "收盤價走勢",
             }[self._mode]
-            self._base_tooltip = (
-                f"{mode_text}；{_price_chart_range_text(self._points)}；"
-                f"最新收盤價：{_decimal_text(last.close_price)}。"
-                "將游標移到各資料點查看該日日期、開高低收與成交量；"
-                "圖表只作視覺化，不代表預測。"
-            )
+            volume_scale = _volume_scale_text(
+                max(
+                    (int(point.volume) for point in self._points if point.volume is not None),
+                    default=0,
+                )
+            ) if self._mode == "ohlc_volume" else ""
+            tooltip_parts = [f"{mode_text}；{_price_chart_range_text(self._points)}；"]
+            if volume_scale:
+                tooltip_parts.append(f"{volume_scale}；")
+            tooltip_parts.extend((
+                f"最新收盤價：{_decimal_text(last.close_price)}。",
+                "將游標移到各資料點查看該日日期、開高低收與成交量；",
+                "圖表只作視覺化，不代表預測。",
+            ))
+            self._base_tooltip = "".join(tooltip_parts)
             self.setToolTip(self._base_tooltip)
-            self.setAccessibleDescription(
-                f"{mode_text}；{_price_chart_range_text(self._points)}；"
-                "將游標移到各資料點查看該日日期、開高低收與成交量；"
-                "下方價格表提供可選取的日期與數值。"
-            )
+            description_parts = [f"{mode_text}；{_price_chart_range_text(self._points)}；"]
+            if volume_scale:
+                description_parts.append(f"{volume_scale}；")
+            description_parts.extend((
+                "將游標移到各資料點查看該日日期、開高低收與成交量；",
+                "下方價格表提供可選取的日期與數值。",
+            ))
+            self.setAccessibleDescription("".join(description_parts))
         else:
             self._base_tooltip = "目前沒有可繪製的價格資料。"
             self.setToolTip(self._base_tooltip)
@@ -273,7 +285,17 @@ class StockPriceChartWidget(QWidget):
             if marker.event_date == point.data_date:
                 text += f"\n{marker.label}；帳本：{marker.account_id}"
         self.setToolTip(text)
-        self.setAccessibleDescription(f"{_price_chart_range_text(self._points)}\n{text}")
+        volume_scale = _volume_scale_text(
+            max(
+                (int(item.volume) for item in self._points if item.volume is not None),
+                default=0,
+            )
+        ) if self._mode == "ohlc_volume" else ""
+        self.setAccessibleDescription(
+            f"{_price_chart_range_text(self._points)}"
+            + (f"\n{volume_scale}" if volume_scale else "")
+            + f"\n{text}"
+        )
         self.dateSelected.emit(point.data_date)
         self.update()
 
@@ -419,7 +441,7 @@ class StockPriceChartWidget(QWidget):
             top = 25
             volume_enabled = self._mode == "ohlc_volume"
             volume_top = max(top + 70, self.height() - 48)
-            bottom = max(top + 50, volume_top - 12 if volume_enabled else self.height() - 32)
+            bottom = max(top + 50, volume_top - 24 if volume_enabled else self.height() - 32)
             if self._mode in {"ohlc", "ohlc_volume"}:
                 values = tuple(
                     value
@@ -516,6 +538,11 @@ class StockPriceChartWidget(QWidget):
                     painter.drawLine(left, volume_top, right, volume_top)
                     painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_secondary)))
                     painter.drawText(6, volume_top + 14, "成交量")
+                    painter.drawText(
+                        left,
+                        volume_top - 6,
+                        _volume_scale_text(max_volume),
+                    )
                     for index, volume in enumerate(volumes):
                         x = left + int(
                             Decimal(right - left) * Decimal(index) / Decimal(denominator)
@@ -5677,6 +5704,12 @@ def _chart_exact_decimal_text(value: Decimal | None) -> str:
 
 def _chart_integer_text(value: int | None) -> str:
     return _integer_text(value) if value is not None else "—（未提供）"
+
+
+def _volume_scale_text(max_volume: int) -> str:
+    if max_volume > 0:
+        return f"成交量刻度（股）：0 至 {_chart_integer_text(max_volume)}"
+    return "成交量刻度（股）：0（期間內無正成交量）"
 
 
 def _price_point_source_tooltip(point: StockPricePointDTO) -> str:

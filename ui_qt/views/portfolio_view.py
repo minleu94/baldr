@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox, QSpinBox, QFormLayout, QGridLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
     QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
+from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer, QModelIndex
 from PySide6.QtGui import QFont, QColor, QPalette, QBrush
 
 from ui_qt.models.pandas_table_model import PandasTableModel
@@ -829,6 +829,39 @@ def _quote_freshness_status_text(value: Any) -> str:
     }
     label = labels.get(raw.lower())
     return f"{label}（{raw}）" if label is not None else raw
+
+
+_STRESS_QUOTE_DETAIL_COLUMN = "_stress_quote_detail"
+
+
+class _StressPositionsTableModel(PandasTableModel):
+    """Stress 報價摘要維持窄欄，完整同次來源資訊隨列排序。"""
+
+    def data(
+        self, index: QModelIndex, role: int = Qt.DisplayRole
+    ) -> Any:
+        visible_columns = self.getVisibleColumns()
+        if (
+            index.isValid()
+            and 0 <= index.column() < len(visible_columns)
+            and visible_columns[index.column()] == "報價來源"
+            and role == Qt.ToolTipRole
+            and 0 <= index.row() < len(self._dataframe)
+            and _STRESS_QUOTE_DETAIL_COLUMN in self._dataframe.columns
+        ):
+            return str(
+                self._dataframe.iloc[index.row()][_STRESS_QUOTE_DETAIL_COLUMN]
+            )
+        return super().data(index, role)
+
+
+def _stress_quote_metadata_text(value: Any) -> str:
+    """缺失或空白的同次報價 metadata 一律以未知呈現。"""
+
+    if value is None:
+        return "未知"
+    text = str(value).strip()
+    return text or "未知"
 
 
 def _system_status_label(raw: Any, *, dimension: str, fallback: dict[str, str]) -> str:
@@ -2032,6 +2065,19 @@ class PortfolioView(QWidget):
         self.stress_positions_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_positions_table.horizontalHeader().setStretchLastSection(True)
         current_stress_layout.addWidget(self.stress_positions_table, 1)
+        self.stress_position_source_detail_label = QLabel(
+            "選取一列持倉，可核對該列同次報價來源與完整 SHA-256。"
+        )
+        self.stress_position_source_detail_label.setWordWrap(True)
+        self.stress_position_source_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
+        self.stress_position_source_detail_label.setAccessibleName(
+            "情境壓力所選持倉報價來源完整資料"
+        )
+        current_stress_layout.addSpacing(12)
+        current_stress_layout.addWidget(self.stress_position_source_detail_label)
+        current_stress_layout.addStretch(1)
 
         self.stress_history_summary_label = QLabel("Stress 歷史尚未讀取。")
         self.stress_history_summary_label.setWordWrap(True)
@@ -3808,6 +3854,10 @@ class PortfolioView(QWidget):
         self.stress_positions_table.setModel(
             PandasTableModel(pd.DataFrame(columns=["證券代號", "狀態"]))
         )
+        self.stress_positions_table.setMaximumHeight(150)
+        self.stress_position_source_detail_label.setText(
+            "選取一列持倉，可核對該列同次報價來源與完整 SHA-256。"
+        )
         self.btn_save_stress_history.setEnabled(False)
 
     def _render_stress_lab(self, result) -> None:
@@ -3838,37 +3888,165 @@ class PortfolioView(QWidget):
             diagnostics.append(
                 f"缺最新價：{', '.join(result.missing_price_codes)}；只計算已標記持倉。"
             )
-        diagnostics.append(
-            "本次 Stress 結果未附逐列報價資料日／來源；不以其他持倉觀測推定。"
-        )
+        incomplete_provenance_codes = []
+        for item in result.positions:
+            freshness_raw = getattr(item, "quote_freshness_status", None)
+            freshness_code = getattr(freshness_raw, "value", freshness_raw)
+            has_complete_provenance = all(
+                str(value or "").strip()
+                for value in (
+                    getattr(item, "quote_data_date", None),
+                    getattr(item, "quote_source_id", None),
+                    getattr(item, "quote_source_snapshot_hash", None),
+                )
+            ) and str(freshness_code or "").strip().lower() not in {
+                "",
+                "unverified",
+                "unknown",
+            }
+            if not has_complete_provenance:
+                incomplete_provenance_codes.append(str(item.stock_code))
+        if incomplete_provenance_codes:
+            diagnostics.append(
+                "報價來源資訊不完整：以下已標價持倉的同次資料日、來源 ID、"
+                "來源快照 hash 或 freshness 未提供或未核實；逐列未知照實顯示，"
+                "不以其他持倉推定："
+                f"{', '.join(incomplete_provenance_codes)}。"
+            )
+        future_quote_codes = [
+            str(item.stock_code)
+            for item in result.positions
+            if getattr(item, "quote_freshness_status", None) == "future_rejected"
+        ]
+        if future_quote_codes:
+            diagnostics.append(
+                "報價資料日超前且來源判定為拒用："
+                f"{', '.join(future_quote_codes)}；此情境數值不得作為有效行情判讀。"
+            )
         diagnostics.append("研究用途；情境不是預測，不代表投資有效性或可交易性。")
         self.stress_detail_label.setText("\n".join(diagnostics))
 
-        rows = [
-            {
+        rows = []
+        for item in result.positions:
+            quote_data_date = _stress_quote_metadata_text(
+                getattr(item, "quote_data_date", None)
+            )
+            quote_source_id = _stress_quote_metadata_text(
+                getattr(item, "quote_source_id", None)
+            )
+            quote_freshness_raw = getattr(item, "quote_freshness_status", None)
+            quote_freshness_code = getattr(
+                quote_freshness_raw, "value", quote_freshness_raw
+            )
+            quote_freshness = (
+                _quote_freshness_status_text(str(quote_freshness_code).strip())
+                if quote_freshness_code
+                and str(quote_freshness_code).strip().lower()
+                != "unknown"
+                else "未知"
+            )
+            quote_hash = _stress_quote_metadata_text(
+                getattr(item, "quote_source_snapshot_hash", None)
+            )
+            quote_summary = (
+                f"{quote_data_date}｜{quote_source_id}｜{quote_freshness}"
+            )
+            quote_detail = "\n".join(
+                (
+                    f"持倉：{item.stock_code} {item.stock_name}",
+                    f"報價資料日：{quote_data_date}",
+                    f"來源 ID：{quote_source_id}",
+                    f"Freshness：{quote_freshness}",
+                    f"來源快照 SHA-256：{quote_hash}",
+                )
+            )
+            rows.append({
                 "證券代號": item.stock_code,
                 "證券名稱": item.stock_name,
                 "計算輸入": f"{item.quantity} 股 × TWD {item.mark_price}/股",
+                "報價來源": quote_summary,
                 "基準市值": str(item.base_value),
                 "衝擊(bp)": item.shock_bp,
                 "壓力後市值": str(item.stressed_value),
                 "變動": str(item.value_delta),
                 "狀態": item.status,
-            }
-            for item in result.positions
-        ]
+                _STRESS_QUOTE_DETAIL_COLUMN: quote_detail,
+            })
         columns = [
             "證券代號",
             "證券名稱",
             "計算輸入",
+            "報價來源",
             "基準市值",
             "衝擊(bp)",
             "壓力後市值",
             "變動",
             "狀態",
         ]
-        self.stress_positions_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
+        model = _StressPositionsTableModel(
+            pd.DataFrame(rows, columns=[*columns, _STRESS_QUOTE_DETAIL_COLUMN])
+        )
+        model.setVisibleColumns(columns)
+        self.stress_positions_table.setModel(model)
+        model_index = self.stress_positions_table.selectionModel()
+        model_index.currentRowChanged.connect(self._show_stress_position_source_detail)
+        model.layoutChanged.connect(self._sync_stress_position_source_detail)
+        self.stress_position_source_detail_label.setText(
+            "選取一列持倉，可核對該列同次報價來源與完整 SHA-256。"
+        )
         self.stress_positions_table.resizeColumnsToContents()
+        source_column = columns.index("報價來源")
+        self.stress_positions_table.setColumnWidth(source_column, 230)
+        self._constrain_stress_positions_table_height()
+
+    def _constrain_stress_positions_table_height(self) -> None:
+        """少量列收緊表格空白；大量列在表內捲動並保留來源明細可見。"""
+
+        table = self.stress_positions_table
+        row_count = table.model().rowCount()
+        header_height = table.horizontalHeader().sizeHint().height()
+        row_height = table.verticalHeader().defaultSectionSize()
+        scroll_height = table.horizontalScrollBar().sizeHint().height()
+        desired_height = (
+            header_height
+            + min(max(row_count, 2), 8) * row_height
+            + scroll_height
+            + table.frameWidth() * 2
+            + 8
+        )
+        table.setMaximumHeight(min(420, max(150, desired_height)))
+
+    def _show_stress_position_source_detail(
+        self, current: QModelIndex, _previous: QModelIndex
+    ) -> None:
+        """展示使用者明選列的完整同次報價身份，可選取複製 SHA-256。"""
+
+        if (
+            not current.isValid()
+            or current.model() is not self.stress_positions_table.model()
+            or current.row() >= len(self.stress_positions_table.model()._dataframe)
+        ):
+            self.stress_position_source_detail_label.setText(
+                "選取一列持倉，可核對該列同次報價來源與完整 SHA-256。"
+            )
+            return
+        self.stress_position_source_detail_label.setText(
+            str(
+                self.stress_positions_table.model()._dataframe.iloc[current.row()][
+                    _STRESS_QUOTE_DETAIL_COLUMN
+                ]
+            )
+        )
+
+    def _sync_stress_position_source_detail(self) -> None:
+        """排序後依目前可見列重讀明細，避免保留排序前另一列的 hash。"""
+
+        selection = self.stress_positions_table.selectionModel()
+        if selection is None:
+            return
+        self._show_stress_position_source_detail(
+            selection.currentIndex(), QModelIndex()
+        )
 
     def _load_stress_history(self) -> None:
         """只讀顯示已保存的 Stress Lab 研究快照；缺資料庫時不初始化。"""

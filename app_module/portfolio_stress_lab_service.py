@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable
 
@@ -99,6 +100,10 @@ class StressPositionResult:
     stressed_value: Decimal
     value_delta: Decimal
     status: str = "ready"
+    quote_data_date: str | None = None
+    quote_source_id: str | None = None
+    quote_source_snapshot_hash: str | None = None
+    quote_freshness_status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -111,6 +116,10 @@ class StressPositionResult:
             "stressed_value": str(self.stressed_value),
             "value_delta": str(self.value_delta),
             "status": self.status,
+            "quote_data_date": self.quote_data_date,
+            "quote_source_id": self.quote_source_id,
+            "quote_source_snapshot_hash": self.quote_source_snapshot_hash,
+            "quote_freshness_status": self.quote_freshness_status,
         }
 
 
@@ -241,6 +250,7 @@ class PortfolioStressLabService:
                 largest_code=largest_code,
             )
             stressed_value = self._stressed_value(base_value, scenario.shock_mode, shock_bp)
+            quote_provenance = self._quote_provenance(position)
             results.append(
                 StressPositionResult(
                     stock_code=code,
@@ -251,6 +261,10 @@ class PortfolioStressLabService:
                     shock_bp=shock_bp,
                     stressed_value=stressed_value,
                     value_delta=_money(stressed_value - base_value),
+                    quote_data_date=quote_provenance["quote_data_date"],
+                    quote_source_id=quote_provenance["quote_source_id"],
+                    quote_source_snapshot_hash=quote_provenance["quote_source_snapshot_hash"],
+                    quote_freshness_status=quote_provenance["quote_freshness_status"],
                 )
             )
 
@@ -296,6 +310,62 @@ class PortfolioStressLabService:
             return Decimal("0.00")
         multiplier = (_BP_DENOMINATOR + Decimal(shock_bp)) / _BP_DENOMINATOR
         return _money(base_value * multiplier)
+
+    @staticmethod
+    def _quote_provenance(position: Any) -> dict[str, str | None]:
+        """複製同一持倉 DTO 的報價欄位；缺件或格式無效時保留未知。"""
+
+        raw_date = getattr(position, "quote_data_date", None)
+        quote_data_date: str | None = None
+        if isinstance(raw_date, str):
+            try:
+                parsed_date = date.fromisoformat(raw_date)
+            except ValueError:
+                parsed_date = None
+            if parsed_date is not None and parsed_date.isoformat() == raw_date:
+                quote_data_date = raw_date
+
+        raw_source_id = getattr(position, "quote_source_id", None)
+        quote_source_id = (
+            raw_source_id.strip()
+            if isinstance(raw_source_id, str) and raw_source_id.strip()
+            else None
+        )
+
+        raw_hash = getattr(position, "quote_source_snapshot_hash", None)
+        quote_source_snapshot_hash: str | None = None
+        if (
+            isinstance(raw_hash, str)
+            and len(raw_hash) == 64
+            and all(character in "0123456789abcdefABCDEF" for character in raw_hash)
+        ):
+            quote_source_snapshot_hash = raw_hash.lower()
+
+        raw_freshness = getattr(position, "quote_freshness_status", None)
+        allowed_freshness = {"current", "stale", "future_rejected", "unverified"}
+        quote_freshness_status: str | None = None
+        if isinstance(raw_freshness, str):
+            candidate = raw_freshness.strip().lower()
+            if candidate in allowed_freshness:
+                quote_freshness_status = candidate
+
+        # PositionDTO 舊 fixture 預設為 unverified；沒有任何可核對報價欄位時，
+        # 不把這個預設值當成實際觀測狀態傳給 Stress 結果。
+        complete_identity = all(
+            (quote_data_date, quote_source_id, quote_source_snapshot_hash)
+        )
+        if not any((quote_data_date, quote_source_id, quote_source_snapshot_hash)):
+            quote_freshness_status = None
+        elif quote_freshness_status in {"current", "stale", "future_rejected"}:
+            if not complete_identity:
+                quote_freshness_status = None
+
+        return {
+            "quote_data_date": quote_data_date,
+            "quote_source_id": quote_source_id,
+            "quote_source_snapshot_hash": quote_source_snapshot_hash,
+            "quote_freshness_status": quote_freshness_status,
+        }
 
     @staticmethod
     def _not_computable(

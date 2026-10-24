@@ -59,6 +59,17 @@ class PortfolioQuoteObservation:
     freshness_reason: str = ""
 
 
+@dataclass(frozen=True)
+class _CurrentPriceRead:
+    """Price and provenance from the same selected SQLite/CSV observation."""
+
+    price: float | None
+    data_date: date | None = None
+    source_id: str = ""
+    source_snapshot_hash: str = ""
+    freshness_status: str = "unverified"
+
+
 class PortfolioService:
     """Coordinates trade storage and derived position views.
 
@@ -388,17 +399,44 @@ class PortfolioService:
 
     def get_current_price(self, stock_code: str) -> Optional[float]:
         """獲取指定個股的最新收盤價。"""
+        return self._read_current_price(stock_code, include_provenance=False).price
+
+    def _read_current_price(
+        self, stock_code: str, *, include_provenance: bool = True
+    ) -> _CurrentPriceRead:
+        """Read the legacy current price and bind provenance to that exact row."""
         if getattr(self.config, 'use_sqlite', False):
             try:
                 # Portfolio 的價格投影是唯讀查詢；不可因為打開持倉頁或
-                # 查詢單一價格而初始化 schema、切換 WAL 或建立空 DB。
+                # 查詢單一價格而初始化 schema、切換 WAL 或建立空 DB。保留
+                # 原來的排序與 LIMIT；SELECT * 讓僅含價格必要欄位的舊 schema
+                # 仍能提供 current_price，缺少行情附屬欄位只影響 provenance。
                 db = ReadOnlySQLiteManager(self.config.db_file)
                 df = db.execute_query(
-                    "SELECT 收盤價 FROM daily_prices WHERE 證券代號 = ? ORDER BY 日期 DESC LIMIT 1;",
+                    "SELECT * FROM daily_prices WHERE 證券代號 = ? ORDER BY 日期 DESC LIMIT 1;",
                     (stock_code,)
                 )
                 if not df.empty:
-                    return float(df.iloc[0]['收盤價'])  # numeric-boundary: dto
+                    row = df.iloc[0]
+                    price = float(row['收盤價'])  # numeric-boundary: dto
+                    if not include_provenance:
+                        return _CurrentPriceRead(price)
+                    try:
+                        data_date = self._parse_quote_date(row.get('日期'))
+                        digest = self._sqlite_quote_row_hash(stock_code, row)
+                        freshness = self._make_quote_observation(
+                            stock_code=stock_code,
+                            price=row.get('收盤價'),
+                            data_date=data_date,
+                            source_id="sqlite.daily_prices",
+                            source_snapshot_hash=digest,
+                        ).freshness_status
+                    except Exception as exc:  # provenance must not change price fallback
+                        logger.debug("SQLite %s 行情來源資訊不可用: %s", stock_code, exc)
+                        data_date, digest, freshness = None, "", "unverified"
+                    return _CurrentPriceRead(
+                        price, data_date, "sqlite.daily_prices", digest, freshness
+                    )
             except FileNotFoundError:
                 logger.debug("SQLite price database is unavailable: %s", self.config.db_file)
             except Exception as e:
@@ -410,15 +448,37 @@ class PortfolioService:
             if daily_price_dir.exists():
                 csv_files = sorted(list(daily_price_dir.glob("*.csv")), reverse=True)
                 for file in csv_files[:3]:  # 檢查最近3天以防假日無交易
-                    df = pd.read_csv(file)
+                    raw = file.read_bytes()
+                    # 使用原 CSV 價格讀取的預設 UTF-8 解碼和欄位正規化；同一
+                    # 次位元組讀取同時提供 snapshot hash，保留重複代號首列。
+                    df = pd.read_csv(io.BytesIO(raw))
                     if '證券代號' in df.columns:
                         df['證券代號'] = df['證券代號'].astype(str).str.zfill(4)
                         stock_row = df[df['證券代號'] == stock_code.zfill(4)]
                         if not stock_row.empty and '收盤價' in stock_row.columns:
-                            return float(stock_row.iloc[0]['收盤價'])  # numeric-boundary: dto
+                            row = stock_row.iloc[0]
+                            price = float(row['收盤價'])  # numeric-boundary: dto
+                            if not include_provenance:
+                                return _CurrentPriceRead(price)
+                            data_date = self._parse_quote_date(file.stem)
+                            digest = sha256(raw).hexdigest()
+                            try:
+                                freshness = self._make_quote_observation(
+                                    stock_code=stock_code.zfill(4),
+                                    price=row.get('收盤價'),
+                                    data_date=data_date,
+                                    source_id="csv.daily_prices",
+                                    source_snapshot_hash=digest,
+                                ).freshness_status
+                            except Exception as exc:  # provenance must not change price fallback
+                                logger.debug("CSV %s 行情來源資訊不可用: %s", stock_code, exc)
+                                data_date, digest, freshness = None, "", "unverified"
+                            return _CurrentPriceRead(
+                                price, data_date, "csv.daily_prices", digest, freshness
+                            )
         except Exception as e:
             logger.warning("從 CSV 獲取 %s 最新收盤價失敗: %s", stock_code, e)
-        return None
+        return _CurrentPriceRead(None)
 
     def get_current_price_observation(self, stock_code: str) -> PortfolioQuoteObservation:
         """讀取目前價格與精確資料日；只有官方日曆確認的最新已完成交易日才標 current。
@@ -608,7 +668,8 @@ class PortfolioService:
 
     def _position_to_dto(self, position) -> PositionDTO:
         data = position.to_dict()
-        current_price = self.get_current_price(position.stock_code)
+        quote_read = self._read_current_price(position.stock_code, include_provenance=True)
+        current_price = quote_read.price
         unrealized_pnl = None
         unrealized_pnl_pct = None
         
@@ -632,6 +693,10 @@ class PortfolioService:
             "current_price": current_price,
             "unrealized_pnl": unrealized_pnl,
             "unrealized_pnl_pct": unrealized_pnl_pct,
+            "quote_data_date": quote_read.data_date.isoformat() if quote_read.data_date else None,
+            "quote_source_id": quote_read.source_id,
+            "quote_source_snapshot_hash": quote_read.source_snapshot_hash,
+            "quote_freshness_status": quote_read.freshness_status,
             "schema_version": "4.1"
         })
 

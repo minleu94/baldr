@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M121；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M122；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M121 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M122 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -275,3 +275,13 @@ Luna `/root/m108_research_visual_audit` 單一 writer 修改 `ui_qt/views/portfo
 最終 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_5f1255c06c0d49cfa6e83409d92db764/receipt.json`：受改 Python compile exit0、Portfolio **80 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。正常 Main、隔離合成完整與缺價持倉、真 OS DPI216 的 1280×760／1500×900 圖及結果在 `.../root/native_m121_stress_inputs_evidence/run_5d36e2e4436e4ba4824af336a0add9c6/`；受控 Job `.../root/single_owned_qa_64dab868bbc240cd80b8d8bf6beb9919/receipt.json` exit0。Sol 目視捲至表格後，表頭與兩列輸入在 1280 可讀。前兩輪 harness 捲動位置造成無效表格截圖，原收據 `.../root/single_owned_qa_e0fff916211040549ba25723059e8d99/receipt.json`、`.../root/single_owned_qa_30f71aa602a74ba38bca6c50bdd728aa/receipt.json` 保留，不當作通過證據。
 
 M1–M121 是審查、實作及 QA 切片序號，非 121 個獨立功能。下一步若要顯報價日期與來源，須先讓 `PortfolioService` 在同次取價帶逐部位價格／日期／來源／身份，再沿 Stress 輸入與 result 傳遞，對 CSV 重複列明訂一致選擇語義；不能事後用同價快取配對。正式私人 Portfolio、其他真 OS DPI、1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 仍未驗；沒有 push、merge、部署或正式／私人資料改寫。
+
+## M122 Stress 同次報價來源與資料日
+
+Luna `/root/m107_portfolio_audit` 單一 writer 修改 `app_module/portfolio_service.py`、`app_module/dtos/portfolio_dtos.py` 與 `tests/test_portfolio_quote_freshness.py`：Portfolio 持倉在同一次取價讀取中綁 `current_price`、quote date、source ID、snapshot SHA-256 與 freshness。SQLite 沿原日期排序／LIMIT 單列查詢；即使舊 schema 缺附屬欄，收盤價仍可用。CSV 同檔同代號重複列沿原首列取價，hash 對應同次讀入的整個檔案。原 `get_current_price()` 純價格 API 與 SQLite→CSV 降級、損益 Decimal 投影及私人帳 writer 未改。這個 quote 來源不等於資料可得時鐘或 PIT 資格。
+
+Luna `/root/m108_research_visual_audit` 單一 writer 修改 `app_module/portfolio_stress_lab_service.py` 與 `tests/test_portfolio_stress_lab_service.py`：Stress 直接由每個 input position 複製可選 metadata 到同列 `StressPositionResult`／v1 payload；缺或無效 ISO 日、hash、freshness 保留未知，不按股票代碼回查，也不由多列推整體 `as_of_date`。Luna `/root/m122_stress_ui` 單一 writer 修改 `ui_qt/views/portfolio_view.py` 與聚焦測試：目前情境表保留 M121 計算輸入，加入有界報價摘要，明選列可複製完整 hash。Sol 退回首版以原始列號另存詳情導致排序錯列，改成資料列內隱藏明細隨 sort 移動；又修正 DTO 預設 `unverified` 誤抑缺件警示，以及排序後選列重核、超前日期提示。原生目視再收緊少量列高度與表／明細間距；缺價 partial、情境切換及失敗清舊沿原行為。
+
+首輪受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_7180cf43f5a34f5594ebe610ee23e686/receipt.json`：compile、聚焦 **117 passed**、Workbench **85 passed**、validator **25／0／4**，mypy 因 `**dict` 類型推斷 1 error，修為具名欄位後最終 `.../root/single_owned_qa_cf1cf9babd2543a2a832fa07c9c0af5b/receipt.json` 全部通過，mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留或強制清理。隔離正常 Main 1280×760／1500×900、真 OS DPI216、兩筆有來源與一筆缺價 partial、另有未知來源畫面，最終 `.../root/single_owned_qa_199813800a8043acaa42bdbe74f325cd/receipt.json` exit0；5 圖／JSON 在 `.../root/native_m122_stress_quote_evidence/run_a947181a6fa544fea7dcb3d325d516c8/`。Sol 目視表格與所選列日期／來源／完整 hash 同屏可讀；前兩輪版面圖留 QA_RESULTS，不作最後版面證據。最後文件及 task 檢查見本機任務紀錄。
+
+M1–M122 是審查、實作及 QA 切片序號，非 122 個獨立功能。新 Stress v1 payload 增可選逐列欄位，舊保存歷史的 canonical payload／hash 原封不動，歷史 UI 尚未提供逐列來源回訪；CSV hash 為整檔而非重複列專屬指紋。正式私人 Portfolio／行情、其他真 OS DPI、1920 真可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未驗；未推送、合併、部署或改寫正式資料。

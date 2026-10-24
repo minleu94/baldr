@@ -155,6 +155,12 @@ P08 雙 run 診斷沿既有 pair／public portfolio reader，固定兩筆 metada
 
 ## Portfolio、Paper 與持倉研究
 
+### 手動 Portfolio 到 Stress 的同次報價呈現契約（M122）
+
+`PortfolioService._position_to_dto()` 沿原 SQLite 優先、CSV 降級及日期排序／檔內首列取價，同一次來源讀取建立 `current_price` 與可選 `quote_data_date`、`quote_source_id`、`quote_source_snapshot_hash`、`quote_freshness_status`。SQLite 指紋為選列正規化 hash，CSV 指紋為同次讀入檔案 bytes 的 SHA-256；CSV 同股重複列的 hash 不是獨立列指紋，選價仍依檔內首列。`get_current_price()` 保留純價格 API；另有 `get_current_price_observation()` 供其他畫面獨立查詢，但 Stress 不用另讀觀測與同價比對推日期。日期或來源缺件時價格仍依原規則可用，metadata 保持未知／未核實，不補造市場時鐘。
+
+`PortfolioStressLabService.evaluate_positions()` 保留既有 Decimal 衝擊公式、partial／not-computable 與全域 `as_of_date` 語義，只把所消費 `PositionDTO` 的可選 quote metadata 原列傳給 `StressPositionResult`；不按股票代碼合併或從不同列推全域日期。新 `portfolio-stress-lab.v1` payload 可選帶逐列欄位，舊保存 payload 及 hash 不回填。Qt 目前情境表顯摘要與明選列完整指紋；freshness 僅為市場日曆資料日判讀，不授原始公告可得時鐘、歷史 PIT、行情用途或可交易資格。正式私人 Portfolio 與保存歷史逐列來源回訪仍分別待驗／待做。
+
 Increment47 為首次策略帳研究加入 `PortfolioResearchInitialSourceProvider`，由正常 Main 以原 `PaperCheckpointAccountInputs` 的 PERSONAL／合約根及同一版本服務組裝，workspace 保持可選注入，原 v3 artifact／v1 scenario store 不換版。公開策略 checkpoint DTO 增帶原 mark 證據及可選 allocation prefix；ledger 在同一 query-only transaction 驗證決策日前完整前綴與所選 operation hash，若有後續 operation（包括零成交）則拒用舊 checkpoint。週換手沿原 common-price weights／canonical turnover 及 rolling 7 日排除決策日，不加總 fill gross、不把缺件填零；舊不要求 prefix 的 reader 呼叫契約保留。
 
 `position_health_strategy_archive` additive v2 只接同 namespace／checkpoint／原行情／可證開倉 lineage，保留原 Health baseline、evaluator、custody 與 projector。v1 策略 namespace 拒絕規則不動。prepare、原評估、publish 可由 `run_strategy_position_health.py` 明示五項身分串接；只寫衍生版本、不改交易或排程。收據固定來源／baseline／result SHA、實際 writer clock 及 Health 決策日期，重開沿原日期重核，不能以今天時間替舊版本取得 PIT。缺治理來源仍是 degraded WATCH，initial provider 拒將其當已知 Health；流動性／cooldown 未提供，沿原配置守衛。

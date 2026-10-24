@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M122 後繼原始碼補上 M121 所缺的 Stress **同次取價**脈絡：`PortfolioService` 選中 SQLite 單列或 CSV 檔首個同代號列時，同讀價格、資料日、來源 ID、SHA-256 與市場日曆 freshness，經持倉 DTO 按原列傳到 Stress result；無日期／身份保留未知，並不從另讀行情快取配對。當前情境表在原計算輸入旁顯有界報價摘要，選列可複製完整來源指紋；缺件／未核實與日期超前拒用明示，少量列收緊高度。原計算公式、來源選取優先序、缺價 partial 與 `as_of_date` 不變。Sol 退回排序後來源錯列及預設 unverified 誤抑警示，修後聚焦 117、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 1280／1500 真 OS DPI216 合成圖通過。正式私人資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗；舊 Stress 歷史不回填逐列欄位。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m122-stress-同次報價來源與資料日)。
+
 M121 後繼原始碼在 Portfolio「情境壓力」逐列結果增加「計算輸入」，直接顯示同筆 Stress result 的股數與 mark price；缺價持倉仍只列於部分計算警示，不補零。畫面同時明示結果未附逐列報價資料日／來源，不能借其他持倉觀測推定。Sol 拒絕將另讀的行情快取日期貼到結果：目前 `PortfolioService` 取價與 observation 分讀，且 CSV 重複列語義不同；須先有同次計算輸入的 typed provenance 契約。Luna 實作經 Sol 複核，Portfolio 80、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 1280／1500 真 OS DPI216 隔離合成表格圖通過。正式私人持倉、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗；詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m121-stress-逐列計算輸入可核對性)。
 
 M120 後繼原始碼替 Watchlist 增加單次讀取的候選列與私人查看狀態快照，再在候選表前顯示待查看／已確認／稍後／未知四類精確列數及比例。表格與圖卡共用同一讀取；SQLite revision 顯原值，legacy JSON 明示無持久 revision。同股不同來源按列保留；身份或 extension 不可核對標未知，成功空集合才是真零，清單缺件／讀取失敗均不假裝零。所選列另讀狀態若 revision 變更會拒絕保存並提示刷新。Sol 退回初版缺件假零與第二次讀取、修正 1280 窄窗圖卡高度；最終聚焦 28、Workbench 85、validator 25／0／4、mypy 1,144 clean，正常 Main 1280／1500 真 OS DPI216 隔離合成圖通過。正式私人資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗；詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m120-watchlist-同版私人查看狀態分布)。

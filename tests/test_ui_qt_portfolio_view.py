@@ -1254,12 +1254,10 @@ def test_portfolio_stress_lab_is_visible_and_research_only(tmp_path):
     assert "最大持倉事件" in view.stress_summary_label.text()
     assert "可計算" in view.stress_summary_label.text()
     assert "研究用途" in view.stress_detail_label.text()
-    assert "本次 Stress 結果未附逐列報價資料日／來源" in (
-        view.stress_detail_label.text()
-    )
     assert view.stress_positions_table.model().rowCount() == 2
     stress_rows = view.stress_positions_table.model()._dataframe
     assert "計算輸入" in stress_rows.columns
+    assert "報價來源" in stress_rows.columns
     assert stress_rows["計算輸入"].tolist() == [
         "1000 股 × TWD 110/股",
         "1000 股 × TWD 151/股",
@@ -1283,6 +1281,109 @@ def test_portfolio_stress_input_column_keeps_only_priced_rows(tmp_path):
     assert stress_rows["證券代號"].tolist() == ["2330"]
     assert stress_rows["計算輸入"].tolist() == ["1000 股 × TWD 110/股"]
     assert "缺最新價：2317" in view.stress_detail_label.text()
+
+
+def test_portfolio_stress_quote_metadata_is_compact_with_copyable_full_hash(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.btn_run_stress.click()
+    result = view._stress_result
+    hashes = {}
+    for index, item in enumerate(result.positions):
+        full_hash = chr(ord("a") + index) * 64
+        hashes[item.stock_code] = full_hash
+        object.__setattr__(item, "quote_data_date", "2026-10-23")
+        object.__setattr__(item, "quote_source_id", f"source-{item.stock_code}")
+        object.__setattr__(item, "quote_source_snapshot_hash", full_hash)
+        object.__setattr__(item, "quote_freshness_status", "current")
+
+    view._render_stress_lab(result)
+
+    model = view.stress_positions_table.model()
+    row = model._dataframe.iloc[0]
+    assert row["計算輸入"] == "1000 股 × TWD 110/股"
+    assert row["報價來源"] == (
+        "2026-10-23｜source-2330｜"
+        "資料日符合預期交易日（current）"
+    )
+    assert "報價來源資訊不完整" not in view.stress_detail_label.text()
+    assert view.stress_positions_table.columnWidth(
+        model._dataframe.columns.get_loc("報價來源")
+    ) == 230
+    assert view.stress_positions_table.maximumHeight() <= 420
+
+    view.stress_positions_table.setCurrentIndex(model.index(0, 0))
+    assert hashes["2330"] in view.stress_position_source_detail_label.text()
+    model.sort(model.getVisibleColumns().index("證券代號"), Qt.AscendingOrder)
+    sorted_row = model._dataframe.iloc[0]
+    assert sorted_row["證券代號"] == "2317"
+    assert sorted_row["報價來源"].startswith("2026-10-23｜source-2317｜")
+    quote_column = model.getVisibleColumns().index("報價來源")
+    sorted_tooltip = model.data(model.index(0, quote_column), Qt.ToolTipRole)
+    assert "持倉：2317 鴻海" in sorted_tooltip
+    assert hashes["2317"] in sorted_tooltip
+    assert hashes["2317"] in view.stress_position_source_detail_label.text()
+
+    view.stress_positions_table.setCurrentIndex(model.index(0, 0))
+    detail = view.stress_position_source_detail_label.text()
+    assert "持倉：2317 鴻海" in detail
+    assert "報價資料日：2026-10-23" in detail
+    assert "來源 ID：source-2317" in detail
+    assert hashes["2317"] in detail
+    assert view.stress_position_source_detail_label.textInteractionFlags() & (
+        Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+    ) == Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+
+
+def test_portfolio_stress_quote_metadata_is_unknown_without_attached_fields(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.btn_run_stress.click()
+    result = view._stress_result
+    position = result.positions[0]
+    for field_name in (
+        "quote_data_date",
+        "quote_source_id",
+        "quote_source_snapshot_hash",
+    ):
+        object.__setattr__(position, field_name, None)
+    complete_position = result.positions[1]
+    object.__setattr__(complete_position, "quote_data_date", "2026-10-23")
+    object.__setattr__(complete_position, "quote_source_id", "source-2317")
+    object.__setattr__(complete_position, "quote_source_snapshot_hash", "b" * 64)
+    object.__setattr__(complete_position, "quote_freshness_status", "current")
+
+    view._render_stress_lab(result)
+
+    model = view.stress_positions_table.model()
+    assert model._dataframe.iloc[0]["報價來源"] == "未知｜未知｜未知"
+    assert "報價來源資訊不完整" in view.stress_detail_label.text()
+    assert "2330" in view.stress_detail_label.text()
+    assert "2317" not in view.stress_detail_label.text()
+    view.stress_positions_table.setCurrentIndex(model.index(0, 0))
+    detail = view.stress_position_source_detail_label.text()
+    assert "報價資料日：未知" in detail
+    assert "來源 ID：未知" in detail
+    assert "Freshness：未知" in detail
+    assert "來源快照 SHA-256：未知" in detail
+
+
+def test_portfolio_stress_unverified_and_future_quote_status_are_explicit(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.btn_run_stress.click()
+    result = view._stress_result
+    first, second = result.positions
+    for item, status in ((first, "unverified"), (second, "future_rejected")):
+        object.__setattr__(item, "quote_data_date", "2026-10-23")
+        object.__setattr__(item, "quote_source_id", "csv.daily_prices")
+        object.__setattr__(item, "quote_source_snapshot_hash", "c" * 64)
+        object.__setattr__(item, "quote_freshness_status", status)
+
+    view._render_stress_lab(result)
+
+    rows = view.stress_positions_table.model()._dataframe
+    assert "資料日未核實（unverified）" in rows.iloc[0]["報價來源"]
+    assert "資料日超前（拒用）（future_rejected）" in rows.iloc[1]["報價來源"]
+    assert "報價來源資訊不完整" in view.stress_detail_label.text()
+    assert "報價資料日超前且來源判定為拒用" in view.stress_detail_label.text()
 
 
 def test_portfolio_stress_scenario_preview_uses_definition_before_execution(tmp_path):
@@ -1385,6 +1486,8 @@ def test_portfolio_stress_scenario_change_clears_result_and_save_identity(
     assert "舊結果已清除" in view.stress_detail_label.text()
     assert view.stress_positions_table.model().rowCount() == 0
     assert "計算輸入" not in view.stress_positions_table.model()._dataframe.columns
+    assert "報價來源" not in view.stress_positions_table.model()._dataframe.columns
+    assert "完整 SHA-256" in view.stress_position_source_detail_label.text()
     assert view.btn_save_stress_history.isEnabled() is False
     view.btn_save_stress_history.click()
     assert not view.stress_history_db_path.exists()
@@ -1435,6 +1538,8 @@ def test_portfolio_stress_load_failure_clears_result_and_disables_save(
     assert view.stress_detail_label.text() == "診斷：stress fixture error"
     assert view.stress_positions_table.model().rowCount() == 0
     assert "計算輸入" not in view.stress_positions_table.model()._dataframe.columns
+    assert "報價來源" not in view.stress_positions_table.model()._dataframe.columns
+    assert "完整 SHA-256" in view.stress_position_source_detail_label.text()
     assert view.btn_save_stress_history.isEnabled() is False
 
 

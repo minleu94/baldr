@@ -1,6 +1,8 @@
 # UI 功能文件（Qt）
 
-M121 後繼原始碼：Portfolio Stress 逐列結果表將同筆 result 的原股數與 mark price 顯在「計算輸入」欄，部分計算只列已有報價的持倉，缺價另在診斷提示。結果尚無逐列 quote date／source identity，畫面明示未提供；不能拿其他觀測或保存時間推定。公式、服務 DTO、保存行為與私人帳未改；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m121-stress-逐列計算輸入可核對性)。
+M122 後繼原始碼：`PortfolioService` 在計算價格的同一次 SQLite／CSV 讀取綁逐部位資料日、來源 ID、snapshot hash 與 freshness，傳到 Stress 每筆結果；不按股票代號事後 join。當前情境表顯有界「報價來源」，明選列可複製完整 SHA-256，排序仍綁原列；缺資料日／身份及未核實、超前狀態照實提示。原公式、CSV 同檔同代號首列行為、缺價 partial、來源資格與研究用途不變。新結果的 v1 payload 可選增加欄位，舊保存歷史不回填；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m122-stress-同次報價來源與資料日)。
+
+M121 後繼原始碼：Portfolio Stress 逐列結果表將同筆 result 的原股數與 mark price 顯在「計算輸入」欄，部分計算只列已有報價的持倉，缺價另在診斷提示。M122 前的結果尚無逐列 quote date／source identity，當時畫面明示未提供；不能拿其他觀測或保存時間推定。公式、保存行為與私人帳未改；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m121-stress-逐列計算輸入可核對性)。
 
 M120 後繼原始碼：Watchlist `get_review_snapshot()` 只載入一次候選清單，保留每列原身份、原表格欄位、共同 revision 與私人查看狀態；候選表前以兩欄分布卡顯四態精確列數／當次總列數。SQLite revision 顯原值，legacy JSON 顯未提供；同股不同來源不合併，身份或狀態擴充不可核對為未知。來源缺件／讀取錯誤不畫舊圖、不把未知寫成 0；已載入空集合顯真 0。分布是私人操作狀態，不是金融評分；單列另讀若 revision 已變更則拒絕保存並要求刷新。原 CAS、研究來源、金融公式與私人正式資料未改；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m120-watchlist-同版私人查看狀態分布)。
 

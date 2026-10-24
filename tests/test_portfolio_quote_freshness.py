@@ -10,8 +10,10 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from app_module.market_session_cadence import MarketSessionCadence
+from app_module.dtos.portfolio_dtos import PositionDTO
 from app_module.portfolio_service import PortfolioService
 from app_module.position_health_source_providers import OfficialCalendarSourceProvider
+from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from data_module.official_trading_calendar_cache import (
     build_twse_calendar_cache,
     write_twse_calendar_cache,
@@ -171,6 +173,117 @@ def test_sqlite_quote_observation_fingerprints_exact_row_and_keeps_read_only_pat
     assert observation.freshness_status == "current"
     assert observation.expected_date == date(2026, 10, 2)
     assert db_path.stat().st_mtime_ns == before
+
+
+def _position_for_price_projection(stock_code: str = "2330") -> SimpleNamespace:
+    return SimpleNamespace(
+        stock_code=stock_code,
+        quantity=2,
+        average_cost=40,
+        to_dict=lambda: {
+            "position_id": "position-1",
+            "portfolio_id": "default",
+            "stock_code": stock_code,
+            "stock_name": "測試標的",
+            "quantity": 2,
+            "average_cost": 40,
+            "invested_amount": 80,
+        },
+    )
+
+
+def test_position_price_and_quote_provenance_use_one_minimal_sqlite_row_read(
+    tmp_path: Path, monkeypatch
+):
+    now = datetime(2026, 10, 4, 8, tzinfo=TAIPEI)
+    service = _service(tmp_path, now, use_sqlite=True)
+    with sqlite3.connect(service.config.db_file) as connection:
+        # Minimal legacy-compatible schema: ancillary observation columns are absent.
+        connection.execute("CREATE TABLE daily_prices (日期 TEXT, 證券代號 TEXT, 收盤價 REAL)")
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?)", ("20261002", "2330", 55.0)
+        )
+        connection.commit()
+
+    original_execute_query = ReadOnlySQLiteManager.execute_query
+    calls = []
+
+    def counted_execute_query(manager, query, params=()):
+        calls.append((query, params))
+        return original_execute_query(manager, query, params)
+
+    monkeypatch.setattr(
+        "app_module.portfolio_service.ReadOnlySQLiteManager.execute_query",
+        counted_execute_query,
+    )
+
+    dto = service._position_to_dto(_position_for_price_projection())
+
+    assert dto.current_price == 55.0
+    assert dto.quote_data_date == "2026-10-02"
+    assert dto.quote_source_id == "sqlite.daily_prices"
+    assert len(dto.quote_source_snapshot_hash) == 64
+    assert dto.quote_freshness_status == "current"
+    assert len(calls) == 1
+    assert "ORDER BY 日期 DESC LIMIT 1" in calls[0][0]
+
+
+def test_position_csv_price_keeps_first_duplicate_and_hashes_same_utf8_read(tmp_path: Path):
+    now = datetime(2026, 10, 4, 8, tzinfo=TAIPEI)
+    service = _service(tmp_path, now)
+    raw = "證券代號,收盤價\n2330,55.00\n2330,56.00\n".encode("utf-8")
+    (service.config.daily_price_dir / "20261002.csv").write_bytes(raw)
+
+    dto = service._position_to_dto(_position_for_price_projection())
+
+    assert dto.current_price == 55.0
+    assert dto.quote_data_date == "2026-10-02"
+    assert dto.quote_source_id == "csv.daily_prices"
+    assert dto.quote_source_snapshot_hash == sha256(raw).hexdigest()
+    assert dto.quote_freshness_status == "current"
+
+
+def test_position_price_survives_malformed_csv_date_and_legacy_dto_defaults(tmp_path: Path):
+    now = datetime(2026, 10, 4, 8, tzinfo=TAIPEI)
+    service = _service(tmp_path, now)
+    raw = "證券代號,收盤價\n2330,55.00\n".encode("utf-8")
+    (service.config.daily_price_dir / "latest.csv").write_bytes(raw)
+
+    dto = service._position_to_dto(_position_for_price_projection())
+
+    assert dto.current_price == 55.0
+    assert dto.quote_data_date is None
+    assert dto.quote_source_id == "csv.daily_prices"
+    assert dto.quote_source_snapshot_hash == sha256(raw).hexdigest()
+    assert dto.quote_freshness_status == "unverified"
+
+    legacy = PositionDTO.from_dict({"position_id": "legacy", "stock_code": "2330"})
+    assert legacy.quote_data_date is None
+    assert legacy.quote_source_id == ""
+    assert legacy.quote_source_snapshot_hash == ""
+    assert legacy.quote_freshness_status == "unverified"
+    malformed = PositionDTO.from_dict(
+        {"position_id": "legacy", "quote_data_date": "2026-99-99", "quote_source_id": None}
+    )
+    assert malformed.quote_data_date is None
+    assert malformed.quote_source_id == ""
+
+
+def test_position_sqlite_price_survives_missing_quote_date(tmp_path: Path):
+    now = datetime(2026, 10, 4, 8, tzinfo=TAIPEI)
+    service = _service(tmp_path, now, use_sqlite=True)
+    with sqlite3.connect(service.config.db_file) as connection:
+        connection.execute("CREATE TABLE daily_prices (日期 TEXT, 證券代號 TEXT, 收盤價 REAL)")
+        connection.execute("INSERT INTO daily_prices VALUES (?, ?, ?)", (None, "2330", 55.0))
+        connection.commit()
+
+    dto = service._position_to_dto(_position_for_price_projection())
+
+    assert dto.current_price == 55.0
+    assert dto.quote_data_date is None
+    assert dto.quote_source_id == "sqlite.daily_prices"
+    assert len(dto.quote_source_snapshot_hash) == 64
+    assert dto.quote_freshness_status == "unverified"
 
 
 def _portfolio_config(tmp_path: Path) -> SimpleNamespace:

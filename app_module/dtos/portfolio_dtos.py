@@ -1,6 +1,7 @@
 """DTOs for the Phase 4.1 Portfolio & Journal MVP."""
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -77,12 +78,23 @@ class PositionDTO:
     unrealized_pnl: Optional[float] = None
     unrealized_pnl_pct: Optional[float] = None
     schema_version: str = "4.1"
+    quote_data_date: Optional[str] = None
+    quote_source_id: str = ""
+    quote_source_snapshot_hash: str = ""
+    quote_freshness_status: str = "unverified"
 
     def to_dict(self) -> Dict[str, Any]:
         return dict(self.__dict__)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PositionDTO":
+        raw_quote_date = data.get("quote_data_date")
+        quote_data_date = None
+        if isinstance(raw_quote_date, str):
+            try:
+                quote_data_date = date.fromisoformat(raw_quote_date).isoformat()
+            except ValueError:
+                quote_data_date = None
         return cls(
             position_id=str(data.get("position_id", "")),
             portfolio_id=str(data.get("portfolio_id", "default")),
@@ -104,6 +116,10 @@ class PositionDTO:
             unrealized_pnl=data.get("unrealized_pnl"),
             unrealized_pnl_pct=data.get("unrealized_pnl_pct"),
             schema_version=str(data.get("schema_version", "4.1")),
+            quote_data_date=quote_data_date,
+            quote_source_id=str(data.get("quote_source_id") or ""),
+            quote_source_snapshot_hash=str(data.get("quote_source_snapshot_hash") or ""),
+            quote_freshness_status=str(data.get("quote_freshness_status") or "unverified"),
         )
 
 

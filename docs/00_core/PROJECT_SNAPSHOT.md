@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M154 後繼 UI：在「市場探索 → 研究母體盤勢」明選已發布成員後，成員表旁直接顯示同一 typed 快照的股票、行情資料日、MA20／MA60 兩項固定條件原符合／不符合／未知、相對關係、原因及原未知原因；取消選列、換來源或失敗清舊，不重算條件或將觀察當成投資建議。Sol 核對 1280×760／1500×900 真 OS DPI216 隔離合成 Main 八張畫面，成員首列和側欄同屏、資料庫 SHA 不變、callback exception0；最終 focused18、Workbench85、validator25／0／4、mypy1,144、compile0，受控 Job 無殘留。具名收據見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m154-研究母體成員固定條件可見判讀)。正式來源、其他 DPI／Light／1920、固定 EXE、自然排程、Owner UAT 與完整產品 Gate 未接受。
+
 M152／M153 後繼 UI：每日決策「完整市場資料 → 各模組狀態 → 風險提示」現在在原品質徽章下分列原 DTO 的嚴重度、分類、來源、原因與建議檢查，最多五筆並明示其餘筆數；空已觀察、缺件、降級與估算不說成無風險，載入與失敗清舊。具名研究母體盤勢保留原三態數字表，另以同份固定方法整數與 cohort 分母畫符合／不符合／未知三段條；未知獨立中性色，零／無效分母不畫假比例，換版／錯誤清舊。Sol 退回初版高 DPI 下圖例裁切及長提示轉空態留下高空白，修後正常 Main 1280×760／1500×900、真 OS DPI216 六張隔離合成畫面可讀，來源 SQLite SHA 不變、callback exception0；最終 focused70、Workbench85、validator25／0／4、mypy1,144、compile0，受控 Job 無殘留。正式來源、其他 DPI／Light／1920、固定 EXE、自然排程、Owner UAT 與完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m152m153-風險提示解釋與研究母體三態圖)。
 
 M150／M151 收尾：每日決策開啟原保存推薦後，精確 canonical／舊格式唯讀結果身分核對成功才將結果狀態與候選表第一列帶入同一可視區；讀取期間若使用者自行捲動、切離頁面、取消或失敗則不搶捲動。正常 Main 1280×760／1500×900、真 OS DPI216 的隔離合成 canonical 讀回有八張畫面，第一列均可見，callback exception 0。原本使用已移除側欄 key 的跨頁旅程測試已改走現行可見主導覽／子頁，整條旅程通過。最終 compile0、聚焦14、跨頁1、Workbench85、validator25／0／4、mypy1,144，受控 Job 無殘留。正式保存來源、其他 DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT 及完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m150m151-保存結果首屏與跨頁測試修復)。

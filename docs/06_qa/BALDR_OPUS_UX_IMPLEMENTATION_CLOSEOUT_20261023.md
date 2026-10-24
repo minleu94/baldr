@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M153；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M154；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M153 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M154 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -472,3 +472,13 @@ Luna `/root/m152_research_gap` 單一 writer 修改 `ui_qt/views/daily_market_co
 最終共同 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_06609ab5cf014b0eac9cf222db6c0eb6/receipt.json` exit0：受改 Python compile0、focused **70 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留。正常 Main 真 OS DPI216 的 1280×760／1500×900 六張隔離合成圖與 JSON：`.../root/native_m152_m153_evidence/run_4561fc0e821f4c6a91a7bfdb0d4fe911/result.json`；Job `.../root/single_owned_qa_e0b21e9071c54b9c943d700f1fe2b5b3/receipt.json` exit0。Sol 目視原表與完整三態人數同屏、風險逐筆原因可讀、長提示轉缺件後列收縮且品質徽章保留；隔離 SQLite SHA 不變、callback exception0。
 
 這是原始碼及限定合成／原生 QA，不是正式來源接受。正式市場／私人資料、其他真 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受；M1–M153 是審查、裁決、實作與 QA 序號，非 153 個獨立功能。沒有自動交易、正式資料改寫、其他排程修改、push、merge 或部署。
+
+## M154 研究母體成員固定條件可見判讀
+
+Luna 先做兩個獨立唯讀盤點：推薦候選首屏的 M149 缺口已由 M150 精確保存讀回聚焦處理，Sol 不為湊進度重排既有版面；研究母體頁的成員原條件僅在舊 tooltip 嘗試呈現，實際成員重繪還會取代該 tooltip，選列只切換下鑽按鈕。Sol 核對 `DailyMarketCohortMember.conditions` 已有兩個固定方法的原狀態、相對關係、原因及未知原因，且投影與快照資格既有，選為單一 Qt 呈現切片。
+
+Luna `/root/m152_research_gap` 單一 writer 修改 `ui_qt/views/daily_market_cohort_view.py` 與 `tests/test_ui_qt_daily_market_cohort_view.py`：在成員表旁同屏顯明選股票、行情資料日、MA20／MA60 固定條件原三態、關係、原因與非空未知原因；換列、取消選列、重讀來源或失敗清舊，原三態圖、整數表、成員值及個股下鑽保留。Sol 修 `ui_qt/tab_info_config.py` 的舊「支持、反證」描述，改明確三態與非投資建議。沒有新增讀取、重算均線、投資分數、來源資格、PIT 或正式資料寫入。
+
+最終 root-owned 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_f0aa094f105945bb948b0d8c84fd2870/receipt.json` exit0：受改 Python compile0、cohort／投影／Main bridge focused **18 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；無殘留。正常 Main 真 OS DPI216 的 1280×760／1500×900 以隔離合成已驗證快照驗未選、選未知、換另一檔及清除共八 PNG：`output/tasks/baldr-opus-ux-implementation/root/native_m154_evidence/run_d4eecc7bbb7a44839c494de855e419ed/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_3429f1c24b1144068bdd812e2f0a3dc4/receipt.json` exit0。Sol 目視兩尺寸的成員首列、側欄原狀態與原原因同屏可讀；隔離 SQLite SHA 不變、callback exception0。
+
+這是原始碼與隔離合成／原生 QA。正式市場來源、其他真 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受；M1–M154 是審查、裁決、實作與 QA 序號，非 154 個獨立功能。沒有 push、merge、部署或修改其他排程。

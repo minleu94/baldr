@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from app_module.daily_market_cohort_projection import (
     DailyMarketCohortMethodCount,
+    DailyMarketCohortMember,
     DailyMarketCohortProjection,
     project_daily_market_cohort,
 )
@@ -213,11 +214,36 @@ class DailyMarketCohortView(QWidget):
         self.members_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.members_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.members_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        apply_financial_table_style(self.members_table)
+        member_workspace = QHBoxLayout()
+        member_workspace.addWidget(self.members_table, 4)
+        self.selected_member_detail_group = QGroupBox("所選成員固定條件觀察")
+        detail_layout = QVBoxLayout(self.selected_member_detail_group)
+        self.selected_member_detail_label = QLabel(
+            "選取一列以查看同一快照中的固定條件原狀態、關係與原因；非投資建議。"
+        )
+        self.selected_member_detail_label.setObjectName("marketCohortSelectedMemberConditions")
+        self.selected_member_detail_label.setAccessibleName("所選母體成員的固定條件觀察")
+        self.selected_member_detail_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.selected_member_detail_label.setWordWrap(True)
+        self.selected_member_detail_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        detail_layout.addWidget(self.selected_member_detail_label)
+        detail_font = self.selected_member_detail_label.fontMetrics()
+        self.selected_member_detail_group.setMinimumWidth(
+            detail_font.horizontalAdvance(
+                "收盤價高於 MA60：未知（unknown）｜關係：未知（unknown）"
+            ) + detail_layout.contentsMargins().left()
+            + detail_layout.contentsMargins().right()
+        )
+        member_workspace.addWidget(
+            self.selected_member_detail_group, 2, Qt.AlignmentFlag.AlignTop,
+        )
+        layout.addLayout(member_workspace)
         self.members_table.itemSelectionChanged.connect(
             self._sync_research_selected_button
         )
-        apply_financial_table_style(self.members_table)
-        layout.addWidget(self.members_table)
         self.ranking_label = QLabel(
             "原排名未提供：發布快照未含原強弱排名。名單可依既有指標值排序；"
             "排序不是投資分數，不能推定強弱或勝率。"
@@ -257,6 +283,7 @@ class DailyMarketCohortView(QWidget):
         if not isinstance(snapshot, VerifiedDailyMarketSnapshot):
             self.clear_snapshot()
             return
+        self.members_table.clearSelection()
         self._snapshot = snapshot
         self.original_ranking = None
         service = self.source_view.service
@@ -500,6 +527,68 @@ class DailyMarketCohortView(QWidget):
         button.setEnabled(
             self._research_context_for_member(self._selected_member_code()) is not None
         )
+        self._render_selected_member_detail()
+
+    def _render_selected_member_detail(self) -> None:
+        """只顯示目前 typed cohort member 保存的兩項固定條件原值。"""
+
+        projection = self.projection
+        code = self._selected_member_code()
+        if type(projection) is not DailyMarketCohortProjection or not code:
+            self.selected_member_detail_label.setText(
+                "選取一列以查看同一快照中的固定條件原狀態、關係與原因；非投資建議。"
+            )
+            return
+        member = next(
+            (
+                candidate for candidate in projection.members
+                if candidate.stock_code == code
+            ),
+            None,
+        )
+        if type(member) is not DailyMarketCohortMember:
+            self.selected_member_detail_label.setText(
+                "所選列不在目前已驗證的母體快照；固定條件觀察未知。"
+            )
+            return
+
+        states = {
+            "match": "符合",
+            "no_match": "不符合",
+            "unknown": "未知",
+        }
+        relations = {
+            "above": "高於",
+            "below": "低於",
+            "equal": "相等",
+            "unknown": "未知",
+        }
+        conditions = {condition.key: condition for condition in member.conditions}
+        lines = [
+            f"{member.stock_code}｜資料日 {member.data_date or '未知'}｜"
+            "固定條件觀察，非投資建議。"
+        ]
+        for key, label in (
+            ("close_above_ma20", "收盤價高於 MA20"),
+            ("close_above_ma60", "收盤價高於 MA60"),
+        ):
+            condition = conditions.get(key)
+            if condition is None:
+                lines.append(f"{label}：未知（未提供）｜關係：未知｜原因：未提供")
+                continue
+            state = str(condition.state or "unknown")
+            relation = str(condition.relation or "unknown")
+            state_label = states.get(state, "未知")
+            relation_label = relations.get(relation, "未知")
+            reason = str(condition.reason or "未提供")
+            lines.append(
+                f"{label}：{state_label}（{state}）｜"
+                f"關係：{relation_label}（{relation}）｜原因：{reason}"
+            )
+            unknown_reason = str(condition.unknown_reason or "").strip()
+            if unknown_reason:
+                lines.append(f"未知原因：{unknown_reason}")
+        self.selected_member_detail_label.setText("\n".join(lines))
 
     def open_selected_member_research(self) -> bool:
         """Open the selected published member using its exact source row."""

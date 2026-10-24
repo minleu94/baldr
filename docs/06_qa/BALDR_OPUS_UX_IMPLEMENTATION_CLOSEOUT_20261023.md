@@ -1,6 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M97 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁後續已更新至 M98；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M98 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -81,6 +83,16 @@ Sol 目視首輪真 Windows 圖後發現同名 `failed`／`started` 事件均被
 
 ### 全任務盤點與保留界線
 
-M1–M97 是工程切片序號，包含唯讀裁決與 QA 專項，**不是 97 個獨立功能**。P0 已改善台股方向色、數值單位、日期、未知／真零、關鍵摘要及互動回饋；P1 已交付題材格、成交額圖、同版分類成員與鄰域、搜尋及精確下鑽；P2 已整理市場／個股／推薦／Portfolio／Backtest／Evidence／Runtime 的首屏、原值圖卡、歷史與狀態清舊。各處保留原明細、來源身份與金融限制。P3 的有向供應鏈及跨期強弱仍需要逐邊來源／時鐘與用途契約；既有靜態重疊不得升格。審查來源是 Opus 起始、Antigravity 續作完成六份主要報告，Sol 逐項去重與核現行程式，Luna 分切片、root 複核及執行受控 QA；具名身份以本頁「審查來源與工程處置」為準。
+M1–M98 是工程切片序號，包含唯讀裁決與 QA 專項，**不是 98 個獨立功能**。P0 已改善台股方向色、數值單位、日期、未知／真零、關鍵摘要及互動回饋；P1 已交付題材格、成交額圖、同版分類成員與鄰域、搜尋及精確下鑽；P2 已整理市場／個股／推薦／Portfolio／Backtest／Evidence／Runtime 的首屏、原值圖卡、歷史與狀態清舊。各處保留原明細、來源身份與金融限制。P3 的有向供應鏈及跨期強弱仍需要逐邊來源／時鐘與用途契約；既有靜態重疊不得升格。審查來源是 Opus 起始、Antigravity 續作完成六份主要報告，Sol 逐項去重與核現行程式，Luna 分切片、root 複核及執行受控 QA；具名身份以本頁「審查來源與工程處置」為準。
 
 本次收尾是**後繼原始碼與隔離 QA 的工程階段完成**。正式市場／Evidence／Portfolio 資料、自然排程、私人帳、完整 100%／125%／150% DPI／Light（若支援）、固定新版 EXE、Owner UAT 與完整產品 Gate 沒有因此通過；M73 決策品質控制作用範圍與 M75 來源／用途契約仍待產品裁決。下一步只依具名來源與授權取得安全唯讀副本後補正式接受，不以合成 PASS、圖卡外觀或單一截圖取代。
+
+## M98 市況廣度比例條與 Stress 長表補驗
+
+Luna 唯讀去重後指出市場總覽的市況廣度已有原家數與來源比率文字，但「完整市場資料」內尚無家數分布的直觀比例；另一路 Luna 建議補 M95 Stress 歷史長表的合成操作證據。`/root/m98_breadth_bar` 單一 writer 修改 `ui_qt/views/decision_desk_view.py` 與其測試；Sol 審查接受以原 `MarketBreadthSummary` 的三個非負整數家數作紅漲／綠跌／平盤中性比例條，只在正總數、可辨識品質及來源日不晚於判斷日時顯示。原家數、來源 `breadth_ratio_bp`、來源日與品質並列；零段為零寬、缺值不補零、刷新／載入／錯誤清舊。條長不解讀為指數報酬或交易訊號，未改 DTO、金融公式、來源資格或私人資料。Sol 補清除舊 Qt 子元件與重繪測試後接受限定呈現層。
+
+最終受控收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_926a209971c24b1ab1fbb33b2861c022/receipt.json`：受改 Python 編譯、決策工作台聚焦 **35 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，Job 無殘留 PID 或強制清理。前兩輪測試用 `isVisible` 判斷未顯示的 parent View，斷言失敗；改驗元件自己的 hidden 狀態後通過，原失敗收據 `.../single_owned_qa_be3bae14387b44e3a19aef421321d59d/receipt.json`、`.../single_owned_qa_81630514e4944475afd97447ae39f308/receipt.json` 保留。真 Windows DPI144（150%）的原 View HEAD 基線、修後局部與整窗、正常 Main 1280×760 隔離合成截圖及 JSON 在 `.../native_m98_breadth_evidence/run_0ea20727ecf6474ba7c5b04809fcf10b/`；Job 收據 `.../single_owned_qa_a51f75e170384066a41c6e3c3545ecf1/receipt.json`。Sol 目視比例、家數、來源與品質可讀。
+
+Stress 長表未改產品程式。隔離正常 Main 1280×760／真 DPI144 注入 40 筆合成保存紀錄，選第 1／21／40 筆時同筆 TWD 原值與 partial 缺值卡片正確，重繪成單筆後清舊；渲染 46.5 ms。證據 `.../native_m98_stress_40_evidence/run_9639ec3fc3c24d1c9d84e7624b88ed3d/`，Job 收據 `.../single_owned_qa_744be3436f6f4ab6a302ae46d1e5de63/receipt.json`。首兩輪腳本過早注入，被 Portfolio 原背景載入覆蓋；原失敗收據 `.../single_owned_qa_1a95f37156774f6985a7d1aa8ae4b866/receipt.json`、`.../single_owned_qa_1dde9569ecc74d34aabd82d775db64be/receipt.json` 保留。40 筆外層長頁選列卡與末列不一定同屏，後續需在正式授權副本和實際操作下再評估表格導覽；本次不據合成腳本稱正式性能或 Owner UAT 通過。
+
+M1–M98 編號含唯讀審查與 QA 專項，不代表 98 個功能。原始碼工程階段已盤點；正式來源／自然排程、其他 OS DPI、Light（若正式支援）、固定新版 EXE、Owner UAT、M73／M75 契約及完整產品 Gate 保留獨立驗收。

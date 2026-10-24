@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QFrame,
 )
 
 from app_module.decision_desk_dtos import (
@@ -346,7 +347,29 @@ class DecisionDeskView(QWidget):
         sections_group = SectionPanel("各模組狀態")
         sections_layout = sections_group.layout
         sections_layout.addWidget(self._make_section_row("市場情緒", self.market_regime_status, self.market_regime_value))
-        sections_layout.addWidget(self._make_section_row("市況廣度", self.market_breadth_status, self.market_breadth_value))
+        breadth_row = self._make_section_row("市況廣度", self.market_breadth_status, self.market_breadth_value)
+        self.market_breadth_bar = QWidget()
+        self.market_breadth_bar.setObjectName("decisionDeskMarketBreadthBar")
+        self.market_breadth_bar_layout = QHBoxLayout(self.market_breadth_bar)
+        self.market_breadth_bar_layout.setContentsMargins(0, 3, 0, 0)
+        self.market_breadth_bar_layout.setSpacing(2)
+        self.market_breadth_bar.setAccessibleName("市況廣度家數分布")
+        self.market_breadth_bar.hide()
+        self.market_breadth_legend = QLabel("")
+        self.market_breadth_legend.setObjectName("decisionDeskMarketBreadthLegend")
+        self.market_breadth_legend.setWordWrap(True)
+        self.market_breadth_caption = QLabel("")
+        self.market_breadth_caption.setObjectName("decisionDeskMarketBreadthCaption")
+        self.market_breadth_caption.setWordWrap(True)
+        self.market_breadth_caption.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+        breadth_layout = breadth_row.layout()
+        assert isinstance(breadth_layout, QVBoxLayout)
+        breadth_layout.addWidget(self.market_breadth_bar)
+        breadth_layout.addWidget(self.market_breadth_legend)
+        breadth_layout.addWidget(self.market_breadth_caption)
+        self.market_breadth_legend.hide()
+        self.market_breadth_caption.hide()
+        sections_layout.addWidget(breadth_row)
         sections_layout.addWidget(self._make_section_row("產業輪動", self.sector_rotation_status, self.sector_rotation_value))
         sections_layout.addWidget(self._make_section_row("強弱與流動性", self.relative_strength_liquidity_status, self.relative_strength_liquidity_value))
         sections_layout.addWidget(self.relative_strength_codes)
@@ -401,9 +424,73 @@ class DecisionDeskView(QWidget):
         row_layout.addWidget(value_label)
         return row
 
+    def _clear_market_breadth_bar(self) -> None:
+        while self.market_breadth_bar_layout.count():
+            item = self.market_breadth_bar_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self.market_breadth_bar.hide()
+        self.market_breadth_legend.clear()
+        self.market_breadth_legend.hide()
+        self.market_breadth_caption.clear()
+        self.market_breadth_caption.hide()
+
+    def _render_market_breadth_bar(self, breadth: Any, snapshot_date: date) -> None:
+        self._clear_market_breadth_bar()
+        counts = (breadth.advancing, breadth.declining, breadth.unchanged)
+        if any(type(count) is not int or count < 0 for count in counts):
+            return
+        if sum(counts) <= 0:
+            return
+        quality = getattr(breadth.quality, "value", breadth.quality)
+        if str(quality).upper() not in {"OBSERVED", "ESTIMATED", "DEGRADED"}:
+            return
+        source_date = breadth.as_of_date
+        if (
+            type(source_date) is not date
+            or type(snapshot_date) is not date
+            or source_date > snapshot_date
+        ):
+            return
+
+        labels = ("上漲", "下跌", "平盤")
+        colors = (
+            MIDNIGHT_ANALYST.market_up,
+            MIDNIGHT_ANALYST.market_down,
+            MIDNIGHT_ANALYST.market_flat,
+        )
+        for index, (label, count, color) in enumerate(zip(labels, counts, colors)):
+            segment = QFrame(self.market_breadth_bar)
+            segment.setObjectName(f"decisionDeskBreadthSegment{index}")
+            segment.setProperty("breadthCount", count)
+            segment.setProperty("breadthStretch", count)
+            segment.setAccessibleName(f"{label} {count} 家")
+            segment.setToolTip(f"{label}：{count} 家")
+            segment.setStyleSheet(f"background-color: {color}; border-radius: 3px;")
+            segment.setMinimumHeight(12)
+            if count == 0:
+                segment.setFixedWidth(0)
+            self.market_breadth_bar_layout.addWidget(segment, count)
+
+        self.market_breadth_bar.setAccessibleDescription(
+            f"上漲 {counts[0]} 家、下跌 {counts[1]} 家、平盤 {counts[2]} 家"
+        )
+        self.market_breadth_legend.setText(
+            f"上漲：{counts[0]} 家｜下跌：{counts[1]} 家｜平盤：{counts[2]} 家"
+        )
+        self.market_breadth_legend.show()
+        self.market_breadth_caption.setText(
+            f"已載入家數分布；非指數報酬／交易訊號｜來源日：{source_date.isoformat()}｜品質：{self._display_quality_value(quality)}"
+        )
+        self.market_breadth_caption.show()
+        self.market_breadth_bar.show()
+
     def refresh_snapshot(self):
         if self._closing:
             return
+        self._clear_market_breadth_bar()
         if not self._historical_date_pinned:
             current_date = (
                 _current_taipei_decision_date()
@@ -421,6 +508,7 @@ class DecisionDeskView(QWidget):
             self._refresh_snapshot()
 
     def _display_pending_snapshot(self) -> None:
+        self._clear_market_breadth_bar()
         self.overall_status_label.setText("摘要尚未載入")
         self.generated_at_label.setText(
             f"本次評估日（台北）：{self.as_of_date.isoformat()}｜"
@@ -468,6 +556,7 @@ class DecisionDeskView(QWidget):
         )
 
     def _display_loading_snapshot(self) -> None:
+        self._clear_market_breadth_bar()
         self.overall_status_label.setText("摘要載入中")
         self.generated_at_label.setText(
             f"判讀日：{self.as_of_date.isoformat()}｜產生時間：背景載入中"
@@ -656,6 +745,7 @@ class DecisionDeskView(QWidget):
             f"多方：{advancing}；空方：{declining}；"
             f"持平：{unchanged}；廣度比率BP：{breadth_ratio}"
         )
+        self._render_market_breadth_bar(breadth, snapshot.as_of_date)
 
         self._set_section_quality(
             self.sector_rotation_status,
@@ -1119,6 +1209,7 @@ class DecisionDeskView(QWidget):
         return ", ".join(shown) + suffix
 
     def _display_exception_snapshot(self, error_message: str):
+        self._clear_market_breadth_bar()
         now = datetime.now()
         fallback_snapshot = DecisionDeskSnapshot(
             as_of_date=self.as_of_date,

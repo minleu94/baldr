@@ -9,7 +9,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QFrame
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
@@ -1115,4 +1115,55 @@ def test_decision_desk_market_breadth_preserves_missing_partial_and_zero_values(
     assert "空方：未提供" in text
     assert "持平：3" in text
     assert "廣度比率BP：未知" in text
+    view.close()
+
+
+def test_decision_desk_market_breadth_bar_uses_integer_stretches_and_accessible_counts():
+    app()
+    base = _snapshot()
+    breadth = replace(base.market_breadth, advancing=120, declining=80, unchanged=0)
+    view = rendered_view(FakeBuilder(replace(base, market_breadth=breadth)))
+    segments = [view.market_breadth_bar.findChild(QFrame, f"decisionDeskBreadthSegment{i}") for i in range(3)]
+    assert [segment.property("breadthCount") for segment in segments] == [120, 80, 0]
+    assert [view.market_breadth_bar_layout.stretch(i) for i in range(3)] == [120, 80, 0]
+    assert segments[2].width() == 0
+    assert [segment.accessibleName() for segment in segments] == ["上漲 120 家", "下跌 80 家", "平盤 0 家"]
+    assert view.market_breadth_legend.text() == "上漲：120 家｜下跌：80 家｜平盤：0 家"
+    assert "已載入家數分布；非指數報酬／交易訊號" in view.market_breadth_caption.text()
+    assert "來源日：2026-06-15" in view.market_breadth_caption.text()
+    assert "品質：觀察到" in view.market_breadth_caption.text()
+    view.close()
+
+
+def test_decision_desk_market_breadth_bar_hides_invalid_or_unqualified_data_and_clears_on_refresh():
+    app()
+    base = _snapshot()
+    invalid_cases = (
+        replace(base.market_breadth, advancing=None),
+        replace(base.market_breadth, advancing=True),
+        replace(base.market_breadth, declining=-1),
+        replace(base.market_breadth, advancing=0, declining=0, unchanged=0),
+        replace(base.market_breadth, quality=DecisionDeskQuality.MISSING),
+        replace(base.market_breadth, quality="pending"),
+        replace(base.market_breadth, as_of_date=None),
+        replace(base.market_breadth, as_of_date=date(2026, 6, 16)),
+    )
+    for breadth in invalid_cases:
+        view = rendered_view(FakeBuilder(replace(base, market_breadth=breadth)))
+        assert view.market_breadth_bar.isHidden()
+        assert view.market_breadth_legend.isHidden()
+        assert view.market_breadth_caption.isHidden()
+        view.close()
+
+    degraded = replace(base.market_breadth, quality=DecisionDeskQuality.DEGRADED)
+    view = rendered_view(FakeBuilder(replace(base, market_breadth=degraded)))
+    assert not view.market_breadth_bar.isHidden()
+    assert "品質：降級" in view.market_breadth_caption.text()
+    refreshed = replace(base.market_breadth, advancing=1, declining=2, unchanged=3)
+    view._render_snapshot(replace(base, market_breadth=refreshed))
+    assert [segment.property("breadthCount") for segment in view.market_breadth_bar.findChildren(QFrame)] == [1, 2, 3]
+    view._display_loading_snapshot()
+    assert view.market_breadth_bar.isHidden()
+    assert view.market_breadth_legend.text() == ""
+    assert view.market_breadth_caption.text() == ""
     view.close()

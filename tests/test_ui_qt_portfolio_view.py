@@ -15,7 +15,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QModelIndex, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -1119,6 +1119,170 @@ def test_portfolio_stress_history_requires_confirmation_and_renders_saved_row(tm
     assert view.stress_history_table.model().rowCount() == 1
     assert "狀態：可用" in view.stress_history_summary_label.text()
     assert "writes_allowed=false" in view.stress_history_summary_label.text()
+
+
+def _stress_history_record(
+    *,
+    record_id: str,
+    scenario_label: str,
+    status: str,
+    base: str | None,
+    stressed: str | None,
+    delta: str | None,
+    run_at: str,
+    as_of_date: str | None = "2026-10-22",
+):
+    return portfolio_view_module.PortfolioStressHistoryRecord.from_payload(
+        {
+            "schema_version": "portfolio-stress-lab.v1",
+            "scenario": {
+                "scenario_id": record_id,
+                "label": scenario_label,
+            },
+            "status": status,
+            "priced_position_count": 3 if status == "ready" else (2 if status == "partial" else 0),
+            "total_position_count": 3,
+            "base_market_value": base,
+            "stressed_market_value": stressed,
+            "value_delta": delta,
+            "as_of_date": as_of_date,
+            "research_only": True,
+            "investment_effectiveness_claim": False,
+        },
+        record_id=record_id,
+        run_at=run_at,
+    )
+
+
+def test_portfolio_stress_history_card_tracks_exact_selected_record(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    records = (
+        _stress_history_record(
+            record_id="stress-ready-zero",
+            scenario_label="快速下跌情境",
+            status="ready",
+            base="0",
+            stressed="0",
+            delta="0",
+            run_at="2026-10-22T09:00:00Z",
+        ),
+        _stress_history_record(
+            record_id="stress-partial",
+            scenario_label="部分價格缺件情境",
+            status="partial",
+            base="12345.60",
+            stressed="11111.10",
+            delta="-1234.50",
+            run_at="2026-10-22T10:00:00Z",
+            as_of_date=None,
+        ),
+        _stress_history_record(
+            record_id="stress-not-computable",
+            scenario_label="尚不可計算情境",
+            status="not_computable",
+            base=None,
+            stressed=None,
+            delta=None,
+            run_at="2026-10-22T11:00:00Z",
+        ),
+    )
+    result = SimpleNamespace(
+        status="ready",
+        db_path="synthetic://stress-history",
+        records=records,
+        blockers=(),
+        warnings=(),
+    )
+
+    view._render_stress_history(result)
+    model = view.stress_history_table.model()
+    assert model.rowCount() == 3
+    assert model.data(model.index(0, 2)) == "快速下跌情境"
+    assert model.data(model.index(0, 5)) == "0"
+    assert model.data(model.index(0, 6)) == "0"
+    assert model.data(model.index(0, 7)) == "0"
+    assert model.data(model.index(0, 8)) == records[0].payload_hash[:12]
+    assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
+
+    view.stress_history_table.setCurrentIndex(model.index(0, 0))
+    assert view.stress_history_card_title.text() == "快速下跌情境"
+    assert "ready（可用）" in view.stress_history_card_meta.text()
+    assert "2026-10-22T09:00:00Z" in view.stress_history_card_meta.text()
+    assert "3/3" in view.stress_history_card_meta.text()
+    assert view.stress_history_metric_values["base_market_value"].text() == "0"
+    assert view.stress_history_metric_values["stressed_market_value"].text() == "0"
+    assert view.stress_history_metric_values["value_delta"].text() == "0"
+
+    view.stress_history_table.setCurrentIndex(model.index(1, 0))
+    assert view.stress_history_card_title.text() == "部分價格缺件情境"
+    assert "partial（部分完成）" in view.stress_history_card_meta.text()
+    assert "基準日：未提供" in view.stress_history_card_meta.text()
+    assert view.stress_history_metric_values["base_market_value"].text() == "12345.60"
+    assert view.stress_history_metric_values["stressed_market_value"].text() == "11111.10"
+    assert view.stress_history_metric_values["value_delta"].text() == "-1234.50"
+
+    view.stress_history_table.setCurrentIndex(model.index(2, 0))
+    assert view.stress_history_card_title.text() == "尚不可計算情境"
+    assert "not_computable（不可計算）" in view.stress_history_card_meta.text()
+    assert all(value.text() == "未提供" for value in view.stress_history_metric_values.values())
+    assert "不是預測" in view.stress_history_card_meta.text()
+
+    view.stress_history_table.clearSelection()
+    view.stress_history_table.setCurrentIndex(QModelIndex())
+    assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
+    assert all(value.text() == "未提供" for value in view.stress_history_metric_values.values())
+
+
+def test_portfolio_stress_history_refresh_and_read_error_clear_selected_card(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    record = _stress_history_record(
+        record_id="stress-refresh",
+        scenario_label="刷新前情境",
+        status="ready",
+        base="100",
+        stressed="90",
+        delta="-10",
+        run_at="2026-10-22T09:00:00Z",
+    )
+    view._render_stress_history(
+        SimpleNamespace(
+            status="ready",
+            db_path="synthetic://stress-history",
+            records=(record,),
+            blockers=(),
+            warnings=(),
+        )
+    )
+    model = view.stress_history_table.model()
+    view.stress_history_table.setCurrentIndex(model.index(0, 0))
+    assert view.stress_history_metric_values["base_market_value"].text() == "100"
+    stale_index = model.index(0, 0)
+
+    view._render_stress_history(
+        SimpleNamespace(
+            status="partial",
+            db_path="synthetic://stress-history",
+            records=(),
+            blockers=(),
+            warnings=("stress_history_empty",),
+        )
+    )
+    assert view._stress_history_display_records == []
+    assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
+    assert view.stress_history_table.model().rowCount() == 1
+    assert view.stress_history_table.model().data(
+        view.stress_history_table.model().index(0, 0)
+    ) == "N/A"
+    view._show_stress_history_record(stale_index, QModelIndex())
+    assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
+
+    view.stress_history_read_service = SimpleNamespace(
+        inspect=lambda: (_ for _ in ()).throw(OSError("synthetic read failure"))
+    )
+    view._load_stress_history()
+    assert "讀取失敗" in view.stress_history_summary_label.text()
+    assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
+    assert all(value.text() == "未提供" for value in view.stress_history_metric_values.values())
 
 
 def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(tmp_path):

@@ -1939,6 +1939,14 @@ class PortfolioView(QWidget):
         stress_layout = QVBoxLayout(stress_tab)
         stress_layout.setContentsMargins(10, 10, 10, 10)
         stress_layout.setSpacing(10)
+        self.stress_workspace_tabs = QTabWidget()
+        current_stress_tab = QWidget()
+        current_stress_layout = QVBoxLayout(current_stress_tab)
+        history_stress_tab = QWidget()
+        history_stress_layout = QVBoxLayout(history_stress_tab)
+        self.stress_workspace_tabs.addTab(current_stress_tab, "目前情境")
+        self.stress_workspace_tabs.addTab(history_stress_tab, "已保存歷史")
+        stress_layout.addWidget(self.stress_workspace_tabs)
 
         stress_intro = QLabel(
             "只對目前持倉套用明確的靜態情境；缺最新價格時不補值、不外推。\n"
@@ -1946,7 +1954,7 @@ class PortfolioView(QWidget):
         )
         stress_intro.setWordWrap(True)
         stress_intro.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
-        stress_layout.addWidget(stress_intro)
+        current_stress_layout.addWidget(stress_intro)
 
         stress_controls = QHBoxLayout()
         self.stress_scenario_combo = QComboBox()
@@ -1965,33 +1973,90 @@ class PortfolioView(QWidget):
         )
         self.btn_save_stress_history.clicked.connect(self._save_stress_history)
         stress_controls.addWidget(self.btn_save_stress_history)
-        stress_layout.addLayout(stress_controls)
+        current_stress_layout.addLayout(stress_controls)
 
         self.stress_summary_label = QLabel("尚未執行情境。")
         self.stress_summary_label.setWordWrap(True)
         self.stress_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        stress_layout.addWidget(self.stress_summary_label)
+        current_stress_layout.addWidget(self.stress_summary_label)
         self.stress_detail_label = QLabel("")
         self.stress_detail_label.setWordWrap(True)
         self.stress_detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        stress_layout.addWidget(self.stress_detail_label)
+        current_stress_layout.addWidget(self.stress_detail_label)
 
         self.stress_positions_table = QTableView()
         apply_financial_table_style(self.stress_positions_table)
         self.stress_positions_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_positions_table.horizontalHeader().setStretchLastSection(True)
-        stress_layout.addWidget(self.stress_positions_table, 1)
+        current_stress_layout.addWidget(self.stress_positions_table, 1)
 
         self.stress_history_summary_label = QLabel("Stress 歷史尚未讀取。")
         self.stress_history_summary_label.setWordWrap(True)
         self.stress_history_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        stress_layout.addWidget(self.stress_history_summary_label)
+        history_stress_layout.addWidget(self.stress_history_summary_label)
+
+        self.stress_history_card = QFrame()
+        self.stress_history_card.setObjectName("stress_history_comparison_card")
+        self.stress_history_card.setFrameShape(QFrame.StyledPanel)
+        self.stress_history_card.setStyleSheet(
+            "QFrame#stress_history_comparison_card {"
+            f"background-color: {MIDNIGHT_ANALYST.surface_1};"
+            f"border: 1px solid {MIDNIGHT_ANALYST.border};"
+            "border-radius: 6px;}"
+        )
+        history_card_layout = QVBoxLayout(self.stress_history_card)
+        history_card_layout.setContentsMargins(10, 8, 10, 8)
+        history_card_layout.setSpacing(6)
+        self.stress_history_card_title = QLabel("選取一筆已保存紀錄")
+        self.stress_history_card_title.setWordWrap(True)
+        self.stress_history_card_title.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
+        )
+        history_card_layout.addWidget(self.stress_history_card_title)
+        self.stress_history_card_meta = QLabel(
+            "情境是靜態研究假設，不是預測；此歷史不代表投資有效性。"
+        )
+        self.stress_history_card_meta.setWordWrap(True)
+        self.stress_history_card_meta.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.stress_history_card_meta.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        history_card_layout.addWidget(self.stress_history_card_meta)
+        history_metrics_layout = QGridLayout()
+        history_metrics_layout.setContentsMargins(0, 2, 0, 0)
+        history_metrics_layout.setHorizontalSpacing(12)
+        history_metrics_layout.setVerticalSpacing(2)
+        self.stress_history_metric_values: dict[str, QLabel] = {}
+        for column, (key, title) in enumerate(
+            (
+                ("base_market_value", "基準市值（TWD）"),
+                ("stressed_market_value", "壓力後市值（TWD）"),
+                ("value_delta", "原始變動（TWD）"),
+            )
+        ):
+            heading = QLabel(title)
+            heading.setWordWrap(True)
+            heading.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+            value_label = QLabel("未提供")
+            value_label.setWordWrap(True)
+            value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value_label.setMinimumWidth(0)
+            value_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
+            )
+            history_metrics_layout.addWidget(heading, 0, column)
+            history_metrics_layout.addWidget(value_label, 1, column)
+            self.stress_history_metric_values[key] = value_label
+            history_metrics_layout.setColumnStretch(column, 1)
+        history_card_layout.addLayout(history_metrics_layout)
+        history_stress_layout.addWidget(self.stress_history_card)
 
         self.stress_history_table = QTableView()
         apply_financial_table_style(self.stress_history_table)
         self.stress_history_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_history_table.horizontalHeader().setStretchLastSection(True)
-        stress_layout.addWidget(self.stress_history_table)
+        history_stress_layout.addWidget(self.stress_history_table, 1)
+        self._stress_history_display_records: list[PortfolioStressHistoryRecord] = []
         right_widget.addTab(stress_tab, "情境壓力")
 
         # Right Tab 5: 策略與價格監控 (Strategy & Price Monitor)
@@ -3660,6 +3725,7 @@ class PortfolioView(QWidget):
 
     def _load_stress_history(self) -> None:
         """只讀顯示已保存的 Stress Lab 研究快照；缺資料庫時不初始化。"""
+        self._clear_stress_history_card()
         try:
             result = self.stress_history_read_service.inspect()
             self._stress_history_result = result
@@ -3673,8 +3739,13 @@ class PortfolioView(QWidget):
             self.stress_history_table.setModel(
                 PandasTableModel(pd.DataFrame(columns=["執行時間", "情境", "狀態"]))
             )
+            self._stress_history_display_records = []
+            self.stress_history_table.selectionModel().currentRowChanged.connect(
+                self._show_stress_history_record
+            )
 
     def _render_stress_history(self, result) -> None:
+        self._clear_stress_history_card()
         status_labels = {
             "ready": "可用",
             "partial": "部分完成",
@@ -3690,6 +3761,7 @@ class PortfolioView(QWidget):
             + ("\n" + "\n".join(f"阻擋：{item}" for item in result.blockers) if result.blockers else "")
             + ("\n" + "\n".join(f"警告：{item}" for item in result.warnings) if result.warnings else "")
         )
+        self._stress_history_display_records = list(result.records)
         rows = [
             {
                 "執行時間": item.run_at,
@@ -3725,6 +3797,49 @@ class PortfolioView(QWidget):
             ]
         self.stress_history_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
         self.stress_history_table.resizeColumnsToContents()
+        self.stress_history_table.selectionModel().currentRowChanged.connect(
+            self._show_stress_history_record
+        )
+
+    def _clear_stress_history_card(self) -> None:
+        """清除已選快照，避免刷新或讀取失敗時保留舊值。"""
+        self.stress_history_card_title.setText("選取一筆已保存紀錄")
+        self.stress_history_card_meta.setText(
+            "情境是靜態研究假設，不是預測；此歷史不代表投資有效性。"
+        )
+        self.stress_history_card_meta.setToolTip("")
+        for value_label in self.stress_history_metric_values.values():
+            value_label.setText("未提供")
+
+    def _show_stress_history_record(self, current, _previous) -> None:
+        """只顯示目前表格列精確對應的原始研究快照欄位。"""
+        if (
+            not current.isValid()
+            or current.model() is not self.stress_history_table.model()
+            or current.row() >= len(self._stress_history_display_records)
+        ):
+            self._clear_stress_history_card()
+            return
+        record = self._stress_history_display_records[current.row()]
+        status_labels = {
+            "ready": "可用",
+            "partial": "部分完成",
+            "not_computable": "不可計算",
+        }
+        status_text = f"{record.status}（{status_labels.get(record.status, record.status)}）"
+        self.stress_history_card_title.setText(record.scenario_label)
+        self.stress_history_card_meta.setText(
+            f"執行時間：{record.run_at}｜基準日：{record.as_of_date or '未提供'}\n"
+            f"已標記／總數：{record.priced_position_count}/{record.total_position_count}｜"
+            f"狀態：{status_text}\n"
+            "研究用途；靜態情境不是預測，亦不代表投資有效性。"
+        )
+        self.stress_history_card_meta.setToolTip(
+            f"原始紀錄 ID：{record.record_id}\npayload hash：{record.payload_hash}"
+        )
+        for field_name, value_label in self.stress_history_metric_values.items():
+            value = getattr(record, field_name)
+            value_label.setText("未提供" if value is None else str(value))
 
     def _save_stress_history(self) -> None:
         """二次確認後保存目前 Stress 結果；保存不會改變持倉或交易。"""

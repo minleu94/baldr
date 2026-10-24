@@ -33,3 +33,11 @@ Sol 依現行 UI、Application DTO、來源及金融契約重排 P0–P3。已�
 ## 交接與未完成 Gate
 
 此提交封存**源碼及合成／隔離 QA 的工程階段**。正式市場／Evidence／Portfolio／Legacy 來源、自然排程、Owner UAT、真 OS 125%／150% DPI 全路徑、Light（如正式支援）、固定新版 EXE 與完整產品 Gate 均須各自驗收；1280×760／DPI96 的正常 Main 證據不能代替這些 Gate。長表大資料量與其他 Evidence 子頁可讀性仍按 `NEXT_ACTIONS.md` 續辦。下一階段若使用正式來源，先取得明確核准的安全唯讀副本與用途契約，不直接讀寫私人正式資料。
+
+## 後續 M89–M90（同日原始碼與畫面證據）
+
+M89 由 Luna 修改 `ui_qt/views/industry_theme_map_view.py` 和對應測試，Sol 審查接受。題材漲跌格及成交金額面積格遇跨鏈同名題材時，顯示最短可辨識鏈名前綴；未重名者維持原標籤。合成雙鏈的同名格保留各自漲跌、成交額、提示和無障礙名稱，點擊仍精確進入原鏈／題材成員；沒有更動 DTO、排序、金融計算或來源資格。根節點在受控 Windows Job 驗證：題材聚焦 **47 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,143** 檔 clean，編譯通過。收據為 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_6300fb6eb4564885bdbca19786e61132/receipt.json`。原生合成題材頁在真 Windows DPI144（150%）的 1280×760 和 900×760 邏輯視窗驗標籤容納與點擊身份，四張截圖及結果位於 `output/tasks/baldr-opus-ux-implementation/root/native_m89_evidence/run_fd02ca2fd6504bfcaf78ccb8de08446f/`，Job 收據為 `.../single_owned_qa_b804e2854859401e8d6430b9f95f6c09/receipt.json`。
+
+M90 是 QA 專項，未修改產品程式。前一輪 M87 的早期截圖未證明 WebEngine canvas 線條可見；本輪用隔離合成 SQLite／CSV 的 A `100／105／110`、B `200／210／205`，等待頁面完成與兩次繪製幀，在正常 Main 1280×760、真 Windows DPI144（150%）截取 canvas 與整窗。A／B 分別有 **4,538／4,761** 個權益線色像素，canvas SHA 不同，切換後整窗顯 B run 身份與可見線條；來源 SHA 前後一致。結果與四張 PNG 位於 `output/tasks/baldr-opus-ux-implementation/root/native_m90_evidence/run_59cc07a00cd842ea94d0b26a1921ca63/`，通過收據為 `.../single_owned_qa_5d5c822f746749f5846d7c0acf778846/receipt.json`。首次 QA harness 因錯把桌面 DPI 固定假設為 96 而失敗，收據 `.../single_owned_qa_c92bbc3edea142438d5f96f8bd71281d/receipt.json`；修正為記錄實際 DPI 後重跑通過，這次失敗不能解讀為產品畫圖缺陷。
+
+上述證據限合成來源、權益曲線及真 OS 150% 的兩個視窗寬度；其他圖種、GPU 路徑、其他 DPI、正式資料、固定 EXE、Owner UAT 與完整產品 Gate 仍待各自驗收。M 編號仍包含實作與 QA 專項，不能作功能數相加。

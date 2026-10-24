@@ -593,6 +593,30 @@ def _snapshot_with_directional_rankings(
     return ThemeResearchSnapshot(identity, report, tuple(mapping))
 
 
+def _snapshot_with_duplicate_theme_names() -> ThemeResearchSnapshot:
+    """兩鏈使用同名題材，但保留各自原值與映射身份。"""
+    baseline = _snapshot_with_directional_rankings(identity="9" * 64)
+    duplicated_theme = "同名觀察題材"
+    duplicated_keys = {("鏈A", "題材A"), ("鏈B", "題材B")}
+    rows = tuple(
+        replace(row, theme_name=duplicated_theme)
+        if (row.chain_name, row.theme_name) in duplicated_keys else row
+        for row in baseline.report.rows
+    )
+    mapping = tuple(
+        SimpleNamespace(**{
+            **vars(row),
+            "theme_name": duplicated_theme,
+        }) if (row.chain_name, row.theme_name) in duplicated_keys else row
+        for row in baseline.mapping
+    )
+    return ThemeResearchSnapshot(
+        baseline.identity_sha256,
+        replace(baseline.report, rows=rows),
+        mapping,
+    )
+
+
 def _select_theme(view: IndustryThemeMapView, chain: str, theme: str) -> None:
     view.chain_filter.setCurrentIndex(view.chain_filter.findData(chain))
     view.theme_filter.setCurrentIndex(view.theme_filter.findText(theme))
@@ -1058,6 +1082,8 @@ def test_return_tiles_show_eligible_source_context_and_drill_down_by_mouse_and_k
     }
     zero = view._return_tile_buttons[("科技鏈", "零值題材")]
     negative = view._return_tile_buttons[("能源鏈", "負值題材")]
+    assert "科技鏈｜" not in zero.text()
+    assert "能源鏈｜" not in negative.text()
     assert zero.isCheckable() and zero.focusPolicy() == Qt.FocusPolicy.StrongFocus
     assert "2026-10-16" in negative.toolTip()
     assert "c" * 64 in negative.toolTip()
@@ -1102,6 +1128,41 @@ def test_return_tiles_show_eligible_source_context_and_drill_down_by_mouse_and_k
     assert set(view._return_tile_buttons) == {("科技鏈", "零值題材")}
     assert set(view._return_tile_buttons) <= set(view._theme_options[1:])
     assert "可由既有篩選定位：1 格" in view.return_tiles_summary.text()
+    view.shutdown()
+    view.close()
+
+
+def test_return_tiles_disambiguate_cross_chain_duplicate_names_and_keep_exact_navigation():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1200, 850)
+    snapshot = _snapshot_with_duplicate_theme_names()
+    view.set_snapshot(snapshot)
+    view.show()
+    application.processEvents()
+
+    first = view._return_tile_buttons[("鏈A", "同名觀察題材")]
+    second = view._return_tile_buttons[("鏈B", "同名觀察題材")]
+    assert "鏈A｜同名觀察題材" in first.text()
+    assert "鏈B｜同名觀察題材" in second.text()
+    assert first.text().endswith("-3.00 %")
+    assert second.text().endswith("-2.00 %")
+    assert "鏈A／同名觀察題材" in first.toolTip()
+    assert "鏈B／同名觀察題材" in second.accessibleName()
+    assert "background-color: #25634A" in first.styleSheet()
+    assert "background-color: #25634A" in second.styleSheet()
+
+    QTest.mouseClick(first, Qt.MouseButton.LeftButton)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈A"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+    assert view.metrics_table.item(_metric_row(view, "平均日漲跌幅"), 1).text() == "-3.00 %"
+
+    QTest.mouseClick(second, Qt.MouseButton.LeftButton)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈B"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+    assert view.metrics_table.item(_metric_row(view, "平均日漲跌幅"), 1).text() == "-2.00 %"
     view.shutdown()
     view.close()
 
@@ -1187,6 +1248,7 @@ def test_turnover_treemap_uses_full_coverage_area_and_exact_snapshot_navigation(
     application.processEvents()
     assert view.turnover_treemap_group.isVisible()
     large = view._turnover_treemap_buttons[("鏈A", "題材A")]
+    assert "鏈A ·" not in large.text()
     assert large.focusPolicy() == Qt.FocusPolicy.StrongFocus
     assert "完整覆蓋 1 / 1 位成員" in large.accessibleName()
     assert snapshot.identity_sha256 in large.toolTip()
@@ -1225,6 +1287,42 @@ def test_turnover_treemap_uses_full_coverage_area_and_exact_snapshot_navigation(
         button.property("themeSnapshotIdentity") == replacement.identity_sha256
         for button in (*view._turnover_treemap_buttons.values(), *view._turnover_zero_buttons.values())
     )
+    view.shutdown()
+    view.close()
+
+
+def test_turnover_treemap_disambiguates_duplicate_names_without_hiding_value():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1200, 900)
+    snapshot = _snapshot_with_duplicate_theme_names()
+    view.set_snapshot(snapshot)
+    view.show()
+    view.turnover_treemap_toggle.click()
+    application.processEvents()
+
+    first = view._turnover_treemap_buttons[("鏈A", "同名觀察題材")]
+    second = view._turnover_treemap_buttons[("鏈B", "同名觀察題材")]
+    assert "同名觀察題材" in first.text() and "鏈A" in first.text()
+    assert "同名觀察題材" in second.text() and "鏈B" in second.text()
+    assert first.text().count("\n") == 1
+    assert second.text().count("\n") == 1
+    assert first.text().endswith("70.00 TWD")
+    assert second.text().endswith("10.00 TWD")
+    assert "鏈A／同名觀察題材" in first.toolTip()
+    assert "鏈B／同名觀察題材" in second.accessibleName()
+
+    QTest.mouseClick(first, Qt.MouseButton.LeftButton)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈A"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+    assert view.metrics_table.item(_metric_row(view, "價格成交金額（TWD）"), 1).text() == "70.00"
+
+    QTest.mouseClick(second, Qt.MouseButton.LeftButton)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈B"
+    assert view.theme_filter.currentText() == "同名觀察題材"
+    assert view.metrics_table.item(_metric_row(view, "價格成交金額（TWD）"), 1).text() == "10.00"
     view.shutdown()
     view.close()
 

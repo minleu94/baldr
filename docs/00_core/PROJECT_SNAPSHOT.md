@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M89 在題材漲跌等面積格與成交金額面積圖中，僅對跨鏈同名題材顯示足以辨識的鏈名前綴；原數值、提示、來源身份與點擊定位不變。M90 用隔離合成回測來源補驗 WebEngine 權益曲線 canvas：正常 Main 1280×760、真 Windows DPI144（150%）的 A／B 兩份不同原值各有可見線條，切換後畫面顯示 B 的 run 身份。M89 聚焦 47、共同 Workbench 85、validator 25／0／4、mypy 1,143 及原生 1280／900 寬度檢查通過；M90 為 QA 專項，未改產品程式。範圍與收據見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)。這些仍不是正式來源、其他 DPI／圖種、固定 EXE 或 Owner UAT 的驗收。
+
 **Opus→Antigravity UI/UX 審查鏈的後繼原始碼已完成 M1–M88 工程階段收尾。** Opus 起始審查，因額度用盡由 Antigravity 接手完成；Sol 依現行架構逐項複核與去重，Luna 分切片實作、root 審查。最近 M86 改善覆盤首屏表格可見三列，M87–M88 修正 Legacy 保存圖表切換與刷新時的來源身份；M88 後受改 Python 編譯、Workbench 85、validator 25／0／4、mypy 1,143 檔通過。範圍、各階段成果、收據與未完成 Gate 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)及[本機逐輪 QA](../../output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md)。這是原始碼與隔離合成 QA 交接；正式帳／市場來源、真 OS 125%／150% DPI 全路徑、固定 EXE、Owner UAT 與完整產品 Gate 尚未接受。
 
 後續 M59–M61 修正決策品質無審查／來源不可用假零、批次回測不可用指標混入統計，以及 Portfolio 生命週期原始狀態碼首層難讀；原流程分數、回測公式與健康判定未改。聚焦 27／31／68 項、Workbench 85、validator 25／0／4、mypy 1,141、compile 與三個 1280×760／100% Windows 隔離合成畫面通過。這些畫面不是正式來源、真帳、125%／150% 真 OS DPI 或 Owner UAT。

@@ -2211,9 +2211,14 @@ class IndustryThemeMapView(QWidget):
             self.return_tiles_summary.setText(
                 self.return_tiles_summary.text() + "　｜　沒有對應的既有題材篩選選項。"
             )
+        chain_labels = self._duplicate_theme_chain_labels(selectable_tiles)
         for tile in selectable_tiles:
+            chain_label = chain_labels.get((tile.chain_name, tile.theme_name))
+            visible_name = (
+                f"{chain_label}｜{tile.theme_name}" if chain_label else tile.theme_name
+            )
             button = QPushButton(
-                f"{tile.theme_name}\n{self._display_decimal(tile.mean_return_pct, suffix=' %')}"
+                f"{visible_name}\n{self._display_decimal(tile.mean_return_pct, suffix=' %')}"
             )
             button.setObjectName("industryThemeReturnTile")
             button.setCheckable(True)
@@ -2370,6 +2375,7 @@ class IndustryThemeMapView(QWidget):
             all_selectable_positive,
             key=lambda tile: (-tile.turnover_twd, tile.chain_name, tile.theme_name),
         )[:self._MAX_TURNOVER_AREA_TILES])
+        chain_labels = self._duplicate_theme_chain_labels(selectable_positive)
         selectable_zero = tuple(
             tile for tile in zero
             if (tile.chain_name, tile.theme_name) in filter_keys
@@ -2398,8 +2404,13 @@ class IndustryThemeMapView(QWidget):
         self.turnover_treemap_canvas.setMinimumHeight(420 if len(selectable_positive) > 10 else 220)
         for tile in selectable_positive:
             display = self._turnover_area_label(tile.turnover_twd)
+            chain_label = chain_labels.get((tile.chain_name, tile.theme_name))
+            visible_name = (
+                f"{tile.theme_name}\n{chain_label} · {display}"
+                if chain_label else f"{tile.theme_name}\n{display}"
+            )
             button = QPushButton(
-                f"{tile.theme_name}\n{display}",
+                visible_name,
                 self.turnover_treemap_canvas,
             )
             button.setObjectName("industryThemeTurnoverTreemapTile")
@@ -2449,6 +2460,32 @@ class IndustryThemeMapView(QWidget):
         self._arrange_turnover_treemap_buttons()
         self._sync_turnover_treemap_selection()
         self._update_turnover_treemap_controls()
+
+    @staticmethod
+    def _duplicate_theme_chain_labels(
+        tiles: tuple[ThemeReturnTile, ...] | tuple[ThemeTurnoverTile, ...],
+    ) -> dict[tuple[str, str], str]:
+        """只為畫面中跨鏈同名題材產生最短可區分的鏈名標籤。"""
+        chains_by_theme: dict[str, set[str]] = {}
+        for tile in tiles:
+            chains_by_theme.setdefault(tile.theme_name, set()).add(tile.chain_name)
+
+        labels: dict[tuple[str, str], str] = {}
+        for tile in tiles:
+            chains = chains_by_theme[tile.theme_name]
+            if len(chains) < 2:
+                continue
+            for length in range(1, len(tile.chain_name) + 1):
+                candidate = tile.chain_name[:length]
+                if all(
+                    candidate != other[:min(length, len(other))]
+                    for other in chains if other != tile.chain_name
+                ):
+                    labels[(tile.chain_name, tile.theme_name)] = candidate
+                    break
+            else:
+                labels[(tile.chain_name, tile.theme_name)] = tile.chain_name
+        return labels
 
     @staticmethod
     def _turnover_area_label(value: Decimal) -> str:

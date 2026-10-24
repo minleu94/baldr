@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from app_module.theme_daily_service import ThemeDailyRow
 from app_module.theme_research_presentation import (
     ThemeResearchPresentation,
+    ThemeReturnVersionObservation,
     ThemeTurnoverTile,
     ThemeReturnTwoVersionPresentation,
     build_theme_return_two_version_presentation,
@@ -328,7 +329,36 @@ class IndustryThemeMapView(QWidget):
         comparison_layout.addLayout(choice_row)
         comparison_columns = QHBoxLayout()
         self.comparison_version_labels: list[QLabel] = []
+        self.comparison_coverage_bars: list[QProgressBar] = []
+        self.comparison_coverage_status_labels: list[QLabel] = []
         for index in range(2):
+            column = QWidget(self.comparison_group)
+            column_layout = QVBoxLayout(column)
+            column_layout.setContentsMargins(0, 0, 0, 0)
+            column_layout.setSpacing(4)
+            coverage_bar = QProgressBar(column)
+            coverage_bar.setObjectName(f"industryThemeComparisonCoverage{index + 1}")
+            coverage_bar.setAccessibleName(f"雙版本第{index + 1}版報酬資料覆蓋")
+            coverage_bar.setAccessibleDescription("尚未選擇題材")
+            coverage_bar.setTextVisible(True)
+            coverage_bar.setFixedHeight(18)
+            coverage_bar.setVisible(False)
+            coverage_bar.setStyleSheet(
+                f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"background-color: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_primary}; "
+                "text-align: center; padding: 0px; } "
+                f"QProgressBar::chunk {{ background-color: {MIDNIGHT_ANALYST.accent}; }}"
+            )
+            coverage_status = QLabel("")
+            coverage_status.setObjectName(f"industryThemeComparisonCoverageStatus{index + 1}")
+            coverage_status.setAccessibleName(f"雙版本第{index + 1}版報酬資料覆蓋狀態")
+            coverage_status.setTextFormat(Qt.TextFormat.PlainText)
+            coverage_status.setFixedHeight(18)
+            coverage_status.setVisible(False)
+            self.comparison_coverage_bars.append(coverage_bar)
+            self.comparison_coverage_status_labels.append(coverage_status)
+            column_layout.addWidget(coverage_bar)
+            column_layout.addWidget(coverage_status)
             label = QLabel("尚未讀取版本。")
             label.setObjectName(f"industryThemeComparisonVersion{index + 1}")
             label.setAccessibleName(f"雙版本第{index + 1}版原值與來源脈絡")
@@ -336,13 +366,14 @@ class IndustryThemeMapView(QWidget):
             label.setTextFormat(Qt.TextFormat.PlainText)
             label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
             label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            label.setMinimumHeight(260)
+            label.setMinimumHeight(238)
             label.setStyleSheet(
                 f"background-color: {MIDNIGHT_ANALYST.surface_2}; "
                 f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 8px;"
             )
             self.comparison_version_labels.append(label)
-            comparison_columns.addWidget(label, 1)
+            column_layout.addWidget(label, 1)
+            comparison_columns.addWidget(column, 1)
         comparison_layout.addLayout(comparison_columns)
         content_layout.addWidget(self.comparison_group)
 
@@ -929,6 +960,7 @@ class IndustryThemeMapView(QWidget):
         if clear_paths:
             self._comparison_paths = None
         self.comparison_status.setText("尚未明選雙版本。")
+        self._clear_comparison_coverage()
         for label in self.comparison_version_labels:
             label.setText("尚未讀取版本。")
         blockers = [
@@ -989,6 +1021,7 @@ class IndustryThemeMapView(QWidget):
         self._comparison_result = None
         self._comparison_error = ""
         self.comparison_status.setText("正在分別驗讀明選的兩個 manifest…")
+        self._clear_comparison_coverage()
         for label in self.comparison_version_labels:
             label.setText("版本讀取中。")
         worker = TaskWorker(_read_theme_comparison_pair, *paths)
@@ -1124,6 +1157,7 @@ class IndustryThemeMapView(QWidget):
         chain = self.comparison_chain_filter.currentData()
         theme = self.comparison_theme_filter.currentData()
         if snapshots is None or type(chain) is not str or type(theme) is not str:
+            self._clear_comparison_coverage()
             for label in self.comparison_version_labels:
                 label.setText("讀取完成後請選擇鏈與題材。")
             return
@@ -1134,11 +1168,13 @@ class IndustryThemeMapView(QWidget):
         except Exception as exc:
             self._comparison_presentation = None
             self.comparison_status.setText(f"此題材無法呈現：{exc}")
+            self._clear_comparison_coverage()
             for label in self.comparison_version_labels:
                 label.setText("未知；此題材無法呈現。")
             return
         self._comparison_presentation = presentation
         for index, observation in enumerate(presentation.observations):
+            self._render_comparison_coverage(index, observation)
             value = self._comparison_display_value(observation.mean_return_pct)
             coverage = (f"{observation.returns_coverage} / {observation.member_count} 位成員"
                         if observation.returns_coverage is not None else "未知")
@@ -1167,6 +1203,51 @@ class IndustryThemeMapView(QWidget):
         self.comparison_status.setText(
             "原值並列完成。兩版本成員集合可不同；未計算差額、變化率、排名或跨期績效。"
         )
+
+    def _clear_comparison_coverage(self) -> None:
+        """清除沒有有效題材選取時的覆蓋圖形與狀態。"""
+        for bar, status in zip(
+            self.comparison_coverage_bars, self.comparison_coverage_status_labels,
+        ):
+            bar.setVisible(False)
+            bar.setRange(0, 1)
+            bar.setValue(0)
+            bar.setFormat("")
+            bar.setAccessibleDescription("尚未選擇題材")
+            status.clear()
+            status.setAccessibleDescription("")
+            status.setVisible(False)
+
+    def _render_comparison_coverage(
+        self, index: int, observation: ThemeReturnVersionObservation,
+    ) -> None:
+        """只用同版報酬覆蓋計數呈現中性比例，不推定缺值為零。"""
+        bar = self.comparison_coverage_bars[index]
+        status = self.comparison_coverage_status_labels[index]
+        bar.setVisible(False)
+        bar.setRange(0, 1)
+        bar.setValue(0)
+        bar.setFormat("")
+        bar.setAccessibleDescription("報酬覆蓋未知")
+        status.setVisible(False)
+        row_present = observation.row_present
+        available = observation.returns_coverage
+        members = observation.member_count
+        if row_present is True and type(available) is int and type(members) is int and members > 0:
+            exact = f"報酬覆蓋 {available} / {members} 位成員"
+            bar.setRange(0, members)
+            bar.setValue(available)
+            bar.setFormat(exact)
+            bar.setAccessibleDescription(exact)
+            bar.setVisible(True)
+            return
+        if row_present is True and type(members) is int and members == 0:
+            message = "報酬覆蓋：不適用（0 位成員；比例未知）"
+        else:
+            message = "報酬覆蓋：未知（無報表列或覆蓋不可用）"
+        status.setText(message)
+        status.setAccessibleDescription(message)
+        status.setVisible(True)
 
     @staticmethod
     def _comparison_display_value(value: Decimal | None) -> str:

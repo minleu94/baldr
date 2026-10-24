@@ -1286,6 +1286,7 @@ def test_two_version_comparison_reads_explicit_files_and_shows_zero_missing_and_
     view = IndustryThemeMapView()
     view.set_snapshot(_snapshot("f" * 64))
     assert view.comparison_group.isHidden()
+    assert all(bar.isHidden() for bar in view.comparison_coverage_bars)
     view.comparison_toggle.click()
     assert not view.comparison_group.isHidden()
     first = _snapshot_with_zero_and_negative_values()
@@ -1324,9 +1325,16 @@ def test_two_version_comparison_reads_explicit_files_and_shows_zero_missing_and_
     assert "映射版本／可得日：2026-10-15／2026-10-15" in view.comparison_version_labels[0].text()
     assert "manifest SHA-256：" + "c" * 64 in view.comparison_version_labels[0].text()
     assert "題材列來源 ID：local-test-source" in view.comparison_version_labels[0].text()
+    assert not view.comparison_coverage_bars[0].isHidden()
+    assert (view.comparison_coverage_bars[0].value(),
+            view.comparison_coverage_bars[0].maximum()) == (1, 1)
+    assert view.comparison_coverage_bars[0].format() == "報酬覆蓋 1 / 1 位成員"
+    assert view.comparison_coverage_bars[0].accessibleDescription() == "報酬覆蓋 1 / 1 位成員"
     assert "平均日漲跌幅（%）：未知" in view.comparison_version_labels[1].text()
     assert "報表列：無（覆蓋未知）" in view.comparison_version_labels[1].text()
     assert "報酬覆蓋：未知" in view.comparison_version_labels[1].text()
+    assert view.comparison_coverage_bars[1].isHidden()
+    assert view.comparison_coverage_status_labels[1].text() == "報酬覆蓋：未知（無報表列或覆蓋不可用）"
 
     cancelled = iter(((str(paths[0]), ""), ("", "")))
     monkeypatch.setattr(
@@ -1337,6 +1345,8 @@ def test_two_version_comparison_reads_explicit_files_and_shows_zero_missing_and_
     assert view._comparison_paths is None
     assert "已取消雙版本明選；比較已清除" in view.comparison_status.text()
     assert view.comparison_version_labels[0].text() == "尚未讀取版本。"
+    assert all(bar.isHidden() and bar.format() == "" for bar in view.comparison_coverage_bars)
+    assert all(status.isHidden() for status in view.comparison_coverage_status_labels)
 
     snapshots[paths[0]] = partial
     snapshots[paths[1]] = _snapshot("b" * 64)
@@ -1352,8 +1362,43 @@ def test_two_version_comparison_reads_explicit_files_and_shows_zero_missing_and_
     for label in view.comparison_version_labels:
         assert "平均日漲跌幅（%）：未知" in label.text()
         assert "報酬覆蓋：1 / 2 位成員" in label.text()
+    assert all((bar.value(), bar.maximum()) == (1, 2) for bar in view.comparison_coverage_bars)
     view.shutdown()
     view.close()
+
+
+@pytest.mark.parametrize(
+    ("observation", "expected_bar", "expected_value", "expected_maximum", "expected_status"),
+    (
+        (SimpleNamespace(row_present=True, returns_coverage=3, member_count=3), True, 3, 3, ""),
+        (SimpleNamespace(row_present=True, returns_coverage=1, member_count=3), True, 1, 3, ""),
+        (SimpleNamespace(row_present=True, returns_coverage=0, member_count=3), True, 0, 3, ""),
+        (SimpleNamespace(row_present=False, returns_coverage=None, member_count=3), False, 0, 1,
+         "報酬覆蓋：未知（無報表列或覆蓋不可用）"),
+        (SimpleNamespace(row_present=True, returns_coverage=0, member_count=0), False, 0, 1,
+         "報酬覆蓋：不適用（0 位成員；比例未知）"),
+    ),
+)
+def test_two_version_coverage_bar_preserves_zero_partial_and_unknown_states(
+    observation, expected_bar, expected_value, expected_maximum, expected_status,
+):
+    view = IndustryThemeMapView()
+    view._render_comparison_coverage(0, observation)
+    bar = view.comparison_coverage_bars[0]
+    status = view.comparison_coverage_status_labels[0]
+    assert (not bar.isHidden()) is expected_bar
+    assert (bar.value(), bar.maximum()) == (expected_value, expected_maximum)
+    assert status.text() == expected_status
+    assert (not status.isHidden()) is (not expected_bar)
+    if expected_bar:
+        assert bar.format() == f"報酬覆蓋 {expected_value} / {expected_maximum} 位成員"
+        assert bar.accessibleDescription() == bar.format()
+    else:
+        assert bar.format() == ""
+    view._clear_comparison_coverage()
+    assert bar.isHidden()
+    assert bar.format() == ""
+    assert status.isHidden()
 
 
 @pytest.mark.parametrize("width", (900, 1280))

@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M147 後繼原始碼在題材「雙版本題材原值比較」各版欄位加入中性藍色報酬資料覆蓋條，直接顯示該版原 DTO 的 `N / M 位成員`；真 0／M、部分覆蓋、無報表列的未知及 0 位成員的不適用各自分開。切換、取消、失敗或主版本失效會清舊圖。Sol 核對 focused 58、Workbench 85、validator 25／0／4、mypy 1,144；隔離合成正常 Main 在真 OS DPI216 的 1280×760／1500×900 四圖可讀，無 Qt callback exception。藍色只表資料覆蓋，不表報酬強弱或跨期差額；正式來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 仍未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m147-雙版本題材報酬資料覆蓋條)。
+
 M145／M146 後繼原始碼修復 M143／M144 原生 QA 發現的 Portfolio 關窗晚到回呼：已保存 Position Health panel 的 worker 事件 relay 不隨 panel QObject 提早銷毀，Portfolio 刷新 worker 在 shutdown 後釋放但不再觸碰已刪按鈕。Sol 核對 focused 101、Workbench 85、validator 25／0／4、mypy 1,144；隔離正常 Main 在真 OS DPI216 的 1280×760／1500×900 觸發刷新與已保存評估讀取後關閉，兩次無 Qt callback exception、Job 無殘留。這只解決已重現的關窗路徑；正式／私人資料、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 仍未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m145m146-portfolio-關窗晚到回呼)。
 
 M143／M144 後繼原始碼收合系統管理兩個指向同一 Runtime 頁的入口為「系統狀態與診斷」，資料與更新、儲存維護仍各有入口；舊 `diagnostics` 程式呼叫會導向同一可見路由。Paper 模擬帳提示改為純文字，明示不會下單及與手動／實盤結果隔離，避免既有字型把實驗圖示顯成缺字。Sol 核對 115 個相關測試、Workbench 85、validator 25／0／4、mypy 1,144，並目視隔離正常 Main 1280×760／1500×900、真 OS DPI216。關窗時既有 Portfolio 背景 worker 曾輸出已刪除 widget 回呼例外，列為未解收尾風險；正式來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m143m144-系統入口與-paper-提示)。

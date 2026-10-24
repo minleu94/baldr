@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M146；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M147；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M146 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M147 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -430,3 +430,9 @@ M143／M144 的隔離 Main 關窗曾在 stderr 出現 `PositionHealthSavedPanel`
 最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_6ea671fabc944b048f11c63ce6bbe876/receipt.json` exit 0：受改 Python compile、focused **101 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；Job 8 GiB／12 程序上限、無殘留或強制清理。隔離正常 Windows Main 1280×760／1500×900、真 OS DPI216，在 Paper 分區主動觸發 Portfolio 刷新與已保存健康評估候選讀取，再各關窗及排空 deferred delete；`sys.excepthook` 收到 **0** 個 callback exception，兩次關窗成功、Job 無殘留。PNG、JSON `output/tasks/baldr-opus-ux-implementation/root/native_m145_m146_evidence/run_b73b5ebaec1749268d6886555e2e7e29/result.json`；Job `.../single_owned_qa_b664caf401e64aae93505c3cd485ed12/receipt.json` exit 0。這修正已重現的限定關閉路徑，不代表正式／私人帳、其他 DPI／Light、固定新版 EXE、Owner UAT 或完整產品 Gate 通過。
 
 Manual coverage：關窗操作入口、參數、取消語義與既有使用者可見提示均未改，本輪僅處理內部 Qt QObject lifetime；`APPLICATION_MANUAL.md` 不需再新增操作步驟。M143／M144 原失敗與警告收據保留作修復前證據，不改寫成當時通過。
+
+## M147 雙版本題材報酬資料覆蓋條
+
+Luna `/root/m147_theme_gap_audit` 唯一寫入 `ui_qt/views/industry_theme_map_view.py` 與 `tests/test_ui_qt_industry_theme_map_view.py`。Sol 先核對 `ThemeReturnVersionObservation` 的 `row_present`、`returns_coverage`、`member_count` 契約，再審查並修正未知狀態的 bar 範圍、格式及輔助描述清理。每版只以自身原覆蓋整數作中性藍條；`0 / M`、部分／完整覆蓋、無報表列未知及零成員不適用分開。取消、換版、載入與錯誤清舊；原平均報酬、日期、映射、來源 ID 與 manifest SHA 保留。沒有重算金融值、跨版相減、授 PIT 或改來源資格。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_712314439a1445a7b2eeaa3b1b26901b/receipt.json` exit 0：受改 Python compile0、相關 focused **58 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留。隔離正常 Windows Main 以合成比較 snapshot 注入 reader 邊界，在真 OS DPI216 的 1280×760／1500×900 驗 `0 / M`、缺報表列及 `1 / 2` 部分覆蓋，共四張 PNG；取消／失效清舊與 `sys.excepthook` callback exception 0，見 `output/tasks/baldr-opus-ux-implementation/root/native_m147_evidence/run_d7c5c206c44249fbb27accc59fb8bef5/result.json`，Job `.../root/single_owned_qa_3862769690034a13b3c112aa3768578e/receipt.json` exit 0。Sol 目視兩欄精確數值與來源文字可讀。此 native 測試沒有走正式 reader 或正式來源；真 OS 100%／125%、Light、1920 可用工作區、固定新版 EXE、Owner UAT、M73／M75 與完整產品 Gate 未接受。

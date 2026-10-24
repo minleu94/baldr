@@ -493,6 +493,51 @@ class DecisionDeskView(QWidget):
         self.industry_strength_chart_layout.setSpacing(2)
         self.industry_strength_chart_scroll.setWidget(self.industry_strength_chart_content)
         self.industry_strength_panel.layout.addWidget(self.industry_strength_chart_scroll)
+        self.industry_strength_selected_context = QFrame()
+        self.industry_strength_selected_context.setObjectName(
+            "decisionDeskIndustryStrengthSelectedContext"
+        )
+        self.industry_strength_selected_context.setStyleSheet(
+            f"QFrame#decisionDeskIndustryStrengthSelectedContext {{ border: 1px solid {MIDNIGHT_ANALYST.border}; }}"
+        )
+        context_layout = QVBoxLayout(self.industry_strength_selected_context)
+        context_layout.setContentsMargins(8, 5, 8, 5)
+        context_layout.setSpacing(3)
+        self.industry_strength_selected_title = QLabel("")
+        self.industry_strength_selected_title.setObjectName(
+            "decisionDeskIndustryStrengthSelectedTitle"
+        )
+        self.industry_strength_selected_title.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 9pt; font-weight: 600;"
+        )
+        context_layout.addWidget(self.industry_strength_selected_title)
+        self.industry_strength_selected_period_rows = {}
+        for period in ("5d", "20d"):
+            row_widget = QWidget(self.industry_strength_selected_context)
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(4)
+            period_label = QLabel("5 日" if period == "5d" else "20 日")
+            period_label.setObjectName(f"decisionDeskIndustryStrength{period}Label")
+            period_label.setFixedWidth(42)
+            row_layout.addWidget(period_label)
+            value_labels = []
+            for suffix in ("industry", "market", "excess"):
+                value_label = QLabel("")
+                value_label.setObjectName(
+                    f"decisionDeskIndustryStrength{period}{suffix.title()}Value"
+                )
+                value_label.setMinimumHeight(24)
+                value_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                value_label.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.text_secondary}; "
+                    f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 2px 5px;"
+                )
+                row_layout.addWidget(value_label, 1)
+                value_labels.append(value_label)
+            context_layout.addWidget(row_widget)
+            self.industry_strength_selected_period_rows[period] = tuple(value_labels)
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_selected_context)
         self.industry_strength_representatives = QWidget()
         self.industry_strength_representatives_layout = QHBoxLayout(
             self.industry_strength_representatives
@@ -1474,6 +1519,9 @@ class DecisionDeskView(QWidget):
         self.industry_strength_group_selector.blockSignals(False)
         self._clear_layout_widgets(self.industry_strength_chart_layout)
         self._clear_layout_widgets(self.industry_strength_representatives_layout)
+        self._clear_industry_strength_selected_context()
+        self.industry_strength_selected_context.setAccessibleDescription(message)
+        self.industry_strength_selected_context.hide()
         self.industry_strength_leading_button.setText("定位來源領先")
         self.industry_strength_trailing_button.setText("定位來源落後")
         self.industry_strength_leading_button.setEnabled(False)
@@ -1730,6 +1778,8 @@ class DecisionDeskView(QWidget):
         self._clear_layout_widgets(self.industry_strength_representatives_layout)
         self._industry_strength_row_buttons = []
         self._industry_strength_row_widgets = {}
+        self._clear_industry_strength_selected_context()
+        self.industry_strength_selected_context.hide()
         selected_group = self.industry_strength_group_selector.currentData()
         if not selected_group or not self._industry_strength_rows:
             return
@@ -1739,8 +1789,11 @@ class DecisionDeskView(QWidget):
         )
         if not rows:
             return
-        if all(row.excess_5d_bp is None and row.excess_20d_bp is None for row in rows):
+        selected_exists = any(row.industry_name == self._industry_strength_selected_name for row in rows)
+        if not selected_exists:
             self._industry_strength_selected_name = rows[0].industry_name
+        self._update_industry_strength_selected_context(rows)
+        if all(row.excess_5d_bp is None and row.excess_20d_bp is None for row in rows):
             self.industry_strength_empty_state.setText(
                 "此群組 5 日與 20 日超額值皆為 Unknown（無可比數值）；來源、資料日與品質資訊仍見上方摘要。"
             )
@@ -1767,9 +1820,6 @@ class DecisionDeskView(QWidget):
         header.setWordWrap(True)
         header.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
         self.industry_strength_chart_layout.addWidget(header)
-        selected_exists = any(row.industry_name == self._industry_strength_selected_name for row in rows)
-        if not selected_exists:
-            self._industry_strength_selected_name = rows[0].industry_name
         for row in rows:
             row_widget = QWidget()
             row_layout = QVBoxLayout(row_widget)
@@ -1878,7 +1928,69 @@ class DecisionDeskView(QWidget):
             if selected_group
             and (str(row.industry_level or "Unknown"), str(row.market_scope or "Unknown")) == tuple(selected_group)
         )
+        self._update_industry_strength_selected_context(rows)
         self._update_industry_strength_representatives(rows)
+
+    def _update_industry_strength_selected_context(self, rows) -> None:
+        selected = next(
+            (row for row in rows if row.industry_name == self._industry_strength_selected_name),
+            None,
+        )
+        if selected is None:
+            self._clear_industry_strength_selected_context()
+            self.industry_strength_selected_context.hide()
+            return
+
+        benchmark = (
+            getattr(self._industry_strength_summary, "benchmark_name", None) or "Unknown"
+        )
+
+        def format_bp(value) -> str:
+            if value is None:
+                return "Unknown"
+            return "0 bp" if value == 0 else f"{value:+,} bp"
+
+        periods = (
+            ("5d", selected.return_5d_bp, selected.market_return_5d_bp, selected.excess_5d_bp),
+            ("20d", selected.return_20d_bp, selected.market_return_20d_bp, selected.excess_20d_bp),
+        )
+        self.industry_strength_selected_title.setText(
+            f"選中產業報酬背景｜{selected.industry_name}"
+        )
+        for period, industry, market, excess in periods:
+            value_labels = self.industry_strength_selected_period_rows[period]
+            value_labels[0].setText(f"產業指數 {format_bp(industry)}")
+            value_labels[1].setText(f"{benchmark} {format_bp(market)}")
+            value_labels[2].setText(f"來源超額 {format_bp(excess)}")
+        summary = self._industry_strength_summary
+        detail = (
+            f"{selected.industry_name} 的原始同列報酬欄位；各數值以 bp 顯示，Unknown 表示缺值，"
+            "不代表 0。產業指數與基準的正負是各自期間報酬；來源超額的正負是相對基準表現，"
+            "直接讀取 DTO，不於 UI 重算；不代表個股漲跌或收益資格。"
+            f"資料日 {getattr(summary, 'as_of_date', None) or 'Unknown'}；"
+            f"品質 {self._quality_label(summary.quality) if summary is not None else 'Unknown'}；"
+            f"來源 {getattr(summary, 'source_id', None) or 'Unknown'}／"
+            f"{getattr(summary, 'source_version', None) or 'Unknown'}；"
+            f"映射 {getattr(summary, 'mapping_source_id', None) or 'Unknown'}／"
+            f"{getattr(summary, 'mapping_version', None) or 'Unknown'}，"
+            f"觀測日 {getattr(summary, 'mapping_observed_date', None) or 'Unknown'}；"
+            f"current research only（僅供當期研究，非歷史 PIT）。"
+        )
+        self.industry_strength_selected_context.setAccessibleName(
+            f"{selected.industry_name} 選中產業報酬背景"
+        )
+        self.industry_strength_selected_context.setAccessibleDescription(detail)
+        self.industry_strength_selected_context.setToolTip(detail)
+        self.industry_strength_selected_context.show()
+
+    def _clear_industry_strength_selected_context(self) -> None:
+        self.industry_strength_selected_title.clear()
+        for value_labels in self.industry_strength_selected_period_rows.values():
+            for label in value_labels:
+                label.clear()
+        self.industry_strength_selected_context.setAccessibleName("")
+        self.industry_strength_selected_context.setAccessibleDescription("")
+        self.industry_strength_selected_context.setToolTip("")
 
     def _update_industry_strength_representatives(self, rows) -> None:
         self._clear_layout_widgets(self.industry_strength_representatives_layout)

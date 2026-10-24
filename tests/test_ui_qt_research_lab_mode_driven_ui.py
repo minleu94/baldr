@@ -13,6 +13,7 @@ import pytest
 
 from ui_qt.views.backtest_view import BacktestView, RESEARCH_LAB_MODES
 from app_module.backtest_analyst_diagnostics import AnalystDiagnosticsDTO
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 def app():
@@ -307,6 +308,25 @@ def test_analyst_diagnostics_widget_has_numeric_tables_and_theme_boundary(qt_app
     assert widget.benchmark_table.horizontalHeaderItem(2).text() == "比較基準"
     assert widget.status_label.accessibleName() == "分析診斷狀態"
     assert "#" in widget.status_label.styleSheet()
+
+
+def test_analyst_diagnostics_status_style_refreshes_from_available_to_unknown(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+
+    widget.set_diagnostics(AnalystDiagnosticsDTO(status="available", reason=None))
+
+    available_style = widget.status_label.styleSheet()
+    assert widget.status_label.text().startswith("分析診斷：可用")
+    assert MIDNIGHT_ANALYST.status_success in available_style
+    assert MIDNIGHT_ANALYST.success not in available_style
+
+    widget.set_diagnostics(AnalystDiagnosticsDTO.unknown("診斷欄位缺少"))
+
+    unknown_style = widget.status_label.styleSheet()
+    assert widget.status_label.text().startswith("分析診斷：未知。診斷欄位缺少")
+    assert MIDNIGHT_ANALYST.warning in unknown_style
+    assert MIDNIGHT_ANALYST.status_success not in unknown_style
 
 
 def test_analyst_sharpe_values_are_rounded_for_reading_with_exact_accessible_source(qt_app):

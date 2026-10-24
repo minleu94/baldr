@@ -246,7 +246,7 @@ class AnalystDiagnosticsWidget(QWidget):
             self.status_label.setText("分析診斷：可用。所有成本、rolling 與 benchmark 欄位都標示其資料來源與觀測數。")
             self.status_label.setStyleSheet(
                 f"padding: 7px; color: {MIDNIGHT_ANALYST.text_primary}; background: {MIDNIGHT_ANALYST.surface_2}; "
-                f"border-left: 4px solid {MIDNIGHT_ANALYST.success};"
+                f"border-left: 4px solid {MIDNIGHT_ANALYST.status_success};"
             )
         else:
             self.status_label.setText(f"分析診斷：未知。{dto.reason or '缺少必要欄位，沒有估算。'}")

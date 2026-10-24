@@ -1,5 +1,7 @@
 ﻿# UI 功能文件（Qt）
 
+M167–M169：Decision Desk 可比產業圖的選中列新增 5／20 日兩列原值對照，產業指數、摘要所列 TAIEX 基準與來源超額各佔一欄，bp 正負、0 與 Unknown 分明；原超額條、群組和代表股下鑽保持，來源／資料日／品質與 current research only 留在摘要及卡片可存取描述。Runtime 已保存營運狀態分布追加同次 DTO 的本頁讀取時間，來源未確認、空態與原分布不變；Backtest 分析診斷可用狀態改獨立 teal，原月報酬紅正綠負不變。這三項只改呈現層，不重算金融值、推斷自然排程或改來源資格。限定測試與原生畫面見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m167m169-產業報酬背景營運讀取時間與回測狀態色)。
+
 M166「資料與更新」的狀態卡沿原始狀態文字顯示獨立作業狀態色：最新 teal、錯誤／阻擋 orchid、進行中資訊藍、部分／降級／需處理 amber、未檢查／未設定中性；研究候選保留紫色。磁碟預檢阻擋仍寫「需處理」，但以錯誤色標示阻擋；P0 來源治理表的來源阻擋及審核不可用也用錯誤色。原日期、缺件、來源碼和資格維持，狀態色不是行情方向。真 DPI216 的兩尺寸前後及 Main 畫面、測試收據見[限定 QA](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m166-資料更新狀態色與原生對照)。
 
 M163–M165 將 M162 狀態軸接到 Runtime 治理健康／重大違規、Workbench 徽章與表格、Research Console 狀態列。`observed`、`verified` 及 Workbench 的研究候選／`active_model` 用資訊藍，`accepted`／`ready`／`done` 用 teal，降級／待處理用 amber，缺件／阻擋／目前重大違規用 orchid，未知／停用為中性；Research Console 的候選仍用原紫色，fixture／replay 保留原灰色。Runtime 從目前違規切到無違規、歷史或讀取錯誤會清掉錯誤色，歷史事件不表示目前有違規。原狀態碼、原注意列判斷、DTO／來源資格、台股 market_* 與金融計算不變；[限定 QA 與原生畫面](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m163m165-狀態語義遷移與原生複核)不等於正式產品 Gate。

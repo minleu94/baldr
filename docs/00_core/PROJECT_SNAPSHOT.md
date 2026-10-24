@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M167–M169 後繼 UI：Decision Desk「可比產業超額表現」選列後，在原 5／20 日超額條和代表股之間新增同列產業指數／TAIEX／來源超額 bp 三列對照卡；原值逐欄保留正負、真零與 Unknown，不在 Qt 重算，也不升格為個股或歷史 PIT 資格。Runtime 日常營運摘要另顯同份快照的本頁讀取時間，不暗示排程已執行；Backtest 分析診斷「可用」改獨立 teal 狀態色，月報酬方向色不變。Sol 退回 M167 單行擁擠初稿後核真 Windows DPI216 的 1280×760／1500×900 before/after 與正常 Main；final compile0、focused209、validator25／0／4、mypy1,144、callback0。正式來源、其他 DPI／Light／1920、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m167m169-產業報酬背景營運讀取時間與回測狀態色)。
+
 M166 後繼 UI：資料更新頁狀態卡把「最新／異常／執行中／部分完成／未檢查」等既有判斷接到獨立作業狀態色；來源治理表的 `blocked_provenance`／`audit_unavailable` 亦改用錯誤狀態色，避免與台股紅漲綠跌混淆。原狀態文字、日期、原碼、來源資格及金融資料不變；「最新」僅述既有資料狀態，不代表剛完成更新。Sol 複核 compile0、focused102、validator25／0／4、mypy1,144；真 Windows DPI216 的 1280×760／1500×900 同資料前後卡片及正常 Main 更新入口六圖、callback0。正式／私人來源、其他 DPI／Light／1920、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m166-資料更新狀態色與原生對照)。
 
 M163–M165 後繼 UI：Runtime「最近重大違規」在尚未讀取／無違規／歷史或事件不可讀時不再常駐紅色，只有目前可核的重大違規用獨立錯誤色；整體治理健康亦改用獨立狀態色。Workbench 徽章與表格、Research Console 狀態列沿 M162 token 分清已觀測、已接受、候選、降級、缺件及未知，保留原碼與研究身份，不改台股紅漲綠跌、資料／金融契約或注意列判斷。Sol 審查後修兩輪測試假設及 Runtime 原生畫面揭出的剩餘舊色；最終 compile0、focused102、Workbench85、validator25／0／4、mypy1,144，真 Windows DPI216 的 1280×760／1500×900 隔離合成元件 18 圖、callback0。正式／私人來源、正常 Main 全旅程、其他 DPI／Light／1920、固定 EXE、Owner UAT 與完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m163m165-狀態語義遷移與原生複核)。

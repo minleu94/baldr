@@ -6,6 +6,7 @@
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from dataclasses import replace
+from datetime import datetime
 from decimal import Decimal
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import (
@@ -756,7 +757,7 @@ class RuntimeView(QWidget):
             empty_item.setFlags(Qt.NoItemFlags)
             self.operations_list.addItem(empty_item)
 
-    def _render_scheduled_operations_distribution(self) -> None:
+    def _render_scheduled_operations_distribution(self, observed_at: datetime) -> None:
         """摘要單一已載入快照；未確認來源不計入任何已觀測狀態。"""
         self._clear_scheduled_operations_distribution_bar()
         labels = {
@@ -780,10 +781,14 @@ class RuntimeView(QWidget):
 
         parts = [f"{labels[key][0]} {counts[key]}" for key in labels]
         total_count = len(self._scheduled_operations)
+        if observed_at.tzinfo is not None and observed_at.utcoffset() is not None:
+            read_time = observed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            read_time = "未知（時間未含時區）"
         self.operations_distribution_label.setText(
             "本次已保存狀態快照（非排程器執行紀錄）："
             + "｜".join(parts)
-            + f"｜共 {total_count} 項"
+            + f"｜共 {total_count} 項｜本頁讀取時間：{read_time}"
         )
         if total_count == 0:
             self.operations_distribution_bar.hide()
@@ -943,7 +948,7 @@ class RuntimeView(QWidget):
         self._scheduled_operations_by_job_id = {
             operation.job_id: operation for operation in dto.operations
         }
-        self._render_scheduled_operations_distribution()
+        self._render_scheduled_operations_distribution(dto.observed_at)
         self._render_scheduled_operations()
         self.operations_raw_text.setPlainText("\n\n".join(
             f"{operation.label}\njob: {operation.job_id}\nraw_status: {operation.raw_status}\n"

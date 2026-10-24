@@ -527,6 +527,10 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
                 index_name="領先指數",
                 industry_level="leaf",
                 market_scope="twse",
+                return_5d_bp=150,
+                market_return_5d_bp=25,
+                return_20d_bp=300,
+                market_return_20d_bp=50,
                 excess_5d_bp=100,
                 excess_20d_bp=200,
                 coverage_5d_bp=10000,
@@ -544,6 +548,10 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
                 index_name="非領先指數",
                 industry_level="leaf",
                 market_scope="twse",
+                return_5d_bp=0,
+                market_return_5d_bp=None,
+                return_20d_bp=None,
+                market_return_20d_bp=0,
                 excess_5d_bp=0,
                 excess_20d_bp=None,
                 coverage_5d_bp=8000,
@@ -612,14 +620,36 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
         bar.property("scaleMaxAbsBp") == 200
         for bar in view.industry_strength_chart_content.findChildren(QFrame, "decisionDeskIndustryStrengthBar")
     )
+    selected_context = view.industry_strength_selected_context
+    context_title = selected_context.findChild(
+        QLabel, "decisionDeskIndustryStrengthSelectedTitle"
+    )
+    assert context_title is not None
+    assert context_title.text() == "選中產業報酬背景｜領先列"
+    five_day_values = list(view.industry_strength_selected_period_rows["5d"])
+    twenty_day_values = list(view.industry_strength_selected_period_rows["20d"])
+    assert [label.text() for label in five_day_values] == [
+        "產業指數 +150 bp", "TAIEX +25 bp", "來源超額 +100 bp"
+    ]
+    assert [label.text() for label in twenty_day_values] == [
+        "產業指數 +300 bp", "TAIEX +50 bp", "來源超額 +200 bp"
+    ]
+    assert all(label.minimumHeight() >= 24 for label in five_day_values + twenty_day_values)
+    assert "current research only" in selected_context.accessibleDescription()
+    assert "資料日 2026-06-13" in selected_context.accessibleDescription()
 
     selector.setCurrentIndex(1)
     assert tuple(selector.currentData()) == ("aggregate", "twse")
     assert selector.currentText() == "層級：整體層級｜市場範圍：上市（TWSE）"
     assert "industry_level=aggregate" in selector.accessibleDescription()
     assert [button.text() for button in view._industry_strength_row_buttons] == ["整體層級"]
+    assert context_title.text() == "選中產業報酬背景｜整體層級"
+    assert [label.text() for label in five_day_values] == [
+        "產業指數 Unknown", "TAIEX Unknown", "來源超額 +500 bp"
+    ]
     selector.setCurrentIndex(0)
     assert [button.text() for button in view._industry_strength_row_buttons] == ["領先列", "非領先列", "尾列"]
+    assert context_title.text() == "選中產業報酬背景｜領先列"
 
     old_representative_buttons = view.industry_strength_representatives.findChildren(QPushButton)
     assert [button.text() for button in old_representative_buttons] == ["0001 舊代表股"]
@@ -629,6 +659,13 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     chart_scrollbar.setValue(chart_scrollbar.maximum())
     scroll_position_before = chart_scrollbar.value()
     row_buttons_before[1].click()
+    assert context_title.text() == "選中產業報酬背景｜非領先列"
+    assert [label.text() for label in five_day_values] == [
+        "產業指數 0 bp", "TAIEX Unknown", "來源超額 0 bp"
+    ]
+    assert [label.text() for label in twenty_day_values] == [
+        "產業指數 Unknown", "TAIEX 0 bp", "來源超額 Unknown"
+    ]
     assert all(
         before is after
         for before, after in zip(row_buttons_before, view._industry_strength_row_buttons)
@@ -656,6 +693,9 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     assert not view.industry_strength_trailing_button.isEnabled()
     assert "沒有可用快照列" in view.industry_strength_navigation_status.text()
     assert view.industry_strength_empty_state.isHidden()
+    assert selected_context.isHidden()
+    assert context_title.text() == ""
+    assert all(not label.text() for label in five_day_values + twenty_day_values)
     view._display_exception_snapshot("snapshot unavailable")
     assert view._industry_strength_rows == ()
     assert "Unknown" in view.industry_strength_meta.text()

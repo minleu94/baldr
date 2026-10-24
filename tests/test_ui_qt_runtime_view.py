@@ -315,6 +315,8 @@ def test_runtime_operations_distribution_counts_only_observed_states_and_keeps_u
     summary = view.operations_distribution_label.text()
     assert "本次已保存狀態快照（非排程器執行紀錄）" in summary
     assert "正常 2｜安全邊界中 1｜需要注意 1｜無法判定 1｜來源未確認 1｜未知狀態 1" in summary
+    expected_read_time = dto.observed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    assert f"本頁讀取時間：{expected_read_time}" in summary
     segments = {
         widget.objectName().removeprefix("operationsDistributionSegment_"): widget
         for widget in view._operations_distribution_segment_widgets
@@ -385,23 +387,68 @@ def test_runtime_operations_distribution_replacement_and_empty_snapshot_clear_ol
         job_id="new_attention", label="新注意", raw_status="failed",
         state="attention", updated_at=None,
     )
+    replacement_observed_at = datetime(2026, 10, 24, 12, 30, tzinfo=timezone.utc)
     view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
         overall_state="attention", core_ready_count=0, core_job_count=1,
-        operations=(replacement,), observed_at=observed_at,
+        operations=(replacement,), observed_at=replacement_observed_at,
     ))
     assert all(widget.isHidden() and widget.parent() is None for widget in first_segments)
     assert len(view._operations_distribution_segment_widgets) == 1
     assert "正常 0｜安全邊界中 0｜需要注意 1｜無法判定 0｜來源未確認 0｜未知狀態 0" in view.operations_distribution_label.text()
+    replacement_read_time = replacement_observed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    assert f"本頁讀取時間：{replacement_read_time}" in view.operations_distribution_label.text()
 
+    empty_observed_at = datetime(2026, 10, 25, 12, 30, tzinfo=timezone.utc)
     view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
         overall_state="attention", core_ready_count=0, core_job_count=0,
-        operations=(), observed_at=observed_at,
+        operations=(), observed_at=empty_observed_at,
     ))
     empty_summary = view.operations_distribution_label.text()
     assert "正常 0｜安全邊界中 0｜需要注意 0｜無法判定 0｜來源未確認 0｜未知狀態 0" in empty_summary
     assert "共 0 項" in empty_summary
+    empty_read_time = empty_observed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    assert f"本頁讀取時間：{empty_read_time}" in empty_summary
     assert view._operations_distribution_segment_widgets == []
     assert view.operations_distribution_bar.isHidden()
+
+
+def test_runtime_unreadable_operations_snapshot_shows_read_time_without_claiming_normal() -> None:
+    app()
+    view = RuntimeView()
+    previous_observed_at = datetime(2026, 10, 25, 12, 30, tzinfo=timezone.utc)
+    previous_operation = ScheduledOperationStatusDTO(
+        job_id="previous", label="前次正常", raw_status="passed",
+        state="operational", updated_at=None,
+    )
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="operational", core_ready_count=1, core_job_count=1,
+        operations=(previous_operation,), observed_at=previous_observed_at,
+    ))
+
+    observed_at = datetime(2026, 10, 26, 12, 30, tzinfo=timezone.utc)
+    operation = ScheduledOperationStatusDTO(
+        job_id="unreadable", label="來源不可讀", raw_status="unreadable",
+        state="unavailable", updated_at=None, read_state="unreadable",
+    )
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=0, core_job_count=1,
+        operations=(operation,), observed_at=observed_at,
+    ))
+
+    summary = view.operations_distribution_label.text()
+    expected_read_time = observed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    assert "來源未確認 1" in summary
+    assert "正常 0" in summary
+    assert "正常 1" not in summary
+    assert f"本頁讀取時間：{expected_read_time}" in summary
+    assert "非排程器執行紀錄" in summary
+
+    timezone_less = datetime(2026, 10, 27, 12, 30)
+    view.on_scheduled_operations_updated(ScheduledOperationsSnapshotDTO(
+        overall_state="attention", core_ready_count=0, core_job_count=1,
+        operations=(operation,), observed_at=timezone_less,
+    ))
+    assert "本頁讀取時間：未知（時間未含時區）" in view.operations_distribution_label.text()
 
 
 def test_runtime_operations_state_filter_renders_all_normalized_states_and_preserves_dto():

@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M166；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M169；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M166 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M169 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -573,3 +573,13 @@ M1–M165 是審查、裁決、QA 與實作切片序號，並非 165 個獨立�
 首輪受控 QA `root/single_owned_qa_1cd4de8d1aee4db084cef048978bfd6f/receipt.json` exit1：focused 101 pass／1 fail，是舊測試仍斷言「未檢查」使用原灰色色碼；compile、validator、mypy 當輪已過。Sol 更新該斷言後，最終 `root/single_owned_qa_38947b152aa24845bd1864a90af7c182/receipt.json` exit0：compile0、更新頁與主題 focused **102 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** 檔 clean，Job 8 GiB／12 程序無殘留。新測試核卡片原文不變、阻擋／候選／未知及 P0 表格前景與總覽色。
 
 原生 before 使用前一提交 `d2f440f20c5f3e7b7f7f401b9e44797acc52e245` 的實際 StatusCard 類別；after 使用當前類別，同六組合成狀態與原文，在真 Windows DPI216 的 1280×760／1500×900 拍四張對照圖，另在隔離正常 Main「資料與更新」入口拍兩張。結果 `output/tasks/baldr-opus-ux-implementation/root/native_m166_update_evidence/run_5470bdc54cc84e999361be4e1ecc203a/result.json`，受控 Job `root/single_owned_qa_9e1a71811b62487799f3b6afd756abc5/receipt.json` exit0、callback0、關窗無 worker 殘留。Sol 目視卡片狀態文字與日期保留、狀態色可與行情方向區辨，Main 的卡片及側欄未裁切。這些限合成狀態與真 OS DPI216；正式／私人來源、100%／125%／150% 全旅程、Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 尚未接受。M1–M166 是審查、實作及 QA 切片序號，不是 166 個獨立功能。
+
+## M167–M169 產業報酬背景、營運讀取時間與回測狀態色
+
+三位 Luna 先分領域唯讀去重，再按不共檔範圍各任單一 writer。M167 /root/m160_market_audit 只改 Decision Desk View 與對應測試：原「可比產業超額表現」5／20 日相對條不變，選中產業新增同列三欄對照卡，逐期顯原產業指數報酬、同份摘要的 TAIEX 基準報酬與來源超額 bp。正數標 +，真零為 0 bp，缺欄獨立顯 Unknown；不由兩欄反推第三欄，也不在 Qt 重算超額。群組／選列切換與載入／錯誤清舊、代表股下鑽維持。摘要及卡片 tooltip／無障礙描述保留資料日、品質、來源／版本、映射與 current research only／非歷史 PIT。Sol 拒絕首版 16px 高單行長文，因原生圖難以判讀；Luna 改成有邊界的標題、5 日、20 日三列對照卡，Sol 再補正值 + 號及絕對報酬與相對超額正負語義。
+
+M168 /root/m160_workbench_advice 只改 Runtime View 與測試：已保存營運狀態分布加同一 ScheduledOperationsSnapshotDTO.observed_at 的「本頁讀取時間」，有時區才轉本地，無時區明示未知。這不是單列狀態時間、排程實際執行時間或資料更新時間；來源不可讀仍列來源未確認，空快照不冒充正常。Sol 靜態審查補要求 datetime 匯入，Luna 修後通過。M169 /root/m160_research_audit 只改 Backtest 分析診斷 Widget 與測試：available 左框由舊 success 綠改獨立 status_success teal；unknown 轉換清舊，原月報酬正紅負綠、DTO 與績效不變。
+
+Root 最終受控 8 GiB／12 程序 Job `root/single_owned_qa_4d69856dbe8849eebc8917b8887d10ab/receipt.json` exit0：受改 Python compile0、Decision Desk／Runtime／Research Lab／更新頁聚焦 **209 passed**、更新頁 validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，Job 無殘留。最初單行版本雖在 `root/single_owned_qa_a550cbac79f44e0ebec95a3e44ac1470/receipt.json` 通過同數測試，原生 1280 圖及高度斷言使 Sol 退件；失敗收據 `root/single_owned_qa_1f2244dc4e5041f19b20f0d9abadac1a/receipt.json`、`root/single_owned_qa_c329487fabc14198913bc178fbde51c1/receipt.json` 保留。修版一次原生重跑因 QA harness 在第二尺寸保留前次選中「航運」而誤預期「半導體」，收據 `root/single_owned_qa_427f1b9121334a4da632e1eddce81823/receipt.json`；明選同列後重跑通過，並非產品換尺寸錯列。
+
+M167 真 Windows OS DPI216 的 1280×760／1500×900 before／after 與正常 Main、真零／Unknown 選列九張圖：`root/native_m167_evidence/run_ffce9fd279c94d7fb16511a7876185b4/result.json`；Job `root/single_owned_qa_4386e20867204e3b8d47647ffa8dac8b/receipt.json` exit0、callback0。Sol 目視卡片三列、原超額條、代表股與正常 Main 在兩尺寸可讀。M168／M169 同兩尺寸 Runtime Group、正常 Main 與 Backtest 真 Widget 狀態框 before／after 共十二圖：`root/native_m168_m169_evidence/run_590b4976672648c39d79670aa53aa916/result.json`；Job `root/single_owned_qa_8896f0f66e0c4ff0b2f166f330cc7acf/receipt.json` exit0、callback0。上述限隔離合成 DTO 和此機真 DPI216；正式／私人來源、其他 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 尚未接受。M1–M169 是審查、裁決、QA 與實作切片序號，並非 169 個獨立功能。

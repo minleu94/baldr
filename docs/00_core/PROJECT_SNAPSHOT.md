@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M106 在「證據覆盤 → 資料缺口」加入已載入列的資料品質 2×2 分布條：已觀測、降級、缺失與其他代碼均顯示服務回報的精確筆數；未知新碼保留原文。成功空集合是真 0，來源診斷或計數不一致為未知；刷新、失敗時清舊卡與表。正常 Main 1280×760／1500×900、真 Windows DPI216（225%）隔離合成畫面與來源 DB SHA 不變已核，1280 首屏可見原表首列；聚焦 126、Workbench 85、validator 25／0／4、mypy 1,144 clean。這是資料狀態，不是投資績效或來源資格。限制與收據見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m106-研究落差資料品質分布)。正式資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 仍未驗。
+
 M105 修決策品質左篩選欄在窄窗的水平溢位：標籤於空間不足時換至欄位上方，九個控制項不再被內層視口裁右側；原垂直捲動與固定刷新維持。正常 Main 1280×760、1500×900、真 Windows DPI216（225%）隔離合成畫面及 DB SHA 不變已核；1920×1080 超出當前螢幕可用邏輯尺寸，未在本輪原生驗。聚焦／共同 QA 與限制見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m105-決策品質篩選欄水平溢位)。正式資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 仍未驗。
 
 M103–M104 補決策品質現行控制範圍提示與可捲左欄：股票只篩項目列，分數卡仍是所選覆盤範圍最新分數；最低分數比較該最新分數，未達時清空項目列但卡片維持原值。這只揭露既有行為，M73 正式契約仍待裁決。Stress 現明示使用 `PortfolioService` 交易／手動持倉 DTO（Main 預設 `portfolio_id=default`），Paper 分區僅是導覽位置；保存前再提示相同來源。正常 Main 1280×760、真 Windows DPI216（225%）隔離合成來源已目視且 DB SHA 不變；聚焦與共同 QA、未驗邊界見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m103m104-決策品質作用範圍與-stress-來源揭露)。固定新版 EXE、正式私人資料、Owner UAT 與完整 Gate 仍未驗。

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
     QLineEdit,
+    QProgressBar,
     QPushButton,
     QSplitter,
     QTableView,
@@ -123,6 +124,40 @@ class LiveResearchGapView(QWidget):
         self.empty_state_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning};")
         layout.addWidget(self.empty_state_label)
 
+        self.quality_summary_label = QLabel("資料品質分布尚未載入")
+        self.quality_summary_label.setWordWrap(True)
+        layout.addWidget(self.quality_summary_label)
+        self.quality_bars: dict[str, QProgressBar] = {}
+        self.quality_counts_labels: dict[str, QLabel] = {}
+        self.quality_layout = QGridLayout()
+        for index, (quality, title) in enumerate(
+            (("observed", "已觀測"), ("degraded", "降級"), ("missing", "缺失"), ("__other__", "其他品質代碼"))
+        ):
+            row = index // 2
+            column = (index % 2) * 3
+            self.quality_layout.addWidget(QLabel(title), row, column)
+            bar = QProgressBar()
+            bar.setTextVisible(False)
+            bar.setFixedHeight(14)
+            color = {
+                "observed": "#5B8DB8",
+                "degraded": "#D39B35",
+                "missing": "#7C8794",
+                "__other__": "#7D6DA7",
+            }[quality]
+            bar.setStyleSheet(
+                f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 3px; }}"
+                f"QProgressBar::chunk {{ background-color: {color}; border-radius: 2px; }}"
+            )
+            self.quality_bars[quality] = bar
+            self.quality_layout.addWidget(bar, row, column + 1)
+            count_label = QLabel("—")
+            self.quality_counts_labels[quality] = count_label
+            self.quality_layout.addWidget(count_label, row, column + 2)
+        self.quality_layout.setColumnStretch(1, 1)
+        self.quality_layout.setColumnStretch(4, 1)
+        layout.addLayout(self.quality_layout)
+
         self.table_model = LiveResearchGapTableModel()
         self.summary_table = QTableView()
         self.summary_table.setModel(self.table_model)
@@ -144,6 +179,13 @@ class LiveResearchGapView(QWidget):
         self._active_request_id += 1
         request_id = self._active_request_id
         self.refresh_button.setEnabled(False)
+        self._current_result = None
+        self.table_model.set_rows(())
+        self._clear_quality_distribution("資料品質分布載入中…")
+        for field_name, card in self.cards.items():
+            self._set_card(card, card.property("title"), "載入中")
+        self.empty_state_label.setText("研究落差證據載入中…")
+        self.detail_panel.setPlainText("研究落差明細載入中…")
         if self.async_refresh:
             worker = TaskWorker(self.dashboard_service.load_dashboard, request)
             worker.finished.connect(lambda result, rid=request_id: self._on_dashboard_loaded(result, rid))
@@ -176,7 +218,9 @@ class LiveResearchGapView(QWidget):
         self.refresh_button.setEnabled(True)
         self._current_result = result
         for field_name, card in self.cards.items():
-            self._set_card(card, card.property("title"), getattr(result.cards, field_name))
+            value = "未知" if result.diagnostics else getattr(result.cards, field_name)
+            self._set_card(card, card.property("title"), value)
+        self._render_quality_distribution(result)
         self.empty_state_label.setText(result.empty_state_message)
         self.table_model.set_rows(result.rows)
         self.summary_table.resizeColumnsToContents()
@@ -189,7 +233,11 @@ class LiveResearchGapView(QWidget):
         if request_id != self._active_request_id:
             return
         self.refresh_button.setEnabled(True)
+        self._current_result = None
         self.table_model.set_rows(())
+        for card in self.cards.values():
+            self._set_card(card, card.property("title"), "未知")
+        self._clear_quality_distribution("資料品質分布未知；證據來源載入失敗。")
         self.empty_state_label.setText(f"研究落差證據載入失敗：{message.splitlines()[0]}")
         self.detail_panel.setPlainText("")
 
@@ -214,6 +262,62 @@ class LiveResearchGapView(QWidget):
             )
         )
 
+    def _render_quality_distribution(self, result: LiveResearchGapDashboardResult) -> None:
+        counts = result.quality_counts
+        total = len(result.rows)
+        if result.diagnostics:
+            self._clear_quality_distribution("資料品質分布未知；來源回報診斷，不能視為空集合。")
+            return
+        if not isinstance(counts, dict) or (total > 0 and not counts):
+            self._clear_quality_distribution("資料品質分布未知；服務未提供完整品質計數。")
+            return
+        if result.cards.positions_seen != total or any(
+            not isinstance(code, str)
+            or not code.strip()
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 0
+            for code, count in counts.items()
+        ) or sum(counts.values()) != total:
+            self._clear_quality_distribution("資料品質分布未知；品質計數與已載入列數不一致。")
+            return
+
+        known = ("observed", "degraded", "missing")
+        other_codes = sorted(code for code in counts if code not in known)
+        displayed = {code: counts.get(code, 0) for code in known}
+        displayed["__other__"] = sum(counts[code] for code in other_codes)
+        for code, count in displayed.items():
+            bar = self.quality_bars[code]
+            bar.setRange(0, max(1, total))
+            bar.setValue(count)
+            self.quality_counts_labels[code].setText(str(count))
+        if total == 0:
+            self.quality_summary_label.setText(
+                "已載入 0 筆；目前沒有可呈現的品質分布。品質狀態不代表來源資格。"
+            )
+        else:
+            details = "；".join(f"{code} {counts[code]}" for code in other_codes)
+            suffix = f"；其他代碼：{details}" if details else ""
+            self.quality_summary_label.setText(
+                f"資料品質分布（服務回報計數；已載入 {total} 筆）{suffix}；"
+                "僅描述資料狀態，不代表投資績效或來源資格。"
+            )
+        self.quality_summary_label.setToolTip(
+            "品質分類只描述本次載入觀測的資料狀態，不代表投資績效或來源已取得資格。"
+            + ("其他代碼：" + ", ".join(f"{code}={counts[code]}" for code in other_codes) if other_codes else "")
+        )
+
+    def _clear_quality_distribution(self, message: str) -> None:
+        self.quality_summary_label.setText(message)
+        self.quality_summary_label.setToolTip(
+            "品質分類只描述本次載入觀測的資料狀態，不代表投資績效或來源已取得資格。"
+        )
+        for bar in self.quality_bars.values():
+            bar.setRange(0, 1)
+            bar.setValue(0)
+        for label in self.quality_counts_labels.values():
+            label.setText("—")
+
     def _make_card(self, title: str) -> QLabel:
         card = QLabel(f"{title}\n0")
         card.setProperty("title", title)
@@ -225,7 +329,7 @@ class LiveResearchGapView(QWidget):
         )
         return card
 
-    def _set_card(self, card: QLabel, title: str, value: int) -> None:
+    def _set_card(self, card: QLabel, title: str, value: int | str) -> None:
         card.setText(f"{title}\n{value}")
 
     def _release_worker(self, worker: TaskWorker) -> None:

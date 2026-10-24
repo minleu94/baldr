@@ -37,6 +37,7 @@ from app_module.live_research_gap_dashboard_dtos import (
     LiveResearchGapDashboardCards,
     LiveResearchGapDashboardRequest,
     LiveResearchGapDashboardResult,
+    LiveResearchGapDashboardRow,
 )
 from app_module.evidence_operations_history_dashboard_dtos import (
     EvidenceOperationsHistoryDashboardCards,
@@ -1015,6 +1016,114 @@ def test_dashboard_views_render_empty_states_and_ignore_stale_results() -> None:
     gap_view = LiveResearchGapView(gap_service, auto_refresh=False, async_refresh=False)
     gap_view.refresh_dashboard()
     assert "尚無 live research gap evidence" in gap_view.empty_state_label.text()
+
+
+def test_live_research_gap_quality_distribution_uses_only_service_counts() -> None:
+    app()
+    rows = (LiveResearchGapDashboardRow(),) * 5
+    result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(),
+        LiveResearchGapDashboardCards(positions_seen=5),
+        rows=rows,
+        quality_counts={"observed": 2, "degraded": 1, "missing": 1, "future_code": 1},
+    )
+    service = FakeDashboard(result)
+    view = LiveResearchGapView(service, auto_refresh=False, async_refresh=False)
+    view.resize(1280, 760)
+    for index, quality in enumerate(("observed", "degraded", "missing", "__other__")):
+        row, column, _, _ = view.quality_layout.getItemPosition(
+            view.quality_layout.indexOf(view.quality_bars[quality])
+        )
+        count_row, count_column, _, _ = view.quality_layout.getItemPosition(
+            view.quality_layout.indexOf(view.quality_counts_labels[quality])
+        )
+        assert (row, column) == (index // 2, (index % 2) * 3 + 1)
+        assert (count_row, count_column) == (row, column + 1)
+    view.refresh_dashboard()
+    assert "已載入 5 筆" in view.quality_summary_label.text()
+    assert "future_code 1" in view.quality_summary_label.text()
+    assert view.quality_counts_labels["observed"].text() == "2"
+    assert view.quality_counts_labels["degraded"].text() == "1"
+    assert view.quality_counts_labels["missing"].text() == "1"
+    assert view.quality_counts_labels["__other__"].text() == "1"
+    assert view.quality_bars["observed"].maximum() == 5
+    assert view.quality_bars["observed"].value() == 2
+
+    # 服務明確提供真零時照原值顯示，不把零改成未知。
+    zero_result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(),
+        LiveResearchGapDashboardCards(positions_seen=1),
+        rows=(LiveResearchGapDashboardRow(),),
+        quality_counts={"observed": 0, "degraded": 1, "missing": 0},
+    )
+    view._on_dashboard_loaded(zero_result, request_id=view._active_request_id)
+    assert view.quality_counts_labels["observed"].text() == "0"
+
+    # 空集合是成功讀取的 0 筆；診斷則代表來源狀態未知。
+    empty_result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(), LiveResearchGapDashboardCards(), quality_counts={}
+    )
+    view._on_dashboard_loaded(empty_result, request_id=view._active_request_id)
+    assert "已載入 0 筆" in view.quality_summary_label.text()
+    assert all(card.text().endswith("\n0") for card in view.cards.values())
+    unavailable = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(),
+        LiveResearchGapDashboardCards(),
+        empty_state_message="SQLite 證據來源不可用。",
+        limitations=("來源不可用，計數未知。",),
+        diagnostics=("sqlite_database_missing",),
+    )
+    view._on_dashboard_loaded(unavailable, request_id=view._active_request_id)
+    assert "未知" in view.quality_summary_label.text()
+    assert all(label.text() == "—" for label in view.quality_counts_labels.values())
+    assert all(card.text().endswith("\n未知") for card in view.cards.values())
+    assert "不可用" in view.empty_state_label.text()
+    assert "計數未知" in view.detail_panel.toPlainText()
+
+    for invalid_counts, expected in (
+        ({}, "未提供完整品質計數"),
+        ({"observed": 2}, "品質計數與已載入列數不一致"),
+    ):
+        invalid = LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=5),
+            rows=rows,
+            quality_counts=invalid_counts,
+        )
+        view._on_dashboard_loaded(invalid, request_id=view._active_request_id)
+        assert expected in view.quality_summary_label.text()
+        assert all(label.text() == "—" for label in view.quality_counts_labels.values())
+
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingFailingDashboard:
+        def load_dashboard(self, _request):
+            started.set()
+            release.wait(timeout=3)
+            raise RuntimeError("synthetic failure")
+
+    view.dashboard_service = BlockingFailingDashboard()
+    view.async_refresh = True
+    view.refresh_dashboard()
+    assert started.wait(timeout=1)
+    try:
+        assert all(card.text().endswith("\n載入中") for card in view.cards.values())
+        assert view.empty_state_label.text() == "研究落差證據載入中…"
+        assert view.detail_panel.toPlainText() == "研究落差明細載入中…"
+        assert view.table_model.rowCount() == 0
+        assert "載入中" in view.quality_summary_label.text()
+    finally:
+        release.set()
+    deadline = time.monotonic() + 3
+    while not view.refresh_button.isEnabled() and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert "來源載入失敗" in view.quality_summary_label.text()
+    assert all(label.text() == "—" for label in view.quality_counts_labels.values())
+    assert all(card.text().endswith("\n未知") for card in view.cards.values())
+    assert "載入失敗" in view.empty_state_label.text()
+    assert view.detail_panel.toPlainText() == ""
 
 
 class FakeDecisionQualityBackend:

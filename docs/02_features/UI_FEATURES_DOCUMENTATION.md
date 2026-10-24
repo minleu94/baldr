@@ -272,6 +272,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - 決策品質「最低分數」只接受留空或 0–10000 的整數；非法輸入不呼叫唯讀來源，欄位與結果區明示錯誤，清除上次卡片／表格／詳情且拒絕遲到的舊請求結果。修正後重新整理才顯示新結果；此驗證只防止 UI 錯誤與舊資料誤認，不更動門檻作用範圍或原分數計算。
 - 決策品質篩選左欄（M103）設有內部捲動與固定的「重新整理」按鈕；股票提示目前只篩下方項目列，分數卡仍取所選覆盤範圍最新分數。最低分數目前只比較該最新覆盤分數，低於門檻時清空項目列，卡片仍顯原值。這是現行行為揭露及 characterization test，M73 的正式作用範圍仍待產品裁決，未重算分數或改 reader。
 - 決策品質窄欄版面（M105）：左側標籤在欄寬不足時換到輸入欄上方，日期、股票、Portfolio ID、項目、嚴重度、狀態與最低分數的控制右界留在內層視口；保留左欄垂直捲動與固定刷新。右側原分數卡、表格及金融語義不變。
+- 證據覆盤「資料缺口」（M106）在原表上方以 2×2 分布條呈現服務已回報、且與已載入列數一致的 observed／degraded／missing／其他品質代碼筆數。每類保留精確數字，其他代碼保留原碼；成功空集合才是真 0，診斷、缺計數或計數矛盾均顯未知。刷新及失敗清除前次卡、表與選列詳情。條長只描述本次載入的資料狀態，不代表投資績效、來源資格或正式缺口統計；原 service、DTO、金融計算、PIT 與來源身份不變。
 - 大盤指數「檢測市場狀態」在受管背景工作讀取原 Regime service；進行中停用按鈕、顯示載入並清舊分類／技術值／策略文字，完成或錯誤才恢復按鈕。既有 Regime history 的轉移與 CAS 衝突仍由原 service 決定，錯誤明示而不套用舊結論；關窗會等待受管工作自然結束，合作式取消不代表既有 history 寫入回滾。
 - 覆盤歷史結果另帶只讀來源可用性：成功查詢的空集合可顯計數 0，缺 DB／表或錯誤顯未知並清舊卡；已知週報／排程條件碼在細節顯中文及原碼。`production_scheduler_allowed` 的卡片稱「允許正式排程」，不稱排程已啟用或已執行。
 - 只讀 Action Items 只列人工待處理事項；每列必須帶 `severity`、`queue_group`、`source_label`、`source_trace`、`degraded_reason`、`sort_rank` 與 `drilldown_target`，且 `write_intent=false`。Qt model 只顯示 DTO payload，drill-down target 必須對齊舊頁導向（Daily Decision、Evidence Review、Portfolio），Workbench 不建立 action item repository、不 append DB、不自動標記完成。

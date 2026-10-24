@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M105；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M106；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M105 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M106 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -153,3 +153,13 @@ M1–M104 是含審查、裁決、QA 的切片序號，**不是 104 個獨立功
 Luna `/root/m105_decision_filter_layout_audit` 唯讀核 M103 正常 Main 1280×760／真 OS DPI216 原生圖：左篩選欄出現水平捲軸，Portfolio ID 與其他欄位右側被裁；這是可達 UI 缺口，不是縮圖假象。Sol 指定同一 Luna 為 `ui_qt/views/decision_quality_view.py`、`tests/test_ui_qt_evidence_review_dashboards.py` 唯一 writer，於原 `QFormLayout` 設 `WrapLongRows`，窄欄時標籤換至輸入欄上方。Root 加強測試的左界斷言。右側結果表原本的獨立水平捲動仍保留；沒有隱藏左捲軸掩蓋裁切，也沒有改查詢、service、DTO、分數、PIT 或來源資格。
 
 受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_ab6c8351196b49be89960bc2304e5067/receipt.json`：受改 Python 編譯、**125 focused passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。正常 Main 隔離合成 SQLite 原生收據 `.../root/single_owned_qa_6e3581b85afc45219d3a281fc06260bf/receipt.json` exit0；真 OS DPI216（225%）下 1280×760 與 1500×900 的左欄水平捲動最大值皆 0、九個可互動控制左右邊界皆在視口內，最低分數、內層垂直捲動、固定刷新與右側原值仍可見。來源 DB 前後 SHA 相同。兩張 PNG 與數值 JSON 在 `.../root/native_m105_filter_evidence/run_a907ac800dbd43b9a7b0486fb05b21ac/`；M103 前圖 `.../root/native_m103_m104_evidence/run_f60dd1c6fa334205b88e5ea7eaad25c0/decision_quality_filter_bottom_1280x760.png` 保留作同尺寸 before。1920×1080 超過當前螢幕可用邏輯尺寸，腳本明記 `not_run_screen_too_small`；其他真 OS DPI、正式 Evidence DB、固定 EXE、Owner UAT 與完整 Gate 仍未驗。M73 的正式股票／門檻作用範圍仍待產品裁決，M105 只修版面。
+
+## M106 研究落差資料品質分布
+
+Luna `/root/m106_evidence_visual_audit` 盤點 Evidence 後提出多個候選。Sol 核 `LiveResearchGapDashboardResult` 與服務語義，拒絕把三個帶 `bp` 的研究落差欄位直接畫成共用零軸：現行 `gap_vs_benchmark_bp` 的組合與 UI「對大盤落差」標籤尚需契約釐清，不用圖形放大歧義。Watchlist 狀態分布需額外逐列來源身份及讀取契約，本輪延後。Sol 選擇服務已提供的 `quality_counts`，指定 Luna 單一 writer 僅改 `ui_qt/views/live_research_gap_view.py` 與 `tests/test_ui_qt_evidence_review_dashboards.py`。
+
+「證據覆盤 → 資料缺口」在原表上方新增已觀測、降級、缺失、其他代碼四類 2×2 品質分布條與精確計數。僅在服務計數為非負整數且與已載入列及 `positions_seen` 一致時呈現；未知新碼保留原文，成功讀取的空集合顯真 0。診斷、缺計數、矛盾或例外顯未知，刷新先清除舊卡、表、明細與圖條，遲到結果仍按原 request ID 拒絕。條長只描述本次載入資料狀態，不代表投資績效、正式來源資格或交易訊號；服務、DTO、來源、PIT 與金融公式均未改。Sol 首次原生目視發現四行品質條擠壓 1280×760 原表，退回改為 2×2 後才接受。
+
+最終受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_872b947a20534e4b9f015c1467371465/receipt.json`：受改 Python 編譯、Evidence／Decision／Portfolio 聚焦 **126 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。正常 Main 1280×760／1500×900、真 Windows DPI216（225%）的隔離合成 DTO 畫面及來源不可用狀態已目視；1280 首屏可見品質條與原表首列，來源診斷時卡片為「未知」、條計數為「—」，DB SHA 前後一致。原生 Job 收據 `.../root/single_owned_qa_8a7e0401c7814c0d810258f63fc07c8d/receipt.json`，JSON 與三張 PNG 位於 `.../root/native_m106_quality_evidence/run_ca7caeedc70742d48c6cf92c774ac2e4/`。首版四行基線及收據仍留 `.../root/native_m106_quality_evidence/run_5d019310c4cf4e52abf3e8f162ffb2c8/`、`.../root/single_owned_qa_1a76e67170f44046be97748a1c3bcfb4/receipt.json`；它不是最終布局。
+
+M1–M106 是含實作、唯讀裁決與 QA 的序號，不是 106 個獨立功能。正式市場／Evidence／私人 Portfolio、自然排程、其他真 OS DPI、Light（若正式支援）、固定新版 EXE、Owner UAT、M73／M75 來源與用途契約及完整產品 Gate 仍須分別驗收；本輪 1920×1080 超出可用螢幕邏輯尺寸，明記未跑。`output/` 原始證據留本機，不進版控；沒有 push、merge 或部署。

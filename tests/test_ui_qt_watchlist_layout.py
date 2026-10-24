@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QGroupBox, QLabel
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox
 
 from ui_qt.widgets.info_button import InfoButton, InfoDialog
 from ui_qt.views.watchlist_view import WatchlistView
@@ -62,7 +62,7 @@ def test_watchlist_desktop_layout_keeps_both_universe_lists_visible(monkeypatch,
     assert view.universe_list.height() > 150
     assert view.universe_stock_list.height() > 150
     assert view.universe_stock_list.count() == 0
-    assert view.stats_label.text() == "共 1 檔股票"
+    assert view.stats_label.text() == "1 筆候選列／1 檔不同代號"
     assert "已更新：1 筆" in view.status_label.text()
 
     view.universe_list.setCurrentRow(0)
@@ -93,6 +93,29 @@ def test_watchlist_narrow_layout_switches_to_vertical_without_losing_controls(mo
     assert view.findChild(QGroupBox, "watchlistCandidatePanel") is not None
     assert view.findChild(QGroupBox, "watchlistUniversePanel") is not None
     assert view.findChild(QGroupBox, "watchlistOpsGroup") is not None
+    assert view.stats_label.text() == "0 筆候選列／0 檔不同代號（目前沒有候選）"
+    assert "0 筆候選列／0 檔不同代號" in view.watchlist_focus_summary.conclusion_label.text()
+    view.close()
+
+
+def test_watchlist_load_failure_keeps_candidate_counts_unknown(monkeypatch, tmp_path: Path):
+    _app()
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.UniverseService",
+        lambda _config: SimpleNamespace(list_watchlists=lambda: []),
+    )
+    monkeypatch.setattr(QMessageBox, "critical", lambda *_args, **_kwargs: 0)
+    service = MagicMock()
+    service.get_stocks.side_effect = OSError("candidate store unavailable")
+
+    view = WatchlistView(service, config=SimpleNamespace(output_root=tmp_path))
+
+    assert view.stats_label.text() == "候選列／不同代號數未知（載入失敗）"
+    assert "載入失敗" in view.status_label.text()
+    assert "狀態尚未完成讀取" in view.watchlist_focus_summary.conclusion_label.text()
+    assert "0 筆候選列" not in view.stats_label.text()
+    view._load_selected_analysis()
+    assert "狀態尚未完成讀取" in view.watchlist_focus_summary.conclusion_label.text()
     view.close()
 
 
@@ -154,11 +177,12 @@ def test_candidate_table_hides_raw_identity_but_keeps_exact_source_after_sort(mo
         lambda _config: SimpleNamespace(list_watchlists=lambda: []),
     )
     identity = {"result_id": "original-result", "stock_code": "2330"}
+    second_identity = {"result_id": "second-result", "stock_code": "2330"}
     service = MagicMock()
     service.get_stocks.return_value = [
         {"stock_code": "2330", "stock_name": "台積電", "decision_identity": identity},
+        {"stock_code": "2330", "stock_name": "台積電", "decision_identity": second_identity},
         {"stock_code": "2603", "stock_name": "長榮"},
-        {"stock_code": "2317", "stock_name": "鴻海", "decision_identity": identity},
     ]
     view = WatchlistView(service, config=SimpleNamespace(output_root=tmp_path))
     view._load_watchlist()
@@ -168,8 +192,16 @@ def test_candidate_table_hides_raw_identity_but_keeps_exact_source_after_sort(mo
     assert "推薦來源" in headers
     model.sort(headers.index("證券代號"), Qt.AscendingOrder)
     frame = model.getDataFrame()
-    assert list(frame["推薦來源"]) == ["來源不一致，需核對", "已連結原推薦", "未連結原推薦"]
-    assert frame.iloc[1]["decision_identity"] == identity
-    assert view._row_decision_identity(frame.iloc[1], "2330").result_id == "original-result"
+    assert view.stats_label.text() == "3 筆候選列／2 檔不同代號"
+    assert model.rowCount() == 3
+    assert len(frame[frame["證券代號"] == "2330"]) == 2
+    linked_rows = frame[frame["證券代號"] == "2330"]
+    assert {row["decision_identity"]["result_id"] for _, row in linked_rows.iterrows()} == {
+        "original-result",
+        "second-result",
+    }
+    assert all(row == "已連結原推薦" for row in linked_rows["推薦來源"])
+    assert view._row_decision_identity(linked_rows.iloc[0], "2330").is_linked
+    assert "3 筆候選列／2 檔不同代號" in view.watchlist_focus_summary.conclusion_label.text()
     assert "不是評分或買賣訊號" in view.source_link_hint.text()
     view.close()

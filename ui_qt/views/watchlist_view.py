@@ -197,6 +197,7 @@ class WatchlistView(QWidget):
         
         # 數據模型
         self.stocks_model: Optional[PandasTableModel] = None
+        self._watchlist_load_succeeded = False
         
         logger.info("[WatchlistView] 開始設置 UI...")
         self._setup_ui()
@@ -208,6 +209,7 @@ class WatchlistView(QWidget):
             self._load_watchlist()
             logger.info("[WatchlistView] 觀察清單載入成功")
         except Exception as e:
+            self._watchlist_load_succeeded = False
             import traceback
             logger.error(f"[WatchlistView] 錯誤：初始化時載入觀察清單失敗")
             logger.error(f"[WatchlistView] 錯誤類型: {type(e).__name__}")
@@ -217,7 +219,7 @@ class WatchlistView(QWidget):
             try:
                 self.stocks_model = PandasTableModel(self._empty_frame())
                 self.stocks_table.setModel(self.stocks_model)
-                self.stats_label.setText("共 0 檔股票（載入失敗）")
+                self.stats_label.setText("候選列／不同代號數未知（載入失敗）")
                 self._set_status_label("載入失敗，請檢查數據文件", level="error")
                 logger.error("[WatchlistView] 已顯示錯誤提示")
             except Exception as e2:
@@ -559,9 +561,9 @@ class WatchlistView(QWidget):
         observation_layout.addLayout(observation_actions)
         candidate_layout.addWidget(observation_group)
 
-        # 數量與狀態分開，讓「有幾檔」不會被「已更新」覆蓋。
+        # 候選列與不同代號數量和更新狀態分開呈現。
         candidate_status_layout = QHBoxLayout()
-        self.stats_label = QLabel("共 0 檔股票")
+        self.stats_label = QLabel("候選列／不同代號數尚未讀取")
         self.stats_label.setObjectName("watchlistStats")
         self.stats_label.setProperty("role", "summary")
         candidate_status_layout.addWidget(self.stats_label)
@@ -813,6 +815,24 @@ class WatchlistView(QWidget):
             style.polish(self.status_label)
         self.status_label.setText(text)
 
+    def _distinct_watchlist_code_count(self) -> int | None:
+        """Count non-empty security codes while keeping source rows distinct."""
+
+        model = self.stocks_model
+        if model is None:
+            return None
+        frame = model.getDataFrame()
+        if frame is None or "證券代號" not in frame.columns:
+            return None
+        codes = set()
+        for value in frame["證券代號"]:
+            if pd.isna(value):
+                continue
+            code = str(value).strip()
+            if code:
+                codes.add(code)
+        return len(codes)
+
     def _set_watchlist_focus_summary(
         self,
         *,
@@ -824,7 +844,15 @@ class WatchlistView(QWidget):
         """更新候選池日常摘要；完整分析仍留在進階研究區。"""
 
         if row is None or not hasattr(row, "get"):
-            total_text = "未知" if count is None else str(count)
+            distinct_count = (
+                0 if count == 0 else self._distinct_watchlist_code_count()
+            )
+            total_text = (
+                "未知"
+                if count is None
+                else f"{count} 筆候選列／"
+                f"{distinct_count if distinct_count is not None else '未知'} 檔不同代號"
+            )
             reasons = [
                 "候選池只保存股票與來源脈絡，不代表已完成推薦判定。",
                 "沒有選取列時，沒有單股證據可引用。",
@@ -833,7 +861,7 @@ class WatchlistView(QWidget):
                 reasons[0] = message
             self.watchlist_focus_summary.set_summary(
                 conclusion=(
-                    f"候選池目前 {total_text} 檔；尚未選取個股。"
+                    f"候選池目前 {total_text}；尚未選取個股。"
                     if count is not None
                     else "候選池狀態尚未完成讀取。"
                 ),
@@ -1001,6 +1029,7 @@ class WatchlistView(QWidget):
     def _load_watchlist(self):
         self._render_observation(None)
         """載入觀察清單"""
+        self._watchlist_load_succeeded = False
         self._analysis_request_id += 1
         self.stock_analysis_btn.setEnabled(False)
         self._set_source_choice_state(None)
@@ -1014,7 +1043,7 @@ class WatchlistView(QWidget):
         try:
             logger.info("[WatchlistView._load_watchlist] 調用 watchlist_service.get_stocks()...")
             stocks = self.watchlist_service.get_stocks()
-            logger.info(f"[WatchlistView._load_watchlist] 獲取到 {len(stocks) if stocks else 0} 檔股票")
+            logger.info(f"[WatchlistView._load_watchlist] 獲取到 {len(stocks) if stocks else 0} 筆候選列")
             
             if not stocks:
                 # 顯示空表格
@@ -1123,11 +1152,16 @@ class WatchlistView(QWidget):
                 # 不拋出異常，繼續執行
             
             # 更新統計
+            self._watchlist_load_succeeded = True
             if stocks:
-                self.stats_label.setText(f"共 {len(stocks)} 檔股票")
+                distinct_count = self._distinct_watchlist_code_count()
+                distinct_text = str(distinct_count) if distinct_count is not None else "未知"
+                self.stats_label.setText(
+                    f"{len(stocks)} 筆候選列／{distinct_text} 檔不同代號"
+                )
                 self._set_status_label(f"已更新：{len(stocks)} 筆", level="success")
             else:
-                self.stats_label.setText("共 0 檔股票（目前沒有候選）")
+                self.stats_label.setText("0 筆候選列／0 檔不同代號（目前沒有候選）")
                 self._set_status_label("已更新：0 筆；目前沒有候選", level="warning")
             self._set_watchlist_focus_summary(count=len(stocks) if stocks else 0)
             self._update_research_lab_button_state(len(stocks))
@@ -1137,6 +1171,7 @@ class WatchlistView(QWidget):
             self.watchlistLoaded.emit()
             
         except Exception as e:
+            self._watchlist_load_succeeded = False
             import traceback
             logger.error(f"[WatchlistView._load_watchlist] 錯誤：載入觀察清單失敗")
             logger.error(f"[WatchlistView._load_watchlist] 錯誤類型: {type(e).__name__}")
@@ -1153,7 +1188,7 @@ class WatchlistView(QWidget):
             try:
                 self.stocks_model = PandasTableModel(self._empty_frame())
                 self.stocks_table.setModel(self.stocks_model)
-                self.stats_label.setText("共 0 檔股票（載入失敗）")
+                self.stats_label.setText("候選列／不同代號數未知（載入失敗）")
                 self._set_status_label(
                     f"載入失敗：{str(e).splitlines()[0] or type(e).__name__}",
                     level="error",
@@ -1594,7 +1629,11 @@ class WatchlistView(QWidget):
             self.latest_research_btn.setEnabled(False)
             self._set_source_choice_state(None)
             self._set_watchlist_focus_summary(
-                count=self.stocks_model.rowCount() if self.stocks_model is not None else 0,
+                count=(
+                    self.stocks_model.rowCount()
+                    if self._watchlist_load_succeeded and self.stocks_model is not None
+                    else None
+                ),
             )
             self.analysis_context_label.setText(
                 "狀態：尚未選取｜決策日：未知｜資料日：未知｜來源：未知"

@@ -10,6 +10,8 @@ Track B研究資料判讀補充：Legacy託管徽章不等於歷史PIT資格；�
 
 ## V2分支與本機技術候選
 
+後繼 M109／M110 原始碼在「我的投資」的 Paper Health 表先顯「標的／需要確認」，可在窄窗直接找須人工核對的列；同股可能有不同 Paper 部位，滑過代號看完整部位、snapshot 與 cohort 身份，明選列後讀其原詳情。「需要確認」是研究審核提示，不會下單。在「候選池」，`N 筆候選列／M 檔不同代號` 分別表示保存列與不重複代號；同股不同來源可占多列，載入失敗顯未知而非零。操作詳見[觀察清單與持倉](manuals/WATCHLIST_AND_PORTFOLIO.md)。固定舊 EXE 尚未包含此增量。
+
 後繼原始碼的個股摘要直接列營收、法人、信用、集保原值及章節入口；籌碼頁另固定呈現四個面向，避免法人欄位佔滿預覽。營收多月份柱圖保留缺月，財報採原值配對柱；圖內不另設垂直捲動，精確原值及來源可展開。單筆數值不畫成趨勢，未知單位或期間基礎不補圖；詳見[個股圖卡的操作與判讀](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#個股營收與籌碼圖卡)。固定 EXE 不因這項增量自動更新。
 
 目前集中候選為 `2026.10.21+06a4e1c15ed9`，完整資料夾 `dist/candidate_06a4e1c15ed9_e74f9e5f/baldr`，用包內 `Launch-Baldr.cmd` 與 `GUIDE.md`；獨立 state 位於 `output/tasks/baldr-v2-release-operations-closeout/candidate_state`。新包已包含下列月營收、Paper、首頁日期與鍵盤工程，具名舊包的「尚未包含」只適用該舊版本。樣本日期、包外來源、精確 SHA、回退及驗收限制見[Release Closeout](../06_qa/BALDR_V2_RELEASE_CLOSEOUT_20261021.md)。關閉新包後使用舊包原 Launcher／原 state 回退，不合併私人或正式資料；金融缺件時仍不可建帳或升格用途。

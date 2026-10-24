@@ -243,11 +243,11 @@ class PositionHealthTableModel(_WorkbenchTableModel):
 
     COLUMNS = (
         ("stock_code", "標的"),
+        ("review_required", "需要確認"),
         ("decision_date", "決策日"),
         ("source_status", "來源狀態"),
         ("action_suitability", "研究建議"),
         ("why", "評估原因"),
-        ("review_required", "需要確認"),
     )
 
     def __init__(
@@ -258,6 +258,19 @@ class PositionHealthTableModel(_WorkbenchTableModel):
         super().__init__(rows, parent)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if index.isValid() and 0 <= index.row() < len(self._rows):
+            row = self._rows[index.row()]
+            field_name = self.COLUMNS[index.column()][0]
+            if role == Qt.ToolTipRole and field_name == "stock_code":
+                position_id = str(row.position_id or "").strip() or "未提供"
+                snapshot_id = str(row.source_snapshot_id or "").strip() or "未提供"
+                cohort_key = str(row.cohort_key or "").strip() or "未提供"
+                return (
+                    f"Paper 部位識別（精確 position_id）：{position_id}\n"
+                    f"來源 snapshot ID：{snapshot_id}\n"
+                    f"cohort key：{cohort_key}\n"
+                    "研究資料身分不以股票代號代替。"
+                )
         if role == Qt.DisplayRole and index.isValid() and 0 <= index.row() < len(self._rows):
             field_name = self.COLUMNS[index.column()][0]
             row = self._rows[index.row()]

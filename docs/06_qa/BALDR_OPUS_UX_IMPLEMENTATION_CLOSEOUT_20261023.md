@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M107；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M110；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M107 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M110 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -196,3 +196,11 @@ Opus 先做獨立唯讀 UI/UX 審查；額度耗盡後 Antigravity 接續六份�
 | P3 限定探索 | 同一版本的題材與股票分類關係可讀；公司間供應／客戶有向邊與跨期強弱仍缺來源、時鐘及用途契約，未假造完整關係圖。 |
 
 完成的是後繼**原始碼工程切片與隔離合成 QA**，不是產品正式驗收。正式市場／Evidence／私人 Portfolio 來源與自然排程、全真 OS 100%／125%／150% DPI 路徑、Light（若正式支援）、固定新版 EXE、Owner UAT、M73 決策品質控制作用範圍、M75 有向關係／跨期用途契約及完整產品 Gate 各自保留。`output/` 原始收據與截圖留本機，不納版控；沒有自動交易、broker order、正式資料改寫、其他排程變更、push、merge 或部署。
+
+## M109／M110 Paper Health 與候選池辨識
+
+Luna `/root/m107_portfolio_audit` 唯讀盤點 Stress 30／70 頁左側 Paper Health 長表；Sol 先用同股不同部位、確認需求不同的三列合成資料，在正常 Main 1280×760 真 Windows DPI216（225%）重現：原表視窗約 302 邏輯像素，需水平捲動約 378 才看見第六欄「需要確認」。指定同一 Luna 單一 writer 僅修改 `ui_qt/models/workbench_table_models.py`、`tests/test_ui_qt_portfolio_view.py`，把原確認欄移到標的旁，並在代號 tooltip 列出該列原 `position_id`、snapshot ID、cohort key；缺件明示未提供。原欄內容、選列詳情、帳本及健康判定不改。修後 1280 窄表同屏可辨「需要／不需要／需要」，同股仍按原列身份選取。原生 before 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_1f564370b8f645239510bfdcf94af92c/receipt.json`、圖片 `.../root/native_m109_health_probe_evidence/run_d5fe316aa4d94a7faffd515f2ab73f11/`；after 收據 `.../root/single_owned_qa_b303a0302c9f45e7b2f74a3bbd87b4cf/receipt.json`、圖片 `.../root/native_m109_health_after_evidence/run_8c39939b7f8a4113a68a1028b9e92ed9/`。
+
+Luna `/root/m108_research_visual_audit` 唯讀盤點 Watchlist 多來源列後，單一 writer 僅修改 `ui_qt/views/watchlist_view.py`、`tests/test_ui_qt_watchlist_layout.py`。原 `len(stocks)` 是候選列數，不能標成股票檔數；首屏摘要及表下計數改為「N 筆候選列／M 檔不同代號」，保留同股不同來源及逐列原身份。成功空集合才顯 0／0，載入失敗為未知，清選列不把失敗轉成零。正常 Main 1280／1500、真 OS DPI216 合成兩筆 2330 加一筆 2603 目視確認 3／2 且三列可見，原生收據 `.../root/single_owned_qa_fa6a6c83be9d4bf28415da69c7cda0f9/receipt.json`、圖片 `.../root/native_m110_watchlist_evidence/run_28831576d5874620a6ee6849eb06e560/`。首次 native probe 在窗已關閉後讀 QLabel 而失敗，已修測試 harness，失敗收據 `.../root/single_owned_qa_9dce2f72f69943a49a1fdc5b5b19ab33/receipt.json` 保留；不是產品失敗。
+
+Sol 審查兩切片原始碼、同股不同身份測試與兩組原生圖後接受限定 UI 改造。共同 8 GiB／12 程序 Job `.../root/single_owned_qa_917ff17e09fd47f49e2d801af1915998/receipt.json`：受改 Python compile 0、聚焦 **136 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；Job 無殘留 PID 或強制清理。Watchlist 逐列審查狀態分布需同版批次 DTO／讀取契約，避免不同 revision 混畫，本輪延後。M1–M110 是含審查及 QA 的切片序號，非 110 個獨立功能。正式市場／Paper／私人 Watchlist、自然排程、其他真 DPI、1920 可用螢幕、固定新版 EXE、Owner UAT、M73／M75 契約及完整產品 Gate 未驗；沒有 push、merge、部署或正式資料修改。

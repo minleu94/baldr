@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M109／M110 後繼原始碼改善兩個容易誤讀的清單：Paper Health 長表把「需要確認」移至標的旁，代號提示保留精確 `position_id`／snapshot／cohort，選列仍讀同一部位原詳情；Watchlist 把候選列數與不同代號數分開顯示，同股不同來源不合併，載入失敗維持未知。Sol 複核與隔離正常 Main 1280×760／1500×900、真 OS DPI216 畫面通過；聚焦 136、Workbench 85、validator 25／0／4、mypy 1,144 clean。這是呈現與身份辨識改造，不改交易、健康判定或來源資格；正式資料、其他 DPI、固定 EXE、Owner UAT 及完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m109m110-paper-health-與候選池辨識)。
+
 M108 修正個股研究「摘要／五問」的 ML 估計資訊層級：一般摘要顯前三筆有效整數估計時，若仍有原值，明示省略筆數及「資料稽核」位置；H5 專用摘要優先時則明示完整 ML 表的有效總筆數，不把 H5 註記誤稱前三筆。成本、資格、H20 分流與研究限定警語維持。Sol 先以隔離 Windows Main 發現 H5 優先路徑漏提示，修後個股研究 78、Workbench 85、validator 25／0／4、mypy 1,144 與 1280／1500 真 OS DPI216 前後圖通過；另以 900 寬隔離 Portfolio 探針排除四卡長缺值文案的未證實裁切候選。範圍及原失敗見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m108-個股研究-ml-估計完整性提示與收尾)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。
 
 M107 在「證據覆盤 → 今日決策 → 排程狀態」的前瞻結果卡旁加入逐期限成熟狀態條，按原期限顯 ready／pending／missing 精確筆數及各期限內的比例。圖卡明示僅本次有界 health 摘要，不是完整歷史或績效；缺欄／無效值未知、三個明確零才是真零，stale 保留值但醒目標記，刷新或未知來源清舊。Sol 原生退回首版窄左欄和未知殘圖，修後兩欄等寬且沒有舊圖殘留；最終 QA／畫面與限制見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m107-前瞻結果逐期限成熟分布)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。

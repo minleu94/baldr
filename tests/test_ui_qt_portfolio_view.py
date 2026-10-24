@@ -979,6 +979,88 @@ def test_portfolio_blocked_health_summary_keeps_rows_and_raw_timestamp(tmp_path)
     )
 
 
+def test_position_health_table_prioritizes_review_and_exposes_exact_row_identity(
+    tmp_path,
+):
+    first = replace(
+        _make_health_row("2330"),
+        position_id="paper:2330-lot-a",
+        source_snapshot_id="snapshot-2330-a",
+        cohort_key="paper-cohort-a",
+    )
+    second = replace(
+        first,
+        position_id="paper:2330-lot-b",
+        source_snapshot_id="snapshot-2330-b",
+        cohort_key="paper-cohort-b",
+        review_required=False,
+        why="第二筆來源已核對。",
+    )
+    missing_identity = replace(
+        first,
+        position_id=None,
+        source_snapshot_id="",
+        cohort_key="",
+        review_required=False,
+    )
+    health_model = replace(
+        _make_blocked_health_model(),
+        positions=(first, second, missing_identity),
+    )
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(health_model),
+    )
+
+    view.refresh_all()
+
+    model = view.position_health_model
+    headers = [
+        model.headerData(column, Qt.Horizontal, Qt.DisplayRole)
+        for column in range(model.columnCount())
+    ]
+    assert headers == [
+        "標的",
+        "需要確認",
+        "決策日",
+        "來源狀態",
+        "研究建議",
+        "評估原因",
+    ]
+    review_column = model.column_index("review_required")
+    assert model.index(0, review_column).data(Qt.DisplayRole) == "需要"
+    assert model.index(1, review_column).data(Qt.DisplayRole) == "不需要"
+
+    stock_column = model.column_index("stock_code")
+    first_tooltip = model.index(0, stock_column).data(Qt.ToolTipRole)
+    second_tooltip = model.index(1, stock_column).data(Qt.ToolTipRole)
+    missing_tooltip = model.index(2, stock_column).data(Qt.ToolTipRole)
+    assert "position_id）：paper:2330-lot-a" in first_tooltip
+    assert "snapshot ID：snapshot-2330-a" in first_tooltip
+    assert "cohort key：paper-cohort-a" in first_tooltip
+    assert first_tooltip != second_tooltip
+    assert "position_id）：未提供" in missing_tooltip
+    assert "snapshot ID：未提供" in missing_tooltip
+    assert "cohort key：未提供" in missing_tooltip
+    assert "不以股票代號代替" in missing_tooltip
+
+    view.position_health_table.selectRow(0)
+    view._show_position_health_row(model.index(0, stock_column))
+    assert "部位識別（技術）：paper:2330-lot-a" in (
+        view.position_health_detail_label.text()
+    )
+    assert "需要確認：需要" in view.position_health_detail_label.text()
+
+    view.position_health_table.selectRow(1)
+    view._show_position_health_row(model.index(1, stock_column))
+    assert "部位識別（技術）：paper:2330-lot-b" in (
+        view.position_health_detail_label.text()
+    )
+    assert "需要確認：不需要" in view.position_health_detail_label.text()
+    assert "第二筆來源已核對。" in view.position_health_detail_label.text()
+    view.close()
+
+
 def test_portfolio_expanded_workspace_scrolls_and_keeps_each_tab_reachable(tmp_path):
     view = make_portfolio_view(
         tmp_path,

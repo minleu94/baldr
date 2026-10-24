@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import os
 import threading
+from decimal import Decimal
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PySide6.QtCore import QPoint
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication
 
 from app_module.scheduled_recommendation_status import ScheduledRecommendationPointer
+from app_module.recommendation.legacy_dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 from tests.test_personal_recommendation_choice import (
     _canonical_rule_only_query_fixture,
 )
@@ -41,6 +45,180 @@ def _view(tmp_path: Path, queries) -> object:
     view.recommendation_composition = SimpleNamespace(queries=queries)
     view.load_saved_result_button.setEnabled(True)
     return view
+
+
+def _show_view(view: object, qt_app: QApplication) -> None:
+    view.resize(1280, 760)
+    view.show()
+    qt_app.processEvents()
+
+
+def _assert_saved_result_focus(view: object) -> None:
+    viewport = view.result_scroll.viewport()
+    status_top = view.result_status_label.mapTo(viewport, QPoint(0, 0)).y()
+    table_top = view.results_table.mapTo(viewport, QPoint(0, 0)).y()
+    assert -4 <= status_top <= 24
+    assert table_top < viewport.height()
+    assert table_top + view.results_table.height() > 0
+
+
+def test_public_exact_open_focuses_verified_canonical_result_and_table(
+    qt_app: QApplication,
+    tmp_path: Path,
+) -> None:
+    result_id = "exact-visible-canonical-001"
+    queries, _ = _read_model(result_id)
+    view = _view(tmp_path, queries)
+    _show_view(view, qt_app)
+    try:
+        assert view.open_saved_recommendation_result(result_id)
+        _wait_for_saved_result_load(view, qt_app)
+        qt_app.processEvents()
+        assert view._verified_saved_result_id() == result_id
+        assert view.recommendations_model.rowCount() > 0
+        _assert_saved_result_focus(view)
+    finally:
+        view.close()
+        qt_app.processEvents()
+
+
+def test_public_exact_open_focuses_verified_legacy_read_only_result(
+    qt_app: QApplication,
+    tmp_path: Path,
+) -> None:
+    result_id = "exact-visible-legacy-001"
+    legacy_result = RecommendationResultDTO(
+        result_id=result_id,
+        result_name="fixture",
+        config={},
+        recommendations=[
+            RecommendationDTO(
+                stock_code="2330",
+                stock_name="fixture",
+                close_price=Decimal("100"),
+                price_change=0.0,
+                total_score=0.0,
+                indicator_score=0.0,
+                pattern_score=0.0,
+                volume_score=0.0,
+                recommendation_reasons="fixture",
+                industry="fixture",
+                regime_match=False,
+            )
+        ],
+    )
+    read_model = RecommendationExecutionReadModel(
+        execution=None,
+        label="fixture",
+        notes=None,
+        persisted_at=None,
+        payload_hash=None,
+        artifact_location="fixture://legacy-result",
+        legacy_result=legacy_result,
+        raw_artifact_sha256="sha256:" + "a" * 64,
+        integrity_basis="legacy_read_time_hash_only",
+    )
+    view = _view(
+        tmp_path,
+        SimpleNamespace(
+            get=lambda requested_id: read_model,
+            list=lambda: pytest.fail("unexpected saved-source enumeration"),
+        ),
+    )
+    _show_view(view, qt_app)
+    try:
+        assert view.open_saved_recommendation_result(result_id)
+        _wait_for_saved_result_load(view, qt_app)
+        qt_app.processEvents()
+        assert view._verified_legacy_result_id() == result_id
+        assert view.recommendations_model.rowCount() == 1
+        assert "唯讀開啟舊格式" in view.result_status_label.text()
+        _assert_saved_result_focus(view)
+    finally:
+        view.close()
+        qt_app.processEvents()
+
+
+def test_public_exact_open_does_not_override_user_scroll_while_reading(
+    qt_app: QApplication,
+    tmp_path: Path,
+) -> None:
+    result_id = "exact-user-scroll-001"
+    backing_queries, _ = _read_model(result_id)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def delayed_get(requested_id: str):
+        entered.set()
+        assert release.wait(5)
+        return backing_queries.get(requested_id)
+
+    view = _view(
+        tmp_path,
+        SimpleNamespace(get=delayed_get, list=lambda: pytest.fail("unexpected list")),
+    )
+    _show_view(view, qt_app)
+    bar = view.result_scroll.verticalScrollBar()
+    focus_values = []
+    original_focus = view._focus_public_saved_result_status
+
+    def record_focus_guard(request):
+        before = bar.value()
+        original_focus(request)
+        focus_values.append((before, bar.value()))
+
+    view._focus_public_saved_result_status = record_focus_guard
+    try:
+        assert view.open_saved_recommendation_result(result_id)
+        assert entered.wait(2)
+        bar.setRange(0, 1000)
+        bar.setValue(140)
+        user_revision = view._result_scroll_revision
+        request = view._public_saved_result_scroll_request
+        assert request is not None
+        assert user_revision != request[2]
+
+        release.set()
+        _wait_for_saved_result_load(view, qt_app)
+        qt_app.processEvents()
+        assert view._public_saved_result_scroll_request is None
+        assert focus_values
+        assert all(before == after for before, after in focus_values)
+    finally:
+        release.set()
+        view.close()
+        qt_app.processEvents()
+
+
+def test_public_exact_open_failure_does_not_schedule_result_focus(
+    qt_app: QApplication,
+    tmp_path: Path,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def delayed_error(_requested_id: str):
+        entered.set()
+        assert release.wait(5)
+        raise ValueError("saved result unavailable")
+
+    view = _view(
+        tmp_path,
+        SimpleNamespace(get=delayed_error, list=lambda: pytest.fail("unexpected list")),
+    )
+    _show_view(view, qt_app)
+    try:
+        assert view.open_saved_recommendation_result("exact-error-001")
+        assert entered.wait(2)
+        release.set()
+        _wait_for_saved_result_load(view, qt_app)
+        assert view._public_saved_result_scroll_request is None
+        assert "saved result unavailable" in view.result_status_label.text()
+        assert view.result_scroll.verticalScrollBar().value() == 0
+    finally:
+        release.set()
+        view.close()
+        qt_app.processEvents()
 
 
 def test_public_exact_open_uses_only_get_and_ignores_other_list_selection(
@@ -170,6 +348,7 @@ def test_exact_open_cancellation_keeps_old_callback_from_replacing_view(
         assert view.current_execution is previous_execution
         assert view.current_read_model is None
         assert view._verified_saved_result_id() == ""
+        assert view._public_saved_result_scroll_request is None
     finally:
         release.set()
         view.close()

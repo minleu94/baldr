@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M149；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M151；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M149 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M151 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -450,3 +450,13 @@ Luna `/root/m149_saved_reader_audit`、`/root/m149_return_flow_audit` 先唯讀�
 最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_3d8e48909b4e4aabb7ae398c4f672892/receipt.json` exit0：受改 Python compile0、focused **70 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留。隔離正常 Windows Main 在真 OS DPI216 的 1280×760／1500×900，以合成 canonical verified query 真走 `queries.get(result_id)` 與 identity/readback，先驗排入前設定缺件回饋，再驗精確結果、正確分頁、返回同一摘要及一般進入無來源返回。八張 PNG 與 JSON `output/tasks/baldr-opus-ux-implementation/root/native_m149_evidence/run_3fde4d1135174a908ef8a4448b4e47fe/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_3f58d2dfdbc84be288542c7d9da2dedd/receipt.json` exit0、callback exception0；Sol 目視 1280 失敗訊息、推薦返回操作與 1500 原摘要可見。初輪新測試替身 Qt 初始化錯誤及隱藏初態錯誤已修，失敗收據保留。另試既有 `test_actual_mainwindow_cross_page_decision_journey_round_trip` 時在舊側欄 `button_for_key("market_explore")` 便失敗，尚未進本輪 reader，收據 `.../root/single_owned_qa_582d1b9c5b8b49f7bae73cde95cf7822/receipt.json` 保留為測試入口過時，不列最終 PASS。
 
 本輪 native 用隔離合成 verified payload，不是正式保存檔或自然來源；已載入推薦的候選表在 1280 首屏仍較低，保留後續版面量測。正式 reader／正式或私人資料副本、其他真 OS DPI／Light、1920 可用螢幕、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 均未由此接受。M1–M149 是審查、裁決、實作與 QA 切片序號，非獨立功能數。Opus 起始審查，額度用盡後由 Antigravity 接手完成；本輪 Sol 核對後實作，未 push／merge／部署或修改其他排程。
+
+## M150／M151 保存結果首屏與跨頁測試修復
+
+M150 先量測 M149 正常 Main 1280×760 原結果可視區：來源選擇在上方、結果狀態約 y645、候選表首列約 y701，未在同屏。Luna `/root/m149_return_flow_audit` 單一 writer 修改 `ui_qt/views/recommendation_view.py` 與精確讀回測試；Sol 修正初版舊格式回呼缺 generation 及 canonical／legacy 身分守衛。公開精確入口只在已驗證的同一 ID、同一讀取 generation、同一可見保存頁且等待期間未變更捲動時，於結果排版完成後聚焦狀態；錯誤、取消、切頁及使用者先捲動都不搶畫面。保留原單筆 get、來源資格、推薦值、表格及風險說明，不自動選股。
+
+M151 為測試維護：Luna `/root/m149_saved_reader_audit` 單一 writer 將既有正常 Main 跨頁旅程改走現行可見主導覽與 ProductShell 子頁，明選「保存策略研究」來源。Sol 修正舊主導覽斷言與來源選擇名稱；測試完整走過市場／個股／推薦保存／觀察清單／Portfolio／Workbench，未修改產品路由。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_be1cd3d82a164397b5fab971a6e3603a/receipt.json` exit0：compile0、精確保存讀回及緊湊版面 **14 passed**、正常 Main 跨頁旅程 **1 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留。先前 NameError／測試導覽與來源選擇失敗收據保留，不當最終 PASS。
+
+原生 QA `output/tasks/baldr-opus-ux-implementation/root/native_m150_evidence/run_568b81186dc74f419fb4a82e4a32fe5a/result.json`，受控 Job `.../root/single_owned_qa_e35a8e8cbbf444f2b5f222a3986c2c2b/receipt.json` exit0：正常 Windows Main 在真 OS DPI216 的 1280×760／1500×900，隔離合成 canonical verified query 真走 get(ID)。兩尺寸皆核結果狀態與候選第一列可見、原每日決策返回、一般入口無來源返回；失敗與成功共八 PNG、callback exception0。Sol 目視 1280 首列及來源提示可讀。這只接受原始碼與限定 QA；正式保存來源、其他 DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 和完整產品 Gate 未接受。M1–M151 是審查／裁決／實作／QA 序號，非功能數；沒有 push、merge、部署或修改其他排程。

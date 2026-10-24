@@ -25,7 +25,7 @@ import pytest
 pytest.importorskip("PySide6")
 from PySide6.QtCore import QPoint, QDateTime, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMessageBox, QInputDialog
+from PySide6.QtWidgets import QApplication, QMessageBox, QInputDialog, QToolButton
 
 from app_module.continuity_review_projection import ContinuityReviewProjectionService
 from app_module.decision_continuity_controller import DecisionContinuityController
@@ -600,6 +600,25 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
     window.resize(1366, 768)
     window.show()
     app.processEvents()
+
+    def _click_product_route(group_id: str, route_id: str | None = None) -> None:
+        """經可見主導覽與子頁按鈕切換，不繞過 ProductShell 路由。"""
+
+        if window.left_navigation.current_key() != group_id:
+            group_button = window.left_navigation.button_for_key(group_id)
+            assert group_button is not None
+            group_button.click()
+        if route_id is None:
+            return
+        route_button = window.product_shell.subnav.findChild(
+            QToolButton,
+            f"WorkspaceSubnavRoute_{route_id}",
+        )
+        assert route_button is not None
+        if not route_button.isChecked():
+            route_button.click()
+        assert window.product_shell.route_id == route_id
+
     try:
         # Market／Industry → Stock Research is the real MainWindow connection.
         screening = window.screening_service
@@ -610,7 +629,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
             for index in range(window.market_tabs.count())
             if window.market_tabs.tabText(index) == "強勢產業"
         )
-        window.left_navigation.button_for_key("market_explore").click()
+        _click_product_route("explore", "market")
         window.market_tabs.setCurrentIndex(industry_index)
         industry_view = window.market_tabs.widget(industry_index)
         industry_view.load_btn.click()
@@ -630,12 +649,20 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         # The report return button is a real signal path back to the source.
         window.stock_research_workspace.report_view.return_button.click()
         _wait_for(lambda: window.workspace_stack.currentWidget() is not window.stock_research_workspace)
-        assert window.left_navigation.current_key() == "market_explore"
+        assert window.left_navigation.current_key() == "explore"
+        assert window.workspace_stack.currentWidget() is window.workspace_widgets["market_explore"]
 
         # Recommendation result is produced at the UI boundary and persisted
         # by the real RecommendationView save button/coordinator.
         recommendation_view = window.recommendation_view
-        window.left_navigation.button_for_key("recommendation").click()
+        _click_product_route("explore", "screener")
+        source_selector = window.unified_screener_workspace.combo
+        saved_source_index = next(
+            index for index in range(source_selector.count())
+            if source_selector.itemText(index) == "保存策略研究"
+        )
+        source_selector.setCurrentIndex(saved_source_index)
+        assert recommendation_view.result_source_tabs.currentWidget() is recommendation_view.result_panel
         producer_context = {
             "as_of_date": DECISION_DATE,
             "data_date": DATA_DATE,
@@ -859,7 +886,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         )
 
         watchlist_view = window.watchlist_view
-        window.left_navigation.button_for_key("watchlist").click()
+        _click_product_route("investment", "lists")
         _wait_for(lambda: watchlist_view.stocks_model is not None)
         watch_rows = watchlist_view.stocks_model.getDataFrame()
         assert len(watch_rows) == 3
@@ -1001,7 +1028,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         assert recommendation_trade.source_snapshot_hash != canonical_snapshot_hash
 
         portfolio_view = window.portfolio_view
-        window.left_navigation.button_for_key("portfolio").click()
+        _click_product_route("investment", "positions")
         _wait_portfolio_ready(window)
         saved_positions = [
             item
@@ -1060,7 +1087,7 @@ def test_actual_mainwindow_cross_page_decision_journey_round_trip(
         )
         before_read_only = _hash_paths(read_only_paths)
         workbench_view = window.workbench_view
-        window.left_navigation.button_for_key("workbench").click()
+        _click_product_route("workbench")
         workbench_view.refresh_button.click()
         _wait_for(
             lambda: any(

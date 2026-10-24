@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QAbstractSlider, QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy,
     QTabWidget, QStyle, QLayout,
 )
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QKeyEvent, QResizeEvent, QTextOption
 from math import ceil
 import pandas as pd
@@ -841,6 +841,8 @@ class RecommendationView(QWidget):
         self._saved_result_load_generation = 0
         self._saved_result_load_requested_id = ""
         self._saved_result_open_closed = False
+        self._public_saved_result_scroll_request: tuple[int, str, int] | None = None
+        self._result_scroll_revision = 0
         self._pending_scheduled_recommendation: ScheduledRecommendationPointer | None = None
         self._saved_source_list_worker: TaskWorker | None = None
         self._saved_source_list_generation = 0
@@ -2739,6 +2741,9 @@ class RecommendationView(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Ignored,
         )
+        self.result_scroll.verticalScrollBar().valueChanged.connect(
+            self._on_result_scroll_value_changed
+        )
         splitter.addWidget(self.result_scroll)
 
         # 兩側各自處理內容溢位；分割器不得把任一面板壓成不可操作的細縫。
@@ -2763,6 +2768,63 @@ class RecommendationView(QWidget):
             view = getattr(self, "daily_market_research_view", None)
             if view is not None:
                 view.on_first_open()
+
+    def _on_result_scroll_value_changed(self, _value: int) -> None:
+        """記錄結果區位置變動，避免讀取期間覆蓋使用者操作。"""
+
+        self._result_scroll_revision += 1
+
+    def _schedule_public_saved_result_focus(
+        self, requested_result_id: str, generation: int
+    ) -> None:
+        request = self._public_saved_result_scroll_request
+        if request is None or request[:2] != (generation, requested_result_id):
+            return
+
+        # 等結果排版與 viewport 幾何更新，再核對目前仍是同一筆、同一頁。
+        QTimer.singleShot(
+            0,
+            lambda: QTimer.singleShot(
+                0,
+                lambda: self._focus_public_saved_result_status(request),
+            ),
+        )
+
+    def _focus_public_saved_result_status(
+        self, request: tuple[int, str, int]
+    ) -> None:
+        if self._public_saved_result_scroll_request != request:
+            return
+        self._public_saved_result_scroll_request = None
+        generation, requested_result_id, scroll_revision = request
+        if (
+            generation != getattr(self, "_saved_result_load_generation", None)
+            or scroll_revision != getattr(self, "_result_scroll_revision", None)
+            or not self.isVisible()
+            or not self.result_scroll.isVisible()
+            or self.result_source_tabs.currentWidget() is not self.result_panel
+            or getattr(self, "current_result_id", "") != requested_result_id
+            or getattr(self, "_loaded_saved_result_identity", None) is None
+            or (
+                self._verified_saved_result_id() != requested_result_id
+                and self._verified_legacy_result_id() != requested_result_id
+            )
+        ):
+            return
+        scroll_content = self.result_scroll.widget()
+        if scroll_content is None or not scroll_content.isAncestorOf(
+            self.result_status_label
+        ):
+            return
+        status_top = self.result_status_label.mapTo(scroll_content, QPoint(0, 0)).y()
+        self.result_scroll.verticalScrollBar().setValue(max(0, status_top - 8))
+
+    def _clear_public_saved_result_focus(
+        self, generation: int, requested_result_id: str
+    ) -> None:
+        request = self._public_saved_result_scroll_request
+        if request is not None and request[:2] == (generation, requested_result_id):
+            self._public_saved_result_scroll_request = None
 
     def ensure_result_widget_visible(self, widget: QWidget) -> bool:
         """顯示結果頁元件；長元件另確保其下緣進入外層可視範圍。"""
@@ -6799,6 +6861,7 @@ class RecommendationView(QWidget):
     def _cancel_saved_source_read(self) -> None:
         self._saved_source_list_generation += 1
         self._saved_result_load_generation += 1
+        self._public_saved_result_scroll_request = None
         for worker in (self._saved_source_list_worker, self._saved_result_load_worker):
             if worker is not None and worker.isRunning():
                 worker.cancel(cooperative=True, wait=False)
@@ -6856,6 +6919,11 @@ class RecommendationView(QWidget):
             return False
         self.result_source_tabs.setCurrentWidget(self.result_panel)
         self.result_scroll.verticalScrollBar().setValue(0)
+        self._public_saved_result_scroll_request = (
+            getattr(self, "_saved_result_load_generation", 0),
+            result_id,
+            self._result_scroll_revision,
+        )
         return True
 
     def set_daily_decision_return_available(self, available: bool) -> None:
@@ -6869,6 +6937,9 @@ class RecommendationView(QWidget):
         selected_result_id: str | None = None,
     ) -> None:
         """以精確 result_id 唯讀取回 canonical 或舊格式保存結果。"""
+
+        if selected_result_id is None:
+            self._public_saved_result_scroll_request = None
 
         requested_result_id = (
             self.saved_result_id_input.text().strip()
@@ -7006,6 +7077,7 @@ class RecommendationView(QWidget):
             return
         if read_model is not None and read_model.execution is None:
             self._apply_legacy_saved_result(read_model, requested_result_id, identity)
+            self._schedule_public_saved_result_focus(requested_result_id, generation)
             return
         assert read_model is not None and read_model.execution is not None
         execution = read_model.execution
@@ -7095,6 +7167,7 @@ class RecommendationView(QWidget):
         self._refresh_personal_choice_controls()
         self._refresh_personal_prediction_capture_controls()
         self._apply_responsive_layout(force=True)
+        self._schedule_public_saved_result_focus(requested_result_id, generation)
 
     def _apply_legacy_saved_result(
         self,
@@ -7179,6 +7252,7 @@ class RecommendationView(QWidget):
     ) -> None:
         if generation != getattr(self, "_saved_result_load_generation", None):
             return
+        self._clear_public_saved_result_focus(generation, requested_result_id)
         short_message = str(message).splitlines()[0][:300]
         pointer = getattr(self, "_pending_scheduled_recommendation", None)
         if pointer is not None and pointer.result_id == requested_result_id:
@@ -7194,6 +7268,7 @@ class RecommendationView(QWidget):
     ) -> None:
         if generation != getattr(self, "_saved_result_load_generation", None):
             return
+        self._clear_public_saved_result_focus(generation, requested_result_id)
         pointer = getattr(self, "_pending_scheduled_recommendation", None)
         if pointer is not None and pointer.result_id == requested_result_id:
             self._pending_scheduled_recommendation = None
@@ -9099,6 +9174,7 @@ class RecommendationView(QWidget):
             self._saved_result_load_generation = getattr(
                 self, "_saved_result_load_generation", 0
             ) + 1
+            self._public_saved_result_scroll_request = None
         capture_worker = getattr(
             self, "_personal_prediction_capture_worker", None
         )

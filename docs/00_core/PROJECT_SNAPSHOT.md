@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M94 修正決策工作台首屏持倉警示與候選判讀的三句已知英文來源文字：首頁以繁中顯示「待覆盤／未套用動作／未產生買賣建議」，提示與原表格仍可核原文，未知來源文字原樣顯示。Workbench 聚焦 42、共用 85、更新頁 validator 25／0／4、mypy 1,143、編譯與真 Windows DPI144 的 1280×760 隔離合成畫面通過；初次候選翻譯順序失敗已保留原收據。這是呈現層修正，正式來源、固定 EXE、Owner UAT 與完整產品 Gate 未接受；詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m94-工作台首屏已知警示文案)。
+
 M91 在已載入的題材目錄加入名稱片段搜尋：90 題材合成版本可跨鏈找同名列，須明選後才定位原鏈／題材，無匹配不改目前研究。M92 補真 Windows DPI144 的 Legacy 回撤、交易報酬與持有天數 canvas 證據；M93 根據原生畫面修回撤小幅百分比刻度重複顯 `0`／`-0`，顯示刻度現在帶 `%` 且真零不帶負號，原圖形數值與權益圖刻度路徑不變。M91–M93 整合聚焦 71、Workbench 85、validator 25／0／4、mypy 1,143 及原生畫面已通過；範圍見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 仍未接受。
 
 M89 在題材漲跌等面積格與成交金額面積圖中，僅對跨鏈同名題材顯示足以辨識的鏈名前綴；原數值、提示、來源身份與點擊定位不變。M90 用隔離合成回測來源補驗 WebEngine 權益曲線 canvas：正常 Main 1280×760、真 Windows DPI144（150%）的 A／B 兩份不同原值各有可見線條，切換後畫面顯示 B 的 run 身份。M89 聚焦 47、共同 Workbench 85、validator 25／0／4、mypy 1,143 及原生 1280／900 寬度檢查通過；M90 為 QA 專項，未改產品程式。範圍與收據見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)。這些仍不是正式來源、其他 DPI／圖種、固定 EXE 或 Owner UAT 的驗收。

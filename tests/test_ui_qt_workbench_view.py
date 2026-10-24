@@ -764,6 +764,57 @@ def test_workbench_action_item_table_model_is_compact_but_keeps_raw_detail() -> 
     assert model.raw_value(0, "drilldown_target") == "portfolio_review"
 
 
+def test_workbench_portfolio_alert_home_text_is_localized_without_changing_source() -> None:
+    app()
+    dashboard = _dashboard_with_replay()
+    action = dashboard.action_items[0]
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    try:
+        reason_label = view.guided_priority_reason_labels["portfolio"]
+        reason_tooltip = reason_label.toolTip()
+        action_model = view.action_item_model
+
+        assert reason_label.text() == (
+            "持倉警示待覆盤；需人工確認；不會套用任何動作。"
+        )
+        assert reason_tooltip == f"{action.title}；{action.summary}"
+        assert action_model.raw_value(0, "title") == action.title
+        assert action_model.raw_value(0, "summary") == action.summary
+        assert dashboard.action_items[0] is action
+        assert action.title == "Portfolio alert manual review"
+        assert action.summary == "Human review required; no action is applied."
+        candidate_reason = view.guided_priority_reason_labels["candidates"]
+        assert "需人工判讀；未產生買賣建議。" in candidate_reason.text()
+        assert "Human review required; no buy/sell recommendation is generated." in (
+            candidate_reason.toolTip()
+        )
+    finally:
+        _dispose_workbench_view(view)
+
+
+def test_workbench_portfolio_alert_unknown_home_text_stays_raw() -> None:
+    app()
+    dashboard = _dashboard_with_replay()
+    action = replace(
+        dashboard.action_items[0],
+        title="Provider alert needs review",
+        summary="Provider-specific wording is pending confirmation.",
+    )
+    dashboard = replace(dashboard, action_items=(action,))
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    try:
+        reason_label = view.guided_priority_reason_labels["portfolio"]
+
+        assert reason_label.text() == (
+            "Provider alert needs review；Provider-specific wording is pending confirmation."
+        )
+        assert reason_label.toolTip() == reason_label.text()
+        assert view.action_item_model.raw_value(0, "title") == action.title
+        assert view.action_item_model.raw_value(0, "summary") == action.summary
+    finally:
+        _dispose_workbench_view(view)
+
+
 def test_workbench_evidence_feed_table_model_is_compact_but_keeps_raw_detail() -> None:
     app()
     feed_item = _dashboard_with_replay().background_evidence_feed[1]

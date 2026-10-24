@@ -4151,7 +4151,20 @@ def _guided_compact(value: object, fallback: str, limit: int = 104) -> str:
 
 def _home_public_text(value: object) -> str:
     """首層翻譯技術詞；原文仍在完整來源與提示，限制不刪除。"""
-    text = _localize_workbench_text(str(value or ""))
+    text = str(value or "")
+    for source, label in (
+        ("Portfolio alert manual review", "持倉警示待覆盤"),
+        (
+            "Human review required; no action is applied.",
+            "需人工確認；不會套用任何動作。",
+        ),
+        (
+            "Human review required; no buy/sell recommendation is generated.",
+            "需人工判讀；未產生買賣建議。",
+        ),
+    ):
+        text = text.replace(source, label)
+    text = _localize_workbench_text(text)
     for token, label in (
         ("DecisionDeskSnapshot", "市場分析來源"),
         ("EvidenceEvent table", "研究證據紀錄"),
@@ -4217,7 +4230,13 @@ def _guided_join_reasons(*values: object, fallback: str) -> str:
     cleaned: list[str] = []
     seen: set[str] = set()
     for value in reasons:
-        text = _guided_compact(_localize_workbench_text(value), "").strip()
+        # 這句由首頁完整翻譯；先保留原文，避免通用 token 拆句且讓提示可追溯。
+        source_text = (
+            value
+            if value == "Human review required; no buy/sell recommendation is generated."
+            else _localize_workbench_text(value)
+        )
+        text = _guided_compact(source_text, "").strip()
         if not text or text in seen:
             continue
         cleaned.append(text)

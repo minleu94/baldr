@@ -51,3 +51,11 @@ M92 是 QA 專項，未改產品程式。正常 Main 1280×760／真 Windows DPI
 M93 由 Luna 僅改 Fast chart canvas 的 Y 軸顯示：回撤圖依刻度間距保留小數、附 `%` 並正規化顯示精度內的負零；原曲線 payload、圖形範圍、金融計算及權益圖整數刻度路徑不變。Sol 在同一隔離 A/B 正常 Main 重跑，目視 A 真零回撤的刻度從重複 `0`／`-0` 改為 `0.02%／0.01%／0.00%／-0.01%／-0.02%`，B 非零回撤的刻度也可區分，另三圖仍可見／缺件清舊；收據 `.../single_owned_qa_b6d3667e3e9c40beb7169c165097177b/receipt.json`，後版截圖與結果 `output/tasks/baldr-opus-ux-implementation/root/native_m92_evidence/run_9771ebe1acfd4c9e9a0a073b0a75f234/`。Sol 最後補搜尋舊身份失效時清結果與可見提示後，重跑 M91–M93 受改 Python 編譯、聚焦 **71 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,143** source files clean；受控 Job 無殘留或強制清理，最終收據 `.../single_owned_qa_6f1583c8cd9b4e1995906db4c17d6190/receipt.json`。
 
 這些證據仍限合成題材／Legacy 原檔、真 OS 150% 的已測畫面；正式資料、其他 DPI／GPU、固定 EXE、Owner UAT 與完整產品 Gate 未接受。M91–M93 皆未改 DTO、正式回測公式、PIT 或來源資格。
+
+## M94 工作台首屏已知警示文案
+
+Luna `/root/next_theme_slice` 唯讀盤點找到既有合成 DTO 的持倉警示在首頁仍顯整句英文；另一 Luna 盤點 Portfolio／Watchlist 的預設純自選、空態及來源分區，未找到可安全認定的新缺陷，因此沒有為湊切片改動分類。Luna 對 `ui_qt/views/workbench_view.py` 與 `tests/test_ui_qt_workbench_view.py` 實作已知持倉英文文案的呈現層映射。Sol 目視首版原生圖後，連同同一首屏的已知候選句「需人工判讀；未產生買賣建議」一起修正，並調整轉譯順序：候選原句在通用 token 翻譯前保留，首頁顯繁中，tooltip 與 Action／Review 原表格仍可追原文；未知文案原樣。原 DTO、狀態分類、數值、來源身份、導航與金融資格不變。
+
+受控測試最終 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_9f54db344abe4714a56b647ffec1d86b/receipt.json`：受改 Python 編譯、Workbench View 聚焦 **42 passed**、共用 Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,143** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。候選句初加時因原通用 `recommendation` 替換先產生半中半英，聚焦失敗收據 `.../single_owned_qa_96e3a3ae689248e9b9279d3c0c98e788/receipt.json` 與 `.../single_owned_qa_72eb67606a6140f08b4f9c672de685af/receipt.json` 保留；修轉譯順序後重跑通過。真 Windows DPI144（150%）的原生 1280×760 合成 Workbench 畫面，在 `.../native_m94_evidence/run_8bbb3bf19954475d9a590eb9b710d108/` 有已知與未知警示的 PNG／JSON；Job 收據 `.../single_owned_qa_b928055d812540e786c1ffd911c81239/receipt.json`。較早僅持倉句的合成畫面 `.../native_m94_evidence/run_3f0c4f1b476c49408981bff423df17fe/` 可作候選句前版對照。
+
+此收尾限已知句、合成 DTO、單一真 OS DPI 與現行原始碼；未宣稱全部自由文字已翻譯，也未核正式市場／私人 Portfolio、固定新版 EXE、Owner UAT、其他 DPI 或完整產品 Gate。M73 決策品質控制範圍及 M75 題材多期／有向關係仍須原產品與來源契約。

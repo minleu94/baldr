@@ -306,3 +306,13 @@ Opus 啟動審查後因額度用盡由 Antigravity 接手完成六份主要報�
 | P3 進階關係 | 已完成同版分類與共用成員的安全探索；公司間有向供應邊、跨期強弱及用途資格因逐邊來源與時間契約不足而未實作。 |
 
 本輪工程收尾限於受追蹤原始碼、隔離合成資料與上述真 Windows DPI216 畫面。正式市場／私人 Portfolio 的授權唯讀副本、其他真 OS DPI 與 1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73 決策品質作用範圍、M75 有向／跨期來源契約及完整產品 Gate 仍須分開驗；`output/` 原始證據留本機，不進版控。沒有實盤、broker order、正式資料改寫、其他排程修改、push、merge 或部署。
+
+## M124／M125 同源警示與行情日期呈現
+
+Luna `/root/m108_research_visual_audit` 單一 writer 修改 `ui_qt/views/live_research_gap_view.py` 與 `tests/test_ui_qt_evidence_review_dashboards.py`。Evidence「資料缺口」用原 `LiveResearchGapDashboardResult.warning_counts` 與本次 `rows[].warnings` 逐字核對，預設收合顯前五種警示文字的次數條與有界其餘類數／次數。總分母是警示出現次數，一列多則分別計入；diagnostics、型別、總數、逐字或列數不符時顯未知並清舊。Sol 複核補收合時摘要真正隱藏及即時清除舊條，避免刷新瞬間仍看見前次警示。原 service、來源資格與逐列文字不變。
+
+Luna `/root/m107_portfolio_audit` 單一 writer 修改 `ui_qt/views/portfolio_view.py` 與 `tests/test_ui_qt_portfolio_view.py`。手動 Portfolio 持倉表的「目前價格／行情資料日／行情日期狀態」改從同一 `PositionDTO` 列讀取；另讀 `_current_snapshot_for_position()` 仍只供原條件監控等路徑，不把該次觀測的日期貼到不同取價結果。Sol 補無價格或無有效 ISO 日期的 fail closed 呈現；來源自稱 current／stale 而日期未知時保留原狀態並明示無法核日。同股多筆靠 position identity 留列，原價格、估值、公式、來源優先序與私人帳均未改。
+
+首輪受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_28ea01c67e344826a4450a71e716c896/receipt.json` 為新測試監控欄未先選股造成 **4 failed／158 passed**，程式檢查其餘項通過；修正測試操作後，最終 `.../root/single_owned_qa_e245dd0749964e34ad5648f02dae711d/receipt.json`：compile 0、聚焦 **162 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留或強制清理。正常 Main 1280×760／1500×900、真 Windows DPI216 的隔離合成已載入收合／展開、來源不可用及 Portfolio 同股資料日錯配示例共七圖，結果在 `.../root/native_m124_m125_evidence/run_d30847be1d314fae81fbc18f9a87d565/result.json`，Job `.../root/single_owned_qa_a7093cc406094ef3b174b63fbd505496/receipt.json` exit0；Sol 目視 1280 畫面圖卡、表列與未知狀態可讀，隔離 SQLite 前後 SHA 相同。
+
+排程啟動至今的分期範圍沿上表 P0–P3；M124／M125 新增的是 Evidence 警示頻次與 Portfolio 同列報價日期一致性，**M1–M125 仍是切片序號，不是功能數**。正式 Evidence／私人 Portfolio、其他真 OS DPI、1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受。原始 PNG／receipt 留 ignored `output/`，不進版控；未 push／merge／部署或改正式資料。

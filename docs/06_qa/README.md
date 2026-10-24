@@ -1,5 +1,7 @@
 # QA 證據導覽
 
+- [Opus／Antigravity UX 工程收尾](BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)：Opus 起始、Antigravity 接手審查的來源核對，Sol／Luna M1–M125 切片、同源警示與持倉報價日期的隔離 QA，以及尚未接受的正式 Gate。M 編號是切片序號，不是功能數。
+
 - [Track B 六包交付獨立複核](BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)：七筆 Legacy、Weekly 遷移信任範圍、Forward 每事件政策、9,423 筆版本矩陣與精確 output 導航登記；不授正式來源接受。
 
 - [Track B 金融資料與營運補完](BALDR_TRACK_B_DATA_OPERATIONS_20261022.md)：10/22 新自然收據、修訂 custody 語義核驗、Formal immutable terminal、七維狀態矩陣及 Track A/C 契約；金融接受與新自然執行另判。

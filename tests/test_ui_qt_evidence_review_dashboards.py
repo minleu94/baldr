@@ -1374,6 +1374,126 @@ def test_live_research_gap_quality_distribution_uses_only_service_counts() -> No
     assert view.detail_panel.toPlainText() == ""
 
 
+def test_live_research_gap_warning_frequency_is_bounded_and_fails_closed() -> None:
+    app()
+    rows = (
+        LiveResearchGapDashboardRow(warnings=("alpha", "beta", "gamma")),
+        LiveResearchGapDashboardRow(warnings=("alpha", "beta", "delta")),
+        LiveResearchGapDashboardRow(warnings=("epsilon", "zeta")),
+    )
+    result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(),
+        LiveResearchGapDashboardCards(positions_seen=3, warnings_count=8),
+        rows=rows,
+        quality_counts={"missing": 3},
+        warning_counts={
+            "alpha": 2,
+            "beta": 2,
+            "gamma": 1,
+            "delta": 1,
+            "epsilon": 1,
+            "zeta": 1,
+        },
+    )
+    service = FakeDashboard(result)
+    view = LiveResearchGapView(service, auto_refresh=False, async_refresh=False)
+    assert not view.warning_distribution_group.isChecked()
+    assert view.warning_summary_label.isHidden()
+    assert view.warning_rows_widget.isHidden()
+    view.refresh_dashboard()
+
+    assert view.warning_distribution_group.title() == "警示文字頻次（8 次／6 種）"
+    assert "同一列可包含多則警示" in view.warning_summary_label.text()
+    assert "分母為本次警示出現總次數" in view.warning_summary_label.text()
+    displayed_texts = [label.text() for label, _bar, _count in view.warning_bar_rows]
+    assert displayed_texts[:5] == ["alpha", "beta", "delta", "epsilon", "gamma"]
+    assert "zeta" not in displayed_texts
+    assert any("其餘 1 種警示文字：1 次" in text for text in displayed_texts)
+    assert all(
+        label.textFormat() == Qt.TextFormat.PlainText
+        for label, _bar, _count in view.warning_bar_rows[:5]
+    )
+    assert view.warning_bar_rows[0][1].maximum() == 8
+    assert view.warning_bar_rows[0][1].value() == 2
+    view.warning_distribution_group.setChecked(True)
+    assert not view.warning_summary_label.isHidden()
+    assert not view.warning_rows_widget.isHidden()
+    view.warning_distribution_group.setChecked(False)
+    assert view.warning_summary_label.isHidden()
+    assert view.warning_rows_widget.isHidden()
+
+    zero_result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(), LiveResearchGapDashboardCards(), warning_counts={}
+    )
+    view._on_dashboard_loaded(zero_result, request_id=view._active_request_id)
+    assert "0 次" in view.warning_summary_label.text()
+    assert not view.warning_bar_rows
+
+    invalid_results = (
+        LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=3, warnings_count=8),
+            rows=rows,
+            warning_counts={"alpha": True},
+        ),
+        LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=3, warnings_count=8),
+            rows=rows,
+            warning_counts={"   ": 8},
+        ),
+        LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=3, warnings_count=8),
+            rows=rows,
+            warning_counts={"alpha": 7},
+        ),
+        LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=3, warnings_count=8),
+            rows=rows,
+            warning_counts={
+                "alpha": 1,
+                "beta": 3,
+                "gamma": 1,
+                "delta": 1,
+                "epsilon": 1,
+                "zeta": 1,
+            },
+        ),
+        LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=4, warnings_count=8),
+            rows=rows,
+            warning_counts={"alpha": 8},
+        ),
+        LiveResearchGapDashboardResult(
+            LiveResearchGapDashboardRequest(),
+            LiveResearchGapDashboardCards(positions_seen=3, warnings_count=8),
+            rows=rows,
+            warning_counts={"alpha": 8},
+            diagnostics=("source_incomplete",),
+        ),
+    )
+    for invalid in invalid_results:
+        view._on_dashboard_loaded(invalid, request_id=view._active_request_id)
+        assert "未知" in view.warning_summary_label.text()
+        assert not view.warning_bar_rows
+
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    assert view.warning_bar_rows
+
+    class FailingDashboard:
+        def load_dashboard(self, _request):
+            raise RuntimeError("synthetic failure")
+
+    view.dashboard_service = FailingDashboard()
+    view.refresh_dashboard()
+    assert "載入失敗" in view.warning_summary_label.text()
+    assert not view.warning_bar_rows
+    assert view.warning_distribution_group.title() == "警示文字頻次（未知）"
+
+
 def test_live_research_gap_details_show_trace_ids_from_selected_row() -> None:
     app()
     linked = LiveResearchGapDashboardRow(

@@ -4783,20 +4783,37 @@ class PortfolioView(QWidget):
                     if p.unrealized_pnl_pct is not None:
                         pnl_pct_str = f"{p.unrealized_pnl_pct * 100:+.2f}%"
 
+                    # 這兩欄描述上方同一個 PositionDTO.current_price；不可把
+                    # ConditionMonitor 的另讀 snapshot 日期貼到持倉標記價格上。
+                    raw_quote_date = getattr(p, "quote_data_date", None)
+                    quote_data_date_text = "未知"
+                    if p.current_price is not None and isinstance(raw_quote_date, str):
+                        try:
+                            parsed_quote_date = date.fromisoformat(raw_quote_date)
+                        except ValueError:
+                            parsed_quote_date = None
+                        if (
+                            parsed_quote_date is not None
+                            and parsed_quote_date.isoformat() == raw_quote_date
+                        ):
+                            quote_data_date_text = raw_quote_date
+                    raw_quote_status = getattr(p, "quote_freshness_status", None)
+                    if (
+                        quote_data_date_text == "未知"
+                        and raw_quote_status in {"current", "stale", "future_rejected"}
+                    ):
+                        quote_status_text = f"資料日未知（原狀態：{raw_quote_status}）"
+                    else:
+                        quote_status_text = _quote_freshness_status_text(raw_quote_status)
+
                     data.append({
                         "證券代號": p.stock_code,
                         "證券名稱": p.stock_name,
                         "持有股數": p.quantity,
                         "平均成本": p.average_cost,
                         "目前價格": p.current_price if p.current_price is not None else "-",
-                        "行情資料日": (
-                            snapshot.quote_data_date.isoformat()
-                            if snapshot.quote_data_date is not None
-                            else "未知"
-                        ),
-                        "行情日期狀態": _quote_freshness_status_text(
-                            snapshot.quote_freshness_status
-                        ),
+                        "行情資料日": quote_data_date_text,
+                        "行情日期狀態": quote_status_text,
                         "投入金額（毛額，未扣費稅）": p.invested_amount,
                         "未實現損益（毛額，未扣費稅）": (
                             p.unrealized_pnl if p.unrealized_pnl is not None else "-"

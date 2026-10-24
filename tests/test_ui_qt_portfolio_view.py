@@ -502,14 +502,127 @@ def test_portfolio_quote_date_status_only_localizes_known_source_codes(status, e
 
 def test_portfolio_quote_date_status_keeps_row_and_monitor_source_code(tmp_path):
     service, _calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    service.positions[0].quote_data_date = "2026-10-01"
+    service.positions[0].quote_freshness_status = "stale"
     view = make_portfolio_view(tmp_path, portfolio_service=service)
     assert view.select_stock("2382")
     assert view.positions_model is not None
     frame = view.positions_model.getDataFrame()
     assert "行情日期狀態" in frame.columns
-    assert frame.loc[0, "行情日期狀態"] == "資料日符合預期交易日（current）"
+    assert frame.loc[0, "目前價格"] == 110
+    assert frame.loc[0, "行情資料日"] == "2026-10-01"
+    assert frame.loc[0, "行情日期狀態"] == "資料日早於預期交易日（stale）"
+    # Monitor 可繼續呈現另讀觀測，但不能把它的日期貼到 PositionDTO 價格。
     assert "日期狀態：資料日符合預期交易日（current）" in view.lbl_mon_current_price.text()
     assert "僅供損益觀察" in view.lbl_mon_current_price.text()
+    view.close()
+
+
+@pytest.mark.parametrize("dto_quote_date", [None, "2026-99-99", "20261002"])
+def test_portfolio_position_table_does_not_fallback_to_snapshot_date_when_dto_date_is_unknown(
+    tmp_path, dto_quote_date
+):
+    service, _calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    service.positions[0].quote_data_date = dto_quote_date
+    service.positions[0].quote_freshness_status = "unverified"
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    assert view.select_stock("2382")
+
+    frame = view.positions_model.getDataFrame()
+
+    assert frame.loc[0, "目前價格"] == 110
+    assert frame.loc[0, "行情資料日"] == "未知"
+    assert frame.loc[0, "行情日期狀態"] == "資料日未核實（unverified）"
+    assert "2026-10-02" in view.lbl_mon_current_price.text()
+    view.close()
+
+
+def test_portfolio_position_without_mark_price_does_not_borrow_snapshot_date(tmp_path):
+    service, _calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    service.positions[0].current_price = None
+    service.positions[0].quote_data_date = "2026-10-02"
+    service.positions[0].quote_freshness_status = "current"
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    assert view.select_stock("2382")
+
+    frame = view.positions_model.getDataFrame()
+
+    assert frame.loc[0, "目前價格"] == "-"
+    assert frame.loc[0, "行情資料日"] == "未知"
+    assert frame.loc[0, "行情日期狀態"] == "資料日未知（原狀態：current）"
+    assert "2026-10-02" in view.lbl_mon_current_price.text()
+    view.close()
+
+
+def test_portfolio_position_table_keeps_future_quote_rejected_status_from_dto(tmp_path):
+    service, _calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    service.positions[0].quote_data_date = "2026-10-06"
+    service.positions[0].quote_freshness_status = "future_rejected"
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+
+    frame = view.positions_model.getDataFrame()
+
+    assert frame.loc[0, "行情資料日"] == "2026-10-06"
+    assert frame.loc[0, "行情日期狀態"] == "資料日超前（拒用）（future_rejected）"
+    view.close()
+
+
+def test_portfolio_same_ticker_quote_rows_remain_bound_to_position_identity_after_sort(tmp_path):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    first = replace(
+        service.positions[0],
+        position_id="manual:2330:first",
+        stock_code="2330",
+        stock_name="台積電 A",
+        current_price=110,
+        quote_data_date="2026-10-02",
+        quote_freshness_status="current",
+    )
+    second = replace(
+        service.positions[0],
+        position_id="manual:2330:second",
+        stock_code="2330",
+        stock_name="台積電 B",
+        current_price=111,
+        quote_data_date="2026-10-01",
+        quote_freshness_status="stale",
+    )
+    service.positions = [first, second]
+
+    def get_current_price_observation(stock_code: str):
+        return SimpleNamespace(
+            stock_code=stock_code,
+            price=Decimal("999"),
+            data_date=date(2026, 10, 23),
+            source_id="separate.snapshot",
+            source_snapshot_hash="f" * 64,
+            freshness_status="current",
+            expected_date=date(2026, 10, 23),
+        )
+
+    service.get_current_price_observation = get_current_price_observation
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+
+    model = view.positions_model
+    assert model is not None
+    rows = model.getDataFrame()
+    assert rows["行情資料日"].tolist() == ["2026-10-02", "2026-10-01"]
+    assert rows["行情日期狀態"].tolist() == [
+        "資料日符合預期交易日（current）",
+        "資料日早於預期交易日（stale）",
+    ]
+    price_column = model.getVisibleColumns().index("目前價格")
+    model.sort(price_column, Qt.DescendingOrder)
+    sorted_rows = model.getDataFrame()
+    assert sorted_rows["_position_id"].tolist() == [
+        "manual:2330:second",
+        "manual:2330:first",
+    ]
+    assert sorted_rows["行情資料日"].tolist() == ["2026-10-01", "2026-10-02"]
+    assert sorted_rows["行情日期狀態"].tolist() == [
+        "資料日早於預期交易日（stale）",
+        "資料日符合預期交易日（current）",
+    ]
     view.close()
 
 

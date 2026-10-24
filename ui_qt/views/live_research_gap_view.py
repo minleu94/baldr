@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -158,6 +160,26 @@ class LiveResearchGapView(QWidget):
         self.quality_layout.setColumnStretch(4, 1)
         layout.addLayout(self.quality_layout)
 
+        self.warning_distribution_group = QGroupBox("警示文字頻次（未知）")
+        self.warning_distribution_group.setObjectName("liveResearchGapWarningDistribution")
+        self.warning_distribution_group.setCheckable(True)
+        self.warning_distribution_group.setChecked(False)
+        warning_group_layout = QVBoxLayout(self.warning_distribution_group)
+        self.warning_summary_label = QLabel("警示頻次尚未載入。")
+        self.warning_summary_label.setWordWrap(True)
+        self.warning_summary_label.setTextFormat(Qt.TextFormat.PlainText)
+        warning_group_layout.addWidget(self.warning_summary_label)
+        self.warning_summary_label.hide()
+        self.warning_rows_widget = QWidget()
+        self.warning_rows_layout = QGridLayout(self.warning_rows_widget)
+        self.warning_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.warning_rows_layout.setColumnStretch(1, 1)
+        warning_group_layout.addWidget(self.warning_rows_widget)
+        self.warning_rows_widget.hide()
+        self.warning_distribution_group.toggled.connect(self._toggle_warning_distribution)
+        self.warning_bar_rows: list[tuple[QLabel, QProgressBar | None, QLabel | None]] = []
+        layout.addWidget(self.warning_distribution_group)
+
         self.trace_summary_label = QLabel("追溯 ID：尚未載入選列。")
         self.trace_summary_label.setObjectName("liveResearchGapSelectedTraceIds")
         self.trace_summary_label.setAccessibleName("所選資料缺口列的追溯 ID")
@@ -191,6 +213,7 @@ class LiveResearchGapView(QWidget):
         self._current_result = None
         self.table_model.set_rows(())
         self._clear_quality_distribution("資料品質分布載入中…")
+        self._clear_warning_distribution("警示頻次載入中…")
         self.trace_summary_label.setText("追溯 ID：載入中…")
         for field_name, card in self.cards.items():
             self._set_card(card, card.property("title"), "載入中")
@@ -231,6 +254,7 @@ class LiveResearchGapView(QWidget):
             value = "未知" if result.diagnostics else getattr(result.cards, field_name)
             self._set_card(card, card.property("title"), value)
         self._render_quality_distribution(result)
+        self._render_warning_distribution(result)
         self.empty_state_label.setText(result.empty_state_message)
         self.table_model.set_rows(result.rows)
         self.summary_table.resizeColumnsToContents()
@@ -249,6 +273,7 @@ class LiveResearchGapView(QWidget):
         for card in self.cards.values():
             self._set_card(card, card.property("title"), "未知")
         self._clear_quality_distribution("資料品質分布未知；證據來源載入失敗。")
+        self._clear_warning_distribution("警示頻次未知；證據來源載入失敗。")
         self.trace_summary_label.setText("追溯 ID：來源載入失敗，狀態未知。")
         self.empty_state_label.setText(f"研究落差證據載入失敗：{message.splitlines()[0]}")
         self.detail_panel.setPlainText("")
@@ -343,6 +368,124 @@ class LiveResearchGapView(QWidget):
             bar.setValue(0)
         for label in self.quality_counts_labels.values():
             label.setText("—")
+
+    def _render_warning_distribution(self, result: LiveResearchGapDashboardResult) -> None:
+        counts = result.warning_counts
+        rows = result.rows
+        card_count = result.cards.warnings_count
+        positions_seen = result.cards.positions_seen
+        valid_counts = (
+            isinstance(counts, dict)
+            and all(
+                isinstance(text, str)
+                and bool(text.strip())
+                and not isinstance(count, bool)
+                and isinstance(count, int)
+                and count >= 0
+                for text, count in counts.items()
+            )
+        )
+        if result.diagnostics:
+            self._clear_warning_distribution("警示頻次未知；來源回報診斷，不能視為空集合。")
+            return
+        if (
+            not valid_counts
+            or not isinstance(rows, (tuple, list))
+            or isinstance(card_count, bool)
+            or not isinstance(card_count, int)
+            or card_count < 0
+            or isinstance(positions_seen, bool)
+            or not isinstance(positions_seen, int)
+            or positions_seen != len(rows)
+        ):
+            self._clear_warning_distribution("警示頻次未知；警示計數與本次載入列不一致。")
+            return
+
+        row_warnings = [getattr(row, "warnings", None) for row in rows]
+        if any(
+            not isinstance(warnings, (tuple, list))
+            or any(not isinstance(warning, str) or not warning.strip() for warning in warnings)
+            for warnings in row_warnings
+        ):
+            self._clear_warning_distribution("警示頻次未知；列內警示文字格式不完整。")
+            return
+        occurrence_count = sum(len(warnings) for warnings in row_warnings)
+        row_counts = Counter(warning for warnings in row_warnings for warning in warnings)
+        if (
+            occurrence_count != card_count
+            or sum(counts.values()) != card_count
+            or dict(row_counts) != counts
+        ):
+            self._clear_warning_distribution("警示頻次未知；警示計數與本次載入列不一致。")
+            return
+
+        ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        displayed = ordered[:5]
+        overflow = ordered[5:]
+        self._clear_warning_rows()
+        for index, (warning, count) in enumerate(displayed):
+            warning_label = QLabel()
+            warning_label.setTextFormat(Qt.TextFormat.PlainText)
+            warning_label.setText(warning)
+            warning_label.setWordWrap(True)
+            bar = QProgressBar()
+            bar.setTextVisible(False)
+            bar.setFixedHeight(12)
+            bar.setRange(0, max(1, card_count))
+            bar.setValue(count)
+            count_label = QLabel(str(count))
+            count_label.setToolTip("警示文字出現次數")
+            self.warning_rows_layout.addWidget(warning_label, index, 0)
+            self.warning_rows_layout.addWidget(bar, index, 1)
+            self.warning_rows_layout.addWidget(count_label, index, 2)
+            self.warning_bar_rows.append((warning_label, bar, count_label))
+        if overflow:
+            overflow_occurrences = sum(count for _, count in overflow)
+            overflow_label = QLabel(
+                f"其餘 {len(overflow)} 種警示文字：{overflow_occurrences} 次（完整內容見下方列明細）"
+            )
+            overflow_label.setWordWrap(True)
+            overflow_label.setTextFormat(Qt.TextFormat.PlainText)
+            overflow_label.setToolTip("")
+            self.warning_rows_layout.addWidget(overflow_label, len(displayed), 0, 1, 3)
+            self.warning_bar_rows.append((overflow_label, None, None))
+        if card_count == 0:
+            summary = "警示文字出現 0 次；已載入列目前沒有警示。"
+        else:
+            summary = (
+                f"警示文字頻次：{card_count} 次出現、{len(counts)} 種文字；"
+                "分母為本次警示出現總次數，同一列可包含多則警示。"
+            )
+        self.warning_summary_label.setText(summary)
+        self.warning_summary_label.setToolTip(
+            "依本次篩選讀取的列與服務警示計數核對；此處統計警示文字出現次數，"
+            "不是有警示的列數，同一列可能包含多則警示。"
+        )
+        self.warning_distribution_group.setTitle(
+            f"警示文字頻次（{card_count} 次／{len(counts)} 種）"
+        )
+
+    def _clear_warning_distribution(self, message: str) -> None:
+        self._clear_warning_rows()
+        self.warning_summary_label.setText(message)
+        self.warning_summary_label.setToolTip(
+            "警示文字頻次未知時不沿用前次結果；同一列可能包含多則警示。"
+        )
+        self.warning_distribution_group.setTitle("警示文字頻次（未知）")
+
+    def _clear_warning_rows(self) -> None:
+        while self.warning_rows_layout.count():
+            item = self.warning_rows_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setParent(None)
+                widget.deleteLater()
+        self.warning_bar_rows.clear()
+
+    def _toggle_warning_distribution(self, checked: bool) -> None:
+        self.warning_summary_label.setVisible(checked)
+        self.warning_rows_widget.setVisible(checked)
 
     def _make_card(self, title: str) -> QLabel:
         card = QLabel(f"{title}\n0")

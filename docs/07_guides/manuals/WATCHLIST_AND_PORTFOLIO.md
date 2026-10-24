@@ -191,6 +191,8 @@ V2 後繼原始碼在「摘要／五問」同屏呈現原研究價格圖與支�
 
 讀取清單可合作取消，換帳或關閉後晚到結果不會套用。登錄寫入期間需等待收尾。Registry 版本不相容、引用過期、hash／帳戶不符或來源原件缺失時會拒絕重開，請保留 record ID、artifact 與錯誤，確認相同私人 store 及 Registry 設定；不要手改資料庫、移除 hash 或改選 latest。
 
+手動持倉表的「目前價格／行情資料日／行情日期狀態」現在取自同一持倉列的報價資料。若該列缺價或資料日無效，資料日顯「未知」；原 freshness 如聲稱 current／stale 而日期不可核對，畫面會標「資料日未知（原狀態：…）」。條件監控區可能另讀行情觀測，日期可與表列不同，不能據此替換持倉列資料日。請按原持倉身份與來源判讀，這不是成交或正式估值證明。
+
 ### Paper Portfolio
 
 Paper Portfolio 分頁主要唯讀呈現 snapshot、現金、狀態、ledger、成本、benchmark、weekly report、blockers 與 warnings。資料缺少時顯示 partial／not computable，不能把未知成本、缺成交或空快照補成零。

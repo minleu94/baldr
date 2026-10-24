@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import html
 import json
+import weakref
 from typing import Optional, Type
 
 import pandas as pd
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
@@ -41,10 +42,12 @@ def _set_webengine_dark_surface(web_view) -> None:
     web_view.page().setBackgroundColor(QColor(MIDNIGHT_ANALYST.app_bg))
 
 
-def _load_webengine_payload(web_view, payload: dict) -> None:
+def _load_webengine_payload(
+    web_view, payload: dict, render_token: str = "0"
+) -> None:
     """設定頁面底色後載入保留原資料的本地圖表 HTML。"""
     _set_webengine_dark_surface(web_view)
-    web_view.setHtml(_build_html(payload))
+    web_view.setHtml(_build_html(payload, render_token=render_token))
 
 
 def _payload_has_chart_data(payload: dict) -> bool:
@@ -66,6 +69,23 @@ class _FastCanvasChartWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._latest_payload: Optional[dict] = None
+        self._active_payload: Optional[dict] = None
+        self._queued_payload: Optional[dict] = None
+        self._webengine_loading = False
+        self._renderer_terminated = False
+        self._webengine_generation = 0
+        self._load_sequence = 0
+        self._active_render_token: Optional[str] = None
+        self._readiness_pending = False
+        self._readiness_query_in_flight = False
+        self._widget_closed = False
+        self._callback_guard = {"alive": True}
+        self.destroyed.connect(
+            lambda *_args, guard=self._callback_guard: guard.__setitem__(
+                "alive", False
+            )
+        )
         self._setup_ui()
 
     def _setup_ui(self):
@@ -132,12 +152,9 @@ class _FastCanvasChartWidget(QWidget):
         )
         layout.addWidget(self.retry_button)
 
-        self._latest_payload: Optional[dict] = None
-        self._active_payload: Optional[dict] = None
-        self._queued_payload: Optional[dict] = None
-        self._webengine_loading = False
-        self._renderer_terminated = False
-        self._webengine_generation = 0
+        self._readiness_poll_timer = QTimer(self)
+        self._readiness_poll_timer.setInterval(50)
+        self._readiness_poll_timer.timeout.connect(self._poll_canvas_readiness)
 
         if not HAS_QTWEBENGINE:
             self.web_view = None
@@ -218,6 +235,10 @@ class _FastCanvasChartWidget(QWidget):
             return
         if self._renderer_terminated:
             self._replace_terminated_webengine_view()
+        self._cancel_canvas_readiness()
+        self._load_sequence += 1
+        render_token = f"{self._webengine_generation}:{self._load_sequence}"
+        self._active_render_token = render_token
         self._active_payload = payload
         self._webengine_loading = True
         self._renderer_terminated = False
@@ -226,7 +247,9 @@ class _FastCanvasChartWidget(QWidget):
         )
         # 每次載入前指定頁面底色，避免載入期間閃白。
         try:
-            _load_webengine_payload(self.web_view, payload)
+            _load_webengine_payload(
+                self.web_view, payload, render_token=render_token
+            )
         except Exception:
             self._webengine_loading = False
             self._set_load_status(
@@ -248,6 +271,157 @@ class _FastCanvasChartWidget(QWidget):
             return
         if not self._webengine_loading:
             return
+        if not succeeded:
+            self._webengine_loading = False
+            queued_payload = self._queued_payload
+            self._queued_payload = None
+            if queued_payload is not None:
+                self._start_webengine_load(queued_payload)
+                return
+            self._set_load_status(
+                "圖表頁面載入失敗；可查看文字數值或重試。",
+                retry=True,
+            )
+            return
+        queued_payload = self._queued_payload
+        self._queued_payload = None
+        if queued_payload is not None:
+            self._webengine_loading = False
+            self._start_webengine_load(queued_payload)
+            return
+        # 文件載入成功仍未證明 JavaScript 已完成真正的 canvas 繪製。
+        self._readiness_pending = True
+        self._readiness_query_in_flight = False
+        self._set_load_status("圖表文件已載入，正在確認畫布繪製。")
+        self._schedule_canvas_readiness_timeout(generation, self._load_sequence)
+        self._poll_canvas_readiness()
+
+    def _on_webengine_renderer_terminated(
+        self, generation: int, _status: object, _exit_code: int
+    ) -> None:
+        if generation != self._webengine_generation:
+            return
+        self._cancel_canvas_readiness()
+        self._renderer_terminated = True
+        self._webengine_loading = False
+        self._queued_payload = None
+        self._set_load_status(
+            "圖表呈現程序已停止；目前數值資料仍可查看或重試。",
+            retry=True,
+        )
+
+    def _schedule_canvas_readiness_timeout(
+        self, generation: int, load_sequence: int
+    ) -> None:
+        widget_ref = weakref.ref(self)
+        guard = self._callback_guard
+
+        def on_timeout() -> None:
+            if not guard["alive"]:
+                return
+            widget = widget_ref()
+            if widget is not None:
+                widget._on_canvas_readiness_timeout(generation, load_sequence)
+
+        QTimer.singleShot(3000, on_timeout)
+
+    def _poll_canvas_readiness(self) -> None:
+        if (
+            self._widget_closed
+            or not self._readiness_pending
+            or self._readiness_query_in_flight
+            or self.web_view is None
+        ):
+            return
+
+        generation = self._webengine_generation
+        load_sequence = self._load_sequence
+        render_token = self._active_render_token
+        if render_token is None:
+            return
+
+        self._readiness_query_in_flight = True
+        widget_ref = weakref.ref(self)
+        guard = self._callback_guard
+        query = (
+            "(() => { const root = document.documentElement; "
+            "return root ? root.dataset.chartToken + '|' + "
+            "(root.dataset.chartState || 'pending') : ''; })()"
+        )
+
+        def on_result(result) -> None:
+            if not guard["alive"]:
+                return
+            widget = widget_ref()
+            if widget is not None:
+                widget._on_canvas_readiness_result(
+                    generation, load_sequence, render_token, result
+                )
+
+        try:
+            self.web_view.page().runJavaScript(query, on_result)
+        except Exception:
+            self._readiness_query_in_flight = False
+            self._finish_canvas_readiness(
+                "unconfirmed", generation, load_sequence
+            )
+
+    def _on_canvas_readiness_result(
+        self,
+        generation: int,
+        load_sequence: int,
+        expected_token: str,
+        result,
+    ) -> None:
+        if (
+            self._widget_closed
+            or generation != self._webengine_generation
+            or load_sequence != self._load_sequence
+            or not self._readiness_pending
+        ):
+            return
+        self._readiness_query_in_flight = False
+
+        if isinstance(result, str):
+            token, separator, state = result.partition("|")
+            if separator and token == expected_token:
+                if state == "ready":
+                    self._finish_canvas_readiness(
+                        "ready", generation, load_sequence
+                    )
+                    return
+                if state == "error":
+                    self._finish_canvas_readiness(
+                        "error", generation, load_sequence
+                    )
+                    return
+
+        self._readiness_poll_timer.start()
+
+    def _on_canvas_readiness_timeout(
+        self, generation: int, load_sequence: int
+    ) -> None:
+        if (
+            generation != self._webengine_generation
+            or load_sequence != self._load_sequence
+            or not self._readiness_pending
+        ):
+            return
+        self._finish_canvas_readiness(
+            "unconfirmed", generation, load_sequence
+        )
+
+    def _finish_canvas_readiness(
+        self, state: str, generation: int, load_sequence: int
+    ) -> None:
+        if (
+            self._widget_closed
+            or generation != self._webengine_generation
+            or load_sequence != self._load_sequence
+            or not self._readiness_pending
+        ):
+            return
+        self._cancel_canvas_readiness()
         self._webengine_loading = False
 
         queued_payload = self._queued_payload
@@ -256,34 +430,29 @@ class _FastCanvasChartWidget(QWidget):
             self._start_webengine_load(queued_payload)
             return
 
-        if not succeeded:
+        if state == "ready":
+            if self._active_payload is not None and not _payload_has_chart_data(
+                self._active_payload
+            ):
+                self._set_load_status("目前沒有可繪製的圖表資料。")
+            else:
+                self._set_load_status("畫布繪製完成。")
+            return
+        if state == "error":
             self._set_load_status(
-                "圖表頁面載入失敗；可查看文字數值或重試。",
+                "圖表 JavaScript 繪製失敗；可查看數值或重試。",
                 retry=True,
             )
             return
-
-        if self._active_payload is not None and not _payload_has_chart_data(
-            self._active_payload
-        ):
-            self._set_load_status("目前沒有可繪製的圖表資料。")
-            return
-
-        # loadFinished 只表示文件載入完成，不能證明 JavaScript/canvas 已繪製。
-        self._set_load_status("圖表文件載入完成。")
-
-    def _on_webengine_renderer_terminated(
-        self, generation: int, _status: object, _exit_code: int
-    ) -> None:
-        if generation != self._webengine_generation:
-            return
-        self._renderer_terminated = True
-        self._webengine_loading = False
-        self._queued_payload = None
         self._set_load_status(
-            "圖表呈現程序已停止；目前數值資料仍可查看或重試。",
+            "無法確認畫布是否完成繪製；可查看數值或重試。",
             retry=True,
         )
+
+    def _cancel_canvas_readiness(self) -> None:
+        self._readiness_poll_timer.stop()
+        self._readiness_pending = False
+        self._readiness_query_in_flight = False
 
     def _retry_latest_payload(self) -> None:
         if self.web_view is None or self._webengine_loading:
@@ -297,6 +466,34 @@ class _FastCanvasChartWidget(QWidget):
         self.status_label.setText(message)
         self.status_label.setVisible(bool(message))
         self.retry_button.setVisible(retry)
+
+    def showEvent(self, event) -> None:
+        # close() 只隱藏 QWidget 時仍可重用；重開後以最新 payload 重建頁面，
+        # 並讓舊頁面 callback 保留失效的 guard。
+        reopening = self._widget_closed
+        if reopening:
+            self._widget_closed = False
+            self._callback_guard = {"alive": True}
+            guard = self._callback_guard
+            self.destroyed.connect(
+                lambda *_args, guard=guard: guard.__setitem__("alive", False)
+            )
+        super().showEvent(event)
+        if (
+            reopening
+            and self.web_view is not None
+            and self._latest_payload is not None
+        ):
+            self._start_webengine_load(self._latest_payload)
+
+    def closeEvent(self, event) -> None:
+        self._widget_closed = True
+        self._callback_guard["alive"] = False
+        self._load_sequence += 1
+        self._webengine_loading = False
+        self._queued_payload = None
+        self._cancel_canvas_readiness()
+        super().closeEvent(event)
 
     def _update_numeric_alternative(self, payload: dict) -> None:
         self.numeric_text.setText(_numeric_alternative_text(payload))
@@ -533,8 +730,10 @@ def _hover_tooltip_semantics(payload: dict) -> tuple[str, str]:
     return str(payload.get("yLabel") or "數值"), ""
 
 
-def _build_html(payload: dict) -> str:
+def _build_html(payload: dict, render_token: str = "0") -> str:
     payload_json = json.dumps(payload, ensure_ascii=False)
+    render_token_attr = html.escape(str(render_token), quote=True)
+    render_token_json = json.dumps(str(render_token), ensure_ascii=False)
     title = html.escape(str(payload.get("title") or "圖表"), quote=True)
     hover_label, hover_suffix = _hover_tooltip_semantics(payload)
     hover_label_json = json.dumps(hover_label, ensure_ascii=False)
@@ -544,7 +743,7 @@ def _build_html(payload: dict) -> str:
         "或展開下方文字數值替代"
     )
     return f"""<!doctype html>
-<html>
+<html data-chart-token="{render_token_attr}" data-chart-state="pending">
 <head>
   <meta charset="utf-8">
   <style>
@@ -605,12 +804,29 @@ def _build_html(payload: dict) -> str:
     <div id="tooltip"></div>
   </div>
   <script>
+    // 先建立錯誤回報器；後續主要繪圖腳本即使語法錯誤也可留下失敗標記。
+    document.documentElement.dataset.chartState = 'pending';
+    window.addEventListener('error', () => {{
+      document.documentElement.dataset.chartState = 'error';
+    }});
+    window.addEventListener('unhandledrejection', () => {{
+      document.documentElement.dataset.chartState = 'error';
+    }});
+  </script>
+  <script>
     const payload = {payload_json};
     const hoverLabel = {hover_label_json};
     const hoverSuffix = {hover_suffix_json};
+    const renderToken = {render_token_json};
     const canvas = document.getElementById('chart');
     const tooltip = document.getElementById('tooltip');
     const ctx = canvas.getContext('2d');
+    function reportCanvasState(state) {{
+      const root = document.documentElement;
+      if (root.dataset.chartToken === renderToken) {{
+        root.dataset.chartState = state;
+      }}
+    }}
     const colors = {{
       grid: '#1f2937',
       axis: '#64748b',
@@ -624,11 +840,25 @@ def _build_html(payload: dict) -> str:
     let hoverX = null;
 
     function resize() {{
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(canvas.clientWidth * dpr);
-      canvas.height = Math.floor(canvas.clientHeight * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw();
+      if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) {{
+        reportCanvasState('pending');
+        return;
+      }}
+      try {{
+        if (!ctx) throw new Error('Canvas 2D context unavailable');
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(canvas.clientWidth * dpr);
+        canvas.height = Math.floor(canvas.clientHeight * dpr);
+        if (canvas.width <= 0 || canvas.height <= 0) {{
+          reportCanvasState('pending');
+          return;
+        }}
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw();
+      }} catch (error) {{
+        reportCanvasState('error');
+        throw error;
+      }}
     }}
 
     function allPoints() {{
@@ -1010,6 +1240,23 @@ def _build_html(payload: dict) -> str:
     }}
 
     function draw() {{
+      if (
+        canvas.clientWidth <= 0 || canvas.clientHeight <= 0 ||
+        canvas.width <= 0 || canvas.height <= 0
+      ) {{
+        reportCanvasState('pending');
+        return;
+      }}
+      try {{
+        drawChartFrame();
+        reportCanvasState('ready');
+      }} catch (error) {{
+        reportCanvasState('error');
+        throw error;
+      }}
+    }}
+
+    function drawChartFrame() {{
       ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
       drawTitle();
       if (payload.kind === 'histogram') {{
@@ -1080,6 +1327,9 @@ def _build_html(payload: dict) -> str:
       if (setKeyboardPoint(next)) event.preventDefault();
     }});
     window.addEventListener('resize', resize);
+    if (typeof ResizeObserver !== 'undefined') {{
+      new ResizeObserver(resize).observe(canvas);
+    }}
     resize();
   </script>
 </body>

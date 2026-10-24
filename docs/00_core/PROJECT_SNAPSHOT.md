@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M137／M138 後繼原始碼把兩處「看似成功卻難以判讀」的 UX 補成可核對狀態。Fast Canvas 不再把 WebEngine 文件完成當作畫布完成：同頁 JS 的具名 token 與正尺寸繪圖結果須回報 ready；明確繪圖錯誤、無法確認逾時、空資料與 renderer／文件失敗分開，原數值替代及重試保留。市場總覽用同一份可比產業快照顯 5／20 日相對基準超額 bp 圖卡，依產業層級與市場範圍分組、共用 0 軸與尺度，原值、覆蓋與缺值同屏可讀；選非領先產業亦能沿原版本／日期開代表股研究。這不改超額、排名、來源資格或金融公式。限定 QA／原生畫面與正式 Gate 狀態見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m137m138-fast-畫布確認與可比產業圖卡)。
+
 M135／M136 後繼原始碼補兩個狀態辨識缺口。Fast WebEngine 圖現在顯示文件載入、失敗、呈現程序停止與可重試狀態；連續更新只載入最新 payload，文字數值立即更新，空圖不假裝有曲線。「文件載入完成」只表示頁面載入，不宣稱 JavaScript 畫布已驗。市場狀態的三項原來源條件分列為「符合／未符合／未知」中性狀態卡，缺值不當反證，重新檢測與錯誤會清舊。Sol 複核後 compile、聚焦 52、Workbench 85、validator 25／0／4、mypy 1,144 clean；隔離合成正常 Main 1280×760／1500×900 真 Windows DPI216，Fast 真 WebEngine 與市場條件卡目視及來源 SHA 不變。正式來源、正式 GPU／固定 EXE、其他 DPI／Light、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m135m136-載入回饋與市場條件卡)。
 
 M133／M134 後繼原始碼修兩個可達的圖表判讀缺口。個股 K 線的成交量子圖現在直接標示「股」與本段原始值的 0～最大量；全零明示 0，缺量仍走原 K 線／收盤價退路，精確數值留在同源表。Fast 回測圖的 hover 對策略淨值不再擅加美元符號，回撤值明標 `%`；一般序列保留原軸名，原 payload 數值與公式不變。Sol 複核後 compile、聚焦 23、Workbench 85、validator 25／0／4、mypy 1,144 clean；隔離合成個股正常 Main 1280×760／1500×900 真 DPI216、Fast WebEngine 程式化鍵盤 hover before／after 真 DPI216 已驗。正式來源、實體操作、其他 DPI／Light、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m133m134-成交量尺度與-fast-hover-金融單位)。

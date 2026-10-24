@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M132；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M138；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M132 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M138 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -378,3 +378,15 @@ M136 Luna `/root/m133_research_audit` 唯一寫入 `ui_qt/views/market_regime_vi
 最終受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_f711a3ea29204b459d9e989e0138df44/receipt.json` exit0：受改 Python compile0、相關聚焦 **52 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144 source files clean**；8 GiB／12 程序 Job 無殘留。測試程序使用 software rendering 避免已知 offscreen Chromium context loss，不代正式 GPU。M136 隔離合成元件 before／after、正常 Main 1280×760／1500×900 真 Windows DPI216 四圖與來源 SHA 見 `.../root/native_m136_evidence/run_0d1e65c3eaae4bdcae694e0ad0813ad7/result.json`，Job `.../single_owned_qa_ec3dfbcc536f47d9a9be48495b3dfdbb/receipt.json` exit0；Sol 目視三列同屏可讀。M135 真 QWebEngine 正常 Main 在同兩尺寸的權益／回撤圖共八圖、最新 synthetic payload 的 JS 點數與 canvas 尺寸、來源 SHA 不變，見 `.../root/native_m135_evidence/run_e0a32b91f0d5467f8e447629253aedb3/result.json`，Job `.../single_owned_qa_3bcdfd38055841a5bf703266982a7338/receipt.json` 的 child exit0、無殘留；包裝器最後因 PowerShell cp1252 輸出中文 log 發生 UnicodeEncodeError 而自身 exit1，不能把包裝器 exit1 寫成全程通過。M135 1280 的 WebEngine 畫布下緣比頁內可視區低 16px，但保留 35px 捲動；1500 完整可見。Sol 目視主窗圖與圖表可讀。
 
 原生錯誤／renderer 終止及重試以 fake signal 聚焦測試驗證，沒有在正式 GPU 環境故意 crash；正式來源、其他真 DPI／Light／1920 可用螢幕、固定新版 EXE、實體滑鼠、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受。M1–M136 是審查、裁決、實作與 QA 切片序號，非功能數；Opus 開始審查、額度用盡後由 Antigravity 接手完成，Sol 核對後實作。只在本機提交，未 push／merge／部署或改其他排程。
+
+## M137／M138 Fast 畫布確認與可比產業圖卡
+
+M137 Luna `/root/m133_fast_audit` 唯一寫入 `ui_qt/widgets/fast_chart_widget.py`、`tests/test_ui_qt_fast_chart_widget.py`。Sol 核對 M135 的 `loadFinished(True)` 只證明文件載入，要求畫布狀態再經 JS 確認。新頁面以當次 token 與 `pending／ready／error` 狀態標記；只有 `draw()` 返回、CSS 與 bitmap canvas 尺寸皆為正，Python 非同步查詢才顯「畫布繪製完成」。三秒未確認顯明確未確認狀態，JS 例外顯繪製失敗；空資料保持中性。最新 payload、延遲 callback、關閉再開及重試均以 generation／load sequence 隔離。Sol 審查後補要求正尺寸與重開視窗的回歸，已納入測試。沒有改金融資料或圖值。
+
+M138 Luna `/root/m133_research_audit` 唯一寫入 `ui_qt/views/decision_desk_view.py`、`tests/test_ui_qt_decision_desk_view.py`。市場總覽從同一份 `IndustryStrengthSummary.rows` 顯示產業相對基準 5／20 日強弱：同一產業層級及市場範圍內兩期共用零軸與最大絕對 bp 尺度，逐列保留精確 bp、覆蓋、日期、品質與基準；真 0 與 Unknown 分開。選取任一產業後，代表股導覽沿同一 snapshot 的既有研究脈絡，不外推歷史 PIT。Sol 原生審查退回過初版收在進階面板、兩期尺度不同、選列重建，以及內層捲動壓成一行、舊代表股按鈕重影；最終圖卡置於首屏市場摘要之後，內層高度有界，選列保留畫面位置，清舊按鈕即時 hide／disable／unparent，繁中主畫面可讀。沒有新增產業公式、基準資格或來源。
+
+最終受控整合 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_472be127580e439d86a05e2cf1ad7500/receipt.json` exit0：compile0、相關聚焦 **84 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144 source files clean**；8 GiB／12 程序 Job 無殘留或強制清理。測試程序 offscreen 使用 software rendering，不能當成正式 GPU 驗收。首輪 `.../single_owned_qa_b2589f0044294d9b992487f70ed17c4b/receipt.json` 的聚焦 **82 passed／1 failed** 是測試把 PySide6 `currentData()` list 當 tuple；修測試後 M138 定向由 41、42 到最後 42 passed，失敗收據保留。
+
+M137 正常 Main 真 QWebEngine、隔離合成資料、Windows OS DPI216 的 1280×760／1500×900 權益與回撤八圖及 JS ready／正 canvas 尺寸在 `.../root/native_m137_evidence/run_a78e352174ba47478f21d5badf24ca68/result.json`，受控 Job `.../single_owned_qa_6c5f6a355b8349939be0903d2b740081/receipt.json` exit0。另以受控 JS throw 驗 error 文案、數值替代及 retry 恢復 ready，兩圖與結果在 `.../root/native_m137_error_evidence/run_f11ecf73a9c7448882803113ee39b32f/result.json`，Job `.../single_owned_qa_3285177d220041a3994dd314648abe8b/receipt.json` exit0。Sol 目視曲線與錯誤狀態；1280 頁面仍需約 16px 捲動才見整個畫布底端。
+
+M138 正常 Main 真 OS DPI216、同一隔離合成產業 snapshot 的 1280×760／1500×900 圖卡 before／after 五圖與精確數值在 `.../root/native_m138_evidence/run_fb7444ab1d494a72a948cb25172c8573/result.json`，Job `.../single_owned_qa_024e70867e9e492ca070b2cb95a1338e/receipt.json` exit0。Sol 目視兩期、真 0／Unknown、覆蓋及選取非領漲產業後單一代表股按鈕可讀。首兩次 Main fixture 被非同步刷新覆蓋的 harness 失敗，以及兩次版面退回紀錄均保留，未用作最後通過證據。正式市場／回測來源、真 GPU renderer crash、固定新版 EXE、其他真 DPI／1920 可用螢幕、Light 若支援、自然排程、Owner UAT、M73／M75 和完整產品 Gate 仍未接受。M1–M138 是切片序號，非功能數；原始 PNG／receipt 留 ignored `output/`，本輪未改正式或私人資料、其他排程，未 push／merge／部署。

@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M137／M138 後繼原始碼：Fast 圖的 DOM render token 在本次頁面正尺寸 canvas 同步繪製後才向 Qt 回報完成；JS 錯誤顯失敗、等待逾時顯無法確認，均可用最新 payload 重試，文字數值仍可讀。市場總覽在焦點後常駐「可比產業超額表現」，同份 IndustryStrengthSummary 依層級／市場範圍分組，5／20 日原 bp 使用共同零軸及組內尺度，旁列精確 bp／覆蓋；選列後從同一快照的代表股進原研究。真零與 Unknown 分開，來源日期、品質、基準和 current research 用途可核；不重算排名、超額、金融公式或來源資格。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m137m138-fast-畫布確認與可比產業圖卡)。
+
 M135／M136 後繼原始碼：Fast Canvas host 保留最新圖資料，在 WebEngine 載入中顯示提示，失敗或 renderer 停止時提供「重試圖表載入」，數值替代維持可讀；空資料與已完成文件載入各有獨立狀態。大盤指數市場分類的原三項來源布林條件改為逐條中性狀態卡，明示符合、未符合或未知，刷新與錯誤清除舊卡。不改來源條件、金融公式或資格；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m135m136-載入回饋與市場條件卡)。
 
 M133／M134 後繼原始碼：個股完整 OHLCV 圖的量柱以本段最高成交量正規化，同圖在價格與量柱之間顯示「成交量刻度（股）：0 至最高原值」，全零只顯 0，缺量不畫量柱；圖的無障礙描述亦帶同一尺度。Fast Canvas 權益 hover 改標「策略淨值」，不假定幣別；回撤 hover 原百分比值補 `%`，其他序列保留原 yLabel。沒有改 DTO、原數值、金融公式或來源資格；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m133m134-成交量尺度與-fast-hover-金融單位)。

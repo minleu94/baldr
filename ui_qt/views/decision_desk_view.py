@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QFrame,
     QGridLayout,
+    QComboBox,
 )
 
 from app_module.decision_desk_dtos import (
@@ -120,8 +121,10 @@ class DecisionDeskView(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
 
         scroll_area = QScrollArea()
+        scroll_area.setObjectName("decisionDeskMainScrollArea")
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setFrameShape(QScrollArea.NoFrame)
         scroll_content = QWidget()
         content_layout = QVBoxLayout(scroll_content)
@@ -389,6 +392,48 @@ class DecisionDeskView(QWidget):
         self.market_breadth_caption.hide()
         sections_layout.addWidget(breadth_row)
         sections_layout.addWidget(self._make_section_row("產業輪動", self.sector_rotation_status, self.sector_rotation_value))
+        self.industry_strength_panel = SectionPanel("可比產業超額表現")
+        self.industry_strength_panel.setObjectName("decisionDeskIndustryStrengthPanel")
+        self.industry_strength_meta = QLabel("尚未載入可比產業資料")
+        self.industry_strength_meta.setObjectName("decisionDeskIndustryStrengthMeta")
+        self.industry_strength_meta.setWordWrap(True)
+        self.industry_strength_meta.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;"
+        )
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_meta)
+        self.industry_strength_group_selector = QComboBox()
+        self.industry_strength_group_selector.setObjectName("decisionDeskIndustryStrengthGroup")
+        self.industry_strength_group_selector.setAccessibleName("可比產業層級與市場範圍")
+        self.industry_strength_group_selector.currentIndexChanged.connect(
+            self._on_industry_strength_group_changed
+        )
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_group_selector)
+        self.industry_strength_chart_scroll = QScrollArea()
+        self.industry_strength_chart_scroll.setObjectName("decisionDeskIndustryStrengthChartScroll")
+        self.industry_strength_chart_scroll.setWidgetResizable(True)
+        self.industry_strength_chart_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.industry_strength_chart_scroll.setMinimumHeight(230)
+        self.industry_strength_chart_scroll.setMaximumHeight(235)
+        self.industry_strength_chart_content = QWidget()
+        self.industry_strength_chart_layout = QVBoxLayout(self.industry_strength_chart_content)
+        self.industry_strength_chart_layout.setContentsMargins(0, 0, 0, 0)
+        self.industry_strength_chart_layout.setSpacing(2)
+        self.industry_strength_chart_scroll.setWidget(self.industry_strength_chart_content)
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_chart_scroll)
+        self.industry_strength_representatives = QWidget()
+        self.industry_strength_representatives_layout = QHBoxLayout(
+            self.industry_strength_representatives
+        )
+        self.industry_strength_representatives_layout.setContentsMargins(0, 4, 0, 0)
+        self.industry_strength_representatives_layout.setSpacing(6)
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_representatives)
+        self._industry_strength_rows: tuple[Any, ...] = ()
+        self._industry_strength_as_of_date = self.as_of_date
+        self._industry_strength_summary = None
+        self._industry_strength_selected_name = ""
+        self._industry_strength_row_buttons: list[QPushButton] = []
+        self._clear_industry_strength_chart("尚未載入可比產業資料")
+        content_layout.addWidget(self.industry_strength_panel)
         sections_layout.addWidget(self._make_section_row("強弱與流動性", self.relative_strength_liquidity_status, self.relative_strength_liquidity_value))
         sections_layout.addWidget(self.relative_strength_codes)
         sections_layout.addWidget(self._make_section_row("Watchlist 提示", self.watchlist_triggers_status, self.watchlist_triggers_value))
@@ -577,6 +622,7 @@ class DecisionDeskView(QWidget):
     def _display_loading_snapshot(self) -> None:
         self._clear_market_breadth_bar()
         self._clear_institutional_flow_bar()
+        self._clear_industry_strength_chart("載入中；可比產業圖卡已清除舊快照")
         self.overall_status_label.setText("摘要載入中")
         self.generated_at_label.setText(
             f"判讀日：{self.as_of_date.isoformat()}｜產生時間：背景載入中"
@@ -693,6 +739,7 @@ class DecisionDeskView(QWidget):
     def _render_snapshot(self, snapshot: DecisionDeskSnapshot) -> None:
         self._render_answer_first_dashboard(snapshot)
         self._set_industry_focus_buttons(snapshot.sector_rotation, snapshot.as_of_date)
+        self._render_industry_strength_chart(snapshot.sector_rotation, snapshot.as_of_date)
         self._render_market_data_visibility(snapshot.market_data_visibility)
         self.overall_status_label.setText("摘要已載入")
         self.generated_at_label.setText(
@@ -1250,6 +1297,284 @@ class DecisionDeskView(QWidget):
                 self.industry_focus_button_layout.addWidget(button)
                 self.industry_focus_buttons.append(button)
         self.industry_focus_button_layout.addStretch()
+
+    def _clear_industry_strength_chart(self, message: str) -> None:
+        self._industry_strength_rows = ()
+        self._industry_strength_summary = None
+        self._industry_strength_selected_name = ""
+        self._industry_strength_row_buttons = []
+        self.industry_strength_meta.setText(message)
+        self.industry_strength_meta.setAccessibleDescription(message)
+        self.industry_strength_group_selector.blockSignals(True)
+        self.industry_strength_group_selector.clear()
+        self.industry_strength_group_selector.setEnabled(False)
+        self.industry_strength_group_selector.blockSignals(False)
+        self._clear_layout_widgets(self.industry_strength_chart_layout)
+        self._clear_layout_widgets(self.industry_strength_representatives_layout)
+        self.industry_strength_chart_scroll.hide()
+        self.industry_strength_representatives.hide()
+
+    @staticmethod
+    def _clear_layout_widgets(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.hide()
+                widget.setEnabled(False)
+                widget.setParent(None)
+                widget.deleteLater()
+
+    @staticmethod
+    def _industry_strength_group_label(level: str, scope: str) -> str:
+        normalized_level = level.strip().lower()
+        normalized_scope = scope.strip().lower()
+        level_label = {
+            "leaf": "細分產業",
+            "aggregate": "整體層級",
+        }.get(normalized_level, "未知層級")
+        scope_label = {
+            "twse": "上市（TWSE）",
+            "tpex": "上櫃（TPEx）",
+        }.get(normalized_scope, "未知市場範圍")
+        return f"層級：{level_label}｜市場範圍：{scope_label}"
+
+    def _update_industry_strength_group_description(self) -> None:
+        selected_group = self.industry_strength_group_selector.currentData()
+        if not selected_group:
+            detail = "目前沒有可比產業群組；原始層級與市場範圍未知。"
+        else:
+            level, scope = tuple(selected_group)
+            display = self._industry_strength_group_label(str(level), str(scope))
+            detail = f"目前群組：{display}；原始代碼：industry_level={level}，market_scope={scope}。"
+        self.industry_strength_group_selector.setToolTip(detail)
+        self.industry_strength_group_selector.setAccessibleDescription(detail)
+
+    def _on_industry_strength_group_changed(self, *_args) -> None:
+        self._update_industry_strength_group_description()
+        self._render_selected_industry_strength_group()
+
+    def _render_industry_strength_chart(self, rotation, as_of_date: date) -> None:
+        strength = getattr(rotation, "industry_strength", None)
+        rows = tuple(getattr(strength, "rows", ()) or ()) if strength is not None else ()
+        if strength is None or not rows:
+            self._clear_industry_strength_chart(
+                "可比產業資料缺件（Unknown）；此狀態不代表超額表現為 0。"
+            )
+            return
+
+        self._industry_strength_rows = rows
+        self._industry_strength_summary = strength
+        self._industry_strength_as_of_date = as_of_date
+        groups: dict[tuple[str, str], list[Any]] = {}
+        for row in rows:
+            groups.setdefault((str(row.industry_level or "Unknown"), str(row.market_scope or "Unknown")), []).append(row)
+
+        previous_group = self.industry_strength_group_selector.currentData()
+        self.industry_strength_group_selector.blockSignals(True)
+        self.industry_strength_group_selector.clear()
+        group_keys = tuple(groups)
+        for level, scope in group_keys:
+            self.industry_strength_group_selector.addItem(
+                self._industry_strength_group_label(level, scope), (level, scope)
+            )
+            self.industry_strength_group_selector.setItemData(
+                self.industry_strength_group_selector.count() - 1,
+                f"原始代碼：industry_level={level}，market_scope={scope}",
+                Qt.ToolTipRole,
+            )
+        if previous_group in group_keys:
+            self.industry_strength_group_selector.setCurrentIndex(group_keys.index(previous_group))
+        else:
+            self.industry_strength_group_selector.setCurrentIndex(0)
+        self.industry_strength_group_selector.setEnabled(len(group_keys) > 1)
+        self.industry_strength_group_selector.blockSignals(False)
+        self._update_industry_strength_group_description()
+
+        coverage = getattr(strength, "coverage", {}) or {}
+        coverage_items = [f"{key}={value}" for key, value in sorted(coverage.items())[:3]]
+        coverage_text = ", ".join(coverage_items) if coverage_items else "Unknown"
+        benchmark = getattr(strength, "benchmark_name", None) or "Unknown"
+        data_date = getattr(strength, "as_of_date", None)
+        source_id = getattr(strength, "source_id", None) or "Unknown"
+        source_version = getattr(strength, "source_version", None) or "Unknown"
+        mapping_version = getattr(strength, "mapping_version", None) or "Unknown"
+        mapping_date = getattr(strength, "mapping_observed_date", None) or "Unknown"
+        quality = self._quality_label(strength.quality)
+        warning_text = "、".join(str(item) for item in getattr(strength, "warnings", ())[:3]) or "無"
+        self.industry_strength_meta.setText(
+            f"相對 {benchmark} 超額 bp｜資料日 {data_date or 'Unknown'}｜品質 {quality}｜"
+            "僅供當期研究（非歷史 PIT）｜5／20 日共用 0 軸與尺度"
+        )
+        detail = (
+            f"基準：{benchmark}（來源 {getattr(strength, 'benchmark_source_id', None) or 'Unknown'}；"
+            f"觀測日 {getattr(strength, 'benchmark_observed_date', None) or 'Unknown'}）｜"
+            f"資料日：{data_date or 'Unknown'}｜摘要覆蓋：{coverage_text}｜品質：{quality}｜警示：{warning_text}｜"
+            f"來源：{source_id}（{source_version}）｜映射：{mapping_version}／觀測日 {mapping_date}｜"
+            f"current research only（僅供當期研究）；歷史 PIT：{'可用' if strength.historical_pit_eligible else '不適用'}。"
+            "正負表示相對基準超額，不代表股價漲跌；同一選定層級與市場範圍內，5 日與 20 日共用絕對值尺度。"
+        )
+        self.industry_strength_meta.setToolTip(detail)
+        self.industry_strength_meta.setAccessibleDescription(detail)
+        self.industry_strength_panel.setToolTip(detail)
+        self.industry_strength_panel.setAccessibleDescription(detail)
+        self.industry_strength_chart_scroll.show()
+        self._render_selected_industry_strength_group()
+
+    def _render_selected_industry_strength_group(self, *_args) -> None:
+        self._clear_layout_widgets(self.industry_strength_chart_layout)
+        self._clear_layout_widgets(self.industry_strength_representatives_layout)
+        self._industry_strength_row_buttons = []
+        selected_group = self.industry_strength_group_selector.currentData()
+        if not selected_group or not self._industry_strength_rows:
+            return
+        rows = tuple(
+            row for row in self._industry_strength_rows
+            if (str(row.industry_level or "Unknown"), str(row.market_scope or "Unknown")) == tuple(selected_group)
+        )
+        if not rows:
+            return
+        common_max_abs = max(
+            (
+                abs(value)
+                for row in rows
+                for value in (row.excess_5d_bp, row.excess_20d_bp)
+                if value is not None
+            ),
+            default=0,
+        )
+        benchmark = getattr(self._industry_strength_summary, "benchmark_name", None) or "Unknown"
+        header = QLabel(f"產業｜相對 {benchmark} 超額（bp；含覆蓋 bp）｜共同 0 軸")
+        header.setWordWrap(True)
+        header.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+        self.industry_strength_chart_layout.addWidget(header)
+        selected_exists = any(row.industry_name == self._industry_strength_selected_name for row in rows)
+        if not selected_exists:
+            self._industry_strength_selected_name = rows[0].industry_name
+        for row in rows:
+            row_widget = QWidget()
+            row_layout = QVBoxLayout(row_widget)
+            row_layout.setContentsMargins(2, 2, 2, 2)
+            row_layout.setSpacing(1)
+            selector = QPushButton(row.industry_name)
+            selector.setCheckable(True)
+            selector.setChecked(row.industry_name == self._industry_strength_selected_name)
+            selector.setAccessibleName(f"選取{row.industry_name}，查看代表股")
+            selector.setAccessibleDescription(
+                f"層級 {row.industry_level}；市場範圍 {row.market_scope}；"
+                f"資料品質 {self._quality_label(row.quality)}。按下後顯示其代表股。"
+            )
+            selector.setToolTip(selector.accessibleDescription())
+            selector.clicked.connect(
+                lambda checked=False, name=row.industry_name: self._select_industry_strength_row(name)
+            )
+            row_layout.addWidget(selector)
+            self._industry_strength_row_buttons.append(selector)
+            row_layout.addWidget(self._industry_strength_bar_lane(
+                "5 日", row.excess_5d_bp, row.coverage_5d_bp, common_max_abs
+            ))
+            row_layout.addWidget(self._industry_strength_bar_lane(
+                "20 日", row.excess_20d_bp, row.coverage_20d_bp, common_max_abs
+            ))
+            self.industry_strength_chart_layout.addWidget(row_widget)
+        self._update_industry_strength_representatives(rows)
+
+    def _industry_strength_bar_lane(self, horizon: str, value: int | None, coverage: int | None, max_abs: int) -> QWidget:
+        lane = QWidget()
+        layout = QHBoxLayout(lane)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        label = QLabel(horizon)
+        label.setFixedWidth(34)
+        layout.addWidget(label)
+        channel = QWidget()
+        channel.setFixedWidth(125)
+        channel_layout = QHBoxLayout(channel)
+        channel_layout.setContentsMargins(0, 2, 0, 2)
+        channel_layout.setSpacing(0)
+        left = QWidget()
+        left.setFixedWidth(62)
+        left_layout = QHBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        center = QFrame()
+        center.setFixedWidth(1)
+        center.setStyleSheet(f"background: {MIDNIGHT_ANALYST.text_secondary};")
+        right = QWidget()
+        right.setFixedWidth(62)
+        right_layout = QHBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        segment = QFrame()
+        segment.setObjectName("decisionDeskIndustryStrengthBar")
+        segment.setProperty("excessBp", value)
+        segment.setProperty("scaleMaxAbsBp", max_abs)
+        segment.setFixedHeight(8)
+        segment.setStyleSheet(f"background: {MIDNIGHT_ANALYST.accent}; border-radius: 2px;")
+        if value is not None and max_abs:
+            segment.setFixedWidth(max(1, abs(value) * 58 // max_abs))
+        else:
+            segment.setFixedWidth(0)
+        if value is not None and value < 0:
+            left_layout.addStretch(1)
+            left_layout.addWidget(segment)
+        else:
+            left_layout.addStretch(1)
+        if value is not None and value > 0:
+            right_layout.addWidget(segment)
+            right_layout.addStretch(1)
+        else:
+            right_layout.addStretch(1)
+        channel_layout.addWidget(left)
+        channel_layout.addWidget(center)
+        channel_layout.addWidget(right)
+        layout.addWidget(channel)
+        if value is None:
+            exact = "Unknown（缺值）"
+        else:
+            exact = f"{value:+,} bp"
+        coverage_text = "Unknown" if coverage is None else f"{coverage:,} bp"
+        value_label = QLabel(f"{exact}｜覆蓋 {coverage_text}")
+        value_label.setWordWrap(True)
+        value_label.setAccessibleDescription(f"{horizon}相對基準超額 {exact}；覆蓋 {coverage_text}")
+        layout.addWidget(value_label, 1)
+        return lane
+
+    def _select_industry_strength_row(self, industry_name: str) -> None:
+        self._industry_strength_selected_name = industry_name
+        for button in self._industry_strength_row_buttons:
+            button.setChecked(button.text() == industry_name)
+        selected_group = self.industry_strength_group_selector.currentData()
+        rows = tuple(
+            row for row in self._industry_strength_rows
+            if selected_group
+            and (str(row.industry_level or "Unknown"), str(row.market_scope or "Unknown")) == tuple(selected_group)
+        )
+        self._update_industry_strength_representatives(rows)
+
+    def _update_industry_strength_representatives(self, rows) -> None:
+        self._clear_layout_widgets(self.industry_strength_representatives_layout)
+        selected = next((row for row in rows if row.industry_name == self._industry_strength_selected_name), None)
+        if selected is None or not selected.representative_stocks:
+            placeholder = QLabel("代表股：Unknown／目前沒有代表股資料")
+            placeholder.setWordWrap(True)
+            self.industry_strength_representatives_layout.addWidget(placeholder)
+            self.industry_strength_representatives.show()
+            return
+        for representative in selected.representative_stocks[:3]:
+            code = str(representative.stock_code)
+            button = QPushButton(f"{code} {representative.stock_name}")
+            button.setAccessibleName(f"開啟{selected.industry_name}代表股{code}研究報告")
+            button.setToolTip(
+                f"來源產業：{selected.industry_name}；資料日 {getattr(self._industry_strength_summary, 'as_of_date', None) or 'Unknown'}；"
+                "由同一份可比產業快照開啟唯讀研究。"
+            )
+            button.clicked.connect(
+                lambda checked=False, item=representative, source_row=selected: self._open_industry_stock_research(
+                    item, source_row, self._industry_strength_as_of_date
+                )
+            )
+            self.industry_strength_representatives_layout.addWidget(button)
+        self.industry_strength_representatives_layout.addStretch(1)
+        self.industry_strength_representatives.show()
 
     def _open_industry_stock_research(self, representative, source_row, as_of_date: date) -> None:
         strength = getattr(self._last_snapshot.sector_rotation, "industry_strength", None) if self._last_snapshot else None

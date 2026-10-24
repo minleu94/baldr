@@ -9,7 +9,7 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QFrame
+from PySide6.QtWidgets import QApplication, QLabel, QFrame, QPushButton, QScrollArea
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
@@ -505,6 +505,209 @@ def test_decision_desk_view_renders_comparable_industry_card_and_drills_to_repre
     assert context.mapping_version == "tw-industry-explicit-map.v1"
     assert context.mapping_observed_date == "2026-06-14"
     assert context.has_source is True
+
+
+def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero_and_drills_nonleading_row():
+    app()
+    base = _snapshot()
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 13),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_mapping_current_research_only",),
+        source_id="industry_strength.snapshot",
+        source_version="snapshot-v2",
+        mapping_observed_date=date(2026, 6, 12),
+        rows=(
+            IndustryStrengthRow(
+                industry_name="領先列",
+                index_name="領先指數",
+                industry_level="leaf",
+                market_scope="twse",
+                excess_5d_bp=100,
+                excess_20d_bp=200,
+                coverage_5d_bp=10000,
+                coverage_20d_bp=9000,
+                representative_stocks=(
+                    IndustryRepresentativeStock(
+                        stock_code="0001",
+                        stock_name="舊代表股",
+                        industry_name="領先列",
+                    ),
+                ),
+            ),
+            IndustryStrengthRow(
+                industry_name="非領先列",
+                index_name="非領先指數",
+                industry_level="leaf",
+                market_scope="twse",
+                excess_5d_bp=0,
+                excess_20d_bp=None,
+                coverage_5d_bp=8000,
+                coverage_20d_bp=None,
+                representative_stocks=(
+                    IndustryRepresentativeStock(
+                        stock_code="1234",
+                        stock_name="非領先代表股",
+                        industry_name="非領先列",
+                    ),
+                ),
+            ),
+            IndustryStrengthRow(
+                industry_name="尾列",
+                index_name="尾列指數",
+                industry_level="leaf",
+                market_scope="twse",
+                excess_5d_bp=-50,
+                excess_20d_bp=-100,
+            ),
+            IndustryStrengthRow(
+                industry_name="整體層級",
+                index_name="整體指數",
+                industry_level="aggregate",
+                market_scope="twse",
+                excess_5d_bp=500,
+                excess_20d_bp=700,
+            ),
+        ),
+    )
+    snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 13),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=("industry_mapping_current_research_only",),
+            leading_sector="領先列",
+            trailing_sector="尾列",
+            industry_strength=strength,
+        ),
+    )
+    contexts: list[object] = []
+    view = DecisionDeskView(FakeBuilder(snapshot), auto_refresh=False, async_refresh=False)
+    view.stockResearchRequested.connect(contexts.append)
+    view.refresh_snapshot()
+
+    selector = view.industry_strength_group_selector
+    assert selector.count() == 2
+    assert tuple(selector.currentData()) == ("leaf", "twse")
+    assert selector.currentText() == "層級：細分產業｜市場範圍：上市（TWSE）"
+    assert "industry_level=leaf" in selector.accessibleDescription()
+    assert "TAIEX" in view.industry_strength_meta.text()
+    assert "僅供當期研究（非歷史 PIT）" in view.industry_strength_meta.text()
+    assert "current research only" in view.industry_strength_meta.toolTip()
+    assert "摘要覆蓋：Unknown" in view.industry_strength_meta.toolTip()
+    assert "industry_strength.snapshot" in view.industry_strength_meta.toolTip()
+    chart_text = " ".join(label.text() for label in view.industry_strength_chart_content.findChildren(QLabel))
+    assert "+0 bp" in chart_text
+    assert "Unknown（缺值）" in chart_text
+    assert "覆蓋 8,000 bp" in chart_text
+    assert all(button.text() != "整體層級" for button in view._industry_strength_row_buttons)
+    assert all(
+        bar.property("scaleMaxAbsBp") == 200
+        for bar in view.industry_strength_chart_content.findChildren(QFrame, "decisionDeskIndustryStrengthBar")
+    )
+
+    selector.setCurrentIndex(1)
+    assert tuple(selector.currentData()) == ("aggregate", "twse")
+    assert selector.currentText() == "層級：整體層級｜市場範圍：上市（TWSE）"
+    assert "industry_level=aggregate" in selector.accessibleDescription()
+    assert [button.text() for button in view._industry_strength_row_buttons] == ["整體層級"]
+    selector.setCurrentIndex(0)
+    assert [button.text() for button in view._industry_strength_row_buttons] == ["領先列", "非領先列", "尾列"]
+
+    old_representative_buttons = view.industry_strength_representatives.findChildren(QPushButton)
+    assert [button.text() for button in old_representative_buttons] == ["0001 舊代表股"]
+    old_representative_button = old_representative_buttons[0]
+    row_buttons_before = tuple(view._industry_strength_row_buttons)
+    chart_scrollbar = view.industry_strength_chart_scroll.verticalScrollBar()
+    chart_scrollbar.setValue(chart_scrollbar.maximum())
+    scroll_position_before = chart_scrollbar.value()
+    row_buttons_before[1].click()
+    assert all(
+        before is after
+        for before, after in zip(row_buttons_before, view._industry_strength_row_buttons)
+    )
+    assert chart_scrollbar.value() == scroll_position_before
+    assert old_representative_button.isHidden()
+    assert not old_representative_button.isEnabled()
+    assert old_representative_button.parent() is None
+    old_representative_button.click()
+    assert contexts == []
+    representative_buttons = view.industry_strength_representatives.findChildren(QPushButton)
+    assert [button.text() for button in representative_buttons] == ["1234 非領先代表股"]
+    representative_buttons[0].click()
+    assert len(contexts) == 1
+    assert contexts[0].stock_code == "1234"
+    assert contexts[0].source_label == "市場總覽／非領先列代表股"
+    assert contexts[0].data_date == "2026-06-13"
+    assert contexts[0].source_version == "snapshot-v2"
+
+    view._display_loading_snapshot()
+    assert view._industry_strength_rows == ()
+    assert view.industry_strength_group_selector.count() == 0
+    assert not view.industry_strength_chart_scroll.isVisible()
+    view._display_exception_snapshot("snapshot unavailable")
+    assert view._industry_strength_rows == ()
+    assert "Unknown" in view.industry_strength_meta.text()
+
+
+def test_industry_strength_chart_keeps_full_row_viewport_and_representatives_below_at_1280_width():
+    application = app()
+    base = _snapshot()
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 15),
+        quality=DecisionDeskQuality.OBSERVED,
+        warnings=(),
+        rows=(
+            IndustryStrengthRow(
+                industry_name="半導體",
+                index_name="半導體類指數",
+                industry_level="leaf",
+                market_scope="twse",
+                excess_5d_bp=100,
+                excess_20d_bp=250,
+                coverage_5d_bp=10000,
+                coverage_20d_bp=10000,
+                representative_stocks=(
+                    IndustryRepresentativeStock(
+                        stock_code="2330",
+                        stock_name="台積電",
+                        industry_name="半導體",
+                    ),
+                ),
+            ),
+        ),
+    )
+    snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 15),
+            quality=DecisionDeskQuality.OBSERVED,
+            warnings=(),
+            leading_sector="半導體",
+            industry_strength=strength,
+        ),
+    )
+    view = DecisionDeskView(FakeBuilder(snapshot), auto_refresh=False, async_refresh=False)
+    view.resize(1280, 760)
+    view.refresh_snapshot()
+    view.show()
+    application.processEvents()
+
+    main_scroll = view.findChild(QScrollArea, "decisionDeskMainScrollArea")
+    assert main_scroll is not None
+    assert main_scroll.widgetResizable()
+    viewport = view.industry_strength_chart_scroll.viewport()
+    assert viewport.height() >= 220
+    first_industry_row = view.industry_strength_chart_layout.itemAt(1).widget()
+    assert first_industry_row is not None
+    assert first_industry_row.height() <= viewport.height()
+    assert view.industry_strength_representatives.isVisible()
+    assert (
+        view.industry_strength_representatives.geometry().top()
+        >= view.industry_strength_chart_scroll.geometry().bottom() + 1
+    )
+
+    view.close()
 
 
 def test_decision_desk_view_shows_degraded_status():

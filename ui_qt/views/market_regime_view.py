@@ -245,7 +245,7 @@ class MarketRegimeView(QWidget):
         layer2_layout.addWidget(layer2_title)
         
         # 判斷摘要內容（字級比市場結論小，行距略小）
-        self.layer2_label = QLabel("")
+        self.layer2_label = QLabel("", layer2_widget)
         self.layer2_label.setWordWrap(True)
         self.layer2_label.setAlignment(Qt.AlignTop)
         self.layer2_label.setTextFormat(Qt.RichText)  # 支持 HTML 格式
@@ -254,7 +254,56 @@ class MarketRegimeView(QWidget):
         self.layer2_label.setFont(summary_font)
         self.layer2_label.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; line-height: 1.4; padding: 0;")  # 減少 padding
         self.layer2_label.setText("點擊「檢測市場狀態」按鈕查看判斷摘要")
-        layer2_layout.addWidget(self.layer2_label)
+        # 保留相容的摘要文字供既有診斷與無障礙摘要讀取；視覺改由逐條狀態項呈現。
+        self.layer2_label.setAccessibleName("市場狀態來源條件摘要")
+        self.layer2_label.hide()
+
+        self.layer2_conditions_layout = QVBoxLayout()
+        self.layer2_conditions_layout.setContentsMargins(0, 0, 0, 0)
+        self.layer2_conditions_layout.setSpacing(6)
+        self.layer2_condition_rows: list[tuple[QFrame, QLabel, QLabel]] = []
+        for index in range(3):
+            row = QFrame()
+            row.setObjectName(f"marketRegimeConditionRow_{index}")
+            row.setFrameShape(QFrame.StyledPanel)
+            row.setFrameShadow(QFrame.Plain)
+            row.setStyleSheet(
+                f"QFrame#marketRegimeConditionRow_{index} {{"
+                f"background-color: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border_subtle}; "
+                f"border-radius: {MIDNIGHT_ANALYST.radius_badge}px; }}"
+            )
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(7, 5, 7, 5)
+            row_layout.setSpacing(8)
+            status_label = QLabel("")
+            status_label.setObjectName(f"marketRegimeConditionStatus_{index}")
+            status_label.setAlignment(Qt.AlignCenter)
+            status_label.setMinimumWidth(60)
+            status_label.setStyleSheet(
+                f"color: {COLOR_TEXT_PRIMARY}; font-weight: 700; "
+                f"background-color: {MIDNIGHT_ANALYST.surface_1}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-radius: {MIDNIGHT_ANALYST.radius_badge}px; padding: 2px 4px;"
+            )
+            condition_label = QLabel("")
+            condition_label.setObjectName(f"marketRegimeConditionText_{index}")
+            condition_label.setWordWrap(True)
+            condition_label.setTextFormat(Qt.PlainText)
+            condition_label.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; border: none;")
+            row_layout.addWidget(status_label, 0)
+            row_layout.addWidget(condition_label, 1)
+            self.layer2_conditions_layout.addWidget(row)
+            self.layer2_condition_rows.append((row, status_label, condition_label))
+            row.hide()
+
+        self.layer2_empty_label = QLabel("點擊「檢測市場狀態」按鈕查看判斷摘要")
+        self.layer2_empty_label.setObjectName("marketRegimeConditionEmpty")
+        self.layer2_empty_label.setWordWrap(True)
+        self.layer2_empty_label.setAccessibleName("市場狀態來源條件狀態")
+        self.layer2_empty_label.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY};")
+        self.layer2_conditions_layout.addWidget(self.layer2_empty_label)
+        layer2_layout.addLayout(self.layer2_conditions_layout)
         
         layer2_layout.addStretch()
         layer2_widget.setLayout(layer2_layout)
@@ -508,7 +557,7 @@ class MarketRegimeView(QWidget):
         )
         self.layer1_confidence.clear()
         self.layer1_description.setText("正在讀取市場資料並檢測。")
-        self.layer2_label.setText("")
+        self._clear_layer2_conditions("檢測中；上一輪來源條件已清除。")
         self._clear_layer3()
         self.strategy_text.clear()
         self.market_risk_label.setText(
@@ -568,7 +617,7 @@ class MarketRegimeView(QWidget):
         self.layer1_confidence.setText("")
         self.layer1_description.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; padding-top: 5px; line-height: 1.4;")
         self.layer1_description.setText(f"錯誤：{message}")
-        self.layer2_label.setText("")
+        self._clear_layer2_conditions("本次來源或檢測失敗，沒有可用的條件狀態。")
         self._clear_layer3()
         self.strategy_text.setPlainText("")
         self.market_risk_label.setText("風險與限制：本次來源或檢測失敗，不能使用市場分類判讀。")
@@ -698,7 +747,7 @@ class MarketRegimeView(QWidget):
         }.get(regime_result.regime, "市場分類未知；請核對來源與技術細節。")
 
     def _update_layer2(self, regime_result: RegimeResultDTO):
-        """只呈現來源明示布林條件；缺件不能被翻成反證。"""
+        """逐條呈現來源布林狀態；缺件維持未知，不轉成反證或總分。"""
         conditions = {
             "Trend": (
                 ("close_above_ma60", "價格在中長期均線之上", "價格未在中長期均線之上"),
@@ -716,21 +765,72 @@ class MarketRegimeView(QWidget):
                 ("rsi_oversold", "動能符合超賣條件", "動能未符合超賣條件"),
             ),
         }.get(regime_result.regime, ())
+        self._clear_layer2_conditions(
+            "判斷依據不足，請核對技術細節與來源。" if not conditions else ""
+        )
         lines = []
-        for key, positive, negative in conditions:
+        status_names = {True: "符合", False: "未符合"}
+        for index, (key, positive, negative) in enumerate(conditions[:3]):
             value = regime_result.details.get(key)
             if value is True:
                 text = positive
+                status = status_names[True]
             elif value is False:
                 text = negative
+                status = status_names[False]
             else:
                 text = positive + "：未知（來源未提供）"
+                status = "未知"
             lines.append("• " + escape(text))
-        self.layer2_label.setText(
+            row, status_label, condition_label = self.layer2_condition_rows[index]
+            row.setProperty("condition_key", key)
+            status_label.setObjectName(f"marketRegimeConditionStatus_{key}")
+            status_label.setText(status)
+            status_label.setAccessibleName(f"{text}狀態")
+            status_label.setAccessibleDescription(f"來源條件狀態：{status}")
+            condition_label.setObjectName(f"marketRegimeConditionText_{key}")
+            condition_label.setText(text)
+            condition_label.setAccessibleName("來源條件")
+            condition_label.setAccessibleDescription(text)
+            row.setAccessibleName(f"來源條件：{text}")
+            row.setAccessibleDescription(f"狀態：{status}；條件：{text}")
+            row.show()
+        if conditions:
+            self.layer2_empty_label.hide()
+        summary = (
             "<div style='line-height: 1.6;'>"
             + "<br/>".join(lines or ["• 判斷依據不足，請核對技術細節與來源"])
             + "</div>"
         )
+        self.layer2_label.setText(summary)
+        self.layer2_label.setAccessibleDescription(
+            "；".join(
+                f"狀態：{status_label.text()}；條件：{condition_label.text()}"
+                for _row, status_label, condition_label in self.layer2_condition_rows
+                if status_label.text()
+            ) or self.layer2_empty_label.text()
+        )
+
+    def _clear_layer2_conditions(self, message: str) -> None:
+        """刷新或失敗時隱藏舊條件，並呈現目前的空態。"""
+        for index, (row, status_label, condition_label) in enumerate(self.layer2_condition_rows):
+            row.hide()
+            row.setAccessibleName("")
+            row.setAccessibleDescription("")
+            row.setProperty("condition_key", "")
+            status_label.clear()
+            status_label.setAccessibleName("")
+            status_label.setAccessibleDescription("")
+            status_label.setObjectName(f"marketRegimeConditionStatus_{index}")
+            condition_label.clear()
+            condition_label.setAccessibleName("")
+            condition_label.setAccessibleDescription("")
+            condition_label.setObjectName(f"marketRegimeConditionText_{index}")
+        self.layer2_empty_label.setText(message)
+        self.layer2_empty_label.setAccessibleDescription(message)
+        self.layer2_empty_label.setVisible(bool(message))
+        self.layer2_label.setText("")
+        self.layer2_label.setAccessibleDescription(message)
 
     def _update_layer3(self, regime_result: RegimeResultDTO):
         """更新 Layer 3：技術細節層（所有指標與數值）"""

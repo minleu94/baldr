@@ -5,7 +5,7 @@ import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QWidget
 
 from app_module.dtos import RegimeResultDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -88,11 +88,11 @@ def test_market_regime_trend_summary_shows_plus_di_source_state():
     view = MarketRegimeView(FakeRegimeService())
     try:
         cases = (
-            (True, "+DI 高於 -DI"),
-            (False, "+DI 未高於 -DI"),
-            (None, "+DI 高於 -DI：未知（來源未提供）"),
+            (True, "符合", "+DI 高於 -DI"),
+            (False, "未符合", "+DI 未高於 -DI"),
+            (None, "未知", "+DI 高於 -DI：未知（來源未提供）"),
         )
-        for source_value, expected in cases:
+        for source_value, expected_status, expected_text in cases:
             details = {
                 "close_above_ma60": True,
                 "ma20_slope_positive": True,
@@ -108,9 +108,75 @@ def test_market_regime_trend_summary_shows_plus_di_source_state():
                 )
             )
             summary = view.layer2_label.text()
-            assert expected in summary
+            assert expected_text in summary
             assert "價格在中長期均線之上" in summary
             assert "短期均線上升" in summary
+            row = view.findChild(QFrame, "marketRegimeConditionRow_2")
+            status = view.findChild(QLabel, "marketRegimeConditionStatus_plus_di_above_minus_di")
+            condition = view.findChild(QLabel, "marketRegimeConditionText_plus_di_above_minus_di")
+            assert row is not None and row.property("condition_key") == "plus_di_above_minus_di"
+            assert status is not None and status.text() == expected_status
+            assert condition is not None and condition.text() == expected_text
+            assert row.accessibleDescription() == f"狀態：{expected_status}；條件：{expected_text}"
+            assert status.accessibleDescription() == f"來源條件狀態：{expected_status}"
+            assert condition.accessibleDescription() == expected_text
+            assert not row.isHidden()
+    finally:
+        view.close()
+        application.processEvents()
+
+
+def test_market_regime_condition_rows_clear_on_refresh_and_keep_each_identity():
+    application = app()
+    view = MarketRegimeView(FakeRegimeService())
+    try:
+        original = RegimeResultDTO(
+            regime="Trend",
+            confidence=0.82,
+            regime_name_cn="趨勢盤",
+            details={
+                "close_above_ma60": True,
+                "ma20_slope_positive": True,
+                "plus_di_above_minus_di": True,
+            },
+        )
+        view._update_layer2(original)
+        expected_keys = (
+            "close_above_ma60",
+            "ma20_slope_positive",
+            "plus_di_above_minus_di",
+        )
+        for key in expected_keys:
+            row = view.findChild(QFrame, f"marketRegimeConditionRow_{expected_keys.index(key)}")
+            status = view.findChild(QLabel, f"marketRegimeConditionStatus_{key}")
+            condition = view.findChild(QLabel, f"marketRegimeConditionText_{key}")
+            assert row is not None and row.property("condition_key") == key
+            assert status is not None and status.text() == "符合"
+            assert condition is not None and condition.text()
+
+        view._clear_regime_result_for_loading()
+        assert view.layer2_empty_label.text() == "檢測中；上一輪來源條件已清除。"
+        for row, status, condition in view.layer2_condition_rows:
+            assert row.isHidden()
+            assert row.property("condition_key") == ""
+            assert not status.text() and not condition.text()
+
+        refreshed = RegimeResultDTO(
+            regime="Trend",
+            confidence=0.82,
+            regime_name_cn="趨勢盤",
+            details={
+                "close_above_ma60": False,
+                "ma20_slope_positive": True,
+            },
+        )
+        view._update_layer2(refreshed)
+        assert view.findChild(QLabel, "marketRegimeConditionStatus_close_above_ma60").text() == "未符合"
+        assert view.findChild(QLabel, "marketRegimeConditionStatus_ma20_slope_positive").text() == "符合"
+        assert view.findChild(QLabel, "marketRegimeConditionStatus_plus_di_above_minus_di").text() == "未知"
+        assert view.findChild(QLabel, "marketRegimeConditionText_plus_di_above_minus_di").text() == (
+            "+DI 高於 -DI：未知（來源未提供）"
+        )
     finally:
         view.close()
         application.processEvents()

@@ -7,7 +7,7 @@ from typing import Optional, Type
 import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QLabel, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
 
 from ui_qt.widgets.chart_payloads import (
     build_drawdown_chart_payload,
@@ -45,6 +45,20 @@ def _load_webengine_payload(web_view, payload: dict) -> None:
     """設定頁面底色後載入保留原資料的本地圖表 HTML。"""
     _set_webengine_dark_surface(web_view)
     web_view.setHtml(_build_html(payload))
+
+
+def _payload_has_chart_data(payload: dict) -> bool:
+    """檢查目前圖表 payload 是否有可繪製的資料列。"""
+
+    if "equity" in payload:
+        return bool(payload.get("equity") or payload.get("benchmark"))
+    if payload.get("kind") == "lineArea":
+        return bool(payload.get("series"))
+    if payload.get("kind") == "histogram":
+        return bool(payload.get("bins"))
+    if payload.get("kind") == "tradeBars":
+        return bool(payload.get("items"))
+    return False
 
 
 class _FastCanvasChartWidget(QWidget):
@@ -94,6 +108,37 @@ class _FastCanvasChartWidget(QWidget):
         layout.addWidget(self.numeric_text)
         self.numeric_toggle.toggled.connect(self.numeric_text.setVisible)
 
+        self.status_label = QLabel(self)
+        self.status_label.setObjectName("fastChartLoadStatus")
+        self.status_label.setWordWrap(True)
+        self.status_label.setAccessibleName("快速圖表載入狀態")
+        self.status_label.setAccessibleDescription(
+            "說明圖表頁面載入或呈現狀態；不代表圖表數值已驗證。"
+        )
+        self.status_label.setStyleSheet(
+            f"QLabel {{ background: {MIDNIGHT_ANALYST.surface_1}; "
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 6px; }}"
+        )
+        self.status_label.setVisible(False)
+        layout.addWidget(self.status_label)
+
+        self.retry_button = QPushButton("重試圖表載入", self)
+        self.retry_button.setObjectName("fastChartLoadRetry")
+        self.retry_button.setAccessibleName("重試快速圖表載入")
+        self.retry_button.setToolTip("使用目前最新的圖表資料再次載入。")
+        self.retry_button.setVisible(False)
+        self.retry_button.clicked.connect(
+            lambda _checked=False: self._retry_latest_payload()
+        )
+        layout.addWidget(self.retry_button)
+
+        self._latest_payload: Optional[dict] = None
+        self._active_payload: Optional[dict] = None
+        self._queued_payload: Optional[dict] = None
+        self._webengine_loading = False
+        self._renderer_terminated = False
+        self._webengine_generation = 0
+
         if not HAS_QTWEBENGINE:
             self.web_view = None
             self.fallback_label = QLabel(
@@ -109,28 +154,149 @@ class _FastCanvasChartWidget(QWidget):
             self._set_payload(self.empty_payload())
             return
 
-        self.web_view = QWebEngineView(self)
-        self.web_view.setMinimumSize(400, 300)
-        self.web_view.setFocusPolicy(Qt.StrongFocus)
-        self.web_view.setAccessibleName("快速圖表")
-        self.web_view.setAccessibleDescription(
+        self._webengine_layout = layout
+        self.web_view = self._create_webengine_view()
+        self._set_payload(self.empty_payload())
+
+    def _create_webengine_view(self):
+        web_view = QWebEngineView(self)
+        web_view.setMinimumSize(400, 300)
+        web_view.setFocusPolicy(Qt.StrongFocus)
+        web_view.setAccessibleName("快速圖表")
+        web_view.setAccessibleDescription(
             "可使用方向鍵、Home、End 瀏覽圖表資料；也可展開下方文字數值。"
         )
-        layout.addWidget(self.web_view)
-        self._set_payload(self.empty_payload())
+        generation = self._webengine_generation
+        web_view.loadStarted.connect(
+            lambda generation=generation: self._on_webengine_load_started(generation)
+        )
+        web_view.loadFinished.connect(
+            lambda succeeded, generation=generation: self._on_webengine_load_finished(
+                generation, succeeded
+            )
+        )
+        web_view.page().renderProcessTerminated.connect(
+            lambda status, exit_code, generation=generation: self._on_webengine_renderer_terminated(
+                generation, status, exit_code
+            )
+        )
+        self._webengine_layout.addWidget(web_view)
+        return web_view
+
+    def _replace_terminated_webengine_view(self) -> None:
+        old_view = self.web_view
+        if old_view is not None:
+            self._webengine_layout.removeWidget(old_view)
+            old_view.hide()
+            old_view.deleteLater()
+        # 新頁面使用新一代 signal callback；已排入事件佇列的舊 finish 會被忽略。
+        self._webengine_generation += 1
+        self.web_view = self._create_webengine_view()
 
     def empty_payload(self) -> dict:
         return {"kind": "empty", "title": "Chart"}
 
     def _set_payload(self, payload: dict):
+        self._latest_payload = payload
         self._update_numeric_alternative(payload)
         if self.web_view is None:
             self.fallback_label.setText(
                 "快速圖表目前無法載入（未安裝 QtWebEngine）；請展開下方數值資料。"
             )
             return
-        # 每次載入（包含初始空圖與清空後）都先指定頁面底色，避免載入期間閃白。
-        _load_webengine_payload(self.web_view, payload)
+        if self._webengine_loading:
+            # setHtml 沒有 request ID；載入期間只保留最新 payload，避免舊取消訊號
+            # 被誤認為最新結果的載入失敗。
+            self._queued_payload = payload
+            return
+        self._start_webengine_load(payload)
+
+    def _start_webengine_load(self, payload: dict) -> None:
+        """序列載入 inline HTML，保持最新 payload 並呈現文件狀態。"""
+
+        if self.web_view is None:
+            return
+        if self._renderer_terminated:
+            self._replace_terminated_webengine_view()
+        self._active_payload = payload
+        self._webengine_loading = True
+        self._renderer_terminated = False
+        self._set_load_status(
+            "快速圖表頁面載入中；可先展開下方數值資料。"
+        )
+        # 每次載入前指定頁面底色，避免載入期間閃白。
+        try:
+            _load_webengine_payload(self.web_view, payload)
+        except Exception:
+            self._webengine_loading = False
+            self._set_load_status(
+                "圖表頁面無法開始載入；可查看文字數值或重試。",
+                retry=True,
+            )
+            raise
+
+    def _on_webengine_load_started(self, generation: int) -> None:
+        if generation != self._webengine_generation:
+            return
+        self._webengine_loading = True
+        self._set_load_status("快速圖表頁面載入中；可先展開下方數值資料。")
+
+    def _on_webengine_load_finished(self, generation: int, succeeded: bool) -> None:
+        if generation != self._webengine_generation:
+            return
+        if self._renderer_terminated:
+            return
+        if not self._webengine_loading:
+            return
+        self._webengine_loading = False
+
+        queued_payload = self._queued_payload
+        self._queued_payload = None
+        if queued_payload is not None:
+            self._start_webengine_load(queued_payload)
+            return
+
+        if not succeeded:
+            self._set_load_status(
+                "圖表頁面載入失敗；可查看文字數值或重試。",
+                retry=True,
+            )
+            return
+
+        if self._active_payload is not None and not _payload_has_chart_data(
+            self._active_payload
+        ):
+            self._set_load_status("目前沒有可繪製的圖表資料。")
+            return
+
+        # loadFinished 只表示文件載入完成，不能證明 JavaScript/canvas 已繪製。
+        self._set_load_status("圖表文件載入完成。")
+
+    def _on_webengine_renderer_terminated(
+        self, generation: int, _status: object, _exit_code: int
+    ) -> None:
+        if generation != self._webengine_generation:
+            return
+        self._renderer_terminated = True
+        self._webengine_loading = False
+        self._queued_payload = None
+        self._set_load_status(
+            "圖表呈現程序已停止；目前數值資料仍可查看或重試。",
+            retry=True,
+        )
+
+    def _retry_latest_payload(self) -> None:
+        if self.web_view is None or self._webengine_loading:
+            return
+        if self._latest_payload is None:
+            return
+        self._queued_payload = None
+        self._start_webengine_load(self._latest_payload)
+
+    def _set_load_status(self, message: str, *, retry: bool = False) -> None:
+        self.status_label.setText(message)
+        self.status_label.setVisible(bool(message))
+        self.retry_button.setVisible(retry)
 
     def _update_numeric_alternative(self, payload: dict) -> None:
         self.numeric_text.setText(_numeric_alternative_text(payload))

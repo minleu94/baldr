@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M135／M136 後繼原始碼：Fast Canvas host 保留最新圖資料，在 WebEngine 載入中顯示提示，失敗或 renderer 停止時提供「重試圖表載入」，數值替代維持可讀；空資料與已完成文件載入各有獨立狀態。大盤指數市場分類的原三項來源布林條件改為逐條中性狀態卡，明示符合、未符合或未知，刷新與錯誤清除舊卡。不改來源條件、金融公式或資格；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m135m136-載入回饋與市場條件卡)。
+
 M133／M134 後繼原始碼：個股完整 OHLCV 圖的量柱以本段最高成交量正規化，同圖在價格與量柱之間顯示「成交量刻度（股）：0 至最高原值」，全零只顯 0，缺量不畫量柱；圖的無障礙描述亦帶同一尺度。Fast Canvas 權益 hover 改標「策略淨值」，不假定幣別；回撤 hover 原百分比值補 `%`，其他序列保留原 yLabel。沒有改 DTO、原數值、金融公式或來源資格；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m133m134-成交量尺度與-fast-hover-金融單位)。
 
 M132 後繼原始碼：Backtest「圖表」頁預設收合上方重複的研究模式／補充查找資訊，圖表來源與歷史載入控制保留；按「顯示研究脈絡與查找」可還原，離開圖表頁也恢復原控制與查找群組勾選。四張 Matplotlib 備援圖僅在此結果頁採 10.8×3.2 吋自然尺寸及原 400×300 canvas 最小值，保留垂直捲動；Portfolio 共用圖與 Fast 畫布尺寸未改。這只改資訊層級與幾何，不改結果數值或來源。操作見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m132-backtest-圖表首屏完整可讀)。

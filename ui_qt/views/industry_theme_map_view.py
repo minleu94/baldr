@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QEvent, QObject, QRect, Qt, QSignalBlocker, Signal, Slot
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -43,6 +44,7 @@ from app_module.theme_research_presentation import (
 )
 from app_module.theme_classification_presentation import (
     ThemeClassificationMember,
+    ThemeClassificationPresentation,
     build_theme_classification_presentation,
 )
 from app_module.theme_overlap_presentation import (
@@ -3286,6 +3288,130 @@ class IndustryThemeMapView(QWidget):
     def _classification_value(value: str) -> str:
         return value.strip() if value.strip() else "未提供"
 
+    def _add_classification_l1_summary(
+        self, presentation: ThemeClassificationPresentation, total: int,
+    ) -> None:
+        """用目前題材的 typed members 顯示有界 L1 列數摘要。"""
+        counts: dict[str, int] = {}
+        missing_count = 0
+        missing_values: dict[str, int] = {}
+        for member in presentation.members:
+            category = member.l1_industry_category
+            if not category.strip():
+                missing_count += 1
+                missing_values[category] = missing_values.get(category, 0) + 1
+                continue
+            counts[category] = counts.get(category, 0) + 1
+
+        ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        shown = ordered[:8]
+        omitted = ordered[8:]
+        card = QGroupBox("L1 產業組成（分類列數／本題材分類列總數）")
+        card.setObjectName("industryThemeClassificationL1Summary")
+        card.setAccessibleName("目前題材各 L1 產業的分類列數摘要")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(3)
+        dates = QLabel(
+            f"資料日 {presentation.data_date}；Mapping 日期 "
+            f"{presentation.mapping_snapshot_date}／"
+            f"{presentation.mapping_available_date}"
+        )
+        dates.setObjectName("industryThemeClassificationL1Dates")
+        dates.setWordWrap(True)
+        dates.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(dates)
+        note = QLabel(
+            "依同一版本的分類成員列計數；不代表權重、供應關係或歷史 PIT。"
+        )
+        note.setObjectName("industryThemeClassificationL1Note")
+        note.setWordWrap(True)
+        note.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(note)
+
+        def add_bar(label_text: str, count: int, tooltip: str) -> None:
+            row = QHBoxLayout()
+            category_label = QLabel(label_text)
+            category_label.setObjectName("industryThemeClassificationL1Category")
+            category_label.setFixedWidth(190)
+            category_label.setText(
+                QFontMetrics(category_label.font()).elidedText(
+                    label_text, Qt.TextElideMode.ElideRight, 190
+                )
+            )
+            category_label.setAccessibleName(label_text)
+            category_label.setToolTip(tooltip)
+            category_label.setTextFormat(Qt.TextFormat.PlainText)
+            bar = QProgressBar()
+            bar.setObjectName("industryThemeClassificationL1Bar")
+            bar.setAccessibleName(f"{label_text}分類列數")
+            bar.setRange(0, total)
+            bar.setValue(count)
+            bar.setFormat("%v / %m 列")
+            bar.setTextVisible(True)
+            bar.setToolTip(tooltip)
+            bar.setStyleSheet(
+                f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-radius: 3px; text-align: center; color: "
+                f"{MIDNIGHT_ANALYST.text_primary}; }} "
+                f"QProgressBar::chunk {{ background-color: "
+                f"{MIDNIGHT_ANALYST.accent}; }}"
+            )
+            row.addWidget(category_label)
+            row.addWidget(bar, 1)
+            layout.addLayout(row)
+
+        for category, count in shown:
+            category_label = f"「{category}」"
+            add_bar(
+                category_label, count,
+                f"來源原值：{category!r}；{count} / {total} 筆分類列；"
+                "同一題材與版本。",
+            )
+        if omitted:
+            tooltip_limit = 12
+            omitted_rows = "；".join(
+                f"{category!r} {count} 列"
+                for category, count in omitted[:tooltip_limit]
+            )
+            omitted_remaining = len(omitted) - min(len(omitted), tooltip_limit)
+            if omitted_remaining:
+                omitted_rows += (
+                    f"；另有 {omitted_remaining} 個 L1 類別，"
+                    "請至下方完整成員表查看"
+                )
+            add_bar(
+                f"其他（合併 {len(omitted)} 個 L1 類別）",
+                sum(count for _, count in omitted),
+                f"合併其餘 {len(omitted)} 個 L1 類別；逐類計數：{omitted_rows}。",
+            )
+        if missing_count:
+            missing_values_limit = 12
+            missing_value_rows = "；".join(
+                f"{category!r} {count} 列"
+                for category, count in sorted(missing_values.items())[
+                    :missing_values_limit
+                ]
+            )
+            missing_values_remaining = max(
+                0, len(missing_values) - missing_values_limit
+            )
+            if missing_values_remaining:
+                missing_value_rows += (
+                    f"；另有 {missing_values_remaining} 種空白原值，"
+                    "請至下方完整成員表查看"
+                )
+            add_bar(
+                "未提供（欄位空白）", missing_count,
+                f"L1 產業欄位原值為空白：{missing_count} / {total} 筆分類列；"
+                f"各空白原值計數：{missing_value_rows}。",
+            )
+        if total == 0:
+            empty = QLabel("本題材沒有可計數的分類列。")
+            empty.setObjectName("industryThemeClassificationL1Empty")
+            layout.addWidget(empty)
+        self.classification_members_layout.addWidget(card)
+
     def _render_classification_explorer(self) -> None:
         """依目前 typed mapping 投影靜態階層，不推導方向或關係。"""
         self._clear_classification_explorer(collapse=False)
@@ -3316,6 +3442,8 @@ class IndustryThemeMapView(QWidget):
             f"產業鏈：{presentation.chain_name}　›　題材：{presentation.theme_name}\n"
             "靜態分類層級；不表示供應、客戶、資金或因果方向。"
         )
+        total = len(presentation.members)
+        self._add_classification_l1_summary(presentation, total)
         displayed_members = presentation.members[:self._classification_explorer_member_limit]
         members_by_tier: dict[str, list[ThemeClassificationMember]] = {}
         tier_totals: dict[str, int] = {}
@@ -3374,7 +3502,6 @@ class IndustryThemeMapView(QWidget):
                 tier_layout.addWidget(button, member_index // 3, member_index % 3)
             self.classification_members_layout.addWidget(tier_group)
 
-        total = len(presentation.members)
         shown = len(displayed_members)
         remaining = total - shown
         self.classification_members_status.setText(

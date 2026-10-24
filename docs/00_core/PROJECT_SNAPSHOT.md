@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M118–M119 後繼原始碼補兩處同源研究資訊：產業／題材分類 explorer 對目前明選版本的 `ThemeClassificationPresentation.members` 畫最多八個 L1 類別與有界「其他」的分類列數條，空白欄位分開，原標籤、完整成員表與版本日期保留；這不是公司權重、供應關係或歷史 PIT。Evidence「資料缺口」選列在表前摘要及可複製明細顯本列保存的 Research Run／Event／Outcome ID，缺件為「未提供」，不由 ID 推定匹配或來源資格。Sol 原生目視修正類別標籤窄欄及埋在頁尾的追溯 ID；最終受控聚焦 91、Workbench 85、validator 25／0／4、mypy 1,144 clean，正常 Main 1280／1500 真 OS DPI216 合成 before／after 通過。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m118m119-題材-l1-組成與資料缺口追溯)。
+
 M116–M117 後繼原始碼完成兩個同源 UX 切片：策略回測「分析診斷」月表只對整體／月列均可用且有整數 `return_bp` 的格子畫台股正紅負綠、真零中性色階，原 bp 文字、缺月未知與期間外「—」不變；色深僅相對同一 run，不代表跨 run 比較、OOS 或未來。市場探索「研究母體盤勢」可明選已發布成員進個股研究，返回僅在原 verified manifest／股票／日期等身份仍相符時選回原列。Sol 原生複核修正 QSS 遮住色塊及個股報告暫清資料日造成的返回拒絕；最終受控聚焦 21、Workbench 85、validator 25／0／4、mypy 1,144 clean，正常 Main 1280／1500 真 OS DPI216 合成畫面與來源 DB SHA 不變。正式來源、其他 DPI、固定 EXE、Owner UAT 和完整 Gate 未驗；Stress 報價日期仍待同源計算輸入契約。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m116m117-月報酬色階與研究母體下鑽)。
 
 M114–M115 後繼原始碼補兩處既有來源的資訊層級：大盤指數 Trend「判斷摘要」現在列出原檢測器第三條 `+DI > -DI`，真、假及缺件分別顯示，不重算結構分或交易資格；系統狀態的「營運排程（已保存結果）」在原核心就緒數與清單之間顯同一次 `ScheduledOperationsSnapshotDTO` 的六類精確筆數及有限分布條，來源未確認與未知狀態不混入正常。Sol 複核、受控聚焦 33、Workbench 85、validator 25／0／4、mypy 1,144 clean；隔離正常 Main 1280／1500 真 OS DPI216 與同資料 View before／after 圖通過。只核合成資料及 UI；正式排程／市場來源、其他真 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。Stress 報價日須先有逐列計算價格與報價身份的同源契約，不以同價快取猜日。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m114m115-市場判斷與營運快照分布)。

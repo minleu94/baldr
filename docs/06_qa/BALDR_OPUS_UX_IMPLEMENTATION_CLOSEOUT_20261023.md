@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M117；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M119；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M117 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M119 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -245,3 +245,13 @@ Opus 起始唯讀 UI／UX 審查，額度用盡後 Antigravity 接手六報告�
 | P3 進階探索 | 同版題材與股票關聯可查；真公司間有向供應／客戶邊、跨期強弱仍待逐邊來源、可得時鐘及用途契約。 |
 
 這次收尾是**後繼原始碼與隔離合成 QA**。正式市場／Evidence／私人 Portfolio 來源、自然排程、其他真 OS DPI、1920 真可用螢幕、Light 若支援、固定新版 EXE、Owner UAT、M73 決策品質控制語義、M75 有向關係／跨期用途契約、Stress 逐列計算報價 provenance 與完整產品 Gate 均未由本輪接受。沒有自動交易、broker order、正式或私人資料改寫、其他自動化修改、push、merge 或部署；`output/` 原始證據不提交。
+
+## M118／M119 題材 L1 組成與資料缺口追溯
+
+M118 由 Luna `/root/m108_research_visual_audit` 單一 writer 修改 `ui_qt/views/industry_theme_map_view.py` 與聚焦測試。現有 `ThemeClassificationPresentation.members` 已含所選題材同版 L1 原始標籤，但先前只能逐位讀 tooltip；新增有界組成卡以分類列總數為分母，精確顯最多八個類別、其餘合併及空白欄位。非空白原值不做合併正規化，字面「未提供」與真正空白分開；過長名稱省略時 tooltip 與原成員表保留原值。卡片明示資料日／mapping 日期及非權重、供應關係、歷史 PIT 的限制。Sol 原生目視發現首版 108 邏輯像素的標籤欄幾乎逐字折行，退回後改有界 190 像素與完整 tooltip；最終正常 Main 1280×760／1500×900、真 OS DPI216 可直接掃讀條與數字。沒有改分類 mapping、DTO、來源資格或金融計算。
+
+M119 由 Luna `/root/m107_evidence_audit` 單一 writer 修改 `ui_qt/views/live_research_gap_view.py` 與聚焦測試，Sol 複核後補表前可選取文字的「所選列追溯 ID」摘要及明細最小高度。該頁原 dashboard row 已含 `research_run_id`、`evidence_event_id`、`evidence_outcome_id`，先前卡片會計缺件，選列卻無法核原 ID；現在同列摘要與可複製明細顯原值，缺件為「未提供」，換列、刷新、空及錯誤清舊。正常 Main 原生畫面在 1280 首屏下半可見三個 ID，明細仍可核原來源與連結信心；ID 本身不證明匹配、有效 Evidence 或來源資格。沒有改 producer、連結判定、正式資料或金融公式。
+
+最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_799c0acbcd2c48a9abcaf0ec84dc2a4a/receipt.json`：受改 Python compile exit0、聚焦 **91 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；Job 無殘留或強制清理。隔離合成 normal Main、同資料 baseline before／after、真 OS DPI216 的 1280／1500 原生 Job `.../root/single_owned_qa_9184c508482149438ae8af7b35fb1f6c/receipt.json` exit0；11 張 PNG、題材合成 snapshot SHA 前後一致及結果 JSON 位於 `.../root/native_m118_m119_evidence/run_e3f7380605164888a4fa8788ac8690d9/`。首輪聚焦因不可達的測試失敗分支，後一輪因省略標籤仍用舊測試文字而失敗；原收據及修正理由保留在本機 `QA_RESULTS.md`，不當作通過證據。M1–M119 是審查／實作／QA 切片序號，非 119 個功能。
+
+Watchlist 逐列查看狀態的同版分布尚缺公開批次 DTO：現有逐列 `get_review_state()` 每次重讀可能混 revision，故本輪只完成唯讀契約盤點，沒有畫假同版圖。Stress 逐列計算報價來源、M73 控制作用範圍、M75 有向供應鏈／跨期用途仍待各自契約。正式市場／Evidence／私人 Portfolio、其他真 OS DPI、1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT 與完整產品 Gate 未驗；沒有 push、merge、部署或正式／私人資料改寫。

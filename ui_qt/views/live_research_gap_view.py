@@ -158,6 +158,14 @@ class LiveResearchGapView(QWidget):
         self.quality_layout.setColumnStretch(4, 1)
         layout.addLayout(self.quality_layout)
 
+        self.trace_summary_label = QLabel("追溯 ID：尚未載入選列。")
+        self.trace_summary_label.setObjectName("liveResearchGapSelectedTraceIds")
+        self.trace_summary_label.setAccessibleName("所選資料缺口列的追溯 ID")
+        self.trace_summary_label.setWordWrap(True)
+        self.trace_summary_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.trace_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self.trace_summary_label)
+
         self.table_model = LiveResearchGapTableModel()
         self.summary_table = QTableView()
         self.summary_table.setModel(self.table_model)
@@ -170,6 +178,7 @@ class LiveResearchGapView(QWidget):
         self.detail_panel = QTextEdit()
         self.detail_panel.setReadOnly(True)
         self.detail_panel.setFont(QFont("Consolas", 9))
+        self.detail_panel.setMinimumHeight(190)
         layout.addWidget(self.detail_panel, stretch=1)
         body.addWidget(right)
         body.setSizes([260, 900])
@@ -182,6 +191,7 @@ class LiveResearchGapView(QWidget):
         self._current_result = None
         self.table_model.set_rows(())
         self._clear_quality_distribution("資料品質分布載入中…")
+        self.trace_summary_label.setText("追溯 ID：載入中…")
         for field_name, card in self.cards.items():
             self._set_card(card, card.property("title"), "載入中")
         self.empty_state_label.setText("研究落差證據載入中…")
@@ -227,6 +237,7 @@ class LiveResearchGapView(QWidget):
         if result.rows:
             self._render_details(result.rows[0], result)
         else:
+            self.trace_summary_label.setText("追溯 ID：目前沒有可選列。")
             self.detail_panel.setPlainText("\n".join(result.limitations))
 
     def _on_dashboard_error(self, message: str, request_id: int) -> None:
@@ -238,6 +249,7 @@ class LiveResearchGapView(QWidget):
         for card in self.cards.values():
             self._set_card(card, card.property("title"), "未知")
         self._clear_quality_distribution("資料品質分布未知；證據來源載入失敗。")
+        self.trace_summary_label.setText("追溯 ID：來源載入失敗，狀態未知。")
         self.empty_state_label.setText(f"研究落差證據載入失敗：{message.splitlines()[0]}")
         self.detail_panel.setPlainText("")
 
@@ -247,6 +259,16 @@ class LiveResearchGapView(QWidget):
             self._render_details(row, self._current_result)
 
     def _render_details(self, row, result: LiveResearchGapDashboardResult) -> None:
+        self.trace_summary_label.setText(
+            "所選列追溯 ID｜Research Run: "
+            f"{row.research_run_id or '未提供'}｜Evidence Event: "
+            f"{row.evidence_event_id or '未提供'}｜Evidence Outcome: "
+            f"{row.evidence_outcome_id or '未提供'}"
+        )
+        self.trace_summary_label.setToolTip(
+            self.trace_summary_label.text()
+            + "\n僅依所選列的保存值顯示，不表示匹配或來源資格。"
+        )
         self.detail_panel.setPlainText(
             "\n".join(
                 [
@@ -254,6 +276,10 @@ class LiveResearchGapView(QWidget):
                     f"來源: {row.source_type or '缺失'} / {row.source_id or '缺失'}",
                     f"策略版本: {row.strategy_version_id or '無'}",
                     f"連結信心: {row.match_confidence}",
+                    "追溯識別碼（依本列保存值；不表示匹配或來源資格）:",
+                    f"Research Run ID: {row.research_run_id or '未提供'}",
+                    f"Evidence Event ID: {row.evidence_event_id or '未提供'}",
+                    f"Evidence Outcome ID: {row.evidence_outcome_id or '未提供'}",
                     f"歸因: {', '.join(row.attribution_categories) or '無'}",
                     f"資料品質: {row.quality}",
                     f"警告: {', '.join(row.warnings) or '無'}",

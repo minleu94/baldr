@@ -1374,6 +1374,118 @@ def test_live_research_gap_quality_distribution_uses_only_service_counts() -> No
     assert view.detail_panel.toPlainText() == ""
 
 
+def test_live_research_gap_details_show_trace_ids_from_selected_row() -> None:
+    app()
+    linked = LiveResearchGapDashboardRow(
+        symbol="2330",
+        portfolio_mode="simulated",
+        source_type="research_run",
+        source_id="source-1",
+        strategy_version_id="strategy-v1",
+        match_confidence="high",
+        quality="observed",
+        research_run_id="run-1",
+        evidence_event_id="event-1",
+        evidence_outcome_id="outcome-1",
+    )
+    missing = LiveResearchGapDashboardRow(
+        symbol="2317",
+        portfolio_mode="unknown",
+        source_type="manual",
+        source_id="source-2",
+        strategy_version_id="strategy-v2",
+        match_confidence="low",
+        quality="degraded",
+    )
+    result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(),
+        LiveResearchGapDashboardCards(positions_seen=2),
+        rows=(linked, missing),
+        quality_counts={"observed": 1, "degraded": 1},
+    )
+    view = LiveResearchGapView(
+        FakeDashboard(result), auto_refresh=False, async_refresh=False
+    )
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    details = view.detail_panel.toPlainText()
+    assert "來源: research_run / source-1" in details
+    assert "策略版本: strategy-v1" in details
+    assert "連結信心: high" in details
+    assert "Research Run ID: run-1" in details
+    assert "Evidence Event ID: event-1" in details
+    assert "Evidence Outcome ID: outcome-1" in details
+    assert "不表示匹配或來源資格" in details
+    assert "Research Run: run-1" in view.trace_summary_label.text()
+    assert "Evidence Event: event-1" in view.trace_summary_label.text()
+    assert "Evidence Outcome: outcome-1" in view.trace_summary_label.text()
+    assert "不表示匹配或來源資格" in view.trace_summary_label.toolTip()
+
+    view._on_table_row_clicked(view.table_model.index(1, 0))
+    details = view.detail_panel.toPlainText()
+    assert "來源: manual / source-2" in details
+    assert "連結信心: low" in details
+    assert "Research Run ID: 未提供" in details
+    assert "Evidence Event ID: 未提供" in details
+    assert "Evidence Outcome ID: 未提供" in details
+    assert "run-1" not in details
+    assert "event-1" not in details
+    assert "outcome-1" not in details
+    assert "Research Run: 未提供" in view.trace_summary_label.text()
+    assert "run-1" not in view.trace_summary_label.text()
+
+
+def test_live_research_gap_details_clear_trace_ids_on_empty_refresh_and_error() -> None:
+    app()
+    linked = LiveResearchGapDashboardRow(
+        symbol="2330",
+        source_type="research_run",
+        source_id="source-1",
+        research_run_id="run-1",
+        evidence_event_id="event-1",
+        evidence_outcome_id="outcome-1",
+        match_confidence="high",
+    )
+    result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(),
+        LiveResearchGapDashboardCards(positions_seen=1),
+        rows=(linked,),
+        quality_counts={"observed": 1},
+    )
+    view = LiveResearchGapView(
+        FakeDashboard(result), auto_refresh=False, async_refresh=False
+    )
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    assert "run-1" in view.detail_panel.toPlainText()
+
+    empty_result = LiveResearchGapDashboardResult(
+        LiveResearchGapDashboardRequest(), LiveResearchGapDashboardCards()
+    )
+    view.dashboard_service = FakeDashboard(empty_result)
+    view.refresh_dashboard()
+    assert view.detail_panel.toPlainText() == ""
+    assert "目前沒有可選列" in view.trace_summary_label.text()
+    assert all(
+        trace_id not in view.detail_panel.toPlainText()
+        for trace_id in ("run-1", "event-1", "outcome-1")
+    )
+
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    class FailingDashboard:
+        def load_dashboard(self, _request):
+            raise RuntimeError("synthetic failure")
+
+    view.dashboard_service = FailingDashboard()
+    view.refresh_dashboard()
+    assert view.detail_panel.toPlainText() == ""
+    assert "載入失敗" in view.trace_summary_label.text()
+    assert all(
+        trace_id not in view.detail_panel.toPlainText()
+        for trace_id in ("run-1", "event-1", "outcome-1")
+    )
+
+
 class FakeDecisionQualityBackend:
     def __init__(self, reviews=(), items=(), error=None):
         self.reviews = reviews

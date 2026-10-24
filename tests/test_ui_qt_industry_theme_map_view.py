@@ -148,6 +148,7 @@ def test_classification_explorer_caps_display_and_clears_on_selection_or_snapsho
     _select_theme(view, "科技鏈", "AI")
     view.classification_explorer_toggle.click()
     application.processEvents()
+    assert view.classification_members_layout.count() > 0
 
     buttons = view.classification_explorer_group.findChildren(
         QPushButton, "industryThemeClassificationMemberButton"
@@ -162,11 +163,134 @@ def test_classification_explorer_caps_display_and_clears_on_selection_or_snapsho
     application.processEvents()
     assert not view.classification_explorer_group.isVisible()
     assert not view.classification_explorer_toggle.isChecked()
+    assert view.classification_members_layout.count() == 0
 
     view.set_snapshot(_classification_snapshot(identity="b" * 64))
     application.processEvents()
     assert not view.classification_explorer_group.isVisible()
     assert not view.classification_explorer_toggle.isChecked()
+    assert view.classification_members_layout.count() == 0
+    view.shutdown()
+    view.close()
+
+
+def test_classification_l1_summary_counts_missing_and_bounded_overflow_then_clears():
+    application = app()
+    view = IndustryThemeMapView()
+    view.show()
+    categories = (
+        "電子業", "電子業", " 電子業", " 電子業",
+        "電子業 ", "電子業 ", "金融保險業", "金融保險業",
+        "未提供", "未提供", "未提供（來源原值）", "未提供（來源原值）",
+        "來源：「測試分類」", "來源：「測試分類」",
+        *(f"測試分類{index:02d}" for index in range(20)), "", " ", "\t",
+    )
+    view.set_snapshot(_classification_snapshot(
+        member_count=len(categories), l1_categories=categories,
+    ))
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+
+    card = view.classification_explorer_group.findChild(
+        QGroupBox, "industryThemeClassificationL1Summary"
+    )
+    assert card is not None
+    assert "分類列數／本題材分類列總數" in card.title()
+    dates = card.findChild(view_module.QLabel, "industryThemeClassificationL1Dates")
+    assert "資料日 2026-10-16" in dates.text()
+    assert "Mapping 日期 2026-10-15／2026-10-15" in dates.text()
+    note = card.findChild(view_module.QLabel, "industryThemeClassificationL1Note")
+    assert "不代表權重、供應關係或歷史 PIT" in note.text()
+    bars = card.findChildren(QProgressBar, "industryThemeClassificationL1Bar")
+    labels = card.findChildren(view_module.QLabel, "industryThemeClassificationL1Category")
+    assert len(bars) == 10  # 8 類、合併列、未提供
+    assert len(labels) == 10
+    labels_by_text = {label.text(): label for label in labels}
+    labels_by_accessible_name = {
+        label.accessibleName(): label for label in labels
+    }
+    assert "「電子業」" in labels_by_text
+    assert "「來源：「測試分類」」" in labels_by_accessible_name
+    assert "未提供（欄位空白）" in labels_by_text
+    assert "「未提供」" in labels_by_accessible_name
+    assert "「未提供（來源原值）」" in labels_by_accessible_name
+    assert "其他（合併 19 個 L1 類別）" in labels_by_accessible_name
+    assert labels_by_accessible_name["「電子業」"].maximumWidth() == 190
+    assert labels_by_accessible_name["「電子業」"].toolTip().startswith(
+        "來源原值：'電子業'"
+    )
+    assert labels_by_accessible_name["「來源：「測試分類」」"].toolTip().startswith(
+        "來源原值：'來源：「測試分類」'"
+    )
+    total_rows = len(categories)
+    assert f"來源原值：'電子業'；2 / {total_rows}" in next(
+        bar.toolTip() for bar in bars if "來源原值：'電子業'" in bar.toolTip()
+    )
+    electronic_bar = next(
+        bar for bar in bars if bar.accessibleName() == "「電子業」分類列數"
+    )
+    assert electronic_bar.value() == 2
+    assert electronic_bar.maximum() == total_rows
+    assert f"來源原值：' 電子業'；2 / {total_rows}" in next(
+        bar.toolTip() for bar in bars if "來源原值：' 電子業'" in bar.toolTip()
+    )
+    assert f"來源原值：'電子業 '；2 / {total_rows}" in next(
+        bar.toolTip() for bar in bars if "來源原值：'電子業 '" in bar.toolTip()
+    )
+    assert f"來源原值：'未提供'；2 / {total_rows}" in next(
+        bar.toolTip() for bar in bars if "來源原值：'未提供'" in bar.toolTip()
+    )
+    assert f"來源原值：'未提供（來源原值）'；2 / {total_rows}" in next(
+        bar.toolTip() for bar in bars
+        if "來源原值：'未提供（來源原值）'" in bar.toolTip()
+    )
+    overflow_bar = next(
+        bar for bar in bars if "合併其餘" in bar.toolTip()
+    )
+    assert overflow_bar.value() == 19
+    assert overflow_bar.maximum() == total_rows
+    overflow_tooltip = overflow_bar.toolTip()
+    assert "逐類計數：" in overflow_tooltip
+    assert "另有 7 個 L1 類別，請至下方完整成員表查看" in overflow_tooltip
+    assert len(overflow_tooltip) < 650
+    missing_tooltip = next(
+        bar.toolTip() for bar in bars
+        if bar.accessibleName() == "未提供（欄位空白）分類列數"
+    )
+    assert f"L1 產業欄位原值為空白：3 / {total_rows}" in missing_tooltip
+    assert "'' 1 列" in missing_tooltip
+    assert "'\\t' 1 列" in missing_tooltip
+    assert "' ' 1 列" in missing_tooltip
+    assert view.member_table.rowCount() == len(categories)
+
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+    assert view.classification_members_layout.count() == 0
+
+    view.set_snapshot(_classification_snapshot(
+        identity="a" * 64, member_count=2,
+    ))
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+    assert view.classification_members_layout.count() > 0
+    current_snapshot = view.snapshot
+    assert current_snapshot is not None
+    selected_mapping = next(
+        row for row in current_snapshot.mapping
+        if row.chain_name == "科技鏈" and row.theme_name == "AI"
+    )
+    failed_snapshot = replace(
+        current_snapshot, mapping=current_snapshot.mapping + (selected_mapping,)
+    )
+    view.set_snapshot(failed_snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    assert view.theme_filter.currentIndex() > 0
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+    assert view.classification_members_layout.count() == 0
+    assert "缺少可展開" in view.classification_members_status.text()
     view.shutdown()
     view.close()
 
@@ -486,8 +610,11 @@ def _classification_snapshot(
     identity: str = "e" * 64,
     *,
     member_count: int = 2,
+    l1_categories: tuple[str, ...] | None = None,
 ) -> ThemeResearchSnapshot:
     """使用實際 ThemeMappingRow 驗證展開時的來源分類契約。"""
+    if l1_categories is not None and len(l1_categories) != member_count:
+        raise ValueError("l1_categories 必須與 member_count 相同")
     base = _snapshot(identity)
     stock_ids = (
         ("2330", "2317") if member_count == 2
@@ -503,7 +630,9 @@ def _classification_snapshot(
                 {"2330": "台積電", "2317": "鴻海"}.get(stock_id, f"測試公司{stock_id}")
             ),
             market_type="上市",
-            l1_industry_category="電子業",
+            l1_industry_category=(
+                l1_categories[member_index] if l1_categories is not None else "電子業"
+            ),
             chain_name="科技鏈",
             chain_tier="上游" if member_index % 2 == 0 else "下游",
             theme_name="AI",

@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M118–M119 後繼原始碼：所選題材分類區以同一 typed snapshot 的分類成員列計數 L1 組成，最多八類及一列有界合併數，來源原標籤、空白欄位、資料日／mapping 日期與完整成員表各自保留；此分類數不是市場權重、供應鏈邊、歷史 PIT 或績效。Evidence 資料缺口在選列明細與表前摘要顯同列保存的三種追溯 ID；空值明示未提供，換列及刷新清舊，ID 的存在不授匹配或來源資格。兩者只改展示層，未改 DTO、公式或來源資格。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m118m119-題材-l1-組成與資料缺口追溯)。
+
 M116–M117 後繼原始碼：Backtest 分析師月報酬矩陣沿原 DTO 的可用整數 bp 顯同 run 有限強度色階，正值紅、負值綠、真零中性；缺值、觀測期內缺月及期間外格不著色，原 bp 文字保留。全站 QSS 下以月表專用 delegate 繪製，選列高亮仍可辨。這不是跨 run 可比性、OOS 或未來績效。市場「研究母體盤勢」對已驗證快照的已發布成員提供個股研究明選，typed 列與 manifest ID/hash、股票、日期、條件、cohort、root 綁定；回程以同一原 context 核對，報告暫清資料日時只用開啟當下原 pin 重核，失配不換成同股其他來源。未改金融公式、快照來源資格或正式資料。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m116m117-月報酬色階與研究母體下鑽)。
 
 M114–M115 後繼原始碼：大盤指數 Trend 判斷摘要補顯原 `plus_di_above_minus_di` 布林條件，True／False／缺值照來源呈現，原結構分計算、技術細節及 Regime service 不變。Runtime 已保存營運快照在原核心就緒與工作清單之間顯六類全快照精確筆數和分段條；只有 `read_state=observed` 才按 normalized state 計，來源未確認與未知狀態分開，篩選只影響清單，空或替換快照清舊。此圖不代表 Windows Task Scheduler 執行、成功率、自然成熟或金融資格。限定驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m114m115-市場判斷與營運快照分布)。

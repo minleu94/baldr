@@ -329,6 +329,115 @@ def test_analyst_monthly_matrix_marks_only_in_span_gaps_unknown(qt_app):
     assert widget.monthly_table.item(1, 3).text() == "—"  # 觀測期後
 
 
+def test_analyst_monthly_matrix_adds_run_relative_directional_heatmap_without_changing_values(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            monthly=(
+                {"year": 2025, "month": 1, "status": "available", "return_bp": 1000, "return_text": "+1000 bp"},
+                {"year": 2025, "month": 3, "status": "available", "return_bp": -500, "return_text": "-500 bp"},
+                {"year": 2025, "month": 4, "status": "available", "return_bp": 0, "return_text": "0 bp"},
+                {"year": 2025, "month": 5, "status": "unknown", "return_bp": 50000, "return_text": "未知"},
+                {"year": 2025, "month": 6, "status": "available", "return_bp": 1, "return_text": "+1 bp"},
+                {"year": 2025, "month": 7, "status": "available", "return_bp": True, "return_text": "未知"},
+            ),
+        )
+    )
+
+    table = widget.monthly_table
+    assert table.item(0, 1).text() == "+1000 bp"
+    assert table.item(0, 2).text() == "未知"  # 未提供月份，不補值
+    assert table.item(0, 3).text() == "-500 bp"
+    assert table.item(0, 4).text() == "0 bp"
+    assert table.item(0, 5).text() == "未知"
+    assert table.item(0, 6).text() == "+1 bp"
+    assert table.item(0, 7).text() == "未知"
+    assert table.item(0, 1).background().color().name() == "#932a31"
+    assert table.item(0, 3).background().color().name() == "#1a5138"
+    assert table.item(0, 4).background().color().name() == "#223047"
+    assert table.item(0, 5).background().style() == Qt.BrushStyle.NoBrush
+    assert table.item(0, 6).background().color().name() == "#4a1b22"
+    assert table.item(0, 7).background().style() == Qt.BrushStyle.NoBrush
+    assert table.item(0, 2).background().style() == Qt.BrushStyle.NoBrush
+    assert "正報酬紅、負報酬綠、真零中性" in widget.monthly_heatmap_legend.text()
+    assert "不可跨 run 比較" in widget.monthly_heatmap_legend.text()
+    assert "不代表未來或 OOS" in widget.monthly_heatmap_legend.text()
+
+
+def test_analyst_monthly_heatmap_clears_color_for_unknown_and_replacement_values(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            monthly=({
+                "year": 2025, "month": 1, "status": "available",
+                "return_bp": 200, "return_text": "+200 bp",
+            },),
+        )
+    )
+    assert widget.monthly_table.item(0, 1).background().style() != Qt.BrushStyle.NoBrush
+
+    widget.set_diagnostics(AnalystDiagnosticsDTO.unknown("新 run 缺少診斷資料"))
+    assert widget.monthly_table.rowCount() == 0
+
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            monthly=({
+                "year": 2025, "month": 1, "status": "unknown",
+                "return_bp": None, "return_text": "未知",
+            },),
+        )
+    )
+    assert widget.monthly_table.item(0, 1).text() == "未知"
+    assert widget.monthly_table.item(0, 1).background().style() == Qt.BrushStyle.NoBrush
+
+
+def test_analyst_monthly_heatmap_is_uncolored_when_diagnostics_are_not_available(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="unknown",
+            reason="整體診斷不可用",
+            monthly=({
+                "year": 2025, "month": 1, "status": "available",
+                "return_bp": 500, "return_text": "+500 bp",
+            },),
+        )
+    )
+
+    assert widget.monthly_table.item(0, 1).text() == "+500 bp"
+    assert widget.monthly_table.item(0, 1).background().style() == Qt.BrushStyle.NoBrush
+
+
+def test_analyst_monthly_heatmap_scale_uses_last_displayed_duplicate_period_only(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            monthly=(
+                {"year": 2025, "month": 1, "status": "available", "return_bp": 100000, "return_text": "+100000 bp (superseded)"},
+                {"year": 2025, "month": 1, "status": "available", "return_bp": 1000, "return_text": "+1000 bp"},
+                {"year": 2025, "month": 2, "status": "available", "return_bp": 500, "return_text": "+500 bp"},
+            ),
+        )
+    )
+
+    assert widget.monthly_table.item(0, 1).text() == "+1000 bp"
+    assert widget.monthly_table.item(0, 1).background().color().name() == "#932a31"
+    # +500 bp 是顯示月份的 50% 色階；淘汰的 +100000 bp 不應壓扁其色深。
+    assert widget.monthly_table.item(0, 2).background().color().name() == "#63232a"
+
+
 def test_analyst_monthly_matrix_bounds_expansion_for_extreme_period_span(qt_app):
     view = BacktestView(backtest_service=MagicMock(), config=None)
     widget = view.result_panel.analyst_diagnostics_widget

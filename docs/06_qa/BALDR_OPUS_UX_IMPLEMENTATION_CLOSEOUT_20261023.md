@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M115；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M117；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M115 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M117 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -224,3 +224,24 @@ Luna `/root/m107_evidence_audit` 唯讀核對 Runtime `ScheduledOperationsSnapsh
 共同受控 8 GiB／12 程序 Job 首輪 `root/single_owned_qa_62b56448cebc4fb38b0e711b5e352e1c/receipt.json`：受改 Python compile 0，聚焦 32 passed／1 failed，失敗是新空快照測試把計數行誤當文字結尾，實際還有精確「共 0 項」；Workbench 85、validator 25／0／4、mypy 1,144 clean，原失敗保留。Luna 修正測試斷言後，最終 `root/single_owned_qa_514be759d88c42899e87cbc65d15c143/receipt.json`：compile 0、聚焦 **33 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；無殘留 PID 或強制清理。M1–M115 是含審查、實作與 QA 的切片序號，非 115 個獨立功能。
 
 Portfolio Stress 目前結果雖有 optional `as_of_date`，計算列沒有逐部位報價來源身份；同一代號或同數值快取不足以證明與計算採用的價格同源。此候選轉為先補 UI DTO／Application Adapter 的後續契約工作，本輪不猜日期、不寫入 result。正式市場／營運排程／私人 Portfolio、其他真 OS DPI、1920 真可用螢幕、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未驗；未讀寫正式或私人資料，未 push、merge 或部署。
+
+## M116／M117 月報酬色階與研究母體下鑽
+
+M116 由 Luna `/root/m107_evidence_audit` 單一 writer 修改 `ui_qt/views/backtest/analyst_diagnostics_widget.py` 及聚焦測試。月度矩陣只對整體與月列狀態皆 `available`、`return_bp` 為真正整數的格上色；正值按台股習慣紅、負值綠、真零中性，四色階只相對本次顯示有效月份的最大絕對 bp。重複年月只以最後顯示的列定尺度，未知、缺月和期間外沒有方向色；原 `return_text`、跨度限制及其他診斷表不變。Sol 原生 before／after 發現首版雖有 item BackgroundRole，全站 QSS 使像素未顯色，退回後以月表專用 delegate 繪出背景並保留選列高亮；最終正常 Main 向下捲至月表的 1280×760／1500×900 畫面可辨紅、綠、零與未知。這是同 run 掃讀輔助，不代表跨 run 比較、OOS、未來績效或新金融資格。
+
+M117 由 Luna `/root/m108_research_visual_audit` 單一 writer 修改 `ui_qt/views/daily_market_cohort_view.py`、`ui_qt/main.py` 與聚焦測試。市場探索「研究母體盤勢」新增已發布成員的明選個股入口，僅用同一 `VerifiedDailyMarketSnapshot` 的 typed row 和現有 `context_for_stock`；核股票、manifest ID/hash、cohort、決策日、資料日、固定條件與 snapshot root，缺件停用。返回時先重核原列，來源變更不切頁、不改選同股其他結果。Sol 正常 Main 先發現個股報告重讀 pinned artifact 前會暫清 `data_date`，首版完整 context 相等檢查拒絕合法返回；修正為只在其餘欄位與開啟時原 context 完全相同且日期僅暫空時，用原已釘選日期重核盤勢列。正常 Main 的同列返回及來源失效拒絕均通過；沒有改快照產生、篩選公式、報告計算或來源資格。
+
+最終受控 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_bdda3d1ec3c2489ea69ea65c9aac32dc/receipt.json`：受改 Python 編譯 exit 0、聚焦 **21 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；Job 無殘留 PID 或強制清理。原生合成正常 Main／同資料 baseline before-after 在真 OS DPI216 的 1280／1500 寬度與精確返回已目視，隔離 SQLite SHA 前後一致；Job 收據 `.../root/single_owned_qa_47a7dd77496a45508879b803ec8979fb/receipt.json`，十一張 PNG 及身份／hash JSON 於 `.../root/native_m116_m117_evidence/run_3346344046514cf29c89922184109049/`。初輪 QA 聚焦斷言 21 passed 但 Qt TaskWorker 未自然終態，`.../root/single_owned_qa_02b240da1cbf460ebfd646a45ceb2969/receipt.json` 記 exit 1；修測試關閉等待後重跑通過。原生首輪未先讓來源 View 接受快照的 harness 失敗、以及修前實際返回拒絕，原收據都在本機 `QA_RESULTS.md`，不併作通過證據。
+
+### 從排程開工至 M117 的盤點
+
+Opus 起始唯讀 UI／UX 審查，額度用盡後 Antigravity 接手六報告與設計成果；Sol 核對原件、現行程式、Roadmap、金融／PIT／來源契約並去重，按可實作前置選 P0–P3 切片。Luna 以單一 writer 檔案範圍完成具名變更，root 退回語義或原生畫面缺陷、受控執行 Python／Qt QA、維護本機原始收據與版控摘要。M1–M117 **包含唯讀裁決、QA 專項與實作序號，不是 117 個功能**。
+
+| 範圍 | 累積工程結果 |
+| --- | --- |
+| P0 金融辨識與資訊層級 | 台股紅漲綠跌、正負／單位／日期、未知與真零、首屏 KPI、載入／錯誤／過期清舊；個股 ML 估計完整性、Stress 情境身份與保存守衛、決策品質精確範圍提示。 |
+| P1 產業與題材 | 原九指標卡、限定成交額與漲跌格、雙版本原值、同版本成員分類／共用鄰域、同名辨識與搜尋、成員下鑽；未把靜態分類畫成有向供應鏈。 |
+| P2 研究介面 | 市場廣度與原流向、個股證據、推薦／選股五態、Portfolio／Paper、Backtest 月表與最佳化、Evidence／Runtime 的圖卡、表格混合、長清單分頁與來源返回。M116–M117 補月度色階與盤勢成員精確往返。 |
+| P3 進階探索 | 同版題材與股票關聯可查；真公司間有向供應／客戶邊、跨期強弱仍待逐邊來源、可得時鐘及用途契約。 |
+
+這次收尾是**後繼原始碼與隔離合成 QA**。正式市場／Evidence／私人 Portfolio 來源、自然排程、其他真 OS DPI、1920 真可用螢幕、Light 若支援、固定新版 EXE、Owner UAT、M73 決策品質控制語義、M75 有向關係／跨期用途契約、Stress 逐列計算報價 provenance 與完整產品 Gate 均未由本輪接受。沒有自動交易、broker order、正式或私人資料改寫、其他自動化修改、push、merge 或部署；`output/` 原始證據不提交。

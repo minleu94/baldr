@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
+from pathlib import Path
 
 from ui_qt.research_universe_presentation import research_universe_text
 
 from typing import Callable
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QDialog, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTableWidget, QTabWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from app_module.daily_market_cohort_projection import project_daily_market_cohort
+from app_module.daily_market_cohort_projection import (
+    DailyMarketCohortProjection,
+    project_daily_market_cohort,
+)
+from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
+from app_module.research_session import ResearchStockContextDTO
 from ui_qt.original_ranking_presentation import (
     original_rank_cell,
     original_rank_row_tooltip,
@@ -31,6 +39,8 @@ from ui_qt.widgets.info_button import InfoButton
 class DailyMarketCohortView(QWidget):
     """盤勢與名單共享同一個讀取流程；本頁不讀資料庫或重算方法。"""
 
+    stockResearchRequested = Signal(object)
+
     def __init__(
         self,
         source_view: DailyMarketResearchView,
@@ -41,6 +51,7 @@ class DailyMarketCohortView(QWidget):
         self.source_view = source_view
         self.projection: object | None = None
         self._snapshot: object | None = None
+        self._screen_rows_by_code: dict[str, DailyMarketResearchScreenRow] = {}
         self.original_ranking: object | None = None
         self._capability_report: object | None = None
         self._capability_dialog: QDialog | None = None
@@ -77,6 +88,11 @@ class DailyMarketCohortView(QWidget):
         )
         self.members_table.setHorizontalHeaderItem(5, QTableWidgetItem("原始名次"))
         self.members_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.members_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.members_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.members_table.itemSelectionChanged.connect(
+            self._sync_research_selected_button
+        )
         apply_financial_table_style(self.members_table)
         layout.addWidget(self.members_table)
         self.ranking_label = QLabel(
@@ -86,6 +102,12 @@ class DailyMarketCohortView(QWidget):
         self.ranking_label.setWordWrap(True)
         layout.addWidget(self.ranking_label)
         controls = QHBoxLayout()
+        self.research_selected_button = QPushButton("研究所選成員")
+        self.research_selected_button.setObjectName("marketCohortResearchSelectedMember")
+        self.research_selected_button.setAccessibleName("開啟所選研究母體成員的個股研究")
+        self.research_selected_button.setEnabled(False)
+        self.research_selected_button.clicked.connect(self.open_selected_member_research)
+        controls.addWidget(self.research_selected_button)
         self.capability_button = QPushButton("查看已開能力與來源")
         self.capability_button.setEnabled(False)
         self.capability_button.clicked.connect(self._show_capability_audit)
@@ -137,6 +159,11 @@ class DailyMarketCohortView(QWidget):
             self.status_label.setText(f"研究母體未知；共用投影拒絕：{type(exc).__name__}: {exc}")
             return
         self.projection = projection
+        self._screen_rows_by_code = {
+            row.stock_code: row
+            for row in rows
+            if type(row) is DailyMarketResearchScreenRow
+        }
         self._capability_report = capability_report
         self.capability_button.setEnabled(True)
         self._refresh_capability_audit()
@@ -195,6 +222,7 @@ class DailyMarketCohortView(QWidget):
                 )
                 self.members_table.setItem(index, column, item)
         self.members_table.resizeColumnsToContents()
+        self._sync_research_selected_button()
         self.status_label.setText(
             "盤勢與名單共享已驗證快照；未知包含缺資料，不能當成不符合。"
         )
@@ -207,6 +235,7 @@ class DailyMarketCohortView(QWidget):
         projection = self.projection
         if projection is None:
             self.members_table.setRowCount(0)
+            self._sync_research_selected_button()
             return
         rows_by_code = ranking_rows_by_code(self.original_ranking) or {}
         members = tuple(getattr(projection, "members", ()) or ())
@@ -230,6 +259,133 @@ class DailyMarketCohortView(QWidget):
                     )
                 self.members_table.setItem(index, column, item)
         self.members_table.resizeColumnsToContents()
+        self._sync_research_selected_button()
+
+    def _research_context_for_member(
+        self, stock_code: str,
+    ) -> ResearchStockContextDTO | None:
+        """Build a source-pinned context only from the current verified cohort row."""
+
+        snapshot = self._snapshot
+        projection = self.projection
+        source_view = self.source_view
+        if (
+            type(snapshot) is not VerifiedDailyMarketSnapshot
+            or type(projection) is not DailyMarketCohortProjection
+            or source_view._snapshot is not snapshot
+            or source_view._shutting_down
+            or projection.source_snapshot_hash != snapshot.manifest_sha256
+            or projection.source_snapshot_id != snapshot.manifest_identity_sha256
+            or projection.cohort_id != snapshot.cohort_id
+            or projection.decision_date != snapshot.decision_date.isoformat()
+            or source_view._manifest_sha256 != snapshot.manifest_sha256
+            or source_view._manifest_identity_sha256 != snapshot.manifest_identity_sha256
+            or source_view._loaded_decision_date != snapshot.decision_date.isoformat()
+        ):
+            return None
+        code = str(stock_code or "").strip()
+        row = self._screen_rows_by_code.get(code)
+        if (
+            not code
+            or code not in snapshot.stock_snapshots
+            or code not in projection.published_stock_codes
+            or row is None
+            or row.stock_code != code
+            or row.cohort_id != projection.cohort_id
+            or row.decision_date != projection.decision_date
+            or row.source_snapshot_id != projection.source_snapshot_id
+            or row.source_snapshot_hash != projection.source_snapshot_hash
+            or row.condition_keys != ("close_above_ma20", "close_above_ma60")
+            or row.combine_mode != "AND"
+        ):
+            return None
+        member = next(
+            (candidate for candidate in projection.members if candidate.stock_code == code),
+            None,
+        )
+        if member is None or (member.data_date or "") != row.data_date:
+            return None
+        context_builder = getattr(source_view.service, "context_for_stock", None)
+        if not callable(context_builder):
+            return None
+        try:
+            context = context_builder(row, stock_name="")
+        except Exception:
+            return None
+        if (
+            type(context) is not ResearchStockContextDTO
+            or context.stock_code != code
+            or context.decision_date != row.decision_date
+            or context.data_date != row.data_date
+            or context.source_snapshot_id != projection.source_snapshot_id
+            or context.source_snapshot_hash != projection.source_snapshot_hash
+            or context.source_kind != "daily_market_research_snapshot"
+            or context.daily_snapshot_cohort_id != projection.cohort_id
+            or context.daily_snapshot_condition_keys != "close_above_ma20,close_above_ma60"
+            or context.daily_snapshot_combine_mode != "AND"
+            or not context.daily_snapshot_root
+        ):
+            return None
+        try:
+            expected_root = Path(source_view.service.snapshot_root).expanduser().resolve()
+            if (
+                Path(row.snapshot_root).expanduser().resolve() != expected_root
+                or Path(context.daily_snapshot_root).expanduser().resolve() != expected_root
+            ):
+                return None
+        except (AttributeError, OSError, TypeError, ValueError):
+            return None
+        return replace(
+            context,
+            source_label="市場探索／研究母體盤勢成員",
+            source_workspace="market_explore",
+        )
+
+    def _selected_member_code(self) -> str:
+        selected = self.members_table.selectionModel().selectedRows()
+        if len(selected) != 1:
+            return ""
+        item = self.members_table.item(selected[0].row(), 0)
+        return item.text().strip() if item is not None else ""
+
+    def _sync_research_selected_button(self) -> None:
+        button = getattr(self, "research_selected_button", None)
+        if button is None:
+            return
+        button.setEnabled(
+            self._research_context_for_member(self._selected_member_code()) is not None
+        )
+
+    def open_selected_member_research(self) -> bool:
+        """Open the selected published member using its exact source row."""
+
+        context = self._research_context_for_member(self._selected_member_code())
+        if context is None:
+            self.status_label.setText(
+                "所選成員不屬於目前已驗證快照，或來源已變動；未開啟個股研究。"
+            )
+            self._sync_research_selected_button()
+            return False
+        self.stockResearchRequested.emit(context)
+        self.status_label.setText(
+            f"已開啟 {context.stock_code} 個股研究；來源固定於目前研究母體快照。"
+        )
+        return True
+
+    def restore_member_selection(self, context: object) -> bool:
+        """Restore a member only while its entire source context still matches."""
+
+        if type(context) is not ResearchStockContextDTO:
+            return False
+        expected = self._research_context_for_member(context.stock_code)
+        if expected != context:
+            return False
+        for row in range(self.members_table.rowCount()):
+            item = self.members_table.item(row, 0)
+            if item is not None and item.text().strip() == context.stock_code:
+                self.members_table.selectRow(row)
+                return True
+        return False
 
     def accept_original_ranking(self, ranking: object) -> None:
         snapshot = self._snapshot
@@ -269,12 +425,15 @@ class DailyMarketCohortView(QWidget):
     def clear_snapshot(self) -> None:
         self.projection = None
         self._snapshot = None
+        self._screen_rows_by_code = {}
         self.original_ranking = None
         self._capability_report = None
         self.capability_button.setEnabled(False)
         self._refresh_capability_audit()
         self.methods_table.setRowCount(0)
         self.members_table.setRowCount(0)
+        self.members_table.clearSelection()
+        self._sync_research_selected_button()
         self.scope_label.setText(
             "研究母體未知；目前沒有可用的已驗證快照，不能沿舊母體判定完整。"
         )

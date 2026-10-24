@@ -3389,6 +3389,12 @@ class MainWindow(QMainWindow):
         context = self._coerce_stock_research_context(value)
         if context is None or not context.stock_code:
             return
+        self._daily_market_cohort_origin = (
+            context
+            if context.source_kind == "daily_market_research_snapshot"
+            and context.source_workspace == "market_explore"
+            else None
+        )
         store = getattr(self, "research_session_store", None)
         if store is not None:
             setter = getattr(store, "set_stock_context", None)
@@ -3697,6 +3703,7 @@ class MainWindow(QMainWindow):
         self.shared_market_consumers = tuple(shared_consumers)
 
         cohort_view = DailyMarketCohortView(daily, open_list, parent=self)
+        cohort_view.stockResearchRequested.connect(self._open_stock_research_context)
         self.daily_market_cohort_view = cohort_view
         market_tabs.addTab(cohort_view, "研究母體盤勢")
         market_tabs.currentChanged.connect(
@@ -4455,6 +4462,37 @@ class MainWindow(QMainWindow):
                 return
             self._select_main_workspace("market_explore")
             self.market_tabs.setCurrentWidget(view)
+            return
+        if (
+            context.source_kind == "daily_market_research_snapshot"
+            and context.source_workspace == "market_explore"
+        ):
+            view = getattr(self, "daily_market_cohort_view", None)
+            tabs = getattr(self, "market_tabs", None)
+            restore = getattr(view, "restore_member_selection", None)
+            original = getattr(self, "_daily_market_cohort_origin", None)
+            restore_context = context
+            # 報告讀取會先清除資料日，再由同一 pinned artifact 回填；
+            # 空白時只可用開啟當下的原 context 重核盤勢列，不猜新日期。
+            if (
+                not context.data_date
+                and type(original) is ResearchStockContextDTO
+                and dataclass_replace(context, data_date=original.data_date) == original
+            ):
+                restore_context = original
+            if (
+                view is None
+                or tabs is None
+                or tabs.indexOf(view) < 0
+                or not callable(restore)
+                or not restore(restore_context)
+            ):
+                self.statusBar().showMessage(
+                    "原研究母體快照、股票或日期已變動；未切換到其他清單或同股結果。"
+                )
+                return
+            self._select_main_workspace("market_explore")
+            tabs.setCurrentWidget(view)
             return
         if context.source_kind == "technical_price_saved_source":
             workspace = getattr(self, "stock_research_workspace", None)

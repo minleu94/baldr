@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M116–M117 後繼原始碼：Backtest 分析師月報酬矩陣沿原 DTO 的可用整數 bp 顯同 run 有限強度色階，正值紅、負值綠、真零中性；缺值、觀測期內缺月及期間外格不著色，原 bp 文字保留。全站 QSS 下以月表專用 delegate 繪製，選列高亮仍可辨。這不是跨 run 可比性、OOS 或未來績效。市場「研究母體盤勢」對已驗證快照的已發布成員提供個股研究明選，typed 列與 manifest ID/hash、股票、日期、條件、cohort、root 綁定；回程以同一原 context 核對，報告暫清資料日時只用開啟當下原 pin 重核，失配不換成同股其他來源。未改金融公式、快照來源資格或正式資料。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m116m117-月報酬色階與研究母體下鑽)。
+
 M114–M115 後繼原始碼：大盤指數 Trend 判斷摘要補顯原 `plus_di_above_minus_di` 布林條件，True／False／缺值照來源呈現，原結構分計算、技術細節及 Regime service 不變。Runtime 已保存營運快照在原核心就緒與工作清單之間顯六類全快照精確筆數和分段條；只有 `read_state=observed` 才按 normalized state 計，來源未確認與未知狀態分開，篩選只影響清單，空或替換快照清舊。此圖不代表 Windows Task Scheduler 執行、成功率、自然成熟或金融資格。限定驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m114m115-市場判斷與營運快照分布)。
 
 M111–M113 後繼原始碼：Backtest 最佳化結果沿原 `OptimizationStabilitySummary` 顯最多八個參數的 Top-5 有值眾數集中度圖條，精確 bp 及 present/total 保留；未知不畫、樣本不足或新查詢／空結果清舊，原文字與表格仍可追。綜合選股的原「母體漏斗明細」內，僅對同一查詢、五態完整且加總等於該條分母的條件繪最多六條分布；零分母保留原 0 不畫比例，缺值與不一致不補值，各條可能重疊，顏色不借台股紅漲綠跌。Portfolio Stress 只在選取前顯原情境定義的說明、支援與必要輸入，缺件未知、實際 blocker 仍由執行結果顯示；原選項、結果、保存與 A→B 清舊守衛不變。均為展示層，不授予績效、穩健性、PIT、來源或交易資格；限定驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m111m113-最佳化選股與情境資訊層級)。

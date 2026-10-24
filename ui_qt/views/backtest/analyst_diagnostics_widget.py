@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
@@ -13,6 +14,8 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
+    QStyledItemDelegate,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -25,6 +28,28 @@ def _display(value: object, suffix: str = "") -> str:
     if value is None or value == "":
         return "未知"
     return f"{value}{suffix}"
+
+
+class _MonthlyHeatmapDelegate(QStyledItemDelegate):
+    """在全站 QSS 下仍繪出月格原 BackgroundRole；選列保留標準高亮。"""
+
+    def paint(self, painter: QPainter, option, index) -> None:
+        super().paint(painter, option, index)
+        if option.state & QStyle.StateFlag.State_Selected:
+            return
+        brush = index.data(Qt.ItemDataRole.BackgroundRole)
+        if not isinstance(brush, QBrush) or brush.style() == Qt.BrushStyle.NoBrush:
+            return
+        painter.save()
+        painter.setClipRect(option.rect)
+        painter.fillRect(option.rect.adjusted(1, 1, -1, -1), brush)
+        painter.setPen(QColor(MIDNIGHT_ANALYST.text_primary))
+        painter.drawText(
+            option.rect.adjusted(8, 0, -8, 0),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
+        )
+        painter.restore()
 
 
 class AnalystDiagnosticsWidget(QWidget):
@@ -94,7 +119,20 @@ class AnalystDiagnosticsWidget(QWidget):
 
         monthly_group = QGroupBox("月度報酬矩陣（年 × 月）")
         monthly_layout = QVBoxLayout(monthly_group)
-        self.monthly_table = self._create_table(self._MONTH_LABELS, "每格直接顯示 bp；未知表示該月沒有足夠的已保存權益觀測。")
+        self.monthly_heatmap_legend = QLabel(
+            "色階：正報酬紅、負報酬綠、真零中性；色深只相對本次 run 有效月份的最大絕對報酬，"
+            "不可跨 run 比較，也不代表未來或 OOS。未知不著色，bp 原值保留。"
+        )
+        self.monthly_heatmap_legend.setObjectName("monthlyReturnHeatmapLegend")
+        self.monthly_heatmap_legend.setAccessibleName("月度報酬色階與限制")
+        self.monthly_heatmap_legend.setWordWrap(True)
+        monthly_layout.addWidget(self.monthly_heatmap_legend)
+        self.monthly_table = self._create_table(
+            self._MONTH_LABELS,
+            "每格直接顯示原始月報酬 bp。色深只相對本次 run 有效月份；"
+            "未知表示該月沒有足夠的已保存權益觀測。",
+        )
+        self.monthly_table.setItemDelegate(_MonthlyHeatmapDelegate(self.monthly_table))
         self.monthly_table.setMinimumHeight(120)
         monthly_layout.addWidget(self.monthly_table)
         self.monthly_gap_note = QLabel()
@@ -184,11 +222,21 @@ class AnalystDiagnosticsWidget(QWidget):
 
         self.monthly_table.setRowCount(0)
         by_year: dict[int, dict[int, object]] = {}
+        monthly_by_period: dict[tuple[int, int], Mapping[str, Any]] = {}
         for item in dto.monthly:
             year = item.get("year")
             month = item.get("month")
             if type(year) is int and type(month) is int and 1 <= month <= 12:
                 by_year.setdefault(year, {})[month] = item.get("return_text", "未知")
+                monthly_by_period[(year, month)] = item
+        valid_monthly_bp = [
+            item.get("return_bp")
+            for item in monthly_by_period.values()
+            if dto.status == "available"
+            and item.get("status") == "available"
+            and type(item.get("return_bp")) is int
+        ]
+        scale_max_abs_bp = max((abs(value) for value in valid_monthly_bp), default=0)
         observed_periods = {
             year * 12 + month - 1
             for year, months in by_year.items()
@@ -228,6 +276,27 @@ class AnalystDiagnosticsWidget(QWidget):
                     self.monthly_table, row, month,
                     by_year.get(year, {}).get(month, missing_value),
                 )
+                monthly_item = monthly_by_period.get((year, month))
+                if dto.status != "available" or monthly_item is None:
+                    continue
+                return_bp = monthly_item.get("return_bp")
+                if monthly_item.get("status") != "available" or type(return_bp) is not int:
+                    continue
+                if return_bp == 0 or scale_max_abs_bp == 0:
+                    color = MIDNIGHT_ANALYST.surface_3
+                else:
+                    # 以整數 bp 將本次有效值分為四級；僅供同次矩陣辨識相對強度。
+                    strength = min(3, ((abs(return_bp) * 4) - 1) // scale_max_abs_bp)
+                    palette = (
+                        ("#4a1b22", "#63232a", "#7b2831", "#932a31")
+                        if return_bp > 0
+                        else ("#173e2e", "#1a5138", "#1d6643", "#207a4e")
+                    )
+                    color = palette[strength]
+                cell = self.monthly_table.item(row, month)
+                if cell is not None:
+                    cell.setBackground(QColor(color))
+                    cell.setForeground(QColor(MIDNIGHT_ANALYST.text_primary))
 
         self.benchmark_table.setRowCount(0)
         benchmark = dto.benchmark

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QDateEdit,
+    QLabel,
     QScrollArea,
     QTabWidget,
     QWidget,
@@ -538,6 +539,253 @@ def test_scheduled_status_view_keeps_initial_empty_error_unknown_without_index_e
     assert "狀態未知" in view.boundary_label.text()
     assert "尚無 last-known-good" in view.detail_panel.toPlainText()
     assert "狀態未知" in view.safety_label.text()
+
+
+def test_scheduled_status_maturity_chart_shows_each_valid_horizon_separately() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    status = ScheduledEvidenceStatus(
+        load_state="current",
+        forward_health_horizons={
+            "5d": {"ready": 2, "pending": 5, "missing": 1},
+            "20d": {"ready": 4, "pending": 0, "missing": 3},
+        },
+    )
+    view = ScheduledEvidenceStatusView(FakeScheduledStatus(), auto_refresh=False, async_refresh=False)
+    view._on_status_loaded(status)
+
+    distribution = view.maturity_distribution
+    assert "本次有界摘要（非完整歷史）" in distribution._title.text()
+    assert "綠色就緒、黃色待成熟、灰色缺失" in distribution._legend.accessibleName()
+    assert "不代表績效或交易訊號" in distribution._legend.accessibleName()
+    count_labels = {
+        row.findChild(QLabel, "maturityCounts_5d").text(): row
+        for row in distribution._rows
+        if row.findChild(QLabel, "maturityCounts_5d") is not None
+    }
+    assert "2 / 5 / 1" in count_labels
+    assert "4 / 0 / 3" in [
+        row.findChild(QLabel, "maturityCounts_20d").text()
+        for row in distribution._rows
+        if row.findChild(QLabel, "maturityCounts_20d") is not None
+    ]
+    bar = count_labels["2 / 5 / 1"].findChild(QWidget, "maturityBar_5d")
+    assert bar is not None
+    assert bar.counts == (2, 5, 1)
+    assert bar.total == 8
+    assert "horizon ready/pending/missing: 20d:R4/P0/M3; 5d:R2/P5/M1" in view.detail_panel.toPlainText()
+
+
+def test_scheduled_status_horizon_order_is_numeric_then_deterministic_label_order() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    status = ScheduledEvidenceStatus(
+        load_state="current",
+        forward_health_horizons={
+            "60": {"ready": 1, "pending": 0, "missing": 0},
+            "10": {"ready": 1, "pending": 0, "missing": 0},
+            "5": {"ready": 1, "pending": 0, "missing": 0},
+            "20": {"ready": 1, "pending": 0, "missing": 0},
+            "H5": {"ready": 1, "pending": 0, "missing": 0},
+        },
+    )
+    view = ScheduledEvidenceStatusView(FakeScheduledStatus(), auto_refresh=False, async_refresh=False)
+    view._on_status_loaded(status)
+
+    chart_order = [row.layout().itemAt(0).widget().text() for row in view.maturity_distribution._rows]
+    assert chart_order == ["5", "10", "20", "60", "H5"]
+    summary = view.detail_panel.toPlainText().split("horizon ready/pending/missing: ", 1)[1].splitlines()[0]
+    assert summary == "5:R1/P0/M0; 10:R1/P0/M0; 20:R1/P0/M0; 60:R1/P0/M0; H5:R1/P0/M0"
+
+
+@pytest.mark.parametrize(
+    "counts, expected",
+    [
+        ({"ready": 2, "pending": 1}, "缺少 missing"),
+        ({"ready": True, "pending": 1, "missing": 0}, "ready=True"),
+        ({"ready": 2, "pending": -1, "missing": 0}, "pending=-1"),
+        ({"ready": 2, "pending": 1.5, "missing": 0}, "pending=1.5"),
+    ],
+    ids=("missing-key", "boolean-is-not-count", "negative", "non-integer"),
+)
+def test_scheduled_status_maturity_chart_keeps_invalid_horizon_unknown(counts, expected) -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    status = ScheduledEvidenceStatus(load_state="current", forward_health_horizons={"10d": counts})
+    view = ScheduledEvidenceStatusView(FakeScheduledStatus(), auto_refresh=False, async_refresh=False)
+    view._on_status_loaded(status)
+
+    texts = [row.text() for row in view.maturity_distribution._rows if isinstance(row, QLabel)]
+    assert any("10d: 未知" in text and expected in text for text in texts)
+    assert not any(row.findChild(QWidget, "maturityBar_10d") for row in view.maturity_distribution._rows)
+    assert f"horizon ready/pending/missing: 10d:未知（{expected}）" in view.detail_panel.toPlainText()
+
+
+def test_scheduled_status_maturity_chart_shows_true_zero_without_a_bar() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    status = ScheduledEvidenceStatus(
+        load_state="current",
+        forward_health_horizons={"H20": {"ready": 0, "pending": 0, "missing": 0}},
+    )
+    view = ScheduledEvidenceStatusView(FakeScheduledStatus(), auto_refresh=False, async_refresh=False)
+    view._on_status_loaded(status)
+
+    row = next(
+        row
+        for row in view.maturity_distribution._rows
+        if row.findChild(QLabel, "maturityCounts_H20") is not None
+    )
+    bar = row.findChild(QWidget, "maturityBar_H20")
+    assert row.findChild(QLabel, "maturityCounts_H20").text() == "0 / 0 / 0"
+    assert bar is not None and bar.total == 0
+
+
+def test_scheduled_status_maturity_chart_marks_last_known_good_stale() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    source = _FlakyScheduledStatus(
+        ScheduledEvidenceStatus(
+            load_state="current",
+            forward_health_horizons={"H5": {"ready": 1, "pending": 2, "missing": 3}},
+        )
+    )
+    view = ScheduledEvidenceStatusView(source, auto_refresh=False, async_refresh=False)
+    view.refresh_status()
+    view.refresh_status()
+
+    assert "STALE" in view.maturity_distribution._title.text()
+    assert any(
+        row.findChild(QLabel, "maturityCounts_H5") is not None
+        and row.findChild(QLabel, "maturityCounts_H5").text() == "1 / 2 / 3"
+        for row in view.maturity_distribution._rows
+    )
+
+
+def test_scheduled_status_maturity_chart_clears_for_initial_error_and_unknown_payload() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    failed_view = ScheduledEvidenceStatusView(
+        _AlwaysFailScheduledStatus(), auto_refresh=False, async_refresh=False
+    )
+    failed_view.refresh_status()
+    assert "未知" in failed_view.maturity_distribution._title.text()
+    assert not any(row.findChild(QWidget, "maturityBar_H5") for row in failed_view.maturity_distribution._rows)
+
+    unknown_status = ScheduledEvidenceStatus(
+        load_state="unknown",
+        load_checked_at="2026-10-23T12:00:00+00:00",
+        diagnostics=("latest_status_missing",),
+        forward_health_horizons={"H5": {"ready": 5, "pending": 0, "missing": 0}},
+    )
+    unknown_view = ScheduledEvidenceStatusView(
+        FakeScheduledStatus(), auto_refresh=False, async_refresh=False
+    )
+    unknown_view._on_status_loaded(unknown_status)
+    assert "latest_status_missing" in " ".join(
+        row.text() for row in unknown_view.maturity_distribution._rows if isinstance(row, QLabel)
+    )
+    assert not any(row.findChild(QWidget, "maturityBar_H5") for row in unknown_view.maturity_distribution._rows)
+
+
+def test_scheduled_status_maturity_chart_clears_old_values_during_refresh() -> None:
+    application = app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    service = _GatedScheduledStatus(
+        ScheduledEvidenceStatus(
+            load_state="current",
+            forward_health_horizons={"H10": {"ready": 4, "pending": 2, "missing": 1}},
+        )
+    )
+    view = ScheduledEvidenceStatusView(service, auto_refresh=False, async_refresh=True)
+    view.maturity_distribution.set_horizons({"H10": {"ready": 1, "pending": 0, "missing": 0}})
+    view.refresh_status()
+
+    assert "重新整理中" in " ".join(
+        row.text() for row in view.maturity_distribution._rows if isinstance(row, QLabel)
+    )
+    assert not any(row.findChild(QWidget, "maturityBar_H10") for row in view.maturity_distribution._rows)
+    worker = view._worker
+    assert worker is not None and service.started.wait(timeout=2)
+    service.release.set()
+    assert worker.wait(5000)
+    _wait_for_qt_callbacks(application)
+    assert any(
+        row.findChild(QLabel, "maturityCounts_H10") is not None
+        and row.findChild(QLabel, "maturityCounts_H10").text() == "4 / 2 / 1"
+        for row in view.maturity_distribution._rows
+    )
+
+
+def test_scheduled_status_four_horizon_chart_keeps_two_card_columns_balanced() -> None:
+    application = app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    status = ScheduledEvidenceStatus(
+        load_state="current",
+        forward_health_horizons={
+            "H5": {"ready": 2, "pending": 3, "missing": 1},
+            "H10": {"ready": 1, "pending": 4, "missing": 2},
+            "H20": {"ready": 0, "pending": 5, "missing": 2},
+            "H60": {"ready": 0, "pending": 3, "missing": 4},
+        },
+    )
+    view = ScheduledEvidenceStatusView(FakeScheduledStatus(), auto_refresh=False, async_refresh=False)
+    view.resize(1280, 760)
+    view.show()
+    view._on_status_loaded(status)
+    application.processEvents()
+
+    left_width = view.freshness_label.width()
+    right_width = view.recommendation_label.width()
+    assert left_width > 0 and right_width > 0
+    assert abs(left_width - right_width) / max(left_width, right_width) <= 0.15
+    assert len(view.maturity_distribution._rows) == 4
+    assert all(
+        row.findChild(QWidget, f"maturityBar_{horizon}") is not None
+        for row, horizon in zip(view.maturity_distribution._rows, ("H10", "H20", "H5", "H60"))
+    )
+
+
+def test_scheduled_status_unknown_detaches_and_hides_old_maturity_bars_immediately() -> None:
+    application = app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    view = ScheduledEvidenceStatusView(FakeScheduledStatus(), auto_refresh=False, async_refresh=False)
+    view.resize(1280, 760)
+    view.show()
+    view._on_status_loaded(
+        ScheduledEvidenceStatus(
+            load_state="current",
+            forward_health_horizons={"H5": {"ready": 1, "pending": 2, "missing": 3}},
+        )
+    )
+    application.processEvents()
+    old_row = view.maturity_distribution._rows[0]
+    old_bar = old_row.findChild(QWidget, "maturityBar_H5")
+    assert old_bar is not None and old_bar.isVisible()
+
+    view._on_status_loaded(
+        ScheduledEvidenceStatus(
+            load_state="unknown",
+            load_checked_at="2026-10-23T12:00:00+00:00",
+            diagnostics=("latest_status_missing",),
+            forward_health_horizons={"H5": {"ready": 9, "pending": 0, "missing": 0}},
+        )
+    )
+    application.processEvents()
+
+    assert old_row.parentWidget() is None
+    assert old_row.isHidden()
+    assert not old_bar.isVisible()
+    assert not view.maturity_distribution.findChildren(QWidget, "maturityBar_H5")
 
 
 def test_evidence_operations_history_table_model_formats_scheduler_boundary() -> None:

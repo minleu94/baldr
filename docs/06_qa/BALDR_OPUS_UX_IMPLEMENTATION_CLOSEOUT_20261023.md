@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M106；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M107；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M106 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M107 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -163,3 +163,15 @@ Luna `/root/m106_evidence_visual_audit` 盤點 Evidence 後提出多個候選。
 最終受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_872b947a20534e4b9f015c1467371465/receipt.json`：受改 Python 編譯、Evidence／Decision／Portfolio 聚焦 **126 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。正常 Main 1280×760／1500×900、真 Windows DPI216（225%）的隔離合成 DTO 畫面及來源不可用狀態已目視；1280 首屏可見品質條與原表首列，來源診斷時卡片為「未知」、條計數為「—」，DB SHA 前後一致。原生 Job 收據 `.../root/single_owned_qa_8a7e0401c7814c0d810258f63fc07c8d/receipt.json`，JSON 與三張 PNG 位於 `.../root/native_m106_quality_evidence/run_ca7caeedc70742d48c6cf92c774ac2e4/`。首版四行基線及收據仍留 `.../root/native_m106_quality_evidence/run_5d019310c4cf4e52abf3e8f162ffb2c8/`、`.../root/single_owned_qa_1a76e67170f44046be97748a1c3bcfb4/receipt.json`；它不是最終布局。
 
 M1–M106 是含實作、唯讀裁決與 QA 的序號，不是 106 個獨立功能。正式市場／Evidence／私人 Portfolio、自然排程、其他真 OS DPI、Light（若正式支援）、固定新版 EXE、Owner UAT、M73／M75 來源與用途契約及完整產品 Gate 仍須分別驗收；本輪 1920×1080 超出可用螢幕邏輯尺寸，明記未跑。`output/` 原始證據留本機，不進版控；沒有 push、merge 或部署。
+
+## M107 前瞻結果逐期限成熟分布
+
+Luna `/root/m107_evidence_audit` 唯讀盤點正常 Evidence Review「今日決策 → 排程狀態」：前瞻結果卡只列總待成熟數，各期限 ready／pending／missing 原值藏在長篇明細。Sol 查 `ScheduledEvidenceStatus.forward_health_horizons` 與 `scheduled_forward_outcome_service` producer，確認它是**本次有界選取的 cohort health 摘要**，不是全部歷史、報酬、勝率或來源資格；不將 Portfolio 四摘要卡尚未原生重現的窄窗裁切候選冒充已證實缺陷。指定 Luna 單一 writer 只改 `ui_qt/views/scheduled_evidence_status_view.py`、`tests/test_ui_qt_evidence_review_dashboards.py`，原 producer、read service、DTO、金融公式及正式來源均不改。
+
+新圖在前瞻結果卡下逐期限顯原始 ready／pending／missing 精確筆數及同一期限內比例，數字鍵按數值升序，最多六列，其他原標籤與超出項在原明細保留。三個原欄全為非負整數才可畫條；明示 `0 / 0 / 0` 時以中性空條顯真零，缺欄、布林、負數與錯型別顯未知，不借舊 `_horizon_summary` 的缺 key 預設 0。刷新時清舊，來源未知不殘圖，最後可信內容只在醒目 STALE 標記下保留。圖例明示狀態色非績效／交易訊號，pending 是等待成熟。
+
+Sol 首次同尺寸原生圖發現新增 chart 把原雙欄卡片擠成約 20／80，且清舊只排入 deferred delete，使來源未知截圖仍閃現前次彩條；雖該輪 Job exit0，視覺未接受，原圖與收據留 `output/tasks/baldr-opus-ux-implementation/root/native_m107_evidence/run_ff6b0a2c71024a13ae10e27ac17c5882/`、`.../root/single_owned_qa_1e0af2dab9ba47b197e9697ba2be8c16/receipt.json`。Luna 改雙欄等伸展、縮窄策略與行 widget 立即 hide／detach 後，第二輪正常 Main 的欄寬及未知清舊可見；Sol 再要求期限按數值順序，最終畫面才接受。
+
+最終受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_83d7efeeed0f49ddad1cd1062a1f9847/receipt.json`：受改 Python 編譯、Evidence 聚焦 **55 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。真 Windows DPI216（225%）的隔離合成正常 Main 1280×760／1500×900、stale／未知三態及同尺寸元件 before／after 已目視，來源 DB SHA 不變；最終 Job 收據 `.../root/single_owned_qa_d2efb34563264c4788327d0fc837cf7c/receipt.json`，七張 PNG 與 JSON 在 `.../root/native_m107_evidence/run_aa6157541c254375a1f258640e97b1a3/`。1920×1080 超出現有螢幕可用邏輯尺寸，其他真 OS DPI、正式排程／Evidence 來源、固定 EXE、Owner UAT、完整 Gate 未驗。
+
+M1–M107 是含實作、審查與 QA 的序號，非 107 個獨立功能。M73 決策品質控制正式作用範圍與 M75 有向關係／跨期資料用途契約仍分列待裁；本輪未讀寫正式或私人資料，未改其他排程，也未 push、merge 或部署。

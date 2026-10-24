@@ -4,8 +4,17 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app_module.scheduled_evidence_status_service import (
     ScheduledEvidenceStatus,
@@ -68,14 +77,25 @@ class ScheduledEvidenceStatusView(QWidget):
         self.recommendation_label.setMinimumHeight(112)
         self.evidence_label = self._make_card("證據流程試跑", "尚未載入")
         self.forward_outcome_label = self._make_card("前瞻結果追蹤", "尚未載入")
+        self.maturity_distribution = _MaturityDistributionView()
         self.safety_label = self._make_card("安全邊界", "尚未載入")
         self.report_label = self._make_card("報告", "尚未載入")
         cards.addWidget(self.freshness_label, 0, 0)
         cards.addWidget(self.recommendation_label, 0, 1)
         cards.addWidget(self.evidence_label, 1, 0)
-        cards.addWidget(self.forward_outcome_label, 1, 1)
+        forward_outcome_panel = QWidget()
+        forward_outcome_panel.setMinimumWidth(0)
+        forward_outcome_panel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        forward_outcome_layout = QVBoxLayout(forward_outcome_panel)
+        forward_outcome_layout.setContentsMargins(0, 0, 0, 0)
+        forward_outcome_layout.setSpacing(4)
+        forward_outcome_layout.addWidget(self.forward_outcome_label)
+        forward_outcome_layout.addWidget(self.maturity_distribution)
+        cards.addWidget(forward_outcome_panel, 1, 1)
         cards.addWidget(self.safety_label, 2, 0)
         cards.addWidget(self.report_label, 2, 1)
+        cards.setColumnStretch(0, 1)
+        cards.setColumnStretch(1, 1)
         root.addLayout(cards)
 
         self.refresh_button = QPushButton("重新整理排程狀態")
@@ -94,6 +114,7 @@ class ScheduledEvidenceStatusView(QWidget):
 
     def refresh_status(self) -> None:
         self.refresh_button.setEnabled(False)
+        self.maturity_distribution.set_loading()
         if self.async_refresh:
             worker = TaskWorker(self.status_service.load_latest)
             self._worker = worker
@@ -185,6 +206,20 @@ class ScheduledEvidenceStatusView(QWidget):
             + (str(status.report_path) if status.report_path is not None else "未提供 report path")
             + stale_suffix
         )
+        is_stale = status.is_stale or status.load_state == MACHINE_STATUS_STALE
+        is_usable = is_stale or status.load_state == "current" or (
+            status.load_state == MACHINE_STATUS_UNKNOWN
+            and status.load_checked_at is None
+            and status.machine_status_classification != MACHINE_STATUS_UNKNOWN
+        )
+        if is_usable:
+            self.maturity_distribution.set_horizons(
+                status.forward_health_horizons,
+                stale=is_stale,
+            )
+        else:
+            diagnostic = status.diagnostics[0] if status.diagnostics else "未提供可信狀態"
+            self.maturity_distribution.set_unavailable(f"狀態未知；{diagnostic}")
         self.detail_panel.setPlainText(_format_details(status))
 
     def _on_status_error(self, message: str) -> None:
@@ -221,6 +256,7 @@ class ScheduledEvidenceStatusView(QWidget):
         self.forward_outcome_label.setText(f"前瞻結果追蹤\n分類：{unknown_label}")
         self.safety_label.setText("安全邊界\n狀態未知；不能推定可寫入或可交易")
         self.report_label.setText("報告\n狀態未知；尚無可信報告")
+        self.maturity_distribution.set_unavailable(f"狀態未知；{error_line}")
         self.detail_panel.setPlainText(
             f"排程狀態載入失敗；狀態未知：{error_line}\n"
             "請聚焦 Retry；尚無 last-known-good 可保留。"
@@ -243,6 +279,8 @@ class ScheduledEvidenceStatusView(QWidget):
 
     def _make_card(self, title: str, value: str) -> QLabel:
         card = QLabel(f"{title}\n{value}")
+        card.setMinimumWidth(0)
+        card.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         card.setAlignment(Qt.AlignCenter)
         card.setWordWrap(True)
         card.setMinimumHeight(68)
@@ -251,6 +289,203 @@ class ScheduledEvidenceStatusView(QWidget):
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; padding: 6px;"
         )
         return card
+
+
+class _MaturityDistributionView(QWidget):
+    """Render saved ready/pending/missing counts without deriving new evidence."""
+
+    _COLORS = ("#4F9D69", "#D39B35", "#7C8794")
+    _MAX_HORIZONS = 6
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("forwardMaturityDistribution")
+        self.setAccessibleName("前瞻結果各期限成熟狀態")
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(4, 2, 4, 2)
+        self._layout.setSpacing(2)
+        self._title = QLabel("期限成熟分布｜本次有界摘要（非完整歷史）")
+        self._title.setWordWrap(True)
+        self._title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self._title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+        self._layout.addWidget(self._title)
+        self._legend = QLabel(
+            '<span style="color:#4F9D69">■ 就緒</span> '
+            '<span style="color:#D39B35">■ 待成熟</span> '
+            '<span style="color:#7C8794">■ 缺失</span> '
+            '<span style="color:#AAB5C2">僅成熟狀態，非績效／交易訊號</span>'
+        )
+        self._legend.setAccessibleName(
+            "圖例：綠色就緒、黃色待成熟、灰色缺失；數字依序為就緒、待成熟、缺失；"
+            "僅成熟狀態，不代表績效或交易訊號"
+        )
+        self._legend.setWordWrap(True)
+        self._legend.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self._legend.setStyleSheet("font-size: 8pt;")
+        self._layout.addWidget(self._legend)
+        self._rows_layout = QVBoxLayout()
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(2)
+        self._layout.addLayout(self._rows_layout)
+        self._rows: list[QWidget] = []
+        self.set_horizons(None)
+
+    def set_horizons(self, value: object, *, stale: bool = False) -> None:
+        self._clear_rows()
+
+        if stale:
+            self._title.setText("期限成熟分布｜有界摘要（非完整歷史）｜STALE：保留可信資料")
+            self._title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning}; font-weight: bold; font-size: 9pt;")
+        else:
+            self._title.setText("期限成熟分布｜本次有界摘要（非完整歷史）")
+            self._title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+
+        if not isinstance(value, dict) or not value:
+            detail = "未提供" if value is None or (isinstance(value, dict) and not value) else f"原值：{_short_raw(value)}"
+            self._add_message(f"期限狀態未知（{detail}）")
+            return
+
+        keys = sorted(value, key=_horizon_sort_key)
+        for horizon in keys[: self._MAX_HORIZONS]:
+            raw_counts = value[horizon]
+            parsed = _valid_horizon_counts(raw_counts)
+            if parsed is None:
+                message = f"{horizon}: 未知（原值：{_short_raw(raw_counts)}）"
+                if isinstance(raw_counts, dict):
+                    missing = [name for name in ("ready", "pending", "missing") if name not in raw_counts]
+                    if missing:
+                        message = f"{horizon}: 未知（缺少 {', '.join(missing)}）"
+                    else:
+                        invalid = [
+                            f"{name}={_short_raw(raw_counts.get(name))}"
+                            for name in ("ready", "pending", "missing")
+                            if type(raw_counts.get(name)) is not int or raw_counts[name] < 0
+                        ]
+                        if invalid:
+                            message = f"{horizon}: 未知（{'; '.join(invalid)}）"
+                self._add_message(message)
+                continue
+
+            ready, pending, missing = parsed
+            total = ready + pending + missing
+            row = QWidget(self)
+            row.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(5)
+            horizon_label = QLabel(str(horizon))
+            horizon_label.setMinimumWidth(30)
+            horizon_label.setMaximumWidth(52)
+            horizon_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+            horizon_label.setToolTip(str(horizon))
+            horizon_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 9pt;")
+            row_layout.addWidget(horizon_label)
+            bar = _MaturityBar(parsed, total, self._COLORS, row)
+            bar.setObjectName(f"maturityBar_{_object_name_token(horizon)}")
+            bar.setAccessibleName(f"{horizon}期限成熟狀態比例")
+            row_layout.addWidget(bar, stretch=1)
+            counts_label = QLabel(f"{ready} / {pending} / {missing}")
+            counts_label.setObjectName(f"maturityCounts_{_object_name_token(horizon)}")
+            counts_label.setMinimumWidth(74)
+            counts_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+            counts_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            counts_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 8pt;")
+            counts_label.setToolTip("就緒 / 待成熟 / 缺失；各期限獨立統計")
+            row_layout.addWidget(counts_label)
+            self._rows_layout.addWidget(row)
+            self._rows.append(row)
+
+        omitted = len(keys) - self._MAX_HORIZONS
+        if omitted > 0:
+            self._add_message(f"另有 {omitted} 個期限；詳見下方原始明細。")
+
+    def set_loading(self) -> None:
+        self._clear_rows()
+        self._title.setText("期限成熟分布｜本次有界摘要（非完整歷史）")
+        self._title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+        self._add_message("重新整理中；舊圖已清除。")
+
+    def set_unavailable(self, message: str) -> None:
+        self._clear_rows()
+        self._title.setText("成熟狀態｜未知")
+        self._title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning}; font-weight: bold; font-size: 9pt;")
+        self._add_message(message)
+
+    def _clear_rows(self) -> None:
+        for row in self._rows:
+            self._rows_layout.removeWidget(row)
+            row.hide()
+            row.setParent(None)
+            row.deleteLater()
+        self._rows.clear()
+
+    def _add_message(self, message: str) -> None:
+        label = QLabel(message)
+        label.setObjectName("maturityDistributionUnknown")
+        label.setWordWrap(True)
+        label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 8pt;")
+        self._rows_layout.addWidget(label)
+        self._rows.append(label)
+
+
+class _MaturityBar(QWidget):
+    def __init__(self, counts: tuple[int, int, int], total: int, colors: tuple[str, ...], parent=None) -> None:
+        super().__init__(parent)
+        self.counts = counts
+        self.total = total
+        self._colors = tuple(QColor(color) for color in colors)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setFixedHeight(10)
+        self.setToolTip(f"就緒 {counts[0]}；待成熟 {counts[1]}；缺失 {counts[2]}")
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        bounds = self.rect()
+        if self.total <= 0:
+            painter.fillRect(bounds, QColor(MIDNIGHT_ANALYST.border))
+            return
+        x = bounds.x()
+        used = 0
+        for index, count in enumerate(self.counts):
+            width = bounds.width() - used if index == len(self.counts) - 1 else bounds.width() * count // self.total
+            if width > 0:
+                painter.fillRect(x, bounds.y(), width, bounds.height(), self._colors[index])
+            x += width
+            used += width
+
+
+def _valid_horizon_counts(value: object) -> tuple[int, int, int] | None:
+    if not isinstance(value, dict):
+        return None
+    names = ("ready", "pending", "missing")
+    if any(name not in value for name in names):
+        return None
+    counts = tuple(value[name] for name in names)
+    if any(type(count) is not int or count < 0 for count in counts):
+        return None
+    return counts  # type: ignore[return-value]
+
+
+def _short_raw(value: object, limit: int = 90) -> str:
+    try:
+        raw = repr(value)
+    except Exception:  # noqa: BLE001 - malformed diagnostic objects must not break the status view
+        raw = "<無法格式化原值>"
+    return raw if len(raw) <= limit else raw[: limit - 1] + "…"
+
+
+def _object_name_token(value: object) -> str:
+    token = "".join(character if character.isalnum() else "_" for character in str(value))
+    return token[:32] or "unknown"
+
+
+def _horizon_sort_key(value: object) -> tuple[int, int, str, str]:
+    label = str(value)
+    if label.isascii() and label.isdigit():
+        return (0, int(label), label, label)
+    return (1, 0, label.casefold(), label)
 
 
 def _format_details(status: ScheduledEvidenceStatus) -> str:
@@ -509,13 +744,23 @@ def _horizon_summary(value: object) -> str:
     if not isinstance(value, dict) or not value:
         return "未知"
     parts: list[str] = []
-    for horizon in sorted(value, key=str):
+    for horizon in sorted(value, key=_horizon_sort_key):
         item = value.get(horizon)
-        if not isinstance(item, dict):
+        counts = _valid_horizon_counts(item)
+        if counts is not None:
+            parts.append(f"{horizon}:R{counts[0]}/P{counts[1]}/M{counts[2]}")
             continue
-        parts.append(
-            f"{horizon}:R{item.get('ready', 0)}/P{item.get('pending', 0)}/M{item.get('missing', 0)}"
-        )
+        if isinstance(item, dict):
+            missing = [name for name in ("ready", "pending", "missing") if name not in item]
+            invalid = [
+                f"{name}={_short_raw(item.get(name))}"
+                for name in ("ready", "pending", "missing")
+                if name in item and (type(item[name]) is not int or item[name] < 0)
+            ]
+            reason = f"缺少 {', '.join(missing)}" if missing else "; ".join(invalid) or "計數無效"
+            parts.append(f"{horizon}:未知（{reason}）")
+        else:
+            parts.append(f"{horizon}:未知（原值：{_short_raw(item)}）")
     return "; ".join(parts) if parts else "未知"
 
 

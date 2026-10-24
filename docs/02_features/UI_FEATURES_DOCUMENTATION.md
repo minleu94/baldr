@@ -332,6 +332,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - 進入 Research Lab「證據覆盤」結果分頁時收合回測設定欄，使 1280×760 的決策品質五張卡在首屏完整可見；原「展開左側設定」仍可返回編輯，其他結果分頁不自動收合。正常 Main 的 Workbench 導覽、三種合成決策品質狀態與前後畫面已核，未改證據讀取或回測設定。
 - 策略回測日期欄與 Research Lab 證據覆盤日期篩選採受控日曆 popup；回測日期開啟時定位今天，未設定的 evidence 日期篩選也定位今天，不落到 sentinel 年份。
 - Research Lab「證據覆盤 > 排程狀態」會分開顯示 freshness warnings、pipeline warning 與 advisory 的 occurrences / unique types、pipeline overall status、推薦結果 research-only write 與 production evidence / trading write risk；pipeline degraded 時不會只因 exit code 0 顯示為 passed，`ready_with_advisories` 也不會被誤標 degraded。
+- 排程狀態的前瞻結果（M107）在原卡旁列各期限 ready／pending／missing 原計數及各期限內比例；數字期限依數值排序，其他原標籤照原文，最多六列，其餘仍可在原明細查閱。三欄齊備的 0／0／0 為真零且不畫比例，缺欄、非整數與負值為未知，不補零；刷新及來源未知清舊，最後可信狀態保留時醒目標 STALE。此圖只描述本次有界 health 摘要的成熟狀態，不代表全歷史、報酬、勝率、交易訊號、來源資格或正式排程成功；原 producer、DTO、read service 與金融契約不變。
 - Research Lab「覆盤歷史」dashboard 採 query-only history repository；缺少 history DB／table 時顯示明確唯讀診斷與建立指引，不會因打開畫面而初始化空 schema。表格在週期後直接列原始保存時間，明選後詳情仍分列時間、週期與 Record ID；時間缺件顯示「未提供」，不推算時區或以週期日期代替。
 - 覆盤歷史沿原日期篩選、`period_end DESC, period_start DESC, review_id ASC` 的只讀 keyset cursor 每頁最多展示 50 筆，額外只讀一筆判斷是否有更舊頁；上一頁／下一頁與本頁索引可見，改日期清除舊頁，卡片只統計本頁。來源不可用時顯示範圍未知，不推算總筆數。表格已知覆盤／排程條件碼顯中文，tooltip 保留原碼；未知碼原文。
 - 參數最佳化沿同份單股回測已簽指標契約投影逐欄有效性：真零保留、不可用值留空並附狀態；原回測錯誤、契約失效或目標指標不可用的組合不進排名。舊無契約結果維持相容排序但標未驗證，Top-N 有效樣本不包含它；表格重排後依畫面排名核對選取參數。原報酬公式及策略／來源資格不變。

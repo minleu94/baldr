@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -17,6 +17,44 @@ from app_module.portfolio_stress_lab_service import STRESS_LAB_SCHEMA_VERSION
 
 STRESS_HISTORY_SCHEMA_VERSION = "portfolio-stress-history.v1"
 DEFAULT_STRESS_HISTORY_FILENAME = "stress_history.sqlite"
+_QUOTE_FRESHNESS_STATUSES = {"current", "stale", "future_rejected", "unverified"}
+
+
+@dataclass(frozen=True)
+class PortfolioStressHistoryPositionRowDTO:
+    """保存 payload 的單列壓力輸入與同列報價來源；金額保留原始文字。"""
+
+    row_index: int
+    position_id: str | None
+    portfolio_id: str | None
+    stock_code: str
+    stock_name: str
+    quantity: str
+    mark_price: str
+    base_value: str
+    shock_bp: int
+    stressed_value: str
+    value_delta: str
+    status: str
+    quote_data_date: str | None
+    quote_source_id: str | None
+    quote_source_snapshot_hash: str | None
+    quote_freshness_status: str | None
+
+
+@dataclass(frozen=True)
+class PortfolioStressHistoryPositionRowsProjection:
+    """由單筆已保存 payload 投影的逐列來源資料，絕不回查現況。"""
+
+    status: str
+    rows: tuple[PortfolioStressHistoryPositionRowDTO, ...] = ()
+    missing_price_codes: tuple[str, ...] | None = None
+    blockers: tuple[str, ...] = ()
+    diagnostics: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.status not in {"available", "not_recorded", "invalid"}:
+            raise ValueError(f"unsupported position rows projection status: {self.status}")
 
 
 @dataclass(frozen=True)
@@ -80,6 +118,7 @@ class PortfolioStressHistoryRecord:
         actual_hash = _payload_hash(parsed)
         if actual_hash != self.payload_hash:
             raise ValueError("payload_hash does not match payload_json")
+        _validate_record_payload_header(self, parsed)
 
     @classmethod
     def from_payload(
@@ -144,6 +183,60 @@ class PortfolioStressHistoryRecord:
             "research_only": self.research_only,
             "investment_effectiveness_claim": self.investment_effectiveness_claim,
         }
+
+    def project_position_rows(self) -> PortfolioStressHistoryPositionRowsProjection:
+        """以保存的 Stress v1 payload 投影逐列值與報價身份，不讀取目前行情。"""
+
+        try:
+            payload = json.loads(self.payload_json)
+        except (TypeError, json.JSONDecodeError):
+            return _invalid_position_rows_projection("stress_history_payload_invalid")
+        if not isinstance(payload, Mapping):
+            return _invalid_position_rows_projection("stress_history_payload_not_object")
+
+        if "missing_price_codes" in payload and payload.get("missing_price_codes") is not None:
+            raw_codes = payload.get("missing_price_codes")
+            if not isinstance(raw_codes, list) or any(
+                not isinstance(code, str) for code in raw_codes
+            ):
+                return _invalid_position_rows_projection(
+                    "stress_history_missing_price_codes_invalid"
+                )
+        if "positions" not in payload:
+            return PortfolioStressHistoryPositionRowsProjection(
+                status="not_recorded",
+                missing_price_codes=_saved_missing_price_codes(payload),
+                blockers=("stress_history_positions_not_recorded",),
+                diagnostics=("stress_history_positions_field_missing",),
+            )
+
+        raw_positions = payload.get("positions")
+        if not isinstance(raw_positions, list):
+            return _invalid_position_rows_projection("stress_history_positions_not_array")
+        missing_codes = _saved_missing_price_codes(payload)
+
+        try:
+            rows = tuple(
+                _project_saved_position_row(index, raw_row)
+                for index, raw_row in enumerate(raw_positions)
+            )
+            if len(rows) != self.priced_position_count:
+                raise ValueError("priced_position_count_mismatch")
+        except (TypeError, ValueError, ArithmeticError) as exc:
+            return _invalid_position_rows_projection(
+                "stress_history_position_rows_invalid",
+                diagnostic=f"stress_history_position_rows_invalid:{type(exc).__name__}",
+            )
+        return PortfolioStressHistoryPositionRowsProjection(
+            status="available",
+            rows=rows,
+            missing_price_codes=missing_codes,
+            diagnostics=(
+                ("stress_history_duplicate_position_identity",)
+                if _has_duplicate_position_identity(rows)
+                else ()
+            ),
+        )
 
 
 class PortfolioStressHistoryRepository:
@@ -354,6 +447,180 @@ def _payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _validate_record_payload_header(
+    record: PortfolioStressHistoryRecord, payload: Mapping[str, Any]
+) -> None:
+    """確認歷史索引欄仍與 hash 綁定的 payload 一致。"""
+
+    if payload.get("schema_version") != STRESS_LAB_SCHEMA_VERSION:
+        raise ValueError("payload schema_version does not match Stress v1")
+    scenario = payload.get("scenario")
+    if not isinstance(scenario, Mapping):
+        raise ValueError("payload scenario must be an object")
+    if _required_text(scenario.get("scenario_id"), "scenario_id") != record.scenario_id:
+        raise ValueError("scenario_id does not match payload")
+    if _required_text(scenario.get("label"), "scenario.label") != record.scenario_label:
+        raise ValueError("scenario_label does not match payload")
+    if _required_text(payload.get("status"), "status") != record.status:
+        raise ValueError("status does not match payload")
+    payload_priced_count = _non_negative_int(
+        payload.get("priced_position_count"), "priced_position_count"
+    )
+    if payload_priced_count != record.priced_position_count:
+        raise ValueError("priced_position_count does not match payload")
+    payload_total_count = _non_negative_int(
+        payload.get("total_position_count"), "total_position_count"
+    )
+    if payload_total_count != record.total_position_count:
+        raise ValueError("total_position_count does not match payload")
+    payload_base_value = _optional_decimal(
+        payload.get("base_market_value"), "base_market_value"
+    )
+    if payload_base_value != record.base_market_value:
+        raise ValueError("base_market_value does not match payload")
+    payload_stressed_value = _optional_decimal(
+        payload.get("stressed_market_value"), "stressed_market_value"
+    )
+    if payload_stressed_value != record.stressed_market_value:
+        raise ValueError("stressed_market_value does not match payload")
+    payload_value_delta = _optional_signed_decimal(
+        payload.get("value_delta"), "value_delta"
+    )
+    if payload_value_delta != record.value_delta:
+        raise ValueError("value_delta does not match payload")
+    payload_as_of = (
+        None if payload.get("as_of_date") is None else str(payload.get("as_of_date"))
+    )
+    if payload_as_of != record.as_of_date:
+        raise ValueError("as_of_date does not match payload")
+    if payload.get("research_only") is not record.research_only:
+        raise ValueError("research_only does not match payload")
+    if (
+        payload.get("investment_effectiveness_claim")
+        is not record.investment_effectiveness_claim
+    ):
+        raise ValueError("investment_effectiveness_claim does not match payload")
+
+
+def _invalid_position_rows_projection(
+    blocker: str, *, diagnostic: str | None = None
+) -> PortfolioStressHistoryPositionRowsProjection:
+    return PortfolioStressHistoryPositionRowsProjection(
+        status="invalid",
+        blockers=(blocker,),
+        diagnostics=(diagnostic or blocker,),
+    )
+
+
+def _saved_missing_price_codes(payload: Mapping[str, Any]) -> tuple[str, ...] | None:
+    if "missing_price_codes" not in payload:
+        return None
+    raw_codes = payload.get("missing_price_codes")
+    if raw_codes is None:
+        return None
+    if not isinstance(raw_codes, list) or any(not isinstance(code, str) for code in raw_codes):
+        return None
+    return tuple(raw_codes)
+
+
+def _project_saved_position_row(
+    row_index: int, raw_row: Any
+) -> PortfolioStressHistoryPositionRowDTO:
+    if not isinstance(raw_row, Mapping):
+        raise ValueError("position row must be an object")
+
+    def required_text(field_name: str, *, allow_empty: bool = False) -> str:
+        value = raw_row.get(field_name)
+        if not isinstance(value, str) or (not allow_empty and not value.strip()):
+            raise ValueError(f"{field_name} must be saved text")
+        return value
+
+    def decimal_text(field_name: str) -> str:
+        raw_value = raw_row.get(field_name)
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (str, int, float)):
+            raise ValueError(f"{field_name} must be saved numeric text")
+        value = raw_value if isinstance(raw_value, str) else str(raw_value)
+        if not value.strip():
+            raise ValueError(f"{field_name} must be saved numeric text")
+        parsed = Decimal(value)
+        if not parsed.is_finite():
+            raise ValueError(f"{field_name} must be finite")
+        return value
+
+    def optional_identity(field_name: str) -> str | None:
+        value = raw_row.get(field_name)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value or value.strip() != value:
+            raise ValueError(f"{field_name} must be normalized text or null")
+        return value
+
+    def optional_quote_text(field_name: str) -> str | None:
+        value = raw_row.get(field_name)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field_name} must be non-empty text or null")
+        return value
+
+    quote_date = optional_quote_text("quote_data_date")
+    if quote_date is not None:
+        try:
+            parsed_date = date.fromisoformat(quote_date)
+        except ValueError as exc:
+            raise ValueError("quote_data_date must be ISO date text") from exc
+        if parsed_date.isoformat() != quote_date:
+            raise ValueError("quote_data_date must be canonical ISO date text")
+
+    quote_hash = optional_quote_text("quote_source_snapshot_hash")
+    if quote_hash is not None and (
+        len(quote_hash) != 64
+        or any(character not in "0123456789abcdefABCDEF" for character in quote_hash)
+    ):
+        raise ValueError("quote_source_snapshot_hash must be a SHA-256 hex digest")
+
+    quote_freshness = optional_quote_text("quote_freshness_status")
+    if quote_freshness is not None and quote_freshness not in _QUOTE_FRESHNESS_STATUSES:
+        raise ValueError("quote_freshness_status is unsupported")
+
+    shock_bp = raw_row.get("shock_bp")
+    if isinstance(shock_bp, bool) or not isinstance(shock_bp, int):
+        raise ValueError("shock_bp must be an integer")
+
+    return PortfolioStressHistoryPositionRowDTO(
+        row_index=row_index,
+        position_id=optional_identity("position_id"),
+        portfolio_id=optional_identity("portfolio_id"),
+        stock_code=required_text("stock_code", allow_empty=True),
+        stock_name=required_text("stock_name", allow_empty=True),
+        quantity=decimal_text("quantity"),
+        mark_price=decimal_text("mark_price"),
+        base_value=decimal_text("base_value"),
+        shock_bp=shock_bp,
+        stressed_value=decimal_text("stressed_value"),
+        value_delta=decimal_text("value_delta"),
+        status=required_text("status"),
+        quote_data_date=quote_date,
+        quote_source_id=optional_quote_text("quote_source_id"),
+        quote_source_snapshot_hash=quote_hash,
+        quote_freshness_status=quote_freshness,
+    )
+
+
+def _has_duplicate_position_identity(
+    rows: tuple[PortfolioStressHistoryPositionRowDTO, ...]
+) -> bool:
+    identities: set[tuple[str | None, str]] = set()
+    for row in rows:
+        if row.position_id is None:
+            continue
+        identity = (row.portfolio_id, row.position_id)
+        if identity in identities:
+            return True
+        identities.add(identity)
+    return False
+
+
 def _required_text(value: object, field_name: str) -> str:
     if value is None:
         raise ValueError(f"{field_name} is required")
@@ -423,6 +690,8 @@ def _utc_now_text() -> str:
 
 __all__ = [
     "DEFAULT_STRESS_HISTORY_FILENAME",
+    "PortfolioStressHistoryPositionRowDTO",
+    "PortfolioStressHistoryPositionRowsProjection",
     "PortfolioStressHistoryReadDTO",
     "PortfolioStressHistoryReadService",
     "PortfolioStressHistoryRecord",

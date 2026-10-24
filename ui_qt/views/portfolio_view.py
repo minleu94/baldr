@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QListWidget, QListWidgetItem, QHeaderView, QMenu,
     QAbstractItemView, QGroupBox, QSplitter, QComboBox, QDateEdit,
     QDoubleSpinBox, QSpinBox, QFormLayout, QGridLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
-    QSizePolicy
+    QSizePolicy, QToolButton
 )
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer, QModelIndex
 from PySide6.QtGui import QFont, QColor, QPalette, QBrush
@@ -2141,15 +2141,72 @@ class PortfolioView(QWidget):
         history_card_layout.addLayout(history_metrics_layout)
         history_stress_layout.addWidget(self.stress_history_card)
 
+        self.stress_history_positions_group = QWidget()
+        history_positions_outer_layout = QVBoxLayout(self.stress_history_positions_group)
+        history_positions_outer_layout.setContentsMargins(0, 0, 0, 0)
+        history_positions_outer_layout.setSpacing(2)
+        self.stress_history_positions_toggle = QToolButton()
+        self.stress_history_positions_toggle.setText("本次保存的逐列結果")
+        self.stress_history_positions_toggle.setCheckable(True)
+        self.stress_history_positions_toggle.setChecked(False)
+        self.stress_history_positions_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.stress_history_positions_toggle.setArrowType(Qt.RightArrow)
+        self.stress_history_positions_toggle.toggled.connect(
+            self._toggle_stress_history_positions
+        )
+        history_positions_outer_layout.addWidget(self.stress_history_positions_toggle)
+        self.stress_history_positions_body = QWidget()
+        self.stress_history_positions_body.setVisible(False)
+        history_positions_layout = QVBoxLayout(self.stress_history_positions_body)
+        history_positions_layout.setContentsMargins(8, 2, 8, 6)
+        history_positions_layout.setSpacing(4)
+        self.stress_history_positions_summary = QLabel(
+            "明選一筆已保存紀錄後，檢視其保存的逐列結果。"
+        )
+        self.stress_history_positions_summary.setWordWrap(True)
+        self.stress_history_positions_summary.setTextFormat(Qt.PlainText)
+        self.stress_history_positions_summary.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        history_positions_layout.addWidget(self.stress_history_positions_summary)
+        self.stress_history_positions_table = QTableView()
+        apply_financial_table_style(self.stress_history_positions_table)
+        self.stress_history_positions_table.setSelectionBehavior(QTableView.SelectRows)
+        self.stress_history_positions_table.setSortingEnabled(False)
+        self.stress_history_positions_table.horizontalHeader().setStretchLastSection(True)
+        self.stress_history_positions_table.setMinimumHeight(0)
+        self.stress_history_positions_table.setMaximumHeight(190)
+        self.stress_history_positions_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        history_positions_layout.addWidget(self.stress_history_positions_table)
+        self.stress_history_position_detail = QLabel(
+            "選取一列可核對該列保存的報價來源指紋。"
+        )
+        self.stress_history_position_detail.setWordWrap(True)
+        self.stress_history_position_detail.setTextFormat(Qt.PlainText)
+        self.stress_history_position_detail.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
+        self.stress_history_position_detail.setAccessibleName(
+            "已保存歷史所選持倉逐列報價來源完整資料"
+        )
+        history_positions_layout.addWidget(self.stress_history_position_detail)
+        history_positions_outer_layout.addWidget(self.stress_history_positions_body)
+        history_stress_layout.addWidget(self.stress_history_positions_group)
+
         self.stress_history_table = QTableView()
         apply_financial_table_style(self.stress_history_table)
         self.stress_history_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_history_table.horizontalHeader().setStretchLastSection(True)
+        self.stress_history_table.setSortingEnabled(False)
         self.stress_history_table.setMinimumHeight(0)
         self.stress_history_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         history_stress_layout.addWidget(self.stress_history_table)
         history_stress_layout.addStretch(1)
         self._stress_history_display_records: list[PortfolioStressHistoryRecord] = []
+        self._stress_history_records_by_id: dict[str, PortfolioStressHistoryRecord] = {}
+        self._stress_history_selected_record_id: str | None = None
+        self._stress_history_projection = None
+        self._stress_history_projection_rows_by_index: dict[int, Any] = {}
         right_widget.addTab(stress_tab, "情境壓力")
 
         # Right Tab 5: 策略與價格監控 (Strategy & Price Monitor)
@@ -4066,6 +4123,8 @@ class PortfolioView(QWidget):
             )
             self._constrain_stress_history_table_height()
             self._stress_history_display_records = []
+            self._stress_history_records_by_id = {}
+            self._clear_stress_history_card()
             self.stress_history_table.selectionModel().currentRowChanged.connect(
                 self._show_stress_history_record
             )
@@ -4088,8 +4147,12 @@ class PortfolioView(QWidget):
             + ("\n" + "\n".join(f"警告：{item}" for item in result.warnings) if result.warnings else "")
         )
         self._stress_history_display_records = list(result.records)
+        self._stress_history_records_by_id = {
+            record.record_id: record for record in result.records
+        }
         rows = [
             {
+                "__record_id": item.record_id,
                 "執行時間": item.run_at,
                 "基準日": item.as_of_date or "N/A",
                 "情境": item.scenario_label,
@@ -4107,10 +4170,11 @@ class PortfolioView(QWidget):
             for item in result.records
         ]
         if not rows:
-            rows = [{"執行時間": "N/A", "基準日": "N/A", "情境": "N/A", "狀態": result.status}]
-            columns = ["執行時間", "基準日", "情境", "狀態"]
+            rows = [{"__record_id": "", "執行時間": "N/A", "基準日": "N/A", "情境": "N/A", "狀態": result.status}]
+            columns = ["__record_id", "執行時間", "基準日", "情境", "狀態"]
         else:
             columns = [
+                "__record_id",
                 "執行時間",
                 "基準日",
                 "情境",
@@ -4121,12 +4185,15 @@ class PortfolioView(QWidget):
                 "變動",
                 "payload hash",
             ]
-        self.stress_history_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
+        history_model = PandasTableModel(pd.DataFrame(rows, columns=columns))
+        history_model.setVisibleColumns([column for column in columns if column != "__record_id"])
+        self.stress_history_table.setModel(history_model)
         self.stress_history_table.resizeColumnsToContents()
         self._constrain_stress_history_table_height()
         self.stress_history_table.selectionModel().currentRowChanged.connect(
             self._show_stress_history_record
         )
+        history_model.layoutChanged.connect(self._sync_stress_history_selection)
 
     def _constrain_stress_history_table_height(self) -> None:
         """限制歷史表格首屏高度，較長紀錄仍由表格內部捲動查閱。"""
@@ -4153,17 +4220,74 @@ class PortfolioView(QWidget):
         self.stress_history_card_meta.setToolTip("")
         for value_label in self.stress_history_metric_values.values():
             value_label.setText("未提供")
+        self._clear_stress_history_positions()
+
+    def _clear_stress_history_positions(self) -> None:
+        """清除逐列投影與選取列，避免跨紀錄或刷新殘留。"""
+        self._stress_history_selected_record_id = None
+        self._stress_history_projection = None
+        self._stress_history_projection_rows_by_index = {}
+        self.stress_history_positions_toggle.setChecked(False)
+        self.stress_history_positions_summary.setText(
+            "明選一筆已保存紀錄後，檢視其保存的逐列結果。"
+        )
+        self.stress_history_position_detail.setText(
+            "選取一列可核對該列保存的報價來源指紋。"
+        )
+        self.stress_history_positions_table.setModel(
+            PandasTableModel(
+                pd.DataFrame(
+                    columns=[
+                        "__payload_row_index", "保存列序", "持倉 ID", "代號", "名稱",
+                        "數量", "基準價", "衝擊 (bp)", "基準市值", "壓力後市值",
+                        "變動", "狀態", "報價日", "來源 ID", "Freshness",
+                    ]
+                )
+            )
+        )
+        self.stress_history_positions_table.model().setVisibleColumns(
+            [
+                "保存列序", "持倉 ID", "代號", "名稱", "數量", "基準價",
+                "衝擊 (bp)", "基準市值", "壓力後市值", "變動", "狀態",
+                "報價日", "來源 ID", "Freshness",
+            ]
+        )
+        self.stress_history_positions_table.setVisible(False)
+        self.stress_history_positions_table.setSortingEnabled(False)
+
+    def _toggle_stress_history_positions(self, checked: bool) -> None:
+        self.stress_history_positions_body.setVisible(checked)
+        self.stress_history_positions_toggle.setArrowType(
+            Qt.DownArrow if checked else Qt.RightArrow
+        )
+
+    def _sync_stress_history_selection(self) -> None:
+        selection = self.stress_history_table.selectionModel()
+        if selection is not None:
+            self._show_stress_history_record(selection.currentIndex(), QModelIndex())
+
+    def _sync_stress_history_position_selection(self) -> None:
+        selection = self.stress_history_positions_table.selectionModel()
+        if selection is not None:
+            self._show_stress_history_position(selection.currentIndex(), QModelIndex())
 
     def _show_stress_history_record(self, current, _previous) -> None:
         """只顯示目前表格列精確對應的原始研究快照欄位。"""
-        if (
-            not current.isValid()
-            or current.model() is not self.stress_history_table.model()
-            or current.row() >= len(self._stress_history_display_records)
-        ):
+        if not current.isValid() or current.model() is not self.stress_history_table.model():
             self._clear_stress_history_card()
             return
-        record = self._stress_history_display_records[current.row()]
+        dataframe = current.model().getDataFrame()
+        if current.row() >= len(dataframe) or "__record_id" not in dataframe.columns:
+            self._clear_stress_history_card()
+            return
+        record_id = str(dataframe.iloc[current.row()]["__record_id"])
+        record = self._stress_history_records_by_id.get(record_id)
+        if record is None:
+            self._clear_stress_history_card()
+            return
+        if self._stress_history_selected_record_id != record_id:
+            self.stress_history_positions_toggle.setChecked(False)
+            self._stress_history_selected_record_id = record_id
         status_labels = {
             "ready": "可用",
             "partial": "部分完成",
@@ -4183,6 +4307,121 @@ class PortfolioView(QWidget):
         for field_name, value_label in self.stress_history_metric_values.items():
             value = getattr(record, field_name)
             value_label.setText("未提供" if value is None else str(value))
+        projection = record.project_position_rows()
+        self._render_stress_history_positions(record, projection)
+
+    def _render_stress_history_positions(self, record, projection) -> None:
+        """只呈現選中紀錄自身的 payload projection，不回查目前持倉或行情。"""
+        self._stress_history_projection = projection
+        self._stress_history_projection_rows_by_index = {
+            row.row_index: row for row in projection.rows
+        }
+        status = str(projection.status)
+        if status == "not_recorded":
+            summary = "此舊快照未提供可讀的逐列清單；報價欄位未知，未以其他資料補值。"
+            rows = []
+        elif status == "invalid":
+            summary = "保存 payload 的逐列資料無法核對；未呈現推測列。"
+            rows = []
+        else:
+            rows = list(projection.rows)
+            if not rows:
+                summary = (
+                    "此筆 payload 明示逐列清單為空；這只代表保存內容為空，不推定為空持倉。"
+                )
+            else:
+                summary = f"保存逐列 {len(rows)} 筆；重複代號依原列分開保留。"
+        if projection.missing_price_codes:
+            summary += "\n缺價代號（另列，未製造逐列結果）：" + "、".join(
+                str(code) for code in projection.missing_price_codes
+            )
+        elif projection.missing_price_codes is None:
+            summary += "\n缺價代號：未知（保存 payload 未提供此欄）。"
+        elif projection.status == "available":
+            summary += "\n缺價代號：保存 payload 明示無缺價代號。"
+        if "stress_history_duplicate_position_identity" in projection.diagnostics:
+            summary += "\n保存快照含重複持倉 ID；各列仍按原序分開顯示。"
+        self.stress_history_positions_summary.setText(summary)
+        self.stress_history_positions_summary.setToolTip(
+            "\n".join((*projection.blockers, *projection.diagnostics))
+        )
+
+        table_rows = []
+        for row in rows:
+            table_rows.append(
+                {
+                    "__payload_row_index": row.row_index,
+                    "保存列序": str(row.row_index + 1),
+                    "持倉 ID": self._history_saved_text(row.position_id),
+                    "代號": self._history_saved_text(row.stock_code),
+                    "名稱": self._history_saved_text(row.stock_name),
+                    "數量": self._history_saved_text(row.quantity),
+                    "基準價": self._history_saved_text(row.mark_price),
+                    "衝擊 (bp)": self._history_saved_text(row.shock_bp),
+                    "基準市值": self._history_saved_text(row.base_value),
+                    "壓力後市值": self._history_saved_text(row.stressed_value),
+                    "變動": self._history_saved_text(row.value_delta),
+                    "狀態": self._history_saved_text(row.status),
+                    "報價日": self._history_saved_text(row.quote_data_date),
+                    "來源 ID": self._history_saved_text(row.quote_source_id),
+                    "Freshness": self._history_saved_text(row.quote_freshness_status),
+                }
+            )
+        columns = [
+            "__payload_row_index", "保存列序", "持倉 ID", "代號", "名稱", "數量", "基準價",
+            "衝擊 (bp)", "基準市值", "壓力後市值", "變動", "狀態", "報價日",
+            "來源 ID", "Freshness",
+        ]
+        model = PandasTableModel(pd.DataFrame(table_rows, columns=columns))
+        model.setVisibleColumns([column for column in columns if column != "__payload_row_index"])
+        self.stress_history_positions_table.setModel(model)
+        self.stress_history_positions_table.setVisible(bool(rows))
+        self.stress_history_positions_table.setSortingEnabled(False)
+        self.stress_history_positions_table.resizeColumnsToContents()
+        self.stress_history_positions_table.selectionModel().currentRowChanged.connect(
+            self._show_stress_history_position
+        )
+        model.layoutChanged.connect(self._sync_stress_history_position_selection)
+        self.stress_history_position_detail.setText(
+            f"紀錄 ID：{record.record_id}\npayload SHA-256：{record.payload_hash}\n"
+            "選取一列可複製該列完整報價來源 SHA-256。"
+        )
+
+    @staticmethod
+    def _history_saved_text(value) -> str:
+        return "未知" if value is None else str(value)
+
+    def _show_stress_history_position(self, current, _previous) -> None:
+        if (
+            not current.isValid()
+            or current.model() is not self.stress_history_positions_table.model()
+        ):
+            if self._stress_history_projection is not None:
+                self.stress_history_position_detail.setText(
+                    "選取一列可複製該列完整報價來源 SHA-256。"
+                )
+            return
+        dataframe = current.model().getDataFrame()
+        if current.row() >= len(dataframe) or "__payload_row_index" not in dataframe.columns:
+            return
+        try:
+            row_index = int(dataframe.iloc[current.row()]["__payload_row_index"])
+        except (TypeError, ValueError):
+            return
+        row = self._stress_history_projection_rows_by_index.get(row_index)
+        if row is None:
+            return
+        digest = self._history_saved_text(row.quote_source_snapshot_hash)
+        self.stress_history_position_detail.setText(
+            f"保存列序：{row_index + 1}｜代號：{self._history_saved_text(row.stock_code)}｜"
+            f"名稱：{self._history_saved_text(row.stock_name)}\n"
+            f"持倉 ID：{self._history_saved_text(row.position_id)}｜"
+            f"Portfolio ID：{self._history_saved_text(row.portfolio_id)}\n"
+            f"報價資料日：{self._history_saved_text(row.quote_data_date)}｜"
+            f"來源 ID：{self._history_saved_text(row.quote_source_id)}｜"
+            f"Freshness：{self._history_saved_text(row.quote_freshness_status)}\n"
+            f"報價來源 SHA-256：{digest}"
+        )
 
     def _save_stress_history(self) -> None:
         """二次確認後保存目前 Stress 結果；保存不會改變持倉或交易。"""

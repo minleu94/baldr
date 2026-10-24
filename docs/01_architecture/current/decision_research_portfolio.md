@@ -1,5 +1,9 @@
 # 決策、研究與 Portfolio
 
+## Stress 已保存逐列資料的讀取邊界（M123）
+
+`PortfolioStressHistoryRecord` 在構造時驗 canonical `payload_json`／SHA-256 及索引欄對同份 Stress v1 payload 的情境、狀態、計數、金額與研究用途一致；read service 遇不一致會降級，不把索引欄當可信逐列資料。`project_position_rows()` 只投影已保存 payload，不查今天的 PortfolioService 或行情、不重算金融公式，保留原數值文字與列序。新結果 v1 可選帶 `position_id`／`portfolio_id`；舊 payload 缺身份或報價欄顯未知，`positions` 缺欄與明示空陣列分開，部分缺價代號不補成壓力結果列。Qt 歷史表使用隱藏 record ID 對回原件，逐列以保存列序對回同列 hash；索引與 payload hash 只證明本地保存一致性，不授來源可得時鐘、PIT 或正式交易資格。限定驗證見[UX 實作 QA](../../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m123-已保存-stress-逐列來源回訪)。
+
 ## Portfolio 籌碼監控的展示邊界（後繼原始碼）
 
 `PortfolioChipService` 的空摘要保留原數值欄預設零，同時以 `lots_available=false`、`usable_event_count=0` 表示沒有可用股數事件。`PortfolioView` 在展示邊界先讀這些明示有效性欄位：無可用事件的風險評級、連續天數、淨量與集中度顯「資料不足」；有事件的原值零仍顯零。原累計買賣股數明確為零時，集中度沒有分母，僅 UI 顯資料不足。分點明細保持原 service 列，空列以短提示取代空表，有列以有界高度和表內捲動閱讀；未選持倉會清舊列。這不改籌碼聚合公式、`risk_reasons`、來源資格、持倉帳或交易流程；具名驗證見[實作 QA](../../../output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md)。

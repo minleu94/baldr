@@ -1633,27 +1633,229 @@ def _stress_history_record(
     delta: str | None,
     run_at: str,
     as_of_date: str | None = "2026-10-22",
+    positions: list[dict[str, Any]] | None = None,
+    missing_price_codes: list[str] | None = None,
+    blockers: list[str] | None = None,
+    priced_position_count: int | None = None,
 ):
-    return portfolio_view_module.PortfolioStressHistoryRecord.from_payload(
-        {
-            "schema_version": "portfolio-stress-lab.v1",
-            "scenario": {
-                "scenario_id": record_id,
-                "label": scenario_label,
-            },
-            "status": status,
-            "priced_position_count": 3 if status == "ready" else (2 if status == "partial" else 0),
-            "total_position_count": 3,
-            "base_market_value": base,
-            "stressed_market_value": stressed,
-            "value_delta": delta,
-            "as_of_date": as_of_date,
-            "research_only": True,
-            "investment_effectiveness_claim": False,
+    priced_count = (
+        3 if status == "ready" else (2 if status == "partial" else 0)
+    )
+    if priced_position_count is not None:
+        priced_count = priced_position_count
+    payload = {
+        "schema_version": "portfolio-stress-lab.v1",
+        "scenario": {
+            "scenario_id": record_id,
+            "label": scenario_label,
         },
+        "status": status,
+        "priced_position_count": priced_count,
+        "total_position_count": 3,
+        "base_market_value": base,
+        "stressed_market_value": stressed,
+        "value_delta": delta,
+        "as_of_date": as_of_date,
+        "research_only": True,
+        "investment_effectiveness_claim": False,
+    }
+    if positions is not None:
+        payload["positions"] = positions
+    if missing_price_codes is not None:
+        payload["missing_price_codes"] = missing_price_codes
+    if blockers is not None:
+        payload["blockers"] = blockers
+    return portfolio_view_module.PortfolioStressHistoryRecord.from_payload(
+        payload,
         record_id=record_id,
         run_at=run_at,
     )
+
+
+def test_portfolio_stress_history_saved_rows_are_record_bound_sortable_and_copyable(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    source_hashes = ["a" * 64, "b" * 64, "c" * 64]
+    first = _stress_history_record(
+        record_id="stress-saved-rows-a",
+        scenario_label="保存列情境 A",
+        status="ready",
+        base="600",
+        stressed="540",
+        delta="-60",
+        run_at="2026-10-22T09:00:00Z",
+        positions=[
+            {
+                "position_id": "p-2330-a",
+                "portfolio_id": "portfolio-a",
+                "stock_code": "2330",
+                "stock_name": "台積電 A",
+                "quantity": "2",
+                "mark_price": "100",
+                "base_value": "200",
+                "shock_bp": -1000,
+                "stressed_value": "180",
+                "value_delta": "-20",
+                "status": "ready",
+                "quote_data_date": "2026-10-21",
+                "quote_source_id": "source-a",
+                "quote_source_snapshot_hash": source_hashes[0],
+                "quote_freshness_status": "current",
+            },
+            {
+                "position_id": "p-2317",
+                "portfolio_id": "portfolio-a",
+                "stock_code": "2317",
+                "stock_name": "鴻海",
+                "quantity": "3",
+                "mark_price": "50",
+                "base_value": "150",
+                "shock_bp": -1000,
+                "stressed_value": "135",
+                "value_delta": "-15",
+                "status": "ready",
+                "quote_data_date": "2026-10-21",
+                "quote_source_id": "source-b",
+                "quote_source_snapshot_hash": source_hashes[1],
+                "quote_freshness_status": "current",
+            },
+            {
+                "position_id": "p-2330-b",
+                "portfolio_id": "portfolio-a",
+                "stock_code": "2330",
+                "stock_name": "台積電 B",
+                "quantity": "5",
+                "mark_price": "50",
+                "base_value": "250",
+                "shock_bp": -1000,
+                "stressed_value": "225",
+                "value_delta": "-25",
+                "status": "ready",
+                "quote_data_date": "2026-10-21",
+                "quote_source_id": "source-c",
+                "quote_source_snapshot_hash": source_hashes[2],
+                "quote_freshness_status": "stale",
+            },
+        ],
+    )
+    second = _stress_history_record(
+        record_id="stress-saved-rows-b",
+        scenario_label="保存列情境 B",
+        status="not_computable",
+        base=None,
+        stressed=None,
+        delta=None,
+        run_at="2026-10-22T10:00:00Z",
+        positions=[],
+    )
+    view._render_stress_history(
+        SimpleNamespace(
+            status="ready",
+            db_path="synthetic://stress-history",
+            records=(first, second),
+            blockers=(),
+            warnings=(),
+        )
+    )
+    assert view.stress_history_positions_body.isHidden()
+
+    history_model = view.stress_history_table.model()
+    history_model.sort(0, Qt.AscendingOrder)
+    view.stress_history_table.setCurrentIndex(history_model.index(1, 0))
+    assert view.stress_history_card_title.text() == "保存列情境 B"
+    assert "明示逐列清單為空" in view.stress_history_positions_summary.text()
+    view.stress_history_table.setCurrentIndex(history_model.index(0, 0))
+    assert view.stress_history_card_title.text() == "保存列情境 A"
+    assert view.stress_history_positions_table.model().rowCount() == 3
+    view.stress_history_positions_toggle.setChecked(True)
+    assert not view.stress_history_positions_body.isHidden()
+
+    positions_model = view.stress_history_positions_table.model()
+    assert not view.stress_history_positions_table.isSortingEnabled()
+    view.stress_history_positions_table.setCurrentIndex(positions_model.index(0, 0))
+    assert source_hashes[0] in view.stress_history_position_detail.text()
+    dataframe = positions_model.getDataFrame()
+    assert list(dataframe["__payload_row_index"]) == [0, 1, 2]
+    selected_row = next(
+        index for index, row in dataframe.iterrows()
+        if row["__payload_row_index"] == 2
+    )
+    view.stress_history_positions_table.setCurrentIndex(
+        positions_model.index(int(selected_row), 0)
+    )
+    assert "台積電 B" in view.stress_history_position_detail.text()
+    assert source_hashes[2] in view.stress_history_position_detail.text()
+    assert "stale" in view.stress_history_position_detail.text()
+
+    view.stress_history_table.setCurrentIndex(history_model.index(1, 0))
+    assert view.stress_history_card_title.text() == "保存列情境 B"
+    assert view.stress_history_positions_table.model().rowCount() == 0
+    assert view.stress_history_positions_body.isHidden()
+    assert source_hashes[2] not in view.stress_history_position_detail.text()
+    assert second.record_id in view.stress_history_position_detail.text()
+
+
+def test_portfolio_stress_history_partial_and_legacy_rows_keep_unknowns_separate(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    partial = _stress_history_record(
+        record_id="stress-partial-saved-row",
+        scenario_label="部分缺價情境",
+        status="partial",
+        base="100",
+        stressed="90",
+        delta="-10",
+        run_at="2026-10-22T09:00:00Z",
+        positions=[
+            {
+                "stock_code": "2330",
+                "stock_name": "台積電",
+                "quantity": "1",
+                "mark_price": "100",
+                "base_value": "100",
+                "shock_bp": -1000,
+                "stressed_value": "90",
+                "value_delta": "-10",
+                "status": "ready",
+            }
+        ],
+        missing_price_codes=["2317", "2603"],
+        priced_position_count=1,
+    )
+    legacy = _stress_history_record(
+        record_id="stress-legacy-no-rows",
+        scenario_label="舊版情境",
+        status="not_computable",
+        base=None,
+        stressed=None,
+        delta=None,
+        run_at="2026-10-22T10:00:00Z",
+    )
+    view._render_stress_history(
+        SimpleNamespace(
+            status="ready",
+            db_path="synthetic://stress-history",
+            records=(partial, legacy),
+            blockers=(),
+            warnings=(),
+        )
+    )
+    history_model = view.stress_history_table.model()
+    view.stress_history_table.setCurrentIndex(history_model.index(0, 0))
+    assert view.stress_history_positions_table.model().rowCount() == 1
+    assert "2317、2603" in view.stress_history_positions_summary.text()
+    assert "鴻海" not in view.stress_history_positions_summary.text()
+    view.stress_history_positions_table.setCurrentIndex(
+        view.stress_history_positions_table.model().index(0, 0)
+    )
+    assert "報價資料日：未知" in view.stress_history_position_detail.text()
+    assert "SHA-256：未知" in view.stress_history_position_detail.text()
+
+    view.stress_history_table.setCurrentIndex(history_model.index(1, 0))
+    assert "未提供可讀的逐列清單" in view.stress_history_positions_summary.text()
+    assert view.stress_history_positions_table.model().rowCount() == 0
+    assert view.stress_history_positions_table.isHidden()
+    assert "stress_history_positions_not_recorded" not in view.stress_history_positions_summary.text()
+    assert "明選一筆" not in view.stress_history_positions_summary.text()
+    assert "缺價代號：未知" in view.stress_history_positions_summary.text()
 
 
 def test_portfolio_stress_history_card_tracks_exact_selected_record(tmp_path):
@@ -1812,6 +2014,21 @@ def test_portfolio_stress_history_refresh_and_read_error_clear_selected_card(tmp
         stressed="90",
         delta="-10",
         run_at="2026-10-22T09:00:00Z",
+        positions=[
+            {
+                "stock_code": "2330",
+                "stock_name": "台積電",
+                "quantity": "1",
+                "mark_price": "100",
+                "base_value": "100",
+                "shock_bp": -1000,
+                "stressed_value": "90",
+                "value_delta": "-10",
+                "status": "ready",
+                "quote_source_snapshot_hash": "d" * 64,
+            }
+        ],
+        priced_position_count=1,
     )
     view._render_stress_history(
         SimpleNamespace(
@@ -1825,6 +2042,10 @@ def test_portfolio_stress_history_refresh_and_read_error_clear_selected_card(tmp
     model = view.stress_history_table.model()
     view.stress_history_table.setCurrentIndex(model.index(0, 0))
     assert view.stress_history_metric_values["base_market_value"].text() == "100"
+    view.stress_history_positions_table.setCurrentIndex(
+        view.stress_history_positions_table.model().index(0, 0)
+    )
+    assert "d" * 64 in view.stress_history_position_detail.text()
     stale_index = model.index(0, 0)
 
     view._render_stress_history(
@@ -1839,6 +2060,8 @@ def test_portfolio_stress_history_refresh_and_read_error_clear_selected_card(tmp
     assert view._stress_history_display_records == []
     assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
     assert view.stress_history_table.model().rowCount() == 1
+    assert view.stress_history_positions_table.model().rowCount() == 0
+    assert view.stress_history_positions_body.isHidden()
     assert view.stress_history_table.model().data(
         view.stress_history_table.model().index(0, 0)
     ) == "N/A"
@@ -1852,6 +2075,7 @@ def test_portfolio_stress_history_refresh_and_read_error_clear_selected_card(tmp
     assert "讀取失敗" in view.stress_history_summary_label.text()
     assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
     assert all(value.text() == "未提供" for value in view.stress_history_metric_values.values())
+    assert "d" * 64 not in view.stress_history_position_detail.text()
 
 
 def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(tmp_path):

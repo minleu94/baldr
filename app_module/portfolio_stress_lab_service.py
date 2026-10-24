@@ -104,6 +104,8 @@ class StressPositionResult:
     quote_source_id: str | None = None
     quote_source_snapshot_hash: str | None = None
     quote_freshness_status: str | None = None
+    position_id: str | None = None
+    portfolio_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -120,6 +122,8 @@ class StressPositionResult:
             "quote_source_id": self.quote_source_id,
             "quote_source_snapshot_hash": self.quote_source_snapshot_hash,
             "quote_freshness_status": self.quote_freshness_status,
+            "position_id": self.position_id,
+            "portfolio_id": self.portfolio_id,
         }
 
 
@@ -265,6 +269,12 @@ class PortfolioStressLabService:
                     quote_source_id=quote_provenance["quote_source_id"],
                     quote_source_snapshot_hash=quote_provenance["quote_source_snapshot_hash"],
                     quote_freshness_status=quote_provenance["quote_freshness_status"],
+                    position_id=self._optional_identity_text(
+                        getattr(position, "position_id", None)
+                    ),
+                    portfolio_id=self._optional_identity_text(
+                        getattr(position, "portfolio_id", None)
+                    ),
                 )
             )
 
@@ -366,6 +376,14 @@ class PortfolioStressLabService:
             "quote_source_snapshot_hash": quote_source_snapshot_hash,
             "quote_freshness_status": quote_freshness_status,
         }
+
+    @staticmethod
+    def _optional_identity_text(value: Any) -> str | None:
+        """只保留已正規化且非空的持倉身份文字。"""
+
+        if isinstance(value, str) and value.strip() == value and value:
+            return value
+        return None
 
     @staticmethod
     def _not_computable(

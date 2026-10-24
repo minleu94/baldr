@@ -1,5 +1,7 @@
 # baldr 完整操作手冊
 
+M123 後繼原始碼在同一入口的「已保存歷史」增加預設收合的「本次保存的逐列結果」：明選歷史紀錄後展開，逐列核對原保存數值、持倉身份與來源 hash；舊紀錄未保存逐列或來源時會顯未記錄／未知，切換或讀取失敗清舊。它不查目前帳本補舊紀錄，亦不授 PIT 或交易資格。步驟與限制見[持倉手冊](manuals/WATCHLIST_AND_PORTFOLIO.md#情境壓力與已保存歷史)；固定舊 EXE 未包含。
+
 M122 後繼原始碼在「我的投資 → 模擬帳與配置 → 情境壓力」目前情境結果中，除股數 × 每股報價外，逐列顯示同次取價的資料日／來源／freshness；明選列可複製完整來源 SHA-256。日期或身份缺件顯未知，未核實／日期超前明示，不把它們當成可交易資格。舊保存歷史不回填新欄，固定舊 EXE 尚未包含。操作及限制見[觀察清單與持倉手冊](manuals/WATCHLIST_AND_PORTFOLIO.md#情境壓力與已保存歷史)。
 
 Track B研究資料判讀補充：Legacy託管徽章不等於歷史PIT資格；月營收幣別unknown、6443修訂未解及缺歷史availability時，不作正式Scoring／回測／ML接受。Forward研究baseline只接受有效事件context與外部來源政策，結果價另核角色；詳細欄位與限制見[資料交付契約](../03_data/BALDR_TRACK_B_DATA_READINESS_CONTRACT.md)。

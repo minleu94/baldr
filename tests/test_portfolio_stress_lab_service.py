@@ -18,6 +18,8 @@ class Position:
     quote_source_id: object = None
     quote_source_snapshot_hash: object = None
     quote_freshness_status: object = None
+    position_id: object = None
+    portfolio_id: object = None
 
 
 def _positions() -> tuple[Position, ...]:
@@ -54,6 +56,8 @@ def test_fast_drop_is_decimal_and_research_only() -> None:
     assert first_row["quote_source_id"] is None
     assert first_row["quote_source_snapshot_hash"] is None
     assert first_row["quote_freshness_status"] is None
+    assert first_row["position_id"] is None
+    assert first_row["portfolio_id"] is None
     assert result.schema_version == "portfolio-stress-lab.v1"
 
 
@@ -67,6 +71,8 @@ def test_quote_provenance_is_copied_from_exact_input_row() -> None:
         quote_source_id="sqlite.daily_prices",
         quote_source_snapshot_hash="a" * 64,
         quote_freshness_status="current",
+        position_id="position-a",
+        portfolio_id="default",
     )
 
     result = PortfolioStressLabService().evaluate_positions([position])
@@ -77,8 +83,12 @@ def test_quote_provenance_is_copied_from_exact_input_row() -> None:
     assert row.quote_source_id == "sqlite.daily_prices"
     assert row.quote_source_snapshot_hash == "a" * 64
     assert row.quote_freshness_status == "current"
+    assert row.position_id == "position-a"
+    assert row.portfolio_id == "default"
     assert row.to_dict()["mark_price"] == "100"
     assert row.to_dict()["quote_source_snapshot_hash"] == "a" * 64
+    assert row.to_dict()["position_id"] == "position-a"
+    assert row.to_dict()["portfolio_id"] == "default"
 
 
 def test_missing_and_invalid_quote_provenance_remain_unknown() -> None:
@@ -148,6 +158,8 @@ def test_same_code_positions_keep_their_own_quote_provenance_and_order() -> None
             quote_source_id="sqlite.daily_prices",
             quote_source_snapshot_hash="a" * 64,
             quote_freshness_status="current",
+            position_id="position-a",
+            portfolio_id="default",
         ),
         Position(
             "2330",
@@ -158,6 +170,8 @@ def test_same_code_positions_keep_their_own_quote_provenance_and_order() -> None
             quote_source_id="csv.daily_prices",
             quote_source_snapshot_hash="b" * 64,
             quote_freshness_status="stale",
+            position_id="position-b",
+            portfolio_id="default",
         ),
     )
 
@@ -179,6 +193,8 @@ def test_same_code_positions_keep_their_own_quote_provenance_and_order() -> None
         "a" * 64,
         "b" * 64,
     ]
+    assert [row.position_id for row in result.positions] == ["position-a", "position-b"]
+    assert [row.portfolio_id for row in result.positions] == ["default", "default"]
 
 
 def test_concentration_event_only_shocks_largest_position() -> None:

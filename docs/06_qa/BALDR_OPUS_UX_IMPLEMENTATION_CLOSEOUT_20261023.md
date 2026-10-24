@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M122；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M123；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M122 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M123 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -285,3 +285,24 @@ Luna `/root/m108_research_visual_audit` 單一 writer 修改 `app_module/portfol
 首輪受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_7180cf43f5a34f5594ebe610ee23e686/receipt.json`：compile、聚焦 **117 passed**、Workbench **85 passed**、validator **25／0／4**，mypy 因 `**dict` 類型推斷 1 error，修為具名欄位後最終 `.../root/single_owned_qa_cf1cf9babd2543a2a832fa07c9c0af5b/receipt.json` 全部通過，mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留或強制清理。隔離正常 Main 1280×760／1500×900、真 OS DPI216、兩筆有來源與一筆缺價 partial、另有未知來源畫面，最終 `.../root/single_owned_qa_199813800a8043acaa42bdbe74f325cd/receipt.json` exit0；5 圖／JSON 在 `.../root/native_m122_stress_quote_evidence/run_a947181a6fa544fea7dcb3d325d516c8/`。Sol 目視表格與所選列日期／來源／完整 hash 同屏可讀；前兩輪版面圖留 QA_RESULTS，不作最後版面證據。最後文件及 task 檢查見本機任務紀錄。
 
 M1–M122 是審查、實作及 QA 切片序號，非 122 個獨立功能。新 Stress v1 payload 增可選逐列欄位，舊保存歷史的 canonical payload／hash 原封不動，歷史 UI 尚未提供逐列來源回訪；CSV hash 為整檔而非重複列專屬指紋。正式私人 Portfolio／行情、其他真 OS DPI、1920 真可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未驗；未推送、合併、部署或改寫正式資料。
+
+## M123 已保存 Stress 逐列來源回訪
+
+Luna `/root/m107_portfolio_audit` 單一 writer 修改 `app_module/portfolio_stress_history.py`、`app_module/portfolio_stress_lab_service.py` 與兩份服務測試：保存紀錄的 payload hash 與索引欄必須對同一份 canonical Stress v1 payload 一致，否則 read service 降級；`project_position_rows()` 只由保存 payload 投影，保留逐列原數值文字、列序、同股多列及可選持倉／Portfolio 身份。新 result 的 v1 payload 可選附身份，舊結果不回寫；缺 `positions`、明示空陣列、缺價代號缺欄、舊版逐列來源缺欄及逐列壞型別分別處理。重複持倉 ID 保留兩列並標診斷，不假合併；未查現況、不改 Stress 公式或來源資格。
+
+Luna `/root/m123_history_ui` 單一 writer 修改 `ui_qt/views/portfolio_view.py` 與 UI 測試：已保存歷史總表以隱藏 record ID 對回排序後原件；原三額卡下加入預設收合、最多約 190 邏輯像素高的逐列表，明選列可複製原報價來源 SHA-256、日期、來源、freshness 與持倉身份，payload hash 另列。切換紀錄會收合與清舊；刷新、空結果、錯誤亦清除。Sol 複核修正測試對 Decimal 原字串的預期、預設排序假設、不同紀錄切換後收合、錯誤清舊；逐列表固定保存原序，避免字串金額被字典序誤排。原生目視後又隱藏舊版空表、把技術碼移到 tooltip，讓畫面直接說明「未記錄／未知」，並將新明細設純文字。所有原始失敗收據均保留，不充作通過。
+
+最終受控 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_15ee8929fe18423c869f696c09c1d05a/receipt.json`：受改 Python compile 0、Portfolio／Stress 聚焦 **142 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。正常 Main 1280×760／1500×900、真 Windows DPI216 的隔離合成新／partial／legacy、收合／展開與同股多持倉五張最終 PNG、JSON 在 `.../root/native_m123_history_evidence/run_312f2a0e524c4577b74ce8d82c56a8d3/`，Job 收據 `.../root/single_owned_qa_e86d65e8123e488894b0d2b09437abc3/receipt.json` exit0；Sol 目視接受。初版空表與原診斷碼圖在 `.../root/native_m123_history_evidence/run_673e581f233d49cc98d4df0a7c4a5164/`，只作 before。首次用系統 Python 的工具環境缺 PySide6／mypy、後續三輪測試預期或清舊失敗的收據均留 `root/`，最後以 repo `.venv` 及修後收據為準。
+
+### 排程啟動至 M123 的工程盤點
+
+Opus 啟動審查後因額度用盡由 Antigravity 接手完成六份主要報告及設計附件；任務 `task.json` owner 是 Antigravity。Sol 依現行程式、產品架構和金融契約逐項去重與取捨，Luna 依檔案所有權實作，root 逐切片複核並序列執行受控 QA。**M1–M123 是審查、裁決、實作與 QA 的切片序號，不是 123 個功能**。
+
+| 範圍 | 已完成的原始碼與可核證成果 |
+| --- | --- |
+| P0 金融辨識與狀態 | 台股方向色、正負／單位／日期、真零與未知分離、首屏資訊、載入／錯誤／刷新清舊；M102 情境 A→B 清舊與保存身份守衛，M121–M123 補 Stress 當次輸入、同次報價與保存回訪。 |
+| P1 產業題材 | 同版九指標摘要、成交額面積格、原值比較、名稱／股票反查、分類成員與共用成員鄰域、同版 L1 組成及個股精確往返；靜態重疊不稱供應鏈。 |
+| P2 全站研究 | 市場廣度／趨勢、個股資料圖卡與 ML 估計提示、推薦／選股漏斗、法人共用零軸、Portfolio／Paper Health／Watchlist、Backtest 月表與穩定性、Evidence 品質／追溯、Runtime 保存狀態與耗時；保留原表及來源。 |
+| P3 進階關係 | 已完成同版分類與共用成員的安全探索；公司間有向供應邊、跨期強弱及用途資格因逐邊來源與時間契約不足而未實作。 |
+
+本輪工程收尾限於受追蹤原始碼、隔離合成資料與上述真 Windows DPI216 畫面。正式市場／私人 Portfolio 的授權唯讀副本、其他真 OS DPI 與 1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73 決策品質作用範圍、M75 有向／跨期來源契約及完整產品 Gate 仍須分開驗；`output/` 原始證據留本機，不進版控。沒有實盤、broker order、正式資料改寫、其他排程修改、push、merge 或部署。

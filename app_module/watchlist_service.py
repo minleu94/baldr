@@ -93,9 +93,11 @@ from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 impor
     DailyMarketTechnicalOfficialDispositionMaBookmarkV1Error,
 )
 from app_module.watchlist_review_state import (
+    WatchlistReviewSnapshot, WatchlistReviewSnapshotRow,
     WatchlistReviewSourceIdentity, WatchlistReviewState, WatchlistReviewStateError,
     WatchlistSavedChange, ReviewState, REVIEW_EXTENSION, read_review_state,
-    review_source_identity, with_review_state, compare_saved_items,
+    review_source_identity, review_status_from_extension, with_review_state,
+    compare_saved_items,
 )
 
 
@@ -1746,6 +1748,83 @@ class WatchlistService:
             }
             for item in watchlist.items
         ]
+
+    def get_review_snapshot(
+        self, watchlist_id: str = "default"
+    ) -> WatchlistReviewSnapshot:
+        """讀取候選列及私人查看狀態一次，回傳同一 revision 的既有欄位投影。"""
+
+        try:
+            watchlist = self._load_watchlist(watchlist_id)
+        except Exception as exc:
+            return WatchlistReviewSnapshot(
+                status="unavailable",
+                revision=None,
+                error_code=type(exc).__name__,
+            )
+        if watchlist is None:
+            return WatchlistReviewSnapshot(status="missing", revision=None)
+        revision = watchlist.revision
+        if revision is not None and (type(revision) is not int or revision < 0):
+            return WatchlistReviewSnapshot(
+                status="unavailable",
+                revision=None,
+                error_code="invalid_revision",
+            )
+
+        identities = [item._review_source_identity for item in watchlist.items]
+        identity_keys: list[tuple[str, str] | None] = []
+        counts: dict[tuple[str, str], int] = {}
+        for identity in identities:
+            key = None
+            if (
+                type(identity) is WatchlistReviewSourceIdentity
+                and type(identity.stock_code) is str
+                and type(identity.item_sha256) is str
+                and len(identity.item_sha256) == 64
+                and all(character in "0123456789abcdef" for character in identity.item_sha256)
+            ):
+                key = (identity.stock_code, identity.item_sha256)
+                counts[key] = counts.get(key, 0) + 1
+            identity_keys.append(key)
+
+        rows = []
+        for position, item in enumerate(watchlist.items):
+            identity = identities[position]
+            identity_key = identity_keys[position]
+            status = review_status_from_extension(
+                item._storage_extensions.get(REVIEW_EXTENSION), identity
+            )
+            if (
+                type(identity) is WatchlistReviewSourceIdentity
+                and (
+                    identity_key is None
+                    or identity.stock_code != item.stock_code
+                    or counts.get(identity_key, 0) != 1
+                )
+            ):
+                status = "unknown"
+            rows.append(
+                WatchlistReviewSnapshotRow(
+                    position=position,
+                    stock_code=item.stock_code,
+                    stock_name=item.stock_name,
+                    added_at=item.added_at,
+                    source=item.source,
+                    notes=item.notes,
+                    tags=tuple(deepcopy(item.tags or [])),
+                    source_id=item.source_id,
+                    decision_identity=item.decision_identity,
+                    research_bookmark=deepcopy(item.research_bookmark),
+                    source_identity=(identity if identity_key is not None else None),
+                    review_status=status,
+                )
+            )
+        return WatchlistReviewSnapshot(
+            status="loaded",
+            revision=revision,
+            rows=tuple(rows),
+        )
 
     def _review_writer_allowed(self) -> bool:
         """基礎／legacy service 不授私人查看狀態 writer。"""

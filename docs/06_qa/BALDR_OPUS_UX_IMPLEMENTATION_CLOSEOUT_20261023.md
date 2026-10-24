@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M119；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M120；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M119 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M120 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -255,3 +255,13 @@ M119 由 Luna `/root/m107_evidence_audit` 單一 writer 修改 `ui_qt/views/live
 最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_799c0acbcd2c48a9abcaf0ec84dc2a4a/receipt.json`：受改 Python compile exit0、聚焦 **91 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；Job 無殘留或強制清理。隔離合成 normal Main、同資料 baseline before／after、真 OS DPI216 的 1280／1500 原生 Job `.../root/single_owned_qa_9184c508482149438ae8af7b35fb1f6c/receipt.json` exit0；11 張 PNG、題材合成 snapshot SHA 前後一致及結果 JSON 位於 `.../root/native_m118_m119_evidence/run_e3f7380605164888a4fa8788ac8690d9/`。首輪聚焦因不可達的測試失敗分支，後一輪因省略標籤仍用舊測試文字而失敗；原收據及修正理由保留在本機 `QA_RESULTS.md`，不當作通過證據。M1–M119 是審查／實作／QA 切片序號，非 119 個功能。
 
 Watchlist 逐列查看狀態的同版分布尚缺公開批次 DTO：現有逐列 `get_review_state()` 每次重讀可能混 revision，故本輪只完成唯讀契約盤點，沒有畫假同版圖。Stress 逐列計算報價來源、M73 控制作用範圍、M75 有向供應鏈／跨期用途仍待各自契約。正式市場／Evidence／私人 Portfolio、其他真 OS DPI、1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT 與完整產品 Gate 未驗；沒有 push、merge、部署或正式／私人資料改寫。
+
+## M120 Watchlist 同版私人查看狀態分布
+
+Luna `/root/m107_portfolio_audit` 單一 writer 補 `app_module/watchlist_review_state.py`、`app_module/watchlist_service.py` 與服務聚焦測試：唯讀 `get_review_snapshot()` 在一次 `_load_watchlist()` 取候選列、原顯示欄位與逐列狀態，共用頂層 revision；原逐列 getter、CAS writer 及私人儲存不變。SQLite revision 保留原整數，legacy JSON 為 `None`；同股不同 item hash 按原位置分開，缺身份、重複身份、schema/hash 損毀為 unknown。原候選 notes 欄仍可顯示，但新 DTO 不增加 review reason 欄或輸出 extension。成功空、清單缺件、讀取失敗各有不同狀態，不能混作零。
+
+Luna `/root/m108_research_visual_audit` 單一 writer 補 `ui_qt/views/watchlist_view.py` 與 UI 聚焦測試：候選表前顯待查看／已確認／稍後／未知四類原列數及比例，表與卡同用快照，不做第二次 `get_stocks()`。若服務沒有 batch 方法，舊相容路徑仍能讀候選表，但分布明示未知；已有 batch 方法而回錯或壞型別則清舊並拒絕第二次讀取。選列另讀若 revision 或列狀態已變，停用私人保存並要求刷新；legacy 無持久 revision 會標另讀可能較新。Sol 退回首版缺清單假 0、快照失敗再讀及分布在長表後的設計；正常 Main 1280 原生圖又見四列條把表完全推離首屏，改為兩欄兩列與精簡說明。最終 1280 首屏可見卡及表首列上緣，1500 可讀更多表內容；卡片只表示私人查看進度，非金融評分。
+
+最終 8 GiB／12 程序受控 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_97899f60942b4138bd94580d6edfe58f/receipt.json`：受改 Python compile exit0、聚焦 **28 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，Job 無殘留或強制清理。首輪新測試替身建構失敗的原收據 `.../root/single_owned_qa_e12427afaab14bd68241d6d56163a19b/receipt.json` 保留，不冒作產品失敗或通過。最終正常 Main 1280×760／1500×900、真 OS DPI216、隔離合成四態／成功空／載入不可用原生 Job `.../root/single_owned_qa_cb00d89c4a3e4f39b8880ef2f35aee01/receipt.json`，PNG 與 JSON 位於 `.../root/native_m120_watchlist_evidence/run_f1affcf68cfd41a490ab15d3e551c467/`；before 可核 M110 的 `.../root/native_m110_watchlist_evidence/run_28831576d5874620a6ee6849eb06e560/`。前兩輪版面 PNG 與收據保留，不能取代最終圖。
+
+M1–M120 為審查、實作與 QA 切片序號，並非 120 個獨立功能。正式私人 Watchlist／市場來源、其他真 OS DPI、1920 可用螢幕、Light 若支援、固定新版 EXE、自然排程、Owner UAT、Stress 逐列報價身份、M73／M75 契約及完整產品 Gate 未驗；此提交只收束本輪原始碼與隔離 QA，沒有 push、merge、部署或正式／私人資料改寫。

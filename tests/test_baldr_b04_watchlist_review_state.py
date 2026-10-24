@@ -13,7 +13,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 from tests.test_personal_watchlist_service import _config, _payload
 from app_module.personal_watchlist_service import build_watchlist_service
-from app_module.watchlist_service import WatchlistService
+from app_module.watchlist_service import Watchlist, WatchlistItem, WatchlistService
 from app_module.watchlist_review_state import (
     REVIEW_EXTENSION, REVIEW_SCHEMA, WatchlistReviewStateError,
     review_source_identity, compare_saved_items, with_review_state,
@@ -48,6 +48,214 @@ def _review(service, code="2330"):
 def _pins(service):
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in service.personal_paths.personal_root.rglob("*") if path.is_file()}
+
+
+def _snapshot_item(code, source_id, state=None, *, extension=None):
+    item = {
+        "stock_code": code,
+        "stock_name": f"合成 {code}",
+        "added_at": "2026-10-24T08:00:00+08:00",
+        "source": "recommendation",
+        "source_id": source_id,
+        "tags": ["合成標籤"],
+        "decision_identity": {"stock_code": code, "result_id": source_id},
+        "research_bookmark": {"schema_version": "synthetic.v1", "payload": {"keep": True}},
+        "notes": "既有候選列顯示的收藏理由",
+    }
+    identity = review_source_identity(item)
+    if extension is not None:
+        item[REVIEW_EXTENSION] = extension
+    elif state is not None:
+        item[REVIEW_EXTENSION] = {
+            "schema_version": REVIEW_SCHEMA,
+            "state": state,
+            "source_identity_sha256": identity.item_sha256,
+        }
+    return WatchlistItem.from_mapping(item)
+
+
+def _snapshot_service(watchlist):
+    service = WatchlistService.__new__(WatchlistService)
+    service._load_watchlist = lambda _watchlist_id: watchlist
+    return service
+
+
+def _watchlist(items, revision):
+    return Watchlist(
+        name="synthetic",
+        items=items,
+        created_at="2026-10-24T08:00:00+08:00",
+        updated_at="2026-10-24T08:00:00+08:00",
+        revision=revision,
+    )
+
+
+def test_review_snapshot_keeps_same_stock_distinct_identities_in_one_revision():
+    first = _snapshot_item("2330", "result-one", "confirmed")
+    second = _snapshot_item("2330", "result-two", "deferred")
+    service = _snapshot_service(_watchlist([first, second], revision=12))
+
+    snapshot = service.get_review_snapshot()
+
+    assert snapshot.status == "loaded"
+    assert snapshot.revision == 12
+    assert [row.position for row in snapshot.rows] == [0, 1]
+    assert [row.stock_code for row in snapshot.rows] == ["2330", "2330"]
+    assert [row.review_status for row in snapshot.rows] == ["confirmed", "deferred"]
+    assert snapshot.rows[0].source_identity != snapshot.rows[1].source_identity
+    assert not hasattr(snapshot.rows[0], "reason")
+    assert not hasattr(snapshot.rows[0], REVIEW_EXTENSION)
+    row = snapshot.rows[0]
+    assert row.to_stock_mapping() == {
+        "stock_code": row.stock_code,
+        "stock_name": row.stock_name,
+        "added_at": row.added_at,
+        "source": row.source,
+        "notes": row.notes,
+        "tags": list(row.tags),
+        "source_id": row.source_id,
+        "decision_identity": row.decision_identity.to_dict(),
+        "research_bookmark": row.research_bookmark,
+        "review_source_identity": row.source_identity,
+    }
+
+
+def test_review_snapshot_marks_malformed_missing_and_duplicate_identities_unknown():
+    malformed = _snapshot_item(
+        "2330",
+        "bad-extension",
+        extension={
+            "schema_version": "unknown.v9",
+            "state": "confirmed",
+            "source_identity_sha256": "0" * 64,
+        },
+    )
+    missing = _snapshot_item("2317", "missing-identity", "confirmed")
+    missing._review_source_identity = None
+    duplicate = _snapshot_item("2603", "duplicate", "confirmed")
+    service = _snapshot_service(_watchlist([malformed, missing, duplicate, duplicate], revision=4))
+
+    snapshot = service.get_review_snapshot()
+
+    assert snapshot.status == "loaded"
+    assert [row.review_status for row in snapshot.rows] == [
+        "unknown", "unknown", "unknown", "unknown"
+    ]
+    assert snapshot.rows[1].source_identity is None
+
+
+def test_review_snapshot_distinguishes_missing_empty_legacy_and_unavailable():
+    missing_service = _snapshot_service(None)
+    missing = missing_service.get_review_snapshot()
+    assert (missing.status, missing.revision, missing.rows) == ("missing", None, ())
+
+    empty_service = _snapshot_service(_watchlist([], revision=8))
+    empty = empty_service.get_review_snapshot()
+    assert (empty.status, empty.revision, empty.rows) == ("loaded", 8, ())
+
+    legacy_service = _snapshot_service(
+        _watchlist([_snapshot_item("2330", "legacy")], revision=None)
+    )
+    legacy = legacy_service.get_review_snapshot()
+    assert legacy.status == "loaded"
+    assert legacy.revision is None
+    assert legacy.rows[0].review_status == "pending"
+
+    failed_service = WatchlistService.__new__(WatchlistService)
+    failed_service._load_watchlist = lambda _watchlist_id: (_ for _ in ()).throw(
+        ValueError("private path or payload detail")
+    )
+    unavailable = failed_service.get_review_snapshot()
+    assert unavailable.status == "unavailable"
+    assert unavailable.revision is None
+    assert unavailable.rows == ()
+    assert unavailable.error_code == "ValueError"
+    assert "private" not in unavailable.error_code
+
+
+@pytest.mark.parametrize("revision", [True, -1, 1.5, "12"])
+def test_review_snapshot_rejects_malformed_repository_revision(revision):
+    service = _snapshot_service(_watchlist([_snapshot_item("2330", "bad-revision")], revision))
+
+    snapshot = service.get_review_snapshot()
+
+    assert snapshot.status == "unavailable"
+    assert snapshot.revision is None
+    assert snapshot.rows == ()
+    assert snapshot.error_code == "invalid_revision"
+
+
+def test_review_snapshot_performs_one_repository_load_and_projects_existing_fields():
+    item = _snapshot_item("2330", "repo-result", "confirmed")
+    loads = []
+
+    class Repository:
+        def load(self, watchlist_id):
+            loads.append(watchlist_id)
+            return (
+                {
+                    "name": "synthetic",
+                    "created_at": "2026-10-24T08:00:00+08:00",
+                    "updated_at": "2026-10-24T08:00:00+08:00",
+                    "items": [item.to_storage_mapping()],
+                },
+                31,
+            )
+
+    service = WatchlistService.__new__(WatchlistService)
+    service.repository = Repository()
+    service.watchlist_dir = Path("unused")
+    service._watchlist_file = lambda _watchlist_id: Path("unused/default.json")
+    service._repository_watchlist_id = lambda watchlist_id: watchlist_id
+
+    snapshot = service.get_review_snapshot()
+
+    assert loads == ["default"]
+    assert snapshot.status == "loaded"
+    assert snapshot.revision == 31
+    assert snapshot.rows[0].review_status == "confirmed"
+    assert snapshot.rows[0].to_stock_mapping()["notes"] == item.notes
+    assert snapshot.rows[0].to_stock_mapping()["research_bookmark"] == item.research_bookmark
+    assert REVIEW_EXTENSION not in snapshot.rows[0].to_stock_mapping()
+
+
+def test_explicit_null_review_extension_matches_absent_extension():
+    absent = _snapshot_item("2330", "absent")
+    explicit_null = _snapshot_item("2603", "explicit-null", extension=None)
+    explicit_null._storage_extensions[REVIEW_EXTENSION] = None
+
+    snapshot = _snapshot_service(_watchlist([absent, explicit_null], revision=5)).get_review_snapshot()
+
+    assert [row.review_status for row in snapshot.rows] == ["pending", "pending"]
+
+
+def test_review_snapshot_uses_one_load_when_revision_changes_between_calls():
+    first_revision = _watchlist(
+        [_snapshot_item("2330", "first", "confirmed"), _snapshot_item("2603", "first", "pending")],
+        revision=20,
+    )
+    next_revision = _watchlist(
+        [_snapshot_item("2330", "second", "deferred"), _snapshot_item("2603", "second", "confirmed")],
+        revision=21,
+    )
+    calls = []
+
+    def load_once(_watchlist_id):
+        calls.append(None)
+        return first_revision if len(calls) == 1 else next_revision
+
+    service = WatchlistService.__new__(WatchlistService)
+    service._load_watchlist = load_once
+
+    first_snapshot = service.get_review_snapshot()
+    assert len(calls) == 1
+    assert first_snapshot.revision == 20
+    assert [row.review_status for row in first_snapshot.rows] == ["confirmed", "pending"]
+
+    second_snapshot = service.get_review_snapshot()
+    assert len(calls) == 2
+    assert second_snapshot.revision == 21
+    assert [row.review_status for row in second_snapshot.rows] == ["deferred", "confirmed"]
 
 
 def test_cas_reason_state_preserves_other_items_unknown_fields_source_and_new_process(tmp_path):

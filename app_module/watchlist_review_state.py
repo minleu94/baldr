@@ -11,6 +11,8 @@ from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 REVIEW_EXTENSION = "baldr_watchlist_review"
 REVIEW_SCHEMA = "baldr.watchlist-review.v1"
 ReviewState = Literal["pending", "confirmed", "deferred"]
+ReviewStatus = Literal["pending", "confirmed", "deferred", "unknown"]
+WatchlistReadStatus = Literal["loaded", "missing", "unavailable"]
 
 
 class WatchlistReviewStateError(ValueError):
@@ -30,6 +32,83 @@ class WatchlistReviewState:
     state: ReviewState
     revision: int | None
     writable: bool
+
+
+@dataclass(frozen=True, slots=True)
+class WatchlistReviewSnapshotRow:
+    """同一次 Watchlist 讀取中的候選列與私人狀態；不攜帶 review extension。"""
+
+    position: int
+    stock_code: str
+    stock_name: str
+    added_at: str
+    source: str
+    notes: str
+    tags: tuple[Any, ...]
+    source_id: str
+    decision_identity: DecisionIdentity
+    research_bookmark: Any
+    source_identity: WatchlistReviewSourceIdentity | None
+    review_status: ReviewStatus
+
+    def to_stock_mapping(self) -> dict[str, Any]:
+        """建構既有候選列投影；不輸出審查 extension 或額外 reason 欄位。"""
+
+        return {
+            "stock_code": self.stock_code,
+            "stock_name": self.stock_name,
+            "added_at": self.added_at,
+            "source": self.source,
+            "notes": self.notes,
+            "tags": list(deepcopy(self.tags)),
+            "source_id": self.source_id,
+            "decision_identity": self.decision_identity.to_dict(),
+            "research_bookmark": deepcopy(self.research_bookmark),
+            "review_source_identity": self.source_identity,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class WatchlistReviewSnapshot:
+    """一次唯讀載入的列狀態快照；所有 rows 共用頂層 revision。"""
+
+    status: WatchlistReadStatus
+    revision: int | None
+    rows: tuple[WatchlistReviewSnapshotRow, ...] = ()
+    error_code: str = ""
+
+
+def review_status_from_extension(
+    extension: object,
+    source_identity: WatchlistReviewSourceIdentity | None,
+) -> ReviewStatus:
+    """驗證既存 extension，不把身份缺失或損毀內容退化為 pending。"""
+
+    if type(source_identity) is not WatchlistReviewSourceIdentity:
+        return "unknown"
+    if (
+        type(source_identity.stock_code) is not str
+        or not source_identity.stock_code.strip()
+        or type(source_identity.item_sha256) is not str
+        or len(source_identity.item_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in source_identity.item_sha256)
+    ):
+        return "unknown"
+    if extension is None:
+        return "pending"
+    if not isinstance(extension, Mapping):
+        return "unknown"
+    if (
+        extension.get("schema_version") != REVIEW_SCHEMA
+        or extension.get("state") not in {"pending", "confirmed", "deferred"}
+        or extension.get("source_identity_sha256") != source_identity.item_sha256
+    ):
+        return "unknown"
+    if extension["state"] == "pending":
+        return "pending"
+    if extension["state"] == "confirmed":
+        return "confirmed"
+    return "deferred"
 
 
 @dataclass(frozen=True, slots=True)

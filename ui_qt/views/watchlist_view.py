@@ -29,11 +29,11 @@ import json
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QBoxLayout, QLabel,
     QPushButton, QTableView, QMessageBox, QDialog,
     QDialogButtonBox, QLineEdit, QTextEdit, QListWidget,
     QListWidgetItem, QHeaderView, QMenu, QAbstractItemView,
-    QGroupBox, QSplitter, QSizePolicy, QInputDialog
+    QGroupBox, QSplitter, QSizePolicy, QInputDialog, QProgressBar
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction
@@ -61,7 +61,12 @@ from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 impor
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
     DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
 )
-from app_module.watchlist_review_state import WatchlistReviewSourceIdentity, WatchlistReviewState
+from app_module.watchlist_review_state import (
+    WatchlistReviewSnapshot,
+    WatchlistReviewSnapshotRow,
+    WatchlistReviewSourceIdentity,
+    WatchlistReviewState,
+)
 from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
     IDENTITY_STATUS_CONFLICT,
@@ -88,6 +93,7 @@ from app_module.daily_market_technical_universe_v4_bookmark import (
     DailyMarketTechnicalUniverseV4Bookmark,
 )
 from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
@@ -198,6 +204,7 @@ class WatchlistView(QWidget):
         # 數據模型
         self.stocks_model: Optional[PandasTableModel] = None
         self._watchlist_load_succeeded = False
+        self._review_snapshot: WatchlistReviewSnapshot | None = None
         
         logger.info("[WatchlistView] 開始設置 UI...")
         self._setup_ui()
@@ -385,6 +392,61 @@ class WatchlistView(QWidget):
         self.stocks_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.stocks_table.customContextMenuRequested.connect(self._show_context_menu)
 
+        review_distribution_group = QGroupBox("個人查看狀態分布（非研究評分）")
+        review_distribution_group.setObjectName("watchlistReviewDistribution")
+        self.review_distribution_group = review_distribution_group
+        review_distribution_group.setToolTip(
+            "依候選列統計私人查看狀態；不代表研究評分或買賣訊號。"
+        )
+        review_distribution_layout = QVBoxLayout(review_distribution_group)
+        review_distribution_layout.setContentsMargins(8, 6, 8, 6)
+        review_distribution_layout.setSpacing(3)
+        self.review_distribution_status = QLabel("尚未載入查看狀態。")
+        self.review_distribution_status.setObjectName("watchlistReviewDistributionStatus")
+        self.review_distribution_status.setProperty("role", "status")
+        self.review_distribution_status.setWordWrap(True)
+        review_distribution_layout.addWidget(self.review_distribution_status)
+        self.review_distribution_rows_layout = QGridLayout()
+        self.review_distribution_rows_layout.setSpacing(2)
+        self.review_distribution_counts: dict[str, QLabel] = {}
+        self.review_distribution_bars: dict[str, QProgressBar] = {}
+        review_states = (
+            ("pending", "待查看"),
+            ("confirmed", "已確認查看"),
+            ("deferred", "稍後查看"),
+            ("unknown", "未知／不可核對"),
+        )
+        for index, (state, label_text) in enumerate(review_states):
+            row_layout = QHBoxLayout()
+            label = QLabel(label_text)
+            label.setObjectName(f"watchlistReviewDistributionLabel_{state}")
+            label.setMinimumWidth(96)
+            row_layout.addWidget(label)
+            count_label = QLabel("—")
+            count_label.setObjectName(f"watchlistReviewDistributionCount_{state}")
+            count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            row_layout.addWidget(count_label)
+            bar = QProgressBar()
+            bar.setObjectName(f"watchlistReviewDistributionBar_{state}")
+            bar.setAccessibleName(f"{label_text}候選列數")
+            bar.setTextVisible(False)
+            bar.setRange(0, 1)
+            bar.setValue(0)
+            bar.setMaximumHeight(12)
+            bar.setVisible(False)
+            bar.setStyleSheet(
+                f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-radius: 3px; background: {MIDNIGHT_ANALYST.surface_2}; }} "
+                f"QProgressBar::chunk {{ background: {MIDNIGHT_ANALYST.accent}; }}"
+            )
+            row_layout.addWidget(bar, 1)
+            self.review_distribution_rows_layout.addLayout(
+                row_layout, index // 2, index % 2
+            )
+            self.review_distribution_counts[state] = count_label
+            self.review_distribution_bars[state] = bar
+        review_distribution_layout.addLayout(self.review_distribution_rows_layout)
+        candidate_layout.addWidget(review_distribution_group)
         candidate_layout.addWidget(self.stocks_table, stretch=1)
         self.stocks_table.doubleClicked.connect(self._open_stock_analysis)
 
@@ -815,6 +877,79 @@ class WatchlistView(QWidget):
             style.polish(self.status_label)
         self.status_label.setText(text)
 
+    def _set_review_distribution_message(self, message: str) -> None:
+        """清空舊分布，只留下本次載入狀態。"""
+        self.review_distribution_status.setText(message)
+        for count_label in self.review_distribution_counts.values():
+            count_label.setText("—")
+        for bar in self.review_distribution_bars.values():
+            bar.setValue(0)
+            bar.setRange(0, 1)
+            bar.setVisible(False)
+
+    def _render_review_distribution(self, snapshot: WatchlistReviewSnapshot) -> bool:
+        """只以同一 typed snapshot 的逐列狀態更新摘要。"""
+        valid_states = {"pending", "confirmed", "deferred", "unknown"}
+        if (
+            type(snapshot) is not WatchlistReviewSnapshot
+            or snapshot.status != "loaded"
+            or type(snapshot.rows) is not tuple
+            or (
+                snapshot.revision is not None
+                and (type(snapshot.revision) is not int or snapshot.revision < 0)
+            )
+        ):
+            self._review_snapshot = None
+            self._set_review_distribution_message(
+                "查看狀態快照不可用；沒有沿用先前分布。"
+            )
+            return False
+        counts = {state: 0 for state in valid_states}
+        for row in snapshot.rows:
+            if (
+                type(row) is not WatchlistReviewSnapshotRow
+                or row.review_status not in valid_states
+            ):
+                self._review_snapshot = None
+                self._set_review_distribution_message(
+                    "查看狀態列無法核對；沒有沿用先前分布。"
+                )
+                return False
+            counts[row.review_status] += 1
+
+        self._review_snapshot = snapshot
+        total = len(snapshot.rows)
+        if snapshot.revision is None:
+            self.review_distribution_status.setText(
+                f"單次讀取，共 {total} 筆候選列；revision 未提供（legacy），"
+                "另行讀取的單列狀態可能較新。"
+            )
+        else:
+            self.review_distribution_status.setText(
+                f"同一讀取 revision {snapshot.revision}；依 {total} 筆候選列統計。"
+            )
+        for state, count in counts.items():
+            self.review_distribution_counts[state].setText(
+                f"{count} / {total} 筆"
+            )
+            bar = self.review_distribution_bars[state]
+            bar.setRange(0, total if total else 1)
+            bar.setValue(count)
+            bar.setVisible(total > 0)
+        return True
+
+    def _review_snapshot_row_for_identity(
+        self, source_identity: WatchlistReviewSourceIdentity,
+    ) -> WatchlistReviewSnapshotRow | None:
+        snapshot = self._review_snapshot
+        if snapshot is None:
+            return None
+        matches = [
+            row for row in snapshot.rows
+            if row.source_identity == source_identity
+        ]
+        return matches[0] if len(matches) == 1 else None
+
     def _distinct_watchlist_code_count(self) -> int | None:
         """Count non-empty security codes while keeping source rows distinct."""
 
@@ -1027,6 +1162,8 @@ class WatchlistView(QWidget):
         QMessageBox.warning(self, "觀察清單儲存升級未完成", message)
 
     def _load_watchlist(self):
+        self._review_snapshot = None
+        self._set_review_distribution_message("查看狀態載入中…")
         self._render_observation(None)
         """載入觀察清單"""
         self._watchlist_load_succeeded = False
@@ -1041,8 +1178,72 @@ class WatchlistView(QWidget):
         logger.info("[WatchlistView._load_watchlist] 開始載入...")
         self._set_status_label("載入中…", level="info")
         try:
-            logger.info("[WatchlistView._load_watchlist] 調用 watchlist_service.get_stocks()...")
-            stocks = self.watchlist_service.get_stocks()
+            snapshot_status = "fallback"
+            service_type = type(self.watchlist_service)
+            snapshot_method_available = any(
+                "get_review_snapshot" in base.__dict__
+                for base in service_type.__mro__
+            )
+            service_attributes = getattr(self.watchlist_service, "__dict__", {})
+            snapshot_method_available = snapshot_method_available or (
+                isinstance(service_attributes, dict)
+                and "get_review_snapshot" in service_attributes
+            )
+            snapshot_reader = (
+                getattr(self.watchlist_service, "get_review_snapshot", None)
+                if snapshot_method_available else None
+            )
+            if snapshot_method_available:
+                review_snapshot = None
+                if callable(snapshot_reader):
+                    try:
+                        candidate_snapshot = snapshot_reader()
+                        if type(candidate_snapshot) is WatchlistReviewSnapshot:
+                            review_snapshot = candidate_snapshot
+                    except Exception as exc:
+                        logger.warning(
+                            "查看狀態快照不可用：%s",
+                            type(exc).__name__,
+                        )
+                if review_snapshot is None:
+                    self._review_snapshot = None
+                    self._set_review_distribution_message(
+                        "查看狀態快照不可用；沒有沿用先前分布。"
+                    )
+                    stocks = []
+                    snapshot_status = "unavailable"
+                elif review_snapshot.status == "loaded":
+                    if self._render_review_distribution(review_snapshot):
+                        # 同一快照同時供表格與逐列狀態統計，不再重讀 Watchlist。
+                        stocks = [row.to_stock_mapping() for row in review_snapshot.rows]
+                        snapshot_status = "loaded"
+                    else:
+                        stocks = []
+                        snapshot_status = "unavailable"
+                elif review_snapshot.status == "missing":
+                    self._review_snapshot = None
+                    self._set_review_distribution_message(
+                        "尚無已保存清單；候選列與查看狀態未知。"
+                    )
+                    stocks = []
+                    snapshot_status = "missing"
+                else:
+                    self._review_snapshot = None
+                    self._set_review_distribution_message(
+                        "查看狀態快照不可用；沒有沿用先前分布。"
+                    )
+                    stocks = []
+                    snapshot_status = "unavailable"
+            else:
+                logger.info(
+                    "[WatchlistView._load_watchlist] 使用相容 get_stocks() 載入；"
+                    "查看狀態分布不可用。"
+                )
+                self._set_review_distribution_message(
+                    "此服務未提供同版查看狀態快照；分布未知。"
+                )
+                stocks = self.watchlist_service.get_stocks()
+
             logger.info(f"[WatchlistView._load_watchlist] 獲取到 {len(stocks) if stocks else 0} 筆候選列")
             
             if not stocks:
@@ -1152,25 +1353,53 @@ class WatchlistView(QWidget):
                 # 不拋出異常，繼續執行
             
             # 更新統計
-            self._watchlist_load_succeeded = True
-            if stocks:
-                distinct_count = self._distinct_watchlist_code_count()
-                distinct_text = str(distinct_count) if distinct_count is not None else "未知"
-                self.stats_label.setText(
-                    f"{len(stocks)} 筆候選列／{distinct_text} 檔不同代號"
+            if snapshot_status == "unavailable":
+                self._watchlist_load_succeeded = False
+                self.stats_label.setText("候選列／不同代號數未知（載入失敗）")
+                self._set_status_label(
+                    "查看狀態快照不可用；沒有沿用舊候選內容。", level="error"
                 )
-                self._set_status_label(f"已更新：{len(stocks)} 筆", level="success")
+                self._set_watchlist_focus_summary(
+                    count=None, message="候選清單快照不可用，請重新整理。"
+                )
+                self._update_research_lab_button_state(0)
+                self._set_candidate_data_actions_enabled(False)
+            elif snapshot_status == "missing":
+                self._watchlist_load_succeeded = False
+                self.stats_label.setText("候選列／不同代號數未知（清單不存在）")
+                self._set_status_label(
+                    "尚無已保存觀察清單；候選數未知。", level="warning"
+                )
+                self._set_watchlist_focus_summary(
+                    count=None, message="尚無已保存的觀察清單；候選數未知。"
+                )
+                self._update_research_lab_button_state(0)
+                self._set_candidate_data_actions_enabled(False)
             else:
-                self.stats_label.setText("0 筆候選列／0 檔不同代號（目前沒有候選）")
-                self._set_status_label("已更新：0 筆；目前沒有候選", level="warning")
-            self._set_watchlist_focus_summary(count=len(stocks) if stocks else 0)
-            self._update_research_lab_button_state(len(stocks))
+                self._watchlist_load_succeeded = True
+                if stocks:
+                    distinct_count = self._distinct_watchlist_code_count()
+                    distinct_text = str(distinct_count) if distinct_count is not None else "未知"
+                    self.stats_label.setText(
+                        f"{len(stocks)} 筆候選列／{distinct_text} 檔不同代號"
+                    )
+                    self._set_status_label(f"已更新：{len(stocks)} 筆", level="success")
+                else:
+                    self.stats_label.setText("0 筆候選列／0 檔不同代號（目前沒有候選）")
+                    self._set_status_label("已更新：0 筆；目前沒有候選", level="warning")
+                self._set_watchlist_focus_summary(count=len(stocks) if stocks else 0)
+                self._update_research_lab_button_state(len(stocks))
+                self._set_candidate_data_actions_enabled(bool(stocks))
             self._refresh_storage_status()
             self._refresh_technical_bookmark_controls()
             logger.info("[WatchlistView._load_watchlist] 載入完成")
             self.watchlistLoaded.emit()
             
         except Exception as e:
+            self._review_snapshot = None
+            self._set_review_distribution_message(
+                "查看狀態分布不可用；沒有沿用先前分布。"
+            )
             self._watchlist_load_succeeded = False
             import traceback
             logger.error(f"[WatchlistView._load_watchlist] 錯誤：載入觀察清單失敗")
@@ -1198,6 +1427,7 @@ class WatchlistView(QWidget):
                     message=f"載入失敗：{str(e).splitlines()[0] or type(e).__name__}",
                 )
                 self._update_research_lab_button_state(0)
+                self._set_candidate_data_actions_enabled(False)
                 self._refresh_storage_status()
                 self._refresh_technical_bookmark_controls()
                 logger.error("[WatchlistView._load_watchlist] 已顯示錯誤提示")
@@ -1213,6 +1443,12 @@ class WatchlistView(QWidget):
             self.send_to_research_lab_btn.setToolTip("將目前候選池送到策略回測的批次模式。")
         else:
             self.send_to_research_lab_btn.setToolTip("候選池目前沒有股票，加入股票後即可送 Research Lab 批次回測。")
+
+    def _set_candidate_data_actions_enabled(self, enabled: bool) -> None:
+        """只在候選資料可用且有列時啟用依賴列資料的操作。"""
+        self.remove_btn.setEnabled(enabled)
+        self.clear_btn.setEnabled(enabled)
+        self.save_to_universe_btn.setEnabled(enabled)
 
     def _send_to_research_lab(self) -> None:
         """將目前觀察清單送到策略回測的批次模式。"""
@@ -1727,17 +1963,82 @@ class WatchlistView(QWidget):
                     review = getter(str(row.get("證券代號", "")), pins)
                     if type(review) is not WatchlistReviewState or review.source_identity != pins:
                         raise ValueError("私人查看狀態來源身份不一致")
-                    self._observation_review = review
-                    self.observation_reason_label.setText(f"收藏理由：{review.reason or '未提供'}")
-                    state = {"pending": "待查看", "confirmed": "已確認查看", "deferred": "稍後查看"}[review.state]
-                    state += "（已啟用私人保存）" if review.writable else "（唯讀；未啟用私人保存）"
-                    for button in (self.edit_observation_reason_button, self.confirm_observation_button, self.later_observation_button):
-                        button.setEnabled(review.writable and review.revision is not None)
-                    comparer = getattr(self.watchlist_service, "get_same_source_change", None)
-                    if review.revision is not None and review.revision > 1 and callable(comparer):
-                        change = comparer(pins.stock_code, pins, before_revision=review.revision - 1,
-                                          after_revision=review.revision)
-                        self.observation_change_label.setText(f"較前保存變化：{change.message}")
+                    self.observation_reason_label.setText(
+                        f"收藏理由：{review.reason or '未提供'}"
+                    )
+                    snapshot = self._review_snapshot
+                    if snapshot is not None and snapshot.revision is not None:
+                        snapshot_row = self._review_snapshot_row_for_identity(pins)
+                        if (
+                            review.revision != snapshot.revision
+                            or snapshot_row is None
+                            or snapshot_row.review_status != review.state
+                        ):
+                            state = (
+                                f"單列狀態 revision {review.revision} 與候選摘要 "
+                                f"revision {snapshot.revision} 不一致；請刷新後再核對"
+                            )
+                        else:
+                            self._observation_review = review
+                            state = {
+                                "pending": "待查看",
+                                "confirmed": "已確認查看",
+                                "deferred": "稍後查看",
+                            }[review.state]
+                            state += (
+                                "（已啟用私人保存）"
+                                if review.writable
+                                else "（唯讀；未啟用私人保存）"
+                            )
+                            for button in (
+                                self.edit_observation_reason_button,
+                                self.confirm_observation_button,
+                                self.later_observation_button,
+                            ):
+                                button.setEnabled(
+                                    review.writable and review.revision is not None
+                                )
+                            comparer = getattr(
+                                self.watchlist_service, "get_same_source_change", None
+                            )
+                            if (
+                                review.revision is not None
+                                and review.revision > 1
+                                and callable(comparer)
+                            ):
+                                change = comparer(
+                                    pins.stock_code,
+                                    pins,
+                                    before_revision=review.revision - 1,
+                                    after_revision=review.revision,
+                                )
+                                self.observation_change_label.setText(
+                                    f"較前保存變化：{change.message}"
+                                )
+                    else:
+                        self._observation_review = review
+                        state = {
+                            "pending": "待查看",
+                            "confirmed": "已確認查看",
+                            "deferred": "稍後查看",
+                        }[review.state]
+                        state += (
+                            "（已啟用私人保存）"
+                            if review.writable
+                            else "（唯讀；未啟用私人保存）"
+                        )
+                        if snapshot is not None and snapshot.revision is None:
+                            state += "；單列另行讀取，可能較新（列表 revision 未提供）"
+                        elif snapshot is None:
+                            state += "；單列另行讀取，與候選表未做同版核對"
+                        for button in (
+                            self.edit_observation_reason_button,
+                            self.confirm_observation_button,
+                            self.later_observation_button,
+                        ):
+                            button.setEnabled(
+                                review.writable and review.revision is not None
+                            )
                 except Exception as exc:
                     self._observation_review = None
                     for button in (self.edit_observation_reason_button, self.confirm_observation_button, self.later_observation_button):
@@ -1775,6 +2076,31 @@ class WatchlistView(QWidget):
         if row.get("review_source_identity") != review.source_identity or review.revision is None:
             self._set_status_label("來源身份已變動；未保存。", level="warning")
             return
+        snapshot = self._review_snapshot
+        if snapshot is not None and snapshot.revision is not None:
+            snapshot_row = self._review_snapshot_row_for_identity(
+                review.source_identity
+            )
+            if (
+                review.revision != snapshot.revision
+                or snapshot_row is None
+                or snapshot_row.review_status != review.state
+            ):
+                self._observation_review = None
+                for button in (
+                    self.edit_observation_reason_button,
+                    self.confirm_observation_button,
+                    self.later_observation_button,
+                ):
+                    button.setEnabled(False)
+                self.observation_state_label.setText(
+                    "查看狀態：單列與候選摘要版本不一致；請刷新後再核對，未保存。"
+                )
+                self._set_status_label(
+                    "候選摘要與單列狀態 revision 不一致；未保存，請刷新。",
+                    level="warning",
+                )
+                return
         try:
             saved = self.watchlist_service.save_review_state(
                 code, reason=reason, state=state, expected_revision=review.revision,

@@ -1998,6 +1998,7 @@ class PortfolioView(QWidget):
         self.stress_history_card = QFrame()
         self.stress_history_card.setObjectName("stress_history_comparison_card")
         self.stress_history_card.setFrameShape(QFrame.StyledPanel)
+        self.stress_history_card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.stress_history_card.setStyleSheet(
             "QFrame#stress_history_comparison_card {"
             f"background-color: {MIDNIGHT_ANALYST.surface_1};"
@@ -2055,7 +2056,10 @@ class PortfolioView(QWidget):
         apply_financial_table_style(self.stress_history_table)
         self.stress_history_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_history_table.horizontalHeader().setStretchLastSection(True)
-        history_stress_layout.addWidget(self.stress_history_table, 1)
+        self.stress_history_table.setMinimumHeight(0)
+        self.stress_history_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        history_stress_layout.addWidget(self.stress_history_table)
+        history_stress_layout.addStretch(1)
         self._stress_history_display_records: list[PortfolioStressHistoryRecord] = []
         right_widget.addTab(stress_tab, "情境壓力")
 
@@ -3739,6 +3743,7 @@ class PortfolioView(QWidget):
             self.stress_history_table.setModel(
                 PandasTableModel(pd.DataFrame(columns=["執行時間", "情境", "狀態"]))
             )
+            self._constrain_stress_history_table_height()
             self._stress_history_display_records = []
             self.stress_history_table.selectionModel().currentRowChanged.connect(
                 self._show_stress_history_record
@@ -3797,9 +3802,26 @@ class PortfolioView(QWidget):
             ]
         self.stress_history_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
         self.stress_history_table.resizeColumnsToContents()
+        self._constrain_stress_history_table_height()
         self.stress_history_table.selectionModel().currentRowChanged.connect(
             self._show_stress_history_record
         )
+
+    def _constrain_stress_history_table_height(self) -> None:
+        """限制歷史表格首屏高度，較長紀錄仍由表格內部捲動查閱。"""
+        model = self.stress_history_table.model()
+        row_count = model.rowCount() if model is not None else 0
+        visible_rows = min(max(row_count, 1), 7)
+        header_height = self.stress_history_table.horizontalHeader().sizeHint().height()
+        row_height = self.stress_history_table.verticalHeader().defaultSectionSize()
+        horizontal_scroll_height = self.stress_history_table.horizontalScrollBar().sizeHint().height()
+        logical_height = (
+            header_height
+            + row_height * visible_rows
+            + horizontal_scroll_height
+            + self.stress_history_table.frameWidth() * 2
+        )
+        self.stress_history_table.setMaximumHeight(logical_height)
 
     def _clear_stress_history_card(self) -> None:
         """清除已選快照，避免刷新或讀取失敗時保留舊值。"""

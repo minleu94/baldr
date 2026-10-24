@@ -1233,6 +1233,73 @@ def test_portfolio_stress_history_card_tracks_exact_selected_record(tmp_path):
     assert all(value.text() == "未提供" for value in view.stress_history_metric_values.values())
 
 
+def test_portfolio_stress_history_table_is_bounded_and_keeps_long_list_selection(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    records = tuple(
+        _stress_history_record(
+            record_id=f"stress-{index:02d}",
+            scenario_label=f"合成情境 {index:02d}",
+            status="ready",
+            base=str(index * 100),
+            stressed=str(index * 90),
+            delta=str(index * -10),
+            run_at=f"2026-10-{(index % 28) + 1:02d}T09:00:00Z",
+        )
+        for index in range(40)
+    )
+    view._render_stress_history(
+        SimpleNamespace(
+            status="ready",
+            db_path="synthetic://stress-history-40",
+            records=records,
+            blockers=(),
+            warnings=(),
+        )
+    )
+
+    table = view.stress_history_table
+    model = table.model()
+    assert model.rowCount() == 40
+    expected_max_height = (
+        table.horizontalHeader().sizeHint().height()
+        + table.verticalHeader().defaultSectionSize() * 7
+        + table.horizontalScrollBar().sizeHint().height()
+        + table.frameWidth() * 2
+    )
+    assert table.maximumHeight() == expected_max_height
+    assert table.minimumHeight() == 0
+    assert table.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded
+
+    view.resize(1280, 760)
+    view._toggle_advanced_portfolio(True)
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="stress")
+    view.stress_workspace_tabs.setCurrentIndex(1)
+    view.show()
+    app().processEvents()
+    assert table.isVisible()
+    assert view.stress_history_card.height() <= view.stress_history_card.sizeHint().height() + 20
+    table.setCurrentIndex(model.index(39, 0))
+    app().processEvents()
+    assert table.verticalScrollBar().maximum() > 0
+    assert view.stress_history_card_title.text() == "合成情境 39"
+    assert view.stress_history_metric_values["base_market_value"].text() == "3900"
+
+    view.stress_history_read_service = SimpleNamespace(
+        inspect=lambda: (_ for _ in ()).throw(OSError("synthetic read failure"))
+    )
+    view._load_stress_history()
+    assert table.model().rowCount() == 0
+    expected_empty_max_height = (
+        table.horizontalHeader().sizeHint().height()
+        + table.verticalHeader().defaultSectionSize()
+        + table.horizontalScrollBar().sizeHint().height()
+        + table.frameWidth() * 2
+    )
+    assert table.maximumHeight() == expected_empty_max_height
+    assert view.stress_history_card_title.text() == "選取一筆已保存紀錄"
+    view.close()
+
+
 def test_portfolio_stress_history_refresh_and_read_error_clear_selected_card(tmp_path):
     view = make_portfolio_view(tmp_path)
     record = _stress_history_record(

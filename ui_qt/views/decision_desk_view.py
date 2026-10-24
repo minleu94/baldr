@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QFrame,
+    QGridLayout,
 )
 
 from app_module.decision_desk_dtos import (
@@ -312,6 +313,23 @@ class DecisionDeskView(QWidget):
         visibility_cards = QHBoxLayout()
         self.revenue_visibility_card = MetricCard("月營收廣度", "尚未載入")
         self.institutional_visibility_card = MetricCard("三大法人市場流向", "尚未載入")
+        self.institutional_flow_bar = QWidget(self.institutional_visibility_card)
+        self.institutional_flow_bar.setObjectName("decisionDeskInstitutionalFlowBar")
+        self.institutional_flow_bar.setAccessibleName("三大法人買賣超相對分布")
+        self.institutional_flow_bar.setToolTip("三類法人淨買賣超股數；共用零軸，長度僅表示三者內相對大小。")
+        self.institutional_flow_bar_layout = QGridLayout(self.institutional_flow_bar)
+        self.institutional_flow_bar_layout.setContentsMargins(0, 3, 0, 0)
+        self.institutional_flow_bar_layout.setHorizontalSpacing(4)
+        self.institutional_flow_bar_layout.setVerticalSpacing(3)
+        self.institutional_flow_rows: dict[str, tuple[QLabel, QFrame, QLabel]] = {}
+        self.institutional_flow_zero_axis = QFrame(self.institutional_flow_bar)
+        self.institutional_flow_zero_axis.setObjectName("decisionDeskInstitutionalFlowZeroAxis")
+        self.institutional_flow_zero_axis.setAccessibleName("共用零軸")
+        self.institutional_flow_zero_axis.setFixedWidth(1)
+        self.institutional_flow_zero_axis.setStyleSheet(f"background-color: {MIDNIGHT_ANALYST.text_muted};")
+        self.institutional_flow_bar_layout.addWidget(self.institutional_flow_zero_axis, 0, 2, 3, 1)
+        self.institutional_flow_bar.hide()
+        self.institutional_visibility_card.layout().addWidget(self.institutional_flow_bar)
         visibility_cards.addWidget(self.revenue_visibility_card)
         visibility_cards.addWidget(self.institutional_visibility_card)
         self.visibility_section.layout.addLayout(visibility_cards)
@@ -491,6 +509,7 @@ class DecisionDeskView(QWidget):
         if self._closing:
             return
         self._clear_market_breadth_bar()
+        self._clear_institutional_flow_bar()
         if not self._historical_date_pinned:
             current_date = (
                 _current_taipei_decision_date()
@@ -557,6 +576,7 @@ class DecisionDeskView(QWidget):
 
     def _display_loading_snapshot(self) -> None:
         self._clear_market_breadth_bar()
+        self._clear_institutional_flow_bar()
         self.overall_status_label.setText("摘要載入中")
         self.generated_at_label.setText(
             f"判讀日：{self.as_of_date.isoformat()}｜產生時間：背景載入中"
@@ -891,6 +911,7 @@ class DecisionDeskView(QWidget):
     def _render_market_data_visibility(
         self, summary: MarketDataVisibilitySummary | None
     ) -> None:
+        self._clear_institutional_flow_bar()
         if summary is None:
             self.visibility_quality_badge.setText(self._visibility_quality_label("MISSING"))
             self.visibility_quality_badge.set_quality("missing")
@@ -941,7 +962,15 @@ class DecisionDeskView(QWidget):
                 f"投信 {self._format_share_count(institutional.investment_trust_net_shares)} 股｜"
                 f"自營商 {self._format_share_count(institutional.dealer_net_shares)} 股"
             )
+        institutional_warnings = tuple(getattr(institutional, "warnings", ()) or ())
+        if institutional_warnings and institutional.latest_date is not None and str(
+            institutional.quality
+        ).upper() != "MISSING":
+            institutional_text += "\n提示：" + "、".join(
+                str(item) for item in institutional_warnings
+            )
         self.institutional_visibility_card.value_label.setText(institutional_text)
+        self._render_institutional_flow_bar(institutional, summary.as_of_date)
 
         source_lines = [
             (
@@ -956,6 +985,103 @@ class DecisionDeskView(QWidget):
             self.visibility_quality_badge.setToolTip(
                 status_detail(quality, dimension="data") + "\n" + "\n".join(source_lines)
             )
+
+    def _clear_institutional_flow_bar(self) -> None:
+        for label, bar, amount in self.institutional_flow_rows.values():
+            self.institutional_flow_bar_layout.removeWidget(label)
+            self.institutional_flow_bar_layout.removeWidget(bar)
+            self.institutional_flow_bar_layout.removeWidget(amount)
+            label.setParent(None)
+            bar.setParent(None)
+            amount.setParent(None)
+            label.deleteLater()
+            bar.deleteLater()
+            amount.deleteLater()
+        self.institutional_flow_rows.clear()
+        self.institutional_flow_bar.hide()
+
+    def _render_institutional_flow_bar(
+        self, institutional: Any, summary_as_of_date: Any
+    ) -> None:
+        self._clear_institutional_flow_bar()
+        values = (
+            ("外資", getattr(institutional, "foreign_net_shares", None)),
+            ("投信", getattr(institutional, "investment_trust_net_shares", None)),
+            ("自營商", getattr(institutional, "dealer_net_shares", None)),
+        )
+        raw_quality = getattr(institutional, "quality", "UNKNOWN")
+        quality = str(getattr(raw_quality, "value", raw_quality)).upper()
+        if quality not in {"OBSERVED", "ESTIMATED", "DEGRADED"}:
+            return
+        if any(type(value) is not int for _, value in values):
+            return
+        source_date = getattr(institutional, "latest_date", None)
+        try:
+            source_cutoff = date.fromisoformat(source_date)
+            decision_date = (
+                summary_as_of_date
+                if type(summary_as_of_date) is date
+                else date.fromisoformat(summary_as_of_date)
+            )
+        except (TypeError, ValueError):
+            return
+        if (
+            source_cutoff.isoformat() != source_date
+            or type(decision_date) is not date
+            or source_cutoff > decision_date
+        ):
+            return
+
+        scale = max(abs(value) for _, value in values)
+        half_width = 52
+        for row_index, (name, value) in enumerate(values):
+            label = QLabel(name)
+            label.setObjectName(f"decisionDeskInstitutionalFlowLabel{row_index}")
+            label.setAccessibleName(name)
+            label.setMinimumWidth(42)
+            amount = QLabel(f"{value:+,} 股")
+            amount.setObjectName(f"decisionDeskInstitutionalFlowAmount{row_index}")
+            amount.setAccessibleName(f"{name}淨買賣超 {value:+,} 股")
+            amount.setToolTip(f"{source_date}｜{name}：{value:+,} 股｜品質：{quality}")
+            amount.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;")
+            bar = QFrame(self.institutional_flow_bar)
+            bar.setObjectName(f"decisionDeskInstitutionalFlowSegment{row_index}")
+            bar.setProperty("netShares", value)
+            bar.setProperty("relativeScaleMax", scale)
+            bar.setProperty("sourceDate", source_date)
+            bar.setProperty("quality", quality)
+            bar.setAccessibleName(f"{name} {value:+,} 股")
+            bar.setToolTip(f"{source_date}｜{name}：{value:+,} 股｜品質：{quality}")
+            color = (
+                MIDNIGHT_ANALYST.market_up
+                if value > 0
+                else MIDNIGHT_ANALYST.market_down
+                if value < 0
+                else MIDNIGHT_ANALYST.market_flat
+            )
+            bar.setStyleSheet(f"background-color: {color}; border-radius: 2px;")
+            length = 0 if scale == 0 else max(1, abs(value) * half_width // scale)
+            bar.setFixedHeight(10)
+            bar.setFixedWidth(length if value else 3)
+            self.institutional_flow_bar_layout.addWidget(label, row_index, 0)
+            if value < 0:
+                self.institutional_flow_bar_layout.addWidget(
+                    bar, row_index, 1, alignment=Qt.AlignRight | Qt.AlignVCenter
+                )
+            else:
+                self.institutional_flow_bar_layout.addWidget(
+                    bar, row_index, 3, alignment=Qt.AlignLeft | Qt.AlignVCenter
+                )
+            self.institutional_flow_bar_layout.addWidget(amount, row_index, 4)
+            self.institutional_flow_rows[name] = (label, bar, amount)
+
+        self.institutional_flow_bar_layout.setColumnMinimumWidth(1, half_width)
+        self.institutional_flow_bar_layout.setColumnMinimumWidth(2, 1)
+        self.institutional_flow_bar_layout.setColumnMinimumWidth(3, half_width)
+        self.institutional_flow_bar.setAccessibleDescription(
+            f"資料日 {source_date}；品質 {quality}；單位股；三列共用零軸與相對尺度，最大絕對值 {scale:,} 股。"
+        )
+        self.institutional_flow_bar.show()
 
     def _render_answer_first_dashboard(self, snapshot: DecisionDeskSnapshot) -> None:
         action = getattr(snapshot, "action_summary", None)

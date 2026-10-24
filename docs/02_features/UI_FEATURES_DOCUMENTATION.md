@@ -6,6 +6,8 @@
 
 市場總覽的市況廣度直接呈現快照原家數：缺欄為「未提供」，實際整數零為 `0`；廣度比率缺欄為「未知」。在「完整市場資料」內，三個非負整數家數、正總數、可辨識品質及不晚於判斷日的來源日同時存在時，另顯上漲紅／下跌綠／平盤中性家數比例條、精確家數圖例與來源日／品質；載入、缺件、錯誤或無效日期時清除。條長只反映當次已載家數，不是指數報酬、交易訊號或新廣度比率。此展示不計算替代值，也不改來源或判斷資格；固定 EXE 尚未包含 M98。
 
+「資料可見性與擴充因子 → 三大法人市場流向」沿原 `InstitutionalFlowMarketSummary` 的外資、投信、自營商淨股數，在完整三個整數、可辨識品質及不晚於判斷日的有效來源日期時，加入共用零軸的正負相對條；正值紅、負值綠、真零中性。圖下方原精確股數、資料日、涵蓋檔數與警示保留，圖中另標精確帶號股數與同次三者最大絕對值尺度；缺值、無效日期、載入／錯誤不畫舊圖。視覺長度只比較本次三個淨股數，不是市場報酬、交易指令或新來源資格；固定 EXE 尚未包含 M99。
+
 市場總覽的資料品質、提示數與首條提示保留在摘要區，完整警示預設收合並可展開。缺件或降級即使沒有額外提示，摘要仍明示原品質狀態；完整 `WarningList` 內容可供追溯。
 
 2026-10-23 後繼原始碼把市場診斷中已知的抓取失敗及日期不可用／晚於判斷日轉成可讀短句；市場情勢的有效資料日未知、偵測器降級與備援有效資料日也按原服務警告顯示，備援時保留原日期，不把未知日期視為當日行情。舊「Why Not」畫面標題顯示為「風險提示」；未知診斷碼仍保留原文供追查。Paper 保存評估的選取、原快照與讀取時間標籤改為中文，空清單提示明確的保存／重載步驟；仍須明選 exact receipt／snapshot。個股報告的持倉頁新增四張持倉與風險速覽卡，沿原持倉 DTO 顯示損益、損益率、健康與退出狀態，缺值保留「未提供」，下方原成本表與來源／理由仍可查看；這些呈現不建立交易動作。
@@ -479,7 +481,7 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 - 決策工作台的 Paper 部位導覽是另一條 same-version 當前表定位路徑：Main 僅在 Portfolio 接受排入後切頁，Portfolio 下一輪刷新再用自己的 read model 比對全部版本與 position identity。它不取代已保存健康評估的歷史 exact 回訪，source mismatch 時不選同股票的其他帳本。此 Source 候選尚未納入固定03；正常 Main／新程序未驗證。
 - 頂端摘要只顯示有最新價格持倉的「持倉市值（未含現金）」；缺價格會顯示 N/A 與缺漏股票，不把投入金額／已實現損益冒充完整 NAV。
 - 情境壓力：由 `PortfolioStressLabService` 對已標記持倉套用固定、可重播的研究情境；缺價只做部分計算，輪動／來源中斷等缺少必要輸入時 fail-closed，不寫資料、不改持倉、不產生交易指令。
-- Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果。「情境壓力」內的「目前情境／已保存歷史」子頁分開即時結果與只讀回訪；選取歷史列後，同筆卡片並列原基準市值、壓力後市值與變動（TWD）、情境、日期、覆蓋和狀態。`PortfolioStressHistoryReadService` 仍 query-only，缺 DB 不初始化，原表與 hash 保留；缺值／真零分開，換列、刷新、空結果及讀取錯誤清除舊卡，固定揭露研究用途與 `writes_allowed=false`。不計算跨情境排名、跌幅或預測。
+- Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果。「情境壓力」內的「目前情境／已保存歷史」子頁分開即時結果與只讀回訪；選取歷史列後，同筆卡片並列原基準市值、壓力後市值與變動（TWD）、情境、日期、覆蓋和狀態。M100 將歷史表可見高度限制在最多約七列，超過時用表內垂直捲動，選列卡保持內容高度；換模型或讀取失敗會重算空表高度。`PortfolioStressHistoryReadService` 仍 query-only，缺 DB 不初始化，原表與 hash 保留；缺值／真零分開，換列、刷新、空結果及讀取錯誤清除舊卡，固定揭露研究用途與 `writes_allowed=false`。不計算跨情境排名、跌幅或預測；固定 EXE 尚未包含 M100。
 - Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；畫面顯示 raw 累積筆數與最新可採用 snapshot，遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。操作控制改三列雙欄以保留較窄畫面及高 DPI 下的完整名稱；缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
 - Paper Trade Ledger v1：由獨立 append-only contract 保存研究用 fill event，要求 requested／filled 數量、狀態、Decimal 成本、turnover、execution gap 與來源；Portfolio readiness 會唯讀顯示 ledger 狀態與 full／partial／reject／override 統計，缺欄位不放行 weekly report。
 - Paper 成交 CSV：Paper Portfolio 分頁可先預覽完整 execution CSV，要求狀態、reference／fill price、Decimal 成本、turnover、execution gap 與來源事件；只有二次確認且檔案 hash 未變更才由 `PaperTradeImportService` atomic append 至 Paper Trade Ledger，不更新手動 Portfolio、snapshot 或 broker。

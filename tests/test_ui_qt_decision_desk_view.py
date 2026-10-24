@@ -1167,3 +1167,146 @@ def test_decision_desk_market_breadth_bar_hides_invalid_or_unqualified_data_and_
     assert view.market_breadth_legend.text() == ""
     assert view.market_breadth_caption.text() == ""
     view.close()
+
+
+def _institutional_visibility(
+    *,
+    foreign=120,
+    trust=-60,
+    dealer=0,
+    quality="OBSERVED",
+    warnings=(),
+    source_date="2026-06-15",
+    decision_date="2026-06-15",
+):
+    return MarketDataVisibilitySummary(
+        as_of_date=decision_date,
+        monthly_revenue=MonthlyRevenueBreadthSummary(
+            latest_period=None,
+            stock_count=0,
+            mom_comparable_count=0,
+            mom_positive_count=0,
+            mom_positive_ratio_bp=None,
+            yoy_comparable_count=0,
+            yoy_positive_count=0,
+            yoy_positive_ratio_bp=None,
+            quality="MISSING",
+        ),
+        institutional_flow=InstitutionalFlowMarketSummary(
+            latest_date=source_date,
+            stock_count=1200,
+            foreign_net_shares=foreign,
+            investment_trust_net_shares=trust,
+            dealer_net_shares=dealer,
+            quality=quality,
+            warnings=warnings,
+        ),
+        source_statuses=(),
+        overall_quality=quality,
+    )
+
+
+def test_decision_desk_institutional_flow_bar_uses_signed_values_and_common_zero_axis():
+    app()
+    view = rendered_view(
+        FakeBuilder(_snapshot(market_data_visibility=_institutional_visibility()))
+    )
+
+    assert view.institutional_flow_bar.objectName() == "decisionDeskInstitutionalFlowBar"
+    assert not view.institutional_flow_bar.isHidden()
+    assert view.institutional_flow_zero_axis.objectName() == "decisionDeskInstitutionalFlowZeroAxis"
+    assert set(view.institutional_flow_rows) == {"外資", "投信", "自營商"}
+    foreign_bar = view.institutional_flow_rows["外資"][1]
+    trust_bar = view.institutional_flow_rows["投信"][1]
+    dealer_bar = view.institutional_flow_rows["自營商"][1]
+    assert foreign_bar.property("netShares") == 120
+    assert trust_bar.property("netShares") == -60
+    assert foreign_bar.property("relativeScaleMax") == 120
+    assert foreign_bar.width() == 52
+    assert trust_bar.width() == 26
+    assert dealer_bar.width() == 3
+    assert "資料日 2026-06-15" in view.institutional_flow_bar.accessibleDescription()
+    assert "品質 OBSERVED" in view.institutional_flow_bar.accessibleDescription()
+    assert "外資：+120 股" in view.institutional_flow_rows["外資"][2].toolTip()
+    assert "外資 120 股" in view.institutional_visibility_card.value_label.text()
+
+
+def test_decision_desk_institutional_flow_bar_shows_degraded_quality_and_warnings():
+    app()
+    visibility = _institutional_visibility(
+        quality="DEGRADED", warnings=("來源範圍有限",)
+    )
+    view = rendered_view(FakeBuilder(_snapshot(market_data_visibility=visibility)))
+
+    assert not view.institutional_flow_bar.isHidden()
+    assert view.institutional_flow_rows["外資"][1].property("quality") == "DEGRADED"
+    assert "品質 DEGRADED" in view.institutional_flow_bar.accessibleDescription()
+    assert "提示：來源範圍有限" in view.institutional_visibility_card.value_label.text()
+
+
+def test_decision_desk_institutional_flow_bar_hides_for_missing_or_invalid_values():
+    app()
+    view = rendered_view(
+        FakeBuilder(
+            _snapshot(
+                market_data_visibility=_institutional_visibility(foreign=None)
+            )
+        )
+    )
+    assert view.institutional_flow_bar.isHidden()
+    assert view.institutional_flow_rows == {}
+    assert "外資 N/A 股" in view.institutional_visibility_card.value_label.text()
+
+    missing = _institutional_visibility(quality="MISSING", warnings=("來源缺件",))
+    view._render_market_data_visibility(missing)
+    assert view.institutional_flow_bar.isHidden()
+    assert "來源缺件" in view.institutional_visibility_card.value_label.text()
+
+
+def test_decision_desk_institutional_flow_bar_clears_on_rerender_and_pending_state():
+    app()
+    view = rendered_view(
+        FakeBuilder(_snapshot(market_data_visibility=_institutional_visibility()))
+    )
+    assert not view.institutional_flow_bar.isHidden()
+
+    view._render_market_data_visibility(None)
+    assert view.institutional_flow_bar.isHidden()
+    assert view.institutional_flow_rows == {}
+
+    view._render_market_data_visibility(_institutional_visibility())
+    assert not view.institutional_flow_bar.isHidden()
+    assert len(
+        view.institutional_flow_bar.findChildren(
+            QFrame, "decisionDeskInstitutionalFlowSegment0"
+        )
+    ) == 1
+    view._render_market_data_visibility(_institutional_visibility())
+    assert len(
+        view.institutional_flow_bar.findChildren(
+            QFrame, "decisionDeskInstitutionalFlowSegment0"
+        )
+    ) == 1
+    view._display_loading_snapshot()
+    assert view.institutional_flow_bar.isHidden()
+
+    view._render_market_data_visibility(_institutional_visibility())
+    view._display_pending_snapshot()
+    assert view.institutional_flow_bar.isHidden()
+    assert view.institutional_flow_rows == {}
+    view.close()
+
+
+def test_decision_desk_institutional_flow_bar_rejects_future_or_invalid_dates_but_keeps_text():
+    app()
+    future = _institutional_visibility(source_date="2026-06-16")
+    view = rendered_view(FakeBuilder(_snapshot(market_data_visibility=future)))
+    assert view.institutional_flow_bar.isHidden()
+    assert "2026-06-16｜1200 檔" in view.institutional_visibility_card.value_label.text()
+    assert "外資 120 股" in view.institutional_visibility_card.value_label.text()
+
+    invalid_decision_date = _institutional_visibility(decision_date="not-a-date")
+    view._render_market_data_visibility(invalid_decision_date)
+    assert view.institutional_flow_bar.isHidden()
+    assert "外資 120 股" in view.institutional_visibility_card.value_label.text()
+    view.close()

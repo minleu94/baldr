@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M98；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M100；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M98 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M100 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -96,3 +96,11 @@ Luna 唯讀去重後指出市場總覽的市況廣度已有原家數與來源比
 Stress 長表未改產品程式。隔離正常 Main 1280×760／真 DPI144 注入 40 筆合成保存紀錄，選第 1／21／40 筆時同筆 TWD 原值與 partial 缺值卡片正確，重繪成單筆後清舊；渲染 46.5 ms。證據 `.../native_m98_stress_40_evidence/run_9639ec3fc3c24d1c9d84e7624b88ed3d/`，Job 收據 `.../single_owned_qa_744be3436f6f4ab6a302ae46d1e5de63/receipt.json`。首兩輪腳本過早注入，被 Portfolio 原背景載入覆蓋；原失敗收據 `.../single_owned_qa_1a95f37156774f6985a7d1aa8ae4b866/receipt.json`、`.../single_owned_qa_1dde9569ecc74d34aabd82d775db64be/receipt.json` 保留。40 筆外層長頁選列卡與末列不一定同屏，後續需在正式授權副本和實際操作下再評估表格導覽；本次不據合成腳本稱正式性能或 Owner UAT 通過。
 
 M1–M98 編號含唯讀審查與 QA 專項，不代表 98 個功能。原始碼工程階段已盤點；正式來源／自然排程、其他 OS DPI、Light（若正式支援）、固定新版 EXE、Owner UAT、M73／M75 契約及完整產品 Gate 保留獨立驗收。
+
+## M99／M100 法人流向圖與 Stress 長表版面
+
+Luna `/root/m99_research_cards_audit` 唯讀去重指出三大法人市場淨股數已有同次 typed DTO，但首頁仍為長文字。`/root/m99_institutional_flow_bars` 單一 writer 只改 Decision Desk View 與測試；Sol 複核要求舊 row widget 清除時先解除 parent，並禁止來源日晚於 decision as-of 或日期無效仍畫圖。最終在原 `MetricCard` 內以共用零軸顯外資／投信／自營商原整數股數的正負相對條，真零為中性短標記；原文字、精確股數、來源日、涵蓋檔數、品質與警示仍可核。條長只相對於同次三者最大絕對值，沒有改來源服務、DTO、金融公式、PIT、交易或資格。真 Windows DPI144（150%）的原 View HEAD 基線、後版 1280×760／900×760 與正常 Main 1280×760 已目視，局部可讀圖在 `output/tasks/baldr-opus-ux-implementation/root/native_m99_flow_evidence/run_28cdc2b4dbd84a589b4063e21ebfe50e/`；Job 收據 `.../single_owned_qa_f1b5e8d17c03477ab9976e7a0e6e0e6f/receipt.json`。
+
+Luna `/root/m99_portfolio_longlist_audit` 判定 M98 末列不同屏的原截圖受 harness 外層捲動定位影響，不能單獨判產品 defect；但 Stress 已保存歷史的長表無高度上限，有合理的可讀性改善空間。`/root/m100_stress_history_layout` 單一 writer 只改 Portfolio View 與測試，將表格可見高度封頂約七列，保留內部垂直／水平捲動；讀取錯誤時空模型重算高度。Sol 的首次正常 Main 畫面發現封頂後多餘高度被上方卡片吃掉，導致卡片巨大，雖 Job exit0 仍未接受；原圖及收據 `.../native_m100_stress_evidence/run_35b3fac0b3dd40e6b2185ac99f4318d7/`、`.../single_owned_qa_57067afe29b84b47bf05eb8de1bb1cfc/receipt.json` 保留。Sol 修卡片內容高度與表下 stretch 後，同樣 40 筆合成紀錄的正常 Main 1280×760／真 DPI144 首、中、末選列皆精確顯同筆原 TWD 值，末筆 selected row 與卡片同屏，缺值未補零；最終原生圖／JSON `.../native_m100_stress_evidence/run_cf43287112704c40ac411c05f0e277b3/`，Job 收據 `.../single_owned_qa_dffb9f25c71a4b70816682d7620fb18e/receipt.json`。未改 Stress 公式、reader、保存、私人 Portfolio 或交易。
+
+第一輪受控聚焦 `.../single_owned_qa_052cdb10815746b38a5646890805cda1/receipt.json` 是 **1 fail／110 pass**：測試只選內層歷史 tab，未展開 Portfolio 進階工作區；Workbench85、validator25/0/4、mypy1144、編譯均通過。修測試路徑後 111 focused 通過；Sol 視覺修卡後的最終共同收據 `.../single_owned_qa_b675e08449fa4116b84b3476bea63422/receipt.json` 為編譯、**111 focused**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無剩餘 PID 或強制清理。這些都是隔離合成與單一真 OS DPI 的原始碼證據；正式來源、其他 DPI、固定新版 EXE、Owner UAT 及完整產品 Gate 沒有因此接受。M1–M100 編號含審查與 QA 專項，不代表 100 個獨立功能。

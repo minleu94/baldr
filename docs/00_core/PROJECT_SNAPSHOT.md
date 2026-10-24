@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M99–M100 延續市場與持倉研究 UX：市場總覽的三大法人原淨股數卡新增共用零軸的三列正負條，原股數、日期、涵蓋數、品質與警示仍可核；已保存 Stress 歷史表限制可見高度並保留表內捲動，使 40 筆合成末列與同筆 TWD 選列卡在正常 Main 1280×760、真 Windows DPI144 同屏可讀。Sol 目視修正首版 Stress 卡過度撐高後才接受。最終受控編譯、兩頁聚焦 **111 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean；圖卡另驗 900×760 隔離 View。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m99m100-法人流向圖與-stress-長表版面)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 仍未驗。
+
 M98 在市場總覽「完整市場資料」的市況廣度原家數文字下加入上漲／下跌／平盤的紅／綠／中性比例條，仍列原家數、來源日與品質；缺件、零總數或無效日期不畫條，條長不代表指數報酬。決策工作台聚焦 **35 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** 與編譯通過；真 Windows DPI144（150%）的 1280×760 原 View 前後及正常 Main 合成截圖已目視。另以隔離合成 40 筆 Stress 歷史驗正常 Main 首／中／末選列、缺值與清舊，未改 Stress 程式。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m98-市況廣度比例條與-stress-長表補驗)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 未驗。
 
 M97 在「系統狀態 → 營運排程 → 決策證據擷取」的原唯讀終態文字下加入階段耗時橫條：同次已保存事件依原順序最多顯示 32 筆，保留精確／截限毫秒文字、原狀態與安全例外類型；條長只相對於本次顯示最長階段，不代表總耗時、成功或金融資格。選列、篩選、刷新、缺型別或空結果會清舊。Sol 原生複核發現初稿把同名失敗事件誤標未完成，已改為僅在原終態文字保留未完成階段清單。最終受控編譯、Runtime 聚焦 **19 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** 檔 clean；真 Windows DPI144（150%）的原 View 前後圖與正常 Main 1280×760 合成畫面已目視。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m97-runtime-階段耗時圖與工程收尾)。正式排程／資料、固定 EXE、Owner UAT 與完整產品 Gate 仍待各自驗收。

@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M166 後繼 UI：資料更新頁狀態卡把「最新／異常／執行中／部分完成／未檢查」等既有判斷接到獨立作業狀態色；來源治理表的 `blocked_provenance`／`audit_unavailable` 亦改用錯誤狀態色，避免與台股紅漲綠跌混淆。原狀態文字、日期、原碼、來源資格及金融資料不變；「最新」僅述既有資料狀態，不代表剛完成更新。Sol 複核 compile0、focused102、validator25／0／4、mypy1,144；真 Windows DPI216 的 1280×760／1500×900 同資料前後卡片及正常 Main 更新入口六圖、callback0。正式／私人來源、其他 DPI／Light／1920、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m166-資料更新狀態色與原生對照)。
+
 M163–M165 後繼 UI：Runtime「最近重大違規」在尚未讀取／無違規／歷史或事件不可讀時不再常駐紅色，只有目前可核的重大違規用獨立錯誤色；整體治理健康亦改用獨立狀態色。Workbench 徽章與表格、Research Console 狀態列沿 M162 token 分清已觀測、已接受、候選、降級、缺件及未知，保留原碼與研究身份，不改台股紅漲綠跌、資料／金融契約或注意列判斷。Sol 審查後修兩輪測試假設及 Runtime 原生畫面揭出的剩餘舊色；最終 compile0、focused102、Workbench85、validator25／0／4、mypy1,144，真 Windows DPI216 的 1280×760／1500×900 隔離合成元件 18 圖、callback0。正式／私人來源、正常 Main 全旅程、其他 DPI／Light／1920、固定 EXE、Owner UAT 與完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m163m165-狀態語義遷移與原生複核)。
 
 M161／M162 後繼 UI：兩位 Luna 唯讀去重，市場／題材與研究頁沒有可用現成 typed DTO、又不重複的安全新圖。Sol 補 M160 的正常 Main 外殼整合：隔離空資料根、合成 Advice DTO，真 OS DPI216 的 1280×760／1500×900 六張摘要／選列／長警告圖，沙箱 DB SHA 不變、callback0；這不等於自然 producer 或正式來源。M162 由 Luna 單一 writer 將共用狀態色從台股紅漲綠跌分開：已觀測藍、就緒／完成 teal、估計／降級 amber、缺件／阻擋 orchid、未知中性；QSS 狀態標籤、StatusBadge、SemanticChip 同步，原 market_*、舊相容 token、金融值與資格不動。Sol 核 focused20、Workbench85、validator25／0／4、mypy1,144、compile0；真 DPI216 兩尺寸狀態對照原生圖可讀。正式資料、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m161-main-外殼-advice-整合驗證)。

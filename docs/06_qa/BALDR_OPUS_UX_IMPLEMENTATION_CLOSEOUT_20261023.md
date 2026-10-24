@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M165；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M166；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M165 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M166 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -565,3 +565,11 @@ Sol 首輪受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned
 真 Windows OS DPI216 的隔離合成 PySide6 Runtime／Workbench／Research Console 元件於 1280×760 和 1500×900 拍 18 PNG，包含 Runtime 未讀→目前重大違規→清除、實際 Workbench 狀態徽章與 Research 表格原狀態及顏色。最終 `output/tasks/baldr-opus-ux-implementation/root/native_m163_m165_evidence/run_04c2968eafec4efc83a6a2c5f4b588b5/result.json`、Job `.../single_owned_qa_83de141fd44a4198b41b2c4f39eded96/receipt.json` exit0、callback exception0。Sol 目視 Runtime orchid／teal／中性狀態與 Research 各列可讀；初版只拍全視窗使 Runtime 目標列不在圖中，後改拍實際治理 group 與徽章，原圖保留但不作目視接受。這是獨立原生元件與合成 DTO，不是正常 Main 全導航、自然 reader 或正式來源驗收。
 
 M1–M165 是審查、裁決、QA 與實作切片序號，並非 165 個獨立功能。Opus 起始審查因用量耗盡而由 Antigravity 續作六份主報告，Sol 對照現行程式、金融契約與已做 UX 去重後安排 Luna，拒絕無用途資格的跨期強弱及無逐邊證據的有向供應鏈圖。前述盤點及各 M 段構成從排程啟動至今的工程清冊；原始碼與隔離 QA 完成不代表正式金融、產品或真人接受。仍待具名安全唯讀正式來源、自然排程、真 OS 100%／125%／150% 全旅程、Light（若正式支援）、1920 可用工作區、固定新版 EXE、Owner UAT 及完整產品 Gate；M73 決策品質控制範圍和 M75 來源／時鐘／用途契約另待裁決。沒有更動策略績效公式、PIT／來源資格、正式或私人資料、其他排程、交易路徑，也未 push、merge 或部署。
+
+## M166 資料更新狀態色與原生對照
+
+兩位 Luna 唯讀定位「資料與更新」殘餘誤導色：`StatusCard` 的原「最新」綠色與台股下跌撞色，錯誤紅色與台股上漲撞色；P0 來源治理表 `blocked_provenance`／`audit_unavailable` 仍沿紅色。Luna `/root/m160_market_audit` 單一 writer 只改 `ui_qt/views/update_view.py`、`tests/test_ui_qt_update_view_workbench.py`。Sol 靜態審查確認只搬移顯示色至 M162 狀態 token，沒有改 StatusCard 原狀態分類、文字、日期、來源資格或任何金融值。磁碟預檢阻擋仍寫「需處理」且改用錯誤狀態色；候選研究紫色維持。「最新」只表示既有檢查的資料狀態，不表示剛完成更新。
+
+首輪受控 QA `root/single_owned_qa_1cd4de8d1aee4db084cef048978bfd6f/receipt.json` exit1：focused 101 pass／1 fail，是舊測試仍斷言「未檢查」使用原灰色色碼；compile、validator、mypy 當輪已過。Sol 更新該斷言後，最終 `root/single_owned_qa_38947b152aa24845bd1864a90af7c182/receipt.json` exit0：compile0、更新頁與主題 focused **102 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** 檔 clean，Job 8 GiB／12 程序無殘留。新測試核卡片原文不變、阻擋／候選／未知及 P0 表格前景與總覽色。
+
+原生 before 使用前一提交 `d2f440f20c5f3e7b7f7f401b9e44797acc52e245` 的實際 StatusCard 類別；after 使用當前類別，同六組合成狀態與原文，在真 Windows DPI216 的 1280×760／1500×900 拍四張對照圖，另在隔離正常 Main「資料與更新」入口拍兩張。結果 `output/tasks/baldr-opus-ux-implementation/root/native_m166_update_evidence/run_5470bdc54cc84e999361be4e1ecc203a/result.json`，受控 Job `root/single_owned_qa_9e1a71811b62487799f3b6afd756abc5/receipt.json` exit0、callback0、關窗無 worker 殘留。Sol 目視卡片狀態文字與日期保留、狀態色可與行情方向區辨，Main 的卡片及側欄未裁切。這些限合成狀態與真 OS DPI216；正式／私人來源、100%／125%／150% 全旅程、Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 尚未接受。M1–M166 是審查、實作及 QA 切片序號，不是 166 個獨立功能。

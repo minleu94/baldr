@@ -129,7 +129,9 @@ class StatusCard(QFrame):
             f"<span style='font-size:12px; font-weight:bold; "
             f"color:{MIDNIGHT_ANALYST.text_primary};'>{title_prefix}{title}</span>"
         )
-        self.indicator_label = QLabel("<span style='font-size:11px; color:#94a3b8;'>未檢查</span>")
+        self.indicator_label = QLabel(
+            f"<span style='font-size:11px; color:{MIDNIGHT_ANALYST.text_muted};'>未檢查</span>"
+        )
 
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
@@ -233,7 +235,7 @@ class StatusCard(QFrame):
         """
         raw_status = str(status or "").strip().lower()
         if not raw_status or raw_status in {"unknown", "未知", "未檢查"}:
-            label, color = "未檢查", "#94a3b8"
+            label, color = "未檢查", MIDNIGHT_ANALYST.text_muted
         elif (
             raw_status.startswith(("error", "failed", "failure", "exception"))
             or raw_status.startswith(("missing", "empty", "unavailable", "缺漏", "不可用"))
@@ -247,7 +249,7 @@ class StatusCard(QFrame):
             }
             or any(marker in text for marker in ("錯誤", "失敗", "異常"))
         ):
-            label, color = "異常", "#ef4444"
+            label, color = "異常", MIDNIGHT_ANALYST.status_error
         elif raw_status in {
             "ok",
             "success",
@@ -258,13 +260,13 @@ class StatusCard(QFrame):
             "完成",
         }:
             if "immutable" in text.lower() or "唯讀快照" in text:
-                label, color = "待更新", "#eab308"
+                label, color = "待更新", MIDNIGHT_ANALYST.status_warning
             else:
-                label, color = "最新", "#22c55e"
+                label, color = "最新", MIDNIGHT_ANALYST.status_success
         elif raw_status in {"running", "in_progress", "started", "執行中", "進行中"}:
-            label, color = "進行中", "#38bdf8"
+            label, color = "進行中", MIDNIGHT_ANALYST.status_info
         elif raw_status in {"partial", "部分完成", "部分可用"}:
-            label, color = "部分完成", "#fbbf24"
+            label, color = "部分完成", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {
             "degraded",
             "warning",
@@ -272,7 +274,7 @@ class StatusCard(QFrame):
             "需注意",
             "freshness 異常",
         }:
-            label, color = "需注意", "#fbbf24"
+            label, color = "需注意", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {
             "action_required",
             "需處理",
@@ -281,16 +283,24 @@ class StatusCard(QFrame):
             "direct_chain_storage_preflight_blocked",
             "磁碟空間不足",
         }:
-            label, color = "需處理", "#f59e0b"
+            color = (
+                MIDNIGHT_ANALYST.status_error
+                if raw_status in {
+                    "blocked_insufficient_storage",
+                    "direct_chain_storage_preflight_blocked",
+                }
+                else MIDNIGHT_ANALYST.status_warning
+            )
+            label = "需處理"
         elif raw_status in {
             "official_no_data",
             "no_data",
             "no_data_skipped_dates",
             "官方無資料",
         }:
-            label, color = "官方無資料", "#fbbf24"
+            label, color = "官方無資料", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {"date_mismatch", "日期不符"}:
-            label, color = "日期不符", "#fbbf24"
+            label, color = "日期不符", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {
             "waiting_for_external_input",
             "waiting_for_formal_inputs",
@@ -299,7 +309,7 @@ class StatusCard(QFrame):
             "等待 formal 輸入",
             "等待真實時間",
         }:
-            label, color = "等待輸入", "#fbbf24"
+            label, color = "等待輸入", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {
             "pending_human_review",
             "manual_review_required",
@@ -307,12 +317,12 @@ class StatusCard(QFrame):
             "待人工覆核",
             "待治理審核",
         }:
-            label, color = "待人工覆核", "#fbbf24"
+            label, color = "待人工覆核", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {
             "not_computable",
             "not_computable_cost_ledger_missing",
         } or raw_status.startswith("尚不可計算"):
-            label, color = "尚不可計算", "#fbbf24"
+            label, color = "尚不可計算", MIDNIGHT_ANALYST.status_warning
         elif raw_status in {
             "candidate_available",
             "candidate_only",
@@ -346,7 +356,7 @@ class StatusCard(QFrame):
             "尚未觀測",
             "尚未建立",
         }:
-            label, color = "未設定", "#94a3b8"
+            label, color = "未設定", MIDNIGHT_ANALYST.text_muted
         elif raw_status in {
             "blocked",
             "merge_blocked",
@@ -357,9 +367,9 @@ class StatusCard(QFrame):
             "invalid",
             "格式異常",
         }:
-            label, color = "已阻擋", "#ef4444"
+            label, color = "已阻擋", MIDNIGHT_ANALYST.status_error
         else:
-            label, color = "待更新", "#eab308"
+            label, color = "待更新", MIDNIGHT_ANALYST.status_warning
         return f"<span style='font-size:11px; color:{color};'>{label}</span>"
 
     def toPlainText(self) -> str:
@@ -3519,8 +3529,8 @@ class UpdateView(QWidget):
             "research_shadow": "#a78bfa",
             "contract_only": "#a78bfa",
             "governance_review": "#f59e0b",
-            "blocked_provenance": "#ef4444",
-            "audit_unavailable": "#ef4444",
+            "blocked_provenance": MIDNIGHT_ANALYST.status_error,
+            "audit_unavailable": MIDNIGHT_ANALYST.status_error,
             "not_available": "#94a3b8",
         }.get(str(status or "").strip().lower(), "#94a3b8")
 

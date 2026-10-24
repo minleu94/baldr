@@ -1,5 +1,7 @@
 ﻿# UI 功能文件（Qt）
 
+M166「資料與更新」的狀態卡沿原始狀態文字顯示獨立作業狀態色：最新 teal、錯誤／阻擋 orchid、進行中資訊藍、部分／降級／需處理 amber、未檢查／未設定中性；研究候選保留紫色。磁碟預檢阻擋仍寫「需處理」，但以錯誤色標示阻擋；P0 來源治理表的來源阻擋及審核不可用也用錯誤色。原日期、缺件、來源碼和資格維持，狀態色不是行情方向。真 DPI216 的兩尺寸前後及 Main 畫面、測試收據見[限定 QA](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m166-資料更新狀態色與原生對照)。
+
 M163–M165 將 M162 狀態軸接到 Runtime 治理健康／重大違規、Workbench 徽章與表格、Research Console 狀態列。`observed`、`verified` 及 Workbench 的研究候選／`active_model` 用資訊藍，`accepted`／`ready`／`done` 用 teal，降級／待處理用 amber，缺件／阻擋／目前重大違規用 orchid，未知／停用為中性；Research Console 的候選仍用原紫色，fixture／replay 保留原灰色。Runtime 從目前違規切到無違規、歷史或讀取錯誤會清掉錯誤色，歷史事件不表示目前有違規。原狀態碼、原注意列判斷、DTO／來源資格、台股 market_* 與金融計算不變；[限定 QA 與原生畫面](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m163m165-狀態語義遷移與原生複核)不等於正式產品 Gate。
 
 M162 共用狀態色：QLabel 的 statusTone、StatusBadge 和 SemanticChip 用獨立狀態 token，已觀測／人工觀測以資訊藍表示，ready／done／passed 為 teal，估計／降級與需人工處理為 amber，缺件／阻擋／critical 為 orchid，unknown／off 中性。台股 market_up 紅、market_down 綠、market_flat 中性與原狀態文字保持；狀態顏色不是行情方向、正式來源資格或交易訊號。真 OS DPI216 兩尺寸原生樣本及受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m162-共用狀態色與市場方向色隔離)；Light、其他 DPI 與完整 Gate 未驗。

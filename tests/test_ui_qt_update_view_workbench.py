@@ -9,9 +9,11 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QLabel, QListWidget, QPushButton, QStackedWidget, QMessageBox, QDateEdit, QTextEdit, QGroupBox
 import pandas as pd
 
+from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.update_view import StatusCard, UpdateView
 from app_module.update_status_history import append_update_status_history
 from data_module.p0_source_contract_registry import P0_SOURCE_IDS
@@ -330,6 +332,30 @@ def test_update_view_projects_p0_routes_fallback_and_pit_into_status_table(tmp_p
     assert view.p0_source_control_table.wordWrap() is True
     assert view.p0_source_control_table.textElideMode() == Qt.ElideNone
     assert view.p0_source_control_table.columnWidth(8) == 300
+
+
+def test_p0_source_status_table_uses_error_token_for_blocked_provenance():
+    view = make_view()
+
+    view._render_p0_source_control_status(
+        {
+            "status": "audit_unavailable",
+            "source_count": 1,
+            "rows": [
+                {
+                    "source_id": "fixture_source",
+                    "label": "Fixture source",
+                    "governance_status": "blocked_provenance",
+                }
+            ],
+        }
+    )
+
+    status_item = view.p0_source_control_table.item(0, 1)
+    assert status_item is not None
+    assert status_item.text().startswith("blocked_provenance")
+    assert status_item.foreground().color() == QColor(MIDNIGHT_ANALYST.status_error)
+    assert f"color: {MIDNIGHT_ANALYST.status_error}" in view.p0_source_control_summary_label.styleSheet()
 
 
 def test_update_view_projects_license_candidate_capture_status(tmp_path):
@@ -1129,8 +1155,8 @@ def test_status_card_does_not_turn_green_for_latest_text_when_status_is_error():
     card.setPlainText("最新可用日：2026-06-17\n狀態：error: no such table")
 
     assert "異常" in card.indicator_label.text()
-    assert "#ef4444" in card.indicator_label.text()
-    assert "#22c55e" not in card.indicator_label.text()
+    assert MIDNIGHT_ANALYST.status_error in card.indicator_label.text()
+    assert MIDNIGHT_ANALYST.status_success not in card.indicator_label.text()
 
 
 def test_status_card_marks_localized_unavailable_as_abnormal():
@@ -1140,7 +1166,7 @@ def test_status_card_marks_localized_unavailable_as_abnormal():
     card.setPlainText("最新日期：未知\n狀態：不可用")
 
     assert "異常" in card.indicator_label.text()
-    assert "#ef4444" in card.indicator_label.text()
+    assert MIDNIGHT_ANALYST.status_error in card.indicator_label.text()
     assert "待更新" not in card.indicator_label.text()
 
 
@@ -1174,7 +1200,7 @@ def test_status_card_surfaces_immutable_snapshot_as_needs_confirmation():
     )
 
     assert "待更新" in card.indicator_label.text()
-    assert "#eab308" in card.indicator_label.text()
+    assert MIDNIGHT_ANALYST.status_warning in card.indicator_label.text()
     assert "immutable_fallback" in card.extra_label.text()
     assert "可能只反映" in card.extra_label.text()
 
@@ -1197,15 +1223,25 @@ def test_status_card_preserves_granular_non_success_states():
     app()
 
     cases = (
-        ("partial", "部分完成", "#fbbf24"),
-        ("degraded", "需注意", "#fbbf24"),
-        ("action_required", "需處理", "#f59e0b"),
-        ("running", "進行中", "#38bdf8"),
-        ("pending_human_review", "待人工覆核", "#fbbf24"),
-        ("not_computable_cost_ledger_missing", "尚不可計算", "#fbbf24"),
-        ("official_no_data", "官方無資料", "#fbbf24"),
-        ("blocked", "已阻擋", "#ef4444"),
-        ("not_configured", "未設定", "#94a3b8"),
+        ("partial", "部分完成", MIDNIGHT_ANALYST.status_warning),
+        ("degraded", "需注意", MIDNIGHT_ANALYST.status_warning),
+        ("action_required", "需處理", MIDNIGHT_ANALYST.status_warning),
+        ("running", "進行中", MIDNIGHT_ANALYST.status_info),
+        ("pending_human_review", "待人工覆核", MIDNIGHT_ANALYST.status_warning),
+        ("not_computable_cost_ledger_missing", "尚不可計算", MIDNIGHT_ANALYST.status_warning),
+        ("official_no_data", "官方無資料", MIDNIGHT_ANALYST.status_warning),
+        ("blocked", "已阻擋", MIDNIGHT_ANALYST.status_error),
+        ("not_configured", "未設定", MIDNIGHT_ANALYST.text_muted),
+        (
+            "blocked_insufficient_storage",
+            "需處理",
+            MIDNIGHT_ANALYST.status_error,
+        ),
+        (
+            "direct_chain_storage_preflight_blocked",
+            "需處理",
+            MIDNIGHT_ANALYST.status_error,
+        ),
     )
     for raw_status, label, color in cases:
         card = StatusCard("測試")
@@ -1222,8 +1258,30 @@ def test_status_card_placeholder_remains_unchecked_not_needs_update():
     card.setPlainText("點擊「檢查數據狀態」以查看數據狀態")
 
     assert "未檢查" in card.indicator_label.text()
-    assert "#94a3b8" in card.indicator_label.text()
+    assert MIDNIGHT_ANALYST.text_muted in card.indicator_label.text()
     assert "待更新" not in card.indicator_label.text()
+
+
+@pytest.mark.parametrize(
+    ("raw_status", "label", "color"),
+    (
+        ("ok", "最新", MIDNIGHT_ANALYST.status_success),
+        ("unknown", "未檢查", MIDNIGHT_ANALYST.text_muted),
+        ("candidate_available", "候選／研究", "#a78bfa"),
+    ),
+)
+def test_status_card_uses_semantic_tokens_without_changing_raw_state(
+    raw_status: str, label: str, color: str,
+) -> None:
+    app()
+    card = StatusCard("測試")
+    original = f"最新日期：2026-08-28\n狀態：{raw_status}"
+
+    card.setPlainText(original)
+
+    assert label in card.indicator_label.text()
+    assert color in card.indicator_label.text()
+    assert card.toPlainText() == original
 
 
 def test_update_view_progress_never_moves_backwards():
@@ -1307,7 +1365,7 @@ def test_partial_status_payload_clears_stale_cards_instead_of_reusing_old_values
 
     assert "2026-06-22" in view.daily_status_text.toPlainText()
     assert "尚未檢查" in view.market_status_text.toPlainText()
-    assert "#94a3b8" in view.market_status_text.indicator_label.text()
+    assert MIDNIGHT_ANALYST.text_muted in view.market_status_text.indicator_label.text()
     assert view.market_detail_status_label.text() == "尚未檢查此資料源狀態"
 
 

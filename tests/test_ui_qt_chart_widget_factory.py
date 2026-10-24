@@ -2,6 +2,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import matplotlib
+from matplotlib.font_manager import FontProperties
 from matplotlib.figure import Figure
 
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -96,6 +97,154 @@ def test_dark_chart_theme_is_local_to_figure_and_does_not_mutate_matplotlib_rcpa
     assert canvas.draw_count == 1
 
 
+def test_dark_chart_theme_applies_matplotlib_cjk_font_to_static_artists(monkeypatch):
+    font = FontProperties(family="Noto Sans TC")
+    monkeypatch.setattr(
+        chart_widget_module,
+        "_matplotlib_chinese_font_properties",
+        lambda: font,
+    )
+
+    class _Canvas:
+        def setStyleSheet(self, _style):
+            pass
+
+        def draw(self):
+            pass
+
+    figure = Figure()
+    axes = figure.add_subplot(111)
+    axes.set_title("交易報酬分布")
+    axes.set_xlabel("報酬率 (%)")
+    axes.set_ylabel("頻率")
+    axes.set_xticks([-1, 1], ["虧損", "獲利"])
+    axes.set_yticks([0, 1], ["少", "多"])
+    axes.plot([0, 1], [0, 1], label="策略淨值")
+    axes.text(0.5, 0.5, "圖中文字")
+    axes.legend()
+
+    _apply_dark_chart_theme(figure, _Canvas())
+
+    text_artists = [
+        axes.title,
+        axes.xaxis.label,
+        axes.yaxis.label,
+        axes.xaxis.get_offset_text(),
+        axes.yaxis.get_offset_text(),
+        *axes.get_xticklabels(),
+        *axes.get_yticklabels(),
+        *axes.texts,
+        *axes.get_legend().get_texts(),
+    ]
+    assert all(
+        text.get_fontproperties().get_family() == ["Noto Sans TC"]
+        for text in text_artists
+    )
+
+    # 真正的 Matplotlib plot 路徑會先 clear，再建立新 artist 並重套主題。
+    axes.clear()
+    axes.set_title("重繪後中文標題")
+    axes.set_xlabel("新日期")
+    axes.set_ylabel("新數值")
+    axes.text(0.5, 0.5, "重繪文字")
+    axes.plot([0, 1], [1, 0], label="新圖例")
+    axes.legend()
+    _apply_dark_chart_theme(figure, _Canvas())
+    assert axes.title.get_fontproperties().get_family() == ["Noto Sans TC"]
+    assert axes.xaxis.label.get_fontproperties().get_family() == ["Noto Sans TC"]
+    assert axes.yaxis.label.get_fontproperties().get_family() == ["Noto Sans TC"]
+    assert axes.texts[0].get_fontproperties().get_family() == ["Noto Sans TC"]
+    assert (
+        axes.get_legend().get_texts()[0].get_fontproperties().get_family()
+        == ["Noto Sans TC"]
+    )
+
+
+def test_fallback_chart_plot_methods_reapply_cjk_font_after_clear(monkeypatch):
+    font = FontProperties(family="Noto Sans TC")
+    monkeypatch.setattr(
+        chart_widget_module,
+        "_matplotlib_chinese_font_properties",
+        lambda: font,
+    )
+
+    class _Canvas:
+        def setStyleSheet(self, _style):
+            pass
+
+        def draw(self):
+            pass
+
+    for widget_class in (
+        EquityCurveWidget,
+        DrawdownCurveWidget,
+        TradeReturnHistogramWidget,
+        HoldingDaysHistogramWidget,
+    ):
+        figure = Figure()
+        axes = figure.add_subplot(111)
+        axes.set_title("舊標題")
+        stub = SimpleNamespace(
+            figure=figure,
+            ax=axes,
+            canvas=_Canvas(),
+            _cleanup_interactions=lambda: None,
+        )
+
+        # Empty-input branches still clear, render Chinese text, and apply theme.
+        widget_class.plot(stub, None)
+
+        assert axes.title.get_fontproperties().get_family() == ["Noto Sans TC"]
+        assert axes.texts
+        assert all(
+            text.get_fontproperties().get_family() == ["Noto Sans TC"]
+            for text in axes.texts
+        )
+
+
+def test_matplotlib_cjk_font_resolution_falls_back_without_changing_rcparams(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        chart_widget_module,
+        "findfont",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing")),
+    )
+    assert chart_widget_module._matplotlib_chinese_font_properties() is None
+
+    class _Canvas:
+        def setStyleSheet(self, _style):
+            pass
+
+        def draw(self):
+            pass
+
+    figure = Figure()
+    axes = figure.add_subplot(111)
+    axes.set_title("保留 Matplotlib 原字型")
+    axes.title.set_fontproperties(FontProperties(family="DejaVu Sans"))
+    original_family = axes.title.get_fontproperties().get_family()
+    before = matplotlib.rcParams.copy()
+
+    _apply_dark_chart_theme(figure, _Canvas())
+
+    assert axes.title.get_fontproperties().get_family() == original_family
+    assert matplotlib.rcParams == before
+
+
+def test_matplotlib_cjk_font_preserves_numeric_glyph_fallback(monkeypatch):
+    monkeypatch.setattr(
+        chart_widget_module,
+        "findfont",
+        lambda *_args, **_kwargs: "C:/Windows/Fonts/msjh.ttc",
+    )
+
+    selected = chart_widget_module._matplotlib_chinese_font_properties()
+
+    assert selected is not None
+    assert selected.get_family() == ["Microsoft JhengHei", "DejaVu Sans"]
+
+
 def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
     monkeypatch,
 ):
@@ -130,6 +279,7 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
         def __init__(self):
             self.text = ""
             self.color = None
+            self.font_properties = None
             self.bbox = _Bbox()
 
         def set_text(self, value):
@@ -138,10 +288,18 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
         def set_color(self, value):
             self.color = value
 
+        def set_fontproperties(self, value):
+            self.font_properties = value
+
         def get_bbox_patch(self):
             return self.bbox
 
     monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", True)
+    monkeypatch.setattr(
+        chart_widget_module,
+        "_matplotlib_chinese_font_properties",
+        lambda: FontProperties(family="Noto Sans TC"),
+    )
     monkeypatch.setattr(
         chart_widget_module,
         "mplcursors",
@@ -194,6 +352,9 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
 
         assert annotation.text == expected_text
         assert annotation.color == MIDNIGHT_ANALYST.text_primary
+        assert (
+            annotation.font_properties.get_family() == ["Noto Sans TC"]
+        )
         assert annotation.bbox.facecolor == MIDNIGHT_ANALYST.surface_3
         assert annotation.bbox.edgecolor == MIDNIGHT_ANALYST.border
     assert len(chart._mplcursors_handles) == 2

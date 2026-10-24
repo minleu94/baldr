@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 import matplotlib
 matplotlib.use('QtAgg')  # 使用 Qt 後端
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.font_manager import FontProperties, findfont
 from matplotlib.figure import Figure
 import matplotlib.dates as mdates
 from matplotlib.ticker import MaxNLocator
@@ -28,6 +29,7 @@ except ImportError:
 
 def _apply_dark_chart_theme(figure, canvas) -> None:
     """只設定這一張圖的背景、刻度與文字，不改 matplotlib 全域 rcParams。"""
+    chinese_font = _matplotlib_chinese_font_properties()
     figure.set_facecolor(MIDNIGHT_ANALYST.app_bg)
     figure.patch.set_facecolor(MIDNIGHT_ANALYST.app_bg)
     canvas.setStyleSheet(f"background: {MIDNIGHT_ANALYST.surface_1};")
@@ -37,6 +39,19 @@ def _apply_dark_chart_theme(figure, canvas) -> None:
         axes.xaxis.label.set_color(MIDNIGHT_ANALYST.text_secondary)
         axes.yaxis.label.set_color(MIDNIGHT_ANALYST.text_secondary)
         axes.title.set_color(MIDNIGHT_ANALYST.text_primary)
+        if chinese_font is not None:
+            text_artists = [
+                axes.title,
+                axes.xaxis.label,
+                axes.yaxis.label,
+                axes.xaxis.get_offset_text(),
+                axes.yaxis.get_offset_text(),
+                *axes.get_xticklabels(),
+                *axes.get_yticklabels(),
+                *axes.texts,
+            ]
+            for text_artist in text_artists:
+                text_artist.set_fontproperties(chinese_font)
         for spine in axes.spines.values():
             spine.set_color(MIDNIGHT_ANALYST.border)
         for text in axes.texts:
@@ -52,14 +67,39 @@ def _apply_dark_chart_theme(figure, canvas) -> None:
             legend.get_frame().set_edgecolor(MIDNIGHT_ANALYST.border)
             for text in legend.get_texts():
                 text.set_color(MIDNIGHT_ANALYST.text_primary)
+                if chinese_font is not None:
+                    text.set_fontproperties(chinese_font)
         axes.grid(True, color=MIDNIGHT_ANALYST.border_subtle, alpha=0.75)
     canvas.draw()
+
+
+def _matplotlib_chinese_font_properties() -> FontProperties | None:
+    """使用 Matplotlib 自己解析的繁中字型；找不到時保留其原始字型。"""
+
+    for family in (
+        "Microsoft JhengHei",
+        "Microsoft JhengHei UI",
+        "Noto Sans TC",
+    ):
+        try:
+            findfont(
+                FontProperties(family=family),
+                fallback_to_default=False,
+            )
+        except (OSError, RuntimeError, ValueError):
+            continue
+        # 繁中字型未必含 Unicode 負號，保留 DejaVu Sans 補足數值字形。
+        return FontProperties(family=[family, "DejaVu Sans"])
+    return None
 
 
 def _style_mpl_cursor_annotation(annotation: Any) -> None:
     """替 mplcursors 延後建立的提示框套用同一深色圖表文字與底色。"""
 
     annotation.set_color(MIDNIGHT_ANALYST.text_primary)
+    chinese_font = _matplotlib_chinese_font_properties()
+    if chinese_font is not None:
+        annotation.set_fontproperties(chinese_font)
     bbox = annotation.get_bbox_patch()
     if bbox is not None:
         bbox.set_facecolor(MIDNIGHT_ANALYST.surface_3)

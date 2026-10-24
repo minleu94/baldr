@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from typing import Any, Mapping
 
 from PySide6.QtCore import Qt
@@ -28,6 +29,41 @@ def _display(value: object, suffix: str = "") -> str:
     if value is None or value == "":
         return "未知"
     return f"{value}{suffix}"
+
+
+def _format_sharpe(value: object) -> tuple[str, str]:
+    """只在呈現層將 Sharpe 約至小數二位，並保留原始文字供核對。"""
+
+    original = "未提供" if value is None else str(value)
+    if value is None or isinstance(value, bool):
+        return "未知", original
+    try:
+        number = value if isinstance(value, Decimal) else Decimal(original)
+    except (InvalidOperation, TypeError, ValueError):
+        return "未知", original
+    if not number.is_finite():
+        return "未知", original
+
+    try:
+        with localcontext() as context:
+            context.prec = max(
+                context.prec,
+                len(number.as_tuple().digits) + max(number.adjusted(), 0) + 4,
+            )
+            rounded = number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return "未知", original
+
+    if number == 0:
+        return "0.00", original
+    if abs(number) < Decimal("0.01"):
+        scientific = format(number, ".2E")
+        display = scientific if Decimal(scientific) == number else f"約{scientific}"
+        return display, original
+    display = format(rounded, ".2f")
+    if rounded != number:
+        display = f"約 {display}"
+    return display, original
 
 
 class _MonthlyHeatmapDelegate(QStyledItemDelegate):
@@ -141,9 +177,9 @@ class AnalystDiagnosticsWidget(QWidget):
         monthly_layout.addWidget(self.monthly_gap_note)
         layout.addWidget(monthly_group)
 
-        benchmark_group = QGroupBox("Frozen benchmark attribution")
+        benchmark_group = QGroupBox("原報告基準比較")
         benchmark_layout = QVBoxLayout(benchmark_group)
-        self.benchmark_table = self._create_table(("指標", "策略", "Benchmark", "差額／狀態"), "只使用報告內既有 baseline comparison，不回抓市場資料。")
+        self.benchmark_table = self._create_table(("指標", "策略", "比較基準", "差額／狀態"), "只使用報告中已保存的基準比較，不回抓市場資料。")
         benchmark_layout.addWidget(self.benchmark_table)
         layout.addWidget(benchmark_group)
 
@@ -179,6 +215,28 @@ class AnalystDiagnosticsWidget(QWidget):
     @staticmethod
     def _set_item(table: QTableWidget, row: int, column: int, text: object) -> None:
         table.setItem(row, column, QTableWidgetItem(str(text)))
+
+    @staticmethod
+    def _set_sharpe_item(
+        table: QTableWidget,
+        row: int,
+        column: int,
+        value: object,
+        *,
+        missing_reason: object = None,
+    ) -> None:
+        display, original = _format_sharpe(value)
+        source_description = f"原始值：{original}"
+        if value is None and missing_reason is not None and str(missing_reason).strip():
+            display = str(missing_reason)
+            source_description += f"；原因：{display}"
+        item = QTableWidgetItem(display)
+        item.setToolTip(source_description)
+        item.setData(
+            Qt.ItemDataRole.AccessibleDescriptionRole,
+            source_description,
+        )
+        table.setItem(row, column, item)
 
     def clear(self) -> None:
         self.set_diagnostics(AnalystDiagnosticsDTO.unknown("尚未完成回測；沒有可用診斷資料"))
@@ -310,9 +368,20 @@ class AnalystDiagnosticsWidget(QWidget):
             self.benchmark_table.insertRow(row)
             self._set_item(self.benchmark_table, row, 0, title)
             suffix = " bp" if title != "Sharpe" else ""
-            self._set_item(self.benchmark_table, row, 1, _display(strategy, suffix))
-            self._set_item(self.benchmark_table, row, 2, _display(baseline, suffix))
-            self._set_item(self.benchmark_table, row, 3, _display(delta, suffix) if delta is not None else benchmark.get("reason", "未知"))
+            if title == "Sharpe":
+                self._set_sharpe_item(self.benchmark_table, row, 1, strategy)
+                self._set_sharpe_item(self.benchmark_table, row, 2, baseline)
+                self._set_sharpe_item(
+                    self.benchmark_table,
+                    row,
+                    3,
+                    delta,
+                    missing_reason=benchmark.get("reason"),
+                )
+            else:
+                self._set_item(self.benchmark_table, row, 1, _display(strategy, suffix))
+                self._set_item(self.benchmark_table, row, 2, _display(baseline, suffix))
+                self._set_item(self.benchmark_table, row, 3, _display(delta, suffix) if delta is not None else benchmark.get("reason", "未知"))
 
         self.definition_text.setPlainText("\n".join(dto.definitions) if dto.definitions else (dto.reason or "未知"))
 

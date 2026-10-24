@@ -460,6 +460,193 @@ def test_portfolio_active_summary_lists_position_count_and_top_symbols(tmp_path)
     assert "已標記市值 2/2 檔" in view.active_positions_summary_label.text()
 
 
+def test_portfolio_floating_pnl_distribution_counts_same_snapshot_positions(tmp_path):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    base = service.positions[0]
+    rows = [
+        replace(
+            base,
+            position_id=f"default:pnl-{index}",
+            stock_code=f"T{index:03d}",
+            is_holding=True,
+            current_price=Decimal("10.00"),
+            quote_data_date="2026-10-23",
+            quote_freshness_status="current",
+            unrealized_pnl=pnl,
+        )
+        for index, pnl in enumerate(
+            (Decimal("1.25"), Decimal("-2.50"), Decimal("0"), None)
+        )
+    ]
+    rows.append(
+        replace(
+            base,
+            position_id="default:pnl-inactive",
+            stock_code="T999",
+            is_holding=False,
+            current_price=Decimal("10.00"),
+            quote_data_date="2026-10-23",
+            quote_freshness_status="current",
+            unrealized_pnl=Decimal("99"),
+        )
+    )
+    portfolio = replace(
+        service.get_portfolio(),
+        positions=rows,
+        active_positions=4,
+        total_positions=5,
+    )
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+
+    view._load_portfolio_summary(portfolio)
+
+    assert view.floating_pnl_distribution_counts["positive"].text() == "1"
+    assert view.floating_pnl_distribution_counts["negative"].text() == "1"
+    assert view.floating_pnl_distribution_counts["zero"].text() == "1"
+    assert view.floating_pnl_distribution_counts["unknown"].text() == "1"
+    assert "活躍持倉 4 檔" in view.floating_pnl_distribution_status.text()
+    assert "等權計數" in view.floating_pnl_distribution_status.text()
+    assert "毛額未扣費稅" in view.floating_pnl_distribution_status.text()
+    bars = view.floating_pnl_distribution_bars
+    assert {bar.maximum() for bar in bars.values()} == {4}
+    assert sum(bar.value() for bar in bars.values()) == 4
+    assert all(not bar.isHidden() for bar in bars.values())
+    assert view.floating_pnl_distribution_group.toolTip().find("不代表資金權重") >= 0
+    view.close()
+
+
+def test_portfolio_floating_pnl_distribution_keeps_unqualified_values_unknown(tmp_path):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    base = service.positions[0]
+    rows = [
+        replace(
+            base,
+            position_id="default:pnl-positive",
+            stock_code="T001",
+            current_price=10,
+            quote_data_date="2026-10-23",
+            quote_freshness_status="current",
+            unrealized_pnl=1,
+        ),
+        replace(
+            base,
+            position_id="default:pnl-stale",
+            stock_code="T002",
+            current_price=10,
+            quote_data_date="2026-10-22",
+            quote_freshness_status="stale",
+            unrealized_pnl=5,
+        ),
+        replace(
+            base,
+            position_id="default:pnl-unverified",
+            stock_code="T003",
+            current_price=10,
+            quote_data_date="2026-10-23",
+            quote_freshness_status="unverified",
+            unrealized_pnl=-5,
+        ),
+        replace(
+            base,
+            position_id="default:pnl-invalid-date",
+            stock_code="T004",
+            current_price=10,
+            quote_data_date="20261023",
+            quote_freshness_status="current",
+            unrealized_pnl=0,
+        ),
+        replace(
+            base,
+            position_id="default:pnl-invalid-price",
+            stock_code="T005",
+            current_price=0,
+            quote_data_date="2026-10-23",
+            quote_freshness_status="current",
+            unrealized_pnl=-5,
+        ),
+        replace(
+            base,
+            position_id="default:pnl-invalid-value",
+            stock_code="T006",
+            current_price=10,
+            quote_data_date="2026-10-23",
+            quote_freshness_status="current",
+            unrealized_pnl=Decimal("NaN"),
+        ),
+        replace(
+            base,
+            position_id="default:pnl-zero",
+            stock_code="T007",
+            current_price=10,
+            quote_data_date="2026-10-23",
+            quote_freshness_status="current",
+            unrealized_pnl=Decimal("0.00"),
+        ),
+    ]
+    portfolio = replace(
+        service.get_portfolio(), positions=rows, active_positions=len(rows)
+    )
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+
+    view._load_portfolio_summary(portfolio)
+
+    assert view.floating_pnl_distribution_counts["positive"].text() == "1"
+    assert view.floating_pnl_distribution_counts["negative"].text() == "0"
+    assert view.floating_pnl_distribution_counts["zero"].text() == "1"
+    assert view.floating_pnl_distribution_counts["unknown"].text() == "5"
+    assert sum(
+        int(label.text())
+        for label in view.floating_pnl_distribution_counts.values()
+    ) == 7
+    view.close()
+
+
+def test_portfolio_floating_pnl_distribution_clears_during_loading_failure_and_empty(
+    tmp_path,
+):
+    view = make_portfolio_view(tmp_path)
+    assert view.floating_pnl_distribution_counts["unknown"].text() == "2"
+
+    view._set_portfolio_focus_state("loading")
+    assert all(
+        label.text() == "—"
+        for label in view.floating_pnl_distribution_counts.values()
+    )
+    assert all(
+        bar.isHidden()
+        for bar in view.floating_pnl_distribution_bars.values()
+    )
+
+    service = view.portfolio_service
+    empty_portfolio = replace(
+        service.get_portfolio(),
+        positions=[],
+        active_positions=0,
+        total_positions=0,
+    )
+    view._load_portfolio_summary(empty_portfolio)
+    assert all(
+        label.text() == "0"
+        for label in view.floating_pnl_distribution_counts.values()
+    )
+    assert "活躍持倉 0 檔" in view.floating_pnl_distribution_status.text()
+    assert "無比例可繪" in view.floating_pnl_distribution_status.text()
+    assert all(
+        bar.isHidden()
+        for bar in view.floating_pnl_distribution_bars.values()
+    )
+
+    view._load_portfolio_summary(service.get_portfolio())
+    assert view.floating_pnl_distribution_counts["unknown"].text() == "2"
+    view._handle_portfolio_refresh_error("fixture read failure")
+    assert all(
+        label.text() == "—"
+        for label in view.floating_pnl_distribution_counts.values()
+    )
+    assert "讀取失敗" in view.floating_pnl_distribution_status.text()
+    view.close()
+
+
 def test_portfolio_two_positions_fit_table_without_trapping_actions_below_blank_space(tmp_path):
     service = FakePortfolioService(FakeConfig(tmp_path))
     view = make_portfolio_view(tmp_path, portfolio_service=service)
@@ -1145,7 +1332,7 @@ def test_stress_splitter_default_keeps_vertical_ratio_and_position_selection(tmp
     view.close()
 
 
-def test_daily_positions_panel_is_full_width_immediately_after_status_summary(tmp_path):
+def test_daily_positions_panel_precedes_compact_distribution_after_summary(tmp_path):
     view = make_portfolio_view(tmp_path)
     content = view.portfolio_advanced_scroll.widget()
     assert content is not None
@@ -1154,8 +1341,10 @@ def test_daily_positions_panel_is_full_width_immediately_after_status_summary(tm
 
     positions_index = layout.indexOf(view.manual_account_panel)
     active_summary_index = layout.indexOf(view.active_positions_summary_label)
+    distribution_index = layout.indexOf(view.floating_pnl_distribution_group)
     assert positions_index == active_summary_index + 1
-    assert positions_index < layout.indexOf(view.portfolio_refresh_status_label)
+    assert distribution_index == positions_index + 1
+    assert distribution_index < layout.indexOf(view.portfolio_refresh_status_label)
     assert positions_index < layout.indexOf(view.toggle_advanced_portfolio_btn)
     assert view.main_splitter.indexOf(view.manual_account_panel) == -1
     assert view.main_splitter.indexOf(view.paper_health_group) >= 0

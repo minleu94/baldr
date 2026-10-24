@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M158／M159 後繼 UI：回測「原報告基準比較」Sharpe 三格以可讀兩位／極小非零科學記號呈現，捨入標「約」，原值保留提示與無障礙描述；原 bp、公式及來源不變。Portfolio 手動帳在完整持倉表與操作列後顯示同份快照未實現毛損益正／負／零／未知等權家數圖；只有原 current、有效行情日／正現價／有限毛損益才分類，其餘未知，不冒充資金權重或報酬。Sol 退回初版 1280 首屏操作被圖卡推離的畫面，修後按鈕底部 731／760、首列可見；真 OS DPI216 的 1280×760／1500×900 合成 Backtest 兩圖與 Portfolio 四圖 callback0。共同 QA compile0、focused131、Workbench85、validator25／0／4、mypy1,144，受控 Job 無殘留。正式／私人資料、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m158-backtest-原報告基準-sharpe-判讀)。審查源流為 Opus 起始、Antigravity 續作六份報告，Sol 核實後選切片。
+
 M157 後繼 UI：Portfolio「選中持倉重點摘要」的平均成本、現價與未實現毛損益以 TWD 兩位小數顯示；有捨入時標「約」，完整原值留在提示及無障礙描述，極小非零仍顯原值而非假零。取消選列清除舊提示，缺件維持未知，原持倉、計算、日期及 Health 身分不變。Sol 審查 Portfolio focused 100、Workbench 85、validator 25／0／4、mypy 1,144、compile0；真 OS DPI216 的 1280×760／1500×900 隔離合成 Portfolio 兩圖可讀、callback exception0。正式／私人資料、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m157-portfolio-選中持倉金額顯示)。
 
 M156 後繼 UI：原審查 P0 的全域建置資訊常駐雜訊仍可在 M155 正常 Main 畫面見到。已核實開發版現在於標題與底部只顯日期和「開發版」，release 保持短版；來源未核實時仍明示「未核實版本｜請檢查程式來源」。完整版本、commit、dirty、依賴鎖及來源路徑留原 tooltip 可核，不改建置偵測或來源資格。Sol 核對真 OS DPI216 的 1280×760／1500×900 隔離 Main 六圖、callback exception0；聚焦26、Workbench85、validator25／0／4、mypy1,144、compile0。正式資料、其他 DPI／Light、固定新版 EXE、Owner UAT 與產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m156-全域建置身分資訊層級)。

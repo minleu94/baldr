@@ -1,5 +1,6 @@
 import os
 import sys
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 # 設定為 offscreen 以免開啟實際 GUI 視窗
@@ -303,8 +304,169 @@ def test_analyst_diagnostics_widget_has_numeric_tables_and_theme_boundary(qt_app
     assert widget.rolling_table.item(0, 1).text() == "100 bp"
     assert widget.monthly_table.item(0, 1).text() == "+100 bp"
     assert widget.benchmark_table.item(0, 3).text() == "legacy missing"
+    assert widget.benchmark_table.horizontalHeaderItem(2).text() == "比較基準"
     assert widget.status_label.accessibleName() == "分析診斷狀態"
     assert "#" in widget.status_label.styleSheet()
+
+
+def test_analyst_sharpe_values_are_rounded_for_reading_with_exact_accessible_source(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    exact_values = (
+        Decimal("1.234567890123456789012345"),
+        Decimal("-1.23567890123456789012345"),
+        Decimal("0.004567890123456789"),
+    )
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            benchmark={
+                "strategy_sharpe": exact_values[0],
+                "benchmark_sharpe": exact_values[1],
+                "sharpe_delta": exact_values[2],
+            },
+        )
+    )
+
+    row = 1  # Sharpe
+    assert widget.benchmark_table.item(row, 1).text() == "約 1.23"
+    assert widget.benchmark_table.item(row, 2).text() == "約 -1.24"
+    assert widget.benchmark_table.item(row, 3).text() == "約4.57E-3"
+    for column, exact in enumerate(exact_values, start=1):
+        item = widget.benchmark_table.item(row, column)
+        raw_source = f"原始值：{exact}"
+        assert item.toolTip() == raw_source
+        assert item.data(Qt.ItemDataRole.AccessibleDescriptionRole) == raw_source
+
+
+def test_analyst_sharpe_small_nonzero_and_true_zero_remain_distinguishable(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            benchmark={
+                "strategy_sharpe": Decimal("0.00000001"),
+                "benchmark_sharpe": Decimal("-0.00000001"),
+                "sharpe_delta": Decimal("0"),
+            },
+        )
+    )
+
+    row = 1
+    assert widget.benchmark_table.item(row, 1).text() == "1.00E-8"
+    assert widget.benchmark_table.item(row, 2).text() == "-1.00E-8"
+    assert widget.benchmark_table.item(row, 3).text() == "0.00"
+    zero_item = widget.benchmark_table.item(row, 3)
+    assert zero_item.toolTip() == "原始值：0"
+    assert zero_item.data(Qt.ItemDataRole.AccessibleDescriptionRole) == "原始值：0"
+
+
+@pytest.mark.parametrize(
+    ("field", "raw_value"),
+    (
+        ("strategy_sharpe", None),
+        ("benchmark_sharpe", Decimal("NaN")),
+        ("sharpe_delta", "not-a-decimal"),
+        ("strategy_sharpe", True),
+    ),
+)
+def test_analyst_sharpe_invalid_or_missing_values_are_unknown_with_original_tooltip(
+    qt_app,
+    field,
+    raw_value,
+):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            benchmark={field: raw_value},
+        )
+    )
+
+    column = {"strategy_sharpe": 1, "benchmark_sharpe": 2, "sharpe_delta": 3}[field]
+    item = widget.benchmark_table.item(1, column)
+    raw_text = "未提供" if raw_value is None else str(raw_value)
+    assert item.text() == "未知"
+    assert item.toolTip() == f"原始值：{raw_text}"
+    assert item.data(Qt.ItemDataRole.AccessibleDescriptionRole) == f"原始值：{raw_text}"
+
+
+def test_analyst_sharpe_refresh_clears_stale_values(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            benchmark={
+                "strategy_sharpe": Decimal("1.234"),
+                "benchmark_sharpe": Decimal("0.987"),
+                "sharpe_delta": Decimal("0.247"),
+            },
+        )
+    )
+    assert widget.benchmark_table.item(1, 1).text() == "約 1.23"
+
+    widget.set_diagnostics(AnalystDiagnosticsDTO.unknown("新 run 未提供診斷資料"))
+
+    assert widget.benchmark_table.rowCount() == 3
+    assert [widget.benchmark_table.item(1, column).text() for column in (1, 2, 3)] == [
+        "未知",
+        "未知",
+        "未知",
+    ]
+    assert widget.benchmark_table.item(1, 1).toolTip() == "原始值：未提供"
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected_display"),
+    (
+        (Decimal("0.000000012345"), "約1.23E-8"),
+        (Decimal("-0.000000012345"), "約-1.23E-8"),
+    ),
+)
+def test_analyst_sharpe_tiny_values_use_signed_scientific_notation_with_exact_tooltip(
+    qt_app,
+    raw_value,
+    expected_display,
+):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            benchmark={"strategy_sharpe": raw_value},
+        )
+    )
+
+    item = widget.benchmark_table.item(1, 1)
+    assert item.text() == expected_display
+    assert item.toolTip() == f"原始值：{raw_value}"
+    assert item.data(Qt.ItemDataRole.AccessibleDescriptionRole) == f"原始值：{raw_value}"
+
+
+def test_analyst_sharpe_missing_delta_preserves_benchmark_reason(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            benchmark={"reason": "legacy missing"},
+        )
+    )
+
+    item = widget.benchmark_table.item(1, 3)
+    explanation = "原始值：未提供；原因：legacy missing"
+    assert item.text() == "legacy missing"
+    assert item.toolTip() == explanation
+    assert item.data(Qt.ItemDataRole.AccessibleDescriptionRole) == explanation
 
 
 def test_analyst_monthly_matrix_marks_only_in_span_gaps_unknown(qt_app):

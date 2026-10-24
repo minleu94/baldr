@@ -491,14 +491,14 @@ Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9
 
 最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_93d1b6b2d580466b88c7f13753157ca4/receipt.json` exit0：受改 Python compile0、相關 focused **45 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。這些是隔離合成及原始碼 QA；正式保存來源、其他真 OS DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受。M1–M155 是審查、裁決、實作與 QA 切片序號，不是 155 個獨立功能；原始 PNG／收據留 ignored `output/`，本機提交不 push、merge 或部署。
 
-## 排程啟動至 M157 的盤點
+## 排程啟動至 M159 的盤點
 
 | 範圍 | 已完成的工程與驗證 | 尚未接受的界線 |
 | --- | --- | --- |
-| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M157 包含唯讀裁決、測試及實作，並非 157 個功能。 | 審查意見不自動授來源／金融契約。 |
-| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化；選中持倉金額短顯與完整原值可核。 | 正式保存／市場來源與 Owner UAT 未驗。 |
+| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M159 包含唯讀裁決、測試及實作，並非 159 個功能。 | 審查意見不自動授來源／金融契約。 |
+| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化；選中持倉及回測 Sharpe 短顯與完整原值可核。 | 正式保存／市場來源與 Owner UAT 未驗。 |
 | P1 產業題材 | 原資料範圍內的題材格、成交額與覆蓋圖、九指標、同版成員／鄰域、搜尋、雙版本原值、具名母體三態與成員條件側欄，保留精確下鑽。 | 多期間報酬、逐邊有向關係需合格來源、時鐘及用途契約。 |
-| P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；修關窗晚到回呼及備援圖互動／字形。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
+| P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；持倉毛損益正／負／零／未知家數分布；修關窗晚到回呼及備援圖互動／字形。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
 | P3 產業鏈 | 已有同版重疊、分類與成員探索；Sol 拒絕把共現當有向供應鏈或把資料覆蓋當跨期強弱。 | M75 逐邊證據與跨期 PIT 用途仍缺；M73 決策品質控制作用範圍仍需產品裁決。 |
 
 各切片均由 Luna 依單一 writer 邊界實作或唯讀盤點，Sol 複核、退回必要修正並以 root-owned 受控 Job 做聚焦、共同回歸及隔離原生畫面；原失敗與探針收據保留。此盤點只收束本機原始碼階段，不代表正式產品驗收或可交易資格。
@@ -520,3 +520,15 @@ Sol 續核原 Opus→Antigravity P0 缺口：候選池「清空候選池」已�
 Root-owned 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_f4e41d93507047be9907e5ceb8a55b9f/receipt.json` exit0：受改 Python compile0、Portfolio focused **100 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；無殘留或強制清理。真 Windows OS DPI216 的 1280×760／1500×900 隔離合成 Portfolio 選列兩張 PNG 與 JSON：`output/tasks/baldr-opus-ux-implementation/root/native_m157_evidence/run_2c13cadb2cf049fca7d662145af21072/result.json`，Job `.../root/single_owned_qa_3a625357eebf43719e4bfac2dab1cbfc/receipt.json` exit0。Sol 目視摘要、表列、資料日與來源同屏，長原值不擠佔首層；tooltip／無障礙原值、取消選列清舊與 callback exception0 由腳本核對。
 
 這是原始碼與隔離合成／原生 QA，不是正式／私人資料、其他真 DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT 或完整產品 Gate 接受。M73 控制作用範圍及 M75 逐邊有向供應鏈、跨期強弱的來源與時鐘契約仍待前置，不用合成畫面推金融資格。M1–M157 為審查、裁決、實作及 QA 序號，並非 157 個獨立功能；沒有自動交易、正式資料改寫、修改其他排程、push、merge 或部署。
+
+## M158 Backtest 原報告基準 Sharpe 判讀
+
+Luna `/root/m149_saved_reader_audit` 唯一 writer 修改 `ui_qt/views/backtest/analyst_diagnostics_widget.py` 與 `tests/test_ui_qt_research_lab_mode_driven_ui.py`。Sol 核對原 Opus→Antigravity P0 數值辨識缺口，接受只在原報告基準比較的 Sharpe 三格做呈現精度：有限值顯兩位，有捨入標「約」；極小非零用保留符號的科學記號，真零 `0.00`，無效或缺件顯未知。每格 tooltip 與無障礙描述保留具名原值；缺 delta 的原 benchmark reason 不被覆蓋。Sol 另將原英文群組／欄名改為中文，bp 列及原 DTO、報告來源、金融公式均未改。
+
+最終受控 QA 與 M159 合跑，收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_67be968423bf4fb8a666e1f5fe589eca/receipt.json`：編譯 0、兩頁 focused **131 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留。真 Windows OS DPI216 的 1280×760／1500×900 隔離合成 Backtest 元件兩圖：`output/tasks/baldr-opus-ux-implementation/root/native_m158_evidence/run_02c48293c50e42b19ef77c4cfcc1dab1/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_16480e776eb5472083835ec6822ac91a/receipt.json` exit0、callback exception0。Sol 目視中文基準列與 Sharpe 可讀。正式回測、其他 DPI／Light／1920、固定 EXE、Owner UAT 與完整產品 Gate 未接受。
+
+## M159 Portfolio 未實現毛損益家數分布
+
+Luna `/root/m152_research_gap` 唯一 writer 修改 `ui_qt/views/portfolio_view.py` 與 `tests/test_ui_qt_portfolio_view.py`。由同一 `PortfolioDTO` 的活躍 `PositionDTO` 等權計數，只有原 `current`、有效 ISO 報價日、有限正現價與有限原未實現毛損益同時成立才列正、負或真零；其餘列未知。台股正值紅、負值綠、零與未知中性，圖條只表示家數占比，不加總金額、不代表資金權重、報酬或風險；0 檔顯精確 0 而不畫比例。載入、失敗、取消清舊；原表與選列上下文保留，沒有重估持倉、改報價來源或帳本。
+
+Sol 原生首版在 1280×760、真 OS DPI216 量到「手動記錄交易」底部 823px，超過 760px 首屏；失敗收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_0d7c91ac83e84cdc90b060a6c3c176ab/receipt.json` 保留，不當通過。Sol 退回要求把圖卡移到整個持倉面板與操作列之後，Luna 修版面及順序測試。最終 1280 同按鈕底部 731px、首列可見，圖卡向下捲可讀；1500 的正／負／零／未知各一檔可讀。四張真 Windows DPI216 隔離合成 PNG 與精確計數／幾何在 `output/tasks/baldr-opus-ux-implementation/root/native_m159_evidence/run_60f239230b9d4220b7cdaadd15d8d375/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_ebdfd30f6df74ef783eba9b3b21d5b70/receipt.json` exit0、callback exception0；最終共同 QA 同 M158。正式／私人帳、其他 DPI／Light／1920、固定 EXE、Owner UAT、自然排程及產品 Gate 未接受。M1–M159 是含審查與 QA 的切片序號，並非功能數。

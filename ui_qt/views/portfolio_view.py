@@ -1585,6 +1585,75 @@ class PortfolioView(QWidget):
         )
         main_layout.addWidget(self.active_positions_summary_label)
 
+        self.floating_pnl_distribution_group = QGroupBox(
+            "未實現損益家數（毛額，未扣費稅）"
+        )
+        self.floating_pnl_distribution_group.setObjectName(
+            "portfolioFloatingPnlDistribution"
+        )
+        self.floating_pnl_distribution_group.setAccessibleName(
+            "手動持倉未實現損益家數分布"
+        )
+        self.floating_pnl_distribution_group.setAccessibleDescription(
+            "統計同一份 PortfolioDTO 中 is_holding 持倉的未實現毛損益。"
+            "各持倉等權計數，不代表資金權重、投資報酬或風險。"
+        )
+        self.floating_pnl_distribution_group.setToolTip(
+            "只以原 PositionDTO 損益分類；現價、日期或 freshness 不合格時列未知。"
+            "不加總金額、不代表資金權重、投資報酬或風險。"
+        )
+        floating_distribution_layout = QGridLayout(
+            self.floating_pnl_distribution_group
+        )
+        floating_distribution_layout.setContentsMargins(8, 3, 8, 5)
+        floating_distribution_layout.setHorizontalSpacing(8)
+        floating_distribution_layout.setVerticalSpacing(2)
+        self.floating_pnl_distribution_status = QLabel(
+            "等權家數；非資金權重、投資報酬或風險。尚未讀取。"
+        )
+        self.floating_pnl_distribution_status.setObjectName(
+            "portfolioFloatingPnlDistributionStatus"
+        )
+        self.floating_pnl_distribution_status.setWordWrap(True)
+        floating_distribution_layout.addWidget(
+            self.floating_pnl_distribution_status, 0, 0, 1, 12
+        )
+        self.floating_pnl_distribution_counts: dict[str, QLabel] = {}
+        self.floating_pnl_distribution_bars: dict[str, QProgressBar] = {}
+        distribution_states = (
+            ("positive", "正", MIDNIGHT_ANALYST.market_up),
+            ("negative", "負", MIDNIGHT_ANALYST.market_down),
+            ("zero", "零", MIDNIGHT_ANALYST.market_flat),
+            ("unknown", "未知", MIDNIGHT_ANALYST.text_muted),
+        )
+        for index, (state, label_text, color) in enumerate(distribution_states):
+            column = index * 3
+            state_label = QLabel(label_text)
+            state_label.setAccessibleName(f"未實現損益{label_text}值持倉家數類別")
+            count_label = QLabel("—")
+            count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            count_label.setAccessibleName(f"未實現損益{label_text}值持倉家數")
+            bar = QProgressBar()
+            bar.setObjectName(f"portfolioFloatingPnlDistributionBar_{state}")
+            bar.setTextVisible(False)
+            bar.setFixedHeight(10)
+            bar.setRange(0, 1)
+            bar.setValue(0)
+            bar.setVisible(False)
+            bar.setAccessibleName(f"未實現損益{label_text}值持倉家數比例")
+            bar.setStyleSheet(
+                f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                "border-radius: 3px; }"
+                f"QProgressBar::chunk {{ background-color: {color}; "
+                "border-radius: 2px; }"
+            )
+            floating_distribution_layout.addWidget(state_label, 1, column)
+            floating_distribution_layout.addWidget(bar, 1, column + 1)
+            floating_distribution_layout.addWidget(count_label, 1, column + 2)
+            self.floating_pnl_distribution_counts[state] = count_label
+            self.floating_pnl_distribution_bars[state] = bar
+        main_layout.addWidget(self.floating_pnl_distribution_group)
+
         self.portfolio_refresh_status_label = QLabel("持倉資料尚未載入")
         self.portfolio_refresh_status_label.setWordWrap(True)
         self.portfolio_refresh_status_label.setStyleSheet(
@@ -2496,7 +2565,11 @@ class PortfolioView(QWidget):
         positions_index = main_layout.indexOf(self.active_positions_summary_label)
         if positions_index < 0:
             raise RuntimeError("portfolio_active_positions_summary_missing")
+        if main_layout.indexOf(self.floating_pnl_distribution_group) != positions_index + 1:
+            raise RuntimeError("portfolio_floating_pnl_distribution_layout_missing")
         main_layout.insertWidget(positions_index + 1, left_widget)
+        if main_layout.indexOf(self.floating_pnl_distribution_group) != positions_index + 2:
+            raise RuntimeError("portfolio_floating_pnl_distribution_order_invalid")
         if (
             self.position_health_exact_scope_factory is not None
             and self.saved_health_selection_store is not None
@@ -2696,7 +2769,9 @@ class PortfolioView(QWidget):
         manual = self.portfolio_account_selector.currentData() == "manual"
         for widget in (
             self.card_net_val, self.card_invested, self.card_pnl, self.card_positions,
-            self.active_positions_summary_label, self.manual_account_panel,
+            self.active_positions_summary_label,
+            self.floating_pnl_distribution_group,
+            self.manual_account_panel,
         ):
             widget.setVisible(manual)
         for widget in getattr(self, "_portfolio_advanced_widgets", ()):
@@ -3296,6 +3371,17 @@ class PortfolioView(QWidget):
 
     def _set_portfolio_focus_state(self, state: str, message: object = "") -> None:
         """讓摘要和刷新狀態同步；保留上次資料時明確標示不是最新。"""
+
+        distribution_messages = {
+            "loading": "持倉資料更新中；損益家數暫不顯示。",
+            "error": "持倉資料讀取失敗；損益家數未知。",
+            "cancelled": "持倉資料讀取已取消；損益家數未知。",
+            "cancelling": "持倉資料更新取消中；損益家數暫不顯示。",
+        }
+        if state in distribution_messages and hasattr(
+            self, "floating_pnl_distribution_status"
+        ):
+            self._clear_floating_pnl_distribution(distribution_messages[state])
 
         previous = self._last_portfolio_dto
         if hasattr(self, "portfolio_compact_context_label"):
@@ -4859,6 +4945,97 @@ class PortfolioView(QWidget):
             f"已匯入 {len(imported)} 筆交易；持倉已重新驗證。",
         )
 
+    def _clear_floating_pnl_distribution(self, message: str) -> None:
+        """讀取中或失敗時移除舊快照的損益家數。"""
+
+        self.floating_pnl_distribution_status.setText(message)
+        for label in self.floating_pnl_distribution_counts.values():
+            label.setText("—")
+        for bar in self.floating_pnl_distribution_bars.values():
+            bar.setRange(0, 1)
+            bar.setValue(0)
+            bar.setAccessibleDescription("")
+            bar.setVisible(False)
+
+    def _render_floating_pnl_distribution(
+        self, active_positions: Sequence[Any]
+    ) -> None:
+        """只統計同一 PortfolioDTO 中可核對的原始持倉損益狀態。"""
+
+        counts = {"positive": 0, "negative": 0, "zero": 0, "unknown": 0}
+        for position in active_positions:
+            if getattr(position, "quote_freshness_status", None) != "current":
+                counts["unknown"] += 1
+                continue
+
+            raw_date = getattr(position, "quote_data_date", None)
+            if not isinstance(raw_date, str):
+                counts["unknown"] += 1
+                continue
+            try:
+                parsed_date = date.fromisoformat(raw_date)
+            except ValueError:
+                counts["unknown"] += 1
+                continue
+            if parsed_date.isoformat() != raw_date:
+                counts["unknown"] += 1
+                continue
+
+            try:
+                current_price = Decimal(str(getattr(position, "current_price", None)))
+                unrealized_pnl = Decimal(str(getattr(position, "unrealized_pnl", None)))
+            except (InvalidOperation, TypeError, ValueError, OverflowError):
+                counts["unknown"] += 1
+                continue
+            if (
+                not current_price.is_finite()
+                or current_price <= 0
+                or not unrealized_pnl.is_finite()
+            ):
+                counts["unknown"] += 1
+            elif unrealized_pnl > 0:
+                counts["positive"] += 1
+            elif unrealized_pnl < 0:
+                counts["negative"] += 1
+            else:
+                counts["zero"] += 1
+
+        denominator = len(active_positions)
+        self.floating_pnl_distribution_counts["positive"].setText(
+            str(counts["positive"])
+        )
+        self.floating_pnl_distribution_counts["negative"].setText(
+            str(counts["negative"])
+        )
+        self.floating_pnl_distribution_counts["zero"].setText(str(counts["zero"]))
+        self.floating_pnl_distribution_counts["unknown"].setText(
+            str(counts["unknown"])
+        )
+        if denominator == 0:
+            self.floating_pnl_distribution_status.setText(
+                "成功快照｜活躍持倉 0 檔，無比例可繪；等權家數、毛額未扣費稅，"
+                "非資金權重／投資報酬／風險。"
+            )
+            for bar in self.floating_pnl_distribution_bars.values():
+                bar.setRange(0, 1)
+                bar.setValue(0)
+                bar.setAccessibleDescription("沒有活躍持倉，無比例可繪。")
+                bar.setVisible(False)
+            return
+
+        self.floating_pnl_distribution_status.setText(
+            f"同一持倉快照｜活躍持倉 {denominator} 檔；各檔等權計數，"
+            "毛額未扣費稅，不代表資金權重／投資報酬／風險。"
+        )
+        for state, count in counts.items():
+            bar = self.floating_pnl_distribution_bars[state]
+            bar.setRange(0, denominator)
+            bar.setValue(count)
+            bar.setAccessibleDescription(
+                f"{count}／{denominator} 檔活躍持倉；僅表示家數比例。"
+            )
+            bar.setVisible(True)
+
     def _load_portfolio_summary(self, portfolio: PortfolioDTO | None = None):
         """讀取持倉摘要，並更新頂部卡片"""
         try:
@@ -4874,6 +5051,7 @@ class PortfolioView(QWidget):
                 for position in getattr(portfolio, "positions", [])
                 if position.is_holding
             ]
+            self._render_floating_pnl_distribution(active_positions)
 
             # 現金帳與資產負債尚未進入 Phase 4.1 MVP，不能把投入金額加上已實現損益冒充 NAV。
             # 這裡只顯示有可用最新價格的持倉市值；缺價格時明確保留 N/A。
@@ -4948,6 +5126,9 @@ class PortfolioView(QWidget):
                 f"活躍持倉：{active_count} 檔{suffix}{pricing_summary}"
             )
         except Exception as e:
+            self._clear_floating_pnl_distribution(
+                "持倉摘要讀取失敗；損益家數未知。"
+            )
             logger.error("Failed to load portfolio summary: %s", e)
 
     def _load_positions_table(self, portfolio: PortfolioDTO | None = None):

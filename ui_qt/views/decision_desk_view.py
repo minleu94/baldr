@@ -370,6 +370,8 @@ class DecisionDeskView(QWidget):
         sections_layout = sections_group.layout
         sections_layout.addWidget(self._make_section_row("市場情緒", self.market_regime_status, self.market_regime_value))
         breadth_row = self._make_section_row("市況廣度", self.market_breadth_status, self.market_breadth_value)
+        self.market_breadth_row = breadth_row
+        self.market_breadth_row.setAccessibleName("市況廣度摘要與家數分布")
         self.market_breadth_bar = QWidget()
         self.market_breadth_bar.setObjectName("decisionDeskMarketBreadthBar")
         self.market_breadth_bar_layout = QHBoxLayout(self.market_breadth_bar)
@@ -391,7 +393,7 @@ class DecisionDeskView(QWidget):
         breadth_layout.addWidget(self.market_breadth_caption)
         self.market_breadth_legend.hide()
         self.market_breadth_caption.hide()
-        sections_layout.addWidget(breadth_row)
+        content_layout.insertWidget(content_layout.indexOf(focus_group), breadth_row)
         sections_layout.addWidget(self._make_section_row("產業輪動", self.sector_rotation_status, self.sector_rotation_value))
         self.industry_strength_panel = SectionPanel("可比產業超額表現")
         self.industry_strength_panel.setObjectName("decisionDeskIndustryStrengthPanel")
@@ -655,6 +657,7 @@ class DecisionDeskView(QWidget):
 
     def _display_loading_snapshot(self) -> None:
         self._clear_market_breadth_bar()
+        self.market_breadth_row.hide()
         self._clear_institutional_flow_bar()
         self._clear_industry_strength_chart("載入中；可比產業圖卡已清除舊快照")
         self.overall_status_label.setText("摘要載入中")
@@ -773,6 +776,7 @@ class DecisionDeskView(QWidget):
     def _render_snapshot(self, snapshot: DecisionDeskSnapshot) -> None:
         self._render_answer_first_dashboard(snapshot)
         self._set_industry_focus_buttons(snapshot.sector_rotation, snapshot.as_of_date)
+        self.market_breadth_row.show()
         self._render_industry_strength_chart(snapshot.sector_rotation, snapshot.as_of_date)
         self._render_market_data_visibility(snapshot.market_data_visibility)
         self.overall_status_label.setText("摘要已載入")

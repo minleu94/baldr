@@ -1,8 +1,8 @@
-﻿# Baldr UI／UX 原始碼實作收尾（2026-10-23）
+# Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M140；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M142；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M140 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M142 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -402,3 +402,13 @@ M140 Luna `/root/m133_research_audit` 唯一寫入 `ui_qt/views/decision_desk_vi
 M140 正常 Main 真 OS DPI216、同份隔離合成 32 列的 1280×760／1500×900 全缺值群組、來源落後深列與代表股九圖，最終 `.../root/native_m140_evidence/run_b6c9aeb49376444e8d5eb60844e99e58/result.json`，Job `.../single_owned_qa_5f5cf46d5a7f40b8a3be416a55f31067/receipt.json` exit0。最終 1280 外頁可視高 596，選中列 top450／height84、代表股 top544／height44，同屏可見；1500 外頁高736，選中列 top590、代表股 top684，亦完整入畫。Sol 目視缺值空態、兩期 bp 與代表股。原生曾揭露按鈕僅換選列而內捲仍 0（`.../single_owned_qa_8140d64a85bd4809886973a67af76cc3/receipt.json`）；延後內捲後又揭露外頁未帶入代表股（`.../single_owned_qa_722b2009654a487c9bac1b18df0e3662/receipt.json`），兩次退回及修正如實保留，初版圖不作最終視覺證據。
 
 這些證據限隔離合成正常 Main、真 Windows DPI216 與本機 WebEngine；正式市場／回測及私人來源、其他真 DPI／Light／1920 可用螢幕、正式 GPU renderer crash、固定新版 EXE、自然排程、Owner UAT、M73／M75 和完整產品 Gate 未接受。M1–M140 仍是審查、裁決、實作與 QA 切片序號，非獨立功能數；原始收據與 PNG 留 ignored `output/`，沒有 push／merge／部署。
+
+## M141／M142 市況廣度首屏與市場失敗診斷
+
+M141 Luna `/root/m133_research_audit` 唯一寫入 `ui_qt/views/decision_desk_view.py` 與 `tests/test_ui_qt_decision_desk_view.py`。既有市場廣度原家數、品質 badge、紅漲／綠跌／平盤家數比例條、精確家數、來源日與品質原先在預設收合的「完整市場資料」。現在同一 widget 位於「總覽」之後、「市場焦點」之前；仍只在原三個非負整數、正總數、合格品質及不晚於判斷日的來源日期成立時畫條，缺值不補零。載入隱藏舊列，新快照或錯誤重顯原狀態。Sol 正常 Main 首輪退回焦點後位置：1280×760 外頁 viewport596，廣度列 top734／height112，仍不在首屏；修正位置後 top383／height112，1500×900 亦完整可見。不新增廣度比率或交易訊號。
+
+M142 Luna `/root/m133_fast_audit` 唯一寫入 `ui_qt/views/market_regime_view.py` 與 `tests/test_ui_qt_market_regime_view.py`。來源或檢測失敗時主要說明固定為「來源或檢測失敗；本次市場分類未知」，原始多行訊息與 HTML-like token 在預設收合的純文字「技術診斷」逐字保留，可用滑鼠／鍵盤選取；不截掉 worker traceback。失敗與 loading 隱藏空的既有技術指標區；新載入與成功清舊診斷，原三個 bool 條件的符合／未符合／未知、Regime DTO、公式、來源與歷史保存行為均不變。
+
+最終受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_2e6615e9dcfb455f860111ab6dbe6afc/receipt.json` exit0：compile0、相關聚焦 **70 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144 source files clean**；8 GiB／12 程序 Job 無殘留或強制清理。正常 Main、隔離合成來源、真 Windows OS DPI216 的 1280×760／1500×900 before／after、失敗收合／展開及成功恢復十圖見 `.../root/native_m141_m142_evidence/run_bf66b3f4086b47ada592e706e8c4ff3f/result.json`，Job `.../root/single_owned_qa_177d260a1b7d463da2fc0a49e471b6ca/receipt.json` exit0；Sol 目視文字、色義、首屏與診斷。M141 首輪 native 失敗 `.../root/single_owned_qa_312d9583806b4f47b503a28c6de2a824/receipt.json` 是實際版面缺口，不當最終通過證據。
+
+證據只涵蓋隔離合成、真 OS DPI216 與本機 Qt；正式市場來源、其他 DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受。M1–M142 是審查、裁決、實作及 QA 切片序號，非功能數；raw receipt／PNG 留 ignored `output/`，未 push／merge／部署或修改其他排程。

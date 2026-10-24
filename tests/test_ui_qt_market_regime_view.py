@@ -5,6 +5,7 @@ import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame, QLabel, QWidget
 
 from app_module.dtos import RegimeResultDTO
@@ -177,6 +178,63 @@ def test_market_regime_condition_rows_clear_on_refresh_and_keep_each_identity():
         assert view.findChild(QLabel, "marketRegimeConditionText_plus_di_above_minus_di").text() == (
             "+DI 高於 -DI：未知（來源未提供）"
         )
+    finally:
+        view.close()
+        application.processEvents()
+
+
+def test_market_regime_error_keeps_raw_diagnostic_collapsed_and_clears_it():
+    application = app()
+    view = MarketRegimeView(FakeRegimeService())
+    raw_diagnostic = "<b>source_missing</b>\nprovider detail: 欄位 unavailable"
+    try:
+        view._show_regime_error(raw_diagnostic)
+
+        assert view.layer1_status.text() == "檢測失敗"
+        assert view.layer1_description.text() == (
+            "來源或檢測失敗；本次市場分類未知。"
+        )
+        assert "source_missing" not in view.layer1_description.text()
+        assert "核對資料來源與更新狀態後重試" in view.market_next_step_label.text()
+        assert view.layer2_empty_label.text() == (
+            "本次來源或檢測失敗，沒有可用的條件狀態。"
+        )
+        assert view.layer3_group.isHidden()
+        assert not view.regime_error_diagnostic_group.isHidden()
+        assert view.regime_error_diagnostic_group.isChecked() is False
+        assert view.regime_error_diagnostic_text.isHidden()
+        assert (
+            view.regime_error_diagnostic_text.textInteractionFlags()
+            & Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        assert view.regime_error_diagnostic_text.toPlainText() == raw_diagnostic
+
+        view.regime_error_diagnostic_group.setChecked(True)
+        assert not view.regime_error_diagnostic_text.isHidden()
+        assert view.regime_error_diagnostic_group.title() == "技術診斷（已展開）"
+        assert view.regime_error_diagnostic_text.toPlainText() == raw_diagnostic
+
+        view._clear_regime_result_for_loading()
+        assert view.layer3_group.isHidden()
+        assert view.regime_error_diagnostic_group.isHidden()
+        assert view.regime_error_diagnostic_group.isChecked() is False
+        assert view.regime_error_diagnostic_text.isHidden()
+        assert view.regime_error_diagnostic_text.toPlainText() == ""
+
+        view._show_regime_error(raw_diagnostic)
+        view.regime_error_diagnostic_group.setChecked(True)
+        result = FakeRegimeService().detect_regime()
+        view._render_regime_detection(
+            result,
+            {"technical": {}, "patterns": {}, "signals": {}},
+        )
+        assert not view.layer3_group.isHidden()
+        assert view.regime_error_diagnostic_group.isHidden()
+        assert view.regime_error_diagnostic_text.toPlainText() == ""
+        assert view.layer1_status.text() == "趨勢盤"
+        assert view.findChild(
+            QLabel, "marketRegimeConditionStatus_plus_di_above_minus_di"
+        ).text() == "未知"
     finally:
         view.close()
         application.processEvents()
@@ -460,7 +518,7 @@ def test_market_regime_button_runs_one_background_request_and_renders_completion
 def test_market_regime_background_exception_clears_busy_state_and_shows_error():
     application = app()
     service = _ControlledAsyncRegimeService(
-        error=RuntimeError("synthetic source failure")
+        error=RuntimeError("synthetic source failure\nsecond diagnostic line")
     )
     view = MarketRegimeView(service)
     try:
@@ -470,7 +528,14 @@ def test_market_regime_background_exception_clears_busy_state_and_shows_error():
 
         assert _wait_for(application, lambda: view._regime_worker is None)
         assert view.layer1_status.text() == "檢測失敗"
-        assert "synthetic source failure" in view.layer1_description.text()
+        assert view.layer1_description.text() == (
+            "來源或檢測失敗；本次市場分類未知。"
+        )
+        assert "synthetic source failure" not in view.layer1_description.text()
+        assert view.regime_error_diagnostic_text.toPlainText().startswith(
+            "synthetic source failure\nsecond diagnostic line\n"
+        )
+        assert view.regime_error_diagnostic_group.isChecked() is False
         assert view.detect_btn.isEnabled() is True
         assert view.regime_loading_label.text() == ""
         assert service.strategy_calls == 0

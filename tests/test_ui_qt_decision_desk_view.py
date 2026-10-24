@@ -1480,6 +1480,7 @@ def test_decision_desk_market_breadth_preserves_missing_partial_and_zero_values(
     assert "空方：未提供" in text
     assert "持平：未提供" in text
     assert "廣度比率BP：未知" in text
+    assert not view.market_breadth_row.isHidden()
     view.close()
 
     zeros = replace(
@@ -1495,6 +1496,8 @@ def test_decision_desk_market_breadth_preserves_missing_partial_and_zero_values(
     assert "空方：0" in text
     assert "持平：0" in text
     assert "廣度比率BP：0" in text
+    assert not view.market_breadth_row.isHidden()
+    assert view.market_breadth_bar.isHidden()
     view.close()
 
     partial = replace(
@@ -1510,14 +1513,39 @@ def test_decision_desk_market_breadth_preserves_missing_partial_and_zero_values(
     assert "空方：未提供" in text
     assert "持平：3" in text
     assert "廣度比率BP：未知" in text
+    assert not view.market_breadth_row.isHidden()
     view.close()
 
 
 def test_decision_desk_market_breadth_bar_uses_integer_stretches_and_accessible_counts():
-    app()
+    application = app()
     base = _snapshot()
     breadth = replace(base.market_breadth, advancing=120, declining=80, unchanged=0)
     view = rendered_view(FakeBuilder(replace(base, market_breadth=breadth)))
+    view.resize(1280, 620)
+    view.show()
+    application.processEvents()
+    assert view.advanced_market_panel.is_collapsed()
+    assert view.market_breadth_row.isVisible()
+    outer_viewport = view.main_scroll_area.viewport()
+    assert outer_viewport.height() == 596
+    row_top = view.market_breadth_row.mapTo(
+        outer_viewport, view.market_breadth_row.rect().topLeft()
+    ).y()
+    assert row_top >= 0
+    assert row_top + view.market_breadth_row.height() <= outer_viewport.height()
+    overview_top = view.generated_at_label.mapTo(
+        outer_viewport, view.generated_at_label.rect().topLeft()
+    ).y()
+    focus_top = view.priority_sector_label.mapTo(
+        outer_viewport, view.priority_sector_label.rect().topLeft()
+    ).y()
+    assert overview_top < row_top
+    assert row_top + view.market_breadth_row.height() <= focus_top
+    main_content_layout = view.main_scroll_area.widget().layout()
+    assert main_content_layout.indexOf(view.market_breadth_row) < main_content_layout.indexOf(
+        view.industry_strength_panel
+    )
     segments = [view.market_breadth_bar.findChild(QFrame, f"decisionDeskBreadthSegment{i}") for i in range(3)]
     assert [segment.property("breadthCount") for segment in segments] == [120, 80, 0]
     assert [view.market_breadth_bar_layout.stretch(i) for i in range(3)] == [120, 80, 0]
@@ -1545,6 +1573,7 @@ def test_decision_desk_market_breadth_bar_hides_invalid_or_unqualified_data_and_
     )
     for breadth in invalid_cases:
         view = rendered_view(FakeBuilder(replace(base, market_breadth=breadth)))
+        assert not view.market_breadth_row.isHidden()
         assert view.market_breadth_bar.isHidden()
         assert view.market_breadth_legend.isHidden()
         assert view.market_breadth_caption.isHidden()
@@ -1558,9 +1587,14 @@ def test_decision_desk_market_breadth_bar_hides_invalid_or_unqualified_data_and_
     view._render_snapshot(replace(base, market_breadth=refreshed))
     assert [segment.property("breadthCount") for segment in view.market_breadth_bar.findChildren(QFrame)] == [1, 2, 3]
     view._display_loading_snapshot()
+    assert view.market_breadth_row.isHidden()
     assert view.market_breadth_bar.isHidden()
     assert view.market_breadth_legend.text() == ""
     assert view.market_breadth_caption.text() == ""
+    view._display_exception_snapshot("snapshot unavailable")
+    assert not view.market_breadth_row.isHidden()
+    assert "未提供" in view.market_breadth_value.text()
+    assert view.market_breadth_bar.isHidden()
     view.close()
 
 

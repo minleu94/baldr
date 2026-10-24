@@ -5,7 +5,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QPushButton, QTextEdit, QGroupBox, QSplitter,
+    QPushButton, QTextEdit, QPlainTextEdit, QGroupBox, QSplitter,
     QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt
@@ -385,6 +385,38 @@ class MarketRegimeView(QWidget):
         layer3_layout.addWidget(self.layer3_scroll_area)
         layer3_group.setLayout(layer3_layout)
         status_layout.addWidget(layer3_group)
+
+        self.regime_error_diagnostic_group = QGroupBox("技術診斷（收合）")
+        self.regime_error_diagnostic_group.setObjectName(
+            "marketRegimeErrorDiagnosticGroup"
+        )
+        self.regime_error_diagnostic_group.setCheckable(True)
+        self.regime_error_diagnostic_group.setChecked(False)
+        self.regime_error_diagnostic_group.setAccessibleName("市場狀態技術診斷")
+        error_diagnostic_layout = QVBoxLayout(self.regime_error_diagnostic_group)
+        error_diagnostic_layout.setContentsMargins(8, 6, 8, 6)
+        self.regime_error_diagnostic_text = QPlainTextEdit(
+            self.regime_error_diagnostic_group
+        )
+        self.regime_error_diagnostic_text.setObjectName(
+            "marketRegimeErrorDiagnosticText"
+        )
+        self.regime_error_diagnostic_text.setAccessibleName("市場狀態原始技術診斷")
+        self.regime_error_diagnostic_text.setReadOnly(True)
+        self.regime_error_diagnostic_text.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.regime_error_diagnostic_text.setMinimumHeight(64)
+        self.regime_error_diagnostic_text.setMaximumHeight(180)
+        error_diagnostic_layout.addWidget(self.regime_error_diagnostic_text)
+        self.regime_error_diagnostic_group.toggled.connect(
+            self._on_regime_error_diagnostic_toggled
+        )
+        status_layout.addWidget(self.regime_error_diagnostic_group)
+        self.regime_error_diagnostic_group.hide()
+        self.regime_error_diagnostic_text.hide()
+
         self.shared_research_summary_label = QLabel(
             "研究母體摘要與上方大盤指數判斷分開；尚未讀取共用快照。"
         )
@@ -551,6 +583,9 @@ class MarketRegimeView(QWidget):
 
     def _clear_regime_result_for_loading(self) -> None:
         """移除上次結果，避免檢測期間被誤認為目前資料。"""
+        self._clear_regime_error_diagnostic()
+        self.layer3_group.setChecked(False)
+        self.layer3_group.hide()
         self.layer1_status.setText("檢測中…")
         self.layer1_status.setStyleSheet(
             f"color: {COLOR_TAG_DEFAULT}; padding: 5px 0;"
@@ -571,9 +606,11 @@ class MarketRegimeView(QWidget):
         strategy_config: Dict[str, Any] | None,
     ) -> None:
         """只在 UI thread 呈現已完成的服務結果。"""
+        self._clear_regime_error_diagnostic()
         self._update_layer1(regime_result)
         self._update_layer2(regime_result)
         self._update_layer3(regime_result)
+        self.layer3_group.show()
         self._update_layer3_visibility()
         self.market_risk_label.setText(
             "風險與限制：規則匹配度不是勝率；此分類只描述原資料的規則狀態，"
@@ -611,17 +648,41 @@ class MarketRegimeView(QWidget):
             )
 
     def _show_regime_error(self, message: str) -> None:
-        """沿用原有錯誤終態，不留下前一輪的指標或策略。"""
+        """顯示中性失敗摘要，並把原始診斷留在收合的純文字區。"""
         self.layer1_status.setText("檢測失敗")
         self.layer1_status.setStyleSheet(f"color: {COLOR_TAG_DEFAULT}; padding: 5px 0;")
         self.layer1_confidence.setText("")
         self.layer1_description.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; padding-top: 5px; line-height: 1.4;")
-        self.layer1_description.setText(f"錯誤：{message}")
+        self.layer1_description.setTextFormat(Qt.TextFormat.PlainText)
+        self.layer1_description.setText("來源或檢測失敗；本次市場分類未知。")
         self._clear_layer2_conditions("本次來源或檢測失敗，沒有可用的條件狀態。")
+        self.layer3_group.setChecked(False)
+        self.layer3_group.hide()
         self._clear_layer3()
+        self._set_regime_error_diagnostic(message or "未知錯誤")
         self.strategy_text.setPlainText("")
         self.market_risk_label.setText("風險與限制：本次來源或檢測失敗，不能使用市場分類判讀。")
         self.market_next_step_label.setText("下一步：核對資料來源與更新狀態後重試；不使用預設分類代替缺件。")
+
+    def _set_regime_error_diagnostic(self, message: str) -> None:
+        """逐字保留診斷原文；QPlainTextEdit 不解析 HTML 或多行內容。"""
+        self.regime_error_diagnostic_group.setChecked(False)
+        self.regime_error_diagnostic_text.setPlainText(message)
+        self.regime_error_diagnostic_text.hide()
+        self.regime_error_diagnostic_group.show()
+
+    def _clear_regime_error_diagnostic(self) -> None:
+        """載入或成功時移除前次診斷，避免與新狀態混淆。"""
+        self.regime_error_diagnostic_group.setChecked(False)
+        self.regime_error_diagnostic_text.clear()
+        self.regime_error_diagnostic_text.hide()
+        self.regime_error_diagnostic_group.hide()
+
+    def _on_regime_error_diagnostic_toggled(self, checked: bool) -> None:
+        self.regime_error_diagnostic_group.setTitle(
+            "技術診斷（已展開）" if checked else "技術診斷（收合）"
+        )
+        self.regime_error_diagnostic_text.setVisible(checked)
 
     def _on_regime_detection_finished(
         self, worker: TaskWorker, request_id: int, payload: Any
@@ -646,7 +707,7 @@ class MarketRegimeView(QWidget):
             and self._regime_worker is worker
             and not self._is_shutting_down()
         ):
-            self._show_regime_error(message.splitlines()[0] if message else "未知錯誤")
+            self._show_regime_error(message or "未知錯誤")
 
     def _on_regime_detection_cancelled(
         self, worker: TaskWorker, request_id: int

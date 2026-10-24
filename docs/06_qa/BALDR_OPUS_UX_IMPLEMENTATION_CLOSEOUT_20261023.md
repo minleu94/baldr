@@ -491,14 +491,14 @@ Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9
 
 最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_93d1b6b2d580466b88c7f13753157ca4/receipt.json` exit0：受改 Python compile0、相關 focused **45 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。這些是隔離合成及原始碼 QA；正式保存來源、其他真 OS DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受。M1–M155 是審查、裁決、實作與 QA 切片序號，不是 155 個獨立功能；原始 PNG／收據留 ignored `output/`，本機提交不 push、merge 或部署。
 
-## 排程啟動至 M160 的盤點
+## 排程啟動至 M162 的盤點
 
 | 範圍 | 已完成的工程與驗證 | 尚未接受的界線 |
 | --- | --- | --- |
-| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M160 包含唯讀裁決、測試及實作，並非 160 個功能。 | 審查意見不自動授來源／金融契約。 |
+| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M162 包含唯讀裁決、測試及實作，並非 162 個功能。 | 審查意見不自動授來源／金融契約。 |
 | P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化；選中持倉及回測 Sharpe 短顯與完整原值可核；Workbench Advice 原警告、日期與選列理由可見。 | 正式保存／市場來源與 Owner UAT 未驗。 |
 | P1 產業題材 | 原資料範圍內的題材格、成交額與覆蓋圖、九指標、同版成員／鄰域、搜尋、雙版本原值、具名母體三態與成員條件側欄，保留精確下鑽。 | 多期間報酬、逐邊有向關係需合格來源、時鐘及用途契約。 |
-| P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；持倉毛損益正／負／零／未知家數分布；修關窗晚到回呼及備援圖互動／字形。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
+| P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；持倉毛損益正／負／零／未知家數分布；修關窗晚到回呼及備援圖互動／字形；共用狀態色與市場方向色分離。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
 | P3 產業鏈 | 已有同版重疊、分類與成員探索；Sol 拒絕把共現當有向供應鏈或把資料覆蓋當跨期強弱。 | M75 逐邊證據與跨期 PIT 用途仍缺；M73 決策品質控制作用範圍仍需產品裁決。 |
 
 各切片均由 Luna 依單一 writer 邊界實作或唯讀盤點，Sol 複核、退回必要修正並以 root-owned 受控 Job 做聚焦、共同回歸及隔離原生畫面；原失敗與探針收據保留。此盤點只收束本機原始碼階段，不代表正式產品驗收或可交易資格。
@@ -542,3 +542,15 @@ Sol 原生首版在 1280×760、真 OS DPI216 量到「手動記錄交易」底�
 Sol 先退回表格 role 覆蓋基類、空態誤把原警告改寫與長卡無界的版本；Luna 修後聚焦通過。首輪原生探針 `root/native_m160_evidence/run_46fff7df352e44a386f0de8ad5ea9635/result.json` exit0，但三表留白、選列卡被推到下方且配置表顯英文原碼，Sol 目視退回；初次 native harness 未展開進階區的 exit1 亦保留為 harness 失敗，不當產品證據。修版在真 Windows OS DPI216 的 1280×760／1500×900 拍摘要、選列與長警告六圖：`output/tasks/baldr-opus-ux-implementation/root/native_m160_evidence/run_0ac41957c8974a9dae9cc3c914ff1245/result.json`，受控 Job `root/single_owned_qa_74ae18d81dd44be99cc70b7fc2a156cc/receipt.json` exit0、callback0；Sol 目視兩表與選列卡可在同段捲動區判讀，長警告保留原文且可續捲。
 
 最終受控整合 `root/single_owned_qa_8a5554e110514109b28dbf9ac1d5b02b/receipt.json` exit0：compile0、Advice contract **6 passed**、Workbench **85 passed**、更新頁 validator **25 passed／0 failed／4 skipped**、mypy **1,144** 個來源檔無問題；8 GiB／12 程序 Job 無殘留。先前誤用系統 Python 的 `root/single_owned_qa_ee658b95ba6243c7ad0879d0af040ca3/receipt.json` exit1（缺 PySide6／mypy）保留，沒有冒充程式失敗或通過。實際正式 Advice／私人配置、其他 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 均未接受；M1–M160 是切片序號，不是功能數。
+
+## M161 Main 外殼 Advice 整合驗證
+
+兩位 Luna 唯讀對照 M1–M160 後，市場、產業、題材、Portfolio、Backtest、Evidence／Runtime、Watchlist 及推薦頁，沒有可由現成 typed DTO 安全新增、又不重複的高價值圖卡；Sol 不為湊進度重畫。另發現 M160 僅有獨立 Workbench View 的原生畫面，未核 Main 導覽外殼及扣除側欄後的可視範圍。由 Luna 提出正常 Main 沙箱驗證路由，root 實作 ignored QA harness，僅用 tests/test_workbench_advice_contract.py 的合成 DTO；Main 本身沿空資料根啟動，等待 async worker 閒置再注入，沒有接觸正式／私人資料。
+
+真 Windows OS DPI216 的 1280×760／1500×900 正常 Main 各拍摘要、選列、長警告六圖：output/tasks/baldr-opus-ux-implementation/root/native_m161_main_advice_evidence/run_0ada6fdd00614a8d8169c964c2100763/result.json；受控 Job root/single_owned_qa_7dcaba44f68a43ec960524226349c3d6/receipt.json exit0、callback0、沙箱 DB SHA 未變、worker 關閉後無殘留。Sol 目視主導覽、表格、判讀卡與長警告在兩尺寸可讀。首版 harness 字串換行語法錯誤的 exit1 收據 root/single_owned_qa_f4d247298d124819a527c1b16c6bc976/receipt.json 保留，不算產品失敗或通過。這是正常 Main 組裝＋合成 DTO 的旅程，不證明自然 Advice producer、正式來源／PIT 或產品 Gate。
+
+## M162 共用狀態色與市場方向色隔離
+
+Luna /root/m160_workbench_advice 單一 writer 只改 ui_qt/theme/tokens.py、ui_qt/theme/qss.py、ui_qt/widgets/theme_widgets.py 與 tests/test_ui_qt_theme.py。原 success=#22c55e 與台股 market_down 同色、原 danger 與 market_up 同紅族，易把品質／作業狀態看成市場漲跌。新增 status_success teal #2dd4bf、status_error orchid #e879f9、status_warning amber #f6b44b、status_info blue #77aef5；只套用 QSS statusTone、StatusBadge 與 SemanticChip。observed／manual_observed 用資訊藍，避免暗示已正式接受；estimated／degraded 用警告色，missing／blocked 用錯誤色，unknown／off 中性。原文字、market_*、舊相容 token、行情方向判斷、金融值與資格不動；未引入 US_INTL／Light 或完整 Delegate Suite。Sol 複核後要求 chip 的成功／錯誤底色也離開舊綠／紅底，Luna 修版。
+
+最終受控 root/single_owned_qa_df617b77848c46a2820d838eae8128b4/receipt.json exit0：compile0、主題／方向／Decimal 聚焦 20 passed、Workbench 85 passed、validator 25 passed／0 failed／4 skipped、mypy 1,144 檔 clean，8 GiB／12 程序 Job 無殘留。真 Windows DPI216 的 1280×760／1500×900 狀態徽章、chip、QSS 與紅漲綠跌對照兩圖：root/native_m162_status_palette_evidence/run_a5ca22b7665049cb9d53135a89a03e20/result.json；Job root/single_owned_qa_01a8b6b960ae415c82841f61d03b78d2/receipt.json exit0、callback0，Sol 目視狀態與行情色可區辨。這是共用元件隔離樣本；正式頁面全路徑、其他真 OS DPI、Light／1920、固定新版 EXE、Owner UAT 及完整 Gate 未接受。M1–M162 是審查、QA 與實作切片序號，不是功能數。

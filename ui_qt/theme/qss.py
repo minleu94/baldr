@@ -185,20 +185,20 @@ def build_global_stylesheet(tokens: ThemeTokens = MIDNIGHT_ANALYST) -> str:
         padding: 6px 10px;
     }}
     QLabel[statusTone="info"] {{
-        color: {tokens.text_secondary};
-        border-color: {tokens.border};
+        color: {tokens.status_info};
+        border-color: {tokens.status_info};
     }}
     QLabel[statusTone="success"] {{
-        color: {tokens.success};
-        border-color: {tokens.success};
+        color: {tokens.status_success};
+        border-color: {tokens.status_success};
     }}
     QLabel[statusTone="warning"] {{
-        color: {tokens.warning};
-        border-color: {tokens.warning};
+        color: {tokens.status_warning};
+        border-color: {tokens.status_warning};
     }}
     QLabel[statusTone="error"] {{
-        color: {tokens.danger};
-        border-color: {tokens.danger};
+        color: {tokens.status_error};
+        border-color: {tokens.status_error};
     }}
     QTextEdit[role="code"] {{
         background: {tokens.app_bg};

@@ -17,6 +17,10 @@ class ThemeTokens:
     warning: str
     danger: str
     info: str
+    status_success: str = "#2dd4bf"
+    status_error: str = "#e879f9"
+    status_warning: str = "#f6b44b"
+    status_info: str = "#77aef5"
     accent_warm: str = "#d97706"
     market_up: str = "#ef4444"
     market_down: str = "#22c55e"
@@ -49,6 +53,10 @@ MIDNIGHT_ANALYST = ThemeTokens(
     warning="#f6b44b",
     danger="#f05b5b",
     info="#77aef5",
+    status_success="#2dd4bf",
+    status_error="#e879f9",
+    status_warning="#f6b44b",
+    status_info="#77aef5",
     accent_warm="#d97706",
     market_up="#ef4444",
     market_down="#22c55e",

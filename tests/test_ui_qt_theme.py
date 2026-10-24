@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QTableView, QVBoxLayout, QWidget
 
-from ui_qt.widgets.theme_widgets import CompactCodeList, EmptyStatePanel, StatusBadge
+from ui_qt.widgets.theme_widgets import CompactCodeList, EmptyStatePanel, SemanticChip, StatusBadge
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.text_sanitizer import remove_symbol_icons, sanitize_button_texts, strip_leading_symbol_icon
 from ui_qt.widgets.info_button import InfoButton
@@ -26,10 +26,20 @@ def test_midnight_analyst_tokens_expose_required_palette():
     assert MIDNIGHT_ANALYST.accent_warm == "#d97706"
     assert MIDNIGHT_ANALYST.data_positive == "#22c55e"
     assert MIDNIGHT_ANALYST.data_negative == "#ef4444"
+    assert MIDNIGHT_ANALYST.success == "#22c55e"
+    assert MIDNIGHT_ANALYST.warning == "#f6b44b"
+    assert MIDNIGHT_ANALYST.danger == "#f05b5b"
+    assert MIDNIGHT_ANALYST.info == "#77aef5"
     assert MIDNIGHT_ANALYST.market_up == "#ef4444"
     assert MIDNIGHT_ANALYST.market_down == "#22c55e"
     assert MIDNIGHT_ANALYST.market_flat == MIDNIGHT_ANALYST.data_neutral
     assert MIDNIGHT_ANALYST.success != MIDNIGHT_ANALYST.market_up
+    assert MIDNIGHT_ANALYST.status_success == "#2dd4bf"
+    assert MIDNIGHT_ANALYST.status_error == "#e879f9"
+    assert MIDNIGHT_ANALYST.status_warning == MIDNIGHT_ANALYST.warning
+    assert MIDNIGHT_ANALYST.status_info == MIDNIGHT_ANALYST.info
+    assert MIDNIGHT_ANALYST.status_success != MIDNIGHT_ANALYST.market_down
+    assert MIDNIGHT_ANALYST.status_error != MIDNIGHT_ANALYST.market_up
     assert MIDNIGHT_ANALYST.table_hover == "#20334a"
 
 
@@ -46,6 +56,18 @@ def test_global_stylesheet_contains_core_qt_selectors():
     assert "QProgressBar::chunk" in qss
     assert "QComboBox QAbstractItemView" in qss
     assert "#070b12" in qss
+    for tone, color in (
+        ("info", MIDNIGHT_ANALYST.status_info),
+        ("success", MIDNIGHT_ANALYST.status_success),
+        ("warning", MIDNIGHT_ANALYST.status_warning),
+        ("error", MIDNIGHT_ANALYST.status_error),
+    ):
+        selector = f'QLabel[statusTone="{tone}"] {{'
+        selector_start = qss.index(selector)
+        selector_end = qss.index("    }", selector_start)
+        selector_block = qss[selector_start:selector_end]
+        assert f"color: {color};" in selector_block
+        assert f"border-color: {color};" in selector_block
 
 
 def _app():
@@ -59,7 +81,64 @@ def test_status_badge_maps_quality_to_dark_styles():
     _app()
     badge = StatusBadge("OBSERVED", "observed")
     assert badge.text() == "OBSERVED"
-    assert "#22c55e" in badge.styleSheet()
+    assert MIDNIGHT_ANALYST.status_info in badge.styleSheet()
+
+    for state, color in (
+        ("ready", MIDNIGHT_ANALYST.status_success),
+        ("done", MIDNIGHT_ANALYST.status_success),
+        ("passed", MIDNIGHT_ANALYST.status_success),
+        ("observed", MIDNIGHT_ANALYST.status_info),
+        ("manual_observed", MIDNIGHT_ANALYST.status_info),
+        ("info", MIDNIGHT_ANALYST.status_info),
+        ("estimated", MIDNIGHT_ANALYST.status_warning),
+        ("degraded", MIDNIGHT_ANALYST.status_warning),
+        ("warning", MIDNIGHT_ANALYST.status_warning),
+        ("action_required", MIDNIGHT_ANALYST.status_warning),
+        ("manual_required", MIDNIGHT_ANALYST.status_warning),
+        ("waiting_for_time", MIDNIGHT_ANALYST.status_warning),
+        ("missing", MIDNIGHT_ANALYST.status_error),
+        ("blocked", MIDNIGHT_ANALYST.status_error),
+        ("critical", MIDNIGHT_ANALYST.status_error),
+        ("unknown", MIDNIGHT_ANALYST.text_muted),
+        ("off", MIDNIGHT_ANALYST.text_muted),
+    ):
+        badge.set_quality(state)
+        assert color in badge.styleSheet(), state
+        assert badge.text() == "OBSERVED"
+
+
+def test_semantic_chip_uses_status_palette_and_neutral_unknown_fallback():
+    _app()
+    chip = SemanticChip("已觀測", "observed")
+    for state, color in (
+        ("ready", MIDNIGHT_ANALYST.status_success),
+        ("done", MIDNIGHT_ANALYST.status_success),
+        ("passed", MIDNIGHT_ANALYST.status_success),
+        ("observed", MIDNIGHT_ANALYST.status_info),
+        ("manual_observed", MIDNIGHT_ANALYST.status_info),
+        ("info", MIDNIGHT_ANALYST.status_info),
+        ("estimated", MIDNIGHT_ANALYST.status_warning),
+        ("degraded", MIDNIGHT_ANALYST.status_warning),
+        ("warning", MIDNIGHT_ANALYST.status_warning),
+        ("action_required", MIDNIGHT_ANALYST.status_warning),
+        ("manual_required", MIDNIGHT_ANALYST.status_warning),
+        ("waiting_for_time", MIDNIGHT_ANALYST.status_warning),
+        ("missing", MIDNIGHT_ANALYST.status_error),
+        ("blocked", MIDNIGHT_ANALYST.status_error),
+        ("critical", MIDNIGHT_ANALYST.status_error),
+        ("unknown", MIDNIGHT_ANALYST.text_muted),
+        ("off", MIDNIGHT_ANALYST.text_muted),
+    ):
+        chip.set_tone(state)
+        assert color in chip.styleSheet(), state
+        assert chip.text() == "已觀測"
+
+    for state in ("ready", "done", "passed"):
+        chip.set_tone(state)
+        assert "background: #0b2624;" in chip.styleSheet(), state
+    for state in ("missing", "blocked", "critical"):
+        chip.set_tone(state)
+        assert "background: #27162d;" in chip.styleSheet(), state
 
 
 def test_empty_state_panel_uses_midnight_style():

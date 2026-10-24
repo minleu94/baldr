@@ -1,5 +1,7 @@
 ﻿# UI 功能文件（Qt）
 
+M162 共用狀態色：QLabel 的 statusTone、StatusBadge 和 SemanticChip 用獨立狀態 token，已觀測／人工觀測以資訊藍表示，ready／done／passed 為 teal，估計／降級與需人工處理為 amber，缺件／阻擋／critical 為 orchid，unknown／off 中性。台股 market_up 紅、market_down 綠、market_flat 中性與原狀態文字保持；狀態顏色不是行情方向、正式來源資格或交易訊號。真 OS DPI216 兩尺寸原生樣本及受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m162-共用狀態色與市場方向色隔離)；Light、其他 DPI 與完整 Gate 未驗。
+
 M160 決策工作台 Advice：原 `AdviceDashboardDTO` 的模式、決策日／資料日、正式／Professional／配置列數與原警告先呈摘要；正式與配置表的已知動作、品質、可成交性顯中文，原碼在提示及無障礙文字，未知仍原樣。選列卡顯原理由／論點、適用期間、風險與失效條件，長內容完整保留在共用證據明細；0 列不占表格高度，有列保留表內捲動。載入、失敗及空態清舊，沒有新增策略判斷、交易指令或來源資格。隔離合成 Native 與 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)；正式來源與產品 Gate 未接受。
 
 M158 回測原報告基準比較：Sharpe 策略／比較基準／差額三格只在 Qt 顯示層縮成兩位，有捨入標「約」，極小非零以科學記號保留符號；真零、未知與原缺件原因分開，完整原值在提示及無障礙描述。bp 列、DTO、計算與報告來源不變。M159 Portfolio 手動帳：同份持倉快照在完整持倉表及操作列後顯示未實現毛損益正／負／零／未知等權家數圖；原行情狀態／日期／現價或原損益不合格列未知，0 檔不畫假比例，載入／失敗清舊。圖條不是資金權重、報酬或風險。真 OS DPI216 兩尺寸合成原生畫面與受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m158-backtest-原報告基準-sharpe-判讀)；正式／私人資料、固定 EXE 及產品 Gate 未接受。

@@ -2240,6 +2240,10 @@ class MainWindow(QMainWindow):
                     decision_desk_view.stockResearchRequested.connect(
                         self._open_stock_research_context
                     )
+                if hasattr(decision_desk_view, "savedRecommendationRequested"):
+                    decision_desk_view.savedRecommendationRequested.connect(
+                        self._open_workbench_saved_recommendation
+                    )
                 print("[MainWindow] 每日決策來源建立成功")
             except Exception as e:
                 print(f"[MainWindow] 警告：每日決策來源初始化失敗：{e}")

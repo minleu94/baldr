@@ -40,6 +40,7 @@ class _DummyView(QWidget):
         super().__init__(parent)
         self.load_data_if_needed_calls = 0
         self.resultPresented = _DummySignal()
+        self.savedRecommendationRequested = _DummySignal()
 
     def load_data_if_needed(self):
         self.load_data_if_needed_calls += 1
@@ -331,6 +332,12 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     _DummyRecommendationView.instances = []
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
+    saved_recommendation_calls = []
+    monkeypatch.setattr(
+        main_module.MainWindow,
+        "_open_workbench_saved_recommendation",
+        lambda _self, result_id: saved_recommendation_calls.append(result_id),
+    )
     target_window = _build_main_window()
     target_window._setup_ui()
 
@@ -350,6 +357,10 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     builder = _TrackingDecisionDeskBuilder.instances[-1]
     assert builder.provider is not None
     assert callable(getattr(builder.provider, "fetch_market_regime", None))
+    connected_slots = target_window.decision_desk_view.savedRecommendationRequested.calls
+    assert len(connected_slots) == 1
+    connected_slots[0]("saved-result-exact-id")
+    assert saved_recommendation_calls == ["saved-result-exact-id"]
 
 
 def test_market_exploration_lazy_loading_uses_widget_identity_after_overview_insert(

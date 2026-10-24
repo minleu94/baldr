@@ -70,6 +70,7 @@ class DecisionDeskView(QWidget):
     """每日決策工作台：只透過 DecisionDeskSnapshotBuilder 取得快照。"""
 
     stockResearchRequested = Signal(object)
+    savedRecommendationRequested = Signal(str)
 
     def __init__(
         self,
@@ -195,6 +196,30 @@ class DecisionDeskView(QWidget):
         metric_layout.addWidget(self.generated_at_card)
         info_layout.addLayout(metric_layout)
         info_layout.addWidget(self.generated_at_label)
+        self.saved_recommendation_label = QLabel("保存推薦：尚未載入")
+        self.saved_recommendation_label.setObjectName("decisionDeskSavedRecommendationSummary")
+        self.saved_recommendation_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.saved_recommendation_label.setWordWrap(True)
+        self.saved_recommendation_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        self.saved_recommendation_button = QPushButton("開啟原保存推薦")
+        self.saved_recommendation_button.setProperty("variant", "secondary")
+        self.saved_recommendation_button.setAccessibleName("開啟每日決策中的原保存推薦")
+        self.saved_recommendation_button.setToolTip(
+            "只讀取此處列出的原保存結果；不產生今日新推薦或交易指令。"
+        )
+        self.saved_recommendation_button.setEnabled(False)
+        self.saved_recommendation_button.clicked.connect(
+            self._open_saved_recommendation
+        )
+        saved_recommendation_row = QHBoxLayout()
+        saved_recommendation_row.setSpacing(8)
+        saved_recommendation_row.addWidget(self.saved_recommendation_label, 1)
+        saved_recommendation_row.addWidget(
+            self.saved_recommendation_button, 0, Qt.AlignmentFlag.AlignTop
+        )
+        info_layout.addLayout(saved_recommendation_row)
         info_layout.addWidget(self.warning_summary_label)
         info_layout.addWidget(self.warning_details_panel)
 
@@ -608,6 +633,7 @@ class DecisionDeskView(QWidget):
             self._refresh_snapshot()
 
     def _display_pending_snapshot(self) -> None:
+        self._render_saved_recommendation(None)
         self._clear_market_breadth_bar()
         self.overall_status_label.setText("摘要尚未載入")
         self.generated_at_label.setText(
@@ -656,6 +682,7 @@ class DecisionDeskView(QWidget):
         )
 
     def _display_loading_snapshot(self) -> None:
+        self._render_saved_recommendation(None)
         self._clear_market_breadth_bar()
         self.market_breadth_row.hide()
         self._clear_institutional_flow_bar()
@@ -774,6 +801,7 @@ class DecisionDeskView(QWidget):
             self._render_snapshot(snapshot)
 
     def _render_snapshot(self, snapshot: DecisionDeskSnapshot) -> None:
+        self._render_saved_recommendation(snapshot.recommendations)
         self._render_answer_first_dashboard(snapshot)
         self._set_industry_focus_buttons(snapshot.sector_rotation, snapshot.as_of_date)
         self.market_breadth_row.show()
@@ -796,9 +824,6 @@ class DecisionDeskView(QWidget):
         self.generated_at_card.value_label.setText(snapshot.generated_at.strftime("%H:%M:%S"))
 
         warning_lines = [self._humanize_warning_token(item) for item in snapshot.warnings]
-        if snapshot.recommendations is not None:
-            recommendation = snapshot.recommendations
-            warning_lines.append(f"已保存推薦：{', '.join(recommendation.stock_codes) or '無候選'}；來源 {recommendation.result_id or '缺漏'}；資料日 {recommendation.as_of_date or '未知'}；{self._quality_label(recommendation.quality)}")
         visibility_summary = snapshot.market_data_visibility
         visibility_quality = (
             "MISSING"
@@ -943,6 +968,50 @@ class DecisionDeskView(QWidget):
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
             "border-radius: 6px; padding: 4px 8px; font-size: 12pt; font-weight: 700;"
         )
+
+    def _render_saved_recommendation(self, recommendation: Any | None) -> None:
+        """只呈現快照提供的原保存結果身分，不推定缺席代表沒有結果。"""
+
+        if recommendation is None:
+            self.saved_recommendation_label.setText(
+                "保存推薦：本次摘要未提供（狀態未知）；不是今日新推薦。"
+            )
+            self.saved_recommendation_button.setEnabled(False)
+            self.saved_recommendation_button.setProperty("result_id", None)
+            self.saved_recommendation_button.setVisible(False)
+            return
+
+        result_id = getattr(recommendation, "result_id", None)
+        valid_result_id = (
+            type(result_id) is str
+            and bool(result_id.strip())
+            and result_id == result_id.strip()
+        )
+        as_of_date = getattr(recommendation, "as_of_date", None)
+        date_text = as_of_date.isoformat() if type(as_of_date) is date else "未知"
+        quality = self._quality_label(getattr(recommendation, "quality", None))
+        raw_codes = getattr(recommendation, "stock_codes", ())
+        codes = tuple(str(code) for code in raw_codes if isinstance(code, str) and code)
+        candidate_text = ", ".join(codes) if codes else "未提供"
+        displayed_id = result_id if valid_result_id else "未知"
+        self.saved_recommendation_label.setText(
+            f"原保存推薦（非今日新推薦／非交易指令）：資料日 {date_text}；"
+            f"品質 {quality}；來源 ID {displayed_id}；候選 {candidate_text}。"
+        )
+        self.saved_recommendation_button.setProperty(
+            "result_id", result_id if valid_result_id else None
+        )
+        self.saved_recommendation_button.setEnabled(valid_result_id)
+        self.saved_recommendation_button.setVisible(valid_result_id)
+
+    def _open_saved_recommendation(self) -> None:
+        result_id = self.saved_recommendation_button.property("result_id")
+        if (
+            type(result_id) is str
+            and bool(result_id.strip())
+            and result_id == result_id.strip()
+        ):
+            self.savedRecommendationRequested.emit(result_id)
 
     @staticmethod
     def _visibility_quality_label(value: str) -> str:
@@ -1868,6 +1937,7 @@ class DecisionDeskView(QWidget):
         return ", ".join(shown) + suffix
 
     def _display_exception_snapshot(self, error_message: str):
+        self._render_saved_recommendation(None)
         self._clear_market_breadth_bar()
         now = datetime.now()
         fallback_snapshot = DecisionDeskSnapshot(

@@ -1,5 +1,7 @@
 ﻿# UI 功能文件（Qt）
 
+M148 後繼原始碼：市場總覽「每日決策 → 總覽」把原 `RecommendationDeskSummary` 從完整警示文字移為精簡來源摘要，顯示保存資料日、品質、原結果 ID 與候選；只有非空且不需修整的精確 ID 才顯「開啟原保存推薦」。訊號沿 Main 既有 `open_saved_recommendation_result` 唯讀入口，接受排入精確讀取才切推薦工作區；無摘要、無效 ID、載入與錯誤不保留舊按鈕。原警示仍獨立計數，不把保存結果本身當警示；沒有改推薦結果、來源資格或金融計算。限定 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m148-每日決策開啟原保存推薦)。
+
 M147 後繼原始碼：雙版本題材原值比較在每欄原值與來源脈絡上方，另以中性藍色條及精確 `N / M 位成員` 呈現該版本報酬資料覆蓋。真 0／M 有空條；缺報表列顯未知，0 位成員顯不適用，均不畫成 0%。明選重載、切換、取消及錯誤清舊條。兩版各用自身成員分母，不能比較成報酬強弱、跨期變化或歷史 PIT。限定 Qt／Windows 合成 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m147-雙版本題材報酬資料覆蓋條)；固定舊 EXE 未包含。
 
 M145／M146 後繼原始碼：主視窗請求關閉並合作式取消 Portfolio 刷新／已保存健康評估讀取時，晚到的 worker 結果不會向已銷毀的 panel relay 發訊號，也不會重啟 pending 輪次或寫已刪刷新按鈕。正常開啟時的評估選取、來源核對、持倉刷新與帳本身份不變。限定 Qt／Windows QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m145m146-portfolio-關窗晚到回呼)；固定舊 EXE 未包含。

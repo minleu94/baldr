@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M147；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M148；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M147 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M148 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -436,3 +436,9 @@ Manual coverage：關窗操作入口、參數、取消語義與既有使用者�
 Luna `/root/m147_theme_gap_audit` 唯一寫入 `ui_qt/views/industry_theme_map_view.py` 與 `tests/test_ui_qt_industry_theme_map_view.py`。Sol 先核對 `ThemeReturnVersionObservation` 的 `row_present`、`returns_coverage`、`member_count` 契約，再審查並修正未知狀態的 bar 範圍、格式及輔助描述清理。每版只以自身原覆蓋整數作中性藍條；`0 / M`、部分／完整覆蓋、無報表列未知及零成員不適用分開。取消、換版、載入與錯誤清舊；原平均報酬、日期、映射、來源 ID 與 manifest SHA 保留。沒有重算金融值、跨版相減、授 PIT 或改來源資格。
 
 最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_712314439a1445a7b2eeaa3b1b26901b/receipt.json` exit 0：受改 Python compile0、相關 focused **58 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留。隔離正常 Windows Main 以合成比較 snapshot 注入 reader 邊界，在真 OS DPI216 的 1280×760／1500×900 驗 `0 / M`、缺報表列及 `1 / 2` 部分覆蓋，共四張 PNG；取消／失效清舊與 `sys.excepthook` callback exception 0，見 `output/tasks/baldr-opus-ux-implementation/root/native_m147_evidence/run_d7c5c206c44249fbb27accc59fb8bef5/result.json`，Job `.../root/single_owned_qa_3862769690034a13b3c112aa3768578e/receipt.json` exit 0。Sol 目視兩欄精確數值與來源文字可讀。此 native 測試沒有走正式 reader 或正式來源；真 OS 100%／125%、Light、1920 可用工作區、固定新版 EXE、Owner UAT、M73／M75 與完整產品 Gate 未接受。
+
+## M148 每日決策開啟原保存推薦
+
+Luna `/root/m148_research_candidate` 單一 writer 修改 `ui_qt/views/decision_desk_view.py`、`ui_qt/main.py` 及兩份對應測試。Sol 核對 `RecommendationDeskSummary` 原結果 ID／日期／品質，以及 Main 既有精確讀取只在排入指定 ID 後切頁的契約；接受不改 DTO、provider、推薦計算或來源資格的訊號接線。原推薦摘要由警示清單移到總覽的可見來源列，原警示計數不再誤把保存結果當警示。有效原 ID 才顯操作，載入、缺件、失敗清舊；已保存推薦不稱今日新建議或交易指令。Sol 程式審查補回既有總覽狀態樣式、固定摘要純文字；首版原生目視發現按鈕獨占一列，修為摘要同列；第二版缺件畫面仍留不明顯停用按鈕，再修為不顯。最終版 1280 首屏保留市場廣度可見。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_5011d249058647749a167130502e6c8f/receipt.json` exit0：受改 Python compile0、相關 focused **60 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留。隔離正常 Windows Main 使用合成快照與保存讀取 callback 替身，在真 OS DPI216 的 1280×760／1500×900 各驗保存摘要、缺件清舊、精確 ID 跨頁路由；before／after 五張 PNG、callback exception 0，見 `output/tasks/baldr-opus-ux-implementation/root/native_m148_evidence/run_9624a68f6222495890a0dc5fd7088673/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_0118b782ad334ad1a39badbf8a8a004c/receipt.json` exit0。初版及中版測試收據保留作版面修正過程，不作最終版 QA。原保存結果 reader 自身、正式／私人來源、其他 DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 和完整產品 Gate 未由本輪接受。

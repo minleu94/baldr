@@ -31,6 +31,7 @@ from app_module.decision_desk_dtos import (
     IndustryRepresentativeStock,
     IndustryStrengthRow,
     IndustryStrengthSummary,
+    RecommendationDeskSummary,
 )
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
 from app_module.exceptions import BacktestCancelledError
@@ -75,6 +76,7 @@ def _snapshot(
     risk_prompts_warnings=(),
     overall_warnings=(),
     market_data_visibility=None,
+    recommendations=None,
 ) -> DecisionDeskSnapshot:
     as_of = as_of_date
     return DecisionDeskSnapshot(
@@ -160,6 +162,7 @@ def _snapshot(
             ),
         ),
         market_data_visibility=market_data_visibility,
+        recommendations=recommendations,
         warnings=overall_warnings,
     )
 
@@ -1027,6 +1030,91 @@ def test_decision_desk_warning_summary_and_collapsible_details_refresh_cleanly()
     assert "目前無警示" not in summary
     assert view.overall_warn_label.toPlainText() == ""
     assert view.warning_list.empty_label.text() == "無警示"
+    view.close()
+
+
+def test_saved_recommendation_summary_opens_only_the_exact_result_id():
+    app()
+    recommendation = RecommendationDeskSummary(
+        as_of_date=date(2026, 6, 12),
+        quality=DecisionDeskQuality.OBSERVED,
+        result_id="  ",
+        stock_codes=("2330",),
+    )
+    view = rendered_view(FakeBuilder(replace(_snapshot(), recommendations=recommendation)))
+    emitted = []
+    view.savedRecommendationRequested.connect(emitted.append)
+
+    assert view.saved_recommendation_button.isEnabled() is False
+    assert view.saved_recommendation_button.isHidden()
+    assert "來源 ID 未知" in view.saved_recommendation_label.text()
+    assert "資料日 2026-06-12" in view.saved_recommendation_label.text()
+    assert "非今日新推薦／非交易指令" in view.saved_recommendation_label.text()
+    view.saved_recommendation_button.click()
+    assert emitted == []
+
+    exact = replace(recommendation, result_id="saved-result-exact-id")
+    view._render_snapshot(replace(_snapshot(), recommendations=exact))
+    assert view.saved_recommendation_button.isEnabled() is True
+    assert not view.saved_recommendation_button.isHidden()
+    view.saved_recommendation_button.click()
+    assert emitted == ["saved-result-exact-id"]
+    view.close()
+
+
+def test_saved_recommendation_degraded_quality_and_unknown_states_are_explicit():
+    app()
+    view = DecisionDeskView(FakeBuilder(_snapshot()), auto_refresh=False, async_refresh=False)
+    degraded = RecommendationDeskSummary(
+        as_of_date=date(2026, 6, 12),
+        quality=DecisionDeskQuality.DEGRADED,
+        result_id="saved-result-degraded",
+        stock_codes=(),
+    )
+    view._render_snapshot(replace(_snapshot(), recommendations=degraded))
+    assert "品質 品質降級" in view.saved_recommendation_label.text()
+    assert "候選 未提供" in view.saved_recommendation_label.text()
+    assert view.saved_recommendation_button.isEnabled() is True
+
+    missing = replace(degraded, quality=DecisionDeskQuality.MISSING)
+    view._render_snapshot(replace(_snapshot(), recommendations=missing))
+    assert "品質 資料缺件" in view.saved_recommendation_label.text()
+    assert "非今日新推薦／非交易指令" in view.saved_recommendation_label.text()
+
+    view._render_snapshot(replace(_snapshot(), recommendations=None))
+    assert "本次摘要未提供（狀態未知）" in view.saved_recommendation_label.text()
+    assert view.saved_recommendation_button.isEnabled() is False
+    assert view.saved_recommendation_button.isHidden()
+
+    view._render_snapshot(replace(_snapshot(), recommendations=degraded))
+    view._display_pending_snapshot()
+    assert "本次摘要未提供（狀態未知）" in view.saved_recommendation_label.text()
+    assert view.saved_recommendation_button.isEnabled() is False
+
+    view._render_snapshot(replace(_snapshot(), recommendations=degraded))
+    view._display_loading_snapshot()
+    assert "本次摘要未提供（狀態未知）" in view.saved_recommendation_label.text()
+    assert view.saved_recommendation_button.isEnabled() is False
+    view._render_snapshot(replace(_snapshot(), recommendations=degraded))
+    view._display_exception_snapshot("snapshot unavailable")
+    assert "本次摘要未提供（狀態未知）" in view.saved_recommendation_label.text()
+    assert view.saved_recommendation_button.isEnabled() is False
+    view.close()
+
+
+def test_saved_recommendation_rejects_non_string_and_whitespace_padded_ids():
+    app()
+    view = DecisionDeskView(FakeBuilder(_snapshot()), auto_refresh=False, async_refresh=False)
+    for result_id in (" saved-id", "saved-id ", 123):
+        recommendation = RecommendationDeskSummary(
+            as_of_date=date(2026, 6, 12),
+            quality=DecisionDeskQuality.OBSERVED,
+            result_id=result_id,
+            stock_codes=(),
+        )
+        view._render_snapshot(replace(_snapshot(), recommendations=recommendation))
+        assert view.saved_recommendation_button.isEnabled() is False
+        assert view.saved_recommendation_button.isHidden()
     view.close()
 
 

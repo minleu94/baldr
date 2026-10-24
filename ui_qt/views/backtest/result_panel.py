@@ -398,6 +398,8 @@ class OptimizationStabilityDistribution(QWidget):
 
 class BacktestResultPanel(QWidget):
     """回測結果面板"""
+
+    _BACKTEST_MATPLOTLIB_FIGURE_SIZE = (10.8, 3.2)
     
     def __init__(self, parent_view, parent=None):
         """初始化結果面板
@@ -494,6 +496,7 @@ class BacktestResultPanel(QWidget):
         }
         created = {name: factory() for name, factory in factories.items()}
         for name, widget in created.items():
+            self._set_backtest_matplotlib_figure_size(widget)
             placeholder = self._chart_placeholders.pop(name)
             placeholder.hide()
             self._chart_content_layouts[name].removeWidget(placeholder)
@@ -502,6 +505,20 @@ class BacktestResultPanel(QWidget):
         self._chart_widgets.update(created)
         self._chart_widgets_initialized = True
         self._replay_pending_chart_plots()
+        return True
+
+    @classmethod
+    def _set_backtest_matplotlib_figure_size(cls, widget: QWidget) -> bool:
+        """只縮短 Backtest 的 Matplotlib fallback 圖，不碰 Fast／Portfolio 圖。"""
+        figure = getattr(widget, "figure", None)
+        canvas = getattr(widget, "canvas", None)
+        set_size_inches = getattr(figure, "set_size_inches", None)
+        update_geometry = getattr(canvas, "updateGeometry", None)
+        if not callable(set_size_inches) or not callable(update_geometry):
+            return False
+
+        set_size_inches(*cls._BACKTEST_MATPLOTLIB_FIGURE_SIZE, forward=False)
+        update_geometry()
         return True
 
     def _replay_pending_chart_plots(self) -> None:
@@ -618,6 +635,7 @@ class BacktestResultPanel(QWidget):
         self._result_tab_content_widgets: dict[str, QWidget] = {}
         self._result_tab_titles: dict[str, str] = {}
         self._research_mode_id = "single_stock"
+        self._chart_context_expanded = False
 
         context_row = QVBoxLayout()
         self.mode_context_label = QLabel()
@@ -652,8 +670,8 @@ class BacktestResultPanel(QWidget):
         from app_module.saved_strategy_version_reader import SavedStrategyVersionReader
         from ui_qt.widgets.saved_strategy_version_lookup import SavedStrategyVersionLookupWidget
         lookup_row = QHBoxLayout()
-        lookup_label = QLabel("補充查找（選用）")
-        lookup_row.addWidget(lookup_label)
+        self.lookup_label = QLabel("補充查找（選用）")
+        lookup_row.addWidget(self.lookup_label)
         self.saved_strategy_version_button = QPushButton("策略版本")
         self.saved_strategy_version_button.setCheckable(True)
         self.saved_strategy_version_button.setToolTip("查看保存的策略版本聲明與來源；不改變目前回測結果。")
@@ -744,6 +762,7 @@ class BacktestResultPanel(QWidget):
             (self.research_history_button, history_group),
             (self.paper_checkpoint_button, paper_group),
         )
+        self._lookup_pairs = lookup_pairs
         for button, group in lookup_pairs:
             button.toggled.connect(group.setChecked)
             group.toggled.connect(
@@ -849,12 +868,23 @@ class BacktestResultPanel(QWidget):
             run_select_row.addWidget(QLabel("選擇回測結果:"))
             self.chart_run_combo = QComboBox()
             self.chart_run_combo.setEditable(False)
+            self.chart_run_combo.setMinimumWidth(200)
             self.chart_run_combo.currentTextChanged.connect(self.parent_view._on_chart_run_changed)
             run_select_row.addWidget(self.chart_run_combo)
             self.chart_current_source_label = QLabel("目前圖表來源：未選擇")
             self.chart_current_source_label.setAccessibleName("目前圖表來源 run ID")
             self.chart_current_source_label.setWordWrap(True)
             run_select_row.addWidget(self.chart_current_source_label, stretch=1)
+            self.chart_context_toggle_btn = QPushButton("顯示研究脈絡與查找")
+            self.chart_context_toggle_btn.setCheckable(True)
+            self.chart_context_toggle_btn.setAccessibleName("顯示研究脈絡與查找")
+            self.chart_context_toggle_btn.setToolTip(
+                "展開或收合圖表頁上方的研究模式、結果目的與補充查找。"
+            )
+            self.chart_context_toggle_btn.clicked.connect(
+                lambda checked: self._set_chart_context_expanded(checked)
+            )
+            self.chart_context_toggle_btn.hide()
             chart_layout.addLayout(run_select_row)
 
             chart_history_row = QHBoxLayout()
@@ -862,6 +892,7 @@ class BacktestResultPanel(QWidget):
             self.chart_history_scope_label.setAccessibleName("圖表歷史載入範圍")
             chart_history_row.addWidget(self.chart_history_scope_label)
             chart_history_row.addStretch()
+            chart_history_row.addWidget(self.chart_context_toggle_btn)
             self.load_older_chart_runs_btn = QPushButton("載入較舊結果")
             self.load_older_chart_runs_btn.clicked.connect(self.parent_view._load_older_chart_runs)
             self.load_older_chart_runs_btn.setEnabled(False)
@@ -1183,6 +1214,7 @@ class BacktestResultPanel(QWidget):
         self._register_result_tab("recommendation", recommendation_portfolio_tab, "推薦回放")
         
         layout.addWidget(self.result_tabs)
+        self.result_tabs.currentChanged.connect(self._on_result_tab_changed)
 
         if getattr(self.parent_view, "config", None):
             self.add_forward_performance_tab()
@@ -1190,6 +1222,49 @@ class BacktestResultPanel(QWidget):
             self.add_registry_compare_tab()
 
         self.set_research_mode("single_stock")
+        self._on_result_tab_changed(self.result_tabs.currentIndex())
+
+    def _on_result_tab_changed(self, index: int) -> None:
+        """進入 Backtest 圖表時精簡脈絡列，離開時還原補充查找狀態。"""
+        toggle = getattr(self, "chart_context_toggle_btn", None)
+        if toggle is None:
+            return
+        in_charts = self.result_tab_key(index) == "charts"
+        toggle.setVisible(in_charts)
+        if in_charts:
+            self._set_chart_context_expanded(False)
+            return
+
+        self._set_chart_context_controls_visible(True)
+
+    def _set_chart_context_expanded(self, expanded: bool) -> None:
+        """切換圖表頁的脈絡列；查找群組 checked 狀態不隨收合改變。"""
+        self._chart_context_expanded = bool(expanded)
+        self._set_chart_context_controls_visible(self._chart_context_expanded)
+        if hasattr(self, "chart_context_toggle_btn"):
+            self.chart_context_toggle_btn.blockSignals(True)
+            self.chart_context_toggle_btn.setChecked(self._chart_context_expanded)
+            self.chart_context_toggle_btn.setText(
+                "收合研究脈絡與查找"
+                if self._chart_context_expanded
+                else "顯示研究脈絡與查找"
+            )
+            self.chart_context_toggle_btn.setAccessibleName(
+                self.chart_context_toggle_btn.text()
+            )
+            self.chart_context_toggle_btn.blockSignals(False)
+
+    def _set_chart_context_controls_visible(self, visible: bool) -> None:
+        """顯示研究脈絡控制；各查找群組仍依原勾選狀態呈現。"""
+        for widget in (
+            self.mode_context_label,
+            self.result_purpose_label,
+            self.lookup_label,
+            *(button for button, _group in self._lookup_pairs),
+        ):
+            widget.setVisible(visible)
+        for _button, group in self._lookup_pairs:
+            group.setVisible(visible and group.isChecked())
 
     def _toggle_lookup_group(
         self, active_button: QPushButton, active_group: QGroupBox, checked: bool

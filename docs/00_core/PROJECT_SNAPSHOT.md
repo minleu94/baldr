@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M132 後繼原始碼改善 Backtest 結果「圖表」在 1280×760 首屏只見上半圖的問題：進入圖表頁時精簡重複研究脈絡與補充查找，仍可一鍵展開、跨頁恢復原勾選；四張 Matplotlib 備援圖只在 Backtest 實例改較矮自然尺寸，來源 run ID、歷史載入、四圖與外層捲動保留，Portfolio 與 Fast 圖不受尺寸變動。Sol 退回首版仍裁 152px 的結果後，最終 compile、聚焦 15、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 隔離合成四圖在 1280×760／1500×900 真 Windows DPI216 首屏完整入畫、來源 SHA 不變，展開／收合與選擇框可讀。正式來源、其他 DPI／Light、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m132-backtest-圖表首屏完整可讀)。
+
 M131 後繼原始碼補齊回測／Portfolio 共用 Matplotlib 權益曲線的買賣 hover：缺 `mplcursors` 時改由原生 scatter hit-test 顯示同一交易欄位，重疊標記逐側有界呈現；有 `mplcursors` 時修正真實 Selection 索引並用 transient 模式在離開後清除。Sol 複核後 compile、聚焦 17、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 隔離合成於 1280×760／1500×900 真 Windows DPI216，以程式送入原生 Qt 畫布滑鼠事件核買賣與清除並目視截圖。未驗實體滑鼠、正式來源、Portfolio 全路徑、其他 DPI／Light、固定 EXE、Owner UAT 與完整 Gate；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m131-備援權益圖真實-hover-與無-mplcursors-退路)。
 
 M130 後繼原始碼補 Matplotlib 備援圖的繁中文字形：四種回測圖在每次清圖／繪圖後，以 Matplotlib 自己解析的系統繁中字型套用標題、軸、刻度、圖中文字與圖例；權益圖延後建立的買賣提示亦套用。保留 DejaVu Sans 補負號等數值字形；缺系統候選時原樣降級，沒有改全域 rcParams 或封裝字型。Sol 退回首輪只用正黑體造成負號缺字的版本，修正後 compile、聚焦 12、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 隔離合成四圖於 1280×760／1500×900 真 Windows DPI216 及獨立買賣提示 before／after 目視通過。正式來源、沒有候選字型的目標機、實際滑鼠 hover、其他 DPI／Light、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m130-matplotlib-備援圖繁中字形)。

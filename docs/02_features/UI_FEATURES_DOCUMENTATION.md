@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M132 後繼原始碼：Backtest「圖表」頁預設收合上方重複的研究模式／補充查找資訊，圖表來源與歷史載入控制保留；按「顯示研究脈絡與查找」可還原，離開圖表頁也恢復原控制與查找群組勾選。四張 Matplotlib 備援圖僅在此結果頁採 10.8×3.2 吋自然尺寸及原 400×300 canvas 最小值，保留垂直捲動；Portfolio 共用圖與 Fast 畫布尺寸未改。這只改資訊層級與幾何，不改結果數值或來源。操作見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m132-backtest-圖表首屏完整可讀)。
+
 M131 後繼原始碼：回測與 Portfolio 共用的 Matplotlib 備援權益曲線，有 `mplcursors` 時按其真實 Selection index 找交易列，滑離標記即撤提示；缺套件時用 Matplotlib scatter hit-test 的本機 annotation 顯示相同買賣欄位，重疊標記每側最多兩筆並標示餘數，清圖／換圖移除舊 callback。圖資料、交易數值、公式與來源資格不變。操作見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m131-備援權益圖真實-hover-與無-mplcursors-退路)。
 
 M130 後繼原始碼：回測／Portfolio 共用的四種 Matplotlib 備援圖，在可解析的系統繁中字型上局部設定標題、座標軸、刻度、圖中文字和圖例；權益圖買賣點動態提示亦沿同一字型，另以 DejaVu Sans 補數值負號。每次 `ax.clear()` 後重套；無候選字型保持原樣且不改 Matplotlib 全域設定。這不改圖資料、交易損益或來源資格，也不隨包散布 Windows 字型。操作見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m130-matplotlib-備援圖繁中字形)。

@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M131；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M132；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M131 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M132 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -354,3 +354,9 @@ M1–M130 仍是審查、裁決、實作與 QA 切片序號，非功能數。正
 Luna `/root/m107_portfolio_audit` 唯一寫入 `ui_qt/widgets/chart_widget.py` 與 `tests/test_ui_qt_chart_widget_factory.py`，Sol 複核。M130 後稽核發現 `HAS_MPLCURSORS=False` 僅記錄 basic tooltip 卻未實作，且有套件路徑把 `sel.target.index` 當交易索引；真實 `mplcursors` 的 target 為座標陣列，首次原生 Qt 事件實際揭出 callback `AttributeError`。修為 `sel.index`，採 `HoverMode.Transient`；無套件時由 `PathCollection.contains` 找買賣點並用同一格式器呈現，重疊每側最多兩筆並明示省略量，游標離開或重繪清舊。沒有更動交易 metadata、圖資料、公式、PIT、來源資格或台股行情色義。最初檢查所用假 Selection 與真實 API 不同，已補真 `mplcursors` 加 Agg MouseEvent 回歸；先前失敗診斷保留，不當通過證據。
 
 最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_637fd8fd8d374749b42741e04a43c333/receipt.json`：compile 0、圖表聚焦 **17 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留。正常 Main 由 Workbench 進回測保存圖表，隔離合成 CSV 與 SQLite SHA 不變；真 Windows DPI216 在 1280×760（無套件）和 1500×900（有套件）以原生 Qt 畫布滑鼠事件驗買點、賣點、移開清除。結果 `.../root/native_m131_result.json`、四張 PNG 與受控 Job `.../root/single_owned_qa_2719fea440f44d63919cb84a8b76dd8d/receipt.json` exit0；Sol 目視繁中理由、提示深底與負號字形可讀。此事件由程式送入，尚非實體滑鼠；兩路徑未在每個尺寸交叉驗。正式回測與私人 Portfolio、其他真 DPI／Light／1920 可用螢幕、固定新版 EXE、Owner UAT、M73／M75 及完整產品 Gate 保持未接受。審查來源是 Opus 起始、額度用盡後由 Antigravity 接手完成；M1–M131 是切片序號，非功能數。
+
+## M132 Backtest 圖表首屏完整可讀
+
+Luna `/root/m132_layout_audit` 先唯讀定位：1280×760 正常 Main 的 Backtest 結果頁在來源列、歷史列及外層研究脈絡之下放 12×8 吋自然尺寸的 Matplotlib 備援圖，外層捲動保留完整資料，但首屏只見上半圖。Luna 單一 writer 只改 `ui_qt/views/backtest/result_panel.py` 與 `tests/test_ui_qt_backtest_layout.py`：Backtest 實例的四張 fallback 圖採較矮自然尺寸，圖表頁預設收合重複的研究脈絡／補充查找，提供鍵盤可操作的還原按鈕；離頁恢復原查找群組勾選。Sol 首輪原生量測發現 10.8×3.8 仍有 152px canvas 超過 viewport，退回改 10.8×3.2 並收合上方控制；後版又發現來源選擇框縮到 82px，將按鈕移到歷史列並把選擇框保留 200px。run ID、歷史載入、四圖、外層 scroll、Portfolio 共用圖和 Fast 路徑不變，沒有改資料或金融公式。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_f62975b2261143cfa1f96663bee4313a/receipt.json`：compile 0、版面聚焦 **15 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留。標準 offscreen 測試中曾在既有長表捲動測試遭 Chromium GPU context loss 而 Qt abort，收據 `.../root/single_owned_qa_5aee9992c5a343199b47a5921f3fe068/receipt.json`；隔離定位後以測試程序軟體渲染重跑通過，沒有改產品圖表路徑。正常 Windows Main 隔離合成保存 CSV，真 OS DPI216 於 1280×760／1500×900 四圖共 16 張整窗／canvas PNG，加兩張研究脈絡展開圖，來源 SHA 不變；最終 `.../root/native_m132_evidence/run_f5bf4f9fc57347428f2546115a0f17f7/result.json`，受控 Job `.../root/single_owned_qa_f1811fa5232c4709a9c4b85cebf1f20e/receipt.json` exit0。1280 頁內可視區高 483，四圖 canvas 下緣 468，選擇框寬 200；Sol 目視座標、圖例、run 身份、控制鈕與完整圖可讀。正式來源、其他真 DPI／Light／1920 可用螢幕、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。M1–M132 仍為審查／實作／QA 切片序號，不是功能數。

@@ -593,6 +593,149 @@ def test_backtest_charts_load_on_first_result_use_and_replay_pending_reports(
     qt_app.processEvents()
 
 
+def test_backtest_chart_context_compacts_and_restores_lookup_state(
+    qt_app: QApplication,
+    test_config,
+) -> None:
+    """圖表頁預設收合上方脈絡，展開及跨頁返回保留查找勾選狀態。"""
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    panel = view.result_panel
+    panel.research_history_button.click()
+    assert panel.research_history_group.isChecked()
+    assert not panel.research_history_group.isHidden()
+
+    assert panel.focus_result_tab("charts")
+    assert panel.mode_context_label.isHidden()
+    assert panel.result_purpose_label.isHidden()
+    assert panel.lookup_label.isHidden()
+    assert panel.research_history_button.isHidden()
+    assert panel.research_history_group.isHidden()
+    assert panel.research_history_group.isChecked()
+    assert not panel.chart_context_toggle_btn.isHidden()
+    assert not panel.chart_run_combo.isHidden()
+    assert not panel.chart_current_source_label.isHidden()
+    assert not panel.chart_history_scope_label.isHidden()
+    assert not panel.load_older_chart_runs_btn.isHidden()
+
+    panel.chart_context_toggle_btn.click()
+    assert not panel.mode_context_label.isHidden()
+    assert not panel.result_purpose_label.isHidden()
+    assert not panel.lookup_label.isHidden()
+    assert not panel.research_history_button.isHidden()
+    assert not panel.research_history_group.isHidden()
+    assert panel.chart_context_toggle_btn.isChecked()
+
+    panel.chart_context_toggle_btn.click()
+    assert panel.research_history_group.isHidden()
+    assert panel.research_history_group.isChecked()
+    assert panel.focus_result_tab("summary")
+    assert not panel.mode_context_label.isHidden()
+    assert not panel.result_purpose_label.isHidden()
+    assert not panel.lookup_label.isHidden()
+    assert not panel.research_history_button.isHidden()
+    assert not panel.research_history_group.isHidden()
+    assert panel.research_history_group.isChecked()
+    assert panel.chart_context_toggle_btn.isHidden()
+
+    view.close()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
+
+
+def test_backtest_matplotlib_fallback_figures_are_compact_without_resizing_portfolio(
+    qt_app: QApplication,
+    test_config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backtest 備援圖使用較矮自然尺寸，Portfolio 維持共用預設。"""
+    import ui_qt.widgets.fast_chart_widget as chart_module
+
+    monkeypatch.setattr(chart_module, "HAS_QTWEBENGINE", False)
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    panel = view.result_panel
+
+    assert panel.ensure_chart_widgets()
+    assert set(panel._chart_widgets) == {
+        "equity_chart",
+        "drawdown_chart",
+        "return_hist",
+        "holding_hist",
+    }
+    for widget in panel._chart_widgets.values():
+        assert widget.figure.get_size_inches().tolist() == pytest.approx([10.8, 3.2])
+        assert widget.canvas.minimumHeight() == 300
+        size_hint = widget.canvas.sizeHint()
+        assert 300 <= size_hint.height() <= 360
+        assert 400 <= size_hint.width() <= 1120
+
+    assert panel.ensure_portfolio_chart_widgets()
+    assert set(panel._portfolio_chart_widgets) == {
+        "portfolio_equity_chart",
+        "portfolio_drawdown_chart",
+    }
+    for widget in panel._portfolio_chart_widgets.values():
+        assert widget.figure.get_size_inches().tolist() == pytest.approx([12.0, 8.0])
+        assert widget.canvas.minimumHeight() == 300
+        assert widget.canvas.sizeHint().height() >= 700
+
+    view.close()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
+
+
+def test_backtest_chart_sizing_leaves_fast_widgets_without_figures_unchanged(
+    qt_app: QApplication,
+    test_config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fast 圖表沒有 Matplotlib figure，維持原畫布幾何。"""
+    import ui_qt.widgets.fast_chart_widget as chart_module
+
+    fast_widgets: list[QWidget] = []
+
+    def make_fast_like_widget() -> QWidget:
+        widget = QWidget()
+        widget.canvas = QWidget(widget)
+        widget.canvas.setMinimumSize(400, 300)
+        fast_widgets.append(widget)
+        return widget
+
+    for factory_name in (
+        "create_equity_curve_widget",
+        "create_drawdown_curve_widget",
+        "create_trade_return_histogram_widget",
+        "create_holding_days_histogram_widget",
+    ):
+        monkeypatch.setattr(chart_module, factory_name, make_fast_like_widget)
+
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    assert view.result_panel.ensure_chart_widgets()
+    assert len(fast_widgets) == 4
+    for widget in fast_widgets:
+        assert not hasattr(widget, "figure")
+        assert widget.canvas.minimumSize().width() == 400
+        assert widget.canvas.minimumSize().height() == 300
+
+    view.close()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
+
+
 def test_backtest_chart_plot_failure_is_visible_isolated_and_retryable(
     qt_app: QApplication,
     test_config,

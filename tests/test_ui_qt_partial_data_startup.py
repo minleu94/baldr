@@ -40,11 +40,20 @@ def _wait_until_closed(window: MainWindow, app: QApplication) -> None:
         QTest.qWait(10)
 
 
-@pytest.mark.parametrize("channel", ("development", "release"))
+@pytest.mark.parametrize(
+    ("channel", "dirty"),
+    (
+        ("development", False),
+        ("development", True),
+        ("release", False),
+        ("unverified", False),
+    ),
+)
 def test_mainwindow_builds_all_workspaces_with_company_metadata_and_no_industry_index(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     channel: str,
+    dirty: bool,
 ) -> None:
     """公司產業分類仍存在，缺少指數資料時仍建立完整 13 個 workspace。"""
 
@@ -81,12 +90,13 @@ def test_mainwindow_builds_all_workspaces_with_company_metadata_and_no_industry_
     app = _app()
     source_commit = "abcdef0123456789abcdef0123456789abcdef01"
     lock_hash = "1" * 64
+    verified_identity = channel in {"development", "release"}
     identity = BuildIdentity(
-        version=f"2026.10.22+{source_commit[:12]}",
-        source_commit=source_commit,
+        version=(f"2026.10.22+{source_commit[:12]}" if verified_identity else "unknown"),
+        source_commit=source_commit if verified_identity else "unknown",
         channel=channel,
-        dirty=False,
-        dependency_lock_sha256=lock_hash,
+        dirty=dirty,
+        dependency_lock_sha256=lock_hash if verified_identity else None,
     )
     window = MainWindow(build_identity=identity)
     window.resize(1280, 760)
@@ -111,16 +121,37 @@ def test_mainwindow_builds_all_workspaces_with_company_metadata_and_no_industry_
         assert window.config.data_root == effective_data_root
         assert window.config.output_root == output_root / "_test"
         visible_identity = window.build_identity_label.text()
+        assert window.windowTitle() == f"baldr · {visible_identity}"
         if channel == "release":
             assert visible_identity == "2026.10.22｜發布版"
             assert source_commit not in visible_identity
             assert source_commit[:12] not in window.windowTitle()
-            assert source_commit in window.build_identity_label.toolTip()
-            assert lock_hash in window.build_identity_label.toolTip()
+        elif channel == "development":
+            assert visible_identity == "2026.10.22｜開發版"
+            assert source_commit not in visible_identity
+            assert source_commit[:12] not in window.windowTitle()
         else:
-            assert "開發版" in visible_identity
-            assert source_commit[:12] in visible_identity
-            assert source_commit[:12] in window.windowTitle()
+            assert visible_identity == "未核實版本｜請檢查程式來源"
+            assert "未核實版本" in window.windowTitle()
+
+        tooltip = window.build_identity_label.toolTip()
+        assert f"版本：{identity.version}" in tooltip
+        assert f"來源 commit：{identity.source_commit}" in tooltip
+        assert f"含未提交變更：{'是' if dirty else '否'}" in tooltip
+        assert (
+            f"依賴鎖 SHA-256：{identity.dependency_lock_sha256 or '未知'}"
+            in tooltip
+        )
+        assert f"設定：{window.application_settings.config_path}" in tooltip
+        assert f"行情：{window.application_settings.environment['DATA_ROOT']}" in tooltip
+        assert f"輸出：{window.application_settings.environment['OUTPUT_ROOT']}" in tooltip
+        assert f"執行狀態：{window.application_settings.runtime_state_root}" in tooltip
+        assert f"研究紀錄：{window.application_settings.ml_registry_repository_root}" in tooltip
+        assert f"程式資源：{window.application_settings.resource_root}" in tooltip
+        assert source_commit not in visible_identity
+        assert source_commit[:12] not in window.windowTitle()
+        assert "含未提交變更" not in visible_identity
+        assert "已提交原碼" not in visible_identity
         assert set(window.workspace_widgets) == set(expected_workspaces)
         assert window.workspace_stack.count() == len(expected_workspaces)
 

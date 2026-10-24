@@ -491,14 +491,24 @@ Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9
 
 最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_93d1b6b2d580466b88c7f13753157ca4/receipt.json` exit0：受改 Python compile0、相關 focused **45 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。這些是隔離合成及原始碼 QA；正式保存來源、其他真 OS DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受。M1–M155 是審查、裁決、實作與 QA 切片序號，不是 155 個獨立功能；原始 PNG／收據留 ignored `output/`，本機提交不 push、merge 或部署。
 
-## 排程啟動至 M155 的盤點
+## 排程啟動至 M156 的盤點
 
 | 範圍 | 已完成的工程與驗證 | 尚未接受的界線 |
 | --- | --- | --- |
-| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M155 包含唯讀裁決、測試及實作，並非 155 個功能。 | 審查意見不自動授來源／金融契約。 |
-| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面。 | 正式保存／市場來源與 Owner UAT 未驗。 |
+| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M156 包含唯讀裁決、測試及實作，並非 156 個功能。 | 審查意見不自動授來源／金融契約。 |
+| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化。 | 正式保存／市場來源與 Owner UAT 未驗。 |
 | P1 產業題材 | 原資料範圍內的題材格、成交額與覆蓋圖、九指標、同版成員／鄰域、搜尋、雙版本原值、具名母體三態與成員條件側欄，保留精確下鑽。 | 多期間報酬、逐邊有向關係需合格來源、時鐘及用途契約。 |
 | P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；修關窗晚到回呼及備援圖互動／字形。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
 | P3 產業鏈 | 已有同版重疊、分類與成員探索；Sol 拒絕把共現當有向供應鏈或把資料覆蓋當跨期強弱。 | M75 逐邊證據與跨期 PIT 用途仍缺；M73 決策品質控制作用範圍仍需產品裁決。 |
 
 各切片均由 Luna 依單一 writer 邊界實作或唯讀盤點，Sol 複核、退回必要修正並以 root-owned 受控 Job 做聚焦、共同回歸及隔離原生畫面；原失敗與探針收據保留。此盤點只收束本機原始碼階段，不代表正式產品驗收或可交易資格。
+
+## M156 全域建置身分資訊層級
+
+兩位 Luna 先唯讀對照原 Opus→Antigravity 審查與 M1–M155：產業／題材、個股、推薦、Portfolio、Backtest、Evidence／Runtime 沒有新資料契約下可安全新增且不重複的高價值圖。Sol 在 M155 正常 Main 原生畫面另確認原審查 P0-1 的未完範圍：開發版常駐狀態列與視窗標題仍顯原始 commit 及 dirty，擠壓研究上下文。已驗 release 原本已有短版；此輪只處理 development，並保留未核實版本的明確警示。
+
+Luna `/root/m152_decision_gap` 為唯一 writer 修改 `ui_qt/main.py`、`tests/test_ui_qt_partial_data_startup.py`：已核實 development 在正常標題與常駐列顯日期及「開發版」，不顯原始雜湊／dirty；release 保持日期及「發布版」；未核實來源不偽裝為已核實。Sol 再將未核實的可見工程文字改為「未核實版本｜請檢查程式來源」，重跑驗證。完整版本、commit、dirty、lock SHA 和設定／資料／輸出路徑仍留原 tooltip，可在需要核對時取得；`BuildIdentity` 模型、建置偵測、來源資格、金融值與資料均未改。這是顯示層整理，不授正式發布或資料資格。
+
+初版 root-owned 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_432329567cd54b2f8d14bb6503f1abfe/receipt.json` 通過，Sol 原生目視再縮短未核實警示；最終共同 Job `.../root/single_owned_qa_069d44f9b33a46e4b1470e780e2e95da/receipt.json` exit0：Python compile0、focused **26 passed**（開發版 dirty／clean、release、unverified 及 BuildIdentity）、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。最終正常 Windows Main、真 OS DPI216 的 1280×760／1500×900，三種渠道共六張 PNG、callback exception0：`output/tasks/baldr-opus-ux-implementation/root/native_m156_evidence/run_d3592d6b5ef44cb7ae444136fdc32c1d/result.json`；Job `.../root/single_owned_qa_bf4a64128c514a918b53b0711d786572/receipt.json` exit0。Sol 目視開發版狀態列不再佔用 hash／dirty 寬度，未核實版本警示仍可辨。
+
+固定舊 EXE 不含此變更；正式資料、其他真 OS DPI／Light／1920 可用工作區、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受。M1–M156 是審查、裁決、實作與 QA 切片序號，不是 156 個獨立功能；本輪未讀寫正式／私人資料，不 push、merge、部署或修改其他排程。

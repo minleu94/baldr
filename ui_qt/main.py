@@ -1628,11 +1628,21 @@ class MainWindow(QMainWindow):
         self.build_identity = build_identity or detect_build_identity(repository_root=project_root)
         identity_display_text = self.build_identity.display_text
         if (
-            self.build_identity.channel == "release"
+            self.build_identity.channel in {"development", "release"}
             and self.build_identity.source_commit != "unknown"
         ):
             readable_version = self.build_identity.version.partition("+")[0]
-            identity_display_text = f"{readable_version}｜發布版"
+            channel_label = (
+                "開發版"
+                if self.build_identity.channel == "development"
+                else "發布版"
+            )
+            identity_display_text = f"{readable_version}｜{channel_label}"
+        elif (
+            self.build_identity.channel == "unverified"
+            or self.build_identity.source_commit == "unknown"
+        ):
+            identity_display_text = "未核實版本｜請檢查程式來源"
         self.setWindowTitle(f"baldr · {identity_display_text}")
         self.build_identity_label = QLabel(identity_display_text)
         self.build_identity_label.setObjectName("baldrBuildIdentity")

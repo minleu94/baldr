@@ -1,5 +1,7 @@
 # baldr Windows 可攜版
 
+M156 後繼原始碼也把已驗開發版的標題與底部常駐列縮為日期加「開發版」，原 commit 與 dirty 不再常駐；未核實來源顯簡短警示。詳細建置與路徑仍可由版本標示提示核對。這只改目前原始碼，沒有重建下述固定 EXE、改建置偵測、簽章或正式來源資格。
+
 後繼原始碼在 release 渠道的標題及狀態列先顯示人可讀版本與發布標記，完整版本、commit、dirty 及 lock metadata 仍可在提示核對；開發渠道保留開發身份。這項顯示調整沒有重建或替換下述固定候選，也不代表取得數位簽章、跨機或真人接受。
 
 V2後繼候選支援明選包外 `RESEARCH_PAPER_EVIDENCE_BINDING_PATH` 與外部固定 `RESEARCH_PAPER_EVIDENCE_BINDING_SHA256`，兩欄必須成對；未選或核驗失敗不開啟正向模擬。帳戶與成本原件另循原`PAPER_CONTRACT_ARTIFACTS_ROOT`及PERSONAL路由，不隨EXE自動建立或複製私人金融狀態。操作與限制見[完整手冊](APPLICATION_MANUAL.md#保存研究的人工確認-paper-模擬)。本輪候選與Source／EXE身份只依[補完驗收](../06_qa/BALDR_V2_FINAL_COMPLETION_20261021.md)及具名本機收據判讀，下方舊候選保持原範圍。

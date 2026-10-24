@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M156 後繼 UI：原審查 P0 的全域建置資訊常駐雜訊仍可在 M155 正常 Main 畫面見到。已核實開發版現在於標題與底部只顯日期和「開發版」，release 保持短版；來源未核實時仍明示「未核實版本｜請檢查程式來源」。完整版本、commit、dirty、依賴鎖及來源路徑留原 tooltip 可核，不改建置偵測或來源資格。Sol 核對真 OS DPI216 的 1280×760／1500×900 隔離 Main 六圖、callback exception0；聚焦26、Workbench85、validator25／0／4、mypy1,144、compile0。正式資料、其他 DPI／Light、固定新版 EXE、Owner UAT 與產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m156-全域建置身分資訊層級)。
+
 M155 後繼 UI：精確讀回 canonical／唯讀舊格式保存推薦時，候選只有 1–4 列便按實際列數收縮表格及結果分割區，0 列保留一列高的空框；來源與推薦理由因此更早進入首屏。五列以上及新執行結果仍保留原五列最低高度，原值、日期、身份與來源資格不變。Sol 首輪原生畫面退回只改 minimumHeight 的版本，修正 QSplitter 實際配置後，在真 OS DPI216 的 1280×760／1500×900 隔離 Main 驗 canonical 2／0 列與舊格式 1 列六圖，callback exception0；聚焦45 通過。共同回歸與限制見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m155-少量保存推薦的表格與來源區)。正式來源、其他 DPI／Light／1920、固定 EXE、自然排程、Owner UAT 與產品 Gate 尚未接受。
 
 M154 後繼 UI：在「市場探索 → 研究母體盤勢」明選已發布成員後，成員表旁直接顯示同一 typed 快照的股票、行情資料日、MA20／MA60 兩項固定條件原符合／不符合／未知、相對關係、原因及原未知原因；取消選列、換來源或失敗清舊，不重算條件或將觀察當成投資建議。Sol 核對 1280×760／1500×900 真 OS DPI216 隔離合成 Main 八張畫面，成員首列和側欄同屏、資料庫 SHA 不變、callback exception0；最終 focused18、Workbench85、validator25／0／4、mypy1,144、compile0，受控 Job 無殘留。具名收據見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m154-研究母體成員固定條件可見判讀)。正式來源、其他 DPI／Light／1920、固定 EXE、自然排程、Owner UAT 與完整產品 Gate 未接受。

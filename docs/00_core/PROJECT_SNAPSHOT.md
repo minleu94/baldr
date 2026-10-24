@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M139／M140 後繼原始碼完成兩個實際操作缺口。Backtest 的 Fast 圖頁移除兩層外圍空白後，1280×760 真 Windows DPI216 下權益與回撤畫布的 300px 高度、數值替代、run ID 與歷史控制均保留，畫布下緣在 483px 頁面可視區內的 482px，該圖頁不需再捲 35px。市場總覽的產業比較在同份快照有 32 列時，可用來源已給的 20 日領先／落後名稱跨群組定位；選中列與代表股在正常 Main 同屏可見。所選群組兩期全缺值時明示 Unknown，保留日期、品質與群組；部分缺值與真零仍分別呈現。無金融公式、排名或來源資格變動。限定 QA 與原生畫面詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m139m140-fast-首屏與產業深列定位)。正式來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。
+
 M137／M138 後繼原始碼把兩處「看似成功卻難以判讀」的 UX 補成可核對狀態。Fast Canvas 不再把 WebEngine 文件完成當作畫布完成：同頁 JS 的具名 token 與正尺寸繪圖結果須回報 ready；明確繪圖錯誤、無法確認逾時、空資料與 renderer／文件失敗分開，原數值替代及重試保留。市場總覽用同一份可比產業快照顯 5／20 日相對基準超額 bp 圖卡，依產業層級與市場範圍分組、共用 0 軸與尺度，原值、覆蓋與缺值同屏可讀；選非領先產業亦能沿原版本／日期開代表股研究。這不改超額、排名、來源資格或金融公式。限定 QA／原生畫面與正式 Gate 狀態見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m137m138-fast-畫布確認與可比產業圖卡)。
 
 M135／M136 後繼原始碼補兩個狀態辨識缺口。Fast WebEngine 圖現在顯示文件載入、失敗、呈現程序停止與可重試狀態；連續更新只載入最新 payload，文字數值立即更新，空圖不假裝有曲線。「文件載入完成」只表示頁面載入，不宣稱 JavaScript 畫布已驗。市場狀態的三項原來源條件分列為「符合／未符合／未知」中性狀態卡，缺值不當反證，重新檢測與錯誤會清舊。Sol 複核後 compile、聚焦 52、Workbench 85、validator 25／0／4、mypy 1,144 clean；隔離合成正常 Main 1280×760／1500×900 真 Windows DPI216，Fast 真 WebEngine 與市場條件卡目視及來源 SHA 不變。正式來源、正式 GPU／固定 EXE、其他 DPI／Light、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m135m136-載入回饋與市場條件卡)。

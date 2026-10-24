@@ -122,6 +122,7 @@ class DecisionDeskView(QWidget):
 
         scroll_area = QScrollArea()
         scroll_area.setObjectName("decisionDeskMainScrollArea")
+        self.main_scroll_area = scroll_area
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -408,6 +409,35 @@ class DecisionDeskView(QWidget):
             self._on_industry_strength_group_changed
         )
         self.industry_strength_panel.layout.addWidget(self.industry_strength_group_selector)
+        self.industry_strength_navigation = QWidget()
+        self.industry_strength_navigation.setObjectName("decisionDeskIndustryStrengthNavigation")
+        navigation_layout = QHBoxLayout(self.industry_strength_navigation)
+        navigation_layout.setContentsMargins(0, 2, 0, 2)
+        navigation_layout.setSpacing(6)
+        self.industry_strength_leading_button = QPushButton("定位來源領先")
+        self.industry_strength_leading_button.setObjectName("decisionDeskIndustryStrengthLeading")
+        self.industry_strength_leading_button.clicked.connect(
+            lambda: self._locate_industry_strength_headline("leading")
+        )
+        navigation_layout.addWidget(self.industry_strength_leading_button)
+        self.industry_strength_trailing_button = QPushButton("定位來源落後")
+        self.industry_strength_trailing_button.setObjectName("decisionDeskIndustryStrengthTrailing")
+        self.industry_strength_trailing_button.clicked.connect(
+            lambda: self._locate_industry_strength_headline("trailing")
+        )
+        navigation_layout.addWidget(self.industry_strength_trailing_button)
+        self.industry_strength_navigation_status = QLabel("定位僅使用同一快照提供的 20 日領先／落後名稱。")
+        self.industry_strength_navigation_status.setObjectName("decisionDeskIndustryStrengthNavigationStatus")
+        self.industry_strength_navigation_status.setWordWrap(True)
+        navigation_layout.addWidget(self.industry_strength_navigation_status, 1)
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_navigation)
+        self.industry_strength_empty_state = QLabel("")
+        self.industry_strength_empty_state.setObjectName("decisionDeskIndustryStrengthEmptyState")
+        self.industry_strength_empty_state.setWordWrap(True)
+        self.industry_strength_empty_state.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;"
+        )
+        self.industry_strength_panel.layout.addWidget(self.industry_strength_empty_state)
         self.industry_strength_chart_scroll = QScrollArea()
         self.industry_strength_chart_scroll.setObjectName("decisionDeskIndustryStrengthChartScroll")
         self.industry_strength_chart_scroll.setWidgetResizable(True)
@@ -432,6 +462,10 @@ class DecisionDeskView(QWidget):
         self._industry_strength_summary = None
         self._industry_strength_selected_name = ""
         self._industry_strength_row_buttons: list[QPushButton] = []
+        self._industry_strength_row_widgets: dict[tuple[str, str, str], QWidget] = {}
+        self._industry_strength_headline_targets: dict[str, tuple[tuple[str, str], Any]] = {}
+        self._industry_strength_navigation_request_id = 0
+        self.industry_strength_empty_state.hide()
         self._clear_industry_strength_chart("尚未載入可比產業資料")
         content_layout.addWidget(self.industry_strength_panel)
         sections_layout.addWidget(self._make_section_row("強弱與流動性", self.relative_strength_liquidity_status, self.relative_strength_liquidity_value))
@@ -1299,10 +1333,13 @@ class DecisionDeskView(QWidget):
         self.industry_focus_button_layout.addStretch()
 
     def _clear_industry_strength_chart(self, message: str) -> None:
+        self._industry_strength_navigation_request_id += 1
         self._industry_strength_rows = ()
         self._industry_strength_summary = None
         self._industry_strength_selected_name = ""
         self._industry_strength_row_buttons = []
+        self._industry_strength_row_widgets = {}
+        self._industry_strength_headline_targets = {}
         self.industry_strength_meta.setText(message)
         self.industry_strength_meta.setAccessibleDescription(message)
         self.industry_strength_group_selector.blockSignals(True)
@@ -1311,6 +1348,15 @@ class DecisionDeskView(QWidget):
         self.industry_strength_group_selector.blockSignals(False)
         self._clear_layout_widgets(self.industry_strength_chart_layout)
         self._clear_layout_widgets(self.industry_strength_representatives_layout)
+        self.industry_strength_leading_button.setText("定位來源領先")
+        self.industry_strength_trailing_button.setText("定位來源落後")
+        self.industry_strength_leading_button.setEnabled(False)
+        self.industry_strength_trailing_button.setEnabled(False)
+        self.industry_strength_navigation_status.setText(
+            "領先／落後定位暫不可用：目前沒有可用快照列。"
+        )
+        self.industry_strength_empty_state.clear()
+        self.industry_strength_empty_state.hide()
         self.industry_strength_chart_scroll.hide()
         self.industry_strength_representatives.hide()
 
@@ -1351,10 +1397,12 @@ class DecisionDeskView(QWidget):
         self.industry_strength_group_selector.setAccessibleDescription(detail)
 
     def _on_industry_strength_group_changed(self, *_args) -> None:
+        self._industry_strength_navigation_request_id += 1
         self._update_industry_strength_group_description()
         self._render_selected_industry_strength_group()
 
     def _render_industry_strength_chart(self, rotation, as_of_date: date) -> None:
+        self._industry_strength_navigation_request_id += 1
         strength = getattr(rotation, "industry_strength", None)
         rows = tuple(getattr(strength, "rows", ()) or ()) if strength is not None else ()
         if strength is None or not rows:
@@ -1366,6 +1414,16 @@ class DecisionDeskView(QWidget):
         self._industry_strength_rows = rows
         self._industry_strength_summary = strength
         self._industry_strength_as_of_date = as_of_date
+        headlines = {
+            "leading": getattr(rotation, "leading_sector", None),
+            "trailing": getattr(rotation, "trailing_sector", None),
+        }
+        self._industry_strength_headline_targets = {
+            key: target
+            for key, name in headlines.items()
+            if (target := self._resolve_industry_strength_headline_target(name)) is not None
+        }
+        self._update_industry_strength_navigation(headlines)
         groups: dict[tuple[str, str], list[Any]] = {}
         for row in rows:
             groups.setdefault((str(row.industry_level or "Unknown"), str(row.market_scope or "Unknown")), []).append(row)
@@ -1419,12 +1477,133 @@ class DecisionDeskView(QWidget):
         self.industry_strength_panel.setToolTip(detail)
         self.industry_strength_panel.setAccessibleDescription(detail)
         self.industry_strength_chart_scroll.show()
+        self.industry_strength_empty_state.hide()
         self._render_selected_industry_strength_group()
+
+    def _resolve_industry_strength_headline_target(self, headline) -> tuple[tuple[str, str], Any] | None:
+        name = str(headline or "").strip()
+        if not name:
+            return None
+        matches = tuple(row for row in self._industry_strength_rows if row.industry_name == name)
+        if len(matches) != 1 or matches[0].excess_20d_bp is None:
+            return None
+        row = matches[0]
+        group = (str(row.industry_level or "Unknown"), str(row.market_scope or "Unknown"))
+        return group, row
+
+    def _update_industry_strength_navigation(self, headlines: dict[str, Any]) -> None:
+        statuses = []
+        for key, title, button in (
+            ("leading", "領先", self.industry_strength_leading_button),
+            ("trailing", "落後", self.industry_strength_trailing_button),
+        ):
+            name = str(headlines.get(key) or "").strip()
+            target = self._industry_strength_headline_targets.get(key)
+            if target is not None:
+                button.setText(f"定位來源{title}")
+                button.setEnabled(True)
+                button.setToolTip(f"定位來源提供的 20 日{title}列：{name}")
+                button.setAccessibleDescription(
+                    f"使用來源提供的 20 日{title}名稱 {name}，切換到其原始層級與市場範圍並定位原始列。"
+                )
+                statuses.append(f"{title}：{name}（可定位）")
+            else:
+                reason = (
+                    "來源未提供名稱"
+                    if not name
+                    else "來源名稱不唯一、未出現在產業列表，或缺少 20 日超額值"
+                )
+                button.setText(f"定位來源{title}：不可用")
+                button.setEnabled(False)
+                button.setToolTip(f"20 日{title}列無法定位：{reason}")
+                button.setAccessibleDescription(f"{title}定位不可用：{reason}。不推算排名或跨市場範圍尋找。")
+                statuses.append(f"{title}：{reason}")
+        detail = "；".join(statuses) + "。定位依來源提供的領先／落後名稱與同一份產業資料，不重算排名。"
+        self.industry_strength_navigation_status.setText(detail)
+        self.industry_strength_navigation_status.setAccessibleDescription(detail)
+
+    def _locate_industry_strength_headline(self, key: str) -> None:
+        target = self._industry_strength_headline_targets.get(key)
+        if target is None:
+            return
+        self._industry_strength_navigation_request_id += 1
+        group, row = target
+        group_index = next(
+            (
+                index
+                for index in range(self.industry_strength_group_selector.count())
+                if tuple(self.industry_strength_group_selector.itemData(index) or ()) == group
+            ),
+            -1,
+        )
+        if group_index < 0:
+            return
+        if self.industry_strength_group_selector.currentIndex() != group_index:
+            self.industry_strength_group_selector.setCurrentIndex(group_index)
+        row_widget = self._industry_strength_row_widgets.get(
+            (group[0], group[1], row.industry_name)
+        )
+        if row_widget is None:
+            return
+        self._select_industry_strength_row(row.industry_name, preserve_navigation_request=True)
+        request_id = self._industry_strength_navigation_request_id
+        refresh_generation = self._refresh_generation
+        summary = self._industry_strength_summary
+        QTimer.singleShot(
+            0,
+            lambda: self._scroll_to_industry_strength_row(
+                request_id,
+                refresh_generation,
+                summary,
+                group,
+                row.industry_name,
+                row_widget,
+            ),
+        )
+
+    def _scroll_to_industry_strength_row(
+        self,
+        request_id: int,
+        refresh_generation: int,
+        summary,
+        group: tuple[str, str],
+        industry_name: str,
+        row_widget: QWidget,
+    ) -> None:
+        row_key = (group[0], group[1], industry_name)
+        current_group = tuple(self.industry_strength_group_selector.currentData() or ())
+        if (
+            self._closing
+            or request_id != self._industry_strength_navigation_request_id
+            or refresh_generation != self._refresh_generation
+            or summary is not self._industry_strength_summary
+            or current_group != group
+            or self._industry_strength_selected_name != industry_name
+            or self._industry_strength_row_widgets.get(row_key) is not row_widget
+            or not self.industry_strength_chart_scroll.isVisible()
+            or row_widget.isHidden()
+        ):
+            return
+        self.industry_strength_chart_layout.activate()
+        self.industry_strength_chart_content.adjustSize()
+        self.industry_strength_chart_layout.activate()
+        self.industry_strength_chart_scroll.ensureWidgetVisible(row_widget, 0, 8)
+        main_content = self.main_scroll_area.widget()
+        main_layout = main_content.layout() if main_content is not None else None
+        if main_layout is not None:
+            main_layout.activate()
+        self.main_scroll_area.ensureWidgetVisible(row_widget, 0, 12)
+        representative_buttons = self.industry_strength_representatives.findChildren(QPushButton)
+        if representative_buttons and self.industry_strength_representatives.isVisible():
+            self.main_scroll_area.ensureWidgetVisible(
+                self.industry_strength_representatives, 0, 8
+            )
 
     def _render_selected_industry_strength_group(self, *_args) -> None:
         self._clear_layout_widgets(self.industry_strength_chart_layout)
         self._clear_layout_widgets(self.industry_strength_representatives_layout)
         self._industry_strength_row_buttons = []
+        self._industry_strength_row_widgets = {}
         selected_group = self.industry_strength_group_selector.currentData()
         if not selected_group or not self._industry_strength_rows:
             return
@@ -1434,6 +1613,20 @@ class DecisionDeskView(QWidget):
         )
         if not rows:
             return
+        if all(row.excess_5d_bp is None and row.excess_20d_bp is None for row in rows):
+            self._industry_strength_selected_name = rows[0].industry_name
+            self.industry_strength_empty_state.setText(
+                "此群組 5 日與 20 日超額值皆為 Unknown（無可比數值）；來源、資料日與品質資訊仍見上方摘要。"
+            )
+            self.industry_strength_empty_state.setAccessibleDescription(
+                "此群組的 5 日與 20 日超額值皆缺失；缺值不代表 0。"
+            )
+            self.industry_strength_chart_scroll.hide()
+            self.industry_strength_representatives.hide()
+            self.industry_strength_empty_state.show()
+            return
+        self.industry_strength_empty_state.hide()
+        self.industry_strength_chart_scroll.show()
         common_max_abs = max(
             (
                 abs(value)
@@ -1477,6 +1670,13 @@ class DecisionDeskView(QWidget):
                 "20 日", row.excess_20d_bp, row.coverage_20d_bp, common_max_abs
             ))
             self.industry_strength_chart_layout.addWidget(row_widget)
+            self._industry_strength_row_widgets[
+                (
+                    str(row.industry_level or "Unknown"),
+                    str(row.market_scope or "Unknown"),
+                    row.industry_name,
+                )
+            ] = row_widget
         self._update_industry_strength_representatives(rows)
 
     def _industry_strength_bar_lane(self, horizon: str, value: int | None, coverage: int | None, max_abs: int) -> QWidget:
@@ -1538,7 +1738,11 @@ class DecisionDeskView(QWidget):
         layout.addWidget(value_label, 1)
         return lane
 
-    def _select_industry_strength_row(self, industry_name: str) -> None:
+    def _select_industry_strength_row(
+        self, industry_name: str, *, preserve_navigation_request: bool = False
+    ) -> None:
+        if not preserve_navigation_request:
+            self._industry_strength_navigation_request_id += 1
         self._industry_strength_selected_name = industry_name
         for button in self._industry_strength_row_buttons:
             button.setChecked(button.text() == industry_name)

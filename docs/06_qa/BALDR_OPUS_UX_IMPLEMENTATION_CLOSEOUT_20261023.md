@@ -1,8 +1,8 @@
-# Baldr UI／UX 原始碼實作收尾（2026-10-23）
+﻿# Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M138；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M140；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M138 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M140 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -390,3 +390,15 @@ M138 Luna `/root/m133_research_audit` 唯一寫入 `ui_qt/views/decision_desk_vi
 M137 正常 Main 真 QWebEngine、隔離合成資料、Windows OS DPI216 的 1280×760／1500×900 權益與回撤八圖及 JS ready／正 canvas 尺寸在 `.../root/native_m137_evidence/run_a78e352174ba47478f21d5badf24ca68/result.json`，受控 Job `.../single_owned_qa_6c5f6a355b8349939be0903d2b740081/receipt.json` exit0。另以受控 JS throw 驗 error 文案、數值替代及 retry 恢復 ready，兩圖與結果在 `.../root/native_m137_error_evidence/run_f11ecf73a9c7448882803113ee39b32f/result.json`，Job `.../single_owned_qa_3285177d220041a3994dd314648abe8b/receipt.json` exit0。Sol 目視曲線與錯誤狀態；1280 頁面仍需約 16px 捲動才見整個畫布底端。
 
 M138 正常 Main 真 OS DPI216、同一隔離合成產業 snapshot 的 1280×760／1500×900 圖卡 before／after 五圖與精確數值在 `.../root/native_m138_evidence/run_fb7444ab1d494a72a948cb25172c8573/result.json`，Job `.../single_owned_qa_024e70867e9e492ca070b2cb95a1338e/receipt.json` exit0。Sol 目視兩期、真 0／Unknown、覆蓋及選取非領漲產業後單一代表股按鈕可讀。首兩次 Main fixture 被非同步刷新覆蓋的 harness 失敗，以及兩次版面退回紀錄均保留，未用作最後通過證據。正式市場／回測來源、真 GPU renderer crash、固定新版 EXE、其他真 DPI／1920 可用螢幕、Light 若支援、自然排程、Owner UAT、M73／M75 和完整產品 Gate 仍未接受。M1–M138 是切片序號，非功能數；原始 PNG／receipt 留 ignored `output/`，本輪未改正式或私人資料、其他排程，未 push／merge／部署。
+
+## M139／M140 Fast 首屏與產業深列定位
+
+M139 Luna `/root/m133_fast_audit` 唯一寫入 `ui_qt/views/backtest/result_panel.py`。原 1280×760 正常 Main 的 Fast 權益／回撤畫布下緣在 483px 頁面可視區的 499px，雖可捲 35px 但首屏不完整。Sol 接受只移除 Backtest 圖表外層與四個圖頁的預設邊距，退回一個僅重述實作與既有控制測試的新增測試；原有版面測試與原生幾何更能驗證這項可逆修改。最終畫布仍 300px 高，下緣 482px、捲動上限 0；run ID、歷史載入、狀態、「顯示數值」和研究脈絡控制可讀。Portfolio layout、Fast widget 本體、圖值與金融公式均未改。
+
+M140 Luna `/root/m133_research_audit` 唯一寫入 `ui_qt/views/decision_desk_view.py` 與 `tests/test_ui_qt_decision_desk_view.py`。32 類產業清單在 230px 內捲區不易找到深列；現用同一 `SectorRotationSummary` 的來源 20 日領先／落後名稱，只在唯一對上同份產業列且該列有 20 日超額值時啟用定位，必要時切原層級／市場範圍，仍可任選其他列。延後至 Qt 排版完成後把選中列及同源代表股帶進內外兩層可視區；刷新、換群組或手動改選會作廢舊定位。所選群組兩期皆無超額值時顯精簡 Unknown，保留基準、來源日、品質與群組；部分缺值列及真 0 仍分開顯示。不重算排名、不把跨市場列混排，也不改 DTO、服務、來源資格或 PIT。
+
+最終受控整合 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_aa81b86a0ff64d61912f6a884f98c529/receipt.json` exit0：compile0、相關聚焦 **86 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144 source files clean**；8 GiB／12 程序 Job 無殘留或強制清理。offscreen 測試使用 software rendering，不能代正式 GPU。M139 正常 Main 真 QWebEngine、隔離合成來源、Windows OS DPI216 的 1280×760／1500×900 權益與回撤八圖和精確幾何在 `.../root/native_m139_evidence/run_3ec1043af6ee4ca78069ada06eac86ff/result.json`，Job `.../single_owned_qa_0dbedb036aef4eb2a6fbb6e9c06046be/receipt.json` exit0；Sol 目視完整畫布與來源列。第一次 M139 原生 harness 誤用系統 Python、缺 PySide6，收據 `.../single_owned_qa_b12b7f9b07db43998ef2f60a4186daf0/receipt.json` 保留，不是產品失敗。
+
+M140 正常 Main 真 OS DPI216、同份隔離合成 32 列的 1280×760／1500×900 全缺值群組、來源落後深列與代表股九圖，最終 `.../root/native_m140_evidence/run_b6c9aeb49376444e8d5eb60844e99e58/result.json`，Job `.../single_owned_qa_5f5cf46d5a7f40b8a3be416a55f31067/receipt.json` exit0。最終 1280 外頁可視高 596，選中列 top450／height84、代表股 top544／height44，同屏可見；1500 外頁高736，選中列 top590、代表股 top684，亦完整入畫。Sol 目視缺值空態、兩期 bp 與代表股。原生曾揭露按鈕僅換選列而內捲仍 0（`.../single_owned_qa_8140d64a85bd4809886973a67af76cc3/receipt.json`）；延後內捲後又揭露外頁未帶入代表股（`.../single_owned_qa_722b2009654a487c9bac1b18df0e3662/receipt.json`），兩次退回及修正如實保留，初版圖不作最終視覺證據。
+
+這些證據限隔離合成正常 Main、真 Windows DPI216 與本機 WebEngine；正式市場／回測及私人來源、其他真 DPI／Light／1920 可用螢幕、正式 GPU renderer crash、固定新版 EXE、自然排程、Owner UAT、M73／M75 和完整產品 Gate 未接受。M1–M140 仍是審查、裁決、實作與 QA 切片序號，非獨立功能數；原始收據與 PNG 留 ignored `output/`，沒有 push／merge／部署。

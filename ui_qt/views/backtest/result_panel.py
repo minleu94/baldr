@@ -863,6 +863,7 @@ class BacktestResultPanel(QWidget):
             self._charts_available = True
             chart_tab = QWidget()
             chart_layout = QVBoxLayout(chart_tab)
+            chart_layout.setContentsMargins(0, 0, 0, 0)
             
             run_select_row = QHBoxLayout()
             run_select_row.addWidget(QLabel("選擇回測結果:"))
@@ -910,6 +911,7 @@ class BacktestResultPanel(QWidget):
             for name, title in chart_specs:
                 chart_page = QWidget()
                 chart_page_layout = QVBoxLayout(chart_page)
+                chart_page_layout.setContentsMargins(0, 0, 0, 0)
                 placeholder = QLabel("圖表將於首次開啟此頁時載入。")
                 placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 error_label = QLabel()

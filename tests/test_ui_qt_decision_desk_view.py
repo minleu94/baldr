@@ -596,6 +596,9 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     assert "current research only" in view.industry_strength_meta.toolTip()
     assert "摘要覆蓋：Unknown" in view.industry_strength_meta.toolTip()
     assert "industry_strength.snapshot" in view.industry_strength_meta.toolTip()
+    assert view.industry_strength_leading_button.isEnabled()
+    assert view.industry_strength_trailing_button.isEnabled()
+    assert "領先列（可定位）" in view.industry_strength_navigation_status.text()
     chart_text = " ".join(label.text() for label in view.industry_strength_chart_content.findChildren(QLabel))
     assert "+0 bp" in chart_text
     assert "Unknown（缺值）" in chart_text
@@ -645,9 +648,198 @@ def test_industry_strength_chart_separates_groups_distinguishes_unknown_and_zero
     assert view._industry_strength_rows == ()
     assert view.industry_strength_group_selector.count() == 0
     assert not view.industry_strength_chart_scroll.isVisible()
+    assert not view.industry_strength_leading_button.isEnabled()
+    assert not view.industry_strength_trailing_button.isEnabled()
+    assert "沒有可用快照列" in view.industry_strength_navigation_status.text()
+    assert view.industry_strength_empty_state.isHidden()
     view._display_exception_snapshot("snapshot unavailable")
     assert view._industry_strength_rows == ()
     assert "Unknown" in view.industry_strength_meta.text()
+
+
+def test_industry_strength_headline_navigation_finds_deep_row_across_groups_in_32_rows():
+    application = app()
+    base = _snapshot()
+    rows = tuple(
+        IndustryStrengthRow(
+            industry_name=f"{level_label}-{index:02d}",
+            index_name=f"{level_label}指數-{index:02d}",
+            industry_level=level,
+            market_scope="twse",
+            excess_5d_bp=index,
+            excess_20d_bp=None if level == "leaf" else -index,
+            coverage_5d_bp=10000,
+            coverage_20d_bp=10000,
+            representative_stocks=(
+                IndustryRepresentativeStock(
+                    stock_code="9001",
+                    stock_name="定位代表股",
+                    industry_name=f"{level_label}-{index:02d}",
+                ),
+            ) if level == "aggregate" and index == 15 else (),
+        )
+        for level, level_label in (("leaf", "細分"), ("aggregate", "整體"))
+        for index in range(16)
+    )
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 13),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("current_research_only",),
+        rows=rows,
+    )
+    snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 13),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=("current_research_only",),
+            leading_sector="整體-00",
+            trailing_sector="整體-15",
+            industry_strength=strength,
+        ),
+    )
+    builder = FakeBuilder(snapshot)
+    view = DecisionDeskView(builder, auto_refresh=False, async_refresh=False)
+    view.resize(1280, 760)
+    view.refresh_snapshot()
+    view.show()
+    application.processEvents()
+
+    assert len(view._industry_strength_rows) == 32
+    assert all(row.excess_20d_bp is None for row in rows if row.industry_level == "leaf")
+    assert all(row.excess_20d_bp is not None for row in rows if row.industry_level == "aggregate")
+    assert tuple(view.industry_strength_group_selector.currentData()) == ("leaf", "twse")
+    view.industry_strength_trailing_button.click()
+
+    assert tuple(view.industry_strength_group_selector.currentData()) == ("aggregate", "twse")
+    assert view._industry_strength_selected_name == "整體-15"
+    assert [button.text() for button in view._industry_strength_row_buttons][-1] == "整體-15"
+    assert view._industry_strength_row_buttons[-1].isChecked()
+    application.processEvents()
+    assert view.industry_strength_chart_scroll.verticalScrollBar().value() > 0
+    viewport = view.industry_strength_chart_scroll.viewport()
+    target_row = view._industry_strength_row_widgets[("aggregate", "twse", "整體-15")]
+    target_top = target_row.mapTo(viewport, target_row.rect().topLeft()).y()
+    assert target_top >= 0
+    assert target_top + target_row.height() <= viewport.height()
+    outer_viewport = view.main_scroll_area.viewport()
+    outer_top = target_row.mapTo(outer_viewport, target_row.rect().topLeft()).y()
+    assert outer_top >= 0
+    assert outer_top + target_row.height() <= outer_viewport.height()
+    assert "資料日 2026-06-13" in view.industry_strength_meta.text()
+    representatives = view.industry_strength_representatives.findChildren(QPushButton)
+    assert [button.text() for button in representatives] == ["9001 定位代表股"]
+    representative_top = representatives[0].mapTo(
+        outer_viewport, representatives[0].rect().topLeft()
+    ).y()
+    assert representative_top >= 0
+    assert representative_top + representatives[0].height() <= outer_viewport.height()
+
+    view.industry_strength_chart_scroll.verticalScrollBar().setValue(0)
+    view.industry_strength_trailing_button.click()
+    refreshed_rows = tuple(
+        IndustryStrengthRow(
+            industry_name=f"新快照-{index:02d}",
+            index_name=f"新快照指數-{index:02d}",
+            industry_level="leaf",
+            market_scope="twse",
+            excess_5d_bp=index,
+            excess_20d_bp=index * 2,
+        )
+        for index in range(18)
+    )
+    refreshed_strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 14),
+        quality=DecisionDeskQuality.OBSERVED,
+        warnings=(),
+        rows=refreshed_rows,
+    )
+    builder.snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 14),
+            quality=DecisionDeskQuality.OBSERVED,
+            warnings=(),
+            leading_sector="新快照-00",
+            trailing_sector="新快照-17",
+            industry_strength=refreshed_strength,
+        ),
+    )
+    view.refresh_snapshot()
+    assert view._industry_strength_selected_name == "新快照-00"
+    application.processEvents()
+    assert view.industry_strength_chart_scroll.verticalScrollBar().value() == 0
+    view.close()
+
+
+def test_industry_strength_all_unknown_group_keeps_metadata_and_partial_unknown_remains_charted():
+    app()
+    base = _snapshot()
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 14),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_index_values_missing",),
+        source_id="industry_strength.all_unknown",
+        rows=(
+            IndustryStrengthRow(
+                industry_name="全缺值 A",
+                index_name="A 指數",
+                industry_level="leaf",
+                market_scope="twse",
+                excess_5d_bp=None,
+                excess_20d_bp=None,
+            ),
+            IndustryStrengthRow(
+                industry_name="全缺值 B",
+                index_name="B 指數",
+                industry_level="leaf",
+                market_scope="twse",
+                excess_5d_bp=None,
+                excess_20d_bp=None,
+            ),
+            IndustryStrengthRow(
+                industry_name="部分缺值",
+                index_name="C 指數",
+                industry_level="aggregate",
+                market_scope="twse",
+                excess_5d_bp=0,
+                excess_20d_bp=None,
+            ),
+        ),
+    )
+    snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 14),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=(),
+            leading_sector=None,
+            trailing_sector="不在列中的名稱",
+            industry_strength=strength,
+        ),
+    )
+    view = DecisionDeskView(FakeBuilder(snapshot), auto_refresh=False, async_refresh=False)
+    view.refresh_snapshot()
+
+    assert view.industry_strength_group_selector.isEnabled()
+    assert view.industry_strength_group_selector.count() == 2
+    assert "此群組 5 日與 20 日超額值皆為 Unknown" in view.industry_strength_empty_state.text()
+    assert not view.industry_strength_empty_state.isHidden()
+    assert view.industry_strength_chart_scroll.isHidden()
+    assert "2026-06-14" in view.industry_strength_meta.text()
+    assert "品質" in view.industry_strength_meta.text()
+    assert "industry_strength.all_unknown" in view.industry_strength_meta.toolTip()
+    assert not view.industry_strength_leading_button.isEnabled()
+    assert not view.industry_strength_trailing_button.isEnabled()
+    assert "未出現在產業列表" in view.industry_strength_navigation_status.text()
+
+    view.industry_strength_group_selector.setCurrentIndex(1)
+    assert view.industry_strength_empty_state.isHidden()
+    assert not view.industry_strength_chart_scroll.isHidden()
+    assert [button.text() for button in view._industry_strength_row_buttons] == ["部分缺值"]
+    chart_text = " ".join(label.text() for label in view.industry_strength_chart_content.findChildren(QLabel))
+    assert "+0 bp" in chart_text
+    assert "Unknown（缺值）" in chart_text
 
 
 def test_industry_strength_chart_keeps_full_row_viewport_and_representatives_below_at_1280_width():

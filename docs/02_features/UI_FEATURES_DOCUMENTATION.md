@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M139／M140 後繼原始碼：Backtest 圖表頁兩層預設外邊距歸零，只影響本頁容器；Fast WebEngine 400×300 最小畫布、載入狀態、數值與來源控制仍在。市場總覽「可比產業超額表現」新增來源 20 日領先／落後定位，僅唯一命中同一 IndustryStrengthSummary 中有 20 日超額值的列時可用；必要時切回該列的層級與市場範圍，等 Qt 排版完成後將選中列和同源代表股帶入內外捲動可視區。刷新／換群組／另選列取消舊定位；全組兩期皆缺值顯 Unknown 空態，部分缺值仍留原列，真零保持 0。沒有重算排名、超額、來源或歷史 PIT。限定證據見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m139m140-fast-首屏與產業深列定位)。
+
 M137／M138 後繼原始碼：Fast 圖的 DOM render token 在本次頁面正尺寸 canvas 同步繪製後才向 Qt 回報完成；JS 錯誤顯失敗、等待逾時顯無法確認，均可用最新 payload 重試，文字數值仍可讀。市場總覽在焦點後常駐「可比產業超額表現」，同份 IndustryStrengthSummary 依層級／市場範圍分組，5／20 日原 bp 使用共同零軸及組內尺度，旁列精確 bp／覆蓋；選列後從同一快照的代表股進原研究。真零與 Unknown 分開，來源日期、品質、基準和 current research 用途可核；不重算排名、超額、金融公式或來源資格。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m137m138-fast-畫布確認與可比產業圖卡)。
 
 M135／M136 後繼原始碼：Fast Canvas host 保留最新圖資料，在 WebEngine 載入中顯示提示，失敗或 renderer 停止時提供「重試圖表載入」，數值替代維持可讀；空資料與已完成文件載入各有獨立狀態。大盤指數市場分類的原三項來源布林條件改為逐條中性狀態卡，明示符合、未符合或未知，刷新與錯誤清除舊卡。不改來源條件、金融公式或資格；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m135m136-載入回饋與市場條件卡)。

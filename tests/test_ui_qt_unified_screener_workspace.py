@@ -32,8 +32,12 @@ from app_module.daily_market_technical_universe_price_query_v1 import (
 from tests.test_daily_market_technical_universe_price_query_v1 import _open_session
 from tests.test_daily_market_technical_universe_v4_bookmark import pinned_bookmark
 import tests.test_daily_market_technical_official_disposition_bundle_v1 as composite_fixtures
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 from ui_qt.views.unified_screener_workspace import (
+    FunnelMetric,
+    FunnelProjection,
+    _FUNNEL_DISTRIBUTION_STATES,
     UnifiedScreenerWorkspace,
     project_result_funnel,
 )
@@ -353,6 +357,129 @@ def test_funnel_uses_result_counts_and_leaves_missing_denominator_unknown():
     assert (price_metric.denominator, price_metric.match, price_metric.no_match, price_metric.unknown) == (
         37, 10, 20, 7
     )
+
+
+def test_funnel_distribution_bars_are_bounded_exact_and_keep_original_counts(
+    qtbot, monkeypatch
+):
+    _host, workspace, pages = _workspace(qtbot)
+    metrics = tuple(
+        FunnelMetric(f"條件 {index}", 10, 4, 2, 1, 2, 1)
+        for index in range(8)
+    ) + (
+        FunnelMetric("真零條件", 0, 0, 0, 0, 0, 0),
+        FunnelMetric("不一致條件", 5, 1, 1, 1, 1, 0),
+        FunnelMetric("缺值條件", None),
+    )
+    projection = FunnelProjection(
+        "synthetic.v1", "2026-10-23", "a" * 12, "b" * 12, metrics, True
+    )
+    current = [projection]
+    monkeypatch.setattr(
+        "ui_qt.views.unified_screener_workspace.project_result_funnel",
+        lambda _view: current[0],
+    )
+
+    page = pages[3]
+    key = next(item.key for item in workspace._sources if item.widget is page)
+    assert workspace.select_source(key)
+    workspace.refresh_funnel()
+
+    bars = workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    )
+    assert len(bars) == 6
+    assert "真零條件" not in workspace._distribution_rows
+    assert "不一致條件" not in workspace._distribution_rows
+    assert "缺值條件" not in workspace._distribution_rows
+    assert workspace.funnel_details.is_collapsed()
+    assert "可能重疊" in workspace.funnel_distribution_notice.text()
+    assert "不代表逐步淘汰" in workspace.funnel_distribution_notice.text()
+    assert "另有 2 項圖條省略" in workspace.funnel_distribution_notice.text()
+    assert "分母為 0 的 1 項保留原始 0 計數" in workspace.funnel_distribution_notice.text()
+    assert "符合／不符合／未知 4／2／1" in workspace.funnel_detail_text.text()
+    assert "未評估／不適用 2／1" in workspace.funnel_detail_text.text()
+    assert "真零條件 0 · 符合／不符合／未知 0／0／0" in workspace.funnel_detail_text.text()
+    assert "缺值條件 未提供" in workspace.funnel_detail_text.text()
+    assert "來源識別：aaaaaaaaaaaa" in workspace.banner.text()
+    assert "查詢識別：bbbbbbbbbbbb" in workspace.banner.text()
+
+    previous_bar = bars[0]
+    current[0] = FunnelProjection(
+        "synthetic.v1", "2026-10-23", "a" * 12, "c" * 12, metrics, True
+    )
+    workspace.refresh_funnel()
+    updated_bars = workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    )
+    assert len(updated_bars) == 6
+    assert updated_bars[0] is not previous_bar
+    assert "查詢識別：cccccccccccc" in workspace.banner.text()
+
+
+def test_funnel_distribution_match_colors_do_not_reuse_market_direction_colors():
+    colors = {key: color for key, _label, color in _FUNNEL_DISTRIBUTION_STATES}
+    market_direction_colors = {
+        MIDNIGHT_ANALYST.market_up,
+        MIDNIGHT_ANALYST.market_down,
+    }
+
+    assert colors["match"] == "#60A5FA"
+    assert colors["no_match"] == "#52677E"
+    assert colors["match"] not in market_direction_colors
+    assert colors["no_match"] not in market_direction_colors
+
+
+def test_funnel_distribution_bars_clear_on_busy_failure_and_no_result(
+    qtbot, monkeypatch
+):
+    _host, workspace, pages = _workspace(qtbot)
+    metric = FunnelMetric("完整條件", 5, 1, 1, 1, 1, 1)
+    current = [FunnelProjection("synthetic.v1", None, "a" * 12, "b" * 12, (metric,), True)]
+    monkeypatch.setattr(
+        "ui_qt.views.unified_screener_workspace.project_result_funnel",
+        lambda _view: current[0],
+    )
+    page = pages[3]
+    page.status = QLabel("查詢完成", page)
+    key = next(item.key for item in workspace._sources if item.widget is page)
+    assert workspace.select_source(key)
+    workspace.refresh_funnel()
+    assert len(workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    )) == 1
+
+    workspace._on_source_operation_settled(page, "查詢", False)
+    assert workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    ) == []
+    page.status.setText("原結果仍保留")
+    workspace._on_source_operation_settled(page, "查詢", True)
+    assert len(workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    )) == 1
+
+    page.busy = True
+    workspace.refresh_funnel()
+    assert workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    ) == []
+    assert "來源操作進行中" in workspace.funnel.text()
+    page.busy = False
+    page.status.setText("查詢失敗；原已核驗結果保留。")
+    workspace.refresh_funnel()
+    assert workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    ) == []
+    assert "失敗或取消" in workspace.funnel.text()
+
+    page.status.setText("查詢完成")
+    current[0] = FunnelProjection("synthetic.v1", None, "a" * 12, "c" * 12, (), False)
+    workspace.refresh_funnel()
+    assert workspace.funnel_distribution_rows.findChildren(
+        QWidget, "unifiedScreenerDistributionBar"
+    ) == []
+    assert "此來源尚無已核結果計數" in workspace.funnel_detail_text.text()
 
 
 @pytest.mark.parametrize(

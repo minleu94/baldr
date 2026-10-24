@@ -93,6 +93,7 @@ from app_module.research_session import (
 )
 from app_module.portfolio_stress_lab_service import (
     PortfolioStressLabService,
+    StressScenarioDefinition,
 )
 from app_module.portfolio_stress_history import (
     DEFAULT_STRESS_HISTORY_FILENAME,
@@ -1968,7 +1969,11 @@ class PortfolioView(QWidget):
 
         stress_controls = QHBoxLayout()
         self.stress_scenario_combo = QComboBox()
+        self._stress_scenarios_by_id: dict[str, StressScenarioDefinition] = {}
         for scenario in self.stress_lab_service.list_scenarios():
+            scenario_id = str(getattr(scenario, "scenario_id", "") or "").strip()
+            if scenario_id:
+                self._stress_scenarios_by_id[scenario_id] = scenario
             self.stress_scenario_combo.addItem(scenario.label, scenario.scenario_id)
         self.stress_scenario_combo.setToolTip("情境為靜態壓力假設，不代表市場預測。")
         stress_controls.addWidget(self.stress_scenario_combo, 1)
@@ -1988,6 +1993,30 @@ class PortfolioView(QWidget):
             self._on_stress_scenario_changed
         )
         current_stress_layout.addLayout(stress_controls)
+
+        self.stress_scenario_preview_label = QLabel()
+        self.stress_scenario_preview_label.setWordWrap(True)
+        self.stress_scenario_preview_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.stress_scenario_preview_label.setAccessibleName("情境壓力選取情境說明")
+        self.stress_scenario_preview_scroll = QScrollArea()
+        self.stress_scenario_preview_scroll.setWidgetResizable(True)
+        self.stress_scenario_preview_scroll.setFrameShape(QFrame.NoFrame)
+        self.stress_scenario_preview_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff
+        )
+        self.stress_scenario_preview_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+        self.stress_scenario_preview_scroll.setMinimumHeight(42)
+        self.stress_scenario_preview_scroll.setMaximumHeight(72)
+        self.stress_scenario_preview_scroll.setAccessibleName("情境壓力情境說明捲動區")
+        self.stress_scenario_preview_scroll.setWidget(
+            self.stress_scenario_preview_label
+        )
+        current_stress_layout.addWidget(self.stress_scenario_preview_scroll)
+        self._refresh_stress_scenario_preview()
 
         self.stress_summary_label = QLabel("尚未執行情境。")
         self.stress_summary_label.setWordWrap(True)
@@ -3705,10 +3734,70 @@ class PortfolioView(QWidget):
     def _on_stress_scenario_changed(self, _index: int) -> None:
         """情境選擇改變後，舊結果不得繼續呈現或保存。"""
 
+        self._refresh_stress_scenario_preview()
         self._clear_stress_lab_result(
             summary="情境已變更；請重新執行情境。",
             detail="舊結果已清除。按「執行情境」後，才能保存新的研究快照。",
         )
+
+    def _refresh_stress_scenario_preview(self) -> None:
+        """只呈現原情境定義；不執行投影，也不暗示已有結果。"""
+
+        scenario_id = self.stress_scenario_combo.currentData()
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            self.stress_scenario_preview_label.setText(
+                "情境資訊：未知（目前沒有選定情境）；尚未取得計算結果。"
+            )
+            return
+
+        scenario = self._stress_scenarios_by_id.get(scenario_id.strip())
+        if scenario is None:
+            self.stress_scenario_preview_label.setText(
+                "情境資訊：未知（此選項沒有對應的 StressScenarioDefinition）；"
+                "尚未取得計算結果。"
+            )
+            return
+
+        description = str(getattr(scenario, "description", "") or "").strip()
+        description_text = description or "未知（情境定義未提供說明）。"
+        lines = [
+            f"情境說明（不是計算結果）：{description_text}",
+        ]
+
+        supported = getattr(scenario, "supported", None)
+        if supported is True:
+            lines.append("服務支援狀態：支援。")
+        elif supported is False:
+            lines.append(
+                "依情境定義：目前不支援、不可計算；實際執行診斷仍依結果顯示。"
+            )
+        else:
+            lines.append("服務支援狀態：未知（定義未提供）。")
+
+        required_inputs = getattr(scenario, "required_inputs", None)
+        if isinstance(required_inputs, (tuple, list)):
+            required_tokens = tuple(
+                token.strip()
+                for token in required_inputs
+                if isinstance(token, str) and token.strip()
+            )
+            if required_tokens:
+                readable_names = {
+                    "sector_or_concept_exposures": "持倉產業／概念曝險標籤",
+                    "price_source_availability": "價格來源可用性",
+                }
+                readable_inputs = "、".join(
+                    readable_names.get(token, token) for token in required_tokens
+                )
+                lines.append(f"必要輸入：{readable_inputs}。")
+            elif required_inputs:
+                lines.append("必要輸入：未知（定義欄位無法辨識）。")
+            else:
+                lines.append("必要輸入：無。")
+        else:
+            lines.append("必要輸入：未知（定義未提供）。")
+
+        self.stress_scenario_preview_label.setText("\n".join(lines))
 
     def _clear_stress_lab_result(self, *, summary: str, detail: str) -> None:
         """清除失效結果並同步保存按鈕狀態。"""

@@ -1260,6 +1260,85 @@ def test_portfolio_stress_lab_is_visible_and_research_only(tmp_path):
     assert view.btn_save_stress_history.isEnabled() is True
 
 
+def test_portfolio_stress_scenario_preview_uses_definition_before_execution(tmp_path):
+    view = make_portfolio_view(tmp_path)
+
+    supported_index = view.stress_scenario_combo.findData("concentration_event")
+    view.stress_scenario_combo.setCurrentIndex(supported_index)
+    supported_preview = view.stress_scenario_preview_label.text()
+    assert "只對目前標記市值最大的單一持倉套用 -20% 情境。" in supported_preview
+    assert "服務支援狀態：支援" in supported_preview
+    assert "必要輸入：無。" in supported_preview
+    assert "不是計算結果" in supported_preview
+    assert view._stress_result is None
+    assert view.stress_summary_label.text() == "情境已變更；請重新執行情境。"
+    assert view.btn_save_stress_history.isEnabled() is False
+
+    rotation_index = view.stress_scenario_combo.findData("rotation_failure")
+    view.stress_scenario_combo.setCurrentIndex(rotation_index)
+    rotation_preview = view.stress_scenario_preview_label.text()
+    assert "需要持倉的產業／概念曝險標籤" in rotation_preview
+    assert "依情境定義：目前不支援、不可計算" in rotation_preview
+    assert "必要輸入：持倉產業／概念曝險標籤。" in rotation_preview
+    assert "實際執行診斷仍依結果顯示" in rotation_preview
+    assert "scenario_requires:" not in rotation_preview
+    assert view._stress_result is None
+    assert view.btn_save_stress_history.isEnabled() is False
+
+    outage_index = view.stress_scenario_combo.findData("source_outage")
+    view.stress_scenario_combo.setCurrentIndex(outage_index)
+    outage_preview = view.stress_scenario_preview_label.text()
+    assert "價格來源可用性" in outage_preview
+    assert "依情境定義：目前不支援、不可計算" in outage_preview
+    assert "實際執行診斷仍依結果顯示" in outage_preview
+    assert "scenario_requires:" not in outage_preview
+    assert view._stress_result is None
+    assert view.btn_save_stress_history.isEnabled() is False
+    view.close()
+
+
+def test_portfolio_stress_scenario_preview_unknown_missing_and_scrollable(tmp_path):
+    view = make_portfolio_view(tmp_path)
+
+    definition = view._stress_scenarios_by_id["fast_drop"]
+    view._stress_scenarios_by_id["fast_drop"] = replace(definition, description=" ")
+    view._refresh_stress_scenario_preview()
+    assert "情境定義未提供說明" in view.stress_scenario_preview_label.text()
+
+    missing_inputs = view._stress_scenarios_by_id["rotation_failure"]
+    view._stress_scenarios_by_id["rotation_failure"] = replace(
+        missing_inputs,
+        required_inputs=None,
+    )
+    view.stress_scenario_combo.setCurrentIndex(
+        view.stress_scenario_combo.findData("rotation_failure")
+    )
+    assert "必要輸入：未知（定義未提供）。" in (
+        view.stress_scenario_preview_label.text()
+    )
+    assert "依情境定義：目前不支援、不可計算" in (
+        view.stress_scenario_preview_label.text()
+    )
+    assert "實際執行診斷仍依結果顯示" in (
+        view.stress_scenario_preview_label.text()
+    )
+
+    view.stress_scenario_combo.addItem("未來情境", "future_scenario")
+    view.stress_scenario_combo.setCurrentIndex(
+        view.stress_scenario_combo.findData("future_scenario")
+    )
+    assert "沒有對應的 StressScenarioDefinition" in (
+        view.stress_scenario_preview_label.text()
+    )
+    assert "目前不支援" not in view.stress_scenario_preview_label.text()
+
+    view.stress_scenario_combo.setCurrentIndex(-1)
+    assert "目前沒有選定情境" in view.stress_scenario_preview_label.text()
+    assert "未知" in view.stress_scenario_preview_label.text()
+    assert view.stress_scenario_preview_scroll.maximumHeight() <= 72
+    view.close()
+
+
 def test_portfolio_stress_scenario_change_clears_result_and_save_identity(
     tmp_path, monkeypatch
 ):
@@ -1348,6 +1427,12 @@ def test_portfolio_stress_source_disclosure_survives_section_switch_and_save(
     source_text = view.stress_source_label.text()
     result_before_switch = view._stress_result
     assert view.stress_source_label.isVisible() is True
+    assert view.stress_scenario_preview_scroll.isVisible() is True
+    assert (
+        view.stress_scenario_preview_scroll.height()
+        <= view.stress_scenario_preview_scroll.maximumHeight()
+    )
+    assert view.stress_positions_table.isVisible() is True
     assert "PortfolioService 的交易／手動持倉 DTO" in source_text
     assert "portfolio_id=default" in source_text
     assert "不讀 Paper snapshot、ledger 或 Health" in source_text

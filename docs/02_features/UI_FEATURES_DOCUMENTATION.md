@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M111–M113 後繼原始碼：Backtest 最佳化結果沿原 `OptimizationStabilitySummary` 顯最多八個參數的 Top-5 有值眾數集中度圖條，精確 bp 及 present/total 保留；未知不畫、樣本不足或新查詢／空結果清舊，原文字與表格仍可追。綜合選股的原「母體漏斗明細」內，僅對同一查詢、五態完整且加總等於該條分母的條件繪最多六條分布；零分母保留原 0 不畫比例，缺值與不一致不補值，各條可能重疊，顏色不借台股紅漲綠跌。Portfolio Stress 只在選取前顯原情境定義的說明、支援與必要輸入，缺件未知、實際 blocker 仍由執行結果顯示；原選項、結果、保存與 A→B 清舊守衛不變。均為展示層，不授予績效、穩健性、PIT、來源或交易資格；限定驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m111m113-最佳化選股與情境資訊層級)。
+
 M109／M110 後繼原始碼：Paper Health 表把原 `review_required`「需要確認」排到標的旁；代號 tooltip 顯示該列 Paper `position_id`、來源 snapshot ID 與 cohort key，缺件明示未提供，不用股票代號當部位身份。原列、原詳情、決策日及狀態保留。Watchlist 候選池首屏與表格下方分別顯「候選列／不同代號」，同股不同來源仍是不同列；成功空集合才是真 0，載入失敗數量未知。沒有逐列同版審查狀態契約，暫不畫 Watchlist 狀態分布；金融判斷、來源身份、保存與交易契約不變。限定驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m109m110-paper-health-與候選池辨識)。
 
 個股基本面與籌碼圖卡依已載入 DTO 的來源、日期與單位分開。營收多月份採保留缺月間隔的柱圖、財報採原比較配對柱，單點採值卡；正值軸使用完整空間，淨額保留正負方向。精確原值與來源明細、重複原表預設收合，圖內沒有垂直捲動。摘要固定列營收／法人／信用／集保，籌碼章節固定列法人／信用／集保／分點，其他原欄位不再被法人前四組遮蔽。操作見[圖卡判讀](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#個股營收與籌碼圖卡)，本輪驗證見[Opus 修正 QA](../06_qa/BALDR_OPUS_UX_REMEDIATION_QA_20261022.md)。

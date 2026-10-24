@@ -9,7 +9,8 @@ from copy import deepcopy
 from PySide6.QtWidgets import (
     QAbstractItemView, QListView, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGroupBox, QTableView, QTextEdit, QComboBox, 
-    QHeaderView, QListWidget, QListWidgetItem, QTabWidget, QPushButton, QLineEdit
+    QHeaderView, QListWidget, QListWidgetItem, QTabWidget, QPushButton, QLineEdit,
+    QProgressBar, QSizePolicy,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -20,6 +21,7 @@ from app_module.evidence_operations_history_dashboard_service import create_evid
 from app_module.forward_performance_dashboard_service import create_forward_performance_dashboard_service
 from app_module.live_research_gap_dashboard_service import create_live_research_gap_dashboard_service
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
+from app_module.backtest_optimization_stability import OptimizationStabilitySummary
 from app_module.signal_decay_dashboard_service import create_signal_decay_dashboard_service
 from ui_qt.views.evidence_review_view import EvidenceReviewView
 from ui_qt.views.forward_performance_view import ForwardPerformanceView
@@ -286,6 +288,112 @@ class ResearchHistoryLookupWidget(QWidget):
         self._closed = True
         self.cancel_pending()
         super().closeEvent(event)
+
+
+class OptimizationStabilityDistribution(QWidget):
+    """顯示單次保留 Top-5 有值參數的眾數集中度。"""
+
+    MAX_VISIBLE_PARAMETERS = 8
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("optimizationStabilityDistribution")
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(4, 2, 4, 2)
+        self._layout.setSpacing(3)
+        self.scope_label = QLabel(
+            "依有效 objective 排序的目前保留最多前五名；條長是其中有值參數的眾數占比（bp）。"
+            "不代表完整參數面、穩健性、OOS、績效或資格。"
+        )
+        self.scope_label.setAccessibleName("最佳化參數集中度範圍說明")
+        self.scope_label.setWordWrap(True)
+        self.scope_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.scope_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 8pt;")
+        self._layout.addWidget(self.scope_label)
+        self._rows_layout = QVBoxLayout()
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(2)
+        self._layout.addLayout(self._rows_layout)
+        self._rows: list[QWidget] = []
+        self.hide()
+
+    def set_summary(self, summary: OptimizationStabilitySummary | None) -> None:
+        self._clear_rows()
+        if summary is None or summary.status != "available" or not summary.parameters:
+            self.hide()
+            return
+
+        parameters = summary.parameters
+        for index, parameter in enumerate(parameters[: self.MAX_VISIBLE_PARAMETERS]):
+            row = QWidget(self)
+            row.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(6)
+
+            name_label = QLabel(parameter.name)
+            name_label.setObjectName(f"optimizationParameterName_{index}")
+            name_label.setMinimumWidth(80)
+            name_label.setMaximumWidth(190)
+            name_label.setToolTip(parameter.name)
+            name_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 9pt;")
+            row_layout.addWidget(name_label)
+
+            value_bp = parameter.top5_concentration_bp
+            present = parameter.top5_present_count
+            total = parameter.top5_total_count
+            if (
+                type(value_bp) is int
+                and 0 <= value_bp <= 10_000
+                and type(present) is int
+                and type(total) is int
+                and 0 < present <= total
+                and total > 0
+            ):
+                bar = QProgressBar(row)
+                bar.setObjectName(f"optimizationConcentrationBar_{index}")
+                bar.setRange(0, 10_000)
+                bar.setValue(value_bp)
+                bar.setTextVisible(False)
+                bar.setFixedHeight(10)
+                bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                bar.setAccessibleName(f"{parameter.name} Top-5 有值參數眾數集中度")
+                bar.setToolTip(
+                    f"集中度 {value_bp} bp；Top-5 有值參數 {present}/{total}"
+                )
+                bar.setStyleSheet(
+                    f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 3px; }}"
+                    "QProgressBar::chunk { background-color: #5B8DB8; border-radius: 2px; }"
+                )
+                row_layout.addWidget(bar, stretch=1)
+                value_text = f"{value_bp} bp ({present}/{total})"
+            else:
+                value_text = f"未知 ({present}/{total})"
+            value_label = QLabel(value_text)
+            value_label.setObjectName(f"optimizationConcentrationValue_{index}")
+            value_label.setMinimumWidth(105)
+            value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            value_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 8pt;")
+            row_layout.addWidget(value_label)
+            self._rows_layout.addWidget(row)
+            self._rows.append(row)
+
+        omitted = len(parameters) - self.MAX_VISIBLE_PARAMETERS
+        if omitted > 0:
+            label = QLabel(f"另有 {omitted} 個參數；其餘仍見上方完整文字摘要。")
+            label.setObjectName("optimizationConcentrationOmitted")
+            label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 8pt;")
+            self._rows_layout.addWidget(label)
+            self._rows.append(label)
+        self.show()
+
+    def _clear_rows(self) -> None:
+        for row in self._rows:
+            self._rows_layout.removeWidget(row)
+            row.hide()
+            row.setParent(None)
+            row.deleteLater()
+        self._rows.clear()
 
 
 class BacktestResultPanel(QWidget):
@@ -806,6 +914,8 @@ class BacktestResultPanel(QWidget):
                 f"background: {MIDNIGHT_ANALYST.surface_2}; border: 1px solid {MIDNIGHT_ANALYST.border};"
             )
             optimization_result_layout_inner.addWidget(self.optimization_stability_label)
+            self.optimization_stability_distribution = OptimizationStabilityDistribution()
+            optimization_result_layout_inner.addWidget(self.optimization_stability_distribution)
             
             self.optimization_table = QTableView()
             apply_financial_table_style(self.optimization_table)

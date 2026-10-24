@@ -4095,6 +4095,7 @@ class BacktestView(QWidget):
                 "Top-N 穩定性（探索性）：insufficient（尚未完成本輪最佳化）。"
                 " 僅在結果保留後摘要，請另跑 Walk-forward／OOS 驗證。"
             )
+            self.optimization_stability_distribution.set_summary(None)
 
         request = OptimizationExecutionRequest(
             stock_code=stock_code,
@@ -4142,6 +4143,18 @@ class BacktestView(QWidget):
             self.config_panel.cancel_btn.setVisible(False)
 
         if not results:
+            self.current_optimization_results = []
+            self.optimization_stability_summary = None
+            self.optimization_model = None
+            if hasattr(self, "optimization_table"):
+                self.optimization_table.setModel(None)
+            if hasattr(self, "optimization_stability_label"):
+                self.optimization_stability_label.setText(
+                    "Top-N 穩定性（探索性）：insufficient（本輪沒有可排名結果）。"
+                    " 需另跑 Walk-forward／OOS 驗證。"
+                )
+            if hasattr(self, "optimization_stability_distribution"):
+                self.optimization_stability_distribution.set_summary(None)
             QMessageBox.warning(self, "提示", "沒有找到可排名的結果；請檢查資料期間與目標指標有效性。")
             return
 
@@ -4160,6 +4173,9 @@ class BacktestView(QWidget):
             self.optimization_stability_label.setText(
                 self.optimization_stability_summary.to_text()
                 + "\n表格空白代表原指標不可用或舊結果未驗證；請看各指標狀態欄。"
+            )
+            self.optimization_stability_distribution.set_summary(
+                self.optimization_stability_summary
             )
 
         # 創建摘要表格

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import QSignalBlocker, Qt, QTimer
-from PySide6.QtGui import QStandardItemModel
+from PySide6.QtGui import QColor, QPainter, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QBoxLayout,
@@ -49,6 +49,99 @@ class FunnelProjection:
     query_identity: str | None
     metrics: tuple[FunnelMetric, ...]
     available: bool
+
+
+_FUNNEL_DISTRIBUTION_STATES = (
+    ("match", "符合", "#60A5FA"),
+    ("no_match", "不符合", "#52677E"),
+    ("unknown", "未知", "#E1A94B"),
+    ("not_evaluated", "未評估", "#71839A"),
+    ("not_applicable", "不適用", "#927BC6"),
+)
+_FUNNEL_DISTRIBUTION_LIMIT = 6
+
+
+def _complete_funnel_distribution(
+    metric: FunnelMetric,
+) -> tuple[int, int, int, int, int] | None:
+    """只接受五態完整、非負，且分母與原值總和相等的計數。"""
+
+    denominator = metric.denominator
+    counts = (
+        metric.match,
+        metric.no_match,
+        metric.unknown,
+        metric.not_evaluated,
+        metric.not_applicable,
+    )
+    if (
+        type(denominator) is not int
+        or denominator < 0
+        or any(type(count) is not int or count < 0 for count in counts)
+        or sum(counts) != denominator
+    ):
+        return None
+    return cast(tuple[int, int, int, int, int], counts)
+
+
+class _FunnelDistributionBar(QWidget):
+    """單一母體條件的五態相對分布；不比較或累加不同條件。"""
+
+    def __init__(
+        self,
+        metric: FunnelMetric,
+        counts: tuple[int, int, int, int, int],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._denominator = metric.denominator
+        self._counts = counts
+        self.setMinimumWidth(100)
+        self.setMinimumHeight(14)
+        self.setMaximumHeight(18)
+        self.setAccessibleName(f"{metric.domain}五態狀態分布")
+        details = "；".join(
+            f"{label} {count}"
+            for (_key, label, _color), count in zip(
+                _FUNNEL_DISTRIBUTION_STATES, counts
+            )
+        )
+        description = f"{metric.domain}；分母 {metric.denominator}；{details}"
+        self.setAccessibleDescription(description)
+        self.setToolTip(description)
+
+    def paintEvent(self, _event: object) -> None:  # noqa: N802 - Qt callback name.
+        denominator = self._denominator
+        if type(denominator) is not int or denominator <= 0:
+            return
+        bounds = self.rect().adjusted(0, 1, -1, -1)
+        if bounds.width() <= 2 or bounds.height() <= 0:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#263549"))
+        painter.drawRoundedRect(bounds, 4, 4)
+        inner = bounds.adjusted(1, 1, -1, -1)
+        available_width = inner.width()
+        previous_edge = 0
+        accumulated = 0
+        for (_key, _label, color), count in zip(
+            _FUNNEL_DISTRIBUTION_STATES, self._counts
+        ):
+            accumulated += count
+            edge = accumulated * available_width // denominator
+            segment_width = edge - previous_edge
+            if count > 0 and segment_width > 0:
+                painter.fillRect(
+                    inner.left() + previous_edge,
+                    inner.top(),
+                    segment_width,
+                    inner.height(),
+                    QColor(color),
+                )
+            previous_edge = edge
+        painter.end()
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +394,38 @@ class UnifiedScreenerWorkspace:
         self.funnel_details = CollapsibleSectionPanel("母體漏斗明細（可展開）", collapsed=True)
         self.funnel_details.setObjectName("unifiedScreenerFunnelDetails")
         self._compact_disclosure(self.funnel_details)
+        self.funnel_distribution_notice = QLabel("")
+        self.funnel_distribution_notice.setObjectName("unifiedScreenerDistributionNotice")
+        self.funnel_distribution_notice.setWordWrap(True)
+        self.funnel_distribution_notice.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
+        self.funnel_details.content_layout.addWidget(self.funnel_distribution_notice)
+        self.funnel_distribution_legend = QWidget()
+        self.funnel_distribution_legend.setObjectName("unifiedScreenerDistributionLegend")
+        legend_layout = QHBoxLayout(self.funnel_distribution_legend)
+        legend_layout.setContentsMargins(0, 0, 0, 0)
+        legend_layout.setSpacing(8)
+        self._distribution_rows: dict[str, QWidget] = {}
+        self._distribution_layout = QVBoxLayout()
+        self._distribution_layout.setContentsMargins(0, 0, 0, 0)
+        self._distribution_layout.setSpacing(2)
+        self.funnel_distribution_rows = QWidget()
+        self.funnel_distribution_rows.setObjectName("unifiedScreenerDistributionRows")
+        self.funnel_distribution_rows.setLayout(self._distribution_layout)
+        self.funnel_distribution_rows.setMaximumHeight(
+            _FUNNEL_DISTRIBUTION_LIMIT * 20 + 2
+        )
+        self.funnel_distribution_legend.setVisible(False)
+        self.funnel_distribution_rows.setVisible(False)
+        self._distribution_signature: object | None = None
+        for _key, label, color in _FUNNEL_DISTRIBUTION_STATES:
+            legend_item = QLabel(f"■ {label}")
+            legend_item.setStyleSheet(f"color: {color}; font-size: 10px;")
+            legend_layout.addWidget(legend_item)
+        legend_layout.addStretch(1)
+        self.funnel_details.content_layout.addWidget(self.funnel_distribution_legend)
+        self.funnel_details.content_layout.addWidget(self.funnel_distribution_rows)
         self.funnel_detail_text = QLabel("")
         self.funnel_detail_text.setObjectName("unifiedScreenerFunnelDetailText")
         self.funnel_detail_text.setWordWrap(True)
@@ -393,6 +518,8 @@ class UnifiedScreenerWorkspace:
         self._source_by_key: dict[str, _Source] = {}
         self._connected_inner_tabs: set[int] = set()
         self._active_key: str | None = None
+        self._connected_operation_signals: set[int] = set()
+        self._invalidated_source_widgets: set[int] = set()
         self._ml_mode = False
         self._explicit_mode_transition = False
         self._last_key_by_mode: dict[bool, str | None] = {False: None, True: None}
@@ -508,6 +635,11 @@ class UnifiedScreenerWorkspace:
         current_widget = current_inner.currentWidget() if current_inner is not None else current_outer
         self._sources = self._enumerate_sources()
         self._source_by_key = {source.key: source for source in self._sources}
+        current_widget_ids = {id(source.widget) for source in self._sources}
+        self._connected_operation_signals.intersection_update(current_widget_ids)
+        self._invalidated_source_widgets.intersection_update(current_widget_ids)
+        for source in self._sources:
+            self._connect_source_operation_status(source.widget)
         self._refresh_quick_routes()
         if not self._explicit_mode_transition and not self._ml_mode and any(
             source.widget is current_widget and source.ml for source in self._sources
@@ -873,6 +1005,154 @@ class UnifiedScreenerWorkspace:
         )
         self.tabs.setSizePolicy(tab_policy)
 
+    def _connect_source_operation_status(self, widget: QWidget) -> None:
+        if id(widget) in self._connected_operation_signals:
+            return
+        signal = getattr(widget, "operationSettled", None)
+        connect = getattr(signal, "connect", None)
+        if callable(connect):
+            connect(
+                lambda kind, success, owner=widget: self._on_source_operation_settled(
+                    owner, kind, success
+                )
+            )
+            self._connected_operation_signals.add(id(widget))
+
+    def _on_source_operation_settled(
+        self, widget: QWidget, _kind: object, success: object
+    ) -> None:
+        if type(success) is bool:
+            if success:
+                self._invalidated_source_widgets.discard(id(widget))
+            else:
+                self._invalidated_source_widgets.add(id(widget))
+        if any(
+            source.widget is widget and source.key == self._active_key
+            for source in self._sources
+        ):
+            self.refresh_funnel()
+
+    def _source_operation_state(self, widget: QWidget) -> str:
+        if id(widget) in self._invalidated_source_widgets:
+            return "failed"
+        for name in ("busy", "_v2_busy"):
+            value = getattr(widget, name, None)
+            if type(value) is bool and value:
+                return "busy"
+        for name in ("active_worker", "_busy_worker", "_worker"):
+            if getattr(widget, name, None) is not None:
+                return "busy"
+        for name in ("status", "status_label"):
+            label = getattr(widget, name, None)
+            text_reader = getattr(label, "text", None)
+            text = text_reader() if callable(text_reader) else ""
+            normalized = text.casefold() if isinstance(text, str) else ""
+            failure_tokens = (
+                "失敗", "錯誤", "取消", "failed", "error", "cancelled", "canceled"
+            )
+            if any(token in normalized for token in failure_tokens):
+                return "failed"
+        return "ready"
+
+    def _render_funnel_distributions(
+        self,
+        metrics: tuple[FunnelMetric, ...],
+        *,
+        identity: tuple[object, ...],
+        state: str = "ready",
+    ) -> None:
+        raw_signature = tuple(
+            (
+                metric.domain,
+                metric.denominator,
+                metric.match,
+                metric.no_match,
+                metric.unknown,
+                metric.not_evaluated,
+                metric.not_applicable,
+            )
+            for metric in metrics
+        )
+        full_signature = (identity, state, raw_signature)
+        if self._distribution_signature != full_signature:
+            while self._distribution_layout.count():
+                item = self._distribution_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.hide()
+                    widget.setParent(None)
+                    widget.deleteLater()
+            self._distribution_rows.clear()
+
+            complete = [
+                (metric, counts)
+                for metric in metrics
+                if (counts := _complete_funnel_distribution(metric)) is not None
+            ]
+            nonzero = [
+                (metric, counts)
+                for metric, counts in complete
+                if metric.denominator is not None and metric.denominator > 0
+            ]
+            for metric, counts in nonzero[:_FUNNEL_DISTRIBUTION_LIMIT]:
+                row = QWidget(self.funnel_distribution_rows)
+                row.setObjectName("unifiedScreenerDistributionRow")
+                row.setMaximumHeight(18)
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(6)
+                label = QLabel(metric.domain, row)
+                label.setObjectName("unifiedScreenerDistributionDomain")
+                label.setMinimumWidth(112)
+                label.setMaximumWidth(170)
+                label.setToolTip(metric.domain)
+                bar = _FunnelDistributionBar(metric, counts, row)
+                bar.setObjectName("unifiedScreenerDistributionBar")
+                row_layout.addWidget(label)
+                row_layout.addWidget(bar, 1)
+                self._distribution_layout.addWidget(row)
+                self._distribution_rows[metric.domain] = row
+
+            self._distribution_signature = full_signature
+
+        complete = [
+            metric
+            for metric in metrics
+            if _complete_funnel_distribution(metric) is not None
+        ]
+        nonzero_count = sum(
+            1 for metric in complete
+            if metric.denominator is not None and metric.denominator > 0
+        )
+        zero_count = len(complete) - nonzero_count
+        shown_count = min(nonzero_count, _FUNNEL_DISTRIBUTION_LIMIT)
+        self.funnel_distribution_rows.setVisible(shown_count > 0)
+        self.funnel_distribution_legend.setVisible(shown_count > 0)
+
+        if state == "busy":
+            notice = "來源操作進行中；暫清上一輪圖條，原結果表保留。"
+        elif state == "failed":
+            notice = "來源操作失敗或取消；已清除圖條，原結果與明細保留。"
+        elif shown_count == 0 and zero_count:
+            notice = (
+                f"{zero_count} 項完整計數的分母為 0；原明細保留其 0 計數，不繪比例條。"
+            )
+        elif shown_count == 0:
+            notice = "沒有完整且分母一致的五態計數可繪；缺值維持未提供，原明細保留。"
+        else:
+            notice = (
+                "各條依自己的分母呈現，條件間可能重疊；不代表逐步淘汰、跨條件排名或資格。"
+            )
+            if zero_count:
+                notice += f" 分母為 0 的 {zero_count} 項保留原始 0 計數，不繪比例條。"
+            if nonzero_count > shown_count:
+                notice += (
+                    f" 圖條顯示 {shown_count}／{nonzero_count} 項；另有 "
+                    f"{nonzero_count - shown_count} 項圖條省略，精確計數仍見下方明細。"
+                )
+            notice += " 五態計數或分母不完整／不一致者不繪條，數值仍按原文呈現。"
+        self.funnel_distribution_notice.setText(notice)
+
     def refresh_funnel(self) -> None:
         self._refresh_save_filter_action()
         source = self._source_by_key.get(self._active_key or "")
@@ -880,6 +1160,9 @@ class UnifiedScreenerWorkspace:
             self.research_scope.setText("研究用｜查詢截至：未提供；逐筆資料日依原表。")
             self.funnel.setText("母體漏斗：未提供")
             self.funnel_detail_text.setText("")
+            self._render_funnel_distributions(
+                (), identity=(None,), state="unavailable"
+            )
             self.banner.setText(
                 "研究用｜查詢截至：未提供｜來源識別：未提供｜查詢識別：未提供｜格式：未提供"
             )
@@ -897,10 +1180,31 @@ class UnifiedScreenerWorkspace:
                 projection.schema or "未提供",
             )
         )
+        identity = (
+            source.key,
+            projection.schema,
+            projection.data_date,
+            projection.source_identity,
+            projection.query_identity,
+        )
+        operation_state = self._source_operation_state(view)
+        if operation_state in {"busy", "failed"}:
+            self._render_funnel_distributions(
+                (), identity=identity, state=operation_state
+            )
+            self.funnel.setText(
+                "母體漏斗：來源操作進行中；上一輪圖條已清除，原結果表保留。"
+                if operation_state == "busy"
+                else "母體漏斗：來源操作失敗或取消；圖條已清除，原結果保留。"
+            )
+            return
         if not projection.available:
             unavailable = "母體漏斗：未提供（此來源尚無已核結果計數）"
             self.funnel.setText("母體漏斗：未提供")
             self.funnel_detail_text.setText(unavailable)
+            self._render_funnel_distributions(
+                projection.metrics, identity=identity, state="unavailable"
+            )
             return
         lines = ["母體漏斗（目前查詢來源，不跨來源合併；各項可能重疊）："]
         population_pieces: list[str] = []
@@ -930,6 +1234,9 @@ class UnifiedScreenerWorkspace:
             lines.insert(1, " · ".join(population_pieces))
         detail_text = "\n".join(lines)
         self.funnel_detail_text.setText(detail_text)
+        self._render_funnel_distributions(
+            projection.metrics, identity=identity, state="ready"
+        )
         summary = ["母體漏斗"]
         for metric in projection.metrics:
             if metric.domain in {"來源母體", "來源已處理", "尚待處理", "來源排除"}:

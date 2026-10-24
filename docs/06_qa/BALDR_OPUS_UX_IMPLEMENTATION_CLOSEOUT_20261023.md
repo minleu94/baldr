@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M110；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M113；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M110 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M113 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -204,3 +204,13 @@ Luna `/root/m107_portfolio_audit` 唯讀盤點 Stress 30／70 頁左側 Paper He
 Luna `/root/m108_research_visual_audit` 唯讀盤點 Watchlist 多來源列後，單一 writer 僅修改 `ui_qt/views/watchlist_view.py`、`tests/test_ui_qt_watchlist_layout.py`。原 `len(stocks)` 是候選列數，不能標成股票檔數；首屏摘要及表下計數改為「N 筆候選列／M 檔不同代號」，保留同股不同來源及逐列原身份。成功空集合才顯 0／0，載入失敗為未知，清選列不把失敗轉成零。正常 Main 1280／1500、真 OS DPI216 合成兩筆 2330 加一筆 2603 目視確認 3／2 且三列可見，原生收據 `.../root/single_owned_qa_fa6a6c83be9d4bf28415da69c7cda0f9/receipt.json`、圖片 `.../root/native_m110_watchlist_evidence/run_28831576d5874620a6ee6849eb06e560/`。首次 native probe 在窗已關閉後讀 QLabel 而失敗，已修測試 harness，失敗收據 `.../root/single_owned_qa_9dce2f72f69943a49a1fdc5b5b19ab33/receipt.json` 保留；不是產品失敗。
 
 Sol 審查兩切片原始碼、同股不同身份測試與兩組原生圖後接受限定 UI 改造。共同 8 GiB／12 程序 Job `.../root/single_owned_qa_917ff17e09fd47f49e2d801af1915998/receipt.json`：受改 Python compile 0、聚焦 **136 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；Job 無殘留 PID 或強制清理。Watchlist 逐列審查狀態分布需同版批次 DTO／讀取契約，避免不同 revision 混畫，本輪延後。M1–M110 是含審查及 QA 的切片序號，非 110 個獨立功能。正式市場／Paper／私人 Watchlist、自然排程、其他真 DPI、1920 可用螢幕、固定新版 EXE、Owner UAT、M73／M75 契約及完整產品 Gate 未驗；沒有 push、merge、部署或正式資料修改。
+
+## M111–M113 最佳化、選股與情境資訊層級
+
+Luna `/root/m107_evidence_audit` 唯讀盤點 Backtest 後，單一 writer 僅改 `ui_qt/views/backtest/result_panel.py`、`ui_qt/views/backtest_view.py` 與新聚焦測試。M111 將原 `OptimizationStabilitySummary.parameters` 的 `top5_concentration_bp`、`top5_present_count`／`top5_total_count` 畫成最多八個參數的有限橫條，保留原 `to_text()` 和最佳化表；不足／未知不畫假值，開始新掃描、空結果與不足摘要清舊。Sol 審查發現空結果原文字與表也可能留舊，退回一併清理後接受。這只描述目前保留且有效 objective 的最多前五筆中有值參數之眾數占比，不是完整參數面、OOS、統計穩健性、績效或資格。正常 Main 1280×760／1500×900、真 OS DPI216 隔離六筆合成結果，圖條、精確 6000 bp（5／5）與原表同屏目視；收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_458b5ee1951f40c8a78b34f4225423b9/receipt.json`、圖 `.../root/native_m111_backtest_evidence/run_86a8aef117c142c88aab8b603cd33657/`。首輪 native harness 被既有完成模態通知阻住，root 中斷該 owned Job、確認該 PID 及 Python 程序已不存在後，改探針攔通知再重跑；該中斷輪沒有正式 receipt，不當作通過。
+
+Luna `/root/m108_research_visual_audit` 唯讀核綜合選股現有 `FunnelMetric` 五態契約，單一 writer 僅改 `ui_qt/views/unified_screener_workspace.py` 與測試。M112 在預設收合的母體漏斗明細畫最多六項五態分布，只有同一條件完整、非負、加總等於其分母且分母大於零才畫比例；明示每項自己的分母、可能重疊，原計數文字及來源／查詢身份保留。零分母保留 0、缺值／矛盾不補值，busy／failed／無結果清舊圖。Sol 目視首版用綠「符合」／紅「不符合」可能混淆台股漲跌，退回改藍／藍灰等類別色後接受。最終正常 Main 1280／1500 真 DPI216 合成同版投影，結果區仍可到達；收據 `.../root/single_owned_qa_789dfb8910a2411bad81b7a9bedf80e4/receipt.json`、圖 `.../root/native_m112_screener_evidence/run_e40b47786bad4f16978126f176becc9f/`。這不是逐步淘汰、跨條件排名、收益或來源資格；正式查詢原件未在本輪驗。
+
+Luna `/root/m107_portfolio_audit` 唯讀排除同股 Paper 舊項與跨次 Stress 比較的不可比來源後，單一 writer 僅改 `ui_qt/views/portfolio_view.py` 與測試。M113 在「情境壓力 → 目前情境」選取前以原 `StressScenarioDefinition` 顯說明、支援與必要輸入；未知定義保留未知，72 邏輯像素高有界可捲。Sol 退回首版在未執行時拼出 `scenario_requires` blocker 的說法，改為原定義能力提示、實際診斷依當次結果；原執行、保存、來源及 A→B 清舊不變。正常 Main 1280／1500 真 DPI216、隔離空帳支持／不支持情境四圖及收據 `.../root/single_owned_qa_1dc9333cac3e4a8580cde97491981c9c/receipt.json`、`.../root/native_m113_stress_preview_evidence/run_bf38d91a8d4642329ae8bef65b0e768a/`。前兩次 native harness 選到保存歷史、又以舊文案斷言，失敗收據 `.../root/single_owned_qa_14eab38b7241473d87041215e4fa781f/receipt.json`、`.../root/single_owned_qa_dc54fa0ed3ae489595fa22907ea3dca2/receipt.json` 保留，修 harness 後通過。
+
+三切片最終共同 8 GiB／12 程序 Job `.../root/single_owned_qa_e0e5ffe4d0fa41be9f086ad7a6860e5b/receipt.json`：受改 Python compile 0、聚焦 **117 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean，無殘留 PID 或強制清理。首輪 `.../root/single_owned_qa_c4f0fc366f884b4aad8408bc36e0abe6/receipt.json` 聚焦 3 個新測試的文案斷言不符（113 passed／3 failed），產品文案較精確，修測試與圖色後最終通過；原失敗未抹除。M1–M113 是含審查、實作與 QA 的切片序號，不是 113 個獨立功能。正式市場／Backtest／私人 Portfolio、自然排程、其他真 DPI、1920 可用螢幕、固定新版 EXE、Owner UAT、M73／M75 契約及完整產品 Gate 未驗；未改金融公式／DTO、正式或私人資料，未 push、merge 或部署。

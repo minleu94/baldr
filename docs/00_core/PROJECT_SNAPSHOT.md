@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M111–M113 後繼原始碼新增三項受限 UX：Backtest 最佳化／驗證把原 typed Top-5 參數眾數集中度（bp、實際有值數／樣本數）畫成有限圖條，空結果清舊文字／表／圖；綜合選股把同一查詢各條件完整五態計數畫成可收合分布條，各自分母、可能重疊，不是逐步淘汰，類別用非漲跌方向色；Portfolio Stress 選情境前顯原定義的說明、支援狀態與必要輸入，實際診斷仍以執行結果為準。Sol 審查與隔離正常 Main 1280×760／1500×900、真 OS DPI216 圖通過；最終聚焦 117、Workbench 85、validator 25／0／4、mypy 1,144 clean。未改公式、DTO、來源資格或私人資料；正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m111m113-最佳化選股與情境資訊層級)。
+
 M109／M110 後繼原始碼改善兩個容易誤讀的清單：Paper Health 長表把「需要確認」移至標的旁，代號提示保留精確 `position_id`／snapshot／cohort，選列仍讀同一部位原詳情；Watchlist 把候選列數與不同代號數分開顯示，同股不同來源不合併，載入失敗維持未知。Sol 複核與隔離正常 Main 1280×760／1500×900、真 OS DPI216 畫面通過；聚焦 136、Workbench 85、validator 25／0／4、mypy 1,144 clean。這是呈現與身份辨識改造，不改交易、健康判定或來源資格；正式資料、其他 DPI、固定 EXE、Owner UAT 及完整 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m109m110-paper-health-與候選池辨識)。
 
 M108 修正個股研究「摘要／五問」的 ML 估計資訊層級：一般摘要顯前三筆有效整數估計時，若仍有原值，明示省略筆數及「資料稽核」位置；H5 專用摘要優先時則明示完整 ML 表的有效總筆數，不把 H5 註記誤稱前三筆。成本、資格、H20 分流與研究限定警語維持。Sol 先以隔離 Windows Main 發現 H5 優先路徑漏提示，修後個股研究 78、Workbench 85、validator 25／0／4、mypy 1,144 與 1280／1500 真 OS DPI216 前後圖通過；另以 900 寬隔離 Portfolio 探針排除四卡長缺值文案的未證實裁切候選。範圍及原失敗見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m108-個股研究-ml-估計完整性提示與收尾)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗。

@@ -2,7 +2,41 @@
 
 個股基本面與籌碼圖卡依已載入 DTO 的來源、日期與單位分開。營收多月份採保留缺月間隔的柱圖、財報採原比較配對柱，單點採值卡；正值軸使用完整空間，淨額保留正負方向。精確原值與來源明細、重複原表預設收合，圖內沒有垂直捲動。摘要固定列營收／法人／信用／集保，籌碼章節固定列法人／信用／集保／分點，其他原欄位不再被法人前四組遮蔽。操作見[圖卡判讀](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#個股營收與籌碼圖卡)，本輪驗證見[Opus 修正 QA](../06_qa/BALDR_OPUS_UX_REMEDIATION_QA_20261022.md)。
 
-市場方向色使用獨立 `market_up/down/flat`，預設紅漲綠跌；一般數值與成功／失敗狀態保持不同語意。首頁上方市場卡列原家數及資料日，候選最多五個逐股入口沿原身份回呼，個別理由必須明確對應代號。查不到名稱或理由就明示缺件。個股頁首壓縮、搜尋可展開、五問保留風險與不足短句，完整原文仍可讀；全域查找仍可按 Ctrl+K。
+市場方向色使用獨立 `market_up/down/flat`，預設紅漲綠跌；個股日 K 線和成交量柱同按開收盤原值著色，平盤中性，缺完整 OHLC 仍退回收盤線圖。一般數值與成功／失敗狀態保持不同語意。首頁上方市場卡列原上漲／下跌／平盤家數、來源 `breadth_ratio_bp` 的「上漲占漲跌股比」百分比，以及資料日與品質；分母不含平盤，來源缺值、無效值與真零分別呈現，不由 UI 用家數重算。候選最多五個逐股入口沿原身份回呼，個別理由必須明確對應代號。查不到名稱或理由就明示缺件。個股頁首壓縮、搜尋可展開、五問保留風險與不足短句，完整原文仍可讀；全域查找仍可按 Ctrl+K。
+
+市場總覽的市況廣度直接呈現快照原家數：缺欄為「未提供」，實際整數零為 `0`；廣度比率缺欄為「未知」。此展示不計算替代值，也不改來源或判斷資格。
+
+市場總覽的資料品質、提示數與首條提示保留在摘要區，完整警示預設收合並可展開。缺件或降級即使沒有額外提示，摘要仍明示原品質狀態；完整 `WarningList` 內容可供追溯。
+
+2026-10-23 後繼原始碼把市場診斷中已知的抓取失敗及日期不可用／晚於判斷日轉成可讀短句；市場情勢的有效資料日未知、偵測器降級與備援有效資料日也按原服務警告顯示，備援時保留原日期，不把未知日期視為當日行情。舊「Why Not」畫面標題顯示為「風險提示」；未知診斷碼仍保留原文供追查。Paper 保存評估的選取、原快照與讀取時間標籤改為中文，空清單提示明確的保存／重載步驟；仍須明選 exact receipt／snapshot。個股報告的持倉頁新增四張持倉與風險速覽卡，沿原持倉 DTO 顯示損益、損益率、健康與退出狀態，缺值保留「未提供」，下方原成本表與來源／理由仍可查看；這些呈現不建立交易動作。
+
+Paper／Portfolio／Workbench 共用的單筆健康詳情將技術欄標題改為部位識別、建倉來源銜接狀態與原始未執行原因，原始身份和狀態碼維持可追溯；已保存評估狀態將固定 Paper 主帳戶及無附加命名空間以中文說明。只是呈現文字，不改健康判斷或保存契約。
+
+後繼原始碼將 Paper 已保存健康評估候選列的三個已知狀態 `passed`／`degraded`／`blocked` 顯示中文說明並保留 token；未知碼保留原值。候選 metadata、明確選取及 exact receipt／snapshot 重讀不變，沒有將 `passed` 升格成當日交易或正式績效資格。固定 EXE 未含此增量。
+
+Portfolio 手動帳的選中持倉在完整表格前投影原 DTO 的股數、成本、現價與未實現毛損益；報價日期只讀同一 `position_id` 的快取行情快照，Health 只讀精確身份對應的 read model。缺值維持未知，不以同股其他列或現時計算補上。排程證據頁五張核心狀態卡改用中文標題，原狀態碼、分類、日期、來源及原始診斷仍可核對。這兩項均只改呈現，不更新資料、交易或排程。
+
+Portfolio 已實現損益、監看未實現損益率及籌碼淨買賣方向值依台股方向色呈現：正值紅、負值綠、零與未知中性。停損／停利觸發和錯誤屬狀態訊號，保留其原狀態色。僅替換呈色 token，原數值、資料日、來源、帳本與風險判定不變。
+
+標準推薦結果表預設保留候選、原價格／分數／理由、母體日期及校準資格等可得摘要欄，旁邊的「顯示延伸欄位」可展開原校準來源、模型與其他完整欄位；切換保留原選列及底層 DataFrame。未入選篩選紀錄和舊格式保存結果不套用欄位收合，原狀態、原因、要求值與決策日保持可見。回測原結果圖卡加大原報酬、原回撤及完成配對數的字級，原成本假設維持次要字級；不重算指標或改保存來源。
+
+後繼原始碼的推薦結果「漲幅%」明確使用台股紅漲綠跌、平盤中性與缺值無方向色；原數值、排序及其他分數欄呈現不變。Portfolio 持倉明細的已實現／未實現毛損益金額及未實現損益率欄也按正紅、負綠、零中性呈色；損益率沿同列原數值欄判方向，顯示文字與原值不改，未實現值缺件仍顯「-」且不著方向色。回測當次文字摘要在有版本化單股指標契約時，沿原 decoder 顯示不可用／無效為「未提供」，有效真零與已觀測的零配對仍保留；Registry 已保存單股／批次逐檔／固定籃子逐檔 run 的歷史文字摘要也沿原保存 manifest 契約判讀，不可用或非法宣告顯「未知」，已觀測的零配對仍保留。舊未宣告契約維持原格式。產業／題材成員表依同一已載快照每頁最多建立 50 列，揭露範圍／總數並保留跨頁精確成員定位；不重讀、重算或升格 PIT。
+
+同一後繼來源在題材頁加入可收合的完整覆蓋漲跌格，置於原兩端表之前。Application presentation 只投影原報表完整覆蓋且有限的平均日漲跌 Decimal，保留來源日期、映射日期、snapshot 身份及覆蓋分子／分母；等面積格以紅正、綠負、灰零表示方向，不冒充成交額或市值比例。按格子沿既有鏈／題材篩選與成員下鑽，身份過期或原映射無法定位時拒絕；原表、完整原值和缺件說明仍保留。操作與限定 QA 見[題材研究手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)。
+
+題材頁另加入可收合的成交金額面積圖，原 `ThemeDailyRow.turnover_twd` 僅在全成員覆蓋、有限非負時取得圖形資格。只顯示正值中原成交金額最高的可定位前 20 格；摘要揭露全部合格數／總題材數及實際繪製數。零值另列，部分覆蓋與缺值不畫；各題材可能重疊，方塊面積只比較畫面所列題材，不能相加當市場占比。原排名、題材篩選、成員下鑽與快照身份守衛保留；短標籤背後的原精度及來源脈絡可由提示核對。合成 90 題材原生檢查及正式來源界線見本任務 `QA_RESULTS.md`。
+
+M26 後繼原始碼另在題材頁放預設收合的「雙版本題材原值比較」。使用者各明選一份本機 manifest，背景工作分別經原 snapshot reader 驗讀；再選鏈／題材，兩欄沿 M25 Application DTO 顯示各自平均日漲跌原值、成員、覆蓋、資料／映射日期、known-at、題材列來源 ID 和 SHA。缺列覆蓋及部分覆蓋值保留未知，真零仍為零；同名題材的成員可不同，畫面不計算跨期差或排名。主版本切換、清除、取消、失敗及關閉使舊比較失效，原單版選股與返回脈絡不改。限定 QA 與合成 Windows 畫面見本任務 `QA_RESULTS.md`；本功能不授歷史 PIT、正式來源用途或固定 EXE 驗收。
+
+M28 對雙版本比較中超長的原漲跌 `Decimal` 只縮短畫面字串，以「約」明示四位小數顯示，tooltip 可讀完整原精度、題材列來源及 manifest SHA；極小非零改用科學記號，不顯成零。短原值、真零及 Unknown 各自保持，DTO 不變。隔離合成雙 manifest 的原 reader／Windows 畫面已定向核對，正式來源與歷史用途仍未接受。
+
+M29–M30 的題材成員分類探索沿同一已讀取 manifest 的原映射列建立。選鏈／題材後可展開產業鏈→題材→成員層級，成員依各自鏈別位置分組，最多顯示 30 筆並列出餘量；按股票只定位既有成員表，來源方法、證據、映射日期與版本 SHA 在提示查核。切換選擇或版本清空舊圖；分類位置不是公司之間的供應或資金傳導。此限定來源投影不新增市場指標、歷史 PIT 或正式交易資格；QA 見本任務 `QA_RESULTS.md`。
+
+選定題材後，原九項指標的已呈現值與逐項覆蓋數另以摘要卡顯示；指標欄寬不足 640px 時每列兩張，較寬時每列三張。卡片保留足夠高度，下方原三欄九列明細表至少留 200px 並可捲查。卡片沿用同一筆原值、精確值提示與「未提供」，不由 UI 補算題材績效或把部分覆蓋當完整；換題材與清除研究會同步清掉舊卡。固定 10/16 題材來源副本的正常 Main 原生對照、合成 Native 與定向證據見 `output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md`。
+
+個股研究頁首把原收盤價獨立顯示為主數值，股票身份、原漲跌與行情日仍在同一緊湊區；原 `StockPricePointDTO.change` 為有限正／負值時只替漲跌數值標台股紅／綠，零／缺值與行情日保持中性。來源、可得時間及品質在可存取描述與提示中查核；HTML 呈現會跳脫原文，避免把來源字串當標記。行情缺值維持未知，不新算漲跌百分比或覆寫來源。章節選擇器和原研究圖表不變；本地 Windows 合成畫面與定向結果見同任務 `QA_RESULTS.md`。
+
+正常 Main 在 1280×760 經個股搜尋鈕讀取原 `StockResearchReportReadService` 後，寬版 Hero 會預留漲跌與完整行情日所需寬度；較窄版面維持換行。隔離 SQLite 驗明示正／負、真零及無方向正價差 Unknown；原資料日、來源 ID、缺 `available_at` 與可存取描述保留，不將這份合成來源升格為正式可得時間證據。
 
 選股漏斗先列結果摘要，完整分母、缺資料與待處理計數可展開；比較未知用獨立弱化區塊保留原因。回測 Matplotlib 圖表與實際 fast QtWebEngine 宿主／空態使用局部深色樣式，不改全域繪圖設定；研究限定字樣改為白話。設定入口使用 SVG；release 渠道的標題與狀態先顯示人可讀版本，完整 commit／dirty／lock metadata 保留提示，開發版仍顯示原身份。這是後繼原始碼 UI，不重建固定 EXE、不改 DTO、資料來源、金融規則或排程。
 
@@ -149,6 +183,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 - `ui_qt/views/decision_desk_view.py`（「市場總覽」唯一 Decision Desk instance）
 - `ui_qt/views/market_regime_view.py`
+- `ui_qt/views/taiex_history_view.py`（唯讀 TAIEX 歷史原值；由 `app_module/taiex_history_presentation.py` 有界讀取）
 - `ui_qt/views/industry_theme_map_view.py`
 - `ui_qt/views/strong_stocks_view.py`
 - `ui_qt/views/weak_stocks_view.py`
@@ -160,6 +195,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 - 市場總覽
 - 大盤指數
+- 加權指數走勢（原開高低收／成交量，缺欄位退回收盤線；最多 120 個不同資料日，同次資料可切換最近 20／60／120 筆）
 - 強勢個股
 - 弱勢個股
 - 強勢產業
@@ -176,6 +212,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - Increment46 原官方市場／處置頁可讀新 v3 pin 的 TWSE 英文原件，原 v2 保存語意不變；修正正向終止公文型別接線，停止與終止日期仍分開核。真名錄／處置配四股合成行情的正常Main／新程序同來源讀回通過，缺列維持unknown，原觀測不冒充今日或歷史PIT；[操作與排錯](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#官方處置原件重讀後續開發分支)。固定試用包不變。
 - 「資料更新 > 全部資料」的月營收狀態卡分開顯示已匯入期別與依該期全部資料 `available_date` 判定的目前完整 PIT 可用期別；只要同一期仍有公司尚未生效，該期就會顯示在待生效數與完整可用起始日中，不會誤標成更新失敗。
 - 市場 regime 判斷。
+- TAIEX 歷史視圖只讀目前 SQLite `market_indices` 的精確 TAIEX 觀測列，顯示原資料日、來源與缺值；開收盤方向使用台股紅漲綠跌、平盤中性。最近 20／60／120 個已有資料日只從同次 120 筆上限結果裁切，顯示實際筆數，換範圍清原選取且不重讀；品質狀態首行中文呈現，原碼留在提示。圖中央明示初始／載入／失敗／取消／來源不可用與無收盤值各自狀態，刷新及失敗不保留舊選日、提示或圖。交易觀測日不等於可得時間，來源沒有通用 `known_at`，歷史 PIT 資格及成交量單位均未建立；缺庫、重複日期或衝突收盤值不畫成零或沿用舊圖。
 - 強弱勢股票與產業篩選。
 - 強弱勢探索表格會在載入中、成功（筆數／掃描範圍）、空結果與失敗時顯示可見狀態；刷新失敗會清空過期模型，不把上一輪排名留在畫面上冒充目前資料。
 - Smart Money Terminal：個股資金流向、分點進出追蹤、張數 / 金額品質標示。
@@ -220,6 +257,12 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - 主程式開啟後，Workbench 首次讀取與重新整理由受管 `TaskWorker` 在背景取得唯讀 DTO，不會在建構主視窗時同步讀資料；Research Console 只在第一次切入「研究證據」分頁時載入。SQL／artifact 讀取支援合作式取消；主視窗關閉會取消這兩項讀取並等待安全結束，舊日期／成本情境結果不會覆蓋最新請求。狀態與關閉診斷只記錄階段、耗時與 worker 數，不改 DTO、財務計算、正式資料 writer 或交易邊界。
 - Workbench 的 current Decision Desk／Pre-V2／Evidence projection 以台灣市場今日為日期上限；正式來源若含 future snapshot，畫面保留 raw future date 的 warning／source gap，但不把它當成 current evidence 或完成 gate。
 - 背景證據流只彙整既有 DTO / service payload：Daily Decision snapshot、Evidence Review readiness、Portfolio alerts 與可選 replay summary diagnostics；不在 UI 端重算任何 source gap、portfolio、scoring、backtest 或 lifecycle。
+- 今日決策的「決策品質」五張 0–10000 流程分數卡只呈現既有計算：成功查詢但無審查紀錄顯「未提供」，DB／表不可用或查詢失敗顯「未知」，有觀測的真零顯 0；失敗時清舊卡，來源診斷保留。這些不是報酬率或模型信心。
+- 決策品質按日期與覆盤類型篩出原覆盤後，項目表與待處理／已覆盤／已略過計數只包含這些覆盤 `review_id` 的原項目；明填 Portfolio ID 時再依原覆盤 `metadata_json.portfolio_id` 精確限縮，舊紀錄缺身份不猜。無符合覆盤時不顯示其他範圍的全域項目。流程分數的既有計算及原始證據不變。
+- 決策品質項目表只對既有八種項目類型、三級嚴重度與三種狀態顯示中文；hover 可讀原碼，明細同時列中文與原碼。新／未知碼直接保留原文，空值顯「未知」；`source_type` 仍保留原來源字串，篩選及 DTO 原碼不變。
+- 決策品質「最低分數」只接受留空或 0–10000 的整數；非法輸入不呼叫唯讀來源，欄位與結果區明示錯誤，清除上次卡片／表格／詳情且拒絕遲到的舊請求結果。修正後重新整理才顯示新結果；此驗證只防止 UI 錯誤與舊資料誤認，不更動門檻作用範圍或原分數計算。
+- 大盤指數「檢測市場狀態」在受管背景工作讀取原 Regime service；進行中停用按鈕、顯示載入並清舊分類／技術值／策略文字，完成或錯誤才恢復按鈕。既有 Regime history 的轉移與 CAS 衝突仍由原 service 決定，錯誤明示而不套用舊結論；關窗會等待受管工作自然結束，合作式取消不代表既有 history 寫入回滾。
+- 覆盤歷史結果另帶只讀來源可用性：成功查詢的空集合可顯計數 0，缺 DB／表或錯誤顯未知並清舊卡；已知週報／排程條件碼在細節顯中文及原碼。`production_scheduler_allowed` 的卡片稱「允許正式排程」，不稱排程已啟用或已執行。
 - 只讀 Action Items 只列人工待處理事項；每列必須帶 `severity`、`queue_group`、`source_label`、`source_trace`、`degraded_reason`、`sort_rank` 與 `drilldown_target`，且 `write_intent=false`。Qt model 只顯示 DTO payload，drill-down target 必須對齊舊頁導向（Daily Decision、Evidence Review、Portfolio），Workbench 不建立 action item repository、不 append DB、不自動標記完成。
 - Read-only Operating Loop 只從 `WorkbenchDashboardDTO.operating_loop_steps` 顯示 daily first-look、manual queue、weekly review history、multi-day dry-run、manual review note 與 scheduler gate；每列必須帶 `source_trace`、`linked_item_ids`、`drilldown_target`、`guidance` 與 `write_intent=false`。Qt model 不標記完成、不寫 DB、不補 Phase 0 時間 gate。
 - 若週期紀錄位於隔離 working-copy DB，Workbench 只會讀取 owner 明確提供的 `approved-weekly-history-projection.v1` 路徑，絕不掃描暫存目錄或合併 DB；projection 固定 `formal_credit_authorized=false`，僅顯示已具名核准的 weekly Gate 計數，不構成 formal clock credit、scheduler、交易或任何下游資格。
@@ -227,7 +270,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - Advice 區以 `WAITING_FOR_ADVICE_DTO`、`NO_ELIGIBLE_ADVICE`、`ADVICE_DTO_ERROR` 分別呈現尚未載入、已載入但無合格建議、與 DTO 損毀／安全拒絕；來源降級但仍有有效 recommendation 時仍渲染表格與 warning，不得誤標為 DTO error。
 - V4.2 C 線把決策工作台、Daily Decision／市場總覽、產業探索、觀察清單與持倉覆盤標成單一路徑：`市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤`。Workbench 提供市場、產業、觀察清單與持倉導覽；關鍵股研究則由市場焦點、觀察清單或持倉列選取個股後，透過 `ResearchStockContextDTO` 開啟個股研究報告。
 - 後續 Source 候選的 Paper 健康區提供明選列導覽：「在持倉管理查看此 Paper 部位」。Workbench 只把已驗證的完整 `PositionHealthReadModel` 與唯一 `position_id` 傳給 Main；Main 先請 Portfolio 排入下一輪 refresh，接受後才切頁。Portfolio 自己呼叫 `read_latest`，只在完整 read model 與唯一部位列仍相同時切到 Paper 帳並定位；變更、缺件、失敗、取消、過期或關閉都保留既有帳本選擇，不回退到手動或聲明持倉的同股票列。一般持倉入口仍維持單純工作區導覽；左側可切回決策工作台，切頁本身不代表重新核驗。評估日、observed_at、available_at 不等於行情估值日，此功能也不重開歷史 saved receipt／snapshot。未納入固定03，正常 Source Main／新程序的控制資料往返與1280可視列已驗，真實 Paper 原件旅程尚未驗，不能據此宣稱 Paper 自然成熟、金融資格或真人接受；操作見[觀察清單與持倉手冊](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md)。
-- 市場焦點、觀察清單分析、Advice、持倉詳情與個股報告共用 `DecisionPresentationService`／`DecisionPresentationDTO` adapter；所有畫面分開呈現排名分數、校準機率、成本後獲利機率、動作適合度、證據狀態／信心、樣本數、適用期間、理由、風險、失效條件、權重差距、決策日、資料日與來源追溯。排名只作排序，不能推導任何機率；缺值固定顯示未知／研究中並 fail-closed。
+- 市場焦點、觀察清單分析、Advice、持倉詳情與個股報告共用 `DecisionPresentationService`／`DecisionPresentationDTO` adapter；所有畫面分開呈現排名分數、校準機率、成本後獲利機率、動作適合度、證據狀態／信心、樣本數、適用期間、理由、風險、失效條件、權重差距、決策日、資料日與來源追溯。Advice 的 `cost_basis_bp` 顯示為「成本假設：… bp」，持倉平均成本才顯示「成本基準：TWD …」；兩者缺值各自顯示未知，不把 bp 當金額。排名只作排序，不能推導任何機率；缺值固定顯示未知／研究中並 fail-closed。
 - 觀察清單以研究／等待與買進候選的既有來源理由、風險、失效條件為主；持倉則將既有 condition monitor 的 valid／warning／invalid 映射為持有／減碼候選／退出候選，並揭露 target／current／gap 權重與成本基準。這些都是唯讀判讀與候選分類，不是自動下單、調倉或平倉。
 - 相關決策頁面均補上 status、decision/data-as-of date、source trace 與可返回來源的 context；研究報告沒有來源時隱藏返回控制，避免製造虛假導覽。表格採單列選取、禁止編輯、StrongFocus、Tab 導覽、交替列色與窄版捲動；完整證據移至可選列的詳情區，避免主表塞入低價值長文。
 - 共用 adapter 對不支援的 Advice DTO 或非法 bp／機率欄位拒絕適配，不把 ranking score 轉成 probability，也不由 UI 補算權重差距或核心金融數值；契約測試涵蓋欄位分離、字串 bp 正規化與缺值狀態。
@@ -264,6 +307,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 主要能力：
 
 - 單股回測、候選池批次回測、推薦組合回放。
+- 批次回測的逐股 CAGR、Sharpe、最大回撤及勝率沿版本化單股指標契約逐欄投影不可用狀態；統計只取有效樣本，CAGR／MDD 中位數 `n=0` 顯「未知」，有觀測真零仍顯零。舊版缺契約結果沿原值，不追溯授來源資格。
 - Strategy registry / preset / promotion 整合。
 - Walk-forward、baseline comparison、overfitting risk、validation status。
 - Fixed / quantile threshold mode UI 控制與無交易診斷。
@@ -271,9 +315,17 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - 後續開發來源可在同一 Registry 恰選兩個原 `1.0.0` 基本策略，按「對照兩個基本策略」只讀並列同條件、同實際期間的原保存版本化摘要，逐側開原 run 明細並返回同一對選取；缺來源、成本或實際期間條件時不顯示並列值。通用「保存條件相同」標籤不授歷史績效／PIT資格；一般單股比較在成本或期間不符時清除數值區。此子旅程尚未納入固定 `ec5c95733608` 試用包，也未完成來源／成本權威及完整雙策略績效。
 - 規格化 Excel 報告匯出：單股、批次及組合回放結果的背景原子匯出，缺值自動標記 N/A。
 - Fast chart renderer：權益曲線、回撤曲線、報酬分佈、持有天數。
+- 「找已保存結果」明選並成功開啟原 Registry run 後，自動收起查找區，使原績效圖卡在結果首屏可見；重新展開保留原選列。來源讀取或結果呈現失敗時保持展開，不改保存資料或 reader 資格。100% Windows 正常 Main 的隔離合成單股 run 已驗此路徑；真 125%／150% OS DPI 與正式來源尚未驗。
+- 進入 Research Lab「證據覆盤」結果分頁時收合回測設定欄，使 1280×760 的決策品質五張卡在首屏完整可見；原「展開左側設定」仍可返回編輯，其他結果分頁不自動收合。正常 Main 的 Workbench 導覽、三種合成決策品質狀態與前後畫面已核，未改證據讀取或回測設定。
 - 策略回測日期欄與 Research Lab 證據覆盤日期篩選採受控日曆 popup；回測日期開啟時定位今天，未設定的 evidence 日期篩選也定位今天，不落到 sentinel 年份。
 - Research Lab「證據覆盤 > 排程狀態」會分開顯示 freshness warnings、pipeline warning 與 advisory 的 occurrences / unique types、pipeline overall status、推薦結果 research-only write 與 production evidence / trading write risk；pipeline degraded 時不會只因 exit code 0 顯示為 passed，`ready_with_advisories` 也不會被誤標 degraded。
-- Research Lab「覆盤歷史」dashboard 採 query-only history repository；缺少 history DB／table 時顯示明確唯讀診斷與建立指引，不會因打開畫面而初始化空 schema。
+- Research Lab「覆盤歷史」dashboard 採 query-only history repository；缺少 history DB／table 時顯示明確唯讀診斷與建立指引，不會因打開畫面而初始化空 schema。表格在週期後直接列原始保存時間，明選後詳情仍分列時間、週期與 Record ID；時間缺件顯示「未提供」，不推算時區或以週期日期代替。
+- 覆盤歷史沿原日期篩選、`period_end DESC, period_start DESC, review_id ASC` 的只讀 keyset cursor 每頁最多展示 50 筆，額外只讀一筆判斷是否有更舊頁；上一頁／下一頁與本頁索引可見，改日期清除舊頁，卡片只統計本頁。來源不可用時顯示範圍未知，不推算總筆數。表格已知覆盤／排程條件碼顯中文，tooltip 保留原碼；未知碼原文。
+- 參數最佳化沿同份單股回測已簽指標契約投影逐欄有效性：真零保留、不可用值留空並附狀態；原回測錯誤、契約失效或目標指標不可用的組合不進排名。舊無契約結果維持相容排序但標未驗證，Top-N 有效樣本不包含它；表格重排後依畫面排名核對選取參數。原報酬公式及策略／來源資格不變。
+- Legacy 回測保存清單與圖表來源沿原 `BacktestRunRepository` 使用 `COALESCE(created_at,'') DESC, run_id DESC` 的只讀 keyset cursor；清單每頁 100 筆可前後翻，圖表下拉每批追加 50 筆。兩處多讀一筆判斷是否尚有較舊結果，明示本頁／已載入筆數，不推精確總數。換清單頁清選取但保留 run ID 操作身份；圖表追加保留已選來源與原碼提示，失敗可重試；NULL 保存時間顯未提供。與版本化 Registry 歷史來源及資格分開。
+- 覆盤歷史六卡在 View 可用寬度至少 1050 px 時單列呈現，較窄時保留三欄兩列；資料範圍、表格原五列最小高度、明選詳情及外層捲動不變。正常 Main 1280×760 首屏可完整看到三列，而非由卡片佔用兩行後只剩約一列。
+- Legacy 保存圖表切換 run 時，先清除前一來源的四圖及延遲繪圖；所選 run 的權益／回撤／交易報酬／持有天數逐圖載入，有資料才呈圖，缺件或不可讀只顯該圖資料不可用，不沿用上一筆。圖表初始化後即移除「首次開啟才載入」佔位文字。這只是現有保存資料的展示守衛，不重判績效或來源資格。
+- 圖表候選刷新時，原選 run 若在首 50 筆之外，先向原 repository 核對仍存在，再暫列精確 run ID 並保留選取；後續批次碰到該 ID 不重複加入。已刪或核對失敗則清選取與舊圖，避免下拉選單未選、來源標籤卻指向舊 run。範圍數字仍只是當前已載入候選，不是資料庫精確總數。
 - Research Lab 的 Paper 保存快照查找可選擇外部 artifacts root，沿用 Research Lab 策略版本來源，並要求明示策略、版本、帳戶命名空間與含時區截止時間，再列出最多 200 筆候選供使用者選取讀回；截斷時會明示。未設定或無效的 root 只停用 Paper 查找；不自動選取候選、不建立／更新資料。候選清單本身尚未核對；即使 exact 讀回成功，也不代表底層來源可得性或績效資格已驗證。關閉工作區時取消未完成查找並拒收過期回覆。
 
 ### 策略研究、保存版本與歷史卡
@@ -288,7 +340,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 
 PF 摘要顯示有限無量綱值或具體不可用原因，None 不再中斷格式化；批次／最佳化表附狀態與語意，舊比較不把未版本化值當有效 PF。固定 9fa EXE 尚待窄版修補；QA262 正常 Main／fresh 成功不等於新 EXE 交付。操作見[PF 指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#獲利因子的可用性與舊結果)。
 
-單股歷史卡區分新宣告版本與舊未版本化結果。新卡逐欄綁定所選 metadata、原指標與摘要，顯示原實際期間、單位及已完成配對；不以 0 推論勝率、平均或無期間 CAGR。qualification 維持 unknown，comparability 未評估；不是完整雙策略績效或原精度升級。查找、開啟結果、換頁返回與新程序沿同一 run。操作見[歷史指標指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。固定第一版不改版。
+單股歷史卡區分新宣告版本與舊未版本化結果。新卡逐欄綁定所選 metadata、原指標與摘要，顯示原實際期間、單位及已完成配對；不以 0 推論勝率、平均或無期間 CAGR。長小數只在畫面標「約」縮短，完整保存 Decimal 留在提示，極小非零不顯成零；原 ratio、Sharpe 與倍數單位保持。qualification 維持 unknown，comparability 未評估；不是完整雙策略績效或原精度升級。查找、開啟結果、換頁返回與新程序沿同一 run。操作見[歷史指標指南](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#新單股保存結果的歷史指標後續開發分支)。固定第一版不改版。
 
 ### 單股結果語意與 1366px 版面
 
@@ -407,6 +459,9 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 主要能力：
 
 - 手動記錄交易並投影目前持倉。
+- 後繼 Portfolio 手動帳為 0 筆時保留零列模型、持倉數與明確空態摘要，隱藏沒有資料的表格，使手動記錄交易、個股研究與整理刷新在 1280 首屏可見；1–2 筆顯示至少兩列並保留橫向捲動，三筆以上維持可伸展表格。原選列、持倉資料與交易流程不變。
+- Portfolio 行情日期狀態僅將已知 `current`／`stale`／`future_rejected`／`unverified` 轉成中文日期判讀並保留原碼；未識別碼不猜測，原行情日期、價格與來源資格守衛不變。
+- 策略版本來源持倉的監控分頁沿原保存摘要顯示總報酬、Sharpe 與最大回撤；各欄缺失、非法或非有限時獨立顯示「未提供」，有效零保留數值與原單位。原回測計算、版本身份及資格不變；固定 EXE 未含此增量。
 - 「匯入交易 CSV」先做 UTF-8／CP950、欄位、買賣別、數值、日期與重複交易 ID 預覽；只有檔案 hash 未變更且使用者二次確認後，才由 `PortfolioService.record_trades()` 批次驗證並 append，取消或錯誤不寫入。
 - 交易歷史提供常駐的「刪除選取交易」操作；只有選取一筆原始交易時才可按，經確認後交由 `PortfolioService.delete_trade` 驗證剩餘交易仍可重算合法持倉。持倉彙總列不會直接刪除整檔歷史。
 - 保存 Recommendation / Backtest / Strategy Version 來源 metadata。
@@ -417,14 +472,15 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 - 頂端摘要只顯示有最新價格持倉的「持倉市值（未含現金）」；缺價格會顯示 N/A 與缺漏股票，不把投入金額／已實現損益冒充完整 NAV。
 - 情境壓力：由 `PortfolioStressLabService` 對已標記持倉套用固定、可重播的研究情境；缺價只做部分計算，輪動／來源中斷等缺少必要輸入時 fail-closed，不寫資料、不改持倉、不產生交易指令。
 - Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果；下方歷史表由 `PortfolioStressHistoryReadService` query-only 讀取，缺 DB 不初始化，固定揭露研究用途與 `writes_allowed=false`。
-- Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；畫面顯示 raw 累積筆數與最新可採用 snapshot，遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
+- Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；畫面顯示 raw 累積筆數與最新可採用 snapshot，遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。操作控制改三列雙欄以保留較窄畫面及高 DPI 下的完整名稱；缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
 - Paper Trade Ledger v1：由獨立 append-only contract 保存研究用 fill event，要求 requested／filled 數量、狀態、Decimal 成本、turnover、execution gap 與來源；Portfolio readiness 會唯讀顯示 ledger 狀態與 full／partial／reject／override 統計，缺欄位不放行 weekly report。
 - Paper 成交 CSV：Paper Portfolio 分頁可先預覽完整 execution CSV，要求狀態、reference／fill price、Decimal 成本、turnover、execution gap 與來源事件；只有二次確認且檔案 hash 未變更才由 `PaperTradeImportService` atomic append 至 Paper Trade Ledger，不更新手動 Portfolio、snapshot 或 broker。
 - Paper 成交範本：同一分頁可先匯出只含受治理欄位標題的空白 CSV 範本；範本不填入示例成交、拒絕覆寫既有檔案，也不建立 ledger。填入真實 execution 後仍必須回到 Paper 成交 CSV 的預覽／二次確認流程。
 - Paper weekly evidence v1：Portfolio 的 Paper 分頁可按「計算最近週報」，以最近 snapshot 邊界唯讀讀取 Paper snapshot、Equal Weight ledger 與成本帳，顯示毛／淨報酬、benchmark、淨超額、成本、換手與觀測日數；未來 period／snapshot、期間邊界、成本欄位或 ledger 缺件時維持 `partial`／`degraded`／`not_computable`，不補值、不寫資料。Equal Weight builder 也會在 preview／apply 前拒絕 future snapshot。
 - 顯示策略版本或推薦來源追蹤。
 - 生命週期回顧：顯示 thesis 狀態、來源追溯、執行落差、訊號 / 市場 / 資料品質 attribution 與摘要 tokens。
-- 籌碼監控：主力淨買賣、集中度、連續流向天數與風險級別。
+- 生命週期回顧的來源、條件、論點、指標、品質與建倉來源已知狀態碼在首層顯中文，原碼留在 tooltip；未識別碼顯原文，不改健康 DTO 或 position identity。
+- 籌碼監控：主力淨買賣、集中度、連續流向天數與風險級別。服務明示沒有可用股數事件時，四項首層值顯「資料不足」而非預設零；有事件的真零保留。集中度原買賣股數分母為零時同樣顯資料不足。分點明細空列有短提示、不佔大空表；有列先顯最多約五列並可捲全量，原摘要、警示與下鑽保留。
 - 從 Portfolio 下鑽至 Market Watch 的主力流向並定位個股。
 - 持倉表整合共用呈現契約的動作適合度、目標／目前／差距權重（整數 bp）與失效條件；既有 Condition Monitor 的 `valid`／`warning`／`invalid` 只映射為持有／減碼候選／退出候選的唯讀分類。
 - 權重差距只接受既有 Portfolio Advice 或持倉來源摘要明確提供的欄位；缺欄位顯示未知並保留警告，UI 不由目標減目前自行推導。
@@ -446,6 +502,8 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 
 Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、受控 Paper producer 的實際來源資料與人工 review、Equal Weight builder 的正式 output review，以及 Stress Lab 的正式 evidence 與跨期間 review。現有 UI 可揭露 Paper snapshot／cost ledger readiness、預覽／匯入 Paper fills、重建最近週報並保存研究用 Stress history；本段是功能／驗收範圍摘要，不是即時完成狀態。實際進度以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 與最新具名 QA 為準。
 
+後繼原始碼 Paper 概覽以同一 `PaperPortfolioReadinessDTO` 的原計數、可選金額、帳戶命名空間與 snapshot ID 呈現緊湊空狀態；尚無 snapshot 和最新 snapshot 零持倉分開說明，空表不合成假持倉。`None` 金額顯示未知，原 `Decimal(0)` 顯示真零；有持倉仍顯示原表。此為唯讀 Qt 投影，沒有建立帳戶、改 ledger 或接受績效用途，固定 EXE 未含。
+
 文件同步重點：
 
 - Portfolio 來源模型、條件監控、生命週期回顧或籌碼監控改動需同步 Snapshot、architecture 與 Manual。
@@ -465,6 +523,8 @@ Gate 4 的產品目標與驗收範圍涵蓋 Paper Portfolio cash-flow ledger、�
 - 透過 Qt bridge 接收 runtime event bus。
 
 後續開發分支在「系統狀態 → 日常排程 → 決策證據擷取 → 詳細」呈現同次 run 的核驗狀態、收據 SHA、完成時間、保存未知值、安全原因及未完成階段。切頁返回與被動刷新保留明選工作；換選其他工作或無型別舊結果清除舊診斷。逾時不顯假「未保存」，孤立 passed 不計已核成功；沒有新增啟動／重試控制。步驟及排錯見[終態指南](../07_guides/APPLICATION_MANUAL.md#11-系統狀態與決策擷取終態)。此功能尚未放入固定四流程 V1 或 50ddb 開發 EXE。
+
+後繼原始碼對已保存的 `ScheduledOperationsSnapshotDTO.operations` 新增純顯示狀態篩選；預設全部，按原 normalized state 精確過濾，摘要列可見數與總數。全量 raw status、read state、來源提示與原始診斷仍保留；篩掉選列會清掉舊 capture detail，空篩選不改整體工作判讀，也不觸發 scheduler。固定 EXE 未含。
 
 文件同步重點：
 
@@ -494,7 +554,7 @@ Increment132比較候選沿同一基本面分頁，先顯示2317／2330／2454�
 
 報告另列持倉觀測日及行情資料日，Exit 使用現有持倉條件唯讀結果；歷史查詢不借今天持倉。基本面保留來源單位／期間基礎，官方目前估值與上市／交易狀態顯示來源時間及 partial／unknown 診斷。操作、參數與排錯見 [Manual 的本輪補充](../07_guides/APPLICATION_MANUAL.md#2026-10-04-保存來源當下研究與持倉日期)，實際驗收範圍見 [Astra 工程收尾](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。
 
-未連結持倉的研究頁首沿用同部位、同股行情快照的資料日，不再回退最後交易日；已保存來源的日期與身份保留。市場總覽另分列判斷日與實際指數行情日，缺少得分或訊號強度時顯示未知，真實零值仍為 0。
+未連結持倉的研究頁首沿用同部位、同股行情快照的資料日，不再回退最後交易日；已保存來源的日期與身份保留。市場總覽另分列判斷日與實際指數行情日，缺少得分或訊號強度時顯示未知，真實零值仍為 0；具名 DTO 的 `match_score_bp` 另以精確 metadata 標成「匹配分數（bp）」，不作信心率解讀。
 
 ### 決策到結果、Journal 與個人模型研究
 

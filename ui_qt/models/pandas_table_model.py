@@ -4,12 +4,14 @@ Pandas DataFrame 的 Qt Model
 """
 
 from collections.abc import Mapping
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import math
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, Signal
 from PySide6.QtGui import QColor
 import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict, Any
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 class PandasTableModel(QAbstractTableModel):
@@ -24,6 +26,8 @@ class PandasTableModel(QAbstractTableModel):
         parent=None,
         red_positive_columns: Optional[set[str]] = None,
         decimal_places_by_column: Optional[Mapping[str, int]] = None,
+        market_direction_columns: Optional[set[str]] = None,
+        market_direction_value_columns: Optional[Mapping[str, str]] = None,
     ):
         """初始化 Model
         
@@ -31,6 +35,7 @@ class PandasTableModel(QAbstractTableModel):
             dataframe: 要顯示的 DataFrame
             parent: 父對象
             red_positive_columns: 數值為正但語意代表跌幅 / 風險時，需用紅色顯示的欄位
+            market_direction_value_columns: 以指定的同列數值來源欄決定顯示欄方向色
         """
         super().__init__(parent)
         self._dataframe = dataframe.copy()
@@ -39,6 +44,11 @@ class PandasTableModel(QAbstractTableModel):
         self._sort_order = Qt.AscendingOrder
         self._visible_columns = list(dataframe.columns)  # 可見欄位列表
         self._red_positive_columns = set(red_positive_columns or ())
+        self._market_direction_columns = set(market_direction_columns or ())
+        self._market_direction_value_columns = self._validated_market_direction_value_columns(
+            dataframe,
+            market_direction_value_columns,
+        )
         self._decimal_places_by_column = self._validated_decimal_places(
             dataframe,
             decimal_places_by_column,
@@ -84,6 +94,53 @@ class PandasTableModel(QAbstractTableModel):
         if isinstance(value, np.integer):
             return format(Decimal(int(value)), f".{places}f")
         return "未知"
+
+    @staticmethod
+    def _validated_market_direction_value_columns(
+        dataframe: pd.DataFrame,
+        options: Optional[Mapping[str, str]],
+    ) -> dict[str, str]:
+        """驗證方向色的顯示欄到同列原數值來源欄映射。"""
+
+        if options is None:
+            return {}
+        if not isinstance(options, Mapping):
+            raise TypeError("market_direction_value_columns 必須是欄名映射")
+        validated: dict[str, str] = {}
+        for display_column, value_column in options.items():
+            if (
+                type(display_column) is not str
+                or not display_column
+                or type(value_column) is not str
+                or not value_column
+            ):
+                raise TypeError("方向色顯示欄與來源欄必須是非空字串")
+            if display_column not in dataframe.columns:
+                raise ValueError(f"方向色顯示欄位不存在：{display_column}")
+            if value_column not in dataframe.columns:
+                raise ValueError(f"方向色來源欄位不存在：{value_column}")
+            validated[display_column] = value_column
+        return validated
+
+    @staticmethod
+    def _market_direction_color(value: object) -> QColor | None:
+        """只為有限的原生數值來源選市場方向色；未知值不著色。"""
+
+        if isinstance(value, (bool, np.bool_)):
+            return None
+        if not isinstance(value, (int, float, Decimal, np.integer, np.floating)):
+            return None
+        try:
+            finite = value.is_finite() if isinstance(value, Decimal) else math.isfinite(value)
+            if not finite:
+                return None
+            if value > 0:
+                return QColor(MIDNIGHT_ANALYST.market_up)
+            if value < 0:
+                return QColor(MIDNIGHT_ANALYST.market_down)
+            return QColor(MIDNIGHT_ANALYST.market_flat)
+        except (InvalidOperation, OverflowError, TypeError, ValueError):
+            return None
     
     def rowCount(self, parent=QModelIndex()) -> int:
         """返回行數"""
@@ -178,6 +235,20 @@ class PandasTableModel(QAbstractTableModel):
                 # 跳過列表/數組類型，避免布爾判斷錯誤
                 if isinstance(value, (list, tuple, np.ndarray)):
                     return None
+
+                if col_name in self._market_direction_columns:
+                    return self._market_direction_color(value)
+                direction_value_column = self._market_direction_value_columns.get(col_name)
+                if direction_value_column is not None:
+                    source_positions = [
+                        position
+                        for position, name in enumerate(self._dataframe.columns)
+                        if name == direction_value_column
+                    ]
+                    if not source_positions:
+                        return None
+                    direction_value = self._dataframe.iloc[row, source_positions[0]]
+                    return self._market_direction_color(direction_value)
                 
                 if isinstance(value, (int, float)):
                     try:

@@ -259,7 +259,8 @@ class BacktestRunRepository:
         self,
         strategy_id: Optional[str] = None,
         stock_code: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
+        cursor: tuple[str, str] | None = None,
     ) -> List[Dict[str, Any]]:
         """
         列出回測結果
@@ -268,12 +269,20 @@ class BacktestRunRepository:
             strategy_id: 策略ID篩選（可選）
             stock_code: 股票代號篩選（可選）
             limit: 限制數量
+            cursor: 上一頁最後一列的 (created_at, run_id)，供唯讀 keyset 分頁使用。
         
         Returns:
             結果列表
         """
+        if cursor is not None and (
+            type(cursor) is not tuple
+            or len(cursor) != 2
+            or any(type(value) is not str for value in cursor)
+        ):
+            raise ValueError("cursor 必須是 (created_at, run_id) 字串二元組")
+
         conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        db_cursor = conn.cursor()
         
         query = "SELECT * FROM runs WHERE 1=1"
         params: List[Any] = []
@@ -286,14 +295,19 @@ class BacktestRunRepository:
             query += " AND stock_code = ?"
             params.append(stock_code)
         
-        query += " ORDER BY created_at DESC LIMIT ?"
+        if cursor is not None:
+            query += " AND (COALESCE(created_at, '') < ? OR " \
+                     "(COALESCE(created_at, '') = ? AND run_id < ?))"
+            params.extend((cursor[0], cursor[0], cursor[1]))
+
+        query += " ORDER BY COALESCE(created_at, '') DESC, run_id DESC LIMIT ?"
         params.append(limit)
         
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        db_cursor.execute(query, params)
+        rows = db_cursor.fetchall()
         
         # 取得欄位名稱
-        columns = [desc[0] for desc in cursor.description]
+        columns = [desc[0] for desc in db_cursor.description]
         
         conn.close()
         

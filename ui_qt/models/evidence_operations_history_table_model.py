@@ -3,14 +3,19 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from app_module.evidence_operations_history_dashboard_dtos import EvidenceOperationsHistoryDashboardRow
+from ui_qt.evidence_operations_history_labels import (
+    EVIDENCE_REVIEW_STATUS_LABELS,
+    EVIDENCE_SCHEDULER_READINESS_LABELS,
+)
 
 
 COLUMNS = (
     ("period_start", "開始日"),
     ("period_end", "結束日"),
+    ("created_at", "保存時間"),
     ("review_status", "覆盤狀態"),
-    ("scheduler_readiness", "Scheduler readiness"),
-    ("production_scheduler_allowed", "允許 production scheduler"),
+    ("scheduler_readiness", "排程就緒狀態"),
+    ("production_scheduler_allowed", "允許正式排程"),
     ("decision_quality_reviews_count", "決策覆盤"),
     ("signal_decay_observations_count", "訊號衰退"),
     ("manual_lifecycle_candidate_count", "人工候選"),
@@ -41,7 +46,18 @@ class EvidenceOperationsHistoryTableModel(QAbstractTableModel):
         field_name = COLUMNS[index.column()][0]
         value = getattr(self._rows[index.row()], field_name)
         if role == Qt.DisplayRole:
+            if field_name == "created_at" and not value:
+                return "未提供"
+            if field_name == "review_status":
+                return EVIDENCE_REVIEW_STATUS_LABELS.get(value, _display_value(value))
+            if field_name == "scheduler_readiness":
+                return EVIDENCE_SCHEDULER_READINESS_LABELS.get(value, _display_value(value))
             return _display_value(value)
+        if role == Qt.ToolTipRole and field_name in {
+            "review_status",
+            "scheduler_readiness",
+        }:
+            return f"原始碼：{_display_value(value)}"
         return None
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):

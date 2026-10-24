@@ -18,10 +18,11 @@ import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QTableView
+from PySide6.QtWidgets import QApplication, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QTableView, QVBoxLayout, QWidget
 from PySide6.QtTest import QTest
 
 from app_module.research_session import ResearchStockContextDTO
+from app_module.advice_dtos import AdviceAction, RecommendationAdviceDTO
 from app_module.watchlist_analysis_service import WatchlistAnalysisDTO
 from app_module.stock_research_report_dtos import (
     StockAdviceSnapshotDTO,
@@ -50,8 +51,12 @@ from ui_qt.views.stock_research_report_view import (
     _report_pending_text,
     _ml_estimate_summary,
     _current_h20_observation_allows,
+    _decimal_text,
+    _price_direction_color,
 )
 from ui_qt.views.stock_research_workspace import StockResearchWorkspace
+from ui_qt.theme.tokens import MIDNIGHT_ANALYST
+from ui_qt.theme.qss import build_global_stylesheet
 
 
 def _app() -> QApplication:
@@ -59,6 +64,30 @@ def _app() -> QApplication:
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+def test_advice_bp_cost_assumption_is_not_rendered_as_twd_in_stock_report():
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    advice = StockAdviceSnapshotDTO(
+        recommendation=RecommendationAdviceDTO(
+            stock_code="2330",
+            advice_action=AdviceAction.ADD_CANDIDATE,
+            cost_basis_bp=50,
+        )
+    )
+    try:
+        view._render_advice_content(layout, advice)
+        text = "\n".join(label.text() for label in container.findChildren(QLabel))
+        assert "共用呈現契約" in text
+        assert "成本假設：50 bp" in text
+        assert "成本基準：未知" in text
+        assert "TWD 50.00" not in text
+    finally:
+        container.close()
+        view.close()
 
 
 def test_theme_member_navigation_requires_resolver_and_saved_snapshot_stays_read_only():
@@ -403,6 +432,7 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
         _real_service(tmp_path),
         ResearchStockContextDTO(stock_code="2330", stock_name="台積電", source_workspace="watchlist"),
     )
+    view.setStyleSheet(build_global_stylesheet())
     loaded: list[StockResearchReportDTO] = []
     view.reportLoaded.connect(loaded.append)
     view.resize(860, 620)
@@ -411,6 +441,26 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
 
     assert "2330 台積電" in view.identity_label.text()
     report = loaded[-1]
+    assert view.identity_label.font().pointSize() == 18
+    assert view.quote_close_label.font().pointSize() == 22
+    assert view.quote_close_label.font().bold()
+    assert view.quote_summary_label.font().pointSize() == 11
+    latest_quote = report.price_points[-1]
+    close_text = _decimal_text(latest_quote.close_price) if latest_quote.close_price is not None else "未知"
+    change_text = _decimal_text(latest_quote.change) if latest_quote.change is not None else "未知"
+    assert view.quote_close_label.text() == f"收盤 {close_text} TWD"
+    assert f"漲跌 {change_text} TWD" in view.quote_summary_label.text()
+    assert f"｜行情日 {latest_quote.data_date or '未知'}" in view.quote_summary_label.text()
+    quote_accessible = view.quote_summary_label.accessibleDescription()
+    assert f"收盤 {close_text} TWD" in quote_accessible
+    assert f"漲跌 {change_text} TWD" in quote_accessible
+    assert f"行情日 {latest_quote.data_date}" in quote_accessible
+    assert f"來源：{latest_quote.source_id or '未提供'}" in quote_accessible
+    assert f"可得時間：{latest_quote.available_at or '未提供'}" in quote_accessible
+    assert f"品質：{latest_quote.quality or '未提供'}" in quote_accessible
+    assert [view.section_selector.itemData(index) for index in range(view.section_selector.count())] == [
+        "summary", "price", "fundamental", "flows", "position", "decision"
+    ]
     assert report.advice.status == "unavailable"
     assert report.advice.recommendation is None
     assert report.advice.limitations == (
@@ -448,6 +498,19 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     assert price_table.model().index(0, 4).data() == "100"
     assert chart.grab().isNull() is False
     view.tabs.setCurrentIndex(0)
+    view.resize(1280, 760)
+    app.processEvents()
+    assert view.quote_summary_label.wordWrap() is False
+    plain_summary = (
+        f"漲跌 {change_text} TWD｜行情日 {latest_quote.data_date or '未知'}"
+    )
+    assert (
+        view.quote_summary_label.fontMetrics().horizontalAdvance(plain_summary)
+        <= view.quote_summary_label.width()
+    )
+    assert view.quote_panel.geometry().right() <= view.identity_quote_row.rect().right()
+    view.resize(860, 620)
+    app.processEvents()
     screenshot_path = os.environ.get("STOCK_RESEARCH_SCREENSHOT_PATH", "").strip()
     if screenshot_path:
         assert view.grab().save(screenshot_path)
@@ -459,6 +522,46 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     if narrow_screenshot_path:
         assert view.grab().save(narrow_screenshot_path)
     view.close()
+
+
+def test_report_hero_date_fits_1280_main_content_geometry() -> None:
+    app = _app()
+    window = QWidget()
+    layout = QHBoxLayout(window)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    navigation_rail = QWidget(window)
+    navigation_rail.setFixedWidth(56)
+    layout.addWidget(navigation_rail)
+    view = StockResearchReportView(SimpleNamespace(), parent=window)
+    layout.addWidget(view, 1)
+    window.resize(1280, 760)
+    view._set_quote_summary(
+        "100.00",
+        "1.00",
+        "2026-10-22",
+        change=Decimal("1.00"),
+        source_id="sqlite.daily_prices",
+        quality="observed",
+    )
+    window.show()
+    app.processEvents()
+
+    expected_summary = "漲跌 1.00 TWD｜行情日 2026-10-22"
+    try:
+        assert view.width() < 1280  # Main 左側導覽列已占用視窗寬度。
+        assert view.quote_summary_label.wordWrap() is False
+        assert (
+            view.quote_summary_label.fontMetrics().horizontalAdvance(expected_summary)
+            <= view.quote_summary_label.width()
+        )
+        assert view.quote_panel.geometry().right() <= view.identity_quote_row.rect().right()
+        assert view.quote_summary_label.accessibleDescription() == (
+            "收盤 100.00 TWD｜漲跌 1.00 TWD｜行情日 2026-10-22｜"
+            "來源：sqlite.daily_prices｜可得時間：未提供｜品質：observed"
+        )
+    finally:
+        window.close()
 
 
 def test_h20_saved_report_keeps_current_sqlite_prices_out_of_saved_sections(
@@ -608,6 +711,121 @@ def test_market_status_and_position_quote_dates_render_separately(tmp_path: Path
     view.close()
 
 
+def test_position_first_screen_summary_uses_existing_values_and_localizes_statuses(
+    tmp_path: Path,
+) -> None:
+    view = StockResearchReportView(_real_service(tmp_path))
+    try:
+        view._render_position(
+            StockPositionSnapshotDTO(
+                is_holding=True,
+                position_as_of="2026-10-04",
+                quote_data_date="2026-10-02",
+                quantity=Decimal("1000"),
+                average_cost=Decimal("99.50"),
+                current_price=Decimal("100.00"),
+                unrealized_pnl=Decimal("500.00"),
+                unrealized_pnl_pct=Decimal("0.05025"),
+                health_status="WATCH",
+                health_label="待檢視",
+                health_reasons=("condition_result_missing",),
+                health_source_trace=("health-read:2330:2026-10-04",),
+                exit_status="available",
+                exit_reasons=("thesis_condition_observed",),
+                exit_source_id="exit-read:2330",
+                exit_available_at="2026-10-04T10:00:00+08:00",
+                exit_research_only=True,
+                exit_auto_action_allowed=False,
+            )
+        )
+        page = view.tabs.widget(4).widget()
+        summary = page.findChild(QGroupBox, "stockPositionRiskSummary")
+        assert summary is not None
+        cards = summary.layout().itemAt(0).layout()
+        assert isinstance(cards, QGridLayout)
+        assert cards.rowCount() == 2
+        assert cards.columnCount() == 2
+        assert cards.count() == 4
+        assert cards.itemAtPosition(0, 0).widget().accessibleName() == "持倉速覽未實現損益卡片"
+        assert cards.itemAtPosition(0, 1).widget().accessibleName() == "持倉速覽未實現損益率卡片"
+        assert cards.itemAtPosition(1, 0).widget().accessibleName() == "持倉速覽健康狀態卡片"
+        assert cards.itemAtPosition(1, 1).widget().accessibleName() == "持倉速覽退出分析卡片"
+        pnl_value = summary.findChild(QLabel, "stockPositionSummaryValue_pnl")
+        assert pnl_value.text() == "500.00"
+        assert MIDNIGHT_ANALYST.market_up in pnl_value.styleSheet()
+        assert summary.findChild(QLabel, "stockPositionSummaryValue_pnlPct").text() == "+5.02%"
+        assert MIDNIGHT_ANALYST.market_up in summary.findChild(QLabel, "stockPositionSummaryValue_pnlPct").styleSheet()
+        assert summary.findChild(QLabel, "stockPositionSummaryValue_health").text() == "待檢視（WATCH）"
+        assert summary.findChild(QLabel, "stockPositionSummaryValue_exit").text() == "可用（available）"
+        date_strip = summary.findChild(QLabel, "stockPositionSummaryDateStrip")
+        assert date_strip is not None
+        assert date_strip.accessibleName() == "本次持倉狀態與讀取日期"
+        assert date_strip.text() == "持倉：持有中｜讀取日：2026-10-04｜行情資料日：2026-10-02"
+        group_titles = {group.title() for group in page.findChildren(QGroupBox)}
+        assert "持倉健康狀態｜待檢視（WATCH）" in group_titles
+        assert "退出分析｜可用（available）" in group_titles
+        page_text = "\n".join(label.text() for label in page.findChildren(QLabel))
+        assert "健康狀態來源追蹤：health-read:2330:2026-10-04" in page_text
+        assert "原始狀態碼：WATCH" in page_text
+        assert "退出分析來源：exit-read:2330" in page_text
+        assert "退出分析可得時間：2026-10-04T10:00:00+08:00" in page_text
+        assert "允許自動動作：否" in page_text
+        assert "Health source trace" not in page_text
+    finally:
+        view.close()
+
+
+def test_position_summary_keeps_negative_and_missing_values_unknown(
+    tmp_path: Path,
+) -> None:
+    view = StockResearchReportView(_real_service(tmp_path))
+    try:
+        view._render_position(
+            StockPositionSnapshotDTO(
+                is_holding=True,
+                position_as_of="2026-10-04",
+                unrealized_pnl=Decimal("-125.00"),
+                unrealized_pnl_pct=Decimal("-0.125"),
+                health_status="UNKNOWN",
+                exit_status="unavailable",
+            )
+        )
+        page = view.tabs.widget(4).widget()
+        summary = page.findChild(QGroupBox, "stockPositionRiskSummary")
+        assert summary is not None
+        pnl_value = summary.findChild(QLabel, "stockPositionSummaryValue_pnl")
+        assert pnl_value.text() == "-125.00"
+        assert MIDNIGHT_ANALYST.market_down in pnl_value.styleSheet()
+        assert summary.findChild(QLabel, "stockPositionSummaryValue_pnlPct").text() == "-12.50%"
+        assert MIDNIGHT_ANALYST.market_down in summary.findChild(QLabel, "stockPositionSummaryValue_pnlPct").styleSheet()
+        assert summary.findChild(QLabel, "stockPositionSummaryValue_health").text() == "未知（UNKNOWN）"
+        assert summary.findChild(QLabel, "stockPositionSummaryValue_exit").text() == "不可用（unavailable）"
+        date_strip = summary.findChild(QLabel, "stockPositionSummaryDateStrip")
+        assert date_strip is not None
+        assert date_strip.text() == "持倉：持有中｜讀取日：2026-10-04｜行情資料日：未提供"
+        details = "\n".join(label.text() for label in page.findChildren(QLabel))
+        assert "退出分析來源：未提供" in details
+        assert "退出分析可得時間：未提供" in details
+    finally:
+        view.close()
+
+
+def test_position_summary_missing_position_uses_localized_unavailable_copy(
+    tmp_path: Path,
+) -> None:
+    view = StockResearchReportView(_real_service(tmp_path))
+    try:
+        view._render_position(None)
+        page = view.tabs.widget(4).widget()
+        copy = "\n".join(label.text() for label in page.findChildren(QLabel))
+        assert page.findChild(QGroupBox, "stockPositionRiskSummary") is None
+        assert "沒有此股票的持倉資料列" in copy
+        assert "持倉健康狀態與退出分析" in copy
+        assert "Health／Exit" not in copy
+    finally:
+        view.close()
+
+
 def test_position_rerender_hides_stale_placeholder_before_deferred_delete(
     tmp_path: Path,
 ) -> None:
@@ -620,7 +838,7 @@ def test_position_rerender_hides_stale_placeholder_before_deferred_delete(
     stale_label = next(
         label
         for label in position_page.findChildren(QLabel)
-        if "沒有此股票的持倉 row" in label.text()
+        if "沒有此股票的持倉資料列" in label.text()
     )
 
     view.tabs.setCurrentIndex(4)
@@ -644,7 +862,7 @@ def test_position_rerender_hides_stale_placeholder_before_deferred_delete(
     # The clear-and-render slot must hide stale content before Qt processes deleteLater().
     assert stale_label.isHidden()
     assert stale_label.parentWidget() is not None
-    assert "沒有此股票的持倉 row" in stale_label.text()
+    assert "沒有此股票的持倉資料列" in stale_label.text()
     view.close()
 
 
@@ -700,6 +918,66 @@ def _report_for(code: str, price: str) -> StockResearchReportDTO:
     )
 
 
+@pytest.mark.parametrize(
+    ("change", "expected_color"),
+    [
+        (Decimal("1.25"), MIDNIGHT_ANALYST.market_up),
+        (Decimal("-1.25"), MIDNIGHT_ANALYST.market_down),
+        (Decimal("0"), MIDNIGHT_ANALYST.market_flat),
+        (None, MIDNIGHT_ANALYST.market_flat),
+        (Decimal("NaN"), MIDNIGHT_ANALYST.market_flat),
+    ],
+)
+def test_quote_summary_uses_original_daily_change_for_direction_color(
+    change: Decimal | None, expected_color: str
+) -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    report = _report_for("A", "10")
+    point = replace(report.price_points[-1], change=change)
+    report = replace(report, price_points=(point,))
+
+    view._render_report(report)
+
+    change_text = _decimal_text(change) if change is not None else "未知"
+    rendered = view.quote_summary_label.text()
+    assert f'<span style="color: {expected_color};">漲跌 {change_text} TWD</span>' in rendered
+    assert (
+        f'<span style="color: {MIDNIGHT_ANALYST.market_flat};">'
+        "｜行情日 2026-09-08</span>"
+    ) in rendered
+    description = view.quote_summary_label.accessibleDescription()
+    assert description == (
+        f"收盤 10.00 TWD｜漲跌 {change_text} TWD｜行情日 2026-09-08｜"
+        "來源：fixture.price｜可得時間：未提供｜品質：observed"
+    )
+    assert view.quote_panel.toolTip() == description
+    view.close()
+
+
+def test_quote_summary_direction_color_resets_when_cross_stock_load_fails() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    report = _report_for("A", "10")
+    point = replace(report.price_points[-1], change=Decimal("1"))
+    view._active_code = "A"
+    view._request_id = 1
+    view._render_report(replace(report, price_points=(point,)))
+    assert f"color: {MIDNIGHT_ANALYST.market_up};" in view.quote_summary_label.text()
+
+    view._active_code = "B"
+    view._request_id = 2
+    view._set_loading_state("B")
+    assert f"color: {MIDNIGHT_ANALYST.market_flat};" in view.quote_summary_label.text()
+    view._on_report_error(2, "B", "source unavailable")
+    assert f"color: {MIDNIGHT_ANALYST.market_flat};" in view.quote_summary_label.text()
+    assert view.quote_summary_label.accessibleDescription() == (
+        "收盤 未知 TWD｜漲跌 未知 TWD｜行情日 未知｜"
+        "來源：未提供｜可得時間：未提供｜品質：未提供"
+    )
+    view.close()
+
+
 def _chart_report(
     code: str,
     as_of: str,
@@ -742,6 +1020,63 @@ def _chart_report(
         price_points=points,
         research_context=source_context or {},
     )
+
+
+@pytest.mark.parametrize(
+    ("open_price", "close_price", "expected_color"),
+    (
+        ("10", "11", MIDNIGHT_ANALYST.market_up),
+        ("11", "10", MIDNIGHT_ANALYST.market_down),
+        ("10", "10", MIDNIGHT_ANALYST.market_flat),
+    ),
+)
+def test_price_direction_color_uses_taiwan_market_convention(
+    open_price: str,
+    close_price: str,
+    expected_color: str,
+) -> None:
+    assert _price_direction_color(
+        Decimal(open_price), Decimal(close_price)
+    ) == expected_color
+
+
+def test_incomplete_ohlc_keeps_close_line_and_does_not_infer_direction() -> None:
+    app = _app()
+    exact_close = Decimal("10.456789123456789123")
+    points = (
+        StockPricePointDTO(
+            data_date="2026-09-07",
+            open_price=Decimal("10"),
+            high_price=Decimal("11"),
+            low_price=Decimal("9"),
+            close_price=Decimal("10.25"),
+            volume=100,
+            source_id="sqlite.daily_prices",
+        ),
+        StockPricePointDTO(
+            data_date="2026-09-08",
+            open_price=None,
+            high_price=Decimal("11"),
+            low_price=Decimal("9"),
+            close_price=exact_close,
+            volume=200,
+            source_id="sqlite.daily_prices",
+        ),
+    )
+    chart = StockPriceChartWidget()
+    chart.set_points(points)
+    chart.resize(500, 240)
+    chart.show()
+    app.processEvents()
+
+    assert chart.display_mode == "close"
+    assert "收盤價走勢" in chart.toolTip()
+    assert "K 線與成交量" not in chart.toolTip()
+    assert "收：10.456789123456789123" in chart._point_tooltip(points[1])
+    assert chart._points[1].close_price == exact_close
+    assert chart._points[1].source_id == "sqlite.daily_prices"
+    assert not chart.grab().isNull()
+    chart.close()
 
 
 def _price_page_table(view: StockResearchReportView) -> QTableView | None:

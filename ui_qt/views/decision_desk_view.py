@@ -159,6 +159,20 @@ class DecisionDeskView(QWidget):
         self.overall_quality_badge.setVisible(False)
         self.warning_list = WarningList()
         self.overall_warn_label = self.warning_list
+        self.warning_summary_label = QLabel(
+            "資料品質：尚未載入；提示數：未知；首條：尚未載入"
+        )
+        self.warning_summary_label.setObjectName("decisionDeskWarningSummary")
+        self.warning_summary_label.setWordWrap(True)
+        self.warning_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary};"
+        )
+        self.warning_details_panel = CollapsibleSectionPanel(
+            "完整警示",
+            collapsed=True,
+        )
+        self.warning_details_panel.toggle_button.setAccessibleName("展開完整警示")
+        self.warning_details_panel.content_layout.addWidget(self.warning_list)
         self.decision_date_card = MetricCard("決策日", self.as_of_date.isoformat())
         self.generated_at_card = MetricCard("生成時間", "N/A")
         self.decision_date_card.setVisible(False)
@@ -175,7 +189,8 @@ class DecisionDeskView(QWidget):
         metric_layout.addWidget(self.generated_at_card)
         info_layout.addLayout(metric_layout)
         info_layout.addWidget(self.generated_at_label)
-        info_layout.addWidget(self.warning_list)
+        info_layout.addWidget(self.warning_summary_label)
+        info_layout.addWidget(self.warning_details_panel)
 
         self.action_headline_label = QLabel("今日主結論：尚未載入")
         self.action_headline_label.setWordWrap(True)
@@ -337,7 +352,7 @@ class DecisionDeskView(QWidget):
         sections_layout.addWidget(self.relative_strength_codes)
         sections_layout.addWidget(self._make_section_row("Watchlist 提示", self.watchlist_triggers_status, self.watchlist_triggers_value))
         sections_layout.addWidget(self._make_section_row("持倉警示", self.portfolio_alerts_status, self.portfolio_alerts_value))
-        sections_layout.addWidget(self._make_section_row("Why Not / 風險提示", self.risk_prompts_status, self.risk_prompts_value))
+        sections_layout.addWidget(self._make_section_row("風險提示", self.risk_prompts_status, self.risk_prompts_value))
         advanced_layout.addWidget(sections_group)
         advanced_layout.addStretch()
         content_layout.addWidget(self.advanced_market_panel)
@@ -416,6 +431,10 @@ class DecisionDeskView(QWidget):
         self.decision_date_card.value_label.setText(self.as_of_date.isoformat())
         self.generated_at_card.value_label.setText("N/A")
         self.warning_list.set_warnings(())
+        self.warning_summary_label.setText(
+            "資料品質：尚未載入；提示數：未知；首條：尚未載入"
+        )
+        self.warning_details_panel.set_collapsed(True)
         self.relative_strength_codes.set_groups(())
         self.action_headline_label.setText("今日主結論：尚未載入")
         self.action_note_label.setText("研究模式：以下為市場與籌碼輔助判讀，不是交易建議。")
@@ -600,17 +619,21 @@ class DecisionDeskView(QWidget):
             )
             if visibility_warning not in warning_lines:
                 warning_lines.append(visibility_warning)
-        self.warning_list.set_warnings(warning_lines)
-
         self._set_section_quality(
             self.market_regime_status,
             snapshot.market_regime.quality,
             getattr(snapshot.market_regime, "as_of_date", snapshot.as_of_date),
         )
+        regime_value_label = (
+            "匹配分數（bp）"
+            if (getattr(snapshot.market_regime, "meta", None) or {}).get("regime_value_kind")
+            == "match_score_bp"
+            else "訊號強度"
+        )
         self.market_regime_value.setText(
             f"市場狀態：{snapshot.market_regime.regime_label or '未定義'}；"
             f"得分：{snapshot.market_regime.regime_score if snapshot.market_regime.regime_score is not None else '未知'}；"
-            f"訊號強度：{snapshot.market_regime.regime_confidence if snapshot.market_regime.regime_confidence is not None else '未知'}；"
+            f"{regime_value_label}：{snapshot.market_regime.regime_confidence if snapshot.market_regime.regime_confidence is not None else '未知'}；"
             f"行情日：{_market_regime_source_data_date(snapshot.market_regime)}；"
             f"判斷日：{snapshot.as_of_date.isoformat()}"
         )
@@ -620,10 +643,18 @@ class DecisionDeskView(QWidget):
             snapshot.market_breadth.quality,
             getattr(snapshot.market_breadth, "as_of_date", snapshot.as_of_date),
         )
+        breadth = snapshot.market_breadth
+        advancing = breadth.advancing if breadth.advancing is not None else "未提供"
+        declining = breadth.declining if breadth.declining is not None else "未提供"
+        unchanged = breadth.unchanged if breadth.unchanged is not None else "未提供"
+        breadth_ratio = (
+            breadth.breadth_ratio_bp
+            if breadth.breadth_ratio_bp is not None
+            else "未知"
+        )
         self.market_breadth_value.setText(
-            f"多方：{snapshot.market_breadth.advancing or 0}；空方：{snapshot.market_breadth.declining or 0}；"
-            f"持平：{snapshot.market_breadth.unchanged or 0}；"
-            f"廣度比率BP：{snapshot.market_breadth.breadth_ratio_bp if snapshot.market_breadth.breadth_ratio_bp is not None else 'N/A'}"
+            f"多方：{advancing}；空方：{declining}；"
+            f"持平：{unchanged}；廣度比率BP：{breadth_ratio}"
         )
 
         self._set_section_quality(
@@ -688,9 +719,29 @@ class DecisionDeskView(QWidget):
 
         if warning_lines:
             warning_lines = [str(item) for item in warning_lines]
-            self.warning_list.set_warnings(warning_lines)
         else:
-            self.warning_list.set_warnings(())
+            warning_lines = []
+        self.warning_list.set_warnings(warning_lines)
+        quality_label = self._quality_label(snapshot.overall_quality)
+        if warning_lines:
+            first_warning = warning_lines[0].strip() or "未提供"
+            if len(first_warning) > 72:
+                first_warning = first_warning[:71].rstrip() + "…"
+            warning_summary = (
+                f"資料品質：{quality_label}；提示數：{len(warning_lines)}；"
+                f"首條：{first_warning}"
+            )
+        else:
+            if snapshot.overall_quality == DecisionDeskQuality.OBSERVED:
+                warning_summary = (
+                    f"資料品質：{quality_label}；提示數：0；目前無警示"
+                )
+            else:
+                warning_summary = (
+                    f"資料品質：{quality_label}；提示數：0（未收到額外警示）；"
+                    f"狀態仍為「{quality_label}」"
+                )
+        self.warning_summary_label.setText(warning_summary)
 
         self.overall_status_label.setStyleSheet(
             f"background: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_secondary}; "
@@ -1080,7 +1131,7 @@ class DecisionDeskView(QWidget):
             relative_strength_liquidity=_EmptySection(DecisionDeskQuality.DEGRADED, warnings=(f"強弱與流動性:{error_message}",)),
             watchlist_triggers=_EmptySection(DecisionDeskQuality.DEGRADED, warnings=(f"Watchlist:{error_message}",)),
             portfolio_alerts=_EmptySection(DecisionDeskQuality.DEGRADED, warnings=(f"持倉警示:{error_message}",)),
-            risk_prompts=_EmptySection(DecisionDeskQuality.DEGRADED, warnings=(f"Why Not / 風險提示:{error_message}",)),
+            risk_prompts=_EmptySection(DecisionDeskQuality.DEGRADED, warnings=(f"風險提示:{error_message}",)),
             warnings=(f"snapshot_error:{error_message}",),
         )
         self._render_snapshot(fallback_snapshot)
@@ -1106,7 +1157,7 @@ class DecisionDeskView(QWidget):
             ("強弱與流動性", snapshot.relative_strength_liquidity.warnings),
             ("Watchlist", snapshot.watchlist_triggers.warnings),
             ("持倉警示", snapshot.portfolio_alerts.warnings),
-            ("Why Not / 風險提示", snapshot.risk_prompts.warnings),
+            ("風險提示", snapshot.risk_prompts.warnings),
         ]
         for section_name, section_warnings in section_statuses:
             for warning in section_warnings:
@@ -1128,7 +1179,7 @@ class DecisionDeskView(QWidget):
             "relative_strength_liquidity": "強弱與流動性",
             "watchlist_triggers": "Watchlist",
             "portfolio_alerts": "持倉警示",
-            "risk_prompts": "Why Not / 風險提示",
+            "risk_prompts": "風險提示",
         }
         for raw_section, display_section in english_sections.items():
             prefix = f"{raw_section}:"
@@ -1143,8 +1194,12 @@ class DecisionDeskView(QWidget):
             "強弱與流動性",
             "Watchlist",
             "持倉警示",
-            "Why Not / 風險提示",
+            "風險提示",
         )
+        legacy_risk_prefix = "Why Not / 風險提示:"
+        if token.startswith(legacy_risk_prefix):
+            section = "風險提示"
+            raw_code = token[len(legacy_risk_prefix):]
         if not section:
             for section_name in known_sections:
                 prefix = f"{section_name}:"
@@ -1178,9 +1233,31 @@ class DecisionDeskView(QWidget):
             return with_section("Watchlist 資料可能不是最新狀態")
         if code == "sector_missing":
             return with_section("產業輪動資料缺漏")
-        if code == "market_breadth_fetch_error":
-            reason = value or "未知原因"
-            return with_section(f"市場廣度資料取得失敗：{reason}")
+        if raw_code == "market_regime_effective_date_unknown":
+            return with_section("有效資料日未知，無法確認資料日期")
+        if raw_code == "market_regime_detector_degraded":
+            return with_section("偵測器回報錯誤，結果品質降級")
+        if code == "market_regime_as_of_fallback" and len(parts) == 2 and value:
+            return with_section(f"採用備援有效資料日：{value}")
+        if code in {"market_regime_fetch_error", "market_breadth_fetch_error"}:
+            reason = raw_code.partition(":")[2] or "未知原因"
+            section_name = "市場情勢" if code.startswith("market_regime") else "市場廣度"
+            return with_section(f"{section_name}資料取得失敗：{reason}")
+        if code == "sector_rotation_fetch_error":
+            reason = raw_code.partition(":")[2] or "未知原因"
+            return with_section(f"產業輪動資料取得失敗：{reason}")
+        if code in {
+            "market_regime_date_unavailable_or_future",
+            "market_breadth_date_unavailable_or_future",
+            "sector_rotation_date_unavailable_or_future",
+            "relative_strength_liquidity_date_unavailable_or_future",
+            "watchlist_triggers_date_unavailable_or_future",
+            "portfolio_alerts_date_unavailable_or_future",
+        }:
+            name = DecisionDeskView._display_source_label(
+                code[: -len("_date_unavailable_or_future")]
+            )
+            return with_section(f"{name}的資料日不可用或晚於判斷日")
         if code == "risk_prompt_source_quality" and len(parts) >= 3:
             quality = DecisionDeskView._display_quality_value(extra[0])
             return with_section(f"風險提示來源「{source_label}」目前為{quality}資料")
@@ -1214,7 +1291,7 @@ class DecisionDeskView(QWidget):
             name = DecisionDeskView._display_source_label(code[:-15])
             return with_section(f"{name}使用備援決策日")
 
-        return token
+        return with_section(raw_code) if section else token
 
     @staticmethod
     def _display_source_label(source: object) -> str:

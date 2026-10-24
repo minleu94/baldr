@@ -3,7 +3,7 @@ import sqlite3
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal
 import json
@@ -16,11 +16,13 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QBoxLayout,
     QFileDialog,
+    QGridLayout,
     QMessageBox,
     QMainWindow,
     QSizePolicy,
@@ -414,11 +416,123 @@ def test_portfolio_active_summary_lists_position_count_and_top_symbols(tmp_path)
     assert "已標記市值 2/2 檔" in view.active_positions_summary_label.text()
 
 
+def test_portfolio_two_positions_fit_table_without_trapping_actions_below_blank_space(tmp_path):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    view.refresh_all()
+    view.resize(1280, 760)
+    view.show()
+    app().processEvents()
+
+    table = view.positions_table
+    assert table.model() is not None and table.model().rowCount() == 2
+    assert table.height() >= (
+        table.horizontalHeader().height()
+        + table.verticalHeader().defaultSectionSize() * 2
+    )
+    assert table.height() <= table.maximumHeight() < 180
+    assert table.horizontalScrollBarPolicy() == Qt.ScrollBarAsNeeded
+
+    service.positions.append(replace(service.positions[0], position_id="default:2330-more"))
+    view._load_positions_table(service.get_portfolio())
+    assert table.model() is not None and table.model().rowCount() == 3
+    assert table.maximumHeight() > 1000
+    assert table.minimumHeight() >= (
+        table.horizontalHeader().height()
+        + table.verticalHeader().defaultSectionSize() * 2
+    )
+    view.close()
+
+
+def test_portfolio_empty_dto_keeps_summary_and_restores_table_when_populated(
+    tmp_path,
+):
+    class EmptyPortfolioService(FakePortfolioService):
+        def get_portfolio(self):
+            portfolio = super().get_portfolio()
+            return replace(
+                portfolio,
+                total_positions=len(self.positions),
+                active_positions=len(self.positions),
+                positions=tuple(self.positions),
+            )
+
+    service = EmptyPortfolioService(FakeConfig(tmp_path))
+    service.positions = []
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    view.refresh_all()
+
+    empty_dto = view._last_portfolio_dto
+    assert isinstance(empty_dto, PortfolioDTO)
+    assert empty_dto.positions == ()
+    assert view.positions_model is not None
+    assert view.positions_model.rowCount() == 0
+    assert view.positions_table.isHidden()
+    assert "活躍持倉：0 檔" in view.active_positions_summary_label.text()
+    assert "目前沒有可摘要的持倉列" in view.position_focus_label.text()
+
+    service.positions.append(
+        replace(
+            FakePortfolioService(FakeConfig(tmp_path)).positions[0],
+            position_id="default:2330-restored",
+        )
+    )
+    view._load_positions_table(service.get_portfolio())
+
+    assert view.positions_model is not None
+    assert view.positions_model.rowCount() == 1
+    assert not view.positions_table.isHidden()
+    assert view.positions_table.maximumHeight() < 180
+    view.close()
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("current", "資料日符合預期交易日（current）"),
+        ("stale", "資料日早於預期交易日（stale）"),
+        ("future_rejected", "資料日超前（拒用）（future_rejected）"),
+        ("unverified", "資料日未核實（unverified）"),
+        ("new_source_state", "new_source_state"),
+    ],
+)
+def test_portfolio_quote_date_status_only_localizes_known_source_codes(status, expected):
+    assert portfolio_view_module._quote_freshness_status_text(status) == expected
+
+
+def test_portfolio_quote_date_status_keeps_row_and_monitor_source_code(tmp_path):
+    service, _calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    assert view.select_stock("2382")
+    assert view.positions_model is not None
+    frame = view.positions_model.getDataFrame()
+    assert "行情日期狀態" in frame.columns
+    assert frame.loc[0, "行情日期狀態"] == "資料日符合預期交易日（current）"
+    assert "日期狀態：資料日符合預期交易日（current）" in view.lbl_mon_current_price.text()
+    assert "僅供損益觀察" in view.lbl_mon_current_price.text()
+    view.close()
+
+
 def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path):
     view = make_portfolio_view(tmp_path)
 
     view.refresh_all()
+    assert "尚未選取持倉列" in view.position_focus_label.text()
     assert view.select_stock("2317") is True
+    daily_layout = view.manual_account_panel.layout()
+    assert daily_layout is not None
+    assert daily_layout.indexOf(view.position_focus_label) < daily_layout.indexOf(view.positions_table)
+    assert view.position_focus_label.textFormat() == Qt.PlainText
+
+    focus_text = view.position_focus_label.text()
+    assert "2317 鴻海" in focus_text
+    assert "持有 1,000 股" in focus_text
+    assert "平均成本 TWD 150" in focus_text
+    assert "目前價格 TWD 151" in focus_text
+    assert "未實現損益（毛額）TWD 1,000" in focus_text
+    assert "報價資料日：未知" in focus_text
+    assert "Paper Health：觀察／未知" in focus_text
+    assert "不構成交易動作" in focus_text
 
     detail_text = view.position_presentation_label.text()
     assert "研究路徑：市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤" in detail_text
@@ -427,6 +541,193 @@ def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path
     assert "校準機率：不可用（研究中）" in detail_text
     assert "成本基準：TWD 150.00" in detail_text
     assert "來源追溯：recommendation_result；rec-1" in detail_text
+
+
+def test_portfolio_position_health_known_states_are_human_readable_with_raw_tooltips(
+    tmp_path,
+):
+    view = make_portfolio_view(tmp_path)
+    position = next(
+        item for item in view.portfolio_service.positions if item.stock_code == "2317"
+    )
+    health = replace(_make_health_row("2317"), position_id=position.position_id)
+    original_payload = health.to_dict()
+    view._position_health_by_id = {position.position_id: health}
+    view.selected_stock_code = "2317"
+
+    view._render_position_health_lifecycle(health)
+
+    assert "來源受阻" in view.lbl_lifecycle_source.text()
+    assert "條件：未知" in view.lbl_lifecycle_signal.text()
+    assert "Thesis：資料缺件" in view.lbl_lifecycle_signal.text()
+    assert "Metrics：受阻" in view.lbl_lifecycle_signal.text()
+    assert "資料品質：受阻" in view.lbl_lifecycle_data_quality.text()
+    assert "進場來源：尚未核實" in view.lbl_lifecycle_data_quality.text()
+    assert "blocked" in view.lbl_lifecycle_source.toolTip()
+    assert "condition=unknown" in view.lbl_lifecycle_signal.toolTip()
+    assert "thesis=missing" in view.lbl_lifecycle_signal.toolTip()
+    assert "quality=blocked" in view.lbl_lifecycle_data_quality.toolTip()
+    assert "entry_lineage=unverified" in view.lbl_lifecycle_data_quality.toolTip()
+    assert view.selected_stock_code == "2317"
+    assert view._health_for_position(position) is health
+    assert health.to_dict() == original_payload
+
+
+def test_portfolio_position_health_unknown_state_codes_remain_raw(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    health = replace(
+        _make_health_row("2317"),
+        source_status="future_source_state",
+        quality="future_quality_state",
+        condition_status="future_condition_state",
+        thesis_status="future_thesis_state",
+        metrics_status="future_metrics_state",
+        entry_lineage_status="future_lineage_state",
+    )
+
+    view._render_position_health_lifecycle(health)
+
+    assert "future_source_state" in view.lbl_lifecycle_source.text()
+    assert "future_condition_state" in view.lbl_lifecycle_signal.text()
+    assert "future_thesis_state" in view.lbl_lifecycle_signal.text()
+    assert "future_metrics_state" in view.lbl_lifecycle_signal.text()
+    assert "future_quality_state" in view.lbl_lifecycle_data_quality.text()
+    assert "future_lineage_state" in view.lbl_lifecycle_data_quality.text()
+    assert "future_source_state" in view.lbl_lifecycle_source.toolTip()
+    assert "future_condition_state" in view.lbl_lifecycle_signal.toolTip()
+    assert "future_quality_state" in view.lbl_lifecycle_data_quality.toolTip()
+
+
+def test_portfolio_position_pnl_cells_use_taiwan_direction_colors_without_changing_values(
+    tmp_path,
+):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    base = service.positions[0]
+    source_values = (
+        (12.5, 12.5),
+        (-12.5, -12.5),
+        (0.0, 0.0),
+        (12.5, None),
+    )
+    service.positions = [
+        replace(
+            base,
+            position_id=f"default:test-{index}",
+            stock_code=f"T{index:03d}",
+            realized_pnl=realized,
+            unrealized_pnl=unrealized,
+        )
+        for index, (realized, unrealized) in enumerate(source_values)
+    ]
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    view._load_positions_table(service.get_portfolio())
+
+    model = view.positions_model
+    assert model is not None
+    columns = model.getVisibleColumns()
+    realized_column = columns.index("已實現損益（毛額，未扣費稅）")
+    unrealized_column = columns.index("未實現損益（毛額，未扣費稅）")
+    expected_direction_colors = (
+        QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_up),
+        QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_down),
+        QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_flat),
+        QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_up),
+    )
+    for row, expected_color in enumerate(expected_direction_colors):
+        assert model.data(model.index(row, realized_column), Qt.ForegroundRole) == (
+            expected_color
+        )
+        expected_unrealized_color = (
+            None if source_values[row][1] is None else expected_color
+        )
+        assert model.data(
+            model.index(row, unrealized_column), Qt.ForegroundRole
+        ) == expected_unrealized_color
+
+    frame = model.getDataFrame()
+    assert frame["已實現損益（毛額，未扣費稅）"].tolist() == [12.5, -12.5, 0.0, 12.5]
+    assert frame["未實現損益（毛額，未扣費稅）"].tolist() == [
+        12.5,
+        -12.5,
+        0.0,
+        "-",
+    ]
+    assert tuple(position.unrealized_pnl for position in service.positions) == (
+        12.5,
+        -12.5,
+        0.0,
+        None,
+    )
+    view.close()
+
+
+def test_portfolio_unrealized_return_direction_uses_hidden_source_after_sort(tmp_path):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    base = service.positions[0]
+    source_rows = (
+        ("T030", "default:return-positive", 0.125),
+        ("T020", "default:return-negative", -0.125),
+        ("T010", "default:return-zero", 0.0),
+        ("T000", "default:return-unknown", None),
+    )
+    service.positions = [
+        replace(
+            base,
+            position_id=position_id,
+            stock_code=stock_code,
+            stock_name=position_id,
+            unrealized_pnl_pct=source_value,
+        )
+        for stock_code, position_id, source_value in source_rows
+    ]
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    view._load_positions_table(service.get_portfolio())
+
+    model = view.positions_model
+    assert model is not None
+    visible_columns = model.getVisibleColumns()
+    return_column = visible_columns.index("未實現損益%（毛額）")
+    stock_column = visible_columns.index("證券代號")
+    assert "_unrealized_pnl_pct_direction" not in visible_columns
+
+    model.sort(stock_column, Qt.AscendingOrder)
+
+    frame = model.getDataFrame()
+    expected_by_identity = {
+        "default:return-positive": (
+            "+12.50%",
+            QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_up),
+        ),
+        "default:return-negative": (
+            "-12.50%",
+            QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_down),
+        ),
+        "default:return-zero": (
+            "+0.00%",
+            QColor(portfolio_view_module.MIDNIGHT_ANALYST.market_flat),
+        ),
+        "default:return-unknown": ("-", None),
+    }
+    observed_identities = []
+    for row in range(model.rowCount()):
+        identity = frame.iloc[row]["_position_id"]
+        observed_identities.append(identity)
+        expected_text, expected_color = expected_by_identity[identity]
+        assert model.data(model.index(row, return_column), Qt.DisplayRole) == expected_text
+        assert model.data(model.index(row, return_column), Qt.ForegroundRole) == expected_color
+    assert observed_identities == [
+        "default:return-unknown",
+        "default:return-zero",
+        "default:return-negative",
+        "default:return-positive",
+    ]
+    assert tuple(position.unrealized_pnl_pct for position in service.positions) == (
+        0.125,
+        -0.125,
+        0.0,
+        None,
+    )
+    view.close()
 
 
 def test_portfolio_return_uses_position_id_after_table_sort_and_keeps_trade_filter(tmp_path):
@@ -873,6 +1174,137 @@ def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(
     assert view.paper_snapshot_table.model().rowCount() == 1
 
 
+def test_paper_portfolio_compact_empty_state_preserves_unknown_zero_and_rows(tmp_path):
+    state_db = tmp_path / "paper_portfolio" / "paper_portfolio.sqlite"
+    view = make_portfolio_view(tmp_path)
+    assert view.paper_diagnostics_toggle.isCheckable()
+    assert not view.paper_diagnostics_toggle.isChecked()
+    assert view.paper_diagnostics_panel.isHidden()
+    view.refresh_all()
+
+    assert "尚無 Paper snapshot" in view.paper_snapshot_empty_label.text()
+    assert "帳戶命名空間：paper-main" in view.paper_snapshot_empty_label.text()
+    assert "raw 累積 0 筆｜持倉 0 檔" in view.paper_snapshot_empty_label.text()
+    assert view.paper_snapshot_table.isHidden()
+
+    empty_snapshot = PaperPortfolioSnapshot(
+        snapshot_id="paper-main-20260822",
+        portfolio_id="paper-main",
+        decision_date="2026-08-22",
+        source_result_id="rec-empty",
+        cash=Decimal("0"),
+        total_value=Decimal("0"),
+        positions=(),
+    )
+    PaperPortfolioSnapshotRepository(state_db).append(empty_snapshot)
+    view.refresh_all()
+
+    assert "已有 Paper snapshot，但最新 snapshot 沒有持倉" in view.paper_snapshot_empty_label.text()
+    assert "paper-main-20260822" in view.paper_snapshot_empty_label.text()
+    assert "帳戶命名空間：paper-main" in view.paper_snapshot_empty_label.text()
+    assert "raw 累積 1 筆｜持倉 0 檔" in view.paper_snapshot_empty_label.text()
+    assert "總值 TWD 0.00｜現金 TWD 0.00" in view.paper_readiness_summary_label.text()
+    assert "帳戶命名空間：paper-main｜最新 snapshot ID：paper-main-20260822" in view.paper_identity_label.text()
+    assert view.paper_snapshot_table.isHidden()
+
+    view._render_paper_readiness(
+        replace(view._paper_readiness, latest_total_value=None, latest_cash=None)
+    )
+    assert "總值 未知｜現金 未知" in view.paper_readiness_summary_label.text()
+
+    row_snapshot = PaperPortfolioSnapshot(
+        snapshot_id="paper-main-20260823",
+        portfolio_id="paper-main",
+        decision_date="2026-08-23",
+        source_result_id="rec-position",
+        cash=Decimal("0"),
+        total_value=Decimal("10"),
+        positions=(
+            PaperPortfolioPositionSnapshot(
+                stock_code="2330",
+                quantity=1,
+                mark_price=Decimal("10"),
+                market_value=Decimal("10"),
+                weight_bp=10000,
+            ),
+        ),
+    )
+    PaperPortfolioSnapshotRepository(state_db).append(row_snapshot)
+    view.refresh_all()
+
+    assert not view.paper_snapshot_table.isHidden()
+    assert view.paper_snapshot_table.model().rowCount() == 1
+    assert view.paper_snapshot_empty_label.isHidden()
+    assert "paper-main-20260823" in view.paper_identity_label.text()
+
+
+def test_paper_actions_keep_full_labels_in_two_columns(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    controls = view.paper_controls_layout
+    assert isinstance(controls, QGridLayout)
+    expected = (
+        (view.btn_refresh_paper, 0, 0),
+        (view.btn_build_paper_benchmark, 0, 1),
+        (view.btn_import_paper_fills, 1, 0),
+        (view.btn_export_paper_template, 1, 1),
+        (view.paper_weekly_expected_days, 2, 0),
+        (view.btn_refresh_paper_weekly, 2, 1),
+    )
+    for widget, row, column in expected:
+        item = controls.itemAtPosition(row, column)
+        assert item is not None and item.widget() is widget
+    assert view.btn_refresh_paper.text() == "重新讀取 Paper 狀態"
+    assert view.btn_build_paper_benchmark.text() == "預覽／建立 Equal Weight"
+    assert view.btn_import_paper_fills.text() == "匯入 Paper 成交 CSV"
+    assert view.btn_export_paper_template.text() == "匯出成交範本"
+    assert view.btn_refresh_paper_weekly.text() == "計算最近週報"
+
+
+def test_paper_diagnostics_toggle_and_refresh_keep_full_missing_and_error_details(tmp_path, monkeypatch):
+    view = make_portfolio_view(tmp_path)
+    readiness_inspect = view.paper_readiness_service.inspect
+    weekly_build = view.paper_weekly_evidence_service.build_latest
+
+    view.refresh_all()
+    assert "最近週報" in view.paper_weekly_summary_label.text()
+    assert "paper_snapshot_db_missing" in view.paper_weekly_report_label.text()
+    assert view.paper_diagnostics_panel.isHidden()
+
+    view.paper_diagnostics_toggle.click()
+    assert not view.paper_diagnostics_panel.isHidden()
+    assert view.paper_diagnostics_toggle.text() == "收合來源與完整診斷"
+    assert "snapshot DB：" in view.paper_readiness_detail_label.text()
+    assert "paper_snapshot_db_missing" in view.paper_weekly_report_label.text()
+    view.paper_diagnostics_toggle.click()
+    assert view.paper_diagnostics_panel.isHidden()
+
+    monkeypatch.setattr(
+        view.paper_readiness_service,
+        "inspect",
+        lambda: (_ for _ in ()).throw(RuntimeError("readiness fixture error")),
+    )
+    monkeypatch.setattr(
+        view.paper_weekly_evidence_service,
+        "build_latest",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("weekly fixture error")),
+    )
+    view.refresh_all()
+    assert "狀態讀取失敗" in view.paper_readiness_summary_label.text()
+    assert "讀取失敗" in view.paper_identity_label.text()
+    assert "readiness fixture error" in view.paper_readiness_detail_label.text()
+    assert "讀取失敗" in view.paper_weekly_summary_label.text()
+    assert "weekly fixture error" not in view.paper_weekly_summary_label.text()
+    assert "weekly fixture error" in view.paper_weekly_report_label.text()
+    assert view.paper_diagnostics_panel.isHidden()
+
+    monkeypatch.setattr(view.paper_readiness_service, "inspect", readiness_inspect)
+    monkeypatch.setattr(view.paper_weekly_evidence_service, "build_latest", weekly_build)
+    view.refresh_all()
+    assert "最近週報" in view.paper_weekly_summary_label.text()
+    assert "paper_snapshot_db_missing" in view.paper_weekly_report_label.text()
+    assert view.paper_diagnostics_panel.isHidden()
+
+
 def test_paper_portfolio_tab_discloses_weekly_evidence_gap_without_writing(tmp_path):
     view = make_portfolio_view(tmp_path)
 
@@ -1093,6 +1525,245 @@ def test_portfolio_monitoring_does_not_treat_source_summary_date_as_quote_proof(
     assert "偏空" in view.lbl_chip_risk_level.text()
     assert "bearish" in view.lbl_chip_risk_level.toolTip()
     assert "observed: 3" in view.lbl_chip_concentration.toolTip()
+
+
+@pytest.mark.parametrize(
+    ("realized_pnl", "expected_color"),
+    [
+        (Decimal("12.5"), portfolio_view_module.MIDNIGHT_ANALYST.market_up),
+        (Decimal("-12.5"), portfolio_view_module.MIDNIGHT_ANALYST.market_down),
+        (Decimal("0"), portfolio_view_module.MIDNIGHT_ANALYST.text_primary),
+    ],
+    ids=["positive", "negative", "zero"],
+)
+def test_portfolio_realized_pnl_uses_taiwan_market_direction_colors(
+    tmp_path, realized_pnl, expected_color
+):
+    view = make_portfolio_view(tmp_path)
+    portfolio = replace(
+        view.portfolio_service.get_portfolio(), total_realized_pnl=realized_pnl
+    )
+
+    view._load_portfolio_summary(portfolio)
+
+    assert view.card_pnl.value_label.text() == f"TWD {realized_pnl:+,.2f}"
+    assert f"color: {expected_color};" in view.card_pnl.value_label.styleSheet()
+
+
+@pytest.mark.parametrize(
+    ("pnl_pct", "expected_text", "expected_color"),
+    [
+        (0.01, "+1.00%", portfolio_view_module.MIDNIGHT_ANALYST.market_up),
+        (-0.01, "-1.00%", portfolio_view_module.MIDNIGHT_ANALYST.market_down),
+        (0.0, "+0.00%", portfolio_view_module.MIDNIGHT_ANALYST.text_primary),
+        (None, "-", portfolio_view_module.MIDNIGHT_ANALYST.text_primary),
+    ],
+    ids=["positive", "negative", "zero", "unknown"],
+)
+def test_portfolio_monitor_pnl_preserves_value_and_unknown_quote_wording(
+    tmp_path, pnl_pct, expected_text, expected_color
+):
+    view = make_portfolio_view(tmp_path)
+    view.portfolio_service.positions[0].unrealized_pnl_pct = pnl_pct
+    view.selected_stock_code = "2330"
+
+    view._update_monitoring_tab()
+
+    assert view.lbl_mon_pnl_pct.text() == expected_text
+    assert f"color: {expected_color};" in view.lbl_mon_pnl_pct.styleSheet()
+    assert "TWD 110.00" in view.lbl_mon_current_price.text()
+    assert "行情資料日未知" in view.lbl_mon_current_price.text()
+    assert "手動建立，無推薦 / 回測來源" in view.lbl_strat_id.text()
+
+
+@pytest.mark.parametrize(
+    ("consecutive", "net_qty", "expected_color"),
+    [
+        (2, 3000, portfolio_view_module.MIDNIGHT_ANALYST.market_up),
+        (-2, -3000, portfolio_view_module.MIDNIGHT_ANALYST.market_down),
+        (0, 0, portfolio_view_module.MIDNIGHT_ANALYST.text_primary),
+    ],
+    ids=["positive", "negative", "zero"],
+)
+def test_portfolio_chip_direction_values_use_market_colors(
+    tmp_path, consecutive, net_qty, expected_color
+):
+    view = make_portfolio_view(tmp_path)
+    view.chip_service.get_stock_chip_summary = lambda *_args, **_kwargs: {
+        "risk_level": "neutral",
+        "consecutive_days": consecutive,
+        "accumulated_net": net_qty,
+        "concentration": 0.0,
+        "risk_reasons": [],
+        "quality_counts": {},
+        "branch_details": [],
+    }
+    view.selected_stock_code = "2330"
+
+    view._update_monitoring_tab()
+
+    assert f"color: {expected_color};" in view.lbl_chip_consecutive.styleSheet()
+    assert f"color: {expected_color};" in view.lbl_chip_net_5d.styleSheet()
+
+
+def test_portfolio_chip_summary_without_usable_events_renders_unknown_not_zero(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    from app_module.portfolio_chip_service import PortfolioChipService
+
+    service = PortfolioChipService(FakeConfig(tmp_path), broker_flow_service=object())
+    empty_summary = service._empty_summary("2330", 5)
+    view.chip_service.get_stock_chip_summary = lambda *_args, **_kwargs: empty_summary
+    view.selected_stock_code = "2330"
+
+    view._update_monitoring_tab()
+
+    assert view.lbl_chip_risk_level.text() == "資料不足"
+    assert view.lbl_chip_consecutive.text() == "資料不足"
+    assert view.lbl_chip_net_5d.text() == "資料不足"
+    assert view.lbl_chip_concentration.text() == "資料不足"
+    assert view.lbl_chip_reasons.text() == "無主力分點交易數據"
+    expected_color = portfolio_view_module.MIDNIGHT_ANALYST.text_primary
+    assert f"color: {expected_color};" in view.lbl_chip_consecutive.styleSheet()
+    assert f"color: {expected_color};" in view.lbl_chip_net_5d.styleSheet()
+
+
+def test_portfolio_chip_available_true_zero_retains_neutral_zero_display(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.chip_service.get_stock_chip_summary = lambda *_args, **_kwargs: {
+        "risk_level": "neutral",
+        "lots_available": True,
+        "usable_event_count": 2,
+        "consecutive_days": 0,
+        "accumulated_buy": 500,
+        "accumulated_sell": 500,
+        "accumulated_net": 0,
+        "concentration": 0.0,
+        "risk_reasons": [],
+        "quality_counts": {},
+        "branch_details": [],
+    }
+    view.selected_stock_code = "2330"
+
+    view._update_monitoring_tab()
+
+    assert view.lbl_chip_risk_level.text() == "中性"
+    assert view.lbl_chip_consecutive.text() == "0 天"
+    assert view.lbl_chip_net_5d.text() == "+0.0 張"
+    assert view.lbl_chip_concentration.text() == "0.00%"
+    expected_color = portfolio_view_module.MIDNIGHT_ANALYST.text_primary
+    assert f"color: {expected_color};" in view.lbl_chip_consecutive.styleSheet()
+    assert f"color: {expected_color};" in view.lbl_chip_net_5d.styleSheet()
+
+
+def test_portfolio_chip_concentration_zero_denominator_is_unavailable(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.chip_service.get_stock_chip_summary = lambda *_args, **_kwargs: {
+        "risk_level": "neutral",
+        "lots_available": True,
+        "usable_event_count": 1,
+        "consecutive_days": 0,
+        "accumulated_buy": 0,
+        "accumulated_sell": 0,
+        "accumulated_net": 0,
+        "concentration": 0.0,
+        "risk_reasons": [],
+        "quality_counts": {},
+        "branch_details": [],
+    }
+    view.selected_stock_code = "2330"
+
+    view._update_monitoring_tab()
+
+    assert view.lbl_chip_consecutive.text() == "0 天"
+    assert view.lbl_chip_net_5d.text() == "+0.0 張"
+    assert view.lbl_chip_concentration.text() == "資料不足"
+
+
+def test_portfolio_chip_detail_empty_populated_reset_keeps_controls_reachable(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    summary = {
+        "risk_level": "neutral",
+        "lots_available": True,
+        "usable_event_count": 1,
+        "consecutive_days": 0,
+        "accumulated_buy": 1000,
+        "accumulated_sell": 1000,
+        "accumulated_net": 0,
+        "concentration": 0.0,
+        "risk_reasons": [],
+        "quality_counts": {},
+        "branch_details": [],
+    }
+    view.chip_service.get_stock_chip_summary = lambda *_args, **_kwargs: summary
+    view.selected_stock_code = "2330"
+    view._update_monitoring_tab()
+
+    chip_tab = view.btn_drill_down_chip.parentWidget()
+    chip_layout = chip_tab.layout()
+    assert chip_layout is not None
+    assert view.lbl_chip_risk_level.text() == "中性"
+    assert not view.lbl_chip_detail_empty.isHidden()
+    assert view.chip_detail_table.isHidden()
+    assert view.chip_detail_table.model() is not None
+    assert view.chip_detail_table.model().rowCount() == 0
+    assert not view.btn_drill_down_chip.isHidden()
+    assert chip_layout.indexOf(view.btn_drill_down_chip) == 2
+    assert chip_layout.itemAt(0).widget().sizePolicy().verticalPolicy() == QSizePolicy.Maximum
+    assert chip_layout.itemAt(1).widget().sizePolicy().verticalPolicy() == QSizePolicy.Maximum
+    assert chip_layout.itemAt(3).spacerItem() is not None
+
+    summary["branch_details"] = [
+        {
+            "display_name": f"測試分點 {index}",
+            "buy_qty": 1000 + index * 1000,
+            "sell_qty": 250,
+            "net_qty": 750 + index * 1000,
+        }
+        for index in range(7)
+    ]
+    view._update_monitoring_tab()
+
+    detail_model = view.chip_detail_table.model()
+    assert detail_model is not None
+    assert detail_model.rowCount() == 7
+    assert not view.chip_detail_table.isHidden()
+    assert view.lbl_chip_detail_empty.isHidden()
+    assert detail_model.getDataFrame().iloc[0]["分點名稱"] == "測試分點 0"
+    assert detail_model.getDataFrame().iloc[0]["買進張數"] == 1.0
+    five_row_cap = (
+        view.chip_detail_table.horizontalHeader().sizeHint().height()
+        + view.chip_detail_table.verticalHeader().defaultSectionSize() * 5
+        + view.chip_detail_table.horizontalScrollBar().sizeHint().height()
+        + view.chip_detail_table.frameWidth() * 2
+        + 8
+    )
+    assert view.chip_detail_table.maximumHeight() <= five_row_cap
+    assert not view.btn_drill_down_chip.isHidden()
+    assert chip_layout.indexOf(view.btn_drill_down_chip) == 2
+
+    view.selected_stock_code = ""
+    view._update_monitoring_tab()
+
+    assert view.chip_detail_table.model() is None
+    assert view.chip_detail_table.isHidden()
+    assert not view.lbl_chip_detail_empty.isHidden()
+    assert not view.btn_drill_down_chip.isHidden()
+    assert chip_layout.indexOf(view.btn_drill_down_chip) == 2
+
+
+def test_portfolio_monitor_unknown_direction_values_use_neutral_text_color(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.selected_stock_code = ""
+
+    view._update_monitoring_tab()
+
+    expected_color = portfolio_view_module.MIDNIGHT_ANALYST.text_primary
+    assert view.lbl_mon_pnl_pct.text() == "-"
+    assert view.lbl_chip_consecutive.text() == "-"
+    assert view.lbl_chip_net_5d.text() == "-"
+    assert f"color: {expected_color};" in view.lbl_mon_pnl_pct.styleSheet()
+    assert f"color: {expected_color};" in view.lbl_chip_consecutive.styleSheet()
+    assert f"color: {expected_color};" in view.lbl_chip_net_5d.styleSheet()
 
 
 def _manual_2382_service(tmp_path, quote_date):

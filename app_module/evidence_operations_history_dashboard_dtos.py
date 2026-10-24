@@ -4,10 +4,18 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class EvidenceOperationsHistoryCursor:
+    period_end: str
+    period_start: str
+    review_id: str
+
+
+@dataclass(frozen=True)
 class EvidenceOperationsHistoryDashboardRequest:
     start_date: str | None = None
     end_date: str | None = None
     limit: int = 50
+    cursor: EvidenceOperationsHistoryCursor | None = None
 
 
 @dataclass(frozen=True)
@@ -46,3 +54,6 @@ class EvidenceOperationsHistoryDashboardResult:
         "歷史紀錄只代表人工覆盤封存，不代表策略、推薦或警示具備投資有效性。",
         "demote / retire candidate 仍需人工審核，不會自動修改策略版本或持倉。",
     )
+    source_available: bool = True
+    has_more_rows: bool = False
+    next_cursor: EvidenceOperationsHistoryCursor | None = None

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import threading
 import time
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import shiboken6
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QDate, QEvent, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDateEdit, QTabWidget
+from PySide6.QtWidgets import QAbstractItemView, QApplication, QDateEdit, QTabWidget
 import pytest
 
 from app_module.decision_quality_dashboard_dtos import (
@@ -18,6 +20,7 @@ from app_module.decision_quality_dashboard_dtos import (
     DecisionQualityDashboardRequest,
     DecisionQualityDashboardResult,
 )
+from app_module.decision_quality_dashboard_service import DecisionQualityDashboardService
 from app_module.signal_decay_dashboard_dtos import (
     SignalDecayDashboardCards,
     SignalDecayDashboardRequest,
@@ -30,14 +33,17 @@ from app_module.live_research_gap_dashboard_dtos import (
 )
 from app_module.evidence_operations_history_dashboard_dtos import (
     EvidenceOperationsHistoryDashboardCards,
+    EvidenceOperationsHistoryCursor,
     EvidenceOperationsHistoryDashboardRequest,
     EvidenceOperationsHistoryDashboardResult,
     EvidenceOperationsHistoryDashboardRow,
 )
 from ui_qt.models.evidence_operations_history_table_model import EvidenceOperationsHistoryTableModel
+from ui_qt.models.decision_quality_table_model import DecisionQualityTableModel
 from ui_qt.models.signal_decay_table_model import SignalDecayTableModel
 from ui_qt.views.decision_quality_view import DecisionQualityView
 from ui_qt.views.evidence_review_view import EvidenceReviewView
+from ui_qt.views.evidence_operations_history_view import EvidenceOperationsHistoryView
 from ui_qt.views.live_research_gap_view import LiveResearchGapView
 from ui_qt.views.scheduled_evidence_status_view import ScheduledEvidenceStatusView
 from ui_qt.views.signal_decay_view import SignalDecayView
@@ -285,6 +291,11 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
 
     view.refresh_status()
 
+    assert view.freshness_label.text().startswith("資料新鮮度\n")
+    assert view.recommendation_label.text().startswith("推薦快照\n")
+    assert view.evidence_label.text().startswith("證據流程試跑\n")
+    assert view.forward_outcome_label.text().startswith("前瞻結果追蹤\n")
+    assert view.report_label.text().startswith("報告\n")
     assert "20260707" in view.freshness_label.text()
     assert "scheduled_rec_20260707_051001" in view.recommendation_label.text()
     assert "degraded / 決策日 2026-07-07" in view.evidence_label.text()
@@ -542,6 +553,396 @@ def test_evidence_operations_history_table_model_formats_scheduler_boundary() ->
     assert model.raw_value(0, "production_scheduler_allowed") is False
 
 
+def test_evidence_operations_history_table_model_shows_saved_time_after_period() -> None:
+    app()
+    first = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-07-06",
+        period_end="2026-07-12",
+        review_status="coverage_only",
+        scheduler_readiness="ready_for_manual_confirm",
+        production_scheduler_allowed=False,
+        decision_quality_reviews_count=1,
+        signal_decay_observations_count=2,
+        manual_lifecycle_candidate_count=0,
+        warnings_count=1,
+        review_id="eor_with_time",
+        created_at="2026-07-13T01:23:45Z",
+    )
+    second = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-07-06",
+        period_end="2026-07-12",
+        review_status="coverage_only",
+        scheduler_readiness="ready_for_manual_confirm",
+        production_scheduler_allowed=False,
+        decision_quality_reviews_count=1,
+        signal_decay_observations_count=2,
+        manual_lifecycle_candidate_count=0,
+        warnings_count=1,
+        review_id="eor_without_time",
+    )
+    model = EvidenceOperationsHistoryTableModel((first, second))
+
+    start_col = model.column_index("period_start")
+    end_col = model.column_index("period_end")
+    saved_time_col = model.column_index("created_at")
+    assert saved_time_col == end_col + 1
+    assert model.headerData(saved_time_col, Qt.Horizontal) == "保存時間"
+    assert model.data(model.index(0, saved_time_col)) == "2026-07-13T01:23:45Z"
+    assert model.data(model.index(1, saved_time_col)) == "未提供"
+    assert model.raw_value(0, "created_at") == "2026-07-13T01:23:45Z"
+    assert model.raw_value(1, "created_at") == ""
+    assert start_col < end_col < saved_time_col
+
+
+def test_evidence_operations_history_details_follow_selected_saved_review() -> None:
+    app()
+    first = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-07-06",
+        period_end="2026-07-12",
+        review_status="coverage_only",
+        scheduler_readiness="ready_for_manual_confirm",
+        production_scheduler_allowed=False,
+        decision_quality_reviews_count=1,
+        signal_decay_observations_count=2,
+        manual_lifecycle_candidate_count=0,
+        warnings_count=1,
+        review_id="eor_first",
+        created_at="2026-07-13T01:23:45Z",
+    )
+    second = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-07-06",
+        period_end="2026-07-12",
+        review_status="ready_for_weekly_closeout",
+        scheduler_readiness="operational_production",
+        production_scheduler_allowed=True,
+        decision_quality_reviews_count=3,
+        signal_decay_observations_count=4,
+        manual_lifecycle_candidate_count=1,
+        warnings_count=0,
+        review_id="eor_second",
+        created_at="2026-07-13T09:08:07+08:00",
+    )
+    unknown = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-07-06",
+        period_end="2026-07-12",
+        review_status="future_review_code",
+        scheduler_readiness="future_readiness_code",
+        production_scheduler_allowed=False,
+        decision_quality_reviews_count=0,
+        signal_decay_observations_count=0,
+        manual_lifecycle_candidate_count=0,
+        warnings_count=0,
+        review_id="eor_unknown",
+    )
+    limitations = ("只顯示已保存的週報。", "仍需人工覆盤。")
+    result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(),
+        rows=(first, second, unknown),
+        limitations=limitations,
+    )
+    view = EvidenceOperationsHistoryView(
+        FakeDashboard(result), auto_refresh=False, async_refresh=False
+    )
+
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    first_details = view.detail_panel.toPlainText()
+    assert "週期: 2026-07-06 至 2026-07-12" in first_details
+    assert "保存時間: 2026-07-13T01:23:45Z" in first_details
+    assert "Record ID: eor_first" in first_details
+    assert "覆盤狀態: 僅有覆蓋資料（原始碼：coverage_only）" in first_details
+    assert "正式排程條件: 待人工確認（原始碼：ready_for_manual_confirm）" in first_details
+    assert "正式排程允許: 否" in first_details
+    assert "限制: 只顯示已保存的週報。 仍需人工覆盤。" in first_details
+
+    view._on_table_row_clicked(view.table_model.index(1, 0))
+    second_details = view.detail_panel.toPlainText()
+    assert "週期: 2026-07-06 至 2026-07-12" in second_details
+    assert "保存時間: 2026-07-13T09:08:07+08:00" in second_details
+    assert "Record ID: eor_second" in second_details
+    assert "覆盤狀態: 可準備週報收尾（原始碼：ready_for_weekly_closeout）" in second_details
+    assert "正式排程條件: 正式作業狀態（原始碼：operational_production）" in second_details
+    assert "正式排程允許: 是" in second_details
+    assert "Decision Quality reviews: 3" in second_details
+    assert "限制: 只顯示已保存的週報。 仍需人工覆盤。" in second_details
+
+    view._on_table_row_clicked(view.table_model.index(2, 0))
+    unknown_details = view.detail_panel.toPlainText()
+    assert "覆盤狀態: 未識別狀態（原始碼：future_review_code）" in unknown_details
+    assert "正式排程條件: 未識別狀態（原始碼：future_readiness_code）" in unknown_details
+
+
+def test_evidence_operations_history_cards_use_available_width_and_keep_table_rows() -> None:
+    application = app()
+    view = EvidenceOperationsHistoryView(
+        FakeDashboard(EvidenceOperationsHistoryDashboardResult(
+            EvidenceOperationsHistoryDashboardRequest(),
+            EvidenceOperationsHistoryDashboardCards(),
+        )),
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    view.resize(1200, 760)
+    view.show()
+    application.processEvents()
+
+    wide_positions = [view.cards_layout.getItemPosition(index)[:2] for index in range(6)]
+    assert wide_positions == [(0, column) for column in range(6)]
+    assert all(
+        card.width() >= card.fontMetrics().horizontalAdvance("允許正式排程") + 20
+        for card in view.cards.values()
+    )
+
+    view.resize(900, 760)
+    application.processEvents()
+    narrow_positions = [view.cards_layout.getItemPosition(index)[:2] for index in range(6)]
+    assert narrow_positions == [(row, column) for row in range(2) for column in range(3)]
+    assert view.summary_table.selectionBehavior() == QAbstractItemView.SelectionBehavior.SelectRows
+    assert view.summary_table.minimumHeight() >= (
+        5 * view.summary_table.verticalHeader().minimumSectionSize()
+    )
+
+
+def test_evidence_operations_history_details_show_missing_saved_time() -> None:
+    app()
+    row = EvidenceOperationsHistoryDashboardRow(
+        period_start="2026-07-06",
+        period_end="2026-07-12",
+        review_status="coverage_only",
+        scheduler_readiness="ready_for_manual_confirm",
+        production_scheduler_allowed=False,
+        decision_quality_reviews_count=1,
+        signal_decay_observations_count=2,
+        manual_lifecycle_candidate_count=0,
+        warnings_count=1,
+        review_id="eor_without_time",
+    )
+    result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(),
+        rows=(row,),
+    )
+    view = EvidenceOperationsHistoryView(
+        FakeDashboard(result), auto_refresh=False, async_refresh=False
+    )
+
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    details = view.detail_panel.toPlainText()
+    assert "保存時間: 未提供" in details
+    assert "Record ID: eor_without_time" in details
+    assert "週期: 2026-07-06 至 2026-07-12" in details
+
+
+def test_evidence_operations_history_cards_distinguish_unavailable_from_observed_zero() -> None:
+    app()
+    empty_result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(),
+        empty_state_message="尚無 weekly review history。",
+    )
+    view = EvidenceOperationsHistoryView(
+        FakeDashboard(empty_result), auto_refresh=False, async_refresh=False
+    )
+    assert all(card.text().endswith("\n尚未載入") for card in view.cards.values())
+    view._on_dashboard_loaded(empty_result, request_id=view._active_request_id)
+    assert all(card.text().endswith("\n0") for card in view.cards.values())
+    assert "第 1 頁；本頁索引 0" in view.scope_label.text()
+    assert "卡片統計本頁 0 筆" in view.scope_label.text()
+
+    unavailable_result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(),
+        empty_state_message="目前只讀資料源不可用。",
+        source_available=False,
+    )
+    view._on_dashboard_loaded(unavailable_result, request_id=view._active_request_id)
+    assert all(card.text().endswith("\n未知") for card in view.cards.values())
+    assert "顯示範圍未知" in view.scope_label.text()
+
+
+def test_evidence_operations_history_discloses_limited_display_and_card_scope() -> None:
+    app()
+    rows = tuple(
+        EvidenceOperationsHistoryDashboardRow(
+            period_start="2026-07-06",
+            period_end="2026-07-12",
+            review_status="coverage_only",
+            scheduler_readiness="ready_for_manual_confirm",
+            production_scheduler_allowed=False,
+            decision_quality_reviews_count=0,
+            signal_decay_observations_count=0,
+            manual_lifecycle_candidate_count=0,
+            warnings_count=0,
+            review_id=f"eor-{index}",
+        )
+        for index in range(50)
+    )
+    result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(start_date="2026-07-01", end_date="2026-07-31"),
+        EvidenceOperationsHistoryDashboardCards(reviews_count=50),
+        rows=rows,
+        has_more_rows=True,
+    )
+    view = EvidenceOperationsHistoryView(
+        FakeDashboard(result), auto_refresh=False, async_refresh=False
+    )
+
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    assert "第 1 頁；本頁索引 1–50" in view.scope_label.text()
+    assert "後面還有較舊週報" in view.scope_label.text()
+    assert "卡片僅統計本頁 50 筆" in view.scope_label.text()
+
+
+def test_evidence_operations_history_pagination_buttons_keep_filter_cursor_stack() -> None:
+    app()
+    cursor = EvidenceOperationsHistoryCursor("2026-07-12", "2026-07-06", "eor-050")
+    first_result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(start_date="2026-07-01", end_date="2026-07-31"),
+        EvidenceOperationsHistoryDashboardCards(reviews_count=50),
+        rows=tuple(
+            EvidenceOperationsHistoryDashboardRow(
+                period_start="2026-07-06",
+                period_end="2026-07-12",
+                review_status="coverage_only",
+                scheduler_readiness="ready_for_manual_confirm",
+                production_scheduler_allowed=False,
+                decision_quality_reviews_count=0,
+                signal_decay_observations_count=0,
+                manual_lifecycle_candidate_count=0,
+                warnings_count=0,
+                review_id=f"eor-{index:03d}",
+            )
+            for index in range(50)
+        ),
+        has_more_rows=True,
+        next_cursor=cursor,
+    )
+
+    class RecordingService:
+        def __init__(self):
+            self.requests = []
+
+        def load_dashboard(self, request):
+            self.requests.append(request)
+            return first_result
+
+    service = RecordingService()
+    view = EvidenceOperationsHistoryView(service, auto_refresh=False, async_refresh=False)
+    view.start_date_input.setDate(QDate(2026, 7, 1))
+    view.end_date_input.setDate(QDate(2026, 7, 31))
+    view.refresh_dashboard()
+    assert view.previous_button.isEnabled() is False
+    assert view.next_button.isEnabled() is True
+    assert "第 1 頁；本頁索引 1–50" in view.scope_label.text()
+
+    view.next_button.click()
+    assert service.requests[-1].cursor == cursor
+    assert view.previous_button.isEnabled() is True
+    assert "第 2 頁；本頁索引 51–100" in view.scope_label.text()
+
+    view.previous_button.click()
+    assert service.requests[-1].cursor is None
+    assert view.previous_button.isEnabled() is False
+    view.end_date_input.setDate(QDate(2026, 8, 1))
+    assert view.next_button.isEnabled() is False
+    assert view.table_model.rowCount() == 0
+    assert "日期篩選已變更" in view.empty_state_label.text()
+    request_count = len(service.requests)
+    view.next_button.click()
+    assert len(service.requests) == request_count
+    view.refresh_dashboard()
+    assert view._page_index == 0
+    assert view._cursor_stack == [None]
+    assert service.requests[-1].cursor is None
+    assert service.requests[-1].end_date == "2026-08-01"
+
+
+def test_evidence_operations_history_load_error_clears_stale_cards_and_details() -> None:
+    app()
+    result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(reviews_count=2, warnings_count=1),
+    )
+    view = EvidenceOperationsHistoryView(
+        FakeDashboard(result), auto_refresh=False, async_refresh=False
+    )
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    assert view.cards["reviews_count"].text() == "週報紀錄\n2"
+
+    view._on_dashboard_error("database unavailable", request_id=view._active_request_id)
+
+    assert all(card.text().endswith("\n未知") for card in view.cards.values())
+    assert view.table_model.rowCount() == 0
+    assert view._current_result is None
+    assert view.detail_panel.toPlainText() == ""
+    assert "允許正式排程" in view.cards["production_scheduler_allowed_count"].text()
+    assert view.next_button.isEnabled() is False
+
+
+def test_evidence_operations_history_ignores_expired_page_response_and_clears_on_loading() -> None:
+    app()
+    result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(reviews_count=1),
+    )
+    view = EvidenceOperationsHistoryView(FakeDashboard(result), auto_refresh=False, async_refresh=False)
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    view._active_request_id += 1
+    active_id = view._active_request_id
+    view._loading = True
+    view._current_result = None
+    view._set_all_cards("載入中")
+    view.table_model.set_rows(())
+
+    view._on_dashboard_loaded(result, request_id=active_id - 1)
+
+    assert view._loading is True
+    assert all(card.text().endswith("\n載入中") for card in view.cards.values())
+    assert view.table_model.rowCount() == 0
+
+
+def test_evidence_operations_history_async_load_disables_paging_and_ignores_expired_error() -> None:
+    app()
+    started = threading.Event()
+    release = threading.Event()
+    result = EvidenceOperationsHistoryDashboardResult(
+        EvidenceOperationsHistoryDashboardRequest(),
+        EvidenceOperationsHistoryDashboardCards(reviews_count=1),
+    )
+
+    class BlockingHistoryService:
+        def load_dashboard(self, _request):
+            started.set()
+            release.wait(timeout=3)
+            return result
+
+    view = EvidenceOperationsHistoryView(
+        BlockingHistoryService(), auto_refresh=False, async_refresh=True
+    )
+    view._set_all_cards("舊資料")
+    view.refresh_dashboard()
+    active_id = view._active_request_id
+    assert started.wait(timeout=1)
+    assert view.refresh_button.isEnabled() is False
+    assert view.previous_button.isEnabled() is False
+    assert view.next_button.isEnabled() is False
+    assert all(card.text().endswith("\n載入中") for card in view.cards.values())
+    assert view.table_model.rowCount() == 0
+
+    view._on_dashboard_error("expired request", request_id=active_id - 1)
+    assert view._loading is True
+    assert "載入失敗" not in view.empty_state_label.text()
+
+    release.set()
+    deadline = time.monotonic() + 3
+    while view._loading and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert view._loading is False
+    assert view.cards["reviews_count"].text() == "週報紀錄\n1"
+
+
 def test_evidence_review_dashboard_date_filters_use_calendar_inputs() -> None:
     app()
     gap_view = LiveResearchGapView(
@@ -607,3 +1008,269 @@ def test_dashboard_views_render_empty_states_and_ignore_stale_results() -> None:
     gap_view = LiveResearchGapView(gap_service, auto_refresh=False, async_refresh=False)
     gap_view.refresh_dashboard()
     assert "尚無 live research gap evidence" in gap_view.empty_state_label.text()
+
+
+class FakeDecisionQualityBackend:
+    def __init__(self, reviews=(), items=(), error=None):
+        self.reviews = reviews
+        self.items = items
+        self.error = error
+
+    def list_reviews(self, **_kwargs):
+        if self.error is not None:
+            raise self.error
+        return self.reviews
+
+    def list_items(self, **_kwargs):
+        if self.error is not None:
+            raise self.error
+        return self.items
+
+
+def _decision_quality_item(*, status="open"):
+    return SimpleNamespace(
+        review_id="review-1",
+        item_type="journal_gap",
+        symbol="2330",
+        event_date="2026-10-20",
+        decision_date="2026-10-20",
+        source_type="manual",
+        severity="medium",
+        status=status,
+        suggested_review_question="核對原始依據",
+        reason_codes_json=(),
+        related_gap_id="",
+        related_decay_id="",
+        evidence_json={},
+        metadata_json={},
+    )
+
+
+def _decision_quality_review(score=0):
+    return SimpleNamespace(
+        review_period_end="2026-10-20",
+        review_id="review-1",
+        decision_quality_score_bp=score,
+        process_adherence_score_bp=score,
+        evidence_usage_score_bp=score,
+        risk_discipline_score_bp=score,
+        review_completeness_score_bp=score,
+        warnings_json=(),
+    )
+
+
+def test_decision_quality_table_model_localizes_known_codes_and_preserves_raw_values() -> None:
+    app()
+    row = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(
+            reviews=(_decision_quality_review(),),
+            items=(_decision_quality_item(),),
+        )
+    ).load_dashboard(DecisionQualityDashboardRequest()).rows[0]
+    item_type_labels = {
+        "ignored_portfolio_alert": "忽略投資組合警示",
+        "manual_override_without_evidence": "缺少依據的手動覆寫",
+        "trade_without_source_trace": "交易缺少來源追溯",
+        "missed_high_quality_signal": "遺漏高品質訊號",
+        "unreviewed_signal_decay": "訊號衰退未覆盤",
+        "large_live_research_gap": "實際與研究落差偏大",
+        "low_quality_data_used": "使用低品質資料",
+        "regime_profile_mismatch": "市場狀態與設定不符",
+    }
+    model = DecisionQualityTableModel(
+        tuple(
+            SimpleNamespace(**{**row.__dict__, "item_type": raw, "severity": "high", "status": "reviewed"})
+            for raw in item_type_labels
+        )
+    )
+
+    for row_index, (raw, expected_label) in enumerate(item_type_labels.items()):
+        index = model.index(row_index, model.column_index("item_type"))
+        assert model.data(index, Qt.DisplayRole) == expected_label
+        assert model.data(index, Qt.ToolTipRole) == raw
+        assert model.raw_value(row_index, "item_type") == raw
+        assert model.data(model.index(row_index, model.column_index("severity")), Qt.DisplayRole) == "高"
+        assert model.data(model.index(row_index, model.column_index("status")), Qt.DisplayRole) == "已覆盤"
+    assert model.data(model.index(0, model.column_index("severity")), Qt.ToolTipRole) == "high"
+    assert model.data(model.index(0, model.column_index("status")), Qt.ToolTipRole) == "reviewed"
+    assert model.raw_value(0, "severity") == "high"
+    assert model.raw_value(0, "status") == "reviewed"
+
+
+def test_decision_quality_table_model_keeps_unknown_and_missing_codes_readable() -> None:
+    app()
+    row = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(
+            reviews=(_decision_quality_review(),),
+            items=(_decision_quality_item(),),
+        )
+    ).load_dashboard(DecisionQualityDashboardRequest()).rows[0]
+    unknown = SimpleNamespace(
+        **{**row.__dict__, "item_type": "future_item", "severity": "urgent", "status": "future_status"}
+    )
+    missing = SimpleNamespace(**{**row.__dict__, "item_type": "", "severity": "", "status": ""})
+    model = DecisionQualityTableModel((unknown, missing))
+
+    for field_name, raw in (("item_type", "future_item"), ("severity", "urgent"), ("status", "future_status")):
+        index = model.index(0, model.column_index(field_name))
+        assert model.data(index, Qt.DisplayRole) == raw
+        assert model.data(index, Qt.ToolTipRole) == raw
+        assert model.raw_value(0, field_name) == raw
+    for field_name in ("item_type", "severity", "status"):
+        index = model.index(1, model.column_index(field_name))
+        assert model.data(index, Qt.DisplayRole) == "未知"
+        assert model.data(index, Qt.ToolTipRole) == "未知"
+        assert model.raw_value(1, field_name) == ""
+
+
+def test_decision_quality_details_show_labels_and_raw_keys_with_unknown_fallback() -> None:
+    app()
+    result = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(
+            reviews=(_decision_quality_review(),),
+            items=(_decision_quality_item(),),
+        )
+    ).load_dashboard(DecisionQualityDashboardRequest())
+    view = DecisionQualityView(FakeDashboard(result), auto_refresh=False, async_refresh=False)
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    details = view.detail_panel.toPlainText()
+    assert "項目類型: journal_gap（未知代碼）" in details
+    assert "嚴重度 / 狀態: 中（原始值：medium） / 待處理（原始值：open）" in details
+
+    known_row = SimpleNamespace(
+        **{**result.rows[0].__dict__, "item_type": "ignored_portfolio_alert", "severity": "high", "status": "reviewed"}
+    )
+    view._render_details(known_row, result)
+    details = view.detail_panel.toPlainText()
+    assert "項目類型: 忽略投資組合警示（原始值：ignored_portfolio_alert）" in details
+    assert "嚴重度 / 狀態: 高（原始值：high） / 已覆盤（原始值：reviewed）" in details
+
+
+def test_decision_quality_dashboard_no_review_marks_scores_missing_and_excludes_orphan_items() -> None:
+    app()
+    service = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(items=(_decision_quality_item(),))
+    )
+    result = service.load_dashboard(DecisionQualityDashboardRequest())
+    view = DecisionQualityView(FakeDashboard(result), auto_refresh=False, async_refresh=False)
+    assert all(card.text().endswith("\n尚未載入") for card in view.cards.values())
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    assert result.review_count == 0
+    assert result.source_available is True
+    assert view.cards["decision_quality_score"].text() == "決策品質 / 10000\n未提供"
+    assert view.cards["open_items"].text() == "待處理\n0"
+    assert view.cards["reviewed_items"].text() == "已覆盤\n0"
+    assert view.table_model.rowCount() == 0
+
+
+@pytest.mark.parametrize(
+    ("error", "diagnostic"),
+    [
+        (FileNotFoundError("review.sqlite3"), "sqlite_database_missing"),
+        (sqlite3.OperationalError("no such table: decision_quality_reviews"), "sqlite_evidence_table_missing"),
+    ],
+)
+def test_decision_quality_dashboard_unavailable_source_marks_all_cards_unknown(error, diagnostic) -> None:
+    app()
+    result = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(error=error)
+    ).load_dashboard(DecisionQualityDashboardRequest())
+    view = DecisionQualityView(FakeDashboard(result), auto_refresh=False, async_refresh=False)
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    assert result.source_available is False
+    assert result.diagnostics == (diagnostic,)
+    assert all(card.text().endswith("\n未知") for card in view.cards.values())
+    assert diagnostic in view.empty_state_label.text()
+
+
+def test_decision_quality_dashboard_observed_zero_scores_and_existing_rows_remain_zero() -> None:
+    app()
+    result = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(
+            reviews=(_decision_quality_review(0),),
+            items=(_decision_quality_item(status="reviewed"),),
+        )
+    ).load_dashboard(DecisionQualityDashboardRequest())
+    view = DecisionQualityView(FakeDashboard(result), auto_refresh=False, async_refresh=False)
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+
+    assert result.review_count == 1
+    assert view.cards["decision_quality_score"].text() == "決策品質 / 10000\n0"
+    assert view.cards["reviewed_items"].text() == "已覆盤\n1"
+
+
+def test_decision_quality_dashboard_error_clears_previous_cards_to_unknown() -> None:
+    app()
+    result = DecisionQualityDashboardResult(
+        DecisionQualityDashboardRequest(),
+        DecisionQualityDashboardCards(decision_quality_score=4200),
+        review_count=1,
+    )
+    view = DecisionQualityView(FakeDashboard(result), auto_refresh=False, async_refresh=False)
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    view._on_dashboard_error("database unavailable", request_id=view._active_request_id)
+
+    assert all(card.text().endswith("\n未知") for card in view.cards.values())
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("abc", "最低分數需為 0–10000 的整數，或留空。"),
+        ("-1", "最低分數需介於 0 至 10000，或留空。"),
+        ("10001", "最低分數需介於 0 至 10000，或留空。"),
+    ],
+)
+def test_decision_quality_invalid_min_score_clears_stale_dashboard_without_loading(value, message) -> None:
+    app()
+    result = DecisionQualityDashboardService(
+        FakeDecisionQualityBackend(
+            reviews=(_decision_quality_review(4200),),
+            items=(_decision_quality_item(),),
+        )
+    ).load_dashboard(DecisionQualityDashboardRequest())
+    service = FakeDashboard(result)
+    view = DecisionQualityView(service, auto_refresh=False, async_refresh=False)
+    view._on_dashboard_loaded(result, request_id=view._active_request_id)
+    prior_request_id = view._active_request_id
+    assert view.table_model.rowCount() == 1
+    assert view.detail_panel.toPlainText()
+
+    # 程式化 setText 仍可能送入 validator 不會接受的內容。
+    view.min_score_input.setText(value)
+    view.refresh_dashboard()
+
+    assert service.calls == []
+    assert view.refresh_button.isEnabled()
+    assert view._current_result is None
+    assert all(card.text().endswith("\n尚未載入") for card in view.cards.values())
+    assert view.table_model.rowCount() == 0
+    assert view.detail_panel.toPlainText() == ""
+    assert view.empty_state_label.text() == message
+    assert view.min_score_error_label.text() == message
+    assert not view.min_score_error_label.isHidden()
+
+    view._on_dashboard_loaded(result, request_id=prior_request_id)
+    assert view._current_result is None
+    assert view.table_model.rowCount() == 0
+
+
+@pytest.mark.parametrize(("value", "expected"), [("", None), ("0", 0), ("10000", 10000)])
+def test_decision_quality_min_score_accepts_blank_and_range_boundaries(value, expected) -> None:
+    app()
+    result = DecisionQualityDashboardResult(
+        DecisionQualityDashboardRequest(),
+        DecisionQualityDashboardCards(),
+    )
+    service = FakeDashboard(result)
+    view = DecisionQualityView(service, auto_refresh=False, async_refresh=False)
+    view.min_score_input.setText(value)
+
+    view.refresh_dashboard()
+
+    assert len(service.calls) == 1
+    assert service.calls[0].min_score == expected
+    assert view.min_score_error_label.text() == ""
+    assert view.min_score_error_label.isHidden()

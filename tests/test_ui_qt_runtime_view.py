@@ -224,6 +224,96 @@ def test_runtime_view_renders_operation_status_without_claiming_scheduler_state(
     assert "timestamp_source: checked_at" in view.operations_list.item(0).toolTip()
 
 
+def test_runtime_operations_state_filter_renders_all_normalized_states_and_preserves_dto():
+    app()
+    view = RuntimeView()
+    operations = tuple(
+        ScheduledOperationStatusDTO(
+            job_id=f"job_{state}",
+            label=f"工作 {state}",
+            raw_status=f"raw_{state}",
+            state=state,
+            updated_at=None,
+            lane="core",
+            read_state="observed" if state != "observed" else "missing",
+            diagnostic=f"diagnostic_{state}",
+        )
+        for state in ("operational", "guarded", "attention", "unavailable", "observed")
+    )
+    dto = ScheduledOperationsSnapshotDTO(
+        overall_state="attention",
+        core_ready_count=1,
+        core_job_count=5,
+        operations=operations,
+        observed_at=datetime(2026, 10, 23, tzinfo=timezone.utc),
+    )
+
+    view.on_scheduled_operations_updated(dto)
+
+    assert view.operations_list.count() == 5
+    assert "目前顯示 5/5 項" in view.operations_summary_label.text()
+    assert tuple(view._scheduled_operations) == operations
+    assert "raw_status: raw_observed" in view.operations_list.item(4).toolTip()
+    assert "read_state: missing" in view.operations_list.item(4).toolTip()
+    assert "diagnostic: diagnostic_observed" in view.operations_list.item(4).toolTip()
+    for index, state in enumerate(("operational", "guarded", "attention", "unavailable", "observed"), start=1):
+        view.operations_state_filter.setCurrentIndex(index)
+        assert view.operations_list.count() == 1
+        assert view.operations_list.item(0).data(Qt.UserRole) == f"job_{state}"
+        assert f"目前顯示 1/5 項" in view.operations_summary_label.text()
+
+
+def test_runtime_operations_filter_handles_selection_transitions_and_empty_states():
+    app()
+    view = RuntimeView()
+    operations = (
+        ScheduledOperationStatusDTO(
+            job_id="operational_job",
+            label="正常工作",
+            raw_status="passed",
+            state="operational",
+            updated_at=None,
+            lane="core",
+        ),
+        ScheduledOperationStatusDTO(
+            job_id="decision_evidence_capture",
+            label="注意工作",
+            raw_status="attention_raw",
+            state="attention",
+            updated_at=None,
+            lane="core",
+            capture=_decision_capture_status(run_id="selected-run"),
+        ),
+    )
+    dto = ScheduledOperationsSnapshotDTO(
+        overall_state="attention",
+        core_ready_count=1,
+        core_job_count=2,
+        operations=operations,
+        observed_at=datetime(2026, 10, 23, tzinfo=timezone.utc),
+    )
+    view.on_scheduled_operations_updated(dto)
+    view.operations_list.setCurrentRow(1)
+    assert "selected-run" in view.operations_capture_detail_label.text()
+
+    view.operations_state_filter.setCurrentIndex(1)
+    assert view.operations_list.currentItem() is None
+    assert "selected-run" not in view.operations_capture_detail_label.text()
+    assert "目前顯示 1/2 項" in view.operations_summary_label.text()
+
+    view.operations_state_filter.setCurrentIndex(0)
+    assert view.operations_list.count() == 2
+    view.operations_list.setCurrentRow(0)
+    view.operations_state_filter.setCurrentIndex(1)
+    assert view.operations_list.currentItem().data(Qt.UserRole) == "operational_job"
+
+    view.operations_state_filter.setCurrentIndex(4)
+    assert view.operations_list.count() == 1
+    assert "沒有符合的營運工作" in view.operations_list.item(0).text()
+    assert "目前顯示 0/2 項" in view.operations_summary_label.text()
+    assert view.operations_list.currentItem() is None
+
+
 def _decision_capture_status(
     *,
     read_state="verified",

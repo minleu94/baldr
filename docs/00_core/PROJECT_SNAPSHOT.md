@@ -1,5 +1,31 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+**Opus→Antigravity UI/UX 審查鏈的後繼原始碼已完成 M1–M88 工程階段收尾。** Opus 起始審查，因額度用盡由 Antigravity 接手完成；Sol 依現行架構逐項複核與去重，Luna 分切片實作、root 審查。最近 M86 改善覆盤首屏表格可見三列，M87–M88 修正 Legacy 保存圖表切換與刷新時的來源身份；M88 後受改 Python 編譯、Workbench 85、validator 25／0／4、mypy 1,143 檔通過。範圍、各階段成果、收據與未完成 Gate 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md)及[本機逐輪 QA](../../output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md)。這是原始碼與隔離合成 QA 交接；正式帳／市場來源、真 OS 125%／150% DPI 全路徑、固定 EXE、Owner UAT 與完整產品 Gate 尚未接受。
+
+後續 M59–M61 修正決策品質無審查／來源不可用假零、批次回測不可用指標混入統計，以及 Portfolio 生命週期原始狀態碼首層難讀；原流程分數、回測公式與健康判定未改。聚焦 27／31／68 項、Workbench 85、validator 25／0／4、mypy 1,141、compile 與三個 1280×760／100% Windows 隔離合成畫面通過。這些畫面不是正式來源、真帳、125%／150% 真 OS DPI 或 Owner UAT。
+
+M62–M66 再核批次循序／並行 adapter 的指標契約、正常 Main 決策品質導航、Regime 匹配分數 bp 標示及覆盤歷史來源／狀態；正常 Main 的 before 圖發現左側回測設定擠壓證據卡，M66 進入證據覆盤即收合，after 圖在 1280×760／100% 可見五張卡並可再展開設定。M67 另用 Windows 真 ProcessPool 的兩個子程序補合成版本化報告返回，缺值與真零維持原契約；未執行真策略或保存 run。M68 將個股頁首原漲跌值獨立標紅漲綠跌、日期保持中性，Windows 1280×760／100% 前後圖、74 個股聚焦、Workbench 85、validator 25／0／4、mypy 1,141 與 compile 通過；M69 另以隔離 Main 個股工作區注入合成報告，正／負／缺值三態全窗圖維持呈現。畫面與批次報告均為隔離合成來源；正式資料、OS 高 DPI、固定 EXE、Owner UAT 和完整 Gate 仍未接受。
+
+M70 已用隔離 SQLite 經正常 Main 搜尋鈕與真個股 reader 驗明示漲跌、真零及無方向未知，並修 1280×760 首屏右上行情日截斷；75 個股聚焦與真 OS DPI96 四態全窗圖通過。M71 依所選日期與覆盤類型的 `review_id` 限定決策品質項目，卡片與表格不再混入其他覆盤；M72 讓明填 Portfolio ID 只用原保存 metadata 精確身份篩覆盤，缺身份舊紀錄不猜。最終 6 個 service 測試、兩張 1280×760 原生合成 View 與共同 Workbench 85、validator 25／0／4、mypy 1,141、compile 通過。合成價格沒有可得時間，正式價格／Evidence DB、真 OS 高 DPI、固定 EXE、Owner UAT 與完整 Gate 尚未接受。
+
+M74 在首頁市場首屏新增原來源 `breadth_ratio_bp` 比例顯示，與上漲／下跌／平盤家數及資料日同列；真零、缺件、無效值不混淆，未重算市場廣度。22 個聚焦測試、1280×760／真 OS DPI96 隔離合成 Workbench 畫面、共同 Workbench 85、validator 25／0／4、mypy 1,141 與 compile 通過。M76 另用隔離合成 SQLite，於正常 Main 經真唯讀決策品質 reader 驗 M71–M72 的日期、類型與精確 Portfolio ID 篩選，來源 DB SHA 不變；這些證據仍不是正式 Evidence DB、真 OS 高 DPI、固定 EXE 或 Owner UAT。
+
+M77 將決策品質既有項目／嚴重度／狀態碼顯中文並保留原碼提示與詳情；M78 於大盤技術細節按原檢測器語義標點／百分比，未知不冒充零，ADX／DI／RSI／規則分不誤標機率。各自聚焦 30／7、正常 Main 1280×760／真 OS DPI96 隔離合成畫面，以及共同 Workbench 85、validator 25／0／4、mypy 1,142、compile 通過；未改 DTO、計算、正式來源或資格。正式資料、真高 DPI、固定 EXE 與 Owner UAT 仍待獨立驗收。
+
+M79 修決策品質最低分數的自由文字錯誤：非法輸入明示並清除舊結果，不呼叫 reader，遲到舊回應也不能重填；空白／0／10000 可恢復。36 個聚焦測試、正常 Main 真 OS DPI96 的非法／恢復全窗圖，以及共同 Workbench 85、validator 25／0／4、mypy 1,142、compile 通過；合成 SQLite SHA 不變。最低分數及股票篩選的範圍契約仍依 M73 保留，不以此驗證修改流程分數。
+
+M80 讓大盤指數原 Regime 檢測走受管背景工作，載入中停用重入並清上次分類，完成／錯誤恢復；保留 service 原有 history 轉移與 CAS 衝突處理。18 項聚焦含原 state 並發測試、正常 Main 1280×760／真 OS DPI96 載入／完成／錯誤與關窗等待、隔離合成真 RegimeService history 寫入，以及共同 Workbench 85、validator 25／0／4、mypy 1,142、compile 通過。正式資料等待時間、真高 DPI、固定 EXE、Owner UAT 和產品 Gate 未驗。
+
+M81–M82 修正參數最佳化與覆盤歷史的結果範圍語義：最佳化從同份單股報告的已簽指標契約辨識觀測零／不可用，錯誤報告、契約錯誤或目標不可用的組合不排名；無契約舊報告保留相容排序但數值與排名明示未驗證，表格排序後套用依畫面列排名核對身份，穩定性只計已驗目標樣本。覆盤歷史於原日期篩選後多讀一筆，標示顯示列數與卡片僅統計顯示列，不冒稱總筆數。92 項聚焦、正常 Main 1280×760／真 OS DPI96 四張合成畫面及共同 Workbench 85、validator 25／0／4、mypy 1,142、compile 通過；原績效公式、保存來源與正式資料未改，真高 DPI、固定 EXE、Owner UAT 及完整產品 Gate 待驗。
+
+M83–M84 將覆盤歷史延伸為只讀游標分頁，111 筆隔離合成 SQLite 經正常 Main 可前進三頁並返回，卡片僅統計本頁，日期更改清舊結果；表格已知覆盤／排程碼顯中文且保留原碼。55 項聚焦、Workbench 85、validator 25／0／4、mypy 1,143 與編譯通過，1280×760／真 OS DPI96 全窗圖及查詢期間 DB SHA 不變已核。未提供精確總筆數；正式來源、真高 DPI、固定 EXE、Owner UAT 與完整產品 Gate 仍待驗。
+
+M85 補 Legacy 回測保存歷史清單的 100 筆游標翻頁，及圖表來源每批 50 筆追加；同時顯示查閱範圍、保留已選圖表 run ID、缺保存時間明示。211 筆隔離合成 SQLite 經正常 Main 三頁與全部圖表來源可達，來源 DB SHA 不變；71 項聚焦、Workbench 85、validator 25／0／4、mypy 1,143 與編譯通過。這是 legacy 來源的讀取／導航修正，未改原保存件與金融公式；正式來源、真高 DPI、固定 EXE、Owner UAT 和完整產品 Gate 仍待驗。
+
+M86 將覆盤歷史六卡在足夠寬度排為單列，窄頁仍維持三欄兩列；正常 Main 1280×760／真 OS DPI96 首屏從約一列增為完整三列表格，原限制提示、資料庫路徑、五列最小表高、翻頁與明選詳情仍可用。M87 修 Legacy 保存圖表來源切換時的舊圖殘留：每次清前一來源，缺資料的圖各自顯不可用，仍有資料的圖顯所選 run；原佔位提示在圖表初始化時立即隱藏。隔離合成 CSV 的 A 完整、B 缺交易、C 缺曲線與交易三態經正常 Main 驗證，資料 SHA 不變。M86／M87 分別 43／32 項聚焦通過，共同 Workbench 85、validator 25／0／4、mypy 1,143 與編譯通過；正式來源、真高 DPI、固定 EXE、Owner UAT 及完整產品 Gate 未接受。
+
+M88 使 Legacy 圖表來源刷新後的選取與圖表身份一致：原選較舊 run 經 repository 確認仍在時加入暫留候選，逐批續載不重複；若不存在或不能核對，清除選取與舊圖。隔離 SQLite 211 筆經正常 Main 證較舊 run 刷新後保留、全頁載入不重複且來源 DB SHA 不變；14 項聚焦、共同 Workbench 85、validator 25／0／4、mypy 1,143 與編譯通過。正式來源、真高 DPI、固定 EXE、Owner UAT 與完整產品 Gate 仍待驗。
+
 **Opus複審後的UI修正已完成具名工程回歸。** Luna分工實作、root審查：紅漲綠跌與狀態色分離、緊湊個股頁首、短五問及四面向摘要、缺月營收柱／財報配對柱、固定籌碼四面向與展開原值、首頁市場家數與逐股候選、選股漏斗／比較未知／深色回測及返回列。281項定向、Workbench85、validator25／0／4、mypy1138及編譯通過；正常Main125%／150%首次及新程序回訪通過，1280首圖頂端166邏輯px、四摘要入口完整可見。完整合成欄位與17路由已補圖，但市場／Paper／持倉仍有舊術語及長表問題，並非全平台美觀接受。正式資料、Daily Operations Recovery、DTO／金融規則及固定EXE保持；最終增量、原失敗、外部／真人未驗界線見[修正QA](../06_qa/BALDR_OPUS_UX_REMEDIATION_QA_20261022.md)。
 
 **Track B 六包再複核（10/23 Taipei）：** Legacy 實際為7筆獨立託管、81筆缺證；Weekly 固定遷移原件驗證後仍5/6 partial；Forward 改為驗證capture context與事件hash後登記每事件政策，outcome角色分開核對。真reader重建9,423筆版本矩陣、8份HTML尺度證據，6443差異與幣別／歷史availability未解。37個既有導航連結採35個精確文件／目標登記，並非整庫豁免；詳見[六包獨立複核](../06_qa/BALDR_TRACK_B_SIX_PACKAGE_REVIEW_20261023.md)。Formal/Paper未選定與自然驗證界線保持。

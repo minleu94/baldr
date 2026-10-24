@@ -55,7 +55,7 @@ class PositionHealthSavedPanel(QGroupBox):
         selection_store: SavedHealthSelectionStore,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__("已保存健康評估（Paper main exact snapshot）", parent)
+        super().__init__("已保存健康評估（Paper 主帳戶快照精確核對）", parent)
         self.reader = reader
         self.scope_factory = scope_factory
         self.selection_store = selection_store
@@ -88,7 +88,7 @@ class PositionHealthSavedPanel(QGroupBox):
         layout.addLayout(controls)
 
         self.saved_status_label = QLabel(
-            "尚未選取已保存評估；不會自動套用 latest。", self
+            "尚未選取已保存評估；不會自動套用最新評估。", self
         )
         self.saved_status_label.setWordWrap(True)
         self.saved_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -103,7 +103,7 @@ class PositionHealthSavedPanel(QGroupBox):
         self.saved_table.clicked.connect(self._save_selected_position)
         layout.addWidget(self.saved_table)
 
-        self.saved_detail_label = QLabel("選取列以保存並回訪該 position identity。", self)
+        self.saved_detail_label = QLabel("選取一列以保存並回訪該部位識別。", self)
         self.saved_detail_label.setWordWrap(True)
         self.saved_detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.saved_detail_label.setAccessibleName("已保存健康評估詳情")
@@ -132,7 +132,7 @@ class PositionHealthSavedPanel(QGroupBox):
             record = self.selection_store.read()
         except Exception as exc:  # noqa: BLE001 - preference failure must stay visible
             self.saved_status_label.setText(
-                f"已保存評估選擇檔無法安全讀取（{type(exc).__name__}）；未改用 latest。"
+                f"已保存評估選擇檔無法安全讀取（{type(exc).__name__}）；未改用最新評估。"
             )
             return
         if record is None:
@@ -175,10 +175,10 @@ class PositionHealthSavedPanel(QGroupBox):
                 worker.cancel(cooperative=True, wait=False)
             except RuntimeError:
                 self.saved_status_label.setText(
-                    "上一個 exact read 正在收尾；新選擇尚未套用。"
+                    "上一個精確讀取正在收尾；新選擇尚未套用。"
                 )
                 return
-            self.saved_status_label.setText("正在取消上一個 exact read；新選擇尚未套用。")
+            self.saved_status_label.setText("正在取消上一個精確讀取；新選擇尚未套用。")
             return
         self._launch(generation, action, args)
 
@@ -191,31 +191,31 @@ class PositionHealthSavedPanel(QGroupBox):
                 self._worker.cancel(cooperative=True, wait=False)
             except RuntimeError:
                 self.saved_status_label.setText(
-                    "上一個 exact read 正在收尾；新選擇尚未套用。"
+                    "上一個精確讀取正在收尾；新選擇尚未套用。"
                 )
                 return
-            self.saved_status_label.setText("正在取消上一個 exact read；新選擇尚未套用。")
+            self.saved_status_label.setText("正在取消上一個精確讀取；新選擇尚未套用。")
             return
         self._worker_generation = generation
         if action == "list_candidates":
             task: Callable[..., Any] = _list_candidates_task
             task_args = (self.reader,)
-            self.saved_status_label.setText("正在有界讀取已保存評估清單……")
+            self.saved_status_label.setText("正在讀取範圍受控的已保存評估清單……")
         elif action == "open_candidate":
             candidate = args[0]
             task = _open_candidate_task
             task_args = (self.scope_factory, candidate)
-            self.saved_status_label.setText("正在 exact 重讀所選 receipt 與 Paper snapshot……")
+            self.saved_status_label.setText("正在精確重讀所選評估收據與 Paper 快照……")
         elif action == "open_saved":
             record = args[0]
             task = _open_saved_task
             task_args = (self.scope_factory, record)
-            self.saved_status_label.setText("正在以保存的 receipt identity 回訪……")
+            self.saved_status_label.setText("正在依保存的評估收據識別資料回訪……")
         elif action == "save_position":
             record = args[0]
             task = _save_selection_task
             task_args = (record,)
-            self.saved_status_label.setText("正在確認明確的 position 選取……")
+            self.saved_status_label.setText("正在確認明確的部位選取……")
         else:
             raise ValueError("saved_health_panel_task_invalid")
 
@@ -249,17 +249,21 @@ class PositionHealthSavedPanel(QGroupBox):
             self.saved_receipt_selector.clear()
             for candidate in self._candidates:
                 label = (
-                    f"{candidate.decision_date or '日期未知'}｜{candidate.status}｜"
-                    f"{candidate.snapshot_id or 'snapshot 未知'}｜{candidate.receipt_id[-12:]}"
+                    f"{candidate.decision_date or '日期未知'}｜"
+                    f"{_format_candidate_status(candidate.status)}｜"
+                    f"{candidate.snapshot_id or '快照未知'}｜{candidate.receipt_id[-12:]}"
                 )
                 self.saved_receipt_selector.addItem(label, candidate)
             self.saved_receipt_selector.blockSignals(False)
             # 不將排序第一份當成使用者選擇；必須有明確互動才可開啟。
             self.saved_receipt_selector.setCurrentIndex(-1)
             self.saved_status_label.setText(
-                f"已載入 {len(self._candidates)} 份有界候選；請明確選擇後開啟。"
+                f"已載入 {len(self._candidates)} 份可選的已保存評估；請選擇一份後開啟。"
                 if self._candidates
-                else "目前沒有可選的已保存評估；未以 latest 替代。"
+                else (
+                    "目前沒有可選的已保存評估。請先完成並保存一份健康評估，"
+                    "再按「載入已保存評估」重新讀取清單；系統不會自動改用最新評估。"
+                )
             )
             return
         if action == "save_position":
@@ -291,8 +295,8 @@ class PositionHealthSavedPanel(QGroupBox):
         self.saved_status_label.setText(_format_opened_status(opened, record))
         self.saved_diagnostics_label.setText(_format_opened_diagnostics(opened, record))
         self.saved_detail_label.setText(
-            "此面板只讀 immutable result 與同 route exact Paper snapshot。"
-            " availability、source observation 與 result observation 時鐘分開呈現。"
+            "此面板只讀不可變更的評估結果與同一路徑的 Paper 快照；"
+            "資料可用時間、來源觀察時間與評估觀察時間分開呈現。"
         )
         if record.selected_position_id:
             self._select_saved_position(record.selected_position_id)
@@ -302,7 +306,7 @@ class PositionHealthSavedPanel(QGroupBox):
             return
         del message  # 取消帶路徑的底層錯誤字串，UI 僅顯示安全分類。
         self.saved_status_label.setText(
-            "已保存評估無法 exact reopen；未知狀態保留，未改用 latest。"
+            "已保存評估無法精確重開；未知狀態保留，未改用最新評估。"
             "來源路徑與檔案內容不會放入此訊息。"
         )
         self._model.set_rows(())
@@ -310,7 +314,7 @@ class PositionHealthSavedPanel(QGroupBox):
 
     def _on_cancelled(self, generation: int) -> None:
         if not self._closing and generation == self._generation:
-            self.saved_status_label.setText("exact read 已取消；未套用未完成結果。")
+            self.saved_status_label.setText("精確讀取已取消；未套用未完成結果。")
 
     def _on_native_finished(self, generation: int, worker: TaskWorker) -> None:
         if self._worker is not worker or self._worker_generation != generation:
@@ -345,7 +349,7 @@ class PositionHealthSavedPanel(QGroupBox):
                 self.saved_detail_label.setText(format_position_health_presentation(item))
                 return
         self.saved_detail_label.setText(
-            "保存的 position identity 不在此次 exact 評估列；未以股票代號替代。"
+            "保存的部位識別不在此次精確評估列中；未以股票代號替代。"
         )
 
     def begin_shutdown(self) -> None:
@@ -461,7 +465,7 @@ def _format_opened_status(opened: Any, record: SavedHealthSelection) -> str:
     }.get(model.status, "評估狀態未知")
     return "\n".join((
         f"已開啟 {record.decision_date} 的已保存健康評估：{status_text}。",
-        f"帳戶：{record.account_kind}／{record.portfolio_id}；namespace：未命名。",
+        f"帳戶：Paper 主帳戶（{record.portfolio_id}）；附加命名空間：無。",
         f"來源觀察：{_clock_or_missing(record.source_observed_at)}；"
         f"來源可用：{_clock_or_missing(record.source_available_at)}。",
         f"健康評估觀察：{_clock_or_missing(model.observed_at)}；"
@@ -469,6 +473,20 @@ def _format_opened_status(opened: Any, record: SavedHealthSelection) -> str:
         f"基準保存可用：{_clock_or_missing(model.baseline_saved_available_at)}；"
         f"評估收據保存可用：{_clock_or_missing(model.saved_receipt_available_at or opened.source.available_at)}。",
     ))
+
+
+def _format_candidate_status(status: str) -> str:
+    """候選列顯示中文狀態，並保留封存中的原始 token。"""
+
+    labels = {
+        "passed": "來源與評估資料已核對",
+        "degraded": "評估資料有來源限制",
+        "blocked": "評估資料受阻，結果保持未知",
+    }
+    label = labels.get(status)
+    if label is None:
+        return f"評估狀態未知（原值：{status}）"
+    return f"{label}（{status}）"
 
 
 def _format_opened_diagnostics(opened: Any, record: SavedHealthSelection) -> str:
@@ -509,7 +527,7 @@ def _format_selection_diagnostics(record: SavedHealthSelection) -> str:
 
 def _format_saved_position_status(record: SavedHealthSelection) -> str:
     return "\n".join((
-        f"已保存所選評估與 position identity，可在下次開啟 Main 時回訪 {record.decision_date} 評估。",
+        f"已保存所選評估與部位識別，可在下次開啟主程式時回訪 {record.decision_date} 評估。",
         f"來源觀察：{_clock_or_missing(record.source_observed_at)}；"
         f"來源可用：{_clock_or_missing(record.source_available_at)}。",
         f"健康評估觀察：{_clock_or_missing(record.health_observed_at)}；"

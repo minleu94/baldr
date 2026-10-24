@@ -290,6 +290,7 @@ class DecisionPresentationDTO:
     sample_size: int | None = None
     horizon: str = ""
     cost_basis: Decimal | None = None
+    cost_basis_bp: int | None = None
     reasons: tuple[str, ...] = ()
     risks: tuple[str, ...] = ()
     invalidation_conditions: tuple[str, ...] = ()
@@ -323,6 +324,11 @@ class DecisionPresentationDTO:
         object.__setattr__(self, "stock_name", str(self.stock_name or "").strip())
         object.__setattr__(self, "ranking_score", _decimal(self.ranking_score))
         object.__setattr__(self, "cost_basis", _decimal(self.cost_basis))
+        if self.cost_basis_bp is not None:
+            if isinstance(self.cost_basis_bp, bool) or not isinstance(self.cost_basis_bp, int):
+                raise ValueError("cost_basis_bp must be an integer bp value")
+            if not 0 <= self.cost_basis_bp <= 10000:
+                raise ValueError("cost_basis_bp must be between 0 and 10000 bp")
         object.__setattr__(self, "action_suitability", _action_text(self.action_suitability))
         object.__setattr__(self, "evidence_status", _evidence_status(self.evidence_status))
         probability, probability_status = _normalize_probability(
@@ -444,6 +450,7 @@ class DecisionPresentationDTO:
             "sample_size": self.sample_size,
             "horizon": self.horizon,
             "cost_basis": None if self.cost_basis is None else str(self.cost_basis),
+            "cost_basis_bp": self.cost_basis_bp,
             "reasons": list(self.reasons),
             "risks": list(self.risks),
             "invalidation_conditions": list(self.invalidation_conditions),
@@ -472,6 +479,13 @@ class DecisionPresentationDTO:
     def from_dict(cls, value: Mapping[str, Any]) -> "DecisionPresentationDTO":
         if not isinstance(value, Mapping):
             raise ValueError("decision presentation payload must be an object")
+        cost_basis_bp = value.get("cost_basis_bp")
+        if cost_basis_bp is not None and (
+            isinstance(cost_basis_bp, bool)
+            or not isinstance(cost_basis_bp, int)
+            or not 0 <= cost_basis_bp <= 10000
+        ):
+            raise ValueError("cost_basis_bp must be an integer bp value between 0 and 10000")
         return cls(
             stock_code=value.get("stock_code", ""),
             stock_name=value.get("stock_name", ""),
@@ -493,6 +507,7 @@ class DecisionPresentationDTO:
             sample_size=_integer(value.get("sample_size"), minimum=0),
             horizon=value.get("horizon", ""),
             cost_basis=_decimal(value.get("cost_basis")),
+            cost_basis_bp=cost_basis_bp,
             reasons=_strings(value.get("reasons")),
             risks=_strings(value.get("risks")),
             invalidation_conditions=_strings(value.get("invalidation_conditions")),
@@ -664,8 +679,7 @@ class DecisionPresentationService:
             ranking_method = str(getattr(advice, "ranking_method", "") or "")
         if sample_size is None:
             sample_size = _integer(getattr(advice, "sample_size", None), minimum=0)
-        if cost_basis is None:
-            cost_basis = getattr(advice, "cost_basis_bp", None)
+        cost_basis_bp = _integer(getattr(advice, "cost_basis_bp", None), minimum=0, maximum=10000)
         if calibrated_probability_bp is None:
             calibrated_probability_bp = _integer(
                 getattr(advice, "calibrated_probability_bp", None), minimum=0, maximum=10000
@@ -704,6 +718,7 @@ class DecisionPresentationService:
             sample_size=_integer(sample_size, minimum=0),
             horizon=advice.holding_horizon,
             cost_basis=_decimal(cost_basis),
+            cost_basis_bp=cost_basis_bp,
             reasons=reasons,
             risks=_strings(advice.risk_reasons),
             invalidation_conditions=_strings(advice.invalidation_conditions),
@@ -739,8 +754,7 @@ class DecisionPresentationService:
             ranking_method = str(getattr(advice, "ranking_method", "") or "")
         if sample_size is None:
             sample_size = _integer(getattr(advice, "sample_size", None), minimum=0)
-        if cost_basis is None:
-            cost_basis = getattr(advice, "cost_basis_bp", None)
+        cost_basis_bp = _integer(getattr(advice, "cost_basis_bp", None), minimum=0, maximum=10000)
         if calibrated_probability_bp is None:
             calibrated_probability_bp = _integer(
                 getattr(advice, "calibrated_probability_bp", None), minimum=0, maximum=10000
@@ -777,6 +791,7 @@ class DecisionPresentationService:
             sample_size=_integer(sample_size, minimum=0),
             horizon=advice.holding_horizon,
             cost_basis=_decimal(cost_basis),
+            cost_basis_bp=cost_basis_bp,
             reasons=_strings(advice.reasons),
             risks=_strings(advice.risk_reasons),
             invalidation_conditions=_strings(advice.invalidation_conditions),
@@ -1214,6 +1229,7 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
 
     score = "未知" if presentation.ranking_score is None else format(presentation.ranking_score, "f")
     cost = "未知" if presentation.cost_basis is None else f"TWD {presentation.cost_basis:,.2f}"
+    cost_assumption = "未知" if presentation.cost_basis_bp is None else f"{presentation.cost_basis_bp} bp"
     sample = "未知" if presentation.sample_size is None else f"{presentation.sample_size:,}"
     ranking_context = f"｜排名百分位：{_percentile_text(presentation.ranking_percentile_bp)}"
     if presentation.ranking_method:
@@ -1229,7 +1245,7 @@ def format_decision_presentation(presentation: DecisionPresentationDTO) -> str:
         f"排名分數：{score}（僅作排序，不等於機率）{ranking_context}",
         probability_line,
         f"證據狀態：{_quality_label(presentation.evidence_status)}｜證據信心：{presentation.evidence_confidence or '未提供'}｜決策信心：{presentation.confidence_tier or '未提供'}｜樣本數：{sample}",
-        f"適用期間：{presentation.horizon or '未提供'}｜成本基準：{cost}",
+        f"適用期間：{presentation.horizon or '未提供'}｜成本基準：{cost}｜成本假設：{cost_assumption}",
         f"目標／目前／差距：{_bp_text(presentation.target_weight_bp)}／{_bp_text(presentation.current_weight_bp)}／{_bp_text(presentation.weight_gap_bp)}",
         "理由：" + ("；".join(presentation.reasons) if presentation.reasons else "未提供"),
         "風險：" + ("；".join(presentation.risks) if presentation.risks else "未提供"),
@@ -1529,7 +1545,8 @@ def format_position_health_presentation(
         f"來源狀態：{position_health_source_status_label(presentation.source_status)}｜"
         f"品質：{position_health_quality_label(presentation.quality)}",
         f"決策日：{presentation.decision_date}｜可取得時間：{presentation.available_at or '未知'}",
-        f"技術 identity：{presentation.position_id or '未知'}｜Entry lineage：{presentation.entry_lineage_status}",
+        f"部位識別（技術）：{presentation.position_id or '未知'}｜"
+        f"建倉來源銜接狀態：{presentation.entry_lineage_status}",
         f"評估原因：{why_text}",
         "為何不直接執行：" + why_not_text,
         f"需要確認：{position_health_review_label(presentation.review_required)}；"
@@ -1541,7 +1558,7 @@ def format_position_health_presentation(
         lines.append("原始評估原因（技術）：" + presentation.why)
     raw_why_not = "；".join(presentation.why_not)
     if raw_why_not and raw_why_not != why_not_text:
-        lines.append("原始 why-not（技術）：" + raw_why_not)
+        lines.append("原始未執行原因（技術）：" + raw_why_not)
     return "\n".join(lines)
 
 

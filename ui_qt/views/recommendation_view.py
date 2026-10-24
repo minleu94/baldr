@@ -285,6 +285,27 @@ _RECOMMENDATION_TABLE_DECIMAL_PLACES = {
     "成交量分": 2,
 }
 
+_RECOMMENDATION_TABLE_PRIMARY_COLUMNS = (
+    "證券代號", "股票代號", "證券名稱", "股票名稱", "收盤價", "漲幅%",
+    "總分", "推薦分數", "指標分", "圖形分", "成交量分", "產業",
+    "Regime匹配", "門檻模式", "百分位", "母體數", "推薦理由", "原因",
+    "eligible_universe_date", "校準資格狀態",
+)
+_RECOMMENDATION_COMPACT_REQUIRED = frozenset(
+    ("證券代號", "證券名稱", "收盤價", "總分", "推薦理由")
+)
+
+
+def _recommendation_compact_columns(columns: list[str]) -> list[str]:
+    """只收合標準推薦結果；未入選與舊格式列保留完整證據欄。"""
+    if (
+        not _RECOMMENDATION_COMPACT_REQUIRED.issubset(columns)
+        or "紀錄類型" in columns
+        or "原篩選狀態" in columns
+    ):
+        return columns
+    return [name for name in columns if name in _RECOMMENDATION_TABLE_PRIMARY_COLUMNS]
+
 
 def _recommendation_results_table_model(dataframe: pd.DataFrame) -> PandasTableModel:
     """為推薦結果表啟用兩位顯示格式，保留 DataFrame 原始數值。"""
@@ -294,6 +315,7 @@ def _recommendation_results_table_model(dataframe: pd.DataFrame) -> PandasTableM
     return PandasTableModel(
         dataframe,
         decimal_places_by_column=_RECOMMENDATION_TABLE_DECIMAL_PLACES,
+        market_direction_columns={"漲幅%"},
     )
 
 
@@ -2644,6 +2666,7 @@ class RecommendationView(QWidget):
         title.setFont(title_font)
         title_layout.addWidget(title)
         title_layout.addStretch()
+
         info_btn = InfoButton("recommendation", self)
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
@@ -2850,6 +2873,38 @@ class RecommendationView(QWidget):
         table = getattr(self, "results_table", None)
         if isinstance(table, QTableView):
             self.results_table_minimum_height = ensure_visible_rows(table, rows=5)
+
+    def _install_recommendation_results_model(self, model: PandasTableModel) -> None:
+        """預設聚焦候選摘要，完整來源／資格欄位仍可由控制項展開。"""
+        self.recommendations_model = model
+        self.results_table.setModel(model)
+        self.result_columns_toggle.blockSignals(True)
+        self.result_columns_toggle.setChecked(False)
+        self.result_columns_toggle.setText("顯示延伸欄位")
+        self.result_columns_toggle.blockSignals(False)
+        columns = model.getDataFrame().columns.tolist()
+        primary = _recommendation_compact_columns(columns)
+        model.setVisibleColumns(primary)
+        self.result_columns_toggle.setVisible(len(primary) < len(columns))
+
+    def _set_result_columns_expanded(self, expanded: bool) -> None:
+        model = getattr(self, "recommendations_model", None)
+        if not isinstance(model, PandasTableModel):
+            return
+        selection = self.results_table.selectionModel()
+        selected_rows = selection.selectedRows() if selection is not None else []
+        selected_row = selected_rows[0].row() if len(selected_rows) == 1 else -1
+        columns = model.getDataFrame().columns.tolist()
+        primary = _recommendation_compact_columns(columns)
+        if expanded:
+            model.setVisibleColumns(columns)
+            self.result_columns_toggle.setText("收合延伸欄位")
+        else:
+            model.setVisibleColumns(primary)
+            self.result_columns_toggle.setText("顯示延伸欄位")
+        self.result_columns_toggle.setVisible(len(primary) < len(columns))
+        if 0 <= selected_row < model.rowCount():
+            self.results_table.selectRow(selected_row)
 
     def _set_result_row_directions(
         self,
@@ -3691,6 +3746,15 @@ class RecommendationView(QWidget):
         title.setFont(title_font)
         title_layout.addWidget(title)
         title_layout.addStretch()
+
+        self.result_columns_toggle = QPushButton("顯示延伸欄位")
+        self.result_columns_toggle.setCheckable(True)
+        self.result_columns_toggle.setToolTip(
+            "展開或收合校準資格、來源版本與其他完整結果欄位；不會變更原始結果。"
+        )
+        self.result_columns_toggle.setVisible(False)
+        self.result_columns_toggle.toggled.connect(self._set_result_columns_expanded)
+        title_layout.addWidget(self.result_columns_toggle)
 
         # 保存結果按鈕
         self.save_result_btn = QPushButton("保存推薦結果")
@@ -5554,7 +5618,7 @@ class RecommendationView(QWidget):
             self.recommendations_model = PandasTableModel(
                 pd.DataFrame(screening_rows)
             )
-            self.results_table.setModel(self.recommendations_model)
+            self._install_recommendation_results_model(self.recommendations_model)
             self._reserve_recommendation_table_rows()
             self._connect_result_table_interactions()
             if previous_stock_code:
@@ -5620,7 +5684,7 @@ class RecommendationView(QWidget):
 
         # 設置模型
         self.recommendations_model = _recommendation_results_table_model(df)
-        self.results_table.setModel(self.recommendations_model)
+        self._install_recommendation_results_model(self.recommendations_model)
         self._reserve_recommendation_table_rows()
 
         if previous_stock_code:
@@ -6960,7 +7024,7 @@ class RecommendationView(QWidget):
             self.recommendations_model = PandasTableModel(
                 pd.DataFrame(screening_only_rows)
             )
-        self.results_table.setModel(self.recommendations_model)
+        self._install_recommendation_results_model(self.recommendations_model)
         self._reserve_recommendation_table_rows()
         self._connect_result_table_interactions()
         self.saved_result_id_input.setText(requested_result_id)
@@ -7043,7 +7107,7 @@ class RecommendationView(QWidget):
         )
         self.result_title_label.setText("舊格式保存推薦（唯讀研究）")
         self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
-        self.results_table.setModel(self.recommendations_model)
+        self._install_recommendation_results_model(self.recommendations_model)
         self._reserve_recommendation_table_rows()
         self._connect_result_table_interactions()
         self.saved_result_id_input.setText(requested_result_id)
@@ -7944,7 +8008,7 @@ class RecommendationView(QWidget):
                 if screening_only
                 else _recommendation_results_table_model(pd.DataFrame(rows))
             )
-            self.results_table.setModel(self.recommendations_model)
+            self._install_recommendation_results_model(self.recommendations_model)
             self._reserve_recommendation_table_rows()
             self._connect_result_table_interactions()
             if selected_code:

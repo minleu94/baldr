@@ -49,6 +49,7 @@ _MAX_METADATA_DISPLAY_BYTES = 64 * 1024
 _MAX_PREVIEW_ROWS = 20
 _MAX_PREVIEW_COLUMNS = 32
 _MAX_TEXT = 512
+_DECLARED_METRIC_DISPLAY_PLACES = {"ratio": 6, "sharpe": 2, "multiple": 4}
 _METRICS_REASON = "historical_metrics_schema_unversioned"
 _DECLARED_METRICS_REASON = "saved_original_analytics_not_performance_qualification"
 _METADATA_KEYS = frozenset(
@@ -111,6 +112,29 @@ def _bounded_display_line(label: str, value: object) -> str:
     """連同固定標籤一起計算上限，截斷時明示省略號。"""
     value_text = "未提供" if value is None else str(value)
     return _bounded_display_text(f"{label}{value_text}")
+
+
+def _format_declared_metric(value: Decimal, unit: str) -> tuple[str, bool]:
+    """只控制保存 analytics 的畫面精度，保留原始 Decimal 供 tooltip 查閱。"""
+    places = _DECLARED_METRIC_DISPLAY_PLACES[unit]
+    if value == 0:
+        return str(value), False
+
+    digits = value.as_tuple()
+    trailing_zero_count = 0
+    for digit in reversed(digits.digits):
+        if digit != 0:
+            break
+        trailing_zero_count += 1
+    fractional_places = max(0, -digits.exponent - trailing_zero_count)
+    if fractional_places <= places:
+        return str(value), False
+
+    if abs(value) < Decimal(1).scaleb(-places):
+        approximation = format(value, f".{places}E")
+    else:
+        approximation = format(value, f".{places}f")
+    return f"約{approximation}", True
 
 
 def _is_sha256(value: object) -> bool:
@@ -681,6 +705,7 @@ class HistoricalPerformanceWidget(QWidget):
     def _clear_card(self) -> None:
         self._identity_label.clear()
         self._metrics_label.clear()
+        self._metrics_label.setToolTip("")
         self._details_label.clear()
         self._details_button.setChecked(False)
         self._details_button.setVisible(False)
@@ -778,6 +803,7 @@ class HistoricalPerformanceWidget(QWidget):
                 ("expectancy", "期望值", "ratio"),
                 ("profit_factor", "獲利因子", "multiple"),
             )
+            original_metric_lines: list[str] = []
             for field_name, label, unit in declared_metrics:
                 value = getattr(summary, field_name)
                 if completed_pairs == 0 and field_name in {
@@ -787,11 +813,20 @@ class HistoricalPerformanceWidget(QWidget):
                 elif value is None:
                     rendered_value = "未提供"
                 elif unit == "ratio":
-                    rendered_value = f"{value} ratio（轉為 % 數值需乘 100）"
+                    display_value, approximated = _format_declared_metric(value, unit)
+                    rendered_value = f"{display_value} ratio（轉為 % 數值需乘 100）"
+                    if approximated:
+                        original_metric_lines.append(f"{label}：{value}")
                 elif unit == "sharpe":
-                    rendered_value = f"{value}（Sharpe ratio；非百分比）"
+                    display_value, approximated = _format_declared_metric(value, unit)
+                    rendered_value = f"{display_value}（Sharpe ratio；非百分比）"
+                    if approximated:
+                        original_metric_lines.append(f"{label}：{value}")
                 elif unit == "multiple":
-                    rendered_value = f"{value} 倍"
+                    display_value, approximated = _format_declared_metric(value, unit)
+                    rendered_value = f"{display_value} 倍"
+                    if approximated:
+                        original_metric_lines.append(f"{label}：{value}")
                 elif unit == "stocks":
                     rendered_value = f"{value} 檔"
                 elif unit == "signals":
@@ -801,6 +836,10 @@ class HistoricalPerformanceWidget(QWidget):
                 else:
                     rendered_value = f"{value}"
                 metrics_lines.append(_bounded_display_line(f"{label}：", rendered_value))
+            self._metrics_label.setToolTip(
+                "完整保存原值（Decimal）：\n" + "\n".join(original_metric_lines)
+                if original_metric_lines else ""
+            )
         details_lines = [
             _bounded_display_line("Entry 建立時間：", entry.created_at),
             _bounded_display_line("Metadata SHA-256：", provenance.metadata_sha256),

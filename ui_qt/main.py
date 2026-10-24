@@ -128,6 +128,8 @@ import decision_module.strategies
 from ui_qt.views.strong_stocks_view import StrongStocksView
 from ui_qt.views.weak_stocks_view import WeakStocksView
 from ui_qt.views.market_regime_view import MarketRegimeView
+from ui_qt.views.taiex_history_view import TaiexHistoryView
+from app_module.taiex_history_presentation import TaiexHistoryReader
 from ui_qt.views.industry_theme_map_view import IndustryThemeMapView
 from app_module.theme_research_notes import ThemeResearchNoteService
 from app_module.pinned_stock_research_notes import PinnedStockResearchNoteService
@@ -2105,6 +2107,13 @@ class MainWindow(QMainWindow):
             market_tabs.addTab(market_regime, "大盤指數")
             print("[MainWindow] 大盤指數視圖創建成功")
 
+            # 指數原始歷史價格獨立於 Regime 判斷，並由有界唯讀 reader 提供。
+            self.taiex_history_view = TaiexHistoryView(
+                TaiexHistoryReader(getattr(self.config, "db_file", None)).read,
+                parent=self,
+            )
+            market_tabs.addTab(self.taiex_history_view, "加權指數走勢")
+
             self.industry_theme_map_view = IndustryThemeMapView(parent=self)
             self.industry_theme_map_view.stockSelected.connect(self._open_theme_research_stock)
             self.theme_note_service = ThemeResearchNoteService(self.journal_service)
@@ -2199,6 +2208,8 @@ class MainWindow(QMainWindow):
                 current_widget = market_tabs.widget(index)
                 if current_widget is market_regime:
                     market_regime.load_data_if_needed()
+                elif current_widget is self.taiex_history_view:
+                    self.taiex_history_view.load_data_if_needed()
                 elif current_widget is strong_stocks:
                     strong_stocks.load_data_if_needed()
                 elif current_widget is weak_stocks:
@@ -2576,6 +2587,7 @@ class MainWindow(QMainWindow):
                 "workbench": workbench_view,
                 "market_explore": MarketAnalysisWorkspace(market_tabs, {
                     "summary": decision_desk_view, "index": market_regime,
+                    "taiex_history": self.taiex_history_view,
                     "strong_stocks": strong_stocks, "weak_stocks": weak_stocks,
                     "strong_industries": strong_industries, "weak_industries": weak_industries,
                     "flow": smart_money_flow, "cohort": self.daily_market_cohort_view,

@@ -22,7 +22,8 @@ def app() -> QApplication:
 
 
 def _make_workspace(
-    *, include_cohort: bool = True, include_unmapped_theme: bool = False
+    *, include_cohort: bool = True, include_unmapped_theme: bool = False,
+    include_taiex_history: bool = False,
 ) -> tuple[MarketAnalysisWorkspace, QTabWidget, dict[str, _MarketPage]]:
     tabs = QTabWidget()
     keys = [
@@ -36,6 +37,8 @@ def _make_workspace(
     ]
     if include_cohort:
         keys.append("cohort")
+    if include_taiex_history:
+        keys.append("taiex_history")
     pages = {key: _MarketPage(key) for key in keys}
     for key, page in pages.items():
         tabs.addTab(page, key)
@@ -168,3 +171,19 @@ def test_cohort_is_optional_and_unknown_mapping_keys_are_rejected(app: QApplicat
             tabs,
             {**widgets, "legacy_extra": _MarketPage("extra")},
         )
+
+
+def test_taiex_history_is_an_optional_overview_leaf(app: QApplication) -> None:
+    workspace, tabs, pages = _make_workspace(include_taiex_history=True)
+    assert workspace.overview_selector.itemText(
+        workspace.overview_selector.findData("taiex_history")
+    ) == "加權指數走勢"
+    original_count = tabs.count()
+
+    assert workspace.select_view("taiex_history")
+    assert tabs.currentWidget() is pages["taiex_history"]
+    assert workspace.primary_view_selector.currentData() == "overview"
+    assert workspace.overview_selector.currentData() == "taiex_history"
+    assert workspace.select_view("index")
+    assert tabs.currentWidget() is pages["index"]
+    assert tabs.count() == original_count

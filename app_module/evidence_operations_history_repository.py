@@ -139,6 +139,7 @@ class EvidenceOperationsHistoryRepository:
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int | None = None,
+        cursor: tuple[str, str, str] | None = None,
     ) -> list[EvidenceOperationsHistoryRecord]:
         where: list[str] = []
         params: list[Any] = []
@@ -148,6 +149,13 @@ class EvidenceOperationsHistoryRepository:
         if end_date:
             where.append("period_start <= ?")
             params.append(end_date)
+        if cursor is not None:
+            period_end, period_start, review_id = cursor
+            where.append(
+                "(period_end < ? OR (period_end = ? AND period_start < ?) "
+                "OR (period_end = ? AND period_start = ? AND review_id > ?))"
+            )
+            params.extend((period_end, period_end, period_start, period_end, period_start, review_id))
         sql = "SELECT * FROM evidence_operations_weekly_reviews"
         if where:
             sql += " WHERE " + " AND ".join(where)

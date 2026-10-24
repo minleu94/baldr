@@ -55,3 +55,5 @@ class DecisionQualityDashboardResult:
     diagnostics: tuple[str, ...] = ()
     quality_counts: dict[str, int] = field(default_factory=dict)
     warning_counts: dict[str, int] = field(default_factory=dict)
+    review_count: int = 0
+    source_available: bool = True

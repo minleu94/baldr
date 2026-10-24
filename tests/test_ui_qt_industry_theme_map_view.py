@@ -2,17 +2,21 @@
 
 import os
 import sys
+import threading
 import time
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QGroupBox, QPushButton
 
 from app_module.theme_daily_service import (
     ThemeDailyReport,
@@ -20,6 +24,7 @@ from app_module.theme_daily_service import (
     ThemeMetricCoverage,
 )
 from app_module.theme_research_snapshot import ThemeResearchSnapshot
+from decision_module.industry_theme_map import ThemeMappingRow
 from ui_qt.views import industry_theme_map_view as view_module
 from ui_qt.views.industry_theme_map_view import IndustryThemeMapView
 from ui_qt.widgets.observation_bar_delegate import OBSERVATION_DIRECTIONAL_ROLE
@@ -43,6 +48,8 @@ def test_selected_theme_details_share_width_and_explicit_member_action():
     view.theme_filter.setCurrentIndex(view.theme_filter.findText("AI"))
     application.processEvents()
     assert view.theme_detail_splitter.orientation() == Qt.Orientation.Horizontal
+    assert view._metric_card_columns == 2
+    assert [row.count() for row in view.metrics_card_rows] == [2, 2, 2, 2, 1]
     assert "科技鏈／AI" in view.selected_theme_summary.text()
     assert "1 / 2 位成員" in view.selected_theme_summary.text()
     assert "2026-10-16" in view.selected_theme_summary.text()
@@ -61,12 +68,197 @@ def test_selected_theme_details_share_width_and_explicit_member_action():
     assert not view.open_member_button.isEnabled()
     view._busy = False
     view._update_controls()
+    view.resize(1920, 1080)
+    application.processEvents()
+    assert view._metric_card_columns == 3
+    assert [row.count() for row in view.metrics_card_rows] == [3, 3, 3, 0, 0]
     view.resize(800, 760)
     application.processEvents()
     assert view.theme_detail_splitter.orientation() == Qt.Orientation.Vertical
     view.clear_research()
     assert not view.open_member_button.isEnabled()
     assert "選擇題材" in view.selected_theme_summary.text()
+    view.shutdown()
+    view.close()
+
+
+def test_classification_explorer_is_collapsed_and_focuses_exact_member_row():
+    application = app()
+    view = IndustryThemeMapView()
+    view.show()
+    view.resize(1280, 760)
+    snapshot = _classification_snapshot()
+    view.set_snapshot(snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    application.processEvents()
+
+    assert not view.classification_explorer_group.isVisible()
+    assert not view.classification_explorer_toggle.isChecked()
+    received = []
+    view.stockSelected.connect(received.append)
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+
+    assert view.classification_explorer_group.isVisible()
+    assert "產業鏈：科技鏈" in view.classification_hierarchy_label.text()
+    assert "題材：AI" in view.classification_hierarchy_label.text()
+    assert any("上游" in title for title in [
+        group.title()
+        for group in view.classification_explorer_group.findChildren(QGroupBox)
+    ])
+    assert any("下游" in title for title in [
+        group.title()
+        for group in view.classification_explorer_group.findChildren(QGroupBox)
+    ])
+    buttons = view.classification_explorer_group.findChildren(
+        QPushButton, "industryThemeClassificationMemberButton"
+    )
+    assert len(buttons) == 2
+    member_button = next(
+        button for button in buttons
+        if button.property("classificationStockId") == "2317"
+    )
+    assert "分配方法：未提供" in member_button.toolTip()
+    assert "證據：未提供" in member_button.toolTip()
+    assert "可得日期：2026-10-15" in member_button.toolTip()
+    assert snapshot.identity_sha256 in member_button.toolTip()
+    sourced_member_button = next(
+        button for button in buttons
+        if button.property("classificationStockId") == "2330"
+    )
+    assert "分配方法：公司主業" in sourced_member_button.toolTip()
+    assert "來源：本機映射原列" in sourced_member_button.toolTip()
+    assert "證據：保存分類證據" in sourced_member_button.toolTip()
+
+    member_button.click()
+    assert view.member_table.currentRow() == 1
+    assert view.member_table.item(1, 0).text() == "2317"
+    assert received == []
+    assert view.snapshot is snapshot
+    view.shutdown()
+    view.close()
+
+
+def test_classification_explorer_caps_display_and_clears_on_selection_or_snapshot_change():
+    application = app()
+    view = IndustryThemeMapView()
+    view.show()
+    snapshot = _classification_snapshot(member_count=35)
+    view.set_snapshot(snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+
+    buttons = view.classification_explorer_group.findChildren(
+        QPushButton, "industryThemeClassificationMemberButton"
+    )
+    assert len(buttons) == 30
+    assert "顯示 30 / 35 位" in view.classification_members_status.text()
+    assert "其餘 5 位請在下方既有題材成員表查閱" in view.classification_members_status.text()
+    assert view.member_table.rowCount() == 35
+    assert view.member_page_status_label.text() == "顯示 1–35 / 35 位成員；第 1 / 1 頁"
+
+    _select_theme(view, "金融鏈", "保險")
+    application.processEvents()
+    assert not view.classification_explorer_group.isVisible()
+    assert not view.classification_explorer_toggle.isChecked()
+
+    view.set_snapshot(_classification_snapshot(identity="b" * 64))
+    application.processEvents()
+    assert not view.classification_explorer_group.isVisible()
+    assert not view.classification_explorer_toggle.isChecked()
+    view.shutdown()
+    view.close()
+
+
+def test_member_table_pages_are_bounded_and_clear_selection_and_tooltip():
+    application = app()
+    view = IndustryThemeMapView()
+    view.show()
+    view.set_snapshot(_classification_snapshot(member_count=123))
+    _select_theme(view, "科技鏈", "AI")
+    application.processEvents()
+
+    assert view.member_table.rowCount() == 50
+    assert view.member_table.item(0, 0).text() == "1000"
+    assert view.member_page_status_label.text() == "顯示 1–50 / 123 位成員；第 1 / 3 頁"
+    assert not view.member_page_previous_button.isEnabled()
+    assert view.member_page_next_button.isEnabled()
+    view._change_member_page(-1)
+    assert view._member_page_index == 0
+
+    view.member_table.setCurrentCell(0, 0)
+    assert view.open_member_button.isEnabled()
+    view.member_table.setToolTip("舊頁提示")
+    view.member_page_next_button.click()
+    application.processEvents()
+
+    assert view._member_page_index == 1
+    assert view.member_table.rowCount() == 50
+    assert view.member_table.item(0, 0).text() == "1050"
+    assert view.member_page_status_label.text() == "顯示 51–100 / 123 位成員；第 2 / 3 頁"
+    assert view.member_table.currentRow() == -1
+    assert not view.open_member_button.isEnabled()
+    assert view.member_selection_label.text() == "先選取一檔成員股票。"
+    assert view.member_table.toolTip() == ""
+
+    view.member_page_next_button.click()
+    application.processEvents()
+    assert view._member_page_index == 2
+    assert view.member_table.rowCount() == 23
+    assert view.member_table.item(0, 0).text() == "1100"
+    assert view.member_table.item(22, 0).text() == "1122"
+    assert view.member_page_status_label.text() == "顯示 101–123 / 123 位成員；第 3 / 3 頁"
+    assert not view.member_page_next_button.isEnabled()
+    view.member_page_next_button.click()
+    assert view._member_page_index == 2
+    view.member_page_previous_button.click()
+    assert view._member_page_index == 1
+    assert view.member_table.item(0, 0).text() == "1050"
+
+    view.set_snapshot(_classification_snapshot(identity="f" * 64, member_count=123))
+    _select_theme(view, "科技鏈", "AI")
+    assert view._member_page_index == 0
+    assert view.member_table.rowCount() == 50
+    assert view.member_table.item(0, 0).text() == "1000"
+    assert view.member_table.currentRow() == -1
+    assert not view.open_member_button.isEnabled()
+    view.shutdown()
+    view.close()
+
+
+def test_classification_member_button_pages_to_exact_same_snapshot_member():
+    application = app()
+    view = IndustryThemeMapView()
+    view.show()
+    base = _classification_snapshot(member_count=123)
+    daily_row = replace(base.report.rows[0], stock_ids=tuple(reversed(base.report.rows[0].stock_ids)))
+    report = replace(base.report, rows=(daily_row, *base.report.rows[1:]))
+    snapshot = ThemeResearchSnapshot(base.identity_sha256, report, base.mapping)
+    view.set_snapshot(snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+
+    button = next(
+        candidate for candidate in view.classification_explorer_group.findChildren(
+            QPushButton, "industryThemeClassificationMemberButton"
+        )
+        if candidate.property("classificationStockId") == "1000"
+    )
+    button.click()
+    application.processEvents()
+
+    assert view._member_page_index == 2
+    assert view.member_page_status_label.text() == "顯示 101–123 / 123 位成員；第 3 / 3 頁"
+    assert view.member_table.currentRow() == 22
+    assert view.member_table.item(22, 0).text() == "1000"
+    navigation = view.capture_selected_member_navigation("1000")
+    assert navigation is not None
+    assert navigation.snapshot_identity == snapshot.identity_sha256
+    assert navigation.theme_key == ("科技鏈", "AI")
+    assert navigation.origin_stock_code == "1000"
+    assert navigation.origin_row_index == 122
     view.shutdown()
     view.close()
 
@@ -172,6 +364,73 @@ def _snapshot(identity: str = "a" * 64) -> ThemeResearchSnapshot:
         for row in rows
         for stock_id in row.stock_ids
     )
+    return ThemeResearchSnapshot(identity, report, mapping)
+
+
+def _classification_snapshot(
+    identity: str = "e" * 64,
+    *,
+    member_count: int = 2,
+) -> ThemeResearchSnapshot:
+    """使用實際 ThemeMappingRow 驗證展開時的來源分類契約。"""
+    base = _snapshot(identity)
+    stock_ids = (
+        ("2330", "2317") if member_count == 2
+        else tuple(f"{index:04d}" for index in range(1000, 1000 + member_count))
+    )
+    coverage = ThemeMetricCoverage(member_count, member_count, member_count, 0, 0, 0)
+    mapping = tuple(
+        ThemeMappingRow(
+            snapshot_date="2026-10-15",
+            available_date="2026-10-15",
+            stock_id=stock_id,
+            stock_name=(
+                {"2330": "台積電", "2317": "鴻海"}.get(stock_id, f"測試公司{stock_id}")
+            ),
+            market_type="上市",
+            l1_industry_category="電子業",
+            chain_name="科技鏈",
+            chain_tier="上游" if member_index % 2 == 0 else "下游",
+            theme_name="AI",
+            is_primary=member_index == 0,
+            assignment_method="" if stock_id == "2317" else "公司主業",
+            source_name="" if stock_id == "2317" else "本機映射原列",
+            source_tier="" if stock_id == "2317" else "來源一級",
+            pit_mode="" if stock_id == "2317" else "as_of_snapshot",
+            evidence_note="" if stock_id == "2317" else "保存分類證據",
+        )
+        for member_index, stock_id in enumerate(stock_ids)
+    ) + (
+        ThemeMappingRow(
+            snapshot_date="2026-10-15",
+            available_date="2026-10-15",
+            stock_id="2881",
+            stock_name="富邦金",
+            market_type="上市",
+            l1_industry_category="金融保險業",
+            chain_name="金融鏈",
+            chain_tier="整合",
+            theme_name="保險",
+            is_primary=True,
+            assignment_method="公司主業",
+            source_name="本機映射原列",
+            source_tier="來源一級",
+            pit_mode="as_of_snapshot",
+            evidence_note="保存分類證據",
+        ),
+    )
+    selected_row = _daily_row(
+        "科技鏈",
+        "AI",
+        stock_ids,
+        returns=Decimal("1.2300"),
+        turnover=Decimal("125.00"),
+        volume=None,
+        flow_shares=8,
+        flow_amount=None,
+        coverage=coverage,
+    )
+    report = replace(base.report, rows=(selected_row, base.report.rows[1]))
     return ThemeResearchSnapshot(identity, report, mapping)
 
 
@@ -388,6 +647,17 @@ def test_snapshot_render_keeps_decimal_and_separate_missing_coverage():
     assert view.metrics_table.item(advancing_row, 1).toolTip() == "0.5"
     assert view.metrics_table.item(institutional_ratio_row, 1).text() == "100.00%"
     assert view.metrics_table.item(institutional_ratio_row, 1).toolTip() == "1"
+    assert view.metrics_table.rowCount() == 9
+    assert view.metrics_table.columnCount() == 3
+    assert not view.metrics_cards_group.isHidden()
+    assert len(view.metrics_card_labels) == 9
+    for row_index, (label, card_value, card_coverage) in enumerate(view.metrics_card_labels):
+        assert label.text() == view.metrics_table.item(row_index, 0).text()
+        assert card_value.text() == view.metrics_table.item(row_index, 1).text()
+        assert card_coverage.text() == f"覆蓋：{view.metrics_table.item(row_index, 2).text()}"
+        assert card_value.toolTip() == view.metrics_table.item(row_index, 1).toolTip()
+    assert view.metrics_card_labels[2][1].text() == "未提供"
+    assert view.metrics_card_labels[2][2].text() == "覆蓋：0 / 2 位成員"
     assert [
         view.member_table.item(row, 0).text()
         for row in range(view.member_table.rowCount())
@@ -419,11 +689,19 @@ def test_chain_theme_filters_and_member_double_click_emit_stock_id():
     selected_stock_ids = []
     view.stockSelected.connect(selected_stock_ids.append)
     item = view.member_table.item(0, 1)
+    # 指標卡展開後，分割區可能高於外層 viewport；把實際目標列捲到可視範圍。
     view.scroll_area.ensureWidgetVisible(view.member_table, 0, 0)
     view.member_table.scrollToItem(item)
     application.processEvents()
     item_position = view.member_table.visualItemRect(item).center()
     member_viewport = view.member_table.viewport()
+    outer_position = view.scroll_area.viewport().mapFromGlobal(
+        member_viewport.mapToGlobal(item_position)
+    )
+    outer_scroll = view.scroll_area.verticalScrollBar()
+    outer_scroll.setValue(outer_scroll.value() + outer_position.y() - 60)
+    application.processEvents()
+    item_position = view.member_table.visualItemRect(item).center()
     assert member_viewport.rect().contains(item_position)
     assert member_viewport.visibleRegion().contains(item_position)
     outer_position = view.scroll_area.viewport().mapFromGlobal(
@@ -485,6 +763,156 @@ def test_failed_reload_clears_old_snapshot_and_disables_member_actions(monkeypat
     assert "讀取失敗" in view.status_label.text()
     assert "2026-10-16" not in view.overview_label.text()
     assert events == [initial_snapshot, None, None]
+
+
+def test_two_version_comparison_reads_explicit_files_and_shows_zero_missing_and_partial(monkeypatch):
+    application = app()
+    view = IndustryThemeMapView()
+    view.set_snapshot(_snapshot("f" * 64))
+    assert view.comparison_group.isHidden()
+    view.comparison_toggle.click()
+    assert not view.comparison_group.isHidden()
+    first = _snapshot_with_zero_and_negative_values()
+    missing = _snapshot("d" * 64)
+    partial_base = _snapshot()
+    partial = ThemeResearchSnapshot(
+        "e" * 64,
+        replace(partial_base.report, data_date=date(2026, 10, 20)),
+        partial_base.mapping,
+    )
+    paths = (Path("first.json"), Path("second.json"))
+    selected = iter(((str(paths[0]), ""), (str(paths[1]), "")))
+    monkeypatch.setattr(
+        view_module.QFileDialog, "getOpenFileName", lambda *_args, **_kwargs: next(selected),
+    )
+    read_paths = []
+    snapshots = {paths[0]: first, paths[1]: missing}
+
+    def read_snapshot(path: Path):
+        read_paths.append(path)
+        return snapshots[path]
+
+    monkeypatch.setattr(view_module, "read_theme_research_snapshot", read_snapshot)
+    view._choose_comparison_snapshots()
+    _wait_until(application, lambda: view._comparison_snapshots is not None, timeout_ms=3000)
+    assert read_paths == list(paths)
+    assert view.comparison_chain_filter.isEnabled()
+    view.comparison_chain_filter.setCurrentIndex(
+        view.comparison_chain_filter.findData("科技鏈")
+    )
+    view.comparison_theme_filter.setCurrentIndex(
+        view.comparison_theme_filter.findData("零值題材")
+    )
+    assert "平均日漲跌幅（%）：0.00" in view.comparison_version_labels[0].text()
+    assert "資料日：2026-10-16" in view.comparison_version_labels[0].text()
+    assert "映射版本／可得日：2026-10-15／2026-10-15" in view.comparison_version_labels[0].text()
+    assert "manifest SHA-256：" + "c" * 64 in view.comparison_version_labels[0].text()
+    assert "題材列來源 ID：local-test-source" in view.comparison_version_labels[0].text()
+    assert "平均日漲跌幅（%）：未知" in view.comparison_version_labels[1].text()
+    assert "報表列：無（覆蓋未知）" in view.comparison_version_labels[1].text()
+    assert "報酬覆蓋：未知" in view.comparison_version_labels[1].text()
+
+    cancelled = iter(((str(paths[0]), ""), ("", "")))
+    monkeypatch.setattr(
+        view_module.QFileDialog, "getOpenFileName", lambda *_args, **_kwargs: next(cancelled),
+    )
+    view._choose_comparison_snapshots()
+    assert view._comparison_snapshots is None
+    assert view._comparison_paths is None
+    assert "已取消雙版本明選；比較已清除" in view.comparison_status.text()
+    assert view.comparison_version_labels[0].text() == "尚未讀取版本。"
+
+    snapshots[paths[0]] = partial
+    snapshots[paths[1]] = _snapshot("b" * 64)
+    view._comparison_paths = paths
+    view._load_comparison_snapshots()
+    _wait_until(application, lambda: view._comparison_snapshots is not None, timeout_ms=3000)
+    view.comparison_chain_filter.setCurrentIndex(
+        view.comparison_chain_filter.findData("科技鏈")
+    )
+    view.comparison_theme_filter.setCurrentIndex(
+        view.comparison_theme_filter.findData("AI")
+    )
+    for label in view.comparison_version_labels:
+        assert "平均日漲跌幅（%）：未知" in label.text()
+        assert "報酬覆蓋：1 / 2 位成員" in label.text()
+    view.shutdown()
+    view.close()
+
+
+def test_two_version_comparison_failure_and_stale_callback_clear_on_main_snapshot_change(monkeypatch):
+    application = app()
+    view = IndustryThemeMapView()
+    view.set_snapshot(_snapshot("f" * 64))
+    paths = (Path("first.json"), Path("second.json"))
+    view._comparison_paths = paths
+
+    def fail_read(_first: Path, _second: Path):
+        raise ValueError("第二份版本無法讀取")
+
+    monkeypatch.setattr(view_module, "_read_theme_comparison_pair", fail_read)
+    view._load_comparison_snapshots()
+    _wait_until(application, lambda: view._comparison_worker is None, timeout_ms=3000)
+    assert view._comparison_snapshots is None
+    assert view.comparison_version_labels[0].text() == "尚未讀取版本。"
+    assert "讀取失敗；比較已清除" in view.comparison_status.text()
+    assert not view.comparison_chain_filter.isEnabled()
+
+    started = threading.Event()
+    release = threading.Event()
+    pair = (_snapshot("a" * 64), _snapshot("b" * 64))
+
+    def slow_read(_first: Path, _second: Path):
+        started.set()
+        release.wait(2)
+        return pair
+
+    monkeypatch.setattr(view_module, "_read_theme_comparison_pair", slow_read)
+    view._comparison_paths = paths
+    view._load_comparison_snapshots()
+    assert started.wait(1)
+    view.set_snapshot(_snapshot("e" * 64))
+    assert view._comparison_snapshots is None
+    assert view.comparison_version_labels[0].text() == "尚未讀取版本。"
+    release.set()
+    _wait_until(application, lambda: view._comparison_worker is None, timeout_ms=3000)
+    assert view._comparison_snapshots is None
+    assert "尚未明選雙版本。" == view.comparison_status.text()
+    assert view.comparison_choose_button.isEnabled()
+    view.shutdown()
+    view.close()
+
+
+def test_two_version_long_decimal_is_compact_but_exact_value_remains_available():
+    view = IndustryThemeMapView()
+    view.set_snapshot(_snapshot("f" * 64))
+    first = _snapshot_with_zero_and_negative_values()
+    exact = Decimal("-0.99009900990099009900990099009900990099")
+    rows = tuple(
+        replace(row, mean_return_pct=exact) if row.theme_name == "負值題材" else row
+        for row in first.report.rows
+    )
+    first = replace(first, report=replace(first.report, rows=rows))
+    view._comparison_snapshots = (first, _snapshot("d" * 64))
+    view.comparison_chain_filter.addItem("能源鏈", "能源鏈")
+    view.comparison_chain_filter.setCurrentIndex(view.comparison_chain_filter.findData("能源鏈"))
+    view._populate_comparison_theme_filter()
+    assert view.comparison_theme_filter.findData("負值題材") >= 0
+    view.comparison_theme_filter.setCurrentIndex(
+        view.comparison_theme_filter.findData("負值題材")
+    )
+    displayed = view.comparison_version_labels[0]
+    assert "平均日漲跌幅（%）：約-0.9901（完整原值見提示）" in displayed.text()
+    assert str(exact) in displayed.toolTip()
+    assert "平均日漲跌幅（%）：未知" in view.comparison_version_labels[1].text()
+    assert view._comparison_display_value(Decimal("0.00000000000001234567890123456789")) == (
+        "約1.2346E-14（完整原值見提示）"
+    )
+    assert view._comparison_display_value(Decimal("0.00000000000000")) == (
+        "0（完整原值見提示）"
+    )
+    view.shutdown()
+    view.close()
 
 
 def test_new_snapshot_clears_old_filter_while_hiding_keeps_current_selection():
@@ -558,6 +986,9 @@ def test_partial_coverage_is_excluded_and_missing_rank_explained():
     assert "尚未載入" in view.observation_missing_label.text()
     view.set_snapshot(_snapshot())
 
+    assert "完整覆蓋：0 / 2 個報表題材列" in view.return_tiles_summary.text()
+    assert view._return_tile_buttons == {}
+    assert not view.return_tiles_toggle.isEnabled()
     assert view.leader_card_values["return"].text() == "資料不足"
     assert "沒有成員覆蓋完整" in view.leader_card_coverages["return"].text()
     assert view.leader_card_values["institutional"].text() == "資料不足"
@@ -608,6 +1039,194 @@ def test_zero_and_negative_observations_remain_visible_in_presenter_order():
     assert view.ranking_table.item(0, 3).data(OBSERVATION_DIRECTIONAL_ROLE) is True
     assert view.ranking_table.item(0, 3).text() == "0 股"
     assert view.ranking_table.item(1, 3).text() == "-4 股"
+
+
+def test_return_tiles_show_eligible_source_context_and_drill_down_by_mouse_and_keyboard():
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1200, 850)
+    snapshot = _snapshot_with_zero_and_negative_values()
+    view.set_snapshot(snapshot)
+    view.show()
+    application.processEvents()
+
+    assert view.return_tiles_summary.text() == (
+        "資料日：2026-10-16　｜　完整覆蓋：2 / 2 個報表題材列"
+    )
+    assert set(view._return_tile_buttons) == {
+        ("科技鏈", "零值題材"), ("能源鏈", "負值題材"),
+    }
+    zero = view._return_tile_buttons[("科技鏈", "零值題材")]
+    negative = view._return_tile_buttons[("能源鏈", "負值題材")]
+    assert zero.isCheckable() and zero.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    assert "2026-10-16" in negative.toolTip()
+    assert "c" * 64 in negative.toolTip()
+    assert "完整覆蓋 1 / 1 位成員" in negative.accessibleName()
+    assert "紅色為正、綠色為負、灰色為零" in view.return_tiles_note.text()
+    assert "background-color: #555B63" in zero.styleSheet()
+    assert "background-color: #25634A" in negative.styleSheet()
+
+    view.return_tiles_toggle.click()
+    application.processEvents()
+    assert view.return_tiles_group.isVisible()
+
+    zero.setProperty("themeSnapshotIdentity", "stale-identity")
+    QTest.mouseClick(zero, Qt.MouseButton.LeftButton)
+    assert view.chain_filter.currentIndex() == 0
+    assert view.theme_filter.currentIndex() == 0
+
+    zero.setProperty("themeSnapshotIdentity", snapshot.identity_sha256)
+    QTest.mouseClick(zero, Qt.MouseButton.LeftButton)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "科技鏈"
+    assert view.theme_filter.currentText() == "零值題材"
+    assert view.metrics_table.item(_metric_row(view, "平均日漲跌幅"), 1).text() == "0.00 %"
+    assert view.member_table.rowCount() == 1
+
+    negative.setFocus()
+    QTest.keyClick(negative, Qt.Key.Key_Space)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "能源鏈"
+    assert view.theme_filter.currentText() == "負值題材"
+    assert view.metrics_table.item(_metric_row(view, "平均日漲跌幅"), 1).text() == "-1.50 %"
+    assert view.member_table.item(0, 0).text() == "0002"
+
+    mapping_without_negative = tuple(
+        mapping_row for mapping_row in snapshot.mapping
+        if mapping_row.theme_name != "負值題材"
+    )
+    unmapped_snapshot = ThemeResearchSnapshot(
+        "f" * 64, snapshot.report, mapping_without_negative,
+    )
+    view.set_snapshot(unmapped_snapshot)
+    assert set(view._return_tile_buttons) == {("科技鏈", "零值題材")}
+    assert set(view._return_tile_buttons) <= set(view._theme_options[1:])
+    assert "可由既有篩選定位：1 格" in view.return_tiles_summary.text()
+    view.shutdown()
+    view.close()
+
+
+def test_return_tiles_reset_identity_on_reload_clear_and_failed_load(monkeypatch):
+    application = app()
+    view = IndustryThemeMapView()
+    original = _snapshot_with_zero_and_negative_values()
+    view.set_snapshot(original)
+    old_button = view._return_tile_buttons[("科技鏈", "零值題材")]
+
+    replacement = ThemeResearchSnapshot(
+        "e" * 64, original.report, original.mapping,
+    )
+    view.set_snapshot(replacement)
+    assert old_button.isEnabled() is False
+    assert view._return_tile_identity == replacement.identity_sha256
+    assert all(
+        button.property("themeSnapshotIdentity") == replacement.identity_sha256
+        for button in view._return_tile_buttons.values()
+    )
+
+    assert view.clear_research()
+    assert view._return_tile_identity is None
+    assert view._return_tile_buttons == {}
+    assert view.return_tiles_group.isHidden()
+    assert "尚未載入" in view.return_tiles_summary.text()
+
+    view.set_snapshot(original)
+    assert view._return_tile_buttons
+
+    def fail_read(_path: Path):
+        raise ValueError("無法讀取題材版本")
+
+    monkeypatch.setattr(view_module, "read_theme_research_snapshot", fail_read)
+    view.load_snapshot(Path("missing-theme-manifest.json"))
+    assert view.snapshot is None
+    assert view._return_tile_buttons == {}
+    assert view._return_tile_identity is None
+    assert "版本讀取中" in view.return_tiles_summary.text()
+    _wait_until(application, lambda: not view.is_busy(), timeout_ms=3000)
+    assert view._return_tile_buttons == {}
+    assert view._return_tile_identity is None
+    assert "尚未載入" in view.return_tiles_summary.text()
+    view.shutdown()
+    view.close()
+
+
+def test_turnover_treemap_uses_full_coverage_area_and_exact_snapshot_navigation():
+    def with_zero(identity: str) -> ThemeResearchSnapshot:
+        baseline = _snapshot_with_directional_rankings(identity=identity)
+        rows = tuple(
+            replace(row, turnover_twd=Decimal("0.00")) if row.theme_name == "題材D"
+            else replace(row, turnover_twd=Decimal("50.00")) if row.theme_name == "題材F"
+            else row
+            for row in baseline.report.rows
+        )
+        return ThemeResearchSnapshot(
+            baseline.identity_sha256, replace(baseline.report, rows=rows), baseline.mapping,
+        )
+
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1200, 900)
+    snapshot = with_zero("d" * 64)
+    view.set_snapshot(snapshot)
+    view.show()
+    application.processEvents()
+
+    assert "完整覆蓋有效值：7 / 9 個報表題材列" in view.turnover_treemap_summary.text()
+    assert "正值面積：6 格" in view.turnover_treemap_summary.text()
+    assert "零值：1 筆" in view.turnover_treemap_summary.text()
+    assert "覆蓋不全、缺值或非有限值：2 筆未畫面積" in view.turnover_treemap_summary.text()
+    assert set(view._turnover_treemap_buttons) == {
+        (f"鏈{suffix}", f"題材{suffix}") for suffix in "ABCEFG"
+    }
+    assert set(view._turnover_zero_buttons) == {("鏈D", "題材D")}
+    assert "題材成員可能重疊" in view.turnover_treemap_note.text()
+    assert "不可相加作市場占比" in view.turnover_treemap_note.text()
+    assert "不代表歷史 PIT 資格" in view.turnover_treemap_note.text()
+
+    view.turnover_treemap_toggle.click()
+    application.processEvents()
+    assert view.turnover_treemap_group.isVisible()
+    large = view._turnover_treemap_buttons[("鏈A", "題材A")]
+    assert large.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    assert "完整覆蓋 1 / 1 位成員" in large.accessibleName()
+    assert snapshot.identity_sha256 in large.toolTip()
+    assert "原題材列相關來源識別" in large.toolTip()
+    assert view._turnover_area_label(Decimal("90000000")) == "約9,000萬"
+    area_ratio = (large.width() * large.height()) / (
+        view.turnover_treemap_canvas.width() * view.turnover_treemap_canvas.height()
+    )
+    assert area_ratio == pytest.approx(0.25, abs=0.04)
+
+    large.setProperty("themeSnapshotIdentity", "stale-identity")
+    QTest.mouseClick(large, Qt.MouseButton.LeftButton)
+    assert view.chain_filter.currentIndex() == 0
+    assert view.theme_filter.currentIndex() == 0
+    large.setProperty("themeSnapshotIdentity", snapshot.identity_sha256)
+    QTest.mouseClick(large, Qt.MouseButton.LeftButton)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈A"
+    assert view.theme_filter.currentText() == "題材A"
+    assert view.metrics_table.item(_metric_row(view, "價格成交金額（TWD）"), 1).text() == "70.00"
+
+    zero = view._turnover_zero_buttons[("鏈D", "題材D")]
+    assert "成交金額為零，沒有面積" in zero.accessibleName()
+    assert "零成交金額（不占面積）" in view.turnover_zero_summary.text()
+    zero.setFocus()
+    QTest.keyClick(zero, Qt.Key.Key_Space)
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鏈D"
+    assert view.theme_filter.currentText() == "題材D"
+    assert view.metrics_table.item(_metric_row(view, "價格成交金額（TWD）"), 1).text() == "0.00"
+
+    replacement = with_zero("e" * 64)
+    view.set_snapshot(replacement)
+    assert view._turnover_treemap_identity == replacement.identity_sha256
+    assert all(
+        button.property("themeSnapshotIdentity") == replacement.identity_sha256
+        for button in (*view._turnover_treemap_buttons.values(), *view._turnover_zero_buttons.values())
+    )
+    view.shutdown()
+    view.close()
 
 
 def test_large_turnover_uses_readable_units_and_preserves_exact_original():

@@ -178,15 +178,28 @@ def test_home_market_card_projects_only_existing_numeric_market_fields() -> None
         assert view.daily_market_kpi_labels["advancing"].text() == "812"
         assert view.daily_market_kpi_labels["declining"].text() == "506"
         assert view.daily_market_kpi_labels["unchanged"].text() == "42"
+        assert view.daily_market_breadth_ratio_label.text() == "61.50%"
+        assert view.daily_market_breadth_ratio_label.accessibleName() == "上漲占漲跌股比"
+        assert "不含平盤" in view.daily_market_breadth_ratio_label.toolTip()
         footer = view.daily_market_footer_label.text()
         assert footer == "資料日 2026-10-15｜品質 品質降級｜來源 部分可用（資料缺件）"
         visible_text = " ".join((
             view.daily_market_card.value_label.text(),
             *(label.text() for label in view.daily_market_kpi_labels.values()),
+            view.daily_market_breadth_ratio_label.text(),
             footer,
         ))
-        assert "廣度比" not in visible_text and "信心值" not in visible_text
+        assert "61.50%" in visible_text and "信心值" not in visible_text
         assert "成交額" not in visible_text and "指數收盤" not in visible_text
+
+        view.render_dashboard(replace(
+            dashboard,
+            market_context={
+                "source_status": "ready",
+                "market_breadth": {"quality": "observed", "breadth_ratio_bp": 0},
+            },
+        ))
+        assert view.daily_market_breadth_ratio_label.text() == "0.00%"
     finally:
         view.close()
 
@@ -199,7 +212,8 @@ def test_home_market_kpis_clear_missing_values_and_old_status_after_refresh() ->
             "source_status": "partial",
             "market_breadth": {
                 "quality": "degraded", "advancing": 812,
-                "declining": 506, "unchanged": 42, "as_of_date": "2026-10-15",
+                "declining": 506, "unchanged": 42, "breadth_ratio_bp": 6150,
+                "as_of_date": "2026-10-15",
             },
         },
     )
@@ -214,6 +228,7 @@ def test_home_market_kpis_clear_missing_values_and_old_status_after_refresh() ->
         ))
         assert view.daily_market_card.value_label.text() == "市場資料來源受阻"
         assert all(label.text() == "—" for label in view.daily_market_kpi_labels.values())
+        assert view.daily_market_breadth_ratio_label.text() == "未提供"
         assert view.daily_market_footer_label.text() == "資料日 未提供｜品質 資料缺件｜來源 受阻"
         assert "812" not in view.daily_market_card.value_label.text()
         assert "partial" not in view.daily_market_footer_label.text()
@@ -221,8 +236,21 @@ def test_home_market_kpis_clear_missing_values_and_old_status_after_refresh() ->
         view.render_dashboard(replace(dashboard, market_context={}))
         assert view.daily_market_card.value_label.text() == "市場狀態待確認"
         assert all(label.text() == "—" for label in view.daily_market_kpi_labels.values())
+        assert view.daily_market_breadth_ratio_label.text() == "未提供"
         assert view.daily_market_footer_label.text() == "資料日 未提供｜品質 未知｜來源 未知"
         assert "unknown" not in view.daily_market_footer_label.text()
+
+        view.render_dashboard(replace(
+            dashboard,
+            market_context={
+                "source_status": "partial",
+                "market_breadth": {"quality": "degraded", "breadth_ratio_bp": True},
+            },
+        ))
+        assert view.daily_market_breadth_ratio_label.text() == "無效值"
+
+        view.render_dashboard(replace(dashboard, market_context={}))
+        assert view.daily_market_breadth_ratio_label.text() == "未提供"
     finally:
         view.close()
 

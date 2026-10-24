@@ -1928,6 +1928,26 @@ class UnifiedDecisionWorkbenchView(QWidget):
             cell_layout.addWidget(number)
             market_kpi_layout.addWidget(cell, 1)
             self.daily_market_kpi_labels[key] = number
+        breadth_ratio_cell = QWidget(market_kpi_row)
+        breadth_ratio_layout = QVBoxLayout(breadth_ratio_cell)
+        breadth_ratio_layout.setContentsMargins(0, 0, 0, 0)
+        breadth_ratio_layout.setSpacing(1)
+        breadth_ratio_caption = QLabel("上漲占漲跌股比", breadth_ratio_cell)
+        breadth_ratio_caption.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 9pt;"
+        )
+        self.daily_market_breadth_ratio_label = QLabel("未提供", breadth_ratio_cell)
+        self.daily_market_breadth_ratio_label.setObjectName("dailyMarketBreadthRatio")
+        self.daily_market_breadth_ratio_label.setAccessibleName("上漲占漲跌股比")
+        self.daily_market_breadth_ratio_label.setToolTip(
+            "分母為上漲與下跌家數，不含平盤；僅顯示來源 DTO 原值。"
+        )
+        self.daily_market_breadth_ratio_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 13pt; font-weight: 700;"
+        )
+        breadth_ratio_layout.addWidget(breadth_ratio_caption)
+        breadth_ratio_layout.addWidget(self.daily_market_breadth_ratio_label)
+        market_kpi_layout.addWidget(breadth_ratio_cell, 1)
         market_guided_layout.insertWidget(1, market_kpi_row)
         market_guided_layout.insertWidget(2, self.daily_market_footer_label)
         self.daily_market_kpi_row = market_kpi_row
@@ -2403,7 +2423,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         return True
 
     def _render_home_market_metrics(self, market_context: object) -> None:
-        """把既有市場 DTO 欄位投影為三個數字位及單行來源狀態。"""
+        """把既有市場 DTO 欄位投影為家數、漲跌比例及來源狀態。"""
 
         context = market_context if isinstance(market_context, dict) else {}
         breadth = context.get("market_breadth")
@@ -2422,6 +2442,29 @@ class UnifiedDecisionWorkbenchView(QWidget):
             number = str(value) if isinstance(value, int) and not isinstance(value, bool) else "—"
             label.setText(number)
             label.setToolTip("DTO 未提供此數字" if number == "—" else "只顯示來源 DTO 原值")
+
+        ratio_bp = breadth.get("breadth_ratio_bp")
+        if ratio_bp is None:
+            self.daily_market_breadth_ratio_label.setText("未提供")
+            self.daily_market_breadth_ratio_label.setToolTip(
+                "來源 DTO 未提供比例；分母為上漲與下跌家數，不含平盤。"
+            )
+        elif (
+            isinstance(ratio_bp, bool)
+            or not isinstance(ratio_bp, int)
+            or not 0 <= ratio_bp <= 10000
+        ):
+            self.daily_market_breadth_ratio_label.setText("無效值")
+            self.daily_market_breadth_ratio_label.setToolTip(
+                "來源 DTO 比例不是 0–10000 bp 的整數；分母為上漲與下跌家數，不含平盤。"
+            )
+        else:
+            self.daily_market_breadth_ratio_label.setText(
+                f"{ratio_bp // 100}.{ratio_bp % 100:02d}%"
+            )
+            self.daily_market_breadth_ratio_label.setToolTip(
+                f"來源 DTO 原值：{ratio_bp} bp；分母為上漲與下跌家數，不含平盤。"
+            )
 
         summary = str(regime.get("regime_label") or "").strip()
         if not summary:

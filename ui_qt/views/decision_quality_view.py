@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from app_module.decision_quality_dashboard_dtos import DecisionQualityDashboardRequest, DecisionQualityDashboardResult
+from ui_qt.decision_quality_labels import label_with_raw_value
 from ui_qt.models.decision_quality_table_model import DecisionQualityTableModel
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.date_filter_edit import OptionalDateFilterEdit, date_filter_value
@@ -38,11 +39,11 @@ STATUS_ITEMS = (
     ("已略過", "dismissed"),
 )
 CARD_TITLES = {
-    "decision_quality_score": "決策品質",
-    "process_adherence_score": "流程遵循",
-    "evidence_usage_score": "證據使用",
-    "risk_discipline_score": "風險紀律",
-    "review_completeness_score": "覆盤完整度",
+    "decision_quality_score": "決策品質 / 10000",
+    "process_adherence_score": "流程遵循 / 10000",
+    "evidence_usage_score": "證據使用 / 10000",
+    "risk_discipline_score": "風險紀律 / 10000",
+    "review_completeness_score": "覆盤完整度 / 10000",
     "open_items": "待處理",
     "reviewed_items": "已覆盤",
     "dismissed_items": "已略過",
@@ -93,6 +94,7 @@ class DecisionQualityView(QWidget):
             self.status_combo.addItem(label, value)
         self.min_score_input = QLineEdit()
         self.min_score_input.setPlaceholderText("0-10000")
+        self.min_score_input.setValidator(QIntValidator(0, 10000, self.min_score_input))
         for label, widget in (
             ("覆盤類型", self.review_type_input),
             ("開始日期", self.start_date_input),
@@ -102,9 +104,14 @@ class DecisionQualityView(QWidget):
             ("項目類型", self.item_type_input),
             ("嚴重度", self.severity_combo),
             ("狀態", self.status_combo),
-            ("最低分數", self.min_score_input),
+            ("最低分數 (0–10000)", self.min_score_input),
         ):
             filter_layout.addRow(label, widget)
+        self.min_score_error_label = QLabel("")
+        self.min_score_error_label.setWordWrap(True)
+        self.min_score_error_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning};")
+        self.min_score_error_label.hide()
+        filter_layout.addRow("", self.min_score_error_label)
         self.refresh_button = QPushButton("重新整理")
         self.refresh_button.setProperty("variant", "primary")
         self.refresh_button.clicked.connect(self.refresh_dashboard)
@@ -151,6 +158,12 @@ class DecisionQualityView(QWidget):
         body.setSizes([260, 900])
 
     def refresh_dashboard(self) -> None:
+        validation_error = _min_score_validation_error(self.min_score_input)
+        if validation_error is not None:
+            self._clear_dashboard_for_input_error(validation_error)
+            return
+        self.min_score_error_label.clear()
+        self.min_score_error_label.hide()
         request = self._request_from_controls()
         self._active_request_id += 1
         request_id = self._active_request_id
@@ -168,6 +181,20 @@ class DecisionQualityView(QWidget):
             self._on_dashboard_loaded(self.dashboard_service.load_dashboard(request), request_id=request_id)
         except Exception as exc:  # noqa: BLE001
             self._on_dashboard_error(str(exc), request_id=request_id)
+
+    def _clear_dashboard_for_input_error(self, message: str) -> None:
+        """避免篩選值無效時舊資料看起來仍是目前結果。"""
+
+        self._active_request_id += 1
+        self.refresh_button.setEnabled(True)
+        self.min_score_error_label.setText(message)
+        self.min_score_error_label.show()
+        self._current_result = None
+        for field_name, card in self.cards.items():
+            self._set_card(card, card.property("title"), "尚未載入")
+        self.table_model.set_rows(())
+        self.empty_state_label.setText(message)
+        self.detail_panel.setPlainText("")
 
     def _request_from_controls(self) -> DecisionQualityDashboardRequest:
         return DecisionQualityDashboardRequest(
@@ -188,8 +215,18 @@ class DecisionQualityView(QWidget):
         self.refresh_button.setEnabled(True)
         self._current_result = result
         for field_name, card in self.cards.items():
-            self._set_card(card, card.property("title"), getattr(result.cards, field_name))
-        self.empty_state_label.setText(result.empty_state_message)
+            value = getattr(result.cards, field_name)
+            if not result.source_available:
+                display_value = "未知"
+            elif field_name.endswith("_score") and result.review_count == 0:
+                display_value = "未提供"
+            else:
+                display_value = str(value)
+            self._set_card(card, card.property("title"), display_value)
+        message = result.empty_state_message
+        if result.diagnostics:
+            message = "\n".join((message, "診斷: " + ", ".join(result.diagnostics))).strip()
+        self.empty_state_label.setText(message)
         self.table_model.set_rows(result.rows)
         self.summary_table.resizeColumnsToContents()
         if result.rows:
@@ -201,6 +238,8 @@ class DecisionQualityView(QWidget):
         if request_id != self._active_request_id:
             return
         self.refresh_button.setEnabled(True)
+        for field_name, card in self.cards.items():
+            self._set_card(card, card.property("title"), "未知")
         self.table_model.set_rows(())
         self.empty_state_label.setText(f"決策品質證據載入失敗：{message.splitlines()[0]}")
         self.detail_panel.setPlainText("")
@@ -214,9 +253,11 @@ class DecisionQualityView(QWidget):
         self.detail_panel.setPlainText(
             "\n".join(
                 [
-                    f"項目類型: {row.item_type}",
+                    f"項目類型: {label_with_raw_value('item_type', row.item_type)}",
                     f"股票 / 來源: {row.symbol or '全部'} / {row.source_type or '未知'}",
-                    f"嚴重度 / 狀態: {row.severity} / {row.status}",
+                    "嚴重度 / 狀態: "
+                    f"{label_with_raw_value('severity', row.severity)} / "
+                    f"{label_with_raw_value('status', row.status)}",
                     f"原因代碼: {', '.join(row.reason_codes) or '無'}",
                     f"相關落差 ID: {row.related_gap_id or '無'}",
                     f"相關衰退 ID: {row.related_decay_id or '無'}",
@@ -229,7 +270,7 @@ class DecisionQualityView(QWidget):
         )
 
     def _make_card(self, title: str) -> QLabel:
-        card = QLabel(f"{title}\n0")
+        card = QLabel(f"{title}\n尚未載入")
         card.setProperty("title", title)
         card.setAlignment(Qt.AlignCenter)
         card.setMinimumHeight(58)
@@ -239,7 +280,7 @@ class DecisionQualityView(QWidget):
         )
         return card
 
-    def _set_card(self, card: QLabel, title: str, value: int) -> None:
+    def _set_card(self, card: QLabel, title: str, value: str | int) -> None:
         card.setText(f"{title}\n{value}")
 
     def _release_worker(self, worker: TaskWorker) -> None:
@@ -261,3 +302,16 @@ def _combo_or_none(widget: QComboBox) -> str | None:
 def _int_or_none(widget: QLineEdit) -> int | None:
     text = widget.text().strip()
     return int(text) if text else None
+
+
+def _min_score_validation_error(widget: QLineEdit) -> str | None:
+    text = widget.text().strip()
+    if not text:
+        return None
+    try:
+        value = int(text)
+    except ValueError:
+        return "最低分數需為 0–10000 的整數，或留空。"
+    if not 0 <= value <= 10000:
+        return "最低分數需介於 0 至 10000，或留空。"
+    return None

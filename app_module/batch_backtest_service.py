@@ -23,8 +23,52 @@ from app_module.dtos import BacktestReportDTO
 from app_module.exceptions import BacktestCancelledError
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
 from app_module.research_run_dated_equity import research_run_dated_equity_copy
+from app_module.single_backtest_metrics_contract import (
+    SINGLE_BACKTEST_METRICS_KEY,
+    decode_single_backtest_metrics_contract,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _batch_metric_values(report: BacktestReportDTO) -> dict[str, Optional[float]]:
+    """保留新契約逐欄有效性，舊版沒有契約時沿用原值。"""
+    raw_values: dict[str, Optional[float]] = {
+        "cagr": report.annual_return,
+        "sharpe": report.sharpe_ratio,
+        "mdd": report.max_drawdown,
+        "win_rate": report.win_rate,
+    }
+    manifest = report.details.get("data_manifest")
+    if not isinstance(manifest, dict) or SINGLE_BACKTEST_METRICS_KEY not in manifest:
+        return raw_values
+
+    raw_metrics = {
+        "total_return": report.total_return,
+        "annual_return": report.annual_return,
+        "sharpe_ratio": report.sharpe_ratio,
+        "max_drawdown": report.max_drawdown,
+        "win_rate": report.win_rate,
+        "total_trades": report.total_trades,
+        "expectancy": report.expectancy,
+    }
+    try:
+        projection = decode_single_backtest_metrics_contract(
+            manifest,
+            raw_metrics,
+            run_type="batch_backtest_stock",
+            universe=[report.details.get("stock_code")],
+        )
+    except (ValueError, TypeError, OverflowError):
+        return {key: None for key in raw_values}
+    if projection is None:
+        return {key: None for key in raw_values}
+    return {
+        "cagr": report.annual_return if projection["annual_return"] is not None else None,
+        "sharpe": report.sharpe_ratio if projection["sharpe_ratio"] is not None else None,
+        "mdd": report.max_drawdown if projection["max_drawdown"] is not None else None,
+        "win_rate": report.win_rate if projection["win_rate"] is not None else None,
+    }
 
 
 def _run_batch_backtest_worker(
@@ -269,16 +313,17 @@ class BatchBacktestService:
                         success = False
                         error_reason = "資料不足"
 
+                    metric_values = _batch_metric_values(report)
                     result = StockBacktestResult(
                         stock_code=stock_code,
                         run_id=None,
                         success=success,
                         error_reason=error_reason,
-                        cagr=report.annual_return if report.annual_return is not None else None,
-                        sharpe=report.sharpe_ratio if report.sharpe_ratio is not None else None,
-                        mdd=report.max_drawdown if report.max_drawdown is not None else None,
+                        cagr=metric_values["cagr"],
+                        sharpe=metric_values["sharpe"],
+                        mdd=metric_values["mdd"],
                         total_trades=report.total_trades,
-                        win_rate=report.win_rate if report.win_rate is not None else None,
+                        win_rate=metric_values["win_rate"],
                         **profit_factor_projection(report.details),
                         report=report
                     )
@@ -411,16 +456,17 @@ class BatchBacktestService:
                                     success = False
                                     error_reason = "資料不足"
 
+                                metric_values = _batch_metric_values(report)
                                 result = StockBacktestResult(
                                     stock_code=code,
                                     run_id=None,
                                     success=success,
                                     error_reason=error_reason,
-                                    cagr=report.annual_return,
-                                    sharpe=report.sharpe_ratio,
-                                    mdd=report.max_drawdown,
+                                    cagr=metric_values["cagr"],
+                                    sharpe=metric_values["sharpe"],
+                                    mdd=metric_values["mdd"],
                                     total_trades=report.total_trades,
-                                    win_rate=report.win_rate,
+                                    win_rate=metric_values["win_rate"],
                                     **profit_factor_projection(report.details),
                                     report=report
                                 )
@@ -828,7 +874,7 @@ class BatchBacktestService:
                            (abs(row['MDD%']) if pd.notna(row['MDD%']) else 999),
                 axis=1
             )
-            df = df.sort_values('Score', ascending=False, na_position='last')
+            df = df.sort_values('Score', ascending=False, na_position='last', kind='stable')
             df = df.drop('Score', axis=1)
         else:
             # 預設按 CAGR-MDD 排序
@@ -837,7 +883,7 @@ class BatchBacktestService:
                            (abs(row['MDD%']) if pd.notna(row['MDD%']) else 999),
                 axis=1
             )
-            df = df.sort_values('Score', ascending=False, na_position='last')
+            df = df.sort_values('Score', ascending=False, na_position='last', kind='stable')
             df = df.drop('Score', axis=1)
 
         return df

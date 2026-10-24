@@ -274,6 +274,10 @@ class ResearchHistoryLookupWidget(QWidget):
                 dialog.exec()
             else:
                 self.on_open(result)
+                result_panel = getattr(self._owner, "result_panel", None)
+                history_button = getattr(result_panel, "research_history_button", None)
+                if history_button is not None:
+                    history_button.setChecked(False)
             self.status.setText("已核對原保存來源；沒有重跑或改寫來源。")
         self.status.setText("核對 exact kind／run／hash／股票／context 中…")
         self._start(task, apply)
@@ -383,6 +387,7 @@ class BacktestResultPanel(QWidget):
         created = {name: factory() for name, factory in factories.items()}
         for name, widget in created.items():
             placeholder = self._chart_placeholders.pop(name)
+            placeholder.hide()
             self._chart_content_layouts[name].removeWidget(placeholder)
             placeholder.deleteLater()
             self._chart_content_layouts[name].addWidget(widget)
@@ -738,8 +743,22 @@ class BacktestResultPanel(QWidget):
             self.chart_run_combo.setEditable(False)
             self.chart_run_combo.currentTextChanged.connect(self.parent_view._on_chart_run_changed)
             run_select_row.addWidget(self.chart_run_combo)
-            run_select_row.addStretch()
+            self.chart_current_source_label = QLabel("目前圖表來源：未選擇")
+            self.chart_current_source_label.setAccessibleName("目前圖表來源 run ID")
+            self.chart_current_source_label.setWordWrap(True)
+            run_select_row.addWidget(self.chart_current_source_label, stretch=1)
             chart_layout.addLayout(run_select_row)
+
+            chart_history_row = QHBoxLayout()
+            self.chart_history_scope_label = QLabel("圖表歷史尚未載入。")
+            self.chart_history_scope_label.setAccessibleName("圖表歷史載入範圍")
+            chart_history_row.addWidget(self.chart_history_scope_label)
+            chart_history_row.addStretch()
+            self.load_older_chart_runs_btn = QPushButton("載入較舊結果")
+            self.load_older_chart_runs_btn.clicked.connect(self.parent_view._load_older_chart_runs)
+            self.load_older_chart_runs_btn.setEnabled(False)
+            chart_history_row.addWidget(self.load_older_chart_runs_btn)
+            chart_layout.addLayout(chart_history_row)
             
             chart_tabs = QTabWidget()
 
@@ -838,6 +857,15 @@ class BacktestResultPanel(QWidget):
             self.delete_history_btn.setProperty("variant", "danger")
             self.delete_history_btn.clicked.connect(self.parent_view._delete_history_runs)
             history_btn_row.addWidget(self.delete_history_btn)
+
+            self.history_previous_btn = QPushButton("較新")
+            self.history_previous_btn.clicked.connect(self.parent_view._history_previous_page)
+            self.history_previous_btn.setEnabled(False)
+            history_btn_row.addWidget(self.history_previous_btn)
+            self.history_next_btn = QPushButton("較舊")
+            self.history_next_btn.clicked.connect(self.parent_view._history_next_page)
+            self.history_next_btn.setEnabled(False)
+            history_btn_row.addWidget(self.history_next_btn)
             
             history_btn_row.addStretch()
             history_layout.addLayout(history_btn_row)
@@ -846,6 +874,10 @@ class BacktestResultPanel(QWidget):
             self.history_list.setSelectionMode(QListWidget.ExtendedSelection)
             self.history_list.itemDoubleClicked.connect(self.parent_view._load_history_run)
             history_layout.addWidget(self.history_list)
+
+            self.history_scope_label = QLabel("歷史尚未載入。")
+            self.history_scope_label.setAccessibleName("回測歷史頁面範圍")
+            history_layout.addWidget(self.history_scope_label)
             
             compare_btn = QPushButton("比較選中")
             compare_btn.clicked.connect(self.parent_view._compare_runs)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from dataclasses import replace
+from decimal import Decimal
 import json
 import os
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ import pandas as pd
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from app_module.recommendation.contracts import (
@@ -35,6 +37,7 @@ from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.views import recommendation_view as view_module
 from ui_qt.views.recommendation.execution_coordinator import RecommendationExecutionRequest
 from ui_qt.views.recommendation_view import RecommendationView
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 @pytest.fixture(scope="module")
@@ -340,6 +343,47 @@ def _view_with_execution(qt_app, execution, *, composition=None, universe_servic
     if rows:
         view.results_table.selectRow(0)
     return view
+
+
+def test_recommendation_result_change_uses_taiwan_market_direction_colors(qt_app):
+    base = _execution("rec-direction-colors")
+    assert base.decision is not None
+    base_item = base.items[0]
+    changes = (Decimal("1.25"), Decimal("-0.75"), Decimal("0"), None)
+    items = tuple(
+        replace(
+            base_item,
+            stock_code=f"T{index}",
+            stock_name=f"測試 {index}",
+            price_change=change,
+            rank=index + 1,
+        )
+        for index, change in enumerate(changes)
+    )
+    execution = replace(base, decision=replace(base.decision, items=items))
+    view = _view_with_execution(qt_app, execution)
+
+    # Exercise the production completion path that installs the recommendation model.
+    view._on_recommendation_finished(execution)
+
+    model = view.recommendations_model
+    assert model is not None
+    change_column = model.getVisibleColumns().index("漲幅%")
+    rendered_colors = tuple(
+        model.data(model.index(row, change_column), Qt.ForegroundRole)
+        for row in range(len(changes))
+    )
+    assert rendered_colors == (
+        QColor(MIDNIGHT_ANALYST.market_up),
+        QColor(MIDNIGHT_ANALYST.market_down),
+        QColor(MIDNIGHT_ANALYST.market_flat),
+        None,
+    )
+    assert model.getDataFrame()["漲幅%"].tolist() == list(changes)
+    score_column = model.getVisibleColumns().index("總分")
+    # 總分仍是原 Decimal 欄位，通用模型不替它新增方向色。
+    assert model.data(model.index(0, score_column), Qt.ForegroundRole) is None
+    view.close()
 
 
 def _save_composition(execution, *, label, notes, query_results):

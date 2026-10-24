@@ -5,7 +5,7 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.layout_helpers import ensure_visible_rows
 
 
-def apply_financial_table_style(table: QTableView) -> None:
+def apply_financial_table_style(table: QTableView, *, minimum_visible_rows: int = 5) -> None:
     table.setAlternatingRowColors(True)
     table.setSelectionBehavior(QAbstractItemView.SelectRows)
     table.setWordWrap(False)
@@ -75,4 +75,4 @@ def apply_financial_table_style(table: QTableView) -> None:
 
     table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
     table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-    ensure_visible_rows(table, 5)
+    ensure_visible_rows(table, minimum_visible_rows)

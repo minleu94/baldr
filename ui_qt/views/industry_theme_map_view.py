@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import Qt, QSignalBlocker, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QRect, Qt, QSignalBlocker, Signal, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -33,7 +34,14 @@ from PySide6.QtWidgets import (
 from app_module.theme_daily_service import ThemeDailyRow
 from app_module.theme_research_presentation import (
     ThemeResearchPresentation,
+    ThemeTurnoverTile,
+    ThemeReturnTwoVersionPresentation,
+    build_theme_return_two_version_presentation,
     build_theme_research_presentation,
+)
+from app_module.theme_classification_presentation import (
+    ThemeClassificationMember,
+    build_theme_classification_presentation,
 )
 from app_module.theme_research_snapshot import (
     ThemeResearchSnapshot,
@@ -53,8 +61,20 @@ from ui_qt.widgets.observation_bar_delegate import (
 )
 
 
+def _read_theme_comparison_pair(
+    first_path: Path, second_path: Path,
+) -> tuple[ThemeResearchSnapshot, ThemeResearchSnapshot]:
+    """各自經既有 reader 驗讀使用者明選的兩個 manifest。"""
+    first = read_theme_research_snapshot(first_path)
+    second = read_theme_research_snapshot(second_path)
+    return first, second
+
+
 class IndustryThemeMapView(QWidget):
     """唯讀呈現使用者選取的本機題材快照，不建立或接受研究版本。"""
+
+    _MAX_TURNOVER_AREA_TILES = 20
+    _MEMBER_PAGE_SIZE = 50
 
     stockSelected = Signal(str)
     snapshotChanged = Signal(object)
@@ -78,9 +98,28 @@ class IndustryThemeMapView(QWidget):
         self._theme_options: list[tuple[str, str] | None] = []
         self._rows_by_theme: dict[tuple[str, str], ThemeDailyRow] = {}
         self._mapping_by_theme_stock: dict[tuple[str, str, str], object] = {}
+        self._member_stock_ids: tuple[str, ...] = ()
+        self._member_row_by_stock_id: dict[str, int] = {}
+        self._member_theme_key: tuple[str, str] | None = None
+        self._member_snapshot_identity: str | None = None
+        self._member_page_index = 0
         self._chain_directory_cards: list[QGroupBox] = []
         self._chain_directory_buttons: list[QPushButton] = []
         self._chain_directory_identity: str | None = None
+        self._return_tile_buttons: dict[tuple[str, str], QPushButton] = {}
+        self._return_tile_identity: str | None = None
+        self._turnover_treemap_buttons: dict[tuple[str, str], QPushButton] = {}
+        self._turnover_zero_buttons: dict[tuple[str, str], QPushButton] = {}
+        self._turnover_tiles_by_key: dict[tuple[str, str], ThemeTurnoverTile] = {}
+        self._turnover_treemap_identity: str | None = None
+        self._comparison_generation = 0
+        self._comparison_worker: TaskWorker | None = None
+        self._comparison_worker_generation: int | None = None
+        self._comparison_result: object = None
+        self._comparison_error = ""
+        self._comparison_paths: tuple[Path, Path] | None = None
+        self._comparison_snapshots: tuple[ThemeResearchSnapshot, ThemeResearchSnapshot] | None = None
+        self._comparison_presentation: ThemeReturnTwoVersionPresentation | None = None
         self._navigation_selection_revision = 0
 
         self._build_ui()
@@ -114,7 +153,13 @@ class IndustryThemeMapView(QWidget):
         if row is None:
             return None
         selected_row = self.member_table.currentRow()
-        if selected_row < 0 or selected_row >= len(row.stock_ids):
+        global_row = self._member_page_index * self._MEMBER_PAGE_SIZE + selected_row
+        if selected_row < 0 or global_row >= len(row.stock_ids):
+            return None
+        if (
+            self._member_theme_key != theme_key
+            or self._member_snapshot_identity != snapshot.identity_sha256
+        ):
             return None
         item = self.member_table.item(selected_row, 0)
         if item is None:
@@ -122,22 +167,20 @@ class IndustryThemeMapView(QWidget):
         selected_stock_code = item.text().strip()
         if (
             not selected_stock_code
-            or selected_stock_code != row.stock_ids[selected_row]
+            or selected_stock_code != row.stock_ids[global_row]
             or (expected_stock_code is not None
                 and selected_stock_code != str(expected_stock_code).strip())
         ):
             return None
         member_names: list[tuple[str, str]] = []
         for stock_code in row.stock_ids:
-            names = {
-                mapping_row.stock_name.strip()
-                for mapping_row in snapshot.mapping
-                if mapping_row.chain_name == theme_key[0]
-                and mapping_row.theme_name == theme_key[1]
-                and mapping_row.stock_id == stock_code
-                and mapping_row.stock_name.strip()
-            }
-            member_names.append((stock_code, next(iter(names)) if len(names) == 1 else ""))
+            mapping_row = self._mapping_by_theme_stock.get(
+                (*theme_key, stock_code)
+            )
+            stock_name = self._mapping_text(mapping_row, "stock_name")
+            member_names.append(
+                (stock_code, stock_name if stock_name != "未提供" else "")
+            )
         return ThemeMemberNavigation(
             snapshot_ref=snapshot,
             snapshot_identity=snapshot.identity_sha256,
@@ -145,7 +188,7 @@ class IndustryThemeMapView(QWidget):
             member_stock_codes=tuple(row.stock_ids),
             member_names=tuple(member_names),
             origin_stock_code=selected_stock_code,
-            origin_row_index=selected_row,
+            origin_row_index=global_row,
             source_data_date=snapshot.report.data_date.isoformat(),
             mapping_version=snapshot.report.mapping_snapshot_date,
             selection_revision=self._navigation_selection_revision,
@@ -222,6 +265,71 @@ class IndustryThemeMapView(QWidget):
         self.overview_label.setTextFormat(Qt.TextFormat.PlainText)
         content_layout.addWidget(self.overview_label)
 
+        self.comparison_toggle = QPushButton("雙版本題材原值比較（展開）")
+        self.comparison_toggle.setObjectName("industryThemeComparisonToggle")
+        self.comparison_toggle.setCheckable(True)
+        self.comparison_toggle.setAccessibleName("展開或收合雙版本題材原值比較")
+        self.comparison_toggle.toggled.connect(self._toggle_comparison)
+        content_layout.addWidget(self.comparison_toggle)
+        self.comparison_group = QGroupBox("雙版本題材原值並列（非跨期績效）")
+        self.comparison_group.setObjectName("industryThemeTwoVersionComparison")
+        self.comparison_group.setVisible(False)
+        comparison_layout = QVBoxLayout(self.comparison_group)
+        comparison_note = QLabel(
+            "請各自明選兩個本機 manifest；兩份檔案會分別經既有 reader 驗讀。"
+            "讀取後再選鏈與題材，並列原值與各自身份／日期／映射／來源／覆蓋。"
+            "缺列、部分覆蓋或缺值顯示「未知」；成員可能不同，不計算差額、排名或績效。"
+        )
+        comparison_note.setWordWrap(True)
+        comparison_note.setTextFormat(Qt.TextFormat.PlainText)
+        comparison_layout.addWidget(comparison_note)
+        comparison_buttons = QHBoxLayout()
+        self.comparison_choose_button = QPushButton("選擇兩個 manifest 並讀取…")
+        self.comparison_choose_button.setObjectName("industryThemeChooseTwoVersions")
+        self.comparison_choose_button.clicked.connect(self._choose_comparison_snapshots)
+        comparison_buttons.addWidget(self.comparison_choose_button)
+        self.comparison_load_button = QPushButton("重新讀取所選兩版")
+        self.comparison_load_button.setObjectName("industryThemeLoadTwoVersions")
+        self.comparison_load_button.clicked.connect(self._load_comparison_snapshots)
+        comparison_buttons.addWidget(self.comparison_load_button)
+        comparison_buttons.addStretch(1)
+        comparison_layout.addLayout(comparison_buttons)
+        self.comparison_status = QLabel("尚未明選雙版本。")
+        self.comparison_status.setWordWrap(True)
+        self.comparison_status.setTextFormat(Qt.TextFormat.PlainText)
+        comparison_layout.addWidget(self.comparison_status)
+        choice_row = QHBoxLayout()
+        self.comparison_chain_filter = QComboBox()
+        self.comparison_chain_filter.setAccessibleName("雙版本比較產業鏈")
+        self.comparison_theme_filter = QComboBox()
+        self.comparison_theme_filter.setAccessibleName("雙版本比較題材")
+        self.comparison_chain_filter.currentIndexChanged.connect(self._populate_comparison_theme_filter)
+        self.comparison_theme_filter.currentIndexChanged.connect(self._render_comparison)
+        choice_row.addWidget(QLabel("鏈"))
+        choice_row.addWidget(self.comparison_chain_filter, 1)
+        choice_row.addWidget(QLabel("題材"))
+        choice_row.addWidget(self.comparison_theme_filter, 1)
+        comparison_layout.addLayout(choice_row)
+        comparison_columns = QHBoxLayout()
+        self.comparison_version_labels: list[QLabel] = []
+        for index in range(2):
+            label = QLabel("尚未讀取版本。")
+            label.setObjectName(f"industryThemeComparisonVersion{index + 1}")
+            label.setAccessibleName(f"雙版本第{index + 1}版原值與來源脈絡")
+            label.setWordWrap(True)
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            label.setMinimumHeight(260)
+            label.setStyleSheet(
+                f"background-color: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 8px;"
+            )
+            self.comparison_version_labels.append(label)
+            comparison_columns.addWidget(label, 1)
+        comparison_layout.addLayout(comparison_columns)
+        content_layout.addWidget(self.comparison_group)
+
         self.summary_group = QGroupBox("所選版本與限制")
         self.summary_group.setVisible(False)
         summary_layout = QVBoxLayout(self.summary_group)
@@ -275,6 +383,82 @@ class IndustryThemeMapView(QWidget):
             self.leader_card_values[key] = value_label
             self.leader_card_coverages[key] = coverage_label
         content_layout.addWidget(self.observations_group)
+
+        self.return_tiles_toggle = QPushButton("瀏覽完整覆蓋漲跌格（展開）")
+        self.return_tiles_toggle.setObjectName("industryThemeReturnTilesToggle")
+        self.return_tiles_toggle.setAccessibleName("展開或收合完整覆蓋題材漲跌格")
+        self.return_tiles_toggle.setCheckable(True)
+        self.return_tiles_toggle.toggled.connect(self._toggle_return_tiles)
+        content_layout.addWidget(self.return_tiles_toggle)
+        self.return_tiles_group = QGroupBox("完整覆蓋題材漲跌格")
+        self.return_tiles_group.setObjectName("industryThemeReturnTilesGroup")
+        self.return_tiles_group.setVisible(False)
+        return_tiles_layout = QVBoxLayout(self.return_tiles_group)
+        self.return_tiles_summary = QLabel("尚未載入題材漲跌格。")
+        self.return_tiles_summary.setAccessibleName("題材漲跌格資料日與涵蓋摘要")
+        self.return_tiles_summary.setWordWrap(True)
+        self.return_tiles_summary.setTextFormat(Qt.TextFormat.PlainText)
+        return_tiles_layout.addWidget(self.return_tiles_summary)
+        self.return_tiles_note = QLabel(
+            "每格等面積，不表示成交金額或題材規模。紅色為正、綠色為負、灰色為零；"
+            "只顯示完整漲跌覆蓋的原值。按鈕可用滑鼠或鍵盤選取並定位原題材與成員明細。"
+        )
+        self.return_tiles_note.setWordWrap(True)
+        self.return_tiles_note.setTextFormat(Qt.TextFormat.PlainText)
+        self.return_tiles_note.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        return_tiles_layout.addWidget(self.return_tiles_note)
+        self.return_tiles_grid_widget = QWidget(self.return_tiles_group)
+        self.return_tiles_grid = QGridLayout(self.return_tiles_grid_widget)
+        self.return_tiles_grid.setContentsMargins(0, 0, 0, 0)
+        self.return_tiles_grid.setHorizontalSpacing(6)
+        self.return_tiles_grid.setVerticalSpacing(6)
+        return_tiles_layout.addWidget(self.return_tiles_grid_widget)
+        content_layout.addWidget(self.return_tiles_group)
+
+        self.turnover_treemap_toggle = QPushButton("瀏覽完整覆蓋成交金額面積圖（展開）")
+        self.turnover_treemap_toggle.setObjectName("industryThemeTurnoverTreemapToggle")
+        self.turnover_treemap_toggle.setAccessibleName("展開或收合完整覆蓋成交金額面積圖")
+        self.turnover_treemap_toggle.setCheckable(True)
+        self.turnover_treemap_toggle.toggled.connect(self._toggle_turnover_treemap)
+        content_layout.addWidget(self.turnover_treemap_toggle)
+        self.turnover_treemap_group = QGroupBox("題材成交金額面積圖（TWD）")
+        self.turnover_treemap_group.setObjectName("industryThemeTurnoverTreemapGroup")
+        self.turnover_treemap_group.setVisible(False)
+        turnover_layout = QVBoxLayout(self.turnover_treemap_group)
+        self.turnover_treemap_summary = QLabel("尚未載入成交金額面積圖。")
+        self.turnover_treemap_summary.setAccessibleName("成交金額面積圖資料日與完整覆蓋摘要")
+        self.turnover_treemap_summary.setWordWrap(True)
+        self.turnover_treemap_summary.setTextFormat(Qt.TextFormat.PlainText)
+        turnover_layout.addWidget(self.turnover_treemap_summary)
+        self.turnover_treemap_note = QLabel(
+            "面積只比較圖中最多 20 個完整覆蓋正值題材；其他完整值可沿原產業鏈與題材篩選查閱。"
+            "題材成員可能重疊，"
+            "各格不可相加作市場占比。零成交金額另列且不占面積；缺值或覆蓋不全不畫格。"
+            "這是當前研究版本的每日觀察，不代表歷史 PIT 資格。"
+        )
+        self.turnover_treemap_note.setWordWrap(True)
+        self.turnover_treemap_note.setTextFormat(Qt.TextFormat.PlainText)
+        self.turnover_treemap_note.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        turnover_layout.addWidget(self.turnover_treemap_note)
+        self.turnover_treemap_canvas = QWidget(self.turnover_treemap_group)
+        self.turnover_treemap_canvas.setObjectName("industryThemeTurnoverTreemapCanvas")
+        self.turnover_treemap_canvas.installEventFilter(self)
+        self.turnover_treemap_canvas.setMinimumHeight(220)
+        self.turnover_treemap_canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        turnover_layout.addWidget(self.turnover_treemap_canvas)
+        self.turnover_zero_summary = QLabel("零成交金額：無。")
+        self.turnover_zero_summary.setAccessibleName("零成交金額題材列")
+        self.turnover_zero_summary.setWordWrap(True)
+        self.turnover_zero_summary.setTextFormat(Qt.TextFormat.PlainText)
+        turnover_layout.addWidget(self.turnover_zero_summary)
+        self.turnover_zero_buttons_widget = QWidget(self.turnover_treemap_group)
+        self.turnover_zero_buttons_layout = QHBoxLayout(self.turnover_zero_buttons_widget)
+        self.turnover_zero_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self.turnover_zero_buttons_layout.setSpacing(6)
+        turnover_layout.addWidget(self.turnover_zero_buttons_widget)
+        content_layout.addWidget(self.turnover_treemap_group)
 
         self.ranking_group = QGroupBox("完整覆蓋題材觀察（兩端對照／前五名）")
         ranking_layout = QVBoxLayout(self.ranking_group)
@@ -462,6 +646,57 @@ class IndustryThemeMapView(QWidget):
             f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
         )
         content_layout.addWidget(self.selected_theme_summary)
+        self.classification_explorer_toggle = QPushButton(
+            "查看所選題材分類成員（展開）"
+        )
+        self.classification_explorer_toggle.setObjectName(
+            "industryThemeClassificationExplorerToggle"
+        )
+        self.classification_explorer_toggle.setAccessibleName(
+            "展開所選產業鏈與題材的靜態分類成員"
+        )
+        self.classification_explorer_toggle.setCheckable(True)
+        self.classification_explorer_toggle.setChecked(False)
+        self.classification_explorer_toggle.toggled.connect(
+            self._toggle_classification_explorer
+        )
+        content_layout.addWidget(self.classification_explorer_toggle)
+        self.classification_explorer_group = QGroupBox(
+            "產業鏈／題材／成員分類"
+        )
+        self.classification_explorer_group.setObjectName(
+            "industryThemeClassificationExplorer"
+        )
+        self.classification_explorer_group.setAccessibleName(
+            "所選題材靜態分類階層與來源"
+        )
+        self.classification_explorer_group.setVisible(False)
+        classification_layout = QVBoxLayout(self.classification_explorer_group)
+        self.classification_hierarchy_label = QLabel("尚未選擇題材。")
+        self.classification_hierarchy_label.setObjectName(
+            "industryThemeClassificationHierarchy"
+        )
+        self.classification_hierarchy_label.setAccessibleName(
+            "產業鏈至題材的分類階層"
+        )
+        self.classification_hierarchy_label.setWordWrap(True)
+        self.classification_hierarchy_label.setTextFormat(Qt.TextFormat.PlainText)
+        classification_layout.addWidget(self.classification_hierarchy_label)
+        self.classification_members_layout = QVBoxLayout()
+        self.classification_members_layout.setSpacing(4)
+        classification_layout.addLayout(self.classification_members_layout)
+        self.classification_members_status = QLabel("展開後顯示分類成員。")
+        self.classification_members_status.setObjectName(
+            "industryThemeClassificationMembersStatus"
+        )
+        self.classification_members_status.setAccessibleName("分類成員顯示範圍")
+        self.classification_members_status.setWordWrap(True)
+        self.classification_members_status.setTextFormat(Qt.TextFormat.PlainText)
+        classification_layout.addWidget(self.classification_members_status)
+        content_layout.addWidget(self.classification_explorer_group)
+        self._classification_explorer_identity: str | None = None
+        self._classification_explorer_key: tuple[str, str] | None = None
+        self._classification_explorer_member_limit = 30
         self.theme_detail_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.theme_detail_splitter.setObjectName("industryThemeDetailSplitter")
         self.theme_detail_splitter.setChildrenCollapsible(False)
@@ -469,9 +704,25 @@ class IndustryThemeMapView(QWidget):
         self.metrics_group = QGroupBox("題材指標與欄位覆蓋")
         self.metrics_group.setMinimumWidth(0)
         metrics_layout = QVBoxLayout(self.metrics_group)
+        self.metrics_cards_group = QGroupBox("九項指標概觀")
+        self.metrics_cards_group.setObjectName("industryThemeMetricCards")
+        self.metrics_cards_group.setVisible(False)
+        self.metrics_cards_layout = QVBoxLayout(self.metrics_cards_group)
+        self.metrics_card_rows: list[QHBoxLayout] = []
+        self.metrics_card_labels: list[tuple[QLabel, QLabel, QLabel]] = []
+        self._metric_card_widgets: list[QWidget] = []
+        self._metric_card_columns = 0
+        for _ in range(5):
+            card_row = QHBoxLayout()
+            card_row.setSpacing(6)
+            self.metrics_cards_layout.addLayout(card_row)
+            self.metrics_card_rows.append(card_row)
+        self.metrics_group.installEventFilter(self)
+        metrics_layout.addWidget(self.metrics_cards_group)
         self.metrics_table = QTableWidget(0, 3)
         self.metrics_table.setObjectName("industryThemeMetricsTable")
         self.metrics_table.setAccessibleName("題材指標與欄位覆蓋表")
+        self.metrics_table.setMinimumHeight(200)
         self.metrics_table.setHorizontalHeaderLabels(["指標", "觀察值", "覆蓋數"])
         self.metrics_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.metrics_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -530,6 +781,27 @@ class IndustryThemeMapView(QWidget):
         )
         self.member_table.itemDoubleClicked.connect(self._emit_selected_stock)
         self.member_table.currentCellChanged.connect(self._on_member_cell_changed)
+        member_pagination = QHBoxLayout()
+        self.member_page_previous_button = QPushButton("上一頁")
+        self.member_page_previous_button.setObjectName("industryThemeMemberPreviousPage")
+        self.member_page_previous_button.setAccessibleName("題材成員上一頁")
+        self.member_page_previous_button.clicked.connect(
+            lambda: self._change_member_page(-1)
+        )
+        member_pagination.addWidget(self.member_page_previous_button)
+        self.member_page_status_label = QLabel("顯示 0 / 0 位成員")
+        self.member_page_status_label.setObjectName("industryThemeMemberPageStatus")
+        self.member_page_status_label.setAccessibleName("題材成員目前顯示範圍")
+        self.member_page_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        member_pagination.addWidget(self.member_page_status_label, 1)
+        self.member_page_next_button = QPushButton("下一頁")
+        self.member_page_next_button.setObjectName("industryThemeMemberNextPage")
+        self.member_page_next_button.setAccessibleName("題材成員下一頁")
+        self.member_page_next_button.clicked.connect(
+            lambda: self._change_member_page(1)
+        )
+        member_pagination.addWidget(self.member_page_next_button)
+        members_layout.addLayout(member_pagination)
         members_layout.addWidget(self.member_table)
         self.theme_detail_splitter.addWidget(self.members_group)
         self.theme_detail_splitter.setStretchFactor(0, 4)
@@ -538,6 +810,297 @@ class IndustryThemeMapView(QWidget):
 
         self.scroll_area.setWidget(self.content)
         page_layout.addWidget(self.scroll_area, 1)
+
+    @Slot(bool)
+    def _toggle_comparison(self, expanded: bool) -> None:
+        if self._closed or self._busy or self._snapshot is None:
+            expanded = False
+            blocker = QSignalBlocker(self.comparison_toggle)
+            self.comparison_toggle.setChecked(False)
+            del blocker
+        self.comparison_group.setVisible(expanded)
+        self.comparison_toggle.setText(
+            "雙版本題材原值比較（收合）" if expanded else "雙版本題材原值比較（展開）"
+        )
+
+    def _invalidate_comparison(self, *, clear_paths: bool = True,
+                               collapse: bool = True) -> None:
+        """使舊雙版本回呼失效並清除原值；主版本變動時一律呼叫。"""
+        self._comparison_generation += 1
+        if self._comparison_worker is not None:
+            self._comparison_worker.cancel(cooperative=True, wait=False)
+        self._comparison_result = None
+        self._comparison_error = ""
+        self._comparison_snapshots = None
+        self._comparison_presentation = None
+        if clear_paths:
+            self._comparison_paths = None
+        self.comparison_status.setText("尚未明選雙版本。")
+        for label in self.comparison_version_labels:
+            label.setText("尚未讀取版本。")
+        blockers = [
+            QSignalBlocker(self.comparison_chain_filter),
+            QSignalBlocker(self.comparison_theme_filter),
+        ]
+        self.comparison_chain_filter.clear()
+        self.comparison_theme_filter.clear()
+        self.comparison_chain_filter.addItem("尚未選擇", None)
+        self.comparison_theme_filter.addItem("尚未選擇", None)
+        del blockers
+        if collapse:
+            blocker = QSignalBlocker(self.comparison_toggle)
+            self.comparison_toggle.setChecked(False)
+            del blocker
+            self._toggle_comparison(False)
+        self._update_comparison_controls()
+
+    def _choose_comparison_snapshots(self) -> None:
+        if (self._closed or self._busy or self._snapshot is None
+                or self._comparison_worker is not None):
+            return
+        original_generation = self._generation
+        original_snapshot = self._snapshot
+        self._invalidate_comparison(collapse=False)
+        self.comparison_status.setText("請依序明選兩份題材 manifest。")
+        first_name, _ = QFileDialog.getOpenFileName(
+            self, "選取雙版本比較的第一個 manifest", "",
+            "題材版本 manifest (*.json);;所有檔案 (*.*)",
+        )
+        if not first_name:
+            self.comparison_status.setText("已取消雙版本明選；比較已清除。")
+            return
+        second_name, _ = QFileDialog.getOpenFileName(
+            self, "選取雙版本比較的第二個 manifest", "",
+            "題材版本 manifest (*.json);;所有檔案 (*.*)",
+        )
+        if not second_name:
+            self.comparison_status.setText("已取消雙版本明選；比較已清除。")
+            return
+        if (self._closed or self._busy or self._generation != original_generation
+                or self._snapshot is not original_snapshot
+                or self._comparison_worker is not None):
+            self._invalidate_comparison()
+            return
+        self._comparison_paths = (Path(first_name), Path(second_name))
+        self._load_comparison_snapshots()
+
+    def _load_comparison_snapshots(self) -> None:
+        paths = self._comparison_paths
+        if (self._closed or self._busy or self._snapshot is None
+                or self._comparison_worker is not None or paths is None):
+            return
+        self._comparison_generation += 1
+        generation = self._comparison_generation
+        self._comparison_snapshots = None
+        self._comparison_presentation = None
+        self._comparison_result = None
+        self._comparison_error = ""
+        self.comparison_status.setText("正在分別驗讀明選的兩個 manifest…")
+        for label in self.comparison_version_labels:
+            label.setText("版本讀取中。")
+        worker = TaskWorker(_read_theme_comparison_pair, *paths)
+        self._comparison_worker = worker
+        self._comparison_worker_generation = generation
+        worker.finished.connect(self._receive_comparison_result, Qt.ConnectionType.QueuedConnection)
+        worker.error.connect(self._receive_comparison_error, Qt.ConnectionType.QueuedConnection)
+        worker.cancelled.connect(self._receive_comparison_cancelled, Qt.ConnectionType.QueuedConnection)
+        worker.native_thread_finished.connect(self._finish_comparison_load, Qt.ConnectionType.QueuedConnection)
+        self._update_comparison_controls()
+        try:
+            worker.start()
+        except Exception as exc:
+            self._comparison_worker = None
+            self._comparison_worker_generation = None
+            self._comparison_result = None
+            self._comparison_error = ""
+            self._invalidate_comparison(clear_paths=False, collapse=False)
+            self.comparison_status.setText(f"雙版本讀取無法啟動：{exc}")
+            worker.deleteLater()
+            self._update_comparison_controls()
+
+    @Slot(object)
+    def _receive_comparison_result(self, result: object) -> None:
+        if (self.sender() is self._comparison_worker
+                and self._comparison_worker_generation == self._comparison_generation
+                and not self._closed):
+            self._comparison_result = result
+
+    @Slot(str)
+    def _receive_comparison_error(self, error: str) -> None:
+        if (self.sender() is self._comparison_worker
+                and self._comparison_worker_generation == self._comparison_generation
+                and not self._closed):
+            self._comparison_error = error
+
+    @Slot()
+    def _receive_comparison_cancelled(self) -> None:
+        if (self.sender() is self._comparison_worker
+                and self._comparison_worker_generation == self._comparison_generation
+                and not self._closed):
+            self._comparison_error = "雙版本讀取已取消。"
+
+    @Slot()
+    def _finish_comparison_load(self) -> None:
+        worker = self.sender()
+        if worker is not self._comparison_worker:
+            return
+        generation = self._comparison_worker_generation
+        result = self._comparison_result
+        error = self._comparison_error
+        self._comparison_worker = None
+        self._comparison_worker_generation = None
+        self._comparison_result = None
+        self._comparison_error = ""
+        try:
+            if self._closed or generation != self._comparison_generation:
+                return
+            if error:
+                self._invalidate_comparison(clear_paths=False, collapse=False)
+                self.comparison_status.setText(
+                    "雙版本讀取失敗；比較已清除：" + error.splitlines()[0]
+                )
+                return
+            if (type(result) is not tuple or len(result) != 2
+                    or any(type(item) is not ThemeResearchSnapshot for item in result)):
+                self._invalidate_comparison(clear_paths=False, collapse=False)
+                self.comparison_status.setText("雙版本讀取失敗；reader 未回傳兩份有效快照。")
+                return
+            first, second = result
+            if first.identity_sha256 == second.identity_sha256:
+                self._invalidate_comparison(clear_paths=False, collapse=False)
+                self.comparison_status.setText(
+                    "雙版本讀取失敗；兩個 manifest 指向同一快照身份，已清除比較。"
+                )
+                return
+            # 比較結果必須仍依附於目前明確載入的主版本生命週期。
+            if self._snapshot is None:
+                self._invalidate_comparison()
+                return
+            keys = {
+                (item.chain_name, item.theme_name)
+                for snapshot in (first, second)
+                for item in (*snapshot.mapping, *snapshot.report.rows)
+            }
+            chains = sorted({chain for chain, _ in keys})
+            blockers = [
+                QSignalBlocker(self.comparison_chain_filter),
+                QSignalBlocker(self.comparison_theme_filter),
+            ]
+            self.comparison_chain_filter.clear()
+            self.comparison_chain_filter.addItem("選擇鏈", None)
+            for chain in chains:
+                self.comparison_chain_filter.addItem(chain, chain)
+            self.comparison_theme_filter.clear()
+            self.comparison_theme_filter.addItem("選擇題材", None)
+            del blockers
+            self._comparison_snapshots = (first, second)
+            self.comparison_status.setText(
+                "兩份明選 manifest 已分別驗讀。選擇鏈與題材以查看各自原值；"
+                "讀取時間不是官方發布時間，亦不授歷史 PIT 或來源用途資格。"
+            )
+            self._populate_comparison_theme_filter()
+        except Exception as exc:
+            self._invalidate_comparison(clear_paths=False, collapse=False)
+            self.comparison_status.setText(f"雙版本比較呈現失敗；比較已清除：{exc}")
+        finally:
+            self._update_comparison_controls()
+            worker.deleteLater()
+
+    @Slot(int)
+    def _populate_comparison_theme_filter(self, _index: int = -1) -> None:
+        snapshots = self._comparison_snapshots
+        chain = self.comparison_chain_filter.currentData()
+        blockers = [QSignalBlocker(self.comparison_theme_filter)]
+        self.comparison_theme_filter.clear()
+        self.comparison_theme_filter.addItem("選擇題材", None)
+        if snapshots is not None and type(chain) is str:
+            themes = sorted({
+                theme for snapshot in snapshots
+                for item in (*snapshot.mapping, *snapshot.report.rows)
+                if item.chain_name == chain
+                for theme in (item.theme_name,)
+            })
+            for theme in themes:
+                self.comparison_theme_filter.addItem(theme, theme)
+        del blockers
+        self._render_comparison()
+
+    @Slot(int)
+    def _render_comparison(self, _index: int = -1) -> None:
+        snapshots = self._comparison_snapshots
+        chain = self.comparison_chain_filter.currentData()
+        theme = self.comparison_theme_filter.currentData()
+        if snapshots is None or type(chain) is not str or type(theme) is not str:
+            for label in self.comparison_version_labels:
+                label.setText("讀取完成後請選擇鏈與題材。")
+            return
+        try:
+            presentation = build_theme_return_two_version_presentation(
+                snapshots[0], snapshots[1], chain_name=chain, theme_name=theme,
+            )
+        except Exception as exc:
+            self._comparison_presentation = None
+            self.comparison_status.setText(f"此題材無法呈現：{exc}")
+            for label in self.comparison_version_labels:
+                label.setText("未知；此題材無法呈現。")
+            return
+        self._comparison_presentation = presentation
+        for index, observation in enumerate(presentation.observations):
+            value = self._comparison_display_value(observation.mean_return_pct)
+            coverage = (f"{observation.returns_coverage} / {observation.member_count} 位成員"
+                        if observation.returns_coverage is not None else "未知")
+            members = "、".join(observation.stock_ids) if observation.stock_ids else "未知"
+            source_ids = "、".join(observation.source_ids) if observation.source_ids else "未知"
+            label = self.comparison_version_labels[index]
+            label.setText(
+                f"明選版本 {index + 1}\n"
+                f"鏈／題材：{observation.chain_name}／{observation.theme_name}\n"
+                f"平均日漲跌幅（%）：{value}\n"
+                f"報酬覆蓋：{coverage}\n"
+                f"成員代碼：{members}\n"
+                f"報表列：{'有' if observation.row_present else '無（覆蓋未知）'}\n"
+                f"資料日：{observation.data_date}\n"
+                f"映射版本／可得日：{observation.mapping_snapshot_date}／{observation.mapping_available_date}\n"
+                f"讀取時間（known-at，非官方發布）：{observation.known_at}\n"
+                f"題材列來源 ID：{source_ids}\n"
+                f"manifest SHA-256：{observation.snapshot_identity}"
+            )
+            label.setToolTip(
+                f"平均日漲跌幅完整原值（%）："
+                f"{observation.mean_return_pct if observation.mean_return_pct is not None else '未知'}\n"
+                f"題材列來源 ID：{source_ids}\n"
+                f"manifest SHA-256：{observation.snapshot_identity}"
+            )
+        self.comparison_status.setText(
+            "原值並列完成。兩版本成員集合可不同；未計算差額、變化率、排名或跨期績效。"
+        )
+
+    @staticmethod
+    def _comparison_display_value(value: Decimal | None) -> str:
+        """長原值只縮短畫面字串；完整 Decimal 仍保留於 DTO 與提示。"""
+        if value is None:
+            return "未知"
+        original = str(value)
+        if value == 0 and ("E" in original or len(original) > 14):
+            return "0（完整原值見提示）"
+        if len(original) <= 14:
+            return original
+        shortened = format(value, ".4f")
+        if Decimal(shortened) == 0:
+            shortened = format(value, ".4E")
+        return f"約{shortened}（完整原值見提示）"
+
+    def _update_comparison_controls(self) -> None:
+        available = (
+            not self._closed and not self._busy and self._snapshot is not None
+            and self._comparison_worker is None
+        )
+        self.comparison_choose_button.setEnabled(available)
+        self.comparison_load_button.setEnabled(available and self._comparison_paths is not None)
+        self.comparison_toggle.setEnabled(available)
+        loaded = self._comparison_snapshots is not None and not self._closed
+        self.comparison_chain_filter.setEnabled(loaded)
+        self.comparison_theme_filter.setEnabled(loaded)
 
     def _choose_snapshot(self) -> None:
         if self._closed or self._busy:
@@ -683,6 +1246,7 @@ class IndustryThemeMapView(QWidget):
             return False
         notes_editor, draft = confirmed
 
+        self._invalidate_comparison()
         self._generation += 1
         generation = self._generation
         self._snapshot = None
@@ -736,12 +1300,14 @@ class IndustryThemeMapView(QWidget):
             return
         if not isinstance(snapshot, ThemeResearchSnapshot):
             raise TypeError("snapshot 必須是 ThemeResearchSnapshot")
+        self._invalidate_comparison()
         self._generation += 1
         if self._worker is not None:
             self._worker.cancel(cooperative=True, wait=False)
         self._result = None
         self._error = ""
         self._cancelled = False
+        self._clear_classification_explorer(collapse=True)
         self._snapshot = snapshot
         try:
             self._apply_snapshot(snapshot)
@@ -825,6 +1391,7 @@ class IndustryThemeMapView(QWidget):
             return False
 
         worker = self._worker
+        self._invalidate_comparison()
         self._generation += 1
         self._snapshot = None
         self._result = None
@@ -863,6 +1430,7 @@ class IndustryThemeMapView(QWidget):
             return
         self._closed = True
         self._generation += 1
+        self._invalidate_comparison()
         self._snapshot = None
         self.snapshotChanged.emit(None)
         if self._worker is not None:
@@ -870,6 +1438,11 @@ class IndustryThemeMapView(QWidget):
         self._clear_snapshot_view()
         self.status_label.setText("頁面已關閉；背景讀取正在合作式結束。")
         self._update_controls()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        """頁面關閉時同步失效題材比較與其背景回呼。"""
+        self.shutdown()
+        super().closeEvent(event)
 
     @Slot(object)
     def _receive_snapshot(self, result: object) -> None:
@@ -1103,13 +1676,21 @@ class IndustryThemeMapView(QWidget):
         self.scroll_area.horizontalScrollBar().setValue(0)
 
     def _clear_snapshot_view(self) -> None:
+        self._clear_classification_explorer(collapse=True)
         self.selected_theme_summary.setText("選擇題材以對照原指標與成員。")
         self.selected_theme_summary.setToolTip("")
         self._presentation = None
         self._ascending_presentation = None
         self._rows_by_theme = {}
         self._mapping_by_theme_stock = {}
+        self._member_stock_ids = ()
+        self._member_row_by_stock_id = {}
+        self._member_theme_key = None
+        self._member_snapshot_identity = None
+        self._member_page_index = 0
         self._clear_chain_directory()
+        self._clear_return_tiles()
+        self._clear_turnover_treemap()
         self._theme_options = [None]
         self.overview_label.setText(
             "尚未載入題材研究版本；請先選取本機已保存版本。"
@@ -1119,7 +1700,17 @@ class IndustryThemeMapView(QWidget):
         self.source_details_button.setChecked(False)
         self.source_details_button.setText("顯示來源與限制")
         self.metrics_table.setRowCount(0)
+        self._clear_metric_cards()
         self.member_table.setRowCount(0)
+        self.member_table.clearSelection()
+        self.member_table.setCurrentCell(-1, -1)
+        self.member_table.setToolTip("")
+        self.member_page_status_label.setText("顯示 0 / 0 位成員")
+        self.member_page_status_label.setAccessibleDescription(
+            self.member_page_status_label.text()
+        )
+        self.member_page_previous_button.setEnabled(False)
+        self.member_page_next_button.setEnabled(False)
         self._clear_stock_lookup()
         for key in self.leader_card_topics:
             self.observation_cards[key].hide()
@@ -1304,27 +1895,20 @@ class IndustryThemeMapView(QWidget):
             return
         self.theme_filter.setCurrentIndex(theme_index)
 
-        identifier_item = next(
-            (
-                self.member_table.item(row, 0)
-                for row in range(self.member_table.rowCount())
-                if self.member_table.item(row, 0) is not None
-                and self.member_table.item(row, 0).text() == stock_id
-            ),
-            None,
-        )
-        if identifier_item is None:
+        if (
+            self._member_theme_key != (chain_name, theme_name)
+            or self._member_snapshot_identity != snapshot.identity_sha256
+        ):
             self.stock_lookup_status_label.setText(
                 "所選股票不在該題材成員表；沒有定位。"
             )
             return
-        self.scroll_area.ensureWidgetVisible(self.members_group, 0, 0)
-        self.member_table.setCurrentItem(identifier_item)
-        self.member_table.selectRow(identifier_item.row())
-        self.member_table.scrollToItem(
-            identifier_item, QAbstractItemView.ScrollHint.PositionAtCenter
-        )
-        self.scroll_area.ensureWidgetVisible(self.member_table, 0, 0)
+        row_index = self._member_row_by_stock_id.get(stock_id)
+        if row_index is None or not self._select_member_global_row(row_index):
+            self.stock_lookup_status_label.setText(
+                "所選股票不在該題材成員表；沒有定位。"
+            )
+            return
         self.stock_lookup_status_label.setText(
             f"已定位 {stock_id}｜{chain_name}／{theme_name}；雙擊成員列可開啟個股。"
         )
@@ -1352,6 +1936,8 @@ class IndustryThemeMapView(QWidget):
         presentation = self._presentation
         if presentation is None:
             return
+        self._render_return_tiles()
+        self._render_turnover_treemap()
         leader_lists = {
             "return": presentation.return_leaders,
             "turnover": presentation.turnover_leaders,
@@ -1396,11 +1982,32 @@ class IndustryThemeMapView(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._arrange_observation_cards()
+        if hasattr(self, "return_tiles_grid") and self._return_tile_buttons:
+            self._arrange_return_tile_buttons()
+        if hasattr(self, "turnover_treemap_canvas") and self._turnover_treemap_buttons:
+            self._arrange_turnover_treemap_buttons()
         if hasattr(self, "theme_detail_splitter"):
             orientation = Qt.Orientation.Horizontal if self.width() >= 1050 else Qt.Orientation.Vertical
             if self.theme_detail_splitter.orientation() != orientation:
                 self.theme_detail_splitter.setOrientation(orientation)
                 self.theme_detail_splitter.setSizes([400, 600])
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
+        if (
+            hasattr(self, "turnover_treemap_canvas")
+            and watched is self.turnover_treemap_canvas
+            and event.type() == QEvent.Type.Resize
+            and self._turnover_treemap_buttons
+        ):
+            self._arrange_turnover_treemap_buttons()
+        if (
+            hasattr(self, "metrics_group")
+            and watched is self.metrics_group
+            and event.type() == QEvent.Type.Resize
+            and self._metric_card_widgets
+        ):
+            self._arrange_metric_cards()
+        return super().eventFilter(watched, event)
 
     def _arrange_observation_cards(self) -> None:
         if not hasattr(self, "observation_cards"):
@@ -1552,6 +2159,416 @@ class IndustryThemeMapView(QWidget):
         for button in self._chain_directory_buttons:
             button.setEnabled(available)
         self.chain_directory_group.setEnabled(available)
+
+    def _clear_return_tiles(self) -> None:
+        self._return_tile_identity = None
+        self._return_tile_buttons.clear()
+        while self.return_tiles_grid.count():
+            item = self.return_tiles_grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setEnabled(False)
+                widget.hide()
+                widget.deleteLater()
+        self.return_tiles_summary.setText("尚未載入題材漲跌格。")
+        self.return_tiles_group.setVisible(False)
+        blocker = QSignalBlocker(self.return_tiles_toggle)
+        self.return_tiles_toggle.setChecked(False)
+        del blocker
+        self.return_tiles_toggle.setText("瀏覽完整覆蓋漲跌格（展開）")
+        self.return_tiles_toggle.setEnabled(False)
+
+    def _render_return_tiles(self) -> None:
+        presentation = self._presentation
+        snapshot = self._snapshot
+        self._clear_return_tiles()
+        if presentation is None or snapshot is None or self._closed:
+            return
+        self._return_tile_identity = snapshot.identity_sha256
+        eligible = len(presentation.return_tiles)
+        self.return_tiles_summary.setText(
+            f"資料日：{snapshot.report.data_date.isoformat()}　｜　"
+            f"完整覆蓋：{eligible} / {presentation.return_tile_total} 個報表題材列"
+        )
+        if not presentation.return_tiles:
+            self.return_tiles_summary.setText(
+                self.return_tiles_summary.text()
+                + "　｜　目前沒有完整覆蓋且具有限漲跌值的題材。"
+            )
+            return
+        filter_keys = set(self._theme_options[1:])
+        selectable_tiles = tuple(
+            tile for tile in presentation.return_tiles
+            if (tile.chain_name, tile.theme_name) in filter_keys
+            and (tile.chain_name, tile.theme_name) in self._rows_by_theme
+        )
+        if len(selectable_tiles) != eligible:
+            self.return_tiles_summary.setText(
+                self.return_tiles_summary.text()
+                + f"　｜　可由既有篩選定位：{len(selectable_tiles)} 格"
+            )
+        if not selectable_tiles:
+            self.return_tiles_summary.setText(
+                self.return_tiles_summary.text() + "　｜　沒有對應的既有題材篩選選項。"
+            )
+        for tile in selectable_tiles:
+            button = QPushButton(
+                f"{tile.theme_name}\n{self._display_decimal(tile.mean_return_pct, suffix=' %')}"
+            )
+            button.setObjectName("industryThemeReturnTile")
+            button.setCheckable(True)
+            button.setMinimumHeight(68)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            button.setAccessibleName(
+                f"{tile.chain_name}／{tile.theme_name}，"
+                f"平均日漲跌 {tile.mean_return_pct} 百分比，"
+                f"完整覆蓋 {tile.returns_coverage} / {tile.members} 位成員"
+            )
+            button.setToolTip(
+                f"{tile.chain_name}／{tile.theme_name}\n"
+                f"原值：{tile.mean_return_pct} %\n"
+                f"覆蓋：{tile.returns_coverage} / {tile.members} 位成員\n"
+                f"資料日：{tile.data_date}\n"
+                f"映射版本／可得：{tile.mapping_snapshot_date}／{tile.mapping_available_date}\n"
+                f"讀取時間：{tile.known_at}\n"
+                f"來源：{'、'.join(tile.source_ids) if tile.source_ids else '未提供'}\n"
+                f"版本 SHA-256：{tile.snapshot_identity}"
+            )
+            button.setProperty("themeSnapshotIdentity", tile.snapshot_identity)
+            button.setProperty("themeChainName", tile.chain_name)
+            button.setProperty("themeName", tile.theme_name)
+            if tile.mean_return_pct > 0:
+                color = "#6F252B"
+            elif tile.mean_return_pct < 0:
+                color = "#25634A"
+            else:
+                color = "#555B63"
+            button.setStyleSheet(
+                f"QPushButton {{ background-color: {color}; color: #FFFFFF; "
+                "border: 1px solid #8C949D; border-radius: 4px; padding: 6px; "
+                "font-weight: 600; } QPushButton:focus { border: 2px solid #F2C94C; } "
+                "QPushButton:checked { border: 3px solid #F2C94C; }"
+            )
+            button.clicked.connect(self._on_return_tile_clicked)
+            self._return_tile_buttons[(tile.chain_name, tile.theme_name)] = button
+        self._arrange_return_tile_buttons()
+        self._sync_return_tile_selection()
+        self._update_return_tile_controls()
+
+    def _arrange_return_tile_buttons(self) -> None:
+        while self.return_tiles_grid.count():
+            self.return_tiles_grid.takeAt(0)
+        columns = 2 if self.width() < 760 else 4
+        for index, button in enumerate(self._return_tile_buttons.values()):
+            row_index, column_index = divmod(index, columns)
+            self.return_tiles_grid.addWidget(button, row_index, column_index)
+        for column in range(columns):
+            self.return_tiles_grid.setColumnStretch(column, 1)
+
+    def _sync_return_tile_selection(self) -> None:
+        chain_name = self.chain_filter.currentData()
+        theme_index = self.theme_filter.currentIndex()
+        selected_key = (
+            self._theme_options[theme_index]
+            if 0 < theme_index < len(self._theme_options) else None
+        )
+        if type(chain_name) is str and selected_key is not None:
+            selected_key = (chain_name, selected_key[1])
+        for key, button in self._return_tile_buttons.items():
+            button.setChecked(key == selected_key)
+        self._sync_turnover_treemap_selection()
+
+    @Slot(bool)
+    def _toggle_return_tiles(self, expanded: bool) -> None:
+        if self._closed or self._busy or self._snapshot is None:
+            expanded = False
+            blocker = QSignalBlocker(self.return_tiles_toggle)
+            self.return_tiles_toggle.setChecked(False)
+            del blocker
+        self.return_tiles_group.setVisible(expanded)
+        self.return_tiles_toggle.setText(
+            "瀏覽完整覆蓋漲跌格（收合）" if expanded else "瀏覽完整覆蓋漲跌格（展開）"
+        )
+
+    @Slot()
+    def _on_return_tile_clicked(self) -> None:
+        button = self.sender()
+        snapshot = self._snapshot
+        if not isinstance(button, QPushButton) or snapshot is None:
+            return
+        identity = button.property("themeSnapshotIdentity")
+        chain_name = button.property("themeChainName")
+        theme_name = button.property("themeName")
+        key = (chain_name, theme_name)
+        if (
+            self._closed or self._busy
+            or type(identity) is not str or type(chain_name) is not str
+            or type(theme_name) is not str
+            or identity != snapshot.identity_sha256
+            or identity != self._return_tile_identity
+            or key not in self._return_tile_buttons
+            or key not in self._rows_by_theme
+        ):
+            return
+        self._open_chain_directory_theme(identity, chain_name, theme_name)
+
+    def _update_return_tile_controls(self) -> None:
+        available = self._snapshot is not None and not self._closed and not self._busy
+        self.return_tiles_toggle.setEnabled(available and bool(self._return_tile_buttons))
+        self.return_tiles_group.setEnabled(available)
+        for button in self._return_tile_buttons.values():
+            button.setEnabled(available)
+        if self._busy and self._snapshot is None:
+            self.return_tiles_summary.setText("版本讀取中；題材漲跌格暫不顯示。")
+
+    def _clear_turnover_treemap(self) -> None:
+        self._turnover_treemap_identity = None
+        self._turnover_treemap_buttons.clear()
+        self._turnover_zero_buttons.clear()
+        self._turnover_tiles_by_key.clear()
+        for button in self.turnover_treemap_canvas.findChildren(QPushButton):
+            button.setEnabled(False)
+            button.hide()
+            button.deleteLater()
+        while self.turnover_zero_buttons_layout.count():
+            item = self.turnover_zero_buttons_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setEnabled(False)
+                widget.hide()
+                widget.deleteLater()
+        self.turnover_treemap_summary.setText("尚未載入成交金額面積圖。")
+        self.turnover_zero_summary.setText("零成交金額：無。")
+        self.turnover_treemap_group.setVisible(False)
+        blocker = QSignalBlocker(self.turnover_treemap_toggle)
+        self.turnover_treemap_toggle.setChecked(False)
+        del blocker
+        self.turnover_treemap_toggle.setText("瀏覽完整覆蓋成交金額面積圖（展開）")
+        self.turnover_treemap_toggle.setEnabled(False)
+
+    def _render_turnover_treemap(self) -> None:
+        presentation = self._presentation
+        snapshot = self._snapshot
+        self._clear_turnover_treemap()
+        if presentation is None or snapshot is None or self._closed:
+            return
+        self._turnover_treemap_identity = snapshot.identity_sha256
+        eligible = presentation.turnover_tiles
+        self._turnover_tiles_by_key = {
+            (tile.chain_name, tile.theme_name): tile for tile in eligible
+        }
+        positive = tuple(tile for tile in eligible if tile.turnover_twd > 0)
+        zero = tuple(tile for tile in eligible if tile.turnover_twd == 0)
+        filter_keys = set(self._theme_options[1:])
+        all_selectable_positive = tuple(
+            tile for tile in positive
+            if (tile.chain_name, tile.theme_name) in filter_keys
+            and (tile.chain_name, tile.theme_name) in self._rows_by_theme
+        )
+        selectable_positive = tuple(sorted(
+            all_selectable_positive,
+            key=lambda tile: (-tile.turnover_twd, tile.chain_name, tile.theme_name),
+        )[:self._MAX_TURNOVER_AREA_TILES])
+        selectable_zero = tuple(
+            tile for tile in zero
+            if (tile.chain_name, tile.theme_name) in filter_keys
+            and (tile.chain_name, tile.theme_name) in self._rows_by_theme
+        )
+        self.turnover_treemap_summary.setText(
+            f"資料日：{snapshot.report.data_date.isoformat()}　｜　"
+            f"完整覆蓋有效值：{len(eligible)} / {presentation.turnover_tile_total} 個報表題材列　｜　"
+            f"正值面積：{len(positive)} 格　｜　零值：{len(zero)} 筆"
+        )
+        if len(all_selectable_positive) > len(selectable_positive):
+            self.turnover_treemap_summary.setText(
+                self.turnover_treemap_summary.text()
+                + f"　｜　面積圖顯示成交金額前 {len(selectable_positive)} / {len(all_selectable_positive)} 格"
+            )
+        if len(all_selectable_positive) != len(positive) or len(selectable_zero) != len(zero):
+            self.turnover_treemap_summary.setText(
+                self.turnover_treemap_summary.text()
+                + f"　｜　可由既有篩選定位：{len(all_selectable_positive) + len(selectable_zero)} 筆"
+            )
+        excluded = presentation.turnover_tile_total - len(eligible)
+        self.turnover_treemap_summary.setText(
+            self.turnover_treemap_summary.text()
+            + f"　｜　覆蓋不全、缺值或非有限值：{excluded} 筆未畫面積"
+        )
+        self.turnover_treemap_canvas.setMinimumHeight(420 if len(selectable_positive) > 10 else 220)
+        for tile in selectable_positive:
+            display = self._turnover_area_label(tile.turnover_twd)
+            button = QPushButton(
+                f"{tile.theme_name}\n{display}",
+                self.turnover_treemap_canvas,
+            )
+            button.setObjectName("industryThemeTurnoverTreemapTile")
+            button.setCheckable(True)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            button.setAccessibleName(
+                f"{tile.chain_name}／{tile.theme_name}，成交金額 {tile.turnover_twd} TWD，"
+                f"完整覆蓋 {tile.turnover_coverage} / {tile.members} 位成員"
+            )
+            button.setToolTip(self._turnover_tile_tooltip(tile))
+            button.setProperty("themeSnapshotIdentity", tile.snapshot_identity)
+            button.setProperty("themeChainName", tile.chain_name)
+            button.setProperty("themeName", tile.theme_name)
+            button.setStyleSheet(
+                "QPushButton { background-color: #315C78; color: #FFFFFF; "
+                "border: 1px solid #9AA8B4; border-radius: 3px; padding: 3px; font-weight: 600; } "
+                "QPushButton:focus { border: 2px solid #F2C94C; } "
+                "QPushButton:checked { border: 3px solid #F2C94C; }"
+            )
+            button.clicked.connect(self._on_turnover_tile_clicked)
+            self._turnover_treemap_buttons[(tile.chain_name, tile.theme_name)] = button
+        for tile in selectable_zero:
+            button = QPushButton(f"{tile.chain_name}／{tile.theme_name}　0 TWD")
+            button.setObjectName("industryThemeTurnoverZeroTile")
+            button.setCheckable(True)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            button.setAccessibleName(
+                f"{tile.chain_name}／{tile.theme_name}，成交金額為零，沒有面積，"
+                f"完整覆蓋 {tile.turnover_coverage} / {tile.members} 位成員"
+            )
+            button.setToolTip(self._turnover_tile_tooltip(tile) + "\n零值以文字列出，不占面積。")
+            button.setProperty("themeSnapshotIdentity", tile.snapshot_identity)
+            button.setProperty("themeChainName", tile.chain_name)
+            button.setProperty("themeName", tile.theme_name)
+            button.clicked.connect(self._on_turnover_tile_clicked)
+            self._turnover_zero_buttons[(tile.chain_name, tile.theme_name)] = button
+            self.turnover_zero_buttons_layout.addWidget(button)
+        if zero:
+            self.turnover_zero_summary.setText(
+                "零成交金額（不占面積）：" + "、".join(
+                    f"{tile.chain_name}／{tile.theme_name}（覆蓋 {tile.turnover_coverage} / {tile.members} 位）"
+                    for tile in zero
+                )
+            )
+        elif not eligible:
+            self.turnover_zero_summary.setText("零成交金額：無；沒有完整覆蓋有效成交值。")
+        self._arrange_turnover_treemap_buttons()
+        self._sync_turnover_treemap_selection()
+        self._update_turnover_treemap_controls()
+
+    @staticmethod
+    def _turnover_area_label(value: Decimal) -> str:
+        """面積格的短字串；精確原值仍由提示與無障礙名稱保留。"""
+        if value >= Decimal("100000000"):
+            return f"約{value / Decimal('100000000'):,.1f}億"
+        if value >= Decimal("10000"):
+            return f"約{value / Decimal('10000'):,.0f}萬"
+        return f"{value:,.2f} TWD"
+
+    @staticmethod
+    def _turnover_tile_tooltip(tile: ThemeTurnoverTile) -> str:
+        return (
+            f"{tile.chain_name}／{tile.theme_name}\n原成交金額：{tile.turnover_twd} TWD\n"
+            f"覆蓋：{tile.turnover_coverage} / {tile.members} 位成員\n資料日：{tile.data_date}\n"
+            f"映射版本／可得：{tile.mapping_snapshot_date}／{tile.mapping_available_date}\n"
+            f"讀取時間：{tile.known_at}\n原題材列相關來源識別："
+            f"{'、'.join(tile.source_ids) if tile.source_ids else '未提供'}\n"
+            f"版本 SHA-256：{tile.snapshot_identity}"
+        )
+
+    def _arrange_turnover_treemap_buttons(self) -> None:
+        buttons = self._turnover_treemap_buttons
+        canvas = self.turnover_treemap_canvas
+        if not buttons or canvas.width() <= 0 or canvas.height() <= 0:
+            return
+        values = tuple(sorted(
+            ((key, self._turnover_tiles_by_key[key].turnover_twd)
+             for key in buttons if key in self._turnover_tiles_by_key),
+            key=lambda item: (-item[1], item[0]),
+        ))
+        rects = self._slice_turnover_rects(values, QRect(0, 0, canvas.width(), canvas.height()))
+        for key, button in buttons.items():
+            if key in rects:
+                button.setGeometry(rects[key])
+
+    @classmethod
+    def _slice_turnover_rects(
+        cls, values: tuple[tuple[tuple[str, str], Decimal], ...], rect: QRect,
+    ) -> dict[tuple[str, str], QRect]:
+        """依原成交額切分矩形；浮點比例只用於 Qt 像素幾何。"""
+        if not values or rect.width() <= 0 or rect.height() <= 0:
+            return {}
+        if len(values) == 1:
+            return {values[0][0]: rect}
+        total = sum((value for _, value in values), Decimal(0))
+        running = Decimal(0)
+        split = 1
+        best_gap: Decimal | None = None
+        for index, (_, value) in enumerate(values[:-1], start=1):
+            running += value
+            gap = abs(total - running * 2)
+            if best_gap is None or gap < best_gap:
+                best_gap = gap
+                split = index
+        left_values, right_values = values[:split], values[split:]
+        left_total = sum((value for _, value in left_values), Decimal(0))
+        fraction = float(left_total / total) if total > 0 else len(left_values) / len(values)
+        if rect.width() >= rect.height():
+            first_size = min(rect.width() - 1, max(1, round(rect.width() * fraction)))
+            first_rect = QRect(rect.x(), rect.y(), first_size, rect.height())
+            second_rect = QRect(rect.x() + first_size, rect.y(), rect.width() - first_size, rect.height())
+        else:
+            first_size = min(rect.height() - 1, max(1, round(rect.height() * fraction)))
+            first_rect = QRect(rect.x(), rect.y(), rect.width(), first_size)
+            second_rect = QRect(rect.x(), rect.y() + first_size, rect.width(), rect.height() - first_size)
+        result = cls._slice_turnover_rects(left_values, first_rect)
+        result.update(cls._slice_turnover_rects(right_values, second_rect))
+        return result
+
+    def _sync_turnover_treemap_selection(self) -> None:
+        chain_name = self.chain_filter.currentData()
+        theme_index = self.theme_filter.currentIndex()
+        selected_key = self._theme_options[theme_index] if 0 < theme_index < len(self._theme_options) else None
+        if type(chain_name) is str and selected_key is not None:
+            selected_key = (chain_name, selected_key[1])
+        for key, button in (*self._turnover_treemap_buttons.items(), *self._turnover_zero_buttons.items()):
+            button.setChecked(key == selected_key)
+
+    @Slot(bool)
+    def _toggle_turnover_treemap(self, expanded: bool) -> None:
+        if self._closed or self._busy or self._snapshot is None:
+            expanded = False
+            blocker = QSignalBlocker(self.turnover_treemap_toggle)
+            self.turnover_treemap_toggle.setChecked(False)
+            del blocker
+        self.turnover_treemap_group.setVisible(expanded)
+        self.turnover_treemap_toggle.setText(
+            "瀏覽完整覆蓋成交金額面積圖（收合）" if expanded
+            else "瀏覽完整覆蓋成交金額面積圖（展開）"
+        )
+
+    @Slot()
+    def _on_turnover_tile_clicked(self) -> None:
+        button = self.sender()
+        snapshot = self._snapshot
+        if not isinstance(button, QPushButton) or snapshot is None:
+            return
+        identity = button.property("themeSnapshotIdentity")
+        chain_name = button.property("themeChainName")
+        theme_name = button.property("themeName")
+        key = (chain_name, theme_name)
+        if (
+            self._closed or self._busy or type(identity) is not str
+            or type(chain_name) is not str or type(theme_name) is not str
+            or identity != snapshot.identity_sha256
+            or identity != self._turnover_treemap_identity
+            or (key not in self._turnover_treemap_buttons and key not in self._turnover_zero_buttons)
+            or key not in self._rows_by_theme
+        ):
+            return
+        self._open_chain_directory_theme(identity, chain_name, theme_name)
+
+    def _update_turnover_treemap_controls(self) -> None:
+        available = self._snapshot is not None and not self._closed and not self._busy
+        has_items = bool(self._turnover_treemap_buttons or self._turnover_zero_buttons)
+        self.turnover_treemap_toggle.setEnabled(available and has_items)
+        self.turnover_treemap_group.setEnabled(available)
+        for button in (*self._turnover_treemap_buttons.values(), *self._turnover_zero_buttons.values()):
+            button.setEnabled(available)
 
     @Slot()
     def _on_chain_directory_shortcut_clicked(self) -> None:
@@ -1757,14 +2774,191 @@ class IndustryThemeMapView(QWidget):
     @Slot(int)
     def _on_chain_changed(self, _index: int) -> None:
         self._navigation_selection_revision += 1
+        self._clear_classification_explorer(collapse=True)
         if self._snapshot is None:
             return
         self._populate_theme_filter()
+        self._sync_return_tile_selection()
+        self._update_controls()
 
     @Slot(int)
     def _on_theme_changed(self, _index: int) -> None:
         self._navigation_selection_revision += 1
         self._render_selected_theme()
+        self._sync_return_tile_selection()
+        self._update_controls()
+
+    def _clear_classification_explorer(self, *, collapse: bool) -> None:
+        """清除舊分類投影，避免選取或版本替換後留下過期成員。"""
+        if collapse:
+            blocker = QSignalBlocker(self.classification_explorer_toggle)
+            self.classification_explorer_toggle.setChecked(False)
+            del blocker
+            self.classification_explorer_toggle.setText(
+                "查看所選題材分類成員（展開）"
+            )
+        self.classification_explorer_group.setVisible(False)
+        self.classification_hierarchy_label.setText("尚未選擇題材。")
+        self.classification_members_status.setText("展開後顯示分類成員。")
+        self._classification_explorer_identity = None
+        self._classification_explorer_key = None
+        while self.classification_members_layout.count():
+            item = self.classification_members_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    @Slot(bool)
+    def _toggle_classification_explorer(self, expanded: bool) -> None:
+        if (self._closed or self._busy or self._snapshot is None
+                or self.theme_filter.currentIndex() <= 0):
+            expanded = False
+            blocker = QSignalBlocker(self.classification_explorer_toggle)
+            self.classification_explorer_toggle.setChecked(False)
+            del blocker
+        if expanded:
+            self._render_classification_explorer()
+        else:
+            self._clear_classification_explorer(collapse=False)
+        self.classification_explorer_group.setVisible(expanded)
+        self.classification_explorer_toggle.setText(
+            "查看所選題材分類成員（收合）" if expanded
+            else "查看所選題材分類成員（展開）"
+        )
+
+    @staticmethod
+    def _classification_value(value: str) -> str:
+        return value.strip() if value.strip() else "未提供"
+
+    def _render_classification_explorer(self) -> None:
+        """依目前 typed mapping 投影靜態階層，不推導方向或關係。"""
+        self._clear_classification_explorer(collapse=False)
+        snapshot = self._snapshot
+        index = self.theme_filter.currentIndex()
+        if snapshot is None or index <= 0 or index >= len(self._theme_options):
+            return
+        key = self._theme_options[index]
+        if key is None:
+            return
+        try:
+            presentation = build_theme_classification_presentation(
+                snapshot, key[0], key[1]
+            )
+        except (TypeError, ValueError):
+            self.classification_hierarchy_label.setText(
+                f"{key[0]}　›　{key[1]}"
+            )
+            self.classification_members_status.setText(
+                "此版本缺少可展開的原始分類列；下方既有成員表仍可使用。"
+            )
+            return
+
+        # 僅保存 SHA 與所選鍵；子控制項不保留舊 snapshot 或 DTO。
+        self._classification_explorer_identity = presentation.snapshot_identity_sha256
+        self._classification_explorer_key = key
+        self.classification_hierarchy_label.setText(
+            f"產業鏈：{presentation.chain_name}　›　題材：{presentation.theme_name}\n"
+            "靜態分類層級；不表示供應、客戶、資金或因果方向。"
+        )
+        displayed_members = presentation.members[:self._classification_explorer_member_limit]
+        members_by_tier: dict[str, list[ThemeClassificationMember]] = {}
+        tier_totals: dict[str, int] = {}
+        for member in presentation.members:
+            tier = self._classification_value(member.chain_tier)
+            tier_totals[tier] = tier_totals.get(tier, 0) + 1
+        for member in displayed_members:
+            tier = self._classification_value(member.chain_tier)
+            members_by_tier.setdefault(tier, []).append(member)
+
+        for tier, members in members_by_tier.items():
+            tier_group = QGroupBox(
+                f"成員分類位置：{tier}（圖中 {len(members)} / 共 {tier_totals[tier]} 位）"
+            )
+            tier_group.setObjectName("industryThemeClassificationTier")
+            tier_group.setAccessibleName(
+                f"成員分類位置 {tier}，圖中 {len(members)} 位，共 {tier_totals[tier]} 位"
+            )
+            tier_layout = QGridLayout(tier_group)
+            tier_layout.setContentsMargins(6, 6, 6, 6)
+            tier_layout.setHorizontalSpacing(6)
+            tier_layout.setVerticalSpacing(4)
+            for member_index, member in enumerate(members):
+                stock_name = self._classification_value(member.stock_name)
+                button = QPushButton(f"{member.stock_id}　{stock_name}")
+                button.setObjectName("industryThemeClassificationMemberButton")
+                button.setAccessibleName(
+                    f"分類成員 {member.stock_id} {stock_name}，位置 {tier}；"
+                    "按下後定位下方題材成員表"
+                )
+                button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                button.setProperty(
+                    "classificationSnapshotIdentity",
+                    presentation.snapshot_identity_sha256,
+                )
+                button.setProperty("classificationChainName", key[0])
+                button.setProperty("classificationThemeName", key[1])
+                button.setProperty("classificationStockId", member.stock_id)
+                button.setToolTip(
+                    f"股票：{member.stock_id}　{stock_name}\n"
+                    f"市場：{self._classification_value(member.market_type)}\n"
+                    f"L1 產業：{self._classification_value(member.l1_industry_category)}\n"
+                    f"分類位置：{tier}\n"
+                    f"主要分類：{'是' if member.is_primary else '否'}\n"
+                    f"分配方法：{self._classification_value(member.assignment_method)}\n"
+                    f"來源：{self._classification_value(member.source_name)}\n"
+                    f"來源層級：{self._classification_value(member.source_tier)}\n"
+                    f"PIT 模式：{self._classification_value(member.pit_mode)}\n"
+                    f"證據：{self._classification_value(member.evidence_note)}\n"
+                    f"映射資料日：{self._classification_value(member.snapshot_date)}\n"
+                    f"可得日期：{self._classification_value(member.available_date)}\n"
+                    f"版本 SHA-256：{presentation.snapshot_identity_sha256}\n"
+                    "按下只定位下方既有成員表，不會開啟個股研究。"
+                )
+                button.clicked.connect(self._focus_classification_member)
+                tier_layout.addWidget(button, member_index // 3, member_index % 3)
+            self.classification_members_layout.addWidget(tier_group)
+
+        total = len(presentation.members)
+        shown = len(displayed_members)
+        remaining = total - shown
+        self.classification_members_status.setText(
+            f"顯示 {shown} / {total} 位分類成員；資料日 {presentation.data_date}；"
+            f"讀取時間 {presentation.known_at}；"
+            f"映射版本／可得日 {presentation.mapping_snapshot_date}／"
+            f"{presentation.mapping_available_date}；歷史 PIT 資格旗標 "
+            f"{'是' if presentation.historical_pit_eligible else '否'}；版本 SHA-256 "
+            f"{presentation.snapshot_identity_sha256}。"
+            + (f"其餘 {remaining} 位請在下方既有題材成員表查閱。" if remaining else "")
+        )
+
+    @Slot()
+    def _focus_classification_member(self) -> None:
+        button = self.sender()
+        snapshot = self._snapshot
+        if not isinstance(button, QPushButton) or snapshot is None:
+            return
+        identity = button.property("classificationSnapshotIdentity")
+        chain_name = button.property("classificationChainName")
+        theme_name = button.property("classificationThemeName")
+        stock_id = button.property("classificationStockId")
+        current_index = self.theme_filter.currentIndex()
+        current_key = (
+            self._theme_options[current_index]
+            if 0 < current_index < len(self._theme_options) else None
+        )
+        if (
+            self._closed or self._busy or type(identity) is not str
+            or type(chain_name) is not str or type(theme_name) is not str
+            or type(stock_id) is not str
+            or identity != snapshot.identity_sha256
+            or identity != self._classification_explorer_identity
+            or (chain_name, theme_name) != current_key
+            or (chain_name, theme_name) != self._classification_explorer_key
+        ):
+            return
+        row_index = self._member_row_by_stock_id.get(stock_id)
+        if row_index is None or not self._select_member_global_row(row_index):
+            return
 
     def _on_member_cell_changed(
         self, _current_row: int, _current_column: int,
@@ -1788,8 +2982,15 @@ class IndustryThemeMapView(QWidget):
             self._emit_selected_stock(item)
 
     def _render_selected_theme(self) -> None:
+        self._clear_classification_explorer(collapse=True)
         self.metrics_table.setRowCount(0)
-        self.member_table.setRowCount(0)
+        self._clear_metric_cards()
+        self._member_stock_ids = ()
+        self._member_row_by_stock_id = {}
+        self._member_theme_key = None
+        self._member_snapshot_identity = None
+        self._member_page_index = 0
+        self._render_member_page()
         self.selected_theme_summary.setText("選擇題材以對照原指標與成員。")
         self.selected_theme_summary.setToolTip("")
         self._refresh_member_action()
@@ -1862,6 +3063,7 @@ class IndustryThemeMapView(QWidget):
                 self._decimal_tooltip(row.institutional_buy_ratio),
             ),
         )
+        self._render_metric_cards(metrics)
         self.metrics_table.setRowCount(len(metrics))
         for row_index, (label, displayed_value, available, tooltip) in enumerate(metrics):
             for column, value in enumerate((label, displayed_value, available)):
@@ -1871,9 +3073,38 @@ class IndustryThemeMapView(QWidget):
                     item.setToolTip(tooltip)
                 self.metrics_table.setItem(row_index, column, item)
 
-        self.member_table.setRowCount(len(row.stock_ids))
-        for member_index, stock_id in enumerate(row.stock_ids):
-            mapping_row = self._mapping_by_theme_stock.get((*key, stock_id))
+        self._member_stock_ids = tuple(row.stock_ids)
+        self._member_row_by_stock_id = {}
+        for member_index, stock_id in enumerate(self._member_stock_ids):
+            self._member_row_by_stock_id.setdefault(stock_id, member_index)
+        self._member_theme_key = key
+        self._member_snapshot_identity = (
+            self._snapshot.identity_sha256 if self._snapshot is not None else None
+        )
+        self._member_page_index = 0
+        self._render_member_page()
+        self._refresh_member_action()
+
+    def _render_member_page(self) -> None:
+        """只建立目前題材成員頁面需要的有限表格列。"""
+
+        total = len(self._member_stock_ids)
+        page_count = (total + self._MEMBER_PAGE_SIZE - 1) // self._MEMBER_PAGE_SIZE
+        if page_count == 0:
+            self._member_page_index = 0
+        else:
+            self._member_page_index = min(self._member_page_index, page_count - 1)
+        start = self._member_page_index * self._MEMBER_PAGE_SIZE
+        end = min(total, start + self._MEMBER_PAGE_SIZE)
+        page_stock_ids = self._member_stock_ids[start:end]
+        blocker = QSignalBlocker(self.member_table)
+        self.member_table.clearSelection()
+        self.member_table.setCurrentCell(-1, -1)
+        self.member_table.setRowCount(len(page_stock_ids))
+        for page_row, stock_id in enumerate(page_stock_ids):
+            mapping_row = self._mapping_by_theme_stock.get(
+                (*self._member_theme_key, stock_id)
+            ) if self._member_theme_key is not None else None
             name = self._mapping_text(mapping_row, "stock_name")
             chain_tier = self._mapping_text(mapping_row, "chain_tier")
             basis = self._mapping_basis(mapping_row)
@@ -1881,9 +3112,147 @@ class IndustryThemeMapView(QWidget):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 item.setToolTip(value)
-                self.member_table.setItem(member_index, column, item)
+                self.member_table.setItem(page_row, column, item)
         self.member_table.resizeRowsToContents()
+        self.member_table.clearSelection()
+        self.member_table.setCurrentCell(-1, -1)
+        del blocker
+        QToolTip.hideText()
+        self.member_table.setToolTip("")
+        self._navigation_selection_revision += 1
+        if total:
+            self.member_page_status_label.setText(
+                f"顯示 {start + 1}–{end} / {total} 位成員；"
+                f"第 {self._member_page_index + 1} / {page_count} 頁"
+            )
+        else:
+            self.member_page_status_label.setText("顯示 0 / 0 位成員")
+        self.member_page_status_label.setAccessibleDescription(
+            self.member_page_status_label.text()
+        )
+        self.member_page_previous_button.setEnabled(
+            total > 0 and self._member_page_index > 0 and not self._busy and not self._closed
+        )
+        self.member_page_next_button.setEnabled(
+            total > 0 and self._member_page_index + 1 < page_count
+            and not self._busy and not self._closed
+        )
         self._refresh_member_action()
+
+    def _change_member_page(self, offset: int) -> None:
+        if self._closed or self._busy or self._snapshot is None:
+            return
+        page_count = (
+            len(self._member_stock_ids) + self._MEMBER_PAGE_SIZE - 1
+        ) // self._MEMBER_PAGE_SIZE
+        target_page = self._member_page_index + offset
+        if target_page < 0 or target_page >= page_count:
+            return
+        self._member_page_index = target_page
+        self._render_member_page()
+
+    def _select_member_global_row(self, row_index: int) -> bool:
+        if (
+            self._closed or self._busy or self._snapshot is None
+            or self._member_snapshot_identity != self._snapshot.identity_sha256
+            or self._member_theme_key is None
+            or not 0 <= row_index < len(self._member_stock_ids)
+        ):
+            return False
+        target_page = row_index // self._MEMBER_PAGE_SIZE
+        if target_page != self._member_page_index:
+            self._member_page_index = target_page
+            self._render_member_page()
+        else:
+            self.member_table.clearSelection()
+            self.member_table.setCurrentCell(-1, -1)
+            QToolTip.hideText()
+            self.member_table.setToolTip("")
+            self._navigation_selection_revision += 1
+            self._refresh_member_action()
+        page_row = row_index - self._member_page_index * self._MEMBER_PAGE_SIZE
+        item = self.member_table.item(page_row, 0)
+        if item is None or item.text() != self._member_stock_ids[row_index]:
+            return False
+        self.member_table.setCurrentItem(item)
+        self.member_table.selectRow(page_row)
+        self.member_table.scrollToItem(
+            item, QAbstractItemView.ScrollHint.PositionAtCenter
+        )
+        self.scroll_area.ensureWidgetVisible(self.members_group, 0, 0)
+        self.scroll_area.ensureWidgetVisible(self.member_table, 0, 0)
+        return True
+
+    def _clear_metric_cards(self) -> None:
+        self.metrics_card_labels.clear()
+        self.metrics_cards_group.setVisible(False)
+        self.theme_detail_splitter.setMinimumHeight(0)
+        self._metric_card_columns = 0
+        for layout in self.metrics_card_rows:
+            while layout.count():
+                item = layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+        self._metric_card_widgets.clear()
+
+    def _arrange_metric_cards(self) -> None:
+        # 主頁 1280 寬時此欄只約 40% 畫面；三欄會擠掉長名稱與數值。
+        columns = 3 if self.metrics_group.width() >= 640 else 2
+        if columns == self._metric_card_columns:
+            return
+        for layout in self.metrics_card_rows:
+            while layout.count():
+                layout.takeAt(0)
+        for index, card in enumerate(self._metric_card_widgets):
+            self.metrics_card_rows[index // columns].addWidget(card, 1)
+        self._metric_card_columns = columns
+        rows = (len(self._metric_card_widgets) + columns - 1) // columns
+        cards_height = rows * 108 + max(0, rows - 1) * 6 + 36
+        self.metrics_cards_group.setMinimumHeight(cards_height)
+        self.theme_detail_splitter.setMinimumHeight(
+            cards_height + self.metrics_table.minimumHeight() + 60
+        )
+        self.metrics_cards_group.updateGeometry()
+
+    def _render_metric_cards(
+        self, metrics: tuple[tuple[str, str, str, str], ...],
+    ) -> None:
+        self._clear_metric_cards()
+        for label, displayed_value, coverage, tooltip in metrics:
+            card = QWidget(self.metrics_cards_group)
+            card.setObjectName("industryThemeMetricCard")
+            card.setMinimumHeight(108)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(8, 6, 8, 6)
+            card_layout.setSpacing(2)
+            title = QLabel(label, card)
+            title.setAccessibleName(f"{label}指標名稱")
+            title.setWordWrap(True)
+            title.setTextFormat(Qt.TextFormat.PlainText)
+            value = QLabel(displayed_value, card)
+            value.setAccessibleName(f"{label}觀察值")
+            value.setWordWrap(True)
+            value.setTextFormat(Qt.TextFormat.PlainText)
+            value.setStyleSheet("font-size: 16px; font-weight: 600;")
+            denominator = QLabel(f"覆蓋：{coverage}", card)
+            denominator.setAccessibleName(f"{label}覆蓋數")
+            denominator.setWordWrap(True)
+            denominator.setTextFormat(Qt.TextFormat.PlainText)
+            for widget in (title, value, denominator):
+                widget.setToolTip(tooltip)
+                card_layout.addWidget(widget)
+            card.setToolTip(tooltip)
+            card.setStyleSheet(
+                "QWidget#industryThemeMetricCard { "
+                f"background-color: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                "border-radius: 4px; }"
+            )
+            self._metric_card_widgets.append(card)
+            self.metrics_card_labels.append((title, value, denominator))
+        self._arrange_metric_cards()
+        self.metrics_cards_group.setVisible(bool(metrics))
 
     @staticmethod
     def _display_decimal(
@@ -1946,7 +3315,16 @@ class IndustryThemeMapView(QWidget):
     def _render_empty(self, message: str) -> None:
         self.summary_label.setText(message)
         self.metrics_table.setRowCount(0)
+        self._clear_metric_cards()
         self.member_table.setRowCount(0)
+        self.member_table.clearSelection()
+        self.member_table.setCurrentCell(-1, -1)
+        self.member_page_status_label.setText("顯示 0 / 0 位成員")
+        self.member_page_status_label.setAccessibleDescription(
+            self.member_page_status_label.text()
+        )
+        self.member_page_previous_button.setEnabled(False)
+        self.member_page_next_button.setEnabled(False)
 
     @Slot(bool)
     def _toggle_source_details(self, expanded: bool) -> None:
@@ -1978,6 +3356,23 @@ class IndustryThemeMapView(QWidget):
         self.theme_filter.setEnabled(available and not self._busy)
         self.metrics_table.setEnabled(available and not self._busy)
         self.member_table.setEnabled(available and not self._busy)
+        selected_theme = (
+            0 < self.theme_filter.currentIndex() < len(self._theme_options)
+            and self._theme_options[self.theme_filter.currentIndex()] is not None
+        )
+        self.classification_explorer_toggle.setEnabled(
+            available and not self._busy and selected_theme
+        )
+        member_page_count = (
+            len(self._member_stock_ids) + self._MEMBER_PAGE_SIZE - 1
+        ) // self._MEMBER_PAGE_SIZE
+        self.member_page_previous_button.setEnabled(
+            available and not self._busy and self._member_page_index > 0
+        )
+        self.member_page_next_button.setEnabled(
+            available and not self._busy
+            and self._member_page_index + 1 < member_page_count
+        )
         self._refresh_member_action()
         self.stock_lookup_input.setEnabled(lookup_available)
         self.stock_lookup_results.setEnabled(
@@ -1991,6 +3386,9 @@ class IndustryThemeMapView(QWidget):
             is not None
         )
         self._update_chain_directory_controls()
+        self._update_return_tile_controls()
+        self._update_turnover_treemap_controls()
+        self._update_comparison_controls()
         if self._closed:
             self.stock_lookup_status_label.setText(
                 "頁面已關閉；股票反查已停用。"

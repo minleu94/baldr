@@ -31,6 +31,7 @@ class AnalystDiagnosticsWidget(QWidget):
     """把已計算的診斷 DTO 以分析師可讀的表格呈現。"""
 
     _MONTH_LABELS = ("年", "1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月")
+    _MAX_MONTHLY_DISPLAY_MONTHS = 1200
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -96,6 +97,10 @@ class AnalystDiagnosticsWidget(QWidget):
         self.monthly_table = self._create_table(self._MONTH_LABELS, "每格直接顯示 bp；未知表示該月沒有足夠的已保存權益觀測。")
         self.monthly_table.setMinimumHeight(120)
         monthly_layout.addWidget(self.monthly_table)
+        self.monthly_gap_note = QLabel()
+        self.monthly_gap_note.setWordWrap(True)
+        self.monthly_gap_note.setAccessibleName("月度矩陣省略年份說明")
+        monthly_layout.addWidget(self.monthly_gap_note)
         layout.addWidget(monthly_group)
 
         benchmark_group = QGroupBox("Frozen benchmark attribution")
@@ -182,14 +187,47 @@ class AnalystDiagnosticsWidget(QWidget):
         for item in dto.monthly:
             year = item.get("year")
             month = item.get("month")
-            if isinstance(year, int) and isinstance(month, int):
+            if type(year) is int and type(month) is int and 1 <= month <= 12:
                 by_year.setdefault(year, {})[month] = item.get("return_text", "未知")
-        for year in sorted(by_year):
+        observed_periods = {
+            year * 12 + month - 1
+            for year, months in by_year.items()
+            for month in months
+        }
+        first_period = min(observed_periods) if observed_periods else None
+        last_period = max(observed_periods) if observed_periods else None
+        fill_period_gaps = (
+            first_period is not None
+            and last_period is not None
+            and last_period - first_period + 1 <= self._MAX_MONTHLY_DISPLAY_MONTHS
+        )
+        self.monthly_gap_note.setText(
+            "期間跨度超過 100 年，矩陣僅列有觀測資料的年份；中間省略年份的月份仍屬未知。"
+            if first_period is not None and not fill_period_gaps else ""
+        )
+        if first_period is None or last_period is None:
+            years = ()
+        elif fill_period_gaps:
+            # 只在有限期間內補齊跨年缺列，避免異常 DTO 展開成大量空白列。
+            years = range(first_period // 12, last_period // 12 + 1)
+        else:
+            years = sorted(by_year)
+        for year in years:
             row = self.monthly_table.rowCount()
             self.monthly_table.insertRow(row)
             self._set_item(self.monthly_table, row, 0, year)
             for month in range(1, 13):
-                self._set_item(self.monthly_table, row, month, by_year[year].get(month, "—"))
+                period = year * 12 + month - 1
+                in_observed_span = (
+                    first_period is not None
+                    and last_period is not None
+                    and first_period <= period <= last_period
+                )
+                missing_value = "未知" if in_observed_span else "—"
+                self._set_item(
+                    self.monthly_table, row, month,
+                    by_year.get(year, {}).get(month, missing_value),
+                )
 
         self.benchmark_table.setRowCount(0)
         benchmark = dto.benchmark

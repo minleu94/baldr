@@ -581,7 +581,12 @@ class DecisionDeskSnapshotBuilder:
                 return MarketRegimeSummary(dto.effective_date, DecisionDeskQuality(dto.quality), tuple(dto.warnings),
                                            regime_label=dto.regime_name_cn or dto.regime,
                                            regime_confidence=dto.match_score_bp,
-                                           meta={**dict(dto.details or {}), "source_id": dto.source_id, "source_version": dto.source_version})
+                                           meta={
+                                               **dict(dto.details or {}),
+                                               "source_id": dto.source_id,
+                                               "source_version": dto.source_version,
+                                               "regime_value_kind": "match_score_bp",
+                                           })
             snapshot = self.provider.fetch_market_regime(as_of_date)
         except BacktestCancelledError:
             raise

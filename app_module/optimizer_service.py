@@ -5,15 +5,18 @@
 
 import itertools
 from typing import Dict, List, Any, Optional, Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import pandas as pd
 import os
 from concurrent.futures import CancelledError, ThreadPoolExecutor, wait, FIRST_COMPLETED
 from app_module.exceptions import BacktestCancelledError
 from app_module.registered_strategy_spec import registered_strategy_spec
 from app_module.backtest_contracts import profit_factor_projection
+from app_module.single_backtest_metrics_contract import (
+    decode_single_backtest_metrics_contract,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,6 +40,7 @@ class OptimizationResult:
     metrics: Dict[str, Any]
     rank: int = 0
     run_id: Optional[str] = None
+    metric_status: Dict[str, str] = field(default_factory=dict)
 
 
 class OptimizerService:
@@ -238,37 +242,104 @@ class OptimizerService:
                     actual_end_date=actual_end_date
                 )
 
+                if report.details.get('error'):
+                    raise ValueError("原回測未完成，不得將錯誤報告的零值列入排名")
+
                 # 計算目標分數
-                if objective == 'sharpe_ratio':
-                    score = report.sharpe_ratio
-                elif objective == 'cagr':
-                    score = report.annual_return
-                elif objective == 'cagr_mdd':
-                    # CAGR - MDD 權衡（MDD為負數，所以是加法）
-                    score = report.annual_return + report.max_drawdown
+                manifest = report.details.get('data_manifest')
+                if not isinstance(manifest, dict):
+                    manifest = {}
+                raw_metrics = {
+                    'total_return': report.total_return,
+                    'annual_return': report.annual_return,
+                    'sharpe_ratio': report.sharpe_ratio,
+                    'max_drawdown': report.max_drawdown,
+                    'win_rate': report.win_rate,
+                    'total_trades': report.total_trades,
+                    'expectancy': report.expectancy,
+                }
+                projection = decode_single_backtest_metrics_contract(
+                    manifest,
+                    raw_metrics,
+                    run_type='single_backtest',
+                    universe=[report.details.get('stock_code', stock_code)],
+                )
+                metric_names = tuple(raw_metrics)
+                if projection is None:
+                    # 舊 fake／保存報告維持排序相容性，但其數值不升級為已觀測。
+                    metric_status = {name: 'legacy_unverified' for name in metric_names}
+                    metric_values = dict(raw_metrics)
                 else:
-                    score = report.sharpe_ratio
+                    projected_values = {
+                        'total_return': projection['total_return'],
+                        'annual_return': projection['annual_return'],
+                        'sharpe_ratio': projection['sharpe_ratio'],
+                        'max_drawdown': projection['max_drawdown'],
+                        'win_rate': projection['win_rate'],
+                        'total_trades': projection['completed_trades'],
+                        'expectancy': projection['expectancy'],
+                    }
+                    metric_status = {
+                        name: 'observed' if projected_values[name] is not None else 'unavailable'
+                        for name in metric_names
+                    }
+                    metric_values = projected_values
+
+                if objective == 'sharpe_ratio':
+                    objective_metric = 'sharpe_ratio'
+                elif objective == 'cagr':
+                    objective_metric = 'annual_return'
+                elif objective == 'cagr_mdd':
+                    objective_metric = 'cagr_mdd'
+                else:
+                    objective_metric = 'sharpe_ratio'
+
+                if projection is not None:
+                    required = ('annual_return', 'max_drawdown') if objective_metric == 'cagr_mdd' else (
+                        'annual_return' if objective_metric == 'cagr' else 'sharpe_ratio',
+                    )
+                    if any(metric_status[name] != 'observed' for name in required):
+                        raise ValueError(f"目標指標 {objective} 明示不可用，略過此參數組合")
+                    if objective_metric == 'cagr_mdd':
+                        # 沿用既有 CAGR + 負值 MDD 權衡；只組合同份報告的已保存值。
+                        score = metric_values['annual_return'] + metric_values['max_drawdown']
+                    else:
+                        score = metric_values[required[0]]
+                    metric_status['objective'] = 'observed'
+                else:
+                    # Legacy 相容排序；狀態會明示未經契約驗證。
+                    annual = Decimal(str(report.annual_return))
+                    drawdown = Decimal(str(report.max_drawdown))
+                    if objective_metric == 'cagr_mdd':
+                        score = annual + drawdown
+                    elif objective_metric == 'cagr':
+                        score = report.annual_return
+                    else:
+                        score = report.sharpe_ratio
+                    metric_status['objective'] = 'legacy_unverified'
+
+                try:
+                    finite_score = Decimal(str(score))
+                except (InvalidOperation, TypeError, ValueError) as exc:
+                    raise ValueError("目標分數不是有限原值") from exc
+                if not finite_score.is_finite():
+                    raise ValueError("目標分數不是有限原值")
 
                 # 構建結果
                 result = OptimizationResult(
                     params=full_params,
                     metrics={
-                        'total_return': report.total_return,
-                        'annual_return': report.annual_return,
-                        'sharpe_ratio': report.sharpe_ratio,
-                        'max_drawdown': report.max_drawdown,
-                        'win_rate': report.win_rate,
-                        'total_trades': report.total_trades,
-                        'expectancy': report.expectancy,
+                        **metric_values,
                         **profit_factor_projection(report.details),
                         'score': score  # 目標分數
-                    }
+                    },
+                    metric_status=metric_status,
                 )
                 return (idx, result, None)
 
             except Exception as e:
                 # 記錄錯誤但繼續
-                error_msg = f"參數組合 {param_combo} 回測失敗: {e}"
+                error_msg = f"參數組合 {param_combo} 回測或指標契約驗證失敗: {e}"
                 logger.warning(f"[OptimizerService] {error_msg}")
                 return (idx, None, error_msg)
 
@@ -389,22 +460,41 @@ class OptimizerService:
 
         for result in results:
             pf = profit_factor_projection(result.metrics)
+            statuses = result.metric_status or {}
+            def display_metric(name):
+                status = statuses.get(name, 'legacy_unverified')
+                if status != 'observed':
+                    return None
+                return result.metrics.get(name)
+
             row = {
                 '排名': result.rank,
                 **{f'參數_{k}': v for k, v in result.params.items()},
-                '總報酬率%': result.metrics.get('total_return', 0) * 100,
-                '年化報酬率%': result.metrics.get('annual_return', 0) * 100,
-                '夏普比率': result.metrics.get('sharpe_ratio', 0),
-                '最大回撤%': result.metrics.get('max_drawdown', 0) * 100,
-                '勝率%': result.metrics.get('win_rate', 0) * 100,
-                '交易次數': result.metrics.get('total_trades', 0),
-                '期望值%': result.metrics.get('expectancy', 0) * 100,
+                '總報酬率%': None if display_metric('total_return') is None else display_metric('total_return') * 100,
+                '年化報酬率%': None if display_metric('annual_return') is None else display_metric('annual_return') * 100,
+                '夏普比率': display_metric('sharpe_ratio'),
+                '最大回撤%': None if display_metric('max_drawdown') is None else display_metric('max_drawdown') * 100,
+                '勝率%': None if display_metric('win_rate') is None else display_metric('win_rate') * 100,
+                '交易次數': display_metric('total_trades'),
+                '期望值%': None if display_metric('expectancy') is None else display_metric('expectancy') * 100,
                 '獲利因子': pf['profit_factor'],
                 '獲利因子狀態': pf['profit_factor_status'],
                 '獲利因子語意': pf['profit_factor_semantics'],
-                '目標分數': result.metrics.get('score', 0)
+                '目標分數': result.metrics.get('score'),
+                '目標指標狀態': statuses.get('objective', 'legacy_unverified'),
+                '總報酬率狀態': statuses.get('total_return', 'legacy_unverified'),
+                '年化報酬率狀態': statuses.get('annual_return', 'legacy_unverified'),
+                '夏普比率狀態': statuses.get('sharpe_ratio', 'legacy_unverified'),
+                '最大回撤狀態': statuses.get('max_drawdown', 'legacy_unverified'),
+                '勝率狀態': statuses.get('win_rate', 'legacy_unverified'),
+                '交易次數狀態': statuses.get('total_trades', 'legacy_unverified'),
+                '期望值狀態': statuses.get('expectancy', 'legacy_unverified'),
             }
             summary_data.append(row)
 
-        return pd.DataFrame(summary_data)
+        summary = pd.DataFrame(summary_data)
+        if '交易次數' in summary:
+            # 觀測零配對保持整數顯示；缺值使用 pandas nullable integer 保留空格。
+            summary['交易次數'] = pd.array(summary['交易次數'], dtype='Int64')
+        return summary
 

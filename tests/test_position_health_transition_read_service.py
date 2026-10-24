@@ -402,6 +402,9 @@ def test_position_health_formatter_keeps_technical_scope_out_of_the_short_summar
     assert "需要確認：1/1 筆" in summary
     assert "尚無持倉健康評估資料" not in summary
     assert f"{POSITION_ID}" in detail
+    assert "部位識別（技術）：" in detail
+    assert "建倉來源銜接狀態：" in detail
+    assert "Entry lineage" not in detail
     assert "狀態穩定" in detail
     assert "尚未觸發失效條件" in detail
     assert "regime_stable" in detail

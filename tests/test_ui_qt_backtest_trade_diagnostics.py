@@ -42,6 +42,53 @@ def _report(extra):
     )
 
 
+def _saved_registry_run(*, with_curve: bool, invalid_contract: bool = False):
+    from app_module.single_backtest_metrics_contract import (
+        SINGLE_BACKTEST_METRICS_KEY,
+        capture_single_backtest_metrics_contract,
+    )
+    from backtest_module.performance_metrics import PerformanceAnalyzer
+
+    equity = (
+        pd.DataFrame({"equity": [100000, 100000]}, index=pd.date_range("2026-01-01", periods=2))
+        if with_curve
+        else pd.DataFrame({"equity": pd.Series(dtype="float64")}, index=pd.DatetimeIndex([]))
+    )
+    trades = pd.DataFrame(columns=["進場日期", "出場日期", "報酬率%"])
+    metrics = PerformanceAnalyzer().summarize([], equity, 100000.0)
+    contract = capture_single_backtest_metrics_contract(
+        metrics, equity=equity, trades=trades, stock_code="2330"
+    )
+    if invalid_contract:
+        contract["contract_sha256"] = "0" * 64
+    return {
+        "run_id": "registry-single-2330",
+        "run_name": "契約測試",
+        "run_type": "single_backtest",
+        "stock_code": "2330",
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-02" if with_curve else "",
+        "strategy_id": "stable_conservative_v1",
+        "total_return": metrics.total_return,
+        "annual_return": metrics.annual_return,
+        "sharpe_ratio": metrics.sharpe_ratio,
+        "max_drawdown": metrics.max_drawdown,
+        "win_rate": metrics.win_rate,
+        "expectancy": metrics.expectancy,
+        "total_trades": metrics.total_trades,
+        "data_manifest": {SINGLE_BACKTEST_METRICS_KEY: contract},
+        "equity_curve": equity,
+        "trade_list": trades,
+    }
+
+
+def _present_saved_history_payload(view, payload):
+    item = QListWidgetItem(payload.get("run_name", "保存 run"))
+    item.setData(Qt.ItemDataRole.UserRole, payload["run_id"])
+    view._load_history_run(item, run_data=payload)
+    return view.summary_text.toPlainText()
+
+
 def test_failed_report_cannot_save_export_promote_or_reuse_previous_chart(view):
     view.current_run_params = {"stock_code": "2317", "strategy_id": "baseline_score_threshold"}
     view.research_run_service = MagicMock()
@@ -256,6 +303,191 @@ def test_saved_six_pairs_keep_missing_fill_metadata_explicit(view):
     assert '實際成交筆數：此歷史紀錄未提供' in text
     assert view.trades_table.model() is not None
     assert view.trades_table.model().rowCount() == 6
+
+
+def test_registry_history_contract_unavailable_metrics_do_not_look_like_zero(view):
+    text = _present_saved_history_payload(view, _saved_registry_run(with_curve=False))
+
+    assert '總報酬率: 未知' in text
+    assert '年化報酬率: 未知' in text
+    assert '夏普比率: 未知' in text
+    assert '最大回撤: 未知' in text
+    assert '勝率: 未知' in text
+    assert '總交易次數: 0（已完成進出場配對）' in text
+    assert '完成進出場配對數：0' in text
+    assert '總報酬率: 0.00%' not in text
+    assert '尚無已完成交易' in text
+
+
+def test_registry_history_open_route_carries_exact_run_type_into_metric_contract(view):
+    payload = _saved_registry_run(with_curve=False)
+    metric_names = (
+        "total_return", "annual_return", "sharpe_ratio", "max_drawdown",
+        "win_rate", "total_trades", "expectancy",
+    )
+    metadata = SimpleNamespace(
+        metrics={name: payload[name] for name in metric_names},
+        run_id=payload["run_id"], run_name=payload["run_name"],
+        start_date=payload["start_date"], end_date=payload["end_date"],
+        strategy_id=payload["strategy_id"], normalized_params={},
+        capital_cents=10000000, fee_bp_x100=0, slippage_bp_x100=0,
+        data_manifest=payload["data_manifest"], data_fingerprint="synthetic-source",
+        strategy_version="1.0.0", execution_contract="synthetic-execution",
+    )
+    entry = SimpleNamespace(
+        source_kind="registry", run_type="single_backtest", stock_code="2330",
+        run_name=payload["run_name"], run_id=payload["run_id"],
+        metadata_sha256="synthetic-metadata", context_sha256="synthetic-context",
+    )
+    selected = SimpleNamespace(
+        entry=entry,
+        result=SimpleNamespace(
+            metadata=metadata, equity=payload["equity_curve"],
+            trades=payload["trade_list"],
+        ),
+    )
+
+    view._open_research_history_result(selected)
+
+    text = view.summary_text.toPlainText()
+    assert "總報酬率: 未知" in text
+    assert "總報酬率: 0.00%" not in text
+    assert "總交易次數: 0（已完成進出場配對）" in text
+    assert f"run：{payload['run_id']}" in text
+
+
+def test_registry_history_contract_preserves_observed_true_zero_metrics(view):
+    text = _present_saved_history_payload(view, _saved_registry_run(with_curve=True))
+
+    assert '總報酬率: 0.00%' in text
+    assert '年化報酬率: 0.00%' in text
+    assert '最大回撤: 0.00%' in text
+    assert '總交易次數: 0（已完成進出場配對）' in text
+    assert '勝率: 未知' in text
+
+
+def test_registry_history_invalid_metrics_contract_fails_closed(view):
+    text = _present_saved_history_payload(
+        view, _saved_registry_run(with_curve=True, invalid_contract=True)
+    )
+
+    assert '總報酬率: 未知' in text
+    assert '年化報酬率: 未知' in text
+    assert '夏普比率: 未知' in text
+    assert '最大回撤: 未知' in text
+    assert '勝率: 未知' in text
+    assert '總交易次數: 未知（已完成進出場配對）' in text
+    assert '完成進出場配對數：未提供' in text
+    assert '0.00%' not in text
+    assert '尚無已完成交易' not in text
+
+
+def test_registry_history_without_metrics_contract_keeps_legacy_values(view):
+    payload = {
+        'run_id': 'legacy-zero', 'run_name': '舊格式真零', 'run_type': 'single_backtest',
+        'stock_code': '2330', 'total_return': 0.0, 'annual_return': 0.0,
+        'sharpe_ratio': 0.0, 'max_drawdown': 0.0, 'win_rate': 0.0,
+        'total_trades': 0, 'trade_list': pd.DataFrame(),
+    }
+
+    text = _present_saved_history_payload(view, payload)
+
+    assert '總報酬率: 0.00%' in text
+    assert '總交易次數: 0（已完成進出場配對）' in text
+    assert '完成進出場配對數：0' in text
+    assert '尚無已完成交易' in text
+
+
+def _prepare_history_open(view, monkeypatch, *, resolve_result=None, resolve_error=None):
+    panel = view.result_panel
+    widget = panel.research_history_lookup
+    entry = SimpleNamespace(
+        result_supported=True,
+        source_kind="registry",
+        run_type="single_backtest",
+        start_date="2026-01-01",
+        end_date="2026-01-02",
+        unsupported_reason="",
+        metadata_json="原保存 metadata",
+    )
+    item = QListWidgetItem("Registry／single_backtest｜2330｜saved-run")
+    item.setData(Qt.ItemDataRole.UserRole, entry)
+    widget.entries.addItem(item)
+    widget.entries.setCurrentItem(item)
+    panel.research_history_button.setChecked(True)
+
+    if resolve_error is not None:
+        widget.lookup.resolve = MagicMock(side_effect=resolve_error)
+    else:
+        widget.lookup.resolve = MagicMock(return_value=resolve_result)
+
+    def run_inline(task, apply, *, on_error=None):
+        try:
+            result = task()
+        except Exception as exc:
+            if on_error is not None:
+                on_error(str(exc))
+            else:
+                widget.status.setText("來源讀取失敗；沒有套用部分結果：" + str(exc))
+            return
+        try:
+            apply(result)
+        except Exception as exc:
+            widget.status.setText("原結果呈現失敗：" + str(exc))
+
+    monkeypatch.setattr(widget, "_start", run_inline)
+    return panel, widget, item, entry
+
+
+def test_successfully_opening_saved_history_collapses_lookup_and_keeps_selection(view, monkeypatch):
+    result = SimpleNamespace(source_status="source_ref_only")
+    panel, widget, item, entry = _prepare_history_open(
+        view, monkeypatch, resolve_result=result
+    )
+    opened = MagicMock()
+    widget.on_open = opened
+
+    widget.open_selected()
+
+    opened.assert_called_once_with(result)
+    assert panel.research_history_button.isChecked() is False
+    assert panel.research_history_group.isChecked() is False
+    assert widget.entries.currentItem() is item
+    assert item.data(Qt.ItemDataRole.UserRole) is entry
+    assert entry.source_kind == "registry"
+    assert widget.status.text() == "已核對原保存來源；沒有重跑或改寫來源。"
+
+
+def test_failed_saved_history_open_keeps_lookup_expanded_and_selection(view, monkeypatch):
+    panel, widget, item, entry = _prepare_history_open(
+        view, monkeypatch, resolve_error=RuntimeError("synthetic read failure")
+    )
+    opened = MagicMock()
+    widget.on_open = opened
+
+    widget.open_selected()
+
+    opened.assert_not_called()
+    assert panel.research_history_button.isChecked() is True
+    assert panel.research_history_group.isChecked() is True
+    assert widget.entries.currentItem() is item
+    assert item.data(Qt.ItemDataRole.UserRole) is entry
+    assert "來源讀取失敗" in widget.status.text()
+
+
+def test_saved_history_presentation_failure_keeps_lookup_expanded(view, monkeypatch):
+    result = SimpleNamespace(source_status="source_ref_only")
+    panel, widget, item, _entry = _prepare_history_open(
+        view, monkeypatch, resolve_result=result
+    )
+    widget.on_open = MagicMock(side_effect=RuntimeError("synthetic presentation failure"))
+
+    widget.open_selected()
+
+    assert panel.research_history_button.isChecked() is True
+    assert panel.research_history_group.isChecked() is True
+    assert widget.entries.currentItem() is item
+    assert "原結果呈現失敗" in widget.status.text()
 
 
 def test_legacy_saved_detail_keeps_missing_metrics_and_six_pairs_visible(view):

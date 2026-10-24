@@ -328,6 +328,56 @@ def _new_view() -> RecommendationView:
     )
 
 
+def test_recommendation_table_keeps_extended_evidence_expandable() -> None:
+    _app()
+    view = _new_view()
+    columns = [
+        "證券代號", "證券名稱", "收盤價", "漲幅%", "總分", "推薦理由",
+        "calibration_model_version", "calibration_dataset_version",
+        "calibration_probability_baseline_id", "calibration_source_trace",
+    ]
+    model = PandasTableModel(pd.DataFrame([[
+        "2330", "台積電", Decimal("1000"), Decimal("1.2"), Decimal("80"),
+        "合成理由", "model-v1", "dataset-v1", "baseline-v1", ["source-v1"],
+    ]], columns=columns))
+    try:
+        view._install_recommendation_results_model(model)
+        compact_columns = model.getVisibleColumns()
+        assert compact_columns == [
+            "證券代號", "證券名稱", "收盤價", "漲幅%", "總分", "推薦理由",
+        ]
+        assert model.getDataFrame().columns.tolist() == columns
+
+        view.results_table.selectRow(0)
+        view.result_columns_toggle.click()
+        assert model.getVisibleColumns() == columns
+        assert view.result_columns_toggle.text() == "收合延伸欄位"
+        assert [index.row() for index in view.results_table.selectionModel().selectedRows()] == [0]
+
+        view.result_columns_toggle.click()
+        assert model.getVisibleColumns() == compact_columns
+        assert model.getDataFrame().loc[0, "calibration_model_version"] == "model-v1"
+        assert [index.row() for index in view.results_table.selectionModel().selectedRows()] == [0]
+
+        screening_columns = [
+            "證券代號", "證券名稱", "紀錄類型", "原篩選狀態",
+            "原因代碼", "觀測值", "要求值", "決策日",
+        ]
+        screening = PandasTableModel(pd.DataFrame([["2330", "台積電", "篩選紀錄／未入選",
+            "skipped", "量能不足", "-2", "5", "2026-10-22"]], columns=screening_columns))
+        view._install_recommendation_results_model(screening)
+        assert screening.getVisibleColumns() == screening_columns
+        assert view.result_columns_toggle.isHidden()
+
+        legacy_columns = ["證券代號", "證券名稱", "原保存收盤價", "原保存總分", "推薦理由"]
+        legacy = PandasTableModel(pd.DataFrame([["2330", "台積電", "1000", "80", "舊結果"]], columns=legacy_columns))
+        view._install_recommendation_results_model(legacy)
+        assert legacy.getVisibleColumns() == legacy_columns
+        assert view.result_columns_toggle.isHidden()
+    finally:
+        view.close()
+
+
 def test_responsive_layout_timer_coalesces_resizes_without_reentry(monkeypatch) -> None:
     app = _app()
     original_apply = RecommendationView._apply_responsive_layout

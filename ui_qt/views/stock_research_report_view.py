@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from html import escape as html_escape
 import inspect
 import hashlib
 import json
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QGroupBox,
+    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -114,6 +116,18 @@ from ui_qt.widgets.theme_widgets import StatusBadge
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 from ui_qt.workers.task_worker import TaskWorker
+
+
+def _price_direction_color(
+    open_price: Decimal | None, close_price: Decimal | None
+) -> str:
+    """依台股慣例為價格方向取色；缺值與平盤都使用中性色。"""
+
+    if open_price is None or close_price is None or close_price == open_price:
+        return MIDNIGHT_ANALYST.market_flat
+    if close_price > open_price:
+        return MIDNIGHT_ANALYST.market_up
+    return MIDNIGHT_ANALYST.market_down
 
 
 class StockReportTableModel(QAbstractTableModel):
@@ -474,11 +488,8 @@ class StockPriceChartWidget(QWidget):
                     y_close = bottom - int(
                         Decimal(bottom - top) * (point.close_price - low) / span
                     )
-                    rising = point.close_price >= point.open_price
-                    color = (
-                        MIDNIGHT_ANALYST.data_positive
-                        if rising
-                        else MIDNIGHT_ANALYST.data_negative
+                    color = _price_direction_color(
+                        point.open_price, point.close_price
                     )
                     pen = QPen(QColor(color))
                     pen.setWidth(1)
@@ -518,12 +529,9 @@ class StockPriceChartWidget(QWidget):
                             if max_volume
                             else 0
                         )
-                        color = (
-                            MIDNIGHT_ANALYST.data_positive
-                            if points[index].close_price is not None
-                            and points[index].open_price is not None
-                            and points[index].close_price >= points[index].open_price
-                            else MIDNIGHT_ANALYST.data_negative
+                        color = _price_direction_color(
+                            points[index].open_price,
+                            points[index].close_price,
                         )
                         painter.fillRect(
                             x - body_width // 2,
@@ -732,10 +740,10 @@ class StockResearchReportView(QWidget):
         self._navigation_row = navigation_row
 
         self.identity_label = QLabel("尚未選取股票")
-        identity_font = QFont()
-        identity_font.setBold(True)
-        identity_font.setPointSize(14)
-        self.identity_label.setFont(identity_font)
+        self.identity_label.setObjectName("stockResearchIdentity")
+        self.identity_label.setStyleSheet(
+            "QLabel#stockResearchIdentity { font-size: 18pt; font-weight: 700; }"
+        )
         self.identity_label.setAccessibleName("個股識別")
         self.identity_quote_row = QWidget(self)
         self.identity_quote_row.setObjectName("stockResearchIdentityQuoteRow")
@@ -743,12 +751,30 @@ class StockResearchReportView(QWidget):
         self.identity_quote_layout.setContentsMargins(0, 0, 0, 0)
         self.identity_quote_layout.setSpacing(8)
         self.identity_quote_layout.addWidget(self.identity_label, 1)
-        self.quote_summary_label = QLabel("收盤 —｜漲跌 —｜行情日 未知")
+        self.quote_panel = QWidget(self.identity_quote_row)
+        self.quote_panel.setObjectName("stockResearchQuotePanel")
+        quote_layout = QVBoxLayout(self.quote_panel)
+        quote_layout.setContentsMargins(0, 0, 0, 0)
+        quote_layout.setSpacing(0)
+        self.quote_close_label = QLabel("收盤 未知 TWD", self.quote_panel)
+        self.quote_close_label.setObjectName("stockResearchQuoteClose")
+        self.quote_close_label.setStyleSheet(
+            "QLabel#stockResearchQuoteClose { font-size: 22pt; font-weight: 700; }"
+        )
+        self.quote_close_label.setAccessibleName("原報告收盤價")
+        self.quote_summary_label = QLabel("漲跌 未知 TWD｜行情日 未知", self.quote_panel)
         self.quote_summary_label.setObjectName("stockResearchQuoteSummary")
+        self.quote_summary_label.setTextFormat(Qt.TextFormat.RichText)
+        self.quote_summary_label.setStyleSheet(self._quote_summary_stylesheet(MIDNIGHT_ANALYST.market_flat))
         self.quote_summary_label.setAccessibleName("原報告價格、漲跌與行情日")
         self.quote_summary_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.quote_summary_label.setWordWrap(False)
+        self._quote_summary_plain_text = "漲跌 未知 TWD｜行情日 未知"
+        self.quote_close_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.quote_summary_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.identity_quote_layout.addWidget(self.quote_summary_label)
+        quote_layout.addWidget(self.quote_close_label)
+        quote_layout.addWidget(self.quote_summary_label)
+        self.identity_quote_layout.addWidget(self.quote_panel)
         root.addWidget(self.identity_quote_row)
 
         self._product_layout_enabled = False
@@ -903,7 +929,7 @@ class StockResearchReportView(QWidget):
         self._create_page("price", "價格／技術")
         self._create_page("fundamental", "基本面／營收財報")
         self._create_page("flows", "籌碼／產業事件")
-        self._create_page("position", "持倉／Health／Exit")
+        self._create_page("position", "持倉／健康狀態／退出分析")
         self._create_page("decision", "Rule／ML／歷史")
 
         self._summary_values: dict[str, QLabel] = {}
@@ -963,6 +989,73 @@ class StockResearchReportView(QWidget):
         )
         self.identity_quote_layout.setDirection(
             QBoxLayout.TopToBottom if self.width() < 900 else QBoxLayout.LeftToRight
+        )
+        quote_alignment = (
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            if self.width() < 900
+            else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.quote_close_label.setAlignment(quote_alignment)
+        self.quote_summary_label.setAlignment(quote_alignment)
+        self.quote_summary_label.setWordWrap(self.width() < 900)
+        if self.width() < 900:
+            self.quote_summary_label.setMinimumWidth(0)
+        else:
+            # Main 的導覽列會吃掉視窗寬度；保留行情日完整顯示所需空間，
+            # 讓同列識別文字縮短，而不是把 Hero 右端裁掉。
+            self.quote_summary_label.setMinimumWidth(
+                self.quote_summary_label.fontMetrics().horizontalAdvance(
+                    self._quote_summary_plain_text
+                ) + 8
+            )
+
+    def _set_quote_summary(
+        self,
+        close_text: str,
+        change_text: str,
+        data_date: str,
+        *,
+        change: Decimal | None = None,
+        source_id: str = "",
+        available_at: str = "",
+        quality: str = "",
+    ) -> None:
+        """展示報告原行情值；來源與可得時間保留在可存取描述及提示中。"""
+        close_label = f"收盤 {close_text} TWD"
+        detail_label = f"漲跌 {change_text} TWD｜行情日 {data_date or '未知'}"
+        provenance = (
+            f"來源：{source_id or '未提供'}｜可得時間：{available_at or '未提供'}｜"
+            f"品質：{quality or '未提供'}"
+        )
+        self.quote_close_label.setText(close_label)
+        color = MIDNIGHT_ANALYST.market_flat
+        if isinstance(change, Decimal) and change.is_finite():
+            if change > 0:
+                color = MIDNIGHT_ANALYST.market_up
+            elif change < 0:
+                color = MIDNIGHT_ANALYST.market_down
+        change_phrase = f"漲跌 {change_text} TWD"
+        date_phrase = f"｜行情日 {data_date or '未知'}"
+        self.quote_summary_label.setText(
+            f'<span style="color: {color};">{html_escape(change_phrase)}</span>'
+            f'<span style="color: {MIDNIGHT_ANALYST.market_flat};">'
+            f"{html_escape(date_phrase)}</span>"
+        )
+        self._quote_summary_plain_text = f"{change_phrase}{date_phrase}"
+        self.quote_summary_label.setStyleSheet(
+            self._quote_summary_stylesheet(MIDNIGHT_ANALYST.market_flat)
+        )
+        full_description = f"{close_label}｜{detail_label}｜{provenance}"
+        self.quote_close_label.setAccessibleDescription(full_description)
+        self.quote_summary_label.setAccessibleDescription(full_description)
+        self.quote_panel.setToolTip(full_description)
+        self._arrange_overview()
+
+    @staticmethod
+    def _quote_summary_stylesheet(color: str) -> str:
+        return (
+            "QLabel#stockResearchQuoteSummary { font-size: 11pt; font-weight: 600; "
+            f"color: {color}; }}"
         )
 
     def _toggle_stock_search(self, expanded: bool) -> None:
@@ -2263,7 +2356,7 @@ class StockResearchReportView(QWidget):
             next_step="等待本股報告讀回，或重新載入。",
         )
         self._toggle_five_question_details(False)
-        self.quote_summary_label.setText("收盤 未知｜漲跌 未知｜行情日 未知")
+        self._set_quote_summary("未知", "未知", "未知")
         self.summary_questions_toggle.setChecked(False)
         self.header_details_toggle.setChecked(False)
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
@@ -2295,7 +2388,7 @@ class StockResearchReportView(QWidget):
     ) -> None:
         self._clear_saved_advice_summary()
         self.identity_label.setText(f"{code}｜尚無可用報告")
-        self.quote_summary_label.setText("收盤 未知｜漲跌 未知｜行情日 未知")
+        self._set_quote_summary("未知", "未知", "未知")
         self.personal_h20_label.setText("個人 H20 模型：目前無法核驗本股")
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self._set_five_question_summary(
@@ -2617,11 +2710,17 @@ class StockResearchReportView(QWidget):
             latest = report.price_points[-1]
             price_text = _decimal_text(latest.close_price) if latest.close_price is not None else "未知"
             change_text = _decimal_text(latest.change) if latest.change is not None else "未知"
-            self.quote_summary_label.setText(
-                f"收盤 {price_text} TWD｜漲跌 {change_text} TWD｜行情日 {latest.data_date or '未知'}"
+            self._set_quote_summary(
+                price_text,
+                change_text,
+                latest.data_date or "未知",
+                change=latest.change,
+                source_id=latest.source_id,
+                available_at=latest.available_at,
+                quality=latest.quality,
             )
         else:
-            self.quote_summary_label.setText("收盤 未知｜漲跌 未知｜行情日 未知")
+            self._set_quote_summary("未知", "未知", "未知")
         self._render_market_status(report.market_status)
         self._render_official_attention(report.official_attention)
         self._summary_values["latest_price"].setText(_latest_price_text(report.price_points))
@@ -4126,16 +4225,106 @@ class StockResearchReportView(QWidget):
         layout.addWidget(
             QLabel(
                 "封存配置投影優先呈現原保存證據；無封存投影時才顯示既有 "
-                "PortfolioService、Health／Exit read contract。"
+                "PortfolioService、持倉健康狀態／退出分析唯讀契約。"
             )
         )
         if portfolio_scenario is not None:
             self._render_portfolio_scenario_position(layout, portfolio_scenario)
             return
         if position is None:
-            layout.addWidget(self._missing_panel("沒有此股票的持倉 row；Health／Exit 不對非持倉股票推導動作。"))
+            layout.addWidget(self._missing_panel("沒有此股票的持倉資料列；持倉健康狀態與退出分析不會對非持倉股票推導動作。"))
             layout.addStretch()
             return
+        summary = QGroupBox("持倉與風險速覽")
+        summary.setObjectName("stockPositionRiskSummary")
+        summary_layout = QVBoxLayout(summary)
+        summary_layout.setContentsMargins(8, 8, 8, 8)
+        summary_layout.setSpacing(6)
+        cards = QGridLayout()
+        cards.setContentsMargins(0, 0, 0, 0)
+        cards.setHorizontalSpacing(6)
+        cards.setVerticalSpacing(6)
+        pnl_color = ""
+        if position.unrealized_pnl is not None:
+            if position.unrealized_pnl > 0:
+                pnl_color = MIDNIGHT_ANALYST.market_up
+            elif position.unrealized_pnl < 0:
+                pnl_color = MIDNIGHT_ANALYST.market_down
+        pnl_pct_color = ""
+        if position.unrealized_pnl_pct is not None:
+            if position.unrealized_pnl_pct > 0:
+                pnl_pct_color = MIDNIGHT_ANALYST.market_up
+            elif position.unrealized_pnl_pct < 0:
+                pnl_pct_color = MIDNIGHT_ANALYST.market_down
+        card_values = (
+            (
+                "未實現損益",
+                _decimal_text(position.unrealized_pnl) if position.unrealized_pnl is not None else "未提供",
+                "stockPositionSummaryValue_pnl",
+                pnl_color,
+            ),
+            (
+                "未實現損益率",
+                _percent_text(position.unrealized_pnl_pct) if position.unrealized_pnl_pct is not None else "未提供",
+                "stockPositionSummaryValue_pnlPct",
+                pnl_pct_color,
+            ),
+            (
+                "健康狀態",
+                _position_read_status(
+                    position.health_label or position.health_status,
+                    raw_value=position.health_status,
+                ),
+                "stockPositionSummaryValue_health",
+                "",
+            ),
+            (
+                "退出分析",
+                _position_read_status(position.exit_status),
+                "stockPositionSummaryValue_exit",
+                "",
+            ),
+        )
+        for index, (title, value, object_name, value_color) in enumerate(card_values):
+            card = QFrame()
+            card.setObjectName(f"{object_name}Card")
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card.setStyleSheet(
+                f"QFrame#{object_name}Card {{ background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 6px; }}"
+            )
+            card.setAccessibleName(f"持倉速覽{title}卡片")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(8, 5, 8, 5)
+            card_layout.setSpacing(2)
+            title_label = QLabel(title)
+            title_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+            title_label.setAccessibleName(f"持倉速覽{title}欄位")
+            value_label = QLabel(value)
+            value_label.setObjectName(object_name)
+            value_label.setWordWrap(True)
+            value_label.setStyleSheet(
+                f"color: {value_color or MIDNIGHT_ANALYST.text_primary}; font-weight: 700;"
+            )
+            value_label.setAccessibleName(f"本次持倉{title}原值")
+            card_layout.addWidget(title_label)
+            card_layout.addWidget(value_label)
+            cards.addWidget(card, index // 2, index % 2)
+        summary_layout.addLayout(cards)
+        date_strip = QLabel(
+            f"持倉：{'持有中' if position.is_holding else '非持倉'}｜"
+            f"讀取日：{position.position_as_of or '未提供'}｜"
+            f"行情資料日：{position.quote_data_date or '未提供'}"
+        )
+        date_strip.setObjectName("stockPositionSummaryDateStrip")
+        date_strip.setWordWrap(True)
+        date_strip.setAccessibleName("本次持倉狀態與讀取日期")
+        date_strip.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
+        summary_layout.addWidget(date_strip)
+        summary_layout.addWidget(
+            self._wrapped_label("僅整理本次持倉讀取值與既有狀態；缺值維持未提供，不推導交易動作。")
+        )
+        layout.addWidget(summary)
         group = QGroupBox("持倉成本／損益／曝險")
         group_layout = QVBoxLayout(group)
         rows = (
@@ -4155,15 +4344,32 @@ class StockResearchReportView(QWidget):
         )
         self._add_table(group_layout, ("欄位", "值"), rows, 300)
         layout.addWidget(group)
-        health = QGroupBox(f"Health｜{position.health_label or position.health_status or '資料不足'}")
+        health = QGroupBox(
+            "持倉健康狀態｜"
+            + _position_read_status(
+                position.health_label or position.health_status,
+                raw_value=position.health_status,
+            )
+        )
         health_layout = QVBoxLayout(health)
-        health_layout.addWidget(self._wrapped_label(_join_or_missing(position.health_reasons, "沒有 Health 理由。")))
+        health_layout.addWidget(self._wrapped_label(_join_or_missing(position.health_reasons, "沒有持倉健康狀態理由。")))
+        if position.health_status:
+            health_layout.addWidget(self._wrapped_label("原始狀態碼：" + position.health_status))
         if position.health_source_trace:
-            health_layout.addWidget(self._wrapped_label("Health source trace：" + "；".join(position.health_source_trace)))
+            health_layout.addWidget(self._wrapped_label("健康狀態來源追蹤：" + "；".join(position.health_source_trace)))
         layout.addWidget(health)
-        exit_group = QGroupBox(f"Exit｜{position.exit_status or 'unavailable'}")
+        exit_group = QGroupBox(
+            f"退出分析｜{_position_read_status(position.exit_status)}"
+        )
         exit_layout = QVBoxLayout(exit_group)
-        exit_layout.addWidget(self._wrapped_label(_join_or_missing(position.exit_reasons, "目前沒有可用的持倉 Exit 分析；不推導賣出動作。")))
+        exit_layout.addWidget(self._wrapped_label(_join_or_missing(position.exit_reasons, "目前沒有可用的持倉退出分析；不推導賣出動作。")))
+        exit_details = (
+            ("退出分析來源", position.exit_source_id or "未提供"),
+            ("退出分析可得時間", position.exit_available_at or "未提供"),
+            ("研究用途限定", "是" if position.exit_research_only else "否"),
+            ("允許自動動作", "是" if position.exit_auto_action_allowed else "否"),
+        )
+        exit_layout.addWidget(self._wrapped_label("；".join(f"{label}：{value}" for label, value in exit_details)))
         layout.addWidget(exit_group)
         if position.limitations:
             layout.addWidget(self._missing_panel(_join_or_missing(position.limitations, "")))
@@ -4177,7 +4383,7 @@ class StockResearchReportView(QWidget):
         layout.addWidget(
             self._scenario_label(
                 "這是原封存情境對單股的唯讀投影，屬於舊保存證據與假設；"
-                "不代表今日帳本、目前行情或已成交交易，也不建立新 Advice 或 Exit。"
+                "不代表今日帳本、目前行情或已成交交易，也不建立新的建議或退出分析。"
             )
         )
 
@@ -4207,8 +4413,8 @@ class StockResearchReportView(QWidget):
             ("原 mark_price", self._scenario_value_text(projection.mark_price)),
             ("原 market_value", self._scenario_value_text(projection.market_value)),
             ("原 current_weight", f"{projection.current_weight_bp} bp"),
-            ("原 Health 狀態", self._scenario_value_text(projection.health_state)),
-            ("原 Health known", "是" if projection.health_known else "否"),
+            ("原健康狀態", self._scenario_value_text(projection.health_state)),
+            ("原健康狀態已知", "是" if projection.health_known else "否"),
         )
         self._add_table(account_layout, ("欄位", "封存值"), account_rows, 330)
         account_layout.addWidget(
@@ -4865,7 +5071,7 @@ class StockResearchReportView(QWidget):
         else:
             layout.addWidget(self._wrapped_label(
                 "持倉風控限制：已有持倉，但本次沒有既有 Portfolio Advice snapshot；"
-                "請依持倉／Health／Exit 既有 read contract 判讀，不由報告 UI 推導。"
+                "請依持倉健康狀態／退出分析既有唯讀契約判讀，不由報告 UI 推導。"
             ))
 
     def _section_heading(
@@ -5409,6 +5615,32 @@ def _decimal_text(value: Decimal | None) -> str:
     if value is None:
         return "—"
     return f"{value:,.2f}"
+
+
+def _position_read_status(value: str, *, raw_value: str = "") -> str:
+    token = str(value or "").strip()
+    if not token:
+        return "未提供"
+    if any("\u4e00" <= character <= "\u9fff" for character in token):
+        raw = str(raw_value or "").strip()
+        return f"{token}（{raw}）" if raw and raw.lower() not in token.lower() else token
+    labels = {
+        "healthy": "健康",
+        "available": "可用",
+        "watch": "待檢視",
+        "reduce_candidate": "減碼候選（研究狀態）",
+        "exit_candidate": "退出候選（研究狀態）",
+        "closed": "已結束",
+        "unknown": "未知",
+        "unavailable": "不可用",
+        "missing": "缺少資料",
+        "partial": "部分資料",
+        "error": "讀取錯誤",
+    }
+    label = labels.get(token.lower())
+    if label is None:
+        return f"未知狀態（{token}）"
+    return f"{label}（{token}）"
 
 
 def _integer_text(value: int | None) -> str:
@@ -6153,7 +6385,7 @@ def _report_next_step(report: StockResearchReportDTO) -> str:
     if report.advice.recommendation is None and report.advice.limitations:
         return "若要核對推薦理由，回到推薦分析明確選定原始來源；不要用同股或最新結果代替。"
     if report.position is not None and report.position.is_holding:
-        return "若是持倉，先到持倉／Health／Exit 分頁核對成本、資料日與失效條件。"
+        return "若是持倉，先到持倉／健康狀態／退出分析分頁核對成本、資料日與失效條件。"
     return "先核對價格、基本面與籌碼的資料日，再按需開啟進階來源與歷史內容。"
 
 

@@ -120,11 +120,15 @@ def build_optimization_stability_summary(
     for result in retained:
         params, metrics = _result_parts(result)
         all_parts.append((params, metrics))
+        metric_status = result.get("metric_status") if isinstance(result, Mapping) else getattr(result, "metric_status", None)
+        # 新最佳化結果的未驗證舊值仍可保留排序相容，但不能算作有效樣本。
+        if isinstance(metric_status, Mapping) and metric_status.get("objective") != "observed":
+            continue
         objective = _decimal(metrics.get(objective_key))
         if objective is not None:
             objective_rows.append((objective, params))
 
-    if len(retained) < 2 or not objective_rows:
+    if len(retained) < 2 or len(objective_rows) < 2:
         return OptimizationStabilitySummary(
             status="insufficient",
             sample_count=len(retained),

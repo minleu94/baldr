@@ -24,7 +24,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from datetime import datetime, timedelta
 from pathlib import Path
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import logging
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,7 @@ from ui_qt.views.backtest.presenter import (
     format_backtest_summary,
     format_batch_backtest_completion,
     format_saved_backtest_summary,
+    saved_backtest_metric_projection,
     saved_backtest_number,
     saved_backtest_percent,
 )
@@ -93,6 +94,27 @@ from ui_qt.views.backtest.optimization_coordinator import OptimizationExecutionR
 from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionRequest
 
 
+
+
+def _optimization_metric_text(result, key: str, *, percent: bool = False) -> str:
+    """只顯示已驗證的原指標；格式化僅用於 UI，不回流排名。"""
+    status = getattr(result, "metric_status", {}).get(key, "legacy_unverified")
+    if status != "observed":
+        return {
+            "unavailable": "未提供（原績效不可用）",
+            "invalid_contract": "未知（來源契約無效）",
+            "legacy_unverified": "未知（舊結果未驗證）",
+        }.get(status, "未知（未核對）")
+    value = result.metrics.get(key)
+    try:
+        number = Decimal(str(value))
+    except (ValueError, TypeError, InvalidOperation):
+        return "未知（原值無效）"
+    if not number.is_finite():
+        return "未知（原值無效）"
+    if percent:
+        return f"{number * 100:.2f}%"
+    return f"{number:.2f}"
 
 
 class BacktestView(QWidget):
@@ -177,6 +199,14 @@ class BacktestView(QWidget):
         self.research_run_service_error: str | None = None
         self._backtest_narrow: bool | None = None
         self._backtest_single_pane: bool | None = None
+        self._history_page_cursors: list[tuple[str, str] | None] = [None]
+        self._history_page_index = 0
+        self._history_has_older = False
+        self._history_last_cursor: tuple[str, str] | None = None
+        self._chart_history_cursor: tuple[str, str] | None = None
+        self._chart_history_has_older = False
+        self._chart_history_loaded_count = 0
+        self._chart_history_error = ""
 
         # 初始化新服務
         if config:
@@ -2900,7 +2930,9 @@ class BacktestView(QWidget):
 
         result_panel = self.__dict__.get("result_panel")
         tab_key = result_panel.result_tab_key(index) if result_panel is not None else None
-        if tab_key == "legacy":
+        if tab_key == "evidence":
+            self._set_config_panel_collapsed(True)
+        elif tab_key == "legacy":
             if "history" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("history")
                 if getattr(self, "run_repository", None):
@@ -3165,26 +3197,81 @@ class BacktestView(QWidget):
         if not self.run_repository:
             return
 
-        self.history_list.clear()
-        runs = self.run_repository.list_runs(limit=100)
+        self._history_page_cursors = [None]
+        self._history_page_index = 0
+        self._show_history_page()
 
+    @staticmethod
+    def _history_cursor_for_run(run: dict[str, Any]) -> tuple[str, str]:
+        return (str(run.get("created_at") or ""), str(run.get("run_id") or ""))
+
+    def _show_history_page(self):
+        """依 legacy repository 游標顯示單頁，不推估總筆數。"""
+        if not self.run_repository:
+            return
+
+        self.history_list.clearSelection()
+        self.history_list.clear()
+        cursor = self._history_page_cursors[self._history_page_index]
+        self._history_has_older = False
+        self._history_last_cursor = None
+        try:
+            fetched = self.run_repository.list_runs(limit=101, cursor=cursor)
+        except Exception as exc:  # noqa: BLE001 - 歷史頁保留可見錯誤狀態
+            logger.warning("[BacktestView] 載入 legacy 回測歷史失敗: %s", exc)
+            self.history_scope_label.setText(f"歷史頁讀取失敗：{type(exc).__name__}: {exc}")
+            self.history_previous_btn.setEnabled(self._history_page_index > 0)
+            self.history_next_btn.setEnabled(False)
+            return
+
+        runs = fetched[:100]
+        self._history_has_older = len(fetched) > 100
+        self._history_last_cursor = self._history_cursor_for_run(runs[-1]) if runs else None
         for run in runs:
             run_name = run.get('run_name', '')
             stock_code = run.get('stock_code', '')
             strategy_id = run.get('strategy_id', '')
-            created_at = run.get('created_at', '')
+            created_at = str(run.get('created_at') or '')
 
             # 格式化日期
             try:
                 dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
                 date_str = dt.strftime('%Y-%m-%d %H:%M')
-            except:
-                date_str = created_at[:16] if len(created_at) > 16 else created_at
+            except (ValueError, TypeError):
+                date_str = created_at[:16] if created_at else "保存時間未提供"
 
             display_text = f"{run_name} | {stock_code} | {strategy_id} | {date_str}"
             item = QListWidgetItem(display_text)
             item.setData(Qt.ItemDataRole.UserRole, run.get('run_id'))
             self.history_list.addItem(item)
+
+        page_number = self._history_page_index + 1
+        older_text = "尚有較舊結果" if self._history_has_older else "已到最舊結果"
+        if not runs and page_number == 1:
+            scope = "目前沒有保存的 legacy 回測結果"
+        elif not runs:
+            scope = "此頁沒有結果；請返回前一頁"
+        else:
+            scope = f"第 {page_number} 頁｜本頁 {len(runs)} 筆｜{older_text}"
+        self.history_scope_label.setText(scope)
+        self.history_previous_btn.setEnabled(self._history_page_index > 0)
+        self.history_next_btn.setEnabled(self._history_has_older)
+
+    def _history_next_page(self):
+        if not self._history_has_older or self._history_last_cursor is None:
+            return
+        self.history_list.clearSelection()
+        self._history_page_cursors = self._history_page_cursors[:self._history_page_index + 1]
+        self._history_page_cursors.append(self._history_last_cursor)
+        self._history_page_index += 1
+        self._show_history_page()
+
+    def _history_previous_page(self):
+        if self._history_page_index <= 0:
+            return
+        self.history_list.clearSelection()
+        self._history_page_index -= 1
+        self._show_history_page()
 
     def _load_history_run(self, item: QListWidgetItem, *, run_data: dict[str, Any] | None = None):
         """載入歷史回測結果"""
@@ -3227,8 +3314,13 @@ class BacktestView(QWidget):
             result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
         # 顯示摘要
+        contract_declared, contract_metrics = saved_backtest_metric_projection(run_data)
+        metric_source = contract_metrics if contract_declared else run_data
+        if metric_source is None:
+            metric_source = {}
+
         def saved_number(key: str, *, percent: bool = False) -> str:
-            value = run_data.get(key)
+            value = metric_source.get(key)
             if value is None:
                 return "未知"
             try:
@@ -3238,6 +3330,10 @@ class BacktestView(QWidget):
                 return f"{number * Decimal('100'):.2f}%" if percent else f"{number:.2f}"
             except (ValueError, ArithmeticError):
                 return "未知"
+
+        pair_count = metric_source.get("total_trades")
+        if type(pair_count) is not int or pair_count < 0:
+            pair_count = None
         summary_lines = [
             f"執行名稱: {run_data.get('run_name', '')}",
             f"Registry run：{run_id}",
@@ -3251,21 +3347,20 @@ class BacktestView(QWidget):
             f"夏普比率: {saved_number('sharpe_ratio')}",
             f"最大回撤: {saved_number('max_drawdown', percent=True)}",
             f"勝率: {saved_number('win_rate', percent=True)}",
-            f"總交易次數: {run_data.get('total_trades') if run_data.get('total_trades') is not None else '未知'}（已完成進出場配對）",
+            f"總交易次數: {pair_count if pair_count is not None else '未知'}（已完成進出場配對）",
         ]
         saved_trades = run_data.get('trade_list')
         saved_detail_rows = len(saved_trades) if isinstance(saved_trades, pd.DataFrame) else None
         summary_lines.append(
             "同一保存 run｜完成進出場配對數："
-            f"{run_data.get('total_trades') if run_data.get('total_trades') is not None else '未提供'}；"
+            f"{pair_count if pair_count is not None else '未提供'}；"
             "實際成交筆數：此歷史紀錄未提供；"
             f"交易明細列數：{saved_detail_rows if saved_detail_rows is not None else '未提供'}；"
             "期末持股：此歷史紀錄未提供。"
         )
-        if (saved_detail_rows is not None and type(run_data.get('total_trades')) is int
-                and saved_detail_rows != run_data['total_trades']):
+        if saved_detail_rows is not None and pair_count is not None and saved_detail_rows != pair_count:
             summary_lines.append("⚠ 保存的完成配對數與交易明細列數不一致；暫勿依明細判讀。")
-        if run_data.get('total_trades') == 0:
+        if pair_count == 0:
             summary_lines.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
 
         self.summary_text.setPlainText("\n".join(summary_lines))
@@ -3315,6 +3410,7 @@ class BacktestView(QWidget):
             metadata = loaded.metadata
             payload = {**metadata.metrics, "run_id": metadata.run_id, "run_name": metadata.run_name,
                 "stock_code": entry.stock_code, "start_date": metadata.start_date, "end_date": metadata.end_date,
+                "run_type": entry.run_type,
                 "strategy_id": metadata.strategy_id, "strategy_params": metadata.normalized_params,
                 "capital": Decimal(metadata.capital_cents) / Decimal("100"),
                 "fee_bps": Decimal(metadata.fee_bp_x100) / Decimal("100"),
@@ -3410,6 +3506,9 @@ class BacktestView(QWidget):
 
         if deleted_run_ids:
             self._on_research_run_deleted(", ".join(deleted_run_ids))
+            self._refresh_history()
+            if hasattr(self, "chart_run_combo"):
+                self._update_chart_run_combo()
 
     def _compare_runs(self):
         """比較選中的回測結果"""
@@ -4043,7 +4142,7 @@ class BacktestView(QWidget):
             self.config_panel.cancel_btn.setVisible(False)
 
         if not results:
-            QMessageBox.warning(self, "提示", "沒有找到有效結果")
+            QMessageBox.warning(self, "提示", "沒有找到可排名的結果；請檢查資料期間與目標指標有效性。")
             return
 
         # 保存結果供後續使用
@@ -4058,7 +4157,10 @@ class BacktestView(QWidget):
             objective_label=objective_label,
         )
         if hasattr(self, "optimization_stability_label"):
-            self.optimization_stability_label.setText(self.optimization_stability_summary.to_text())
+            self.optimization_stability_label.setText(
+                self.optimization_stability_summary.to_text()
+                + "\n表格空白代表原指標不可用或舊結果未驗證；請看各指標狀態欄。"
+            )
 
         # 創建摘要表格
         summary_df = self.optimizer_service.create_optimization_summary(results)
@@ -4068,10 +4170,16 @@ class BacktestView(QWidget):
         self.optimization_table.setModel(self.optimization_model)
         self.optimization_table.resizeColumnsToContents()
 
+        legacy_notice = (
+            "\n含舊結果未驗證的排名；請先核對來源契約。"
+            if any("legacy_unverified" in getattr(result, "metric_status", {}).values() for result in results)
+            else ""
+        )
         QMessageBox.information(
             self,
             "完成",
-            f"參數掃描完成！\n共找到 {len(results)} 組最佳參數組合。\n雙擊表格行可套用參數。"
+            f"參數掃描完成！\n共找到 {len(results)} 組可顯示參數組合。"
+            f"{legacy_notice}\n雙擊表格行可套用參數。"
         )
 
     def _on_optimization_error(self, error_msg: str):
@@ -4113,10 +4221,21 @@ class BacktestView(QWidget):
 
         # 獲取第一個選中的結果
         row = selected_indexes[0].row()
-        if row >= len(self.current_optimization_results):
-            return
-
-        result = self.current_optimization_results[row]
+        if hasattr(self, 'optimization_model') and self.optimization_model is not None:
+            # 表格可按任意欄重排；以畫面同列的原排名找回參數身份。
+            displayed = self.optimization_model.getDataFrame()
+            if row >= len(displayed):
+                return
+            displayed_rank = displayed.iloc[row]['排名']
+            matches = [item for item in self.current_optimization_results if item.rank == displayed_rank]
+            if len(matches) != 1:
+                QMessageBox.warning(self, "錯誤", "無法核對所選參數組合的排名，請重新執行掃描。")
+                return
+            result = matches[0]
+        else:
+            if row >= len(self.current_optimization_results):
+                return
+            result = self.current_optimization_results[row]
 
         applied_count = 0
 
@@ -4140,9 +4259,14 @@ class BacktestView(QWidget):
                     applied_count += 1
 
         # 顯示成功訊息
-        message = f"已套用參數組合（排名 #{result.rank}）\n"
-        message += f"夏普比率: {result.metrics.get('sharpe_ratio', 0):.2f}\n"
-        message += f"年化報酬率: {result.metrics.get('annual_return', 0) * 100:.2f}%\n\n"
+        rank_note = (
+            "；舊結果來源未驗證"
+            if "legacy_unverified" in getattr(result, "metric_status", {}).values()
+            else ""
+        )
+        message = f"已套用參數組合（排名 #{result.rank}{rank_note}）\n"
+        message += f"夏普比率: {_optimization_metric_text(result, 'sharpe_ratio')}\n"
+        message += f"年化報酬率: {_optimization_metric_text(result, 'annual_return', percent=True)}\n\n"
         message += f"已套用 {applied_count} 個參數：\n"
         message += "- 策略配置欄：可直接用於單檔/批次回測\n"
         message += "- 參數最佳化欄：已切換為「固定值」模式"
@@ -4338,16 +4462,119 @@ class BacktestView(QWidget):
         if not hasattr(self, 'chart_run_combo') or not self.run_repository:
             return
 
+        selected_run_id = self.chart_run_combo.currentData()
+        if selected_run_id is not None:
+            selected_run_id = str(selected_run_id)
+        had_selection = bool(selected_run_id)
+        pinned_run = None
+        if selected_run_id:
+            try:
+                pinned_run = self.run_repository.load_run(selected_run_id)
+            except Exception as exc:  # noqa: BLE001 - 無法核對來源時清除舊圖
+                logger.warning("[BacktestView] 無法核對目前圖表來源 %s: %s", selected_run_id, exc)
+        self.chart_run_combo.blockSignals(True)
         self.chart_run_combo.clear()
         self.chart_run_combo.addItem("-- 選擇回測結果 --", None)
+        self._chart_history_cursor = None
+        self._chart_history_has_older = False
+        self._chart_history_loaded_count = 0
+        self._chart_history_error = ""
+        self._append_older_chart_runs(preserve_selection=False)
+        if selected_run_id and pinned_run is not None:
+            selected_index = self.chart_run_combo.findData(selected_run_id)
+            if selected_index < 0:
+                run_name = getattr(pinned_run, "run_name", "") or "回測結果"
+                stock_code = getattr(pinned_run, "stock_code", "") or ""
+                self.chart_run_combo.addItem(f"{run_name} ({stock_code})", selected_run_id)
+                selected_index = self.chart_run_combo.count() - 1
+                self.chart_run_combo.setItemData(
+                    selected_index,
+                    f"run_id: {selected_run_id}（目前圖表來源）",
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+                self._chart_history_loaded_count += 1
+            self.chart_run_combo.setCurrentIndex(selected_index)
+        else:
+            selected_run_id = None
+        self.chart_run_combo.blockSignals(False)
+        self._update_chart_history_scope()
+        if selected_run_id is None:
+            self._update_chart_current_source_label()
+            if had_selection:
+                self._clear_saved_charts("目前圖表來源已不存在或無法核對；請重新選擇保存結果。")
+        else:
+            self._update_chart_current_source_label(selected_run_id)
 
-        runs = self.run_repository.list_runs(limit=50)
+    def _append_older_chart_runs(self, *, preserve_selection: bool = True):
+        if not self.run_repository or not hasattr(self, "chart_run_combo"):
+            return
+        combo = self.chart_run_combo
+        selected_run_id = combo.currentData() if preserve_selection else None
+        previous_signals_blocked = combo.blockSignals(True)
+        try:
+            fetched = self.run_repository.list_runs(limit=51, cursor=self._chart_history_cursor)
+        except Exception as exc:  # noqa: BLE001 - 保留來源失敗的可見狀態
+            logger.warning("[BacktestView] 載入較舊圖表回測失敗: %s", exc)
+            self._chart_history_has_older = False
+            self._chart_history_error = f"{type(exc).__name__}: {exc}"
+            self._update_chart_history_scope()
+            combo.blockSignals(previous_signals_blocked)
+            return
+
+        self._chart_history_error = ""
+        runs = fetched[:50]
+        self._chart_history_has_older = len(fetched) > 50
         for run in runs:
             run_name = run.get('run_name', '')
             stock_code = run.get('stock_code', '')
-            run_id = run.get('run_id', '')
+            run_id = str(run.get('run_id') or '')
+            if combo.findData(run_id) >= 0:
+                continue
             display_name = f"{run_name} ({stock_code})"
-            self.chart_run_combo.addItem(display_name, run_id)
+            combo.addItem(display_name, run_id)
+            combo.setItemData(combo.count() - 1, f"run_id: {run_id}", Qt.ItemDataRole.ToolTipRole)
+            self._chart_history_loaded_count += 1
+        if runs:
+            self._chart_history_cursor = self._history_cursor_for_run(runs[-1])
+        if selected_run_id:
+            selected_index = combo.findData(selected_run_id)
+            if selected_index >= 0:
+                combo.setCurrentIndex(selected_index)
+        combo.blockSignals(previous_signals_blocked)
+        self._update_chart_history_scope()
+
+    def _update_chart_history_scope(self):
+        if not hasattr(self, "chart_history_scope_label"):
+            return
+        if self._chart_history_error:
+            scope = f"圖表歷史讀取失敗：{self._chart_history_error}"
+            self.load_older_chart_runs_btn.setText("重試載入")
+            self.load_older_chart_runs_btn.setEnabled(True)
+        elif self._chart_history_loaded_count == 0:
+            scope = "目前沒有保存的 legacy 回測結果"
+            self.load_older_chart_runs_btn.setText("載入較舊結果")
+        else:
+            older_text = "尚有較舊結果" if self._chart_history_has_older else "已載入全部可用結果"
+            scope = f"已載入 {self._chart_history_loaded_count} 筆｜{older_text}"
+            self.load_older_chart_runs_btn.setText("載入較舊結果")
+        self.chart_history_scope_label.setText(scope)
+        if not self._chart_history_error:
+            self.load_older_chart_runs_btn.setEnabled(self._chart_history_has_older)
+
+    def _load_older_chart_runs(self):
+        if self._chart_history_has_older or self._chart_history_error:
+            self._append_older_chart_runs(preserve_selection=True)
+
+    def _update_chart_current_source_label(self, run_id: str | None = None):
+        if not hasattr(self, "chart_current_source_label"):
+            return
+        selected_run_id = run_id
+        if selected_run_id is None and hasattr(self, "chart_run_combo"):
+            selected_run_id = self.chart_run_combo.currentData()
+        if selected_run_id:
+            self.chart_current_source_label.setText(f"目前圖表來源 run ID：{selected_run_id}")
+        else:
+            self.chart_current_source_label.setText("目前圖表來源：未選擇")
 
     def _on_chart_run_changed(self):
         """圖表 run 選擇改變"""
@@ -4356,8 +4583,11 @@ class BacktestView(QWidget):
 
         run_id = self.chart_run_combo.currentData()
         if not run_id:
+            self._update_chart_current_source_label()
+            self._clear_saved_charts("未選擇回測來源；此圖表目前沒有資料。")
             return
 
+        self._update_chart_current_source_label(str(run_id))
         # 載入並繪製所有圖表
         self._update_all_charts(run_id)
 
@@ -4510,9 +4740,40 @@ class BacktestView(QWidget):
         if not self.chart_data_service:
             return
 
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None:
+            result_panel.ensure_chart_widgets()
+            # 切換保存 run 時，舊的延遲繪圖也屬於上一個來源。
+            result_panel.invalidate_current_chart_result("正在載入所選保存 run 的圖表。")
+
+        # 每次都繪製四張圖。缺少 B 的資料時傳空容器，讓 widget 清掉 A 的曲線，
+        # 再用各自的狀態標籤說明缺件，不把缺值轉成零。
+        empty_series = pd.Series(dtype=float)
+        chart_messages = {
+            "equity_chart": "此保存 run 沒有可用的權益曲線資料。",
+            "drawdown_chart": "此保存 run 沒有可用的回撤曲線資料。",
+            "return_hist": "此保存 run 沒有可用的交易報酬資料。",
+            "holding_hist": "此保存 run 沒有可用的持有天數資料。",
+        }
+
+        def render_chart(name: str, data_available: bool, message: str, *args) -> None:
+            if result_panel is not None:
+                if data_available:
+                    result_panel.queue_chart_plot(name, *args)
+                else:
+                    # 清空隱藏 widget 中的舊 payload，狀態標籤留在前景。
+                    getattr(self, name).plot(*args)
+                    error_label = result_panel._chart_error_labels.get(name)
+                    if error_label is not None:
+                        error_label.setText(message)
+                        error_label.setVisible(True)
+            else:
+                getattr(self, name).plot(*args)
+
         # 1. 權益曲線
         equity_series = self.chart_data_service.get_equity_series(run_id)
-        if equity_series is not None and len(equity_series) > 0:
+        equity_available = equity_series is not None and len(equity_series) > 0
+        if equity_available:
             # 計算 CAGR（用於顯示）
             run = self.run_repository.load_run(run_id)
             cagr = run.annual_return if run else None
@@ -4527,24 +4788,63 @@ class BacktestView(QWidget):
             # 獲取交易明細（用於顯示買賣點）
             trade_list = self.chart_data_service.get_trade_list(run_id)
 
-            self.equity_chart.plot(equity_series, benchmark_series, cagr, trade_list)
+            equity_args = (equity_series, benchmark_series, cagr, trade_list)
+        else:
+            equity_args = (empty_series, None, None, None)
+        render_chart("equity_chart", equity_available, chart_messages["equity_chart"], *equity_args)
 
         # 2. 回撤曲線
         drawdown_series = self.chart_data_service.get_drawdown_series(run_id)
-        max_dd_info = self.chart_data_service.get_max_drawdown_info(run_id)
-        if drawdown_series is not None:
-            self.drawdown_chart.plot(drawdown_series, max_dd_info)
+        drawdown_available = drawdown_series is not None and len(drawdown_series) > 0
+        max_dd_info = (
+            self.chart_data_service.get_max_drawdown_info(run_id)
+            if drawdown_available else None
+        )
+        render_chart(
+            "drawdown_chart",
+            drawdown_available,
+            chart_messages["drawdown_chart"],
+            drawdown_series if drawdown_available else empty_series,
+            max_dd_info,
+        )
 
         # 3. 交易報酬分佈
         returns = self.chart_data_service.get_trade_returns(run_id)
-        stats = self.chart_data_service.get_trade_statistics(run_id)
-        if returns is not None:
-            self.return_hist.plot(returns, stats)
+        returns_available = returns is not None and len(returns) > 0
+        stats = self.chart_data_service.get_trade_statistics(run_id) if returns_available else None
+        render_chart(
+            "return_hist",
+            returns_available,
+            chart_messages["return_hist"],
+            returns if returns_available else [],
+            stats,
+        )
 
         # 4. 持有天數分佈
         holding_days = self.chart_data_service.get_holding_days(run_id)
-        if holding_days is not None:
-            self.holding_hist.plot(holding_days)
+        holding_days_available = holding_days is not None and len(holding_days) > 0
+        render_chart(
+            "holding_hist",
+            holding_days_available,
+            chart_messages["holding_hist"],
+            holding_days if holding_days_available else [],
+        )
+
+    def _clear_saved_charts(self, message: str) -> None:
+        """清除所有保存圖表並標示目前沒有選取來源。"""
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None:
+            result_panel.ensure_chart_widgets()
+            result_panel.invalidate_current_chart_result(message)
+        empty_series = pd.Series(dtype=float)
+        empty_data = {
+            "equity_chart": (empty_series, None, None, None),
+            "drawdown_chart": (empty_series, None),
+            "return_hist": ([], None),
+            "holding_hist": ([],),
+        }
+        for name, args in empty_data.items():
+            getattr(self, name).plot(*args)
 
     # ========== 批次回測相關方法 ==========
 
@@ -4815,14 +5115,22 @@ class BacktestView(QWidget):
             )
             or 0
         )
+        cagr_median_text = (
+            f"{stats.get('cagr_median', 0) * 100:.2f}%"
+            if cagr_sample_count > 0 else "未知"
+        )
+        mdd_median_text = (
+            f"{stats.get('mdd_median', 0) * 100:.2f}%"
+            if mdd_sample_count > 0 else "未知"
+        )
         stats_lines = [
             f"總標的數: {total_stocks} 檔",
             f"有效回測: {successful_stocks} 檔",
             f"Coverage（有效回測 / 總標的）: {coverage * 100:.1f}%",
             f"失敗／無交易: {failed_stocks} 檔（其中無交易 {no_trade_stocks} 檔）",
             f"獲利標的 / 有效回測: {profitable_stocks} / {successful_stocks}（{profitable_rate * 100:.1f}%；不是交易筆勝率）",
-            f"CAGR 中位數（有效且有 CAGR，n={cagr_sample_count}）: {stats.get('cagr_median', 0) * 100:.2f}%",
-            f"MDD 中位數（有效且有 MDD，n={mdd_sample_count}）: {stats.get('mdd_median', 0) * 100:.2f}%",
+            f"CAGR 中位數（有效且有 CAGR，n={cagr_sample_count}）: {cagr_median_text}",
+            f"MDD 中位數（有效且有 MDD，n={mdd_sample_count}）: {mdd_median_text}",
         ]
 
         self.batch_stats_text.setPlainText("\n".join(stats_lines))

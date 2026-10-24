@@ -154,6 +154,9 @@ def test_position_adapter_maps_existing_condition_state_and_keeps_unknown_gap() 
     assert presentation.action_suitability == "EXIT_CANDIDATE"
     assert presentation.evidence_status == "degraded"
     assert presentation.cost_basis == Decimal("32.50")
+    text = format_decision_presentation(presentation)
+    assert "成本基準：TWD 32.50" in text
+    assert "成本假設：未知" in text
     assert presentation.target_weight_bp == 800
     assert presentation.current_weight_bp == 1200
     assert presentation.weight_gap_bp == -400
@@ -177,6 +180,62 @@ def test_invalid_probability_value_is_rejected() -> None:
             stock_code="2330",
             calibrated_probability_bp=10001,
         )
+
+
+def test_recommendation_cost_basis_bp_stays_separate_and_round_trips() -> None:
+    advice = RecommendationAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.ADD_CANDIDATE,
+        cost_basis_bp=50,
+        source_trace=("recommendation:fixture",),
+    )
+
+    presentation = DecisionPresentationService().from_recommendation_advice(advice)
+    restored = DecisionPresentationDTO.from_dict(presentation.to_dict())
+    text = format_decision_presentation(presentation)
+
+    assert presentation.cost_basis is None
+    assert presentation.cost_basis_bp == 50
+    assert restored == presentation
+    assert "成本基準：未知" in text
+    assert "成本假設：50 bp" in text
+    assert "TWD 50.00" not in text
+
+
+def test_portfolio_cost_basis_bp_does_not_become_monetary_cost() -> None:
+    advice = PortfolioAdviceDTO(
+        stock_code="2330",
+        advice_action=AdviceAction.HOLD,
+        target_weight_bp=1000,
+        current_weight_bp=1000,
+        weight_gap_bp=0,
+        cost_basis_bp=50,
+    )
+
+    presentation = DecisionPresentationService().from_portfolio_advice(advice)
+    text = format_decision_presentation(presentation)
+
+    assert presentation.cost_basis is None
+    assert presentation.cost_basis_bp == 50
+    assert DecisionPresentationDTO.from_dict(presentation.to_dict()) == presentation
+    assert "成本假設：50 bp" in text
+    assert "TWD 50.00" not in text
+
+
+def test_cost_basis_zero_and_unknown_remain_distinct() -> None:
+    zero = DecisionPresentationDTO(stock_code="2330", cost_basis_bp=0)
+    unknown = DecisionPresentationDTO(stock_code="1101")
+
+    assert "成本假設：0 bp" in format_decision_presentation(zero)
+    assert "成本假設：未知" in format_decision_presentation(unknown)
+    assert zero.cost_basis is None
+    assert unknown.cost_basis_bp is None
+
+
+@pytest.mark.parametrize("value", [True, -1, 10001, 50.0])
+def test_cost_basis_bp_requires_integer_value_in_range(value: object) -> None:
+    with pytest.raises(ValueError, match="cost_basis_bp"):
+        DecisionPresentationDTO(stock_code="2330", cost_basis_bp=value)  # type: ignore[arg-type]
 
 
 def test_presentation_separates_calibrated_and_after_cost_probability() -> None:

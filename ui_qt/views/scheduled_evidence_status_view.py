@@ -63,13 +63,13 @@ class ScheduledEvidenceStatusView(QWidget):
         root.addWidget(self.boundary_label)
 
         cards = QGridLayout()
-        self.freshness_label = self._make_card("Data freshness", "尚未載入")
-        self.recommendation_label = self._make_card("Recommendation snapshot", "尚未載入")
+        self.freshness_label = self._make_card("資料新鮮度", "尚未載入")
+        self.recommendation_label = self._make_card("推薦快照", "尚未載入")
         self.recommendation_label.setMinimumHeight(112)
-        self.evidence_label = self._make_card("Evidence dry-run", "尚未載入")
-        self.forward_outcome_label = self._make_card("Forward outcomes", "尚未載入")
+        self.evidence_label = self._make_card("證據流程試跑", "尚未載入")
+        self.forward_outcome_label = self._make_card("前瞻結果追蹤", "尚未載入")
         self.safety_label = self._make_card("安全邊界", "尚未載入")
-        self.report_label = self._make_card("Report", "尚未載入")
+        self.report_label = self._make_card("報告", "尚未載入")
         cards.addWidget(self.freshness_label, 0, 0)
         cards.addWidget(self.recommendation_label, 0, 1)
         cards.addWidget(self.evidence_label, 1, 0)
@@ -144,17 +144,17 @@ class ScheduledEvidenceStatusView(QWidget):
             f"最後可信載入：{status.last_good_loaded_at or '未知'}。"
         )
         self.freshness_label.setText(
-            "Data freshness\n"
+            "資料新鮮度\n"
             f"{status.freshness_status} / 最新資料 {latest_date}\n"
             f"分類：{format_machine_status_classification(freshness_class)}{stale_suffix}"
         )
         self.evidence_label.setText(
-            "Evidence dry-run\n"
+            "證據流程試跑\n"
             f"{status.evidence_status} / 決策日 {decision_date}\n"
             f"分類：{format_machine_status_classification(evidence_class)}{stale_suffix}"
         )
         self.forward_outcome_label.setText(
-            "Forward outcomes\n"
+            "前瞻結果追蹤\n"
             f"{status.forward_outcome_status} / 掃描 {_count_text(status.forward_outcome_events_scanned)} / "
             f"寫入 {_count_text(status.forward_outcome_outcomes_written)}\n"
             f"待成熟 {_count_text(status.forward_outcome_pending)}；"
@@ -167,7 +167,7 @@ class ScheduledEvidenceStatusView(QWidget):
             str(status.recommendations_count) if status.recommendations_count is not None else "未知"
         )
         self.recommendation_label.setText(
-            "Recommendation snapshot\n"
+            "推薦快照\n"
             f"{status.recommendation_status} / {status.recommendation_source} / "
             f"{recommendation_id} / {recommendation_count} 筆\n"
             f"{_recommendation_cohort_classification_text(status)}\n"
@@ -181,7 +181,7 @@ class ScheduledEvidenceStatusView(QWidget):
             f"auto_trading={_bool_text(status.auto_trading)} / load={load_label}{stale_suffix}"
         )
         self.report_label.setText(
-            "Report\n"
+            "報告\n"
             + (str(status.report_path) if status.report_path is not None else "未提供 report path")
             + stale_suffix
         )
@@ -215,12 +215,12 @@ class ScheduledEvidenceStatusView(QWidget):
         self.boundary_label.setText(
             "此頁狀態未知：尚無可信排程 payload。請聚焦 Retry；不補值、不寫 evidence DB。"
         )
-        self.freshness_label.setText(f"Data freshness\n分類：{unknown_label}")
-        self.recommendation_label.setText(f"Recommendation snapshot\n分類：{unknown_label}")
-        self.evidence_label.setText(f"Evidence dry-run\n分類：{unknown_label}")
-        self.forward_outcome_label.setText(f"Forward outcomes\n分類：{unknown_label}")
+        self.freshness_label.setText(f"資料新鮮度\n分類：{unknown_label}")
+        self.recommendation_label.setText(f"推薦快照\n分類：{unknown_label}")
+        self.evidence_label.setText(f"證據流程試跑\n分類：{unknown_label}")
+        self.forward_outcome_label.setText(f"前瞻結果追蹤\n分類：{unknown_label}")
         self.safety_label.setText("安全邊界\n狀態未知；不能推定可寫入或可交易")
-        self.report_label.setText("Report\n狀態未知；尚無可信 report")
+        self.report_label.setText("報告\n狀態未知；尚無可信報告")
         self.detail_panel.setPlainText(
             f"排程狀態載入失敗；狀態未知：{error_line}\n"
             "請聚焦 Retry；尚無 last-known-good 可保留。"

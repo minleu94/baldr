@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QTableView, QMessageBox, QDialog, QDialogButtonBox, QLineEdit,
     QTextEdit, QListWidget, QListWidgetItem, QHeaderView, QMenu,
     QAbstractItemView, QGroupBox, QSplitter, QComboBox, QDateEdit,
-    QDoubleSpinBox, QSpinBox, QFormLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
+    QDoubleSpinBox, QSpinBox, QFormLayout, QGridLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
     QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
@@ -123,6 +123,44 @@ from ui_qt.widgets.user_declared_holding_research_widget import (
 
 logger = logging.getLogger(__name__)
 _POSITION_HEALTH_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def format_strategy_version_backtest_summary(
+    summary: Mapping[str, object],
+) -> str:
+    """呈現策略版本保存的回測摘要；缺值與非有限值不補成零。"""
+
+    def metric_text(
+        key: str,
+        *,
+        percent: bool = False,
+        signed: bool = False,
+        places: int = 2,
+    ) -> str:
+        value = summary.get(key)
+        if value is None or isinstance(value, bool):
+            return "未提供"
+        try:
+            number = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return "未提供"
+        if not number.is_finite():
+            return "未提供"
+        if percent:
+            number *= Decimal("100")
+        try:
+            formatted = f"{number:+.{places}f}" if signed else f"{number:.{places}f}"
+        except (InvalidOperation, ValueError):
+            return "未提供"
+        return f"{formatted}%" if percent else formatted
+
+    total_return = metric_text("total_return", percent=True, signed=True, places=1)
+    sharpe_ratio = metric_text("sharpe_ratio", places=2)
+    max_drawdown = metric_text("max_drawdown", percent=True, places=1)
+    return (
+        f"總報酬: {total_return}, Sharpe: {sharpe_ratio}, "
+        f"MaxDD: {max_drawdown}"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -778,6 +816,20 @@ def _paper_status_text(value: Any) -> str:
     return f"{label}（{raw_status}）"
 
 
+def _quote_freshness_status_text(value: Any) -> str:
+    """只說明原行情日期判定；保留原碼，不升格價格或來源資格。"""
+
+    raw = str(value or "unverified").strip() or "unverified"
+    labels = {
+        "current": "資料日符合預期交易日",
+        "stale": "資料日早於預期交易日",
+        "future_rejected": "資料日超前（拒用）",
+        "unverified": "資料日未核實",
+    }
+    label = labels.get(raw.lower())
+    return f"{label}（{raw}）" if label is not None else raw
+
+
 def _system_status_label(raw: Any, *, dimension: str, fallback: dict[str, str]) -> str:
     """使用共用詞彙，僅對共用表未涵蓋的既有碼沿用專用文字。"""
 
@@ -787,6 +839,51 @@ def _system_status_label(raw: Any, *, dimension: str, fallback: dict[str, str]) 
     if label.lower() == code.lower():
         return fallback.get(code.lower(), label)
     return label
+
+
+_POSITION_HEALTH_STATUS_LABELS = {
+    "source": {
+        "verified": "來源已核實",
+        "degraded": "來源品質降級",
+        "blocked": "來源受阻",
+        "missing": "來源缺件",
+        "unknown": "來源未知",
+        "unverified": "來源未核實",
+        "stale": "來源資料較舊",
+    },
+    "condition": {
+        "valid": "有效",
+        "warning": "有警示",
+        "invalid": "無效",
+        "unknown": "未知",
+    },
+    "evidence": {
+        "verified": "已核實",
+        "observed": "已觀測",
+        "estimated": "估計值",
+        "degraded": "品質降級",
+        "blocked": "受阻",
+        "missing": "資料缺件",
+        "unknown": "未知",
+        "unavailable": "無法判讀",
+        "research": "研究用途",
+    },
+    "lineage": {
+        "same_snapshot_verified": "同一快照已核實",
+        "ledger_continuous_no_trade": "帳本連續且期間無交易",
+        "natural_entry_verified": "自然進場已核實",
+        "carried_verified": "延續部位已核實",
+        "unverified": "尚未核實",
+        "unproven": "進場來源尚無法證明",
+    },
+}
+
+
+def _position_health_status_text(value: object, *, dimension: str) -> str:
+    """只翻譯 Position Health 已知狀態；未知原碼原樣保留。"""
+
+    raw = str(value if value is not None else "unknown").strip() or "unknown"
+    return _POSITION_HEALTH_STATUS_LABELS.get(dimension, {}).get(raw.lower(), raw)
 
 
 class GradientCard(QFrame):
@@ -1502,8 +1599,24 @@ class PortfolioView(QWidget):
         left_title.setFont(left_title_font)
         left_layout.addWidget(left_title)
 
+        self.position_focus_label = QLabel(
+            "選取一筆持倉後，這裡會先摘要原持倉數值、報價日期與可精確對應的 Health 狀態。"
+        )
+        self.position_focus_label.setObjectName("portfolioPositionFocusSummary")
+        self.position_focus_label.setWordWrap(True)
+        self.position_focus_label.setTextFormat(Qt.PlainText)
+        self.position_focus_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.position_focus_label.setAccessibleName("選中持倉重點摘要")
+        self.position_focus_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background-color: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 7px 10px; font-weight: 600;"
+        )
+        left_layout.addWidget(self.position_focus_label)
+
         self.positions_table = QTableView()
-        apply_financial_table_style(self.positions_table)
+        apply_financial_table_style(self.positions_table, minimum_visible_rows=2)
         self.positions_table.setSelectionBehavior(QTableView.SelectRows)
         self.positions_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.positions_table.setSortingEnabled(True)
@@ -1714,67 +1827,103 @@ class PortfolioView(QWidget):
         paper_intro.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         paper_layout.addWidget(paper_intro)
 
-        paper_controls = QHBoxLayout()
+        # 右側 Paper pane 約佔分割區四成；兩欄保留操作文字，避免高 DPI 壓成殘字。
+        paper_controls = QGridLayout()
         self.paper_controls_layout = paper_controls
+        paper_controls.setColumnStretch(0, 1)
+        paper_controls.setColumnStretch(1, 1)
         self.btn_refresh_paper = QPushButton("重新讀取 Paper 狀態")
         self.btn_refresh_paper.setProperty("variant", "secondary")
         self.btn_refresh_paper.setToolTip("只讀 status JSON 與既有 append-only ledger，不會寫入資料。")
         self.btn_refresh_paper.clicked.connect(self._load_paper_readiness)
-        paper_controls.addWidget(self.btn_refresh_paper)
+        paper_controls.addWidget(self.btn_refresh_paper, 0, 0)
         self.btn_build_paper_benchmark = QPushButton("預覽／建立 Equal Weight")
         self.btn_build_paper_benchmark.setProperty("variant", "secondary")
         self.btn_build_paper_benchmark.setToolTip(
             "先以 baseline、snapshot 與市場資料產生唯讀 preview；確認後才建立新的研究用 benchmark ledger，既有檔案不覆寫。"
         )
         self.btn_build_paper_benchmark.clicked.connect(self._build_paper_benchmark)
-        paper_controls.addWidget(self.btn_build_paper_benchmark)
+        paper_controls.addWidget(self.btn_build_paper_benchmark, 0, 1)
         self.btn_import_paper_fills = QPushButton("匯入 Paper 成交 CSV")
         self.btn_import_paper_fills.setProperty("variant", "secondary")
         self.btn_import_paper_fills.setToolTip(
             "要求完整 paper fill、成本、turnover 與 execution gap；確認後只寫入 Paper Trade Ledger。"
         )
         self.btn_import_paper_fills.clicked.connect(self._show_import_paper_fills_dialog)
-        paper_controls.addWidget(self.btn_import_paper_fills)
+        paper_controls.addWidget(self.btn_import_paper_fills, 1, 0)
         self.btn_export_paper_template = QPushButton("匯出成交範本")
         self.btn_export_paper_template.setProperty("variant", "secondary")
         self.btn_export_paper_template.setToolTip(
             "只建立空白 Paper fills CSV 欄位範本，不建立 ledger、不填入示例成交。"
         )
         self.btn_export_paper_template.clicked.connect(self._export_paper_fills_template)
-        paper_controls.addWidget(self.btn_export_paper_template)
+        paper_controls.addWidget(self.btn_export_paper_template, 1, 1)
         self.paper_weekly_expected_days = QSpinBox()
         self.paper_weekly_expected_days.setRange(1, 31)
         self.paper_weekly_expected_days.setValue(5)
         self.paper_weekly_expected_days.setSuffix(" 個交易日")
         self.paper_weekly_expected_days.setToolTip("只用來標示 expected trading days；不足時週報會顯示 degraded。")
-        paper_controls.addWidget(self.paper_weekly_expected_days)
+        paper_controls.addWidget(self.paper_weekly_expected_days, 2, 0)
         self.btn_refresh_paper_weekly = QPushButton("計算最近週報")
         self.btn_refresh_paper_weekly.setProperty("variant", "secondary")
         self.btn_refresh_paper_weekly.setToolTip("只讀最近 snapshot 邊界、benchmark 與成本帳，不會寫入資料。")
         self.btn_refresh_paper_weekly.clicked.connect(self._load_paper_weekly_evidence)
-        paper_controls.addWidget(self.btn_refresh_paper_weekly)
-        paper_controls.addStretch()
+        paper_controls.addWidget(self.btn_refresh_paper_weekly, 2, 1)
         paper_layout.addLayout(paper_controls)
 
         self.paper_readiness_summary_label = QLabel("尚未讀取 Paper Portfolio 狀態。")
         self.paper_readiness_summary_label.setWordWrap(True)
         self.paper_readiness_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         paper_layout.addWidget(self.paper_readiness_summary_label)
+        self.paper_identity_label = QLabel("帳戶命名空間：未知｜最新 snapshot ID：未知")
+        self.paper_identity_label.setWordWrap(True)
+        self.paper_identity_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        paper_layout.addWidget(self.paper_identity_label)
+        self.paper_snapshot_empty_label = QLabel("")
+        self.paper_snapshot_empty_label.setWordWrap(True)
+        self.paper_snapshot_empty_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.paper_snapshot_empty_label.hide()
+        paper_layout.addWidget(self.paper_snapshot_empty_label)
+
+        self.paper_weekly_summary_label = QLabel("最近週報尚未計算。")
+        self.paper_weekly_summary_label.setWordWrap(True)
+        self.paper_weekly_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        paper_layout.addWidget(self.paper_weekly_summary_label)
+        self.paper_diagnostics_toggle = QPushButton("展開來源與完整診斷")
+        self.paper_diagnostics_toggle.setCheckable(True)
+        self.paper_diagnostics_toggle.setChecked(False)
+        self.paper_diagnostics_toggle.setToolTip(
+            "查看 Paper readiness 的來源路徑、狀態、阻擋與警告，以及週報完整診斷。"
+        )
+        paper_layout.addWidget(self.paper_diagnostics_toggle)
+        self.paper_diagnostics_panel = QWidget()
+        paper_diagnostics_layout = QVBoxLayout(self.paper_diagnostics_panel)
+        paper_diagnostics_layout.setContentsMargins(0, 0, 0, 0)
+        paper_diagnostics_layout.setSpacing(6)
         self.paper_readiness_detail_label = QLabel("")
         self.paper_readiness_detail_label.setWordWrap(True)
         self.paper_readiness_detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        paper_layout.addWidget(self.paper_readiness_detail_label)
+        paper_diagnostics_layout.addWidget(self.paper_readiness_detail_label)
 
         self.paper_weekly_report_label = QLabel("尚未計算 Paper Portfolio 週報。")
         self.paper_weekly_report_label.setWordWrap(True)
         self.paper_weekly_report_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        paper_layout.addWidget(self.paper_weekly_report_label)
+        paper_diagnostics_layout.addWidget(self.paper_weekly_report_label)
+        paper_layout.addWidget(self.paper_diagnostics_panel)
+        self.paper_diagnostics_panel.hide()
+        self.paper_diagnostics_toggle.toggled.connect(self._set_paper_diagnostics_expanded)
 
         self.paper_snapshot_table = QTableView()
         apply_financial_table_style(self.paper_snapshot_table)
         self.paper_snapshot_table.setSelectionBehavior(QTableView.SelectRows)
         self.paper_snapshot_table.horizontalHeader().setStretchLastSection(True)
         paper_layout.addWidget(self.paper_snapshot_table, 1)
+        self.paper_snapshot_empty_filler = QWidget()
+        self.paper_snapshot_empty_filler.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Expanding
+        )
+        self.paper_snapshot_empty_filler.hide()
+        paper_layout.addWidget(self.paper_snapshot_empty_filler, 1)
         right_widget.addTab(paper_tab, "Paper Portfolio")
 
         self.portfolio_research_scenario_widget = PortfolioResearchScenarioWidget(
@@ -1881,6 +2030,8 @@ class PortfolioView(QWidget):
         self.lbl_strat_version = QLabel("-")
         self.lbl_strat_params = QLabel("-")
         self.lbl_strat_perf = QLabel("-")
+        self.lbl_strat_perf.setWordWrap(True)
+        self.lbl_strat_perf.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         strategy_form.addRow("策略 ID / 來源:", self.lbl_strat_id)
         strategy_form.addRow("推薦/版本細節:", self.lbl_strat_version)
@@ -1940,6 +2091,7 @@ class PortfolioView(QWidget):
 
         # 1. 籌碼狀態與風險警告區
         chip_risk_group = QGroupBox("主力籌碼風險警示")
+        chip_risk_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         chip_risk_form = QFormLayout(chip_risk_group)
         chip_risk_form.setSpacing(8)
 
@@ -1960,13 +2112,19 @@ class PortfolioView(QWidget):
 
         # 2. 分點買賣明細表
         chip_detail_group = QGroupBox("追蹤分點近 5 日買賣明細 (張)")
+        chip_detail_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         chip_detail_layout = QVBoxLayout(chip_detail_group)
         chip_detail_layout.setContentsMargins(6, 6, 6, 6)
+
+        self.lbl_chip_detail_empty = QLabel("目前沒有可顯示的分點明細")
+        self.lbl_chip_detail_empty.setWordWrap(True)
+        chip_detail_layout.addWidget(self.lbl_chip_detail_empty)
 
         self.chip_detail_table = QTableView()
         apply_financial_table_style(self.chip_detail_table)
         self.chip_detail_table.setSelectionBehavior(QTableView.SelectRows)
         self.chip_detail_table.horizontalHeader().setStretchLastSection(True)
+        self.chip_detail_table.setVisible(False)
         chip_detail_layout.addWidget(self.chip_detail_table)
 
         chip_layout.addWidget(chip_detail_group)
@@ -1976,6 +2134,7 @@ class PortfolioView(QWidget):
         self.btn_drill_down_chip.setProperty("variant", "primary")
         self.btn_drill_down_chip.clicked.connect(self._on_drill_down_chip_clicked)
         chip_layout.addWidget(self.btn_drill_down_chip)
+        chip_layout.addStretch(1)
 
         right_widget.addTab(chip_tab, "籌碼監控")
 
@@ -2327,7 +2486,6 @@ class PortfolioView(QWidget):
         for layout in (
             self.history_filter_layout,
             self.trade_action_layout,
-            self.paper_controls_layout,
         ):
             layout.setDirection(QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight)
         if initialize_splitter and not self._portfolio_splitter_user_resized:
@@ -3194,21 +3352,36 @@ class PortfolioView(QWidget):
             logger.error("Failed to load paper portfolio readiness: %s", exc)
             self._paper_readiness = None
             self.paper_readiness_summary_label.setText("Paper Portfolio 狀態讀取失敗；未修改任何資料。")
+            account_namespace = getattr(self.paper_readiness_service, "portfolio_id", None) or "未知"
+            self.paper_identity_label.setText(
+                f"帳戶命名空間：{account_namespace}｜最新 snapshot ID：未知（讀取失敗）"
+            )
             self.paper_readiness_detail_label.setText(f"診斷：{exc}")
             self.paper_snapshot_table.setModel(
                 PandasTableModel(pd.DataFrame(columns=["日期", "證券代號", "狀態"]))
             )
+            self.paper_snapshot_table.hide()
+            self.paper_snapshot_empty_label.setText("Paper snapshot 讀取失敗，無法顯示持倉。")
+            self.paper_snapshot_empty_label.show()
+            self.paper_snapshot_empty_filler.show()
+
+    def _set_paper_diagnostics_expanded(self, expanded: bool) -> None:
+        self.paper_diagnostics_panel.setVisible(expanded)
+        self.paper_diagnostics_toggle.setText(
+            "收合來源與完整診斷" if expanded else "展開來源與完整診斷"
+        )
 
     def _render_paper_readiness(self, result) -> None:
+        account_namespace = getattr(self.paper_readiness_service, "portfolio_id", None) or "未知"
         status_text = _paper_status_text(result.status)
         cost_status_text = _paper_status_text(result.cost_ledger_status)
         weekly_status_text = _paper_status_text(result.weekly_report_status)
         total_text = (
             f"TWD {result.latest_total_value:,.2f}"
             if result.latest_total_value is not None
-            else "N/A"
+            else "未知"
         )
-        cash_text = f"TWD {result.latest_cash:,.2f}" if result.latest_cash is not None else "N/A"
+        cash_text = f"TWD {result.latest_cash:,.2f}" if result.latest_cash is not None else "未知"
         benchmark_text = (
             f"{result.benchmark_observation_count} 筆"
             if result.benchmark_observation_count
@@ -3216,14 +3389,18 @@ class PortfolioView(QWidget):
         )
         self.paper_readiness_summary_label.setText(
             f"Paper Portfolio｜狀態：{status_text}\n"
-            f"最新可採用 snapshot：{result.latest_snapshot_date or 'N/A'}｜"
+            f"最新可採用 snapshot：{result.latest_snapshot_date or '未知'}｜"
             f"raw 累積 {result.snapshot_count} 筆｜持倉 {result.latest_position_count} 檔｜"
             f"總值 {total_text}｜現金 {cash_text}\n"
             f"Equal Weight：{benchmark_text}｜"
             f"成本帳：{cost_status_text}（{result.cost_record_count} 筆）｜"
             f"週報：{weekly_status_text}"
         )
+        self.paper_identity_label.setText(
+            f"帳戶命名空間：{account_namespace}｜最新 snapshot ID：{result.latest_snapshot_id or '未知'}"
+        )
         details = [
+            f"帳戶命名空間：{account_namespace}｜最新 snapshot ID：{result.latest_snapshot_id or '未知'}",
             f"status：{_paper_status_text(result.latest_status)}",
             f"snapshot DB：{result.state_db_path}",
             f"daily status：{result.status_path}",
@@ -3258,10 +3435,30 @@ class PortfolioView(QWidget):
             for item in result.latest_positions
         ]
         if not rows:
-            rows = [{"日期": result.latest_snapshot_date or "N/A", "證券代號": "N/A", "狀態": "沒有可顯示的 snapshot 持倉"}]
+            if result.snapshot_count == 0:
+                empty_text = (
+                    f"尚無 Paper snapshot。帳戶命名空間：{account_namespace}｜"
+                    "raw 累積 0 筆｜持倉 0 檔｜snapshot identity：未知。"
+                )
+            else:
+                empty_text = (
+                    "已有 Paper snapshot，但最新 snapshot 沒有持倉。"
+                    f"帳戶命名空間：{account_namespace}｜snapshot ID：{result.latest_snapshot_id or '未知'}｜"
+                    f"日期：{result.latest_snapshot_date or '未知'}｜"
+                    f"raw 累積 {result.snapshot_count} 筆｜持倉 {result.latest_position_count} 檔。"
+                )
+            self.paper_snapshot_empty_label.setText(empty_text)
+            self.paper_snapshot_empty_label.show()
+            self.paper_snapshot_table.hide()
+            self.paper_snapshot_empty_filler.show()
+            self.paper_snapshot_table.setModel(
+                PandasTableModel(pd.DataFrame(columns=["日期", "證券代號", "股數", "標記價格", "市值", "權重(bp)"]))
+            )
+            return
         columns = ["日期", "證券代號", "股數", "標記價格", "市值", "權重(bp)"]
-        if not result.latest_positions:
-            columns = ["日期", "證券代號", "狀態"]
+        self.paper_snapshot_empty_label.hide()
+        self.paper_snapshot_empty_filler.hide()
+        self.paper_snapshot_table.show()
         self.paper_snapshot_table.setModel(PandasTableModel(pd.DataFrame(rows, columns=columns)))
         self.paper_snapshot_table.resizeColumnsToContents()
 
@@ -3277,6 +3474,9 @@ class PortfolioView(QWidget):
         except Exception as exc:
             logger.error("Failed to load paper portfolio weekly evidence: %s", exc)
             self._paper_weekly_evidence = None
+            self.paper_weekly_summary_label.setText(
+                "最近週報｜讀取失敗；詳細原因請展開來源與完整診斷。"
+            )
             self.paper_weekly_report_label.setText(
                 f"Paper 週報讀取失敗；未修改任何資料。診斷：{exc}"
             )
@@ -3301,6 +3501,7 @@ class PortfolioView(QWidget):
                 f"成本 TWD {report.total_cost}｜換手 {report.turnover_bp} bp｜"
                 f"資料品質 {report.data_quality}"
             )
+        self.paper_weekly_summary_label.setText(summary)
         details = [
             f"週報 evidence：{_paper_status_text(result.weekly_report_status)}",
             f"snapshot DB：{result.state_db_path}",
@@ -3779,9 +3980,13 @@ class PortfolioView(QWidget):
             pnl_text = f"TWD {realized_pnl:+,.2f}"
             self.card_pnl.update_value(pnl_text)
             if realized_pnl > 0:
-                self.card_pnl.value_label.setStyleSheet("color: #48bb78;")
+                self.card_pnl.value_label.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.market_up};"
+                )
             elif realized_pnl < 0:
-                self.card_pnl.value_label.setStyleSheet("color: #f56565;")
+                self.card_pnl.value_label.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.market_down};"
+                )
             else:
                 self.card_pnl.value_label.setStyleSheet(
                     f"color: {MIDNIGHT_ANALYST.text_primary};"
@@ -3823,12 +4028,13 @@ class PortfolioView(QWidget):
             if not positions:
                 df = pd.DataFrame(columns=[
                     "證券代號", "證券名稱", "持有股數", "平均成本", "目前價格",
-                    "行情資料日", "行情新鮮度",
+                    "行情資料日", "行情日期狀態",
                     "投入金額（毛額，未扣費稅）", "未實現損益（毛額，未扣費稅）",
                     "未實現損益%（毛額）", "已實現損益（毛額，未扣費稅）",
                     "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
                     "動作適合度", "Advice 動作（研究）", "Position Health", "Health 來源",
-                    "權重差距(bp)", "失效條件", "_position_id"
+                    "權重差距(bp)", "失效條件", "_position_id",
+                    "_unrealized_pnl_pct_direction",
                 ])
             else:
                 data = []
@@ -3877,12 +4083,15 @@ class PortfolioView(QWidget):
                             if snapshot.quote_data_date is not None
                             else "未知"
                         ),
-                        "行情新鮮度": snapshot.quote_freshness_status or "unverified",
+                        "行情日期狀態": _quote_freshness_status_text(
+                            snapshot.quote_freshness_status
+                        ),
                         "投入金額（毛額，未扣費稅）": p.invested_amount,
                         "未實現損益（毛額，未扣費稅）": (
                             p.unrealized_pnl if p.unrealized_pnl is not None else "-"
                         ),
                         "未實現損益%（毛額）": pnl_pct_str,
+                        "_unrealized_pnl_pct_direction": p.unrealized_pnl_pct,
                         "已實現損益（毛額，未扣費稅）": p.realized_pnl,
                         "來源脈絡": monitor_result.source_label,
                         "進場分數": monitor_result.entry_total_score,
@@ -3911,10 +4120,23 @@ class PortfolioView(QWidget):
                     })
                 df = pd.DataFrame(data)
 
-            self.positions_model = PandasTableModel(df)
+            self.positions_model = PandasTableModel(
+                df,
+                market_direction_columns={
+                    "未實現損益（毛額，未扣費稅）",
+                    "已實現損益（毛額，未扣費稅）",
+                },
+                market_direction_value_columns={
+                    "未實現損益%（毛額）": "_unrealized_pnl_pct_direction",
+                },
+            )
             # 隱藏內部輔助欄位；_position_id 讓排序後的 table row 仍能
             # 精確回到同一 PositionDTO，_tooltip 則只供畫面提示。
-            internal_columns = {"_position_id", "_tooltip"}
+            internal_columns = {
+                "_position_id",
+                "_tooltip",
+                "_unrealized_pnl_pct_direction",
+            }
             if internal_columns.intersection(df.columns):
                 self.positions_model.setVisibleColumns(
                     [col for col in df.columns if col not in internal_columns]
@@ -3922,6 +4144,25 @@ class PortfolioView(QWidget):
 
             self.positions_table.setModel(self.positions_model)
             self.positions_table.resizeColumnsToContents()
+            # 空帳仍保留零列模型與上方明確空狀態摘要；隱藏空表以免佔用首屏高度。
+            self.positions_table.setVisible(bool(positions))
+            # 少量持倉時表格不占用大片空白，讓下方操作與證據更容易到達。
+            # 保留表頭、兩列及水平捲軸；多筆持倉恢復原本可伸展的表格。
+            if len(positions) <= 2:
+                visible_rows = max(2, len(positions))
+                compact_height = (
+                    self.positions_table.horizontalHeader().sizeHint().height()
+                    + self.positions_table.verticalHeader().defaultSectionSize() * visible_rows
+                    + self.positions_table.horizontalScrollBar().sizeHint().height()
+                    + self.positions_table.frameWidth() * 2
+                    + 8
+                )
+                # 兩列下限由共用表格樣式維護；少量列明確使用內容高度。
+                self.positions_table.setFixedHeight(max(120, compact_height))
+            else:
+                self.positions_table.setMinimumHeight(0)
+                self.positions_table.setMaximumHeight(16777215)
+                ensure_visible_rows(self.positions_table, 2)
             self._render_selected_position_presentation()
 
             # 設定 Tooltip 提示以符合條件監控體驗
@@ -4047,11 +4288,64 @@ class PortfolioView(QWidget):
         position_id = str(getattr(candidates[0], "position_id", "") or "").strip()
         return self._position_presentations.get(position_id) if position_id else None
 
+    def _render_selected_position_focus(self, position: object | None) -> None:
+        """以選中原件摘要部位欄位；不從缺值推導或計算交易結論。"""
+
+        if position is None:
+            portfolio = self._last_portfolio_dto
+            positions = tuple(getattr(portfolio, "positions", ()) or ())
+            if positions:
+                text = "尚未選取持倉列；表格中的部位資料尚未綁定到單一 position identity。"
+            else:
+                text = "目前沒有可摘要的持倉列；成本、現價、損益與 Health／Exit 均未知。"
+            self.position_focus_label.setText(text)
+            return
+
+        def value_text(value: object, *, money: bool = False) -> str:
+            if value is None:
+                return "未知"
+            if isinstance(value, bool):
+                return "未知"
+            try:
+                number = Decimal(str(value))
+            except Exception:
+                return "未知"
+            if not number.is_finite():
+                return "未知"
+            rendered = format(number, ",f")
+            return f"TWD {rendered}" if money else rendered
+
+        code = str(getattr(position, "stock_code", "") or "未知")
+        name = str(getattr(position, "stock_name", "") or "名稱未提供")
+        quantity = value_text(getattr(position, "quantity", None))
+        average_cost = value_text(getattr(position, "average_cost", None), money=True)
+        current_price = value_text(getattr(position, "current_price", None), money=True)
+        unrealized_pnl = value_text(
+            getattr(position, "unrealized_pnl", None), money=True
+        )
+        quote_date = self._cached_position_quote_date(position, code) or "未知"
+        source_type = str(getattr(position, "source_type", "") or "未提供")
+        source_id = str(getattr(position, "source_id", "") or "未提供")
+        health = self._health_for_position(position)
+        health_text = (
+            f"Paper Health：{health.display_action}（{health.decision_date}；"
+            f"來源狀態 {health.source_status}，唯讀）"
+            if health is not None
+            else "Paper Health：觀察／未知（沒有與此 position_id 精確對應的列）"
+        )
+        self.position_focus_label.setText(
+            f"{code} {name}｜持有 {quantity} 股｜平均成本 {average_cost}｜"
+            f"目前價格 {current_price}｜未實現損益（毛額）{unrealized_pnl}\n"
+            f"報價資料日：{quote_date}｜持倉來源：{source_type} / {source_id}\n"
+            f"{health_text}；這是來源狀態摘要，不構成交易動作。"
+        )
+
     def _render_selected_position_presentation(self) -> None:
         """把共用 Advice 與 exact Position Health projection 顯示在明細區。"""
 
         code = str(self.selected_stock_code or "").strip()
         selected_position = self._selected_position_for_current_row()
+        self._render_selected_position_focus(selected_position)
         presentation = self._presentation_for_position(selected_position, code)
         health = self._health_for_position(selected_position)
         health_text = (
@@ -4795,7 +5089,9 @@ class PortfolioView(QWidget):
             self.lbl_mon_entry_price.setText("-")
             self.lbl_mon_current_price.setText("-")
             self.lbl_mon_pnl_pct.setText("-")
-            self.lbl_mon_pnl_pct.setStyleSheet("color: white;")
+            self.lbl_mon_pnl_pct.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+            )
             self.lbl_mon_stop_loss.setText("-")
             self.lbl_mon_stop_loss.setStyleSheet("color: white;")
             self.lbl_mon_take_profit.setText("-")
@@ -4814,12 +5110,19 @@ class PortfolioView(QWidget):
             self.lbl_chip_risk_level.setText("-")
             self.lbl_chip_risk_level.setStyleSheet("color: white;")
             self.lbl_chip_consecutive.setText("-")
-            self.lbl_chip_consecutive.setStyleSheet("color: white;")
+            self.lbl_chip_consecutive.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+            )
             self.lbl_chip_net_5d.setText("-")
-            self.lbl_chip_net_5d.setStyleSheet("color: white;")
+            self.lbl_chip_net_5d.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+            )
             self.lbl_chip_concentration.setText("-")
             self.lbl_chip_reasons.setText("-")
             self.chip_detail_table.setModel(None)
+            self.chip_detail_table.setVisible(False)
+            self.lbl_chip_detail_empty.setText("目前沒有可顯示的分點明細")
+            self.lbl_chip_detail_empty.setVisible(True)
             return
 
         try:
@@ -4850,7 +5153,10 @@ class PortfolioView(QWidget):
                     else "unverified"
                 )
                 if quote_date is not None:
-                    price_text += f"（行情資料日：{quote_date.isoformat()}；freshness：{freshness}）"
+                    price_text += (
+                        f"（行情資料日：{quote_date.isoformat()}；"
+                        f"日期狀態：{_quote_freshness_status_text(freshness)}）"
+                    )
                 else:
                     price_text += "（行情資料日未知；僅供損益觀察）"
                 quote_evidence_check = getattr(
@@ -4868,14 +5174,22 @@ class PortfolioView(QWidget):
                 pnl_pct = position_dto.unrealized_pnl_pct * 100
                 self.lbl_mon_pnl_pct.setText(f"{pnl_pct:+.2f}%")
                 if pnl_pct > 0:
-                    self.lbl_mon_pnl_pct.setStyleSheet("color: #48bb78; font-weight: bold;")
+                    self.lbl_mon_pnl_pct.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.market_up}; font-weight: bold;"
+                    )
                 elif pnl_pct < 0:
-                    self.lbl_mon_pnl_pct.setStyleSheet("color: #f56565; font-weight: bold;")
+                    self.lbl_mon_pnl_pct.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.market_down}; font-weight: bold;"
+                    )
                 else:
-                    self.lbl_mon_pnl_pct.setStyleSheet("color: white;")
+                    self.lbl_mon_pnl_pct.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+                    )
             else:
                 self.lbl_mon_pnl_pct.setText("-")
-                self.lbl_mon_pnl_pct.setStyleSheet("color: white;")
+                self.lbl_mon_pnl_pct.setStyleSheet(
+                    f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+                )
 
             # 停損
             stop_loss_pct = details.get("stop_loss_pct")
@@ -4962,13 +5276,9 @@ class PortfolioView(QWidget):
                     self.lbl_strat_params.setText(", ".join(param_lines) if param_lines else "預設參數")
 
                     perf = version_obj.backtest_summary
-                    total_ret = perf.get('total_return', 0.0)
-                    mdd = perf.get('max_drawdown', 0.0)
-
-                    ret_val = float(total_ret) * 100
-                    mdd_val = float(mdd) * 100
-                    perf_text = f"總報酬: {ret_val:+.1f}%, Sharpe: {float(perf.get('sharpe_ratio', 0.0)):.2f}, MaxDD: {mdd_val:.1f}%"
-                    self.lbl_strat_perf.setText(perf_text)
+                    self.lbl_strat_perf.setText(
+                        format_strategy_version_backtest_summary(perf)
+                    )
                 else:
                     self.lbl_strat_id.setText(f"策略版本來源 (ID: {version_id})")
                     self.lbl_strat_version.setText("未找到對應的策略版本資料")
@@ -4993,44 +5303,105 @@ class PortfolioView(QWidget):
             # 更新籌碼監控
             try:
                 chip_summary = self.chip_service.get_stock_chip_summary(position_dto.stock_code, period_days=5)
+
+                usable_event_count = chip_summary.get("usable_event_count")
+                chip_events_unavailable = (
+                    chip_summary.get("lots_available") is False
+                    or (
+                        isinstance(usable_event_count, int)
+                        and not isinstance(usable_event_count, bool)
+                        and usable_event_count == 0
+                    )
+                )
+                concentration_status = chip_summary.get("concentration_status")
+                concentration_denominator_missing = False
+                accumulated_buy = chip_summary.get("accumulated_buy")
+                accumulated_sell = chip_summary.get("accumulated_sell")
+                if accumulated_buy is not None and accumulated_sell is not None:
+                    try:
+                        concentration_denominator_missing = (
+                            Decimal(str(accumulated_buy))
+                            + Decimal(str(accumulated_sell))
+                        ) == 0
+                    except (InvalidOperation, TypeError, ValueError):
+                        pass
                 
                 # 籌碼評級
                 risk_level = chip_summary.get('risk_level', 'neutral')
-                self.lbl_chip_risk_level.setText(self._chip_risk_label(risk_level))
-                self.lbl_chip_risk_level.setToolTip(f"raw risk_level: {risk_level}")
-                if risk_level == 'bearish':
+                risk_text = (
+                    "資料不足"
+                    if chip_events_unavailable
+                    else self._chip_risk_label(risk_level)
+                )
+                self.lbl_chip_risk_level.setText(risk_text)
+                self.lbl_chip_risk_level.setToolTip(
+                    f"raw risk_level: {risk_level}"
+                    f"\nlots_available: {chip_summary.get('lots_available', '未提供')}"
+                    f"\nusable_event_count: {usable_event_count if usable_event_count is not None else '未提供'}"
+                )
+                if not chip_events_unavailable and risk_level == 'bearish':
                     self.lbl_chip_risk_level.setStyleSheet("background-color: #742a2a; color: #fff5f5; padding: 2px 6px; border-radius: 3px; font-weight: bold;")
-                elif risk_level == 'bullish':
+                elif not chip_events_unavailable and risk_level == 'bullish':
                     self.lbl_chip_risk_level.setStyleSheet("background-color: #22543d; color: #f0fff4; padding: 2px 6px; border-radius: 3px; font-weight: bold;")
                 else:
                     self.lbl_chip_risk_level.setStyleSheet("background-color: #2d3748; color: #e2e8f0; padding: 2px 6px; border-radius: 3px; font-weight: bold;")
 
                 # 連續買賣超
                 consecutive = chip_summary.get('consecutive_days', 0)
-                if consecutive > 0:
+                if chip_events_unavailable:
+                    self.lbl_chip_consecutive.setText("資料不足")
+                    self.lbl_chip_consecutive.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+                    )
+                elif consecutive > 0:
                     self.lbl_chip_consecutive.setText(f"連續 {consecutive} 天淨買超")
-                    self.lbl_chip_consecutive.setStyleSheet("color: #48bb78; font-weight: bold;")
+                    self.lbl_chip_consecutive.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.market_up}; font-weight: bold;"
+                    )
                 elif consecutive < 0:
                     self.lbl_chip_consecutive.setText(f"連續 {abs(consecutive)} 天淨賣超")
-                    self.lbl_chip_consecutive.setStyleSheet("color: #f56565; font-weight: bold;")
+                    self.lbl_chip_consecutive.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.market_down}; font-weight: bold;"
+                    )
                 else:
                     self.lbl_chip_consecutive.setText("0 天")
-                    self.lbl_chip_consecutive.setStyleSheet("color: white;")
+                    self.lbl_chip_consecutive.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+                    )
 
                 # 近 5 日累計淨買賣超
                 net_qty = chip_summary.get('accumulated_net', 0)
-                net_lots = net_qty / 1000.0
-                self.lbl_chip_net_5d.setText(f"{net_lots:+.1f} 張")
-                if net_qty > 0:
-                    self.lbl_chip_net_5d.setStyleSheet("color: #48bb78; font-weight: bold;")
+                if chip_events_unavailable:
+                    self.lbl_chip_net_5d.setText("資料不足")
+                    self.lbl_chip_net_5d.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+                    )
+                elif net_qty > 0:
+                    net_lots = net_qty / 1000.0
+                    self.lbl_chip_net_5d.setText(f"{net_lots:+.1f} 張")
+                    self.lbl_chip_net_5d.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.market_up}; font-weight: bold;"
+                    )
                 elif net_qty < 0:
-                    self.lbl_chip_net_5d.setStyleSheet("color: #f56565; font-weight: bold;")
+                    net_lots = net_qty / 1000.0
+                    self.lbl_chip_net_5d.setText(f"{net_lots:+.1f} 張")
+                    self.lbl_chip_net_5d.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.market_down}; font-weight: bold;"
+                    )
                 else:
-                    self.lbl_chip_net_5d.setStyleSheet("color: white;")
+                    net_lots = net_qty / 1000.0
+                    self.lbl_chip_net_5d.setText(f"{net_lots:+.1f} 張")
+                    self.lbl_chip_net_5d.setStyleSheet(
+                        f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: bold;"
+                    )
 
                 # 集中度
                 concentration = chip_summary.get('concentration', 0.0)
-                if chip_summary.get("concentration_status") == "unavailable":
+                if (
+                    chip_events_unavailable
+                    or concentration_status == "unavailable"
+                    or concentration_denominator_missing
+                ):
                     self.lbl_chip_concentration.setText("資料不足")
                 else:
                     self.lbl_chip_concentration.setText(f"{concentration:.2%}")
@@ -5044,7 +5415,11 @@ class PortfolioView(QWidget):
 
                 # 警示原因
                 reasons = chip_summary.get('risk_reasons', [])
-                self.lbl_chip_reasons.setText("；".join(reasons) if reasons else "正常")
+                self.lbl_chip_reasons.setText(
+                    "；".join(reasons)
+                    if reasons
+                    else ("資料不足" if chip_events_unavailable else "正常")
+                )
 
                 # 分點明細
                 details = chip_summary.get('branch_details', [])
@@ -5059,7 +5434,26 @@ class PortfolioView(QWidget):
                 df_detail = pd.DataFrame(detail_data) if detail_data else pd.DataFrame(columns=['分點名稱', '買進張數', '賣出張數', '淨買賣超'])
                 detail_model = PandasTableModel(df_detail)
                 self.chip_detail_table.setModel(detail_model)
-                self.chip_detail_table.resizeColumnsToContents()
+                if detail_data:
+                    self.lbl_chip_detail_empty.setVisible(False)
+                    self.chip_detail_table.setVisible(True)
+                    self.chip_detail_table.resizeColumnsToContents()
+                    self.chip_detail_table.resizeRowsToContents()
+                    visible_rows = min(5, len(detail_data))
+                    table_height = (
+                        self.chip_detail_table.horizontalHeader().sizeHint().height()
+                        + self.chip_detail_table.verticalHeader().defaultSectionSize()
+                        * visible_rows
+                        + self.chip_detail_table.horizontalScrollBar().sizeHint().height()
+                        + self.chip_detail_table.frameWidth() * 2
+                        + 8
+                    )
+                    self.chip_detail_table.setMinimumHeight(0)
+                    self.chip_detail_table.setMaximumHeight(max(96, table_height))
+                else:
+                    self.chip_detail_table.setVisible(False)
+                    self.lbl_chip_detail_empty.setVisible(True)
+                    self.lbl_chip_detail_empty.setText("目前沒有可顯示的分點明細")
                 
             except Exception as ce:
                 logger.error("Failed to update chip monitoring UI values: %s", ce)
@@ -5177,22 +5571,36 @@ class PortfolioView(QWidget):
         self.lbl_lifecycle_status.setText(status_text)
         self.lbl_lifecycle_status.setStyleSheet(style)
         self.lbl_lifecycle_source.setText(
-            f"Paper receipt；source={health.source_status}；"
+            f"Paper receipt；來源狀態："
+            f"{_position_health_status_text(health.source_status, dimension='source')}；"
             f"identity={health.position_id or '未知'}；cohort={health.cohort_key or '未知'}"
+        )
+        self.lbl_lifecycle_source.setToolTip(
+            f"原始來源狀態碼：{health.source_status}"
         )
         self.lbl_lifecycle_execution.setText(
             "proposal-only；不自動平倉、不下單、不修改 allocation。"
         )
         self.lbl_lifecycle_signal.setText(
-            f"condition={health.condition_status}；thesis={health.thesis_status}；"
-            f"metrics={health.metrics_status}"
+            f"條件：{_position_health_status_text(health.condition_status, dimension='condition')}；"
+            f"Thesis：{_position_health_status_text(health.thesis_status, dimension='evidence')}；"
+            f"Metrics：{_position_health_status_text(health.metrics_status, dimension='evidence')}"
+        )
+        self.lbl_lifecycle_signal.setToolTip(
+            f"原始狀態碼：condition={health.condition_status}；"
+            f"thesis={health.thesis_status}；metrics={health.metrics_status}"
         )
         self.lbl_lifecycle_market.setText(
             f"決策日={health.decision_date}；available_at={health.available_at or '未知'}"
         )
         self.lbl_lifecycle_data_quality.setText(
-            f"quality={health.quality}；entry_lineage={health.entry_lineage_status}；"
+            f"資料品質：{_position_health_status_text(health.quality, dimension='evidence')}；"
+            f"進場來源：{_position_health_status_text(health.entry_lineage_status, dimension='lineage')}；"
             f"人工 review={'需要' if health.review_required else '未標記'}"
+        )
+        self.lbl_lifecycle_data_quality.setToolTip(
+            f"原始狀態碼：quality={health.quality}；"
+            f"entry_lineage={health.entry_lineage_status}"
         )
         self.lbl_lifecycle_tokens.setText(
             f"Why：{health.why}\nWhy not："

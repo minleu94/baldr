@@ -2,6 +2,8 @@ import os
 import sys
 import types
 from datetime import date
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -21,6 +23,7 @@ from app_module.decision_desk_dtos import (
 import ui_qt.main as main_module
 from PySide6.QtWidgets import QWidget
 from app_module.research_console_source_service import ResearchConsoleSourceService
+from app_module.journal_service import JournalService
 
 
 class _DummySignal:
@@ -36,6 +39,7 @@ class _DummyView(QWidget):
         parent = kwargs.get("parent")
         super().__init__(parent)
         self.load_data_if_needed_calls = 0
+        self.resultPresented = _DummySignal()
 
     def load_data_if_needed(self):
         self.load_data_if_needed_calls += 1
@@ -51,6 +55,8 @@ class _DummyDailyMarketResearchView(_DummyView):
         self.snapshotCleared = _DummySignal()
         self.originalRankingAccepted = _DummySignal()
         self.originalRankingCleared = _DummySignal()
+        self.priceStockResearchRequested = _DummySignal()
+        self.technical_universe_view = _DummyView(parent=self)
 
     def reload_published_snapshot(self):
         pass
@@ -88,6 +94,39 @@ class _RecordedWorkbenchView(_DummyView):
         self.auto_refresh = auto_refresh
         self.kwargs = kwargs
         super().__init__(parent=parent)
+
+    def set_theme_research_snapshot(self, snapshot):
+        self.theme_research_snapshot = snapshot
+
+
+class _DummyUnifiedScreenerWorkspace(_DummyView):
+    def select_widget(self, widget):
+        self.selected_widget = widget
+
+
+class _DummyBacktestView(_DummyView):
+    def can_select_registered_strategy(self, *_args, **_kwargs):
+        return False
+
+
+class _DummyStrategyLibraryView(_DummyView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.strategySelected = _DummySignal()
+
+
+class _DummyResearchTimelineView(_DummyView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.openOriginalRequested = _DummySignal()
+        self.compareEvidenceRequested = _DummySignal()
+        self.paperPrerequisitesRequested = _DummySignal()
+
+    def refresh(self):
+        pass
+
+    def invalidate_evidence_comparison(self):
+        pass
 
 
 class _RecordedSmartMoneyFlowView(_DummyView):
@@ -204,7 +243,7 @@ def _install_fake_dependencies(monkeypatch, decision_desk_builder_cls):
         "StrongIndustriesView": _DummyView,
         "WeakIndustriesView": _DummyView,
         "RecommendationView": _DummyRecommendationView,
-        "BacktestView": _DummyView,
+        "BacktestView": _DummyBacktestView,
         "WatchlistView": _DummyView,
         "SmartMoneyFlowView": _RecordedSmartMoneyFlowView,
         "DecisionDeskView": _RecordedDecisionDeskView,
@@ -213,6 +252,10 @@ def _install_fake_dependencies(monkeypatch, decision_desk_builder_cls):
         "RuntimeController": _RuntimeController,
         "QtRuntimeBridge": _RuntimeBridge,
         "RuntimeView": _RuntimeView,
+        "UnifiedScreenerWorkspace": _DummyUnifiedScreenerWorkspace,
+        "StrategyLibraryView": _DummyStrategyLibraryView,
+        "StorageOverviewView": _DummyView,
+        "ResearchTimelineView": _DummyResearchTimelineView,
     }
     for name, value in fake_tabs.items():
         monkeypatch.setattr(main_module, name, value)
@@ -228,7 +271,7 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
     from PySide6.QtWidgets import QMainWindow
 
     QMainWindow.__init__(main_window)
-    main_window.config = config or object()
+    main_window.config = config or types.SimpleNamespace()
     main_window.personal_policy_config_path = None
     main_window.screening_service = object()
     main_window.regime_service = regime_service or object()
@@ -243,7 +286,22 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
     main_window.decision_outcome_journey_service = object()
     main_window.decision_continuity_controller = object()
     main_window.portfolio_service = portfolio_service or object()
-    main_window.journal_service = object()
+    # Main now constructs note and timeline services that validate JournalService.
+    # Keep this integration fixture isolated from any configured personal journal.
+    main_window._test_journal_temp = TemporaryDirectory(prefix="baldr_main_fixture_")
+    fixture_root = Path(main_window._test_journal_temp.name)
+    if not hasattr(main_window.config, "output_root"):
+        main_window.config.output_root = fixture_root / "output"
+    if not hasattr(main_window.config, "data_root"):
+        main_window.config.data_root = fixture_root / "data"
+    if not hasattr(main_window.config, "meta_data_dir"):
+        main_window.config.meta_data_dir = fixture_root / "data" / "meta_data"
+    main_window.application_settings = types.SimpleNamespace(
+        environment={}, runtime_state_root=fixture_root / "runtime_state"
+    )
+    main_window.journal_service = JournalService(
+        types.SimpleNamespace(output_root=fixture_root / "journal")
+    )
     main_window.journal_storage_selection = types.SimpleNamespace(
         paths=None,
         legacy_read_only=False,
@@ -307,11 +365,13 @@ def test_market_exploration_lazy_loading_uses_widget_identity_after_overview_ins
     expected_tabs = (
         "市場總覽",
         "大盤指數",
+        "加權指數走勢",
         "強勢個股",
         "弱勢個股",
         "強勢產業",
         "弱勢產業",
         "主力流向",
+        "產業與題材",
         "研究母體盤勢",
     )
     assert tuple(
@@ -321,6 +381,12 @@ def test_market_exploration_lazy_loading_uses_widget_identity_after_overview_ins
     assert target_window.market_tabs.widget(expected_tabs.index("研究母體盤勢")) is (
         target_window.daily_market_cohort_view
     )
+    assert target_window.market_tabs.widget(expected_tabs.index("加權指數走勢")) is (
+        target_window.taiex_history_view
+    )
+
+    history_loads: list[bool] = []
+    target_window.taiex_history_view.load_data_if_needed = lambda: history_loads.append(True)
 
     for label in expected_tabs:
         index = expected_tabs.index(label)
@@ -329,6 +395,7 @@ def test_market_exploration_lazy_loading_uses_widget_identity_after_overview_ins
     for label in ("強勢個股", "弱勢個股", "強勢產業", "弱勢產業", "主力流向"):
         widget = target_window.market_tabs.widget(expected_tabs.index(label))
         assert widget.load_data_if_needed_calls == 1
+    assert history_loads == [True]
 
 
 def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
@@ -349,15 +416,11 @@ def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
     target_window._setup_ui()
 
     assert _get_nav_labels(target_window) == [
-        "決策工作台",
-        "市場探索",
-        "推薦分析",
-        "策略回測",
-        "觀察清單",
-        "個股研究",
-        "持倉管理",
-        "數據更新",
-        "Runtime",
+        "今日總覽",
+        "探索與研究",
+        "我的投資",
+        "策略實驗室",
+        "系統管理",
     ]
     assert target_window.left_navigation.current_key() == "workbench"
     workbench_tab = target_window.workspace_widgets["workbench"]
@@ -377,19 +440,19 @@ def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
     assert callable(workbench_tab.kwargs["navigate_to_portfolio_callback"])
 
     workbench_tab.kwargs["navigate_to_daily_decision_callback"]()
-    assert target_window.left_navigation.current_key() == "market_explore"
+    assert target_window.left_navigation.current_key() == "explore"
     assert target_window.market_tabs.currentIndex() == 0
 
     target_window.market_tabs.setCurrentIndex(3)
     workbench_tab.kwargs["navigate_to_market_explore_callback"]()
-    assert target_window.left_navigation.current_key() == "market_explore"
+    assert target_window.left_navigation.current_key() == "explore"
     assert target_window.market_tabs.currentIndex() == 0
 
     workbench_tab.kwargs["navigate_to_evidence_review_callback"]()
-    assert target_window.left_navigation.current_key() == "backtest"
+    assert target_window.left_navigation.current_key() == "laboratory"
 
     workbench_tab.kwargs["navigate_to_portfolio_callback"]()
-    assert target_window.left_navigation.current_key() == "portfolio"
+    assert target_window.left_navigation.current_key() == "investment"
 
 
 def test_main_window_composes_controlled_rehearsal_dashboard_from_explicit_read_only_report(
@@ -463,7 +526,7 @@ def test_market_breadth_service_is_injected_into_decision_desk_builder(monkeypat
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     assert _TrackingDecisionDeskBuilder.instances
@@ -478,7 +541,7 @@ def test_sector_rotation_service_is_injected_into_decision_desk_builder(monkeypa
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     assert _TrackingDecisionDeskBuilder.instances
@@ -506,7 +569,7 @@ def test_watchlist_trigger_service_is_injected_into_decision_desk_builder(monkey
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     assert _TrackingDecisionDeskBuilder.instances
@@ -535,7 +598,7 @@ def test_portfolio_alert_service_receives_portfolio_chip_provider(monkeypatch):
     monkeypatch.setattr(main_module, "PortfolioChipService", _FakePortfolioChipService)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     assert _TrackingDecisionDeskBuilder.instances
@@ -551,7 +614,7 @@ def test_relative_strength_liquidity_service_is_injected_into_decision_desk_buil
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     assert _TrackingDecisionDeskBuilder.instances
@@ -566,7 +629,7 @@ def test_smart_money_semantic_service_is_shared_by_market_and_decision_tabs(monk
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     assert target_window.smart_money_flow.smart_money_semantic_service is not None
@@ -580,7 +643,7 @@ def test_main_window_shares_one_market_frame_loader_across_decision_providers(mo
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
-    target_window.config = types.SimpleNamespace(db_file="C:/tmp/not-used.db")
+    target_window.config.db_file = "C:/tmp/not-used.db"
     target_window._setup_ui()
 
     builder = _TrackingDecisionDeskBuilder.instances[-1]

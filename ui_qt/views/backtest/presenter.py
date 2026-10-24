@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -9,6 +10,11 @@ import pandas as pd
 
 from app_module.dtos import BacktestReportDTO, ValidationStatus
 from app_module.batch_backtest_service import BatchBacktestResultDTO
+from app_module.single_backtest_metrics_contract import (
+    SINGLE_BACKTEST_METRICS_KEY,
+    SINGLE_BACKTEST_METRIC_NAMES,
+    decode_single_backtest_metrics_contract,
+)
 from ui_qt.status_vocabulary import status_detail
 
 
@@ -82,6 +88,37 @@ def saved_backtest_number(value: object) -> Decimal | None:
 def saved_backtest_percent(value: object) -> Decimal | None:
     number = saved_backtest_number(value)
     return number * 100 if number is not None else None
+
+
+def saved_backtest_metric_projection(
+    run_data: Mapping[str, Any],
+) -> tuple[bool, dict[str, Any] | None]:
+    """有版本契約時只回傳核對後的原指標；缺契約則交由舊格式呈現。"""
+    manifest = run_data.get("data_manifest")
+    if not isinstance(manifest, Mapping) or SINGLE_BACKTEST_METRICS_KEY not in manifest:
+        return False, None
+
+    raw_metrics = {key: run_data.get(key) for key in SINGLE_BACKTEST_METRIC_NAMES}
+    try:
+        decoded = decode_single_backtest_metrics_contract(
+            manifest,
+            raw_metrics,
+            run_type=run_data.get("run_type"),
+            universe=[run_data.get("stock_code")],
+        )
+    except (ValueError, TypeError, OverflowError):
+        return True, None
+    if decoded is None:
+        return True, None
+    return True, {
+        "total_return": decoded.get("total_return"),
+        "annual_return": decoded.get("annual_return"),
+        "sharpe_ratio": decoded.get("sharpe_ratio"),
+        "max_drawdown": decoded.get("max_drawdown"),
+        "win_rate": decoded.get("win_rate"),
+        "expectancy": decoded.get("expectancy"),
+        "total_trades": decoded.get("completed_trades"),
+    }
 
 
 def format_saved_backtest_summary(run_data: dict[str, Any]) -> str:
@@ -339,6 +376,56 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
     details = report.details
     if details.get("error"):
         return "回測未完成\n原因：" + str(details["error"]) + "\n本次沒有有效績效結果；空明細不代表零交易，請保留原錯誤與輸入。"
+
+    metric_values: dict[str, Any] = {
+        "total_return": report.total_return,
+        "annual_return": report.annual_return,
+        "sharpe_ratio": report.sharpe_ratio,
+        "max_drawdown": report.max_drawdown,
+        "win_rate": report.win_rate,
+        "expectancy": report.expectancy,
+    }
+    completed_pairs: Any = report.total_trades
+    manifest = details.get("data_manifest")
+    contract_declared = isinstance(manifest, Mapping) and SINGLE_BACKTEST_METRICS_KEY in manifest
+    if contract_declared:
+        raw_metrics = {
+            key: getattr(report, key, None)
+            for key in SINGLE_BACKTEST_METRIC_NAMES
+        }
+        stock_code = details.get("stock_code")
+        try:
+            decoded = decode_single_backtest_metrics_contract(
+                manifest,
+                raw_metrics,
+                run_type=details.get("run_type", "single_backtest"),
+                universe=[stock_code],
+            )
+        except (ValueError, TypeError, OverflowError):
+            decoded = None
+        if decoded is None:
+            # 宣告契約後不可回退 DTO 中的零值，避免把不可用誤呈現為真零。
+            metric_values = {key: None for key in metric_values}
+            completed_pairs = None
+        else:
+            metric_values = {
+                "total_return": decoded.get("total_return"),
+                "annual_return": decoded.get("annual_return"),
+                "sharpe_ratio": decoded.get("sharpe_ratio"),
+                "max_drawdown": decoded.get("max_drawdown"),
+                "win_rate": decoded.get("win_rate"),
+                "expectancy": decoded.get("expectancy"),
+            }
+            completed_pairs = decoded.get("completed_trades")
+
+    def metric_text(value: object, *, percent: bool = False) -> str:
+        number = saved_backtest_number(value)
+        if number is None:
+            return "未提供"
+        if percent:
+            number *= 100
+        return f"{number:.2f}{'%' if percent else ''}"
+
     actual_start = details.get("start_date", "未知")
     actual_end = details.get("end_date", "未知")
     requested_start = details.get("requested_start_date", actual_start)
@@ -432,8 +519,13 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
     if report.validation_messages:
         lines.append("")
         lines.extend(report.validation_messages)
-    lines.extend(["", "--- Primary 指標（行為健康） ---", f"總交易次數: {report.total_trades}（已完成進出場配對）"])
-    if report.total_trades == 0:
+    pair_count_text = (
+        str(completed_pairs)
+        if type(completed_pairs) is int and completed_pairs >= 0
+        else "未提供"
+    )
+    lines.extend(["", "--- Primary 指標（行為健康） ---", f"總交易次數: {pair_count_text}（已完成進出場配對）"])
+    if completed_pairs == 0:
         lines.append("尚無已完成交易；配對數為 0 不代表沒有成交或期末沒有持股。")
     trade_list = details.get("trade_list")
     if isinstance(trade_list, pd.DataFrame) and len(trade_list) > 0 and "持有天數" in trade_list.columns:
@@ -469,12 +561,12 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
             "║  Secondary 指標（輔助參考）            ║",
             "╚════════════════════════════════════════╝",
             "",
-            f"總報酬率: {report.total_return * 100:.2f}%",
-            f"年化報酬率 (CAGR): {report.annual_return * 100:.2f}%",
-            f"夏普比率: {report.sharpe_ratio:.2f}",
-            f"最大回撤: {report.max_drawdown * 100:.2f}%",
-            f"勝率: {report.win_rate * 100:.2f}%",
-            f"期望值: {report.expectancy * 100:.2f}%",
+            f"總報酬率: {metric_text(metric_values['total_return'], percent=True)}",
+            f"年化報酬率 (CAGR): {metric_text(metric_values['annual_return'], percent=True)}",
+            f"夏普比率: {metric_text(metric_values['sharpe_ratio'])}",
+            f"最大回撤: {metric_text(metric_values['max_drawdown'], percent=True)}",
+            f"勝率: {metric_text(metric_values['win_rate'], percent=True)}",
+            f"期望值: {metric_text(metric_values['expectancy'], percent=True)}",
             "",
             "=== 詳細統計 ===",
         ]

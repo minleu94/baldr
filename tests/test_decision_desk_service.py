@@ -899,6 +899,7 @@ def test_market_regime_source_data_date_survives_desk_lineage() -> None:
     assert snapshot.market_regime.meta is not None
     assert snapshot.market_regime.meta["date"] == decision_date.isoformat()
     assert snapshot.market_regime.meta["source_data_date"] == source_data_date.isoformat()
+    assert snapshot.market_regime.meta["regime_value_kind"] == "match_score_bp"
     assert snapshot.source_lineage["market_regime"]["as_of_date"] == decision_date.isoformat()
     assert (
         snapshot.source_lineage["market_regime"]["metadata"]["source_data_date"]

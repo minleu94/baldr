@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from app_module.decision_quality_dashboard_dtos import DecisionQualityDashboardRow
+from ui_qt.decision_quality_labels import LABELS_BY_FIELD, display_label
 
 
 COLUMNS = (
@@ -43,7 +44,11 @@ class DecisionQualityTableModel(QAbstractTableModel):
         field_name = COLUMNS[index.column()][0]
         value = getattr(self._rows[index.row()], field_name)
         if role == Qt.DisplayRole:
+            if field_name in LABELS_BY_FIELD:
+                return display_label(field_name, value)
             return _display_value(value)
+        if role == Qt.ToolTipRole and field_name in LABELS_BY_FIELD:
+            return "未知" if value is None or str(value) == "" else str(value)
         return None
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole):

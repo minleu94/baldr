@@ -559,6 +559,82 @@ def test_decision_desk_view_aggregates_warning_lines_and_refresh_button():
     assert "資料缺漏" in combined_text
 
 
+def test_decision_desk_warning_summary_and_collapsible_details_refresh_cleanly():
+    app()
+    base = _snapshot()
+    observed_visibility = MarketDataVisibilitySummary(
+        as_of_date=base.as_of_date.isoformat(),
+        monthly_revenue=MonthlyRevenueBreadthSummary(
+            latest_period=None,
+            stock_count=0,
+            mom_comparable_count=0,
+            mom_positive_count=0,
+            mom_positive_ratio_bp=None,
+            yoy_comparable_count=0,
+            yoy_positive_count=0,
+            yoy_positive_ratio_bp=None,
+            quality="OBSERVED",
+        ),
+        institutional_flow=InstitutionalFlowMarketSummary(
+            latest_date=None,
+            stock_count=0,
+            foreign_net_shares=None,
+            investment_trust_net_shares=None,
+            dealer_net_shares=None,
+            quality="OBSERVED",
+        ),
+        source_statuses=(),
+        overall_quality="OBSERVED",
+    )
+    initial = replace(
+        base,
+        overall_quality=DecisionDeskQuality.DEGRADED,
+        market_data_visibility=observed_visibility,
+        warnings=("資料來源需要覆核", "樣本範圍有限"),
+    )
+    builder = FakeBuilder(initial)
+    view = rendered_view(builder)
+
+    summary = view.warning_summary_label.text()
+    assert "資料品質：品質降級" in summary
+    assert "提示數：2" in summary
+    assert "首條：資料來源需要覆核" in summary
+    assert view.warning_details_panel.is_collapsed()
+    assert view.warning_details_panel.content_widget.isHidden()
+    assert view.overall_warn_label.toPlainText() == "資料來源需要覆核\n樣本範圍有限"
+
+    view.warning_details_panel.toggle_button.click()
+    assert not view.warning_details_panel.is_collapsed()
+    assert not view.warning_details_panel.content_widget.isHidden()
+    assert "資料來源需要覆核" in view.overall_warn_label.toPlainText()
+    assert "樣本範圍有限" in view.overall_warn_label.toPlainText()
+
+    builder.snapshot = replace(
+        initial,
+        warnings=("新警示已取代舊內容",),
+    )
+    view.refresh_snapshot()
+    assert view.warning_summary_label.text().endswith("首條：新警示已取代舊內容")
+    assert view.overall_warn_label.toPlainText() == "新警示已取代舊內容"
+    assert "資料來源需要覆核" not in view.overall_warn_label.toPlainText()
+
+    builder.snapshot = replace(
+        initial,
+        overall_quality=DecisionDeskQuality.MISSING,
+        warnings=(),
+    )
+    view.refresh_snapshot()
+    summary = view.warning_summary_label.text()
+    assert "資料品質：資料缺件" in summary
+    assert "提示數：0" in summary
+    assert "未收到額外警示" in summary
+    assert "狀態仍為「資料缺件」" in summary
+    assert "目前無警示" not in summary
+    assert view.overall_warn_label.toPlainText() == ""
+    assert view.warning_list.empty_label.text() == "無警示"
+    view.close()
+
+
 def test_decision_desk_view_humanizes_warning_tokens():
     app()
     s = _snapshot(
@@ -576,6 +652,68 @@ def test_decision_desk_view_humanizes_warning_tokens():
     assert "Watchlist 提示" in combined_text
     assert "2884 資料不足" in combined_text
     assert "relative_strength_liquidity_skipped_symbols:1162" not in combined_text
+
+
+def test_decision_desk_localizes_market_diagnostics_and_preserves_unknown_codes():
+    app()
+    snapshot = _snapshot(
+        overall_quality=DecisionDeskQuality.DEGRADED,
+        market_regime_warnings=("market_regime_fetch_error:timeout:provider offline",),
+        market_breadth_warnings=("market_breadth_fetch_error:timeout",),
+        sector_rotation_warnings=(
+            "sector_rotation_fetch_error:provider unavailable",
+            "vendor_specific_diagnostic:keep_raw_detail",
+            "vendor_date_unavailable_or_future",
+        ),
+        risk_prompts_warnings=("risk_prompt_source_quality:sector_rotation:degraded",),
+        overall_warnings=("Why Not / 風險提示:legacy_unknown_detail",),
+    )
+    view = rendered_view(FakeBuilder(snapshot))
+
+    text = view.overall_warn_label.toPlainText()
+    assert "市場情勢資料取得失敗：timeout:provider offline" in text
+    assert "市場廣度資料取得失敗：timeout" in text
+    assert "產業輪動資料取得失敗：provider unavailable" in text
+    assert "vendor_specific_diagnostic:keep_raw_detail" in text
+    assert "vendor_date_unavailable_or_future" in text
+    assert "風險提示：legacy_unknown_detail" in text
+    assert "風險提示來源「產業輪動」目前為降級資料" in text
+    assert "Why Not" not in text
+    assert "Why Not" not in [label.text() for label in view.findChildren(QLabel)]
+    assert "風險提示" in view._section_badges
+    view.close()
+
+
+def test_decision_desk_explains_unknown_regime_date_and_degraded_detector():
+    app()
+    snapshot = _snapshot(
+        overall_quality=DecisionDeskQuality.DEGRADED,
+        market_regime_warnings=(
+            "market_regime_effective_date_unknown",
+            "market_regime_detector_degraded",
+            "vendor_specific_diagnostic:keep_raw_detail",
+        ),
+        overall_warnings=("市場情勢:market_regime_effective_date_unknown",),
+    )
+    view = rendered_view(FakeBuilder(snapshot))
+
+    summary = view.warning_summary_label.text()
+    details = view.overall_warn_label.toPlainText()
+    assert "首條：市場情勢：有效資料日未知，無法確認資料日期" in summary
+    assert "市場情勢：有效資料日未知，無法確認資料日期" in details
+    assert "市場情勢：偵測器回報錯誤，結果品質降級" in details
+    assert "vendor_specific_diagnostic:keep_raw_detail" in details
+    assert "market_regime_effective_date_unknown" not in details
+    assert "market_regime_detector_degraded" not in details
+    view.close()
+
+    fallback = DecisionDeskView._humanize_warning_token(
+        "市場情勢:market_regime_as_of_fallback:2026-10-22"
+    )
+    assert fallback == "市場情勢：採用備援有效資料日：2026-10-22"
+    assert DecisionDeskView._humanize_warning_token(
+        "市場情勢:market_regime_effective_date_unknown:vendor_detail"
+    ) == "市場情勢：market_regime_effective_date_unknown:vendor_detail"
 
 
 class FailingBuilder:
@@ -858,13 +996,21 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
 def test_decision_desk_displays_valid_regime_source_date_separately_from_decision_date():
     app()
     base = _snapshot()
-    summary = replace(base.market_regime, meta={"source_data_date": "2026-06-13"})
+    summary = replace(
+        base.market_regime,
+        meta={
+            "source_data_date": "2026-06-13",
+            "source_id": "legacy_provider",
+            "source_version": "legacy-v1",
+        },
+    )
     snapshot = replace(base, market_regime=summary)
     view = rendered_view(FakeBuilder(snapshot))
 
     text = view.market_regime_value.text()
     assert "行情日：2026-06-13" in text
     assert "判斷日：2026-06-15" in text
+    assert "訊號強度：7700" in text
     view.close()
 
     for source_data_date in ("2026-6-13", "2026-06-16", None):
@@ -886,24 +1032,87 @@ def test_decision_desk_shows_unknown_regime_metrics_and_preserves_real_zero():
         base.market_regime,
         regime_score=None,
         regime_confidence=9109,
+        meta={"regime_value_kind": "match_score_bp"},
     )
     view = rendered_view(
         FakeBuilder(replace(base, market_regime=missing_score))
     )
     text = view.market_regime_value.text()
     assert "得分：未知" in text
-    assert "訊號強度：9109" in text
+    assert "匹配分數（bp）：9109" in text
     assert "行情日：未知" in text
     assert "判斷日：2026-06-15" in text
+    view.close()
+
+    unknown_match_score = replace(
+        base.market_regime,
+        regime_confidence=None,
+        meta={"regime_value_kind": "match_score_bp"},
+    )
+    view = rendered_view(
+        FakeBuilder(replace(base, market_regime=unknown_match_score))
+    )
+    assert "匹配分數（bp）：未知" in view.market_regime_value.text()
     view.close()
 
     real_zero = replace(
         base.market_regime,
         regime_score=0,
         regime_confidence=0,
+        meta={"regime_value_kind": "match_score_bp"},
     )
     view = rendered_view(FakeBuilder(replace(base, market_regime=real_zero)))
     text = view.market_regime_value.text()
     assert "得分：0" in text
-    assert "訊號強度：0" in text
+    assert "匹配分數（bp）：0" in text
+    view.close()
+
+
+def test_decision_desk_market_breadth_preserves_missing_partial_and_zero_values():
+    app()
+    base = _snapshot()
+
+    missing = replace(
+        base.market_breadth,
+        advancing=None,
+        declining=None,
+        unchanged=None,
+        breadth_ratio_bp=None,
+    )
+    view = rendered_view(FakeBuilder(replace(base, market_breadth=missing)))
+    text = view.market_breadth_value.text()
+    assert "多方：未提供" in text
+    assert "空方：未提供" in text
+    assert "持平：未提供" in text
+    assert "廣度比率BP：未知" in text
+    view.close()
+
+    zeros = replace(
+        base.market_breadth,
+        advancing=0,
+        declining=0,
+        unchanged=0,
+        breadth_ratio_bp=0,
+    )
+    view = rendered_view(FakeBuilder(replace(base, market_breadth=zeros)))
+    text = view.market_breadth_value.text()
+    assert "多方：0" in text
+    assert "空方：0" in text
+    assert "持平：0" in text
+    assert "廣度比率BP：0" in text
+    view.close()
+
+    partial = replace(
+        base.market_breadth,
+        advancing=0,
+        declining=None,
+        unchanged=3,
+        breadth_ratio_bp=None,
+    )
+    view = rendered_view(FakeBuilder(replace(base, market_breadth=partial)))
+    text = view.market_breadth_value.text()
+    assert "多方：0" in text
+    assert "空方：未提供" in text
+    assert "持平：3" in text
+    assert "廣度比率BP：未知" in text
     view.close()

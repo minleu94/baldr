@@ -27,7 +27,10 @@ from app_module.strategy_historical_performance_read_service import (
 )
 from backtest_module.performance_metrics import PerformanceMetrics
 from test_historical_performance_widget import _card, _entry
-from ui_qt.widgets.historical_performance_widget import HistoricalPerformanceWidget
+from ui_qt.widgets.historical_performance_widget import (
+    HistoricalPerformanceWidget,
+    _format_declared_metric,
+)
 
 
 _DECLARED_REASON = "saved_original_analytics_not_performance_qualification"
@@ -73,9 +76,9 @@ def _metrics(*, completed_pairs: int) -> PerformanceMetrics:
     )
 
 
-def _declared_fixture(completed_pairs: int):
+def _declared_fixture(completed_pairs: int, metric_values: dict[str, Decimal] | None = None):
     entry = _entry()
-    metrics = _metrics(completed_pairs=completed_pairs)
+    metrics = replace(_metrics(completed_pairs=completed_pairs), **(metric_values or {}))
     equity = pd.DataFrame(
         {"equity": [100.0, 112.5]},
         index=pd.to_datetime(["2026-01-02", "2026-01-05"]),
@@ -100,6 +103,7 @@ def _declared_fixture(completed_pairs: int):
         stock_code=entry.stock_code,
     )
     raw_metrics = {name: getattr(metrics, name) for name in _METRIC_NAMES}
+    raw_metrics.update({name: str(value) for name, value in (metric_values or {}).items()})
     metadata = json.loads(entry.metadata_json)
     metadata["metrics"] = raw_metrics
     metadata["data_manifest"][SINGLE_BACKTEST_METRICS_KEY] = contract
@@ -115,18 +119,23 @@ def _declared_fixture(completed_pairs: int):
     else:
         average = None
         win_rate = None
+    total_return = Decimal(str(raw_metrics["total_return"]))
+    annual_return = Decimal(str(raw_metrics["annual_return"]))
+    sharpe_ratio = Decimal(str(raw_metrics["sharpe_ratio"]))
+    max_drawdown = Decimal(str(raw_metrics["max_drawdown"]))
+    expectancy = None if completed_pairs == 0 else Decimal(str(raw_metrics["expectancy"]))
     summary = HistoricalPerformanceSummary(
         stock_count=1,
         signal_count=None,
         completed_trades=completed_pairs,
-        average_trade_return=average,
-        total_return=Decimal("0.125"),
-        annual_return=Decimal("0.2"),
-        cagr=Decimal("0.2"),
-        max_drawdown=Decimal("-0.1"),
+        average_trade_return=average if expectancy is None else expectancy,
+        total_return=total_return,
+        annual_return=annual_return,
+        cagr=annual_return,
+        max_drawdown=max_drawdown,
         win_rate=win_rate,
-        sharpe_ratio=Decimal("1.5"),
-        expectancy=average,
+        sharpe_ratio=sharpe_ratio,
+        expectancy=expectancy,
         profit_factor=None,
     )
     base_card = _card(entry)
@@ -190,6 +199,45 @@ def test_zero_completed_pairs_does_not_show_win_or_average_as_zero(app: QApplica
     assert "期望值：未提供（尚無已完成交易）" in rendered
     assert "平均單筆報酬：0" not in rendered
     assert "勝率：0" not in rendered
+
+
+def test_long_saved_decimals_are_approximated_and_exact_values_remain_queryable(app: QApplication):
+    metric_values = {
+        "total_return": Decimal("0.123456789"),
+        "annual_return": Decimal("1E-30"),
+        "sharpe_ratio": Decimal("-1.23456789"),
+        "max_drawdown": Decimal("0"),
+    }
+    entry, card = _declared_fixture(completed_pairs=1, metric_values=metric_values)
+    widget = HistoricalPerformanceWidget()
+    generation = widget.begin_selection(entry)
+
+    assert widget.present_card(generation, entry, card) is True
+    rendered = _rendered_text(widget)
+    assert "總報酬：約0.123457 ratio（轉為 % 數值需乘 100）" in rendered
+    assert "年化報酬：約1.000000E-30 ratio（轉為 % 數值需乘 100）" in rendered
+    assert "Sharpe：約-1.23（Sharpe ratio；非百分比）" in rendered
+    assert "最大回撤：0 ratio（轉為 % 數值需乘 100）" in rendered
+    assert "總報酬：0.123456789" in widget._metrics_label.toolTip()
+    assert "年化報酬：1E-30" in widget._metrics_label.toolTip()
+    assert "Sharpe：-1.23456789" in widget._metrics_label.toolTip()
+
+
+def test_short_saved_values_keep_original_text_and_unit(app: QApplication):
+    entry, card = _declared_fixture(completed_pairs=1)
+    widget = HistoricalPerformanceWidget()
+    generation = widget.begin_selection(entry)
+
+    assert widget.present_card(generation, entry, card) is True
+    rendered = _rendered_text(widget)
+    assert "總報酬：0.125 ratio（轉為 % 數值需乘 100）" in rendered
+    assert "Sharpe：1.5（Sharpe ratio；非百分比）" in rendered
+    assert "獲利因子：未提供" in rendered
+    assert widget._metrics_label.toolTip() == ""
+
+
+def test_multiple_display_keeps_four_decimal_places_and_marks_approximation():
+    assert _format_declared_metric(Decimal("1.123456"), "multiple") == ("約1.1235", True)
 
 
 def test_declared_card_cannot_supply_a_summary_different_from_saved_metrics(app: QApplication):

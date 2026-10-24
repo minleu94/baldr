@@ -6,8 +6,18 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from app_module.batch_backtest_service import BatchBacktestService, BatchBacktestResultDTO, StockBacktestResult
+from app_module.batch_backtest_service import (
+    BatchBacktestService,
+    BatchBacktestResultDTO,
+    StockBacktestResult,
+    _batch_metric_values,
+)
 from app_module.dtos import BacktestReportDTO, ValidationStatus
+from app_module.single_backtest_metrics_contract import (
+    SINGLE_BACKTEST_METRICS_KEY,
+    capture_single_backtest_metrics_contract,
+)
+from backtest_module.performance_metrics import PerformanceAnalyzer
 from decision_module.strategies.contracts import StrategySpec
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 
@@ -239,3 +249,102 @@ def test_batch_overall_stats_expose_valid_coverage_and_explicit_no_trade_count()
     assert stats["coverage_bp"] == 3333
     assert stats["cagr_sample_count"] == 1
     assert stats["mdd_sample_count"] == 1
+
+
+def _report_with_metrics_contract(dates: list[str]) -> BacktestReportDTO:
+    equity = pd.DataFrame(
+        {"equity": [100_000.0] * len(dates)},
+        index=pd.to_datetime(dates),
+    )
+    trades = pd.DataFrame(columns=["進場日期", "出場日期", "報酬", "報酬率%", "股數"])
+    metrics = PerformanceAnalyzer().summarize([], equity, 100_000.0)
+    contract = capture_single_backtest_metrics_contract(
+        metrics, equity=equity, trades=trades, stock_code="2330"
+    )
+    return BacktestReportDTO(
+        total_return=metrics.total_return,
+        annual_return=metrics.annual_return,
+        sharpe_ratio=metrics.sharpe_ratio,
+        max_drawdown=metrics.max_drawdown,
+        win_rate=metrics.win_rate,
+        total_trades=metrics.total_trades,
+        expectancy=metrics.expectancy,
+        details={
+            "stock_code": "2330",
+            "data_manifest": {SINGLE_BACKTEST_METRICS_KEY: contract},
+        },
+    )
+
+
+def test_batch_metric_contract_preserves_unavailable_and_observed_zero_values():
+    unavailable = _report_with_metrics_contract(["2026-01-05"])
+    observed_zero = _report_with_metrics_contract(["2026-01-05", "2026-01-06"])
+    unavailable_values = _batch_metric_values(unavailable)
+    observed_zero_values = _batch_metric_values(observed_zero)
+
+    assert unavailable_values == {
+        "cagr": None,
+        "sharpe": None,
+        "mdd": 0.0,
+        "win_rate": None,
+    }
+    assert observed_zero_values == {
+        "cagr": 0.0,
+        "sharpe": None,
+        "mdd": 0.0,
+        "win_rate": None,
+    }
+
+    service = BatchBacktestService(_FakeBacktestService(unavailable))
+    stats = service._calculate_overall_stats(
+        [
+            StockBacktestResult(
+                stock_code="2330",
+                run_id=None,
+                success=True,
+                cagr=unavailable_values["cagr"],
+                mdd=unavailable_values["mdd"],
+            )
+        ]
+    )
+    assert stats["cagr_sample_count"] == 0
+    assert stats["cagr_median"] == 0.0
+
+
+def test_batch_cagr_legacy_report_without_contract_keeps_original_value():
+    report = _report_with_factor_records(None)
+
+    assert _batch_metric_values(report) == {
+        "cagr": report.annual_return,
+        "sharpe": report.sharpe_ratio,
+        "mdd": report.max_drawdown,
+        "win_rate": report.win_rate,
+    }
+
+
+def test_cagr_mdd_leaderboard_keeps_missing_score_internal_and_stable():
+    service = BatchBacktestService(_FakeBacktestService(_report_with_factor_records(None)))
+    result = BatchBacktestResultDTO(
+        batch_id="batch-test",
+        batch_name="missing metrics",
+        stock_results=[
+            StockBacktestResult(
+                stock_code="2330", run_id=None, success=True, cagr=0.1, mdd=-0.1
+            ),
+            StockBacktestResult(
+                stock_code="2399", run_id=None, success=True, cagr=None, mdd=None
+            ),
+            StockBacktestResult(
+                stock_code="2317", run_id=None, success=True, cagr=None, mdd=None
+            ),
+        ],
+        overall_stats={},
+        created_at="2026-06-14T12:00:00",
+    )
+
+    frame = service.create_leaderboard_dataframe(result, sort_by="cagr_mdd")
+
+    assert "Score" not in frame.columns
+    assert list(frame["股票代號"]) == ["2330", "2399", "2317"]
+    assert pd.isna(frame.iloc[1]["CAGR%"])
+    assert pd.isna(frame.iloc[1]["MDD%"])

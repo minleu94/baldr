@@ -332,7 +332,17 @@ R104另有Python候選 `theme_member_navigation`：由Main保存原snapshot、�
 
 ### 5.4 圖卡展示（後繼原始碼）
 
+2026-10-23 後繼來源增加 `ThemeReturnTile` 唯讀呈現投影：只接納同一 `ThemeResearchSnapshot` 報表中正數成員且漲跌欄覆蓋全體、有限 `Decimal` 原值的列；每格保留資料日、映射版本／可得日、讀取時間、snapshot SHA、來源 ID 與覆蓋分子／分母，不計算新題材強度。Qt 等面積色格只提供原平均日漲跌視角，不借成交額當面積；可定位題材才可點，點擊再核當前版本身份。兩端排行與成員明細保留。部分覆蓋、缺值與無法定位的題材不生成可點格，摘要仍揭露完整覆蓋數及報表總列數。本地合成資料與 Native 驗證範圍見 `output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md`；這項投影不授真來源、歷史 PIT 或正式產品驗收。
+
+同一後繼來源新增 `ThemeTurnoverTile` 唯讀投影與成交金額面積圖：僅接納原報表成員成交金額覆蓋完整、有限且非負的 `Decimal` 原值，保留同一報表資料日、映射日期、known-at、snapshot SHA 及原題材列相關來源 ID；不重新計算成交額或授來源資格。Qt 只按完整覆蓋正值題材中成交金額最高、可由原篩選定位的最多 20 格配置相對面積；摘要同時列全部合格／報表總數、圖中 20／全部正值及排除數。零成交金額另列可選，面積為零；部分覆蓋與缺值不畫。題材成員可能重疊，圖中面積不能相加作全市場占比；其餘完整題材仍沿原篩選與明細查閱。短字串只是畫面標籤，tooltip 與無障礙名稱保留原精度、覆蓋及身份。固定 10/16 真來源的 QA024 副本在隔離正常 Main 讀出 25 鏈／90 題材，55 列成交額完整覆蓋，面積圖畫其中最高 20 格，CoWoS 點擊保留原 21 成員；三來源 SHA 前後一致。這是固定研究樣本的原生 UI 證據，不代表歷史 PIT、新鮮當日自然來源或正式產品驗收。
+
 首頁引用同一 `ThemeResearchSnapshot` 與既有 `build_theme_research_presentation` 高／低端投影，顯示資料日、完整漲跌幅覆蓋題材數／總數及兩端成員覆蓋分母。僅完整覆蓋參與兩端觀察；Unknown 不補零，單一可比較題材不作兩端比較。沿既有 Main snapshot signal 與返回 callback，不新增 Reader、DTO、金融排序或來源服務。
+
+後繼 M25 在 Application 呈現層新增 `build_theme_return_two_version_presentation`，只接受呼叫端明選並由原 reader 各自驗讀的兩份 `ThemeResearchSnapshot`；此函式本身不讀檔，也不能替代 reader 的 SHA、來源及可用時鐘驗證。結果按選取順序各列同一鏈／題材標籤的原始 `Decimal` 平均日漲跌幅、成員代碼／分母、報酬覆蓋、資料日、映射版本／可得日、known-at、manifest SHA 與原來源 ID。只有各自報表列存在、成員非空、報酬全覆蓋且原值有限時才輸出數值；無報表列的覆蓋為未知 `None`，部分覆蓋與缺值的漲跌幅為 `None`，真零仍保留為零。同名標籤的兩份成員清單可能不同，故不計算差額、變化率、強弱或排名，也不授歷史 PIT／來源用途資格。M26 在既有題材 Qt 頁提供預設收合的雙 manifest 明選入口；背景工作逐份使用原 reader，選鏈與題材後按 M25 DTO 並列。主版本切換、清除、失敗、取消與頁面關閉均清舊比較，與原單版本成員導航分離。這項合成驗證及 Windows Native 畫面界線見本機任務 `QA_RESULTS.md`。
+
+M28 僅處理雙版本比較欄的長數值可讀性：原 `Decimal` 字串較短時原樣顯示；超長字串以「約」加四位小數展示，若非零的小數會被四位小數顯成零，改用科學記號避免假零；真零仍以零表示。每欄 tooltip 保留該版本完整原始 `Decimal`、來源 ID 與 SHA，Application DTO、金融公式與跨期資格不變。固定合成 v1 雙包的真 reader Windows 畫面與邊界見本機任務 `QA_RESULTS.md`。
+
+M29–M30 增加單一已讀取版本的分類成員投影與預設收合的 Qt 探索區。`ThemeClassificationPresentation` 對所選產業鏈／題材保留每條 `ThemeMappingRow` 的股票、市場、L1、鏈別位置、主要標記、分配方法、來源層級、PIT 模式、證據及映射日期，也保留 manifest SHA、報表資料日／讀取時間及歷史 PIT 旗標。畫面按**每位成員自己的** `chain_tier` 分組，最多顯示 30 位，餘者沿原表查閱；按成員只定位原表列。鏈／題材／版本切換會清舊圖。此層級只表示靜態分類歸屬，不表示公司間供應、客戶、資金或因果方向；完整關係圖仍需具來源、時鐘與方向證據的關係 DTO。隔離合成 manifest 經真 reader 的 Windows 三尺寸驗證及未驗界線見本機任務 `QA_RESULTS.md`。
 
 四種觀察仍沿既有完整覆蓋判定與高端排序，只放大呈現有合格觀察值的卡片；初始未載入與個別缺件集中提示，不把未知改成零。寬窗並列、窄窗重排，原排行類型與成員入口保持。成交金額的大值用 Decimal 換成萬／億元 TWD 展示，提示保留精確原值；排序、原觀察值、映射、來源用途與歷史 PIT 資格不變。操作見[資料與市場研究](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md)，原始碼與固定 EXE 的界線及驗證見[圖卡體驗 QA](../06_qa/BALDR_V2_CARD_EXPERIENCE_20261022.md)。
 

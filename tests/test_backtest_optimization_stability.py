@@ -48,3 +48,21 @@ def test_stability_exposes_valid_objective_sample_count_without_filling_missing_
     assert summary.objective_top == "2"
     assert summary.objective_worst == "1"
     assert "objective valid n=2 / retained N=3" in summary.to_text()
+
+
+def test_stability_excludes_legacy_unverified_optimizer_scores_from_valid_samples():
+    from app_module.optimizer_service import OptimizationResult
+
+    results = [
+        OptimizationResult(params={"x": 1}, metrics={"score": 2}, rank=1,
+                           metric_status={"objective": "legacy_unverified"}),
+        OptimizationResult(params={"x": 2}, metrics={"score": 1}, rank=2,
+                           metric_status={"objective": "observed"}),
+    ]
+
+    summary = build_optimization_stability_summary(results, objective_key="score")
+
+    assert summary.status == "insufficient"
+    assert summary.sample_count == 2
+    assert summary.objective_sample_count == 1
+    assert "objective valid n=1 / retained N=2" in summary.to_text()

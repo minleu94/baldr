@@ -15,6 +15,9 @@ def test_original_ratio_zero_and_cost_assumptions_are_not_recomputed():
                              details={"stock_code": "2330", "start_date": "2026-01-01", "end_date": "2026-02-01"})
     params = {"fee_bps": "14.25", "slippage_bps": 0}
     widget.present(report, params, "當次結果原始參數")
+    assert "font-size: 20px" in widget.values["return"].styleSheet()
+    assert "font-weight: 700" in widget.values["drawdown"].styleSheet()
+    assert "font-size: 15px" in widget.values["cost"].styleSheet()
     widget.resize(1000, 150)
     widget.show()
     app.processEvents()

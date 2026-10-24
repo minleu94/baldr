@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 # 設定為 offscreen 以免開啟實際 GUI 視窗
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow
+from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QWidget
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtTest import QTest
 import pytest
@@ -169,6 +169,7 @@ def test_research_lab_responsive_layout_keeps_1024px_controls_usable(qt_app):
     host.setFixedSize(1366, 768)
     host.show()
     qt_app.processEvents()
+
     assert host.size().width() == 1366
     assert host.size().height() == 768
     assert view.size().width() == 1366
@@ -180,21 +181,22 @@ def test_research_lab_responsive_layout_keeps_1024px_controls_usable(qt_app):
     assert host.size().height() == 768
     assert view.size().width() == 1024
     assert view.size().height() == 768
-    assert view.backtest_splitter.orientation() == Qt.Orientation.Vertical
+    assert view.backtest_splitter.orientation() == Qt.Orientation.Horizontal
     assert view.config_scroll.width() >= 900
-    assert view.result_panel.width() >= 900
-    assert view.config_scroll.height() >= 220
-    assert view.result_panel.height() >= 350
+    assert view.config_scroll.isVisible()
+    assert not view.result_panel.isVisible()
 
     view._set_config_panel_collapsed(True)
     qt_app.processEvents()
+    assert not view.config_scroll.isVisible()
+    assert view.result_panel.isVisible()
     assert view.result_panel.width() >= 900
     assert view.result_panel.height() >= 350
     view._set_config_panel_collapsed(False)
     qt_app.processEvents()
+    assert view.config_scroll.isVisible()
+    assert not view.result_panel.isVisible()
     assert view.config_scroll.width() >= 900
-    assert view.config_scroll.height() >= 220
-    assert view.result_panel.height() >= 350
     host.close()
 
 
@@ -219,6 +221,45 @@ def test_result_workspace_uses_semantic_tabs_and_single_primary_cta(qt_app):
     assert not panel.result_tabs.isTabVisible(panel.result_tabs.indexOf(panel._result_tab_widgets["summary"]))
     assert view.execute_btn.text() == "執行推薦回放"
     assert "推薦回放" in view.execution_intent_label.text()
+
+
+def test_entering_evidence_result_tab_collapses_config_and_keeps_expand_affordance(qt_app):
+    host = QMainWindow()
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    host.setCentralWidget(view)
+    host.setFixedSize(1280, 760)
+    host.show()
+    qt_app.processEvents()
+
+    # config=None 的單元 View 不建立真 evidence 服務；只掛同一 semantic tab
+    # 以驗證 BacktestView 收合事件。正常 Main 真入口另由 Native QA 核對。
+    view.result_panel._register_result_tab("evidence", QWidget(), "證據覆盤")
+
+    assert view._config_panel_collapsed is False
+    assert view.config_scroll.isVisible()
+    assert view.result_panel.focus_result_tab("evidence") is True
+    qt_app.processEvents()
+
+    assert view._config_panel_collapsed is True
+    assert view.config_scroll.isHidden()
+    assert view.result_panel.isVisible()
+    assert view.config_panel_expand_btn.isVisible()
+    assert view.config_panel_expand_btn.text() == "展開左側設定"
+
+    view.config_panel_expand_btn.click()
+    qt_app.processEvents()
+    assert view._config_panel_collapsed is False
+    assert view.config_scroll.isVisible()
+
+    assert view.result_panel.focus_result_tab("summary") is True
+    qt_app.processEvents()
+    assert view._config_panel_collapsed is False
+    assert view.config_scroll.isVisible()
+
+    host.close()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
 
 
 def test_recommendation_mode_dispatches_without_stock_code(qt_app, monkeypatch):
@@ -264,6 +305,48 @@ def test_analyst_diagnostics_widget_has_numeric_tables_and_theme_boundary(qt_app
     assert widget.benchmark_table.item(0, 3).text() == "legacy missing"
     assert widget.status_label.accessibleName() == "分析診斷狀態"
     assert "#" in widget.status_label.styleSheet()
+
+
+def test_analyst_monthly_matrix_marks_only_in_span_gaps_unknown(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            monthly=(
+                {"year": 2024, "month": 11, "return_text": "+100 bp"},
+                {"year": 2025, "month": 2, "return_text": "未知"},
+            ),
+        )
+    )
+
+    assert widget.monthly_table.rowCount() == 2
+    assert widget.monthly_table.item(0, 1).text() == "—"  # 觀測期前
+    assert widget.monthly_table.item(0, 12).text() == "未知"  # 跨年缺列月份
+    assert widget.monthly_table.item(1, 1).text() == "未知"  # 年初缺列月份
+    assert widget.monthly_table.item(1, 2).text() == "未知"
+    assert widget.monthly_table.item(1, 3).text() == "—"  # 觀測期後
+
+
+def test_analyst_monthly_matrix_bounds_expansion_for_extreme_period_span(qt_app):
+    view = BacktestView(backtest_service=MagicMock(), config=None)
+    widget = view.result_panel.analyst_diagnostics_widget
+    widget.set_diagnostics(
+        AnalystDiagnosticsDTO(
+            status="available",
+            reason=None,
+            monthly=(
+                {"year": 1900, "month": 1, "return_text": "+100 bp"},
+                {"year": 2100, "month": 12, "return_text": "+200 bp"},
+            ),
+        )
+    )
+
+    assert widget.monthly_table.rowCount() == 2
+    assert widget.monthly_table.item(0, 1).text() == "+100 bp"
+    assert widget.monthly_table.item(1, 12).text() == "+200 bp"
+    assert "中間省略年份的月份仍屬未知" in widget.monthly_gap_note.text()
 
 
 def test_research_lab_optimization_param_labels_are_compact(qt_app):

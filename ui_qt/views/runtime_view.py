@@ -1,7 +1,7 @@
 ﻿from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTextEdit, QLabel, QListWidget, QGroupBox, QListWidgetItem, QSizePolicy,
-    QScrollArea, QFrame, QPushButton
+    QScrollArea, QFrame, QPushButton, QComboBox
 )
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
@@ -244,7 +244,21 @@ class RuntimeView(QWidget):
         self.operations_list.setWordWrap(True)
         self.operations_list.setUniformItemSizes(False)
         ensure_visible_rows(self.operations_list, 5)
+        self.operations_state_filter = QComboBox()
+        self.operations_state_filter.setObjectName("operationsStateFilter")
+        self.operations_state_filter.setAccessibleName("營運排程狀態篩選")
+        self.operations_state_filter.setSizeAdjustPolicy(
+            QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.operations_state_filter.setMinimumContentsLength(5)
+        self.operations_state_filter.addItem("全部狀態", "all")
+        for state, label in OPERATION_STATE_LABELS.items():
+            self.operations_state_filter.addItem(label, state)
+        self.operations_state_filter.currentIndexChanged.connect(
+            self._render_scheduled_operations
+        )
         operations_layout.addWidget(self.operations_summary_label)
+        operations_layout.addWidget(self.operations_state_filter)
         operations_layout.addWidget(self.operations_list)
         self.operations_details = QWidget()
         operations_details_layout = QVBoxLayout(self.operations_details)
@@ -258,6 +272,7 @@ class RuntimeView(QWidget):
             operations_layout, self.operations_details, "排程來源與原始診斷"
         )
         self._scheduled_operations_by_job_id = {}
+        self._scheduled_operations = ()
         self.operations_list.currentItemChanged.connect(
             self._on_scheduled_operation_selection_changed
         )
@@ -539,6 +554,9 @@ class RuntimeView(QWidget):
         )
 
     def _on_scheduled_operation_selection_changed(self, current, _previous) -> None:
+        self._selected_scheduled_operation_id = (
+            current.data(Qt.UserRole) if current is not None else None
+        )
         if current is None:
             self.operations_capture_detail_label.setText(
                 "選取排程列以查看其唯讀終態；未提供終端讀回時狀態未知。"
@@ -554,6 +572,75 @@ class RuntimeView(QWidget):
         self.operations_capture_detail_label.setText(
             self._render_decision_capture_status(operation)
         )
+
+    def _render_scheduled_operations(self, _index: int = -1) -> None:
+        """依選取狀態純呈現已載入 DTO，並維持仍可見的原選取。"""
+        selected = self.operations_list.currentItem()
+        selected_id = selected.data(Qt.UserRole) if selected is not None else None
+        filter_state = self.operations_state_filter.currentData()
+        visible_operations = tuple(
+            operation
+            for operation in self._scheduled_operations
+            if filter_state == "all" or operation.state == filter_state
+        )
+
+        self.operations_list.blockSignals(True)
+        try:
+            self.operations_list.clear()
+            selected_item = None
+            for operation in visible_operations:
+                state_label = (
+                    OPERATION_STATE_LABELS.get(operation.state, "未知")
+                    if operation.read_state == "observed" else "來源未確認"
+                )
+                updated_text = (
+                    operation.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")
+                    if operation.updated_at is not None
+                    else "未知"
+                )
+                item = QListWidgetItem(
+                    f"{operation.label}｜{state_label}｜觀測時間：{updated_text}"
+                )
+                item.setData(Qt.UserRole, operation.job_id)
+                item.setToolTip(
+                    "\n".join(
+                        (
+                            f"job: {operation.job_id}",
+                            f"raw_status: {operation.raw_status}",
+                            f"lane: {operation.lane}",
+                            f"read_state: {operation.read_state}",
+                            f"timestamp_source: {operation.observed_at_source}",
+                            f"source: {operation.source_path}",
+                            f"diagnostic: {operation.diagnostic or 'none'}",
+                        )
+                    )
+                )
+                self.operations_list.addItem(item)
+                if operation.job_id == selected_id:
+                    selected_item = item
+            if selected_item is not None:
+                self.operations_list.setCurrentItem(selected_item)
+        finally:
+            self.operations_list.blockSignals(False)
+
+        total_count = len(self._scheduled_operations)
+        visible_count = len(visible_operations)
+        self.operations_summary_label.setText(
+            f"{self._operations_overall_summary}｜目前顯示 {visible_count}/{total_count} 項"
+        )
+        if selected_item is not None:
+            self._selected_scheduled_operation_id = selected_id
+            # 清表與重選期間暫停 Qt 訊號；須用本次 DTO 重畫選列終態。
+            self._on_scheduled_operation_selection_changed(selected_item, None)
+        elif selected_id is not None:
+            self._selected_scheduled_operation_id = None
+            self._on_scheduled_operation_selection_changed(None, None)
+        else:
+            self._on_scheduled_operation_selection_changed(None, None)
+        if visible_count == 0:
+            empty_item = QListWidgetItem("此狀態沒有符合的營運工作。")
+            empty_item.setFlags(Qt.NoItemFlags)
+            self.operations_list.addItem(empty_item)
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         """窄版把治理雙欄改成單欄，避免文字被切在 viewport 外。"""
@@ -659,45 +746,20 @@ class RuntimeView(QWidget):
             f"日常工作：{overall_label}（已保存結果）；不證明排程已啟動或今日資料已齊全。"
         )
         self._refresh_user_summary()
-        self.operations_summary_label.setText(
-            f"日常營運：{overall_label}｜核心工作已就緒 {dto.core_ready_count}/{dto.core_job_count}"
+        self._operations_overall_summary = (
+            f"日常營運：{overall_label}｜核心工作已就緒 "
+            f"{dto.core_ready_count}/{dto.core_job_count}"
         )
         selected = self.operations_list.currentItem()
         selected_id = selected.data(Qt.UserRole) if selected is not None else None
+        if selected_id is None:
+            selected_id = getattr(self, "_selected_scheduled_operation_id", None)
+        self._selected_scheduled_operation_id = selected_id
+        self._scheduled_operations = tuple(dto.operations)
         self._scheduled_operations_by_job_id = {
             operation.job_id: operation for operation in dto.operations
         }
-        self.operations_list.clear()
-        for operation in dto.operations:
-            state_label = (
-                OPERATION_STATE_LABELS.get(operation.state, "未知")
-                if operation.read_state == "observed" else "來源未確認"
-            )
-            updated_text = (
-                operation.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")
-                if operation.updated_at is not None
-                else "未知"
-            )
-            item = QListWidgetItem(
-                f"{operation.label}｜{state_label}｜觀測時間：{updated_text}"
-            )
-            item.setData(Qt.UserRole, operation.job_id)
-            item.setToolTip(
-                "\n".join(
-                    (
-                        f"job: {operation.job_id}",
-                        f"raw_status: {operation.raw_status}",
-                        f"lane: {operation.lane}",
-                        f"read_state: {operation.read_state}",
-                        f"timestamp_source: {operation.observed_at_source}",
-                        f"source: {operation.source_path}",
-                        f"diagnostic: {operation.diagnostic or 'none'}",
-                    )
-                )
-            )
-            self.operations_list.addItem(item)
-            if operation.job_id == selected_id:
-                self.operations_list.setCurrentItem(item)
+        self._render_scheduled_operations()
         self.operations_raw_text.setPlainText("\n\n".join(
             f"{operation.label}\njob: {operation.job_id}\nraw_status: {operation.raw_status}\n"
             f"lane: {operation.lane}\nread_state: {operation.read_state}\n"

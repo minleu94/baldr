@@ -317,7 +317,8 @@ def test_typed_calibration_projection_flows_to_advice_and_decision_presentation(
     assert presentation.calibrated_probability_bp == 6000
     assert presentation.after_cost_profit_probability_bp == 5500
     assert presentation.sample_size == 120
-    assert presentation.cost_basis == Decimal("50")
+    assert presentation.cost_basis is None
+    assert presentation.cost_basis_bp == 50
     assert presentation.horizon == "20 trading days"
     assert "cost_scenario:legacy-fixed-round-trip-bp-v1" in presentation.source_trace
 

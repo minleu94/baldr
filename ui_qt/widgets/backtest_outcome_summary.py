@@ -121,7 +121,12 @@ class BacktestOutcomeSummary(QWidget):
             value.setObjectName(f"backtestOutcome_{key}")
             value.setTextFormat(Qt.TextFormat.PlainText)
             value.setWordWrap(True)
-            value.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 15px; font-weight: 600;")
+            # 原績效與配對數突出；成本只是保存假設，維持次要層級。
+            value_size, value_weight = (15, 600) if key == "cost" else (20, 700)
+            value.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_primary}; "
+                f"font-size: {value_size}px; font-weight: {value_weight};"
+            )
             card_layout.addWidget(value)
             self.cards.append(card)
             self.grid.addWidget(card, 0, len(self.cards) - 1)

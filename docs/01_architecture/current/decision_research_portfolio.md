@@ -1,5 +1,9 @@
 # 決策、研究與 Portfolio
 
+## Portfolio 籌碼監控的展示邊界（後繼原始碼）
+
+`PortfolioChipService` 的空摘要保留原數值欄預設零，同時以 `lots_available=false`、`usable_event_count=0` 表示沒有可用股數事件。`PortfolioView` 在展示邊界先讀這些明示有效性欄位：無可用事件的風險評級、連續天數、淨量與集中度顯「資料不足」；有事件的原值零仍顯零。原累計買賣股數明確為零時，集中度沒有分母，僅 UI 顯資料不足。分點明細保持原 service 列，空列以短提示取代空表，有列以有界高度和表內捲動閱讀；未選持倉會清舊列。這不改籌碼聚合公式、`risk_reasons`、來源資格、持倉帳或交易流程；具名驗證見[實作 QA](../../../output/tasks/baldr-opus-ux-implementation/QA_RESULTS.md)。
+
 月營收全用途後繼Source新增研究service，將官方原公布YoY／MoM百分率與需精確單位的金額分流，經逐用途policy與原件resolver後供比較、篩選及分市場shadow因子排行。歷史TTM／三月趨勢要求唯一連續月窗；capture-as-of研究不等於正式PIT。回測／ML逐cutoff及Paper／Forward月營收feature另核，不把營收作行情／現金，不更動正式權重或模型Promotion。實作／驗收界線見[全用途契約](../../03_data/MONTHLY_REVENUE_FULL_SCOPE_CONTRACT.md)與[驗收](../../06_qa/MONTHLY_REVENUE_FULL_SCOPE_ACCEPTANCE_20261021.md)。
 
 V2 保存時報告及原價格詳情的另開最新入口由 Workspace 統一發送原 context，Main 建立獨立的一般查詢與只讀歷史返回 token。新 context 不帶原決策日、資料日、result ID 或來源 pins；Timeline 返回重讀同一 entry，其他價格返回以原 selection 執行 strict reader，保存報告核 canonical 與 identity。背景回傳須仍是同一 frame、股票查詢、頁面與 route；離頁、另開查詢或 shutdown 後不恢復舊畫面。此 UI 回訪不寫 Journal、不變更金融資格；固定 a65 EXE 未含，限定驗證見[V2 QA](../../06_qa/BALDR_V2_PRODUCT_ACCEPTANCE_20261020.md#選股保存與歷史返回qa130起)。
@@ -201,6 +205,10 @@ Recommendation／Portfolio／Health 輸出
 ```
 
 Evidence Event／Outcome、Research Run Registry、Evidence Review 與 Workbench read model 以已保存 metadata 和 source trace 建立可回溯投影。缺少來源、期限、樣本或可得時間時保留 blocker／unknown，不用歷史 replay 補足正式資格。Promotion、Demotion、Retirement 與 production scheduler 必須經各自受控權限，不由 dashboard、readiness 或 ML projection 自動觸發。
+
+`DecisionQualityDashboardResult` 另帶來源可用性與審查筆數，供 Qt 區分無審查紀錄的「未提供」、DB／表不可用的「未知」與已觀測真零；原 0–10000 流程分數計算不變。批次回測 adapter 沿逐股 `single_backtest_metrics_contract` 投影 CAGR／Sharpe／最大回撤／勝率有效性後才計入排行榜與中位數，舊無契約 run 保留舊值；Qt 只顯有效樣本數及 `n=0` 未知，不重算績效。
+
+Evidence Operations History 的 query-only read model 在缺 DB／表時明示 `source_available=False`，成功空查詢仍為可用來源與真零計數；Qt 錯誤時清舊卡。`production_scheduler_allowed` 只表示保存週報的允許欄位，不等於排程實際啟動。Decision Desk 的具名 Regime DTO 將 `match_score_bp` 投影到既有 `regime_confidence` 欄時，在 metadata 加 `regime_value_kind=match_score_bp`，Qt 僅憑此明確標記顯 bp 單位；未標記的舊來源沿舊標籤，不改判斷公式。
 
 Paper adapter 將一般 Portfolio alerts／risk prompts 與 Paper research lane 的 alerts、risk、status、readiness、blockers 分開保存；研究 seed 不覆蓋使用者持倉。Health read model 將機器治理缺件與使用者待辦分列。排程摘要也要分辨 child return code、來源／研究資格、工程故障與使用者待辦；控制 run 的 evidence writers 留在 QA 控制 namespace，不能因 wrapper 成功就寫入正式市場、Paper 或 Evidence store。
 

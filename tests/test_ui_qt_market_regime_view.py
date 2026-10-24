@@ -1,13 +1,62 @@
 import os
 import sys
+import threading
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from app_module.dtos import RegimeResultDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.market_regime_view import MarketRegimeView
+
+
+class _DtoEnvelope:
+    def __init__(self, result):
+        self.result = result
+
+    def to_legacy(self):
+        return self.result
+
+
+class _ControlledAsyncRegimeService:
+    def __init__(self, *, error: Exception | None = None):
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.error = error
+        self.detect_calls = 0
+        self.strategy_calls = 0
+        self.result = RegimeResultDTO(
+            regime="Trend",
+            confidence=0.82,
+            regime_name_cn="趨勢盤",
+            details={"date": "2026-10-22", "close": 22000.0},
+        )
+
+    def detect_regime_dto(self):
+        self.detect_calls += 1
+        self.entered.set()
+        if not self.release.wait(timeout=5):
+            raise TimeoutError("測試未釋放受控服務")
+        if self.error is not None:
+            raise self.error
+        return _DtoEnvelope(self.result)
+
+    def get_strategy_config(self, regime):
+        self.strategy_calls += 1
+        return {"technical": {}, "patterns": {}, "signals": {}}
+
+
+def _wait_for(app_instance, predicate, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        app_instance.processEvents()
+        if predicate():
+            return True
+        time.sleep(0.005)
+    app_instance.processEvents()
+    return bool(predicate())
 
 
 class FakeRegimeService:
@@ -165,10 +214,101 @@ def test_breakout_technical_details_show_base_indicators():
                 layer3_text.append(child.text())
 
     combined = "\n".join(layer3_text)
-    assert "60日均線: 43888.12" in combined
+    assert "60日均線: 43888.12 點" in combined
     assert "+DI: 24.50" in combined
     assert "-DI: 18.20" in combined
     assert "突破分數: 0.700" in combined
+
+
+def test_market_regime_details_show_only_source_confirmed_units():
+    app()
+    result = RegimeResultDTO(
+        regime="Trend",
+        confidence=0.5,
+        regime_name_cn="趨勢盤",
+        details={
+            "date": "2026-06-24",
+            "close": 0.0,
+            "ma20": 20000.0,
+            "ma60": 19900.0,
+            "ma20_slope": 0.0,
+            "atr": 0.0,
+            "bb_bandwidth": 12.5,
+            "adx": 30.0,
+            "plus_di": 24.5,
+            "minus_di": 18.2,
+            "rsi": 40.0,
+            "structure_score": 0.8,
+            "breakout_score": 1.0,
+        },
+    )
+
+    class FixedResultService:
+        def detect_regime(self):
+            return result
+
+        def get_strategy_config(self, regime):
+            return {"technical": {}, "patterns": {}, "signals": {}}
+
+    view = MarketRegimeView(FixedResultService())
+    view._detect_regime()
+    combined = "\n".join(
+        child.text()
+        for child in view.layer3_content.findChildren(QLabel)
+        if child.text()
+    )
+
+    assert "收盤價: 0.0000 點" in combined
+    assert "20日均線: 20000.00 點" in combined
+    assert "MA20斜率: 0.0000 %" in combined
+    assert "ATR: 0.0000 點" in combined
+    assert "布林帶寬度: 12.50 %" in combined
+    assert "ADX: 30.00 %" not in combined
+    assert "+DI: 24.50 %" not in combined
+    assert "RSI: 40.00 %" not in combined
+    assert "結構分: 0.800 %" not in combined
+    assert "突破分數: 1.000 %" not in combined
+
+
+def test_market_regime_missing_and_nonfinite_unit_values_are_unknown():
+    app()
+    result = RegimeResultDTO(
+        regime="Trend",
+        confidence=0.5,
+        regime_name_cn="趨勢盤",
+        details={
+            "close": None,
+            "ma20": True,
+            "ma60": "not-a-price",
+            "ma20_slope": float("nan"),
+            "atr": float("inf"),
+            "bb_bandwidth": float("-inf"),
+            "structure_score": None,
+        },
+    )
+
+    class FixedResultService:
+        def detect_regime(self):
+            return result
+
+        def get_strategy_config(self, regime):
+            return {"technical": {}, "patterns": {}, "signals": {}}
+
+    view = MarketRegimeView(FixedResultService())
+    view._detect_regime()
+    combined = "\n".join(
+        child.text() for child in view.layer3_content.findChildren(QLabel)
+    )
+
+    assert "收盤價: 未知" in combined
+    assert "20日均線: 未知" in combined
+    assert "60日均線: 未知" in combined
+    assert "MA20斜率: 未知" in combined
+    assert "ATR: 未知" in combined
+    assert "布林帶寬度: 未知" in combined
+    assert "結構分: 未知" in combined
+    assert "未知 %" not in combined
+    assert "未知 點" not in combined
 
 
 def test_market_regime_uses_midnight_surface_tokens():
@@ -181,3 +321,86 @@ def test_market_regime_uses_midnight_surface_tokens():
     assert MIDNIGHT_ANALYST.surface_1 in view.layer3_group.styleSheet()
     assert MIDNIGHT_ANALYST.border_subtle in view.layer3_group.styleSheet()
     assert "#1e1e1e" not in view.layer3_group.styleSheet()
+
+
+def test_market_regime_button_runs_one_background_request_and_renders_completion():
+    application = app()
+    service = _ControlledAsyncRegimeService()
+    view = MarketRegimeView(service)
+    try:
+        view.detect_btn.click()
+        assert service.entered.wait(timeout=2)
+        application.processEvents()
+
+        assert view.detect_btn.isEnabled() is False
+        assert view.detect_btn.text() == "正在檢測…"
+        assert "檢測中" in view.regime_loading_label.text()
+        assert view.layer1_status.text() == "檢測中…"
+        assert view.layer1_confidence.text() == ""
+        assert view.strategy_text.toPlainText() == ""
+
+        view.detect_btn.click()
+        view._start_regime_detection()
+        assert service.detect_calls == 1
+
+        service.release.set()
+        assert _wait_for(application, lambda: view._regime_worker is None)
+        assert view.layer1_status.text() == "趨勢盤"
+        assert "資料日期：2026-10-22" in view.layer1_confidence.text()
+        assert view.detect_btn.isEnabled() is True
+        assert view.detect_btn.text() == "檢測市場狀態"
+        assert view.regime_loading_label.text() == ""
+        assert service.strategy_calls == 1
+    finally:
+        service.release.set()
+        _wait_for(application, lambda: view._regime_worker is None)
+        view.close()
+        application.processEvents()
+
+
+def test_market_regime_background_exception_clears_busy_state_and_shows_error():
+    application = app()
+    service = _ControlledAsyncRegimeService(
+        error=RuntimeError("synthetic source failure")
+    )
+    view = MarketRegimeView(service)
+    try:
+        view.detect_btn.click()
+        assert service.entered.wait(timeout=2)
+        service.release.set()
+
+        assert _wait_for(application, lambda: view._regime_worker is None)
+        assert view.layer1_status.text() == "檢測失敗"
+        assert "synthetic source failure" in view.layer1_description.text()
+        assert view.detect_btn.isEnabled() is True
+        assert view.regime_loading_label.text() == ""
+        assert service.strategy_calls == 0
+    finally:
+        service.release.set()
+        _wait_for(application, lambda: view._regime_worker is None)
+        view.close()
+        application.processEvents()
+
+
+def test_market_regime_discards_worker_result_during_main_shutdown():
+    application = app()
+    service = _ControlledAsyncRegimeService()
+    parent = QWidget()
+    parent._shutdown_close_requested = False
+    view = MarketRegimeView(service, parent=parent)
+    try:
+        view.detect_btn.click()
+        assert service.entered.wait(timeout=2)
+        parent._shutdown_close_requested = True
+        service.release.set()
+
+        assert _wait_for(application, lambda: view._regime_worker is None)
+        assert view.layer1_status.text() == "檢測中…"
+        assert view.detect_btn.isEnabled() is False
+        assert view.regime_loading_label.text()
+    finally:
+        service.release.set()
+        _wait_for(application, lambda: view._regime_worker is None)
+        view.close()
+        parent.close()
+        application.processEvents()

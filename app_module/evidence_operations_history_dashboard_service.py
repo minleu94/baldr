@@ -6,6 +6,7 @@ from typing import Any
 
 from app_module.evidence_operations_history_dashboard_dtos import (
     EvidenceOperationsHistoryDashboardCards,
+    EvidenceOperationsHistoryCursor,
     EvidenceOperationsHistoryDashboardRequest,
     EvidenceOperationsHistoryDashboardResult,
     EvidenceOperationsHistoryDashboardRow,
@@ -25,25 +26,47 @@ class EvidenceOperationsHistoryDashboardService:
         request: EvidenceOperationsHistoryDashboardRequest,
     ) -> EvidenceOperationsHistoryDashboardResult:
         diagnostics: tuple[str, ...] = ()
+        source_available = True
+        row_limit = min(50, max(1, int(request.limit)))
+        has_more_rows = False
+        next_cursor = None
         try:
-            records = tuple(
-                self.backend.list_weekly_reviews(
-                    start_date=_blank_to_none(request.start_date),
-                    end_date=_blank_to_none(request.end_date),
-                    limit=request.limit,
+            query: dict[str, Any] = {
+                "start_date": _blank_to_none(request.start_date),
+                "end_date": _blank_to_none(request.end_date),
+                "limit": row_limit + 1,
+            }
+            if request.cursor is not None:
+                query["cursor"] = (
+                    request.cursor.period_end,
+                    request.cursor.period_start,
+                    request.cursor.review_id,
                 )
-            )
+            queried_records = tuple(self.backend.list_weekly_reviews(**query))
+            has_more_rows = len(queried_records) > row_limit
+            records = queried_records[:row_limit]
+            if has_more_rows and records:
+                last_record = records[-1]
+                next_cursor = EvidenceOperationsHistoryCursor(
+                    period_end=str(last_record.period_end),
+                    period_start=str(last_record.period_start),
+                    review_id=str(last_record.review_id),
+                )
         except EvidenceOperationsHistoryReadOnlyError as exc:
             # A missing history DB/table is an expected read-only state.  Do
             # not let a dashboard refresh create a schema just to render 0.
             records = ()
             diagnostics = (str(exc),)
+            source_available = False
         rows = tuple(_row_from_record(record) for record in records)
         return EvidenceOperationsHistoryDashboardResult(
             request=request,
             cards=_cards_from_rows(rows),
             rows=rows,
             empty_state_message=_empty_state_message(rows, diagnostics=diagnostics),
+            source_available=source_available,
+            has_more_rows=has_more_rows,
+            next_cursor=next_cursor,
         )
 
 

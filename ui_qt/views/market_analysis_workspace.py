@@ -29,10 +29,11 @@ _REQUIRED_WIDGET_KEYS = frozenset(
         "flow",
     }
 )
-_ALLOWED_WIDGET_KEYS = _REQUIRED_WIDGET_KEYS | {"cohort"}
+_ALLOWED_WIDGET_KEYS = _REQUIRED_WIDGET_KEYS | {"cohort", "taiex_history"}
 _CATEGORY_BY_KEY = {
     "summary": "overview",
     "index": "overview",
+    "taiex_history": "overview",
     "cohort": "overview",
     "strong_stocks": "stocks",
     "weak_stocks": "stocks",
@@ -51,7 +52,7 @@ class MarketAnalysisWorkspace(QWidget):
         ("industries", "產業排行"),
         ("flow", "部分樣本流向"),
     )
-    _OVERVIEW_KEYS = ("summary", "index", "cohort")
+    _OVERVIEW_KEYS = ("summary", "index", "taiex_history", "cohort")
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt 覆寫
         """原頁面由其表格／捲動區承接高度，不讓隱藏分頁撐大桌面視窗。"""
@@ -168,6 +169,7 @@ class MarketAnalysisWorkspace(QWidget):
         return {
             "summary": "市場總覽",
             "index": "市場指數",
+            "taiex_history": "加權指數走勢",
             "cohort": "母體盤勢",
         }[key]
 

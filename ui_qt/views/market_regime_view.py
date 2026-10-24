@@ -12,9 +12,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from typing import Optional, Dict, Any
 from html import escape
+import math
+from decimal import Decimal
+from numbers import Real
 
 from app_module.regime_service import RegimeService
 from app_module.dtos import RegimeResultDTO
+from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.research_date_presentation import source_data_date_text
 from ui_qt.widgets.info_button import InfoButton
@@ -24,6 +28,21 @@ from ui_qt.shared_market_research_consumer import (
     SharedMarketResearchRead,
     shared_market_research_summary,
 )
+
+
+def _load_regime_detection(
+    regime_service: RegimeService,
+) -> tuple[RegimeResultDTO, Dict[str, Any] | None]:
+    """只呼叫服務並整理結果；背景工作不得接觸 Qt widgets。"""
+    dto_method = getattr(regime_service, "detect_regime_dto", None)
+    if callable(dto_method):
+        regime_result: RegimeResultDTO = dto_method().to_legacy()
+    else:
+        regime_result = regime_service.detect_regime()
+    if regime_result.details.get("error"):
+        raise ValueError(str(regime_result.details["error"]))
+    strategy_config = regime_service.get_strategy_config(regime_result.regime)
+    return regime_result, strategy_config
 
 
 # ============================================================================
@@ -66,6 +85,9 @@ class MarketRegimeView(QWidget):
         """
         super().__init__(parent)
         self.regime_service = regime_service
+        self._regime_worker: TaskWorker | None = None
+        self._regime_request_id = 0
+        self._regime_view_closing = False
         
         self._setup_ui()
         self.shared_research_consumer = SharedMarketResearchConsumer(self)
@@ -109,8 +131,18 @@ class MarketRegimeView(QWidget):
         
         detect_btn = QPushButton("檢測市場狀態")
         detect_btn.setMinimumHeight(35)  # 稍微減小按鈕高度
-        detect_btn.clicked.connect(self._detect_regime)
+        detect_btn.setObjectName("MarketRegimeDetectButton")
+        detect_btn.setAccessibleName("檢測市場狀態")
+        detect_btn.clicked.connect(self._start_regime_detection)
+        self.detect_btn = detect_btn
         button_layout.addWidget(detect_btn)
+
+        self.regime_loading_label = QLabel("")
+        self.regime_loading_label.setObjectName("MarketRegimeLoadingStatus")
+        self.regime_loading_label.setAccessibleName("市場狀態檢測狀態")
+        self.regime_loading_label.setAccessibleDescription("尚未檢測。")
+        self.regime_loading_label.setWordWrap(True)
+        button_layout.addWidget(self.regime_loading_label)
         
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
@@ -420,76 +452,188 @@ class MarketRegimeView(QWidget):
         self.shared_research_consumer.request()
     
     def _detect_regime(self):
-        """檢測市場狀態"""
+        """保留同步檢測入口，供既有直接呼叫者與測試使用。"""
         try:
-            dto_method = getattr(self.regime_service, "detect_regime_dto", None)
-            if callable(dto_method):
-                regime_result: RegimeResultDTO = dto_method().to_legacy()
-            else:
-                regime_result = self.regime_service.detect_regime()
-            if regime_result.details.get("error"):
-                raise ValueError(str(regime_result.details["error"]))
-            
-            # 更新三層資訊
-            self._update_layer1(regime_result)
-            self._update_layer2(regime_result)
-            self._update_layer3(regime_result)
-            self._update_layer3_visibility()
-            self.market_risk_label.setText(
-                "風險與限制：規則匹配度不是勝率；此分類只描述原資料的規則狀態，"
-                "不代表個股安全、未來方向或交易資格。"
-            )
-            if source_data_date_text(regime_result.details.get("date")) == "未知":
-                self.market_risk_label.setText(
-                    self.market_risk_label.text() + " 資料日未知，請先核對來源。"
-                )
-            self.market_next_step_label.setText(
-                "下一步：核對上方資料日與判斷依據，再到產業或個股研究檢查同來源理由與反證；"
-                "需要原數值時展開技術細節。"
-            )
-            
-            # 顯示策略建議（使用 HTML 格式以支持標題高亮，深色主題）
-            strategy_config = self.regime_service.get_strategy_config(regime_result.regime)
-            if strategy_config:
-                # 使用 HTML 格式，標題使用更亮的顏色（移除「當前市場狀態」，因為已在上方顯示）
-                strategy_html = f"<div style='color: {COLOR_TEXT_SECONDARY}; line-height: 1.6;'>"
-                strategy_html += f"<span style='color: {COLOR_TEXT_PRIMARY}; font-weight: bold;'>建議策略配置：</span><br/>"
-                
-                # 技術指標
-                technical = strategy_config.get('technical', {})
-                if technical.get('momentum', {}).get('enabled'):
-                    strategy_html += "  • 動量指標：RSI、MACD<br/>"
-                if technical.get('trend', {}).get('enabled'):
-                    strategy_html += "  • 趨勢指標：ADX、移動平均線<br/>"
-                
-                # 圖形模式
-                patterns = strategy_config.get('patterns', {}).get('selected', [])
-                if patterns:
-                    strategy_html += f"  • 圖形模式：{', '.join(patterns)}<br/>"
-                
-                # 信號組合
-                signals = strategy_config.get('signals', {})
-                volume_conditions = signals.get('volume_conditions', [])
-                if volume_conditions:
-                    strategy_html += f"  • 成交量條件：{', '.join(volume_conditions)}<br/>"
-                
-                strategy_html += "</div>"
-                self.strategy_text.setHtml(strategy_html)
-            else:
-                self.strategy_text.setHtml(f"<div style='color: {COLOR_TEXT_SECONDARY};'>無法獲取策略建議</div>")
-            
+            regime_result, strategy_config = _load_regime_detection(self.regime_service)
+            self._render_regime_detection(regime_result, strategy_config)
         except Exception as e:
-            # 錯誤狀態：使用預設灰色，深色主題下確保可讀性
-            self.layer1_status.setText("檢測失敗")
-            self.layer1_status.setStyleSheet(f"color: {COLOR_TAG_DEFAULT}; padding: 5px 0;")
-            self.layer1_confidence.setText("")
-            self.layer1_description.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; padding-top: 5px; line-height: 1.4;")
-            self.layer1_description.setText(f"錯誤：{str(e)}")
-            self.layer2_label.setText("")
-            self._clear_layer3()
-            self.strategy_text.setPlainText("")
-            self.market_risk_label.setText("風險與限制：本次來源或檢測失敗，不能使用市場分類判讀。")
-            self.market_next_step_label.setText("下一步：核對資料來源與更新狀態後重試；不使用預設分類代替缺件。")
+            self._show_regime_error(str(e))
+
+    def _start_regime_detection(self) -> None:
+        """以受管 worker 執行檢測，並讓按鈕保持單一進行中工作。"""
+        if self._regime_worker is not None or self._is_shutting_down():
+            return
+
+        self._regime_request_id += 1
+        request_id = self._regime_request_id
+        self._clear_regime_result_for_loading()
+        self.detect_btn.setEnabled(False)
+        self.detect_btn.setText("正在檢測…")
+        self.regime_loading_label.setText("檢測中：正在讀取市場資料…")
+        self.regime_loading_label.setAccessibleDescription("市場狀態檢測進行中。")
+
+        worker = TaskWorker(_load_regime_detection, self.regime_service)
+        worker.finished.connect(
+            lambda result, item=worker, rid=request_id: self._on_regime_detection_finished(
+                item, rid, result
+            )
+        )
+        worker.error.connect(
+            lambda message, item=worker, rid=request_id: self._on_regime_detection_error(
+                item, rid, message
+            )
+        )
+        worker.cancelled.connect(
+            lambda item=worker, rid=request_id: self._on_regime_detection_cancelled(
+                item, rid
+            )
+        )
+        worker.native_thread_finished.connect(
+            lambda item=worker: self._release_regime_worker(item)
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        self._regime_worker = worker
+        try:
+            worker.start()
+        except Exception as exc:
+            self._show_regime_error(str(exc))
+            self._release_regime_worker(worker)
+            worker.deleteLater()
+
+    def _clear_regime_result_for_loading(self) -> None:
+        """移除上次結果，避免檢測期間被誤認為目前資料。"""
+        self.layer1_status.setText("檢測中…")
+        self.layer1_status.setStyleSheet(
+            f"color: {COLOR_TAG_DEFAULT}; padding: 5px 0;"
+        )
+        self.layer1_confidence.clear()
+        self.layer1_description.setText("正在讀取市場資料並檢測。")
+        self.layer2_label.setText("")
+        self._clear_layer3()
+        self.strategy_text.clear()
+        self.market_risk_label.setText(
+            "風險與限制：檢測進行中，完成前請勿使用上一輪分類判讀。"
+        )
+        self.market_next_step_label.setText("下一步：等待市場資料與規則檢測完成。")
+
+    def _render_regime_detection(
+        self,
+        regime_result: RegimeResultDTO,
+        strategy_config: Dict[str, Any] | None,
+    ) -> None:
+        """只在 UI thread 呈現已完成的服務結果。"""
+        self._update_layer1(regime_result)
+        self._update_layer2(regime_result)
+        self._update_layer3(regime_result)
+        self._update_layer3_visibility()
+        self.market_risk_label.setText(
+            "風險與限制：規則匹配度不是勝率；此分類只描述原資料的規則狀態，"
+            "不代表個股安全、未來方向或交易資格。"
+        )
+        if source_data_date_text(regime_result.details.get("date")) == "未知":
+            self.market_risk_label.setText(
+                self.market_risk_label.text() + " 資料日未知，請先核對來源。"
+            )
+        self.market_next_step_label.setText(
+            "下一步：核對上方資料日與判斷依據，再到產業或個股研究檢查同來源理由與反證；"
+            "需要原數值時展開技術細節。"
+        )
+
+        if strategy_config:
+            strategy_html = f"<div style='color: {COLOR_TEXT_SECONDARY}; line-height: 1.6;'>"
+            strategy_html += f"<span style='color: {COLOR_TEXT_PRIMARY}; font-weight: bold;'>建議策略配置：</span><br/>"
+            technical = strategy_config.get('technical', {})
+            if technical.get('momentum', {}).get('enabled'):
+                strategy_html += "  • 動量指標：RSI、MACD<br/>"
+            if technical.get('trend', {}).get('enabled'):
+                strategy_html += "  • 趨勢指標：ADX、移動平均線<br/>"
+            patterns = strategy_config.get('patterns', {}).get('selected', [])
+            if patterns:
+                strategy_html += f"  • 圖形模式：{', '.join(patterns)}<br/>"
+            signals = strategy_config.get('signals', {})
+            volume_conditions = signals.get('volume_conditions', [])
+            if volume_conditions:
+                strategy_html += f"  • 成交量條件：{', '.join(volume_conditions)}<br/>"
+            strategy_html += "</div>"
+            self.strategy_text.setHtml(strategy_html)
+        else:
+            self.strategy_text.setHtml(
+                f"<div style='color: {COLOR_TEXT_SECONDARY};'>無法獲取策略建議</div>"
+            )
+
+    def _show_regime_error(self, message: str) -> None:
+        """沿用原有錯誤終態，不留下前一輪的指標或策略。"""
+        self.layer1_status.setText("檢測失敗")
+        self.layer1_status.setStyleSheet(f"color: {COLOR_TAG_DEFAULT}; padding: 5px 0;")
+        self.layer1_confidence.setText("")
+        self.layer1_description.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; padding-top: 5px; line-height: 1.4;")
+        self.layer1_description.setText(f"錯誤：{message}")
+        self.layer2_label.setText("")
+        self._clear_layer3()
+        self.strategy_text.setPlainText("")
+        self.market_risk_label.setText("風險與限制：本次來源或檢測失敗，不能使用市場分類判讀。")
+        self.market_next_step_label.setText("下一步：核對資料來源與更新狀態後重試；不使用預設分類代替缺件。")
+
+    def _on_regime_detection_finished(
+        self, worker: TaskWorker, request_id: int, payload: Any
+    ) -> None:
+        if (
+            request_id != self._regime_request_id
+            or self._is_shutting_down()
+            or self._regime_worker is not worker
+        ):
+            return
+        try:
+            regime_result, strategy_config = payload
+            self._render_regime_detection(regime_result, strategy_config)
+        except Exception as exc:
+            self._show_regime_error(str(exc))
+
+    def _on_regime_detection_error(
+        self, worker: TaskWorker, request_id: int, message: str
+    ) -> None:
+        if (
+            request_id == self._regime_request_id
+            and self._regime_worker is worker
+            and not self._is_shutting_down()
+        ):
+            self._show_regime_error(message.splitlines()[0] if message else "未知錯誤")
+
+    def _on_regime_detection_cancelled(
+        self, worker: TaskWorker, request_id: int
+    ) -> None:
+        if (
+            request_id == self._regime_request_id
+            and self._regime_worker is worker
+            and not self._is_shutting_down()
+        ):
+            self._show_regime_error("檢測已取消")
+
+    def _release_regime_worker(self, worker: TaskWorker) -> None:
+        if self._regime_worker is not worker:
+            return
+        self._regime_worker = None
+        if not self._is_shutting_down():
+            self.detect_btn.setEnabled(True)
+            self.detect_btn.setText("檢測市場狀態")
+            self.regime_loading_label.clear()
+            self.regime_loading_label.setAccessibleDescription("市場狀態檢測已結束。")
+
+    def _is_shutting_down(self) -> bool:
+        if self._regime_view_closing:
+            return True
+        ancestor = self.parentWidget()
+        while ancestor is not None:
+            if getattr(ancestor, "_shutdown_close_requested", False):
+                return True
+            ancestor = ancestor.parentWidget()
+        return False
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._regime_view_closing = True
+        self._regime_request_id += 1
+        self.begin_shutdown()
+        super().closeEvent(event)
     
     def _update_layer1(self, regime_result: RegimeResultDTO):
         """更新 Layer 1：市場結論層（禁止技術指標名詞）
@@ -659,6 +803,33 @@ class MarketRegimeView(QWidget):
                 label.setToolTip(tooltip)
             label.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY};")
             return label
+
+        def detail_value(key: str, value: Any) -> tuple[str, str | None]:
+            """沿用來源數值格式，只補已確認的展示單位。"""
+            unit = {
+                "ma20_slope": "%",
+                "bb_bandwidth": "%",
+                "close": "點",
+                "ma20": "點",
+                "ma60": "點",
+                "atr": "點",
+            }.get(key)
+            if value is None:
+                return "未知", None
+            if unit is not None and (
+                isinstance(value, bool) or not isinstance(value, (Real, Decimal))
+            ):
+                return "未知", None
+            if isinstance(value, (Real, Decimal)) and not isinstance(value, bool):
+                try:
+                    if not math.isfinite(float(value)):
+                        return "未知", None
+                except (OverflowError, TypeError, ValueError):
+                    return "未知", None
+            formatted = self._format_value(value)
+            if unit is None:
+                return formatted, None
+            return f"{formatted} {unit}", f"來源原值：{value!r}（{unit}）"
         
         # 分類顯示（並排顯示，使用 stretch factor 讓寬度平均分配）
         # 1. 價格與均線
@@ -670,8 +841,11 @@ class MarketRegimeView(QWidget):
         price_layout.setSpacing(4)
         for key in ['close', 'ma20', 'ma60', 'ma20_slope']:
             if key in details:
+                value_text, value_tooltip = detail_value(key, details[key])
                 price_layout.addWidget(
-                    make_detail_label(f"{indicator_map.get(key, key)}: {self._format_value(details[key])}")
+                    make_detail_label(
+                        f"{indicator_map.get(key, key)}: {value_text}", value_tooltip
+                    )
                 )
         price_group.setLayout(price_layout)
         self.layer3_layout.addWidget(price_group, 1)  # stretch factor = 1
@@ -687,10 +861,11 @@ class MarketRegimeView(QWidget):
         trend_layout.setSpacing(4)
         for key in ['adx', 'adx_value', 'adx_contribution', 'plus_di', 'minus_di', 'atr']:
             if key in details:
+                value_text, value_tooltip = detail_value(key, details[key])
                 trend_layout.addWidget(
                     make_detail_label(
-                        f"{indicator_map.get(key, key)}: {self._format_value(details[key])}",
-                        trend_help,
+                        f"{indicator_map.get(key, key)}: {value_text}",
+                        "\n".join(item for item in (trend_help, value_tooltip) if item),
                     )
                 )
         trend_group.setLayout(trend_layout)
@@ -708,9 +883,10 @@ class MarketRegimeView(QWidget):
         for key in ['structure_score', 'strength_score', 'trend_confidence', 
                     'trend_distance', 'distance_contribution', 'reversion_score', 'breakout_score']:
             if key in details:
+                value_text, _value_tooltip = detail_value(key, details[key])
                 score_layout.addWidget(
                     make_detail_label(
-                        f"{indicator_map.get(key, key)}: {self._format_value(details[key])}",
+                        f"{indicator_map.get(key, key)}: {value_text}",
                         score_help,
                     )
                 )
@@ -726,9 +902,12 @@ class MarketRegimeView(QWidget):
         other_layout.setSpacing(4)
         has_other_indicators = False
         for key in ['bb_bandwidth', 'rsi']:
-            if key in details and details[key] is not None:
+            if key in details:
+                value_text, value_tooltip = detail_value(key, details[key])
                 other_layout.addWidget(
-                    make_detail_label(f"{indicator_map.get(key, key)}: {self._format_value(details[key])}")
+                    make_detail_label(
+                        f"{indicator_map.get(key, key)}: {value_text}", value_tooltip
+                    )
                 )
                 has_other_indicators = True
         

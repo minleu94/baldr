@@ -50,8 +50,25 @@ class DecisionQualityDashboardService:
                 ),
                 limitations=PROCESS_REVIEW_LIMITATIONS,
                 diagnostics=(diagnostic,),
+                review_count=0,
+                source_available=False,
             )
-        rows = tuple(_row_from_item(item) for item in items if _item_matches(item, request))
+        # Items belong to a review through review_id. Keep their scope aligned
+        # with the already filtered review set so score cards and rows describe
+        # the same period and review type.
+        requested_portfolio_id = _blank_to_none(request.portfolio_id)
+        if requested_portfolio_id is not None:
+            reviews = tuple(
+                review
+                for review in reviews
+                if _review_portfolio_id(review) == requested_portfolio_id
+            )
+        matched_review_ids = {review.review_id for review in reviews}
+        rows = tuple(
+            _row_from_item(item)
+            for item in items
+            if item.review_id in matched_review_ids and _item_matches(item, request)
+        )
         if request.min_score is not None and reviews and _latest_review(reviews).decision_quality_score_bp < int(request.min_score):
             rows = ()
         return DecisionQualityDashboardResult(
@@ -62,6 +79,8 @@ class DecisionQualityDashboardService:
             limitations=PROCESS_REVIEW_LIMITATIONS,
             quality_counts=dict(Counter(row.quality for row in rows)),
             warning_counts=_warning_counts(rows),
+            review_count=len(reviews),
+            source_available=True,
         )
 
 
@@ -132,6 +151,16 @@ def _item_matches(item: Any, request: DecisionQualityDashboardRequest) -> bool:
             _matches(getattr(item, "severity", ""), request.severity),
         )
     )
+
+
+def _review_portfolio_id(review: Any) -> str | None:
+    """Return only an explicitly stored portfolio identity; legacy absence stays unknown."""
+
+    metadata = getattr(review, "metadata_json", None)
+    if not isinstance(metadata, dict):
+        return None
+    portfolio_id = metadata.get("portfolio_id")
+    return portfolio_id if isinstance(portfolio_id, str) and portfolio_id else None
 
 
 def _empty_state_message(reviews: tuple[Any, ...], rows: tuple[DecisionQualityDashboardRow, ...]) -> str:

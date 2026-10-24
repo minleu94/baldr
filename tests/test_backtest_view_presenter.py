@@ -55,7 +55,79 @@ def test_summary_zero_pairs_are_explicit_without_changing_trade_count() -> None:
 
     assert '總交易次數: 0（已完成進出場配對）' in summary
     assert '尚無已完成交易' in summary
+    assert '總報酬率: 0.00%' in summary
     assert report.total_trades == 0 and report.details == {}
+
+
+def _versioned_report(*, with_curve: bool, invalid_contract: bool = False):
+    import pandas as pd
+
+    from app_module.single_backtest_metrics_contract import (
+        SINGLE_BACKTEST_METRICS_KEY,
+        capture_single_backtest_metrics_contract,
+    )
+    from backtest_module.performance_metrics import PerformanceAnalyzer
+
+    equity = (
+        pd.DataFrame({"equity": [100000, 100000]}, index=pd.date_range("2026-01-01", periods=2))
+        if with_curve
+        else pd.DataFrame({"equity": pd.Series(dtype="float64")}, index=pd.DatetimeIndex([]))
+    )
+    trades = pd.DataFrame(columns=["進場日期", "出場日期", "報酬率%"])
+    metrics = PerformanceAnalyzer().summarize([], equity, 100000.0)
+    contract = capture_single_backtest_metrics_contract(
+        metrics, equity=equity, trades=trades, stock_code="2330"
+    )
+    if invalid_contract:
+        contract["contract_sha256"] = "0" * 64
+    return BacktestReportDTO(
+        total_return=metrics.total_return,
+        annual_return=metrics.annual_return,
+        sharpe_ratio=metrics.sharpe_ratio,
+        max_drawdown=metrics.max_drawdown,
+        win_rate=metrics.win_rate,
+        total_trades=metrics.total_trades,
+        expectancy=metrics.expectancy,
+        details={
+            "stock_code": "2330",
+            "data_manifest": {SINGLE_BACKTEST_METRICS_KEY: contract},
+        },
+        validation_status=ValidationStatus.FAIL,
+    )
+
+
+def test_versioned_unavailable_zero_metrics_are_not_displayed_as_observed_zero() -> None:
+    summary = format_backtest_summary(_versioned_report(with_curve=False))
+
+    assert "總交易次數: 0（已完成進出場配對）" in summary
+    assert "總報酬率: 未提供" in summary
+    assert "年化報酬率 (CAGR): 未提供" in summary
+    assert "夏普比率: 未提供" in summary
+    assert "最大回撤: 未提供" in summary
+    assert "勝率: 未提供" in summary
+    assert "期望值: 未提供" in summary
+    assert "尚無已完成交易" in summary
+
+
+def test_versioned_observed_true_zero_metrics_and_zero_pairs_are_preserved() -> None:
+    summary = format_backtest_summary(_versioned_report(with_curve=True))
+
+    assert "總交易次數: 0（已完成進出場配對）" in summary
+    assert "總報酬率: 0.00%" in summary
+    assert "年化報酬率 (CAGR): 0.00%" in summary
+    assert "最大回撤: 0.00%" in summary
+    assert "尚無已完成交易" in summary
+
+
+def test_invalid_declared_metrics_contract_fails_closed_without_raw_zero_fallback() -> None:
+    summary = format_backtest_summary(
+        _versioned_report(with_curve=True, invalid_contract=True)
+    )
+
+    assert "總交易次數: 未提供（已完成進出場配對）" in summary
+    assert "總報酬率: 未提供" in summary
+    assert "總交易次數: 0（已完成進出場配對）" not in summary
+    assert "總報酬率: 0.00%" not in summary
 
 
 def test_failed_report_is_not_presented_as_zero_trade_performance() -> None:

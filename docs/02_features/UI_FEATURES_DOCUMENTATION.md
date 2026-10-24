@@ -270,6 +270,7 @@ Source的題材法人v2只消費明選TPEx同日原股數，缺價格／TWD／�
 - 決策品質按日期與覆盤類型篩出原覆盤後，項目表與待處理／已覆盤／已略過計數只包含這些覆盤 `review_id` 的原項目；明填 Portfolio ID 時再依原覆盤 `metadata_json.portfolio_id` 精確限縮，舊紀錄缺身份不猜。無符合覆盤時不顯示其他範圍的全域項目。流程分數的既有計算及原始證據不變。
 - 決策品質項目表只對既有八種項目類型、三級嚴重度與三種狀態顯示中文；hover 可讀原碼，明細同時列中文與原碼。新／未知碼直接保留原文，空值顯「未知」；`source_type` 仍保留原來源字串，篩選及 DTO 原碼不變。
 - 決策品質「最低分數」只接受留空或 0–10000 的整數；非法輸入不呼叫唯讀來源，欄位與結果區明示錯誤，清除上次卡片／表格／詳情且拒絕遲到的舊請求結果。修正後重新整理才顯示新結果；此驗證只防止 UI 錯誤與舊資料誤認，不更動門檻作用範圍或原分數計算。
+- 決策品質篩選左欄（M103）設有內部捲動與固定的「重新整理」按鈕；股票提示目前只篩下方項目列，分數卡仍取所選覆盤範圍最新分數。最低分數目前只比較該最新覆盤分數，低於門檻時清空項目列，卡片仍顯原值。這是現行行為揭露及 characterization test，M73 的正式作用範圍仍待產品裁決，未重算分數或改 reader。
 - 大盤指數「檢測市場狀態」在受管背景工作讀取原 Regime service；進行中停用按鈕、顯示載入並清舊分類／技術值／策略文字，完成或錯誤才恢復按鈕。既有 Regime history 的轉移與 CAS 衝突仍由原 service 決定，錯誤明示而不套用舊結論；關窗會等待受管工作自然結束，合作式取消不代表既有 history 寫入回滾。
 - 覆盤歷史結果另帶只讀來源可用性：成功查詢的空集合可顯計數 0，缺 DB／表或錯誤顯未知並清舊卡；已知週報／排程條件碼在細節顯中文及原碼。`production_scheduler_allowed` 的卡片稱「允許正式排程」，不稱排程已啟用或已執行。
 - 只讀 Action Items 只列人工待處理事項；每列必須帶 `severity`、`queue_group`、`source_label`、`source_trace`、`degraded_reason`、`sort_rank` 與 `drilldown_target`，且 `write_intent=false`。Qt model 只顯示 DTO payload，drill-down target 必須對齊舊頁導向（Daily Decision、Evidence Review、Portfolio），Workbench 不建立 action item repository、不 append DB、不自動標記完成。
@@ -483,6 +484,7 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 - 情境壓力：由 `PortfolioStressLabService` 對已標記持倉套用固定、可重播的研究情境；缺價只做部分計算，輪動／來源中斷等缺少必要輸入時 fail-closed，不寫資料、不改持倉、不產生交易指令。
 - Stress 工作區版面（M101）：寬畫面進入情境壓力時，右側研究明細預設約 70%，左側 Paper 健康狀態仍可見；切回其他頁籤恢復一般 60／40。使用者拖曳分隔線後保留手動比例，窄畫面上下分割維持原比例。這只改展示配置，不改 Stress 原值、資料來源、狀態或帳本；固定舊 EXE 尚未包含 M101。
 - Stress 情境身份（M102）：切換目前情境下拉選項時清除前次計算摘要、診斷與明細表，並停用保存；只有對新選項重新執行並取得結果才可保存。保存入口再核對結果與目前選項的 scenario ID，避免舊結果繞過 UI 寫入研究歷史。執行失敗也清舊；原 partial、不可計算、缺值、真零與二次確認維持既有契約，固定舊 EXE 尚未包含 M102。
+- Stress 輸入來源（M104）：目前情境及保存確認明示資料取自 `PortfolioService` 的交易／手動持倉 DTO（Main 預設 `portfolio_id=default`）；Stress 放在 Paper 分區只是導覽位置，不讀 Paper snapshot、ledger 或 Health。切換導覽分區不更換 Stress 結果身份或其資料來源；未改 Stress service、公式、保存 payload 或 Paper 帳。
 - Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果。「情境壓力」內的「目前情境／已保存歷史」子頁分開即時結果與只讀回訪；選取歷史列後，同筆卡片並列原基準市值、壓力後市值與變動（TWD）、情境、日期、覆蓋和狀態。M100 將歷史表可見高度限制在最多約七列，超過時用表內垂直捲動，選列卡保持內容高度；換模型或讀取失敗會重算空表高度。`PortfolioStressHistoryReadService` 仍 query-only，缺 DB 不初始化，原表與 hash 保留；缺值／真零分開，換列、刷新、空結果及讀取錯誤清除舊卡，固定揭露研究用途與 `writes_allowed=false`。不計算跨情境排名、跌幅或預測；固定 EXE 尚未包含 M100。
 - Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；畫面顯示 raw 累積筆數與最新可採用 snapshot，遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。操作控制改三列雙欄以保留較窄畫面及高 DPI 下的完整名稱；缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
 - Paper Trade Ledger v1：由獨立 append-only contract 保存研究用 fill event，要求 requested／filled 數量、狀態、Decimal 成本、turnover、execution gap 與來源；Portfolio readiness 會唯讀顯示 ledger 狀態與 full／partial／reject／override 統計，缺欄位不放行 weekly report。

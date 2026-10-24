@@ -10,9 +10,16 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import shiboken6
-from PySide6.QtCore import QCoreApplication, QDate, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QDate, QEvent, QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QAbstractItemView, QApplication, QDateEdit, QTabWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QDateEdit,
+    QScrollArea,
+    QTabWidget,
+    QWidget,
+)
 import pytest
 
 from app_module.decision_quality_dashboard_dtos import (
@@ -1274,3 +1281,75 @@ def test_decision_quality_min_score_accepts_blank_and_range_boundaries(value, ex
     assert service.calls[0].min_score == expected
     assert view.min_score_error_label.text() == ""
     assert view.min_score_error_label.isHidden()
+
+
+def test_decision_quality_scope_hints_and_scrollable_filter_keep_refresh_visible() -> None:
+    """模擬 Main 外層長頁，確認內層篩選可捲且刷新按鈕仍在首屏。"""
+
+    app_instance = app()
+    result = DecisionQualityDashboardResult(
+        DecisionQualityDashboardRequest(),
+        DecisionQualityDashboardCards(decision_quality_score=4000),
+    )
+    service = FakeDashboard(result)
+    outer_scroll = QScrollArea()
+    outer_scroll.setWidgetResizable(False)
+    outer_scroll.resize(1280, 760)
+    outer_page = QWidget()
+    outer_page.resize(1260, 1500)
+    view = DecisionQualityView(
+        service,
+        auto_refresh=False,
+        async_refresh=False,
+        parent=outer_page,
+    )
+    view.setGeometry(0, 0, 1260, 1400)
+    outer_scroll.setWidget(outer_page)
+    outer_scroll.show()
+    app_instance.processEvents()
+    # Offscreen Qt may expose a much taller virtual screen than the native
+    # 1280×760 window; constrain this fixture to the narrow visible pane.
+    view.filter_panel.setMaximumHeight(360)
+    app_instance.processEvents()
+
+    assert "只篩下方項目列" in view.symbol_scope_hint.text()
+    assert "不是單股分數" in view.symbol_scope_hint.text()
+    assert "現行作用範圍待產品確認" in view.symbol_scope_hint.text()
+    assert "最新一筆的決策品質分數" in view.min_score_scope_hint.text()
+    assert "未達時清空項目列" in view.min_score_scope_hint.text()
+    assert "作用範圍待產品確認" in view.min_score_scope_hint.text()
+    assert isinstance(view.filter_scroll_area, QScrollArea)
+    assert outer_scroll.verticalScrollBar().maximum() > 0
+    assert outer_scroll.verticalScrollBar().value() == 0
+    assert view.filter_panel is not None
+    assert view.filter_panel.height() <= view.filter_panel.maximumHeight()
+    assert view.filter_scroll_area.verticalScrollBar().maximum() > 0
+    assert view.refresh_button.parentWidget() is view.filter_scroll_area.parentWidget()
+    assert view.refresh_button.y() >= (
+        view.filter_scroll_area.y() + view.filter_scroll_area.height()
+    )
+
+    # The normal Main page has content above Decision Quality. Bring this
+    # section into the outer viewport before checking its sticky action.
+    outer_scroll.ensureWidgetVisible(view.refresh_button)
+    app_instance.processEvents()
+    assert outer_scroll.verticalScrollBar().value() > 0
+
+    view.filter_scroll_area.ensureWidgetVisible(view.min_score_input)
+    app_instance.processEvents()
+    viewport = view.filter_scroll_area.viewport()
+    min_score_top = view.min_score_input.mapTo(viewport, QPoint(0, 0))
+    assert 0 <= min_score_top.y()
+    assert min_score_top.y() + view.min_score_input.height() <= viewport.height()
+
+    viewport = outer_scroll.viewport()
+    refresh_top = view.refresh_button.mapTo(viewport, QPoint(0, 0))
+    refresh_rect = view.refresh_button.rect().translated(refresh_top)
+    assert viewport.rect().contains(refresh_rect)
+
+    view.symbol_input.setText("2330")
+    view.min_score_input.setText("6000")
+    view.refresh_button.click()
+    assert service.calls[-1].symbol == "2330"
+    assert service.calls[-1].min_score == 6000
+    outer_scroll.close()

@@ -98,6 +98,66 @@ def test_decision_quality_dashboard_filters_and_cards() -> None:
     assert "流程覆盤" in result.limitations[0]
 
 
+def test_symbol_and_min_score_scope_matches_current_latest_review_behavior() -> None:
+    backend = FakeDecisionQualityService()
+    older_review = replace(
+        backend.reviews[0],
+        review_id="dqr-older-2330",
+        review_period_start="2026-06-01",
+        review_period_end="2026-06-30",
+        decision_quality_score_bp=7000,
+    )
+    latest_review = replace(
+        backend.reviews[0],
+        review_id="dqr-latest-2317",
+        review_period_start="2026-07-01",
+        review_period_end="2026-07-31",
+        decision_quality_score_bp=4000,
+    )
+    backend.reviews = [older_review, latest_review]
+    older_item = replace(
+        backend.items[0],
+        item_id="dqi-older-2330",
+        review_id=older_review.review_id,
+        symbol="2330",
+    )
+    latest_item = replace(
+        backend.items[0],
+        item_id="dqi-latest-2317",
+        review_id=latest_review.review_id,
+        symbol="2317",
+    )
+    backend.items = [older_item, latest_item]
+    service = DecisionQualityDashboardService(backend)
+
+    symbol_only = service.load_dashboard(
+        DecisionQualityDashboardRequest(
+            start_date="2026-06-01",
+            end_date="2026-07-31",
+            review_type="monthly",
+            symbol="2330",
+        )
+    )
+    assert symbol_only.review_count == 2
+    assert symbol_only.cards.decision_quality_score == 4000
+    assert [row.symbol for row in symbol_only.rows] == ["2330"]
+    assert "symbol" not in backend.review_calls[-1]
+
+    symbol_and_min_score = service.load_dashboard(
+        DecisionQualityDashboardRequest(
+            start_date="2026-06-01",
+            end_date="2026-07-31",
+            review_type="monthly",
+            symbol="2330",
+            min_score=6000,
+        )
+    )
+    assert symbol_and_min_score.review_count == 2
+    assert symbol_and_min_score.cards.decision_quality_score == 4000
+    assert symbol_and_min_score.rows == ()
+    assert "symbol" not in backend.review_calls[-1]
+
+
 def test_decision_quality_dashboard_empty_state_is_non_blaming() -> None:
     backend = FakeDecisionQualityService()
     backend.reviews = []

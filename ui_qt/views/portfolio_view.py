@@ -1955,6 +1955,16 @@ class PortfolioView(QWidget):
         stress_intro.setWordWrap(True)
         stress_intro.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         current_stress_layout.addWidget(stress_intro)
+        self.stress_source_label = QLabel(
+            "輸入來源：PortfolioService 的交易／手動持倉 DTO（Main 預設 portfolio_id=default）；"
+            "Stress 放在 Paper 分區只是導覽位置，不讀 Paper snapshot、ledger 或 Health。"
+        )
+        self.stress_source_label.setAccessibleName("情境壓力輸入來源")
+        self.stress_source_label.setWordWrap(True)
+        self.stress_source_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-weight: 600;"
+        )
+        current_stress_layout.addWidget(self.stress_source_label)
 
         stress_controls = QHBoxLayout()
         self.stress_scenario_combo = QComboBox()
@@ -3915,6 +3925,8 @@ class PortfolioView(QWidget):
         answer = QMessageBox.question(
             self,
             "確認保存 Stress 研究快照",
+            "目前結果使用 PortfolioService 的交易／手動持倉 DTO（Main 預設 portfolio_id=default）；"
+            "不讀 Paper snapshot、ledger 或 Health；Stress 放在 Paper 分區只是導覽位置。\n\n"
             "這會新增一筆 append-only 研究歷史。它不是正式績效、交易證據或交易指令；是否繼續？",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,

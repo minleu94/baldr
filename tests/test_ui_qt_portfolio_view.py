@@ -1250,6 +1250,56 @@ def test_portfolio_stress_load_failure_clears_result_and_disables_save(
     assert view.btn_save_stress_history.isEnabled() is False
 
 
+def test_portfolio_stress_source_disclosure_survives_section_switch_and_save(
+    tmp_path, monkeypatch
+):
+    view = make_portfolio_view(tmp_path)
+    host = QStackedWidget()
+    host.resize(1280, 760)
+    host.addWidget(view)
+    host.show()
+    view._toggle_advanced_portfolio(True)
+    assert view.select_v2_section("paper") is True
+    assert view._set_portfolio_detail_tab("stress") is True
+    app().processEvents()
+
+    source_text = view.stress_source_label.text()
+    result_before_switch = view._stress_result
+    assert view.stress_source_label.isVisible() is True
+    assert "PortfolioService 的交易／手動持倉 DTO" in source_text
+    assert "portfolio_id=default" in source_text
+    assert "不讀 Paper snapshot、ledger 或 Health" in source_text
+    assert "Stress 放在 Paper 分區只是導覽位置" in source_text
+    assert result_before_switch is not None
+
+    assert view.select_v2_section("positions") is True
+    assert view._stress_result is result_before_switch
+    assert view.stress_source_label.text() == source_text
+    assert view.select_v2_section("paper") is True
+    app().processEvents()
+    stress_tab = view._portfolio_detail_tab_widgets["stress"]
+    assert view.portfolio_detail_tabs.currentWidget() is stress_tab
+    assert view._stress_result is result_before_switch
+    assert view.stress_source_label.isVisible() is True
+    assert view.stress_source_label.text() == source_text
+
+    confirmation_text = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args: confirmation_text.append(_args[2]) or QMessageBox.Yes,
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
+    view.btn_save_stress_history.click()
+
+    assert view.stress_history_db_path.exists()
+    assert "不讀 Paper snapshot、ledger 或 Health" in confirmation_text[0]
+    assert view._stress_history_display_records[-1].scenario_label == (
+        result_before_switch.scenario.label
+    )
+    host.close()
+
+
 def test_portfolio_stress_history_is_read_only_when_not_configured(tmp_path):
     view = make_portfolio_view(tmp_path)
 

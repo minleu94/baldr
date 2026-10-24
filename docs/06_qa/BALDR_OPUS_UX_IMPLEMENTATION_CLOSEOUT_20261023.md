@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M102；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M104；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M102 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M104 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -131,3 +131,19 @@ Luna `/root/m101_research_layout_audit` 深查後撤回市場完整警示候選�
 同一 Luna 作唯一 writer，僅改 `ui_qt/views/portfolio_view.py` 與 `tests/test_ui_qt_portfolio_view.py`。換情境即清舊摘要、診斷、表格及 `_stress_result`，提示重新執行，保存按鈕停用；取得新結果後才恢復。執行失敗也清舊。保存函式獨立比對結果與選項的 scenario ID，錯配時在二次確認及 repository append 前拒絕並清除。Sol 複核保留原 `partial`／`not_computable`、缺值、真零、二次確認與已保存歷史語義；Stress service、DTO、金融公式、正式資料及帳本均未改。
 
 受控共同 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_7ffdeafa60e3468585bdf64e9a7076d1/receipt.json`：編譯、Portfolio **75 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。聚焦測試以 `tmp_path` 隔離持倉資料，驗 A→B 清舊且不建歷史、故意注入舊 DTO 仍拒保存、B 重算後保存匹配 scenario、例外清舊。正常 Main 1280×760、真 Windows DPI96（100%）的隔離空帳本三態原生圖與 JSON 在 `.../root/native_m102_scenario_evidence/run_0d795e13fcf14467939c93832a5f333f/`，最終 Job 收據 `.../root/single_owned_qa_cd62b9ab793e4110a36d10808c9b1f5b/receipt.json`；Sol 目視 A 原結果、B 待執行與 B 新結果，三張圖 SHA 不同。首次原生腳本沿用前輪 DPI144 假設而 fail，原收據 `.../root/single_owned_qa_10366b2d78d2484c9abebe85e2da1379/receipt.json`；第二輪雖 Job pass，未捲到 Stress 控制區，三圖相同，不作最終視覺證據，原收據 `.../root/single_owned_qa_15f2c21d3de24117b5dcb19e2bb98af2/receipt.json` 保留。這些是隔離空帳本與單一真 OS DPI 的原始碼證據，正式私人帳、其他 DPI、固定新版 EXE、Owner UAT 與完整產品 Gate 仍未接受。
+
+## M103／M104 決策品質作用範圍與 Stress 來源揭露
+
+Luna `/root/m101_research_layout_audit` 核現行 Decision Quality service：股票代碼只篩項目列，分數卡取所選覆盤範圍最新一筆；最低分數比較該最新分數，未達時清項目列，卡片仍保留原值。M73 尚未裁決正式作用範圍，因此 M103 不改 service、DTO 或分數公式。該 Luna 單一 writer 改 `ui_qt/views/decision_quality_view.py`、`tests/test_ui_qt_evidence_review_dashboards.py`、`tests/test_decision_quality_dashboard_service.py`：左側篩選可內部捲動，刷新鈕固定於左欄底部；提示現行語義，服務測試鎖定跨兩期與不同股票行為。Sol 在正常 Main 1280×760 原生圖發現初版內層捲動受外層長頁撐高，退回要求高度上限與外層長頁測試；修後依 Qt 邏輯螢幕可用高度限制。使用者須先把外層頁面捲到決策品質區，再於左欄捲到最低分數；兩層捲動已原生核對。
+
+Luna `/root/m101_portfolio_workspace_audit` 跨查 Portfolio 呼叫與 Paper 導覽：Stress 使用 `PortfolioService.get_portfolio()` 的交易／手動持倉 DTO，Main 預設 `portfolio_id=default`；Paper 分區只決定畫面位置，不將 Paper snapshot、ledger 或 Health 當 Stress 輸入。M104 單一 writer 只改 `ui_qt/views/portfolio_view.py`、`tests/test_ui_qt_portfolio_view.py`，在目前情境與保存確認顯示來源；切換分區不清空既有 Stress 結果。Sol 核保存仍須情境身份守衛及二次確認；未改 service、DTO、公式、保存 payload、帳本或私人資料。
+
+最終受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_d4b7151751334c4abd17e2e1d28e1ca4/receipt.json`：受改 Python 編譯、**125 focused passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。首輪聚焦 fixture 未限制離屏 Qt 虛擬螢幕高度，第二輪在外層長頁頂端要求下方控制可見，各有一個測試失敗；修 fixture 模擬受限左欄並先捲到決策品質區後通過。失敗收據 `.../root/single_owned_qa_3b29b5a2ee9e440daa394332bcdcb84a/receipt.json`、`.../root/single_owned_qa_1b662bf855b64bdcbe991bcedcc33127/receipt.json` 保留，不列最終通過。
+
+正常 Main 1280×760、真 Windows DPI216（225%）隔離合成 SQLite 原生收據 `.../root/single_owned_qa_8785b81d1fac46cf93583a691e4202c0/receipt.json` exit0、無殘留 PID；三張不同 SHA PNG 與 `result.json` 在 `.../root/native_m103_m104_evidence/run_f60dd1c6fa334205b88e5ea7eaad25c0/`。Sol 目視決策品質左欄最低分數與刷新鈕、右側原卡／項目表，以及 Stress 在 Paper 導覽中的來源提示；來源 DB 前後 SHA 相同。原生初輪腳本固定 DPI 範圍而拒絕當前 225%，後兩輪停在 Evidence 外層頂端，均未作最終圖證；原收據 `.../root/single_owned_qa_e124918abfac42148d45acacac92b88d/receipt.json`、`.../root/single_owned_qa_8a2e066521b84069870d947a87f3917f/receipt.json`、`.../root/single_owned_qa_966d3858dd6748b18714ba4cf8d04bff/receipt.json` 保留。
+
+### 從排程開工至 M104 的階段盤點
+
+M1–M104 是含審查、裁決、QA 的切片序號，**不是 104 個獨立功能**。Opus 起始、Antigravity 接續的六份審查與 mockup／prototype 已定位，Sol 對照現行架構、去重、修正不適用提案。P0 完成台股紅漲綠跌、原數值單位／日期、真零／未知／錯誤、首屏摘要及狀態清舊；P1 完成題材等面積格、限定成交額圖、九指標、同版分類與鄰域、雙版本原值、搜尋及精確下鑽；P2 改善市場、個股、推薦、Portfolio、Backtest、Evidence、Runtime 的摘要／圖卡／明細、長表與研究回訪，M103／M104 補篩選與來源文字。既有圖卡及已驗路徑未為進度重做。P3 公司間有向關係與跨期強弱仍缺逐邊來源、時鐘與用途資格；M73 仍缺決策品質股票與門檻作用範圍正式裁決。
+
+本次完成的是原始碼、隔離合成資料及單一真 OS DPI 的工程驗證。正式市場／Evidence／Portfolio 資料與自然排程、全 DPI／Light（若支援）、固定新版 EXE、Owner UAT 和完整產品 Gate 仍未接受；`output/` 收據與圖留本機，不進版控。沒有自動交易、broker order、正式資料改寫、force push、merge 或部署。

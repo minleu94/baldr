@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QComboBox,
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableView,
     QTextEdit,
@@ -66,6 +67,7 @@ class DecisionQualityView(QWidget):
         self._active_request_id = 0
         self._workers: list[TaskWorker] = []
         self._current_result: DecisionQualityDashboardResult | None = None
+        self.filter_panel: QWidget | None = None
         self._setup_ui()
         if auto_refresh:
             self.refresh_dashboard()
@@ -84,6 +86,12 @@ class DecisionQualityView(QWidget):
         self.start_date_input = OptionalDateFilterEdit()
         self.end_date_input = OptionalDateFilterEdit()
         self.symbol_input = QLineEdit()
+        self.symbol_scope_hint = QLabel(
+            "只篩下方項目列；上方分數卡仍顯示所選覆盤範圍最新分數，不是單股分數。現行作用範圍待產品確認。"
+        )
+        self.symbol_scope_hint.setObjectName("decisionQualitySymbolScopeHint")
+        self.symbol_scope_hint.setWordWrap(True)
+        self.symbol_scope_hint.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         self.portfolio_id_input = QLineEdit()
         self.item_type_input = QLineEdit()
         self.severity_combo = QComboBox()
@@ -95,6 +103,12 @@ class DecisionQualityView(QWidget):
         self.min_score_input = QLineEdit()
         self.min_score_input.setPlaceholderText("0-10000")
         self.min_score_input.setValidator(QIntValidator(0, 10000, self.min_score_input))
+        self.min_score_scope_hint = QLabel(
+            "目前只用所選覆盤範圍最新一筆的決策品質分數作項目列門檻；未達時清空項目列，分數卡仍顯原值。作用範圍待產品確認。"
+        )
+        self.min_score_scope_hint.setObjectName("decisionQualityMinScoreScopeHint")
+        self.min_score_scope_hint.setWordWrap(True)
+        self.min_score_scope_hint.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         for label, widget in (
             ("覆盤類型", self.review_type_input),
             ("開始日期", self.start_date_input),
@@ -107,6 +121,10 @@ class DecisionQualityView(QWidget):
             ("最低分數 (0–10000)", self.min_score_input),
         ):
             filter_layout.addRow(label, widget)
+            if widget is self.symbol_input:
+                filter_layout.addRow("", self.symbol_scope_hint)
+            elif widget is self.min_score_input:
+                filter_layout.addRow("", self.min_score_scope_hint)
         self.min_score_error_label = QLabel("")
         self.min_score_error_label.setWordWrap(True)
         self.min_score_error_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.warning};")
@@ -114,9 +132,23 @@ class DecisionQualityView(QWidget):
         filter_layout.addRow("", self.min_score_error_label)
         self.refresh_button = QPushButton("重新整理")
         self.refresh_button.setProperty("variant", "primary")
+        self.refresh_button.setAccessibleName("重新整理決策品質")
         self.refresh_button.clicked.connect(self.refresh_dashboard)
-        filter_layout.addRow(self.refresh_button)
-        body.addWidget(filter_box)
+        self.filter_scroll_area = QScrollArea()
+        self.filter_scroll_area.setObjectName("decisionQualityFilterScrollArea")
+        self.filter_scroll_area.setWidgetResizable(True)
+        self.filter_scroll_area.setFrameShape(QScrollArea.NoFrame)
+        self.filter_scroll_area.setWidget(filter_box)
+        filter_panel = QWidget()
+        filter_panel.setObjectName("decisionQualityFilterPanel")
+        filter_panel_layout = QVBoxLayout(filter_panel)
+        filter_panel_layout.setContentsMargins(0, 0, 0, 0)
+        filter_panel_layout.setSpacing(8)
+        filter_panel_layout.addWidget(self.filter_scroll_area, stretch=1)
+        filter_panel_layout.addWidget(self.refresh_button, stretch=0)
+        self.filter_panel = filter_panel
+        self._update_filter_panel_height_limit()
+        body.addWidget(filter_panel)
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
@@ -156,6 +188,22 @@ class DecisionQualityView(QWidget):
         right_layout.addWidget(self.detail_panel, stretch=1)
         body.addWidget(right)
         body.setSizes([260, 900])
+
+    def event(self, event: QEvent) -> bool:
+        result = super().event(event)
+        if event.type() == QEvent.Type.ScreenChangeInternal:
+            self._update_filter_panel_height_limit()
+        return result
+
+    def _update_filter_panel_height_limit(self) -> None:
+        """依目前螢幕的邏輯可用高度限制左側控制，避免外層長頁撐開。"""
+
+        if self.filter_panel is None:
+            return
+        screen = self.screen()
+        available_height = screen.availableGeometry().height() if screen is not None else 0
+        maximum_height = min(520, int(available_height * 0.62)) if available_height > 0 else 520
+        self.filter_panel.setMaximumHeight(max(120, maximum_height))
 
     def refresh_dashboard(self) -> None:
         validation_error = _min_score_validation_error(self.min_score_input)

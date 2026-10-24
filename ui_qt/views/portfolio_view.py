@@ -3692,11 +3692,13 @@ class PortfolioView(QWidget):
             return
         self._refresh_worker = None
         worker.deleteLater()
-        if self._refresh_pending and not self._closing:
+        if self._closing:
+            return
+        if self._refresh_pending:
             self._refresh_pending = False
             self._start_refresh_worker()
             return
-        self.btn_refresh.setEnabled(not self._closing)
+        self.btn_refresh.setEnabled(True)
 
     def _handle_portfolio_refresh_error(self, message: str) -> None:
         error_line = _first_error_line(message)

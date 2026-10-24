@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M144；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M146；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M144 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M146 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -422,3 +422,11 @@ M144 由 Luna `/root/m133_fast_audit` 單一 writer 修改 `ui_qt/views/portfoli
 最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_26076e5bd48043a39196e088bc153f09/receipt.json` exit 0：受改 Python 編譯、相關 focused **115 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。首兩次聚焦各有 114 passed／1 failed，原因是新測試把 Qt 前一路由已排程刪除的按鈕當成目前導覽，改為檢查子導覽當前 `_buttons` 後通過；保留失敗收據，不當產品缺陷或最終 PASS。
 
 隔離正常 Windows Main 在 1280×760 與 1500×900、真 OS DPI216 的系統頁及 Paper 頁共四張 PNG，Sol 目視只見單一 Runtime 入口、原營運資料及 Paper 橫幅無缺字；舊 route、切回手動帳在程序中斷言。證據 `output/tasks/baldr-opus-ux-implementation/root/native_m143_m144_evidence/run_ed71853ee62e4736937f3d860e12dd3e/result.json`，Job `.../single_owned_qa_e9bb2537daf648249f16c1f0698e8379/receipt.json` exit 0。此 GUI 執行關窗時仍在 stderr 出現既有 Portfolio／Position Health 背景 worker 對已刪除 widget 發訊號的 `RuntimeError`；功能畫面及 route 斷言通過，關閉生命週期驗收**未通過**，列後續修復並不得據此聲稱完整 GUI 驗收。未使用正式／私人資料，未驗其他真 DPI、Light、固定新版 EXE、Owner UAT、自然排程或完整產品 Gate。
+
+## M145／M146 Portfolio 關窗晚到回呼
+
+M143／M144 的隔離 Main 關窗曾在 stderr 出現 `PositionHealthSavedPanel` worker 對已刪 relay 發訊號、`PortfolioView` 刷新 worker 對已刪按鈕寫入的 `RuntimeError`。Luna `/root/m145_saved_panel_shutdown` 只修改 `ui_qt/widgets/position_health_saved_panel.py` 及聚焦測試，使 worker relay 不再以 panel 為 QObject parent；panel 銷毀時其 receiver slot 仍由 Qt 解除連接，native thread finished 的 worker `deleteLater` 保留。Luna `/root/m146_portfolio_shutdown` 只修改 `ui_qt/views/portfolio_view.py` 及聚焦測試，refresh worker 釋放後若已關閉即返回，不觸碰按鈕或啟動 pending generation。Sol 修正註解與條件、加強 late-signal 測試斷言 relay 在 panel C++ 刪除後仍有效；無 Reader、保存、來源、帳本或金融計算變更。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_6ea671fabc944b048f11c63ce6bbe876/receipt.json` exit 0：受改 Python compile、focused **101 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；Job 8 GiB／12 程序上限、無殘留或強制清理。隔離正常 Windows Main 1280×760／1500×900、真 OS DPI216，在 Paper 分區主動觸發 Portfolio 刷新與已保存健康評估候選讀取，再各關窗及排空 deferred delete；`sys.excepthook` 收到 **0** 個 callback exception，兩次關窗成功、Job 無殘留。PNG、JSON `output/tasks/baldr-opus-ux-implementation/root/native_m145_m146_evidence/run_b73b5ebaec1749268d6886555e2e7e29/result.json`；Job `.../single_owned_qa_b664caf401e64aae93505c3cd485ed12/receipt.json` exit 0。這修正已重現的限定關閉路徑，不代表正式／私人帳、其他 DPI／Light、固定新版 EXE、Owner UAT 或完整產品 Gate 通過。
+
+Manual coverage：關窗操作入口、參數、取消語義與既有使用者可見提示均未改，本輪僅處理內部 Qt QObject lifetime；`APPLICATION_MANUAL.md` 不需再新增操作步驟。M143／M144 原失敗與警告收據保留作修復前證據，不改寫成當時通過。

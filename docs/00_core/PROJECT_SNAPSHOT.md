@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M145／M146 後繼原始碼修復 M143／M144 原生 QA 發現的 Portfolio 關窗晚到回呼：已保存 Position Health panel 的 worker 事件 relay 不隨 panel QObject 提早銷毀，Portfolio 刷新 worker 在 shutdown 後釋放但不再觸碰已刪按鈕。Sol 核對 focused 101、Workbench 85、validator 25／0／4、mypy 1,144；隔離正常 Main 在真 OS DPI216 的 1280×760／1500×900 觸發刷新與已保存評估讀取後關閉，兩次無 Qt callback exception、Job 無殘留。這只解決已重現的關窗路徑；正式／私人資料、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 仍未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m145m146-portfolio-關窗晚到回呼)。
+
 M143／M144 後繼原始碼收合系統管理兩個指向同一 Runtime 頁的入口為「系統狀態與診斷」，資料與更新、儲存維護仍各有入口；舊 `diagnostics` 程式呼叫會導向同一可見路由。Paper 模擬帳提示改為純文字，明示不會下單及與手動／實盤結果隔離，避免既有字型把實驗圖示顯成缺字。Sol 核對 115 個相關測試、Workbench 85、validator 25／0／4、mypy 1,144，並目視隔離正常 Main 1280×760／1500×900、真 OS DPI216。關窗時既有 Portfolio 背景 worker 曾輸出已刪除 widget 回呼例外，列為未解收尾風險；正式來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m143m144-系統入口與-paper-提示)。
 
 M141／M142 後繼原始碼把既有市場家數分布移到市場總覽首屏的「總覽」與「市場焦點」之間；紅漲、綠跌與中性平盤比例條只沿用同份快照的三個合格原家數，精確家數、來源日與品質仍可核，缺值和真零不互換。大盤指數檢測失敗時，主要區域顯白話未知狀態及下一步，原始多行錯誤只在可展開、可複製的純文字技術診斷中呈現；重新載入或成功結果清舊。Sol 退回廣度卡初版仍在 1280 首屏下方的位置，修正後正常 Main 真 Windows DPI216 的 1280×760／1500×900 首屏及錯誤／恢復畫面通過限定 QA；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m141m142-市況廣度首屏與市場失敗診斷)。未改市場計算、來源資格或正式資料；正式來源、其他 DPI／Light、固定新版 EXE、Owner UAT 與完整產品 Gate 未接受。

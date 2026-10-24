@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 import pytest
+import shiboken6
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -1468,6 +1469,22 @@ def test_portfolio_stale_worker_callback_cannot_replace_new_generation(tmp_path)
 
     assert view._last_portfolio_dto is previous
     assert view._refresh_worker is None
+
+
+def test_portfolio_late_cancel_callback_after_shutdown_skips_disposed_button(tmp_path):
+    app()
+    view = make_portfolio_view(tmp_path)
+    worker = TaskWorker(lambda: view._last_portfolio_dto)
+    view._refresh_worker = worker
+    view._refresh_pending = True
+
+    view.begin_shutdown()
+    shiboken6.delete(view.btn_refresh)
+
+    view._on_refresh_worker_cancelled(view._worker_generation, worker)
+
+    assert view._refresh_worker is None
+    assert view._refresh_pending is False
 
 
 def test_main_window_close_cancels_portfolio_worker_without_restarting_pending_generation(

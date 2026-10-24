@@ -67,7 +67,9 @@ class PositionHealthSavedPanel(QGroupBox):
         self._current_record: SavedHealthSelection | None = None
         self._candidates: tuple[SavedHealthReceiptCandidate, ...] = ()
         self._model = PositionHealthTableModel()
-        self._worker_events = _PositionHealthWorkerEvents(self)
+        # Worker 回呼可能晚於 panel 的 C++ QObject 銷毀；relay 獨立存活，
+        # 晚到訊號不會經已刪物件發出，panel slot 由 Qt 在銷毀時解除連接。
+        self._worker_events = _PositionHealthWorkerEvents()
         self._worker_events.completed.connect(self._on_finished)
         self._worker_events.failed.connect(self._on_error)
         self._worker_events.cancelled.connect(self._on_cancelled)

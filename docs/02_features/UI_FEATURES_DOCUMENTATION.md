@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M131 後繼原始碼：回測與 Portfolio 共用的 Matplotlib 備援權益曲線，有 `mplcursors` 時按其真實 Selection index 找交易列，滑離標記即撤提示；缺套件時用 Matplotlib scatter hit-test 的本機 annotation 顯示相同買賣欄位，重疊標記每側最多兩筆並標示餘數，清圖／換圖移除舊 callback。圖資料、交易數值、公式與來源資格不變。操作見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m131-備援權益圖真實-hover-與無-mplcursors-退路)。
+
 M130 後繼原始碼：回測／Portfolio 共用的四種 Matplotlib 備援圖，在可解析的系統繁中字型上局部設定標題、座標軸、刻度、圖中文字和圖例；權益圖買賣點動態提示亦沿同一字型，另以 DejaVu Sans 補數值負號。每次 `ax.clear()` 後重套；無候選字型保持原樣且不改 Matplotlib 全域設定。這不改圖資料、交易損益或來源資格，也不隨包散布 Windows 字型。操作見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m130-matplotlib-備援圖繁中字形)。
 
 M129 後繼原始碼：回測與 Portfolio 共用權益曲線的 Matplotlib 備援圖在有 `mplcursors` 時，買／賣點 hover 提示沿目前深色圖表設文字、底色及邊框；原日期、價格、股數、標記、損益與報酬內容不變。改動限動態 annotation，未改圖資料、金融公式、正式來源或固定舊 EXE。操作及限制見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m129-matplotlib-備援圖-hover-提示)。

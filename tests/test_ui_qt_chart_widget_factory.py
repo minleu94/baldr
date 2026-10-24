@@ -2,8 +2,11 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import matplotlib
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.font_manager import FontProperties
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+import pytest
 
 from ui_qt.theme import MIDNIGHT_ANALYST
 import ui_qt.widgets.chart_widget as chart_widget_module
@@ -249,6 +252,7 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
     monkeypatch,
 ):
     cursors = []
+    transient_hover = object()
 
     class _Cursor:
         def __init__(self):
@@ -259,7 +263,7 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
             self.add_callback = callback
 
     def cursor(_artist, *, hover):
-        assert hover is True
+        assert hover is transient_hover
         result = _Cursor()
         cursors.append(result)
         return result
@@ -303,7 +307,10 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
     monkeypatch.setattr(
         chart_widget_module,
         "mplcursors",
-        SimpleNamespace(cursor=cursor),
+        SimpleNamespace(
+            cursor=cursor,
+            HoverMode=SimpleNamespace(Transient=transient_hover),
+        ),
     )
     chart = SimpleNamespace(
         _buy_meta={
@@ -345,7 +352,8 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
     for cursor_item, expected_text in zip(cursors, expected_texts):
         annotation = _Annotation()
         selection = SimpleNamespace(
-            target=SimpleNamespace(index=0),
+            target=SimpleNamespace(data=[0.0, 0.0]),
+            index=0,
             annotation=annotation,
         )
         cursor_item.add_callback(selection)
@@ -358,6 +366,315 @@ def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
         assert annotation.bbox.facecolor == MIDNIGHT_ANALYST.surface_3
         assert annotation.bbox.edgecolor == MIDNIGHT_ANALYST.border
     assert len(chart._mplcursors_handles) == 2
+
+
+def test_real_mplcursors_mouse_events_use_selection_index_and_transient_hover(
+    monkeypatch,
+):
+    mplcursors = pytest.importorskip("mplcursors")
+    monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", True)
+    monkeypatch.setattr(chart_widget_module, "mplcursors", mplcursors)
+    monkeypatch.setattr(
+        chart_widget_module,
+        "_matplotlib_chinese_font_properties",
+        lambda: FontProperties(family="Noto Sans TC"),
+    )
+
+    figure = Figure(figsize=(4, 3))
+    canvas = FigureCanvasAgg(figure)
+    axes = figure.add_subplot(111)
+    buy_scatter = axes.scatter([1], [1])
+    sell_scatter = axes.scatter([3], [3])
+    chart = SimpleNamespace(
+        ax=axes,
+        canvas=canvas,
+        _buy_meta={
+            0: {
+                "date": datetime(2026, 10, 22),
+                "price": 123.45,
+                "shares": 2,
+                "tags": "entry",
+            }
+        },
+        _sell_meta={
+            0: {
+                "date": datetime(2026, 10, 23),
+                "price": 125.00,
+                "shares": 2,
+                "profit": 3.10,
+                "return_pct": 1.25,
+                "holding_days": 4,
+                "tags": "exit",
+            }
+        },
+        _mplcursors_handles=[],
+        _cursor_connections=[],
+        _trade_hover_annotation=None,
+        _crosshair_vline=None,
+        _crosshair_info_box=None,
+    )
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart, None, None, buy_scatter, sell_scatter
+    )
+    buy_cursor, sell_cursor = chart._mplcursors_handles
+    canvas.draw()
+
+    def _move_to_data(x_value, y_value):
+        pixel_x, pixel_y = axes.transData.transform((x_value, y_value))
+        event = MouseEvent("motion_notify_event", canvas, pixel_x, pixel_y)
+        canvas.callbacks.process("motion_notify_event", event)
+
+    _move_to_data(1, 1)
+    assert len(buy_cursor.selections) == 1
+    assert buy_cursor.selections[0].index == 0
+    assert buy_cursor.selections[0].annotation.get_text() == (
+        "BUY @ 2026-10-22\nBuy Price: $123.45\nShares: 2\nTags: entry"
+    )
+
+    _move_to_data(3, 3)
+    assert len(sell_cursor.selections) == 1
+    assert sell_cursor.selections[0].index == 0
+    assert sell_cursor.selections[0].annotation.get_text() == (
+        "SELL @ 2026-10-23\nSell Price: $125.00\nShares: 2\n"
+        "Profit: $3.10\nReturn%: 1.25%\nHolding Days: 4\nTags: exit"
+    )
+    assert not buy_cursor.selections
+
+    _move_to_data(2, 2)
+    assert not buy_cursor.selections
+    assert not sell_cursor.selections
+    chart_widget_module.EquityCurveWidget._cleanup_interactions(chart)
+
+
+def test_native_trade_hover_uses_scatter_contains_and_displays_buy_sell_and_blank(
+    monkeypatch,
+):
+    monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", False)
+    monkeypatch.setattr(
+        chart_widget_module,
+        "_matplotlib_chinese_font_properties",
+        lambda: FontProperties(family="Noto Sans TC"),
+    )
+
+    figure = Figure(figsize=(4, 3))
+    canvas = FigureCanvasAgg(figure)
+    axes = figure.add_subplot(111)
+    buy_scatter = axes.scatter([1], [1])
+    sell_scatter = axes.scatter([3], [3])
+    chart = SimpleNamespace(
+        ax=axes,
+        canvas=canvas,
+        _buy_meta={
+            0: {
+                "date": datetime(2026, 10, 22),
+                "price": 123.45,
+                "shares": 2,
+                "tags": "買進標籤",
+            }
+        },
+        _sell_meta={
+            0: {
+                "date": datetime(2026, 10, 23),
+                "price": 125.00,
+                "shares": 2,
+                "profit": 3.10,
+                "return_pct": 1.25,
+                "holding_days": 4,
+                "tags": "賣出標籤",
+            }
+        },
+        _cursor_connections=[],
+        _mplcursors_handles=[],
+        _trade_hover_annotation=None,
+    )
+
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart, None, None, buy_scatter, sell_scatter
+    )
+    annotation = chart._trade_hover_annotation
+    assert annotation is not None
+    assert not annotation.get_visible()
+
+    def _move_to_data(x_value, y_value):
+        pixel_x, pixel_y = axes.transData.transform((x_value, y_value))
+        event = MouseEvent("motion_notify_event", canvas, pixel_x, pixel_y)
+        canvas.callbacks.process("motion_notify_event", event)
+        return event
+
+    canvas.draw()
+    _move_to_data(1, 1)
+    assert annotation.get_visible()
+    assert annotation.get_text() == (
+        "BUY @ 2026-10-22\nBuy Price: $123.45\nShares: 2\nTags: 買進標籤"
+    )
+
+    _move_to_data(3, 3)
+    assert annotation.get_visible()
+    assert annotation.get_text() == (
+        "SELL @ 2026-10-23\nSell Price: $125.00\nShares: 2\n"
+        "Profit: $3.10\nReturn%: 1.25%\nHolding Days: 4\nTags: 賣出標籤"
+    )
+    assert annotation.get_color() == MIDNIGHT_ANALYST.text_primary
+    assert annotation.get_fontproperties().get_family() == ["Noto Sans TC"]
+    assert annotation.get_bbox_patch().get_facecolor()[:3] == matplotlib.colors.to_rgb(
+        MIDNIGHT_ANALYST.surface_3
+    )
+    assert annotation.get_bbox_patch().get_edgecolor()[:3] == matplotlib.colors.to_rgb(
+        MIDNIGHT_ANALYST.border
+    )
+
+    redraws = []
+    monkeypatch.setattr(canvas, "draw_idle", lambda: redraws.append("draw"))
+    _move_to_data(2, 2)
+    assert not annotation.get_visible()
+    assert len(redraws) == 1
+    _move_to_data(2, 2)
+    assert len(redraws) == 1
+
+
+def test_native_trade_hover_reports_both_sides_when_scatter_markers_overlap(
+    monkeypatch,
+):
+    monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", False)
+    figure = Figure(figsize=(4, 3))
+    canvas = FigureCanvasAgg(figure)
+    axes = figure.add_subplot(111)
+    buy_scatter = axes.scatter([2, 2, 2], [2, 2, 2])
+    sell_scatter = axes.scatter([2, 2, 2], [2, 2, 2])
+    chart = SimpleNamespace(
+        ax=axes,
+        canvas=canvas,
+        _buy_meta={
+            index: {
+                "date": datetime(2026, 10, 22),
+                "price": 123.45,
+                "shares": 2,
+                "tags": "entry",
+            }
+            for index in range(3)
+        },
+        _sell_meta={
+            index: {
+                "date": datetime(2026, 10, 23),
+                "price": 125.00,
+                "shares": 2,
+                "profit": 3.10,
+                "return_pct": 1.25,
+                "holding_days": 4,
+                "tags": "exit",
+            }
+            for index in range(3)
+        },
+        _cursor_connections=[],
+        _mplcursors_handles=[],
+        _trade_hover_annotation=None,
+    )
+
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart, None, None, buy_scatter, sell_scatter
+    )
+    canvas.draw()
+    pixel_x, pixel_y = axes.transData.transform((2, 2))
+    event = MouseEvent("motion_notify_event", canvas, pixel_x, pixel_y)
+    canvas.callbacks.process("motion_notify_event", event)
+
+    text = chart._trade_hover_annotation.get_text()
+    assert chart._trade_hover_annotation.get_visible()
+    assert "BUY @ 2026-10-22" in text
+    assert "SELL @ 2026-10-23" in text
+    assert text.index("BUY @") < text.index("SELL @")
+    assert text.count("BUY @") == 2
+    assert text.count("SELL @") == 2
+    assert text.count("…另有 1 個同類標記重疊") == 2
+
+
+def test_native_trade_hover_cleanup_removes_annotation_and_old_callback_before_replot(
+    monkeypatch,
+):
+    monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", False)
+    figure = Figure(figsize=(4, 3))
+    canvas = FigureCanvasAgg(figure)
+    axes = figure.add_subplot(111)
+    chart = SimpleNamespace(
+        ax=axes,
+        canvas=canvas,
+        _buy_meta={
+            0: {
+                "date": datetime(2026, 10, 22),
+                "price": 123.45,
+                "shares": 2,
+                "tags": "old",
+            }
+        },
+        _sell_meta={},
+        _cursor_connections=[],
+        _mplcursors_handles=[],
+        _trade_hover_annotation=None,
+        _crosshair_vline=None,
+        _crosshair_info_box=None,
+    )
+    old_scatter = axes.scatter([1], [1])
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart, None, None, old_scatter, None
+    )
+    canvas.draw()
+    old_annotation = chart._trade_hover_annotation
+    old_callback_id = chart._cursor_connections[0]
+    pixel_x, pixel_y = axes.transData.transform((1, 1))
+    event = MouseEvent("motion_notify_event", canvas, pixel_x, pixel_y)
+    canvas.callbacks.process("motion_notify_event", event)
+    assert old_annotation.get_visible()
+
+    chart_widget_module.EquityCurveWidget._cleanup_interactions(chart)
+    assert chart._trade_hover_annotation is None
+    assert old_annotation.axes is None
+    assert old_callback_id not in canvas.callbacks.callbacks.get(
+        "motion_notify_event", {}
+    )
+
+    axes.clear()
+    new_scatter = axes.scatter([2], [2])
+    chart._buy_meta = {
+        0: {
+            "date": datetime(2026, 10, 24),
+            "price": 130.00,
+            "shares": 1,
+            "tags": "new",
+        }
+    }
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart, None, None, new_scatter, None
+    )
+    canvas.draw()
+    pixel_x, pixel_y = axes.transData.transform((2, 2))
+    event = MouseEvent("motion_notify_event", canvas, pixel_x, pixel_y)
+    canvas.callbacks.process("motion_notify_event", event)
+    assert chart._trade_hover_annotation.get_visible()
+    assert "BUY @ 2026-10-24" in chart._trade_hover_annotation.get_text()
+    assert not old_annotation.get_visible()
+
+
+def test_native_trade_hover_does_not_connect_without_markers(monkeypatch):
+    monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", False)
+    figure = Figure()
+    canvas = FigureCanvasAgg(figure)
+    axes = figure.add_subplot(111)
+    chart = SimpleNamespace(
+        ax=axes,
+        canvas=canvas,
+        _buy_meta={},
+        _sell_meta={},
+        _cursor_connections=[],
+        _mplcursors_handles=[],
+        _trade_hover_annotation=None,
+    )
+
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart, None, None, None, None
+    )
+
+    assert chart._trade_hover_annotation is None
+    assert chart._cursor_connections == []
 
 
 def test_fast_chart_page_and_initial_empty_html_have_local_dark_background():

@@ -106,6 +106,31 @@ def _style_mpl_cursor_annotation(annotation: Any) -> None:
         bbox.set_edgecolor(MIDNIGHT_ANALYST.border)
 
 
+def _format_buy_hover_metadata(meta: Dict[str, Any]) -> str:
+    """沿用買點既有提示文字，供兩種 hover 實作共用。"""
+
+    text = f"BUY @ {meta['date'].strftime('%Y-%m-%d')}\n"
+    text += f"Buy Price: ${meta['price']:,.2f}\n"
+    text += f"Shares: {int(meta['shares']):,}\n"
+    if meta['tags']:
+        text += f"Tags: {meta['tags']}"
+    return text
+
+
+def _format_sell_hover_metadata(meta: Dict[str, Any]) -> str:
+    """沿用賣點既有提示文字，供兩種 hover 實作共用。"""
+
+    text = f"SELL @ {meta['date'].strftime('%Y-%m-%d')}\n"
+    text += f"Sell Price: ${meta['price']:,.2f}\n"
+    text += f"Shares: {int(meta['shares']):,}\n"
+    text += f"Profit: ${meta['profit']:,.2f}\n"
+    text += f"Return%: {meta['return_pct']:.2f}%\n"
+    text += f"Holding Days: {int(meta['holding_days'])}\n"
+    if meta['tags']:
+        text += f"Tags: {meta['tags']}"
+    return text
+
+
 class EquityCurveWidget(QWidget):
     """權益曲線圖表（支援買賣點 marker、hover tooltip、十字線）"""
     
@@ -117,6 +142,7 @@ class EquityCurveWidget(QWidget):
         self._crosshair_info_box = None  # 資訊框
         self._cursor_connections = []  # 事件連接 ID（用於清理）
         self._mplcursors_handles = []  # mplcursors 句柄（用於清理）
+        self._trade_hover_annotation = None  # mplcursors 缺席時的原生提示
         self._ax2 = None  # 右側 Y 軸（用於基準線）
         # 數據快取（用於 crosshair 和 tooltip）
         self._equity_series = None
@@ -770,18 +796,15 @@ class EquityCurveWidget(QWidget):
             # 買點 tooltip
             if buy_scatter is not None and len(self._buy_meta) > 0:
                 def buy_formatter(sel):
-                    idx = sel.target.index
+                    idx = sel.index
                     if idx in self._buy_meta:
-                        meta = self._buy_meta[idx]
-                        text = f"BUY @ {meta['date'].strftime('%Y-%m-%d')}\n"
-                        text += f"Buy Price: ${meta['price']:,.2f}\n"
-                        text += f"Shares: {int(meta['shares']):,}\n"
-                        if meta['tags']:
-                            text += f"Tags: {meta['tags']}"
-                        return text
+                        return _format_buy_hover_metadata(self._buy_meta[idx])
                     return ""
                 
-                cursor_buy = mplcursors.cursor(buy_scatter, hover=True)
+                cursor_buy = mplcursors.cursor(
+                    buy_scatter,
+                    hover=mplcursors.HoverMode.Transient,
+                )
 
                 def on_buy_cursor_add(sel):
                     sel.annotation.set_text(buy_formatter(sel))
@@ -793,21 +816,15 @@ class EquityCurveWidget(QWidget):
             # 賣點 tooltip
             if sell_scatter is not None and len(self._sell_meta) > 0:
                 def sell_formatter(sel):
-                    idx = sel.target.index
+                    idx = sel.index
                     if idx in self._sell_meta:
-                        meta = self._sell_meta[idx]
-                        text = f"SELL @ {meta['date'].strftime('%Y-%m-%d')}\n"
-                        text += f"Sell Price: ${meta['price']:,.2f}\n"
-                        text += f"Shares: {int(meta['shares']):,}\n"
-                        text += f"Profit: ${meta['profit']:,.2f}\n"
-                        text += f"Return%: {meta['return_pct']:.2f}%\n"
-                        text += f"Holding Days: {int(meta['holding_days'])}\n"
-                        if meta['tags']:
-                            text += f"Tags: {meta['tags']}"
-                        return text
+                        return _format_sell_hover_metadata(self._sell_meta[idx])
                     return ""
                 
-                cursor_sell = mplcursors.cursor(sell_scatter, hover=True)
+                cursor_sell = mplcursors.cursor(
+                    sell_scatter,
+                    hover=mplcursors.HoverMode.Transient,
+                )
 
                 def on_sell_cursor_add(sel):
                     sel.annotation.set_text(sell_formatter(sel))
@@ -816,10 +833,69 @@ class EquityCurveWidget(QWidget):
                 cursor_sell.connect("add", on_sell_cursor_add)
                 self._mplcursors_handles.append(cursor_sell)
         else:
-            # 使用基本 matplotlib annotation（較簡單的實現）
             logging.info("[EquityCurveWidget] 使用基本 tooltip（mplcursors 未安裝）")
-            # 這裡可以實現基本的 annotation，但功能較有限
-            # 為了簡化，暫時跳過
+            if (buy_scatter is None or not self._buy_meta) and (
+                sell_scatter is None or not self._sell_meta
+            ):
+                return
+
+            annotation = self.ax.annotate(
+                "",
+                xy=(0, 0),
+                xytext=(12, 12),
+                textcoords="offset points",
+                bbox=dict(boxstyle="round,pad=0.5"),
+                annotation_clip=True,
+                visible=False,
+                zorder=200,
+            )
+            _style_mpl_cursor_annotation(annotation)
+            self._trade_hover_annotation = annotation
+
+            def hide_annotation():
+                if annotation.get_visible():
+                    annotation.set_visible(False)
+                    self.canvas.draw_idle()
+
+            def on_trade_marker_move(event):
+                if event.inaxes is not self.ax or event.xdata is None or event.ydata is None:
+                    hide_annotation()
+                    return
+
+                hit_groups = []
+                for scatter, metadata, formatter in (
+                    (buy_scatter, self._buy_meta, _format_buy_hover_metadata),
+                    (sell_scatter, self._sell_meta, _format_sell_hover_metadata),
+                ):
+                    if scatter is None or not metadata:
+                        continue
+                    try:
+                        contains, details = scatter.contains(event)
+                    except (AttributeError, RuntimeError, ValueError):
+                        continue
+                    if not contains:
+                        continue
+                    indices = sorted(details.get("ind", ()))
+                    matched = [metadata[index] for index in indices if index in metadata]
+                    if matched:
+                        hit_groups.append([formatter(meta) for meta in matched[:2]])
+                        if len(matched) > 2:
+                            hit_groups[-1].append(
+                                f"…另有 {len(matched) - 2} 個同類標記重疊"
+                            )
+
+                if not hit_groups:
+                    hide_annotation()
+                    return
+
+                # 買賣兩側分組呈現；各自最多兩筆，更多時明示省略數量。
+                annotation.xy = (event.xdata, event.ydata)
+                annotation.set_text("\n\n".join("\n\n".join(group) for group in hit_groups))
+                annotation.set_visible(True)
+                self.canvas.draw_idle()
+
+            cid = self.canvas.mpl_connect("motion_notify_event", on_trade_marker_move)
+            self._cursor_connections.append(cid)
     
     def _cleanup_interactions(self):
         """清理互動事件連接"""
@@ -838,6 +914,15 @@ class EquityCurveWidget(QWidget):
             except:
                 pass
         self._mplcursors_handles.clear()
+
+        annotation = getattr(self, "_trade_hover_annotation", None)
+        if annotation is not None:
+            annotation.set_visible(False)
+            try:
+                annotation.remove()
+            except (AttributeError, RuntimeError, ValueError):
+                annotation.set_visible(False)
+            self._trade_hover_annotation = None
         
         # 重置十字線和資訊框
         if self._crosshair_vline:

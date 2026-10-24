@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M128；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M131；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M128 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M131 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -348,3 +348,9 @@ M129 的合成圖出現中文方框後，Sol 分派 Luna /root/m107_portfolio_au
 最終受控 Job output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_e6569394dd2d45c3aa585a779fd60c3a/receipt.json：受改 Python compile0、聚焦 **12 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。正常 Main 用隔離合成保存 CSV 強制 Matplotlib 備援，四圖於 1280×760／1500×900 真 OS DPI216 共 8 張 Main 及 8 張完整 canvas 圖、來源 SHA 不變，最終 output/tasks/baldr-opus-ux-implementation/root/native_m130_evidence/run_c709da6dad0d40e682d6743edeaf8863/result.json 與受控 Job root/single_owned_qa_2d38fe23d7df4374a66549d2344c2b0d/receipt.json exit0；圖表缺字警告設為失敗，Sol 目視中文與負號刻度可讀。另以真 Matplotlib annotation、callback 注入的買賣提示保留白底缺字 before 與深底可讀 after 四圖：root/native_m130_hover_evidence/run_044f24cd741147d9a9a22a14d021cd42/result.json，Job root/single_owned_qa_88e790b222fa413b95b77600374cb16a/receipt.json exit0。首輪單一字型的負號 warning root/single_owned_qa_62b3eba8c3f24fae9744ba5564b121e3/、修後 Main 八圖 root/single_owned_qa_4cb6b9170eb1431898d63b1bc2aa3738/ 及 hover harness 把 before 缺字當 after 門檻的失敗 root/single_owned_qa_c0884a21060e45768cf203160cdf5329/ 均保留如實記錄。
 
 M1–M130 仍是審查、裁決、實作與 QA 切片序號，非功能數。正式 Backtest／私人 Portfolio、實際使用者滑鼠 hover、缺候選字型機器、其他真 DPI／1920／Light、固定 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受；原始 PNG 與收據留 ignored output/，未改金融公式、正式資料或其他排程，未 push／merge／部署。
+
+## M131 備援權益圖真實 hover 與無 mplcursors 退路
+
+Luna `/root/m107_portfolio_audit` 唯一寫入 `ui_qt/widgets/chart_widget.py` 與 `tests/test_ui_qt_chart_widget_factory.py`，Sol 複核。M130 後稽核發現 `HAS_MPLCURSORS=False` 僅記錄 basic tooltip 卻未實作，且有套件路徑把 `sel.target.index` 當交易索引；真實 `mplcursors` 的 target 為座標陣列，首次原生 Qt 事件實際揭出 callback `AttributeError`。修為 `sel.index`，採 `HoverMode.Transient`；無套件時由 `PathCollection.contains` 找買賣點並用同一格式器呈現，重疊每側最多兩筆並明示省略量，游標離開或重繪清舊。沒有更動交易 metadata、圖資料、公式、PIT、來源資格或台股行情色義。最初檢查所用假 Selection 與真實 API 不同，已補真 `mplcursors` 加 Agg MouseEvent 回歸；先前失敗診斷保留，不當通過證據。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_637fd8fd8d374749b42741e04a43c333/receipt.json`：compile 0、圖表聚焦 **17 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無殘留。正常 Main 由 Workbench 進回測保存圖表，隔離合成 CSV 與 SQLite SHA 不變；真 Windows DPI216 在 1280×760（無套件）和 1500×900（有套件）以原生 Qt 畫布滑鼠事件驗買點、賣點、移開清除。結果 `.../root/native_m131_result.json`、四張 PNG 與受控 Job `.../root/single_owned_qa_2719fea440f44d63919cb84a8b76dd8d/receipt.json` exit0；Sol 目視繁中理由、提示深底與負號字形可讀。此事件由程式送入，尚非實體滑鼠；兩路徑未在每個尺寸交叉驗。正式回測與私人 Portfolio、其他真 DPI／Light／1920 可用螢幕、固定新版 EXE、Owner UAT、M73／M75 及完整產品 Gate 保持未接受。審查來源是 Opus 起始、額度用盡後由 Antigravity 接手完成；M1–M131 是切片序號，非功能數。

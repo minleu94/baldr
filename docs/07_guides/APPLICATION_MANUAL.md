@@ -1,5 +1,7 @@
 # baldr 完整操作手冊
 
+後繼 M131 原始碼：回測／Portfolio 使用 Matplotlib 備援權益圖時，將游標移到買點或賣點，可讀原日期、價格、股數、理由及來源提供的賣出結果；滑離後提示清除。沒有 `mplcursors` 的環境也提供同欄位的基本提示；同點多筆會限制顯示數量並告知其餘筆數。只在隔離合成正常 Main 以 Qt 畫布事件驗證，固定舊 EXE、正式來源、實體滑鼠及 Owner UAT 尚未驗收。詳[研究與回測手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)。
+
 M126／M127 後繼原始碼：Portfolio 的「情境壓力」已知阻擋／警示會同時顯中文解釋及原碼；缺價只計算有價列，不外推，流動性情境的可變現價值替代指標不是損益。Paper「持倉健康／退出候選」新增評估提案狀態列數圖；只有可核對、非空的同次資料顯真比例，來源封鎖或缺件顯未知。按原逐列表與評估原因判讀，圖卡不發出交易建議。詳[持倉手冊](manuals/WATCHLIST_AND_PORTFOLIO.md)；固定舊 EXE 未包含，隔離圖不等於正式來源驗收。
 
 M124／M125 後繼原始碼：證據覆盤「資料缺口」可展開本次篩選的警示文字頻次，異常或缺件顯未知；手動持倉表的價格、行情資料日與狀態取自同一持倉列，另讀的條件監控行情不補表列日期。詳[推薦與 Research Lab 手冊](manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)及[持倉手冊](manuals/WATCHLIST_AND_PORTFOLIO.md)。固定舊 EXE 未包含；合成畫面不等於正式來源驗收。

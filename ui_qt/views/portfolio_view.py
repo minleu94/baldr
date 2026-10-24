@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QListWidget, QListWidgetItem, QHeaderView, QMenu,
     QAbstractItemView, QGroupBox, QSplitter, QComboBox, QDateEdit,
     QDoubleSpinBox, QSpinBox, QFormLayout, QGridLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
-    QSizePolicy, QToolButton
+    QSizePolicy, QToolButton, QProgressBar
 )
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer, QModelIndex
 from PySide6.QtGui import QFont, QColor, QPalette, QBrush
@@ -86,6 +86,9 @@ from app_module.position_health_transition_read_service import (
 from app_module.decision_presentation import (
     PositionHealthPresentationDTO,
     PositionHealthReadModel,
+    POSITION_HEALTH_PRESENTATION_SCHEMA_VERSION,
+    POSITION_HEALTH_STATES,
+    position_health_state_label,
 )
 from app_module.research_session import (
     ResearchStockContextDTO,
@@ -123,6 +126,21 @@ from ui_qt.widgets.user_declared_holding_research_widget import (
 )
 
 logger = logging.getLogger(__name__)
+
+_POSITION_HEALTH_DISTRIBUTION_STATE_ORDER = (
+    "HEALTHY",
+    "WATCH",
+    "REDUCE_CANDIDATE",
+    "EXIT_CANDIDATE",
+    "CLOSED",
+)
+_POSITION_HEALTH_DISTRIBUTION_COLORS = {
+    "HEALTHY": "#4B879E",
+    "WATCH": "#D39B35",
+    "REDUCE_CANDIDATE": "#806EA5",
+    "EXIT_CANDIDATE": "#657C91",
+    "CLOSED": "#8994A1",
+}
 _POSITION_HEALTH_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -864,6 +882,46 @@ def _stress_quote_metadata_text(value: Any) -> str:
     return text or "未知"
 
 
+def _stress_diagnostic_text(value: Any) -> str:
+    """翻譯已知 Stress 診斷碼並保留原碼；未知診斷不猜測。"""
+
+    raw = str(value if value is not None else "").strip()
+    known_labels = {
+        "active_positions_missing": "目前沒有已標記持倉可供計算",
+        "price_source_unavailable": "價格來源不可用；未補值或估算",
+        "current_price_missing": "目前價格缺失，無法計算",
+        "partial_positions_only_no_extrapolation": (
+            "僅計算有價格的持倉，未對缺價列外推"
+        ),
+        "liquidation_capacity_is_not_pnl": "流動性可得性替代指標不代表損益",
+    }
+    label = known_labels.get(raw)
+    if label is not None:
+        return f"{label}（原碼：{raw}）"
+
+    if raw.startswith("current_price_missing:"):
+        codes = raw.partition(":")[2]
+        if codes:
+            return f"缺少目前價格的代號：{codes}（原碼：{raw}）"
+
+    if raw.startswith("scenario_requires:"):
+        required_inputs = raw.partition(":")[2].split(",")
+        input_labels = {
+            "sector_or_concept_exposures": "產業／概念曝險標籤",
+            "price_source_availability": "價格來源可用狀態",
+        }
+        if required_inputs and all(required_inputs):
+            readable_inputs = [
+                input_labels.get(item, item) for item in required_inputs
+            ]
+            return (
+                "情境需要必要輸入："
+                f"{', '.join(readable_inputs)}（原碼：{raw}）"
+            )
+
+    return raw or "未知診斷"
+
+
 def _system_status_label(raw: Any, *, dimension: str, fallback: dict[str, str]) -> str:
     """使用共用詞彙，僅對共用表未涵蓋的既有碼沿用專用文字。"""
 
@@ -1571,6 +1629,61 @@ class PortfolioView(QWidget):
             "Paper 持倉健康摘要"
         )
         paper_health_layout.addWidget(self.position_health_summary_label)
+
+        self.position_health_distribution_group = QGroupBox(
+            "Paper 評估提案狀態分布（僅研究；非交易動作）"
+        )
+        self.position_health_distribution_group.setObjectName(
+            "paperPositionHealthStateDistribution"
+        )
+        distribution_layout = QGridLayout(self.position_health_distribution_group)
+        distribution_layout.setContentsMargins(5, 2, 5, 3)
+        distribution_layout.setHorizontalSpacing(6)
+        distribution_layout.setVerticalSpacing(2)
+        self.position_health_distribution_status = QLabel(
+            "狀態分布未知；尚未載入可核對的 Paper 評估列。"
+        )
+        self.position_health_distribution_status.setObjectName(
+            "paperPositionHealthStateDistributionStatus"
+        )
+        self.position_health_distribution_status.setWordWrap(True)
+        self.position_health_distribution_status.setAccessibleName(
+            "Paper 評估提案狀態分布說明"
+        )
+        distribution_layout.addWidget(self.position_health_distribution_status, 0, 0, 1, 9)
+        self.position_health_distribution_counts: dict[str, QLabel] = {}
+        self.position_health_distribution_bars: dict[str, QProgressBar] = {}
+        for index, state in enumerate(_POSITION_HEALTH_DISTRIBUTION_STATE_ORDER):
+            row = index // 3 + 1
+            column = (index % 3) * 3
+            state_label = QLabel(position_health_state_label(state))
+            state_label.setAccessibleName(
+                f"{position_health_state_label(state)}評估列數狀態"
+            )
+            bar = QProgressBar()
+            bar.setTextVisible(False)
+            bar.setFixedHeight(12)
+            bar.setRange(0, 1)
+            bar.setValue(0)
+            bar.setVisible(False)
+            color = _POSITION_HEALTH_DISTRIBUTION_COLORS[state]
+            bar.setStyleSheet(
+                f"QProgressBar {{ border: 1px solid {MIDNIGHT_ANALYST.border}; border-radius: 3px; }}"
+                f"QProgressBar::chunk {{ background-color: {color}; border-radius: 2px; }}"
+            )
+            count_label = QLabel("—")
+            count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            count_label.setAccessibleName(
+                f"{position_health_state_label(state)}評估列數"
+            )
+            distribution_layout.addWidget(state_label, row, column)
+            distribution_layout.addWidget(bar, row, column + 1)
+            distribution_layout.addWidget(count_label, row, column + 2)
+            self.position_health_distribution_counts[state] = count_label
+            self.position_health_distribution_bars[state] = bar
+        for column in (1, 4, 7):
+            distribution_layout.setColumnStretch(column, 1)
+        paper_health_layout.addWidget(self.position_health_distribution_group)
 
         self.position_health_table = QTableView()
         self.position_health_table.setModel(self.position_health_model)
@@ -3289,10 +3402,118 @@ class PortfolioView(QWidget):
             self._position_health_by_id = {}
         self._render_position_health()
 
+    def _clear_position_health_state_distribution(self, message: str) -> None:
+        self.position_health_distribution_status.setText(message)
+        for count_label in self.position_health_distribution_counts.values():
+            count_label.setText("—")
+        for bar in self.position_health_distribution_bars.values():
+            bar.setRange(0, 1)
+            bar.setValue(0)
+            bar.setVisible(False)
+
+    def _render_position_health_state_distribution(
+        self, model: PositionHealthReadModel | None
+    ) -> None:
+        """只分布同一份 verified read model 中的 evaluator proposed_state。"""
+
+        if (
+            type(model) is not PositionHealthReadModel
+            or type(model.schema_version) is not str
+            or model.schema_version != POSITION_HEALTH_PRESENTATION_SCHEMA_VERSION
+            or type(model.status) is not str
+            or model.status not in {"passed", "degraded"}
+            or type(model.source_status) is not str
+            or model.source_status != "verified"
+            or type(model.quality) is not str
+            or model.quality not in {"verified", "observed"}
+            or type(model.blockers) is not tuple
+            or model.blockers
+            or type(model.positions) is not tuple
+            or not model.positions
+            or set(_POSITION_HEALTH_DISTRIBUTION_STATE_ORDER)
+            != set(POSITION_HEALTH_STATES)
+        ):
+            message = (
+                "狀態分布未知；目前沒有可核對的持倉評估列。"
+                if (
+                    type(model) is PositionHealthReadModel
+                    and type(model.positions) is tuple
+                    and not model.positions
+                )
+                else "狀態分布未知；資料來源、狀態或列格式不完整。"
+            )
+            self._clear_position_health_state_distribution(message)
+            return
+
+        counts = {state: 0 for state in _POSITION_HEALTH_DISTRIBUTION_STATE_ORDER}
+        seen_position_ids: set[str] = set()
+        for row in model.positions:
+            if (
+                type(row) is not PositionHealthPresentationDTO
+                or type(row.stock_code) is not str
+                or not row.stock_code.strip()
+                or type(row.proposed_state) is not str
+                or row.proposed_state not in POSITION_HEALTH_STATES
+                or type(row.source_status) is not str
+                or row.source_status != "verified"
+                or type(row.quality) is not str
+                or row.quality not in {"verified", "observed"}
+                or (
+                    row.position_id is not None
+                    and (
+                        type(row.position_id) is not str
+                        or not row.position_id.strip()
+                        or row.position_id in seen_position_ids
+                    )
+                )
+            ):
+                self._clear_position_health_state_distribution(
+                    "狀態分布未知；評估列來源、身份或 proposed_state 無法核對。"
+                )
+                return
+            if row.position_id:
+                seen_position_ids.add(row.position_id)
+            counts[row.proposed_state] += 1
+
+        total = len(model.positions)
+        for state, count in counts.items():
+            self.position_health_distribution_counts[state].setText(
+                f"{count}／{total} 列"
+            )
+            bar = self.position_health_distribution_bars[state]
+            bar.setRange(0, total)
+            bar.setValue(count)
+            bar.setVisible(True)
+        self.position_health_distribution_status.setText(
+            f"本次同一份已核對資料共 {total} 筆持倉評估列；按列計數，不按股票數或權重。"
+            "僅供研究判讀，不代表交易動作。"
+        )
+
     def _render_position_health(self) -> None:
         """獨立呈現 Paper rows；不把 Paper identity 猜配到人工持倉。"""
 
         model = self._position_health_read_model
+        if model is not None and (
+            type(model) is not PositionHealthReadModel
+            or type(model.positions) is not tuple
+            or any(
+                type(row) is not PositionHealthPresentationDTO
+                for row in model.positions
+            )
+        ):
+            self._position_health_by_id = {}
+            self.position_health_model.set_rows(())
+            self.position_health_table.setVisible(False)
+            self.position_health_summary_label.setText(
+                "Paper Position Health：未知；評估列格式不完整。"
+            )
+            self.position_health_summary_label.setToolTip("")
+            self.position_health_detail_label.setText(
+                "評估列格式無法核對；未以股票代號推測持倉身份或提案狀態。"
+            )
+            self._render_position_health_state_distribution(None)
+            self._refresh_portfolio_health_geometry()
+            return
         if model is None:
             self.position_health_model.set_rows(())
             self.position_health_table.setVisible(False)
@@ -3303,10 +3524,12 @@ class PortfolioView(QWidget):
                 "沒有可安全呈現的 Paper health；未以股票代號推測人工持倉 identity。"
             )
             self.position_health_summary_label.setToolTip("")
+            self._render_position_health_state_distribution(None)
             self._refresh_portfolio_health_geometry()
             return
 
         self.position_health_model.set_rows(model.positions)
+        self._render_position_health_state_distribution(model)
         self.position_health_table.setVisible(
             bool(model.positions) and self._advanced_details_visible
         )
@@ -3938,8 +4161,8 @@ class PortfolioView(QWidget):
             f"{value_text}"
         )
         diagnostics = [
-            *(f"阻擋：{item}" for item in result.blockers),
-            *(f"警告：{item}" for item in result.warnings),
+            *(f"阻擋：{_stress_diagnostic_text(item)}" for item in result.blockers),
+            *(f"警告：{_stress_diagnostic_text(item)}" for item in result.warnings),
         ]
         if result.missing_price_codes:
             diagnostics.append(

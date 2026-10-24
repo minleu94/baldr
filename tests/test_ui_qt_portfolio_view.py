@@ -43,6 +43,8 @@ from app_module.recommendation.legacy_dtos import (
 )
 from app_module.portfolio_source_adapter import build_recommendation_trade_source
 from app_module.decision_presentation import (
+    POSITION_HEALTH_PRESENTATION_SCHEMA_VERSION,
+    POSITION_HEALTH_STATES,
     PositionHealthPresentationDTO,
     PositionHealthReadModel,
 )
@@ -390,6 +392,47 @@ def _make_blocked_health_model() -> PositionHealthReadModel:
         broker_execution=False,
         formal_credit=False,
         positions=(_make_health_row(),),
+    )
+
+
+def _make_verified_health_row(
+    stock_code: str, position_id: str, proposed_state: str
+) -> PositionHealthPresentationDTO:
+    action = {
+        "HEALTHY": "HOLD",
+        "WATCH": "WATCH",
+        "REDUCE_CANDIDATE": "REDUCE_CANDIDATE",
+        "EXIT_CANDIDATE": "EXIT_CANDIDATE",
+        "CLOSED": "WATCH",
+    }[proposed_state]
+    return replace(
+        _make_health_row(stock_code),
+        position_id=position_id,
+        source_status="verified",
+        quality="observed",
+        condition_status="valid",
+        thesis_status="verified",
+        metrics_status="verified",
+        entry_lineage_status="same_snapshot_verified",
+        required_human_fields=(),
+        proposed_state=proposed_state,
+        raw_proposed_state=proposed_state,
+        action_suitability=action,
+        blockers=(),
+    )
+
+
+def _make_verified_health_model(
+    rows: tuple[PositionHealthPresentationDTO, ...],
+) -> PositionHealthReadModel:
+    return replace(
+        _make_blocked_health_model(),
+        schema_version=POSITION_HEALTH_PRESENTATION_SCHEMA_VERSION,
+        status="passed",
+        source_status="verified",
+        quality="observed",
+        blockers=(),
+        positions=rows,
     )
 
 
@@ -1092,6 +1135,136 @@ def test_portfolio_blocked_health_summary_keeps_rows_and_raw_timestamp(tmp_path)
     )
 
 
+def test_portfolio_position_health_state_distribution_counts_verified_rows(tmp_path):
+    states = (
+        "HEALTHY",
+        "WATCH",
+        "REDUCE_CANDIDATE",
+        "EXIT_CANDIDATE",
+        "CLOSED",
+    )
+    rows = tuple(
+        _make_verified_health_row(
+            "2330" if index < 2 else f"23{index:02d}",
+            f"paper:position-{index}",
+            state,
+        )
+        for index, state in enumerate(states)
+    )
+    model = _make_verified_health_model(rows)
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(model),
+    )
+
+    assert set(view.position_health_distribution_counts) == POSITION_HEALTH_STATES
+    assert "5 筆持倉評估列" in view.position_health_distribution_status.text()
+    assert "不按股票數或權重" in view.position_health_distribution_status.text()
+    assert "非交易動作" in view.position_health_distribution_group.title()
+    assert view.position_health_distribution_group.parentWidget() is view.paper_health_group
+    assert view.paper_health_group.layout().indexOf(
+        view.position_health_distribution_group
+    ) < view.paper_health_group.layout().indexOf(view.position_health_table)
+    for state in states:
+        assert view.position_health_distribution_counts[state].text() == "1／5 列"
+        assert view.position_health_distribution_bars[state].maximum() == 5
+        assert view.position_health_distribution_bars[state].value() == 1
+        assert not view.position_health_distribution_bars[state].isHidden()
+    view.close()
+
+
+def test_portfolio_position_health_state_distribution_shows_true_category_zero(tmp_path):
+    model = _make_verified_health_model(
+        (
+            _make_verified_health_row("2330", "paper:lot-a", "HEALTHY"),
+            _make_verified_health_row("2330", "paper:lot-b", "WATCH"),
+        )
+    )
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(model),
+    )
+
+    assert view.position_health_distribution_counts["HEALTHY"].text() == "1／2 列"
+    assert view.position_health_distribution_counts["WATCH"].text() == "1／2 列"
+    for state in ("REDUCE_CANDIDATE", "EXIT_CANDIDATE", "CLOSED"):
+        assert view.position_health_distribution_counts[state].text() == "0／2 列"
+        assert view.position_health_distribution_bars[state].value() == 0
+        assert view.position_health_distribution_bars[state].maximum() == 2
+        assert not view.position_health_distribution_bars[state].isHidden()
+    view.close()
+
+
+def test_portfolio_position_health_state_distribution_fails_closed_and_clears(
+    tmp_path,
+):
+    row = _make_verified_health_row("2330", "paper:lot-a", "HEALTHY")
+    valid = _make_verified_health_model((row,))
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(valid),
+    )
+    assert view.position_health_distribution_counts["HEALTHY"].text() == "1／1 列"
+
+    invalid_models = (
+        None,
+        replace(
+            valid,
+            source_status="missing",
+            quality="missing",
+            positions=(),
+        ),
+        replace(valid, status="blocked", source_status="blocked", quality="blocked"),
+        replace(valid, status="stale", source_status="stale", quality="unknown"),
+        replace(valid, source_status="unverified", quality="unknown"),
+        replace(valid, positions=(object(),)),
+        replace(valid, positions=(replace(row, proposed_state="FUTURE_STATE"),)),
+        replace(valid, positions=[row]),
+    )
+    for invalid in invalid_models:
+        view._position_health_read_model = invalid
+        view._render_position_health()
+        assert "未知" in view.position_health_distribution_status.text()
+        assert all(
+            label.text() == "—"
+            for label in view.position_health_distribution_counts.values()
+        )
+        assert all(
+            bar.isHidden()
+            for bar in view.position_health_distribution_bars.values()
+        )
+
+    class FailingPositionHealthReadService:
+        def read_latest(self, *, max_age_days: int):
+            assert max_age_days == 1
+            raise RuntimeError("synthetic health read failure")
+
+    view._position_health_read_model = valid
+    view._render_position_health()
+    assert view.position_health_distribution_counts["HEALTHY"].text() == "1／1 列"
+    view.position_health_read_service = FakePositionHealthReadService(
+        _make_blocked_health_model()
+    )
+    view._refresh_position_health(view._last_portfolio_dto)
+    assert "未知" in view.position_health_distribution_status.text()
+    assert all(
+        bar.isHidden() for bar in view.position_health_distribution_bars.values()
+    )
+
+    view.position_health_read_service = FailingPositionHealthReadService()
+    view._refresh_position_health(view._last_portfolio_dto)
+    assert view._position_health_read_model is None
+    assert "未知" in view.position_health_distribution_status.text()
+    assert all(
+        label.text() == "—"
+        for label in view.position_health_distribution_counts.values()
+    )
+    assert all(
+        bar.isHidden() for bar in view.position_health_distribution_bars.values()
+    )
+    view.close()
+
+
 def test_position_health_table_prioritizes_review_and_exposes_exact_row_identity(
     tmp_path,
 ):
@@ -1396,6 +1569,70 @@ def test_portfolio_stress_input_column_keeps_only_priced_rows(tmp_path):
     assert "缺最新價：2317" in view.stress_detail_label.text()
 
 
+def test_portfolio_stress_diagnostics_translate_known_codes_and_keep_raw_codes(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    view.btn_run_stress.click()
+    result = replace(
+        view._stress_result,
+        blockers=(
+            "active_positions_missing",
+            "scenario_requires:sector_or_concept_exposures,unknown_factor",
+            "price_source_unavailable",
+            "current_price_missing",
+            "current_price_missing:2330",
+            "future_blocker_code",
+        ),
+        warnings=(
+            "partial_positions_only_no_extrapolation",
+            "liquidation_capacity_is_not_pnl",
+            "future_warning_code",
+        ),
+    )
+
+    view._render_stress_lab(result)
+
+    diagnostics = view.stress_detail_label.text()
+    assert (
+        "目前沒有已標記持倉可供計算（原碼：active_positions_missing）"
+        in diagnostics
+    )
+    assert "產業／概念曝險標籤" in diagnostics
+    assert "unknown_factor" in diagnostics
+    assert (
+        "原碼：scenario_requires:sector_or_concept_exposures,unknown_factor"
+        in diagnostics
+    )
+    assert (
+        "價格來源不可用；未補值或估算（原碼：price_source_unavailable）"
+        in diagnostics
+    )
+    assert (
+        "目前價格缺失，無法計算（原碼：current_price_missing）"
+        in diagnostics
+    )
+    assert (
+        "缺少目前價格的代號：2330（原碼：current_price_missing:2330）"
+        in diagnostics
+    )
+    assert (
+        "僅計算有價格的持倉，未對缺價列外推"
+        "（原碼：partial_positions_only_no_extrapolation）"
+    ) in diagnostics
+    assert (
+        "流動性可得性替代指標不代表損益"
+        "（原碼：liquidation_capacity_is_not_pnl）"
+    ) in diagnostics
+    assert "阻擋：future_blocker_code" in diagnostics
+    assert "警告：future_warning_code" in diagnostics
+
+    view._load_stress_lab()
+    assert "future_warning_code" not in view.stress_detail_label.text()
+    assert (
+        "原碼：liquidation_capacity_is_not_pnl"
+        not in view.stress_detail_label.text()
+    )
+
+
 def test_portfolio_stress_quote_metadata_is_compact_with_copyable_full_hash(tmp_path):
     view = make_portfolio_view(tmp_path)
     view.btn_run_stress.click()
@@ -1638,6 +1875,14 @@ def test_portfolio_stress_load_failure_clears_result_and_disables_save(
     tmp_path, monkeypatch
 ):
     view = make_portfolio_view(tmp_path)
+    view.btn_run_stress.click()
+    previous_result = replace(
+        view._stress_result,
+        warnings=("liquidation_capacity_is_not_pnl",),
+    )
+    view._render_stress_lab(previous_result)
+    assert "liquidation_capacity_is_not_pnl" in view.stress_detail_label.text()
+
     monkeypatch.setattr(
         view.stress_lab_service,
         "evaluate_positions",
@@ -1649,6 +1894,7 @@ def test_portfolio_stress_load_failure_clears_result_and_disables_save(
     assert view._stress_result is None
     assert view.stress_summary_label.text() == "情境壓力測試載入失敗；未修改持倉。"
     assert view.stress_detail_label.text() == "診斷：stress fixture error"
+    assert "liquidation_capacity_is_not_pnl" not in view.stress_detail_label.text()
     assert view.stress_positions_table.model().rowCount() == 0
     assert "計算輸入" not in view.stress_positions_table.model()._dataframe.columns
     assert "報價來源" not in view.stress_positions_table.model()._dataframe.columns

@@ -1,5 +1,7 @@
 ﻿# UI 功能文件（Qt）
 
+M157 Portfolio 選中持倉摘要：原平均成本、目前價格與未實現毛損益的首層文字以 TWD 兩位小數顯示，有實際捨入時標「約」；提示與無障礙描述保留三項具名完整原值。極小非零不顯成 0.00，真零與未知分開，取消選列清舊提示。數量、日期、來源、Health 身分及金融計算不變；限定 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m157-portfolio-選中持倉金額顯示)。固定舊 EXE 與正式產品 Gate 未接受。
+
 M156 全域建置身分：已驗開發版的正常視窗標題與常駐狀態列只顯可讀日期及「開發版」，不常駐原始 commit 或 dirty；已驗發布版沿既有短版，未核實版本明確顯示警示。詳細版本、commit、dirty、lock SHA 及設定路徑留在原提示。BuildIdentity 模型、偵測及來源資格不變；真 OS DPI216 兩尺寸隔離 Main、聚焦及共同 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m156-全域建置身分資訊層級)。固定舊 EXE 未包含，正式產品 Gate 未接受。
 
 M155 保存推薦精確讀回：canonical 與唯讀舊格式的候選少於五列時，表格和結果分割區按原列數收縮，空結果保留一列高的空框，讓原來源及理由區更早可見；五列以上及新執行仍保留五列最低高度。只調版面，不改候選、分數、日期、核身或金融資格。真 OS DPI216 隔離 Main 兩尺寸與聚焦 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m155-少量保存推薦的表格與來源區)；正式來源與產品 Gate 未接受。

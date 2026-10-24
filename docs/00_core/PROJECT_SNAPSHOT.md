@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M157 後繼 UI：Portfolio「選中持倉重點摘要」的平均成本、現價與未實現毛損益以 TWD 兩位小數顯示；有捨入時標「約」，完整原值留在提示及無障礙描述，極小非零仍顯原值而非假零。取消選列清除舊提示，缺件維持未知，原持倉、計算、日期及 Health 身分不變。Sol 審查 Portfolio focused 100、Workbench 85、validator 25／0／4、mypy 1,144、compile0；真 OS DPI216 的 1280×760／1500×900 隔離合成 Portfolio 兩圖可讀、callback exception0。正式／私人資料、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m157-portfolio-選中持倉金額顯示)。
+
 M156 後繼 UI：原審查 P0 的全域建置資訊常駐雜訊仍可在 M155 正常 Main 畫面見到。已核實開發版現在於標題與底部只顯日期和「開發版」，release 保持短版；來源未核實時仍明示「未核實版本｜請檢查程式來源」。完整版本、commit、dirty、依賴鎖及來源路徑留原 tooltip 可核，不改建置偵測或來源資格。Sol 核對真 OS DPI216 的 1280×760／1500×900 隔離 Main 六圖、callback exception0；聚焦26、Workbench85、validator25／0／4、mypy1,144、compile0。正式資料、其他 DPI／Light、固定新版 EXE、Owner UAT 與產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m156-全域建置身分資訊層級)。
 
 M155 後繼 UI：精確讀回 canonical／唯讀舊格式保存推薦時，候選只有 1–4 列便按實際列數收縮表格及結果分割區，0 列保留一列高的空框；來源與推薦理由因此更早進入首屏。五列以上及新執行結果仍保留原五列最低高度，原值、日期、身份與來源資格不變。Sol 首輪原生畫面退回只改 minimumHeight 的版本，修正 QSplitter 實際配置後，在真 OS DPI216 的 1280×760／1500×900 隔離 Main 驗 canonical 2／0 列與舊格式 1 列六圖，callback exception0；聚焦45 通過。共同回歸與限制見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m155-少量保存推薦的表格與來源區)。正式來源、其他 DPI／Light／1920、固定 EXE、自然排程、Owner UAT 與產品 Gate 尚未接受。

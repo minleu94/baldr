@@ -684,9 +684,9 @@ def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path
     focus_text = view.position_focus_label.text()
     assert "2317 鴻海" in focus_text
     assert "持有 1,000 股" in focus_text
-    assert "平均成本 TWD 150" in focus_text
-    assert "目前價格 TWD 151" in focus_text
-    assert "未實現損益（毛額）TWD 1,000" in focus_text
+    assert "平均成本 TWD 150.00" in focus_text
+    assert "目前價格 TWD 151.00" in focus_text
+    assert "未實現損益（毛額）TWD 1,000.00" in focus_text
     assert "報價資料日：未知" in focus_text
     assert "Paper Health：觀察／未知" in focus_text
     assert "不構成交易動作" in focus_text
@@ -698,6 +698,61 @@ def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path
     assert "校準機率：不可用（研究中）" in detail_text
     assert "成本基準：TWD 150.00" in detail_text
     assert "來源追溯：recommendation_result；rec-1" in detail_text
+
+
+def test_portfolio_selected_position_money_summary_bounds_precision_and_keeps_exact_values(
+    tmp_path,
+):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    position = service.positions[1]
+    position.average_cost = Decimal("150.123456789")
+    position.current_price = Decimal("0.00000012")
+    position.unrealized_pnl = Decimal("-0.00000012")
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    view.refresh_all()
+
+    assert view.select_stock("2317") is True
+    summary = view.position_focus_label.text()
+    assert "持有 1,000 股" in summary
+    assert "平均成本 約 TWD 150.12" in summary
+    assert "目前價格 TWD 0.00000012" in summary
+    assert "未實現損益（毛額）TWD -0.00000012" in summary
+    exact_values = view.position_focus_label.toolTip()
+    assert "平均成本（TWD）：150.123456789" in exact_values
+    assert "目前價格（TWD）：0.00000012" in exact_values
+    assert "未實現損益（毛額，TWD）：-0.00000012" in exact_values
+    assert view.position_focus_label.accessibleDescription() == exact_values
+
+    view.positions_table.clearSelection()
+    view._render_selected_position_focus(view._selected_position_for_current_row())
+    assert view.position_focus_label.toolTip() == ""
+    assert view.position_focus_label.accessibleDescription() == ""
+    view.close()
+
+
+@pytest.mark.parametrize("invalid_value", [Decimal("NaN"), "not-a-number"])
+def test_portfolio_selected_position_money_summary_keeps_zero_and_unknown_values(
+    tmp_path, invalid_value
+):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    position = service.positions[1]
+    position.average_cost = Decimal("-0.000")
+    position.current_price = None
+    position.unrealized_pnl = invalid_value
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    view.refresh_all()
+
+    assert view.select_stock("2317") is True
+    summary = view.position_focus_label.text()
+    assert "平均成本 TWD 0.00" in summary
+    assert "目前價格 未知" in summary
+    assert "未實現損益（毛額）未知" in summary
+    exact_values = view.position_focus_label.toolTip()
+    assert "平均成本（TWD）：-0.000" in exact_values
+    assert "目前價格（TWD）：未知" in exact_values
+    assert "未實現損益（毛額，TWD）：未知" in exact_values
+    assert view.position_focus_label.accessibleDescription() == exact_values
+    view.close()
 
 
 def test_portfolio_position_health_known_states_are_human_readable_with_raw_tooltips(

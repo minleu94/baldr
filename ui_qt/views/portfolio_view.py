@@ -8,7 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
@@ -5252,9 +5252,11 @@ class PortfolioView(QWidget):
             else:
                 text = "目前沒有可摘要的持倉列；成本、現價、損益與 Health／Exit 均未知。"
             self.position_focus_label.setText(text)
+            self.position_focus_label.setToolTip("")
+            self.position_focus_label.setAccessibleDescription("")
             return
 
-        def value_text(value: object, *, money: bool = False) -> str:
+        def value_text(value: object) -> str:
             if value is None:
                 return "未知"
             if isinstance(value, bool):
@@ -5265,16 +5267,63 @@ class PortfolioView(QWidget):
                 return "未知"
             if not number.is_finite():
                 return "未知"
-            rendered = format(number, ",f")
-            return f"TWD {rendered}" if money else rendered
+            return format(number, ",f")
+
+        original_amounts: list[str] = []
+
+        def money_text(label: str, value: object) -> str:
+            if value is None or isinstance(value, bool):
+                original_amounts.append(f"{label}：未知")
+                return "未知"
+            try:
+                number = Decimal(str(value))
+            except (InvalidOperation, TypeError, ValueError):
+                original_amounts.append(f"{label}：未知")
+                return "未知"
+            if not number.is_finite():
+                original_amounts.append(f"{label}：未知")
+                return "未知"
+
+            exact_value = format(number, "f")
+            original_amounts.append(f"{label}：{exact_value}")
+            if number.is_zero():
+                rounded = Decimal("0.00")
+            else:
+                parts = number.as_tuple()
+                required_precision = max(
+                    28,
+                    len(parts.digits) + 2,
+                    number.adjusted() + 3,
+                )
+                try:
+                    with localcontext() as context:
+                        context.prec = required_precision
+                        rounded = number.quantize(
+                            Decimal("0.01"), rounding=ROUND_HALF_UP
+                        )
+                except (InvalidOperation, OverflowError):
+                    # 極端精度也保留原有限值，不把格式化失敗冒充成零。
+                    return f"TWD {format(number, ',f')}"
+
+            # 細於一分的非零值不可在摘要中被四捨五入成 0.00。
+            if not number.is_zero() and rounded.is_zero():
+                return f"TWD {format(number, ',f')}"
+            rendered = f"{rounded:,.2f}"
+            if rounded != number:
+                return f"約 TWD {rendered}"
+            return f"TWD {rendered}"
 
         code = str(getattr(position, "stock_code", "") or "未知")
         name = str(getattr(position, "stock_name", "") or "名稱未提供")
         quantity = value_text(getattr(position, "quantity", None))
-        average_cost = value_text(getattr(position, "average_cost", None), money=True)
-        current_price = value_text(getattr(position, "current_price", None), money=True)
-        unrealized_pnl = value_text(
-            getattr(position, "unrealized_pnl", None), money=True
+        average_cost = money_text(
+            "平均成本（TWD）", getattr(position, "average_cost", None)
+        )
+        current_price = money_text(
+            "目前價格（TWD）", getattr(position, "current_price", None)
+        )
+        unrealized_pnl = money_text(
+            "未實現損益（毛額，TWD）", getattr(position, "unrealized_pnl", None)
         )
         quote_date = self._cached_position_quote_date(position, code) or "未知"
         source_type = str(getattr(position, "source_type", "") or "未提供")
@@ -5292,6 +5341,12 @@ class PortfolioView(QWidget):
             f"報價資料日：{quote_date}｜持倉來源：{source_type} / {source_id}\n"
             f"{health_text}；這是來源狀態摘要，不構成交易動作。"
         )
+        exact_amount_text = (
+            "完整原始金額（TWD；可核對摘要顯示值）：\n"
+            + "\n".join(original_amounts)
+        )
+        self.position_focus_label.setToolTip(exact_amount_text)
+        self.position_focus_label.setAccessibleDescription(exact_amount_text)
 
     def _render_selected_position_presentation(self) -> None:
         """把共用 Advice 與 exact Position Health projection 顯示在明細區。"""

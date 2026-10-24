@@ -14,8 +14,9 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QEvent, QThread, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
 import shiboken6
 
 from app_module.research_console_dtos import (
@@ -34,9 +35,11 @@ from app_module.recommendation_learning_evidence_projection_service import (
 )
 from ui_qt.views.research_console_view import (
     ResearchConsoleView,
+    _set_rows,
     _learning_next_step,
     _learning_record_summary,
 )
+from ui_qt.theme import MIDNIGHT_ANALYST
 import ui_qt.views.research_console_view as research_console_view_module
 
 
@@ -45,6 +48,45 @@ def app() -> QApplication:
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_color"),
+    (
+        ("observed", MIDNIGHT_ANALYST.status_info),
+        ("verified", MIDNIGHT_ANALYST.status_info),
+        ("recorded", MIDNIGHT_ANALYST.status_info),
+        ("accepted", MIDNIGHT_ANALYST.status_success),
+        ("completed", MIDNIGHT_ANALYST.status_success),
+        ("missing", MIDNIGHT_ANALYST.status_error),
+        ("blocked", MIDNIGHT_ANALYST.status_error),
+        ("blocked_provenance", MIDNIGHT_ANALYST.status_error),
+        ("future_blocked", MIDNIGHT_ANALYST.status_error),
+        ("unknown", MIDNIGHT_ANALYST.text_muted),
+        ("disabled", MIDNIGHT_ANALYST.text_muted),
+        ("candidate", "#a78bfa"),
+        ("research_shadow", "#a78bfa"),
+        ("fixture", "#94a3b8"),
+        ("replay", "#94a3b8"),
+    ),
+)
+def test_research_console_status_colors_use_semantic_tokens_without_losing_raw_state(
+    status: str, expected_color: str,
+) -> None:
+    app()
+    table = QTableWidget()
+    table.setColumnCount(1)
+
+    _set_rows(table, ((status,),), status_column=0)
+
+    item = table.item(0, 0)
+    assert item is not None
+    assert item.foreground().color() == QColor(expected_color)
+    assert f"原始狀態：{status}" in item.toolTip()
+    assert expected_color not in {
+        MIDNIGHT_ANALYST.market_up,
+        MIDNIGHT_ANALYST.market_down,
+    }
 
 
 def _console() -> ResearchConsoleDTO:

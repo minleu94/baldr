@@ -27,6 +27,7 @@ from app_module.decision_capture_status_reader import (
     DecisionCaptureStage,
 )
 from ui_qt.views.runtime_view import MAX_RENDERED_RUNTIME_EVENTS, RuntimeView
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 def app():
@@ -79,6 +80,8 @@ def test_runtime_view_static_labels_are_chinese_and_scope_is_explicit():
     view = RuntimeView()
 
     assert "任務狀態機" in view.state_group.title()
+    assert "未知（尚未讀取）" in view.last_violation_label.text()
+    assert MIDNIGHT_ANALYST.text_muted in view.last_violation_label.styleSheet()
     assert "OUTPUT_ROOT/scheduled" in view.scope_label.text()
     assert "Windows Task Scheduler" in view.scope_label.text()
     assert "營運排程" in view.operations_group.title()
@@ -156,7 +159,7 @@ def test_runtime_state_snapshot_renders_chinese_idle_text():
     assert "任務流程狀態：閒置" in view.status_label.text()
 
 
-def test_runtime_health_halted_uses_red_warning_and_chinese_labels():
+def test_runtime_health_halted_uses_error_status_and_chinese_labels():
     app()
     view = RuntimeView()
     dto = make_runtime_health_dto()
@@ -164,10 +167,55 @@ def test_runtime_health_halted_uses_red_warning_and_chinese_labels():
     view.on_health_updated(dto)
 
     assert "治理暫停" in view.health_state_label.text()
+    assert MIDNIGHT_ANALYST.status_error in view.health_state_label.text()
     assert "驗證拒絕率：80.0%" in view.rejection_rate_label.text()
     assert "連續失敗次數：4" in view.rejection_rate_label.text()
     assert "治理規則違反" in view.last_violation_label.text()
+    assert MIDNIGHT_ANALYST.status_error in view.last_violation_label.styleSheet()
     assert "不代表日常營運排程或主 App 一般功能失敗" in view.health_scope_note_label.text()
+
+
+def test_last_violation_status_color_clears_from_current_to_none_and_noncurrent():
+    app()
+    view = RuntimeView()
+    violation = make_runtime_health_dto()
+
+    view.on_health_updated(violation)
+    assert MIDNIGHT_ANALYST.status_error in view.last_violation_label.styleSheet()
+
+    no_violation = replace(
+        violation,
+        is_healthy=True,
+        current_state=RuntimeState.IDLE,
+        rejection_rate=0.0,
+        consecutive_failures=0,
+        last_critical_violation=None,
+    )
+    view.on_health_updated(no_violation)
+    assert view.last_violation_label.text() == "最近重大違規：無"
+    assert MIDNIGHT_ANALYST.status_success in view.health_state_label.text()
+    assert MIDNIGHT_ANALYST.text_secondary in view.last_violation_label.styleSheet()
+    assert MIDNIGHT_ANALYST.status_error not in view.last_violation_label.styleSheet()
+
+    historical = replace(
+        violation,
+        current_state=RuntimeState.IDLE,
+        observation_scope="historical_only",
+        historical_event_count=1,
+    )
+    view.on_health_updated(historical)
+    assert "最近歷史重大違規" in view.last_violation_label.text()
+    assert MIDNIGHT_ANALYST.status_info in view.last_violation_label.styleSheet()
+    assert MIDNIGHT_ANALYST.status_error not in view.last_violation_label.styleSheet()
+
+    unreadable = replace(
+        historical,
+        observation_scope="event_log_unreadable",
+        event_log_read_state="unavailable",
+    )
+    view.on_health_updated(unreadable)
+    assert MIDNIGHT_ANALYST.status_error not in view.last_violation_label.styleSheet()
+    assert MIDNIGHT_ANALYST.text_secondary in view.last_violation_label.styleSheet()
 
 
 def test_runtime_event_stream_shows_chinese_summary_and_raw_tooltip():

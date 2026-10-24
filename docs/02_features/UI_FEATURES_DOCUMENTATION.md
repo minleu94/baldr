@@ -1,5 +1,7 @@
 ﻿# UI 功能文件（Qt）
 
+M163–M165 將 M162 狀態軸接到 Runtime 治理健康／重大違規、Workbench 徽章與表格、Research Console 狀態列。`observed`、`verified` 及 Workbench 的研究候選／`active_model` 用資訊藍，`accepted`／`ready`／`done` 用 teal，降級／待處理用 amber，缺件／阻擋／目前重大違規用 orchid，未知／停用為中性；Research Console 的候選仍用原紫色，fixture／replay 保留原灰色。Runtime 從目前違規切到無違規、歷史或讀取錯誤會清掉錯誤色，歷史事件不表示目前有違規。原狀態碼、原注意列判斷、DTO／來源資格、台股 market_* 與金融計算不變；[限定 QA 與原生畫面](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m163m165-狀態語義遷移與原生複核)不等於正式產品 Gate。
+
 M162 共用狀態色：QLabel 的 statusTone、StatusBadge 和 SemanticChip 用獨立狀態 token，已觀測／人工觀測以資訊藍表示，ready／done／passed 為 teal，估計／降級與需人工處理為 amber，缺件／阻擋／critical 為 orchid，unknown／off 中性。台股 market_up 紅、market_down 綠、market_flat 中性與原狀態文字保持；狀態顏色不是行情方向、正式來源資格或交易訊號。真 OS DPI216 兩尺寸原生樣本及受控 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m162-共用狀態色與市場方向色隔離)；Light、其他 DPI 與完整 Gate 未驗。
 
 M160 決策工作台 Advice：原 `AdviceDashboardDTO` 的模式、決策日／資料日、正式／Professional／配置列數與原警告先呈摘要；正式與配置表的已知動作、品質、可成交性顯中文，原碼在提示及無障礙文字，未知仍原樣。選列卡顯原理由／論點、適用期間、風險與失效條件，長內容完整保留在共用證據明細；0 列不占表格高度，有列保留表內捲動。載入、失敗及空態清舊，沒有新增策略判斷、交易指令或來源資格。隔離合成 Native 與 QA 見[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)；正式來源與產品 Gate 未接受。

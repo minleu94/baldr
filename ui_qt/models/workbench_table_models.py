@@ -25,6 +25,7 @@ from app_module.decision_presentation import (
     position_health_review_label,
     position_health_source_status_label,
 )
+from ui_qt.theme.tokens import MIDNIGHT_ANALYST
 
 
 ColumnSpec = tuple[tuple[str, str], ...]
@@ -555,23 +556,24 @@ def _is_attention_status(status: str) -> bool:
 
 def _status_tone(status: str) -> dict[str, str]:
     token = str(status)
-    if token in {"critical", "blocked", "missing", "source_missing", "invalid_evidence"}:
-        return {"fg": "#ef4444", "bg": "#2a1114"}
+    if token in {"critical", "blocked", "missing", "source_missing", "invalid_evidence", "future_blocked"}:
+        return {"fg": MIDNIGHT_ANALYST.status_error, "bg": "#27162d"}
     if token in {
         "warning",
         "degraded",
         "action_required",
         "manual_required",
         "waiting_for_time",
-        "machine_candidate",
         "machine_degraded",
         "stale",
     }:
-        return {"fg": "#f59e0b", "bg": "#221a10"}
-    if token in {"observed", "ready", "done", "passed"}:
-        return {"fg": "#22c55e", "bg": "#0d2116"}
-    if token in {"manual_observed", "info"}:
-        return {"fg": "#38bdf8", "bg": "#0b1c27"}
+        return {"fg": MIDNIGHT_ANALYST.status_warning, "bg": "#221a10"}
+    if token in {"ready", "done", "passed"}:
+        return {"fg": MIDNIGHT_ANALYST.status_success, "bg": "#0b2624"}
+    if token in {"observed", "manual_observed", "info", "machine_candidate", "candidate", "challenger_candidate", "active_model"}:
+        return {"fg": MIDNIGHT_ANALYST.status_info, "bg": "#0b1c27"}
+    if token == "candidate_degraded":
+        return {"fg": MIDNIGHT_ANALYST.status_warning, "bg": "#221a10"}
     return {"fg": "#94a3b8", "bg": "#111827"}
 
 

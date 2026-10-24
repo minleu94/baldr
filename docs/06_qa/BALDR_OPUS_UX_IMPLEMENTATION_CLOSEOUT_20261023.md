@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M154；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M165；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M154 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M165 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -491,7 +491,7 @@ Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9
 
 最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_93d1b6b2d580466b88c7f13753157ca4/receipt.json` exit0：受改 Python compile0、相關 focused **45 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。這些是隔離合成及原始碼 QA；正式保存來源、其他真 OS DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受。M1–M155 是審查、裁決、實作與 QA 切片序號，不是 155 個獨立功能；原始 PNG／收據留 ignored `output/`，本機提交不 push、merge 或部署。
 
-## 排程啟動至 M162 的盤點
+## 排程啟動至 M165 的盤點
 
 | 範圍 | 已完成的工程與驗證 | 尚未接受的界線 |
 | --- | --- | --- |
@@ -499,6 +499,7 @@ Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9
 | P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化；選中持倉及回測 Sharpe 短顯與完整原值可核；Workbench Advice 原警告、日期與選列理由可見。 | 正式保存／市場來源與 Owner UAT 未驗。 |
 | P1 產業題材 | 原資料範圍內的題材格、成交額與覆蓋圖、九指標、同版成員／鄰域、搜尋、雙版本原值、具名母體三態與成員條件側欄，保留精確下鑽。 | 多期間報酬、逐邊有向關係需合格來源、時鐘及用途契約。 |
 | P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；持倉毛損益正／負／零／未知家數分布；修關窗晚到回呼及備援圖互動／字形；共用狀態色與市場方向色分離。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
+| M163–M165 狀態語義 | Runtime 治理健康與重大違規、Workbench 徽章／表格、Research Console 狀態列接獨立狀態色；由原生圖退回並修正 Runtime 剩餘舊紅／綠。 | 合成元件與特定狀態轉換已驗；正式資料、正常 Main 全旅程、其他 DPI／Light、EXE 和真人未驗。 |
 | P3 產業鏈 | 已有同版重疊、分類與成員探索；Sol 拒絕把共現當有向供應鏈或把資料覆蓋當跨期強弱。 | M75 逐邊證據與跨期 PIT 用途仍缺；M73 決策品質控制作用範圍仍需產品裁決。 |
 
 各切片均由 Luna 依單一 writer 邊界實作或唯讀盤點，Sol 複核、退回必要修正並以 root-owned 受控 Job 做聚焦、共同回歸及隔離原生畫面；原失敗與探針收據保留。此盤點只收束本機原始碼階段，不代表正式產品驗收或可交易資格。
@@ -554,3 +555,13 @@ Sol 先退回表格 role 覆蓋基類、空態誤把原警告改寫與長卡無�
 Luna /root/m160_workbench_advice 單一 writer 只改 ui_qt/theme/tokens.py、ui_qt/theme/qss.py、ui_qt/widgets/theme_widgets.py 與 tests/test_ui_qt_theme.py。原 success=#22c55e 與台股 market_down 同色、原 danger 與 market_up 同紅族，易把品質／作業狀態看成市場漲跌。新增 status_success teal #2dd4bf、status_error orchid #e879f9、status_warning amber #f6b44b、status_info blue #77aef5；只套用 QSS statusTone、StatusBadge 與 SemanticChip。observed／manual_observed 用資訊藍，避免暗示已正式接受；estimated／degraded 用警告色，missing／blocked 用錯誤色，unknown／off 中性。原文字、market_*、舊相容 token、行情方向判斷、金融值與資格不動；未引入 US_INTL／Light 或完整 Delegate Suite。Sol 複核後要求 chip 的成功／錯誤底色也離開舊綠／紅底，Luna 修版。
 
 最終受控 root/single_owned_qa_df617b77848c46a2820d838eae8128b4/receipt.json exit0：compile0、主題／方向／Decimal 聚焦 20 passed、Workbench 85 passed、validator 25 passed／0 failed／4 skipped、mypy 1,144 檔 clean，8 GiB／12 程序 Job 無殘留。真 Windows DPI216 的 1280×760／1500×900 狀態徽章、chip、QSS 與紅漲綠跌對照兩圖：root/native_m162_status_palette_evidence/run_a5ca22b7665049cb9d53135a89a03e20/result.json；Job root/single_owned_qa_01a8b6b960ae415c82841f61d03b78d2/receipt.json exit0、callback0，Sol 目視狀態與行情色可區辨。這是共用元件隔離樣本；正式頁面全路徑、其他真 OS DPI、Light／1920、固定新版 EXE、Owner UAT 及完整 Gate 未接受。M1–M162 是審查、QA 與實作切片序號，不是功能數。
+
+## M163–M165 狀態語義遷移與原生複核
+
+三位 Luna 先唯讀定位殘餘狀態色，分檔單一 writer 實作：M163 `ui_qt/views/runtime_view.py` 與 `tests/test_ui_qt_runtime_view.py`；M164 `ui_qt/views/workbench_view.py`、`ui_qt/models/workbench_table_models.py`、`tests/test_ui_qt_workbench_view.py`；M165 `ui_qt/views/research_console_view.py`、`tests/test_ui_qt_research_console_view.py`。Sol 核對現有 DTO、原碼提示、表格注意列與台股漲跌色。Runtime 原本「最近重大違規：未知」也固定紅色；現在只有目前可核且確有重大違規時用 orchid，無違規／尚未讀／讀取錯誤清色，歷史事件以資訊色標明非目前。Workbench 已觀測與研究候選用資訊藍、正式就緒用 teal、降級用 amber、阻擋用 orchid；候選列原 attention 行為不改。Research Console 保留候選紫與 fixture/replay 灰、原始狀態提示；未知改中性。
+
+Sol 首輪受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_e577aea5cc324e31a973477e11b7d9a6/receipt.json` exit1：三個 Workbench 舊色碼斷言與新 Research Console 測試未設表格欄數；修後第二輪 `.../single_owned_qa_e122b0fb99be4824a428e94f6858f1df/receipt.json` 尚有一個舊摘要色斷言 exit1。這些是測試前置與舊預期，不當作產品通過。Sol 修對應斷言後 QA 通過；第一次原生畫面又揭 Runtime「整體治理狀態」仍沿舊紅／綠，Sol 將目前高風險改 orchid、目前正常改 teal，補狀態轉換斷言並重驗。最終 root-owned 8 GiB／12 程序 Job `.../single_owned_qa_5b8fc5a8bd7c4b228c7159919bfdf4e7/receipt.json` exit0：受改 Python compile0、聚焦 102 passed、Workbench 85 passed、更新頁 validator 25 passed／0 failed／4 skipped、mypy 1,144 source files clean，無殘留程序。
+
+真 Windows OS DPI216 的隔離合成 PySide6 Runtime／Workbench／Research Console 元件於 1280×760 和 1500×900 拍 18 PNG，包含 Runtime 未讀→目前重大違規→清除、實際 Workbench 狀態徽章與 Research 表格原狀態及顏色。最終 `output/tasks/baldr-opus-ux-implementation/root/native_m163_m165_evidence/run_04c2968eafec4efc83a6a2c5f4b588b5/result.json`、Job `.../single_owned_qa_83de141fd44a4198b41b2c4f39eded96/receipt.json` exit0、callback exception0。Sol 目視 Runtime orchid／teal／中性狀態與 Research 各列可讀；初版只拍全視窗使 Runtime 目標列不在圖中，後改拍實際治理 group 與徽章，原圖保留但不作目視接受。這是獨立原生元件與合成 DTO，不是正常 Main 全導航、自然 reader 或正式來源驗收。
+
+M1–M165 是審查、裁決、QA 與實作切片序號，並非 165 個獨立功能。Opus 起始審查因用量耗盡而由 Antigravity 續作六份主報告，Sol 對照現行程式、金融契約與已做 UX 去重後安排 Luna，拒絕無用途資格的跨期強弱及無逐邊證據的有向供應鏈圖。前述盤點及各 M 段構成從排程啟動至今的工程清冊；原始碼與隔離 QA 完成不代表正式金融、產品或真人接受。仍待具名安全唯讀正式來源、自然排程、真 OS 100%／125%／150% 全旅程、Light（若正式支援）、1920 可用工作區、固定新版 EXE、Owner UAT 及完整產品 Gate；M73 決策品質控制範圍和 M75 來源／時鐘／用途契約另待裁決。沒有更動策略績效公式、PIT／來源資格、正式或私人資料、其他排程、交易路徑，也未 push、merge 或部署。

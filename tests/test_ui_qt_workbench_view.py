@@ -49,9 +49,16 @@ from ui_qt.models.workbench_table_models import (
     WorkbenchEvidenceFeedTableModel,
     WorkbenchEvidenceTableModel,
     WorkbenchOperatingLoopTableModel,
+    _is_attention_status,
+    _status_tone,
 )
-from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
+from ui_qt.views.workbench_view import (
+    UnifiedDecisionWorkbenchView,
+    WORKBENCH_TONES,
+    _workbench_tone,
+)
 from ui_qt.views.research_console_view import ResearchConsoleView
+from ui_qt.theme.tokens import MIDNIGHT_ANALYST
 
 
 def app():
@@ -840,10 +847,53 @@ def test_workbench_table_models_apply_semantic_status_colors() -> None:
     row_background = model.data(summary_index, Qt.BackgroundRole)
 
     assert isinstance(status_brush, QBrush)
-    assert status_brush.color() == QColor("#f59e0b")
+    assert status_brush.color() == QColor(MIDNIGHT_ANALYST.status_warning)
     assert isinstance(row_background, QBrush)
     assert row_background.color() == QColor("#221a10")
     assert model.data(status_index, Qt.FontRole).bold() is True
+
+
+def test_workbench_status_tones_use_quality_tokens_without_changing_attention() -> None:
+    success = _status_tone("ready")
+    observed = _status_tone("observed")
+    candidate = _status_tone("machine_candidate")
+    active_model = _status_tone("active_model")
+    degraded = _status_tone("candidate_degraded")
+    blocked = _status_tone("future_blocked")
+    unknown = _status_tone("unknown")
+
+    assert success["fg"] == MIDNIGHT_ANALYST.status_success
+    assert observed["fg"] == MIDNIGHT_ANALYST.status_info
+    assert candidate["fg"] == MIDNIGHT_ANALYST.status_info
+    assert active_model["fg"] == MIDNIGHT_ANALYST.status_info
+    assert degraded["fg"] == MIDNIGHT_ANALYST.status_warning
+    assert blocked["fg"] == MIDNIGHT_ANALYST.status_error
+    assert unknown["fg"] == "#94a3b8"
+    assert observed["fg"] != MIDNIGHT_ANALYST.market_down
+    assert blocked["fg"] != MIDNIGHT_ANALYST.market_up
+    assert _is_attention_status("machine_candidate") is True
+    assert _is_attention_status("observed") is False
+
+    app()
+    feed_item = replace(_dashboard_with_replay().background_evidence_feed[1], status="observed")
+    model = WorkbenchEvidenceFeedTableModel((feed_item,))
+    status_index = model.index(0, model.column_index("status"))
+    summary_index = model.index(0, model.column_index("summary"))
+    status_brush = model.data(status_index, Qt.ForegroundRole)
+    assert status_brush.color() == QColor(MIDNIGHT_ANALYST.status_info)
+    assert model.data(summary_index, Qt.BackgroundRole) is None
+
+
+def test_workbench_view_tones_match_semantic_status_tokens_and_muted_fallback() -> None:
+    assert WORKBENCH_TONES["observed"]["fg"] == MIDNIGHT_ANALYST.status_info
+    assert WORKBENCH_TONES["manual_observed"]["fg"] == MIDNIGHT_ANALYST.status_info
+    assert WORKBENCH_TONES["candidate"]["fg"] == MIDNIGHT_ANALYST.status_info
+    assert WORKBENCH_TONES["challenger_candidate"]["fg"] == MIDNIGHT_ANALYST.status_info
+    assert WORKBENCH_TONES["active_model"]["fg"] == MIDNIGHT_ANALYST.status_info
+    assert WORKBENCH_TONES["ready"]["fg"] == MIDNIGHT_ANALYST.status_success
+    assert WORKBENCH_TONES["stale"]["fg"] == MIDNIGHT_ANALYST.status_warning
+    assert WORKBENCH_TONES["future_blocked"]["fg"] == MIDNIGHT_ANALYST.status_error
+    assert _workbench_tone("unknown")["fg"] == WORKBENCH_TONES["neutral"]["fg"]
 
 
 def test_workbench_operating_loop_table_model_exposes_read_only_rhythm() -> None:
@@ -1233,7 +1283,7 @@ def test_unified_workbench_overview_uses_detail_inspector_and_collapsible_sectio
     detail_text = view.detail_body_label.text()
     assert "Replay 摘要診斷" in view.detail_title_label.text()
     assert "降級" in view.detail_status_badge.text()
-    assert "#f59e0b" in view.detail_status_badge.styleSheet()
+    assert MIDNIGHT_ANALYST.status_warning in view.detail_status_badge.styleSheet()
     assert "重點摘要" in view.detail_summary_box.text()
     assert "來源與邊界" in view.detail_source_box.text()
     assert "診斷訊號" in view.detail_diagnostics_box.text()
@@ -1294,9 +1344,9 @@ def test_unified_workbench_overview_uses_high_contrast_priority_treatments() -> 
     assert "今日重點" in view.priority_banner.text()
     assert "人工處理 1" in view.priority_banner.text()
     assert "警告 3" in view.priority_banner.text()
-    assert "#f59e0b" in view.priority_banner.styleSheet()
-    assert "#ef4444" in view.summary_blocks["warning"].styleSheet()
-    assert "#38bdf8" in view.summary_blocks["review"].styleSheet()
+    assert MIDNIGHT_ANALYST.status_warning in view.priority_banner.styleSheet()
+    assert MIDNIGHT_ANALYST.status_error in view.summary_blocks["warning"].styleSheet()
+    assert MIDNIGHT_ANALYST.status_info in view.summary_blocks["review"].styleSheet()
     assert "font-size: 17px" in view.summary_value_labels["warning"].styleSheet()
 
 
@@ -1354,7 +1404,7 @@ def test_unified_workbench_view_keeps_market_batch_outside_human_queue() -> None
     assert "機器狀態待處理" in view.review_empty_state.title_label.text()
     assert "市場批次提示" in view.review_empty_state.body_label.text()
     assert "背景提示 1 批" in view.priority_banner.text()
-    assert "#f59e0b" in view.priority_banner.styleSheet()
+    assert MIDNIGHT_ANALYST.status_warning in view.priority_banner.styleSheet()
     assert "空佇列不代表風險已確認" not in view.review_empty_state.body_label.text()
 
 

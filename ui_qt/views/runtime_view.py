@@ -373,7 +373,9 @@ class RuntimeView(QWidget):
             label.setWordWrap(True)
             label.setMinimumWidth(0)
             label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        self.last_violation_label.setStyleSheet("color: red; font-weight: bold;")
+        self.last_violation_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_muted};"
+        )
         self.health_scope_note_label = QLabel(DEFAULT_HEALTH_SCOPE_NOTE)
         self.health_scope_note_label.setWordWrap(True)
         self.health_scope_note_label.setMinimumWidth(0)
@@ -885,7 +887,11 @@ class RuntimeView(QWidget):
             or dto.consecutive_failures >= 3
             or not dto.is_healthy
         )
-        state_color = "red" if high_risk else "green"
+        state_color = (
+            MIDNIGHT_ANALYST.status_error
+            if high_risk
+            else MIDNIGHT_ANALYST.status_success
+        )
         self.health_state_label.setText(f"整體治理狀態：<font color='{state_color}'>{state_label}</font>")
         self.health_state_label.setStyleSheet("font-weight: bold;" if high_risk else "")
 
@@ -903,8 +909,14 @@ class RuntimeView(QWidget):
         if dto.last_critical_violation:
             msg = self._localize_message(dto.last_critical_violation.human_readable_message)
             self.last_violation_label.setText(f"最近重大違規：{msg}")
+            self.last_violation_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.status_error}; font-weight: bold;"
+            )
         else:
             self.last_violation_label.setText("最近重大違規：無")
+            self.last_violation_label.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary};"
+            )
 
     @Slot(ScheduledOperationsSnapshotDTO)
     def on_scheduled_operations_updated(self, dto: ScheduledOperationsSnapshotDTO) -> None:
@@ -1033,6 +1045,13 @@ class RuntimeView(QWidget):
             self.last_violation_label.setText(f"最近歷史重大違規：{message}")
         else:
             self.last_violation_label.setText("最近歷史重大違規：無")
+        historical = dto.observation_scope == "historical_only"
+        color = (
+            MIDNIGHT_ANALYST.status_info
+            if historical
+            else MIDNIGHT_ANALYST.text_secondary
+        )
+        self.last_violation_label.setStyleSheet(f"color: {color};")
 
     @Slot(RuntimeEventDTO)
     def on_event_received(self, dto: RuntimeEventDTO) -> None:

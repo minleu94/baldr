@@ -62,6 +62,35 @@ def _assert_saved_result_focus(view: object) -> None:
     assert table_top + view.results_table.height() > 0
 
 
+def _assert_saved_table_is_compact(view: object, qt_app: QApplication, row_count: int) -> None:
+    qt_app.processEvents()
+    table = view.results_table
+    assert view.recommendations_model.rowCount() == row_count
+    assert table.minimumHeight() == view.results_table_minimum_height
+    frame_and_header = table.frameWidth() * 2 + table.horizontalHeader().height()
+    five_row_height = frame_and_header + table.verticalHeader().defaultSectionSize() * 5
+    assert table.minimumHeight() < five_row_height
+    splitter_sizes = view.result_splitter.sizes()
+    assert splitter_sizes[0] <= table.minimumHeight() + 12
+    assert table.height() >= (
+        frame_and_header
+        + table.verticalHeader().defaultSectionSize() * max(1, row_count)
+    )
+    viewport = view.result_scroll.viewport()
+    if row_count:
+        first_cell_top = table.viewport().mapTo(
+            viewport,
+            table.visualRect(table.model().index(0, 0)).topLeft(),
+        ).y()
+        assert 0 <= first_cell_top < viewport.height()
+    detail_group = view.result_splitter.widget(1)
+    detail_top = detail_group.mapTo(viewport, QPoint(0, 0)).y()
+    source_top = view.company_source_snapshot_label.mapTo(viewport, QPoint(0, 0)).y()
+    assert detail_top < viewport.height()
+    assert source_top < viewport.height()
+    assert source_top + view.company_source_snapshot_label.height() > 0
+
+
 def test_public_exact_open_focuses_verified_canonical_result_and_table(
     qt_app: QApplication,
     tmp_path: Path,
@@ -75,7 +104,7 @@ def test_public_exact_open_focuses_verified_canonical_result_and_table(
         _wait_for_saved_result_load(view, qt_app)
         qt_app.processEvents()
         assert view._verified_saved_result_id() == result_id
-        assert view.recommendations_model.rowCount() > 0
+        _assert_saved_table_is_compact(view, qt_app, 2)
         _assert_saved_result_focus(view)
     finally:
         view.close()
@@ -133,6 +162,34 @@ def test_public_exact_open_focuses_verified_legacy_read_only_result(
         assert view._verified_legacy_result_id() == result_id
         assert view.recommendations_model.rowCount() == 1
         assert "唯讀開啟舊格式" in view.result_status_label.text()
+        _assert_saved_table_is_compact(view, qt_app, 1)
+        _assert_saved_result_focus(view)
+    finally:
+        view.close()
+        qt_app.processEvents()
+
+
+def test_public_exact_open_compacts_empty_canonical_result_to_one_row_frame(
+    qt_app: QApplication,
+    tmp_path: Path,
+) -> None:
+    from app_module.recommendation.composition import build_recommendation_composition
+    from tests.test_ui_qt_recommendation_execution import _execution
+
+    result_id = "exact-visible-empty-canonical-001"
+    config = _IsolatedRecommendationConfig(tmp_path / "output")
+    composition = build_recommendation_composition(config)
+    execution = _execution(result_id, empty=True)
+    composition.save_service.save_execution(execution, label="empty", notes="fixture")
+    view = _view(tmp_path, composition.queries)
+    _show_view(view, qt_app)
+    try:
+        assert view.open_saved_recommendation_result(result_id)
+        _wait_for_saved_result_load(view, qt_app)
+        qt_app.processEvents()
+        assert view._verified_saved_result_id() == result_id
+        assert "原結果沒有推薦列" in view.result_status_label.text()
+        _assert_saved_table_is_compact(view, qt_app, 0)
         _assert_saved_result_focus(view)
     finally:
         view.close()

@@ -2905,6 +2905,8 @@ class RecommendationView(QWidget):
             and saved_result_narrow == self._recommendation_saved_result_narrow
             and saved_title_narrow == self._recommendation_saved_title_narrow
         ):
+            if saved_readback:
+                self._fit_compact_saved_result_splitter()
             return
         orientation_changed = narrow != self._recommendation_narrow
         self._recommendation_narrow = narrow
@@ -2943,12 +2945,40 @@ class RecommendationView(QWidget):
             self.main_splitter.setSizes([360, 900])
         if hasattr(self, "results_table"):
             self.results_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        if saved_readback:
+            self._fit_compact_saved_result_splitter()
 
-    def _reserve_recommendation_table_rows(self) -> None:
-        """依目前列高更新結果表格最低高度，確保至少五列可供檢視。"""
+    def _fit_compact_saved_result_splitter(self) -> None:
+        """精確讀回少量列時，把分割器空間留給來源與理由區。"""
+        table = getattr(self, "results_table", None)
+        splitter = getattr(self, "result_splitter", None)
+        if not isinstance(table, QTableView) or splitter is None:
+            return
+        model = table.model()
+        row_count = model.rowCount() if model is not None else 0
+        if row_count > 4:
+            return
+        table_height = max(1, table.minimumHeight())
+        detail_height = max(1, splitter.height() - table_height)
+        splitter.setSizes([table_height, detail_height])
+
+    def _reserve_recommendation_table_rows(
+        self,
+        *,
+        compact_saved_readback: bool = False,
+    ) -> None:
+        """依目前列高配置結果表格；精確讀回時只保留實際列數所需高度。"""
         table = getattr(self, "results_table", None)
         if isinstance(table, QTableView):
-            self.results_table_minimum_height = ensure_visible_rows(table, rows=5)
+            rows = 5
+            if compact_saved_readback:
+                model = table.model()
+                row_count = model.rowCount() if model is not None else 0
+                rows = max(1, min(5, row_count))
+                # ensure_visible_rows 的 controller 只會調高 minimumHeight；
+                # 精確讀回前先解除先前長結果留下的高度，再以本次列數重測。
+                table.setMinimumHeight(0)
+            self.results_table_minimum_height = ensure_visible_rows(table, rows=rows)
 
     def _install_recommendation_results_model(self, model: PandasTableModel) -> None:
         """預設聚焦候選摘要，完整來源／資格欄位仍可由控制項展開。"""
@@ -7122,7 +7152,7 @@ class RecommendationView(QWidget):
                 pd.DataFrame(screening_only_rows)
             )
         self._install_recommendation_results_model(self.recommendations_model)
-        self._reserve_recommendation_table_rows()
+        self._reserve_recommendation_table_rows(compact_saved_readback=True)
         self._connect_result_table_interactions()
         self.saved_result_id_input.setText(requested_result_id)
         self.progress_bar.setVisible(False)
@@ -7206,7 +7236,7 @@ class RecommendationView(QWidget):
         self.result_title_label.setText("舊格式保存推薦（唯讀研究）")
         self.recommendations_model = PandasTableModel(pd.DataFrame(rows))
         self._install_recommendation_results_model(self.recommendations_model)
-        self._reserve_recommendation_table_rows()
+        self._reserve_recommendation_table_rows(compact_saved_readback=True)
         self._connect_result_table_interactions()
         self.saved_result_id_input.setText(requested_result_id)
         self.progress_bar.setVisible(False)

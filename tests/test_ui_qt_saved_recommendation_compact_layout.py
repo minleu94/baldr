@@ -95,7 +95,7 @@ def _show_at_desktop_result_width(view, application: QApplication) -> None:
     assert 720 <= view.result_scroll.viewport().width() < 900
 
 
-def test_saved_readback_compacts_only_saved_controls_and_exposes_five_row_viewport(
+def test_saved_readback_compacts_controls_and_table_to_actual_rows(
     qt_app: QApplication,
     tmp_path: Path,
 ) -> None:
@@ -147,17 +147,27 @@ def test_saved_readback_compacts_only_saved_controls_and_exposes_five_row_viewpo
         table = view.results_table
         row_height = table.verticalHeader().defaultSectionSize()
         assert table.minimumHeight() >= view.results_table_minimum_height
-        assert table.viewport().height() >= row_height * 5
-        table_rect = _rect_in_result_view(view, table)
-        viewport_rect = view.result_scroll.viewport().rect()
-        required_five_rows_bottom = (
-            table_rect.top()
-            + table.frameWidth()
+        assert view.recommendations_model.rowCount() == 2
+        assert table.viewport().height() >= row_height * 2
+        five_row_height = (
+            table.frameWidth() * 2
             + table.horizontalHeader().height()
             + row_height * 5
         )
+        assert table.minimumHeight() < five_row_height
+        table_rect = _rect_in_result_view(view, table)
+        viewport_rect = view.result_scroll.viewport().rect()
+        required_actual_rows_bottom = (
+            table_rect.top()
+            + table.frameWidth()
+            + table.horizontalHeader().height()
+            + row_height * 2
+        )
         assert table_rect.top() >= 0
-        assert required_five_rows_bottom <= viewport_rect.bottom() + 1
+        assert required_actual_rows_bottom <= viewport_rect.bottom() + 1
+        detail_group = view.result_splitter.widget(1)
+        detail_top = detail_group.mapTo(view.result_scroll.viewport(), QPoint(0, 0)).y()
+        assert detail_top < view.result_scroll.viewport().height()
 
         assert view.stock_research_btn.isVisible()
         assert not view.stock_research_btn.isEnabled()
@@ -192,6 +202,12 @@ def test_saved_readback_compacts_only_saved_controls_and_exposes_five_row_viewpo
         view._on_recommendation_finished(execution)
         qt_app.processEvents()
         assert view.current_read_model is None
+        assert view.recommendations_model.rowCount() == 2
+        assert view.results_table.minimumHeight() >= (
+            view.results_table.frameWidth() * 2
+            + view.results_table.horizontalHeader().height()
+            + view.results_table.verticalHeader().defaultSectionSize() * 5
+        )
         assert view.saved_result_row.direction() == QBoxLayout.Direction.TopToBottom
         assert view.result_title_layout.direction() == QBoxLayout.Direction.TopToBottom
     finally:

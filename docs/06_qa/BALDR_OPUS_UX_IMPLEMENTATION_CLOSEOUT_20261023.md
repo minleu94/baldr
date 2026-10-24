@@ -482,3 +482,23 @@ Luna `/root/m152_research_gap` 單一 writer 修改 `ui_qt/views/daily_market_co
 最終 root-owned 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_f0aa094f105945bb948b0d8c84fd2870/receipt.json` exit0：受改 Python compile0、cohort／投影／Main bridge focused **18 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；無殘留。正常 Main 真 OS DPI216 的 1280×760／1500×900 以隔離合成已驗證快照驗未選、選未知、換另一檔及清除共八 PNG：`output/tasks/baldr-opus-ux-implementation/root/native_m154_evidence/run_d4eecc7bbb7a44839c494de855e419ed/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_3429f1c24b1144068bdd812e2f0a3dc4/receipt.json` exit0。Sol 目視兩尺寸的成員首列、側欄原狀態與原原因同屏可讀；隔離 SQLite SHA 不變、callback exception0。
 
 這是原始碼與隔離合成／原生 QA。正式市場來源、其他真 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受；M1–M154 是審查、裁決、實作與 QA 序號，非 154 個獨立功能。沒有 push、merge、部署或修改其他排程。
+
+## M155 少量保存推薦的表格與來源區
+
+Sol 在 M1–M154 後再盤點原審查與現行程式，未找到可安全新增且有資料契約的市場／題材／個股／回測圖；M73 控制作用範圍及 M75 有向供應鏈、跨期強弱仍須產品與逐邊來源時鐘契約。M150 的正常 Main 證據另顯示兩筆保存候選仍佔五列高，讓來源與理由區偏低。Luna `/root/m152_decision_gap` 單一 writer 修改 `ui_qt/views/recommendation_view.py`、`tests/test_ui_qt_recommendation_exact_saved_entry.py`、`tests/test_ui_qt_saved_recommendation_compact_layout.py`：精確 canonical／唯讀舊格式讀回 1–4 列時按實際列數配置表格，0 列保留一列空框，五列以上及新執行仍維持五列最低高度。只調 Qt 版面，不改候選、分數、原結果、日期、身份核對、來源資格或金融計算。
+
+Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9/result.json` 發現只降低 `minimumHeight` 時，QSplitter 實際仍配置約 201px，來源只略上移；未接受為視覺完成。受控探針 `root/native_m155_evidence/run_58a380268f834ba2bbe2ff3d6df50c71/result.json` 確認分割器配置可令表格約 108px，Luna 補實際 `setSizes`，並以測試斷言實際 splitter size。最終正常 Windows Main、真 OS DPI216、隔離合成的 1280×760／1500×900 canonical 2／0 列與舊格式 1 列共六 PNG、callback exception0：`output/tasks/baldr-opus-ux-implementation/root/native_m155_evidence/run_3e45737d299542739e949c9ea536c231/result.json`；Job `.../root/single_owned_qa_4c6ba068ffdd4807a210450b50791151/receipt.json` exit0、無殘留。Sol 目視 1280 兩列與來源／理由同屏；兩列高度由原五列目標 186px 收至實際 116px（1500 為 112px），空表明確標沒有推薦列。
+
+最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_93d1b6b2d580466b88c7f13753157ca4/receipt.json` exit0：受改 Python compile0、相關 focused **45 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。這些是隔離合成及原始碼 QA；正式保存來源、其他真 OS DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受。M1–M155 是審查、裁決、實作與 QA 切片序號，不是 155 個獨立功能；原始 PNG／收據留 ignored `output/`，本機提交不 push、merge 或部署。
+
+## 排程啟動至 M155 的盤點
+
+| 範圍 | 已完成的工程與驗證 | 尚未接受的界線 |
+| --- | --- | --- |
+| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M155 包含唯讀裁決、測試及實作，並非 155 個功能。 | 審查意見不自動授來源／金融契約。 |
+| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面。 | 正式保存／市場來源與 Owner UAT 未驗。 |
+| P1 產業題材 | 原資料範圍內的題材格、成交額與覆蓋圖、九指標、同版成員／鄰域、搜尋、雙版本原值、具名母體三態與成員條件側欄，保留精確下鑽。 | 多期間報酬、逐邊有向關係需合格來源、時鐘及用途契約。 |
+| P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；修關窗晚到回呼及備援圖互動／字形。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
+| P3 產業鏈 | 已有同版重疊、分類與成員探索；Sol 拒絕把共現當有向供應鏈或把資料覆蓋當跨期強弱。 | M75 逐邊證據與跨期 PIT 用途仍缺；M73 決策品質控制作用範圍仍需產品裁決。 |
+
+各切片均由 Luna 依單一 writer 邊界實作或唯讀盤點，Sol 複核、退回必要修正並以 root-owned 受控 Job 做聚焦、共同回歸及隔離原生畫面；原失敗與探針收據保留。此盤點只收束本機原始碼階段，不代表正式產品驗收或可交易資格。

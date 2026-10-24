@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M128 後繼原始碼把「探索與研究 → 產業與題材」既有的 L1 組成圖接到同一快照的成員表：點原始類別、精確合併的「其他」或空白欄位，直接捲至符合成員；「全部成員」還原。分頁、股票下鑽與返回仍依原題材完整列序及快照身分，換題、換版或呈現失敗清舊；分類列數不代表權重或供應關係。Sol 修正 1280 點選後成員表未入畫面的落點；最終 compile、定向 35、Workbench 85、validator 25／0／4、mypy 1,144 clean，正常 Main 1280×760／1500×900 真 OS DPI216 隔離合成目視通過。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m128-題材-l1-圖至成員表導覽)。
+
 M126／M127 後繼原始碼完成兩個 Portfolio 研究判讀切片。Stress 當前結果的已知 blocker／warning 代碼改以忠於原義的繁體中文解釋，原碼同列保留，未知碼照原文；缺價部分計算不外推，流動性可得性替代指標不稱損益。Paper 持倉健康在摘要與明細表之間新增五種 evaluator `proposed_state` 的精簡列數分布，同一份可核對 read model 按評估列計數、同股不同持倉不合併；空、封鎖、過期或來源／列型別不可靠時明示未知，不把撤銷成 WATCH 的結果畫作真提案。Sol 修 malformed 列先行清舊及使用者可讀文案後，compile、聚焦 166、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 1280×760／1500×900、真 OS DPI216 隔離合成與資料庫 SHA 不變。未改金融公式、服務或私人資料；正式 Paper／Portfolio、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m126m127-stress-診斷與-paper-提案分布)。
 
 M124／M125 後繼原始碼完成兩個同源呈現修正。Evidence「資料缺口」用同次篩選的逐列警示與服務計數交叉核對，提供預設收合的前五種警示文字頻次及有界其他；分母是警示出現次數，同列可有多則，缺件或計數不符明示未知，不借舊值。Portfolio 手動持倉表的價格、行情資料日與 freshness 改由同一 `PositionDTO` 列投影；另讀行情觀測只供條件監控，不貼到持倉價格列。無價格或不合法日期維持未知。Sol 複核後 compile、聚焦 162、Workbench 85、validator 25／0／4、mypy 1,144 clean；正常 Main 1280×760／1500×900、真 Windows DPI216 隔離合成畫面與 SQLite 前後 SHA 通過。正式私人資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 未驗；詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m124m125-同源警示與行情日期呈現)。

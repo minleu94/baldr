@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M123；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M128；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M123 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M128 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -326,3 +326,11 @@ Luna `/root/m108_research_visual_audit` 唯讀排除已完成的 Watchlist 同�
 M126 中間共同受控 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_bc4905c2b31d49199e678c359a60d4fd/receipt.json` 為 focused **163 passed**、Workbench **85 passed**、validator **25/0/4**、mypy **1,144** clean；正常 Main 1280／1500 真 OS DPI216 的 partial、liquidity、unsupported 四圖在 `.../root/native_m126_stress_diagnostics_evidence/run_2cdeeacbcfd04afeb1c94a5c921d3946/result.json`，Job `.../root/single_owned_qa_21cfaf2b22a3429e881844c61c4fa28c/receipt.json`。M127 首輪共同 Job `.../root/single_owned_qa_e1e85c4f76dd4090867dd4db7ba85bdc/receipt.json` 是 **165 passed／1 failed**：malformed 列使舊摘要例外，原失敗保留；修後及文案後最終 `.../root/single_owned_qa_62640d926640413c85a930688ff8c4d4/receipt.json`：compile 0、聚焦 **166 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** clean，8 GiB／12 程序 Job 無殘留／強制清理。Paper 健康圖與表首列在隔離正常 Main 1280×760／1500×900、真 OS DPI216 同屏；blocked／empty 清舊圖及 JSON 最終在 `.../root/native_m127_paper_health_evidence/run_e4e63924b2594fbc81403b9287eaec51/`，Job `.../root/single_owned_qa_45189da1717541f69a0a1afaa035040e/receipt.json` exit0，隔離 SQLite SHA 前後相同。Sol 目視接受；初版合成 fixture 的原因文字與 verified 狀態不符，原圖 `.../run_7691e8ae4b774c689f04abf6fc945e2c/` 保留而不作最後視覺證據。
 
 M1–M127 是審查、裁決、實作與 QA 切片序號，非 127 個功能。正式 Paper／私人 Portfolio 來源、其他真 OS DPI／1920 可用螢幕／Light 若支援、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受；本輪證據留 ignored `output/`，不推送、合併、部署或改正式資料。
+
+## M128 題材 L1 圖至成員表導覽
+
+Sol 在 M1–M127 後盤點 Opus 的 P1／P2 候選與目前程式，Luna `/root/m108_research_visual_audit` 唯讀指出既有 L1 組成圖只能看類別列數，無法沿圖找到完整成員；Luna 隨後單一 writer 修改 `ui_qt/views/industry_theme_map_view.py` 與 `tests/test_ui_qt_industry_theme_map_view.py`。M128 令最多八個原始類別、精確省略類別的「其他」及空白欄位各能篩同一份 typed snapshot 的題材成員表；按「全部成員」還原。篩後分頁按符合列數，個股導覽的 `origin_row_index` 仍指原題材完整列序；分類股票鈕或反查若定位篩選外股票，先還原完整表再定位。換題、換版、失敗或收合清舊；不改 DTO、mapping、金融公式或來源資格。Sol 原生目視發現初版點類別只停在圖下說明，1280 視窗看不到表；修為捲到表格頂端，最終點選後同屏見篩選狀態、表頭與符合首列。
+
+受控 QA 首輪 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_80b68d1ef8e741578be8e36a2b71838c/receipt.json` 為 33 passed／2 failed：新測試文案預期與實際分頁句型不符。後續 `.../single_owned_qa_bab7ad4c1c024bb4982fdc7f45fa84f5/`、`.../single_owned_qa_305ba87f83ce474993401239d7f04aab/`、`.../single_owned_qa_1012f4fcbec7406785cf801ec0b82367/`、`.../single_owned_qa_05094fb8024a436eab22f00e6444a98e/`、`.../single_owned_qa_535c0a7ce8484fcfaac706f32b84ceff/` 反映測試從舊 `deleteLater` 圖卡取到 stale 按鈕的定位過程；原失敗保留。改由目前 layout 實際圖卡取按鈕後，最終 `.../single_owned_qa_e8a4d8ee7dfc4a5caf513f1d5ebfbd1c/receipt.json`：compile 0、定向 **35 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** clean；8 GiB／12 程序 Job 無殘留或強制清理。
+
+正常 Main 真 OS DPI216、1280×760／1500×900 隔離合成 13 成員原圖／點選／表格五張最終 PNG 與同一 fixture SHA 見 `output/tasks/baldr-opus-ux-implementation/root/native_m128_evidence/run_42d06b78f0a14081bc152b9a103e5a8a/result.json`，Job `.../single_owned_qa_2b5f8aa092f34575a3606dd3c8f279e7/receipt.json` exit0。Sol 目視 1280 點後直接見 1000／1001 兩列，1500 圖與表亦可讀。原版初步 `.../native_m128_evidence/run_c674fc765eb3443fbb6f5de49c955ed4/` 和中間自動捲動落點 `.../run_c36a7c047f544c5c819363b74c877bf2/` 保留，不當最終版面證據。Light 主題盤點發現全域 QSS、表格模型、圖表與多處局部深色硬碼仍相依；本輪未宣稱支援 Light，未將市場方向色隨主題翻轉。正式市場來源、其他真 DPI／1920 可用螢幕、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 分列未驗；合成 UI QA 不等於正式接受。

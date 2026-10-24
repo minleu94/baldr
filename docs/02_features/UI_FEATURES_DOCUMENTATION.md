@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M128 後繼原始碼把產業題材既有 L1 組成標籤設為同版成員表篩選器。最多八個原始類別、精確合併的「其他」及空白欄位各可明選；點選後跳至成員表，頁碼與符合列數按篩選結果顯示，「全部成員」清除篩選及選取。分類圖股票鈕與反查可定位完整原列；若目標不在目前篩選內，先還原完整表再選列。個股導覽保存原題材完整列序／原始列索引，換題、換版與失敗清舊；不改 DTO、分類 mapping、金融公式或來源資格。操作見[市場研究手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m128-題材-l1-圖至成員表導覽)。
+
 M123 後繼原始碼：Portfolio「情境壓力 → 已保存歷史」選一筆後，預設收合的逐列區只讀該筆 canonical payload，保留原保存列序與同股多持倉身份；可明選一列複製完整報價來源 SHA-256，payload hash 與報價來源 hash 分開。舊版未保存逐列、明示空列、缺價代號未知、來源欄未知及壞逐列各有獨立提示；缺價不補零、不查目前持倉或行情。歷史總表排序仍綁 record ID，換筆與錯誤清舊；逐列表固定保存原序以免原金額文字被字典序誤排。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m123-已保存-stress-逐列來源回訪)。
 
 M122 後繼原始碼：`PortfolioService` 在計算價格的同一次 SQLite／CSV 讀取綁逐部位資料日、來源 ID、snapshot hash 與 freshness，傳到 Stress 每筆結果；不按股票代號事後 join。當前情境表顯有界「報價來源」，明選列可複製完整 SHA-256，排序仍綁原列；缺資料日／身份及未核實、超前狀態照實提示。原公式、CSV 同檔同代號首列行為、缺價 partial、來源資格與研究用途不變。新結果的 v1 payload 可選增加欄位，舊保存歷史不回填；限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m122-stress-同次報價來源與資料日)。

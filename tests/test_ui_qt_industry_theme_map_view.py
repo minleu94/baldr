@@ -203,7 +203,7 @@ def test_classification_l1_summary_counts_missing_and_bounded_overflow_then_clea
     note = card.findChild(view_module.QLabel, "industryThemeClassificationL1Note")
     assert "不代表權重、供應關係或歷史 PIT" in note.text()
     bars = card.findChildren(QProgressBar, "industryThemeClassificationL1Bar")
-    labels = card.findChildren(view_module.QLabel, "industryThemeClassificationL1Category")
+    labels = card.findChildren(QPushButton, "industryThemeClassificationL1Category")
     assert len(bars) == 10  # 8 類、合併列、未提供
     assert len(labels) == 10
     labels_by_text = {label.text(): label for label in labels}
@@ -264,6 +264,48 @@ def test_classification_l1_summary_counts_missing_and_bounded_overflow_then_clea
     assert "' ' 1 列" in missing_tooltip
     assert view.member_table.rowCount() == len(categories)
 
+    category_counts = {}
+    for category in categories:
+        if category.strip():
+            category_counts[category] = category_counts.get(category, 0) + 1
+    omitted_categories = {
+        category for category, _count in sorted(
+            category_counts.items(), key=lambda item: (-item[1], item[0])
+        )[8:]
+    }
+    overflow_selector = next(
+        button for button in labels
+        if button.accessibleName() == "其他（合併 19 個 L1 類別）"
+    )
+    overflow_selector.click()
+    expected_overflow_ids = tuple(
+        f"{1000 + index:04d}"
+        for index, category in enumerate(categories)
+        if category in omitted_categories
+    )
+    assert view._visible_member_stock_ids() == expected_overflow_ids
+    assert view.member_table.rowCount() == len(expected_overflow_ids)
+    assert "1–19 / 19 位符合成員（本題材 37 位）" in view.member_page_status_label.text()
+    assert "目前篩選：其他（合併 19 個 L1 類別）；符合 19 / 本題材 37 位" in view.classification_members_status.text()
+
+    missing_selector = next(
+        button for button in labels
+        if button.accessibleName() == "未提供（欄位空白）"
+    )
+    missing_selector.click()
+    assert view._visible_member_stock_ids() == ("1034", "1035", "1036")
+    assert view.member_table.rowCount() == 3
+    view.classification_explorer_group.findChild(
+        QPushButton, "industryThemeClassificationL1Reset"
+    ).click()
+    assert view._member_l1_filter_stock_ids is None
+    assert view._visible_member_stock_ids() == tuple(
+        f"{1000 + index:04d}" for index in range(len(categories))
+    )
+    assert view.member_table.rowCount() == len(categories)
+    assert view.member_table.currentRow() == -1
+    assert "顯示 30 / 37 位分類成員" in view.classification_members_status.text()
+
     view.classification_explorer_toggle.click()
     application.processEvents()
     assert view.classification_members_layout.count() == 0
@@ -291,6 +333,131 @@ def test_classification_l1_summary_counts_missing_and_bounded_overflow_then_clea
     application.processEvents()
     assert view.classification_members_layout.count() == 0
     assert "缺少可展開" in view.classification_members_status.text()
+    view.shutdown()
+    view.close()
+
+
+def test_classification_l1_selectors_filter_exact_rows_reset_and_preserve_navigation(
+    monkeypatch,
+):
+    application = app()
+    view = IndustryThemeMapView()
+    view.resize(1280, 760)
+    view.show()
+    categories = (
+        "電子業", "電子業", " 電子業", "電子業 ", "電子業",
+        "金融保險業", "金融保險業", "", " ",
+    )
+    snapshot = _classification_snapshot(
+        member_count=len(categories), l1_categories=categories,
+    )
+    view.set_snapshot(snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+    card = view.classification_explorer_group.findChild(
+        QGroupBox, "industryThemeClassificationL1Summary"
+    )
+    selectors = card.findChildren(
+        QPushButton, "industryThemeClassificationL1Category"
+    )
+    by_accessible_name = {
+        selector.accessibleName(): selector for selector in selectors
+    }
+
+    by_accessible_name["「電子業」"].click()
+    assert view._visible_member_stock_ids() == ("1000", "1001", "1004")
+    assert tuple(
+        view.member_table.item(row, 0).text()
+        for row in range(view.member_table.rowCount())
+    ) == ("1000", "1001", "1004")
+    assert "1–3 / 3 位符合成員（本題材 9 位）" in view.member_page_status_label.text()
+    assert "目前篩選：「電子業」" in view.classification_members_status.text()
+    assert snapshot.identity_sha256 in view.classification_members_status.text()
+    view.member_table.setCurrentCell(1, 0)
+    navigation = view.capture_selected_member_navigation("1001")
+    assert navigation is not None
+    assert navigation.origin_stock_code == "1001"
+    assert navigation.origin_row_index == 1
+
+    outside_filter_button = next(
+        button for button in view.classification_explorer_group.findChildren(
+            QPushButton, "industryThemeClassificationMemberButton"
+        )
+        if button.property("classificationStockId") == "1002"
+    )
+    outside_filter_button.click()
+    assert view._member_l1_filter_stock_ids is None
+    assert view.member_table.rowCount() == len(categories)
+    assert view.member_table.item(view.member_table.currentRow(), 0).text() == "1002"
+    navigation = view.capture_selected_member_navigation("1002")
+    assert navigation is not None
+    assert navigation.origin_row_index == 2
+
+    by_accessible_name["「 電子業」"].click()
+    assert view._visible_member_stock_ids() == ("1002",)
+    assert view.member_table.item(0, 0).text() == "1002"
+    by_accessible_name["「電子業 」"].click()
+    assert view._visible_member_stock_ids() == ("1003",)
+    assert view.member_table.item(0, 0).text() == "1003"
+
+    by_accessible_name["未提供（欄位空白）"].click()
+    assert view._visible_member_stock_ids() == ("1007", "1008")
+    assert "未提供（欄位空白）" in view.member_page_status_label.text()
+    reset = card.findChild(QPushButton, "industryThemeClassificationL1Reset")
+    reset.click()
+    assert view._member_l1_filter_stock_ids is None
+    assert view.member_table.currentRow() == -1
+    assert view.member_table.rowCount() == len(categories)
+    assert "顯示 1–9 / 9 位成員" in view.member_page_status_label.text()
+    assert not view.open_member_button.isEnabled()
+
+    by_accessible_name["「電子業」"].click()
+    _select_theme(view, "金融鏈", "保險")
+    application.processEvents()
+    assert view._member_l1_filter_stock_ids is None
+    assert view._visible_member_stock_ids() == ("2881",)
+    assert view.member_table.rowCount() == 1
+    assert view.member_table.item(0, 0).text() == "2881"
+
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+    current_card = view.classification_members_layout.itemAt(0).widget()
+    assert current_card.objectName() == "industryThemeClassificationL1Summary"
+    current_card.findChildren(
+        QPushButton, "industryThemeClassificationL1Category"
+    )[0].click()
+    assert view._member_l1_filter_stock_ids is not None
+    replacement = _classification_snapshot(identity="f" * 64, member_count=2)
+    view.set_snapshot(replacement)
+    application.processEvents()
+    assert view._member_l1_filter_stock_ids is None
+    assert view.member_table.rowCount() == 0
+
+    _select_theme(view, "科技鏈", "AI")
+    view.classification_explorer_toggle.click()
+    application.processEvents()
+    replacement_card = view.classification_members_layout.itemAt(0).widget()
+    assert replacement_card.objectName() == "industryThemeClassificationL1Summary"
+    replacement_button = replacement_card.findChildren(
+        QPushButton, "industryThemeClassificationL1Category"
+    )[0]
+    assert replacement_button.isEnabled()
+    replacement_button.click()
+    assert view._member_l1_filter_stock_ids is not None
+
+    def reject_presentation(*_args, **_kwargs):
+        raise ValueError("合成來源版本拒絕呈現")
+
+    monkeypatch.setattr(
+        view_module, "build_theme_research_presentation", reject_presentation
+    )
+    view.set_snapshot(_classification_snapshot(identity="a" * 64, member_count=2))
+    assert view.snapshot is None
+    assert view._member_l1_filter_stock_ids is None
+    assert view.member_table.rowCount() == 0
+    assert view.classification_members_layout.count() == 0
     view.shutdown()
     view.close()
 

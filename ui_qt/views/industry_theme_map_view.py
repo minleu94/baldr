@@ -107,6 +107,12 @@ class IndustryThemeMapView(QWidget):
         self._mapping_by_theme_stock: dict[tuple[str, str, str], object] = {}
         self._member_stock_ids: tuple[str, ...] = ()
         self._member_row_by_stock_id: dict[str, int] = {}
+        self._member_l1_filter_stock_ids: tuple[str, ...] | None = None
+        self._member_l1_filter_label: str | None = None
+        self._classification_l1_filter_buttons: list[QPushButton] = []
+        self._classification_l1_active_filter_button: QPushButton | None = None
+        self._classification_l1_reset_button: QPushButton | None = None
+        self._classification_members_base_status: str | None = None
         self._member_theme_key: tuple[str, str] | None = None
         self._member_snapshot_identity: str | None = None
         self._member_page_index = 0
@@ -160,8 +166,9 @@ class IndustryThemeMapView(QWidget):
         if row is None:
             return None
         selected_row = self.member_table.currentRow()
+        visible_stock_ids = self._visible_member_stock_ids()
         global_row = self._member_page_index * self._MEMBER_PAGE_SIZE + selected_row
-        if selected_row < 0 or global_row >= len(row.stock_ids):
+        if selected_row < 0 or global_row >= len(visible_stock_ids):
             return None
         if (
             self._member_theme_key != theme_key
@@ -174,11 +181,13 @@ class IndustryThemeMapView(QWidget):
         selected_stock_code = item.text().strip()
         if (
             not selected_stock_code
-            or selected_stock_code != row.stock_ids[global_row]
+            or selected_stock_code != visible_stock_ids[global_row]
+            or selected_stock_code not in row.stock_ids
             or (expected_stock_code is not None
                 and selected_stock_code != str(expected_stock_code).strip())
         ):
             return None
+        original_row_index = row.stock_ids.index(selected_stock_code)
         member_names: list[tuple[str, str]] = []
         for stock_code in row.stock_ids:
             mapping_row = self._mapping_by_theme_stock.get(
@@ -195,7 +204,7 @@ class IndustryThemeMapView(QWidget):
             member_stock_codes=tuple(row.stock_ids),
             member_names=tuple(member_names),
             origin_stock_code=selected_stock_code,
-            origin_row_index=global_row,
+            origin_row_index=original_row_index,
             source_data_date=snapshot.report.data_date.isoformat(),
             mapping_version=snapshot.report.mapping_snapshot_date,
             selection_revision=self._navigation_selection_revision,
@@ -3248,6 +3257,11 @@ class IndustryThemeMapView(QWidget):
 
     def _clear_classification_explorer(self, *, collapse: bool) -> None:
         """清除舊分類投影，避免選取或版本替換後留下過期成員。"""
+        self._clear_member_l1_filter(render_table=True)
+        self._classification_l1_filter_buttons.clear()
+        self._classification_l1_active_filter_button = None
+        self._classification_l1_reset_button = None
+        self._classification_members_base_status = None
         if collapse:
             blocker = QSignalBlocker(self.classification_explorer_toggle)
             self.classification_explorer_toggle.setChecked(False)
@@ -3265,6 +3279,136 @@ class IndustryThemeMapView(QWidget):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+
+    def _visible_member_stock_ids(self) -> tuple[str, ...]:
+        """回傳目前表格頁面使用的同一題材成員序列。"""
+        if self._member_l1_filter_stock_ids is not None:
+            return self._member_l1_filter_stock_ids
+        return self._member_stock_ids
+
+    def _clear_member_l1_filter(self, *, render_table: bool) -> None:
+        had_filter = self._member_l1_filter_stock_ids is not None
+        self._member_l1_filter_stock_ids = None
+        self._member_l1_filter_label = None
+        self._classification_l1_active_filter_button = None
+        for button in self._classification_l1_filter_buttons:
+            button.setChecked(False)
+        if self._classification_l1_reset_button is not None:
+            self._classification_l1_reset_button.setEnabled(False)
+        if (had_filter and render_table and self._snapshot is not None
+                and self._member_theme_key is not None):
+            self._member_page_index = 0
+            self._render_member_page()
+
+    def _update_classification_l1_filter_buttons(self) -> None:
+        snapshot = self._snapshot
+        available = (
+            snapshot is not None and not self._closed and not self._busy
+            and self._classification_explorer_identity == snapshot.identity_sha256
+            and self._classification_explorer_key == self._member_theme_key
+        )
+        for button in self._classification_l1_filter_buttons:
+            button.setChecked(button is self._classification_l1_active_filter_button)
+            button.setEnabled(available)
+        if self._classification_l1_reset_button is not None:
+            self._classification_l1_reset_button.setEnabled(
+                available and self._member_l1_filter_stock_ids is not None
+            )
+
+    def _apply_classification_l1_filter(
+        self,
+        category_values: tuple[str, ...],
+        include_missing: bool,
+        label: str,
+        snapshot_identity: str,
+        theme_key: tuple[str, str],
+        button: QPushButton,
+        checked: bool,
+    ) -> None:
+        snapshot = self._snapshot
+        if (
+            self._closed or self._busy or snapshot is None
+            or snapshot.identity_sha256 != snapshot_identity
+            or self._classification_explorer_identity != snapshot_identity
+            or self._classification_explorer_key != theme_key
+            or self._member_snapshot_identity != snapshot_identity
+            or self._member_theme_key != theme_key
+        ):
+            return
+        if not checked:
+            self._reset_classification_l1_filter(snapshot_identity, theme_key)
+            return
+        try:
+            presentation = build_theme_classification_presentation(
+                snapshot, theme_key[0], theme_key[1]
+            )
+        except (TypeError, ValueError):
+            self._clear_member_l1_filter(render_table=True)
+            self.classification_members_status.setText(
+                "目前分類版本無法核對；已還原完整題材成員表。"
+            )
+            self._update_classification_l1_filter_buttons()
+            return
+        if presentation.snapshot_identity_sha256 != snapshot_identity:
+            return
+
+        selected_ids = tuple(
+            member.stock_id
+            for member in presentation.members
+            if member.l1_industry_category in category_values
+            and (not include_missing or not member.l1_industry_category.strip())
+            and (include_missing or bool(member.l1_industry_category.strip()))
+        )
+        selected_id_set = set(selected_ids)
+        visible_ids = tuple(
+            stock_id for stock_id in self._member_stock_ids
+            if stock_id in selected_id_set
+        )
+        if not selected_ids or len(visible_ids) != len(selected_ids):
+            self._clear_member_l1_filter(render_table=True)
+            self.classification_members_status.setText(
+                "分類列與目前題材成員清單無法完整核對；已還原完整成員表。"
+            )
+            self._update_classification_l1_filter_buttons()
+            return
+
+        self._member_l1_filter_stock_ids = visible_ids
+        self._member_l1_filter_label = label
+        self._classification_l1_active_filter_button = button
+        self._member_page_index = 0
+        self._render_member_page()
+        self.classification_members_status.setText(
+            f"{self._classification_members_base_status or ''}\n"
+            f"目前篩選：{label}；符合 {len(visible_ids)} / "
+            f"本題材 {len(self._member_stock_ids)} 位。"
+        )
+        self._update_classification_l1_filter_buttons()
+        content = self.scroll_area.widget()
+        if content is not None:
+            table_top = self.member_table.mapTo(
+                content, self.member_table.rect().topLeft()
+            ).y()
+            self.scroll_area.verticalScrollBar().setValue(max(0, table_top - 8))
+
+    def _reset_classification_l1_filter(
+        self, snapshot_identity: str, theme_key: tuple[str, str],
+    ) -> None:
+        snapshot = self._snapshot
+        if (
+            self._closed or self._busy or snapshot is None
+            or snapshot.identity_sha256 != snapshot_identity
+            or self._classification_explorer_identity != snapshot_identity
+            or self._classification_explorer_key != theme_key
+            or self._member_snapshot_identity != snapshot_identity
+            or self._member_theme_key != theme_key
+        ):
+            return
+        self._clear_member_l1_filter(render_table=True)
+        self.classification_members_status.setText(
+            self._classification_members_base_status
+            or "目前顯示完整題材分類成員。"
+        )
+        self._update_classification_l1_filter_buttons()
 
     @Slot(bool)
     def _toggle_classification_explorer(self, expanded: bool) -> None:
@@ -3322,26 +3466,61 @@ class IndustryThemeMapView(QWidget):
         dates.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(dates)
         note = QLabel(
-            "依同一版本的分類成員列計數；不代表權重、供應關係或歷史 PIT。"
+            "點選類別查看下方成員；依同一版本的分類列計數，"
+            "不代表權重、供應關係或歷史 PIT。"
         )
         note.setObjectName("industryThemeClassificationL1Note")
         note.setWordWrap(True)
         note.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(note)
-
-        def add_bar(label_text: str, count: int, tooltip: str) -> None:
+        note_row = QHBoxLayout()
+        note_row.addWidget(note, 1)
+        theme_key = (presentation.chain_name, presentation.theme_name)
+        reset_button = QPushButton("全部成員")
+        reset_button.setObjectName("industryThemeClassificationL1Reset")
+        reset_button.setAccessibleName("還原完整題材成員清單")
+        reset_button.setToolTip("清除 L1 類別篩選，還原此題材完整成員清單。")
+        reset_button.clicked.connect(
+            lambda _checked=False, identity=presentation.snapshot_identity_sha256,
+            key=theme_key: self._reset_classification_l1_filter(identity, key)
+        )
+        note_row.addWidget(reset_button)
+        layout.addLayout(note_row)
+        self._classification_l1_reset_button = reset_button
+        def add_bar(
+            label_text: str,
+            count: int,
+            tooltip: str,
+            category_values: tuple[str, ...],
+            include_missing: bool = False,
+        ) -> None:
             row = QHBoxLayout()
-            category_label = QLabel(label_text)
+            category_label = QPushButton(label_text)
             category_label.setObjectName("industryThemeClassificationL1Category")
             category_label.setFixedWidth(190)
-            category_label.setText(
-                QFontMetrics(category_label.font()).elidedText(
-                    label_text, Qt.TextElideMode.ElideRight, 190
-                )
-            )
+            category_label.setFixedHeight(23)
+            display_label_text = QFontMetrics(category_label.font()).elidedText(
+                label_text, Qt.TextElideMode.ElideRight, 190
+            ).replace("&", "&&")
+            category_label.setText(display_label_text)
             category_label.setAccessibleName(label_text)
+            category_label.setAccessibleDescription(
+                "按下以依此題材版本的原始 L1 分類篩選下方成員表。"
+            )
             category_label.setToolTip(tooltip)
-            category_label.setTextFormat(Qt.TextFormat.PlainText)
+            category_label.setFlat(True)
+            category_label.setCheckable(True)
+            category_label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            category_label.setCursor(Qt.CursorShape.PointingHandCursor)
+            category_label.setStyleSheet(
+                f"QPushButton {{ text-align: left; color: "
+                f"{MIDNIGHT_ANALYST.text_primary}; border: 1px solid "
+                f"{MIDNIGHT_ANALYST.border_subtle}; border-radius: 3px; "
+                f"padding-left: 4px; }} "
+                f"QPushButton:hover {{ border-color: {MIDNIGHT_ANALYST.border}; }} "
+                f"QPushButton:checked {{ background-color: "
+                f"{MIDNIGHT_ANALYST.surface_2}; "
+                f"border-color: {MIDNIGHT_ANALYST.accent}; }}"
+            )
             bar = QProgressBar()
             bar.setObjectName("industryThemeClassificationL1Bar")
             bar.setAccessibleName(f"{label_text}分類列數")
@@ -3360,6 +3539,16 @@ class IndustryThemeMapView(QWidget):
             row.addWidget(category_label)
             row.addWidget(bar, 1)
             layout.addLayout(row)
+            category_label.clicked.connect(
+                lambda checked=False, values=category_values,
+                missing=include_missing, text=label_text,
+                identity=presentation.snapshot_identity_sha256, key=theme_key,
+                button=category_label:
+                self._apply_classification_l1_filter(
+                    values, missing, text, identity, key, button, checked
+                )
+            )
+            self._classification_l1_filter_buttons.append(category_label)
 
         for category, count in shown:
             category_label = f"「{category}」"
@@ -3367,6 +3556,7 @@ class IndustryThemeMapView(QWidget):
                 category_label, count,
                 f"來源原值：{category!r}；{count} / {total} 筆分類列；"
                 "同一題材與版本。",
+                (category,),
             )
         if omitted:
             tooltip_limit = 12
@@ -3384,6 +3574,7 @@ class IndustryThemeMapView(QWidget):
                 f"其他（合併 {len(omitted)} 個 L1 類別）",
                 sum(count for _, count in omitted),
                 f"合併其餘 {len(omitted)} 個 L1 類別；逐類計數：{omitted_rows}。",
+                tuple(category for category, _count in omitted),
             )
         if missing_count:
             missing_values_limit = 12
@@ -3405,11 +3596,14 @@ class IndustryThemeMapView(QWidget):
                 "未提供（欄位空白）", missing_count,
                 f"L1 產業欄位原值為空白：{missing_count} / {total} 筆分類列；"
                 f"各空白原值計數：{missing_value_rows}。",
+                tuple(missing_values),
+                include_missing=True,
             )
         if total == 0:
             empty = QLabel("本題材沒有可計數的分類列。")
             empty.setObjectName("industryThemeClassificationL1Empty")
             layout.addWidget(empty)
+        self._update_classification_l1_filter_buttons()
         self.classification_members_layout.addWidget(card)
 
     def _render_classification_explorer(self) -> None:
@@ -3504,7 +3698,7 @@ class IndustryThemeMapView(QWidget):
 
         shown = len(displayed_members)
         remaining = total - shown
-        self.classification_members_status.setText(
+        self._classification_members_base_status = (
             f"顯示 {shown} / {total} 位分類成員；資料日 {presentation.data_date}；"
             f"讀取時間 {presentation.known_at}；"
             f"映射版本／可得日 {presentation.mapping_snapshot_date}／"
@@ -3512,6 +3706,9 @@ class IndustryThemeMapView(QWidget):
             f"{'是' if presentation.historical_pit_eligible else '否'}；版本 SHA-256 "
             f"{presentation.snapshot_identity_sha256}。"
             + (f"其餘 {remaining} 位請在下方既有題材成員表查閱。" if remaining else "")
+        )
+        self.classification_members_status.setText(
+            self._classification_members_base_status
         )
 
     @Slot()
@@ -3672,7 +3869,8 @@ class IndustryThemeMapView(QWidget):
     def _render_member_page(self) -> None:
         """只建立目前題材成員頁面需要的有限表格列。"""
 
-        total = len(self._member_stock_ids)
+        visible_stock_ids = self._visible_member_stock_ids()
+        total = len(visible_stock_ids)
         page_count = (total + self._MEMBER_PAGE_SIZE - 1) // self._MEMBER_PAGE_SIZE
         if page_count == 0:
             self._member_page_index = 0
@@ -3680,7 +3878,7 @@ class IndustryThemeMapView(QWidget):
             self._member_page_index = min(self._member_page_index, page_count - 1)
         start = self._member_page_index * self._MEMBER_PAGE_SIZE
         end = min(total, start + self._MEMBER_PAGE_SIZE)
-        page_stock_ids = self._member_stock_ids[start:end]
+        page_stock_ids = visible_stock_ids[start:end]
         blocker = QSignalBlocker(self.member_table)
         self.member_table.clearSelection()
         self.member_table.setCurrentCell(-1, -1)
@@ -3705,10 +3903,18 @@ class IndustryThemeMapView(QWidget):
         self.member_table.setToolTip("")
         self._navigation_selection_revision += 1
         if total:
-            self.member_page_status_label.setText(
-                f"顯示 {start + 1}–{end} / {total} 位成員；"
-                f"第 {self._member_page_index + 1} / {page_count} 頁"
-            )
+            if self._member_l1_filter_stock_ids is None:
+                self.member_page_status_label.setText(
+                    f"顯示 {start + 1}–{end} / {total} 位成員；"
+                    f"第 {self._member_page_index + 1} / {page_count} 頁"
+                )
+            else:
+                self.member_page_status_label.setText(
+                    f"L1 篩選：{self._member_l1_filter_label}；"
+                    f"顯示 {start + 1}–{end} / {total} 位符合成員"
+                    f"（本題材 {len(self._member_stock_ids)} 位）；"
+                    f"第 {self._member_page_index + 1} / {page_count} 頁"
+                )
         else:
             self.member_page_status_label.setText("顯示 0 / 0 位成員")
         self.member_page_status_label.setAccessibleDescription(
@@ -3726,8 +3932,9 @@ class IndustryThemeMapView(QWidget):
     def _change_member_page(self, offset: int) -> None:
         if self._closed or self._busy or self._snapshot is None:
             return
+        visible_stock_ids = self._visible_member_stock_ids()
         page_count = (
-            len(self._member_stock_ids) + self._MEMBER_PAGE_SIZE - 1
+            len(visible_stock_ids) + self._MEMBER_PAGE_SIZE - 1
         ) // self._MEMBER_PAGE_SIZE
         target_page = self._member_page_index + offset
         if target_page < 0 or target_page >= page_count:
@@ -3743,7 +3950,24 @@ class IndustryThemeMapView(QWidget):
             or not 0 <= row_index < len(self._member_stock_ids)
         ):
             return False
-        target_page = row_index // self._MEMBER_PAGE_SIZE
+        stock_id = self._member_stock_ids[row_index]
+        visible_stock_ids = self._visible_member_stock_ids()
+        if stock_id not in visible_stock_ids:
+            # 既有搜尋／分類成員下鑽仍定位原題材列；目標列不在篩選內時，
+            # 先明確還原完整清單，再沿原始列索引完成定位。
+            had_l1_filter = self._member_l1_filter_stock_ids is not None
+            self._clear_member_l1_filter(render_table=True)
+            if had_l1_filter and self._classification_members_base_status:
+                self.classification_members_status.setText(
+                    self._classification_members_base_status
+                )
+            self._update_classification_l1_filter_buttons()
+            visible_stock_ids = self._member_stock_ids
+        try:
+            visible_row_index = visible_stock_ids.index(stock_id)
+        except ValueError:
+            return False
+        target_page = visible_row_index // self._MEMBER_PAGE_SIZE
         if target_page != self._member_page_index:
             self._member_page_index = target_page
             self._render_member_page()
@@ -3754,9 +3978,9 @@ class IndustryThemeMapView(QWidget):
             self.member_table.setToolTip("")
             self._navigation_selection_revision += 1
             self._refresh_member_action()
-        page_row = row_index - self._member_page_index * self._MEMBER_PAGE_SIZE
+        page_row = visible_row_index - self._member_page_index * self._MEMBER_PAGE_SIZE
         item = self.member_table.item(page_row, 0)
-        if item is None or item.text() != self._member_stock_ids[row_index]:
+        if item is None or item.text() != visible_stock_ids[visible_row_index]:
             return False
         self.member_table.setCurrentItem(item)
         self.member_table.selectRow(page_row)
@@ -3951,7 +4175,7 @@ class IndustryThemeMapView(QWidget):
             available and not self._busy and selected_theme
         )
         member_page_count = (
-            len(self._member_stock_ids) + self._MEMBER_PAGE_SIZE - 1
+            len(self._visible_member_stock_ids()) + self._MEMBER_PAGE_SIZE - 1
         ) // self._MEMBER_PAGE_SIZE
         self.member_page_previous_button.setEnabled(
             available and not self._busy and self._member_page_index > 0
@@ -3960,6 +4184,7 @@ class IndustryThemeMapView(QWidget):
             available and not self._busy
             and self._member_page_index + 1 < member_page_count
         )
+        self._update_classification_l1_filter_buttons()
         self._refresh_member_action()
         self.stock_lookup_input.setEnabled(lookup_available)
         self.stock_lookup_results.setEnabled(

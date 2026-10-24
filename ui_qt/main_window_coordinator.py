@@ -80,8 +80,7 @@ PRODUCT_ROUTES = (
     ProductRoute("performance", "laboratory", "績效比較", "backtest"),
     ProductRoute("ml", "laboratory", "ML 研究", "recommendation"),
     ProductRoute("data", "systems", "資料與更新", "update"),
-    ProductRoute("operations", "systems", "排程與營運", "runtime"),
-    ProductRoute("diagnostics", "systems", "環境與來源診斷", "runtime"),
+    ProductRoute("operations", "systems", "系統狀態與診斷", "runtime"),
     ProductRoute("storage", "systems", "儲存維護", "storage"),
 )
 
@@ -90,7 +89,7 @@ LEGACY_DEFAULT_ROUTES = {
     "workbench": "overview", "market_explore": "market",
     "recommendation": "screener", "backtest": "backtests",
     "watchlist": "lists", "portfolio": "positions",
-    "update": "data", "runtime": "diagnostics", "stock_research": "lookup",
+    "update": "data", "runtime": "operations", "stock_research": "lookup",
     "stock_lookup": "lookup",
     "strategy_library": "strategies", "research_timeline": "journal", "storage": "storage",
 }

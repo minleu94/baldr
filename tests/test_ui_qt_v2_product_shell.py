@@ -10,7 +10,14 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QComboBox, QHBoxLayout, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QHBoxLayout,
+    QLineEdit,
+    QPushButton,
+    QWidget,
+)
 
 from ui_qt.main_window_coordinator import (
     LEGACY_DEFAULT_ROUTES,
@@ -294,6 +301,46 @@ def test_primary_routes_and_legacy_workspace_callbacks_reach_the_existing_views(
     assert shell.route_id == "themes"
     assert shell._detail_origin == "themes"
     assert host.left_navigation.current_key() == "explore"
+
+
+def test_system_navigation_has_one_runtime_route_and_preserves_legacy_entry_points(
+    app: QApplication,
+) -> None:
+    host, shell = _make_host(app)
+
+    system_routes = tuple(
+        route for route in ROUTE_BY_ID.values() if route.group == "systems"
+    )
+    runtime_routes = tuple(route for route in system_routes if route.workspace == "runtime")
+    assert [(route.route_id, route.label) for route in runtime_routes] == [
+        ("operations", "系統狀態與診斷")
+    ]
+    assert {route.route_id for route in system_routes} == {"data", "operations", "storage"}
+
+    host._select_main_workspace("runtime")
+    assert host.selected_workspace == "runtime"
+    assert shell.route_id == "operations"
+    assert shell.subnav.current_route == "operations"
+    assert [(route_id, button.text()) for route_id, button in shell.subnav._buttons.items()] == [
+        ("data", "資料與更新"),
+        ("operations", "系統狀態與診斷"),
+        ("storage", "儲存維護"),
+    ]
+
+    shell.activate_route("data")
+    assert host.selected_workspace == "update"
+    assert shell.route_id == "data"
+    assert shell.subnav.current_route == "data"
+
+    shell.activate_route("diagnostics")
+    assert host.selected_workspace == "runtime"
+    assert shell.route_id == "operations"
+    assert shell.subnav.current_route == "operations"
+
+    shell.activate_route("storage")
+    assert host.selected_workspace == "storage"
+    assert shell.route_id == "storage"
+    assert shell.subnav.current_route == "storage"
 
 
 def test_detail_keeps_primary_highlight_and_return_uses_source_guard(app: QApplication) -> None:

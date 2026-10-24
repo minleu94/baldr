@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M142；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M144；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M142 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M144 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -412,3 +412,13 @@ M142 Luna `/root/m133_fast_audit` 唯一寫入 `ui_qt/views/market_regime_view.p
 最終受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_2e6615e9dcfb455f860111ab6dbe6afc/receipt.json` exit0：compile0、相關聚焦 **70 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144 source files clean**；8 GiB／12 程序 Job 無殘留或強制清理。正常 Main、隔離合成來源、真 Windows OS DPI216 的 1280×760／1500×900 before／after、失敗收合／展開及成功恢復十圖見 `.../root/native_m141_m142_evidence/run_bf66b3f4086b47ada592e706e8c4ff3f/result.json`，Job `.../root/single_owned_qa_177d260a1b7d463da2fc0a49e471b6ca/receipt.json` exit0；Sol 目視文字、色義、首屏與診斷。M141 首輪 native 失敗 `.../root/single_owned_qa_312d9583806b4f47b503a28c6de2a824/receipt.json` 是實際版面缺口，不當最終通過證據。
 
 證據只涵蓋隔離合成、真 OS DPI216 與本機 Qt；正式市場來源、其他 DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 及完整產品 Gate 未接受。M1–M142 是審查、裁決、實作及 QA 切片序號，非功能數；raw receipt／PNG 留 ignored `output/`，未 push／merge／部署或修改其他排程。
+
+## M143／M144 系統入口與 Paper 提示
+
+M143 由 Luna `/root/m133_research_audit` 單一 writer 修改 `ui_qt/main_window_coordinator.py`、`ui_qt/v2_shell.py` 及 shell 測試。Sol 核實原「排程與營運」和「環境與來源診斷」均指向同一 `RuntimeView`，其營運、環境與來源內容仍在；系統子導覽因此只留「資料與更新」、「系統狀態與診斷」、「儲存維護」。舊 `diagnostics` 程式呼叫正規化至 `operations`，舊 runtime workspace callback 亦選同一路由；資料及儲存入口獨立。未改 Runtime reader、排程、資料或金融語義。
+
+M144 由 Luna `/root/m133_fast_audit` 單一 writer 修改 `ui_qt/views/portfolio_view.py` 與測試。先前原生 Paper QA 圖顯示橫幅開頭 `🧪` 為缺字框；新橫幅以「Paper 模擬｜不會下單。」純文字開頭，原 Paper／手動帳別、非實盤聲明、虛線樣式及分區路由保留。Sol 拒絕另造 Portfolio 風險總卡：目前 M8 手動帳摘要與 M127 Paper Health 分布分屬不同身份，尚無單一合格 concentration／stop distance／exit DTO，不可混帳或自行推算。
+
+最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_26076e5bd48043a39196e088bc153f09/receipt.json` exit 0：受改 Python 編譯、相關 focused **115 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。首兩次聚焦各有 114 passed／1 failed，原因是新測試把 Qt 前一路由已排程刪除的按鈕當成目前導覽，改為檢查子導覽當前 `_buttons` 後通過；保留失敗收據，不當產品缺陷或最終 PASS。
+
+隔離正常 Windows Main 在 1280×760 與 1500×900、真 OS DPI216 的系統頁及 Paper 頁共四張 PNG，Sol 目視只見單一 Runtime 入口、原營運資料及 Paper 橫幅無缺字；舊 route、切回手動帳在程序中斷言。證據 `output/tasks/baldr-opus-ux-implementation/root/native_m143_m144_evidence/run_ed71853ee62e4736937f3d860e12dd3e/result.json`，Job `.../single_owned_qa_e9bb2537daf648249f16c1f0698e8379/receipt.json` exit 0。此 GUI 執行關窗時仍在 stderr 出現既有 Portfolio／Position Health 背景 worker 對已刪除 widget 發訊號的 `RuntimeError`；功能畫面及 route 斷言通過，關閉生命週期驗收**未通過**，列後續修復並不得據此聲稱完整 GUI 驗收。未使用正式／私人資料，未驗其他真 DPI、Light、固定新版 EXE、Owner UAT、自然排程或完整產品 Gate。

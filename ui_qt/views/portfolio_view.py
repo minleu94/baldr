@@ -2626,7 +2626,7 @@ class PortfolioView(QWidget):
 
     def _set_v2_identity_banner(self, section: str, account: object) -> None:
         if section == "paper":
-            text = "🧪 Paper 模擬，不會下單。此分區只呈現 Paper 帳本、配置研究與情境；不代表手動持倉或實盤績效。"
+            text = "Paper 模擬｜不會下單。此分區只呈現 Paper 帳本、配置研究與情境；不代表手動持倉或實盤績效。"
         elif section == "journal":
             text = "研究紀錄與覆盤：Journal／生命週期研究，不代表手動持倉或 Paper 帳本。"
         elif account == "user_declared":

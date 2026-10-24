@@ -1958,6 +1958,31 @@ def test_portfolio_stress_source_disclosure_survives_section_switch_and_save(
     host.close()
 
 
+def test_v2_paper_identity_banner_uses_text_and_routes_back_to_manual(tmp_path):
+    view = make_portfolio_view(tmp_path)
+
+    assert view.select_v2_section("paper") is True
+    assert view.portfolio_account_selector.currentData() == "paper"
+    assert view._current_v2_section == "paper"
+    assert view.portfolio_v2_identity_banner.isHidden() is False
+    paper_text = view.portfolio_v2_identity_banner.text()
+    assert paper_text == (
+        "Paper 模擬｜不會下單。此分區只呈現 Paper 帳本、配置研究與情境；"
+        "不代表手動持倉或實盤績效。"
+    )
+    assert "🧪" not in paper_text
+    assert "2px dashed" in view.portfolio_v2_identity_banner.styleSheet()
+
+    assert view.select_v2_section("positions") is True
+    assert view.portfolio_account_selector.currentData() == "manual"
+    assert view._current_v2_section == "positions"
+    assert view.portfolio_v2_identity_banner.isHidden() is False
+    assert view.portfolio_v2_identity_banner.text() == (
+        "手動紀錄持倉，未與券商同步"
+    )
+    assert "2px dashed" not in view.portfolio_v2_identity_banner.styleSheet()
+
+
 def test_portfolio_stress_history_is_read_only_when_not_configured(tmp_path):
     view = make_portfolio_view(tmp_path)
 

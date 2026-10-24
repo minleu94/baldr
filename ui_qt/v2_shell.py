@@ -152,7 +152,8 @@ class ProductShell(QWidget):
             self.activate_route(self._last_routes.get(group, routes[0].route_id))
 
     def activate_route(self, route_id: str, *, preserve_view_state: bool = False) -> None:
-        route = ROUTE_BY_ID.get(route_id)
+        canonical_route_id = "operations" if route_id == "diagnostics" else route_id
+        route = ROUTE_BY_ID.get(canonical_route_id)
         if route is None:
             return
         self.host._timeline_pending_price_entry = None
@@ -160,8 +161,8 @@ class ProductShell(QWidget):
         self.host._historical_research_return = None
         self._activating = True
         try:
-            self.route_id = route_id
-            self._last_routes[route.group] = route_id
+            self.route_id = canonical_route_id
+            self._last_routes[route.group] = canonical_route_id
             self._detail_origin = None
             self._global_search_expanded = False
             if preserve_view_state:
@@ -169,7 +170,7 @@ class ProductShell(QWidget):
             else:
                 self.host._select_main_workspace(route.workspace)
             if not preserve_view_state:
-                self._select_existing_section(route_id)
+                self._select_existing_section(canonical_route_id)
             self._refresh_navigation()
         finally:
             self._activating = False

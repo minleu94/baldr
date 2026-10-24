@@ -1,7 +1,11 @@
+from datetime import datetime
+from types import SimpleNamespace
+
 import matplotlib
 from matplotlib.figure import Figure
 
 from ui_qt.theme import MIDNIGHT_ANALYST
+import ui_qt.widgets.chart_widget as chart_widget_module
 from ui_qt.widgets.chart_widget import (
     DrawdownCurveWidget,
     EquityCurveWidget,
@@ -90,6 +94,109 @@ def test_dark_chart_theme_is_local_to_figure_and_does_not_mutate_matplotlib_rcpa
     assert axes.title.get_color() == MIDNIGHT_ANALYST.text_primary
     assert MIDNIGHT_ANALYST.surface_1 in canvas.style
     assert canvas.draw_count == 1
+
+
+def test_mplcursors_buy_and_sell_annotations_use_dark_palette_and_keep_text(
+    monkeypatch,
+):
+    cursors = []
+
+    class _Cursor:
+        def __init__(self):
+            self.add_callback = None
+
+        def connect(self, event, callback):
+            assert event == "add"
+            self.add_callback = callback
+
+    def cursor(_artist, *, hover):
+        assert hover is True
+        result = _Cursor()
+        cursors.append(result)
+        return result
+
+    class _Bbox:
+        def __init__(self):
+            self.facecolor = None
+            self.edgecolor = None
+
+        def set_facecolor(self, color):
+            self.facecolor = color
+
+        def set_edgecolor(self, color):
+            self.edgecolor = color
+
+    class _Annotation:
+        def __init__(self):
+            self.text = ""
+            self.color = None
+            self.bbox = _Bbox()
+
+        def set_text(self, value):
+            self.text = value
+
+        def set_color(self, value):
+            self.color = value
+
+        def get_bbox_patch(self):
+            return self.bbox
+
+    monkeypatch.setattr(chart_widget_module, "HAS_MPLCURSORS", True)
+    monkeypatch.setattr(
+        chart_widget_module,
+        "mplcursors",
+        SimpleNamespace(cursor=cursor),
+    )
+    chart = SimpleNamespace(
+        _buy_meta={
+            0: {
+                "date": datetime(2026, 10, 22),
+                "price": 123.45,
+                "shares": 2,
+                "tags": "entry",
+            }
+        },
+        _sell_meta={
+            0: {
+                "date": datetime(2026, 10, 23),
+                "price": 125.00,
+                "shares": 2,
+                "profit": 3.10,
+                "return_pct": 1.25,
+                "holding_days": 4,
+                "tags": "exit",
+            }
+        },
+        _mplcursors_handles=[],
+    )
+
+    chart_widget_module.EquityCurveWidget._enable_hover_tooltip(
+        chart,
+        equity_series=None,
+        benchmark_normalized=None,
+        buy_scatter=object(),
+        sell_scatter=object(),
+    )
+
+    assert len(cursors) == 2
+    expected_texts = (
+        "BUY @ 2026-10-22\nBuy Price: $123.45\nShares: 2\nTags: entry",
+        "SELL @ 2026-10-23\nSell Price: $125.00\nShares: 2\n"
+        "Profit: $3.10\nReturn%: 1.25%\nHolding Days: 4\nTags: exit",
+    )
+    for cursor_item, expected_text in zip(cursors, expected_texts):
+        annotation = _Annotation()
+        selection = SimpleNamespace(
+            target=SimpleNamespace(index=0),
+            annotation=annotation,
+        )
+        cursor_item.add_callback(selection)
+
+        assert annotation.text == expected_text
+        assert annotation.color == MIDNIGHT_ANALYST.text_primary
+        assert annotation.bbox.facecolor == MIDNIGHT_ANALYST.surface_3
+        assert annotation.bbox.edgecolor == MIDNIGHT_ANALYST.border
+    assert len(chart._mplcursors_handles) == 2
 
 
 def test_fast_chart_page_and_initial_empty_html_have_local_dark_background():

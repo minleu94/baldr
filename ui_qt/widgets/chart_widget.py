@@ -56,6 +56,16 @@ def _apply_dark_chart_theme(figure, canvas) -> None:
     canvas.draw()
 
 
+def _style_mpl_cursor_annotation(annotation: Any) -> None:
+    """替 mplcursors 延後建立的提示框套用同一深色圖表文字與底色。"""
+
+    annotation.set_color(MIDNIGHT_ANALYST.text_primary)
+    bbox = annotation.get_bbox_patch()
+    if bbox is not None:
+        bbox.set_facecolor(MIDNIGHT_ANALYST.surface_3)
+        bbox.set_edgecolor(MIDNIGHT_ANALYST.border)
+
+
 class EquityCurveWidget(QWidget):
     """權益曲線圖表（支援買賣點 marker、hover tooltip、十字線）"""
     
@@ -732,7 +742,12 @@ class EquityCurveWidget(QWidget):
                     return ""
                 
                 cursor_buy = mplcursors.cursor(buy_scatter, hover=True)
-                cursor_buy.connect("add", lambda sel: sel.annotation.set_text(buy_formatter(sel)))
+
+                def on_buy_cursor_add(sel):
+                    sel.annotation.set_text(buy_formatter(sel))
+                    _style_mpl_cursor_annotation(sel.annotation)
+
+                cursor_buy.connect("add", on_buy_cursor_add)
                 self._mplcursors_handles.append(cursor_buy)
             
             # 賣點 tooltip
@@ -753,7 +768,12 @@ class EquityCurveWidget(QWidget):
                     return ""
                 
                 cursor_sell = mplcursors.cursor(sell_scatter, hover=True)
-                cursor_sell.connect("add", lambda sel: sel.annotation.set_text(sell_formatter(sel)))
+
+                def on_sell_cursor_add(sel):
+                    sel.annotation.set_text(sell_formatter(sel))
+                    _style_mpl_cursor_annotation(sel.annotation)
+
+                cursor_sell.connect("add", on_sell_cursor_add)
                 self._mplcursors_handles.append(cursor_sell)
         else:
             # 使用基本 matplotlib annotation（較簡單的實現）

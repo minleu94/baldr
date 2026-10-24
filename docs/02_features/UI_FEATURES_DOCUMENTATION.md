@@ -1,5 +1,7 @@
 # UI 功能文件（Qt）
 
+M129 後繼原始碼：回測與 Portfolio 共用權益曲線的 Matplotlib 備援圖在有 `mplcursors` 時，買／賣點 hover 提示沿目前深色圖表設文字、底色及邊框；原日期、價格、股數、標記、損益與報酬內容不變。改動限動態 annotation，未改圖資料、金融公式、正式來源或固定舊 EXE。操作及限制見[研究與回測手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md#備援權益圖買賣點提示)，驗證見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m129-matplotlib-備援圖-hover-提示)。
+
 M128 後繼原始碼把產業題材既有 L1 組成標籤設為同版成員表篩選器。最多八個原始類別、精確合併的「其他」及空白欄位各可明選；點選後跳至成員表，頁碼與符合列數按篩選結果顯示，「全部成員」清除篩選及選取。分類圖股票鈕與反查可定位完整原列；若目標不在目前篩選內，先還原完整表再選列。個股導覽保存原題材完整列序／原始列索引，換題、換版與失敗清舊；不改 DTO、分類 mapping、金融公式或來源資格。操作見[市場研究手冊](../07_guides/manuals/DATA_AND_MARKET_RESEARCH.md#產業與題材後繼source)，限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m128-題材-l1-圖至成員表導覽)。
 
 M123 後繼原始碼：Portfolio「情境壓力 → 已保存歷史」選一筆後，預設收合的逐列區只讀該筆 canonical payload，保留原保存列序與同股多持倉身份；可明選一列複製完整報價來源 SHA-256，payload hash 與報價來源 hash 分開。舊版未保存逐列、明示空列、缺價代號未知、來源欄未知及壞逐列各有獨立提示；缺價不補零、不查目前持倉或行情。歷史總表排序仍綁 record ID，換筆與錯誤清舊；逐列表固定保存原序以免原金額文字被字典序誤排。限定 QA 見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m123-已保存-stress-逐列來源回訪)。

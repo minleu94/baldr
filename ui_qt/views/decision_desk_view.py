@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
+    DecisionDeskRiskPromptSummary,
     DecisionDeskSnapshot,
     RelativeStrengthLiquiditySummary,
 )
@@ -399,6 +400,9 @@ class DecisionDeskView(QWidget):
         self.portfolio_alerts_value = QLabel("")
         self.risk_prompts_status = QLabel("")
         self.risk_prompts_value = QLabel("")
+        self.risk_prompts_value.setObjectName("decisionDeskRiskPromptDetails")
+        self.risk_prompts_value.setAccessibleName("每日決策風險提示詳情")
+        self.risk_prompts_value.setTextFormat(Qt.PlainText)
         self.relative_strength_codes = CompactCodeList()
         self._section_badges: dict[str, StatusBadge] = {}
         self._status_badges: dict[QLabel, StatusBadge] = {}
@@ -537,12 +541,18 @@ class DecisionDeskView(QWidget):
         title_label.setFont(title_font)
         title_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         quality_badge = StatusBadge("", "observed")
+        if title == "風險提示":
+            row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            quality_badge.setMaximumHeight(32)
         self._section_badges[title] = quality_badge
         self._status_badges[status_label] = quality_badge
         status_label.setWordWrap(True)
         value_label.setWordWrap(True)
         status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         value_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        if title == "風險提示":
+            status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            value_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         status_label.setMinimumWidth(0)
         value_label.setMinimumWidth(0)
         status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 10pt;")
@@ -687,6 +697,7 @@ class DecisionDeskView(QWidget):
             self.risk_prompts_value,
         ):
             value_label.setText("待背景載入")
+        self.risk_prompts_value.setAccessibleDescription("風險提示尚未載入。")
         self.overall_status_label.setStyleSheet(
             f"background: {MIDNIGHT_ANALYST.surface_2}; color: {MIDNIGHT_ANALYST.text_secondary}; "
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
@@ -699,6 +710,18 @@ class DecisionDeskView(QWidget):
         self.market_breadth_row.hide()
         self._clear_institutional_flow_bar()
         self._clear_industry_strength_chart("載入中；可比產業圖卡已清除舊快照")
+        self.risk_prompts_value.setText("載入中；舊風險提示已清除。")
+        loading_detail = "正在讀取新快照；舊風險提示已清除。"
+        self.risk_prompts_value.setAccessibleDescription(loading_detail)
+        self.risk_prompts_status.setText("載入中")
+        self.risk_prompts_status.setToolTip(loading_detail)
+        self.risk_prompts_status.setAccessibleDescription(loading_detail)
+        risk_prompts_badge = self._status_badges.get(self.risk_prompts_status)
+        if risk_prompts_badge is not None:
+            risk_prompts_badge.setText("載入中")
+            risk_prompts_badge.set_quality("missing")
+            risk_prompts_badge.setToolTip(loading_detail)
+            risk_prompts_badge.setAccessibleDescription(loading_detail)
         self.overall_status_label.setText("摘要載入中")
         self.generated_at_label.setText(
             f"判讀日：{self.as_of_date.isoformat()}｜產生時間：背景載入中"
@@ -942,7 +965,10 @@ class DecisionDeskView(QWidget):
             snapshot.risk_prompts.quality,
             getattr(snapshot.risk_prompts, "as_of_date", snapshot.as_of_date),
         )
-        self.risk_prompts_value.setText(self._format_risk_prompts(snapshot.risk_prompts.prompts))
+        self.risk_prompts_value.setText(self._format_risk_prompts(snapshot.risk_prompts))
+        self.risk_prompts_value.setAccessibleDescription(
+            self._risk_prompts_accessible_description(snapshot.risk_prompts)
+        )
 
         for section_text in self._collect_warnings(snapshot):
             humanized = self._humanize_warning_token(section_text)
@@ -1931,14 +1957,62 @@ class DecisionDeskView(QWidget):
             self.navigate_to_smart_money_callback(str(stock_code))
 
     @staticmethod
-    def _format_risk_prompts(prompts) -> str:
+    def _format_risk_prompts(summary: DecisionDeskRiskPromptSummary) -> str:
+        prompts = summary.prompts
         if not prompts:
-            return "無"
-        parts = []
+            if summary.quality == DecisionDeskQuality.OBSERVED:
+                return "這份來源未列風險提示；這不代表沒有風險。"
+            if summary.quality == DecisionDeskQuality.MISSING:
+                return "風險提示資料缺漏，無法判定；這不代表沒有風險。"
+            if summary.quality == DecisionDeskQuality.DEGRADED:
+                return "風險提示資料品質降級，目前無法確認是否有提示；這不代表沒有風險。"
+            return "風險提示僅有估算狀態，目前無法確認是否有提示；這不代表沒有風險。"
+
+        rows = []
+        severity_labels = {
+            "info": "資訊",
+            "warning": "注意",
+            "critical": "嚴重",
+        }
+        category_labels = {
+            "market_context": "市場情勢",
+            "liquidity": "流動性",
+            "weakness": "相對弱勢",
+            "watchlist_risk": "觀察清單風險",
+            "portfolio_alert": "持倉警示",
+            "fundamental_diagnostic": "基本面異常",
+        }
         for prompt in prompts[:5]:
-            code = f"{prompt.code} " if prompt.code else ""
-            parts.append(f"[{prompt.severity}] {code}{prompt.title}：{prompt.action_hint}")
-        return "；".join(parts)
+            severity = severity_labels.get(prompt.severity, str(prompt.severity))
+            category = category_labels.get(prompt.category, prompt.category)
+            source = DecisionDeskView._display_source_label(prompt.source)
+            code_text = f"｜代碼：{prompt.code}" if prompt.code else ""
+            rows.append(
+                f"[{severity}] {prompt.title}{code_text}\n"
+                f"分類：{category}｜來源：{source}\n"
+                f"原因：{prompt.reason}\n"
+                f"建議檢查：{prompt.action_hint}"
+            )
+        if len(prompts) > 5:
+            rows.append(f"另有 {len(prompts) - 5} 筆風險提示未列出。")
+        return "\n\n".join(rows)
+
+    @staticmethod
+    def _risk_prompts_accessible_description(
+        summary: DecisionDeskRiskPromptSummary,
+    ) -> str:
+        if not summary.prompts:
+            return DecisionDeskView._format_risk_prompts(summary)
+        lines = [
+            (
+                f"風險提示 {index}：原 severity={prompt.severity}；"
+                f"原 category={prompt.category}；原 source={prompt.source}"
+            )
+            for index, prompt in enumerate(summary.prompts[:5], start=1)
+        ]
+        if len(summary.prompts) > 5:
+            lines.append(f"另有 {len(summary.prompts) - 5} 筆提示未列出。")
+        return "\n".join(lines)
 
     @staticmethod
     def _format_portfolio_attributions(attributions) -> str:

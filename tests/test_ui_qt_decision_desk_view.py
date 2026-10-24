@@ -1267,14 +1267,34 @@ def test_decision_desk_view_localizes_machine_warning_tokens():
 def test_decision_desk_view_renders_risk_prompts():
     app()
     s = _snapshot()
-    prompt = DecisionDeskRiskPrompt(
-        category="liquidity",
-        severity="warning",
-        source="relative_strength_liquidity",
-        code="1101",
-        title="低流動性",
-        reason="1101 低於平均成交金額門檻",
-        action_hint="檢查可成交金額",
+    prompts = (
+        DecisionDeskRiskPrompt(
+            category="liquidity",
+            severity="critical",
+            source="relative_strength_liquidity",
+            code="1101",
+            title="低流動性",
+            reason="1101 成交金額 < 既有門檻 & 需人工複核",
+            action_hint="檢查可成交金額",
+        ),
+        DecisionDeskRiskPrompt(
+            category="position",
+            severity="warning",
+            source="portfolio_alerts",
+            code=None,
+            title="持倉條件提醒",
+            reason="原來源標示條件需檢視",
+            action_hint="回看原持倉警示",
+        ),
+        DecisionDeskRiskPrompt(
+            category="market_data",
+            severity="info",
+            source="market_breadth",
+            code="2330",
+            title="資料覆蓋提示",
+            reason="來源資料部分缺漏",
+            action_hint="核對資料日與品質",
+        ),
     )
     s = replace(
         s,
@@ -1282,13 +1302,218 @@ def test_decision_desk_view_renders_risk_prompts():
             as_of_date=s.as_of_date,
             quality=DecisionDeskQuality.OBSERVED,
             warnings=(),
-            prompts=(prompt,),
+            prompts=prompts,
         ),
     )
     view = rendered_view(FakeBuilder(s))
+    rendered = view.risk_prompts_value.text()
 
-    assert "低流動性" in view.risk_prompts_value.text()
-    assert "1101" in view.risk_prompts_value.text()
+    assert "[嚴重]" in rendered
+    assert "[注意]" in rendered
+    assert "[資訊]" in rendered
+    assert "低流動性" in rendered
+    assert "代碼：1101" in rendered
+    assert "分類：流動性｜來源：強弱與流動性" in rendered
+    assert "原因：1101 成交金額 < 既有門檻 & 需人工複核" in rendered
+    assert "建議檢查：檢查可成交金額" in rendered
+    assert "分類：position｜來源：持倉警示" in rendered
+    assert "原因：原來源標示條件需檢視" in rendered
+    assert "建議檢查：回看原持倉警示" in rendered
+    assert "持倉條件提醒" in rendered
+    assert "代碼：None" not in rendered
+    assert view.risk_prompts_value.textFormat() == Qt.PlainText
+    assert view.risk_prompts_value.wordWrap()
+    accessible = view.risk_prompts_value.accessibleDescription()
+    assert "原 severity=critical" in accessible
+    assert "原 category=liquidity" in accessible
+    assert "原 source=relative_strength_liquidity" in accessible
+    assert "原 category=position" in accessible
+    assert "原 source=portfolio_alerts" in accessible
+    view.close()
+
+
+def test_decision_desk_view_discloses_truncated_risk_prompt_count():
+    app()
+    snapshot = _snapshot()
+    prompts = tuple(
+        DecisionDeskRiskPrompt(
+            category="test-category",
+            severity="info",
+            source="test-source",
+            code=str(index),
+            title=f"提示 {index}",
+            reason=f"原因 {index}",
+            action_hint=f"檢查 {index}",
+        )
+        for index in range(1, 8)
+    )
+    snapshot = replace(
+        snapshot,
+        risk_prompts=DecisionDeskRiskPromptSummary(
+            as_of_date=snapshot.as_of_date,
+            quality=DecisionDeskQuality.OBSERVED,
+            warnings=(),
+            prompts=prompts,
+        ),
+    )
+    view = rendered_view(FakeBuilder(snapshot))
+
+    rendered = view.risk_prompts_value.text()
+    assert "提示 1" in rendered and "提示 5" in rendered
+    assert "提示 6" not in rendered and "提示 7" not in rendered
+    assert "分類：test-category｜來源：test-source" in rendered
+    assert "另有 2 筆風險提示未列出" in rendered
+    assert "原 category=test-category" in view.risk_prompts_value.accessibleDescription()
+    view.close()
+
+
+def test_decision_desk_view_clears_old_risk_prompts_while_refreshing():
+    app()
+    snapshot = _snapshot()
+    prompt = DecisionDeskRiskPrompt(
+        category="liquidity",
+        severity="warning",
+        source="relative_strength_liquidity",
+        code="1101",
+        title="舊提示不得保留",
+        reason="舊原因不得保留",
+        action_hint="舊動作不得保留",
+    )
+    snapshot = replace(
+        snapshot,
+        risk_prompts=DecisionDeskRiskPromptSummary(
+            as_of_date=snapshot.as_of_date,
+            quality=DecisionDeskQuality.OBSERVED,
+            warnings=(),
+            prompts=(prompt,),
+        ),
+    )
+    view = rendered_view(FakeBuilder(snapshot))
+    view._display_loading_snapshot()
+
+    rendered = view.risk_prompts_value.text()
+    assert "載入中" in rendered
+    assert "舊提示不得保留" not in rendered
+    assert view._section_badges["風險提示"].text() == "載入中"
+    view.close()
+
+
+def test_decision_desk_view_distinguishes_empty_risk_prompts_by_quality():
+    app()
+    base = _snapshot()
+    expected = {
+        DecisionDeskQuality.OBSERVED: "這份來源未列風險提示；這不代表沒有風險。",
+        DecisionDeskQuality.MISSING: "風險提示資料缺漏，無法判定；這不代表沒有風險。",
+        DecisionDeskQuality.DEGRADED: "風險提示資料品質降級，目前無法確認是否有提示；這不代表沒有風險。",
+        DecisionDeskQuality.ESTIMATED: "風險提示僅有估算狀態，目前無法確認是否有提示；這不代表沒有風險。",
+    }
+
+    for quality, message in expected.items():
+        snapshot = replace(
+            base,
+            risk_prompts=DecisionDeskRiskPromptSummary(
+                as_of_date=base.as_of_date,
+                quality=quality,
+                warnings=(),
+                prompts=(),
+            ),
+        )
+        view = rendered_view(FakeBuilder(snapshot))
+        assert view.risk_prompts_value.text() == message
+        assert view._section_badges["風險提示"].text() == DecisionDeskView._quality_label(quality)
+        view.close()
+
+
+def test_decision_desk_view_clears_old_risk_prompts_on_snapshot_failure():
+    app()
+    snapshot = _snapshot()
+    prompt = DecisionDeskRiskPrompt(
+        category="liquidity",
+        severity="warning",
+        source="relative_strength_liquidity",
+        code="1101",
+        title="舊提示不得保留",
+        reason="舊原因不得保留",
+        action_hint="舊動作不得保留",
+    )
+    snapshot = replace(
+        snapshot,
+        risk_prompts=DecisionDeskRiskPromptSummary(
+            as_of_date=snapshot.as_of_date,
+            quality=DecisionDeskQuality.OBSERVED,
+            warnings=(),
+            prompts=(prompt,),
+        ),
+    )
+    view = rendered_view(FakeBuilder(snapshot))
+    view._display_exception_snapshot("snapshot read failed")
+
+    rendered = view.risk_prompts_value.text()
+    assert "舊提示不得保留" not in rendered
+    assert "舊原因不得保留" not in rendered
+    assert "舊動作不得保留" not in rendered
+    assert "無法確認是否有提示" in rendered
+    assert view._section_badges["風險提示"].text() == DecisionDeskView._quality_label(
+        DecisionDeskQuality.DEGRADED
+    )
+    view.close()
+
+
+def test_decision_desk_risk_prompt_row_shrinks_after_long_to_empty_snapshot():
+    application = app()
+    base = _snapshot()
+    long_text = "長原因需要逐項閱讀並保留原文。" * 45
+    prompts = tuple(
+        DecisionDeskRiskPrompt(
+            category="liquidity",
+            severity="warning",
+            source="relative_strength_liquidity",
+            code=str(index),
+            title=f"長風險提示 {index}",
+            reason=long_text,
+            action_hint=long_text,
+        )
+        for index in range(5)
+    )
+    long_snapshot = replace(
+        base,
+        risk_prompts=DecisionDeskRiskPromptSummary(
+            as_of_date=base.as_of_date,
+            quality=DecisionDeskQuality.OBSERVED,
+            warnings=(),
+            prompts=prompts,
+        ),
+    )
+    view = rendered_view(FakeBuilder(long_snapshot))
+    view.resize(1280, 760)
+    view.advanced_market_panel.set_collapsed(False)
+    view.show()
+    for _ in range(10):
+        application.processEvents()
+    risk_row = view.risk_prompts_value.parentWidget()
+    long_height = risk_row.height()
+
+    missing_snapshot = replace(
+        long_snapshot,
+        risk_prompts=DecisionDeskRiskPromptSummary(
+            as_of_date=base.as_of_date,
+            quality=DecisionDeskQuality.MISSING,
+            warnings=(),
+            prompts=(),
+        ),
+    )
+    view._render_snapshot(missing_snapshot)
+    for _ in range(10):
+        application.processEvents()
+    short_height = risk_row.height()
+
+    assert short_height < long_height
+    assert short_height <= 120
+    assert view.risk_prompts_value.isVisible()
+    assert view._section_badges["風險提示"].isVisible()
+    assert view._section_badges["風險提示"].height() <= 32
+    assert "無法判定" in view.risk_prompts_value.text()
+    view.close()
 
 
 def test_decision_desk_view_renders_portfolio_alert_attributions():

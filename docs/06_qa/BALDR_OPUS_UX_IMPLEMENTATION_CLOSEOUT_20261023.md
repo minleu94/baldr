@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M151；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M153；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M151 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M153 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -460,3 +460,15 @@ M151 為測試維護：Luna `/root/m149_saved_reader_audit` 單一 writer 將既
 最終受控 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_be1cd3d82a164397b5fab971a6e3603a/receipt.json` exit0：compile0、精確保存讀回及緊湊版面 **14 passed**、正常 Main 跨頁旅程 **1 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** files clean；8 GiB／12 程序 Job 無殘留。先前 NameError／測試導覽與來源選擇失敗收據保留，不當最終 PASS。
 
 原生 QA `output/tasks/baldr-opus-ux-implementation/root/native_m150_evidence/run_568b81186dc74f419fb4a82e4a32fe5a/result.json`，受控 Job `.../root/single_owned_qa_e35a8e8cbbf444f2b5f222a3986c2c2b/receipt.json` exit0：正常 Windows Main 在真 OS DPI216 的 1280×760／1500×900，隔離合成 canonical verified query 真走 get(ID)。兩尺寸皆核結果狀態與候選第一列可見、原每日決策返回、一般入口無來源返回；失敗與成功共八 PNG、callback exception0。Sol 目視 1280 首列及來源提示可讀。這只接受原始碼與限定 QA；正式保存來源、其他 DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 和完整產品 Gate 未接受。M1–M151 是審查／裁決／實作／QA 序號，非功能數；沒有 push、merge、部署或修改其他排程。
+
+## M152／M153 風險提示解釋與研究母體三態圖
+
+Sol 對 M1–M151 及現行程式去重後，採兩個獨立、有原 DTO 的 UX 切片。Luna `/root/m152_decision_gap` 單一 writer 修改 `ui_qt/views/decision_desk_view.py`、`tests/test_ui_qt_decision_desk_view.py`：每日決策進階風險提示原只拼嚴重度、代碼、標題及行動，未顯 DTO 的分類、來源與原因；現以純文字分行顯原理由和建議檢查，三種嚴重度白話顯示、已知來源與分類對應既有中文、原碼保留於輔助描述，超過五筆顯精確省略數。原 quality badge 保留，空 observed 僅表示這份來源未列；missing／degraded／estimated、載入與失敗均不冒充沒有風險。Sol 修降級／估算空態文案，原生退回長內容轉缺件時的高空白；Luna 對該列與徽章設自然高度，Sol 再以受控 Qt 幾何探針確認排版需完成事件輪次，修測試等待。沒有改原 prompt 排序、來源、判斷或建議公式。
+
+Luna `/root/m152_research_gap` 單一 writer 修改 `ui_qt/views/daily_market_cohort_view.py`、新增 `tests/test_ui_qt_daily_market_cohort_view.py`：兩項固定方法保留原符合／不符合／未知整數表，另以同一 typed `DailyMarketCohortMethodCount` 的三態整數及固定母體分母畫橫向三段條；未知使用獨立中性色，原整數與母體數可核。無效或零分母不畫比例，換版、錯誤與清空移除舊圖。Sol 原生退回 DPI216 下精確人數標籤被表格列裁切；Luna 改以當前字型行距、圖條最低高度與儲存格邊距計列高，Sol 補 `sizeHint()` 可能無效的檢查後重驗。沒有改既有方法、投影、分母、PIT 或來源資格。
+
+首輪 focused `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_ffa810cc15cc428ab098e5c2c1773387/receipt.json` 為 **68 passed／1 failed**（降級空態文案預期）；修後 `.../single_owned_qa_c0c7832319ee4e2bb82374b4e1a48ddc/receipt.json` **69 passed**。初輪正常 Main 圖 `.../root/native_m152_m153_evidence/run_e9a75726f0f748e4a42d5a319175aa2d/` 雖腳本 exit0，Sol 目視退回圖例裁切及空態高度，不能作最終視覺接受；幾何測試首輪 `.../single_owned_qa_b7233a9509504e1b8b0c25003b0db314/receipt.json` 為 **69 passed／1 failed**，受控探針 `.../single_owned_qa_f977353c3f994ccb9b0862ba8afcd5d7/receipt.json` 說明長短內容排版在事件輪次後可收縮。修後 focused `.../single_owned_qa_0b7d8964d6cd45e7baecc9f9c4bbea32/receipt.json` **70 passed**。
+
+最終共同 QA `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_06609ab5cf014b0eac9cf222db6c0eb6/receipt.json` exit0：受改 Python compile0、focused **70 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留。正常 Main 真 OS DPI216 的 1280×760／1500×900 六張隔離合成圖與 JSON：`.../root/native_m152_m153_evidence/run_4561fc0e821f4c6a91a7bfdb0d4fe911/result.json`；Job `.../root/single_owned_qa_e0b21e9071c54b9c943d700f1fe2b5b3/receipt.json` exit0。Sol 目視原表與完整三態人數同屏、風險逐筆原因可讀、長提示轉缺件後列收縮且品質徽章保留；隔離 SQLite SHA 不變、callback exception0。
+
+這是原始碼及限定合成／原生 QA，不是正式來源接受。正式市場／私人資料、其他真 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受；M1–M153 是審查、裁決、實作與 QA 序號，非 153 個獨立功能。沒有自動交易、正式資料改寫、其他排程修改、push、merge 或部署。

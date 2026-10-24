@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Callable, Sequence
 
 from ui_qt.research_universe_presentation import research_universe_text
 
-from typing import Callable
-
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QDialog, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTableWidget, QTabWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from app_module.daily_market_cohort_projection import (
+    DailyMarketCohortMethodCount,
     DailyMarketCohortProjection,
     project_daily_market_cohort,
 )
@@ -34,6 +35,128 @@ from ui_qt.original_ranking_presentation import (
 from ui_qt.views.daily_market_research_view import DailyMarketResearchView
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.info_button import InfoButton
+
+
+class _CohortStateDistributionTrack(QWidget):
+    """以既有整數人數繪出具名母體的三態比例條。"""
+
+    STATE_COLORS = (QColor("#3f7896"), QColor("#697781"), QColor("#9da8b0"))
+
+    def __init__(
+        self,
+        match_count: int,
+        no_match_count: int,
+        unknown_count: int,
+        denominator: int,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.counts = (match_count, no_match_count, unknown_count)
+        self.denominator = denominator
+        self.renderable = (
+            type(denominator) is int
+            and denominator > 0
+            and all(type(count) is int and count >= 0 for count in self.counts)
+            and sum(self.counts) == denominator
+        )
+        self.setObjectName("marketCohortStateDistributionTrack")
+        self.setAccessibleName("研究母體條件符合、不符合與未知人數分布條")
+        description = (
+            "符合、不符合及未知的段長只依原快照整數人數與具名母體分母呈現。"
+            if self.renderable else "分母或三態人數不可繪製；沒有比例條。"
+        )
+        self.setAccessibleDescription(description)
+        self.setToolTip(description)
+        self.setMinimumHeight(10)
+        self.setMaximumHeight(10)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt event override
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), self.palette().alternateBase())
+        x = 0
+        for next_x, color in zip(
+            self.segment_endpoints(self.width()), self.STATE_COLORS,
+        ):
+            if next_x > x:
+                painter.fillRect(x, 0, next_x - x, self.height(), color)
+            x = next_x
+        painter.end()
+
+    def segment_endpoints(self, width: int) -> tuple[int, ...]:
+        """回傳各三態區段的右界，使用整數分配像素寬度。"""
+
+        if not self.renderable or width <= 0:
+            return ()
+        cumulative = 0
+        endpoints: list[int] = []
+        for count in self.counts:
+            cumulative += count
+            endpoints.append(width * cumulative // self.denominator)
+        return tuple(endpoints)
+
+
+class _CohortStateDistribution(QWidget):
+    """在三態圖條旁保留 DTO 精確人數與固定母體分母。"""
+
+    def __init__(
+        self,
+        match_count: int,
+        no_match_count: int,
+        unknown_count: int,
+        denominator: int,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("marketCohortStateDistribution")
+        self.setAccessibleName("研究母體三態人數分布")
+        self.counts = (match_count, no_match_count, unknown_count)
+        self.denominator = denominator
+        self.track = _CohortStateDistributionTrack(
+            match_count, no_match_count, unknown_count, denominator, self,
+        )
+        self.summary_text = (
+            f"符合 {match_count}｜不符合 {no_match_count}｜未知 {unknown_count}"
+            f"｜母體 {denominator}"
+        )
+        match_color, no_match_color, unknown_color = (
+            color.name() for color in self.track.STATE_COLORS
+        )
+        self.counts_label = QLabel(self)
+        self.counts_label.setTextFormat(Qt.TextFormat.RichText)
+        self.counts_label.setText(
+            f'<span style="color:{match_color}">■ 符合 {match_count}</span>｜'
+            f'<span style="color:{no_match_color}">■ 不符合 {no_match_count}</span>｜'
+            f'<span style="color:{unknown_color}">■ 未知 {unknown_count}</span>｜'
+            f"母體 {denominator}"
+        )
+        self.counts_label.setObjectName("marketCohortStateDistributionCounts")
+        self.counts_label.setAccessibleName("符合、不符合、未知及固定母體的精確人數")
+        self.counts_label.setAccessibleDescription(self.summary_text)
+        self.counts_label.setToolTip(self.summary_text)
+        self.counts_label.setMinimumHeight(self.counts_label.fontMetrics().lineSpacing())
+        self.counts_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(3, 2, 3, 2)
+        layout.setSpacing(1)
+        layout.addWidget(self.track)
+        layout.addWidget(self.counts_label)
+        self.setMinimumWidth(260)
+        layout.activate()
+        margins = layout.contentsMargins()
+        track_height = max(
+            self.track.minimumHeight(), self.track.sizeHint().height()
+        )
+        self.content_height = (
+            margins.top()
+            + track_height
+            + layout.spacing()
+            + self.counts_label.fontMetrics().lineSpacing()
+            + margins.bottom()
+        )
+        self.setMinimumHeight(self.content_height)
+        self.setToolTip(self.summary_text)
 
 
 class DailyMarketCohortView(QWidget):
@@ -74,9 +197,9 @@ class DailyMarketCohortView(QWidget):
         layout.addWidget(self.identity_label)
         group = QGroupBox("同一快照的既有條件觀察")
         group_layout = QVBoxLayout(group)
-        self.methods_table = QTableWidget(0, 4)
+        self.methods_table = QTableWidget(0, 5)
         self.methods_table.setHorizontalHeaderLabels(
-            ["固定方法", "符合", "不符合", "未知"]
+            ["固定方法", "符合", "不符合", "未知", "三態分布（人數）"]
         )
         self.methods_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         apply_financial_table_style(self.methods_table)
@@ -185,24 +308,7 @@ class DailyMarketCohortView(QWidget):
         )
         self.scope_label.setText(self.scope_label.text() + "\n" + universe_text)
         self.scope_label.setToolTip(universe_detail)
-        self.methods_table.setRowCount(len(projection.method_counts))
-        for index, counts in enumerate(projection.method_counts):
-            label = {
-                "close_above_ma20": "收盤價高於 MA20",
-                "close_above_ma60": "收盤價高於 MA60",
-            }.get(counts.key, counts.key)
-            values = (
-                f"{label}｜v{counts.version}", str(counts.match_count), str(counts.no_match_count),
-                str(counts.unknown_count),
-            )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setToolTip(
-                    f"{counts.method_id}\n家族：{counts.family}\n"
-                    f"固定參數：{dict(counts.parameters)}\n母體分母：{counts.denominator}"
-                )
-                self.methods_table.setItem(index, column, item)
-        self.methods_table.resizeColumnsToContents()
+        self._render_method_counts(projection.method_counts)
         self.members_table.setRowCount(len(projection.members))
         for index, member in enumerate(projection.members):
             values = (
@@ -230,6 +336,45 @@ class DailyMarketCohortView(QWidget):
         self._render_members_table()
         self.ranking_label.setText(ranking_summary_text(self.original_ranking))
         self.ranking_label.setToolTip(ranking_audit_tooltip(self.original_ranking))
+
+    def _render_method_counts(
+        self, method_counts: Sequence[DailyMarketCohortMethodCount],
+    ) -> None:
+        """保留原始三態數字，並以相同分母提供緊湊視覺掃讀。"""
+
+        counts_rows = tuple(method_counts)
+        self.methods_table.setRowCount(len(counts_rows))
+        for index, counts in enumerate(counts_rows):
+            label = {
+                "close_above_ma20": "收盤價高於 MA20",
+                "close_above_ma60": "收盤價高於 MA60",
+            }.get(counts.key, counts.key)
+            values = (
+                f"{label}｜v{counts.version}", str(counts.match_count), str(counts.no_match_count),
+                str(counts.unknown_count),
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(
+                    f"{counts.method_id}\n家族：{counts.family}\n"
+                    f"固定參數：{dict(counts.parameters)}\n母體分母：{counts.denominator}"
+                )
+                self.methods_table.setItem(index, column, item)
+            distribution = _CohortStateDistribution(
+                counts.match_count,
+                counts.no_match_count,
+                counts.unknown_count,
+                counts.denominator,
+                self.methods_table,
+            )
+            self.methods_table.setCellWidget(index, 4, distribution)
+            # OS DPI 及字型會改變行距；列高以目前實際字型和版面邊距計算。
+            cell_padding = max(2, self.methods_table.frameWidth() * 2)
+            self.methods_table.setRowHeight(
+                index,
+                max(36, distribution.content_height + cell_padding),
+            )
+        self.methods_table.resizeColumnsToContents()
 
     def _render_members_table(self) -> None:
         projection = self.projection
@@ -430,7 +575,7 @@ class DailyMarketCohortView(QWidget):
         self._capability_report = None
         self.capability_button.setEnabled(False)
         self._refresh_capability_audit()
-        self.methods_table.setRowCount(0)
+        self._render_method_counts(())
         self.members_table.setRowCount(0)
         self.members_table.clearSelection()
         self._sync_research_selected_button()

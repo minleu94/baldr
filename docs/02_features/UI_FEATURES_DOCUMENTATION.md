@@ -482,6 +482,7 @@ Increment57沿原歷史「查看保存規則」提供兩策略fixed next_open新
 - 頂端摘要只顯示有最新價格持倉的「持倉市值（未含現金）」；缺價格會顯示 N/A 與缺漏股票，不把投入金額／已實現損益冒充完整 NAV。
 - 情境壓力：由 `PortfolioStressLabService` 對已標記持倉套用固定、可重播的研究情境；缺價只做部分計算，輪動／來源中斷等缺少必要輸入時 fail-closed，不寫資料、不改持倉、不產生交易指令。
 - Stress 工作區版面（M101）：寬畫面進入情境壓力時，右側研究明細預設約 70%，左側 Paper 健康狀態仍可見；切回其他頁籤恢復一般 60／40。使用者拖曳分隔線後保留手動比例，窄畫面上下分割維持原比例。這只改展示配置，不改 Stress 原值、資料來源、狀態或帳本；固定舊 EXE 尚未包含 M101。
+- Stress 情境身份（M102）：切換目前情境下拉選項時清除前次計算摘要、診斷與明細表，並停用保存；只有對新選項重新執行並取得結果才可保存。保存入口再核對結果與目前選項的 scenario ID，避免舊結果繞過 UI 寫入研究歷史。執行失敗也清舊；原 partial、不可計算、缺值、真零與二次確認維持既有契約，固定舊 EXE 尚未包含 M102。
 - Stress 歷史：按「保存研究快照」並經明確確認後，才由 `PortfolioStressHistoryRepository` 以 hash-idempotent append-only 方式保存目前情境結果。「情境壓力」內的「目前情境／已保存歷史」子頁分開即時結果與只讀回訪；選取歷史列後，同筆卡片並列原基準市值、壓力後市值與變動（TWD）、情境、日期、覆蓋和狀態。M100 將歷史表可見高度限制在最多約七列，超過時用表內垂直捲動，選列卡保持內容高度；換模型或讀取失敗會重算空表高度。`PortfolioStressHistoryReadService` 仍 query-only，缺 DB 不初始化，原表與 hash 保留；缺值／真零分開，換列、刷新、空結果及讀取錯誤清除舊卡，固定揭露研究用途與 `writes_allowed=false`。不計算跨情境排名、跌幅或預測；固定 EXE 尚未包含 M100。
 - Paper Portfolio：由 `PaperPortfolioReadinessService` 唯讀讀取 daily status、append-only snapshot 與可選 Equal Weight ledger；畫面顯示 raw 累積筆數與最新可採用 snapshot，遇到 future row 會保留 blocker／diagnostic、降級並排除於 current projection。操作控制改三列雙欄以保留較窄畫面及高 DPI 下的完整名稱；缺 snapshot、benchmark 或成本帳時明示 `partial`／`degraded`／`not_computable`，不建立 schema、不把 paper 結果冒充正式持倉或投資績效。
 - Paper Trade Ledger v1：由獨立 append-only contract 保存研究用 fill event，要求 requested／filled 數量、狀態、Decimal 成本、turnover、execution gap 與來源；Portfolio readiness 會唯讀顯示 ledger 狀態與 full／partial／reject／override 統計，缺欄位不放行 weekly report。

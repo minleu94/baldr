@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M102 修正持倉 Stress 的情境身份：已執行 A 後改選 B，舊 A 摘要、診斷、表格與保存資格立即清除；須重新執行 B 才能保存。保存入口另核結果與目前下拉情境 ID，防止過期結果繞過 UI。Portfolio 聚焦 **75 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean、編譯通過；正常 Main 1280×760、真 Windows DPI96（100%）的隔離空帳本 A→B 待執行→B 重算三態已目視。首次原生腳本沿用 DPI144 假設及第二輪未捲至控制區的圖，均未作最終畫面證據；原收據保留。正式私人帳、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m102-stress-情境切換清舊與保存身份)。
+
 M101 調整持倉管理的情境壓力工作區：寬畫面進入 Stress 時，右側研究明細預設約 70%，左側 Paper 健康狀態仍可見；切回其他頁籤恢復一般 60／40，使用者手動拖曳後不覆蓋其選擇，窄畫面的上下分割維持原比例。Portfolio 聚焦 **73 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean，編譯與正常 Main 1280×760、真 Windows DPI144 的 40 筆隔離合成 Stress 首／中／末選列畫面通過。右側實測佔比 69.3%，返回 Paper 為 39.9%；正式私人資料、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 仍未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m101-stress-研究窗格比例與任務收尾)。
 
 M99–M100 延續市場與持倉研究 UX：市場總覽的三大法人原淨股數卡新增共用零軸的三列正負條，原股數、日期、涵蓋數、品質與警示仍可核；已保存 Stress 歷史表限制可見高度並保留表內捲動，使 40 筆合成末列與同筆 TWD 選列卡在正常 Main 1280×760、真 Windows DPI144 同屏可讀。Sol 目視修正首版 Stress 卡過度撐高後才接受。最終受控編譯、兩頁聚焦 **111 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean；圖卡另驗 900×760 隔離 View。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m99m100-法人流向圖與-stress-長表版面)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 仍未驗。

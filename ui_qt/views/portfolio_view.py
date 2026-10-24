@@ -1971,8 +1971,12 @@ class PortfolioView(QWidget):
         self.btn_save_stress_history.setToolTip(
             "只在確認後保存目前 Stress Lab 結果；這是研究歷史，不是正式績效或交易證據。"
         )
+        self.btn_save_stress_history.setEnabled(False)
         self.btn_save_stress_history.clicked.connect(self._save_stress_history)
         stress_controls.addWidget(self.btn_save_stress_history)
+        self.stress_scenario_combo.currentIndexChanged.connect(
+            self._on_stress_scenario_changed
+        )
         current_stress_layout.addLayout(stress_controls)
 
         self.stress_summary_label = QLabel("尚未執行情境。")
@@ -3680,14 +3684,32 @@ class PortfolioView(QWidget):
             )
             self._stress_result = result
             self._render_stress_lab(result)
+            self.btn_save_stress_history.setEnabled(True)
         except Exception as exc:
             logger.error("Failed to load portfolio stress lab: %s", exc)
-            self._stress_result = None
-            self.stress_summary_label.setText("情境壓力測試載入失敗；未修改持倉。")
-            self.stress_detail_label.setText(f"診斷：{exc}")
-            self.stress_positions_table.setModel(
-                PandasTableModel(pd.DataFrame(columns=["證券代號", "狀態"]))
+            self._clear_stress_lab_result(
+                summary="情境壓力測試載入失敗；未修改持倉。",
+                detail=f"診斷：{exc}",
             )
+
+    def _on_stress_scenario_changed(self, _index: int) -> None:
+        """情境選擇改變後，舊結果不得繼續呈現或保存。"""
+
+        self._clear_stress_lab_result(
+            summary="情境已變更；請重新執行情境。",
+            detail="舊結果已清除。按「執行情境」後，才能保存新的研究快照。",
+        )
+
+    def _clear_stress_lab_result(self, *, summary: str, detail: str) -> None:
+        """清除失效結果並同步保存按鈕狀態。"""
+
+        self._stress_result = None
+        self.stress_summary_label.setText(summary)
+        self.stress_detail_label.setText(detail)
+        self.stress_positions_table.setModel(
+            PandasTableModel(pd.DataFrame(columns=["證券代號", "狀態"]))
+        )
+        self.btn_save_stress_history.setEnabled(False)
 
     def _render_stress_lab(self, result) -> None:
         status_labels = {
@@ -3877,6 +3899,18 @@ class PortfolioView(QWidget):
         result = getattr(self, "_stress_result", None)
         if result is None:
             QMessageBox.information(self, "尚無 Stress 結果", "請先執行情境，才可以保存研究快照。")
+            return
+        selected_scenario_id = self.stress_scenario_combo.currentData() or "fast_drop"
+        if str(result.scenario.scenario_id) != str(selected_scenario_id):
+            self._clear_stress_lab_result(
+                summary="選定情境與結果不一致；請重新執行情境。",
+                detail="舊結果已清除，未保存研究快照。",
+            )
+            QMessageBox.information(
+                self,
+                "Stress 結果已過期",
+                "目前選定的情境與結果不同；請重新執行情境後再保存。",
+            )
             return
         answer = QMessageBox.question(
             self,

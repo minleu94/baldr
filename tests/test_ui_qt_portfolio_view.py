@@ -1162,9 +1162,11 @@ def test_main_window_close_cancels_portfolio_worker_without_restarting_pending_g
 def test_portfolio_stress_lab_is_visible_and_research_only(tmp_path):
     view = make_portfolio_view(tmp_path)
 
+    assert view.btn_save_stress_history.isEnabled() is True
     view.stress_scenario_combo.setCurrentIndex(
         view.stress_scenario_combo.findData("concentration_event")
     )
+    assert view.btn_save_stress_history.isEnabled() is False
     view.btn_run_stress.click()
 
     assert "最大持倉事件" in view.stress_summary_label.text()
@@ -1173,6 +1175,79 @@ def test_portfolio_stress_lab_is_visible_and_research_only(tmp_path):
     assert view.stress_positions_table.model().rowCount() == 2
     assert view._stress_result.research_only is True
     assert view._stress_result.investment_effectiveness_claim is False
+    assert view.btn_save_stress_history.isEnabled() is True
+
+
+def test_portfolio_stress_scenario_change_clears_result_and_save_identity(
+    tmp_path, monkeypatch
+):
+    view = make_portfolio_view(tmp_path)
+    view.stress_scenario_combo.setCurrentIndex(
+        view.stress_scenario_combo.findData("concentration_event")
+    )
+    view.btn_run_stress.click()
+    result_a = view._stress_result
+    assert result_a is not None
+    assert result_a.scenario.scenario_id == "concentration_event"
+    assert view.btn_save_stress_history.isEnabled() is True
+
+    view.stress_scenario_combo.setCurrentIndex(
+        view.stress_scenario_combo.findData("correlated_selloff")
+    )
+    assert view._stress_result is None
+    assert view.stress_summary_label.text() == "情境已變更；請重新執行情境。"
+    assert "舊結果已清除" in view.stress_detail_label.text()
+    assert view.stress_positions_table.model().rowCount() == 0
+    assert view.btn_save_stress_history.isEnabled() is False
+    view.btn_save_stress_history.click()
+    assert not view.stress_history_db_path.exists()
+
+    # 即使其他呼叫路徑錯誤地保留舊 DTO，保存入口仍須獨立阻擋身份不符。
+    info_messages = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *_args: info_messages.append(_args[1]),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args: pytest.fail("scenario mismatch must not reach confirmation"),
+    )
+    view._stress_result = result_a
+    view._save_stress_history()
+    assert not view.stress_history_db_path.exists()
+    assert "Stress 結果已過期" in info_messages
+    assert view._stress_result is None
+    assert view.btn_save_stress_history.isEnabled() is False
+
+    view.btn_run_stress.click()
+    assert view._stress_result.scenario.scenario_id == "correlated_selloff"
+    assert view.btn_save_stress_history.isEnabled() is True
+    monkeypatch.setattr(QMessageBox, "question", lambda *_args: QMessageBox.Yes)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
+    view.btn_save_stress_history.click()
+    assert view.stress_history_db_path.exists()
+    assert view._stress_history_display_records[-1].scenario_label == "相關股同跌 -15%"
+
+
+def test_portfolio_stress_load_failure_clears_result_and_disables_save(
+    tmp_path, monkeypatch
+):
+    view = make_portfolio_view(tmp_path)
+    monkeypatch.setattr(
+        view.stress_lab_service,
+        "evaluate_positions",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("stress fixture error")),
+    )
+
+    view.btn_run_stress.click()
+
+    assert view._stress_result is None
+    assert view.stress_summary_label.text() == "情境壓力測試載入失敗；未修改持倉。"
+    assert view.stress_detail_label.text() == "診斷：stress fixture error"
+    assert view.stress_positions_table.model().rowCount() == 0
+    assert view.btn_save_stress_history.isEnabled() is False
 
 
 def test_portfolio_stress_history_is_read_only_when_not_configured(tmp_path):

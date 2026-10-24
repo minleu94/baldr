@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M101；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M102；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M101 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M102 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -123,3 +123,11 @@ Opus 起始審查、Antigravity 因 Opus 用量耗盡續作六份主要報告；
 | M95–M101 | Stress 即時／已保存歷史子頁、同筆原值卡、40 筆長表內捲動與同屏、Stress 寬窗格；市場廣度紅／綠／中性比例、三大法人原股數共用零軸條、Runtime 階段耗時條。 |
 
 全部可見改造保留原值、來源、日期與明細；比率或條長只表其明定的同次相對量，不授市場趨勢、投資績效或來源資格。正式資料與自然排程、完整 DPI／Light、固定新版 EXE、Owner UAT、完整產品 Gate，以及 M73 控制作用範圍與 M75 有向關係／跨期來源契約仍分列未驗。本輪只提交受追蹤原始碼、測試與文件；`output/` 原始收據及截圖留本機，未 push、merge 或部署。
+
+## M102 Stress 情境切換清舊與保存身份
+
+Luna `/root/m101_research_layout_audit` 深查後撤回市場完整警示候選：M2 的首屏摘要、預設收合、刷新清舊及 1280×760 原生圖已處理，不為進度重做。另一 Luna 盤點 Backtest／個股／推薦，現有原值圖與首屏表已覆蓋先前提案，未找到可靠的新高價值圖卡。`/root/m101_portfolio_workspace_audit` 則發現可達的 Stress 身份錯配：執行情境 A 後只改選 B，舊 A 結果仍留在摘要／表格並可保存。Sol 核現行 combo、run、save 與手冊，接受此為 P0 操作與狀態回饋缺陷。
+
+同一 Luna 作唯一 writer，僅改 `ui_qt/views/portfolio_view.py` 與 `tests/test_ui_qt_portfolio_view.py`。換情境即清舊摘要、診斷、表格及 `_stress_result`，提示重新執行，保存按鈕停用；取得新結果後才恢復。執行失敗也清舊。保存函式獨立比對結果與選項的 scenario ID，錯配時在二次確認及 repository append 前拒絕並清除。Sol 複核保留原 `partial`／`not_computable`、缺值、真零、二次確認與已保存歷史語義；Stress service、DTO、金融公式、正式資料及帳本均未改。
+
+受控共同 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_7ffdeafa60e3468585bdf64e9a7076d1/receipt.json`：編譯、Portfolio **75 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。聚焦測試以 `tmp_path` 隔離持倉資料，驗 A→B 清舊且不建歷史、故意注入舊 DTO 仍拒保存、B 重算後保存匹配 scenario、例外清舊。正常 Main 1280×760、真 Windows DPI96（100%）的隔離空帳本三態原生圖與 JSON 在 `.../root/native_m102_scenario_evidence/run_0d795e13fcf14467939c93832a5f333f/`，最終 Job 收據 `.../root/single_owned_qa_cd62b9ab793e4110a36d10808c9b1f5b/receipt.json`；Sol 目視 A 原結果、B 待執行與 B 新結果，三張圖 SHA 不同。首次原生腳本沿用前輪 DPI144 假設而 fail，原收據 `.../root/single_owned_qa_10366b2d78d2484c9abebe85e2da1379/receipt.json`；第二輪雖 Job pass，未捲到 Stress 控制區，三圖相同，不作最終視覺證據，原收據 `.../root/single_owned_qa_15f2c21d3de24117b5dcb19e2bb98af2/receipt.json` 保留。這些是隔離空帳本與單一真 OS DPI 的原始碼證據，正式私人帳、其他 DPI、固定新版 EXE、Owner UAT 與完整產品 Gate 仍未接受。

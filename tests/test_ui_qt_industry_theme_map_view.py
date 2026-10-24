@@ -16,7 +16,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QGroupBox, QPushButton
+from PySide6.QtWidgets import QApplication, QGroupBox, QProgressBar, QPushButton
 
 from app_module.theme_daily_service import (
     ThemeDailyReport,
@@ -263,6 +263,121 @@ def test_classification_member_button_pages_to_exact_same_snapshot_member():
     view.close()
 
 
+def test_theme_overlap_neighborhood_is_collapsed_bounded_and_opens_exact_theme(monkeypatch):
+    application = app()
+    real_builder = view_module.build_theme_overlap_presentation
+    calls = []
+
+    def build_spy(*args):
+        calls.append(args)
+        return real_builder(*args)
+
+    monkeypatch.setattr(view_module, "build_theme_overlap_presentation", build_spy)
+    view = IndustryThemeMapView()
+    view.resize(1280, 760)
+    view.show()
+    snapshot = _overlap_snapshot(neighbor_count=10)
+    view.set_snapshot(snapshot)
+    _select_theme(view, "科技鏈", "AI")
+    assert calls == []
+    application.processEvents()
+
+    assert not view.theme_overlap_group.isVisible()
+    assert not view.theme_overlap_toggle.isChecked()
+    view.theme_overlap_toggle.click()
+    assert len(calls) == 1
+    application.processEvents()
+    buttons = view.theme_overlap_group.findChildren(
+        QPushButton, "industryThemeOverlapNeighborButton"
+    )
+    assert len(buttons) == 8
+    assert "鄰居共 10 個，省略 2 個" in view.theme_overlap_context.text()
+    assert "資料日 2026-10-16" in view.theme_overlap_context.text()
+    assert "映射快照日 2026-10-15" in view.theme_overlap_context.text()
+    assert snapshot.identity_sha256 in view.theme_overlap_context.text()
+    assert "僅靜態分類重疊，非供應鏈、因果、歷史 PIT" in view.theme_overlap_context.text()
+    assert "2330 台積電" in buttons[0].toolTip()
+    bar = buttons[0].parentWidget().findChild(
+        QProgressBar, "industryThemeOverlapProgressBar"
+    )
+    assert bar is not None
+    assert bar.value() == 2
+    assert bar.maximum() == 2
+    assert bar.format() == "共用 %v / %m 檔"
+    assert "所選題材 科技鏈／AI 原分類列" in buttons[0].toolTip()
+    assert "股票名稱：台積電" in buttons[0].toolTip()
+    assert "來源：本機映射原列" in buttons[0].toolTip()
+    assert "鄰居題材 鄰域鏈 00／共用題材 00 原分類列" in buttons[0].toolTip()
+    assert "股票名稱：鄰居映射名稱 00 2330" in buttons[0].toolTip()
+    assert "共用股票 2317" in buttons[0].toolTip()
+    assert "股票名稱：鄰居映射名稱 00 2317" in buttons[0].toolTip()
+    assert "來源：鄰居來源 00" in buttons[0].toolTip()
+    assert "分配方法：鄰居補充分類" in buttons[0].toolTip()
+    assert "PIT 模式：鄰居靜態模式" in buttons[0].toolTip()
+    assert "證據註記：鄰居原始證據 00" in buttons[0].toolTip()
+    assert "快照日：2026-10-15" in buttons[0].toolTip()
+    assert "可得日：2026-10-15" in buttons[0].toolTip()
+
+    buttons[0].setProperty("themeSnapshotIdentity", "d" * 64)
+    buttons[0].click()
+    assert view.chain_filter.currentData() == "科技鏈"
+    buttons[0].setProperty("themeSnapshotIdentity", snapshot.identity_sha256)
+    buttons[0].setProperty("themeSelectedKey", ("金融鏈", "保險"))
+    buttons[0].click()
+    assert view.theme_filter.currentText() == "AI"
+    buttons[0].setProperty("themeSelectedKey", ("科技鏈", "AI"))
+    buttons[0].click()
+    application.processEvents()
+    assert view.chain_filter.currentData() == "鄰域鏈 00"
+    assert view.theme_filter.currentText() == "共用題材 00"
+    assert "鄰域鏈 00／共用題材 00" in view.selected_theme_summary.text()
+    assert view.selected_theme_summary.visibleRegion().boundingRect().height() > 0
+    assert view.snapshot is snapshot
+    view.shutdown()
+    view.close()
+
+
+def test_theme_overlap_empty_state_and_stale_button_guards_and_clear():
+    application = app()
+    view = IndustryThemeMapView()
+    view.show()
+    view.set_snapshot(_classification_snapshot())
+    _select_theme(view, "科技鏈", "AI")
+    view.theme_overlap_toggle.click()
+    assert "沒有同版本共用成員題材" in view.theme_overlap_summary.text()
+
+    view.set_snapshot(_overlap_snapshot(neighbor_count=2))
+    _select_theme(view, "科技鏈", "AI")
+    view.theme_overlap_toggle.click()
+    stale = view._theme_overlap_buttons[0]
+    _select_theme(view, "金融鏈", "保險")
+    assert not view.theme_overlap_group.isVisible()
+    assert not view.theme_overlap_toggle.isChecked()
+    assert view._theme_overlap_buttons == []
+    stale.setEnabled(True)
+    stale.click()
+    assert view.chain_filter.currentData() == "金融鏈"
+    assert view.theme_filter.currentText() == "保險"
+
+    _select_theme(view, "科技鏈", "AI")
+    view.theme_overlap_toggle.click()
+    stale = view._theme_overlap_buttons[0]
+    view._busy = True
+    stale.setEnabled(True)
+    stale.click()
+    assert view.chain_filter.currentData() == "科技鏈"
+    view._busy = False
+    view.clear_research()
+    assert not view.theme_overlap_group.isVisible()
+    assert not view.theme_overlap_toggle.isChecked()
+    assert view._theme_overlap_buttons == []
+    stale.setEnabled(True)
+    stale.click()
+    assert view.snapshot is None
+    view.shutdown()
+    view.close()
+
+
 def _wait_until(application, predicate, *, timeout_ms: int) -> None:
     deadline = time.monotonic() + timeout_ms / 1000
     while True:
@@ -432,6 +547,49 @@ def _classification_snapshot(
     )
     report = replace(base.report, rows=(selected_row, base.report.rows[1]))
     return ThemeResearchSnapshot(identity, report, mapping)
+
+
+def _overlap_snapshot(
+    identity: str = "c" * 64,
+    *,
+    neighbor_count: int,
+) -> ThemeResearchSnapshot:
+    """在現有 typed 分類 fixture 增加多條共享 2330 的獨立題材。"""
+    base = _classification_snapshot(identity)
+    neighbor_rows = tuple(
+        _daily_row(
+            f"鄰域鏈 {index:02d}",
+            f"共用題材 {index:02d}",
+            ("2330", "2317") if index == 0 else ("2330",),
+            returns=None,
+            turnover=None,
+            volume=None,
+            flow_shares=None,
+            flow_amount=None,
+            coverage=ThemeMetricCoverage(2 if index == 0 else 1, 0, 0, 0, 0, 0),
+        )
+        for index in range(neighbor_count)
+    )
+    neighbor_mappings = tuple(
+        replace(
+            next(row for row in base.mapping if row.stock_id == stock_id),
+            chain_name=f"鄰域鏈 {index:02d}",
+            theme_name=f"共用題材 {index:02d}",
+            stock_name=f"鄰居映射名稱 {index:02d} {stock_id}",
+            source_name=f"鄰居來源 {index:02d}",
+            source_tier=f"鄰居來源層級 {index:02d}",
+            assignment_method="鄰居補充分類",
+            pit_mode="鄰居靜態模式",
+            evidence_note=f"鄰居原始證據 {index:02d}",
+        )
+        for index in range(neighbor_count)
+        for stock_id in (("2330", "2317") if index == 0 else ("2330",))
+    )
+    return ThemeResearchSnapshot(
+        identity,
+        replace(base.report, rows=(*base.report.rows, *neighbor_rows)),
+        (*base.mapping, *neighbor_mappings),
+    )
 
 
 def _snapshot_with_zero_and_negative_values() -> ThemeResearchSnapshot:

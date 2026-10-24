@@ -357,3 +357,6 @@ M91 在原鏈／題材篩選旁增獨立題材名稱片段搜尋，只使用目�
 - 專案目前狀態快照：[`docs/00_core/PROJECT_SNAPSHOT.md`](../00_core/PROJECT_SNAPSHOT.md)
 - 功能與文件映射表：[`docs/00_core/FEATURE_DOCUMENT_MAP.json`](../00_core/FEATURE_DOCUMENT_MAP.json)
 - QA 驗證收據：[`docs/06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md`](../06_qa/INDUSTRY_THEME_MAP_STANDALONE_QA_20261016.md)
+## M96 同版題材共用成員鄰域（後繼原始碼）
+
+`app_module/theme_overlap_presentation.py` 只消費同一份已載入的 `ThemeResearchSnapshot`，以 `(chain_name, theme_name, stock_id)` 原分類列和目前報表可定位成員交集建立無方向的題材重疊。報表／映射日期、SHA、aware 讀取時間與重複分類列均經檢查；每個鄰居保留兩側原 `ThemeMappingRow`，不讀取第二份 manifest。依共用股票數降序、鏈與題材名穩定排序，只回前八個，同時揭露總鄰居與省略數；顯示條的分母為所選題材報表／映射交集成員數。Qt 的卡片只定位同版鏈／題材並查原分類依據，不重算每日市場觀測值。這是**靜態分類重疊**，不得標為供應鏈、客戶、因果或歷史 PIT；正式有向產業關係仍需逐邊來源與時間契約。具名驗證及限制見[UX 實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m96-同版題材共用成員鄰域)。

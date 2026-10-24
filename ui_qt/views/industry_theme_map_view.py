@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -42,6 +44,9 @@ from app_module.theme_research_presentation import (
 from app_module.theme_classification_presentation import (
     ThemeClassificationMember,
     build_theme_classification_presentation,
+)
+from app_module.theme_overlap_presentation import (
+    build_theme_overlap_presentation,
 )
 from app_module.theme_research_snapshot import (
     ThemeResearchSnapshot,
@@ -695,6 +700,31 @@ class IndustryThemeMapView(QWidget):
             f"color: {MIDNIGHT_ANALYST.text_primary}; font-weight: 600;"
         )
         content_layout.addWidget(self.selected_theme_summary)
+        self.theme_overlap_toggle = QPushButton("查看共用成員鄰域（展開）")
+        self.theme_overlap_toggle.setObjectName("industryThemeOverlapToggle")
+        self.theme_overlap_toggle.setAccessibleName("展開同版本共用成員鄰域")
+        self.theme_overlap_toggle.setCheckable(True)
+        self.theme_overlap_toggle.setChecked(False)
+        self.theme_overlap_toggle.toggled.connect(self._toggle_theme_overlap)
+        content_layout.addWidget(self.theme_overlap_toggle)
+        self.theme_overlap_group = QGroupBox("共用成員鄰域")
+        self.theme_overlap_group.setObjectName("industryThemeOverlapGroup")
+        self.theme_overlap_group.setVisible(False)
+        overlap_layout = QVBoxLayout(self.theme_overlap_group)
+        self.theme_overlap_summary = QLabel("展開後顯示同版本題材的共用成員。")
+        self.theme_overlap_summary.setObjectName("industryThemeOverlapSummary")
+        self.theme_overlap_summary.setWordWrap(True)
+        self.theme_overlap_summary.setTextFormat(Qt.TextFormat.PlainText)
+        overlap_layout.addWidget(self.theme_overlap_summary)
+        self.theme_overlap_cards_layout = QGridLayout()
+        self.theme_overlap_cards_layout.setSpacing(6)
+        overlap_layout.addLayout(self.theme_overlap_cards_layout)
+        self.theme_overlap_context = QLabel("")
+        self.theme_overlap_context.setObjectName("industryThemeOverlapContext")
+        self.theme_overlap_context.setWordWrap(True)
+        self.theme_overlap_context.setTextFormat(Qt.TextFormat.PlainText)
+        overlap_layout.addWidget(self.theme_overlap_context)
+        content_layout.addWidget(self.theme_overlap_group)
         self.classification_explorer_toggle = QPushButton(
             "查看所選題材分類成員（展開）"
         )
@@ -746,6 +776,9 @@ class IndustryThemeMapView(QWidget):
         self._classification_explorer_identity: str | None = None
         self._classification_explorer_key: tuple[str, str] | None = None
         self._classification_explorer_member_limit = 30
+        self._theme_overlap_identity: str | None = None
+        self._theme_overlap_key: tuple[str, str] | None = None
+        self._theme_overlap_buttons: list[QPushButton] = []
         self.theme_detail_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.theme_detail_splitter.setObjectName("industryThemeDetailSplitter")
         self.theme_detail_splitter.setChildrenCollapsible(False)
@@ -1726,6 +1759,7 @@ class IndustryThemeMapView(QWidget):
 
     def _clear_snapshot_view(self) -> None:
         self._clear_classification_explorer(collapse=True)
+        self._clear_theme_overlap(collapse=True)
         self.selected_theme_summary.setText("選擇題材以對照原指標與成員。")
         self.selected_theme_summary.setToolTip("")
         self._presentation = None
@@ -3012,6 +3046,204 @@ class IndustryThemeMapView(QWidget):
         self._sync_return_tile_selection()
         self._update_controls()
 
+    def _clear_theme_overlap(self, *, collapse: bool) -> None:
+        """清除舊版本／題材的鄰域卡，避免延遲點擊定位過期身份。"""
+        if collapse:
+            blocker = QSignalBlocker(self.theme_overlap_toggle)
+            self.theme_overlap_toggle.setChecked(False)
+            del blocker
+            self.theme_overlap_toggle.setText("查看共用成員鄰域（展開）")
+        self.theme_overlap_group.setVisible(False)
+        self.theme_overlap_summary.setText("展開後顯示同版本題材的共用成員。")
+        self.theme_overlap_context.clear()
+        self._theme_overlap_identity = None
+        self._theme_overlap_key = None
+        for button in self._theme_overlap_buttons:
+            button.setEnabled(False)
+            button.hide()
+        while self.theme_overlap_cards_layout.count():
+            item = self.theme_overlap_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._theme_overlap_buttons.clear()
+
+    @Slot(bool)
+    def _toggle_theme_overlap(self, expanded: bool) -> None:
+        if (self._closed or self._busy or self._snapshot is None
+                or self.theme_filter.currentIndex() <= 0):
+            expanded = False
+            blocker = QSignalBlocker(self.theme_overlap_toggle)
+            self.theme_overlap_toggle.setChecked(False)
+            del blocker
+        if expanded:
+            self._render_theme_overlap()
+        else:
+            self._clear_theme_overlap(collapse=False)
+        self.theme_overlap_group.setVisible(expanded)
+        self.theme_overlap_toggle.setText(
+            "查看共用成員鄰域（收合）" if expanded
+            else "查看共用成員鄰域（展開）"
+        )
+
+    def _render_theme_overlap(
+        self, selected_key: tuple[str, str] | None = None
+    ) -> None:
+        self._clear_theme_overlap(collapse=False)
+        snapshot = self._snapshot
+        index = self.theme_filter.currentIndex()
+        if snapshot is None or index <= 0 or index >= len(self._theme_options):
+            return
+        key = selected_key or self._theme_options[index]
+        if key is None or self._theme_options[index] != key:
+            return
+        try:
+            presentation = build_theme_overlap_presentation(snapshot, key[0], key[1])
+        except (TypeError, ValueError) as exc:
+            self.theme_overlap_summary.setText(
+                f"此版本無法呈現共用成員鄰域：{str(exc).splitlines()[0]}"
+            )
+            return
+        self._theme_overlap_identity = presentation.snapshot_identity_sha256
+        self._theme_overlap_key = key
+        self.theme_overlap_summary.setText(
+            f"{presentation.chain_name}／{presentation.theme_name}："
+            f"共用成員數／所選題材成員數；僅列前 {len(presentation.neighbors)} 個鄰居。"
+        )
+        self.theme_overlap_context.setText(
+            f"鄰居共 {presentation.total_neighbors} 個，省略 {presentation.omitted_neighbors} 個　｜　"
+            f"資料日 {presentation.data_date}　｜　映射快照日 {presentation.mapping_snapshot_date}　｜　"
+            f"映射可得日 {presentation.mapping_available_date}　｜　"
+            f"版本讀取時間 {presentation.known_at}　｜　"
+            f"版本 SHA-256 {presentation.snapshot_identity_sha256}\n"
+            "僅靜態分類重疊，非供應鏈、因果、歷史 PIT。"
+        )
+        for card_index, neighbor in enumerate(presentation.neighbors):
+            ids = neighbor.shared_stock_ids
+            names = neighbor.shared_stock_names
+            shared_list = "、".join(
+                f"{stock_id} {name or '名稱未提供'}"
+                for stock_id, name in zip(ids, names)
+            )
+            visible = "、".join(
+                f"{stock_id} {name or '名稱未提供'}"
+                for stock_id, name in list(zip(ids, names))[:2]
+            )
+            if len(ids) > 2:
+                visible += f"、另 {len(ids) - 2} 檔"
+            card = QFrame(self.theme_overlap_group)
+            card.setObjectName("industryThemeOverlapNeighborCard")
+            card.setFrameShape(QFrame.Shape.StyledPanel)
+            card_layout = QVBoxLayout(card)
+            button = QPushButton(
+                f"{neighbor.chain_name}／{neighbor.theme_name}\n{visible}"
+            )
+            button.setObjectName("industryThemeOverlapNeighborButton")
+            button.setAccessibleName(
+                f"定位共用成員題材 {neighbor.chain_name}／{neighbor.theme_name}"
+            )
+            button.setProperty("themeSnapshotIdentity", presentation.snapshot_identity_sha256)
+            button.setProperty("themeSelectedKey", key)
+            button.setProperty("themeChainName", neighbor.chain_name)
+            button.setProperty("themeName", neighbor.theme_name)
+            tooltip_lines = [
+                f"完整共用股票：{shared_list}",
+                f"所選題材成員：{presentation.selected_member_count} 檔",
+            ]
+            mapping_fields = (
+                ("stock_name", "股票名稱"),
+                ("source_name", "來源"),
+                ("source_tier", "來源層級"),
+                ("assignment_method", "分配方法"),
+                ("pit_mode", "PIT 模式"),
+                ("evidence_note", "證據註記"),
+                ("snapshot_date", "快照日"),
+                ("available_date", "可得日"),
+            )
+            for shared_index, (stock_id, selected_row, neighbor_row) in enumerate(zip(
+                ids,
+                neighbor.selected_mapping_rows,
+                neighbor.neighbor_mapping_rows,
+            )):
+                if shared_index >= 2:
+                    break
+                tooltip_lines.append(f"\n共用股票 {stock_id}：")
+                for side_label, row in (
+                    (f"所選題材 {key[0]}／{key[1]}", selected_row),
+                    (f"鄰居題材 {neighbor.chain_name}／{neighbor.theme_name}", neighbor_row),
+                ):
+                    tooltip_lines.append(f"{side_label} 原分類列：")
+                    for field_name, field_label in mapping_fields:
+                        value = getattr(row, field_name)
+                        tooltip_lines.append(
+                            f"  {field_label}：{value if value else '未提供'}"
+                        )
+            if len(ids) > 2:
+                tooltip_lines.append(
+                    f"其餘 {len(ids) - 2} 檔可至所選與鄰居題材各自的「產業鏈／題材／成員分類」查看原列。"
+                )
+            tooltip_lines.extend((
+                f"資料日：{presentation.data_date}",
+                f"映射快照日：{presentation.mapping_snapshot_date}",
+                f"映射可得日：{presentation.mapping_available_date}",
+                f"版本讀取時間：{presentation.known_at}",
+                f"版本 SHA-256：{presentation.snapshot_identity_sha256}",
+                "僅靜態分類重疊，非供應鏈、因果、歷史 PIT。",
+            ))
+            button.setToolTip("\n".join(tooltip_lines))
+            button.setMinimumWidth(0)
+            button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            button.clicked.connect(self._open_theme_overlap_neighbor)
+            card_layout.addWidget(button)
+            overlap_bar = QProgressBar(card)
+            overlap_bar.setObjectName("industryThemeOverlapProgressBar")
+            overlap_bar.setAccessibleName(
+                f"{neighbor.chain_name}／{neighbor.theme_name}共用成員比例"
+            )
+            overlap_bar.setRange(0, presentation.selected_member_count)
+            overlap_bar.setValue(len(ids))
+            overlap_bar.setFormat("共用 %v / %m 檔")
+            overlap_bar.setTextVisible(True)
+            overlap_bar.setToolTip(
+                f"共用成員數 {len(ids)}，所選題材有效成員數 {presentation.selected_member_count}。"
+            )
+            card_layout.addWidget(overlap_bar)
+            self.theme_overlap_cards_layout.addWidget(card, card_index // 2, card_index % 2)
+            self._theme_overlap_buttons.append(button)
+        if not presentation.neighbors:
+            self.theme_overlap_summary.setText(
+                f"{presentation.chain_name}／{presentation.theme_name} 沒有同版本共用成員題材。"
+            )
+
+    @Slot()
+    def _open_theme_overlap_neighbor(self) -> None:
+        button = self.sender()
+        snapshot = self._snapshot
+        if (not isinstance(button, QPushButton)
+                or button not in self._theme_overlap_buttons
+                or self._closed or self._busy or snapshot is None):
+            return
+        identity = button.property("themeSnapshotIdentity")
+        selected_key = button.property("themeSelectedKey")
+        if isinstance(selected_key, (tuple, list)) and len(selected_key) == 2:
+            selected_key = tuple(selected_key)
+        chain_name = button.property("themeChainName")
+        theme_name = button.property("themeName")
+        index = self.theme_filter.currentIndex()
+        current_key = (
+            self._theme_options[index]
+            if 0 < index < len(self._theme_options) else None
+        )
+        if (type(identity) is not str or identity != snapshot.identity_sha256
+                or identity != self._theme_overlap_identity
+                or selected_key != self._theme_overlap_key
+                or selected_key != current_key
+                or not all(type(value) is str for value in (chain_name, theme_name))):
+            return
+        self._open_chain_directory_theme(identity, chain_name, theme_name)
+        if self._member_theme_key == (chain_name, theme_name):
+            self.scroll_area.ensureWidgetVisible(self.selected_theme_summary, 0, 0)
+
     def _clear_classification_explorer(self, *, collapse: bool) -> None:
         """清除舊分類投影，避免選取或版本替換後留下過期成員。"""
         if collapse:
@@ -3207,6 +3439,7 @@ class IndustryThemeMapView(QWidget):
 
     def _render_selected_theme(self) -> None:
         self._clear_classification_explorer(collapse=True)
+        self._clear_theme_overlap(collapse=True)
         self.metrics_table.setRowCount(0)
         self._clear_metric_cards()
         self._member_stock_ids = ()
@@ -3585,6 +3818,9 @@ class IndustryThemeMapView(QWidget):
             and self._theme_options[self.theme_filter.currentIndex()] is not None
         )
         self.classification_explorer_toggle.setEnabled(
+            available and not self._busy and selected_theme
+        )
+        self.theme_overlap_toggle.setEnabled(
             available and not self._busy and selected_theme
         )
         member_page_count = (

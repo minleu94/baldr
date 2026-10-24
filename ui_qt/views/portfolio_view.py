@@ -2359,6 +2359,7 @@ class PortfolioView(QWidget):
                 return False
             self._last_v2_tab_by_section[section] = tab_key
             self._set_v2_identity_banner(section, account)
+            self._set_portfolio_splitter_default_sizes()
             self.v2SectionChanged.emit(section)
             return True
         finally:
@@ -2418,6 +2419,7 @@ class PortfolioView(QWidget):
             )
             return
         self._last_v2_tab_by_section[section] = tab_key
+        self._set_portfolio_splitter_default_sizes()
 
     def _toggle_advanced_portfolio(self, expanded: bool) -> None:
         """切換持倉進階工作區；不改變任何既有資料或 identity。"""
@@ -2497,10 +2499,17 @@ class PortfolioView(QWidget):
     def _set_portfolio_splitter_default_sizes(self) -> None:
         """首次顯示／方向切換時套用比例；不在一般 resize 重設使用者拖曳。"""
 
+        if self._portfolio_splitter_user_resized:
+            return
         if self.main_splitter.orientation() == Qt.Horizontal:
             total = self.main_splitter.width()
             if total > 1:
-                first = max(360, round(total * 0.60))
+                current_widget = self.portfolio_detail_tabs.currentWidget()
+                stress_widget = self._portfolio_detail_tab_widgets.get("stress")
+                is_stress = current_widget is stress_widget
+                first_ratio = 0.30 if is_stress else 0.60
+                first_minimum = 240 if is_stress else 360
+                first = max(first_minimum, round(total * first_ratio))
                 first = min(first, max(1, total - 240))
                 sizes = [first, max(1, total - first)]
             else:

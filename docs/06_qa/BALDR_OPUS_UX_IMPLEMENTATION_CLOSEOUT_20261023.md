@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M100；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M101；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M100 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M101 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -104,3 +104,22 @@ Luna `/root/m99_research_cards_audit` 唯讀去重指出三大法人市場淨股
 Luna `/root/m99_portfolio_longlist_audit` 判定 M98 末列不同屏的原截圖受 harness 外層捲動定位影響，不能單獨判產品 defect；但 Stress 已保存歷史的長表無高度上限，有合理的可讀性改善空間。`/root/m100_stress_history_layout` 單一 writer 只改 Portfolio View 與測試，將表格可見高度封頂約七列，保留內部垂直／水平捲動；讀取錯誤時空模型重算高度。Sol 的首次正常 Main 畫面發現封頂後多餘高度被上方卡片吃掉，導致卡片巨大，雖 Job exit0 仍未接受；原圖及收據 `.../native_m100_stress_evidence/run_35b3fac0b3dd40e6b2185ac99f4318d7/`、`.../single_owned_qa_57067afe29b84b47bf05eb8de1bb1cfc/receipt.json` 保留。Sol 修卡片內容高度與表下 stretch 後，同樣 40 筆合成紀錄的正常 Main 1280×760／真 DPI144 首、中、末選列皆精確顯同筆原 TWD 值，末筆 selected row 與卡片同屏，缺值未補零；最終原生圖／JSON `.../native_m100_stress_evidence/run_cf43287112704c40ac411c05f0e277b3/`，Job 收據 `.../single_owned_qa_dffb9f25c71a4b70816682d7620fb18e/receipt.json`。未改 Stress 公式、reader、保存、私人 Portfolio 或交易。
 
 第一輪受控聚焦 `.../single_owned_qa_052cdb10815746b38a5646890805cda1/receipt.json` 是 **1 fail／110 pass**：測試只選內層歷史 tab，未展開 Portfolio 進階工作區；Workbench85、validator25/0/4、mypy1144、編譯均通過。修測試路徑後 111 focused 通過；Sol 視覺修卡後的最終共同收據 `.../single_owned_qa_b675e08449fa4116b84b3476bea63422/receipt.json` 為編譯、**111 focused**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，8 GiB／12 程序 Job 無剩餘 PID 或強制清理。這些都是隔離合成與單一真 OS DPI 的原始碼證據；正式來源、其他 DPI、固定新版 EXE、Owner UAT 及完整產品 Gate 沒有因此接受。M1–M100 編號含審查與 QA 專項，不代表 100 個獨立功能。
+
+## M101 Stress 研究窗格比例與任務收尾
+
+Luna `/root/m101_portfolio_workspace_audit` 唯讀核 M100 正常 Main 截圖與現行 QSplitter：Stress 右側原約 40%，左側 Paper 健康狀態有實際阻擋資訊，因此應保留而讓研究表格取得較多寬度。另一研究頁盤點沒有足夠的新視覺證據，本輪不改。`/root/m101_stress_pane_focus` 單一 writer 修改 `ui_qt/views/portfolio_view.py` 與 `tests/test_ui_qt_portfolio_view.py`；Sol 複核只在尚未手動拖曳的寬畫面，Stress 頁籤採左／右約 30／70，其他頁籤仍約 60／40，窄畫面上下分割維持原比例。左側健康狀態、原表、同筆 TWD 卡、缺值、來源身份與既有導航均保留；沒有改 Stress 公式、DTO、reader、保存、私人帳或交易。
+
+受控聚焦及共同 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_4305dc3e805e43909ec8963dcaf72e30/receipt.json`：編譯通過，Portfolio **73 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。正常 Main 1280×760、真 Windows DPI144（150%）、隔離合成 40 筆 Stress 的首／中／末選列與返回 Paper 皆通過，原生收據 `.../root/single_owned_qa_e69fc3265a4f4410a43cee138145ab5d/receipt.json`、結果及四張 PNG `.../root/native_m101_stress_evidence/run_4e0192c528ab4bbaa23494754f415d5a/`。Stress 右側實測 **69.3%**，Paper 返回後右側 **39.9%**；末筆卡與表列同屏。M100 前版圖 `.../root/native_m100_stress_evidence/run_cf43287112704c40ac411c05f0e277b3/last_partial_1280x760.png` 留作同尺寸視覺基線。這些是原始碼／合成資料／單一真 OS DPI 的有限驗證，不是正式來源、私人帳、固定 EXE 或 Owner UAT 接受。
+
+### 從排程開工至 M101 的盤點
+
+Opus 起始審查、Antigravity 因 Opus 用量耗盡續作六份主要報告；Sol 核對實物、程式依據、重複項與金融限制，再把可做項目切給 Luna，由 root 複核及序列執行受控 QA。上方 M1–M88 表及各後續小節是具名切片原件；補充總覽如下，**M 編號含唯讀裁決與 QA 專項，不是功能數**：
+
+| 階段 | 累積完成的使用者可見工作或證據 |
+| --- | --- |
+| P0／M1–M88 | 台股紅漲綠跌、單位與日期、未知／真零、首屏摘要、載入／錯誤回饋；市場、個股、推薦、Portfolio、Backtest、Evidence、Runtime 的圖卡／明細層級與來源清舊。 |
+| P1／M25–M96 | 題材等面積格、成交額圖、原九指標、同版分類成員、兩版原值並列、名稱搜尋、跨鏈同名辨識、共用成員鄰域及精確下鑽；靜態重疊不稱供應鏈。 |
+| M89–M94 | 同名題材標籤、Legacy 權益／回撤／交易結果真 Windows canvas 證據與刻度修正、首頁已知警示繁中化；未知來源文字保留原文。 |
+| M95–M101 | Stress 即時／已保存歷史子頁、同筆原值卡、40 筆長表內捲動與同屏、Stress 寬窗格；市場廣度紅／綠／中性比例、三大法人原股數共用零軸條、Runtime 階段耗時條。 |
+
+全部可見改造保留原值、來源、日期與明細；比率或條長只表其明定的同次相對量，不授市場趨勢、投資績效或來源資格。正式資料與自然排程、完整 DPI／Light、固定新版 EXE、Owner UAT、完整產品 Gate，以及 M73 控制作用範圍與 M75 有向關係／跨期來源契約仍分列未驗。本輪只提交受追蹤原始碼、測試與文件；`output/` 原始收據及截圖留本機，未 push、merge 或部署。

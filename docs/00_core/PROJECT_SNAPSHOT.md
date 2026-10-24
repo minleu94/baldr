@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M101 調整持倉管理的情境壓力工作區：寬畫面進入 Stress 時，右側研究明細預設約 70%，左側 Paper 健康狀態仍可見；切回其他頁籤恢復一般 60／40，使用者手動拖曳後不覆蓋其選擇，窄畫面的上下分割維持原比例。Portfolio 聚焦 **73 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean，編譯與正常 Main 1280×760、真 Windows DPI144 的 40 筆隔離合成 Stress 首／中／末選列畫面通過。右側實測佔比 69.3%，返回 Paper 為 39.9%；正式私人資料、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 仍未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m101-stress-研究窗格比例與任務收尾)。
+
 M99–M100 延續市場與持倉研究 UX：市場總覽的三大法人原淨股數卡新增共用零軸的三列正負條，原股數、日期、涵蓋數、品質與警示仍可核；已保存 Stress 歷史表限制可見高度並保留表內捲動，使 40 筆合成末列與同筆 TWD 選列卡在正常 Main 1280×760、真 Windows DPI144 同屏可讀。Sol 目視修正首版 Stress 卡過度撐高後才接受。最終受控編譯、兩頁聚焦 **111 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean；圖卡另驗 900×760 隔離 View。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m99m100-法人流向圖與-stress-長表版面)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 仍未驗。
 
 M98 在市場總覽「完整市場資料」的市況廣度原家數文字下加入上漲／下跌／平盤的紅／綠／中性比例條，仍列原家數、來源日與品質；缺件、零總數或無效日期不畫條，條長不代表指數報酬。決策工作台聚焦 **35 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** 與編譯通過；真 Windows DPI144（150%）的 1280×760 原 View 前後及正常 Main 合成截圖已目視。另以隔離合成 40 筆 Stress 歷史驗正常 Main 首／中／末選列、缺值與清舊，未改 Stress 程式。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m98-市況廣度比例條與-stress-長表補驗)。正式來源、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 未驗。

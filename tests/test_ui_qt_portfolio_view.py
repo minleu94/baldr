@@ -855,6 +855,84 @@ def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_w
     )
 
 
+def test_stress_tab_uses_wide_detail_default_and_preserves_manual_splitter_choice(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    host = QStackedWidget()
+    host.setMinimumSize(0, 0)
+    host.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+    host.addWidget(view)
+    host.resize(1280, 760)
+    host.show()
+    view._toggle_advanced_portfolio(True)
+    app().processEvents()
+
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="stress")
+    app().processEvents()
+    stress_sizes = view.main_splitter.sizes()
+    stress_ratio = stress_sizes[0] / sum(stress_sizes)
+    assert 0.25 <= stress_ratio <= 0.40
+    assert view.paper_health_group.isVisible()
+    assert view.portfolio_detail_tabs.currentWidget() is (
+        view._portfolio_detail_tab_widgets["stress"]
+    )
+
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="paper")
+    app().processEvents()
+    assert view.portfolio_detail_tabs.currentWidget() is (
+        view._portfolio_detail_tab_widgets["paper"]
+    )
+    normal_sizes = view.main_splitter.sizes()
+    normal_ratio = normal_sizes[0] / sum(normal_sizes)
+    assert 0.52 <= normal_ratio <= 0.68
+
+    view.main_splitter.setSizes([420, 580])
+    view._on_portfolio_splitter_moved(420, 1)
+    user_sizes = view.main_splitter.sizes()
+    user_ratio = user_sizes[0] / sum(user_sizes)
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="stress")
+    app().processEvents()
+    assert view.main_splitter.sizes()[0] / sum(view.main_splitter.sizes()) == pytest.approx(
+        user_ratio, abs=0.02
+    )
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="paper")
+    app().processEvents()
+    assert view.main_splitter.sizes()[0] / sum(view.main_splitter.sizes()) == pytest.approx(
+        user_ratio, abs=0.02
+    )
+    view.close()
+
+
+def test_stress_splitter_default_keeps_vertical_ratio_and_position_selection(tmp_path):
+    view = make_portfolio_view(tmp_path)
+    host = QStackedWidget()
+    host.setMinimumSize(0, 0)
+    host.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+    host.addWidget(view)
+    host.resize(390, 844)
+    host.show()
+    view._toggle_advanced_portfolio(True)
+    app().processEvents()
+    assert view.main_splitter.orientation() == Qt.Vertical
+
+    positions_model = view.positions_table.model()
+    selected_index = positions_model.index(0, 0)
+    selected_value = selected_index.data(Qt.DisplayRole)
+    view.positions_table.setCurrentIndex(selected_index)
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="stress")
+    app().processEvents()
+    vertical_sizes = view.main_splitter.sizes()
+    vertical_ratio = vertical_sizes[0] / sum(vertical_sizes)
+    assert 0.35 <= vertical_ratio <= 0.50
+    assert view.positions_table.currentIndex().data(Qt.DisplayRole) == selected_value
+
+    assert view._activate_v2_section("paper", account="paper", preferred_tab="paper")
+    app().processEvents()
+    returned_sizes = view.main_splitter.sizes()
+    assert returned_sizes[0] / sum(returned_sizes) == pytest.approx(vertical_ratio, abs=0.02)
+    assert view.positions_table.currentIndex().data(Qt.DisplayRole) == selected_value
+    view.close()
+
+
 def test_daily_positions_panel_is_full_width_immediately_after_status_summary(tmp_path):
     view = make_portfolio_view(tmp_path)
     content = view.portfolio_advanced_scroll.widget()

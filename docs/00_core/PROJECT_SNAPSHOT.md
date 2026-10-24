@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M105 修決策品質左篩選欄在窄窗的水平溢位：標籤於空間不足時換至欄位上方，九個控制項不再被內層視口裁右側；原垂直捲動與固定刷新維持。正常 Main 1280×760、1500×900、真 Windows DPI216（225%）隔離合成畫面及 DB SHA 不變已核；1920×1080 超出當前螢幕可用邏輯尺寸，未在本輪原生驗。聚焦／共同 QA 與限制見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m105-決策品質篩選欄水平溢位)。正式資料、其他 DPI、固定 EXE、Owner UAT 與完整 Gate 仍未驗。
+
 M103–M104 補決策品質現行控制範圍提示與可捲左欄：股票只篩項目列，分數卡仍是所選覆盤範圍最新分數；最低分數比較該最新分數，未達時清空項目列但卡片維持原值。這只揭露既有行為，M73 正式契約仍待裁決。Stress 現明示使用 `PortfolioService` 交易／手動持倉 DTO（Main 預設 `portfolio_id=default`），Paper 分區僅是導覽位置；保存前再提示相同來源。正常 Main 1280×760、真 Windows DPI216（225%）隔離合成來源已目視且 DB SHA 不變；聚焦與共同 QA、未驗邊界見[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m103m104-決策品質作用範圍與-stress-來源揭露)。固定新版 EXE、正式私人資料、Owner UAT 與完整 Gate 仍未驗。
 
 M102 修正持倉 Stress 的情境身份：已執行 A 後改選 B，舊 A 摘要、診斷、表格與保存資格立即清除；須重新執行 B 才能保存。保存入口另核結果與目前下拉情境 ID，防止過期結果繞過 UI。Portfolio 聚焦 **75 passed**、Workbench **85 passed**、validator **25／0／4**、mypy **1,144** source files clean、編譯通過；正常 Main 1280×760、真 Windows DPI96（100%）的隔離空帳本 A→B 待執行→B 重算三態已目視。首次原生腳本沿用 DPI144 假設及第二輪未捲至控制區的圖，均未作最終畫面證據；原收據保留。正式私人帳、其他 DPI、固定 EXE、Owner UAT 與完整產品 Gate 未驗。詳[實作收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m102-stress-情境切換清舊與保存身份)。

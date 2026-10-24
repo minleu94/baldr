@@ -1324,6 +1324,23 @@ def test_decision_quality_scope_hints_and_scrollable_filter_keep_refresh_visible
     assert view.filter_panel is not None
     assert view.filter_panel.height() <= view.filter_panel.maximumHeight()
     assert view.filter_scroll_area.verticalScrollBar().maximum() > 0
+    assert view.filter_scroll_area.horizontalScrollBar().maximum() == 0
+    filter_viewport = view.filter_scroll_area.viewport()
+    filter_controls = (
+        view.review_type_input,
+        view.start_date_input,
+        view.end_date_input,
+        view.symbol_input,
+        view.portfolio_id_input,
+        view.item_type_input,
+        view.severity_combo,
+        view.status_combo,
+        view.min_score_input,
+    )
+    for control in filter_controls:
+        control_top_left = control.mapTo(filter_viewport, QPoint(0, 0))
+        assert control_top_left.x() >= 0
+        assert control_top_left.x() + control.width() <= filter_viewport.width()
     assert view.refresh_button.parentWidget() is view.filter_scroll_area.parentWidget()
     assert view.refresh_button.y() >= (
         view.filter_scroll_area.y() + view.filter_scroll_area.height()

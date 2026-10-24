@@ -1,8 +1,8 @@
 # Baldr UI／UX 原始碼實作收尾（2026-10-23）
 
-本頁後續已更新至 M104；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
+本頁後續已更新至 M105；下方早期階段敘述依當時範圍保留，最新切片與收據見文末。
 
-本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M104 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
+本頁記錄 `baldr-opus-ux-implementation` 從排程觸發、M88 初次收尾至 M105 後繼切片的**原始碼工程交接**。基線提交為 `97305c6a500798bcda27eee6a5fe9a07ef15b15f`。具名逐項裁決、原始失敗、測試收據與截圖保留在本機 `output/tasks/baldr-opus-ux-implementation/` 的 `IMPLEMENTATION_MATRIX.md`、`SOL_REVIEW.md`、`QA_RESULTS.md` 與 `NEXT_ACTIONS.md`；`output/` 依 Git 排除規則不進版控。本頁提供可隨原始碼提交查閱的範圍與證據索引，不取代各原件。
 
 ## 審查來源與工程處置
 
@@ -147,3 +147,9 @@ Luna `/root/m101_portfolio_workspace_audit` 跨查 Portfolio 呼叫與 Paper 導
 M1–M104 是含審查、裁決、QA 的切片序號，**不是 104 個獨立功能**。Opus 起始、Antigravity 接續的六份審查與 mockup／prototype 已定位，Sol 對照現行架構、去重、修正不適用提案。P0 完成台股紅漲綠跌、原數值單位／日期、真零／未知／錯誤、首屏摘要及狀態清舊；P1 完成題材等面積格、限定成交額圖、九指標、同版分類與鄰域、雙版本原值、搜尋及精確下鑽；P2 改善市場、個股、推薦、Portfolio、Backtest、Evidence、Runtime 的摘要／圖卡／明細、長表與研究回訪，M103／M104 補篩選與來源文字。既有圖卡及已驗路徑未為進度重做。P3 公司間有向關係與跨期強弱仍缺逐邊來源、時鐘與用途資格；M73 仍缺決策品質股票與門檻作用範圍正式裁決。
 
 本次完成的是原始碼、隔離合成資料及單一真 OS DPI 的工程驗證。正式市場／Evidence／Portfolio 資料與自然排程、全 DPI／Light（若支援）、固定新版 EXE、Owner UAT 和完整產品 Gate 仍未接受；`output/` 收據與圖留本機，不進版控。沒有自動交易、broker order、正式資料改寫、force push、merge 或部署。
+
+## M105 決策品質篩選欄水平溢位
+
+Luna `/root/m105_decision_filter_layout_audit` 唯讀核 M103 正常 Main 1280×760／真 OS DPI216 原生圖：左篩選欄出現水平捲軸，Portfolio ID 與其他欄位右側被裁；這是可達 UI 缺口，不是縮圖假象。Sol 指定同一 Luna 為 `ui_qt/views/decision_quality_view.py`、`tests/test_ui_qt_evidence_review_dashboards.py` 唯一 writer，於原 `QFormLayout` 設 `WrapLongRows`，窄欄時標籤換至輸入欄上方。Root 加強測試的左界斷言。右側結果表原本的獨立水平捲動仍保留；沒有隱藏左捲軸掩蓋裁切，也沒有改查詢、service、DTO、分數、PIT 或來源資格。
+
+受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_ab6c8351196b49be89960bc2304e5067/receipt.json`：受改 Python 編譯、**125 focused passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留 PID 或強制清理。正常 Main 隔離合成 SQLite 原生收據 `.../root/single_owned_qa_6e3581b85afc45219d3a281fc06260bf/receipt.json` exit0；真 OS DPI216（225%）下 1280×760 與 1500×900 的左欄水平捲動最大值皆 0、九個可互動控制左右邊界皆在視口內，最低分數、內層垂直捲動、固定刷新與右側原值仍可見。來源 DB 前後 SHA 相同。兩張 PNG 與數值 JSON 在 `.../root/native_m105_filter_evidence/run_a907ac800dbd43b9a7b0486fb05b21ac/`；M103 前圖 `.../root/native_m103_m104_evidence/run_f60dd1c6fa334205b88e5ea7eaad25c0/decision_quality_filter_bottom_1280x760.png` 保留作同尺寸 before。1920×1080 超過當前螢幕可用邏輯尺寸，腳本明記 `not_run_screen_too_small`；其他真 OS DPI、正式 Evidence DB、固定 EXE、Owner UAT 與完整 Gate 仍未驗。M73 的正式股票／門檻作用範圍仍待產品裁決，M105 只修版面。

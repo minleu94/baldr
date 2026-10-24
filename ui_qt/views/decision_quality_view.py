@@ -82,6 +82,7 @@ class DecisionQualityView(QWidget):
 
         filter_box = QGroupBox("決策品質篩選")
         filter_layout = QFormLayout(filter_box)
+        filter_layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self.review_type_input = QLineEdit()
         self.start_date_input = OptionalDateFilterEdit()
         self.end_date_input = OptionalDateFilterEdit()

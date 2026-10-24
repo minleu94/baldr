@@ -2906,7 +2906,21 @@ class StockResearchReportView(QWidget):
             if note.startswith(("另一份 H5 研究：", "H5 "))
         )
         if return_notes:
-            return_text = "\n".join(return_notes) + "\n僅供研究，不是獲利機率或已驗證收益；期間定義與資格請核對完整模型證據。"
+            prediction_count = sum(
+                1
+                for value in report.ml.predicted_benchmark_excess_return_bp.values()
+                if type(value) is int
+            )
+            full_prediction_note = (
+                f"\n完整 ML 估計共 {prediction_count} 項，請至「資料稽核」查看。"
+                if prediction_count > 3
+                else ""
+            )
+            return_text = (
+                "\n".join(return_notes)
+                + full_prediction_note
+                + "\n僅供研究，不是獲利機率或已驗證收益；期間定義與資格請核對完整模型證據。"
+            )
         elif report.ml.predicted_benchmark_excess_return_bp:
             return_text = _ml_estimate_summary(
                 report.ml, personal_h20_context=bool(
@@ -6149,8 +6163,18 @@ def _report_limitations_text(report: StockResearchReportDTO) -> str:
 
 def _ml_estimate_summary(ml: object, *, personal_h20_context: bool = False) -> str:
     predictions = getattr(ml, "predicted_benchmark_excess_return_bp", {}) or {}
-    estimates = [f"{horizon}：{value:+d} bp" for horizon, value in predictions.items() if type(value) is int]
-    estimate = "；".join(estimates[:3]) if estimates else "未提供合格估計值"
+    estimates = [
+        f"{horizon}：{value:+d} bp"
+        for horizon, value in predictions.items()
+        if type(value) is int
+    ]
+    estimate = "  ·  ".join(estimates[:3]) if estimates else "未提供合格估計值"
+    omitted_count = max(0, len(estimates) - 3)
+    omitted_note = (
+        f"；另有 {omitted_count} 項，請至「資料稽核」查看完整估計"
+        if omitted_count
+        else ""
+    )
     formal = getattr(ml, "formal_qualified", False)
     research = getattr(ml, "research_only", True)
     qualification = (
@@ -6183,7 +6207,7 @@ def _ml_estimate_summary(ml: object, *, personal_h20_context: bool = False) -> s
         if personal_h20_context else "研究估計"
     )
     return (
-        f"{estimate_heading}（{cost_label}）：{estimate}。原始目標定義保留於稽核。"
+        f"{estimate_heading}（{cost_label}）：{estimate}{omitted_note}。原始目標定義保留於稽核。"
         "基準名稱、期間的交易日／日曆日定義未提供。"
         f"{cost_context}"
         f"{qualification}；不是股價漲跌預測、獲利機率或已驗證收益。"

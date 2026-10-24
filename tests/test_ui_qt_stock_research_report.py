@@ -136,6 +136,110 @@ def test_legal_h5_immaturity_preserves_forecast_and_qualification(state) -> None
     assert ml.formal_qualified is False and ml.h5_gross_stock_return_bp is None
 
 
+def test_ml_estimate_summary_discloses_omitted_valid_estimates_and_keeps_caveats() -> None:
+    ml = StockMLSnapshotDTO(
+        status="available",
+        target_metric="benchmark_excess_after_standard_80bp_cost",
+        predicted_benchmark_excess_return_bp={
+            "H5": 128,
+            "model|expert2": -24,
+            "model|expert3": 0,
+            "model|expert4": 50,
+            "invalid_bool": True,
+            "invalid_float": 9.5,
+            "invalid_text": "40",
+        },
+        target_round_trip_cost_bp=80,
+        target_buy_side_cost_bp=50,
+        target_sell_side_cost_bp=30,
+        research_only=True,
+        formal_qualified=False,
+    )
+
+    text = _ml_estimate_summary(ml)
+    assert "H5：+128 bp  ·  model|expert2：-24 bp  ·  model|expert3：+0 bp" in text
+    assert "另有 1 項，請至「資料稽核」查看完整估計" in text
+    assert "model|expert4" not in text
+    assert "invalid_bool" not in text
+    assert "invalid_float" not in text
+    assert "invalid_text" not in text
+    assert "成本後基準超額報酬" in text
+    assert "本次模型假設總成本0.8%（買進0.5%、賣出0.3%）" in text
+    assert "正式資格未具備（研究限定）" in text
+    assert "不是股價漲跌預測、獲利機率或已驗證收益" in text
+
+    three_estimates = replace(
+        ml,
+        predicted_benchmark_excess_return_bp={
+            key: value
+            for key, value in ml.predicted_benchmark_excess_return_bp.items()
+            if type(value) is int and key != "model|expert4"
+        },
+    )
+    assert "另有" not in _ml_estimate_summary(three_estimates)
+    h20_text = _ml_estimate_summary(ml, personal_h20_context=True)
+    assert "另一份個股 ML 報告（與上方 H20 毛報酬分開）的估計" in h20_text
+
+
+def test_stock_research_overview_return_label_discloses_omitted_estimates() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view.enable_product_layout()
+    report = replace(
+        _report_for("2330", "500"),
+        ml=StockMLSnapshotDTO(
+            predicted_benchmark_excess_return_bp={
+                "model|expert1": 128,
+                "model|expert2": -24,
+                "model|expert3": 0,
+                "model|expert4": 50,
+            }
+        ),
+    )
+    try:
+        view._render_report(report)
+        assert "另有 1 項，請至「資料稽核」查看完整估計" in view.overview_return_label.text()
+        assert "不是股價漲跌預測、獲利機率或已驗證收益" in view.overview_return_label.text()
+    finally:
+        view.close()
+
+
+def test_stock_research_overview_return_label_with_h5_notes_shows_total_estimate_count() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view.enable_product_layout()
+    report = replace(
+        _report_for("2330", "500"),
+        ml=StockMLSnapshotDTO(
+            target_metric="benchmark_excess_after_standard_80bp_cost",
+            predicted_benchmark_excess_return_bp={
+                "H5": 128,
+                "model|expert2": -24,
+                "model|expert3": 0,
+                "model|expert4": 50,
+                "invalid_bool": True,
+                "invalid_float": 8.5,
+            },
+            target_round_trip_cost_bp=80,
+            target_buy_side_cost_bp=50,
+            target_sell_side_cost_bp=30,
+            research_only=True,
+            formal_qualified=False,
+        ),
+    )
+    try:
+        view._render_report(report)
+        text = view.overview_return_label.text()
+        assert "另一份 H5 研究：成本後基準超額估計 128 bp" in text
+        assert "此值不換算為 H20 毛報酬" in text
+        assert "H5 成本情境原值：總計 80 bp（買進 50 bp、賣出 30 bp）" in text
+        assert "完整 ML 估計共 4 項，請至「資料稽核」查看" in text
+        assert "另有" not in text
+        assert "僅供研究，不是獲利機率或已驗證收益；期間定義與資格請核對完整模型證據。" in text
+    finally:
+        view.close()
+
+
 def _current_h20_case():
     from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
 

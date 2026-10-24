@@ -175,3 +175,24 @@ Sol 首次同尺寸原生圖發現新增 chart 把原雙欄卡片擠成約 20／
 最終受控 QA 收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_83d7efeeed0f49ddad1cd1062a1f9847/receipt.json`：受改 Python 編譯、Evidence 聚焦 **55 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job 無殘留或強制清理。真 Windows DPI216（225%）的隔離合成正常 Main 1280×760／1500×900、stale／未知三態及同尺寸元件 before／after 已目視，來源 DB SHA 不變；最終 Job 收據 `.../root/single_owned_qa_d2efb34563264c4788327d0fc837cf7c/receipt.json`，七張 PNG 與 JSON 在 `.../root/native_m107_evidence/run_aa6157541c254375a1f258640e97b1a3/`。1920×1080 超出現有螢幕可用邏輯尺寸，其他真 OS DPI、正式排程／Evidence 來源、固定 EXE、Owner UAT、完整 Gate 未驗。
 
 M1–M107 是含實作、審查與 QA 的序號，非 107 個獨立功能。M73 決策品質控制正式作用範圍與 M75 有向關係／跨期資料用途契約仍分列待裁；本輪未讀寫正式或私人資料，未改其他排程，也未 push、merge 或部署。
+
+## M108 個股研究 ML 估計完整性提示與收尾
+
+Luna `/root/m108_research_visual_audit` 唯讀核對 `StockMLSnapshotDTO.predicted_benchmark_excess_return_bp`、adapter 與個股報告 View：模型鍵未承諾為可比較期限，完整原值表在收合的「資料稽核」，但首屏一般摘要只列前三筆而不提示餘數。Sol 選定只改呈現層，拒絕用不具可比契約的模型鍵畫趨勢條。Portfolio 四卡長缺值文案另以真 Windows DPI216、隔離合成 900×760／1280×760／1500×900 探針核：900 寬文字與可見寬皆 182 logical px，完整可讀，因此未把未證實裁切改版；原探針與收據在 `output/tasks/baldr-opus-ux-implementation/root/native_m108_probe_evidence/run_2e962c7b2f2940c2998433bb3de1bc7f/`、`.../single_owned_qa_82d6d09c888649b986bfd07e9a168ba2/receipt.json`。
+
+Luna 單一 writer 只修改 `ui_qt/views/stock_research_report_view.py` 與 `tests/test_ui_qt_stock_research_report.py`：一般摘要仍最多顯前三筆有效整數估計，多餘時明示「另有 N 項」並指向完整資料稽核；H5 註記優先時明示完整 ML 表的有效總筆數，避免將 H5 誤稱前三筆。保留原 H5／H20 分流、成本與目標定義、資格、研究限定及非機率警語；完整表、DTO、service、金融公式、來源資格及正式資料均未改。Sol 第一輪正常 Main 發現 H5 優先路徑漏提示，退回補上並新增測試；原生失敗收據 `.../single_owned_qa_464e894efc894aeda6706960d539c56a/receipt.json`，後兩次 harness 預期文字未同步新路徑，收據 `.../single_owned_qa_8a43f5e079ef4db5834ac822a926b29d/receipt.json`、`.../single_owned_qa_c7d6eba3307a42219cad12dc30727d74/receipt.json` 保留，不列產品失敗或最終接受。
+
+最終受控 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_1a8541ea913040cd8be810bb08deffd1/receipt.json`：受改 Python 編譯、個股研究 **78 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean；8 GiB／12 程序 Job exit0、無殘留 PID 或強制清理。正常 Main 真 Windows DPI216（225%）的隔離合成四筆 ML／H5 前後比較，在 1280×760、1500×900 均可見總數提示及原警語；原生收據 `.../single_owned_qa_606c0c28b4554d539abd4a4d5d919d13/receipt.json`，HEAD 原函式重建的 before 與修後四張 PNG、文字及 hash 位於 `.../native_m108_research_evidence/run_6fb22fc937ee48d2bf0eb05b547e28c8/`。這些是合成 DTO 與單一真 OS DPI；1920×1080 因目前可用螢幕尺寸不足未跑，其他 DPI、正式來源、固定新版 EXE、Owner UAT、自然排程及完整產品 Gate 仍未接受。
+
+### 從排程開工至 M108 的盤點
+
+Opus 先做獨立唯讀 UI/UX 審查；額度耗盡後 Antigravity 接續六份主要報告、mockup 與 prototype。Sol 查原實物、程式與產品架構，逐項去重並裁決金融語義；Luna 在單一 writer 檔案邊界實作，root 複核、跑受控 QA、真 Windows 合成畫面及本機逐輪提交。**M1–M108 是含唯讀裁決、測試與實作的序號，不是 108 個獨立功能。**
+
+| 範圍 | 累積已完成的工程工作 |
+| --- | --- |
+| P0 金融辨識與狀態 | 台股紅漲綠跌、單位／日期、未知與真零、首屏 KPI、載入／錯誤／來源清舊；修正 Stress 情境 A→B 的過期結果與保存身份；M108 補 ML 多筆估計完整性提示。 |
+| P1 題材與產業 | 題材摘要及原九指標、限定成交額圖、等面積格、雙端比較、成員下鑽、同版分類／共用成員鄰域、名稱搜尋與跨鏈同名識別；未把靜態分類當有向供應鏈。 |
+| P2 研究工作台 | 市場廣度／三法人、個股價格與研究證據、推薦／選股、持倉與 Stress、Backtest、Evidence／覆盤、Runtime 的摘要圖卡、原表及細節、長表導覽與限定前後原生驗證。 |
+| P3 限定探索 | 同一版本的題材與股票分類關係可讀；公司間供應／客戶有向邊與跨期強弱仍缺來源、時鐘及用途契約，未假造完整關係圖。 |
+
+完成的是後繼**原始碼工程切片與隔離合成 QA**，不是產品正式驗收。正式市場／Evidence／私人 Portfolio 來源與自然排程、全真 OS 100%／125%／150% DPI 路徑、Light（若正式支援）、固定新版 EXE、Owner UAT、M73 決策品質控制作用範圍、M75 有向關係／跨期用途契約及完整產品 Gate 各自保留。`output/` 原始收據與截圖留本機，不納版控；沒有自動交易、broker order、正式資料改寫、其他排程變更、push、merge 或部署。

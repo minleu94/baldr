@@ -565,6 +565,10 @@ Increment132比較候選沿同一基本面分頁，先顯示2317／2330／2454�
 
 個股研究是 Recommendation、觀察清單、Portfolio 等流程共用的同一工作區，保存結果與當下市場研究的來源身份不可互換。操作步驟看[推薦與 Research Lab 手冊](../07_guides/manuals/RECOMMENDATION_AND_RESEARCH_LAB.md)。
 
+### M108 ML 估計完整性提示
+
+後繼原始碼在「個股研究 → 摘要／五問」保留最多前三筆有效整數 ML 基準超額估計；多於三筆時明示其餘筆數，指向原「資料稽核」完整表。若同次報告走 H5 專用摘要，畫面保留原 H5 與 H20、成本和資格文字，並改以完整 ML 表有效總筆數提示，避免把 H5 註記誤當前三筆。模型鍵沒有可比較期間契約，未另畫趨勢／強弱圖；未改 DTO、金融數值、來源資格或原值表。限定 QA 與真 Windows Main 前後圖見[本輪收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m108-個股研究-ml-估計完整性提示與收尾)，固定試用 EXE 尚未包含。
+
 ### 保存來源、當下研究與返回守衛
 
 第一版一般手動觀察股票若完全沒有保存來源身份，從候選池開啟報告會明示「目前既有行情研究」，並返回原代號。這條路徑不要求不存在的推薦圖表 artifact；有來源ID、決策日、snapshot或連結／衝突身份時仍保留原來源守衛，不用目前行情補保存研究。操作見[觀察清單手冊](../07_guides/manuals/WATCHLIST_AND_PORTFOLIO.md)，限定驗證見[Increment34 QA](../06_qa/BALDR_DATA_POLICY_IMPLEMENTATION_20261014.md#increment34v1一般觀察股票下鑽與回訪)。

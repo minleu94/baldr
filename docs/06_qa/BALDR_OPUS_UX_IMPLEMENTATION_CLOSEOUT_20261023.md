@@ -491,12 +491,12 @@ Sol 首輪原生 `root/native_m155_evidence/run_43091ef3df6844a58e97f2906d4836c9
 
 最終共同 8 GiB／12 程序 Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_93d1b6b2d580466b88c7f13753157ca4/receipt.json` exit0：受改 Python compile0、相關 focused **45 passed**、Workbench **85 passed**、validator **25 passed／0 failed／4 skipped**、mypy **1,144** source files clean，無殘留或強制清理。這些是隔離合成及原始碼 QA；正式保存來源、其他真 OS DPI／Light／1920 可用工作區、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 未接受。M1–M155 是審查、裁決、實作與 QA 切片序號，不是 155 個獨立功能；原始 PNG／收據留 ignored `output/`，本機提交不 push、merge 或部署。
 
-## 排程啟動至 M159 的盤點
+## 排程啟動至 M160 的盤點
 
 | 範圍 | 已完成的工程與驗證 | 尚未接受的界線 |
 | --- | --- | --- |
-| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M159 包含唯讀裁決、測試及實作，並非 159 個功能。 | 審查意見不自動授來源／金融契約。 |
-| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化；選中持倉及回測 Sharpe 短顯與完整原值可核。 | 正式保存／市場來源與 Owner UAT 未驗。 |
+| 審查與裁決 | Opus 起始審查、額度耗盡後 Antigravity 續作六份主要報告及設計附件；Sol 核實來源、程式與架構，逐項去重。M1–M160 包含唯讀裁決、測試及實作，並非 160 個功能。 | 審查意見不自動授來源／金融契約。 |
+| P0 金融辨識 | 台股方向色、原數值／日期／單位、真零與未知、狀態清舊、可見風險提示及首屏摘要；保存推薦按原 ID 讀回、返回與少量列版面；常駐建置身分短版化；選中持倉及回測 Sharpe 短顯與完整原值可核；Workbench Advice 原警告、日期與選列理由可見。 | 正式保存／市場來源與 Owner UAT 未驗。 |
 | P1 產業題材 | 原資料範圍內的題材格、成交額與覆蓋圖、九指標、同版成員／鄰域、搜尋、雙版本原值、具名母體三態與成員條件側欄，保留精確下鑽。 | 多期間報酬、逐邊有向關係需合格來源、時鐘及用途契約。 |
 | P2 全站研究 | 市場、個股、推薦、Watchlist／Portfolio、Backtest、Evidence／Runtime 的圖卡與明細層級、長表、載入／失敗、導航與回訪；持倉毛損益正／負／零／未知家數分布；修關窗晚到回呼及備援圖互動／字形。 | 正式或私人資料、安全唯讀副本、其他真 DPI／Light／1920、固定新版 EXE、自然排程與完整 Gate 未接受。 |
 | P3 產業鏈 | 已有同版重疊、分類與成員探索；Sol 拒絕把共現當有向供應鏈或把資料覆蓋當跨期強弱。 | M75 逐邊證據與跨期 PIT 用途仍缺；M73 決策品質控制作用範圍仍需產品裁決。 |
@@ -532,3 +532,13 @@ Luna `/root/m149_saved_reader_audit` 唯一 writer 修改 `ui_qt/views/backtest/
 Luna `/root/m152_research_gap` 唯一 writer 修改 `ui_qt/views/portfolio_view.py` 與 `tests/test_ui_qt_portfolio_view.py`。由同一 `PortfolioDTO` 的活躍 `PositionDTO` 等權計數，只有原 `current`、有效 ISO 報價日、有限正現價與有限原未實現毛損益同時成立才列正、負或真零；其餘列未知。台股正值紅、負值綠、零與未知中性，圖條只表示家數占比，不加總金額、不代表資金權重、報酬或風險；0 檔顯精確 0 而不畫比例。載入、失敗、取消清舊；原表與選列上下文保留，沒有重估持倉、改報價來源或帳本。
 
 Sol 原生首版在 1280×760、真 OS DPI216 量到「手動記錄交易」底部 823px，超過 760px 首屏；失敗收據 `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_0d7c91ac83e84cdc90b060a6c3c176ab/receipt.json` 保留，不當通過。Sol 退回要求把圖卡移到整個持倉面板與操作列之後，Luna 修版面及順序測試。最終 1280 同按鈕底部 731px、首列可見，圖卡向下捲可讀；1500 的正／負／零／未知各一檔可讀。四張真 Windows DPI216 隔離合成 PNG 與精確計數／幾何在 `output/tasks/baldr-opus-ux-implementation/root/native_m159_evidence/run_60f239230b9d4220b7cdaadd15d8d375/result.json`，Job `output/tasks/baldr-opus-ux-implementation/root/single_owned_qa_ebdfd30f6df74ef783eba9b3b21d5b70/receipt.json` exit0、callback exception0；最終共同 QA 同 M158。正式／私人帳、其他 DPI／Light／1920、固定 EXE、Owner UAT、自然排程及產品 Gate 未接受。M1–M159 是含審查與 QA 的切片序號，並非功能數。
+
+## M160 Workbench Advice 判讀層級
+
+兩位 Luna 先唯讀盤點：市場／產業／題材已有同源摘要、漲跌格、成交額、分類與下鑽，新增跨期或有向關係仍欠 M75 來源／時鐘契約；Workbench Advice 已有 typed `AdviceDashboardDTO` 的持有期間、進場論點、失效條件、理由與風險，卻藏在長明細，屬可立即完成的資訊層級缺口。Sol 選此切片，指定 Luna `/root/m160_workbench_advice` 唯一 writer，只改 `ui_qt/views/workbench_view.py`、`ui_qt/models/workbench_table_models.py` 與兩個聚焦測試；不改 Advice producer、策略、資格、公式或交易路徑。
+
+正式 Advice、Professional 研究候選及配置先列模式、決策／資料日、列數與原警告；已知動作／品質／可成交性在顯示層轉中文，原碼留 tooltip／無障礙，未知原樣。選列卡顯原理由／論點、適用期間、風險、失效條件，完整長文仍在共用證據明細；空表收起，有列按表頭加最多四列限制可見高度並保留表內捲動。載入／失敗清除舊卡、警告及列，不將缺件當 0 或把 Professional 升成正式 Advice。
+
+Sol 先退回表格 role 覆蓋基類、空態誤把原警告改寫與長卡無界的版本；Luna 修後聚焦通過。首輪原生探針 `root/native_m160_evidence/run_46fff7df352e44a386f0de8ad5ea9635/result.json` exit0，但三表留白、選列卡被推到下方且配置表顯英文原碼，Sol 目視退回；初次 native harness 未展開進階區的 exit1 亦保留為 harness 失敗，不當產品證據。修版在真 Windows OS DPI216 的 1280×760／1500×900 拍摘要、選列與長警告六圖：`output/tasks/baldr-opus-ux-implementation/root/native_m160_evidence/run_0ac41957c8974a9dae9cc3c914ff1245/result.json`，受控 Job `root/single_owned_qa_74ae18d81dd44be99cc70b7fc2a156cc/receipt.json` exit0、callback0；Sol 目視兩表與選列卡可在同段捲動區判讀，長警告保留原文且可續捲。
+
+最終受控整合 `root/single_owned_qa_8a5554e110514109b28dbf9ac1d5b02b/receipt.json` exit0：compile0、Advice contract **6 passed**、Workbench **85 passed**、更新頁 validator **25 passed／0 failed／4 skipped**、mypy **1,144** 個來源檔無問題；8 GiB／12 程序 Job 無殘留。先前誤用系統 Python 的 `root/single_owned_qa_ee658b95ba6243c7ad0879d0af040ca3/receipt.json` exit1（缺 PySide6／mypy）保留，沒有冒充程式失敗或通過。實際正式 Advice／私人配置、其他 OS DPI／Light／1920、固定新版 EXE、自然排程、Owner UAT、M73／M75 與完整產品 Gate 均未接受；M1–M160 是切片序號，不是功能數。

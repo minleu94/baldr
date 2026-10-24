@@ -209,7 +209,7 @@ class WorkbenchChecklistTableModel(_WorkbenchTableModel):
 class AdviceRecommendationTableModel(_WorkbenchTableModel):
     COLUMNS = (
         ("stock_code", "標的"),
-        ("advice_action", "Action"),
+        ("advice_action", "動作"),
         ("why_not_reasons", "理由"),
         ("data_quality", "資料品質"),
         ("execution_feasibility", "可成交性"),
@@ -218,24 +218,104 @@ class AdviceRecommendationTableModel(_WorkbenchTableModel):
     def __init__(self, rows: Sequence[RecommendationAdviceDTO] = (), parent=None) -> None:
         super().__init__(rows, parent)
 
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < len(self._rows)):
+            return None
+        field_name = self.COLUMNS[index.column()][0]
+        if field_name not in {"advice_action", "data_quality", "execution_feasibility"}:
+            return super().data(index, role)
+        raw = getattr(self._rows[index.row()], field_name, None)
+        raw_text = raw.value if isinstance(raw, Enum) else str(raw or "").strip()
+        label = _advice_display_label(field_name, raw_text)
+        if role == Qt.DisplayRole:
+            return label
+        if role == Qt.ToolTipRole:
+            return f"原始值：{raw_text or '未知'}"
+        if role == Qt.AccessibleTextRole:
+            return f"{label}；原始值：{raw_text or '未知'}"
+        return super().data(index, role)
+
 
 class AdviceCandidateTableModel(AdviceRecommendationTableModel):
     """Professional research candidates only; never used for formal Advice rows."""
 
 
+def _advice_display_label(field_name: str, raw_value: str) -> str:
+    if not raw_value:
+        return "未知"
+    maps = {
+        "advice_action": {
+            "RESEARCH": "研究",
+            "ADD_CANDIDATE": "新增候選",
+            "HOLD": "持有",
+            "REDUCE_CANDIDATE": "減碼候選",
+            "EXIT_CANDIDATE": "退出候選",
+            "AVOID": "避開",
+            "NO_NEW_POSITION": "暫不新增部位",
+        },
+        "data_quality": {
+            "VERIFIED": "已驗證",
+            "OBSERVED": "已觀測",
+            "PARTIAL": "部分資料",
+            "DEGRADED": "降級",
+            "MISSING": "缺漏",
+            "UNAVAILABLE": "不可用",
+        },
+        "execution_feasibility": {
+            "FEASIBLE": "原狀態：可成交",
+            "NOT_FEASIBLE": "原狀態：不可成交",
+            "PARTIAL": "原狀態：部分可成交",
+            "UNKNOWN": "未知",
+            "UNAVAILABLE": "不可用",
+        },
+    }
+    return maps[field_name].get(raw_value.upper(), raw_value)
+
+
 class AdvicePortfolioTableModel(_WorkbenchTableModel):
     COLUMNS = (
         ("stock_code", "標的"),
-        ("advice_action", "Action"),
-        ("target_weight_bp", "Target (bp)"),
-        ("current_weight_bp", "Current (bp)"),
-        ("weight_gap_bp", "Gap (bp)"),
+        ("advice_action", "動作"),
+        ("target_weight_bp", "目標配置（bp）"),
+        ("current_weight_bp", "目前配置（bp）"),
+        ("weight_gap_bp", "配置差距（bp）"),
         ("data_quality", "資料品質"),
         ("execution_feasibility", "可成交性"),
     )
 
     def __init__(self, rows: Sequence[PortfolioAdviceDTO] = (), parent=None) -> None:
         super().__init__(rows, parent)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < len(self._rows)):
+            return None
+        field_name = self.COLUMNS[index.column()][0]
+        row = self._rows[index.row()]
+        if field_name in {"advice_action", "data_quality", "execution_feasibility"}:
+            raw = getattr(row, field_name, None)
+            raw_text = raw.value if isinstance(raw, Enum) else str(raw or "").strip()
+            label = _advice_display_label(field_name, raw_text)
+            if role == Qt.DisplayRole:
+                return label
+            if role == Qt.ToolTipRole:
+                return f"原始值：{raw_text or '未知'}"
+            if role == Qt.AccessibleTextRole:
+                return f"{label}；原始值：{raw_text or '未知'}"
+            return super().data(index, role)
+        if field_name in {"target_weight_bp", "current_weight_bp", "weight_gap_bp"}:
+            raw = getattr(row, field_name, None)
+            raw_text = str(raw) if raw is not None else "未知"
+            if role == Qt.DisplayRole:
+                return raw_text
+            if role == Qt.ToolTipRole:
+                return f"原始值：{raw_text}{' bp' if raw is not None else ''}"
+            if role == Qt.AccessibleTextRole:
+                return (
+                    f"{raw_text} bp；原始整數基點值：{raw_text}"
+                    if raw is not None
+                    else "未知；原始整數基點值：未知"
+                )
+        return super().data(index, role)
 
 
 class PositionHealthTableModel(_WorkbenchTableModel):

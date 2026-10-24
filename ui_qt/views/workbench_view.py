@@ -221,6 +221,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._workbench_narrow = False
         self.presentation_service = DecisionPresentationService()
         self._selected_advice_presentation = None
+        self._selected_advice_original_reasons: tuple[str, ...] = ()
         self._daily_candidate_selection_identity: tuple[object, ...] | None = None
         self._recent_research_widget: QWidget | None = None
 
@@ -518,6 +519,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         advice_panel, self.advice_section_title = self._panel_with_title("今日 Advice 與研究候選")
         self.advice_summary = self._make_state_label()
+        self.advice_summary.setTextFormat(Qt.PlainText)
+        self.advice_warning_status = self._make_state_label()
+        self.advice_warning_status.setObjectName("adviceWarningStatus")
+        self.advice_warning_status.setTextFormat(Qt.PlainText)
+        self.advice_warning_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.advice_recommendation_table = self._make_table(self.advice_recommendation_model)
         self.advice_candidate_table = self._make_table(self.advice_candidate_model)
         self.advice_portfolio_table = self._make_table(self.advice_portfolio_model)
@@ -531,17 +537,40 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 self.advice_candidate_model, index.row()
             )
         )
+        self.advice_recommendation_table.selectionModel().currentRowChanged.connect(
+            lambda current, _previous: self._show_advice_row_presentation(
+                self.advice_recommendation_model, current.row()
+            ) if current.isValid() else self._clear_advice_presentation_selection()
+        )
+        self.advice_candidate_table.selectionModel().currentRowChanged.connect(
+            lambda current, _previous: self._show_advice_row_presentation(
+                self.advice_candidate_model, current.row()
+            ) if current.isValid() else self._clear_advice_presentation_selection()
+        )
+        self.advice_portfolio_table.selectionModel().currentRowChanged.connect(
+            lambda current, _previous: self._show_advice_row_presentation(
+                self.advice_portfolio_model, current.row()
+            ) if current.isValid() else self._clear_advice_presentation_selection()
+        )
         self.advice_portfolio_table.clicked.connect(
             lambda index: self._show_advice_row_presentation(
                 self.advice_portfolio_model, index.row()
             )
         )
         advice_panel.layout.addWidget(self.advice_summary)
+        advice_panel.layout.addWidget(self.advice_warning_status)
         advice_panel.layout.addWidget(self.advice_recommendation_table)
         self.advice_candidate_label = QLabel("Professional 研究候選（不屬於正式 Advice）")
         advice_panel.layout.addWidget(self.advice_candidate_label)
         advice_panel.layout.addWidget(self.advice_candidate_table)
         advice_panel.layout.addWidget(self.advice_portfolio_table)
+        self.advice_selection_card = self._make_state_label()
+        self.advice_selection_card.setObjectName("adviceSelectionCard")
+        self.advice_selection_card.setTextFormat(Qt.PlainText)
+        self.advice_selection_card.setMaximumHeight(160)
+        self.advice_selection_card.setText("所選建議判讀：選取 Advice 或研究候選列後顯示。")
+        self.advice_selection_card.setVisible(False)
+        advice_panel.layout.addWidget(self.advice_selection_card)
         self.advice_presentation_detail = self._make_state_label()
         self.advice_presentation_detail.setObjectName("advicePresentationDetail")
         self.advice_presentation_detail.setText(
@@ -3412,8 +3441,24 @@ class UnifiedDecisionWorkbenchView(QWidget):
             lines.append("阻擋：" + "；".join(health.blockers))
         return "\n".join(lines)
 
-    def _set_advice_state(self, state: str, extra_msg: str = ""):
+    def _set_advice_state(
+        self,
+        state: str,
+        extra_msg: str = "",
+        *,
+        warnings: tuple[str, ...] = (),
+    ):
         self._clear_advice_presentation_selection()
+        self.advice_recommendation_model.set_rows(())
+        self.advice_candidate_model.set_rows(())
+        self.advice_portfolio_model.set_rows(())
+        self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
+        self.advice_selection_card.setVisible(False)
+        self.advice_warning_status.setText("")
+        self.advice_recommendation_table.setVisible(False)
+        self.advice_candidate_label.setVisible(False)
+        self.advice_candidate_table.setVisible(False)
+        self.advice_portfolio_table.setVisible(False)
         if state == "WAITING_FOR_ADVICE_DTO":
             self.advice_empty_label.setText(
                 "<b>【狀態：WAITING_FOR_ADVICE_DTO】</b><br/>"
@@ -3425,6 +3470,7 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
             self.advice_summary.setText("等待 AdviceDashboardDTO；UI 不執行 Policy 或核心計算。")
+            self.advice_warning_status.setText("警告狀態：尚未載入。")
             self.advice_presentation_detail.setText(
                 "共用證據詳情：等待 AdviceDashboardDTO；沒有資料不等於沒有風險。"
             )
@@ -3442,6 +3488,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
             self.advice_summary.setText("無可用建議；UI 不執行 Policy。")
+            self.advice_warning_status.setText(
+                "原警告：\n" + "\n".join(f"• {warning}" for warning in warnings)
+                if warnings
+                else "原警告：無原警告回報；這不代表沒有風險。"
+            )
             self.advice_presentation_detail.setText(
                 "共用證據詳情：目前沒有合格 Advice；不補排名、機率或成本後結果。"
             )
@@ -3458,16 +3509,13 @@ class UnifiedDecisionWorkbenchView(QWidget):
             self.advice_candidate_table.setVisible(False)
             self.advice_portfolio_table.setVisible(False)
             self.advice_summary.setText("Advice 載入錯誤或降級。")
+            self.advice_warning_status.setText("警告狀態：載入失敗，舊警告已清除。")
             self.advice_presentation_detail.setText(
                 "共用證據詳情：Advice DTO 狀態未知；請重新載入來源，不保留舊結論。"
             )
 
         elif state == "READY":
             self.advice_empty_widget.setVisible(False)
-            self.advice_recommendation_table.setVisible(True)
-            self.advice_candidate_label.setVisible(True)
-            self.advice_candidate_table.setVisible(True)
-            self.advice_portfolio_table.setVisible(True)
 
     def _render_advice(self, dashboard: WorkbenchDashboardDTO) -> None:
         advice = dashboard.advice_dashboard
@@ -3487,33 +3535,50 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         total_rows = len(formal_rows) + len(candidate_rows) + len(portfolio_rows)
         if total_rows == 0:
-            self._set_advice_state("NO_ELIGIBLE_ADVICE", ", ".join(advice.warnings) or "無合格標的")
+            self._set_advice_state(
+                "NO_ELIGIBLE_ADVICE",
+                "無合格 Advice 或配置列。",
+                warnings=tuple(advice.warnings),
+            )
             return
 
         self._set_advice_state("READY")
         self.advice_summary.setText(
-            "Advice 唯讀邊界：僅呈現已注入 AdviceDashboardDTO；"
-            f"mode={advice.mode.value} | decision_date={advice.decision_date} | "
-            f"data_as_of_date={advice.data_as_of_date} | "
-            f"warnings={', '.join(advice.warnings) or 'none'} | "
-            f"正式 Advice {len(formal_rows)} 筆 | Professional 研究候選 {len(candidate_rows)} 筆 | "
-            + "；".join(
-                f"{row.stock_code or 'portfolio'} {row.advice_action.value} "
-                f"{', '.join(row.why_not_reasons or row.refusal_reasons)} "
-                f"quality={row.data_quality} feasibility={row.execution_feasibility}"
-                for row in formal_rows
-            )
+            "唯讀呈現已注入 DTO｜"
+            f"模式：{_advice_mode_label(advice.mode.value)}｜"
+            f"決策日：{advice.decision_date or '未知'}｜資料日：{advice.data_as_of_date or '未知'}\n"
+            f"正式 Advice：{len(formal_rows)} 列｜Professional 研究候選：{len(candidate_rows)} 列｜配置：{len(portfolio_rows)} 列"
+        )
+        self.advice_warning_status.setText(
+            "原警告：\n" + "\n".join(f"• {warning}" for warning in advice.warnings)
+            if advice.warnings
+            else "原警告：無原警告回報；這不代表沒有風險。"
         )
         self.advice_recommendation_model.set_rows(formal_rows)
         self.advice_candidate_model.set_rows(candidate_rows)
         self.advice_portfolio_model.set_rows(portfolio_rows)
+        self.advice_recommendation_table.setVisible(bool(formal_rows))
+        self.advice_candidate_label.setVisible(bool(candidate_rows))
+        self.advice_candidate_table.setVisible(bool(candidate_rows))
+        self.advice_portfolio_table.setVisible(bool(portfolio_rows))
+        for table in (
+            self.advice_recommendation_table,
+            self.advice_candidate_table,
+            self.advice_portfolio_table,
+        ):
+            self._fit_advice_table_height(table)
         self.advice_presentation_detail.setText(
             "共用證據詳情：選取 Advice 或研究候選列後顯示；"
             "缺少校準／成本後機率時維持不可用，不從排名分數推導。"
         )
+        self.advice_selection_card.setText("所選建議判讀：選取 Advice 或研究候選列後顯示。")
 
     def _clear_advice_presentation_selection(self) -> None:
         self._selected_advice_presentation = None
+        self._selected_advice_original_reasons = ()
+        if hasattr(self, "advice_selection_card"):
+            self.advice_selection_card.setText("所選建議判讀：尚未選取；欄位未提供。")
+            self.advice_selection_card.setVisible(False)
         if hasattr(self, "advice_lineage_button"):
             self.advice_lineage_button.blockSignals(True)
             self.advice_lineage_button.setChecked(False)
@@ -3525,6 +3590,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if presentation is None:
             return
         detail = "共用證據詳情（唯讀）\n" + format_decision_presentation(presentation)
+        detail += "\n原始理由／論點：" + (
+            "；".join(self._selected_advice_original_reasons)
+            if self._selected_advice_original_reasons
+            else "未提供"
+        )
         if self.advice_lineage_button.isChecked():
             detail += "\n\n" + format_decision_lineage_detail(presentation)
         self.advice_presentation_detail.setText(detail)
@@ -3550,6 +3620,64 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             return
         self._selected_advice_presentation = presentation
+        is_candidate = getattr(getattr(item, "classification", None), "value", "") == "PROFESSIONAL_CANDIDATE"
+        is_portfolio_row = model is self.advice_portfolio_model
+        action_raw = getattr(getattr(item, "advice_action", None), "value", "") or ""
+        action_label = {
+            "NO_NEW_POSITION": "暫不新增部位",
+            "ADD_CANDIDATE": "新增候選",
+            "RESEARCH": "研究",
+            "HOLD": "持有",
+            "REDUCE_CANDIDATE": "減碼候選",
+            "EXIT_CANDIDATE": "退出候選",
+            "AVOID": "避開",
+        }.get(action_raw, action_raw or "未提供")
+        original_reasons = tuple(
+            dict.fromkeys(
+                (*presentation.reasons,
+                 *(getattr(item, "why_not_reasons", ()) or ()),
+                 *(getattr(item, "refusal_reasons", ()) or ()),
+                 *(getattr(item, "reasons", ()) or ()))
+            )
+        )
+        self._selected_advice_original_reasons = original_reasons
+        full_reasons_text = "；".join(original_reasons) if original_reasons else "未提供"
+        compact_reasons_text = full_reasons_text
+        if len(compact_reasons_text) > 150:
+            compact_reasons_text = compact_reasons_text[:147] + "…（完整理由見下方共用證據詳情）"
+        card_text = (
+            "所選建議判讀\n"
+            f"層級：{'Professional 研究候選（不屬於正式 Advice）' if is_candidate else '配置列' if is_portfolio_row else '正式 Advice'}｜"
+            f"動作：{action_label}（原碼：{action_raw or '未提供'}）\n"
+            f"原理由／論點：{compact_reasons_text}\n"
+            f"適用期間：{presentation.horizon or '未提供'}｜"
+            f"風險：{'；'.join(presentation.risks) if presentation.risks else '未提供'}\n"
+            f"失效條件：{'；'.join(presentation.invalidation_conditions) if presentation.invalidation_conditions else '未提供'}"
+        )
+        full_risks_text = "；".join(presentation.risks) if presentation.risks else "未提供"
+        full_invalidation_text = (
+            "；".join(presentation.invalidation_conditions)
+            if presentation.invalidation_conditions
+            else "未提供"
+        )
+        compact_risks_text = _compact_advice_text(full_risks_text)
+        compact_invalidation_text = _compact_advice_text(full_invalidation_text)
+        card_text = card_text.replace(f"風險：{full_risks_text}", f"風險：{compact_risks_text}")
+        card_text = card_text.replace(
+            f"失效條件：{full_invalidation_text}",
+            f"失效條件：{compact_invalidation_text}",
+        )
+        self.advice_selection_card.setText(card_text)
+        self.advice_selection_card.setToolTip(
+            f"完整原始理由／論點：{full_reasons_text}\n"
+            f"完整風險：{full_risks_text}\n"
+            f"完整失效條件：{full_invalidation_text}"
+        )
+        self.advice_selection_card.setAccessibleDescription(
+            f"{card_text}\n完整原始理由／論點：{full_reasons_text}\n"
+            f"完整風險：{full_risks_text}\n完整失效條件：{full_invalidation_text}"
+        )
+        self.advice_selection_card.setVisible(True)
         self.advice_lineage_button.setEnabled(True)
         self._render_advice_presentation_detail()
 
@@ -3748,6 +3876,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.refresh_button.setFocus(Qt.OtherFocusReason)
 
     def _resize_tables(self) -> None:
+        advice_tables = (
+            self.advice_recommendation_table,
+            self.advice_candidate_table,
+            self.advice_portfolio_table,
+        )
         for table in (
             self.status_table,
             self.review_table,
@@ -3761,9 +3894,34 @@ class UnifiedDecisionWorkbenchView(QWidget):
         ):
             table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             table.resizeColumnsToContents()
-            table.resizeRowsToContents()
+            if table in advice_tables:
+                self._fit_advice_table_height(table)
+            else:
+                table.resizeRowsToContents()
         self._fit_summary_table(self.evidence_feed_table, fixed_widths=(190, 92))
         self._fit_summary_table(self.action_item_table, fixed_widths=(104, 92, 130, 180))
+
+    def _fit_advice_table_height(self, table: QTableView) -> None:
+        model = table.model()
+        row_count = 0 if model is None else model.rowCount()
+        if row_count == 0:
+            table.setMinimumHeight(0)
+            table.setMaximumHeight(16777215)
+            return
+        header = table.verticalHeader()
+        header.setSectionResizeMode(QHeaderView.Fixed)
+        header.setDefaultSectionSize(28)
+        visible_rows = min(row_count, 4)
+        header_height = table.horizontalHeader().sizeHint().height()
+        horizontal_scroll_height = table.horizontalScrollBar().sizeHint().height()
+        bounded_height = (
+            header_height
+            + visible_rows * header.defaultSectionSize()
+            + horizontal_scroll_height
+            + table.frameWidth() * 2
+        )
+        table.setMinimumHeight(bounded_height)
+        table.setMaximumHeight(bounded_height)
 
     def _fit_summary_table(self, table: QTableView, *, fixed_widths: tuple[int, ...]) -> None:
         header = table.horizontalHeader()
@@ -4771,6 +4929,16 @@ def _latest_capture_overview_text(dashboard: WorkbenchDashboardDTO) -> str:
 
 def _yes_no(value: bool) -> str:
     return "是" if value else "否"
+
+
+def _advice_mode_label(value: str) -> str:
+    return {"GUIDED": "引導模式", "PROFESSIONAL": "Professional 模式"}.get(value, value or "未知")
+
+
+def _compact_advice_text(value: str, max_length: int = 90) -> str:
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 3] + "…（完整內容見下方詳情）"
 
 
 def _humanize_warning(token: object) -> str:

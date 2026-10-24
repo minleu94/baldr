@@ -1,5 +1,7 @@
 # PROJECT_SNAPSHOT（目前狀態）
 
+M160 後繼 UI：決策工作台「今日 Advice 與研究候選」使用既有 `AdviceDashboardDTO` 分列正式 Advice、Professional 研究候選及配置；摘要顯示模式、決策／資料日與原警告。已知動作、品質、可成交性在 Qt 顯中文，原碼留提示／無障礙，未知不猜；選列卡顯原理由、適用期間、風險及失效條件，完整長文保留原明細。零列表收起、有列限制可見高度，載入／失敗清舊。Sol 退回首版三表留白及配置列英文後修正；真 OS DPI216 的 1280×760／1500×900 六張隔離合成圖可讀，callback0。最終 compile0、focused6、Workbench85、validator25／0／4、mypy1,144；正式來源、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整 Gate 未接受。詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m160-workbench-advice-判讀層級)。
+
 M158／M159 後繼 UI：回測「原報告基準比較」Sharpe 三格以可讀兩位／極小非零科學記號呈現，捨入標「約」，原值保留提示與無障礙描述；原 bp、公式及來源不變。Portfolio 手動帳在完整持倉表與操作列後顯示同份快照未實現毛損益正／負／零／未知等權家數圖；只有原 current、有效行情日／正現價／有限毛損益才分類，其餘未知，不冒充資金權重或報酬。Sol 退回初版 1280 首屏操作被圖卡推離的畫面，修後按鈕底部 731／760、首列可見；真 OS DPI216 的 1280×760／1500×900 合成 Backtest 兩圖與 Portfolio 四圖 callback0。共同 QA compile0、focused131、Workbench85、validator25／0／4、mypy1,144，受控 Job 無殘留。正式／私人資料、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m158-backtest-原報告基準-sharpe-判讀)。審查源流為 Opus 起始、Antigravity 續作六份報告，Sol 核實後選切片。
 
 M157 後繼 UI：Portfolio「選中持倉重點摘要」的平均成本、現價與未實現毛損益以 TWD 兩位小數顯示；有捨入時標「約」，完整原值留在提示及無障礙描述，極小非零仍顯原值而非假零。取消選列清除舊提示，缺件維持未知，原持倉、計算、日期及 Health 身分不變。Sol 審查 Portfolio focused 100、Workbench 85、validator 25／0／4、mypy 1,144、compile0；真 OS DPI216 的 1280×760／1500×900 隔離合成 Portfolio 兩圖可讀、callback exception0。正式／私人資料、其他 DPI／Light／1920、固定 EXE、Owner UAT、M73／M75 與完整產品 Gate 未接受；詳[收尾](../06_qa/BALDR_OPUS_UX_IMPLEMENTATION_CLOSEOUT_20261023.md#m157-portfolio-選中持倉金額顯示)。

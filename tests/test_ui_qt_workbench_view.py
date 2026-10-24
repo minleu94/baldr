@@ -1121,8 +1121,20 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
         auto_refresh=False,
     )
 
-    assert "NO_NEW_POSITION" in view.advice_summary.text()
-    assert "evidence_quality_missing" in view.advice_summary.text()
+    assert "正式 Advice：1 列" in view.advice_summary.text()
+    assert "無原警告回報；這不代表沒有風險" in view.advice_warning_status.text()
+    action_index = view.advice_recommendation_model.index(
+        0, view.advice_recommendation_model.column_index("advice_action")
+    )
+    assert view.advice_recommendation_model.data(action_index) == "暫不新增部位"
+    assert view.advice_recommendation_model.data(action_index, Qt.ToolTipRole) == "原始值：NO_NEW_POSITION"
+    view.advice_recommendation_table.setCurrentIndex(
+        view.advice_recommendation_model.index(0, 0)
+    )
+    assert "正式 Advice" in view.advice_selection_card.text()
+    assert "evidence_quality_missing" in view.advice_selection_card.text()
+    assert "失效條件：未提供" in view.advice_selection_card.text()
+    assert "共用證據詳情（唯讀）" in view.advice_presentation_detail.text()
     assert view.advice_recommendation_model.rowCount() == 1
 
 
